@@ -891,3 +891,95 @@ describe('edit keeps the ticket standard', () => {
     expect((request as unknown as ReturnType<typeof vi.fn>).mock.calls.some((c) => c[0] === 'PUT')).toBe(false);
   });
 });
+
+describe('edit --phase swaps the one phase label', () => {
+  let labels: string[];
+  let applyRemove: boolean;
+  const mockRequest = () => request as unknown as ReturnType<typeof vi.fn>;
+  const puts = () => mockRequest().mock.calls.filter((c) => c[0] === 'PUT');
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(process, 'exit').mockImplementation(((c?: number) => { throw new Error(`__exit ${c ?? 0}`); }) as never);
+    labels = ['standalone', 'phase:design'];
+    applyRemove = true;
+    mockRequest().mockImplementation(async (method: string, path: string, body?: { update?: { labels?: Array<{ add?: string; remove?: string }> } }) => {
+      if (method === 'GET' && SNAPSHOT_GET.test(String(path))) {
+        return { fields: { issuetype: { name: 'Task' }, labels: [...labels], parent: { key: 'HIMMEL-9' }, description: null } };
+      }
+      if (method === 'GET') return { fields: { labels: [...labels] } };
+      if (method === 'PUT') {
+        for (const op of body?.update?.labels ?? []) {
+          if (op.add && !labels.includes(op.add)) labels.push(op.add);
+          if (op.remove && applyRemove) labels = labels.filter((l) => l !== op.remove);
+        }
+      }
+      return {};
+    });
+  });
+
+  async function edit(...args: string[]) {
+    const { registerEdit } = await import('./edit.js');
+    const p = new Command();
+    p.exitOverride();
+    registerEdit(p);
+    await p.parseAsync(['node', 'jira', 'edit', 'HIMMEL-1', ...args]);
+  }
+
+  it('--phase sliced on a phase:design ticket sends the swap in one PUT and reads the labels back', async () => {
+    await edit('--phase', 'sliced');
+    expect(puts()).toHaveLength(1);
+    expect(puts()[0][2]).toEqual({ update: { labels: [{ remove: 'phase:design' }, { add: 'phase:sliced' }] } });
+    const after = mockRequest().mock.calls.findIndex((c) => c[0] === 'PUT');
+    expect(mockRequest().mock.calls.slice(after + 1).some((c) => c[0] === 'GET' && /fields=.*labels/.test(String(c[1])))).toBe(true);
+    expect(labels).toEqual(['standalone', 'phase:sliced']);
+  });
+
+  it('a read-back holding two phase labels exits non-zero', async () => {
+    applyRemove = false;
+    await expect(edit('--phase', 'sliced')).rejects.toThrow(/phase/);
+  });
+
+  it('--phase build on a ticket with no phase label adds it', async () => {
+    labels = ['standalone'];
+    await edit('--phase', 'build');
+    expect(puts()[0][2]).toEqual({ update: { labels: [{ add: 'phase:build' }] } });
+  });
+
+  it('--phase none removes the one there', async () => {
+    await edit('--phase', 'none');
+    expect(puts()[0][2]).toEqual({ update: { labels: [{ remove: 'phase:design' }] } });
+    expect(labels).toEqual(['standalone']);
+  });
+
+  it('--phase waiting exits 2 naming the five and that waiting is retired, before any request', async () => {
+    await expect(edit('--phase', 'waiting')).rejects.toThrow('__exit 2');
+    const err = vi.mocked(console.error).mock.calls.flat().join('\n');
+    expect(err).toMatch(/retired: a wait is a ticket-hold\.sh hold/);
+    expect(err).toMatch(/design, ready, build, sliced, last-step/);
+    expect(mockRequest()).not.toHaveBeenCalled();
+  });
+
+  it('--phase bogus exits 2 naming the five, before any request', async () => {
+    await expect(edit('--phase', 'bogus')).rejects.toThrow('__exit 2');
+    expect(vi.mocked(console.error).mock.calls.flat().join('\n')).toMatch(/design, ready, build, sliced, last-step/);
+    expect(mockRequest()).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [['--labels', 'a']],
+    [['--remove-labels', 'held']],
+    [['--add-labels', 'phase:x']],
+  ])('--phase with %j exits 2 before any request', async (extra) => {
+    await expect(edit('--phase', 'sliced', ...extra)).rejects.toThrow('__exit 2');
+    expect(mockRequest()).not.toHaveBeenCalled();
+  });
+
+  it('--phase with --add-labels of a non-phase label is allowed, in the same PUT', async () => {
+    await edit('--phase', 'sliced', '--add-labels', 'other');
+    expect(puts()).toHaveLength(1);
+    expect(puts()[0][2]).toEqual({ update: { labels: [{ add: 'other' }, { remove: 'phase:design' }, { add: 'phase:sliced' }] } });
+  });
+});

@@ -2234,13 +2234,46 @@ s17_body() {
 
     if [ -s "$d/need" ]; then
         # the latest check-run of the aggregator, check 2's latest rule
-        agg=$(printf '%s' "${rollup:-null}" | jq -r --arg n "$S17_AGG" '
+        cands=$(printf '%s' "${rollup:-null}" | jq -r --arg n "$S17_AGG" '
+            def newest_first: map(.sk = [(.ts == null), (.ts // .i)]) | sort_by(.sk) | reverse;
             [ (if type == "array" then . else [] end) | to_entries[] | .key as $i | .value
-              | select(type == "object" and has("conclusion") and .name == $n and (.workflowName // "") == "CI")
-              | {i: $i, ts: (.startedAt // .completedAt // null), st: (.status // "?"), c: (.conclusion // "null"),
-                 run: ((.detailsUrl // "") | [scan("^https://[^/]+/[^/]+/[^/]+/actions/runs/([0-9]+)/job/[0-9]+$")[0]] | first // "")} ]
-            | map(.sk = [(.ts == null), (.ts // .i)]) | max_by(.sk)
-            | if . == null then "none" else "\(.st)/\(.c) \(.run)" end' 2>/dev/null) || agg=""  # swallow-ok: an unreadable rollup is no settled CI run
+              | select(type == "object" and has("conclusion") and (.workflowName // "") == "CI")
+              | {i: $i, name: (.name // ""), ts: (.startedAt // .completedAt // null), st: (.status // "?"), c: (.conclusion // "null"),
+                 run: ((.detailsUrl // "") | [scan("^https://[^/]+/[^/]+/[^/]+/actions/runs/([0-9]+)/job/[0-9]+$")[0]] | first // "")} ] as $all
+            | ($all | map(select(.name == $n)) | newest_first | .[] | "A \(.st)/\(.c) \(.run)"),
+              ($all | map(select(.run != "")) | newest_first | map(.run)
+               | reduce .[] as $r ([]; if any(.[]; . == $r) then . else . + [$r] end) | .[] | "O \(.)")' 2>/dev/null) || cands="unreadable"  # swallow-ok: an unreadable rollup is no settled CI run
+        agg=""; agg_first=""; agg_skipped=" "; agg_others=""
+        while IFS= read -r line; do
+            case "$line" in
+                "O "*) agg_others="$agg_others ${line#O }" ;;
+                "A "*)
+                    [ -n "$agg_first" ] || agg_first="${line#A }"
+                    [ -z "$agg" ] || continue
+                    case "${line#A }" in
+                        "COMPLETED/CANCELLED "*) agg_skipped="$agg_skipped${line##* } "; continue ;;
+                        "COMPLETED/FAILURE "[0-9]*)
+                            if s17_run "gh api actions/runs/${line##* }" "$(s17_bound 15)" "$d/rc" "$GH" api "repos/$owner/$repo/actions/runs/${line##* }" --jq .conclusion \
+                                && [ "$(tr -d '[:space:]' < "$d/rc")" = cancelled ]; then
+                                agg_skipped="$agg_skipped${line##* } "; continue
+                            fi ;;
+                    esac
+                    agg="${line#A }" ;;
+            esac
+        done <<< "$cands"
+        if [ -z "$agg" ] && [ -n "$agg_first" ]; then
+            agg_n=0
+            for r in $agg_others; do
+                case "$agg_skipped" in *" $r "*) continue ;; esac
+                agg_n=$((agg_n + 1)); [ "$agg_n" -le 5 ] || break
+                if s17_run "gh api actions/runs/$r" "$(s17_bound 15)" "$d/rc" "$GH" api "repos/$owner/$repo/actions/runs/$r" --jq '[.conclusion, .head_sha] | join(" ")' \
+                    && [ "$(tr -d '\r' < "$d/rc" | head -n 1)" = "success $SHA" ]; then
+                    agg="COMPLETED/SUCCESS $r"; break
+                fi
+            done
+            [ -n "$agg" ] || agg="$agg_first"
+        fi
+        case "$cands" in unreadable) agg="" ;; *) [ -n "$agg" ] || agg="none" ;; esac
         case "$agg" in
             "COMPLETED/SUCCESS "[0-9]*) run_id="${agg#* }" ;;
             *) s17_why="no settled CI run (latest $S17_AGG: ${agg:-unreadable})" ;;

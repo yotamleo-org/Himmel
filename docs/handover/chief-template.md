@@ -196,6 +196,12 @@ matches a pattern in `scripts/ci/ci-trust-paths.txt`** needs adversarial review 
 `bash scripts/handover/chief-kit/go.sh --trust-reviewed <qid> <pr> <head>` (an ordinary GO exits 21). Tag cuts and the
 merged-docs list: `chief-sections/merges.md`.
 
+**An unlisted outside author's PR walks a staged path** at its exact head `H` (a new head restarts it; a listed
+author starts at 3): 1. CodeRabbit `success` and CI green but the code-owner gate; 2. from the primary,
+`outside-security-audit.sh --pr <n> --head <H>` (a `fail` is final at `H`); 3. `outside-approve-request` with the
+CodeRabbit status, CI run ids, verdict, hard hits, counts, dropped bullets and report path; 4. `/pr-check --pr <n>`
+to item 16; 5. the code-owner approval last. Detail: `docs/internals/validation-gates.md`.
+
 **19. suite evidence.** Every impacted suite of `origin/main..<head>` needs proof at the
 exact head: `local_pass` or a ruled SKIP in the head's `impacted` ledger row, or a `ran 0 <path>`
 line in the CI shard manifests (`docs/internals/validation-gates.md`). Read each ruled SKIP the

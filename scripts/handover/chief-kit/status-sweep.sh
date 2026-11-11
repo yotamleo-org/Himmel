@@ -20,7 +20,9 @@
 # no further call. A key goes to the funnel (worker-jira-status.sh --event sweep)
 # only when its dry derive differs from Jira, or its liveness class or lock
 # counters changed. A failed, partial or saturated read makes the sweep
-# `unknown`: nothing moves and one `sweep miss` row is logged.
+# `unknown`: nothing moves and one `sweep miss` row is logged. So does a GitHub out
+# (ts_scan_gate before the snapshot): its QUOTA-PAUSE or GH-STALL line goes to stderr
+# and the sweep reads nothing, `unknown (snapshot gh)`.
 #
 # A sweep stops at TICKET_STATUS_SWEEP_BUDGET seconds (default 60) and saves the
 # first unserved key in <state>/sweep/cursor; the next sweep resumes there, and a
@@ -231,6 +233,7 @@ read_overflow_checks() {
 }
 
 # --- the snapshot ---------------------------------------------------------------
+ts_scan_gate status-sweep graphql core || unknown gh
 bounded 30 gh pr list --state open --limit 300 \
     --json number,title,headRefOid,baseRefName,reviewDecision,statusCheckRollup > "$snap/prs.json" 2>/dev/null || unknown gh
 n=$(jq 'length' "$snap/prs.json" 2>/dev/null) || unknown gh # swallow-ok: a failed count is the unknown branch on this line

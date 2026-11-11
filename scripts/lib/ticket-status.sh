@@ -25,6 +25,16 @@
 #                                   place by id, one new post when it has no id or the
 #                                   edit 404s, nothing written for an unchanged class.
 #                                   Sets TS_CID and TS_CHASH for the record.
+#   ts_scan_gate <caller> <bucket>...
+#                                   the scan gate (gh-quota.sh ghq_scan_gate, main token) on
+#                                   each GitHub bucket the caller spends; rc 0 proceed, rc 75
+#                                   paused with its QUOTA-PAUSE or GH-STALL line on stderr. Its
+#                                   readings live in HIMMEL_QUOTA_DIR, else <state dir>/quota:
+#                                   the same ~/.himmel/state/quota on a station, and a suite's
+#                                   own dir when it pins TICKET_STATUS_STATE_DIR.
+#
+# A live derive (no TS_SNAPSHOT_DIR) that the gate pauses reads no PR: no-write + miss
+# stage=gh, so the funnel warns and moves nothing.
 #
 # A caller that holds one batched snapshot sets TS_SNAPSHOT_DIR (the status sweep,
 # chief-kit/status-sweep.sh): the readers then take Jira, the open PRs, their
@@ -72,6 +82,23 @@ _TS_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$_TS_LIB_DIR/status-marker.sh"
 
 ts_state_dir() { printf '%s' "${TICKET_STATUS_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"; }
+
+ts_scan_gate() {
+    local who="$1" bucket line rc
+    shift
+    if ! declare -F ghq_scan_gate >/dev/null 2>&1; then
+        # shellcheck source=/dev/null
+        . "$_TS_LIB_DIR/gh-quota.sh"
+    fi
+    for bucket in "$@"; do
+        rc=0
+        line=$(HIMMEL_QUOTA_DIR="${HIMMEL_QUOTA_DIR:-$(ts_state_dir)/quota}" ghq_scan_gate main "$bucket" "$who") || rc=$?
+        [ "$rc" -eq 75 ] || continue
+        printf '%s\n' "$line" >&2
+        return 75
+    done
+    return 0
+}
 
 ts_rank() {
     case "$1" in
@@ -477,6 +504,7 @@ ts_derive() {
         done <<<"$(jq -r '(.docs // [])[]' <<<"$TS_REC")"
         TS_WORKER_STATE=${owner:-wrapped}
     fi
+    if [ -z "${TS_SNAPSHOT_DIR:-}" ] && ! ts_scan_gate ticket-status graphql core; then _ts_no_write miss "" gh; return 0; fi
     ts_read_prs "$key" || { _ts_no_write miss "" "$TS_STAGE"; return 0; }
     if [ -n "$TS_PRS" ]; then
         while IFS=$'\t' read -r num head base rd; do

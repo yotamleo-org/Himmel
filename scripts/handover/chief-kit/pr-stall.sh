@@ -37,6 +37,9 @@
 #
 # Exit: 0 (also when nothing is stuck); 3 when gh itself fails, with
 # `STALL-UNKNOWN gh failed` on stdout, never a silent empty list; 2 usage.
+# GitHub out (scripts/lib/gh-quota.sh ghq_scan_gate on the main token's GraphQL and
+# core, before any read): the QUOTA-PAUSE or GH-STALL line on stderr, then the same
+# STALL-UNKNOWN and exit 3, so the tick keeps its cached stall=.
 #
 # Test seams: PR_STALL_NOW (ISO-8601 clock), PR_STALL_INBOX_SEND (sender).
 #
@@ -57,6 +60,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../lib/legacy-names.sh
 . "$HERE/../../lib/legacy-names.sh"
 if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
+# shellcheck source=../../lib/gh-quota.sh
+. "$HERE/../../lib/gh-quota.sh"
 
 usage() {
     printf 'usage: pr-stall.sh [--repo owner/name] [--manifest fleet.json] [--conflict-min N] [--noci-min N] [--slow-min M] [--idle-h H] [--notify]\n' >&2
@@ -86,6 +91,10 @@ else
 fi
 
 unknown() { printf 'STALL-UNKNOWN gh failed\n'; exit 3; }
+
+for q_bucket in graphql core; do
+    q_line=$(ghq_scan_gate main "$q_bucket" pr-stall) || { [ $? -ne 75 ] || { printf '%s\n' "$q_line" >&2; unknown; }; }
+done
 
 fields="number,headRefName,headRefOid,mergeable,mergeStateStatus,statusCheckRollup,updatedAt,createdAt"
 # swallow-ok: stderr only; every failed read below exits 3 through unknown

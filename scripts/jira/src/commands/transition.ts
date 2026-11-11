@@ -8,6 +8,7 @@ import { parseFrozen } from './version-freeze.js';
 import { earliestUnreleased, fetchVersions, projectFromKey, setFixVersion } from './versions.js';
 import { admits } from '../release/admits.js';
 import { fileCloseIntake, mergedPrOf, requestLine } from '../release/close-placement.js';
+import { isPhaseLabel, phaseSwap } from '../phase.js';
 
 // Jira's transitions list names the status each one lands on; the shared
 // JiraTransition type does not declare it.
@@ -32,6 +33,8 @@ export interface TransitionResult {
   name: string;
   /** Set when a Done close was left unstamped on purpose (a ruled-out frozen key): the caller fails with exit 3. */
   unstamped?: string;
+  /** The phase label(s) a Done-category close could not remove; the WARN is already printed. */
+  phaseLeft?: string;
 }
 
 /**
@@ -94,8 +97,13 @@ export async function transitionIssue(
   await req('POST', `/issue/${key}/transitions`, { transition: { id: match.id } });
   const target = (match as TargetedTransition).to?.name ?? match.name;
   let actual: string | undefined;
+  let category: string | undefined;
+  let labels: string[] = [];
   try {
-    actual = (await req<{ fields?: { status?: { name?: string } } }>('GET', `/issue/${key}?fields=status`)).fields?.status?.name;
+    const f = (await req<{ fields?: { status?: { name?: string; statusCategory?: { key?: string } }; labels?: string[] } }>('GET', `/issue/${key}?fields=status,labels`)).fields;
+    actual = f?.status?.name;
+    category = f?.status?.statusCategory?.key;
+    labels = Array.isArray(f?.labels) ? f.labels : [];
   } catch (e) {
     throw new Error(`Transition ${key}: the POST was sent but the status read-back failed (${(e as Error).message}); the outcome is unconfirmed.`);
   }
@@ -106,7 +114,26 @@ export async function transitionIssue(
     );
   }
   writeJiraBreadcrumb(key);
-  return { name: match.name, unstamped };
+  const phaseLeft = category === 'done' ? await clearPhase(key, labels, req) : undefined;
+  return { name: match.name, unstamped, phaseLeft };
+}
+
+async function clearPhase(key: string, labels: string[], req: typeof request): Promise<string | undefined> {
+  const had = labels.filter(isPhaseLabel);
+  if (had.length === 0) return undefined;
+  let left = had;
+  let why = 'the read-back still holds it';
+  try {
+    await req('PUT', `/issue/${key}`, { update: phaseSwap(labels, 'none') });
+    const back = (await req<{ fields?: { labels?: unknown } }>('GET', `/issue/${key}?fields=labels`)).fields?.labels;
+    if (Array.isArray(back)) left = (back as string[]).filter(isPhaseLabel);
+    else why = 'the read-back carried no labels';
+  } catch (e) {
+    why = (e as Error).message;
+  }
+  if (left.length === 0) return undefined;
+  console.error(`WARN ${key} closed with ${left.join(', ')} still on it (${why})`);
+  return left.join(', ');
 }
 
 export function registerTransition(program: Command): void {

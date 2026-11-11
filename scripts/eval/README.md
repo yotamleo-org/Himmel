@@ -203,6 +203,18 @@ session as a worker runs it (`--arms vanilla,fused-cached,bm25-rerank,vec-rerank
 | `fused-cached` | the same, plus one MCP tool, `route`: grep + qmd hybrid (reranked) + graphify, rank-fused, returned as a tool result |
 | `bm25-rerank` | the same, `route` = qmd keyword (BM25) search, reranked |
 | `vec-rerank` | the same, `route` = qmd vector search, reranked |
+| `hybrid-rerank` | the same, `route` = qmd keyword and vector search together, reranked |
+
+The route server logs the backends each call reached (`route_rows.py`), so every row keeps
+`qmd_calls`, `graph_calls` and `route_failed` beside `route_calls`, and the ledger row keeps
+their sums and, per routed arm, `<arm>.route_use` and `<arm>.not_tested` (1 when the
+sessions called the route in under 80% of the rows; the run also prints `NOT TESTED: <arm>`).
+
+`--pair PAIR.json --index-state s|l|c` runs these arms against a scratch served pair with the
+refusals `retrieval-eval.py` makes (exit 2: QMD_URL is not the pair's own URL, the live
+server, a wrong served document count, a graph that is a checkout's), and `--rev COMMIT` exports
+that commit as the session's tree. `stale-sessions.py --plan PLAN.json --max-usd 18` runs one
+`answer-ab.py` per pair and state under one shared budget (see its docstring for the plan).
 
 Every arm uses the same model, `--permission-mode dontAsk` and the same flags except the
 MCP config and the allowed-tool list. The route server is `answer-ab.py route-server`;
