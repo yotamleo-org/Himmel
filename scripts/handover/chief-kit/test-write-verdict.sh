@@ -1108,6 +1108,41 @@ rc=0; out=$(STUB_PR_HEAD="$SHA_A" WV_NOPR="--bind --pr 9845" wv q30 GO "$SHA_A" 
 check "30: re-running the same bind rewrites the same file rc 0" "$rc" 0
 check "30: ...leaving one bound record" "$(find "$scope_dir/q30" -name 'bind-pr*' | wc -l | tr -d ' ')" 1
 
+# the source's own checks: a hand-built branch GO, signed or not, with optional extra header lines
+src30() {  # <qid> <signed 1|0> [<extra header line>]
+    mkdir -p "$scope_dir/$1"
+    {
+        printf '# VERDICT %s - judge\n\nwriter-session: s\nwritten-at: 2026-10-08T00:00:00Z\n\n## Verdict\n\n' "$1"
+        # shellcheck disable=SC2016
+        printf '**GO** for head `%s`.\n\nbranch: fix/x\n' "$SHA_A"
+        [ -z "${3:-}" ] || printf '%s\n' "$3"
+        printf 'model: claude-opus-5-5\neffort: high\n\nbody\n'
+    } > "$tmp/src30.body"
+    cp "$tmp/src30.body" "$scope_dir/$1/judge.md"
+    [ "$2" -eq 1 ] || return 0
+    src30_mac=$(. "$REPO/scripts/lib/go-gate.sh" && go_verdict_mac "$scope" "$1" judge < "$tmp/src30.body")
+    printf 'mac: %s\n' "$src30_mac" >> "$scope_dir/$1/judge.md"
+}
+bind30() {  # <qid> - bind PR 9845 at SHA_A, rc
+    local r=0
+    STUB_PR_HEAD="$SHA_A" WV_NOPR="--bind --pr 9845" wv "$1" GO "$SHA_A" >/dev/null 2>&1 || r=$?
+    printf '%s' "$r"
+}
+src30 q30s 1
+check "30: control, a hand-built signed branch GO binds rc 0" "$(bind30 q30s)" 0
+src30 q30a 0
+check "30: an unsigned source branch GO is refused rc 2" "$(bind30 q30a)" 2
+check "30: ...and nothing is written (unsigned source)" "$([ -e "$scope_dir/q30a/bind-pr9845-$SHA_A.md" ] && echo yes || echo no)" no
+src30 q30r 1 "repo: other/name"
+check "30: a signed source of another repo is refused rc 2" "$(bind30 q30r)" 2
+check "30: ...and nothing is written (other repo)" "$([ -e "$scope_dir/q30r/bind-pr9845-$SHA_A.md" ] && echo yes || echo no)" no
+src30 q30d 1 "delta-scope: aaaa..bbbb"
+check "30: a signed source carrying a delta-scope line is refused rc 2" "$(bind30 q30d)" 2
+check "30: ...and nothing is written (delta-scope source)" "$([ -e "$scope_dir/q30d/bind-pr9845-$SHA_A.md" ] && echo yes || echo no)" no
+src30 q30h 1 "reviewed-head: $SHA_B"
+check "30: a signed source carrying a reviewed-head line is refused rc 2" "$(bind30 q30h)" 2
+check "30: ...and nothing is written (reviewed-head source)" "$([ -e "$scope_dir/q30h/bind-pr9845-$SHA_A.md" ] && echo yes || echo no)" no
+
 [ "$fails" -eq 0 ] && { echo "PASS: test-write-verdict.sh"; exit 0; }
 echo "FAIL: $fails case(s)"
 exit 1

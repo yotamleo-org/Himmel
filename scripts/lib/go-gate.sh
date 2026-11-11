@@ -461,7 +461,7 @@ go_nogo_after() {
             fi
             if [ "$nh" = "$4" ] && [ -n "${5:-}" ]; then
                 nt=$(go_written_at "$nf") || { printf 'cannot read the verdict %s, so a NO-GO in it cannot be ruled out\n' "$nf"; return 2; }
-                if [ -n "$nt" ] && [[ $nt < $5 ]]; then continue; fi
+                if [ -n "$nt" ] && [[ $5 > $nt ]]; then continue; fi
             fi
             grc=0
             if [ "$nh" != "$4" ]; then
@@ -479,11 +479,10 @@ go_nogo_after() {
     done <<< "$qids"
 }
 
-go_chain_root_cutoff() {
+go_head_cutoff() {
     local cscope
-    [ "${1#* }" = - ] || return 0
-    cscope=$(go_verdict_scope "$4" "$5") || return 0
-    go_real_go_time "$2" "$3" "$cscope"
+    cscope=$(go_verdict_scope "$3" "$4") || return 0
+    go_real_go_time "$1" "$2" "$cscope"
 }
 
 # go_noop_carry <verdicts-dir> <qid> <pr> <anchor> <head> <go-root> <scope-anchor> [<owner/name>]
@@ -503,7 +502,7 @@ go_noop_carry() {
     while IFS= read -r line; do
         [ -n "$line" ] || continue
         root=${line%% *}
-        cut=$(go_chain_root_cutoff "$line" "$1/$2" "$root" "$7" "${8:-}") || { printf '%s\n' "$cut"; return 2; }
+        cut=$(go_head_cutoff "$1/$2" "$root" "$7" "${8:-}") || { printf '%s\n' "$cut"; return 2; }
         rc=0; why=$(go_nogo_after "$1" "$3" "$4" "$root" "$cut") || rc=$?
         [ "$rc" -eq 0 ] || { printf '%s\n' "$why"; return "$rc"; }
     done <<< "$chain"
