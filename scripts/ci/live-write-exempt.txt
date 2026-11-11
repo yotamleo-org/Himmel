@@ -44,3 +44,23 @@
 */scripts/hooks/test-stop-chief-idle-guard.sh HIMMEL-9723 writes cadence-ledger.jsonl under HOME
 */scripts/luna-vitals/connectors/test-pull-cadence-arm.sh HIMMEL-9723 writes flow-runs.jsonl under HOME
 */templates/luna-second-brain/scripts/test-vault-git.sh HIMMEL-9723 writes .local/bin under HOME
+ci-quick/claude-startup HIMMEL-9672 measurement
+ci-quick/claude-startup__mock-turn HIMMEL-9672 measurement
+ci-quick/claude-startup__consult HIMMEL-9672 measurement
+ci-quick/claude-startup__hook-smoke HIMMEL-9672 measurement
+ci-quick/claude-startup__live-turn HIMMEL-9672 measurement
+node-suites/jira HIMMEL-9672 measurement
+node-suites/bitbucket HIMMEL-9672 measurement
+node-suites/himmel-run HIMMEL-9672 measurement
+node-suites/ci-orchestrator HIMMEL-9672 measurement
+node-suites/himmel-gh HIMMEL-9672 measurement
+node-suites/himmel-jira HIMMEL-9672 measurement
+node-suites/himmel-bus HIMMEL-9672 measurement
+node-suites/root-vitest-sandbox HIMMEL-9672 measurement
+lanes-and-trust-suites/lanes HIMMEL-9672 measurement
+lanes-and-trust-suites/trust HIMMEL-9672 measurement
+lanes-and-trust-suites/where-are-we HIMMEL-9672 measurement
+lanes-and-trust-suites/lessons HIMMEL-9672 measurement
+lanes-and-trust-suites/observability HIMMEL-9672 measurement
+lanes-and-trust-suites/hook-lib-suites HIMMEL-9672 measurement
+bun-suites/root-vitest-sandbox HIMMEL-9672 measurement
