@@ -1614,7 +1614,8 @@ _live_test_line=""
 [ ! -r "$DOC" ] || _live_test_line="$(grep -m1 -E '^> \*\*Live test:\*\* jira ' "$DOC")"
 if [ -n "$_live_test_line" ]; then
     LIVE_TEST_OWN="$(printf '%s\n' "$_live_test_line" | sed -nE 's/^> \*\*Live test:\*\* jira [^ ]+ own=([^ ]*)( .*)?$/\1/p')"
-    if ! printf '%s\n' "$LIVE_TEST_OWN" | grep -qxE 'none|[A-Z][A-Z0-9]+-[0-9]+(,[A-Z][A-Z0-9]+-[0-9]+)*'; then
+    _live_test_re='^(none|[A-Z][A-Z0-9]+-[0-9]+(,[A-Z][A-Z0-9]+-[0-9]+)*)$'
+    if ! [[ "$LIVE_TEST_OWN" =~ $_live_test_re ]]; then
         echo "headed-arm-worker: refusing worker launch: $DOC's Live test line has own=$LIVE_TEST_OWN, which is neither none nor a comma list of KEY-n ticket keys" >&2
         exit 2
     fi
@@ -1624,7 +1625,7 @@ if [ -n "$_live_test_line" ]; then
     fi
     worker_propagate_env HIMMEL_JIRA_LIVE_TEST "$LIVE_TEST_OWN"
 fi
-unset -v _live_test_line
+unset -v _live_test_line _live_test_re
 
 # advisory effort recommendation. Only when the brief carries
 # '> **Effort-record:** <path>' (an effort-assess record). One stderr line;
