@@ -4181,8 +4181,6 @@ s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"
 S17_ROLLUP="[$S17_OLDOK,$(s17_agg IN_PROGRESS null 2026-11-05T02:00:00Z 555)]"
 s17_at "$S17_H1"
 contains "19 T12 in progress after a SUCCESS: no settled CI run" "$(line17 "$out")" "[FAIL] 19. suite evidence: 2 suite(s) proven nowhere: $S17_A (no settled CI run"
-# T11: a CANCELLED duplicate run (the concurrency group's loser, runs 42975581119 / 42975581139
-# of PR 5221) never masks the settled run at the same head, whichever order GitHub started them in
 S17_DUP_OK=$(s17_agg COMPLETED SUCCESS 2026-11-11T09:00:05Z 42975581139)
 S17_DUP_CANC=$(s17_agg COMPLETED CANCELLED 2026-11-11T09:00:09Z 42975581119)
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; S17_ROLLUP="[$S17_DUP_OK,$S17_DUP_CANC]"
@@ -4194,29 +4192,23 @@ notcontains "19 T11: the cancelled run is never read" "$(cat "$GH_LOG")" "429755
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; S17_ROLLUP="[$S17_DUP_CANC,$S17_DUP_OK]"
 s17_at "$S17_H1"
 contains "19 T11b the rollup rows in the other order: same run" "$(line17 "$out")" "[PASS] 19. suite evidence: 2 impacted, 2 from CI run 42975581139, 0 local"
-# T11c: the newest settled run, not the newest run, is the CANCELLED-free newest
 S17_DUP_OLD=$(s17_agg COMPLETED SUCCESS 2026-11-11T08:00:00Z 42975500000)
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; S17_ROLLUP="[$S17_DUP_OLD,$S17_DUP_OK,$S17_DUP_CANC]"
 s17_at "$S17_H1"
 contains "19 T11c two SUCCESS runs and a CANCELLED one: the newer SUCCESS" "$(line17 "$out")" "from CI run 42975581139"
-# T11d: the head check stays on the chosen run
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; S17_ROLLUP="[$S17_DUP_OK,$S17_DUP_CANC]"; STUB_RUN_HEAD_SHA="$S17_BASE"
 s17_at "$S17_H1"
 contains "19 T11d the SUCCESS run is at another head: FAIL" "$(line17 "$out")" "(no settled CI run (run 42975581139 is not at ${S17_H1:0:7}))"
-# T11e: a genuine FAILURE newer than a SUCCESS is still the pick (negative control)
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; S17_ROLLUP="[$S17_OLDOK,$(s17_agg COMPLETED FAILURE 2026-11-05T02:00:00Z 556)]"
 s17_at "$S17_H1"
 contains "19 T11e a real FAILURE after a SUCCESS: still no settled CI run" "$(line17 "$out")" "(no settled CI run (latest shell-unit (ubuntu-latest): COMPLETED/FAILURE 556))"
-# T11f: a real FAILURE older than a CANCELLED run is still the pick (the cancelled row is skipped, the failure is not)
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; S17_ROLLUP="[$(s17_agg COMPLETED FAILURE 2026-11-05T01:00:00Z 556),$(s17_agg COMPLETED CANCELLED 2026-11-05T02:00:00Z 557)]"
 s17_at "$S17_H1"
 contains "19 T11f FAILURE then CANCELLED: the FAILURE stays the pick" "$(line17 "$out")" "(no settled CI run (latest shell-unit (ubuntu-latest): COMPLETED/FAILURE 556))"
-# T11g: every run at the head CANCELLED: today's message, still FAIL
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; S17_ROLLUP="[$S17_DUP_CANC,$(s17_agg COMPLETED CANCELLED 2026-11-11T09:00:04Z 42975581100)]"
 s17_at "$S17_H1"
 check "19 T11g every run CANCELLED: exit 1" "$rc" "1"
 contains "19 T11g: no settled CI run, naming the newest cancelled one" "$(line17 "$out")" "(no settled CI run (latest shell-unit (ubuntu-latest): COMPLETED/CANCELLED 42975581119))"
-# T12b: an IN_PROGRESS run newer than a CANCELLED duplicate is not settled either
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; S17_ROLLUP="[$S17_DUP_OK,$S17_DUP_CANC,$(s17_agg IN_PROGRESS null 2026-11-11T09:10:00Z 42975600000)]"
 s17_at "$S17_H1"
 contains "19 T12b in progress newest after a CANCELLED duplicate: no settled CI run" "$(line17 "$out")" "(no settled CI run (latest shell-unit (ubuntu-latest): IN_PROGRESS/null 42975600000))"
