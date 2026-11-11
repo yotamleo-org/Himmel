@@ -1108,8 +1108,7 @@ rc=0; out=$(STUB_PR_HEAD="$SHA_A" WV_NOPR="--bind --pr 9845" wv q30 GO "$SHA_A" 
 check "30: re-running the same bind rewrites the same file rc 0" "$rc" 0
 check "30: ...leaving one bound record" "$(find "$scope_dir/q30" -name 'bind-pr*' | wc -l | tr -d ' ')" 1
 
-# the source's own checks: a hand-built branch GO, signed or not, with optional extra header lines
-src30() {  # <qid> <signed 1|0> [<extra header line>]
+src30() {
     mkdir -p "$scope_dir/$1"
     {
         printf '# VERDICT %s - judge\n\nwriter-session: s\nwritten-at: 2026-10-08T00:00:00Z\n\n## Verdict\n\n' "$1"
@@ -1123,7 +1122,7 @@ src30() {  # <qid> <signed 1|0> [<extra header line>]
     src30_mac=$(. "$REPO/scripts/lib/go-gate.sh" && go_verdict_mac "$scope" "$1" judge < "$tmp/src30.body")
     printf 'mac: %s\n' "$src30_mac" >> "$scope_dir/$1/judge.md"
 }
-bind30() {  # <qid> - bind PR 9845 at SHA_A, rc
+bind30() {
     local r=0
     STUB_PR_HEAD="$SHA_A" WV_NOPR="--bind --pr 9845" wv "$1" GO "$SHA_A" >/dev/null 2>&1 || r=$?
     printf '%s' "$r"
