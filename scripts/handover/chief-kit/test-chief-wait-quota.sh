@@ -224,31 +224,38 @@ check "(unk) the woken head wakes again after quota" "WAKE ready 77 $SHA" "$(hea
 check "(unk) naming the gate" "after-quota=check-ci.sh" "$(head -n 1 "$WORK/unk.out" | grep -oE 'after-quota=[^ ]+$')"
 
 # --- (lock) the claim waits for the writers' lock, so a stamp or a merge cannot resurrect it
+# lock_hold: a writer holding gh-quota.sh's lock until the row kills it (-o: only flock holds it)
+lock_hold() { flock -o "$Q/blocked/.lock" sleep 120 & lpid=$!; sleep 0.3; }  # gnu-ok: Linux-only kit (util-linux flock)
+# lock_waited <pid>: the waiter read its snapshot and waits on the held lock (a `flock -x 9` under it), at most 60 s
+lock_waited() {
+    local n=0
+    while [ "$n" -lt 600 ]; do
+        ps -eo pid=,ppid=,args= | awk -v root="$1" '{ p[$1] = $2 } /flock -x 9/ { c[$1] = 1 } END { for (k in c) { q = k; while ((q in p) && q != root && q > 1) q = p[q]; if (q == root) { print k; exit } } }' | grep -q . && return 0
+        sleep 0.1; n=$((n + 1))
+    done
+    return 1
+}
 fleet lock N2 "LIVE — working"
 rm -rf "$Q/blocked"; marker "66.$SHA2" "$(( $(now) - 5000 ))" go.sh graphql rate-limit "$(( $(now) - 1000 ))"
-flock "$Q/blocked/.lock" sleep 6 &  # gnu-ok: Linux-only kit (util-linux flock)
-lpid=$!
-sleep 0.5
+lock_hold
 rm -f "$I.wait"
 ( cd "$GATE_REPO" && exec env HOUSEKEEPING_DIGEST_SECS=0 bash "$WAIT" "$I" --workers-from "$M" ) > "$WORK/lock.out" 2>&1 &
 WPID=$!
-sleep 4
+check "(lock) the waiter reaches the held lock" "yes" "$(lock_waited "$WPID" && echo yes)"
 check "(lock) while a writer holds the lock the marker is not claimed" "66.$SHA2" "$(markers)"
-wait "$lpid"
+kill "$lpid" 2>/dev/null; wait "$lpid" 2>/dev/null
 n=0; while [ "$n" -lt 300 ] && kill -0 "$WPID" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 check "(lock) once it is free the claim goes through, once" "WAKE quota-back 66 $SHA2 caller=go.sh" "$(head -n 1 "$WORK/lock.out")"
 # a gate that refused again while the waiter waited for the lock: the claim sees the new text and leaves it
 rm -rf "$Q/blocked"; marker "66.$SHA2" "$(( $(now) - 5000 ))" go.sh graphql rate-limit "$(( $(now) - 1000 ))"
-flock "$Q/blocked/.lock" sleep 6 &  # gnu-ok: Linux-only kit (util-linux flock)
-lpid=$!
-sleep 0.5
+lock_hold
 rm -f "$I.wait"
 ( cd "$GATE_REPO" && exec env HOUSEKEEPING_DIGEST_SECS=0 bash "$WAIT" "$I" --workers-from "$M" ) > "$WORK/lockchg.out" 2>&1 &
 WPID=$!
-sleep 4
+check "(lock) the waiter reaches the held lock on the old text" "yes" "$(lock_waited "$WPID" && echo yes)"
 marker "66.$SHA2" "$(( $(now) - 5000 ))" go.sh graphql rate-limit
-wait "$lpid"
+kill "$lpid" 2>/dev/null; wait "$lpid" 2>/dev/null
 n=0; while [ "$n" -lt 300 ] && kill -0 "$WPID" 2>/dev/null && ! grep -q 'state=waiting' "$I.wait" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 check "(lock) a marker rewritten under the lock is not claimed on the old decision" "" "$(grep '^WAKE' "$WORK/lockchg.out")"
