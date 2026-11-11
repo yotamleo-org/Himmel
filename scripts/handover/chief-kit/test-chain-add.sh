@@ -1,16 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in check()
-# scripts/handover/chief-kit/test-chain-add.sh - suite for chain-add.sh, the chain registry writer:
-#   1. two linked open keys in no chain open a new chain with the given goal; chain-state.mjs
-#      then reports neither unchained
-#   2. a key joins the existing chain that holds the other key; that chain keeps its goal
-#   3. a pair already in one chain changes nothing
-#   4. a refusal leaves the registry byte for byte: a goal over 90 characters or under 3 words,
-#      a new chain with no goal, a key not open, a key outside the version, an unlinked pair,
-#      keys in two chains, an invalid registry
-#   5. usage errors exit 2
-#
-# Hermetic: a temp mirror and registry, never the real ones. PLATFORM GUARD: Linux-only kit.
+# scripts/handover/chief-kit/test-chain-add.sh - suite for chain-add.sh. PLATFORM GUARD: Linux-only kit.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -28,10 +18,10 @@ check() { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; f
 
 M="$tmp/mirror" S="$tmp/state" R="$tmp/chains.json"
 mkdir -p "$M" "$S"
-# issue <KEY> <statusCategory> <versions json> <blocked_by json> [labels json]
 issue() {
+    local key="$1" status_category="$2" versions_json="$3" blocked_by_json="$4" labels_json="${5:-[]}"
     printf -- '---\nkey: "%s"\ntype: "Task"\nstatus: "%s"\nstatusCategory: "%s"\nlabels: %s\nfixVersions: %s\nparent: null\nresolved: null\nlinks:\n  blocks: []\n  blocked_by: %s\n  relates: []\n---\n\n# %s: title of %s\n' \
-        "$1" "$2" "$2" "${5:-[]}" "$3" "$4" "$1" "$1" > "$M/$1.md"
+        "$key" "$status_category" "$status_category" "$labels_json" "$versions_json" "$blocked_by_json" "$key" "$key" > "$M/$key.md"
 }
 issue HIMMEL-1 "To Do" '["v1"]' '[]'
 issue HIMMEL-2 "In Progress" '["v1"]' '["is blocked by HIMMEL-1"]'
@@ -48,7 +38,6 @@ unchained() { node "$HERE/chain-state.mjs" --json --registry "$R" --mirror "$M" 
 
 check '0. control: before chain-add the keys read unchained' '3 HIMMEL-1 HIMMEL-2 HIMMEL-3' "$(unchained)"
 
-# 1. a new chain with the goal
 add HIMMEL-1 HIMMEL-2 --goal "The waiter wakes once before the drain line"; rc=$?
 check '1. a new chain is opened (rc 0)' 0 "$rc"
 check '1. it holds both keys' 'HIMMEL-1,HIMMEL-2' "$(jq -r '.chains[] | select(.members | index("HIMMEL-1")) | .members | join(",")' "$R")"
@@ -57,7 +46,6 @@ check '1. its id is the goal, slugged' 'the-waiter-wakes-once-before' "$(jq -r '
 check '1. the other chain is kept' 'Other work lands before the rest|HIMMEL-9' "$(jq -r '.chains[] | select(.id == "other-work") | .goal + "|" + (.members | join(","))' "$R")"
 check '1. chain-state.mjs no longer lists the two keys unchained' '1 HIMMEL-3' "$(unchained)"
 
-# 2. a key joins the chain that holds the other
 add HIMMEL-2 HIMMEL-3; rc=$?
 check '2. a key joins the existing chain (rc 0)' 0 "$rc"
 check '2. no new chain is opened' 2 "$(jq '.chains | length' "$R")"
@@ -68,14 +56,12 @@ add HIMMEL-7 HIMMEL-9; rc=$?
 check '2. a key joins a chain that holds its blocker (rc 0)' 0 "$rc"
 check '2. that key joined other-work' 'HIMMEL-9,HIMMEL-7' "$(jq -r '.chains[] | select(.id == "other-work") | .members | join(",")' "$R")"
 
-# 3. a pair already in one chain
 cp "$R" "$tmp/before"
 add HIMMEL-1 HIMMEL-2 --goal "The waiter wakes once before the drain line"; rc=$?
 check '3. a pair already in one chain exits 0' 0 "$rc"
 check '3. and changes nothing' "$(cat "$tmp/before")" "$(cat "$R")"
 
-# 4. refusals leave the registry byte for byte, each for its own reason
-refused() { # <label> <reason text> <args...>
+refused() {
     local label="$1" why="$2"; shift 2
     cp "$R" "$tmp/before"
     add "$@"; local rc=$?
@@ -101,7 +87,6 @@ refused 'a new chain whose id is taken' 'chain id other-work is taken' HIMMEL-11
 printf '{"schema":"himmel.chain-registry/1","chains":[{"id":"x","goal":"short","members":["HIMMEL-9"]}]}\n' > "$R"
 refused 'an invalid registry' 'the registry is invalid' HIMMEL-11 HIMMEL-12 --goal "A valid goal for a new chain"
 
-# 5. usage
 bash "$SUT" HIMMEL-1 >/dev/null 2>&1; rc=$?
 check '5. one key is a usage error' 2 "$rc"
 bash "$SUT" HIMMEL-1 HIMMEL-1 --goal "The same key twice here" --registry "$R" --mirror "$M" >/dev/null 2>&1; rc=$?

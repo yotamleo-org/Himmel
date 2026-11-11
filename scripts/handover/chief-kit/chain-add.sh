@@ -71,7 +71,7 @@ tmp="$(tmpdir)" || refuse "cannot make a temp dir"
 new=""
 trap 'rm -rf "$tmp"; [ -z "$new" ] || rm -f "$new"' EXIT
 mkdir "$tmp/state"
-valid() { # <registry file>: chain-state.mjs reads it, or the reason is on $tmp/err
+valid() {
     node "$HERE/chain-state.mjs" --json --registry "$1" --mirror "$mir" --state "$tmp/state" > /dev/null 2> "$tmp/err" \
         && ! grep -q '^chain-state:' "$tmp/err"
 }

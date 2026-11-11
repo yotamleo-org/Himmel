@@ -11,7 +11,6 @@
 #   5. prose on the workers: line survives; other fields and sections are untouched
 #   6. --print writes nothing; the rendered line is what tick.sh's parser reads
 #   7. a chief doc with neither a `workers:` nor a `legs:` line is refused
-#  26. a pool-disposition `after <KEY>` line writes its Jira blocks link once (a stub Jira CLI)
 #
 # Hermetic: temp dir + its own HANDOVER_DIR. PLATFORM GUARD: Linux-only kit.
 set -uo pipefail
@@ -389,10 +388,6 @@ out25="$(bash "$SCRIPT" "$hy" --print 2>/dev/null)"
 check '25. --print prints the workers: line without the next labelled line' 'workers: `N61:nonce-61:tok-one:111` note a wrapped prose b' "$out25"
 check '25. --digest ends the workers line at the pool-disposition line' 'workers: `N61:nonce-61:tok-one:111` note a wrapped prose b' "$(bash "$SCRIPT" "$hy" --digest 2>/dev/null | grep '^workers:')"
 
-# 26. A `pool-disposition: <KEY> question|slice after <KEY2>` line, both keys open, writes ONE
-#     `link <KEY2> --blocks <KEY>` call when the link is absent; a second render makes none; a key
-#     that is not open, a link already there or --print makes none. The Jira CLI is a stub
-#     that records every call; a link it makes shows in its next `links` read.
 js="$tmp/jira-stub"; jdb="$tmp/jira-db"; mkdir -p "$jdb"; : > "$jdb/calls"
 cat > "$js" <<'STUB'
 #!/usr/bin/env bash

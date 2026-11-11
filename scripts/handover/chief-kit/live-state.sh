@@ -43,7 +43,8 @@
 # right after the workers: line (replaced on every render), for succession to carry.
 #
 # After a render that wrote the doc, each `pool-disposition: <KEY> question|slice after <KEY2>`
-# line with both keys open writes its Jira link `<KEY2> blocks <KEY>` when absent (see the end).
+# line with both keys open writes its Jira link `<KEY2> blocks <KEY>` when absent, once per pair;
+# LIVE_STATE_JIRA_CMD replaces the jira CLI.
 #
 # Exit: 0 ok; 1 refused (no manifest, no workers: line, new worker without a nonce);
 # 2 usage. PLATFORM GUARD: Linux-only kit, bash 3.2-safe; needs jq.
@@ -235,13 +236,6 @@ if ! NL="$new_line" awk -v k="$live_key" '
 fi
 doc_unlock
 
-# A Live state `pool-disposition: <KEY> question|slice after <KEY2>` line is a dependency the chief
-# recorded; the chain read (chain-state.mjs) sees only Jira blocked-by links and the registry. With
-# both keys open and no `<KEY2> blocks <KEY>` link in Jira, the render makes ONE
-# `jira link <KEY2> --blocks <KEY>` call and logs it on stderr. A pair linked, or found linked, is
-# recorded per doc under TMPDIR, so a later render makes no Jira call for it. A key not open, or a
-# Jira read or write that fails, writes no link and is tried again at the next render. The exit
-# code is the render's alone. LIVE_STATE_JIRA_CMD replaces the jira CLI (tests).
 DONE_RE='^(Done|Closed|wont do|wont fix|Resolved|In Public)$'
 jira() {
     if [ -n "${LIVE_STATE_JIRA_CMD:-}" ]; then "$LIVE_STATE_JIRA_CMD" "$@" < /dev/null; return; fi
@@ -256,9 +250,6 @@ after_pairs="$(awk '
         split($0, w, " "); on = w[5]; sub(/[^A-Z0-9-].*$/, "", on)
         if (on != w[2]) print on, w[2]
     }' "$doc")"
-# The check, link and record of every pair run under doc_lock on the doc's record file, so two
-# renders at once cannot both find a link absent and both write it. With no private record dir
-# or no lock, no link is written.
 link_after_pairs() {
     local seen_dir seen lrc on key pair links open k st
     seen_dir="${TMPDIR:-/tmp}/himmel-chain-links-$UID"
