@@ -37,6 +37,9 @@ if ! command -v python3 >/dev/null 2>&1; then
     printf 'skip - python3 not available\n'
     exit 0
 fi
+ROUTE="$HERE/../../telegram/chief-route.ts"
+command -v bun >/dev/null 2>&1 || { printf 'FAIL - bun is needed to seed the round ledger\n'; exit 1; }
+seed() { bun "$ROUTE" round-seed --all "$1/specs" >/dev/null 2>&1 || fail "round-seed failed in $1"; }
 
 plan="$W/plan"
 mir="$W/mirror"
@@ -1391,6 +1394,7 @@ printf '%s\n' '# critic' 'SPEC FINDINGS 3' > "$bk/specs/designs/HIMMEL-436-under
 printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-437-signed.md.critic-spec-r1.md"
 printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-999-notopen.md.critic-spec-r1.md"
 printf '%s\n' '# critic' 'a closing note that is not a verdict line' > "$bk/specs/designs/HIMMEL-438-noverdict.md.critic-spec-r3.md"
+seed "$bk"
 printf '%s\n' '# handoff' '## Open operator items' '' 'Answer the paid-step ask' '## Wrapped' 'none' > "$bk/HIMMEL-nextleg-x-chief-HANDOFF.md"
 printf '%s\n' '# chief' '## Live state' 'queue: first | HIMMEL-435 waits for operator sign-off | third || prior shift queue: HIMMEL-438 operator sign-off long finished | HIMMEL-434 operator words old ask' \
     'pool-disposition: HIMMEL-434 question operator on Telegram, runs the paid step' 'pool-disposition: HIMMEL-436 slice parked, no ask' \
@@ -1426,6 +1430,7 @@ contains 'an old wrapped worker record that still holds an open PR is still prin
 not_contains 'a page that read its sources does not say none was read' "$w9611" 'no operator-owed source read'
 mkdir -p "$W/bk9611-nolog/specs/designs"
 printf '%s\n' '# critic' 'SPEC CLEAN' > "$W/bk9611-nolog/specs/designs/HIMMEL-435-clean.md.critic-spec-r1.md"
+seed "$W/bk9611-nolog"
 v9611render --owed-dir "$W/bk9611-nolog"
 w9611n="$(grep -F 'data-section="waiting"' "$v9611out")"
 contains 'a clean spec is chief-owed when no operator.jsonl exists yet' "$(grep -F 'data-section="chief-owes"' "$v9611out")" 'HIMMEL-435-clean.md: latest critic round 1 reads SPEC CLEAN'
@@ -1448,15 +1453,16 @@ mkdir -p "$bk/release/v1.1.3" "$bk/specs/designs"
 printf '%s\n' '{"kind":"spec","spec_path":"'"$bk"'/specs/designs/HIMMEL-444-bus-read-no-args.md"}' \
     '{"kind":"spec","keys":["HIMMEL-448"],"spec_path":"'"$bk"'/specs/design/HIMMEL-448/spec.md"}' > "$bk/release/v1.1.3/operator.jsonl"
 printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-448-old.md.critic-spec-r1.md"
-printf '%s\n' '# critic' 'OPERATOR-CRITICAL: terms change' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-449-critic-only.md.critic-spec-r1.md"
+printf '%s\n' '# critic' 'OPERATOR-CRITICAL: account-or-terms' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-449-critic-only.md.critic-spec-r1.md"
 printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-442-plain.md.critic-spec-r1.md"
 printf '%s\n' '# spec' 'plain spec, no marker' > "$bk/specs/designs/HIMMEL-442-plain.md"
 printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-443-crit.md.critic-spec-r1.md"
-printf '%s\n' '# spec' 'OPERATOR-CRITICAL: grants a paid account' > "$bk/specs/designs/HIMMEL-443-crit.md"
+printf '%s\n' '# spec' 'OPERATOR-CRITICAL: spend-grant' > "$bk/specs/designs/HIMMEL-443-crit.md"
 printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-444-bus-read.md.critic-spec-r1.md"
 printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-447-empty.md.critic-spec-r1.md"
 printf '%s\n' '# spec' 'OPERATOR-CRITICAL:' 'a reason on the next line is no marker' > "$bk/specs/designs/HIMMEL-447-empty.md"
 printf '%s\n' '# chief' '## Live state' 'queue: HIMMEL-445 operator sign-off finished | HIMMEL-446 operator words still open | HIMMEL-450 operator words dropped' > "$bk/chief.md"
+seed "$bk"
 v9611render --owed-dir "$bk" --chief-doc "$bk/chief.md"
 w9673="$(grep -F 'data-section="waiting"' "$v9611out")"
 c9673="$(grep -F 'data-section="chief-owes"' "$v9611out")"
@@ -1473,6 +1479,43 @@ not_contains 'a chief-doc line whose ticket was closed without shipping does not
 contains 'Waiting on you counts the two critical specs and the open chief-doc line' "$w9673" 'data-count="3"'
 contains 'a marker line with no reason on its own line is not a marker' "$c9673" 'HIMMEL-447-empty.md: latest critic round 1'
 contains 'Chief owes counts the two non-critical specs' "$c9673" 'data-count="2"'
+
+for t in 451 452 453 454; do
+    printf '%s\n' '---' "key: \"HIMMEL-$t\"" 'updated: "2026-09-30T10:00:00.000+0000"' 'statusCategory: "To Do"' 'status: "To Do"' 'fixVersions: ["v1.1.3"]' 'type: "Task"' \
+        '---' "# HIMMEL-$t: ledger ticket $t" > "$vp/HIMMEL-$t.md"
+done
+bk="$W/bk9687"
+mkdir -p "$bk/release/v1.1.3" "$bk/specs/designs" "$bk/specs/decisions"
+: > "$bk/release/v1.1.3/operator.jsonl"
+printf '%s\n' '# spec' 'OPERATOR-CRITICAL: security' > "$bk/specs/designs/HIMMEL-451-sec.md"
+printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-451-sec.md.critic-spec-r1.md"
+printf '%s\n' '# spec' 'OPERATOR-CRITICAL: spend-grant' > "$bk/specs/designs/HIMMEL-452-grant.md"
+printf '%s\n' '# critic' 'SPEC CLEAN' > "$bk/specs/designs/HIMMEL-452-grant.md.critic-spec-r1.md"
+printf '%s\n' '# critic' '- **o1** (minor; operator-critical: spend-grant) the step buys a paid seat' '' 'SPEC FINDINGS 1' > "$bk/specs/designs/HIMMEL-453-seat.md.critic-spec-r2.md"
+printf '%s\n' '# critic' 'SPEC FINDINGS 4' > "$bk/specs/designs/HIMMEL-454-moved.md.critic-spec-r1.md"
+printf '%s\n' '# critic' 'SPEC FINDINGS 2' > "$bk/specs/designs/HIMMEL-454-moved.md.critic-spec-r3.md"
+seed "$bk"
+rm "$bk/specs/designs/HIMMEL-454-moved.md.critic-spec-r3.md"
+v9611render --owed-dir "$bk"
+w9687="$(grep -F 'data-section="waiting"' "$v9611out")"
+c9687="$(grep -F 'data-section="chief-owes"' "$v9611out")"
+not_contains 'R7-tracker: a marker naming no operator-critical class is not under Waiting on you' "$w9687" 'HIMMEL-451-sec.md'
+contains 'R7-tracker: a marker naming no operator-critical class is chief-owed' "$c9687" 'HIMMEL-451-sec.md: latest critic round 1'
+contains 'R7-tracker: control: a marker naming spend-grant is under Waiting on you' "$w9687" 'HIMMEL-452-grant.md: latest critic round 1'
+contains 'R19-tracker: an open operator-critical finding under the cap is under Waiting on you, naming its id and class' "$w9687" 'o1 (spend-grant)'
+not_contains 'R19-tracker: a spec under the cap with findings is not an unsigned spec' "$w9687$c9687" 'HIMMEL-453-seat.md: latest critic'
+contains 'a key at ledger round 3 is owed though no round-3 critic file is on disk' "$c9687" 'HIMMEL-454-moved.md: latest critic round 3 reads SPEC FINDINGS 4'
+t=453
+printf '%s\n' "Operator, on HIMMEL-$t: sign it as it stands, the paid seat is approved." > "$bk/specs/decisions/verbatim-decision-901-seat.txt"
+o="$(HIMMEL_CONSOLE=1 bun "$ROUTE" round-critical "HIMMEL-$t" --finding o1 --decision 901 --quote 'sign it as it stands, the paid seat is approved' --no-round --specs "$bk/specs" 2>&1)" \
+    || fail "R19-tracker: the --no-round record was refused: $o"
+v9611render --owed-dir "$bk"
+not_contains 'R19-tracker: after the --no-round record the finding is not under Waiting on you' "$(grep -F 'data-section="waiting"' "$v9611out")" 'o1 (spend-grant)'
+mv "$bk/specs/ledgers" "$bk/specs/ledgers.gone"
+v9611render --owed-dir "$bk"
+contains 'a bucket whose round status cannot be read names its critic files unread' "$(grep -F 'data-section="waiting"' "$v9611out")" 'HIMMEL-452-grant.md.critic-spec-r1.md'
+contains 'a bucket whose round status cannot be read names the round ledger unread' "$(grep -F 'data-section="waiting"' "$v9611out")" 'round ledger'
+not_contains 'a bucket whose round status cannot be read lists no unsigned spec' "$(grep -F -e 'data-section="waiting"' -e 'data-section="chief-owes"' "$v9611out")" 'latest critic round'
 
 # --- both pages open dark with no saved choice, whatever the system preference says
 if command -v node >/dev/null 2>&1; then
