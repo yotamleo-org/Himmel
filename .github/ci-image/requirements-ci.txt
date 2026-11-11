@@ -1,4 +1,4 @@
-# Hashed closure for the CI Python tooling (HIMMEL-7092). Installed with --require-hashes
+# Hashed closure for the CI Python tooling (the hashes make pip reject any artifact that is not the audited release). Installed with --require-hashes
 # by ci.yml, macos-cadence.yml, os-verify.yml and the CI image Dockerfile; every
 # release below was audited for publish date and advisories before it was pinned.
 # Refresh on a credential-free test VM, never on the station:
