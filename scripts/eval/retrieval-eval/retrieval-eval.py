@@ -13,6 +13,20 @@ file set, then counts how sessions really use qmd and graphify.
           Re-fuse saved files offline; compare with saved combined hits. Questions
           default to questions.jsonl beside this script. Only dev IDs are printed;
           held-out results are counts only. No subprocesses, retrieval or network.
+  mine-luna --out FILE --vault V [--days 30] [--repo R] [--projects DIR]
+          Lists luna notes sessions used, by source: qmd (surfaced by a luna query) and
+          direct (opened by path, whether found by grep or a wikilink, with no earlier qmd
+          call surfacing it); the third source, written, is by hand. FILE holds the paths
+          and stays outside every checkout; stdout holds counts and a hash.
+  run --corpus luna --graph-out SCRATCH ...   the luna arms qmd-hybrid, qmd-lex, graphify-ast
+          and fused-no-grep (hybrid + AST, no grep) over a bank of {id, q, gold, source}.
+          qmd-hybrid, alone or inside fused-no-grep, is paid and refuses without
+          HIMMEL_BILLED_OK=1; qmd-lex needs QMD_URL on a scratch server. A hybrid row whose
+          query failed is `degraded` and cannot enter a ruling. --out and --graph-out stay
+          outside every checkout.
+  vault-report DIR [--token-ceiling 7161]   per source numbers of a luna run, then the
+          ruling row (exact McNemar against qmd-hybrid, Holm over AST and fused at .05).
+          DIR stays outside every checkout.
 
 Arms (all read-only):
   grep        git grep over the repo's tracked files for the question's words,
@@ -110,6 +124,10 @@ ARMS =["grep", "grep-rtk", "path", "ident-grep", "ident-grep-rtk", "qmd-lex", "q
 RTK_ARMS = ["grep-rtk", "ident-grep-rtk"]
 FUSED = ["grep", "qmd-hybrid", "graphify"]
 OPT_IN = ["qmd-hybrid-norerank"]
+LUNA_ARMS = ["qmd-hybrid", "qmd-lex", "graphify-ast", "fused-no-grep"]
+FUSED_LUNA = ["qmd-hybrid", "graphify-ast"]
+FUSED_OF = {"combined": FUSED, "fused-no-grep": FUSED_LUNA}
+TOKEN_CEILING = 7161
 # The question set holds every question and reason phrase verbatim; vendored
 # plugin bundles and minified files fill a top 5 with one-line noise.
 GREP_SCOPE = [".", ":(exclude)scripts/eval/retrieval-eval/", ":(exclude,glob)templates/**/.obsidian/plugins/**",
@@ -609,7 +627,7 @@ def run_arm(arm, q, repo, a, k):
         return arm_ident_grep(q, repo, a.timeout, k) + ("",)
     if arm == "ident-grep-rtk":
         return arm_ident_grep_rtk(q, repo, a.timeout, k) + ("",)
-    if arm == "graphify":
+    if arm in ("graphify", "graphify-ast"):
         return arm_graphify(q, repo, a.timeout, k) + ("",)
     return arm_qmd(q, arm != "qmd-lex", a.timeout, k, a.collection, arm != "qmd-hybrid-norerank")
 
@@ -634,6 +652,59 @@ def load_pair(path):
     return pair
 
 
+def refuse_live(u):
+    k = url_key(u)
+    if k[1] in LOOPBACK and k[2] == LIVE_QMD_PORT:
+        raise Refuse("%s is the live qmd server's port, not a scratch pair" % u)
+
+
+def checkout_roots(repo):
+    def git(*args):
+        try:
+            r = subprocess.run(["git", "-C", repo] + list(args), capture_output=True, text=True, timeout=10)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            raise Refuse("cannot list the checkouts of %s: %s" % (repo, e)) from e
+        if r.returncode != 0:
+            raise Refuse("cannot list the checkouts of %s: git %s failed: %s" % (repo, args[0], r.stderr.strip()[:100]))
+        return r.stdout.strip()
+    common = git("rev-parse", "--path-format=absolute", "--git-common-dir")
+    roots = {os.path.realpath(repo), os.path.realpath(git("rev-parse", "--show-toplevel")),
+             os.path.realpath(os.path.dirname(common))}
+    roots.update(os.path.realpath(x[len("worktree "):]) for x in git("worktree", "list", "--porcelain").splitlines()
+                 if x.startswith("worktree "))
+    return roots
+
+
+def refuse_repo_path(path, repo, what):
+    real = os.path.realpath(path)
+    for root in sorted(checkout_roots(repo)):
+        if real == root or real.startswith(root + os.sep):
+            raise Refuse("%s %s is inside the checkout %s: luna content stays outside every checkout" % (what, path, root))
+
+
+def luna_setup(a, arms):
+    if a.pair or a.index_state:
+        raise Usage("--pair and --index-state belong to the himmel corpus")
+    refuse_repo_path(a.out, a.repo, "--out")
+    if a.graph_out:
+        refuse_repo_path(a.graph_out, a.repo, "--graph-out")
+    need = set(arms) | (set(FUSED_LUNA) if "fused-no-grep" in arms else set())
+    if "qmd-hybrid" in need and os.environ.get("HIMMEL_BILLED_OK") != "1":
+        raise Refuse("a luna run of qmd-hybrid is paid (embedding and rerank): it needs HIMMEL_BILLED_OK=1 after a sized OK; "
+                     "the free arms are qmd-lex and graphify-ast")
+    if "qmd-lex" in arms:
+        url = os.environ.get("QMD_URL")
+        if not url:
+            raise Refuse("QMD_URL is not set, so the live server would answer: set it to a scratch server's URL")
+        refuse_live(url)
+    if "graphify-ast" in need:
+        if not a.graph_out:
+            raise Usage("graphify-ast needs --graph-out <scratch graphify-out dir>")
+        if not os.path.isfile(os.path.join(a.graph_out, "graph.json")):
+            raise Usage("no graph.json in %s" % a.graph_out)
+        os.environ["WORKER_GRAPH_OUT"] = os.path.abspath(a.graph_out)
+
+
 def check_served_url(pair):
     url = os.environ.get("QMD_URL")
     if not url:
@@ -642,9 +713,7 @@ def check_served_url(pair):
     if not served:
         raise Refuse("pair.json names no served URL: serve the pair first (staleness-fixture.sh serve)")
     for u in (url, served):
-        k = url_key(u)
-        if k[1] in LOOPBACK and k[2] == LIVE_QMD_PORT:
-            raise Refuse("%s is the live qmd server's port, not a scratch pair" % u)
+        refuse_live(u)
     if url_key(url) != url_key(served):
         raise Refuse("QMD_URL %s is not the pair's served URL %s" % (url, served))
 
@@ -734,10 +803,18 @@ def pair_setup(a, arms, qs, repo):
 
 
 def cmd_run(a):
-    arms = [x for x in a.arms.split(",") if x]
+    luna = a.corpus == "luna"
+    known = LUNA_ARMS if luna else ARMS + OPT_IN
+    arms = [x for x in (a.arms or ",".join(LUNA_ARMS if luna else ARMS)).split(",") if x]
     for x in arms:
-        if x not in ARMS + OPT_IN:
-            raise Usage("unknown arm '%s' (known: %s)" % (x, ",".join(ARMS + OPT_IN)))
+        if x not in known:
+            raise Usage("unknown arm '%s' (known: %s)" % (x, ",".join(known)))
+    if luna:
+        luna_setup(a, arms)
+    elif a.graph_out:
+        raise Usage("--graph-out belongs to --corpus luna")
+    if a.collection is None:
+        a.collection = "luna" if luna else "himmel"
     skipped = skip_rtk(arms)
     for x, why in skipped.items():
         print("retrieval-eval: skipping %s: %s" % (x, why), file=sys.stderr)
@@ -752,15 +829,16 @@ def cmd_run(a):
     pair_cfg = pair_setup(a, arms, qs, repo)
     os.makedirs(a.out, exist_ok=True)
     need = list(arms)
-    if "combined" in arms:
-        need = [x for x in ARMS + OPT_IN if x in arms or x in FUSED]
+    fusing = "fused-no-grep" if luna else "combined"
+    if fusing in arms:
+        need = [x for x in known if x in arms or x in FUSED_OF[fusing]]
     evidence_depth = max(a.k, 20)
     rows = []
     for q in qs:
         got = {}
         for arm in need:
-            if arm == "combined":
-                parts = [got[x] for x in FUSED]
+            if arm in FUSED_OF:
+                parts = [got[x] for x in FUSED_OF[arm]]
                 files = fuse([p["files"] for p in parts], a.k)
                 text = "\n".join(p["_text"] for p in parts)
                 got[arm] = dict(files=files, _text=text, ms=sum(p["ms"] for p in parts),
@@ -791,6 +869,10 @@ def cmd_run(a):
                        reason=carried(g["_text"], q.get("reason", [])),
                        tokens=tok(g["_text"]), ms=g["ms"], timeout=g["timeout"], error=g["error"],
                        files_top20=g["files_top20"], qmd_error=g["qmd_error"], deep_failed=g["deep_failed"], skipped=False)
+            if luna:
+                v = got["qmd-hybrid"] if arm == "fused-no-grep" else g
+                row.update(corpus="luna", source=q.get("source"),
+                           degraded=arm in ("qmd-hybrid", "fused-no-grep") and bool(v["error"] or v["timeout"] or v["qmd_error"]))
             rows.append(row)
         print("%s %s" % (q["id"], " ".join("%s=%s" % (r["arm"], int(r["hit"])) for r in rows[-len(arms):])),
               file=sys.stderr)
@@ -827,6 +909,8 @@ def cmd_run(a):
                         arm + ".reason_carried": rea, arm + ".tokens_mean": tk, arm + ".tokens_per_hit": tph,
                         arm + ".ms_median": msm, arm + ".timeouts": to, arm + ".errors": er,
                         arm + ".deep_failures": sum(1 for r in rs if r.get("deep_failed"))})
+        if luna:
+            metrics[arm + ".degraded"] = sum(1 for r in rs if r["degraded"])
         slices = [(sl, lambda r, sl=sl: r["split"] == sl) for sl in SPLITS]
         slices += [(st, lambda r, st=st: r["stratum"] == st) for st in STRATA]
         slices += [("%s.%s" % (sl, st), lambda r, sl=sl, st=st: r["split"] == sl and r["stratum"] == st)
@@ -857,13 +941,24 @@ def cmd_run(a):
     config = dict(arms=arms, k=a.k, evidence_depth=evidence_depth, timeout=a.timeout, collection=a.collection,
                   questions=qhash, identity_hash=ident["config_hash"])
     config.update(pair_cfg)
+    if luna:
+        config["corpus"] = "luna"
+        n_deg = sum(1 for r in rows if r["degraded"])
+        if n_deg:
+            print("retrieval-eval: %d degraded rows (a vector leg failed): they cannot enter a ruling, re-run" % n_deg,
+                  file=sys.stderr)
     if skipped:
         config["skipped"] = skipped
     held = sorted((q for q in qs if q.get("split") == "heldout"), key=lambda q: str(q["id"]))
     meta = dict(label=a.label, questions_path=os.path.abspath(a.questions), graph_built_at=None,
                 n_heldout=len(held), identity=ident["identity"],
                 heldout_sha256=hashlib.sha256(json.dumps(held, sort_keys=True).encode()).hexdigest()[:16])
-    if "graphify" in arms or "combined" in arms:
+    if luna and "graphify-ast" in need:
+        try:
+            meta["graph_built_at"] = stamp_of(os.path.join(a.graph_out, "graph.json"))
+        except RuntimeError:
+            pass
+    elif "graphify" in arms or "combined" in arms:
         try:
             try:
                 meta["graph_built_at"] = graph_built(repo)
@@ -1327,6 +1422,135 @@ def cmd_exposure(a):
     return 0
 
 
+LUNA_NOTE = re.compile(r"qmd://luna/([^\"\n\\\]]+?\.md)(?=[\"\s:#\]\\)]|$)")
+SOURCES = ("qmd", "direct", "written")
+
+
+def luna_reached(cl):
+    if cl["name"].startswith("mcp__") and not cl["name"].endswith("__query"):
+        # get and multi_get echo the document body, which can quote other paths: only the input names notes.
+        text = " ".join(str(cl["input"].get(k) or "") for k in ("file", "pattern"))
+    else:
+        text = cl["result"]
+    return set(LUNA_NOTE.findall(text))
+
+
+def vault_note(vault, path):
+    real, root = os.path.realpath(path), os.path.realpath(vault)
+    if real.startswith(root + os.sep) and real.endswith(".md"):
+        return real[len(root) + 1:]
+    return None
+
+
+def cmd_mine_luna(a):
+    refuse_repo_path(a.out, a.repo, "--out")
+    cut = time.time() - a.days * 86400
+    files = glob.glob(os.path.join(a.projects, "*", "*.jsonl")) + \
+        glob.glob(os.path.join(a.projects, "*", "*", "subagents", "*.jsonl"))
+    found = {"qmd": {}, "direct": {}}
+    for f in sorted(files):
+        try:
+            if os.path.getmtime(f) < cut:
+                continue
+        except OSError:
+            continue
+        here = {"qmd": set(), "direct": set()}
+        reached = set()
+        for cl in session_calls(f)[2]:
+            if (call_time(cl) or cut) < cut:
+                continue
+            if kind_of(cl) == "qmd":
+                if not failed(cl):
+                    for p in luna_reached(cl):
+                        reached.add(p.lower())
+                        here["qmd"].add(p)
+            elif cl["name"] == "Read" and not failed(cl):
+                rel = vault_note(a.vault, cl["input"].get("file_path") or "")
+                if rel and rel.lower() not in reached:
+                    here["direct"].add(rel)
+        for src, paths in here.items():
+            for p in paths:
+                found[src][p] = found[src].get(p, 0) + 1
+    data = "".join(json.dumps(dict(source=s, path=p, sessions=n), ensure_ascii=False) + "\n"
+                   for s in ("qmd", "direct") for p, n in sorted(found[s].items()))
+    os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
+    with open(a.out, "w") as fh:
+        fh.write(data)
+    print("qmd: %d" % len(found["qmd"]))
+    print("direct: %d" % len(found["direct"]))
+    print("written: 0 (a worker writes these by hand and checks every row)")
+    print("sha256: %s" % hashlib.sha256(data.encode()).hexdigest()[:16])
+    return 0
+
+
+RULINGS = {
+    "Both": "both (qmd + rerank fused with the AST route, no grep) is the route proposed, and the luna AST job is re-armed",
+    "AST": "the AST route on, per decision 449's graph-beats-qmd bar; AST is preferred to both unless both is clearly better",
+    "qmd + rerank only": "qmd + rerank only; luna AST stays off, and it costs nothing",
+}
+
+
+def cmd_vault_report(a):
+    refuse_repo_path(a.dir, a.repo, "vault-report directory")
+    rows = []
+    for f in sorted(glob.glob(os.path.join(a.dir, "**", "results.jsonl"), recursive=True)):
+        with open(f) as fh:
+            rows += [json.loads(line) for line in fh if line.strip()]
+    rows = [r for r in rows if r.get("corpus") == "luna"]
+    if not rows:
+        raise Usage("no luna results rows under '%s'" % a.dir)
+    by = {}
+    for r in rows:
+        if r["id"] in by.setdefault(r["arm"], {}):
+            raise Usage("question %s has two rows for arm %s: a rerun's rows must not share a report directory" % (r["id"], r["arm"]))
+        by[r["arm"]][r["id"]] = r
+    mean = lambda xs: sum(xs) / len(xs) if xs else 0.0  # noqa: E731
+    print("\t".join(["source", "arm", "n", "hit", "mrr", "ms_median", "tokens_mean"]))
+    names = {r.get("source") or "-" for r in rows}
+    for src in [s for s in SOURCES if s in names] + sorted(names - set(SOURCES)):
+        for arm in by:
+            rs = [r for r in by[arm].values() if (r.get("source") or "-") == src]
+            if rs:
+                print("\t".join([src, arm, str(len(rs)), "%.2f" % mean([int(r["hit"]) for r in rs]),
+                                 "%.2f" % mean([r["rr"] for r in rs]), "%d" % statistics.median(r["ms"] for r in rs),
+                                 "%d" % mean([r["tokens"] for r in rs])]))
+    deg = sum(1 for r in rows if r.get("degraded"))
+    if deg:
+        print("ruling: not eligible | %d degraded row%s: a run with skipped vectors does not count, re-run"
+              % (deg, "" if deg == 1 else "s"))
+        return 0
+    missing = [x for x in ("qmd-hybrid", "graphify-ast", "fused-no-grep") if x not in by]
+    if missing:
+        print("ruling: not eligible | no rows for %s" % ", ".join(missing))
+        return 0
+    if len({frozenset(by[x]) for x in ("qmd-hybrid", "graphify-ast", "fused-no-grep")}) != 1:
+        print("ruling: not eligible | the three arms did not answer the same questions: re-run")
+        return 0
+    base, cands = by["qmd-hybrid"], {}
+    for name in ("graphify-ast", "fused-no-grep"):
+        ids = sorted(set(base) & set(by[name]))
+        b = sum(1 for i in ids if by[name][i]["hit"] and not base[i]["hit"])
+        c = sum(1 for i in ids if base[i]["hit"] and not by[name][i]["hit"])
+        cands[name] = dict(gain=(b - c) * 100.0 / len(ids) if ids else 0.0, p=mcnemar_p(b, c),
+                           tokens=mean([r["tokens"] for r in by[name].values()]))
+        print("%s vs qmd-hybrid: n=%d flips +%d/-%d gain %.1f pts mcnemar_p %.4f tokens_mean %d (ceiling %d)"
+              % (name, len(ids), b, c, cands[name]["gain"], cands[name]["p"], cands[name]["tokens"], a.token_ceiling))
+    alive, passes = True, {}
+    for step, name in enumerate(sorted(cands, key=lambda k: cands[k]["p"])):
+        alive = alive and cands[name]["p"] <= 0.05 / (2 - step)
+        passes[name] = alive and cands[name]["gain"] > 0 and cands[name]["tokens"] <= a.token_ceiling
+    ast, both = cands["graphify-ast"], cands["fused-no-grep"]
+    if passes["fused-no-grep"] and both["gain"] >= 10 and both["gain"] - ast["gain"] >= 10:
+        verdict = "Both"
+    elif passes["graphify-ast"] and ast["gain"] >= 10:
+        verdict = "AST"
+    else:
+        verdict = "qmd + rerank only"
+    print("ruling: %s | %s" % (verdict, RULINGS[verdict]))
+    print("scope: this bank only; the operator rules")
+    return 0
+
+
 def main(argv=None):
     p = Parser(prog="retrieval-eval.py")
     sub = p.add_subparsers(dest="cmd")
@@ -1334,13 +1558,25 @@ def main(argv=None):
     r.add_argument("--questions", required=True)
     r.add_argument("--out", required=True)
     r.add_argument("--repo", default=".")
-    r.add_argument("--arms", default=",".join(ARMS))
+    r.add_argument("--arms", default=None)
     r.add_argument("--k", type=int, default=5)
     r.add_argument("--timeout", type=float, default=60)
-    r.add_argument("--collection", default="himmel")
+    r.add_argument("--collection", default=None)
     r.add_argument("--label", default="")
     r.add_argument("--index-state", default="")
     r.add_argument("--pair", default="")
+    r.add_argument("--corpus", choices=("himmel", "luna"), default="himmel")
+    r.add_argument("--graph-out", default="")
+    ml = sub.add_parser("mine-luna")
+    ml.add_argument("--out", required=True)
+    ml.add_argument("--vault", required=True)
+    ml.add_argument("--days", type=int, default=30)
+    ml.add_argument("--repo", default=".")
+    ml.add_argument("--projects", default=os.path.join(os.path.expanduser("~"), ".claude", "projects"))
+    vr = sub.add_parser("vault-report")
+    vr.add_argument("dir")
+    vr.add_argument("--repo", default=".")
+    vr.add_argument("--token-ceiling", type=int, default=TOKEN_CEILING)
     sr = sub.add_parser("stale-report")
     sr.add_argument("dir")
     ex = sub.add_parser("exposure")
@@ -1362,7 +1598,7 @@ def main(argv=None):
     rp.add_argument("--rrf-k", type=int, default=60)
     rp.add_argument("--k", type=int, default=5)
     rp.add_argument("--add", default="")
-    for sp in (r, sr, ex, c, s, rp):
+    for sp in (r, sr, ex, c, s, rp, ml, vr):
         sp.error = p.error
     try:
         a = p.parse_args(argv)
@@ -1372,13 +1608,17 @@ def main(argv=None):
             return cmd_stale_report(a)
         if a.cmd == "exposure":
             return cmd_exposure(a)
+        if a.cmd == "mine-luna":
+            return cmd_mine_luna(a)
+        if a.cmd == "vault-report":
+            return cmd_vault_report(a)
         if a.cmd == "check":
             return cmd_check(a)
         if a.cmd == "census":
             return cmd_census(a)
         if a.cmd == "replay":
             return cmd_replay(a)
-        raise Usage("name a subcommand: run, check, census or replay")
+        raise Usage("name a subcommand: run, check, census, replay, stale-report, exposure, mine-luna or vault-report")
     except Refuse as e:
         print("retrieval-eval: refused: %s" % e, file=sys.stderr)
         return 2

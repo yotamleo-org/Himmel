@@ -5,7 +5,7 @@
 # (never the shipped one), and the usage contract.
 set -uo pipefail
 
-grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }   # no pipeline: see test-cr-tune.sh (HIMMEL-1430)
+grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }   # no pipeline: see test-cr-tune.sh (printf|grep -q under pipefail fails on a successful early match)
 HERE="$(cd "$(dirname "$0")" && pwd)"; SCRIPT="$HERE/known-findings.sh"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/kf-test.XXXXXX")"; trap 'rm -rf "$tmp"' EXIT
 fails=0
@@ -408,7 +408,7 @@ contains "prompt: anchor-handshake rebuttal present" "$p" "[pr-check-anchor-hand
 cp "$HERE/known-findings.json" "$tmp/kf-anchor.json"
 printf 'Learning,Repository,File,Pull Request,URL,Created By,Usage,Last Used,Created At,Updated At\n' > "$tmp/anchor-learn.csv"
 {
-  printf '"In `scripts/cr/pr-check-context.sh`, `HIMMEL_REPO` and `PR_CHECK_ANCHOR_DELEGATED` are process-environment inputs. The repository under review does not load `.env` files or source repository-supplied paths before the anchor is selected; `scripts/guardrails/lib.sh` is sourced only from `HIMMEL_ROOT`, which derives from the executing script location and is validated as a Himmel checkout. Therefore, an actor that controls the launching environment can replace the anchor through `HIMMEL_REPO` before any delegation-handshake check runs.",himmel,scripts/cr/pr-check-context.sh,2078,,coderabbitai,"9","x","y","z"\n'  # leak-allow: hostname test fixture reproducing the real HIMMEL-2377 CR learning row
+  printf '"In `scripts/cr/pr-check-context.sh`, `HIMMEL_REPO` and `PR_CHECK_ANCHOR_DELEGATED` are process-environment inputs. The repository under review does not load `.env` files or source repository-supplied paths before the anchor is selected; `scripts/guardrails/lib.sh` is sourced only from `HIMMEL_ROOT`, which derives from the executing script location and is validated as a Himmel checkout. Therefore, an actor that controls the launching environment can replace the anchor through `HIMMEL_REPO` before any delegation-handshake check runs.",himmel,scripts/cr/pr-check-context.sh,2078,,coderabbitai,"9","x","y","z"\n'  # leak-allow: hostname test fixture reproducing a real CR learning row
   printf '"In `scripts/cr/pr-check-context.sh`, the `PR_CHECK_ANCHOR_DELEGATED` identity handshake currently verifies only the anchor path. A stale value from an earlier run can be accepted on a different branch or HEAD, suppressing delegation and ledger logging while reporting delegated=yes.",himmel,scripts/cr/pr-check-context.sh,2078,,coderabbitai,"4","x","y","z"\n'  # leak-allow: hostname test fixture for the stale-value-residual CR learning row, same incident
 } >> "$tmp/anchor-learn.csv"
 ar="$(KNOWN_FINDINGS_FILE="$tmp/kf-anchor.json" CR_LEDGER="$tmp/absent-ledger.jsonl" bash "$SCRIPT" --refresh --learnings "$tmp/anchor-learn.csv" 2>&1)"; arrc=$?

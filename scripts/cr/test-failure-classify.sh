@@ -121,20 +121,20 @@ check "22: whitespace-only blob -> empty-response" "$(classify 1 '
    ' '')" "empty-response"
 
 # ── rc=5 is critic-first-pass.sh's SKIPPED clean no-op, not a failure ──────
-check "HIMMEL-6475: rc=5 -> critic-skipped" "$(classify 5 '' 'critic-first-pass.sh: claude critic SKIPPED (api lane is OFF) — clean no-op')" "critic-skipped"
-check "HIMMEL-6475: rc=5 with no text -> critic-skipped" "$(classify 5 '' '')" "critic-skipped"
+check "rc=5 -> critic-skipped" "$(classify 5 '' 'critic-first-pass.sh: claude critic SKIPPED (api lane is OFF) — clean no-op')" "critic-skipped"
+check "rc=5 with no text -> critic-skipped" "$(classify 5 '' '')" "critic-skipped"
 # The rc-5 detail splits into absent (not set up) vs unavailable.
 # shellcheck source=scripts/lib/critics-config.sh disable=SC1090
-check "HIMMEL-6580: lane OFF skip -> absent" "$( . "$HERE/../lib/critics-config.sh"; critics_skip_class 'critic-first-pass.sh: claude critic SKIPPED (api lane is OFF (set HIMMEL_API_LANE=on)) — clean no-op')" "absent"
+check "lane OFF skip -> absent" "$( . "$HERE/../lib/critics-config.sh"; critics_skip_class 'critic-first-pass.sh: claude critic SKIPPED (api lane is OFF (set HIMMEL_API_LANE=on)) — clean no-op')" "absent"
 # shellcheck disable=SC1090
-check "HIMMEL-6580: no key file skip -> absent" "$( . "$HERE/../lib/critics-config.sh"; critics_skip_class 'refused: no ANTHROPIC_API_KEY and no key file for account A')" "absent"
+check "no key file skip -> absent" "$( . "$HERE/../lib/critics-config.sh"; critics_skip_class 'refused: no ANTHROPIC_API_KEY and no key file for account A')" "absent"
 # shellcheck disable=SC1090
-check "HIMMEL-6580: bank not PROCEED skip -> unavailable" "$( . "$HERE/../lib/critics-config.sh"; critics_skip_class 'critic-first-pass.sh: claude critic SKIPPED (bank not PROCEED) — clean no-op')" "unavailable"
+check "bank not PROCEED skip -> unavailable" "$( . "$HERE/../lib/critics-config.sh"; critics_skip_class 'critic-first-pass.sh: claude critic SKIPPED (bank not PROCEED) — clean no-op')" "unavailable"
 
 # A crashed gate (exit 1 plus cfp's own BROKE line) is critic-broke, never a skip and never generic-rc-1.
-check "HIMMEL-6530: cfp BROKE line -> critic-broke" "$(classify 1 '' 'critic-first-pass.sh: claude critic BROKE (no scratch file) — not a clean no-op')" "critic-broke"
-check "HIMMEL-6530: BROKE line is not a skip: rc=5 stays critic-skipped" "$(classify 5 '' 'critic-first-pass.sh: claude critic BROKE (no scratch file) — not a clean no-op')" "critic-skipped"
-check "HIMMEL-6530: a BROKE phrase inside provider text is not cfp's own line" "$(classify 1 '' 'critic-first-pass.sh: raw tail: the provider said claude critic BROKE (x)')" "generic-rc-1"
+check "cfp BROKE line -> critic-broke" "$(classify 1 '' 'critic-first-pass.sh: claude critic BROKE (no scratch file) — not a clean no-op')" "critic-broke"
+check "BROKE line is not a skip: rc=5 stays critic-skipped" "$(classify 5 '' 'critic-first-pass.sh: claude critic BROKE (no scratch file) — not a clean no-op')" "critic-skipped"
+check "a BROKE phrase inside provider text is not cfp's own line" "$(classify 1 '' 'critic-first-pass.sh: raw tail: the provider said claude critic BROKE (x)')" "generic-rc-1"
 
 # ── generic-rc-N fallback (no signature matches anything) ──────────────────
 check "23: unrecognized text -> generic-rc-N" "$(classify 42 '' 'connection refused')" "generic-rc-42"
@@ -212,7 +212,7 @@ tail')" \
 check "31: no signature anywhere -> empty" "$(fsl 'model prose with no failure text at all')" ""
 check "32: cfp's own Raw output: path line is never a signal (random mktemp suffix)" \
     "$(fsl 'critic-first-pass.sh: malformed output — fail-open. Raw output: /tmp/cfp-raw.a429bc')" ""
-check "33: a ticket ID (HIMMEL-473) is not a status-code signal" \
+check "33: a ticket ID is not a status-code signal" \
     "$(fsl 'adapted to the model FAMILY (HIMMEL-473)')" ""
 _fsl_long="$(fsl "HTTP 429 $(printf 'x%.0s' $(seq 1 400))")"
 check "34: signal line is bounded to 300 chars" "${#_fsl_long}" "300"
