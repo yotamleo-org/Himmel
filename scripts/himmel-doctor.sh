@@ -5547,7 +5547,7 @@ check_c88_graph_api_optin() {
     bat="${GRAPHMAP_BAT_DIR:-${HOME:-}/.claude/graphmap-cadence}"
     # The station's graph role and state come from graph-choices.js (role, check), never a jq read.
     role="$(node "$gc" role 2>/dev/null)" || role=""
-    state="$(node "$gc" check 2>/dev/null | grep -v '^role=' | paste -sd ';' - | sed 's/;/; /g')" || state=""
+    state="$(node "$gc" check 2>/dev/null | awk '!/^role=/ { printf "%s%s", (n++ ? "; " : ""), $0 }')" || state=""
     if [ -f "$envfile" ] && [ -r "$envfile" ]; then
         keys="$(awk '{ sub(/\r$/, "") } /^[[:space:]]*#/ { next } {
             i = index($0, "="); if (i == 0) next
