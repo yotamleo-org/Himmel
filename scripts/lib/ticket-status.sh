@@ -87,8 +87,7 @@ ts_scan_gate() {
     local who="$1" bucket line rc
     shift
     if ! declare -F ghq_scan_gate >/dev/null 2>&1; then
-        # shellcheck source=scripts/lib/gh-quota.sh
-        # shellcheck disable=SC1091
+        # shellcheck source=/dev/null
         . "$_TS_LIB_DIR/gh-quota.sh"
     fi
     for bucket in "$@"; do
