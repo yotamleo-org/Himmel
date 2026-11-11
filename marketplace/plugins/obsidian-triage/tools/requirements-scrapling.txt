@@ -1,6 +1,6 @@
 # Optional: enables the `local-headless` scrape backend in harvest-clip-body-batch.py
 # (HIMMEL-4344). Without it the slot is skipped and the chain falls through to jina.
-# Direct pins: scrapling[fetchers]==0.5, markdownify==1.2.3 (the rest is the hashed closure).
+# Direct pins: scrapling[fetchers]==0.5.1, markdownify==1.2.3 (the rest is the hashed closure).
 # Regenerate: uv pip compile <a .in with those two pins> --universal --generate-hashes -o requirements-scrapling.txt
 #   python3 -m venv ~/.himmel/scrapling-venv
 #   ~/.himmel/scrapling-venv/bin/pip install --require-hashes -r requirements-scrapling.txt
@@ -622,7 +622,7 @@ pyee==13.0.1 \
     # via
     #   patchright
     #   playwright
-scrapling==0.5 \
+scrapling==0.5.1 \
     --hash=sha256:366f0ec9f1e7e998900e6c5e3a4063ea34062326394ced64e5c389b690572726 \
     --hash=sha256:da9dfa45662996a9a62f20a8385314df93309aad330b8bb8b6372c9324938456
     # via -r /tmp/claude-1000/-home-overlord-Documents-github-himmel/230c4231-1fff-49ec-b5bb-594f3138d143/scratchpad/scrapling.in
