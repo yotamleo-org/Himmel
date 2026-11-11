@@ -151,3 +151,4 @@ fakekey_run() {
   printf '%s\n' "$rc" >"$out/rc"
   return 0
 }
+# throwaway proof line: this change is closed unmerged
