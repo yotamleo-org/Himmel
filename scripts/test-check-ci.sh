@@ -3214,7 +3214,8 @@ _s9_on; export GH_STUB_RL_REMAINING=0
 run cr-completed --grace 30
 _s9_off
 SCRIPT="$_real_script"; rm -f "$_s9_mutant"
-check_eq "S9-1b control: with the zero case removed, a spent read token still carries the --watch (fails its row)" "no" "$(_s9_main_watch_ok)"
+check_eq "S9-1b control: with the zero case removed, the --watch rides the spent read token" "yes" "$([ "$(tok_count '^read pr checks .*--watch')" -ge 1 ] && echo yes || echo no)"
+check_eq "S9-1b control: with the zero case removed, the main-token watch row fails" "no" "$(_s9_main_watch_ok)"
 _s9_on; export GH_STUB_MAIN_SPENT=until-watch GH_STUB_CLASSIC_ADMIN_ONLY=1
 CLASSIC_OVERRIDE="ctx:unit-tests"
 run cr-completed --grace 30
