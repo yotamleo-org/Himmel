@@ -1181,7 +1181,11 @@ def paired(rows, arm, stratum_name, base, other):
     by = {}
     for r in rows:
         if r["arm"] == arm and r.get("stale_stratum") == stratum_name:
-            by.setdefault(r["id"], {})[r.get("index_state")] = bool(r["hit"])
+            st = by.setdefault(r["id"], {})
+            if r.get("index_state") in st:
+                raise Usage("question %s has two %s rows for arm %s under '%s': a rerun's rows must not share a report directory"
+                            % (r["id"], r.get("index_state"), arm, stratum_name))
+            st[r.get("index_state")] = bool(r["hit"])
     diffs, bh, oh = [], 0, 0
     for st in by.values():
         if base in st and other in st:
@@ -1235,7 +1239,9 @@ def cmd_stale_report(a):
     if not c_run:
         verdict = "C1 not run"
     else:
-        _, diff, p = cell.get(("qmd-hybrid", "L-S", "kept"), (0, 0.0, 1.0))
+        if ("qmd-hybrid", "L-S", "kept") not in cell:
+            raise Usage("qmd-hybrid has no Kept comparison of states s and l: the decision needs both")
+        _, diff, p = cell[("qmd-hybrid", "L-S", "kept")]
         if diff < 0 and p < 0.05:
             verdict = "Harm shown"
         else:
@@ -1254,11 +1260,11 @@ def cmd_stale_report(a):
 def repo_path(root, p):
     """p relative to the repo, for a path inside it or inside one of its worktrees; else None."""
     p = os.path.realpath(p)
+    wt = os.path.join(root, ".claude", "worktrees") + os.sep
+    if p.startswith(wt):
+        return p[len(wt):].split(os.sep, 1)[1] if os.sep in p[len(wt):] else None
     if p.startswith(root + os.sep):
         return p[len(root) + 1:]
-    wt = os.path.join(root, ".claude", "worktrees") + os.sep
-    if p.startswith(wt) and os.sep in p[len(wt):]:
-        return p[len(wt):].split(os.sep, 1)[1]
     return None
 
 

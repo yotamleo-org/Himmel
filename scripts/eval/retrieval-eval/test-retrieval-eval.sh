@@ -823,6 +823,17 @@ eq "decides_row_matches: no harm and the baseline's low end at 0.5 or above is L
 eq "decides_row_matches: no harm and the baseline's high end under 0.5 is The hole would be new" "The hole would be new" "$(decide hole 0 0 '0.2000 to 0.4900' | row)"
 eq "decides_row_matches: no harm and an interval spanning 0.5 is Not shown" "Not shown" "$(decide span 0 0 '0.3000 to 0.7000' | row)"
 eq "baseline_absent_prints_pending: baseline pending, and no decides line" "1 0" "$(decide none 0 0 'n/a' | awk '/^baseline pending/{p++} /^decides:/{d++} END{print p+0, d+0}')"
+# a second run's rows for the same arm, question and state are refused, never folded over the first
+DUP="$W/dup"; rm -rf "$DUP"
+plant "$DUP/a" qmd-lex kept 8 2; plant "$DUP/b" qmd-lex kept 8 2
+RETRIEVAL_EVAL_LAG_CMD="$LAGNONE" py "$EV" stale-report "$DUP" > "$W/dup.txt" 2>&1
+eq "stale_report_refuses_duplicate_rows: the same arm, question and state twice exits 64" "64" "$?"
+# a hybrid run with no Kept L-S comparison cannot reach an arming row
+INC="$W/inc"; rm -rf "$INC"
+plant "$INC" qmd-hybrid kept 0 0 c
+printf '#!/usr/bin/env bash\necho "headline: x within 39 min (no exclusions); wilson95 0.7000 to 0.9000"\n' > "$W/lag-inc"; chmod +x "$W/lag-inc"
+RETRIEVAL_EVAL_LAG_CMD="$W/lag-inc" py "$EV" stale-report "$INC" > "$W/inc.txt" 2>&1
+eq "stale_report_refuses_incomplete_comparison: c rows without a Kept L-S comparison exit 64 and print no decides line" "64 0" "$? $(grep -c '^decides:' "$W/inc.txt")"
 
 # exposure: a planted journal and a planted main history.
 G2="$W/xrepo"; mkdir -p "$G2"; git -C "$G2" init -q -b main
@@ -839,7 +850,8 @@ import datetime, json, sys
 out, repo, now = sys.argv[1], sys.argv[2], int(sys.argv[3])
 ts = datetime.datetime.fromtimestamp(now - 120, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 with open(out, "w") as fh:
-    for i, f in enumerate([repo + "/a.sh", repo + "/b.sh", repo + "/c.sh", "/elsewhere/other.sh"]):
+    for i, f in enumerate([repo + "/a.sh", repo + "/b.sh", repo + "/c.sh", "/elsewhere/other.sh",
+                                 repo + "/.claude/worktrees/w1/a.sh"]):
         fh.write(json.dumps({"type": "assistant", "timestamp": ts, "message": {"content": [
             {"type": "tool_use", "id": "t%d" % i, "name": "Read", "input": {"file_path": f}}]}}) + "\n")
 PY
@@ -847,10 +859,10 @@ py "$EV" exposure --days 14 --repo "$G2" --projects "$W/proj" > "$W/exp.txt" 2>&
 wl() { py -c 'import sys
 sys.path.insert(0, sys.argv[1])
 import wilson
-w = wilson.wilson(int(sys.argv[2]), 3)
+w = wilson.wilson(int(sys.argv[2]), 4)
 print("%.4f to %.4f" % (w["lo"], w["hi"]))' "$HERE/../lib" "$1"; }
-eq "exposure_counts_planted_journal: 3 reads in the repo, 2 with a merge in the prior 24 h, 1 in the prior 1 h, each with its Wilson interval" \
-    "prior 24 h: 2/3 = 0.6667; wilson95 $(wl 2)|prior 1 h: 1/3 = 0.3333; wilson95 $(wl 1)" \
+eq "exposure_counts_planted_journal: 4 reads in the repo (one through a sibling worktree), 3 with a merge in the prior 24 h, 2 in the prior 1 h, each with its Wilson interval" \
+    "prior 24 h: 3/4 = 0.7500; wilson95 $(wl 3)|prior 1 h: 2/4 = 0.5000; wilson95 $(wl 2)" \
     "$(grep '^prior ' "$W/exp.txt" | paste -sd'|' -)"
 
 [ "$fails" -eq 0 ] && echo "all passed" || echo "$fails failed"
