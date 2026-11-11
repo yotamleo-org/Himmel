@@ -1043,7 +1043,7 @@ check "phase-cost: state-has-no-text: no message text anywhere in the store" "0"
 check "phase-cost: state-has-no-text: no title in the new v2 states, emitted maps or phase-cost rows" "0" \
   "$({ cat "$MTS/phase-cost-state"/*.json "$MTS/phase-cost-state/emitted"/*.json; jq -c 'select(.kind == "phase-cost")' "$MTS/records.jsonl"; } | grep -c 'TITLESENTINEL' || true)"
 check "phase-cost: state-has-no-text: the legacy checkpoint name column and the per-ticket record keep the title" "yes/yes" \
-  "$(grep -q 'TITLESENTINEL' "$MTS/build-checkpoint.json" && echo yes || echo no)/$(jq -c 'select(.ticket != null) | .legs[].name' "$MTS/records.jsonl" | grep -q 'TITLESENTINEL' && echo yes || echo no)"
+  "$(grep -q 'TITLESENTINEL' "$MTS/build-checkpoint.json" && echo yes || echo no)/$([ "$(jq -c 'select(.ticket != null) | .legs[].name' "$MTS/records.jsonl" | grep -c 'TITLESENTINEL' || true)" -gt 0 ] && echo yes || echo no)"
 
 # the node resolver: a PATH without node still runs (an absolute node from the resolver); no node at all fails before the lock or any write
 NR="$M1/nr"; mkdir -p "$NR/bin" "$NR/fixnode"
