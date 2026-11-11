@@ -19,3 +19,4 @@ scripts/hermes/invoke.sh
 # diff over only these paths merges on a judge GO, not eval rows.
 # unexecuted: scripts/cr/panel-first-pass.sh
 # unexecuted: scripts/cr/critic-pre-existing-tag.py
+# unexecuted: scripts/cr/perspectives/outside-security.md
