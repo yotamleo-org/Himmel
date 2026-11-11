@@ -54,6 +54,14 @@ test('(d) control: an Opus call still costs the Opus rate to the cent', () => {
   assert.equal(opus.output, 20);
 });
 
+test('(e) a Fable 5.2 call is priced at its own row, not unpriced and not at the Fable 5.1 rate', () => {
+  const fable52 = priceFor('claude-fable-5-2', rows);
+  assert.ok(fable52, 'no claude-fable-5-2 row');
+  assert.deepEqual([fable52.input, fable52.output, fable52.cacheRead, fable52.cacheWrite5m, fable52.cacheWrite1h], [8, 40, 0.2, 10, 16]);
+  const r = priceCall({ model: 'claude-fable-5-2', usage: FIXTURE_USAGE }, rows);
+  assert.equal(r.usd.toFixed(2), '12.00');
+});
+
 test('first prefix match wins and cache reads and writes are priced from their own columns', () => {
   const t = [
     { prefix: 'm-a', input: 1, output: 2, cacheRead: 0.5, cacheWrite5m: 3, cacheWrite1h: 4 },

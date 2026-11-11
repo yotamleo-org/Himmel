@@ -171,12 +171,13 @@ text; the next-session templates deliberately do not inline it (the
 previous 4-copy duplication silently drifted: the seeded `_templates/` hop
 dropped the preamble from essentially every autonomously emitted session
 for ~2 months). It is model-neutral by design: overnight
-impl runs on Sonnet (§ Budget), the parent session may be Fable 5.1 or
+impl runs on Sonnet (§ Budget), the parent session may be Fable 5.2 or
 Opus 5.5, and no reliable model-identity seam exists at
 launch time. Snippets are selected, not pasted, from the official
-[Fable-5](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-fable-5)
-and
+[Fable-5.2](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-fable-5-2),
 [Opus-5.5](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-5-5)
+and
+[Fable-5](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-fable-5)
 prompting guides:
 
 > When you have enough information to act, act. Do not re-derive facts
@@ -191,16 +192,71 @@ prompting guides:
 
 > Match the length of written documents to what the task needs: cover the substance, but do not pad with filler sections, redundant summaries, or boilerplate.
 
+> Please avoid stopping while you still owe work the user asked for. Be
+> persistent and do not stop unless needed. While status notes are welcome,
+> as is clarifying with the user on open decisions, carry on with work that
+> does not depend on the user's answer without unnecessary stops. If you
+> notice yourself inviting the user to redirect you or offering to wait,
+> instead proceed on the next part of the task. You may meet ordinary
+> obstacles like errors, timeouts, locked files, empty results or failing
+> tools. Diagnose them first, and when they are not real blockers, work
+> through them with the access you have (wait and retry, fix the request, use
+> another tool or source) rather than stopping unnecessarily. If someone
+> clearly decided something is a hard blocker, such as a file marked not to
+> be touched, access that was intentionally withheld, or a safety guardrail,
+> leave it alone, say plainly what you found, and look for another safe way to
+> finish the task. Stopping before the task is complete is very rarely
+> merited, as in when the task can't move forward without user input, or
+> where the blocker is deliberate and should not be worked past. This does not
+> override the need for confirmation on risky or destructive actions. In this
+> harness, a halt or stand-down from the operator or your chief, a hook or
+> classifier refusal, and a hold for a `GO` are deliberate blockers: stop on
+> the halt, route the refusal by `himmel-ops:stuck-playbook` and never
+> reshape it to get past, and wait for the `GO`.
+
+> Write for an intelligent but low-context reader. The person reading has
+> not seen your tool calls, your reasoning or the files you opened, and may
+> be switching in from other work. Messages should generally be
+> self-contained: the reader should understand what you mean without having
+> to dig for other context. Put the key points in the first few sentences.
+> Practice progressive disclosure in your sentence order, and do not use
+> undefined references and ideas in line 1 that won't make sense until the
+> reader reaches line 12. Use plain words, and write in clear, understandable
+> full sentences. Do not use a term or abbreviation that you made up during
+> the work. Say what the thing is in a way any reader would understand. Write
+> mostly in the style of ASD-STE100 Simplified Technical English: short
+> sentences, one idea per sentence, active voice, and consistently using the
+> same word for the same thing. Use a paragraph of flowing prose where ideas
+> connect, and keep bullets for lists of separate items. Leave out
+> unnecessary details unless the reader asks and practice concision, but do
+> ensure that your messages have the key context. Aim to make your
+> user-facing text as human-readable and clear as possible.
+
 The first counters overplanning on long autonomous turns; the second
 counters context-budget anxiety (Fable 5 occasionally wraps up early when
 it believes context is short, and the same instruction is directly
 relevant to known Opus 1M autocompact behaviour); the third counters
 written-deliverable padding (Opus 5 pads documents by default, and this
 harness writes `next-session-N.md`, `status.md`, `roadmap.md`, specs and
-morning reports on every run). The guides' grounded-progress-claims and
-early-stopping snippets are NOT duplicated here: the attestation
-discipline (§ Auto-mode classifier) and the block-only criteria already
-cover them.
+morning reports on every run). The second is a statement about context
+room, not a token budget: the Fable 5.2 guide found that a large token budget
+written into the prompt raised cost with no gain, and that finding does not
+cover this line, so it stays until a measured run says otherwise.
+
+The fourth is the Fable 5.2 guide's "Finish the whole task" text. Fable 5.2
+ends a turn before the work is done more often at `low` and `medium` effort,
+and the `fable` lane runs at `medium`. On Anthropic's recorded sessions at
+`medium`, the text halved the sessions that ended with doable work left, for
+about 30 % more output tokens. Its last sentence is himmel's own. The guide
+asks that an adaptation keep its line between ordinary obstacles and
+deliberate blockers, and that sentence names the deliberate ones in this
+harness. The Fable 5.1 version was declined because it lacked that line (see
+[`safeguard-false-positives.md`](../internals/safeguard-false-positives.md#deliberately-not-adopted)).
+The fifth is the guide's "Make reports easy to follow" text. A handover doc,
+`status.md` or a morning report is read by someone who saw none of the tool
+calls. The original Fable guide's grounded-progress-claims snippet is NOT duplicated here:
+the attestation discipline (§ Auto-mode classifier) and the block-only
+criteria already cover it.
 
 **"Ample context remaining" is now checkable, not a reassurance to take on
 faith.** `bash scripts/context-fill.sh` prints this session's
