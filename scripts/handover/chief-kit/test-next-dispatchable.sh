@@ -456,9 +456,11 @@ lacks "no skipped line when nothing matched" "$pw0" "# skipped"
 
 # Fail closed: with the pattern file gone the script exits 2 rather than dispatching unfiltered.
 NF="$WORK/nopat"; mkdir -p "$NF/scripts/handover/chief-kit" "$NF/scripts/lib"
-cp "$(dirname "$SUT")/../../lib/env_alias.py" "$NF/scripts/lib/env_alias.py"
+for nf_lib in env_alias.py gh-quota.sh gh-graphql-budget.sh prim.sh timeout-bin.sh canon-path.sh; do
+    cp "$(dirname "$SUT")/../../lib/$nf_lib" "$NF/scripts/lib/$nf_lib"
+done
 cp "$SUT" "$NF/scripts/handover/chief-kit/next-dispatchable.sh"
-NEXT_DISPATCH_MIRROR="$M6" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$NF/scripts/handover/chief-kit/next-dispatchable.sh" --no-classify >/dev/null 2>&1; nf_rc=$?
+env -u HIMMEL_QUOTA_DIR NEXT_DISPATCH_MIRROR="$M6" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$NF/scripts/handover/chief-kit/next-dispatchable.sh" --no-classify >/dev/null 2>&1; nf_rc=$?
 [ "$nf_rc" = 2 ] && pass "a missing pattern file exits 2" || fail "missing pattern file rc=$nf_rc"
 
 # Operator priority pool. One ticket per tier, keys shuffled against the tiers (a
