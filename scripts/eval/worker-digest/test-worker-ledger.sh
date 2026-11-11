@@ -632,5 +632,50 @@ jq -c '.meta.leg = "N8888"' "$D/e.jsonl" >"$D/e3" && mv "$D/e3" "$D/e.jsonl"
 arf "$D" python3 -I "$HERE/worker_ledger.py" >"$D/out" 2>&1 || bad "refresh over an eval row with another leg exits 0: $(head -c 300 "$D/out")"
 check "the eval row's leg beats the old failure rows' leg on both refreshed rows" 'grep -q "refreshed=1" "$D/out" && jq -s -e ".[-1].meta.leg == \"N8888\"" "$D/e.jsonl" >/dev/null && jq -s -e --arg s "$A1" "map(select(.session == \$s)) | length > 0 and all(.leg == \"N8888\")" "$D/f.jsonl" >/dev/null'
 
+echo "18. backfill --refresh keeps a failure row's stored refusal line when the re-digest cannot read one"
+# The chain-refusal journal is recorded WITH its chain log (the lines are stored), then refreshed WITHOUT it (the suite default,
+# as the real reader sees an old session: its log tail no longer reaches the call), so the re-digest carries null lines.
+K1=9877c1a5-0000-4000-8000-000000000001
+CKLOG=(RUN_HOOK_CHAIN_SKIP_LOG="$TMP/rl/no-skips.jsonl" RUN_HOOK_CHAIN_RUN_LOG="$TMP/rl/hook-runs.jsonl")
+ck_setup() {
+    local d="$1"; mkdir -p "$d/p/-home-x-himmel"
+    { title HIMMEL-4670-N1365-keep "$K1"; sed "s#\"sessionId\"#\"cwd\": \"$TMP/w\", \"sessionId\"#; s#$RS#$K1#g" "$CR/journal.jsonl"; } >"$d/p/-home-x-himmel/$K1.jsonl"
+    env "${CKLOG[@]}" python3 "$LL" backfill --since 2026-10-01 --projects "$d/p" --denials-ledger "$FX/classifier-denials.jsonl" --failures-ledger "$d/f.jsonl" --eval-ledger "$d/e.jsonl" --state-dir "$d/s" >"$d/setup.out" 2>&1
+    cp "$d/f.jsonl" "$d/f.before"; jq -r .digest_id "$d/s/$K1.json" >"$d/id.before"
+}
+ck_stale() { jq -c '.digest_id = "ffffffffffffffffffffffffffffffff"' "$1/s/$K1.json" >"$1/m2" && mv "$1/m2" "$1/s/$K1.json"; }
+ckr() { local d="$1"; shift; env "$@" python3 "$LL" backfill --refresh --since 2026-10-01 --projects "$d/p" --denials-ledger "$FX/classifier-denials.jsonl" --failures-ledger "$d/f.jsonl" --eval-ledger "$d/e.jsonl" --state-dir "$d/s"; }
+lmap() { jq -S -c -s 'map(select(.failure == "denied")) | map({(.class + "@" + .agent.id): .refusal_line}) | add' "$1"; }
+D="$TMP/ck1"; ck_setup "$D"
+check "precondition: the recorded session stores lines on some denied rows and null on others" '[ "$(jq -s "map(select(.refusal_line != null)) | length" "$D/f.before")" -ge 3 ] && [ "$(jq -s "map(select(.failure == \"denied\" and .refusal_line == null)) | length" "$D/f.before")" -ge 1 ] && [ -s "$D/id.before" ]'
+ckr "$D" >"$D/out" 2>&1 || bad "refresh without the chain log exits 0: $(head -c 300 "$D/out")"
+check "a re-digest that reads the same lines, or carries the stored ones, is a no-op: unchanged, ledger and marker id untouched" 'grep -q "refreshed=0 unchanged=1" "$D/out" && cmp -s "$D/f.jsonl" "$D/f.before" && [ "$(jq -r .digest_id "$D/s/$K1.json")" = "$(cat "$D/id.before")" ]'
+D="$TMP/ck2"; ck_setup "$D"; ck_stale "$D"
+jq -c 'if .class == "denied/guard-pr-check-literal" then del(.refusal_line) else . end' "$D/f.before" >"$D/f.jsonl"
+ckr "$D" >"$D/out" 2>&1 || bad "refresh of a stale generation exits 0: $(head -c 300 "$D/out")"
+check "the refresh ran (a stale marker id), and rewrote the failure rows" 'grep -q "refreshed=1 unchanged=0" "$D/out" && jq -s -e "all(.meta.refreshed_at | type == \"string\")" "$D/f.jsonl" >/dev/null'
+check "every stored refusal line survives a refresh whose re-digest has none, each on its own (agent, class) row" '[ "$(jq -s "map(select(.refusal_line != null)) | length" "$D/f.jsonl")" -ge 3 ] && [ "$(lmap "$D/f.jsonl")" = "$(lmap "$D/f.before")" ]'
+check "the carried line is the same text the original recording wrote" '[ "$(jq -r "select(.class == \"denied/block-read-secrets\") | .refusal_line" "$D/f.jsonl")" = "refused: API_TOKEN=<redacted> was read" ]'
+check "a class with a null stored line, or none stored (key absent), stays null and a row of another class never takes a line" 'jq -s -e "map(select(.class == \"denied/guard-pr-check-literal\" or .class == \"denied/permission-prompt\")) | length >= 2 and all(.refusal_line == null)" "$D/f.jsonl" >/dev/null'
+check "a non-denied row never gains the key, and the ledger validates" '[ "$(jq -s "map(select(.failure != \"denied\" and has(\"refusal_line\"))) | length" "$D/f.jsonl")" = 0 ] && python3 "$LL" validate "$D/f.jsonl" >/dev/null'
+check "the generation id of the carried rows is the one the original recording had (the carried lines are part of the measurement)" '[ "$(jq -s -r ".[0].meta.digest_id" "$D/f.jsonl")" = "$(cat "$D/id.before")" ] && [ "$(jq -r .digest_id "$D/s/$K1.json")" = "$(cat "$D/id.before")" ]'
+D="$TMP/ck3"; ck_setup "$D"; ck_stale "$D"
+jq -c 'if .class == "denied/block-read-secrets" then .refusal_line = "STALE stored line" else . end' "$D/f.before" >"$D/f.jsonl"
+ckr "$D" "${CKLOG[@]}" >"$D/out" 2>&1 || bad "refresh with the chain log exits 0: $(head -c 300 "$D/out")"
+check "a re-digest that reads a new line replaces the stored one" '[ "$(jq -r "select(.class == \"denied/block-read-secrets\") | .refusal_line" "$D/f.jsonl")" = "refused: API_TOKEN=<redacted> was read" ] && [ "$(lmap "$D/f.jsonl")" = "$(lmap "$D/f.before")" ]'
+D="$TMP/ck4"; ck_setup "$D"; ck_stale "$D"
+jq -c 'if .class == "denied/block-read-secrets" then .refusal_line = ("x" * 241) else . end' "$D/f.before" >"$D/f.jsonl"
+ckr "$D" >"$D/out" 2>&1 || bad "refresh over an invalid stored line exits 0: $(head -c 300 "$D/out")"
+check "a stored line that does not validate is not carried: the row is null, the refresh still succeeds and the ledger validates" 'grep -q "refreshed=1" "$D/out" && [ "$(jq -c "select(.class == \"denied/block-read-secrets\") | .refusal_line" "$D/f.jsonl")" = null ] && python3 "$LL" validate "$D/f.jsonl" >/dev/null'
+D="$TMP/ck5"; ck_setup "$D"; ck_stale "$D"
+jq -c 'if .class == "denied/block-read-secrets" then .agent.id = "other-agent-9877" else . end' "$D/f.before" >"$D/f.jsonl"
+ckr "$D" >"$D/out" 2>&1 || bad "refresh over another agent's stored row exits 0: $(head -c 300 "$D/out")"
+check "a stored line under another agent id is never carried onto this agent's row of the same class" 'grep -q "refreshed=1" "$D/out" && [ "$(jq -c "select(.class == \"denied/block-read-secrets\") | .refusal_line" "$D/f.jsonl")" = null ] && absent other-agent-9877 "$D/f.jsonl"'
+D="$TMP/ck6"; ck_setup "$D"; ck_stale "$D"
+sed "s#\"cwd\": \"$TMP/w\"#\"cwd\": \"$TMP/salus-root/w\"#" "$D/p/-home-x-himmel/$K1.jsonl" >"$D/j2" && mv "$D/j2" "$D/p/-home-x-himmel/$K1.jsonl"
+cp "$D/s/$K1.json" "$D/m.before"
+ckr "$D" >"$D/out" 2>&1 || bad "refresh over a salus-rooted journal exits 0: $(head -c 300 "$D/out")"
+check "a salus-rooted session is skipped before any digest: backfill refuses it, so the refresh neither reads nor rewrites its rows (the salus skip wins, nothing is carried or recorded)" 'grep -q "salus=1" "$D/out" && grep -q "refreshed=0" "$D/out" && cmp -s "$D/f.jsonl" "$D/f.before" && cmp -s "$D/s/$K1.json" "$D/m.before"'
+
 echo "test-worker-ledger: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

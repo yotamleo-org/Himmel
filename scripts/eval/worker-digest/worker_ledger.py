@@ -74,6 +74,9 @@ sessions without moving them in time. It never runs on its own: no cadence calls
     A crash after any step leaves a complete old or complete new snapshot for Tool health, and the
     next refresh finishes the remaining steps without a duplicate. The two JSONL files are not one atomic
     commit. Live sessions are skipped as in backfill.
+  A denied failure row whose re-digest reads no refusal line (the hook-chain log tail no longer reaches an old
+  session) keeps the line its stored row holds for the same (agent id, class), when that line validates; a line the
+  re-digest does read replaces it. The carried line is part of the digest, so an unchanged session keeps its digest_id.
   The refreshed rows keep the attribution of the session's current ok eval row (leg, ticket, pr, console, doc,
   profile, lane) and its meta.cli_version and meta.effort, never the refreshing shell's. A field that row lacks
   keeps the value the replaced failure rows held (the failure rows only for pr and console); the journal title fills
@@ -202,8 +205,7 @@ def validate(row):
         p.append("final_red is a boolean on suite rows only")
     if "refusal_line" in row:
         line = row["refusal_line"]
-        if row["failure"] != "denied" or not (line is None or (
-                isinstance(line, str) and 1 <= len(line) <= LINE_MAX and not NOT_PRINTABLE.search(line))):
+        if row["failure"] != "denied" or not (line is None or _line_ok(line)):
             p.append("refusal_line is null or one line of 1 to %d code points, on denied rows only" % LINE_MAX)
     if "meta" in row:
         m = row["meta"]
@@ -656,12 +658,29 @@ def _stop_after(step):
         raise SystemExit(75)
 
 
+def _line_ok(line):
+    return isinstance(line, str) and 1 <= len(line) <= LINE_MAX and not NOT_PRINTABLE.search(line)
+
+
+def _carry_lines(digest, lines):
+    """The digest with each denied failure that read no refusal line given the line its stored row (same agent id
+    and class) holds; the input is not changed. The line is part of the digest, so the measurement id stays the
+    one the stored line was recorded under."""
+    out = []
+    for f in digest.get("failures") or []:
+        key = ((f.get("agent") or {}).get("id"), f.get("class")) if isinstance(f, dict) and isinstance(f.get("agent"), dict) else None
+        if key in lines and f.get("failure") == "denied" and f.get("refusal_line") is None:
+            f = dict(f, refusal_line=lines[key])
+        out.append(f)
+    return dict(digest, failures=out) if "failures" in digest else digest
+
+
 def _old_failure_ts(path, session):
-    by, first, held = {}, None, {}
+    by, first, held, lines = {}, None, {}, {}
     try:
         fh = open(path, encoding="utf-8")
     except FileNotFoundError:
-        return by, first, held
+        return by, first, held, lines
     with fh:
         for line in fh:
             if session not in line:
@@ -679,7 +698,9 @@ def _old_failure_ts(path, session):
             if isinstance(ts, str) and UTC_TS.match(ts):
                 by.setdefault((r["agent"].get("id"), r.get("class")), ts)
                 first = ts if first is None or ts < first else first
-    return by, first, held
+            if r.get("failure") == "denied" and _line_ok(r.get("refusal_line")):
+                lines.setdefault((r["agent"].get("id"), r.get("class")), r["refusal_line"])
+    return by, first, held, lines
 
 
 def refresh(digest, who, failures_ledger, eval_ledger, index=None):
@@ -695,7 +716,8 @@ def refresh(digest, who, failures_ledger, eval_ledger, index=None):
         fcntl.flock(lk, fcntl.LOCK_EX)
         index.catch_up()
         first, current = index.get(session)
-        old, oldest, held = _old_failure_ts(failures_ledger, session)
+        old, oldest, held, lines = _old_failure_ts(failures_ledger, session)
+        digest = _carry_lines(digest, lines)
         frows, erow = build_rows(digest, _anchored_who(dict(who, **{k: held[k] for k in ("leg", "ticket") if k in held}), current))
         did = erow["meta"]["digest_id"]
         try:
