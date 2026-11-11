@@ -51,7 +51,7 @@ mkf scripts/test-uninstall.sh 'bash "$d/machine-setup/uninstall-plugins.sh"; bas
 mkf scripts/test-other.sh 'bash "$d/uninstall.sh"'
 mkf scripts/test-wrapper.sh 'bash "$d/test-other.sh"'
 mkf scripts/test-installer.sh 'bash "$d/machine-setup/install.sh"'
-mkf scripts/lanes/tests/plugins.test.mjs "// drives uninstall-plugins.sh"
+mkf scripts/lanes/tests/plugins.test.mjs "run('uninstall-plugins.sh');"
 mkf .claude/commands/pr-check.md
 mkf scripts/test-cmd.sh 'grep -q "/pr-check" x'
 mkf scripts/test-clean-cmd.sh 'grep -q "/pr-check_extra" x'
@@ -839,6 +839,104 @@ if grepq "$out" '^scripts/test-cm-chain\.sh$'; then pass "a chained '; . x' sour
 if grepq "$out" '^scripts/test-cm-var\.sh$'; then pass "an indented variable-sourcing file is still followed"; else fail "indented var-source missed: $out"; fi
 if grepq "$out" '^scripts/test-cm-sub\.sh$'; then pass "a subshell '(source x)' is still followed"; else fail "subshell source missed: $out"; fi
 
+mkf scripts/lib/cmo-lib.sh
+mkf scripts/test-cmo-hash.sh $'#!/usr/bin/env bash\n# drives cmo-lib.sh end to end\necho x'
+mkf scripts/test-cmo-indent.sh $'if true; then\n    # see scripts/lib/cmo-lib.sh\n    :\nfi'
+mkf scripts/test-cmo-stemcmt.sh $'# guard_rc cmo-lib "x"\necho x'
+mkf scripts/test-cmo-after-hd.sh $'cat <<EOF > f\nx\nEOF\n# cmo-lib.sh\necho "it\'s"'
+mkf scripts/test-cmo-after-str.sh $'s=\'\nline\n\'\n# cmo-lib.sh'
+mkf scripts/lib/cmo.test.mjs $'// drives cmo-lib.sh\nconsole.log(1);'
+mkf scripts/lib/cmo-indent.test.ts $'function f() {\n    // cmo-lib.sh\n}'
+mkf scripts/test-cmo-exec.sh 'bash "$d/lib/cmo-lib.sh"'
+mkf scripts/test-cmo-source.sh '. "$d/lib/cmo-lib.sh"'
+mkf scripts/test-cmo-arg.sh 'run_gate --lib "$d/lib/cmo-lib.sh"'
+mkf scripts/test-cmo-cmdpos.sh 'cmo-lib.sh --help'
+mkf scripts/test-cmo-stem.sh 'guard_rc cmo-lib "x"'
+mkf scripts/test-cmo-string.sh 'msg="see cmo-lib.sh"'
+mkf scripts/test-cmo-sqmulti.sh $'s=\'\n# cmo-lib.sh\n\''
+mkf scripts/test-cmo-dqmulti.sh $'s="a\n  # cmo-lib.sh\n"'
+mkf scripts/test-cmo-heredoc.sh $'cat <<\'EOF\' > f\n# cmo-lib.sh\nEOF'
+mkf scripts/test-cmo-heredoc-dash.sh $'\tcat <<-END > f\n\t# cmo-lib.sh\n\tEND'
+mkf scripts/test-cmo-trail.sh 'true # cmo-lib.sh'
+mkf scripts/test-cmo-expand.sh $'p=${q#*/} # x\n${#a} cmo-lib.sh'
+mkf scripts/test-cmo-directive.sh $'# shellcheck source=scripts/lib/cmo-lib.sh\n. "$d/lib/$n"'
+mkf scripts/test-cmo-names.sh $'# selector: names cmo-lib.sh other.sh\necho x'
+mkf scripts/lib/cmo-exec.test.mjs "execFileSync('bash', ['cmo-lib.sh']);"
+mkf scripts/lib/cmo-tpl.test.mjs $'const s = `\n// cmo-lib.sh\n`;'
+mkf scripts/lib/cmo-trail.test.js 'run(); // cmo-lib.sh'
+mkf scripts/lib/cmo-names.test.mjs $'// selector: names cmo-lib.sh\ntest();'
+mkf scripts/lib/cmo-cont.test.mjs $'const s = \'a\\\n// cmo-lib.sh\';'
+mkf scripts/lib/cmo-after-cont.test.mjs $'const s = \'a\\\nb\';\n// cmo-lib.sh'
+mkf scripts/lib/cmo-nested.test.mjs $'const s = `${c ? `a` : `b`}\n// cmo-lib.sh\n`;'
+mkf scripts/lib/cmo-return.test.mjs $'function f(x) { return /`/.test(x); }\n// cmo-lib.sh'
+mkf scripts/test-cmo-shcont.sh $'x=a\\\n#cmo-lib.sh'
+mkf scripts/test-cmo-shcont-quote.sh $'x=a\\\n#foo"\n# cmo-lib.sh\n"'
+git -C "$FX" add -A
+git -C "$FX" commit -q -m "chore: comment-only mention fixtures"
+change scripts/lib/cmo-lib.sh
+plan_out="$( cd "$FX" && HIMMEL_SUITES_LOCAL=1 bash "$IS" --plan "$range" 2>&1 )"
+out="$(awk '$1 == "LOCAL" { print $2 }' <<< "$plan_out")"
+cmo_cmt="test-cmo-hash.sh test-cmo-indent.sh test-cmo-stemcmt.sh test-cmo-after-hd.sh test-cmo-after-str.sh lib/cmo.test.mjs lib/cmo-indent.test.ts lib/cmo-after-cont.test.mjs lib/cmo-return.test.mjs"
+for s in $cmo_cmt; do
+    if ! grepq "$out" -Fx "scripts/$s"; then pass "30b --plan: a whole-line comment mention does not list scripts/$s"; else fail "30b --plan listed comment-only scripts/$s: $out"; fi
+done
+for s in test-cmo-exec.sh test-cmo-source.sh test-cmo-arg.sh test-cmo-cmdpos.sh test-cmo-stem.sh test-cmo-string.sh test-cmo-sqmulti.sh test-cmo-dqmulti.sh test-cmo-heredoc.sh test-cmo-heredoc-dash.sh test-cmo-trail.sh test-cmo-expand.sh test-cmo-directive.sh test-cmo-names.sh lib/cmo-exec.test.mjs lib/cmo-tpl.test.mjs lib/cmo-trail.test.js lib/cmo-names.test.mjs lib/cmo-cont.test.mjs lib/cmo-nested.test.mjs test-cmo-shcont.sh test-cmo-shcont-quote.sh; do
+    if grepq "$out" -Fx "scripts/$s"; then pass "30b --plan CONTROL scripts/$s is still listed"; else fail "30b --plan CONTROL scripts/$s dropped: $out"; fi
+done
+if grepq "$plan_out" -Fx 'impacted-suites: dropped-comment-only=9'; then pass "30b --plan prints the narrowing: dropped-comment-only=9"; else fail "30b --plan dropped-comment-only line missing or wrong: $plan_out"; fi
+err="$( cd "$FX" && printf '' | bash "$IS" --check "$range" 2>&1 >/dev/null )"
+if grepq "$err" -F 'scripts/test-cmo-exec.sh' && ! grepq "$err" -F 'scripts/test-cmo-hash.sh' && grepq "$err" -Fx 'impacted-suites: dropped-comment-only=9'; then pass "30b --check owes no verdict for a comment-only suite and owes one for a control"; else fail "30b --check verdict set: $err"; fi
+out="$(run_is "$range")"
+err="$( cd "$FX" && bash "$IS" "$range" 2>&1 >/dev/null )"
+all_listed=1
+for s in $cmo_cmt; do grepq "$out" -Fx "scripts/$s" || all_listed=0; done
+if [ "$all_listed" -eq 1 ] && [ -z "$err" ]; then pass "30b the plain listing still names every comment-only suite and prints nothing to stderr"; else fail "30b plain listing narrowed: err=$err out=$out"; fi
+out="$(run_is "$range" --shell)"
+if grepq "$out" -Fx 'scripts/test-cmo-hash.sh' && grepq "$out" -Fx 'scripts/test-cmo-after-hd.sh' && ! grepq "$out" -F '.test.'; then pass "30b --shell (what CI selects from) still lists a comment-only suite --check drops"; else fail "30b --shell narrowed: $out"; fi
+printf 'x.none filter=none\n' > "$FX/.gitattributes"
+git -C "$FX" add -A
+git -C "$FX" commit -q -m "chore: an attribute that rewrites content"
+printf '# changed\n' >> "$FX/scripts/lib/cmo-lib.sh"
+git -C "$FX" commit -q -am "fix: change cmo-lib.sh under the attribute"
+arange="$(git -C "$FX" rev-parse HEAD~1)..$(git -C "$FX" rev-parse HEAD)"
+out="$( cd "$FX" && HIMMEL_SUITES_LOCAL=1 bash "$IS" --plan "$arange" 2>/dev/null | awk '$1 == "LOCAL" { print $2 }' )"
+if ! grepq "$out" -Fx 'scripts/test-cmo-hash.sh' && ! grepq "$out" -Fx 'scripts/lib/cmo.test.mjs' && grepq "$out" -Fx 'scripts/test-cmo-heredoc.sh' && grepq "$out" -Fx 'scripts/lib/cmo-tpl.test.mjs'; then pass "30b the per-file path (.gitattributes filter) drops the same comment-only suites"; else fail "30b per-file path proof list: $out"; fi
+git -C "$FX" rm -q .gitattributes
+git -C "$FX" commit -q -m "chore: drop the attribute"
+mkf scripts/_nw-helper.sh
+mkf scripts/wt-tool.sh 'bash "$d/_nw-helper.sh"'
+mkf scripts/test-wt-exec.sh $'# wt-tool.sh runs _nw-helper.sh\nbash "$d/wt-tool.sh"'
+mkf scripts/test-wt-exec-names.sh $'# selector: names _nw-helper.sh\nbash "$d/wt-tool.sh"'
+git -C "$FX" add -A
+git -C "$FX" commit -q -m "chore: an exec edge the selector cannot follow"
+change scripts/_nw-helper.sh
+out="$( cd "$FX" && HIMMEL_SUITES_LOCAL=1 bash "$IS" --plan "$range" 2>/dev/null | awk '$1 == "LOCAL" { print $2 }' )"
+if grepq "$out" -Fx 'scripts/test-wt-exec-names.sh' && ! grepq "$out" -Fx 'scripts/test-wt-exec.sh'; then pass "30b an exec-edge suite stays on --plan through its selector: names line, and drops with a prose comment alone"; else fail "30b exec-edge proof list: $out"; fi
+err="$( cd "$FX" && printf '' | bash "$IS" --check "$range" 2>&1 >/dev/null )"
+if grepq "$err" -F 'scripts/test-wt-exec-names.sh' && ! grepq "$err" -F 'scripts/test-wt-exec.sh'; then pass "30b --check owes a verdict for the exec-edge suite that names its file on a selector: names line"; else fail "30b exec-edge --check: $err"; fi
+
+mkdir -p "$FX/scripts/docs" "$FX/scripts/hooks/lib" "$FX/scripts/handover/chief-kit"
+for s in scripts/docs/test-dev-graph.sh scripts/hooks/test-escape-class-corpus.sh scripts/docs/test-workflow-page-drift.sh scripts/docs/test-how-a-change-ships.sh; do
+    cp "$REPO_ROOT/$s" "$FX/$s"
+done
+mkf scripts/handover/chief-kit/grant-round.sh
+mkf scripts/hooks/lib/headless-spawn-join.sh
+mkf docs/plan-charter.md
+mkf scripts/handover/chief-kit/relay-batch.sh
+git -C "$FX" add -A
+git -C "$FX" commit -q -m "chore: real widening suites"
+for pair in scripts/handover/chief-kit/grant-round.sh:scripts/docs/test-dev-graph.sh \
+            scripts/hooks/lib/headless-spawn-join.sh:scripts/hooks/test-escape-class-corpus.sh \
+            docs/plan-charter.md:scripts/docs/test-workflow-page-drift.sh \
+            scripts/handover/chief-kit/relay-batch.sh:scripts/docs/test-how-a-change-ships.sh; do
+    named="${pair%%:*}"; suite="${pair#*:}"
+    change "$named"
+    out="$( cd "$FX" && HIMMEL_SUITES_LOCAL=1 bash "$IS" --plan "$range" 2>/dev/null | awk '$1 == "LOCAL" { print $2 }' )"
+    if grepq "$out" -Fx "$suite"; then pass "30c an edit to ${named##*/} still puts $suite on the --plan list"; else fail "30c $suite not on the --plan list for ${named##*/}: $out"; fi
+done
+git -C "$FX" rm -q scripts/docs/test-dev-graph.sh scripts/hooks/test-escape-class-corpus.sh scripts/docs/test-workflow-page-drift.sh scripts/docs/test-how-a-change-ships.sh
+git -C "$FX" commit -q -m "chore: drop the real widening suites"
+
 # --- 31. The PR-1734 shape. A NEW file under a tree that a suite
 # walks (lint-fail-open scans scripts/lanes/) lists that suite, though no suite
 # names the file; a new file outside every declared tree does not. -----------
@@ -1437,7 +1535,7 @@ awk '{print} $0 == "SKIP_LIST=\"" {print "scripts/test-cx-vm.sh  # fixture: driv
 cp "$REPO_ROOT/scripts/handover/suite-coverage.sh" "$CX/scripts/handover/suite-coverage.sh"
 printf '# lib\n' > "$CX/scripts/lib/cx-lib.sh"
 for s in test-cx-a test-cx-b test-cx-c test-cx-vm; do printf 'bash "$d/lib/cx-lib.sh"\n' > "$CX/scripts/$s.sh"; done
-printf '// cx-lib.sh\n' > "$CX/scripts/lib/cx.test.mjs"
+printf "run('cx-lib.sh');\n" > "$CX/scripts/lib/cx.test.mjs"
 git -C "$CX" add -A
 git -C "$CX" commit -q -m "chore: base"
 printf '# changed\n' >> "$CX/scripts/lib/cx-lib.sh"
