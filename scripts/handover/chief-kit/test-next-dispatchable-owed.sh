@@ -81,8 +81,14 @@ printf 'none\n' > "$PR_BODY_DIR/6009"
 printf 'owed\tchief\t%s\tthe chief reruns the check\n' "$DUE" > "$PR_BODY_DIR/6010"
 printf 'handed-off\tHIMMEL-9\trest: deferred to HIMMEL-9\n' > "$PR_BODY_DIR/6011"
 mk HIMMEL-306 "In Progress" "older owed, newer handed-off" "Edit scripts/lib/o6.sh."
+mk HIMMEL-307 "In Progress" "two owed PRs, the newer is due first" "Edit scripts/lib/o7.sh."
+mk HIMMEL-308 "In Progress" "two owed PRs, the older is due first" "Edit scripts/lib/o8.sh."
+printf 'owed\tchief\t2026-11-25\tlater check\n' > "$PR_BODY_DIR/6012"
+printf 'owed\toperator\t2026-11-19\tearlier check\n' > "$PR_BODY_DIR/6013"
+printf 'owed\tchief\t2026-11-18\tearlier check\n' > "$PR_BODY_DIR/6014"
+printf 'owed\toperator\t2026-11-22\tlater check\n' > "$PR_BODY_DIR/6015"
 {
-    for pair in 301:6001 302:6002 302:6003 303:6004 303:6005 304:6006 304:6007 305:6008 305:6009 306:6010 306:6011; do
+    for pair in 301:6001 302:6002 302:6003 303:6004 303:6005 304:6006 304:6007 305:6008 305:6009 306:6010 306:6011 307:6012 307:6013 308:6014 308:6015; do
         printf '{"ts":"t","event":"merge","key":"HIMMEL-%s","pr":"%s","contract":"no","result":"noop"}\n' "${pair%%:*}" "${pair##*:}"
     done
 } > "$STATE/status-events.jsonl"
@@ -97,9 +103,12 @@ has "(a) an owed PR prints OWED with the PR, who and the date" "$out" "OWED HIMM
 lacks "(a) an owed ticket is no RESUME row" "$out" "RESUME	HIMMEL-301"
 lacks "(a) an owed ticket needs no chief note" "$out" "NEEDS-CHIEF-NOTE HIMMEL-301"
 # a second run on one cache path reads each owed PR once
-CACHE_PATH="$CACHE" run >/dev/null
+out_first="$(CACHE_PATH="$CACHE" run)" || fail "(a) the cache-populating run exited non-zero"
+has "(a) the cache-populating run printed the OWED row" "$out_first" "OWED HIMMEL-301: merged PR #6001 owes operator by $DUE"
 : > "$GH_ARGS"
-CACHE_PATH="$CACHE" run >/dev/null
+out_second="$(CACHE_PATH="$CACHE" run)" || fail "(a) the cache-hit run exited non-zero"
+has "(a) the cache-hit run printed the same OWED row" "$out_second" "OWED HIMMEL-301: merged PR #6001 owes operator by $DUE"
+has "(a) the cache-hit run reached gh (it listed the open PRs), so it ran to the end" "$(cat "$GH_ARGS")" "pr list"
 if grep -q 'pr view 6001' "$GH_ARGS"; then fail "(a) a second run on the same cache path makes no gh pr view call for the owed PR (gh log: $(cat "$GH_ARGS"))"; else pass "(a) a second run on the same cache path makes no gh pr view call for the owed PR"; fi
 # (b) older remaining, newer owed
 has "(b) an older remaining PR and a newer owed one: OWED" "$out" "OWED HIMMEL-302: merged PR #6003 owes chief by $DUE"
@@ -122,5 +131,9 @@ lacks "(e) and no OWED row for it" "$out" "OWED HIMMEL-305"
 has "(f) an older owed PR and a newer handed-off one: OWED" "$out" "OWED HIMMEL-306: merged PR #6010 owes chief by $DUE"
 lacks "(f) no HANDED-OFF row while a step is owed" "$out" "HANDED-OFF HIMMEL-306"
 lacks "(f) no RESUME row for it" "$out" "RESUME	HIMMEL-306"
+
+# (g) several owed PRs: the row names the earliest due date, whichever PR carries it
+has "(g) two owed PRs, the newer due first: the row names the newer PR and its date" "$out" "OWED HIMMEL-307: merged PR #6013 owes operator by 2026-11-19"
+has "(g) two owed PRs, the older due first: the row names the older PR and its date" "$out" "OWED HIMMEL-308: merged PR #6014 owes chief by 2026-11-18"
 
 if [ "$fails" -eq 0 ]; then echo "next-dispatchable-owed: all rows passed"; else echo "next-dispatchable-owed: $fails row(s) failed"; exit 1; fi

@@ -1412,8 +1412,9 @@ for i in issues.values():
         needs_note.append((i['key'], [pr for pr, ans in parts if ans[0] == 'none']))
         continue
     owed_parts = [(pr, ans) for pr, ans in parts if ans[0] == 'owed']
-    if owed_parts and not any(ans[0] == 'remaining' for _, ans in parts):  # a dated step is owed to the chief or operator and nothing else stays on the ticket: nothing to dispatch (the newest owed PR is named)
-        owed_rows.append((i['key'], owed_parts[-1][0], owed_parts[-1][1][1][0], owed_parts[-1][1][1][1]))
+    if owed_parts and not any(ans[0] == 'remaining' for _, ans in parts):  # a dated step is owed to the chief or operator and nothing else stays on the ticket: nothing to dispatch (the owed PR with the earliest due date is named)
+        first_due = min(owed_parts, key=lambda p: p[1][1][1])  # the earliest due date; min keeps the older PR on a tie
+        owed_rows.append((i['key'], first_due[0], first_due[1][1][0], first_due[1][1][1]))
         continue
     if parts and all(ans[0] == 'handed-off' for _, ans in parts):  # nothing left on this ticket: the chief closes it or keeps it as an umbrella
         handed_off.append((i['key'], [k for _, ans in parts for k in ans[1]]))
