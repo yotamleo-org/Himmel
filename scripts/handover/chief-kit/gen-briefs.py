@@ -987,8 +987,6 @@ FOLD_INSTRUCTION = 'each id is a `## Ticket coverage` line: `- <id>: done` or `-
 
 
 def spec_key(path):
-    # The spec D1 key: a specs/<KEY>/ folder, else the name's leading key; a plans/ name with none (a date-prefixed
-    # plan) takes the first bounded key in it. None when there is no key.
     parts = path.rstrip('/').split('/')
     if len(parts) >= 2 and parts[-2] == 'specs' and KEY_FOLDER_RE.match(parts[-1]):
         return parts[-1]
@@ -999,8 +997,6 @@ def spec_key(path):
 
 
 def run_route(label, args):
-    # One chief-route.ts round-ledger verb; its stdout. A verb that fails or cannot run refuses the brief (spec I8:
-    # a ledger that cannot be read is never an empty one).
     cmd = os.environ.get('GEN_BRIEFS_ROUTE_CMD')
     route = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'telegram', 'chief-route.ts'))
     try:
@@ -1013,8 +1009,6 @@ def run_route(label, args):
 
 
 def folded_block(k, path, label):
-    # fold-list over the signed spec's own path (its key may differ from the worker's): the finding lines, or the
-    # `> **Folded critic findings:**` line saying why there are none.
     found = [x for x in run_route(label, ['fold-list', '--spec', path]).splitlines() if x.strip()]
     if found:
         return found
@@ -1027,8 +1021,6 @@ def folded_block(k, path, label):
 
 
 def writer_round_gate(l, ctx):
-    # Spec D10: a writer leg (an absolute Writes path under a specs signature folder) writes only its own keys' specs,
-    # and only while round-status leaves the key a round. next=closure adds the Round line to l['core_lines'].
     label = l['label']
     sp = l.get('series_plan')
     keys = [k for k, _, _ in sp['items']] if sp else l['keys']
@@ -1041,7 +1033,7 @@ def writer_round_gate(l, ctx):
         i = len(parts) - 1 - parts[::-1].index('specs')
         if i + 1 >= len(parts) or not (parts[i + 1] in SIGNATURE_DIRS or KEY_FOLDER_RE.match(parts[i + 1])):
             continue
-        key = parts[i + 1] if KEY_FOLDER_RE.match(parts[i + 1]) else spec_key(tok)  # a specs/<KEY>/ tree is that key's at any depth
+        key = parts[i + 1] if KEY_FOLDER_RE.match(parts[i + 1]) else spec_key(tok)
         if key is None:
             die("worker %s: a writer leg writes only its own keys' specs: %s has no ticket key; name the spec <KEY>-<slug>.md or put it in specs/<KEY>/" % (label, tok))
         if key not in keys:
