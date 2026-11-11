@@ -1754,6 +1754,13 @@ until you run `claude mcp remove graphify -s user` and then the command above.
 
 Claude Code is the only agent graphify needs (no codex/other-CLI prerequisite).
 
+**What a graph pass spends on this machine.** The himmel graph comes from us
+with each update (`bash scripts/himmel-update.sh`); you do not build it.
+Without a graph choice, graphify builds the code structure from a local parse for free, and a semantic pass that runs on a repo other than himmel describes its markdown on this machine's Claude subscription, only after a usage check and never on an API key; choose none to keep the structure only.
+With the graph choice none, graphify builds only the code structure from a local parse, with no model calls and no cost.
+`node scripts/himmelctl/lib/graph-choices.js check` prints this station's
+state; `bash scripts/himmel-doctor.sh --only C88` shows it too.
+
 Graph refresh stays lean-invoke (`graphify <corpus-copy> --update`), never
 a hook; extraction backends are governed by the egress matrix; see the
 graphify section in `CLAUDE.md`.

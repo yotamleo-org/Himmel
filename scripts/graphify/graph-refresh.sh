@@ -62,8 +62,9 @@
 #      directory)
 #   3  one or more corpus refresh workers FAILED (runner exited non-zero, not a
 #      bank skip) -- investigate
-#   4  no failures, but one or more workers were SKIPPED (bank at/over threshold,
-#      runner exited 3) and nothing else failed -- benign, retry later
+#   4  no failures, but one or more workers were SKIPPED (runner exited 3: the bank
+#      at/over threshold, or the station's graph role or choice; the SKIPPED line
+#      quotes the runner's reason) and nothing else failed -- benign, retry later
 #      (a skip is NOT success; it must never read as exit 0 "OK",
 #      the false-clean an unattended cadence cannot tell from a real refresh)
 set -euo pipefail
@@ -761,7 +762,8 @@ for c in "${CORPORA[@]}"; do
     else
         worker_rc=$?
         if [ "$worker_rc" -eq 3 ]; then
-            echo "graph-refresh: [$c] SKIPPED -- bank at/over threshold, extraction skipped for corpus '$c' (refresh-graph-map.sh exited 3; graphify-out left untouched, nothing published)" >&2
+            worker_reason="$(grep -E '^(ERR )?refresh-graph-map:' "$WORKER_SESSION_LOG" | tail -n 1 || true)"
+            echo "graph-refresh: [$c] SKIPPED -- ${worker_reason:-refresh-graph-map.sh exited 3 and gave no reason} (refresh-graph-map.sh exited 3; graphify-out left untouched, nothing published)" >&2
             SKIPPED=$((SKIPPED + 1))
         else
             worker_reason="$(grep -E '^(ERR )?refresh-graph-map:' "$WORKER_SESSION_LOG" | tail -n 1 || true)"

@@ -2568,12 +2568,26 @@ sync_graph() {
         STATUS_graph="skipped"; DETAIL_graph="AST-only: $1"
     }
     # The publishing station builds its own semantic graph: never overwrite it.
-    if [ -f "$cfg" ] && [ ! -L "$cfg" ] && command -v jq >/dev/null 2>&1 \
-        && jq -e '.graphify.semantic_api_ok == true' "$cfg" >/dev/null 2>&1; then
-        echo "    skip: this station runs its own semantic pass (graphify.semantic_api_ok in $cfg)"
-        STATUS_graph="skipped"; DETAIL_graph="this station builds its own semantic graph"
-        return 0
-    fi
+    local role chk gc="$ROOT/scripts/himmelctl/lib/graph-choices.js"
+    role="$(node "$gc" role 2>/dev/null)" || role=""
+    case "$role" in
+        publisher)
+            echo "    skip: this station runs its own semantic pass (graphify.semantic_api_ok in $cfg)"
+            STATUS_graph="skipped"; DETAIL_graph="this station builds its own semantic graph"
+            return 0 ;;
+        adopter) ;;
+        unreadable)
+            chk="$(node "$gc" check 2>/dev/null)" || chk=""
+            if ! grep -qx 'cause=symlink' <<< "$chk" || grep -qx 'linked=publisher' <<< "$chk"; then
+                echo "    skip: the graph config cannot be read ($(grep -m 1 '^cause=' <<< "$chk" || echo cause=unknown)); not pulling over this station's graph"
+                STATUS_graph="skipped"; DETAIL_graph="the graph config in $cfg cannot be read"
+                return 0
+            fi ;;
+        *)
+            echo "    skip: the station's graph role could not be read ($gc); not pulling over this station's graph"
+            STATUS_graph="skipped"; DETAIL_graph="the graph role could not be read"
+            return 0 ;;
+    esac
     ls_out=$(git -C "$ROOT" ls-remote --exit-code "$remote" refs/heads/graph-data 2>/dev/null) || ls_rc=$?
     case "$ls_rc" in
         0) ;;

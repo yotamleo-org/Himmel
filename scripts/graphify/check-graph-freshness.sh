@@ -121,6 +121,13 @@ esac
 # default (claude-cli) is the one we want a copy-paste of this
 # hint to use — naming a backend here is how it went stale in the first place.
 REMEDIATION="Rebuild with: bash $REFRESH --name <N> --corpus-root <path> --maps-dir <vault>/60-Maps --title \"<Title>\" --slug <slug>"
+_cgf_choices="$HERE/../himmelctl/lib/graph-choices.js"
+_cgf_own="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || _cgf_own=""
+_cgf_of_out="$(git -C "$(dirname "${OUT:-.}")" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || _cgf_of_out=""
+if [ -n "$_cgf_own" ] && [ "$_cgf_of_out" = "$_cgf_own" ] && [ "$(node "$_cgf_choices" role 2>/dev/null)" != publisher ]; then
+  _cgf_remedy="$(node "$_cgf_choices" remedy 2>/dev/null)" || _cgf_remedy=""
+  REMEDIATION="Refresh: ${_cgf_remedy:-the himmel graph comes from us with each update (bash scripts/himmel-update.sh)}"
+fi
 
 # python3 is required (manifest.json parse + cross-platform mtime). `stat -c %Y`
 # is GNU-only and `stat -f %m` is BSD-only, so mtime goes through python3.

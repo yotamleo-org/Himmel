@@ -7562,7 +7562,8 @@ echo "== C70: graphify semantic freshness =="
 c70_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c70.XXXXXX")" || { fail "C70 mktemp -d failed"; exit 1; }
 c70_t="$(cd "$c70_t" && pwd)" || { fail "C70 cd into the temp dir failed"; exit 1; }  # the doctor prints --root through cd+pwd; a TMPDIR with a trailing slash (macOS) would leave "T//" here
 c70_out="$c70_t/home/.claude/graph-cadence/himmel/graphify-out"; c70_corpus="$c70_t/corpus"
-mkdir -p "$c70_out" "$c70_corpus"
+mkdir -p "$c70_out" "$c70_corpus" "$c70_t/home/.himmel"
+printf '{"graphify":{"semantic_api_ok":true}}\n' > "$c70_t/home/.himmel/config.json"
 printf '{"real.md": {"mtime": 0}}\n' > "$c70_out/manifest.json"
 printf '{"nodes":[],"edges":[]}\n' > "$c70_out/graph.json"
 printf '# real\n' > "$c70_corpus/real.md"
@@ -7654,6 +7655,10 @@ printf '{"name": "t", "batch": 3, "failed": 0, "shrink_refused": 0, "failed_file
 printf '{"ts": "2026-10-17T00:00:00Z", "name": "t", "batch": 3, "failed": 0, "shrink_refused": 0, "failed_files": [], "refused_files": [], "backed_off_files": []}\n' > "$c70_t/root/graphify-out/semantic-runs.jsonl"
 out="$(c70_div LC_ALL=C)"
 if grepq "$out" -F 'C70-graph-semantic' && ! grepq "$out" -F 'cadence graph'; then pass "C70 cadence last batch without a ts -> no divergence row"; else fail "C70 no ts -> $(printf '%s' "$out" | head -4)"; fi
+c70_rows "x.md" "x.md" "x.md"
+mkdir -p "$c70_t/adopter-home"
+out="$(env HOME="$c70_t/adopter-home" HIMMEL_CONFIG_DIR= CLAUDE_DIR="$c70_t/adopter-home/claude" HIMMEL_DOCTOR_GRAPH_OUT="$c70_out" HIMMEL_DOCTOR_GRAPH_CHECK= bash "$DOC" --no-color --only C70 2>&1)"
+if grepq "$out" -F 'OK   C70-graph-semantic' && grepq "$out" -F 'comes from us' && ! grepq "$out" -F 'refresh-graph-map.sh' && ! grepq "$out" 'WARN C70'; then pass "C70 an adopter with an old, stuck semantic-runs.jsonl -> OK naming the pull"; else fail "C70 adopter -> $(printf '%s' "$out" | head -3)"; fi
 rm -rf "$c70_t"
 
 echo "== C71: judge scratch cache size =="
@@ -8037,8 +8042,8 @@ rm -rf "$c76_t"
 c88_t="$(mktemp -d "${TMPDIR:-/tmp}/c88.XXXXXX")" || { echo "FATAL: C88 setup mktemp failed" >&2; exit 1; }
 mkdir -p "$c88_t/claude" "$c88_t/home/.himmel" "$c88_t/bat"
 c88_key="dummy-not-a-real-key-c88"
-c88_run() { CLAUDE_DIR="$c88_t/claude" HOME="$c88_t/home" GRAPHMAP_BAT_DIR="$c88_t/bat" HIMMEL_DOCTOR_ENV_FILE="$c88_t/env" bash "$DOC" --only C88 --no-color 2>&1; }
-c88_reset() { rm -rf "$c88_t/home/.himmel" "$c88_t/bat" "$c88_t/env"; mkdir -p "$c88_t/home/.himmel" "$c88_t/bat"; }
+c88_run() { CLAUDE_DIR="$c88_t/claude" HOME="$c88_t/home" HIMMEL_CONFIG_DIR='' HIMMEL_API_CREDIT_CONFIG="$c88_t/roster.json" GRAPHMAP_BAT_DIR="$c88_t/bat" HIMMEL_DOCTOR_ENV_FILE="$c88_t/env" bash "$DOC" --only C88 --no-color 2>&1; }
+c88_reset() { rm -rf "$c88_t/home/.himmel" "$c88_t/home/.claude" "$c88_t/bat" "$c88_t/env" "$c88_t/roster.json"; mkdir -p "$c88_t/home/.himmel" "$c88_t/bat"; }
 c88_optin() { printf '{"graphify":{"semantic_api_ok":true}}\n' > "$c88_t/home/.himmel/config.json"; }
 c88_key_in_env() { printf '# himmel .env\nANTHROPIC_ORG_A_KEY=%s\n' "$c88_key" > "$c88_t/env"; }
 c88_lane_runner() { printf '#!/bin/sh\n_rc=0; HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api graph-cadence.sh --semantic || _rc=$?\n' > "$c88_t/bat/graphmap-publish-himmel.sh"; }
@@ -8082,6 +8087,27 @@ c88_from() { local o; o="$(cd "$1" && env -u HIMMEL_DOCTOR_ENV_FILE -u HIMMEL_RE
 c88_home="$(c88_from "$c88_p")"; c88_away="$(c88_from "$c88_t/away")"; c88_out="$(c88_from "$c88_t/norepo")"
 if grepq "$c88_home" 'WARN C88-graph-api-optin' && grepq "$c88_home" -F 'ANTHROPIC_ORG_A_KEY' && ! grepq "$c88_home" -F 'ANTHROPIC_ORG_B_KEY' && ! grepq "$c88_home" -F "$c88_key" \
     && [ "$c88_away" = "$c88_home" ] && [ "$c88_out" = "$c88_home" ]; then pass "C88 from another repo's directory and from outside any repo reads the checkout .env, as from the checkout"; else fail "C88 away vs checkout -> checkout: $c88_home / away: $c88_away / outside: $c88_out"; fi
+echo "== C88: an adopter with no graph choice prints the no-choice line =="
+c88_reset; printf '{}\n' > "$c88_t/home/.himmel/config.json"
+out="$(c88_run)"
+if grepq "$out" 'OK   C88-graph-api-optin' && grepq "$out" -F "no graph choice: a semantic pass on a repo other than himmel uses this machine's Claude subscription after the usage check, never an API key" && ! grepq "$out" -F 'sets graphify.semantic_api_ok to true'; then pass "C88 adopter, no graph choice -> the no-choice line"; else fail "C88 no choice -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C88: an unreadable config prints check's cause word and fixed line =="
+c88_reset; printf 'this is not json\n' > "$c88_t/home/.himmel/config.json"
+out="$(c88_run)"
+if grepq "$out" 'WARN C88-graph-api-optin' && grepq "$out" -F 'cause=not-json' && grepq "$out" -F 'graph config unreadable (cause=not-json): ~/.himmel/config.json is not a JSON object'; then pass "C88 unreadable -> WARN with the cause word and its fixed line"; else fail "C88 unreadable -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C88: over a pass log, the last word, the consecutive refusals and the open alert =="
+c88_reset; printf '{}\n' > "$c88_t/home/.himmel/config.json"; mkdir -p "$c88_t/home/.claude/graph-choices-cadence"
+printf '[fired 2026-11-08T04:40:00Z]\n2026-11-08T04:40:05Z acme ok\n2026-11-09T04:40:05Z acme bank-refused\n[exit rc=0]\n2026-11-10T04:40:05Z acme bank-refused\n2026-11-11T04:40:05Z acme bank-refused\n2026-11-11T04:40:06Z acme ALERT key-rejected the A key was rejected\n' > "$c88_t/home/.claude/graph-choices-cadence/graph-choices.log"
+out="$(c88_run)"
+if grepq "$out" -F 'pass: acme bank-refused' && grepq "$out" -F 'bank-refused in a row: 3' && grepq "$out" -F 'alert: acme key-rejected'; then pass "C88 pass log -> word, count and open alert"; else fail "C88 pass log -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C88: a D-row roster prints invalid-account-config's line; no roster file prints unreadable-state's =="
+c88_reset; printf '{}\n' > "$c88_t/home/.himmel/config.json"
+printf '{"version":1,"ledger_path":"/tmp/c88-ledger.json","accounts":{"D":{"organization_id":"o","cycle_id":"c","cap_usd":"1"}}}\n' > "$c88_t/roster.json"
+out="$(c88_run)"
+if grepq "$out" -F 'a row in the API roster names a letter outside A, B, C'; then pass "C88 D-row roster -> invalid-account-config's line"; else fail "C88 D roster -> $(printf '%s' "$out" | head -4)"; fi
+rm -f "$c88_t/roster.json"
+out="$(c88_run)"
+if grepq "$out" -F 'no API account is set up here, or its roster cannot be read; none is offered'; then pass "C88 no roster file -> unreadable-state's line"; else fail "C88 no roster -> $(printf '%s' "$out" | head -4)"; fi
 rm -rf "$c88_t"
 
 # --- C87-stub-handover-state: files under <repo>/handovers newer than the operator's baseline marker ---

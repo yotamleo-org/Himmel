@@ -23,6 +23,13 @@ HERMETIC_HOME="$WS/hermetic-home"; mkdir -p "$HERMETIC_HOME/.claude"
 printf 'test-subscription-auth\n' > "$HERMETIC_HOME/.claude/.credentials.json"
 printf '{}\n' > "$HERMETIC_HOME/.claude/settings.json"
 export HOME="$HERMETIC_HOME"
+mkdir -p "$HERMETIC_HOME/.himmel"
+printf '{"graphify":{"semantic_api_ok":true}}\n' > "$HERMETIC_HOME/.himmel/config.json"
+unset HIMMEL_CONFIG_DIR HIMMEL_CONFIG_AUDIT_DIR HIMMEL_LUNA_CONFIG_PATH
+unset "${!ANTHROPIC_@}" "${!anthropic_@}" "${!CLAUDE_CODE_USE_@}" "${!claude_code_use_@}" "${!LQ_API_@}"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$1" >> "%s"\n' "$WS/alert-sent.log" > "$WS/alert-send"; chmod +x "$WS/alert-send"
+export CADENCE_ALERT_SEND_CMD="$WS/alert-send" CADENCE_ALERT_FILE="$WS/cadence-alerts.log" \
+  CADENCE_ALERT_DEDUPE_DIR="$WS/alert-dedupe" CADENCE_ALERT_SEND_FAILED_MARK="$WS/alert-send-failed"
 
 REPORT_FIXTURE='# Graph Report - X
 
@@ -172,6 +179,26 @@ newq=$(printf '%s\n' "$out" | grep -oE '/[^ ]*graphify-refresh-luna-FIXED[^ ]*qu
 [ -n "$newq" ] && grep -q 'fresh-extraction' "$newq/graph.json" 2>/dev/null \
   && pass "S3 this run's extraction is preserved in a distinct quarantine dir" \
   || fail "S3 this run's extraction should land in its own quarantine dir (named: '$newq'): $out"
+
+echo "control: a non-publisher with no graph choice and no usage cache refuses before any call"
+CTL="$WS/nochoice-control"; mkdir -p "$CTL/home/.claude" "$CTL/corpus/notes" "$CTL/maps"
+printf 'test-subscription-auth\n' > "$CTL/home/.claude/.credentials.json"
+printf '{}\n' > "$CTL/home/.claude/settings.json"
+printf '# n\ncontent\n' > "$CTL/corpus/notes/a.md"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s"\nexit 0\n' "$CTL/calls.log" > "$CTL/graphify"; chmod +x "$CTL/graphify"
+: > "$CTL/calls.log"; rm -rf "$CADENCE_ALERT_DEDUPE_DIR" "$CADENCE_ALERT_FILE" "$WS/alert-sent.log"
+ctl_out=$( HOME="$CTL/home" CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_CACHE="$CTL/no-cache.json" GRAPHIFY_MAP_BIN="$CTL/graphify" \
+  bash "$SCRIPT" --name ctl --corpus-root "$CTL/corpus" --backend claude-cli --maps-dir "$CTL/maps" \
+  --title "Control" --slug ctl-map 2>&1 ); ctl_rc=$?
+ctl_alerts=$(grep -c 'graph-subscription-ctl' "$CADENCE_ALERT_FILE" 2>/dev/null || true)
+ctl_sends=$(grep -c 'graph-subscription-ctl' "$WS/alert-sent.log" 2>/dev/null || true)
+if [ "$ctl_rc" -eq 3 ] && [ ! -s "$CTL/calls.log" ] \
+   && grep -qF 'no graph choice, and the subscription usage check answered BANK-UNKNOWN; semantic pass skipped' <<< "$ctl_out" \
+   && [ "${ctl_alerts:-0}" -eq 1 ] && [ "${ctl_sends:-0}" -eq 1 ]; then
+  pass "control: a non-publisher with no graph choice gets rc 3, no graphify call, the BANK-UNKNOWN line and one alert"
+else
+  fail "control: expected rc 3, no call, the BANK-UNKNOWN line, one alert (rc=$ctl_rc alerts=${ctl_alerts:-0} sends=${ctl_sends:-0}): $ctl_out"
+fi
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"

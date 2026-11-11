@@ -4,6 +4,7 @@
 // passes himmelctl's own confPathOk. No feed text ever reaches an argv.
 import { execFileSync } from "node:child_process";
 import { confPathOk } from "../himmelctl/lib/behaviour-config.js";
+import { GRAPHMAP_COST } from "../himmelctl/lib/config-feed.js";
 
 export type Consent = { kind: "typed" | "plain"; expect: string | null };
 export type Resolved = {
@@ -45,10 +46,9 @@ const CADENCE_PATH: Readonly<Record<string, string>> = Object.freeze({
   doctor: "scripts/doctor-cadence.sh",
   rollup: "scripts/eval/rollup-cadence.sh",
 });
-// Shown in the consent text (critic F3); mirrors config-feed.js CADENCES[].cost.
 const CADENCE_BANK: Readonly<Record<string, string>> = Object.freeze({
   pipeline: "runs Claude-backed harvest/synthesize and draws the subscription bank",
-  graphmap: "weekly claude-cli extraction; draws the subscription bank",
+  graphmap: GRAPHMAP_COST,
   qmd: "none (local qmd reindex)",
   doctor: "none",
   rollup: "none",
