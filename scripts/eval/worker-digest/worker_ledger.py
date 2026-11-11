@@ -478,6 +478,7 @@ def build_rows(digest, who):
               "trajectory_v": digest.get("trajectory_v"), "lane": who["lane"], "model": model}
     meta = {"leg": who["leg"], "doc": who["doc"], "ticket": who["ticket"], "pr": who["pr"],
             "console": who["console"], "observational": True}
+    meta.update({k: who[k] for k in ("cli_version", "effort") if k in who})
     if who.get("backfill"):
         meta["backfill"] = True
     if who.get("digest_error"):
@@ -532,14 +533,8 @@ def _original_ok_ts(eval_ledger, session):
 
 
 class _OkIndex:
-    """session -> (first ok row, current ok row) from ONE scan of the eval ledger; the current row is the newest ok one,
-    as Tool health selects it. A refresh run builds this once instead of rereading the file for every session, and
-    catch_up() reads only the bytes other writers appended since, so a session's row is never stale under its lock."""
-
     def __init__(self, eval_ledger):
         self.path = eval_runs.ledger_path(eval_ledger)
-        # Sized before the scan: a row that lands during it is read twice, which changes nothing. Cut back to the end
-        # of the last whole row, so a row another writer is still appending is read whole by catch_up().
         self.size = self._row_end(os.path.getsize(self.path)) if os.path.exists(self.path) else 0
         self.rows = {}
         self._take(eval_runs.scan_rows(self.path)[0])
@@ -570,7 +565,6 @@ class _OkIndex:
                 tail = fh.read()
         except FileNotFoundError:
             return
-        # Whole lines only: a row another writer is still appending is read on the next call.
         tail = tail[:tail.rfind(b"\n") + 1]
         self.size += len(tail)
         for line in tail.splitlines():
@@ -583,12 +577,11 @@ class _OkIndex:
 
 
 def _anchored_who(who, current):
-    """who with the session's current ok eval row's attribution laid over the title-derived one: the title is a
-    fallback only for a field the row has no value for. An unknown lane is no value (a launch record may name it now)."""
     if current is None:
         return who
     meta = current.get("meta") or {}
     kept = {k: meta[k] for k in ("leg", "ticket", "pr", "console", "doc") if meta.get(k) is not None}
+    kept.update({k: meta.get(k) for k in ("cli_version", "effort")})
     if isinstance(meta.get("profile"), str) and PROFILE.match(meta["profile"]):
         kept["profile"] = meta["profile"]
     if current.get("lane") not in (None, "unknown"):
@@ -686,7 +679,6 @@ def _old_failure_ts(path, session):
 
 
 def refresh(digest, who, failures_ledger, eval_ledger, index=None):
-    """index: _OkIndex(eval_ledger), built once per backfill run; None scans the ledger for this one call."""
     if digest.get("status") != "ok":
         return "inconclusive"
     if index is None:
@@ -699,7 +691,6 @@ def refresh(digest, who, failures_ledger, eval_ledger, index=None):
         fcntl.flock(lk, fcntl.LOCK_EX)
         index.catch_up()
         if index.get(session)[1] != current:
-            # Another writer appended this session's row while this one waited: its attribution is the current one.
             current = index.get(session)[1]
             frows, erow = build_rows(digest, _anchored_who(who, current))
             did = erow["meta"]["digest_id"]
@@ -717,9 +708,6 @@ def refresh(digest, who, failures_ledger, eval_ledger, index=None):
         # Only the session's CURRENT row counts (the newest ok one, as Tool health selects it): a generation that came
         # back after another (A, B, A) must be appended again, or the selected row would stay B.
         same = [current] if (current.get("meta") or {}).get("digest_id") == did else []
-        # The version and effort are the original run's, not the refreshing shell's, whatever make_row stamped.
-        erow["meta"]["cli_version"] = (current.get("meta") or {}).get("cli_version")
-        erow["meta"]["effort"] = (current.get("meta") or {}).get("effort")
         # A replay after a crash reuses the generation's own refresh time, so the rows it rewrites come out identical.
         was = (same[-1].get("meta") or {}).get("refreshed_at") if same else None
         now = was if isinstance(was, str) and UTC_TS.match(was) else datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")

@@ -513,7 +513,6 @@ check "the validator rejects any other meta key, a bad refreshed_at and a non-ob
 check "a normal record also writes the paired snapshot" 'jq -e "select(.run_id == \"$SID\") | (.meta.digest_id | test(\"^[0-9a-f]{32}$\")) and (.meta.tool_failures | type == \"array\")" "$EL" >/dev/null'
 
 echo "17. backfill --refresh keeps each session's attribution, Claude version and effort, and reads the eval ledger once"
-# Sessions recorded with a full attribution under one Claude version and effort, then refreshed from a shell with another.
 AT_TICKET=HIMMEL-4701
 CV="$TMP/cv"; mkdir -p "$CV/vers" "$CV/bin1" "$CV/bin2" "$CV/cache/launch-logs" "$CV/nocache"
 for v in 1.2.3 4.5.6; do printf '#!/bin/sh\n' >"$CV/vers/$v"; chmod +x "$CV/vers/$v"; done
@@ -533,7 +532,6 @@ rc = worker_ledger.main(sys.argv[2:])
 print("scans=%d" % scans[0])
 sys.exit(rc)
 EOF
-# setup_attr <dir> <session>...: each session recorded under the original attribution, then made an older generation (no digest_id).
 setup_attr() {
     local d="$1" s; shift; mkdir -p "$d/p/-home-x-himmel"
     for s in "$@"; do
@@ -556,7 +554,6 @@ check "the refresh under another CLAUDE_CODE_EFFORT_LEVEL and claude version lea
 D="$TMP/at2"; setup_attr "$D" "$A1" "$A2" "$A3"
 arf "$D" python3 -I "$CV/count.py" "$HERE" >"$D/out" 2>&1 || bad "counted refresh exits 0: $(head -c 300 "$D/out")"
 check "one backfill --refresh over three sessions refreshes all three and scans the eval ledger once" 'grep -q "refreshed=3 unchanged=0" "$D/out" && grep -qx "scans=1" "$D/out"'
-# Another refresh appended this session's eval row after the index was built and stopped before its marker: the stale index must not append the generation again.
 cat >"$CV/stale.py" <<'EOF'
 import json
 import os
@@ -583,7 +580,6 @@ EOF
 D="$TMP/at3"; setup_attr "$D" "$A1"
 env HIMMELCTL_CACHE_DIR="$CV/nocache" python3 -I "$CV/stale.py" "$HERE" "$D" "$A1" >"$D/out" 2>&1
 check "an index built before another writer's eval row does not append the generation a second time" 'grep -qx "eval_rows=2" "$D/out"'
-# The index is built while another writer's row is half appended: the row is read whole once it completes.
 cat >"$CV/partial.py" <<'EOF'
 import json
 import sys
