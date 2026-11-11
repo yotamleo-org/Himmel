@@ -53,6 +53,11 @@ const ON_OFF = [["on", "On"], ["off", "Off"]];
 const trackerRow = (c) => `<div class="srow"><span class="id">Tracker</span><span class="det">${c.tracker ? "" : "not set yet · "}takes effect on your next commit</span>
       <span>${TRACKERS.map(([v, l]) => choice(l, "config.commitRules", "tracker", v, c.tracker, TK)).join(" ")}</span></div>`;
 
+// Read-only: the key live Jira tests write to. The station value is set with himmelctl, never by this page.
+const testProjectRow = (key) => `<div class="srow"><span class="id">Jira test project <span class="tag">read-only</span></span>
+      <span class="det">${key ? `<code>${esc(key)}</code> · live Jira tests write only here` : "not set · live Jira tests have no project to write to"}</span>
+      ${key ? "" : `<span class="ro">set it with ${copyCommand("himmelctl config set jira.testProject <KEY>")}</span>`}</div>`;
+
 function ticketRow(c, cfg) {
   const none = c.tracker === "none";
   const required = none || c.ticketIdRequired === false ? "off" : "on";
@@ -62,11 +67,12 @@ function ticketRow(c, cfg) {
       <span>${choice("on", "config.commitRules", "ticket-id-required", "on", required, RK, none)} ${choice("off", "config.commitRules", "ticket-id-required", "off", required, RK, none)}</span></div>`;
 }
 
-function commitRules(c, plans) {
+function commitRules(c, plans, testProject) {
   return `<h3>Commit rules</h3>
     <p class="sub">Which tracker a commit's ticket ID comes from, and whether a commit needs one. Each change shows a dry run before it writes. The ID pattern is typed in the terminal.</p>
     ${trackerRow(c)}
     ${plans[TK] ? planHtml(TK, plans[TK]) : ""}
+    ${testProjectRow(testProject)}
     ${ticketRow(c)}
     ${plans[RK] ? planHtml(RK, plans[RK]) : ""}`;
 }
@@ -397,6 +403,7 @@ function trackerPanel({ setup, state, msgs }) {
   return `<p class="sub">Where your tickets live, and what every commit must carry. Each change shows a dry run before it writes.</p>
     <div class="cols">
     <div class="col"><h3>Connection · where tickets live</h3>${trackerRow(c)}
+      ${testProjectRow(setup.testProject)}
       <p class="sub">Jira's site, email, API token and project key are entered in the <a href="#/config?tile=secrets">Secrets tab</a>, like every other secret.</p></div>
     <div class="col"><h3>Commit rules · what a commit carries</h3>${ticketRow(c, true)}
       <div class="srow"><span class="id">Ticket pattern <span class="tag">read-only</span></span><span class="det">From <code>JIRA_PROJECT_KEY</code>; your own <code>TICKET_ID_PATTERN</code> in <code>~/.himmel/himmel.conf</code> wins. Typed in the terminal.</span></div>
@@ -450,7 +457,7 @@ export function renderSetup(setup, plans, msgs, verify = null) {
     <p class="sub">A secret you save here goes to this machine over a loopback connection, bound to this launch's token; it is never shown again. This page shows only whether each secret is set, never its value. With no browser available, ${copyCommand("himmelctl install")} asks for secrets in the terminal instead.</p>
     <h3>Secrets</h3>${setup.secrets.map((s) => secretRow(s, msgs[s.name])).join("")}
     ${coderabbit(setup.coderabbit)}
-    ${commitRules(setup.commit, plans)}
+    ${commitRules(setup.commit, plans, setup.testProject)}
     ${setupChoices(setup.choices, plans)}
     ${verifyStep(verify)}`;
 }
