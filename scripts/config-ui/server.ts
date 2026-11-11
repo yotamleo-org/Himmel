@@ -651,11 +651,15 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     async (locks: Lock[], spans: Span[]): Promise<Live> => ({ ...(await liveBoards(handover, locks, spans, fileReader)), from: "file" });
   let fleetRun: ReturnType<typeof readFleet> | null = null;
   // The page polls every 5 s and every navigation asks too: requests that arrive during a read share it (never a cached body).
+  const warmSecretLiterals = (): void => { secretLiterals(); };
   function fleetOnce(): ReturnType<typeof readFleet> {
-    return fleetRun ??= readFleet({
+    if (fleetRun) return fleetRun;
+    fleetRun = readFleet({
       script: opts.fleetScript ?? join(CHECKOUT, "scripts/config-ui/fleet.sh"), env, home: env.HOME || homedir(), now: now(),
       redact: (v) => String(redactOut(v)),
     }).finally(() => { fleetRun = null; });
+    warmSecretLiterals();
+    return fleetRun;
   }
   async function route(req: Request): Promise<Response> {
     const origin = `http://${LOOPBACK}:${server.port}`;

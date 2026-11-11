@@ -9,6 +9,8 @@ import { readFleet } from "../agui/fleet.ts";
 import { startServer } from "../server";
 import { EXPIRY_MS } from "../../../marketplace/plugins/himmel-bus/lib/agui.mjs";
 import { busRoot, append } from "../../../marketplace/plugins/himmel-bus/lib/store.mjs";
+import secretsManifest from "../../himmelctl/lib/secrets-manifest.json";
+import { stubKeyring } from "./keyring-stub";
 
 const TOKEN = "t".repeat(64);
 const cleanups: (() => void)[] = [];
@@ -100,6 +102,30 @@ test("a message sent after the cached read shows on a later poll", async () => {
   let seen = 0;
   for (let i = 0; i < 100 && seen <= BUS_LOGS; i++) { seen = b.edgeN((await b.read("100")).f); if (seen <= BUS_LOGS) await new Promise((ok) => setTimeout(ok, 100)); }
   expect(seen).toBe(BUS_LOGS + 1);
+}, 60_000);
+
+const FLEET_BUDGET_MS = 3000;
+test("a first poll of a tree with slow independent steps is under the stated budget: the steps overlap", async () => {
+  const t = tree(32, "0.8");
+  const state = join(t.dir, "state");
+  const root = await busRoot({ stateHome: state });
+  const now = Date.now();
+  await Promise.all(Array.from({ length: BUS_LOGS }, (_, k) => append(root, `S${k}`, { t: now, b: "x", c: 0, i: `M${k}`, f: "S0", r: `S${k}` })));
+  const orphans = join(t.dir, "orphan-loops.sh");
+  writeFileSync(orphans, "#!/bin/sh\nsleep 1\n");
+  chmodSync(orphans, 0o755);
+  const k = stubKeyring(t.dir);
+  const slowSecretTool = "#!/bin/sh\nsleep 0.01\nexit 1\n";
+  writeFileSync(join(t.dir, "kbin", "secret-tool"), slowSecretTool);
+  const blank = Object.fromEntries([...secretsManifest.secrets, ...secretsManifest.stationSecrets].map((s: { name: string }) => [s.name, ""]));
+  const s = startServer({ onIdle: () => {}, port: 0, token: TOKEN, fleetScript: t.script, env: { ...blank, ...k.env, HIMMEL_SECRETS_KEYRING: "", HOME: t.dir, XDG_STATE_HOME: state, CONFIG_UI_ORPHAN_LOOPS: orphans, CONFIG_UI_IDLE_MS: "60000" } });
+  cleanups.push(() => s.stop());
+  const t0 = performance.now();
+  const r = await fetch(`http://127.0.0.1:${s.port}/api/agui/fleet`, { headers: { "X-Himmel-Token": TOKEN } });
+  const ms = performance.now() - t0;
+  expect(r.status).toBe(200);
+  expect(((await r.json()) as { sessions: unknown[] }).sessions.length).toBe(32);
+  expect(ms).toBeLessThan(FLEET_BUDGET_MS);
 }, 60_000);
 
 test("requests that arrive while a fleet read is running share it: one census run", async () => {

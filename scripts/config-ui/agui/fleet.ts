@@ -187,11 +187,18 @@ async function selfMatches(pid: number, env: Record<string, string | undefined>)
     });
   } catch { return false; }
 }
-async function processOrphansOf(opts: { script: string; env: Record<string, string | undefined> }, live: Set<string> = new Set()): Promise<ProcessOrphan[] | null> {
+function startEarly<T>(p: Promise<T>): Promise<T> {
+  p.catch(() => undefined);
+  return p;
+}
+function orphanListOf(opts: { script: string; env: Record<string, string | undefined> }): Promise<string | null> {
   const script = opts.env.CONFIG_UI_ORPHAN_LOOPS || join(dirname(opts.script), "../handover/chief-kit/orphan-loops.sh");
-  const listed = await new Promise<string | null>((ok) => {
+  return new Promise<string | null>((ok) => {
     execFile("bash", [script, "--list"], { env: opts.env as NodeJS.ProcessEnv, timeout: 10_000, maxBuffer: 256 * 1024 }, (err, stdout) => ok(err ? null : stdout));
   });
+}
+async function processOrphansOf(opts: { script: string; env: Record<string, string | undefined> }, live: Set<string> = new Set(), listing: Promise<string | null> = orphanListOf(opts)): Promise<ProcessOrphan[] | null> {
+  const listed = await listing;
   if (listed === null) return null;
   return Promise.all(listed.split("\n").flatMap((l) => {
     const m = /^pid=(\d+) owner=(\S+) age=(\d+)m$/.exec(l.trim());
@@ -493,6 +500,29 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
       }
     } catch { /* malformed or unreadable manifest: no edge */ }
   }
+  const busP = startEarly(busOf(busRootOf(opts.env, opts.home), opts.env)), orphanListP = startEarly(orphanListOf(opts)), cloudP = startEarly(cloudRows(census.cloudRoutes ?? [], opts.env, opts.now));
+  const archived: [string, string][] = [];
+  for (const file of census.consoleDocs ?? []) {
+    const name = plain(basename(file, ".md"));
+    if (name) archived.push([file, name]);
+  }
+  const builtP = startEarly(mapLimit(archived, CONSOLE_DOC_CONCURRENCY, async ([file, name]): Promise<FleetRow | null> => {
+    try {
+      const s = await stat(file);
+      if (opts.now - s.mtimeMs > 72 * RECENT_MS) return null;
+      const doc = await readFile(file, "utf8");
+      const lock = await lockOf(file, doc);
+      const wrapped = ownWrap(doc) && lock === "released";
+      return {
+        name, role: "console", pid: null, run: null, model: null, ticket: null, pr: null,
+        state: wrapped ? "wrapped" : "unknown", activity: null, lastEventAt: null,
+        subagents: { total: 0, running: 0 }, failures: 0, ...graphOf("console", doc),
+        agents: [], usage: null, cloud: null, runtime: null, console: name, live: false,
+        lock, cadence: null, lane: "native", laneFrom: null, backendModel: null, cost: null, eval: null,
+        marker: wrapped ? "WRAPPED" : null, lastSeenAt: s.mtimeMs, prUrl: null, bus: NO_BUS, description: "",
+      };
+    } catch { return null; }
+  }));
   const seen = new Set<string>();
   const rows = await Promise.all(census.sessions.map(async (c): Promise<FleetRow | null> => {
     let launch: Record<string, string> = {};
@@ -564,30 +594,8 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
   // the rows that show a doc: only these get their description looked up
   const described: [FleetRow, string][] = [];
   census.sessions.forEach((c, i) => { const r = rows[i]; if (r && c.doc) described.push([r, c.doc]); });
-  // The station keeps hundreds of archived chief docs, each read and lock-checked (a bash process): a bounded pool, never one at a time.
   const taken = new Set(rows.map((r) => r?.name));
-  const archived: [string, string][] = [];
-  for (const file of census.consoleDocs ?? []) {
-    const name = plain(basename(file, ".md"));
-    if (name && !taken.has(name)) archived.push([file, name]);
-  }
-  const built = await mapLimit(archived, CONSOLE_DOC_CONCURRENCY, async ([file, name]): Promise<FleetRow | null> => {
-    try {
-      const s = await stat(file);
-      if (opts.now - s.mtimeMs > 72 * RECENT_MS) return null;
-      const doc = await readFile(file, "utf8");
-      const lock = await lockOf(file, doc);
-      const wrapped = ownWrap(doc) && lock === "released";
-      return {
-        name, role: "console", pid: null, run: null, model: null, ticket: null, pr: null,
-        state: wrapped ? "wrapped" : "unknown", activity: null, lastEventAt: null,
-        subagents: { total: 0, running: 0 }, failures: 0, ...graphOf("console", doc),
-        agents: [], usage: null, cloud: null, runtime: null, console: name, live: false,
-        lock, cadence: null, lane: "native", laneFrom: null, backendModel: null, cost: null, eval: null,
-        marker: wrapped ? "WRAPPED" : null, lastSeenAt: s.mtimeMs, prUrl: null, bus: NO_BUS, description: "",
-      };
-    } catch { return null; /* archived console moved or unreadable */ }
-  });
+  const built = await builtP;
   // the first readable doc of a name wins, in census order; an expired or unreadable one never hides a later one
   built.forEach((row, i) => { if (row && !taken.has(row.name)) { taken.add(row.name); rows.push(row); described.push([row, archived[i][0]]); } });
   const descOf = await describe(described.map(([, f]) => f), opts.script, opts.env);
@@ -596,7 +604,7 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
     // the stem is the doc's name, already shown unredacted; the redactor would mask a long stem as a token run
     r.description = text === basename(f, ".md") ? text : opts.redact(text);
   }
-  const cloud = await cloudRows(census.cloudRoutes ?? [], opts.env, opts.now);
+  const cloud = await cloudP;
   // A local worker on a cloud session's ticket is its shepherd: it hangs under the cloud node, not the chief.
   for (const r of rows) {
     const c = r?.role === "worker" && cloud.find((x) => x.ticket === r.ticket);
@@ -606,9 +614,9 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
   for (const journal of folds.keys()) if (!seen.has(journal)) folds.delete(journal);
   const sessions = [...rows.filter((r): r is FleetRow => r !== null), ...cloud];
   const slug = await repoSlugOf(join(dirname(opts.script), "../.."), opts.env);
-  const bus = await busOf(busRootOf(opts.env, opts.home), opts.env);
+  const bus = await busP;
   for (const r of sessions) { r.prUrl = prUrlOf(slug, r.pr); r.bus = bus.of(r.name); }
   // orphan-loops.sh names an owner with every character outside [A-Za-z0-9_.-] turned into `_`
   const liveOwners = new Set(sessions.filter((r) => r.live && r.role !== "cloud").map((r) => r.name.replace(/[^A-Za-z0-9_.-]/g, "_")));
-  return { census: census.census, generatedAt: opts.now, sessions, edges: bus.edges, processOrphans: await processOrphansOf(opts, liveOwners), banks };
+  return { census: census.census, generatedAt: opts.now, sessions, edges: bus.edges, processOrphans: await processOrphansOf(opts, liveOwners, orphanListP), banks };
 }
