@@ -67,7 +67,7 @@ printf '# B doc\nkept line\n' > "$R/docs/b.md"
 printf '# X\n' > "$R/fixtures/x.md"
 printf '# M\n' > "$R/node_modules/m.md"
 printf 'print(1)\n' > "$R/tools/a.py"
-ln -s a.md "$R/docs/alias.md"
+ln -s a.md "$R/docs/alias.md" || exit 1
 git -C "$R" add -A && gc one
 C1="$(git -C "$R" rev-parse HEAD)"
 printf '# A doc\nold line\nfresh added line\n' > "$R/docs/a.md"
@@ -170,6 +170,19 @@ eq "::embed_cap_covers_second_tree (6 documents to embed against a cap of 5: exi
 reset_logs
 fx build --first "$C1" --second "$C2" --state c --out "$W/paid-c6" --embed-ok 6 > /dev/null 2>&1; rc=$?
 eq "::embed_cap_covers_second_tree (control: a cap of 6 runs both embeds)" "0|2" "$rc|$(qlog | grep -c '^embed')"
+R3="$W/repo3"; git init -q -b main "$R3" || exit 1
+gc3() { git -C "$R3" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -q --no-verify -m "$1"; }
+printf '# X\n' > "$R3/x.md"; ln -s x.md "$R3/alias.md" || exit 1
+git -C "$R3" add -A && gc3 one; D1="$(git -C "$R3" rev-parse HEAD)"
+rm "$R3/alias.md" && printf '# Alias is a real file now\n' > "$R3/alias.md"
+git -C "$R3" add -A && gc3 two; D2="$(git -C "$R3" rev-parse HEAD)"
+FX_EXTRA=(HIMMEL_BILLED_OK=1 "SF_REPO=$R3")
+reset_logs
+fx build --first "$D1" --second "$D2" --state c --out "$W/paid-t1" --embed-ok 1 > /dev/null 2>&1; rc=$?
+eq "::embed_cap_covers_type_change (a symlink replaced by a regular file counts: 2 documents against a cap of 1, exit 2, no embed)" "2|0" "$rc|$(qlog | grep -c '^embed')"
+fx build --first "$D1" --second "$D2" --state c --out "$W/paid-t2" --embed-ok 2 > /dev/null 2>&1; rc=$?
+eq "::embed_cap_covers_type_change (control: a cap of 2 runs)" "0" "$rc"
+FX_EXTRA=(HIMMEL_BILLED_OK=1)
 FX_EXTRA=()
 
 reset_logs

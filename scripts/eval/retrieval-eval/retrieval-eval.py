@@ -337,7 +337,9 @@ def _mcp_post(url, body, headers, timeout):
     req = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST",
                                  headers=dict(headers, **{"Content-Type": "application/json",
                                                           "Accept": "application/json, text/event-stream"}))
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    loopback = (urllib.parse.urlsplit(url).hostname or "").lower() in LOOPBACK
+    open_url = urllib.request.build_opener(urllib.request.ProxyHandler({})).open if loopback else urllib.request.urlopen
+    with open_url(req, timeout=timeout) as r:
         raw = r.read().decode(errors="replace")
         sid = r.headers.get("mcp-session-id")
     if raw.lstrip().startswith("{"):
@@ -857,8 +859,13 @@ def cmd_run(a):
                 heldout_sha256=hashlib.sha256(json.dumps(held, sort_keys=True).encode()).hexdigest()[:16])
     if "graphify" in arms or "combined" in arms:
         try:
-            meta["graph_built_at"] = pair_cfg.get("graph_commit") or graph_built(repo)
-        except RuntimeError as e:
+            if pair_cfg.get("graph_commit"):
+                with open(os.path.join(os.environ["WORKER_GRAPH_OUT"], "graph.json"), "rb") as fh:
+                    fh.read(1)
+                meta["graph_built_at"] = pair_cfg["graph_commit"]
+            else:
+                meta["graph_built_at"] = graph_built(repo)
+        except (RuntimeError, OSError) as e:
             meta["graph_built_error"] = str(e)
             print("retrieval-eval: ERROR graph stamp: %s" % e, file=sys.stderr)
     row = eval_runs.make_row("retrieval-eval", "scripts/eval/retrieval-eval/retrieval-eval.py", config, metrics,

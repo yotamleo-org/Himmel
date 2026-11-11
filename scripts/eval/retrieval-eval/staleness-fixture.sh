@@ -110,7 +110,7 @@ for e in sys.stdin.buffer.read().split(b"\0"):
         sys.stdout.buffer.write(e.split(b"\t", 1)[1] + b"\0")' | count_paths "$2"
 }
 delta_count() {
-    git -C "$REPO" diff --raw -z --no-renames --diff-filter=AM "$1" "$2" | python3 -I -c 'import sys
+    git -C "$REPO" diff --raw -z --no-renames --diff-filter=AMT "$1" "$2" | python3 -I -c 'import sys
 t = sys.stdin.buffer.read().split(b"\0")
 for meta, path in zip(t[0::2], t[1::2]):
     if meta.split()[1] not in (b"120000", b"160000"):
