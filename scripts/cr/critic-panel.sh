@@ -1247,41 +1247,10 @@ _queue_attempt() {
 
 _append_panel_ledger() {
     _apl_failed=0
-    # Glob the per-member spool files: bash sorts pathname
-    # expansion, so the read order is deterministic. [ -f ] guards the no-match
-    # case (a finding.* glob with no findings would otherwise be a literal
-    # pattern). set -- inside the loop reassigns positionals; the for-loop
-    # iterates a named var, so it is unaffected.
-    for _apl_spool in "$PANEL_SPOOL_DIR"/avail.*; do
-        [ -f "$_apl_spool" ] || continue
-        while IFS=$'\034' read -r _apl_model _apl_status _apl_responding _apl_reason _apl_detail; do
-            [ -n "$_apl_model" ] || continue
-            set -- avail --branch "$REVIEW_BRANCH" --head "$REVIEW_HEAD" \
-                --model "$_apl_model" --status "$_apl_status"
-            [ -n "$_apl_responding" ] && set -- "$@" --responding-model "$_apl_responding"
-            [ -n "$_apl_reason" ] && set -- "$@" --reason "$_apl_reason"
-            [ -n "$_apl_detail" ] && set -- "$@" --detail "$_apl_detail"
-            CR_LEDGER="$PANEL_LEDGER" bash "$LEDGER_APPEND" "$@" </dev/null || _apl_failed=1
-        done < "$_apl_spool"
-    done
-
-    # attempt.* rows are NEVER deduped by ledger-append.sh (each
-    # try — primary + every fallback candidate — gets its own line), unlike
-    # avail.* above (one authoritative row per member).
-    for _apl_spool in "$PANEL_SPOOL_DIR"/attempt.*; do
-        [ -f "$_apl_spool" ] || continue
-        while IFS=$'\034' read -r _apl_model _apl_responding _apl_attempt _apl_outcome _apl_duration _apl_detail; do
-            [ -n "$_apl_model" ] || continue
-            set -- attempt --branch "$REVIEW_BRANCH" --head "$REVIEW_HEAD" \
-                --model "$_apl_model" --status "$_apl_outcome"
-            [ -n "$_apl_responding" ] && set -- "$@" --responding-model "$_apl_responding"
-            [ -n "$_apl_attempt" ] && set -- "$@" --attempt "$_apl_attempt"
-            [ -n "$_apl_duration" ] && set -- "$@" --duration-secs "$_apl_duration"
-            [ -n "$_apl_detail" ] && set -- "$@" --detail "$_apl_detail"
-            CR_LEDGER="$PANEL_LEDGER" bash "$LEDGER_APPEND" "$@" </dev/null || _apl_failed=1
-        done < "$_apl_spool"
-    done
-
+    # Findings are recorded FIRST. ledger-append.sh never downgrades an ok
+    # avail row, so a record failure found after the avail rows were written could not
+    # take their ok back; the avail rows below read _apl_findings_failed instead.
+    _apl_findings_failed=0
     # one ledger-append.sh --batch-file call for ALL finding rows
     # instead of one `bash ledger-append.sh finding` invocation per row. Each
     # invocation used to re-read + re-parse the whole ledger and re-resolve
@@ -1300,7 +1269,7 @@ _append_panel_ledger() {
         _apl_batch_file="$PANEL_SPOOL_DIR/.finding-batch.jsonl"
         : > "$_apl_batch_file"
         if [ -s "$PANEL_SPOOL_DIR/.finding-enriched.jsonl" ]; then
-            cp "$PANEL_SPOOL_DIR/.finding-enriched.jsonl" "$_apl_batch_file" || _apl_failed=1
+            cp "$PANEL_SPOOL_DIR/.finding-enriched.jsonl" "$_apl_batch_file" || { _apl_failed=1; _apl_findings_failed=1; }
         fi
         # Hand node the spool CONTENT on stdin and take the JSONL back on
         # stdout, keeping paths out of the environment.
@@ -1328,12 +1297,53 @@ _append_panel_ledger() {
             process.stdout.write(out.length?out.join("\n")+"\n":"");
         ' >> "$_apl_batch_file"; then
             if [ -s "$_apl_batch_file" ]; then
-                CR_LEDGER="$PANEL_LEDGER" bash "$LEDGER_APPEND" finding --batch-file "$_apl_batch_file" || _apl_failed=1
+                CR_LEDGER="$PANEL_LEDGER" bash "$LEDGER_APPEND" finding --batch-file "$_apl_batch_file" || { _apl_failed=1; _apl_findings_failed=1; }
             fi
         else
-            _apl_failed=1
+            _apl_failed=1; _apl_findings_failed=1
         fi
     fi
+
+    # Glob the per-member spool files: bash sorts pathname
+    # expansion, so the read order is deterministic. [ -f ] guards the no-match
+    # case (a finding.* glob with no findings would otherwise be a literal
+    # pattern). set -- inside the loop reassigns positionals; the for-loop
+    # iterates a named var, so it is unaffected.
+    for _apl_spool in "$PANEL_SPOOL_DIR"/avail.*; do
+        [ -f "$_apl_spool" ] || continue
+        while IFS=$'\034' read -r _apl_model _apl_status _apl_responding _apl_reason _apl_detail; do
+            [ -n "$_apl_model" ] || continue
+            if [ "$_apl_findings_failed" -eq 1 ] && [ "$_apl_status" = "ok" ]; then
+                # The review could not be recorded: never leave a passing row.
+                _apl_status="unavailable"; _apl_responding=""
+                _apl_reason="record-failed"
+                _apl_detail="finding rows could not be recorded on the CR ledger; this run is not certified"
+            fi
+            set -- avail --branch "$REVIEW_BRANCH" --head "$REVIEW_HEAD" \
+                --model "$_apl_model" --status "$_apl_status"
+            [ -n "$_apl_responding" ] && set -- "$@" --responding-model "$_apl_responding"
+            [ -n "$_apl_reason" ] && set -- "$@" --reason "$_apl_reason"
+            [ -n "$_apl_detail" ] && set -- "$@" --detail "$_apl_detail"
+            CR_LEDGER="$PANEL_LEDGER" bash "$LEDGER_APPEND" "$@" </dev/null || _apl_failed=1
+        done < "$_apl_spool"
+    done
+
+    # attempt.* rows are NEVER deduped by ledger-append.sh (each
+    # try — primary + every fallback candidate — gets its own line), unlike
+    # avail.* above (one authoritative row per member).
+    for _apl_spool in "$PANEL_SPOOL_DIR"/attempt.*; do
+        [ -f "$_apl_spool" ] || continue
+        while IFS=$'\034' read -r _apl_model _apl_responding _apl_attempt _apl_outcome _apl_duration _apl_detail; do
+            [ -n "$_apl_model" ] || continue
+            set -- attempt --branch "$REVIEW_BRANCH" --head "$REVIEW_HEAD" \
+                --model "$_apl_model" --status "$_apl_outcome"
+            [ -n "$_apl_responding" ] && set -- "$@" --responding-model "$_apl_responding"
+            [ -n "$_apl_attempt" ] && set -- "$@" --attempt "$_apl_attempt"
+            [ -n "$_apl_duration" ] && set -- "$@" --duration-secs "$_apl_duration"
+            [ -n "$_apl_detail" ] && set -- "$@" --detail "$_apl_detail"
+            CR_LEDGER="$PANEL_LEDGER" bash "$LEDGER_APPEND" "$@" </dev/null || _apl_failed=1
+        done < "$_apl_spool"
+    done
 
     [ "$_apl_failed" -eq 0 ]
 }
