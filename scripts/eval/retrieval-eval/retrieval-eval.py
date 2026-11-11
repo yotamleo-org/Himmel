@@ -865,7 +865,14 @@ def cmd_run(a):
                 heldout_sha256=hashlib.sha256(json.dumps(held, sort_keys=True).encode()).hexdigest()[:16])
     if "graphify" in arms or "combined" in arms:
         try:
-            meta["graph_built_at"] = graph_built(repo)
+            try:
+                meta["graph_built_at"] = graph_built(repo)
+                meta["graph_stamp_source"] = "graph"
+            except NoStamp:
+                if not pair_cfg.get("graph_commit"):
+                    raise
+                meta["graph_built_at"] = pair_cfg["graph_commit"]
+                meta["graph_stamp_source"] = "pair.json"
         except (RuntimeError, OSError) as e:
             meta["graph_built_error"] = str(e)
             print("retrieval-eval: ERROR graph stamp: %s" % e, file=sys.stderr)
@@ -924,6 +931,10 @@ def graph_built(repo):
     return stamp_of(os.path.join(os.path.dirname(common), "graphify-out", "graph.json"))
 
 
+class NoStamp(RuntimeError):
+    pass
+
+
 def stamp_of(path):
     stamp = re.compile(rb'"built_at_commit"\s*:\s*"([0-9a-fA-F]+)"')
     try:
@@ -937,7 +948,7 @@ def stamp_of(path):
                 boundary_tail = data[-256:]
     except OSError as e:
         raise RuntimeError("cannot read graph.json at %s: %s" % (path, e)) from e
-    raise RuntimeError("no built_at_commit stamp in %s" % path)
+    raise NoStamp("no built_at_commit stamp in %s" % path)
 
 
 def cmd_replay(a):
