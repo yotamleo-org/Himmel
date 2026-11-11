@@ -1517,6 +1517,75 @@ contains 'a bucket whose round status cannot be read names its critic files unre
 contains 'a bucket whose round status cannot be read names the round ledger unread' "$(grep -F 'data-section="waiting"' "$v9611out")" 'round ledger'
 not_contains 'a bucket whose round status cannot be read lists no unsigned spec' "$(grep -F -e 'data-section="waiting"' -e 'data-section="chief-owes"' "$v9611out")" 'latest critic round'
 
+# --- a card shows its phase label, and a key in --stale-file shows STALE (the tracker shows what it is handed)
+s4="$W/s4"
+mkdir -p "$s4/mirror" "$s4/wk"
+s4mk() {  # s4mk <n> <labels json>
+    printf '%s\n' '---' "key: \"HIMMEL-$1\"" 'updated: "2026-09-30T10:00:00.000+0000"' 'statusCategory: "In Progress"' 'status: "In Progress"' \
+        'fixVersions: ["v1.1.3"]' "labels: $2" 'type: "Task"' '---' "# HIMMEL-$1: s4 card $1" > "$s4/mirror/HIMMEL-$1.md"
+}
+s4mk 11 '["phase:sliced"]'
+s4mk 12 '["phase:design"]'
+s4mk 13 '[]'
+s4mk 14 '["phase:build"]'
+for n in 12 13 14; do printf '{"key":"HIMMEL-%s","leg":"N%s","state":"live","prs":{}}\n' "$n" "$n" > "$s4/wk/HIMMEL-$n.json"; done
+printf '[]\n' > "$s4/prs.json"
+s4out="$s4/page.html"
+s4render() {
+    python3 "$HERE/tracker.py" --version v1.1.3 --repo example-org/example-repo --mirror-dir "$s4/mirror" --prs-file "$s4/prs.json" \
+        --workers-dir "$s4/wk" --out "$s4out" "$@" 2>&1
+}
+s4card() { grep -F "data-key=\"HIMMEL-$1\"" "$s4out" 2>/dev/null; }
+printf 'state\tcomplete\nHIMMEL-11\nHIMMEL-14\n' > "$s4/stale-complete"
+s4o="$(s4render --stale-file "$s4/stale-complete")"
+s4rc=$?
+if [ "$s4rc" -eq 0 ]; then pass 'S4: --stale-file renders and exits 0'; else fail "S4: --stale-file exited $s4rc: $s4o"; fi
+s4page="$(cat "$s4out" 2>/dev/null)"
+contains 'S4: a stale key shows its phase label on the card' "$(s4card 11)" 'phase:sliced'
+contains 'S4: a stale key shows STALE on the card' "$(s4card 11)" 'STALE · started, no live owner, no open PR, no dated wait'
+contains 'S4: a card off the stale file shows its phase label' "$(s4card 12)" 'phase:design'
+not_contains 'S4: a card off the stale file has no STALE mark' "$(s4card 12)" 'STALE'
+contains 'S4: a started card with no phase label reads phase: none' "$(s4card 13)" '<span class="phase none">phase: none</span>'
+not_contains 'S4: a started card off the stale file with no label has no STALE mark' "$(s4card 13)" 'STALE'
+contains 'S4: a stale key with a live worker record still shows STALE (the tracker shows what it is handed)' "$(s4card 14)" 'STALE'
+contains 'S4: that card also shows its phase label' "$(s4card 14)" 'phase:build'
+contains 'S4: the header counts started cards with no phase' "$s4page" 'no phase 1'
+contains 'S4: the header counts the stale cards of a complete file' "$s4page" 'stale 2'
+not_contains 'S4: a complete file has no partial note' "$s4page" 'stale 2 (partial)'
+printf 'state\tpartial\nHIMMEL-11\nHIMMEL-14\n' > "$s4/stale-partial"
+s4render --stale-file "$s4/stale-partial" >/dev/null
+contains 'S4: a partial file reads stale 2 (partial)' "$(cat "$s4out" 2>/dev/null)" 'stale 2 (partial)'
+s4render >/dev/null
+s4page="$(cat "$s4out" 2>/dev/null)"
+not_contains 'S4: with no --stale-file no card is marked STALE' "$(s4card 11)" 'STALE'
+contains 'S4: with no --stale-file the header reads stale: unknown' "$s4page" 'stale: unknown'
+printf 'garbage\nHIMMEL-11\n' > "$s4/stale-bad"
+s4render --stale-file "$s4/stale-bad" >/dev/null
+not_contains 'S4: a malformed first line marks no card' "$(s4card 11)" 'STALE'
+contains 'S4: a malformed first line reads stale: unknown' "$(cat "$s4out" 2>/dev/null)" 'stale: unknown'
+s4render --stale-file "$s4/no-such-file" >/dev/null
+contains 'S4: a missing stale file reads stale: unknown' "$(cat "$s4out" 2>/dev/null)" 'stale: unknown'
+s4mk 15 '["phase:design","phase:build"]'
+s4render --stale-file "$s4/stale-complete" >/dev/null
+contains 'S4: two phase labels show both' "$(s4card 15)" 'phase:build'
+contains 'S4: two phase labels show the multi mark' "$(s4card 15)" '<span class="phase multi">phase: 2 labels</span>'
+rm -f "$s4/mirror/HIMMEL-15.md"
+# the page fingerprint (P11): a stale key that is no card here, an added card key and a moved label
+s4vfp() { s4render "$@" >/dev/null; cat "$s4out.vfp" 2>/dev/null; }
+printf 'state\tcomplete\nHIMMEL-11\nHIMMEL-14\nHIMMEL-9999\n' > "$s4/stale-offpage"
+printf 'state\tcomplete\nHIMMEL-11\nHIMMEL-14\nHIMMEL-12\n' > "$s4/stale-more"
+s4base="$(s4vfp --stale-file "$s4/stale-complete")"
+equals 'S4: two stale files that differ only in a key off this page give the same .vfp' "$(s4vfp --stale-file "$s4/stale-offpage")" "$s4base"
+if [ "$(s4vfp --stale-file "$s4/stale-more")" != "$s4base" ]; then pass 'S4: adding a card key to the stale file changes the .vfp'; else fail 'S4: adding HIMMEL-12 to the stale file left the .vfp unchanged'; fi
+s4mk 11 '["phase:last-step"]'
+if [ "$(s4vfp --stale-file "$s4/stale-complete")" != "$s4base" ]; then pass 'S4: moving a card from phase:sliced to phase:last-step changes the .vfp'; else fail 'S4: a moved phase label left the .vfp unchanged'; fi
+s4mk 11 '["phase:sliced"]'
+fpargs=(--emit-fp --plan-dir "$plan" --out "$s4/fp.html" --luna-map "$W/luna-map.json" --mirror-dir "$s4/mirror" --luna-root "$W/luna" --handovers "$W/luna/handovers/tester/himmel")
+s4fp1="$(python3 "$HERE/tracker.py" "${fpargs[@]}" 2>&1)"
+s4fp2="$(python3 "$HERE/tracker.py" "${fpargs[@]}" --stale-file "$s4/stale-complete" 2>&1)"
+equals 'S4: --emit-fp prints the same value with and without a stale file' "$s4fp2" "$s4fp1"
+case "$s4fp1" in *error*|*usage*|'') fail "S4: --emit-fp gave no fingerprint: $s4fp1" ;; *) pass 'S4: --emit-fp prints a fingerprint' ;; esac
+
 # --- both pages open dark with no saved choice, whatever the system preference says
 if command -v node >/dev/null 2>&1; then
 cat > "$W/dark-check.mjs" <<'JS'

@@ -1533,7 +1533,21 @@ def source_notes(chains, chains_mtime, prio_mtime, ndt):
     return notes
 
 
-def version_page(mir, version, groups, prs, chains, base, repo, workers=None, chains_mtime=None, drain='', prio_mtime=None, bucket_dir=None, chief_doc=None):
+def read_stale(path):
+    """(state, {ticket numbers}) from a --stale-file: line 1 `state<TAB>complete|partial|unknown`, then one HIMMEL-<n> per line.
+    A missing or unreadable file, a malformed first line or a state of unknown gives ('unknown', set()): no key is trusted."""
+    try:
+        lines = open(path, encoding='utf-8').read().splitlines()
+    except (OSError, UnicodeDecodeError, TypeError):
+        return 'unknown', set()
+    head = lines[0].split('\t') if lines else []
+    if len(head) != 2 or head[0] != 'state' or head[1] not in ('complete', 'partial'):
+        return 'unknown', set()
+    return head[1], {num(l.strip()) for l in lines[1:] if KEY_RE.fullmatch(l.strip())}
+
+
+def version_page(mir, version, groups, prs, chains, base, repo, workers=None, chains_mtime=None, drain='', prio_mtime=None, bucket_dir=None, chief_doc=None,
+                 stale=('unknown', frozenset())):
     """(html, stdout parity line, focus fingerprint): the FOCUS page of one version (HIMMEL-6769).
 
     Columns are the Jira status names of the version's open tickets, moved by an open PR's CI (`ci_column`) and each
@@ -1587,9 +1601,27 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None, ch
     def key_html(k):
         return '<a href="%s/browse/HIMMEL-%d">HIMMEL-%d</a>' % (esc(base), k, k) if base else '<b>HIMMEL-%d</b>' % k
 
+    def phases(k):
+        return sorted(l for l in opn[k].get('labels', []) if l.startswith('phase:'))
+
+    def started(k):
+        return opn[k]['sn'] in ('In Progress', 'In Review', 'IN CI')
+
+    stale_state, stale_keys = stale
+    stale_cards = sorted(k for k in opn if k in stale_keys)
+
+    def phase_html(k):
+        ph = phases(k)
+        out = ''.join('<span class="phase">%s</span>' % esc(l) for l in ph)
+        if len(ph) > 1:
+            out += '<span class="phase multi">phase: %d labels</span>' % len(ph)
+        elif not ph and started(k):
+            out = '<span class="phase none">phase: none</span>'
+        return out
+
     def card(k):
         m = opn[k]
-        badges = ''.join('<a class="pr ci-%s" href="https://github.com/%s/pull/%d">#%d · CI %s%s</a>'
+        badges =''.join('<a class="pr ci-%s" href="https://github.com/%s/pull/%d">#%d · CI %s%s</a>'
                          % (ci, esc(repo), n, n, ci, ' · draft' if d else '') for n, ci, d in sorted((prs or {}).get(k, [])))
         if prs is not None and not badges and bucket(m) != 'todo':
             badges = '<span class="pr nopr">no open PR</span>'
@@ -1600,9 +1632,10 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None, ch
         dirq = ['HIMMEL-%d' % b for b, st in bl if st == 'direction?']
         shut = ['HIMMEL-%d (%s)' % (b, st) for b, st in bl if st in ('done', 'wont')]
         ft = inchain.get('HIMMEL-%d' % k)
-        return ('<div class="card%s%s" style="--s:%s" data-key="HIMMEL-%d" data-block="%s">%s %s<div>%s</div>%s%s%s%s%s%s'
+        return ('<div class="card%s%s" style="--s:%s" data-key="HIMMEL-%d" data-block="%s">%s %s%s<div>%s</div>%s%s%s%s%s%s%s'
                 '<span class="sec" style="--s:%s">%s</span></div>\n'
-                % (' isblocked' if live else '', ' isft' if ft else '', sc, k, esc(block[k]), key_html(k), badges, esc(clip(m['title'], 120)),
+                % (' isblocked' if live else '', ' isft' if ft else '', sc, k, esc(block[k]), key_html(k), badges, phase_html(k), esc(clip(m['title'], 120)),
+                   '<div class="stale">STALE · started, no live owner, no open PR, no dated wait</div>' if k in stale_keys else '',
                    '<div class="dirq">Jira %s, PR CI says %s</div>' % (esc(jcol[k]), esc(ecol[k])) if jcol[k] != ecol[k] else '',
                    '<div class="wk">%s</div>' % esc(worker_line(workers[k])) if k in workers else '',
                    '<div class="ft">FAST-TRACK · %s</div>' % esc(ft) if ft else '',
@@ -1697,8 +1730,9 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None, ch
         'drain': drain,
         'done': done,
         'merged': merged,
-        'tickets': [[k, opn[k]['sn'], ecol[k], opn[k]['title'], 'held' in opn[k].get('labels', []), block[k], order[k], opn[k]['sector'], blocker_list(mir, k)]
-                    for k in sorted(opn)],
+        'tickets': [[k, opn[k]['sn'], ecol[k], opn[k]['title'], 'held' in opn[k].get('labels', []), block[k], order[k], opn[k]['sector'], blocker_list(mir, k),
+                     phases(k)] for k in sorted(opn)],
+        'stale': [stale_state, stale_cards],
         'chains': [[ch['name'], [[st.get('key', ''), '' if KEY_RE.fullmatch(st.get('key', '')) else st.get('label', ''), step_state(st),
                                   None if KEY_RE.fullmatch(st.get('key', '')) else st.get('pr'), None if KEY_RE.fullmatch(st.get('key', '')) else st.get('owner'),
                                   step_row(st.get('key', ''))]
@@ -1713,6 +1747,8 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None, ch
     html = VERSION_TEMPLATE.format(
         v=esc(version), n=len(opn), d=done, h=merged, gen=datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC'), mir=esc(utc_stamp(upd)),
         age=esc(age), waiting=waithtml,
+        marks='no phase %d · %s' % (sum(1 for k in opn if started(k) and not phases(k)), 'stale: unknown' if stale_state == 'unknown' else
+                                    'stale %d%s' % (len(stale_cards), ' (partial)' if stale_state == 'partial' else '')),
         drain='<div class="drain">%s</div>\n' % esc(drain) if drain else '',
         prs='' if prs is not None else ' PR state unavailable (gh could not be read), so no card is flagged for a missing PR.',
         chains='<h2 class="sh">Waves and merge chains</h2><div class="chains">%s</div>' % chainhtml if chainhtml else '',
@@ -1750,6 +1786,9 @@ a{{color:var(--acc);text-decoration:none}}
 .seclegend .sec{{font-size:11px;padding:2px 8px}}
 .blk{{color:#fff;background:#dc2626;font-size:11px;font-weight:600;padding:1px 6px;border-radius:6px;margin-top:3px}}.isblocked{{border-color:#dc2626}}
 .dirq{{color:#fff;background:#ca8a04;font-size:11px;font-weight:600;padding:1px 6px;border-radius:6px;margin-top:3px}}
+.phase{{display:inline-block;font-size:11px;padding:0 6px;border-radius:8px;margin-left:4px;border:1px solid var(--acc);color:var(--acc)}}
+.phase.none,.phase.multi{{border-color:#ca8a04;color:#ca8a04}}.marks{{font-size:12px;font-weight:600;margin:2px 0 8px}}
+.stale{{color:#fff;background:#dc2626;font-size:11px;font-weight:600;padding:1px 6px;border-radius:6px;margin-top:3px}}
 .dep{{color:var(--muted);font-size:11px}} .empty{{color:var(--muted);font-style:italic}}
 .chains{{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-bottom:14px}}
 .chain{{background:var(--panel);border:1px solid var(--line);border-left:4px solid #7c3aed;border-radius:8px;padding:8px 10px}}
@@ -1766,6 +1805,7 @@ a{{color:var(--acc);text-decoration:none}}
 that PR's CI (red In Progress, running or green IN CI, except that green keeps a card Jira holds In Review) and says so; each column is split into the
 approved plan's priority blocks; each column header carries its parity against a live JQL count. A card shows its open PR and that PR's CI
 state; a started card without an open PR is flagged, and so is a card with an open blocker.{prs}{age}</div>
+<div class="marks">{marks}</div>
 {waiting}
 {chains}
 <div class="legend">Priority blocks: {legend}</div>
@@ -1817,6 +1857,8 @@ def main():
     ap.add_argument('--jira-base-url', default=os.environ.get('JIRA_BASE_URL', ''),
                     help='Jira base URL for the kanban cards\' browse links (default $JIRA_BASE_URL, as the jira CLI reads it; '
                          'without one a card key is plain text)')
+    ap.add_argument('--stale-file', default=None, help='--version: the STALE feed (line 1 `state<TAB>complete|partial|unknown`, then one HIMMEL-<n> '
+                                                       'per line); a listed card shows STALE. Missing or malformed: stale: unknown, no card marked')
     ap.add_argument('--refresh-luna', action='store_true')
     ap.add_argument('--emit-fp', action='store_true')
     a = ap.parse_args()
@@ -1860,7 +1902,8 @@ def main():
         html, par, vfp = version_page(read_mirror(), a.version, grp, open_prs(a.prs_file, repo), chains, a.jira_base_url, repo,
                                       read_workers(a.workers_dir), chains_mtime, drain,
                                       os.path.getmtime(a.priority_file) if a.priority_file else None,
-                                      os.path.abspath(a.owed_dir) if a.owed_dir else None, os.path.abspath(a.chief_doc) if a.chief_doc else None)
+                                      os.path.abspath(a.owed_dir) if a.owed_dir else None, os.path.abspath(a.chief_doc) if a.chief_doc else None,
+                                      read_stale(a.stale_file))
         os.makedirs(os.path.dirname(OUT), exist_ok=True)
         open(OUT, 'w', encoding='utf-8').write(html)
         open(OUT + '.vfp', 'w', encoding='utf-8').write(vfp + '\n')
