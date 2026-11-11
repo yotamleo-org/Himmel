@@ -100,11 +100,11 @@ check "18c: 500 Internal Server Error with no leading HTTP -> still http-5xx" \
 check "16b: usage text containing HIMMEL-473 -> not http-4xx (rc=2 usage-error)" \
     "$(classify 2 '' 'critic-first-pass.sh: empty stdin — pipe a unified diff
 Usage: git diff origin/HEAD...HEAD | critic-first-pass.sh --model <name>
-The review prompt is adapted to the model FAMILY: gpt/codex, open, claude.
+The review prompt is adapted to the model FAMILY (HIMMEL-473): gpt/codex, open, claude.
 Exit: 0 = findings emitted; 1 = invoke failed; 2 = usage error.')" \
     "usage-error"
 check "16c: same HIMMEL-473 text under a non-usage rc still avoids http-4xx" \
-    "$(classify 1 '' 'adapted to the model FAMILY: gpt/codex, open, claude.')" \
+    "$(classify 1 '' 'adapted to the model FAMILY (HIMMEL-473): gpt/codex, open, claude.')" \
     "generic-rc-1"
 
 # ── malformed-output marker (critic-first-pass.sh's own fail-open text) ────

@@ -2305,7 +2305,7 @@ rm -rf "$tmp"
 make_repo
 write_marker "$tmp" "$sha"; write_ledger "$tmp" "$(avail_ok "${sha:0:8}")"
 stub_gh "$tmp" 42
-stub_check_ci "$tmp" 0 "check-ci: FRESHNESS panel carry stale_anchor=shaOLD head=$sha PR #42; threads resolved; carried responders=1 models=codex."
+stub_check_ci "$tmp" 0 "check-ci: FRESHNESS panel carry stale_anchor=shaOLD head=$sha PR #42; threads resolved; carried responders=1 models=codex (HIMMEL-1718)."
 run_clear "$tmp" 0 "post-PR + freshness panel carry → exit 0"
 if marker_exists "$tmp"; then fail "freshness carry: marker should be GONE"; else pass; fi
 if grepq "$LAST_CLEAR_OUT" 'FRESHNESS panel carry stale_anchor=shaOLD'; then pass; else
