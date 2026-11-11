@@ -125,6 +125,7 @@ scripts/lib/wire-statusline.sh -> marketplace/plugins/claude-hud/dist/index.js
 scripts/lib/usage-preflight.sh -> scripts/lanes/codex-usage-probe.ts
 scripts/lanes/bank-status-core.mjs -> scripts/lanes/codex-usage-probe.ts
 scripts/cr/live-gate-e2e.sh -> scripts/handover/chief-kit/ready-check.sh
+scripts/cr/outside-security-audit.sh -> scripts/handover/chief-kit/ready-check.sh
 scripts/cr/dependabot-go.sh -> scripts/api-lane/judge-call.sh
 scripts/hooks/block-fork-sync-pr.sh -> scripts/upstreams/resync-fork.sh
 scripts/handover/merge-on-green.sh -> scripts/eval/bug-origin/bug-origin-report.py
