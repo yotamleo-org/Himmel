@@ -129,7 +129,7 @@ dry_run_ready() {
     dlabels="$(printf '%s\n' "$body" | grep -oE '\<N[0-9]+[a-z]*\>' | sort -u)"
     case "$dlabels" in ''|*$'\n'*) return 0 ;; esac
     (
-        dlist="$("${LIST[@]}" "$FLEET" 2>/dev/null)" || dlist=""  # swallow-ok: the dry run's answer is ignored, an unlisted manifest keeps the message's label
+        dlist="$("${LIST[@]}" "$FLEET")" || dlist=""
         dw="$(listed_doc "$dlabels" "$dlist")" || dw=""
         if [ -z "$dw" ]; then
             dsucc="$(successor_docs "$dlabels" "$dlist")"
@@ -172,7 +172,6 @@ if [ -n "$labels" ]; then
     label="$labels"
     listing="$("${LIST[@]}" "$FLEET" 2>/dev/null)" || listing=""
     worker="$(listed_doc "$label" "$listing")" || worker=""
-    # a resumed worker's manifest entry carries a successor letter (N4304b) the message may not
     if [ -z "$worker" ]; then
         succ="$(successor_docs "$label" "$listing")"
         [ "$(printf '%s' "$succ" | grep -c .)" -le 1 ] || escalate "ambiguous-label"
