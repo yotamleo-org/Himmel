@@ -89,12 +89,16 @@ if (a[0] === 'release' && a[1] === 'core-check') {
   if (process.env.MIRROR_LOG) fs.appendFileSync(process.env.MIRROR_LOG, 'mirror ' + a.join(' ') + ' project=' + process.env.JIRA_PROJECT_KEY + '\n');
   const src = process.env.MIRROR_FRESH;
   if (src && fs.existsSync(src)) for (const f of fs.readdirSync(src)) fs.copyFileSync(src + '/' + f, opt('--root') + '/' + f);
+} else if (a[0] === 'live-test' && a[1] === '--json') {
+  if (process.env.LT_STUB_RC) { console.error('stub jira: live-test failed'); process.exit(Number(process.env.LT_STUB_RC)); }
+  process.stdout.write(fs.readFileSync(process.env.LT_STUB_FILE || (process.env.LT_FIXTURES + '/live-test-none.json'), 'utf8'));
 } else {
   console.error('stub jira: unknown command ' + a.join(' '));
   process.exit(2);
 }
 EOF
 export GEN_BRIEFS_JIRA_CLI="$WORK/stub-jira/index.js" CG_STUB_SIGNED="$WORK/cg-signed" CG_STUB_UNKNOWN="$WORK/cg-unknown"; mkdir -p "$CG_STUB_UNKNOWN"
+LT_FIXTURES="$(cd "$HERE/../../jira/src/fixtures" && pwd)"; export LT_FIXTURES
 export CG_STUB_NEEDS="$WORK/cg-needs" CG_STUB_GOLDEN="$HERE/../../jira/src/release/fixtures/bypass-needs-spec.line"; mkdir -p "$CG_STUB_NEEDS"
 # brief-lint.sh (run on every generated brief, and by the launcher) asks the same stand-in over the same fixture mirror
 export BRIEF_LINT_JIRA_CLI="$GEN_BRIEFS_JIRA_CLI" BRIEF_LINT_MIRROR="$GEN_BRIEFS_MIRROR"
@@ -2039,6 +2043,82 @@ srmut lintref 'pass'
 rc=0; o="$(BRIEF_LINT_JIRA_CLI="$WORK/no-such-cli.js" srrun lintref)" || rc=$?
 { [ "$rc" = 1 ] && case "$o" in *"brief-lint refuses"*) true ;; *) false ;; esac; } && pass "9598 f: a series writer brief lint refuses exits 1" || fail "9598 f: series lint refusal rc=$rc: $o"
 [ -z "$(find "$WORK/sr-b-lintref" -type f \( -name '*.md' -o -name 'launch-*' -o -path '*/series/*' \) -print -quit 2>/dev/null)" ] && pass "9598 f: and leaves no brief, launcher, series ledger or lock behind" || fail "9598 f: left $(find "$WORK/sr-b-lintref" -type f)"
+
+ltmk() { python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]; w=l[0]; exec(sys.argv[3]); json.dump(l,open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/lt-$1.json" "$2"; }
+ltrun() { python3 "$SUT" "$WORK/lt-$1.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/lt-b-$1" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/handovers" --work-dir "$WORK/lt-w-$1" --deadline 1791475000 2>&1; }
+ltbrief() { cat "$WORK/lt-b-$1"/*-N901-*.md 2>/dev/null; }
+LT_OK="$LT_FIXTURES/live-test-ok.json"
+
+ltmk jira 'w["live_test"]="jira"; w["model"]="claude-opus-5-5"; w["tier"]={"category":"design","reason":"multi-step design: x"}'
+o="$(LT_STUB_FILE="$LT_OK" ltrun jira)"; rc=$?
+[ "$rc" = 0 ] && has "I10 a live_test jira worker gets the Live test line with HTEST and own=<its keys>" "$(ltbrief jira)" "> **Live test:** jira HTEST own=HIMMEL-9001 — every Jira write this session makes goes to HTEST; the jira CLI refuses any other project except this brief's own tickets. Create with --project HTEST." || fail "I10 live_test jira rc=$rc: $o"
+lt_order="$(ltbrief jira | grep -e '^> \*\*Tier:\*\*' -e '^> \*\*Live test:\*\*' -e '^> \*\*Why' | cut -c1-14 | tr '\n' '|')"
+[ "$lt_order" = '> **Tier:** op|> **Live test:|> **Why (read |' ] && pass "I10 the Live test line comes after the Tier line and before the Why" || fail "I10 line order: $lt_order"
+ltmk jnone 'w["live_test"]="jira"'
+o="$(ltrun jnone)"; rc=$?
+{ [ "$rc" = 1 ] && [ -z "$(ltbrief jnone)" ]; } && has "I10 live_test jira with no valid test project dies naming jira.testProject" "$o" "himmelctl config set jira.testProject" || fail "I10 no test project rc=$rc: $o"
+has "I10 the no-test-project death carries the verb's problem" "$o" "no JIRA_TEST_PROJECT is set"
+ltmk jwork 'w["live_test"]="jira"'
+o="$(LT_STUB_FILE="$LT_FIXTURES/live-test-work.json" ltrun jwork)"; rc=$?
+[ "$rc" = 1 ] && has "I10 live_test jira with a work project configured dies with the verb's problem" "$o" "HIMMEL is a work project" || fail "I10 work project rc=$rc: $o"
+for v in '"yes"' 'True' '{"none":""}' '{"none":"a\nb"}' '{"jira":"x"}'; do
+    ltmk unk 'w["live_test"]='"$v"
+    rm -rf "$WORK/lt-b-unk"; o="$(LT_STUB_FILE="$LT_OK" ltrun unk)"; rc=$?
+    { [ "$rc" = 1 ] && [ -z "$(ltbrief unk)" ]; } && has "I10 an unknown live_test value $v dies" "$o" "live_test" || fail "I10 unknown live_test $v rc=$rc: $o"
+done
+ltmk lnone 'w["live_test"]={"none":"reads Jira, writes nothing"}; w["scope"]+=" then create throwaway test tickets in HTEST"'
+o="$(LT_STUB_FILE="$LT_OK" ltrun lnone)"; rc=$?
+[ "$rc" = 0 ] && has "I10 a none override prints the Live test none line with its reason" "$(ltbrief lnone)" "> **Live test:** none — reads Jira, writes nothing" || fail "I10 none override rc=$rc: $o"
+has "I10 a worker with live_test none is not scanned by the tripwire" "$(ltbrief lnone)" "throwaway test tickets in HTEST"
+n=0
+for f in 'w["scope"]+=" then create THROWAWAY test tickets"' 'w["desc"]+=" against Live JIRA"' 'w["why"]+=" the throwaway ticket stays"' 'w["extra"]="run jira Transition on it"' 'w["tier"]={"category":"design","reason":"a jira comment probe"}; w["model"]="claude-opus-5-5"'; do
+    n=$((n + 1)); ltmk trip$n "$f"
+    o="$(LT_STUB_FILE="$LT_OK" ltrun trip$n)"; rc=$?
+    { [ "$rc" = 1 ] && [ -z "$(ltbrief trip$n)" ] && case "$o" in *'live_test: "jira"'*'live_test: {"none": "<reason>"}'*) true ;; *) false ;; esac; } \
+        && pass "I10 tripwire: an unmarked worker matching phrase row $n dies and asks for live_test" || fail "I10 tripwire row $n rc=$rc: $o"
+done
+ltmk tripkey 'w["prior"]+=" Fixture tickets live in HTEST-3."'
+o="$(LT_STUB_FILE="$LT_OK" ltrun tripkey)"; rc=$?
+[ "$rc" = 1 ] && has "I10 tripwire: an unmarked worker naming the configured test key dies naming it" "$o" "HTEST" || fail "I10 tripwire key rc=$rc: $o"
+printf '{"context": false, "own_keys": [], "test_project": "TEST", "problem": null, "jira_configured": true}\n' > "$WORK/lt-key-test.json"
+ltmk keyword 'w["scope"]+=" and run the tests; TESTS and TESTING stay green"'
+o="$(LT_STUB_FILE="$WORK/lt-key-test.json" ltrun keyword)"; rc=$?
+[ "$rc" = 0 ] && pass "I10 tripwire: test project key TEST does not match the words tests, TESTS or TESTING" || fail "I10 key TEST vs tests rc=$rc: $o"
+ltmk keyhit 'w["scope"]+=" and close TEST-4"'
+o="$(LT_STUB_FILE="$WORK/lt-key-test.json" ltrun keyhit)"; rc=$?
+[ "$rc" = 1 ] && pass "I10 tripwire: test project key TEST matches TEST-4" || fail "I10 key TEST-4 rc=$rc: $o"
+ltmk vfj 'w["live_test"]="jira"'
+o="$(LT_STUB_RC=1 ltrun vfj)"; rc=$?
+{ [ "$rc" = 1 ] && [ -z "$(ltbrief vfj)" ]; } && has "I10 the verb failing dies like CORE-CHECK-FAILED for a live_test jira worker" "$o" "CORE-CHECK-FAILED jira live-test" || fail "I10 verb failure (jira worker) rc=$rc: $o"
+ltmk vfu ''
+o="$(LT_STUB_RC=1 ltrun vfu)"; rc=$?
+{ [ "$rc" = 1 ] && [ -z "$(ltbrief vfu)" ]; } && has "I10 the verb failing dies like CORE-CHECK-FAILED for an unmarked worker (the key scan never skips)" "$o" "CORE-CHECK-FAILED jira live-test" || fail "I10 verb failure (unmarked) rc=$rc: $o"
+printf 'not json\n' > "$WORK/lt-junk.json"
+ltmk vjunk ''
+o="$(LT_STUB_FILE="$WORK/lt-junk.json" ltrun vjunk)"; rc=$?
+[ "$rc" = 1 ] && has "I10 a verb answer that does not parse dies like CORE-CHECK-FAILED" "$o" "CORE-CHECK-FAILED jira live-test" || fail "I10 unparseable verb rc=$rc: $o"
+printf '{}\n' > "$WORK/lt-empty.json"
+ltmk vempty ''
+o="$(LT_STUB_FILE="$WORK/lt-empty.json" ltrun vempty)"; rc=$?
+[ "$rc" = 1 ] && has "I10 a verb answer with no test_project field dies like CORE-CHECK-FAILED" "$o" "no test_project field" || fail "I10 empty verb object rc=$rc: $o"
+lacks "I10 control: an unmarked worker with no phrase generates with no Live test line" "$b1" "**Live test:**"
+# shellcheck disable=SC2016  # python source in single quotes
+lt16="$(python3 -I -c '
+import importlib.util, os, sys
+spec = importlib.util.spec_from_file_location("gen_briefs", os.path.join(sys.argv[1], "gen-briefs.py"))
+gb = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(gb)
+rows = [l.rstrip("\n").split("\t") for l in open(sys.argv[2], encoding="utf-8") if l.strip("\n")]
+bad = [r for r in rows if ("accept" if gb.own_keys_ok(r[0]) else "refuse") != r[1]]
+print("%d rows, %d wrong %r" % (len(rows), len(bad), bad))
+sys.exit(1 if bad or len(rows) < 10 else 0)' "$HERE" "$LT_FIXTURES/own-keys.tsv" 2>&1)"; rc=$?
+[ "$rc" = 0 ] && pass "I16 the own= check accepts and refuses every own-keys.tsv row like parseOwnKeys ($lt16)" || fail "I16 own_keys_ok vs own-keys.tsv: $lt16"
+ltmk x1 'w["keys"]=["X-1"]; w["live_test"]="jira"'
+o="$(LT_STUB_FILE="$LT_OK" ltrun x1)"; rc=$?
+{ [ "$rc" = 1 ] && [ -z "$(ltbrief x1)" ]; } && has "I16 X-1 passes the workers.json key check but dies at the own= check" "$o" "own=X-1" || fail "I16 X-1 rc=$rc: $o"
+ltmk two 'w["keys"]=["HIMMEL-1","LUNA-22"]; w["live_test"]="jira"'
+o="$(LT_STUB_FILE="$LT_OK" ltrun two)"; rc=$?
+[ "$rc" = 0 ] && has "I16 HIMMEL-1,LUNA-22 passes the own= check onto the line" "$(ltbrief two)" "> **Live test:** jira HTEST own=HIMMEL-1,LUNA-22 — " || fail "I16 two keys rc=$rc: $o"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

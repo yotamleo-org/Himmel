@@ -219,6 +219,7 @@ chief_context_worker_env_unset_names() {
         HIMMEL_HOLD_DOC \
         HIMMEL_HOLD_LABEL \
         WRITE_HOLD_OK \
+        HIMMEL_JIRA_LIVE_TEST \
         HIMMEL_WORKER_SESSION_CONTEXT_MODE \
         HIMMEL_WORKER_SESSION_AUTOCOMPACT \
         HIMMEL_WORKER_SESSION_CONTEXT_SHARE \

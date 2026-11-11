@@ -248,6 +248,44 @@ check "W12 no jq: the launch still exits 0" "$rc" "0"
 not_contains "W12 no jq: the scan is skipped, no warning" "$out" "WARNING"
 rm -f "$HOME/.claude/settings.json"
 
+lt_line() { printf '> **Live test:** jira HTEST own=%s — every Jira write this session makes goes to HTEST; the jira CLI refuses any other project except this brief'"'"'s own tickets. Create with --project HTEST.\n' "$1"; }
+LT_OWN=HIMMEL-9999 LT_CALLER=HIMMEL-9377 LT_NAME=HIMMEL-9999-N1-lt
+fx10 "$(lt_line "$LT_OWN")" >"$T/lt-doc.md"
+fx10 '> **Live test:** none — reads Jira, writes nothing' >"$T/lt-none-doc.md"
+dry13() { bash "$SCRIPT" --dry-run --no-profile "$LT_NAME" "$1" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1; }
+rc=0; out="$(dry13 "$T/lt-doc.md")" || rc=$?
+check "W13 a doc with the Live test jira line launches (exit 0)" "$rc" "0"
+contains "W13 the dry-run report names the marker" "$out" "live-test=jira HIMMEL_JIRA_LIVE_TEST=HIMMEL-9999"
+contains "W13 the marker rides the launcher env to the worker" "$out" "HIMMEL_JIRA_LIVE_TEST=HIMMEL-9999 "
+out="$(HIMMEL_JIRA_LIVE_TEST="$LT_CALLER" HEADED_ARM_LAUNCHER_ENV="HIMMEL_JIRA_LIVE_TEST=$LT_CALLER KEEP_ME=1" dry13 "$T/doc10.md")"
+not_contains "W13 a caller carrying the marker arming an unmarked doc puts no marker in the launch" "$out" "HIMMEL_JIRA_LIVE_TEST="
+contains "W13 ... and keeps the caller's other tokens" "$out" "KEEP_ME=1"
+out="$(HIMMEL_JIRA_LIVE_TEST="$LT_CALLER" HEADED_ARM_LAUNCHER_ENV="HIMMEL_JIRA_LIVE_TEST=$LT_CALLER KEEP_ME=1" dry13 "$T/lt-doc.md")"
+contains "W13 the doc's marker survives the scrub" "$out" "HIMMEL_JIRA_LIVE_TEST=HIMMEL-9999 "
+not_contains "W13 ... and the caller's value is gone" "$out" "HIMMEL_JIRA_LIVE_TEST=HIMMEL-9377"
+out="$(dry13 "$T/lt-none-doc.md")"
+not_contains "W13 the Live test none line sets nothing" "$out" "HIMMEL_JIRA_LIVE_TEST="
+out="$(dry13 "$T/doc10.md")"
+not_contains "W13 control: a doc without the line exports nothing" "$out" "HIMMEL_JIRA_LIVE_TEST="
+fx10 "$(lt_line himmel-1)" >"$T/lt-bad-doc.md"
+rc=0; out="$(dry13 "$T/lt-bad-doc.md")" || rc=$?
+check "W13 a malformed own= list refuses the launch (exit 2)" "$rc" "2"
+contains "W13 the refusal names the own= list" "$out" "own=himmel-1"
+n13=0
+while IFS= read -r row13; do
+    v13="${row13%%$'\t'*}" want13="${row13#*$'\t'}"   # split by hand: read would drop the empty value's leading tab
+    n13=$((n13 + 1))
+    fx10 "$(lt_line "$v13")" >"$T/lt-row$n13.md"
+    rc=0; out="$(dry13 "$T/lt-row$n13.md")" || rc=$?
+    if [ "$want13" = accept ]; then check "W13 I16 own-keys.tsv row '$v13' is accepted" "$rc" "0"; else check "W13 I16 own-keys.tsv row '$v13' is refused" "$rc" "2"; fi
+done <"$HERE/../../jira/src/fixtures/own-keys.tsv"
+if [ "$n13" -ge 10 ]; then echo "PASS W13 I16 read every own-keys.tsv row ($n13)"; else echo "FAIL W13 I16 read only $n13 own-keys.tsv rows"; FAILED=$((FAILED + 1)); fi
+rc=0; out="$(bash "$SCRIPT" --dry-run --headless --profile worker-impl "$LT_NAME" "$T/lt-doc.md" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5-5 2>&1)" || rc=$?
+check "W13 --headless with the Live test jira line refuses (exit 2)" "$rc" "2"
+contains "W13 the --headless refusal names the Live test line" "$out" "Live test"
+rc=0; out="$(bash "$SCRIPT" --dry-run --headless --profile worker-impl "$LT_NAME" "$T/lt-none-doc.md" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5-5 2>&1)" || rc=$?
+check "W13 control: --headless with the Live test none line launches (exit 0)" "$rc" "0"
+
 echo "---"
 if [ "$FAILED" -gt 0 ]; then echo "FAILED: $FAILED case(s)"; exit 1; fi
 echo "PASS all cases"

@@ -1392,7 +1392,7 @@ unset -v _ab_in
 # looks deliberate" failure this ticket closes for CLAUDE_CODE_EFFORT_LEVEL.
 # The release-manager marker, binding and effort override are the same class:
 # a release manager arming a worker must not hand that worker its mode-2 fence.
-WORKER_SESSION_ENV_SCRUB="CHIEF_CONTEXT HIMMEL_CONSOLE_JUDGE_EFFORT HIMMEL_CONSOLE_JUDGE_DOC HIMMEL_CONSOLE_JUDGE_QID HIMMEL_RELEASE_MANAGER HIMMEL_RM_DOC HIMMEL_RM_RELEASE HIMMEL_RM_EFFORT HIMMEL_CONSOLE"
+WORKER_SESSION_ENV_SCRUB="CHIEF_CONTEXT HIMMEL_CONSOLE_JUDGE_EFFORT HIMMEL_CONSOLE_JUDGE_DOC HIMMEL_CONSOLE_JUDGE_QID HIMMEL_RELEASE_MANAGER HIMMEL_RM_DOC HIMMEL_RM_RELEASE HIMMEL_RM_EFFORT HIMMEL_CONSOLE HIMMEL_JIRA_LIVE_TEST"
 for _worker_env_scrub in $WORKER_SESSION_ENV_SCRUB; do
     unset "$_worker_env_scrub"
     worker_env_drop_token "$_worker_env_scrub"
@@ -1602,6 +1602,24 @@ if [ -n "$TIER_GATE" ]; then
         exit 2
     fi
 fi
+
+LIVE_TEST_OWN=""
+_live_test_line=""
+[ ! -r "$DOC" ] || _live_test_line="$(grep -m1 -E '^> \*\*Live test:\*\* jira ' "$DOC")"
+if [ -n "$_live_test_line" ]; then
+    LIVE_TEST_OWN="$(printf '%s\n' "$_live_test_line" | sed -nE 's/^> \*\*Live test:\*\* jira [^ ]+ own=([^ ]*)( .*)?$/\1/p')"
+    _parse_own_keys_re='^(none|[A-Z][A-Z0-9]+-[0-9]+(,[A-Z][A-Z0-9]+-[0-9]+)*)$'
+    if ! [[ "$LIVE_TEST_OWN" =~ $_parse_own_keys_re ]]; then
+        echo "headed-arm-worker: refusing worker launch: $DOC's Live test line has own=$LIVE_TEST_OWN, which is neither none nor a comma list of KEY-n ticket keys" >&2
+        exit 2
+    fi
+    if [ "$HEADLESS" -eq 1 ]; then
+        echo "headed-arm-worker: refusing --headless launch: $DOC carries a '> **Live test:** jira' line; a live-test worker runs headed, so its marker sits in the claude process's own environment" >&2
+        exit 2
+    fi
+    worker_propagate_env HIMMEL_JIRA_LIVE_TEST "$LIVE_TEST_OWN"
+fi
+unset -v _live_test_line _parse_own_keys_re
 
 # advisory effort recommendation. Only when the brief carries
 # '> **Effort-record:** <path>' (an effort-assess record). One stderr line;
@@ -2630,6 +2648,9 @@ EOF_WORKER_DRY_LINES
     # absent for Sonnet/Haiku, matching the argv-report guarantee pattern above.
     if [ -n "$TIER_GATE" ]; then
         printf 'headed-arm-worker: tier=%s tier-category=%s tier-reason=%s\n' "$TIER_GATE" "$TIER_CATEGORY" "$TIER_REASON"
+    fi
+    if [ -n "$LIVE_TEST_OWN" ] || [ -n "${HIMMEL_JIRA_LIVE_TEST:-}" ]; then
+        printf 'headed-arm-worker: live-test=jira HIMMEL_JIRA_LIVE_TEST=%s\n' "${HIMMEL_JIRA_LIVE_TEST:-<unset>}"
     fi
     # Printed ONLY for a profile default or sanctioned 1m Context-line opt-in,
     # shape as the Tier-gate line above.
