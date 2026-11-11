@@ -29,17 +29,34 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
   `design`/`designs`/`spec` folder with spec critic files is governed by that spec. A `<stem>.html`
   sign page beside a `<stem>.md` is governed by the `.md`'s critics first: it goes only when the `.md`'s
   latest spec critic is clean and also sealed that `.html`. A folder that cannot be listed refuses the
-  send, naming the folder. Today a page whose critic return carries no `CONTENT-SHA256` line is refused,
-  and so is one whose latest critic ended `SPEC FINDINGS <n>` before round 3, even when it passed with minors.
-  **From round 3 of that kind** a sealed `FINDINGS` page goes, with the block opening it: the round
-  count, how many critics did not end clean, "Rule, don't just sign", then each such return verbatim. An `.html` page
-  is its sealed bytes with the block after `<body>`; a page with no `<body>` is refused. Spec and plan rounds are counted
-  apart, 3 each, read from the files on disk, so a differently named return that belongs to the spec adds a round
-  to the cap; only the numbered rounds open the page. Round 4 and on: `critic-seal.sh` refuses the seal
-  until `<spec>.operator-round-r<n>.md` holds a line `decision <d>` and `specs/decisions/verbatim-decision-<d>-*` exists. One
-  record allows that one round. A judge round is neither counted nor limited. The seal
-  line is proof of the bytes read, not of who wrote it: a chief could append a sha it computed itself, and
-  `send-file` does not check the quote. The Telegram caption opens with the verdict lines
+  send, naming the folder. The latest critic file of each kind, clean or not, must also pass
+  `bun scripts/telegram/chief-route.ts ledger-verify <verdict file>`: its return is a sealed round of its ticket in
+  the round ledger (`specs/ledgers/spec-rounds/<KEY>.jsonl`), it is that kind's latest round, and each
+  `CONTENT-SHA256` line matches the ledger's seal rows, so an unsealed or hand-sealed return does not send. A page
+  whose latest critic ended `SPEC FINDINGS <n>` is refused until the ticket's round of that kind is 3 or more **in the
+  ledger**; from then a sealed `FINDINGS` page goes, with the block opening it: the round count, how many critics did
+  not end clean, "Rule, don't just sign", each such return verbatim, and every open operator-critical finding of the
+  ticket. An `.html` page is its sealed bytes with the block after `<body>`; a page with no `<body>` is refused.
+  Rounds are counted per ticket, spec and plan apart, from the ledger and never from file names, so a renamed spec,
+  a new file or a deleted critic file changes nothing. `critic-seal.sh` applies the cap when it seals:
+
+  | Round of a kind | Sealed when |
+  |---|---|
+  | 1 to 3 | always, as a full round |
+  | 4 | round 3 of either kind left a blocking finding (major, unrated, `reopens` or `regression`), or a `round-critical` record opens it; it is a closure check, built with `closure-pack <KEY> <spec\|plan>` |
+  | 5 and on | the chief's one `round-override`, or a `round-critical` record, opens that writer round |
+
+  The three records run only from the chief's console (`HIMMEL_CONSOLE=1`), and each is checked again on every
+  read: `round-override <KEY> --findings <id,...> --why "<line>" --chief <session>`, once per ticket, ever, naming
+  open blocking ids; `round-critical <KEY> --finding <id> --decision <d> --quote "<operator words>" [--no-round]`, the
+  operator's ruling on an operator-critical finding, which closes it and, without `--no-round`, also opens one
+  further writer round; and `round-reset <KEY> --decision <d> --quote "<operator words>"`, the operator's order to
+  start over, once per ticket. The decision file `specs/decisions/verbatim-decision-<d>-*.txt` must name the ticket
+  and hold the quote. A `<spec>.operator-round-r<n>.md` file no longer counts. A judge round is neither counted nor
+  limited. **Adopter stations:** after `himmel-update` brings the round ledger, run
+  `bun scripts/telegram/chief-route.ts round-seed --all <bucket>/specs` once for every bucket on that station, and
+  add `*.jsonl.lock` (that pattern only, never the ledger) to each bucket's ignore list. Until a bucket is seeded,
+  every seal there is refused. The Telegram caption opens with the verdict lines
   read from those files (your own caption follows), and a rendered page opens with them too. A critic
   return is sealed, once per file the critic read, with
   `bash scripts/handover/chief-kit/critic-seal.sh <verdict file> <file it read> <sha the critic quoted>`
