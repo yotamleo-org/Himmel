@@ -645,6 +645,14 @@ pr_view() {
     if [ -n "$selector" ]; then gh_read pr view "$selector" "$@"; else gh_read pr view "$@"; fi
 }
 
+_export_read_token_if_usable() {
+    local rem
+    [ -n "${_GHR_TOK:-}" ] || return 0
+    rem=$(GH_TOKEN="$_GHR_TOK" ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 10} gh api rate_limit --jq .resources.graphql.remaining 2>/dev/null) || return 0
+    case "$rem" in ''|*[!0-9]*|0) return 0 ;; esac
+    export GH_TOKEN="$_GHR_TOK"
+}
+
 # The per-PR check rows through the shared cache.
 # shellcheck source=scripts/lib/gh-ci-cache.sh
 # shellcheck disable=SC1091  # sourced at runtime; checked standalone by pre-commit
@@ -1157,15 +1165,10 @@ watch_round() {
                     CHECK_CI_CACHE_HEAD="$cache_head" CHECK_CI_MAX_WAIT="$LIB_CAP" CIC_NOTICE_FD=1 CHECK_CI_EXCEPT_CONTEXT="$EXCEPT_CTX" \
                     bash "$(cd "$(dirname "$0")" && pwd)/lib/check-ci-watch.sh" ${selector:+"$selector"}
             elif [ -n "$selector" ]; then
-                # the watch is a read; it rides the read-only token when one
-                # loaded (gh_read_init above). The token goes to this one exec'd gh as
-                # GH_TOKEN, never in argv. gh_read itself cannot be exec'd (it forks, and
-                # $! must stay gh's real pid), so a refused read token is not retried on
-                # the main one here; the cache-backed loop above is the default path.
-                [ -z "${_GHR_TOK:-}" ] || export GH_TOKEN="$_GHR_TOK"
+                _export_read_token_if_usable
                 exec gh pr checks "$selector" --watch ${watch_ff:+"$watch_ff"} --interval "$WATCH_INTERVAL"
             else
-                [ -z "${_GHR_TOK:-}" ] || export GH_TOKEN="$_GHR_TOK"
+                _export_read_token_if_usable
                 exec gh pr checks --watch ${watch_ff:+"$watch_ff"} --interval "$WATCH_INTERVAL"
             fi
         ) 2>"$err_file" &
@@ -1494,7 +1497,7 @@ if [ "$THREADS_ONLY" -eq 0 ]; then
                 [ -n "$err" ] || err="cannot read the PR's checks"
             fi
         else
-            err=$(pr_checks 2>&1 >/dev/null)
+            err=$(GH_READ_QUIET=1 pr_checks 2>&1 >/dev/null)
             rc=$?
         fi
         if [ "$rc" -eq 0 ] || [ "$rc" -eq 8 ]; then break; fi

@@ -519,7 +519,7 @@ make_repo || exit 1
 write_marker "$tmp" "$sha"; write_ledger "$tmp" "$(avail_ok "${sha:0:8}")"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 stub_git_log_lsremote_argv "$tmp"
-run_clear "$tmp" 0 "HIMMEL-2077 fixture: ordinary clear still succeeds with the argv-logging git shim"
+run_clear "$tmp" 0 "fixture: ordinary clear still succeeds with the argv-logging git shim"
 lsremote_argv="$(cat "$tmp/.lsremote-argv" 2>/dev/null || true)"
 if [ -n "$lsremote_argv" ] && grepq "$lsremote_argv" -F -- '--heads -- '; then
     pass "ls-remote invoked with -- before the positionals"
@@ -586,11 +586,11 @@ else
     stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
     stub_git_lsremote_sleep "$tmp" 5
     export CR_CLEAR_LSREMOTE_TIMEOUT_SECONDS=1
-    run_clear "$tmp" 16 "HIMMEL-1565: ls-remote past its timeout bound -> exit 16 (fail closed)"
+    run_clear "$tmp" 16 "ls-remote past its timeout bound -> exit 16 (fail closed)"
     unset CR_CLEAR_LSREMOTE_TIMEOUT_SECONDS
     case "$LAST_CLEAR_OUT" in
         *"reason=remote-head-timeout"*|*"timed out"*)
-            pass "ls-remote timeout: refusal names the DISTINCT timeout reason (HIMMEL-1554)" ;;
+            pass "ls-remote timeout: refusal names the DISTINCT timeout reason, not just the exit code" ;;
         *)
             fail "ls-remote timeout: refusal must name a distinct timeout reason, not the generic unreadable one" "out: $LAST_CLEAR_OUT" ;;
     esac
@@ -854,7 +854,7 @@ else
             --observed     "reason=$(_audit_reason "$RED_CONTROL_OUT") marker=$_marker_mutant resolve_spawned=$_resolve_mutant" \
             --expect-wrong "reason=$_reason_unmutated marker=present resolve_spawned=yes" \
             --correct      "reason=$_reason_unmutated marker=present resolve_spawned=$_resolve_unmutated" \
-            --note "removing the HIMMEL-2190 prefix pre-filter forces the resolve() git spawn the filter used to skip, while the verdict is unchanged (same audited refusal reason, marker still present, same rc=14) — GitHub #2010"
+            --note "removing the prefix pre-filter forces the resolve() git spawn the filter used to skip, while the verdict is unchanged (same audited refusal reason, marker still present, same rc=14) — GitHub #2010"
         then
             pass
         else
@@ -905,7 +905,7 @@ fi
 if grepq "$LAST_CLEAR_OUT" 'KNOWN TRAP:'; then
     pass
 else
-    fail "unbound-marker-remote remedy must name the HIMMEL-2104 up-to-date trap + empty-commit recovery"
+    fail "unbound-marker-remote remedy must name the up-to-date trap + empty-commit recovery"
 fi
 rm -rf "$tmp"
 
@@ -926,7 +926,7 @@ fi
 if grepq "$LAST_CLEAR_OUT" 'KNOWN TRAP:'; then
     pass
 else
-    fail "unbound-marker-endpoint remedy must name the HIMMEL-2104 up-to-date trap + empty-commit recovery"
+    fail "unbound-marker-endpoint remedy must name the up-to-date trap + empty-commit recovery"
 fi
 rm -rf "$tmp"
 
@@ -1557,8 +1557,8 @@ append_ledger "$tmp" "glm times out on run 1" avail \
 append_ledger "$tmp" "glm succeeds on run 2 at the SAME head" avail \
     --branch feat/x --head "$sha" --model glm --status ok
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
-run_clear "$tmp" 0 "HIMMEL-1613: avail unavailable-then-ok at the same head clears"
-if marker_exists "$tmp"; then fail "HIMMEL-1613 fixture: marker should be GONE"; else pass; fi
+run_clear "$tmp" 0 "avail unavailable-then-ok at the same head clears"
+if marker_exists "$tmp"; then fail "avail unavailable-then-ok fixture: marker should be GONE"; else pass; fi
 rm -rf "$tmp"
 
 # Variant: the supersession identity is (head, model) ONLY, so an
@@ -1574,8 +1574,8 @@ append_ledger "$tmp" "glm unavailable probing the diff arm" avail \
 append_ledger "$tmp" "glm ok probing the spec arm at the SAME head" avail \
     --branch feat/x --head "$sha" --model glm --status ok --artifact spec
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
-run_clear "$tmp" 0 "HIMMEL-1640: avail unavailable-then-ok across artifacts clears"
-if marker_exists "$tmp"; then fail "HIMMEL-1640 fixture: marker should be GONE"; else pass; fi
+run_clear "$tmp" 0 "avail unavailable-then-ok across artifacts clears"
+if marker_exists "$tmp"; then fail "avail unavailable-then-ok across artifacts fixture: marker should be GONE"; else pass; fi
 rm -rf "$tmp"
 
 # Negative: once a critic has recorded ok, a LATER unavailable attempt for the
@@ -1589,8 +1589,8 @@ append_ledger "$tmp" "glm succeeds first" avail \
 append_ledger "$tmp" "glm later attempt times out (must not downgrade)" avail \
     --branch feat/x --head "$sha" --model glm --status unavailable
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
-run_clear "$tmp" 0 "HIMMEL-1613: a later ok->unavailable attempt does not un-clear"
-if marker_exists "$tmp"; then fail "HIMMEL-1613 negative: marker should be GONE"; else pass; fi
+run_clear "$tmp" 0 "a later ok->unavailable attempt does not un-clear"
+if marker_exists "$tmp"; then fail "later ok->unavailable negative: marker should be GONE"; else pass; fi
 rm -rf "$tmp"
 
 # 4g-4j. Claude-only floor / availability escape hatch. The gate
@@ -2048,7 +2048,7 @@ write_ledger "$tmp" "$(avail_ok "${sha:0:8}")" \
   "$(printf '{"kind":"finding","branch":"feat/x","head":"%s","model":"codex","finding_id":"codex-xbr","severity":"imp","file":"a.sh","line":1,"verdict":"agreed"}' "${sha:0:8}")" \
   "$(printf '{"kind":"amend","branch":"other-branch","target_head":"%s","finding_id":"codex-xbr","artifact":"diff","perspective":"off","set":{"severity":"sug"},"reason":"other branch own call"}' "${sha:0:8}")"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
-run_clear "$tmp" 15 "an amend recorded for a different branch does not unblock THIS branch (HIMMEL-2405) → exit 15"
+run_clear "$tmp" 15 "an amend recorded for a different branch does not unblock THIS branch → exit 15"
 rm -rf "$tmp"
 
 # 6a-1c. Positive control for 6a-1b: the SAME branch's own amend still
@@ -2067,7 +2067,7 @@ write_ledger "$tmp" "$(avail_ok "${sha:0:8}")" \
   "$(printf '{"kind":"finding","branch":"feat/x","head":"%s","model":"codex","finding_id":"codex-xbr2","severity":"imp","file":"a.sh","line":1,"verdict":"agreed"}' "${sha:0:8}")" \
   "$(printf '{"kind":"amend","branch":"feat/x","target_head":"%s","finding_id":"codex-xbr2","artifact":"diff","perspective":"off","set":{"severity":"sug","verdict":"deferred","deferred_to":"HIMMEL-TEST"},"reason":"this branch own call"}' "${sha:0:8}")"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
-run_clear "$tmp" 0 "an amend recorded for THIS branch still unblocks it (HIMMEL-2405 control) → exit 0"
+run_clear "$tmp" 0 "an amend recorded for THIS branch still unblocks it → exit 0"
 rm -rf "$tmp"
 
 # 6a-1d. Back-compat control: a legacy amend with no branch field still
@@ -2099,7 +2099,7 @@ if grepq "$LAST_CLEAR_OUT" -F "merged=codex-judged"; then pass; else
     fail "AMENDS audit line must name the head-scoped amend: $LAST_CLEAR_OUT"
 fi
 if grepq "$LAST_CLEAR_OUT" -F "codex-foreign"; then
-    fail "AMENDS audit line must NOT name an amend whose finding is not at the judged head (HIMMEL-2564): $LAST_CLEAR_OUT"
+    fail "AMENDS audit line must NOT name an amend whose finding is not at the judged head: $LAST_CLEAR_OUT"
 else
     pass
 fi
@@ -2119,7 +2119,7 @@ write_ledger "$tmp" "$(avail_ok "${sha:0:8}")" \
   "$(printf '{"kind":"finding","branch":"feat/y","head":"%s","model":"codex","finding_id":"codex-r1","severity":"imp","file":"a.sh","line":1,"verdict":"agreed"}' "${sha:0:8}")" \
   "$(printf '{"kind":"amend","branch":"feat/y","target_head":"%s","finding_id":"codex-r1","artifact":"diff","perspective":"off","set":{"severity":"sug","verdict":"deferred","deferred_to":"HIMMEL-TEST"},"reason":"feat/y own adjudication, this run judges feat/x"}' "${sha:0:8}")"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
-run_clear "$tmp" 0 "amend keyed on the finding row's own branch (feat/y) applies even though this run judges feat/x (HIMMEL-2405 AE round-2, R1)"
+run_clear "$tmp" 0 "amend keyed on the finding row's own branch (feat/y) applies even though this run judges feat/x (an amend's identity includes its branch)"
 rm -rf "$tmp"
 
 # 6a-2. Incident 2: the finding was keyed to the head that FIXES it instead of
@@ -2136,7 +2136,7 @@ write_ledger "$tmp" "$(avail_ok "${sha:0:8}")" "$(finding "${sha:0:8}" imp agree
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 0 "amend re-keying head moves the finding off this SHA → exit 0"
 if grepq "$LAST_CLEAR_OUT" -F "merged=codex-1"; then pass; else
-    fail "AMENDS audit line must name a move-off-head amend by its ORIGINAL target_head (HIMMEL-2564 AE round-2): $LAST_CLEAR_OUT"
+    fail "AMENDS audit line must name a move-off-head amend by its ORIGINAL target_head: $LAST_CLEAR_OUT"
 fi
 rm -rf "$tmp"
 
@@ -2542,7 +2542,7 @@ make_repo || exit 1
 write_marker "$tmp" "$sha"; write_ledger "$tmp" "$(avail_ok "${sha:0:8}")"
 (cd "$tmp" && echo x >> f.txt && git commit -qam "later work" && git push -q origin feat/x) >/dev/null 2>&1
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
-run_clear "$tmp" 14 "armed bypass env does not clear stale marker without tip evidence (HIMMEL-1495)"
+run_clear "$tmp" 14 "armed bypass env does not clear stale marker without tip evidence"
 if marker_exists "$tmp"; then pass; else fail "armed-env stale marker: marker must REMAIN"; fi
 rm -rf "$tmp"
 unset ARMAUTOMERGE CR_MERGE_GATE_OK
@@ -3702,7 +3702,7 @@ write_marker "$tmp" "$sha"
 write_floor_artifact "$tmp" "$sha"
 write_ledger "$tmp" "$(avail_ok_floor "${sha:0:8}")" "$(avail_reason "${sha:0:8}" codex unavailable quota-long)"
 stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
-run_clear "$tmp" 0 "5j reason=quota-long (codex usage-limit bucket, HIMMEL-3110) + claude ok -> exit 0"
+run_clear "$tmp" 0 "5j reason=quota-long (codex usage-limit bucket) + claude ok -> exit 0"
 if marker_exists "$tmp"; then fail "5j floor-fallback accepted: marker should be GONE"; else pass; fi
 rm -rf "$tmp"
 unset CR_FLOOR_FALLBACK

@@ -897,5 +897,177 @@ eq "exposure_counts_planted_journal: 4 reads in the repo (one through a sibling 
     "prior 24 h: 3/4 = 0.7500; wilson95 $(wl 3)|prior 1 h: 2/4 = 0.5000; wilson95 $(wl 2)" \
     "$(grep '^prior ' "$W/exp.txt" | paste -sd'|' -)"
 
+V="$W/vault"; mkdir -p "$V/notes" "$W/mproj/p1" "$W/mproj/p2" "$W/state"
+py - "$W/mproj" "$V" <<'PY'
+import datetime, json, sys
+proj, vault = sys.argv[1], sys.argv[2]
+ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+QB = 'bash /h/scripts/lib/qmd-bounded.sh query -c luna "x"'
+def sess(path, calls):
+    with open(path, "w") as fh:
+        for i, (name, inp, res) in enumerate(calls):
+            fh.write(json.dumps({"type": "assistant", "timestamp": ts, "message": {"content": [
+                {"type": "tool_use", "id": "t%d" % i, "name": name, "input": inp}]}}) + "\n")
+            fh.write(json.dumps({"type": "user", "timestamp": ts, "message": {"content": [
+                {"type": "tool_result", "tool_use_id": "t%d" % i, "content": res}]}}) + "\n")
+sess(proj + "/p1/s1.jsonl", [
+    ("Bash", {"command": QB}, "qmd://luna/notes/alpha.md:3 #a1\nTitle: A\n\nqmd://luna/notes/beta note.md:9 #b2\n"),
+    ("Read", {"file_path": vault + "/notes/alpha.md"}, "alpha body"),
+    ("Read", {"file_path": vault + "/notes/gamma.md"}, "gamma body")])
+sess(proj + "/p1/s2.jsonl", [
+    ("Read", {"file_path": vault + "/notes/epsilon.md"}, "e"),
+    ("Read", {"file_path": vault + "/notes/gamma.md"}, "g"),
+    ("mcp__qmd__query", {"searches": [{"type": "lex", "query": "x"}], "collections": ["luna"]},
+     '[{"file":"qmd://luna/notes/delta.md","snippet":"d"}]'),
+    ("mcp__qmd__query", {"collections": ["himmel"]}, '[{"file":"qmd://himmel/docs/x.md","snippet":"h"}]'),
+    ("Bash", {"command": QB}, "")])
+sess(proj + "/p2/s3.jsonl", [
+    ("Read", {"file_path": "/elsewhere/x.md"}, "x"),
+    ("Read", {"file_path": vault + "/notes/data.json"}, "{}"),
+    ("Read", {"file_path": vault + "/notes/missing.md"}, "")])
+PY
+py "$EV" mine-luna --repo "$R" --projects "$W/mproj" --vault "$V" --days 30 --out "$W/state/cand.jsonl" > "$W/mine.txt" 2>&1
+eq "mine_reports_three_sources: exit 0 and a count per source, qmd 3 (a Bash and an MCP query, a failed and a non-luna one dropped), direct 2 (a note a qmd call reached first is not direct), written 0" "0 qmd: 3 direct: 2 written: 0" "$? $(sed -n 's/^\(qmd\|direct\): \([0-9]*\)$/\1: \2/p; s/^\(written: [0-9]*\) .*/\1/p' "$W/mine.txt" | paste -sd' ' -)"
+eq "mine_reports_three_sources: the candidate file holds one row per path and source, and the stdout names a hash, never a path" "5 $(cut -c1-16 < <(sha256sum "$W/state/cand.jsonl" | cut -d' ' -f1)) 0" "$(wc -l < "$W/state/cand.jsonl") $(sed -n 's/^sha256: //p' "$W/mine.txt") $(grep -c -E 'alpha|beta|gamma|delta|epsilon' "$W/mine.txt")"
+git -C "$R" worktree add -q "$W/wt" -b wtb
+ln -s "$R" "$W/link-to-repo"
+for o in "$R/cand.jsonl" "$W/link-to-repo/cand2.jsonl"; do
+    py "$EV" mine-luna --repo "$R" --projects "$W/mproj" --vault "$V" --out "$o" > "$W/mine-ref.txt" 2>&1; rc=$?
+    eq "mine_refuses_repo_path: ${o#"$W"/} is refused with exit 2 and nothing is written" "2 absent absent" "$rc $([ -e "$R/cand.jsonl" ] && echo present || echo absent) $([ -e "$R/cand2.jsonl" ] && echo present || echo absent)"
+done
+py "$EV" mine-luna --repo "$W/wt" --projects "$W/mproj" --vault "$V" --out "$R/cand3.jsonl" > /dev/null 2>&1
+eq "mine_refuses_repo_path: run from a worktree, the primary checkout is refused too" "2 absent" "$? $([ -e "$R/cand3.jsonl" ] && echo present || echo absent)"
+py "$EV" mine-luna --repo "$R" --projects "$W/mproj" --vault "$V" --out "$W/wt/cand4.jsonl" > /dev/null 2>&1
+eq "mine_refuses_repo_path: a sibling worktree outside the primary checkout's directory is refused too" "2 absent" "$? $([ -e "$W/wt/cand4.jsonl" ] && echo present || echo absent)"
+py "$EV" mine-luna --repo "$W/state" --projects "$W/mproj" --vault "$V" --out "$W/cand5.jsonl" > "$W/mine-nogit.txt" 2>&1
+eq "mine_refuses_repo_path: when git cannot list the checkouts (a --repo that is no checkout) the guard refuses and writes nothing" "2 absent 1" "$? $([ -e "$W/cand5.jsonl" ] && echo present || echo absent) $(grep -c 'cannot list the checkouts' "$W/mine-nogit.txt")"
+
+cat > "$W/lbank.jsonl" <<'EOF'
+{"id":"l1","q":"where do we describe the halt rule","gold":["notes/alpha.md"],"reason":[],"source":"qmd"}
+{"id":"l2","q":"which note covers relay batches","gold":["notes/gamma.md"],"reason":[],"source":"direct"}
+EOF
+printf '{"id":"d1","q":"broken vector leg","gold":["notes/alpha.md"],"reason":[],"source":"qmd"}\n' > "$W/lbank-deg.jsonl"
+cat > "$W/lqmd" <<'EOF'
+#!/usr/bin/env python3
+import json, os, sys
+a = json.load(sys.stdin)
+open(os.environ["LQMD_LOG"], "a").write(json.dumps([a["collections"], [s["type"] for s in a["searches"]]]) + "\n")
+if "broken" in a["intent"]:
+    sys.stderr.write("embedding breaker open\n")
+    sys.exit(3)
+f = "notes/alpha.md" if "halt" in a["intent"] else "notes/gamma.md"
+print(json.dumps([{"file": "qmd://luna/" + f, "snippet": "s"}]))
+EOF
+cat > "$W/lgraph" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "${WORKER_GRAPH_OUT:-unset}" >> "$LGRAPH_LOG"
+case "$*" in
+*halt*) printf 'NODE a [src=notes/alpha.md loc=L1 community=x]\nNODE g [src=notes/gamma.md loc=L1 community=x]\n' ;;
+*) printf 'NODE g [src=notes/gamma.md loc=L1 community=x]\n' ;;
+esac
+EOF
+chmod +x "$W/lqmd" "$W/lgraph"
+mkdir -p "$W/lgraph-out"; printf '{"nodes": []}\n' > "$W/lgraph-out/graph.json"
+mkdir -p "$W/nogrep"
+printf '#!/usr/bin/env bash\ncase " $* " in *" grep "*) printf "%%s\\n" "$*" >> "%s/git-grep.log" ;; esac\nexec "%s" "$@"\n' "$W" "$(command -v git)" > "$W/nogrep/git"; chmod +x "$W/nogrep/git"
+lr() {
+    local tag="$1"; shift
+    local e=(); while [ "$1" != -- ]; do e+=("$1"); shift; done; shift
+    rm -f "$W/lqmd-$tag.log" "$W/lgraph-$tag.log"
+    env -u HIMMEL_BILLED_OK ${e[@]+"${e[@]}"} HIMMEL_EVAL_RUNS_LEDGER="$W/ledger-$tag.jsonl" RETRIEVAL_EVAL_QMD_CMD="$W/lqmd" RETRIEVAL_EVAL_GRAPH_CMD="$W/lgraph" \
+        LQMD_LOG="$W/lqmd-$tag.log" LGRAPH_LOG="$W/lgraph-$tag.log" \
+        python3 -I "$EV" run --corpus luna --repo "$R" --questions "${LBANK:-$W/lbank.jsonl}" --out "$W/lout-$tag" --graph-out "$W/lgraph-out" "$@" > "$W/lr-$tag.txt" 2>&1
+}
+absent() { [ -e "$1" ] && echo present || echo absent; }
+for arms in qmd-hybrid fused-no-grep; do
+    lr "hy-$arms" "QMD_URL=$SU" -- --arms "$arms"
+    eq "luna_hybrid_refuses_without_billed_ok: $arms exits 2 with no qmd call, no row and no output directory" "2 absent absent absent" "$? $(absent "$W/lqmd-hy-$arms.log") $(absent "$W/ledger-hy-$arms.jsonl") $(absent "$W/lout-hy-$arms")"
+done
+lr "hy-ok" "QMD_URL=$SU" HIMMEL_BILLED_OK=1 -- --arms qmd-hybrid
+eq "luna_hybrid_refuses_without_billed_ok: HIMMEL_BILLED_OK=1 lets it run, against the luna collection with a lex and a vec search" "0 luna lex,vec" "$? $(py -c 'import json,sys
+c = json.loads(open(sys.argv[1]).readline()); print(c[0][0], ",".join(c[1]))' "$W/lqmd-hy-ok.log")"
+lr "arms" "QMD_URL=$SU" -- --arms grep
+eq "luna_arms_listed: a himmel arm under --corpus luna is a usage error that names the four luna arms" "64 1" "$? $(grep -c 'known: qmd-hybrid,qmd-lex,graphify-ast,fused-no-grep' "$W/lr-arms.txt")"
+lr "arms-default" "QMD_URL=$SU" HIMMEL_BILLED_OK=1 --
+eq "luna_arms_listed: with no --arms the run takes all four, and the row records the luna corpus" "0 qmd-hybrid,qmd-lex,graphify-ast,fused-no-grep luna luna" "$? $(py -c 'import json,sys
+c = json.loads(open(sys.argv[1]).readline())["config"]; print(",".join(c["arms"]), c["corpus"], c["collection"])' "$W/ledger-arms-default.jsonl")"
+for u in unset "http://127.0.0.1:8181/mcp" "http://[::1]:8181/mcp"; do
+    if [ "$u" = unset ]; then lr "lexlive" -u QMD_URL -- --arms qmd-lex; else lr "lexlive" "QMD_URL=$u" -- --arms qmd-lex; fi
+    eq "luna_lex_against_scratch_daemon: $u is the live server, refused with exit 2 before any query" "2 absent absent" "$? $(absent "$W/lqmd-lexlive.log") $(absent "$W/ledger-lexlive.jsonl")"
+done
+lr "lex" "QMD_URL=$SU" -- --arms qmd-lex
+eq "luna_lex_against_scratch_daemon: a scratch URL runs the free arm, a lex search only, over the luna collection, with no billed opt-in (two questions, each asked at k and at the evidence depth)" "0 luna lex 4" "$? $(py -c 'import json,sys
+rows = [json.loads(x) for x in open(sys.argv[1])]; print(rows[0][0][0], ",".join(sorted({t for r in rows for t in r[1]})), len(rows))' "$W/lqmd-lex.log")"
+eq "the luna rows carry the question's source, the corpus and a degraded flag" "qmd direct luna False" "$(py -c 'import json,sys
+r = [json.loads(x) for x in open(sys.argv[1])]; print(r[0]["source"], r[1]["source"], r[0]["corpus"], r[0]["degraded"])' "$W/lout-lex/results.jsonl")"
+lr "gr" -- --arms graphify-ast
+eq "graphify-ast reads the scratch graph through WORKER_GRAPH_OUT and needs no billed opt-in" "0 $W/lgraph-out" "$? $(sort -u "$W/lgraph-gr.log")"
+rm -f "$W/git-grep.log"
+PATH="$W/nogrep:$PATH" lr "fng" "QMD_URL=$SU" HIMMEL_BILLED_OK=1 -- --arms fused-no-grep
+eq "fused_no_grep_excludes_grep: no grep runs, and the list is the rank fusion of the hybrid and AST lists alone" "0 absent notes/alpha.md,notes/gamma.md" "$? $(absent "$W/git-grep.log") $(py -c 'import json,sys
+r = [json.loads(x) for x in open(sys.argv[1])]; print(",".join(r[0]["files"]))' "$W/lout-fng/results.jsonl")"
+eq "fused_no_grep_excludes_grep: the row's arms are the fused arm only, and its tokens count both parts" "fused-no-grep True" "$(py -c 'import json,sys
+r = [json.loads(x) for x in open(sys.argv[1])]; print(r[0]["arm"], r[0]["tokens"] > 0)' "$W/lout-fng/results.jsonl")"
+LBANK="$W/lbank-deg.jsonl" lr "deg" "QMD_URL=$SU" HIMMEL_BILLED_OK=1 -- --arms qmd-hybrid
+eq "degraded_row_not_eligible: a hybrid query that failed is marked degraded and the ledger counts it" "True 1" "$(py -c 'import json,sys
+r = json.loads(open(sys.argv[1]).readline()); print(r["degraded"])' "$W/lout-deg/results.jsonl") $(lm "$W/ledger-deg.jsonl" qmd-hybrid.degraded)"
+for o in "$R/lout-repo" "$W/lnk/lout"; do
+    ln -sfn "$R" "$W/lnk"
+    lr "repo" "QMD_URL=$SU" -- --arms qmd-lex --out "$o"; rc=$?
+    eq "luna_run_refuses_repo_out: --out ${o#"$W"/} is refused with exit 2, nothing written" "2 absent absent absent" "$rc $(absent "$R/lout-repo") $(absent "$R/lout") $(absent "$W/ledger-repo.jsonl")"
+done
+lr "repo-graph" "QMD_URL=$SU" -- --arms graphify-ast --graph-out "$R/graphify-out"
+eq "luna_run_refuses_repo_out: --graph-out inside the checkout is refused with exit 2" "2 absent" "$? $(absent "$W/ledger-repo-graph.jsonl")"
+mkdir -p "$R/vrep"; cp "$W/out-good/results.jsonl" "$R/vrep/results.jsonl"
+ln -sfn "$R/vrep" "$W/vrep-link"
+for d in "$R/vrep" "$W/vrep-link"; do
+    py "$EV" vault-report "$d" --repo "$R" > "$W/vr-ref.txt" 2>&1; rc=$?
+    eq "vault_report_refuses_repo_out: ${d#"$W"/} is refused with exit 2 and prints no table" "2 0" "$rc $(grep -c -P '^\w+\t' "$W/vr-ref.txt")"
+done
+
+cat > "$W/lplant.py" <<'PY'
+import json, os, sys
+d = sys.argv[1]
+ast_b, ast_c, fus_b, fus_c = (int(x) for x in sys.argv[2:6])
+ast_tok, fus_tok = int(sys.argv[6]), int(sys.argv[7])
+degraded_base = len(sys.argv) > 8 and sys.argv[8] == "degraded"
+base = {i: i < 25 for i in range(50)}
+def cand(b, c):
+    hits = dict(base)
+    for i in range(c):
+        hits[i] = False
+    for i in range(25, 25 + b):
+        hits[i] = True
+    return hits
+os.makedirs(d, exist_ok=True)
+with open(os.path.join(d, "results.jsonl"), "w") as fh:
+    for arm, hits, tok in (("qmd-hybrid", base, 1000), ("graphify-ast", cand(ast_b, ast_c), ast_tok),
+                           ("fused-no-grep", cand(fus_b, fus_c), fus_tok)):
+        for i in range(50):
+            src = "qmd" if i < 20 else "direct" if i < 40 else "written"
+            fh.write(json.dumps(dict(id="q%d" % i, arm=arm, corpus="luna", source=src, hit=hits[i], rr=1.0 if hits[i] else 0.0,
+                                     tokens=tok, ms=10, degraded=degraded_base and arm == "qmd-hybrid" and i == 3)) + "\n")
+PY
+ruling() {
+    local d="$W/vr-$1"; shift
+    rm -rf "$d"; py "$W/lplant.py" "$d" "$@"
+    py "$EV" vault-report "$d" --repo "$R" 2>&1
+}
+rrow() { sed -n 's/^ruling: \(.*\) | .*/\1/p'; }
+eq "ruling_row_matches: fused 7 to 0 (14 points, 14 more than AST) is Both" "Both" "$(ruling both 0 0 7 0 1000 2000 | rrow)"
+eq "ruling_row_matches: AST 7 to 0, fused no better, is AST" "AST" "$(ruling ast 7 0 0 0 1000 2000 | rrow)"
+eq "ruling_row_matches: 6 flips to 0 is p .031, over Holm's first step, so qmd + rerank only" "qmd + rerank only" "$(ruling six 6 0 0 0 1000 2000 | rrow)"
+eq "ruling_row_matches: AST and fused both 7 to 0, fused only equal to AST, is AST" "AST" "$(ruling tie 7 0 7 0 1000 2000 | rrow)"
+eq "ruling_row_matches: fused 7 to 0 and AST 6 to 0 pass Holm's two steps, fused 2 points ahead of AST, is AST" "AST" "$(ruling holm 6 0 7 0 1000 2000 | rrow)"
+eq "ruling_row_matches: AST 7 to 0 over the 7161-token ceiling is qmd + rerank only" "qmd + rerank only" "$(ruling tokast 7 0 0 0 8000 2000 | rrow)"
+eq "ruling_row_matches: both arms 7 to 0 and both over the ceiling is qmd + rerank only" "qmd + rerank only" "$(ruling tokboth 7 0 7 0 8000 8000 | rrow)"
+eq "ruling_row_matches: a worse AST (7 to 3 is p .34) is qmd + rerank only" "qmd + rerank only" "$(ruling noisy 7 3 0 0 1000 2000 | rrow)"
+eq "vault-report prints each arm per source: AST in the direct source is 12 of 20 (0.60), in the written source 0.00" "0.60 0.00" "$(ruling ast 7 0 0 0 1000 2000 | awk -F'\t' '$2=="graphify-ast" && $1=="direct"{a=$4} $2=="graphify-ast" && $1=="written"{b=$4} END{print a, b}')"
+ruling part 7 0 0 0 1000 2000 > /dev/null
+grep -v '"id": "q49", "arm": "graphify-ast"' "$W/vr-part/results.jsonl" > "$W/vr-part/r2.jsonl" && mv "$W/vr-part/r2.jsonl" "$W/vr-part/results.jsonl"
+eq "ruling_row_matches: an arm that missed a question stops the ruling, never a comparison over the overlap" "1 0" "$(py "$EV" vault-report "$W/vr-part" --repo "$R" | awk '/^ruling: not eligible \| the three arms did not answer the same questions/{a++} /^ruling: (Both|AST|qmd)/{b++} END{print a+0, b+0}')"
+ruling deg 7 0 0 0 1000 2000 degraded > "$W/vr-deg.txt"
+eq "degraded_row_not_eligible: a degraded row stops the ruling, says re-run and names the count, and no row is proposed" "1 1 0" "$(grep -c '^ruling: not eligible' "$W/vr-deg.txt") $(grep -c '1 degraded' "$W/vr-deg.txt") $(grep -c -E '^ruling: (Both|AST|qmd)' "$W/vr-deg.txt")"
+
 [ "$fails" -eq 0 ] && echo "all passed" || echo "$fails failed"
 exit "$fails"
