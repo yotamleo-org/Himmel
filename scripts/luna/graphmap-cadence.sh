@@ -179,26 +179,22 @@ resolve_user_home() {
 # explicit use, and a re-render must never turn it into a daily draw (decision 525). The file is
 # operator-owned (block-himmel-config-writes.sh keeps agents off it, the same home as
 # graphify.salus_ollama_cloud_ok) and no env var overrides it. Absent, unreadable, malformed, a
-# symlink, or any value but true means no opt-in. The himmel station opts in once, by hand:
+# symlink, or any value but true means no opt-in (graph-choices.js role reads it; only
+# `publisher` is an opt-in). The himmel station opts in once, by hand:
 #   {"graphify": {"semantic_api_ok": true}}
 # ponytail: read at render time, so a runner already armed keeps its lane until the next
 # arm --rewrite-armed; upgrade path: a fire-time read inside the runner.
-SEMANTIC_API_OPTIN_KEY="graphify.semantic_api_ok"
-SEMANTIC_API_SKIP_TEXT="semantic skipped: API lane not opted in ($SEMANTIC_API_OPTIN_KEY in ~/.himmel/config.json)"
+# The prefix up to the first ';' is what a re-arm matches in an old runner (main's text started so).
+SEMANTIC_API_SKIP_PREFIX="semantic skipped: API lane not opted in"
+SEMANTIC_API_SKIP_TEXT="$SEMANTIC_API_SKIP_PREFIX; on this station the himmel graph comes from us with each update"
+# The station is the graph publisher: graph-choices.js role, which treats a linked ~/.himmel or
+# config.json as unreadable (a link can be planted without writing the operator's own file).
 semantic_api_opted_in() {
-    local home f
-    home="$(resolve_user_home)"
-    f="$home/.himmel/config.json"
-    # a link can be planted without writing the operator's own file
-    [ -L "$home/.himmel" ] && return 1
-    [ -L "$f" ] && return 1
-    [ -f "$f" ] && [ -r "$f" ] || return 1
-    command -v jq >/dev/null 2>&1 || return 1
-    jq -e '.graphify.semantic_api_ok == true' "$f" >/dev/null 2>&1
+    [ "$(HOME="$(resolve_user_home)" node "$HIMMEL_ROOT/scripts/himmelctl/lib/graph-choices.js" role 2>/dev/null)" = publisher ]
 }
 # One stderr line at arm and rewrite time, so a skipped lane is never a silent downgrade.
 note_semantic_api_off() {
-    echo "NOTE graphmap-cadence: the API lane is not opted in on this station ($SEMANTIC_API_OPTIN_KEY is not true in ~/.himmel/config.json): the semantic runners render without the lane and log a skip line on every fire. After the operator sets the key, re-render with: bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed" >&2
+    echo "NOTE graphmap-cadence: the API lane is not opted in on this station: it is not the graph publisher, so the semantic runners render without the lane and log a skip line on every fire; the himmel graph comes from us with each update" >&2
 }
 
 # Persistent runner home (.sh runners) — NOT mktemp: these
@@ -478,12 +474,12 @@ Flags (arm only, except --dry-run and --luna-only):
                          armed with, and refuses a runner armed with auto or
                          none (re-arm it with --force --api-account).
 
-The two claude-api semantic runners above spend the station's own API key, so a
-station must opt in before either one renders the API lane: set
-graphify.semantic_api_ok to the JSON literal true in ~/.himmel/config.json (an
-operator edit; no env var overrides it). Without it the runners still arm, carry
-no HIMMEL_API_LANE and no claude-api backend, and log a "semantic skipped" line
-on every fire. After setting it, re-render with arm --rewrite-armed.
+The two claude-api semantic runners above spend the station's own API key, so they
+render the API lane only on the station that builds and publishes the himmel graph
+(graphify.semantic_api_ok is the JSON literal true in ~/.himmel/config.json, an
+operator edit no env var overrides). On every other station the runners still arm,
+carry no HIMMEL_API_LANE and no claude-api backend, and log a "semantic skipped"
+line on every fire: the himmel graph comes from us with each update.
 
 The structural (AST) pair's offsets (luna daily 00:05, himmel hourly at :15)
 are NOT flags — see WEEKLY_DAY_*/AST_*_TIME in this script.
@@ -1616,8 +1612,9 @@ cmd_arm() {
             # A publish runner armed with --publish-semantic keeps its semantic branch: the mode
             # lives only in the runner text, so read it from the file being replaced. A runner
             # rendered without the opt-in carries the skip line instead of the lane env, so that
-            # line remembers the mode until the station opts in.
-            if [ "$rw_name" = publish-himmel ] && grep -qF -e 'GRAPH_CADENCE_SEMANTIC_BACKEND' -e "$SEMANTIC_API_SKIP_TEXT" "$rw_runner"; then
+            # line remembers the mode until the station opts in. The prefix matches both today's
+            # skip line and the longer one older arms wrote.
+            if [ "$rw_name" = publish-himmel ] && grep -qF -e 'GRAPH_CADENCE_SEMANTIC_BACKEND' -e "[$SEMANTIC_API_SKIP_PREFIX" "$rw_runner"; then
                 PUBLISH_SEMANTIC=1
                 payload_publish_himmel=$(publish_cron_payload "$q_bash" "$q_publish_script" "$q_himmel")
             fi

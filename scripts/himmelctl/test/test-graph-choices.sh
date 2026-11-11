@@ -185,6 +185,8 @@ done
 echo "C19: check on each unreadable cause prints the file, its cause word and its fixed line"
 fresh_home c19a; printf '{}\n' > "$WS/c19a.json"; ln -s "$WS/c19a.json" "$HOME/.himmel/config.json"
 out="$(gc check)"; has "C19 symlink cause" "$out" "cause=symlink"; has "C19 symlink fixed line names the file" "$out" "graph config unreadable (cause=symlink): ~/.himmel or ~/.himmel/config.json is a symlink"
+has "C19 a linked file without the key reads linked=not-publisher" "$out" "linked=not-publisher"
+printf '{"graphify":{"semantic_api_ok":true}}\n' > "$WS/c19a.json"; has "C19 a linked publisher file reads linked=publisher" "$(gc check)" "linked=publisher"
 fresh_home c19b; mkdir -p "$WS/c19b"; printf '{}\n' > "$WS/c19b/config.json"; rm -rf "$HOME/.himmel"; ln -s "$WS/c19b" "$HOME/.himmel"
 has "C19 symlinked ~/.himmel cause" "$(gc check)" "cause=symlink"
 fresh_home c19c; cfg '{}'; chmod 000 "$HOME/.himmel/config.json"

@@ -241,6 +241,8 @@ PATH_NOCLAUDE="$GRAPHIFY_BIN_DIR_PATH:$PATH_NOCLAUDE"
 # Hermeticity: point HOME/USERPROFILE at the temp dir so a stray BAT_DIR default
 # (should the seam ever be dropped) can't land under the real user profile.
 export HOME="$TMP_ROOT/home"
+# the graph role (graph-choices.js) reads $HOME/.himmel unless this seam points elsewhere
+unset HIMMEL_CONFIG_DIR
 export HIMMEL_OBSERVABILITY_CONFIG="$TMP_ROOT/observability.json"
 mkdir -p "$HOME"
 mkdir -p "$HOME/.himmel"
@@ -1546,7 +1548,7 @@ assert_not_contains "ast_cron_payload leaves GRAPHIFY_OUT alone when it is set" 
 # The luna semantic payload reads GRAPHIFY_OUT from its environment too; without an out dir it must clear an ambient one.
 # The payload reads the station opt-in, so the extraction carries its reader; HOME is the opted-in fixture above.
 LSP_SRC="$(sed -n '/^resolve_user_home()/,/^}/p' "$SCRIPT"; sed -n '/^semantic_api_opted_in()/,/^}/p' "$SCRIPT"; sed -n '/^luna_semantic_cron_payload()/,/^}/p' "$SCRIPT")"
-run_lsp() { bash -c "BAT_DIR=$TMP_ROOT/no-such-bat LUNA_SEMANTIC_PAUSE_MARKER=semantic-luna.paused"$'\n'"$LSP_SRC"$'\n''luna_semantic_cron_payload "$@"' _ "$@"; }
+run_lsp() { bash -c "BAT_DIR=$TMP_ROOT/no-such-bat LUNA_SEMANTIC_PAUSE_MARKER=semantic-luna.paused HIMMEL_ROOT=$SCRIPT_DIR/../.."$'\n'"$LSP_SRC"$'\n''luna_semantic_cron_payload "$@"' _ "$@"; }
 lsp_no_dir=$(run_lsp bash script.sh corpus)
 assert_contains "luna_semantic_cron_payload unsets GRAPHIFY_OUT when no out dir is given" "unset GRAPHIFY_OUT" "$lsp_no_dir"
 lsp_with_dir=$(run_lsp bash script.sh corpus /out/root/graphify-out)
@@ -2063,6 +2065,9 @@ rc=0; out=$(run_adopter arm --vault "$VAULT" 2>&1) || rc=$?
 assert_rc "adopter bare arm succeeds" 0 "$rc"
 hm_sh=$(cat "$CRON_DIR3/graphmap-himmel.sh" 2>/dev/null || echo MISSING)
 assert_contains "adopter himmel map runner logs why it is skipped" "[$SKIP_TEXT" "$hm_sh"
+assert_contains "adopter himmel map skip line says the himmel graph comes from us, not to set the key" \
+    "[semantic skipped: API lane not opted in; on this station the himmel graph comes from us with each update]" "$hm_sh"
+assert_not_contains "adopter bare arm no longer tells the station to set the key" "After the operator sets the key" "$out"
 assert_not_contains "adopter himmel map runner calls no refresh-graph-map.sh" "refresh-graph-map.sh" "$hm_sh"
 assert_not_contains "adopter himmel map runner sets no api lane" "HIMMEL_API_LANE" "$hm_sh"
 assert_contains "adopter bare arm says the API lane is not opted in" "API lane is not opted in" "$out"
@@ -2364,5 +2369,59 @@ assert_rc "post-merge --dry-run exits 0" 0 "$rc"
 assert_contains "post-merge --dry-run names the row it would add" "# $PM_TASK" "$out"
 if [ "$(pm_tab)" = "$(cat "$PMSTATE/crontab.before")" ] && [ ! -e "$PM_RUNNER" ]; then pass "post-merge --dry-run touches no crontab row and writes no runner"; else fail "post-merge --dry-run changed state" "$(pm_tab)"; fi
 export HIMMEL_OBSERVABILITY_CONFIG="$SAVED_OBS_PM"
+
+
+echo "TEST: a publish runner holding main's exact skip line keeps its semantic branch after --rewrite-armed"
+run_cron3 disarm >/dev/null 2>&1 || true
+run_adopter arm --vault "$VAULT" --ast-only --with-publish --publish-semantic --semantic-active >/dev/null 2>&1 || true
+old_skip='semantic skipped: API lane not opted in (graphify.semantic_api_ok in ~/.himmel/config.json)'
+sed "s#\[semantic skipped: API lane not opted in; on this station the himmel graph comes from us with each update\]#[$old_skip]#" \
+    "$CRON_DIR3/graphmap-publish-himmel.sh" > "$CRON_DIR3/graphmap-publish-himmel.sh.old" \
+    && mv "$CRON_DIR3/graphmap-publish-himmel.sh.old" "$CRON_DIR3/graphmap-publish-himmel.sh"
+assert_contains "fixture: the publish runner holds main's exact skip line" "[$old_skip]" "$(cat "$CRON_DIR3/graphmap-publish-himmel.sh" 2>/dev/null || echo MISSING)"
+rc=0; out=$(run_optin arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
+assert_rc "the opted-in rewrite over main's skip line exits 0" 0 "$rc"
+assert_contains "the rewritten publish runner keeps its semantic branch" "GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api" "$(cat "$CRON_DIR3/graphmap-publish-himmel.sh" 2>/dev/null || echo MISSING)"
+run_cron3 disarm >/dev/null 2>&1 || true
+
+echo "TEST: G1 the publisher render equals the render of the merge base's own graphmap-cadence.sh"
+g1_repo="$(cd "$SCRIPT_DIR/../.." && pwd)"
+g1_base="$(git -C "$g1_repo" merge-base HEAD origin/main 2>/dev/null || true)"
+if [ -z "$g1_base" ] || ! git -C "$g1_repo" cat-file -e "$g1_base^{commit}" 2>/dev/null; then
+    echo "  SKIP: G1 the merge base object is missing (a shallow clone); READY pastes a local run"
+else
+    echo "  G1 merge base: $g1_base"
+    g1_tree="$TMP_ROOT/g1-tree"
+    git -C "$g1_repo" -c core.hooksPath=/dev/null worktree add --detach --quiet "$g1_tree" "$g1_base" >/dev/null 2>&1 || g1_tree=""
+    # g1_render <script> <tag>: one publisher arm into its own runner dir; prints every runner
+    # and the crontab, with the tree's root and the runner dir replaced by fixed words.
+    g1_render() {
+        local s="$1" d="$TMP_ROOT/g1run-$2" st="$TMP_ROOT/g1run-$2-state" fake f
+        rm -rf "$d" "$st"; mkdir -p "$d" "$st"
+        fake="$st/crontab-fake.sh"
+        sed "s#^CSTATE=.*#CSTATE=\"$st\"#" "$FAKE_CRONTAB3" > "$fake"; chmod +x "$fake"
+        HOME="$OPTIN_HOME" env OSTYPE=linux-gnu GRAPHMAP_CRONTAB="$fake" GRAPHMAP_BAT_DIR="$d" \
+            PATH="$TMP_ROOT/bin:$GRAPHIFY_BIN_DIR_PATH:$PATH" "$REAL_BASH" "$s" arm --vault "$VAULT" --with-publish --publish-semantic --semantic-active >/dev/null 2>&1 || true
+        for f in "$d"/graphmap-*.sh; do
+            [ -f "$f" ] || continue
+            printf '== %s\n' "${f##*/}"; cat "$f"
+        done
+        printf '== crontab\n'; cat "$st/crontab" 2>/dev/null || true
+    }
+    if [ -z "$g1_tree" ]; then
+        fail "G1 could not add a detached worktree of the merge base $g1_base"
+    else
+        g1_head="$(g1_render "$SCRIPT" head | sed -e "s#$g1_repo#ROOT#g" -e "s#$TMP_ROOT/g1run-head#DIR#g" -e "s#graph-publish-[A-Za-z0-9._-]*#graph-publish-SLUG#g")"
+        g1_base_out="$(g1_render "$g1_tree/scripts/luna/graphmap-cadence.sh" base | sed -e "s#$g1_tree#ROOT#g" -e "s#$TMP_ROOT/g1run-base#DIR#g" -e "s#graph-publish-[A-Za-z0-9._-]*#graph-publish-SLUG#g")"
+        if [ -n "$g1_head" ] && grepq "$g1_head" -F 'graphmap-publish-himmel.sh' && [ "$g1_head" = "$g1_base_out" ]; then
+            pass "G1 the publisher render of HEAD equals the merge base's render"
+        else
+            fail "G1 the publisher render differs from the merge base's" "$(diff <(printf '%s\n' "$g1_base_out") <(printf '%s\n' "$g1_head") | head -20)"
+        fi
+        g1_ctl="$(printf '%s\n' "$g1_head" | sed '0,/--name/s/--name/--namf/')"
+        if [ "$g1_ctl" != "$g1_base_out" ]; then pass "G1 RED control: one changed byte outside the replaced root fails the compare"; else fail "G1 RED control: a one-byte change still compared equal"; fi
+        git -C "$g1_repo" worktree remove --force "$g1_tree" >/dev/null 2>&1 || rm -rf "$g1_tree"
+    fi
+fi
 
 summary

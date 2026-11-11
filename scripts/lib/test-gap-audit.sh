@@ -38,8 +38,13 @@ printf '{}' > "$TMP/go/semantic-manifest.json"
 touch_at "$TMP/go/semantic-manifest.json" "$((NOW - 2 * DAY))"
 
 LEDGER="$TMP/no-ledger.tsv"
+# The semantic rows judge the station's own himmel graph, so the rows run as the publisher
+# unless they name another HOME.
+mkdir -p "$TMP/pub-home/.himmel" "$TMP/adopter-home" "$TMP/set-home/.himmel"
+printf '{"graphify":{"semantic_api_ok":true}}\n' > "$TMP/pub-home/.himmel/config.json"
+printf '{"graphify":{"choices":{"version":1,"corpora":[],"primary":"subscription"}}}\n' > "$TMP/set-home/.himmel/config.json"
 run() { # run <extra env assignments...> ; prints gap_audit_offer
-    env GAP_AUDIT_ROOT="$TMP/repo" GAP_AUDIT_NOW="$NOW" HIMMEL_CEILINGS_LEDGER="$LEDGER" \
+    env HOME="$TMP/pub-home" HIMMEL_CONFIG_DIR= GAP_AUDIT_ROOT="$TMP/repo" GAP_AUDIT_NOW="$NOW" HIMMEL_CEILINGS_LEDGER="$LEDGER" \
         GAP_AUDIT_DOCTOR_CMD="bash $TMP/doctor-green.sh" \
         GAP_AUDIT_QMD_STATUS_FILE="$TMP/qmd-green.txt" \
         GAP_AUDIT_GRAPH_OUT="$TMP/go" \
@@ -84,6 +89,15 @@ has "old semantic manifest flagged" "$out" "40d"
 mkdir -p "$TMP/nogo"
 out="$(run GAP_AUDIT_GRAPH_OUT="$TMP/nogo")"
 lacks "no graph at all: graphify check skipped" "$out" "semantic manifest"
+# a station that is not the publisher pulls the himmel graph: no semantic gap, whatever its route
+rm -f "$TMP/go/semantic-manifest.json"
+out="$(run HOME="$TMP/adopter-home")"
+lacks "an AST-only adopter with no manifest reports no graphify gap" "$out" "semantic manifest"
+out="$(run HOME="$TMP/set-home")"
+lacks "an adopter whose route state is set reports none either" "$out" "semantic manifest"
+out="$(run)"
+has "the publisher with no manifest still reports it" "$out" "semantic manifest"
+printf '{}' > "$TMP/go/semantic-manifest.json"
 touch_at "$TMP/go/semantic-manifest.json" "$((NOW - 2 * DAY))"
 
 # --- orphaned in-work tickets: RESUME detector ------------------------------

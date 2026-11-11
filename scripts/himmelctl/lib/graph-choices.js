@@ -72,19 +72,28 @@ function configFile() { return path.join(stationDir(), 'config.json'); }
 const plainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 
+// Whether the file read through a link says publisher: the one consent value the update's
+// pull rule needs on a symlinked config (main reads through a linked ~/.himmel).
+function linkedPublisher(file) {
+  try {
+    const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return plainObject(doc) && plainObject(doc.graphify) && doc.graphify.semantic_api_ok === true;
+  } catch { return false; }
+}
+
 // Reads the station file once: { role, cause, doc }. The catch keeps only a cause word.
 function readStation() {
   const dir = stationDir();
   const file = configFile();
   let st;
   try {
-    if (fs.lstatSync(dir).isSymbolicLink()) return { role: 'unreadable', cause: 'symlink' };
+    if (fs.lstatSync(dir).isSymbolicLink()) return { role: 'unreadable', cause: 'symlink', linked: linkedPublisher(file) };
   } catch { return { role: 'adopter', cause: '', doc: {} }; }
   try { st = fs.lstatSync(file); } catch (e) {
     if (e && e.code === 'ENOENT') return { role: 'adopter', cause: '', doc: {} };
     return { role: 'unreadable', cause: 'mode' };
   }
-  if (st.isSymbolicLink()) return { role: 'unreadable', cause: 'symlink' };
+  if (st.isSymbolicLink()) return { role: 'unreadable', cause: 'symlink', linked: linkedPublisher(file) };
   if (!st.isFile()) return { role: 'unreadable', cause: 'not-a-file' };
   let text;
   try { text = fs.readFileSync(file, 'utf8'); } catch { return { role: 'unreadable', cause: 'mode' }; }
@@ -245,6 +254,7 @@ function check() {
   const lines = [`role=${station.role}`];
   if (station.role === 'unreadable') {
     lines.push(`cause=${station.cause}`);
+    if (station.cause === 'symlink') lines.push(`linked=${station.linked ? 'publisher' : 'not-publisher'}`);
     lines.push(`graph config unreadable (cause=${station.cause}): ${CAUSE_LINES[station.cause]}`);
     return lines;
   }

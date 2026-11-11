@@ -7,7 +7,8 @@
 # Checks (all cheap, all read-only):
 #   doctor rows  C50/C49/C56/C40 (qmd), C33/C8 (graphify) — reused, not redone
 #   qmd          needsEmbedding backlog; collections not scanned for > 3 days
-#   graphify     semantic manifest missing or older than 14 days
+#   graphify     semantic manifest missing or older than 14 days (the graph publisher
+#                only: graph-choices.js role; other stations pull this graph)
 #   tickets      in-work tickets with no session/PR (next-dispatchable.sh
 #                --resume-only); skipped when absent or Jira unset
 #   ceilings     open ceilings ledger rows (ceiling-lookup.sh --ids --all: ids,
@@ -21,6 +22,7 @@
 # PLATFORM GUARD: bash-only, like himmel-update.sh.
 
 GAP_AUDIT_ROOT_DEFAULT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../.." 2>/dev/null && pwd)"
+_GA_GRAPH_CHOICES="$GAP_AUDIT_ROOT_DEFAULT/scripts/himmelctl/lib/graph-choices.js"
 GAP_AUDIT_FINDINGS=""
 GAP_AUDIT_SKIPPED=""
 
@@ -81,8 +83,11 @@ _ga_check_qmd() {
 }
 
 _ga_check_semantic() {
-    local out="${GAP_AUDIT_GRAPH_OUT:-$1/graphify-out}" now="$2" mt age
+    local out="${GAP_AUDIT_GRAPH_OUT:-$1/graphify-out}" now="$2" mt age role
     [ -f "$out/graph.json" ] || return 0   # no graph on this machine: graphify is unused
+    # Only the publisher builds this graph's semantic layer; every other station pulls it.
+    role="$(node "$_GA_GRAPH_CHOICES" role 2>/dev/null)" || role=""
+    [ "$role" = publisher ] || return 0
     if [ ! -f "$out/semantic-manifest.json" ]; then
         _ga_add graphify "no semantic manifest — the semantic layer has never been built" "bash scripts/graphify/semantic-update.sh --seed-manifest (see the script header)"
         return 0
