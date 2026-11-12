@@ -817,7 +817,7 @@ the operator the line.
 the live fleet at once; a worker is refused. `holds.py on --workers-from <fleet.json>
 --repo <repo>` removes the sentinel and backfills, because workers launched while it was
 off hold no rows. `WRITE_HOLD_OK=1` covers new launches only, and a `.single-writer`
-marker opts one repo out.
+marker opts one repo out. That marker alone does not stop a chief starting in the repo; only a state repo (`.single-writer` together with the vault's `.vault-template.json`) is refused at launch (exit 18).
 
 **Backfill at cutover.** `holds.py backfill --manifest <fleet.json> --repo <primary>`
 seeds every manifest worker that has not `WRAPPED`. A worker it cannot seed holds no

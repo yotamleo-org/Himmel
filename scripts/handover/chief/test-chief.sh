@@ -2275,6 +2275,27 @@ check "chief_project_registered_adopter proceeds (rc 0)" "$gp_rc" "0"
 check "guard_chief_project_guarded_no_warn: registered adopter, opt-out dropped, no refusal and 0 WARN" \
     "$(printf '%s\n' "$gp_out" | grep -c "refusing to launch\|^WARN unguarded")" "0"
 
+# SCRUM-15: .single-writer alone is only the edit-on-main opt-out, so a registered personal
+# repo carrying it still hosts a chief; the same repo stamped as a vault (.vault-template.json) is a state repo and is refused (18).
+for gp_kind in personal state; do
+    gp_sw="$tmp/gp-sw-$gp_kind"; mkdir -p "$gp_sw"
+    git -C "$gp_sw" init -q -b main && git -C "$gp_sw" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+    : > "$gp_sw/.single-writer"
+    [ "$gp_kind" = state ] && printf '{"template":"luna-second-brain"}\n' > "$gp_sw/.vault-template.json"
+    gp_sw="$(cd "$gp_sw" && pwd -P)"
+    env HANDOVER_REGISTRY="$gp_reg" USER_SLUG=tester bash "$REPO_REAL/scripts/handover/register-state.sh" \
+        --repo-path "$gp_sw" --state-host "$tmp/gp-state" >/dev/null 2>&1
+    gp_rc=0
+    # shellcheck disable=SC2016  # literal bash -c body
+    gp_out="$( env -u UNGUARDED_LAUNCH_OK HOME="$tmp/gp-home" HIMMEL_REPO="$REPO_REAL" CLAUDE_CONFIG_DIR="$gp_cfg" HANDOVER_REGISTRY="$gp_reg" \
+        bash -c 'cd "$1" && HANDOVER_DIR="$2" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO bash "$3" new --project "$4" --dry-run' _ "$fixture_repo" "$root" "$C" "$gp_sw" 2>&1 )" || gp_rc=$?
+    if [ "$gp_kind" = personal ]; then
+        check "SCRUM-15 registered personal repo with .single-writer proceeds (rc 0)" "$gp_rc" "0"
+    else
+        check "SCRUM-15 state repo (.single-writer + .vault-template.json) is refused (rc 18)" "$gp_rc" "18"
+    fi
+done
+
 # --- 68g (change 7): a SYMLINK to the himmel checkout given as --project is
 # canonicalized with pwd -P and recognized as himmel itself, not a foreign
 # project (skips on hosts where a real symlink doesn't stick, e.g. Git Bash).
