@@ -19,7 +19,7 @@ DIFF="$HERE/diff"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/guard-corpus-test.XXXXXX")" || {
   echo "mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$TMP"' EXIT
-export HIMMEL_EVAL_RUNS_LEDGER="$TMP/eval-runs.jsonl"   # HIMMEL-4647: never the live ledger
+export HIMMEL_EVAL_RUNS_LEDGER="$TMP/eval-runs.jsonl"   # never the live ledger
 # a loaded CI shard starved a sandbox launch past diff's 15s default (TIMEOUT => ODD-RC, exit 3)
 export GUARD_CORPUS_TIMEOUT_RUN=120
 

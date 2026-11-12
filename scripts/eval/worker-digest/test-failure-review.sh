@@ -132,7 +132,7 @@ check "the digest shows the would-be routing" 'digest "$C2" | grep -q "would-fil
 check "the top classes list the class with its workers" 'digest "$C2" | grep -q "denied/guard-pr-check-literal: 2 rows, workers N100, N200"'
 check "the header names the 24 h window and the routing names the 14 d one" 'digest "$C2" | grep -q "^- window: .* (24 h), mode: dry-run" && digest "$C2" | grep -q "would-file denied/guard-pr-check-literal (workers 2 in 14 d)"'
 
-echo "HIMMEL-7354: a live search error is said with its cause in the digest"
+echo "a live search error is said with its cause in the digest"
 C3e="$TMP/c3e"; mkdir -p "$C3e"; cp "$C2/ledger.jsonl" "$C3e/ledger.jsonl"
 echo "JIRA_BASE_URL is not set" >"$STUB/list.fail"
 review "$C3e" --live >"$C3e/run.out" 2>&1
@@ -375,7 +375,7 @@ FAILURE_REVIEW_PREFLIGHT="$STUB/preflight" FAILURE_REVIEW_NOTIFY_CMD="$STUB/noti
 hung "$rc" "cadence run (send fails)"
 check "a failed Telegram send is its own alert: digest written, only the send failed" '[ "$rc" = 3 ] && ls "$C8n/out"/failure-review-*.md >/dev/null 2>&1 && tail -n 1 "$STUB/notify.log" | grep -q "Telegram message was not delivered (exit 3)\. Cause: the digest is written; only the send failed\. Do: nothing, the undelivered line is sent again at the next run"'
 
-echo "9. delivery is persisted: a failed line is retried, a delivered one is not repeated (HIMMEL-4790)"
+echo "9. delivery is persisted: a failed line is retried, a delivered one is not repeated"
 C9="$TMP/c9"; mkdir -p "$C9"
 row "$C9/ledger.jsonl" N050 denied/guard-recur 1 2026-10-03T08:00:00Z
 row "$C9/ledger.jsonl" N100 denied/guard-recur 1
@@ -466,7 +466,7 @@ review "$C9k" --state "$C9k/routes" >/dev/null 2>&1
 check "an extensionless router state finishes (its legacy and new sidecar names coincide)" '[ -f "$C9k/routes.notify.json" ]'
 
 echo
-echo "friction subsection (HIMMEL-4926)"
+echo "friction subsection"
 CF="$TMP/cf"; mkdir -p "$CF"; : >"$CF/ledger.jsonl"
 printf '#!/usr/bin/env bash\nprintf "### Friction (last 7 days)\\n\\n- hook:x / y: 3 refusals\\n"\n' >"$STUB/friction-ok"
 printf '#!/usr/bin/env bash\nexit 7\n' >"$STUB/friction-bad"
@@ -482,7 +482,7 @@ CH="$TMP/ch"; mkdir -p "$CH"; : >"$CH/ledger.jsonl"
 review "$CH" >"$CH/run.out" 2>&1
 check "an empty command turns the subsection off" '! digest "$CH" | grep -q "Friction"'
 
-echo "HIMMEL-9102: the review also writes failure-review-<date>.json beside the markdown"
+echo "the review also writes failure-review-<date>.json beside the markdown"
 J2="$C2/out/failure-review-$DAY.json"
 # Control: the markdown for the C2 fixture is byte-identical to what the review wrote before the sidecar existed.
 cat >"$TMP/golden-c2.md" <<'EOF'

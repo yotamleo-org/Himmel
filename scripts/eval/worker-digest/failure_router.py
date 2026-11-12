@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/eval/worker-digest/failure_router.py - the failure router (HIMMEL-4670 P5).
+"""scripts/eval/worker-digest/failure_router.py - the failure router.
 
 Reads the worker-failures ledger (worker_ledger.py writes it), finds the class keys that
 recur across distinct workers, and routes each through failure-routes.table.json
@@ -41,7 +41,7 @@ re-filed. FAIL CLOSED: an unreadable state file, a search error, a CLI error or 
 body outside the alphabet files nothing and logs skipped:<why>. slug() is lossy (case,
 punctuation, past char 60), so a class with no ticket of its own whose fl-<slug> is
 shared with another known class (ledger window or state) logs skipped:slug-collision
-rather than adopt the other class's ticket (HIMMEL-4741).
+rather than adopt the other class's ticket.
 
 --dry-run reads only: it prints the would-be decisions and writes no file and makes
 no Jira call, the search included.
@@ -268,7 +268,7 @@ def refusal(text):
     """The line that says why the CLI failed: the first stderr line that is not part of a title warning.
 
     The CLI prints `jira: warning: ...` and its multi-line title template before it refuses, so the
-    first line is the warning, not the refusal (HIMMEL-8734)."""
+    first line is the warning, not the refusal."""
     skip = ("jira: warning:", "Ticket title", "  ", "Sectors:", "Leave out")
     for line in (text or "").splitlines():
         if line.strip() and not line.startswith(skip):

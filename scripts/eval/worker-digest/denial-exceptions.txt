@@ -2,7 +2,7 @@
 # mapper's DENIED regex (canonical for the event layer) and trajectory.py denied() (canonical for the
 # trajectory fields). test-worker-digest.sh fails on any divergence not listed here, and on a line here that
 # no longer occurs. One per line: <fixture> <tool_call_id> <only: mapper|trajectory> <reason>.
-# Both readers switch to one source when HIMMEL-4484 (Claude Code's tool_decision events) lands.
+# Both readers switch to one source when Claude Code's tool_decision events land.
 classes.jsonl toolu_d5 mapper the permission prompt's "tool use was rejected" is outside trajectory DENIAL_RE
 denial-repeated.jsonl toolu_01 trajectory headless "This command requires approval" is outside the mapper's DENIED
 denial-repeated.jsonl toolu_02 trajectory headless "This command requires approval" is outside the mapper's DENIED
