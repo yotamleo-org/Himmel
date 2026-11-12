@@ -2295,6 +2295,16 @@ for gp_kind in personal state obsidian holdsroot; do
     else
         check "SCRUM-15 state repo ($gp_kind) with .single-writer is refused (rc 18)" "$gp_rc" "18"
     fi
+    if [ "$gp_kind" = personal ]; then
+        gp_rc=0
+        # shellcheck disable=SC2016  # literal bash -c body
+        gp_out="$( env -u UNGUARDED_LAUNCH_OK -u HANDOVER_DIR HOME="$tmp/gp-home" HIMMEL_REPO="$REPO_REAL" CLAUDE_CONFIG_DIR="$gp_cfg" HANDOVER_REGISTRY="$gp_reg" \
+            bash -c 'cd "$1" && USER_SLUG=tester JIRA_PROJECT_KEY=DEMO bash "$2" new --project "$3" --dry-run' _ "$fixture_repo" "$C" "$gp_sw" 2>&1 )" || gp_rc=$?
+        check "SCRUM-15 personal .single-writer repo with HANDOVER_DIR unset is not refused (rc != 18)" \
+            "$([ "$gp_rc" != 18 ] && echo yes || echo no)" "yes"
+        check "SCRUM-15 personal .single-writer repo with HANDOVER_DIR unset prints no launch refusal" \
+            "$(printf '%s\n' "$gp_out" | grep -c "refusing to launch")" "0"
+    fi
 done
 
 # --- 68g (change 7): a SYMLINK to the himmel checkout given as --project is
