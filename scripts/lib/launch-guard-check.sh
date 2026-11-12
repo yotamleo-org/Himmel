@@ -9,7 +9,11 @@
 # byte-equal to a blob on the anchor's origin/main since the folder's merge-base (a
 # worktree cut before main added hooks). A subdirectory of the tree needs its own file.
 # Layer U (anything else): the user guard layer is complete, <dir> is in a git work
-# tree whose primary checkout is registered, and that checkout has no .single-writer.
+# tree whose primary checkout is registered, and that checkout is not a state repo: one
+# carrying .single-writer AND any of a .vault-template.json stamp, an .obsidian/ directory,
+# or a non-empty HANDOVER_DIR that is, or sits inside, the checkout (one that does not
+# resolve refuses; an empty one skips this test). .single-writer alone is only the
+# block-edit-on-main opt-out and passes.
 #
 # Env: HIMMEL_REPO (trust anchor; default the primary checkout of this script's tree),
 #      CLAUDE_CONFIG_DIR, HANDOVER_REGISTRY. An inherited CLAUDE_USER_SETTINGS is ignored.
@@ -100,7 +104,13 @@ case "$_reg_rc" in
   2) refuse "handover registry unreadable" ;;
   *) refuse "repo not registered" ;;
 esac
-[ ! -e "$primary/.single-writer" ] || refuse "single-writer state repo"
+if [ -e "$primary/.single-writer" ]; then
+  { [ ! -e "$primary/.vault-template.json" ] && [ ! -d "$primary/.obsidian" ]; } || refuse "single-writer state repo"
+  if [ -n "${HANDOVER_DIR:-}" ]; then
+    hroot="$(cd -P -- "$HANDOVER_DIR" 2>/dev/null && pwd)" || refuse "single-writer state repo"
+    case "$hroot/" in "$primary"/*) refuse "single-writer state repo" ;; esac
+  fi
+fi
 
 status="$(HIMMEL_REPO="$anchor" CLAUDE_USER_SETTINGS="$(claude_config_dir)/settings.json" \
   node "$anchor/scripts/hooks/guardrail-block.mjs" status --json 2>/dev/null)" || status=""
