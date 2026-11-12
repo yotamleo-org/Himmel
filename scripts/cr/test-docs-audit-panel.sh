@@ -8,9 +8,10 @@
 # critic-panel.sh is NEVER on disk under the fixture's HIMMEL_ROOT - a stub
 # takes its place, so the (paid, real-money) critic panel can never be
 # invoked no matter what the SUT does. PATH is stripped of rtk's install dir
-# for every SUT invocation, so the SUT's `command -v rtk` reliably fails and
-# the rtk-retry branch never fires - deterministic, and it can never write
-# rtk's own cache/log files outside this fixture.
+# for every SUT invocation, so the SUT's `command -v rtk` fails unless a row
+# puts the STUB rtk (below) on PATH on purpose: only T3f and T7d do, so the
+# real rtk is never run and can never write its own cache/log files outside
+# this fixture.
 set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SUT_SRC="$DIR/docs-audit-panel.sh"
@@ -58,7 +59,7 @@ STUB_MARKER="$tmp/stub-called"
 STUB="$root/scripts/cr/critic-panel.sh"
 cat > "$STUB" <<'STUBEOF'
 #!/usr/bin/env bash
-cat >/dev/null   # swallow the piped diff, like the real panel does
+if [ -n "${STUB_STDIN:-}" ]; then cat > "$STUB_STDIN"; else cat >/dev/null; fi
 [ -n "${STUB_MARKER:-}" ] && : > "$STUB_MARKER"
 [ -n "${STUB_ARGS:-}" ] && printf '%s\n' "$*" > "$STUB_ARGS"
 [ -n "${STUB_OUT:-}" ] && printf '%s\n' "$STUB_OUT"
@@ -174,7 +175,7 @@ mkdir -p "$tmp/rtk-stub" "$tmp/vanishing"
 RTK_MARKER="$tmp/rtk-called"
 cat > "$tmp/rtk-stub/rtk" <<'RTKEOF'
 #!/usr/bin/env bash
-: > "$RTK_MARKER"
+printf '%s\n' "$*" > "$RTK_MARKER"
 [ -z "${RTK_WIPE_TMPDIR:-}" ] || rm -rf "$TMPDIR"
 echo "diff --git a/f.txt b/f.txt"
 RTKEOF
@@ -215,6 +216,38 @@ rc=0
 check "$rc" "7" "T3h rc"
 contains "$(cat "$stderr_file")" "docs-audit-panel ABORT - could not fetch origin/main" "T3h names the fetch"
 [ ! -e "$STUB_MARKER" ] || { echo "FAIL: T3h the panel ran on an unfetched base"; fail=1; }
+
+nobase="$tmp/nobase"
+mkdir -p "$nobase"
+(
+    cd "$nobase" || exit 1
+    git init -q -b trunk .
+    git config user.email t@t
+    git config user.name t
+    git config commit.gpgsign false
+    echo base > f.txt
+    git add f.txt
+    git commit -q -m init
+)
+nobase_head="$(git -C "$nobase" rev-parse trunk)"
+rm -f "$STUB_MARKER"
+rc=0
+( cd "$nobase" && STUB_RC=0 PATH="$SAFE_PATH" bash "$SUT" --head "$nobase_head" --branch trunk ) \
+    >"$stdout_file" 2>"$stderr_file" || rc=$?
+check "$rc" "7" "T3i rc (unresolvable diff base aborts)"
+contains "$(cat "$stderr_file")" "docs-audit-panel ABORT - diff base " "T3i names the base"
+contains "$(cat "$stderr_file")" "does not resolve to a commit. Nothing was reviewed and nothing was recorded" "T3i says nothing was recorded"
+[ ! -e "$STUB_MARKER" ] || { echo "FAIL: T3i the panel ran on an unresolvable diff base"; fail=1; }
+
+orphan_head="$(git -C "$repo" -c user.email=t@t -c user.name=t commit-tree "$(git -C "$repo" hash-object -t tree /dev/null)" -m orphan)"
+rm -f "$STUB_MARKER"
+rc=0
+( cd "$repo" && STUB_RC=0 PATH="$SAFE_PATH" bash "$SUT" --head "$orphan_head" --branch feat ) \
+    >"$stdout_file" 2>"$stderr_file" || rc=$?
+check "$rc" "0" "T3j rc (a failed diff degrades, not aborts)"
+contains "$(cat "$stderr_file")" "git diff failed rc=" "T3j names the diff failure"
+contains "$(cat "$stderr_file")" "docs-audit: no critic ok row from this run - ready-check item 4 and the merge gate hold this head until a re-run records avail ok" "T3j names the hold"
+[ ! -e "$STUB_MARKER" ] || { echo "FAIL: T3j the panel ran after a failed diff"; fail=1; }
 
 # 4. CR_PROFILE=none wins even under CR_REQUIRE_CROSS_MODEL: prints the
 # claude-only note, panel never invoked, exit 0.
@@ -284,14 +317,27 @@ case "$(cat "$stderr_file")" in *"all critics failed"*) echo "FAIL: T7b exit 6 m
 # are not the "no valid diff" failure it exists for. A control proves rc=1 does.
 for retry_rc in 2 5 6 1; do
     rm -f "$RTK_MARKER"
-    ( cd "$repo" && RTK_MARKER="$RTK_MARKER" STUB_RC="$retry_rc" PATH="$tmp/rtk-stub:$SAFE_PATH" bash "$SUT" --head "$head_feat" --branch feat ) \
+    rm -f "$tmp/retry-stdin"
+    ( cd "$repo" && RTK_MARKER="$RTK_MARKER" STUB_STDIN="$tmp/retry-stdin" STUB_RC="$retry_rc" PATH="$tmp/rtk-stub:$SAFE_PATH" bash "$SUT" --head "$head_feat" --branch feat ) \
         >"$stdout_file" 2>"$stderr_file"
     if [ "$retry_rc" -eq 1 ]; then
         [ -e "$RTK_MARKER" ] || { echo "FAIL: T7d control: rc=1 must retry through rtk"; fail=1; }
+        check "$(cat "$RTK_MARKER" 2>/dev/null)" "proxy git diff $head_main...$head_feat" "T7d the rtk retry command and range"
+        check "$(cat "$tmp/retry-stdin" 2>/dev/null)" "diff --git a/f.txt b/f.txt" "T7d the panel gets the rtk retry's diff"
     else
         [ ! -e "$RTK_MARKER" ] || { echo "FAIL: T7d rc=$retry_rc must not retry through rtk"; fail=1; }
     fi
 done
+
+set_policy 1
+unset CR_PROFILE 2>/dev/null || true
+export STUB_RC=5 STUB_OUT="should-be-discarded" STUB_ERR="critic-panel.sh: CR-ledger append failed; review output was emitted but this run is NOT certified"
+rc=$(run_sut --head "$head_feat" --branch feat)
+check "$rc" "0" "T7f rc (degrade, not abort)"
+check "$(cat "$stdout_file")" "" "T7f stdout (findings discarded)"
+contains "$(cat "$stderr_file")" "docs-audit critic panel could not record its result on the CR ledger (exit 5" "T7f names the record failure"
+contains "$(cat "$stderr_file")" "docs-audit: no critic ok row from this run - ready-check item 4 and the merge gate hold this head" "T7f names the hold"
+case "$(cat "$stderr_file")" in *"all critics failed"*) echo "FAIL: T7f exit 5 must not read as all critics failed"; fail=1 ;; esac
 
 # 7e. A refusal the panel could not record holds nothing, so the lane aborts.
 export STUB_RC=6 STUB_OUT="should-be-discarded" STUB_ERR="critic-panel.sh: could not record certify-refused on the ledger"

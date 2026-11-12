@@ -919,6 +919,49 @@ check_contains "LAC: injected failure reached the enriched JSONL source" "$lac_l
 check_contains "LAC: injected failure targeted the finding batch destination" "$lac_log" "/.finding-batch.jsonl"
 check_contains "LAC: panel reports failed ledger certification" "$(cat "$tmp/lac-err")" "CR-ledger append failed"
 check "LAC: failed copy writes no finding rows" "$(grep -c '\"kind\":\"finding\"' "$LAC_LEDGER" || true)" "0"
+ledger_rows() {
+    python3 - "$@" <<'PYEOF'
+import json, sys
+p, kind = sys.argv[1], sys.argv[2]
+status = sys.argv[3] if len(sys.argv) > 3 else ''
+reason = sys.argv[4] if len(sys.argv) > 4 else ''
+n = 0
+for l in open(p):
+    if not l.strip():
+        continue
+    r = json.loads(l)
+    if r.get('kind') == kind and (not status or r.get('status') == status) and (not reason or r.get('reason') == reason):
+        n += 1
+print(n)
+PYEOF
+}
+check "HIMMEL-8992 LAC: failed copy leaves no passing avail row" "$(ledger_rows "$LAC_LEDGER" avail ok)" "0"
+check "HIMMEL-8992 LAC: the responders are recorded unavailable (record-failed)" "$(ledger_rows "$LAC_LEDGER" avail unavailable record-failed)" "2"
+
+LAW_APPEND="$tmp/law-append.sh"
+cat > "$LAW_APPEND" <<LAWEOF
+#!/usr/bin/env bash
+[ "\${1:-}" = "finding" ] && [ -n "\${LAW_FAIL:-}" ] && exit 74
+exec bash "$HERE/ledger-append.sh" "\$@"
+LAWEOF
+chmod +x "$LAW_APPEND"
+LAW_LEDGER="$tmp/law-ledger.jsonl"; : > "$LAW_LEDGER"
+law_rc=0
+LAW_FAIL=1 CR_LEDGER="$LAW_LEDGER" CRITIC_LEDGER_APPEND="$LAW_APPEND" \
+    CRITICS_JSON="$tmp/critics-all.json" CRITIC_FIRST_PASS="$STUB" \
+    bash "$PANEL" <<< "$DIFF" > "$tmp/law-out" 2> "$tmp/law-err" || law_rc=$?
+check "HIMMEL-8992 LAW: a failed finding batch makes the panel uncertified" "$law_rc" "5"
+check "HIMMEL-8992 LAW: a failed finding batch leaves no passing avail row" "$(ledger_rows "$LAW_LEDGER" avail ok)" "0"
+check "HIMMEL-8992 LAW: the responders are recorded unavailable (record-failed)" "$(ledger_rows "$LAW_LEDGER" avail unavailable record-failed)" "2"
+check "HIMMEL-8992 LAW: the failing member keeps its own unavailable reason" "$(ledger_rows "$LAW_LEDGER" avail unavailable)" "3"
+LAW2_LEDGER="$tmp/law2-ledger.jsonl"; : > "$LAW2_LEDGER"
+law2_rc=0
+LAW_FAIL='' CR_LEDGER="$LAW2_LEDGER" CRITIC_LEDGER_APPEND="$LAW_APPEND" \
+    CRITICS_JSON="$tmp/critics-all.json" CRITIC_FIRST_PASS="$STUB" \
+    bash "$PANEL" <<< "$DIFF" > "$tmp/law2-out" 2> "$tmp/law2-err" || law2_rc=$?
+check "HIMMEL-8992 LAW control: a recorded run is certified" "$law2_rc" "0"
+check "HIMMEL-8992 LAW control: a recorded run still writes avail ok" "$(ledger_rows "$LAW2_LEDGER" avail ok)" "2"
+check "HIMMEL-8992 LAW control: a recorded run still writes its findings" "$(ledger_rows "$LAW2_LEDGER" finding)" "4"
 
 # Test LAP: parallel mode self-appends the SAME ledger evidence as sequential.
 # The evidence path flows through
