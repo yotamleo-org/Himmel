@@ -12,11 +12,11 @@
 #   - STRUCTURAL/AST (`graphify update <corpus> --force`): pure local parse, no
 #     LLM, no API key, no bank, no egress. Cheap enough to run HOURLY.
 #   - SEMANTIC (refresh-graph-map.sh: LLM extraction of markdown docs + curated
-#     MOC/community naming): the only tier that costs anything. Runs WEEKLY on
-#     the claude-cli backend (see BACKEND below), drawing the SAME interactive
-#     5h/weekly Anthropic bank as a live session, gated by usage-preflight.sh
-#     inside refresh-graph-map.sh (SKIPPED-BANK stops the run instead of
-#     draining the bank unattended).
+#     MOC/community naming): the only tier that costs anything. The himmel
+#     row runs on the claude-api backend (see BACKEND below) with the lane env
+#     baked in, only on a station that opted in; background LLM jobs never draw
+#     the subscription. The Luna map row (opt-in, `arm --luna-only`) stays on
+#     claude-cli: a Luna run never walks the auto account list.
 # Cheap+free runs often, expensive+paid runs rarely: a daily semantic tier that
 # bank-preflight silently no-ops whenever the 5h/weekly bank is tight would
 # leave the structural graph, which needs no bank at all, stale for no reason.
@@ -32,15 +32,6 @@
 # fragment, and NO auto-approve hook.
 # That keeps pipeline-cadence's "every task = a claude session" invariant
 # clean, and makes this scheduler strictly simpler than its sibling.
-# The semantic BACKEND is `claude-cli` (there is no kimi backend). Unlike
-# pipeline-cadence's interactive `claude "<prompt>" < NUL` sessions, the
-# semantic pair never opens a claude SESSION itself — graphify (shelled by
-# refresh-graph-map.sh) is what shells the local `claude` CLI headlessly for
-# extraction, so claude invocation billing DOES apply (the same
-# 5h/weekly interactive bank as a live session), and refresh-graph-map.sh
-# gates every claude-cli fire on usage-preflight.sh before it shells `claude`
-# (SKIPPED-BANK stops the run rather than draining the bank unattended). The
-# structural pair never talks to any provider and needs no gate.
 #
 # FENCE SAFETY: refresh-graph-map.sh never extracts on a live vault — it copies
 # the corpus to a PID-owned scratchpad, carries the `.graphify-corpus` marker,
@@ -49,9 +40,8 @@
 #
 # OPERATOR FLIP: arming this cadence commits to an HOURLY free structural
 # extraction per corpus (no bank, no egress) AND a semantic extraction
-# per corpus (luna weekly, himmel daily) on the claude-cli backend (draws the SAME
-# interactive 5h/weekly Anthropic bank as a live session, gated by
-# usage-preflight.sh inside refresh-graph-map.sh). It never auto-arms —
+# per corpus (luna weekly, himmel daily): himmel on the claude-api backend with the lane
+# env baked in (opted-in stations only), luna on claude-cli. It never auto-arms —
 # `arm` registers the tasks only when explicitly invoked, so the
 # operator decides.
 #
@@ -89,14 +79,6 @@
 # default; the stagger REDUCES THE CHANCE of the two extraction jobs
 # overlapping (it cannot guarantee no overlap — luna and himmel are different
 # corpora / out dirs, so the per-out-dir promote lock does not serialize them).
-# claude-cli draws the operator's own interactive bank rather than a metered
-# API, so these times are a quiet-hours default, not a provider off-peak
-# window. WHY :05 / :15 PAST THE HOUR for the structural pair (10 min
-# apart, tighter than the semantic stagger — these workers are seconds-to-minutes,
-# not the semantic workers' LLM-bound runtime): same overlap-reduction rationale,
-# scaled to how fast a local AST re-parse actually is. The backend/day/hour
-# offsets are fixed as BACKEND/WEEKLY_DAY_*/AST_*_TIME in this script — not
-# flags; edit + re-arm to change them.
 #
 # Usage:
 #   bash scripts/luna/graphmap-cadence.sh arm [--himmel-time HH:MM]
@@ -346,15 +328,8 @@ LUNA_TAG="luna"
 HIMMEL_TITLE="Graphify Himmel Map"
 HIMMEL_SLUG="graphify-himmel-map"
 HIMMEL_TAG="himmel"
-# The semantic workers run WEEKLY on the `claude-cli` backend: a semantic worker once
-# a week, gated by usage-preflight.sh inside refresh-graph-map.sh (SKIPPED-BANK
-# stops the run instead of draining the bank unattended), avoids a daily-drain
-# failure mode without needing a second provider. claude-cli authenticates via
-# the operator's own Claude Code subscription (no API key) and needs no
-# egress-matrix ratification the way an external API backend would.
-# Already-armed tasks keep their baked-in --backend until re-armed with this
-# default.
-BACKEND="claude-cli"
+BACKEND="claude-api"
+LUNA_MAP_BACKEND="claude-cli"
 
 # Resolved by validate_arm_inputs (both arm paths call it): `graphify` itself,
 # and its directory. ALL FIVE tasks need it on PATH at fire time — the
@@ -365,10 +340,6 @@ BACKEND="claude-cli"
 # directory to PATH — see the note in validate_arm_inputs.
 GRAPHIFY_BIN=""
 GRAPHIFY_DIR=""
-# Resolved the same way, semantic pair only (see validate_arm_inputs): under
-# BACKEND=claude-cli, graphify shells the local `claude` CLI internally at
-# fire time, so its directory must ALSO be on the runner's PATH. Empty when
-# --ast-only skips the semantic pair (nothing shells claude then).
 CLAUDE_BIN=""
 CLAUDE_DIR=""
 
@@ -382,15 +353,15 @@ corpus (the Luna corpus only via `arm --luna-only`): a free structural (AST)
 refresh (`graphify update <corpus> --force`,
 via the promote-lock wrapper — no bank, no claude session) AND a
 semantic refresh per corpus (fence-safe incremental extraction + curated-MOC
-republish, `bash refresh-graph-map.sh ...` on the claude-cli backend — draws
-the SAME interactive 5h/weekly Anthropic bank as a live session, gated by
+republish, `bash refresh-graph-map.sh ...` on the claude-api backend with the
+lane env baked in; the Luna map row stays on claude-cli, gated by
 usage-preflight.sh inside refresh-graph-map.sh). The structural pair never
-opens a claude session; the semantic pair's claude-cli fire does (headless).
+opens a claude session.
 
 Subcommands:
-  arm      Register the HIMMEL cadence tasks. The Luna graph tasks are OFF by default
-           (decision 449): they are registered only by `arm --luna-only`, and a bare
-           arm neither adds nor replaces them. Dedup-guarded: refuses (rc=3) if a
+  arm      Register the HIMMEL cadence tasks. The Luna graph tasks are off unless you
+           run `arm --luna-only`; a bare arm neither adds nor replaces them.
+           Dedup-guarded: refuses (rc=3) if a
            task in the scope being armed already exists; --force replaces.
   status   Show which cadence tasks are armed (+ next run time).
   disarm   Remove every cadence task (idempotent; rc=0 if nothing was armed).
@@ -483,11 +454,11 @@ are NOT flags — see WEEKLY_DAY_*/AST_*_TIME in this script.
 WHY Sunday 13:00 / 13:20 local for the semantic pair: a quiet day/time
 default, staggered 20min to reduce the chance of the two extraction jobs
 overlapping (not a guarantee — they use different corpora/out-dirs, so no
-shared lock serializes them). claude-cli draws the operator's own interactive
-bank rather than a metered API, so the times are a quiet-hours default, not a
+shared lock serializes them). The times are a quiet-hours default, not a
 provider off-peak window. The extraction backend is NOT a flag here — it is
-fixed as BACKEND in this script (claude-cli); edit it there and re-arm to
-change it.
+fixed as BACKEND in this script (claude-api); a runner armed before that
+default keeps its baked backend until `arm --rewrite-armed` regenerates it
+(status flags a himmel runner still on claude-cli).
 EOF
 }
 
@@ -611,7 +582,7 @@ fi
 # --backend flag gets its own explicit label rather than silently falling
 # back to "configured".
 installed_semantic_backend() {
-    local name="$1" runner match
+    local name="$1" fallback="${2:-$BACKEND}" runner match
     runner="$BAT_DIR/$name.sh"
     if [ -f "$runner" ]; then
         match=$(grep -o -- '--backend [^[:space:]]*' "$runner" | head -1 || true)
@@ -621,14 +592,17 @@ installed_semantic_backend() {
             printf 'installed: no --backend flag in runner'
         fi
     else
-        printf 'configured: %s' "$BACKEND"
+        printf 'configured: %s' "$fallback"
     fi
 }
 
 task_summary() {
     case "$1" in
-        "$TASK_LUNA")       printf ' -> refresh-graph-map luna (weekly, semantic, %s)' "$(installed_semantic_backend graphmap-luna)" ;;
-        "$TASK_HIMMEL")     printf ' -> refresh-graph-map himmel (daily, semantic, %s)' "$(installed_semantic_backend graphmap-himmel)" ;;
+        "$TASK_LUNA")       printf ' -> refresh-graph-map luna (weekly, semantic, %s)' "$(installed_semantic_backend graphmap-luna "$LUNA_MAP_BACKEND")" ;;
+        "$TASK_HIMMEL")     printf ' -> refresh-graph-map himmel (daily, semantic, %s)' "$(installed_semantic_backend graphmap-himmel)"
+                            if [ "$(installed_semantic_backend graphmap-himmel)" = "installed: claude-cli" ]; then
+                                printf ' -- armed on the old subscription backend: run bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed'
+                            fi ;;
         "$TASK_AST_LUNA")   printf ' -> graphify update luna (daily, structural, free)' ;;
         "$TASK_AST_HIMMEL") printf ' -> graphify update himmel (hourly, structural, free)' ;;
         "$TASK_PUBLISH_HIMMEL") printf ' -> graph-cadence publish himmel (auto-merge; interval = cron schedule; --publish-semantic adds a billed claude-api pass)' ;;
@@ -794,24 +768,16 @@ validate_arm_inputs() {
     # ruling).
     # --rewrite-armed rebuilds only the runners already on disk, so a station that armed no
     # semantic runner needs neither (the same reasoning as --ast-only).
+    local LUNA_MAP_NEEDS_CLAUDE=0
+    if [ "$LUNA_ONLY" -eq 1 ] || { [ "$REWRITE_ARMED" -eq 1 ] && [ -f "$CRON_RUNNER_LUNA" ]; }; then LUNA_MAP_NEEDS_CLAUDE=1; fi
     if [ "$AST_ONLY" -eq 0 ] && { [ "$REWRITE_ARMED" -ne 1 ] || [ -f "$CRON_RUNNER_LUNA" ] \
             || [ -f "$CRON_RUNNER_HIMMEL" ] || [ -f "$CRON_RUNNER_SEMANTIC_LUNA" ]; }; then
         validate_backend_credential
-        # FAIL FAST on a missing `claude` CLI.
-        # graphify shells the local `claude` CLI
-        # internally under BACKEND=claude-cli, and the scheduler's minimal
-        # PATH carries it no more than it carries graphify -- same
-        # rationale as the GRAPHIFY_BIN check above. Gated on BACKEND itself,
-        # narrowed to claude-cli only -- `claude` is
-        # graphify's Anthropic API backend (ANTHROPIC_API_KEY, no local CLI
-        # shelled; see refresh-graph-map.sh's seed-claude-config gate, only
-        # entered `if [ "$BACKEND" = "claude-cli" ]`), so requiring the CLI
-        # for it would refuse an arm the fire path never needs.
-        case "$BACKEND" in
-            claude-cli)
+        case "$LUNA_MAP_NEEDS_CLAUDE" in
+            1)
                 if ! CLAUDE_BIN=$(command -v claude 2>/dev/null); then
                     {
-                        echo "ERR graphmap-cadence: 'claude' not on PATH at arm time, but the semantic pair's claude-cli backend shells it at fire time."
+                        echo "ERR graphmap-cadence: 'claude' not on PATH at arm time, but the Luna map runner's claude-cli backend shells it at fire time."
                         echo "    The scheduler fires with a minimal PATH, so this must resolve HERE — arming now would"
                         echo "    produce a cadence that fails on every semantic fire. Install the claude CLI (or put it on"
                         echo "    PATH), or arm with --ast-only to skip the semantic pair."
@@ -882,6 +848,7 @@ validate_backend_credential() {
         # Subscription/local backends need no API key at arm time: claude-cli
         # uses the operator's own Claude Code auth, ollama is local.
         claude|claude-cli|ollama) return 0 ;;
+        claude-api)    return 0 ;;
         # Fail CLOSED on anything unclassified. A warning here would be
         # read at arm time and forgotten; the cadence it permits fails silently
         # weeks later, which is the whole failure mode this gate exists for. A
@@ -1067,7 +1034,7 @@ cron_existing() {
 # name/slug/tag/backend are fixed ASCII literals.
 cron_payload() {
     local q_bash="$1" q_script="$2" name="$3" q_corpus="$4" q_maps="$5" q_title="$6" slug="$7" tag="$8" q_out_root="${9:-}"
-    local backend="$BACKEND" lane=""
+    local backend="$LUNA_MAP_BACKEND" lane=""
     if [ "$name" = himmel ]; then
         if ! semantic_api_opted_in; then
             printf 'echo "[%s]"' "$SEMANTIC_API_SKIP_TEXT"
@@ -1917,13 +1884,13 @@ cmd_arm() {
     ast_lines="$ast_himmel_line"
     if [ "$LUNA_ONLY" -eq 0 ]; then
         # Luna is off by default (decision 449): a bare arm never registers it; say how to opt in.
-        luna_hint="  The Luna graph tasks are OFF by default (decision 449); opt in with:
+        luna_hint="  The Luna graph tasks are off unless you arm them with --luna-only:
       bash scripts/luna/graphmap-cadence.sh arm --luna-only"
     else
         if [ "$AST_ONLY" -eq 1 ]; then
             semantic_lines="$luna_line"
         else
-            semantic_lines="  $TASK_LUNA       weekly (dow $WEEKLY_DAY_CRON) $LUNA_TIME   -> refresh-graph-map luna (semantic, $BACKEND)"
+            semantic_lines="  $TASK_LUNA       weekly (dow $WEEKLY_DAY_CRON) $LUNA_TIME   -> refresh-graph-map luna (semantic, $LUNA_MAP_BACKEND)"
         fi
         ast_lines="  $TASK_AST_LUNA    daily at $AST_LUNA_TIME   -> graphify update luna (structural, free)
   himmel rows: untouched by --luna-only (see \`status\`)"

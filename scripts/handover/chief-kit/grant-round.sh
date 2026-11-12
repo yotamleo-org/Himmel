@@ -98,7 +98,9 @@ esac
 
 ANCHOR="$(cd "$HERE/../../.." && pwd)"
 PRIMARY="${GRANT_ROUND_PRIMARY:-$ANCHOR}"
-GH="${GRANT_ROUND_GH:-gh}"
+GH_READ_BIN="$LIB/gh-read.sh"
+[ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
+GH="${GRANT_ROUND_GH:-$GH_READ_BIN}"
 LOCK_LIB="${GRANT_ROUND_LOCK_LIB:-$LIB/shared-branch-lock.sh}"
 
 # --- the PR ----------------------------------------------------------------

@@ -51,7 +51,7 @@ async function elicit() {
   const id = `probe-elicit-${++elicitSeq}`;
   const started = Date.now();
   log('elicit_sent', { id });
-  send({ id, method: 'elicitation/create', params: { mode: 'form', message: 'HIMMEL-7304 probe: any answer is fine.', requestedSchema: { type: 'object', properties: { ok: { type: 'boolean' } } } } });
+  send({ id, method: 'elicitation/create', params: { mode: 'form', message: 'probe: any answer is fine.', requestedSchema: { type: 'object', properties: { ok: { type: 'boolean' } } } } });
   const reply = await new Promise((resolve) => {
     const timer = setTimeout(() => { waiters.delete(id); resolve(null); }, ELICIT_TIMEOUT_MS);
     waiters.set(id, (r) => { clearTimeout(timer); resolve(r); });

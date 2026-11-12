@@ -23,7 +23,9 @@ Read on demand from `chief-template.md` `## Live state`. Moved verbatim from the
 > is seeded whole in three cases: no readable manifest, a manifest row with no label, or a block
 > holding no worker span. If the history write fails, `workers:` and `last GO:` are both seeded
 > whole (a warning names the file). `last GO:` is otherwise always cut to the last GO. A malformed span of an open
-> worker is kept, so the tick reads MALFORMED. A `pool-disposition:` line inside the block is kept. Keep your own Live
+> worker is kept, so the tick reads MALFORMED. A `pool-disposition:` line inside the block is kept. A line whose every
+> target is gone (each PR it names closed or merged, each project key Done) counts as unresolved until it is rewritten, unless the
+> ticket is owned, held or blocked, and a dated PR fact written in a line is a target. Keep your own Live
 > state that lean: the tick prints `ACTION livestate-over-budget=<bytes>/<limit>`
 > past `LIVESTATE_BUDGET_BYTES` (default 12000). A per-worker detail line
 > past the `workers:` block is not seeded: put what the successor needs in the

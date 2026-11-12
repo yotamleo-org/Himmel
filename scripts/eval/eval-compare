@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/eval/eval-compare - did this eval run get worse? (HIMMEL-4647)
+"""scripts/eval/eval-compare - did this eval run get worse?
 
   eval-compare <eval> [--baseline <run-id> | --best-of N]
                [--ledger PATH] [--thresholds PATH]
@@ -16,7 +16,7 @@ moves the wrong way past its noise band: the CI bound when the ledger has one
 (below the baseline's lower bound, or the two intervals apart), else the band
 in eval-compare.json. A metric with no direction there is printed as info and
 never gated.
-A candidate with meta.observational true (leg-trajectory, HIMMEL-4670) is
+A candidate with meta.observational true (leg-trajectory) is
 listed as a series with no verdict, and exits 3.
 Against a single baseline row (not --best-of), each per-case metric named
 under "_cases" is also compared paired, case by case over the case ids both
@@ -138,7 +138,7 @@ def paired(spec, base_cases, cand_cases, metric):
 
 
 def observational(eval_id, rows):
-    """A meta.observational series (HIMMEL-4670 spec 3.1): one ok row per run_id,
+    """A meta.observational series: one ok row per run_id,
     latest wins, listed per metric. No baseline, no verdict: exit 3."""
     latest = {}
     for r in rows:

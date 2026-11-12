@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""HIMMEL-4926 friction measurement: every worker refusal by source, class and cost.
+"""Friction measurement: every worker refusal by source, class and cost.
 
 Reads (never writes) session transcripts of both lanes and the worker handover docs,
 classifies each refusal into source x class x verdict, and aggregates per class:
@@ -53,7 +53,7 @@ HOOK_CLASSES = {
         (r'not one simple command', 'pipe-or-chain-beside-gate', 'true-positive',
          'worker appended a pipe/redirect/chain to a gate script (preface forbids it)'),
         (r'differs from the HIMMEL_REPO anchor', 'worktree-copy-differs-from-anchor', 'over-deny',
-         'a worker that edits a policy script cannot then run it relatively (HIMMEL-4916)'),
+         'a worker that edits a policy script cannot then run it relatively'),
         (r'names a guarded script and can writ', 'redirect-beside-gate-script', 'true-positive',
          'output redirect beside a guarded script'),
         (r'changes directory, so the relative path', 'cd-before-relative-gate-path', 'true-positive',
@@ -234,7 +234,7 @@ TEXT_RULES = [
     (r'This command requires approval', 'permission-prompt', 'approval-prompt', 'unclear',
      'command fell through to a permission prompt'),
     (r'ERR suite-semaphore: all \d+ suite slot', 'lane-rule', 'suite-slot-busy', 'true-positive',
-     'fleet suite semaphore (HIMMEL-1818) is a deliberate cap; cost is the wait'),
+     'fleet suite semaphore is a deliberate cap; cost is the wait'),
     (r"ERR quiet-run: label 'suite' requires a tracked", 'gate:quiet-run', 'suite-label-untracked-path',
      'true-positive', 'label contract; wrong invocation by the worker'),
     (r'check-ci: watch cap reached', 'ci-wait', 'check-ci-watch-cap', 'unclear',

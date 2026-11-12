@@ -104,6 +104,9 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     `N<n>` in a target is refused. A free-text promise ("will look at it after the release") stays in the pool as
     `# pool-unresolved unowned <KEY> ...`; the tick still prints and never fails on it. When the tick cannot read the pool at
     all, the wake says `backlog=unread` instead of `dispatchable=0`.
+    A stale key (every target gone, per `pool-stale=`) is `# pool-unresolved stale <KEY> its pool-disposition target is gone: <targets>; ...`
+    until the line is rewritten, unless the key is owned, held or blocked (the line is then not its only reason); a failed or
+    paused read keeps that verdict while the line is unchanged and no target reads open, so the wake fires once, not per read.
     The line is never rewritten:
     re-rule it (dispatch the held ticket, or write a fresh `pool-disposition:`),
     then the key leaves the field. The tick also prints

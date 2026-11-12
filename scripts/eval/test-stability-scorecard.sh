@@ -41,7 +41,7 @@ check "header + one row" "$(wc -l <"$td/s.tsv" | tr -d ' ')" 2
 row="$(sed -n 2p "$td/s.tsv")"
 check "row cells" "$(printf '%s' "$row" | cut -f1,3-11)" "$(printf '2026-10-18\t978\t3240\t1.00\t2\t2\tn/a\t3\t1\t10.5')"
 
-check "shipped_strict counts Done keys with a main squash subject (HIMMEL-9 has none)" "$(printf '%s' "$row" | cut -f12)" 2
+check "shipped_strict counts Done keys with a main squash subject, not a Done key without one" "$(printf '%s' "$row" | cut -f12)" 2
 check "admin_closes is resolved minus shipped" "$(printf '%s' "$row" | cut -f13)" 4
 
 bash "$tool" run --date 2026-10-18 >/dev/null; check "same date again appends nothing" "$(wc -l <"$td/s.tsv" | tr -d ' ')" 2

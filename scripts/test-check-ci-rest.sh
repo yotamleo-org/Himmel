@@ -9,10 +9,14 @@ trap 'rm -rf "$ROOT"' EXIT
 PASS=0; FAIL=0
 ok() { echo "  PASS: $1"; PASS=$((PASS + 1)); }
 bad() { echo "  FAIL: $1"; FAIL=$((FAIL + 1)); }
-mkdir -p "$ROOT/bin"
+mkdir -p "$ROOT/bin" "$ROOT/noread"
+: > "$ROOT/noread/.env"
+export GH_READ_ENV_ROOT="$ROOT/noread" HIMMEL_SECRETS_KEYRING=off
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
 cat > "$ROOT/bin/gh" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$CASE/calls"
+[ -z "${GH_TOKEN:-}" ] || echo tok=other >> "$CASE/toklog"
 case " $* " in
     *' -i graphql '*) printf 'HTTP/2.0 200 OK\r\nX-Ratelimit-Remaining: %s\r\nX-Ratelimit-Reset: 1000003600\r\n\r\n{"data":{}}\n' "${ACTUAL_GQL:-${GQL:-5000}}"; exit 0 ;;
 esac
@@ -226,6 +230,16 @@ if [ -n "$snap_filter" ] && [ "$s_head" = abc ] && [ "$s_base" = main ] && [ "$s
 else
   bad "startup snapshot misaligned head=$s_head base=$s_base dec=$s_dec"
 fi
+
+new_case
+TREE="$ROOT/tree"
+mkdir -p "$TREE/scripts"
+cp -R "$HERE/lib" "$TREE/scripts/lib"
+printf 'himmel_github_token_vm2=%s\n' ghp_PLANTED0123456789 > "$TREE/.env"
+: > "$CASE/toklog"
+bash "$TREE/scripts/lib/check-ci-watch.sh" 42 >/dev/null 2>&1; rc=$?
+if [ "$rc" = 0 ]; then ok 'planted token tree: the watch reads the checks'; else bad "planted token tree: the watch ended rc=$rc"; fi
+if [ "$(grep -c '^tok=other$' "$CASE/toklog" 2>/dev/null)" -eq 0 ]; then ok 'planted token at the default .env root never reaches the stub'; else bad 'planted token reached the stub'; fi
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

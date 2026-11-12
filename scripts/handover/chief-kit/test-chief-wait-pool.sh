@@ -766,5 +766,112 @@ PATH="$STUB/nopy:$PATH" timeout 8 bash "$WAIT" "$I" --doc "$WORK/k9181-open.md" 
 check "(unread) a pool the tick cannot read says backlog=unread and never prints dispatchable=0" "WAKE underfilled capacity=UNDERFILLED:7 backlog=unread" "$(head -n1 "$WORK/unread-summary.out")"
 rm -f "$STUB/pool.rows"
 
+S2="$WORK/s2"; S2M="$S2/mirror/HIMMEL"; mkdir -p "$S2M" "$S2/ho" "$S2/quota"
+s2mk() {
+    printf -- '---\nkey: "HIMMEL-%s"\ntype: "Task"\nstatus: "%s"\nstatusCategory: "%s"\npriority: "Medium"\nlabels: []\nfixVersions: ["v1.1.3"]\nparent: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# HIMMEL-%s: t\n\n## Description\n\nbody\n' \
+        "$1" "$2" "$3" "$1" > "$S2M/HIMMEL-$1.md"
+}
+s2mk 901 Done Done
+s2mk 902 "In Progress" "In Progress"
+printf 'v1.1.3\tfalse\t\n' > "$S2/mirror/HIMMEL.versions.tsv"
+cat > "$S2/ps-gh" <<'STUB'
+#!/usr/bin/env bash
+[ -z "${PS_GH_FAIL:-}" ] || exit 1
+case "$*" in *"api graphql"*) ;; *) exit 1 ;; esac
+out=""
+for n in $(printf '%s\n' "$*" | grep -oE 'issueOrPullRequest\(number:[0-9]+\)' | grep -oE '[0-9]+'); do
+    case "$n" in
+        999001) v='{"__typename":"PullRequest","state":"CLOSED"}' ;;
+        999002) v='{"__typename":"PullRequest","state":"MERGED"}' ;;
+        *) v=null ;;
+    esac
+    out="${out:+$out,}\"p$n\":$v"
+done
+printf '{"data":{"repository":{%s}}}\n' "$out"
+STUB
+chmod +x "$S2/ps-gh"
+export NEXT_DISPATCH_MIRROR="$S2M" HIMMEL_QUOTA_DIR="$S2/quota" TICK_GH_CMD="$S2/ps-gh" GH_READ_OFF=1
+export CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh"
+printf 'LOCAL\tHIMMEL-%s\tMedium\tv1\trow\tfiles=a.sh\n' 141 142 143 145 > "$STUB/pool.rows"
+printf '%s\n' '# disposition HIMMEL-141 listed LOCAL' '# disposition HIMMEL-142 listed LOCAL' '# disposition HIMMEL-143 listed LOCAL' \
+    '# disposition HIMMEL-144 in-flight owned by worker N1' '# disposition HIMMEL-145 listed LOCAL' > "$STUB/dispositions"
+cp "$STUB/dispositions" "$S2/rows"
+s2w_doc() {
+    local f="$1"; shift
+    {
+        printf '# chief\n\n## Live state\n'
+        printf '%s\n' 'pool-disposition: HIMMEL-141 question after PR #999001 the doctor edit' \
+            'pool-disposition: HIMMEL-142 question after HIMMEL-901 drafted in ZA-1' \
+            'pool-disposition: HIMMEL-143 question after HIMMEL-902 the rest' \
+            'pool-disposition: HIMMEL-144 question after PR #999002 shipped'
+        [ "$#" -gt 0 ] || printf '%s\n' 'pool-disposition: HIMMEL-145 question operator decision 268'
+        [ "$#" -eq 0 ] || printf '%s\n' "$@"
+        printf '\n## Results\n'
+    } > "$f"
+}
+s2w_produce() {
+    local args out sf
+    args=(--pool-stale --doc "$1" --prior "$TICK_STATE_DIR/none.out")
+    [ -z "${3:-}" ] || args+=(--repo "$3")
+    out="$(PS_GH_FAIL="$2" bash "$HERE/tick.sh" "${args[@]}" 2>/dev/null)"
+    sf="$(printf '%s\n' "$out" | sed -n 's/^# stale-file=//p')"
+    [ -n "$sf" ] || return 1
+    mkdir -p "$(dirname "$sf")"
+    printf '%s\n' "$out" > "$sf"
+    printf '%s' "$sf"
+}
+s2w_seq() {
+    local name="$1" doc="$2" key="$3" repo="${4:-}" i fail sf inbox
+    export TICK_STATE_DIR="$S2/st-$name"; rm -rf "$TICK_STATE_DIR"; mkdir -p "$TICK_STATE_DIR"
+    inbox="$(new_inbox "s2-$name")"
+    s2w_wakes=0; s2w_other=0; s2w_rcs=""
+    for i in 1 2 3; do
+        fail=""; [ "$i" -ne 2 ] || fail=1
+        if [ "$i" -eq 3 ] && [ -n "$repo" ]; then git -C "$repo" -c user.name=t -c user.email=t@e.x -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -q --allow-empty -m "c$i"; fi
+        sf="$(s2w_produce "$doc" "$fail" "$repo")"
+        s2w_line[i]="$(bash "$HERE/tick.sh" --pool-dispositions --doc "$doc" < "$S2/rows" 2>/dev/null | grep "^# pool-unresolved stale $key ")"
+        s2w_det[i]="$(grep "^STALE-DISPOSITION $key " "$sf" 2>/dev/null)"
+        timeout 6 bash "$WAIT" "$inbox" --doc "$doc" --workers N1.md > "$S2/$name-$i.out" 2>/dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
+        s2w_rcs="${s2w_rcs}${s2w_rcs:+:}$?"
+        s2w_wakes=$((s2w_wakes + $(grep -c '^WAKE pool-unresolved' "$S2/$name-$i.out")))
+        [ "$i" -eq 1 ] || s2w_other=$((s2w_other + $(grep -c '^WAKE ' "$S2/$name-$i.out")))
+    done
+}
+
+s2w_doc "$S2/ho/r9.md"
+export TICK_STATE_DIR="$S2/st-r9"; rm -rf "$TICK_STATE_DIR"; mkdir -p "$TICK_STATE_DIR"
+s2w_produce "$S2/ho/r9.md" "" > /dev/null
+I="$(new_inbox s2-r9)"
+timeout 6 bash "$WAIT" "$I" --doc "$S2/ho/r9.md" --workers N1.md > "$S2/r9.out" 2>/dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
+p141='^# pool-unresolved stale HIMMEL-141 '
+check "(R9) the waiter's pool pass lists a stale key as pool-unresolved" 1 "$(grep -c "$p141" "$S2/r9.out")"
+check "(R9) the wake is pool-unresolved" 1 "$(grep -c '^WAKE pool-unresolved ' "$S2/r9.out")"
+
+s2w_doc "$S2/ho/r9b.md"
+s2w_seq r9b "$S2/ho/r9b.md" HIMMEL-141
+check "(R9b) good, failed, good reads wake pool-unresolved once" "1:0" "$s2w_wakes:$s2w_other"
+check "(R9b) the first sample ends on its wake and the others time out waiting" "0:124:124" "$s2w_rcs"
+check "(R9b) the unresolved line names the key and its gone target" 1 "$(printf '%s\n' "${s2w_line[1]}" | grep -c 'its pool-disposition target is gone: PR#999001=CLOSED; re-decide or rewrite the line$')"
+check "(R9b) the unresolved line is byte-identical for the good and the failed read" "${s2w_line[1]}" "${s2w_line[2]}"
+check "(R9b) the failed read's detail line carries the prior verdict" "${s2w_det[1]} carried" "${s2w_det[2]}"
+
+s2w_doc "$S2/ho/r9c-chief.md"
+export TICK_STATE_DIR="$S2/st-r9c"; rm -rf "$TICK_STATE_DIR"; mkdir -p "$TICK_STATE_DIR"
+s2w_produce "$S2/ho/r9c-chief.md" "" > /dev/null
+I="$(new_inbox s2-r9c)"
+HANDOVER_DIR="$S2/ho" timeout 6 bash "$WAIT" "$I" --doc r9c-chief.md --workers N1.md > "$S2/r9c.out" 2>/dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(R9c) a relative --doc under HANDOVER_DIR finds the same file" 1 "$(grep -c "$p141" "$S2/r9c.out")"
+
+git init -q -b main "$S2/repo" && git -C "$S2/repo" -c user.name=t -c user.email=t@e.x -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -q --allow-empty -m c0
+s2_sha="$(git -C "$S2/repo" rev-parse --short=9 HEAD)"
+s2w_doc "$S2/ho/r9d.md" "pool-disposition: HIMMEL-145 question after PR #999001 @$s2_sha"
+s2w_seq r9d "$S2/ho/r9d.md" HIMMEL-145 "$S2/repo"
+check "(R9d) an @sha stale line wakes once across a merge" "1:0" "$s2w_wakes:$s2w_other"
+check "(R9d) the first sample ends on its wake and the others time out waiting" "0:124:124" "$s2w_rcs"
+check "(R9d) its unresolved text carries @<sha>=within" 1 "$(printf '%s\n' "${s2w_line[1]}" | grep -c "PR#999001=CLOSED @$s2_sha=within; re-decide")"
+check "(R9d) the unresolved line is byte-identical across the merge" "${s2w_line[1]}" "${s2w_line[3]}"
+check "(R9d) the detail lines differ in their <n>-behind" "@$s2_sha=0-behind@$s2_sha=1-behind" "$(printf '%s' "${s2w_det[1]}" | grep -o "@$s2_sha=[0-9]*-behind")$(printf '%s' "${s2w_det[3]}" | grep -o "@$s2_sha=[0-9]*-behind")"
+rm -f "$STUB/pool.rows" "$STUB/dispositions"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

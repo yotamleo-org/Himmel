@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/eval/worker-digest/failure_review.py - the daily failure review (HIMMEL-4713, P5b of HIMMEL-4670).
+"""scripts/eval/worker-digest/failure_review.py - the daily failure review.
 
 One LLM-free pass over the worker-failures ledger: run the failure router, summarise the last 24 h,
 write the digest, tell the operator in one Telegram line when something happened.
@@ -16,8 +16,7 @@ DIGEST (the section "## Failure review"), over the ledger rows of the last 24 h:
   - top classes with their rows and workers, each (new) when the ledger has no earlier row of it,
     else (recurring);
   - what was routed (or would be, on a dry run), what was capped, what the router skipped;
-  - the trajectory signals, minus traj/claim-unverified and traj/red-before-green (unreliable,
-    HIMMEL-4698), which are left out of every count;
+  - the trajectory signals, minus traj/claim-unverified and traj/red-before-green (unreliable), which are left out of every count;
   - the friction subsection, whose run also appends the friction eval-runs row (friction.py --record);
   - the eval feedback subsection (scripts/eval/lib/eval_feedback.py run): the change a result past its
     threshold raised and the before/after of an earlier change. Change records (HIMMEL_EVAL_CHANGES_LEDGER,
@@ -25,7 +24,7 @@ DIGEST (the section "## Failure review"), over the ledger rows of the last 24 h:
     the memory-inbox line of a learning change only on --live. FAILURE_REVIEW_FEEDBACK="" turns it off.
   Written to <out-dir>/failure-review-<local date>.md (the morning report reads it) and, with
   --vault, upserted into <vault>/50-Journal/Daily/<local date>.md. Beside the markdown the same figures go to
-  <out-dir>/failure-review-<local date>.json (HIMMEL-9102): window {start, end}, mode, totals, classes[] (class,
+  <out-dir>/failure-review-<local date>.json: window {start, end}, mode, totals, classes[] (class,
   kind, rows, workers count, workers_sample of at most 5 names, recurring, route) and routing[] (decision, class,
   ticket, workers), for the report's table.
   out-dir: --out-dir, else $HIMMEL_FAILURE_REVIEW_DIR, else ~/.himmel/state/failure-review.
@@ -34,12 +33,12 @@ TELEGRAM: one line through the notifier (--notify-cmd, else $FAILURE_REVIEW_NOTI
 scripts/luna/vault-stall-alert.sh, the existing operator DM path) when a live run routed something
 or a class appeared that the ledger never saw before. A quiet day sends nothing. A dry run's
 would-be routing does not send: the router keeps no state on a dry run, so it would repeat daily.
-DELIVERY (HIMMEL-4790) is kept in <state file>.notify.json beside the router state (--state, else
+DELIVERY is kept in <state file>.notify.json beside the router state (--state, else
 $HIMMEL_FAILURE_ROUTES_STATE, else ~/.himmel/state/failure-routes.json), under flock, temp then
 rename: {pending, sent}. The router state advances before the send, so the line is saved in pending
 as soon as the router returns, before the digest is written, and the next run sends it again until
 one is delivered. The name appends to the whole state filename, so states differing only in extension
-never share it (HIMMEL-4798); an older v1 <stem>.notify.json is moved to it (as v2) on first use. A delivered new
+never share it; an older v1 <stem>.notify.json is moved to it (as v2) on first use. A delivered new
 class is recorded in sent and not named again for 24 h; a failed send records nothing there. An
 unreadable state file is kept aside as <file>.unreadable.<unique> and a fresh one started.
 
@@ -240,7 +239,7 @@ def plain_line(day, live, n, k, filed, pending, fresh, rows, done, digest):
 
 
 def friction_part(a):
-    """The friction subsection (HIMMEL-4926): refusals by source and class with the 7-day trend, from
+    """The friction subsection: refusals by source and class with the 7-day trend, from
     scripts/eval/friction/friction.py. FAILURE_REVIEW_FRICTION_CMD overrides the command (an empty value
     turns it off); a failure leaves one line and never fails the review."""
     cmd = os.environ.get("FAILURE_REVIEW_FRICTION_CMD")

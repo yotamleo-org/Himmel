@@ -45,6 +45,7 @@ if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
     exit 96
 fi
 chokepoint_seam_guard scripts/handover/merge-fork-pr.sh || exit 96
+unset _GHR_LOAD_DOTENV GH_READ_REFUSED_FILE GH_READ_OFF GH_READ_TIMEOUT GH_READ_NO_MAIN_FALLBACK GH_READ_QUIET
 
 usage() { echo "usage: merge-fork-pr.sh [--jira-transition] <owner/repo> <pr-number> <full-40-hex-head-sha>" >&2; }
 
@@ -98,7 +99,9 @@ if ! ROOT=$(go_resolve_root "$ANCHOR"); then
     exit 1
 fi
 
-if ! HBRANCH=$(go_adapter_entry "$ANCHOR" "$NWO"); then
+GH_READ_BIN="$HERE/../lib/gh-read.sh"
+[ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
+if ! HBRANCH=$(GH="$GH_READ_BIN" go_adapter_entry "$ANCHOR" "$NWO"); then
     echo "merge-fork-pr: refusing $NWO PR #$PR - $HBRANCH" >&2
     exit 6
 fi
@@ -110,13 +113,13 @@ QID=$REASON  # on success go_trust_gate prints the GO's signed trust-reviewed id
 
 # The live PR must still be what the GO certified; --match-head-commit below
 # pins the same head at merge time.
-VIEW=$(gh pr view "$PR" --repo "$NWO" --json state,headRefOid,baseRefName 2>/dev/null) || VIEW=""
+VIEW=$("$GH_READ_BIN" pr view "$PR" --repo "$NWO" --json state,headRefOid,baseRefName 2>/dev/null) || VIEW=""
 LIVE=$(printf '%s' "$VIEW" | jq -r '"\(.state)|\(.headRefOid)|\(.baseRefName)"' 2>/dev/null) || LIVE=""
 if [ "$LIVE" != "OPEN|$SHA|$HBRANCH" ]; then
     echo "merge-fork-pr: refusing $NWO PR #$PR - it must be OPEN at $SHA on $HBRANCH (state|head|base read: '$LIVE'); a push after the GO needs a fresh GO. Nothing merged." >&2
     exit 7
 fi
-if ! REASON=$(go_fork_ready "$NWO" "$PR"); then
+if ! REASON=$(go_fork_ready "$NWO" "$PR"); then  # gh-main-ok: permission-dependent answer
     echo "merge-fork-pr: refusing $NWO PR #$PR - $REASON Nothing merged." >&2
     exit 7
 fi
@@ -148,7 +151,7 @@ fi
 # gh can enqueue or arm auto-merge without merging, and a retarget between the
 # read above and the merge is not constrained by --match-head-commit: report
 # only what the fork now says happened.
-VIEW=$(gh pr view "$PR" --repo "$NWO" --json state,baseRefName 2>/dev/null) || VIEW=""
+VIEW=$("$GH_READ_BIN" pr view "$PR" --repo "$NWO" --json state,baseRefName 2>/dev/null) || VIEW=""
 DONE=$(printf '%s' "$VIEW" | jq -r '"\(.state)|\(.baseRefName)"' 2>/dev/null) || DONE=""
 if [ "$DONE" != "MERGED|$HBRANCH" ]; then
     echo "merge-fork-pr: $NWO PR #$PR is not confirmed MERGED into $HBRANCH after gh pr merge (state|base read: '$DONE') - check the fork now" >&2
@@ -170,7 +173,7 @@ jira() { ( cd "$ANCHOR" && node scripts/jira/dist/index.js "$@" ); }
 if ! . "$HERE/../lib/ticket-status.sh" 2>/dev/null || ! declare -F ticket_key_from_title >/dev/null 2>&1; then
     jira_result "skip=no-ticket-lib"
 fi
-TITLE=$(gh pr view "$PR" --repo "$NWO" --json title 2>/dev/null | jq -r '.title // empty' 2>/dev/null) || TITLE=""  # swallow-ok: an unread title is skip=no-title, after the merge landed
+TITLE=$("$GH_READ_BIN" pr view "$PR" --repo "$NWO" --json title 2>/dev/null | jq -r '.title // empty' 2>/dev/null) || TITLE=""  # swallow-ok: an unread title is skip=no-title, after the merge landed
 [ -n "$TITLE" ] || jira_result "skip=no-title"
 KEY=$(ticket_key_from_title "$TITLE") || KEY=""
 [ -n "$KEY" ] || jira_result "skip=no-ticket-tag"

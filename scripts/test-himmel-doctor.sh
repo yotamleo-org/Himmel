@@ -7601,9 +7601,11 @@ c70_ago() { python3 -c 'import sys,time; print(time.strftime("%Y-%m-%dT%H:%M:%SZ
 c70_row_at "$(c70_ago 72)" ""
 out="$(c70_run)"
 if grepq "$out" -F 'WARN C70-graph-semantic' && grepq "$out" -F 'SEMANTIC' && grepq "$out" -F 'last semantic merge 3d ago' && grepq "$out" -F 'graphmap-himmel.sh'; then pass "C70 semantic layer 3 days old on a fresh AST graph -> WARN naming the age and the semantic pass"; else fail "C70 semantic 3d old -> $(printf '%s' "$out" | head -3)"; fi
+if grepq "$out" -F 'bash scripts/handover/chief-kit/graph-pass-detached.sh start' && grepq "$out" -F 'bash scripts/handover/chief-kit/graph-pass-detached.sh status' && ! grepq "$(printf '%s\n' "$out" | grep -F '→')" -F 'graphmap-himmel.sh'; then pass "C70 SEMANTIC-STALE remedy names the detached wrapper start and status, not a by-hand pass"; else fail "C70 stale remedy -> $(printf '%s' "$out" | head -4)"; fi
 c70_row_at "$(c70_ago 1)" ""
 out="$(c70_run)"
 if grepq "$out" -F 'OK   C70-graph-semantic'; then pass "C70 semantic layer 1h old -> OK"; else fail "C70 semantic fresh -> $(printf '%s' "$out" | head -3)"; fi
+if ! grepq "$out" -F 'graph-pass-detached'; then pass "C70 the OK output carries no wrapper remedy"; else fail "C70 OK output names the wrapper -> $(printf '%s' "$out" | head -3)"; fi
 c70_row_at "$(c70_ago 1)" "docs/a1.md,docs/a2.md,docs/a3.md,docs/a4.md,docs/a5.md,docs/a6.md,docs/a7.md,docs/a8.md,docs/a9.md,docs/a10.md,docs/a11.md"
 out="$(c70_run)"
 if grepq "$out" -F 'WARN C70-graph-semantic' && grepq "$out" -F 'content failed=11'; then pass "C70 11 content failures (bound 10) -> WARN with the count"; else fail "C70 content failed -> $(printf '%s' "$out" | head -3)"; fi
@@ -7622,11 +7624,13 @@ c70_rows "x.md" "x.md" "x.md"
 printf '#!/bin/sh\nexit 127\n' > "$c70_t/missing-check.sh"
 out="$(c70_run HIMMEL_DOCTOR_GRAPH_CHECK="$c70_t/missing-check.sh")"
 if grepq "$out" -F 'INFO C70-graph-semantic' && grepq "$out" -F 'exited 127'; then pass "C70 checker exits 127 -> INFO, not a healthy OK"; else fail "C70 rc 127 -> $(printf '%s' "$out" | head -3)"; fi
+if grepq "$out" -F "bash scripts/graphify/check-graph-freshness.sh --out $c70_out" && ! grepq "$out" -F 'graph-pass-detached'; then pass "C70 the INFO output keeps its own remedy and carries no wrapper remedy"; else fail "C70 INFO remedy -> $(printf '%s' "$out" | head -4)"; fi
 printf '#!/bin/sh\necho "graph-freshness: FAIL corpus orphaned: gone" >&2\nexit 2\n' > "$c70_t/orphan-check.sh"
 out="$(c70_run HIMMEL_DOCTOR_GRAPH_CHECK="$c70_t/orphan-check.sh")"
 if grepq "$out" -F 'INFO C70-graph-semantic' && grepq "$out" -F 'corpus orphaned'; then pass "C70 other rc 2 -> INFO with the reason"; else fail "C70 rc 2 -> $(printf '%s' "$out" | head -3)"; fi
 out="$(c70_run)"
 if grepq "$out" -F 'WARN C70-graph-semantic' && grepq "$out" -F "semantic-merge.py unstick --out $c70_out"; then pass "C70 the WARN names the unstick command for the judged graph"; else fail "C70 unstick hint -> $(printf '%s' "$out" | head -3)"; fi
+if grepq "$out" -F 'bash scripts/handover/chief-kit/graph-pass-detached.sh start' && grepq "$out" -F 'bash scripts/handover/chief-kit/graph-pass-detached.sh status'; then pass "C70 the stuck WARN's semantic batch hint names the detached wrapper start and status"; else fail "C70 stuck wrapper hint -> $(printf '%s' "$out" | head -4)"; fi
 printf '#!/bin/sh\necho "graph-freshness: STUCK semantic refresh stuck: x.md failed" >&2\nexit 3\n' > "$c70_t/stuck-check.sh"
 out="$(c70_run HIMMEL_DOCTOR_GRAPH_CHECK="$c70_t/stuck-check.sh")"
 if grepq "$out" -F 'WARN C70-graph-semantic' && grepq "$out" -F 'semantic refresh stuck: x.md'; then pass "C70 checker rc 3 (stuck) -> WARN naming the file"; else fail "C70 rc 3 -> $(printf '%s' "$out" | head -3)"; fi

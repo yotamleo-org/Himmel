@@ -175,7 +175,7 @@ run_gh_input() {  # runs the filer against a given --input file on the GitHub pa
         bash "$FDI" --pr 1 --input "$1" --dry-run 2>&1 )
 }
 
-echo "TEST: critic-panel Suggestions are recognised and planned as deferred (HIMMEL-2068)"
+echo "TEST: critic-panel Suggestions are recognised and planned as deferred"
 out=$(ISSUE_LIST_RESULT="" run_gh_input "$PANEL_INPUT"); rc=$?
 assert_eq "panel dry-run → exit 0" "0" "$rc"
 dryrun_lines=$(printf '%s\n' "$out" | grep -c "^skipped (dry-run)")
@@ -330,7 +330,7 @@ assert_contains "create carries the run_mode escape class" "$(grep '^create' "$J
 assert_contains "create defaults --class unclassified" "$(grep '^create' "$JLOG")" "--class unclassified"
 assert_contains "create keeps the cr-deferred label" "$(grep '^create' "$JLOG")" "--labels cr-deferred"
 
-echo "TEST: HIMMEL-9498 polish (the script's default class) files nothing and prints the batch for the PR body"
+echo "TEST: polish (the script's default class) files nothing and prints the batch for the PR body"
 out=$(FDI_CLASS=polish run_mode jira github); rc=$?
 assert_eq "polish → exit 0" "0" "$rc"
 assert_contains "polish says it is not filed" "$out" "polish is not filed"
@@ -360,7 +360,7 @@ assert_eq "hardening without --fu-why files nothing" "0" "$(grep -c '^create' "$
 out=$(run_mode jira github --fu-class hardening --fu-why bogus 2>&1); rc=$?
 assert_eq "hardening with an unknown --fu-why → exit 1" "1" "$rc"
 out=$(run_mode jira github --fu-class hardening --fu-why no-check 2>&1); rc=$?
-assert_eq "HIMMEL-9498 hardening with no --fu-override → exit 1" "1" "$rc"
+assert_eq "hardening with no --fu-override → exit 1" "1" "$rc"
 assert_contains "hardening with no --fu-override names the flag" "$out" "--fu-override"
 assert_eq "hardening with no --fu-override files nothing" "0" "$(grep -c '^create' "$JLOG" || true)"
 for bad_override in because-i-said-so decision-abc decision-762x judge-1 DU-j3603 du-j3603-4; do
@@ -370,7 +370,7 @@ for bad_override in because-i-said-so decision-abc decision-762x judge-1 DU-j360
     assert_eq "9498 an override of the wrong shape ($bad_override) files nothing" "0" "$(grep -c '^create' "$JLOG" || true)"
 done
 out=$(run_mode jira github --fu-class escape --fu-override decision-762 2>&1); rc=$?
-assert_eq "HIMMEL-9498 --fu-override with a non-hardening class → exit 1" "1" "$rc"
+assert_eq "--fu-override with a non-hardening class → exit 1" "1" "$rc"
 out=$(run_mode jira github --fu-class escape --fu-why no-check 2>&1); rc=$?
 assert_eq "--fu-why with a non-hardening class → exit 1" "1" "$rc"
 

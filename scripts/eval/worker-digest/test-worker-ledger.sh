@@ -155,7 +155,7 @@ check "a usage error exits 2" 'python3 "$LL" backfill >/dev/null 2>&1; [ $? = 2 
 # Lane labels can name codex; check the subprocess call and its argv instead.
 check "the writer spawns only bun, never a model CLI" 'python3 -c "import ast,sys; t=ast.parse(open(sys.argv[1]).read()); calls=[n for n in ast.walk(t) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and isinstance(n.func.value,ast.Name) and n.func.value.id==\"subprocess\"]; assert len(calls)==1 and calls[0].func.attr==\"run\" and isinstance(calls[0].args[0],ast.Name) and calls[0].args[0].id==\"cmd\"; assignments=[n for n in ast.walk(t) if isinstance(n,ast.Assign) and any(isinstance(x,ast.Name) and x.id==\"cmd\" for x in n.targets)]; assert len(assignments)==1 and isinstance(assignments[0].value,ast.List) and assignments[0].value.elts[0].value==\"bun\"" "$LL"'
 
-echo "7. --digest-error: a closed-vocabulary reason in meta (HIMMEL-4670 P3)"
+echo "7. --digest-error: a closed-vocabulary reason in meta"
 DE=4670c1a5-0000-4000-8000-0000000000de; DX=4670c1a5-0000-4000-8000-0000000000df
 printf '{"digest_v":1,"mapper_v":1,"trajectory_v":null,"session":"%s","status":"inconclusive","model":null,"metrics":{},"failures":[]}\n' "$DE" >"$TMP/de.json"
 rec --digest "$TMP/de.json" --digest-error timeout >/dev/null 2>&1
@@ -164,7 +164,7 @@ sed "s/$DE/$DX/" "$TMP/de.json" >"$TMP/dx.json"
 python3 "$LL" record --failures-ledger "$FL" --eval-ledger "$EL" --state-dir "$ST" --digest "$TMP/dx.json" --digest-error "boom at line 3" >/dev/null 2>&1; rcx=$?
 check "an unknown reason is refused and writes no row" '[ "$rcx" != 0 ] && absent "$DX" "$EL" && [ ! -f "$ST/$DX.json" ]'
 
-echo "8. a partial-to-ok upgrade replaces the session's rows (HIMMEL-4701)"
+echo "8. a partial-to-ok upgrade replaces the session's rows"
 US=4670c1a5-0000-4000-8000-0000000000e1; OS=4670c1a5-0000-4000-8000-0000000000e2
 UF="$TMP/up-fail.jsonl"; UE="$TMP/up-eval.jsonl"; US_ST="$TMP/up-state"
 urec() { python3 "$LL" record --failures-ledger "$UF" --eval-ledger "$UE" --state-dir "$US_ST" "$@"; }
@@ -183,7 +183,7 @@ check "the upgraded ledger still validates" 'python3 "$LL" validate "$UF" >/dev/
 urec --digest "$TMP/up-ok.json" >/dev/null 2>&1
 check "a second ok run changes nothing" '[ "$(grep -c "\"session\":\"$US\"" "$UF")" = "$(jq ".failures | length" "$TMP/up-ok.json")" ]'
 
-echo "9. backfill reads the LAST title in the whole journal (HIMMEL-4701)"
+echo "9. backfill reads the LAST title in the whole journal"
 P2="$TMP/projects2"; mkdir -p "$P2/-home-x-himmel"
 T1=4670b000-0000-4000-8000-000000000011
 { title HIMMEL-1-N1-scratch "$T1"; sed "s#\"sessionId\"#\"cwd\": \"$TMP/w\", \"sessionId\"#" "$FX/classes.jsonl"; title HIMMEL-4701-N1418-late-title "$T1"; } >"$P2/-home-x-himmel/$T1.jsonl"
@@ -191,7 +191,7 @@ check "the fixture's final title sits past line 40" '[ "$(grep -n "late-title" "
 python3 "$LL" backfill --since 2026-10-01 --projects "$P2" --denials-ledger "$FX/classifier-denials.jsonl" --failures-ledger "$TMP/t-fail.jsonl" --eval-ledger "$TMP/t-eval.jsonl" --state-dir "$TMP/t-state" >"$TMP/t.out" 2>&1 || bad "title backfill exits 0"
 check "the title after line 40 wins: worker and ticket come from it" 'jq -e ".meta.leg == \"N1418\" and .meta.ticket == \"HIMMEL-4701\"" "$TMP/t-eval.jsonl" >/dev/null'
 
-echo "10. backfill --live-minutes skips a still-live journal (HIMMEL-4699, HIMMEL-4701)"
+echo "10. backfill --live-minutes skips a still-live journal"
 P3="$TMP/projects3"; mkdir -p "$P3/-home-x-himmel"
 L1=4670b000-0000-4000-8000-000000000021; L2=4670b000-0000-4000-8000-000000000022
 NOW="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
@@ -210,7 +210,7 @@ check "HIMMEL_WORKER_SESSION_FAILURES_LEDGER sets the ledger path" '[ "$(HIMMEL_
 printf '# HIMMEL-1-N9 worker (WORKER_SESSION_LANE=claudex)\n' >"$TMP/wlane.md"
 check "a doc title naming WORKER_SESSION_LANE gives the lane" '[ "$(python3 -c "import sys; sys.path.insert(0, sys.argv[1]); import worker_ledger; print(worker_ledger.launch_lane({}, {\"doc\": sys.argv[2]}))" "$HERE" "$TMP/wlane.md")" = claudex ]'
 
-echo "11. the recorder stamps the launch profile on tool_health (HIMMEL-7048)"
+echo "11. the recorder stamps the launch profile on tool_health"
 LP=4670c1a5-0000-4000-8000-0000000000f1; LQ=4670c1a5-0000-4000-8000-0000000000f2; LR=4670c1a5-0000-4000-8000-0000000000f3
 LF="$TMP/lp-fail.jsonl"; LE="$TMP/lp-eval.jsonl"; LS="$TMP/lp-state"
 lrec() { HIMMELCTL_CACHE_DIR="$TMP/cache" python3 "$LL" record --failures-ledger "$LF" --eval-ledger "$LE" --state-dir "$LS" "$@"; }
@@ -311,7 +311,7 @@ check "an unknown body key is refused (exit 2) and nothing is appended" '[ "$rcb
 thw 2026-10-18 ok w2 >/dev/null 2>&1
 check "an older day under another wiring is stored partial too, because feedback picks its newest ok row across every series" 'jq -e "select(.meta.day == \"2026-10-18\") | .status == \"partial\" and .meta.revision == \"backfill\"" "$TL" >/dev/null && [ "$(newest_ok_day)" = 2026-10-29 ]'
 
-echo "13. the ledger row carries the refusal line of a denied row only (HIMMEL-8575)"
+echo "13. the ledger row carries the refusal line of a denied row only"
 # The chain-refusal journal and its run log (the REAL launcher writes the secret-bearing and long rows); the ledger row is the digest row's line.
 CR="$FX/chain-refusal"; RS=8575c1a5-0000-4000-8000-000000000001
 mkdir -p "$TMP/rl/j"
@@ -335,7 +335,7 @@ check "validate refuses an empty refusal_line, a line break, a control character
 check "validate takes 240 code points and null" 'vrow "$(jq -c ".refusal_line = (\"x\" * 240)" <<<"$drow")" && vrow "$(jq -c ".refusal_line = null" <<<"$drow")"'
 check "validate still refuses a free-text key such as message beside a valid refusal_line" '! vrow "$(jq -c ". + {message: \"x\"}" <<<"$drow")"'
 
-echo "14. a refusal_line canary is not forwarded (HIMMEL-8575)"
+echo "14. a refusal_line canary is not forwarded"
 # Pinned: the failure router's Jira calls and body files, the daily review file, the router and review notifier lines,
 # and the tool-health rollup as the real reader (readToolHealth) returns it. NOT pinned: worker_ledger.py's marker dump and
 # tool-health.mjs's in-memory row spread, which hold the whole row and stay on this host by design (never sent).
@@ -409,7 +409,7 @@ jq -c 'select(.failure == "denied") | .class = "denied/guard-canary8575fw"' "$RF
 pinrun red
 check "RED control: the same canary in the class is found in the Jira stub, the review and the notifier output, so the pin is not vacuous" '[ -n "$(pinleaks red CANARY8575fw)" ] && grep -qi canary8575fw "$PIN/stub/calls.log"'
 
-echo "15. a salus-rooted session records no refusal_line (HIMMEL-8575)"
+echo "15. a salus-rooted session records no refusal_line"
 # Pinned, with the chain-log overrides CLEARED so the digest resolves its logs by default: the digest reads only the chain logs
 # of the checkout it runs from (its own REPO), never a log at the session's cwd. So a deny row in a salus root's own log never
 # reaches the digest, the ledger or the marker. The pin is the root the digest runs from: a copy of the digest rooted at the

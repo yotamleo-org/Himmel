@@ -186,7 +186,7 @@ check "$cli_out" trivial
 . "$DIR/../lib/timeout-bin.sh"
 tbin="$_TIMEOUT_BIN"
 if [ -z "$tbin" ]; then
-  echo "SKIP: HIMMEL-2420 deadlock sweep needs 'timeout' or 'gtimeout' (macOS: brew install coreutils) -- skipped"
+  echo "SKIP: here-string deadlock sweep needs 'timeout' or 'gtimeout' (macOS: brew install coreutils) -- skipped"
 else
   sweep_files=()
   for sweep_n in 1005 1006 1007 1008 1009; do
@@ -199,13 +199,13 @@ else
       printf '+%063d\n' $(seq 1 "$sweep_n")
     } > "$f"
     sweep_bytes=$(wc -c < "$f")
-    echo "HIMMEL-2420 sweep: N=$sweep_n -> $sweep_bytes B"
+    echo "here-string sweep: N=$sweep_n -> $sweep_bytes B"
     set +e
     sweep_out=$("$tbin" -k 5 30 bash "$DIR/triviality-gate.sh" < "$f" 2>/dev/null)
     sweep_rc=$?
     set -e
     if [ "$sweep_rc" -ne 0 ]; then
-      echo "FAIL: sweep fixture N=$sweep_n ($sweep_bytes B) did not classify: rc=$sweep_rc (124 = TERM deadline fired, 137 = SIGKILL deadline fired = the HIMMEL-2420 wedge)"
+      echo "FAIL: sweep fixture N=$sweep_n ($sweep_bytes B) did not classify: rc=$sweep_rc (124 = TERM deadline fired, 137 = SIGKILL deadline fired = the here-string wedge)"
       fail=1
     elif [ "$sweep_out" != "nontrivial" ]; then
       echo "FAIL: sweep fixture N=$sweep_n ($sweep_bytes B) rc=0 but got '$sweep_out' want nontrivial"

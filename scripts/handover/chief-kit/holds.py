@@ -324,10 +324,10 @@ def publish(d, name, text):
             pass  # swallow-ok: the temp file is already gone; the link, or its absence, is the answer
 
 
-def run_bounded(cmd, timeout, cwd=None):
+def run_bounded(cmd, timeout, cwd=None, env=None):
     """(rc, stdout) or None on a timeout or a launch failure. The whole process group dies on a timeout."""
     try:
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, cwd=cwd, start_new_session=True)
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, cwd=cwd, env=env, start_new_session=True)
     except OSError:
         return None
     try:
@@ -340,6 +340,20 @@ def run_bounded(cmd, timeout, cwd=None):
             pass  # swallow-ok: the group already exited
         p.communicate()
         return None
+
+
+def gh_read_argv():
+    custom = os.environ.get('HOLDS_GH')
+    if custom:
+        return [custom]
+    helper = os.path.normpath(os.path.join(HERE, '..', '..', 'lib', 'gh-read.sh'))
+    return [helper] if os.path.isfile(helper) and os.access(helper, os.X_OK) else ['gh']
+
+
+def quiet_gh_env():
+    child = dict(os.environ)
+    child['GH_READ_QUIET'] = '1'
+    return child
 
 
 def ql_slug(path, root):
@@ -443,9 +457,8 @@ class Judge:
         """'open' | 'done' | 'fault' from one gh pr view, 5 s."""
         if pr in self.pr_cache:
             return self.pr_cache[pr]
-        gh = os.environ.get('HOLDS_GH') or 'gh'
         t = self.left(GH_TIMEOUT)
-        res = run_bounded([gh, 'pr', 'view', pr, '--json', 'state', '-q', '.state'], t, cwd=self.repo if os.path.isdir(self.repo) else None) if t > 0 else None
+        res = run_bounded(gh_read_argv() + ['pr', 'view', pr, '--json', 'state', '-q', '.state'], t, cwd=self.repo if os.path.isdir(self.repo) else None, env=quiet_gh_env()) if t > 0 else None
         if res is None or res[0] != 0:
             s = 'fault'
         else:
@@ -1621,7 +1634,7 @@ def git_names(args, cwd):
 
 def pr_base(cwd):
     """The base branch of this branch's open PR as HOLDS_GH reads it, else ''."""
-    res = run_bounded([os.environ.get('HOLDS_GH') or 'gh', 'pr', 'view', '--json', 'baseRefName', '-q', '.baseRefName'], GH_TIMEOUT, cwd=cwd)
+    res = run_bounded(gh_read_argv() + ['pr', 'view', '--json', 'baseRefName', '-q', '.baseRefName'], GH_TIMEOUT, cwd=cwd, env=quiet_gh_env())
     b = res[1].strip() if res and res[0] == 0 else ''
     return b if BASE_RE.match(b) else ''
 
