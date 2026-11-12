@@ -1431,7 +1431,7 @@ view into the vault — the bridge between the derived graph and the KB.
   staggered): the himmel row runs on the **`claude-api`** backend with
   the API lane env (`HIMMEL_API_LANE=on`, the auto account walk) baked in, only on a station that opted in
   (`graphify.semantic_api_ok`; otherwise it logs a skip line); the opt-in Luna map row
-  (`arm --luna-only`) stays on **`claude-cli`** (kimi/moonshot is retired), drawing the
+  (`arm --luna-only`) stays on **`claude-cli`**, drawing the
   subscription usage budget, gated by `usage-preflight.sh` inside
   `refresh-graph-map.sh` (SKIPPED-BANK stops the run) — each firing
   `refresh-graph-map.sh` for its corpus. A runner armed before the claude-api default keeps its
