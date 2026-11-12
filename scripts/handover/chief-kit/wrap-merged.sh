@@ -56,7 +56,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=scripts/lib/git-clean.sh
 . "$HERE/../../lib/git-clean.sh"
 git_env_scrub
-GH="${WM_GH:-gh}"
+GH_READ_BIN="$HERE/../../lib/gh-read.sh"
+[ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
+GH="${WM_GH:-$GH_READ_BIN}"
 GIT="${WM_GIT:-git}"
 # arrays, so a checkout path with a space stays one word; a WM_* override is one executable
 if [ -n "${WM_CLOSE:-}" ]; then CLOSE=("$WM_CLOSE"); else CLOSE=(bash "$HERE/close-wrapped-worker.sh"); fi
@@ -101,7 +103,7 @@ fi
 if [ -n "${WM_JIRA:-}" ]; then jira=("$WM_JIRA"); else jira=(node "$PRIMARY/scripts/jira/dist/index.js"); fi
 
 # 1. pr-state (run from the primary so gh resolves THIS repo, not the caller's)
-view="$(cd "$PRIMARY" && "$GH" pr view "$PR" --json state,mergeCommit 2>&1)" || fail pr-state "gh pr view $PR: $view" 3
+view="$(cd "$PRIMARY" && GH_READ_QUIET=1 "$GH" pr view "$PR" --json state,mergeCommit 2>&1)" || fail pr-state "gh pr view $PR: $view" 3
 state="$(printf '%s' "$view" | jq -r '.state // empty' 2>/dev/null)"
 sha="$(printf '%s' "$view" | jq -r '.mergeCommit.oid // empty' 2>/dev/null)"
 { [ "$state" = MERGED ] && [ -n "$sha" ]; } || fail pr-state "PR #$PR is '${state:-unreadable}', not MERGED" 3

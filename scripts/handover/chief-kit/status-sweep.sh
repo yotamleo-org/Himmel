@@ -343,7 +343,7 @@ while IFS= read -r key; do
     bash "$HERE/worker-jira-status.sh" "$key" --event sweep --repo "$REPO" >/dev/null 2>&1
     outcome=""
     [ ! -e "$LOG" ] || outcome=$(tail -n "+$((before + 1))" "$LOG" | jq -rs --arg k "$key" \
-        '[.[] | select(.key == $k)] | ((map(select(.result == "miss" or .result == "deferred")) | first) // last) | select(. != null) | [.result, (.stage // "")] | @tsv' 2>/dev/null)
+        '[.[] | select(.key == $k and .event != "phase-label")] | ((map(select(.result == "miss" or .result == "deferred")) | first) // last) | select(. != null) | [.result, (.stage // "")] | @tsv' 2>/dev/null)
     case "${outcome%%$'\t'*}" in
         moved) moved=$((moved + 1)) ;;
         miss|deferred)

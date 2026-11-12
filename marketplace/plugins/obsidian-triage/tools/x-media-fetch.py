@@ -2036,10 +2036,16 @@ def main():
                 return
             if probe:
                 if RATE_LIMIT_S > 0:
-                    time.sleep(RATE_LIMIT_S)
+                    time.sleep(_cap(RATE_LIMIT_S))
+                    if _budget_spent():
+                        run["unstarted"] = len(cands) - i
+                        return
                 run["probed"] += 1
                 if probe_clip(p, x, p.relative_to(args.vault).as_posix()) not in PROBE_VIDEO:
                     continue
+                if _budget_spent():
+                    run["unstarted"] = len(cands) - i
+                    return
             yield p, x
 
     enrich_batch(args, stream(), matched_total, remaining, run)

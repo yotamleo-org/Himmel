@@ -18,6 +18,7 @@ fresh_home() {
     H="$WS/$1"; mkdir -p "$H/.himmel"
     export HOME="$H" USERPROFILE="$H" HIMMEL_CONFIG_DIR="$H/.himmel" HIMMEL_CONFIG_AUDIT_DIR="$H/.himmel/state/config-audit"
     export HIMMEL_API_CREDIT_CONFIG="$WS/no-roster.json"
+    export HIMMELCTL_CACHE_DIR="$H/cache"; mkdir -p "$HIMMELCTL_CACHE_DIR"; : > "$HIMMELCTL_CACHE_DIR/.env"
 }
 cfg() { printf '%s\n' "$1" > "$HOME/.himmel/config.json"; }
 gc() { node "$GC" "$@"; }
@@ -116,6 +117,40 @@ fresh_home c8; cfg '{"graphify":{"choices":{"version":1,"primary":"subscription"
 expect_eq "C8 cap missing with a letter in fallbacks is invalid" "$(gc route --state)" invalid
 cfg '{"graphify":{"choices":{"version":1,"primary":"A","max_usd_per_pass":0.1}}}'
 expect_eq "C8 cap under 0.25 is invalid" "$(gc route --state)" invalid
+
+echo "C9: root-check refuses a root the classifier names"
+fresh_home c9
+c9_env() { printf 'LUNA_VAULT_PATH=%s\nHANDOVER_DIR=%s\n' "$1" "$2" > "$HIMMELCTL_CACHE_DIR/.env"; }
+c9_refused() {
+    local out rc; out="$(gc root-check "$2")"; rc=$?
+    if [ "$rc" -eq 1 ]; then has "$1" "$out" "$3"; else fail "$1 (rc=$rc, out=$out)"; fi
+}
+c9_env "$WS/c9-vault" "$WS/c9-hand"
+mkrepo "$WS/c9-vault"; mkrepo "$WS/c9-hand/repo"; mkrepo "$WS/c9-obs"; mkdir -p "$WS/c9-obs/.obsidian"; mkrepo "$WS/c9-salus"; : > "$WS/c9-salus/.salus"; mkrepo "$WS/c9-plain"
+mkrepo "$WS/c9-himmel"
+out="$(GRAPHIFY_HIMMEL_ROOT="$WS/c9-himmel" gc root-check "$WS/c9-himmel")"; rc=$?
+if [ "$rc" -eq 1 ]; then has "C9 a himmel checkout is refused" "$out" himmel-code; else fail "C9 a himmel checkout (rc=$rc, out=$out)"; fi
+c9_refused "C9 a root inside HANDOVER_DIR is refused" "$WS/c9-hand/repo" handover-state
+c9_refused "C9 the configured vault is refused" "$WS/c9-vault" luna-personal
+c9_refused "C9 a .obsidian root is refused" "$WS/c9-obs" luna-personal
+c9_refused "C9 a .salus root is refused" "$WS/c9-salus" salus
+gc root-check "$WS/c9-plain" >/dev/null && pass "C9 a plain git root still passes" || fail "C9 a plain git root refused"
+mkdir -p "$WS/c9-phi-dir/phi-roots"; mkrepo "$WS/c9-badphi"
+out="$(CLAUDE_GLM_CONFIG_DIR="$WS/c9-phi-dir" gc root-check "$WS/c9-badphi")"; rc=$?
+if [ "$rc" -eq 1 ]; then has "C9 an unreadable PHI list refuses with the classifier reason" "$out" "cannot be classified"; else fail "C9 unreadable PHI list rc=$rc: $out"; fi
+
+echo "C10: root-check also looks below the root"
+mkrepo "$WS/c10-salus"; mkdir -p "$WS/c10-salus/sub"; : > "$WS/c10-salus/sub/.salus"
+c9_refused "C10 a nested .salus is refused" "$WS/c10-salus" salus
+mkrepo "$WS/c10-phi"; mkdir -p "$WS/c10-phi/nested" "$WS/c10-phicfg"; printf '%s\n' "$WS/c10-phi/nested" > "$WS/c10-phicfg/phi-roots"
+out="$(CLAUDE_GLM_CONFIG_DIR="$WS/c10-phicfg" gc root-check "$WS/c10-phi")"; rc=$?
+if [ "$rc" -eq 1 ]; then has "C10 a nested PHI root is refused" "$out" salus; else fail "C10 nested PHI root rc=$rc: $out"; fi
+mkrepo "$WS/c10-obs"; mkdir -p "$WS/c10-obs/notes/.obsidian"
+c9_refused "C10 a nested .obsidian is refused" "$WS/c10-obs" luna-personal
+mkrepo "$WS/c10-v"; mkdir -p "$WS/c10-v/vault"; c9_env "$WS/c10-v/vault" "$WS/c9-hand"
+c9_refused "C10 a configured vault below the root is refused" "$WS/c10-v" luna-personal
+mkrepo "$WS/c10-inline"; mkdir -p "$WS/c10-inline/handovers"; : > "$WS/c10-inline/handovers/note.md"; c9_env "$WS/c9-vault" "$WS/c10-inline/handovers"
+gc root-check "$WS/c10-inline" >/dev/null && pass "C10 an inline handovers folder below the root is not refused (A8)" || fail "C10 an inline handovers folder refused"
 
 echo "C11: a name of . or .. is refused"
 fresh_home c11

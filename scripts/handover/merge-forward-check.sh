@@ -90,6 +90,8 @@
 # the upgrade path is per-commit main runs (or the gh push-run listing above).
 set -uo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+GH_READ_BIN="$SCRIPT_DIR/../lib/gh-read.sh"
+[ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
 # shellcheck source=../lib/git-clean.sh
 . "$SCRIPT_DIR/../lib/git-clean.sh"
 # shellcheck source=../lib/prim.sh
@@ -159,7 +161,7 @@ chain_s2() {
     echo "REFUSE — the --pr run is for $psha, but HEAD is $head: an older PR run proves nothing about the current head. Wait for the run of HEAD; do not merge forward."
     exit 1
   fi
-  view="$(gh pr view --json number,headRefOid 2>/dev/null)" || view=""  # swallow-ok: an unread PR leaves num empty, which REFUSEs below
+  view="$("$GH_READ_BIN" pr view --json number,headRefOid 2>/dev/null)" || view=""  # swallow-ok: an unread PR leaves num empty, which REFUSEs below
   num="$(jq -r '.number // ""' <<< "$view" 2>/dev/null)" || num=""  # swallow-ok: unparsable JSON leaves num empty, which REFUSEs below
   hro="$(jq -r '.headRefOid // ""' <<< "$view" 2>/dev/null)" || hro=""  # swallow-ok: an empty head never equals HEAD, which REFUSEs below
   if [ -z "$num" ]; then
@@ -174,7 +176,7 @@ chain_s2() {
     echo "REFUSE — HEAD is $head, but PR #$cpr's head on GitHub is ${hro:-unknown}: push HEAD and wait for its run first. Do not merge forward."
     exit 1
   fi
-  view="$(gh pr view "$pred" --json state,mergeCommit,headRefOid 2>/dev/null)" || view=""  # swallow-ok: an unread PR leaves state empty, which REFUSEs below
+  view="$("$GH_READ_BIN" pr view "$pred" --json state,mergeCommit,headRefOid 2>/dev/null)" || view=""  # swallow-ok: an unread PR leaves state empty, which REFUSEs below
   state="$(jq -r '.state // ""' <<< "$view" 2>/dev/null)" || state=""  # swallow-ok: an empty state is not MERGED, which REFUSEs below
   moid="$(jq -r '.mergeCommit.oid // ""' <<< "$view" 2>/dev/null)" || moid=""  # swallow-ok: an empty merge commit REFUSEs below
   phead="$(jq -r '.headRefOid // ""' <<< "$view" 2>/dev/null)" || phead=""  # swallow-ok: an empty premerge head REFUSEs below
