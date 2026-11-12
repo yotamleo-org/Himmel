@@ -2281,7 +2281,7 @@ for gp_kind in personal state; do
     gp_sw="$tmp/gp-sw-$gp_kind"; mkdir -p "$gp_sw"
     git -C "$gp_sw" init -q -b main && git -C "$gp_sw" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
     : > "$gp_sw/.single-writer"
-    [ "$gp_kind" = state ] && printf '{"template":"luna-second-brain"}\n' > "$gp_sw/.vault-template.json"
+    [ "$gp_kind" = state ] && printf '{"template":"vault"}\n' > "$gp_sw/.vault-template.json"
     gp_sw="$(cd "$gp_sw" && pwd -P)"
     env HANDOVER_REGISTRY="$gp_reg" USER_SLUG=tester bash "$REPO_REAL/scripts/handover/register-state.sh" \
         --repo-path "$gp_sw" --state-host "$tmp/gp-state" >/dev/null 2>&1
