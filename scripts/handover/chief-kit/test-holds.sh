@@ -1482,8 +1482,6 @@ same "T5 the entry stats OFF first: the refusing stub is never run" "$RC" 0
 rm -f "$REG/OFF"
 unset HOLDS_QUEUE_LOCK GH_BASE
 
-# ---- second-token reads: the PR reads ride the read token, so a spent main token is not a fault
-# gh is the shared two-token stub; main is spent (GH_STUB_MAINFAIL=rate) and the read token answers. HOLDS_GH is unset.
 READTOK=ghp_READTOKEN0123456789
 mkdir -p "$W/ttroot" "$W/emptyroot" "$W/tt" "$W/hcfg"
 printf 'himmel_github_token_vm2=%s\n' "$READTOK" > "$W/ttroot/.env"
@@ -1518,7 +1516,6 @@ put_row scripts/s7c.sh HIMMEL-9500 alpha "$G3M" pr 4999
 run "${TTW[@]}" GH_READ_ENV_ROOT="$W/emptyroot" GH_STUB_DELEGATE="$W/bin/gh-merged" python3 -I "$SUT" alive --repo "$R" scripts/s7c.sh
 same "S7 control, no read token: the merged PR still reads dead" "$OUT" dead
 same "S7 control: the pr_state read logs tok=main" "$(ttlog '^tok=main argv=pr view 4999 --json state')" 1
-# the gh child gets GH_READ_QUIET=1 (the helper's missing-token warning must not reach a data stream), on the helper path and on HOLDS_GH
 put_row scripts/s7q.sh HIMMEL-9500 alpha "$G3M" pr 4999
 : > "$W/envq"
 run "${TTW[@]}" GH_READ_ENV_ROOT="$W/emptyroot" GH_STUB_DELEGATE="$W/bin/gh-env" GH_ENV_FILE="$W/envq" python3 -I "$SUT" alive --repo "$R" scripts/s7q.sh
@@ -1531,7 +1528,6 @@ run "${TTW[@]}" GH_ENV_FILE="$W/envq" HOLDS_GH="$W/bin/gh-env" python3 -I "$SUT"
 same "S7 HOLDS_GH set: the gh child also runs with GH_READ_QUIET=1" "$(cat "$W/envq")" 1
 same "S7 HOLDS_GH set: the helper is not used (no tok line logged)" "$(ttlog '^tok=')" 0
 
-# pr_base: the base-branch read of the push check
 for nf in "" 1; do
     nfl="${nf:+ with GH_READ_NO_MAIN_FALLBACK=1}"
     GW="$(gcwt "ttchild${nf:-0}" origin/feat/parent)"
@@ -1549,7 +1545,6 @@ GW="$(gcwt ttchildc origin/feat/parent)"
 run asw "$GW" $K2 "$gcdoc_b" beta "${TTW[@]}" GH_READ_ENV_ROOT="$W/emptyroot" GH_STUB_DELEGATE="$W/bin/gh-base" GH_BASE=feat/parent "${GCQ[@]}" --push
 same "S7 control, no read token: the base read answers on main and the push passes" "$RC" 0
 same "S7 control: the base read logs tok=main" "$(ttlog '^tok=main argv=pr view --json baseRefName')" 1
-# a checkout whose scripts/lib/gh-read.sh is missing falls back to plain gh (the copy in $GC has no helper beside it)
 : > "$TTLOG"
 run asw "$GW" $K2 "$gcdoc_b" beta "${TTW[@]}" HOLDS_QUEUE_LOCK="$QL" GH_STUB_DELEGATE="$W/bin/gh-base" GH_BASE=feat/parent python3 -I "$GC/scripts/handover/chief-kit/holds.py" git-check --push
 same "S7 no helper beside holds.py: the base read falls back to gh on main and the push passes" "$RC" 0

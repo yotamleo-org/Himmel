@@ -79,8 +79,6 @@ def run(cmd, cwd=None, ok=(0,), env_add=None):
 
 
 def gh_cmd():
-    """CHAIN_GRAPH_GH split into words when set; else the gh-read.sh helper two levels up (the read token, so a spent main
-    token is not a failure) as ONE word, so a path with a space still runs; else gh when that file is missing."""
     custom = os.environ.get('CHAIN_GRAPH_GH')
     if custom:
         return shlex.split(custom)
