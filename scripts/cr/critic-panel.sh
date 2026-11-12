@@ -2153,7 +2153,7 @@ _have_panel_findings=0
 for _rf_spool in "$PANEL_SPOOL_DIR"/finding.*; do
     [ -f "$_rf_spool" ] && _have_panel_findings=1
 done
-if [ "$_have_panel_findings" -eq 1 ]; then
+if [ "$_have_panel_findings" -eq 1 ] && [ "${_SKIP_LEDGER:-0}" != "1" ]; then
     if { for _rf_spool in "$PANEL_SPOOL_DIR"/finding.*; do
              [ -f "$_rf_spool" ] && cat "$_rf_spool"
          done; } | CR_LEDGER="$PANEL_LEDGER" REVIEW_BRANCH="$REVIEW_BRANCH" REVIEW_HEAD="$REVIEW_HEAD" \
