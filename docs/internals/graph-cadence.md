@@ -111,7 +111,7 @@ expects none), and `himmel-update`'s `arm --rewrite-armed` only rewrites runners
 that already exist, so it can never re-arm a disarmed Luna task.
 
 The himmel semantic runner (`HIMMEL-GraphMap-Himmel`) runs on the `claude-api` backend with
-`HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto` baked in, only on a station that opted in
+the API lane env (`HIMMEL_API_LANE=on`, the auto account walk) baked in, only on a station that opted in
 (`graphify.semantic_api_ok`); background LLM jobs never draw the subscription. A runner armed
 before that default keeps its baked `--backend claude-cli` until it is regenerated:
 `status` flags it, and `bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed` rewrites

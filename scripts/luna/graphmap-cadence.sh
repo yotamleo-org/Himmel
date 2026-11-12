@@ -1040,7 +1040,7 @@ cron_payload() {
             printf 'echo "[%s]"' "$SEMANTIC_API_SKIP_TEXT"
             return 0
         fi
-        backend="$BACKEND" lane="HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto "
+        backend="claude-api" lane="HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto "
     fi
     # refresh-graph-map.sh falls back to
     # GRAPHIFY_OUT_ROOT from the environment when --out-root is absent -- clear

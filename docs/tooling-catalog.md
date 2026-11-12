@@ -1429,7 +1429,7 @@ view into the vault — the bridge between the derived graph and the KB.
   this entry covers the original four). The semantic pair
   (`HIMMEL-GraphMap-Luna` / `-Himmel`, default Sunday 13:00/13:20 local,
   staggered): the himmel row runs on the **`claude-api`** backend with
-  `HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto` baked in, only on a station that opted in
+  the API lane env (`HIMMEL_API_LANE=on`, the auto account walk) baked in, only on a station that opted in
   (`graphify.semantic_api_ok`; otherwise it logs a skip line); the opt-in Luna map row
   (`arm --luna-only`) stays on **`claude-cli`** (kimi/moonshot is retired), drawing the
   subscription usage budget, gated by `usage-preflight.sh` inside
