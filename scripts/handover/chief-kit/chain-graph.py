@@ -20,7 +20,7 @@ A shared trust-path file (ci-trust-paths.txt) is H2 whatever D4 says, except a r
 whose two sides only add rows with disjoint keys, which is S2. Precedence H1 > H2 > S2 > S1.
 A pair with no shared file is not trial-merged; only D1, D6 and D7 can lift it above independent.
 
-Environment: CHAIN_GRAPH_GH (the gh command, default gh), CHAIN_GRAPH_JIRA (the jira `links` command prefix,
+Environment: CHAIN_GRAPH_GH (the gh command, default the scripts/lib/gh-read.sh helper, else gh), CHAIN_GRAPH_JIRA (the jira `links` command prefix,
 default node <primary checkout>/scripts/jira/dist/index.js links). Results cache per (headA, headB) under
 $XDG_RUNTIME_DIR/chain-graph or the temp dir, never in the repo. Exit 2 on a read that fails.
 """
@@ -69,17 +69,27 @@ REPO_LOCAL_GIT_ENV = ('GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_INDEX_F
                       'GIT_CONFIG_COUNT')
 
 
-def run(cmd, cwd=None, ok=(0,)):
+def run(cmd, cwd=None, ok=(0,), env_add=None):
     env = {k: v for k, v in os.environ.items() if k not in REPO_LOCAL_GIT_ENV}
+    env.update(env_add or {})
     p = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True, errors='replace')
     if p.returncode not in ok:
         raise ReadError('%s: rc=%d %s' % (' '.join(cmd[:4]), p.returncode, p.stderr.strip()[:200]))
     return p
 
 
+def gh_cmd():
+    """CHAIN_GRAPH_GH split into words when set; else the gh-read.sh helper two levels up (the read token, so a spent main
+    token is not a failure) as ONE word, so a path with a space still runs; else gh when that file is missing."""
+    custom = os.environ.get('CHAIN_GRAPH_GH')
+    if custom:
+        return shlex.split(custom)
+    helper = os.path.normpath(os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', '..', 'lib', 'gh-read.sh'))
+    return [helper] if os.path.isfile(helper) and os.access(helper, os.X_OK) else ['gh']
+
+
 def gh(args):
-    cmd = shlex.split(os.environ.get('CHAIN_GRAPH_GH', 'gh')) + args
-    return run(cmd).stdout
+    return run(gh_cmd() + args, env_add={'GH_READ_QUIET': '1'}).stdout
 
 
 def git(repo, args, ok=(0,)):

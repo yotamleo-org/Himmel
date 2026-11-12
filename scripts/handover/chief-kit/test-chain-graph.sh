@@ -132,6 +132,55 @@ same 'S2: row registry, pure disjoint row additions' "$(edge 11 12)" 'S2 D6 #11 
 same 'H2: row registry, one side modifies a row' "$(edge 13 12)" 'H2 D3 #13 #12'
 same 'H2: row registry, the added key collides' "$(edge 14 15)" 'H2 D3 #14 #15'
 
+# Second-token reads: with CHAIN_GRAPH_GH unset, gh() reads through the read-token helper, so a spent main token is not a failure.
+# gh is the shared two-token stub (main spent, GH_STUB_MAINFAIL=rate) delegating to this suite's own gh stub.
+READTOK=ghp_READTOKEN0123456789
+mkdir -p "$W/ttroot" "$W/emptyroot" "$W/tt" "$W/sp ace/scripts/handover/chief-kit"
+printf 'himmel_github_token_vm2=%s\n' "$READTOK" > "$W/ttroot/.env"
+: > "$W/emptyroot/.env"
+ln -s "$(dirname "$SUT")/fixtures/gh-two-token-stub.sh" "$W/tt/gh"
+cat > "$W/bin/gh-env" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "${GH_READ_QUIET:-unset}" > "$GH_ENV_FILE"
+exec "$CG_REAL_GH" "$@"
+STUB
+chmod +x "$W/bin/gh-env"
+TTLOG="$W/tt.log"
+ttlog() { grep -c -E -- "$1" "$TTLOG" || true; }
+# ttedge <sut> <root> [env...]: the 1-2 edge with CHAIN_GRAPH_GH unset and a fresh cache
+ttedge() {
+    local sut="$1" root="$2"; shift 2
+    : > "$TTLOG"
+    env -u CHAIN_GRAPH_GH -u GH_TOKEN -u GITHUB_TOKEN -u himmel_github_token_vm2 -u CREDENTIALS_DIRECTORY \
+        GH_READ_ENV_ROOT="$root" PATH="$W/tt:$PATH" GH_STUB_READ_TOKEN="$READTOK" GHLOG="$TTLOG" HIMMEL_SECRETS_KEYRING=off \
+        GH_STUB_DELEGATE="$W/bin/gh" "$@" \
+        python3 "$sut" --prs 1,2 --base main --repo-dir "$R" --cache-dir "$(mktemp -d "$W/cache-tt.XXXXXX")" --json 2>"$W/err" |
+        python3 -c 'import json,sys; e=json.load(sys.stdin)["edges"][0]; print(e["kind"], e["det"], e["from"], e["to"])'
+}
+same 'S7 main spent: the edge is read through the read token' "$(ttedge "$SUT" "$W/ttroot" GH_STUB_MAINFAIL=rate)" 'S1 D4 #1 #2'
+same 'S7 main spent: every gh read logs tok=read' "$(ttlog '^tok=read argv=pr view 1 ')" 1
+same 'S7 main spent: no gh read logs tok=main' "$(ttlog '^tok=main ')" 0
+same 'S7 control, no read token: the same edge reads on main' "$(ttedge "$SUT" "$W/emptyroot")" 'S1 D4 #1 #2'
+same 'S7 control: the pr view read logs tok=main' "$(ttlog '^tok=main argv=pr view 1 ')" 1
+# a helper path containing a space still runs: the default is [str(path)], shlex.split is for a set CHAIN_GRAPH_GH only
+cp "$SUT" "$(dirname "$SUT")/holds-exempt.txt" "$W/sp ace/scripts/handover/chief-kit/"
+ln -s "$(cd "$(dirname "$SUT")/../../lib" && pwd)" "$W/sp ace/scripts/lib"
+same 'S7 a helper path with a space still runs' "$(ttedge "$W/sp ace/scripts/handover/chief-kit/chain-graph.py" "$W/ttroot" GH_STUB_MAINFAIL=rate)" 'S1 D4 #1 #2'
+same 'S7 a helper path with a space: the read logs tok=read' "$(ttlog '^tok=read argv=pr view 1 ')" 1
+# no helper beside the script: plain gh
+rm -f "$W/sp ace/scripts/lib"
+same 'S7 no helper beside chain-graph.py: the read falls back to gh on main' "$(ttedge "$W/sp ace/scripts/handover/chief-kit/chain-graph.py" "$W/ttroot")" 'S1 D4 #1 #2'
+same 'S7 no helper: the pr view read logs tok=main' "$(ttlog '^tok=main argv=pr view 1 ')" 1
+# the gh child runs with GH_READ_QUIET=1, on the helper path and on a set CHAIN_GRAPH_GH
+: > "$W/envq"
+ttedge "$SUT" "$W/emptyroot" CG_REAL_GH="$W/bin/gh" GH_ENV_FILE="$W/envq" GH_STUB_DELEGATE="$W/bin/gh-env" > /dev/null
+same 'S7 no read token: the gh child runs with GH_READ_QUIET=1' "$(cat "$W/envq")" 1
+if grep -q 'gh-read:' "$W/err"; then fail 'S7 no read token: a gh-read: line reached the caller stderr'; else pass 'S7 no read token: no gh-read: line on the caller stderr'; fi
+: > "$W/envq"
+ttedge "$SUT" "$W/emptyroot" CG_REAL_GH="$W/bin/gh" GH_ENV_FILE="$W/envq" CHAIN_GRAPH_GH="$W/bin/gh-env" > /dev/null
+same 'S7 CHAIN_GRAPH_GH set: the gh child also runs with GH_READ_QUIET=1' "$(cat "$W/envq")" 1
+same 'S7 CHAIN_GRAPH_GH set: the helper is not used (no tok line logged)' "$(ttlog '^tok=')" 0
+
 printf '1\tBlocks\tinward=HIMMEL-909\toutward=HIMMEL-910\tHIMMEL-909 blocks HIMMEL-910\n' > "$F/links-HIMMEL-909.txt"
 same 'H1: Jira Blocks link (D1) beats independent' "$(edge 9 10)" 'H1 D1 #9 #10'
 rm -f "$F/links-HIMMEL-909.txt"

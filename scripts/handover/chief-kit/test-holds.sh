@@ -1482,6 +1482,79 @@ same "T5 the entry stats OFF first: the refusing stub is never run" "$RC" 0
 rm -f "$REG/OFF"
 unset HOLDS_QUEUE_LOCK GH_BASE
 
+# ---- second-token reads: the PR reads ride the read token, so a spent main token is not a fault
+# gh is the shared two-token stub; main is spent (GH_STUB_MAINFAIL=rate) and the read token answers. HOLDS_GH is unset.
+READTOK=ghp_READTOKEN0123456789
+mkdir -p "$W/ttroot" "$W/emptyroot" "$W/tt" "$W/hcfg"
+printf 'himmel_github_token_vm2=%s\n' "$READTOK" > "$W/ttroot/.env"
+: > "$W/emptyroot/.env"
+ln -s "$HERE/fixtures/gh-two-token-stub.sh" "$W/tt/gh"
+TTLOG="$W/tt.log"
+TTW=(env -u HOLDS_GH -u GH_TOKEN -u GITHUB_TOKEN -u himmel_github_token_vm2 -u CREDENTIALS_DIRECTORY -u GH_READ_NO_MAIN_FALLBACK
+    GH_READ_ENV_ROOT="$W/ttroot" PATH="$W/tt:$PATH" GH_STUB_READ_TOKEN="$READTOK" GHLOG="$TTLOG" HIMMEL_SECRETS_KEYRING=off)
+ttlog() { grep -c -E -- "$1" "$TTLOG" || true; }
+cat > "$W/bin/gh-env" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "${GH_READ_QUIET:-unset}" > "$GH_ENV_FILE"
+echo OPEN
+STUB
+chmod +x "$W/bin/gh-env"
+for nf in "" 1; do
+    nfl="${nf:+ with GH_READ_NO_MAIN_FALLBACK=1}"
+    put_row scripts/s7m.sh HIMMEL-9500 alpha "$G3M" pr 4999
+    : > "$TTLOG"
+    run "${TTW[@]}" ${nf:+GH_READ_NO_MAIN_FALLBACK=1} GH_STUB_DELEGATE="$W/bin/gh-merged" GH_STUB_MAINFAIL=rate python3 -I "$SUT" alive --repo "$R" scripts/s7m.sh
+    same "S7 main spent$nfl: a row whose PR is merged reads dead, not a fault" "$OUT" dead
+    same "S7 main spent$nfl: the pr_state read logs tok=read" "$(ttlog '^tok=read argv=pr view 4999 --json state')" 1
+    same "S7 main spent$nfl: no pr_state read logs tok=main" "$(ttlog '^tok=main ')" 0
+    put_row scripts/s7o.sh HIMMEL-9500 alpha "$G3M" pr 4999
+    : > "$TTLOG"
+    run "${TTW[@]}" ${nf:+GH_READ_NO_MAIN_FALLBACK=1} GH_STUB_DELEGATE="$W/bin/gh-open" GH_STUB_MAINFAIL=rate python3 -I "$SUT" claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/s7o.sh
+    same "S7 main spent$nfl: an open PR keeps the row held" "$RC" 1
+    same "S7 main spent$nfl: the open PR read logs tok=read" "$(ttlog '^tok=read argv=pr view 4999 --json state')" 1
+done
+put_row scripts/s7c.sh HIMMEL-9500 alpha "$G3M" pr 4999
+: > "$TTLOG"
+run "${TTW[@]}" GH_READ_ENV_ROOT="$W/emptyroot" GH_STUB_DELEGATE="$W/bin/gh-merged" python3 -I "$SUT" alive --repo "$R" scripts/s7c.sh
+same "S7 control, no read token: the merged PR still reads dead" "$OUT" dead
+same "S7 control: the pr_state read logs tok=main" "$(ttlog '^tok=main argv=pr view 4999 --json state')" 1
+# the gh child gets GH_READ_QUIET=1 (the helper's missing-token warning must not reach a data stream), on the helper path and on HOLDS_GH
+put_row scripts/s7q.sh HIMMEL-9500 alpha "$G3M" pr 4999
+: > "$W/envq"
+run "${TTW[@]}" GH_READ_ENV_ROOT="$W/emptyroot" GH_STUB_DELEGATE="$W/bin/gh-env" GH_ENV_FILE="$W/envq" python3 -I "$SUT" alive --repo "$R" scripts/s7q.sh
+same "S7 no read token: the gh child runs with GH_READ_QUIET=1" "$(cat "$W/envq")" 1
+not_contains() { case "$2" in *"$3"*) fail "$1 (found '$3')" ;; *) pass "$1" ;; esac; }
+not_contains "S7 no read token: no gh-read: line on the caller's stderr" "$ERR" "gh-read:"
+put_row scripts/s7h.sh HIMMEL-9500 alpha "$G3M" pr 4999
+: > "$W/envq"; : > "$TTLOG"
+run "${TTW[@]}" GH_ENV_FILE="$W/envq" HOLDS_GH="$W/bin/gh-env" python3 -I "$SUT" alive --repo "$R" scripts/s7h.sh
+same "S7 HOLDS_GH set: the gh child also runs with GH_READ_QUIET=1" "$(cat "$W/envq")" 1
+same "S7 HOLDS_GH set: the helper is not used (no tok line logged)" "$(ttlog '^tok=')" 0
+
+# pr_base: the base-branch read of the push check
+for nf in "" 1; do
+    nfl="${nf:+ with GH_READ_NO_MAIN_FALLBACK=1}"
+    GW="$(gcwt "ttchild${nf:-0}" origin/feat/parent)"
+    ( cd "$GW" && echo c > "c8-${nf:-0}.txt" && git add "c8-${nf:-0}.txt" && git commit -q -m child8 )
+    put_row p1.txt $K1 branch:feat/parent "" pr 77 "$GC"; touch "$(rowf p1.txt "$GC")"
+    : > "$TTLOG"
+    run asw "$GW" $K2 "$gcdoc_b" beta "${TTW[@]}" ${nf:+GH_READ_NO_MAIN_FALLBACK=1} GH_STUB_DELEGATE="$W/bin/gh-base" GH_BASE=feat/parent GH_STUB_MAINFAIL=rate "${GCQ[@]}" --push
+    same "S7 main spent$nfl: the stacked child's base reads as the parent branch and the push passes" "$RC" 0
+    same "S7 main spent$nfl: the base read logs tok=read" "$(ttlog '^tok=read argv=pr view --json baseRefName')" 1
+    same "S7 main spent$nfl: the base read logs no tok=main" "$(ttlog '^tok=main ')" 0
+done
+GW="$(gcwt ttchildc origin/feat/parent)"
+( cd "$GW" && echo c > c8-c.txt && git add c8-c.txt && git commit -q -m child8c )
+: > "$TTLOG"
+run asw "$GW" $K2 "$gcdoc_b" beta "${TTW[@]}" GH_READ_ENV_ROOT="$W/emptyroot" GH_STUB_DELEGATE="$W/bin/gh-base" GH_BASE=feat/parent "${GCQ[@]}" --push
+same "S7 control, no read token: the base read answers on main and the push passes" "$RC" 0
+same "S7 control: the base read logs tok=main" "$(ttlog '^tok=main argv=pr view --json baseRefName')" 1
+# a checkout whose scripts/lib/gh-read.sh is missing falls back to plain gh (the copy in $GC has no helper beside it)
+: > "$TTLOG"
+run asw "$GW" $K2 "$gcdoc_b" beta "${TTW[@]}" HOLDS_QUEUE_LOCK="$QL" GH_STUB_DELEGATE="$W/bin/gh-base" GH_BASE=feat/parent python3 -I "$GC/scripts/handover/chief-kit/holds.py" git-check --push
+same "S7 no helper beside holds.py: the base read falls back to gh on main and the push passes" "$RC" 0
+same "S7 no helper: the base read logs tok=main" "$(ttlog '^tok=main argv=pr view --json baseRefName')" 1
+
 # ---- the real register was never touched
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $W, a path unique to this run: none may appear in the real register.
