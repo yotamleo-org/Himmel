@@ -96,10 +96,8 @@ run "$tmp/luna" HANDOVER_DIR=; expect "luna_no_handover_dir" 1 "single-writer st
 git -C "$tmp/luna" worktree add -q "$tmp/luna-wt" -b wt >/dev/null 2>&1
 run "$tmp/luna-wt"; expect "luna_linked_worktree" 1 "single-writer state repo"
 
-# A personal repo that only carries the edit-on-main opt-out is not a state repo: it may host a chief.
 mkrepo "$tmp/personal"; : > "$tmp/personal/.single-writer"; register "$tmp/personal"
 run "$tmp/personal"; expect "personal_single_writer_repo_passes" 0 "guarded: user-layer $tmp/personal"
-# A vault stamp alone, without the opt-out, is not refused either.
 mkrepo "$tmp/stamp-only"; printf '{}\n' > "$tmp/stamp-only/.vault-template.json"; register "$tmp/stamp-only"
 run "$tmp/stamp-only"; expect "vault_stamp_without_single_writer_passes" 0 "guarded: user-layer $tmp/stamp-only"
 

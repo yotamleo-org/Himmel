@@ -2275,8 +2275,6 @@ check "chief_project_registered_adopter proceeds (rc 0)" "$gp_rc" "0"
 check "guard_chief_project_guarded_no_warn: registered adopter, opt-out dropped, no refusal and 0 WARN" \
     "$(printf '%s\n' "$gp_out" | grep -c "refusing to launch\|^WARN unguarded")" "0"
 
-# SCRUM-15: .single-writer alone is only the edit-on-main opt-out, so a registered personal
-# repo carrying it still hosts a chief; the same repo stamped as a vault (.vault-template.json) is a state repo and is refused (18).
 for gp_kind in personal state; do
     gp_sw="$tmp/gp-sw-$gp_kind"; mkdir -p "$gp_sw"
     git -C "$gp_sw" init -q -b main && git -C "$gp_sw" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
