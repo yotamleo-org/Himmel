@@ -824,7 +824,7 @@ s2w_seq() {
     local name="$1" doc="$2" key="$3" repo="${4:-}" i fail sf inbox
     export TICK_STATE_DIR="$S2/st-$name"; rm -rf "$TICK_STATE_DIR"; mkdir -p "$TICK_STATE_DIR"
     inbox="$(new_inbox "s2-$name")"
-    s2w_wakes=0; s2w_other=0
+    s2w_wakes=0; s2w_other=0; s2w_rcs=""
     for i in 1 2 3; do
         fail=""; [ "$i" -ne 2 ] || fail=1
         if [ "$i" -eq 3 ] && [ -n "$repo" ]; then git -C "$repo" -c user.name=t -c user.email=t@e.x -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -q --allow-empty -m "c$i"; fi
@@ -832,6 +832,7 @@ s2w_seq() {
         s2w_line[i]="$(bash "$HERE/tick.sh" --pool-dispositions --doc "$doc" < "$S2/rows" 2>/dev/null | grep "^# pool-unresolved stale $key ")"
         s2w_det[i]="$(grep "^STALE-DISPOSITION $key " "$sf" 2>/dev/null)"
         timeout 6 bash "$WAIT" "$inbox" --doc "$doc" --workers N1.md > "$S2/$name-$i.out" 2>/dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
+        s2w_rcs="${s2w_rcs}${s2w_rcs:+:}$?"
         s2w_wakes=$((s2w_wakes + $(grep -c '^WAKE pool-unresolved' "$S2/$name-$i.out")))
         [ "$i" -eq 1 ] || s2w_other=$((s2w_other + $(grep -c '^WAKE ' "$S2/$name-$i.out")))
     done
@@ -849,6 +850,7 @@ check "(R9) the wake is pool-unresolved" 1 "$(grep -c '^WAKE pool-unresolved ' "
 s2w_doc "$S2/ho/r9b.md"
 s2w_seq r9b "$S2/ho/r9b.md" HIMMEL-141
 check "(R9b) good, failed, good reads wake pool-unresolved once" "1:0" "$s2w_wakes:$s2w_other"
+check "(R9b) the first sample ends on its wake and the others time out waiting" "0:124:124" "$s2w_rcs"
 check "(R9b) the unresolved line names the key and its gone target" 1 "$(printf '%s\n' "${s2w_line[1]}" | grep -c 'its pool-disposition target is gone: PR#999001=CLOSED; re-decide or rewrite the line$')"
 check "(R9b) the unresolved line is byte-identical for the good and the failed read" "${s2w_line[1]}" "${s2w_line[2]}"
 check "(R9b) the failed read's detail line carries the prior verdict" "${s2w_det[1]} carried" "${s2w_det[2]}"
@@ -865,6 +867,7 @@ s2_sha="$(git -C "$S2/repo" rev-parse --short=9 HEAD)"
 s2w_doc "$S2/ho/r9d.md" "pool-disposition: HIMMEL-145 question after PR #999001 @$s2_sha"
 s2w_seq r9d "$S2/ho/r9d.md" HIMMEL-145 "$S2/repo"
 check "(R9d) an @sha stale line wakes once across a merge" "1:0" "$s2w_wakes:$s2w_other"
+check "(R9d) the first sample ends on its wake and the others time out waiting" "0:124:124" "$s2w_rcs"
 check "(R9d) its unresolved text carries @<sha>=within" 1 "$(printf '%s\n' "${s2w_line[1]}" | grep -c "PR#999001=CLOSED @$s2_sha=within; re-decide")"
 check "(R9d) the unresolved line is byte-identical across the merge" "${s2w_line[1]}" "${s2w_line[3]}"
 check "(R9d) the detail lines differ in their <n>-behind" "@$s2_sha=0-behind@$s2_sha=1-behind" "$(printf '%s' "${s2w_det[1]}" | grep -o "@$s2_sha=[0-9]*-behind")$(printf '%s' "${s2w_det[3]}" | grep -o "@$s2_sha=[0-9]*-behind")"

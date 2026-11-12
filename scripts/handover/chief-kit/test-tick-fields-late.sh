@@ -895,9 +895,12 @@ s2_produce() {
 }
 s2_pd() { s2 bash "$SUT" --pool-dispositions --doc "$1" < "$S2/rows" 2>/dev/null; }
 s2_tick() {
-    local doc="$1" l; shift
+    local doc="$1" l rc; shift
     s2 env NEXT_DISPATCH_GH_CMD="$W/ow-gh" NEXT_DISPATCH_CLASSIFY_CMD="$W/pd-classify" TICK_POOL_WAIT=0 "$@" bash "$SUT" --doc "$doc" > /dev/null 2>&1
+    rc=$?
     for l in "$S2ST"/tick-pool-*.lock; do [ ! -e "$l" ] || flock "$l" true; done
+    [ "$rc" -eq 0 ] || fail "s2_tick $doc: the tick exited $rc"
+    return "$rc"
 }
 # shellcheck disable=SC2012  # the names are the cksum producer's digits, never odd characters
 s2_file() { ls "$S2ST"/tick-pool-stale-*.out 2>/dev/null | head -n 1; }
@@ -993,6 +996,7 @@ not_contains 'R8h control: a 141 line that differs by one character carries noth
 
 cat > "$S2/ps-gh-race" <<'STUB'
 #!/usr/bin/env bash
+[ -z "${PS_GH_STARTED:-}" ] || : > "$PS_GH_STARTED"
 sleep "${PS_GH_SLEEP:-0}"
 case "$*" in *"api graphql"*) ;; *) exit 1 ;; esac
 printf '{"data":{"repository":{"p999001":{"__typename":"PullRequest","state":"%s"},"p999002":{"__typename":"PullRequest","state":"MERGED"}}}}\n' "${PS_GH_STATE:-CLOSED}"
@@ -1000,11 +1004,14 @@ STUB
 chmod +x "$S2/ps-gh-race"
 S2ST="$S2/st-race"; rm -rf "$S2ST"; mkdir -p "$S2ST"
 s2_lines | s2_doc race > /dev/null
-s2_tick "$W/handover/race.md" TICK_GH_CMD="$S2/ps-gh-race" PS_GH_SLEEP=12 PS_GH_STATE=CLOSED &
+s2_tick "$W/handover/race.md" TICK_GH_CMD="$S2/ps-gh-race" PS_GH_SLEEP=12 PS_GH_STATE=CLOSED PS_GH_STARTED="$S2/race-started" &
 s2_race_pid=$!
-sleep 1
+for _ in $(seq 1 100); do [ ! -e "$S2/race-started" ] || break; sleep 0.2; done
+same 'R22 the slow first read started before the second tick runs' "$([ -e "$S2/race-started" ] && echo yes || echo no)" yes
 s2_tick "$W/handover/race.md" TICK_GH_CMD="$S2/ps-gh-race" PS_GH_STATE=OPEN
+same 'R22 the later tick exits 0' "$?" 0
 wait "$s2_race_pid"
+same 'R22 the slower older tick exits 0' "$?" 0
 same 'R22 the later run clears the verdict and the slower older run does not put it back' "$(grep -c "$p141" "$(s2_file)")" 0
 
 if [ "$fails" -eq 0 ]; then
