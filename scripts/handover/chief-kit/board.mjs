@@ -355,9 +355,12 @@ const poolSig = pool ? field.pool : '?';
 // the same line for prs=, so the board fingerprint stays in step.
 const projectLine = /The project this console is FOR is \*\*`([^`]*)`\*\*/.exec(docText);
 const prRepo = projectLine && projectLine[1].startsWith('/') ? projectLine[1] : repo;
+// The PR reads ride the read-only token (scripts/lib/gh-read.sh); BOARD_GH replaces the helper.
+const readHelper = fileURLToPath(new URL('../../lib/gh-read.sh', import.meta.url));
+const GH = process.env.BOARD_GH || (existsSync(readHelper) ? readHelper : 'gh');
 const ghJson = (ghArgs) => {
     try {
-        return JSON.parse(execFileSync('gh', ghArgs, { cwd: prRepo, encoding: 'utf8', timeout: 45000, stdio: ['ignore', 'pipe', 'ignore'] }));
+        return JSON.parse(execFileSync(GH, ghArgs, { cwd: prRepo, encoding: 'utf8', timeout: 45000, stdio: ['ignore', 'pipe', 'ignore'], env: { ...process.env, GH_READ_QUIET: '1' } }));
     } catch { return null; }
 };
 const gh = (ghArgs) => {
