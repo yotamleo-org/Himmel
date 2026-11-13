@@ -14,7 +14,7 @@ pass() { echo "  ok: $1"; }
 fail() { echo "  FAIL: $1"; FAILS=$((FAILS+1)); }
 skip() { echo "  SKIP: $1"; SKIPS=$((SKIPS+1)); }
 
-WS="$(mktemp -d)"; trap '[ ! -d "$WS/walk-wt" ] || git -C "$HERE" worktree remove --force "$WS/walk-wt" >/dev/null 2>&1; rm -rf "$WS"' EXIT
+WS="$(mktemp -d "${TMPDIR:-/tmp}/test-refresh-graph-map.XXXXXX")" || exit 1; trap '[ ! -d "$WS/walk-wt" ] || git -C "$HERE" worktree remove --force "$WS/walk-wt" >/dev/null 2>&1; rm -rf "$WS"' EXIT
 # scope the default scratch parent to $WS. Most tests below
 # don't pass --scratch, so refresh-graph-map.sh falls back to
 # ${TMPDIR:-/tmp} -- and a promote-refusal now quarantines the extracted

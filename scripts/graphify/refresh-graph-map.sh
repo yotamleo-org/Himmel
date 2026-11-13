@@ -2432,7 +2432,7 @@ for p in sys.stdin.buffer.read().split(b"\0"):
       for _a in $(printf '%s' "$_walk" | tr ',' ' '); do
         case "$_roster" in *"\"account\":\"$_a\",\"configured\":true"*) _n=$((_n + 1)) ;; esac
       done
-      [ "$_n" -gt 0 ] && GRAPHIFY_MAP_SHIM_ACCOUNTS="$_n"
+      if [ "$_n" -gt 0 ]; then GRAPHIFY_MAP_SHIM_ACCOUNTS="$_n"; fi
     fi
     # shellcheck source=../lib/prim.sh
     . "$REPO_ROOT/scripts/lib/prim.sh"
