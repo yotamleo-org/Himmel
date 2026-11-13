@@ -496,7 +496,7 @@ sd_out="$(bash "$QL" acquire "$SDDOC" 2>&1)"
 sd_token="$(printf '%s' "$sd_out" | sed -n 's/.*release-token: `\([^`]*\)`.*/\1/p')"
 sd_lock="$(ls -d "$QDIR"/*9395-sd.lock)"
 rm -f "$sd_lock/liveness"  # a lock acquired inside a live session carries a liveness marker, which keeps its holder alive
-sed -i -e 's/-pid[0-9]*"/-pid9999999"/' -e 's/"heartbeat":"[^"]*"/"heartbeat":"2000-01-01T00:00:00Z"/' "$sd_lock/owner.json"  # gnu-ok: the chief kit is Linux-only
+sed -i.bak -e 's/-pid[0-9]*"/-pid9999999"/' -e 's/"heartbeat":"[^"]*"/"heartbeat":"2000-01-01T00:00:00Z"/' "$sd_lock/owner.json"; rm -f "$sd_lock/owner.json.bak"  # -i.bak: GNU and BSD sed both take the suffix attached
 sd_token="${sd_token%-pid*}-pid9999999"
 # shellcheck disable=SC2016
 printf '# chief\n\n## Live state\nworkers: `N9:Y-N9-aa:%s:11`\n' "$sd_token" > "$CDOC"
