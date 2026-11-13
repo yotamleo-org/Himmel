@@ -43,7 +43,6 @@ export interface Ctx {
   now: () => Date;
   jira: JiraPort;
   mirrorRoot: string | null;
-  // Test seams for the fence's walk; production leaves both unset (/proc and hostNsFile()).
   procRoot?: string;
   hostNsPath?: string;
 }
@@ -77,7 +76,6 @@ const fenceWhere = (marker: string) => (marker === 'HIMMEL_BRIDGE_SESSION'
   ? `${FENCE_HEAD} inside a Telegram bridge session or a process it started (the bridge names the operator's update, the chief's tick records it)`
   : `${FENCE_HEAD} inside a chief-spawned worker`);
 
-// A marker in this process's env or any ancestor's start-up env, or any walk stop but the one allow, refuses.
 export function operatorFence(ctx: Ctx): void {
   const own = FENCE_MARKERS.find((m) => ctx.env[m] === '1');
   if (own) throw new Error(fenceWhere(own));

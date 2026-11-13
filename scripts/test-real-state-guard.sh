@@ -376,8 +376,6 @@ if [ -n "$REAL_BUN" ] && [ -d "$root/scripts/jira/node_modules/commander" ]; the
   J="$root/scripts/jira/src/index.ts"
   printf 'R = v1\n' >"$TMP/verbatim.txt"
   DECLARE=("$REAL_BUN" "$J" release operator declare R8752 --versions v1 --decision 1 --verbatim-file "$TMP/verbatim.txt")
-  # J3, K3 and K4 test this door, not the operator fence: the preload sends the fence's walk down its
-  # env-only path (a worker's ancestry carries HIMMEL_CONSOLE_LEG=1; CI has no host-ns). JF proves the fence.
   DECLARE_DOOR=("$REAL_BUN" --preload "$root/scripts/jira/src/release/fixtures/fence-env-only-preload.mjs" "$J" release operator declare R8752 --versions v1 --decision 1 --verbatim-file "$TMP/verbatim.txt")
   rc=0; "${DECLARE[@]}" >"$TMP/j.out" 2>&1 || rc=$?
   if [ -e "$HIMMEL_RELEASE_STATE_DIR/R8752" ]; then fail "J1 a test's release write reached the queue"; else pass "J1 a test's release write reached nothing"; fi
@@ -387,7 +385,6 @@ if [ -n "$REAL_BUN" ] && [ -d "$root/scripts/jira/node_modules/commander" ]; the
   if grep -q 'REFUSED' "$TMP/j.out"; then fail "J2 a read-only verb was refused"; else pass "J2 a read-only verb is not refused"; fi
   as_session "${DECLARE_DOOR[@]}" >"$TMP/j.out" 2>&1
   if [ -e "$HIMMEL_RELEASE_STATE_DIR/R8752/release.json" ]; then pass "J3 a real jira release run by a chief writes"; else fail "J3 a real jira release run by a chief writes ($(head -c 300 "$TMP/j.out"))"; fi
-  # JF: the operator fence. The same verb with no preload, the marker only in a parent's start-up env.
   rc=0; as_session env HIMMEL_CONSOLE_LEG=1 HIMMEL_RELEASE_STATE_DIR="$TMP/fence-state" HIMMEL_RELEASE_KEY_DIR="$TMP/fence-keys" bash -c 'env -u HIMMEL_CONSOLE_LEG "$@"; exit $?' _ "${DECLARE[@]}" >"$TMP/j.out" 2>&1 || rc=$?
   if [ "$rc" != 0 ]; then pass "JF the fence refuses a chief verb under a marked parent"; else fail "JF the fence refuses a chief verb under a marked parent"; fi
   has "JF the refusal names the marked ancestor" "$TMP/j.out" "refused inside a chief-spawned worker: HIMMEL_CONSOLE_LEG=1 in the start-up env of ancestor"

@@ -1,6 +1,3 @@
-// Test-only bun preload (test-real-state-guard.sh J3, K3, K4): the operator fence's ancestry
-// walk takes its env-only (no /proc) path when given no seam, as vitest.setup.ts does for the
-// vitest suites. The suite's fence row runs the same verb without it and asserts the refusal.
 import { plugin } from 'bun';
 import { join } from 'node:path';
 import { mkdtempSync } from 'node:fs';

@@ -81,7 +81,6 @@ function ctx(env: Record<string, string> = consoleEnv): Ctx {
   };
 }
 
-// A fake /proc for the fence's walk: 300 → 200 → 100 → pid 1, own ids equal to the reference.
 function fakeProc(marker: Record<string, string> = {}): { procRoot: string; hostNsPath: string } {
   const procRoot = mkdtempSync(join(tmpdir(), 'engine-proc-'));
   for (const [pid, ppid, uid, env] of [[300, 200, 1000, {}], [200, 100, 1000, marker], [100, 1, 1000, {}], [1, 0, 0, null]] as const) {

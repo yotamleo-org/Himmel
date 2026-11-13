@@ -2,13 +2,9 @@ import { existsSync, readFileSync, readlinkSync } from 'node:fs';
 import { userInfo } from 'node:os';
 import { join } from 'node:path';
 
-// The operator fence's process-tree half: a marker in any ancestor's
-// start-up env, or any stop other than the one allow, refuses an operator write.
-
 export const FENCE_MARKERS = ['HIMMEL_CONSOLE_LEG', 'HIMMEL_RELEASE_MANAGER', 'HIMMEL_BRIDGE_SESSION'] as const;
 export const MAX_HOPS = 64;
 
-// Resolved from the passwd home only: a bridge command can set BRIDGE_ROOT and HOME.
 export function hostNsFile(): string {
   return join(passwdHome(), '.claude', 'handover', 'bridge', 'host-ns');
 }
@@ -25,7 +21,6 @@ function passwdHome(): string {
 export const HOST_NS_REMEDY = 'restart the bridge, or run `bun scripts/telegram/poller.ts --write-host-ns` once on a station with no bridge';
 const NS_LINE = /^pid:\[\d+\] user:\[\d+\]$/;
 
-// The walker's own namespace ids, in the form the poller writes to host-ns.
 export function currentNs(procRoot = '/proc'): string {
   return `${readlinkSync(join(procRoot, 'self', 'ns', 'pid'))} ${readlinkSync(join(procRoot, 'self', 'ns', 'user'))}`;
 }
@@ -79,6 +74,8 @@ function proc(procRoot: string, pid: number): Proc | null {
 
 const markedBy = (env: Map<string, string> | null) => FENCE_MARKERS.find((m) => env?.get(m) === '1') ?? null;
 
+const userManagerHop = (p: Proc) => p.ppid === 1 && p.nspid === 1;
+
 interface Trail { marker: string | null; farthest?: number; farthestEnv?: Map<string, string>; refuse?: string }
 
 function climb(procRoot: string, start: number): Trail {
@@ -98,10 +95,7 @@ function climb(procRoot: string, start: number): Trail {
       return t;
     }
     if (p.uid === null || p.uid !== uid) return stop(`ancestor ${pid} runs as another uid (sudo, or a root process other than pid 1); run under tmux or systemd-run --user`);
-    // systemd --user is non-dumpable: one unreadable environ is tolerated on the same-uid hop
-    // directly below pid 1 with a single NSpid field. So is a same-uid daemon that reparented to
-    // pid 1 and made itself non-dumpable: no hole beyond the reparent residual, as it can scrub its env.
-    if (p.env === null && !(p.ppid === 1 && p.nspid === 1)) return stop(`the start-up env of ancestor ${pid} cannot be read`);
+    if (p.env === null && !userManagerHop(p)) return stop(`the start-up env of ancestor ${pid} cannot be read`);
     const m = markedBy(p.env);
     if (m) Object.assign(t, { marker: m, farthest: pid, farthestEnv: p.env });
     if (p.ppid === null) return stop(`process ${pid} has no parseable PPid:`);
@@ -110,7 +104,6 @@ function climb(procRoot: string, start: number): Trail {
   }
 }
 
-// The walker's own pid as its /proc names it: `self` links to it.
 function selfPid(procRoot: string): number {
   try {
     return Number(readlinkSync(join(procRoot, 'self')));
@@ -140,7 +133,6 @@ export function walk(opts: WalkOpts = {}): WalkResult {
   return { marker: null, stop: 'allow' };
 }
 
-// `name` from the start-up env of the farthest marked ancestor, never a nearer one.
 export function ancestorValue(name: string, opts: Omit<WalkOpts, 'hostNsPath' | 'disable'> = {}): string | null {
   const procRoot = opts.procRoot ?? '/proc';
   if (!existsSync(procRoot)) return null;

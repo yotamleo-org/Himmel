@@ -30,11 +30,6 @@ process.env.HANDOVER_DIR = mkdtempSync(join(tmpdir(), 'jira-test-handover-'));
 // Keep every test off the real keyring; the resolver test turns it back on with a stub.
 process.env.HIMMEL_SECRETS_KEYRING = "off";
 
-// The fence's ancestry walk would read the runner's real /proc: a worker's ancestors carry
-// HIMMEL_CONSOLE_LEG=1 and CI has no host-ns. Only a walk given neither seam takes the
-// env-only (no /proc) path; one given procRoot or hostNsPath runs the real walk.
-// The root bunfig.toml preloads this file for `bun test` too, whose vi has no importOriginal;
-// no bun-run suite reaches the fence, so bun skips it.
 if (!process.versions.bun) {
   const noProc = join(mkdtempSync(join(tmpdir(), 'jira-test-proc-')), 'absent');
   vi.doMock('./src/release/fence-ancestry.js', async (orig) => {

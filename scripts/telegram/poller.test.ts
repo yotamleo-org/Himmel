@@ -4163,8 +4163,6 @@ test("R2.13 the startup check's default retry timer is unref'd so it cannot hold
   } finally { globalThis.setTimeout = orig; for (const m of made) clearTimeout(m.t); }
 });
 
-// --- T1f: the poller writes the fence's host reference at a fixed path ---
-
 test("T1f: --write-host-ns and the start-up write put /proc/self/ns at the fixed path, never under BRIDGE_ROOT", async () => {
   const P = await import("./poller");
   const ref = join(root(), "home", ".claude", "handover", "bridge", "host-ns");
@@ -4187,7 +4185,6 @@ test("T1f: --write-host-ns and the start-up write put /proc/self/ns at the fixed
   expect(main.slice(0, 400)).toContain("await writeHostNs()");
 });
 
-// A fresh bun outside the repo's bunfig.toml: its test preload fakes os.userInfo().homedir from HOME.
 test("T1f: bun resolves hostNsFile() from the passwd home, whatever HOME and BRIDGE_ROOT say", () => {
   const passwdHome = spawnSync("getent", ["passwd", String(process.getuid!())], { encoding: "utf8" }).stdout.split(":")[5];
   const mod = join(import.meta.dir, "..", "jira", "src", "release", "fence-ancestry.ts");

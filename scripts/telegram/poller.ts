@@ -2772,8 +2772,6 @@ export async function main(): Promise<void> {
   }
 }
 
-// The operator fence's host reference: this process's namespace ids at the fixed
-// passwd-home path, whatever BRIDGE_ROOT says. No /proc (macOS): nothing to write.
 export async function writeHostNs(path?: string, procRoot = "/proc"): Promise<boolean> {
   if (!existsSync(join(procRoot, "self", "ns"))) return false;
   const target = path ?? hostNsFile();
@@ -2782,7 +2780,6 @@ export async function writeHostNs(path?: string, procRoot = "/proc"): Promise<bo
   return true;
 }
 
-// `--write-host-ns`: the route for a station that runs no bridge. True when a flag was handled.
 export async function runCli(argv: string[], hostNsPath?: string): Promise<boolean> {
   if (!argv.includes("--write-host-ns")) return false;
   if (await writeHostNs(hostNsPath)) console.error(`[poller] wrote ${hostNsPath ?? hostNsFile()}`);

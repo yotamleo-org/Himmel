@@ -232,7 +232,6 @@ test("sessionEnv merges extraEnv over the inherited env", () => {
   expect(e.HERMES_BOUNDED_RUN).toBe("1");
   expect(e.GGS_ROLE).toBe("readonly");
 });
-// T2: the operator fence reads this marker from the bridge's ancestry.
 test("sessionEnv sets HIMMEL_BRIDGE_SESSION=1, and no extraEnv can unset it", () => {
   expect(sessionEnv({}).HIMMEL_BRIDGE_SESSION).toBe("1");
   expect(sessionEnv({ HIMMEL_BRIDGE_SESSION: "0" }).HIMMEL_BRIDGE_SESSION).toBe("1");

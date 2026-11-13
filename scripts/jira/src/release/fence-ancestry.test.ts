@@ -12,8 +12,6 @@ const SANDBOX = 'pid:[4026532999] user:[4026532998]';
 
 interface P { pid: number; ppid?: number; uid?: number; env?: Record<string, string> | null; status?: string | null; nspid?: string; name?: string }
 
-// A fake /proc: <pid>/status, <pid>/environ, and `self` linking to the first (the walker),
-// whose ns/{pid,user} hold `ns`.
 function fakeProc(procs: P[], o: { ns?: string; ref?: string | null } = {}) {
   const procRoot = mkdtempSync(join(tmpdir(), 'fence-proc-'));
   for (const p of procs) {
@@ -35,7 +33,6 @@ function fakeProc(procs: P[], o: { ns?: string; ref?: string | null } = {}) {
   return { procRoot, hostNsPath };
 }
 
-// walker 300 → shell 200 → claude 100 → pid 1 (root, environ unreadable)
 const chain = (over: Partial<Record<300 | 200 | 100 | 1, Partial<P>>> = {}): P[] => [
   { pid: 300, ppid: 200, ...over[300] },
   { pid: 200, ppid: 100, ...over[200] },
@@ -80,7 +77,6 @@ describe('walk: T1c, every other stop refuses with its own reason', () => {
 
   it('an unreadable same-uid parent', () => refuses(chain({ 200: { env: null } }), /start-up env of ancestor 200 cannot be read/));
 
-  // chief ruling r6-build: systemd --user is non-dumpable, so its environ cannot be read.
   it('(a) one unreadable environ on the same-uid hop directly below pid 1 is tolerated', () => {
     expect(walk(fakeProc(chain({ 100: { env: null } })))).toEqual({ marker: null, stop: 'allow' });
   });
