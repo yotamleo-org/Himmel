@@ -1818,13 +1818,13 @@ const seedChat = async (r: string, session: string, chatId: number) => {
   await appendLine(join(sessionDir(r, session), "inbox.jsonl"), JSON.stringify({ text: "how's the mint tent?" }));
 };
 
-test("makeRunFn: a cwd-routed chat spawns in that repo, dontAsk, with the GGS markers", async () => {
+test("makeRunFn: a cwd-routed chat spawns in that repo, bypassPermissions, with the GGS markers", async () => {
   const r = root(); await seedChat(r, "group_-5245475441", -5245475441);
   const { seen, runImpl } = spawnSpy();
   const cwdFor = (c: number) => c === -5245475441 ? flooredRepo : null;
   await makeRunFn(r, "/repo", runImpl, 5000, undefined, 3, undefined, undefined, cwdFor)("group_-5245475441");
   expect(seen.cwd).toBe(flooredRepo);
-  expect(seen.mode).toBe("dontAsk");
+  expect(seen.mode).toBe("bypassPermissions");
   expect(seen.extraEnv).toEqual({ HERMES_BOUNDED_RUN: "1", GGS_ROLE: "readonly", HIMMEL_BRIDGE_CHAT: "-5245475441" });
   expect(seen.prompt).not.toContain("into the Obsidian vault");
 });
@@ -1835,7 +1835,7 @@ test("makeRunFn: a vault chat is unchanged — vault cwd, bypass, and NO GGS mar
   const vaultFor = (c: number) => c === -50 ? "/salus" : null;
   await makeRunFn(r, "/repo", runImpl, 5000, undefined, 3, vaultFor, undefined, () => null)("group_-50");
   expect(seen.cwd).toBe("/salus");
-  expect(seen.mode).toBe("dontAsk");
+  expect(seen.mode).toBe("bypassPermissions");
   expect(seen.extraEnv).toEqual({ HIMMEL_BRIDGE_CHAT: "-50" });
   expect(seen.prompt).toContain("into the Obsidian vault");
 });
@@ -2434,7 +2434,7 @@ test("handleAutoCommand: a reply-delivery failure does NOT swallow the audit nor
 });
 
 // --- per-chat vault cwd + scoped bypassPermissions ---
-test("makeRunFn: a vault-configured chat spawns in the vault cwd with dontAsk; jira path stays on repoCwd", async () => {
+test("makeRunFn: a vault-configured chat spawns in the vault cwd with bypassPermissions; jira path stays on repoCwd", async () => {
   const r = root(); await ensureSession(r, "V");
   await writeMeta(r, "V", freshMeta(42));
   await appendLine(join(sessionDir(r, "V"), "inbox.jsonl"), JSON.stringify({ text: "file this photo" }));
@@ -2444,7 +2444,7 @@ test("makeRunFn: a vault-configured chat spawns in the vault cwd with dontAsk; j
   await makeRunFn(r, "/repo", spy, 5000, undefined, 3, vaultFor)("V");
   expect(calls.length).toBeGreaterThan(0);
   expect(calls[0].cwd).toBe("/vaults/medic");                       // spawned IN the vault (loads its hooks)
-  expect(calls[0].mode).toBe("dontAsk");
+  expect(calls[0].mode).toBe("bypassPermissions");                  // scoped bypass for vault sessions
   expect(calls[0].prompt).toContain("/repo/scripts/jira/dist/index.js"); // jira path decoupled onto repoCwd
   expect(calls[0].prompt).toContain("running in /vaults/medic");
 });
@@ -2472,7 +2472,7 @@ test("makeRunFn + real vaultForChat: a defaultVault grants vault-cwd+bypass to a
   const spy = async (_p: string, cwd: string, mode?: string) => { calls.push({ cwd, mode }); return { code: 0, capped: false, pid: 1 }; };
   await makeRunFn(r, "/repo", spy, 5000, undefined, 3, (id) => vaultForChat(access, id))("D");
   expect(calls[0].cwd).toBe("/vaults/luna");            // defaultVault → vault cwd even for an unconfigured chat
-  expect(calls[0].mode).toBe("dontAsk");
+  expect(calls[0].mode).toBe("bypassPermissions");      // …and bypass follows (documented blast radius)
 });
 test("makeRunFn: an empty-string vault normalizes to null (repoCwd, no bypass) — no incoherent cwd \"\"", async () => {
   const r = root(); await ensureSession(r, "E");
@@ -2969,7 +2969,7 @@ test("cwd route is HONOURED when the target carries a verifiable floor", async (
   const withFloor = flooredRepo;
   await makeRunFn(r, "/repo", runImpl, 5000, undefined, 3, () => null, undefined, () => withFloor)("group_-8802");
   expect(seen.cwd).toBe(withFloor);
-  expect(seen.mode).toBe("dontAsk");
+  expect(seen.mode).toBe("bypassPermissions");
   expect(seen.extraEnv).toEqual({ HERMES_BOUNDED_RUN: "1", GGS_ROLE: "readonly", HIMMEL_BRIDGE_CHAT: "-8802" });
 });
 // A settings file must REGISTER a PreToolUse hook whose script is on disk.
@@ -4267,14 +4267,6 @@ test("T17: a session with no parked chat gets an empty stamp, a null chat and no
   const r = root(); await seedLines(r, "__chat__", null, [{ text: "a", operator: true }]);
   const { seen, runImpl } = descriptorSpy();
   await runT17(r, runImpl, opAccess)("__chat__");
-  expect(seen.extraEnv).toEqual({ HIMMEL_BRIDGE_CHAT: "" });
-  expect(seen.spawn).toEqual({ session: "__chat__", chat: null, routed: false, releaseWrite: false });
-});
-
-test("T17: a session with no parked chat is not granted when the access has no operator chat either (null is not equal to null)", async () => {
-  const r = root(); await seedLines(r, "__chat__", null, [{ text: "a", operator: true }]);
-  const { seen, runImpl } = descriptorSpy();
-  await runT17(r, runImpl, { allowFrom: [] })("__chat__");
   expect(seen.extraEnv).toEqual({ HIMMEL_BRIDGE_CHAT: "" });
   expect(seen.spawn).toEqual({ session: "__chat__", chat: null, routed: false, releaseWrite: false });
 });

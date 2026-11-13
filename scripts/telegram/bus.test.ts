@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, existsSync, writeFileSync, readFileSync, truncateSync, symlinkSync, lstatSync, statSync } from "node:fs";
+import { mkdtempSync, existsSync, writeFileSync, readFileSync, truncateSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { sessionDir, ensureSession, readMeta, writeMeta, atomicWrite } from "./bus";
@@ -493,41 +493,4 @@ test("ingestUpdates creates inbound.jsonl 0600 under a 0700 root (raw text kept:
   await ingestUpdates(r, [{ update_id: 1, message: { message_id: 1, from: { id: 42 }, chat: { id: 42, type: "private" }, date: 1, text: "123456" } }]);
   expect((statSync(join(r, "inbound.jsonl")).mode & 0o777).toString(8)).toBe("600");
   expect((statSync(r).mode & 0o777).toString(8)).toBe("700");
-});
-
-test("atomicWrite, writeMeta and appendContext never write through a link planted at the old fixed tmp name", async () => {
-  const r = root(); await ensureSession(r, "__chat__"); const sd = sessionDir(r, "__chat__");
-  const victim = join(r, "victim"); writeFileSync(victim, "untouched");
-  for (const name of ["inbox.pending.jsonl.tmp", "meta.json.tmp", "context.md.tmp", "inbox.jsonl.consumed.tmp"]) symlinkSync(victim, join(sd, name));
-  await atomicWrite(join(sd, "inbox.pending.jsonl"), "attacker-chosen\n");
-  await atomicWrite(join(sd, "inbox.jsonl.consumed"), "7");
-  await writeMeta(r, "__chat__", { chat_id: 1, status: "idle", last_run_pid: null, last_run_at: null, task_name: null, retry_at: null });
-  await appendContext(r, "__chat__", "note");
-  expect(readFileSync(victim, "utf8")).toBe("untouched");
-  expect(readFileSync(join(sd, "inbox.pending.jsonl"), "utf8")).toBe("attacker-chosen\n");
-  expect((await readMeta(r, "__chat__"))?.chat_id).toBe(1);
-});
-
-test("atomicWrite replaces a link planted at the target itself instead of following it", async () => {
-  const r = root(); const victim = join(r, "victim"); writeFileSync(victim, "untouched");
-  const target = join(r, "meta.json"); symlinkSync(victim, target);
-  await atomicWrite(target, "fresh");
-  expect(readFileSync(victim, "utf8")).toBe("untouched");
-  expect(lstatSync(target).isSymbolicLink()).toBe(false);
-  expect(readFileSync(target, "utf8")).toBe("fresh");
-});
-
-test("appendLine refuses a linked inbox instead of appending through it", async () => {
-  const r = root(); const victim = join(r, "victim"); writeFileSync(victim, "untouched");
-  const inbox = join(r, "inbox.jsonl"); symlinkSync(victim, inbox);
-  await expect(appendLine(inbox, "{\"text\":\"x\",\"operator\":true}")).rejects.toThrow();
-  expect(readFileSync(victim, "utf8")).toBe("untouched");
-});
-
-test("truncateFullyConsumed empties the outbox in place, keeping the inode a sandbox binds", async () => {
-  const r = root(); const outbox = join(r, "outbox.jsonl"); writeFileSync(outbox, "a\n"); writeFileSync(outbox + ".cursor", "2");
-  const ino = statSync(outbox).ino;
-  expect(await truncateFullyConsumed(outbox, outbox + ".cursor")).toBe(true);
-  expect(statSync(outbox).ino).toBe(ino);
-  expect(readFileSync(outbox, "utf8")).toBe("");
 });

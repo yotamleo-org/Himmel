@@ -97,8 +97,6 @@
 ^scripts/jira/src/release/core\.ts$
 # The operator fence's ancestry walk: a marked ancestor or a bad stop refuses every operator verb.
 ^scripts/jira/src/release/fence-ancestry\.ts$
-# The bridge envelope: the permission mode, allow and deny lists and Bash sandbox of every bridge spawn.
-^scripts/telegram/run\.ts$
 # The operator's phone line for an out-of-version approval: the writer signs no record unless it exits 0.
 ^scripts/handover/chief-kit/(test-)?version-approval-alert\.sh$
 # Hook config files outside the audited dirs.

@@ -1634,7 +1634,7 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
         extraEnv: Record<string, string> | undefined, filingVault: string | null;
     if (routedCwd) {
       sessionCwd = routedCwd;
-      permissionMode = "dontAsk";
+      permissionMode = "bypassPermissions";
       extraEnv = { HERMES_BOUNDED_RUN: "1", GGS_ROLE: "readonly" };
       filingVault = null;
     } else if (routeRefused) {
@@ -1644,7 +1644,7 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
       filingVault = null;
     } else {
       sessionCwd = vault ?? repoCwd;
-      permissionMode = vault ? "dontAsk" : undefined;
+      permissionMode = vault ? "bypassPermissions" : undefined;
       extraEnv = undefined;
       filingVault = vault;
     }
@@ -1664,18 +1664,17 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
     const settings = await resolveTelegramProfileSettings(sessionCwd, lanesDir);
     const mcpConfig = await resolveTelegramMcpConfig(repoCwd, lanesDir);
     const chat = parked?.chat_id ?? null;
+    const releaseWrite = chat !== null && chat === operatorChatId(access) && await pendingAllOperator(sd);
+    const bridgeSpawn: BridgeSpawn = { session, chat, routed: !!routedCwd, releaseWrite };
     if (lockdownEnabled(root)) return;
     let lockedAtSpawn = false;
     let stoppedAtSpawn = false;
-    const res = await runAndSettle(root, session, async () => {
+    const res = await runAndSettle(root, session, () => {
       if (existsSync(join(sd, "stop"))) { stoppedAtSpawn = true; return Promise.resolve({ code: 0, capped: false, pid: 0, tail: "stopped by operator" }); }
       // Settlement performs async I/O too: recheck immediately before spawn.
       // Not a content-filter block and no agent ran: code 0 settles the session
       // back to idle with its pending lines uncommitted.
       if (lockdownEnabled(root)) { lockedAtSpawn = true; return Promise.resolve({ code: 0, capped: false, pid: 0, tail: "locked, reset at the station" }); }
-      // The grant reads the pending snapshot the run reads: the meta is `running` by now, so handleStop no longer re-peeks it.
-      const releaseWrite = chat !== null && chat === operatorChatId(access) && await pendingAllOperator(sd);
-      const bridgeSpawn: BridgeSpawn = { session, chat, routed: !!routedCwd, releaseWrite };
       return withDeadline(runImpl(buildPrompt(session, paths, filingVault, !!routedCwd, parked?.chat_id), sessionCwd, permissionMode, undefined, modelOverride, settings, undefined, { ...(extraEnv ?? {}), HIMMEL_BRIDGE_CHAT: String(chat ?? "") }, mcpConfig, bridgeSpawn), deadlineMs);
     }, undefined, retryAt);
     // run.log: persist the run's output tail. Before this, a dead

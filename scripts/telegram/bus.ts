@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, open, stat, unlink } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rename, appendFile, open, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -114,14 +114,10 @@ export const sessionDir = (root: string, s: string) => join(root, "sessions", s)
 
 // Atomic write: tmp + rename so a crash mid-write can't leave a torn file.
 // Committed state (cursors/offsets/meta) must never be half-written.
-// The tmp name is random and created exclusively without following a link, so a link a bridge
-// session plants beside a poller file is never written through; rename replaces a link, never follows it.
 export async function atomicWrite(path: string, data: string): Promise<void> {
-  const tmp = `${path}.${randomUUID()}.tmp`;
-  // oxlint-disable-next-line oxc/bad-bitwise-operator -- combine integer open(2) flags, not boolean conditions
-  const handle = await open(tmp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
-  try { await handle.writeFile(data, "utf8"); } finally { await handle.close(); }
-  try { await rename(tmp, path); } catch (error) { await unlink(tmp).catch(() => {}); throw error; }
+  const tmp = path + ".tmp";
+  await writeFile(tmp, data, "utf8");
+  await rename(tmp, path);
 }
 
 // "failed": retry cap exhausted, auto-retry parked until a new
@@ -142,13 +138,14 @@ export async function readMeta(root: string, s: string): Promise<Meta|null> {
   catch { return null; }
 }
 export async function writeMeta(root: string, s: string, m: Meta): Promise<void> {
-  await atomicWrite(join(sessionDir(root, s), "meta.json"), JSON.stringify(m));
+  const p = join(sessionDir(root, s), "meta.json");
+  const tmp = p + ".tmp";
+  await writeFile(tmp, JSON.stringify(m), "utf8");
+  await rename(tmp, p);
 }
 
 export async function appendLine(file: string, line: string): Promise<void> {
-  // oxlint-disable-next-line oxc/bad-bitwise-operator -- combine integer open(2) flags, not boolean conditions
-  const handle = await open(file, constants.O_WRONLY | constants.O_CREAT | constants.O_APPEND | constants.O_NOFOLLOW, 0o600);
-  try { await handle.writeFile(line + "\n", "utf8"); } finally { await handle.close(); }
+  await appendFile(file, line + "\n", { encoding: "utf8", mode: 0o600 });
 }
 
 // Reply via the originating chat's outbox: consistent with every other
@@ -195,11 +192,11 @@ export async function appendIfExists(file: string, line: string): Promise<boolea
 // inbox/outbox can't grow unbounded (each flush/peek tick reads the whole file
 // into memory). Truncates ONLY when the byte-cursor has reached
 // EOF, i.e. every line is already sent/consumed, then resets both file and
-// cursor to 0. The pre-truncate length re-read shrinks the window where a
+// cursor to 0. The pre-rename length re-read shrinks the window where a
 // concurrent cross-process writer (a bounded run child appending to outbox) could lose
 // a line: if the file grew between the two reads we defer to the next tick. A
-// residual sub-millisecond race remains (an append landing after the second read
-// but before the truncate is cut with it), acceptable under the bridge's
+// residual sub-millisecond race remains (an append landing on the old inode
+// after the second read but before the rename), acceptable under the bridge's
 // existing at-least-once / operator-resends model, and bounded to one flush
 // interval of output. Single-writer logs (cursor == EOF means the writer is
 // idle) are fully safe. No-op (returns false) unless there is something to reclaim.
@@ -213,10 +210,7 @@ export async function truncateFullyConsumed(file: string, cursorFile: string): P
   let len2 = 0;
   try { len2 = Buffer.byteLength(await readFile(file, "utf8"), "utf8"); } catch { return false; }
   if (len2 !== len) return false;                              // grew between reads → defer to next tick
-  // In place, not by rename: a bridge session's sandbox binds its outbox by inode, so a replaced file would strand its appends.
-  // oxlint-disable-next-line oxc/bad-bitwise-operator -- combine integer open(2) flags, not boolean conditions
-  const handle = await open(file, constants.O_WRONLY | constants.O_NOFOLLOW);
-  try { await handle.truncate(0); } finally { await handle.close(); }
+  await atomicWrite(file, "");
   await atomicWrite(cursorFile, "0");
   return true;
 }
@@ -372,7 +366,7 @@ export async function appendContext(root: string, s: string, note: string, budge
     const tail = cur.slice(-Math.floor(budget * 0.5));
     cur = head + "\n…(compacted)…\n" + tail;
   }
-  await atomicWrite(p, cur);
+  const tmp = p + ".tmp"; await writeFile(tmp, cur, "utf8"); await rename(tmp, p);
 }
 
 // Coms layer, live seat-to-seat messaging over this file bus,

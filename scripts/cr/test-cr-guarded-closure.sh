@@ -138,7 +138,7 @@ scripts/handover/suite-coverage.sh -> scripts/ci/run-shell-tests.sh"
 # relative to the script (checked below, so a pin cannot rot silently).
 DIST_PRIMARY="scripts/lib/ticket-status.sh::dirname \"\\\$common\"\\)/scripts/jira/dist/index\\.js
 scripts/handover/merge-on-green.sh::(\\\$repo_root/|cd \"\\\$repo_root\" && (HIMMEL_VERSION_WRITER=merge-stamp )?node )scripts/jira/dist/index\\.js
-scripts/telegram/run.ts::\\\$\\{(p\\.cwd|primary)\\}/scripts/jira/dist/index\\.js"
+scripts/telegram/run.ts::\\\$\\{p\\.cwd\\}/scripts/jira/dist/index\\.js"
 
 # closure - the transitive set of files reached from the seeds.
 closure() {
