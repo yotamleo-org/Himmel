@@ -47,8 +47,20 @@ trap cleanup EXIT
 
 REAL_QUOTA="${HOME:-/nonexistent}/.himmel/state/quota"
 RUN_ID="9$(date +%s)$$"
-quota_leaked() { [ -d "$REAL_QUOTA" ] && grep -rqF "$RUN_ID" "$REAL_QUOTA" 2>/dev/null; }
-( while :; do quota_leaked && : > "$tmp/quota-leak"; sleep 0.5; done ) &
+: > "$tmp/fixture-ids"
+# quota_leaked <dir>: rc 0 when this run reached <dir> (the run id in a file, or a blocked marker
+# named for one of this run's fixture heads), 1 when it did not, 2 when the scan failed.
+quota_leaked() {
+    local d="$1" id grc
+    [ -d "$d" ] || return 1
+    grep -rqF "$RUN_ID" "$d" 2>/dev/null; grc=$?
+    [ "$grc" -eq 1 ] || return "$grc"
+    while IFS= read -r id; do
+        [ -z "$(find "$d/blocked" -maxdepth 1 -name "*.$id" 2>/dev/null)" ] || return 0
+    done < "$tmp/fixture-ids"
+    return 1
+}
+( while :; do if quota_leaked "$REAL_QUOTA"; then : > "$tmp/quota-leak"; fi; sleep 0.5; done ) &
 
 STUBBIN="$tmp/stubbin"; mkdir -p "$STUBBIN"
 cat > "$STUBBIN/gh" <<'STUB'
@@ -304,6 +316,7 @@ gate_fixture() {
     git init -q "$GATE_REPO" || return 1
     SHA=$(ready_pass_repo "$GATE_REPO") || return 1
     ready_pass_ledger "$GATE_REPO" "$SHA" || return 1
+    printf '%s\n' "$SHA" >> "$tmp/fixture-ids"
     export READY_STUB_HEAD="$SHA"
 }
 
@@ -723,7 +736,33 @@ for pc in $pids; do
 done
 
 CUR=suite
-if [ -e "$tmp/quota-leak" ] || quota_leaked; then emit "FAIL suite live-quota-path-untouched a stub answer (run $RUN_ID) reached $REAL_QUOTA"; else emit "PASS suite live-quota-path-untouched"; fi
+guard_dir() { # guard_dir <name> <stamp age secs>: a scratch dir holding a quota.tsv of that age
+    gd="$tmp/guard-control/$1"; mkdir -p "$gd"
+    printf 'main\tgraphql\t4309\t5000\t%s\t%s\tok\n' "$(( $(date +%s) + 1800 ))" "$(( $(date +%s) - $2 ))" > "$gd/quota.tsv"
+}
+guard_lib() { # guard_lib <dir> <function> <args...>: the library routed at <dir>, answered by the stub gh
+    local q="$1"; shift
+    ( export HIMMEL_QUOTA_DIR="$q" HOME="$tmp/guard-control/home" PATH="$STUBBIN:$PATH" STUB_MODE=healthy \
+        STUB_RUN_ID="$RUN_ID" STUB_FIXDIR="$FIXDIR" GH_TOKEN=maintok GH_READ_ENV_ROOT="$ENVROOT"
+      . "$ROOT/scripts/lib/gh-quota.sh"; "$@" ) > /dev/null 2>&1
+}
+guard_expect() { # guard_expect <name> <want rc> <dir>
+    quota_leaked "$3"
+    if [ "$?" -eq "$2" ]; then emit "PASS suite guard-control-$1"; else emit "FAIL suite guard-control-$1 the guard did not return $2"; fi
+}
+mkdir -p "$tmp/guard-control/home"
+guard_fid="${RUN_ID}c0ffee"; printf '%s\n' "$guard_fid" >> "$tmp/fixture-ids"
+guard_dir marker-fresh 0;  guard_lib "$gd" ghq_mark_blocked 77 "$guard_fid" check-ci.sh graphql rate-limit
+guard_expect marker-into-fresh-dir 0 "$gd"
+guard_dir refresh-stale 1000; guard_lib "$gd" ghq_refresh
+guard_expect refresh-into-stale-dir 0 "$gd"
+guard_dir clean-fresh 0
+guard_expect clean-dir-passes 1 "$gd"
+guard_dir foreign-fresh 0; guard_lib "$gd" ghq_mark_blocked 4242 deadbeefdeadbeef go.sh graphql rate-limit
+guard_expect foreign-marker-passes 1 "$gd"
+quota_leaked "$REAL_QUOTA"; guard_rc=$?
+[ "$guard_rc" -ne 2 ] || { sleep 1; quota_leaked "$REAL_QUOTA"; guard_rc=$?; }
+if [ -e "$tmp/quota-leak" ] || [ "$guard_rc" -ne 1 ]; then emit "FAIL suite live-quota-path-untouched a stub answer (run $RUN_ID) reached $REAL_QUOTA, or it could not be scanned (rc $guard_rc)"; else emit "PASS suite live-quota-path-untouched"; fi
 
 fails=0 known=0 passes=0 skips=0 unexpected=0
 report_file() {
