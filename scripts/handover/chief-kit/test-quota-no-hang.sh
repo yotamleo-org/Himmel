@@ -45,10 +45,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# The live quota dir is written by every chief's tick while this suite runs, so a before and after
-# comparison of it fails on any long run. Instead the stub stamps every probe it answers with a limit
-# no real answer carries, unique to this run (X-Ratelimit-Limit: $RUN_ID, stored in the limit column of
-# quota.tsv), and a poller looks for that number in the live dir for the whole run and once more at the end.
 REAL_QUOTA="${HOME:-/nonexistent}/.himmel/state/quota"
 RUN_ID="9$(date +%s)$$"
 quota_leaked() { [ -d "$REAL_QUOTA" ] && grep -rqF "$RUN_ID" "$REAL_QUOTA" 2>/dev/null; }
