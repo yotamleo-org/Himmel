@@ -6,7 +6,7 @@
 # entry is ignored with a WARN and the young entry fails again. Remove the line once the
 # release is 3 days old.
 # Blank lines and # comments are ignored.
-@modelcontextprotocol/server@2.4.0  until=2026-10-28  operator timeboxed exception 10-26, HIMMEL-7394, supply-chain table in PR 3971
-@modelcontextprotocol/client@2.4.0  until=2026-10-28  operator timeboxed exception 10-26, HIMMEL-7394, supply-chain table in PR 3971
-@modelcontextprotocol/core@2.4.0  until=2026-10-28  operator timeboxed exception 10-26, HIMMEL-7394, supply-chain table in PR 3971
-pele@1.10.0  until=2026-10-28  operator timeboxed exception 10-26, HIMMEL-7394, supply-chain table in PR 3971
+@modelcontextprotocol/server@2.4.0  until=2026-10-28  operator timeboxed exception 10-26, supply-chain table in PR 3971
+@modelcontextprotocol/client@2.4.0  until=2026-10-28  operator timeboxed exception 10-26, supply-chain table in PR 3971
+@modelcontextprotocol/core@2.4.0  until=2026-10-28  operator timeboxed exception 10-26, supply-chain table in PR 3971
+pele@1.10.0  until=2026-10-28  operator timeboxed exception 10-26, supply-chain table in PR 3971
