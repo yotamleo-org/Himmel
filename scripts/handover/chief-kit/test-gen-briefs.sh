@@ -586,7 +586,8 @@ ct_last="$(ct_brief 'completes-ticket: yes in the middle, but later completes-ti
 has "the LAST completes-ticket value wins" "$ct_last" "> **Completes ticket:** no"
 lacks "an earlier, overridden value writes no yes line" "$ct_last" "> **Completes ticket:** yes"
 ct_none="$(ct_brief 'one PR, nothing stated' "$WORK/ct4")"
-[ "$(ct_count "$ct_none")" = 0 ] && pass "a scope stating neither writes no Completes ticket line" || fail "Completes ticket line written without a stated value"
+[ "$(ct_count "$ct_none")" = 1 ] && pass "a scope stating neither writes exactly one Completes ticket line" || fail "Completes ticket line count (neither) = $(ct_count "$ct_none")"
+has "a scope stating neither writes the yes line" "$ct_none" "> **Completes ticket:** yes"
 # The Ship step states the same value and the matching merge command (one value per brief).
 lacks "a completes-ticket: no brief states no 'completes-ticket: yes' anywhere" "$ct_no" "completes-ticket: yes"
 ship_no="$(printf '%s\n' "$ct_no" | grep '^> 4\. Ship:')"
@@ -601,6 +602,13 @@ lacks "the LAST value (no) also drives the Ship step" "$ship_last" "--jira-trans
 has "the LAST value (no) writes the bare-merge Ship wording" "$ship_last" "completes-ticket: no (leave the ticket In Progress after the merge)"
 ship_none="$(printf '%s\n' "$ct_none" | grep '^> 4\. Ship:')"
 has "a scope stating neither keeps the yes Ship step" "$ship_none" "merge-on-green.sh --jira-transition"
+# The Ship step names both remainder shapes under yes and no.
+# shellcheck disable=SC2016 # literal backticks in the expected brief text
+for shape_case in "yes:$ship_yes" "no:$ship_no"; do
+    shape_name="${shape_case%%:*}"; shape_ship="${shape_case#*:}"
+    has "the $shape_name Ship step names the deferred shape" "$shape_ship" '`- <ask>: deferred → KEY` coverage line'
+    has "the $shape_name Ship step names the owed shape" "$shape_ship" '`- <ask>: owed → chief|operator by YYYY-MM-DD`, at most 14 days out'
+done
 # shellcheck disable=SC2016 # literal backticks in the expected brief text
 has "the yes Ship step names the relative merge spelling" "$ship_yes" '`bash scripts/handover/merge-on-green.sh --jira-transition`'
 # shellcheck disable=SC2016 # literal backticks in the expected brief text

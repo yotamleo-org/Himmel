@@ -47,7 +47,7 @@ text; the brief gets that line, and nothing is written for a worker without it),
 lane the printed add line passes as --lane; default native, the lane of the
 launchers written here; a lane other than native or claudex may not name a path under the
 handover root, that worker cannot read it). A scope stating `completes-ticket: yes|no` also gets
-the brief line `> **Completes ticket:** yes|no` (the LAST value in the scope; no line when it
+the brief line `> **Completes ticket:** yes|no` (the LAST value in the scope; yes when it
 states neither), which the merge script reads through --worker-doc to bind the merge (HIMMEL-5843).
 The Ship step follows that value; any other value after `completes-ticket:` (partial, a typo)
 is refused, since it would otherwise fall through to the closing merge (HIMMEL-6091).
@@ -1248,9 +1248,10 @@ def sonnet_ceiling_profile(profile):
 
 def completes_line(scope):
     # The LAST completes-ticket value in the scope, as the one line the merge script
-    # reads from the worker doc (--worker-doc / HIMMEL_WORKER_SESSION_DOC); none when the scope states neither.
+    # reads from the worker doc (--worker-doc / HIMMEL_WORKER_SESSION_DOC); yes when the scope states neither,
+    # the same value ship_completes() words the Ship step with.
     found = COMPLETES_RE.findall(scope)
-    return '\n> **Completes ticket:** %s\n' % found[-1].lower() if found else ''
+    return '\n> **Completes ticket:** %s\n' % (found[-1].lower() if found else 'yes')
 
 
 def ship_completes(scope, lane='native'):
@@ -1259,11 +1260,13 @@ def ship_completes(scope, lane='native'):
     # auto-mode classifier refuses merge-path actions, so its merge clause stops at READY and
     # the chief runs the merge; every other lane merges on GO itself.
     found = COMPLETES_RE.findall(scope)
+    shapes = ('; a remaining ask that another ticket owns is a `- <ask>: deferred → KEY` coverage line; a step the chief or operator owes after the merge is '
+              '`- <ask>: owed → chief|operator by YYYY-MM-DD`, at most 14 days out')
     if found and found[-1].lower() == 'no':
-        ct = 'completes-ticket: no (leave the ticket In Progress after the merge)'
+        ct = 'completes-ticket: no (leave the ticket In Progress after the merge)' + shapes
         cmd = '`bash scripts/handover/merge-on-green.sh` (bare, without the Jira-transition flag, typed exactly so from your worktree root, then `--go <the GO file the chief\'s GO message names>`)'
     else:
-        ct = 'completes-ticket: yes'
+        ct = 'completes-ticket: yes' + shapes
         cmd = '`bash scripts/handover/merge-on-green.sh --jira-transition` (typed exactly so from your worktree root, then `--go <the GO file the chief\'s GO message names>`)'
     if lane == 'claudex':
         return ct, MERGE_AT_READY_LINE
