@@ -1249,10 +1249,11 @@ check    "9479: a SIGKILLed go.sh leaves no GO written by its orphaned child" "$
 # (origin other/luna) as from the checkout: ready-check.sh and the NO-GO reads run in
 # HIMMEL_REPO. RED control (go.sh before this change): ready-check runs in the
 # cwd, finds no ledger there and go.sh writes no GO.
-mkdir -p "$NOWHERE32"
-git init -q "$DECOY32" && git -C "$DECOY32" remote add origin https://github.com/other/luna.git
+mkdir -p "$NOWHERE32" || { echo "FAIL: nowhere32 setup" >&2; exit 1; }
+git init -q "$DECOY32" && git -C "$DECOY32" remote add origin https://github.com/other/luna.git \
+  || { echo "FAIL: decoy32 setup" >&2; exit 1; }
 for cwd32 in "$NOWHERE32" "$DECOY32" "$READY_REPO"; do
-  rm -rf "$ROOT32"; mkdir -p "$ROOT32"
+  rm -rf "$ROOT32"; mkdir -p "$ROOT32" || { echo "FAIL: root32 setup" >&2; exit 1; }
   rc=0; out=$(cd "$cwd32" && HANDOVER_DIR="$ROOT32" CHIEF_SESSION_NAME=chief-x bash "$SCRIPT" 77 "$SHA" 2>&1) || rc=$?
   check "cwd ${cwd32##*/}: go.sh exits 0, as from the checkout" "$rc" "0"
   check "cwd ${cwd32##*/}: the GO is written" "$(test -f "$ROOT32/.locks/go/77.$SHA" && echo yes)" "yes"

@@ -1157,7 +1157,7 @@ check "30: ...and nothing is written (reviewed-head source)" "$([ -e "$scope_dir
 # From a directory outside any repo: the --bind PR read names the gated repo's origin,
 # and --delta-noop classifies in HIMMEL_REPO. RED control (write-verdict.sh before this
 # change): the PR read carries no repo, and the delta read runs in the cwd and refuses.
-nowhere31="$tmp/nowhere31"; mkdir -p "$nowhere31"
+nowhere31="$tmp/nowhere31"; mkdir -p "$nowhere31" || { echo "FAIL: 31 setup" >&2; exit 1; }
 nwo31=$(git -C "$REPO" remote get-url origin 2>/dev/null | sed -E 's#^(https?://[^/]+/|git@[^:]+:|ssh://git@[^/]+/)##; s#\.git$##' | tr '[:upper:]' '[:lower:]')
 : > "$tmp/gh31.log"
 rc=0; (cd "$nowhere31" && STUB_GH_LOG="$tmp/gh31.log" STUB_PR_HEAD="$SHA_A" WV_NOPR="--bind --pr 9845" wv q30 GO "$SHA_A" >/dev/null 2>&1) || rc=$?

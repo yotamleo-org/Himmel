@@ -213,7 +213,7 @@ lacks    "9h: go.sh never runs" "$log" "go ["
 # write-verdict.sh and go.sh run in HIMMEL_REPO from any cwd; a relative --doc and
 # --evidence-file still mean the caller's path. RED control (verdict-go.sh before this
 # change): the steps run in the caller's cwd.
-GATED="$tmp/gated"; NOWHERE="$tmp/nowhere"; mkdir -p "$GATED" "$NOWHERE/rel"
+GATED="$tmp/gated"; NOWHERE="$tmp/nowhere"; mkdir -p "$GATED" "$NOWHERE/rel" || { echo "FAIL: 10 setup" >&2; exit 1; }
 : > "$NOWHERE/rel/chief.md"
 for cwd10 in "$NOWHERE" "$GATED"; do
     rm -f "$LOG.cwd"

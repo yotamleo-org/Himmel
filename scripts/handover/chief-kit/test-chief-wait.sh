@@ -1336,8 +1336,12 @@ kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 ready_stubs_pass
 rm -f "$STUB/rc.cwd" "$STUB/disp.cwd" "$STUB/gh.calls"
 GATED="$WORK/gated"; DECOY="$WORK/decoy"
-git init -q "$GATED" && git -C "$GATED" remote add origin https://github.com/o/x.git
-git init -q "$DECOY" && git -C "$DECOY" remote add origin https://github.com/other/luna.git
+if ! { git init -q "$GATED" && git -C "$GATED" remote add origin https://github.com/o/x.git; }; then
+    echo "FAIL: (rdy-cwd) gated fixture setup" >&2; exit 1
+fi
+if ! { git init -q "$DECOY" && git -C "$DECOY" remote add origin https://github.com/other/luna.git; }; then
+    echo "FAIL: (rdy-cwd) decoy fixture setup" >&2; exit 1
+fi
 mkdir -p "$STUB/ghbin"
 cat > "$STUB/ghbin/gh" <<'EOF'
 #!/usr/bin/env bash
