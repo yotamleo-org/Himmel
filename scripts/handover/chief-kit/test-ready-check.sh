@@ -310,7 +310,7 @@ run() {
         STUB_FILE_STATUS="${STUB_FILE_STATUS:-}" STUB_WF_DIR="${STUB_WF_DIR:-}" \
         STUB_RUNS_DIR="${STUB_RUNS_DIR:-}" STUB_RUNS_FAIL="${STUB_RUNS_FAIL:-}" STUB_WF_PATCH_FILE="${STUB_WF_PATCH_FILE:-}" \
         STUB_AUTHOR="${STUB_AUTHOR:-}" STUB_BODY="${STUB_BODY-$GREEN_BODY}" STUB_RED="${STUB_RED-$GREEN_RED}" STUB_PR_TITLE="${STUB_PR_TITLE:-}" STUB_PR_BRANCH="${STUB_PR_BRANCH-feat/himmel-100-thing}" \
-        JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" STUB_JIRA_DOWN="${STUB_JIRA_DOWN:-}" STUB_LINKS_DB="${STUB_LINKS_DB:-}" STUB_LINKS_FAIL="${STUB_LINKS_FAIL:-}" \
+        JIRA_CMD="${RUN_JIRA_CMD-$tmp/bin/jira-stub}" STUB_JIRA_DB="$JIRA_DB" STUB_JIRA_DOWN="${STUB_JIRA_DOWN:-}" STUB_LINKS_DB="${STUB_LINKS_DB:-}" STUB_LINKS_FAIL="${STUB_LINKS_FAIL:-}" \
         PATH="$PATH" GH_LOG="$GH_LOG" GH_PR_SNAPSHOT_CACHE_DIR="$cache" \
         STUB_SNAPSHOT_FAIL="${STUB_SNAPSHOT_FAIL:-}" \
         STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" STUB_TRUST_LIST_FAIL="${STUB_TRUST_LIST_FAIL:-}" \
@@ -4756,6 +4756,19 @@ rc=0; out="$(GIT_DIR="$DECOY/.git" GIT_WORK_TREE="$DECOY" run)" || rc=$?
 check "anchor R15: an inherited GIT_DIR on a decoy gives the checkout's exit" "$rc" "$base_rc"
 check "anchor R15: an inherited GIT_DIR on a decoy gives the checkout's output" "$out" "$base_out"
 check "anchor R15: no gh call names the decoy's repo" "$(grep -c 'other/luna' "$GH_LOG")" "0"
+
+# the jira CLI path is found through the script's own dir even inside the exported-function child shell (check 14)
+mkdir -p "$tmp/nodebin"
+export NODE_LOG="$tmp/node.log"; : > "$NODE_LOG"
+cat > "$tmp/nodebin/node" <<'STUB'
+#!/usr/bin/env bash
+echo "$1" >> "$NODE_LOG"
+exit 1
+STUB
+chmod +x "$tmp/nodebin/node"
+rc=0; out="$(PATH="$tmp/nodebin:$PATH" RUN_JIRA_CMD="" RUN_CWD="$NOWHERE" STUB_BODY="$BO_GOOD" STUB_PR_TITLE='fix(x): [HIMMEL-900] thing' run)" || rc=$?
+check "anchor: no jira CLI call is made through a bare /scripts path" "$(grep -c '^/scripts/jira' "$NODE_LOG")" "0"
+check "anchor: the jira CLI is called through the script's own primary checkout" "$([ "$(grep -c "^$test_primary/scripts/jira/dist/index.js\$" "$NODE_LOG")" -ge 1 ] && echo yes)" "yes"
 
 # a relative entry from a copied tree loads that tree's own libs (spec I12), whatever the cwd
 RW="$tmp/rel-tree"

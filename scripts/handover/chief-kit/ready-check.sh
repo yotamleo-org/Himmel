@@ -1793,6 +1793,7 @@ check_bug_origin() {
     fi
     bo_reply=$(
         export -f jira_run jira_get
+        export SELF_DIR  # jira_run locates the jira CLI through it in the child shell
         # shellcheck disable=SC2016  # $1 expands in the child shell
         "$_TIMEOUT_BIN" -k 5 15 bash -c 'jira_get "$1"' "$0" "$bo_key"
     ) || {
