@@ -100,6 +100,8 @@ case "$1 $2" in
         [ -e "$FX/pr-list.fail" ] && { echo "HTTP 502" >&2; exit 1; }
         n=$(( $(cat "$FX/pr-list.n" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$FX/pr-list.n"
         if [ -e "$FX/pr-list.$n.json" ]; then cat "$FX/pr-list.$n.json"; else cat "$FX/pr-list.json"; fi ;;
+    "pr view")
+        if [ -e "$FX/pr-body-$3" ]; then cat "$FX/pr-body-$3"; else echo "HTTP 502" >&2; exit 1; fi ;;
     "pr checks")
         if [ -e "$FX/checks-$3.json" ]; then cat "$FX/checks-$3.json"; else echo "no checks reported on the 'x' branch" >&2; exit 1; fi ;;
     "api graphql")
@@ -378,6 +380,33 @@ reset "In Progress"; owned LIVE 11 0
 fn "$K" --event merge --pr 11 --head abc
 check "HIMMEL-8522: a funnel row for the merge event is not written under event merge" "$(row event)" derive
 
+# --- D5d: a wrapped partial whose merged PR names its owner is parked in To Do ---
+d5d_merge() { printf '{"ts":"t","event":"merge","key":"%s","pr":"11","repo":"octo/repo","contract":"no","result":"noop"}\n' "$K" >> "$LOG"; }
+reset "In Progress"; owned WRAPPED 0; d5d_merge
+printf '## Ticket coverage\n- parser half: done\n- cutover: deferred -> HIMMEL-9002\n' > "$FX/pr-body-11"
+fn "$K" --event wrapped --doc "$DOC"
+check "D5d: a wrapped partial handed off to another ticket moves to To Do" "$(moved)" "transition $K To Do"
+check "D5d: rule" "$(row rule)" D5d
+check "D5d: the row names the merged PR and the owner" "$(row merged_pr)/$(row owner)" "11/HIMMEL-9002"
+check "D5d: the worker record names the owner" "$(jq -r .owner "$REC")" HIMMEL-9002
+: > "$STUB_LOG"
+fn "$K" --event sweep
+check "D5d: the next derive answers from the logged row, no PR body read" "$(grep -c '^gh pr view' "$STUB_LOG" || true)" 0
+check "D5d: and keeps rule D5d, no move" "$(row rule)/$(ntrans)" D5d/0
+reset "In Progress"; owned WRAPPED 0; d5d_merge
+printf 'Remaining: run the cutover, a chief step\n' > "$FX/pr-body-11"
+fn "$K" --event wrapped --doc "$DOC"
+check "D5d: a Remaining line naming a chief step moves to To Do" "$(moved)/$(row rule)" "transition $K To Do/D5d"
+check "D5d: the owner on record is the chief step" "$(jq -r .owner "$REC")" "chief step"
+reset "In Progress"; owned WRAPPED 0; d5d_merge
+printf 'Remaining: the second half of the parser\n' > "$FX/pr-body-11"
+fn "$K" --event wrapped --doc "$DOC"
+check "D5d: a partial with no readable owner stays D5c In Progress" "$(ntrans)/$(row rule)" 0/D5c
+reset "In Progress"; owned LIVE 11 0; d5d_merge
+printf '## Ticket coverage\n- cutover: deferred -> HIMMEL-9002\n' > "$FX/pr-body-11"
+fn "$K" --event live --doc "$DOC"
+check "D5d: a ticket whose worker is still live stays In Progress (D5)" "$(ntrans)/$(row rule)" 0/D5
+
 # --- D5 / D6 / D7 ------------------------------------------------------------------
 reset "To Do"; owned LIVE 11 0
 fn "$K" --event live --doc "$DOC"
@@ -510,6 +539,17 @@ fn "$K" --event sweep
 check "D7: never owned -> no write" "$(ntrans)" 0
 check "D7: rule" "$(row rule)" D7
 check "D7: no record is created" "$([ -e "$REC" ] && echo yes || echo no)" no
+# Item 5: a record with only closed PRs and no worker doc is "never had a worker", not owned.
+reset "To Do"
+mkdir -p "${REC%/*}"; printf '{"key":"%s","prs":{"7":{"head":"abc","ci":"green","red_latch":false,"open":false}}}\n' "$K" > "$REC"
+fn "$K" --event sweep
+check "D7: a To Do ticket with only closed PRs and no worker doc is not moved" "$(ntrans)" 0
+check "D7: rule D7, not D5" "$(row rule)" D7
+# Item 4: a wont do close refreshes the worker record like Done.
+reset "wont do"; owned WRAPPED; stale_live
+fn "$K" --event sweep
+check "D0: a wont do ticket's live record is refreshed from a wrapped doc" "$(jq -r .state "$REC")" wrapped
+check "D0: the refresh moves no status" "$(ntrans)" 0
 
 # --- no D6 without positive end evidence ------------------------------------------
 reset "In Progress"; owned LIVE 11 99999
