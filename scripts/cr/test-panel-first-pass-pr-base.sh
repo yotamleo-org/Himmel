@@ -203,6 +203,36 @@ rr abort --pr 7 --head "$H"
 eq "$rrc" "8" "abort --pr over a head with a panel row under another branch name refuses (exit 8)"
 eq "$(round_of)" "1" "abort --pr: a row under another branch name keeps the count"
 
+reset; preflight
+rr start --pr 7 --head "$H"
+rm -f "$ROUNDS/outside-7.delta.run"
+rr abort --pr 7 --head "$H"
+eq "$rrc" "8" "abort --pr with no start caller recorded refuses (exit 8)"
+has "$rerr" "no start caller is recorded" "abort --pr: says no caller is recorded"
+eq "$(round_of)" "1" "abort --pr with no caller recorded keeps the count"
+
+reset; preflight
+HOME="$HOMEDIR" PATH="$tmp/bin:$PATH" STUB_OID="$H" HIMMEL_REPO="$A" CR_LEDGER="$LEDGER" \
+    bash -c 'cd "$3" && bash "$1" start --pr 7 --head "$2" >/dev/null; sleep 60' _ "$A/scripts/cr/review-round.sh" "$H" "$P" &
+holder=$!
+n=0
+while [ ! -s "$ROUNDS/outside-7.delta.run" ] && [ "$n" -lt 100 ]; do sleep 0.1; n=$((n + 1)); done
+eq "$(cat "$ROUNDS/outside-7.delta.run" 2>/dev/null)" "$holder" "start --pr records its caller pid"
+rr abort --pr 7 --head "$H"
+eq "$rrc" "8" "abort --pr while the start caller is alive refuses (exit 8)"
+has "$rerr" "still running" "abort --pr while the caller is alive: says it is still running"
+eq "$(round_of)" "1" "abort --pr while the caller is alive keeps the count"
+rr start --pr 7 --head "$H"
+eq "$rout" "1" "a second start --pr at the same head reuses the round"
+rr abort --pr 7 --head "$H"
+eq "$rrc" "8" "abort --pr from a second run cannot refund the first run's round while it is in flight"
+eq "$(round_of)" "1" "abort --pr from a second run keeps the count"
+kill "$holder" 2>/dev/null
+wait "$holder" 2>/dev/null
+rr abort --pr 7 --head "$H"
+eq "$rrc" "0" "abort --pr gives the round back once the start caller has ended"
+eq "$(round_of)" "0" "abort --pr after the caller ended: the count is 0"
+
 if [ "$fails" -gt 0 ]; then
     printf 'FAIL test-panel-first-pass-pr-base (%s failures)\n' "$fails" >&2
     exit 1

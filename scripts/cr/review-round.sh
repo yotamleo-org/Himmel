@@ -1541,6 +1541,9 @@ fi
 # 1 = --head is not on .head; 8 = refused (rows at --head or an unreadable
 # ledger, or the start's caller is still running or unrecorded); 5 = state or
 # lock error.
+# abort --pr <n> --head <sha> does the same for an outside PR: the state is keyed
+# outside-<n>, start --pr records its caller pid like the branch start, a row at the
+# head under any branch name counts as reviewed, and both caller refusals apply.
 if [ "$verb" = "abort" ]; then
     # swallow-ok: an unresolvable head is refused on the next line (exit 2)
     if ! ab_head="$(git rev-parse --verify --quiet "$head_sha^{commit}" 2>/dev/null)" || [ -z "$ab_head" ]; then
@@ -1566,10 +1569,10 @@ if [ "$verb" = "abort" ]; then
     elif [ "$ab_seen" = "seen" ]; then
         echo "review-round: the round on $ab_head has panel rows, so it reviewed something - it is not given back" >&2
         ab_rc=8
-    elif [ -z "$pr" ] && [ -z "$run_pid" ]; then
+    elif [ -z "$run_pid" ]; then
         echo "review-round: no start caller is recorded for the round on $ab_head, so it cannot be shown to have ended - it is not given back" >&2
         ab_rc=8
-    elif [ -n "$run_pid" ] && [ "$run_pid" != "$PPID" ] && kill -0 "$run_pid" 2>/dev/null; then
+    elif [ "$run_pid" != "$PPID" ] && kill -0 "$run_pid" 2>/dev/null; then
         echo "review-round: the round on $ab_head is still running (start by pid $run_pid) - it is not given back" >&2
         ab_rc=8
     else
@@ -1665,6 +1668,9 @@ if [ -n "$pr" ]; then
         echo "review-round: cannot persist round $pr_next for PR #$pr under the counter lock" >&2
         exit 5
     fi
+    # abort --pr reads this pid to refuse a give-back while the round's caller still runs; a failed write
+    # leaves none, which abort refuses too.
+    printf '%s\n' "$PPID" > "$delta_run" 2>/dev/null || rm -f "$delta_run" 2>/dev/null
     if ! SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
         bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1; then
         echo "review-round: persisted round $pr_next for PR #$pr but could not release its counter lock" >&2
