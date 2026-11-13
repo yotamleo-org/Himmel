@@ -1213,15 +1213,17 @@ function buildSummary(answers, laneRows, opts) {
     actions.push('workspace trust — would run ensure-workspace-trust.sh for the install target');
   }
 
-  // docs/setup/settings-template.json ships no `permissions`
-  // block, so the install writes no permissions.allow at either scope, by
-  // design: himmel's own ~93 entries are its contributor config (paths on the
-  // operator's machine), and an adopter's Bash pre-approvals come from the
+  // docs/setup/settings-template.json carries a permissions.allow block and
+  // an autoMode block, but no installer consumes them: they are reference
+  // content the operator merges by hand into user-scope settings. So the
+  // install writes no permissions.allow at either scope, by design: himmel's
+  // own ~93 entries are its contributor config (paths on the operator's
+  // machine), and an adopter's Bash pre-approvals come from the
   // auto-approve-safe-bash PreToolUse hook adopt.sh wires. A fact, not an
   // action, so it reads the same under --dry-run. profile=luna wires no
   // settings.json at all, so there is nothing to state.
   if (answers.profile !== 'luna') {
-    skipped.push('permissions.allow — intentionally left empty (the adopter template ships none); Bash pre-approvals come from the auto-approve-safe-bash PreToolUse hook');
+    skipped.push('permissions.allow — intentionally left empty (the install writes none at either scope; the template\'s permissions.allow and autoMode blocks are reference content you merge by hand into your user-scope settings); Bash pre-approvals come from the auto-approve-safe-bash PreToolUse hook');
   }
 
   const vaultMode = answers.vault && answers.vault.mode;
