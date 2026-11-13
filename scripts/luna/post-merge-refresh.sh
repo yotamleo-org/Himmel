@@ -3,8 +3,6 @@
 # 1 when the tick itself cannot work (no primary checkout, no main); 2 on usage
 # or when --halves is run by anything but the armed runner; 3 when keyword-lag.py
 # is missing (the graph half's step still runs first).
-# The armed runner exports PMR_ARMED_PID=$$ (its own process id); --halves runs
-# only when that equals this process's parent, so a merge path cannot start it.
 set -u
 
 pmr_decide() {
