@@ -50,7 +50,7 @@ export interface MirrorIssue {
 interface SearchPage { issues: MirrorIssue[]; nextPageToken?: string }
 export type Req = typeof request;
 
-export interface Cursor { lastSync: string; total: number; project?: string }
+export interface Cursor { lastSync: string; total: number; project?: string; complete?: boolean }
 
 export interface MirrorOptions {
   root: string;
@@ -193,7 +193,7 @@ export async function runMirror(opts: MirrorOptions, req: Req): Promise<MirrorRe
 
   const stored = opts.full ? null : readCursor(root);
   // A cursor written for another project must not drive this run's incremental window.
-  const cursor = stored && (stored.project === undefined || stored.project === project) ? stored : null;
+  const cursor = stored && stored.complete !== false && (stored.project === undefined || stored.project === project) ? stored : null;
   const mode = cursor ? 'incremental' : 'full';
   let jql = `project = ${project} ORDER BY key ASC`;
   if (cursor) {
@@ -270,11 +270,12 @@ export async function runMirror(opts: MirrorOptions, req: Req): Promise<MirrorRe
   res.mirrorCount = localNow.size;
   // A live key with no local file (within the count tolerance) also forces a full run.
   if (!res.deleteSkipped && live && [...live].some((k) => !localNow.has(k))) res.deleteSkipped = 'live keys missing locally';
-  // An incomplete mirror keeps no cursor, so the next run is a full backfill
-  // instead of an incremental that never revisits unchanged, missing issues.
   if (res.deleteSkipped || (res.jiraTotal !== null && res.mirrorCount < res.jiraTotal * COUNT_TOLERANCE)) {
-    warn(`mirror not verified complete (${res.deleteSkipped ?? `holds ${res.mirrorCount}, Jira counts ${res.jiraTotal}`}); cursor dropped`);
-    if (existsSync(join(root, CURSOR_FILE))) unlinkSync(join(root, CURSOR_FILE));
+    warn(`mirror not verified complete (${res.deleteSkipped ?? `holds ${res.mirrorCount}, Jira counts ${res.jiraTotal}`}); next sync runs full`);
+    writeFileAtomic(
+      join(root, CURSOR_FILE),
+      JSON.stringify({ lastSync: startedAt.toISOString(), total: res.mirrorCount, project, complete: false }) + '\n',
+    );
     return res;
   }
   writeFileAtomic(

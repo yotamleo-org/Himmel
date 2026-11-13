@@ -163,6 +163,16 @@ describe('runMirror', () => {
     expect((await runMirror({ root, project: 'HIMMEL' }, makeReq(stub))).mode).toBe('full');
   });
 
+  it('an incomplete sync keeps a cursor marked complete:false and the next run is full', async () => {
+    const stub: Stub = { issues: [1, 2, 3].map((n) => issue(n)), pageSize: 10, calls: [], count: 10 };
+    await runMirror({ root, project: 'HIMMEL' }, makeReq(stub));
+    const cur = JSON.parse(readFileSync(join(root, '.cursor.json'), 'utf8')) as { complete?: boolean };
+    expect(cur.complete).toBe(false);
+    stub.count = undefined;
+    expect((await runMirror({ root, project: 'HIMMEL' }, makeReq(stub))).mode).toBe('full');
+    expect(JSON.parse(readFileSync(join(root, '.cursor.json'), 'utf8')).complete).toBeUndefined();
+  });
+
   it('a short run drops an existing cursor', async () => {
     const stub: Stub = { issues: [1, 2, 3].map((n) => issue(n)), pageSize: 10, calls: [] };
     await runMirror({ root, project: 'HIMMEL' }, makeReq(stub));

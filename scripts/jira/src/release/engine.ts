@@ -171,14 +171,18 @@ function blockedByOf(text: string): string[] {
   }
 }
 
-export function readMirror(root: string | null): { issues: Map<string, IssueSnap> | null; sync: string | null } {
-  if (!root || !existsSync(join(root, '.cursor.json'))) return { issues: null, sync: null };
-  let sync: string;
+export function readMirrorFilesUnverified(root: string | null): { issues: Map<string, IssueSnap> | null; sync: string | null; complete: boolean } {
+  if (!root || !existsSync(root)) return { issues: null, sync: null, complete: false };
+  let sync: string | null = null;
+  let complete = false;
   try {
-    sync = (JSON.parse(readFileSync(join(root, '.cursor.json'), 'utf8')) as { lastSync: string }).lastSync;
-    if (Number.isNaN(Date.parse(sync))) return { issues: null, sync: null };
+    const cur = JSON.parse(readFileSync(join(root, '.cursor.json'), 'utf8')) as { lastSync: string; complete?: boolean };
+    if (!Number.isNaN(Date.parse(cur.lastSync))) {
+      sync = cur.lastSync;
+      complete = cur.complete !== false;
+    }
   } catch {
-    return { issues: null, sync: null };
+    sync = null;
   }
   const issues = new Map<string, IssueSnap>();
   for (const name of readdirSync(root)) {
@@ -197,7 +201,13 @@ export function readMirror(root: string | null): { issues: Map<string, IssueSnap
       ...(Array.isArray(fm.labels) && fm.labels.length ? { labels: fm.labels.map(String) } : {}),
     });
   }
-  return { issues, sync };
+  if (issues.size === 0 && sync === null) return { issues: null, sync: null, complete: false };
+  return { issues, sync, complete };
+}
+
+export function readMirror(root: string | null): { issues: Map<string, IssueSnap> | null; sync: string | null } {
+  const m = readMirrorFilesUnverified(root);
+  return m.complete ? { issues: m.issues, sync: m.sync } : { issues: null, sync: null };
 }
 
 function reduceLoaded(l: Loaded, mirror: ReturnType<typeof readMirror>): ReleaseState {
