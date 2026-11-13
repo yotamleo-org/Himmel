@@ -348,7 +348,6 @@ eq "$after" "$before" "T2.3 status, HEAD, config and the hooks dir are byte-iden
 eq "$(git -C "$P" worktree list | wc -l | tr -d ' ')" "$wt_before" "T2.3 no new worktree"
 canary_absent "T2.3"
 
-# R4: the step 2 to 2.8 runbook names the --pr inputs, so an outside review never reads the station's checkout
 RB="$(cat "$HERE/pr-check-ref/20-step2-lanes.md")"
 # shellcheck disable=SC2016 # the runbook's literal heading text, backticks included
 RBM='**No-checkout route (`--pr`), steps 2 to 2.8.**'

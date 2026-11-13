@@ -316,10 +316,7 @@ PATH="$W/shim11b:$PATH" run_cfp claude-subscription
 check "11b an envelope unwrap that exits 5 is a failure (1), not a skip" 1 "$RC"
 unset CFP_RUN
 
-# --- 12. R8: what a hostile diff can make the critic read stays inside the directory it is given ---
-# The recorder shows the launch shape: a scratch cwd under TMPDIR, outside the repo, no widening flag, the grant exactly Read,Glob,Grep.
-# What the claude binary itself does with an absolute path under dontAsk is NOT-VERIFIED here (no recorder sees it).
-reach_shape() { # reach_shape <label> <rec dir> <route>: prints "ok" or the reason the reach could be wider
+reach_shape() {
     local cwd argv grant
     cwd="$(cat "$2/cwd" 2>/dev/null)"; argv="$(cat "$2/argv" 2>/dev/null)"
     case "$cwd" in ""|/) echo "cwd '$cwd'"; return;; esac

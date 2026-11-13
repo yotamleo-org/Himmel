@@ -340,7 +340,7 @@ else
         pf_t0=$SECONDS
         pf_rc=0
         pf_who=()
-        [ -z "$PR" ] || pf_who=(--branch "$BRANCH" --head "$HEAD_SHA")   # a no-checkout review has no checkout branch to read
+        [ -z "$PR" ] || pf_who=(--branch "$BRANCH" --head "$HEAD_SHA")
         pf_out=$(CR_LEDGER="$pf_ledger" bash "$HIMMEL_ROOT/scripts/cr/known-findings.sh" --diff "$diff_range" --area ${pf_who[@]+"${pf_who[@]}"} 2>&1) || pf_rc=$?
         printf '%s\n' "$pf_out" >&2
         if [ "$pf_rc" -eq 3 ]; then
