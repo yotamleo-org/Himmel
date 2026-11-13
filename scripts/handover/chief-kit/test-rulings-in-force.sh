@@ -148,11 +148,10 @@ named=0; for n in $(seq 1001 1040); do grep -q "^IN FORCE $n, 2026-11-11: ruling
 same "render: every one of the 40 ids is indexed" "$named" "40"
 same "render: with every ruling indexed the read-all duty is gone" "$(printf '%s\n' "$out40" | grep '^Full original text' | grep -c 'READ ALL')" "0"
 
-# --- the chief template's first-turn read matches the pointer line render writes
 T="$HERE/../../../docs/handover/chief-template.md"
 az="$(awk '/^1\. \*\*One batch/ { f = 1 } /^   Steps 2/ { f = 0 } f' "$T" | tr '\n' ' ' | tr -s ' ')"
 cz="$(awk '$0 == "## Compact instructions" { f = 1; next } f && /^## / { exit } f' "$T" | tr '\n' ' ' | tr -s ' ')"
-# shellcheck disable=SC2016  # the backticks are the template's literal markdown, matched not expanded
+# shellcheck disable=SC2016
 same "template: the first batch reads the companions only while a line sits outside the index" "$(grep -c 'line sits outside its `Rulings in force` index' <<< "$az")" "1"
 # shellcheck disable=SC2016
 same "template: the first batch reads an indexed ruling's verbatim file before acting on it" "$(grep -c 'An indexed ruling: `Read` its verbatim file before acting on it' <<< "$az")" "1"
