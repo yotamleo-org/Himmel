@@ -849,7 +849,7 @@ scripts/telegram/chief-route.ts scripts/telegram/key-brief.ts scripts/telegram/b
 scripts/telegram/chief-heartbeat-watch.ts
 scripts/telegram/router.ts scripts/telegram/auto-action.ts scripts/telegram/telegram-api.ts scripts/telegram/session-status.ts
 scripts/telegram/log-timestamp.ts scripts/telegram/gate.ts scripts/telegram/afk-sudo-route.ts scripts/telegram/run.ts
-scripts/jira/src/release/fence-ancestry.ts
+scripts/jira/src/release/fence-ancestry.ts scripts/jira/src/env-file.ts scripts/jira/src/handover-root.ts scripts/jira/src/release/paths.ts
 scripts/telegram/triage.ts scripts/telegram/transcribe.ts
 scripts/telegram/huge-diff-guard.ts
 scripts/telegram/lane-args.ts scripts/telegram/phi-egress-guard.ts scripts/telegram/round-guard.ts
@@ -888,6 +888,9 @@ cr_pathspecs=(':(top)scripts/cr/' ':(top)scripts/lib/' ':(top)scripts/api-lane/'
     ':(top)scripts/telegram/log-timestamp.ts' ':(top)scripts/telegram/gate.ts' ':(top)scripts/telegram/afk-sudo-route.ts'
     ':(top)scripts/telegram/run.ts' ':(top)scripts/telegram/triage.ts'
     ':(top)scripts/jira/src/release/fence-ancestry.ts'
+    ':(top)scripts/jira/src/env-file.ts'
+    ':(top)scripts/jira/src/handover-root.ts'
+    ':(top)scripts/jira/src/release/paths.ts'
     ':(top)scripts/telegram/transcribe.ts'
     ':(top)scripts/telegram/huge-diff-guard.ts' ':(top)scripts/telegram/lane-args.ts'
     ':(top)scripts/telegram/phi-egress-guard.ts' ':(top)scripts/telegram/round-guard.ts'
