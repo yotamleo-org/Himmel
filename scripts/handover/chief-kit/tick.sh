@@ -518,7 +518,7 @@ merged since the line's anchor: a first-parent commit of origin/main (else HEAD)
 its year is the reference date's (the first YYYY-MM-DD of the doc's file name, else the doc's mtime, else
 today, as UTC dates), one less when the stamp's month is after the reference month. A line with neither
 is not judged; an unknown @sha or a failed merge-history read prints `?`. Before the field, one
-`CHANGED-DISPOSITION <KEY> line=<12 hex> <target>=<state>... since <oldest sha> via <target> <newest sha>
+`CHANGED-DISPOSITION <KEY> line=<12 hex> <target>=<state>... since <target> <oldest sha> via <target> <newest sha>
 <subject, 80 chars>` line per changed key. With --prior, a changed line is carried (` carried`) while its
 hash is the same, its via target reads open or ?, and the history read did not finish. Hidden at 0 or skip.
 residual-unversioned=
@@ -700,9 +700,9 @@ for line in stale_lines or []:
         stale[m[1]] = (m[2], " ".join(targets))
     # the text names the oldest merge since the anchor, fixed until the chief re-stamps, and the stamp to
     # add as literal text: a filled-in time would change the text, and so wake the waiter, every run
-    m = re.match(r"CHANGED-DISPOSITION ([A-Z]+-\d+) line=([0-9a-f]{12}) .*? since ([0-9a-f]+) via ([A-Z]+-\d+) ", line)
+    m = re.match(r"CHANGED-DISPOSITION ([A-Z]+-\d+) line=([0-9a-f]{12}) .*? since ([A-Z]+-\d+) ([0-9a-f]+) via ", line)
     if m:
-        changed[m[1]] = (m[2], "%s merged %s since the line was written: re-read and stamp (<LL> <MM-DD> <HH:MM>Z)" % (m[4], m[3]))
+        changed[m[1]] = (m[2], "%s merged %s since the line was written: re-read and stamp (<LL> <MM-DD> <HH:MM>Z)" % (m[3], m[4]))
 
 inflight = disposed = 0
 unresolved = []
@@ -1030,8 +1030,8 @@ for key, refs, prs, sha, h, open_keys, tried, anchor in judged:
             hits.append((c, subject, k))
     if hits:
         changed.append(key)
-        cdetails.append("CHANGED-DISPOSITION %s line=%s %s since %s via %s %s %s" % (
-            key, h, targets(refs, prs, sha, ages[key]), hits[-1][0], hits[0][2], hits[0][0], hits[0][1][:80]))
+        cdetails.append("CHANGED-DISPOSITION %s line=%s %s since %s %s via %s %s %s" % (
+            key, h, targets(refs, prs, sha, ages[key]), hits[-1][2], hits[-1][0], hits[0][2], hits[0][0], hits[0][1][:80]))
         continue
     if done:
         continue

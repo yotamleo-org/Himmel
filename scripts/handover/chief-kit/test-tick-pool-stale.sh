@@ -298,7 +298,7 @@ d10="$(doc HIMMEL-nextleg-2026-11-10ZZ-r10 "$pd $v10")"
 o10="$(cout "$d10")"
 check 'R10 an open parent merged since @sha reads changed' '1:HIMMEL-151' "$(ofield pool-changed "$o10")"
 check 'R10 the detail line names every target, the first merge since the anchor and the newest' \
-    "CHANGED-DISPOSITION HIMMEL-151 line=$(hash12 "$v10") HIMMEL-902=open @$c1=2-behind since $c2 via HIMMEL-902 $c3 [HIMMEL-902] B2 the second slice" \
+    "CHANGED-DISPOSITION HIMMEL-151 line=$(hash12 "$v10") HIMMEL-902=open @$c1=2-behind since HIMMEL-902 $c2 via HIMMEL-902 $c3 [HIMMEL-902] B2 the second slice" \
     "$(printf '%s\n' "$o10" | grep '^CHANGED-DISPOSITION')"
 check 'R10 a changed line is not stale' '0' "$(ofield pool-stale "$o10")"
 
@@ -325,6 +325,11 @@ check 'R12b a timed stamp never expires' '0 0' "$(named "${v12%% *}" pool-change
 o12c="$(TICK_POOL_MAX_MERGES=3 cout "$d12c")"
 check 'R12c an @sha clear expires after TICK_POOL_MAX_MERGES (the cost of clearing with @sha)' '1:HIMMEL-151' "$(ofield pool-stale "$o12c")"
 check 'R12c its detail line names the expired sha' "STALE-DISPOSITION HIMMEL-151 line=$(hash12 "$v12c") HIMMEL-902=open @$c3=4-behind" "$(printf '%s\n' "$o12c" | grep '^STALE-DISPOSITION')"
+sub110='[HIMMEL-110] another open parent'
+c110="$(gc 2026-11-10T06:00:00Z "$sub110")"
+v2t="HIMMEL-158 question after HIMMEL-902 and HIMMEL-110 (ZZ 11-08)"
+p2t="^CHANGED-DISPOSITION HIMMEL-158 .* since HIMMEL-902 $c2 via HIMMEL-110 $c110 "
+check 'two open parents: the oldest merge keeps its own target, the newest its own' 1 "$(cout "$(doc HIMMEL-nextleg-2026-11-10ZZ-r2t "$pd $v2t")" | grep -c "$p2t")"
 
 gnew
 gc 2026-11-08T10:00:00Z 'base' > /dev/null
