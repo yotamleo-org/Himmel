@@ -3098,6 +3098,51 @@ run "7130 class1 control [a changed worktree bullet writer] -> deny" 2 \
     "$(payload "bash scripts/handover/chief-kit/append-results.sh scripts/cr/write-verdicts.sh" "$WT")" "$HR"
 g -C "$WT" checkout -q -- scripts/cr/write-verdicts.sh scripts/handover/chief-kit/append-results.sh
 
+# ---- a mention beside sort, find, gh, a checksum, a loop or an assignment ---
+# One week of "does not resolve" refusals grouped by shape: each allow row is a
+# live shape that runs no program but a reader, on a tree whose gate copy
+# differs from the anchor's, and its deny twin swaps in the one word that runs
+# something. The rows after them are the bypasses an inline variable opens.
+echo changed >>"$WT/scripts/cr/write-verdicts.sh"
+# Three lines a row: the label, the allowed command, its deny twin.
+while IFS= read -r label && IFS= read -r allow && IFS= read -r deny; do
+    run "inert mention [$label] -> allow" 0 "$(payload "$allow" "$WT")" "$HR"
+    run "inert mention control [$label] -> deny" 2 "$(payload "$deny" "$WT")" "$HR"
+done <<'ROWS'
+gh pr read
+gh pr list --json=files --jq '.[] | select(.path | test("scripts/cr/write-verdicts.sh|chief-kit/(go|tick)|x"))'
+gh pr list --web --jq '.[] | select(.path | test("scripts/cr/write-verdicts.sh|chief-kit/(go|tick)|x"))'
+sort and uniq
+grep -h -o -E 'bash [a-z/-]*(verdicts|handoff)' scripts/cr/* | sort | uniq -c | sort -rn
+grep -h -o -E 'bash [a-z/-]*(verdicts|handoff)' scripts/cr/* | sort | uniq -c | sort --compress-program=bash
+find without an action that runs
+cd scripts/cr; find . -name 'write-*.sh' -newer anchor-handoff.sh -print
+cd scripts/cr; find . -name 'write-*.sh' -newer anchor-handoff.sh -exec bash {} +
+checksum of a glob
+cd scripts/cr; ls -la .; sha256sum *
+cd scripts/cr; ls -la .; bash *
+one-letter assignment
+F=scripts/handover/chief-kit/append-results.sh; grep -c 'bash scripts/cr/write-verdicts.sh $(x)' $F
+F=scripts/handover/chief-kit/append-results.sh; bash -c 'bash scripts/cr/write-verdicts.sh $(x)' $F
+for loop over readers
+for f in scripts/cr/*.sh; do printf '%s: ' "$f"; grep -o -E 'bash [a-z-]*(verdicts|handoff)' "$f" | sort | uniq -c; done
+for f in scripts/cr/*.sh; do printf '%s: ' "$f"; grep -o -E 'bash [a-z-]*(verdicts|handoff)' "$f" | sort | bash; done
+ROWS
+# shellcheck disable=SC2016  # the payload text must stay unexpanded
+for v in \
+    'for x in -e1escripts/cr/write-verdicts.sh; do sed -n 1p docs/a.md $x; done; ls .' \
+    'for v in -vBASH_CMDS[cat]; do printf $v %s scripts/cr/write-verdicts.sh; done; cat docs/a.md; ls .' \
+    'for s in --compress-program=scripts/cr/write-verdicts.sh; do ls . | sort $s; done' \
+    'for a in -exec; do find . -name write-verdicts.sh $a scripts/cr/write-verdicts.sh {} +; done' \
+    'for PATH in scripts/cr; do ls . scripts/cr/*; done' \
+    'PATH=scripts/cr; ls . scripts/cr/* | sort -u' \
+    'ls . scripts/cr | sort | uniq - scripts/cr/write-verdicts.sh' \
+    'ls . scripts/cr | sort -o scripts/cr/write-verdicts.sh' \
+    'find . -name write-verdicts.sh -fprint scripts/cr/write-verdicts.sh'; do
+    run "inert mention bypass [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
+done
+g -C "$WT" checkout -q -- scripts/cr/write-verdicts.sh
+
 # ---- 5763: a gate path is read from the executable position only ----------
 # Interpreter code or a heredoc body that merely NAMES a gate path is not an
 # invocation; every shape that runs one stays denied. Both on a clean tree and
