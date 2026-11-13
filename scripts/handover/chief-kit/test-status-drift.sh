@@ -1483,9 +1483,20 @@ drift
 contains "3e: an unreadable ruling store is a HEALTH row" "$(drows HEALTH)" "HEALTH - release: the rulings of v1.1.3 are unreadable"
 check "3e: and the signature is unknown" "$(dlast)" "sdrift=unknown"
 contains "3e: and the drift row is not dropped" "$(drows VERSION-DRIFT)" "--key HIMMEL-90031"
-vd_held; unset HIMMEL_RELEASE_STATE_DIR
-USER_SLUG="" drift
-export HIMMEL_RELEASE_STATE_DIR="$tmp/release"
+vd_held; rm -f "$HIMMEL_RELEASE_STATE_DIR/v1.1.3/rulings.jsonl"
+vruling HIMMEL-90031 R-v1.1.3-0006 1728000 INTAKE none BACKLOG rm
+printf '%s  Op  status: In Progress → Done\n' "$(viso 2592000)" > "$FX/history.HIMMEL-90031"
+drift
+contains "3e: a ruling older than the 14-day merged window re-files the INTAKE (an older merge is unread)" "$(drows VERSION-DRIFT)" "--key HIMMEL-90031"
+check "3e: and no wait row for the old ruling" "$(dcount AWAITING)" 0
+vd_held; rm -rf "$CFG/fxslug"; mkdir -p "$CFG/fxslug/fxrepo/release"
+cp -R "$HIMMEL_RELEASE_STATE_DIR/v1.1.3" "$CFG/fxslug/fxrepo/release/"
+printf 'USER_SLUG=fxslug\n' > "$FXR/.env"
+(cd "$FXR" && env -u USER_SLUG -u HIMMEL_RELEASE_STATE_DIR HANDOVER_DIR="$CFG" HOME="$tmp/fxhome" bash "$FXR/scripts/handover/chief-kit/status-drift.sh" --repo acme/fork --docs-dir "$tmp/docs" >"$tmp/dout" 2>&1)
+contains "3e: with only HANDOVER_DIR in the environment, USER_SLUG comes from the repo's .env and the ruling is read" "$(drows AWAITING)" "AWAITING HIMMEL-90031 rm since=$(viso 7200) ruling=R-v1.1.3-0002"
+check "3e: and no HEALTH row with USER_SLUG from the .env" "$(dcount HEALTH)" 0
+rm -f "$FXR/.env"
+(cd "$FXR" && env -u USER_SLUG -u HIMMEL_RELEASE_STATE_DIR HANDOVER_DIR="$CFG" HOME="$tmp/fxhome" bash "$FXR/scripts/handover/chief-kit/status-drift.sh" --repo acme/fork --docs-dir "$tmp/docs" >"$tmp/dout" 2>&1)
 contains "3e: a ruling store with no location is a HEALTH row" "$(drows HEALTH)" "HEALTH - release: the rulings of v1.1.3 are unreadable"
 check "3e: and the signature is unknown with no location" "$(dlast)" "sdrift=unknown"
 rm -rf "$HIMMEL_RELEASE_STATE_DIR" "$HIMMEL_ADMISSIONS_LEDGER"

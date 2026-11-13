@@ -45,7 +45,8 @@
 #                     The release manager's rulings are read first: when the key's latest ruling refused
 #                     its INTAKE and no merged PR naming it, status change or admissions-ledger row is
 #                     newer, the row is AWAITING `<owner> since=<ts> ruling=<id>` ending in ` | wait=<owner>`
-#                     (rm or operator) instead. An unreadable ruling store is a HEALTH row and sdrift=unknown
+#                     (rm or operator) instead. A ruling older than 14 days (the merged-PR list's window)
+#                     re-files the INTAKE. An unreadable ruling store is a HEALTH row and sdrift=unknown
 #   HEALTH            an input is unreadable or saturated, the log is unwritable
 #                     or carries a disabled row, or a status is unknown
 # The last line is `sdrift=<n>:<sig8>` (n rows that are not wait rows, sig8 over every sorted row), or
@@ -92,7 +93,7 @@ export LC_ALL=C
 # shellcheck disable=SC1091
 . "$HERE/../../lib/load-dotenv.sh"
 # A shell without HANDOVER_DIR would scan the stub folder; read the configured root from the primary checkout's .env.
-load_dotenv --root "$(_load_dotenv_primary_for "$HERE/../../.." 2>/dev/null)" HANDOVER_DIR 2>/dev/null || true # swallow-ok: an unreadable .env leaves the resolver's own fallback, as before
+load_dotenv --root "$(_load_dotenv_primary_for "$HERE/../../.." 2>/dev/null)" HANDOVER_DIR USER_SLUG 2>/dev/null || true # swallow-ok: an unreadable .env leaves the resolver's own fallback, as before
 
 usage() { echo "usage: status-drift.sh [--repo <owner/repo>] [--docs-dir <dir>] [--snapshot <dir>]" >&2; exit 2; }
 REPO="" DOCS="" SNAP=""
