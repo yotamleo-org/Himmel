@@ -36,8 +36,9 @@ case in the key is one panel call per critic in the roster, so a codex-only swee
 is 94 panel calls; that is a floor, because each critic can take up to 3 attempts.
 `run.sh` refuses without `HIMMEL_BILLED_OK=1`, and no session sets that flag
 itself: the chief writes a sweep worker's brief and launches it through the
-go-code route (`docs/internals/bypass-launch-route.md`), which sets the flag on
-the operator's go code. No other worker runs it. From the primary checkout, after
+go-code route (`scripts/station-ops/bypass-launchd.sh`, described in
+`docs/internals/bypass-launch-route.md`), which sets the flag on the operator's
+go code. No other worker runs it. From the primary checkout, after
 `bash scripts/lib/usage-preflight.sh` says PROCEED and with the codex
 `used_percent` noted:
 
