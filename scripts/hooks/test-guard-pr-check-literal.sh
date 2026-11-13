@@ -3127,6 +3127,9 @@ ROWS
 for v in \
     'for x in -e1escripts/cr/write-verdicts.sh; do sed -n 1p docs/a.md $x; done; ls .' \
     'for v in -vBASH_CMDS[cat]; do printf $v %s scripts/cr/write-verdicts.sh; done; cat docs/a.md; ls .' \
+    "for F in 'HOME[\$(bash scripts/cr/write-verdicts.sh)]'; do cat \$HOME[F] docs/a.md; done" \
+    "F='HOME[\$(bash scripts/c'; F=\$F'r/write-verdicts.sh)]'; cat \${HOME}[F] docs/a.md; ls . scripts/cr/*" \
+    "F='HOME[\$(bash scripts/c'; F=\$F'r/write-verdicts.sh)]'; cat \$HOME[F] docs/a.md; ls . scripts/cr/*" \
     'for s in --compress-program=scripts/cr/write-verdicts.sh; do ls . | sort $s; done' \
     'for a in -exec; do find . -name write-verdicts.sh $a scripts/cr/write-verdicts.sh {} +; done' \
     'for PATH in scripts/cr; do ls . scripts/cr/*; done' \

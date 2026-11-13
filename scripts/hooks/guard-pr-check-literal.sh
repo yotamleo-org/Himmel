@@ -70,8 +70,9 @@
 # readers, mention_only_wide proves these shapes inert:
 #   - a for loop whose variable is one ASCII letter, and a segment of one-letter
 #     assignments (F=...): no bash or zsh variable of that name changes what a
-#     command runs, and an unexported assignment reaches no environment; the
-#     value is never read, so an expansion of it counts as any word at all;
+#     command runs, and an unexported assignment reaches no environment; an
+#     expansion of it counts as any word at all, and no word may subscript a
+#     variable ($NAME[...]), which zsh evaluates as math that reads the value;
 #   - sort with only -b -d -f -g -h -i -M -n -r -R -s -u -V -z -k -t (no -o and
 #     no --compress-program, which writes or runs a program), and uniq with
 #     -c -d -i -u -z and at most one operand (a second is an output file);
@@ -2017,6 +2018,9 @@ mention_only_wide() {
             *'>' | *'>|') [ "$w" = /dev/null ] || return 1 ;;
         esac
         if [ "${ST_X[k]}" = 1 ]; then
+            # zsh reads $NAME[sub] as a subscript and evaluates sub as math,
+            # which reads a variable this line may have set
+            [[ ! $w =~ \$(\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)\[ ]] || return 1
             t=$w
             while [[ $t =~ $CMDPOS_REF_RE ]]; do t="${BASH_REMATCH[1]}${BASH_REMATCH[3]}"; done
             case "$t" in *'$'*) return 1 ;; esac
