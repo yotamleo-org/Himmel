@@ -124,7 +124,7 @@ Stages currently wired:
 - **Oxlint ratchets (pre-commit):** oxlint-complexity-ratchet (no NEW
   function above the audited max),
   oxlint-hardening-zero-violations (bug-class hardening — zero violations;
-  pinned oxlint 1.90.0, with root/cwd diagnostics; findings and tool/JSON
+  pinned oxlint 1.93.0, with root/cwd diagnostics; findings and tool/JSON
   failures block, while only a missing `bunx` fails open).
 - **Doctor check-ID + unchecked-mktemp gates (pre-commit):**
   doctor-check-ids (`check-doctor-check-ids.sh`, scoped to
