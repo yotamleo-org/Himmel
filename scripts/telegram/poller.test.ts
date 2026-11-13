@@ -30,8 +30,12 @@ const spawnHighTriage = async (): Promise<TriageVerdict> => "spawn-high";
 beforeEach(() => { delete process.env.TELEGRAM_TRIAGE; });
 // No row reads the station's own telegram.bridgeLegacyChats: makeRunFn's default legacyFor sees an empty himmel dir.
 const priorConfDir = process.env.HIMMEL_CONFIG_DIR;
-beforeEach(() => { process.env.HIMMEL_CONFIG_DIR = mkdtempSync(join(tmpdir(), "poller-conf-")); });
-afterEach(() => { if (priorConfDir === undefined) delete process.env.HIMMEL_CONFIG_DIR; else process.env.HIMMEL_CONFIG_DIR = priorConfDir; });
+let confDir = "";
+beforeEach(() => { confDir = mkdtempSync(join(tmpdir(), "poller-conf-")); process.env.HIMMEL_CONFIG_DIR = confDir; });
+afterEach(() => {
+  rmSync(confDir, { recursive: true, force: true });
+  if (priorConfDir === undefined) delete process.env.HIMMEL_CONFIG_DIR; else process.env.HIMMEL_CONFIG_DIR = priorConfDir;
+});
 
 // --- retry cap + run.log ---
 
