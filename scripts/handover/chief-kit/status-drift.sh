@@ -626,9 +626,9 @@ vd_newer() { # <key> <ruling epoch> - rc 0 when evidence newer than the ruling e
     ledger="${HIMMEL_ADMISSIONS_LEDGER:-}"
     if [ -z "$ledger" ]; then hr=$(handover_root 2>/dev/null) || return 0; ledger="$hr/admissions-ledger.jsonl"; fi # swallow-ok: no handover root keeps the INTAKE fix
     [ -e "$ledger" ] || return 1
-    # swallow-ok: an unreadable ledger or a row with a bad time is rc 0 below, so the INTAKE fix stays
-    r=$(jq -Rr --arg k "$1" --argjson t "$2" "$VD_EP"'fromjson? | select(type == "object" and .key == $k and (.ts | type) == "string")
-        | (.ts | ep) > $t' "$ledger" 2>/dev/null) || return 0
+    # swallow-ok: an unreadable ledger, a line that is not an object or a row of the key with a bad time keeps the INTAKE fix
+    r=$(jq -Rr --arg k "$1" --argjson t "$2" "$VD_EP"'select(test("\\S")) | (fromjson? // null)
+        | if type != "object" then true elif .key != $k then empty else (.ts | ep) > $t end' "$ledger" 2>/dev/null) || return 0
     case "$r" in *true*) return 0 ;; esac
     return 1
 }
