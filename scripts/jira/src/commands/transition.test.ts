@@ -553,6 +553,19 @@ describe('a Done close folds a ticket held in a later unreleased version into th
     expect(held).toEqual(['v1.1.3']);
   });
 
+  it('an unreadable version list does not stop the close of an already-versioned ticket', async () => {
+    wireFold(['v1.1.4'], OPEN);
+    const base = mockRequest.getMockImplementation()!;
+    mockRequest.mockImplementation(async (method: string, path: string, body?: unknown) => {
+      if (method === 'GET' && path.endsWith('/versions')) throw new Error('HTTP 503');
+      return base(method, path, body);
+    });
+    await run('HIMMEL-1', 'Done');
+    expect(puts()).toHaveLength(0);
+    expect(mockRequest.mock.calls.some((c) => c[0] === 'POST' && String(c[1]).endsWith('/transitions'))).toBe(true);
+    expect(errs.join('\n')).toMatch(/^WARN HIMMEL-1 keeps v1\.1\.4: the version list could not be read \(HTTP 503\)/m);
+  });
+
   it('a failed add leaves the later version in place and the close still lands', async () => {
     wireFold(['v1.1.4'], OPEN);
     const base = mockRequest.getMockImplementation()!;

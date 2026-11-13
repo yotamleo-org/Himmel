@@ -61,8 +61,16 @@ export async function transitionIssue(
     const fixVersions = (
       await req<{ fields: { fixVersions?: Array<{ name?: string }> } }>('GET', `/issue/${key}?fields=fixVersions`)
     ).fields.fixVersions;
-    const versions = await fetchVersions(projectFromKey(key));
-    if (!fixVersions || fixVersions.length === 0) {
+    if (fixVersions && fixVersions.length > 0) {
+      let versions: ProjectVersion[] | undefined;
+      try {
+        versions = await fetchVersions(projectFromKey(key));
+      } catch (e) {
+        console.error(`WARN ${key} keeps ${fixVersions.map((v) => v.name ?? '').join(', ')}: the version list could not be read (${(e as Error).message}); no fold`);
+      }
+      if (versions) await foldIntoCurrent(key, fixVersions.map((v) => v.name ?? ''), versions);
+    } else {
+      const versions = await fetchVersions(projectFromKey(key));
       const version = earliestUnreleased(versions);
       if (version) {
         const placement = await placeInto(key, version, versions, 'earliest unreleased; --no-version opts out');
@@ -73,8 +81,6 @@ export async function transitionIssue(
           unstamped = placement.why;
         }
       }
-    } else {
-      await foldIntoCurrent(key, fixVersions.map((v) => v.name ?? ''), versions);
     }
   }
   await req('POST', `/issue/${key}/transitions`, { transition: { id: match.id } });
@@ -157,8 +163,9 @@ function currentVersion(versions: ProjectVersion[]): string | undefined {
 /**
  * A Done close of a ticket that holds an unreleased version later than the current one moves it into the
  * current version: add the current, then remove each later one. Released and archived versions it holds
- * stay. A refusal or a failed write leaves the held versions as they were and prints one line; the close
- * itself still lands and the exit code is unchanged.
+ * stay. A refusal prints one line and writes nothing. The add and each remove are separate requests, so a
+ * failure part-way keeps what the earlier ones wrote (the ticket then holds both versions) and prints a
+ * WARN naming it. Neither stops the close, and the exit code is unchanged.
  */
 async function foldIntoCurrent(key: string, held: string[], versions: ProjectVersion[]): Promise<void> {
   const cur = currentVersion(versions);
