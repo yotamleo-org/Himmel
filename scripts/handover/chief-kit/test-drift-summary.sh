@@ -243,7 +243,6 @@ printf 'UNOWNED HIMMEL-7588 x | writer=a | fix=b\nsdrift=garbage\n' > "$DRIFT"; 
 out="$(sum)"
 eq 'E15 an sdrift trailer that is not count:signature is marked unknown' "$(jqv "$out" '.unknown')" true
 
-# I6 (S5): `unowned` lists the real UNOWNED keys once; known, waiting and other classes never
 printf '# checker\tclass\tkey\tedited-at\n' > "$KNOWN"
 printf 'HIMMEL-7980\tUNOWNED\tHIMMEL-14\t2026-10-28T22:00:00Z\n' >> "$KNOWN"
 mirror HIMMEL-7980 "To Do"

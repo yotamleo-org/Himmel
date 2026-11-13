@@ -640,7 +640,7 @@ for f_tool in gh jira; do
     chmod +x "$W/bin-focus6829/$f_tool"
 done
 f_doc() { printf '%s\n' '# chief' ${1:+"focus-version: $1"} '' '## Results (newest at the bottom)' > "$f_dir/chief.md"; }
-f_state() { printf 'status=%s\nstage=%s\ngen=3\ndirty=\nsha8=0a1b2c3d\nsdrift=%s\n%sts=1\n' "$1" "$2" "$3" "${4:+stale=$4$'\n'}" > "$f_dir/focus-state"; } # [$4 = the stale= value]
+f_state() { printf 'status=%s\nstage=%s\ngen=3\ndirty=\nsha8=0a1b2c3d\nsdrift=%s\n%sts=1\n' "$1" "$2" "$3" "${4:+stale=$4$'\n'}" > "$f_dir/focus-state"; }
 f_tick() { PATH="$W/bin-focus6829:$PATH" bash "$SUT" --doc "$f_dir/chief.md" "$@" 2>/dev/null; }
 # positive control: a gh call under a script named focus-refresh.sh is logged
 : > "$f_calls"
@@ -660,7 +660,6 @@ not_contains 'a zero drift line leaves sdrift= off the compact line' "$f_out" ' 
 f_out="$(f_tick --verbose)"
 contains '--verbose shows a healthy focus state' "$f_out" 'focus: ok'
 contains '--verbose shows a zero drift line' "$f_out" 'sdrift: 0:0f0f0f0f'
-# S5: stale= is the focus-state's STALE line (the UNOWNED keys of the pass), printed after sdrift=
 f_state FAILED drift 2:abcd1234 1:HIMMEL-11
 f_out="$(f_tick)"
 contains 'a stale line in the focus state puts stale= after sdrift= on the compact line' "$f_out" ' sdrift=2:abcd1234 stale=1:HIMMEL-11'

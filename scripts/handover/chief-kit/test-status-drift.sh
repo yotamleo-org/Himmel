@@ -1002,7 +1002,6 @@ reset "In Progress"; jl "$K" "In Progress"; owned "$K" PARKED-USAGE '{"state":"p
 drift
 check "9561 S1 8 control: a parked worker over a FRESH lock keeps its owner" "$(dcount UNOWNED)" 0
 
-# 9686 S5 (P20): the live-worker half of STALE, read off a drift file status-drift.sh itself printed
 reset "In Progress"; jl "$K" "In Progress"; jl HIMMEL-9002 "In Progress"
 owned "$K" LIVE '{"state":"live"}'; owned HIMMEL-9002 WRAPPED '{"state":"wrapped"}'; lockfx 11 FRESH
 drift
@@ -1669,7 +1668,6 @@ else
     echo "skip - 3c: hung known-bugs sync (no timeout binary)"
 fi
 
-# 9686 S5: the STALE feed (stage/stale.tsv for the render, stale= in focus-state)
 fr_reset
 fr
 trk=$(grep '^tracker ' "$FX/fr.log")
@@ -1726,6 +1724,12 @@ check "9686 S5: a summary that exits non-zero reads state unknown" "$(fst stale)
 fr_reset; echo 'not json' > "$FX/dsum.out"
 fr
 check "9686 S5: an unparseable summary reads state unknown" "$(fst stale)" unknown
+fr_reset; echo '{"unknown":false,"stale":false,"unowned":[123]}' > "$FX/dsum.out"
+fr
+check "9686 S5: a key that is not a ticket key reads state unknown, never a complete empty list" "$(fst stale)" unknown
+fr_reset; echo '{"unowned":["HIMMEL-2"]}' > "$FX/dsum.out"
+fr
+check "9686 S5: a summary with no unknown and stale flags reads state unknown" "$(fst stale)" unknown
 check "9686 S5: and the refresh still ends ok" "$(frout)" "focus=ok"
 
 # focus-version: auto (or no line beside a release: line) follows the declared release's current version.

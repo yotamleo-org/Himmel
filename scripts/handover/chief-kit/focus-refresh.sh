@@ -399,10 +399,10 @@ if [ -n "$stale_src" ]; then
     if stale_json=$(bounded 30 "${DSUM[@]}" --json --drift "$stale_src" --mirror-dir "$MIR" 2>/dev/null) \
         && stale_line=$(printf '%s' "$stale_json" | python3 -I -c 'import json, re, sys
 d = json.load(sys.stdin)
-u = d["unowned"]
-assert isinstance(u, list)
-keys = [k for k in u if isinstance(k, str) and re.fullmatch(r"[A-Z][A-Z0-9]*-[0-9]+", k)]
-partial = bool(d.get("unknown")) or bool(d.get("stale"))
+keys = d["unowned"]
+assert isinstance(keys, list) and all(isinstance(k, str) and re.fullmatch(r"[A-Z][A-Z0-9]*-[0-9]+", k) for k in keys)
+assert isinstance(d["unknown"], bool) and isinstance(d["stale"], bool)
+partial = d["unknown"] or d["stale"]
 with open(sys.argv[1], "w") as f:
     f.write("state\t%s\n" % ("partial" if partial else "complete") + "".join(k + "\n" for k in keys))
 body = ",".join(keys[:8]) + (",+%d" % (len(keys) - 8) if len(keys) > 8 else "")
