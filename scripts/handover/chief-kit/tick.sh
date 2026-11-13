@@ -522,6 +522,10 @@ version, or worker-held). Shown only when non-zero; hidden at 0 or with no fresh
 chains=STALE:<n>/<m> (HIMMEL-8336) counts the steps of the focus-chains.json beside --doc that the Jira mirror
 reads Done: n of its m steps (focus-refresh.sh regenerates the file from the chain registry, so a stale value
 means a hand-kept or unrefreshed file). Hidden when nothing is stale, there is no file, or no mirror.
+chains=UNWIRED:<k> counts the Live state `pool-disposition: <KEY> question|slice after <ON>` lines whose
+pair the Jira mirror shows no Blocks link for, so a link live-state.sh failed to write shows at the next
+tick. A pair with a Done key, a key the mirror cannot read, or one live-state.sh recorded as final counts
+nothing. It joins a STALE value after a comma (chains=STALE:<n>/<m>,UNWIRED:<k>); at 0 nothing changes.
 
 pool-closed=<closed>/<total> (HIMMEL-6602) counts the keys on --doc's Live state
 `priority:` line that the Jira mirror reads closed (statusCategory Done); shown only when
@@ -730,6 +734,43 @@ for k in keys:
     except OSError:
         unread += 1
 print("STALE:%d/%d" % (done, len(keys)) if done else "skip" if unread else "ok")
+PY
+}
+
+# UNWIRED:<n>: Live state `pool-disposition: <KEY> question|slice after <ON>` pairs (live-state.sh's parse)
+# that the Jira mirror shows no Blocks link for on either side, both keys open. A key with no readable
+# mirror file, a Done key and a pair live-state.sh recorded as final count nothing; no Jira call.
+chains_unwired() { # <doc> <mirror dir> <live-state record dir>
+    python3 -I - "$1" "$2" "$3" <<'PY'
+import hashlib, os, re, sys
+doc, mirror, record = sys.argv[1:4]
+record = os.path.join(record, hashlib.sha256((os.path.realpath(doc) + "\n").encode()).hexdigest())
+def front(key):
+    try:
+        return open("%s/%s.md" % (mirror, key)).read().split("\n---", 1)[0]
+    except OSError:
+        return None
+def listed(head, field, key):
+    m = re.search(r"^\s+%s:\s*(.*)$" % field, head, re.M)
+    return bool(m) and key in re.findall(r"[A-Z][A-Z0-9]*-\d+", m[1])
+try:
+    final = set(open(record).read().splitlines())
+except OSError:
+    final = set()
+pairs, live = set(), False
+for line in open(doc).read().splitlines():
+    if line.startswith("## "):
+        live = line == "## Live state"
+    m = live and re.match(r"pool-disposition:\s+([A-Z][A-Z0-9]*-\d+)\s+(?:question|slice)\s+after\s+([A-Z][A-Z0-9]*-\d+)(?![A-Za-z0-9-])", line)
+    if m and m[1] != m[2] and "%s blocks %s" % (m[2], m[1]) not in final:
+        pairs.add((m[2], m[1]))
+n = 0
+for on, key in pairs:
+    a, b = front(on), front(key)
+    if a is None or b is None or any(re.search(r'^statusCategory: "Done"$', h, re.M) for h in (a, b)):
+        continue
+    n += not (listed(b, "blocked_by", on) or listed(a, "blocks", key))
+print(n)
 PY
 }
 
@@ -2958,6 +2999,14 @@ fi
 chains_summary=skip
 if [ -n "$console_doc" ] && [ -f "${console_doc%/*}/focus-chains.json" ] && [ -d "$nd_mirror" ]; then
     chains_summary="$(chains_stale "${console_doc%/*}/focus-chains.json" "$nd_mirror")" || chains_summary=skip  # swallow-ok: a failed read reads skip
+fi
+# UNWIRED:<k> joins STALE after a comma and replaces ok or skip; at 0 every value above stays as it is.
+if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
+    chains_unwired_n="$(chains_unwired "$console_doc" "$nd_mirror" "${TMPDIR:-/tmp}/himmel-chain-links-$UID")" || chains_unwired_n=0  # swallow-ok: a failed read counts nothing
+    case "$chains_unwired_n" in
+        0 | '' | *[!0-9]*) ;;
+        *) case "$chains_summary" in STALE:*) chains_summary="$chains_summary,UNWIRED:$chains_unwired_n" ;; *) chains_summary="UNWIRED:$chains_unwired_n" ;; esac ;;
+    esac
 fi
 
 # The tick already owns the worktree census: reuse the existing reclaiming
