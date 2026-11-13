@@ -32,7 +32,7 @@ the flag in a worker's launch script. Both shapes are now refused. Instead:
 1. The chief writes the sweep worker's brief in the handover bucket.
 2. The chief writes a request into `<bucket>/bypass-queue/<name>.req`:
 
-   ```
+   ```text
    brief=<absolute brief path, directly in the bucket>
    model=claude-sonnet-5-5
    chief=<chief session name>
