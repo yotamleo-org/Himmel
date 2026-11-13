@@ -460,7 +460,7 @@ _ts_remainder_owner() {
     local keys
     keys=$(printf '%s\n' "$2" | grep -oE '[A-Za-z][A-Za-z0-9]*-[0-9]+' | tr '[:lower:]' '[:upper:]' | grep -vxF "$1" | sort -u | paste -sd, - | sed 's/,/, /g') || keys=""  # swallow-ok: no key in the text is the empty answer
     if [ -n "$keys" ]; then printf '%s' "$keys"; return 0; fi
-    if printf '%s\n' "$2" | grep -qiE 'chief[ -](step|run)'; then printf 'chief step'; return 0; fi
+    if grep -qiE 'chief[ -](step|run)' <<<"$2"; then printf 'chief step'; return 0; fi
     return 1
 }
 
