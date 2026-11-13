@@ -2440,7 +2440,7 @@ export async function main(): Promise<void> {
   installTimestampedLogging();
   await writeHostNs().catch((e) => console.error(`[poller] could not write the operator fence's host-ns: ${e}; operator verbs refuse until it exists`));
   const root = bridgeRoot();
-  await writePollerEpoch(root).catch((e) => console.error(`[poller] could not write poller-epoch: ${e}; bridge-words refuses as stale until it exists`));
+  await writePollerEpoch(root).catch((e) => console.error(`[poller] could not write or clear poller-epoch: ${e}; fix the bridge root and restart`));
   const repoCwd = process.env.HIMMEL_REPO ?? process.cwd();
   const bridgeEnv = await loadBridgeEnv();
   const token = bridgeEnv.TELEGRAM_BOT_TOKEN!;
@@ -2796,7 +2796,10 @@ export async function writeHostNs(path?: string, procRoot = "/proc"): Promise<bo
 export async function writePollerEpoch(root: string, epochFile = join(REPO_ROOT, "scripts", "telegram", "bridge-envelope-epoch.txt")): Promise<boolean> {
   let body = "";
   try { body = (await readFile(epochFile, "utf8")).trim(); } catch {}
-  if (!/^\d+$/.test(body)) { await unlink(join(root, "poller-epoch")).catch(() => {}); return false; }
+  if (!/^\d+$/.test(body)) {
+    await unlink(join(root, "poller-epoch")).catch((e) => { if (e?.code !== "ENOENT") throw e; });
+    return false;
+  }
   await mkdir(root, { recursive: true });
   await atomicWrite(join(root, "poller-epoch"), `${Number(body)}\n`);
   return true;

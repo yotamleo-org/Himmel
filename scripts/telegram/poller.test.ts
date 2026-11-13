@@ -4296,6 +4296,9 @@ test("T17: start-up writes poller-epoch from bridge-envelope-epoch.txt on a scra
     expect(await P.writePollerEpoch(r, src)).toBe(false);
     expect(existsSync(join(r, "poller-epoch"))).toBe(false);
   }
+  const stuck = root();
+  mkdirSync(join(stuck, "poller-epoch"));
+  await expect(P.writePollerEpoch(stuck, src)).rejects.toThrow();
   const repo = root();
   expect(await P.writePollerEpoch(repo)).toBe(true);
   expect(readFileSync(join(repo, "poller-epoch"), "utf8")).toBe(`${readFileSync(join(import.meta.dir, "bridge-envelope-epoch.txt"), "utf8").trim()}\n`);
