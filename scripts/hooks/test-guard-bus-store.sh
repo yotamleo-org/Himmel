@@ -330,6 +330,24 @@ deny  "9628 control: a heredoc body written by cat that a data command is then p
     "$(bash_json $'cat > /tmp/x.sh <<\'EOF\'\nbus register x\nEOF\nsed -n 1p /tmp/x.sh')"
 deny  "9628 control: an echoed bus register piped to python" "$(bash_json 'echo "bus register x" | python3 -')"
 
+echo "== HIMMEL-9915: the mandated search routes are data, a pager or wrapped run still denies =="
+WT="$(cd "$HOOKS/../.." && pwd)"
+allow "9915 git grep for bus register piped to head" \
+    "$(cwd_json "git grep -n -E 'bus register|exit 18' -- scripts/handover/chief-kit/headed-arm-worker.sh | head" "$WT")"
+allow "9915 qmd-bounded query naming bus register" \
+    "$(cwd_json 'bash scripts/lib/qmd-bounded.sh query -c jira-himmel "session name bus register refusal"' "$WT")"
+allow "9915 rtk proxy grep for bus register" "$(cwd_json 'rtk proxy grep -m5 "bus register failed" f.log' "$WT")"
+deny  "9915 control: bus register x" "$(cwd_json 'bus register x' "$WT")"
+deny  "9915 control: git grep -O runs its pager" "$(cwd_json "git grep -O'sh -c \"bus register x\"' x" "$WT")"
+deny  "9915 control: git grep -nO in a short-option cluster" "$(cwd_json "git grep -nO'sh -c \"bus register x\"' x" "$WT")"
+deny  "9915 control: git grep --open-files-in-pager=sh" "$(cwd_json "git grep --open-files-in-pager=sh -e 'bus register x' f" "$WT")"
+deny  "9915 control: git grep --open abbreviates --open-files-in-pager" "$(cwd_json "git grep --open -e 'bus register x' f" "$WT")"
+deny  "9915 control: bash -c bus register" "$(cwd_json "bash -c 'bus register x'" "$WT")"
+deny  "9915 control: ls the bus root" "$(cwd_json 'ls ~/.local/state/himmel/bus' "$WT")"
+deny  "9915 control: rtk proxy of a bus register" "$(cwd_json 'rtk proxy bus register x' "$WT")"
+deny  "9915 control: rtk proxy of git grep -O" "$(cwd_json "rtk proxy git grep -O'sh -c \"bus register x\"' x" "$WT")"
+deny  "9915 control: qmd-bounded with a verb other than query" "$(cwd_json 'bash scripts/lib/qmd-bounded.sh bus register x' "$WT")"
+
 echo "== model failures: the text reader decides =="
 # A heredoc body naming bus register is allowed by the model and denied by the
 # text reader, so a deny here proves the call fell back.
