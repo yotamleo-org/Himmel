@@ -27,7 +27,7 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LEDGER_PY="$HERE/series-ledger.py"
-GH_READ_BIN="$HERE/../../lib/gh-read.sh"   # the only gh call here is a PR read: it rides the read token when main is spent
+GH_READ_BIN="$HERE/../../lib/gh-read.sh"
 [ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
 GH="${GH_CMD:-$GH_READ_BIN}"
 # shellcheck source=../../lib/git-clean.sh

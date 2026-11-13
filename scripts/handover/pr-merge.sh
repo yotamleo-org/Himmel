@@ -50,8 +50,6 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# The two reads this script makes itself (the vetted head and the title) ride the read token
-# when GH_CMD is unset; the forge seam's own calls and the merge stay on the main token.
 GH_READ_BIN="$SCRIPT_DIR/../lib/gh-read.sh"
 [ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
 # Forge-dispatch seam: forge_pr_find_open / forge_pr_mergeable / forge_pr_merge
@@ -207,8 +205,7 @@ if [ "$forge" = "github" ]; then
     # A non-empty value is required for the binding to mean anything: fail rather
     # than silently fall back to an unbound merge.
     # "${GH_CMD:-$GH_READ_BIN}", not a bare `gh` — the forge seam's github backend routes
-    # every call through GH_CMD and the tests set it to a stub; unset, the read rides
-    # the read token. The forge seam's own find, mergeability and merge calls are untouched.
+    # every call through GH_CMD and the tests set it to a stub.
     vetted_head=$("${GH_CMD:-$GH_READ_BIN}" pr view "$pr_num" --json headRefOid --jq '.headRefOid' 2>/dev/null) || vetted_head=""
     if [ -z "$vetted_head" ]; then
         echo "ERR pr-merge: cannot read the head SHA of PR #$pr_num — refusing to merge unbound." >&2

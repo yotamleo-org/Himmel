@@ -28,8 +28,6 @@ unset CR_MERGE_GATE_OK CI_MERGE_GATE_OK CR_PROFILE CR_APP GH_ADMIN_MERGE_OK FORG
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PR_MERGE="$SCRIPT_DIR/pr-merge.sh"
 
-# every row pins GH_READ_ENV_ROOT (an empty root unless a row names TT_ROOT) so no station token reaches a
-# row, and the ambient tokens are gone. The rows that drive the helper set TT_ROOT: see the S3 block below.
 TT_BASE="$(mktemp -d "${TMPDIR:-/tmp}/pr-merge-tt.XXXXXX")" || exit 1
 trap 'rm -rf "$TT_BASE"' EXIT
 READTOK=ghp_READTOKEN0123456789
@@ -242,9 +240,6 @@ STUBNODE
         chmod +x "$tmp/bin/node"
     fi
 
-    # TT_ROOT set: GH_CMD is unset and the two-token stub fronts the stub `gh`. With TT_SPENT=1 main is
-    # refused for the two reads pr-merge itself makes (the vetted head and the title) and answers everything else, so the
-    # forge seam's own find, mergeability and merge calls still run on main as before.
     local run_path="$tmp/bin:$PATH" tt_log="$tmp/tt.log"
     : > "$tt_log"
     if [ -n "${TT_ROOT:-}" ]; then
@@ -652,10 +647,7 @@ if STUB_JIRA_BUILD=1 STUB_JIRA_COMMENT_FAIL=1 STUB_PR_TITLE="feat(jira): [HIMMEL
     assert_err_has "not auto-transitioning" "failed-comment case reports the skip on stderr"
 fi
 
-# --- the vetted head and the title read ride the read token when GH_CMD is unset -----------------------
-# TT_ROOT set = the real script with its seam unset and the two-token stub first on PATH. TT_SPENT=1 refuses main for the
-# two reads pr-merge makes itself; the forge seam's find and merge still answer on main (the merge is a write).
-tt_count() { # <label> <want> <regex>
+tt_count() {
     local got; got=$(grep -c -E -- "$3" "$LAST_TT_LOG")
     if [ "$got" = "$2" ]; then pass; else fail "$1 (want $2 got $got of '$3' in: $(cat "$LAST_TT_LOG"))"; fi
 }

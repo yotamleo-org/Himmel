@@ -204,8 +204,6 @@ TMP=$(mktemp -d "${TMPDIR:-/tmp}/arm-resume.XXXXXX") || exit 1
 # (/private/var/...); canonicalise so path assertions compare like with like.
 TMP=$(cd "$TMP" && pwd -P)
 trap 'rm -rf "$TMP"' EXIT
-# every row runs with GH_READ_ENV_ROOT at an empty root and no ambient GitHub token, so a station token
-# never reaches a row; the two-token rows in section 1331 name their own root.
 mkdir -p "$TMP/gh-emptyroot" "$TMP/gh-ttroot" "$TMP/gh-tt" "$TMP/gh-himmelcfg"
 : > "$TMP/gh-emptyroot/.env"
 printf 'himmel_github_token_vm2=%s\n' "ghp_READTOKEN0123456789" > "$TMP/gh-ttroot/.env"
@@ -2963,13 +2961,11 @@ assert_not_11 "1331 fails open when gh is unavailable" "$?"
 mk_gh_stub '1428	MERGED	UNKNOWN'
 _a1331 --dry-run; assert_not_11 "1331 --dry-run skips the shipped preflight" "$?"
 
-# (i) with GH_CMD unset the preflight PR probe rides the read token. The two-token stub is first on PATH
-# as `gh` and delegates to the PR-list stub above; a spent main token must not blind the probe.
 ln -sf "$(cd "$(dirname "$ARM")" && pwd)/chief-kit/fixtures/gh-two-token-stub.sh" "$TMP/gh-tt/gh"
 GH_TTLOG="$R1331/tt.log"
 cp "$R1331/state/handovers/shipped.md" "$R1331/state/handovers/shipped-tt1.md"
 cp "$R1331/state/handovers/shipped.md" "$R1331/state/handovers/shipped-tt2.md"
-_a1331_tt() { # <root> <handover>: a handover no earlier row armed, so the already-scheduled refusal never answers first
+_a1331_tt() {
     : > "$GH_TTLOG"
     out=$(env -u GH_CMD TMPDIR="$TMP" GH_READ_ENV_ROOT="$1" PATH="$TMP/gh-tt:$ARMED_STUB:$PATH" GH_STUB_DELEGATE="$GH_FAKE" \
         GH_STUB_READ_TOKEN="ghp_READTOKEN0123456789" GHLOG="$GH_TTLOG" \

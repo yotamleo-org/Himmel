@@ -479,9 +479,6 @@ for p in series-next series-publish; do
     contains "10b: the permission file carries the $p.sh row" "$(cat "$SETTINGS")" "\"Bash(bash scripts/handover/chief-kit/$p.sh:*)\""
 done
 
-# --- 11. the PR read rides the read token when the seam is unset ---------------------------------------
-# The real status verb with GH_CMD unset and the two-token stub first on PATH as `gh`: a spent main token must not turn
-# the head-branch PR list into pr=unknown. GH_READ_ENV_ROOT is pinned for every row.
 READTOK=ghp_READTOKEN0123456789
 mkdir -p "$tmp/ttroot" "$tmp/emptyroot" "$tmp/tt" "$tmp/himmelcfg"
 printf 'himmel_github_token_vm2=%s\n' "$READTOK" > "$tmp/ttroot/.env"

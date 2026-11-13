@@ -4224,8 +4224,6 @@ _arm_shipped_preflight() {
     # GH_CMD is the house seam for this (scripts/graphify/graph-publish.sh,
     # scripts/cr/*): invoked DIRECTLY rather than found on PATH, so a test
     # seam cannot silently exercise the REAL gh.
-    # Unset, the seam is the read-token helper (a PR read, never a write): a spent
-    # main token no longer blinds the probe. Its stderr is discarded by _arm_probe.
     _gh_read_bin="$SCRIPT_DIR/../lib/gh-read.sh"
     [ -f "$_gh_read_bin" ] || _gh_read_bin=gh
     _branch=$(_arm_branch_for_preflight)

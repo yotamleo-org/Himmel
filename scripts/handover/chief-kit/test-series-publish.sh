@@ -612,9 +612,6 @@ contains "6: control: the shim is the gh on PATH and logs what it is given" "$(c
 lacks "6: the gh shim saw no pr create" "$(cat "$GH_LOG")" "pr create"
 lacks "6: the script never names a PR-opening verb" "$(cat "$SCRIPT" 2>/dev/null)" "gh pr create"
 
-# --- 18. the previous item's PR read rides the read token when the seam is unset -------------------------
-# The real publish verb with GH_CMD unset and the two-token stub first on PATH as `gh`: a spent main token must not turn
-# the head-branch PR list into PUBLISH-WAIT. GH_READ_ENV_ROOT is pinned for every row.
 READTOK=ghp_READTOKEN0123456789
 mkdir -p "$tmp/ttroot" "$tmp/emptyroot" "$tmp/tt" "$tmp/himmelcfg"
 printf 'himmel_github_token_vm2=%s\n' "$READTOK" > "$tmp/ttroot/.env"
@@ -623,7 +620,7 @@ ln -s "$HERE/fixtures/gh-two-token-stub.sh" "$tmp/tt/gh"
 TTLOG="$tmp/tt.log"
 logn() { grep -c -E -- "$1" "$TTLOG"; }
 unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
-tt_sp() { # <root> <ledger>
+tt_sp() {
     : > "$TTLOG"
     rc=0
     out="$( cd "$REPO" && env -u GH_CMD GH_READ_ENV_ROOT="$1" PATH="$tmp/tt:$PATH" GH_STUB_DELEGATE="$tmp/bin/gh" \

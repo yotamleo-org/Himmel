@@ -197,8 +197,6 @@ check "(o) ready-check exit 1 exits 1" 1 "$rc"
 has "(o) a real fail still says FAIL" "ready-check: FAIL" "$out"
 has "(o) a real fail keeps ready-check-failed" "ready-check-failed" "$out"
 
-# (p) the PR view rides the read token when the GH_CMD seam is unset. The two-token stub is first on
-# PATH as `gh` and delegates to this suite's own stub; GH_READ_ENV_ROOT is pinned for every row.
 READTOK=ghp_READTOKEN0123456789
 mkdir -p "$WORK/ttroot" "$WORK/emptyroot" "$WORK/tt" "$WORK/himmelcfg"
 printf 'himmel_github_token_vm2=%s\n' "$READTOK" > "$WORK/ttroot/.env"
@@ -208,7 +206,7 @@ TTLOG="$WORK/tt.log"
 logn() { grep -c -E -- "$1" "$TTLOG"; }
 unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
 printf '#!/bin/sh\necho test-a.sh\n' > "$WORK/impacted-stub"
-tt_run() { # <root>
+tt_run() {
     : > "$TTLOG"
     out=$( cd "$WORK/repo" && env -u GH_CMD GH_READ_ENV_ROOT="$1" PATH="$WORK/tt:$PATH" GH_STUB_DELEGATE="$WORK/bin/gh" \
         GH_STUB_READ_TOKEN="$READTOK" GHLOG="$TTLOG" HIMMEL_SECRETS_KEYRING=off HIMMEL_CONFIG_DIR="$WORK/himmelcfg" \

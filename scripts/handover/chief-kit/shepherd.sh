@@ -65,7 +65,7 @@ case "$PR" in
         exit 2 ;;
 esac
 
-GH_READ_BIN="$HERE/../../lib/gh-read.sh"   # the only gh call here is the PR view: it rides the read token when main is spent
+GH_READ_BIN="$HERE/../../lib/gh-read.sh"
 [ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
 GH="${GH_CMD:-$GH_READ_BIN}"
 READY_CHECK="${SHEPHERD_READY_CHECK:-$HERE/ready-check.sh}"
