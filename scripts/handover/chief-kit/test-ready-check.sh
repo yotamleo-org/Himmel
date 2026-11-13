@@ -1187,6 +1187,7 @@ o7raw() { # <name> <exit> <body escapes>: a whole body, one line a section the a
 o7raw "9561 S4a 7c: an owed line in a second coverage section is window-checked (2099 fails)" 1 "## Ticket coverage\\n- ask one: done\\n## Notes\\nx\\n## Ticket coverage\\n- b: owed $o_ar chief by 2099-01-01\\n"
 o7raw "9561 S4a 7c: an owed line behind a form feed is window-checked (2099 fails)" 1 "## Ticket coverage\\n- ask one: done\\n## Notes\\n## x\\f## Ticket coverage\\f- b: owed $o_ar chief by 2099-01-01\\n"
 o7raw "9561 S4a 7c: a second coverage section's owed line inside the window passes" 0 "## Ticket coverage\\n- ask one: done\\n## Notes\\nx\\n## Ticket coverage\\n- b: owed $o_ar chief by $(o_day 2)\\n"
+o7raw "9561 S4a 7c: a second-section deferral to the branch's own key does not hide a 2000 owed line" 1 "## Ticket coverage\\n- ask one: owed $o_ar chief by $(o_day 2)\\n## Notes\\n## Ticket coverage\\n- y: deferred $o_ar HIMMEL-100\\n- z: owed $o_ar chief by 2000-01-01\\n"
 
 # the full run prints the same shape message on the same failure
 reset_stubs

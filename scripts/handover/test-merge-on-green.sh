@@ -4426,6 +4426,11 @@ s4_ans=$(s4_read "$(printf '## Ticket coverage\n- a: done\n### More\n- b: owed %
 case "$s4_ans" in remaining$'\t'*) pass ;; *) fail "9561 S4a: an owed line under a ### heading is never owed, so it cannot dodge ready-check's window (reader said: $s4_ans)" ;; esac
 s4_ans=$(s4_read "$(printf '## Ticket coverage\n- a: done\nowed %s chief by 2099-01-01\n' "$s4_arrow")")
 case "$s4_ans" in remaining$'\t'*) pass ;; *) fail "9561 S4a: an owed line that is not a list line is never owed (reader said: $s4_ans)" ;; esac
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    STUB_PR_BODY="$(printf '## Ticket coverage\n- a: owed %s operator by %s\r- c: done\n' "$s4_arrow" "$s4_d2")" \
+    run_mog 0 "9561 S4a: a lone CR in the body reads as ready-check reads it (joined), so the owed line is not owed"
+assert_status_row "9561 S4a: a lone CR joined the owed line to the next, so the row says remaining" \
+    '.event == "merge" and .stage == "pre-merge" and .remainder == "remaining" and (has("owed") | not)'
 # a title naming no ticket is not a partial merge of one: no remainder is asked of it
 STUB_PR_BODY="just a summary" run_mog 0 "8673: a title with no ticket key asks for no remainder"
 assert_gh_has "8673: the keyless title merged" "pr merge"

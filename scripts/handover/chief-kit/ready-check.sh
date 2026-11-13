@@ -1017,11 +1017,12 @@ else
     done <<EOF
 $cov_lines
 EOF
-    # the reader reads the whole body as item 17 and the merge do: an owed answer it gives for a line the checks above never saw is window-checked too
+    # the reader reads the whole body as item 17 and the merge do: an owed answer it gives for a line the checks above never saw is window-checked too;
+    # no own key, since item 17 and the merge pass the title's key and a deferral to either key must not hide the owed date
     if printf '%s\n' "$cov_body" | grep -qiE "$cov_owed_re"; then
         cov_wans=""; cov_wrc=0
         if [ -f "$cov_reader" ]; then
-            cov_wans=$(printf '%s\n' "$cov_body" | python3 -I "$cov_reader" "${cov_own:-none}" 2>/dev/null) || cov_wrc=$?  # swallow-ok: a non-zero rc or empty answer fails the line below
+            cov_wans=$(printf '%s\n' "$cov_body" | python3 -I "$cov_reader" none 2>/dev/null) || cov_wrc=$?  # swallow-ok: a non-zero rc or empty answer fails the line below
         else
             cov_wrc=3
         fi

@@ -1988,7 +1988,7 @@ _merge_contract() {
 _pr_remainder_answer() { # <ticket key> <PR body> -> the reader's answer line on stdout; rc 3 when the reader is absent, else the reader's own rc
     local reader="$himmel_repo/scripts/lib/pr_remainder.py"
     [ -f "$reader" ] || return 3
-    printf '%s' "$2" | python3 -I "$reader" "$1" 2>/dev/null
+    printf '%s' "${2//$'\r'/}" | python3 -I "$reader" "$1" 2>/dev/null
 }
 partial_key=""
 MERGE_ROW_REMAINDER=""; MERGE_ROW_OWED=""; MERGE_ROW_OWED_DUE=""  # a contract=no merge's rows say what the reader found
