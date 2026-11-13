@@ -128,7 +128,7 @@ tracker: {{TRACKER_URL}}
 action after every compaction is the `COMPACTED` bullet**, under `## Results`:
 `- COMPACTED <HH:MM> — workers: <as re-injected>, queue: <as re-injected>, last GO: <as re-injected>`
 and, in the same batch, `Read` each `specs/decisions/chief-decisions-<date>.md`
-that `decisions:` names and, while a line sits outside the `Rulings in force`
+that `decisions:` names and, while a ruling line sits outside the `Rulings in force`
 index, each direction companion file that the line of
 `## Current direction` beginning `Full original text` names.
 If the hook warned that `## Live state` is missing, write it from step 2's lock

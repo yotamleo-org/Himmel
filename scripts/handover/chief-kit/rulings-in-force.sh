@@ -27,7 +27,8 @@
 # inside its parenthesis, or a `, decision N` list right after a parenthesis with none),
 # never the numbers its reading cites, which the index line also lists. An OPERATOR line
 # with no full text in the companions owns its one head number only when it names that
-# number's ledgered verbatim path; a CHIEF line never does. A line matches its full text
+# number's ledgered verbatim path and that file is named for the line's own date and shift
+# (OPERATOR 11-07 UJ and ...-11-07-UJ.txt); a CHIEF line never does. A line matches its full text
 # by its who-and-date, its listed numbers and the start of its reading, and a line that
 # matches none, or more than one with different numbers, has no own number. Never drops
 # what it cannot find: with no ledger, or no pointer line (the companions then may not hold
@@ -175,9 +176,11 @@ def own_numbers(l, h):
     cited = set(numbers(h.group(0)) or [])
     own = {tuple(n) for who, n, text in units
            if l.startswith(who) and l[len(who):len(who) + 1] in (",", ":", " ") and set(n) <= cited and probe and probe in text}
-    if not own and l.startswith("OPERATOR ") and len(cited) == 1:
+    shift = re.match(r"OPERATOR ([0-9]{2}-[0-9]{2}) ([A-Z]{2})[ ,:]", l)
+    if not own and shift and len(cited) == 1:
         n = next(iter(cited))
-        return [n] if n in rows and rows[n]["path"] in l else []
+        p = rows[n]["path"] if n in rows else ""
+        return [n] if p in l and p.endswith("-%s-%s.txt" % shift.groups()) else []
     return list(own.pop()) if len(own) == 1 else []
 kept, i = [], 0
 while i < len(src):
