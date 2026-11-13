@@ -326,7 +326,7 @@ update_record() { # <Jira status now> [the move, "<from> -> <to>"]
         --arg ws "$TS_WORKER_STATE" --arg mv "${2:-}" --arg prs "$TS_PR_STATE" \
         --arg seen "$TS_LOCK_SEEN" --argjson gone "$TS_GONE" --arg cid "$cid" --arg chash "$chash" --arg own "$TS_D5D_OWNER" '
         .key = $k | .last_event = $ev | .last_event_ts = $ts | .state = $ws
-        | if $own != "" then .owner = $own else . end
+        | if $own != "" then .owner = $own else del(.owner) end
         | .lock_seen = ($seen == "true") | .lock_gone_sweeps = $gone
         | if $cid != "" then .comment_id = $cid else del(.comment_id) end
         | if $chash != "" then .comment_hash = $chash else del(.comment_hash) end

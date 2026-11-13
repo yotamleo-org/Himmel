@@ -392,6 +392,10 @@ check "D5d: the worker record names the owner" "$(jq -r .owner "$REC")" HIMMEL-9
 fn "$K" --event sweep
 check "D5d: the next derive answers from the logged row, no PR body read" "$(grep -c '^gh pr view' "$STUB_LOG" || true)" 0
 check "D5d: and keeps rule D5d, no move" "$(row rule)/$(ntrans)" D5d/0
+mkdoc "$DOC" LIVE; echo 11 > "$FX/lock.rc"
+fn "$K" --event live --doc "$DOC"
+check "D5d: a live worker takes the ticket back to In Progress" "$(moved)/$(row rule)" "transition $K In Progress/D5"
+check "D5d: and the record no longer names the old owner" "$(jq -r '.owner // ""' "$REC")" ""
 reset "In Progress"; owned WRAPPED 0; d5d_merge
 printf 'Remaining: run the cutover, a chief step\n' > "$FX/pr-body-11"
 fn "$K" --event wrapped --doc "$DOC"
