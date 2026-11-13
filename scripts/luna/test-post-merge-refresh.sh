@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2329,SC2317
+# shellcheck disable=SC2329,SC2317,SC2016
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -137,7 +137,8 @@ tick() {
         PMR_QMD="$C/bin/qmd" PMR_AST="$C/bin/ast" PMR_PRIMARY="$C/primary" PMR_STATE="$C/state" \
         PMR_NOW="$NOW" PMR_LOAD=0 PMR_ALERT="$C/bin/alert" PMR_REINDEX_LOCK="$C/reindex.lock" \
         PMR_LAG="$C/bin/lag.py" QMD_CONFIG_DIR="$C/cfg" INDEX_PATH="$C/cache/index.sqlite" \
-        HIMMEL_FLOW_RUNS_LEDGER="$C/flow.jsonl" "$@" bash "$TICK_BIN" --halves "$halves" 2>&1)
+        HIMMEL_FLOW_RUNS_LEDGER="$C/flow.jsonl" "$@" \
+        bash -c 'PMR_ARMED_PID=$$; export PMR_ARMED_PID; bash "$@"; rc=$?; exit "$rc"' runner "$TICK_BIN" --halves "$halves" 2>&1)
     TICK_RC=$?
 }
 
@@ -755,6 +756,59 @@ row_decide() {
     assert_eq "decide: a bad number exits 2" 2 "$TICK_RC"
 }
 
+row_refuses_outside_runner() {
+    mkcase outside; seed_both; cm $((BASE+100)) docs/a.md src/a.sh
+    local caller="$C/merge-caller.sh" out rc
+    cat > "$caller" <<'CALLER'
+#!/bin/sh
+name="post-merge-"
+name="${name}refresh.sh"
+exec_tick() { bash "$TICK_DIR/$name" --halves both; }
+exec_tick
+rc=$?
+exit "$rc"
+CALLER
+    out=$(env HOME="$HOME" TICK_DIR="$(dirname "$TICK")" PMR_CASE="$C" PMR_BUSY_FIXTURE="$BUSY_FIXTURE" \
+        PMR_QMD="$C/bin/qmd" PMR_AST="$C/bin/ast" PMR_PRIMARY="$C/primary" PMR_STATE="$C/state" \
+        PMR_NOW="$((BASE+1000))" PMR_LOAD=0 PMR_ALERT="$C/bin/alert" PMR_REINDEX_LOCK="$C/reindex.lock" \
+        PMR_LAG="$C/bin/lag.py" QMD_CONFIG_DIR="$C/cfg" INDEX_PATH="$C/cache/index.sqlite" \
+        HIMMEL_FLOW_RUNS_LEDGER="$C/flow.jsonl" sh "$caller" 2>&1)
+    rc=$?
+    assert_eq "refuses_outside_runner: a caller that builds the tick's name at run time exits 2" 2 "$rc"
+    assert_eq "refuses_outside_runner: it logs exactly one line" 1 "$(printf '%s\n' "$out" | grep -c .)"
+    assert_contains "refuses_outside_runner: the line says the parent is not the armed runner" "not the armed runner" "$out"
+    assert_eq "refuses_outside_runner: no keyword refresh ran" 0 "$(ncalls 'qmd update')"
+    assert_eq "refuses_outside_runner: no graph refresh ran" 0 "$(ncalls ast)"
+    assert_eq "refuses_outside_runner: no sampler ran" 0 "$(ncalls lag)"
+    assert_eq "refuses_outside_runner: the keyword watermark stays" "$W0" "$(sha_of qmd)"
+    assert_eq "refuses_outside_runner: the graph watermark stays" "$W0" "$(sha_of graph)"
+    assert_eq "refuses_outside_runner: no flow row written" 0 "$(nrows .)"
+}
+
+row_refuses_stale_marker() {
+    mkcase stale; seed_both; cm $((BASE+100)) docs/a.md
+    local out rc
+    out=$(env HOME="$HOME" PMR_ARMED_PID=1 PMR_CASE="$C" PMR_QMD="$C/bin/qmd" PMR_AST="$C/bin/ast" \
+        PMR_PRIMARY="$C/primary" PMR_STATE="$C/state" PMR_NOW="$((BASE+1000))" PMR_LOAD=0 PMR_ALERT="$C/bin/alert" \
+        PMR_LAG="$C/bin/lag.py" QMD_CONFIG_DIR="$C/cfg" INDEX_PATH="$C/cache/index.sqlite" \
+        bash "$TICK" --halves both 2>&1)
+    rc=$?
+    assert_eq "refuses_stale_marker: a marker naming another process exits 2" 2 "$rc"
+    assert_eq "refuses_stale_marker: nothing ran" 0 "$(( $(ncalls 'qmd update') + $(ncalls ast) ))"
+}
+
+row_runner_parent_runs() {
+    mkcase runnerok; seed_both; cm $((BASE+100)) docs/a.md
+    NOW=$((BASE+1000)); tick both
+    assert_eq "runner_parent_runs: a parent that is the marker's process runs the tick" 0 "$TICK_RC"
+    assert_eq "runner_parent_runs: both halves ran" 2 "$(( $(ncalls 'qmd update') + $(ncalls ast) ))"
+}
+
+row_runner_emits_marker() {
+    assert_contains "runner_emits_marker: the generated runner exports its own pid for the tick" \
+        'export PMR_ARMED_PID=$$' "$(cat "$SCRIPT_DIR/graphmap-cadence.sh")"
+}
+
 for row in quiet_window_holds max_wait_fires burst_fires_once ignored_merges_count_for_neither \
     delayed_pull_fires_once failed_refresh_keeps_watermark tree_moved_during_run \
     unchanged_graph_still_settles range_with_nothing_moves_watermark seeds_without_running \
@@ -767,7 +821,8 @@ for row in quiet_window_holds max_wait_fires burst_fires_once ignored_merges_cou
     sampler_after_keyword_before_graph missing_lag_script_is_error sampler_real_call_line only_real_run_writes_row db_busy_is_skip \
     promote_lock_is_skip deadline_without_signature_is_fail busy_timeout_and_deadline_passed \
     backoff_after_failure backoff_caps_at_an_hour watermark_moved_before_lock_skips slow_graph_floors_hourly load_defers_then_runs primary_off_main_skips \
-    runs_at_low_priority code_only_skips_keyword dot_dir_md_skips_keyword usage decide; do
+    runs_at_low_priority code_only_skips_keyword dot_dir_md_skips_keyword usage decide \
+    refuses_outside_runner refuses_stale_marker runner_parent_runs runner_emits_marker; do
     echo "-- $row"
     "row_$row"
 done
