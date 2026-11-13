@@ -1177,6 +1177,17 @@ for o_pair in "owed $o_ar bob by $o_d|remaining" "owed $o_ar chief by 2026-02-30
     case "$o_ans" in "$o_kind"|"$o_kind"$'\t'*) pass ;; *) fail "9561 S4a 7c agree: the reader reads '$o_line' as $o_kind, never owed (said: $o_ans)" ;; esac
 done
 
+o7raw() { # <name> <exit> <body escapes>: a whole body, one line a section the awk cuts away from the owed line
+    reset_stubs
+    STUB_BODY="$3"
+    rc=0; out="$(TICKET_STATUS_NOW=$O_NOW run7)" || rc=$?
+    check "$1: exit $2" "$rc" "$2"
+    if [ "$2" = 0 ]; then contains "$1: says PASS" "$out" "COVERAGE-LINT PASS"; else contains "$1: says FAIL" "$out" "COVERAGE-LINT FAIL"; fi
+}
+o7raw "9561 S4a 7c: an owed line in a second coverage section is window-checked (2099 fails)" 1 "## Ticket coverage\\n- ask one: done\\n## Notes\\nx\\n## Ticket coverage\\n- b: owed $o_ar chief by 2099-01-01\\n"
+o7raw "9561 S4a 7c: an owed line behind a form feed is window-checked (2099 fails)" 1 "## Ticket coverage\\n- ask one: done\\n## Notes\\n## x\\f## Ticket coverage\\f- b: owed $o_ar chief by 2099-01-01\\n"
+o7raw "9561 S4a 7c: a second coverage section's owed line inside the window passes" 0 "## Ticket coverage\\n- ask one: done\\n## Notes\\nx\\n## Ticket coverage\\n- b: owed $o_ar chief by $(o_day 2)\\n"
+
 # the full run prints the same shape message on the same failure
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: done pending verification\n'

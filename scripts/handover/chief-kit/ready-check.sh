@@ -945,6 +945,21 @@ else
     if printf '%s\n' "$cov_lines" | grep -qiE "deferred|$cov_owed_re"; then
         cov_own=$("$GH" pr view "$PR" --repo "$nwo" --json headRefName --jq '.headRefName' 2>/dev/null | grep -oE '[A-Za-z][A-Za-z0-9]*-[0-9]+' | head -n 1 | tr '[:lower:]' '[:upper:]' || true) # swallow-ok: an unreadable branch leaves cov_own empty, so only a residual label passes
     fi
+    # the window: today to today + 14 days, UTC, a fixed 14 (no TICKET_STATUS_AWAIT_* variable); now is the TICKET_STATUS_NOW seam when digits
+    cov_window_check() { # <date> <line>
+        local cov_now cov_hi_e cov_lo cov_hi
+        cov_now="${TICKET_STATUS_NOW:-}"
+        case "$cov_now" in ''|*[!0-9]*) cov_now=$(date -u +%s) ;; esac
+        cov_hi_e=$((cov_now + 14 * 86400))
+        cov_lo=$(date -u -d "@$cov_now" +%Y-%m-%d 2>/dev/null || date -u -r "$cov_now" +%Y-%m-%d 2>/dev/null) || cov_lo=""  # swallow-ok: GNU then BSD spelling; both failing leaves the bound empty, which fails the line below
+        cov_hi=$(date -u -d "@$cov_hi_e" +%Y-%m-%d 2>/dev/null || date -u -r "$cov_hi_e" +%Y-%m-%d 2>/dev/null) || cov_hi=""  # swallow-ok: same fallback as above
+        if [ -z "$cov_lo" ] || [ -z "$cov_hi" ]; then
+            cov_bad="$cov_bad; cannot compute the owed window (date failed): $2"
+        elif [[ "$1" < "$cov_lo" ]] || [[ "$1" > "$cov_hi" ]]; then
+            cov_bad="$cov_bad; owed date $1 is outside the window $cov_lo to $cov_hi (today to 14 days out, UTC): $2"
+            cov_shape=1
+        fi
+    }
     while IFS= read -r cov_line; do
         [ -n "$cov_line" ] || continue
         cov_def=$(printf '%s\n' "$cov_line" | grep -ioE 'deferred[[:space:]]*(→|->)[^[:alnum:]]*[A-Za-z][A-Za-z0-9]*-[0-9]+[^[:alnum:]]*$' || true)
@@ -992,19 +1007,7 @@ else
                 cov_bad="$cov_bad; owed line is not accepted (who chief or operator, then by YYYY-MM-DD, a real date): $cov_oline"
                 cov_shape=1
             else
-                # the window: today to today + 14 days, UTC, a fixed 14 (no TICKET_STATUS_AWAIT_* variable); now is the TICKET_STATUS_NOW seam when digits
-                cov_odate=$(printf '%s' "$cov_oans" | cut -f3)
-                cov_now="${TICKET_STATUS_NOW:-}"
-                case "$cov_now" in ''|*[!0-9]*) cov_now=$(date -u +%s) ;; esac
-                cov_hi_e=$((cov_now + 14 * 86400))
-                cov_lo=$(date -u -d "@$cov_now" +%Y-%m-%d 2>/dev/null || date -u -r "$cov_now" +%Y-%m-%d 2>/dev/null) || cov_lo=""  # swallow-ok: GNU then BSD spelling; both failing leaves the bound empty, which fails the line below
-                cov_hi=$(date -u -d "@$cov_hi_e" +%Y-%m-%d 2>/dev/null || date -u -r "$cov_hi_e" +%Y-%m-%d 2>/dev/null) || cov_hi=""  # swallow-ok: same fallback as above
-                if [ -z "$cov_lo" ] || [ -z "$cov_hi" ]; then
-                    cov_bad="$cov_bad; cannot compute the owed window (date failed): $cov_oline"
-                elif [[ "$cov_odate" < "$cov_lo" ]] || [[ "$cov_odate" > "$cov_hi" ]]; then
-                    cov_bad="$cov_bad; owed date $cov_odate is outside the window $cov_lo to $cov_hi (today to 14 days out, UTC): $cov_oline"
-                    cov_shape=1
-                fi
+                cov_window_check "$(printf '%s' "$cov_oans" | cut -f3)" "$cov_oline"
             fi
         elif ! printf '%s\n' "$cov_line" | grep -qiE '(^|[^[:alnum:]])done[^[:alnum:]]*$' \
             || printf '%s\n' "$cov_line" | grep -qiE '(not|n.t)[[:space:]]+done'; then
@@ -1014,6 +1017,21 @@ else
     done <<EOF
 $cov_lines
 EOF
+    # the reader reads the whole body as item 17 and the merge do: an owed answer it gives for a line the checks above never saw is window-checked too
+    if printf '%s\n' "$cov_body" | grep -qiE "$cov_owed_re"; then
+        cov_wans=""; cov_wrc=0
+        if [ -f "$cov_reader" ]; then
+            cov_wans=$(printf '%s\n' "$cov_body" | python3 -I "$cov_reader" "${cov_own:-none}" 2>/dev/null) || cov_wrc=$?  # swallow-ok: a non-zero rc or empty answer fails the line below
+        else
+            cov_wrc=3
+        fi
+        if [ "$cov_wrc" -ne 0 ] || [ -z "$cov_wans" ]; then
+            cov_bad="$cov_bad; cannot read the body's owed line (the anchor's scripts/lib/pr_remainder.py is missing or gave no answer)"
+            cov_shape=1
+        elif [ "${cov_wans%%$'\t'*}" = owed ]; then
+            cov_window_check "$(printf '%s' "$cov_wans" | cut -f3)" "$(printf '%s' "$cov_wans" | cut -f4 | cut -c1-160)"
+        fi
+    fi
     # The ledger's deferrals at the PR head and the body's deferral lines must name the same tickets.
     cov_head="$SHA"
     if [ "$ONLY7" -eq 1 ]; then
