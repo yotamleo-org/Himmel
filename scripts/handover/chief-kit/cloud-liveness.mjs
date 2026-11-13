@@ -132,6 +132,9 @@ function readLegDocs(bucket, sinceMs) {
   return out;
 }
 
+const readHelper = fileURLToPath(new URL('../../lib/gh-read.sh', import.meta.url));
+const GH_READ = existsSync(readHelper) ? readHelper : 'gh';
+
 export function collect({ bucket, repo, env = process.env, now = Date.now() }) {
   const tsv = join(bucket, 'cloud-sessions.tsv');
   if (!existsSync(tsv)) return { skip: true };
@@ -141,7 +144,7 @@ export function collect({ bucket, repo, env = process.env, now = Date.now() }) {
   if (!sessions.length) return { states: [], cfg };
   let prs;
   try {
-    prs = JSON.parse(execFileSync(env.CLOUD_LIVENESS_GH_CMD || 'gh', ['pr', 'list', '--state', 'all', '--limit', String(LIMIT), '--json', 'number,title,body,state,headRefName,createdAt,mergedAt,closedAt,comments,commits'], { cwd: repo, encoding: 'utf8', timeout: 40000, stdio: ['ignore', 'pipe', 'ignore'] }));
+    prs = JSON.parse(execFileSync(env.CLOUD_LIVENESS_GH_CMD || GH_READ, ['pr', 'list', '--state', 'all', '--limit', String(LIMIT), '--json', 'number,title,body,state,headRefName,createdAt,mergedAt,closedAt,comments,commits'], { cwd: repo, encoding: 'utf8', timeout: 40000, stdio: ['ignore', 'pipe', 'ignore'], env: { ...env, GH_READ_QUIET: '1', GH_READ_NO_MAIN_FALLBACK: '1' } }));
     if (!Array.isArray(prs)) return { skip: true };
     // A full page whose oldest PR is newer than the oldest live session may have cut that
     // session's PR off: unknown, not clean.
