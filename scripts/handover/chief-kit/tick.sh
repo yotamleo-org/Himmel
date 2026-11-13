@@ -102,7 +102,7 @@ env equivalents: DOC TOKEN WORKERS WORKERS_FROM HANDOVER_DIR REPO
 Relative DOC/WORKERS resolve under the handover root; include the bucket prefix
 when HANDOVER_DIR names a global state root.
 
---workers-from MANIFEST (HIMMEL-3748) reads the leg docs from a fleet manifest
+--workers-from MANIFEST reads the leg docs from a fleet manifest
 (chief-kit/fleet-manifest.sh writes it) on every run, so a dispatch or wrap
 edits that file and a waiter forwarding the same argv needs no restart. Its
 legs join any --workers ones (a doc on both is judged once). A manifest that is
@@ -116,7 +116,7 @@ a "tick: no such leg doc: <path>" warning on stderr and is reported as
 NOTFOUND in workers=, never as MISSING -- MISSING is reserved for a lock that is
 actually gone.
 
-fleet=<live>/<cap> and capacity= (HIMMEL-3167) are always appended, last on the
+fleet=<live>/<cap> and capacity= are always appended, last on the
 line. fleet= is usage-preflight.sh's own census (native + claudex + reserved,
 HIMMEL_FLEET_CAP) -- never a second count; fleet=? when that census cannot be
 read. capacity=UNDERFILLED:<slack> means live < cap AND no leg launched for
@@ -124,9 +124,9 @@ TICK_UNDERFILL_MIN minutes (default 10); capacity=ok otherwise, capacity=unknown
 when fleet=?. TICK_LAUNCH_DIR overrides the console work dir the launch logs
 are read from.
 
-flakes=<rows>/<suites>@<top-suite>*<k> (HIMMEL-5131) sits between fails= and spare=
-and is ABSENT unless this repo's suite-flake ledger (run-shell-tests.sh,
-HIMMEL-5116) took a row since the console lock's start: <rows> FLAKE rows,
+flakes=<rows>/<suites>@<top-suite>*<k> sits between fails= and spare=
+and is ABSENT unless this repo's suite-flake ledger (run-shell-tests.sh)
+took a row since the console lock's start: <rows> FLAKE rows,
 <suites> distinct suites, the suite flaked most and its repeat count (the
 per-row suite, case, sha and run: scripts/observability/suite-flake-summary.sh
 --format detail). flakes=? when the ledger is unreadable. Advisory: not in
@@ -138,7 +138,7 @@ transcript row with no armed background task or Monitor. Absent when none qualif
 or the transcript cannot be read. TICK_PROJECTS_DIR overrides transcript roots;
 otherwise both native and claudex roots are read. Advisory: no waiter action change.
 
-parked=<leg>:<age>m[,...] (HIMMEL-2563) follows vmrun= (and flakes= when present), comes
+parked=<leg>:<age>m[,...] follows vmrun= (and flakes= when present), comes
 before spare= when present, and is ABSENT
 unless a leg's newest trust-ledger row (scripts/trust/shadow-ledger.mjs) is a
 permission prompt older than TICK_PARKED_MIN minutes (default 5): the leg is parked on
@@ -146,14 +146,14 @@ the auto-mode confirmation dialog, which its fresh lock heartbeat hides. Names o
 wake chief-wait.sh (a leg joining or leaving the set), never the age. Read via
 parked-on-prompt.sh; env seams HIMMEL_TRUST_LEDGER_DIR, TICK_PARKED_TAIL_BYTES.
 
-holds=<leg>:<age>m[,...] (HIMMEL-4949) follows acts= and is ABSENT unless a leg's newest
+holds=<leg>:<age>m[,...] follows acts= and is ABSENT unless a leg's newest
 Results marker is BLOCKED (or a FINDING whose bullet says it awaits the console, needs a
 ruling, or what the console owes) and its doc has not been written for TICK_HOLD_MIN minutes (default 20): a
 leg parked on a ruling the console may not know it owes, which a repeated BLOCKED bullet never
 shows in tails=. chief-wait.sh keys on the names only, so each leg ENTERING the set wakes
 the console once; the age growing or a leg leaving never does.
 
-hreg=<n>/<n>/<n> (HIMMEL-9186) follows holds= and is ABSENT at 0/0/0, with no register directory for this repo
+hreg=<n>/<n>/<n> follows holds= and is ABSENT at 0/0/0, with no register directory for this repo
 and when holds.py is missing: <live workers with no rows>/<stale rows>/<pending trust-path asks>. A live worker
 (lock held or lockless, newest marker not WRAPPED) counts when its doc has a Writes file and its key holds no row;
 a row is stale when its brief or pr key is Done in the Jira mirror or its PR is not in prs=; an ask is a trust-path
@@ -161,7 +161,7 @@ a row is stale when its brief or pr key is Done in the Jira mirror or its PR is 
 gh call, no Jira call. hreg=? when it fails. In chief-wait's action key whole: the value moving wakes once, and
 chief-wait pages each new ask once with its paste-ready grant command (monitors.md). Seam: HOLDS_MIRROR.
 
-focus=<state> sdrift=<n>:<sig8> (HIMMEL-6829) follow wt-ceiling= and are ABSENT unless a
+focus=<state> sdrift=<n>:<sig8> follow wt-ceiling= and are ABSENT unless a
 focus-state file sits beside the console doc and --status does not read skip: focus= is
 focus-refresh.sh --status (FAILED:<stage> or DIRTY:<age>), sdrift= the drift line of the
 last good refresh. focus=ok and sdrift=0:* are elided; --verbose prints both. Read from
@@ -184,32 +184,32 @@ no HIMMEL_CONSOLE_LEG / HIMMEL_RELEASE_MANAGER=1 and no live repair.lock owner, 
 release repair <R> --apply --repo <slug>`, no sooner than TICK_RMRUN_MIN_SECS after repair-run.log was last written.
 Seam: TICK_REPAIR_PROBE. Never in chief-wait's action key; no alert, no wake.
 
-cap=<version>:<n>[,<version>:<n>] (HIMMEL-6762) follows vmismatch= and is ABSENT unless an unreleased version
+cap=<version>:<n>[,<version>:<n>] follows vmismatch= and is ABSENT unless an unreleased version
 holds more than 15 open residual tickets (labelled residual, not Done or Closed, by fixVersion; the count board.mjs
 shows against its soft cap), read from the Jira mirror. In chief-wait's action key whole: a version crossing the
 cap, or its count moving, wakes once; an unchanged value does not.
 
-slotage=<worker>:<range>:<n>suites:<age>m[,...] (HIMMEL-5788) sits just before tmp= and is ABSENT unless a
+slotage=<worker>:<range>:<n>suites:<age>m[,...] sits just before tmp= and is ABSENT unless a
 live holder has kept a shared suite slot past HIMMEL_SUITE_SLOT_CAP seconds (default 1200); a part the
 holder did not record reads ?. Read-only, advisory, not in chief-wait's action key. Env seams:
 HIMMEL_SUITE_SEMAPHORE_DIR, HIMMEL_SUITE_SLOT_CAP.
 
-tmp=<pct>[!] (HIMMEL-4316) sits just before spare= and is ABSENT when df on
+tmp=<pct>[!] sits just before spare= and is ABSENT when df on
 TICK_TMP_DIR (default /tmp) is unreadable. ! marks TICK_TMP_WARN percent
 (default 80) or more. Read-only, never reaps, and not in chief-wait's action
 key, so it wakes nothing. Env seams: TICK_TMP_DIR, TICK_TMP_WARN, TICK_DF.
 
-spare=<pct>@<h>h (HIMMEL-4421) is the very last field and is ABSENT unless the
+spare=<pct>@<h>h is the very last field and is ABSENT unless the
 weekly quota the current burn leaves unspent at the reset (usage-monitor.sh
 --spare) is >= TICK_SPARE_MIN percent (default 10) and the reset is <=
 TICK_SPARE_HOURS hours away (default 24). Advisory: it is not in chief-wait's
 action key and wakes nothing.
 
-fails=<n>/<legs>[@<top-class>*<k>][!<recur>][~<skipped>] (HIMMEL-4670) sits just
+fails=<n>/<legs>[@<top-class>*<k>][!<recur>][~<skipped>] sits just
 before spare=: this shift's worker-failures ledger rows (since the console lock's
 start), distinct legs, the class most legs hit, the classes the failure router
 acted on this shift, and ~<skipped> the leg docs whose wrap digest was skipped
-this shift (HIMMEL-4786, worker-digest-step.sh's skips.jsonl; none~<k> with only
+this shift (worker-digest-step.sh's skips.jsonl; none~<k> with only
 skips). fails=none with no rows, fails=? when a ledger or the lock start is
 unreadable or the latest wrap digest failed, skip with no --doc. Advisory: not in
 chief-wait's action key, so it wakes nothing. Env seams:
@@ -231,14 +231,14 @@ the pr-stall probe is skipped (stall= then reads its cached value, else ?). The 
 read never retries a rate limit on main, so prs=? beside a quota= names which budget refused
 it. Advisory: not in chief-wait's action key, so it wakes nothing.
 
-rest-main=<remaining>/<limit>@<reset HH:MM> and rest-read=... (HIMMEL-6837), right
+rest-main=<remaining>/<limit>@<reset HH:MM> and rest-read=..., right
 after gql: the REST core budget of the main token and of the read-only token
 (himmel_github_token_vm2), rendered from the core rows of quota.tsv, no call of the tick's own.
 Under 10 % remaining a field ends !LOW. Absent when a budget cannot be read or no
 read token is configured; the verbose view prints them as "rest main:" and
 "rest read:" lines. Advisory: not in chief-wait's action key.
 
-orphans=<owner>:<count>/<oldest>m (HIMMEL-2761) is the last field: shell-tool
+orphans=<owner>:<count>/<oldest>m is the last field: shell-tool
 wrappers older than TICK_ORPHAN_MIN minutes (default 30), per owning session
 name (`orphan` = no live claude session above it), read-only via
 orphan-loops.sh; orphans=none when clean, orphans=? when the process table
@@ -247,7 +247,7 @@ wrapper here left a background loop running -- tell the leg to TaskStop it.
 orphans= lists only wrappers older than that, so a live leg without one never
 shows here: procs=...,unwatched= (below) is what names a live leg the arm omits.
 
-deadwin=<label>:closed|held[,...] (HIMMEL-6118) follows closable= and is ABSENT
+deadwin=<label>:closed|held[,...] follows closable= and is ABSENT
 unless a leg konsole (tabtitle HIMMEL-<n>-N<k>-...) has no child process and is
 older than TICK_DEADWIN_GRACE seconds (default 30): its session died. :closed =
 tick TERMed the window (the leg's lock is FREE/WRAPPED, or a live <tabtitle>-r<n>
@@ -282,7 +282,7 @@ signal: ownership checks still treat it as held. The stable workers= label wakes
 chief-wait once on transition, not on growing age. The sweep's IDLE-HELD? uses
 heartbeat age alone and cannot distinguish a long foreground suite.
 Other worker states:
-CLOSABLE (HIMMEL-3747: lock released, the tail says WRAPPED or is a BLOCKED
+CLOSABLE (lock released, the tail says WRAPPED or is a BLOCKED
 hand-off naming its successor, AND the leg's own
 session process is still alive in the census -- the window is sitting there
 finished but not yet closed; chief-wait.sh wakes on this the same way it
@@ -293,14 +293,14 @@ but either no live session matched or the census itself could not be read --
 the normal end of a leg once its window is gone, and also the fail-closed
 reading when CLOSABLE cannot be proven), FREE (lock released while the tail
 does not say WRAPPED -- a lost lock),
-NOLOCK (HIMMEL-5074: a fleet-manifest row marked lockless -- an eval/pilot row
+NOLOCK (a fleet-manifest row marked lockless -- an eval/pilot row
 that never takes a queue lock; no lock is read, tails= alone judges it),
 UNVERIFIED (a lock named for the doc exists but records a path that does not
 resolve here -- neither ruled held nor free: check its owner, never reclaim on
-it; HIMMEL-3290), CORRUPT, UNKNOWN (queue-lock status unreadable) or NOTFOUND
+it), CORRUPT, UNKNOWN (queue-lock status unreadable) or NOTFOUND
 (no such doc).
 
-workerset=<ok|STALE:unarmed=A+B;unlisted=C|unknown|skip> (legset= in an older tick; HIMMEL-3293) compares
+workerset=<ok|STALE:unarmed=A+B;unlisted=C|unknown|skip> (legset= in an older tick) compares
 this console's `## Live state` legs with the --workers arm. unarmed = listed in
 Live state but not in the arm; unlisted = in the arm, not held, and absent from
 Live state. STALE means the arm is out of date -- re-arm the tick with the
@@ -315,7 +315,7 @@ census, whose leg label (N<digits><letters>) the arm does not name -- a leg the
 tick is not watching. It reads the whole census, so with several consoles on
 one host another console's legs can appear here.
 
-nonces=<ok|RELAYED:<leg,...>|UNCONFIRMED:<leg,...>|unknown|skip> (HIMMEL-3254)
+nonces=<ok|RELAYED:<leg,...>|UNCONFIRMED:<leg,...>|unknown|skip>
 closes the line. It reads, for each HELD leg in this console doc's `## Live
 state`, whether the nonce starts with this console's own letter
 (`<LETTER>-<leg>-<hex>`). A leg whose nonce carries a PREVIOUS console's letter
@@ -329,7 +329,7 @@ predecessor relay it, which is the stronger form; a chain, see worker-preface.md
 an accepted relay). UNCONFIRMED wins the field when both occur.
 unknown = the doc name carries no console letter or has no `legs:` line.
 
-board=<ok|STALE:<age>|MISSING|skip> (HIMMEL-3361) is the freshness of the
+board=<ok|STALE:<age>|MISSING|skip> is the freshness of the
 console's progress board, <console doc stem>.board.json next to the console doc (rendered
 by board.mjs -- the ACTION ZERO board step + the standing rule: on every dispatch, GO,
 MERGED and WRAPPED, re-render it). ok = the board file's freshness.board_fp
@@ -342,16 +342,16 @@ writes into the board file -- one derivation, so the generator and this field ca
 ponytail: board=ok says the LOCAL file matches the state; tick cannot see
 whether anything was republished from it -- that stays the console's step.
 
-station=BEHIND:<component>,... (HIMMEL-5945) appears only when the last station-sync.sh
+station=BEHIND:<component>,... appears only when the last station-sync.sh
 run left a component behind main (state file TICK_STATION_STATE, default
 ~/.himmel/state/station-sync.state); it clears on the next sync. Follows parked=.
 
-alert-fail=<cadence>:<age> (HIMMEL-7419) appears only while cadence-alert.sh's send-failed
+alert-fail=<cadence>:<age> appears only while cadence-alert.sh's send-failed
 marker exists (CADENCE_ALERT_SEND_FAILED_MARK, default
 ~/.himmel/state/cadence-alert-send-failed): the newest cadence whose failure alert could
 not reach Telegram, and how long ago. A delivered alert removes the marker. Follows station=.
 
-vault=<ok|STALL:<age>,<n>[,<reason>]|PUSH-LAG:<age>|skip|unknown> (HIMMEL-4911) is the luna
+vault=<ok|STALL:<age>,<n>[,<reason>]|PUSH-LAG:<age>|skip|unknown> is the luna
 vault's commit health, from vault-status.sh (git plumbing only, fail-soft): STALL =
 <n> staged/modified files, the oldest <age> old (the vault's auto-commit is stuck;
 reproduce with the vault's pre-commit hook run, see chief-wait.sh), PUSH-LAG = local commits
@@ -360,7 +360,7 @@ root's parent). Thresholds: TICK_VAULT_STALL_MIN (20), TICK_VAULT_PUSHLAG_MIN (6
 Sits between tracker= and denials=; chief-wait.sh wakes on a class change to
 STALL/PUSH-LAG only.
 
-cloud=<ok|STALL:<ticket>[,<ticket>...]|skip> (HIMMEL-5163) is the liveness of the
+cloud=<ok|STALL:<ticket>[,<ticket>...]|skip> is the liveness of the
 claude.ai cloud sessions in the bucket's cloud-sessions.tsv (next to --doc), from
 cloud-liveness.mjs: STALL = a session with no branch/PR N min after launch, an open
 PR with no CLOUD-DONE and no commit for M min, or a CLOUD-DONE no live leg doc names.
@@ -369,13 +369,13 @@ budget) and one ls-remote, both timeout-bounded. Thresholds: CLOUD_LIVENESS_BRAN
 (30), _PR_MIN (60), _DONE_MIN (15), _WINDOW_H (48). Sits after vault=;
 chief-wait.sh wakes on a class change to STALL only. board.mjs lists each session.
 
-stall=<pr>:<class>[,<pr>:<class>...] (HIMMEL-6049) is the open PRs pr-stall.sh calls stuck
+stall=<pr>:<class>[,<pr>:<class>...] is the open PRs pr-stall.sh calls stuck
 (conflict, no-ci, ci-slow, idle), himmel's own repo only. Absent when none is stuck; a failed
 probe reads the last cached value, else ?. The value (a failure too) is cached
 TICK_STALL_TTL_MIN minutes (default 5, 0 = off) in TICK_STALL_CACHE. chief-wait.sh wakes once
 per new conflict or no-ci token and keeps its saved set on ?.
 
-doctor=<id>[,<id>...] (HIMMEL-7849) is the WARN and FAIL check ids of `himmel-doctor.sh --json`,
+doctor=<id>[,<id>...] is the WARN and FAIL check ids of `himmel-doctor.sh --json`,
 sorted. Absent when the doctor is clean, TICK_DOCTOR_TTL_MIN is 0 or the doctor script
 (TICK_DOCTOR_CMD, default $REPO/scripts/himmel-doctor.sh) is missing. The doctor is slow, so the
 ids are cached TICK_DOCTOR_TTL_MIN minutes (default 30) in TICK_DOCTOR_CACHE, a failed run too: it
@@ -393,7 +393,7 @@ hard reviewer outage also prints one `ACTION cr-first ...` line per outage. Himm
 only. chief-wait.sh does not wake on it.
 
 dispatch=<run>:<leg>:<elapsed>/<timeout>m:<jobs done>/<jobs>@<head7>[:late][:idle][:orphan][:stale-head]
-(HIMMEL-7479) is the in-flight workflow_dispatch runs on a leg's branch (a run a leg started by
+is the in-flight workflow_dispatch runs on a leg's branch (a run a leg started by
 hand never shows on the PR page); ABSENT when none, `?` when the runs list is unreadable. One
 runs list per tick plus one jobs read per run, at most TICK_DISPATCH_MAX (5). late = past 80
 percent of the largest job timeout in the run's workflow file; idle = no job started or finished
@@ -401,7 +401,7 @@ for TICK_DISPATCH_IDLE_MIN (30) min; orphan = no held leg on its ticket; stale-h
 PR's head moved on (report-only). late, idle and orphan each print one `ACTION dispatch-stall`
 line; chief-wait.sh keys on those runs only, so a healthy run's elapsed time never wakes it.
 
-denials=<leg>:<n>[:SHIP-STEP|REPEAT|PAUSE-RISK] (HIMMEL-3724) is classifier
+denials=<leg>:<n>[:SHIP-STEP|REPEAT|PAUSE-RISK] is classifier
 denials seen by scripts/hooks/log-classifier-denial.sh in a trailing window
 (TICK_DENIALS_WINDOW_MIN minutes, default 30), grouped by the hook's own
 session_title (a worktree slug; any other cwd reads <dir>#<session_id[0:8]>),
@@ -411,7 +411,7 @@ approaching the auto-mode pause threshold; REPEAT = 2+ in the window with
 neither. denials=none when the window is empty or the log does not exist yet;
 denials=skip when jq is missing or the log is unreadable.
 
-ready-mismatch=<flagged>/<ready>,nogo=<k>/<judged>[,ALERT] (HIMMEL-6032) sits with
+ready-mismatch=<flagged>/<ready>,nogo=<k>/<judged>[,ALERT] sits with
 flakes= and is ABSENT unless a READY (leg docs under the console doc's directory, touched
 within TICK_READY_WINDOW_DAYS, default 1) is flagged: a judge NO-GO'd its exact head, or the
 PR's files hit scripts/ci/ci-trust-paths.txt while the READY claimed no trust path or said
@@ -422,16 +422,16 @@ TICK_READY_BUDGET_SEC (default 30) of wall clock; a scan that ran out reads ,par
 --ready-mismatch [--ready-dir DIR] prints the per-READY TSV rows instead of a tick line.
 
 ciq=<in_progress>/<cap>,mac=<n>/<cap>,q=<queued>,wait=<m>m[,SATURATED]
-(HIMMEL-3840) is the GitHub Actions queue, from one scripts/ci/queue-latency.sh
+is the GitHub Actions queue, from one scripts/ci/queue-latency.sh
 probe per tick (bounded by TICK_CIQ_TIMEOUT seconds, default 45). SATURATED =
 jobs_in_progress at the cap on two consecutive probes: hold dispatches until it
 clears. ciq=unknown = the probe failed, timed out or is missing; it neither
 sets nor clears the saturation state ($TICK_STATE_DIR/tick-ciq-last, default
 ~/.himmel/state). Not part of chief-wait's wake key.
 
-ciguard=ok|OVER:<metric>[,<metric>]|unknown (HIMMEL-6733) is the last ci-guardrail.sh read
-(TICK_CIGUARD_PROBE seam), shown always, from a cache a detached refresh fills
-(HIMMEL-8735): at most once per TICK_CIGUARD_MIN_SECS (default 600), bound
+ciguard=ok|OVER:<metric>[,<metric>]|unknown is the last ci-guardrail.sh read
+(TICK_CIGUARD_PROBE seam), shown always, from a cache a detached refresh fills,
+at most once per TICK_CIGUARD_MIN_SECS (default 600), bound
 TICK_CIGUARD_TIMEOUT (default 300), so a tick never waits on it past TICK_SECTION_WAIT
 (default 3). ciguard-age=<n>s is the read's age; it is absent when no read exists. Each
 `ALERT <metric>=<count>><line> (<where>)` line a refresh gets is a NEW crossing and becomes one
@@ -443,12 +443,12 @@ calls plus one GraphQL call per 100 open runs, so about 400 REST calls an hour a
 concurrent-jobs (500 or more running + queued) can read OVER; every other row is INFO. Not part
 of chief-wait's wake key.
 
-orphans-wip-age=<n>s (HIMMEL-8735) is the age of the resume scan orphans-wip= read: a detached
+orphans-wip-age=<n>s is the age of the resume scan orphans-wip= read: a detached
 refresh fills that cache at most once per TICK_ORPHANS_MIN_SECS (default 300). A missing or
 corrupt cache, or one past TICK_ORPHANS_TTL (default 1800), reads orphans-wip=?, never an
 all-clear. Not part of chief-wait's wake key, so a new age alone wakes nothing.
 
-deadline-over=<n>s (HIMMEL-8735): the tick passed TICK_DEADLINE_SEC (default 90) by <n> s. Every later
+deadline-over=<n>s: the tick passed TICK_DEADLINE_SEC (default 90) by <n> s. Every later
 probe's cap was cut to what was left, so its unknown, ? or skip may only mean it ran out of
 time. Absent on a tick inside the deadline. Not part of chief-wait's wake key.
 
@@ -457,27 +457,27 @@ VM cost ledger by `vm-cost.sh --today` (a local file read, no network). The ? ma
 out a row whose cost could not be read. Absent when no ledger row is from today or the ledger cannot be
 read. Sits right after usage=; verbose prints it as `vm spend today:`. Not part of chief-wait's wake key.
 
-versionless-done=<n|unknown> (HIMMEL-6406) counts Done tickets with no fixVersion,
+versionless-done=<n|unknown> counts Done tickets with no fixVersion,
 from one bounded versionless-done.sh read; shown only when non-zero (skip = no Jira
 mirror on this machine). `versionless-done.sh --backfill` lists the fix; it never auto-writes.
-vmismatch=<n|?> (HIMMEL-6549) is the RESET-row count of one bounded version-status-audit.sh read
+vmismatch=<n|?> is the RESET-row count of one bounded version-status-audit.sh read
 (owners = the tick's live legs; TICK_VMISMATCH_PROBE and TICK_VMISMATCH_TIMEOUT seams, default 30 s): started tickets whose fixVersion is
 later than the active one, released-but-not-Done tickets, versionless started ones. ? = no count
 or an UNKNOWN row (a gh read failed) or a zero count from a scan that skipped files; hidden
 when there is no mirror. The waiter wakes on a
 positive value only; the console resets each row (version-status-audit.sh prints them).
 In compact output, a non-zero count also prints an `ACTION versionless-done=<n>: bash …/versionless-done.sh --backfill`
-line after the TICK line (HIMMEL-6416); chief-wait reads only the TICK line.
-cadence=<name>:<state>:<age>:<run id>[:RED|:SKIP|:MISSED],... (HIMMEL-9247) is the last SCHEDULED run of every workflow
+line after the TICK line; chief-wait reads only the TICK line.
+cadence=<name>:<state>:<age>:<run id>[:RED|:SKIP|:MISSED],... is the last SCHEDULED run of every workflow
 with a schedule: trigger, from ci-cadence.sh (gh read at most once per CI_CADENCE_INTERVAL_SEC, default 1800, else the
 cache beside the other tick state). RED = failure or timed_out, SKIP = concluded skipped, MISSED = no scheduled run inside 1.5
 periods; a running run flags nothing. ? = gh unreadable. Always on the line; the waiter wakes once per flagged run id.
-review=<date>:<age>:<failures>:<new classes>:<new 5+>:<filed keys joined by +, or ->[:CAPPED][:STALE] (decision 593) is the
+review=<date>:<age>:<failures>:<new classes>:<new 5+>:<filed keys joined by +, or ->[:CAPPED][:STALE] is the
 daily failure review (ci-cadence.sh review: a local read of the newest failure-review-<date>.md and its .json sidecar,
 HIMMEL_FAILURE_REVIEW_DIR). STALE = no review for 26 h; CAPPED = the router hit its daily create cap. Hidden when there is no
 review file. The waiter wakes once per review day on a filed key, a new class with 5+ failures or CAPPED, and once per
 last-review date on STALE; never on a 1-count class.
-leaks=<n|?> (HIMMEL-7153) counts the LEAK lines of one bounded `jira release leaks <active version>`
+leaks=<n|?> counts the LEAK lines of one bounded `jira release leaks <active version>`
 read (TICK_LEAKS_PROBE gets the version and the mirror directory as its arguments; TICK_LEAKS_TIMEOUT, default 30 s): open tickets
 in a frozen version with no frozen-set membership and no admissions-ledger row. Shown only when non-zero
 (then an `ACTION leaks=<n>: …` line names `--comment`), or ? when the read failed; hidden when there is no mirror,
@@ -495,7 +495,7 @@ doc's stale file (tick-pool-stale-<cksum>.out in TICK_STATE_DIR, the main tick's
 newest file of the same mirror): a key whose only reason to count as dispositioned is its line, and whose line still hashes to the
 file's line=, is unresolved as class `stale` and names its gone targets. The file has no age bound. A failed or paused read
 keeps a stale verdict while the line is unchanged and no target reads open (--prior, the carry-forward, ends ` carried`).
-pool-stale=<n>:<KEY>,... (HIMMEL-6604) re-checks each pool-disposition: line whose target
+pool-stale=<n>:<KEY>,... re-checks each pool-disposition: line whose target
 names a ticket key of the mirror's project or `PR <n>`: when every named blocker is Done (Jira mirror)
 or its PR merged or closed the line is stale, `?` marks an unreadable target (never stale), and
 the waiter wakes once per newly stale key. The PR states come from one GraphQL query per 100 numbers
@@ -516,10 +516,10 @@ on the compact line. --pool-stale --doc <doc> prints its STALE-DISPOSITION lines
 (scripts/lib/gh-quota.sh ghq_scan_gate, main GraphQL) nothing is read: pool-stale=? and residual-unversioned=skip.
 It judges only a quota.tsv reading under 170 s old (the tick's own refresh) and never probes itself.
 
-INTAKE=<n> (HIMMEL-8336) is the count of next-dispatchable.sh's `# intake` line in that same snapshot:
+INTAKE=<n> is the count of next-dispatchable.sh's `# intake` line in that same snapshot:
 open versionless tickets the pool cannot list (operator-directed, a High+ Bug, scope- or proposed- the current
 version, or worker-held). Shown only when non-zero; hidden at 0 or with no fresh snapshot.
-chains=STALE:<n>/<m> (HIMMEL-8336) counts the steps of the focus-chains.json beside --doc that the Jira mirror
+chains=STALE:<n>/<m> counts the steps of the focus-chains.json beside --doc that the Jira mirror
 reads Done: n of its m steps (focus-refresh.sh regenerates the file from the chain registry, so a stale value
 means a hand-kept or unrefreshed file). Hidden when nothing is stale, there is no file, or no mirror.
 chains=UNWIRED:<k> counts the Live state `pool-disposition: <KEY> question|slice after <ON>` lines whose
@@ -527,12 +527,12 @@ pair the Jira mirror shows no Blocks link for, so a link live-state.sh failed to
 tick. A pair with a Done key, a key the mirror cannot read, or one live-state.sh recorded as final counts
 nothing. It joins a STALE value after a comma (chains=STALE:<n>/<m>,UNWIRED:<k>); at 0 nothing changes.
 
-pool-closed=<closed>/<total> (HIMMEL-6602) counts the keys on --doc's Live state
+pool-closed=<closed>/<total> counts the keys on --doc's Live state
 `priority:` line that the Jira mirror reads closed (statusCategory Done); shown only when
 non-zero. `priority-prune.sh --doc <doc>` prints the line without them; the console runs
 its --apply only with an operator OK and logs a PRIORITY-PRUNE bullet.
 
-prio=<open>/<total> and prio-stale=WARN:<low|KEY@VER>[,...] (HIMMEL-8072) follow pool-closed=, read by
+prio=<open>/<total> and prio-stale=WARN:<low|KEY@VER>[,...] follow pool-closed=, read by
 `priority-prune.sh --doc <doc> --stale` from the same Live state `priority:` line and the Jira mirror. prio= shows
 whenever the line exists (open = not Done, a key missing from the mirror is open). prio-stale= is ABSENT unless
 the line is dead or off-version: `low` when under 25 % of its keys are open, and each open key whose fixVersion
@@ -540,7 +540,7 @@ is set and not the doc's concrete `focus-version: vN` as KEY@<its fixVersion>. `
 --from-chains <chain-state.json>` prints a replacement line in dependency order and never writes the doc.
 Advisory: not in chief-wait's action key.
 
-wt-orphans=<n|unknown> and wt-ceiling=<live>/<cap> (HIMMEL-6584) come from one
+wt-orphans=<n|unknown> and wt-ceiling=<live>/<cap> come from one
 `scripts/worktree.sh prune --orphans` read, cached TICK_WT_ORPHANS_TTL minutes (30):
 worktrees with no open PR and nothing holding them, and the live worktree count once it
 reaches HIMMEL_WORKTREE_ALARM (70, the hard ceiling is 100). Shown only when non-zero or
