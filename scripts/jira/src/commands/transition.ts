@@ -59,39 +59,22 @@ export async function transitionIssue(
   let unstamped: string | undefined;
   if (options.version && match.name.toLowerCase() === 'done') {
     const fixVersions = (
-      await req<{ fields: { fixVersions?: unknown[] } }>('GET', `/issue/${key}?fields=fixVersions`)
+      await req<{ fields: { fixVersions?: Array<{ name?: string }> } }>('GET', `/issue/${key}?fields=fixVersions`)
     ).fields.fixVersions;
+    const versions = await fetchVersions(projectFromKey(key));
     if (!fixVersions || fixVersions.length === 0) {
-      const versions = await fetchVersions(projectFromKey(key));
       const version = earliestUnreleased(versions);
-      const frozen = parseFrozen(versions.find((v) => v.name === version)?.description);
-      const latest = frozen ? readAdmissions(version).filter((r) => r.key === key).pop() : undefined;
-      const ruledOut =
-        frozen !== undefined && !frozen.keys.includes(key) && (latest?.kind === 'deferral' || latest?.kind === 'rm-remove');
-      if (version && ruledOut) {
-        unstamped = `${version} is frozen and the latest ledger row for ${key} is a ${latest?.kind}`;
-      } else if (version && frozen !== undefined && !frozen.keys.includes(key) && !admits(latest)) {
-        const pr = mergedPrOf(key);
-        if (pr) {
-          let failure: string | undefined;
-          try {
-            fileCloseIntake(key, version, pr);
-          } catch (e) {
-            failure = (e as Error).message;
-          }
-          if (failure === undefined) {
-            await setFixVersion(key, 'add', version, 'transition-stamp');
-            console.log(`${key} fixVersion +${version} (frozen: INTAKE filed with merged PR #${pr.number})`);
-          } else {
-            unstamped = `${version} is frozen and the INTAKE for ${key} with merged PR #${pr.number} could not be filed (${failure}); run: ${requestLine(key, version)}`;
-          }
+      if (version) {
+        const placement = await placeInto(key, version, versions, 'earliest unreleased; --no-version opts out');
+        if (placement.write) {
+          await setFixVersion(key, 'add', version, 'transition-stamp');
+          console.log(`${key} fixVersion +${version} (${placement.note})`);
         } else {
-          unstamped = `${version} is frozen and ${key} has no merged PR to file its INTAKE with; run: ${requestLine(key, version)}`;
+          unstamped = placement.why;
         }
-      } else if (version) {
-        await setFixVersion(key, 'add', version, 'transition-stamp');
-        console.log(`${key} fixVersion +${version} (earliest unreleased; --no-version opts out)`);
       }
+    } else {
+      await foldIntoCurrent(key, fixVersions.map((v) => v.name ?? ''), versions);
     }
   }
   await req('POST', `/issue/${key}/transitions`, { transition: { id: match.id } });
@@ -116,6 +99,86 @@ export async function transitionIssue(
   writeJiraBreadcrumb(key);
   const phaseLeft = category === 'done' ? await clearPhase(key, labels, req) : undefined;
   return { name: match.name, unstamped, phaseLeft };
+}
+
+type Placement = { write: true; note: string } | { write: false; why: string };
+
+/**
+ * May `key` be written into `version`? A frozen version takes a key in its frozen set or one the
+ * admissions ledger admits; one the ledger shows as deferred or removed is ruled out; any other key is
+ * a placement for the release manager, so its INTAKE is filed with the merged PR as evidence first.
+ */
+async function placeInto(
+  key: string,
+  version: string,
+  versions: Array<{ name: string; description?: string }>,
+  plainNote: string,
+): Promise<Placement> {
+  const frozen = parseFrozen(versions.find((v) => v.name === version)?.description);
+  if (frozen === undefined || frozen.keys.includes(key)) return { write: true, note: plainNote };
+  const latest = readAdmissions(version).filter((r) => r.key === key).pop();
+  if (latest?.kind === 'deferral' || latest?.kind === 'rm-remove') {
+    return { write: false, why: `${version} is frozen and the latest ledger row for ${key} is a ${latest.kind}` };
+  }
+  if (admits(latest)) return { write: true, note: plainNote };
+  const pr = mergedPrOf(key);
+  if (!pr) {
+    return { write: false, why: `${version} is frozen and ${key} has no merged PR to file its INTAKE with; run: ${requestLine(key, version)}` };
+  }
+  try {
+    fileCloseIntake(key, version, pr);
+  } catch (e) {
+    return {
+      write: false,
+      why: `${version} is frozen and the INTAKE for ${key} with merged PR #${pr.number} could not be filed (${(e as Error).message}); run: ${requestLine(key, version)}`,
+    };
+  }
+  return { write: true, note: `frozen: INTAKE filed with merged PR #${pr.number}` };
+}
+
+interface ProjectVersion {
+  name: string;
+  released?: boolean;
+  archived?: boolean;
+  releaseDate?: string;
+  description?: string;
+}
+
+// The current version: the earliest unreleased by release date (archived never), else the first live one
+// in list order. merge-on-green.sh folds into the same version.
+function currentVersion(versions: ProjectVersion[]): string | undefined {
+  const live = versions.filter((v) => !v.released && !v.archived);
+  const dated = live
+    .filter((v) => v.releaseDate)
+    .sort((a, b) => (a.releaseDate! < b.releaseDate! ? -1 : a.releaseDate! > b.releaseDate! ? 1 : 0));
+  return (dated[0] ?? live[0])?.name;
+}
+
+/**
+ * A Done close of a ticket that holds an unreleased version later than the current one moves it into the
+ * current version: add the current, then remove each later one. Released and archived versions it holds
+ * stay. A refusal or a failed write leaves the held versions as they were and prints one line; the close
+ * itself still lands and the exit code is unchanged.
+ */
+async function foldIntoCurrent(key: string, held: string[], versions: ProjectVersion[]): Promise<void> {
+  const cur = currentVersion(versions);
+  if (!cur) return;
+  const open = new Set(versions.filter((v) => !v.released && !v.archived).map((v) => v.name));
+  const later = held.filter((n) => open.has(n) && n !== cur);
+  if (later.length === 0) return;
+  const placement = await placeInto(key, cur, versions, 'current');
+  if (!placement.write) {
+    console.log(`${key} keeps ${later.join(', ')}: ${placement.why}`);
+    return;
+  }
+  try {
+    if (!held.includes(cur)) await setFixVersion(key, 'add', cur, 'transition-stamp');
+    for (const n of later) await setFixVersion(key, 'remove', n, 'transition-stamp');
+  } catch (e) {
+    console.error(`WARN ${key} fold from ${later.join(', ')} to ${cur} did not finish (${(e as Error).message}); check its fixVersions`);
+    return;
+  }
+  console.log(`${key} fixVersion +${cur} -${later.join(', -')} (folded into the current version; --no-version opts out)`);
 }
 
 async function clearPhase(key: string, labels: string[], req: typeof request): Promise<string | undefined> {
