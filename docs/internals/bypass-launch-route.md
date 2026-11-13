@@ -97,8 +97,11 @@ A process running as the operator's user can append a forged `go <code>` line
 to the bridge's `inbound.jsonl` if it can read the code from the bridge's
 outgoing queue. The per-request code, the own-chat check, the fixed launch
 shape, the flag and model allowlists and the 7-day bound limit the damage.
-They do not prevent it. Closing this needs a root-owned station op that
-afk-sudo approves.
+They do not prevent it. The same user can also swap or edit the brief after
+the post-go sha check, before the launcher and the worker read it, so the
+worker runs instructions the operator never saw, with the granted flag; the
+fix is a launch from a root-held snapshot of the approved brief. Closing both
+needs a root-owned station op that afk-sudo approves.
 
 Tests: `scripts/station-ops/test-bypass-launchd.sh` runs the daemon with a
 stub sender and a stub launcher on a temp bucket.
