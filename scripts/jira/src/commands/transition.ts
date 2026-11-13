@@ -109,11 +109,6 @@ export async function transitionIssue(
 
 type Placement = { write: true; note: string } | { write: false; why: string };
 
-/**
- * May `key` be written into `version`? A frozen version takes a key in its frozen set or one the
- * admissions ledger admits; one the ledger shows as deferred or removed is ruled out; any other key is
- * a placement for the release manager, so its INTAKE is filed with the merged PR as evidence first.
- */
 async function placeInto(
   key: string,
   version: string,
@@ -150,8 +145,6 @@ interface ProjectVersion {
   description?: string;
 }
 
-// The current version: the earliest unreleased by release date (archived never), else the first live one
-// in list order. merge-on-green.sh folds into the same version.
 function currentVersion(versions: ProjectVersion[]): string | undefined {
   const live = versions.filter((v) => !v.released && !v.archived);
   const dated = live
@@ -160,13 +153,6 @@ function currentVersion(versions: ProjectVersion[]): string | undefined {
   return (dated[0] ?? live[0])?.name;
 }
 
-/**
- * A Done close of a ticket that holds an unreleased version later than the current one moves it into the
- * current version: add the current, then remove each later one. Released and archived versions it holds
- * stay. A refusal prints one line and writes nothing. The add and each remove are separate requests, so a
- * failure part-way keeps what the earlier ones wrote (the ticket then holds both versions) and prints a
- * WARN naming it. Neither stops the close, and the exit code is unchanged.
- */
 async function foldIntoCurrent(key: string, held: string[], versions: ProjectVersion[]): Promise<void> {
   const cur = currentVersion(versions);
   if (!cur) return;

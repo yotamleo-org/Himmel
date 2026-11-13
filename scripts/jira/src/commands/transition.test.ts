@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Command } from 'commander';
@@ -414,7 +414,6 @@ describe('a Done close folds a ticket held in a later unreleased version into th
     rmSync(dir, { recursive: true, force: true });
   });
 
-  // A stub that applies the add/remove verbs, so the final fixVersions set is the assertion.
   function wireFold(start: string[], versions: unknown[] = OPEN) {
     held = start;
     let status = 'To Do';
@@ -444,7 +443,7 @@ describe('a Done close folds a ticket held in a later unreleased version into th
         else found.push(...readFileSync(join(d, e.name), 'utf8').split('\n').filter((l) => l.includes('"INTAKE"') && l.includes('"HIMMEL-1"')));
       }
     };
-    try { walk(join(dir, 'state')); } catch { /* no state dir: no rows */ }
+    if (existsSync(join(dir, 'state'))) walk(join(dir, 'state'));
     return found;
   };
 
