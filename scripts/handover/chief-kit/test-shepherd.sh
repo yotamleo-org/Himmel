@@ -197,5 +197,42 @@ check "(o) ready-check exit 1 exits 1" 1 "$rc"
 has "(o) a real fail still says FAIL" "ready-check: FAIL" "$out"
 has "(o) a real fail keeps ready-check-failed" "ready-check-failed" "$out"
 
+# (p) the PR view rides the read token when the GH_CMD seam is unset. The two-token stub is first on
+# PATH as `gh` and delegates to this suite's own stub; GH_READ_ENV_ROOT is pinned for every row.
+READTOK=ghp_READTOKEN0123456789
+mkdir -p "$WORK/ttroot" "$WORK/emptyroot" "$WORK/tt" "$WORK/himmelcfg"
+printf 'himmel_github_token_vm2=%s\n' "$READTOK" > "$WORK/ttroot/.env"
+: > "$WORK/emptyroot/.env"
+ln -s "$HERE/fixtures/gh-two-token-stub.sh" "$WORK/tt/gh"
+TTLOG="$WORK/tt.log"
+logn() { grep -c -E -- "$1" "$TTLOG"; }
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
+printf '#!/bin/sh\necho test-a.sh\n' > "$WORK/impacted-stub"
+tt_run() { # <root>
+    : > "$TTLOG"
+    out=$( cd "$WORK/repo" && env -u GH_CMD GH_READ_ENV_ROOT="$1" PATH="$WORK/tt:$PATH" GH_STUB_DELEGATE="$WORK/bin/gh" \
+        GH_STUB_READ_TOKEN="$READTOK" GHLOG="$TTLOG" HIMMEL_SECRETS_KEYRING=off HIMMEL_CONFIG_DIR="$WORK/himmelcfg" \
+        bash "$SHEP" 7 2>&1 ); rc=$?
+}
+setup yes ok 0
+GH_STUB_MAINFAIL=rate tt_run "$WORK/ttroot"
+check "(p) main spent: shepherd exits 0" 0 "$rc"
+has "(p) main spent: the PR view gives the head" "SHEPHERD 7 $HEADSHA READY-CANDIDATE" "$out"
+case "$out" in *"cannot read PR"*) fail "(p) main spent: no 'cannot read PR head'" ;; *) pass "(p) main spent: no 'cannot read PR head'" ;; esac
+check "(p) main spent: the PR view logs tok=read" 1 "$(logn '^tok=read argv=pr view 7 --json headRefOid,baseRefName,comments')"
+check "(p) main spent: no read logs tok=main" 0 "$(logn '^tok=main ')"
+setup yes ok 0
+tt_run "$WORK/emptyroot"
+check "(p) control, no read token: shepherd exits 0" 0 "$rc"
+has "(p) control: the PR view gives the head" "SHEPHERD 7 $HEADSHA READY-CANDIDATE" "$out"
+check "(p) control: the PR view logs tok=main" 1 "$(logn '^tok=main argv=pr view 7 --json headRefOid,baseRefName,comments')"
+check "(p) control: no call logs tok=read" 0 "$(logn '^tok=read ')"
+setup yes ok 0
+: > "$TTLOG"
+out=$( cd "$WORK/repo" && GH_CMD="$WORK/bin/gh" GH_READ_ENV_ROOT="$WORK/ttroot" PATH="$WORK/tt:$PATH" GH_STUB_DELEGATE="$WORK/bin/gh" \
+    GH_STUB_READ_TOKEN="$READTOK" GHLOG="$TTLOG" GH_STUB_MAINFAIL=rate HIMMEL_SECRETS_KEYRING=off bash "$SHEP" 7 2>&1 ); rc=$?
+check "(p) a set GH_CMD seam still wins: shepherd exits 0" 0 "$rc"
+check "(p) a set GH_CMD seam never reaches the two-token stub" 0 "$(wc -l < "$TTLOG" | tr -d ' ')"
+
 printf '\n%s failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

@@ -27,7 +27,9 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LEDGER_PY="$HERE/series-ledger.py"
-GH="${GH_CMD:-gh}"
+GH_READ_BIN="$HERE/../../lib/gh-read.sh"   # the only gh call here is a PR read: it rides the read token when main is spent
+[ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
+GH="${GH_CMD:-$GH_READ_BIN}"
 # shellcheck source=../../lib/git-clean.sh
 . "$HERE/../../lib/git-clean.sh" || { echo "series-next: cannot source scripts/lib/git-clean.sh" >&2; exit 1; }
 git_env_scrub   # an inherited GIT_DIR would make every worktree and ahead count answer about the wrong repo

@@ -50,6 +50,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# The two reads this script makes itself (the vetted head and the title) ride the read token
+# when GH_CMD is unset; the forge seam's own calls and the merge stay on the main token.
+GH_READ_BIN="$SCRIPT_DIR/../lib/gh-read.sh"
+[ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
 # Forge-dispatch seam: forge_pr_find_open / forge_pr_mergeable / forge_pr_merge
 # route to the github or bitbucket backend per the repo's origin.
 # The admin-fallback + cosmetic-branch-delete handling lives in the github
@@ -202,9 +206,10 @@ if [ "$forge" = "github" ]; then
     # and `--match-head-commit` rejects the merge — loudly, which is the point.
     # A non-empty value is required for the binding to mean anything: fail rather
     # than silently fall back to an unbound merge.
-    # "${GH_CMD:-gh}", not a bare `gh` — the forge seam's github backend routes
-    # every call through GH_CMD and the tests set it to a stub.
-    vetted_head=$("${GH_CMD:-gh}" pr view "$pr_num" --json headRefOid --jq '.headRefOid' 2>/dev/null) || vetted_head=""
+    # "${GH_CMD:-$GH_READ_BIN}", not a bare `gh` — the forge seam's github backend routes
+    # every call through GH_CMD and the tests set it to a stub; unset, the read rides
+    # the read token. The forge seam's own find, mergeability and merge calls are untouched.
+    vetted_head=$("${GH_CMD:-$GH_READ_BIN}" pr view "$pr_num" --json headRefOid --jq '.headRefOid' 2>/dev/null) || vetted_head=""
     if [ -z "$vetted_head" ]; then
         echo "ERR pr-merge: cannot read the head SHA of PR #$pr_num — refusing to merge unbound." >&2
         exit 7
@@ -295,7 +300,7 @@ _pm_jira_close() {
     local pr="$1" title key project config_path target_status comment_tmp transition_out transition_rc=0
     local jira_common jira_repo_root issue_type_json issue_type comment_rc=0
 
-    title=$("${GH_CMD:-gh}" pr view "$pr" --json title -q .title 2>/dev/null) || return 0
+    title=$("${GH_CMD:-$GH_READ_BIN}" pr view "$pr" --json title -q .title 2>/dev/null) || return 0
     key=$(printf '%s' "$title" | grep -oE '\[[A-Za-z]+-[0-9]+\]' | head -1 | tr -d '[]') || true
     [ -n "$key" ] || return 0
     PM_TICKET=$key
