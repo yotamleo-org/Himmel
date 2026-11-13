@@ -737,10 +737,7 @@ print("STALE:%d/%d" % (done, len(keys)) if done else "skip" if unread else "ok")
 PY
 }
 
-# UNWIRED:<n>: Live state `pool-disposition: <KEY> question|slice after <ON>` pairs (live-state.sh's parse)
-# that the Jira mirror shows no Blocks link for on either side, both keys open. A key with no readable
-# mirror file, a Done key and a pair live-state.sh recorded as final count nothing; no Jira call.
-chains_unwired() { # <doc> <mirror dir> <live-state record dir>
+chains_unwired() {
     python3 -I - "$1" "$2" "$3" <<'PY'
 import hashlib, os, re, sys
 doc, mirror, record = sys.argv[1:4]
@@ -3000,7 +2997,6 @@ chains_summary=skip
 if [ -n "$console_doc" ] && [ -f "${console_doc%/*}/focus-chains.json" ] && [ -d "$nd_mirror" ]; then
     chains_summary="$(chains_stale "${console_doc%/*}/focus-chains.json" "$nd_mirror")" || chains_summary=skip  # swallow-ok: a failed read reads skip
 fi
-# UNWIRED:<k> joins STALE after a comma and replaces ok or skip; at 0 every value above stays as it is.
 if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
     chains_unwired_n="$(chains_unwired "$console_doc" "$nd_mirror" "${TMPDIR:-/tmp}/himmel-chain-links-$UID")" || chains_unwired_n=0  # swallow-ok: a failed read counts nothing
     case "$chains_unwired_n" in

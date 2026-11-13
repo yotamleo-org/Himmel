@@ -2495,11 +2495,9 @@ printf '%s\n' '# DC — CHIEF' '' '## Current direction' '' 'In work: the fixtur
 not_contains '(9502) a doc with no Full original text line is not flagged' "$(dc_tick)" 'direction-companions-unread'
 rm -f "$TICK_PROJECTS_DIR/p/dc9502.jsonl" "$dc_doc"
 
-# chains=UNWIRED:<n>: a Live state `pool-disposition: <KEY> question|slice after <ON>` line whose
-# pair the Jira mirror shows no blocked-by link for, both keys open; the mirror only, no Jira call.
 uw_m="$W/uw-mirror/HIMMEL"; mkdir -p "$uw_m" "$W/uw-tmp" "$W/uw-dir"
 uw_doc="$W/uw-dir/uw-chief.md"
-uw_mirror() { # <key> <statusCategory> <blocked_by json list> [blocks json list]
+uw_mirror() {
     printf '%s\n' '---' "key: \"$1\"" "statusCategory: \"$2\"" 'links:' "  blocks: ${4:-[]}" "  blocked_by: $3" '  relates: []' '---' '' "# $1" > "$uw_m/$1.md"
 }
 uw_live() { printf '%s\n' '# UW — CHIEF' '' '## Live state' '' "$@" '' '## Results' > "$uw_doc"; }
