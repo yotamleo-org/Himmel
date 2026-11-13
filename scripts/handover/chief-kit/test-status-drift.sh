@@ -1404,7 +1404,6 @@ reset "To Do"; touch "$FX/versions.fail"
 drift
 contains "3b: an unreadable version list is a HEALTH row" "$(drows HEALTH)" "HEALTH - jira: the version list is unreadable"
 
-# the release manager's latest ruling refused the key's INTAKE and nothing is newer: one wait row naming it
 VNOW=$(date -u +%s)
 viso() { date -u -d "@$((VNOW - $1))" +%Y-%m-%dT%H:%M:%S.000Z 2>/dev/null || date -u -r "$((VNOW - $1))" +%Y-%m-%dT%H:%M:%S.000Z; }
 vruling() { # <key> <id> <secs ago> <verb> <op kind> <outcome> <authority> - one ruling row in v1.1.3's ledger

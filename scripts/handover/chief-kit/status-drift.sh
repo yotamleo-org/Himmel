@@ -581,11 +581,6 @@ esac
 # per later version; a ticket that also carries the current version is left out by the JQL itself.
 # ponytail: the release is named after the version, upgrade path = a release lookup in the CLI once a
 # release declares several versions.
-# Before the INTAKE fix, the key's latest ruling is read from that release's rulings.jsonl (read only, as
-# the jira CLI resolves it: HIMMEL_RELEASE_STATE_DIR, else <handover root>/$USER_SLUG/<repo>/release). A
-# latest ruling that refused the INTAKE (op none, outcome BACKLOG) is a wait on its owner while nothing is
-# newer: no PR naming the key in the 14-day merged list, no status change in its history, no admissions-ledger
-# row. Evidence that cannot be read, or a ruling older than the merged list's window, keeps the INTAKE fix.
 proj="${JIRA_PROJECT_KEY:-HIMMEL}"
 VD_EP='def ep: sub("\\.[0-9]+"; "") | capture("^(?<d>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})(?<z>Z|[+-][0-9]{2}:?[0-9]{2})$")
     | (.d + "Z" | fromdateiso8601) - (if .z == "Z" then 0 else ((.z[1:3] | tonumber) * 3600 + (.z[-2:] | tonumber) * 60) * (if .z[0:1] == "+" then 1 else -1 end) end);'
