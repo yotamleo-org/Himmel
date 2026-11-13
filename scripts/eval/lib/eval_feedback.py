@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """scripts/eval/lib/eval_feedback.py - the eval feedback step: a result past its threshold drives one
-change, and the next run of the same series re-measures it (HIMMEL-6942).
+change, and the next run of the same series re-measures it.
 
 Reads the eval-runs ledger (eval_runs.py) and the rules in scripts/eval/feedback-rules.json; writes the
 eval-changes ledger. Per eval named in the rules, over that eval's newest "ok" row:
@@ -21,7 +21,7 @@ eval-changes ledger. Per eval named in the rules, over that eval's newest "ok" r
      of a change of that critic, the first rule (file order) with a metric worse than its threshold and no
      open change of the same confighash raises ONE "open" change record for the worst such metric.
      A "learning" change also appends one candidate line to the failure-loop memory inbox
-     (the HIMMEL-4670 loop's own learnings queue) when an inbox is given, once per change: each write leaves an
+     (the AG-UI failure loop's own learnings queue) when an inbox is given, once per change: each write leaves an
      "inbox" record, and a run given an inbox first delivers every open, unmeasured learning change whose latest
      inbox record is not inbox_written true (one opened without an inbox, or whose write failed).
   A rule reads only a row's tuning metrics. A split row (review-panel seeds, score.py) carries
@@ -60,7 +60,7 @@ APPLY-REVIEW: apply_review() writes one review-panel change's applied receipt fo
   proposal's target or that changes another behaviour path beside it. It runs no git operation that writes, and
   neither do keep and revert: they are recommendations.
 
-MERGE GATE (HIMMEL-8426): gate_verdict() grades a critic change from the tracked review-panel results rows;
+MERGE GATE: gate_verdict() grades a critic change from the tracked review-panel results rows;
   it is separate from the keep rule, writes nothing and is called by score.py gate.
 
   eval_feedback.py run [--eval E]... [--ledger P] [--changes P] [--rules P] [--inbox P] [--repo DIR]
@@ -527,7 +527,7 @@ def gate_side(rows, h, confighash, skip_ids=(), skip_bundles=()):
 
 
 def gate_verdict(rows, base_hash, head_hash, confighash, target_classes=()):
-    """(verdict, info) of the merge gate for a critic change (HIMMEL-8426): keep | no-loss | loss | unmeasured.
+    """(verdict, info) of the merge gate for a critic change: keep | no-loss | loss | unmeasured.
 
     Separate from keep_rule, which judges a change record a threshold rule opened; a critic PR has none.
     rows are results.jsonl rows (score.py export-row). The baseline is the rows at base_hash, the head the

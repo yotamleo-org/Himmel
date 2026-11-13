@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """scripts/eval/review-panel/score.py - score critic-panel output against the
-seed key (HIMMEL-4649): recall, precision and false-positive rate per critic,
+seed key: recall, precision and false-positive rate per critic,
 per class and for the panel as a whole, with n and Wilson 95% intervals; one
 row per sweep into the eval-runs ledger (scripts/eval/lib/eval_runs.py).
 
@@ -29,7 +29,7 @@ twin pair, kind (seeded | clean), split (open | sealed) and defects
 ({id, class, file, line}). <outputs>/<id>.md is the panel's stdout for that
 case, <outputs>/<id>.err its stderr (optional).
 
-Merge gate (HIMMEL-8426). A <rev> is a git tree-ish of --repo (default this
+Merge gate. A <rev> is a git tree-ish of --repo (default this
 checkout); files are read from the tree, never the work tree. results.jsonl
 holds one row per sweep; gate reads the head tree's rows and prints
 eval_feedback.gate_verdict: exit 0 keep / no-loss, 1 loss / unmeasured / mismatch, 2 error.
@@ -730,7 +730,7 @@ def _sha(b):
 
 def fixture_digest(ids, blobs, key_bytes):
     """The fixture set's hash: each case's .patch, then every other per-case file (.intent.md), then the key.
-    blobs maps a fixtures-dir file name to its bytes. A patch-only set hashes as it did before HIMMEL-8426."""
+    blobs maps a fixtures-dir file name to its bytes. A patch-only set hashes as it did before intent files were hashed."""
     h = hashlib.sha256()
     for cid in ids:
         h.update(cid.encode())
@@ -787,7 +787,7 @@ def tree_blob(repo, rev, path):
 
 def cbs_paths(repo, rev):
     """The tracked files of <rev> that cbs.txt names: one `dir/` prefix or fnmatch glob per line, a glob
-    matching within its own directory depth. A tree without cbs.txt has none (HIMMEL-8426 A29)."""
+    matching within its own directory depth. A tree without cbs.txt has none."""
     raw = tree_blob(repo, rev, CBS_LIST)
     if raw is None:
         return []
@@ -1245,7 +1245,7 @@ def execution_fields(outputs):
 
 
 def panel_mismatch(rows, base_hash, head_hash, confighash):
-    """A reason string when the counted rows did not run the same critics, else "" (HIMMEL-8979). A row's
+    """A reason string when the counted rows did not run the same critics, else "". A row's
     `responded` is {scored: cases scored, critics: {critic: cases it answered}}; its roster gives each critic one
     of three states: answered every scored case, answered some, answered none. Counted rows at either hash with
     more than one roster make a win-or-loss comparison unequal (the panel drops an unavailable critic per case),
@@ -1254,7 +1254,7 @@ def panel_mismatch(rows, base_hash, head_hash, confighash):
     ponytail: two partial critics count as alike whatever their case counts, upgrade = compare per-case
     participation once a row records which cases each critic answered.
     ponytail: when every counted row has no `responded` the normal verdict stands. That is the state of the
-    HIMMEL-8430 rows today, so the unequal-panel false alarm on that pair stays until the old rows are replaced in
+    callers-and-intent critic change's rows today, so the unequal-panel false alarm on that pair stays until the old rows are replaced in
     results.jsonl by rows with a roster (export-row appends, and the first row of a run_id wins, so a re-exported
     row is dropped), upgrade = replace the old baseline and head rows.
     The counted rows are gate_verdict's: both call eval_feedback.gate_side."""
