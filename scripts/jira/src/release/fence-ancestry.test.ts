@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { ancestorValue, hostNsFile, walk, MAX_HOPS } from './fence-ancestry.js';
 
 vi.unmock('./fence-ancestry.js');
@@ -40,6 +40,7 @@ const chain = (over: Partial<Record<300 | 200 | 100 | 1, Partial<P>>> = {}): P[]
   { pid: 1, ppid: 0, uid: 0, env: null, ...over[1] },
 ];
 
+const hasGetent = spawnSync('getent', ['passwd', '0']).status === 0;
 const passwdHome = () => execFileSync('getent', ['passwd', String(process.getuid?.())], { encoding: 'utf8' }).split(':')[5];
 
 afterEach(() => vi.unstubAllEnvs());
@@ -149,7 +150,7 @@ describe('walk: T1e, the host reference', () => {
     }
   });
 
-  it('hostNsFile() is the passwd home\'s fixed path, whatever BRIDGE_ROOT and HOME say', () => {
+  it.skipIf(!hasGetent)('hostNsFile() is the passwd home\'s fixed path, whatever BRIDGE_ROOT and HOME say', () => {
     vi.stubEnv('HOME', mkdtempSync(join(tmpdir(), 'home-')));
     vi.stubEnv('BRIDGE_ROOT', mkdtempSync(join(tmpdir(), 'bridge-')));
     expect(hostNsFile()).toBe(join(passwdHome(), '.claude', 'handover', 'bridge', 'host-ns'));

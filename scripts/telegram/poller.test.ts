@@ -4163,15 +4163,23 @@ test("R2.13 the startup check's default retry timer is unref'd so it cannot hold
   } finally { globalThis.setTimeout = orig; for (const m of made) clearTimeout(m.t); }
 });
 
-test("T1f: --write-host-ns and the start-up write put /proc/self/ns at the fixed path, never under BRIDGE_ROOT", async () => {
+test("T1f: with no flag runCli writes nothing; with no /proc writeHostNs writes nothing; start-up calls writeHostNs", async () => {
+  const P = await import("./poller");
+  const ref = join(root(), "home", ".claude", "handover", "bridge", "host-ns");
+  expect(await P.runCli([], ref)).toBe(false);
+  expect(await P.writeHostNs(ref, join(root(), "no-proc"))).toBe(false);
+  expect(existsSync(ref)).toBe(false);
+  const main = readFileSync(join(import.meta.dir, "poller.ts"), "utf8").split("export async function main(): Promise<void> {")[1] ?? "";
+  expect(main.slice(0, 400)).toContain("await writeHostNs()");
+});
+
+test.skipIf(!existsSync("/proc/self/ns/pid"))("T1f: --write-host-ns and the start-up write put /proc/self/ns at the fixed path, never under BRIDGE_ROOT", async () => {
   const P = await import("./poller");
   const ref = join(root(), "home", ".claude", "handover", "bridge", "host-ns");
   const bridge = root();
   const prior = process.env.BRIDGE_ROOT;
   process.env.BRIDGE_ROOT = bridge;
   try {
-    expect(await P.runCli([], ref)).toBe(false);
-    expect(existsSync(ref)).toBe(false);
     expect(await P.runCli(["--write-host-ns"], ref)).toBe(true);
     const want = `${readlinkSync("/proc/self/ns/pid")} ${readlinkSync("/proc/self/ns/user")}\n`;
     expect(readFileSync(ref, "utf8")).toBe(want);
@@ -4181,11 +4189,9 @@ test("T1f: --write-host-ns and the start-up write put /proc/self/ns at the fixed
     expect(readFileSync(ref, "utf8")).toBe(want);
     expect(existsSync(join(bridge, "host-ns"))).toBe(false);
   } finally { if (prior === undefined) delete process.env.BRIDGE_ROOT; else process.env.BRIDGE_ROOT = prior; }
-  const main = readFileSync(join(import.meta.dir, "poller.ts"), "utf8").split("export async function main(): Promise<void> {")[1] ?? "";
-  expect(main.slice(0, 400)).toContain("await writeHostNs()");
 });
 
-test("T1f: bun resolves hostNsFile() from the passwd home, whatever HOME and BRIDGE_ROOT say", () => {
+test.skipIf(spawnSync("getent", ["passwd", "0"]).status !== 0)("T1f: bun resolves hostNsFile() from the passwd home, whatever HOME and BRIDGE_ROOT say", () => {
   const passwdHome = spawnSync("getent", ["passwd", String(process.getuid!())], { encoding: "utf8" }).stdout.split(":")[5];
   const mod = join(import.meta.dir, "..", "jira", "src", "release", "fence-ancestry.ts");
   const r = spawnSync(process.execPath, ["-e", `const m = await import(${JSON.stringify(mod)}); console.log(m.hostNsFile());`], {
