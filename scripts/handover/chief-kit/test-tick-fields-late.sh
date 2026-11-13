@@ -640,7 +640,7 @@ for f_tool in gh jira; do
     chmod +x "$W/bin-focus6829/$f_tool"
 done
 f_doc() { printf '%s\n' '# chief' ${1:+"focus-version: $1"} '' '## Results (newest at the bottom)' > "$f_dir/chief.md"; }
-f_state() { printf 'status=%s\nstage=%s\ngen=3\ndirty=\nsha8=0a1b2c3d\nsdrift=%s\nts=1\n' "$1" "$2" "$3" > "$f_dir/focus-state"; }
+f_state() { printf 'status=%s\nstage=%s\ngen=3\ndirty=\nsha8=0a1b2c3d\nsdrift=%s\n%sts=1\n' "$1" "$2" "$3" "${4:+stale=$4$'\n'}" > "$f_dir/focus-state"; } # [$4 = the stale= value]
 f_tick() { PATH="$W/bin-focus6829:$PATH" bash "$SUT" --doc "$f_dir/chief.md" "$@" 2>/dev/null; }
 # positive control: a gh call under a script named focus-refresh.sh is logged
 : > "$f_calls"
@@ -660,16 +660,41 @@ not_contains 'a zero drift line leaves sdrift= off the compact line' "$f_out" ' 
 f_out="$(f_tick --verbose)"
 contains '--verbose shows a healthy focus state' "$f_out" 'focus: ok'
 contains '--verbose shows a zero drift line' "$f_out" 'sdrift: 0:0f0f0f0f'
+# S5: stale= is the focus-state's STALE line (the UNOWNED keys of the pass), printed after sdrift=
+f_state FAILED drift 2:abcd1234 1:HIMMEL-11
+f_out="$(f_tick)"
+contains 'a stale line in the focus state puts stale= after sdrift= on the compact line' "$f_out" ' sdrift=2:abcd1234 stale=1:HIMMEL-11'
+f_state ok '' 0:0f0f0f0f 0:
+f_out="$(f_tick)"
+not_contains 'stale=0: leaves stale= off the compact line' "$f_out" ' stale='
+f_out="$(f_tick --verbose)"
+contains '--verbose shows a zero stale line' "$f_out" $'\nstale: 0:'
+f_state ok '' 0:0f0f0f0f partial:2:HIMMEL-11,HIMMEL-12
+f_out="$(f_tick)"
+contains 'a partial stale line is printed' "$f_out" ' stale=partial:2:HIMMEL-11,HIMMEL-12'
+f_state ok '' 0:0f0f0f0f unknown
+f_out="$(f_tick)"
+contains 'an unknown stale line is printed' "$f_out" ' stale=unknown'
+f_state ok '' 0:0f0f0f0f 11:HIMMEL-1,HIMMEL-2,HIMMEL-3,HIMMEL-4,HIMMEL-5,HIMMEL-6,HIMMEL-7,HIMMEL-8,+3
+f_out="$(f_tick)"
+contains 'eleven keys print as the state wrote them' "$f_out" ' stale=11:HIMMEL-1,HIMMEL-2,HIMMEL-3,HIMMEL-4,HIMMEL-5,HIMMEL-6,HIMMEL-7,HIMMEL-8,+3'
+f_state ok '' 0:0f0f0f0f
+f_out="$(f_tick)"
+not_contains 'a focus state with no stale= line leaves stale= off the compact line' "$f_out" ' stale='
+f_out="$(f_tick --verbose)"
+not_contains 'and off the verbose lines' "$f_out" $'\nstale:'
 f_doc ''
-f_state FAILED drift 2:abcd1234
+f_state FAILED drift 2:abcd1234 1:HIMMEL-11
 f_out="$(f_tick --verbose)"
 not_contains 'a doc with no focus-version: line shows no focus' "$f_out" 'focus:'
 not_contains 'a doc with no focus-version: line shows no sdrift' "$f_out" 'sdrift:'
+not_contains 'a doc with no focus-version: line shows no stale' "$f_out" $'\nstale:'
 f_doc v1.0.1
 rm -f "$f_dir/focus-state"
 f_out="$(f_tick)"
 not_contains 'no focus-state file leaves focus= off the line' "$f_out" ' focus='
 not_contains 'no focus-state file leaves sdrift= off the line' "$f_out" ' sdrift='
+not_contains 'no focus-state file leaves stale= off the line' "$f_out" ' stale='
 if [ ! -r "/proc/$$/status" ]; then skip 'the focus fields make no gh or jira call: no /proc to walk the callers'
 elif [ "$f_probe" != 'gh probe' ]; then fail "the call-log stub missed a gh call under focus-refresh.sh (got '$f_probe')"
 elif [ -s "$f_calls" ]; then fail "focus-refresh.sh called gh or jira from the tick: $(tr '\n' ';' < "$f_calls")"; else pass 'the focus fields make no gh or jira call'; fi

@@ -243,6 +243,41 @@ printf 'UNOWNED HIMMEL-7588 x | writer=a | fix=b\nsdrift=garbage\n' > "$DRIFT"; 
 out="$(sum)"
 eq 'E15 an sdrift trailer that is not count:signature is marked unknown' "$(jqv "$out" '.unknown')" true
 
+# I6 (S5): `unowned` lists the real UNOWNED keys once; known, waiting and other classes never
+printf '# checker\tclass\tkey\tedited-at\n' > "$KNOWN"
+printf 'HIMMEL-7980\tUNOWNED\tHIMMEL-14\t2026-10-28T22:00:00Z\n' >> "$KNOWN"
+mirror HIMMEL-7980 "To Do"
+cat > "$DRIFT" <<'EOF'
+UNOWNED HIMMEL-11 In Progress, no open PR and no live owner | writer=a | fix=b
+UNOWNED HIMMEL-11 In Progress, no open PR and no live owner | writer=a | fix=b
+AWAITING HIMMEL-12 parked on the chief | writer=a | fix=b | wait=chief
+WORKER-STALE HIMMEL-13 the worker's last line is old | writer=a | fix=b
+UNOWNED HIMMEL-14 In Progress, no open PR and no live owner | writer=a | fix=b
+sdrift=5:abcd1234
+EOF
+touch_at "$DRIFT" "$((NOW - 60))"
+out="$(sum)"
+eq 'I6 unowned lists a repeated UNOWNED key once and leaves out AWAITING, WORKER-STALE and a known checker bug' "$(jqv "$out" '.unowned | join(",")')" 'HIMMEL-11'
+cat > "$DRIFT" <<'EOF'
+UNOWNED HIMMEL-30 x | writer=a | fix=b
+UNOWNED HIMMEL-4 x | writer=a | fix=b
+UNOWNED HIMMEL-30 x | writer=a | fix=b
+sdrift=3:abcd1234
+EOF
+touch_at "$DRIFT" "$((NOW - 60))"
+out="$(sum)"
+eq 'I6 unowned is sorted and unique' "$(jqv "$out" '.unowned | join(",")')" 'HIMMEL-30,HIMMEL-4'
+printf 'sdrift=0:00000000\n' > "$DRIFT"; touch_at "$DRIFT" "$((NOW - 60))"
+out="$(sum)"
+eq 'I6 a drift file with no rows gives an empty unowned list' "$(jqv "$out" '.unowned | length')" 0
+eq 'I6 and it is an array, not null' "$(jqv "$out" '.unowned | type')" array
+printf 'UNOWNED HIMMEL-21 x | writer=a | fix=b\nUNOWNED HIMMEL-22 x | writer=a | fix=b\nsdrift=unknown\n' > "$DRIFT"; touch_at "$DRIFT" "$((NOW - 60))"
+out="$(sum)"
+eq 'I6 an sdrift=unknown file still lists its UNOWNED keys' "$(jqv "$out" '.unowned | join(",")')" 'HIMMEL-21,HIMMEL-22'
+eq 'I6 and has unknown true, so the feed reads partial' "$(jqv "$out" '.unknown')" true
+out="$(node "$SUM" --json --drift "$WORK/absent.txt" --mirror-dir "$MIR" --now "$NOW" 2>&1)"
+eq 'I6 an absent drift file gives an empty unowned list' "$(jqv "$out" '.unowned | length')" 0
+
 # a file the sync cannot read is left as it was, never rewritten from the Jira side alone
 reset_sync
 printf 'HIMMEL-7980\tUNOWNED\tHIMMEL-7588\t2026-10-29T12:00:00Z\n' >> "$KNOWN"
