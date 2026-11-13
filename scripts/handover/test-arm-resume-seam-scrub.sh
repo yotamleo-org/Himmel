@@ -145,6 +145,7 @@ dry_body() {
     local -a envs=(env -u HIMMEL_BRIDGE_SESSION PATH="$STUB_BIN:$SCHED_STUB:$PATH" OSTYPE="$plat"
                    ARM_TERMINAL_APP="$term" ARM_APP_DIRS="$TMP/apps" ARM_RUNNER_DIR="$TMP/runners")
     [ "$mark" = 1 ] && envs+=(HIMMEL_BRIDGE_SESSION=1)
+    [ "$mark" = legacy ] && envs+=(HIMMEL_BRIDGE_SESSION=1 HIMMEL_BRIDGE_LEGACY=1)
     [ -n "$proxy" ] && envs+=(HIMMEL_HEADROOM_PROXY=1 HEADROOM_BIN="$SCHED_STUB/headroom")
     "${envs[@]}" bash "$ARM" --time "$(future_time)" --handover "$HANDOVER" --dry-run 2>/dev/null \
       | case "$kind" in
@@ -203,6 +204,10 @@ walk_case() {
             user-manager) mk 900 1000 1 900; mkdir "$FAKE/900/environ" ;;
             user-manager-nested-ns) mk 900 1000 1 "900 5"; mkdir "$FAKE/900/environ" ;;
             marked-ancestor) mk 900 1000 1 900; printf "HIMMEL_BRIDGE_SESSION=1\0" > "$FAKE/900/environ" ;;
+            legacy-chain|forged-legacy) export HIMMEL_BRIDGE_SESSION=1 HIMMEL_BRIDGE_LEGACY=1
+                printf "HIMMEL_BRIDGE_SESSION=1\0HIMMEL_BRIDGE_LEGACY=1\0" > "$FAKE/$$/environ"; mk 900 1000 1 900
+                if [ "$CASE" = legacy-chain ]; then printf "HIMMEL_BRIDGE_SESSION=1\0HIMMEL_BRIDGE_LEGACY=1\0" > "$FAKE/900/environ"
+                else printf "HIMMEL_BRIDGE_SESSION=1\0" > "$FAKE/900/environ"; fi ;;
             hop-limit) p=900; while [ "$p" -lt 970 ]; do mk "$p" 1000 "$((p + 1))" "$p"; printf "A=1\0" > "$FAKE/$p/environ"; p=$((p + 1)); done ;;
         esac
         if _arm_bridge_marked; then echo marked; else echo unmarked; fi' "$TMP/walk-$1.sh"
@@ -214,6 +219,12 @@ if [ -d /proc/self ]; then
     assert_eq "T18 walk: a guarded env in a nested pid namespace is not the user manager (marked)" "marked" "$(walk_case user-manager-nested-ns)"
     assert_eq "T18 walk: a marked ancestor marks the arm" "marked" "$(walk_case marked-ancestor)"
     assert_eq "T18 walk: 65 same-uid unmarked hops without reaching pid 1 fail closed (marked)" "marked" "$(walk_case hop-limit)"
+    assert_eq "T19 (f) walk: a legacy chat's chain, every marked env legacy, arms unmarked" "unmarked" "$(walk_case legacy-chain)"
+    assert_eq "T19 (f) walk: a legacy flag forged under a fenced ancestor stays marked" "marked" "$(walk_case forged-legacy)"
+    B_LEG=$(dry_body legacy at)
+    case "$B_LEG" in *"claude"*) ;; *) echo "FAIL T19 (f) legacy at: no body printed"; FAILED=$((FAILED + 1)) ;; esac
+    case "$B_LEG" in *HIMMEL_BRIDGE_SESSION*) echo "FAIL T19 (f) a legacy chat's at body carries the marker"; FAILED=$((FAILED + 1)) ;;
+        *) echo "PASS T19 (f) a legacy chat's at body carries no marker" ;; esac
 fi
 B_AT=$(dry_body 1 at)
 env -u HIMMEL_BRIDGE_SESSION PATH="$STUB_BIN:$PATH" CLAUDE_REC="$TMP/rec-at" WATCH=HIMMEL_BRIDGE_SESSION \

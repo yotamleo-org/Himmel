@@ -12,7 +12,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { getUpdates, getMe, sendMessage, sendDocument, sendChatAction, answerCallbackQuery, getFile, downloadFile, redactChatId } from "./telegram-api";
 import { installTimestampedLogging } from "./log-timestamp";
 import { cwdForChat, isAllowed, isGroupAllowed, isOperatorIdentity, loadAccess, operatorChatId, requireMentionForChat, vaultForChat, type Access } from "./gate";
-import { runSession, buildPrompt, BASH_BIN, REPO_ROOT, type BridgeSpawn, type BusPaths, type PermissionMode } from "./run";
+import { runSession, buildPrompt, isLegacyBridgeChat, BASH_BIN, REPO_ROOT, type BridgeSpawn, type BusPaths, type PermissionMode } from "./run";
 import { classifyForSpawn, type TriageVerdict, type TriageModelOverride, type ModelOverride } from "./triage";
 import { transcribe } from "./transcribe";
 import { makeAfkSudoGate, makeAfkSudoCallback, makeAfkSudoPrompts, dispatchAfkCallbacks, operatorIdFromConfig, helperInstalled, spawnHelper } from "./afk-sudo-route";
@@ -1544,7 +1544,7 @@ async function resolveTelegramProfileSettings(cwd: string, lanesDir: string): Pr
   return settings === null ? undefined : JSON.stringify(settings);
 }
 
-export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: string, cwd: string, permissionMode?: PermissionMode, lane?: undefined, modelOverride?: string, settings?: string, observe?: undefined, extraEnv?: Record<string, string>, mcpConfig?: string, bridgeSpawn?: BridgeSpawn) => Promise<RunResult> = runSession, deadlineMs: number = RUN_DEADLINE_MS, notify?: NotifyFn, maxRetries: number = MAX_RETRIES, vaultFor?: VaultForFn, isHeld: (s: string) => boolean = () => false, cwdFor?: CwdForFn, lanesDir: string = join(REPO_ROOT, "scripts", "lanes"), access?: Access | null): RunFn {
+export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: string, cwd: string, permissionMode?: PermissionMode, lane?: undefined, modelOverride?: string, settings?: string, observe?: undefined, extraEnv?: Record<string, string>, mcpConfig?: string, bridgeSpawn?: BridgeSpawn) => Promise<RunResult> = runSession, deadlineMs: number = RUN_DEADLINE_MS, notify?: NotifyFn, maxRetries: number = MAX_RETRIES, vaultFor?: VaultForFn, isHeld: (s: string) => boolean = () => false, cwdFor?: CwdForFn, lanesDir: string = join(REPO_ROOT, "scripts", "lanes"), access?: Access | null, legacyFor: (chat: number | null) => boolean = isLegacyBridgeChat): RunFn {
   const retryAt = () => new Date(Date.now() + RETRY_MS).toISOString();
   const noticed = new Set<string>();
   const safeNotify = async (session: string, retryAtIso: string, kind: NotifyKind) => {
@@ -1664,6 +1664,9 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
     const settings = await resolveTelegramProfileSettings(sessionCwd, lanesDir);
     const mcpConfig = await resolveTelegramMcpConfig(repoCwd, lanesDir);
     const chat = parked?.chat_id ?? null;
+    // A legacy chat (telegram.bridgeLegacyChats) spawns as it did before the envelope.
+    const legacy = legacyFor(chat);
+    const spawnMode = legacy && permissionMode === "dontAsk" ? "bypassPermissions" : permissionMode;
     if (lockdownEnabled(root)) return;
     let lockedAtSpawn = false;
     let stoppedAtSpawn = false;
@@ -1675,8 +1678,8 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
       if (lockdownEnabled(root)) { lockedAtSpawn = true; return Promise.resolve({ code: 0, capped: false, pid: 0, tail: "locked, reset at the station" }); }
       // The grant reads the pending snapshot the run reads: the meta is `running` by now, so handleStop no longer re-peeks it.
       const releaseWrite = chat !== null && chat === operatorChatId(access) && await pendingAllOperator(sd);
-      const bridgeSpawn: BridgeSpawn = { session, chat, routed: !!routedCwd, releaseWrite };
-      return withDeadline(runImpl(buildPrompt(session, paths, filingVault, !!routedCwd, parked?.chat_id), sessionCwd, permissionMode, undefined, modelOverride, settings, undefined, { ...(extraEnv ?? {}), HIMMEL_BRIDGE_CHAT: String(chat ?? "") }, mcpConfig, bridgeSpawn), deadlineMs);
+      const bridgeSpawn: BridgeSpawn = { session, chat, routed: !!routedCwd, releaseWrite, legacy };
+      return withDeadline(runImpl(buildPrompt(session, paths, filingVault, !!routedCwd, parked?.chat_id), sessionCwd, spawnMode, undefined, modelOverride, settings, undefined, { ...(extraEnv ?? {}), HIMMEL_BRIDGE_CHAT: String(chat ?? ""), ...(legacy ? { HIMMEL_BRIDGE_LEGACY: "1" } : {}) }, mcpConfig, bridgeSpawn), deadlineMs);
     }, undefined, retryAt);
     // run.log: persist the run's output tail. Before this, a dead
     // run's stdout/stderr vanished and failures were undebuggable

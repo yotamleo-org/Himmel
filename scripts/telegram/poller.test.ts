@@ -1,9 +1,10 @@
-import { beforeEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, readFileSync, appendFileSync, existsSync, statSync, rmSync, readlinkSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readNewLines, readMeta, writeMeta, ensureSession, appendLine, sessionDir } from "./bus";
+import type { BridgeSpawn, PermissionMode } from "./run";
 import { ingestUpdates, repairThenIngest, loadOffset, handleInbound, handleAutoCommand, replyViaOutbox, sendFileViaOutbox, runAndSettle, reconcile, flushOutboxes, isRetryDue, peekPending, commitPending, makeRunFn, makeAllow, makeDispatcher, makeFetchVoice, sweepStuckRunning, signalTyping, guarded, deliverAllPending, sweepAttachments, resolveRetentionMs, noticeText, parseBridgeEnv, loadBridgeEnv, bridgeEnvOrigin, makeRestart, makeBurstCoalescer, intervalEnvMs, windowEnvMs, handleBatch, ingestBatch, getUpdatesBackoffMs, shouldAlertOutage, OUTAGE_ALERT_AFTER_MS, parseModelTag, hasReadOnlyFloor, mentionsBot, loadPluginProfilesModule, inboundToDelivered, flushMonitor, startFlushTimers, startMonitoringCheck, monitorDownAfterMs, makeMonitorSend, checkMonitoring, type FetchImageFn } from "./poller";
 import { readFile, writeFile, mkdir, utimes } from "node:fs/promises";
 import { GROUP_ANONYMOUS_BOT_ID, isAllowed, isOperatorIdentity, vaultForChat } from "./gate";
@@ -27,6 +28,10 @@ const spawnHighTriage = async (): Promise<TriageVerdict> => "spawn-high";
 // would let that leak forward and silently disable triage for every later test,
 // re-creating the false-green this guard exists to prevent. Per-test is cheap.
 beforeEach(() => { delete process.env.TELEGRAM_TRIAGE; });
+// No row reads the station's own telegram.bridgeLegacyChats: makeRunFn's default legacyFor sees an empty himmel dir.
+const priorConfDir = process.env.HIMMEL_CONFIG_DIR;
+beforeEach(() => { process.env.HIMMEL_CONFIG_DIR = mkdtempSync(join(tmpdir(), "poller-conf-")); });
+afterEach(() => { if (priorConfDir === undefined) delete process.env.HIMMEL_CONFIG_DIR; else process.env.HIMMEL_CONFIG_DIR = priorConfDir; });
 
 // --- retry cap + run.log ---
 
@@ -1838,6 +1843,24 @@ test("makeRunFn: a vault chat is unchanged — vault cwd, bypass, and NO GGS mar
   expect(seen.mode).toBe("dontAsk");
   expect(seen.extraEnv).toEqual({ HIMMEL_BRIDGE_CHAT: "-50" });
   expect(seen.prompt).toContain("into the Obsidian vault");
+});
+
+test("T19 (e, f): a legacy chat spawns bypassPermissions with the legacy flag; an unlisted chat keeps dontAsk and no flag", async () => {
+  const r = root();
+  await seedChat(r, "group_-60", -60); await seedChat(r, "group_-61", -61); await seedChat(r, "group_-5245475441", -5245475441);
+  const seen: Record<string, { mode?: string; extraEnv?: Record<string, string>; legacy?: boolean }> = {};
+  const runImpl = async (_p: string, _c: string, mode?: PermissionMode, _l?: undefined, _m?: string, _s?: string, _o?: undefined, extraEnv?: Record<string, string>, _mc?: string, bridgeSpawn?: BridgeSpawn) => {
+    seen[String(bridgeSpawn?.chat)] = { mode, extraEnv, legacy: bridgeSpawn?.legacy };
+    return { code: 0, capped: false, pid: 1 };
+  };
+  const vaultFor = (c: number) => (c === -60 || c === -61) ? "/salus" : null;
+  const cwdFor = (c: number) => c === -5245475441 ? flooredRepo : null;
+  const legacyFor = (c: number | null) => c === -60 || c === -5245475441;
+  const run = makeRunFn(r, "/repo", runImpl, 5000, undefined, 3, vaultFor, undefined, cwdFor, undefined, undefined, legacyFor);
+  await run("group_-60"); await run("group_-61"); await run("group_-5245475441");
+  expect(seen["-60"]).toEqual({ mode: "bypassPermissions", extraEnv: { HIMMEL_BRIDGE_CHAT: "-60", HIMMEL_BRIDGE_LEGACY: "1" }, legacy: true });
+  expect(seen["-5245475441"]).toEqual({ mode: "bypassPermissions", extraEnv: { HERMES_BOUNDED_RUN: "1", GGS_ROLE: "readonly", HIMMEL_BRIDGE_CHAT: "-5245475441", HIMMEL_BRIDGE_LEGACY: "1" }, legacy: true });
+  expect(seen["-61"]).toEqual({ mode: "dontAsk", extraEnv: { HIMMEL_BRIDGE_CHAT: "-61" }, legacy: false });
 });
 
 test("makeRunFn: an unrouted chat keeps repoCwd, no permission mode, no markers", async () => {
@@ -4223,7 +4246,7 @@ test("T17: the operator's DM with only operator lines is stamped with its chat a
   const { seen, runImpl } = descriptorSpy();
   await runT17(r, runImpl, opAccess)("__chat__");
   expect(seen.extraEnv).toEqual({ HIMMEL_BRIDGE_CHAT: String(OP) });
-  expect(seen.spawn).toEqual({ session: "__chat__", chat: OP, routed: false, releaseWrite: true });
+  expect(seen.spawn).toEqual({ session: "__chat__", chat: OP, routed: false, releaseWrite: true, legacy: false });
 });
 
 test("T17: a group chat is stamped with its own chat id and never granted, even on operator lines", async () => {
@@ -4231,7 +4254,7 @@ test("T17: a group chat is stamped with its own chat id and never granted, even 
   const { seen, runImpl } = descriptorSpy();
   await runT17(r, runImpl, opAccess)("group_-50");
   expect(seen.extraEnv).toEqual({ HIMMEL_BRIDGE_CHAT: "-50" });
-  expect(seen.spawn).toEqual({ session: "group_-50", chat: -50, routed: false, releaseWrite: false });
+  expect(seen.spawn).toEqual({ session: "group_-50", chat: -50, routed: false, releaseWrite: false, legacy: false });
 });
 
 test("T17: a ticket session with one unmarked line gets no release write", async () => {
@@ -4239,7 +4262,7 @@ test("T17: a ticket session with one unmarked line gets no release write", async
   const { seen, runImpl } = descriptorSpy();
   await runT17(r, runImpl, opAccess)(k(7));
   expect(seen.calls).toBe(1);
-  expect(seen.spawn).toEqual({ session: k(7), chat: OP, routed: false, releaseWrite: false });
+  expect(seen.spawn).toEqual({ session: k(7), chat: OP, routed: false, releaseWrite: false, legacy: false });
 });
 
 test("T17: neither a forwarded flag, a sender name, a string operator flag nor a line's own chat id sets the stamp or the grant", async () => {
@@ -4268,7 +4291,7 @@ test("T17: a session with no parked chat gets an empty stamp, a null chat and no
   const { seen, runImpl } = descriptorSpy();
   await runT17(r, runImpl, opAccess)("__chat__");
   expect(seen.extraEnv).toEqual({ HIMMEL_BRIDGE_CHAT: "" });
-  expect(seen.spawn).toEqual({ session: "__chat__", chat: null, routed: false, releaseWrite: false });
+  expect(seen.spawn).toEqual({ session: "__chat__", chat: null, routed: false, releaseWrite: false, legacy: false });
 });
 
 test("T17: a session with no parked chat is not granted when the access has no operator chat either (null is not equal to null)", async () => {
@@ -4276,7 +4299,7 @@ test("T17: a session with no parked chat is not granted when the access has no o
   const { seen, runImpl } = descriptorSpy();
   await runT17(r, runImpl, { allowFrom: [] })("__chat__");
   expect(seen.extraEnv).toEqual({ HIMMEL_BRIDGE_CHAT: "" });
-  expect(seen.spawn).toEqual({ session: "__chat__", chat: null, routed: false, releaseWrite: false });
+  expect(seen.spawn).toEqual({ session: "__chat__", chat: null, routed: false, releaseWrite: false, legacy: false });
 });
 
 test("T17: a cwd-routed spawn keeps its markers, adds the stamp last and is marked routed", async () => {
@@ -4284,7 +4307,7 @@ test("T17: a cwd-routed spawn keeps its markers, adds the stamp last and is mark
   const { seen, runImpl } = descriptorSpy();
   await runT17(r, runImpl, opAccess, () => flooredRepo)("group_-5245475441");
   expect(seen.extraEnv).toEqual({ HERMES_BOUNDED_RUN: "1", GGS_ROLE: "readonly", HIMMEL_BRIDGE_CHAT: "-5245475441" });
-  expect(seen.spawn).toEqual({ session: "group_-5245475441", chat: -5245475441, routed: true, releaseWrite: false });
+  expect(seen.spawn).toEqual({ session: "group_-5245475441", chat: -5245475441, routed: true, releaseWrite: false, legacy: false });
 });
 
 test("T17: start-up writes poller-epoch from bridge-envelope-epoch.txt on a scratch root; a missing or non-integer file writes nothing and removes a stale stamp", async () => {

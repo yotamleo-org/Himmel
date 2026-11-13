@@ -2084,8 +2084,10 @@ esac
 
 # The marker is also read from same-uid ancestors' start-up env, so a wrapper that strips it
 # (env -u, nohup, timeout) cannot drop it; an unreadable ancestor env counts as marked.
+# A legacy chat's env pairs the marker with HIMMEL_BRIDGE_LEGACY=1 and arms unmarked; one
+# marked env without the flag on the chain (the fenced session a child descends from) marks it.
 _arm_bridge_marked() {
-    [ "${HIMMEL_BRIDGE_SESSION:-}" = "1" ] && return 0
+    [ "${HIMMEL_BRIDGE_SESSION:-}" = "1" ] && [ "${HIMMEL_BRIDGE_LEGACY:-}" != "1" ] && return 0
     [ -d /proc/self ] || return 1
     local pid=$$ hop=0 uid own_uid ppid env_lines
     own_uid=$(awk '/^Uid:/{print $2; exit}' "/proc/$$/status" 2>/dev/null) || return 0
@@ -2097,7 +2099,8 @@ _arm_bridge_marked() {
         ppid=$(awk '/^PPid:/{print $2; exit}' "/proc/$pid/status" 2>/dev/null) || return 0
         [ -n "$ppid" ] || return 0
         if env_lines=$(tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null); then
-            case $'\n'"$env_lines"$'\n' in *$'\n'HIMMEL_BRIDGE_SESSION=1$'\n'*) return 0 ;; esac
+            case $'\n'"$env_lines"$'\n' in *$'\n'HIMMEL_BRIDGE_SESSION=1$'\n'*)
+                case $'\n'"$env_lines"$'\n' in *$'\n'HIMMEL_BRIDGE_LEGACY=1$'\n'*) ;; *) return 0 ;; esac ;; esac
         elif ! _arm_is_host_user_manager "$pid" "$ppid"; then
             return 0
         fi

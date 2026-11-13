@@ -62,11 +62,12 @@ function resolveModel(): string {
 // only a file path). Omitted => no flag, inherits the ambient MCP config.
 // bridge: every bridge spawn runs inside the envelope (bridgeEnvelope): dontAsk,
 // no setting sources but the envelope's own --settings, whatever mode the caller passed.
+// A legacy chat (isLegacyBridgeChat) spawns as a non-bridge run does.
 export type BridgeRun = { spawn: BridgeSpawn; cwd: string; seams?: EnvelopeSeams };
 export function buildRunArgs(prompt: string, permissionMode?: PermissionMode, modelOverride?: string, settings?: string, mcpConfig?: string, bridge?: BridgeRun) {
   const model = modelOverride ?? resolveModel();
   const cmd = ["claude", "--model", model];
-  if (bridge) {
+  if (bridge && !bridge.spawn.legacy) {
     cmd.push("--permission-mode", "dontAsk", "--setting-sources", "", "--settings", bridgeEnvelope(bridge, settings, mcpConfig));
   } else {
     if (permissionMode) cmd.push("--permission-mode", permissionMode);
@@ -126,6 +127,27 @@ function activeRelease(root: string): string | null {
   try { entries = readdirSync(root); } catch { return null; }
   const declared = entries.filter((d) => existsSync(join(root, d, "release.json")));
   return declared.length === 1 ? declared[0] : null;
+}
+
+// telegram.bridgeLegacyChats in the himmel config: an array of chat ids, or "*" for every
+// stamped chat. A listed chat spawns without the envelope. A bad value never throws:
+// it logs and every chat keeps the envelope.
+export function isLegacyBridgeChat(chat: number | null, himmelDir: string = process.env.HIMMEL_CONFIG_DIR || join(homedir(), ".himmel")): boolean {
+  if (chat === null) return false;
+  const path = join(himmelDir, "config.json");
+  let list: unknown;
+  try {
+    if (!existsSync(path)) return false;
+    list = JSON.parse(readFileSync(path, "utf8"))?.telegram?.bridgeLegacyChats;
+  } catch (e) {
+    console.error(`bridge envelope: cannot read telegram.bridgeLegacyChats from ${path} (${e instanceof Error ? e.message : e}); every chat keeps the envelope`);
+    return false;
+  }
+  if (list === undefined) return false;
+  if (list === "*") return true;
+  if (Array.isArray(list) && list.every((c) => typeof c === "string" || Number.isInteger(c))) return list.some((c) => String(c) === String(chat));
+  console.error(`bridge envelope: telegram.bridgeLegacyChats in ${path} is malformed (want an array of chat ids or "*"); every chat keeps the envelope`);
+  return false;
 }
 
 function jiraHostOf(): string | null {
@@ -354,6 +376,8 @@ export function sessionEnv(extraEnv?: Record<string, string>): Record<string, st
   delete base.GGS_ROLE;
   // The operator's hook-integrity bypass never reaches a worker.
   delete base.HIMMEL_HOOK_INTEGRITY_BYPASS_OK;
+  // Only the poller grants the legacy flag, per chat, never the inherited env.
+  delete base.HIMMEL_BRIDGE_LEGACY;
   // NON_INTERACTIVE_EDITOR_ENV before extraEnv: a route may override an editor
   // key deliberately, but nothing ambient can reinstate an interactive one.
   return { ...base, ...NON_INTERACTIVE_EDITOR_ENV, ...(extraEnv ?? {}), HIMMEL_BRIDGE_SESSION: "1" };
@@ -528,7 +552,7 @@ export function writeLaunchRecord(sid: string, model: string, cacheDir?: string)
 // The poller's per-spawn descriptor: the parked chat (null when none), whether
 // the run is cwd-routed, and the release-folder grant the poller decided.
 // Nothing the model supplies sets any field.
-export type BridgeSpawn = { session: string; chat: number | null; routed: boolean; releaseWrite: boolean };
+export type BridgeSpawn = { session: string; chat: number | null; routed: boolean; releaseWrite: boolean; legacy?: boolean };
 
 export async function runSession(prompt: string, cwd: string, permissionMode?: PermissionMode, lane?: undefined, modelOverride?: string, settings?: string, observe?: RunObserver, extraEnv?: Record<string, string>, mcpConfig?: string, bridgeSpawn?: BridgeSpawn): Promise<{ code: number; capped: boolean; blocked: boolean; timedOut: boolean; pid: number; tail?: string; bridgeSpawn?: BridgeSpawn }> {
   const spec = spawnSpec(prompt, permissionMode, lane, modelOverride, settings, extraEnv, mcpConfig, undefined, bridgeSpawn ? { spawn: bridgeSpawn, cwd } : undefined);

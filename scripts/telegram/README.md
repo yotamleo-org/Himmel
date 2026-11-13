@@ -389,6 +389,24 @@ Every root is realpathed at spawn and a symlinked root refuses the spawn.
 `scripts/telegram/smoke-bridge-sandbox.sh` (billed, `HIMMEL_BILLED_OK=1`) is the
 live proof (P1); `bridge-envelope-epoch.txt` holds `1` only after it passed.
 
+#### Legacy chats: `telegram.bridgeLegacyChats`
+
+A chat listed in `telegram.bridgeLegacyChats` in `~/.himmel/config.json` (an
+array of chat ids, or `"*"` for every chat) spawns as it did before the envelope:
+- no envelope;
+- `bypassPermissions` for a vault or cwd-routed chat;
+- the user and project setting sources;
+- unsandboxed Bash and full network.
+
+It keeps `HIMMEL_BRIDGE_SESSION=1`. The poller adds `HIMMEL_BRIDGE_LEGACY=1` beside the
+marker, so `arm-resume.sh` does not carry the marker into the session the chat
+arms. A marked ancestor without that flag still marks the arm.
+
+A session with no stamped chat is never legacy. An absent key leaves every chat in
+the envelope. A malformed key, or a config that does not parse, logs a
+`telegram.bridgeLegacyChats` line on each spawn and also leaves every chat in the
+envelope. The poller reads the key on each spawn, so a change needs no restart.
+
 ---
 
 ## Groups & channels
