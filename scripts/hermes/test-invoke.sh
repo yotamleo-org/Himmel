@@ -372,6 +372,16 @@ RTEOF
     fi
 fi
 
+# 6b. The usage text says why --provider exists and cites no ticket key.
+echo "test: usage text cites no ticket key" >&2
+help_out="$(bash "$INVOKE" --help 2>&1)" || fail "usage: --help exited non-zero"
+if printf '%s\n' "$help_out" | grep -q -E 'HIMMEL-[0-9]+'; then
+    fail "usage: --help text still cites a ticket key: $(printf '%s\n' "$help_out" | grep -E 'HIMMEL-[0-9]+')"
+fi
+printf '%s\n' "$help_out" | grep -q "routed to" \
+    || fail "usage: --help text lacks the plain reason for --provider"
+echo "  ok: usage text names no ticket key" >&2
+
 # 7. Optional live smoke (one NIM free-tier call) — opt-in only.
 if [ "${HERMES_LIVE_TEST:-0}" = "1" ]; then
     echo "test: LIVE one-shot (nemotron nano)" >&2
