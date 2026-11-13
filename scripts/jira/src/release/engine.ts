@@ -172,14 +172,14 @@ function blockedByOf(text: string): string[] {
 }
 
 export function readMirror(root: string | null): { issues: Map<string, IssueSnap> | null; sync: string | null } {
-  if (!root || !existsSync(join(root, '.cursor.json'))) return { issues: null, sync: null };
-  let sync: string;
+  if (!root || !existsSync(root)) return { issues: null, sync: null };
+  // The issue files are readable whatever the cursor says: an absent, corrupt or complete:false
+  // cursor only means the next sync runs full, so sync is the cursor's time or null (staleness UNKNOWN).
+  let sync: string | null = null;
   try {
-    sync = (JSON.parse(readFileSync(join(root, '.cursor.json'), 'utf8')) as { lastSync: string }).lastSync;
-    if (Number.isNaN(Date.parse(sync))) return { issues: null, sync: null };
-  } catch {
-    return { issues: null, sync: null };
-  }
+    const got = (JSON.parse(readFileSync(join(root, '.cursor.json'), 'utf8')) as { lastSync: string }).lastSync;
+    if (!Number.isNaN(Date.parse(got))) sync = got;
+  } catch { /* no usable cursor */ }
   const issues = new Map<string, IssueSnap>();
   for (const name of readdirSync(root)) {
     if (!name.endsWith('.md')) continue;
@@ -197,6 +197,7 @@ export function readMirror(root: string | null): { issues: Map<string, IssueSnap
       ...(Array.isArray(fm.labels) && fm.labels.length ? { labels: fm.labels.map(String) } : {}),
     });
   }
+  if (issues.size === 0 && sync === null) return { issues: null, sync: null };
   return { issues, sync };
 }
 

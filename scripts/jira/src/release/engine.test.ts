@@ -1064,6 +1064,22 @@ describe('rm-run: the on-demand release manager', () => {
     expect(readMirror(mirror).issues?.get('K-9')?.sector).toBe('Ship loop');
   });
 
+  it('readMirror reads the issue files with no cursor or an incomplete one, and reports sync only when a cursor names one', () => {
+    const file = '---\nkey: "K-9"\ntype: "Task"\nstatus: "To Do"\npriority: "Medium"\nfixVersions: []\nresolution: null\n---\n';
+    const bare = join(root, 'mirror-nocursor');
+    mkdirSync(bare, { recursive: true });
+    writeFileSync(join(bare, 'K-9.md'), file);
+    expect(readMirror(bare).issues?.has('K-9')).toBe(true);
+    expect(readMirror(bare).sync).toBeNull();
+    const part = join(root, 'mirror-incomplete');
+    mkdirSync(part, { recursive: true });
+    writeFileSync(join(part, 'K-9.md'), file);
+    writeFileSync(join(part, '.cursor.json'), JSON.stringify({ lastSync: '2026-10-23T15:00:55.697Z', complete: false }));
+    expect(readMirror(part).issues?.has('K-9')).toBe(true);
+    expect(readMirror(part).sync).toBe('2026-10-23T15:00:55.697Z');
+    expect(readMirror(join(root, 'mirror-absent')).issues).toBeNull();
+  });
+
   it('a decision the engine refuses is reported, its request is closed, and a re-file opens a new qid', async () => {
     vi.stubEnv('JIRA_SECTOR_FIELD', 'customfield_10500');
     declared();
