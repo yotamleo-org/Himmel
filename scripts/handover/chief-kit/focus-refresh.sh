@@ -36,11 +36,17 @@
 #             `focus=WARN:chains <registry|graph|render>` (exit 0; the reason's detail is on stderr). A dispositions
 #             read the dispatcher paused on GitHub quota (`# quota-pause` / `# gh-stall`) keeps the last good file too,
 #             with that line on stderr and no WARN.
-#   render    tracker.py --version, staged
-#   drift    status-drift.sh over the sweep's snapshot, staged (report only). A failure is not a FAILED stage:
+#   drift     status-drift.sh over the sweep's snapshot, staged (report only). It runs after the mirror re-read
+#             that follows a move, so it sees the mirror the render reads. A failure is not a FAILED stage:
 #             the page is still published and the run ends `focus=WARN:drift <why>` (exit 0), why being timeout,
 #             rc<n>, budget (its own cut-off), gh, jira, no-sdrift or unknown. A report the pass printed itself
 #             is published; a pass that printed none leaves the last focus-drift.txt as it was.
+#   stale     the STALE feed: drift-summary.mjs --json over the staged report when the pass printed
+#             one, else over the published focus-drift.txt, bounded 30 s. Its `unowned` keys go to <stage>/stale.tsv
+#             (line 1 `state<TAB>complete|partial|unknown`, then one key a line) and to focus-state's stale= line.
+#             partial = the summary's unknown or stale flag is true; unknown = no drift file, or the summary failed
+#             or printed nothing parseable. Never a FAILED stage and never a WARN.
+#   render    tracker.py --version --stale-file <stage>/stale.tsv, staged
 #   publish   the page and its fingerprint (.vfp) replace the old ones unless the page on
 #             disk already carries `<meta name="himmel-focus" content="<version> <fp>">`
 #             for this version and fingerprint, then focus-state is written
@@ -51,8 +57,9 @@
 # replaced is restored.
 #
 # focus-state (<doc dir>/focus-state, key=value): status (ok|FAILED), stage, gen,
-# dirty (epoch of the first unrefreshed ship event), sha8 (page fingerprint), sdrift, ver (the version the page shows)
-# (the drift line), warn (chains <reason> of the last good run, else empty), drain-unchained (the drain line's
+# dirty (epoch of the first unrefreshed ship event), sha8 (page fingerprint), sdrift, stale, ver (the version the page shows)
+# (the drift line; stale = <n>:<K1,...,K8>[,+<m>] | partial:<n>:<...> | unknown, the keys of the STALE feed, at most
+# eight named), warn (chains <reason> of the last good run, else empty), drain-unchained (the drain line's
 # unchained count; a WARN on stderr when above 0), ts. A refresh marks the state dirty when it starts and clears
 # that only on success, so a run that dies midway reads as DIRTY.
 # --status prints focus=ok | focus=DIRTY:<minutes>m | focus=FAILED:<stage> |
@@ -64,7 +71,7 @@
 # ponytail: one current-version page and no per-version refresh, upgrade path = a
 # --version loop over the doc's tracker-<version> lines.
 #
-# Test seams (env): FR_JIRA FR_SWEEP FR_TRACKER FR_DRIFT FR_KNOWN_SYNC FR_CHAIN_GRAPH FR_DISPOSITIONS (each one executable),
+# Test seams (env): FR_JIRA FR_SWEEP FR_TRACKER FR_DRIFT FR_DRIFT_SUMMARY FR_KNOWN_SYNC FR_CHAIN_GRAPH FR_DISPOSITIONS (each one executable),
 # TICK_TRACKER_MIRROR_DIR.
 # Platform guard: POSIX bash 3.2+, flock optional (shell-only harness).
 set -u
@@ -134,15 +141,15 @@ AGAIN="$DIR/focus-state.again"
 OUT="$DIR/roadmap-tracker.html"
 now() { date +%s; }
 
-S_status="" S_stage="" S_gen=0 S_dirty="" S_sha8="" S_sdrift="" S_ver="" S_warn="" S_dunch=""
+S_status="" S_stage="" S_gen=0 S_dirty="" S_sha8="" S_sdrift="" S_stale="" S_ver="" S_warn="" S_dunch=""
 load_state() {
     local k v
-    S_status="" S_stage="" S_gen=0 S_dirty="" S_sha8="" S_sdrift="" S_ver="" S_warn="" S_dunch=""
+    S_status="" S_stage="" S_gen=0 S_dirty="" S_sha8="" S_sdrift="" S_stale="" S_ver="" S_warn="" S_dunch=""
     if [ -f "$STATEF" ]; then
         while IFS='=' read -r k v || [ -n "$k" ]; do
             case "$k" in
                 status) S_status=$v ;; stage) S_stage=$v ;; gen) S_gen=$v ;;
-                dirty) S_dirty=$v ;; sha8) S_sha8=$v ;; sdrift) S_sdrift=$v ;; ver) S_ver=$v ;;
+                dirty) S_dirty=$v ;; sha8) S_sha8=$v ;; sdrift) S_sdrift=$v ;; stale) S_stale=$v ;; ver) S_ver=$v ;;
                 warn) S_warn=$v ;; drain-unchained) S_dunch=$v ;;
             esac
         done < "$STATEF"
@@ -151,8 +158,8 @@ load_state() {
 }
 save_state() {
     local t="$STATEF.tmp.$$"
-    printf 'status=%s\nstage=%s\ngen=%s\ndirty=%s\nsha8=%s\nsdrift=%s\nver=%s\nwarn=%s\ndrain-unchained=%s\nts=%s\n' \
-        "$S_status" "$S_stage" "$S_gen" "$S_dirty" "$S_sha8" "$S_sdrift" "$S_ver" "$S_warn" "$S_dunch" "$(now)" > "$t" && mv -f "$t" "$STATEF"
+    printf 'status=%s\nstage=%s\ngen=%s\ndirty=%s\nsha8=%s\nsdrift=%s\nstale=%s\nver=%s\nwarn=%s\ndrain-unchained=%s\nts=%s\n' \
+        "$S_status" "$S_stage" "$S_gen" "$S_dirty" "$S_sha8" "$S_sdrift" "$S_stale" "$S_ver" "$S_warn" "$S_dunch" "$(now)" > "$t" && mv -f "$t" "$STATEF"
 }
 load_state
 
@@ -222,6 +229,7 @@ if [ -n "${FR_JIRA:-}" ]; then JIRA=("$FR_JIRA"); else JIRA=(node "$PRIMARY/scri
 if [ -n "${FR_SWEEP:-}" ]; then SWEEP=("$FR_SWEEP"); else SWEEP=(bash "$HERE/status-sweep.sh"); fi
 if [ -n "${FR_TRACKER:-}" ]; then TRACKER=("$FR_TRACKER"); else TRACKER=(python3 "$HERE/tracker.py"); fi
 if [ -n "${FR_DRIFT:-}" ]; then DRIFT=("$FR_DRIFT"); else DRIFT=(bash "$HERE/status-drift.sh"); fi
+if [ -n "${FR_DRIFT_SUMMARY:-}" ]; then DSUM=("$FR_DRIFT_SUMMARY"); else DSUM=(node "$HERE/drift-summary.mjs"); fi
 if [ -n "${FR_KNOWN_SYNC:-}" ]; then KSYNC=("$FR_KNOWN_SYNC"); else KSYNC=(bash "$HERE/known-bugs-sync.sh"); fi
 if [ -n "${FR_CHAIN_GRAPH:-}" ]; then CGRAPH=("$FR_CHAIN_GRAPH"); else CGRAPH=(python3 -I "$HERE/chain-graph.py"); fi
 if [ -n "${FR_DISPOSITIONS:-}" ]; then DISPO=("$FR_DISPOSITIONS"); else DISPO=(bash "$HERE/next-dispatchable.sh"); fi
@@ -348,21 +356,10 @@ for c in json.load(open(sys.argv[1])):
     fi
 fi
 
-plan=$(sed -n 's/^focus-plan:[[:space:]]*//p' "$DOC" | head -n 1)
-case "$plan" in none*) plan="" ;; esac
-[ -z "$plan" ] || echo "focus-refresh: WARN priority-source plan-differs: the priority line is read from $plan, not derived from the chain registry" >&2
-set -- --version "$VER" --out "$stage/page.html" --mirror-dir "$MIR" --versions-file "$MIR.versions.tsv" \
-    --prs-file "$stage/prs.json" --workers-dir "$(ts_state_dir)/workers" --repo "$REPO" --owed-dir "$DIR" --chief-doc "$DOC"
-[ -z "$plan" ] || set -- "$@" --priority-file "$plan"
-if [ -n "$CHAINS_NEW" ]; then set -- "$@" --chains-file "$CHAINS_NEW"
-elif [ -f "$DIR/focus-chains.json" ]; then set -- "$@" --chains-file "$DIR/focus-chains.json"; fi
-bounded 120 "${TRACKER[@]}" "$@" >/dev/null 2>&1 || failed render
-{ [ -f "$stage/page.html" ] && [ -f "$stage/page.html.vfp" ]; } || failed render
-vfp=$(cat "$stage/page.html.vfp")
-
 # The drift stage is report only: a failure here never stops the page. It is a WARN, as the chains stage is, and the
 # run ends focus=WARN:drift <why> with the page published. A report the pass printed (its own sdrift= line) is still
-# published; a pass that printed none leaves the last drift file as it was.
+# published; a pass that printed none leaves the last drift file as it was. It runs before the render, so the page
+# reads the drift result of its own pass (the STALE feed below).
 rc=0 DRIFT_WARN="" DRIFT_PUBLISH=""
 bounded 120 "${DRIFT[@]}" --repo "$REPO" --snapshot "$stage/snap" > "$stage/drift.txt" 2>/dev/null || rc=$?
 sdrift=unknown
@@ -389,6 +386,44 @@ if [ -n "$DRIFT_WARN" ]; then
     if [ -n "$CHAINS_WARN" ]; then CHAINS_WARN="$CHAINS_WARN, drift $DRIFT_WARN"; else CHAINS_WARN="drift $DRIFT_WARN"; fi
 fi
 
+# The STALE feed: the UNOWNED keys of the drift file this pass used (the staged report when the pass printed its own
+# sdrift= line, else the last published one). stale.tsv is the render's input; S_STALE_NEW is the focus-state line.
+# No drift file, a summary that fails, or one that prints nothing parseable reads state unknown. Never a FAILED stage.
+stale_src=""
+if [ -n "$DRIFT_PUBLISH" ]; then stale_src="$stage/drift.txt"
+elif [ -f "$DIR/focus-drift.txt" ]; then stale_src="$DIR/focus-drift.txt"; fi
+printf 'state\tunknown\n' > "$stage/stale.tsv"
+S_STALE_NEW=unknown
+if [ -n "$stale_src" ]; then
+    # swallow-ok: a summary that fails or prints nothing usable leaves the feed at state unknown, which the tracker and the tick both show
+    if stale_json=$(bounded 30 "${DSUM[@]}" --json --drift "$stale_src" --mirror-dir "$MIR" 2>/dev/null) \
+        && stale_line=$(printf '%s' "$stale_json" | python3 -I -c 'import json, re, sys
+d = json.load(sys.stdin)
+keys = d["unowned"]
+assert isinstance(keys, list) and all(isinstance(k, str) and re.fullmatch(r"[A-Z][A-Z0-9]*-[0-9]+", k) for k in keys)
+assert isinstance(d["unknown"], bool) and isinstance(d["stale"], bool)
+partial = d["unknown"] or d["stale"]
+with open(sys.argv[1], "w") as f:
+    f.write("state\t%s\n" % ("partial" if partial else "complete") + "".join(k + "\n" for k in keys))
+body = ",".join(keys[:8]) + (",+%d" % (len(keys) - 8) if len(keys) > 8 else "")
+print(("partial:" if partial else "") + "%d:%s" % (len(keys), body))' "$stage/stale.tsv" 2>/dev/null); then
+        S_STALE_NEW=$stale_line
+    fi
+fi
+
+plan=$(sed -n 's/^focus-plan:[[:space:]]*//p' "$DOC" | head -n 1)
+case "$plan" in none*) plan="" ;; esac
+[ -z "$plan" ] || echo "focus-refresh: WARN priority-source plan-differs: the priority line is read from $plan, not derived from the chain registry" >&2
+set -- --version "$VER" --out "$stage/page.html" --mirror-dir "$MIR" --versions-file "$MIR.versions.tsv" \
+    --prs-file "$stage/prs.json" --workers-dir "$(ts_state_dir)/workers" --repo "$REPO" --owed-dir "$DIR" --chief-doc "$DOC" \
+    --stale-file "$stage/stale.tsv"
+[ -z "$plan" ] || set -- "$@" --priority-file "$plan"
+if [ -n "$CHAINS_NEW" ]; then set -- "$@" --chains-file "$CHAINS_NEW"
+elif [ -f "$DIR/focus-chains.json" ]; then set -- "$@" --chains-file "$DIR/focus-chains.json"; fi
+bounded 120 "${TRACKER[@]}" "$@" >/dev/null 2>&1 || failed render
+{ [ -f "$stage/page.html" ] && [ -f "$stage/page.html.vfp" ]; } || failed render
+vfp=$(cat "$stage/page.html.vfp")
+
 if ! grep -Fq "<meta name=\"himmel-focus\" content=\"$VER $vfp\">" "$OUT" 2>/dev/null; then
     mv -f "$stage/page.html" "$OUT" || failed publish
     mv -f "$stage/page.html.vfp" "$OUT.vfp" || failed publish
@@ -404,7 +439,7 @@ if [ "$ksync_left" -ge 5 ]; then
 else
     echo "focus-refresh: WARN: known-bugs-sync skipped; too little of the refresh budget is left" >&2
 fi
-S_status=ok S_stage="" S_gen=$NEWGEN S_dirty="" S_sha8="${vfp:0:8}" S_sdrift="${sdrift#sdrift=}" S_ver="$VER" S_warn="$CHAINS_WARN" S_dunch="$DRAIN_UNCHAINED"
+S_status=ok S_stage="" S_gen=$NEWGEN S_dirty="" S_sha8="${vfp:0:8}" S_sdrift="${sdrift#sdrift=}" S_stale="$S_STALE_NEW" S_ver="$VER" S_warn="$CHAINS_WARN" S_dunch="$DRAIN_UNCHAINED"
 if [ "${DRAIN_UNCHAINED:-0}" -gt 0 ]; then
     echo "focus-refresh: WARN drain-unchained=$DRAIN_UNCHAINED: open tickets of $VER that sit in no chain and are not labelled standalone" >&2
 fi

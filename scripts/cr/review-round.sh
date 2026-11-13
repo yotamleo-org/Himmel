@@ -93,6 +93,7 @@ usage() {
     echo "       review-round.sh from --branch <name>   (the reviewed head this round 2 or 3 started from; nothing at other rounds)" >&2
     echo "       review-round.sh trivial-descendant [--tests-only] <from-sha> <to-sha>   (exit 0 yes, 1 no)" >&2
     echo "       review-round.sh start|check --pr <n> --head <40-hex sha>   (an outside PR reviewed from its diff, its branch not checked out; check reads only)" >&2
+    echo "       review-round.sh abort --pr <n> --head <40-hex sha>   (give back that PR's round when its panel reviewed nothing)" >&2
     exit 2
 }
 
@@ -263,11 +264,11 @@ while [ $# -gt 0 ]; do
         *) usage ;;
     esac
 done
-# --pr keys the state on outside-<n>, so it never takes --branch, and only start and
-# check (read only) accept it. Its head is a full sha, and the PR number a plain integer.
+# --pr keys the state on outside-<n>, so it never takes --branch, and only start, check
+# (read only) and abort accept it. Its head is a full sha, and the PR number a plain integer.
 if [ -n "$pr" ]; then
     [ -z "$branch" ] && [ "$check_only" -eq 0 ] || usage
-    case "$verb" in start|check) ;; *) usage ;; esac
+    case "$verb" in start|check|abort) ;; *) usage ;; esac
     [[ "$pr" =~ ^[1-9][0-9]{0,8}$ ]] && [[ "$head_sha" =~ ^[0-9a-f]{40}$ ]] || usage
     branch="outside-$pr"
 fi
@@ -401,7 +402,7 @@ read_round() {
 # when any critic finding row exists there, whatever its verdict. "seen"
 # prints "seen" when any avail or finding row of any model exists there.
 ledger_query() {
-    LEDGER="$git_dir/cr-critic-scores.jsonl" BRANCH="$branch" MODE="$1" FROM="$2" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e '
+    LEDGER="$git_dir/cr-critic-scores.jsonl" BRANCH="$branch" MATCH_ANY_BRANCH="${pr:+1}" MODE="$1" FROM="$2" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e '
 const fs = require("fs"), e = process.env;
 let lines = [];
 try { lines = fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean); } catch (err) { process.exit(err.code === "ENOENT" ? 0 : 2); }
@@ -425,7 +426,7 @@ const note = (id, v) => {
 for (const line of require(e.AMEND_AUTH).filterLines(lines)) {
   let o;
   try { o = JSON.parse(line); } catch { continue; }
-  if (!o || o.branch !== e.BRANCH) continue;
+  if (!o || (e.MATCH_ANY_BRANCH !== "1" && o.branch !== e.BRANCH)) continue;
   if ((o.kind === "avail" || o.kind === "finding") && at(o.head)) seen = true;
   if (o.kind === "avail" && o.status === "ok" && critic(o.model) && at(o.head)) reviewed = true;
   if (o.kind === "finding" && critic(o.model) && at(o.head)) { rowed = true; note(keyOf(o), String(o.verdict || "")); }
@@ -1554,6 +1555,13 @@ if [ "$verb" = "abort" ]; then
     run_pid=""
     [ ! -f "$delta_run" ] || read -r run_pid < "$delta_run" || run_pid=""
     case "$run_pid" in ''|*[!0-9]*) run_pid="" ;; esac
+    run_alive=""
+    if [ -n "$pr" ] && [ -f "$delta_run" ]; then
+        while read -r run_other; do
+            case "$run_other" in ''|*[!0-9]*) continue ;; esac
+            if [ "$run_other" != "$PPID" ] && kill -0 "$run_other" 2>/dev/null; then run_alive="$run_other"; fi
+        done < "$delta_run"
+    fi
     if [ "$ab_rc" -ne 0 ]; then
         :
     elif [ "$ab_cur" != "$ab_head" ]; then
@@ -1568,8 +1576,8 @@ if [ "$verb" = "abort" ]; then
     elif [ -z "$run_pid" ]; then
         echo "review-round: no start caller is recorded for the round on $ab_head, so it cannot be shown to have ended - it is not given back" >&2
         ab_rc=8
-    elif [ "$run_pid" != "$PPID" ] && kill -0 "$run_pid" 2>/dev/null; then
-        echo "review-round: the round on $ab_head is still running (start by pid $run_pid) - it is not given back" >&2
+    elif [ -n "$run_alive" ] || { [ "$run_pid" != "$PPID" ] && kill -0 "$run_pid" 2>/dev/null; }; then
+        echo "review-round: the round on $ab_head is still running (start by pid ${run_alive:-$run_pid}) - it is not given back" >&2
         ab_rc=8
     else
         # swallow-ok: no critic-reviewed head in the start records removes .head below
@@ -1642,6 +1650,7 @@ if [ -n "$pr" ]; then
         exit 5
     fi
     if [ "$pr_reuse" -eq 1 ]; then
+        [ "$verb" != "start" ] || { [ -f "$delta_run" ] && printf '%s\n' "$PPID" >> "$delta_run" 2>/dev/null; } || rm -f "$delta_run" 2>/dev/null
         pr_unlock
         if [ "$verb" = "check" ]; then printf '%s %s\n' "$round" "$pr_auth"; else printf '%s\n' "$round"; fi
         exit 0
@@ -1664,6 +1673,7 @@ if [ -n "$pr" ]; then
         echo "review-round: cannot persist round $pr_next for PR #$pr under the counter lock" >&2
         exit 5
     fi
+    printf '%s\n' "$PPID" > "$delta_run" 2>/dev/null || rm -f "$delta_run" 2>/dev/null
     if ! SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
         bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1; then
         echo "review-round: persisted round $pr_next for PR #$pr but could not release its counter lock" >&2

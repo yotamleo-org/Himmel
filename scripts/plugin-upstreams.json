@@ -8,7 +8,7 @@
   "impeccable": {
     "upstream_repo": "pbakaus/impeccable",
     "track": "release",
-    "synced_base": "skill-v4.8.0",
+    "synced_base": "skill-v4.8.2",
     "tag_prefix": "skill-v"
   },
   "ui-ux-pro-max": {
@@ -63,6 +63,6 @@
     "standalone": true,
     "upstream_repo": "coderabbitai/skills",
     "track": "head",
-    "ref": "778c35a36e0afd2549c3fba86ec6e64afe649df3"
+    "ref": "ff41f14e326816d60672b89297697a1b8dabb2f8"
   }
 }

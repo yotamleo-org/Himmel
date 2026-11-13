@@ -602,7 +602,7 @@ jobs:
     env:
       LANG: C.UTF-8
       LC_ALL: C.UTF-8
-      CLAUDE_CLI_VERSION: '2.1.319'
+      CLAUDE_CLI_VERSION: '2.1.322'
       CLAUDE_STARTUP_MANIFEST: claude-startup-raw/rows.txt
     # A container's default run shell is sh; this is the host runner's default.
     defaults:

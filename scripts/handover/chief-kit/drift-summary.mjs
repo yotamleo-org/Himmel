@@ -19,7 +19,9 @@
 // chief-owned park inside its clock): `waiting` holds it and `real` never does. An UNOWNED row
 // carrying the mark, an AWAITING row without it or with a malformed who is REAL. Every other row is
 // REAL and counts at once (K2): nothing waits for a second run. A checker ticket whose status
-// cannot be read keeps its rows REAL.
+// cannot be read keeps its rows REAL. `unowned` is the sorted unique keys of the REAL UNOWNED rows
+// (the STALE list focus-refresh.sh hands the tracker and the tick); `unknown` and `stale` say how
+// complete it is.
 //
 // ponytail: fresh for a fixed 3 h because focus refreshes are event driven, upgrade path = read the
 // last refresh's own spacing from focus-state.
@@ -108,7 +110,7 @@ const out = {
   sdrift: null, unknown: false, stale: false,
   ...readMode(),
   real: [], known: [], transient: [], waiting: [],
-  checkers: [],
+  checkers: [], unowned: [],
 };
 
 const raw = driftFile ? readText(driftFile) : null;
@@ -146,6 +148,7 @@ if (raw !== null) {
     }
   }
   out.checkers = [...new Set(out.known.map((k) => k.checker))];
+  out.unowned = [...new Set(out.real.filter((r) => r.class === 'UNOWNED').map((r) => r.key))].sort();
 }
 out.counts = { real: out.real.length, known: out.known.length, transient: out.transient.length, waiting: out.waiting.length };
 

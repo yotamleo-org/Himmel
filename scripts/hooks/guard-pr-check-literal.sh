@@ -63,6 +63,24 @@
 # ANCHOR's copy before any other byte - every lib it loads after that is the
 # anchor's. A branch that deletes the line or edits the hand-off differs, and
 # denies.
+#
+# A command that runs no program but readers only names a gate path, however
+# it spells it, so the command-position proofs (cmdpos_clean, then
+# mention_only_wide) allow it before any text classification. Beyond the plain
+# readers, mention_only_wide proves these shapes inert:
+#   - sort with only -b -d -f -g -h -i -M -n -r -R -s -u -V -z -k -t (no -o and
+#     no --compress-program, which writes or runs a program), and uniq with
+#     -c -d -i -u -z and at most one operand (a second is an output file);
+#   - find with no -exec, -execdir, -ok, -okdir, -delete or -fprint/-fls action
+#     (the actions that run or write);
+#   - gh pr|issue|run view|list|status|checks|diff without -w/--web (the browser
+#     is the one program those reads start);
+#   - the checksum printers (sha*sum, md5sum, b2sum, cksum), which only read.
+# A command that binds a name (a for loop variable, a NAME= assignment) is never
+# admitted there: zsh evaluates math (a $NAME[...] subscript, a printf numeric
+# conversion or * width) that reads a bound value, and a substitution inside it
+# runs. sort, uniq, find, gh, sed and git take literal words only, and printf a
+# literal format whose conversions are %s, %b and %q.
 set -uo pipefail
 set -f
 
@@ -1961,7 +1979,119 @@ cmdpos_clean() { # true when no segment of $cmd executes a script but the dispat
     case "$raw" in *HIMMEL_REPO*) return 1 ;; esac
     return 0
 }
-if cmdpos_clean || git_read_to_file; then
+# mention_only_wide - the header's wider shapes. It sits outside the block
+# lib-cmdpos-clean.sh copies, so the guards sharing that block keep their
+# verdicts. MW_FREE: readers none of whose options runs or writes.
+MW_FREE=' grep egrep fgrep cat head tail wc ls cut tr nl jq echo cd sha256sum sha1sum sha224sum sha384sum sha512sum md5sum b2sum cksum '
+mention_only_wide() {
+    local k j h sg=-1 cw=-1 w t kind='' ops=0
+    local -a mw_kind
+    st_tokenize "$cmd" || return 1
+    [ "$ST_ANSIC$ST_COMMENT" = 00 ] || return 1
+    if [ "$ST_SUBST" = 1 ]; then
+        st_procsub_only || return 1
+    else
+        k=0
+        while [ "$k" -lt "$ST_NSEG" ]; do
+            case "${ST_SEP[k]}" in '(' | ')') return 1 ;; esac
+            k=$((k + 1))
+        done
+    fi
+    k=0
+    while [ "$k" -lt "$ST_N" ]; do
+        if [ "${ST_S[k]}" != "$sg" ]; then
+            [ "$sg" -lt 0 ] || mw_kind[sg]=$kind
+            sg=${ST_S[k]}; cw=-1; kind=''; ops=0
+            if [ "$ST_SUBST" = 1 ] && [ "$sg" -gt 0 ] && [ "${ST_SEP[sg - 1]}" = ')' ]; then
+                h=$((sg - 2))
+                while [ "$h" -ge 2 ] && [ "${ST_SEP[h - 1]}" = ')' ]; do h=$((h - 2)); done
+                [ "${mw_kind[h]:-}" = free ] || return 1
+                cw=$k; kind=free
+            fi
+        fi
+        w=${ST_W[k]}
+        case "${ST_RO[k]}" in
+            *'>&') case "$w" in *[!0-9-]* | '') return 1 ;; esac ;;
+            *'>' | *'>|') [ "$w" = /dev/null ] || return 1 ;;
+        esac
+        if [ "${ST_X[k]}" = 1 ]; then
+            # zsh reads $NAME[sub] as a subscript and evaluates sub as math
+            [[ ! $w =~ \$(\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)\[ ]] || return 1
+            t=$w
+            while [[ $t =~ $CMDPOS_REF_RE ]]; do t="${BASH_REMATCH[1]}${BASH_REMATCH[3]}"; done
+            case "$t" in *'$'*) return 1 ;; esac
+        fi
+        if [ -n "${ST_RO[k]}" ]; then
+            k=$((k + 1))
+            continue
+        fi
+        [ "${ST_A[k]}" = 0 ] || return 1
+        if [ "$cw" -ge 0 ]; then
+            [ "$kind" = free ] || [ "${ST_X[k]}${ST_G[k]}" = 00 ] || return 1
+            case "$kind" in
+                sort)
+                    case "$w" in
+                        -*) [[ $w =~ ^-([bdfghiMnrRsuVz]+|k[0-9.,a-zA-Z]+|t.)$ ]] || return 1 ;;
+                    esac
+                    ;;
+                uniq)
+                    case "$w" in
+                        -*) [[ $w =~ ^-[cdiuz]+$ ]] || return 1 ;;
+                        *) ops=$((ops + 1)); [ "$ops" -le 1 ] || return 1 ;;
+                    esac
+                    ;;
+                find)
+                    case "$w" in
+                        -exec | -execdir | -ok | -okdir | -delete | -fprint | -fprint0 | -fprintf | -fls) return 1 ;;
+                    esac
+                    ;;
+            esac
+            k=$((k + 1))
+            continue
+        fi
+        [ "${ST_Q[k]}${ST_X[k]}${ST_G[k]}" = 000 ] || return 1
+        cw=$k
+        case "$w" in
+            sed) st_sed_args "$k" 0 || return 1; kind=strict ;;
+            git | /usr/bin/git) cmdpos_git "$k" || return 1; kind=strict ;;
+            printf)
+                # options come only before the format, and zsh evaluates the
+                # argument of a numeric conversion or a * width as math, so a
+                # literal format holding only %s, %b and %q leaves every later word data
+                j=$((k + 1))
+                while [ "$j" -lt "$ST_N" ] && [ -n "${ST_RO[j]}" ]; do j=$((j + 1)); done
+                [ "$j" -lt "$ST_N" ] && [ "${ST_S[j]}" = "$sg" ] || return 1
+                [ "${ST_X[j]}${ST_G[j]}${ST_A[j]}" = 000 ] || return 1
+                case "${ST_W[j]}" in -*) return 1 ;; esac
+                t=${ST_W[j]//%%/}
+                while [[ $t =~ %[-0-9.]*[sbq] ]]; do t=${t/"${BASH_REMATCH[0]}"/}; done
+                case "$t" in *%*) return 1 ;; esac
+                kind=free
+                ;;
+            sort) kind='sort' ;;
+            uniq) kind='uniq' ;;
+            find) kind='find' ;;
+            gh)
+                [ "$((k + 2))" -lt "$ST_N" ] && [ "${ST_S[k + 2]}" = "$sg" ] || return 1
+                [ -z "${ST_RO[k + 1]}${ST_RO[k + 2]}" ] || return 1
+                case "${ST_W[k + 1]}" in pr | issue | run) ;; *) return 1 ;; esac
+                case "${ST_W[k + 2]}" in view | list | status | checks | diff) ;; *) return 1 ;; esac
+                j=$((k + 1))
+                while [ "$j" -lt "$ST_N" ] && [ "${ST_S[j]}" = "$sg" ]; do
+                    [ -n "${ST_RO[j]}" ] || [[ ! ${ST_W[j]} =~ ^(-[a-zA-Z]*w|--w) ]] || return 1
+                    j=$((j + 1))
+                done
+                kind=strict
+                ;;
+            *)
+                case "$MW_FREE" in *" $w "*) kind=free ;; *) return 1 ;; esac
+                ;;
+        esac
+        k=$((k + 1))
+    done
+    return 0
+}
+if cmdpos_clean || git_read_to_file || mention_only_wide; then
     [ "${edhook_pending:-0}" = 1 ] && edhook_deny
     exit 0
 fi
