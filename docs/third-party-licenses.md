@@ -479,7 +479,7 @@ Regenerate and check with `node scripts/docs/generate-credits.mjs` and
 <!-- credits-passages:start -->
 | What | Source | Author | Licence | How used | Where |
 |---|---|---|---|---|---|
-| Grill rounds that minerva Stage 1a restates | https://github.com/mattpocock/skills | Matt Pocock | MIT | inspired by | marketplace/plugins/himmel-ops/skills/minerva/SKILL.md |
+| Grill rounds that minerva Stage 1a runs | https://github.com/mattpocock/skills | Matt Pocock | MIT | vendored | marketplace/plugins/himmel-ops/skills/minerva/SKILL.md |
 | Base and graft, minerva Stage 1 | https://github.com/cursor/plugins/tree/99743e9c151c8537cbbf1f98bb38f34ef3368453/pstack/skills/arena | Lauren Tan | MIT | inspired by | marketplace/plugins/himmel-ops/skills/minerva/SKILL.md |
 | Docs form exemplar: T3 Code | https://github.com/pingdotgg/t3code | pingdotgg | MIT | inspired by | marketplace/plugins/himmel-ops/skills/docs-reviewer/SKILL.md |
 | Docs form exemplar and the errors check | https://github.com/garrytan/gstack | Garry Tan | MIT | inspired by | marketplace/plugins/himmel-ops/skills/docs-reviewer/SKILL.md |

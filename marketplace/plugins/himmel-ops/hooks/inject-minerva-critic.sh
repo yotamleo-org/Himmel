@@ -65,7 +65,7 @@ case "$skill" in
   # only injects advisory context, so a false-positive costs one sentence,
   # never a block.
   *:grilling|grilling)
-    inject "minerva (HIMMEL-2039): grilling is minerva Stage 1a, not a separate skill: run the design-tree frontier rounds from himmel-ops:minerva, then CONTINUE that pipeline (brainstorm, spec-critic, plan, plan-critic) instead of stopping at a shared understanding."
+    inject "minerva: grilling is minerva Stage 1a, not a separate skill: run its rounds under the Stage 1a rules of himmel-ops:minerva, then CONTINUE that pipeline (brainstorm, spec-critic, plan, plan-critic) instead of stopping at a shared understanding."
     ;;
   *brainstorming*)
     inject "minerva (HIMMEL-428): a STANDALONE brainstorm (not driven by minerva) sized a small change, or outside a himmel-managed repo, finishes without minerva. A minerva-driven brainstorm always continues to Stage 2. For a project in a himmel-managed repo: after this brainstorming writes the spec, do NOT auto-handoff to writing-plans — run the minerva SPEC-CRITIC loop first (himmel-ops:minerva, Stage 2 charter), then proceed."
