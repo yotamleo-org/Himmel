@@ -3102,10 +3102,10 @@ WORKER_SESSION_CLAUDE_BIN=/tmp/stale-claude-codex-bin \
   RUN_WORKER_ARGS='--judge' run_worker "$d28e" "$tmp/repo28e" "HIMMEL-3795-N1-binleak" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d28e" || true
 env28e="$(cat "$d28e/env-record" 2>/dev/null || true)"
-check "HIMMEL-3795: full --judge launch, ambient WORKER_SESSION_CLAUDE_BIN: exit 0" "$rc" "0"
-contains "HIMMEL-3795: full --judge launch, ambient WORKER_SESSION_CLAUDE_BIN: env-record was actually produced (judge still gets its high default)" "$env28e" "CLAUDE_CODE_EFFORT_LEVEL=high"
-not_contains "HIMMEL-3795: full --judge launch, ambient WORKER_SESSION_CLAUDE_BIN: does not reach the armed process env" "$env28e" "WORKER_SESSION_CLAUDE_BIN=/tmp/stale-claude-codex-bin"
-contains "HIMMEL-4564: full --judge launch exports HIMMEL_CONSOLE_JUDGE=1 (guard-judge-writes.sh marker)" "$env28e" "HIMMEL_CONSOLE_JUDGE=1"
+check "full --judge launch, ambient WORKER_SESSION_CLAUDE_BIN: exit 0" "$rc" "0"
+contains "full --judge launch, ambient WORKER_SESSION_CLAUDE_BIN: env-record was actually produced (judge still gets its high default)" "$env28e" "CLAUDE_CODE_EFFORT_LEVEL=high"
+not_contains "full --judge launch, ambient WORKER_SESSION_CLAUDE_BIN: does not reach the armed process env" "$env28e" "WORKER_SESSION_CLAUDE_BIN=/tmp/stale-claude-codex-bin"
+contains "full --judge launch exports HIMMEL_CONSOLE_JUDGE=1 (guard-judge-writes.sh marker)" "$env28e" "HIMMEL_CONSOLE_JUDGE=1"
 # the judge guard is bound to THIS judge's doc and qid. A doc
 # whose resume_cwd is ~/.cache/himmel/verdicts/<qid>/scratch yields both; a
 # plain worker gets neither; a judge doc with another resume_cwd gets the doc only.
@@ -3116,13 +3116,13 @@ rc=0
 some_doc="$tmp/c4608-doc.md" RUN_WORKER_ARGS="--judge" run_worker "$d4608" "$tmp/repo4608" "HIMMEL-4608-N1-bind" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d4608" || true
 env4608="$(cat "$d4608/env-record" 2>/dev/null || true)"
-check "HIMMEL-4608: full --judge launch with a verdicts scratch resume_cwd: exit 0" "$rc" "0"
-contains "HIMMEL-4608: --judge launch exports its own doc" "$env4608" "HIMMEL_CONSOLE_JUDGE_DOC=$tmp/c4608-doc.md"
-contains "HIMMEL-4608: --judge launch exports its qid" "$env4608" "HIMMEL_CONSOLE_JUDGE_QID=Q4608"
+check "full --judge launch with a verdicts scratch resume_cwd: exit 0" "$rc" "0"
+contains "--judge launch exports its own doc" "$env4608" "HIMMEL_CONSOLE_JUDGE_DOC=$tmp/c4608-doc.md"
+contains "--judge launch exports its qid" "$env4608" "HIMMEL_CONSOLE_JUDGE_QID=Q4608"
 contains "HIMMEL-4608 control: the env-record was produced by a judge launch" "$env4608" "HIMMEL_CONSOLE_JUDGE=1"
-not_contains "HIMMEL-4608: full --judge launch (other doc) carries no binding to a qid it cannot derive" "$env28e" "HIMMEL_CONSOLE_JUDGE_QID="
-not_contains "HIMMEL-4608: an ambient sibling qid never reaches a judge whose qid is underivable" "$env28e" "ambient-sibling"
-not_contains "HIMMEL-4608: an ambient sibling doc never reaches the armed judge" "$env28e" "HIMMEL_CONSOLE_JUDGE_DOC=/tmp/ambient-sibling-judge-1.md"
+not_contains "full --judge launch (other doc) carries no binding to a qid it cannot derive" "$env28e" "HIMMEL_CONSOLE_JUDGE_QID="
+not_contains "an ambient sibling qid never reaches a judge whose qid is underivable" "$env28e" "ambient-sibling"
+not_contains "an ambient sibling doc never reaches the armed judge" "$env28e" "HIMMEL_CONSOLE_JUDGE_DOC=/tmp/ambient-sibling-judge-1.md"
 
 # Same leak, native --profile worker-impl instead of --judge (the ticket's other
 # named case).
@@ -3132,9 +3132,9 @@ WORKER_SESSION_CLAUDE_BIN=/tmp/stale-claude-codex-bin \
   RUN_WORKER_ARGS='--profile worker-impl' run_worker "$d28f" "$tmp/repo28f" "HIMMEL-3795-N2-binleak-profile" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d28f" || true
 env28f="$(cat "$d28f/env-record" 2>/dev/null || true)"
-check "HIMMEL-3795: full --profile worker-impl launch, ambient WORKER_SESSION_CLAUDE_BIN: exit 0" "$rc" "0"
-contains "HIMMEL-3795: full --profile worker-impl launch, ambient WORKER_SESSION_CLAUDE_BIN: env-record was actually produced (WORKER_SESSION_PROFILE_SETTINGS still resolved)" "$env28f" "WORKER_SESSION_PROFILE_SETTINGS="
-not_contains "HIMMEL-3795: full --profile worker-impl launch, ambient WORKER_SESSION_CLAUDE_BIN: does not reach the armed process env" "$env28f" "WORKER_SESSION_CLAUDE_BIN=/tmp/stale-claude-codex-bin"
+check "full --profile worker-impl launch, ambient WORKER_SESSION_CLAUDE_BIN: exit 0" "$rc" "0"
+contains "full --profile worker-impl launch, ambient WORKER_SESSION_CLAUDE_BIN: env-record was actually produced (WORKER_SESSION_PROFILE_SETTINGS still resolved)" "$env28f" "WORKER_SESSION_PROFILE_SETTINGS="
+not_contains "full --profile worker-impl launch, ambient WORKER_SESSION_CLAUDE_BIN: does not reach the armed process env" "$env28f" "WORKER_SESSION_CLAUDE_BIN=/tmp/stale-claude-codex-bin"
 
 # Finding 2: a worker's own ambient CLAUDE_CODE_EFFORT_LEVEL=low (inherited from
 # ITS OWN low-effort launch) must not override a judge it arms - the judge
@@ -3151,9 +3151,9 @@ CLAUDE_CODE_EFFORT_LEVEL=low HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
   RUN_WORKER_ARGS='--judge' RUN_WORKER_WRAP=_as_claude run_worker "$d28g" "$tmp/repo28g" "HIMMEL-3795-N3-effortleak" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d28g" || true
 env28g="$(cat "$d28g/env-record" 2>/dev/null || true)"
-check "HIMMEL-3795: full --judge launch, ambient CLAUDE_CODE_EFFORT_LEVEL=low: exit 0" "$rc" "0"
-contains "HIMMEL-3795: full --judge launch, ambient CLAUDE_CODE_EFFORT_LEVEL=low: judge still gets high" "$env28g" "CLAUDE_CODE_EFFORT_LEVEL=high"
-not_contains "HIMMEL-3795: full --judge launch, ambient CLAUDE_CODE_EFFORT_LEVEL=low: ambient low never reaches the armed process" "$env28g" "CLAUDE_CODE_EFFORT_LEVEL=low"
+check "full --judge launch, ambient CLAUDE_CODE_EFFORT_LEVEL=low: exit 0" "$rc" "0"
+contains "full --judge launch, ambient CLAUDE_CODE_EFFORT_LEVEL=low: judge still gets high" "$env28g" "CLAUDE_CODE_EFFORT_LEVEL=high"
+not_contains "full --judge launch, ambient CLAUDE_CODE_EFFORT_LEVEL=low: ambient low never reaches the armed process" "$env28g" "CLAUDE_CODE_EFFORT_LEVEL=low"
 
 # Control: a chief's DELIBERATE override (HIMMEL_CONSOLE_JUDGE_EFFORT) still
 # wins over the high default - the fix must not make every override
@@ -3164,9 +3164,9 @@ HIMMEL_CONSOLE_JUDGE_EFFORT=medium \
   RUN_WORKER_ARGS='--judge' run_worker "$d28h" "$tmp/repo28h" "HIMMEL-3795-N4-effortoverride" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d28h" || true
 env28h="$(cat "$d28h/env-record" 2>/dev/null || true)"
-check "HIMMEL-3795: full --judge launch, explicit HIMMEL_CONSOLE_JUDGE_EFFORT: exit 0" "$rc" "0"
-contains "HIMMEL-3795: full --judge launch, explicit HIMMEL_CONSOLE_JUDGE_EFFORT: the override wins" "$env28h" "CLAUDE_CODE_EFFORT_LEVEL=medium"
-not_contains "HIMMEL-3795: full --judge launch, explicit HIMMEL_CONSOLE_JUDGE_EFFORT: the high default is not also present" "$env28h" "CLAUDE_CODE_EFFORT_LEVEL=high"
+check "full --judge launch, explicit HIMMEL_CONSOLE_JUDGE_EFFORT: exit 0" "$rc" "0"
+contains "full --judge launch, explicit HIMMEL_CONSOLE_JUDGE_EFFORT: the override wins" "$env28h" "CLAUDE_CODE_EFFORT_LEVEL=medium"
+not_contains "full --judge launch, explicit HIMMEL_CONSOLE_JUDGE_EFFORT: the high default is not also present" "$env28h" "CLAUDE_CODE_EFFORT_LEVEL=high"
 
 # The chief marker a chief session carries must never reach a worker it arms;
 # admission authority is the chief's alone.
@@ -3176,9 +3176,9 @@ HIMMEL_CONSOLE=1 \
   RUN_WORKER_ARGS='--profile worker-impl' run_worker "$d28j" "$tmp/repo28j" "HIMMEL-6918-N1-consolemarker" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d28j" || true
 env28j="$(cat "$d28j/env-record" 2>/dev/null || true)"
-check "HIMMEL-6918: full worker launch, ambient HIMMEL_CONSOLE=1: exit 0" "$rc" "0"
-contains "HIMMEL-6918: full worker launch, ambient HIMMEL_CONSOLE=1: env-record was actually produced" "$env28j" "HIMMEL_CONSOLE_LEG=1"
-not_contains "HIMMEL-6918: full worker launch, ambient HIMMEL_CONSOLE=1: the chief marker never reaches the worker" "$env28j" "HIMMEL_CONSOLE=1"
+check "full worker launch, ambient HIMMEL_CONSOLE=1: exit 0" "$rc" "0"
+contains "full worker launch, ambient HIMMEL_CONSOLE=1: env-record was actually produced" "$env28j" "HIMMEL_CONSOLE_LEG=1"
+not_contains "full worker launch, ambient HIMMEL_CONSOLE=1: the chief marker never reaches the worker" "$env28j" "HIMMEL_CONSOLE=1"
 
 # Control (chief ruling): the two new seam names themselves
 # (HEADED_ARM_WORKER_CLAUDE_BIN, HIMMEL_CONSOLE_JUDGE_EFFORT) must not reach the
@@ -3192,11 +3192,11 @@ HEADED_ARM_WORKER_CLAUDE_BIN=/tmp/test-claude-stub HIMMEL_CONSOLE_JUDGE_EFFORT=m
   RUN_WORKER_ARGS='--judge' run_worker "$d28i" "$tmp/repo28i" "HIMMEL-3795-N5-seamscrub" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d28i" || true
 env28i="$(cat "$d28i/env-record" 2>/dev/null || true)"
-check "HIMMEL-3795: full --judge launch, both seams set: exit 0" "$rc" "0"
-contains "HIMMEL-3795: full --judge launch, both seams set: WORKER_SESSION_CLAUDE_BIN takes the seam's value" "$env28i" "WORKER_SESSION_CLAUDE_BIN=/tmp/test-claude-stub"
-contains "HIMMEL-3795: full --judge launch, both seams set: effort override applied" "$env28i" "CLAUDE_CODE_EFFORT_LEVEL=medium"
-not_contains "HIMMEL-3795: full --judge launch, both seams set: HEADED_ARM_WORKER_CLAUDE_BIN itself never reaches the armed process (cannot leak into a nested arm)" "$env28i" "HEADED_ARM_WORKER_CLAUDE_BIN="
-not_contains "HIMMEL-3795: full --judge launch, both seams set: HIMMEL_CONSOLE_JUDGE_EFFORT itself never reaches the armed process (cannot leak into a nested arm)" "$env28i" "HIMMEL_CONSOLE_JUDGE_EFFORT="
+check "full --judge launch, both seams set: exit 0" "$rc" "0"
+contains "full --judge launch, both seams set: WORKER_SESSION_CLAUDE_BIN takes the seam's value" "$env28i" "WORKER_SESSION_CLAUDE_BIN=/tmp/test-claude-stub"
+contains "full --judge launch, both seams set: effort override applied" "$env28i" "CLAUDE_CODE_EFFORT_LEVEL=medium"
+not_contains "full --judge launch, both seams set: HEADED_ARM_WORKER_CLAUDE_BIN itself never reaches the armed process (cannot leak into a nested arm)" "$env28i" "HEADED_ARM_WORKER_CLAUDE_BIN="
+not_contains "full --judge launch, both seams set: HIMMEL_CONSOLE_JUDGE_EFFORT itself never reaches the armed process (cannot leak into a nested arm)" "$env28i" "HIMMEL_CONSOLE_JUDGE_EFFORT="
 
 # a judge does not implement (design 3.2) and never needs to
 # write a WORKER's handover doc, so it must not gain the Edit-allow grant even
@@ -3221,10 +3221,10 @@ WORKER_SESSION_REPO="$tmp/repo17b" HEADED_ARM_LOCK_DIR="$d17b/locks" HEADED_ARM_
   bash "$SCRIPT" --profile worker-impl "HIMMEL-3334-leg" "$d17b_doc" "$d17b/signal-never" "$PAST" "$d17b/log" "claude-sonnet-5" >/dev/null 2>&1 || true
 wait_record "$d17b" || true
 d17b_doc_canon="$(cd -P "$(dirname "$d17b_doc")" && pwd -P)/$(basename "$d17b_doc")"
-check "HIMMEL-3698: a worker's settings grant Edit on its OWN doc" \
+check "a worker's settings grant Edit on its OWN doc" \
   "$(jq --arg f "$d17b_doc_canon" '(.permissions.allow // []) | any(. == ("Edit(/" + $f + ")"))' "$d17b/HIMMEL-3334-leg.leg-settings.json" 2>/dev/null)" \
   "true"
-check "HIMMEL-3698: a worker's settings do NOT grant Edit on a SIBLING worker's doc in the same bucket" \
+check "a worker's settings do NOT grant Edit on a SIBLING worker's doc in the same bucket" \
   "$(jq --arg f "$some_doc_canon" '(.permissions.allow // []) | any(. == ("Edit(/" + $f + ")"))' "$d17b/HIMMEL-3334-leg.leg-settings.json" 2>/dev/null)" \
   "false"
 
@@ -4886,7 +4886,7 @@ rc=0; bash "$RELAY41" "$lbdoc41" HIMMEL-4014-ask >/dev/null 2>&1 || rc=$?
 check "41f relay: ANSWER, WRAPPED, then BLOCKED -> exit 4 (last terminal marker decides)" "$rc" "4"
 wxdoc41="$tmp/consult-wholeword41.md"; printf '# consult\n\n## Results\n' > "$wxdoc41"
 bash "$HERE/append-results.sh" "$wxdoc41" "ANSWER use easing X" >/dev/null 2>&1 || true
-printf -- '- 00:00 WRAPPEDX — not a marker\n' >> "$wxdoc41"  # raw write: append-results.sh refuses coined markers (HIMMEL-4570)
+printf -- '- 00:00 WRAPPEDX — not a marker\n' >> "$wxdoc41"  # raw write: append-results.sh refuses coined markers
 check "41f setup: the WRAPPEDX bullet was written" "$(grep -c 'WRAPPEDX' "$wxdoc41")" "1"
 rc=0; bash "$RELAY41" "$wxdoc41" HIMMEL-4014-ask >/dev/null 2>&1 || rc=$?
 check "41f relay: WRAPPEDX is not a WRAPPED bullet -> exit 3" "$rc" "3"
