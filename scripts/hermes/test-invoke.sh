@@ -372,7 +372,6 @@ RTEOF
     fi
 fi
 
-# 6b. The usage text says why --provider exists and cites no ticket key.
 echo "test: usage text cites no ticket key" >&2
 help_out="$(bash "$INVOKE" --help 2>&1)" || fail "usage: --help exited non-zero"
 key_hits="$(grep -E 'HIMMEL-[0-9]+' <<< "$help_out" || true)"
