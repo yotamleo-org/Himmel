@@ -4282,7 +4282,7 @@ test("T17: a cwd-routed spawn keeps its markers, adds the stamp last and is mark
   expect(seen.spawn).toEqual({ session: "group_-5245475441", chat: -5245475441, routed: true, releaseWrite: false });
 });
 
-test("T17: start-up writes poller-epoch from bridge-envelope-epoch.txt on a scratch root; a missing or non-integer file writes nothing", async () => {
+test("T17: start-up writes poller-epoch from bridge-envelope-epoch.txt on a scratch root; a missing or non-integer file writes nothing and removes a stale stamp", async () => {
   const P = await import("./poller");
   const src = join(root(), "bridge-envelope-epoch.txt");
   const ok = root();
@@ -4291,6 +4291,7 @@ test("T17: start-up writes poller-epoch from bridge-envelope-epoch.txt on a scra
   expect(readFileSync(join(ok, "poller-epoch"), "utf8")).toBe("0\n");
   for (const body of [null, "", "x\n", "1.5\n", "-1\n", "1 2\n"]) {
     const r = root();
+    writeFileSync(join(r, "poller-epoch"), "1\n");
     if (body === null) rmSync(src, { force: true }); else writeFileSync(src, body);
     expect(await P.writePollerEpoch(r, src)).toBe(false);
     expect(existsSync(join(r, "poller-epoch"))).toBe(false);

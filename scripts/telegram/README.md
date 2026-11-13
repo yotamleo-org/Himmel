@@ -346,7 +346,7 @@ means the session has no chat. The poller also hands `runSession` a
 Nothing the model writes sets either. At start-up the poller writes
 `<bridge root>/poller-epoch`, holding the integer in
 `scripts/telegram/bridge-envelope-epoch.txt`; a missing or non-integer file
-writes nothing. Restart the bridge after that file changes.
+writes nothing and removes any stale stamp. Restart the bridge after that file changes.
 
 ---
 

@@ -2792,11 +2792,11 @@ export async function writeHostNs(path?: string, procRoot = "/proc"): Promise<bo
 }
 
 // The bridge-envelope epoch this poller runs, read from the repo at start-up.
-// A missing or non-integer source writes nothing.
+// A missing or non-integer source writes nothing and removes a stale stamp.
 export async function writePollerEpoch(root: string, epochFile = join(REPO_ROOT, "scripts", "telegram", "bridge-envelope-epoch.txt")): Promise<boolean> {
-  let body: string;
-  try { body = (await readFile(epochFile, "utf8")).trim(); } catch { return false; }
-  if (!/^\d+$/.test(body)) return false;
+  let body = "";
+  try { body = (await readFile(epochFile, "utf8")).trim(); } catch {}
+  if (!/^\d+$/.test(body)) { await unlink(join(root, "poller-epoch")).catch(() => {}); return false; }
   await mkdir(root, { recursive: true });
   await atomicWrite(join(root, "poller-epoch"), `${Number(body)}\n`);
   return true;
