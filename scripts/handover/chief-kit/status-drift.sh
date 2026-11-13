@@ -611,7 +611,7 @@ vd_rulings() { # <keys> - VRUL = "key\tid\tts\tepoch\towner" per key whose lates
 }
 vd_newer() { # <key> <ruling epoch> - rc 0 when evidence newer than the ruling exists or cannot be ruled out
     local r h hr ledger
-    [ "$2" -ge $((NOW - 14 * 86400)) ] || return 0
+    [ "$2" -ge $((10#$NOW - 14 * 86400)) ] || return 0
     case "$nmp" in ''|*[!0-9]*) return 0 ;; esac
     # swallow-ok: an unparsable merged list or timestamp prints no false, so the INTAKE fix stays
     r=$(jq -r --arg k "$1" --argjson t "$2" "$VD_EP"'any(.[]; (.title | test("(^|[^A-Za-z0-9-])" + $k + "([^0-9]|$)"))
