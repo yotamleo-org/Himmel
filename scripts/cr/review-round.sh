@@ -93,6 +93,7 @@ usage() {
     echo "       review-round.sh from --branch <name>   (the reviewed head this round 2 or 3 started from; nothing at other rounds)" >&2
     echo "       review-round.sh trivial-descendant [--tests-only] <from-sha> <to-sha>   (exit 0 yes, 1 no)" >&2
     echo "       review-round.sh start|check --pr <n> --head <40-hex sha>   (an outside PR reviewed from its diff, its branch not checked out; check reads only)" >&2
+    echo "       review-round.sh abort --pr <n> --head <40-hex sha> --branch <the PR's head branch>   (give back that PR's round when its panel reviewed nothing; --branch only names the ledger rows)" >&2
     exit 2
 }
 
@@ -263,11 +264,19 @@ while [ $# -gt 0 ]; do
         *) usage ;;
     esac
 done
-# --pr keys the state on outside-<n>, so it never takes --branch, and only start and
-# check (read only) accept it. Its head is a full sha, and the PR number a plain integer.
+# --pr keys the state on outside-<n>, so start and check (read only) never take --branch.
+# abort --pr takes the PR's head branch as --branch and only reads panel rows by it: the
+# panel stamps its rows with that name, while the round state stays keyed on outside-<n>.
+# Its head is a full sha, and the PR number a plain integer.
+ledger_branch=""
 if [ -n "$pr" ]; then
+    if [ "$verb" = "abort" ]; then
+        [ -n "$branch" ] || usage
+        ledger_branch="$branch"
+        branch=""
+    fi
     [ -z "$branch" ] && [ "$check_only" -eq 0 ] || usage
-    case "$verb" in start|check) ;; *) usage ;; esac
+    case "$verb" in start|check|abort) ;; *) usage ;; esac
     [[ "$pr" =~ ^[1-9][0-9]{0,8}$ ]] && [[ "$head_sha" =~ ^[0-9a-f]{40}$ ]] || usage
     branch="outside-$pr"
 fi
@@ -288,6 +297,10 @@ esac
 
 if ! git check-ref-format --branch "$branch" >/dev/null 2>&1; then
     echo "review-round: invalid branch name '$branch'" >&2
+    exit 2
+fi
+if [ -n "$ledger_branch" ] && ! git check-ref-format --branch "$ledger_branch" >/dev/null 2>&1; then
+    echo "review-round: invalid branch name '$ledger_branch'" >&2
     exit 2
 fi
 # Every verb writes shared per-branch state (round counter,
@@ -401,7 +414,7 @@ read_round() {
 # when any critic finding row exists there, whatever its verdict. "seen"
 # prints "seen" when any avail or finding row of any model exists there.
 ledger_query() {
-    LEDGER="$git_dir/cr-critic-scores.jsonl" BRANCH="$branch" MODE="$1" FROM="$2" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e '
+    LEDGER="$git_dir/cr-critic-scores.jsonl" BRANCH="${ledger_branch:-$branch}" MODE="$1" FROM="$2" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e '
 const fs = require("fs"), e = process.env;
 let lines = [];
 try { lines = fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean); } catch (err) { process.exit(err.code === "ENOENT" ? 0 : 2); }
@@ -1565,10 +1578,10 @@ if [ "$verb" = "abort" ]; then
     elif [ "$ab_seen" = "seen" ]; then
         echo "review-round: the round on $ab_head has panel rows, so it reviewed something - it is not given back" >&2
         ab_rc=8
-    elif [ -z "$run_pid" ]; then
+    elif [ -z "$pr" ] && [ -z "$run_pid" ]; then
         echo "review-round: no start caller is recorded for the round on $ab_head, so it cannot be shown to have ended - it is not given back" >&2
         ab_rc=8
-    elif [ "$run_pid" != "$PPID" ] && kill -0 "$run_pid" 2>/dev/null; then
+    elif [ -n "$run_pid" ] && [ "$run_pid" != "$PPID" ] && kill -0 "$run_pid" 2>/dev/null; then
         echo "review-round: the round on $ab_head is still running (start by pid $run_pid) - it is not given back" >&2
         ab_rc=8
     else

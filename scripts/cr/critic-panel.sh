@@ -722,9 +722,17 @@ _verify_base_pin() {
         exit 7
     fi
     _base_ref="$(_resolve_base_ref "$1")"
-    _blive="$(git -C "$1" rev-parse --verify --quiet "$_base_ref^{commit}" 2>/dev/null)" || _blive=""
+    _bwhat="base $_base_ref"
+    if [ -n "$PIN_REF" ]; then
+        # A fetched PR ref (an outside PR) is cut before the base branch's tip by design, so the
+        # captured base is the merge base of the live base with that ref, not the live tip itself.
+        _blive="$(git -C "$1" merge-base "$_base_ref" "$PIN_REF" 2>/dev/null)" || _blive=""   # swallow-ok: an unresolvable merge base is refused (exit 7) on the comparison below
+        _bwhat="the merge base of $_base_ref with $PIN_REF"
+    else
+        _blive="$(git -C "$1" rev-parse --verify --quiet "$_base_ref^{commit}" 2>/dev/null)" || _blive=""
+    fi
     if [ "$_blive" != "$_bpin" ]; then
-        echo "critic-panel.sh: REFUSING — base $_base_ref is at ${_blive:-<unresolvable>} but the review was pinned to base $_bpin; the base branch moved since the caller captured its inputs, so the reviewed diff is not the one the caller computed. Re-run /pr-check from step 1." >&2
+        echo "critic-panel.sh: REFUSING — $_bwhat is at ${_blive:-<unresolvable>} but the review was pinned to base $_bpin; the base branch moved since the caller captured its inputs, so the reviewed diff is not the one the caller computed. Re-run /pr-check from step 1." >&2
         exit 7
     fi
 }
