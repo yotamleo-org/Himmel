@@ -347,6 +347,14 @@ deny  "9915 control: ls the bus root" "$(cwd_json 'ls ~/.local/state/himmel/bus'
 deny  "9915 control: rtk proxy of a bus register" "$(cwd_json 'rtk proxy bus register x' "$WT")"
 deny  "9915 control: rtk proxy of git grep -O" "$(cwd_json "rtk proxy git grep -O'sh -c \"bus register x\"' x" "$WT")"
 deny  "9915 control: qmd-bounded with a verb other than query" "$(cwd_json 'bash scripts/lib/qmd-bounded.sh bus register x' "$WT")"
+deny  "9915 control: git grep -O built by an expansion" "$(cwd_json "git grep \"-O\${x}sh -c 'bus register x'\" -e foo f" "$WT")"
+deny  "9915 control: git grep --open-files-in-pager= built by an expansion" \
+    "$(cwd_json "git grep --open-files-in-pager=\${x}\"sh -c 'bus register x'\" -e foo f" "$WT")"
+deny  "9915 control: git grep -O with a quoted variable pager" "$(cwd_json "git grep -O\"\$v\" -e 'bus register x' f" "$WT")"
+deny  "9915 control: rtk proxy of git grep -O built by an expansion" \
+    "$(cwd_json "rtk proxy git grep \"-O\${x}sh -c 'bus register x'\" -e foo f" "$WT")"
+deny  "9915 control: rtk proxy of git grep -O with a quoted variable pager" \
+    "$(cwd_json "rtk proxy git grep -O\"\$v\" -e 'bus register x' f" "$WT")"
 
 echo "== model failures: the text reader decides =="
 # A heredoc body naming bus register is allowed by the model and denied by the

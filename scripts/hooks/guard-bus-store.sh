@@ -38,7 +38,7 @@
 #         a program, a question or a bullet, and it is not read for a bus word
 #         and a verb (rg `--pre` and `--hostname-bin` and git grep `-O` and
 #         `--open-files-in-pager` run a command, so such a call is not
-#         data; RESIDUAL: `awk`, `sed` and `python` can run what they quote). A call
+#         data, nor is a git grep with an expanded word before its `--`; RESIDUAL: `awk`, `sed` and `python` can run what they quote). A call
 #         whose every word is literal, names neither bus nor a verb and has no
 #         heredoc passes beside them, unless a cat or tee call in it wrote a
 #         heredoc body. Every other call goes to the word walker below.
@@ -463,7 +463,7 @@ def qbscript: test("(^|/)qmd-bounded\\.sh$");
 def optargs: .argv as $a | ([range(1; $a | length) | select(($a[.] | lit and .v == "--") and ($a[. - 1] | lit and (.v | startswith("-") | not)))][0]) as $i | if $i == null then $a else $a[:$i] end;
 def gitgrep: ar == "git" and (.argv[1] | lit and .v == "grep");
 def runsopt: (ar == "rg" and any(optargs[]; select(lit) | .v | test("^--(pre|hostname-bin)($|=)")))
-  or (gitgrep and any(optargs[]; select(lit) | .v | test("^(-[^-]*O|--op)")));
+  or (gitgrep and any(optargs[]; .t != "lit" or (.v | test("^(-[^-]*O|--op)"))));
 def data: .opaque == null and ((.via // []) | length == 0) and ((.assigns // []) | length == 0)
   and (runsopt | not)
   and (ar as $a | ($a | IN("grep", "egrep", "fgrep", "rg", "sed", "awk", "gawk", "mawk", "python", "python3"))
