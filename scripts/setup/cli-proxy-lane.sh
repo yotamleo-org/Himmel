@@ -74,8 +74,6 @@ fi
 RELEASE_BASE="https://github.com/router-for-me/CLIProxyAPI/releases/download/v${VERSION}"
 ASSET="CLIProxyAPI_${VERSION}_linux_amd64.tar.gz"
 RELEASE_URL="${RELEASE_BASE}/${ASSET}"
-# Pinned sha256 of the linux_amd64 asset at v8.0.64, verified against the
-# release's own checksums.txt.
 ASSET_SHA256="e793bb469d79f8a08ffb661eed82dc069c32f9fc4e738f6258656f4d84af1b05"
 [ -n "${CLIPROXY_API_SHA256-}" ] && ASSET_SHA256="$CLIPROXY_API_SHA256"
 
