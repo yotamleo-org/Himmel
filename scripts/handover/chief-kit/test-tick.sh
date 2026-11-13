@@ -2543,7 +2543,6 @@ uw_skip="$(uw_chains)"
 [ "$uw_stale|$uw_ok|$uw_skip" = 'STALE:1/2|ok|skip' ] && pass '(9860) with only a wired pair the STALE, ok and skip values stay byte-identical' || fail "(9860) with only a wired pair chains read $uw_stale|$uw_ok|$uw_skip, not STALE:1/2|ok|skip"
 rm -rf "$W/uw-tmp" "$W/uw-mirror" "$W/uw-dir"
 
-# (9823) the --help text describes each field without a ticket key or a decision number, and still documents the fields.
 help_out="$(bash "$SUT" --help 2>&1)"
 help_cites="$(printf '%s\n' "$help_out" | grep -oE 'HIMMEL-[0-9]+|decision [0-9]+' | sort -u | tr '\n' ' ')"
 if [ -n "$help_cites" ]; then
