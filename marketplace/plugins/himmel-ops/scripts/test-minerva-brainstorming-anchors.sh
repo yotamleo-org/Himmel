@@ -70,7 +70,6 @@ want "autonomous rulings use the Ruling format" "$flat" '`<decision> â€” <why> â
 want "Stage 2 critic names its model" "$stage2" '`model: opus` at high effort'
 want "Stage 4 critic names its model" "$stage4" '`model: sonnet` at high effort'
 
-# Stage 1a runs the vendored grilling skill and keeps himmel's own rules on top of it.
 want "Stage 1a invokes the vendored grilling skill" "$grill" 'Invoke `lean-skills:grilling` (unless it is already running)'
 want "Stage 1a puts the himmel rules first" "$grill" 'himmel rules below taking precedence'
 want "Stage 1a continues past a shared understanding" "$grill" 'When the stop condition below and its confirmation are met, go on to 1b; never end at a shared understanding.'
@@ -99,7 +98,6 @@ lic="$here/../../../../docs/third-party-licenses.md"
 if grep -F '99743e9c151c8537cbbf1f98bb38f34ef3368453/pstack/skills/arena' "$lic" | grep -qF '| Lauren Tan | MIT | inspired by | marketplace/plugins/himmel-ops/skills/minerva/SKILL.md |'; then echo "ok - the arena credit row names minerva"
 else echo "FAIL - docs/third-party-licenses.md has no arena passage row for minerva SKILL.md"; fails=$((fails+1)); fi
 
-# Every round rule Stage 1a leaves to grilling is still in the vendored copy.
 gflat="$(tr '\n' ' ' <"$here/../../lean-skills/skills/grilling/SKILL.md")"
 want "grilling maps a design tree" "$gflat" 'Map this as a **design tree**'
 want "grilling defines the frontier" "$gflat" 'The **frontier** is every decision whose prerequisites are already settled'

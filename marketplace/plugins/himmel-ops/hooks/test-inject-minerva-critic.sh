@@ -27,7 +27,6 @@ case "$out" in *"minerva Stage 1a"*) ;; *) echo "FAIL: grilling not routed to mi
 out=$(emit '{"tool_name":"Skill","tool_input":{"skill":"some:grilling-tips"}}')
 [ -z "$out" ] || { echo "FAIL: grilling-substring skill injected (got '$out')"; fail=1; }
 
-# grilling → the injection names minerva's Stage 1a rules, never rounds minerva no longer holds
 out=$(emit '{"tool_name":"Skill","tool_input":{"skill":"lean-skills:grilling"}}')
 case "$out" in *"Stage 1a rules of himmel-ops:minerva"*CONTINUE*) ;; *) echo "FAIL: grilling injection does not send the model to minerva's Stage 1a rules (got '$out')"; fail=1;; esac
 case "$out" in *"frontier rounds from himmel-ops:minerva"*) echo "FAIL: grilling injection points at rounds minerva no longer holds (got '$out')"; fail=1;; esac
