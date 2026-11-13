@@ -49,5 +49,17 @@ out=$(sum)
 eq "2: an UNOWNED row carrying the mark, an AWAITING row without it and one with a bad who are all real" "$(jqv "$out" '.counts.real')" 3
 eq "2: and none is waiting" "$(jqv "$out" '.counts.waiting')" 0
 
+cat > "$DRIFT" <<'EOF'
+HELD-STALE HIMMEL-6 In Progress with no open PR; its worker's lock (d.md) is STALE and not proven dead | writer=queue-lock.sh | fix=check the leg on its host
+UNOWNED HIMMEL-7 In Progress with no open PR; its worker's lock is STALE and HELD-STALE says no | writer=a | fix=b
+sdrift=1:abcd1234
+EOF
+touch -d "@$((NOW - 600))" "$DRIFT"
+out=$(sum)
+eq "3: a HELD-STALE row is exempt" "$(jqv "$out" '.counts.exempt')" 1
+eq "3: and the UNOWNED row naming HELD-STALE in its text is the one real row" "$(jqv "$out" '.counts.real')" 1
+eq "3: the exempt row is the HELD-STALE one" "$(jqv "$out" '.exempt[0].key')" HIMMEL-6
+eq "3: the real row is HIMMEL-7" "$(jqv "$out" '.real[0].key')" HIMMEL-7
+
 echo "---"
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; } || { echo "$fails failed"; exit 1; }
