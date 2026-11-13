@@ -14,7 +14,8 @@
 #   ceilings     open ceilings ledger rows (ceiling-lookup.sh --ids --all: ids,
 #                files and anchors, never row text) whose ticket is Done in the
 #                Jira mirror, whose file is gone or whose anchor no longer
-#                matches; silent when the ledger cannot be read
+#                matches; silent with no lookup or no ledger file, reported as
+#                not checked when the lookup cannot read the ledger
 #
 # Test seams: GAP_AUDIT_ROOT, GAP_AUDIT_NOW (epoch), GAP_AUDIT_DOCTOR_CMD,
 # GAP_AUDIT_QMD_STATUS_FILE, GAP_AUDIT_GRAPH_OUT, GAP_AUDIT_MIRROR,
@@ -117,8 +118,13 @@ _ga_check_ceilings() {
     local root="$1" mirror="${GAP_AUDIT_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}" out
     local id file anchor ticket done_rows="" gone_rows="" stale_rows=""
     [ -f "$root/scripts/ledger/ceiling-lookup.sh" ] || return 0
-    out="$(cd "$root" && bash "$root/scripts/ledger/ceiling-lookup.sh" --ids --all 2>/dev/null)" || return 0
-    case "$out" in "CEILINGS: "*" open rows "*) ;; *) return 0 ;; esac
+    out="$(cd "$root" && bash "$root/scripts/ledger/ceiling-lookup.sh" --ids --all 2>/dev/null)" || { _ga_skip "ceilings (lookup failed)"; return 0; }
+    case "$out" in
+        "CEILINGS: "*" open rows "*) ;;
+        "CEILINGS: none open "*|"CEILINGS: not read (no ledger for "*) return 0 ;;
+        "CEILINGS: not read ("*) out="${out#CEILINGS: not read (}"; _ga_skip "ceilings (${out%)})"; return 0 ;;
+        *) _ga_skip "ceilings (unreadable output)"; return 0 ;;
+    esac
     while IFS="$(printf '\t')" read -r id file anchor ticket; do
         case "$id" in C-[0-9]*) ;; *) continue ;; esac
         if [ ! -f "$root/$file" ]; then
