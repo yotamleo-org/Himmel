@@ -1238,6 +1238,20 @@ def origin_repo():
     return hit.group(1) if hit else ''
 
 
+def gh_read_argv():
+    custom = os.environ.get('TRACKER_GH')
+    if custom:
+        return [custom]
+    helper = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib', 'gh-read.sh'))
+    return [helper] if os.path.isfile(helper) and os.access(helper, os.X_OK) else ['gh']
+
+
+def quiet_gh_env():
+    child = dict(os.environ)
+    child['GH_READ_QUIET'] = '1'
+    return child
+
+
 def open_prs(path, repo):
     """{ticket number: [(pr, ci, draft, head)]} from a `gh pr list --json
     number,title,headRefName,headRefOid,isDraft,statusCheckRollup` file, else one live gh read (TRACKER_GH is the test
@@ -1248,9 +1262,9 @@ def open_prs(path, repo):
             prs = json.load(open(path, encoding='utf-8'))
         else:
             prs = json.loads(subprocess.run(
-                [os.environ.get('TRACKER_GH', 'gh'), 'pr', 'list', '--repo', repo, '--state', 'open', '--limit', '300',
-                 '--json', 'number,title,headRefName,headRefOid,isDraft,statusCheckRollup'],
-                capture_output=True, text=True, timeout=60, check=True).stdout)
+                gh_read_argv() + ['pr', 'list', '--repo', repo, '--state', 'open', '--limit', '300',
+                                  '--json', 'number,title,headRefName,headRefOid,isDraft,statusCheckRollup'],
+                capture_output=True, text=True, timeout=60, check=True, env=quiet_gh_env()).stdout)
     except (OSError, ValueError, subprocess.SubprocessError):
         if path:
             raise SystemExit('tracker: --prs-file %s is unreadable' % path)

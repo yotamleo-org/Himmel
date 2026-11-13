@@ -480,6 +480,40 @@ JS
 contains "the fleet page opens dark with readable text and a light choice still works" "$(node "$W/dark-check.mjs" "$H" --bg --text --muted)" "DARK-OK"
 lacks "the fleet page no longer follows a light system preference" "$HTML" "prefers-color-scheme"
 
+READTOK=ghp_READTOKEN0123456789
+mkdir -p "$W/ttroot" "$W/tt"
+printf 'himmel_github_token_vm2=%s\n' "$READTOK" > "$W/ttroot/.env"
+ln -s "$HERE/fixtures/gh-two-token-stub.sh" "$W/tt/gh"
+TTLOG="$W/tt.log"
+ENVLOG="$W/s8a-env.log"
+ttlog() { grep -c -E -- "$1" "$TTLOG" || true; }
+cat > "$W/bin/gh-rec" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "${GH_READ_QUIET:-unset}" >> "$S8A_ENVLOG"
+exec "$S8A_DELEGATE" "$@"
+STUB
+chmod +x "$W/bin/gh-rec"
+ttfleet() {
+    env -u FLEET_GH -u GH_TOKEN -u GITHUB_TOKEN -u himmel_github_token_vm2 -u CREDENTIALS_DIRECTORY -u GH_READ_NO_MAIN_FALLBACK \
+        PATH="$W/tt:$PATH" GH_READ_ENV_ROOT="$W/ttroot" GH_STUB_READ_TOKEN="$READTOK" GHLOG="$TTLOG" HIMMEL_SECRETS_KEYRING=off \
+        GH_STUB_DELEGATE="$W/bin/gh" S8A_DELEGATE="$W/bin/gh" S8A_ENVLOG="$ENVLOG" \
+        FLEET_QUEUE_LOCK="$W/bin/queue-lock" FLEET_BANK="$W/bin/bank" FLEET_AGENTS="$W/bin/agents" AG_JSON="$W/agents.json" \
+        FLEET_PROC="$W/proc" GH_OPEN="$W/open.json" HANDOVER_DIR="$ROOT" \
+        "$@" node "$SUT" --json "${COMMON[@]}"
+}
+: > "$TTLOG"
+J8="$(ttfleet GH_STUB_MAINFAIL=rate)"; rc8=$?
+eq "S8a main spent: the snapshot exits 0" "$rc8" "0"
+eq "S8a main spent: the open-PR read logs tok=read" "$(ttlog '^tok=read argv=pr list --state open')" "1"
+eq "S8a main spent: no PR read logs tok=main" "$(ttlog '^tok=main ')" "0"
+eq "S8a main spent: the PR still joins its worker" "$(printf '%s' "$J8" | q 'L("N1").pr.number+":"+L("N1").pr.ci')" "2002:failing"
+: > "$TTLOG"; : > "$ENVLOG"
+J8="$(ttfleet GH_STUB_MAINFAIL=rate FLEET_GH="$W/bin/gh-rec")"; rc8=$?
+eq "S8a control: the snapshot exits 0 with FLEET_GH set" "$rc8" "0"
+eq "S8a control: FLEET_GH set, the helper is never used" "$(ttlog '^tok=')" "0"
+eq "S8a control: FLEET_GH set, the PR still joins its worker" "$(printf '%s' "$J8" | q 'L("N1").pr.number+":"+L("N1").pr.ci')" "2002:failing"
+eq "S8a control: the gh child has GH_READ_QUIET=1" "$(sort -u "$ENVLOG")" "1"
+
 if [ "$fails" -eq 0 ]; then
     printf 'test-fleet.sh: all passed\n'
     exit 0

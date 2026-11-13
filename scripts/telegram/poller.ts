@@ -3,6 +3,7 @@ import { existsSync, readFileSync, lstatSync, constants } from "node:fs";
 import { basename, dirname, isAbsolute, join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { homedir, tmpdir } from "node:os";
+import { currentNs, hostNsFile } from "../jira/src/release/fence-ancestry";
 import { appendLine, appendOutboxLine, atomicWrite, bridgeRoot, ensureSession, readMeta, writeMeta, sessionDir, readNewLines, peekNewLines, commitCursorPos, repairCursorBeyondEof, truncateFullyConsumed, rotateConsumedLedger, type Meta, type OnCursorReset } from "./bus";
 import { classify, isTicketKey, type Route } from "./router";
 import { routeToConsole, routeFleetCommand, routeApprove, staleConsoleCommand, consoleReplyTarget, rememberConsoleReply, makeChiefTap, type ConsoleRouteGate, type ConsoleReplyFn } from "./chief-route";
@@ -11,7 +12,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { getUpdates, getMe, sendMessage, sendDocument, sendChatAction, answerCallbackQuery, getFile, downloadFile, redactChatId } from "./telegram-api";
 import { installTimestampedLogging } from "./log-timestamp";
 import { cwdForChat, isAllowed, isGroupAllowed, isOperatorIdentity, loadAccess, operatorChatId, requireMentionForChat, vaultForChat, type Access } from "./gate";
-import { runSession, buildPrompt, BASH_BIN, REPO_ROOT, type BusPaths, type PermissionMode } from "./run";
+import { runSession, buildPrompt, BASH_BIN, REPO_ROOT, type BridgeSpawn, type BusPaths, type PermissionMode } from "./run";
 import { classifyForSpawn, type TriageVerdict, type TriageModelOverride, type ModelOverride } from "./triage";
 import { transcribe } from "./transcribe";
 import { makeAfkSudoGate, makeAfkSudoCallback, makeAfkSudoPrompts, dispatchAfkCallbacks, operatorIdFromConfig, helperInstalled, spawnHelper } from "./afk-sudo-route";
@@ -1543,7 +1544,7 @@ async function resolveTelegramProfileSettings(cwd: string, lanesDir: string): Pr
   return settings === null ? undefined : JSON.stringify(settings);
 }
 
-export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: string, cwd: string, permissionMode?: PermissionMode, lane?: undefined, modelOverride?: string, settings?: string, observe?: undefined, extraEnv?: Record<string, string>, mcpConfig?: string) => Promise<RunResult> = runSession, deadlineMs: number = RUN_DEADLINE_MS, notify?: NotifyFn, maxRetries: number = MAX_RETRIES, vaultFor?: VaultForFn, isHeld: (s: string) => boolean = () => false, cwdFor?: CwdForFn, lanesDir: string = join(REPO_ROOT, "scripts", "lanes")): RunFn {
+export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: string, cwd: string, permissionMode?: PermissionMode, lane?: undefined, modelOverride?: string, settings?: string, observe?: undefined, extraEnv?: Record<string, string>, mcpConfig?: string, bridgeSpawn?: BridgeSpawn) => Promise<RunResult> = runSession, deadlineMs: number = RUN_DEADLINE_MS, notify?: NotifyFn, maxRetries: number = MAX_RETRIES, vaultFor?: VaultForFn, isHeld: (s: string) => boolean = () => false, cwdFor?: CwdForFn, lanesDir: string = join(REPO_ROOT, "scripts", "lanes"), access?: Access | null): RunFn {
   const retryAt = () => new Date(Date.now() + RETRY_MS).toISOString();
   const noticed = new Set<string>();
   const safeNotify = async (session: string, retryAtIso: string, kind: NotifyKind) => {
@@ -1556,6 +1557,10 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
   const pendingHasOperatorLine = async (sd: string, skip: number): Promise<boolean> => {
     const pending = await readFile(join(sd, "inbox.pending.jsonl"), "utf8");
     return pending.split("\n").filter((l) => l.trim()).slice(skip).some((l) => { try { return JSON.parse(l).operator === true; } catch { return false; } });
+  };
+  const pendingAllOperator = async (sd: string): Promise<boolean> => {
+    const lines = (await readFile(join(sd, "inbox.pending.jsonl"), "utf8")).split("\n").filter((l) => l.trim());
+    return lines.length > 0 && lines.every((l) => { try { return JSON.parse(l).operator === true; } catch { return false; } });
   };
   const runOnce = async (session: string, modelOverride?: ModelOverride): Promise<void> => {
     if (lockdownEnabled(root)) return;
@@ -1658,6 +1663,9 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
     // spawns that most need it.
     const settings = await resolveTelegramProfileSettings(sessionCwd, lanesDir);
     const mcpConfig = await resolveTelegramMcpConfig(repoCwd, lanesDir);
+    const chat = parked?.chat_id ?? null;
+    const releaseWrite = chat !== null && chat === operatorChatId(access) && await pendingAllOperator(sd);
+    const bridgeSpawn: BridgeSpawn = { session, chat, routed: !!routedCwd, releaseWrite };
     if (lockdownEnabled(root)) return;
     let lockedAtSpawn = false;
     let stoppedAtSpawn = false;
@@ -1667,7 +1675,7 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
       // Not a content-filter block and no agent ran: code 0 settles the session
       // back to idle with its pending lines uncommitted.
       if (lockdownEnabled(root)) { lockedAtSpawn = true; return Promise.resolve({ code: 0, capped: false, pid: 0, tail: "locked, reset at the station" }); }
-      return withDeadline(runImpl(buildPrompt(session, paths, filingVault, !!routedCwd, parked?.chat_id), sessionCwd, permissionMode, undefined, modelOverride, settings, undefined, extraEnv, mcpConfig), deadlineMs);
+      return withDeadline(runImpl(buildPrompt(session, paths, filingVault, !!routedCwd, parked?.chat_id), sessionCwd, permissionMode, undefined, modelOverride, settings, undefined, { ...(extraEnv ?? {}), HIMMEL_BRIDGE_CHAT: String(chat ?? "") }, mcpConfig, bridgeSpawn), deadlineMs);
     }, undefined, retryAt);
     // run.log: persist the run's output tail. Before this, a dead
     // run's stdout/stderr vanished and failures were undebuggable
@@ -2427,7 +2435,9 @@ export function shouldAlertOutage(now: number, outageStartedAt: number, lastAler
 
 export async function main(): Promise<void> {
   installTimestampedLogging();
+  await writeHostNs().catch((e) => console.error(`[poller] could not write the operator fence's host-ns: ${e}; operator verbs refuse until it exists`));
   const root = bridgeRoot();
+  await writePollerEpoch(root).catch((e) => console.error(`[poller] could not write or clear poller-epoch: ${e}; fix the bridge root and restart`));
   const repoCwd = process.env.HIMMEL_REPO ?? process.cwd();
   const bridgeEnv = await loadBridgeEnv();
   const token = bridgeEnv.TELEGRAM_BOT_TOKEN!;
@@ -2473,7 +2483,7 @@ export async function main(): Promise<void> {
   // lines below, which is correct: nothing can be held before the coalescer is
   // constructed, and no run can have started either.
   let isHeldRef: (s: string) => boolean = () => false;
-  const runFn = makeRunFn(root, repoCwd, undefined, undefined, notify, undefined, vaultFor, (s) => isHeldRef(s), cwdFor);
+  const runFn = makeRunFn(root, repoCwd, undefined, undefined, notify, undefined, vaultFor, (s) => isHeldRef(s), cwdFor, undefined, access);
   // a session failing the same way DISPATCH_FAIL_ALERT_AFTER times
   // in a row tells the operator's DM once (outbox-routed, like the heartbeat
   // alert below), instead of retrying silently forever.
@@ -2770,4 +2780,31 @@ export async function main(): Promise<void> {
   }
 }
 
-if (import.meta.main) await main();
+export async function writeHostNs(path?: string, procRoot = "/proc"): Promise<boolean> {
+  if (!existsSync(join(procRoot, "self", "ns"))) return false;
+  const target = path ?? hostNsFile();
+  await mkdir(dirname(target), { recursive: true });
+  await atomicWrite(target, `${currentNs(procRoot)}\n`);
+  return true;
+}
+
+export async function writePollerEpoch(root: string, epochFile = join(REPO_ROOT, "scripts", "telegram", "bridge-envelope-epoch.txt")): Promise<boolean> {
+  let body = "";
+  try { body = (await readFile(epochFile, "utf8")).trim(); } catch {}
+  if (!/^\d+$/.test(body)) {
+    await unlink(join(root, "poller-epoch")).catch((e) => { if (e?.code !== "ENOENT") throw e; });
+    return false;
+  }
+  await mkdir(root, { recursive: true });
+  await atomicWrite(join(root, "poller-epoch"), `${body}\n`);
+  return true;
+}
+
+export async function runCli(argv: string[], hostNsPath?: string): Promise<boolean> {
+  if (!argv.includes("--write-host-ns")) return false;
+  if (await writeHostNs(hostNsPath)) console.error(`[poller] wrote ${hostNsPath ?? hostNsFile()}`);
+  else console.error("[poller] --write-host-ns: no /proc on this host; the operator fence runs its env check alone");
+  return true;
+}
+
+if (import.meta.main && !(await runCli(process.argv.slice(2)))) await main();

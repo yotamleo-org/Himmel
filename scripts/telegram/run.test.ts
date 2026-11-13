@@ -232,6 +232,10 @@ test("sessionEnv merges extraEnv over the inherited env", () => {
   expect(e.HERMES_BOUNDED_RUN).toBe("1");
   expect(e.GGS_ROLE).toBe("readonly");
 });
+test("sessionEnv sets HIMMEL_BRIDGE_SESSION=1, and no extraEnv can unset it", () => {
+  expect(sessionEnv({}).HIMMEL_BRIDGE_SESSION).toBe("1");
+  expect(sessionEnv({ HIMMEL_BRIDGE_SESSION: "0" }).HIMMEL_BRIDGE_SESSION).toBe("1");
+});
 test("sessionEnv without extraEnv carries no GGS markers (default posture)", () => {
   const e = sessionEnv();
   expect(e.HERMES_BOUNDED_RUN).toBeUndefined();
@@ -425,6 +429,27 @@ test("runSession writes the launch record and passes --session-id to claude", as
     expect(sid).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     const line = readFileSync(join(cache, "launch-logs", `telegram-${sid.slice(0, 8)}.log`), "utf8");
     expect(line).toMatch(new RegExp(`^headed-arm-worker: profile=telegram lane=native model=\\S+ role=telegram session=telegram-${sid.slice(0, 8)} session_id=${sid} launched=\\S+\\n$`));
+  } finally {
+    for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+test("runSession receives the BridgeSpawn argument and passes it through untouched", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "tg-runsession-spawn-"));
+  const bin = join(dir, "bin");
+  mkdirSync(bin);
+  writeFileSync(join(bin, "claude"), "#!/bin/sh\nexit 0\n");
+  chmodSync(join(bin, "claude"), 0o755);
+  const saved = { PATH: process.env.PATH, HIMMELCTL_CACHE_DIR: process.env.HIMMELCTL_CACHE_DIR };
+  process.env.PATH = `${bin}:${process.env.PATH}`;
+  process.env.HIMMELCTL_CACHE_DIR = join(dir, "cache");
+  try {
+    const { runSession } = await import("./run");
+    const spawn = { session: "__chat__", chat: 12345, routed: false, releaseWrite: true };
+    const r = await runSession("hello", dir, undefined, undefined, undefined, undefined, undefined, undefined, undefined, spawn);
+    expect(r.code).toBe(0);
+    expect(r.bridgeSpawn).toBe(spawn);
+    expect(r.bridgeSpawn).toEqual({ session: "__chat__", chat: 12345, routed: false, releaseWrite: true });
   } finally {
     for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
     rmSync(dir, { recursive: true, force: true });
