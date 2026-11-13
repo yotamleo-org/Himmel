@@ -274,18 +274,15 @@ check 'a sha the repo does not know prints ?, never stale' '?' "$(afield pool-st
 l="$pd HIMMEL-101 slice HIMMEL-901 @deadbeef01"; d="$(doc unknownshadone "$l")"
 check 'an unknown sha leaves a line with only Done blockers unjudged: ?, not stale' '?' "$(afield pool-stale "$d")"
 
-# changed (spec D5): a line whose open parent merged a slice after the line's anchor (its @sha commit
-# time or its newest chief stamp, whichever is later) reads changed. Every doc is named with the
-# reference date the stamp's year comes from; the fixture repo's commit dates are set to the minute.
 export TICK_STATE_DIR="$WORK/state"
 GR="$WORK/grepo"; mkdir -p "$WORK/notarepo"
 gnew() { rm -rf "$GR"; git init -q "$GR"; }
-gc() { # <ISO instant> <subject>: one first-parent commit dated then; prints its short sha
+gc() {
     GIT_COMMITTER_DATE="$1" GIT_AUTHOR_DATE="$1" git -C "$GR" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "$2" && git -C "$GR" rev-parse --short HEAD
 }
-cout() { TOKEN='' bash "$SUT" --pool-stale --doc "$1" --repo "${2:-$GR}" ${3:+--prior "$3"} 2>/dev/null; }  # <doc> [repo] [prior]
+cout() { TOKEN='' bash "$SUT" --pool-stale --doc "$1" --repo "${2:-$GR}" ${3:+--prior "$3"} 2>/dev/null; }
 ofield() { printf '%s\n' "$2" | sed -n "s/^$1=//p"; }
-named() { printf '%s\n' "$3" | sed -n "s/^$2=//p" | tr ':' ',' | tr ',' '\n' | grep -c "^$1\$"; }  # <key> <field> <output>: 1 when the field names the key
+named() { printf '%s\n' "$3" | sed -n "s/^$2=//p" | tr ':' ',' | tr ',' '\n' | grep -c "^$1\$"; }
 hash12() { printf '%s' "$1" | sha256sum | cut -c1-12; }
 
 gnew
@@ -364,10 +361,7 @@ d18="$(doc plain "$pd $v18")"
 touch -d 2025-11-10T12:00:00Z "$d18"  # gnu-ok: chief kit is Linux-only; today's date as the reference would read 2026-11-09, after the merge
 check 'R18 an undated doc name falls back to the doc mtime' '1:HIMMEL-157' "$(ofield pool-changed "$(cout "$d18")")"
 
-# DoD-2 frozen replay: the YO doc's pool-disposition lines 170, 181, 197, 204, 215, 230 and 232
-# verbatim (HIMMEL-nextleg-2026-11-10YO-roadmap-chief.md), against the PR states and merges of that
-# evening. The stub serves the real PR numbers; the one edited token is 9622's @6eb44fbbe, which
-# names the stand-in commit of the fixture history in its place.
+# the YO lines are verbatim but for one token: 9622's @6eb44fbbe names the fixture's stand-in commit
 mk 9137 "In Progress" "In Progress" '["v1.1.3"]' '[]' '[]'
 mk 9564 "In Progress" "In Progress" '["v1.1.3"]' '[]' '[]'
 gnew

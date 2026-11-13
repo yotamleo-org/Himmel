@@ -950,10 +950,6 @@ for key, refs, prs, sha, h in lines:
         stale.append(key)
         details.append(carry[key][1] + " carried")
 
-# changed (spec D5): an open parent key that merged since the line's anchor, the later of its @sha
-# commit time and its newest `(<LL>[-n] <MM-DD>[ <HH:MM>Z]` stamp. The stamp's year is the reference
-# date's (a date in the doc's file name, else its mtime, else today, all UTC), one less when the
-# stamp's month is after the reference month; a timed stamp is UTC, a date-only one local midnight.
 def refdate():
     m = re.search(r"(\d{4})-(\d{2})-(\d{2})", os.path.basename(doc))
     if m:
@@ -1036,8 +1032,6 @@ for key, refs, prs, sha, h, open_keys, tried, anchor in judged:
     if done:
         continue
     cunread = cunread or tried
-    # a changed line has an open parent by definition, so D4's carry test cannot apply: carry while the
-    # line is unchanged, its parent reads open or ?, and this run could not finish the git read
     if key in ccarry and ccarry[key][0] == h and state("key", ccarry[key][1]) in ("open", "?"):
         changed.append(key)
         cdetails.append(ccarry[key][2] + " carried")

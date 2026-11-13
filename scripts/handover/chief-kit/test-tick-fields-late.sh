@@ -994,14 +994,13 @@ s2_lines | sed 's/^\(pool-disposition: HIMMEL-141 .*\)$/\1!/' | s2_doc r8h-c > /
 PS_GH_FAIL=1 s2_tick "$W/handover/r8h-c.md"
 not_contains 'R8h control: a 141 line that differs by one character carries nothing' "$(s2_pd "$W/handover/r8h-c.md")" '# pool-unresolved stale HIMMEL-141 '
 
-# changed (spec D5): 143's open parent merged two slices after the line's (ZZ 11-08) stamp
 G15="$S2/g15"; git init -q "$G15"; mkdir -p "$S2/notrepo"
 g15() { GIT_COMMITTER_DATE="$1" GIT_AUTHOR_DATE="$1" git -C "$G15" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "$2" && git -C "$G15" rev-parse --short HEAD; }
 g15 2026-11-08T10:00:00Z 'base' > /dev/null
 sub15a='[HIMMEL-902] B1 the first slice'; sub15b='[HIMMEL-902] B2 the second slice'
 c15a="$(g15 2026-11-09T12:00:00Z "$sub15a")"
 c15b="$(g15 2026-11-09T15:00:00Z "$sub15b")"
-s3_produce() { # <doc> <repo> <prior>: one producer run, saved where its # stale-file= line points
+s3_produce() {
     local out sf
     out="$(s2 bash "$SUT" --pool-stale --doc "$1" --repo "$2" --prior "$3" 2>/dev/null)"
     sf="$(printf '%s\n' "$out" | sed -n 's/^# stale-file=//p')"
