@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir, userInfo } from 'node:os';
 import { join } from 'node:path';
@@ -28,3 +29,13 @@ process.env.HANDOVER_DIR = mkdtempSync(join(tmpdir(), 'jira-test-handover-'));
 
 // Keep every test off the real keyring; the resolver test turns it back on with a stub.
 process.env.HIMMEL_SECRETS_KEYRING = "off";
+
+// The fence's ancestry walk would read the runner's real /proc: a worker's ancestors carry
+// HIMMEL_CONSOLE_LEG=1 and CI has no host-ns. Only a walk given neither seam takes the
+// env-only (no /proc) path; one given procRoot or hostNsPath runs the real walk.
+const noProc = join(mkdtempSync(join(tmpdir(), 'jira-test-proc-')), 'absent');
+vi.mock('./src/release/fence-ancestry.js', async (orig) => {
+  const m = await orig<typeof import('./src/release/fence-ancestry.js')>();
+  const walk: typeof m.walk = (o = {}) => m.walk(o.procRoot === undefined && o.hostNsPath === undefined ? { ...o, procRoot: noProc } : o);
+  return { ...m, walk };
+});

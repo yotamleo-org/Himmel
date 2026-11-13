@@ -107,7 +107,9 @@ export function sessionEnv(extraEnv?: Record<string, string>): Record<string, st
   delete base.HIMMEL_HOOK_INTEGRITY_BYPASS_OK;
   // NON_INTERACTIVE_EDITOR_ENV before extraEnv: a route may override an editor
   // key deliberately, but nothing ambient can reinstate an interactive one.
-  return { ...base, ...NON_INTERACTIVE_EDITOR_ENV, ...(extraEnv ?? {}) };
+  // The bridge marker goes AFTER extraEnv: the operator fence reads it from the
+  // session's start-up env, so no route can unset it.
+  return { ...base, ...NON_INTERACTIVE_EDITOR_ENV, ...(extraEnv ?? {}), HIMMEL_BRIDGE_SESSION: "1" };
 }
 
 // The bounded-run PROMPT. Tells the spawned claude session what it is, where to

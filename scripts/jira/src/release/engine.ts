@@ -14,6 +14,7 @@ import { appendAdmission, assertAdmissionsWritable, readAdmissions, readAdmissio
 import { checkConsoleOverride } from '../commands/intake-gate.js';
 import { baselineId, effectOn, reduce, recordOf, scopeOk, terminalOf, unknownState, type ReleaseState } from './reducer.js';
 import { checkWords, decisionsDirFor, resolveDecision } from './verbatim.js';
+import { FENCE_MARKERS, walk } from './fence-ancestry.js';
 import type {
   Authority, Baseline, Declaration, EventRow, IssueSnap, Lease, Op, OperatorKind, OperatorRow, OutOfVersionRow, PlacementClass, RequestRow, RulingRow, Verb,
 } from './types.js';
@@ -42,6 +43,9 @@ export interface Ctx {
   now: () => Date;
   jira: JiraPort;
   mirrorRoot: string | null;
+  // Test seams for the fence's walk; production leaves both unset (/proc and hostNsFile()).
+  procRoot?: string;
+  hostNsPath?: string;
 }
 
 const OUTCOMES: Record<Verb, Record<string, Op['kind'][]>> = {
@@ -68,10 +72,18 @@ const seq = (prefix: string, ids: Iterable<string>) => {
   return `${prefix}-${String(n + 1).padStart(4, '0')}`;
 };
 
+const FENCE_HEAD = 'release operator: a chief act on an operator decision; refused';
+const fenceWhere = (marker: string) => (marker === 'HIMMEL_BRIDGE_SESSION'
+  ? `${FENCE_HEAD} inside a Telegram bridge session or a process it started (the bridge names the operator's update, the chief's tick records it)`
+  : `${FENCE_HEAD} inside a chief-spawned worker`);
+
+// A marker in this process's env or any ancestor's start-up env, or any walk stop but the one allow, refuses.
 export function operatorFence(ctx: Ctx): void {
-  if (ctx.env.HIMMEL_CONSOLE_LEG === '1' || ctx.env.HIMMEL_RELEASE_MANAGER === '1') {
-    throw new Error('release operator: a chief act on an operator decision; refused inside a chief-spawned worker');
-  }
+  const own = FENCE_MARKERS.find((m) => ctx.env[m] === '1');
+  if (own) throw new Error(fenceWhere(own));
+  const w = walk({ procRoot: ctx.procRoot, hostNsPath: ctx.hostNsPath });
+  if (w.stop === 'allow') return;
+  throw new Error(w.marker ? `${fenceWhere(w.marker)}: ${w.why}` : `${FENCE_HEAD}: ${w.why}`);
 }
 
 function key(ctx: Ctx): Buffer {

@@ -1,5 +1,6 @@
 import { beforeEach, expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, readFileSync, appendFileSync, existsSync, statSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, readFileSync, appendFileSync, existsSync, statSync, rmSync, readlinkSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readNewLines, readMeta, writeMeta, ensureSession, appendLine, sessionDir } from "./bus";
@@ -4160,4 +4161,41 @@ test("R2.13 the startup check's default retry timer is unref'd so it cannot hold
     expect(await waitFor(() => made.some((m) => m.ms === 60_000))).toBe(true);
     expect(made.find((m) => m.ms === 60_000)!.t.hasRef()).toBe(false);
   } finally { globalThis.setTimeout = orig; for (const m of made) clearTimeout(m.t); }
+});
+
+// --- T1f: the poller writes the fence's host reference at a fixed path ---
+
+test("T1f: --write-host-ns and the start-up write put /proc/self/ns at the fixed path, never under BRIDGE_ROOT", async () => {
+  const P = await import("./poller");
+  const ref = join(root(), "home", ".claude", "handover", "bridge", "host-ns");
+  const bridge = root();
+  const prior = process.env.BRIDGE_ROOT;
+  process.env.BRIDGE_ROOT = bridge;
+  try {
+    expect(await P.runCli([], ref)).toBe(false);
+    expect(existsSync(ref)).toBe(false);
+    expect(await P.runCli(["--write-host-ns"], ref)).toBe(true);
+    const want = `${readlinkSync("/proc/self/ns/pid")} ${readlinkSync("/proc/self/ns/user")}\n`;
+    expect(readFileSync(ref, "utf8")).toBe(want);
+    expect(want).toMatch(/^pid:\[\d+\] user:\[\d+\]\n$/);
+    rmSync(ref);
+    await P.writeHostNs(ref);
+    expect(readFileSync(ref, "utf8")).toBe(want);
+    expect(existsSync(join(bridge, "host-ns"))).toBe(false);
+  } finally { if (prior === undefined) delete process.env.BRIDGE_ROOT; else process.env.BRIDGE_ROOT = prior; }
+  const main = readFileSync(join(import.meta.dir, "poller.ts"), "utf8").split("export async function main(): Promise<void> {")[1] ?? "";
+  expect(main.slice(0, 400)).toContain("await writeHostNs()");
+});
+
+test("T1f: bun resolves hostNsFile() from the passwd home, whatever HOME and BRIDGE_ROOT say", async () => {
+  const { hostNsFile } = await import("../jira/src/release/fence-ancestry");
+  const passwdHome = spawnSync("getent", ["passwd", String(process.getuid!())], { encoding: "utf8" }).stdout.split(":")[5];
+  const prior = { HOME: process.env.HOME, BRIDGE_ROOT: process.env.BRIDGE_ROOT };
+  process.env.HOME = root();
+  process.env.BRIDGE_ROOT = root();
+  try {
+    expect(hostNsFile()).toBe(join(passwdHome, ".claude", "handover", "bridge", "host-ns"));
+  } finally {
+    for (const [k, v] of Object.entries(prior)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  }
 });
