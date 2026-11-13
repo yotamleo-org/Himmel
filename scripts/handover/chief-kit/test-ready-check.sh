@@ -56,7 +56,6 @@ case "${STUB_GH_RL:-}" in
 esac
 case "$args" in
     "repo view --json owner,name"*)
-        # STUB_NWO_BY_CWD: answer as gh does, from the repo git finds in the cwd (GIT_DIR honoured), and fail outside one
         if [ -n "${STUB_NWO_BY_CWD:-}" ]; then
             n=$(git config --get ghstub.nwo 2>/dev/null) && [ -n "$n" ] || { echo "fatal: not a git repository (or no ghstub.nwo)" >&2; exit 1; }
             printf '%s main\n' "$n"; exit 0
@@ -4726,8 +4725,6 @@ check "item 20 under --only 7: the lint fails" "$rc" "1"
 contains "item 20 under --only 7: says COVERAGE-LINT FAIL" "$out" "COVERAGE-LINT FAIL"
 reset_stubs
 
-# --- the repo is the himmel anchor (HIMMEL_REPO), never the caller's cwd ----
-# STUB_NWO_BY_CWD makes the gh stub answer `repo view` as gh does: from the repo in the cwd.
 git -C "$REPO" config ghstub.nwo "$NWO"
 NOWHERE="$tmp/nowhere"; mkdir -p "$NOWHERE"
 DECOY="$tmp/decoy"; mkdir -p "$DECOY"
@@ -4757,7 +4754,6 @@ check "anchor R15: an inherited GIT_DIR on a decoy gives the checkout's exit" "$
 check "anchor R15: an inherited GIT_DIR on a decoy gives the checkout's output" "$out" "$base_out"
 check "anchor R15: no gh call names the decoy's repo" "$(grep -c 'other/luna' "$GH_LOG")" "0"
 
-# the jira CLI path is found through the script's own dir even inside the exported-function child shell (check 14)
 mkdir -p "$tmp/nodebin"
 export NODE_LOG="$tmp/node.log"; : > "$NODE_LOG"
 cat > "$tmp/nodebin/node" <<'STUB'
@@ -4770,7 +4766,6 @@ rc=0; out="$(PATH="$tmp/nodebin:$PATH" RUN_JIRA_CMD="" RUN_CWD="$NOWHERE" STUB_B
 check "anchor: no jira CLI call is made through a bare /scripts path" "$(grep -c '^/scripts/jira' "$NODE_LOG")" "0"
 check "anchor: the jira CLI is called through the script's own primary checkout" "$([ "$(grep -c "^$test_primary/scripts/jira/dist/index.js\$" "$NODE_LOG")" -ge 1 ] && echo yes)" "yes"
 
-# a relative entry from a copied tree loads that tree's own libs (spec I12), whatever the cwd
 RW="$tmp/rel-tree"
 mkdir -p "$RW/scripts/handover/chief-kit"
 cp "$SCRIPT" "$RW/scripts/handover/chief-kit/ready-check.sh"
@@ -4780,7 +4775,6 @@ rc=0; out="$(RUN_CWD="$RW" RUN_SCRIPT=scripts/handover/chief-kit/ready-check.sh 
 contains "anchor R10: relative entry from the tree root reaches the checks" "$out" "[PASS] 1."
 contains "anchor R10: the relative entry loads its own tree's lib" "$out" "REL-TREE-LIB-MARKER"
 
-# HIMMEL_REPO that is not an absolute path never picks the gated checkout
 rc=0; out="$(cd "$NOWHERE" && HIMMEL_REPO=rel/path bash "$SCRIPT" --observe "$PR" "$SHA" 2>&1)" || rc=$?
 check "anchor: a relative HIMMEL_REPO is refused with exit 2" "$rc" "2"
 contains "anchor: the refusal names HIMMEL_REPO" "$out" "HIMMEL_REPO"

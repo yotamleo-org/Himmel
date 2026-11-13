@@ -217,8 +217,6 @@
 # Platform guard: POSIX bash 3.2+, same as go.sh. No mapfile.
 set -u
 
-# This script's own directory, absolute, resolved before any cd: every lib and child below is
-# found through it, never through a relative $0 (which would re-aim after the cd to the gated checkout).
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 _rcd_report() {
@@ -413,22 +411,23 @@ if ! command -v jq >/dev/null 2>&1; then
     exit 2
 fi
 
-# The gated checkout is HIMMEL_REPO, else the primary checkout of this script's own tree,
-# never the caller's cwd. Everything below (bare git, gh's own base-repo rule, the children)
-# reads it: enter it, drop any inherited GIT_* steering, and pin gh to its repo below.
-case "${HIMMEL_REPO:-}" in
-    /*) GATE_DIR=$HIMMEL_REPO ;;
-    '') GATE_DIR=$( (unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE; git -C "$SELF_DIR" rev-parse --path-format=absolute --git-common-dir) 2>/dev/null) || GATE_DIR=""  # swallow-ok: a tree outside git reads empty, which falls back to this script's own tree root below
-        GATE_DIR=${GATE_DIR%/.git} ;;
-    *) echo "ready-check: HIMMEL_REPO ($HIMMEL_REPO) is not an absolute path - refusing to let it pick the gated checkout; nothing was judged" >&2
-       exit 2 ;;
-esac
-[ -n "$GATE_DIR" ] || GATE_DIR="$(cd "$SELF_DIR/../../.." && pwd)"
-if [ ! -d "$GATE_DIR" ] || ! cd "$GATE_DIR"; then
-    echo "ready-check: the gated checkout HIMMEL_REPO ($GATE_DIR) is not a directory; nothing was judged" >&2
-    exit 2
-fi
-unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GH_REPO
+enter_gated_checkout() {
+    local gate_dir
+    case "${HIMMEL_REPO:-}" in
+        /*) gate_dir=$HIMMEL_REPO ;;
+        '') gate_dir=$( (unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE; git -C "$SELF_DIR" rev-parse --path-format=absolute --git-common-dir) 2>/dev/null) || gate_dir=""  # swallow-ok: a tree outside git reads empty, which falls back to this script's own tree root below
+            gate_dir=${gate_dir%/.git} ;;
+        *) echo "ready-check: HIMMEL_REPO ($HIMMEL_REPO) is not an absolute path - refusing to let it pick the gated checkout; nothing was judged" >&2
+           exit 2 ;;
+    esac
+    [ -n "$gate_dir" ] || gate_dir="$(cd "$SELF_DIR/../../.." && pwd)"
+    if [ ! -d "$gate_dir" ] || ! cd "$gate_dir"; then
+        echo "ready-check: the gated checkout HIMMEL_REPO ($gate_dir) is not a directory; nothing was judged" >&2
+        exit 2
+    fi
+    unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GH_REPO
+}
+enter_gated_checkout
 
 # one call carries the default branch too (check 12), so the GraphQL budget holds
 nwo=$("$GH" repo view --json owner,name,defaultBranchRef --jq '"\(.owner.login)/\(.name) \(.defaultBranchRef.name // "")"' 2>/dev/null)
@@ -441,7 +440,6 @@ if [ -z "$nwo" ]; then
 fi
 owner="${nwo%%/*}"
 repo="${nwo#*/}"
-# a child's bare gh reads the same repo
 export GH_REPO="$nwo"
 
 RESULT=0
@@ -1793,7 +1791,7 @@ check_bug_origin() {
     fi
     bo_reply=$(
         export -f jira_run jira_get
-        export SELF_DIR  # jira_run locates the jira CLI through it in the child shell
+        export SELF_DIR
         # shellcheck disable=SC2016  # $1 expands in the child shell
         "$_TIMEOUT_BIN" -k 5 15 bash -c 'jira_get "$1"' "$0" "$bo_key"
     ) || {
