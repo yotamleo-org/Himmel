@@ -42,8 +42,7 @@
 #                     that records an owed step (`owed`, `owed_due`) is the same wait for that owner until its
 #                     due date, else UNOWNED and overdue; so is the remainder a partial merge left for a RESUME
 #                     worker (rule D5c, remainder=remaining), from its park start for TICKET_STATUS_AWAIT_TTL_RESUME
-#                     (default 6h). The newest of the hold row, the owed merge row and the park start decides, and
-#                     ts_owner in scripts/lib/ticket-status.sh makes that decision, here and for every other reader
+#                     (default 6h). The newest of the hold row, the owed merge row and the park start decides
 #   HELD-STALE        a held or parked worker's lock is STALE and not proven dead: an owner, so not drift
 #                     (no wait mark, but `sdrift` n and drift-summary.mjs skip it)
 #   HELD-IN-WORK     labelled held, with a live owner or an open PR

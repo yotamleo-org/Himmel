@@ -333,8 +333,6 @@ _ts_date_ok() {
     [ "$(date -u -d "@$e" +%Y-%m-%d 2>/dev/null || date -u -r "$e" +%Y-%m-%d 2>/dev/null)" = "$1" ] # swallow-ok: the BSD form follows
 }
 
-# _ts_await_secs <ENV NAME> <default secs> <cap secs> — TS_AWAIT_SECS is the env value as seconds, else the default;
-# rc 1 when the variable is set and is not <n>h or <n>d (n 1 to 9999) within the cap.
 _ts_await_secs() {
     local v n
     TS_AWAIT_SECS=$2
