@@ -1558,7 +1558,6 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
     const pending = await readFile(join(sd, "inbox.pending.jsonl"), "utf8");
     return pending.split("\n").filter((l) => l.trim()).slice(skip).some((l) => { try { return JSON.parse(l).operator === true; } catch { return false; } });
   };
-  // The release grant needs every pending line to carry the operator marker.
   const pendingAllOperator = async (sd: string): Promise<boolean> => {
     const lines = (await readFile(join(sd, "inbox.pending.jsonl"), "utf8")).split("\n").filter((l) => l.trim());
     return lines.length > 0 && lines.every((l) => { try { return JSON.parse(l).operator === true; } catch { return false; } });
@@ -1664,8 +1663,6 @@ export function makeRunFn(root: string, repoCwd: string, runImpl: (prompt: strin
     // spawns that most need it.
     const settings = await resolveTelegramProfileSettings(sessionCwd, lanesDir);
     const mcpConfig = await resolveTelegramMcpConfig(repoCwd, lanesDir);
-    // The chat stamp and the release grant come only from the parked chat, the
-    // operator's DM id and the delivered lines' operator flags.
     const chat = parked?.chat_id ?? null;
     const releaseWrite = chat !== null && chat === operatorChatId(access) && await pendingAllOperator(sd);
     const bridgeSpawn: BridgeSpawn = { session, chat, routed: !!routedCwd, releaseWrite };
@@ -2791,8 +2788,6 @@ export async function writeHostNs(path?: string, procRoot = "/proc"): Promise<bo
   return true;
 }
 
-// The bridge-envelope epoch this poller runs, read from the repo at start-up.
-// A missing or non-integer source writes nothing and removes a stale stamp.
 export async function writePollerEpoch(root: string, epochFile = join(REPO_ROOT, "scripts", "telegram", "bridge-envelope-epoch.txt")): Promise<boolean> {
   let body = "";
   try { body = (await readFile(epochFile, "utf8")).trim(); } catch {}
@@ -2801,7 +2796,7 @@ export async function writePollerEpoch(root: string, epochFile = join(REPO_ROOT,
     return false;
   }
   await mkdir(root, { recursive: true });
-  await atomicWrite(join(root, "poller-epoch"), `${Number(body)}\n`);
+  await atomicWrite(join(root, "poller-epoch"), `${body}\n`);
   return true;
 }
 

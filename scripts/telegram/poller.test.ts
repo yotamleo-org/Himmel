@@ -4200,9 +4200,6 @@ test.skipIf(spawnSync("getent", ["passwd", "0"]).status !== 0)("T1f: bun resolve
   expect(r.stdout.trim()).toBe(join(passwdHome, ".claude", "handover", "bridge", "host-ns"));
 });
 
-// --- T17: the chat stamp, the spawn descriptor and the release grant (S1c) ---
-// The stamp and the grant come only from the parked chat_id, operatorChatId(access)
-// and the delivered lines' operator flags.
 const OP = 12345;
 const opAccess = { allowFrom: [String(OP)] };
 const descriptorSpy = () => {
@@ -4296,6 +4293,11 @@ test("T17: start-up writes poller-epoch from bridge-envelope-epoch.txt on a scra
     expect(await P.writePollerEpoch(r, src)).toBe(false);
     expect(existsSync(join(r, "poller-epoch"))).toBe(false);
   }
+  const big = root();
+  writeFileSync(src, "99999999999999999999\n");
+  expect(await P.writePollerEpoch(big, src)).toBe(true);
+  expect(readFileSync(join(big, "poller-epoch"), "utf8")).toBe("99999999999999999999\n");
+  writeFileSync(src, "x\n");
   const stuck = root();
   mkdirSync(join(stuck, "poller-epoch"));
   await expect(P.writePollerEpoch(stuck, src)).rejects.toThrow();
