@@ -180,6 +180,8 @@ wrapped_body() {
       | awk '/^DRY arm-resume: would at -t/{on=1; next} /^    CMD$/{on=0} on{sub(/^    /,""); print}'
 }
 for w in "" "nohup" "timeout 60" "nice -n 5"; do
+    [ -d /proc/self ] || break
+    [ "$w" = "timeout 60" ] && ! command -v timeout >/dev/null 2>&1 && continue
     read -r -a wrap <<<"$w"
     BW=$(wrapped_body "${wrap[@]}")
     case "$BW" in *"claude"*) ;; *) echo "FAIL T18 wrapper '${w:-env -u}': no body printed"; FAILED=$((FAILED + 1)); continue ;; esac
@@ -201,14 +203,18 @@ walk_case() {
             user-manager) mk 900 1000 1 900; mkdir "$FAKE/900/environ" ;;
             user-manager-nested-ns) mk 900 1000 1 "900 5"; mkdir "$FAKE/900/environ" ;;
             marked-ancestor) mk 900 1000 1 900; printf "HIMMEL_BRIDGE_SESSION=1\0" > "$FAKE/900/environ" ;;
+            hop-limit) p=900; while [ "$p" -lt 970 ]; do mk "$p" 1000 "$((p + 1))" "$p"; printf "A=1\0" > "$FAKE/$p/environ"; p=$((p + 1)); done ;;
         esac
         if _arm_bridge_marked; then echo marked; else echo unmarked; fi' "$TMP/walk-$1.sh"
 }
-assert_eq "T18 walk: an unreadable same-uid ancestor env fails closed (marked)" "marked" "$(walk_case unreadable)"
-assert_eq "T18 walk: an ancestor status awk cannot read fails closed (marked)" "marked" "$(walk_case awk-fails)"
-assert_eq "T18 walk: the host user manager's guarded env is passed (unmarked)" "unmarked" "$(walk_case user-manager)"
-assert_eq "T18 walk: a guarded env in a nested pid namespace is not the user manager (marked)" "marked" "$(walk_case user-manager-nested-ns)"
-assert_eq "T18 walk: a marked ancestor marks the arm" "marked" "$(walk_case marked-ancestor)"
+if [ -d /proc/self ]; then
+    assert_eq "T18 walk: an unreadable same-uid ancestor env fails closed (marked)" "marked" "$(walk_case unreadable)"
+    assert_eq "T18 walk: an ancestor status awk cannot read fails closed (marked)" "marked" "$(walk_case awk-fails)"
+    assert_eq "T18 walk: the host user manager's guarded env is passed (unmarked)" "unmarked" "$(walk_case user-manager)"
+    assert_eq "T18 walk: a guarded env in a nested pid namespace is not the user manager (marked)" "marked" "$(walk_case user-manager-nested-ns)"
+    assert_eq "T18 walk: a marked ancestor marks the arm" "marked" "$(walk_case marked-ancestor)"
+    assert_eq "T18 walk: 65 same-uid unmarked hops without reaching pid 1 fail closed (marked)" "marked" "$(walk_case hop-limit)"
+fi
 B_AT=$(dry_body 1 at)
 env -u HIMMEL_BRIDGE_SESSION PATH="$STUB_BIN:$PATH" CLAUDE_REC="$TMP/rec-at" WATCH=HIMMEL_BRIDGE_SESSION \
     HIMMEL_PTY_SCRIPT_CMD="$TMP/no-such-script" sh -c "$B_AT" </dev/null >/dev/null 2>&1
