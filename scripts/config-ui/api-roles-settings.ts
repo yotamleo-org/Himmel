@@ -64,13 +64,15 @@ async function walkLetters(cli: string, env: Env, timeoutMs: number): Promise<st
 
 // A save that takes letter L out of the graph walk clears the graph-key-L alert's dedupe sentinel, so the next real
 // rejection on L alerts again. It never clears the key-rejected tag: the key is still wrong.
-function clearGraphKey(letter: string, env: Env): Promise<void> {
+function clearGraphKey(letter: string, env: Env, timeoutMs: number): Promise<void> {
   const clean: Record<string, string> = {};
   for (const [k, v] of Object.entries(env)) if (v !== undefined) clean[k] = v;
   return new Promise((done) => {
     const child = spawn("bash", [CADENCE_ALERT, "clear", `graph-key-${letter}`], { env: clean, stdio: "ignore" });
-    child.on("error", () => done());
-    child.on("close", () => done());
+    const timer = setTimeout(() => { child.kill("SIGKILL"); done(); }, timeoutMs);
+    const finish = () => { clearTimeout(timer); done(); };
+    child.on("error", finish);
+    child.on("close", finish);
   });
 }
 
@@ -83,7 +85,7 @@ export async function saveRoles(draft: Record<string, unknown>, env: Env, opts: 
   const out = r.code === 0 || r.code === 3 ? parse(r.stdout) : undefined;
   if (r.code === 0 && out && out.ok === true) {
     const after = await walkLetters(rolesCli, env, bound);
-    for (const letter of before.filter((l) => !after.includes(l))) await clearGraphKey(letter, env);
+    for (const letter of before.filter((l) => !after.includes(l))) await clearGraphKey(letter, env, bound);
     return { status: 200, body: { ok: true, errors: [] } };
   }
   if (r.code === 3 && out && Array.isArray(out.errors)) return { status: 422, body: { ok: false, errors: out.errors } };

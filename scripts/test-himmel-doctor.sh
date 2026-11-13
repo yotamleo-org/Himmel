@@ -8370,6 +8370,17 @@ c92_reset
 out="$(c92_run)"
 if grepq "$out" 'OK   C92-graph-key' && ! grepq "$out" 'WARN C92'; then pass "C92 no tag -> OK"; else fail "C92 no tag -> $out"; fi
 
+echo "== C92: a roster or ledger that cannot be read is INFO, never a clean OK; no roster at all is OK =="
+c92_reset; printf '{not json' > "$c92_t/credit/config.json"
+out="$(c92_run)"
+if grepq "$out" 'INFO C92-graph-key' && ! grepq "$out" 'OK   C92'; then pass "C92 unreadable roster -> INFO"; else fail "C92 unreadable roster -> $out"; fi
+c92_reset; printf '{' > "$c92_t/credit/ledger.json"
+out="$(c92_run)"
+if grepq "$out" 'INFO C92-graph-key' && grepq "$out" -F 'A B C' && ! grepq "$out" 'OK   C92'; then pass "C92 unreadable ledger -> INFO naming the letters"; else fail "C92 unreadable ledger -> $out"; fi
+c92_reset; rm -f "$c92_t/credit/config.json"
+out="$(c92_run)"
+if grepq "$out" 'OK   C92-graph-key' && grepq "$out" -F 'no API account is configured'; then pass "C92 no roster -> OK"; else fail "C92 no roster -> $out"; fi
+
 echo "== C92: A tagged and the map invalid -> OK with a note that the pass refuses =="
 c92_reset; c92_tag A; c92_roles '{not json'
 out="$(c92_run)"

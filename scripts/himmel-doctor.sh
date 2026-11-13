@@ -4016,17 +4016,35 @@ EOF
 # station's own (api-roles.mjs walk graphify) on a publisher or an unreadable graph config, and the stored route on an
 # adopter. One id per tagged letter, so a second rejected key wakes the chief on its own id. No key file is opened.
 check_c92_graph_key() {
-    local tags role walk="" walk_rc=0 l gc="$SELF_DIR/himmelctl/lib/graph-choices.js"
-    tags="$(node "$SELF_DIR/lib/api-credit-state.mjs" accounts 2>/dev/null | tr '{' '\n' | sed -n 's/^"account":"\([ABC]\)",.*"tag":"key rejected".*/\1/p' | tr '\n' ' ')"
+    local out tags unknown role route walk="" walk_rc=0 l gc="$SELF_DIR/himmelctl/lib/graph-choices.js"
+    out="$(node "$SELF_DIR/lib/api-credit-state.mjs" accounts 2>/dev/null)" || out=""
+    case "$out" in
+        '['*) ;;
+        *) if [ -e "${HIMMEL_API_CREDIT_CONFIG:-${HOME:-}/.himmel/state/api-credit/config.json}" ]; then
+               emit INFO C92-graph-key "the API account roster cannot be read -- rejected keys not checked"
+           else
+               emit OK C92-graph-key "no API account is configured, so no key can be rejected"
+           fi
+           return 0 ;;
+    esac
+    tags="$(printf '%s' "$out" | tr '{' '\n' | sed -n 's/^"account":"\([ABC]\)",.*"tag":"key rejected".*/\1/p' | tr '\n' ' ')"
+    unknown="$(printf '%s' "$out" | tr '{' '\n' | sed -n 's/^"account":"\([ABC]\)",.*"tag":"unknown".*/\1/p' | tr '\n' ' ')"
+    [ -z "${unknown// /}" ] || emit INFO C92-graph-key "account(s) ${unknown% }: the credit ledger cannot be read, so a rejected key there is not checked"
     if [ -z "${tags// /}" ]; then
-        emit OK C92-graph-key "no API account carries a rejected key"
+        [ -n "${unknown// /}" ] || emit OK C92-graph-key "no API account carries a rejected key"
         return 0
     fi
     role="$(node "$gc" role 2>/dev/null)" || role=""
     if [ "$role" = adopter ]; then
-        walk="$(node "$gc" route 2>/dev/null | sed -n 's/.*"order":\[\([^]]*\)\].*/\1/p' | tr -d '"')"
+        route="$(node "$gc" route 2>/dev/null)" || route=""
+        case "$route" in *'"order":['*) ;; *) emit INFO C92-graph-key "the graph route cannot be read -- rejected keys (${tags% }) not judged"; return 0 ;; esac
+        walk="$(printf '%s' "$route" | sed -n 's/.*"order":\[\([^]]*\)\].*/\1/p' | tr -d '"')"
     else
         walk="$(node "$SELF_DIR/lib/api-roles.mjs" walk graphify 2>/dev/null)" || walk_rc=$?
+        if [ "$walk_rc" -ne 0 ] && [ "$walk_rc" -ne 3 ]; then
+            emit INFO C92-graph-key "the graph walk cannot be read (api-roles.mjs walk graphify exit $walk_rc) -- rejected keys (${tags% }) not judged"
+            return 0
+        fi
         [ "$walk_rc" -eq 0 ] || walk=""
     fi
     for l in $tags; do
