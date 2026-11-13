@@ -38,8 +38,13 @@
 #                     ends in ` | wait=chief`. So is a ticket-hold.sh hold (a result=moved hold row with a valid
 #                     owner, while the ticket carries the `held` label) until its until date (end of that UTC day),
 #                     else its owner's wait length; the row ends in ` | wait=<owner>`. A held ticket with no valid
-#                     hold row says `held with no owner on record` on its UNOWNED row
-#   HELD-IN-WORK      labelled held, with a live owner or an open PR
+#                     hold row says `held with no owner on record` on its UNOWNED row. A partial merge row
+#                     that records an owed step (`owed`, `owed_due`) is the same wait for that owner until its
+#                     due date, else UNOWNED and overdue; the newest of the hold row, the owed merge row and the
+#                     D6n park start decides
+#   HELD-STALE        a held or parked worker's lock is STALE and not proven dead: an owner, so not drift
+#                     (no wait mark, but `sdrift` n and drift-summary.mjs skip it)
+#   HELD-IN-WORK     labelled held, with a live owner or an open PR
 #   VERSION-DRIFT    Done or worked (In Progress / In Review / IN CI), held only in a later unreleased
 #                     version than the current one; the fix is an INTAKE request to the current version.
 #                     The release manager's rulings are read first: when the key's latest ruling refused
@@ -140,7 +145,7 @@ finish() { # <unknown>
     rows=$(printf '%s' "$rows" | sed '/^$/d' | sort -u)
     [ -z "$rows" ] || printf '%s\n' "$rows"
     if [ "$1" = unknown ]; then echo "sdrift=unknown"; exit 0; fi
-    n=$(printf '%s\n' "$rows" | grep -Ev '^AWAITING .* \| wait=(chief|operator|[a-z][a-z0-9-]{0,31})$' | grep -c .)
+    n=$(printf '%s\n' "$rows" | grep -Ev '^AWAITING .* \| wait=(chief|operator|[a-z][a-z0-9-]{0,31})$|^HELD-STALE [A-Z][A-Z0-9]*-[0-9]+ ' | grep -c .)
     sig=$(printf '%s' "$rows" | cksum | awk '{ printf "%08x", $1 }')
     echo "sdrift=$n:$sig"
     exit 0
@@ -190,9 +195,13 @@ if [ -f "$LOG" ]; then
     # Every key whose latest merge row carrying a contract is partial (contract=no), with its partial PRs, read once from the
     # WHOLE log: the last 500 rows hold about five hours, so a ticket a partial merge left days ago would name no PR there.
     mergeout=$(ts_merge_rows "$LOG" 2>/dev/null) # swallow-ok: an unreadable log names no partial PR and no park start, and the generic fix stands
-    partials=$(jq -Rrs '[split("\n")[] | fromjson? | select(type == "object" and .event == "merge" and .key != null and has("contract") and .contract != "")]
-        | group_by(.key)[] | select(last.contract == "no")
-        | [.[0].key, ("#" + ([.[] | select(.contract == "no") | .pr // empty | tostring] | reduce .[] as $p ([]; if index([$p]) then . else . + [$p] end) | join(", #")))] | @tsv' <<<"$mergeout" 2>/dev/null) # swallow-ok: as above
+    partials=$(jq -Rrs 'def ok($re): if type == "string" and test($re) then . else "" end;
+        [split("\n")[] | fromjson? | select(type == "object" and .event == "merge" and .key != null and has("contract") and .contract != "")]
+        | group_by(.key)[] | select(last.contract == "no") | last as $l
+        | [.[0].key, ("#" + ([.[] | select(.contract == "no") | .pr // empty | tostring] | reduce .[] as $p ([]; if index([$p]) then . else . + [$p] end) | join(", #"))),
+            ($l | if .remainder == "owed" then (.owed | ok("\\A(chief|operator|[a-z][a-z0-9-]{0,31})\\z")) else "" end),
+            ($l | .owed_due | ok("\\A[0-9]{4}-[0-9]{2}-[0-9]{2}\\z")),
+            ($l | .ts | ok("\\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\\z"))] | @tsv' <<<"$mergeout" 2>/dev/null) # swallow-ok: as above
     parkrows=$(jq -Rrs '[split("\n")[] | fromjson? | select(type == "object" and .key != null and (.ts | type) == "string")]
         | group_by(.key)[] | . as $g
         | ([range(0; length) | select($g[.] | (.event == "merge" and has("contract") and .contract != "") or (.result == "moved" and .event != "hold" and .event != "hold-release") or (.event == "live" and .result != "skip" and .result != "disabled"))] | last // 0) as $a
@@ -220,6 +229,12 @@ hold_of() {
     IFS=$'\037' read -r _ ev H_SINCE H_OWNER H_UNTIL H_REASON <<<"$line"
     [ "$ev" = hold ] && [ -n "$H_OWNER" ] && [ -n "$H_SINCE" ] && _ts_epoch_of_iso "$H_SINCE" >/dev/null || return 1
     date_ok "$H_UNTIL" || H_UNTIL=""
+}
+owed_of() { # <KEY> - the owed step of the key's newest contract-carrying merge row, re-checked; rc 1 when it has none or a field fails
+    O_WHO=$(awk -F'\t' -v k="$1" '$1 == k { print $3 }' <<<"$partials")
+    O_DUE=$(awk -F'\t' -v k="$1" '$1 == k { print $4 }' <<<"$partials")
+    O_TS=$(awk -F'\t' -v k="$1" '$1 == k { print $5 }' <<<"$partials")
+    [ -n "$O_WHO" ] && [ -n "$O_TS" ] && date_ok "$O_DUE" && _ts_epoch_of_iso "$O_TS" >/dev/null && _ts_epoch_of_iso "${O_DUE}T23:59:59Z" >/dev/null
 }
 park_since() { # <KEY> <rule> - the ISO ts of the key's park start; empty when there is none or it does not parse
     local t
@@ -355,7 +370,7 @@ ts_read_jira() { # <KEY> - the batch row, else the lib's own get
 while IFS= read -r key; do
     [ -n "$key" ] || continue
     unset TS_EVENT
-    deadlock=0
+    deadlock=0 hstale=0
     # shellcheck disable=SC2034  # read by ticket-status.sh
     if [ -n "$SNAP" ]; then TS_SNAPSHOT_DIR="$SNAP"; else unset TS_SNAPSHOT_DIR; fi
     ts_derive "$key"
@@ -421,7 +436,9 @@ while IFS= read -r key; do
             else
                 lout=$(bash "$HERE/../queue-lock.sh" status "$ldoc" 2>/dev/null); lrc=$? # swallow-ok: as above
             fi
-            if [ "$lrc" = 12 ] && grep -q '^status: STALE-DEAD' <<<"$lout"; then deadlock=1; fi ;;
+            if [ "$lrc" = 12 ]; then
+                if grep -q '^status: STALE-DEAD' <<<"$lout"; then deadlock=1; else hstale=1; fi
+            fi ;;
         esac
         noworker=$deadlock
         case "$ws" in none|wrapped) noworker=1 ;; esac
@@ -430,17 +447,20 @@ while IFS= read -r key; do
             ppr=$(awk -F'\t' -v k="$key" '$1 == k { print $2 }' <<<"$partials")
             psince=""
             [ "$rule" != D6n ] || psince=$(park_since "$key" D6n)
-            held=0 hvalid=0 usehold=0 hhint=""
+            held=0 hvalid=0 usehold=0 useowed=0 hhint="" hsec=-1 osec=-1 psec=-1
             if has_label "$key" held; then
                 held=1
-                if hold_of "$key"; then
-                    hvalid=1
-                    if [ -z "$psince" ] || [ "$(_ts_epoch_of_iso "$H_SINCE")" -ge "$(_ts_epoch_of_iso "$psince")" ]; then usehold=1; fi
-                fi
+                if hold_of "$key"; then hvalid=1; hsec=$(_ts_epoch_of_iso "$H_SINCE"); fi
+            fi
+            if owed_of "$key"; then osec=$(_ts_epoch_of_iso "$O_TS"); fi
+            [ -z "$psince" ] || psec=$(_ts_epoch_of_iso "$psince")
+            if [ "$hsec" -ge 0 ] && [ "$hsec" -ge "$osec" ] && [ "$hsec" -ge "$psec" ]; then
+                usehold=1
+            elif [ "$osec" -ge 0 ] && [ "$osec" -ge "$psec" ]; then
+                useowed=1
             fi
             if [ "$held" = 1 ] && [ "$hvalid" = 0 ]; then hhint="; held with no owner on record: re-run ticket-hold.sh $key --owner <who> --until <date> --reason <why>"; fi
             if [ "$usehold" = 1 ]; then
-                hsec=$(_ts_epoch_of_iso "$H_SINCE")
                 if [ -n "$H_UNTIL" ]; then
                     due=$(_ts_epoch_of_iso "${H_UNTIL}T23:59:59Z")
                 else
@@ -453,6 +473,16 @@ while IFS= read -r key; do
                     add AWAITING "$key" "$H_OWNER since=$H_SINCE due=$(iso_of "$due") what=$H_REASON source=hold" ticket-hold.sh "$holdfix" "$H_OWNER"
                 else
                     add UNOWNED "$key" "$jstatus with no open PR and no live owner, awaiting $H_OWNER since $H_SINCE and overdue (due $(iso_of "$due"))" ticket-hold.sh "$holdfix"
+                fi
+            elif [ "$useowed" = 1 ]; then
+                due=$(_ts_epoch_of_iso "${O_DUE}T23:59:59Z")
+                [ "$due" -le $((osec + AWAIT_MAX_S)) ] || due=$((osec + AWAIT_MAX_S))
+                owedfix="$O_WHO acts on $key, or hold it: bash scripts/handover/chief-kit/ticket-hold.sh $key --owner <who> --until <date> --reason <why>"
+                if [ "$NOW" -lt "$due" ]; then
+                    what=$(printf '%s' "the partial merge left a step owed by $O_WHO" | tr -d '|\t\r\n')
+                    add AWAITING "$key" "$O_WHO since=$O_TS due=$(iso_of "$due") what=$what source=owed" merge-on-green.sh "$owedfix" "$O_WHO"
+                else
+                    add UNOWNED "$key" "$jstatus with no open PR and no live owner, awaiting $O_WHO since $O_TS and overdue (due $(iso_of "$due"))" merge-on-green.sh "$owedfix"
                 fi
             elif [ "$deadlock" = 1 ]; then
                 add UNOWNED "$key" "$jstatus with no open PR and its worker's lock is STALE-DEAD$hhint" "$FUNNEL" "bash scripts/handover/queue-lock.sh status --sweep --reap-dead (the reap appends a HALTED bullet, so the next derive reads $key wrapped, after two gone sweeps if that append failed; it releases every STALE-DEAD lock under the root, each re-proved under its claim and CAS)"
@@ -468,10 +498,12 @@ while IFS= read -r key; do
                     add UNOWNED "$key" "$jstatus with no open PR and no live owner, awaiting the chief since $psince and overdue (due $(iso_of "$due"))$hhint" "$FUNNEL" "$chieffix"
                 fi
             elif [ -n "$ppr" ]; then
-                add UNOWNED "$key" "$jstatus with no open PR and no live owner, left by partial merge PR $ppr$hhint" "$FUNNEL" "bash scripts/handover/chief-kit/next-dispatchable.sh lists $key: dispatch the RESUME worker it names; close $key by hand when it says HANDED-OFF (the remainder is on other tickets); or, when it says NEEDS-CHIEF-NOTE, add the remainder to the partial PR's body or close $key by hand if nothing remains"
+                add UNOWNED "$key" "$jstatus with no open PR and no live owner, left by partial merge PR $ppr$hhint" "$FUNNEL" "bash scripts/handover/chief-kit/next-dispatchable.sh lists $key: dispatch the RESUME worker it names; or hold it: bash scripts/handover/chief-kit/ticket-hold.sh $key --owner <who> --until <date> --reason <why>; or close $key by hand when nothing remains"
             else
                 add UNOWNED "$key" "$jstatus with no open PR and no live owner$hhint" "$FUNNEL" "dispatch a RESUME worker, or $SWEEP_FIX"
             fi
+        elif [ "$hstale" = 1 ]; then
+            add HELD-STALE "$key" "$jstatus with no open PR; its worker's lock ($ldoc) is STALE and not proven dead" queue-lock.sh "check the leg on its host, or reap it once it is gone (an age cap is a follow-up)"
         fi
     fi
 

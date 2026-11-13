@@ -848,7 +848,9 @@ reset "In Progress"; jl "$K" "In Progress"; logrow merge "$K" noop 4480 no
 drift
 contains "3b (HIMMEL-8673): the UNOWNED row of a partly merged ticket names its partial PR" "$(drows UNOWNED)" "partial merge PR #4480"
 contains "3b (HIMMEL-8673): and the action: dispatch the RESUME row or close it on HANDED-OFF" "$(drows UNOWNED)" "next-dispatchable.sh"
-contains "3b (HIMMEL-8673): and the third case: NEEDS-CHIEF-NOTE is cleared in the partial PR's body" "$(drows UNOWNED)" "NEEDS-CHIEF-NOTE, add the remainder to the partial PR's body"
+contains "3b (HIMMEL-8673): and the third case: the key is held with ticket-hold.sh" "$(drows UNOWNED)" "ticket-hold.sh $K --owner <who> --until <date> --reason <why>"
+contains "3b (HIMMEL-8673): or closed by hand when nothing remains" "$(drows UNOWNED)" "close $K by hand when nothing remains"
+check "3b (HIMMEL-8673): and the fix no longer sends the chief to a merged PR's body" "$(drows UNOWNED | grep -c "partial PR's body")" 0
 reset "In Progress"; jl "$K" "In Progress"; logrow merge "$K" noop 4480 no; logrow merge "$K" moved 4481 yes
 drift
 check "3b (HIMMEL-8673): a completing merge after the partial one names no partial PR" "$(drows UNOWNED | grep -c 'partial merge PR')" 0
@@ -1215,6 +1217,90 @@ hand 7200 '{"owner":"operator","reason":"r"}'
 lrow 3600 wrapped noop D6n; lrow 60 sweep noop D6n
 drift
 contains "9561 S2 12: a D6n park start newer than the hold wins" "$(drows AWAITING)" "source=d6n"
+
+owedrow() { # <seconds before NOW> <owed> <owed_due> - a partial merge row that records an owed step
+    lrow "$1" merge moved - "$(jq -nc --arg o "$2" --arg d "$3" '{pr: "4480", contract: "no", remainder: "owed", owed: $o, owed_due: $d}')"
+}
+sdn() { dlast | cut -d: -f1; }
+ud=$(day_e $((NOW + 86400)))
+d6fx; owedrow 3600 operator "$ud"
+drift
+check "9561 S4b 1: an owed merge row on a wrapped, no-PR key is one AWAITING row" "$(dcount AWAITING)/$(dcount UNOWNED)" 1/0
+contains "9561 S4b 1: it waits on the operator" "$(drows AWAITING)" "wait=operator"
+contains "9561 S4b 1: its source is the owed row" "$(drows AWAITING)" "source=owed"
+contains "9561 S4b 1: its since is the merge row's ts" "$(drows AWAITING)" "since=$(iso_at 3600) "
+contains "9561 S4b 1: its due is the end of the owed_due day" "$(drows AWAITING)" "due=${ud}T23:59:59Z "
+contains "9561 S4b 1: a wait row is no drift: sdrift=0" "$(dlast)" "sdrift=0:"
+check "9561 S4b 9: rows 1 wrote nothing" "$(nwrites)" 0
+
+d6fx; owedrow 259200 operator "$(day_e $((NOW - 172800)))"
+drift
+check "9561 S4b 2: past the owed_due day the key is no AWAITING row" "$(dcount AWAITING)" 0
+contains "9561 S4b 2: it is UNOWNED, awaiting the operator since the merge row, and overdue" "$(drows UNOWNED)" "awaiting operator since $(iso_at 259200) and overdue"
+contains "9561 S4b 2: and counts as drift: sdrift=1" "$(dlast)" "sdrift=1:"
+
+d6fx; owedrow 3600 operator "$(day_e $((NOW + 2592000)))"
+drift
+contains "9561 S4b 3: an owed_due 30 days out is clamped to the row ts + 14 d" "$(drows AWAITING)" "due=$(iso_at $((3600 - 1209600))) "
+
+d6fx; label
+lrow 7200 merge moved - "$(jq -nc --arg d "$ud" '{pr: "4480", contract: "no", remainder: "owed", owed: "chief", owed_due: $d}')"
+hand 3600 '{"owner":"operator","reason":"r"}'
+drift
+contains "9561 S4b 4: a hold row newer than the owed merge row wins" "$(drows AWAITING)" "source=hold"
+d6fx; label
+hand 7200 '{"owner":"operator","reason":"r"}'
+owedrow 3600 chief "$ud"
+drift
+contains "9561 S4b 4: an owed merge row newer than the hold row wins" "$(drows AWAITING)" "source=owed"
+contains "9561 S4b 4: and its owner is the owed who" "$(drows AWAITING)" "wait=chief"
+d6fx
+owedrow 7200 operator "$ud"
+lrow 3600 merge moved - '{"pr":"4481","contract":"no","remainder":"remaining"}'
+drift
+check "9561 S4b 4: a later merge row with no owed takes the owed wait away: plain UNOWNED" "$(dcount AWAITING)/$(dcount UNOWNED)" 0/1
+check "9561 S4b 9: rows 2 to 4 wrote nothing" "$(nwrites)" 0
+
+for bad in 'owed=Bad' 'due=tomorrow' 'due=2026-02-30'; do
+    d6fx
+    case "$bad" in
+        owed=*) owedrow 3600 Bad "$ud" ;;
+        *) owedrow 3600 operator "${bad#due=}" ;;
+    esac
+    drift
+    check "9561 S4b 5: $bad prints UNOWNED, not AWAITING" "$(dcount AWAITING)/$(dcount UNOWNED)" 0/1
+done
+d6fx; owedrow 3600 operator 2026-02-30
+drift_bsd
+check "9561 S4b 5: owed_due=2026-02-30 prints UNOWNED under a BSD date too" "$(dcount AWAITING)/$(dcount UNOWNED)" 0/1
+d6fx; owedrow 3600 operator "$ud"
+drift_bsd
+contains "9561 S4b 5 control: a real owed_due is AWAITING under a BSD date" "$(drows AWAITING)" "due=${ud}T23:59:59Z "
+check "9561 S4b 9: rows 5 wrote nothing" "$(nwrites)" 0
+
+d6fx; lrow 3600 merge moved - '{"pr":"4480","contract":"no","remainder":"remaining"}'
+drift
+contains "9561 S4b 6: the partial-merge row names next-dispatchable.sh" "$(drows UNOWNED)" "next-dispatchable.sh lists $K"
+contains "9561 S4b 6: and ticket-hold.sh" "$(drows UNOWNED)" "ticket-hold.sh $K --owner <who> --until <date> --reason <why>"
+contains "9561 S4b 6: and closing by hand" "$(drows UNOWNED)" "close $K by hand when nothing remains"
+check "9561 S4b 6: and never the PR body" "$(drows UNOWNED | grep -c "PR's body")" 0
+
+reset "In Progress"; jl "$K" "In Progress"; owned "$K" LIVE '{"state":"live"}'; lockfx 12 STALE
+drift
+check "9561 S4b 7: a D5 key over rc 12 STALE is one HELD-STALE row" "$(dcount HELD-STALE)/$(dcount UNOWNED)" 1/0
+contains "9561 S4b 7: it names the key, the status and the lock's doc" "$(drows HELD-STALE)" "HELD-STALE $K In Progress with no open PR; its worker's lock ($tmp/$K-N1-slug-2026-10-21.md) is STALE and not proven dead"
+contains "9561 S4b 7: its writer is queue-lock.sh" "$(drows HELD-STALE)" "| writer=queue-lock.sh | fix="
+check "9561 S4b 7: and it is no drift: n counts every row but the HELD-STALE one" "$(sdn)" "sdrift=$(grep -cvE '^(HELD-STALE |sdrift=)' "$tmp/dout")"
+reset "In Progress"; jl "$K" "In Progress"; owned "$K" PARKED-USAGE '{"state":"parked"}'; lockfx 12 STALE
+drift
+check "9561 S4b 7: a parked worker over rc 12 STALE is one HELD-STALE row" "$(dcount HELD-STALE)/$(dcount UNOWNED)" 1/0
+reset "In Progress"; jl "$K" "In Progress"; owned "$K" LIVE '{"state":"live"}'; lockfx 12 STALE-DEAD
+drift
+check "9561 S4b 7 control: STALE-DEAD prints the reap row and no HELD-STALE row" "$(dcount HELD-STALE)/$(dcount UNOWNED)" 0/1
+reset "In Progress"; jl "$K" "In Progress"; owned "$K" LIVE '{"state":"live"}'; lockfx 11 FRESH
+drift
+check "9561 S4b 7 control: rc 11 FRESH prints neither" "$(dcount HELD-STALE)/$(dcount UNOWNED)" 0/0
+check "9561 S4b 9: rows 6 and 7 wrote nothing" "$(nwrites)" 0
 unset TICKET_STATUS_NOW
 
 # a `standing` ticket is started on purpose with no single PR; a ticket whose PR is open in

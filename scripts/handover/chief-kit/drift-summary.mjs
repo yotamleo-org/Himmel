@@ -16,7 +16,9 @@
 // (or with `unset`, a pair that came in from Jira) AND the checker ticket's mirror status is not Done
 // (E23). It is TRANSIENT when it is an unpaired WORKER-COMMENT row (the comment lags a marker and
 // the next sweep heals it). It is WAITING when it is an AWAITING row ending in ` | wait=<who>` (a
-// chief-owned park inside its clock): `waiting` holds it and `real` never does. An UNOWNED row
+// chief-owned park inside its clock): `waiting` holds it and `real` never does. It is EXEMPT when
+// its class is HELD-STALE (a worker's lock that is stale and not proven dead): `exempt` holds it
+// and `real` never does. An UNOWNED row
 // carrying the mark, an AWAITING row without it or with a malformed who is REAL. Every other row is
 // REAL and counts at once (K2): nothing waits for a second run. A checker ticket whose status
 // cannot be read keeps its rows REAL. `unowned` is the sorted unique keys of the REAL UNOWNED rows
@@ -109,7 +111,7 @@ const out = {
   file: { path: driftFile, exists: false, writtenAt: null, writtenHm: null },
   sdrift: null, unknown: false, stale: false,
   ...readMode(),
-  real: [], known: [], transient: [], waiting: [],
+  real: [], known: [], transient: [], waiting: [], exempt: [],
   checkers: [], unowned: [],
 };
 
@@ -137,6 +139,10 @@ if (raw !== null) {
       out.waiting.push(row);
       continue;
     }
+    if (r[1] === 'HELD-STALE') {
+      out.exempt.push(row);
+      continue;
+    }
     const pairs = known.filter((k) => k.key === row.key && (k.class === row.class || k.class === 'unset'));
     const open = pairs.find((k) => !['Done', 'unknown'].includes(checkerStatus(k.checker)));
     if (open) {
@@ -150,6 +156,6 @@ if (raw !== null) {
   out.checkers = [...new Set(out.known.map((k) => k.checker))];
   out.unowned = [...new Set(out.real.filter((r) => r.class === 'UNOWNED').map((r) => r.key))].sort();
 }
-out.counts = { real: out.real.length, known: out.known.length, transient: out.transient.length, waiting: out.waiting.length };
+out.counts = { real: out.real.length, known: out.known.length, transient: out.transient.length, waiting: out.waiting.length, exempt: out.exempt.length };
 
 process.stdout.write(`${JSON.stringify(out)}\n`);
