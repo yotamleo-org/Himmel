@@ -280,6 +280,12 @@ same "render: RULINGS_IN_FORCE_FAULT=lose-line:OPERATOR 11-09 WG exits 4, prints
 same "render: a lose-line fault on a context line exits 4, prints nothing and names it CHANGED" "$(fault 'lose-line:Chain order' "$gblk")/$(grep -c '^CHANGED [0-9]' "$W/fault.err")" "4//1"
 same "render: a fault that matches no line still exits 4 and prints nothing" "$(fault 'lose-line:no line starts like this' "$gblk")" "4/"
 
+cp -R "$G" "$W/spacepath"
+printf 'OPERATOR words of ruling 960.\n' > "$W/spacepath/specs/decisions/verbatim-decision-960 (x).txt"
+bash "$SUT" record --bucket "$W/spacepath" --id 960 --status in-force --date 2026-11-10 --line 'a ruling whose verbatim path holds a space' --path 'specs/decisions/verbatim-decision-960 (x).txt' >/dev/null 2>&1
+same "render: with no fault set, an Other row its own grammar rejects fails the self-check: exit 4, nothing printed, GRAMMAR on stderr" \
+    "$(out="$(printf '%s\n' "$gblk" | bash "$SUT" render --bucket "$W/spacepath" 2>"$W/space.err")"; printf '%s/%s' "$?" "$out")/$(grep -c '^GRAMMAR [0-9]' "$W/space.err")" "4//1"
+
 chk() { printf '%s\n' "$1" | bash "$SUT" check --bucket "${2:-$G}" "${@:3}"; }
 same "check: a fresh render prints check: ok and exits 0" "$(chk "$gout" | grep -c '^check: ok in-force=7 named=7 ')/$(chk "$gout" >/dev/null; echo $?)" "1/0"
 same "check: a 21-byte whole reading and a cut reading both pass the prefix test, with the pointer present" \
