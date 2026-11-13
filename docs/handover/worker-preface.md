@@ -88,6 +88,9 @@ Adopt a fresh token if one came; then in your very next tool batch `append-resul
   rewrite as one literal command, retry once. A GUARD or classifier denial is
   never reshaped (never reshape it to dodge a guardrail): route it to the chief;
   a denied loop is a shape denial. [prose]
+- **Never `cd` into the primary checkout; scratch uses absolute paths or Write,
+  never `cd <dir> &&`.** The cwd persists, so every later relative write is
+  refused: `worker-sections/shell-and-tests.md`. [prose]
 - **Two refusals of one command → `himmel-ops:stuck-playbook`, then `BLOCKED`
   to the chief**; never a third spelling. A denial on `gh pr create` /
   `gh pr comment` / `git push` is never retried verbatim; `[Out-of-Place
@@ -159,7 +162,7 @@ commands are VM-only): `worker-sections/shell-and-tests.md`.
 
 ## Wrapping up
 
-After merge: pull the primary checkout, re-read the ticket, and post the PR
+After merge: pull the primary checkout with `git -C <primary> pull --ff-only` (never `cd` there), re-read the ticket, and post the PR
 number and merge sha on it — moving it yourself only if the PR completes
 it (no Epic) and `--jira-transition` (the chief's `jira-transition=` line) did not (`failed`
 or any `skip=` but the two below). Never close it by hand on `skip=never-touch-type` or
