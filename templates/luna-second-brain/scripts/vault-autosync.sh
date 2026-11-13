@@ -157,7 +157,7 @@ _reason_file="$(git rev-parse --git-dir 2>/dev/null)/vault-autosync-reason"
 # commit and push the same vault on their own schedules. Mutually exclusive;
 # refuse to run rather than let two writers fight over the same tree.
 if [ -f "$REPO_ROOT/.obsidian/community-plugins.json" ] && grep -q '"github-sync"' "$REPO_ROOT/.obsidian/community-plugins.json"; then
-  log "github-sync is enabled in this vault — refusing to run (mutually exclusive, HIMMEL-3066). Disable one of the two sync mechanisms."
+  log "github-sync is enabled in this vault — refusing to run (both commit the same tree, so they are mutually exclusive). Disable one of the two sync mechanisms."
   exit 0
 fi
 

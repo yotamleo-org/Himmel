@@ -8,6 +8,12 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.107] — 2026-11-14
+
+### Changed
+- The scripts, test rows and docs state each reason in plain words instead of
+  pointing at a ticket number; no behaviour changes.
+
 ## [0.4.106] — 2026-11-10
 
 ### Changed

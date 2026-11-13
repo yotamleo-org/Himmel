@@ -8,7 +8,7 @@ qmd-as-md.
 ## GitHub Sync — opt-in, and mutually exclusive with the sweeper
 
 A sixth plugin, **GitHub Sync**, is vendored too (`optional/plugins/github-sync/`
-in the template) but **not installed by default** (HIMMEL-3066): it commits
+in the template) but **not installed by default**: it commits
 the vault from inside Obsidian on its own ~10-minute tick, which races
 `scripts/vault-autosync.sh` (the sweeper) committing the same working
 tree.
