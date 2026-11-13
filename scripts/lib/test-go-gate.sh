@@ -158,6 +158,7 @@ SHA=$(ready_pass_repo "$ROOT/ready-repo") || { echo "FAIL: ready_pass_repo" >&2;
 export PATH="$ROOT/ready-bin:$PATH" READY_STUB_HEAD="$SHA"
 ready_pass_ledger "$ROOT/ready-repo" "$SHA"
 cd "$ROOT/ready-repo" || { echo "FAIL: cd into the ready repo" >&2; exit 1; }
+export HIMMEL_REPO="$ROOT/ready-repo"
 
 # HIMMEL_CONSOLE_LEG is a Claude Code marker (any value): run from an anchor
 # checkout with no claude ancestor (CI) and HANDOVER_DIR set, go.sh refuses 96

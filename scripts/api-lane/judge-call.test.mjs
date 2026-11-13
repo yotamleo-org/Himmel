@@ -241,7 +241,7 @@ test('the question carries the ceilings rows under a Claude chain, withheld unde
   writeFileSync(claude, readFileSync(spawnSync('bash', ['-c', 'command -v bash'], { encoding: 'utf8' }).stdout.trim()), { mode: 0o755 });
   const args = f.args.map((a) => (a === HEAD ? head : a));
   const run = (extra) => spawnSync(claude, ['-c', 'bash "$0" "$@"; rc=$?; exit $rc', BRIDGE, ...args],
-    { cwd: repo, env: { ...f.env, CLAUDECODE: '1', HIMMEL_CEILINGS_LEDGER: ledger, STUB_OUT: result(go(head)), ...extra }, encoding: 'utf8' });
+    { cwd: repo, env: { ...f.env, CLAUDECODE: '1', HIMMEL_REPO: repo, HIMMEL_CEILINGS_LEDGER: ledger, STUB_OUT: result(go(head)), ...extra }, encoding: 'utf8' });
   const r = run({});
   assert.equal(r.status, 0, r.stderr);
   let seen = readFileSync(f.p.env, 'utf8');
