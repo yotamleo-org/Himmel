@@ -2886,8 +2886,7 @@ _bwimc_ecwd_track() {
                                 && [ "${_bwimc_orig_onecd:-0}" = 1 ] \
                                 && [ "$i" = 1 ] && case "$carg" in /*) true ;; *) false ;; esac \
                                 && _bwimc_plain_word "$craw"; then
-                                # swallow-ok: a target that cannot be canonicalised is not kept, the cd stays unresolved
-                                cs=$(guard_canon_path "$r" 2>/dev/null) && [ -n "$cs" ] \
+                                cs=$(guard_canon_path "$r") && [ -n "$cs" ] \
                                     && main_checkout_verdict_set "$cs" && [ -z "$_MCV_ROOT" ] && cdkeep=1
                             fi
                         else
@@ -4579,8 +4578,7 @@ _bwimc_guest_exec_only() {
     s="${BASH_REMATCH[1]}"
     [[ ${BASH_REMATCH[4]} =~ $_BWIMC_GE_ARGV_RE ]] || return 1
     case "$s" in /*) p="$s" ;; *) p="$_bwimc_cwd/$s" ;; esac
-    # swallow-ok: a script path that cannot be canonicalised gets the normal scan (rc 1)
-    p=$(guard_canon_path "$p" 2>/dev/null) || return 1
+    p=$(guard_canon_path "$p") || return 1
     case "$p" in */scripts/vm/guest-exec.sh) ;; *) return 1 ;; esac
     root="${p%/scripts/vm/guest-exec.sh}"
     hd="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || return 1
@@ -5859,9 +5857,6 @@ _bwimc_tar_clause_ok() {
 # function that could change what `tar` runs, and no TAR_OPTIONS in the
 # hook's own environment. Fail-closed: any doubt is rc 1.
 _BWIMC_XTRACT_RE='(^|[^[:alnum:]_.-])(tar|bsdtar|gtar|star|cpio|bsdcpio|pax|unzip|funzip|bsdunzip|7z|7za|7zr|ar|unar|atool|jar|busybox|toybox|python[0-9.]*|perl|ruby|node|php|xargs|bash|sh|zsh|dash|ksh|fish|eval|source|exec|ln|link|cp|mv|rsync|install)(\.exe)?([^[:alnum:]_-]|$)'
-# _bwimc_sink_clause_ok CLAUSE: rc 0 for a pipe stage that only counts, hashes or
-# prints what it reads (`wc -c`, `sha256sum`, `head -c 64`) with no redirect: it
-# cannot turn an archive stream into files.
 _bwimc_sink_clause_ok() {
     local toks=() t
     while IFS= read -r t; do toks+=("$t"); done < <(_bwimc_tokenize "$1")
@@ -5960,8 +5955,6 @@ _bwimc_git_sub_is_read() {
         stash)
             case "${1:-}" in list|show) return 0 ;; esac
             return 1 ;;
-        # list-heads and verify only read the bundle file and the object store;
-        # create writes its file (checked by the caller), unbundle writes objects.
         bundle)
             case "${1:-}" in list-heads|verify) return 0 ;; esac
             return 1 ;;

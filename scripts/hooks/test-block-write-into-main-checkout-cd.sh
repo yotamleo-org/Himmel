@@ -981,9 +981,6 @@ check_both "104r fromP: cd c:/sub; echo x > out.txt (a drive spelling is relativ
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd c:/sub; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}" "$FIX/scratch8200"
 
 echo "== HIMMEL-9913: a loop, \$(...) or <(...) after a plain absolute cd into a scratch dir =="
-# From a linked-worktree payload cwd, a relative write after `cd <scratch>` lands in
-# the scratch dir or, if the cd never ran, in the worktree: neither is protected.
-# shellcheck disable=SC2016  # row commands are literal shell text
 {
 _subst_row "105a fromW: cd scratch && for loop > out.txt allows" allow \
     "cd $FIX/scratch8200 && for s in a b; do echo \$s; done > out.txt"
@@ -1005,7 +1002,6 @@ _subst_row "105i fromW: cd scratch && a cd into the primary inside the loop, rel
     "cd $FIX/scratch8200 && for s in a; do cd $FIX/primary; echo x > f; done"
 _subst_row "105j fromW: cd worktree && for loop > out.txt (cd target in a repo, not a scratch dir) still denies" block \
     "cd $FIX/wt && for s in a b; do echo \$s; done > out.txt"
-# a second cd word anywhere, however spelled or hidden, keeps the cwd unresolved
 _subst_row "105k fromW: cd scratch; case pattern)cd primary;; esac; relative write denies" block \
     "cd $FIX/scratch8200; case x in x)cd $FIX/primary;; esac; echo x > f"
 _subst_row "105l fromW: cd scratch && loop with eval \"cd primary\", relative write denies" block \

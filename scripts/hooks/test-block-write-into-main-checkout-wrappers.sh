@@ -186,7 +186,6 @@ _r4213 "103t nice tee /tmp (ALLOW)"                                    allow 'ec
 }
 
 echo "== HIMMEL-9913: read-only git archive/bundle, guest-exec argv as data =="
-# shellcheck disable=SC2016  # row commands are literal shell text
 {
 _subst_row "106a git -C primary archive HEAD | wc -c, cwd the primary (ALLOW)" allow \
     "git -C $_PR archive HEAD | wc -c" "$_PR"
@@ -214,8 +213,6 @@ _subst_row "106l git rev-list | xargs -I{} git show {} (stdin words reach git's 
     "git -C $_PR rev-list -3 HEAD | xargs -I{} git -C $_PR show {} --stat"
 }
 
-# This checkout's guest-exec.sh, vmsdk.py and vbox.py committed on the primary, a linked
-# worktree off it, a worktree whose guest-exec.sh is edited, and a loose copy whose vbox.py differs.
 unset HIMMEL_VMSDK HIMMEL_GUEST_EXEC_LOG 2>/dev/null || true
 mkdir -p "$FIX/primary/scripts/vm" "$FIX/primary/scripts/lib" "$FIX/loose/scripts/vm" "$FIX/loose/scripts/lib"
 cp "$HOOKS/../vm/guest-exec.sh" "$FIX/primary/scripts/vm/"
@@ -231,7 +228,6 @@ printf '# other\n' > "$FIX/loose/scripts/lib/vbox.py"
 [ -f "$FIX/wtge/scripts/lib/vbox.py" ] || bad "107 setup: the guest-exec fixture worktree was not created"
 grep -q '^echo edited$' "$FIX/wtgeb/scripts/vm/guest-exec.sh" || bad "107 setup: the edited guest-exec worktree was not created"
 _GW="$FIX/wtge"
-# shellcheck disable=SC2016  # row commands are literal shell text
 {
 _subst_row "107a guest-exec -- bash -c 'cd ~/himmel && git log -1' (ALLOW)" allow \
     "bash scripts/vm/guest-exec.sh vm -- bash -c 'cd ~/himmel && git log -1'" "$_GW"
