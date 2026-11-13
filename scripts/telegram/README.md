@@ -335,6 +335,19 @@ The bun bridge and the `telegram-himmel@himmel` **plugin** bridge
 (`claude --channels`, MCP-managed) are two different paths to the same bot
 token. Pick one. This guide covers the **bun** bridge.
 
+### The spawn stamps and the descriptor
+
+Every bounded run the poller spawns carries `HIMMEL_BRIDGE_CHAT=<chat id>` in
+its start-up env, taken from the session's parked `chat_id`; an empty value
+means the session has no chat. The poller also hands `runSession` a
+`BridgeSpawn` descriptor, `{ session, chat, routed, releaseWrite }`.
+`releaseWrite` is true only when the chat is the operator's DM
+(`operatorChatId`) and every line the run reads carries `"operator":true`.
+Nothing the model writes sets either. At start-up the poller writes
+`<bridge root>/poller-epoch`, holding the integer in
+`scripts/telegram/bridge-envelope-epoch.txt`; a missing or non-integer file
+writes nothing and removes any stale stamp. Restart the bridge after that file changes.
+
 ---
 
 ## Groups & channels
