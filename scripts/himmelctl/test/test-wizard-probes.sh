@@ -1241,10 +1241,6 @@ const ctx = { repoRoot: '$repo_root_w', targetPath: '$(winpath "$sh_present")', 
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outSHp" | jq -e '.actual == "present"' >/dev/null || fail "settings-hooks present (3/3): (got: $outSHp)"
-# the fixture carries no permissions block (the install writes none and
-# the template's permissions.allow is reference content): the green row must
-# say that emptiness is intended and where
-# Bash pre-approvals come from, so nobody re-files it as a projection gap.
 echo "$outSHp" | jq -e '.detail | contains("permissions.allow: 0 entries") and contains("intentional") and contains("auto-approve-safe-bash")' >/dev/null \
   || fail "settings-hooks present detail must state the empty permissions.allow is intentional (got: $outSHp)"
 echo "$outSHp" | jq -e '.detail | (contains("ships none") | not) and contains("install writes none") and contains("reference content")' >/dev/null \

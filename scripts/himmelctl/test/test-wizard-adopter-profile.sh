@@ -2437,13 +2437,6 @@ grepq "$atBadOut" '"reason"' \
 echo "ok: caseAT the install trusts the workspace via ensure-workspace-trust.sh — success/failure both reported, --dry-run writes nothing"
 
 # ── caseAU: an empty permissions.allow is stated, not silent ──
-# docs/setup/settings-template.json carries a `permissions.allow` block, but no
-# installer consumes it (reference content the operator merges by hand into
-# user-scope settings), so an adopter install writes none at either scope.
-# Bash pre-approvals come from
-# the auto-approve-safe-bash PreToolUse hook instead. The summary must say so
-# (a skipped row, identical under --dry-run), and the workspace-trust row must
-# not claim the install wrote permissions.allow entries it never wrote.
 # shellcheck disable=SC2016
 "$node_bin" -e '
 const a = require(process.argv[1]);
