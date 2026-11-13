@@ -142,5 +142,33 @@ check allow block-read-secrets.sh 'cat ${V:-} README.md'
 check allow block-read-secrets.sh '${V:-}cat README.md'
 check allow block-read-secrets.sh 'grep -n foo "$DIR/notes.md"'
 
+# a dollar behind an odd run of backslashes is stripped with its backslash:
+# stripping the expansion alone left a dangling `\"` the re-read could not
+# parse, and a read-only grep was refused
+check allow block-read-secrets.sh 'grep -n "a\|b\$s" f'
+check allow block-read-secrets.sh 'grep -n "\"\$CLAUDE" f'
+check allow block-read-secrets.sh 'grep -n "st.json\|has_seen\|\.cur\|\$sgn" scripts/usage/usage-compute.sh'
+check allow block-read-secrets.sh 'grep -n "x\\\${V}y" f'
+# an even run leaves the dollar live: it is still stripped
+check deny block-read-secrets.sh 'cat \\$V.env'
+check deny block-read-secrets.sh 'cat "\\$V.env"'
+check deny block-read-secrets.sh 'cat \\${V}.env'
+check deny block-read-secrets.sh 'cat \\\\$V.env'
+# an escaped dollar ahead of a live substitution or expansion keeps denying
+check deny block-read-secrets.sh 'echo \$(cat .env)'
+check deny block-read-secrets.sh 'echo \$V; ${V:-}cat .env'
+check deny block-read-secrets.sh 'echo \${V}$(cat .env)'
+check deny block-read-secrets.sh 'grep -n "^| `pair-" f'
+# one level down an escaped dollar is live again
+check deny block-read-secrets.sh 'eval \${V:-}cat .env'
+check deny block-read-secrets.sh 'eval \$V cat .env'
+check deny block-read-secrets.sh 'bash -c "\${V:-}cat .env"'
+check deny block-read-secrets.sh 'sh -c "\$V cat .env"'
+check deny block-read-secrets.sh 'echo `\${V:-}cat .env`'
+check deny block-read-secrets.sh 'echo `\$V cat .env`'
+check deny block-bare-qmd-query.sh 'eval \${V:-}qmd query hello'
+check deny block-bare-qmd-query.sh 'bash -c "\${V:-}qmd query hello"'
+check deny block-bare-qmd-query.sh 'eval "qmd \$V query hello"'
+
 echo "guard-empty-expansion: $pass passed, $fail failed"
 [ "$fail" = 0 ]

@@ -41,9 +41,15 @@
 
 # `$name`, `$1`, `$@` and zsh's braceless `:t`/`:r`/`[1,-3]` tails first, so
 # `$V${Z}git` does not read `$Vgit` once `${Z}` is gone; then nested-brace
-# expansions, innermost first (the loop label).
+# expansions, innermost first (the loop label). A backslash and the character
+# after it are read as one pair, so a `$` behind an even run of backslashes is
+# live and stripped alone (`cat \\$V.env`), and one behind an odd run is
+# stripped together with the backslash that escapes it: dropping only the
+# expansion left a dangling `\"` the re-read could not parse
+# (`grep "a\|b\$s"`), and one level down (eval, `sh -c`, backticks) the
+# escaped `$` is live again (`eval \${V:-}qmd query`).
 # shellcheck disable=SC2016 # sed program text: the `$` is a regex literal
-_GEE_SED='s/\$([A-Za-z_][A-Za-z0-9_]*|[0-9@*#?!])(:[A-Za-z]|\[[^]]*\])*//g'
+_GEE_SED='s/(\\[^$])|\\?\$([A-Za-z_][A-Za-z0-9_]*|[0-9@*#?!])(:[A-Za-z]|\[[^]]*\])*/\1/g'
 # `${…}` is cut by a scanner, not a regex: a quoted brace inside it
 # (`${V+'"'"'{}'"'"'}git stash`) must not end the expansion early. Single
 # quotes, double quotes and backslashes are honoured; only `${` nests (a bare
@@ -81,7 +87,9 @@ _GEE_AWK='{
       }
       if (h0) hard = 1
       if (mode == "dflt" || mode == "all") out = out substr(s, bs - 2, i - bs + 2)
-    } else { out = out c; i++ }
+    } else if (c == "\\" && substr(s, i + 1, 2) == "${") i++
+    else if (c == "\\") { out = out substr(s, i, 2); i += 2 }
+    else { out = out c; i++ }
   }
   if (mode == "hard") print hard + 0; else if (mode == "count") print k; else print out
 }'
