@@ -759,6 +759,7 @@ guard_expect refresh-into-stale-dir 0 "$gd"
 guard_dir clean-fresh 0
 guard_expect clean-dir-passes 1 "$gd"
 guard_dir foreign-fresh 0; guard_lib "$gd" ghq_mark_blocked 4242 deadbeefdeadbeef go.sh graphql rate-limit
+if [ -n "$(find "$gd/blocked" -maxdepth 1 -type f -name '4242.*' 2>/dev/null)" ]; then emit "PASS suite guard-control-foreign-marker-written"; else emit "FAIL suite guard-control-foreign-marker-written no foreign marker was created, so the negative control proves nothing"; fi
 guard_expect foreign-marker-passes 1 "$gd"
 quota_leaked "$REAL_QUOTA"; guard_rc=$?
 [ "$guard_rc" -ne 2 ] || { sleep 1; quota_leaked "$REAL_QUOTA"; guard_rc=$?; }
