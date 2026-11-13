@@ -214,20 +214,22 @@ _subst_row "106l git rev-list | xargs -I{} git show {} (stdin words reach git's 
     "git -C $_PR rev-list -3 HEAD | xargs -I{} git -C $_PR show {} --stat"
 }
 
-# guest-exec.sh and vmsdk.py committed on the primary, a linked worktree off it.
+# This checkout's guest-exec.sh, vmsdk.py and vbox.py committed on the primary, a linked
+# worktree off it, a worktree whose guest-exec.sh is edited, and a loose copy whose vbox.py differs.
 unset HIMMEL_VMSDK HIMMEL_GUEST_EXEC_LOG 2>/dev/null || true
-mkdir -p "$FIX/primary/scripts/vm" "$FIX/primary/scripts/lib"
-printf '#!/usr/bin/env bash\n' > "$FIX/primary/scripts/vm/guest-exec.sh"
-printf '# vmsdk\n' > "$FIX/primary/scripts/lib/vmsdk.py"
+mkdir -p "$FIX/primary/scripts/vm" "$FIX/primary/scripts/lib" "$FIX/loose/scripts/vm" "$FIX/loose/scripts/lib"
+cp "$HOOKS/../vm/guest-exec.sh" "$FIX/primary/scripts/vm/"
+cp "$HOOKS/../lib/vmsdk.py" "$HOOKS/../lib/vbox.py" "$FIX/primary/scripts/lib/"
 git -C "$FIX/primary" add scripts >/dev/null 2>&1
 git -C "$FIX/primary" commit -q -m ge >/dev/null 2>&1
 git -C "$FIX/primary" worktree add -q -b ge9913 "$FIX/wtge" >/dev/null 2>&1
 git -C "$FIX/primary" worktree add -q -b ge9913b "$FIX/wtgeb" >/dev/null 2>&1
 printf 'echo edited\n' >> "$FIX/wtgeb/scripts/vm/guest-exec.sh"
-mkdir -p "$FIX/loose/scripts/vm" "$FIX/loose/scripts/lib"
-cp "$FIX/primary/scripts/vm/guest-exec.sh" "$FIX/loose/scripts/vm/"
-cp "$FIX/primary/scripts/lib/vmsdk.py" "$FIX/loose/scripts/lib/"
-[ -f "$FIX/wtge/scripts/vm/guest-exec.sh" ] || bad "107 setup: the guest-exec fixture worktree was not created"
+cp "$HOOKS/../vm/guest-exec.sh" "$FIX/loose/scripts/vm/"
+cp "$HOOKS/../lib/vmsdk.py" "$FIX/loose/scripts/lib/"
+printf '# other\n' > "$FIX/loose/scripts/lib/vbox.py"
+[ -f "$FIX/wtge/scripts/lib/vbox.py" ] || bad "107 setup: the guest-exec fixture worktree was not created"
+grep -q '^echo edited$' "$FIX/wtgeb/scripts/vm/guest-exec.sh" || bad "107 setup: the edited guest-exec worktree was not created"
 _GW="$FIX/wtge"
 # shellcheck disable=SC2016  # row commands are literal shell text
 {
@@ -245,9 +247,9 @@ _subst_row "107f guest-exec with a double-quoted \$(…) the host expands denies
     "bash scripts/vm/guest-exec.sh vm -- bash -c \"echo \$(cat $_PR/a > $_PR/b)\"" "$_GW"
 _subst_row "107g guest-exec … | tee primary/f denies" block \
     "bash scripts/vm/guest-exec.sh vm -- bash -c 'cd ~/himmel' | tee $_PR/f" "$_GW"
-_subst_row "107h an untracked guest-exec.sh copy denies" block \
+_subst_row "107h a guest-exec.sh whose vbox.py differs from this checkout's denies" block \
     "bash $FIX/loose/scripts/vm/guest-exec.sh vm -- bash -c 'echo x > $_PR/f'" "$_GW"
-_subst_row "107i a modified guest-exec.sh denies" block \
+_subst_row "107i a guest-exec.sh whose bytes differ from this checkout's denies" block \
     "bash $FIX/wtgeb/scripts/vm/guest-exec.sh vm -- bash -c 'echo x > $_PR/f'" "$_GW"
 _subst_row "107j cd /tmp && guest-exec (not the whole command) denies" block \
     "cd /tmp && bash scripts/vm/guest-exec.sh vm -- bash -c 'echo x > $_PR/f'" "$_GW"

@@ -4568,12 +4568,12 @@ if _bwimc_one_cd_word "$cmd"; then _bwimc_orig_onecd=1; else _bwimc_orig_onecd=0
 # runs no part of it: ARGV holds only plain words, single-quoted spans and spaces (no
 # separator, redirect, expansion, double quote or backslash outside single quotes). Refused
 # (rc 1, the normal scan runs): an assignment prefix or an exported HIMMEL_VMSDK or
-# HIMMEL_GUEST_EXEC_LOG (they repoint the program or the log), and a guest-exec.sh or
-# vmsdk.py that is not tracked and unmodified in the checkout it resolves into.
+# HIMMEL_GUEST_EXEC_LOG (they repoint the program or the log), and a guest-exec.sh, or the
+# vmsdk.py and vbox.py beside it, whose bytes differ from this hook's own checkout's copies.
 _BWIMC_GE_RE='^bash[ ]+([A-Za-z0-9_./-]*scripts/vm/guest-exec\.sh)[ ]+[A-Za-z0-9_-]+([ ]+(--sudo|--timeout[ ]+[0-9]+))*[ ]+--[ ]+(.+)$'
 _BWIMC_GE_ARGV_RE="^([A-Za-z0-9_./:,+@%=-]|'[^']*'|[ ])+\$"
 _bwimc_guest_exec_only() {
-    local s p root
+    local s p root hd f
     [ -z "${HIMMEL_VMSDK:-}" ] && [ -z "${HIMMEL_GUEST_EXEC_LOG:-}" ] || return 1
     [[ $1 =~ $_BWIMC_GE_RE ]] || return 1
     s="${BASH_REMATCH[1]}"
@@ -4583,8 +4583,11 @@ _bwimc_guest_exec_only() {
     p=$(guard_canon_path "$p" 2>/dev/null) || return 1
     case "$p" in */scripts/vm/guest-exec.sh) ;; *) return 1 ;; esac
     root="${p%/scripts/vm/guest-exec.sh}"
-    git -C "$root" ls-files --error-unmatch -- scripts/vm/guest-exec.sh scripts/lib/vmsdk.py >/dev/null 2>&1 || return 1
-    git -C "$root" diff --quiet HEAD -- scripts/vm/guest-exec.sh scripts/lib/vmsdk.py >/dev/null 2>&1
+    hd="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || return 1
+    cmp -s "$p" "$hd/../vm/guest-exec.sh" || return 1
+    for f in vmsdk.py vbox.py; do
+        cmp -s "$root/scripts/lib/$f" "$hd/../lib/$f" || return 1
+    done
 }
 if [ "${tool:-Bash}" = Bash ] && _bwimc_guest_exec_only "$cmd"; then
     if [ "$_bwimc_sourced" = 1 ]; then return 0; else exit 0; fi
