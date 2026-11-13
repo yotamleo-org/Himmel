@@ -222,6 +222,7 @@ EOF
 # hook sees it.
 declare -a STEPS
 step() { STEPS+=("$1|$2|$3|$4|${5:-}"); }
+# read-sink-ok: sha_of hashes a P1 target or scratch file the harness itself names
 sha_of() { if [ -d "$1" ]; then printf 'dir'; elif [ -e "$1" ]; then printf '%s:%s' "$(sha256sum < "$1" | cut -c1-16)" "$(wc -c < "$1" | tr -d ' ')"; else printf 'absent'; fi; }
 
 run_spawn() { # <name> <kind env|ctrl|stub> <session> <chat> <release dir> [unmarked]
@@ -645,6 +646,7 @@ for id in 11h 11s; do
     if [ "$a" != yes ]; then row_add "$id" INCONCLUSIVE "no proof of attempt"
     elif [ "$id" = 11h ] && grep -qE '^[1-5][0-9]{2}' "$s.out" 2>/dev/null; then row_add "$id" PASS "chat $EG_CHAT got HTTP $(head -c 3 "$s.out") from $EG_HOST:8123"
     elif [ "$id" = 11s ] && grep -q 'rc=0' "$s"; then row_add "$id" PASS "chat $EG_CHAT ran ssh ha1"
+    # read-sink-ok: row 11 reads the harness's own sentinel under outgoing/
     else row_add "$id" FAIL "chat $EG_CHAT: $(tr '\n' ' ' < "$s") $(head -c 200 "$s.out" 2>/dev/null | tr '\n' ' ')"; fi
 done
 
