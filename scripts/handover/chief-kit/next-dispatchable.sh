@@ -52,8 +52,11 @@
 # `deferred -> <KEY>` lines under `## Ticket coverage` (scripts/lib/pr_remainder.py, the one reader merge-on-green.sh and
 # the brief generator share). A remainder kept on the ticket is a RESUME row (`partial=PR #n merged, Remaining: <text>`); one
 # handed wholly to other tickets prints `HANDED-OFF <KEY>: remainder on <keys>` (the chief closes the ticket or keeps it as an
-# umbrella by hand); a body with neither form prints `NEEDS-CHIEF-NOTE` naming the PR and the line that clears it. PRs read in
+# umbrella by hand); a step owed to the chief or operator by a date (`owed -> chief|operator by YYYY-MM-DD`) prints
+# `OWED <KEY>: merged PR #n owes <who> by <date>` (no RESUME row, no chief note: the owner and the date are named); a body with
+# neither form prints `NEEDS-CHIEF-NOTE` naming the PR and the line that clears it. PRs read in
 # merge order: a clear remainder supersedes every older PR that records none; a PR newer than it that records none still asks.
+# A newer hand-off or owed PR also supersedes an older `remaining` PR.
 #
 # Scope: a ticket waits only on the files its next step writes. That is the latest `Remaining:` text when it names a path or says
 # it writes nothing (no code, no repo write, chief-run, state repo), else a `Writes:` or `Files:` line of the description, else the
@@ -1152,7 +1155,7 @@ except (OSError, subprocess.SubprocessError):
 
 # The remainder of a merged partial PR's body, read by the ONE reader every partial-merge site shares
 # (scripts/lib/pr_remainder.py): a `Remaining:` line, or the `deferred -> <KEY>` lines under `## Ticket coverage`.
-# Returns (kind, handed_keys, text), kind none | remaining | handed-off. A body gh cannot read, or a reader that fails, is
+# Returns (kind, handed_keys, text), kind none | remaining | handed-off | owed (for owed the middle field is [who, date]). A body gh cannot read, or a reader that fails, is
 # recorded in unread_prs and returns kind none, so the ticket is never dispatched blind.
 remainder_cache = {}
 unread_prs = set()
@@ -1161,7 +1164,7 @@ reader = os.environ.get('NEXT_DISPATCH_READER') or os.path.join(repo, 'scripts',
 # A merged PR's remainder, kept in a state file by PR number and ticket key so a run does not read the same merged body from
 # GitHub again (628 `pr view` calls in a 30-minute sample of the fleet). Invalidation rule: an entry is used for
 # NEXT_DISPATCH_BODY_TTL seconds (default 3600) after it was read, then read again; only a remainder that SAID something
-# (`remaining`, `handed-off`) is stored, so the body a chief edits to clear a NEEDS-CHIEF-NOTE row (kind none) and a body gh could not read
+# (`remaining`, `handed-off`, `owed`) is stored, so the body a chief edits to clear a NEEDS-CHIEF-NOTE row (kind none) and a body gh could not read
 # are asked again on the next run. A chief who edits a body that already holds a remainder is seen within the TTL. NEXT_DISPATCH_BODY_CACHE
 # names the file (`off` disables the cache); a corrupt or unwritable file reads as no cache.
 body_cache_path = os.environ.get('NEXT_DISPATCH_BODY_CACHE') or os.path.join(os.environ.get('HOME') or os.path.expanduser('~'), '.himmel', 'state', 'next-dispatchable', 'merged-pr-remainders.json')
@@ -1184,7 +1187,7 @@ def cached_remainder(pr, key):
     try:
         age = time.time() - float(e['at'])
         kind, handed, text = e['ans']
-        if 0 <= age < body_ttl and kind in ('remaining', 'handed-off') and isinstance(handed, list) and isinstance(text, str):
+        if 0 <= age < body_ttl and kind in ('remaining', 'handed-off', 'owed') and isinstance(handed, list) and isinstance(text, str):
             return (kind, [str(h) for h in handed], text)
     except (KeyError, TypeError, ValueError):
         pass  # swallow-ok: an entry that cannot be read is no entry
@@ -1214,12 +1217,14 @@ def remainder_of(pr, key):
             remainder_cache[(pr, key)] = hit
             return hit
         try:
-            body = ghrun([gh, 'pr', 'view', pr, '--repo', gh_repo, '--json', 'body', '--jq', '.body'], capture_output=True, text=True, timeout=gh_t(60), check=True).stdout
+            body = ghrun([gh, 'pr', 'view', pr, '--repo', gh_repo, '--json', 'body', '--jq', '.body'], capture_output=True, timeout=gh_t(60), check=True).stdout.decode('utf-8', 'replace')
             out = subprocess.run([sys.executable, '-I', reader, key], input=body.encode('utf-8'), capture_output=True, timeout=60, check=True).stdout.decode('utf-8', 'replace').rstrip('\n').split('\t')
             if out[0] == 'remaining' and len(out) == 2:
                 ans = ('remaining', [], out[1])
             elif out[0] == 'handed-off' and len(out) == 3:
                 ans = ('handed-off', out[1].split(', '), out[2])
+            elif out[0] == 'owed' and len(out) == 4:
+                ans = ('owed', [out[1], out[2]], out[3])
             elif out[0] != 'none':
                 raise subprocess.SubprocessError('unrecognised reader answer')
             if ans[0] != 'none':
@@ -1247,7 +1252,7 @@ for i in issues.values() if not pr_unknown else ():
     if partial_resume(i['key']) and i['key'] not in worker_keys and i['key'] not in pr_keys and resume_eligible(i):
         parts = [(pr, remainder_of(pr, i['key'])) for pr in partials[i['key']]]
         clear = max((n for n, (_, ans) in enumerate(parts) if ans[0] != 'none'), default=-1)
-        handed = clear >= 0 and parts[clear][1][0] == 'handed-off'  # a newer hand-off also supersedes an older remainder
+        handed = clear >= 0 and parts[clear][1][0] in ('handed-off', 'owed')  # a newer hand-off or owed step also supersedes an older remainder
         i['parts'] = [p for n, p in enumerate(parts) if n >= clear or (p[1][0] != 'none' and not (handed and p[1][0] == 'remaining'))]
         latest = [(pr, ans[2]) for pr, ans in i['parts'] if ans[0] == 'remaining'][-1:]
         if latest:
@@ -1384,6 +1389,7 @@ if inci_keys and not (pr_unknown or owners_unknown):
 needs_note = []  # (key, partial PR numbers that record no remainder) of in-work tickets that need a chief note first
 scope_questions = []  # keys of tickets nothing says the write scope of: a chief question, never silently free
 handed_off = []  # (key, tickets) of in-work tickets whose every partial PR hands its remainder to other tickets
+owed_rows = []  # (key, pr, who, date) of in-work tickets whose newest clear partial PR records a step owed to the chief or operator by a date
 resume = []
 for i in issues.values():
     if not resume_eligible(i):
@@ -1404,6 +1410,11 @@ for i in issues.values():
     i['partial'] = [(pr, ans[2]) for pr, ans in parts]
     if any(ans[0] == 'none' for _, ans in parts):  # a merged slice whose PR body names no remaining work: not dispatched blind
         needs_note.append((i['key'], [pr for pr, ans in parts if ans[0] == 'none']))
+        continue
+    owed_parts = [(pr, ans) for pr, ans in parts if ans[0] == 'owed']
+    if owed_parts and not any(ans[0] == 'remaining' for _, ans in parts):  # a dated step is owed to the chief or operator and nothing else stays on the ticket: nothing to dispatch (the owed PR with the earliest due date is named)
+        first_due = min(owed_parts, key=lambda p: p[1][1][1])  # the earliest due date; min keeps the older PR on a tie
+        owed_rows.append((i['key'], first_due[0], first_due[1][1][0], first_due[1][1][1]))
         continue
     if parts and all(ans[0] == 'handed-off' for _, ans in parts):  # nothing left on this ticket: the chief closes it or keeps it as an umbrella
         handed_off.append((i['key'], [k for _, ans in parts for k in ans[1]]))
@@ -1494,6 +1505,8 @@ if len(scope_questions) > len(scope_shown):
     print('# no readable scope: %d more ticket(s) not shown, --why names them' % (len(scope_questions) - len(scope_shown)))
 for k, keys in handed_off:
     print('HANDED-OFF %s: remainder on %s' % (k, ', '.join(dict.fromkeys(keys))))
+for k, pr, who, due in owed_rows:
+    print('OWED %s: merged PR #%s owes %s by %s' % (k, pr, who, due))
 for sid, wdoc in series_orphans:
     print('SERIES-ORPHAN %s %s' % (sid, wdoc))
 

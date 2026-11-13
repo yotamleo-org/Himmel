@@ -14,8 +14,10 @@ CLI: `pr_remainder.py KEY[,KEY...]` with the PR body on stdin prints ONE answer 
   none
   remaining<TAB>text
   handed-off<TAB>KEY, KEY<TAB>text
+  owed<TAB>who<TAB>YYYY-MM-DD<TAB>text
 The own keys are the ticket's own: a deferred line naming one is not a hand-off. Exit 0 with the line; any other exit is no answer.
 """
+import datetime
 import re
 import sys
 
@@ -25,28 +27,52 @@ COVERAGE_HEAD_RE = re.compile(r'^#{2}[ \t]+ticket coverage[ \t]*$', re.I)
 DEFERRED_RE = re.compile(r'\bdeferred[ \t]*(?:→|->)', re.I)
 # ready-check.sh check 7: the key follows the arrow and ends the line, up to punctuation
 HANDOFF_RE = re.compile(r'\bdeferred[ \t]*(?:→|->)[^A-Za-z0-9]*([A-Za-z][A-Za-z0-9]*-[0-9]+)[^A-Za-z0-9]*$', re.I)
+LIST_RE = re.compile(r'^(?:[-*]|[0-9]+[.)])[ \t]')
+OWED_ANY_RE =re.compile(r'\bowed[ \t]*(?:→|->)', re.I)
+OWED_RE = re.compile(r'\bowed[ \t]*(?:→|->)[ \t]*(chief|operator)[ \t]+by[ \t]+(\d{4}-\d{2}-\d{2})[^A-Za-z0-9]*$', re.I)
 
 
 def pr_remainder(body, own_keys=()):
     """Returns (kind, handed_keys, text):
       ('none', [], '')                no remainder recorded in either form
       ('remaining', [], text)         the remainder stays on the ticket
-      ('handed-off', [keys], text)    no Remaining: line, and every deferred line names one other ticket"""
+      ('handed-off', [keys], text)    no Remaining: line, and every deferred line names one other ticket
+      ('owed', [who, date], text)     no Remaining: line, and an owed line (the earliest date) beats a hand-off"""
+    body = body.replace('\r', '')
     own = {k.upper() for k in own_keys}
     remaining = [m.strip() for m in REMAINING_RE.findall(body)]
     deferred, handed, whole = [], [], True
+    owed, owed_bad = [], []
     in_coverage = False
+    owed_open = False
     for raw in body.splitlines():
         line = raw.strip()
         heading = HEADING_RE.match(line)
+        if raw.startswith('#'):
+            owed_open = False
         if heading:
             # the coverage section runs to the next heading of level two or higher; a `###` inside it stays in scope
             if COVERAGE_HEAD_RE.match(line):
-                in_coverage = True
+                in_coverage = owed_open = True
             elif len(heading.group(1)) <= 2:
                 in_coverage = False
             continue
-        if not in_coverage or not DEFERRED_RE.search(line):
+        if not in_coverage:
+            continue
+        if not DEFERRED_RE.search(line) and OWED_ANY_RE.search(line):
+            text = re.sub(r'^[-*+][ \t]+', '', line)
+            m = OWED_RE.search(line)
+            try:
+                if not (owed_open and LIST_RE.match(line)):
+                    raise ValueError('not a list line before the first heading')
+                if not m:
+                    raise ValueError('not the owed grammar')
+                datetime.date.fromisoformat(m.group(2))
+                owed.append((m.group(2), m.group(1).lower(), text))
+            except ValueError:
+                owed_bad.append(text)
+            continue
+        if not DEFERRED_RE.search(line):
             continue
         deferred.append(re.sub(r'^[-*+][ \t]+', '', line))
         m = HANDOFF_RE.search(line)
@@ -55,10 +81,13 @@ def pr_remainder(body, own_keys=()):
             whole = False
         elif key not in handed:
             handed.append(key)
-    if not remaining and not deferred:
+    if not remaining and not deferred and not owed and not owed_bad:
         return ('none', [], '')
-    text = re.sub(r'[\t\r\n]+', ' ', '; '.join(p for p in (' '.join(remaining), '; '.join(deferred)) if p))  # the answer line is tab-separated
-    if not remaining and whole:
+    if not remaining and not owed_bad and whole and owed:  # a deferred line that stays on this ticket is remaining work, and beats an owed step
+        due, who, line = min(owed, key=lambda o: o[0])  # min keeps the first of equal dates
+        return ('owed', [who, due], re.sub(r'[\t\r\n]+', ' ', line))
+    text = re.sub(r'[\t\r\n]+', ' ', '; '.join(p for p in (' '.join(remaining), '; '.join(deferred + owed_bad + [o[2] for o in owed])) if p))  # the answer line is tab-separated
+    if not remaining and not owed_bad and whole:
         return ('handed-off', handed, text)
     return ('remaining', [], text)
 
@@ -69,7 +98,7 @@ def main(argv):
         return 2
     body = sys.stdin.buffer.read().decode('utf-8', 'replace')
     kind, handed, text = pr_remainder(body, [k for k in argv[1].split(',') if k])
-    out = kind if kind == 'none' else '\t'.join([kind] + ([', '.join(handed)] if kind == 'handed-off' else []) + [text])
+    out = kind if kind == 'none' else '\t'.join([kind] + ([', '.join(handed)] if kind == 'handed-off' else handed if kind == 'owed' else []) + [text])
     sys.stdout.buffer.write((out + '\n').encode('utf-8'))
     return 0
 

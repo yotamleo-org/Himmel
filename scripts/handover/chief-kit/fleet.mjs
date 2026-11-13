@@ -111,7 +111,8 @@ const logsDir = resolve(opt.logs || (process.env.XDG_RUNTIME_DIR
     : join(process.env.TMPDIR || '/tmp', `himmel-chief-${process.getuid ? process.getuid() : 0}`)));
 const QUEUE_LOCK = process.env.FLEET_QUEUE_LOCK || join(repo, 'scripts', 'handover', 'queue-lock.sh');
 const BANK = process.env.FLEET_BANK || join(repo, 'scripts', 'lib', 'usage-preflight.sh');
-const GH = process.env.FLEET_GH || 'gh';
+const readHelper = fileURLToPath(new URL('../../lib/gh-read.sh', import.meta.url));
+const GH = process.env.FLEET_GH || (existsSync(readHelper) ? readHelper : 'gh');
 const PROC = process.env.FLEET_PROC || '/proc';
 const LEGID = process.env.FLEET_LEGID || join(repo, 'scripts', 'lib', 'worker-identity.sh');
 const AGENTS = process.env.FLEET_AGENTS ? [process.env.FLEET_AGENTS, []] : ['claude', ['agents', '--json']];
@@ -137,7 +138,7 @@ const deepRedact = (v) => {
 // ---------------------------------------------------------------- helpers
 const sh = async (cmd, cmdArgs, o = {}) => {
     try {
-        const r = await run(cmd, cmdArgs, { encoding: 'utf8', timeout: o.timeout || 30000, cwd: o.cwd, maxBuffer: 16 << 20 });
+        const r = await run(cmd, cmdArgs, { encoding: 'utf8', timeout: o.timeout || 30000, cwd: o.cwd, env: o.env, maxBuffer: 16 << 20 });
         return { ok: true, out: r.stdout, err: r.stderr, code: 0 };
     } catch (e) {
         return { ok: false, out: e.stdout || '', err: e.stderr || '', spawnFailed: e.code === 'ENOENT', code: typeof e.code === 'number' ? e.code : null };
@@ -408,7 +409,7 @@ const ciOf = (pr) => {
     return 'green';
 };
 const ghJson = async (ghArgs) => {
-    const r = await sh(GH, ghArgs, { cwd: repo, timeout: 45000 });
+    const r = await sh(GH, ghArgs, { cwd: repo, timeout: 45000, env: { ...process.env, GH_READ_QUIET: '1' } });
     if (!r.ok) return null;
     try { return JSON.parse(r.out); } catch { return null; }
 };

@@ -25,6 +25,8 @@ done
 [ "$seen" -eq 1 ] && [ "$after" -ge 1 ] || usage
 
 sdk="${HIMMEL_VMSDK:-$(cd "$(dirname "$0")/../lib" && pwd)/vmsdk.py}"
+# no __pycache__ beside vmsdk.py: block-write-into-main-checkout.sh reads one there as a planted module
+export PYTHONDONTWRITEBYTECODE=1
 if command -v uv >/dev/null 2>&1; then
     exec uv run "$sdk" "$vm" exec "$@"
 fi

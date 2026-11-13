@@ -2543,6 +2543,18 @@ uw_skip="$(uw_chains)"
 [ "$uw_stale|$uw_ok|$uw_skip" = 'STALE:1/2|ok|skip' ] && pass '(9860) with only a wired pair the STALE, ok and skip values stay byte-identical' || fail "(9860) with only a wired pair chains read $uw_stale|$uw_ok|$uw_skip, not STALE:1/2|ok|skip"
 rm -rf "$W/uw-tmp" "$W/uw-mirror" "$W/uw-dir"
 
+help_out="$(bash "$SUT" --help 2>&1)"
+help_cites="$(printf '%s\n' "$help_out" | grep -oE 'HIMMEL-[0-9]+|decision [0-9]+' | sort -u | tr '\n' ' ')"
+if [ -n "$help_cites" ]; then
+    fail "(9823) tick.sh --help cites a ticket key or decision number: $help_cites"
+else
+    pass '(9823) tick.sh --help cites no ticket key and no decision number'
+fi
+contains '(9823) tick.sh --help still prints the usage line' "$help_out" 'usage: tick.sh [--verbose]'
+for help_field in 'fleet=<live>/<cap>' 'flakes=<rows>/<suites>' 'parked=<leg>' 'holds=<leg>' 'hreg=<n>/<n>/<n>' 'chains=UNWIRED:<k>' 'review=<date>' 'cadence=<name>' 'pool-stale=<n>' 'wt-orphans=<n|unknown>'; do
+    contains "(9823) tick.sh --help still documents $help_field" "$help_out" "$help_field"
+done
+
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick.sh'
     exit 0
