@@ -72,9 +72,9 @@ render() { printf '%s\n' "$1" | bash "$SUT" render --bucket "${2:-$B}"; }
 out="$(render "$blk")"; rc=$?
 same "render: exits 0" "$rc" "0"
 same "render: the in-force ruling 901 is indexed with its date, line and short verbatim id" \
-    "$(printf '%s\n' "$out" | grep -cxF "IN FORCE 901, 2026-11-11: alpha one line for 901 (verbatim: 901-2026-11-11)")" "1"
-same "render: the pointer says how a short verbatim id names its file" "$(printf '%s\n' "$out" | grep '^Full original text' | grep -c 'specs/decisions/verbatim-decision-<id>.txt')" "1"
-same "render: only 901 is indexed (superseded 902 and done 904 are not)" "$(printf '%s\n' "$out" | grep -c '^IN FORCE ')" "1"
+    "$(printf '%s\n' "$out" | grep -cxF "901 2026-11-11 alpha one line for 901 (verbatim 901-2026-11-11)")" "1"
+same "render: the pointer says how a short verbatim id names its file" "$(printf '%s\n' "$out" | grep '^Full original text' | grep -c 'verbatim-decision-<short id>.txt')" "1"
+same "render: only 901 is indexed (superseded 902 and done 904 are not)" "$(printf '%s\n' "$out" | grep -cE '^[0-9]+ 2026-')" "1"
 same "render: the ledgered lines of 901, 902 and 904 leave the block" "$(printf '%s\n' "$out" | grep -cE 'decision (901|902|904):')" "0"
 same "render: a ruling with no ledger row (905) is kept as it was" "$(printf '%s\n' "$out" | grep -cxF 'OPERATOR 11-10 YZ, decision 905: delta reading of 905, no ledger row …')" "1"
 same "render: a ruling with no number is kept as it was" "$(printf '%s\n' "$out" | grep -cxF 'OPERATOR 11-09 WG: echo, a ruling with no number …')" "1"
@@ -102,7 +102,7 @@ for n in 858 859; do rec --id "$n" --status "done" --date 2026-11-09 --line "ran
 same "render: a range with one number unledgered is kept" "$(render "$blk" | grep -cF 'decisions 858 to 860')" "1"
 rec --id 860 --status in-force --date 2026-11-09 --line 'range 860' --path "$(v 905)" >/dev/null
 same "render: a range with every number ledgered leaves" "$(render "$blk" | grep -cF 'decisions 858 to 860')" "0"
-same "render: the range's in-force number is indexed" "$(render "$blk" | grep -c '^IN FORCE 860, ')" "1"
+same "render: the range's in-force number is indexed" "$(render "$blk" | grep -c '^860 2026-11-09 range 860 ')" "1"
 wide="$ptr
 
 OPERATOR 11-01 AA, decisions 1 to 100: a range too wide to expand …
@@ -162,9 +162,172 @@ for n in $(seq 1001 1040); do
 done
 out40="$(render "$blk40" "$B40")"
 same "render: 40 rulings in force fit under 12,000 bytes" "$([ "$(printf '%s' "$out40" | wc -c)" -lt 12000 ] && echo under || echo over)" "under"
-named=0; for n in $(seq 1001 1040); do grep -q "^IN FORCE $n, 2026-11-11: ruling $n " <<< "$out40" && named=$((named + 1)); done
+named=0; for n in $(seq 1001 1040); do grep -q "^$n 2026-11-11 ruling $n " <<< "$out40" && named=$((named + 1)); done
 same "render: every one of the 40 ids is indexed" "$named" "40"
 same "render: with every ruling indexed the read-all duty is gone" "$(printf '%s\n' "$out40" | grep '^Full original text' | grep -c 'READ ALL')" "0"
+
+G="$W/grouped"; GD="$G/specs/decisions"; mkdir -p "$GD"
+zulus() { printf ' zulu%.0s' $(seq 1 "$1"); }
+L950="x$(zulus 28)"; L959="yy$(zulus 28)"; L955="ab$(zulus 40)"
+L953='exactly at the cap, a whole line of ninety-six bytes qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq'
+grec() {
+    printf 'OPERATOR words of ruling %s.\n' "$1" > "$GD/$5"
+    bash "$SUT" record --bucket "$G" --id "$1" --status "$2" --date "$3" --line "$4" --path "specs/decisions/$5" >/dev/null 2>&1
+}
+grec 950 in-force 2026-11-12 "$L950" verbatim-decision-950-operator-11-12-ZK.txt
+grec 951 in-force 2026-11-12 'a ruling of 21 bytes.' verbatim-decision-951-operator-11-12-ZK.txt
+grec 952 in-force 2026-11-12 'copied ruling under a head marked copied' verbatim-decision-952-operator-11-12-ZM-copied.txt
+grec 953 in-force 2026-11-11 "$L953" verbatim-decision-953-operator-11-11-ZA.txt
+grec 959 in-force 2026-11-11 "$L959" verbatim-decision-959-operator-11-11-ZA.txt
+grec 954 in-force 2025-12-30 'another year ruling' verbatim-decision-954-operator-12-30-QQ.txt
+grec 955 in-force 2026-11-10 "$L955" verbatim-decision-958-operator-11-10-ZB.txt
+grec 956 'superseded-by 950' 2026-11-12 'superseded ruling' verbatim-decision-956-operator-11-12-ZK.txt
+grec 957 "done" 2026-11-11 'done ruling' verbatim-decision-957-operator-11-11-ZA.txt
+printf '%s\n\n' '# Current direction, full text (part 1 of 1), byte for byte, written by chief.sh next' \
+    'OPERATOR 11-11 ZA (BINDING, decision 957): done ruling reading, the full text.' \
+    'OPERATOR 11-09 WG (BINDING): echo, an unledgered ruling, the full text.' > "$GD/chief-direction-2026-11-12-p1.md"
+gptr='Full original text of every ruling below, byte for byte, is in 1 file under the bucket (specs/decisions/chief-direction-2026-11-12-p1.md). READ ALL OF THEM in your first turn.'
+gblk="$gptr
+
+OPERATOR 11-11 ZA, decision 957: done ruling reading …
+OPERATOR 11-09 WG: echo, an unledgered ruling …
+Chain order: one context line."
+para() { sed -n '/^Rulings in force (/,/^$/p' | sed '/^$/d'; }
+gwant="Rulings in force (7; left out: 1 done, 1 superseded; year 2026 unless a head shows one):
+11-12 ZM copied:
+952 copied ruling under a head marked copied
+11-12 ZK:
+951 a ruling of 21 bytes.
+950 x$(zulus 19)
+11-11 ZA:
+959 yy$(zulus 18)
+953 $L953
+2025-12-30 QQ:
+954 another year ruling
+Other verbatim paths:
+955 2026-11-10 ab$(zulus 10) (verbatim 958-operator-11-10-ZB)"
+gout="$(CHIEF_DIRECTION_BUDGET_BYTES=12000 render "$gblk" "$G")"; rc=$?
+same "render: the grouped fixture exits 0" "$rc" "0"
+same "render: the fixture's in-force rulings are these exact lines under these exact heads" "$(printf '%s\n' "$gout" | para)" "$gwant"
+same "render: a -copied file sits under a head marked copied" "$(printf '%s\n' "$gout" | grep -A1 -xF '11-12 ZM copied:' | tail -n 1)" "952 copied ruling under a head marked copied"
+same "render: a file of another shape is a row under Other verbatim paths with its short id" "$(printf '%s\n' "$gout" | grep -A1 -xF 'Other verbatim paths:' | tail -n 1)" "955 2026-11-10 ab$(zulus 10) (verbatim 958-operator-11-10-ZB)"
+same "render: a ruling of another year has a full-date head" "$(printf '%s\n' "$gout" | grep -A1 -xF '2025-12-30 QQ:' | tail -n 1)" "954 another year ruling"
+same "render: the superseded and the done ruling are no row; the head reads left out: 1 done, 1 superseded" \
+    "$(printf '%s\n' "$gout" | grep -cE '^95[67] ')/$(printf '%s\n' "$gout" | grep -c '^Rulings in force (7; left out: 1 done, 1 superseded;')" "0/1"
+same "render: a ledger line shorter than the cap is printed whole with no ellipsis" "$(printf '%s\n' "$gout" | grep -cxF '951 a ruling of 21 bytes.')" "1"
+same "render: at budget 12000 the cap is 96 and a 96-byte ledger line is printed whole" "$(printf '%s\n' "$gout" | grep -cxF "953 $L953")" "1"
+same "render: a cut whose byte at the cap is a space keeps its last whole word" "$(printf '%s\n' "$gout" | grep -cxF "950 x$(zulus 19)")" "1"
+same "render: a cut inside a word backs off to the last space" "$(printf '%s\n' "$gout" | grep -cxF "959 yy$(zulus 18)")" "1"
+same "render: every reading is cut at the same cap with no ellipsis" "$(printf '%s\n' "$gout" | para | grep -c '…')/$(printf '%s\n' "$gout" | para | LC_ALL=C awk '/^9[0-9][0-9] / && length($0) - 4 > 96' | wc -l | tr -d ' ')" "0/0"
+same "render: no index line is over 100 bytes, an other-shape row with a 200-byte line included" "$(printf '%s\n' "$gout" | para | LC_ALL=C awk 'length($0) > 100' | wc -l | tr -d ' ')" "0"
+same "render: the pointer says a reading is the start of its ledger line and names find" \
+    "$(printf '%s\n' "$gout" | grep '^Full original text' | grep -c 'start of its ledger line')/$(printf '%s\n' "$gout" | grep '^Full original text' | grep -c 'rulings-in-force.sh find --bucket')" "1/1"
+same "render: a second render of the grouped output changes nothing" "$(CHIEF_DIRECTION_BUDGET_BYTES=12000 render "$gout" "$G")" "$gout"
+same "find: a word lists every ruling whose ledger line holds it, newest id first" "$(bash "$SUT" find --bucket "$G" zulu | cut -d ' ' -f 1 | tr '\n' ' ')" "959 955 950 "
+same "find: an id prints its whole ledger line, status and verbatim path" "$(bash "$SUT" find --bucket "$G" 951)" "951 2026-11-12 in-force a ruling of 21 bytes. (verbatim specs/decisions/verbatim-decision-951-operator-11-12-ZK.txt)"
+
+a9="$(CHIEF_DIRECTION_BUDGET_BYTES=1500 render "$gptr
+
+Short context." "$G" 2>/dev/null | para)"
+b9="$(CHIEF_DIRECTION_BUDGET_BYTES=1500 render "$gptr
+
+Long context line one, written to move the bytes outside the index by about eighty.
+Long context line two, written to move the bytes outside the index by about eighty.
+Long context line three, written to move the bytes outside the index by about eighty." "$G" 2>/dev/null | para)"
+same "render: two blocks with different lines after the index give the same index paragraph" "$([ -n "$a9" ] && [ "$a9" = "$b9" ] && echo same || echo differs)" "same"
+
+ear="$gptr
+
+Rulings in force (3; left out: 0 done, 0 superseded; year 2026 unless a head shows one):
+11-12 ZK:
+951 a ruling of
+OPERATOR 11-09 WG: echo, an unledgered ruling typed inside the index …
+950 x zulu zulu
+777 a row whose id the ledger lacks
+950 is the count of a context line typed in the index
+11-11 ZA:
+953 exactly at the cap, a…
+
+Chain order: one context line."
+rout="$(render "$ear" "$G")"
+same "render: an unledgered OPERATOR line placed inside an earlier grouped index paragraph survives the re-render" \
+    "$(printf '%s\n' "$rout" | para | grep -c '^OPERATOR 11-09 WG')/$(printf '%s\n' "$rout" | grep -cxF 'OPERATOR 11-09 WG: echo, an unledgered ruling typed inside the index …')" "0/1"
+same "render: the earlier grouped rows after that OPERATOR line are dropped too, none left after the new index" \
+    "$(printf '%s\n' "$rout" | grep -cxF '953 exactly at the cap, a…')/$(printf '%s\n' "$rout" | grep -cxF '951 a ruling of')" "0/0"
+same "render: an earlier row is dropped only when its reading is a prefix of a ledger line; a context line starting with that id stays" \
+    "$(printf '%s\n' "$rout" | grep '^950 ' | tr '\n' '|')" "950 x$(zulus 19)|950 is the count of a context line typed in the index|"
+same "render: an earlier grouped row whose id the ledger lacks is kept with its head" "$(printf '%s\n' "$rout" | grep -cxF '11-12 ZK 777 a row whose id the ledger lacks')" "1"
+same "render: a second render of the re-rendered block changes nothing" "$(render "$rout" "$G")" "$rout"
+
+runs="$gptr
+
+OPERATOR 11-11 ZA, decision 957: done ruling reading …
+
+
+
+Context A.
+
+
+Context B."
+same "render: blank runs after the index collapse to one, and output minus index equals input minus index and dropped rulings" \
+    "$(render "$runs" "$G" | sed '1,/^Rulings in force (/d' | sed '1,/^$/d')" "Context A.
+
+Context B."
+
+fault() { out="$(printf '%s\n' "$2" | RULINGS_IN_FORCE_FAULT="$1" bash "$SUT" render --bucket "$G" 2>"$W/fault.err")"; printf '%s/%s' "$?" "$out"; }
+same "render: RULINGS_IN_FORCE_FAULT=drop-row:951 exits 4 and prints nothing" "$(fault drop-row:951 "$gblk")" "4/"
+same "render: RULINGS_IN_FORCE_FAULT=lose-line:OPERATOR 11-09 WG exits 4, prints nothing and names it LOST" "$(fault 'lose-line:OPERATOR 11-09 WG' "$gblk")/$(grep -c '^LOST OPERATOR 11-09 WG' "$W/fault.err")" "4//1"
+same "render: a lose-line fault on a context line exits 4, prints nothing and names it CHANGED" "$(fault 'lose-line:Chain order' "$gblk")/$(grep -c '^CHANGED [0-9]' "$W/fault.err")" "4//1"
+same "render: a fault that matches no line still exits 4 and prints nothing" "$(fault 'lose-line:no line starts like this' "$gblk")" "4/"
+
+cp -R "$G" "$W/spacepath"
+printf 'OPERATOR words of ruling 960.\n' > "$W/spacepath/specs/decisions/verbatim-decision-960 (x).txt"
+bash "$SUT" record --bucket "$W/spacepath" --id 960 --status in-force --date 2026-11-10 --line 'a ruling whose verbatim path holds a space' --path 'specs/decisions/verbatim-decision-960 (x).txt' >/dev/null 2>&1
+same "render: with no fault set, an Other row its own grammar rejects fails the self-check: exit 4, nothing printed, GRAMMAR on stderr" \
+    "$(out="$(printf '%s\n' "$gblk" | bash "$SUT" render --bucket "$W/spacepath" 2>"$W/space.err")"; printf '%s/%s' "$?" "$out")/$(grep -c '^GRAMMAR [0-9]' "$W/space.err")" "4//1"
+
+chk() { printf '%s\n' "$1" | bash "$SUT" check --bucket "${2:-$G}" "${@:3}"; }
+same "check: a fresh render prints check: ok and exits 0" "$(chk "$gout" | grep -c '^check: ok in-force=7 named=7 ')/$(chk "$gout" >/dev/null; echo $?)" "1/0"
+same "check: a 21-byte whole reading and a cut reading both pass the prefix test, with the pointer present" \
+    "$(chk "$gout" | grep -c '^READING ')/$(printf '%s\n' "$gout" | grep -cxF -e '951 a ruling of 21 bytes.' -e "950 x$(zulus 19)")/$(printf '%s\n' "$gout" | grep '^Full original text' | grep -c 'start of its ledger line')" "0/2/1"
+same "check: a row deleted prints MISSING <id>, exit 1" "$(chk "$(printf '%s\n' "$gout" | sed '/^951 /d')" | grep -c '^MISSING 951$')/$(chk "$(printf '%s\n' "$gout" | sed '/^951 /d')" >/dev/null; echo $?)" "1/1"
+same "check: a done id added prints EXTRA <id>, exit 1" "$(chk "$(printf '%s\n' "$gout" | awk '{ print } $0 == "11-11 ZA:" { print "957 done ruling" }')" | grep -c '^EXTRA 957$')" "1"
+same "check: a second index paragraph further down is read too: its repeated row prints TWICE <id>, exit 1" \
+    "$(chk "$gout
+
+$(printf '%s\n' "$gout" | para | sed -n '1p;/^11-12 ZK:$/p;/^951 /p')" | grep -c '^TWICE 951$')" "1"
+same "check: a row's derived path differs from the ledger: PATH <id>" "$(chk "$(printf '%s\n' "$gout" | sed 's/^11-12 ZK:$/11-12 ZJ:/')" | grep -cE '^PATH 95[01] ')" "2"
+same "check: a reading that is not a ledger prefix: READING <id>" "$(chk "$(printf '%s\n' "$gout" | sed 's/^951 a ruling of 21 bytes[.]$/951 a ruling of 21 bytes!/')" | grep -c '^READING 951$')" "1"
+cp -R "$G" "$W/nofile"; rm -f "$W/nofile/specs/decisions/verbatim-decision-953-operator-11-11-ZA.txt"
+same "check: a ledger path removed from disk: NOFILE <id>" "$(chk "$gout" "$W/nofile" | grep -c '^NOFILE 953 specs/decisions/verbatim-decision-953-operator-11-11-ZA.txt$')" "1"
+printf '%s\n' "$gblk" > "$W/before.txt"
+same "check --before: an unledgered OPERATOR line removed: LOST" "$(chk "$(printf '%s\n' "$gout" | grep -v '^OPERATOR 11-09 WG')" "$G" --before "$W/before.txt" | grep -c '^LOST OPERATOR 11-09 WG: echo')" "1"
+printf '%s\n' "$gptr" '' 'OPERATOR 11-09 WG: echo, an unledgered ruling …' 'continuation line under the WG ruling' > "$W/before-unit.txt"
+same "check --before: a continuation line of an unledgered ruling removed: LOST" \
+    "$(chk "$(render "$(cat "$W/before-unit.txt")" "$G" | grep -v '^continuation line')" "$G" --before "$W/before-unit.txt" | grep -c '^LOST continuation line under the WG ruling')" "1"
+same "check: a leading ## Current direction line is accepted" "$(chk "## Current direction
+$gout" | grep -c '^check: ok ')" "1"
+
+H="$W/h400"; mkdir -p "$H/specs/decisions"
+python3 -I -c '
+import json, os, sys
+d = os.path.join(sys.argv[1], "specs", "decisions")
+with open(os.path.join(d, "rulings-in-force.jsonl"), "w") as f:
+    for k in range(400):
+        n, day, sh = 1001 + k, 1 + k // 25, "A" + "ABCDE"[k // 5 % 5]
+        p = "specs/decisions/verbatim-decision-%d-operator-11-%02d-%s.txt" % (n, day, sh)
+        open(os.path.join(sys.argv[1], p), "w").write("x\n")
+        f.write(json.dumps({"id": n, "date": "2026-11-%02d" % day, "line": "ruling %d %s" % (n, "word " * 20), "status": "in-force", "path": p}) + "\n")
+' "$H"
+hblk="$gptr
+
+Context."
+h12="$(CHIEF_DIRECTION_BUDGET_BYTES=12000 render "$hblk" "$H" 2>/dev/null)"
+same "render: 400 in-force rulings over 80 shifts stay under 12,000 bytes, every id with a reading" \
+    "$([ "$(printf '%s' "$h12" | wc -c)" -lt 12000 ] && echo under || echo over)/$(printf '%s\n' "$h12" | grep -cE '^1[0-9]{3} ruling 1[0-9]{3} \S')" "under/400"
+h2="$(CHIEF_DIRECTION_BUDGET_BYTES=2000 render "$hblk" "$H" 2>"$W/h2.err")"
+same "render: with a 2,000-byte budget all 400 ids keep a 16-byte reading and stderr says over budget" \
+    "$(printf '%s\n' "$h2" | LC_ALL=C awk '/^1[0-9][0-9][0-9] / && length($0) - 5 >= 16' | wc -l | tr -d ' ')/$(grep -c 'over its 2000-byte budget' "$W/h2.err")" "400/1"
 
 T="$HERE/../../../docs/handover/chief-template.md"
 az="$(awk '/^1\. \*\*One batch/ { f = 1 } /^   Steps 2/ { f = 0 } f' "$T" | tr '\n' ' ' | tr -s ' ')"

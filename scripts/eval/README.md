@@ -13,8 +13,8 @@ himmel's evals: each one measures one thing and writes its own output.
 | `retrieval-eval/answer-ab.py` | tokens per file hit, end to end: a haiku answerer on the questions it fails closed-book, with no retrieval, grep, path + ident-grep, graphify or fused output pasted in; total session tokens per file hit per arm; opt-in realistic worker-session arms (vanilla, fused-cached, bm25-rerank, vec-rerank) priced per call from usage | `table.tsv`, `results.jsonl`, ledger row `answer-ab` |
 | `retrieval-eval/staleness-fixture.sh` | a scratch qmd index and AST graph at two commits, served with no provider key (`build`, `serve`, `stop`, `graph`), over the frozen `staleness-questions.jsonl` and `staleness-graph-questions.jsonl`; the embed and the keyed daemon refuse without `HIMMEL_BILLED_OK=1` | `pair.json` in the scratch path |
 | `retrieval-eval/retrieval-eval.py run --index-state s\|l\|c --pair <pair.json>`, `stale-report`, `exposure` | the staleness eval's reading side: a run labelled with the served pair (refused unless `QMD_URL` is the pair's own served URL, never the live port, and the daemon's `totalDocuments` equals `pair.json`'s; graph arms read the pair's scratch graph through `WORKER_GRAPH_OUT`, never a checkout's `graphify-out`); `stale-report` prints per stratum the L minus S and C minus L difference with exact McNemar p and a seeded bootstrap interval, and the matching decision row; `exposure` prints the share of reads of recently merged files apart from it | `results.jsonl` rows with `index_state` and `stale_stratum`, a ledger row |
-| `handover-cost.py` | the per-handover chief price from session JSONLs: prep, relay+wrap, successor ACTION ZERO and worker-relay turns and cost, gross and net (HIMMEL-6491 method); `--workers-after` counts only newer workers | one `HANDOVER` row per pair plus a `MEAN` row on stdout (no ledger row) |
-| `chief-wake-classes.py` | the chief wake mix for one date from session JSONLs: wakes, requests and eq per class (operator, relay-only, escalate) and per wake kind, priced with `handover-cost.py` (HIMMEL-2975 plan method); `--exclude` drops live chiefs | `CLASS` and `KIND` rows on stdout (no ledger row) |
+| `handover-cost.py` | the per-handover chief price from session JSONLs: prep, relay+wrap, successor ACTION ZERO and worker-relay turns and cost, gross and net (the console-turnover measurement's method); `--workers-after` counts only newer workers | one `HANDOVER` row per pair plus a `MEAN` row on stdout (no ledger row) |
+| `chief-wake-classes.py` | the chief wake mix for one date from session JSONLs: wakes, requests and eq per class (operator, relay-only, escalate) and per wake kind, priced with `handover-cost.py` (the console-split plan's method); `--exclude` drops live chiefs | `CLASS` and `KIND` rows on stdout (no ledger row) |
 | `lone-comm-count.py` | report-only count of the turns whose only tool call is one comm tool (an `append-results.sh` bullet, a `SendMessage`, an himmel-bus send) per session JSONL, by marker class; GO, NO-GO, token-quoting, SUCCESSION and RETASK rows are counted apart as safety, never batchable; files as arguments, or `--dir D --hours N` | a TSV per session, `CLASS` rows and a `TOTAL` line on stdout (no ledger row) |
 | `compaction-handoff/compaction-defects.py` | the defects in the N turns after each compaction vs a control window, cost-eq per turn on both sides, and a ceiling replay | JSON or a table on stdout (no ledger row) |
 | `compaction-handoff/ab.py` + `ab_tasks.py` | a bounded, billed A/B of the 200k compaction loop, a 450k ceiling with compaction and a 450k ceiling with a hand-off on three generated tasks: hidden check, blind judge, defects, cost-eq and wall time per run; `sweep` is resumable under a cost ceiling and a bank preflight before every cell (`HIMMEL_BILLED_OK=1`) | `summary.json` and `judge.json` per run, a table and a recommended arm per profile from `score` (no ledger row) |
@@ -191,7 +191,7 @@ retrieval output is pasted into one turn rather than reached by tool calls, so i
 does not price a session that searches in several steps; fused uses qmd-hybrid, which
 returns nothing when the qmd server is down.
 
-### Realistic arms (HIMMEL-9314)
+### Realistic arms
 
 The pasted-context arms above are one-turn prompts with no tools, so a fused arm pays
 cache writes on its whole output for every question. Four opt-in arms ask the same of a
@@ -546,7 +546,7 @@ Baseline (2026-10-29, listing of 155 entries, about 4,700 tokens;
 | sonnet | 0.85 | 0.96 | 0.75 | 0.15 | 0.00 | $0.20 |
 | opus | 0.91 | 0.96 | 0.88 | 0.09 | 0.00 | $0.39 |
 
-Phase 2 (HIMMEL-8088) hill-climbed the descriptions, then trimmed the listing to
+Phase 2 hill-climbed the descriptions, then trimmed the listing to
 3,257 tokens. Sealed accuracy after the trim is haiku 0.86, sonnet 0.89 and opus
 0.93, means over 3 to 5 reps. `routing/results/phase2-summary.md` has every arm.
 

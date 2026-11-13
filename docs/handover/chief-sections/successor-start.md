@@ -41,10 +41,15 @@ the relays below follow in the very next turn.
    the successor reads in its first turn, in the same batch as the doc.
    With a rulings ledger in the bucket (`specs/decisions/rulings-in-force.jsonl`,
    kept with `chief-kit/rulings-in-force.sh record`), `next` puts the rulings in force
-   first, one line each with its verbatim file, and leaves out the superseded and done
-   ones (their files stay); a ruling the ledger does not hold keeps its reading line and
-   its read-in-the-first-turn duty. Before you act on a ruling, read its verbatim file:
-   the index line is not the ruling. The HANDOFF points at it (and gets the `focus-chains.json` dependency-chain order). Keep the block current on
+   first as one index: a `<MM-DD> <shift>:` head per verbatim shift (the head names the
+   verbatim file), then `<id> <reading>` rows, and an `Other verbatim paths:` part for
+   files of another shape. Every reading is the start of its ledger line, cut at one cap
+   shared by all rows; `rulings-in-force.sh find --bucket <bucket> <id or word>` prints
+   the whole line. Superseded and done rulings are left out, and the index head counts
+   them (their files stay). A ruling the ledger does not hold keeps its reading line and
+   its read-in-the-first-turn duty. `rulings-in-force.sh check --bucket <bucket>` on the
+   block proves every ruling in force is named once with its date, path and a reading.
+   Before you act on a ruling, read its verbatim file: the index line is not the ruling. The HANDOFF points at it (and gets the `focus-chains.json` dependency-chain order). Keep the block current on
    every ruling and wrap: `next` refuses (exit 7) an absent, empty or placeholder
    block, and (exit 6) while a Results bullet quotes an `OPERATOR ... (verbatim)`
    ruling that `decisions:` and its decisions files do not hold.

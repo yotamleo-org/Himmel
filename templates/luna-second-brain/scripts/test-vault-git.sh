@@ -54,7 +54,7 @@ export GIT_COMMITTER_EMAIL="${GIT_COMMITTER_EMAIL:-luna-test@example.com}"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-# Isolate the fixture from the HOST's global git config (LUNA-131). A host that
+# Isolate the fixture from the HOST's global git config. A host that
 # sets core.hooksPath globally (a common multi-repo setup) makes `pre-commit
 # install` abort with "Cowardly refusing to install hooks with core.hooksPath
 # set", so setup.sh's hook-install step fails and Precondition B SKIPs every

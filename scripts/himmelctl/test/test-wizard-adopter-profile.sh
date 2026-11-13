@@ -2437,11 +2437,6 @@ grepq "$atBadOut" '"reason"' \
 echo "ok: caseAT the install trusts the workspace via ensure-workspace-trust.sh — success/failure both reported, --dry-run writes nothing"
 
 # ── caseAU: an empty permissions.allow is stated, not silent ──
-# docs/setup/settings-template.json ships no `permissions` block, so an
-# adopter install writes none at either scope. Bash pre-approvals come from
-# the auto-approve-safe-bash PreToolUse hook instead. The summary must say so
-# (a skipped row, identical under --dry-run), and the workspace-trust row must
-# not claim the install wrote permissions.allow entries it never wrote.
 # shellcheck disable=SC2016
 "$node_bin" -e '
 const a = require(process.argv[1]);
@@ -2454,6 +2449,10 @@ for (const dryRun of [false, true]) {
   if (!r) fail(`dryRun=${dryRun}: no skipped row states that permissions.allow is left empty`);
   if (!/intentional/.test(r)) fail(`the row must say the emptiness is intended, got: ${r}`);
   if (!/auto-approve-safe-bash/.test(r)) fail(`the row must name where approvals come from, got: ${r}`);
+  if (/ships none|ships no/.test(r)) fail(`the template now carries a permissions.allow block, so the row must not say it ships none, got: ${r}`);
+  if (!/install writes none at either scope/.test(r)) fail(`the row must say what the install writes, got: ${r}`);
+  if (!/reference content/.test(r) || !/user-scope settings/.test(r) || !/by hand/.test(r))
+    fail(`the row must say the template blocks are reference content merged by hand into user-scope settings, got: ${r}`);
 }
 if (row(a.buildSummary(Object.assign({}, ans, { profile:"luna" }), [], { derived:"x", dryRun:false })))
   fail("profile=luna wires no settings.json, so it must not claim anything about permissions.allow");

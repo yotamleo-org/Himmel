@@ -40,7 +40,7 @@ guardrails are welcome.
 - New pointers to upstream Claude Code plugins that fit the skeleton's
   intent. Route adopters to each plugin's own upstream marketplace —
   luna-brain does not mirror plugins, because a bare-SHA pin is not
-  installable and most upstreams publish no tags (HIMMEL-435/449).
+  installable and most upstreams publish no tags.
 
 ## What changes are out-of-scope
 

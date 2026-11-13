@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/eval/retrieval-eval/retrieval-eval.py - retrieval eval + usage census (HIMMEL-6143).
+"""scripts/eval/retrieval-eval/retrieval-eval.py - retrieval eval + usage census.
 
 Asks the same questions of nine retrieval arms and scores each against a gold
 file set, then counts how sessions really use qmd and graphify.

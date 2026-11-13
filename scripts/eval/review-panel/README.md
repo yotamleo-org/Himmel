@@ -283,7 +283,7 @@ checkout); `lint --min-real N` refuses a set with fewer than N real cases.
   JSON line each with the escaped `head`, its `base` and its `fix`. It builds no
   case: curating candidates into fixtures is a human step.
 
-#### The shipped real corpus (HIMMEL-8427)
+#### The shipped real corpus
 
 30 escapes and their 30 clean twins, each pair with an intent file:
 `real-NNN.patch`, `real-NNN-clean.patch`, `real-NNN.intent.md` and
@@ -293,40 +293,41 @@ the key; every class has an open and a sealed pair, and each half holds 15 pairs
 the full set passes `--min-real 60`. By class: logic 8, fail-open 5,
 test-cannot-fail 5, cross-file 4, spec-miss 4, quoting 2, toctou 2. Slice 1
 (PR 4424) shipped `real-001` to `real-010`; the remainder PR shipped
-`real-011` to `real-030`. The 30 count has no shortfall.
+`real-011` to `real-030`. The 30 count has no shortfall. `PR` is the pull request
+whose judge NO-GO head the escape is frozen from.
 
-| pair | class | split | PR | ticket | seed site |
-|---|---|---|---|---|---|
-| `real-001` | logic | open | 2454 | HIMMEL-5385 | `scripts/hooks/block-destructive-commands.sh:1037` |
-| `real-002` | logic | sealed | 3115 | HIMMEL-6402 | `scripts/handover/console-kit/board.mjs:340` |
-| `real-003` | fail-open | open | 2231 | HIMMEL-5034 | `scripts/hooks/auto-approve-safe-bash.sh:1774` |
-| `real-004` | fail-open | sealed | 2427 | HIMMEL-5350 | `scripts/codex/dispatch-codex-exec.sh:568` |
-| `real-005` | test-cannot-fail | open | 4267 | HIMMEL-8008 | `scripts/hooks/test-block-write-into-main-checkout-evaldata.sh:186` |
-| `real-006` | test-cannot-fail | sealed | 3738 | HIMMEL-7345 | `scripts/cr/test-pr-check-rounds.sh:346` |
-| `real-007` | cross-file | open | 4386 | HIMMEL-8304 | `scripts/handover/chief/chief.sh:376` (judge LT-j4386-1: the bus reader and the chief writers change in one diff) |
-| `real-008` | cross-file | sealed | 3618 | HIMMEL-7061 | `scripts/handover/console-kit/action-zero.sh:127` (the re-render path is documented in `docs/handover/console-sections/live-state.md`) |
-| `real-009` | spec-miss | open | 4364 | HIMMEL-8365 | `scripts/telegram/afk-sudo-route.ts:161` |
-| `real-010` | spec-miss | sealed | 4186 | HIMMEL-8028 | `scripts/handover/chief-kit/next-dispatchable.sh:900` |
-| `real-011` | logic | open | 3617 | HIMMEL-7064 | `scripts/handover/console-kit/next-dispatchable.sh:501` (a Story is admitted to RESUME while the IN CI merged-PR lookup still excludes it) |
-| `real-012` | logic | sealed | 4297 | HIMMEL-8238 | `scripts/handover/chief-kit/ready-check.sh:307` |
-| `real-013` | logic | open | 4357 | HIMMEL-8348 | `scripts/jira/src/release/engine.ts:507` |
-| `real-014` | logic | sealed | 4188 | HIMMEL-6829 | `scripts/handover/chief-kit/status-drift.sh:194` |
-| `real-015` | logic | open | 3978 | HIMMEL-6415 | `scripts/cr/install-cr-gate.sh:385` |
-| `real-016` | logic | sealed | 3713 | HIMMEL-7045 | `scripts/lib/gh-ci-cache.sh:351` |
-| `real-017` | fail-open | open | 3975 | HIMMEL-6347 | `scripts/hooks/block-read-secrets.sh:1021` |
-| `real-018` | fail-open | sealed | 4306 | HIMMEL-8200 | `scripts/hooks/block-write-into-main-checkout.sh:2813` |
-| `real-019` | fail-open | open | 3047 | HIMMEL-6256 | `scripts/ci/shellcheck-pr-range.sh:53` |
-| `real-020` | test-cannot-fail | sealed | 3035 | HIMMEL-6113 | `scripts/config-ui/tests/agui-fleet.test.ts:196` |
-| `real-021` | test-cannot-fail | open | 4098 | HIMMEL-7912 | `scripts/hooks/test-block-edit-live-settings.sh:1368` |
-| `real-022` | test-cannot-fail | sealed | 3646 | HIMMEL-7145 | `scripts/handover/console-kit/ready-check.sh:449` |
-| `real-023` | toctou | open | 2827 | HIMMEL-5882 | `scripts/luna/qmd-embed-model.sh:418` |
-| `real-024` | toctou | sealed | 3152 | HIMMEL-6422 | `scripts/lib/bank-preflight.sh:559` |
-| `real-025` | quoting | open | 3620 | HIMMEL-7009 | `scripts/hooks/block-chokepoint-env-prefix.sh:306` |
-| `real-026` | quoting | sealed | 2528 | HIMMEL-3655 | `scripts/hooks/auto-approve-safe-bash.sh:1230` |
-| `real-027` | cross-file | open | 3420 | HIMMEL-6666 | `scripts/ci/queue-latency.sh:129` (the only reader of the probe line is `tick.sh`, outside the diff) |
-| `real-028` | cross-file | sealed | 2768 | HIMMEL-1332 | `scripts/handover/arm-resume.sh:2758` (`hop.sh` and the auto-arm snapshots still decline the default) |
-| `real-029` | spec-miss | open | 4461 | HIMMEL-8197 | `scripts/handover/chief-kit/chief-wait.sh:850` |
-| `real-030` | spec-miss | sealed | 4314 | HIMMEL-8206 | `scripts/telegram/afk-sudo-route.ts:167` |
+| pair | class | split | PR | seed site |
+|---|---|---|---|---|
+| `real-001` | logic | open | 2454 | `scripts/hooks/block-destructive-commands.sh:1037` |
+| `real-002` | logic | sealed | 3115 | `scripts/handover/console-kit/board.mjs:340` |
+| `real-003` | fail-open | open | 2231 | `scripts/hooks/auto-approve-safe-bash.sh:1774` |
+| `real-004` | fail-open | sealed | 2427 | `scripts/codex/dispatch-codex-exec.sh:568` |
+| `real-005` | test-cannot-fail | open | 4267 | `scripts/hooks/test-block-write-into-main-checkout-evaldata.sh:186` |
+| `real-006` | test-cannot-fail | sealed | 3738 | `scripts/cr/test-pr-check-rounds.sh:346` |
+| `real-007` | cross-file | open | 4386 | `scripts/handover/chief/chief.sh:376` (judge LT-j4386-1: the bus reader and the chief writers change in one diff) |
+| `real-008` | cross-file | sealed | 3618 | `scripts/handover/console-kit/action-zero.sh:127` (the re-render path is documented in `docs/handover/console-sections/live-state.md`) |
+| `real-009` | spec-miss | open | 4364 | `scripts/telegram/afk-sudo-route.ts:161` |
+| `real-010` | spec-miss | sealed | 4186 | `scripts/handover/chief-kit/next-dispatchable.sh:900` |
+| `real-011` | logic | open | 3617 | `scripts/handover/console-kit/next-dispatchable.sh:501` (a Story is admitted to RESUME while the IN CI merged-PR lookup still excludes it) |
+| `real-012` | logic | sealed | 4297 | `scripts/handover/chief-kit/ready-check.sh:307` |
+| `real-013` | logic | open | 4357 | `scripts/jira/src/release/engine.ts:507` |
+| `real-014` | logic | sealed | 4188 | `scripts/handover/chief-kit/status-drift.sh:194` |
+| `real-015` | logic | open | 3978 | `scripts/cr/install-cr-gate.sh:385` |
+| `real-016` | logic | sealed | 3713 | `scripts/lib/gh-ci-cache.sh:351` |
+| `real-017` | fail-open | open | 3975 | `scripts/hooks/block-read-secrets.sh:1021` |
+| `real-018` | fail-open | sealed | 4306 | `scripts/hooks/block-write-into-main-checkout.sh:2813` |
+| `real-019` | fail-open | open | 3047 | `scripts/ci/shellcheck-pr-range.sh:53` |
+| `real-020` | test-cannot-fail | sealed | 3035 | `scripts/config-ui/tests/agui-fleet.test.ts:196` |
+| `real-021` | test-cannot-fail | open | 4098 | `scripts/hooks/test-block-edit-live-settings.sh:1368` |
+| `real-022` | test-cannot-fail | sealed | 3646 | `scripts/handover/console-kit/ready-check.sh:449` |
+| `real-023` | toctou | open | 2827 | `scripts/luna/qmd-embed-model.sh:418` |
+| `real-024` | toctou | sealed | 3152 | `scripts/lib/bank-preflight.sh:559` |
+| `real-025` | quoting | open | 3620 | `scripts/hooks/block-chokepoint-env-prefix.sh:306` |
+| `real-026` | quoting | sealed | 2528 | `scripts/hooks/auto-approve-safe-bash.sh:1230` |
+| `real-027` | cross-file | open | 3420 | `scripts/ci/queue-latency.sh:129` (the only reader of the probe line is `tick.sh`, outside the diff) |
+| `real-028` | cross-file | sealed | 2768 | `scripts/handover/arm-resume.sh:2758` (`hop.sh` and the auto-arm snapshots still decline the default) |
+| `real-029` | spec-miss | open | 4461 | `scripts/handover/chief-kit/chief-wait.sh:850` |
+| `real-030` | spec-miss | sealed | 4314 | `scripts/telegram/afk-sudo-route.ts:167` |
 
 How a pair is built. The escaped case is the diff from the PR's merge-base with
 main to the head the judge ruled NO-GO on. Its clean twin is that same diff plus
@@ -378,18 +379,18 @@ The two baseline sweeps over the grown corpus are the chief's; their
 remainder PR. Both are `status=partial`: delta-06 is unscored in each because the
 citation guard drops its finding, and the gate ignores partial rows. The baseline
 rows are `8429-head-b` and `8429-head-e` at `status=ok`: the partial bundles of those
-runs, re-scored after HIMMEL-8596 made the scorer count that finding. A sweep can
+runs, re-scored after the scorer was changed to count that finding. A sweep can
 still go partial on a nonzero panel exit.
 
-**Spend note, 2026-11-04 (HIMMEL-9214).** The four PR 4690 sweeps
+**Spend note, 2026-11-04.** The four PR 4690 sweeps
 (`~/.himmel/eval/review-panel/2026-11-04-pr4690-{base,head}-r{1,2}`) were meant as
 codex only (decision 557) but ran **claude plus codex**: `--critics codex` then only
 filtered scoring, and the panel ran the whole paid tier. They made about 375
 claude-opus-5-5 API calls against decision 525. Their rows are claude plus codex,
 not codex-only, and the cost reports must count that spend; operator decision 571
-has the rows re-run codex-only after the HIMMEL-9214 fix.
+has the rows re-run codex-only after the fix that keeps a codex-only sweep off the claude critic.
 
-### Delta cases (`delta-*`, HIMMEL-8429)
+### Delta cases (`delta-*`)
 
 Review rounds 2 and 3 will review only what changed since the last round, so
 the eval grades that: a delta case is a round-1 diff plus the fix delta that
@@ -421,7 +422,7 @@ compares a call with itself) and `quoting` (an unquoted exclude argument). The
 pairs add to the 22 + 22 above; adding them changed `config.fixture_set`, so
 they start a new eval-compare series and need the base re-baseline sweeps.
 
-## The merge gate (HIMMEL-8426)
+## The merge gate
 
 `cbs.txt` lists the critic behaviour set: every path whose change can move what
 the panel reports (a `dir/` prefix or a glob at the same `/` depth). A PR that

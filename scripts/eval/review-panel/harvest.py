@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/eval/review-panel/harvest.py - candidate review escapes for the reviewer eval (HIMMEL-8426 RL2).
+"""scripts/eval/review-panel/harvest.py - candidate review escapes for the reviewer eval.
 
 Lists merged PRs whose bug the review panel let through, from four sources, one JSON line each:
 

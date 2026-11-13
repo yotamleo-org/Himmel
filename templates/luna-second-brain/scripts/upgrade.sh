@@ -91,7 +91,7 @@ while [ $# -gt 0 ]; do
         --yes|-y)           ASSUME_YES=1; shift ;;
         -h|--help)
             cat <<'USAGE'
-upgrade.sh — content-preserving vault/template upgrade (HIMMEL-389)
+upgrade.sh — content-preserving vault/template upgrade
 
   bash scripts/upgrade.sh [--template-dir DIR] [--vault-dir DIR] [--check] [--dry-run] [--yes]
 

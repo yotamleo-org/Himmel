@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""scripts/eval/lib/eval_runs.py - the eval-runs ledger writer (HIMMEL-4647).
+"""scripts/eval/lib/eval_runs.py - the eval-runs ledger writer.
 
 One append-only JSONL ledger for every himmel eval, so a run is stored,
 trended and compared across commits (scripts/eval/eval-compare reads it).
@@ -24,13 +24,13 @@ ROW SCHEMA (v 1) -- one JSON object per eval RUN (not per case):
   model       model under test, or null
   lane        lane under test, or null
   n           cases scored (queries, tasks, rows, urls)
-  reps        repeats per case (1 until HIMMEL-4648 adds --reps)
+  reps        repeats per case (1 unless the eval repeats each case)
   metrics     {name: number|null}, run-level, flat; null = not measured this run
   ci          {name: {"lo": x, "hi": y}} for metrics with an interval, else {}
   ci_level    e.g. 0.95, or null when ci is empty
   ci_method   e.g. "bootstrap", "wilson", or null
   cases       {case_id: {name: number|bool|null}} per-case scores for a paired
-              compare (HIMMEL-4650), or null when the eval does not record them
+              compare (qmd-quality's per-query compare), or null when the eval does not record them
   artifact    path to the run's own output (dir or file), or null
   meta        free descriptive fields NOT hashed into confighash (index path,
               base/head specs, backfill provenance); make_row adds
@@ -38,11 +38,6 @@ ROW SCHEMA (v 1) -- one JSON object per eval RUN (not per case):
               ($CLAUDE_CODE_EFFORT_LEVEL) of the session writing the row unless
               the caller sets them: an eval that calls a model records the
               model's own effort in config
-
-Forward use without migration: HIMMEL-4648 fills reps, ci, ci_level, ci_method
-and adds calibration numbers as metrics; HIMMEL-4650 reads cases (or the
-artifact) for a per-query paired test; HIMMEL-4652 exports metrics and ci as
-Prometheus series labelled by eval, model, lane and confighash.
 
 Usage:
   eval_runs.py append --eval E --source S --config-json J --metrics-json M
@@ -415,7 +410,7 @@ def lane_quality_stats(tasks, k=None):
     """Per task id: {"n", "k", "judge_missing", "pass_at_k", "pass_pow_k",
     "cost_per_accepted", "accept_frac", "accept_ok", "scope_ok", "judge_<c>"...},
     each score a {"mean", "ci"}, the first six plain numbers. Repeats
-    (HIMMEL-4648) are rows sharing a task; a row with no judge score counts in
+    are rows sharing a task; a row with no judge score counts in
     judge_missing and is left out of the judge means only. k (default: the
     fewest repeats of any task) is the same for every task, so pass@k means one
     thing across the table."""
@@ -546,7 +541,7 @@ def _json_arg(ap, name, text, kind=dict):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(prog="eval_runs.py", description="eval-runs ledger writer (HIMMEL-4647)")
+    ap = argparse.ArgumentParser(prog="eval_runs.py", description="eval-runs ledger writer")
     sub = ap.add_subparsers(dest="cmd", required=True)
     a = sub.add_parser("append")
     a.add_argument("--eval", required=True)
