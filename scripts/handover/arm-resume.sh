@@ -2082,6 +2082,30 @@ case "$PLATFORM" in
         ;;
 esac
 
+# rc 0 when this arm comes from a bridge session: HIMMEL_BRIDGE_SESSION=1 in its own env or in the
+# start-up env of a same-uid ancestor, so a wrapper that strips the variable (env -u, nohup, timeout)
+# cannot drop the marker. The walk stops at pid 1 or another uid, the way S1's fence climbs
+# (fence-ancestry.ts). A same-uid ancestor whose env cannot be read counts as marked (fails closed);
+# a host with no /proc has the own-env check alone, the fence's named residual.
+_arm_bridge_marked() {
+    [ "${HIMMEL_BRIDGE_SESSION:-}" = "1" ] && return 0
+    [ -d /proc/self ] || return 1
+    local pid=$$ hop=0 uid own_uid ppid
+    own_uid=$(awk '/^Uid:/{print $2; exit}' "/proc/$$/status" 2>/dev/null) || return 0
+    [ -n "$own_uid" ] || return 0
+    while [ "$pid" -gt 1 ] && [ "$hop" -lt 64 ]; do
+        uid=$(awk '/^Uid:/{print $2; exit}' "/proc/$pid/status" 2>/dev/null)
+        [ -n "$uid" ] || return 0
+        [ "$uid" = "$own_uid" ] || return 1
+        [ -r "/proc/$pid/environ" ] || return 0
+        tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | grep -qx 'HIMMEL_BRIDGE_SESSION=1' && return 0
+        ppid=$(awk '/^PPid:/{print $2; exit}' "/proc/$pid/status" 2>/dev/null)
+        [ -n "$ppid" ] || return 0
+        pid=$ppid; hop=$((hop + 1))
+    done
+    return 1
+}
+
 # True (rc 0) if PID names a live process.
 _pid_alive() {
     local pid="$1"
@@ -4637,7 +4661,7 @@ fi"
         q_safety_child="${q_safety_child}export HIMMEL_CONSOLE_DOC=$q_cp_doc HIMMEL_CONSOLE_WORKDIR=$q_cp_wd HIMMEL_CONSOLE=1 && "
     fi
     # cron replays no env: only this written line carries the bridge marker.
-    [ "${HIMMEL_BRIDGE_SESSION:-}" = "1" ] && q_safety_child="${q_safety_child}export HIMMEL_BRIDGE_SESSION=1 && "
+    _arm_bridge_marked && q_safety_child="${q_safety_child}export HIMMEL_BRIDGE_SESSION=1 && "
     # the headless shape (function header). The redirects hang
     # off the flow-ledger `{ ...; }` group so the ledger writes, the launch and
     # its exit all share the one stdin/log; stdin is /dev/null explicitly
@@ -5071,7 +5095,7 @@ fi"
 "
                 # A bridge session's arm marks the session it schedules, so the
                 # operator fence sees it; never in the scrub list.
-                [ "${HIMMEL_BRIDGE_SESSION:-}" = "1" ] && at_safety_child="${at_safety_child}export HIMMEL_BRIDGE_SESSION=1
+                _arm_bridge_marked && at_safety_child="${at_safety_child}export HIMMEL_BRIDGE_SESSION=1
 "
                 if [ -n "$CHIEF_PRECOMPACT_DOC" ]; then
                     at_safety_child="${at_safety_child}export HIMMEL_CONSOLE_DOC=$(printf '%q' "$CHIEF_PRECOMPACT_DOC") HIMMEL_CONSOLE_WORKDIR=$(printf '%q' "$CHIEF_PRECOMPACT_WORKDIR") HIMMEL_CONSOLE=1

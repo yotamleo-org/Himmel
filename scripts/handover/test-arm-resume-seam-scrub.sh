@@ -178,6 +178,23 @@ for kind in at at-proxied runner command; do
     case "$B0" in *HIMMEL_BRIDGE_SESSION*) echo "FAIL T18 $kind body names the marker with none in the caller's env"; FAILED=$((FAILED + 1)) ;;
         *) echo "PASS T18 $kind body names no marker without one" ;; esac
 done
+# A wrapper that strips the marker from arm-resume's own env still yields a marked body: the
+# marked parent (the bridge's claude, here a bash that stays alive) is an ancestor.
+# wrapped_body <wrapper words...>: the at body under a marked parent, arm-resume run through the wrapper
+wrapped_body() {
+    HIMMEL_BRIDGE_SESSION=1 PATH="$STUB_BIN:$SCHED_STUB:$PATH" OSTYPE=linux-gnu ARM_TERMINAL_APP=none \
+        ARM_APP_DIRS="$TMP/apps" ARM_RUNNER_DIR="$TMP/runners" \
+        ARM_UNDER_TEST="$ARM" ARM_TIME="$(future_time)" ARM_DOC="$HANDOVER" \
+        bash -c '"$@" env -u HIMMEL_BRIDGE_SESSION bash "$ARM_UNDER_TEST" --time "$ARM_TIME" --handover "$ARM_DOC" --dry-run 2>/dev/null; :' wrap "$@" \
+      | awk '/^DRY arm-resume: would at -t/{on=1; next} /^    CMD$/{on=0} on{sub(/^    /,""); print}'
+}
+for w in "" "nohup" "timeout 60" "nice -n 5"; do
+    # shellcheck disable=SC2086  # the wrapper is word-split on purpose
+    BW=$(wrapped_body $w)
+    case "$BW" in *"claude"*) ;; *) echo "FAIL T18 wrapper '${w:-env -u}': no body printed"; FAILED=$((FAILED + 1)); continue ;; esac
+    case "$BW" in *"$MARK_LINE"*) echo "PASS T18 wrapper '${w:-env -u}' still yields a marked body" ;;
+        *) echo "FAIL T18 wrapper '${w:-env -u}' dropped the marker"; FAILED=$((FAILED + 1)) ;; esac
+done
 # The stub claude run from a marked body sees the marker, under an env that lacks it.
 B_AT=$(dry_body 1 at)
 env -u HIMMEL_BRIDGE_SESSION PATH="$STUB_BIN:$PATH" CLAUDE_REC="$TMP/rec-at" WATCH=HIMMEL_BRIDGE_SESSION \

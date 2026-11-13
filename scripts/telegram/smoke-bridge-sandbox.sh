@@ -88,6 +88,8 @@ printf '{}\n' > "$VAULT/.claude/settings.json"
 git -C "$VAULT" add -A && git -C "$VAULT" -c user.email=p1@example.invalid -c user.name=p1 commit -qm init
 HROOT="$VAULT/handovers"
 mkdir -p "$HROOT/u/himmel/specs/decisions"
+# Row 6's verb resolves its decision before the fence speaks, so the decision it names exists.
+printf 'p1\n' > "$HROOT/u/himmel/specs/decisions/verbatim-decision-1000001-p1.txt"
 printf 'retask\n' > "$HROOT/u/himmel/RETASK-p1.md"
 BR="$work/bridge"
 mkdir -p "$BR/sessions/other" "$BR/outgoing" "$BR/consoles"
@@ -137,9 +139,11 @@ EOF
 chmod +x "$STUB"/*
 host_ns="$(cat "$(getent passwd "$(id -u)" | cut -d: -f6)/.claude/handover/bridge/host-ns" 2>/dev/null)"
 
-# The scratch handover an arm resumes: its cwd is a scratch git checkout.
-mkdir -p "$work/resume-cwd" && git init -q "$work/resume-cwd"
-printf -- '---\nsession_kind: test\nresume_cwd: %s\n---\n# p1 arm\n' "$work/resume-cwd" > "$HROOT/u/himmel/p1-arm.md"
+# The scratch handover an arm resumes: its cwd is the scratch himmel clone, which loads the guard
+# hooks, so arm-resume's launch-guard check passes. The arms read a copy of the station's bank cache.
+printf -- '---\nsession_kind: test\nresume_cwd: %s\n---\n# p1 arm\n' "$CK" > "$HROOT/u/himmel/p1-arm.md"
+cp "${CADENCE_USAGE_CACHE:-${CLAUDE_USAGE_CACHE:-/tmp/claude/statusline-usage-cache.json}}" "$work/bank.json" 2>/dev/null \
+    || echo "WARN smoke-bridge-sandbox: no bank cache to copy: rows 10a-10d will see the arm refuse on the bank"
 arm_time="$(date -d '+30 min' +%H:%M)"  # gnu-ok: Linux-only smoke (unshare, /proc, bubblewrap sandbox)
 
 # ---- the loopback fake Jira ----------------------------------------------------------------
@@ -289,9 +293,13 @@ snapshot_targets() { # <spawn name>
         printf '%s|%s\n' "$k" "$tgt" >> "$work/bak-$1.list"
     done
 }
-restore_targets() { # <spawn name>
-    local id tgt k
+record_after() { # <spawn name>: its verdicts read this after-state, not the file at the end of the run
+    local id tgt
     while IFS='|' read -r id _ tgt _; do printf '%s|%s\n' "$id" "$(sha_of "$tgt")" >> "$work/$1.after"; done < "$work/$1.targets"
+}
+restore_targets() { # <spawn name>
+    local tgt k
+    record_after "$1"
     while IFS='|' read -r k tgt; do
         if [ -e "$work/bak-$1/$k" ]; then cp -p "$work/bak-$1/$k" "$tgt"; else rm -f "$tgt"; fi
     done < "$work/bak-$1.list"
@@ -441,6 +449,7 @@ cp "$VAULT/.claude/settings.json" "$VAULT/.claude/settings.local.json"
 REL_P="$(new_release planted)" || exit 1
 deny_steps __chat__planted "$REL_P"
 run_spawn planted env __chat__planted "$OP" "$REL_P"
+record_after planted
 printf '{}\n' > "$VAULT/.claude/settings.json"; rm -f "$VAULT/.claude/settings.local.json"
 
 # Rows 4b and 4c on their own release.
@@ -458,8 +467,10 @@ REL_5="$(new_release five)" || exit 1
 printf '## Impact\nP1 smoke.\n\n## What\nA scratch ticket.\n\n## Why\nThe envelope proof.\n\n## Plan\n1. File it.\n\n## DoD\n- One INTAKE row.\n\n## Proof\nThe row.\n\n## Agent detail\nscripts/telegram/smoke-bridge-sandbox.sh row 5.\n' > "$work/desc.md"
 git_before="$(git -C "$VAULT" rev-parse HEAD) $(sha256sum < "$VAULT/.git/index" | cut -c1-16) $(git -C "$VAULT" for-each-ref | sha256sum | cut -c1-16)"
 STEPS=()
-# 5c is its own call (bare), so the command starts with the excluded create prefix and runs outside the sandbox.
-step 5c bare "$BR/sessions/__chat__five/p1-5c.out" allow "node $CK/scripts/jira/dist/index.js create --type Task --title p1-smoke-create --desc-file $work/desc.md --backlog --proposed-version backlog --why p1-smoke --labels standalone --sector 'Planning & tracking' > $BR/sessions/__chat__five/p1-5c.out 2>&1"
+# 5c is its own call (bare) with no file redirect: a call with one stays sandboxed whatever the
+# excludedCommands entries say, so only this shape reaches the excluded create. Its proof of attempt
+# is the transcript naming the desc file.
+step 5c bare "$work/desc.md" allow "node $CK/scripts/jira/dist/index.js create --type Task --title p1-smoke-create --desc-file $work/desc.md --backlog --proposed-version backlog --why p1-smoke --labels standalone --sector 'Planning & tracking'"
 step 5g bash "$work/jira.log" allow "node $CK/scripts/jira/dist/index.js get $FK > $BR/sessions/__chat__five/p1-5g.out 2>&1"
 # Diagnostics for 5g: does node's fetch, and does curl, reach the Jira host through the sandbox proxy?
 step 5n bash "$BR/sessions/__chat__five/p1-5n.out" info "node -e 'fetch(process.argv[1]).then((r) => console.log(\"node fetch HTTP\", r.status), (e) => console.log(\"node fetch failed\", e.cause?.code ?? e.message))' http://127.0.0.1:$JPORT/rest/api/3/myself > $BR/sessions/__chat__five/p1-5n.out 2>&1"
@@ -541,9 +552,11 @@ read -r a5c _ _ <<<"$(verdict five 5c __chat__five)"
 read -r a5g _ _ <<<"$(verdict five 5g __chat__five)"
 if [ "$a5c" != yes ]; then row_add 5 INCONCLUSIVE "create: no proof of attempt"
 elif [ "$n5" = 1 ] && [ "$chain5" = 1 ] && [ ! -e "$REL_5/R9/.lock" ]; then row_add 5 PASS "create: one INTAKE row, chain verifies, no .lock"
-else row_add 5 FAIL "create: INTAKE rows=$n5 chain=$chain5 lock=$([ -e "$REL_5/R9/.lock" ] && echo left || echo none) out=$(head -c 200 "$BR/sessions/__chat__five/p1-5c.out" 2>/dev/null)"; fi
-if [ "$a5g" != yes ]; then row_add 5 INCONCLUSIVE "jira get: no proof of attempt"
-elif grep -q "GET /rest/api/3/issue/$FK" "$work/jira.log" 2>/dev/null; then row_add 5 PASS "jira get reached the Jira host"; else row_add 5 FAIL "jira get: $(head -c 200 "$BR/sessions/__chat__five/p1-5g.out" 2>/dev/null)"; fi
+else row_add 5 FAIL "create: INTAKE rows=$n5 chain=$chain5 lock=$([ -e "$REL_5/R9/.lock" ] && echo left || echo none) (output in the transcript: $(transcript_of five))"; fi
+# 5g is INFO: the sandbox's network namespace cannot reach the host's loopback, where the fake Jira listens.
+if [ "$a5g" != yes ]; then echo "INFO 5g jira get: no proof of attempt"
+elif grep -q "GET /rest/api/3/issue/$FK" "$work/jira.log" 2>/dev/null; then echo "INFO 5g jira get reached the fake Jira"
+else echo "INFO 5g jira get did not reach the loopback fake Jira: $(head -c 200 "$BR/sessions/__chat__five/p1-5g.out" 2>/dev/null | tr '\n' ' ')"; fi
 for id in 5v 5vw 5o 5x; do judge_land 5 "$id" five __chat__five; done
 for id in 5n 5u; do echo "DIAG $id $(tr '\n' ' ' < "$BR/sessions/__chat__five/p1-$id.out" 2>/dev/null | head -c 200)"; done
 env | grep -q '^NODE_USE_ENV_PROXY=' && echo "DIAG the smoke's own env sets NODE_USE_ENV_PROXY"
