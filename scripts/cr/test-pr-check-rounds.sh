@@ -2026,7 +2026,7 @@ recover_calls="$(wc -l < "$PANEL_CALLS" | tr -d ' ')"
 assert_eq "$recover_calls" "$after_missing_calls" "recovery dispositions recorded results without rerunning the panel"
 ledger="$(grep '"branch":"capped2"' "$git_dir/cr-critic-scores.jsonl" 2>/dev/null)"
 assert_has "$ledger" '"deferred_to":"HIMMEL-9002"' "recovery records the environment-supplied ticket"
-assert_has "$ledger" '"fu_class":"polish"' "cap-deferred Suggestions are classed polish (HIMMEL-4034)"
+assert_has "$ledger" '"fu_class":"polish"' "cap-deferred Suggestions are classed polish"
 if [ -e "$git_dir/cr-pending/capped2" ]; then fail "recovery clears the marker"; else pass "recovery clears the marker"; fi
 
 calls="$(cat "$PANEL_CALLS" 2>/dev/null)"
