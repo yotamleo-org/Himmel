@@ -173,13 +173,13 @@ function blockedByOf(text: string): string[] {
 
 export function readMirror(root: string | null): { issues: Map<string, IssueSnap> | null; sync: string | null } {
   if (!root || !existsSync(root)) return { issues: null, sync: null };
-  // The issue files are readable whatever the cursor says: an absent, corrupt or complete:false
-  // cursor only means the next sync runs full, so sync is the cursor's time or null (staleness UNKNOWN).
   let sync: string | null = null;
   try {
     const got = (JSON.parse(readFileSync(join(root, '.cursor.json'), 'utf8')) as { lastSync: string }).lastSync;
     if (!Number.isNaN(Date.parse(got))) sync = got;
-  } catch { /* no usable cursor */ }
+  } catch {
+    sync = null;
+  }
   const issues = new Map<string, IssueSnap>();
   for (const name of readdirSync(root)) {
     if (!name.endsWith('.md')) continue;

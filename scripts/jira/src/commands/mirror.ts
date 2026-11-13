@@ -193,7 +193,6 @@ export async function runMirror(opts: MirrorOptions, req: Req): Promise<MirrorRe
 
   const stored = opts.full ? null : readCursor(root);
   // A cursor written for another project must not drive this run's incremental window.
-  // A cursor marked complete:false keeps the issue files readable but never drives an incremental window.
   const cursor = stored && stored.complete !== false && (stored.project === undefined || stored.project === project) ? stored : null;
   const mode = cursor ? 'incremental' : 'full';
   let jql = `project = ${project} ORDER BY key ASC`;
@@ -271,9 +270,6 @@ export async function runMirror(opts: MirrorOptions, req: Req): Promise<MirrorRe
   res.mirrorCount = localNow.size;
   // A live key with no local file (within the count tolerance) also forces a full run.
   if (!res.deleteSkipped && live && [...live].some((k) => !localNow.has(k))) res.deleteSkipped = 'live keys missing locally';
-  // An incomplete mirror writes its cursor with complete:false: the next run is a full backfill
-  // instead of an incremental that never revisits unchanged, missing issues, while readers
-  // still find a cursor and so still read the issue files.
   if (res.deleteSkipped || (res.jiraTotal !== null && res.mirrorCount < res.jiraTotal * COUNT_TOLERANCE)) {
     warn(`mirror not verified complete (${res.deleteSkipped ?? `holds ${res.mirrorCount}, Jira counts ${res.jiraTotal}`}); next sync runs full`);
     writeFileAtomic(
