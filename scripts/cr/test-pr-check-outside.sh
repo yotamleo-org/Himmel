@@ -348,6 +348,23 @@ eq "$after" "$before" "T2.3 status, HEAD, config and the hooks dir are byte-iden
 eq "$(git -C "$P" worktree list | wc -l | tr -d ' ')" "$wt_before" "T2.3 no new worktree"
 canary_absent "T2.3"
 
+RB="$(cat "$HERE/pr-check-ref/20-step2-lanes.md")"
+# shellcheck disable=SC2016 # the runbook's literal heading text, backticks included
+RBM='**No-checkout route (`--pr`), steps 2 to 2.8.**'
+RBP="${RB#*"$RBM"}"
+if [ "$RBP" = "$RB" ]; then fail "R4 the runbook has a no-checkout (--pr) paragraph for steps 2 to 2.8"; else
+    RBP="${RBP%%$'\n'2.5.*}"
+    pass "R4 the runbook has a no-checkout (--pr) paragraph for steps 2 to 2.8"
+    has "$RBP" 'refs/himmel/outside/<n>' "R4 the fetched ref is the review head"
+    has "$RBP" 'forge base' "R4 the base is the forge base"
+    has "$RBP" 'reads nothing from the checkout' "R4 no checkout read"
+    has "$RBP" 'lane=full' "R4 step 2 reads the lane as full"
+    has "$RBP" 'docs-audit' "R4 step 2.5 is named"
+    has "$RBP" '2.7' "R4 step 2.7 is named"
+    has "$RBP" 'panel-first-pass.sh --pr' "R4 step 2.8 runs inside panel-first-pass.sh --pr"
+    has "$RBP" '--branch <headRefName> --head <40-hex>' "R4 the known-findings call carries the PR's branch and head"
+fi
+
 if [ "$fails" -gt 0 ]; then
     printf 'FAIL test-pr-check-outside (%s failures)\n' "$fails" >&2
     exit 1
