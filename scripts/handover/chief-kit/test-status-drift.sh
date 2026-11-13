@@ -82,6 +82,7 @@ case "$1" in
         cat "$FX/comments.$2" 2>/dev/null
         exit 0 ;;
     history)
+        [ "$#" -eq 4 ] && [ "$3" = --field ] && [ "$4" = status ] || { echo "jira stub: unexpected history args: $*" >&2; exit 2; }
         [ -e "$FX/history.fail" ] && { echo "boom" >&2; exit 1; }
         cat "$FX/history.$2" 2>/dev/null
         exit 0 ;;
@@ -1419,6 +1420,7 @@ vd_held() { # a Done key in v1.1.4 whose INTAKE the rm refused two hours ago
     vruling HIMMEL-90031 R-v1.1.3-0002 7200 INTAKE none BACKLOG rm
     printf '%s  Op  status: In Progress → Done\n' "$(viso 86400)" > "$FX/history.HIMMEL-90031"
 }
+check "3e: the jira stub answers history only for --field status" "$(bash "$tmp/jira-stub.sh" history "$K" --field summary >/dev/null 2>&1; echo $?)" 2
 vd_held
 drift
 check "3e: a key whose latest ruling refused its INTAKE, with nothing newer, prints no VERSION-DRIFT row" "$(dcount VERSION-DRIFT)" 0
