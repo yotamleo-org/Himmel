@@ -161,11 +161,14 @@ a row is stale when its brief or pr key is Done in the Jira mirror or its PR is 
 gh call, no Jira call. hreg=? when it fails. In chief-wait's action key whole: the value moving wakes once, and
 chief-wait pages each new ask once with its paste-ready grant command (monitors.md). Seam: HOLDS_MIRROR.
 
-focus=<state> sdrift=<n>:<sig8> follow wt-ceiling= and are ABSENT unless a
+focus=<state> sdrift=<n>:<sig8> stale=<n>:<KEY>,... follow wt-ceiling= and are ABSENT unless a
 focus-state file sits beside the console doc and --status does not read skip: focus= is
 focus-refresh.sh --status (FAILED:<stage> or DIRTY:<age>), sdrift= the drift line of the
-last good refresh. focus=ok and sdrift=0:* are elided; --verbose prints both. Read from
-the state file, no gh or Jira call. Advisory: not in chief-wait's action key.
+last good refresh, stale= the STALE feed of that refresh: the started tickets the drift check
+reads as UNOWNED, at most eight keys then ,+<m> (stale=partial:<n>:<KEY>,... when the drift file
+was unknown or older than 3 h; stale=unknown when no drift file could be read). focus=ok,
+sdrift=0:* and stale=0:* are elided (partial and unknown never are); --verbose prints all three.
+Read from the state file, no gh or Jira call. Advisory: not in chief-wait's action key.
 
 rm-queue=<n>,<oldest age>m[,claimed=<n>][,run] follows leaks=. Empty open-and-claimed queues, no declaration,
 explicit none or unreadable docs elide it; off = unusable wiring or non-OK/read failure. An oldest open
@@ -2578,10 +2581,10 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     esac
 fi
 
-# focus=<state> and sdrift=<n>:<sig8> read the focus-state file beside the chief doc
-# (focus-refresh.sh writes it, --status reads it with no gh or Jira call). Both are absent
+# focus=<state>, sdrift=<n>:<sig8> and stale=<n>:<KEY>,... read the focus-state file beside the chief doc
+# (focus-refresh.sh writes it, --status reads it with no gh or Jira call). All are absent
 # with no state file or when --status reads focus=skip.
-focus_summary="" sdrift_summary=""
+focus_summary="" sdrift_summary="" stale_summary=""
 if [ -n "$console_doc" ] && [ -f "${console_doc%/*}/focus-state" ]; then
     focus_summary="$(bash "$HERE/focus-refresh.sh" --doc "$console_doc" --status 2>/dev/null)" || focus_summary=""  # swallow-ok: an unreadable state leaves both advisory fields off the line
     focus_summary="${focus_summary#focus=}"
@@ -2589,6 +2592,7 @@ if [ -n "$console_doc" ] && [ -f "${console_doc%/*}/focus-state" ]; then
         focus_summary=""
     elif [ -n "$focus_summary" ]; then
         sdrift_summary="$(sed -n 's/^sdrift=//p' "${console_doc%/*}/focus-state" 2>/dev/null | head -n 1)"  # swallow-ok: no drift line leaves sdrift= off the line
+        stale_summary="$(sed -n 's/^stale=//p' "${console_doc%/*}/focus-state" 2>/dev/null | head -n 1)"  # swallow-ok: no stale line leaves stale= off the line
     fi
 fi
 
@@ -4210,6 +4214,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'tracker: %s\n' "$tracker_summary"
     [ -z "$focus_summary" ] || printf 'focus: %s\n' "$focus_summary"
     [ -z "$sdrift_summary" ] || printf 'sdrift: %s\n' "$sdrift_summary"
+    [ -z "$stale_summary" ] || printf 'stale: %s\n' "$stale_summary"
     printf 'denials: %s\n' "$denials_summary"
     printf 'ci cadence: %s\n' "$cadence_summary"
     printf 'failure review: %s\n' "$review_summary"
@@ -4270,7 +4275,7 @@ else
             ext-prs=none|dispatch=none|review=none|acts=none|inbox=none|tick=UNKNOWN|burn=none|orphans=none|nonces=ok|nonces=skip|\
             plan-index=ok|plan-index=skip|or=skip|fails=none|fails=skip|\
             versionless-done=0|versionless-done=skip|vmismatch=skip|leaks=0|leaks=skip|rm-queue=0|rm-queue=skip|wt-orphans=0|pool-closed=skip|pool-closed=0/*|prio=skip|pool-stale=skip|pool-changed=skip|pool-changed=0|INTAKE=0|INTAKE=skip|chains=ok|chains=skip|residual-unversioned=skip|residual-unversioned=0|\
-            focus=ok|sdrift=0:*|hreg=0/0/0) return ;;
+            focus=ok|sdrift=0:*|stale=0:*|hreg=0/0/0) return ;;
         esac
         printf ' %s=%s' "$1" "$2"
     }
@@ -4348,6 +4353,7 @@ else
     compact_field wt-ceiling "$wtc_summary"
     compact_field focus "$focus_summary"
     compact_field sdrift "$sdrift_summary"
+    compact_field stale "$stale_summary"
     printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$unclosed_tail$holdout_tail$busedge_tail$wakerstate_tail$stall_tail$doctor_tail$crfirst_tail$station_tail$alertfail_tail$slotage_tail$tmp_tail$spare_tail"
     if [ -n "$holdout_summary" ]; then
         printf 'ACTION holdout=%s: an idle worker holds on an outside event; have it WRAP with what it owes written down, then bash %q watch %q add <pr> --head <sha> --comments <n> --reviews <n> and close-wrapped-worker.sh --fleet %q <doc> (chief-wait wakes you as WAKE pr-watch)\n' \
