@@ -76,6 +76,14 @@ brief no
 check "completes no with Jira In Review: To Do" "$TS_RULE/$TS_DERIVED" 'D6/To Do'
 printf 'HIMMEL-9001\tTask\tIn Progress\n' > "$TS_SNAPSHOT_DIR/jira.tsv"
 
+for jstatus in "To Do" "In Progress"; do
+    printf 'HIMMEL-9001\tTask\t%s\n' "$jstatus" > "$TS_SNAPSHOT_DIR/jira.tsv"
+    jq -nc '{prs:{"7":{head:"abc",ci:"green",red_latch:false,open:false}}}' > "$TICKET_STATUS_STATE_DIR/workers/HIMMEL-9001.json"
+    ts_derive HIMMEL-9001
+    check "never had a worker, closed PRs only, Jira $jstatus: D7 no-write, not D5" "$TS_RULE/$TS_DERIVED" 'D7/no-write'
+done
+printf 'HIMMEL-9001\tTask\tIn Progress\n' > "$TS_SNAPSHOT_DIR/jira.tsv"
+
 # ts_merge_rows drops a pre-merge row whose PR did not merge; ts_partial_merge and
 # ts_done_pending read through it. The gh seam answers: PR 11 OPEN, PR 12 MERGED at h12, PR 13 never asked.
 cat > "$tmp/mrgh" <<'EOF'
