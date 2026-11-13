@@ -1603,8 +1603,6 @@ test('with no roles.json an auto graphify call still picks over all accounts and
   assert.equal(e.status, 2, e.stderr);
 });
 
-// --- a rejected key: the tag, the graph-key-<L> alert and its clear ---
-// The cadence alert runs under a recording sender; clear and no-clear are read on a dedupe sentinel.
 function graphAlerts(f) {
   const dedupe = join(f.dir, 'dedupe'), sent = join(f.dir, 'graph-sent.log'), send = join(f.dir, 'graph-send');
   writeFileSync(send, `#!/bin/bash\nprintf '%s\\n' "$1" >> '${sent}'\n`, { mode: 0o700 });

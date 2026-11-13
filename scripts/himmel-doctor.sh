@@ -4011,10 +4011,6 @@ $rows
 EOF
 }
 
-# --- C92-graph-key-<L>: an API key the provider rejected, while a graph walk reaches its letter ---
-# The tag is the roster's "key rejected" (api-credit-state.mjs key-rejected sets it, key-ok clears it). The walk is the
-# station's own (api-roles.mjs walk graphify) on a publisher or an unreadable graph config, and the stored route on an
-# adopter. One id per tagged letter, so a second rejected key wakes the chief on its own id. No key file is opened.
 check_c92_graph_key() {
     local out tags unknown role route walk="" walk_rc=0 l gc="$SELF_DIR/himmelctl/lib/graph-choices.js"
     out="$(node "$SELF_DIR/lib/api-credit-state.mjs" accounts 2>/dev/null)" || out=""
@@ -4060,9 +4056,6 @@ check_c92_graph_key() {
     done
 }
 
-# --- C93-graph-role: the API role map (roles.json) is broken, or its graphify entry has no configured account ---
-# A map broken in a way that would widen the graph walk (invalid, or a graphify entry with no letter) makes the graph
-# pass refuse on auto; other damage is reported while the pass runs on what the map still names.
 check_c93_graph_role() {
     local out line state errors warn walk_rc=0 roles="${HIMMEL_API_CREDIT_CONFIG:+$(dirname "$HIMMEL_API_CREDIT_CONFIG")/roles.json}"
     roles="${roles:-~/.himmel/state/api-credit/roles.json}"

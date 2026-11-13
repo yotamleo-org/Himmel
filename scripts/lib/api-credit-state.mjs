@@ -347,8 +347,6 @@ export function creditState(command, options = {}, env = process.env) {
       save(statePath, state, lock, sentinels);
       return { verdict: 'PROCEED', account, exhausted_at: a.exhausted_at };
     }
-    // The provider rejected this account's key (a batch 401 or 403, the lane's invalid-api-key answer). The mark
-    // stands until an accepted call runs key-ok; key-ok with no mark writes nothing.
     if (command === 'key-rejected') {
       if (!a) {
         a = { organization_id: c.organization_id, cycle_id: c.cycle_id, discrepancy: false, jobs: {} };

@@ -116,7 +116,6 @@ send_alert() {
   return 0
 }
 
-# the graph-key-<account> cadence alert (fail or clear): no key-bearing variable reaches it, and its output is discarded
 graph_alert() {
   ( for v in $(compgen -e); do
       case "$v" in ANTHROPIC_*|LQ_API_*|CLAUDE_CODE_OAUTH_TOKEN) unset "$v" ;; esac
@@ -215,8 +214,6 @@ fail_over() {
     echo "claude-api: policy refusal: this call was not sent, and no alert or fallback follows. Name an account (A, B or C) instead of auto" >&2
     return 0
   fi
-  # a broken graph role map would widen the walk: no record (it is not a policy refusal, so C91 stays quiet; doctor
-  # C93 reports the map), no alert, no launch row and no fallback, whatever HIMMEL_API_FALLBACK says
   [ "$class" != refused-role-map ] || return 0
   if [ "${HIMMEL_API_FALLBACK:-on}" = off ]; then
     decision="off (HIMMEL_API_FALLBACK=off)"
@@ -359,11 +356,9 @@ case "$KIND" in ""|*[!A-Za-z0-9._-]*) refuse "HIMMEL_API_KIND has characters out
 # auto routing is for the himmel semantic graph pass only (decision 525 FINAL) unless the role map (roles.json beside
 # the account config) maps the kind: any other kind, or the same kind from another repo, must name its
 # account; refused before any spawn, never re-run on the subscription and never an alert. A named account never reads
-# the map. The map only widens kinds and narrows accounts; no map is decision 525 exactly, and so is a broken one for
-# every kind but graphify, whose walk (api-roles.mjs walk graphify) refuses a map that would widen it.
+# the map. The map only widens kinds and narrows accounts; no map is decision 525 exactly.
 ROLE_ACCTS=""
 if [ "$HIMMEL_API_ACCOUNT" = auto ] && [ "$KIND" = graphify ]; then
-  # the graph walk has one owner; its refusal (a broken map that would widen the walk) ends the call before any spawn
   _walk_rc=0
   ROLE_ACCTS="$(node "$REPO/scripts/lib/api-roles.mjs" walk graphify)" || _walk_rc=$?
   if [ "$_walk_rc" -eq 3 ]; then
@@ -608,8 +603,6 @@ if [ -n "$REJECTED" ]; then
     echo "claude-api: account $HIMMEL_API_ACCOUNT $WHAT, but the marker was not saved; the next auto call may pick it again" >&2
   fi
 fi
-# a rejected key (never an empty account) tags the account until an accepted call of any kind clears it; only a graph
-# call raises the graph-key alert, and the clear runs whatever the kind, so its dedupe sentinel never outlives the tag
 if [ "$REJECTED" = key_invalid ]; then
   state key-rejected >/dev/null 2>&1 || echo "claude-api: account $HIMMEL_API_ACCOUNT API key rejected, but the key-rejected mark was not saved" >&2
   [ "$KIND" != graphify ] || graph_alert fail "graph-key-$HIMMEL_API_ACCOUNT" "account $HIMMEL_API_ACCOUNT API key rejected" \

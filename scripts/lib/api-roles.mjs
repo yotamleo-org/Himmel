@@ -105,10 +105,6 @@ function noteFor(map, kind) {
   return '';
 }
 
-// The station's graph walk, decided here once for every graph path. The two kinds of damage that would widen the
-// walk to every configured account (an invalid map, a graphify entry with no letter) refuse; every other map walks
-// as before: the live graphify letters, else every configured letter, else ACCOUNTS when the roster cannot be read
-// (pick then refuses on the same roster).
 export function walkGraphify(env = process.env) {
   const map = roleMap(env);
   if (map.state === 'invalid') return { refuse: map.errors[0] };

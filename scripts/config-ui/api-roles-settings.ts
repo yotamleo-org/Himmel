@@ -56,14 +56,11 @@ export async function readRoles(env: Env, opts: RolesOpts = {}): Promise<RolesRe
   return { status: 200, body };
 }
 
-// The graph walk's letters (walk graphify), or none when it refuses or fails.
 async function walkLetters(cli: string, env: Env, timeoutMs: number): Promise<string[]> {
   const r = await run(cli, ["walk", "graphify"], env, timeoutMs);
   return r.code === 0 ? r.stdout.trim().split(",").filter((l) => (ACCOUNTS as string[]).includes(l)) : [];
 }
 
-// A save that takes letter L out of the graph walk clears the graph-key-L alert's dedupe sentinel, so the next real
-// rejection on L alerts again. It never clears the key-rejected tag: the key is still wrong.
 function clearGraphKey(letter: string, env: Env, timeoutMs: number): Promise<void> {
   const clean: Record<string, string> = {};
   for (const [k, v] of Object.entries(env)) if (v !== undefined) clean[k] = v;

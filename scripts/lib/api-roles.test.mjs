@@ -243,7 +243,6 @@ test('check reports accounts unreadable and no warnings for a missing, non-JSON 
   }
 });
 
-// walk graphify: the one owner of the station's graph walk.
 const walk = (f) => f.cli(['walk', 'graphify']);
 
 test('R1: walk graphify prints the map letters, else the configured letters, else every account when the roster cannot be read', () => {

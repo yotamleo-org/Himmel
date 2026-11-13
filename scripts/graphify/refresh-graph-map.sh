@@ -2417,8 +2417,6 @@ for p in sys.stdin.buffer.read().split(b"\0"):
   # ponytail: a slimmer copy of semantic-update.sh's sync shim (no addendum, no run-spend file; the lane's per-call
   # budget bounds each chunk), upgrade path: one shared shim file both scripts install.
   if [ "$BACKEND" = "claude-api" ]; then
-    # On auto the walk comes from its one owner, once, before extraction: a broken role map that would widen the walk
-    # refuses here instead of once per chunk. The shim's breaker counts the walk's letters that have a roster row.
     GRAPHIFY_MAP_SHIM_ACCOUNTS=1
     if [ "${HIMMEL_API_ACCOUNT:-}" = auto ]; then
       _walk_rc=0

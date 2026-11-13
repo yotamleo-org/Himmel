@@ -69,8 +69,6 @@ echo '{"type":"result","subtype":"success","is_error":false,"result":"{}","total
 EOF
 chmod +x "$REPO/scripts/api-lane/claude-api.sh"
 cp "$REAL_REPO/scripts/api-lane/outcome.mjs" "$REPO/scripts/api-lane/outcome.mjs"
-# The stub tree's walk owner: BATCH_STUB_WALK is its answer (a "refuse ..." answer exits 3), else the stub roster,
-# else every account, as the real walk answers with no map. `accounts` prints nothing, as no roles.json does.
 cat > "$WS/roles.stub.mjs" <<'EOF'
 const answer = process.env.BATCH_STUB_WALK || process.env.BATCH_STUB_ROSTER || 'A,B,C';
 if (process.argv[2] === 'walk' && process.argv[3] === 'graphify') {
@@ -1045,7 +1043,6 @@ if (process.argv[2] === 'pick') {
   appendFileSync(f, `${process.env.HIMMEL_API_ACCOUNT}\n`);
   console.log('{}');
 } else if (process.argv[2] === 'key-rejected' || process.argv[2] === 'key-ok') {
-  // the rejected-key mark as the real verbs keep it: key-ok prints cleared once, then none
   const k = join(ws, 'key-rejected.log');
   const marks = existsSync(k) ? readFileSync(k, 'utf8').split('\n').filter(Boolean) : [];
   const l = process.env.HIMMEL_API_ACCOUNT;
@@ -1056,7 +1053,6 @@ if (process.argv[2] === 'pick') {
 }
 EOF
 cp "$WS/roles.stub.mjs" "$REPO/scripts/lib/api-roles.mjs"
-# The graph-key alert runs the real cadence-alert.sh under a recording sender, in fixture paths.
 mkdir -p "$REPO/scripts/luna"
 cp "$REAL_REPO/scripts/luna/cadence-alert.sh" "$REPO/scripts/luna/cadence-alert.sh"
 # shellcheck disable=SC2016  # the sender's own $1, expanded when it runs

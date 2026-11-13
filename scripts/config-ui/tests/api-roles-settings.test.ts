@@ -29,7 +29,6 @@ function boot() {
   };
   const rolesFile = join(credit, "roles.json");
   const dedupe = env.CADENCE_ALERT_DEDUPE_DIR;
-  // a graph-key-A alert's dedupe sentinel, and A's key-rejected mark as the ledger holds it
   const plantSentinel = () => { mkdirSync(dedupe, { recursive: true }); writeFileSync(join(dedupe, "graph-key-A.planted"), ""); };
   const sentinel = () => existsSync(join(dedupe, "graph-key-A.planted"));
   const tagA = () => writeFileSync(join(credit, "ledger.json"), JSON.stringify({ version: 1, accounts: { A: { organization_id: "org-A", cycle_id: "cycle-A", discrepancy: false, jobs: {}, key_rejected_at: 1700000000 } } }));

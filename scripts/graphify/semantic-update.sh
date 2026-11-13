@@ -404,8 +404,6 @@ batch_line() { echo "semantic-update: BATCH id=$(batch_field batch_id) state=$1 
 configured_accounts() {
   node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" accounts 2>/dev/null | tr '{' '\n' | sed -n 's/^"account":"\([ABC]\)","configured":true.*/\1/p' | paste -sd, - || true
 }
-# The accounts an auto pass may use, comma-separated, from the walk's one owner (api-roles.mjs walk graphify). A role
-# map broken in a way that would widen the walk refuses: the line names the cause and the function returns 3.
 auto_accounts() {
   local r rc=0
   r="$(node "$REPO_ROOT/scripts/lib/api-roles.mjs" walk graphify)" || rc=$?
@@ -446,8 +444,6 @@ order_accounts() {
   done
   printf '%s' "$out"
 }
-# A rejected key (the client's exit 6: HTTP 401 or 403) tags the account and raises its graph-key alert; an accepted
-# submit clears the tag, and the alert's dedupe sentinel only when a tag was there. Their output is discarded.
 key_rejected() {
   HIMMEL_API_ACCOUNT="$1" node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" key-rejected >/dev/null 2>&1 || true
   bash "$REPO_ROOT/scripts/luna/cadence-alert.sh" fail "graph-key-$1" "account $1 API key rejected" "stderr of semantic-update.sh --name $NAME" \

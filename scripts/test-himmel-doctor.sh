@@ -8325,9 +8325,6 @@ if grepq "$out" 'INFO C91-api-policy-refusals' && ! grepq "$out" 'OK   C91' && !
     && grepq "$out2" 'INFO C91-api-policy-refusals' && ! grepq "$out2" 'OK   C91' && ! grepq "$out2" 'WARN C91'; then pass "C91 unreadable record and failing jq -> INFO"; else fail "C91 unreadable -> $(printf '%s' "$out" | head -3) failing jq -> $(printf '%s' "$out2" | head -3)"; fi
 rm -rf "$c91_t"
 
-# --- C92-graph-key-<L> and C93-graph-role: a rejected key the graph walk reaches, and a broken role map ---
-# A fixture roster (A, B and C configured) and ledger; the tag is planted in the ledger as key-rejected writes it.
-# Each key-<L>.env holds a key-shaped string at mode 000: no output may carry it, and no reader may need it.
 c92_t="$(mktemp -d "${TMPDIR:-/tmp}/c92.XXXXXX")" || { echo "FATAL: C92 setup mktemp failed" >&2; exit 1; }
 c92_key="sk-ant-planted-not-a-real-key-c92"
 c92_reset() {
@@ -8337,7 +8334,7 @@ c92_reset() {
     printf '{"graphify":{"semantic_api_ok":true}}\n' > "$c92_t/home/.himmel/config.json"
     for l in A B C; do printf 'ANTHROPIC_API_KEY=%s\n' "$c92_key" > "$c92_t/credit/key-$l.env"; chmod 000 "$c92_t/credit/key-$l.env"; done
 }
-c92_tag() { # <letters...>: each carries key_rejected_at
+c92_tag() {
     local l rows=""
     for l in "$@"; do rows="${rows:+$rows,}\"$l\":{\"organization_id\":\"org-$(echo "$l" | tr A-C a-c)\",\"cycle_id\":\"cycle-$(echo "$l" | tr A-C a-c)\",\"discrepancy\":false,\"jobs\":{},\"key_rejected_at\":1700000000}"; done
     printf '{"version":1,"accounts":{%s}}' "$rows" > "$c92_t/credit/ledger.json"

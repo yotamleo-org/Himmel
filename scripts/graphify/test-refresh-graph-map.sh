@@ -5102,8 +5102,6 @@ else
   fi
 fi
 
-# --- d15, d16: the auto walk comes from api-roles.mjs walk graphify, once, before extraction ---
-# Auto needs a corpus inside this checkout's git dir: a detached worktree with no checkout and one note.
 WALK="$WS/walk"; mkdir -p "$WALK/bin"
 if git -C "$HERE" worktree add -q --no-checkout --detach "$WS/walk-wt" HEAD >/dev/null 2>&1; then
   mkdir -p "$WS/walk-wt/notes"; printf '# w\nwalk\n' > "$WS/walk-wt/notes/w.md"
