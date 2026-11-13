@@ -409,7 +409,7 @@ deny_steps __chat__ctrl "$REL_C"
 step 4bs bash "$HROOT/u/himmel/release-ctrl/sibling.txt" deny "$(wcmd __chat__ctrl 4bs)"
 step 7 bash "$REL_C/R9/requests.jsonl" deny "$(wcmd __chat__ctrl 7)"
 step 10c bare "$work/rec" info "HIMMEL_BRIDGE_SESSION= bash $CK/scripts/handover/arm-resume.sh --time $arm_time --handover $HROOT/u/himmel/p1-arm.md"
-step 10d bare "$work/rec" info "bash $CK/scripts/handover/chief-kit/headed-arm-worker.sh p1-hw $HROOT/u/himmel/p1-arm.md"
+step 10d bare "headed-arm-worker.sh p1-hw" info "bash $CK/scripts/handover/chief-kit/headed-arm-worker.sh p1-hw $HROOT/u/himmel/p1-arm.md"
 snapshot_targets ctrl
 run_spawn ctrl ctrl __chat__ctrl "$OP" "$REL_C"
 restore_targets ctrl
@@ -439,7 +439,7 @@ step 10a bare "$work/rec" info "bash $CK/scripts/handover/arm-resume.sh --time $
 step 10cb bare "$work/rec" info "HIMMEL_BRIDGE_SESSION= bash $CK/scripts/handover/arm-resume.sh --time $arm_time --handover $HROOT/u/himmel/p1-arm.md"
 step 10ce bare "$work/rec" info "env -u HIMMEL_BRIDGE_SESSION bash $CK/scripts/handover/arm-resume.sh --time $arm_time --handover $HROOT/u/himmel/p1-arm.md"
 step 10cu bare "$work/rec" info "unset HIMMEL_BRIDGE_SESSION; bash $CK/scripts/handover/arm-resume.sh --time $arm_time --handover $HROOT/u/himmel/p1-arm.md"
-step 10d bare "$work/rec" info "bash $CK/scripts/handover/chief-kit/headed-arm-worker.sh p1-hw $HROOT/u/himmel/p1-arm.md"
+step 10d bare "headed-arm-worker.sh p1-hw" info "bash $CK/scripts/handover/chief-kit/headed-arm-worker.sh p1-hw $HROOT/u/himmel/p1-arm.md"
 run_spawn a env __chat__a "$OP" "$REL_A"
 mkdir -p "$work/rec-a" && cp "$REC"/* "$work/rec-a/" 2>/dev/null; rm -f "$REC"/at-* "$REC"/konsole-ns-* "$REC"/armed-*
 
@@ -628,6 +628,7 @@ for f in "$work/rec-a"/konsole-ns-*; do
     else row_add 10d PASS "the terminal stub ran inside the sandbox ($(cat "$f"))"; fi
 done
 if [ -z "$(row_v 10d)" ]; then
+    # 10d's target is the text its command carries, so the transcript names the attempt.
     read -r a10d _ v10d <<<"$(verdict a 10d __chat__a)"
     if [ "$a10d" = yes ]; then row_add 10d PASS "no terminal stub started from the envelope spawn: $v10d"
     else row_add 10d INCONCLUSIVE "10d: $v10d"; fi
