@@ -3517,7 +3517,7 @@ bash "$rif" record --bucket "$root/tester/rif9846" --id 904 --status "done" --da
 run91 rif9846
 d9846="$(sed -n '/^## Current direction$/,/^## [^C]/p' "$root/tester/rif9846/DEMO-nextleg-${today}C-chief.md")"
 check "9846 next with a ledger exits 0" "$rc91" "0"
-check "9846 the in-force ruling is indexed from the ledger" "$(printf '%s\n' "$d9846" | grep -cxF 'IN FORCE 901, 2026-11-11: alpha in force (verbatim: specs/decisions/verbatim-decision-901-x.txt)')" "1"
+check "9846 the in-force ruling is indexed from the ledger" "$(printf '%s\n' "$d9846" | grep -cxF 'IN FORCE 901, 2026-11-11: alpha in force (verbatim: 901-x)')" "1"
 check "9846 the superseded and done rulings leave the block" "$(printf '%s\n' "$d9846" | grep -cE 'decision 90[24]|^IN FORCE 90[24],')" "0"
 check "9846 a ruling with no ledger row is carried" "$(printf '%s\n' "$d9846" | grep -c '^OPERATOR 11-10 YZ, decision 905: delta')" "1"
 c9846=0; for _r in $(printf '%s\n' "$d9846" | grep -m 1 '^Full original text' | grep -o 'specs/decisions/chief-direction-[A-Za-z0-9._-]*\.md'); do c9846=$((c9846 + $(grep -cxF -e 'OPERATOR 11-11 ZA (BINDING, decision 902): bravo, the full text of 902.' -e 'OPERATOR 11-10 YZ (BINDING, decision 904): charlie, the full text of 904.' "$root/tester/rif9846/$_r"))); done
