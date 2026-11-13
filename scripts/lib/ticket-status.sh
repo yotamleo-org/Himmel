@@ -456,7 +456,7 @@ _ts_no_write() { TS_DERIVED="no-write"; TS_RESULT="$1"; TS_RULE="$2"; TS_STAGE="
 
 _ts_remainder_owner() {
     local keys
-    keys=$(printf '%s\n' "$2" | grep -oE '([Oo]wner:[[:space:]]*|→[[:space:]]*|->[[:space:]]*)[A-Z][A-Z0-9]*-[0-9]+' | grep -oE '[A-Z][A-Z0-9]*-[0-9]+$' | grep -vxF "$1" | sort -u | paste -sd, - | sed 's/,/, /g') || keys=""  # swallow-ok: no key in the text is the empty answer
+    keys=$(printf '%s\n' "$2" | grep -oE '([Oo]wner:[[:space:]]*|→[[:space:]]*|->[[:space:]]*)[A-Z][A-Z0-9]*-[0-9]+([^[:alnum:]-]|$)' | grep -oE '[A-Z][A-Z0-9]*-[0-9]+' | grep -vxF "$1" | sort -u | paste -sd, - | sed 's/,/, /g') || keys=""  # swallow-ok: no key in the text is the empty answer
     if [ -n "$keys" ]; then printf '%s' "$keys"; return 0; fi
     if grep -qiE 'chief[ -](step|run)' <<<"$2"; then printf 'chief step'; return 0; fi
     return 1
@@ -477,7 +477,7 @@ _ts_d5d() {
     kind=${ans%%$'\t'*}
     case "$kind" in
         handed-off) rest=${ans#*$'\t'}; owner=${rest%%$'\t'*} ;;
-        remaining) rest=${ans#*$'\t'}; owner=$(_ts_remainder_owner "$key" "$rest") || return 1 ;;
+        remaining) rest=$(grep -iE '^[[:space:]]*remaining:' <<<"$body") || return 1; owner=$(_ts_remainder_owner "$key" "$rest") || return 1 ;;
         *) return 1 ;;
     esac
     [ -n "$owner" ] || return 1

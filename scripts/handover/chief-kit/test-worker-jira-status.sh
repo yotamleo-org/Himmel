@@ -420,6 +420,18 @@ d5d_remaining "the cutover, owner: HIMMEL-9002"
 check "D5d: an owner: phrase names the owner" "$(row rule)/$(jq -r .owner "$REC")" D5d/HIMMEL-9002
 d5d_remaining "the cutover → HIMMEL-9003"
 check "D5d: an arrow phrase names the owner" "$(row rule)/$(jq -r .owner "$REC")" D5d/HIMMEL-9003
+reset "In Progress"; owned WRAPPED 0; d5d_merge
+printf 'Remaining: the second half stays on this ticket\n\n## Ticket coverage\n- ask one: deferred -> HIMMEL-9002\n- ask two: done\n' > "$FX/pr-body-11"
+fn "$K" --event wrapped --doc "$DOC"
+check "D5d: a Remaining line plus a coverage deferred arrow to another key stays D5c" "$(ntrans)/$(row rule)" 0/D5c
+d5d_remaining "the rest, owner: $K"
+check "D5d: owner: with the own key stays D5c" "$(ntrans)/$(row rule)" 0/D5c
+d5d_remaining "the rest → $K"
+check "D5d: an arrow to the own key stays D5c" "$(ntrans)/$(row rule)" 0/D5c
+d5d_remaining "the rest → himmel-9002"
+check "D5d: a lowercase key after an arrow stays D5c" "$(ntrans)/$(row rule)" 0/D5c
+d5d_remaining "the rest, owner: HIMMEL-9002x"
+check "D5d: a key with trailing word characters stays D5c" "$(ntrans)/$(row rule)" 0/D5c
 reset "In Progress"; owned LIVE 11 0; d5d_merge
 printf '## Ticket coverage\n- cutover: deferred -> HIMMEL-9002\n' > "$FX/pr-body-11"
 fn "$K" --event live --doc "$DOC"
