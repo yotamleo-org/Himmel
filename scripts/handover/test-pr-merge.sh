@@ -28,6 +28,15 @@ unset CR_MERGE_GATE_OK CI_MERGE_GATE_OK CR_PROFILE CR_APP GH_ADMIN_MERGE_OK FORG
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PR_MERGE="$SCRIPT_DIR/pr-merge.sh"
 
+TT_BASE="$(mktemp -d "${TMPDIR:-/tmp}/pr-merge-tt.XXXXXX")" || exit 1
+trap 'rm -rf "$TT_BASE"' EXIT
+READTOK=ghp_READTOKEN0123456789
+mkdir -p "$TT_BASE/ttroot" "$TT_BASE/emptyroot" "$TT_BASE/himmelcfg"
+printf 'himmel_github_token_vm2=%s\n' "$READTOK" > "$TT_BASE/ttroot/.env"
+: > "$TT_BASE/emptyroot/.env"
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
+export GH_READ_ENV_ROOT="$TT_BASE/emptyroot" HIMMEL_SECRETS_KEYRING=off HIMMEL_CONFIG_DIR="$TT_BASE/himmelcfg"
+
 PASS=0
 FAIL=0
 
@@ -231,6 +240,24 @@ STUBNODE
         chmod +x "$tmp/bin/node"
     fi
 
+    local run_path="$tmp/bin:$PATH" tt_log="$tmp/tt.log"
+    : > "$tt_log"
+    if [ -n "${TT_ROOT:-}" ]; then
+        mkdir -p "$tmp/tt"
+        ln -s "$SCRIPT_DIR/chief-kit/fixtures/gh-two-token-stub.sh" "$tmp/tt/gh-two-token"
+        cat > "$tmp/tt/gh" <<'FRONT'
+#!/usr/bin/env bash
+if [ "${TT_SPENT:-0}" = "1" ]; then
+    case "$*" in
+        *"--json headRefOid --jq"*|*"--json title"*) export GH_STUB_MAINFAIL=rate ;;
+    esac
+fi
+exec "$(dirname "$0")/gh-two-token" "$@"
+FRONT
+        chmod +x "$tmp/tt/gh"
+        run_path="$tmp/tt:$tmp/bin:$PATH"
+    fi
+
     (
         cd "$tmp" || exit 99
         git init -q
@@ -271,11 +298,17 @@ STUBNODE
         chmod +x "$tmp/bin/alert-sender"
         printf '{"allowFrom":["555"]}\n' > "$tmp/access.json"
         : > "$tmp/alerts.log"
+        if [ -n "${TT_ROOT:-}" ]; then
+            unset GH_CMD
+            export GH_READ_ENV_ROOT="$TT_ROOT" GH_STUB_DELEGATE="$tmp/bin/gh" GH_STUB_READ_TOKEN="$READTOK" GHLOG="$tt_log"
+        else
+            export GH_CMD=gh
+        fi
         GH_LOG="$ghlog" \
             MERGE_BLOCK_ALERT_DIR="$tmp/alerts" MERGE_BLOCK_ALERT_CMD="$tmp/bin/alert-sender" \
             TELEGRAM_ACCESS_PATH="$tmp/access.json" \
             TICKET_STATUS_STATE_DIR="$tmp/state" \
-            PATH="$tmp/bin:$PATH" GH_CMD=gh \
+            PATH="$run_path" \
             bash "$PR_MERGE" "$@" >"$tmp/out" 2>"$tmp/err"
     )
     local rc=$?
@@ -286,6 +319,8 @@ STUBNODE
     local keep; keep=$(mktemp -d)
     cp "$ghlog" "$keep/gh.log" 2>/dev/null
     cp "$tmp/out" "$keep/out" 2>/dev/null
+    cp "$tt_log" "$keep/tt.log" 2>/dev/null || : > "$keep/tt.log"
+    LAST_TT_LOG="$keep/tt.log"
     cp "$tmp/err" "$keep/err" 2>/dev/null
     cp "$jiralog" "$keep/jira.log" 2>/dev/null || : > "$keep/jira.log"
     cp "$tmp/alerts.log" "$keep/alerts.log" 2>/dev/null || : > "$keep/alerts.log"
@@ -610,6 +645,26 @@ if STUB_JIRA_BUILD=1 STUB_JIRA_COMMENT_FAIL=1 STUB_PR_TITLE="feat(jira): [HIMMEL
     run_case "handover/HIMMEL-374-jira-transition" 0 "jira: opted-in failed comment skips the transition" -- --jira-transition; then
     assert_jira_log_lacks "transition" "failed-comment case makes no jira transition call"
     assert_err_has "not auto-transitioning" "failed-comment case reports the skip on stderr"
+fi
+
+tt_count() {
+    local got; got=$(grep -c -E -- "$3" "$LAST_TT_LOG")
+    if [ "$got" = "$2" ]; then pass; else fail "$1 (want $2 got $got of '$3' in: $(cat "$LAST_TT_LOG"))"; fi
+}
+if STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" TT_SPENT=1 TT_ROOT="$TT_BASE/ttroot" \
+    run_case "handover/x-slug-tt" 0 "main spent: the vetted head and title reads succeed"; then
+    assert_log_has "--match-head-commit abc123" "main spent: the merge is bound to the vetted head"
+    tt_count "main spent: the vetted head read logs tok=read" 1 '^tok=read argv=pr view 42 --json headRefOid --jq'
+    tt_count "main spent: the title read logs tok=read" 1 '^tok=read argv=pr view 42 --json title'
+    tt_count "main spent: the merge goes through the forge seam on main" 1 '^tok=main argv=pr merge 42 '
+    tt_count "main spent: no merge rides the read token" 0 '^tok=read argv=pr merge'
+    assert_err_lacks "cannot read the head SHA" "main spent: no unbound-merge refusal"
+fi
+if STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" TT_ROOT="$TT_BASE/emptyroot" \
+    run_case "handover/x-slug-tt" 0 "control, no read token: the merge succeeds"; then
+    tt_count "control: the vetted head read logs tok=main" 1 '^tok=main argv=pr view 42 --json headRefOid --jq'
+    tt_count "control: the title read logs tok=main" 1 '^tok=main argv=pr view 42 --json title'
+    tt_count "control: no call logs tok=read" 0 '^tok=read '
 fi
 
 # --- hermeticity guard (the startup-scrub shape) -------------------

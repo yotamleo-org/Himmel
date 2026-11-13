@@ -46,14 +46,19 @@ cleanup() {
 trap cleanup EXIT
 
 REAL_QUOTA="${HOME:-/nonexistent}/.himmel/state/quota"
-quota_fingerprint() {
-    if [ -d "$REAL_QUOTA" ]; then
-        find "$REAL_QUOTA" -type f -exec stat -c '%n %Y %s' {} + 2>/dev/null | sort | cksum  # gnu-ok: chief kit is Linux-only
-    else
-        echo absent
-    fi
+RUN_ID="9$(date +%s)$$"
+: > "$tmp/fixture-ids"
+quota_leaked() {
+    local d="$1" id grc
+    [ -d "$d" ] || return 1
+    grep -rqF "$RUN_ID" "$d" 2>/dev/null; grc=$?
+    [ "$grc" -eq 1 ] || return "$grc"
+    while IFS= read -r id; do
+        [ -z "$(find "$d/blocked" -maxdepth 1 -name "*.$id" 2>/dev/null)" ] || return 0
+    done < "$tmp/fixture-ids"
+    return 1
 }
-QUOTA_BEFORE="$(quota_fingerprint)"
+( while :; do if quota_leaked "$REAL_QUOTA"; then : > "$tmp/quota-leak"; fi; sleep 0.5; done ) &
 
 STUBBIN="$tmp/stubbin"; mkdir -p "$STUBBIN"
 cat > "$STUBBIN/gh" <<'STUB'
@@ -101,6 +106,7 @@ if [ "$probe" = 1 ]; then
     case "$*" in
         *" -i "* | *"-i "*)
             printf 'HTTP/2.0 %s\r\nX-Ratelimit-Remaining: %s\r\n' "$([ "$rem" = 0 ] && echo '403 Forbidden' || echo '200 OK')" "$rem"
+            [ -z "${STUB_RUN_ID:-}" ] || printf 'X-Ratelimit-Limit: %s\r\n' "$STUB_RUN_ID"
             [ -z "$reset" ] || printf 'X-Ratelimit-Reset: %s\r\n' "$reset"
             [ "$mode" != secondary ] || printf 'Retry-After: 60\r\n'
             printf '\r\n{"data":{"rateLimit":{"remaining":%s}}}\n' "$rem"
@@ -253,7 +259,7 @@ base_env() {
     local cdir="$1" mode="$2" scaled="$3"
     printf '%s\n' \
         "HOME=$cdir/home" "GH_TOKEN=maintok" "STUB_READ_TOKEN=readtok123" "STUB_FIXDIR=$FIXDIR" \
-        "STUB_MODE=$mode" "STUB_LOG=$ROW_DIR/stub.log" "HIMMEL_QUOTA_DIR=$cdir/quota" \
+        "STUB_MODE=$mode" "STUB_LOG=$ROW_DIR/stub.log" "HIMMEL_QUOTA_DIR=$cdir/quota" "STUB_RUN_ID=$RUN_ID" \
         "GH_PR_SNAPSHOT_CACHE_DIR=$cdir/snap" "GH_READ_ENV_ROOT=$ENVROOT" "TMPDIR=$cdir/tmp" \
         "PATH=$STUBBIN:${READY_BIN:-$cdir/none}:$FINALBIN:$PATH" "GH_BUDGET_JITTER_MAX=0" \
         "STUB_FINAL_GH=$FINALBIN/gh" "STUB_NEXT_GH=${READY_BIN:+$READY_BIN/gh}"
@@ -308,6 +314,7 @@ gate_fixture() {
     git init -q "$GATE_REPO" || return 1
     SHA=$(ready_pass_repo "$GATE_REPO") || return 1
     ready_pass_ledger "$GATE_REPO" "$SHA" || return 1
+    printf '%s\n' "$SHA" >> "$tmp/fixture-ids"
     export READY_STUB_HEAD="$SHA"
 }
 
@@ -726,9 +733,35 @@ for pc in $pids; do
     fi
 done
 
-QUOTA_AFTER="$(quota_fingerprint)"
 CUR=suite
-if [ "$QUOTA_BEFORE" = "$QUOTA_AFTER" ]; then emit "PASS suite live-quota-path-untouched"; else emit "FAIL suite live-quota-path-untouched $REAL_QUOTA changed"; fi
+guard_dir() {
+    gd="$tmp/guard-control/$1"; mkdir -p "$gd"
+    printf 'main\tgraphql\t4309\t5000\t%s\t%s\tok\n' "$(( $(date +%s) + 1800 ))" "$(( $(date +%s) - $2 ))" > "$gd/quota.tsv"
+}
+guard_lib() {
+    local q="$1"; shift
+    ( export HIMMEL_QUOTA_DIR="$q" HOME="$tmp/guard-control/home" PATH="$STUBBIN:$PATH" STUB_MODE=healthy \
+        STUB_RUN_ID="$RUN_ID" STUB_FIXDIR="$FIXDIR" GH_TOKEN=maintok GH_READ_ENV_ROOT="$ENVROOT"
+      . "$ROOT/scripts/lib/gh-quota.sh"; "$@" ) > /dev/null 2>&1
+}
+guard_expect() {
+    quota_leaked "$3"
+    if [ "$?" -eq "$2" ]; then emit "PASS suite guard-control-$1"; else emit "FAIL suite guard-control-$1 the guard did not return $2"; fi
+}
+mkdir -p "$tmp/guard-control/home"
+guard_fid="${RUN_ID}c0ffee"; printf '%s\n' "$guard_fid" >> "$tmp/fixture-ids"
+guard_dir marker-fresh 0;  guard_lib "$gd" ghq_mark_blocked 77 "$guard_fid" check-ci.sh graphql rate-limit
+guard_expect marker-into-fresh-dir 0 "$gd"
+guard_dir refresh-stale 1000; guard_lib "$gd" ghq_refresh
+guard_expect refresh-into-stale-dir 0 "$gd"
+guard_dir clean-fresh 0
+guard_expect clean-dir-passes 1 "$gd"
+guard_dir foreign-fresh 0; guard_lib "$gd" ghq_mark_blocked 4242 deadbeefdeadbeef go.sh graphql rate-limit
+if [ -n "$(find "$gd/blocked" -maxdepth 1 -type f -name '4242.*' 2>/dev/null)" ]; then emit "PASS suite guard-control-foreign-marker-written"; else emit "FAIL suite guard-control-foreign-marker-written no foreign marker was created, so the negative control proves nothing"; fi
+guard_expect foreign-marker-passes 1 "$gd"
+quota_leaked "$REAL_QUOTA"; guard_rc=$?
+[ "$guard_rc" -ne 2 ] || { sleep 1; quota_leaked "$REAL_QUOTA"; guard_rc=$?; }
+if [ -e "$tmp/quota-leak" ] || [ "$guard_rc" -ne 1 ]; then emit "FAIL suite live-quota-path-untouched a stub answer (run $RUN_ID) reached $REAL_QUOTA, or it could not be scanned (rc $guard_rc)"; else emit "PASS suite live-quota-path-untouched"; fi
 
 fails=0 known=0 passes=0 skips=0 unexpected=0
 report_file() {

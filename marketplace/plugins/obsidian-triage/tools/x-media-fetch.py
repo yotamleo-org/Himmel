@@ -235,6 +235,13 @@ def _tried(fm: dict) -> bool:
     return str(fm.get("media_last_error", "")).strip().strip('"') not in ("", "null")
 
 
+HELPER_MISS_ERRORS = ("scrapling:download_error", "scrapling:no_media")
+
+
+def _helper_miss(fm: dict) -> bool:
+    return str(fm.get("media_last_error", "")).strip().strip('"') in HELPER_MISS_ERRORS
+
+
 def already_media_enriched(fm_raw: str) -> bool:
     return bool(re.search(r"^media_enriched_at:[\s]*\S", fm_raw, re.MULTILINE))
 
@@ -1994,12 +2001,13 @@ def main():
             probe = True
         if x:
             cands.append((p, x, probe, _tried(fm),
-                          str(fm.get("date_clipped", "")).strip().strip('"')))
+                          str(fm.get("date_clipped", "")).strip().strip('"'),
+                          _helper_miss(fm)))
     # A clip that already failed goes behind every clip not yet tried, so one that
     # fails every night cannot hold the queue; known media goes before a probe,
     # and within each group the newest clip goes first.
     cands.sort(key=lambda c: c[4], reverse=True)
-    cands.sort(key=lambda c: (c[3], c[2]))
+    cands.sort(key=lambda c: (c[3], c[5], c[2]))
     cands = [c[:3] for c in cands]
     matched_total = len(cands)
     cands = cands[: args.limit] if args.limit > 0 else cands

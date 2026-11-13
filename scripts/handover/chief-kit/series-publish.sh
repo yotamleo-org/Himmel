@@ -26,7 +26,9 @@ LEDGER_PY="$HERE/series-ledger.py"
 # shellcheck source=../../lib/git-clean.sh
 . "$HERE/../../lib/git-clean.sh" || { echo "series-publish: cannot source scripts/lib/git-clean.sh" >&2; exit 1; }
 git_env_scrub   # an inherited GIT_DIR would make every worktree and range answer about the wrong repo
-GH="${GH_CMD:-gh}"
+GH_READ_BIN="$HERE/../../lib/gh-read.sh"
+[ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
+GH="${GH_CMD:-$GH_READ_BIN}"
 
 refuse() { echo "series-publish: $*" >&2; exit 2; }
 fail()   { echo "series-publish: $*" >&2; exit 1; }

@@ -479,4 +479,37 @@ for p in series-next series-publish; do
     contains "10b: the permission file carries the $p.sh row" "$(cat "$SETTINGS")" "\"Bash(bash scripts/handover/chief-kit/$p.sh:*)\""
 done
 
+READTOK=ghp_READTOKEN0123456789
+mkdir -p "$tmp/ttroot" "$tmp/emptyroot" "$tmp/tt" "$tmp/himmelcfg"
+printf 'himmel_github_token_vm2=%s\n' "$READTOK" > "$tmp/ttroot/.env"
+: > "$tmp/emptyroot/.env"
+ln -s "$HERE/fixtures/gh-two-token-stub.sh" "$tmp/tt/gh"
+TTLOG="$tmp/tt.log"
+logn() { grep -c -E -- "$1" "$TTLOG"; }
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
+L3TT="$tmp/ledgers/s3tt.json"; mk "$L3TT" "$A" K1 || exit 1
+sl set --ledger "$L3TT" --key K1 state=published publish_branch=series/s3tt/K1-pub published_head="$PUBHEAD" wip="$MAIN" cut_from="$MAIN" >/dev/null
+printf 'series/s3tt/K1-pub\t4243\tMERGED\t%s\n' "$PUBHEAD" > "$GH_PRS"
+tt_status() {
+    : > "$TTLOG"
+    out="$( cd "$REPO" && env -u GH_CMD GH_READ_ENV_ROOT="$1" PATH="$tmp/tt:$PATH" GH_STUB_DELEGATE="$tmp/bin/gh" \
+        GH_STUB_READ_TOKEN="$READTOK" GHLOG="$TTLOG" HIMMEL_SECRETS_KEYRING=off HIMMEL_CONFIG_DIR="$tmp/himmelcfg" \
+        bash "$SCRIPT" status --ledger "$L3TT" 2>&1 )"; rc=$?
+}
+GH_STUB_MAINFAIL=rate tt_status "$tmp/ttroot"
+check "11: main spent: status rc 0" "$rc" 0
+contains "11: main spent: the head-branch PR list resolves" "$out" "ITEM K1 state=published wip=${MAIN:0:12} ahead=0 pr=#4243 MERGED"
+check "11: main spent: the PR list logs tok=read" "$(logn '^tok=read argv=pr list --head series/s3tt/K1-pub ')" 1
+check "11: main spent: no read logs tok=main" "$(logn '^tok=main ')" 0
+tt_status "$tmp/emptyroot"
+contains "11: control, no read token: the PR list resolves" "$out" "pr=#4243 MERGED"
+check "11: control: the PR list logs tok=main" "$(logn '^tok=main argv=pr list --head series/s3tt/K1-pub ')" 1
+check "11: control: no call logs tok=read" "$(logn '^tok=read ')" 0
+: > "$TTLOG"
+out="$( cd "$REPO" && GH_CMD="$tmp/bin/gh" GH_READ_ENV_ROOT="$tmp/ttroot" PATH="$tmp/tt:$PATH" GH_STUB_DELEGATE="$tmp/bin/gh" \
+    GH_STUB_READ_TOKEN="$READTOK" GHLOG="$TTLOG" GH_STUB_MAINFAIL=rate HIMMEL_SECRETS_KEYRING=off bash "$SCRIPT" status --ledger "$L3TT" 2>&1 )"
+contains "11: a set GH_CMD seam still wins (the shim answers, no stub log)" "$out" "pr=#4243 MERGED"
+check "11: a set GH_CMD seam never reaches the two-token stub" "$(wc -l < "$TTLOG" | tr -d ' ')" 0
+: > "$GH_PRS"
+
 [ "$fails" -eq 0 ] && echo "ALL OK" || { echo "$fails FAILED"; exit 1; }
