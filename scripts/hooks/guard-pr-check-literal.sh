@@ -1981,13 +1981,9 @@ cmdpos_clean() { # true when no segment of $cmd executes a script but the dispat
     case "$raw" in *HIMMEL_REPO*) return 1 ;; esac
     return 0
 }
-# mention_only_wide - cmdpos_clean's proof for a command that runs no script at
-# all, over the wider set of shapes the header lists. It sits outside the block
+# mention_only_wide - the header's wider shapes. It sits outside the block
 # lib-cmdpos-clean.sh copies, so the guards sharing that block keep their
-# verdicts. An expanded word ($x, a glob) is allowed only where any value is
-# inert: an operand of a reader none of whose options runs or writes (MW_FREE)
-# or a for loop's list, since a loop or assignment can set a variable to an
-# option (sed -e1e<cmd>, printf -vBASH_CMDS[cat], sort --compress-program=).
+# verdicts. MW_FREE: readers none of whose options runs or writes.
 MW_FREE=' grep egrep fgrep cat head tail wc ls cut tr nl jq echo cd sha256sum sha1sum sha224sum sha384sum sha512sum md5sum b2sum cksum '
 mention_only_wide() {
     local k j h sg=-1 cw=-1 w t kind='' ops=0
@@ -2008,8 +2004,6 @@ mention_only_wide() {
         if [ "${ST_S[k]}" != "$sg" ]; then
             [ "$sg" -lt 0 ] || mw_kind[sg]=$kind
             sg=${ST_S[k]}; cw=-1; kind=''; ops=0
-            # the words after a <(…) are operands of the reader before it, which
-            # must take any word (st_procsub_only already made it a reader)
             if [ "$ST_SUBST" = 1 ] && [ "$sg" -gt 0 ] && [ "${ST_SEP[sg - 1]}" = ')' ]; then
                 h=$((sg - 2))
                 while [ "$h" -ge 2 ] && [ "${ST_SEP[h - 1]}" = ')' ]; do h=$((h - 2)); done
@@ -2072,7 +2066,6 @@ mention_only_wide() {
         [ "${ST_Q[k]}${ST_X[k]}${ST_G[k]}" = 000 ] || return 1
         cw=$k
         case "$w" in
-            # the loop body's first word is its command word
             do) cw=-1 ;;
             done) kind='done' ;;
             for)

@@ -3099,12 +3099,7 @@ run "7130 class1 control [a changed worktree bullet writer] -> deny" 2 \
 g -C "$WT" checkout -q -- scripts/cr/write-verdicts.sh scripts/handover/chief-kit/append-results.sh
 
 # ---- a mention beside sort, find, gh, a checksum, a loop or an assignment ---
-# One week of "does not resolve" refusals grouped by shape: each allow row is a
-# live shape that runs no program but a reader, on a tree whose gate copy
-# differs from the anchor's, and its deny twin swaps in the one word that runs
-# something. The rows after them are the bypasses an inline variable opens.
 echo changed >>"$WT/scripts/cr/write-verdicts.sh"
-# Three lines a row: the label, the allowed command, its deny twin.
 while IFS= read -r label && IFS= read -r allow && IFS= read -r deny; do
     run "inert mention [$label] -> allow" 0 "$(payload "$allow" "$WT")" "$HR"
     run "inert mention control [$label] -> deny" 2 "$(payload "$deny" "$WT")" "$HR"
