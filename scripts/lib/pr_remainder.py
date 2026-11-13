@@ -27,7 +27,8 @@ COVERAGE_HEAD_RE = re.compile(r'^#{2}[ \t]+ticket coverage[ \t]*$', re.I)
 DEFERRED_RE = re.compile(r'\bdeferred[ \t]*(?:→|->)', re.I)
 # ready-check.sh check 7: the key follows the arrow and ends the line, up to punctuation
 HANDOFF_RE = re.compile(r'\bdeferred[ \t]*(?:→|->)[^A-Za-z0-9]*([A-Za-z][A-Za-z0-9]*-[0-9]+)[^A-Za-z0-9]*$', re.I)
-OWED_ANY_RE = re.compile(r'\bowed[ \t]*(?:→|->)', re.I)
+LIST_RE = re.compile(r'^(?:[-*]|[0-9]+[.)])[ \t]')
+OWED_ANY_RE =re.compile(r'\bowed[ \t]*(?:→|->)', re.I)
 OWED_RE = re.compile(r'\bowed[ \t]*(?:→|->)[ \t]*(chief|operator)[ \t]+by[ \t]+(\d{4}-\d{2}-\d{2})[^A-Za-z0-9]*$', re.I)
 
 
@@ -42,13 +43,16 @@ def pr_remainder(body, own_keys=()):
     deferred, handed, whole = [], [], True
     owed, owed_bad = [], []
     in_coverage = False
+    owed_open = False  # ready-check item 7 window-checks only list lines before the first heading: an owed line elsewhere is never owed
     for raw in body.splitlines():
         line = raw.strip()
         heading = HEADING_RE.match(line)
+        if raw.startswith('#'):
+            owed_open = False
         if heading:
             # the coverage section runs to the next heading of level two or higher; a `###` inside it stays in scope
             if COVERAGE_HEAD_RE.match(line):
-                in_coverage = True
+                in_coverage = owed_open = True
             elif len(heading.group(1)) <= 2:
                 in_coverage = False
             continue
@@ -58,6 +62,8 @@ def pr_remainder(body, own_keys=()):
             text = re.sub(r'^[-*+][ \t]+', '', line)
             m = OWED_RE.search(line)
             try:
+                if not (owed_open and LIST_RE.match(line)):
+                    raise ValueError('not a list line before the first heading')
                 if not m:
                     raise ValueError('not the owed grammar')
                 datetime.date.fromisoformat(m.group(2))
