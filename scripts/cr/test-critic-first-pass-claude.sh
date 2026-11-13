@@ -316,5 +316,40 @@ PATH="$W/shim11b:$PATH" run_cfp claude-subscription
 check "11b an envelope unwrap that exits 5 is a failure (1), not a skip" 1 "$RC"
 unset CFP_RUN
 
+# --- 12. R8: what a hostile diff can make the critic read stays inside the directory it is given ---
+# The recorder shows the launch shape: a scratch cwd under TMPDIR, outside the repo, no widening flag, the grant exactly Read,Glob,Grep.
+# What the claude binary itself does with an absolute path under dontAsk is NOT-VERIFIED here (no recorder sees it).
+reach_shape() { # reach_shape <label> <rec dir> <route>: prints "ok" or the reason the reach could be wider
+    local cwd argv grant
+    cwd="$(cat "$2/cwd" 2>/dev/null)"; argv="$(cat "$2/argv" 2>/dev/null)"
+    case "$cwd" in ""|/) echo "cwd '$cwd'"; return;; esac
+    case "$cwd" in "${TMPDIR:-/tmp}"/*) ;; *) echo "cwd '$cwd' not under TMPDIR"; return;; esac
+    case "$REPO/" in "$cwd"/*) echo "the repo sits inside cwd '$cwd'"; return;; esac
+    case "$cwd/" in "$REPO"/*) echo "cwd '$cwd' is inside the repo"; return;; esac
+    case "$argv" in *--add-dir*) echo "--add-dir in argv"; return;; esac
+    if [ "$3" = sub ]; then
+        grant="$(printf '%s\n' "$argv" | awk 'p { print; exit } $0 == "--allowedTools" { p = 1 }')"
+    else
+        grant="$(sed -n 's/^HIMMEL_API_TOOLS=//p' "$2/env")"
+    fi
+    [ "$grant" = "Read,Glob,Grep" ] || { echo "grant '$grant'"; return; }
+    echo ok
+}
+fresh_rec 12a; unset FAKE_REFUSE FAKE_FAIL; run_cfp claude-api
+check "12a api route: scratch cwd, no --add-dir, grant exactly Read,Glob,Grep" ok "$(reach_shape 12a "$REC" api)"
+fresh_rec 12b; bank 10; run_cfp claude-subscription
+check "12b subscription route: scratch cwd, no --add-dir, grant exactly Read,Glob,Grep" ok "$(reach_shape 12b "$REC" sub)"
+fresh_rec 12c; bank 10; mk_tree 12c
+sed 's|--allowedTools Read,Glob,Grep|--add-dir / --allowedTools Read,Glob,Grep|' "$TREE/scripts/cr/critic-first-pass.sh" > "$W/mutant.sh" && cp "$W/mutant.sh" "$TREE/scripts/cr/critic-first-pass.sh"
+run_cfp claude-subscription
+check "12c control: a call that widens the reach with --add-dir is told apart" "--add-dir in argv" "$(reach_shape 12c "$REC" sub)"
+unset CFP_RUN
+fresh_rec 12d; bank 10; mk_tree 12d
+sed 's|--allowedTools Read,Glob,Grep|--allowedTools Read,Glob,Grep,Bash|' "$TREE/scripts/cr/critic-first-pass.sh" > "$W/mutant.sh" && cp "$W/mutant.sh" "$TREE/scripts/cr/critic-first-pass.sh"
+run_cfp claude-subscription
+check "12d control: a wider tool grant is told apart" "grant 'Read,Glob,Grep,Bash'" "$(reach_shape 12d "$REC" sub)"
+unset CFP_RUN
+ok "12e NOT-VERIFIED: the claude binary's refusal of an absolute Read outside the scratch cwd under dontAsk (a recorder cannot see it)"
+
 echo "pass=$PASS fail=$FAIL"
 [ "$FAIL" -eq 0 ]

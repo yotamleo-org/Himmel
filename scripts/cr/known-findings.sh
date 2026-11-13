@@ -15,6 +15,9 @@
 #   known-findings.sh --diff [<range>] --area   same, with a state per hit (open|waived|checked, from the latest
 #                                               preflight row for this branch), then a "preflight: classes hit N · fixed F ·
 #                                               waived W · checked C" line; exit 3 while any hit is open
+#   known-findings.sh --diff [<range>] --area --branch <b> --head <sha>   same, reading the ledger state of
+#                                               branch <b> at head <sha> (7-40 hex) instead of the station's
+#                                               own branch and HEAD: the no-checkout review of an outside PR; both optional
 #   known-findings.sh --prompt                  critic-prompt block (prompt:true classes)
 #   known-findings.sh --list                    markdown table (human index)
 #   known-findings.sh --ladder                  class count per rung (design|gate|advisory|prompt|human),
@@ -47,7 +50,7 @@ case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 KF="${KNOWN_FINDINGS_FILE:-$SCRIPT_DIR/known-findings.json}"
-MODE="" RANGE="" JSON=0 AREA=0 LEARNINGS=""
+MODE="" RANGE="" JSON=0 AREA=0 LEARNINGS="" OPT_BRANCH="" OPT_HEAD=""
 PROMO_N="${KNOWN_FINDINGS_PROMOTE_N:-}" PROMO_M="${KNOWN_FINDINGS_PROMOTE_M:-}"
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -66,6 +69,8 @@ while [ $# -gt 0 ]; do
     --min-branches)    [ $# -ge 2 ] || { echo "known-findings.sh: --min-branches requires a number" >&2; exit 2; }; PROMO_M="$2"; shift 2;;
     --json)      JSON=1; shift;;
     --area)      AREA=1; shift;;
+    --branch)    [ $# -ge 2 ] || { echo "known-findings.sh: --branch requires a branch name" >&2; exit 2; }; OPT_BRANCH="$2"; shift 2;;
+    --head)      [ $# -ge 2 ] || { echo "known-findings.sh: --head requires a commit sha" >&2; exit 2; }; OPT_HEAD="$2"; shift 2;;
     -h|--help)   sed -n '2,30p' "$0"; exit 0;;
     *) echo "known-findings.sh: unknown option $1" >&2; exit 2;;
   esac
@@ -73,6 +78,10 @@ done
 [ -n "$MODE" ] || { echo "known-findings.sh: one of --diff <range> | --prompt | --list | --ladder | --refresh is required" >&2; exit 2; }
 case "$PROMO_N" in *[!0-9]*) echo "known-findings.sh: promotion N must be a non-negative integer (got '$PROMO_N')" >&2; exit 2;; esac
 case "$PROMO_M" in *[!0-9]*) echo "known-findings.sh: promotion M must be a non-negative integer (got '$PROMO_M')" >&2; exit 2;; esac
+[ -z "$OPT_BRANCH$OPT_HEAD" ] || [ "$AREA" = 1 ] || { echo "known-findings.sh: --branch and --head are valid only with --diff --area" >&2; exit 2; }
+case "$OPT_BRANCH" in -*|*[!A-Za-z0-9._/+-]*) echo "known-findings.sh: --branch has characters outside A-Za-z0-9._/+- or starts with '-' (got '$OPT_BRANCH')" >&2; exit 2;; esac
+case "$OPT_HEAD" in *[!0-9a-f]*) echo "known-findings.sh: --head must be 7 to 40 lowercase hex characters (got '$OPT_HEAD')" >&2; exit 2;; esac
+[ -z "$OPT_HEAD" ] || [ "${#OPT_HEAD}" -ge 7 ] && [ "${#OPT_HEAD}" -le 40 ] || { echo "known-findings.sh: --head must be 7 to 40 lowercase hex characters (got '$OPT_HEAD')" >&2; exit 2; }
 [ "$AREA" = 0 ] || [ "$MODE" = diff ] || { echo "known-findings.sh: --area is valid only with --diff" >&2; exit 2; }
 # --refresh writes the catalogue, so it targets the caller's tree however this copy was entered
 # (relative hand-off or the absolute anchor spelling); an explicit KNOWN_FINDINGS_FILE wins.
@@ -103,8 +112,9 @@ LEDGER="${CR_LEDGER:-$(git rev-parse --git-common-dir 2>/dev/null)/cr-critic-sco
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 BRANCH=""; HEADSHA=""
 if [ "$AREA" = 1 ]; then
-  BRANCH="$(git rev-parse --abbrev-ref HEAD)" || { echo "known-findings.sh: cannot resolve the current branch" >&2; exit 2; }
-  HEADSHA="$(git rev-parse HEAD)" || { echo "known-findings.sh: cannot resolve HEAD" >&2; exit 2; }
+  BRANCH="$OPT_BRANCH"; HEADSHA="$OPT_HEAD"
+  [ -n "$BRANCH" ] || BRANCH="$(git rev-parse --abbrev-ref HEAD)" || { echo "known-findings.sh: cannot resolve the current branch" >&2; exit 2; }
+  [ -n "$HEADSHA" ] || HEADSHA="$(git rev-parse HEAD)" || { echo "known-findings.sh: cannot resolve HEAD" >&2; exit 2; }
 fi
 if [ "$MODE" = refresh ] && [ -n "$LEARNINGS" ] && [ ! -f "$LEARNINGS" ]; then
   echo "known-findings.sh: learnings export not found: $LEARNINGS" >&2; exit 2

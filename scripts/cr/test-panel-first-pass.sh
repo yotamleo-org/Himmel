@@ -1202,6 +1202,16 @@ pr_after="$(git -C "$prrepo" status --porcelain; git -C "$prrepo" rev-parse HEAD
 if [ "$pr_before" = "$pr_after" ]; then ok "T2.3 status, HEAD and config of the primary fixture are unchanged"; else bad "T2.3 the primary fixture changed"; fi
 if [ ! -e "$pr_canary" ]; then ok "T2.3 the PR's canary never ran"; else bad "T2.3 a PR file ran"; fi
 if [ "$(git -C "$prrepo" worktree list | wc -l | tr -d ' ')" = 1 ]; then ok "T2.3 no new worktree"; else bad "T2.3 a worktree was added"; fi
+# R5: the step 2.8 preflight of a --pr call is looked up under the PR's branch and head, not the checkout's
+kf_pr="$fx/scripts/cr/known-findings.sh"; cp "$kf_pr" "$tmp/kf-pr.orig"
+# shellcheck disable=SC2016 # the stub body expands in the stub, not here
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" > "%s"\nexit 0\n' "$tmp/kf-pr-args" > "$kf_pr"
+mv "$prrepo/.git/cr-critic-scores.jsonl" "$tmp/pr-ledger.keep" 2>/dev/null
+rm -f "$tmp/kf-pr-args"
+pr_run --pr 7 --head "$pr_oid" --branch feat/outside-thing
+mv "$tmp/pr-ledger.keep" "$prrepo/.git/cr-critic-scores.jsonl" 2>/dev/null
+cp "$tmp/kf-pr.orig" "$kf_pr"
+assert_has "$(cat "$tmp/kf-pr-args" 2>/dev/null)" "--area --branch feat/outside-thing --head $pr_oid" "R5 --pr passes the PR's branch and head to known-findings.sh --area"
 pr_run_x() {
     local envs=()
     while [ "$1" != "--" ]; do envs+=("$1"); shift; done
