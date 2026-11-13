@@ -39,12 +39,6 @@ ROW SCHEMA (v 1) -- one JSON object per eval RUN (not per case):
               the caller sets them: an eval that calls a model records the
               model's own effort in config
 
-Forward use without migration: the lane-quality repeats fill reps, ci, ci_level,
-ci_method and add calibration numbers as metrics; the qmd-quality paired compare
-reads cases (or the artifact) for a per-query paired test; the eval exporter
-exports metrics and ci as Prometheus series labelled by eval, model, lane and
-confighash.
-
 Usage:
   eval_runs.py append --eval E --source S --config-json J --metrics-json M
                       [--n N] [--reps R] [--model M] [--lane L] [--status S]

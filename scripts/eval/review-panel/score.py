@@ -730,7 +730,7 @@ def _sha(b):
 
 def fixture_digest(ids, blobs, key_bytes):
     """The fixture set's hash: each case's .patch, then every other per-case file (.intent.md), then the key.
-    blobs maps a fixtures-dir file name to its bytes. A patch-only set hashes as it did before intent files were hashed."""
+    blobs maps a fixtures-dir file name to its bytes."""
     h = hashlib.sha256()
     for cid in ids:
         h.update(cid.encode())
