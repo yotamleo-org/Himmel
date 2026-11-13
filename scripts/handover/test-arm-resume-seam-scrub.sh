@@ -213,6 +213,11 @@ B_AT=$(dry_body 1 at)
 env -u HIMMEL_BRIDGE_SESSION PATH="$STUB_BIN:$PATH" CLAUDE_REC="$TMP/rec-at" WATCH=HIMMEL_BRIDGE_SESSION \
     HIMMEL_PTY_SCRIPT_CMD="$TMP/no-such-script" sh -c "$B_AT" </dev/null >/dev/null 2>&1
 assert_eq "T18 the stub claude run from the at body sees the marker" "HIMMEL_BRIDGE_SESSION=set" "$(cat "$TMP/rec-at" 2>/dev/null)"
+if command -v script >/dev/null 2>&1; then
+    env -u HIMMEL_BRIDGE_SESSION PATH="$STUB_BIN:$PATH" CLAUDE_REC="$TMP/rec-at-pty" WATCH=HIMMEL_BRIDGE_SESSION \
+        sh -c "$B_AT" </dev/null >/dev/null 2>&1
+    assert_eq "T18 the stub claude run from the at body through the real pty sees the marker" "HIMMEL_BRIDGE_SESSION=set" "$(cat "$TMP/rec-at-pty" 2>/dev/null)"
+fi
 B_RUN=$(dry_body 1 runner)
 mkdir -p "$TMP/arm-logs"
 env -i PATH="$STUB_BIN:$SCHED_STUB:/usr/bin:/bin" HOME="$TMP" CLAUDE_REC="$TMP/rec-runner" WATCH=HIMMEL_BRIDGE_SESSION \
