@@ -204,8 +204,6 @@ if [ "$forge" = "github" ]; then
     # and `--match-head-commit` rejects the merge — loudly, which is the point.
     # A non-empty value is required for the binding to mean anything: fail rather
     # than silently fall back to an unbound merge.
-    # "${GH_CMD:-$GH_READ_BIN}", not a bare `gh` — the forge seam's github backend routes
-    # every call through GH_CMD and the tests set it to a stub.
     vetted_head=$("${GH_CMD:-$GH_READ_BIN}" pr view "$pr_num" --json headRefOid --jq '.headRefOid' 2>/dev/null) || vetted_head=""
     if [ -z "$vetted_head" ]; then
         echo "ERR pr-merge: cannot read the head SHA of PR #$pr_num — refusing to merge unbound." >&2
