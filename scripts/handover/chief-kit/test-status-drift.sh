@@ -1218,7 +1218,7 @@ lrow 3600 wrapped noop D6n; lrow 60 sweep noop D6n
 drift
 contains "9561 S2 12: a D6n park start newer than the hold wins" "$(drows AWAITING)" "source=d6n"
 
-owedrow() { # <seconds before NOW> <owed> <owed_due> - a partial merge row that records an owed step
+owedrow() {
     lrow "$1" merge moved - "$(jq -nc --arg o "$2" --arg d "$3" '{pr: "4480", contract: "no", remainder: "owed", owed: $o, owed_due: $d}')"
 }
 sdn() { dlast | cut -d: -f1; }

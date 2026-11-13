@@ -230,7 +230,7 @@ hold_of() {
     [ "$ev" = hold ] && [ -n "$H_OWNER" ] && [ -n "$H_SINCE" ] && _ts_epoch_of_iso "$H_SINCE" >/dev/null || return 1
     date_ok "$H_UNTIL" || H_UNTIL=""
 }
-owed_of() { # <KEY> - the owed step of the key's newest contract-carrying merge row, re-checked; rc 1 when it has none or a field fails
+owed_of() {
     O_WHO=$(awk -F'\t' -v k="$1" '$1 == k { print $3 }' <<<"$partials")
     O_DUE=$(awk -F'\t' -v k="$1" '$1 == k { print $4 }' <<<"$partials")
     O_TS=$(awk -F'\t' -v k="$1" '$1 == k { print $5 }' <<<"$partials")
