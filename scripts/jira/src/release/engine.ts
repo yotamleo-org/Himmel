@@ -171,12 +171,19 @@ function blockedByOf(text: string): string[] {
   }
 }
 
-export function readMirror(root: string | null): { issues: Map<string, IssueSnap> | null; sync: string | null } {
-  if (!root || !existsSync(root)) return { issues: null, sync: null };
+// The mirror's issue files whatever the cursor says, with `complete` false for an absent, unreadable or
+// complete:false cursor. Only a reader that answers per key (core-check) may use this; a whole-set reader
+// uses readMirror, which refuses a mirror that is not verified complete.
+export function readMirrorFiles(root: string | null): { issues: Map<string, IssueSnap> | null; sync: string | null; complete: boolean } {
+  if (!root || !existsSync(root)) return { issues: null, sync: null, complete: false };
   let sync: string | null = null;
+  let complete = false;
   try {
-    const got = (JSON.parse(readFileSync(join(root, '.cursor.json'), 'utf8')) as { lastSync: string }).lastSync;
-    if (!Number.isNaN(Date.parse(got))) sync = got;
+    const cur = JSON.parse(readFileSync(join(root, '.cursor.json'), 'utf8')) as { lastSync: string; complete?: boolean };
+    if (!Number.isNaN(Date.parse(cur.lastSync))) {
+      sync = cur.lastSync;
+      complete = cur.complete !== false;
+    }
   } catch {
     sync = null;
   }
@@ -197,8 +204,13 @@ export function readMirror(root: string | null): { issues: Map<string, IssueSnap
       ...(Array.isArray(fm.labels) && fm.labels.length ? { labels: fm.labels.map(String) } : {}),
     });
   }
-  if (issues.size === 0 && sync === null) return { issues: null, sync: null };
-  return { issues, sync };
+  if (issues.size === 0 && sync === null) return { issues: null, sync: null, complete: false };
+  return { issues, sync, complete };
+}
+
+export function readMirror(root: string | null): { issues: Map<string, IssueSnap> | null; sync: string | null } {
+  const m = readMirrorFiles(root);
+  return m.complete ? { issues: m.issues, sync: m.sync } : { issues: null, sync: null };
 }
 
 function reduceLoaded(l: Loaded, mirror: ReturnType<typeof readMirror>): ReleaseState {
