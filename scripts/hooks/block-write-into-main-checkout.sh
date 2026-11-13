@@ -2120,7 +2120,12 @@ _bwimc_deny() {
             unresolved-cd|unresolved-heredoc|marker-byte|shell-ambiguous|unclosed-expansion|unresolved-git-target|ast-unresolved)
                 # A shape refusal: the target was unreadable, not proven primary.
                 echo "    Retry (shape, not destination): one write per Bash call, an absolute"
-                echo "    worktree path as the target, no cd/heredoc/\$(…)/\$VAR — body via a file." ;;
+                echo "    worktree path as the target, no cd/heredoc/\$(…)/\$VAR — body via a file."
+                case "${_BWIMC_GIT_SUB:-}" in *'(xargs '*)
+                    echo "    xargs words land among git's arguments and may be options (--output=, -O):"
+                    echo "    feed a target instead (xargs -I{} git -C {} log -1) or a cat-file object"
+                    echo "    (xargs -I{} git cat-file -p {}), or loop over the words in a script file." ;;
+                esac ;;
         esac
     } >&2
     exit 2
@@ -2717,7 +2722,7 @@ _bwimc_fsmut_hit() {
     return 1
 }
 _bwimc_ecwd_track() {
-    local toks=() t tu i n r carg cabs craw piped="${2:-0}" j cmdi cdphys=0 cs first="${_bwimc_ecwd_first:-0}"
+    local toks=() t tu i n r carg cabs craw piped="${2:-0}" j cmdi cdphys=0 cs cdkeep=0 first="${_bwimc_ecwd_first:-0}"
     _bwimc_ecwd_first=0
     while IFS= read -r t; do toks+=("$t"); done < <(_bwimc_tokenize "$1")
     n=${#toks[@]}
@@ -2872,6 +2877,19 @@ _bwimc_ecwd_track() {
                                 && cs=$(guard_canon_path "$r" 2>/dev/null) && [ -n "$cs" ] \
                                 && main_checkout_verdict_set "$cs" && [ -z "$_MCV_ROOT" ] \
                                 && _bwimc_ecwd_sure=1 && _bwimc_ecwd_cs="$cs"
+                            # The same leading cd when a loop, `$(…)`, `<(…)` or a pipe taints the
+                            # line (piped=1): the shell is in $r or, if the cd never took, still in
+                            # the payload cwd, because the command holds no other cd word
+                            # (_bwimc_orig_onecd). The cwd is kept, never sure, so _bwimc_cd_guard
+                            # checks each relative candidate against both $r and the payload cwd.
+                            if [ "$first" = 1 ] && [ "$cmdi" = 0 ] && [ "$piped" = 1 ] \
+                                && [ "${_bwimc_orig_onecd:-0}" = 1 ] \
+                                && [ "$i" = 1 ] && case "$carg" in /*) true ;; *) false ;; esac \
+                                && _bwimc_plain_word "$craw"; then
+                                # swallow-ok: a target that cannot be canonicalised is not kept, the cd stays unresolved
+                                cs=$(guard_canon_path "$r" 2>/dev/null) && [ -n "$cs" ] \
+                                    && main_checkout_verdict_set "$cs" && [ -z "$_MCV_ROOT" ] && cdkeep=1
+                            fi
                         else
                             # also reached when an earlier clause
                             # of this command removed/moved/chmod-ed the target.
@@ -2889,7 +2907,7 @@ _bwimc_ecwd_track() {
     # have run (or ran in a pipeline subshell) — whatever it modelled, the
     # real cwd is unknown, so fail closed like an unresolvable cd.
     case "$tu" in
-        cd|pushd|popd) [ "$piped" = 1 ] && _bwimc_ecwd_unres=1 ;;
+        cd|pushd|popd) [ "$piped" = 1 ] && [ "$cdkeep" = 0 ] && _bwimc_ecwd_unres=1 ;;
     esac
     for ((j = 0; j < n; j++)); do
         [ "$j" = "$cmdi" ] && continue
@@ -4525,6 +4543,52 @@ case "$cmd" in
     *'$'*|*'`'*|*'<<'*) _bwimc_orig_dynamic=1 ;;
     *) if _bwimc_exotic_byte "$cmd"; then _bwimc_orig_dynamic=1; else _bwimc_orig_dynamic=0; fi ;;
 esac
+# _bwimc_orig_onecd=1 when the payload command, quotes, backslashes, braces, brackets and commas
+# deleted, holds exactly one cd, pushd or popd word anywhere (eval strings, heredoc bodies and
+# substitutions included) and no byte outside printable ASCII, tab and newline. Only then may a
+# leading cd hold through a loop, `$(…)` or `<(…)` (see _bwimc_ecwd_track): no later cd, hidden or
+# not, can move the shell elsewhere. Any other spelling of a cd word counts, so it only over-counts.
+_bwimc_one_cd_word() {
+    local LC_ALL=C t="$1" n=0 re='(^|[^A-Za-z0-9_])(cd|pushd|popd)([^A-Za-z0-9_]|$)'
+    _bwimc_exotic_byte "$t" && return 1
+    t="${t//[\'\"\\\{\},\[\]]/}"
+    while [[ $t =~ $re ]]; do
+        n=$((n+1)); [ "$n" = 1 ] || return 1
+        t="${t#*"${BASH_REMATCH[0]}"}"
+    done
+    [ "$n" = 1 ]
+}
+if _bwimc_one_cd_word "$cmd"; then _bwimc_orig_onecd=1; else _bwimc_orig_onecd=0; fi
+
+# _bwimc_guest_exec_only CMD: rc 0 when CMD is one plain
+# `bash <checkout>/scripts/vm/guest-exec.sh <vm> [--sudo] [--timeout N] -- ARGV…` and nothing
+# else. guest-exec.sh hands ARGV to `vmsdk.py <vm> exec`, which joins it and runs it over ssh
+# in the test VM (VM.guest_exec → VM.run → paramiko exec_command), never on the host; its host
+# side writes only ~/.himmel/vm/ and the uv cache. So ARGV is data, provided the host shell
+# runs no part of it: ARGV holds only plain words, single-quoted spans and spaces (no
+# separator, redirect, expansion, double quote or backslash outside single quotes). Refused
+# (rc 1, the normal scan runs): an assignment prefix or an exported HIMMEL_VMSDK or
+# HIMMEL_GUEST_EXEC_LOG (they repoint the program or the log), and a guest-exec.sh or
+# vmsdk.py that is not tracked and unmodified in the checkout it resolves into.
+_BWIMC_GE_RE='^bash[ ]+([A-Za-z0-9_./-]*scripts/vm/guest-exec\.sh)[ ]+[A-Za-z0-9_-]+([ ]+(--sudo|--timeout[ ]+[0-9]+))*[ ]+--[ ]+(.+)$'
+_BWIMC_GE_ARGV_RE="^([A-Za-z0-9_./:,+@%=-]|'[^']*'|[ ])+\$"
+_bwimc_guest_exec_only() {
+    local s p root
+    [ -z "${HIMMEL_VMSDK:-}" ] && [ -z "${HIMMEL_GUEST_EXEC_LOG:-}" ] || return 1
+    [[ $1 =~ $_BWIMC_GE_RE ]] || return 1
+    s="${BASH_REMATCH[1]}"
+    [[ ${BASH_REMATCH[4]} =~ $_BWIMC_GE_ARGV_RE ]] || return 1
+    case "$s" in /*) p="$s" ;; *) p="$_bwimc_cwd/$s" ;; esac
+    # swallow-ok: a script path that cannot be canonicalised gets the normal scan (rc 1)
+    p=$(guard_canon_path "$p" 2>/dev/null) || return 1
+    case "$p" in */scripts/vm/guest-exec.sh) ;; *) return 1 ;; esac
+    root="${p%/scripts/vm/guest-exec.sh}"
+    git -C "$root" ls-files --error-unmatch -- scripts/vm/guest-exec.sh scripts/lib/vmsdk.py >/dev/null 2>&1 || return 1
+    git -C "$root" diff --quiet HEAD -- scripts/vm/guest-exec.sh scripts/lib/vmsdk.py >/dev/null 2>&1
+}
+if [ "${tool:-Bash}" = Bash ] && _bwimc_guest_exec_only "$cmd"; then
+    if [ "$_bwimc_sourced" = 1 ]; then return 0; else exit 0; fi
+fi
 
 if [ "$_bwimc_engine" != regex ]; then
     _bwimc_ast_run "$cmd" "$(jq -nc --arg c "$_bwimc_cwd" '{cwds: [$c], unres: false, stack: []}')" 0
@@ -5792,6 +5856,22 @@ _bwimc_tar_clause_ok() {
 # function that could change what `tar` runs, and no TAR_OPTIONS in the
 # hook's own environment. Fail-closed: any doubt is rc 1.
 _BWIMC_XTRACT_RE='(^|[^[:alnum:]_.-])(tar|bsdtar|gtar|star|cpio|bsdcpio|pax|unzip|funzip|bsdunzip|7z|7za|7zr|ar|unar|atool|jar|busybox|toybox|python[0-9.]*|perl|ruby|node|php|xargs|bash|sh|zsh|dash|ksh|fish|eval|source|exec|ln|link|cp|mv|rsync|install)(\.exe)?([^[:alnum:]_-]|$)'
+# _bwimc_sink_clause_ok CLAUSE: rc 0 for a pipe stage that only counts, hashes or
+# prints what it reads (`wc -c`, `sha256sum`, `head -c 64`) with no redirect: it
+# cannot turn an archive stream into files.
+_bwimc_sink_clause_ok() {
+    local toks=() t
+    while IFS= read -r t; do toks+=("$t"); done < <(_bwimc_tokenize "$1")
+    [ "${#toks[@]}" -gt 0 ] || return 1
+    case "${toks[0]}" in
+        wc|head|tail|cksum|md5sum|sha1sum|sha256sum|sha512sum|b2sum|od|hexdump) ;;
+        *) return 1 ;;
+    esac
+    for t in "${toks[@]}"; do
+        case "$t" in *[\<\>\&\'\"\\]*) return 1 ;; esac
+    done
+    return 0
+}
 _bwimc_xtract_ok() {
     local cl lc lead t pipe
     [ -z "${TAR_OPTIONS:-}" ] || return 1
@@ -5812,6 +5892,7 @@ _bwimc_xtract_ok() {
         ! _bwimc_is_colon "$cl" || continue
         if [ "$pipe" = 1 ]; then
             case "$lead" in git|git[[:space:]]*) continue ;; esac
+            _bwimc_sink_clause_ok "$cl" && continue
             _bwimc_tar_clause_ok "$cl" || return 1
             continue
         fi
@@ -5875,6 +5956,11 @@ _bwimc_git_sub_is_read() {
             return 0 ;;
         stash)
             case "${1:-}" in list|show) return 0 ;; esac
+            return 1 ;;
+        # list-heads and verify only read the bundle file and the object store;
+        # create writes its file (checked by the caller), unbundle writes objects.
+        bundle)
+            case "${1:-}" in list-heads|verify) return 0 ;; esac
             return 1 ;;
         reflog)
             case "${1:-}" in expire|delete|drop|write) return 1 ;; esac

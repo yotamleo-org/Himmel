@@ -980,5 +980,52 @@ mkdir -p "$FIX/scratch8200/c:/sub"
 check_both "104r fromP: cd c:/sub; echo x > out.txt (a drive spelling is relative here) denies" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd c:/sub; echo x > out.txt\",\"cwd\":\"$FIX/primary\"}}" "$FIX/scratch8200"
 
+echo "== HIMMEL-9913: a loop, \$(...) or <(...) after a plain absolute cd into a scratch dir =="
+# From a linked-worktree payload cwd, a relative write after `cd <scratch>` lands in
+# the scratch dir or, if the cd never ran, in the worktree: neither is protected.
+# shellcheck disable=SC2016  # row commands are literal shell text
+{
+_subst_row "105a fromW: cd scratch && for loop > out.txt allows" allow \
+    "cd $FIX/scratch8200 && for s in a b; do echo \$s; done > out.txt"
+_subst_row "105b fromW: cd scratch && echo \$(cat a) > y allows" allow \
+    "cd $FIX/scratch8200 && echo \$(cat a) > y"
+_subst_row "105c fromW: cd scratch && diff <(sort a) b > d.txt allows" allow \
+    "cd $FIX/scratch8200 && diff <(sort a) b > d.txt"
+_subst_row "105d fromW: cd scratch && while loop writing a relative file allows" allow \
+    "cd $FIX/scratch8200 && while read l; do echo \$l >> out.txt; done < in.txt"
+_subst_row "105e fromW: cd primary && for loop writing a relative file denies" block \
+    "cd $FIX/primary && for s in a; do echo x > f; done"
+_subst_row "105f fromW: cd scratch && for loop writing into the primary by absolute path denies" block \
+    "cd $FIX/scratch8200 && for s in a; do echo x > $FIX/primary/f; done"
+_subst_row "105g fromW: cd scratch && tar && relative second cd && make > build.log denies" block \
+    "cd $FIX/scratch8200 && tar xzf a.tgz && cd sub && make > build.log"
+_subst_row "105h fromP: cd scratch && for loop > out.txt denies (payload cwd is the primary)" block \
+    "cd $FIX/scratch8200 && for s in a b; do echo \$s; done > out.txt" "$FIX/primary"
+_subst_row "105i fromW: cd scratch && a cd into the primary inside the loop, relative write denies" block \
+    "cd $FIX/scratch8200 && for s in a; do cd $FIX/primary; echo x > f; done"
+_subst_row "105j fromW: cd worktree && for loop > out.txt (cd target in a repo, not a scratch dir) still denies" block \
+    "cd $FIX/wt && for s in a b; do echo \$s; done > out.txt"
+# a second cd word anywhere, however spelled or hidden, keeps the cwd unresolved
+_subst_row "105k fromW: cd scratch; case pattern)cd primary;; esac; relative write denies" block \
+    "cd $FIX/scratch8200; case x in x)cd $FIX/primary;; esac; echo x > f"
+_subst_row "105l fromW: cd scratch && loop with eval \"cd primary\", relative write denies" block \
+    "cd $FIX/scratch8200 && for s in a; do eval \"cd $FIX/primary\"; done; echo x > f"
+_subst_row "105m fromW: cd scratch && loop with c''d primary, relative write denies" block \
+    "cd $FIX/scratch8200 && for s in a; do c''d $FIX/primary; done; echo x > f"
+_subst_row "105n fromW: cd scratch && loop with {cd,} primary, relative write denies" block \
+    "cd $FIX/scratch8200 && for s in a; do {cd,} $FIX/primary; done; echo x > f"
+_subst_row "105o fromW: cd scratch && loop writing ../primary/f denies" block \
+    "cd $FIX/scratch8200 && for s in a; do echo x > ../primary/f; done"
+if ! { ln -sfn "$FIX/primary" "$FIX/scratch8200/lnk9913" && [ -d "$FIX/scratch8200/lnk9913" ]; }; then
+    bad "105p setup: the scratch8200/lnk9913 symlink was not created"
+fi
+_subst_row "105p fromW: cd scratch/link-to-primary && loop > out.txt denies" block \
+    "cd $FIX/scratch8200/lnk9913 && for s in a b; do echo \$s; done > out.txt"
+_subst_row "105q fromW: cd scratch && loop running rm on a relative file allows" allow \
+    "cd $FIX/scratch8200 && for s in a; do rm f; done"
+_subst_row "105r fromP: cd scratch && loop running rm on a relative file denies" block \
+    "cd $FIX/scratch8200 && for s in a; do rm f; done" "$FIX/primary"
+}
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

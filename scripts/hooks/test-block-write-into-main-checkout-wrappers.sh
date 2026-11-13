@@ -185,5 +185,73 @@ _r4213 "103s chroot / git status (ALLOW)"                              allow 'ch
 _r4213 "103t nice tee /tmp (ALLOW)"                                    allow 'echo x | nice tee /tmp/himmel-4329-f'
 }
 
+echo "== HIMMEL-9913: read-only git archive/bundle, guest-exec argv as data =="
+# shellcheck disable=SC2016  # row commands are literal shell text
+{
+_subst_row "106a git -C primary archive HEAD | wc -c, cwd the primary (ALLOW)" allow \
+    "git -C $_PR archive HEAD | wc -c" "$_PR"
+_subst_row "106b git archive HEAD | sha256sum, cwd the primary (ALLOW)" allow \
+    "git archive HEAD | sha256sum" "$_PR"
+_subst_row "106c git bundle list-heads, cwd the primary (ALLOW)" allow \
+    "git bundle list-heads /tmp/himmel-9913.bundle" "$_PR"
+_subst_row "106d git -C primary bundle verify (ALLOW)" allow \
+    "git -C $_PR bundle verify /tmp/himmel-9913.bundle"
+_subst_row "106e git -C primary archive -o primary/x.tgz HEAD denies" block \
+    "git -C $_PR archive -o $_PR/x.tgz HEAD" "$_PR"
+_subst_row "106f git archive HEAD | tar -x, cwd the primary denies" block \
+    "git archive HEAD | tar -x" "$_PR"
+_subst_row "106g git archive HEAD | wc -c | sh, cwd the primary denies" block \
+    "git archive HEAD | wc -c | sh" "$_PR"
+_subst_row "106h git archive HEAD | head -c 9 > x.tar, cwd the primary denies" block \
+    "git archive HEAD | head -c 9 > x.tar" "$_PR"
+_subst_row "106i git archive --format=zip HEAD | wc -c (runs a configured command) denies" block \
+    "git archive --format=zip HEAD | wc -c" "$_PR"
+_subst_row "106j git bundle create x.bundle HEAD, cwd the primary denies" block \
+    "git bundle create x.bundle HEAD" "$_PR"
+_subst_row "106k git bundle unbundle, cwd the primary denies" block \
+    "git bundle unbundle /tmp/himmel-9913.bundle" "$_PR"
+_subst_row "106l git rev-list | xargs -I{} git show {} (stdin words reach git's options) denies" block \
+    "git -C $_PR rev-list -3 HEAD | xargs -I{} git -C $_PR show {} --stat"
+}
+
+# guest-exec.sh and vmsdk.py committed on the primary, a linked worktree off it.
+unset HIMMEL_VMSDK HIMMEL_GUEST_EXEC_LOG 2>/dev/null || true
+mkdir -p "$FIX/primary/scripts/vm" "$FIX/primary/scripts/lib"
+printf '#!/usr/bin/env bash\n' > "$FIX/primary/scripts/vm/guest-exec.sh"
+printf '# vmsdk\n' > "$FIX/primary/scripts/lib/vmsdk.py"
+git -C "$FIX/primary" add scripts >/dev/null 2>&1
+git -C "$FIX/primary" commit -q -m ge >/dev/null 2>&1
+git -C "$FIX/primary" worktree add -q -b ge9913 "$FIX/wtge" >/dev/null 2>&1
+git -C "$FIX/primary" worktree add -q -b ge9913b "$FIX/wtgeb" >/dev/null 2>&1
+printf 'echo edited\n' >> "$FIX/wtgeb/scripts/vm/guest-exec.sh"
+mkdir -p "$FIX/loose/scripts/vm" "$FIX/loose/scripts/lib"
+cp "$FIX/primary/scripts/vm/guest-exec.sh" "$FIX/loose/scripts/vm/"
+cp "$FIX/primary/scripts/lib/vmsdk.py" "$FIX/loose/scripts/lib/"
+[ -f "$FIX/wtge/scripts/vm/guest-exec.sh" ] || bad "107 setup: the guest-exec fixture worktree was not created"
+_GW="$FIX/wtge"
+# shellcheck disable=SC2016  # row commands are literal shell text
+{
+_subst_row "107a guest-exec -- bash -c 'cd ~/himmel && git log -1' (ALLOW)" allow \
+    "bash scripts/vm/guest-exec.sh vm -- bash -c 'cd ~/himmel && git log -1'" "$_GW"
+_subst_row "107b guest-exec by absolute path, --sudo --timeout, body writes a guest path (ALLOW)" allow \
+    "bash $_GW/scripts/vm/guest-exec.sh vm --sudo --timeout 60 -- bash -c 'cd /srv && make > build.log'" "$_GW"
+_subst_row "107c guest-exec … > primary/f (host redirect) denies" block \
+    "bash scripts/vm/guest-exec.sh vm -- bash -c 'echo x' > $_PR/f" "$_GW"
+_subst_row "107d guest-exec … ; echo x > primary/f denies" block \
+    "bash scripts/vm/guest-exec.sh vm -- ls; echo x > $_PR/f" "$_GW"
+_subst_row "107e HIMMEL_VMSDK=… guest-exec (repointed program) denies" block \
+    "HIMMEL_VMSDK=/tmp/x.py bash scripts/vm/guest-exec.sh vm -- bash -c 'echo x > $_PR/f'" "$_GW"
+_subst_row "107f guest-exec with a double-quoted \$(…) the host expands denies" block \
+    "bash scripts/vm/guest-exec.sh vm -- bash -c \"echo \$(cat $_PR/a > $_PR/b)\"" "$_GW"
+_subst_row "107g guest-exec … | tee primary/f denies" block \
+    "bash scripts/vm/guest-exec.sh vm -- bash -c 'cd ~/himmel' | tee $_PR/f" "$_GW"
+_subst_row "107h an untracked guest-exec.sh copy denies" block \
+    "bash $FIX/loose/scripts/vm/guest-exec.sh vm -- bash -c 'echo x > $_PR/f'" "$_GW"
+_subst_row "107i a modified guest-exec.sh denies" block \
+    "bash $FIX/wtgeb/scripts/vm/guest-exec.sh vm -- bash -c 'echo x > $_PR/f'" "$_GW"
+_subst_row "107j cd /tmp && guest-exec (not the whole command) denies" block \
+    "cd /tmp && bash scripts/vm/guest-exec.sh vm -- bash -c 'echo x > $_PR/f'" "$_GW"
+}
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
