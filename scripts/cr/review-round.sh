@@ -1555,6 +1555,13 @@ if [ "$verb" = "abort" ]; then
     run_pid=""
     [ ! -f "$delta_run" ] || read -r run_pid < "$delta_run" || run_pid=""
     case "$run_pid" in ''|*[!0-9]*) run_pid="" ;; esac
+    run_alive=""
+    if [ -n "$pr" ] && [ -f "$delta_run" ]; then
+        while read -r run_other; do
+            case "$run_other" in ''|*[!0-9]*) continue ;; esac
+            if [ "$run_other" != "$PPID" ] && kill -0 "$run_other" 2>/dev/null; then run_alive="$run_other"; fi
+        done < "$delta_run"
+    fi
     if [ "$ab_rc" -ne 0 ]; then
         :
     elif [ "$ab_cur" != "$ab_head" ]; then
@@ -1569,8 +1576,8 @@ if [ "$verb" = "abort" ]; then
     elif [ -z "$run_pid" ]; then
         echo "review-round: no start caller is recorded for the round on $ab_head, so it cannot be shown to have ended - it is not given back" >&2
         ab_rc=8
-    elif [ "$run_pid" != "$PPID" ] && kill -0 "$run_pid" 2>/dev/null; then
-        echo "review-round: the round on $ab_head is still running (start by pid $run_pid) - it is not given back" >&2
+    elif [ -n "$run_alive" ] || { [ "$run_pid" != "$PPID" ] && kill -0 "$run_pid" 2>/dev/null; }; then
+        echo "review-round: the round on $ab_head is still running (start by pid ${run_alive:-$run_pid}) - it is not given back" >&2
         ab_rc=8
     else
         # swallow-ok: no critic-reviewed head in the start records removes .head below
@@ -1643,6 +1650,7 @@ if [ -n "$pr" ]; then
         exit 5
     fi
     if [ "$pr_reuse" -eq 1 ]; then
+        [ "$verb" != "start" ] || printf '%s\n' "$PPID" >> "$delta_run" 2>/dev/null || rm -f "$delta_run" 2>/dev/null
         pr_unlock
         if [ "$verb" = "check" ]; then printf '%s %s\n' "$round" "$pr_auth"; else printf '%s\n' "$round"; fi
         exit 0

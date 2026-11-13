@@ -233,6 +233,43 @@ rr abort --pr 7 --head "$H"
 eq "$rrc" "0" "abort --pr gives the round back once the start caller has ended"
 eq "$(round_of)" "0" "abort --pr after the caller ended: the count is 0"
 
+hold_start() {
+    HOME="$HOMEDIR" PATH="$tmp/bin:$PATH" STUB_OID="$H" HIMMEL_REPO="$A" CR_LEDGER="$LEDGER" \
+        bash -c 'cd "$3" && bash "$1" start --pr 7 --head "$2" >/dev/null; sleep 60' _ "$A/scripts/cr/review-round.sh" "$H" "$P" &
+    held=$!
+}
+recorded() { grep -qx "$1" "$ROUNDS/outside-7.delta.run" 2>/dev/null; }
+wait_for() { local n=0; while ! "$@" && [ "$n" -lt 100 ]; do sleep 0.1; n=$((n + 1)); done; }
+
+reset; preflight
+rr start --pr 7 --head "$H"
+hold_start; holderB=$held
+wait_for recorded "$holderB"
+if recorded "$holderB"; then pass "a same-head reuse start records its caller too"; else fail "a same-head reuse start records its caller too"; fi
+rr abort --pr 7 --head "$H"
+eq "$rrc" "8" "abort --pr refuses while a reuse run is in flight after the first caller ended (exit 8)"
+has "$rerr" "still running" "abort --pr: names the live reuse caller"
+eq "$(round_of)" "1" "abort --pr keeps the round while a reuse run is in flight"
+kill "$holderB" 2>/dev/null
+wait "$holderB" 2>/dev/null
+rr abort --pr 7 --head "$H"
+eq "$rrc" "0" "abort --pr gives the round back once every recorded caller has ended"
+
+reset; preflight
+GO="$tmp/go-abort"; ARC="$tmp/abort-rc"; rm -f "$GO" "$ARC"
+HOME="$HOMEDIR" PATH="$tmp/bin:$PATH" STUB_OID="$H" HIMMEL_REPO="$A" CR_LEDGER="$LEDGER" \
+    bash -c 'cd "$3" && bash "$1" start --pr 7 --head "$2" >/dev/null; until [ -e "$4" ]; do sleep 0.1; done; bash "$1" abort --pr 7 --head "$2" >/dev/null 2>&1; echo $? > "$5"; sleep 60' _ "$A/scripts/cr/review-round.sh" "$H" "$P" "$GO" "$ARC" &
+holderA=$!
+wait_for recorded "$holderA"
+hold_start; holderB=$held
+wait_for recorded "$holderB"
+touch "$GO"
+wait_for test -s "$ARC"
+eq "$(cat "$ARC" 2>/dev/null)" "8" "the first caller's own early give_back is refused while a reuse run is in flight (exit 8)"
+eq "$(round_of)" "1" "the first caller's early give_back keeps the round while a reuse run is in flight"
+kill "$holderA" "$holderB" 2>/dev/null
+wait "$holderA" "$holderB" 2>/dev/null
+
 if [ "$fails" -gt 0 ]; then
     printf 'FAIL test-panel-first-pass-pr-base (%s failures)\n' "$fails" >&2
     exit 1
