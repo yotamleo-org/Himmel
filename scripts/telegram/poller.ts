@@ -2774,17 +2774,18 @@ export async function main(): Promise<void> {
 
 // The operator fence's host reference: this process's namespace ids at the fixed
 // passwd-home path, whatever BRIDGE_ROOT says. No /proc (macOS): nothing to write.
-export async function writeHostNs(path = hostNsFile(), procRoot = "/proc"): Promise<boolean> {
+export async function writeHostNs(path?: string, procRoot = "/proc"): Promise<boolean> {
   if (!existsSync(join(procRoot, "self", "ns"))) return false;
-  await mkdir(dirname(path), { recursive: true });
-  await atomicWrite(path, `${currentNs(procRoot)}\n`);
+  const target = path ?? hostNsFile();
+  await mkdir(dirname(target), { recursive: true });
+  await atomicWrite(target, `${currentNs(procRoot)}\n`);
   return true;
 }
 
 // `--write-host-ns`: the route for a station that runs no bridge. True when a flag was handled.
-export async function runCli(argv: string[], hostNsPath = hostNsFile()): Promise<boolean> {
+export async function runCli(argv: string[], hostNsPath?: string): Promise<boolean> {
   if (!argv.includes("--write-host-ns")) return false;
-  if (await writeHostNs(hostNsPath)) console.error(`[poller] wrote ${hostNsPath}`);
+  if (await writeHostNs(hostNsPath)) console.error(`[poller] wrote ${hostNsPath ?? hostNsFile()}`);
   else console.error("[poller] --write-host-ns: no /proc on this host; the operator fence runs its env check alone");
   return true;
 }

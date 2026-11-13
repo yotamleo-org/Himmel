@@ -33,9 +33,13 @@ process.env.HIMMEL_SECRETS_KEYRING = "off";
 // The fence's ancestry walk would read the runner's real /proc: a worker's ancestors carry
 // HIMMEL_CONSOLE_LEG=1 and CI has no host-ns. Only a walk given neither seam takes the
 // env-only (no /proc) path; one given procRoot or hostNsPath runs the real walk.
-const noProc = join(mkdtempSync(join(tmpdir(), 'jira-test-proc-')), 'absent');
-vi.mock('./src/release/fence-ancestry.js', async (orig) => {
-  const m = await orig<typeof import('./src/release/fence-ancestry.js')>();
-  const walk: typeof m.walk = (o = {}) => m.walk(o.procRoot === undefined && o.hostNsPath === undefined ? { ...o, procRoot: noProc } : o);
-  return { ...m, walk };
-});
+// The root bunfig.toml preloads this file for `bun test` too, whose vi has no importOriginal;
+// no bun-run suite reaches the fence, so bun skips it.
+if (!process.versions.bun) {
+  const noProc = join(mkdtempSync(join(tmpdir(), 'jira-test-proc-')), 'absent');
+  vi.doMock('./src/release/fence-ancestry.js', async (orig) => {
+    const m = await orig<typeof import('./src/release/fence-ancestry.js')>();
+    const walk: typeof m.walk = (o = {}) => m.walk(o.procRoot === undefined && o.hostNsPath === undefined ? { ...o, procRoot: noProc } : o);
+    return { ...m, walk };
+  });
+}

@@ -10,7 +10,16 @@ export const MAX_HOPS = 64;
 
 // Resolved from the passwd home only: a bridge command can set BRIDGE_ROOT and HOME.
 export function hostNsFile(): string {
-  return join(userInfo().homedir, '.claude', 'handover', 'bridge', 'host-ns');
+  return join(passwdHome(), '.claude', 'handover', 'bridge', 'host-ns');
+}
+
+// node's userInfo() asks getpwuid; bun's follows HOME, so under bun read the root-owned passwd file.
+function passwdHome(): string {
+  if (!process.versions.bun) return userInfo().homedir;
+  const uid = String(process.getuid?.());
+  const row = read('/etc/passwd')?.split('\n').map((l) => l.split(':')).find((f) => f[2] === uid);
+  if (!row?.[5]) throw new Error(`no /etc/passwd row for uid ${uid}, so bun cannot resolve host-ns without HOME; run this under node`);
+  return row[5];
 }
 
 export const HOST_NS_REMEDY = 'restart the bridge, or run `bun scripts/telegram/poller.ts --write-host-ns` once on a station with no bridge';

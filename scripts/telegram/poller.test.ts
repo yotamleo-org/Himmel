@@ -4187,15 +4187,12 @@ test("T1f: --write-host-ns and the start-up write put /proc/self/ns at the fixed
   expect(main.slice(0, 400)).toContain("await writeHostNs()");
 });
 
-test("T1f: bun resolves hostNsFile() from the passwd home, whatever HOME and BRIDGE_ROOT say", async () => {
-  const { hostNsFile } = await import("../jira/src/release/fence-ancestry");
+// A fresh bun outside the repo's bunfig.toml: its test preload fakes os.userInfo().homedir from HOME.
+test("T1f: bun resolves hostNsFile() from the passwd home, whatever HOME and BRIDGE_ROOT say", () => {
   const passwdHome = spawnSync("getent", ["passwd", String(process.getuid!())], { encoding: "utf8" }).stdout.split(":")[5];
-  const prior = { HOME: process.env.HOME, BRIDGE_ROOT: process.env.BRIDGE_ROOT };
-  process.env.HOME = root();
-  process.env.BRIDGE_ROOT = root();
-  try {
-    expect(hostNsFile()).toBe(join(passwdHome, ".claude", "handover", "bridge", "host-ns"));
-  } finally {
-    for (const [k, v] of Object.entries(prior)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
-  }
+  const mod = join(import.meta.dir, "..", "jira", "src", "release", "fence-ancestry.ts");
+  const r = spawnSync(process.execPath, ["-e", `const m = await import(${JSON.stringify(mod)}); console.log(m.hostNsFile());`], {
+    cwd: root(), encoding: "utf8", env: { ...process.env, HOME: root(), BRIDGE_ROOT: root() },
+  });
+  expect(r.stdout.trim()).toBe(join(passwdHome, ".claude", "handover", "bridge", "host-ns"));
 });
