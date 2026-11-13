@@ -3605,7 +3605,7 @@ _log_has_new_skip_line() {
 # Counts run-eligible suites (post every skip filter) for the --shard split
 # below; advances for every one of them regardless of which shard claims it
 run_index=0
-shard_assigned=0   # suites this shard claimed; 0 = an empty shard, a pass
+shard_assigned=0
 # How many failures were rc=127 (command or path not found).
 rc127=0
 failed_suites=""
