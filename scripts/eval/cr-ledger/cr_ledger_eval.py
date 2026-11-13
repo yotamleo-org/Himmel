@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""cr_ledger_eval.py - review-panel numbers from the CR ledger (HIMMEL-4482).
+"""cr_ledger_eval.py - review-panel numbers from the CR ledger.
 
 Pure over the ledger: no model call, no network, no writes. It reads the
 append-only cr-critic-scores.jsonl that /pr-check writes, folds each finding's

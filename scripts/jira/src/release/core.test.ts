@@ -21,9 +21,10 @@ const tracked = execFileSync('git', ['ls-files'], { cwd: repoRoot, encoding: 'ut
 type Snap = { key: string; type?: string; priority?: string; labels?: string[] };
 
 // A Jira mirror directory holding one file per issue.
-function mirrorOf(issues: Snap[]): string {
+function mirrorOf(issues: Snap[], cursor?: object | null): string {
   const dir = mkdtempSync(join(tmpdir(), 'core-mirror-'));
-  writeFileSync(join(dir, '.cursor.json'), JSON.stringify({ lastSync: '2026-11-01T00:00:00.000Z' }));
+  const cur = cursor === undefined ? { lastSync: '2026-11-01T00:00:00.000Z' } : cursor;
+  if (cur) writeFileSync(join(dir, '.cursor.json'), JSON.stringify(cur));
   for (const i of issues) {
     writeFileSync(join(dir, `${i.key}.md`), [
       '---', `key: "${i.key}"`, `type: "${i.type ?? 'Story'}"`, `priority: "${i.priority ?? 'Medium'}"`,
@@ -55,6 +56,14 @@ afterEach(() => {
 
 describe('coreMatch', () => {
   const patterns = loadCorePatterns(corePathsFile);
+
+  it('core-check answers from the issue files when the cursor is absent or incomplete, never UNKNOWN', async () => {
+    const path = 'scripts/handover/merge-on-green.sh';
+    await run('core-check', '--paths', path, '--mirror', mirrorOf([{ key: 'K-1' }], null), '--key', 'K-1');
+    await run('core-check', '--paths', path, '--mirror', mirrorOf([{ key: 'K-1' }], { lastSync: '2026-11-01T00:00:00.000Z', complete: false }), '--key', 'K-1');
+    await run('core-check', '--paths', path, '--mirror', mirrorOf([{ key: 'K-1', type: 'Bug' }], null), '--key', 'K-1');
+    expect(out).toEqual([`CORE K-1 ${path}`, `CORE K-1 ${path}`, 'BYPASS K-1 bug issue type Bug']);
+  });
 
   it('core-check names a ship-loop path as CORE', async () => {
     await run('core-check', '--paths', 'scripts/handover/merge-on-green.sh', '--mirror', mirrorOf([{ key: 'K-1' }]), '--key', 'K-1');

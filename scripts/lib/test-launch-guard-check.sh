@@ -18,7 +18,7 @@ NODE="$(command -v node)"
 BASH_BIN="$(command -v bash)"
 export HOME="$tmp/home"; mkdir -p "$HOME"
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
-unset CLAUDE_USER_SETTINGS GIT_DIR UNGUARDED_LAUNCH_OK
+unset CLAUDE_USER_SETTINGS GIT_DIR UNGUARDED_LAUNCH_OK HANDOVER_DIR
 REG="$tmp/registry.json"
 CFG="$tmp/cfg-complete"; mkdir -p "$CFG"
 
@@ -90,10 +90,23 @@ run "$tmp/scratch"; expect "scratch_non_git" 1 "not a git work tree"
 mkrepo "$tmp/unreg"
 run "$tmp/unreg"; expect "unregistered_repo_complete_user_layer" 1 "repo not registered"
 
-mkrepo "$tmp/luna"; : > "$tmp/luna/.single-writer"; register "$tmp/luna"
-run "$tmp/luna" HANDOVER_DIR=; expect "luna_no_handover_dir" 1 "single-writer state repo"
+mkrepo "$tmp/luna"; : > "$tmp/luna/.single-writer"; printf '{"template":"luna-second-brain"}\n' > "$tmp/luna/.vault-template.json"
+register "$tmp/luna"
+run "$tmp/luna" HANDOVER_DIR="$tmp/state"; expect "luna_no_handover_dir" 1 "single-writer state repo"
 git -C "$tmp/luna" worktree add -q "$tmp/luna-wt" -b wt >/dev/null 2>&1
-run "$tmp/luna-wt"; expect "luna_linked_worktree" 1 "single-writer state repo"
+run "$tmp/luna-wt" HANDOVER_DIR="$tmp/state"; expect "luna_linked_worktree" 1 "single-writer state repo"
+
+mkrepo "$tmp/personal"; : > "$tmp/personal/.single-writer"; register "$tmp/personal"
+run "$tmp/personal" HANDOVER_DIR="$tmp/state"; expect "personal_single_writer_repo_passes" 0 "guarded: user-layer $tmp/personal"
+run "$tmp/personal"; expect "personal_single_writer_repo_handover_dir_unset_passes" 0 "guarded: user-layer $tmp/personal"
+mkrepo "$tmp/sw-obsidian"; : > "$tmp/sw-obsidian/.single-writer"; mkdir "$tmp/sw-obsidian/.obsidian"; register "$tmp/sw-obsidian"
+run "$tmp/sw-obsidian" HANDOVER_DIR="$tmp/state"; expect "unstamped_obsidian_vault_refused" 1 "single-writer state repo"
+mkrepo "$tmp/sw-holds-root"; : > "$tmp/sw-holds-root/.single-writer"; mkdir "$tmp/sw-holds-root/handovers"; register "$tmp/sw-holds-root"
+run "$tmp/sw-holds-root" HANDOVER_DIR="$tmp/sw-holds-root/handovers"; expect "handover_root_inside_repo_refused" 1 "single-writer state repo"
+run "$tmp/sw-holds-root" HANDOVER_DIR="$tmp/sw-holds-root"; expect "handover_root_is_repo_refused" 1 "single-writer state repo"
+run "$tmp/personal" HANDOVER_DIR="$tmp/no-such-handover-dir"; expect "handover_root_unresolvable_refused" 1 "single-writer state repo"
+mkrepo "$tmp/stamp-only"; printf '{}\n' > "$tmp/stamp-only/.vault-template.json"; register "$tmp/stamp-only"
+run "$tmp/stamp-only"; expect "vault_stamp_without_single_writer_passes" 0 "guarded: user-layer $tmp/stamp-only"
 
 mkrepo "$tmp/adopter"; register "$tmp/adopter"
 printf '%s' '{not json' > "$tmp/registry-bad.json"

@@ -48,7 +48,7 @@ check "the main agent row names role and model" '[ "$(row denied/read-clamp | jq
 check "tool_call_ids point back into the journal" '[ "$(row denied/guard-pr-check-literal | jq -c .tool_call_ids)" = "[\"toolu_d1\",\"toolu_d2\"]" ]'
 check "first_ts and last_ts bound the class" 'row denied/guard-pr-check-literal | jq -e ".first_ts < .last_ts" >/dev/null'
 
-echo "tool denominators (HIMMEL-4816)"
+echo "tool denominators"
 check "calls retain Bash, Read and the exact MCP tool separately" 'jq -e ".metrics.tool_calls_by_tool | .Bash > 0 and .Read > 0 and .mcp__qmd__query == 1" "$TMP/classes.json" >/dev/null'
 check "per-tool calls sum to the session total and unknown lane never comes from a model" 'jq -e "([.metrics.tool_calls_by_tool[]] | add) == .metrics.tool_calls and .lane == \"unknown\" and ([.tool_health[].lane] | unique) == [\"unknown\"]" "$TMP/classes.json" >/dev/null'
 check "per-tool failures exclude text reports and grep no-match" 'jq -e ".metrics.tool_failures_by_tool.Edit == 1 and .metrics.tool_failures_by_tool.mcp__qmd__query == 1" "$TMP/classes.json" >/dev/null'
@@ -145,7 +145,7 @@ ln -s "$(command -v bun)" "$TMP/onlybun/bun"
 check "git and python3 missing from PATH make it partial, exit 0" 'PATH="$TMP/onlybun" digest "$TMP/$SID.jsonl" | jq -e ".status == \"partial\" and .stats.trajectory_failed == true and .stats.lookups_failed == [\"tracked-tests\"]" >/dev/null'
 check "lookups that worked leave lookups_failed empty" 'jq -e ".stats.lookups_failed == []" "$TMP/classes.json" >/dev/null'
 
-echo "9. error/Bash sub-classes and the context-guard denials (HIMMEL-4785)"
+echo "9. error/Bash sub-classes and the context-guard denials"
 S9=4785c1a5-0000-4000-8000-000000000001
 cp "$FX/bash-errors.jsonl" "$TMP/$S9.jsonl"
 digest "$TMP/$S9.jsonl" >"$TMP/be.json" 2>"$TMP/be.err" || bad "digest of bash-errors.jsonl exits 0: $(head -c 300 "$TMP/be.err")"
@@ -162,7 +162,7 @@ check "a context-guard refusal is its own denied/ class, three spellings" '[ "$(
 check "an unknown hook is still denied/other" '[ "$(berow denied/other | jq -c .tool_call_ids)" = "[\"toolu_c4\"]" ]'
 check "every sub-class key passes the router alphabet" 'jq -r ".failures[].class" "$TMP/be.json" | grep -Ev "^(denied|suite|blocked|error|run_error|traj)/[A-Za-z0-9._:+-]{1,80}$" | wc -l | tr -d " " | grep -qx 0'
 
-echo "10. by-design exit codes come from the registry, not the failure count (HIMMEL-4853)"
+echo "10. by-design exit codes come from the registry, not the failure count"
 # fixtures/exit-codes.jsonl: 14 non-zero Bash results. Before the registry all 14 were failures (12 error + 2 suite).
 S10=4853c1a5-0000-4000-8000-000000000001
 cp "$FX/exit-codes.jsonl" "$TMP/$S10.jsonl"
@@ -175,7 +175,7 @@ check "a compound command stays an error unless every segment resolves: check-ci
 check "a refusal rc (merge-on-green 17) and an unlisted rc (check-ci 9) stay error/Bash" '[ "$(jq "[.failures[] | select(.class == \"error/Bash\")] | .[0].count" "$TMP/ec.json")" = 6 ]'
 check "no failure row exists for a result or retry rc, so the router never sees one" 'jq -e "[.failures[] | select(.failure == \"error\" or .failure == \"suite\")] | map(.count) | add == 7" "$TMP/ec.json" >/dev/null'
 
-echo "11. exploration cost: weighted tokens before the first edit (HIMMEL-5516)"
+echo "11. exploration cost: weighted tokens before the first edit"
 # fixtures/exploration.jsonl: Read (1650) + Grep (1300, one message streamed over two lines) + the Edit's own message (1950)
 # = 4900 weighted (cache_read at the Sonnet 5.5 price x0.05, haiku x0.1; cache_creation x1); a 500 subagent turn before the cut; a 99999 turn after it.
 S11=5516e0a1-0000-4000-8000-000000000001
@@ -210,7 +210,7 @@ mkdir -p "$TMP/ex3" && mv "$TMP/ex3.jsonl" "$TMP/ex3/$S11.jsonl"
 digest "$TMP/ex3/$S11.jsonl" >"$TMP/ex3.json" 2>/dev/null || bad "the no-cut digest exits 0"
 check "no edit and no commit reports cut none" 'jq -e ".exploration.cut == \"none\"" "$TMP/ex3.json" >/dev/null'
 
-echo "12. per-profile tool usage and drop-from-default candidates (HIMMEL-6970)"
+echo "12. per-profile tool usage and drop-from-default candidates"
 check "the digest stamps --profile on every tool_health row and on the digest" 'bun "$DIG" --transcript "$TMP/$SID.jsonl" --denials-ledger "$FX/classifier-denials.jsonl" --profile worker-impl | jq -e ".profile == \"worker-impl\" and ([.tool_health[].profile] | unique) == [\"worker-impl\"]" >/dev/null'
 check "without --profile the digest says unknown, never an ambient guess" 'jq -e ".profile == \"unknown\" and ([.tool_health[].profile] | unique) == [\"unknown\"]" "$TMP/classes.json" >/dev/null'
 check "a profile name outside the closed alphabet is a usage error" 'bun "$DIG" --transcript "$TMP/$SID.jsonl" --profile "A b" >/dev/null 2>&1; [ $? = 2 ]'
@@ -238,13 +238,13 @@ const r = { eval: \"leg-trajectory\", run_id: \"s1\", status: \"ok\", lane: \"na
 const o = rollupToolHealth([r], [], new URLSearchParams(), Date.parse(\"2026-10-22T12:00:00Z\"));
 process.exit(o.profiles.length === 1 && o.profiles[0].profile === \"unknown\" && o.profiles[0].tools[0].calls === 3 ? 0 : 1);"'
 
-echo "13. drop-candidate window_days follows the since range (HIMMEL-7050)"
+echo "13. drop-candidate window_days follows the since range"
 PROLL "since=2026-10-12" >"$TMP/prof-s.json" 2>"$TMP/prof-s.err" || bad "the since roll-up runs: $(head -c 300 "$TMP/prof-s.err")"
 check "with since set, window_days is the days from since through today (2026-10-12..2026-10-22 = 11)" '[ "$(jq -c "[.drop_candidates[].window_days] | unique" "$TMP/prof-s.json")" = "[11]" ]'
 check "with since set, the per-day trend has one entry per day of that range" '[ "$(jq -c "[.tools[].trend | length] | unique" "$TMP/prof-s.json")" = "[11]" ]'
 check "without since, window_days and the trend stay at the days switch (7)" '[ "$(jq -c "[.drop_candidates[].window_days] | unique" "$TMP/prof.json")" = "[7]" ] && [ "$(jq -c "[.tools[].trend | length] | unique" "$TMP/prof.json")" = "[7]" ]'
 
-echo "14. split tool keys and Bash command heads (HIMMEL-8509)"
+echo "14. split tool keys and Bash command heads"
 # fixtures/split-keys.jsonl: 3 Skill, 2 Agent + 1 Task, 3 MCP and 5 Bash calls; one failure in each collapsed group but Bash (3).
 S14=8509c1a5-0000-4000-8000-000000000001
 cp "$FX/split-keys.jsonl" "$TMP/$S14.jsonl"
@@ -269,7 +269,7 @@ check "a batched call keeps its time to result in the batched list, apart from t
 check "a call with no result has no time, counted as missing and never 0" '[ "$(ctt Grep)" = "{\"single\":[],\"batched\":[],\"missing\":1}" ]'
 check "no call text reaches the timing" 'absent -E "/x/|ls|pattern" <<<"$(jq -c "[.tool_health[].timing]" "$TMP/ct.json")"'
 
-echo "16. a tool behind bash -c, cd, env and rtk is counted under its own name (HIMMEL-8707)"
+echo "16. a tool behind bash -c, cd, env and rtk is counted under its own name"
 # fixtures/graph-heads.jsonl: 21 Bash calls, ids toolu_<g|q|r|k><n>. q3 to q7 are the forms the qmd hook allows:
 # qmd-bounded.sh by bash, sh, an env prefix, its path alone, and after a cd. q1 and q2 are forms the hook refuses.
 S16=8707c1a5-0000-4000-8000-000000000001
@@ -283,7 +283,7 @@ check "qmd-bounded.sh by bash, sh, an env prefix, its own path and after a cd co
 check "rtk own commands (gain, proxy, recall), bare or behind bash -c and cd, count as rtk" '[ "$(gh r1)$(gh r2)$(gh r3)" = rtkrtkrtk ]'
 check "a real unknown stays under its own first word, other heads read as before" '[ "$(gh k1)" = weirdtool ] && [ "$(gh k2)" = bash ] && [ "$(gh k3)" = git ] && [ "$(gh k4)" = other ]'
 
-echo "17. a refused call's digest row carries the runner's redacted deny line (HIMMEL-8575)"
+echo "17. a refused call's digest row carries the runner's redacted deny line"
 # fixtures/chain-refusal: a journal of eleven refusals and the hook-chain run log that goes with it. make-chain-log.sh has the REAL launcher
 # write the secret-bearing, long and huge identifier-like rows (the one field it sets to test is rewritten to production) and adds the static rows.
 CR="$FX/chain-refusal"; S17=8575c1a5-0000-4000-8000-000000000001

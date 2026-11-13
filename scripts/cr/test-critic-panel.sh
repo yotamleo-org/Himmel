@@ -919,6 +919,49 @@ check_contains "LAC: injected failure reached the enriched JSONL source" "$lac_l
 check_contains "LAC: injected failure targeted the finding batch destination" "$lac_log" "/.finding-batch.jsonl"
 check_contains "LAC: panel reports failed ledger certification" "$(cat "$tmp/lac-err")" "CR-ledger append failed"
 check "LAC: failed copy writes no finding rows" "$(grep -c '\"kind\":\"finding\"' "$LAC_LEDGER" || true)" "0"
+ledger_rows() {
+    python3 - "$@" <<'PYEOF'
+import json, sys
+p, kind = sys.argv[1], sys.argv[2]
+status = sys.argv[3] if len(sys.argv) > 3 else ''
+reason = sys.argv[4] if len(sys.argv) > 4 else ''
+n = 0
+for l in open(p):
+    if not l.strip():
+        continue
+    r = json.loads(l)
+    if r.get('kind') == kind and (not status or r.get('status') == status) and (not reason or r.get('reason') == reason):
+        n += 1
+print(n)
+PYEOF
+}
+check "HIMMEL-8992 LAC: failed copy leaves no passing avail row" "$(ledger_rows "$LAC_LEDGER" avail ok)" "0"
+check "HIMMEL-8992 LAC: the responders are recorded unavailable (record-failed)" "$(ledger_rows "$LAC_LEDGER" avail unavailable record-failed)" "2"
+
+LAW_APPEND="$tmp/law-append.sh"
+cat > "$LAW_APPEND" <<LAWEOF
+#!/usr/bin/env bash
+[ "\${1:-}" = "finding" ] && [ -n "\${LAW_FAIL:-}" ] && exit 74
+exec bash "$HERE/ledger-append.sh" "\$@"
+LAWEOF
+chmod +x "$LAW_APPEND"
+LAW_LEDGER="$tmp/law-ledger.jsonl"; : > "$LAW_LEDGER"
+law_rc=0
+LAW_FAIL=1 CR_LEDGER="$LAW_LEDGER" CRITIC_LEDGER_APPEND="$LAW_APPEND" \
+    CRITICS_JSON="$tmp/critics-all.json" CRITIC_FIRST_PASS="$STUB" \
+    bash "$PANEL" <<< "$DIFF" > "$tmp/law-out" 2> "$tmp/law-err" || law_rc=$?
+check "HIMMEL-8992 LAW: a failed finding batch makes the panel uncertified" "$law_rc" "5"
+check "HIMMEL-8992 LAW: a failed finding batch leaves no passing avail row" "$(ledger_rows "$LAW_LEDGER" avail ok)" "0"
+check "HIMMEL-8992 LAW: the responders are recorded unavailable (record-failed)" "$(ledger_rows "$LAW_LEDGER" avail unavailable record-failed)" "2"
+check "HIMMEL-8992 LAW: the failing member keeps its own unavailable reason" "$(ledger_rows "$LAW_LEDGER" avail unavailable)" "3"
+LAW2_LEDGER="$tmp/law2-ledger.jsonl"; : > "$LAW2_LEDGER"
+law2_rc=0
+LAW_FAIL='' CR_LEDGER="$LAW2_LEDGER" CRITIC_LEDGER_APPEND="$LAW_APPEND" \
+    CRITICS_JSON="$tmp/critics-all.json" CRITIC_FIRST_PASS="$STUB" \
+    bash "$PANEL" <<< "$DIFF" > "$tmp/law2-out" 2> "$tmp/law2-err" || law2_rc=$?
+check "HIMMEL-8992 LAW control: a recorded run is certified" "$law2_rc" "0"
+check "HIMMEL-8992 LAW control: a recorded run still writes avail ok" "$(ledger_rows "$LAW2_LEDGER" avail ok)" "2"
+check "HIMMEL-8992 LAW control: a recorded run still writes its findings" "$(ledger_rows "$LAW2_LEDGER" finding)" "4"
 
 # Test LAP: parallel mode self-appends the SAME ledger evidence as sequential.
 # The evidence path flows through
@@ -1474,6 +1517,27 @@ check_contains "NWS: warning names the skipped self-append" "$(cat "$tmp/nws-err
 check "NWS: merged review output still emitted" "$(grep -cF '# Critic Panel Review' "$tmp/nws-out")" "1"
 check "NWS: NO ledger rows written (self-append skipped)" "$(wc -l < "$NWS_LEDGER" | tr -d ' ')" "0"
 
+REAL_NODE="$(command -v node)"
+NODE_SHIM_DIR="$tmp/node-shim"
+NODE_SHIM_LOG="$tmp/node-shim.log"
+mkdir -p "$NODE_SHIM_DIR"
+# shellcheck disable=SC2016
+printf '%s\n' '#!/usr/bin/env bash' \
+    'case "${1:-}" in *finding-reraise.js) echo called >> "$NODE_SHIM_LOG" ;; esac' \
+    "exec \"$REAL_NODE\" \"\$@\"" > "$NODE_SHIM_DIR/node"
+chmod +x "$NODE_SHIM_DIR/node"
+export NODE_SHIM_LOG
+: > "$NODE_SHIM_LOG"
+nws2_rc=0
+( cd "$NWS_DIR" && printf '%s' "$DIFF" \
+    | PATH="$NODE_SHIM_DIR:$PATH" CRITICS_JSON="$tmp/critics-all.json" CRITIC_FIRST_PASS="$STUB" \
+      bash "$PANEL" > "$tmp/nws2-out" 2> "$tmp/nws2-err" ) || nws2_rc=$?
+check "NWS2: stdin review outside a worktree still exits 0" "$nws2_rc" "0"
+check "NWS2: stderr carries no unbound-variable error" "$(grep -cF 'unbound variable' "$tmp/nws2-err")" "0"
+check "NWS2: no 'disposition lookup failed' notice" "$(grep -cF 'disposition lookup failed' "$tmp/nws2-err")" "0"
+check "NWS2: the disposition lookup is not run without a ledger" "$(wc -l < "$NODE_SHIM_LOG" | tr -d ' ')" "0"
+check "NWS2: findings stay active in the merged review" "$(grep -cE '\[[a-z0-9]+-1\]:' "$tmp/nws2-out")" "1"
+
 # Tests B1-B6 share a common repo-construction prefix (git init + checkout -b
 # <branch> + config x2 + write r.txt + add + commit) that only the initial
 # branch name (master/trunk/develop) distinguishes. Build it ONCE and cp -r +
@@ -1528,6 +1592,14 @@ CRITICS_JSON="$tmp/critics-all.json" CRITIC_FIRST_PASS="$STUB" \
     bash "$PANEL" --worktree "$BR_REPO" > "$tmp/b2-out" 2> "$tmp/b2-err" || b2_rc=$?
 check "B2: origin/HEAD fallback resolves master and the diff runs (exit 0)" "$b2_rc" "0"
 check_contains "B2: panel output emitted (diff against master ran)" "$(cat "$tmp/b2-out")" "# Critic Panel Review"
+
+: > "$NODE_SHIM_LOG"
+b2c_rc=0
+PATH="$NODE_SHIM_DIR:$PATH" CRITICS_JSON="$tmp/critics-all.json" CRITIC_FIRST_PASS="$STUB" \
+    bash "$PANEL" --worktree "$BR_REPO" > "$tmp/b2c-out" 2> "$tmp/b2c-err" || b2c_rc=$?
+check "B2c: worktree review with the ledger on exits 0" "$b2c_rc" "0"
+check "B2c: the disposition lookup still runs once" "$(wc -l < "$NODE_SHIM_LOG" | tr -d ' ')" "1"
+check "B2c: the lookup succeeds (no failure notice)" "$(grep -cF 'disposition lookup failed' "$tmp/b2c-err")" "0"
 
 # B3 — final fallback `main`. A repo with NO origin/HEAD and NO CR_BASE_BRANCH,
 # on a `trunk` base branch; there is no `main`, so the diff fails and the

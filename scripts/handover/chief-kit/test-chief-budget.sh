@@ -44,27 +44,44 @@ check    "1: under budget rc 0" "$rc" 0
 check    "1: one line, OK" "$out" "budget turns=10 cache_read=10.0M verdict=OK"
 
 # --- 2. turns at the model-derived budget --------------------------------------
-mk "$tmp/turns.jsonl" 110 1000
+mk "$tmp/turns.jsonl" 400 1000
 run "$tmp/turns.jsonl"
-check    "2: 110 turns rc 3" "$rc" 3
-contains "2: turns" "$out" "turns=110"
+check    "2: 400 turns rc 3" "$rc" 3
+contains "2: turns" "$out" "turns=400"
 contains "2: verdict" "$out" "verdict=HANDOVER"
-mk "$tmp/t109.jsonl" 109 1000
-run "$tmp/t109.jsonl"
-check    "2: 109 turns still OK (rc 0)" "$rc" 0
+mk "$tmp/t399.jsonl" 399 1000
+run "$tmp/t399.jsonl"
+check    "2: 399 turns still OK (rc 0)" "$rc" 0
 contains "2: one turn under the budget verdict" "$out" "verdict=OK"
+mk "$tmp/t109.jsonl" 109 1000
+mk "$tmp/t110.jsonl" 110 1000
+mk "$tmp/t111.jsonl" 111 1000
+for n in 109 110 111; do
+    run "$tmp/t$n.jsonl"
+    check    "2: $n turns, no override, no fill reading: OK (rc 0)" "$rc" 0
+    contains "2: $n turns verdict" "$out" "verdict=OK"
+done
 rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/t109.jsonl" CHIEF_TURN_BUDGET=100 bash "$SCRIPT" 2>&1)" || rc=$?
 check    "2: CHIEF_TURN_BUDGET lowers the threshold (rc 3)" "$rc" 3
 rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/t109.jsonl" CONSOLE_TURN_BUDGET=100 bash "$SCRIPT" 2>&1)" || rc=$? # old-term-ok
 check    "2: the retired name CONSOLE_TURN_BUDGET is ignored (rc 0)" "$rc" 0 # old-term-ok
-rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/turns.jsonl" CHIEF_TURN_BUDGET=200 CONSOLE_TURN_BUDGET=100 bash "$SCRIPT" 2>&1)" || rc=$? # old-term-ok
+rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/turns.jsonl" CHIEF_TURN_BUDGET=500 CONSOLE_TURN_BUDGET=100 bash "$SCRIPT" 2>&1)" || rc=$? # old-term-ok
 check    "2: CHIEF_TURN_BUDGET raises the threshold beside the retired name (rc 0)" "$rc" 0
 
 # --- 3. cache-read at the budget -----------------------------------------------
-mk "$tmp/cr.jsonl" 30 1000000
+mk "$tmp/cr.jsonl" 120 1000000
 run "$tmp/cr.jsonl"
-check    "3: 30.0M cache-read rc 3" "$rc" 3
-contains "3: verdict" "$out" "cache_read=30.0M verdict=HANDOVER"
+check    "3: 120.0M cache-read rc 3" "$rc" 3
+contains "3: verdict" "$out" "cache_read=120.0M verdict=HANDOVER"
+mk "$tmp/cr119.jsonl" 119 1000000
+run "$tmp/cr119.jsonl"
+check    "3: 119.0M still OK (rc 0)" "$rc" 0
+for n in 30 31; do
+    mk "$tmp/cr$n.jsonl" "$n" 1000000
+    run "$tmp/cr$n.jsonl"
+    check    "3: $n.0M, no override, no fill reading: OK (rc 0)" "$rc" 0
+    contains "3: $n.0M verdict" "$out" "verdict=OK"
+done
 mk "$tmp/cr2.jsonl" 29 1000000
 run "$tmp/cr2.jsonl"
 check    "3: 29.0M still OK (rc 0)" "$rc" 0
@@ -80,7 +97,7 @@ check    "3: 008 reads as decimal eight (rc 3)" "$rc" 3
 rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/cr2.jsonl" CHIEF_CACHE_READ_BUDGET_M=000 bash "$SCRIPT" 2>&1)" || rc=$?
 check    "3: 000 is zero, falls back to the default (rc 0 at 29M)" "$rc" 0
 rc=0; out="$(CONTEXT_FILL_TRANSCRIPT="$tmp/cr.jsonl" CHIEF_CACHE_READ_BUDGET_M=000 bash "$SCRIPT" 2>&1)" || rc=$?
-check    "3: 000 falls back to the default, not disabled (rc 3 at 30M)" "$rc" 3
+check    "3: 000 falls back to the default, not disabled (rc 3 at 120M)" "$rc" 3
 
 # --- 4. duplicate requestIds ---------------------------------------------------
 { row a 1000000; row a 1000000; row b 2000000; row b 2000000; row a 1000000; } > "$tmp/dup.jsonl"
@@ -124,11 +141,11 @@ mk "$tmp/body" 4 1000000
 { printf '{"type":"custom-title","customTitle":"HIMMEL-nextleg-x-roadmap-chief"}\n'; cat "$tmp/body"; } > "$cfg/projects/-slug/sid-2.jsonl"
 rc=0; out="$(env -u CONTEXT_FILL_TRANSCRIPT CLAUDE_CONFIG_DIR="$cfg" bash "$SCRIPT" --title HIMMEL-nextleg-x-roadmap-chief 2>&1)" || rc=$?
 check    "6: --title resolves by customTitle" "$out" "budget turns=4 cache_read=4.0M verdict=OK"
-mk "$tmp/late" 300 1000
+mk "$tmp/late" 400 1000
 { cat "$tmp/late"; printf '{"type":"custom-title","customTitle":"late-titled-chief"}\n'; } > "$cfg/projects/-slug/sid-3.jsonl"
 rc=0; out="$(env -u CONTEXT_FILL_TRANSCRIPT CLAUDE_CONFIG_DIR="$cfg" bash "$SCRIPT" --title late-titled-chief 2>&1)" || rc=$?
 check    "6: a customTitle written late in the transcript still resolves" "$rc" 3
-contains "6: late-title transcript measured" "$out" "turns=300"
+contains "6: late-title transcript measured" "$out" "turns=400"
 { printf '{"type":"custom-title","customTitle":"old-name-chief"}\n'; cat "$tmp/body"; printf '{"type":"custom-title","customTitle":"new-name-chief"}\n'; } > "$cfg/projects/-slug/sid-4.jsonl"
 rc=0; out="$(env -u CONTEXT_FILL_TRANSCRIPT CLAUDE_CONFIG_DIR="$cfg" bash "$SCRIPT" --title old-name-chief 2>&1)" || rc=$?
 check    "6: a renamed session no longer answers to its old title (rc 2)" "$rc" 2
