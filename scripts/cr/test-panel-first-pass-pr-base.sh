@@ -1,9 +1,4 @@
 #!/usr/bin/env bash
-# scripts/cr/test-panel-first-pass-pr-base.sh - panel-first-pass.sh --pr reviews an
-# outside PR cut before origin/main's tip, and an aborted --pr round is given back.
-# Fixtures are synthetic: a bare "origin" whose refs/pull/7/head holds a PR cut at the base commit
-# while origin/main has moved one commit ahead; a copy of the scripts under a temp anchor; a temp
-# HOME holding the allowlist; a gh stub on PATH; a stub critic. No network. Bash 3.2-safe.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/fixture-tempdir.sh
@@ -20,14 +15,10 @@ eq() { if [ "$1" = "$2" ]; then pass "$3"; else fail "$3 (got '$1', want '$2')";
 has() { case "$1" in *"$2"*) pass "$3" ;; *) fail "$3 (missing '$2'; got: $1)" ;; esac; }
 lacks() { case "$1" in *"$2"*) fail "$3 (unexpected '$2'; got: $1)" ;; *) pass "$3" ;; esac; }
 
-# --- the anchor tree: a copy of the scripts the route runs, with the real critic-panel.sh ----------
 A="$tmp/anchor"
 mkdir -p "$A/scripts"
 for d in cr lib guardrails ledger; do cp -R "$HERE/../$d" "$A/scripts/$d"; done
-# the copy reads the forge through the plain gh on PATH (the stub below), never the token router
 rm -f "$A/scripts/lib/gh-read.sh"
-# A wrapper in front of the real panel: PANEL_FORCE=7 aborts with exit 7 and records nothing;
-# PANEL_FORCE=record7 records a review row first. The pin probe and every other call go to the real one.
 mv "$A/scripts/cr/critic-panel.sh" "$A/scripts/cr/critic-panel.real.sh"
 cat > "$A/scripts/cr/critic-panel.sh" <<'WRAP'
 #!/usr/bin/env bash
@@ -45,7 +36,6 @@ exec bash "$here/critic-panel.real.sh" "$@"
 WRAP
 chmod +x "$A/scripts/cr/critic-panel.sh"
 
-# the stub critic the real panel runs: dumps the diff it was handed, then answers clean
 CRIT="$tmp/stub-critic.sh"
 cat > "$CRIT" <<'EOS'
 #!/usr/bin/env bash
@@ -55,7 +45,6 @@ EOS
 chmod +x "$CRIT"
 printf '{"panel":[{"slug":"pin","model":"pin-model","provider":"nvidia","tier":"free"}]}\n' > "$tmp/critics.json"
 
-# --- the gh stub: one PR, served as real JSON ---------------------------------------------------------
 mkdir -p "$tmp/bin"
 cat > "$tmp/bin/gh" <<'STUB'
 #!/usr/bin/env bash
@@ -69,7 +58,6 @@ exit 1
 STUB
 chmod +x "$tmp/bin/gh"
 
-# --- origin: main, a PR cut at the base commit, then main moves one commit ahead --------------------
 O="$tmp/origin.git"; W="$tmp/work"; P="$tmp/primary"
 git init -q --bare -b main "$O"
 mkdir -p "$W"
@@ -111,11 +99,10 @@ GCD="$P/.git"
 ROUNDS="$GCD/cr-review-rounds"
 LEDGER="$GCD/cr-critic-scores.jsonl"
 reset() { rm -rf "$ROUNDS" "$LEDGER" "$tmp/diff-dump"; }
-preflight() { # step 2.8's pass, which a --pr round start needs first
+preflight() {
     (cd "$P" && CR_LEDGER="$LEDGER" bash "$A/scripts/cr/ledger-append.sh" preflight --branch feat/outside-thing --head "$H" --duration-secs 1 >/dev/null) \
         || fail "fixture: could not record the preflight row"
 }
-# pfp: panel-first-pass.sh --pr 7 over the fixture; sets rc, out, err
 pfp() {
     out="$(cd "$P" && HIMMEL_REPO="$A" HOME="$HOMEDIR" PATH="$tmp/bin:$PATH" STUB_OID="$H" CR_PROFILE=free \
         CRITICS_JSON="$tmp/critics.json" CRITIC_FIRST_PASS="$CRIT" PIN_DIFF_DUMP="$tmp/diff-dump" \
@@ -124,14 +111,12 @@ pfp() {
     err="$(cat "$tmp/err")"
 }
 round_of() { cat "$ROUNDS/outside-7.round" 2>/dev/null || echo none; }
-# rr: review-round.sh <args> from the primary; sets rrc, rerr
 rr() {
     rerr="$(cd "$P" && HIMMEL_REPO="$A" HOME="$HOMEDIR" PATH="$tmp/bin:$PATH" STUB_OID="$H" CR_LEDGER="$LEDGER" \
         bash "$A/scripts/cr/review-round.sh" "$@" 2>&1 >"$tmp/rr-out")"; rrc=$?
     rout="$(cat "$tmp/rr-out")"
 }
 
-# === (a) the review reaches the panel and the reviewed diff is merge-base...head =======================
 reset; preflight
 pfp
 eq "$rc" "0" "a: panel-first-pass --pr over a PR cut before origin/main's tip exits 0, not 7"
@@ -140,14 +125,12 @@ has "$out" "captured diff base: main ($MB)" "a: the diff base is the PR's merge 
 eq "$(cat "$tmp/diff-dump" 2>/dev/null)" "$(git -C "$P" diff "$MB...$H")" "a: the critic read the diff merge-base...head"
 eq "$(round_of)" "1" "a: a reviewed run spends round 1"
 
-# the pin still binds to one sha: a base sha that is not the PR's merge base with the live base is refused
 reset
 PIN_ERR="$(cd "$P" && CRITICS_JSON="$tmp/critics.json" CRITIC_FIRST_PASS="$CRIT" CR_LEDGER="$LEDGER" CRITIC_LEDGER_APPEND="$A/scripts/cr/ledger-append.sh" \
     bash -c 'git diff "$1...$2" | bash "$3" --head "$2" --branch feat/outside-thing --pin-ref refs/himmel/outside/7 --base main --base-sha "$4"' _ "$MB" "$H" "$A/scripts/cr/critic-panel.real.sh" "$TIP" 2>&1 >/dev/null)"; pin_rc=$?
 eq "$pin_rc" "7" "a: a --pin-ref run pinned to a base that is not the merge base is refused (exit 7)"
 has "$PIN_ERR" "the base branch moved" "a: and the refusal is the moved-base one"
 
-# === (b) the branch route keeps the moved-base protection ============================================
 BR="$tmp/branch-route"
 git clone -q "$O" "$BR"
 git -C "$BR" config user.email t@t.test
@@ -162,7 +145,6 @@ has "$BR_ERR" "$MB" "b: naming the captured base"
 has "$BR_ERR" "$TIP" "b: and the live base"
 eq "$(test -s "$tmp/br-ledger.jsonl" && echo rows || echo none)" "none" "b: nothing stamped on the refused run"
 
-# === (c) an aborted --pr round is given back; a reviewed one is not =====================================
 reset; preflight
 PANEL_FORCE=7 pfp
 eq "$rc" "7" "c: a --pr run whose panel aborts exits 7"
@@ -181,7 +163,6 @@ eq "$rc" "7" "c: a --pr run that recorded a row then aborts exits 7"
 eq "$(round_of)" "1" "c: a round that recorded a review is not refunded"
 has "$err" "NOT given back" "c: and says so"
 
-# === abort --pr, the verb ===========================================================================
 reset
 rr abort --pr 7 --head "$H"
 eq "$rrc" "1" "abort --pr on a round that was never started refuses (exit 1)"
@@ -215,7 +196,6 @@ rr abort --pr 7 --head "$H"
 eq "$rrc" "8" "abort --pr over a head with a panel row refuses (exit 8)"
 eq "$(round_of)" "1" "abort --pr over a reviewed head keeps the count"
 
-# the panel's row sits under whatever branch name it was stamped with: it still counts
 reset; preflight
 rr start --pr 7 --head "$H"
 printf '{"kind":"avail","branch":"some/other-name","head":"%s","model":"stub-model","status":"ok"}\n' "$H" >> "$LEDGER"

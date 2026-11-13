@@ -724,9 +724,7 @@ _verify_base_pin() {
     _base_ref="$(_resolve_base_ref "$1")"
     _bwhat="base $_base_ref"
     if [ -n "$PIN_REF" ]; then
-        # A fetched PR ref (an outside PR) is cut before the base branch's tip by design, so the
-        # captured base is the merge base of the live base with that ref, not the live tip itself.
-        _blive="$(git -C "$1" merge-base "$_base_ref" "$PIN_REF" 2>/dev/null)" || _blive=""   # swallow-ok: an unresolvable merge base is refused (exit 7) on the comparison below
+        _blive="$(git -C "$1" merge-base "$_base_ref" "$PIN_REF")" || _blive=""
         _bwhat="the merge base of $_base_ref with $PIN_REF"
     else
         _blive="$(git -C "$1" rev-parse --verify --quiet "$_base_ref^{commit}" 2>/dev/null)" || _blive=""

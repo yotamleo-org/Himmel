@@ -402,9 +402,7 @@ read_round() {
 # when any critic finding row exists there, whatever its verdict. "seen"
 # prints "seen" when any avail or finding row of any model exists there.
 ledger_query() {
-    # A --pr round is keyed outside-<n>, but the panel stamps its rows with the PR's head branch, which the
-    # caller could misname: for --pr a row at the head under ANY branch name counts.
-    LEDGER="$git_dir/cr-critic-scores.jsonl" BRANCH="$branch" ANY_BRANCH="${pr:+1}" MODE="$1" FROM="$2" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e '
+    LEDGER="$git_dir/cr-critic-scores.jsonl" BRANCH="$branch" MATCH_ANY_BRANCH="${pr:+1}" MODE="$1" FROM="$2" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e '
 const fs = require("fs"), e = process.env;
 let lines = [];
 try { lines = fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean); } catch (err) { process.exit(err.code === "ENOENT" ? 0 : 2); }
@@ -428,7 +426,7 @@ const note = (id, v) => {
 for (const line of require(e.AMEND_AUTH).filterLines(lines)) {
   let o;
   try { o = JSON.parse(line); } catch { continue; }
-  if (!o || (e.ANY_BRANCH !== "1" && o.branch !== e.BRANCH)) continue;
+  if (!o || (e.MATCH_ANY_BRANCH !== "1" && o.branch !== e.BRANCH)) continue;
   if ((o.kind === "avail" || o.kind === "finding") && at(o.head)) seen = true;
   if (o.kind === "avail" && o.status === "ok" && critic(o.model) && at(o.head)) reviewed = true;
   if (o.kind === "finding" && critic(o.model) && at(o.head)) { rowed = true; note(keyOf(o), String(o.verdict || "")); }
