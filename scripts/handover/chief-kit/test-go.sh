@@ -29,6 +29,7 @@ tmp="$(cd "$tmp" && pwd)"
 # Sections 14-15 run after section 13 sources go-gate.sh, which assigns its
 # own `tmp`; name their dirs here so nothing below reads `$tmp` past that point.
 ROOT14="$tmp/root14"; ROOT15="$tmp/root15"; ROOT16="$tmp/root16"; ROOT18="$tmp/root18"
+NOWHERE32="$tmp/nowhere32"; DECOY32="$tmp/decoy32"; ROOT32="$tmp/root32"
 # go.sh mints its GO key under $HOME/.config/himmel — keep it off
 # the operator's real key.
 export HOME="$tmp/home"; mkdir -p "$HOME"
@@ -70,6 +71,8 @@ ready_pass_bin "$tmp/ready-bin"
 export PATH="$tmp/ready-bin:$PATH"
 READY_REPO="$tmp/ready-repo"
 git init -q "$READY_REPO"
+# go.sh gates HIMMEL_REPO (else its own checkout), never the cwd: the fixture is the gated repo.
+export HIMMEL_REPO="$READY_REPO"
 cd "$READY_REPO" || { echo "FAIL: cd $READY_REPO" >&2; exit 1; }
 
 fails=0
@@ -386,7 +389,7 @@ ready_pass_ledger "$READY_REPO" "$SHA14"
 rc=0; out="$(READY_STUB_HEAD="$SHA" HANDOVER_DIR="$ROOT14" bash "$SCRIPT" 82 "$SHA14" 2>&1)" || rc=$?
 check    "4565: PR head moved past the sha -> exit 4" "$rc" "4"
 check    "4565: moved head -> nothing written" "$(find "$ROOT14" -type f | wc -l | tr -d ' ')" "0"
-rc=0; out="$(cd "$ROOT14" && READY_STUB_HEAD="$SHA14" HANDOVER_DIR="$ROOT14" bash "$SCRIPT" 82 "$SHA14" 2>&1)" || rc=$?
+rc=0; out="$(cd "$ROOT14" && HIMMEL_REPO="$ROOT14" READY_STUB_HEAD="$SHA14" HANDOVER_DIR="$ROOT14" bash "$SCRIPT" 82 "$SHA14" 2>&1)" || rc=$?
 check    "4565: run outside any repo (no ledger to read) -> exit 4" "$rc" "4"
 rc=0; out="$(READY_STUB_HEAD="$SHA14" HANDOVER_DIR="$ROOT14" bash "$SCRIPT" 82 "$SHA14" 2>/dev/null)" || rc=$?
 check    "4565: reviewed head -> exit 0" "$rc" "0"
@@ -842,7 +845,7 @@ ready_pass_ledger "$fx27" "$N27d" "$N27t"
 VPR=91
 VEXTRA=$'finding: src/a.txt:3-4\n' verdict "$ROOT27" q27 "**GO** for head \`$J27\`." HIMMEL-1-judge-q27
 go27() {  # <head> - go.sh --trust-reviewed q27 for PR 91 from the fixture repo
-  ( cd "$fx27" && READY_STUB_HEAD="$1" HANDOVER_DIR="$ROOT27" bash "$SCRIPT" --trust-reviewed q27 91 "$1" >/dev/null 2>&1 )
+  ( cd "$fx27" && HIMMEL_REPO="$fx27" READY_STUB_HEAD="$1" HANDOVER_DIR="$ROOT27" bash "$SCRIPT" --trust-reviewed q27 91 "$1" >/dev/null 2>&1 )
 }
 VEXTRA=$'delta: no-op\ndelta-judged: '"$J27"$'\ndelta-class: none\n' verdict "$ROOT27" q27 "**GO** for head \`$N27t\`." "delta-noop-$N27t"
 rc=0; go27 "$N27t" || rc=$?
@@ -943,7 +946,7 @@ ready_pass_ledger "$fx29" "$A29" "$B29"
 VPR=93
 go29() {  # <head> - go.sh --trust-reviewed J for PR 93 from the fixture repo; rc and whether a GO file stands
   local r=0
-  ( cd "$fx29" && READY_STUB_HEAD="$1" HANDOVER_DIR="$ROOT29" bash "$SCRIPT" --trust-reviewed J 93 "$1" >/dev/null 2>&1 ) || r=$?
+  ( cd "$fx29" && HIMMEL_REPO="$fx29" READY_STUB_HEAD="$1" HANDOVER_DIR="$ROOT29" bash "$SCRIPT" --trust-reviewed J 93 "$1" >/dev/null 2>&1 ) || r=$?
   printf '%s:%s' "$r" "$([ -e "$ROOT29/.locks/go/93.$1" ] && echo go || echo none)"
   rm -f "$ROOT29/.locks/go/93.$1"
 }
@@ -1017,7 +1020,7 @@ rm -f "$V29/K/HIMMEL-1-judge-K.md" "$V29/J/HIMMEL-1-judge-J-p.md" "$V29/J/delta-
 mkdir -p "$V29/Q"
 go29q() {  # <head> - go.sh --trust-reviewed Q for PR 93, as go29 does for J
   local r=0
-  ( cd "$fx29" && READY_STUB_HEAD="$1" HANDOVER_DIR="$ROOT29" bash "$SCRIPT" --trust-reviewed Q 93 "$1" >/dev/null 2>&1 ) || r=$?
+  ( cd "$fx29" && HIMMEL_REPO="$fx29" READY_STUB_HEAD="$1" HANDOVER_DIR="$ROOT29" bash "$SCRIPT" --trust-reviewed Q 93 "$1" >/dev/null 2>&1 ) || r=$?
   printf '%s:%s' "$r" "$([ -e "$ROOT29/.locks/go/93.$1" ] && echo go || echo none)"
   rm -f "$ROOT29/.locks/go/93.$1"
 }
@@ -1240,6 +1243,20 @@ kill -9 "$sk_pid" 2>/dev/null
 wait "$sk_pid" 2>/dev/null
 sleep 11
 check    "9479: a SIGKILLed go.sh leaves no GO written by its orphaned child" "$(gofiles31)" "0"
+
+# --- 32. the caller's cwd never decides the gated repo ---
+# The same GO from a directory outside any repo and from another repo's checkout
+# (origin other/luna) as from the checkout: ready-check.sh and the NO-GO reads run in
+# HIMMEL_REPO. RED control (go.sh before this change): ready-check runs in the
+# cwd, finds no ledger there and go.sh writes no GO.
+mkdir -p "$NOWHERE32"
+git init -q "$DECOY32" && git -C "$DECOY32" remote add origin https://github.com/other/luna.git
+for cwd32 in "$NOWHERE32" "$DECOY32" "$READY_REPO"; do
+  rm -rf "$ROOT32"; mkdir -p "$ROOT32"
+  rc=0; out=$(cd "$cwd32" && HANDOVER_DIR="$ROOT32" CHIEF_SESSION_NAME=chief-x bash "$SCRIPT" 77 "$SHA" 2>&1) || rc=$?
+  check "cwd ${cwd32##*/}: go.sh exits 0, as from the checkout" "$rc" "0"
+  check "cwd ${cwd32##*/}: the GO is written" "$(test -f "$ROOT32/.locks/go/77.$SHA" && echo yes)" "yes"
+done
 
 echo "---"
 if [ "$fails" -eq 0 ]; then

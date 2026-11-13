@@ -67,14 +67,17 @@
 # refuses. Not for --repo; optional for --fix-main-red, which runs ready-check.sh with --observe.
 #
 # every himmel GO, trust-reviewed or not, first runs this directory's
-# ready-check.sh <pr> <head> from the caller's cwd and refuses (exit 4) unless
+# ready-check.sh <pr> <head> and refuses (exit 4) unless
 # it PASSes - head, CI, threads, the CR-ledger ok row at that head (check 4),
-# trailers, ticket ids, coverage. Run it from the checkout /pr-check wrote the
-# ledger in (the chief's primary), as the chief already does by hand.
+# trailers, ticket ids, coverage. The gated checkout is HIMMEL_REPO, else the
+# primary checkout of this script's own tree, never the caller's cwd:
+# ready-check.sh, cr-disposition.sh and the NO-GO reads run there, so go.sh gives
+# the same answer from any directory.
 #
 # Exit codes:
 #   0  written
-#   1  handover root unresolvable (incl. an .env-configured root that is gone),
+#   1  handover root or gated checkout unresolvable (incl. an .env-configured root that is gone,
+#      or a HIMMEL_REPO that is not an absolute path),
 #      the GO key cannot be minted or read, or the write failed; also scripts/lib/go-gate.sh
 #      failed to source or did not define chief_worker (fail closed - writing a GO
 #      is sensitive enough that a broken shared lib must never read as "not a worker")
@@ -422,6 +425,19 @@ fi
 # HANDOVER_DIR for the anchor's .env-configured root, and fails (never falls
 # back to the stub) when that configured root is gone.
 ANCHOR="$(cd "$HERE/../../.." && pwd)"
+# git-env-ok: the one git call runs in a subshell that unsets GIT_DIR, GIT_WORK_TREE, GIT_COMMON_DIR and GIT_INDEX_FILE first
+case "${HIMMEL_REPO:-}" in
+    /*) GATE_DIR=$HIMMEL_REPO ;;
+    '') GATE_DIR=$( (unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE; git -C "$HERE" rev-parse --path-format=absolute --git-common-dir) 2>/dev/null) || GATE_DIR=""  # swallow-ok: a tree outside git reads empty, which falls back to this script's own tree root below
+        GATE_DIR=${GATE_DIR%/.git} ;;
+    *) echo "go: HIMMEL_REPO ($HIMMEL_REPO) is not an absolute path - refusing to let it pick the gated checkout; no GO written" >&2
+       exit 1 ;;
+esac
+[ -n "$GATE_DIR" ] || GATE_DIR=$ANCHOR
+if [ ! -d "$GATE_DIR" ]; then
+    echo "go: the gated checkout HIMMEL_REPO ($GATE_DIR) is not a directory - no GO written" >&2
+    exit 1
+fi
 if ! ROOT=$(go_resolve_root "$ANCHOR"); then
     # shellcheck disable=SC2031  # go_resolve_root scopes HANDOVER_DIR in a subshell on purpose; this reads the caller's own value
     echo "go: cannot resolve the handover root merge-on-green reads (HANDOVER_DIR='${HANDOVER_DIR:-}', or the HANDOVER_DIR in $ANCHOR/.env is not a directory) - no GO written" >&2
@@ -475,11 +491,11 @@ if [ "$TRUST_SET" -eq 1 ] && ! REASON=$(go_trust_verdict "$ROOT" "$TRUST" "$SHA"
 fi
 
 # The checkout holding the PR's commits, where the NO-GO order and delta reads below ask git.
-# A himmel PR: the cwd. --repo: --checkout <dir>, else the first checkout whose origin names
+# A himmel PR: the gated checkout. --repo: --checkout <dir>, else the first checkout whose origin names
 # $FORK under HIMMEL_FORK_ROOTS (colon list, default the harness checkout's parent) or the
 # cwd, preferring one that holds $SHA, else the cwd - where a git read that fails refuses (exit 10).
 # git-env-ok: every git call in this block runs in a subshell that unsets GIT_DIR, GIT_WORK_TREE, GIT_COMMON_DIR and GIT_INDEX_FILE first
-GITDIR=$PWD
+GITDIR=$GATE_DIR
 if [ "$CHECKOUT_SET" -eq 1 ]; then
     if ! (unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE; git -C "$CHECKOUT" rev-parse --git-dir) >/dev/null 2>&1; then
         echo "go: --checkout '$CHECKOUT' is not a readable git checkout, so the NO-GO order of the fork PR cannot be read. No GO written." >&2
@@ -513,7 +529,7 @@ fi
 # while go-gate.sh's go_noop_carry (the one carry rule auto-go.sh runs too) holds and
 # the delta of every hop of its chain still classifies none. A real GO at the head is
 # vetoed by any judge's NO-GO at or after it (go_nogo_after). The PR's commits are read
-# in the caller's cwd, as delta-class.sh reads them; a trust or finding delta, a NO-GO
+# in $GITDIR, where delta-class.sh reads them too; a trust or finding delta, a NO-GO
 # or any read error refuses: it needs a real judge.
 if [ "$TRUST_SET" -eq 1 ]; then
     REAL=0 NOOP=0
@@ -564,8 +580,8 @@ if [ "$TRUST_SET" -eq 1 ]; then
 fi
 
 # no GO for a head ready-check does not pass. Its check 4 is the
-# CR-ledger ok row at this head (read from this cwd's git-common-dir, as when
-# the chief runs it by hand), so a push after /pr-check cannot get a GO
+# CR-ledger ok row at this head (read from the gated checkout's git-common-dir:
+# ready-check.sh runs there), so a push after /pr-check cannot get a GO
 # without a fresh review. Run from $HERE: the anchor's copy, never a worktree's.
 # The merge contract is named by the caller (--contract): a merge GO that does not name it is refused
 # by ready-check item 17 by default, because merge-on-green.sh's remainder refusal depends on it.
@@ -574,7 +590,7 @@ RC_ARGS=(--observe)
 [ "$CONTRACT_SET" -eq 0 ] || RC_ARGS+=(--contract "$CONTRACT")
 READY_OUT="" READY_RC=0
 if [ "$FORK_SET" -eq 0 ]; then
-    READY_OUT=$(bash "$HERE/ready-check.sh" "${RC_ARGS[@]}" "$PR" "$SHA" 2>&1) || READY_RC=$?
+    READY_OUT=$(cd "$GATE_DIR" && bash "$HERE/ready-check.sh" "${RC_ARGS[@]}" "$PR" "$SHA" 2>&1) || READY_RC=$?
     case "$READY_RC" in
         0) ;;
         1)
@@ -604,7 +620,7 @@ if [ "$FORK_SET" -eq 0 ] && [ "$FIX_SET" -eq 0 ]; then
     DTRUST=no
     printf '%s\n' "$READY_OUT" | grep -qx 'TRUST-PATH: yes' && DTRUST=yes
     DISP_RC=0
-    DISP_OUT=$(bash "$HERE/cr-disposition.sh" check "$PR" "$SHA" --trust-path "$DTRUST" 2>&1) || DISP_RC=$?
+    DISP_OUT=$(cd "$GATE_DIR" && bash "$HERE/cr-disposition.sh" check "$PR" "$SHA" --trust-path "$DTRUST" 2>&1) || DISP_RC=$?
     case "$DISP_RC" in
         0) ;;
         1)

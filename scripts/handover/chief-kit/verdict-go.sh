@@ -33,11 +33,12 @@
 # with that step's own exit code (go.sh's 3, 4, 5 and write-verdict.sh's 2 to 5
 # pass through unchanged). Its own usage errors exit 2, before anything runs.
 #
-# Run it as the chief, from the checkout /pr-check wrote the ledger in (go.sh's
-# ready-check reads the cwd), exactly where go.sh is run by hand.
+# Run it as the chief, from any directory: the steps run in the gated checkout
+# (HIMMEL_REPO, else this script's own primary checkout), where go.sh's ready-check
+# reads the CR ledger.
 #
 # Platform guard: POSIX bash 3.2+; the chief kit is Linux-only (needs node for the board).
-# git-env-ok: the one git call is a read-only rev-parse whose path only fills a printed message; it decides nothing
+# git-env-ok: both git calls are read-only rev-parse of this script's own tree; the gating one runs with GIT_DIR, GIT_WORK_TREE, GIT_COMMON_DIR and GIT_INDEX_FILE unset
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -81,6 +82,22 @@ if [ "$HEAD_OK" -ne 1 ] || [ "${#HEAD_SHA}" -ne 40 ]; then
     echo "verdict-go: head must be the full 40-char lowercase hex sha (got '$HEAD_SHA')" >&2
     usage
 fi
+
+# The steps run in the gated checkout: HIMMEL_REPO, else the primary checkout of this
+# script's own tree, never the caller's cwd. A relative --evidence-file or --doc keeps
+# meaning the caller's path.
+case "${HIMMEL_REPO:-}" in
+    /*) GATE_DIR=$HIMMEL_REPO ;;
+    '') GATE_DIR=$( (unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE; git -C "$HERE" rev-parse --path-format=absolute --git-common-dir) 2>/dev/null) || GATE_DIR=""  # swallow-ok: a tree outside git reads empty, which falls back to this script's own tree root below
+        GATE_DIR=${GATE_DIR%/.git} ;;
+    *) echo "verdict-go: HIMMEL_REPO ($HIMMEL_REPO) is not an absolute path - refusing to let it pick the gated checkout; nothing ran" >&2
+       exit 2 ;;
+esac
+[ -n "$GATE_DIR" ] || GATE_DIR="$(cd "$HERE/../../.." && pwd)"
+[ -d "$GATE_DIR" ] || { echo "verdict-go: the gated checkout HIMMEL_REPO ($GATE_DIR) is not a directory; nothing ran" >&2; exit 2; }
+case "$EVIDENCE" in /*) ;; *) EVIDENCE="$PWD/$EVIDENCE" ;; esac
+case "$DOC" in ''|/*) ;; *) DOC="$PWD/$DOC" ;; esac
+cd "$GATE_DIR" || { echo "verdict-go: cannot enter the gated checkout $GATE_DIR; nothing ran" >&2; exit 2; }
 
 # shellcheck source=scripts/handover/chief-kit/residual-lines.sh
 . "$HERE/residual-lines.sh"

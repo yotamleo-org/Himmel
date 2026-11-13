@@ -1215,6 +1215,7 @@ kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 cat > "$STUB/ready-check.sh" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$STUB/rc.calls"
+printf '%s\n' "$PWD" >> "$STUB/rc.cwd"
 cat "$STUB/rc.out"; exit "$(cat "$STUB/rc.rc")"
 EOF
 cat > "$STUB/ci.sh" <<'EOF'
@@ -1224,6 +1225,7 @@ EOF
 cat > "$STUB/disposition.sh" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$STUB/disp.calls"
+printf '%s\n' "$PWD" >> "$STUB/disp.cwd"
 cat "$STUB/disp.out"; exit "$(cat "$STUB/disp.rc")"
 EOF
 cat > "$STUB/worker-event.sh" <<'EOF'
@@ -1326,6 +1328,41 @@ wait_exit "$WPID"
 # shellcheck disable=SC2016  # the backticks are literal bullet text
 check "(rdy-txt) the out file carries the READY bullet" "1" "$(grep -cF -- 'rows `suite-tiers.tsv` added' "$I2.wait.ready-2577" 2>/dev/null)"
 check "(rdy-txt) waiter.md names the bullet in the out file" "1" "$(grep -c 'holds the READY bullet' "$HERE/../../../docs/handover/chief-sections/waiter.md")"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+# (rdy-cwd) the caller's cwd never decides the gated repo: started from another repo's
+# checkout (origin other/luna), the waiter runs ready-check and cr-disposition in
+# HIMMEL_REPO and its CI read names HIMMEL_REPO's origin (-R o/x). RED control
+# (chief-wait.sh before this change): both run in the cwd and `gh pr checks` names no repo.
+ready_stubs_pass
+rm -f "$STUB/rc.cwd" "$STUB/disp.cwd" "$STUB/gh.calls"
+GATED="$WORK/gated"; DECOY="$WORK/decoy"
+git init -q "$GATED" && git -C "$GATED" remote add origin https://github.com/o/x.git
+git init -q "$DECOY" && git -C "$DECOY" remote add origin https://github.com/other/luna.git
+mkdir -p "$STUB/ghbin"
+cat > "$STUB/ghbin/gh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s|%s\n' "$PWD" "$*" >> "$STUB/gh.calls"
+printf 'pass\n'
+EOF
+chmod +x "$STUB/ghbin/gh"
+mkdir -p "$WORK/rdycwd/consoles"; I3="$WORK/rdycwd/consoles/c.md"; : > "$I3"
+RD3="$WORK/rdycwd/chief.md"; printf '# chief\n' > "$RD3"
+RL3="$WORK/rdycwd/HIMMEL-1-N1-a.md"; printf '# worker\n\n## Results\n- 09:00 LIVE — started\n' > "$RL3"
+RM3="$WORK/rdycwd/chief.fleet.json"; printf '{"schema":1,"workers":[{"doc":"%s","label":"N1"}]}\n' "$RL3" > "$RM3"
+ready_tick "N1:LIVE"
+unset CHIEF_WAIT_CI
+cd "$DECOY" || fail "(rdy-cwd) cd decoy"
+HIMMEL_REPO="$GATED" PATH="$STUB/ghbin:$PATH" start "$I3" "$WORK/rdycwd.out" --doc "$RD3" --workers-from "$RM3"
+cd "$HERE" || fail "(rdy-cwd) cd back"
+wait_hb "$I3" || fail "(rdy-cwd) no baseline heartbeat"
+printf -- '- 10:00 READY 2588 %s GREEN\n' "$HA" >> "$RL3"
+ready_tick "N1:READY" "N1:READY#1"
+wait_exit "$WPID"
+check "(rdy-cwd) the READY wakes with CI read GREEN" "WAKE ready 2588 $HA ready-check=PASS ci=GREEN coverage=PASS disposition=ok out=$I3.wait.ready-2588" "$(head -n 1 "$WORK/rdycwd.out")"
+check "(rdy-cwd) ready-check ran in HIMMEL_REPO" "$GATED" "$(cat "$STUB/rc.cwd" 2>/dev/null)"
+check "(rdy-cwd) cr-disposition ran in HIMMEL_REPO" "$GATED" "$(cat "$STUB/disp.cwd" 2>/dev/null)"
+check "(rdy-cwd) the CI read names HIMMEL_REPO's repo, from HIMMEL_REPO" "1" "$(grep -c "^$GATED|pr checks 2588 -R o/x " "$STUB/gh.calls" 2>/dev/null)"
+export CHIEF_WAIT_CI="$STUB/ci.sh"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 unset CHIEF_WAIT_READY_CHECK CHIEF_WAIT_CI CHIEF_WAIT_DISPOSITION CHIEF_WAIT_WORKER_EVENT
 export PATH="$SAVED_PATH"

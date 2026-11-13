@@ -75,6 +75,7 @@ export HOME="$KEYHOME"
 mkdir -p "$tmp/ghbin" || exit 1
 cat > "$tmp/ghbin/gh" <<'STUB'
 #!/usr/bin/env bash
+[ -z "${STUB_GH_LOG:-}" ] || printf '%s\n' "$*" >> "$STUB_GH_LOG"
 q="" prev=""
 for a in "$@"; do
     if [ "$prev" = --jq ]; then q=$a; fi
@@ -552,7 +553,7 @@ fxg checkout -q -b x "$REV" && printf 'echo bye\n' > "$fx/src/a.sh" && fxg commi
 J_CODE=$(fxg rev-parse HEAD)
 fxg checkout -q -b s "$REV" && printf 'sibling\n' > "$fx/src/b.sh" && fxg add -A && fxg commit -q -m sibling || exit 1
 J_SIB=$(fxg rev-parse HEAD)
-fxcd() { ( cd "$fx" && "$@" ); }
+fxcd() { ( cd "$fx" && HIMMEL_REPO="$fx" "$@" ); }
 
 for pair in "q24:$J_TEST:test-only" "q25:$J_COMMENT:comment-only"; do
     qq=${pair%%:*}; rest=${pair#*:}; jh=${rest%%:*}; kind=${rest#*:}
@@ -913,7 +914,7 @@ printf 'delta check, nothing else\n' > "$evd/noop26.md"
 wv q26 GO "$J26" --evidence-file "$evd/j26.md" >/dev/null 2>&1
 fx_git checkout -q -b n1 "$J26"
 printf 'more\n' >> "$fx/docs/c.md"; N26=$(fx_commit docs)
-rc=0; out=$(cd "$fx" && wv q26 GO "$N26" --evidence-file "$evd/noop26.md" --delta-noop "$J26" 2>&1) || rc=$?
+rc=0; out=$(cd "$fx" && HIMMEL_REPO="$fx" wv q26 GO "$N26" --evidence-file "$evd/noop26.md" --delta-noop "$J26" 2>&1) || rc=$?
 check "26: --delta-noop on a none delta rc 0" "$rc" 0
 f26="$scope_dir/q26/delta-noop-$N26.md"
 check "26: written under its own name, judge.md untouched" "$([ -f "$f26" ] && grep -q "$J26" "$scope_dir/q26/judge.md" && echo yes)" yes
@@ -927,44 +928,50 @@ check "26: the judged head's GO still stands" "$rc" 0
 
 fx_git checkout -q -b n2 "$J26"
 printf 'y\n' >> "$fx/scripts/ci/x.sh"; N26t=$(fx_commit trust)
-rc=0; (cd "$fx" && wv q26 GO "$N26t" --evidence-file "$evd/noop26.md" --delta-noop "$J26" >/dev/null 2>&1) || rc=$?
+rc=0; (cd "$fx" && HIMMEL_REPO="$fx" wv q26 GO "$N26t" --evidence-file "$evd/noop26.md" --delta-noop "$J26" >/dev/null 2>&1) || rc=$?
 check "26: a trust-path delta is refused" "$rc" 2
 check "26: ...and nothing is written" "$([ -e "$scope_dir/q26/delta-noop-$N26t.md" ] && echo yes || echo no)" no
 fx_git checkout -q -b n3 "$J26"
 seq 1 10 | awk '$0==4{print "four"; next} {print}' > "$fx/src/a.txt"; N26f=$(fx_commit finding)
-rc=0; (cd "$fx" && wv q26 GO "$N26f" --evidence-file "$evd/noop26.md" --delta-noop "$J26" >/dev/null 2>&1) || rc=$?
+rc=0; (cd "$fx" && HIMMEL_REPO="$fx" wv q26 GO "$N26f" --evidence-file "$evd/noop26.md" --delta-noop "$J26" >/dev/null 2>&1) || rc=$?
 check "26: a delta on a judged finding's lines is refused" "$rc" 2
-rc=0; (cd "$fx" && wv q26u GO "$N26" --evidence-file "$evd/noop26.md" --delta-noop "$J26" >/dev/null 2>&1) || rc=$?
+rc=0; (cd "$fx" && HIMMEL_REPO="$fx" wv q26u GO "$N26" --evidence-file "$evd/noop26.md" --delta-noop "$J26" >/dev/null 2>&1) || rc=$?
 check "26: a judged head with no verdict in the qid is refused" "$rc" 2
 fx_git checkout -q -b n4 "$N26"
 printf 'again\n' >> "$fx/docs/c.md"; N26c=$(fx_commit chain)
-rc=0; (cd "$fx" && wv q26 GO "$N26c" --evidence-file "$evd/noop26.md" --delta-noop "$N26" >/dev/null 2>&1) || rc=$?
+rc=0; (cd "$fx" && HIMMEL_REPO="$fx" wv q26 GO "$N26c" --evidence-file "$evd/noop26.md" --delta-noop "$N26" >/dev/null 2>&1) || rc=$?
 check "26: a no-op record cannot be the judged head" "$rc" 2
-rc=0; (cd "$fx" && wv q26 GO "$N26c" --evidence-file "$evd/noop26.md" --delta-noop "$J26" >/dev/null 2>&1) || rc=$?
+rc=0; (cd "$fx" && HIMMEL_REPO="$fx" wv q26 GO "$N26c" --evidence-file "$evd/noop26.md" --delta-noop "$J26" >/dev/null 2>&1) || rc=$?
 check "26: the cumulative delta from the real judged head is accepted" "$rc" 0
-rc=0; (cd "$fx" && wv q26n NO-GO "$N26c" --evidence-file "$evd/noop26.md" --delta-noop "$J26" >/dev/null 2>&1) || rc=$?
+rc=0; (cd "$fx" && HIMMEL_REPO="$fx" wv q26n NO-GO "$N26c" --evidence-file "$evd/noop26.md" --delta-noop "$J26" >/dev/null 2>&1) || rc=$?
 check "26: --delta-noop on a NO-GO is refused" "$rc" 2
-rc=0; (cd "$fx" && wv q26 GO "$N26c" --evidence-file "$evd/noop26.md" --delta-noop "$N26c" >/dev/null 2>&1) || rc=$?
+rc=0; (cd "$fx" && HIMMEL_REPO="$fx" wv q26 GO "$N26c" --evidence-file "$evd/noop26.md" --delta-noop "$N26c" >/dev/null 2>&1) || rc=$?
 check "26: --delta-noop naming the head itself is refused" "$rc" 2
-rc=0; (cd "$fx" && wv q26 GO "$N26c" --evidence-file "$evd/noop26.md" --delta-noop nothex >/dev/null 2>&1) || rc=$?
+rc=0; (cd "$fx" && HIMMEL_REPO="$fx" wv q26 GO "$N26c" --evidence-file "$evd/noop26.md" --delta-noop nothex >/dev/null 2>&1) || rc=$?
 check "26: a malformed --delta-noop is refused" "$rc" 2
-rc=0; (cd "$fx" && wv q26 GO "$N26c" --evidence-file "$evd/noop26.md" --delta-noop "$J26" --judge judge >/dev/null 2>&1) || rc=$?
+rc=0; (cd "$fx" && HIMMEL_REPO="$fx" wv q26 GO "$N26c" --evidence-file "$evd/noop26.md" --delta-noop "$J26" --judge judge >/dev/null 2>&1) || rc=$?
 check "26: --delta-noop with an explicit --judge name is refused" "$rc" 2
-rc=0; (cd "$fx" && wv q26 GO "$N26c" --evidence-file "$evd/noop26.md" --delta-noop "" >/dev/null 2>&1) || rc=$?
+rc=0; (cd "$fx" && HIMMEL_REPO="$fx" wv q26 GO "$N26c" --evidence-file "$evd/noop26.md" --delta-noop "" >/dev/null 2>&1) || rc=$?
 check "26: an empty --delta-noop is refused" "$rc" 2
 printf 'delta: no-op\n' > "$evd/typed26.md"
-rc=0; (cd "$fx" && wv q26 GO "$N26c" --evidence-file "$evd/typed26.md" --delta-noop "$J26" >/dev/null 2>&1) || rc=$?
+rc=0; (cd "$fx" && HIMMEL_REPO="$fx" wv q26 GO "$N26c" --evidence-file "$evd/typed26.md" --delta-noop "$J26" >/dev/null 2>&1) || rc=$?
 check "26: evidence typing a delta: line is refused" "$rc" 2
 rc=0; wv q26e GO "$N26c" --evidence-file "$evd/typed26.md" >/dev/null 2>&1 || rc=$?
 check "26: evidence typing a delta: line is refused without the flag too" "$rc" 2
 
-# --- 27. no --repo from an adopter checkout never lands in the harness bucket ---
+# --- 27. the caller's cwd never picks the bucket; a HIMMEL_REPO of another repo is refused ---
+# RED control (write-verdict.sh before this change): from the adopter cwd it refused and
+# steered to `--repo acme/widget`, and a HIMMEL_REPO naming another repo was ignored.
 ax="$tmp/adopter-checkout"
 git init -q "$ax" && git -C "$ax" remote add origin https://github.com/acme/widget.git
+rc=0; out=$(cd "$ax" && wv q27c GO "$SHA_A" --evidence-file "$ev" 2>&1) || rc=$?
+check "27: an adopter cwd with no --repo writes, as from the checkout" "$rc" 0
+check "27: ...into the harness bucket" "$(ls "$scope_dir/q27c" 2>/dev/null | wc -l | tr -d ' ')" 1
 before27=$(ls -R "$root" | wc -l | tr -d ' ')
-rc=0; out=$(cd "$ax" && wv q27 GO "$SHA_A" --evidence-file "$ev" 2>&1) || rc=$?
-check "27: an adopter checkout with no --repo is refused" "$rc" 2
-contains "27: the refusal names the checkout's repo" "$out" "acme/widget"
+rc=0; out=$(HIMMEL_REPO="$ax" wv q27 GO "$SHA_A" --evidence-file "$ev" 2>&1) || rc=$?
+check "27: a HIMMEL_REPO whose origin is another repo is refused" "$rc" 2
+contains "27: the refusal names HIMMEL_REPO" "$out" "HIMMEL_REPO"
+case "$out" in *"--repo acme/widget"*) echo "FAIL - 27: the refusal steers to --repo acme/widget"; fails=$((fails+1)) ;; *) echo "ok - 27: the refusal never steers to --repo <that repo>" ;; esac
 check "27: the refusal writes nothing" "$(ls -R "$root" | wc -l | tr -d ' ')" "$before27"
 rc=0; (cd "$ax" && wv q27 GO "$SHA_A" --repo acme/widget --evidence-file "$ev" >/dev/null 2>&1) || rc=$?
 check "27: the same checkout with --repo acme/widget writes" "$rc" 0
@@ -994,7 +1001,7 @@ ids28=$(printf 'C-0001\ta.sh\tdo_a\tHIMMEL-1')
 above28() { awk '/^Checked a\.sh\.$/ { exit } { print }' "$1"; }
 for ans in GO NO-GO; do
     evf="$evd/ev28.md"; [ "$ans" = NO-GO ] && evf="$evd/ev28n.md"
-    rc=0; out=$(cd "$cx" && HIMMEL_CEILINGS_LEDGER="$tmp/ceilings28.tsv" wv "q28$ans" "$ans" "$H28" --evidence-file "$evf" 2>&1) || rc=$?
+    rc=0; out=$(cd "$cx" && HIMMEL_REPO="$cx" HIMMEL_CEILINGS_LEDGER="$tmp/ceilings28.tsv" wv "q28$ans" "$ans" "$H28" --evidence-file "$evf" 2>&1) || rc=$?
     check "28: a $ans --pr verdict is written" "$rc" 0
     rec=$(cat "$out" 2>/dev/null)
     contains "28: the $ans record carries the computed header" "$(above28 "$out")" "CEILINGS: 1 open rows for 1 of 1 touched files"
@@ -1002,7 +1009,7 @@ for ans in GO NO-GO; do
     case "$rec" in *"$ceil_secret"*|*"a CRLF report"*) check "28: the $ans record carries no ceiling or trigger text" leaked clean ;; *) check "28: the $ans record carries no ceiling or trigger text" clean clean ;; esac
     rc=0; [ "$ans" = GO ] && { verdict_rc "q28$ans" "$H28" || rc=$?; check "28: go_trust_verdict accepts the GO with the block signed in" "$rc" 0; }
 done
-rc=0; out=$(cd "$cx" && HIMMEL_CEILINGS_LEDGER="$tmp/ceilings28.tsv" ANTHROPIC_BASE_URL=http://127.0.0.1:8317 ANTHROPIC_MODEL=gpt-6.1-sol CLAUDECODE='' \
+rc=0; out=$(cd "$cx" && HIMMEL_REPO="$cx" HIMMEL_CEILINGS_LEDGER="$tmp/ceilings28.tsv" ANTHROPIC_BASE_URL=http://127.0.0.1:8317 ANTHROPIC_MODEL=gpt-6.1-sol CLAUDECODE='' \
     wv q28x GO "$H28" --evidence-file "$evd/ev28.md" 2>&1) || rc=$?
 check "28: under a claudex env the verdict is written" "$rc" 0
 contains "28: under a claudex env the ids are still recorded (--ids is ungated)" "$(above28 "$out")" "$ids28"
@@ -1010,15 +1017,15 @@ printf 'CEILINGS: 5 open rows for 3 of 9 touched files (ledger /elsewhere)\nChec
 printf 'class: other\nclass-reason: fixture\nCEILINGS: none for the 9 touched files\nChecked a.sh.\n' > "$evd/typed28n.md"
 for ans in GO NO-GO; do
     evf="$evd/typed28.md"; [ "$ans" = NO-GO ] && evf="$evd/typed28n.md"
-    rc=0; out=$(cd "$cx" && HIMMEL_CEILINGS_LEDGER="$tmp/ceilings28.tsv" wv "q28t$ans" "$ans" "$H28" --evidence-file "$evf" 2>&1) || rc=$?
+    rc=0; out=$(cd "$cx" && HIMMEL_REPO="$cx" HIMMEL_CEILINGS_LEDGER="$tmp/ceilings28.tsv" wv "q28t$ans" "$ans" "$H28" --evidence-file "$evf" 2>&1) || rc=$?
     check "28: a typed block with a different count is written ($ans)" "$rc" 0
     contains "28: ...and the record carries the computed header ($ans)" "$(cat "$out" 2>/dev/null)" "CEILINGS: 1 open rows for 1 of 1 touched files"
 done
-rc=0; out=$(cd "$cx" && HIMMEL_CEILINGS_LEDGER="$tmp/no-such-ledger.tsv" wv q28m GO "$H28" --evidence-file "$evd/ev28.md" 2>&1) || rc=$?
+rc=0; out=$(cd "$cx" && HIMMEL_REPO="$cx" HIMMEL_CEILINGS_LEDGER="$tmp/no-such-ledger.tsv" wv q28m GO "$H28" --evidence-file "$evd/ev28.md" 2>&1) || rc=$?
 check "28: with no ledger the verdict is written" "$rc" 0
 contains "28: ...recording not read" "$(cat "$out" 2>/dev/null)" "CEILINGS: not read (no ledger for"
 mkdir -p "$root/$scope/specs/ledgers" && cp "$tmp/ceilings28.tsv" "$root/$scope/specs/ledgers/ceilings.tsv"
-rc=0; out=$(unset HIMMEL_CEILINGS_LEDGER; cd "$cx" && wv q28r GO "$H28" --repo acme/widget --evidence-file "$evd/ev28.md" 2>&1) || rc=$?
+rc=0; out=$(unset HIMMEL_CEILINGS_LEDGER; cd "$cx" && HIMMEL_REPO="$cx" wv q28r GO "$H28" --repo acme/widget --evidence-file "$evd/ev28.md" 2>&1) || rc=$?
 check "28: a --repo verdict is written" "$rc" 0
 contains "28: ...recording no ledger for the adopted repo" "$(cat "$out" 2>/dev/null)" "CEILINGS: not read (no ledger for acme/widget)"
 rm -rf "$root/$scope/specs"
@@ -1028,7 +1035,7 @@ cp -R "$REPO/scripts/lib" "$kit/scripts/lib"
 cp "$REPO/scripts/cr/anchor-handoff.sh" "$kit/scripts/cr/"
 cp "$HERE/write-verdict.sh" "$HERE/residual-lines.sh" "$kit/scripts/handover/chief-kit/"
 git init -q "$kit"
-rc=0; out=$(cd "$cx" && HIMMEL_CEILINGS_LEDGER="$tmp/ceilings28.tsv" env -u HIMMEL_CONSOLE_LEG HANDOVER_DIR="$root" CLAUDE_CODE_SESSION_ID=sess-4689 \
+rc=0; out=$(cd "$cx" && HIMMEL_REPO="$cx" HIMMEL_CEILINGS_LEDGER="$tmp/ceilings28.tsv" env -u HIMMEL_CONSOLE_LEG HANDOVER_DIR="$root" CLAUDE_CODE_SESSION_ID=sess-4689 \
     bash "$kit/scripts/handover/chief-kit/write-verdict.sh" q28k GO "$H28" --pr 501 --evidence-file "$evd/ev28.md" 2>&1) || rc=$?
 check "28: a writer in a tree with no scripts/ledger/ still writes" "$rc" 0
 contains "28: ...recording not read" "$(cat "$out" 2>/dev/null)" "CEILINGS: not read (no scripts/ledger/ceiling-lookup.sh"
@@ -1041,31 +1048,31 @@ th_done='{"isResolved":true,"path":"README.md","line":1,"originalLine":1,"commen
 th_page() { printf '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[%s]}}}}}' "$1"; }
 fx29() { fx_git checkout -q -b "$1" "$J26" && printf '%s\n' "$1" >> "$fx/docs/c.md" && fx_commit "$1"; }
 N29a=$(fx29 n29a)
-rc=0; out=$(cd "$fx" && STUB_THREADS="$(th_page "$th_done,$th_open")" wv q26 GO "$N29a" --evidence-file "$evd/noop26.md" --delta-noop "$J26" 2>&1) || rc=$?
+rc=0; out=$(cd "$fx" && HIMMEL_REPO="$fx" STUB_THREADS="$(th_page "$th_done,$th_open")" wv q26 GO "$N29a" --evidence-file "$evd/noop26.md" --delta-noop "$J26" 2>&1) || rc=$?
 check "29: a no-op GO over an unresolved thread is refused rc 2" "$rc" 2
 check "29: ...and nothing is written" "$([ -e "$scope_dir/q26/delta-noop-$N29a.md" ] && echo yes || echo no)" no
 contains "29: the refusal names the thread" "$out" "scripts/jira/src/policy.ts:88 by coderabbitai at 2026-11-09T05:07:51Z"
 contains "29: the refusal names the override" "$out" "--open-threads-ok"
-rc=0; out=$(cd "$fx" && STUB_THREADS="$(th_page "$th_open")" wv q26 GO "$N29a" --evidence-file "$evd/noop26.md" --delta-noop "$J26" --open-threads-ok "chief ruled it answered in the PR body" 2>&1) || rc=$?
+rc=0; out=$(cd "$fx" && HIMMEL_REPO="$fx" STUB_THREADS="$(th_page "$th_open")" wv q26 GO "$N29a" --evidence-file "$evd/noop26.md" --delta-noop "$J26" --open-threads-ok "chief ruled it answered in the PR body" 2>&1) || rc=$?
 check "29: the override writes the no-op GO" "$rc" 0
 contains "29: the override warns loudly" "$out" "WARNING"
 contains "29: the record carries the override reason" "$(cat "$scope_dir/q26/delta-noop-$N29a.md" 2>/dev/null)" "open-threads-ok: 1 open, chief ruled it answered in the PR body"
 rc=0; verdict_rc q26 "$N29a" || rc=$?
 check "29: go_trust_verdict accepts the overridden no-op GO" "$rc" 0
 N29b=$(fx29 n29b)
-rc=0; (cd "$fx" && STUB_THREADS="$(th_page "$th_open")" wv q26 GO "$N29b" --evidence-file "$evd/noop26.md" --delta-noop "$J26" --open-threads-ok 'two
+rc=0; (cd "$fx" && HIMMEL_REPO="$fx" STUB_THREADS="$(th_page "$th_open")" wv q26 GO "$N29b" --evidence-file "$evd/noop26.md" --delta-noop "$J26" --open-threads-ok 'two
 lines' >/dev/null 2>&1) || rc=$?
 check "29: a multi-line override reason is refused rc 2" "$rc" 2
-rc=0; (cd "$fx" && wv q26o GO "$N29b" --evidence-file "$evd/noop26.md" --open-threads-ok "x" >/dev/null 2>&1) || rc=$?
+rc=0; (cd "$fx" && HIMMEL_REPO="$fx" wv q26o GO "$N29b" --evidence-file "$evd/noop26.md" --open-threads-ok "x" >/dev/null 2>&1) || rc=$?
 check "29: --open-threads-ok without --delta-noop is refused rc 2" "$rc" 2
-rc=0; out=$(cd "$fx" && STUB_THREADS="$(th_page "$th_done")" wv q26 GO "$N29b" --evidence-file "$evd/noop26.md" --delta-noop "$J26" 2>&1) || rc=$?
+rc=0; out=$(cd "$fx" && HIMMEL_REPO="$fx" STUB_THREADS="$(th_page "$th_done")" wv q26 GO "$N29b" --evidence-file "$evd/noop26.md" --delta-noop "$J26" 2>&1) || rc=$?
 check "29: control, every thread resolved: the no-op GO is written" "$rc" 0
 N29c=$(fx29 n29c)
-rc=0; out=$(cd "$fx" && STUB_THREADS_FAIL=1 wv q26 GO "$N29c" --evidence-file "$evd/noop26.md" --delta-noop "$J26" 2>&1) || rc=$?
+rc=0; out=$(cd "$fx" && HIMMEL_REPO="$fx" STUB_THREADS_FAIL=1 wv q26 GO "$N29c" --evidence-file "$evd/noop26.md" --delta-noop "$J26" 2>&1) || rc=$?
 check "29: an unreadable thread read warns and writes" "$rc" 0
 contains "29: ...naming the unread threads" "$out" "could not read the review threads"
 printf 'open-threads-ok: typed\n' > "$evd/typed29.md"
-rc=0; (cd "$fx" && wv q26t GO "$N29c" --evidence-file "$evd/typed29.md" >/dev/null 2>&1) || rc=$?
+rc=0; (cd "$fx" && HIMMEL_REPO="$fx" wv q26t GO "$N29c" --evidence-file "$evd/typed29.md" >/dev/null 2>&1) || rc=$?
 check "29: evidence typing an open-threads-ok: line is refused" "$rc" 2
 
 # --- 30. --bind attaches a branch GO to its PR at the same head ---
@@ -1145,6 +1152,21 @@ check "30: ...and nothing is written (delta-scope source)" "$([ -e "$scope_dir/q
 src30 q30h 1 "reviewed-head: $SHA_B"
 check "30: a signed source carrying a reviewed-head line is refused rc 2" "$(bind30 q30h)" 2
 check "30: ...and nothing is written (reviewed-head source)" "$([ -e "$scope_dir/q30h/bind-pr9845-$SHA_A.md" ] && echo yes || echo no)" no
+
+# --- 31. the gated repo's reads run there, from any cwd ---
+# From a directory outside any repo: the --bind PR read names the gated repo's origin,
+# and --delta-noop classifies in HIMMEL_REPO. RED control (write-verdict.sh before this
+# change): the PR read carries no repo, and the delta read runs in the cwd and refuses.
+nowhere31="$tmp/nowhere31"; mkdir -p "$nowhere31"
+nwo31=$(git -C "$REPO" remote get-url origin 2>/dev/null | sed -E 's#^(https?://[^/]+/|git@[^:]+:|ssh://git@[^/]+/)##; s#\.git$##' | tr '[:upper:]' '[:lower:]')
+: > "$tmp/gh31.log"
+rc=0; (cd "$nowhere31" && STUB_GH_LOG="$tmp/gh31.log" STUB_PR_HEAD="$SHA_A" WV_NOPR="--bind --pr 9845" wv q30 GO "$SHA_A" >/dev/null 2>&1) || rc=$?
+check "31: --bind from a non-repo cwd rc 0" "$rc" 0
+check "31: the PR read names the gated repo ($nwo31)" "$(grep -c "^pr view 9845 --repo $nwo31 " "$tmp/gh31.log")" 1
+rc=0; wv q31 GO "$J26" --evidence-file "$evd/j26.md" >/dev/null 2>&1 || rc=$?
+check "31: setup, the judged GO is written" "$rc" 0
+rc=0; out=$(cd "$nowhere31" && HIMMEL_REPO="$fx" wv q31 GO "$N26" --evidence-file "$evd/noop26.md" --delta-noop "$J26" 2>&1) || rc=$?
+check "31: --delta-noop from a non-repo cwd classifies in HIMMEL_REPO rc 0" "$rc" 0
 
 [ "$fails" -eq 0 ] && { echo "PASS: test-write-verdict.sh"; exit 0; }
 echo "FAIL: $fails case(s)"
