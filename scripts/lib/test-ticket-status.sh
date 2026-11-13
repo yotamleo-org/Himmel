@@ -177,7 +177,6 @@ iso_at() {
 ODUE=$(date -u -d "@$((NOW + 86400))" +%Y-%m-%d 2>/dev/null || date -u -r "$((NOW + 86400))" +%Y-%m-%d)
 OK=HIMMEL-9301
 OD="$tmp/odocs"
-export PLOCK_DIR="$tmp/plock"
 export TICKET_STATUS_STATE_DIR="$tmp/ostate" TS_SNAPSHOT_DIR="$tmp/osnap" TS_EVENT=sweep
 olog="$TICKET_STATUS_STATE_DIR/status-events.jsonl"
 mkdir -p "$TS_SNAPSHOT_DIR"
@@ -185,9 +184,9 @@ printf '%s\tTask\tIn Progress\n' "$OK" > "$TS_SNAPSHOT_DIR/jira.tsv"
 printf '[]\n' > "$TS_SNAPSHOT_DIR/prs.json"
 cat > "$tmp/plock.sh" <<'EOF'
 #!/usr/bin/env bash
-f="$PLOCK_DIR/$(basename "$2")"
+case "$(basename "$2")" in p.md) v=${LK_P:-} ;; a.md) v=${LK_A:-} ;; b.md) v=${LK_B:-} ;; *) v= ;; esac
 rc=11 st=FRESH
-[ -r "$f" ] && read -r rc st < "$f"
+[ -z "$v" ] || read -r rc st <<<"$v"
 [ "$rc" = 0 ] && { echo free; exit 0; }
 printf '{\n  "heartbeat": "%s"\n}\nstatus: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$st"
 exit "$rc"
@@ -201,8 +200,9 @@ check "ts_owner: the LEGACY list names five shapes" "$(echo "$OLEGACY" | wc -w |
 check "ts_owner: the exemption list names the two" "$OEXEMPT" "UNSEEN HELD-STALE"
 
 ocell() {
-    rm -rf "$TICKET_STATUS_STATE_DIR" "$PLOCK_DIR" "$OD"
-    mkdir -p "$TICKET_STATUS_STATE_DIR/workers" "$PLOCK_DIR" "$OD"
+    rm -rf "$TICKET_STATUS_STATE_DIR" "$OD"
+    mkdir -p "$TICKET_STATUS_STATE_DIR/workers" "$OD"
+    unset LK_P LK_A LK_B
     _TS_MI_SIG=""
     unset TS_OWNER_HELD TS_OWNER_ROWS
 }
@@ -222,7 +222,7 @@ orec() {
     jq -nc --argjson x "$x" --argjson dl "$dl" --arg d "$1" --arg t "$(iso_at 60)" \
         '{doc: $d, docs: $dl, prs: {}, last_event_ts: $t} + $x' > "$TICKET_STATUS_STATE_DIR/workers/$OK.json"
 }
-olock() { printf '%s %s\n' "$2" "$3" > "$PLOCK_DIR/$(basename "$1")"; }
+olock() { case "$(basename "$1")" in p.md) export LK_P="$2 $3" ;; a.md) export LK_A="$2 $3" ;; b.md) export LK_B="$2 $3" ;; esac; }
 orow() {
     jq -nc --arg ts "$(iso_at "$1")" --arg e "$2" --arg k "$OK" --arg r "$3" --arg rule "$4" --argjson x "${5:-{\}}" \
         '{ts: $ts, event: $e, key: $k, result: $r} + (if $rule == "-" then {} else {rule: $rule} end) + $x' >> "$olog"
