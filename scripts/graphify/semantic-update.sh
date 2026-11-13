@@ -412,7 +412,7 @@ auto_accounts() {
   if [ "$rc" -eq 3 ]; then
     echo "semantic-update: refusing the batch: graph role map broken (${r#refuse }); fix or remove roles.json" >&2; return 3
   fi
-  case "$r" in ''|*[!ABC,]*) echo "semantic-update: refusing the batch: the graph walk gave no account list (rc $rc)" >&2; return 3 ;; esac
+  [[ "$r" =~ ^[ABC](,[ABC])*$ ]] || { echo "semantic-update: refusing the batch: the graph walk gave no account list (rc $rc)" >&2; return 3; }
   printf '%s' "$r"
 }
 # How many accounts the sync shim's breaker counts on auto: the auto accounts that have a roster row (a letter the role

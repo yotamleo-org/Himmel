@@ -370,12 +370,10 @@ if [ "$HIMMEL_API_ACCOUNT" = auto ] && [ "$KIND" = graphify ]; then
     echo "claude-api: refused: graph role map broken (${ROLE_ACCTS#refuse }); fix or remove roles.json" >&2
     fail_over 2 refused-role-map "graph role map broken"; exit 2
   fi
-  case "$_walk_rc:$ROLE_ACCTS" in
-    0:[ABC]|0:[ABC],*) ;;
-    *) echo "claude-api: refused: the graph walk cannot be read (api-roles.mjs walk graphify exit $_walk_rc)" >&2
-       fail_over 2 refused-role-map "graph walk unreadable"; exit 2 ;;
-  esac
-  case "$ROLE_ACCTS" in *[!ABC,]*) ROLE_ACCTS="" ;; esac
+  if [ "$_walk_rc" -ne 0 ] || ! [[ "$ROLE_ACCTS" =~ ^[ABC](,[ABC])*$ ]]; then
+    echo "claude-api: refused: the graph walk cannot be read (api-roles.mjs walk graphify exit $_walk_rc)" >&2
+    fail_over 2 refused-role-map "graph walk unreadable"; exit 2
+  fi
 elif [ "$HIMMEL_API_ACCOUNT" = auto ]; then
   ROLE_ACCTS="$(node "$REPO/scripts/lib/api-roles.mjs" accounts "$KIND")" || ROLE_ACCTS=""
   case "$ROLE_ACCTS" in *[!ABC,]*) ROLE_ACCTS="" ;; esac

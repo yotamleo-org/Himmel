@@ -2427,11 +2427,10 @@ for p in sys.stdin.buffer.read().split(b"\0"):
         echo "refresh-graph-map: refusing the semantic pass: graph role map broken (${_walk#refuse }); fix or remove roles.json" >&2
         exit 2
       fi
-      case "$_walk_rc:$_walk" in
-        0:[ABC]|0:[ABC],*) ;;
-        *) echo "refresh-graph-map: refusing the semantic pass: the graph walk cannot be read (api-roles.mjs walk graphify exit $_walk_rc)" >&2
-           exit 2 ;;
-      esac
+      if [ "$_walk_rc" -ne 0 ] || ! [[ "$_walk" =~ ^[ABC](,[ABC])*$ ]]; then
+        echo "refresh-graph-map: refusing the semantic pass: the graph walk cannot be read (api-roles.mjs walk graphify exit $_walk_rc)" >&2
+        exit 2
+      fi
       _roster="$(node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" accounts 2>/dev/null)" || _roster=""
       _n=0
       for _a in $(printf '%s' "$_walk" | tr ',' ' '); do
