@@ -495,6 +495,9 @@ doc's stale file (tick-pool-stale-<cksum>.out in TICK_STATE_DIR, the main tick's
 newest file of the same mirror): a key whose only reason to count as dispositioned is its line, and whose line still hashes to the
 file's line=, is unresolved as class `stale` and names its gone targets. The file has no age bound. A failed or paused read
 keeps a stale verdict while the line is unchanged and no target reads open (--prior, the carry-forward, ends ` carried`).
+A key whose line the file reads changed (pool-changed=, same line-hash and sole-reason rules) is unresolved as
+class `changed`: `<target> merged <oldest sha since the anchor> since the line was written: re-read and stamp
+(<LL> <MM-DD> <HH:MM>Z)`, the bracket printed as written, never filled in.
 pool-stale=<n>:<KEY>,... re-checks each pool-disposition: line whose target
 names a ticket key of the mirror's project or `PR <n>`: when every named blocker is Done (Jira mirror)
 or its PR merged or closed the line is stale, `?` marks an unreadable target (never stale), and
@@ -507,7 +510,18 @@ stale key: line= is the sha256 prefix of the line's text after `pool-disposition
 target is listed, keys then PRs by number, then `@<sha>=<n>-behind`. A `gh-read:` warning of that read is
 copied to stderr. A line may end `@<sha>`, the head the chief
 ruled at: more than TICK_POOL_MAX_MERGES (30) commits behind origin/main (else HEAD) it is stale
-whatever its blockers say, and an unknown sha prints `?`. The line is never rewritten. residual-unversioned=
+whatever its blockers say, and an unknown sha prints `?`. The line is never rewritten.
+pool-changed=<n>:<KEY>,... (doc order) names each line that is not stale whose open project-key target
+merged since the line's anchor: a first-parent commit of origin/main (else HEAD) whose subject carries
+`[<target>]`, committed after the later of the line's @sha commit time and its newest
+`(<LL>[-n] <MM-DD>[ <HH:MM>Z]` stamp. A timed stamp is that UTC minute, a date-only stamp local midnight;
+its year is the reference date's (the first YYYY-MM-DD of the doc's file name, else the doc's mtime, else
+today, as UTC dates), one less when the stamp's month is after the reference month. A line with neither
+is not judged; an unknown @sha or a failed merge-history read prints `?`. Before the field, one
+`CHANGED-DISPOSITION <KEY> line=<12 hex> <target>=<state>... since <oldest sha> via <target> <newest sha>
+<subject, 80 chars>` line per changed key. With --prior, a changed line is carried (` carried`) while its
+hash is the same, its via target reads open or ?, and the history read did not finish. Hidden at 0 or skip.
+residual-unversioned=
 <n>:<KEY>,... lists open residual tickets of an open focus-version ticket with no fixVersion
 other than a To Do ticket below High whose latest release-ruling comment is a BACKLOG ruling (or a MOVE to the backlog) of that same ticket.
 residual-unversioned hides when 0 or skip. pool-stale hides only on skip (no --doc, or a failed
@@ -675,7 +689,7 @@ if stale_lines is None and stale_file:
         if got is not None and "# mirror=" + stale_mirror in got[:1]:
             stale_lines = got
             break
-stale = {}
+stale, changed = {}, {}
 for line in stale_lines or []:
     m = re.fullmatch(r"STALE-DISPOSITION ([A-Z]+-\d+) line=([0-9a-f]{12}) (.*?)(?: carried)?", line)
     if m:
@@ -684,6 +698,11 @@ for line in stale_lines or []:
             sm = re.fullmatch(r"(@[0-9a-f]+)=(\d+)-behind", t)
             targets.append("%s=%s" % (sm[1], "expired" if int(sm[2]) > maxmerges else "within") if sm else t)
         stale[m[1]] = (m[2], " ".join(targets))
+    # the text names the oldest merge since the anchor, fixed until the chief re-stamps, and the stamp to
+    # add as literal text: a filled-in time would change the text, and so wake the waiter, every run
+    m = re.match(r"CHANGED-DISPOSITION ([A-Z]+-\d+) line=([0-9a-f]{12}) .*? since ([0-9a-f]+) via ([A-Z]+-\d+) ", line)
+    if m:
+        changed[m[1]] = (m[2], "%s merged %s since the line was written: re-read and stamp (<LL> <MM-DD> <HH:MM>Z)" % (m[4], m[3]))
 
 inflight = disposed = 0
 unresolved = []
@@ -692,10 +711,14 @@ for key, reason in rows.items():
     inflight += int(owned)
     holder = bool(re.search(r" held by (?:(?:live )?worker [\w.-]+|PR #\d+|series [\w.-]+)(?:$|\s)", reason)) or reason.startswith("stackable on ")
     blocker = bool(re.match(r"blocker-unknown [A-Z]+-\d+", reason)) or (reason.startswith("blocker ") and bool(re.search(r"[A-Z]+-\d+ \((?:(?!Done,|Closed,)[^()]+, live|reopened live)\)", reason)))
+    sole = not (owned or holder or blocker) and key in decisions
+    lh = hashlib.sha256(decisions[key].encode()).hexdigest()[:12] if sole else ""
     if key in invalid:
         unresolved.append(("invalid", key, invalid[key]))
-    elif not (owned or holder or blocker) and key in decisions and key in stale and stale[key][0] == hashlib.sha256(decisions[key].encode()).hexdigest()[:12]:
+    elif sole and key in stale and stale[key][0] == lh:
         unresolved.append(("stale", key, "its pool-disposition target is gone: %s; re-decide or rewrite the line" % stale[key][1]))
+    elif sole and key in changed and changed[key][0] == lh:
+        unresolved.append(("changed", key, changed[key][1]))
     elif owned or holder or blocker or key in decisions:
         disposed += 1
     elif key in unowned:
@@ -782,7 +805,7 @@ PY
 # rewrites the doc.
 pool_stale() { # <doc> <mirror> <gh command> <repo dir>
     python3 -I - "$@" <<'PY'
-import glob, hashlib, json, os, re, subprocess, sys
+import datetime, glob, hashlib, json, os, re, subprocess, sys
 doc, mirror, gh, repo, prior, stale_file, mirror_real, noread = sys.argv[1:9]
 if stale_file:
     print("# mirror=" + mirror_real)
@@ -803,6 +826,7 @@ def front(key):
 
 if not (doc and os.path.isfile(doc) and os.path.isdir(mirror)):
     print("pool-stale=skip")
+    print("pool-changed=skip")
     print("residual-unversioned=skip")
     sys.exit(0)
 
@@ -819,8 +843,8 @@ for line in open(doc).read().splitlines():
             refs = {k for k in key_re.findall(m[2]) if k != m[1]}
             prs = {n for g in re.findall(r"\bPRs?\s*#?(\d+(?:\s*(?:,|and|&)\s*#?\d+)*)", m[2]) for n in re.findall(r"\d+", g)}
             sha = re.search(r"(?<![\w-])@([0-9a-f]{7,40})\b", m[2])
-            latest[m[1]] = (refs, prs, sha[1] if sha else "", hashlib.sha256(value.encode()).hexdigest()[:12])
-lines = [(k, refs, prs, sha, h) for k, (refs, prs, sha, h) in latest.items() if refs or prs or sha]
+            latest[m[1]] = (refs, prs, sha[1] if sha else "", hashlib.sha256(value.encode()).hexdigest()[:12], value)
+lines = [(k, refs, prs, sha, h) for k, (refs, prs, sha, h, _) in latest.items() if refs or prs or sha]
 
 # `@<sha>` is the head the chief ruled at; a ruling more than TICK_POOL_MAX_MERGES (30) commits behind
 # main is stale whatever its blocker says, so a disposition copied forward from a predecessor expires
@@ -844,11 +868,14 @@ if prior_lines is None and stale_file:
         if got is not None and got[:1] == ["# mirror=" + mirror_real]:
             prior_lines = got
             break
-carry = {}
+carry, ccarry = {}, {}
 for line in prior_lines or []:
     m = re.fullmatch(r"(STALE-DISPOSITION ([A-Z]+-\d+) line=([0-9a-f]{12}) .*?)(?: carried)?", line)
     if m:
         carry[m[2]] = (m[3], m[1])
+    m = re.fullmatch(r"(CHANGED-DISPOSITION ([A-Z]+-\d+) line=([0-9a-f]{12}) .*? via ([A-Z]+-\d+) .*?)(?: carried)?", line)
+    if m:
+        ccarry[m[2]] = (m[3], m[4], m[1])
 
 prstate = None
 nums = sorted({int(p) for _, _, prs, _, _ in lines for p in prs})
@@ -891,17 +918,20 @@ def shown(kind, ref):
         return {"done": "Done", "open": "open"}.get(state("key", ref), "?")
     return (prstate or {}).get(ref) or "?"
 
-def detail(key, refs, prs, sha, h, n):
+def targets(refs, prs, sha, n):
     parts = ["%s=%s" % (k, shown("key", k)) for k in sorted(refs, key=lambda k: int(k.split("-")[1]))]
     parts += ["PR#%s=%s" % (p, shown("pr", p)) for p in sorted(prs, key=int)]
     if sha:
         parts.append("@%s=%s" % (sha, "?" if n is None else "%d-behind" % n))
-    return "STALE-DISPOSITION %s line=%s %s" % (key, h, " ".join(parts))
+    return " ".join(parts)
 
-stale, unreadable, details = [], False, []
+def detail(key, refs, prs, sha, h, n):
+    return "STALE-DISPOSITION %s line=%s %s" % (key, h, targets(refs, prs, sha, n))
+
+stale, unreadable, details, ages = [], False, [], {}
 for key, refs, prs, sha, h in lines:
     states = [state("key", k) for k in sorted(refs)] + [state("pr", p) for p in sorted(prs)]
-    n = age(sha) if sha else None
+    n = ages[key] = age(sha) if sha else None
     if sha and n is not None and n > maxmerges:
         verdict = "stale"
     elif sha and n is None:
@@ -919,10 +949,106 @@ for key, refs, prs, sha, h in lines:
     if key in carry and carry[key][0] == h and "open" not in states and key not in stale:
         stale.append(key)
         details.append(carry[key][1] + " carried")
-for line in details:
+
+# changed (spec D5): an open parent key that merged since the line's anchor, the later of its @sha
+# commit time and its newest `(<LL>[-n] <MM-DD>[ <HH:MM>Z]` stamp. The stamp's year is the reference
+# date's (a date in the doc's file name, else its mtime, else today, all UTC), one less when the
+# stamp's month is after the reference month; a timed stamp is UTC, a date-only one local midnight.
+def refdate():
+    m = re.search(r"(\d{4})-(\d{2})-(\d{2})", os.path.basename(doc))
+    if m:
+        try:
+            return datetime.date(int(m[1]), int(m[2]), int(m[3]))
+        except ValueError:
+            pass
+    try:
+        return datetime.datetime.fromtimestamp(os.path.getmtime(doc), datetime.timezone.utc).date()
+    except OSError:
+        return datetime.datetime.now(datetime.timezone.utc).date()
+ref = refdate()
+
+def stamped(value):
+    best = None
+    for mo, dd, hh, mi in re.findall(r"\([A-Z]{1,4}(?:-\d+)? (\d{2})-(\d{2})(?: (\d{2}):(\d{2})Z)?", value):
+        year = ref.year - (int(mo) > ref.month)
+        try:
+            t = (datetime.datetime(year, int(mo), int(dd), int(hh), int(mi), tzinfo=datetime.timezone.utc) if hh
+                 else datetime.datetime(year, int(mo), int(dd))).timestamp()
+        except (ValueError, OverflowError):
+            continue
+        best = t if best is None else max(best, t)
+    return best
+
+def git_out(*args):
+    try:
+        r = subprocess.run(["git", "-C", repo] + list(args), capture_output=True, text=True, errors="replace", timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return r.stdout if r.returncode == 0 else None
+
+def committed(sha):
+    out = git_out("log", "-1", "--format=%ct", sha, "--")
+    return int(out) if out and out.strip().isdigit() else None
+
+def merges(since):
+    for ref_name in ("origin/main", "HEAD"):
+        out = git_out("log", "--first-parent", "--since=" + datetime.datetime.fromtimestamp(since, datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S +0000"),
+                      "--format=%h%x09%cI%x09%s", ref_name, "--")
+        if out is not None:
+            got = []
+            for row in out.splitlines():
+                f = row.split("\t", 2)
+                try:
+                    got.append((datetime.datetime.fromisoformat(f[1]).timestamp(), f[0], f[2]))
+                except (IndexError, ValueError):
+                    continue
+            return got
+    return None
+
+judged = []
+for key, refs, prs, sha, h in lines:
+    if key in stale:
+        continue
+    open_keys = [k for k in sorted(refs, key=lambda k: int(k.split("-")[1])) if state("key", k) == "open"]
+    st, anchor = stamped(latest[key][4]), None
+    tried = bool(open_keys) and (bool(sha) or st is not None)
+    if tried:
+        t = committed(sha) if sha else None
+        if not sha or t is not None:
+            anchor = max(x for x in (t, st) if x is not None)
+    judged.append((key, refs, prs, sha, h, open_keys, tried, anchor))
+anchors = [a for *_, a in judged if a is not None]
+log = merges(min(anchors)) if anchors else None
+
+changed, cunread, cdetails = [], False, []
+for key, refs, prs, sha, h, open_keys, tried, anchor in judged:
+    done = anchor is not None and log is not None
+    hits = []
+    for t, c, subject in (log if done else []):
+        k = next((k for k in open_keys if "[%s]" % k in subject), None)
+        if t > anchor and k:
+            hits.append((c, subject, k))
+    if hits:
+        changed.append(key)
+        cdetails.append("CHANGED-DISPOSITION %s line=%s %s since %s via %s %s %s" % (
+            key, h, targets(refs, prs, sha, ages[key]), hits[-1][0], hits[0][2], hits[0][0], hits[0][1][:80]))
+        continue
+    if done:
+        continue
+    cunread = cunread or tried
+    # a changed line has an open parent by definition, so D4's carry test cannot apply: carry while the
+    # line is unchanged, its parent reads open or ?, and this run could not finish the git read
+    if key in ccarry and ccarry[key][0] == h and state("key", ccarry[key][1]) in ("open", "?"):
+        changed.append(key)
+        cdetails.append(ccarry[key][2] + " carried")
+        cunread = True
+
+for line in details + cdetails:
     print(line)
 tail = stale + (["?"] if unreadable else [])
 print("pool-stale=" + (("%d:%s" % (len(stale), ",".join(tail))) if stale else ("?" if unreadable else "0")))
+ctail = changed + (["?"] if cunread else [])
+print("pool-changed=" + (("%d:%s" % (len(changed), ",".join(ctail))) if changed else ("?" if cunread else "0")))
 
 focus = ""
 for line in open(doc).read().splitlines():
@@ -2910,10 +3036,12 @@ fi
 # pool-stale=<n>:<KEY>,... and residual-unversioned=<n>:<KEY>,...: the Jira mirror
 # plus one batched gh read, only when a disposition names a PR. skip = no doc or mirror.
 pool_stale=skip
+pool_changed=skip
 residual_unversioned=skip
 if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
     ps_out="$(pool_stale_serialized "$console_doc" "$pr_repo" "$(pool_stale_file "$console_doc" "$nd_mirror")")"
     pool_stale="$(printf '%s\n' "$ps_out" | sed -n 's/^pool-stale=//p')"; [ -n "$pool_stale" ] || pool_stale=skip
+    pool_changed="$(printf '%s\n' "$ps_out" | sed -n 's/^pool-changed=//p')"; [ -n "$pool_changed" ] || pool_changed=skip
     residual_unversioned="$(printf '%s\n' "$ps_out" | sed -n 's/^residual-unversioned=//p')"; [ -n "$residual_unversioned" ] || residual_unversioned=skip
 fi
 
@@ -4127,6 +4255,7 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$prio_stale" ] || printf 'prio-stale: %s\n' "$prio_stale"
     printf 'intake: %s\n' "$intake_summary"
     printf 'pool-stale: %s\n' "$pool_stale"
+    printf 'pool-changed: %s\n' "$pool_changed"
     printf 'chains: %s\n' "$chains_summary"
     printf 'residual-unversioned: %s\n' "$residual_unversioned"
     [ -z "$stall_tail" ] || printf 'stall: %s\n' "${stall_tail# stall=}"
@@ -4146,7 +4275,7 @@ else
             *=|hb=ok|hb=skip|effort=ok|procs=0|models=none|ceiling=ok|atq=0|suites=0alive/0dead|\
             ext-prs=none|dispatch=none|review=none|acts=none|inbox=none|tick=UNKNOWN|burn=none|orphans=none|nonces=ok|nonces=skip|\
             plan-index=ok|plan-index=skip|or=skip|fails=none|fails=skip|\
-            versionless-done=0|versionless-done=skip|vmismatch=skip|leaks=0|leaks=skip|rm-queue=0|rm-queue=skip|wt-orphans=0|pool-closed=skip|pool-closed=0/*|prio=skip|pool-stale=skip|INTAKE=0|INTAKE=skip|chains=ok|chains=skip|residual-unversioned=skip|residual-unversioned=0|\
+            versionless-done=0|versionless-done=skip|vmismatch=skip|leaks=0|leaks=skip|rm-queue=0|rm-queue=skip|wt-orphans=0|pool-closed=skip|pool-closed=0/*|prio=skip|pool-stale=skip|pool-changed=skip|pool-changed=0|INTAKE=0|INTAKE=skip|chains=ok|chains=skip|residual-unversioned=skip|residual-unversioned=0|\
             focus=ok|sdrift=0:*|hreg=0/0/0) return ;;
         esac
         printf ' %s=%s' "$1" "$2"
@@ -4199,6 +4328,7 @@ else
     compact_field prio-stale "$prio_stale"
     compact_field INTAKE "$intake_summary"
     compact_field pool-stale "$pool_stale"
+    compact_field pool-changed "$pool_changed"
     compact_field chains "$chains_summary"
     compact_field residual-unversioned "$residual_unversioned"
     compact_field denials "$denials_summary"
