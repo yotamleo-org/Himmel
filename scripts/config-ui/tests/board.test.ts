@@ -250,7 +250,7 @@ test("Board page: a live operator hold and an operator label in the mirror both 
 test("GET /api/board: the saved drift file and the chain registry named in the environment are read through the chief-kit scripts", async () => {
   const s = scratch();
   const r = await get(serve({ HIMMEL_FOCUS_DRIFT: s.drift, HIMMEL_CHAIN_REGISTRY: s.registry }, s));
-  expect(r.drift.counts).toEqual({ real: 1, known: 0, transient: 0, waiting: 0 });
+  expect(r.drift.counts).toEqual({ real: 1, known: 0, transient: 0, waiting: 0, exempt: 0 });
   expect(r.drift.real[0]).toMatchObject({ class: "VERSION-DRIFT", key: "HIMMEL-6691" });
   expect(r.drift.mode).toBe("single-user");
   expect(r.chains.schema).toBe("himmel.chains/1");
