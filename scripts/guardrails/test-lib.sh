@@ -191,7 +191,7 @@ git -C "$d" merge --ff-only -q feat/ff
 git -C "$d" checkout -q feat/ff
 # feat/ff at main's SHA: ahead=0, behind=0 (main FF'd to feat/ff exactly).
 is_merged_into_main "$d"; rc=$?
-if [ "$rc" -eq 1 ]; then pass "FF-merged + no advance -> false (chosen tradeoff per HIMMEL-114)"; else fail "FF-merged + no advance -> expected 1 (tradeoff) got $rc"; fi
+if [ "$rc" -eq 1 ]; then pass "FF-merged + no advance -> false (chosen tradeoff)"; else fail "FF-merged + no advance -> expected 1 (tradeoff) got $rc"; fi
 rm -rf "$d"
 
 echo "== is_merged_into_main: HIMMEL-1947 FF-merged + main advances after -> false (widened tradeoff) =="
@@ -215,7 +215,7 @@ git -C "$d" commit --allow-empty -q -m "advance 1"
 git -C "$d" commit --allow-empty -q -m "advance 2"
 git -C "$d" checkout -q feat/ff2
 is_merged_into_main "$d"; rc=$?
-if [ "$rc" -eq 1 ]; then pass "FF-merged + main advances after -> false (chosen tradeoff per HIMMEL-1947)"; else fail "FF-merged + main advances after -> expected 1 (tradeoff) got $rc"; fi
+if [ "$rc" -eq 1 ]; then pass "FF-merged + main advances after -> false (chosen tradeoff)"; else fail "FF-merged + main advances after -> expected 1 (tradeoff) got $rc"; fi
 rm -rf "$d"
 
 echo "== is_merged_into_main: HIMMEL-114 fresh branch at main SHA (no unique commits) -> false =="
@@ -246,7 +246,7 @@ git -C "$d" commit --allow-empty -q -m "advance 1"
 git -C "$d" commit --allow-empty -q -m "advance 2"
 git -C "$d" checkout -q feat/behind
 is_merged_into_main "$d"; rc=$?
-if [ "$rc" -eq 1 ]; then pass "fresh branch, main advanced -> false (HIMMEL-1947)"; else fail "fresh branch, main advanced -> expected 1 got $rc"; fi
+if [ "$rc" -eq 1 ]; then pass "fresh branch, main advanced -> false (main moving on after the cut does not make the branch merged)"; else fail "fresh branch, main advanced -> expected 1 got $rc"; fi
 rm -rf "$d"
 
 echo "== is_merged_into_main: HIMMEL-1947 direct merge + main advances further -> true (gate still bites) =="
@@ -550,7 +550,7 @@ if [ "$rc" -eq 1 ] && [ -z "$out" ]; then pass "guard_canon_path: empty input ->
 # DIRECTORY, not try (and fail) to cd into the file itself.
 touch "$GC_BASE/a/existing-file.txt"
 out=$(guard_canon_path "$GC_BASE/a/existing-file.txt" 2>/dev/null); rc=$?
-if [ "$rc" -eq 0 ] && [ "$out" = "$GC_BASE_REAL/a/existing-file.txt" ]; then pass "guard_canon_path: EXISTING regular file canonicalises (codex-1, HIMMEL-2526)"; else fail "guard_canon_path: EXISTING regular file -> expected rc=0+$GC_BASE_REAL/a/existing-file.txt got rc=$rc out=[$out]"; fi
+if [ "$rc" -eq 0 ] && [ "$out" = "$GC_BASE_REAL/a/existing-file.txt" ]; then pass "guard_canon_path: EXISTING regular file canonicalises (codex-1)"; else fail "guard_canon_path: EXISTING regular file -> expected rc=0+$GC_BASE_REAL/a/existing-file.txt got rc=$rc out=[$out]"; fi
 
 # codex-3: a symlink at the FINAL path component
 # whose target is a regular file (not a directory) must be FOLLOWED to its
@@ -561,7 +561,7 @@ if [ "$rc" -eq 0 ] && [ "$out" = "$GC_BASE_REAL/a/existing-file.txt" ]; then pas
 # as a worktree-local path.
 ln -sf "$GC_BASE_REAL/a/existing-file.txt" "$GC_BASE/a/link-to-file"
 out=$(guard_canon_path "$GC_BASE/a/link-to-file" 2>/dev/null); rc=$?
-if [ "$rc" -eq 0 ] && [ "$out" = "$GC_BASE_REAL/a/existing-file.txt" ]; then pass "guard_canon_path: final-component symlink resolves to its referent (codex-3, HIMMEL-2526 CR round 3)"; else fail "guard_canon_path: final-component symlink -> expected rc=0+$GC_BASE_REAL/a/existing-file.txt got rc=$rc out=[$out]"; fi
+if [ "$rc" -eq 0 ] && [ "$out" = "$GC_BASE_REAL/a/existing-file.txt" ]; then pass "guard_canon_path: final-component symlink resolves to its referent (codex-3, CR round 3)"; else fail "guard_canon_path: final-component symlink -> expected rc=0+$GC_BASE_REAL/a/existing-file.txt got rc=$rc out=[$out]"; fi
 
 # codex-3: a DANGLING symlink (target does not
 # exist) must NOT make guard_canon_path return 1 — every caller in this file
@@ -569,7 +569,7 @@ if [ "$rc" -eq 0 ] && [ "$out" = "$GC_BASE_REAL/a/existing-file.txt" ]; then pas
 # symlink would become a false-positive DENY on an ordinary write.
 ln -sf "$GC_BASE/a/does-not-exist.txt" "$GC_BASE/a/dangling-link"
 out=$(guard_canon_path "$GC_BASE/a/dangling-link" 2>/dev/null); rc=$?
-if [ "$rc" -eq 0 ] && [ -n "$out" ]; then pass "guard_canon_path: dangling symlink does NOT return 1 (codex-3, HIMMEL-2526 CR round 3)"; else fail "guard_canon_path: dangling symlink -> expected rc=0+non-empty got rc=$rc out=[$out]"; fi
+if [ "$rc" -eq 0 ] && [ -n "$out" ]; then pass "guard_canon_path: dangling symlink does NOT return 1 (codex-3, CR round 3)"; else fail "guard_canon_path: dangling symlink -> expected rc=0+non-empty got rc=$rc out=[$out]"; fi
 
 # exhausting the depth cap is NOT success.
 # A chain of MORE than 40 hops ending at a real file must return rc=1 with NO
@@ -586,7 +586,7 @@ while [ "$i" -gt 0 ]; do
     i=$((i-1))
 done
 out=$(guard_canon_path "$GC_BASE/a/long-chain-0" 2>/dev/null); rc=$?
-if [ "$rc" -eq 1 ] && [ -z "$out" ]; then pass "guard_canon_path: >40-hop chain -> rc=1, no output (HIMMEL-2597, cap=40, depth-cap exhaustion is not success)"; else fail "guard_canon_path: >40-hop chain -> expected rc=1+empty got rc=$rc out=[$out] (HIMMEL-2597, cap=40)"; fi
+if [ "$rc" -eq 1 ] && [ -z "$out" ]; then pass "guard_canon_path: >40-hop chain -> rc=1, no output (cap=40, depth-cap exhaustion is not success)"; else fail "guard_canon_path: >40-hop chain -> expected rc=1+empty got rc=$rc out=[$out] (cap=40)"; fi
 
 # Control: a ~10-hop chain — RED under the OLD
 # cap of 8, but well inside the NEW cap of 40 — must now RESOLVE (rc=0,
@@ -601,7 +601,7 @@ while [ "$i" -gt 0 ]; do
     i=$((i-1))
 done
 out=$(guard_canon_path "$GC_BASE/a/mid-chain-0" 2>/dev/null); rc=$?
-if [ "$rc" -eq 0 ] && [ "$out" = "$GC_BASE_REAL/a/mid-chain-target.txt" ]; then pass "guard_canon_path: a ~10-hop chain now resolves at rc=0 under cap=40 (HIMMEL-2597 cap-raise control; was rc=1 under cap=8)"; else fail "guard_canon_path: ~10-hop chain -> expected rc=0+$GC_BASE_REAL/a/mid-chain-target.txt got rc=$rc out=[$out] (HIMMEL-2597 cap-raise control)"; fi
+if [ "$rc" -eq 0 ] && [ "$out" = "$GC_BASE_REAL/a/mid-chain-target.txt" ]; then pass "guard_canon_path: a ~10-hop chain now resolves at rc=0 under cap=40 (cap-raise control; was rc=1 under cap=8)"; else fail "guard_canon_path: ~10-hop chain -> expected rc=0+$GC_BASE_REAL/a/mid-chain-target.txt got rc=$rc out=[$out] (cap-raise control)"; fi
 
 # Control: a SHORT chain (2 hops) well inside the cap must still resolve to
 # the final referent at rc=0 — the task-1 fix must not touch the ordinary,
@@ -610,7 +610,7 @@ touch "$GC_BASE/a/short-chain-target.txt"
 ln -sf "$GC_BASE_REAL/a/short-chain-target.txt" "$GC_BASE/a/short-chain-1"
 ln -sf "$GC_BASE_REAL/a/short-chain-1" "$GC_BASE/a/short-chain-0"
 out=$(guard_canon_path "$GC_BASE/a/short-chain-0" 2>/dev/null); rc=$?
-if [ "$rc" -eq 0 ] && [ "$out" = "$GC_BASE_REAL/a/short-chain-target.txt" ]; then pass "guard_canon_path: a short (2-hop) chain still resolves to its referent at rc=0 (HIMMEL-2597 control)"; else fail "guard_canon_path: short chain -> expected rc=0+$GC_BASE_REAL/a/short-chain-target.txt got rc=$rc out=[$out] (HIMMEL-2597 control)"; fi
+if [ "$rc" -eq 0 ] && [ "$out" = "$GC_BASE_REAL/a/short-chain-target.txt" ]; then pass "guard_canon_path: a short (2-hop) chain still resolves to its referent at rc=0 (control)"; else fail "guard_canon_path: short chain -> expected rc=0+$GC_BASE_REAL/a/short-chain-target.txt got rc=$rc out=[$out] (control)"; fi
 
 # A symlink LOOP (A -> B -> A)
 # must terminate rather than hang the hook — the depth cap (40, raised from
@@ -633,9 +633,9 @@ else
     if [ "$rc" -eq 124 ]; then
         fail "guard_canon_path: symlink loop -> timed out (rc=124), depth cap did not fire"
     elif [ "$rc" -eq 1 ] && [ -z "$out" ]; then
-        pass "guard_canon_path: a symlink loop terminates via the depth cap and fails CLOSED, rc=1+no output (HIMMEL-2597 task 1; was rc=0+non-empty pre-fix)"
+        pass "guard_canon_path: a symlink loop terminates via the depth cap and fails CLOSED, rc=1+no output (was rc=0+non-empty before the depth cap)"
     else
-        fail "guard_canon_path: symlink loop -> expected rc=1+empty got rc=$rc out=[$out] (HIMMEL-2597 task 1)"
+        fail "guard_canon_path: symlink loop -> expected rc=1+empty got rc=$rc out=[$out] (symlink loop)"
     fi
 fi
 
@@ -648,7 +648,7 @@ touch "$GC_BASE/a/symdir-real/target.txt"
 ln -sf "$GC_BASE_REAL/a/symdir-real" "$GC_BASE/a/symdir-alias"
 ln -sf "$GC_BASE_REAL/a/symdir-alias/target.txt" "$GC_BASE/a/link-through-symdir"
 out=$(guard_canon_path "$GC_BASE/a/link-through-symdir" 2>/dev/null); rc=$?
-if [ "$rc" -eq 0 ] && [ "$out" = "$GC_BASE_REAL/a/symdir-real/target.txt" ]; then pass "guard_canon_path: a hop through a symlinked ANCESTOR directory is physically resolved (HIMMEL-2597 task 2)"; else fail "guard_canon_path: hop through symlinked ancestor -> expected rc=0+$GC_BASE_REAL/a/symdir-real/target.txt (real dir, not the alias) got rc=$rc out=[$out] (HIMMEL-2597 task 2)"; fi
+if [ "$rc" -eq 0 ] && [ "$out" = "$GC_BASE_REAL/a/symdir-real/target.txt" ]; then pass "guard_canon_path: a hop through a symlinked ANCESTOR directory is physically resolved (symlinked ancestor)"; else fail "guard_canon_path: hop through symlinked ancestor -> expected rc=0+$GC_BASE_REAL/a/symdir-real/target.txt (real dir, not the alias) got rc=$rc out=[$out] (symlinked ancestor)"; fi
 
 # the per-hop step must resolve
 # the LONGEST existing ancestor, not just try the referent's IMMEDIATE
@@ -663,7 +663,7 @@ mkdir -p "$GC_BASE/a/deep-primary"
 ln -sf "$GC_BASE_REAL/a/deep-primary" "$GC_BASE/a/alias-to-deep-primary"
 ln -sf "$GC_BASE_REAL/a/alias-to-deep-primary/missing-dir/f.txt" "$GC_BASE/a/deep-missing"
 out=$(guard_canon_path "$GC_BASE/a/deep-missing" 2>/dev/null); rc=$?
-if [ "$rc" -eq 0 ] && [ "$out" = "$GC_BASE_REAL/a/deep-primary/missing-dir/f.txt" ]; then pass "guard_canon_path: a hop with a non-existent tail still resolves its symlinked ANCESTOR, not just the immediate parent (HIMMEL-2597 per-hop ancestor fix)"; else fail "guard_canon_path: hop with non-existent tail -> expected rc=0+$GC_BASE_REAL/a/deep-primary/missing-dir/f.txt (real dir, not the alias) got rc=$rc out=[$out] (HIMMEL-2597 per-hop ancestor fix)"; fi
+if [ "$rc" -eq 0 ] && [ "$out" = "$GC_BASE_REAL/a/deep-primary/missing-dir/f.txt" ]; then pass "guard_canon_path: a hop with a non-existent tail still resolves its symlinked ANCESTOR, not just the immediate parent (per-hop ancestor fix)"; else fail "guard_canon_path: hop with non-existent tail -> expected rc=0+$GC_BASE_REAL/a/deep-primary/missing-dir/f.txt (real dir, not the alias) got rc=$rc out=[$out] (per-hop ancestor fix)"; fi
 
 # guard_canon_path_nofollow must return the directory
 # ENTRY's own canonical path (preserving its name) on a final-component
@@ -681,9 +681,9 @@ out_follow=$(guard_canon_path "$GC_BASE/a/link-to-file" 2>/dev/null); rc_follow=
 out_nofollow=$(guard_canon_path_nofollow "$GC_BASE/a/link-to-file" 2>/dev/null); rc_nofollow=$?
 if [ "$rc_follow" -eq 0 ] && [ "$out_follow" = "$GC_BASE_REAL/a/existing-file.txt" ] \
    && [ "$rc_nofollow" -eq 0 ] && [ "$out_nofollow" = "$GC_BASE_REAL/a/link-to-file" ]; then
-    pass "guard_canon_path follows / guard_canon_path_nofollow does not, on a FILE symlink (HIMMEL-2597 task 3a)"
+    pass "guard_canon_path follows / guard_canon_path_nofollow does not, on a FILE symlink (file symlink pair)"
 else
-    fail "guard_canon_path/guard_canon_path_nofollow pair (file symlink) -> expected follow=rc0:$GC_BASE_REAL/a/existing-file.txt nofollow=rc0:$GC_BASE_REAL/a/link-to-file, got follow=rc$rc_follow:[$out_follow] nofollow=rc$rc_nofollow:[$out_nofollow] (HIMMEL-2597 task 3a)"
+    fail "guard_canon_path/guard_canon_path_nofollow pair (file symlink) -> expected follow=rc0:$GC_BASE_REAL/a/existing-file.txt nofollow=rc0:$GC_BASE_REAL/a/link-to-file, got follow=rc$rc_follow:[$out_follow] nofollow=rc$rc_nofollow:[$out_nofollow] (file symlink pair)"
 fi
 
 # 3b. RED row: DIRECTORY symlink — same pair, over a symlink whose target is
@@ -694,9 +694,9 @@ out_follow=$(guard_canon_path "$GC_BASE/a/nf-dirlink" 2>/dev/null); rc_follow=$?
 out_nofollow=$(guard_canon_path_nofollow "$GC_BASE/a/nf-dirlink" 2>/dev/null); rc_nofollow=$?
 if [ "$rc_follow" -eq 0 ] && [ "$out_follow" = "$GC_BASE_REAL/a/nf-realdir" ] \
    && [ "$rc_nofollow" -eq 0 ] && [ "$out_nofollow" = "$GC_BASE_REAL/a/nf-dirlink" ]; then
-    pass "guard_canon_path follows / guard_canon_path_nofollow does not, on a DIRECTORY symlink (HIMMEL-2597 task 3b)"
+    pass "guard_canon_path follows / guard_canon_path_nofollow does not, on a DIRECTORY symlink (directory symlink pair)"
 else
-    fail "guard_canon_path/guard_canon_path_nofollow pair (DIRECTORY symlink) -> expected follow=rc0:$GC_BASE_REAL/a/nf-realdir nofollow=rc0:$GC_BASE_REAL/a/nf-dirlink, got follow=rc$rc_follow:[$out_follow] nofollow=rc$rc_nofollow:[$out_nofollow] (HIMMEL-2597 task 3b)"
+    fail "guard_canon_path/guard_canon_path_nofollow pair (DIRECTORY symlink) -> expected follow=rc0:$GC_BASE_REAL/a/nf-realdir nofollow=rc0:$GC_BASE_REAL/a/nf-dirlink, got follow=rc$rc_follow:[$out_follow] nofollow=rc$rc_nofollow:[$out_nofollow] (directory symlink pair)"
 fi
 
 # 3c. trailing-slash carve-out: `dirlink/` forces directory resolution at the
@@ -704,9 +704,9 @@ fi
 # is true) — nofollow must NOT special-case this form; it stays FOLLOW.
 out_nofollow=$(guard_canon_path_nofollow "$GC_BASE/a/nf-dirlink/" 2>/dev/null); rc_nofollow=$?
 if [ "$rc_nofollow" -eq 0 ] && [ "$out_nofollow" = "$GC_BASE_REAL/a/nf-realdir" ]; then
-    pass "guard_canon_path_nofollow: a trailing-slash directory-symlink path still FOLLOWs (HIMMEL-2597 task 3c)"
+    pass "guard_canon_path_nofollow: a trailing-slash directory-symlink path still FOLLOWs (trailing-slash form)"
 else
-    fail "guard_canon_path_nofollow: trailing-slash form -> expected rc=0+$GC_BASE_REAL/a/nf-realdir got rc=$rc_nofollow out=[$out_nofollow] (HIMMEL-2597 task 3c)"
+    fail "guard_canon_path_nofollow: trailing-slash form -> expected rc=0+$GC_BASE_REAL/a/nf-realdir got rc=$rc_nofollow out=[$out_nofollow] (trailing-slash form)"
 fi
 
 # 3d. nofollow entry reached through a symlinked ANCESTOR directory: the
@@ -716,9 +716,9 @@ fi
 ln -sf "$GC_BASE_REAL/a/symdir-real/target.txt" "$GC_BASE/a/symdir-real/entry-link"
 out_nofollow=$(guard_canon_path_nofollow "$GC_BASE/a/symdir-alias/entry-link" 2>/dev/null); rc_nofollow=$?
 if [ "$rc_nofollow" -eq 0 ] && [ "$out_nofollow" = "$GC_BASE_REAL/a/symdir-real/entry-link" ]; then
-    pass "guard_canon_path_nofollow: entry name preserved, ANCESTOR physically resolved through a symlinked directory (HIMMEL-2597 task 3d)"
+    pass "guard_canon_path_nofollow: entry name preserved, ANCESTOR physically resolved through a symlinked directory (entry name kept, ancestor resolved)"
 else
-    fail "guard_canon_path_nofollow: entry through symlinked ancestor -> expected rc=0+$GC_BASE_REAL/a/symdir-real/entry-link (real ancestor, entry name kept) got rc=$rc_nofollow out=[$out_nofollow] (HIMMEL-2597 task 3d)"
+    fail "guard_canon_path_nofollow: entry through symlinked ancestor -> expected rc=0+$GC_BASE_REAL/a/symdir-real/entry-link (real ancestor, entry name kept) got rc=$rc_nofollow out=[$out_nofollow] (entry name kept, ancestor resolved)"
 fi
 
 # codex-7: a Windows drive-absolute path (C:/...) must be
@@ -742,8 +742,8 @@ fi
 # rooted under this process's own $PWD.
 out=$(guard_canon_path "C:/win-repo/file.txt" 2>/dev/null); rc=$?
 case "$out" in
-    "$PWD"|"$PWD"/*) fail "guard_canon_path: Windows drive path -> got \$PWD-prefixed [$out] (codex-7, HIMMEL-2526)" ;;
-    *) if [ "$rc" -eq 0 ] && [ -n "$out" ]; then pass "guard_canon_path: Windows drive path C:/... is not \$PWD-prefixed (codex-7/codex-5, HIMMEL-2526; real Git-Bash cd semantics — e.g. resolving through pwd -P to /c/win-repo — remain unverified on this Linux station, but are NOT flagged as a false failure here)"; else fail "guard_canon_path: Windows drive path -> expected non-empty output at rc=0, got rc=$rc out=[$out] (codex-7)"; fi ;;
+    "$PWD"|"$PWD"/*) fail "guard_canon_path: Windows drive path -> got \$PWD-prefixed [$out] (codex-7)" ;;
+    *) if [ "$rc" -eq 0 ] && [ -n "$out" ]; then pass "guard_canon_path: Windows drive path C:/... is not \$PWD-prefixed (codex-7/codex-5; real Git-Bash cd semantics — e.g. resolving through pwd -P to /c/win-repo — remain unverified on this Linux station, but are NOT flagged as a false failure here)"; else fail "guard_canon_path: Windows drive path -> expected non-empty output at rc=0, got rc=$rc out=[$out] (codex-7)"; fi ;;
 esac
 
 echo "-- repo_root_for_path --"
@@ -850,7 +850,7 @@ out=$(main_checkout_verdict "$MV_MAIN_C/.env"); rc=$?
 if [ "$rc" -eq 1 ] && [ "$out" = "$MV_MAIN_C" ]; then pass "main_checkout_verdict: secret-class basename (.env) untracked+gitignored on main -> rc=1 (stays denied)"; else fail "main_checkout_verdict: secret .env -> expected rc=1+$MV_MAIN_C got rc=$rc out=[$out]"; fi
 
 out=$(main_checkout_verdict "$MV_MAIN_C/.single-writer"); rc=$?
-if [ "$rc" -eq 1 ] && [ "$out" = "$MV_MAIN_C" ]; then pass "main_checkout_verdict: .single-writer untracked+gitignored on main -> rc=1 (NEW carve-out, HIMMEL-2526)"; else fail "main_checkout_verdict: .single-writer target -> expected rc=1+$MV_MAIN_C got rc=$rc out=[$out]"; fi
+if [ "$rc" -eq 1 ] && [ "$out" = "$MV_MAIN_C" ]; then pass "main_checkout_verdict: .single-writer untracked+gitignored on main -> rc=1 (carve-out for the untracked, gitignored marker)"; else fail "main_checkout_verdict: .single-writer target -> expected rc=1+$MV_MAIN_C got rc=$rc out=[$out]"; fi
 
 out=$(EDIT_ON_MAIN_OK=1 main_checkout_verdict "$MV_MAIN_C/a.txt"); rc=$?
 if [ "$rc" -eq 0 ] && [ "$out" = "$MV_MAIN_C" ]; then pass "main_checkout_verdict: EDIT_ON_MAIN_OK=1 -> rc=0"; else fail "main_checkout_verdict: EDIT_ON_MAIN_OK=1 -> expected rc=0+$MV_MAIN_C got rc=$rc out=[$out]"; fi
@@ -887,20 +887,20 @@ GITID -C "$MV_SCR_MAIN" commit -q --allow-empty -m init
 MV_SCR_MAIN_C=$(cd "$MV_SCR_MAIN" && pwd -P)
 
 out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_SCR_FEAT_C/newfile.txt"); rc=$?
-if [ "$rc" -eq 0 ]; then pass "main_checkout_verdict: scratchpad clone on a feature branch -> rc=0 (HIMMEL-8443)"; else fail "main_checkout_verdict: scratch clone on feature -> expected rc=0 got rc=$rc out=[$out]"; fi
+if [ "$rc" -eq 0 ]; then pass "main_checkout_verdict: scratchpad clone on a feature branch -> rc=0 (scratchpad-root carve-out)"; else fail "main_checkout_verdict: scratch clone on feature -> expected rc=0 got rc=$rc out=[$out]"; fi
 
 out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_SCR_FEAT_C/.single-writer"); rc=$?
-if [ "$rc" -eq 0 ]; then pass "main_checkout_verdict: .single-writer in a scratchpad clone -> rc=0 (HIMMEL-8443)"; else fail "main_checkout_verdict: scratch clone .single-writer -> expected rc=0 got rc=$rc out=[$out]"; fi
+if [ "$rc" -eq 0 ]; then pass "main_checkout_verdict: .single-writer in a scratchpad clone -> rc=0 (scratchpad-root carve-out)"; else fail "main_checkout_verdict: scratch clone .single-writer -> expected rc=0 got rc=$rc out=[$out]"; fi
 
 out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_SCR_MAIN_C/newfile.txt"); rc=$?
-if [ "$rc" -eq 0 ]; then pass "main_checkout_verdict: scratchpad clone on main -> rc=0 (HIMMEL-8443)"; else fail "main_checkout_verdict: scratch clone on main -> expected rc=0 got rc=$rc out=[$out]"; fi
+if [ "$rc" -eq 0 ]; then pass "main_checkout_verdict: scratchpad clone on main -> rc=0 (scratchpad-root carve-out)"; else fail "main_checkout_verdict: scratch clone on main -> expected rc=0 got rc=$rc out=[$out]"; fi
 
 # Refuse rows: these stay denied with the same TMPDIR.
 out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_PRIMFEAT_C/newfile.txt"); rc=$?
-if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: clone outside the scratch roots, TMPDIR set -> rc=2 (HIMMEL-8443)"; else fail "main_checkout_verdict: non-scratch primary-feature with TMPDIR -> expected rc=2 got rc=$rc out=[$out]"; fi
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: clone outside the scratch roots, TMPDIR set -> rc=2 (scratchpad-root carve-out)"; else fail "main_checkout_verdict: non-scratch primary-feature with TMPDIR -> expected rc=2 got rc=$rc out=[$out]"; fi
 
 out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_MAIN_C/a.txt"); rc=$?
-if [ "$rc" -eq 1 ]; then pass "main_checkout_verdict: on-main clone outside the scratch roots, TMPDIR set -> rc=1 (HIMMEL-8443)"; else fail "main_checkout_verdict: non-scratch main with TMPDIR -> expected rc=1 got rc=$rc out=[$out]"; fi
+if [ "$rc" -eq 1 ]; then pass "main_checkout_verdict: on-main clone outside the scratch roots, TMPDIR set -> rc=1 (scratchpad-root carve-out)"; else fail "main_checkout_verdict: non-scratch main with TMPDIR -> expected rc=1 got rc=$rc out=[$out]"; fi
 
 MV_SCR_HD="$MV_SCR/gfork/himmelish"
 mkdir -p "$MV_SCR_HD"
@@ -910,21 +910,21 @@ git -C "$MV_SCR_HD" checkout -q -b feat/h
 : > "$MV_SCR_HD/.himmel-dev"
 MV_SCR_HD_C=$(cd "$MV_SCR_HD" && pwd -P)
 out=$(TMPDIR="$FIX" main_checkout_verdict "$MV_SCR_HD_C/newfile.txt"); rc=$?
-if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: scratchpad clone carrying the .himmel-dev marker stays denied -> rc=2 (HIMMEL-8443)"; else fail "main_checkout_verdict: scratch himmel-dev clone -> expected rc=2 got rc=$rc out=[$out]"; fi
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: scratchpad clone carrying the .himmel-dev marker stays denied -> rc=2 (scratchpad-root carve-out)"; else fail "main_checkout_verdict: scratch himmel-dev clone -> expected rc=2 got rc=$rc out=[$out]"; fi
 
 out=$(TMPDIR="$FIX" CLAUDE_PROJECT_DIR="$MV_SCR_FEAT_C" main_checkout_verdict "$MV_SCR_FEAT_C/newfile.txt"); rc=$?
-if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: the session's own project checkout stays denied even under the scratchpad -> rc=2 (HIMMEL-8443)"; else fail "main_checkout_verdict: scratch clone == CLAUDE_PROJECT_DIR -> expected rc=2 got rc=$rc out=[$out]"; fi
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: the session's own project checkout stays denied even under the scratchpad -> rc=2 (scratchpad-root carve-out)"; else fail "main_checkout_verdict: scratch clone == CLAUDE_PROJECT_DIR -> expected rc=2 got rc=$rc out=[$out]"; fi
 
 # A symlink or `..` inside the scratchpad that resolves into a primary checkout
 # is canonicalised by the caller first, so the verdict sees the real repo.
 ln -sfn "$MV_PRIMFEAT_C" "$MV_SCR/linkprim"
 canon=$(guard_canon_path "$MV_SCR/linkprim/newfile.txt")
 out=$(TMPDIR="$FIX" main_checkout_verdict "$canon"); rc=$?
-if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: scratchpad symlink into a primary checkout -> rc=2 (HIMMEL-8443)"; else fail "main_checkout_verdict: scratch symlink into primary -> expected rc=2 got rc=$rc canon=[$canon] out=[$out]"; fi
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: scratchpad symlink into a primary checkout -> rc=2 (scratchpad-root carve-out)"; else fail "main_checkout_verdict: scratch symlink into primary -> expected rc=2 got rc=$rc canon=[$canon] out=[$out]"; fi
 
 canon=$(guard_canon_path "$MV_SCR/gfork/../../../../../mv-primfeat/newfile.txt")
 out=$(TMPDIR="$FIX" main_checkout_verdict "$canon"); rc=$?
-if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: scratchpad .. path into a primary checkout -> rc=2 (HIMMEL-8443)"; else fail "main_checkout_verdict: scratch .. into primary -> expected rc=2 got rc=$rc canon=[$canon] out=[$out]"; fi
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: scratchpad .. path into a primary checkout -> rc=2 (scratchpad-root carve-out)"; else fail "main_checkout_verdict: scratch .. into primary -> expected rc=2 got rc=$rc canon=[$canon] out=[$out]"; fi
 
 # A scratch dir whose git setup leads into a primary checkout borrows nothing.
 # Each shape reaches the same primary-feature verdict (rc=2) a direct hit would.
@@ -1011,31 +1011,31 @@ GITID -C "$MV_PER/gfork/nested" commit -q --allow-empty -m init
 MV_PERN_C=$(cd "$MV_PER/gfork/nested" && pwd -P)
 
 out=$(main_checkout_verdict "$MV_PER_C/newfile.txt"); rc=$?
-if [ "$rc" -eq 0 ]; then pass "main_checkout_verdict: clone under ~/.himmel/scratch -> rc=0 (HIMMEL-8484)"; else fail "main_checkout_verdict: persistent-root clone -> expected rc=0 got rc=$rc out=[$out]"; fi
+if [ "$rc" -eq 0 ]; then pass "main_checkout_verdict: clone under ~/.himmel/scratch -> rc=0 (persistent-root carve-out)"; else fail "main_checkout_verdict: persistent-root clone -> expected rc=0 got rc=$rc out=[$out]"; fi
 
 out=$(main_checkout_verdict "$MV_PERN_C/newfile.txt"); rc=$?
-if [ "$rc" -eq 0 ]; then pass "main_checkout_verdict: clone nested under ~/.himmel/scratch/<dir>/ on main -> rc=0 (HIMMEL-8484)"; else fail "main_checkout_verdict: nested persistent-root clone -> expected rc=0 got rc=$rc out=[$out]"; fi
+if [ "$rc" -eq 0 ]; then pass "main_checkout_verdict: clone nested under ~/.himmel/scratch/<dir>/ on main -> rc=0 (persistent-root carve-out)"; else fail "main_checkout_verdict: nested persistent-root clone -> expected rc=0 got rc=$rc out=[$out]"; fi
 
 : > "$MV_PER_C/.himmel-dev"
 out=$(main_checkout_verdict "$MV_PER_C/newfile.txt"); rc=$?
-if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: persistent-root clone carrying .himmel-dev stays denied -> rc=2 (HIMMEL-8484)"; else fail "main_checkout_verdict: persistent himmel-dev clone -> expected rc=2 got rc=$rc out=[$out]"; fi
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: persistent-root clone carrying .himmel-dev stays denied -> rc=2 (persistent-root carve-out)"; else fail "main_checkout_verdict: persistent himmel-dev clone -> expected rc=2 got rc=$rc out=[$out]"; fi
 rm -f "$MV_PER_C/.himmel-dev"
 
 out=$(CLAUDE_PROJECT_DIR="$MV_PER_C" main_checkout_verdict "$MV_PER_C/newfile.txt"); rc=$?
-if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: the project checkout stays denied under the persistent root -> rc=2 (HIMMEL-8484)"; else fail "main_checkout_verdict: persistent clone == CLAUDE_PROJECT_DIR -> expected rc=2 got rc=$rc out=[$out]"; fi
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: the project checkout stays denied under the persistent root -> rc=2 (persistent-root carve-out)"; else fail "main_checkout_verdict: persistent clone == CLAUDE_PROJECT_DIR -> expected rc=2 got rc=$rc out=[$out]"; fi
 
 # The primary checkout and a persistent-root dir whose git setup leads into another
 # checkout keep their refusals (a linked worktree has a `.git` file, never the
 # standalone `.git` directory the exemption requires).
 out=$(main_checkout_verdict "$MV_PRIMFEAT_C/newfile.txt"); rc=$?
-if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: a primary outside the persistent root stays denied -> rc=2 (HIMMEL-8484)"; else fail "main_checkout_verdict: primary with a persistent root present -> expected rc=2 got rc=$rc out=[$out]"; fi
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: a primary outside the persistent root stays denied -> rc=2 (persistent-root carve-out)"; else fail "main_checkout_verdict: primary with a persistent root present -> expected rc=2 got rc=$rc out=[$out]"; fi
 
 MV_PER_LN="$MV_PER/lnk"
 mkdir -p "$MV_PER_LN"
 ln -s "$MV_PRIMFEAT_C/.git" "$MV_PER_LN/.git"
 MV_PER_LN_C=$(cd "$MV_PER_LN" && pwd -P)
 out=$(main_checkout_verdict "$MV_PER_LN_C/newfile.txt"); rc=$?
-if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: persistent-root dir with a symlinked .git into a primary -> rc=2 (HIMMEL-8484)"; else fail "main_checkout_verdict: persistent symlinked .git -> expected rc=2 got rc=$rc out=[$out]"; fi
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: persistent-root dir with a symlinked .git into a primary -> rc=2 (persistent-root carve-out)"; else fail "main_checkout_verdict: persistent symlinked .git -> expected rc=2 got rc=$rc out=[$out]"; fi
 
 # The adopted-primary helper gates this root too: a library copy with no helper
 # beside it refuses the same clone the real tree allows.
@@ -1043,7 +1043,7 @@ MV_NOAP2="$FIX/noap2/scripts/guardrails"
 mkdir -p "$MV_NOAP2"
 cp "$LIB" "$MV_NOAP2/lib.sh"
 out=$( ( . "$MV_NOAP2/lib.sh"; main_checkout_verdict "$MV_PER_C/newfile.txt" ) ); rc=$?
-if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: persistent-root clone refused when adopted-primary.sh is missing -> rc=2 (HIMMEL-8484)"; else fail "main_checkout_verdict: persistent root, missing adopted-primary.sh -> expected rc=2 got rc=$rc out=[$out]"; fi
+if [ "$rc" -eq 2 ]; then pass "main_checkout_verdict: persistent-root clone refused when adopted-primary.sh is missing -> rc=2 (persistent-root carve-out)"; else fail "main_checkout_verdict: persistent root, missing adopted-primary.sh -> expected rc=2 got rc=$rc out=[$out]"; fi
 
 # A copy of the library with no chief-kit/adopted-primary.sh beside it refuses
 # (the helper is missing), where the real tree allows the same clone.
