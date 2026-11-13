@@ -85,7 +85,7 @@ else
 fi
 
 if ! _guard_endpoint_host 'https://evil.com\@api.anthropic.com' >/dev/null 2>&1; then
-    pass "backslash-bearing URL -> rc=1 (HIMMEL-1049 userinfo-smuggling guard)"
+    pass "backslash-bearing URL -> rc=1 (userinfo-smuggling guard)"
 else
     fail "backslash-bearing URL -> expected rc=1"
 fi

@@ -184,7 +184,7 @@ for (const c of corpora) for (const u of purposes) {
 // (no-op on empty). A future pending cell would (correctly) trip the === 0
 // tripwire, forcing a conscious count update in the PR that adds it.
 const pendingRules = m.rules.filter(r => r.verdict === "pending-operator");
-assert(pendingRules.length === 0, "expected ZERO pending-operator cells (the five 765 Alibaba cells were denied by HIMMEL-1257; update consciously if a new pending cell is added)");
+assert(pendingRules.length === 0, "expected ZERO pending-operator cells (the five 765 Alibaba cells were denied; update consciously if a new pending cell is added)");
 for (const r of pendingRules) {
   const { effective, rule } = evaluate(r.corpus, r.provider, r.purpose);
   assert(effective === "deny" && rule?.verdict === "pending-operator",
@@ -197,7 +197,7 @@ for (const r of pendingRules) {
 //     not silently deleted and stays denied.
 const enrichmentRule = m.rules.find(r =>
   r.corpus === "luna-personal" && r.provider === "deepseek" && r.purpose === "enrichment");
-assert(enrichmentRule, "missing luna-personal x deepseek x enrichment rule (HIMMEL-833/1257)");
+assert(enrichmentRule, "missing luna-personal x deepseek x enrichment rule (DeepSeek enrichment rule)");
 assert(enrichmentRule.verdict === "deny",
   `enrichment cell must be deny post-HIMMEL-1257 (DeepSeek de-listed), got ${enrichmentRule.verdict}`);
 
@@ -216,7 +216,7 @@ assert(evaluate("mystery-corpus", "google-gemini", "inference").effective === "d
 //     programmatic, so a typo'd conditional->allow on the CN brief-egress
 //     cells (or a shadowing earlier rule) fails loudly
 const conditionalRules = m.rules.filter(r => r.verdict === "conditional");
-assert(conditionalRules.length >= 2, "expected the salus opt-in + the handover-state x openai-codex brief-scoped cell (the alibaba brief cell was denied by HIMMEL-1257; the zai-glm handover-brief + clippings-GLM cells by HIMMEL-2224)");
+assert(conditionalRules.length >= 2, "expected the salus opt-in + the handover-state x openai-codex brief-scoped cell (the alibaba brief cell was denied; the zai-glm handover-brief + clippings-GLM cells were de-listed)");
 for (const r of conditionalRules) {
   const probe = {
     corpus: r.corpus === "*" ? corpora[0] : r.corpus,
@@ -248,7 +248,7 @@ assertExplicitDeny("luna-personal", "deepseek", "enrichment",
 assertExplicitDeny("handover-state", "alibaba", "inference",
   "handover-state x alibaba x inference — Alibaba de-listed (HIMMEL-1257); the brief-scoped worker cell is denied");
 assertExplicitDeny("luna-personal", "alibaba", "embedding",
-  "luna-personal x alibaba x embedding — Alibaba de-listed, 765 pilot not pursued (HIMMEL-1257)");
+  "luna-personal x alibaba x embedding — Alibaba de-listed, 765 pilot not pursued");
 // The sanctioned providers stay as-ratified (guard against over-broad edits).
 // zai-glm de-listed too — the DROP branch (GLM
 // Coding Plan auto-renew cancelled 2026-08-12, plan lapsed 2026-08-17). Same
@@ -275,13 +275,13 @@ assert(evaluate("handover-state", "openai-codex", "inference").rule?.verdict ===
 // DELETED (not reversed to explicit deny), so it now falls through to
 // DEFAULT deny like any other unclassified provider (rule === null).
 assert(evaluate("luna-personal", "moonshot", "extraction").rule === null,
-  "luna-personal x moonshot x extraction must fall through to DEFAULT deny (kimi/moonshot retired, HIMMEL-2101)");
+  "luna-personal x moonshot x extraction must fall through to DEFAULT deny (kimi/moonshot retired)");
 assert(evaluate("luna-personal", "moonshot", "extraction").effective === "deny",
-  "luna-personal x moonshot x extraction must deny (kimi/moonshot retired, HIMMEL-2101)");
+  "luna-personal x moonshot x extraction must deny (kimi/moonshot retired)");
 assert(evaluate("luna-clippings", "moonshot", "extraction").rule === null,
-  "luna-clippings x moonshot x extraction must fall through to DEFAULT deny (kimi/moonshot retired, HIMMEL-2101)");
+  "luna-clippings x moonshot x extraction must fall through to DEFAULT deny (kimi/moonshot retired)");
 assert(evaluate("luna-clippings", "moonshot", "extraction").effective === "deny",
-  "luna-clippings x moonshot x extraction must deny (kimi/moonshot retired, HIMMEL-2101)");
+  "luna-clippings x moonshot x extraction must deny (kimi/moonshot retired)");
 assert(evaluate("luna-personal", "moonshot", "enrichment").effective === "deny",
   "luna-personal x moonshot x enrichment must stay denied (unratified purpose)");
 assert(evaluate("salus", "moonshot", "extraction").effective === "deny",
@@ -289,7 +289,7 @@ assert(evaluate("salus", "moonshot", "extraction").effective === "deny",
 assert(evaluate("himmel-code", "openai-codex", "inference").effective === "allow",
   "himmel-code x codex impl lane must stay allowed");
 assert(evaluate("himmel-code", "deepseek", "extraction").effective === "allow",
-  "himmel-code x deepseek extraction stays public-code wildcard allow; inference is station-gated (HIMMEL-4084)");
+  "himmel-code x deepseek extraction stays public-code wildcard allow; inference is station-gated");
 assert(evaluate("luna-personal", "zai-glm", "inference").rule === null,
   "luna-personal x zai-glm x inference must still fall through to DEFAULT deny — the HIMMEL-2224 de-listing adds explicit deny rows only for the four cells that were open, it does not invent new rows");
 assert(evaluate("luna-personal", "deepseek", "embedding").effective === "deny",
@@ -314,7 +314,7 @@ for (const c of ["luna-personal", "luna-clippings", "salus"]) {
 //     explicit rows; every other purpose, every other corpus and salus stay
 //     denied. Declared apart from jina-reader (US, keyless URL scrape).
 assert(m.providers.jina && m.providers.jina.region.startsWith("EU"),
-  "jina must be declared as a provider with an EU region (HIMMEL-5673)");
+  "jina must be declared as a provider with an EU region");
 for (const c of ["luna-personal", "luna-clippings", "himmel-code"]) {
   for (const u of ["embedding", "rerank"]) {
     const { effective, rule } = evaluate(c, "jina", u);
@@ -332,7 +332,7 @@ for (const c of ["handover-state", "voice-audio", "worker-failure-metadata", "mc
 for (const u of purposes) {
   const { effective, rule } = evaluate("salus", "jina", u);
   assert(effective === "deny" && rule && rule.corpus === "salus" && rule.provider === "*" && rule.hard === true,
-    `salus x jina x ${u} must deny via the HARD salus wildcard (HIMMEL-5673), got ${effective}`);
+    `salus x jina x ${u} must deny via the HARD salus wildcard, got ${effective}`);
 }
 
 // 6d. jina for the remaining qmd collections (operator ruling
@@ -434,17 +434,17 @@ function assertOpenRouterCell(corpus, purpose, wantVerdict, wantHard, msg) {
     `${msg} — the explicit rule must be NON-hard (operator-configurable, 2026-08-15 ruling), got hard=${rule.hard}`);
 }
 assertOpenRouterCell("himmel-code", "inference", "allow", null,
-  "himmel-code x openrouter x inference — the lane's authorizing cell (HIMMEL-1774)");
+  "himmel-code x openrouter x inference — the lane's authorizing cell");
 assertOpenRouterCell("handover-state", "inference", "allow", null,
-  "handover-state x openrouter x inference — substrate-shaped session lane (HIMMEL-1774)");
+  "handover-state x openrouter x inference — substrate-shaped session lane");
 assertOpenRouterCell("salus", "extraction", "deny", false,
-  "salus x openrouter — PHI denied by default, cell operator-configurable (HIMMEL-1774 + 2026-08-15 ruling)");
+  "salus x openrouter — PHI denied by default, cell operator-configurable (2026-08-15 ruling)");
 assertOpenRouterCell("voice-audio", "stt", "deny", false,
-  "voice-audio x openrouter — audio denied by default, cell operator-configurable (HIMMEL-1774 + 2026-08-15 ruling)");
+  "voice-audio x openrouter — audio denied by default, cell operator-configurable (2026-08-15 ruling)");
 assertOpenRouterCell("luna-personal", "inference", "deny", false,
-  "luna-personal x openrouter — vault DENY per ruling (HIMMEL-1774)");
+  "luna-personal x openrouter — vault DENY per ruling");
 assertOpenRouterCell("luna-clippings", "extraction", "deny", false,
-  "luna-clippings x openrouter — vault DENY per ruling (HIMMEL-1774)");
+  "luna-clippings x openrouter — vault DENY per ruling");
 // The allows are inference-ONLY: the lane must not silently become a bulk
 // extraction/embedding pipeline over the transit vendor. (himmel-code's
 // non-inference purposes stay covered by its deliberate wildcard allow-all.)
@@ -491,22 +491,22 @@ for (const p of ["firecrawl", "jina-reader"]) {
 // provider and an EXPLICIT hard salus deny row, so the cell the
 // block-agent-native-egress.sh hook enforces is legible here, not only implied
 // by the salus wildcard.
-assert(providers.includes("builder-io"), "builder-io provider must be declared (HIMMEL-4328)");
+assert(providers.includes("builder-io"), "builder-io provider must be declared");
 for (const u of purposes) {
   const { effective, rule } = evaluate("salus", "builder-io", u);
   assert(effective === "deny" && rule && rule.corpus === "salus" &&
          rule.provider === "builder-io" && rule.hard === true,
-    `salus x builder-io x ${u} must deny via its OWN hard builder-io row (HIMMEL-4328)`);
+    `salus x builder-io x ${u} must deny via its OWN hard builder-io row`);
 }
 
 // ollama-cloud (a `-cloud` ollama model, or an ollama.com
 // endpoint) is a declared provider. Extraction is allowed on every corpus but
 // salus (persisted opt-in, pinned in invariant 3) and voice-audio (hard deny,
 // pinned in 3b); every other purpose stays default-deny outside himmel-code.
-assert(providers.includes("ollama-cloud"), "ollama-cloud provider must be declared (HIMMEL-4185)");
+assert(providers.includes("ollama-cloud"), "ollama-cloud provider must be declared");
 for (const c of ["himmel-code", "luna-personal", "luna-clippings", "handover-state"]) {
   assert(evaluate(c, "ollama-cloud", "extraction").effective === "allow",
-    `${c} x ollama-cloud x extraction must be allow (HIMMEL-4185)`);
+    `${c} x ollama-cloud x extraction must be allow`);
 }
 for (const c of ["luna-personal", "luna-clippings", "handover-state"]) {
   for (const u of purposes.filter(x => x !== "extraction")) {
@@ -520,7 +520,7 @@ for (const c of ["luna-personal", "luna-clippings", "handover-state"]) {
 //    else. The one allow cell is mcp-tool-catalog x atlassian-mcp x catalog-fetch;
 //    every other purpose, every other corpus and every other provider stays deny.
 assert(evaluate("mcp-tool-catalog", "atlassian-mcp", "catalog-fetch").effective === "allow",
-  "mcp-tool-catalog x atlassian-mcp x catalog-fetch must be allow (HIMMEL-4938)");
+  "mcp-tool-catalog x atlassian-mcp x catalog-fetch must be allow");
 for (const u of purposes.filter(x => x !== "catalog-fetch")) {
   assert(evaluate("mcp-tool-catalog", "atlassian-mcp", u).effective === "deny",
     `mcp-tool-catalog x atlassian-mcp x ${u} must stay deny — only tools/list is permitted`);
