@@ -159,7 +159,7 @@
     {
       "name": "humanizer",
       "source": "./plugins/humanizer",
-      "description": "[himmel vendor] One opt-in skill from blader/humanizer, pinned at 0ef9fe5bc3572734fd3ae6c448fe00a30cd5dcf0 (/humanizer: rewrite AI-sounding prose). disable-model-invocation; no hooks, agents or scripts. Off in every profile; one-step disable. See marketplace/plugins/humanizer/README.md.",
+      "description": "[himmel vendor] One opt-in skill from blader/humanizer, pinned at b48c832f0f809c1b5658edbb838c2521b72f2413 (/humanizer: rewrite AI-sounding prose). disable-model-invocation; no hooks, agents or scripts. Off in every profile; one-step disable. See marketplace/plugins/humanizer/README.md.",
       "author": {
         "name": "Siqi Chen (upstream) / yotamleo (vendor)"
       },
@@ -221,7 +221,7 @@
         "source": "git-subdir",
         "url": "https://github.com/pbakaus/impeccable.git",
         "path": "plugin",
-        "ref": "skill-v4.8.0"
+        "ref": "skill-v4.8.2"
       },
       "description": "[pbakaus/impeccable, vendor + attribution only, no carried delta] Design fluency for frontend work: 1 skill with 23 commands and 4 agents. Upstream's own marketplace.json declares source ./plugin, so the entry is a git-subdir source on that path (a url source with a path caches the WHOLE repo in Claude Code, so plugin/ agents and hooks never loaded; git-subdir caches only plugin/). Sourced via an explicit HTTPS git url (NOT the `github` shorthand, which clones over SSH) and pinned to an immutable tag per himmel supply-chain policy. Enabled only by the `design` lane profile.",
       "author": {
@@ -235,7 +235,7 @@
       "source": {
         "source": "url",
         "url": "https://github.com/emilkowalski/skills.git",
-        "sha": "5206a950b715e0cabe7043ea0b2304332b91494e"
+        "sha": "715c1807e08c497cfd1dc4feb450a2a3300ef2a9"
       },
       "description": "[emilkowalski/skills, MIT, vendor + attribution only, no carried delta] Emil Kowalski's design-engineering and animation skills: all 15 upstream skills load (the web ones, including animation-performance, plus animate-expo, mobile-native, write-swift; a marketplace skills list cannot exclude any). Manifest-less upstream, so the entry is strict:false with no skills list. Sourced via an explicit HTTPS git url (NOT the `github` shorthand, which clones over SSH) and pinned to a full commit sha (upstream has no release tag) per himmel supply-chain policy. Pilot entry of the design kit.",
       "strict": false,
@@ -358,9 +358,9 @@
       "source": {
         "source": "url",
         "url": "https://github.com/youmind-openlab/ai-image-prompts-skill.git",
-        "sha": "d291f3a69300430ee16de2de796a9e347fcfac6a"
+        "sha": "7a1233b5a012aea57cd906ba4616fc2eb1f2bb6c"
       },
-      "description": "[youmind-openlab/ai-image-prompts-skill, MIT, vendor + attribution only, no carried delta] Offline AI image prompt library lookups (312 MB clone, no key). Root-skill shape UNPROVEN: add-on profile only. Explicit HTTPS git url, pinned to a full sha d291f3a69300430ee16de2de796a9e347fcfac6a per himmel supply-chain policy. Design kit, design-imagegen profile.",
+      "description": "[youmind-openlab/ai-image-prompts-skill, MIT, vendor + attribution only, no carried delta] Offline AI image prompt library lookups (312 MB clone, no key). Root-skill shape UNPROVEN: add-on profile only. Explicit HTTPS git url, pinned to a full sha 7a1233b5a012aea57cd906ba4616fc2eb1f2bb6c per himmel supply-chain policy. Design kit, design-imagegen profile.",
       "strict": false,
       "skills": [
         "./"
@@ -391,9 +391,9 @@
       "source": {
         "source": "url",
         "url": "https://github.com/cathrynlavery/diagram-design.git",
-        "sha": "6a7f19fcc132b39b126bea90167679b46b14bcc4"
+        "sha": "f2496acbde9f45ccb55c24d4f75210c8a1355df8"
       },
-      "description": "[cathrynlavery/diagram-design, MIT, vendor + attribution only, no carried delta] Diagram design skill + 5 slash commands (upstream plugin manifest). On-demand python scripts export SVG/PNG. Explicit HTTPS git url, pinned to a full sha 6a7f19fcc132b39b126bea90167679b46b14bcc4 per himmel supply-chain policy. Design kit, design-diagram profile.",
+      "description": "[cathrynlavery/diagram-design, MIT, vendor + attribution only, no carried delta] Diagram design skill + 5 slash commands (upstream plugin manifest). On-demand python scripts export SVG/PNG. Explicit HTTPS git url, pinned to a full sha f2496acbde9f45ccb55c24d4f75210c8a1355df8 per himmel supply-chain policy. Design kit, design-diagram profile.",
       "author": {
         "name": "cathrynlavery",
         "url": "https://github.com/cathrynlavery"
@@ -543,9 +543,9 @@
       "source": {
         "source": "url",
         "url": "https://github.com/Nutlope/hallmark.git",
-        "sha": "407fa689f4a276f2fd389208d271d0fef08f5058"
+        "sha": "80fc3c723ab31eb9a43b7ce6c239d6bce094cdbb"
       },
-      "description": "[Nutlope/hallmark, MIT, vendor + attribution only, no carried delta] Hallmark design skill (90 MB clone). Opt-in trial profile (a trial, not part of the core kit). Explicit HTTPS git url, pinned to a full sha 407fa689f4a2 per himmel supply-chain policy. Design kit, design-trial profile.",
+      "description": "[Nutlope/hallmark, MIT, vendor + attribution only, no carried delta] Hallmark design skill (90 MB clone). Opt-in trial profile (a trial, not part of the core kit). Explicit HTTPS git url, pinned to a full sha 80fc3c723ab3 per himmel supply-chain policy. Design kit, design-trial profile.",
       "strict": false,
       "author": {
         "name": "Nutlope",
@@ -598,9 +598,9 @@
         "source": "git-subdir",
         "url": "https://github.com/upstash/context7.git",
         "path": "skills/find-docs",
-        "sha": "7765f353c694907297ae36bbae61b141ce712f44"
+        "sha": "c5e34a01799bce82534eb0ed74bb16b025d75f47"
       },
-      "description": "[upstash/context7, MIT, vendor + attribution only, no carried delta] /find-docs: current library, framework and API documentation lookup through the Context7 CLI. Replaces the user-scope ~/.claude/skills/find-docs copy, which ignored enabledPlugins and loaded in every session including bare. git-subdir on skills/find-docs (a single root SKILL.md, so strict:false with skills ./), explicit HTTPS git url, pinned to upstream commit 7765f353c694907297ae36bbae61b141ce712f44 per himmel supply-chain policy. Enabled by the `user` profile only.",
+      "description": "[upstash/context7, MIT, vendor + attribution only, no carried delta] /find-docs: current library, framework and API documentation lookup through the Context7 CLI. Replaces the user-scope ~/.claude/skills/find-docs copy, which ignored enabledPlugins and loaded in every session including bare. git-subdir on skills/find-docs (a single root SKILL.md, so strict:false with skills ./), explicit HTTPS git url, pinned to upstream commit c5e34a01799bce82534eb0ed74bb16b025d75f47 per himmel supply-chain policy. Enabled by the `user` profile only.",
       "strict": false,
       "skills": [
         "./"
