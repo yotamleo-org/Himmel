@@ -224,7 +224,7 @@ h2 'd=$(printf "x\nq"); mkdir -p "$d" && echo "y=1" > "$d/.npmrc"' "T3.15 H2 an 
 reset; newpr 'echo .coderabbit.yaml >> docs/a.md'
 audit; expect_row "T3.7 a file whose text names .coderabbit.yaml is no hit" pass ""
 
-for k in preinstall install prepare prepack postpack; do
+for k in preinstall install prepare prepack postpack prepublish preprepare postprepare; do
     reset; newpr "printf '{\"name\":\"x\",\"scripts\":{\"test\":\"echo t\",\"postinstall\":\"echo a\",\"$k\":\"echo b\"}}\n' > package.json"
     audit; eq "$rc/$(last verdict)/$(last hard)" "0/fail/H3" "T3.8 H3 a package.json gains $k"
 done
