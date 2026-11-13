@@ -1055,7 +1055,7 @@ EOF
 cp "$WS/roles.stub.mjs" "$REPO/scripts/lib/api-roles.mjs"
 mkdir -p "$REPO/scripts/luna"
 cp "$REAL_REPO/scripts/luna/cadence-alert.sh" "$REPO/scripts/luna/cadence-alert.sh"
-# shellcheck disable=SC2016  # the sender's own $1, expanded when it runs
+# shellcheck disable=SC2016
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$1" >> "%s/graph-sent.log"\n' "$WS" > "$WS/graph-send"; chmod +x "$WS/graph-send"
 export CADENCE_ALERT_SEND_CMD="$WS/graph-send" CADENCE_ALERT_DEDUPE_DIR="$WS/dedupe" CADENCE_ALERT_FILE="$WS/cadence-alerts.log" \
   CADENCE_ALERT_SEND_FAILED_MARK="$WS/send-failed"

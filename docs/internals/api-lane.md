@@ -210,7 +210,9 @@ secret, only role names and account letters:
   tags the account `key rejected` (ahead of `marked exhausted`; the API roles card shows the tag). The graph batch and
   a launcher call of `HIMMEL_API_KIND=graphify` also raise the cadence alert `graph-key-<L>` (`account <L> API key
   rejected`, fix line `rotate ~/.himmel/state/api-credit/key-<L>.env, or remove <L> from the route or the graphify
-  role`); another kind sets the tag alone. The walk moves on to the next letter, never to the subscription. Doctor
+  role`); another kind sets the tag alone. The graph batch walk moves on to the next letter, never to the
+  subscription. A launcher call with the fallback on can still replay on the subscription after a rejected key, as
+  before; the rule that a rejected key never reaches the subscription (A11) lands with the daily pass (S4, row P25). Doctor
   `C92-graph-key-<L>` WARNs, one id per letter, while a tagged letter is in the graph walk: `walk graphify` on a
   publisher or an unreadable graph config, the stored route on an adopter. A tagged letter no walk reaches, or one
   behind a refusing map, reads OK with a note. No reader opens a key file.
