@@ -832,58 +832,58 @@ SUITE_QUEUE_STALE_AFTER_CEILING=259200  # 3 days
 SKIP_LIST="
 scripts/test-install-symmetry-vm.sh  # drives a real VM over SSH
 scripts/test-luna-upgrade-vm.sh      # drives a real (Ubuntu or Windows) VM over SSH
-scripts/test-tarball-install-vm.sh   # drives a real VM over SSH (HIMMEL-3059 tarball-vs-clone acceptance)
-packaging/aur/test-pkgbuild.sh       # ponytail: not run in CI (needs an Arch container + a release-tarball download), upgrade: the HIMMEL-3059 S6 aur-package job un-skips it
-scripts/test-himmel-update.sh        # HIMMEL-3450: one case needs this station's real marketplace registration (--only marketplace vs. a throwaway HOME); the rest is hermetic and runs in scripts/test-himmel-update-check.sh
+scripts/test-tarball-install-vm.sh   # drives a real VM over SSH (tarball-vs-clone acceptance)
+packaging/aur/test-pkgbuild.sh       # not run in CI (needs an Arch container + a release-tarball download); the aur-package job is to un-skip it
+scripts/test-himmel-update.sh        # one case needs this station's real marketplace registration (--only marketplace vs. a throwaway HOME); the rest is hermetic and runs in scripts/test-himmel-update-check.sh
 scripts/test-himmel-update-hermes.sh  # needs the hermes runtime
 scripts/hermes/test-invoke.sh        # needs the hermes runtime
 scripts/cr/test-hermes-critic.sh     # integration: needs the hermes runtime (no keys on CI) — VM e2e covers it
 scripts/handover/test-hop.sh         # integration: needs a live 'claude' (--print relaunch) — VM e2e covers it
-scripts/handover/test-arm-resume.sh  # HIMMEL-3132: superseded by its two --only wrappers below, not a VM-coverage gap — per-section timing (2026-09-18) found the 2775s runtime (637/0/1, HIMMEL-2254) concentrated almost entirely in one section (real wall-clock wait loops); the other 91 sections (~200s) run per-PR via test-arm-resume-fast.sh and the slow section runs nightly via test-arm-resume-1879.sh (SUITE_TIER_DEFAULT extended below). This monolith stays skipped only so a bare run doesn't duplicate both wrappers' coverage; runnable individually
+scripts/handover/test-arm-resume.sh  # superseded by its two --only wrappers below, not a VM-coverage gap — per-section timing (2026-09-18) found the 2775s runtime (637/0/1) concentrated almost entirely in one section (real wall-clock wait loops); the other 91 sections (~200s) run per-PR via test-arm-resume-fast.sh and the slow section runs nightly via test-arm-resume-1879.sh (SUITE_TIER_DEFAULT extended below). This monolith stays skipped only so a bare run doesn't duplicate both wrappers' coverage; runnable individually
 scripts/luna/test-pipeline-cadence.sh  # integration: drives a live 'claude' (--settings fragment) — VM e2e covers it
-scripts/statusline/test-usage-fetch-scheduled.sh  # needs network + OAuth credential; GATE probe run manually (HIMMEL-1841)
-scripts/testing/test-fakekey-claude-startup.sh  # HIMMEL-4410: needs the pinned claude CLI and unshare -rn; the claude-startup job in ci.yml runs it
-scripts/testing/test-claude-mock-turn.sh  # HIMMEL-4411: needs the pinned claude CLI and unshare -rn; the claude-startup job in ci.yml runs it
-scripts/testing/test-mock-consult-sandbox.sh  # HIMMEL-4412: needs the pinned claude CLI, bwrap, socat and unshare -rn; the claude-startup job in ci.yml runs it
-scripts/testing/test-mock-hook-smoke.sh  # HIMMEL-4412: needs the pinned claude CLI and unshare -rn; the claude-startup job in ci.yml runs it
-scripts/testing/test-mock-hook-live-turn.sh  # HIMMEL-5228: needs the pinned claude CLI and unshare -rn; the claude-startup job in ci.yml runs it
+scripts/statusline/test-usage-fetch-scheduled.sh  # needs network + OAuth credential; GATE probe run manually
+scripts/testing/test-fakekey-claude-startup.sh  # needs the pinned claude CLI and unshare -rn; the claude-startup job in ci.yml runs it
+scripts/testing/test-claude-mock-turn.sh  # needs the pinned claude CLI and unshare -rn; the claude-startup job in ci.yml runs it
+scripts/testing/test-mock-consult-sandbox.sh  # needs the pinned claude CLI, bwrap, socat and unshare -rn; the claude-startup job in ci.yml runs it
+scripts/testing/test-mock-hook-smoke.sh  # needs the pinned claude CLI and unshare -rn; the claude-startup job in ci.yml runs it
+scripts/testing/test-mock-hook-live-turn.sh  # needs the pinned claude CLI and unshare -rn; the claude-startup job in ci.yml runs it
 scripts/test-plugin-test.sh          # integration: self-bootstraps a plugin's deps over npm/network — VM e2e covers it
-scripts/test-adopt.sh                # HIMMEL-7300: quarantined, 1203-1204 s against the 1200 s cap on Linux CI shard 2 (PRs 3687 3670 3692 3685), every reached case passing; lifted when it, or each suite it is split into, runs under 900 s on the Linux CI shard at the PR head and on 3 consecutive main runs (the HIMMEL-7300 DoD)
-scripts/cr/test-pr-check-rounds.sh   # HIMMEL-7490: quarantined, 1203 s against the 1200 s cap on Linux main shard 2 (run 40226871918, 3 attempts), every reached case passing; lifted when the HIMMEL-7490 split parts each run under 300 s on 3 consecutive main runs
-scripts/hooks/test-block-write-into-main-checkout-forms.sh   # HIMMEL-7490: quarantined, 603 s against the 600 s cap on Linux main shard 2 (run 40226871918, 3 attempts), every reached case passing; lifted when the HIMMEL-7490 split parts each run under 300 s on 3 consecutive main runs
+scripts/test-adopt.sh                # quarantined, 1203-1204 s against the 1200 s cap on Linux CI shard 2 (PRs 3687 3670 3692 3685), every reached case passing; lifted when it, or each suite it is split into, runs under 900 s on the Linux CI shard at the PR head and on 3 consecutive main runs
+scripts/cr/test-pr-check-rounds.sh   # quarantined, 1203 s against the 1200 s cap on Linux main shard 2 (run 40226871918, 3 attempts), every reached case passing; lifted when the split parts each run under 300 s on 3 consecutive main runs
+scripts/hooks/test-block-write-into-main-checkout-forms.sh   # quarantined, 603 s against the 600 s cap on Linux main shard 2 (run 40226871918, 3 attempts), every reached case passing; lifted when the split parts each run under 300 s on 3 consecutive main runs
 "
 
 # Off-Linux skips: same format as SKIP_LIST, but appended to it
 # only when `uname -s` is not Linux (macOS "Darwin"), so a suite that is fine
 # on the Linux CI runner is not blanket-quarantined everywhere.
 SKIP_LIST_NON_LINUX="
-scripts/vm/test-vm-clone-lib.sh              # HIMMEL-3699: skipped off-Linux only — exercises vm-clone.sh's slot-acquire preflight (scripts/vm/lib/vm-clone.sh:133), which requires flock (util-linux, absent from stock macOS); its own CodeRabbit-reviewed comment (PR #2206, vm-clone.sh:123-132) documents this as \"not a portability concern on THIS linux-only runner\" — VM-clone infra is Linux-only by design; precedent HIMMEL-3203  # prim-ok: skip-list reason text, no lock runs here
-scripts/vm/test-provenance-roundtrip-dry.sh  # HIMMEL-3699: skipped off-Linux only — same flock/Linux-only dependency as scripts/vm/test-vm-clone-lib.sh above (scripts/vm/lib/vm-clone.sh:133); precedent HIMMEL-3203
-scripts/upstreams/test-apply-drift-bump.sh   # HIMMEL-3699: skipped off-Linux only — same flock/Linux-only dependency as scripts/vm/test-vm-clone-lib.sh above (scripts/vm/lib/vm-clone.sh:133); precedent HIMMEL-3203
+scripts/vm/test-vm-clone-lib.sh              # skipped off-Linux only — exercises vm-clone.sh's slot-acquire preflight (scripts/vm/lib/vm-clone.sh:133), which requires flock (util-linux, absent from stock macOS); its own CodeRabbit-reviewed comment (PR #2206, vm-clone.sh:123-132) documents this as \"not a portability concern on THIS linux-only runner\" — VM-clone infra is Linux-only by design; same reason as the other off-Linux skips in this list  # prim-ok: skip-list reason text, no lock runs here
+scripts/vm/test-provenance-roundtrip-dry.sh  # skipped off-Linux only — same flock/Linux-only dependency as scripts/vm/test-vm-clone-lib.sh above (scripts/vm/lib/vm-clone.sh:133); same reason as the other off-Linux skips in this list
+scripts/upstreams/test-apply-drift-bump.sh   # skipped off-Linux only — same flock/Linux-only dependency as scripts/vm/test-vm-clone-lib.sh above (scripts/vm/lib/vm-clone.sh:133); same reason as the other off-Linux skips in this list
 scripts/release/test-tarball-vs-clone.sh     # skipped off-Linux only — converge-check.sh's hook-diff walk (scripts/release/converge-check.sh:154) uses GNU find's -printf (absent from BSD/macOS find), documented there as \`# gnu-ok: only ever runs on the Linux guest\` — the tarball converge check is Linux-guest-only by design
-scripts/handover/chief-kit/test-chief-wait.sh    # HIMMEL-3699: skipped off-Linux only — chief-wait.sh's own \`# PLATFORM GUARD: the chief kit is Linux-only\` (chief-wait.sh:79), and this suite's bare \`timeout\` calls are marked \`# gnu-ok: Linux-only kit\` throughout — the chief kit is Linux-only by design; precedent HIMMEL-3203
-scripts/handover/chief-kit/test-chief-wait-b.sh  # HIMMEL-3699: skipped off-Linux only — second half of test-chief-wait.sh above, same chief-kit Linux-only-by-design PLATFORM GUARD (chief-wait.sh:79); its bare \`timeout\` calls are marked \`# gnu-ok: Linux-only kit\`; precedent HIMMEL-3203
-scripts/handover/chief-kit/test-board.sh           # HIMMEL-3699: skipped off-Linux only — same chief-kit Linux-only-by-design PLATFORM GUARD as test-chief-wait.sh above (board.mjs:21: \"tick.sh reads pgrep, atq and the konsole launch logs\"); precedent HIMMEL-3203
-scripts/handover/chief-kit/test-tick.sh            # HIMMEL-3699: skipped off-Linux only — same chief-kit Linux-only-by-design PLATFORM GUARD as test-chief-wait.sh above (tick.sh:12-14: \"pgrep, atq, /tmp suite locks, and claudex/konsole\"); precedent HIMMEL-3203
-scripts/handover/chief-kit/test-tick-fields.sh     # HIMMEL-8813: skipped off-Linux only — second half of test-tick.sh above (split at the fails= section so neither half nears the 600 s cap), same chief-kit Linux-only-by-design PLATFORM GUARD and the same tick.sh; both halves source tick-test-fixture.sh, a helper that is not a suite; precedent HIMMEL-3699
-scripts/handover/chief-kit/test-chief-wait-r0.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-chief-wait-r0.sh:25) says \"Linux-only: chief-wait.sh\"; the kit PLATFORM GUARD is chief-wait.sh:208; precedent HIMMEL-3699
-scripts/handover/chief-kit/test-denied-launch-alert.sh  # HIMMEL-7101: skipped off-Linux only — GNU \`date -u -d\` (test-denied-launch-alert.sh:38) and \`stat -c\` (:87) are both marked \`gnu-ok: Linux-only kit\`; kit PLATFORM GUARD chief-wait.sh:208; precedent HIMMEL-3699
-scripts/handover/chief-kit/test-vault-status.sh    # HIMMEL-7101: skipped off-Linux only — its own header (test-vault-status.sh:6) is \`PLATFORM GUARD: the chief kit is Linux-only\` and it drives GNU \`touch -d '50 minutes ago'\` / \`date -d\` (:43-105); precedent HIMMEL-3699
-scripts/handover/chief-kit/test-status-drift.sh    # HIMMEL-7101: skipped off-Linux only — its own header (test-status-drift.sh:14) says Linux-only (shell-only harness) and :679 uses an in-place GNU sed edit marked \`gnu-ok: Linux-only kit\`; kit PLATFORM GUARD chief-wait.sh:208; precedent HIMMEL-3699
-scripts/handover/chief-kit/test-live-subagents.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-live-subagents.sh:13) declares \`Platform guard: Linux bash 3.2+ (jq)\`; kit PLATFORM GUARD chief-wait.sh:208; precedent HIMMEL-3699
-scripts/handover/chief-kit/test-ops-run.sh         # HIMMEL-7101: skipped off-Linux only — its own header (test-ops-run.sh:18) declares \`Platform guard: Linux bash 3.2+\`; kit PLATFORM GUARD chief-wait.sh:208; precedent HIMMEL-3699
-scripts/ci/test-ci-lint-tree-gates.sh  # HIMMEL-7101: skipped off-Linux only — it extracts and runs the real ci.yml lint-job step (ci.yml:1273), which calls GNU tar \`--verbatim-files-from\` (bsdtar: \"Option --verbatim-files-from is not supported\"); that job is \`runs-on: ubuntu-latest\` (ci.yml:1128), so the step never runs on macOS
-scripts/handover/chief-kit/test-wrap-merged.sh     # HIMMEL-7101: skipped off-Linux only — its own header (test-wrap-merged.sh:26) declares \`Platform guard: Linux bash 3.2+ (fleet-manifest.sh needs the util-linux file-lock tool + jq)\`; fleet-manifest.sh:134 takes that lock, marked \`gnu-ok: Linux-only kit\` (absent from stock macOS); precedent HIMMEL-3699
-scripts/handover/chief-kit/test-close-wrapped-worker.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-close-wrapped-worker.sh:32) declares \`Platform guard: Linux bash 3.2+ (depends on /proc via claude-sessions.sh)\`, and it drives GNU \`date -d\` (:1016) and \`touch -d\` (:1030, marked \`gnu-ok: Linux-only kit\`); precedent HIMMEL-3699
-scripts/handover/chief-kit/test-tick-nolive.sh     # HIMMEL-7101: skipped off-Linux only — its own header (test-tick-nolive.sh:8) says \`PLATFORM GUARD: The chief kit is Linux-only.\` and it calls GNU \`/bin/date -d\` (:74, :119, :159, marked \`gnu-ok: Linux-only kit\`); precedent HIMMEL-3699
-scripts/handover/chief-kit/test-parked-on-prompt.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-parked-on-prompt.sh:7) says \`PLATFORM GUARD: the chief kit is Linux-only\` and :25 drives GNU \`date -u -d\` (marked \`gnu-ok: Linux-only kit\`); precedent HIMMEL-3699
-scripts/handover/test-bus-idle-waker.sh  # skipped off-Linux only — bus-idle-waker.sh types into a konsole through org.kde.konsole.Session.sendText, reads the terminal foreground group from /proc stat, and times its poll with GNU \`date +%s.%N\`; no macOS host has konsole or /proc; precedent HIMMEL-3699
-scripts/handover/chief-kit/test-tick-deadwin.sh    # skipped off-Linux only — its own header (test-tick-deadwin.sh:8) says \`PLATFORM GUARD: The chief kit is Linux-only.\` and it drives tick.sh and chief-wait.sh, both on the kit PLATFORM GUARD chief-wait.sh:208; precedent HIMMEL-3699
-scripts/handover/chief-kit/test-chief-wait-pool.sh  # HIMMEL-7525: skipped off-Linux only — its own header (test-chief-wait-pool.sh:13) says \`Linux-only: chief-wait.sh\`; kit PLATFORM GUARD
-scripts/hooks/test-notify-chief-on-prompt.sh  # HIMMEL-7525: skipped off-Linux only — its own header (test-notify-chief-on-prompt.sh:8) says \`PLATFORM GUARD: Linux-only chief-kit surface\`
-scripts/ci/test-gcp-runners.sh  # HIMMEL-7101: skipped off-Linux only — gcp-runners.sh:112 refuses the up verb off Linux (\`up: Linux only (the pool lock needs flock)\`, flock absent from stock macOS), so every up/create case fails there by design; run 40441833569 shard 7; precedent HIMMEL-3699  # prim-ok: skip-list reason text, no lock runs here
-scripts/handover/chief-kit/test-chain-graph.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-chain-graph.sh:6) says \`PLATFORM GUARD: The chief kit is Linux-only\`, and its fixtures edit with in-place GNU \`sed -i\` (:73-88, marked \`gnu-ok: linux-only fixture\`); run 40441833569 shard 5 (S1/H2 edges read independent); precedent HIMMEL-3699  # prim-ok: skip-list reason text, no file is written here
-scripts/handover/chief-kit/test-station-sync.sh    # HIMMEL-7101: skipped off-Linux only — its own header (test-station-sync.sh:17) declares \`Platform guard: Linux bash 3.2+\`; kit PLATFORM GUARD chief-wait.sh:208; precedent HIMMEL-3699
+scripts/handover/chief-kit/test-chief-wait.sh    # skipped off-Linux only — chief-wait.sh's own \`# PLATFORM GUARD: the chief kit is Linux-only\` (chief-wait.sh:79), and this suite's bare \`timeout\` calls are marked \`# gnu-ok: Linux-only kit\` throughout — the chief kit is Linux-only by design; same reason as the other off-Linux skips in this list
+scripts/handover/chief-kit/test-chief-wait-b.sh  # skipped off-Linux only — second half of test-chief-wait.sh above, same chief-kit Linux-only-by-design PLATFORM GUARD (chief-wait.sh:79); its bare \`timeout\` calls are marked \`# gnu-ok: Linux-only kit\`; same reason as the other off-Linux skips in this list
+scripts/handover/chief-kit/test-board.sh           # skipped off-Linux only — same chief-kit Linux-only-by-design PLATFORM GUARD as test-chief-wait.sh above (board.mjs:21: \"tick.sh reads pgrep, atq and the konsole launch logs\"); same reason as the other off-Linux skips in this list
+scripts/handover/chief-kit/test-tick.sh            # skipped off-Linux only — same chief-kit Linux-only-by-design PLATFORM GUARD as test-chief-wait.sh above (tick.sh:12-14: \"pgrep, atq, /tmp suite locks, and claudex/konsole\"); same reason as the other off-Linux skips in this list
+scripts/handover/chief-kit/test-tick-fields.sh     # skipped off-Linux only — second half of test-tick.sh above (split at the fails= section so neither half nears the 600 s cap), same chief-kit Linux-only-by-design PLATFORM GUARD and the same tick.sh; both halves source tick-test-fixture.sh, a helper that is not a suite; same reason as the other off-Linux skips in this list
+scripts/handover/chief-kit/test-chief-wait-r0.sh  # skipped off-Linux only — its own header (test-chief-wait-r0.sh:25) says \"Linux-only: chief-wait.sh\"; the kit PLATFORM GUARD is chief-wait.sh:208; same reason as the other off-Linux skips in this list
+scripts/handover/chief-kit/test-denied-launch-alert.sh  # skipped off-Linux only — GNU \`date -u -d\` (test-denied-launch-alert.sh:38) and \`stat -c\` (:87) are both marked \`gnu-ok: Linux-only kit\`; kit PLATFORM GUARD chief-wait.sh:208; same reason as the other off-Linux skips in this list
+scripts/handover/chief-kit/test-vault-status.sh    # skipped off-Linux only — its own header (test-vault-status.sh:6) is \`PLATFORM GUARD: the chief kit is Linux-only\` and it drives GNU \`touch -d '50 minutes ago'\` / \`date -d\` (:43-105); same reason as the other off-Linux skips in this list
+scripts/handover/chief-kit/test-status-drift.sh    # skipped off-Linux only — its own header (test-status-drift.sh:14) says Linux-only (shell-only harness) and :679 uses an in-place GNU sed edit marked \`gnu-ok: Linux-only kit\`; kit PLATFORM GUARD chief-wait.sh:208; same reason as the other off-Linux skips in this list
+scripts/handover/chief-kit/test-live-subagents.sh  # skipped off-Linux only — its own header (test-live-subagents.sh:13) declares \`Platform guard: Linux bash 3.2+ (jq)\`; kit PLATFORM GUARD chief-wait.sh:208; same reason as the other off-Linux skips in this list
+scripts/handover/chief-kit/test-ops-run.sh         # skipped off-Linux only — its own header (test-ops-run.sh:18) declares \`Platform guard: Linux bash 3.2+\`; kit PLATFORM GUARD chief-wait.sh:208; same reason as the other off-Linux skips in this list
+scripts/ci/test-ci-lint-tree-gates.sh  # skipped off-Linux only — it extracts and runs the real ci.yml lint-job step (ci.yml:1273), which calls GNU tar \`--verbatim-files-from\` (bsdtar: \"Option --verbatim-files-from is not supported\"); that job is \`runs-on: ubuntu-latest\` (ci.yml:1128), so the step never runs on macOS
+scripts/handover/chief-kit/test-wrap-merged.sh     # skipped off-Linux only — its own header (test-wrap-merged.sh:26) declares \`Platform guard: Linux bash 3.2+ (fleet-manifest.sh needs the util-linux file-lock tool + jq)\`; fleet-manifest.sh:134 takes that lock, marked \`gnu-ok: Linux-only kit\` (absent from stock macOS); same reason as the other off-Linux skips in this list
+scripts/handover/chief-kit/test-close-wrapped-worker.sh  # skipped off-Linux only — its own header (test-close-wrapped-worker.sh:32) declares \`Platform guard: Linux bash 3.2+ (depends on /proc via claude-sessions.sh)\`, and it drives GNU \`date -d\` (:1016) and \`touch -d\` (:1030, marked \`gnu-ok: Linux-only kit\`); same reason as the other off-Linux skips in this list
+scripts/handover/chief-kit/test-tick-nolive.sh     # skipped off-Linux only — its own header (test-tick-nolive.sh:8) says \`PLATFORM GUARD: The chief kit is Linux-only.\` and it calls GNU \`/bin/date -d\` (:74, :119, :159, marked \`gnu-ok: Linux-only kit\`); same reason as the other off-Linux skips in this list
+scripts/handover/chief-kit/test-parked-on-prompt.sh  # skipped off-Linux only — its own header (test-parked-on-prompt.sh:7) says \`PLATFORM GUARD: the chief kit is Linux-only\` and :25 drives GNU \`date -u -d\` (marked \`gnu-ok: Linux-only kit\`); same reason as the other off-Linux skips in this list
+scripts/handover/test-bus-idle-waker.sh  # skipped off-Linux only — bus-idle-waker.sh types into a konsole through org.kde.konsole.Session.sendText, reads the terminal foreground group from /proc stat, and times its poll with GNU \`date +%s.%N\`; no macOS host has konsole or /proc; same reason as the other off-Linux skips in this list
+scripts/handover/chief-kit/test-tick-deadwin.sh    # skipped off-Linux only — its own header (test-tick-deadwin.sh:8) says \`PLATFORM GUARD: The chief kit is Linux-only.\` and it drives tick.sh and chief-wait.sh, both on the kit PLATFORM GUARD chief-wait.sh:208; same reason as the other off-Linux skips in this list
+scripts/handover/chief-kit/test-chief-wait-pool.sh  # skipped off-Linux only — its own header (test-chief-wait-pool.sh:13) says \`Linux-only: chief-wait.sh\`; kit PLATFORM GUARD
+scripts/hooks/test-notify-chief-on-prompt.sh  # skipped off-Linux only — its own header (test-notify-chief-on-prompt.sh:8) says \`PLATFORM GUARD: Linux-only chief-kit surface\`
+scripts/ci/test-gcp-runners.sh  # skipped off-Linux only — gcp-runners.sh:112 refuses the up verb off Linux (\`up: Linux only (the pool lock needs flock)\`, flock absent from stock macOS), so every up/create case fails there by design; run 40441833569 shard 7; same reason as the other off-Linux skips in this list  # prim-ok: skip-list reason text, no lock runs here
+scripts/handover/chief-kit/test-chain-graph.sh  # skipped off-Linux only — its own header (test-chain-graph.sh:6) says \`PLATFORM GUARD: The chief kit is Linux-only\`, and its fixtures edit with in-place GNU \`sed -i\` (:73-88, marked \`gnu-ok: linux-only fixture\`); run 40441833569 shard 5 (S1/H2 edges read independent); same reason as the other off-Linux skips in this list  # prim-ok: skip-list reason text, no file is written here
+scripts/handover/chief-kit/test-station-sync.sh    # skipped off-Linux only — its own header (test-station-sync.sh:17) declares \`Platform guard: Linux bash 3.2+\`; kit PLATFORM GUARD chief-wait.sh:208; same reason as the other off-Linux skips in this list
 "
 case "$(uname -s 2>/dev/null || echo unknown)" in
   Linux) ;;
@@ -924,7 +924,7 @@ SUITE_CONDITIONAL="${SUITE_CONDITIONAL:-$SUITE_CONDITIONAL_DEFAULT}"
 SUITE_TIER_DEFAULT="
 scripts/test-check-ci.sh  extended  # measured 559s idle 2026-08-27 (>300s rule)
 scripts/handover/test-arm-resume-identity.sh  extended  # measured 814s idle 2026-08-27, 802s repro (>300s rule)
-scripts/handover/test-arm-resume-1879.sh  extended  # HIMMEL-3132: measured 843s idle 2026-09-18, real wall-clock wait loops with no shortcut (>300s rule)
+scripts/handover/test-arm-resume-1879.sh  extended  # measured 843s idle 2026-09-18, real wall-clock wait loops with no shortcut (>300s rule)
 "
 SUITE_TIER="${SUITE_TIER:-$SUITE_TIER_DEFAULT}"
 tier_repo_root=$(pwd -P)
@@ -988,26 +988,26 @@ case "$(uname -s 2>/dev/null || echo unknown)" in
   Darwin) _sandbox_tool=sandbox-exec ;;
 esac
 SUITE_REQUIRE_TOOL_DEFAULT="
-scripts/lib/test-sandbox-run.sh  $_sandbox_tool  # real corpus confinement boundary (HIMMEL-4912)
-scripts/eval/guard-corpus/test-guard-corpus.sh  $_sandbox_tool  # every replay hook runs confined (HIMMEL-4912)
-scripts/hooks/test-block-destructive-commands-a.sh  $_sandbox_tool  # destructive-shaped fixtures are classified only behind the sandbox (HIMMEL-4912)
-scripts/hooks/test-block-destructive-commands-b.sh  $_sandbox_tool  # destructive-shaped fixtures are classified only behind the sandbox (HIMMEL-4912)
-scripts/hooks/test-block-destructive-commands-c.sh  $_sandbox_tool  # destructive-shaped fixtures are classified only behind the sandbox (HIMMEL-4912)
-scripts/hooks/test-block-destructive-commands-d.sh  $_sandbox_tool  # destructive-shaped fixtures are classified only behind the sandbox (HIMMEL-4912)
-scripts/telegram/test-phi-egress-guard-parity.sh  bun  # cross-language parity check (scripts/claude-codex vs scripts/telegram/phi-egress-guard.ts) (HIMMEL-2204); runs wherever bun exists, loud-skips where it does not
-scripts/test-template-nostash-hooks.sh  pre-commit  # exercises the real pre-commit binary against install-nostash-hooks.sh (HIMMEL-2223); runs wherever pre-commit exists, loud-skips where it does not
-scripts/hooks/test-check-cr-before-push-precommit.sh  pre-commit  # real pre-push shim integration (HIMMEL-2475): its own guard exits 0 when pre-commit is absent, a vacuous PASS; runs wherever pre-commit exists, loud-skips where it does not
-scripts/hooks/test-check-commit-msg-precommit.sh  pre-commit  # real commit-msg shim integration (HIMMEL-2475): its own guard exits 0 when pre-commit is absent, a vacuous PASS; runs wherever pre-commit exists, loud-skips where it does not
-scripts/hooks/test-fork-precommit-core.sh  pre-commit  # real git commits through the fork pre-commit core (HIMMEL-5978): its own guard exits 0 without pre-commit, a vacuous PASS; runs wherever pre-commit exists, loud-skips where it does not
-scripts/guardrails/test-gitleaks-retired-org.sh  gitleaks  # its own guard exits 0 without the real scanner (HIMMEL-2475 sweep); runs wherever gitleaks exists, loud-skips where it does not
-scripts/handover/chief-kit/test-worker-doc-lock.sh  flock  # its own guard exits 0 without flock, the lock under test (HIMMEL-2475 sweep); runs wherever flock exists, loud-skips where it does not  # prim-ok: capability-table row naming the tool, no lock runs here
-scripts/hooks/test-check-hook-lib-suites.sh  node  # its own guard exits 0 without node (HIMMEL-2475 sweep); runs wherever node exists, loud-skips where it does not
-scripts/hooks/test-check-hook-file-parse.sh  jq  # its own guard exits 0 without jq (HIMMEL-2475 sweep); runs wherever jq exists, loud-skips where it does not
-scripts/hooks/test-crlf-boundary.sh  jq  # its own guard exits 0 without jq (HIMMEL-2475 sweep); runs wherever jq exists, loud-skips where it does not
-scripts/hooks/test-trigger-cr-on-pr-create.sh  jq  # its own guard exits 0 without jq (HIMMEL-2475 sweep); runs wherever jq exists, loud-skips where it does not
-scripts/hooks/test-trigger-cr-on-push.sh  jq  # its own guard exits 0 without jq (HIMMEL-2475 sweep); runs wherever jq exists, loud-skips where it does not
-scripts/lib/test-merge-block-alert.sh  jq  # its own guard exits 0 without jq (HIMMEL-2475 sweep); runs wherever jq exists, loud-skips where it does not
-scripts/observability/test-tool-call-census.sh  jq  # its own guard exits 0 without jq (HIMMEL-2475 sweep); runs wherever jq exists, loud-skips where it does not
+scripts/lib/test-sandbox-run.sh  $_sandbox_tool  # real corpus confinement boundary
+scripts/eval/guard-corpus/test-guard-corpus.sh  $_sandbox_tool  # every replay hook runs confined
+scripts/hooks/test-block-destructive-commands-a.sh  $_sandbox_tool  # destructive-shaped fixtures are classified only behind the sandbox
+scripts/hooks/test-block-destructive-commands-b.sh  $_sandbox_tool  # destructive-shaped fixtures are classified only behind the sandbox
+scripts/hooks/test-block-destructive-commands-c.sh  $_sandbox_tool  # destructive-shaped fixtures are classified only behind the sandbox
+scripts/hooks/test-block-destructive-commands-d.sh  $_sandbox_tool  # destructive-shaped fixtures are classified only behind the sandbox
+scripts/telegram/test-phi-egress-guard-parity.sh  bun  # cross-language parity check (scripts/claude-codex vs scripts/telegram/phi-egress-guard.ts); runs wherever bun exists, loud-skips where it does not
+scripts/test-template-nostash-hooks.sh  pre-commit  # exercises the real pre-commit binary against install-nostash-hooks.sh; runs wherever pre-commit exists, loud-skips where it does not
+scripts/hooks/test-check-cr-before-push-precommit.sh  pre-commit  # real pre-push shim integration: its own guard exits 0 when pre-commit is absent, a vacuous PASS; runs wherever pre-commit exists, loud-skips where it does not
+scripts/hooks/test-check-commit-msg-precommit.sh  pre-commit  # real commit-msg shim integration: its own guard exits 0 when pre-commit is absent, a vacuous PASS; runs wherever pre-commit exists, loud-skips where it does not
+scripts/hooks/test-fork-precommit-core.sh  pre-commit  # real git commits through the fork pre-commit core: its own guard exits 0 without pre-commit, a vacuous PASS; runs wherever pre-commit exists, loud-skips where it does not
+scripts/guardrails/test-gitleaks-retired-org.sh  gitleaks  # its own guard exits 0 without the real scanner; runs wherever gitleaks exists, loud-skips where it does not
+scripts/handover/chief-kit/test-worker-doc-lock.sh  flock  # its own guard exits 0 without flock, the lock under test; runs wherever flock exists, loud-skips where it does not  # prim-ok: capability-table row naming the tool, no lock runs here
+scripts/hooks/test-check-hook-lib-suites.sh  node  # its own guard exits 0 without node; runs wherever node exists, loud-skips where it does not
+scripts/hooks/test-check-hook-file-parse.sh  jq  # its own guard exits 0 without jq; runs wherever jq exists, loud-skips where it does not
+scripts/hooks/test-crlf-boundary.sh  jq  # its own guard exits 0 without jq; runs wherever jq exists, loud-skips where it does not
+scripts/hooks/test-trigger-cr-on-pr-create.sh  jq  # its own guard exits 0 without jq; runs wherever jq exists, loud-skips where it does not
+scripts/hooks/test-trigger-cr-on-push.sh  jq  # its own guard exits 0 without jq; runs wherever jq exists, loud-skips where it does not
+scripts/lib/test-merge-block-alert.sh  jq  # its own guard exits 0 without jq; runs wherever jq exists, loud-skips where it does not
+scripts/observability/test-tool-call-census.sh  jq  # its own guard exits 0 without jq; runs wherever jq exists, loud-skips where it does not
 "
 SUITE_REQUIRE_TOOL="${SUITE_REQUIRE_TOOL:-$SUITE_REQUIRE_TOOL_DEFAULT}"
 
@@ -3605,7 +3605,7 @@ _log_has_new_skip_line() {
 # Counts run-eligible suites (post every skip filter) for the --shard split
 # below; advances for every one of them regardless of which shard claims it
 run_index=0
-shard_assigned=0   # suites this shard claimed; 0 = an empty shard, a pass (HIMMEL-3699)
+shard_assigned=0   # suites this shard claimed; 0 = an empty shard, a pass
 # How many failures were rc=127 (command or path not found).
 rc127=0
 failed_suites=""
