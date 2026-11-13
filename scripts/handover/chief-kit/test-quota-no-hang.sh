@@ -45,15 +45,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# The live quota dir is written by every chief's tick while this suite runs, so a before and after
+# comparison of it fails on any long run. Instead the stub stamps every probe it answers with a limit
+# no real answer carries, unique to this run (X-Ratelimit-Limit: $RUN_ID, stored in the limit column of
+# quota.tsv), and a poller looks for that number in the live dir for the whole run and once more at the end.
 REAL_QUOTA="${HOME:-/nonexistent}/.himmel/state/quota"
-quota_fingerprint() {
-    if [ -d "$REAL_QUOTA" ]; then
-        find "$REAL_QUOTA" -type f -exec stat -c '%n %Y %s' {} + 2>/dev/null | sort | cksum  # gnu-ok: chief kit is Linux-only
-    else
-        echo absent
-    fi
-}
-QUOTA_BEFORE="$(quota_fingerprint)"
+RUN_ID="9$(date +%s)$$"
+quota_leaked() { [ -d "$REAL_QUOTA" ] && grep -rqF "$RUN_ID" "$REAL_QUOTA" 2>/dev/null; }
+( while :; do quota_leaked && : > "$tmp/quota-leak"; sleep 0.5; done ) &
 
 STUBBIN="$tmp/stubbin"; mkdir -p "$STUBBIN"
 cat > "$STUBBIN/gh" <<'STUB'
@@ -101,6 +100,7 @@ if [ "$probe" = 1 ]; then
     case "$*" in
         *" -i "* | *"-i "*)
             printf 'HTTP/2.0 %s\r\nX-Ratelimit-Remaining: %s\r\n' "$([ "$rem" = 0 ] && echo '403 Forbidden' || echo '200 OK')" "$rem"
+            [ -z "${STUB_RUN_ID:-}" ] || printf 'X-Ratelimit-Limit: %s\r\n' "$STUB_RUN_ID"
             [ -z "$reset" ] || printf 'X-Ratelimit-Reset: %s\r\n' "$reset"
             [ "$mode" != secondary ] || printf 'Retry-After: 60\r\n'
             printf '\r\n{"data":{"rateLimit":{"remaining":%s}}}\n' "$rem"
@@ -253,7 +253,7 @@ base_env() {
     local cdir="$1" mode="$2" scaled="$3"
     printf '%s\n' \
         "HOME=$cdir/home" "GH_TOKEN=maintok" "STUB_READ_TOKEN=readtok123" "STUB_FIXDIR=$FIXDIR" \
-        "STUB_MODE=$mode" "STUB_LOG=$ROW_DIR/stub.log" "HIMMEL_QUOTA_DIR=$cdir/quota" \
+        "STUB_MODE=$mode" "STUB_LOG=$ROW_DIR/stub.log" "HIMMEL_QUOTA_DIR=$cdir/quota" "STUB_RUN_ID=$RUN_ID" \
         "GH_PR_SNAPSHOT_CACHE_DIR=$cdir/snap" "GH_READ_ENV_ROOT=$ENVROOT" "TMPDIR=$cdir/tmp" \
         "PATH=$STUBBIN:${READY_BIN:-$cdir/none}:$FINALBIN:$PATH" "GH_BUDGET_JITTER_MAX=0" \
         "STUB_FINAL_GH=$FINALBIN/gh" "STUB_NEXT_GH=${READY_BIN:+$READY_BIN/gh}"
@@ -726,9 +726,8 @@ for pc in $pids; do
     fi
 done
 
-QUOTA_AFTER="$(quota_fingerprint)"
 CUR=suite
-if [ "$QUOTA_BEFORE" = "$QUOTA_AFTER" ]; then emit "PASS suite live-quota-path-untouched"; else emit "FAIL suite live-quota-path-untouched $REAL_QUOTA changed"; fi
+if [ -e "$tmp/quota-leak" ] || quota_leaked; then emit "FAIL suite live-quota-path-untouched a stub answer (run $RUN_ID) reached $REAL_QUOTA"; else emit "PASS suite live-quota-path-untouched"; fi
 
 fails=0 known=0 passes=0 skips=0 unexpected=0
 report_file() {

@@ -241,6 +241,11 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     out=<file>` (or `disposition=STALLED`) the second: a slow read is reported, never
     hidden. One sample checks one head at most.
 
+    **An underfill wake never rests on a paused pool.** When the dispatcher answers the pool probe with
+    `# quota-pause` or `# gh-stall`, or the probe's outer timeout kills it, the waiter wakes nothing, writes
+    no pool marker and leaves `<inbox>.wait.poolpaused` (`pool=paused`) until a good probe removes it, so
+    the next good reading wakes once. While that file is younger than `CHIEF_WAIT_PAUSED_REPROBE_SEC`
+    (default 300) the pool is not probed again. A real empty pool still wakes as before.
     **A gate refused at quota out wakes you once when quota is back.** `go.sh`,
     `ready-check`, `cr-disposition` and `check-ci` leave a marker when GitHub refuses
     or stalls a read (`blocked/<key>.<ref>` under the quota dir). The waiter reads
