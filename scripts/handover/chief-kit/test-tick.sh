@@ -2545,8 +2545,9 @@ rm -rf "$W/uw-tmp" "$W/uw-mirror" "$W/uw-dir"
 
 # (9823) the --help text describes each field without a ticket key or a decision number, and still documents the fields.
 help_out="$(bash "$SUT" --help 2>&1)"
-if printf '%s\n' "$help_out" | grep -qE 'HIMMEL-[0-9]|decision [0-9]'; then
-    fail "(9823) tick.sh --help cites a ticket key or decision number: $(printf '%s\n' "$help_out" | grep -oE 'HIMMEL-[0-9]+|decision [0-9]+' | sort -u | tr '\n' ' ')"
+help_cites="$(printf '%s\n' "$help_out" | grep -oE 'HIMMEL-[0-9]+|decision [0-9]+' | sort -u | tr '\n' ' ')"
+if [ -n "$help_cites" ]; then
+    fail "(9823) tick.sh --help cites a ticket key or decision number: $help_cites"
 else
     pass '(9823) tick.sh --help cites no ticket key and no decision number'
 fi
