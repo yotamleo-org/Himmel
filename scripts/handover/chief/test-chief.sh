@@ -3517,11 +3517,30 @@ bash "$rif" record --bucket "$root/tester/rif9846" --id 904 --status "done" --da
 run91 rif9846
 d9846="$(sed -n '/^## Current direction$/,/^## [^C]/p' "$root/tester/rif9846/DEMO-nextleg-${today}C-chief.md")"
 check "9846 next with a ledger exits 0" "$rc91" "0"
-check "9846 the in-force ruling is indexed from the ledger" "$(printf '%s\n' "$d9846" | grep -cxF 'IN FORCE 901, 2026-11-11: alpha in force (verbatim: 901-x)')" "1"
-check "9846 the superseded and done rulings leave the block" "$(printf '%s\n' "$d9846" | grep -cE 'decision 90[24]|^IN FORCE 90[24],')" "0"
+check "9846 the in-force ruling is indexed from the ledger" "$(printf '%s\n' "$d9846" | grep -cxF '901 2026-11-11 alpha in force (verbatim 901-x)')" "1"
+check "9846 the superseded and done rulings leave the block" "$(printf '%s\n' "$d9846" | grep -cE 'decision 90[24]|^90[24] ')" "0"
 check "9846 a ruling with no ledger row is carried" "$(printf '%s\n' "$d9846" | grep -c '^OPERATOR 11-10 YZ, decision 905: delta')" "1"
 c9846=0; for _r in $(printf '%s\n' "$d9846" | grep -m 1 '^Full original text' | grep -o 'specs/decisions/chief-direction-[A-Za-z0-9._-]*\.md'); do c9846=$((c9846 + $(grep -cxF -e 'OPERATOR 11-11 ZA (BINDING, decision 902): bravo, the full text of 902.' -e 'OPERATOR 11-10 YZ (BINDING, decision 904): charlie, the full text of 904.' "$root/tester/rif9846/$_r"))); done
 check "9846 the companions keep the full text of the rulings that left, byte for byte" "$c9846" "2"
+body9846() { awk '$0 == "## Current direction" { f = 1; next } f && /^## / { exit } f' "$root/tester/$1/DEMO-nextleg-${today}C-chief.md"; }
+mk91 rif9846b "(46) other ruling" "-" "$(body9846 rif9846)"
+cp -R "$root/tester/rif9846/specs" "$root/tester/rif9846b/"
+run91 rif9846b
+check "9846 a second next over the successor doc renders the same index paragraph" \
+    "$(body9846 rif9846b | sed -n '/^Rulings in force (/,/^$/p')" "$(body9846 rif9846 | sed -n '/^Rulings in force (/,/^$/p')"
+mk91 f2x9846 "(46) other ruling" "-" "Full original text of every ruling, byte for byte, is in 0 files under the bucket ().
+
+Rulings in force (1; left out: 0 done, 0 superseded; year 2026 unless a head shows one):
+Other verbatim paths:
+OPERATOR 11-12 ZQ (BINDING): a raw ruling typed inside the index paragraph.
+901 2026-11-11 alpha in force (verbatim 901-x)
+777 2026-11-01 a row whose id the ledger lacks (verbatim 777-x)"
+mkdir -p "$root/tester/f2x9846/specs/decisions"
+printf 'OPERATOR words of 901.\n' > "$root/tester/f2x9846/specs/decisions/verbatim-decision-901-x.txt"
+bash "$rif" record --bucket "$root/tester/f2x9846" --id 901 --status in-force --date 2026-11-11 --line 'alpha in force' --path specs/decisions/verbatim-decision-901-x.txt >/dev/null
+run91 f2x9846
+check "9846 F2 current behaviour: a raw OPERATOR line inside the index paragraph absorbs the rows below it, and the ledger still indexes 901" \
+    "$(body9846 f2x9846 | grep -c '^OPERATOR 11-12 ZQ.* / 777 2026-11-01 a row whose id the ledger lacks')/$(body9846 f2x9846 | grep -c '^777 ')/$(body9846 f2x9846 | grep -cxF '901 2026-11-11 alpha in force (verbatim 901-x)')" "1/0/1"
 if [ "$HOST_MODES_STICK" -eq 1 ]; then
     mk91 rc2x9846 "(46) other ruling" "-" "$dir9846"
     mkdir -p "$root/tester/rc2x9846/specs/decisions"
@@ -3532,7 +3551,7 @@ if [ "$HOST_MODES_STICK" -eq 1 ]; then
     chmod 755 "$root/tester/rc2x9846/specs/decisions"
     check "9846 a failed companion write with a ledger present exits 0" "$rc91" "0"
     check "9846 a failed companion write with a ledger present carries the block whole" \
-        "$(sed -n '/^## Current direction$/,/^## [^C]/p' "$root/tester/rc2x9846/DEMO-nextleg-${today}C-chief.md" | grep -cxF -e 'OPERATOR 11-11 ZA (BINDING, decision 901): alpha, the full text of 901.' -e 'OPERATOR 11-11 ZA (BINDING, decision 902): bravo, the full text of 902.' -e 'OPERATOR 11-10 YZ (BINDING, decision 904): charlie, the full text of 904.' -e 'OPERATOR 11-10 YZ (BINDING, decision 905): delta, the full text of 905, which no ledger row holds.')/$(grep -c '^IN FORCE ' "$root/tester/rc2x9846/DEMO-nextleg-${today}C-chief.md")" "4/0"
+        "$(sed -n '/^## Current direction$/,/^## [^C]/p' "$root/tester/rc2x9846/DEMO-nextleg-${today}C-chief.md" | grep -cxF -e 'OPERATOR 11-11 ZA (BINDING, decision 901): alpha, the full text of 901.' -e 'OPERATOR 11-11 ZA (BINDING, decision 902): bravo, the full text of 902.' -e 'OPERATOR 11-10 YZ (BINDING, decision 904): charlie, the full text of 904.' -e 'OPERATOR 11-10 YZ (BINDING, decision 905): delta, the full text of 905, which no ledger row holds.')/$(grep -c '^Rulings in force (' "$root/tester/rc2x9846/DEMO-nextleg-${today}C-chief.md")" "4/0"
 else
     echo "ok - SKIPPED: 9846 failed companion write: chmod does not stick on this host"
 fi

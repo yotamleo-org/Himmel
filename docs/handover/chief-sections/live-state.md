@@ -158,6 +158,11 @@ Read on demand from `chief-template.md` `## Live state`. Moved verbatim from the
 > or done, also run `bash <kit>/rulings-in-force.sh record --bucket <bucket> --id <N>
 > --status <in-force|superseded-by <M>|done>` (the first row of a ruling also takes
 > `--date`, a one-line `--line` and `--path` to its verbatim file). `next` renders the
-> in-force rows as one index at the top of the successor's `## Current direction` and
-> drops the superseded and done ones; a ruling with no row stays as it was. The index
-> line is not the ruling: read its verbatim file before you act on it.
+> in-force rows as one index at the top of the successor's `## Current direction`,
+> grouped under a `<MM-DD> <shift>:` head per verbatim shift, and drops the superseded
+> and done ones; a ruling with no row stays as it was. Every row's reading is the start
+> of its ledger line, cut at one shared cap so the block fits its 12,000-byte budget;
+> `rulings-in-force.sh find --bucket <bucket> <id or word>` prints the whole line, and
+> `rulings-in-force.sh check --bucket <bucket> [--before <old block>]` proves the index
+> names every ruling in force and loses no unledgered line. The index line is not the
+> ruling: read its verbatim file before you act on it.
