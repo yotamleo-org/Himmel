@@ -288,6 +288,10 @@ same "check: a 21-byte whole reading and a cut reading both pass the prefix test
     "$(chk "$gout" | grep -c '^READING ')/$(printf '%s\n' "$gout" | grep -cxF -e '951 a ruling of 21 bytes.' -e "950 x$(zulus 19)")/$(printf '%s\n' "$gout" | grep '^Full original text' | grep -c 'start of its ledger line')" "0/2/1"
 same "check: a row deleted prints MISSING <id>, exit 1" "$(chk "$(printf '%s\n' "$gout" | sed '/^951 /d')" | grep -c '^MISSING 951$')/$(chk "$(printf '%s\n' "$gout" | sed '/^951 /d')" >/dev/null; echo $?)" "1/1"
 same "check: a done id added prints EXTRA <id>, exit 1" "$(chk "$(printf '%s\n' "$gout" | awk '{ print } $0 == "11-11 ZA:" { print "957 done ruling" }')" | grep -c '^EXTRA 957$')" "1"
+same "check: a second index paragraph further down is read too: its repeated row prints TWICE <id>, exit 1" \
+    "$(chk "$gout
+
+$(printf '%s\n' "$gout" | para | sed -n '1p;/^11-12 ZK:$/p;/^951 /p')" | grep -c '^TWICE 951$')" "1"
 same "check: a row's derived path differs from the ledger: PATH <id>" "$(chk "$(printf '%s\n' "$gout" | sed 's/^11-12 ZK:$/11-12 ZJ:/')" | grep -cE '^PATH 95[01] ')" "2"
 same "check: a reading that is not a ledger prefix: READING <id>" "$(chk "$(printf '%s\n' "$gout" | sed 's/^951 a ruling of 21 bytes[.]$/951 a ruling of 21 bytes!/')" | grep -c '^READING 951$')" "1"
 cp -R "$G" "$W/nofile"; rm -f "$W/nofile/specs/decisions/verbatim-decision-953-operator-11-11-ZA.txt"

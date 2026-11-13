@@ -73,7 +73,8 @@
 # test seam: it removes that row or line just before the self-check, and render then exits 4
 # printing nothing whether or not anything was removed, so the seam can only fail closed.
 #
-# check: parses the index of the block on stdin (a leading `## Current direction` line is
+# check: parses every index paragraph of the block on stdin, so a ruling named in two of
+# them is TWICE (a leading `## Current direction` line is
 # skipped, in the --before file too) and prints one line per problem: MISSING <id>, EXTRA
 # <id>, TWICE <id>, DATE <id> <shown> <ledger>, PATH <id> <derived> <ledger>, READING <id>
 # (not a prefix of the ledger line), NOFILE <id> <path>, COUNT <status> <shown> <ledger>,
@@ -335,7 +336,6 @@ def problems(blk, before_src, nofile):
     if L and L[0] == "## Current direction":
         L, off = L[1:], 1
     out, named = [], {}
-    start = next((i for i, l in enumerate(L) if G_HEAD.match(l)), None)
     def row(n, shown_date, derived, reading):
         named[n] = named.get(n, 0) + 1
         if named[n] > 1:
@@ -349,7 +349,7 @@ def problems(blk, before_src, nofile):
             out.append("PATH %d %s %s" % (n, derived, r["path"]))
         if not reading or not r["line"].startswith(reading):
             out.append("READING %d" % n)
-    if start is not None:
+    for start in [i for i, l in enumerate(L) if G_HEAD.match(l)]:
         hm = G_HEAD.match(L[start])
         for name, shown, want in zip(("in-force", "done", "superseded"), hm.groups()[:3], counts()):
             if int(shown) != want:
