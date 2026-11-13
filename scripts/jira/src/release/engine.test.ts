@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  apply, bucketCheck, operatorWords, poolCurrent, claim, coreBypass, declare, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, recordRequestDecision, request, requestWithWords, rule, state, takeover, withdraw,
+  apply, bucketCheck, operatorWords, poolCurrent, claim, coreBypass, declare, decisionWords, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, operatorFence, recordRequestDecision, request, requestWithWords, rule, state, takeover, withdraw,
   JudgeReplyError, LIVE_LOOKUP_MS, coreSnapshot, pull, readMirror, readMirrorFilesUnverified, readOperatorRecords, rmRun, rmRunSummary, pinnedSha, signSpec, specCheck, specReview, standing,
   type Ctx, type JiraPort, type Judge,
 } from './engine.js';
@@ -79,6 +79,22 @@ function ctx(env: Record<string, string> = consoleEnv): Ctx {
     release: 'R1', dir: join(root, 'release', 'R1'), keyPath: join(root, 'keys', 'R1.key'),
     env, now: () => new Date('2026-10-21T10:00:00.000Z'), jira, mirrorRoot: join(root, 'mirror'),
   };
+}
+
+function fakeProc(marker: Record<string, string> = {}): { procRoot: string; hostNsPath: string } {
+  const procRoot = mkdtempSync(join(tmpdir(), 'engine-proc-'));
+  for (const [pid, ppid, uid, env] of [[300, 200, 1000, {}], [200, 100, 1000, marker], [100, 1, 1000, {}], [1, 0, 0, null]] as const) {
+    mkdirSync(join(procRoot, String(pid)));
+    writeFileSync(join(procRoot, String(pid), 'status'), `Name:\tp\nPPid:\t${ppid}\nUid:\t${uid}\t${uid}\t${uid}\t${uid}\nNSpid:\t${pid}\n`);
+    if (env) writeFileSync(join(procRoot, String(pid), 'environ'), Object.entries({ PATH: '/usr/bin', ...env }).map(([k, v]) => `${k}=${v}\0`).join(''));
+  }
+  mkdirSync(join(procRoot, '300', 'ns'));
+  symlinkSync('pid:[4026531836]', join(procRoot, '300', 'ns', 'pid'));
+  symlinkSync('user:[4026531837]', join(procRoot, '300', 'ns', 'user'));
+  symlinkSync('300', join(procRoot, 'self'));
+  const hostNsPath = join(procRoot, 'host-ns-ref');
+  writeFileSync(hostNsPath, 'pid:[4026531836] user:[4026531837]\n');
+  return { procRoot, hostNsPath };
 }
 
 function mirror(issues: Array<{ key: string; fixVersions: string[]; status?: string; category?: string; resolution?: string; sector?: string; type?: string; blockedBy?: string[] }>, lastSync = '2026-10-21T09:00:00.000Z') {
@@ -2163,7 +2179,7 @@ describe('signed minerva specs', () => {
     execFileSync('mkfifo', [f.spec]);
     const c = sctx();
     const r = child('review', {
-      ctx: { release: c.release, dir: c.dir, keyPath: c.keyPath, now: '2026-10-21T10:00:00.000Z' },
+      ctx: { release: c.release, dir: c.dir, keyPath: c.keyPath, now: '2026-10-21T10:00:00.000Z', ...fakeProc() },
       review: { keys: ['K-2'], spec: f.spec, plan: f.plan, verdicts: [v] },
     });
     expect(r.signal).toBeNull();
@@ -2846,6 +2862,24 @@ describe('a request names the operator\'s words', () => {
     decisionFile();
     expect(() => recordRequestDecision(ctx({ HIMMEL_CONSOLE_LEG: '1' }), { decision: '9', words: WORDS, key: 'HIMMEL-1', verb: 'INTAKE', from_v: null, to_v: 'v1' }))
       .toThrow(/chief-spawned worker/);
+  });
+
+  it('T1: the fence refuses HIMMEL_BRIDGE_SESSION=1 in its own env', () => {
+    expect(() => operatorFence(ctx({ HIMMEL_BRIDGE_SESSION: '1' })))
+      .toThrow('release operator: a chief act on an operator decision; refused inside a Telegram bridge session or a process it started (the bridge names the operator\'s update, the chief\'s tick records it)');
+  });
+
+  it('T3: operator decision --words with the bridge marker in the ancestry is refused and writes no row; a clean tree records', async () => {
+    await setup();
+    decisionFile();
+    const opRows = () => readFileSync(join(root, 'release', 'R1', 'operator.jsonl'), 'utf8').trim().split('\n').length;
+    const before = opRows();
+    const decide = (c: Ctx) => operatorDecision(c, { decision: '9', keys: ['HIMMEL-1'], op: 'add', from_v: null, to_v: 'v1', verbatim: WORDS, ...decisionWords(c, '9', WORDS) });
+    expect(() => decide({ ...ctx(), ...fakeProc({ HIMMEL_BRIDGE_SESSION: '1' }) }))
+      .toThrow(/refused inside a Telegram bridge session or a process it started.*ancestor 200/);
+    expect(opRows()).toBe(before);
+    expect(decide({ ...ctx(), ...fakeProc() })).toMatchObject({ kind: 'decision', words: 1 });
+    expect(opRows()).toBe(before + 1);
   });
 
   it('load() does not verify decision_file', async () => {
