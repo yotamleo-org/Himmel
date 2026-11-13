@@ -1635,6 +1635,83 @@ contains 'failed open-PR read: rc 0' "rc=$rc" 'rc=0'
 jtxt="$(cat "$MG/board.json" 2>/dev/null)"
 jcheck 'failed open-PR read: ci is null and merged_today is still 61' 'M.ci === null && M.headline.merged_today === 61'
 
+READTOK=ghp_READTOKEN0123456789
+mkdir -p "$W/ttroot" "$W/tt"
+printf 'himmel_github_token_vm2=%s\n' "$READTOK" > "$W/ttroot/.env"
+ln -s "$HERE/fixtures/gh-two-token-stub.sh" "$W/tt/gh"
+TTLOG="$W/tt.log"
+ENVLOG="$W/s8a-env.log"
+CENVLOG="$W/s8a-cloud-env.log"
+ttlog() { grep -c -E -- "$1" "$TTLOG" || true; }
+cat > "$W/bin/gh-s8a" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+    *"--state all"*) cat "$CLOUD_FIXTURE" ;;
+    *) exec "$S8A_DELEGATE" "$@" ;;
+esac
+STUB
+cat > "$W/bin/gh-s8a-rec" <<'STUB'
+#!/usr/bin/env bash
+printf '%s|%s\n' "${GH_READ_QUIET:-unset}" "${GH_READ_NO_MAIN_FALLBACK:-unset}" >> "$S8A_ENVLOG"
+exec "$S8A_DELEGATE" "$@"
+STUB
+cat > "$W/bin/cloud-gh-rec" <<'STUB'
+#!/usr/bin/env bash
+printf '%s|%s\n' "${GH_READ_QUIET:-unset}" "${GH_READ_NO_MAIN_FALLBACK:-unset}" >> "$S8A_CLOUD_ENVLOG"
+case "$*" in
+    "pr list --state all --limit "*" --json number,title,body,state,headRefName,createdAt,mergedAt,closedAt,comments,commits") cat "$CLOUD_FIXTURE" ;;
+    *) echo "cloud-gh-rec: unexpected argv: $*" >&2; exit 1 ;;
+esac
+STUB
+chmod +x "$W/bin/gh-s8a" "$W/bin/gh-s8a-rec" "$W/bin/cloud-gh-rec"
+ttboard() {
+    env -u BOARD_GH -u CLOUD_LIVENESS_GH_CMD -u GH_TOKEN -u GITHUB_TOKEN -u himmel_github_token_vm2 -u CREDENTIALS_DIRECTORY -u GH_READ_NO_MAIN_FALLBACK \
+        PATH="$W/tt:$PATH" GH_READ_ENV_ROOT="$W/ttroot" GH_STUB_READ_TOKEN="$READTOK" GHLOG="$TTLOG" HIMMEL_SECRETS_KEYRING=off \
+        GH_STUB_DELEGATE="$W/bin/gh-s8a" S8A_DELEGATE="$W/bin/gh" CLOUD_FIXTURE="$HERE/fixtures/cloud-liveness-prs.json" \
+        S8A_ENVLOG="$ENVLOG" S8A_CLOUD_ENVLOG="$CENVLOG" \
+        TZ=Europe/Berlin CLOUD_LIVENESS_NOW='2026-10-10T16:30:00Z' CLOUD_LIVENESS_GIT_CMD="$W/bin/cloud-git" \
+        BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv.log" BOARD_SESSIONS="$W/bin/sessions-empty.sh" \
+        GH_OPEN="$W/open.json" GH_MERGED="$W/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
+        "$@" node "$SUT" --doc "$MDOC" --repo "$W/repo" --out "$M/tt-board.html" --json "$M/tt-board.json" 2>"$W/stderr.log"
+}
+rm -f "$M/cloud-sessions.tsv"
+: > "$TTLOG"
+ttboard GH_STUB_MAINFAIL=rate >/dev/null; rc=$?
+contains 'S8a main spent: the board renders, rc 0' "rc=$rc" 'rc=0'
+same 'S8a main spent: the open-PR read logs tok=read' "$(ttlog '^tok=read argv=pr list --state open')" 1
+same 'S8a main spent: the merged-PR read logs tok=read' "$(($(ttlog '^tok=read argv=pr list --state merged --limit 1000') >= 1))" 1
+same 'S8a main spent: no board read logs tok=main' "$(ttlog '^tok=main ')" 0
+jtxt="$(cat "$M/tt-board.json" 2>/dev/null)"
+jcheck 'S8a main spent: the CI read is not null (the board is not blank)' 'M.ci !== null'
+printf '%s\t%s\t%s\t%s\n' \
+    '2026-10-10T15:56:20' HIMMEL-5077 session_012yMgxSaSskpLb4qrfXBhk1 'claude --teleport session_012yMgxSaSskpLb4qrfXBhk1' \
+    '2026-10-10T15:56:43' HIMMEL-4657 session_01BCqPMDHjUE9Z52yEy3J3Uf 'claude --teleport session_01BCqPMDHjUE9Z52yEy3J3Uf' \
+    > "$M/cloud-sessions.tsv"
+: > "$TTLOG"
+ttboard GH_STUB_MAINFAIL=rate >/dev/null; rc=$?
+same 'S8a main spent with cloud sessions: the board exits 0' "$rc" 0
+html="$(cat "$M/tt-board.html")"
+contains 'S8a main spent: the cloud panel lists the session, not unavailable' "$html" 'data-cloud-ticket="HIMMEL-5077" data-state="unshepherded"'
+same 'S8a main spent: the cloud list logs tok=read' "$(ttlog '^tok=read argv=pr list --state all')" 1
+same 'S8a main spent: no read, cloud list included, logs tok=main' "$(ttlog '^tok=main ')" 0
+: > "$TTLOG"
+ttboard GH_STUB_READFAIL=rate >/dev/null; rc=$?
+same 'S8a read token limited: the board exits 0' "$rc" 0
+html="$(cat "$M/tt-board.html")"
+contains 'S8a read token limited, main healthy: the cloud scan reports unavailable' "$html" 'data-cloud-panel="unavailable"'
+same 'S8a read token limited: the cloud list is tried on the read token' "$(ttlog '^tok=read argv=pr list --state all')" 1
+same 'S8a read token limited: the cloud list never reads on main' "$(ttlog '^tok=main argv=pr list --state all')" 0
+same 'S8a read token limited: the board'"'"'s own open-PR read still falls back to main' "$(ttlog '^tok=main argv=pr list --state open')" 1
+: > "$TTLOG"; : > "$ENVLOG"; : > "$CENVLOG"
+ttboard GH_STUB_MAINFAIL=rate BOARD_GH="$W/bin/gh-s8a-rec" CLOUD_LIVENESS_GH_CMD="$W/bin/cloud-gh-rec" >/dev/null; rc=$?
+same 'S8a control: the board exits 0 with both seams set' "$rc" 0
+html="$(cat "$M/tt-board.html")"
+same 'S8a control: BOARD_GH and CLOUD_LIVENESS_GH_CMD set, the helper is never used' "$(ttlog '^tok=')" 0
+contains 'S8a control: the set cloud seam still feeds the panel' "$html" 'data-cloud-ticket="HIMMEL-5077" data-state="unshepherded"'
+same 'S8a control: the board'"'"'s PR child has GH_READ_QUIET=1 and no no-fallback knob' "$(sort -u "$ENVLOG")" '1|unset'
+same 'S8a control: the cloud child has GH_READ_QUIET=1 and GH_READ_NO_MAIN_FALLBACK=1' "$(sort -u "$CENVLOG")" '1|1'
+rm -f "$M/cloud-sessions.tsv"
+
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-board.sh'
     exit 0
