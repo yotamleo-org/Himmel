@@ -462,9 +462,6 @@ test("buildRunArgs and spawnSpec argv are unchanged: the session id is added at 
   expect(buildRunArgs("p").cmd).not.toContain("--session-id");
 });
 
-// T16: the bridge envelope. A scratch station: home, bridge
-// root, handover root with one declared release, a vault with a git dir, and a
-// primary checkout. Every path the envelope reads comes in through the seams.
 const envelopeFixture = () => {
   const t = mkdtempSync(join(tmpdir(), "tg-envelope-"));
   const p = (...s: string[]) => join(t, ...s);
@@ -632,8 +629,7 @@ test("T16: with no seam, the sandbox's one Jira domain is the host of the real J
   }
 });
 
-// Claude Code's rule order: a matching deny wins over any allow. The sandbox side is read the same
-// conservative way (a path under a denyWrite entry is not writable), so allow-inside-deny proves nothing here.
+// Claude Code's rule order: a matching deny wins over any allow.
 const under = (path: string, root: string) => path === root || path.startsWith(root + "/");
 const ruleRoot = (r: string) => r.slice("Edit(/".length, -1).replace(/\/\*\*$/, "");
 const editable = (s: any, path: string) =>

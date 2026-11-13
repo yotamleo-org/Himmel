@@ -67,7 +67,6 @@ cleanup() {
 trap cleanup EXIT
 echo "P1 at $head_sha (scratch $work)"
 
-# ---- scratch roots -------------------------------------------------------------------------
 CK="$work/ck"
 if ! git clone -q --shared "$REPO" "$CK" || ! git -C "$CK" checkout -q "$head_sha"; then echo "FAIL smoke-bridge-sandbox: scratch clone"; exit 1; fi
 ln -s "$primary/node_modules" "$CK/node_modules"
@@ -146,7 +145,6 @@ cp "${CADENCE_USAGE_CACHE:-${CLAUDE_USAGE_CACHE:-/tmp/claude/statusline-usage-ca
     || echo "WARN smoke-bridge-sandbox: no bank cache to copy: rows 10a-10d will see the arm refuse on the bank"
 arm_time="$(date -d '+30 min' +%H:%M)"  # gnu-ok: Linux-only smoke (unshare, /proc, bubblewrap sandbox)
 
-# ---- the loopback fake Jira ----------------------------------------------------------------
 cat > "$work/fake-jira.ts" <<'EOF'
 // Answers what `jira create` asks: the Sector field's context and options, and the create POST.
 const [log] = process.argv.slice(2);
@@ -188,7 +186,6 @@ new_release() { # <name>: prints the state dir of a fresh declared R9 under the 
     printf '%s\n' "$d"
 }
 
-# ---- the driver: one real bridge spawn through makeRunFn (or the pre-S1b control) ----------
 cat > "$work/driver.ts" <<'EOF'
 // argv: <checkout> <kind env|ctrl> <session> <chat> <lines file> <vault>
 const [ck, kind, session, chat, linesFile, vault] = process.argv.slice(2);
@@ -219,7 +216,6 @@ const sids = readdirSync(logs).map((f) => readFileSync(join(logs, f), "utf8").ma
 console.log(JSON.stringify({ res, sids }));
 EOF
 
-# ---- steps, targets and the judge ----------------------------------------------------------
 # A spawn's steps go to its inbox as one operator line. Each step: id, kind (bash|write|edit|
 # notebook|bare), target, expectation (deny|land|allow|info). Bash steps write their nonce and rc
 # to <own session folder>/p1-<id>; the target path is read from <sentinel>.t so no text-layer
@@ -380,7 +376,6 @@ judge_land() { # <row> <step> <spawn> <session>
 W='printf "p1\n" >> "$(cat '
 wcmd() { printf '%s%s.t)"' "$W" "$BR/sessions/$1/p1-$2"; }
 
-# ---- the deny and channel steps shared by the envelope spawn and its control ----------------
 REL_A="$(new_release a)" || exit 1
 REL_C="$(new_release ctrl)" || exit 1
 deny_steps() { # <session> <release dir>
@@ -512,7 +507,6 @@ step 10b bare "$work/rec" info "bash $CK/scripts/handover/arm-resume.sh --time $
 SPAWN_ENV="OSTYPE=darwin23 ARM_TERMINAL_APP=none" run_spawn x env __chat__x "$OP" "$REL_X"
 mkdir -p "$work/rec-x" && cp "$REC"/* "$work/rec-x/" 2>/dev/null
 
-# ---- verdicts --------------------------------------------------------------------------------
 deny_ids="2 3w 3e 3n 4a1 4a1w 4a2 4a2w 4a3 4a3w 4a4 4a4w 4a5 4a5w 4a6 4a6w 4a7 4a7w 4a8 4a8w 4a9 4a9w 9a 9b 9c 9d 9e"
 row_of() { case "$1" in 2) echo 2 ;; 3*) echo 3 ;; 4a*) echo 4a ;; 9*) echo 9 ;; esac; }
 

@@ -2082,11 +2082,8 @@ case "$PLATFORM" in
         ;;
 esac
 
-# rc 0 when this arm comes from a bridge session: HIMMEL_BRIDGE_SESSION=1 in its own env or in the
-# start-up env of a same-uid ancestor, so a wrapper that strips the variable (env -u, nohup, timeout)
-# cannot drop the marker. The walk stops at pid 1 or another uid, the way S1's fence climbs
-# (fence-ancestry.ts). A same-uid ancestor whose env cannot be read counts as marked (fails closed);
-# a host with no /proc has the own-env check alone, the fence's named residual.
+# The marker is also read from same-uid ancestors' start-up env, so a wrapper that strips it
+# (env -u, nohup, timeout) cannot drop it; an unreadable ancestor env counts as marked.
 _arm_bridge_marked() {
     [ "${HIMMEL_BRIDGE_SESSION:-}" = "1" ] && return 0
     [ -d /proc/self ] || return 1
@@ -2099,15 +2096,19 @@ _arm_bridge_marked() {
         [ "$uid" = "$own_uid" ] || return 1
         ppid=$(awk '/^PPid:/{print $2; exit}' "/proc/$pid/status" 2>/dev/null) || return 0
         [ -n "$ppid" ] || return 0
-        # The user service manager (a child of pid 1 in the host pid namespace) guards its env, as in the fence.
         if env_lines=$(tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null); then
             case $'\n'"$env_lines"$'\n' in *$'\n'HIMMEL_BRIDGE_SESSION=1$'\n'*) return 0 ;; esac
-        elif [ "$ppid" != 1 ] || [ "$(awk '/^NSpid:/{print NF - 1; exit}' "/proc/$pid/status" 2>/dev/null)" != 1 ]; then
+        elif ! _arm_is_host_user_manager "$pid" "$ppid"; then
             return 0
         fi
         pid=$ppid; hop=$((hop + 1))
     done
     return 1
+}
+
+# systemd --user guards its environ even from its own uid; S1's fence passes the same hop.
+_arm_is_host_user_manager() { # <pid> <ppid>
+    [ "$2" = 1 ] && [ "$(awk '/^NSpid:/{print NF - 1; exit}' "/proc/$1/status" 2>/dev/null)" = 1 ]
 }
 
 # True (rc 0) if PID names a live process.
@@ -5097,8 +5098,6 @@ fi"
                 # shim, its binary), so the resumed session never inherits them.
                 at_safety_child="${at_safety_child}unset $(chief_context_launch_seam_env_names | tr '\n' ' ')
 "
-                # A bridge session's arm marks the session it schedules, so the
-                # operator fence sees it; never in the scrub list.
                 _arm_bridge_marked && at_safety_child="${at_safety_child}export HIMMEL_BRIDGE_SESSION=1
 "
                 if [ -n "$CHIEF_PRECOMPACT_DOC" ]; then

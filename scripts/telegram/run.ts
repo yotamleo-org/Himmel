@@ -77,9 +77,6 @@ export function buildRunArgs(prompt: string, permissionMode?: PermissionMode, mo
   return { cmd, stdin: "ignore" as const };
 }
 
-// The bridge envelope (spec §2 of the bridge-words design). Every path is resolved at spawn
-// and realpathed; a symlinked root throws. Seams exist for the T16 rows only; the
-// host-ns path never takes one from the env (S1's hostNsFile()).
 export type EnvelopeSeams = {
   home?: string; configDir?: string; managedSettings?: string; bridgeRoot?: string; handoverRoot?: string;
   himmelDir?: string; primary?: string; releaseRoot?: string; hostNs?: string; jiraHost?: string | null; releaseKeyDir?: string;
@@ -93,7 +90,6 @@ function canonRoot(path: string, what: string): string {
   if (lstatSync(path).isSymbolicLink()) throw new Error(`bridge envelope: the ${what} ${path} is a symlink; the sandbox binds the resolved path, so a symlinked root is refused`);
   return realpathSync(path);
 }
-// A deny that names a path not yet created still goes in (it is resolved through its parent).
 function canonPath(path: string): string {
   try { return realpathSync(path); } catch { return join(realpathSync(dirname(path)), basename(path)); }
 }
@@ -176,15 +172,12 @@ function refuseWideningScopes(home: string, configDir: string, managed: string):
 
 const isMap = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
 
-// The vault cwd is a write root as a whole (R7-1). Narrowing it to folders would put an allow inside the
-// denied cwd, which the sandbox mounts read-only, so a set telegram.bridgeVaultRoots refuses the spawn (R7-7).
 function refuseVaultNarrowing(tg: any): void {
   if (tg?.bridgeVaultRoots !== undefined && tg?.bridgeVaultRoots !== null) {
     throw new Error("bridge envelope: telegram.bridgeVaultRoots is set, but narrowing a vault needs allow-inside-deny, which this sandbox does not honour (P1 row 4b): unset it");
   }
 }
 
-// telegram.bridgeEgress (R7-4): a map from a chat id to the extra hosts its Bash may reach. Unset: none.
 function egressOf(chat: number | string | null, tg: any): string[] {
   const map = tg?.bridgeEgress ?? {};
   const host = (h: unknown) => typeof h === "string" && /^[A-Za-z0-9.-]+$/.test(h);
@@ -210,7 +203,6 @@ function releaseDenies(o: EnvelopeSeams): string[] {
   return [...signed, canonMaybe(join(keyDir, `${relName}.key`))];
 }
 
-// The bridge root is denied entry by entry: the session's own folder and outgoing/ stay writable.
 function bridgeRootDenies(bRoot: string, own: string): string[] {
   const sessions = join(bRoot, "sessions");
   const others = existsSync(sessions) ? readdirSync(sessions).map((n) => canonPath(join(sessions, n))).filter((p) => p !== own) : [];
@@ -270,10 +262,12 @@ export function bridgeEnvelope(bridge: BridgeRun, settings?: string, mcpConfig?:
   // dontAsk already refuses an Edit with no allow, so the file tools need no cwd deny.
   const sandboxDenies = vault || denies.includes(cwd) ? denies : [...denies, cwd];
   const fileRoots = [own, outgoing, ...(vault ? [vault] : [])];
-  // The granted spawn's two unsandboxed entry points: DM /arm and the ticket filing (R7-6).
   const excluded = granted ? [`bash ${primary}/scripts/handover/arm-resume.sh`, `node ${primary}/scripts/jira/dist/index.js create`] : [];
   // A path not created yet gets both forms, so a folder made after spawn is still covered.
-  const editRule = (p: string) => !existsSync(p) ? [`Edit(/${p})`, `Edit(/${p}/**)`] : [lstatSync(p).isDirectory() ? `Edit(/${p}/**)` : `Edit(/${p})`];
+  const editRule = (p: string): string[] => {
+    if (!existsSync(p)) return [`Edit(/${p})`, `Edit(/${p}/**)`];
+    return lstatSync(p).isDirectory() ? [`Edit(/${p}/**)`] : [`Edit(/${p})`];
+  };
   const allow = ["Read", "Grep", "Glob", "Bash", "WebFetch", "WebSearch", ...mcpServerNames(mcpConfig).map((n) => `mcp__${n}`),
     ...fileRoots.flatMap(editRule), ...excluded.map((e) => `Bash(${e}:*)`)];
   const fileDeny = denies.flatMap(editRule);

@@ -134,15 +134,11 @@ for combo in "--list-temp-arms --dry-run" "--dry-run --list-temp-arms" "--list-t
     case "$OUT5" in *"refusing to arm from inside a consult"*) echo "PASS S4 '$combo' refusal says why" ;; *) echo "FAIL S4 '$combo' refusal text missing: $OUT5"; FAILED=$((FAILED + 1)) ;; esac
 done
 
-# T18: a bridge session's arm carries the bridge marker into
-# every body that launches claude, after the seam scrub; with no marker no body
-# names it. The crontab runner replays no env, so only a written line holds there.
 MARK_LINE="export HIMMEL_BRIDGE_SESSION=1"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$SCHED_STUB/crontab"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$SCHED_STUB/headroom"
 chmod +x "$SCHED_STUB/crontab" "$SCHED_STUB/headroom"
 mkdir -p "$TMP/apps/Terminal.app" "$TMP/runners"
-# dry_body <marker 0|1> <kind: at|at-proxied|runner|command>
 dry_body() {
     local mark="$1" kind="$2" plat=linux-gnu term=none proxy=
     case "$kind" in runner) plat=darwin23 ;; command) plat=darwin23 term=Terminal ;; at-proxied) proxy=1 ;; esac
@@ -157,8 +153,6 @@ dry_body() {
           command) awk '/^DRY arm-resume: command file \(/{on=1; next} /^DRY arm-resume:/{on=0} on{sub(/^    /,""); print}' ;;
         esac
 }
-# marker_after_scrub <body>: prints ok when the marker sits after the seam scrub
-# and before the claude launch (the `unset ARMAUTOMERGE` launch preamble).
 marker_after_scrub() {
     printf '%s\n' "$1" | awk -v m="$MARK_LINE" '
         { s = s $0 "\n" }
@@ -178,9 +172,6 @@ for kind in at at-proxied runner command; do
     case "$B0" in *HIMMEL_BRIDGE_SESSION*) echo "FAIL T18 $kind body names the marker with none in the caller's env"; FAILED=$((FAILED + 1)) ;;
         *) echo "PASS T18 $kind body names no marker without one" ;; esac
 done
-# A wrapper that strips the marker from arm-resume's own env still yields a marked body: the
-# marked parent (the bridge's claude, here a bash that stays alive) is an ancestor.
-# wrapped_body <wrapper words...>: the at body under a marked parent, arm-resume run through the wrapper
 wrapped_body() {
     HIMMEL_BRIDGE_SESSION=1 PATH="$STUB_BIN:$SCHED_STUB:$PATH" OSTYPE=linux-gnu ARM_TERMINAL_APP=none \
         ARM_APP_DIRS="$TMP/apps" ARM_RUNNER_DIR="$TMP/runners" \
@@ -189,13 +180,12 @@ wrapped_body() {
       | awk '/^DRY arm-resume: would at -t/{on=1; next} /^    CMD$/{on=0} on{sub(/^    /,""); print}'
 }
 for w in "" "nohup" "timeout 60" "nice -n 5"; do
-    # shellcheck disable=SC2086  # the wrapper is word-split on purpose
-    BW=$(wrapped_body $w)
+    read -r -a wrap <<<"$w"
+    BW=$(wrapped_body "${wrap[@]}")
     case "$BW" in *"claude"*) ;; *) echo "FAIL T18 wrapper '${w:-env -u}': no body printed"; FAILED=$((FAILED + 1)); continue ;; esac
     case "$BW" in *"$MARK_LINE"*) echo "PASS T18 wrapper '${w:-env -u}' still yields a marked body" ;;
         *) echo "FAIL T18 wrapper '${w:-env -u}' dropped the marker"; FAILED=$((FAILED + 1)) ;; esac
 done
-# The stub claude run from a marked body sees the marker, under an env that lacks it.
 B_AT=$(dry_body 1 at)
 env -u HIMMEL_BRIDGE_SESSION PATH="$STUB_BIN:$PATH" CLAUDE_REC="$TMP/rec-at" WATCH=HIMMEL_BRIDGE_SESSION \
     HIMMEL_PTY_SCRIPT_CMD="$TMP/no-such-script" sh -c "$B_AT" </dev/null >/dev/null 2>&1

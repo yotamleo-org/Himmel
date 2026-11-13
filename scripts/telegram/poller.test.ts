@@ -2444,7 +2444,7 @@ test("makeRunFn: a vault-configured chat spawns in the vault cwd with dontAsk; j
   await makeRunFn(r, "/repo", spy, 5000, undefined, 3, vaultFor)("V");
   expect(calls.length).toBeGreaterThan(0);
   expect(calls[0].cwd).toBe("/vaults/medic");                       // spawned IN the vault (loads its hooks)
-  expect(calls[0].mode).toBe("dontAsk");                  // the envelope mode for vault sessions
+  expect(calls[0].mode).toBe("dontAsk");
   expect(calls[0].prompt).toContain("/repo/scripts/jira/dist/index.js"); // jira path decoupled onto repoCwd
   expect(calls[0].prompt).toContain("running in /vaults/medic");
 });
@@ -2472,7 +2472,7 @@ test("makeRunFn + real vaultForChat: a defaultVault grants vault-cwd+bypass to a
   const spy = async (_p: string, cwd: string, mode?: string) => { calls.push({ cwd, mode }); return { code: 0, capped: false, pid: 1 }; };
   await makeRunFn(r, "/repo", spy, 5000, undefined, 3, (id) => vaultForChat(access, id))("D");
   expect(calls[0].cwd).toBe("/vaults/luna");            // defaultVault → vault cwd even for an unconfigured chat
-  expect(calls[0].mode).toBe("dontAsk");      // …and the envelope mode follows (documented blast radius)
+  expect(calls[0].mode).toBe("dontAsk");
 });
 test("makeRunFn: an empty-string vault normalizes to null (repoCwd, no bypass) — no incoherent cwd \"\"", async () => {
   const r = root(); await ensureSession(r, "E");
