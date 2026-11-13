@@ -1251,6 +1251,7 @@ emit_post_merge_runner() {
     printf '# himmel-post-merge-mode: %s\n' "$mode"
     printf 'export PATH=%s:$PATH\n' "$(printf '%q' "$dirs")"
     printf 'export PMR_LOG=%s\n' "$q_log"
+    printf 'export PMR_ARMED_PID=$$\n'
     printf 'log=%s\n' "$q_log"
     printf 'if [ -f "$log" ] && [ "$(wc -c < "$log" | tr -d " ")" -gt %s ]; then\n' "$POST_MERGE_LOG_MAX_BYTES"
     printf '    mv -f "$log" "$log.prev"\n'
