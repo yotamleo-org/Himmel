@@ -18,12 +18,16 @@
 # with no ledger row yet is recorded with a warning.
 #
 # render: prints the block with the in-force rows as an index right after its
-# `Full original text` pointer line (one line each: id, date, line, verbatim path), and
+# `Full original text` pointer line (one line each: id, date, line, and the verbatim file as
+# its short id, the part of specs/decisions/verbatim-decision-<id>.txt between the dashes and
+# .txt, or the whole path when it has another shape), and
 # without each ruling line whose OWN decision numbers all have a ledger row (superseded and
 # done rulings leave the block; their files and the companion files stay). A ruling's own
 # numbers are the ones in the head of its full text in the companion files (before and
-# inside its parenthesis), never the numbers its reading cites, which the index line also
-# lists; a line matches its full text
+# inside its parenthesis, or a `, decision N` list right after a parenthesis with none),
+# never the numbers its reading cites, which the index line also lists. An OPERATOR line
+# with no full text in the companions owns its one head number only when it names that
+# number's ledgered verbatim path; a CHIEF line never does. A line matches its full text
 # by its who-and-date, its listed numbers and the start of its reading, and a line that
 # matches none, or more than one with different numbers, has no own number. Never drops
 # what it cannot find: with no ledger, or no pointer line (the companions then may not hold
@@ -148,6 +152,8 @@ def numbers(head):
 def headed(l):
     return l.startswith(("OPERATOR ", "CHIEF ", "IN FORCE ", ">", INDEX_HEAD)) or bool(NOTE.match(l))
 RAW = re.compile(r"^((?:OPERATOR|CHIEF)[^(]*?) \(([^()]*(?:\{[^{}]*\}[^()]*)*)\)[.:]?\s*(.*)$")
+AFTER = re.compile(r"^, (decisions? [0-9][0-9, andto–-]*?) \(")
+VID = re.compile(r"specs/decisions/verbatim-decision-(.+)\.txt")
 paths = re.findall(r"specs/decisions/chief-direction-[A-Za-z0-9._-]+\.md", src[note_at])
 units = []
 for rel in paths:
@@ -159,14 +165,19 @@ for rel in paths:
         us = [b.strip() for b in blk.split("\n") if b.strip() and not b.startswith("# Current direction, full text")]
         m = RAW.match(us[0]) if us else None
         a, b = (numbers(m.group(1)), numbers(m.group(2))) if m else (None, None)
-        if a is not None and b is not None:
-            units.append((m.group(1), a + b, " / ".join(us)))
+        after = AFTER.match(m.group(3)) if m else None
+        c = numbers(after.group(1)) if after else []
+        if a is not None and b is not None and c is not None:
+            units.append((m.group(1), a + b + c, " / ".join(us)))
 def own_numbers(l, h):
     probe = l[h.end():].rstrip()
     probe = (probe[:-2] if probe.endswith(" …") else probe)[:24].rstrip()
     cited = set(numbers(h.group(0)) or [])
     own = {tuple(n) for who, n, text in units
            if l.startswith(who) and l[len(who):len(who) + 1] in (",", ":", " ") and set(n) <= cited and probe and probe in text}
+    if not own and l.startswith("OPERATOR ") and len(cited) == 1:
+        n = next(iter(cited))
+        return [n] if n in rows and rows[n]["path"] in l else []
     return list(own.pop()) if len(own) == 1 else []
 kept, i = [], 0
 while i < len(src):
@@ -189,14 +200,15 @@ while i < len(src):
     kept.append(l)
 live = sorted((n for n, r in rows.items() if r.get("status") == "in-force"), reverse=True)
 left = any(l is not None and l.startswith(("OPERATOR ", "CHIEF ")) for l in kept)
-note = ("Full original text of every ruling, byte for byte, is in %d file%s under the bucket (%s). The rulings in force come first, one line each, from the ledger %s (superseded and done rulings are left out; their files stay): before you act on one, read its verbatim file." % (len(paths), "" if len(paths) == 1 else "s", " ".join(paths), LEDGER)
+note = ("Full original text of every ruling, byte for byte, is in %d file%s under the bucket (%s). The rulings in force come first, one line each, from the ledger %s (superseded and done rulings are left out; their files stay): before you act on one, read its verbatim file, specs/decisions/verbatim-decision-<id>.txt for the id in its parentheses." % (len(paths), "" if len(paths) == 1 else "s", " ".join(paths), LEDGER)
     + (" The OPERATOR and CHIEF lines outside that index are rulings the ledger does not hold yet, as one-line readings: READ ALL OF those files in your first turn, in the same batch as this document. Each such line, with the lines directly under it, is BINDING unless it says otherwise; any other line is context, not a ruling." if left else " Every ruling the block held is in that index; any other line is context, not a ruling."))
 def row(n, cap):
     r = rows[n]; t = r.get("line", "")
     if len(t.encode()) > cap:
         c = t.encode()[:cap].decode("utf-8", "ignore")
         t = (c.rsplit(" ", 1)[0] if " " in c[1:] else c).rstrip(",;: ") + " …"
-    return "IN FORCE %d, %s: %s (verbatim: %s)" % (n, r.get("date", ""), t, r.get("path", ""))
+    v = VID.fullmatch(r.get("path", ""))
+    return "IN FORCE %d, %s: %s (verbatim: %s)" % (n, r.get("date", ""), t, v.group(1) if v else r.get("path", ""))
 body = [l for l in kept if l is not None]
 fixed = len(note.encode()) + len(INDEX_HEAD) + sum(len(l.encode()) + 1 for l in body) + sum(len(row(n, 0).encode()) + 1 for n in live)
 cap = max(40, (budget - fixed) // max(len(live), 1))
