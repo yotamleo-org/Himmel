@@ -1201,7 +1201,7 @@ check_c22() {
     command -v jq >/dev/null 2>&1 || { emit INFO C22-chain-skips "hook-chain-skips.jsonl present but jq missing — counts not checked"; return; }
     local summary jq_rc=0 window_h="${HIMMEL_DOCTOR_CHAIN_SKIPS_WINDOW_H:-24}" total cutoff
     case "$window_h" in ''|*[!0-9]*) window_h=24 ;; esac
-    window_h=$((10#$window_h))  # HIMMEL-4724: 08/09 are decimal, not invalid octal
+    window_h=$((10#$window_h))  # 08/09 are decimal, not invalid octal
     cutoff=$(( $(date +%s) - window_h * 3600 ))
     # only rows inside the recent window are a finding. The log is
     # append-only and written by the hook chain (scripts/hooks), so
