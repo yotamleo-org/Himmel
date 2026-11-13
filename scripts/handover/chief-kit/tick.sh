@@ -48,9 +48,7 @@ tick_bound() {
 # tick_detach <cmd...>: start <cmd> with no input or output and print its pid. The tick reaps a
 # child that ends while the tick still runs, and a timed tick then counts that child's CPU; the
 # job is started by a subshell that exits at once, so init adopts it and the tick never reaps it.
-# It runs 10 nice levels below the tick (nice execs, so the pid is the job's own; every child inherits it),
-# which lowers its share of a loaded station's CPU against the tick; it reserves nothing and promises no deadline.
-tick_detach() { ( nice -n 10 "$@" </dev/null >/dev/null 2>&1 & printf '%s\n' "$!" ); }  # gnu-ok: chief kit is Linux-only
+tick_detach() { ( nice -n 10 "$@" </dev/null >/dev/null 2>&1 & printf '%s\n' "$!" ); }
 
 # tick_now_s: the epoch seconds in $tick_now, from the shell's own clock (no fork) when it has one;
 # bash 3.2 (macOS /bin/bash) has no printf '%(%s)T', so it falls back to date.

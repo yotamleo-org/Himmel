@@ -618,9 +618,8 @@ spin9342='i=0; while [ $i -lt 2000000 ]; do i=$((i+1)); done'
 # stub that read it after its spin saw the daemon's value, not the launch's.)
 # shellcheck disable=SC2016  # the stub's own $vars expand when it runs, not here
 nice9342='[ -z "${NICE_OUT:-}" ] || sed "s/.*) //" /proc/$$/stat | cut -d" " -f17 >"$NICE_OUT"'
-# nice_ok9342 <file>: the stub ran at least 10 nicer than this suite (capped at 19, the lowest priority).
 # /proc/<pid>/stat field 19 is the nice value; `ps -o ni` prints "-" for a process under a non-default scheduler.
-nice_ok9342() {
+stub_niced_10_below_suite9342() {
     local got want
     got="$(cat "$1" 2>/dev/null)"; want=$(( $(sed 's/.*) //' /proc/$$/stat | cut -d' ' -f17) + 10 )); [ "$want" -le 19 ] || want=19
     case "$got" in '' | *[!0-9-]*) return 1 ;; esac
@@ -638,7 +637,7 @@ rm -f "$dr9342/cache"
 rm -f "$dr9342/nice"
 dr_spin9342="$(NICE_OUT="$dr9342/nice" dr_run9342 1)"
 same 'the spinning doctor run is harvested in the tick' "$(doctor_of < "$dr9342/line")" 'C9-spin'
-if nice_ok9342 "$dr9342/nice"; then pass 'the detached doctor run is niced below the tick'; else fail "the detached doctor run was not niced below the tick (nice '$(cat "$dr9342/nice" 2>/dev/null)')"; fi
+if stub_niced_10_below_suite9342 "$dr9342/nice"; then pass 'the detached doctor run is niced below the tick'; else fail "the detached doctor run was not niced below the tick (nice '$(cat "$dr9342/nice" 2>/dev/null)')"; fi
 same 'the doctor launch prints no pid line on the tick stdout' "$(grep -c '^[0-9][0-9]*$' "$dr9342/line")" '0'
 if [ $((dr_spin9342 - dr_base9342)) -lt 1000 ]; then pass 'a harvested doctor run adds none of its CPU to the tick'; else fail "a harvested doctor run added $((dr_spin9342 - dr_base9342)) ms of CPU to the tick (spin ${dr_spin9342} ms, control ${dr_base9342} ms)"; fi
 
@@ -651,7 +650,7 @@ contains 'the control tick serves the guardrail refresh' "$(cat "$cg9342/line")"
 rm -f "$cg9342/nice"
 cg_spin9342="$(NICE_OUT="$cg9342/nice" cg_run9342 1)"
 contains 'the spinning guardrail refresh lands in the tick that launched it' "$(cat "$cg9342/line")" ' ciguard=ok'
-if nice_ok9342 "$cg9342/nice"; then pass 'a detached section refresh is niced below the tick'; else fail "a detached section refresh was not niced below the tick (nice '$(cat "$cg9342/nice" 2>/dev/null)')"; fi
+if stub_niced_10_below_suite9342 "$cg9342/nice"; then pass 'a detached section refresh is niced below the tick'; else fail "a detached section refresh was not niced below the tick (nice '$(cat "$cg9342/nice" 2>/dev/null)')"; fi
 if [ $((cg_spin9342 - cg_base9342)) -lt 1000 ]; then pass 'a section refresh the tick waits out adds none of its CPU to the tick'; else fail "a section refresh added $((cg_spin9342 - cg_base9342)) ms of CPU to the tick (spin ${cg_spin9342} ms, control ${cg_base9342} ms)"; fi
 
 # The tick's wait for a refresh is CPU too. A wait that forks `date` and `sleep` on every
@@ -702,7 +701,7 @@ rm -f "$db9342/nice"
 db_spin9342="$(NICE_OUT="$db9342/nice" db_run9342 1)"
 contains 'the spinning tick launches the dependabot sweep' "$(cat "$db9342/line")" ' dbot=none,run'
 same 'the dependabot sweep ended before the spinning tick did' "$([ -e "$db9342/done" ] && echo yes || echo no)" 'yes'
-if nice_ok9342 "$db9342/nice"; then pass 'the detached dependabot sweep is niced below the tick'; else fail "the detached dependabot sweep was not niced below the tick (nice '$(cat "$db9342/nice" 2>/dev/null)')"; fi
+if stub_niced_10_below_suite9342 "$db9342/nice"; then pass 'the detached dependabot sweep is niced below the tick'; else fail "the detached dependabot sweep was not niced below the tick (nice '$(cat "$db9342/nice" 2>/dev/null)')"; fi
 wait9342 "$db9342/state"/tick-dbot-*.log
 same 'the dependabot sweep still moves its tmp log to the log' "$(cat "$db9342/state"/tick-dbot-*.log 2>/dev/null)" 'dependabot-go sweep: merged=1 skipped=2'
 if [ $((db_spin9342 - db_base9342)) -lt 1000 ]; then pass 'a dependabot sweep that ends inside the tick adds none of its CPU to the tick'; else fail "a dependabot sweep added $((db_spin9342 - db_base9342)) ms of CPU to the tick (spin ${db_spin9342} ms, control ${db_base9342} ms)"; fi
@@ -723,7 +722,7 @@ if command -v python3 >/dev/null 2>&1; then
     pi_spin9342="$(NICE_OUT="$pi9342/nice" pi_run9342 1)"
     contains 'the spinning tick launches the plan-index refresh' "$(cat "$pi9342/line")" ' plan-index=REFRESHING'
     same 'the plan-index refresh ended before the spinning tick did' "$([ -e "$pi9342/done" ] && echo yes || echo no)" 'yes'
-    if nice_ok9342 "$pi9342/nice"; then pass 'the detached plan-index refresh is niced below the tick'; else fail "the detached plan-index refresh was not niced below the tick (nice '$(cat "$pi9342/nice" 2>/dev/null)')"; fi
+    if stub_niced_10_below_suite9342 "$pi9342/nice"; then pass 'the detached plan-index refresh is niced below the tick'; else fail "the detached plan-index refresh was not niced below the tick (nice '$(cat "$pi9342/nice" 2>/dev/null)')"; fi
     if [ $((pi_spin9342 - pi_base9342)) -lt 1000 ]; then pass 'a plan-index refresh that ends inside the tick adds none of its CPU to the tick'; else fail "a plan-index refresh added $((pi_spin9342 - pi_base9342)) ms of CPU to the tick (spin ${pi_spin9342} ms, control ${pi_base9342} ms)"; fi
 else
     skip 'plan-index CPU row: no python3'
