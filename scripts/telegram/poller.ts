@@ -3,6 +3,7 @@ import { existsSync, readFileSync, lstatSync, constants } from "node:fs";
 import { basename, dirname, isAbsolute, join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { homedir, tmpdir } from "node:os";
+import { currentNs, hostNsFile } from "../jira/src/release/fence-ancestry";
 import { appendLine, appendOutboxLine, atomicWrite, bridgeRoot, ensureSession, readMeta, writeMeta, sessionDir, readNewLines, peekNewLines, commitCursorPos, repairCursorBeyondEof, truncateFullyConsumed, rotateConsumedLedger, type Meta, type OnCursorReset } from "./bus";
 import { classify, isTicketKey, type Route } from "./router";
 import { routeToConsole, routeFleetCommand, routeApprove, staleConsoleCommand, consoleReplyTarget, rememberConsoleReply, makeChiefTap, type ConsoleRouteGate, type ConsoleReplyFn } from "./chief-route";
@@ -2427,6 +2428,7 @@ export function shouldAlertOutage(now: number, outageStartedAt: number, lastAler
 
 export async function main(): Promise<void> {
   installTimestampedLogging();
+  await writeHostNs().catch((e) => console.error(`[poller] could not write the operator fence's host-ns: ${e}; operator verbs refuse until it exists`));
   const root = bridgeRoot();
   const repoCwd = process.env.HIMMEL_REPO ?? process.cwd();
   const bridgeEnv = await loadBridgeEnv();
@@ -2770,4 +2772,19 @@ export async function main(): Promise<void> {
   }
 }
 
-if (import.meta.main) await main();
+export async function writeHostNs(path?: string, procRoot = "/proc"): Promise<boolean> {
+  if (!existsSync(join(procRoot, "self", "ns"))) return false;
+  const target = path ?? hostNsFile();
+  await mkdir(dirname(target), { recursive: true });
+  await atomicWrite(target, `${currentNs(procRoot)}\n`);
+  return true;
+}
+
+export async function runCli(argv: string[], hostNsPath?: string): Promise<boolean> {
+  if (!argv.includes("--write-host-ns")) return false;
+  if (await writeHostNs(hostNsPath)) console.error(`[poller] wrote ${hostNsPath ?? hostNsFile()}`);
+  else console.error("[poller] --write-host-ns: no /proc on this host; the operator fence runs its env check alone");
+  return true;
+}
+
+if (import.meta.main && !(await runCli(process.argv.slice(2)))) await main();

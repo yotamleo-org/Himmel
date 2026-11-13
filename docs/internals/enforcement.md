@@ -2443,9 +2443,77 @@ payload whose `agent_id` is present and not `null`) any Bash command that names
 both the word `release` and the word `operator`, so a subagent never writes an
 operator-chain row with `jira release operator …`; `spec-review` is one of those
 verbs, so a critic subagent cannot record its own verdict. `operatorFence` in the
-jira CLI reads only the environment, which a subagent inherits from the chief.
-The main session (no `agent_id`, or `null`) is allowed without reading the
-command.
+jira CLI reads markers from the environment and the process tree (below), and a
+subagent inherits the chief's environment and ancestry, so neither tells it from
+the chief. The main session (no `agent_id`, or `null`) is allowed without reading
+the command.
+
+### `operatorFence` — the operator writer's process-tree fence
+
+Every `jira release operator …` writer, and `jira create --decision`, calls
+`operatorFence` (`scripts/jira/src/release/engine.ts`) first. It refuses when
+`HIMMEL_CONSOLE_LEG`, `HIMMEL_RELEASE_MANAGER` or `HIMMEL_BRIDGE_SESSION` is `1`
+in its own environment, or in the start-up environment (`/proc/<pid>/environ`)
+of any ancestor (`scripts/jira/src/release/fence-ancestry.ts`). The Telegram
+bridge sets `HIMMEL_BRIDGE_SESSION=1` in every session it spawns, after the
+route's own env, so no route unsets it (`scripts/telegram/run.ts`, `sessionEnv`).
+A command prefix, `env -u`, a script, a nested shell or `sudo` cannot clear a
+marker that an ancestor was started with.
+
+The walk reads each parent from `status` (`PPid:`, never `stat`), and allows in
+one case only: it reaches pid 1 with no marker seen, and the walker's own
+`/proc/self/ns/pid` and `ns/user` equal the host reference. Every other stop
+refuses, naming its reason:
+
+- `host-ns` missing, unreadable or malformed. The remedy is to restart the
+  bridge, or to run `bun scripts/telegram/poller.ts --write-host-ns` once on a
+  station with no bridge.
+- Other namespaces than the reference: the Claude Code sandbox, an `unshare`, a
+  container.
+- An ancestor other than pid 1 that runs as another uid (`sudo`, or a root
+  `sshd` without `tmux`). The remedy is `tmux` or `systemd-run --user`.
+- An unreadable `status`, or a process gone mid-walk.
+- An unreadable `environ`. One exception: the same-uid hop directly below pid 1
+  with a single `NSpid:` field. `systemd --user` is non-dumpable, so a konsole
+  chief and the waiter's tick both descend from an ancestor whose environ
+  cannot be read.
+- 64 hops, a `status` without `PPid:`, an ancestry that ends short of pid 1, or
+  a pid 1 whose `NSpid:` has more than one field.
+
+**The host reference** is `host-ns` at
+`<passwd home>/.claude/handover/bridge/host-ns`. The poller writes it at
+start-up. Its path comes from `os.userInfo().homedir`, with no env input:
+`BRIDGE_ROOT` and `HOME` can both be set by the bridge's own command.
+
+**Residuals:**
+
+- No `/proc` (macOS): only the environment check runs.
+- A bridge running without its Bash sandbox can write `host-ns`. The namespace
+  allow rests on the bridge sandbox's `denyWrite` of that path.
+- A process the bridge starts that leaves its ancestry (`setsid -f` plus a double
+  fork, `systemd-run --user`, `at`, cron), outside the sandbox.
+- The tolerated hop below pid 1 also covers any same-uid process that
+  reparented to pid 1 and made itself non-dumpable (`prctl(PR_SET_DUMPABLE, 0)`).
+  That adds no hole beyond the reparent residual above, because such a daemon
+  can already scrub its own environment. The tolerated hop is not proven to be
+  the user manager.
+- Lane workers started from the dispatch route, and the chief's discipline over
+  relayed text.
+- The session armed through `arm-resume.sh` runs as plain `claude`, with no
+  sandbox, outside the bridge envelope. It can write the poller's log
+  (operator: "Keep /arm as is"). It carries no bridge marker until the bridge
+  sandbox makes `arm-resume.sh` write one, and that marker fences only its
+  honest path. It can
+  still reach the operator chain through its own engine
+  ctx, same-uid signed rows, or a rewrite of the untracked
+  `scripts/jira/dist/index.js` that the chief's tick runs.
+
+Tests: `fence-ancestry.test.ts`, `engine.test.ts` (T1, T3), `poller.test.ts`
+(T1f), `run.test.ts` (T2), and `test-real-state-guard.sh` row JF. The jira
+vitest setup sends a walk given no `procRoot`/`hostNsPath` seam down the
+env-only path, and `test-real-state-guard.sh`'s door rows do the same through a
+test-only bun preload. JF runs the real CLI with neither and asserts the
+refusal.
 
 The match: the command is normalised (backslash-newline pairs deleted, `$'` and
 `$"` turned into `'` and `"`, then every `'`, `"` and `\` deleted), split into
