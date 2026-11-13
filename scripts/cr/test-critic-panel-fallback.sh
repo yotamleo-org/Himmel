@@ -238,7 +238,7 @@ check_not_contains "2: NO fallback token" "$stderr2" "fallback("
 check "2: fallback model NEVER invoked" "$fb_calls2" "0"
 # reason= is APPENDED after the untouched (rc=1) — a generic
 # "connection refused" body matches no signature -> generic-rc-1.
-check_contains "2: reason=generic-rc-1 appended (HIMMEL-1176)" "$stderr2" \
+check_contains "2: reason=generic-rc-1 appended" "$stderr2" \
     "panel-availability: qwen3coder unavailable (rc=1) reason=generic-rc-1"
 
 # ===========================================================================
@@ -253,7 +253,7 @@ check_not_contains "3: NO fallback token" "$stderr3" "fallback("
 check "3: fallback model NEVER invoked on timeout" "$fb_calls3" "0"
 # rc 124/137 always classifies timeout, appended after the
 # existing "(timeout Ns)" wording.
-check_contains "3: reason=timeout appended (HIMMEL-1176)" "$stderr3" "reason=timeout"
+check_contains "3: reason=timeout appended" "$stderr3" "reason=timeout"
 
 # ===========================================================================
 # Case 4: registry row WITHOUT fallback_model + exhaustion failure -> still no
@@ -272,7 +272,7 @@ check "4: fallback model NEVER invoked when row has empty fallback_models" \
     "$(grep -cF -- "$FB" "$tmp/cap4")" "0"
 # the primary's own exhaustion-signature text classifies quota-5h
 # even though no fallback ran (fallback_models empty gates only the retry).
-check_contains "4: reason=quota-5h appended (HIMMEL-1176)" "$stderr4" \
+check_contains "4: reason=quota-5h appended" "$stderr4" \
     "panel-availability: qwen3coder unavailable (rc=1) reason=quota-5h"
 
 # ===========================================================================
@@ -292,7 +292,7 @@ check "5: fallback model NEVER invoked on bare AccessDenied" \
     "$(grep -cF -- "$FB" "$tmp/cap5")" "0"
 # a bare (unpaired) AccessDenied classifies auth, never a quota
 # bucket — the same pairing rule that gates the fallback trigger.
-check_contains "5: reason=auth appended, NOT a quota class (HIMMEL-1176)" "$stderr5" \
+check_contains "5: reason=auth appended, NOT a quota class" "$stderr5" \
     "panel-availability: qwen3coder unavailable (rc=1) reason=auth"
 
 # ===========================================================================
