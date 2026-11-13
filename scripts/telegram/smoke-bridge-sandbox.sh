@@ -448,6 +448,16 @@ STEPS=()
 step 7 bash "$REL_7B/R9/requests.jsonl" deny "$(wcmd "$TK" 7)"
 run_spawn t env "$TK" "$OP" "$REL_7B" unmarked
 
+# Row 11: the chat telegram.bridgeEgress names reaches its hosts (11h: hactl over HTTP; 11s: ssh ha1).
+EG_CHAT="$(jq -r '.telegram.bridgeEgress // {} | keys[0] // empty' "$HOME/.himmel/config.json" 2>/dev/null)"
+if [ -n "$EG_CHAT" ]; then
+    REL_E="$(new_release e)" || exit 1
+    STEPS=()
+    step 11h bash "$BR/sessions/group_e/p1-11h.out" allow "hactl ping > $BR/sessions/group_e/p1-11h.out 2>&1"
+    step 11s bash "$BR/sessions/group_e/p1-11s.out" allow "ssh -o BatchMode=yes -o ConnectTimeout=10 ha1 true > $BR/sessions/group_e/p1-11s.out 2>&1"
+    run_spawn e env group_e "$EG_CHAT" "$REL_E"
+fi
+
 # Row 10b: the crontab path (OSTYPE darwin without a terminal app takes the headless crontab runner).
 REL_X="$(new_release x)" || exit 1
 STEPS=()
@@ -564,8 +574,18 @@ for f in "$work/rec-a"/konsole-ns-*; do
 done
 [ -n "$(row_v 10d)" ] || row_add 10d PASS "no terminal stub started from the envelope spawn"
 
+# 11h/11s: the step's own rc decides; no attempt is INCONCLUSIVE.
+for id in 11h 11s; do
+    if [ -z "$EG_CHAT" ]; then row_add "$id" INCONCLUSIVE "no telegram.bridgeEgress key in ~/.himmel/config.json"; continue; fi
+    read -r a _ _ <<<"$(verdict e "$id" group_e)"
+    s="$BR/sessions/group_e/p1-$id"
+    if [ "$a" != yes ]; then row_add "$id" INCONCLUSIVE "no proof of attempt"
+    elif grep -q 'rc=0' "$s"; then row_add "$id" PASS "chat $EG_CHAT reached its host: $(head -c 120 "$s.out" 2>/dev/null | tr '\n' ' ')"
+    else row_add "$id" FAIL "chat $EG_CHAT: $(tr '\n' ' ' < "$s") $(head -c 200 "$s.out" 2>/dev/null | tr '\n' ' ')"; fi
+done
+
 rc=0
-for r in 0 1 2 3 4a 4a-planted 4b 4c 5 6 7a 7b 9 10a 10b 10c 10d; do
+for r in 0 1 2 3 4a 4a-planted 4b 4c 5 6 7a 7b 9 10a 10b 10c 10d 11h 11s; do
     v="$(row_v "$r")"; v="${v:-INCONCLUSIVE}"
     echo "ROW $r $v $(cat "$work/rows/$r.e" 2>/dev/null || echo no evidence)"
     [ "$v" = PASS ] || rc=1
