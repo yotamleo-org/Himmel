@@ -462,10 +462,6 @@ _ts_remainder_owner() {
     return 1
 }
 
-# _ts_d5d <KEY> <merged PR> [<repo>] — D5d: a wrapped owner whose partial merge hands its remainder to a named owner
-# parks the ticket in To Do with that owner on record (TS_D5D_OWNER, TS_MERGED_PR). A logged D5d row for the same PR
-# answers with no gh call (the sweep's snapshot makes none); otherwise the PR body goes through the one remainder
-# reader, pr_remainder.py. rc 0 = D5d, 1 = no named owner or an unreadable body (the caller keeps D5c, In Progress).
 _ts_d5d() {
     local key=$1 mpr=$2 repo=${3:-} log body ans kind rest owner
     TS_D5D_OWNER=""
