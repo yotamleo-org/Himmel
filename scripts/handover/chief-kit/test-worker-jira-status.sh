@@ -405,6 +405,21 @@ reset "In Progress"; owned WRAPPED 0; d5d_merge
 printf 'Remaining: the second half of the parser\n' > "$FX/pr-body-11"
 fn "$K" --event wrapped --doc "$DOC"
 check "D5d: a partial with no readable owner stays D5c In Progress" "$(ntrans)/$(row rule)" 0/D5c
+d5d_remaining() { # <Remaining text> - a wrapped partial whose merged PR carries this Remaining line
+    reset "In Progress"; owned WRAPPED 0; d5d_merge
+    printf 'Remaining: %s\n' "$1" > "$FX/pr-body-11"
+    fn "$K" --event wrapped --doc "$DOC"
+}
+d5d_remaining "the rest of YR-2 and LINE-3 stays here, see real-012"
+check "D5d: key-shaped words that are not tickets name no owner -> D5c" "$(ntrans)/$(row rule)" 0/D5c
+d5d_remaining "the second half stays on $K"
+check "D5d: a Remaining line naming only the own key stays D5c" "$(ntrans)/$(row rule)" 0/D5c
+d5d_remaining "held for HIMMEL-9561 and the parser half"
+check "D5d: a cross-reference is not an owner -> D5c" "$(ntrans)/$(row rule)" 0/D5c
+d5d_remaining "the cutover, owner: HIMMEL-9002"
+check "D5d: an owner: phrase names the owner" "$(row rule)/$(jq -r .owner "$REC")" D5d/HIMMEL-9002
+d5d_remaining "the cutover → HIMMEL-9003"
+check "D5d: an arrow phrase names the owner" "$(row rule)/$(jq -r .owner "$REC")" D5d/HIMMEL-9003
 reset "In Progress"; owned LIVE 11 0; d5d_merge
 printf '## Ticket coverage\n- cutover: deferred -> HIMMEL-9002\n' > "$FX/pr-body-11"
 fn "$K" --event live --doc "$DOC"

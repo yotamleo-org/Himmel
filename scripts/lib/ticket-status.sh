@@ -53,7 +53,7 @@
 #   D4b no PR, a completes=yes merge row         no-write + miss stage=done-pending
 #   D5  no PR, an owner not provably ended       In Progress
 #   D5d as D5c, but the merged PR's remainder names its owner (a deferred -> KEY line, or a Remaining:
-#       line naming another key or a chief step): To Do, the owner in TS_D5D_OWNER
+#       line with `owner: KEY` or an arrow to KEY, or naming a chief step): To Do, the owner in TS_D5D_OWNER
 #   D5c no PR, the latest merge row contract=no  In Progress (a partial: work remains)
 #       or, a wrapped owner and no merge row at all, a merged PR whose first [KEY] is the
 #       ticket (TS_STAGE=merged-no-row, TS_MERGED_PR); an unreadable merged list or merge-row
@@ -456,7 +456,7 @@ _ts_no_write() { TS_DERIVED="no-write"; TS_RESULT="$1"; TS_RULE="$2"; TS_STAGE="
 
 _ts_remainder_owner() {
     local keys
-    keys=$(printf '%s\n' "$2" | grep -oE '[A-Za-z][A-Za-z0-9]*-[0-9]+' | tr '[:lower:]' '[:upper:]' | grep -vxF "$1" | sort -u | paste -sd, - | sed 's/,/, /g') || keys=""  # swallow-ok: no key in the text is the empty answer
+    keys=$(printf '%s\n' "$2" | grep -oE '([Oo]wner:[[:space:]]*|→[[:space:]]*|->[[:space:]]*)[A-Z][A-Z0-9]*-[0-9]+' | grep -oE '[A-Z][A-Z0-9]*-[0-9]+$' | grep -vxF "$1" | sort -u | paste -sd, - | sed 's/,/, /g') || keys=""  # swallow-ok: no key in the text is the empty answer
     if [ -n "$keys" ]; then printf '%s' "$keys"; return 0; fi
     if grep -qiE 'chief[ -](step|run)' <<<"$2"; then printf 'chief step'; return 0; fi
     return 1
