@@ -276,7 +276,12 @@ export function writeLaunchRecord(sid: string, model: string, cacheDir?: string)
   }
 }
 
-export async function runSession(prompt: string, cwd: string, permissionMode?: PermissionMode, lane?: undefined, modelOverride?: string, settings?: string, observe?: RunObserver, extraEnv?: Record<string, string>, mcpConfig?: string): Promise<{ code: number; capped: boolean; blocked: boolean; timedOut: boolean; pid: number; tail?: string }> {
+// The poller's per-spawn descriptor: the parked chat (null when none), whether
+// the run is cwd-routed, and the release-folder grant the poller decided.
+// Nothing the model supplies sets any field.
+export type BridgeSpawn = { session: string; chat: number | null; routed: boolean; releaseWrite: boolean };
+
+export async function runSession(prompt: string, cwd: string, permissionMode?: PermissionMode, lane?: undefined, modelOverride?: string, settings?: string, observe?: RunObserver, extraEnv?: Record<string, string>, mcpConfig?: string, bridgeSpawn?: BridgeSpawn): Promise<{ code: number; capped: boolean; blocked: boolean; timedOut: boolean; pid: number; tail?: string; bridgeSpawn?: BridgeSpawn }> {
   const spec = spawnSpec(prompt, permissionMode, lane, modelOverride, settings, extraEnv, mcpConfig);
   const sid = randomUUID();
   writeLaunchRecord(sid, spec.cmd[2]);
@@ -315,5 +320,5 @@ export async function runSession(prompt: string, cwd: string, permissionMode?: P
   }
   const tail = (out + err).slice(-65536);
   // tail returned for run.log persistence
-  return { code: timedOut ? -1 : code, capped: detectCap(tail), blocked: detectContentFilter(tail), timedOut, pid, tail };
+  return { code: timedOut ? -1 : code, capped: detectCap(tail), blocked: detectContentFilter(tail), timedOut, pid, tail, bridgeSpawn };
 }

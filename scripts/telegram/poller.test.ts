@@ -1825,7 +1825,7 @@ test("makeRunFn: a cwd-routed chat spawns in that repo, bypassPermissions, with 
   await makeRunFn(r, "/repo", runImpl, 5000, undefined, 3, undefined, undefined, cwdFor)("group_-5245475441");
   expect(seen.cwd).toBe(flooredRepo);
   expect(seen.mode).toBe("bypassPermissions");
-  expect(seen.extraEnv).toEqual({ HERMES_BOUNDED_RUN: "1", GGS_ROLE: "readonly" });
+  expect(seen.extraEnv).toEqual({ HERMES_BOUNDED_RUN: "1", GGS_ROLE: "readonly", HIMMEL_BRIDGE_CHAT: "-5245475441" });
   expect(seen.prompt).not.toContain("into the Obsidian vault");
 });
 
@@ -1836,7 +1836,7 @@ test("makeRunFn: a vault chat is unchanged — vault cwd, bypass, and NO GGS mar
   await makeRunFn(r, "/repo", runImpl, 5000, undefined, 3, vaultFor, undefined, () => null)("group_-50");
   expect(seen.cwd).toBe("/salus");
   expect(seen.mode).toBe("bypassPermissions");
-  expect(seen.extraEnv).toBeUndefined();
+  expect(seen.extraEnv).toEqual({ HIMMEL_BRIDGE_CHAT: "-50" });
   expect(seen.prompt).toContain("into the Obsidian vault");
 });
 
@@ -1846,7 +1846,7 @@ test("makeRunFn: an unrouted chat keeps repoCwd, no permission mode, no markers"
   await makeRunFn(r, "/repo", runImpl, 5000, undefined, 3, () => null, undefined, () => null)("group_-99");
   expect(seen.cwd).toBe("/repo");
   expect(seen.mode).toBeUndefined();
-  expect(seen.extraEnv).toBeUndefined();
+  expect(seen.extraEnv).toEqual({ HIMMEL_BRIDGE_CHAT: "-99" });
 });
 
 // defaultVault is pinned live, so vaultFor returns non-null for EVERY chat,
@@ -1869,7 +1869,7 @@ test("makeRunFn: a blank cwd falls back to repoCwd with no bypass", async () => 
   await makeRunFn(r, "/repo", runImpl, 5000, undefined, 3, () => null, undefined, () => "")("group_-77");
   expect(seen.cwd).toBe("/repo");
   expect(seen.mode).toBeUndefined();
-  expect(seen.extraEnv).toBeUndefined();
+  expect(seen.extraEnv).toEqual({ HIMMEL_BRIDGE_CHAT: "-77" });
 });
 
 test("safeExt: keeps plain extensions, rejects Telegram-controlled traversal/query shapes", async () => {
@@ -2961,7 +2961,7 @@ test("cwd route is REFUSED when the target has no .claude/settings.json (no read
   await makeRunFn(r, "/repo", runImpl, 5000, undefined, 3, () => null, undefined, () => noFloor)("group_-8801");
   expect(seen.cwd).toBe("/repo");            // route dropped, NOT spawned in the unattested dir
   expect(seen.mode).toBeUndefined();          // and crucially: no bypassPermissions
-  expect(seen.extraEnv).toBeUndefined();
+  expect(seen.extraEnv).toEqual({ HIMMEL_BRIDGE_CHAT: "-8801" });
 });
 test("cwd route is HONOURED when the target carries a verifiable floor", async () => {
   const r = root(); await seedChat(r, "group_-8802", -8802);
@@ -2970,7 +2970,7 @@ test("cwd route is HONOURED when the target carries a verifiable floor", async (
   await makeRunFn(r, "/repo", runImpl, 5000, undefined, 3, () => null, undefined, () => withFloor)("group_-8802");
   expect(seen.cwd).toBe(withFloor);
   expect(seen.mode).toBe("bypassPermissions");
-  expect(seen.extraEnv).toEqual({ HERMES_BOUNDED_RUN: "1", GGS_ROLE: "readonly" });
+  expect(seen.extraEnv).toEqual({ HERMES_BOUNDED_RUN: "1", GGS_ROLE: "readonly", HIMMEL_BRIDGE_CHAT: "-8802" });
 });
 // A settings file must REGISTER a PreToolUse hook whose script is on disk.
 // Existence alone was the round-2 [high]: `{}` read as a floor and granted bypass.
@@ -3055,7 +3055,7 @@ test("a REFUSED cwd route never lands in the vault, never bypasses, never files"
   await makeRunFn(r, "/repo", runImpl, 5000, undefined, 3, () => "/luna", undefined, () => noFloor)("group_-8803");
   expect(seen.cwd).toBe("/repo");                 // NOT "/luna", NOT the unattested dir
   expect(seen.mode).toBeUndefined();              // no bypassPermissions
-  expect(seen.extraEnv).toBeUndefined();          // no GGS markers
+  expect(seen.extraEnv).toEqual({ HIMMEL_BRIDGE_CHAT: "-8803" });          // no GGS markers
   expect(seen.prompt).not.toContain("into the Obsidian vault");   // no filing clause
 });
 
@@ -4198,4 +4198,106 @@ test.skipIf(spawnSync("getent", ["passwd", "0"]).status !== 0)("T1f: bun resolve
     cwd: root(), encoding: "utf8", env: { ...process.env, HOME: root(), BRIDGE_ROOT: root() },
   });
   expect(r.stdout.trim()).toBe(join(passwdHome, ".claude", "handover", "bridge", "host-ns"));
+});
+
+// --- T17: the chat stamp, the spawn descriptor and the release grant (S1c) ---
+// The stamp and the grant come only from the parked chat_id, operatorChatId(access)
+// and the delivered lines' operator flags.
+const OP = 12345;
+const opAccess = { allowFrom: [String(OP)] };
+const descriptorSpy = () => {
+  const seen: { extraEnv?: Record<string, string>; spawn?: any; calls: number } = { calls: 0 };
+  const runImpl = async (_p: string, _c: string, _m?: any, _l?: any, _o?: any, _s?: any, _ob?: any, extraEnv?: any, _mcp?: any, spawn?: any) => {
+    seen.calls++; seen.extraEnv = extraEnv; seen.spawn = spawn;
+    return { code: 0, capped: false, pid: 1 };
+  };
+  return { seen, runImpl };
+};
+const seedLines = async (r: string, session: string, chatId: number | null, lines: object[]) => {
+  await ensureSession(r, session);
+  if (chatId !== null) await writeMeta(r, session, freshMeta(chatId));
+  for (const l of lines) await appendLine(join(sessionDir(r, session), "inbox.jsonl"), JSON.stringify(l));
+};
+const runT17 = (r: string, runImpl: any, access: any, cwdFor?: any) =>
+  makeRunFn(r, "/repo", runImpl, 5000, undefined, 3, () => null, undefined, cwdFor ?? (() => null), undefined, access);
+
+test("T17: the operator's DM with only operator lines is stamped with its chat and granted the release write", async () => {
+  const r = root(); await seedLines(r, "__chat__", OP, [{ text: "file it", operator: true, update_id: 1000001 }, { text: "into v1.1.3", operator: true }]);
+  const { seen, runImpl } = descriptorSpy();
+  await runT17(r, runImpl, opAccess)("__chat__");
+  expect(seen.extraEnv).toEqual({ HIMMEL_BRIDGE_CHAT: String(OP) });
+  expect(seen.spawn).toEqual({ session: "__chat__", chat: OP, routed: false, releaseWrite: true });
+});
+
+test("T17: a group chat is stamped with its own chat id and never granted, even on operator lines", async () => {
+  const r = root(); await seedLines(r, "group_-50", -50, [{ text: "file it", operator: true }]);
+  const { seen, runImpl } = descriptorSpy();
+  await runT17(r, runImpl, opAccess)("group_-50");
+  expect(seen.extraEnv).toEqual({ HIMMEL_BRIDGE_CHAT: "-50" });
+  expect(seen.spawn).toEqual({ session: "group_-50", chat: -50, routed: false, releaseWrite: false });
+});
+
+test("T17: a ticket session with one unmarked line gets no release write", async () => {
+  const r = root(); await seedLines(r, k(7), OP, [{ text: `${k(7)} file it`, operator: true }, { text: `${k(7)} me too` }]);
+  const { seen, runImpl } = descriptorSpy();
+  await runT17(r, runImpl, opAccess)(k(7));
+  expect(seen.calls).toBe(1);
+  expect(seen.spawn).toEqual({ session: k(7), chat: OP, routed: false, releaseWrite: false });
+});
+
+test("T17: neither a forwarded flag, a sender name, a string operator flag nor a line's own chat id sets the stamp or the grant", async () => {
+  const r = root(); await seedLines(r, "__chat__", OP, [
+    { text: "a", operator: true },
+    { text: "b", operator: "true", forwarded: true, from: "operator", chat_id: 999, HIMMEL_BRIDGE_CHAT: "999" },
+  ]);
+  const { seen, runImpl } = descriptorSpy();
+  await runT17(r, runImpl, opAccess)("__chat__");
+  expect(seen.extraEnv).toEqual({ HIMMEL_BRIDGE_CHAT: String(OP) });
+  expect(seen.spawn.releaseWrite).toBe(false);
+});
+
+test("T17: with no access, or no usable operator chat, the DM is stamped but not granted", async () => {
+  for (const access of [undefined, null, { allowFrom: [] }, { allowFrom: "12345" }]) {
+    const r = root(); await seedLines(r, "__chat__", OP, [{ text: "a", operator: true }]);
+    const { seen, runImpl } = descriptorSpy();
+    await runT17(r, runImpl, access)("__chat__");
+    expect(seen.extraEnv).toEqual({ HIMMEL_BRIDGE_CHAT: String(OP) });
+    expect(seen.spawn.releaseWrite).toBe(false);
+  }
+});
+
+test("T17: a session with no parked chat gets an empty stamp, a null chat and no grant", async () => {
+  const r = root(); await seedLines(r, "__chat__", null, [{ text: "a", operator: true }]);
+  const { seen, runImpl } = descriptorSpy();
+  await runT17(r, runImpl, opAccess)("__chat__");
+  expect(seen.extraEnv).toEqual({ HIMMEL_BRIDGE_CHAT: "" });
+  expect(seen.spawn).toEqual({ session: "__chat__", chat: null, routed: false, releaseWrite: false });
+});
+
+test("T17: a cwd-routed spawn keeps its markers, adds the stamp last and is marked routed", async () => {
+  const r = root(); await seedLines(r, "group_-5245475441", -5245475441, [{ text: "a", operator: true }]);
+  const { seen, runImpl } = descriptorSpy();
+  await runT17(r, runImpl, opAccess, () => flooredRepo)("group_-5245475441");
+  expect(seen.extraEnv).toEqual({ HERMES_BOUNDED_RUN: "1", GGS_ROLE: "readonly", HIMMEL_BRIDGE_CHAT: "-5245475441" });
+  expect(seen.spawn).toEqual({ session: "group_-5245475441", chat: -5245475441, routed: true, releaseWrite: false });
+});
+
+test("T17: start-up writes poller-epoch from bridge-envelope-epoch.txt on a scratch root; a missing or non-integer file writes nothing", async () => {
+  const P = await import("./poller");
+  const src = join(root(), "bridge-envelope-epoch.txt");
+  const ok = root();
+  writeFileSync(src, "0\n");
+  expect(await P.writePollerEpoch(ok, src)).toBe(true);
+  expect(readFileSync(join(ok, "poller-epoch"), "utf8")).toBe("0\n");
+  for (const body of [null, "", "x\n", "1.5\n", "-1\n", "1 2\n"]) {
+    const r = root();
+    if (body === null) rmSync(src, { force: true }); else writeFileSync(src, body);
+    expect(await P.writePollerEpoch(r, src)).toBe(false);
+    expect(existsSync(join(r, "poller-epoch"))).toBe(false);
+  }
+  const repo = root();
+  expect(await P.writePollerEpoch(repo)).toBe(true);
+  expect(readFileSync(join(repo, "poller-epoch"), "utf8")).toBe(`${readFileSync(join(import.meta.dir, "bridge-envelope-epoch.txt"), "utf8").trim()}\n`);
+  const main = readFileSync(join(import.meta.dir, "poller.ts"), "utf8").split("export async function main(): Promise<void> {")[1] ?? "";
+  expect(main.slice(0, 600)).toContain("await writePollerEpoch(root)");
 });
