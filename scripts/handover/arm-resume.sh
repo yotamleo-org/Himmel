@@ -2103,6 +2103,7 @@ _arm_bridge_marked() {
         fi
         pid=$ppid; hop=$((hop + 1))
     done
+    [ "$pid" -gt 1 ] && return 0
     return 1
 }
 
