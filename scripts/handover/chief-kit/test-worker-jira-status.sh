@@ -405,7 +405,7 @@ reset "In Progress"; owned WRAPPED 0; d5d_merge
 printf 'Remaining: the second half of the parser\n' > "$FX/pr-body-11"
 fn "$K" --event wrapped --doc "$DOC"
 check "D5d: a partial with no readable owner stays D5c In Progress" "$(ntrans)/$(row rule)" 0/D5c
-d5d_remaining() { # <Remaining text> - a wrapped partial whose merged PR carries this Remaining line
+d5d_remaining() {
     reset "In Progress"; owned WRAPPED 0; d5d_merge
     printf 'Remaining: %s\n' "$1" > "$FX/pr-body-11"
     fn "$K" --event wrapped --doc "$DOC"
