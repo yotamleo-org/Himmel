@@ -41,7 +41,11 @@
 #                     hold row says `held with no owner on record` on its UNOWNED row
 #   HELD-IN-WORK      labelled held, with a live owner or an open PR
 #   VERSION-DRIFT    Done or worked (In Progress / In Review / IN CI), held only in a later unreleased
-#                     version than the current one; the fix is an INTAKE request to the current version
+#                     version than the current one; the fix is an INTAKE request to the current version.
+#                     The release manager's rulings are read first: when the key's latest ruling refused
+#                     its INTAKE and no merged PR naming it, status change or admissions-ledger row is
+#                     newer, the row is AWAITING `<owner> since=<ts> ruling=<id>` ending in ` | wait=<owner>`
+#                     (rm or operator) instead. An unreadable ruling store is a HEALTH row and sdrift=unknown
 #   HEALTH            an input is unreadable or saturated, the log is unwritable
 #                     or carries a disabled row, or a status is unknown
 # The last line is `sdrift=<n>:<sig8>` (n rows that are not wait rows, sig8 over every sorted row), or
@@ -498,7 +502,7 @@ done <<<"$keys"
 MNR_LIMIT="${TICKET_STATUS_DRIFT_MNR_LIMIT:-1000}"
 case "$MNR_LIMIT" in ''|*[!0-9]*) MNR_LIMIT=1000 ;; esac
 mday() { date -u -d "$1 days ago" +%Y-%m-%d 2>/dev/null || date -u -v-"$1"d +%Y-%m-%d 2>/dev/null; } # swallow-ok: no date is the unreadable case the merged list check turns into a HEALTH row
-mlist() { bounded 20 gh pr list --state merged --search "$1" --limit "$MNR_LIMIT" --json number,title 2>/dev/null; }
+mlist() { bounded 20 gh pr list --state merged --search "$1" --limit "$MNR_LIMIT" --json number,title,mergedAt 2>/dev/null; }
 md14=$(mday 14) md8=$(mday 8) md7=$(mday 7) # swallow-ok: an empty date is an unreadable list below
 mprs=""
 if [ -n "$md14" ] && [ -n "$md8" ] && [ -n "$md7" ] && m1=$(mlist "merged:$md14..$md8") && m2=$(mlist "merged:>=$md7"); then
@@ -577,7 +581,57 @@ esac
 # per later version; a ticket that also carries the current version is left out by the JQL itself.
 # ponytail: the release is named after the version, upgrade path = a release lookup in the CLI once a
 # release declares several versions.
+# Before the INTAKE fix, the key's latest ruling is read from that release's rulings.jsonl (read only, as
+# the jira CLI resolves it: HIMMEL_RELEASE_STATE_DIR, else <handover root>/$USER_SLUG/<repo>/release). A
+# latest ruling that refused the INTAKE (op none, outcome BACKLOG) is a wait on its owner while nothing is
+# newer: no PR naming the key in the 14-day merged list, no status change in its history, no admissions-ledger
+# row. Evidence that cannot be read, or a ruling older than the merged list's window, keeps the INTAKE fix.
 proj="${JIRA_PROJECT_KEY:-HIMMEL}"
+VD_EP='def ep: sub("\\.[0-9]+"; "") | capture("^(?<d>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})(?<z>Z|[+-][0-9]{2}:?[0-9]{2})$")
+    | (.d + "Z" | fromdateiso8601) - (if .z == "Z" then 0 else ((.z[1:3] | tonumber) * 3600 + (.z[-2:] | tonumber) * 60) * (if .z[0:1] == "+" then 1 else -1 end) end);'
+vd_rulings() { # <keys> - VRUL = "key\tid\tts\tepoch\towner" per key whose latest ruling refused its INTAKE; rc 1 = unreadable
+    local root hr common rf
+    VRUL=""
+    if [ -n "${HIMMEL_RELEASE_STATE_DIR:-}" ]; then
+        root=$HIMMEL_RELEASE_STATE_DIR
+    else
+        [ -n "${USER_SLUG:-}" ] || return 1
+        hr=$(handover_root 2>/dev/null) && [ -n "$hr" ] || return 1 # swallow-ok: no handover root is the unreadable store
+        common=$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1 # swallow-ok: no repo name is the unreadable store
+        root="$hr/$USER_SLUG/$(basename "$(dirname "$common")")/release"
+    fi
+    rf="$root/$cur/rulings.jsonl"
+    [ -e "$rf" ] || return 0
+    # swallow-ok: an unreadable or unparsable ledger is rc 1, the caller's HEALTH row and sdrift=unknown
+    VRUL=$(jq -nr --arg keys " $1 " "$VD_EP"'reduce (inputs | select(type == "object" and (.key | type) == "string")) as $r ({};
+            if ($keys | index(" " + $r.key + " ")) then .[$r.key] = $r else . end)
+        | .[] | select(.verb == "INTAKE" and .op.kind == "none" and .outcome == "BACKLOG"
+            and ((.authority.kind // "") | test("^[a-z][a-z0-9-]{0,31}$")))
+        | [.key, .id, .ts, (.ts | ep), .authority.kind] | @tsv' "$rf" 2>/dev/null)
+}
+vd_newer() { # <key> <ruling epoch> - rc 0 when evidence newer than the ruling exists or cannot be ruled out
+    local r h hr ledger
+    [ "$2" -ge $((NOW - 14 * 86400)) ] || return 0
+    case "$nmp" in ''|*[!0-9]*) return 0 ;; esac
+    # swallow-ok: an unparsable merged list or timestamp prints no false, so the INTAKE fix stays
+    r=$(jq -r --arg k "$1" --argjson t "$2" "$VD_EP"'any(.[]; (.title | test("(^|[^A-Za-z0-9-])" + $k + "([^0-9]|$)"))
+        and (.mergedAt == null or (.mergedAt | ep) > $t))' <<<"$mprs" 2>/dev/null)
+    [ "$r" = false ] || return 0
+    h=$(ts_jira history "$1" --field status 2>/dev/null) || return 0 # swallow-ok: an unreadable history keeps the INTAKE fix
+    h=$(printf '%s\n' "$h" | awk 'NF { l = $1 } END { print l }')
+    if [ -n "$h" ]; then
+        r=$(jq -nr --arg s "$h" --argjson t "$2" "$VD_EP"'$s | ep > $t' 2>/dev/null) # swallow-ok: an unparsable time prints no false
+        [ "$r" = false ] || return 0
+    fi
+    ledger="${HIMMEL_ADMISSIONS_LEDGER:-}"
+    if [ -z "$ledger" ]; then hr=$(handover_root 2>/dev/null) || return 0; ledger="$hr/admissions-ledger.jsonl"; fi # swallow-ok: no handover root keeps the INTAKE fix
+    [ -e "$ledger" ] || return 1
+    # swallow-ok: an unreadable ledger or a row with a bad time is rc 0 below, so the INTAKE fix stays
+    r=$(jq -Rr --arg k "$1" --argjson t "$2" "$VD_EP"'fromjson? | select(type == "object" and .key == $k and (.ts | type) == "string")
+        | (.ts | ep) > $t' "$ledger" 2>/dev/null) || return 0
+    case "$r" in *true*) return 0 ;; esac
+    return 1
+}
 # swallow-ok: a failed version read becomes a HEALTH row and sdrift=unknown
 if ! vers=$(ts_jira versions --project "$proj" 2>/dev/null); then
     add HEALTH - "jira: the version list is unreadable" jira "jira versions --project $proj"
@@ -585,7 +639,7 @@ if ! vers=$(ts_jira versions --project "$proj" 2>/dev/null); then
 fi
 cur=$(printf '%s\n' "$vers" | awk -F'\t' '$2 == "false" && $4 != "true" { printf "%s\t%06d\t%s\n", ($3 == "" ? "9999-99-99" : $3), NR, $1 }' | sort | head -n 1 | cut -f3)
 if [ -n "$cur" ]; then
-    vseen=""
+    vseen="" vfound=""
     while IFS= read -r later; do
         [ -n "$later" ] && [ "$later" != "$cur" ] || continue
         jlater=$(printf '%s' "$later" | sed 's/[\\"]/\\&/g') jcur=$(printf '%s' "$cur" | sed 's/[\\"]/\\&/g')
@@ -604,10 +658,29 @@ if [ -n "$cur" ]; then
             [ -n "$vk" ] || continue
             case " $vseen " in *" $vk "*) continue ;; esac
             vseen="$vseen $vk"
-            qcur=$(printf '%q' "$cur") qlater=$(printf '%q' "$later")
-            add VERSION-DRIFT "$vk" "status=$vst in=$later current=$cur" release-manager "jira release request $qcur --verb INTAKE --key $vk --from $qlater --to $qcur --why \"worked ticket held in a later version\""
+            vfound="$vfound$vk"$'\t'"$vst"$'\t'"$later"$'\n'
         done <<<"$vrows"
     done <<<"$(printf '%s\n' "$vers" | awk -F'\t' '$2 == "false" && $4 != "true" { print $1 }')"
+    vstore=ok
+    if [ -n "$vfound" ] && ! vd_rulings "$vseen"; then vstore=unreadable VRUL=""; fi
+    qcur=$(printf '%q' "$cur")
+    while IFS=$'\t' read -r vk vst later; do
+        [ -n "$vk" ] || continue
+        rrow=$(printf '%s\n' "${VRUL:-}" | awk -F'\t' -v k="$vk" '$1 == k { print; exit }')
+        if [ -n "$rrow" ]; then
+            IFS=$'\t' read -r _ rid rts rep rown <<<"$rrow"
+            if ! vd_newer "$vk" "$rep"; then
+                add AWAITING "$vk" "$rown since=$rts ruling=$rid what=the INTAKE to $cur was refused, status=$vst in=$later source=ruling" release-manager "none while $rid stands: a newer merged PR, status change or admission re-raises the INTAKE" "$rown"
+                continue
+            fi
+        fi
+        qlater=$(printf '%q' "$later")
+        add VERSION-DRIFT "$vk" "status=$vst in=$later current=$cur" release-manager "jira release request $qcur --verb INTAKE --key $vk --from $qlater --to $qcur --why \"worked ticket held in a later version\""
+    done <<<"$vfound"
+    if [ "$vstore" != ok ]; then
+        add HEALTH - "release: the rulings of $cur are unreadable" release-manager "jira release state $qcur"
+        finish unknown
+    fi
 fi
 
 # --- from the outcome log ----------------------------------------------------------

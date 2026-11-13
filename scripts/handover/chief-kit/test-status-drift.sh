@@ -36,6 +36,8 @@ export TICKET_STATUS_STATE_DIR="$tmp/state"
 export JIRA_PROJECT_KEY=HIMMEL
 # the merged-PR check reads ticket status from this mirror before it spends a live read: keep it off the real one
 export TICK_TRACKER_MIRROR_DIR="$tmp/mirror"
+# the version drift check reads the release manager's rulings and the admissions ledger: keep it off the real ones
+export HIMMEL_RELEASE_STATE_DIR="$tmp/release" HIMMEL_ADMISSIONS_LEDGER="$tmp/admissions.jsonl"
 mkdir -p "$tmp/bin"
 
 cat >"$tmp/jira-stub.sh" <<'EOS'
@@ -78,6 +80,10 @@ case "$1" in
         exit 0 ;;
     comments)
         cat "$FX/comments.$2" 2>/dev/null
+        exit 0 ;;
+    history)
+        [ -e "$FX/history.fail" ] && { echo "boom" >&2; exit 1; }
+        cat "$FX/history.$2" 2>/dev/null
         exit 0 ;;
     comment)
         file=""; edit=""
@@ -1397,6 +1403,74 @@ check "3b: and the signature is unknown" "$(dlast)" "sdrift=unknown"
 reset "To Do"; touch "$FX/versions.fail"
 drift
 contains "3b: an unreadable version list is a HEALTH row" "$(drows HEALTH)" "HEALTH - jira: the version list is unreadable"
+
+# the release manager's latest ruling refused the key's INTAKE and nothing is newer: one wait row naming it
+VNOW=$(date -u +%s)
+viso() { date -u -d "@$((VNOW - $1))" +%Y-%m-%dT%H:%M:%S.000Z 2>/dev/null || date -u -r "$((VNOW - $1))" +%Y-%m-%dT%H:%M:%S.000Z; }
+vruling() { # <key> <id> <secs ago> <verb> <op kind> <outcome> <authority> - one ruling row in v1.1.3's ledger
+    mkdir -p "$HIMMEL_RELEASE_STATE_DIR/v1.1.3"
+    jq -nc --arg k "$1" --arg id "$2" --arg ts "$(viso "$3")" --arg v "$4" --arg op "$5" --arg o "$6" --arg a "$7" \
+        '{id: $id, ts: $ts, verb: $v, key: $k, op: {kind: $op}, outcome: $o, authority: {kind: $a, ref: null}, phase: "receipted"}' \
+        >> "$HIMMEL_RELEASE_STATE_DIR/v1.1.3/rulings.jsonl"
+}
+vd_held() { # a Done key in v1.1.4 whose INTAKE the rm refused two hours ago
+    reset "To Do"; vd_versions; rm -rf "$HIMMEL_RELEASE_STATE_DIR" "$HIMMEL_ADMISSIONS_LEDGER"
+    printf 'HIMMEL-90031\tTask\tDone\tsummary\n' > "$FX/list.fv.v1.1.4"
+    vruling HIMMEL-90031 R-v1.1.3-0001 172800 INTAKE add ADMIT rm
+    vruling HIMMEL-90031 R-v1.1.3-0002 7200 INTAKE none BACKLOG rm
+    printf '%s  Op  status: In Progress → Done\n' "$(viso 86400)" > "$FX/history.HIMMEL-90031"
+}
+vd_held
+drift
+check "3e: a key whose latest ruling refused its INTAKE, with nothing newer, prints no VERSION-DRIFT row" "$(dcount VERSION-DRIFT)" 0
+check "3e: it prints exactly one wait row" "$(dcount AWAITING)" 1
+contains "3e: the wait row names the ruling and its owner" "$(drows AWAITING)" "AWAITING HIMMEL-90031 rm since=$(viso 7200) ruling=R-v1.1.3-0002"
+contains "3e: the wait row ends in the owner's wait mark" "$(drows AWAITING)" " | wait=rm"
+check "3e: the wait row counts as a wait, not drift" "$(dlast | cut -d: -f1)" "sdrift=0"
+check "3e: the ruling read writes nothing" "$(nwrites)" 0
+vd_held; vruling HIMMEL-90031 R-v1.1.3-0003 3600 INTAKE none BACKLOG operator
+drift
+contains "3e: an operator ruling names the operator as the owner" "$(drows AWAITING)" "AWAITING HIMMEL-90031 operator since=$(viso 3600) ruling=R-v1.1.3-0003"
+vd_held
+printf '[{"number":701,"title":"fix(x): [HIMMEL-9] y [HIMMEL-90031]","mergedAt":"%s"}]\n' "$(viso 600 | sed 's/\.000//')" > "$FX/pr-merged.json"
+drift
+contains "3e: a merged PR naming the key, newer than the ruling, still prints the INTAKE fix" "$(drows VERSION-DRIFT)" "release request v1.1.3 --verb INTAKE --key HIMMEL-90031"
+check "3e: and no wait row" "$(dcount AWAITING)" 0
+vd_held
+printf '[{"number":702,"title":"fix(x): [HIMMEL-90031] y","mergedAt":"%s"}]\n' "$(viso 9000 | sed 's/\.000//')" > "$FX/pr-merged.json"
+drift
+check "RED control 3e: a merged PR older than the ruling keeps the wait row" "$(dcount AWAITING)" 1
+vd_held
+printf '%s  Op  status: Done → In Progress\n%s  Op  status: In Progress → Done\n' "$(viso 5000)" "$(viso 3000 | sed 's/Z$/+0000/')" >> "$FX/history.HIMMEL-90031"
+drift
+contains "3e: a status change newer than the ruling still prints the INTAKE fix" "$(drows VERSION-DRIFT)" "--key HIMMEL-90031"
+check "3e: and no wait row after the status change" "$(dcount AWAITING)" 0
+vd_held
+printf '{"ts":"%s","version":"v1.1.4","key":"HIMMEL-90031","kind":"override","actor":"x"}\n' "$(viso 60)" > "$HIMMEL_ADMISSIONS_LEDGER"
+drift
+contains "3e: an admissions-ledger row newer than the ruling still prints the INTAKE fix" "$(drows VERSION-DRIFT)" "--key HIMMEL-90031"
+vd_held; vruling HIMMEL-90031 R-v1.1.3-0004 1800 INTAKE add ADMIT rm
+drift
+contains "3e: a latest ruling that admits is no refusal: the INTAKE fix stays" "$(drows VERSION-DRIFT)" "--key HIMMEL-90031"
+vd_held; rm -rf "$HIMMEL_RELEASE_STATE_DIR"
+drift
+contains "3e: a key with no ruling is unchanged" "$(drows VERSION-DRIFT)" "VERSION-DRIFT HIMMEL-90031 status=Done in=v1.1.4 current=v1.1.3"
+check "3e: no ruling, no wait row" "$(dcount AWAITING)" 0
+check "3e: no ruling, no HEALTH row" "$(dcount HEALTH)" 0
+vd_held; touch "$FX/history.fail"
+drift
+contains "3e: an unreadable status history cannot prove nothing is newer: the INTAKE fix stays" "$(drows VERSION-DRIFT)" "--key HIMMEL-90031"
+vd_held; printf 'not json\n' >> "$HIMMEL_RELEASE_STATE_DIR/v1.1.3/rulings.jsonl"
+drift
+contains "3e: an unreadable ruling store is a HEALTH row" "$(drows HEALTH)" "HEALTH - release: the rulings of v1.1.3 are unreadable"
+check "3e: and the signature is unknown" "$(dlast)" "sdrift=unknown"
+contains "3e: and the drift row is not dropped" "$(drows VERSION-DRIFT)" "--key HIMMEL-90031"
+vd_held; unset HIMMEL_RELEASE_STATE_DIR
+USER_SLUG="" drift
+export HIMMEL_RELEASE_STATE_DIR="$tmp/release"
+contains "3e: a ruling store with no location is a HEALTH row" "$(drows HEALTH)" "HEALTH - release: the rulings of v1.1.3 are unreadable"
+check "3e: and the signature is unknown with no location" "$(dlast)" "sdrift=unknown"
+rm -rf "$HIMMEL_RELEASE_STATE_DIR" "$HIMMEL_ADMISSIONS_LEDGER"
 
 # --- 3c: the FOCUS refresh (focus-refresh.sh) ----------------------------------------
 FOCUS="$HERE/focus-refresh.sh"
