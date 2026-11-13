@@ -86,10 +86,16 @@ setup no-go
 start
 ask r flags=HIMMEL_BILLED_OK decision=921
 reply 9999 9999 "go $CODE"
+sleep 1
+assert_eq "another sender's go launches nothing" "no-launch r.req.pending" \
+    "$([ -e "$D/launch.env" ] && echo launched || echo no-launch) $(cd "$Q" && ls r.req.*)"
 reply "$OPERATOR" "$OPERATOR" "go $CODE" true
+sleep 1
+assert_eq "the operator's forwarded go launches nothing" "no-launch r.req.pending" \
+    "$([ -e "$D/launch.env" ] && echo launched || echo no-launch) $(cd "$Q" && ls r.req.*)"
 reply "$OPERATOR" "$OPERATOR" "no $CODE"
 wait_for "$Q/daemon.log" "no HIMMEL-1-N1-sweep-pr1"
-assert_eq "a no code, another sender's go and a forwarded go launch nothing" "no-launch r.req.no" \
+assert_eq "the operator's no code launches nothing" "no-launch r.req.no" \
     "$([ -e "$D/launch.env" ] && echo launched || echo no-launch) $(cd "$Q" && ls r.req.*)"
 assert_absent "no GRANT line without a go code" "GRANT" "$(cat "$Q/daemon.log")"
 stop
