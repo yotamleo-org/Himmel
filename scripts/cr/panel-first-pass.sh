@@ -85,9 +85,8 @@
 #       or merge base cannot be read, or (e) the PR diff is over the 204800 bytes the
 #       critics read (CRITIC_FIRST_PASS_CAP_BYTES), refused before a round starts; the rtk
 #       retry's diff is measured the same way (that round stays counted). ABORT: nothing was reviewed, nothing was recorded,
-#       and for a branch review a round already started is given back
-#       (review-round.sh abort). A --pr round started before an abort stays counted;
-#       a retry at the same head reuses it. Never degrades to claude-only - re-run
+#       and a round already started is given back (review-round.sh abort, --pr for an
+#       outside PR). A round whose panel recorded a row stays counted. Never degrades to claude-only - re-run
 #       /pr-check from step 1.
 #   Every other critic-panel.sh failure fails OPEN to claude-only (this
 #   script still exits 0; panel findings are empty and a loud note went to
@@ -383,12 +382,12 @@ else
     # give_back <rc>: an abort from here on reviewed nothing, so the round
     # just started is given back before the exit.
     give_back() {
-        # ponytail: a --pr round is not given back (no review-round abort --pr), so an abort after start spends one of the PR's rounds; upgrade path is abort --pr
         if [ -n "$PR" ]; then
-            echo "panel-first-pass: the aborted --pr round $review_round for PR #$PR was NOT given back" >&2
-            exit "$1"
+            gb_args=(--pr "$PR" --head "$HEAD_SHA")
+        else
+            gb_args=(--branch "$BRANCH" --head "$HEAD_SHA")
         fi
-        if gb_out="$(bash "$HIMMEL_ROOT/scripts/cr/review-round.sh" abort --branch "$BRANCH" --head "$HEAD_SHA")"; then
+        if gb_out="$(bash "$HIMMEL_ROOT/scripts/cr/review-round.sh" abort "${gb_args[@]}")"; then
             echo "panel-first-pass: the aborted round was given back (round, reviewed head: $gb_out)" >&2
         else
             echo "panel-first-pass: the aborted round was NOT given back (review-round.sh abort rc=$?, reason above)" >&2

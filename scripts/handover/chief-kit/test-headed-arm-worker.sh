@@ -2927,7 +2927,7 @@ case "$go_root26" in
   *) echo "FAIL - HANDOVER_DIR e2e: resolved GO root [$go_root26] is not inside the suite's temp dir [$tmp] - refusing to write a GO"; fails=$((fails+1)); go_root26_ok=0 ;;
 esac
 if [ "$go_root26_ok" -eq 1 ]; then
-  go_out26="$(cd "$primary26" && HOME="$home26" READY_STUB_HEAD="$sha26" PATH="$tmp/ready26:$bin26:$PATH" HIMMEL_CONSOLE_LEG='' HIMMEL_CONSOLE_RELAY='' HANDOVER_DIR="$primary26/handovers" bash "$HERE/go.sh" 26260 "$sha26" 2>/dev/null)"
+  go_out26="$(cd "$primary26" && HIMMEL_REPO="$primary26" HOME="$home26" READY_STUB_HEAD="$sha26" PATH="$tmp/ready26:$bin26:$PATH" HIMMEL_CONSOLE_LEG='' HIMMEL_CONSOLE_RELAY='' HANDOVER_DIR="$primary26/handovers" bash "$HERE/go.sh" 26260 "$sha26" 2>/dev/null)"
 else
   go_out26="SKIPPED: unsafe GO root"
 fi

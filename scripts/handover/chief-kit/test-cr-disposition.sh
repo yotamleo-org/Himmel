@@ -57,6 +57,7 @@ export PATH="$tmp/ready-bin:$PATH"
 REPO="$tmp/repo"
 git init -q "$REPO"
 cd "$REPO" || { echo "FAIL: cd $REPO" >&2; exit 1; }
+export HIMMEL_REPO="$REPO"
 LEDGER="$(git rev-parse --path-format=absolute --git-common-dir)/cr-critic-scores.jsonl"
 
 fails=0
