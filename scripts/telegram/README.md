@@ -360,12 +360,9 @@ that `run.ts` builds from the descriptor at spawn:
 - The allow list: `Read`, `Grep`, `Glob`, `Bash` (sandboxed), `WebFetch`,
   `WebSearch`, the profile's MCP tools, and `Edit` only under the write roots.
 - The write roots: the session's own folder, `<bridge root>/outgoing/`, and the
-  vault the session spawned in. `~/.himmel/config.json` `telegram.bridgeVaultRoots`
-  narrows a vault: a map from its absolute path to the vault-relative files or
-  folders it may write, e.g. `{"/home/me/vault": ["Clippings", "log.md"]}`.
-  Unset, or a vault the map does not name, means the whole vault. Only the
-  operator sets the key. On a granted, non-routed spawn, Bash also writes the
-  one declared release folder.
+  whole vault the session spawned in. A vault cannot be narrowed to folders:
+  the sandbox mounts an allowed folder inside a denied one read-only, so a set
+  `telegram.bridgeVaultRoots` in `~/.himmel/config.json` refuses the spawn.
 - Denied for every tool and in the sandbox: the handover root, the primary
   checkout and its worktrees, `~/.himmel/`, the vault's `.git/hooks`,
   `.git/config`, `.git/info` and `.git/modules` (the rest of `.git` stays
@@ -376,11 +373,14 @@ that `run.ts` builds from the descriptor at spawn:
 - The Bash sandbox opens the Jira host and GitHub, and no Unix socket.
   `telegram.bridgeEgress` maps a chat id to the extra hosts its Bash may reach,
   e.g. `{"-100123": ["ha.lan"]}`; unset, no chat gets an extra host.
-- On a granted spawn, the one command run outside the sandbox is
-  `bash <primary>/scripts/handover/arm-resume.sh …` (DM `/arm`), with no env
-  prefix. `arm-resume.sh` then writes `export HIMMEL_BRIDGE_SESSION=1` into the
-  session it schedules, so the operator fence refuses that session's honest
-  operator verbs. `headed-arm-worker.sh` is not excluded.
+- On a granted spawn (the operator's DM, every delivered line the operator's),
+  two commands run outside the sandbox, each with one allow rule and no env
+  prefix: `bash <primary>/scripts/handover/arm-resume.sh …` (DM `/arm`) and
+  `node <primary>/scripts/jira/dist/index.js create …`, the only way the
+  release folder is written. `arm-resume.sh` writes `export
+  HIMMEL_BRIDGE_SESSION=1` into the session it schedules, so the operator fence
+  refuses that session's honest operator verbs. Every other `jira` verb stays
+  sandboxed. `headed-arm-worker.sh` is not excluded.
 
 Every root is realpathed at spawn and a symlinked root refuses the spawn.
 `scripts/telegram/smoke-bridge-sandbox.sh` (billed, `HIMMEL_BILLED_OK=1`) is the

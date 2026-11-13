@@ -5,7 +5,7 @@ import { isTicketKey } from "./router";
 import { execFileSync } from "node:child_process";
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, isAbsolute, join, sep } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { behaviourKey, handoverRoot } from "../jira/src/handover-root";
 import { stationJiraBaseUrl } from "../jira/src/env-file";
@@ -176,23 +176,12 @@ function refuseWideningScopes(home: string, configDir: string, managed: string):
 
 const isMap = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
 
-// telegram.bridgeVaultRoots (chief rulings r7, R7-1): a map from an absolute vault path to its
-// vault-relative write roots (files or folders). Unset, or a vault not in the map: null, the whole vault.
-function vaultRootsOf(vault: string, tg: any): string[] | null {
-  const map = tg?.bridgeVaultRoots;
-  if (map === undefined || map === null) return null;
-  const shape = "bridge envelope: telegram.bridgeVaultRoots must map an absolute vault path to a list of vault-relative files or folders with no '..'";
-  if (!isMap(map) || Object.keys(map).some((k) => !isAbsolute(k))) throw new Error(shape);
-  const key = Object.keys(map).find((k) => canonMaybe(k) === vault);
-  if (key === undefined) return null;
-  const list = map[key];
-  const bad = (r: unknown) => typeof r !== "string" || !r || isAbsolute(r) || r.split(/[\\/]/).includes("..");
-  if (!Array.isArray(list) || list.some(bad)) throw new Error(shape);
-  return (list as string[]).filter((r) => existsSync(join(vault, r))).map((r) => {
-    const c = canonRoot(join(vault, r), "vault root");
-    if (!c.startsWith(vault + sep)) throw new Error(`bridge envelope: telegram.bridgeVaultRoots entry ${r} resolves outside the vault`);
-    return c;
-  });
+// The vault cwd is a write root as a whole (R7-1). Narrowing it to folders would put an allow inside the
+// denied cwd, which the sandbox mounts read-only, so a set telegram.bridgeVaultRoots refuses the spawn (R7-7).
+function refuseVaultNarrowing(tg: any): void {
+  if (tg?.bridgeVaultRoots !== undefined && tg?.bridgeVaultRoots !== null) {
+    throw new Error("bridge envelope: telegram.bridgeVaultRoots is set, but narrowing a vault needs allow-inside-deny, which this sandbox does not honour (P1 row 4b): unset it");
+  }
 }
 
 // telegram.bridgeEgress (R7-4): a map from a chat id to the extra hosts its Bash may reach. Unset: none.
@@ -208,16 +197,17 @@ function egressOf(chat: number | string | null, tg: any): string[] {
 // The vault git dir parts that run code or redirect writes (R7-2); objects, refs, the index and logs stay writable.
 const VAULT_GIT_DENIES = ["hooks", "config", "info", "modules"];
 
-// The declared release: its folder is a Bash write root only on a granted spawn; its signed files and key are denied.
-function releaseOf(granted: boolean, o: EnvelopeSeams): { release: string | null; denies: string[] } {
+// The declared release's signed files and key are denied. Its folder sits inside the denied handover root, so no
+// sandboxed command writes it; a granted spawn files through the one excluded `jira create` instead (R7-6).
+function releaseDenies(o: EnvelopeSeams): string[] {
   let relRoot: string | null;
   try { relRoot = o.releaseRoot ?? releaseRoot(); } catch { relRoot = null; }
   const relName = relRoot ? activeRelease(relRoot) : null;
-  if (!relRoot || !relName) return { release: null, denies: [] };
+  if (!relRoot || !relName) return [];
   const dir = join(relRoot, relName);
   const keyDir = o.releaseKeyDir ?? process.env.HIMMEL_RELEASE_KEY_DIR ?? join(homedir(), ".config", "himmel", "release");
   const signed = [...SIGNED_RELEASE_FILES, ...readdirSync(dir).filter((n) => n.startsWith("baseline"))].map((n) => canonPath(join(dir, n)));
-  return { release: granted ? canonRoot(dir, "release folder") : null, denies: [...signed, canonMaybe(join(keyDir, `${relName}.key`))] };
+  return [...signed, canonMaybe(join(keyDir, `${relName}.key`))];
 }
 
 // The bridge root is denied entry by entry: the session's own folder and outgoing/ stay writable.
@@ -267,26 +257,25 @@ export function bridgeEnvelope(bridge: BridgeRun, settings?: string, mcpConfig?:
   const vault = !sp.routed && cwd !== primary ? cwd : null;
   const vaultGit = vault ? gitDir(["rev-parse", "--path-format=absolute", "--git-common-dir"], vault) : null;
   const granted = sp.releaseWrite && !sp.routed;
-  const rel = releaseOf(granted, o);
   const tg = readJson(join(himmelDir, "config.json"), "the himmel config")?.telegram;
-  const vaultRoots = vault ? vaultRootsOf(vault, tg) : [];
-  const wholeVault = vaultRoots === null;
+  refuseVaultNarrowing(tg);
 
   const denies = [
     canonRoot(o.handoverRoot ?? handoverRoot(), "handover root"), primary, ...worktreeRoots(primary).map(canonMaybe), himmelDir, o.hostNs ?? hostNsFile(),
     ...bridgeRootDenies(bRoot, own), ...CWD_DENIES.map((n) => canonPath(join(cwd, n))),
     ...(vault ? [join(vault, ".gitattributes"), join(vault, ".gitmodules")].map(canonPath) : []),
-    ...(vaultGit ? VAULT_GIT_DENIES.map((n) => canonMaybe(join(vaultGit, n))) : []), ...rel.denies,
+    ...(vaultGit ? VAULT_GIT_DENIES.map((n) => canonMaybe(join(vaultGit, n))) : []), ...releaseDenies(o),
   ].filter((p, i, a) => a.indexOf(p) === i);
-  // The cwd is sandbox-writable by default, so the sandbox denies it unless the whole vault is a root.
-  // dontAsk already refuses an Edit with no allow, so the file tools get no cwd deny: a deny would beat the vault-folder allows.
-  const sandboxDenies = wholeVault || denies.includes(cwd) ? denies : [...denies, cwd];
-  const fileRoots = [own, outgoing, ...(wholeVault ? [vault!] : vaultRoots)];
-  const arm = `bash ${primary}/scripts/handover/arm-resume.sh`;
+  // The cwd is sandbox-writable by default, so the sandbox denies it unless it is the vault, a write root.
+  // dontAsk already refuses an Edit with no allow, so the file tools need no cwd deny.
+  const sandboxDenies = vault || denies.includes(cwd) ? denies : [...denies, cwd];
+  const fileRoots = [own, outgoing, ...(vault ? [vault] : [])];
+  // The granted spawn's two unsandboxed entry points: DM /arm and the ticket filing (R7-6).
+  const excluded = granted ? [`bash ${primary}/scripts/handover/arm-resume.sh`, `node ${primary}/scripts/jira/dist/index.js create`] : [];
   // A path not created yet gets both forms, so a folder made after spawn is still covered.
   const editRule = (p: string) => !existsSync(p) ? [`Edit(/${p})`, `Edit(/${p}/**)`] : [lstatSync(p).isDirectory() ? `Edit(/${p}/**)` : `Edit(/${p})`];
   const allow = ["Read", "Grep", "Glob", "Bash", "WebFetch", "WebSearch", ...mcpServerNames(mcpConfig).map((n) => `mcp__${n}`),
-    ...fileRoots.flatMap(editRule), ...(granted ? [`Bash(${arm}:*)`] : [])];
+    ...fileRoots.flatMap(editRule), ...excluded.map((e) => `Bash(${e}:*)`)];
   const fileDeny = denies.flatMap(editRule);
   const base = settings ? readJsonText(settings) : {};
   const c = mergeCarried(carriedScopes(home, configDir, cwd), base, fileDeny);
@@ -299,8 +288,8 @@ export function bridgeEnvelope(bridge: BridgeRun, settings?: string, mcpConfig?:
     permissions: { defaultMode: "dontAsk", allow, deny: c.deny, ...(c.ask.length ? { ask: c.ask } : {}) },
     sandbox: {
       enabled: true, failIfUnavailable: true, allowUnsandboxedCommands: false, autoAllowBashIfSandboxed: true,
-      excludedCommands: granted ? [`${arm} *`] : [],
-      filesystem: { allowWrite: [...fileRoots, ...(rel.release ? [rel.release] : [])], denyWrite: sandboxDenies },
+      excludedCommands: excluded.map((e) => `${e} *`),
+      filesystem: { allowWrite: fileRoots, denyWrite: sandboxDenies },
       network: { allowedDomains: [...(jiraHost ? [jiraHost] : []), "github.com", "api.github.com", ...egressOf(sp.chat, tg)], allowUnixSockets: [] },
     },
   });
