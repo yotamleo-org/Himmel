@@ -58,6 +58,7 @@
 #
 # Usage: merge-on-green.sh [<pr-selector>] [--dry-run] [--jira-transition] [--worker-doc PATH] [--go GOFILE]
 #   selector           optional PR number / branch / url; defaults to the
+#                      PR a --go file name <pr>.<head> names, else the
 #                      current branch
 #   --dry-run          run every gate, print the intended merge, then STOP
 #                      (no merge)
@@ -400,6 +401,9 @@ while [ $# -gt 0 ]; do
             selector="$1"; shift ;;
     esac
 done
+if [ -z "$selector" ] && [[ "${GO_FLAG##*/}" =~ ^([1-9][0-9]*)\.[0-9a-f]{40}$ ]]; then
+    selector="${BASH_REMATCH[1]}"
+fi
 
 # _truthy — the same truthiness test the worker resolver uses.
 _truthy() {
@@ -814,19 +818,31 @@ if [ "$meta_shape_ok" -ne 1 ] || [ -z "$head_branch" ]; then
     exit 13
 fi
 
-# 2-local. Local-commit guard — run from a checkout on the PR's head branch, the
-# merge refuses while that HEAD carries commits the PR head does not: a squash
-# merge of the PR head would leave them behind on a branch GitHub then deletes.
-# Mirrors worker-pr-open.sh's unpushed-HEAD refusal. A checkout on any other
-# branch (the primary on main, a selector run) is not the PR's branch and is skipped.
-# The full ref is compared: a tag named like the branch turns --short into heads/<b>.
+worktree_holding_branch() {
+    local list line cur="" wt=""
+    list=$(mktemp "${TMPDIR:-/tmp}/mog-worktrees.XXXXXX") || return 1
+    if ! git worktree list --porcelain -z > "$list"; then rm -f "$list"; return 1; fi
+    while IFS= read -r -d '' line; do
+        case "$line" in
+            "worktree "*) cur="${line#worktree }" ;;
+            "branch refs/heads/$1") wt="$cur" ;;
+        esac
+    done < "$list"
+    rm -f "$list"
+    printf '%s' "$wt"
+}
+
 # Runs here and again right before the merge, to catch a commit made during the CI watch.
 local_commit_guard() {
-    local cur_ref local_ahead ahead_n
-    # swallow-ok: a detached HEAD or a non-repo cwd is not on the PR's branch, so the guard does not apply
-    cur_ref=$(git symbolic-ref --quiet HEAD 2>/dev/null) || cur_ref=""
-    [ "$cur_ref" = "refs/heads/$head_branch" ] || return 0
-    if ! local_ahead=$(git rev-list "$sha..HEAD"); then
+    local wt local_ahead ahead_n
+    if ! git rev-parse --git-dir >/dev/null 2>&1; then return 0; fi
+    if ! wt=$(worktree_holding_branch "$head_branch"); then
+        echo "merge-on-green: cannot list this checkout's worktrees to find the one holding $head_branch — refusing. Re-run." >&2
+        audit "REFUSED reason=local-commits-unreadable repo=$nwo pr=#$pr_num sha=$sha"
+        exit 25
+    fi
+    [ -n "$wt" ] || return 0
+    if ! local_ahead=$(git -C "$wt" rev-list "$sha..HEAD"); then
         echo "merge-on-green: cannot compare this checkout's HEAD with PR #$pr_num's head ${sha:0:12} (not in the local object store?) — refusing. git fetch, then re-run." >&2
         audit "REFUSED reason=local-commits-unreadable repo=$nwo pr=#$pr_num sha=$sha"
         exit 25
