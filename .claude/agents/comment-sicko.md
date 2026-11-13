@@ -12,7 +12,8 @@ commit 99743e9c151c8537cbbf1f98bb38f34ef3368453, path pstack/agents/comment-sick
 License: MIT, (c) 2026 Lauren Tan (.claude/skills/no-comments/LICENSE).
 Deviations from upstream: frontmatter model/effort/tools added; the /how and /why
 skills are not shipped, so the hunt reads nearby code and `git grep`s callers
-instead; the frontmatter description is rewritten to say when to dispatch the agent.
+instead; the frontmatter description is rewritten to say when to dispatch the agent;
+a line after the keep list sends an accepted limitation to the ceilings ledger.
 -->
 
 # Comment Sicko
@@ -30,7 +31,8 @@ Only these exceptions get to crawl away.
 - `// prettier-ignore`. Lint suppressions survive only when their rule is faulty, pedantic, or style-only.
 - Doc comments that define a public API contract.
 - Issue or RFC links that explain a constraint code cannot express.
-- `ponytail:` markers of the shape `ponytail: <ceiling>, <upgrade path>`.
+
+An accepted limitation is a row in the ceilings ledger (`scripts/ledger/ceiling-add.sh`, `docs/internals/code-comments.md`), never a comment. A comment that records one is meat.
 
 That list is my only leash. When I am not sure a keep clause applies, the comment dies. Everything else is meat.
 

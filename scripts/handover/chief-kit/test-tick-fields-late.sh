@@ -994,6 +994,52 @@ s2_lines | sed 's/^\(pool-disposition: HIMMEL-141 .*\)$/\1!/' | s2_doc r8h-c > /
 PS_GH_FAIL=1 s2_tick "$W/handover/r8h-c.md"
 not_contains 'R8h control: a 141 line that differs by one character carries nothing' "$(s2_pd "$W/handover/r8h-c.md")" '# pool-unresolved stale HIMMEL-141 '
 
+G15="$S2/g15"; git init -q "$G15"; mkdir -p "$S2/notrepo"
+g15() { GIT_COMMITTER_DATE="$1" GIT_AUTHOR_DATE="$1" git -C "$G15" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "$2" && git -C "$G15" rev-parse --short HEAD; }
+g15 2026-11-08T10:00:00Z 'base' > /dev/null
+sub15a='[HIMMEL-902] B1 the first slice'; sub15b='[HIMMEL-902] B2 the second slice'
+c15a="$(g15 2026-11-09T12:00:00Z "$sub15a")"
+c15b="$(g15 2026-11-09T15:00:00Z "$sub15b")"
+s3_produce() {
+    local out sf
+    out="$(s2 bash "$SUT" --pool-stale --doc "$1" --repo "$2" --prior "$3" 2>/dev/null)"
+    sf="$(printf '%s\n' "$out" | sed -n 's/^# stale-file=//p')"
+    [ -n "$sf" ] || return 1
+    mkdir -p "$(dirname "$sf")"
+    printf '%s\n' "$out" > "$sf"
+    printf '%s' "$sf"
+}
+s3_lines() { s2_lines | sed 's/^\(pool-disposition: HIMMEL-143 .*\)$/\1 (ZZ 11-08)/'; }
+S2ST="$S2/st-r15"; rm -rf "$S2ST"; mkdir -p "$S2ST"
+d15="$(s3_lines | s2_doc HIMMEL-nextleg-2026-11-10ZZ-r15)"
+f15="$(s3_produce "$d15" "$G15" "$S2ST/none.out")"
+r15="$(s2_pd "$d15")"
+u15="# pool-unresolved changed HIMMEL-143 HIMMEL-902 merged $c15a since the line was written: re-read and stamp (<LL> <MM-DD> <HH:MM>Z)"
+contains 'R15 a changed key counts as unresolved, beside the two stale ones' "$r15" '# pool-counts 4/1/1/3'
+contains 'R15 the unresolved text names the oldest merge since the anchor and the literal stamp to add' "$r15" "$u15"
+p15="^CHANGED-DISPOSITION HIMMEL-143 .* via HIMMEL-902 $c15b "
+same 'R15 the detail line names the newest merge' "$(grep -c "$p15" "${f15:-/dev/null}")" 1
+s3_produce "$d15" "$G15" "$f15" > /dev/null
+same 'R15 a second run prints the same unresolved text' "$(s2_pd "$d15" | grep '^# pool-unresolved changed ')" "$u15"
+s3_produce "$d15" "$S2/notrepo" "$f15" > /dev/null
+p19='^CHANGED-DISPOSITION HIMMEL-143 .* carried$'
+same 'R19 a failed git read carries the changed line' "$(grep -c "$p19" "${f15:-/dev/null}")" 1
+contains 'R19 and the key stays unresolved changed' "$(s2_pd "$d15")" "$u15"
+
+S2ST="$S2/st-r15t"; rm -rf "$S2ST"; mkdir -p "$S2ST"
+s3_tick() {
+    local l out
+    out="$(s2 env NEXT_DISPATCH_GH_CMD="$W/ow-gh" NEXT_DISPATCH_CLASSIFY_CMD="$W/pd-classify" TICK_POOL_WAIT=0 bash "$SUT" --doc "$1" 2>/dev/null)"
+    for l in "$S2ST"/tick-pool-*.lock; do [ ! -e "$l" ] || flock "$l" true; done
+    printf '%s\n' "$out"
+}
+# shellcheck disable=SC2016  # the backticks are the doc's literal project-line markup, not a command
+{ printf 'The project this console is FOR is **`%s`**.\n' "$G15"; s3_lines; } | s2_doc HIMMEL-nextleg-2026-11-10ZZ-r15t > /dev/null
+contains 'R15 the compact line shows a non-zero pool-changed=' "$(s3_tick "$W/handover/HIMMEL-nextleg-2026-11-10ZZ-r15t.md")" ' pool-changed=1:HIMMEL-143'
+# shellcheck disable=SC2016  # the backticks are the doc's literal project-line markup, not a command
+{ printf 'The project this console is FOR is **`%s`**.\n' "$G15"; s2_lines; } | s2_doc HIMMEL-nextleg-2026-11-10ZZ-r15z > /dev/null
+not_contains 'R15 the compact line hides pool-changed=0' "$(s3_tick "$W/handover/HIMMEL-nextleg-2026-11-10ZZ-r15z.md")" 'pool-changed='
+
 cat > "$S2/ps-gh-race" <<'STUB'
 #!/usr/bin/env bash
 [ -z "${PS_GH_STARTED:-}" ] || : > "$PS_GH_STARTED"

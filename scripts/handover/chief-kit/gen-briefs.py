@@ -1348,13 +1348,27 @@ def partial_merge_prs(keys):
     return prs
 
 
+def gh_read_argv():
+    custom = os.environ.get('GEN_BRIEFS_GH_CMD')
+    if custom:
+        return [custom]
+    helper = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib', 'gh-read.sh'))
+    return [helper] if os.path.isfile(helper) and os.access(helper, os.X_OK) else ['gh']
+
+
+def quiet_gh_env():
+    child = dict(os.environ)
+    child['GH_READ_QUIET'] = '1'
+    return child
+
+
 def pr_remaining(pr, repo, own_keys=()):
     """The remainder text of PR <pr>'s body (see pr_remainder; a `Remaining:` line or the deferred coverage lines): '' when the
     body records none, None when the body could not be read. GEN_BRIEFS_GH_CMD replaces `gh` (the test seam), called as
     `$CMD pr view <pr> --json body -q .body`."""
-    gh = os.environ.get('GEN_BRIEFS_GH_CMD') or 'gh'
     try:
-        r = subprocess.run([gh, 'pr', 'view', pr, '--json', 'body', '-q', '.body'], cwd=repo, capture_output=True, text=True, timeout=30)
+        r = subprocess.run(gh_read_argv() + ['pr', 'view', pr, '--json', 'body', '-q', '.body'], cwd=repo, capture_output=True, text=True, timeout=30,
+                           env=quiet_gh_env())
     except (OSError, subprocess.SubprocessError):
         return None
     if r.returncode != 0:
@@ -1379,10 +1393,9 @@ def partial_merge_block(keys, repo):
 
 
 def read_open_prs(repo):
-    gh = os.environ.get('GEN_BRIEFS_GH_CMD') or 'gh'
     try:
-        r = subprocess.run([gh, 'pr', 'list', '--state', 'open', '--limit', '200', '--json', 'number,title,headRefName,files,isCrossRepository'],
-                           cwd=repo, capture_output=True, text=True, timeout=60)
+        r = subprocess.run(gh_read_argv() + ['pr', 'list', '--state', 'open', '--limit', '200', '--json', 'number,title,headRefName,files,isCrossRepository'],
+                           cwd=repo, capture_output=True, text=True, timeout=60, env=quiet_gh_env())
         prs = json.loads(r.stdout) if r.returncode == 0 else None
     except (OSError, subprocess.SubprocessError, ValueError):
         return None
