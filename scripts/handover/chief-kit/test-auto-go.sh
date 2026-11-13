@@ -171,6 +171,7 @@ verdict() {
 READY_REPO="$tmp/ready-repo"
 git init -q "$READY_REPO"
 cd "$READY_REPO" || { echo "FAIL: cd $READY_REPO" >&2; exit 1; }
+export HIMMEL_REPO="$READY_REPO"
 LEDGER="$(git rev-parse --path-format=absolute --git-common-dir)/cr-critic-scores.jsonl"
 
 # Real commits for the carried-judge rows (delta-class.sh reads them): J is the judged head, a docs-only

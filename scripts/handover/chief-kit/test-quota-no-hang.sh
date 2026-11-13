@@ -361,7 +361,7 @@ drive_go() {
     AFFECT_FN=affect_go RATE_BOUND=20 XM="gql-late main-hung"
     for m in $(modes_for); do
         rm -rf "$cdir/root/.locks"
-        EXTRA_ENV="HANDOVER_DIR=$cdir/root"
+        EXTRA_ENV="HANDOVER_DIR=$cdir/root"$'\n'"HIMMEL_REPO=$GATE_REPO"
         run_mode go.sh "$m" 14 11 bash "$script" 77 "$SHA"
         if [ "$(affect_go "$m")" = no ] && [ "$(mode_class "$m")" = rate ]; then
             emit "PASS go.sh $m no-go-written n/a"
