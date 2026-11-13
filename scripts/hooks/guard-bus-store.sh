@@ -38,8 +38,7 @@
 #         a program, a question or a bullet, and it is not read for a bus word
 #         and a verb (rg `--pre` and `--hostname-bin` and git grep `-O` and
 #         `--open-files-in-pager` run a command, so such a call is not
-#         data; RESIDUAL: `awk`, `sed` and `python` can run what they quote, and
-#         git grep runs a textconv driver its config names). A call
+#         data; RESIDUAL: `awk`, `sed` and `python` can run what they quote). A call
 #         whose every word is literal, names neither bus nor a verb and has no
 #         heredoc passes beside them, unless a cat or tee call in it wrote a
 #         heredoc body. Every other call goes to the word walker below.
