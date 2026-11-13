@@ -48,7 +48,9 @@ tick_bound() {
 # tick_detach <cmd...>: start <cmd> with no input or output and print its pid. The tick reaps a
 # child that ends while the tick still runs, and a timed tick then counts that child's CPU; the
 # job is started by a subshell that exits at once, so init adopts it and the tick never reaps it.
-tick_detach() { ( "$@" </dev/null >/dev/null 2>&1 & printf '%s\n' "$!" ); }
+# It runs at nice 10 (nice execs, so the pid is the job's own), so on a loaded station a refresh
+# never takes the CPU the tick needs to finish inside the waiter's 120 s; every child inherits it.
+tick_detach() { ( nice -n 10 "$@" </dev/null >/dev/null 2>&1 & printf '%s\n' "$!" ); }  # gnu-ok: chief kit is Linux-only
 
 # tick_now_s: the epoch seconds in $tick_now, from the shell's own clock (no fork) when it has one;
 # bash 3.2 (macOS /bin/bash) has no printf '%(%s)T', so it falls back to date.
@@ -3076,7 +3078,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
         # A running snapshot holds the lock, so this launch exits at once.
         # shellcheck disable=SC2016  # the inner script expands its own positional arguments
         pd_script='timeout -k 2 300 bash "$1" "${@:4}" >"$2.$$" 2>/dev/null && mv -f "$2.$$" "$2" && printf "%s\n" "$3" >"${2%.rows}.fp"; rm -f "$2.$$"'
-        pd_pid="$(tick_detach nice -n 10 setsid -w flock -n -E 75 "$pd_base.lock" bash -c "$pd_script" _ "$HERE/next-dispatchable.sh" "$pd_base.rows" "$pd_fp" "${pd_args[@]}")"  # prim-ok: nonblocking lock, a per-pid tmp file, only the tick reads the snapshot; gnu-ok: chief kit is Linux-only
+        pd_pid="$(tick_detach setsid -w flock -n -E 75 "$pd_base.lock" bash -c "$pd_script" _ "$HERE/next-dispatchable.sh" "$pd_base.rows" "$pd_fp" "${pd_args[@]}")"  # prim-ok: nonblocking lock, a per-pid tmp file, only the tick reads the snapshot; gnu-ok: chief kit is Linux-only
         pd_wait="${TICK_POOL_WAIT:-10}"; case "$pd_wait" in '' | *[!0-9]*) pd_wait=10 ;; esac
         pd_wait="$(tick_bound "$pd_wait")"
         tick_now_s  # the poll forks only its sleep
