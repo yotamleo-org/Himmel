@@ -401,23 +401,27 @@ SCRATCH="$WORK/corpus"
 BATCH_CLIENT="$HERE/semantic-batch.mjs"
 batch_field() { python3 -c 'import json,sys; v = json.load(open(sys.argv[1])).get(sys.argv[2]); print("" if v is None else v)' "$PENDING/batch.json" "$1"; }
 batch_line() { echo "semantic-update: BATCH id=$(batch_field batch_id) state=$1 requests=$(batch_field request_count) cost_usd=${2:--}"; }
-# The accounts an auto pass may use, comma-separated: the role map's graphify list, else every configured account
-# (A,B,C when the roster cannot be read). A mapped role never moves to an account outside its list.
 configured_accounts() {
   node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" accounts 2>/dev/null | tr '{' '\n' | sed -n 's/^"account":"\([ABC]\)","configured":true.*/\1/p' | paste -sd, - || true
 }
+# The accounts an auto pass may use, comma-separated, from the walk's one owner (api-roles.mjs walk graphify). A role
+# map broken in a way that would widen the walk refuses: the line names the cause and the function returns 3.
 auto_accounts() {
-  local r
-  r="$(node "$REPO_ROOT/scripts/lib/api-roles.mjs" accounts graphify)" || r=""
-  case "$r" in *[!ABC,]*) r="" ;; esac
-  [ -n "$r" ] || r="$(configured_accounts)"
-  printf '%s' "${r:-A,B,C}"
+  local r rc=0
+  r="$(node "$REPO_ROOT/scripts/lib/api-roles.mjs" walk graphify)" || rc=$?
+  if [ "$rc" -eq 3 ]; then
+    echo "semantic-update: refusing the batch: graph role map broken (${r#refuse }); fix or remove roles.json" >&2; return 3
+  fi
+  case "$r" in ''|*[!ABC,]*) echo "semantic-update: refusing the batch: the graph walk gave no account list (rc $rc)" >&2; return 3 ;; esac
+  printf '%s' "$r"
 }
 # How many accounts the sync shim's breaker counts on auto: the auto accounts that have a roster row (a letter the role
 # map names without one can never be picked, so it adds no call); every letter when no roster can be read; at least 1.
 shim_account_count() {
-  local a n=0 conf; conf="$(configured_accounts)"
-  for a in $(printf '%s' "$(auto_accounts)" | tr ',' ' '); do
+  local a n=0 conf walk
+  walk="$(auto_accounts)" || return 3
+  conf="$(configured_accounts)"
+  for a in $(printf '%s' "$walk" | tr ',' ' '); do
     if [ -z "$conf" ]; then n=$((n + 1)); else case ",$conf," in *",$a,"*) n=$((n + 1)) ;; esac; fi
   done
   echo $(( n > 0 ? n : 1 ))
@@ -442,13 +446,24 @@ order_accounts() {
   done
   printf '%s' "$out"
 }
+# A rejected key (the client's exit 6: HTTP 401 or 403) tags the account and raises its graph-key alert; an accepted
+# submit clears the tag, and the alert's dedupe sentinel only when a tag was there. Their output is discarded.
+key_rejected() {
+  HIMMEL_API_ACCOUNT="$1" node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" key-rejected >/dev/null 2>&1 || true
+  bash "$REPO_ROOT/scripts/luna/cadence-alert.sh" fail "graph-key-$1" "account $1 API key rejected" "stderr of semantic-update.sh --name $NAME" \
+    "HTTP 401 or 403 from the provider" "rotate ~/.himmel/state/api-credit/key-$1.env, or remove $1 from the route or the graphify role" </dev/null >/dev/null 2>&1 || true
+}
+key_ok() {
+  [ "$(HIMMEL_API_ACCOUNT="$1" node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" key-ok 2>/dev/null)" = cleared ] || return 0
+  bash "$REPO_ROOT/scripts/luna/cadence-alert.sh" clear "graph-key-$1" </dev/null >/dev/null 2>&1 || true
+}
 pick_has_no_room() {
   case "$1" in *'"rows":[{'*) ;; *) return 1 ;; esac
   case "${1//\"verdict\":\"SKIPPED-BANK\"/}" in *'"verdict":'*) return 1 ;; esac
 }
 batch_submit() {
   local acct pick rc tried="" why="" remaining a base="" what skipped=""
-  [ "$HIMMEL_API_ACCOUNT" != auto ] || base="$(auto_accounts)"
+  [ "$HIMMEL_API_ACCOUNT" != auto ] || base="$(auto_accounts)" || return 2
   [ "$ORDER_GIVEN" -eq 0 ] || base="$(order_accounts)"
   while :; do
     acct="$HIMMEL_API_ACCOUNT"
@@ -496,9 +511,11 @@ batch_submit() {
       --model "${GRAPHIFY_CLAUDE_CLI_MODEL-sonnet}" --effort "$API_EFFORT" >&2 || rc=$?
     case "$rc" in
       5) what="credit exhausted" ;;
-      6) what="API key rejected" ;;
+      6) what="API key rejected"
+         key_rejected "$acct" ;;
       *) [ "$rc" -eq 0 ] || { [ "$HIMMEL_API_ACCOUNT" != auto ] && [ "$ORDER_GIVEN" -eq 0 ]; } \
            || echo "semantic-update: account $acct failed (rc $rc), not on credit or its key; only a credit-exhausted or rejected-key answer tries the next account, so no other account is tried" >&2
+         [ "$rc" -ne 0 ] || key_ok "$acct"
          return "$rc" ;;
     esac
     HIMMEL_API_ACCOUNT="$acct" node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" exhausted >/dev/null 2>&1 \
@@ -570,7 +587,7 @@ if [ "$N_BATCH" -gt 0 ]; then
       ln -s "$HERE/semantic-batch-shim.mjs" "$WORK/bin/claude"
     else
     # the shim's breaker stops after one rejection per account in play on auto
-    if [ "$HIMMEL_API_ACCOUNT" = auto ]; then GRAPHIFY_SHIM_ACCOUNTS="$(shim_account_count)"; export GRAPHIFY_SHIM_ACCOUNTS; fi
+    if [ "$HIMMEL_API_ACCOUNT" = auto ]; then GRAPHIFY_SHIM_ACCOUNTS="$(shim_account_count)" || exit 2; export GRAPHIFY_SHIM_ACCOUNTS; fi
     cat > "$WORK/bin/claude" <<'SHIM'
 #!/usr/bin/env bash
 # graphify claude-cli -> API lane shim (written by semantic-update.sh)

@@ -14,7 +14,7 @@ pass() { echo "  ok: $1"; }
 fail() { echo "  FAIL: $1"; FAILS=$((FAILS+1)); }
 skip() { echo "  SKIP: $1"; SKIPS=$((SKIPS+1)); }
 
-WS="$(mktemp -d)"; trap 'rm -rf "$WS"' EXIT
+WS="$(mktemp -d)"; trap '[ ! -d "$WS/walk-wt" ] || git -C "$HERE" worktree remove --force "$WS/walk-wt" >/dev/null 2>&1; rm -rf "$WS"' EXIT
 # scope the default scratch parent to $WS. Most tests below
 # don't pass --scratch, so refresh-graph-map.sh falls back to
 # ${TMPDIR:-/tmp} -- and a promote-refusal now quarantines the extracted
@@ -5100,6 +5100,52 @@ else
   else
     fail "F17 expected rc=2, no claude call, one ledger row and no reseed (rc=$rc claude=$(nc_claude_calls) rows=$f17_rows): $out"
   fi
+fi
+
+# --- d15, d16: the auto walk comes from api-roles.mjs walk graphify, once, before extraction ---
+# Auto needs a corpus inside this checkout's git dir: a detached worktree with no checkout and one note.
+WALK="$WS/walk"; mkdir -p "$WALK/bin"
+if git -C "$HERE" worktree add -q --no-checkout --detach "$WS/walk-wt" HEAD >/dev/null 2>&1; then
+  mkdir -p "$WS/walk-wt/notes"; printf '# w\nwalk\n' > "$WS/walk-wt/notes/w.md"
+  printf '{"version":1,"ledger_path":"%s","accounts":{"A":{"organization_id":"org-a","cycle_id":"cycle-a","cap_usd":"50.00"},"B":{"organization_id":"org-b","cycle_id":"cycle-b","cap_usd":"50.00"},"C":{"organization_id":"org-c","cycle_id":"cycle-c","cap_usd":"50.00"}}}' \
+    "$WALK/ledger.json" > "$WALK/config.json"
+  cat > "$WALK/bin/graphify" <<STUB
+#!/usr/bin/env bash
+echo "graphify \$*" >> "$WALK/graphify-calls"
+target=""
+if [ "\$1" = "cluster-only" ]; then target="\$2"; else target="\$1"
+  for i in 1 2 3; do printf 'PROMPT-%s' "\$i" | claude -p --output-format json --no-session-persistence --model sonnet >/dev/null 2>&1 || true; done
+fi
+mkdir -p "\$target/graphify-out"
+printf '{"nodes":[],"links":[]}' > "\$target/graphify-out/graph.json"
+cat > "\$target/graphify-out/GRAPH_REPORT.md" <<'RPT'
+$REPORT_FIXTURE
+RPT
+exit 0
+STUB
+  printf '#!/usr/bin/env bash\ncat >/dev/null\necho called >> "%s/lane-calls"\nprintf %s\nexit 6\n' "$WALK" "'{\"type\":\"result\",\"is_error\":true,\"result\":\"Invalid API key\"}'" > "$WALK/lane"
+  chmod +x "$WALK/bin/graphify" "$WALK/lane"
+  walk_run() { rm -f "$WALK/graphify-calls" "$WALK/lane-calls"
+    HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto HIMMEL_API_CREDIT_CONFIG="$WALK/config.json" GRAPHIFY_MAP_LANE_BIN="$WALK/lane" \
+      GRAPHIFY_MAP_BIN="$WALK/bin/graphify" bash "$SCRIPT" --name walk --corpus-root "$WS/walk-wt" --backend claude-api \
+      --maps-dir "$WALK/maps" --title Walk --slug walk-map --scratch "$WALK/scratch" 2>&1; }
+  echo "d15: a broken role map on auto refuses the semantic pass once, before any graphify call"
+  printf '{not json' > "$WALK/roles.json"
+  out=$(walk_run); rc=$?
+  if [ "$rc" -eq 2 ] && [ ! -e "$WALK/graphify-calls" ] && [ ! -e "$WALK/lane-calls" ] \
+     && [ "$(grep -cxF 'refresh-graph-map: refusing the semantic pass: graph role map broken (invalid-role-map:not-json); fix or remove roles.json' <<< "$out")" -eq 1 ]; then
+    pass "d15 rc 2, one refusal line, no graphify call"
+  else
+    fail "d15 expected rc 2, one refusal line and no graphify call (rc=$rc graphify=$(cat "$WALK/graphify-calls" 2>/dev/null | wc -l)): $out"
+  fi
+  echo "d16: the shim counts the walk's configured letters: graphify mapped to C, A B C configured, one rejected chunk stops it"
+  printf '{"version":1,"roles":{"graphify":["C"]}}' > "$WALK/roles.json"
+  out=$(walk_run); rc=$?
+  [ "$(cat "$WALK/lane-calls" 2>/dev/null | wc -l)" -eq 1 ] \
+    && pass "d16 one lane call, not three" || fail "d16 expected one lane call (got $(cat "$WALK/lane-calls" 2>/dev/null | wc -l), rc=$rc): $out"
+  git -C "$HERE" worktree remove --force "$WS/walk-wt" >/dev/null 2>&1
+else
+  skip "d15 and d16 need a git worktree of this checkout"
 fi
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi

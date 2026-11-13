@@ -14,6 +14,7 @@ export const ACCOUNTS_TIMEOUT_MS = 5000;
 const WRITE_TIMEOUT_MS = 10_000;
 const ROLES_CLI = resolve(import.meta.dir, "../lib/api-roles.mjs");
 const CREDIT_CLI = resolve(import.meta.dir, "../lib/api-credit-state.mjs");
+const CADENCE_ALERT = resolve(import.meta.dir, "../luna/cadence-alert.sh");
 
 type Ran = { code: number | null; stdout: string; timedOut: boolean };
 
@@ -55,11 +56,36 @@ export async function readRoles(env: Env, opts: RolesOpts = {}): Promise<RolesRe
   return { status: 200, body };
 }
 
+// The graph walk's letters (walk graphify), or none when it refuses or fails.
+async function walkLetters(cli: string, env: Env, timeoutMs: number): Promise<string[]> {
+  const r = await run(cli, ["walk", "graphify"], env, timeoutMs);
+  return r.code === 0 ? r.stdout.trim().split(",").filter((l) => (ACCOUNTS as string[]).includes(l)) : [];
+}
+
+// A save that takes letter L out of the graph walk clears the graph-key-L alert's dedupe sentinel, so the next real
+// rejection on L alerts again. It never clears the key-rejected tag: the key is still wrong.
+function clearGraphKey(letter: string, env: Env): Promise<void> {
+  const clean: Record<string, string> = {};
+  for (const [k, v] of Object.entries(env)) if (v !== undefined) clean[k] = v;
+  return new Promise((done) => {
+    const child = spawn("bash", [CADENCE_ALERT, "clear", `graph-key-${letter}`], { env: clean, stdio: "ignore" });
+    child.on("error", () => done());
+    child.on("close", () => done());
+  });
+}
+
 // POST: the CLI validates and writes (atomic, mode 600); its exit 3 is the page's 422 carrying its errors.
 export async function saveRoles(draft: Record<string, unknown>, env: Env, opts: RolesOpts = {}): Promise<RolesResult> {
-  const r = await run(opts.rolesCli ?? ROLES_CLI, ["write"], env, opts.timeoutMs ?? WRITE_TIMEOUT_MS, JSON.stringify({ version: 1, roles: draft }));
+  const rolesCli = opts.rolesCli ?? ROLES_CLI;
+  const bound = opts.timeoutMs ?? WRITE_TIMEOUT_MS;
+  const before = await walkLetters(rolesCli, env, bound);
+  const r = await run(rolesCli, ["write"], env, bound, JSON.stringify({ version: 1, roles: draft }));
   const out = r.code === 0 || r.code === 3 ? parse(r.stdout) : undefined;
-  if (r.code === 0 && out && out.ok === true) return { status: 200, body: { ok: true, errors: [] } };
+  if (r.code === 0 && out && out.ok === true) {
+    const after = await walkLetters(rolesCli, env, bound);
+    for (const letter of before.filter((l) => !after.includes(l))) await clearGraphKey(letter, env);
+    return { status: 200, body: { ok: true, errors: [] } };
+  }
   if (r.code === 3 && out && Array.isArray(out.errors)) return { status: 422, body: { ok: false, errors: out.errors } };
   return { status: 500, body: { error: "the role map could not be saved" } };
 }

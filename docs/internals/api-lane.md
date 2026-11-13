@@ -175,15 +175,50 @@ secret, only role names and account letters:
 - **Four states.** `absent` (no file): the default. `valid`: the map. `partial` (the file parses but an entry has an
   error): the live entries apply, each ignored role falls back to the default. `invalid` (not JSON, `version` is not 1
   or `roles` is not an object): the whole file is ignored and the default applies, with `invalid-role-map:<reason>`.
-  A broken map only takes away widening; it never refuses what the default allows and never touches `config.json`.
+  For every kind but the graph walk a broken map only takes away widening; it never refuses what the default allows
+  and never touches `config.json`. The graph walk refuses instead, see below.
 - **Dropped letters.** An unknown role (`unknown-role:<name>`) is ignored. An unknown letter in a list
   (`unknown-account:<role>:<letter>`) is dropped and the entry stays live with the rest: `judge: ["B", "D"]` routes
   to B. An empty or non-array list (`empty-role:<role>`) is ignored. A duplicate letter is deduped silently. A known
   letter with no roster row is valid in the map and skipped at pick time; `api-roles.mjs check` warns
   `no-configured-account:<role>` when none of a role's letters is configured.
-- **A pick stays inside the role.** The launcher and the graph batch ask `api-roles.mjs accounts <kind>` and pass the
-  answer to `api-credit-state.mjs pick --usd N --only <letters>`. A role mapped to B is served by B or refused
-  (`no account has room`), never by A. A named account never reads the map.
+- **A pick stays inside the role.** The launcher asks `api-roles.mjs accounts <kind>` (the graph walk asks `walk
+  graphify`, below) and passes the answer to `api-credit-state.mjs pick --usd N --only <letters>`. A role mapped to B
+  is served by B or refused (`no account has room`), never by A. A named account never reads the map.
+- **The graph walk has one owner.** `node scripts/lib/api-roles.mjs walk graphify` prints the letters the station's
+  graph pass walks on auto, comma-joined: the map's live `graphify` letters, else every configured account, else A, B
+  and C when the roster cannot be read (the pick then refuses on the same roster). The batch walk and the shim count
+  in `semantic-update.sh`, the up-front check and shim count in `refresh-graph-map.sh`, the launcher's auto branch for
+  `HIMMEL_API_KIND=graphify` and doctor C92 all read this answer; none of them reads the map's state itself. The
+  station's walk is whatever `roles.json` says; no code pins a letter.
+- **A map that would widen the graph walk refuses it.** Two kinds of damage would put back every configured account:
+  an `invalid` map, and a `graphify` entry with no letter from A, B and C (`empty-role:graphify`). For these `walk
+  graphify` prints `refuse <cause>` and exits 3, and each auto graph path stops before any account call:
+  `semantic-update.sh` prints `semantic-update: refusing the batch: graph role map broken (<cause>); fix or remove
+  roles.json` and exits 2 (on the synchronous path once, before extraction, so no chunk is sent and no file earns a
+  stuck record); `refresh-graph-map.sh` prints `refresh-graph-map: refusing the semantic pass: graph role map broken
+  (<cause>); fix or remove roles.json` once and exits 2; the launcher prints `claude-api: refused: graph role map
+  broken (<cause>); fix or remove roles.json` and exits 2 before any spawn. That refusal is not a policy refusal: it
+  writes no `policy-refusals.jsonl` row (C91 stays quiet), sends no alert and never runs the subscription fallback,
+  whatever `HIMMEL_API_FALLBACK` says. Doctor C93 (`C93-graph-role`) WARNs on it and says the pass refuses. Other
+  damage walks as before (an entry that keeps one live letter walks it; an entry naming only unconfigured letters is
+  refused by the pick) and C93 still WARNs on it; an absent or valid map is OK.
+- **A rejected key is flagged on every path.** A rejected key is the batch client's HTTP 401 or 403 (exit 6), or the
+  launcher's `invalid api key` answer; the launcher's credit-too-low answer also exits 6 but is an empty account, not
+  a rejected key. On every path (auto, a named account, `--account-order`) a rejected key runs
+  `api-credit-state.mjs key-rejected`, which sets `key_rejected_at` on the account's ledger row, and `accounts` then
+  tags the account `key rejected` (ahead of `marked exhausted`; the API roles card shows the tag). The graph batch and
+  a launcher call of `HIMMEL_API_KIND=graphify` also raise the cadence alert `graph-key-<L>` (`account <L> API key
+  rejected`, fix line `rotate ~/.himmel/state/api-credit/key-<L>.env, or remove <L> from the route or the graphify
+  role`); another kind sets the tag alone. The walk moves on to the next letter, never to the subscription. Doctor
+  `C92-graph-key-<L>` WARNs, one id per letter, while a tagged letter is in the graph walk: `walk graphify` on a
+  publisher or an unreadable graph config, the stored route on an adopter. A tagged letter no walk reaches, or one
+  behind a refusing map, reads OK with a note. No reader opens a key file.
+- **The tag clears on the next accepted call.** An accepted batch submit or launcher call of any kind on L runs
+  `key-ok`, which removes the mark and prints `cleared` (or prints `none` and writes nothing when there was no mark);
+  on `cleared` the caller runs `cadence-alert.sh clear graph-key-<L>`, so the alert's dedupe sentinel never outlives
+  the tag and the next real rejection alerts again. A save on the API roles card that takes L out of the graph walk
+  clears the alert too, but keeps the tag: the key is still wrong until a call on it is accepted.
 - **The graph batch walks the accounts.** On auto, a credit-exhausted answer or a rejected key (HTTP 401 or 403, the
   batch client's exit 6) marks the account and the pick runs again over the accounts of the same list that were not
   yet tried, so a pass reaches C when A is out of credit and B's key is dead. Each account is tried at most once per

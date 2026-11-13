@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -982,4 +982,43 @@ test('a no-room refusal under --rows carries the row its own verdict', () => {
   const b = pickRows(f, '0.50', 'B,A');
   assert.equal(b.verdict, 'SKIPPED-BANK', JSON.stringify(b));
   assert.deepEqual(b.rows, [{ account: 'A', verdict: 'SKIPPED-BANK', reason: 'insufficient-headroom' }, { account: 'B', verdict: 'SKIPPED-BANK', reason: 'insufficient-headroom' }]);
+});
+
+const keyVerb = (f, verb, account = 'A') => spawnSync(process.execPath, [SUT, verb], { env: { ...f.env, HIMMEL_API_ACCOUNT: account }, encoding: 'utf8' });
+const ledger = (f) => JSON.parse(readFileSync(f.paths.state, 'utf8'));
+
+test('K1: key-rejected sets key_rejected_at on the account row and accounts tags it key rejected, ahead of marked exhausted', () => {
+  const f = fixture();
+  const r = keyVerb(f, 'key-rejected');
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(Number.isInteger(ledger(f).accounts.A.key_rejected_at), true);
+  assert.equal(tagOf(f, 'A').tag, 'key rejected');
+  assert.equal(tagOf(f, 'B').tag, 'room');
+  assert.equal(mark(f, 'A').status, 0);
+  assert.equal(tagOf(f, 'A').tag, 'key rejected');
+});
+
+test('K2: key-ok clears the mark, prints cleared, and the tag returns to the credit tag', () => {
+  const f = fixture();
+  assert.equal(keyVerb(f, 'key-rejected').status, 0);
+  const r = keyVerb(f, 'key-ok');
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, 'cleared\n');
+  assert.equal(Object.hasOwn(ledger(f).accounts.A, 'key_rejected_at'), false);
+  assert.equal(tagOf(f, 'A').tag, 'room');
+});
+
+test('K3: key-ok with no mark prints none and leaves the ledger bytes and mtime unchanged', () => {
+  const f = fixture();
+  assert.equal(mark(f, 'A').status, 0);
+  const before = readFileSync(f.paths.state);
+  const mtime = statSync(f.paths.state).mtimeMs;
+  const r = keyVerb(f, 'key-ok');
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, 'none\n');
+  assert.deepEqual(readFileSync(f.paths.state), before);
+  assert.equal(statSync(f.paths.state).mtimeMs, mtime);
+  const g = fixture();
+  assert.equal(keyVerb(g, 'key-ok').stdout, 'none\n');
+  assert.equal(existsSync(g.paths.state), false);
 });

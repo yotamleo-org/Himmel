@@ -18,7 +18,7 @@ function boot() {
   for (const d of [home, root, project, credit]) mkdirSync(d);
   const accounts = Object.fromEntries(["A", "B"].map((l) => [l, { organization_id: `org-${l}`, cycle_id: `cycle-${l}`, cap_usd: "25.00" }]));
   writeFileSync(join(credit, "config.json"), JSON.stringify({ version: 1, ledger_path: join(credit, "ledger.json"), accounts }));
-  const env = { PATH: process.env.PATH, HOME: home, HIMMEL_API_CREDIT_CONFIG: join(credit, "config.json"), HIMMEL_API_CREDIT_SNAPSHOT: join(credit, "snapshot.json"), HIMMEL_SECRETS_KEYRING: "off", CONFIG_UI_IDLE_MS: "60000" };
+  const env = { PATH: process.env.PATH, HOME: home, HIMMEL_API_CREDIT_CONFIG: join(credit, "config.json"), HIMMEL_API_CREDIT_SNAPSHOT: join(credit, "snapshot.json"), HIMMEL_SECRETS_KEYRING: "off", CONFIG_UI_IDLE_MS: "60000", CADENCE_ALERT_DEDUPE_DIR: join(dir, "dedupe") };
   const s = startServer({ onIdle: () => {}, port: 0, token: TOKEN, root, projectRoot: project, env });
   cleanups.push(() => { s.stop(); rmSync(dir, { recursive: true, force: true }); });
   const base = `http://127.0.0.1:${s.port}`;
@@ -28,7 +28,12 @@ function boot() {
     return { status: r.status, j: (await r.json()) as Record<string, any> };
   };
   const rolesFile = join(credit, "roles.json");
-  return { dir, credit, env, get, post, rolesFile };
+  const dedupe = env.CADENCE_ALERT_DEDUPE_DIR;
+  // a graph-key-A alert's dedupe sentinel, and A's key-rejected mark as the ledger holds it
+  const plantSentinel = () => { mkdirSync(dedupe, { recursive: true }); writeFileSync(join(dedupe, "graph-key-A.planted"), ""); };
+  const sentinel = () => existsSync(join(dedupe, "graph-key-A.planted"));
+  const tagA = () => writeFileSync(join(credit, "ledger.json"), JSON.stringify({ version: 1, accounts: { A: { organization_id: "org-A", cycle_id: "cycle-A", discrepancy: false, jobs: {}, key_rejected_at: 1700000000 } } }));
+  return { dir, credit, env, get, post, rolesFile, plantSentinel, sentinel, tagA };
 }
 
 function stub(dir: string, name: string, source: string) {
@@ -78,6 +83,28 @@ test("POST with an extra key is a 422 naming unknown-role:note and the file is b
   expect(readFileSync(b.rolesFile, "utf8")).not.toContain("sk-ant-fake");
 });
 
+test("the roles card shows a rejected key: A's row carries the tag key rejected", async () => {
+  const b = boot();
+  b.tagA();
+  const j = await b.get();
+  expect(j.rows.find((r: any) => r.account === "A").tag).toBe("key rejected");
+  expect(j.rows.find((r: any) => r.account === "B").tag).not.toBe("key rejected");
+});
+
+test("a save that drops A from graphify clears A's graph-key alert sentinel and keeps A's tag; a save that keeps A leaves it", async () => {
+  const b = boot();
+  b.tagA();
+  writeFileSync(b.rolesFile, JSON.stringify({ version: 1, roles: { graphify: ["A", "B"] } }));
+  b.plantSentinel();
+  const kept = await b.post({ graphify: ["A"] });
+  expect(kept.status).toBe(200);
+  expect(b.sentinel()).toBe(true);
+  const dropped = await b.post({ graphify: ["B"] });
+  expect(dropped.status).toBe(200);
+  expect(b.sentinel()).toBe(false);
+  expect((await b.get()).rows.find((r: any) => r.account === "A").tag).toBe("key rejected");
+});
+
 test("an accounts CLI that outlasts the bound makes every row unknown with reason timeout", async () => {
   const b = boot();
   const creditCli = stub(b.dir, "slow-accounts.mjs", "await new Promise((r) => setTimeout(r, 30000));\n");
@@ -92,6 +119,7 @@ test("a role list from the check CLI passes through GET and a POST of it reaches
   const recorded = join(b.dir, "stdin.json");
   const rolesCli = stub(b.dir, "stub-roles.mjs", `import { readFileSync, writeFileSync } from "node:fs";
 if (process.argv[2] === "check") console.log(JSON.stringify({ roleMap: { state: "absent", roles: {}, errors: [] }, warnings: [], ROLES: ["zzz"], accounts: "ok" }));
+else if (process.argv[2] === "walk") console.log("A");
 else { writeFileSync(${JSON.stringify(recorded)}, readFileSync(0, "utf8")); console.log(JSON.stringify({ ok: true, errors: [] })); }
 `);
   expect((await readRoles(b.env, { rolesCli })).body.ROLES).toEqual(["zzz"]);

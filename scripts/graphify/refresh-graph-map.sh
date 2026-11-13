@@ -2417,11 +2417,26 @@ for p in sys.stdin.buffer.read().split(b"\0"):
   # ponytail: a slimmer copy of semantic-update.sh's sync shim (no addendum, no run-spend file; the lane's per-call
   # budget bounds each chunk), upgrade path: one shared shim file both scripts install.
   if [ "$BACKEND" = "claude-api" ]; then
+    # On auto the walk comes from its one owner, once, before extraction: a broken role map that would widen the walk
+    # refuses here instead of once per chunk. The shim's breaker counts the walk's letters that have a roster row.
+    GRAPHIFY_MAP_SHIM_ACCOUNTS=1
+    if [ "${HIMMEL_API_ACCOUNT:-}" = auto ]; then
+      _walk_rc=0
+      _walk="$(node "$REPO_ROOT/scripts/lib/api-roles.mjs" walk graphify)" || _walk_rc=$?
+      if [ "$_walk_rc" -eq 3 ]; then
+        echo "refresh-graph-map: refusing the semantic pass: graph role map broken (${_walk#refuse }); fix or remove roles.json" >&2
+        exit 2
+      fi
+      _roster="$(node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" accounts 2>/dev/null)" || _roster=""
+      _n=0
+      for _a in $(printf '%s' "$_walk" | tr ',' ' '); do
+        case "$_roster" in *"\"account\":\"$_a\",\"configured\":true"*) _n=$((_n + 1)) ;; esac
+      done
+      [ "$_n" -gt 0 ] && GRAPHIFY_MAP_SHIM_ACCOUNTS="$_n"
+    fi
     # shellcheck source=../lib/prim.sh
     . "$REPO_ROOT/scripts/lib/prim.sh"
     _LANE_BIN_DIR="$(tmpdir)" || { echo "refresh-graph-map: cannot create the API-lane shim dir" >&2; exit 1; }
-    GRAPHIFY_MAP_SHIM_ACCOUNTS="$(node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" accounts 2>/dev/null | grep -o '"configured":true' | wc -l | tr -d ' ')" || GRAPHIFY_MAP_SHIM_ACCOUNTS=0
-    [ "${GRAPHIFY_MAP_SHIM_ACCOUNTS:-0}" -gt 0 ] 2>/dev/null || GRAPHIFY_MAP_SHIM_ACCOUNTS=3
     cat > "$_LANE_BIN_DIR/claude" <<'SHIM'
 #!/usr/bin/env bash
 case "${1:-}" in
