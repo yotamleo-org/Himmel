@@ -353,10 +353,6 @@ case "${HIMMEL_CLAUDE_LANE:-}" in ""|native) ;; *) refuse "conflicting lane HIMM
 # cache lifetime. An API-key call gets 5m unless told otherwise, so the launcher always states the choice itself.
 KIND="${HIMMEL_API_KIND:-other}"
 case "$KIND" in ""|*[!A-Za-z0-9._-]*) refuse "HIMMEL_API_KIND has characters outside [A-Za-z0-9._-]" ;; esac
-# auto routing is for the himmel semantic graph pass only (decision 525 FINAL) unless the role map (roles.json beside
-# the account config) maps the kind: any other kind, or the same kind from another repo, must name its
-# account; refused before any spawn, never re-run on the subscription and never an alert. A named account never reads
-# the map. The map only widens kinds and narrows accounts; no map is decision 525 exactly.
 ROLE_ACCTS=""
 if [ "$HIMMEL_API_ACCOUNT" = auto ] && [ "$KIND" = graphify ]; then
   _walk_rc=0
