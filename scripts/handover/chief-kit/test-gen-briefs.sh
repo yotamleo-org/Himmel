@@ -2151,7 +2151,6 @@ ltmk two 'w["keys"]=["HIMMEL-1","LUNA-22"]; w["live_test"]="jira"'
 o="$(LT_STUB_FILE="$LT_OK" ltrun two)"; rc=$?
 [ "$rc" = 0 ] && has "I16 HIMMEL-1,LUNA-22 passes the own= check onto the line" "$(ltbrief two)" "> **Live test:** jira HTEST own=HIMMEL-1,LUNA-22 — " || fail "I16 two keys rc=$rc: $o"
 
-# ---- S8b: the merged-PR body read (pr_remaining) and the open-PR read (read_open_prs) go through the second token
 S8_READTOK=ghp_READTOKEN0123456789
 mkdir -p "$WORK/s8root" "$WORK/s8tt" "$WORK/s8bin"
 printf 'himmel_github_token_vm2=%s\n' "$S8_READTOK" > "$WORK/s8root/.env"
@@ -2191,7 +2190,6 @@ s8o="$("${S8ENV[@]}" GH_STUB_MAINFAIL=rate GEN_BRIEFS_GH_CMD="$WORK/s8bin/gh-fix
 has "S8b control: GEN_BRIEFS_GH_CMD set still wins and answers" "$s8o" "REM='S5 stays open' OPEN=1"
 [ ! -s "$S8LOG" ] && pass "S8b control: GEN_BRIEFS_GH_CMD set leaves the two-token stub uncalled" || fail "S8b control: the stub was called: $(cat "$S8LOG")"
 [ "$(cat "$WORK/s8quiet" 2>/dev/null)" = 1 ] && pass "S8b control: GEN_BRIEFS_GH_CMD set runs its gh child with GH_READ_QUIET=1" || fail "S8b control: GH_READ_QUIET not set: $(cat "$WORK/s8quiet" 2>/dev/null)"
-# a checkout path holding a space still runs the default helper: it is one argv element, never shell-split
 mkdir -p "$WORK/s8 sp/scripts/handover/chief-kit" "$WORK/s8 sp/scripts/lib"
 cp "$HERE/gen-briefs.py" "$HERE/salus_marked.py" "$HERE/holds.py" "$HERE/platform-dropped.re" "$WORK/s8 sp/scripts/handover/chief-kit/"
 cp "$HERE/../../lib/gh-read.sh" "$HERE/../../lib/timeout-bin.sh" "$HERE/../../lib/load-dotenv.sh" "$HERE/../../lib/env_alias.py" "$HERE/../../lib/pr_remainder.py" "$WORK/s8 sp/scripts/lib/"

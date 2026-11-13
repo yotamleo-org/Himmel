@@ -1108,7 +1108,6 @@ vfp="$(python3 "$HERE/tracker.py" --emit-fp --plan-dir "$plan" --out "$vfout" --
     --luna-root "$W/luna" --handovers "$W/luna/handovers/tester/himmel" 2>&1)"
 if [ -n "$vfp" ] && [ "$(cat "$vfout.fp" 2>/dev/null)" = "$vfp" ]; then pass 'the --version page .fp equals --emit-fp (HIMMEL-6769)'; else fail "--version .fp '$(cat "$vfout.fp" 2>/dev/null)' differs from --emit-fp '$vfp'"; fi
 
-# --- S8b: the fallback open-PR list (no --prs-file) reads through the second token.
 S8_READTOK=ghp_READTOKEN0123456789
 mkdir -p "$W/s8root" "$W/s8emptyroot" "$W/s8tt" "$W/s8bin"
 printf 'himmel_github_token_vm2=%s\n' "$S8_READTOK" > "$W/s8root/.env"
@@ -1121,7 +1120,7 @@ chmod +x "$W/s8bin/gh-prs"
 S8ENV=(env -u TRACKER_GH -u GH_TOKEN -u GITHUB_TOKEN -u himmel_github_token_vm2 -u CREDENTIALS_DIRECTORY -u GH_READ_NO_MAIN_FALLBACK
     GH_READ_ENV_ROOT="$W/s8root" PATH="$W/s8tt:$PATH" GH_STUB_READ_TOKEN="$S8_READTOK" GHLOG="$S8LOG" HIMMEL_SECRETS_KEYRING=off
     GH_STUB_DELEGATE="$W/s8bin/gh-prs" TRACKER_JIRA="$W/vpjira")
-s8render() {  # s8render <out> [env assignments...]: the --version page with no --prs-file, main token spent
+s8render() {
     local o="$1"; shift
     "${S8ENV[@]}" GH_STUB_MAINFAIL=rate "$@" python3 "$HERE/tracker.py" --version v1.1.3 --repo example-org/example-repo --mirror-dir "$vp" \
         --priority-file "$W/vp-plan.md" --chains-file "$W/vp-chains.json" --jira-base-url https://jira.example.test --out "$o" 2>&1
@@ -1141,7 +1140,6 @@ rm -f "$W/s8quiet"
 s8render "$W/s8-q.html" TRACKER_GH="$W/s8bin/gh-prs" >/dev/null
 equals 'S8b control: TRACKER_GH set runs its gh child with GH_READ_QUIET=1' "$(cat "$W/s8quiet" 2>/dev/null)" 1
 contains 'S8b control: TRACKER_GH set still fills the cards' "$(cat "$W/s8-q.html" 2>/dev/null)" '#500 · CI green'
-# a checkout path holding a space still runs the default helper: it is one argv element, never shell-split
 mkdir -p "$W/s8 sp/scripts/handover/chief-kit" "$W/s8 sp/scripts/lib"
 cp "$HERE/tracker.py" "$W/s8 sp/scripts/handover/chief-kit/tracker.py"
 cp "$HERE/../../lib/gh-read.sh" "$HERE/../../lib/timeout-bin.sh" "$HERE/../../lib/env_alias.py" "$HERE/../../lib/load-dotenv.sh" "$W/s8 sp/scripts/lib/"
