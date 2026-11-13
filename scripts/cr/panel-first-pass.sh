@@ -383,7 +383,7 @@ else
     # just started is given back before the exit.
     give_back() {
         if [ -n "$PR" ]; then
-            gb_args=(--pr "$PR" --head "$HEAD_SHA" --branch "$BRANCH")
+            gb_args=(--pr "$PR" --head "$HEAD_SHA")
         else
             gb_args=(--branch "$BRANCH" --head "$HEAD_SHA")
         fi

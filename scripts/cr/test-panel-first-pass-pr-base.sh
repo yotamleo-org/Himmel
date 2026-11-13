@@ -183,7 +183,7 @@ has "$err" "NOT given back" "c: and says so"
 
 # === abort --pr, the verb ===========================================================================
 reset
-rr abort --pr 7 --head "$H" --branch feat/outside-thing
+rr abort --pr 7 --head "$H"
 eq "$rrc" "1" "abort --pr on a round that was never started refuses (exit 1)"
 has "$rerr" "nothing to give back" "abort --pr never started: says nothing to give back"
 eq "$(round_of)" "none" "abort --pr never started: writes no state"
@@ -192,17 +192,17 @@ rr abort --branch outside-7 --head "$H"
 eq "$rrc" "2" "abort --branch outside-7 is still refused by the current-branch guard"
 has "$rerr" "is not the branch checked out" "abort --branch outside-7: the guard's reason"
 
-rr abort --pr 7 --head "$H"
-eq "$rrc" "2" "abort --pr without the head branch is a usage error"
+rr abort --pr 7 --head "$H" --branch feat/outside-thing
+eq "$rrc" "2" "abort --pr takes no --branch (a caller-named branch cannot steer the reviewed-row check)"
 
 reset; preflight
 rr start --pr 7 --head "$H"
 eq "$rrc" "0" "start --pr still starts round 1"
 eq "$rout" "1" "start --pr still prints the round"
-rr abort --pr 7 --head "$MB" --branch feat/outside-thing
+rr abort --pr 7 --head "$MB"
 eq "$rrc" "1" "abort --pr at a head that is not the started one refuses"
 eq "$(round_of)" "1" "abort --pr at the wrong head leaves the count"
-rr abort --pr 7 --head "$H" --branch feat/outside-thing
+rr abort --pr 7 --head "$H"
 eq "$rrc" "0" "abort --pr at the started head gives the round back"
 eq "$rout" "0 none" "abort --pr prints the round and the head left"
 eq "$(round_of)" "0" "abort --pr: the count is 0"
@@ -211,9 +211,17 @@ eq "$(test -e "$ROUNDS/outside-7.head" && echo kept || echo removed)" "removed" 
 reset; preflight
 rr start --pr 7 --head "$H"
 printf '{"kind":"avail","branch":"feat/outside-thing","head":"%s","model":"stub-model","status":"ok"}\n' "$H" >> "$LEDGER"
-rr abort --pr 7 --head "$H" --branch feat/outside-thing
+rr abort --pr 7 --head "$H"
 eq "$rrc" "8" "abort --pr over a head with a panel row refuses (exit 8)"
 eq "$(round_of)" "1" "abort --pr over a reviewed head keeps the count"
+
+# the panel's row sits under whatever branch name it was stamped with: it still counts
+reset; preflight
+rr start --pr 7 --head "$H"
+printf '{"kind":"avail","branch":"some/other-name","head":"%s","model":"stub-model","status":"ok"}\n' "$H" >> "$LEDGER"
+rr abort --pr 7 --head "$H"
+eq "$rrc" "8" "abort --pr over a head with a panel row under another branch name refuses (exit 8)"
+eq "$(round_of)" "1" "abort --pr: a row under another branch name keeps the count"
 
 if [ "$fails" -gt 0 ]; then
     printf 'FAIL test-panel-first-pass-pr-base (%s failures)\n' "$fails" >&2
