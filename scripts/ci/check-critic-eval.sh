@@ -6,7 +6,8 @@
 # at head, so deleting a line from cbs.txt does not hide the file it named) merges only when
 # `score.py gate <diff base> <head>` says keep or no-loss: two eval rows at the diff base's cbs_hash and two at
 # the head's, all at the head tree's confighash, in the head tree's results.jsonl. Rows come from the chief's
-# sweeps (scripts/eval/review-panel/README.md "The merge gate").
+# sweeps (scripts/eval/review-panel/README.md "The merge gate"), the default route for a critic change;
+# only skipping the sweep needs an operator decision.
 # Run from inside the checkout; CI passes the event's base sha (the main the PR opened on) and HEAD (the merge ref).
 # Exit 0 no critic path changed, or keep / no-loss; 1 loss / unmeasured / no rows; 2 usage.
 set -uo pipefail
@@ -109,4 +110,5 @@ if python3 "$SCORE" gate "$diff_base" "$head" --repo "$repo"; then
     exit 0
 fi
 echo "check-critic-eval: FAIL - a critic change merges only with keep or no-loss eval rows (scripts/eval/review-panel/README.md)" >&2
+echo "check-critic-eval: the paid eval sweep is the default route for a critic change and needs no operator ask; only skipping it needs an operator decision (a $BYPASS_REL row). Launch: docs/internals/bypass-launch-route.md" >&2
 exit 1
