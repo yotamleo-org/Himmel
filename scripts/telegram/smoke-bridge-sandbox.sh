@@ -7,7 +7,8 @@
 # root, a vault with a git dir and the configured filing folders, a handover root nested in
 # it, fresh scratch releases and a loopback fake Jira. The fence still reads the station's
 # real host-ns. Each row checks proof of attempt first, then the disk, and prints
-#   ROW <id> PASS|FAIL|INCONCLUSIVE <evidence>
+#   ROW <id> PASS|FAIL|INCONCLUSIVE|PENDING-PASTE <evidence>
+# (PENDING-PASTE: rows 11h and 11s wait for the operator's telegram.bridgeEgress key.)
 # Proof of attempt: (i) a per-step nonce written to a sentinel in the spawn's own session
 # folder before the attempt, and the exit code after it; (ii) the session transcript holding
 # the tool_use that names the target followed by its error result. Each deny row has a control
@@ -318,7 +319,7 @@ mkdir -p "$work/rows"
 row_add() { # <row> <PASS|FAIL|INCONCLUSIVE> <evidence>: the worst outcome wins
     local cur
     cur="$(cat "$work/rows/$1.v" 2>/dev/null || echo PASS)"
-    case "$2:$cur" in FAIL:*|INCONCLUSIVE:PASS) cur="$2" ;; esac
+    case "$2:$cur" in FAIL:*|INCONCLUSIVE:PASS|PENDING-PASTE:*) cur="$2" ;; esac
     printf '%s\n' "$cur" > "$work/rows/$1.v"
     printf '[%s] ' "$3" >> "$work/rows/$1.e"
 }
@@ -448,12 +449,14 @@ STEPS=()
 step 7 bash "$REL_7B/R9/requests.jsonl" deny "$(wcmd "$TK" 7)"
 run_spawn t env "$TK" "$OP" "$REL_7B" unmarked
 
-# Row 11: the chat telegram.bridgeEgress names reaches its hosts (11h: hactl over HTTP; 11s: ssh ha1).
+# Row 11: the chat telegram.bridgeEgress names reaches its hosts. 11h proves egress, not auth: any
+# HTTP status from its first host's :8123 passes; 11s runs ssh ha1.
 EG_CHAT="$(jq -r '.telegram.bridgeEgress // {} | keys[0] // empty' "$HOME/.himmel/config.json" 2>/dev/null)"
+EG_HOST="$(jq -r --arg c "$EG_CHAT" '.telegram.bridgeEgress[$c][0] // empty' "$HOME/.himmel/config.json" 2>/dev/null)"
 if [ -n "$EG_CHAT" ]; then
     REL_E="$(new_release e)" || exit 1
     STEPS=()
-    step 11h bash "$BR/sessions/group_e/p1-11h.out" allow "hactl ping > $BR/sessions/group_e/p1-11h.out 2>&1"
+    step 11h bash "$BR/sessions/group_e/p1-11h.out" allow "curl -sS -m 15 -o /dev/null -w '%{http_code}' http://$EG_HOST:8123/api/ > $BR/sessions/group_e/p1-11h.out 2>&1"
     step 11s bash "$BR/sessions/group_e/p1-11s.out" allow "ssh -o BatchMode=yes -o ConnectTimeout=10 ha1 true > $BR/sessions/group_e/p1-11s.out 2>&1"
     run_spawn e env group_e "$EG_CHAT" "$REL_E"
 fi
@@ -574,13 +577,14 @@ for f in "$work/rec-a"/konsole-ns-*; do
 done
 [ -n "$(row_v 10d)" ] || row_add 10d PASS "no terminal stub started from the envelope spawn"
 
-# 11h/11s: the step's own rc decides; no attempt is INCONCLUSIVE.
+# 11h: any HTTP status (a 401 too) passes, 000 (no connection) fails. 11s: the ssh rc decides.
 for id in 11h 11s; do
-    if [ -z "$EG_CHAT" ]; then row_add "$id" INCONCLUSIVE "no telegram.bridgeEgress key in ~/.himmel/config.json"; continue; fi
+    if [ -z "$EG_CHAT" ]; then row_add "$id" PENDING-PASTE "no telegram.bridgeEgress key in ~/.himmel/config.json yet"; continue; fi
     read -r a _ _ <<<"$(verdict e "$id" group_e)"
     s="$BR/sessions/group_e/p1-$id"
     if [ "$a" != yes ]; then row_add "$id" INCONCLUSIVE "no proof of attempt"
-    elif grep -q 'rc=0' "$s"; then row_add "$id" PASS "chat $EG_CHAT reached its host: $(head -c 120 "$s.out" 2>/dev/null | tr '\n' ' ')"
+    elif [ "$id" = 11h ] && grep -qE '^[1-5][0-9]{2}' "$s.out" 2>/dev/null; then row_add "$id" PASS "chat $EG_CHAT got HTTP $(head -c 3 "$s.out") from $EG_HOST:8123"
+    elif [ "$id" = 11s ] && grep -q 'rc=0' "$s"; then row_add "$id" PASS "chat $EG_CHAT ran ssh ha1"
     else row_add "$id" FAIL "chat $EG_CHAT: $(tr '\n' ' ' < "$s") $(head -c 200 "$s.out" 2>/dev/null | tr '\n' ' ')"; fi
 done
 
