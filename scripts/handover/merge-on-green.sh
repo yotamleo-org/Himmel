@@ -818,30 +818,29 @@ if [ "$meta_shape_ok" -ne 1 ] || [ -z "$head_branch" ]; then
     exit 13
 fi
 
-# 2-local. Local-commit guard — when a worktree of this checkout has the PR's head
-# branch checked out, the merge refuses while that worktree's HEAD carries commits
-# the PR head does not: a squash merge of the PR head would leave them behind on a
-# branch GitHub then deletes. The worktree is found by branch, as the marker clear
-# finds it, so a run from the primary or another worktree is guarded too. Mirrors
-# worker-pr-open.sh's unpushed-HEAD refusal. No worktree on the branch (or a
-# non-repo cwd) skips the guard.
+worktree_holding_branch() {
+    local list line cur="" wt=""
+    list=$(mktemp "${TMPDIR:-/tmp}/mog-worktrees.XXXXXX") || return 1
+    if ! git worktree list --porcelain -z > "$list"; then rm -f "$list"; return 1; fi
+    while IFS= read -r -d '' line; do
+        case "$line" in
+            "worktree "*) cur="${line#worktree }" ;;
+            "branch refs/heads/$1") wt="$cur" ;;
+        esac
+    done < "$list"
+    rm -f "$list"
+    printf '%s' "$wt"
+}
+
 # Runs here and again right before the merge, to catch a commit made during the CI watch.
 local_commit_guard() {
-    local line cur="" wt="" wt_list local_ahead ahead_n
+    local wt local_ahead ahead_n
     if ! git rev-parse --git-dir >/dev/null 2>&1; then return 0; fi
-    if ! wt_list=$(mktemp "${TMPDIR:-/tmp}/mog-worktrees.XXXXXX") || ! git worktree list --porcelain -z > "$wt_list"; then
-        [ -z "${wt_list:-}" ] || rm -f "$wt_list"
+    if ! wt=$(worktree_holding_branch "$head_branch"); then
         echo "merge-on-green: cannot list this checkout's worktrees to find the one holding $head_branch — refusing. Re-run." >&2
         audit "REFUSED reason=local-commits-unreadable repo=$nwo pr=#$pr_num sha=$sha"
         exit 25
     fi
-    while IFS= read -r -d '' line; do
-        case "$line" in
-            "worktree "*) cur="${line#worktree }" ;;
-            "branch refs/heads/$head_branch") wt="$cur" ;;
-        esac
-    done < "$wt_list"
-    rm -f "$wt_list"
     [ -n "$wt" ] || return 0
     if ! local_ahead=$(git -C "$wt" rev-list "$sha..HEAD"); then
         echo "merge-on-green: cannot compare this checkout's HEAD with PR #$pr_num's head ${sha:0:12} (not in the local object store?) — refusing. git fetch, then re-run." >&2

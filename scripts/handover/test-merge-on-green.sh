@@ -2179,7 +2179,6 @@ MOG_CWD="$P_WT" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" STUB_CI_COMM
     run_mog 25 "11k1e: commit made during the CI watch → exit 25"
 assert_gh_lacks "11k1e: no merge attempted" "pr merge"
 
-# 11k1f. The bare --go run from the primary still sees the PR worktree's unpushed commit.
 read -r P_REPO P_WT P_SHA <<< "$(mk_prune_fixture)"
 git -C "$P_WT" commit -q --allow-empty -m "unpushed after the GO head"
 MOG_CWD="$P_REPO" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" STUB_NO_CWD_PR=1 \
@@ -2188,13 +2187,12 @@ assert_gh_has "11k1f: the PR came from the GO name" "pr view 77 --json state,url
 assert_gh_lacks "11k1f: no merge attempted" "pr merge"
 assert_audit_has "11k1f: refusal audited" "REFUSED reason=local-commits-not-in-pr ahead=1"
 
-# 11k1g. A failed worktree listing refuses instead of skipping the guard.
 read -r P_REPO P_WT P_SHA <<< "$(mk_prune_fixture)"
 wl_bin=$(mktemp -d "${TMPDIR:-/tmp}/mog-wl-bin.XXXXXX") || wl_bin=""
 if [ -z "$wl_bin" ] || [ ! -d "$wl_bin" ]; then
     fail "11k1g: setup: no scratch dir for the git shim"
 else
-    printf "#!/usr/bin/env bash\n[ \"\$1 \$2\" != \"worktree list\" ] || exit 1\nexec %s \"\$@\"\n" "$(command -v git)" > "$wl_bin/git"
+    printf "#!/usr/bin/env bash\n[ \"\$1 \$2\" != \"worktree list\" ] || exit 1\nexec %q \"\$@\"\n" "$(command -v git)" > "$wl_bin/git"
     chmod +x "$wl_bin/git"
     MOG_PATH_BASE="$wl_bin:$PATH" MOG_CWD="$P_REPO" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" STUB_NO_CWD_PR=1 \
         run_mog 25 "11k1g: worktree listing fails → exit 25" -- --go "/nonexistent/go/77.$P_SHA"
