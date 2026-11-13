@@ -3126,6 +3126,9 @@ for v in \
     "F='HOME[\$(bash scripts/c'; F=\$F'r/write-verdicts.sh)]'; cat \$HOME[F] docs/a.md; ls . scripts/cr/*" \
     "for F in 'HOME[\$(bash scripts/cr/write-verdicts.sh)]'; do printf '%d' F; done; ls . scripts/cr/*" \
     "F='HOME[\$(bash scripts/c'; F=\$F'r/write-verdicts.sh)]'; printf '%d' F; ls . scripts/cr/*" \
+    "printf '%d\\n' 'HOME[\$(bash scripts/cr/write-verdicts.sh)]' | sort -u" \
+    "printf '%*s\\n' 'HOME[\$(bash scripts/cr/write-verdicts.sh)]' x | sort -u" \
+    "printf '%.*x\\n' 'HOME[\$(bash scripts/cr/write-verdicts.sh)]' 1; sha256sum scripts/cr/*" \
     'for s in --compress-program=scripts/cr/write-verdicts.sh; do ls . | sort $s; done' \
     'for a in -exec; do find . -name write-verdicts.sh $a scripts/cr/write-verdicts.sh {} +; done' \
     'for PATH in scripts/cr; do ls . scripts/cr/*; done' \
