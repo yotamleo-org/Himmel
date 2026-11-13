@@ -107,6 +107,17 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     A stale key (every target gone, per `pool-stale=`) is `# pool-unresolved stale <KEY> its pool-disposition target is gone: <targets>; ...`
     until the line is rewritten, unless the key is owned, held or blocked (the line is then not its only reason); a failed or
     paused read keeps that verdict while the line is unchanged and no target reads open, so the wake fires once, not per read.
+    A changed key (its open parent ticket merged since the line was written, per `pool-changed=<n>:<KEY>,...`) is
+    `# pool-unresolved changed <KEY> <target> merged <sha> since the line was written: re-read and stamp (<LL> <MM-DD> <HH:MM>Z)`
+    under the same rules. The tick compares first-parent merges whose subject carries `[<target>]` with the line's anchor,
+    the later of its `@<sha>` commit time and its newest `(<LL>[-n] <MM-DD>[ <HH:MM>Z]` stamp (the year from the date
+    in the doc's file name); `tick.sh --pool-stale --doc <doc>` prints one `CHANGED-DISPOSITION <KEY> ... via <target> <sha> <subject>`
+    line per changed key, naming the newest merge, while the unresolved text names the oldest, so further merges do not
+    wake you again. The bracket is printed as written, never filled in. Clear it by re-reading the line and adding a timed
+    stamp, `(<LL> <MM-DD> <HH:MM>Z re-read)`, dropping any `@<sha>` the line carries: the line's hash changes, so the old
+    verdict goes at once, and a timed stamp never expires. Re-stamping with `@<sha>` is not the way: it starts the
+    `TICK_POOL_MAX_MERGES` expiry, and main takes about 80 merges a day. A failed git read keeps a changed verdict
+    while the line is unchanged and its parent is not Done.
     The line is never rewritten:
     re-rule it (dispatch the held ticket, or write a fresh `pool-disposition:`),
     then the key leaves the field. The tick also prints

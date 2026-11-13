@@ -50,9 +50,9 @@ case "$*" in
         out=""; nf=""
         for n in $(printf '%s\n' "$*" | grep -oE 'issueOrPullRequest\(number:[0-9]+\)' | grep -oE '[0-9]+'); do
             case "$n" in
-                5001|999002|99999) v='{"__typename":"PullRequest","state":"MERGED"}' ;;
+                5001|999002|99999|4919|4943|5171) v='{"__typename":"PullRequest","state":"MERGED"}' ;;
                 5002) v='{"__typename":"PullRequest","state":"OPEN"}' ;;
-                5004|999001) v='{"__typename":"PullRequest","state":"CLOSED"}' ;;
+                5004|999001|4761) v='{"__typename":"PullRequest","state":"CLOSED"}' ;;
                 999005) v='{"__typename":"Issue","state":"OPEN"}' ;;
                 *) v=null; nf="$n" ;;
             esac
@@ -273,6 +273,121 @@ l="$pd HIMMEL-120 question waits on HIMMEL-902 @deadbeef01"; d="$(doc unknownsha
 check 'a sha the repo does not know prints ?, never stale' '?' "$(afield pool-stale "$d")"
 l="$pd HIMMEL-101 slice HIMMEL-901 @deadbeef01"; d="$(doc unknownshadone "$l")"
 check 'an unknown sha leaves a line with only Done blockers unjudged: ?, not stale' '?' "$(afield pool-stale "$d")"
+
+export TICK_STATE_DIR="$WORK/state"
+GR="$WORK/grepo"; mkdir -p "$WORK/notarepo"
+gnew() { rm -rf "$GR"; git init -q "$GR"; }
+gc() {
+    GIT_COMMITTER_DATE="$1" GIT_AUTHOR_DATE="$1" git -C "$GR" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "$2" && git -C "$GR" rev-parse --short HEAD
+}
+cout() { TOKEN='' bash "$SUT" --pool-stale --doc "$1" --repo "${2:-$GR}" ${3:+--prior "$3"} 2>/dev/null; }
+ofield() { printf '%s\n' "$2" | sed -n "s/^$1=//p"; }
+named() { printf '%s\n' "$3" | sed -n "s/^$2=//p" | tr ':' ',' | tr ',' '\n' | grep -c "^$1\$"; }
+hash12() { printf '%s' "$1" | sha256sum | cut -c1-12; }
+
+gnew
+c1="$(gc 2026-11-08T10:00:00Z 'base')"
+sub2='[HIMMEL-902] B1 the first slice'; sub3='[HIMMEL-902] B2 the second slice'
+c2="$(gc 2026-11-09T12:00:00Z "$sub2")"
+c3="$(gc 2026-11-09T15:00:00Z "$sub3")"
+v10="HIMMEL-151 question after HIMMEL-902 its B1 slice @$c1"
+d10="$(doc HIMMEL-nextleg-2026-11-10ZZ-r10 "$pd $v10")"
+o10="$(cout "$d10")"
+check 'R10 an open parent merged since @sha reads changed' '1:HIMMEL-151' "$(ofield pool-changed "$o10")"
+check 'R10 the detail line names every target, the first merge since the anchor and the newest' \
+    "CHANGED-DISPOSITION HIMMEL-151 line=$(hash12 "$v10") HIMMEL-902=open @$c1=2-behind since HIMMEL-902 $c2 via HIMMEL-902 $c3 [HIMMEL-902] B2 the second slice" \
+    "$(printf '%s\n' "$o10" | grep '^CHANGED-DISPOSITION')"
+check 'R10 a changed line is not stale' '0' "$(ofield pool-stale "$o10")"
+
+printf '%s\n' "$o10" > "$WORK/r19.prior"
+o19="$(cout "$d10" "$WORK/notarepo" "$WORK/r19.prior")"
+check 'R19 a changed verdict survives a failed git read' "$(printf '%s\n' "$o10" | grep '^CHANGED-DISPOSITION') carried" "$(printf '%s\n' "$o19" | grep '^CHANGED-DISPOSITION')"
+check 'R19 the carried key stays in the field beside ?' '1:HIMMEL-151,?' "$(ofield pool-changed "$o19")"
+mk 902 "Done" Done '["v1.1.3"]' '[]' '[]'
+check 'R19 control: a Done parent releases the changed verdict' 0 "$(cout "$d10" "$WORK/notarepo" "$WORK/r19.prior" | grep -c '^CHANGED-DISPOSITION')"
+mk 902 "In Progress" "In Progress" '["v1.1.3"]' '[]' '[]'
+d19="$(doc HIMMEL-nextleg-2026-11-10ZZ-r19 "$pd $v10 edited")"
+check 'R19 control: an edited line releases it too' 0 "$(cout "$d19" "$WORK/notarepo" "$WORK/r19.prior" | grep -c '^CHANGED-DISPOSITION')"
+
+v11="HIMMEL-152 question after HIMMEL-902 the rest (ZZ 11-08)"
+check 'R11 a date stamp anchors an unstamped line' '1:HIMMEL-152' "$(ofield pool-changed "$(cout "$(doc HIMMEL-nextleg-2026-11-10ZZ-r11 "$pd $v11")")")"
+v12="$v11 (ZZ 11-09 15:01Z re-read)"
+d12="$(doc HIMMEL-nextleg-2026-11-10ZZ-r12 "$pd $v12")"
+check 'R12 a timed re-read stamp clears the line' '0' "$(ofield pool-changed "$(cout "$d12")")"
+v12c="HIMMEL-151 question after HIMMEL-902 its B1 slice @$c3"
+d12c="$(doc HIMMEL-nextleg-2026-11-10ZZ-r12c "$pd $v12c")"
+for n in 1 2 3 4; do gc "2026-11-10T0$n:00:00Z" "other work $n" > /dev/null; done
+o12b="$(TICK_POOL_MAX_MERGES=3 cout "$d12")"
+check 'R12b a timed stamp never expires' '0 0' "$(named "${v12%% *}" pool-changed "$o12b") $(named "${v12%% *}" pool-stale "$o12b")"
+o12c="$(TICK_POOL_MAX_MERGES=3 cout "$d12c")"
+check 'R12c an @sha clear expires after TICK_POOL_MAX_MERGES (the cost of clearing with @sha)' '1:HIMMEL-151' "$(ofield pool-stale "$o12c")"
+check 'R12c its detail line names the expired sha' "STALE-DISPOSITION HIMMEL-151 line=$(hash12 "$v12c") HIMMEL-902=open @$c3=4-behind" "$(printf '%s\n' "$o12c" | grep '^STALE-DISPOSITION')"
+sub110='[HIMMEL-110] another open parent'
+c110="$(gc 2026-11-10T06:00:00Z "$sub110")"
+v2t="HIMMEL-158 question after HIMMEL-902 and HIMMEL-110 (ZZ 11-08)"
+p2t="^CHANGED-DISPOSITION HIMMEL-158 .* since HIMMEL-902 $c2 via HIMMEL-110 $c110 "
+check 'two open parents: the oldest merge keeps its own target, the newest its own' 1 "$(cout "$(doc HIMMEL-nextleg-2026-11-10ZZ-r2t "$pd $v2t")" | grep -c "$p2t")"
+
+gnew
+gc 2026-11-08T10:00:00Z 'base' > /dev/null
+gc 2026-11-09T12:00:00Z '[HIMMEL-903] another key' > /dev/null
+gc 2026-11-09T13:00:00Z '[HIMMEL-9022] a key that only starts the same' > /dev/null
+v13="HIMMEL-153 question after HIMMEL-902 the rest (ZZ 11-08)"
+o13="$(cout "$(doc HIMMEL-nextleg-2026-11-10ZZ-r13 "$pd $v13")")"
+check 'R13 a merge naming another key does not count' '0 0' "$(named "${v13%% *}" pool-changed "$o13") $(named "${v13%% *}" pool-stale "$o13")"
+v14="HIMMEL-154 question after HIMMEL-902 the rest (ZZ 11-08) @deadbee"
+o14="$(cout "$(doc HIMMEL-nextleg-2026-11-10ZZ-r14 "$pd $v14")")"
+check 'R14 an @sha git cannot read is not changed' '0 ?' "$(named HIMMEL-154 pool-changed "$o14") $(ofield pool-stale "$o14")"
+
+gnew
+gc 2026-11-08T10:00:00Z 'base' > /dev/null
+gc 2026-11-09T12:00:00Z '[HIMMEL-902] B1 the first slice' > /dev/null
+v16="HIMMEL-155 question after HIMMEL-902 the rest (ZZ 11-09)"
+d16="$(doc HIMMEL-nextleg-2026-11-10ZZ-r16 "$pd $v16")"
+touch -d 2027-11-10T12:00:00Z "$d16"  # gnu-ok: chief kit is Linux-only; the mtime a year on would read 2027-11-09, after the merge
+check 'R16 the reference date comes from the doc file name' '1:HIMMEL-155' "$(ofield pool-changed "$(cout "$d16")")"
+
+gnew
+gc 2026-12-20T10:00:00Z 'base' > /dev/null
+gc 2026-12-31T12:00:00Z '[HIMMEL-902] B1 the first slice' > /dev/null
+v17="HIMMEL-156 question after HIMMEL-902 the rest (ZZ 12-30)"
+check 'R17 a stamp month after the reference month is last year' '1:HIMMEL-156' "$(ofield pool-changed "$(cout "$(doc HIMMEL-nextleg-2027-01-02ZZ-r17 "$pd $v17")")")"
+
+gnew
+gc 2025-11-08T10:00:00Z 'base' > /dev/null
+gc 2025-11-09T12:00:00Z '[HIMMEL-902] B1 the first slice' > /dev/null
+v18="HIMMEL-157 question after HIMMEL-902 the rest (ZZ 11-09)"
+d18="$(doc plain "$pd $v18")"
+touch -d 2025-11-10T12:00:00Z "$d18"  # gnu-ok: chief kit is Linux-only; today's date as the reference would read 2026-11-09, after the merge
+check 'R18 an undated doc name falls back to the doc mtime' '1:HIMMEL-157' "$(ofield pool-changed "$(cout "$d18")")"
+
+# the YO lines are verbatim but for one token: 9622's @6eb44fbbe names the fixture's stand-in commit
+mk 9137 "In Progress" "In Progress" '["v1.1.3"]' '[]' '[]'
+mk 9564 "In Progress" "In Progress" '["v1.1.3"]' '[]' '[]'
+gnew
+gc 2026-11-10T17:54:00Z '[HIMMEL-9137] T6a the slice B remainder' > /dev/null
+standin="$(gc 2026-11-10T19:03:00Z 'the stand-in for 6eb44fbbe')"
+gc 2026-11-10T21:45:00Z '[HIMMEL-9564] B1 the release.ts slice' > /dev/null
+dyo="$(doc HIMMEL-nextleg-2026-11-10YO-replay \
+    "pool-disposition: HIMMEL-7644 question after PR #4761 doctor C52 edit in scripts/himmel-doctor.sh is held by it, and the live auto-lane run with account B's key dead is chief-run (PRs #4919 and #4943 merged) (XA 11-09)" \
+    "pool-disposition: HIMMEL-9077 question after HIMMEL-9137 slice B remainder (T6a) is carried by 9137's plan tasks and its held files headed-arm-worker.sh and graphmap-cadence.sh (XA 11-09)" \
+    'pool-disposition: HIMMEL-9487 slice decision 878 public-text slice for docs/setup/operator-profile-tbd-delta.md (doctor printed text waits on PR #4761); Writes docs/setup/operator-profile-tbd-delta.md; opus (XA 11-09)' \
+    "pool-disposition: HIMMEL-9622 question after HIMMEL-9564 release.ts edit follows 9564 (In Progress, B1 live under N5765f, committed 39cf0a0d5); tick.sh also held by PR 5171 (N5810) (YH 11-10 re-read: blocker still open) @$standin" \
+    'pool-disposition: HIMMEL-9448 slice decision 848 spec signed O-v1.1.3-0390 (specs/plans/HIMMEL-9448-adopter-graph-choices.md); XB files the build slice tickets and dispatches them (XB 11-09)' \
+    "pool-disposition: HIMMEL-9001 question after HIMMEL-9564 S1b writes scripts/jira/src/release/, in N5765's Writes (bypass go code owed) (XR 11-10)" \
+    'pool-disposition: HIMMEL-8597 slice decision 870 worker N5770 config-audit half; doctor half after PR #4761 (XR wave 1) (XR 11-10)')"
+: > "$PS_GH_LOG"
+oyo="$(TICK_STATE_DIR="$WORK/st-replay" cout "$dyo" "$GR" "$WORK/st-replay/none.out")"
+check 'DoD-2 replay: the closed-PR holds read stale' '3:HIMMEL-7644,HIMMEL-9487,HIMMEL-8597' "$(ofield pool-stale "$oyo")"
+check 'DoD-2 replay: the holds whose parent merged since read changed' '3:HIMMEL-9077,HIMMEL-9622,HIMMEL-9001' "$(ofield pool-changed "$oyo")"
+check 'DoD-2 replay: the stub served the real PR numbers (no live read)' '1 1 1 1' "$(grep -c 'p4761:' "$PS_GH_LOG") $(grep -c 'p4919:' "$PS_GH_LOG") $(grep -c 'p4943:' "$PS_GH_LOG") $(grep -c 'p5171:' "$PS_GH_LOG")"
+syo="$(ofield '# stale-file' "$oyo")"
+mkdir -p "$(dirname "${syo:-$WORK/none/x}")"; printf '%s\n' "$oyo" > "${syo:-$WORK/none/x}"
+printf '# disposition HIMMEL-%s listed LOCAL\n' 7644 9077 9487 9622 9448 9001 8597 > "$WORK/yo.rows"
+pyo="$(TICK_STATE_DIR="$WORK/st-replay" TOKEN='' bash "$SUT" --pool-dispositions --doc "$dyo" < "$WORK/yo.rows" 2>/dev/null)"
+check 'DoD-2 replay: six keys count unresolved and 9448 stays disposed' '7/0/1/6' "$(printf '%s\n' "$pyo" | sed -n 's/^# pool-counts //p')"
+check 'DoD-2 replay: three stale and three changed' 'changed HIMMEL-9001,changed HIMMEL-9077,changed HIMMEL-9622,stale HIMMEL-7644,stale HIMMEL-8597,stale HIMMEL-9487' \
+    "$(printf '%s\n' "$pyo" | sed -n 's/^# pool-unresolved \([a-z]*\) \(HIMMEL-[0-9]*\) .*/\1 \2/p' | paste -sd, -)"
 
 real_scripts="$(cd "$HERE/../.." && pwd)"
 sk="$WORK/kit/scripts"; mkdir -p "$sk/handover/chief-kit"
