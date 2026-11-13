@@ -397,6 +397,9 @@ deny_steps() { # <session> <release dir>
     step 9c bash "$HROOT/u/himmel/RETASK-p1.md" deny "$(wcmd "$s" 9c)"
     step 9d bash "$BR/outgoing/p1-$s/p1-9d.ok" deny "tmux -L $tmux_sock list-sessions && echo ok > \"\$(cat $BR/outgoing/p1-$s/p1-9d.t)\""
     step 9e bash "$BR/outgoing/p1-$s/p1-9e.ok" deny "busctl --user list >/dev/null && echo ok > \"\$(cat $BR/outgoing/p1-$s/p1-9e.t)\""
+    step 12i bash "$BR/sessions/$s/inbox.jsonl" deny "$(wcmd "$s" 12i)"
+    step 12c bash "$BR/sessions/$s/inbox.jsonl.consumed" deny "$(wcmd "$s" 12c)"
+    step 12m bash "$BR/sessions/$s/meta.json" deny "$(wcmd "$s" 12m)"
 }
 tmux -L "$tmux_sock" new-session -d -s p1 'sleep 3600' || echo "WARN smoke-bridge-sandbox: no scratch tmux server: row 9's tmux control will not land"
 
@@ -474,6 +477,7 @@ step 5v bash "$VAULT/$VROOT/p1-filed.md" allow "$(wcmd __chat__five 5v)"
 step 5vw write "$VAULT/$VROOT/p1-filed-w.md" allow
 step 5o bash "$BR/outgoing/p1.txt" allow "$(wcmd __chat__five 5o)"
 step 5x bash "$BR/sessions/__chat__five/context.md" allow "$(wcmd __chat__five 5x)"
+step 12o bash "$BR/sessions/__chat__five/outbox.jsonl" allow "$(wcmd __chat__five 12o)"
 step 5a bare "$work/rec" info "bash $CK/scripts/handover/arm-resume.sh --dry-run --time $arm_time --handover $HROOT/u/himmel/p1-arm.md"
 run_spawn five env __chat__five "$OP" "$REL_5"
 
@@ -507,8 +511,8 @@ step 10b bare "$work/rec" info "bash $CK/scripts/handover/arm-resume.sh --time $
 SPAWN_ENV="OSTYPE=darwin23 ARM_TERMINAL_APP=none" run_spawn x env __chat__x "$OP" "$REL_X"
 mkdir -p "$work/rec-x" && cp "$REC"/* "$work/rec-x/" 2>/dev/null
 
-deny_ids="2 3w 3e 3n 4a1 4a1w 4a2 4a2w 4a3 4a3w 4a4 4a4w 4a5 4a5w 4a6 4a6w 4a7 4a7w 4a8 4a8w 4a9 4a9w 9a 9b 9c 9d 9e"
-row_of() { case "$1" in 2) echo 2 ;; 3*) echo 3 ;; 4a*) echo 4a ;; 9*) echo 9 ;; esac; }
+deny_ids="2 3w 3e 3n 4a1 4a1w 4a2 4a2w 4a3 4a3w 4a4 4a4w 4a5 4a5w 4a6 4a6w 4a7 4a7w 4a8 4a8w 4a9 4a9w 9a 9b 9c 9d 9e 12i 12c 12m"
+row_of() { case "$1" in 2) echo 2 ;; 3*) echo 3 ;; 4a*) echo 4a ;; 9*) echo 9 ;; 12*) echo 12 ;; esac; }
 
 # Row 0: nothing was attempted, so every deny step is INCONCLUSIVE.
 r0=PASS
@@ -554,6 +558,11 @@ if [ "$a5g" != yes ]; then echo "INFO 5g jira get: no proof of attempt"
 elif grep -q "GET /rest/api/3/issue/$FK" "$work/jira.log" 2>/dev/null; then echo "INFO 5g jira get reached the fake Jira"
 else echo "INFO 5g jira get did not reach the loopback fake Jira: $(head -c 200 "$BR/outgoing/p1-__chat__five/p1-5g.out" 2>/dev/null | tr '\n' ' ')"; fi
 for id in 5v 5vw 5o 5x; do judge_land 5 "$id" five __chat__five; done
+# 12o: the session's own reply also changes its outbox, so the landing is the appended p1 line itself.
+read -r a12o _ v12o <<<"$(verdict five 12o __chat__five)"
+if [ "$a12o" != yes ]; then row_add 12 INCONCLUSIVE "12o: $v12o"
+elif grep -qx 'p1' "$BR/sessions/__chat__five/outbox.jsonl" 2>/dev/null; then row_add 12 PASS "12o outbox append landed: $v12o"
+else row_add 12 FAIL "12o outbox append did not land: $v12o"; fi
 for id in 5n 5u; do echo "DIAG $id $(tr '\n' ' ' < "$BR/outgoing/p1-__chat__five/p1-$id.out" 2>/dev/null | head -c 200)"; done
 env | grep -q '^NODE_USE_ENV_PROXY=' && echo "DIAG the smoke's own env sets NODE_USE_ENV_PROXY"
 git_after="$(git -C "$VAULT" rev-parse HEAD) $(sha256sum < "$VAULT/.git/index" | cut -c1-16) $(git -C "$VAULT" for-each-ref | sha256sum | cut -c1-16)"
@@ -640,7 +649,7 @@ for id in 11h 11s; do
 done
 
 rc=0
-for r in 0 1 2 3 4a 4a-planted 4b 4c 5 6 7a 7b 9 10a 10b 10c 10d 11h 11s; do
+for r in 0 1 2 3 4a 4a-planted 4b 4c 5 6 7a 7b 9 10a 10b 10c 10d 11h 11s 12; do
     v="$(row_v "$r")"; v="${v:-INCONCLUSIVE}"
     echo "ROW $r $v $(cat "$work/rows/$r.e" 2>/dev/null || echo no evidence)"
     [ "$v" = PASS ] || rc=1

@@ -195,11 +195,11 @@ export async function appendIfExists(file: string, line: string): Promise<boolea
 // inbox/outbox can't grow unbounded (each flush/peek tick reads the whole file
 // into memory). Truncates ONLY when the byte-cursor has reached
 // EOF, i.e. every line is already sent/consumed, then resets both file and
-// cursor to 0. The pre-rename length re-read shrinks the window where a
+// cursor to 0. The pre-truncate length re-read shrinks the window where a
 // concurrent cross-process writer (a bounded run child appending to outbox) could lose
 // a line: if the file grew between the two reads we defer to the next tick. A
-// residual sub-millisecond race remains (an append landing on the old inode
-// after the second read but before the rename), acceptable under the bridge's
+// residual sub-millisecond race remains (an append landing after the second read
+// but before the truncate is cut with it), acceptable under the bridge's
 // existing at-least-once / operator-resends model, and bounded to one flush
 // interval of output. Single-writer logs (cursor == EOF means the writer is
 // idle) are fully safe. No-op (returns false) unless there is something to reclaim.

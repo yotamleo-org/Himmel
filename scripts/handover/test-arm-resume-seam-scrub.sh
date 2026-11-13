@@ -186,7 +186,7 @@ for w in "" "nohup" "timeout 60" "nice -n 5"; do
     case "$BW" in *"$MARK_LINE"*) echo "PASS T18 wrapper '${w:-env -u}' still yields a marked body" ;;
         *) echo "FAIL T18 wrapper '${w:-env -u}' dropped the marker"; FAILED=$((FAILED + 1)) ;; esac
 done
-walk_case() { # <case>: the marker walk, lifted from arm-resume.sh onto a fake /proc whose ancestors <case> shapes
+walk_case() {
     local fake="$TMP/fakeproc-$1"
     rm -rf "$fake"; mkdir -p "$fake/self"
     sed -n '/^_arm_bridge_marked() {/,/^}/p; /^_arm_is_host_user_manager() {/,/^}/p' "$ARM" | sed "s#/proc#$fake#g" > "$TMP/walk-$1.sh"
