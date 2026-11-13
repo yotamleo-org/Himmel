@@ -84,6 +84,15 @@ Read on demand: `worker-preface.md` names this file when a command is refused or
   session scratchpad, or under `.himmel-scratch/` if you have no
   scratchpad. A stray at the root pins the worktree as "possible forgotten
   work" and the merged worktree is never pruned.
+- **The cwd persists between Bash calls, so a `cd` into the primary checkout
+  poisons every later relative write.** Scratch work uses absolute paths or the
+  Write tool, never `cd <dir> &&` before a loop, `$(…)`, `<(…)` or another `cd`.
+  Never `cd` into the primary checkout: reach it by absolute path
+  (`node <primary>/scripts/jira/dist/index.js <op>`,
+  `uv run <primary>/scripts/lib/vmsdk.py …`, `git -C <primary> pull --ff-only`),
+  or `block-write-into-main-checkout` refuses every relative write after it.
+  Work that needs a clone or checkout of its own goes under
+  `~/.himmel/scratch/<name>`, never beside or inside the primary.
 - Never use bare `git stash` / `git stash pop`: the stash stack is shared with
   every other worktree and another session may pop yours.
 <!-- mem:8051051e1d11 -->
