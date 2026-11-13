@@ -217,10 +217,14 @@
 # Platform guard: POSIX bash 3.2+, same as go.sh. No mapfile.
 set -u
 
+# This script's own directory, absolute, resolved before any cd: every lib and child below is
+# found through it, never through a relative $0 (which would re-aim after the cd to the gated checkout).
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 _rcd_report() {
     local tok="" bucket="" why="" first=1 lib
     [ -s "${1:-}" ] || return 1
-    lib="$(cd "$(dirname "$0")/../../lib" && pwd)"
+    lib="$(cd "$SELF_DIR/../../lib" && pwd)"
     while read -r tok bucket why; do
         [ -n "$why" ] || continue
         (
@@ -266,7 +270,7 @@ if [ -z "${_READY_CHECK_ARMED:-}" ]; then
     _TIMEOUT_BIN=""
     if [ "$rcd_s" -gt 0 ]; then
         # shellcheck source=../../lib/timeout-bin.sh
-        . "$(cd "$(dirname "$0")/../../lib" && pwd)/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""  # swallow-ok: an empty _TIMEOUT_BIN runs without the deadline, as the per-read bounds below do
+        . "$(cd "$SELF_DIR/../../lib" && pwd)/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""  # swallow-ok: an empty _TIMEOUT_BIN runs without the deadline, as the per-read bounds below do
     fi
     rcd_ref=$(mktemp "${TMPDIR:-/tmp}/ready-check-refused.XXXXXX" 2>/dev/null) || rcd_ref=""  # swallow-ok: no scratch file runs this process unwrapped, as before
     if [ -n "$rcd_ref" ]; then
@@ -289,7 +293,7 @@ if [ -z "${_READY_CHECK_ARMED:-}" ]; then
         fi
         if [ -n "$_TIMEOUT_BIN" ] && [ -n "$rcd_buf" ] && [ -n "$rcd_err" ]; then
             _READY_CHECK_ARMED=1 _RCD_REFUSED="$rcd_ref" GH_READ_REFUSED_FILE="$rcd_ref" \
-                _rcd_child "$_TIMEOUT_BIN" -k 5 "$rcd_s" bash "$0" "$@" >"$rcd_buf" 2>"$rcd_err" || rcd_rc=$?
+                _rcd_child "$_TIMEOUT_BIN" -k 5 "$rcd_s" bash "$SELF_DIR/${0##*/}" "$@" >"$rcd_buf" 2>"$rcd_err" || rcd_rc=$?
             if [ "$rcd_rc" -ne 0 ] && _rcd_report "$rcd_ref" "$rcd_pr" "$rcd_sha"; then
                 rm -f "$rcd_ref" "$rcd_buf" "$rcd_err"
                 exit 2
@@ -306,9 +310,9 @@ if [ -z "${_READY_CHECK_ARMED:-}" ]; then
         rm -f "$rcd_buf" "$rcd_err"
         if [ -n "$_TIMEOUT_BIN" ]; then
             _READY_CHECK_ARMED=1 _RCD_REFUSED="$rcd_ref" GH_READ_REFUSED_FILE="$rcd_ref" \
-                _rcd_child "$_TIMEOUT_BIN" -k 5 "$rcd_s" bash "$0" "$@" || rcd_rc=$?
+                _rcd_child "$_TIMEOUT_BIN" -k 5 "$rcd_s" bash "$SELF_DIR/${0##*/}" "$@" || rcd_rc=$?
         else
-            _READY_CHECK_ARMED=1 _RCD_REFUSED="$rcd_ref" GH_READ_REFUSED_FILE="$rcd_ref" _rcd_child bash "$0" "$@" || rcd_rc=$?
+            _READY_CHECK_ARMED=1 _RCD_REFUSED="$rcd_ref" GH_READ_REFUSED_FILE="$rcd_ref" _rcd_child bash "$SELF_DIR/${0##*/}" "$@" || rcd_rc=$?
         fi
         if [ "$rcd_rc" -ne 0 ] && _rcd_report "$rcd_ref" "$rcd_pr" "$rcd_sha"; then
             rm -f "$rcd_ref"
@@ -325,12 +329,12 @@ fi
 
 usage() {
     local rc_primary
-    rc_primary=$(git -C "$(dirname "$0")" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || rc_primary=""
+    rc_primary=$(git -C "$SELF_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || rc_primary=""
     case "$rc_primary" in */.git) rc_primary="${rc_primary%/.git}" ;; *) rc_primary="<primary-checkout>" ;; esac
     echo "usage: ready-check.sh [--contract yes|no] [--observe] [--require-contract] <pr-number> <full-40-hex-head-sha>" >&2
     echo "       ready-check.sh --only 7 <pr-number>   (ticket-coverage lint plus the conflicts-resolved check 20, for a worker before READY)" >&2
     echo "       ready-check.sh --outside <pr-number>  (prints outside-pr: yes|no, the item 16 predicate)" >&2
-    echo "run it from the primary checkout, not a worktree (check 12 needs an up-to-date anchor): cd '$rc_primary' && bash '$rc_primary/scripts/handover/chief-kit/ready-check.sh' <pr-number> <full-40-hex-head-sha>" >&2
+    echo "it gates HIMMEL_REPO, else the primary checkout of this script's own tree (check 12 needs an up-to-date anchor), from any directory: bash '$rc_primary/scripts/handover/chief-kit/ready-check.sh' <pr-number> <full-40-hex-head-sha>" >&2
 }
 
 CONTRACT=""
@@ -393,7 +397,7 @@ fi
 
 GH="${GH_CMD:-gh}"
 # Every call below is a read: with no GH_CMD seam they ride the read-only token.
-GH_READ_LIB="$(cd "$(dirname "$0")/../../lib" && pwd)/gh-read.sh"
+GH_READ_LIB="$(cd "$SELF_DIR/../../lib" && pwd)/gh-read.sh"
 if [ -z "${GH_CMD:-}" ] && [ -f "$GH_READ_LIB" ]; then
     # shellcheck source=scripts/lib/gh-read.sh
     . "$GH_READ_LIB"
@@ -409,6 +413,23 @@ if ! command -v jq >/dev/null 2>&1; then
     exit 2
 fi
 
+# The gated checkout is HIMMEL_REPO, else the primary checkout of this script's own tree,
+# never the caller's cwd. Everything below (bare git, gh's own base-repo rule, the children)
+# reads it: enter it, drop any inherited GIT_* steering, and pin gh to its repo below.
+case "${HIMMEL_REPO:-}" in
+    /*) GATE_DIR=$HIMMEL_REPO ;;
+    '') GATE_DIR=$( (unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE; git -C "$SELF_DIR" rev-parse --path-format=absolute --git-common-dir) 2>/dev/null) || GATE_DIR=""  # swallow-ok: a tree outside git reads empty, which falls back to this script's own tree root below
+        GATE_DIR=${GATE_DIR%/.git} ;;
+    *) echo "ready-check: HIMMEL_REPO ($HIMMEL_REPO) is not an absolute path - refusing to let it pick the gated checkout; nothing was judged" >&2
+       exit 2 ;;
+esac
+[ -n "$GATE_DIR" ] || GATE_DIR="$(cd "$SELF_DIR/../../.." && pwd)"
+if [ ! -d "$GATE_DIR" ] || ! cd "$GATE_DIR"; then
+    echo "ready-check: the gated checkout HIMMEL_REPO ($GATE_DIR) is not a directory; nothing was judged" >&2
+    exit 2
+fi
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GH_REPO
+
 # one call carries the default branch too (check 12), so the GraphQL budget holds
 nwo=$("$GH" repo view --json owner,name,defaultBranchRef --jq '"\(.owner.login)/\(.name) \(.defaultBranchRef.name // "")"' 2>/dev/null)
 tp_branch=""
@@ -420,6 +441,8 @@ if [ -z "$nwo" ]; then
 fi
 owner="${nwo%%/*}"
 repo="${nwo#*/}"
+# a child's bare gh reads the same repo
+export GH_REPO="$nwo"
 
 RESULT=0
 mark_fail() { RESULT=1; }
@@ -427,7 +450,7 @@ mark_fail() { RESULT=1; }
 # this head: the CR-FIRST HOLD lines of the release lib, read-only (no
 # label, no ledger line). Switch off or unset: prints nothing, check 2 is unchanged.
 crf_hold_note() {
-    local lib; lib="$(cd "$(dirname "$0")/../../lib" && pwd)/cr-first-release.sh"
+    local lib; lib="$(cd "$SELF_DIR/../../lib" && pwd)/cr-first-release.sh"
     [ -r "$lib" ] || return 0
     (
         # shellcheck source=../../lib/cr-first-release.sh
@@ -438,7 +461,7 @@ crf_hold_note() {
         cr_first_release "$PR" "$SHA" "$nwo" 2>/dev/null </dev/null | sed 's/^/       /'
     ) || true
 }
-SNAPSHOT_SCRIPT="$(cd "$(dirname "$0")/../../lib" && pwd)/gh-pr-snapshot.sh"
+SNAPSHOT_SCRIPT="$(cd "$SELF_DIR/../../lib" && pwd)/gh-pr-snapshot.sh"
 SNAPSHOT_REREAD_LOCK_WAIT=5
 snapshot=""
 snapshot_fail_reason=""
@@ -459,7 +482,7 @@ fi
 
 # author_class and outside_pr_of live in the lib, so scripts/cr/pr-check-outside.sh asks the same question.
 # shellcheck source=../../lib/outside-contributors.sh
-. "$(dirname "$0")/../../lib/outside-contributors.sh" 2>/dev/null || true  # swallow-ok: a missing lib leaves outside_pr_of undefined, which --outside reports as unreadable (exit 2) and item 16 as unknown
+. "$SELF_DIR/../../lib/outside-contributors.sh" 2>/dev/null || true  # swallow-ok: a missing lib leaves outside_pr_of undefined, which --outside reports as unreadable (exit 2) and item 16 as unknown
 
 if [ "$OUTSIDE_MODE" -eq 1 ]; then
     if ! op=$(outside_pr_of "$snapshot"); then
@@ -538,7 +561,7 @@ done
 # every non-green entry is a listed non-gating context (lib/non-gating-contexts.txt).
 # shellcheck source=../../lib/non-gating-contexts.sh
 ng_json='[]'
-if . "$(cd "$(dirname "$0")/../../lib" && pwd)/non-gating-contexts.sh" 2>/dev/null; then
+if . "$(cd "$SELF_DIR/../../lib" && pwd)/non-gating-contexts.sh" 2>/dev/null; then
     ng_json=$(ngc_json)
 fi
 rollup=$(printf '%s' "$snapshot" | jq -c '.[0].statusCheckRollup' 2>/dev/null)
@@ -720,7 +743,7 @@ else
     # JIRA_PROJECT_KEY from the primary checkout's .env (live env wins) —
     # without this, a fresh shell with nothing exported always falls through
     # to the bare "#123" pattern and flags every "[TICKET-1234]"-style subject.
-    RC_SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+    RC_SCRIPT_DIR="$(cd "$SELF_DIR" && pwd)"
     # shellcheck source=../../lib/load-dotenv.sh
     # shellcheck disable=SC1091
     if . "$RC_SCRIPT_DIR/../../lib/load-dotenv.sh" 2>/dev/null; then
@@ -786,7 +809,7 @@ jira_run() {
     if [ -n "${JIRA_CMD:-}" ]; then
         "$JIRA_CMD" "$@" 2>&1
     else
-        cov_primary=$(cd "$(dirname "$0")" && cd "$(git rev-parse --git-common-dir 2>/dev/null)/.." 2>/dev/null && pwd)
+        cov_primary=$(cd "$SELF_DIR" && cd "$(git rev-parse --git-common-dir 2>/dev/null)/.." 2>/dev/null && pwd)
         node "$cov_primary/scripts/jira/dist/index.js" "$@" 2>&1
     fi
 }
@@ -876,7 +899,7 @@ cov_ledger_keys() {
     cov_disp_rows=$(printf '%s\n' "$cov_led_out" | awk -F'\t' '$1 == "D"')
     if [ -n "$cov_disp_rows" ]; then
         # The mac is the one cr-disposition.sh disp_mac builds, from the same go_msg_mac, so a row passes here only if it passes there.
-        cov_gg="${READY_CHECK_ANCHOR:-$(cd "$(dirname "$0")/../../.." && pwd)}/scripts/lib/go-gate.sh"
+        cov_gg="${READY_CHECK_ANCHOR:-$(cd "$SELF_DIR/../../.." && pwd)}/scripts/lib/go-gate.sh"
         # shellcheck source=/dev/null
         if . "$cov_gg" 2>/dev/null && declare -F go_msg_mac >/dev/null 2>&1; then
             while IFS=$'\t' read -r _ cov_fid cov_fh cov_dp cov_src cov_att cov_mac; do
@@ -940,7 +963,7 @@ else
     # `jira get` fetches created.
     cov_own=""
     # an owed line is decided by the anchor's reader alone (the one grammar owner, as item 17 reads it): item 7 checks only its window
-    cov_reader="${READY_CHECK_ANCHOR:-$(cd "$(dirname "$0")/../../.." && pwd)}/scripts/lib/pr_remainder.py"
+    cov_reader="${READY_CHECK_ANCHOR:-$(cd "$SELF_DIR/../../.." && pwd)}/scripts/lib/pr_remainder.py"
     cov_owed_re='(^|[^[:alnum:]])owed[[:space:]]*(→|->)'
     if printf '%s\n' "$cov_lines" | grep -qiE "deferred|$cov_owed_re"; then
         cov_own=$("$GH" pr view "$PR" --repo "$nwo" --json headRefName --jq '.headRefName' 2>/dev/null | grep -oE '[A-Za-z][A-Za-z0-9]*-[0-9]+' | head -n 1 | tr '[:lower:]' '[:upper:]' || true) # swallow-ok: an unreadable branch leaves cov_own empty, so only a residual label passes
@@ -1088,7 +1111,7 @@ pr_fetch_done=0
 pr_mb_done=0
 _TIMEOUT_BIN=""
 # shellcheck source=../../lib/timeout-bin.sh
-. "$(cd "$(dirname "$0")/../../lib" && pwd)/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""  # swallow-ok: an empty _TIMEOUT_BIN leaves the fetches unbounded, and item 19 FAILs on it
+. "$(cd "$SELF_DIR/../../lib" && pwd)/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""  # swallow-ok: an empty _TIMEOUT_BIN leaves the fetches unbounded, and item 19 FAILs on it
 pr_mb_git() { ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 15} git "$@"; }
 pr_fetch() {
     if [ "$pr_fetch_done" -eq 0 ]; then
@@ -1637,7 +1660,7 @@ else
         git fetch -q origin "refs/pull/$PR/head" 2>/dev/null || true
     fi
     # shellcheck disable=SC2086  # word-splitting the added paths IS the point (repo paths carry no whitespace)
-    unw_out=$(bash "$(cd "$(dirname "$0")/../../testing" && pwd)/check-added-unwired.sh" "$SHA" $unw_added 2>&1) || unw_rc=$?
+    unw_out=$(bash "$(cd "$SELF_DIR/../../testing" && pwd)/check-added-unwired.sh" "$SHA" $unw_added 2>&1) || unw_rc=$?
     if [ "$unw_rc" -eq 0 ]; then
         echo "[PASS] 11. every added hook, script, skill or suite is reached by some wiring"
     else
@@ -1655,7 +1678,7 @@ if [ "$ONLY7" -eq 0 ]; then
 # the default branch's list against the PR's REST file listing). The worker's READY
 # text is never consulted. A refusal (unreadable list, head moved, listing cut
 # short, stale anchor) FAILs and prints no TRUST-PATH line: it never reads as "no".
-tp_anchor="${READY_CHECK_ANCHOR:-$(cd "$(dirname "$0")/../../.." && pwd)}"
+tp_anchor="${READY_CHECK_ANCHOR:-$(cd "$SELF_DIR/../../.." && pwd)}"
 tp_rc=0; tp_out=""
 if [ -z "$tp_branch" ]; then
     tp_rc=2; tp_out="cannot resolve the default branch (gh repo view --json defaultBranchRef gave none)"
@@ -1732,7 +1755,7 @@ bug_origin_state() {
 # here touches RESULT, so a missing lib or a slow Jira costs a warn line at most.
 check_bug_origin() {
     local bo_lib bo_title bo_key bo_rc bo_reply bo_type bo_state
-    bo_lib="$(cd "$(dirname "$0")/../../lib" 2>/dev/null && pwd)"  # swallow-ok: no lib dir fails the two -f tests below, which warn
+    bo_lib="$(cd "$SELF_DIR/../../lib" 2>/dev/null && pwd)"  # swallow-ok: no lib dir fails the two -f tests below, which warn
     _TIMEOUT_BIN=""
     # shellcheck source=/dev/null
     [ ! -f "$bo_lib/timeout-bin.sh" ] || . "$bo_lib/timeout-bin.sh" 2>/dev/null  # swallow-ok: an empty _TIMEOUT_BIN warns just below
@@ -1803,7 +1826,7 @@ check_bug_origin
 check_cr_rate_limited() {
     local cr_dir cr_lib cr_out
     [ "$ONLY7" -eq 0 ] || return 0
-    cr_dir="$(cd "$(dirname "$0")/../../lib" 2>/dev/null && pwd)"  # swallow-ok: no lib dir fails the -f tests below, which print nothing
+    cr_dir="$(cd "$SELF_DIR/../../lib" 2>/dev/null && pwd)"  # swallow-ok: no lib dir fails the -f tests below, which print nothing
     cr_lib="$cr_dir/coderabbit-signal.sh"
     [ -f "$cr_lib" ] || return 0
     _TIMEOUT_BIN=""
@@ -1849,7 +1872,7 @@ check_outside_pr() {
         mark_fail
         return 0
     fi
-    o_anchor="$(cd "$(dirname "$0")/../../.." && pwd)"
+    o_anchor="$(cd "$SELF_DIR/../../.." && pwd)"
     o_lib="$o_anchor/scripts/lib"
     _TIMEOUT_BIN=""
     # shellcheck source=/dev/null
@@ -2035,7 +2058,7 @@ check_outside_pr
 check_partial_remainder() {
     local pr_title lib key rc anchor reader ans
     [ "$ONLY7" -eq 0 ] || return 0
-    lib="$(cd "$(dirname "$0")/../../lib" 2>/dev/null && pwd)"  # swallow-ok: no lib dir leaves the key unread, reported just below
+    lib="$(cd "$SELF_DIR/../../lib" 2>/dev/null && pwd)"  # swallow-ok: no lib dir leaves the key unread, reported just below
     pr_title=$(printf '%s' "$snapshot" | jq -r '.[0].title // empty' 2>/dev/null) || pr_title=""  # swallow-ok: an unreadable title is reported just below
     key=""; rc=0
     if [ -n "$pr_title" ] && ! printf '%s' "$pr_title" | grep -Eq '[A-Za-z][A-Za-z0-9]*-[0-9]+'; then
@@ -2078,7 +2101,7 @@ check_partial_remainder() {
             echo "[PASS] 17. contract yes: this merge completes $key, so no remainder is read"
             return 0 ;;
     esac
-    anchor="${READY_CHECK_ANCHOR:-$(cd "$(dirname "$0")/../../.." && pwd)}"
+    anchor="${READY_CHECK_ANCHOR:-$(cd "$SELF_DIR/../../.." && pwd)}"
     reader="$anchor/scripts/lib/pr_remainder.py"
     ans=""; rc=0
     if [ -f "$reader" ]; then
@@ -2116,14 +2139,14 @@ check_open_findings() {
         mark_fail
         return 0
     fi
-    of_marker="$(cd "$(dirname "$0")/../../cr" 2>/dev/null && pwd)/clear-review-marker.sh"  # swallow-ok: no cr dir fails the -f test below
+    of_marker="$(cd "$SELF_DIR/../../cr" 2>/dev/null && pwd)/clear-review-marker.sh"  # swallow-ok: no cr dir fails the -f test below
     if [ ! -f "$of_marker" ]; then
         echo "[FAIL] 18. open findings: scripts/cr/clear-review-marker.sh is missing ($of_marker)"
         mark_fail
         return 0
     fi
     _TIMEOUT_BIN=""
-    of_lib="$(cd "$(dirname "$0")/../../lib" 2>/dev/null && pwd)"  # swallow-ok: no lib dir leaves the read unbounded, never unread
+    of_lib="$(cd "$SELF_DIR/../../lib" 2>/dev/null && pwd)"  # swallow-ok: no lib dir leaves the read unbounded, never unread
     # shellcheck source=/dev/null
     [ ! -f "$of_lib/timeout-bin.sh" ] || . "$of_lib/timeout-bin.sh" 2>/dev/null  # swallow-ok: an empty _TIMEOUT_BIN runs the read unbounded
     for of_assume in "" "--assume-go"; do
@@ -2230,7 +2253,7 @@ s17_body() {
     s17_why=""
     _TIMEOUT_BIN=""
     # shellcheck source=../../lib/timeout-bin.sh
-    . "$(cd "$(dirname "$0")/../../lib" && pwd)/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""  # swallow-ok: an empty _TIMEOUT_BIN FAILs item 19 just below
+    . "$(cd "$SELF_DIR/../../lib" && pwd)/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""  # swallow-ok: an empty _TIMEOUT_BIN FAILs item 19 just below
     if [ -z "$_TIMEOUT_BIN" ]; then
         s17_fail "no timeout binary, so no read here can be bounded"
         return 0
@@ -2241,7 +2264,7 @@ s17_body() {
     fi
     # The anchor's copy, so a PR cannot narrow its own list. It diffs from
     # merge-base(origin/main, SHA) itself and exits 2 when there is none.
-    anchor="${READY_CHECK_ANCHOR:-$(cd "$(dirname "$0")/../../.." && pwd)}"
+    anchor="${READY_CHECK_ANCHOR:-$(cd "$SELF_DIR/../../.." && pwd)}"
     if ! s17_run impacted-suites.sh "$(s17_bound 30)" "$d/imp.raw" bash "$anchor/scripts/cr/impacted-suites.sh" "refs/remotes/origin/main..$SHA"; then
         s17_fail "cannot read the impacted list for origin/main..${SHA:0:7}: $s17_why"
         return 0
@@ -2410,10 +2433,10 @@ check_conflicts_resolved() {
         return 0
     fi
     h7="${head:0:7}"
-    det="${READY_CHECK_ANCHOR:-$(cd "$(dirname "$0")/../../.." && pwd)}/scripts/eval/conflicts/conflicts.py"
+    det="${READY_CHECK_ANCHOR:-$(cd "$SELF_DIR/../../.." && pwd)}/scripts/eval/conflicts/conflicts.py"
     _TIMEOUT_BIN=""
     # shellcheck source=../../lib/timeout-bin.sh
-    . "$(cd "$(dirname "$0")/../../lib" && pwd)/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""  # swallow-ok: an empty _TIMEOUT_BIN WARNs just below
+    . "$(cd "$SELF_DIR/../../lib" && pwd)/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""  # swallow-ok: an empty _TIMEOUT_BIN WARNs just below
     if [ ! -f "$det" ] || [ -z "$_TIMEOUT_BIN" ] || ! command -v python3 >/dev/null 2>&1; then
         echo "[WARN] 20. conflicts unknown (no detector, python3 or timeout binary: $det)"
         return 0

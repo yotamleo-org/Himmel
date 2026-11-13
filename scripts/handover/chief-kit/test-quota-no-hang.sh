@@ -346,8 +346,10 @@ drive_ready_check() {
     cd "$GATE_REPO" || return 0
     AFFECT_FN=affect_ready_check RATE_BOUND=15 XM="gql-late"
     for m in $(modes_for); do
+        EXTRA_ENV="HIMMEL_REPO=$GATE_REPO"
         run_mode ready-check.sh "$m" 8 2 bash "$script" 77 "$SHA"
     done
+    EXTRA_ENV=""
 }
 
 drive_go() {
