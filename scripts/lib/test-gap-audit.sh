@@ -146,6 +146,13 @@ has "ceilings: the finding key is ceilings" "$out" "· ceilings:"
 out="$(run HIMMEL_CEILINGS_LEDGER="$TMP/ledger.tsv" GAP_AUDIT_MIRROR="$TMP/no-mirror")"
 lacks "ceilings: no mirror skips only the Done check" "$out" "C-0001"
 has "ceilings: no mirror still flags a missing file" "$out" "C-0003"
+printf '#!/usr/bin/env bash\nprintf "CEILINGS: not read (ledger unreadable: /x)\\n"\n' > "$TMP/repo/scripts/ledger/ceiling-lookup.sh"
+out="$(run)"
+has "ceilings: a lookup that prints not read is reported as not checked" "$out" "not checked: ceilings (ledger unreadable: /x)"
+lacks "ceilings: a lookup that prints not read is not a bare all clear" "$out" "all clear"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$TMP/repo/scripts/ledger/ceiling-lookup.sh"
+out="$(run)"
+has "ceilings: a lookup with no output is reported as not checked" "$out" "not checked: ceilings (unreadable output)"
 rm -rf "$TMP/repo/scripts" "$TMP/repo/b.sh" "$TMP/repo/c.sh"
 git -C "$TMP/repo" rm -q --cached b.sh c.sh
 

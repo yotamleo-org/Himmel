@@ -8,8 +8,8 @@ ok() { echo "ok - $1"; }
 bad() { echo "FAIL - $1"; fails=$((fails + 1)); }
 check() { if [ "$2" = "$3" ]; then ok "$1"; else bad "$1: [$2]!=[$3]"; fi; }
 
-SICKO_BLOB=4e604bc7049fbf03c1f733cafc1ed61f3200fe47
-NOCOMMENTS_BLOB=844f4a58d78f9b6c74fbe28717ff2328339fdd52
+SICKO_BLOB=c334fb165f5a9a14b86a27df9a43718091db7a2c
+NOCOMMENTS_BLOB=63c831609b623b005cb11e596c7158d77ec50d11
 
 [ -f "$agent" ] || { bad "agents/comment-review.md exists"; echo "$fails failed"; exit 1; }
 
