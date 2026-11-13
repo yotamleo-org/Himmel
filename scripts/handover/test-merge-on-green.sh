@@ -3591,7 +3591,7 @@ go_write() {
     local root="$1" head
     shift
     for head in "$@"; do :; done
-    (cd "$GO_READY_REPO" && READY_STUB_HEAD="$head" READY_STUB_NWO=owner/repo HANDOVER_DIR="$root" \
+    (cd "$GO_READY_REPO" && HIMMEL_REPO="$GO_READY_REPO" READY_STUB_HEAD="$head" READY_STUB_NWO=owner/repo HANDOVER_DIR="$root" \
         PATH="$GO_READY_REPO/.bin:$GO_WRITER_BIN:$PATH" bash "$GO_WRITER" "$@" >/dev/null 2>&1)
 }
 no_merge_call() {
