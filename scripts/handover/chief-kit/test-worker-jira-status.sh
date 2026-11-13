@@ -380,7 +380,6 @@ reset "In Progress"; owned LIVE 11 0
 fn "$K" --event merge --pr 11 --head abc
 check "HIMMEL-8522: a funnel row for the merge event is not written under event merge" "$(row event)" derive
 
-# --- D5d: a wrapped partial whose merged PR names its owner is parked in To Do ---
 d5d_merge() { printf '{"ts":"t","event":"merge","key":"%s","pr":"11","repo":"octo/repo","contract":"no","result":"noop"}\n' "$K" >> "$LOG"; }
 reset "In Progress"; owned WRAPPED 0; d5d_merge
 printf '## Ticket coverage\n- parser half: done\n- cutover: deferred -> HIMMEL-9002\n' > "$FX/pr-body-11"
@@ -539,13 +538,11 @@ fn "$K" --event sweep
 check "D7: never owned -> no write" "$(ntrans)" 0
 check "D7: rule" "$(row rule)" D7
 check "D7: no record is created" "$([ -e "$REC" ] && echo yes || echo no)" no
-# Item 5: a record with only closed PRs and no worker doc is "never had a worker", not owned.
 reset "To Do"
 mkdir -p "${REC%/*}"; printf '{"key":"%s","prs":{"7":{"head":"abc","ci":"green","red_latch":false,"open":false}}}\n' "$K" > "$REC"
 fn "$K" --event sweep
 check "D7: a To Do ticket with only closed PRs and no worker doc is not moved" "$(ntrans)" 0
 check "D7: rule D7, not D5" "$(row rule)" D7
-# Item 4: a wont do close refreshes the worker record like Done.
 reset "wont do"; owned WRAPPED; stale_live
 fn "$K" --event sweep
 check "D0: a wont do ticket's live record is refreshed from a wrapped doc" "$(jq -r .state "$REC")" wrapped

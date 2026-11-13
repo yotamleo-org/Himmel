@@ -454,8 +454,6 @@ ts_done_pending() {
 
 _ts_no_write() { TS_DERIVED="no-write"; TS_RESULT="$1"; TS_RULE="$2"; TS_STAGE="${3:-}"; }
 
-# _ts_remainder_owner <KEY> <text> — the owner a PR's remainder text names: another ticket key, or a
-# chief step. Prints it; rc 0 = named, 1 = no owner in the text.
 _ts_remainder_owner() {
     local keys
     keys=$(printf '%s\n' "$2" | grep -oE '[A-Za-z][A-Za-z0-9]*-[0-9]+' | tr '[:lower:]' '[:upper:]' | grep -vxF "$1" | sort -u | paste -sd, - | sed 's/,/, /g') || keys=""  # swallow-ok: no key in the text is the empty answer

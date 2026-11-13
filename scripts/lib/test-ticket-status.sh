@@ -76,7 +76,6 @@ brief no
 check "completes no with Jira In Review: To Do" "$TS_RULE/$TS_DERIVED" 'D6/To Do'
 printf 'HIMMEL-9001\tTask\tIn Progress\n' > "$TS_SNAPSHOT_DIR/jira.tsv"
 
-# A record with only closed PRs and no worker doc never had a worker, so it is not owned (D7, no write).
 for jstatus in "To Do" "In Progress"; do
     printf 'HIMMEL-9001\tTask\t%s\n' "$jstatus" > "$TS_SNAPSHOT_DIR/jira.tsv"
     jq -nc '{prs:{"7":{head:"abc",ci:"green",red_latch:false,open:false}}}' > "$TICKET_STATUS_STATE_DIR/workers/HIMMEL-9001.json"

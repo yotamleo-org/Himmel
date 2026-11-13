@@ -338,8 +338,8 @@ update_record() { # <Jira status now> [the move, "<from> -> <to>"]
     ts_record_write "$KEY" "$rec" || echo "WARN worker-jira-status: cannot write the $KEY worker record" >&2
 }
 
-# A ticket off the ladder (Done, wont do, Duplicate) is never moved, but its worker record still
-# follows the doc/lock, so a worker that wrapped after the close does not read live forever.
+# A Done ticket is never moved, but its worker record still follows the doc/lock,
+# so a worker that wrapped after the merge does not read live forever.
 refresh_done_record() {
     local doc rec
     ts_record_read "$KEY" || return 0
@@ -422,7 +422,6 @@ while :; do
     # derive answers D5c from the log with no gh call. No other rule's row changes.
     mnr_stage="" mnr_pr=""
     if [ "$TS_RULE" = D5c ] && [ "$TS_STAGE" = merged-no-row ]; then mnr_stage=merged-no-row mnr_pr=$TS_MERGED_PR; fi
-    # A D5d names the merged PR and the owner in its row, so a later derive answers D5d from the log.
     if [ "$TS_RULE" = D5d ]; then mnr_stage=$TS_STAGE mnr_pr=$TS_MERGED_PR; fi
     if [ "$TS_DERIVED" = "$TS_J_STATUS" ]; then
         update_record "$TS_J_STATUS"
