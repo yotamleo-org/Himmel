@@ -418,6 +418,9 @@ case "$verb" in
         printf '%s' "${STUB_OPEN_PRS-}"; exit 0 ;;
     "pr view")
         [ "${STUB_NO_PR:-0}" = "1" ] && { echo 'no pull requests found for branch "x"' >&2; exit 1; }
+        # STUB_NO_CWD_PR=1: the cwd branch has no PR (a run from the primary on
+        # main), so only a `pr view` that names its PR resolves one.
+        [ "${STUB_NO_CWD_PR:-0}" = "1" ] && [ "${repo_arg#-}" != "$repo_arg" ] && { echo 'no pull requests found for branch "main"' >&2; exit 1; }
         [ "${STUB_STATE_FAIL:-0}" = "1" ] && { echo "gh: api error" >&2; exit 1; }
         case "$json" in
             title)
@@ -3625,7 +3628,8 @@ assert_merge_has "2919-b: merge pins the certified head" "--match-head-commit $G
 assert_audit_lacks "8918-a4: a bare --go on the PR's own branch still merges, never exit 27" "go-no-open-pr"
 assert_audit_has "2919-b: MERGED recorded" "MERGED repo="
 assert_err_has "2919-b: the verified GO evidence is printed" "GO evidence: file=$GO_ROOT/.locks/go/77.$GO_SHA pr=77 head=$GO_SHA"
-GO_B_GHLOG=$(cat "$LAST_GH_LOG")
+# The PR query names the GO's PR here; 2919-d resolves the same PR from the cwd branch.
+GO_B_GHLOG=$(sed 's/^pr view 77 --json state,url,/pr view --json state,url,/' "$LAST_GH_LOG")
 
 # 7165-a — a valid GO file exists but the worker's merge line carries no --go:
 # refused before any merge call, so a merge command always shows its evidence.
@@ -3661,6 +3665,41 @@ no_merge_call "7165-d: no merge call"
 HANDOVER_DIR="$GO_ROOT" STUB_SHA="$GO_SHA" \
     run_mog 17 "7165-e: operator path with a wrong --go → exit 17" -- --go "$GO_ROOT/.locks/go/78.$GO_SHA"
 no_merge_call "7165-e: no merge call"
+
+# 9917 — a run from a cwd whose branch has no PR (the primary on main) takes the
+# PR from the GO file name <pr>.<sha> when no selector is given.
+# a: the chief worker merges with the bare --go command.
+HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" STUB_SHA="$GO_SHA" STUB_NO_CWD_PR=1 \
+    run_mog 0 "9917-a: --go from a cwd with no PR resolves the GO's PR → merged" -- --go "$GO_ROOT/.locks/go/77.$GO_SHA"
+assert_gh_has "9917-a: the PR query names the GO's PR" "pr view 77 --json state,url,number,headRefOid,baseRefName,headRefName"
+assert_merge_has "9917-a: merge pins the certified head" "--match-head-commit $GO_SHA"
+assert_audit_has "9917-a: MERGED recorded" "MERGED repo="
+# a2: --dry-run reaches the would-merge line for that PR.
+HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" STUB_SHA="$GO_SHA" STUB_NO_CWD_PR=1 \
+    run_mog 0 "9917-a2: --go --dry-run from a cwd with no PR → would merge" -- --go "$GO_ROOT/.locks/go/77.$GO_SHA" --dry-run
+assert_audit_has "9917-a2: dry run names the GO's PR" "DRYRUN would-merge repo=owner/repo pr=#77 sha=$GO_SHA"
+no_merge_call "9917-a2: no merge call"
+# b: a selector on the command line wins over the GO file name.
+HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" STUB_SHA="$GO_SHA" STUB_NO_CWD_PR=1 \
+    run_mog 17 "9917-b: a selector wins over the GO name → exit 17" -- 77 --go "$GO_ROOT/.locks/go/78.$GO_SHA"
+assert_gh_lacks "9917-b: no query for the GO name's PR" "pr view 78 "
+assert_err_has "9917-b: today's wrong-GO refusal" "--go $GO_ROOT/.locks/go/78.$GO_SHA is not the GO for PR #77 at $GO_SHA"
+no_merge_call "9917-b: no merge call"
+# c: a GO name that is not <digits>.<sha> keeps today's cwd-branch query and exit 27.
+HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" STUB_SHA="$GO_SHA" STUB_NO_CWD_PR=1 \
+    run_mog 27 "9917-c: a GO name not <pr>.<sha> → exit 27 as today" -- --go "$GO_ROOT/.locks/go/77.nonexistent"
+assert_gh_lacks "9917-c: no PR taken from the name" "pr view 77 "
+assert_err_has "9917-c: stderr says nothing merged" "nothing merged"
+# d: a GO name whose sha is not the PR's live head refuses with today's message.
+HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" STUB_SHA="$GO_SHA" STUB_NO_CWD_PR=1 \
+    run_mog 17 "9917-d: a GO name at another head → exit 17" -- --go "$GO_ROOT/.locks/go/77.$GO_OLD"
+assert_err_has "9917-d: today's wrong-GO refusal" "--go $GO_ROOT/.locks/go/77.$GO_OLD is not the GO for PR #77 at $GO_SHA — pass --go $GO_ROOT/.locks/go/77.$GO_SHA"
+no_merge_call "9917-d: no merge call"
+# e: the GO's PR already MERGED at the GO head takes today's repeated-merge exit 0.
+HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" STUB_SHA="$GO_SHA" STUB_NO_CWD_PR=1 STUB_STATE=MERGED \
+    run_mog 0 "9917-e: the GO's PR already MERGED → exit 0" -- --go "$GO_ROOT/.locks/go/77.$GO_SHA"
+assert_err_has "9917-e: stderr says already merged" "already merged"
+no_merge_call "9917-e: no merge call"
 
 # 2919-c — only a STALE GO (an older head) exists: refused.
 rm -f "$GO_ROOT/.locks/go/77.$GO_SHA"

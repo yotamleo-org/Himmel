@@ -58,6 +58,7 @@
 #
 # Usage: merge-on-green.sh [<pr-selector>] [--dry-run] [--jira-transition] [--worker-doc PATH] [--go GOFILE]
 #   selector           optional PR number / branch / url; defaults to the
+#                      PR a --go file name <pr>.<head> names, else the
 #                      current branch
 #   --dry-run          run every gate, print the intended merge, then STOP
 #                      (no merge)
@@ -400,6 +401,11 @@ while [ $# -gt 0 ]; do
             selector="$1"; shift ;;
     esac
 done
+# A GO file is named <pr>.<head>, so with no selector it names the PR: the merge
+# runs from any cwd. The chief-GO gate below still binds it to the live head.
+if [ -z "$selector" ] && [[ "${GO_FLAG##*/}" =~ ^([1-9][0-9]*)\.[0-9a-f]{40}$ ]]; then
+    selector="${BASH_REMATCH[1]}"
+fi
 
 # _truthy — the same truthiness test the worker resolver uses.
 _truthy() {
