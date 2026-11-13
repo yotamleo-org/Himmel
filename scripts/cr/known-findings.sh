@@ -79,7 +79,7 @@ done
 case "$PROMO_N" in *[!0-9]*) echo "known-findings.sh: promotion N must be a non-negative integer (got '$PROMO_N')" >&2; exit 2;; esac
 case "$PROMO_M" in *[!0-9]*) echo "known-findings.sh: promotion M must be a non-negative integer (got '$PROMO_M')" >&2; exit 2;; esac
 [ -z "$OPT_BRANCH$OPT_HEAD" ] || [ "$AREA" = 1 ] || { echo "known-findings.sh: --branch and --head are valid only with --diff --area" >&2; exit 2; }
-case "$OPT_BRANCH" in -*|*[!A-Za-z0-9._/+-]*) echo "known-findings.sh: --branch has characters outside A-Za-z0-9._/+- or starts with '-' (got '$OPT_BRANCH')" >&2; exit 2;; esac
+case "$OPT_BRANCH" in -*|*[[:space:][:cntrl:]]*) echo "known-findings.sh: --branch must not start with '-' or hold whitespace or control characters (got '$OPT_BRANCH')" >&2; exit 2;; esac
 case "$OPT_HEAD" in *[!0-9a-f]*) echo "known-findings.sh: --head must be 7 to 40 lowercase hex characters (got '$OPT_HEAD')" >&2; exit 2;; esac
 [ -z "$OPT_HEAD" ] || [ "${#OPT_HEAD}" -ge 7 ] && [ "${#OPT_HEAD}" -le 40 ] || { echo "known-findings.sh: --head must be 7 to 40 lowercase hex characters (got '$OPT_HEAD')" >&2; exit 2; }
 [ "$AREA" = 0 ] || [ "$MODE" = diff ] || { echo "known-findings.sh: --area is valid only with --diff" >&2; exit 2; }

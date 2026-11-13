@@ -595,6 +595,12 @@ check "area: with no option the station's own branch and head still decide (cont
 check "area: the station's own closed state does not close the PR's hits" "$prorc" "3"
 ( cd "$repo" && CR_LEDGER="$AL3" bash "$SCRIPT" --diff "$base...HEAD" --area --branch "$PRB" --head "not-a-sha" >/dev/null 2>&1 ); check "area: a malformed --head exits 2" "$?" "2"
 ( cd "$repo" && CR_LEDGER="$AL3" bash "$SCRIPT" --diff "$base...HEAD" --area --branch "-x" --head "$PRH" >/dev/null 2>&1 ); check "area: a malformed --branch exits 2" "$?" "2"
+( cd "$repo" && CR_LEDGER="$AL3" bash "$SCRIPT" --diff "$base...HEAD" --area --branch "has space" --head "$PRH" >/dev/null 2>&1 ); check "area: a --branch with a space exits 2" "$?" "2"
+( cd "$repo" && CR_LEDGER="$AL3" bash "$SCRIPT" --diff "$base...HEAD" --area --branch "$(printf 'a\tb')" --head "$PRH" >/dev/null 2>&1 ); check "area: a --branch with a control character exits 2" "$?" "2"
+# a valid git branch name outside the plain alphabet (@, =, #, Unicode) must still be accepted
+ODD="feat/at@sign=eq#hash-é"; AL4="$tmp/pr-odd-ledger.jsonl"
+AJ="$ajson" AB="$ODD" AH="$PRH" node -e 'const j=JSON.parse(process.env.AJ);const hs=j.hits.map(h=>({class:h.id,state:"checked"}));console.log(JSON.stringify({kind:"preflight",branch:process.env.AB,head:process.env.AH,hits:hs}))' > "$AL4"
+( cd "$repo" && CR_LEDGER="$AL4" bash "$SCRIPT" --diff "$base...HEAD" --area --branch "$ODD" --head "$PRH" >/dev/null 2>&1 ); check "area: a valid branch name with @ = # and Unicode is accepted and read" "$?" "0"
 ( cd "$repo" && CR_LEDGER="$AL3" bash "$SCRIPT" --diff "$base...HEAD" --area --branch >/dev/null 2>&1 ); check "area: --branch with no value exits 2" "$?" "2"
 bash "$SCRIPT" --list --branch "$PRB" >/dev/null 2>&1; check "area: --branch without --diff --area exits 2" "$?" "2"
 
