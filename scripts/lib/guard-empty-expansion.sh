@@ -41,9 +41,15 @@
 
 # `$name`, `$1`, `$@` and zsh's braceless `:t`/`:r`/`[1,-3]` tails first, so
 # `$V${Z}git` does not read `$Vgit` once `${Z}` is gone; then nested-brace
-# expansions, innermost first (the loop label).
+# expansions, innermost first (the loop label). Every expansion is stripped,
+# escaped or not: one level down (eval, `sh -c`, backticks) an escaped `$` is
+# live again. A backslash and the character after it are read as one pair, so
+# the backslash escaping a `$` is known; when that expansion vanishes right
+# before a `"`, the backslash goes too, because in the command the `"` is not
+# escaped (`grep "a\|b\$s"` re-read as `grep "a\|b\"` did not parse). After a
+# `$` the backslash stays, so the re-read never forms a new `$"` or `${`.
 # shellcheck disable=SC2016 # sed program text: the `$` is a regex literal
-_GEE_SED='s/\$([A-Za-z_][A-Za-z0-9_]*|[0-9@*#?!])(:[A-Za-z]|\[[^]]*\])*//g'
+_GEE_SED='s/(\\[^$])|(^|[^$\\]|\\[^$])\\\$([A-Za-z_][A-Za-z0-9_]*|[0-9@*#?!])(:[A-Za-z]|\[[^]]*\])*(")|\$([A-Za-z_][A-Za-z0-9_]*|[0-9@*#?!])(:[A-Za-z]|\[[^]]*\])*/\1\2\5/g'
 # `${…}` is cut by a scanner, not a regex: a quoted brace inside it
 # (`${V+'"'"'{}'"'"'}git stash`) must not end the expansion early. Single
 # quotes, double quotes and backslashes are honoured; only `${` nests (a bare
@@ -52,12 +58,14 @@ _GEE_SED='s/\$([A-Za-z_][A-Za-z0-9_]*|[0-9@*#?!])(:[A-Za-z]|\[[^]]*\])*//g'
 # drops the rest of the line.
 # shellcheck disable=SC2016 # awk program text
 _GEE_AWK='{
-  s = $0; out = ""; n = length(s); i = 1; hard = 0; k = 0
+  s = $0; out = ""; n = length(s); i = 1; hard = 0; k = 0; eb = 0; chk = 0
   safe = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_:+=?#%/@*^,.~ -}"
   while (i <= n) {
-    c = substr(s, i, 1)
+    if (chk && length(out) == ol && substr(s, i, 1) == "\"" && (ol < 2 || substr(out, ol - 1, 1) != "$")) out = substr(out, 1, ol - 1)
+    chk = 0; c = substr(s, i, 1)
     if (c == "$" && substr(s, i + 1, 1) == "{") {
       depth = 1; i += 2; q = ""; bt = 0; L = 0; h0 = hard; hard = 0; bs = i
+      chk = eb; eb = 0; ol = length(out)
       while (i <= n && depth > 0) {
         c = substr(s, i, 1)
         if (!(c == "$" && substr(s, i + 1, 1) == "{") && index(safe, c) == 0) hard = 1
@@ -81,7 +89,9 @@ _GEE_AWK='{
       }
       if (h0) hard = 1
       if (mode == "dflt" || mode == "all") out = out substr(s, bs - 2, i - bs + 2)
-    } else { out = out c; i++ }
+    } else if (c == "\\" && substr(s, i + 1, 1) == "$") { out = out c; eb = (substr(s, i + 2, 1) == "{"); i++ }
+    else if (c == "\\") { out = out substr(s, i, 2); i += 2 }
+    else { out = out c; i++ }
   }
   if (mode == "hard") print hard + 0; else if (mode == "count") print k; else print out
 }'
