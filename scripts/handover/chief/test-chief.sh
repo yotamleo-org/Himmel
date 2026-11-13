@@ -3528,8 +3528,6 @@ cp -R "$root/tester/rif9846/specs" "$root/tester/rif9846b/"
 run91 rif9846b
 check "9846 a second next over the successor doc renders the same index paragraph" \
     "$(body9846 rif9846b | sed -n '/^Rulings in force (/,/^$/p')" "$(body9846 rif9846 | sed -n '/^Rulings in force (/,/^$/p')"
-# Current behaviour, follow-up F2 (compress_direction, which this ticket does not change): a raw
-# OPERATOR line typed inside the index paragraph takes the rows below it into its reading.
 mk91 f2x9846 "(46) other ruling" "-" "Full original text of every ruling, byte for byte, is in 0 files under the bucket ().
 
 Rulings in force (1; left out: 0 done, 0 superseded; year 2026 unless a head shows one):

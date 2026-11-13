@@ -166,8 +166,6 @@ named=0; for n in $(seq 1001 1040); do grep -q "^$n 2026-11-11 ruling $n " <<< "
 same "render: every one of the 40 ids is indexed" "$named" "40"
 same "render: with every ruling indexed the read-all duty is gone" "$(printf '%s\n' "$out40" | grep '^Full original text' | grep -c 'READ ALL')" "0"
 
-# --- the grouped index: rows under a verbatim-shift head, one shared reading cap, a
-# fail-closed self-check, and the check and find verbs.
 G="$W/grouped"; GD="$G/specs/decisions"; mkdir -p "$GD"
 zulus() { printf ' zulu%.0s' $(seq 1 "$1"); }
 L950="x$(zulus 28)"; L959="yy$(zulus 28)"; L955="ab$(zulus 40)"
