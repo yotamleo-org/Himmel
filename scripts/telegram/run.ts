@@ -2,9 +2,16 @@ import { spawn, spawnSync } from "bun";
 import { randomUUID } from "node:crypto";
 import { killTree, SPAWN_OWN_GROUP } from "../lib/kill-tree.mjs";
 import { isTicketKey } from "./router";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { execFileSync } from "node:child_process";
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { homedir } from "node:os";
+import { basename, dirname, isAbsolute, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { behaviourKey, handoverRoot } from "../jira/src/handover-root";
+import { stationJiraBaseUrl } from "../jira/src/env-file";
+import { hostNsFile } from "../jira/src/release/fence-ancestry";
+import { releaseRoot } from "../jira/src/release/paths";
+import { defaultRoot } from "./bus";
 
 // Bounded-run spawn helper. Runs an INTERACTIVE `claude "<prompt>"` with stdin
 // closed (EOF) so the session does one turn then exits cleanly, empirically
@@ -53,15 +60,230 @@ function resolveModel(): string {
 // (plugin-profiles.mjs's collectMcpServerDefs), passed inline the same way
 // --settings is (the claude CLI accepts --mcp-config as a JSON string, not
 // only a file path). Omitted => no flag, inherits the ambient MCP config.
-export function buildRunArgs(prompt: string, permissionMode?: PermissionMode, modelOverride?: string, settings?: string, mcpConfig?: string) {
+// bridge: every bridge spawn runs inside the envelope (bridgeEnvelope): dontAsk,
+// no setting sources but the envelope's own --settings, whatever mode the caller passed.
+export type BridgeRun = { spawn: BridgeSpawn; cwd: string; seams?: EnvelopeSeams };
+export function buildRunArgs(prompt: string, permissionMode?: PermissionMode, modelOverride?: string, settings?: string, mcpConfig?: string, bridge?: BridgeRun) {
   const model = modelOverride ?? resolveModel();
   const cmd = ["claude", "--model", model];
-  if (permissionMode) cmd.push("--permission-mode", permissionMode);
-  if (settings) cmd.push("--settings", settings);
+  if (bridge) {
+    cmd.push("--permission-mode", "dontAsk", "--setting-sources", "", "--settings", bridgeEnvelope(bridge, settings, mcpConfig));
+  } else {
+    if (permissionMode) cmd.push("--permission-mode", permissionMode);
+    if (settings) cmd.push("--settings", settings);
+  }
   if (mcpConfig) cmd.push("--mcp-config", mcpConfig, "--strict-mcp-config");
   cmd.push(prompt);
   return { cmd, stdin: "ignore" as const };
 }
+
+// The bridge envelope (spec §2 of the bridge-words design). Every path is resolved at spawn
+// and realpathed; a symlinked root throws. Seams exist for the T16 rows only; the
+// host-ns path never takes one from the env (S1's hostNsFile()).
+export type EnvelopeSeams = {
+  home?: string; configDir?: string; managedSettings?: string; bridgeRoot?: string; handoverRoot?: string;
+  himmelDir?: string; primary?: string; releaseRoot?: string; hostNs?: string; jiraHost?: string | null; releaseKeyDir?: string;
+};
+
+const SIGNED_RELEASE_FILES = ["operator.jsonl", "rulings.jsonl", "events.jsonl", "release.json"];
+const BRIDGE_ROOT_DENIES = ["inbound.jsonl", "inbound.jsonl.1", "inbound.jsonl.cursor", "offset", "handled-update.hw", "poller-epoch", "host-ns", "consoles"];
+const CWD_DENIES = [".claude", ".mcp.json", "CLAUDE.md", "_CLAUDE.md"];
+
+function canonRoot(path: string, what: string): string {
+  if (lstatSync(path).isSymbolicLink()) throw new Error(`bridge envelope: the ${what} ${path} is a symlink; the sandbox binds the resolved path, so a symlinked root is refused`);
+  return realpathSync(path);
+}
+// A deny that names a path not yet created still goes in (it is resolved through its parent).
+function canonPath(path: string): string {
+  try { return realpathSync(path); } catch { return join(realpathSync(dirname(path)), basename(path)); }
+}
+function canonMaybe(path: string): string { try { return canonPath(path); } catch { return path; } }
+
+function gitDir(args: string[], cwd: string): string | null {
+  try {
+    return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], env: { ...process.env, GIT_DIR: undefined, GIT_WORK_TREE: undefined } as NodeJS.ProcessEnv }).trim() || null;
+  } catch { return null; }
+}
+function primaryCheckout(): string {
+  const common = gitDir(["rev-parse", "--path-format=absolute", "--git-common-dir"], REPO_ROOT);
+  if (!common) throw new Error(`bridge envelope: cannot resolve the primary checkout of ${REPO_ROOT}`);
+  return dirname(common);
+}
+function worktreeRoots(primary: string): string[] {
+  const out = gitDir(["worktree", "list", "--porcelain"], primary) ?? "";
+  return out.split("\n").filter((l) => l.startsWith("worktree ")).map((l) => l.slice(9));
+}
+function readJson(path: string, what: string): any {
+  if (!existsSync(path)) return null;
+  try {
+    const v = JSON.parse(readFileSync(path, "utf8"));
+    if (v === null || typeof v !== "object" || Array.isArray(v)) throw new Error("not an object");
+    return v;
+  } catch (e) {
+    throw new Error(`bridge envelope: cannot parse ${what} ${path} (${e instanceof Error ? e.message : e}); fix or remove it`);
+  }
+}
+
+// The one declared release (the one an INTAKE goes to, create.ts intakeRelease); none when not exactly one.
+function activeRelease(root: string): string | null {
+  let entries: string[] = [];
+  try { entries = readdirSync(root); } catch { return null; }
+  const declared = entries.filter((d) => existsSync(join(root, d, "release.json")));
+  return declared.length === 1 ? declared[0] : null;
+}
+
+function jiraHostOf(): string | null {
+  const confDir = process.env.HIMMEL_CONFIG_DIR || join(homedir(), ".himmel");
+  const url = process.env.JIRA_BASE_URL || stationJiraBaseUrl(confDir, { profileFromEnv: true }) || behaviourKey("JIRA_BASE_URL");
+  try { return url ? new URL(url).hostname : null; } catch { return null; }
+}
+
+// The managed scopes still load under --setting-sources "" and outrank --settings, so one
+// that widens the lists refuses the spawn (after headed-arm-worker.sh's --consult scan).
+const SAFE_MANAGED_SANDBOX = new Set(["enabled", "failIfUnavailable"]);
+function managedWidening(s: any): string | null {
+  const allow = s?.permissions?.allow;
+  if (Array.isArray(allow) && allow.length > 0) return `permissions.allow rule ${allow[0]}`;
+  if (Array.isArray(s?.permissions?.additionalDirectories) && s.permissions.additionalDirectories.length > 0) return "permissions.additionalDirectories";
+  const mode = s?.permissions?.defaultMode;
+  if (mode === "bypassPermissions" || mode === "acceptEdits" || mode === "auto") return `permissions.defaultMode ${mode}`;
+  const scrub = s?.env?.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB;
+  if (scrub !== undefined && !["", "0", "false"].includes(String(scrub).toLowerCase())) return "env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB";
+  const walk = (v: any, at: string): string | null => {
+    if (v !== null && typeof v === "object" && !Array.isArray(v)) {
+      for (const [k, w] of Object.entries(v)) { const hit = walk(w, at ? `${at}.${k}` : k); if (hit) return hit; }
+      return null;
+    }
+    return SAFE_MANAGED_SANDBOX.has(at) && v === true ? null : `sandbox.${at}`;
+  };
+  if (s?.sandbox !== undefined) { const hit = walk(s.sandbox, ""); if (hit) return hit; }
+  if (JSON.stringify(s).match(/"policyHelpers?"\s*:/)) return "a policyHelper key";
+  return null;
+}
+
+function refuseWideningScopes(home: string, configDir: string, managed: string): void {
+  const dropIns = join(dirname(managed), "managed-settings.d");
+  const managedFiles = [managed, join(home, ".claude", "remote-settings.json"), join(configDir, "remote-settings.json"),
+    ...(existsSync(dropIns) ? readdirSync(dropIns).filter((n) => n.endsWith(".json")).map((n) => join(dropIns, n)) : [])];
+  for (const f of managedFiles) {
+    const hit = managedWidening(readJson(f, "the managed scope"));
+    if (hit) throw new Error(`bridge envelope: managed scope ${f} carries ${hit}, which still loads under --setting-sources and would widen the bridge envelope: remove or scope it`);
+  }
+  for (const f of [join(home, ".claude.json"), join(configDir, ".claude.json")]) {
+    if (managedWidening({ env: readJson(f, "the Claude config")?.env })) throw new Error(`bridge envelope: managed scope ${f} sets env.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB, which would widen the bridge envelope's sandbox: remove it`);
+  }
+}
+
+// telegram.bridgeVaultRoots: vault-relative folders; unset means no vault write root.
+function vaultRootsOf(vault: string, himmelDir: string): string[] {
+  const list = readJson(join(himmelDir, "config.json"), "the himmel config")?.telegram?.bridgeVaultRoots;
+  if (list === undefined || list === null) return [];
+  const bad = (r: unknown) => typeof r !== "string" || !r || isAbsolute(r) || r.split(/[\\/]/).includes("..");
+  if (!Array.isArray(list) || list.some(bad)) throw new Error("bridge envelope: telegram.bridgeVaultRoots must be a list of vault-relative folders with no '..'");
+  return (list as string[]).filter((r) => existsSync(join(vault, r))).map((r) => {
+    const c = canonRoot(join(vault, r), "vault root");
+    if (!c.startsWith(vault + sep)) throw new Error(`bridge envelope: telegram.bridgeVaultRoots entry ${r} resolves outside the vault`);
+    return c;
+  });
+}
+
+// The declared release: its folder is a Bash write root only on a granted spawn; its signed files and key are denied.
+function releaseOf(granted: boolean, o: EnvelopeSeams): { release: string | null; denies: string[] } {
+  let relRoot: string | null;
+  try { relRoot = o.releaseRoot ?? releaseRoot(); } catch { relRoot = null; }
+  const relName = relRoot ? activeRelease(relRoot) : null;
+  if (!relRoot || !relName) return { release: null, denies: [] };
+  const dir = join(relRoot, relName);
+  const keyDir = o.releaseKeyDir ?? process.env.HIMMEL_RELEASE_KEY_DIR ?? join(homedir(), ".config", "himmel", "release");
+  const signed = [...SIGNED_RELEASE_FILES, ...readdirSync(dir).filter((n) => n.startsWith("baseline"))].map((n) => canonPath(join(dir, n)));
+  return { release: granted ? canonRoot(dir, "release folder") : null, denies: [...signed, canonMaybe(join(keyDir, `${relName}.key`))] };
+}
+
+// The bridge root is denied entry by entry: the session's own folder and outgoing/ stay writable.
+function bridgeRootDenies(bRoot: string, own: string): string[] {
+  const sessions = join(bRoot, "sessions");
+  const others = existsSync(sessions) ? readdirSync(sessions).map((n) => canonPath(join(sessions, n))).filter((p) => p !== own) : [];
+  return [...BRIDGE_ROOT_DENIES.map((n) => canonPath(join(bRoot, n))), ...others];
+}
+
+// Carried from the scopes --setting-sources "" no longer loads: hooks, deny and ask rules, env (not CLAUDE_*).
+function carriedScopes(home: string, configDir: string, cwd: string): any[] {
+  const common = gitDir(["rev-parse", "--path-format=absolute", "--git-common-dir"], cwd);
+  const roots = [cwd, gitDir(["rev-parse", "--show-toplevel"], cwd), common ? dirname(common) : null]
+    .filter((r, i, a): r is string => !!r && a.indexOf(r) === i);
+  const userFiles = [join(home, ".claude", "settings.json"), ...(configDir !== join(home, ".claude") ? [join(configDir, "settings.json")] : [])];
+  const projectFiles = roots.flatMap((r) => [join(r, ".claude", "settings.json"), join(r, ".claude", "settings.local.json")]);
+  return [...userFiles, ...projectFiles].map((f) => readJson(f, "the carried scope")).filter(Boolean);
+}
+
+function mergeCarried(carried: any[], base: any, fileDeny: string[]) {
+  const hooks: Record<string, unknown[]> = {};
+  for (const s of [...carried, base]) for (const [k, v] of Object.entries(s.hooks ?? {})) hooks[k] = [...(hooks[k] ?? []), ...(Array.isArray(v) ? v : [])];
+  const env = Object.fromEntries(carried.flatMap((s) => Object.entries(s.env ?? {})).filter(([k]) => !k.startsWith("CLAUDE_")));
+  const union = (key: "deny" | "ask", extra: string[] = []) =>
+    [...new Set([...carried.flatMap((s) => s.permissions?.[key] ?? []), ...(base.permissions?.[key] ?? []), ...extra])];
+  return { hooks, env, deny: union("deny", fileDeny), ask: union("ask") };
+}
+
+function mcpServerNames(mcpConfig?: string): string[] {
+  try { return Object.keys(JSON.parse(mcpConfig ?? "{}")?.mcpServers ?? {}); } catch { return []; }
+}
+
+export function bridgeEnvelope(bridge: BridgeRun, settings?: string, mcpConfig?: string): string {
+  const { spawn: sp } = bridge;
+  const o = bridge.seams ?? {};
+  const home = o.home ?? homedir();
+  const configDir = o.configDir ?? process.env.CLAUDE_CONFIG_DIR ?? join(home, ".claude");
+  refuseWideningScopes(home, configDir, o.managedSettings ?? (process.platform === "darwin" ? "/Library/Application Support/ClaudeCode/managed-settings.json" : "/etc/claude-code/managed-settings.json"));
+
+  const cwd = canonRoot(bridge.cwd, "session cwd");
+  const primary = canonRoot(o.primary ?? primaryCheckout(), "primary checkout");
+  const bRoot = canonRoot(o.bridgeRoot ?? defaultRoot(), "bridge root");
+  const own = canonRoot(sessionDirOf(bRoot, sp.session), "session folder");
+  const outgoing = canonRoot(join(bRoot, "outgoing"), "outgoing folder");
+  const himmelDir = canonMaybe(o.himmelDir ?? join(home, ".himmel"));
+  // The vault: a non-routed session that spawned outside the himmel checkout.
+  const vault = !sp.routed && cwd !== primary ? cwd : null;
+  const vaultGit = vault ? gitDir(["rev-parse", "--path-format=absolute", "--git-common-dir"], vault) : null;
+  const granted = sp.releaseWrite && !sp.routed;
+  const rel = releaseOf(granted, o);
+
+  const denies = [
+    canonRoot(o.handoverRoot ?? handoverRoot(), "handover root"), primary, ...worktreeRoots(primary).map(canonMaybe), himmelDir, o.hostNs ?? hostNsFile(),
+    ...bridgeRootDenies(bRoot, own), ...CWD_DENIES.map((n) => canonPath(join(cwd, n))),
+    ...(vault ? [vault, join(vault, ".gitattributes"), join(vault, ".gitmodules")].map(canonPath) : []),
+    ...(vaultGit ? [canonMaybe(vaultGit)] : []), ...rel.denies,
+    // The cwd is sandbox-writable by default, so it is denied too.
+    cwd,
+  ].filter((p, i, a) => a.indexOf(p) === i);
+  const fileRoots = [own, outgoing, ...(vault ? vaultRootsOf(vault, himmelDir) : [])];
+  const arm = `bash ${primary}/scripts/handover/arm-resume.sh`;
+  const allow = ["Read", "Grep", "Glob", "Bash", "WebFetch", "WebSearch", ...mcpServerNames(mcpConfig).map((n) => `mcp__${n}`),
+    ...fileRoots.map((r) => `Edit(/${r}/**)`), ...(granted ? [`Bash(${arm}:*)`] : [])];
+  const fileDeny = denies.map((d) => `Edit(/${d}${existsSync(d) && lstatSync(d).isDirectory() ? "/**" : ""})`);
+  const base = settings ? readJsonText(settings) : {};
+  const c = mergeCarried(carriedScopes(home, configDir, cwd), base, fileDeny);
+  const jiraHost = o.jiraHost !== undefined ? o.jiraHost : jiraHostOf();
+
+  return JSON.stringify({
+    ...base,
+    hooks: c.hooks,
+    env: { ...c.env, ...(base.env ?? {}), CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "0" },
+    permissions: { defaultMode: "dontAsk", allow, deny: c.deny, ...(c.ask.length ? { ask: c.ask } : {}) },
+    sandbox: {
+      enabled: true, failIfUnavailable: true, allowUnsandboxedCommands: false, autoAllowBashIfSandboxed: true,
+      excludedCommands: granted ? [`${arm} *`] : [],
+      filesystem: { allowWrite: [...fileRoots, ...(rel.release ? [rel.release] : [])], denyWrite: denies },
+      network: { allowedDomains: [...(jiraHost ? [jiraHost] : []), "github.com", "api.github.com"], allowUnixSockets: [] },
+    },
+  });
+}
+function readJsonText(text: string): any {
+  const v = JSON.parse(text);
+  if (v === null || typeof v !== "object" || Array.isArray(v)) throw new Error("bridge envelope: the profile settings are not a JSON object");
+  return v;
+}
+function sessionDirOf(root: string, session: string): string { return join(root, "sessions", session); }
 
 // Exported for the test.
 export const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
@@ -252,9 +474,9 @@ export function laneEffort(model: string, registry: LaneRegistry = loadLanes()):
 // resolves to the previous generation (Opus 5 / Sonnet 5). Pin the two tiers
 // to their 5.5 full ids; haiku has no 5.5 twin and stays an alias.
 const TIER_PIN: Record<string, string> = { opus: "claude-opus-5-5", sonnet: "claude-sonnet-5-5" };
-export function spawnSpec(prompt: string, permissionMode?: PermissionMode, _lane?: undefined, modelOverride?: string, settings?: string, extraEnv?: Record<string, string>, mcpConfig?: string, registry?: LaneRegistry) {
+export function spawnSpec(prompt: string, permissionMode?: PermissionMode, _lane?: undefined, modelOverride?: string, settings?: string, extraEnv?: Record<string, string>, mcpConfig?: string, registry?: LaneRegistry, bridge?: BridgeRun) {
   const model = modelOverride === undefined ? undefined : (Object.hasOwn(TIER_PIN, modelOverride) ? TIER_PIN[modelOverride] : modelOverride);
-  const { cmd } = buildRunArgs(prompt, permissionMode, model, settings, mcpConfig);
+  const { cmd } = buildRunArgs(prompt, permissionMode, model, settings, mcpConfig, bridge);
   const effort = laneEffort(cmd[2], registry);
   const env = sessionEnv(effort ? { CLAUDE_CODE_EFFORT_LEVEL: effort, ...(extraEnv ?? {}) } : extraEnv);
   return { cmd, env };
@@ -282,7 +504,7 @@ export function writeLaunchRecord(sid: string, model: string, cacheDir?: string)
 export type BridgeSpawn = { session: string; chat: number | null; routed: boolean; releaseWrite: boolean };
 
 export async function runSession(prompt: string, cwd: string, permissionMode?: PermissionMode, lane?: undefined, modelOverride?: string, settings?: string, observe?: RunObserver, extraEnv?: Record<string, string>, mcpConfig?: string, bridgeSpawn?: BridgeSpawn): Promise<{ code: number; capped: boolean; blocked: boolean; timedOut: boolean; pid: number; tail?: string; bridgeSpawn?: BridgeSpawn }> {
-  const spec = spawnSpec(prompt, permissionMode, lane, modelOverride, settings, extraEnv, mcpConfig);
+  const spec = spawnSpec(prompt, permissionMode, lane, modelOverride, settings, extraEnv, mcpConfig, undefined, bridgeSpawn ? { spawn: bridgeSpawn, cwd } : undefined);
   const sid = randomUUID();
   writeLaunchRecord(sid, spec.cmd[2]);
   const cmd = withSessionId(spec.cmd, sid);

@@ -134,6 +134,61 @@ for combo in "--list-temp-arms --dry-run" "--dry-run --list-temp-arms" "--list-t
     case "$OUT5" in *"refusing to arm from inside a consult"*) echo "PASS S4 '$combo' refusal says why" ;; *) echo "FAIL S4 '$combo' refusal text missing: $OUT5"; FAILED=$((FAILED + 1)) ;; esac
 done
 
+# T18: a bridge session's arm carries the bridge marker into
+# every body that launches claude, after the seam scrub; with no marker no body
+# names it. The crontab runner replays no env, so only a written line holds there.
+MARK_LINE="export HIMMEL_BRIDGE_SESSION=1"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$SCHED_STUB/crontab"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$SCHED_STUB/headroom"
+chmod +x "$SCHED_STUB/crontab" "$SCHED_STUB/headroom"
+mkdir -p "$TMP/apps/Terminal.app" "$TMP/runners"
+# dry_body <marker 0|1> <kind: at|at-proxied|runner|command>
+dry_body() {
+    local mark="$1" kind="$2" plat=linux-gnu term=none proxy=
+    case "$kind" in runner) plat=darwin23 ;; command) plat=darwin23 term=Terminal ;; at-proxied) proxy=1 ;; esac
+    local -a envs=(env -u HIMMEL_BRIDGE_SESSION PATH="$STUB_BIN:$SCHED_STUB:$PATH" OSTYPE="$plat"
+                   ARM_TERMINAL_APP="$term" ARM_APP_DIRS="$TMP/apps" ARM_RUNNER_DIR="$TMP/runners")
+    [ "$mark" = 1 ] && envs+=(HIMMEL_BRIDGE_SESSION=1)
+    [ -n "$proxy" ] && envs+=(HIMMEL_HEADROOM_PROXY=1 HEADROOM_BIN="$SCHED_STUB/headroom")
+    "${envs[@]}" bash "$ARM" --time "$(future_time)" --handover "$HANDOVER" --dry-run 2>/dev/null \
+      | case "$kind" in
+          at|at-proxied) awk '/^DRY arm-resume: would at -t/{on=1; next} /^    CMD$/{on=0} on{sub(/^    /,""); print}' ;;
+          runner)  awk '/^DRY arm-resume: runner \(/{on=1; next} /^DRY arm-resume:/{on=0} on{sub(/^    /,""); print}' ;;
+          command) awk '/^DRY arm-resume: command file \(/{on=1; next} /^DRY arm-resume:/{on=0} on{sub(/^    /,""); print}' ;;
+        esac
+}
+# marker_after_scrub <body>: prints ok when the marker sits after the seam scrub
+# and before the claude launch (the `unset ARMAUTOMERGE` launch preamble).
+marker_after_scrub() {
+    printf '%s\n' "$1" | awk -v m="$MARK_LINE" '
+        { s = s $0 "\n" }
+        END {
+            pm = index(s, m); pl = index(s, "unset ARMAUTOMERGE"); ps = index(s, "unset WORKER_SESSION_PROFILE_SETTINGS")
+            if (pm && pl && pm < pl && (ps == 0 || ps < pm)) print "ok"; else print "bad m=" pm " launch=" pl " scrub=" ps
+        }'
+}
+for kind in at at-proxied runner command; do
+    B1=$(dry_body 1 "$kind")
+    case "$B1" in *"claude"*) ;; *) echo "FAIL T18 $kind: no body printed"; FAILED=$((FAILED + 1)); continue ;; esac
+    [ "$kind" = at-proxied ] && case "$B1" in *"mode=proxied"*) ;; *) echo "FAIL T18 at-proxied: the body is not the proxied form"; FAILED=$((FAILED + 1)) ;; esac
+    case "$B1" in *"$MARK_LINE"*) echo "PASS T18 $kind body carries the marker export" ;;
+        *) echo "FAIL T18 $kind body has no '$MARK_LINE'"; FAILED=$((FAILED + 1)) ;; esac
+    assert_eq "T18 $kind marker sits after the seam scrub, before claude" "ok" "$(marker_after_scrub "$B1")"
+    B0=$(dry_body 0 "$kind")
+    case "$B0" in *HIMMEL_BRIDGE_SESSION*) echo "FAIL T18 $kind body names the marker with none in the caller's env"; FAILED=$((FAILED + 1)) ;;
+        *) echo "PASS T18 $kind body names no marker without one" ;; esac
+done
+# The stub claude run from a marked body sees the marker, under an env that lacks it.
+B_AT=$(dry_body 1 at)
+env -u HIMMEL_BRIDGE_SESSION PATH="$STUB_BIN:$PATH" CLAUDE_REC="$TMP/rec-at" WATCH=HIMMEL_BRIDGE_SESSION \
+    HIMMEL_PTY_SCRIPT_CMD="$TMP/no-such-script" sh -c "$B_AT" </dev/null >/dev/null 2>&1
+assert_eq "T18 the stub claude run from the at body sees the marker" "HIMMEL_BRIDGE_SESSION=set" "$(cat "$TMP/rec-at" 2>/dev/null)"
+B_RUN=$(dry_body 1 runner)
+mkdir -p "$TMP/arm-logs"
+env -i PATH="$STUB_BIN:$SCHED_STUB:/usr/bin:/bin" HOME="$TMP" CLAUDE_REC="$TMP/rec-runner" WATCH=HIMMEL_BRIDGE_SESSION \
+    ARM_RESUME_LOG_DIR="$TMP/arm-logs" HIMMEL_FLOW_RUNS_LEDGER="$TMP/flow-runs.jsonl" sh -c "$B_RUN" </dev/null >/dev/null 2>&1
+assert_eq "T18 the stub claude run from the crontab runner sees the marker" "HIMMEL_BRIDGE_SESSION=set" "$(cat "$TMP/rec-runner" 2>/dev/null)"
+
 echo "---"
 if [ "$FAILED" -gt 0 ]; then echo "FAILED: $FAILED case(s)"; exit 1; fi
 echo "PASS all cases"

@@ -1,7 +1,7 @@
 import { beforeEach, expect, test } from "bun:test";
 import { buildRunArgs, DEFAULT_MODEL, detectCap, detectContentFilter, buildPrompt, killTree, REPO_ROOT, sessionEnv, spawnSpec, laneEffort, withSessionId, writeLaunchRecord } from "./run";
-import { spawn } from "bun";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "bun";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -440,9 +440,11 @@ test("runSession receives the BridgeSpawn argument and passes it through untouch
   mkdirSync(bin);
   writeFileSync(join(bin, "claude"), "#!/bin/sh\nexit 0\n");
   chmodSync(join(bin, "claude"), 0o755);
-  const saved = { PATH: process.env.PATH, HIMMELCTL_CACHE_DIR: process.env.HIMMELCTL_CACHE_DIR };
+  const saved = { PATH: process.env.PATH, HIMMELCTL_CACHE_DIR: process.env.HIMMELCTL_CACHE_DIR, BRIDGE_ROOT: process.env.BRIDGE_ROOT };
   process.env.PATH = `${bin}:${process.env.PATH}`;
   process.env.HIMMELCTL_CACHE_DIR = join(dir, "cache");
+  process.env.BRIDGE_ROOT = join(dir, "bridge");
+  for (const d of ["sessions/__chat__", "outgoing"]) mkdirSync(join(dir, "bridge", d), { recursive: true });
   try {
     const { runSession } = await import("./run");
     const spawn = { session: "__chat__", chat: 12345, routed: false, releaseWrite: true };
@@ -458,6 +460,182 @@ test("runSession receives the BridgeSpawn argument and passes it through untouch
 test("buildRunArgs and spawnSpec argv are unchanged: the session id is added at spawn only", () => {
   expect(spawnSpec("p").cmd).not.toContain("--session-id");
   expect(buildRunArgs("p").cmd).not.toContain("--session-id");
+});
+
+// T16: the bridge envelope. A scratch station: home, bridge
+// root, handover root with one declared release, a vault with a git dir, and a
+// primary checkout. Every path the envelope reads comes in through the seams.
+const envelopeFixture = () => {
+  const t = mkdtempSync(join(tmpdir(), "tg-envelope-"));
+  const p = (...s: string[]) => join(t, ...s);
+  for (const d of ["home/.claude", "himmel", "bridge/sessions/__chat__", "bridge/sessions/other", "bridge/outgoing", "bridge/consoles",
+    "handovers/u/himmel/release/v9", "vault/.claude", "vault/Inbox", "vault/Notes", "primary/scripts/handover", "managed"]) mkdirSync(p(d), { recursive: true });
+  for (const f of ["bridge/inbound.jsonl", "bridge/offset", "bridge/poller-epoch", "bridge/host-ns", "handovers/u/himmel/release/v9/requests.jsonl",
+    "handovers/u/himmel/release/v9/operator.jsonl", "handovers/u/himmel/release/v9/rulings.jsonl", "handovers/u/himmel/release/v9/events.jsonl",
+    "handovers/u/himmel/release/v9/baseline-v9-g1.json", "vault/CLAUDE.md"]) writeFileSync(p(f), "");
+  writeFileSync(p("handovers/u/himmel/release/v9/release.json"), "{}");
+  writeFileSync(p("himmel/config.json"), JSON.stringify({ telegram: { bridgeVaultRoots: ["Inbox", "Notes"] } }));
+  for (const repo of ["vault", "primary"]) spawnSync(["git", "init", "-q", p(repo)]);
+  const seams = {
+    home: p("home"), configDir: p("home/.claude"), managedSettings: p("managed/managed-settings.json"), bridgeRoot: p("bridge"),
+    handoverRoot: p("handovers"), himmelDir: p("himmel"), primary: p("primary"), releaseRoot: p("handovers/u/himmel/release"),
+    hostNs: p("host/host-ns"), jiraHost: "example.atlassian.net", releaseKeyDir: p("keys"),
+  };
+  return { t, p, seams, cleanup: () => rmSync(t, { recursive: true, force: true }) };
+};
+const DM = { session: "__chat__", chat: 12345, routed: false, releaseWrite: true };
+const envOf = (cmd: string[]) => JSON.parse(cmd[cmd.indexOf("--settings") + 1]);
+
+test("T16: a bridge spawn runs dontAsk with --setting-sources \"\" and the envelope as its only settings", () => {
+  const f = envelopeFixture();
+  try {
+    const { cmd } = buildRunArgs("p", "bypassPermissions", undefined, undefined, undefined, { spawn: DM, cwd: f.p("vault"), seams: f.seams });
+    expect(cmd[cmd.indexOf("--permission-mode") + 1]).toBe("dontAsk");
+    expect(cmd[cmd.indexOf("--setting-sources") + 1]).toBe("");
+    const s = envOf(cmd);
+    expect(s.permissions.defaultMode).toBe("dontAsk");
+    expect(s.sandbox.enabled).toBe(true);
+    expect(s.sandbox.failIfUnavailable).toBe(true);
+    expect(s.sandbox.allowUnsandboxedCommands).toBe(false);
+    expect(s.sandbox.network.allowUnixSockets).toEqual([]);
+    expect(s.sandbox.network.allowedDomains).toEqual(["example.atlassian.net", "github.com", "api.github.com"]);
+    const allowW = s.sandbox.filesystem.allowWrite, denyW = s.sandbox.filesystem.denyWrite;
+    expect(allowW).toEqual([f.p("bridge/sessions/__chat__"), f.p("bridge/outgoing"), f.p("vault/Inbox"), f.p("vault/Notes"), f.p("handovers/u/himmel/release/v9")]);
+    for (const d of [f.p("handovers"), f.p("primary"), f.p("himmel"), f.p("vault"), f.p("vault/.git"), f.p("vault/.claude"), f.p("vault/CLAUDE.md"),
+      f.p("bridge/inbound.jsonl"), f.p("bridge/poller-epoch"), f.p("bridge/host-ns"), f.p("bridge/consoles"), f.p("bridge/sessions/other"),
+      f.p("host/host-ns"), f.p("handovers/u/himmel/release/v9/operator.jsonl"), f.p("handovers/u/himmel/release/v9/release.json"),
+      f.p("handovers/u/himmel/release/v9/baseline-v9-g1.json"), f.p("keys/v9.key")]) expect(denyW).toContain(d);
+    expect(denyW).not.toContain(f.p("bridge/sessions/__chat__"));
+    expect(s.permissions.allow).toContain(`Edit(/${f.p("vault/Inbox")}/**)`);
+    expect(s.permissions.allow).not.toContain(`Edit(/${f.p("handovers/u/himmel/release/v9")}/**)`);
+    expect(s.permissions.deny).toContain(`Edit(/${f.p("vault/.git")}/**)`);
+  } finally { f.cleanup(); }
+});
+
+test("T16: a broad allow planted in the user and project settings does not widen the envelope; their hooks and denies are carried", () => {
+  const f = envelopeFixture();
+  try {
+    const broad = { hooks: { PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "floor-hook" }] }] },
+      permissions: { allow: ["Write(**)", "Bash(*)", "Edit(//**)"], deny: ["Bash(curl:*)"], additionalDirectories: ["/"] },
+      sandbox: { enabled: false, filesystem: { allowWrite: ["/"] } } };
+    writeFileSync(f.p("home/.claude/settings.json"), JSON.stringify(broad));
+    writeFileSync(f.p("vault/.claude/settings.json"), JSON.stringify(broad));
+    const clean = envelopeFixture();
+    const base = envOf(buildRunArgs("p", undefined, undefined, undefined, undefined, { spawn: DM, cwd: clean.p("vault"), seams: clean.seams }).cmd);
+    clean.cleanup();
+    const s = envOf(buildRunArgs("p", undefined, undefined, undefined, undefined, { spawn: DM, cwd: f.p("vault"), seams: f.seams }).cmd);
+    expect(s.permissions.allow.length).toBe(base.permissions.allow.length);
+    for (const r of ["Write(**)", "Bash(*)", "Edit(//**)"]) expect(s.permissions.allow).not.toContain(r);
+    expect(s.permissions.additionalDirectories).toBeUndefined();
+    expect(s.sandbox.enabled).toBe(true);
+    expect(s.sandbox.filesystem.allowWrite).not.toContain("/");
+    expect(s.permissions.deny).toContain("Bash(curl:*)");
+    expect(JSON.stringify(s.hooks)).toContain("floor-hook");
+  } finally { f.cleanup(); }
+});
+
+test("T16: a managed scope that would widen the envelope refuses the spawn; a narrowing one does not", () => {
+  for (const [label, managed] of [
+    ["an Edit allow", { permissions: { allow: ["Edit(//x/**)"] } }],
+    ["a Bash allow", { permissions: { allow: ["Bash(*)"] } }],
+    ["additionalDirectories", { permissions: { additionalDirectories: ["/x"] } }],
+    ["bypassPermissions", { permissions: { defaultMode: "bypassPermissions" } }],
+    ["sandbox off", { sandbox: { enabled: false } }],
+    ["an excluded command", { sandbox: { excludedCommands: ["python3"] } }],
+    ["a Unix socket", { sandbox: { network: { allowUnixSockets: ["/run/x.sock"] } } }],
+    ["an allowWrite", { sandbox: { filesystem: { allowWrite: ["/x"] } } }],
+    ["env scrub", { env: { CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1" } }],
+  ] as const) {
+    const f = envelopeFixture();
+    try {
+      writeFileSync(f.p("managed/managed-settings.json"), JSON.stringify(managed));
+      expect(() => buildRunArgs("p", undefined, undefined, undefined, undefined, { spawn: DM, cwd: f.p("vault"), seams: f.seams }), label).toThrow(/managed scope .* widen/);
+    } finally { f.cleanup(); }
+  }
+  const f = envelopeFixture();
+  try {
+    writeFileSync(f.p("managed/managed-settings.json"), JSON.stringify({ permissions: { deny: ["Bash(rm:*)"] }, sandbox: { enabled: true } }));
+    expect(() => buildRunArgs("p", undefined, undefined, undefined, undefined, { spawn: DM, cwd: f.p("vault"), seams: f.seams })).not.toThrow();
+  } finally { f.cleanup(); }
+});
+
+test("T16: a settings input carrying sandbox or permissions keys is merged, with the envelope's keys winning", () => {
+  const f = envelopeFixture();
+  try {
+    const input = JSON.stringify({ enabledPlugins: { "x@y": true }, permissions: { allow: ["Bash(*)"], deny: ["Read(//secret/**)"], additionalDirectories: ["/"], defaultMode: "bypassPermissions" },
+      sandbox: { enabled: false, excludedCommands: ["python3"], filesystem: { allowWrite: ["/"] } } });
+    const s = envOf(buildRunArgs("p", undefined, undefined, input, undefined, { spawn: DM, cwd: f.p("vault"), seams: f.seams }).cmd);
+    expect(s.enabledPlugins).toEqual({ "x@y": true });
+    expect(s.permissions.deny).toContain("Read(//secret/**)");
+    expect(s.permissions.allow).not.toContain("Bash(*)");
+    expect(s.permissions.additionalDirectories).toBeUndefined();
+    expect(s.permissions.defaultMode).toBe("dontAsk");
+    expect(s.sandbox.enabled).toBe(true);
+    expect(s.sandbox.excludedCommands).not.toContain("python3");
+    expect(s.sandbox.filesystem.allowWrite).not.toContain("/");
+  } finally { f.cleanup(); }
+});
+
+test("T16: the only excluded command is arm-resume.sh with one allow rule, on a granted spawn only; headed-arm-worker.sh is never excluded", () => {
+  const f = envelopeFixture();
+  try {
+    const arm = `bash ${f.p("primary")}/scripts/handover/arm-resume.sh`;
+    const s = envOf(buildRunArgs("p", undefined, undefined, undefined, undefined, { spawn: DM, cwd: f.p("vault"), seams: f.seams }).cmd);
+    expect(s.sandbox.excludedCommands).toEqual([`${arm} *`]);
+    expect(s.permissions.allow.filter((r: string) => r.includes("arm-resume.sh"))).toEqual([`Bash(${arm}:*)`]);
+    expect(JSON.stringify(s)).not.toContain("headed-arm-worker");
+    mkdirSync(f.p("bridge/sessions/group_-5"));
+    for (const spawn of [{ ...DM, releaseWrite: false }, { ...DM, session: "group_-5", chat: -5, releaseWrite: false }]) {
+      const u = envOf(buildRunArgs("p", undefined, undefined, undefined, undefined, { spawn, cwd: f.p("vault"), seams: f.seams }).cmd);
+      expect(u.sandbox.excludedCommands).toEqual([]);
+      expect(JSON.stringify(u.permissions.allow)).not.toContain("arm-resume.sh");
+      expect(u.sandbox.filesystem.allowWrite).not.toContain(f.p("handovers/u/himmel/release/v9"));
+    }
+  } finally { f.cleanup(); }
+});
+
+test("T16 (judge item c): a routed spawn gets no release folder and no arm exclusion even when the poller granted the write", () => {
+  const f = envelopeFixture();
+  try {
+    const s = envOf(buildRunArgs("p", undefined, undefined, undefined, undefined, { spawn: { ...DM, routed: true }, cwd: f.p("primary"), seams: f.seams }).cmd);
+    expect(s.sandbox.filesystem.allowWrite).not.toContain(f.p("handovers/u/himmel/release/v9"));
+    expect(s.sandbox.excludedCommands).toEqual([]);
+    expect(s.sandbox.filesystem.allowWrite).not.toContain(f.p("vault/Inbox"));
+  } finally { f.cleanup(); }
+});
+
+test("T16: a symlinked root refuses the spawn", () => {
+  const f = envelopeFixture();
+  try {
+    symlinkSync(f.p("vault/Notes"), f.p("vault/Linked"));
+    writeFileSync(f.p("himmel/config.json"), JSON.stringify({ telegram: { bridgeVaultRoots: ["Linked"] } }));
+    expect(() => buildRunArgs("p", undefined, undefined, undefined, undefined, { spawn: DM, cwd: f.p("vault"), seams: f.seams })).toThrow(/symlink/);
+    writeFileSync(f.p("himmel/config.json"), JSON.stringify({ telegram: { bridgeVaultRoots: ["../escape"] } }));
+    expect(() => buildRunArgs("p", undefined, undefined, undefined, undefined, { spawn: DM, cwd: f.p("vault"), seams: f.seams })).toThrow(/bridgeVaultRoots/);
+  } finally { f.cleanup(); }
+});
+
+test("T16: with no seam, the sandbox's one Jira domain is the host of the real JIRA_BASE_URL", () => {
+  const f = envelopeFixture();
+  const saved = process.env.JIRA_BASE_URL;
+  try {
+    process.env.JIRA_BASE_URL = "https://site.example.net";
+    const { jiraHost: _drop, ...seams } = f.seams;
+    const s = envOf(buildRunArgs("p", undefined, undefined, undefined, undefined, { spawn: DM, cwd: f.p("vault"), seams }).cmd);
+    expect(s.sandbox.network.allowedDomains).toEqual(["site.example.net", "github.com", "api.github.com"]);
+  } finally {
+    if (saved === undefined) delete process.env.JIRA_BASE_URL; else process.env.JIRA_BASE_URL = saved;
+    f.cleanup();
+  }
+});
+
+test("T16: no bridgeVaultRoots key means no vault write root", () => {
+  const f = envelopeFixture();
+  try {
+    writeFileSync(f.p("himmel/config.json"), "{}");
+    const s = envOf(buildRunArgs("p", undefined, undefined, undefined, undefined, { spawn: DM, cwd: f.p("vault"), seams: f.seams }).cmd);
+    expect(s.sandbox.filesystem.allowWrite.filter((w: string) => w.startsWith(f.p("vault")))).toEqual([]);
+  } finally { f.cleanup(); }
 });
 
 test("run-prompt.md template matches buildPrompt's per-message operator marker", () => {

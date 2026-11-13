@@ -348,6 +348,37 @@ Nothing the model writes sets either. At start-up the poller writes
 `scripts/telegram/bridge-envelope-epoch.txt`; a missing or non-integer file
 writes nothing and removes any stale stamp. Restart the bridge after that file changes.
 
+### The bridge envelope
+
+Every bridge spawn (DM, ticket, group and cwd-routed) runs inside an envelope
+that `run.ts` builds from the descriptor at spawn:
+
+- `--permission-mode dontAsk` with `--setting-sources ""`, so the permission and
+  sandbox keys come only from the envelope's `--settings`. The user and project
+  hooks, deny and ask rules and env are carried in. A managed scope that would
+  widen the lists refuses the spawn.
+- The allow list: `Read`, `Grep`, `Glob`, `Bash` (sandboxed), `WebFetch`,
+  `WebSearch`, the profile's MCP tools, and `Edit` only under the write roots.
+- The write roots: the session's own folder, `<bridge root>/outgoing/`, and the
+  vault folders in `~/.himmel/config.json` `telegram.bridgeVaultRoots` (unset
+  means none; only the operator sets it). On a granted, non-routed spawn, Bash
+  also writes the one declared release folder.
+- Denied for every tool and in the sandbox: the handover root, the primary
+  checkout and its worktrees, `~/.himmel/`, the vault's git dir and the cwd's
+  `.claude/`, `.mcp.json`, `CLAUDE.md` and `_CLAUDE.md`, the poller's own files
+  and every other session's folder, the release folder's signed files and key,
+  and the fixed `host-ns` path. The Bash sandbox opens the Jira host and GitHub
+  only, and no Unix socket.
+- On a granted spawn, the one command run outside the sandbox is
+  `bash <primary>/scripts/handover/arm-resume.sh …` (DM `/arm`), with no env
+  prefix. `arm-resume.sh` then writes `export HIMMEL_BRIDGE_SESSION=1` into the
+  session it schedules, so the operator fence refuses that session's honest
+  operator verbs. `headed-arm-worker.sh` is not excluded.
+
+Every root is realpathed at spawn and a symlinked root refuses the spawn.
+`scripts/telegram/smoke-bridge-sandbox.sh` (billed, `HIMMEL_BILLED_OK=1`) is the
+live proof (P1); `bridge-envelope-epoch.txt` holds `1` only after it passed.
+
 ---
 
 ## Groups & channels

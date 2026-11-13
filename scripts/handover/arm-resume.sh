@@ -4636,6 +4636,8 @@ fi"
         q_cp_wd=$(printf '%q' "$CHIEF_PRECOMPACT_WORKDIR"); q_cp_wd=${q_cp_wd//%/\\%}
         q_safety_child="${q_safety_child}export HIMMEL_CONSOLE_DOC=$q_cp_doc HIMMEL_CONSOLE_WORKDIR=$q_cp_wd HIMMEL_CONSOLE=1 && "
     fi
+    # cron replays no env: only this written line carries the bridge marker.
+    [ "${HIMMEL_BRIDGE_SESSION:-}" = "1" ] && q_safety_child="${q_safety_child}export HIMMEL_BRIDGE_SESSION=1 && "
     # the headless shape (function header). The redirects hang
     # off the flow-ledger `{ ...; }` group so the ledger writes, the launch and
     # its exit all share the one stdin/log; stdin is /dev/null explicitly
@@ -5066,6 +5068,10 @@ fi"
                 # worker or consult carries (WORKER_SESSION_PROFILE_NO_SETTING_SOURCES, the
                 # shim, its binary), so the resumed session never inherits them.
                 at_safety_child="${at_safety_child}unset $(chief_context_launch_seam_env_names | tr '\n' ' ')
+"
+                # A bridge session's arm marks the session it schedules, so the
+                # operator fence sees it; never in the scrub list.
+                [ "${HIMMEL_BRIDGE_SESSION:-}" = "1" ] && at_safety_child="${at_safety_child}export HIMMEL_BRIDGE_SESSION=1
 "
                 if [ -n "$CHIEF_PRECOMPACT_DOC" ]; then
                     at_safety_child="${at_safety_child}export HIMMEL_CONSOLE_DOC=$(printf '%q' "$CHIEF_PRECOMPACT_DOC") HIMMEL_CONSOLE_WORKDIR=$(printf '%q' "$CHIEF_PRECOMPACT_WORKDIR") HIMMEL_CONSOLE=1
