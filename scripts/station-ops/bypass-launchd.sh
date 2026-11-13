@@ -44,7 +44,7 @@ EXPIRES="$(date -u -d "$until" +%s 2>/dev/null)" || die "--until $until is not a
 now="$(date +%s)"
 [ "$EXPIRES" -gt "$now" ] && [ "$EXPIRES" -le $((now + 7 * 86400)) ] || die "--until must be after now and at most 7 days ahead"
 OP="$(jq -r '.allowFrom[0] // empty' "$ACCESS" 2>/dev/null)" && [[ "$OP" =~ ^[1-9][0-9]*$ ]] || die "no operator id (allowFrom[0]) in $ACCESS"
-LOG="$Q/daemon.log"
+LOG="$Q/daemon.log" # t13b-ok: the queue log file name the bucket and chief docs already read; operator-started, bounded by --until
 strip=()
 while IFS= read -r v; do [[ "$v" == *_OK ]] && strip+=(-u "$v"); done < <(compgen -e)
 W="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/himmel-chief/gen-briefs"
@@ -59,7 +59,7 @@ refuse() { log "REFUSED $2 $1"; mv "$1" "$1.refused"; send "bypass-launchd refus
 live() { [ ! -e "$Q/stop" ] && [ "$(date +%s)" -lt "$EXPIRES" ]; }
 
 exec 9>"$Q/.lock"
-flock -n 9 || { echo "bypass-launchd: already running"; exit 1; } # prim-ok: the lock is held for the daemon's whole life on fd 9; Linux-only
+flock -n 9 || { echo "bypass-launchd: already running"; exit 1; } # prim-ok: the lock is held on fd 9 for the whole run; Linux-only
 log "start pid=$$ until=$until"
 
 while :; do
@@ -90,7 +90,7 @@ while :; do
         fi
         [ -n "$effort" ] && envs+=("WORKER_SESSION_EFFORT=$effort")
         code=$(LC_ALL=C tr -dc 'A-Z2-9' </dev/urandom | head -c 6)
-        off=$(stat -c %s "$INBOUND" 2>/dev/null || echo 0) # gnu-ok: a Linux-only station daemon (setsid, /run/user, the Telegram bridge)
+        off=$(stat -c %s "$INBOUND" 2>/dev/null || echo 0) # gnu-ok: Linux-only (setsid, /run/user, the Telegram bridge)
         desc=$(sed -n 's/^description: *//p' "$brief" | head -n 1)
         sha=$(sha256sum "$brief" | cut -d" " -f1); [ ${#sha} -eq 64 ] || { refuse "$req" "brief unreadable"; continue; }
         mv "$req" "$req.pending"
@@ -109,7 +109,7 @@ while :; do
         fi
         if ! live || [ -L "$brief" ] || [ "$(sha256sum "$brief" 2>/dev/null | cut -d" " -f1)" != "$sha" ]; then
             log "REFUSED after go $base (stop, expiry, or brief changed since the ask)"; mv "$req.pending" "$req.refused"
-            send "bypass launch $base: refused after your go, the brief changed or the daemon stopped. Nothing ran."; continue
+            send "bypass launch $base: refused after your go, the brief changed or the queue stopped. Nothing ran."; continue
         fi
         printf 'granted_at=%s\ngo=%s\nsha=%s\n' "$(date -u +%FT%TZ)" "$code" "$sha" >>"$req.pending"
         log "GRANT $base env=${envs[*]} decision=${decision:-none} go=$code"
