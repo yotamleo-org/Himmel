@@ -1635,10 +1635,6 @@ contains 'failed open-PR read: rc 0' "rc=$rc" 'rc=0'
 jtxt="$(cat "$MG/board.json" 2>/dev/null)"
 jcheck 'failed open-PR read: ci is null and merged_today is still 61' 'M.ci === null && M.headline.merged_today === 61'
 
-# --- second-token reads: the board's PR reads and cloud-liveness's list ride the read token.
-# The two-token stub stands in for `gh` on PATH; the suite's own stubs sit behind it.
-# RED control (the base): the board and the cloud scan call bare `gh`, the log reads
-# tok=main for every call, and a spent main token blanks the board and the panel.
 READTOK=ghp_READTOKEN0123456789
 mkdir -p "$W/ttroot" "$W/tt"
 printf 'himmel_github_token_vm2=%s\n' "$READTOK" > "$W/ttroot/.env"
@@ -1665,7 +1661,7 @@ printf '%s|%s\n' "${GH_READ_QUIET:-unset}" "${GH_READ_NO_MAIN_FALLBACK:-unset}" 
 cat "$CLOUD_FIXTURE"
 STUB
 chmod +x "$W/bin/gh-s8a" "$W/bin/gh-s8a-rec" "$W/bin/cloud-gh-rec"
-ttboard() {  # ttboard [VAR=value ...] -- the board under the two-token stub; the seam variables start unset
+ttboard() {
     env -u BOARD_GH -u CLOUD_LIVENESS_GH_CMD -u GH_TOKEN -u GITHUB_TOKEN -u himmel_github_token_vm2 -u CREDENTIALS_DIRECTORY -u GH_READ_NO_MAIN_FALLBACK \
         PATH="$W/tt:$PATH" GH_READ_ENV_ROOT="$W/ttroot" GH_STUB_READ_TOKEN="$READTOK" GHLOG="$TTLOG" HIMMEL_SECRETS_KEYRING=off \
         GH_STUB_DELEGATE="$W/bin/gh-s8a" S8A_DELEGATE="$W/bin/gh" CLOUD_FIXTURE="$HERE/fixtures/cloud-liveness-prs.json" \
@@ -1694,7 +1690,6 @@ html="$(cat "$M/tt-board.html")"
 contains 'S8a main spent: the cloud panel lists the session, not unavailable' "$html" 'data-cloud-ticket="HIMMEL-5077" data-state="unshepherded"'
 same 'S8a main spent: the cloud list logs tok=read' "$(ttlog '^tok=read argv=pr list --state all')" 1
 same 'S8a main spent: no read, cloud list included, logs tok=main' "$(ttlog '^tok=main ')" 0
-# no-fallback: the cloud scan is a tick scan, so a rate-limited read token is not retried on main
 : > "$TTLOG"
 ttboard GH_STUB_READFAIL=rate >/dev/null; rc=$?
 html="$(cat "$M/tt-board.html")"
@@ -1702,7 +1697,6 @@ contains 'S8a read token limited, main healthy: the cloud scan reports unavailab
 same 'S8a read token limited: the cloud list is tried on the read token' "$(ttlog '^tok=read argv=pr list --state all')" 1
 same 'S8a read token limited: the cloud list never reads on main' "$(ttlog '^tok=main argv=pr list --state all')" 0
 same 'S8a read token limited: the board'"'"'s own open-PR read still falls back to main' "$(ttlog '^tok=main argv=pr list --state open')" 1
-# controls: a set seam wins over the helper and its child carries the knobs
 : > "$TTLOG"; : > "$ENVLOG"; : > "$CENVLOG"
 ttboard GH_STUB_MAINFAIL=rate BOARD_GH="$W/bin/gh-s8a-rec" CLOUD_LIVENESS_GH_CMD="$W/bin/cloud-gh-rec" >/dev/null; rc=$?
 html="$(cat "$M/tt-board.html")"

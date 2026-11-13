@@ -480,10 +480,6 @@ JS
 contains "the fleet page opens dark with readable text and a light choice still works" "$(node "$W/dark-check.mjs" "$H" --bg --text --muted)" "DARK-OK"
 lacks "the fleet page no longer follows a light system preference" "$HTML" "prefers-color-scheme"
 
-# ------------------------------------------------------------------ second-token reads
-# The PR read rides the read token. The two-token stub stands in for `gh` on PATH, the
-# suite's own gh stub sits behind it. RED control (the base): fleet.mjs calls bare `gh`,
-# the log reads tok=main, and a spent main token leaves the PR join empty.
 READTOK=ghp_READTOKEN0123456789
 mkdir -p "$W/ttroot" "$W/tt"
 printf 'himmel_github_token_vm2=%s\n' "$READTOK" > "$W/ttroot/.env"
@@ -497,7 +493,7 @@ printf '%s\n' "${GH_READ_QUIET:-unset}" >> "$S8A_ENVLOG"
 exec "$S8A_DELEGATE" "$@"
 STUB
 chmod +x "$W/bin/gh-rec"
-ttfleet() {  # ttfleet [VAR=value ...] -- the snapshot under the two-token stub; FLEET_GH starts unset
+ttfleet() {
     env -u FLEET_GH -u GH_TOKEN -u GITHUB_TOKEN -u himmel_github_token_vm2 -u CREDENTIALS_DIRECTORY -u GH_READ_NO_MAIN_FALLBACK \
         PATH="$W/tt:$PATH" GH_READ_ENV_ROOT="$W/ttroot" GH_STUB_READ_TOKEN="$READTOK" GHLOG="$TTLOG" HIMMEL_SECRETS_KEYRING=off \
         GH_STUB_DELEGATE="$W/bin/gh" S8A_DELEGATE="$W/bin/gh" S8A_ENVLOG="$ENVLOG" \

@@ -111,7 +111,6 @@ const logsDir = resolve(opt.logs || (process.env.XDG_RUNTIME_DIR
     : join(process.env.TMPDIR || '/tmp', `himmel-chief-${process.getuid ? process.getuid() : 0}`)));
 const QUEUE_LOCK = process.env.FLEET_QUEUE_LOCK || join(repo, 'scripts', 'handover', 'queue-lock.sh');
 const BANK = process.env.FLEET_BANK || join(repo, 'scripts', 'lib', 'usage-preflight.sh');
-// The PR reads ride the read-only token (scripts/lib/gh-read.sh); FLEET_GH replaces the helper.
 const readHelper = fileURLToPath(new URL('../../lib/gh-read.sh', import.meta.url));
 const GH = process.env.FLEET_GH || (existsSync(readHelper) ? readHelper : 'gh');
 const PROC = process.env.FLEET_PROC || '/proc';
