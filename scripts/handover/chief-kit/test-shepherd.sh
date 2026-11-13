@@ -22,6 +22,10 @@ export HOME="$WORK/home"; mkdir -p "$HOME"
 export GIT_CONFIG_GLOBAL="$WORK/gitconfig" GIT_CONFIG_SYSTEM=/dev/null
 git config --global user.email t@t; git config --global user.name t
 git config --global init.defaultBranch main
+mkdir -p "$WORK/emptyroot" "$WORK/himmelcfg"
+: > "$WORK/emptyroot/.env"
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
+export GH_READ_ENV_ROOT="$WORK/emptyroot" HIMMEL_SECRETS_KEYRING=off HIMMEL_CONFIG_DIR="$WORK/himmelcfg"
 
 # Scratch repo: bare origin + clone; PR 7 head = one commit adding test-a.sh.
 git init -q --bare "$WORK/origin.git"
@@ -198,13 +202,11 @@ has "(o) a real fail still says FAIL" "ready-check: FAIL" "$out"
 has "(o) a real fail keeps ready-check-failed" "ready-check-failed" "$out"
 
 READTOK=ghp_READTOKEN0123456789
-mkdir -p "$WORK/ttroot" "$WORK/emptyroot" "$WORK/tt" "$WORK/himmelcfg"
+mkdir -p "$WORK/ttroot" "$WORK/tt"
 printf 'himmel_github_token_vm2=%s\n' "$READTOK" > "$WORK/ttroot/.env"
-: > "$WORK/emptyroot/.env"
 ln -s "$HERE/fixtures/gh-two-token-stub.sh" "$WORK/tt/gh"
 TTLOG="$WORK/tt.log"
 logn() { grep -c -E -- "$1" "$TTLOG"; }
-unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
 printf '#!/bin/sh\necho test-a.sh\n' > "$WORK/impacted-stub"
 tt_run() {
     : > "$TTLOG"
@@ -225,6 +227,13 @@ check "(p) control, no read token: shepherd exits 0" 0 "$rc"
 has "(p) control: the PR view gives the head" "SHEPHERD 7 $HEADSHA READY-CANDIDATE" "$out"
 check "(p) control: the PR view logs tok=main" 1 "$(logn '^tok=main argv=pr view 7 --json headRefOid,baseRefName,comments')"
 check "(p) control: no call logs tok=read" 0 "$(logn '^tok=read ')"
+setup yes ok 0
+: > "$TTLOG"
+out=$( cd "$WORK/repo" && env -u GH_CMD PATH="$WORK/tt:$PATH" GH_STUB_DELEGATE="$WORK/bin/gh" GH_STUB_READ_TOKEN="$READTOK" GHLOG="$TTLOG" \
+    bash "$SHEP" 7 2>&1 ); rc=$?
+check "(p) pin: the suite's inherited GH_READ_ENV_ROOT is the empty fixture root" "$WORK/emptyroot" "$GH_READ_ENV_ROOT"
+check "(p) pin: a run() shaped call reads from the empty root, so it logs tok=main" 1 "$(logn '^tok=main argv=pr view 7 --json headRefOid,baseRefName,comments')"
+check "(p) pin: a run() shaped call logs no tok=read" 0 "$(logn '^tok=read ')"
 setup yes ok 0
 : > "$TTLOG"
 out=$( cd "$WORK/repo" && GH_CMD="$WORK/bin/gh" GH_READ_ENV_ROOT="$WORK/ttroot" PATH="$WORK/tt:$PATH" GH_STUB_DELEGATE="$WORK/bin/gh" \
