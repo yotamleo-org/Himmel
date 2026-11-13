@@ -265,10 +265,22 @@ hold_start; holderB=$held
 wait_for recorded "$holderB"
 touch "$GO"
 wait_for test -s "$ARC"
-eq "$(cat "$ARC" 2>/dev/null)" "8" "the first caller's own early give_back is refused while a reuse run is in flight (exit 8)"
+abort_rc="$(cat "$ARC" 2>/dev/null)"  # read-sink-ok: reads the test's own fixture output under its mktemp dir
+eq "$abort_rc" "8" "the first caller's own early give_back is refused while a reuse run is in flight (exit 8)"
 eq "$(round_of)" "1" "the first caller's early give_back keeps the round while a reuse run is in flight"
 kill "$holderA" "$holderB" 2>/dev/null
 wait "$holderA" "$holderB" 2>/dev/null
+
+reset; preflight
+rr start --pr 7 --head "$H"
+rm -f "$ROUNDS/outside-7.delta.run"
+RRC_FILE="$tmp/reuse-abort-rc"; rm -f "$RRC_FILE"
+HOME="$HOMEDIR" PATH="$tmp/bin:$PATH" STUB_OID="$H" HIMMEL_REPO="$A" CR_LEDGER="$LEDGER" \
+    bash -c 'cd "$3" && bash "$1" start --pr 7 --head "$2" >/dev/null; bash "$1" abort --pr 7 --head "$2" >/dev/null 2>&1; echo $? > "$4"' _ "$A/scripts/cr/review-round.sh" "$H" "$P" "$RRC_FILE"
+reuse_abort_rc="$(cat "$RRC_FILE" 2>/dev/null)"  # read-sink-ok: reads the test's own fixture output under its mktemp dir
+eq "$reuse_abort_rc" "8" "a reuse start does not re-create a missing caller file, so its own give-back is refused (exit 8)"
+eq "$(round_of)" "1" "a reuse start after a lost caller file keeps the round"
+eq "$(test -e "$ROUNDS/outside-7.delta.run" && echo created || echo missing)" "missing" "a reuse start leaves a missing caller file missing"
 
 if [ "$fails" -gt 0 ]; then
     printf 'FAIL test-panel-first-pass-pr-base (%s failures)\n' "$fails" >&2

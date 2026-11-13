@@ -1650,7 +1650,7 @@ if [ -n "$pr" ]; then
         exit 5
     fi
     if [ "$pr_reuse" -eq 1 ]; then
-        [ "$verb" != "start" ] || printf '%s\n' "$PPID" >> "$delta_run" 2>/dev/null || rm -f "$delta_run" 2>/dev/null
+        [ "$verb" != "start" ] || { [ -f "$delta_run" ] && printf '%s\n' "$PPID" >> "$delta_run" 2>/dev/null; } || rm -f "$delta_run" 2>/dev/null
         pr_unlock
         if [ "$verb" = "check" ]; then printf '%s %s\n' "$round" "$pr_auth"; else printf '%s\n' "$round"; fi
         exit 0
