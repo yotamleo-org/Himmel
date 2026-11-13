@@ -1248,8 +1248,7 @@ def sonnet_ceiling_profile(profile):
 
 def completes_line(scope):
     # The LAST completes-ticket value in the scope, as the one line the merge script
-    # reads from the worker doc (--worker-doc / HIMMEL_WORKER_SESSION_DOC); yes when the scope states neither,
-    # the same value ship_completes() words the Ship step with.
+    # reads from the worker doc (--worker-doc / HIMMEL_WORKER_SESSION_DOC); yes when the scope states neither.
     found = COMPLETES_RE.findall(scope)
     return '\n> **Completes ticket:** %s\n' % (found[-1].lower() if found else 'yes')
 

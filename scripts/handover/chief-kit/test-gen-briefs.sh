@@ -602,7 +602,6 @@ lacks "the LAST value (no) also drives the Ship step" "$ship_last" "--jira-trans
 has "the LAST value (no) writes the bare-merge Ship wording" "$ship_last" "completes-ticket: no (leave the ticket In Progress after the merge)"
 ship_none="$(printf '%s\n' "$ct_none" | grep '^> 4\. Ship:')"
 has "a scope stating neither keeps the yes Ship step" "$ship_none" "merge-on-green.sh --jira-transition"
-# The Ship step names both remainder shapes under yes and no.
 # shellcheck disable=SC2016 # literal backticks in the expected brief text
 for shape_case in "yes:$ship_yes" "no:$ship_no"; do
     shape_name="${shape_case%%:*}"; shape_ship="${shape_case#*:}"
