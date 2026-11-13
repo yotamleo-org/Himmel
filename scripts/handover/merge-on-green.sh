@@ -827,13 +827,21 @@ fi
 # non-repo cwd) skips the guard.
 # Runs here and again right before the merge, to catch a commit made during the CI watch.
 local_commit_guard() {
-    local line cur="" wt="" local_ahead ahead_n
+    local line cur="" wt="" wt_list local_ahead ahead_n
+    if ! git rev-parse --git-dir >/dev/null 2>&1; then return 0; fi
+    if ! wt_list=$(mktemp "${TMPDIR:-/tmp}/mog-worktrees.XXXXXX") || ! git worktree list --porcelain -z > "$wt_list"; then
+        [ -z "${wt_list:-}" ] || rm -f "$wt_list"
+        echo "merge-on-green: cannot list this checkout's worktrees to find the one holding $head_branch — refusing. Re-run." >&2
+        audit "REFUSED reason=local-commits-unreadable repo=$nwo pr=#$pr_num sha=$sha"
+        exit 25
+    fi
     while IFS= read -r -d '' line; do
         case "$line" in
             "worktree "*) cur="${line#worktree }" ;;
             "branch refs/heads/$head_branch") wt="$cur" ;;
         esac
-    done < <(git worktree list --porcelain -z 2>/dev/null)
+    done < "$wt_list"
+    rm -f "$wt_list"
     [ -n "$wt" ] || return 0
     if ! local_ahead=$(git -C "$wt" rev-list "$sha..HEAD"); then
         echo "merge-on-green: cannot compare this checkout's HEAD with PR #$pr_num's head ${sha:0:12} (not in the local object store?) — refusing. git fetch, then re-run." >&2
