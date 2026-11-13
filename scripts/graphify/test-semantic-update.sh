@@ -69,6 +69,14 @@ echo '{"type":"result","subtype":"success","is_error":false,"result":"{}","total
 EOF
 chmod +x "$REPO/scripts/api-lane/claude-api.sh"
 cp "$REAL_REPO/scripts/api-lane/outcome.mjs" "$REPO/scripts/api-lane/outcome.mjs"
+cat > "$WS/roles.stub.mjs" <<'EOF'
+const answer = process.env.BATCH_STUB_WALK || process.env.BATCH_STUB_ROSTER || 'A,B,C';
+if (process.argv[2] === 'walk' && process.argv[3] === 'graphify') {
+  console.log(answer);
+  if (answer.startsWith('refuse ')) process.exitCode = 3;
+}
+EOF
+cp "$WS/roles.stub.mjs" "$REPO/scripts/lib/api-roles.mjs"
 # graphify stub: `extract <scratch> ...` writes one semantic concept node per
 # copied .md (label = first line), plus an AST heading node, plus an edge to
 # the existing AST node "code_a". GRAPHIFY_STUB_RC fails it; GRAPHIFY_STUB_LEAK
@@ -1008,7 +1016,7 @@ if (cmd === 'submit') {
 } else process.exit(2);
 EOF
 cat > "$REPO/scripts/lib/api-credit-state.mjs" <<'EOF'
-import { appendFileSync, existsSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 const ws = process.env.BATCH_STUB_WS;
 const f = join(ws, 'exhausted.log');
@@ -1034,9 +1042,23 @@ if (process.argv[2] === 'pick') {
   if (process.env.BATCH_STUB_MARKFAIL) process.exit(1);
   appendFileSync(f, `${process.env.HIMMEL_API_ACCOUNT}\n`);
   console.log('{}');
+} else if (process.argv[2] === 'key-rejected' || process.argv[2] === 'key-ok') {
+  const k = join(ws, 'key-rejected.log');
+  const marks = existsSync(k) ? readFileSync(k, 'utf8').split('\n').filter(Boolean) : [];
+  const l = process.env.HIMMEL_API_ACCOUNT;
+  appendFileSync(join(ws, 'key-verbs.log'), `${process.argv[2]} ${l}\n`);
+  if (process.argv[2] === 'key-rejected') { if (!marks.includes(l)) appendFileSync(k, `${l}\n`); console.log('{}'); }
+  else if (marks.includes(l)) { writeFileSync(k, marks.filter((m) => m !== l).map((m) => `${m}\n`).join('')); console.log('cleared'); }
+  else console.log('none');
 }
 EOF
-: > "$REPO/scripts/lib/api-roles.mjs"  # the stub tree has no role map: an empty module prints no accounts, as no roles.json does
+cp "$WS/roles.stub.mjs" "$REPO/scripts/lib/api-roles.mjs"
+mkdir -p "$REPO/scripts/luna"
+cp "$REAL_REPO/scripts/luna/cadence-alert.sh" "$REPO/scripts/luna/cadence-alert.sh"
+# shellcheck disable=SC2016
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$1" >> "%s/graph-sent.log"\n' "$WS" > "$WS/graph-send"; chmod +x "$WS/graph-send"
+export CADENCE_ALERT_SEND_CMD="$WS/graph-send" CADENCE_ALERT_DEDUPE_DIR="$WS/dedupe" CADENCE_ALERT_FILE="$WS/cadence-alerts.log" \
+  CADENCE_ALERT_SEND_FAILED_MARK="$WS/send-failed"
 chmod +x "$REPO/scripts/graphify/semantic-batch-shim.mjs"
 export BATCH_STUB_WS="$WS"
 run_batch() { env HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT="${ACCT:-A}" PATH="$WS/bin:$PATH" bash "$SCRIPT" "$@" 2>&1; }
@@ -1246,7 +1268,7 @@ roles_fixture() {
   export HIMMEL_API_CREDIT_CONFIG="$RC/config.json" HIMMEL_API_CREDIT_SNAPSHOT="$RC/snapshot.json"
 }
 roles_real_on() { cp "$REAL_REPO/scripts/lib/api-credit-state.mjs" "$REAL_REPO/scripts/lib/api-roles.mjs" "$REPO/scripts/lib/"; }
-roles_real_off() { cp "$WS/credit-state.stub.mjs" "$REPO/scripts/lib/api-credit-state.mjs"; : > "$REPO/scripts/lib/api-roles.mjs"; unset HIMMEL_API_CREDIT_CONFIG HIMMEL_API_CREDIT_SNAPSHOT; }
+roles_real_off() { cp "$WS/credit-state.stub.mjs" "$REPO/scripts/lib/api-credit-state.mjs"; cp "$WS/roles.stub.mjs" "$REPO/scripts/lib/api-roles.mjs"; unset HIMMEL_API_CREDIT_CONFIG HIMMEL_API_CREDIT_SNAPSHOT; }
 
 echo "T77a: no roles.json, auto batch submits on A (the earliest-expiring), as before the role map"
 roles_fixture; roles_real_on
@@ -1254,11 +1276,29 @@ C77A="$REPO/c77a"; new_corpus "$C77A"; batch_reset
 out=$(ACCT=auto GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t77a --corpus-root "$C77A" --corpus-class himmel-code --backend claude-api); rc=$?
 [ "$rc" -eq 0 ] && [ "$(batch_accounts)" = "A " ] && pass "T77a one submit, on A" || fail "T77a (rc=$rc) accounts '$(batch_accounts)': $out"
 
-echo "T77b: a non-JSON roles.json is decision 525 too: the batch submits on A"
-roles_fixture; roles_real_on; printf '{not json' > "$RC/roles.json"
-C77B="$REPO/c77b"; new_corpus "$C77B"; batch_reset
-out=$(ACCT=auto GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t77b --corpus-root "$C77B" --corpus-class himmel-code --backend claude-api); rc=$?
-[ "$rc" -eq 0 ] && [ "$(batch_accounts)" = "A " ] && pass "T77b one submit, on A" || fail "T77b (rc=$rc) accounts '$(batch_accounts)': $out"
+echo "O22: a role map that would widen the walk refuses the batch with the role-map line and no client call; other damage walks as on main"
+for o22 in '{not json|invalid-role-map:not-json' '{"version":2,"roles":{}}|invalid-role-map:version' '{"version":1,"roles":{"graphify":["D"]}}|empty-role:graphify'; do
+  roles_fixture; roles_real_on; printf '%s' "${o22%|*}" > "$RC/roles.json"
+  CO="$REPO/o22"; rm -rf "$CO"; new_corpus "$CO"; batch_reset
+  out=$(ACCT=auto GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name o22 --corpus-root "$CO" --corpus-class himmel-code --backend claude-api); rc=$?
+  [ "$rc" -eq 2 ] && [ ! -s "$WS/batch.log" ] && [ ! -e "$CO/graphify-out/semantic-batch" ] \
+    && [ "$(printf '%s\n' "$out" | grep -cxF "semantic-update: refusing the batch: graph role map broken (${o22#*|}); fix or remove roles.json")" -eq 1 ] \
+    && pass "O22 ${o22#*|}: rc 2, the role-map line once, no submit" || fail "O22 ${o22#*|} (rc=$rc) log '$(cat "$WS/batch.log")': $out"
+done
+roles_fixture; roles_real_on; printf '{"version":1,"roles":{"graphify":["C","D"]}}' > "$RC/roles.json"
+CO="$REPO/o22p"; new_corpus "$CO"; batch_reset
+out=$(ACCT=auto GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name o22p --corpus-root "$CO" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 0 ] && [ "$(batch_accounts)" = "C " ] && pass "O22 a partial map [C,D] walks C alone" || fail "O22 partial (rc=$rc) accounts '$(batch_accounts)': $out"
+roles_fixture; roles_real_on; printf '{"version":1,"roles":{"graphify":["B"]}}' > "$RC/roles.json"
+python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); del d["accounts"]["B"]; json.dump(d, open(p,"w"))' "$RC/config.json"
+CO="$REPO/o22b"; new_corpus "$CO"; batch_reset
+out=$(ACCT=auto GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name o22b --corpus-root "$CO" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 2 ] && [ ! -s "$WS/batch.log" ] && [[ "$out" == *"no-role-account-configured"* ]] && [[ "$out" != *"graph role map broken"* ]] \
+  && pass "O22 [B] with B unconfigured refuses through pick, not as a broken map" || fail "O22 unconfigured (rc=$rc): $out"
+roles_fixture; roles_real_on; printf '{"version":1,"roles":{"graphify":["C"],"jduge":["B"]}}' > "$RC/roles.json"
+CO="$REPO/o22u"; new_corpus "$CO"; batch_reset
+out=$(ACCT=auto GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name o22u --corpus-root "$CO" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 0 ] && [ "$(batch_accounts)" = "C " ] && pass "O22 an unknown-role partial map walks its graphify entry" || fail "O22 unknown-role (rc=$rc) accounts '$(batch_accounts)': $out"
 
 echo "T77c: graphify mapped to C narrows the auto batch to C"
 roles_fixture; roles_real_on; printf '{"version":1,"roles":{"graphify":["C"]}}' > "$RC/roles.json"
@@ -1306,6 +1346,14 @@ C92B="$REPO/c92b"; new_corpus "$C92B"
 out=$(sync_rejecting --name t92b --corpus-root "$C92B" --corpus-class himmel-code --backend claude-api); rc=$?
 [ "$rc" -eq 5 ] && [ "$(grep -c '^lane ' "$WS/calls.log")" -eq 1 ] \
   && pass "T92b the unconfigured C is not counted" || fail "T92b (rc=$rc) lane calls $(grep -c '^lane ' "$WS/calls.log"): $out"
+echo "O23: the synchronous auto path with a broken role map refuses once, before extraction: no chunk call, no stuck record"
+roles_fixture; roles_real_on; printf '{not json' > "$RC/roles.json"
+CO="$REPO/o23"; new_corpus "$CO"
+out=$(sync_rejecting --name o23 --corpus-root "$CO" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 2 ] && [ "$(grep -c '^lane ' "$WS/calls.log")" -eq 0 ] && ! grep -q '^graphify extract' "$WS/calls.log" \
+  && [ ! -e "$CO/graphify-out/semantic-manifest.json" ] && [ ! -e "$CO/graphify-out/semantic-runs.jsonl" ] \
+  && [ "$(printf '%s\n' "$out" | grep -cxF 'semantic-update: refusing the batch: graph role map broken (invalid-role-map:not-json); fix or remove roles.json')" -eq 1 ] \
+  && pass "O23 rc 2, the role-map line once, no extraction and no lane call" || fail "O23 (rc=$rc) calls '$(cat "$WS/calls.log")': $out"
 roles_real_off
 
 # the exhausted marker clears on its own: a marker older than the TTL no longer counts when the reading is older than the marker
@@ -1550,6 +1598,27 @@ CO="$WS/o20b"; new_corpus "$CO"; o_reset
 out=$(BATCH_STUB_REJECTED=A BATCH_STUB_EXHAUSTED=C GRAPHIFY_STUB_CALL_CLAUDE=1 run_order --name o20b --corpus-root "$CO" --account-order A,C); rc=$?
 [ "$rc" -ne 0 ] && [ "$(batch_accounts)" = "A C " ] && [ "$(word)" = key-rejected ] && [ "$(line2)" = "rejected A" ] && no_spend_calls \
   && pass "O20 every letter spent with A rejected: key-rejected, rejected A" || fail "O20b (rc=$rc) accounts '$(batch_accounts)' file '$(cat "$RF" 2>&1)': $out"
+
+echo "O21: on auto, a rejected key on A is marked and alerted once while C submits; an accepted submit on A clears both; a planted sentinel with no mark survives"
+rm -rf "$WS/dedupe"; rm -f "$WS/key-rejected.log" "$WS/key-verbs.log" "$WS/graph-sent.log" "$WS/cadence-alerts.log"
+CO="$REPO/o21"; new_corpus "$CO"; batch_reset
+out=$(ACCT=auto BATCH_STUB_WALK=A,C BATCH_STUB_REJECTED=A GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name o21 --corpus-root "$CO" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 0 ] && [ "$(batch_accounts)" = "A C " ] && [ "$(cat "$WS/key-rejected.log" 2>/dev/null)" = A ] \
+  && [ "$(grep -c ' graph-key-A account A API key rejected ' "$WS/cadence-alerts.log" 2>/dev/null)" -eq 1 ] \
+  && [ "$(wc -l < "$WS/graph-sent.log" 2>/dev/null)" -eq 1 ] && grep -qF 'key-A.env, or remove A from the route or the graphify role' "$WS/graph-sent.log" \
+  && grep -qF 'Cause: HTTP 401 or 403 from the provider' "$WS/graph-sent.log" && compgen -G "$WS/dedupe/graph-key-A.*" >/dev/null \
+  && [[ "$out" != *"cadence-alert"* ]] && [[ "$out" != *"graph-key"* ]] \
+  && pass "O21 A marked, one graph-key-A alert with the fix line, the sentinel written, the run's output unchanged" \
+  || fail "O21 (rc=$rc) accounts '$(batch_accounts)' marks '$(cat "$WS/key-rejected.log" 2>&1)' sent '$(cat "$WS/graph-sent.log" 2>&1)': $out"
+CO="$REPO/o21b"; new_corpus "$CO"; batch_reset
+out=$(ACCT=auto BATCH_STUB_WALK=A,C GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name o21b --corpus-root "$CO" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 0 ] && [ "$(batch_accounts)" = "A " ] && [ ! -s "$WS/key-rejected.log" ] && ! compgen -G "$WS/dedupe/graph-key-A.*" >/dev/null \
+  && pass "O21 an accepted submit on A removes the mark and the sentinel" || fail "O21 second run (rc=$rc) marks '$(cat "$WS/key-rejected.log" 2>&1)' dedupe '$(ls "$WS/dedupe" 2>&1)': $out"
+: > "$WS/dedupe/graph-key-A.planted"
+CO="$REPO/o21c"; new_corpus "$CO"; batch_reset
+out=$(ACCT=auto BATCH_STUB_WALK=A,C GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name o21c --corpus-root "$CO" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 0 ] && [ -e "$WS/dedupe/graph-key-A.planted" ] && [ "$(tail -1 "$WS/key-verbs.log")" = "key-ok A" ] \
+  && pass "O21 with no mark key-ok prints none and the planted sentinel survives" || fail "O21 third run (rc=$rc) verbs '$(cat "$WS/key-verbs.log" 2>&1)': $out"
 
 echo "O16: with neither new flag, rc and output match the merge base's own semantic-update.sh on the same stubs and fixtures"
 o16_base="$(git -C "$REAL_REPO" merge-base HEAD origin/main 2>/dev/null)"

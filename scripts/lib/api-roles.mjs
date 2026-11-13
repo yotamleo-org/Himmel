@@ -105,8 +105,24 @@ function noteFor(map, kind) {
   return '';
 }
 
+export function walkGraphify(env = process.env) {
+  const map = roleMap(env);
+  if (map.state === 'invalid') return { refuse: map.errors[0] };
+  if (map.errors.includes('empty-role:graphify')) return { refuse: 'empty-role:graphify' };
+  const live = accountsFor(map, 'graphify');
+  if (live.length) return { letters: live, note: noteFor(map, 'graphify') };
+  try { return { letters: configuredLetters(env), note: noteFor(map, 'graphify') }; } catch { return { letters: ACCOUNTS, note: noteFor(map, 'graphify') }; }
+}
+
 function main() {
   const [command, ...args] = process.argv.slice(2);
+  if (command === 'walk' && args[0] === 'graphify' && args.length === 1) {
+    const walk = walkGraphify(process.env);
+    if (walk.refuse) { console.log(`refuse ${walk.refuse}`); process.exitCode = 3; return; }
+    if (walk.note) console.error(walk.note);
+    console.log(walk.letters.join(','));
+    return;
+  }
   if (command === 'accounts') {
     // always exits 0: a failed read is "no map", which is decision 525
     try {
@@ -138,7 +154,7 @@ function main() {
     if (!result.ok) process.exitCode = 3;
     return;
   }
-  console.error('usage: api-roles.mjs accounts <kind> | check | write');
+  console.error('usage: api-roles.mjs accounts <kind> | walk graphify | check | write');
   process.exitCode = 2;
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main();

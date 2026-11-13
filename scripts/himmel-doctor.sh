@@ -127,7 +127,7 @@ ledger_registry_path() {
 # answer for every project), "project" = the default. The per-repo index checks (graph freshness, semantic graph)
 # are project rows that name the repo they judge, so a feed saved under another project does not carry them.
 # A check id is its Cn prefix (C40-qmd-vec -> C40).
-DOCTOR_SHARED_CHECKS=" C12 C19 C20 C22 C38 C40 C44 C45 C49 C50 C52 C56 C69 C80 C83 C86 C89 C91 "
+DOCTOR_SHARED_CHECKS=" C12 C19 C20 C22 C38 C40 C44 C45 C49 C50 C52 C56 C69 C80 C83 C86 C89 C91 C92 C93 "
 DOCTOR_REPO_CHECKS=" C33 C70 "
 DOCTOR_REPO_NAME="himmel"
 
@@ -4011,6 +4011,75 @@ $rows
 EOF
 }
 
+check_c92_graph_key() {
+    local out tags unknown role route walk="" walk_rc=0 l gc="$SELF_DIR/himmelctl/lib/graph-choices.js"
+    out="$(node "$SELF_DIR/lib/api-credit-state.mjs" accounts 2>/dev/null)" || out=""
+    case "$out" in
+        '['*) ;;
+        *) if [ -e "${HIMMEL_API_CREDIT_CONFIG:-${HOME:-}/.himmel/state/api-credit/config.json}" ]; then
+               emit INFO C92-graph-key "the API account roster cannot be read -- rejected keys not checked"
+           else
+               emit OK C92-graph-key "no API account is configured, so no key can be rejected"
+           fi
+           return 0 ;;
+    esac
+    tags="$(printf '%s' "$out" | tr '{' '\n' | sed -n 's/^"account":"\([ABC]\)",.*"tag":"key rejected".*/\1/p' | tr '\n' ' ')"
+    unknown="$(printf '%s' "$out" | tr '{' '\n' | sed -n 's/^"account":"\([ABC]\)",.*"tag":"unknown".*/\1/p' | tr '\n' ' ')"
+    [ -z "${unknown// /}" ] || emit INFO C92-graph-key "account(s) ${unknown% }: the credit ledger cannot be read, so a rejected key there is not checked"
+    if [ -z "${tags// /}" ]; then
+        [ -n "${unknown// /}" ] || emit OK C92-graph-key "no API account carries a rejected key"
+        return 0
+    fi
+    role="$(node "$gc" role 2>/dev/null)" || role=""
+    if [ "$role" = adopter ]; then
+        route="$(node "$gc" route 2>/dev/null)" || route=""
+        case "$route" in *'"order":['*) ;; *) emit INFO C92-graph-key "the graph route cannot be read -- rejected keys (${tags% }) not judged"; return 0 ;; esac
+        walk="$(printf '%s' "$route" | sed -n 's/.*"order":\[\([^]]*\)\].*/\1/p' | tr -d '"')"
+    else
+        walk="$(node "$SELF_DIR/lib/api-roles.mjs" walk graphify 2>/dev/null)" || walk_rc=$?
+        if [ "$walk_rc" -ne 0 ] && [ "$walk_rc" -ne 3 ]; then
+            emit INFO C92-graph-key "the graph walk cannot be read (api-roles.mjs walk graphify exit $walk_rc) -- rejected keys (${tags% }) not judged"
+            return 0
+        fi
+        [ "$walk_rc" -eq 0 ] || walk=""
+    fi
+    for l in $tags; do
+        case ",$walk," in
+            *",$l,"*) emit WARN "C92-graph-key-$l" "account $l's API key was rejected by the provider (tag: key rejected), and the graph walk reaches $l" \
+                "rotate ~/.himmel/state/api-credit/key-$l.env, or remove $l from the route or the graphify role" ;;
+            *) if [ "$walk_rc" -eq 3 ]; then
+                   emit OK "C92-graph-key-$l" "account $l carries a rejected key, but the graph role map is broken, so the graph pass refuses and sends nothing (see C93)"
+               else
+                   emit OK "C92-graph-key-$l" "account $l carries a rejected key, but no graph walk reaches it"
+               fi ;;
+        esac
+    done
+}
+
+check_c93_graph_role() {
+    local out line state errors warn walk_rc=0 roles="${HIMMEL_API_CREDIT_CONFIG:+$(dirname "$HIMMEL_API_CREDIT_CONFIG")/roles.json}"
+    roles="${roles:-~/.himmel/state/api-credit/roles.json}"
+    out="$(node "$SELF_DIR/lib/api-roles.mjs" check 2>/dev/null)" || out=""
+    line="$(printf '%s' "$out" | node -e 'let s="";process.stdin.on("data",(d)=>{s+=d}).on("end",()=>{try{const j=JSON.parse(s);const w=j.warnings.filter((x)=>x==="no-configured-account:graphify");console.log([j.roleMap.state,j.roleMap.errors.join(", "),w.join(", ")].join("|"))}catch{}})' 2>/dev/null)"
+    if [ -z "$line" ]; then
+        emit INFO C93-graph-role "api-roles.mjs check gave no answer -- the role map was not checked"
+        return 0
+    fi
+    IFS='|' read -r state errors warn <<EOF
+$line
+EOF
+    node "$SELF_DIR/lib/api-roles.mjs" walk graphify >/dev/null 2>&1 || walk_rc=$?
+    if [ "$walk_rc" -eq 3 ]; then
+        emit WARN C93-graph-role "the API role map is $state (${errors}): the graph pass refuses on auto until it is fixed" \
+            "fix the graphify entry on the API roles card, or remove $roles"
+    elif [ "$state" = partial ] || [ -n "$warn" ]; then
+        emit WARN C93-graph-role "the API role map is $state (${errors:+$errors}${errors:+${warn:+, }}${warn}): the graph pass still runs on the letters the map keeps" \
+            "fix the entries named above on the API roles card, or remove $roles"
+    else
+        emit OK C93-graph-role "the API role map is $state"
+    fi
+}
+
 # ponytail: a marker repo with only dead rows, or rows holds.py cannot judge (state unknown), does not warn; a worker whose
 # first write has not published a row yet is invisible until it does. Upgrade path: read the worker list as well.
 check_c95_barrier_off() {
@@ -5843,6 +5912,8 @@ run_check C87 check_c87_stub_handover_state
 run_check C89 check_c89_qmd_rerank
 run_check C90 check_c90_effort_pin
 run_check C91 check_c91_api_policy_refusals
+run_check C92 check_c92_graph_key
+run_check C93 check_c93_graph_role
 run_heavy C95 check_c95_barrier_off C95-barrier-off
 heavy_join
 echo

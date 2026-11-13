@@ -1546,7 +1546,7 @@ test('judge:[B,D] routes to B and says the entry was kept as [B]', () => {
   assert.match(r.stderr, /judge entry kept as \[B\]/);
 });
 
-test('an invalid map routes as decision 525: eval refused-policy, graphify picks the earliest-expiring A', () => {
+test('an invalid map: eval is refused-policy as decision 525, and graphify refuses on the broken map', () => {
   const f = fixture();
   f.snapshot.accounts.B.expires_at += 7200;
   f.save();
@@ -1556,9 +1556,9 @@ test('an invalid map routes as decision 525: eval refused-policy, graphify picks
   assert.match(e.stderr, /auto routing is for the himmel graph pass only/);
   assert.equal(f.called(), false);
   const g = autoKind(f, 'graphify');
-  assert.equal(g.status, 0, g.stderr);
-  assert.equal(usedKey(f), 'AAAA');
-  assert.match(g.stderr, /role map invalid \(invalid-role-map:not-json\); the map is ignored, so auto routing stays limited to the graph pass\. Fix or remove roles\.json/);
+  assert.equal(g.status, 2, g.stderr);
+  assert.match(g.stderr, /^claude-api: refused: graph role map broken \(invalid-role-map:not-json\); fix or remove roles\.json$/m);
+  assert.equal(f.called(), false);
 });
 
 test('a mapped judge from another repo is refused-policy: the map never widens the repo', () => {
@@ -1601,4 +1601,99 @@ test('with no roles.json an auto graphify call still picks over all accounts and
   assert.doesNotMatch(g.stderr, /role map/);
   const e = autoKind(fixture(), 'eval');
   assert.equal(e.status, 2, e.stderr);
+});
+
+function graphAlerts(f) {
+  const dedupe = join(f.dir, 'dedupe'), sent = join(f.dir, 'graph-sent.log'), send = join(f.dir, 'graph-send');
+  writeFileSync(send, `#!/bin/bash\nprintf '%s\\n' "$1" >> '${sent}'\n`, { mode: 0o700 });
+  return {
+    env: { CADENCE_ALERT_SEND_CMD: send, CADENCE_ALERT_DEDUPE_DIR: dedupe, CADENCE_ALERT_FILE: join(f.dir, 'cadence-alerts.log'),
+      CADENCE_ALERT_SEND_FAILED_MARK: join(f.dir, 'send-failed') },
+    sentinels: (l = 'A') => (existsSync(dedupe) ? readdirSync(dedupe).filter((n) => n.startsWith(`graph-key-${l}.`)) : []),
+    plant: (l = 'A') => { mkdirSync(dedupe, { recursive: true }); writeFileSync(join(dedupe, `graph-key-${l}.planted`), ''); },
+    messages: () => (existsSync(sent) ? readFileSync(sent, 'utf8').trim().split('\n') : []),
+  };
+}
+const INVALID = JSON.stringify({ type: 'result', is_error: true, result: 'Invalid API key · Fix external API key' });
+const TOO_LOW = JSON.stringify({ type: 'result', is_error: true, result: 'API Error: 400 Your credit balance is too low to access the Anthropic API.' });
+const keyMark = (f, l = 'A') => (existsSync(f.paths.state) ? JSON.parse(readFileSync(f.paths.state, 'utf8')).accounts?.[l]?.key_rejected_at : undefined);
+
+test('K4: a graphify invalid-key answer on A tags A and sends one graph-key-A alert; an accepted call clears the tag and the sentinel', () => {
+  const f = fixture();
+  const a = graphAlerts(f);
+  const env = { ...keyFiles(f), ...a.env, HIMMEL_API_ACCOUNT: 'A', HIMMEL_API_KIND: 'graphify' };
+  const r = launch(env, { HIMMEL_API_JOB_ID: 'job-k4-1', STUB_OUT: INVALID, STUB_RC: '1' });
+  assert.equal(r.status, 6, r.stderr);
+  assert.equal(Number.isInteger(keyMark(f)), true);
+  assert.equal(a.messages().length, 1);
+  assert.match(a.messages()[0], /^graph-key-A: account A API key rejected\. Cause: the provider answered invalid api key\. Do: rotate ~\/\.himmel\/state\/api-credit\/key-A\.env, or remove A from the route or the graphify role\./);
+  assert.ok(!a.messages().join('\n').includes(KEY_A));
+  assert.equal(a.sentinels().length, 1);
+  const ok = launch(env, { HIMMEL_API_JOB_ID: 'job-k4-2' });
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.equal(keyMark(f), undefined);
+  assert.deepEqual(a.sentinels(), []);
+});
+
+test('K4 sub-row: a judge call accepted on A clears the sentinel a graphify rejection raised, so the next rejection sends again', () => {
+  const f = fixture();
+  const a = graphAlerts(f);
+  const env = { ...keyFiles(f), ...a.env, HIMMEL_API_ACCOUNT: 'A' };
+  assert.equal(launch(env, { HIMMEL_API_KIND: 'graphify', HIMMEL_API_JOB_ID: 'job-k4s-1', STUB_OUT: INVALID, STUB_RC: '1' }).status, 6);
+  assert.equal(a.sentinels().length, 1);
+  const judge = launch(env, { HIMMEL_API_KIND: 'judge', HIMMEL_API_JOB_ID: 'job-k4s-2' });
+  assert.equal(judge.status, 0, judge.stderr);
+  assert.deepEqual(a.sentinels(), []);
+  assert.equal(launch(env, { HIMMEL_API_KIND: 'graphify', HIMMEL_API_JOB_ID: 'job-k4s-3', STUB_OUT: INVALID, STUB_RC: '1' }).status, 6);
+  assert.equal(a.messages().length, 2);
+});
+
+test('K4b: a credit-too-low answer marks exhausted only: no key tag, no graph-key alert, and a planted sentinel survives the next accepted call', () => {
+  const f = fixture();
+  const a = graphAlerts(f);
+  const env = { ...keyFiles(f), ...a.env, HIMMEL_API_ACCOUNT: 'A', HIMMEL_API_KIND: 'graphify' };
+  const r = launch(env, { HIMMEL_API_JOB_ID: 'job-k4b-1', STUB_OUT: TOO_LOW, STUB_RC: '1' });
+  assert.equal(r.status, 6, r.stderr);
+  assert.equal(Number.isInteger(JSON.parse(readFileSync(f.paths.state, 'utf8')).accounts.A.exhausted_at), true);
+  assert.equal(keyMark(f), undefined);
+  assert.deepEqual(a.messages(), []);
+  a.plant();
+  assert.equal(launch(env, { HIMMEL_API_JOB_ID: 'job-k4b-2' }).status, 0);
+  assert.deepEqual(a.sentinels(), ['graph-key-A.planted']);
+});
+
+test('K4c: a judge invalid-key answer tags A and sends no graph-key alert', () => {
+  const f = fixture();
+  const a = graphAlerts(f);
+  const r = launch({ ...keyFiles(f), ...a.env }, { HIMMEL_API_ACCOUNT: 'A', HIMMEL_API_KIND: 'judge', HIMMEL_API_JOB_ID: 'job-k4c-1', STUB_OUT: INVALID, STUB_RC: '1' });
+  assert.equal(r.status, 6, r.stderr);
+  assert.equal(Number.isInteger(keyMark(f)), true);
+  assert.deepEqual(a.messages(), []);
+  assert.deepEqual(a.sentinels(), []);
+});
+
+test('K5 and K5b: a broken role map refuses an auto graphify call before any spawn, with no policy record, no fallback and no alert; C91 stays OK', () => {
+  for (const [map, cause] of [['{not json', 'invalid-role-map:not-json'], [JSON.stringify({ version: 1, roles: { graphify: ['D'] } }), 'empty-role:graphify']]) {
+    const f = fixture();
+    const a = graphAlerts(f);
+    putRoles(f, map);
+    const env = { ...keyFiles(f), ...a.env };
+    delete env.HIMMEL_API_FALLBACK;
+    const r = launch(env, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify' });
+    assert.equal(r.status, 2, `${cause}: ${r.stderr}`);
+    assert.match(r.stderr, new RegExp(`^claude-api: refused: graph role map broken \\(${cause}\\); fix or remove roles\\.json$`, 'm'));
+    assert.equal(f.called(), false);
+    assert.equal(existsSync(`${f.paths.log}.fb`), false);
+    assert.deepEqual(policyLines(f), []);
+    assert.equal(existsSync(f.paths.alertLog), false);
+    assert.deepEqual(a.messages(), []);
+    const doctor = spawnSync('bash', [join(HIMMEL_REPO, 'scripts', 'himmel-doctor.sh'), '--only', 'C91', '--no-color'],
+      { env: { PATH: process.env.PATH, HOME: f.dir, CLAUDE_DIR: join(f.dir, 'claude'), HIMMEL_API_ALERT_DIR: f.env.HIMMEL_API_ALERT_DIR }, encoding: 'utf8' });
+    assert.match(doctor.stdout, /OK\s+C91-api-policy-refusals/, doctor.stdout);
+  }
+  const g = fixture();
+  putRoles(g, { graphify: ['B', 'D'] });
+  const p = autoKind(g, 'graphify');
+  assert.equal(p.status, 0, p.stderr);
+  assert.equal(usedKey(g), 'BBBB');
 });
