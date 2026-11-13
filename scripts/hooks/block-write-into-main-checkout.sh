@@ -2721,6 +2721,7 @@ _bwimc_fsmut_hit() {
     done <<< "$_bwimc_fsmut"
     return 1
 }
+_BWIMC_KEEP_CMDS='echo printf cat tee touch rm mkdir rmdir cp mv ln install sed awk grep head tail sort uniq wc cut tr paste diff cmp comm find xargs tar gzip gunzip zip unzip make python3 node git ls stat test [ true false read sleep chmod basename dirname date jq sha256sum md5sum od hexdump base64 seq expr for done fi esac } )'
 _bwimc_ecwd_track() {
     local toks=() t tu i n r carg cabs craw piped="${2:-0}" j cmdi cdphys=0 cs cdkeep=0 first="${_bwimc_ecwd_first:-0}"
     _bwimc_ecwd_first=0
@@ -2739,19 +2740,19 @@ _bwimc_ecwd_track() {
     [ "$i" -lt "$n" ] || return 0
     _bwimc_unqv "${toks[$i]}"; tu=$_BWIMC_UNQ
     cmdi=$i
-    # A cd kept through a tainted line (cdkeep below) rests on the count of literal cd words,
-    # which a command word built at run time ($(printf %s c d), $c$d, a backtick, a glob) or a
-    # sourced or evaluated text can still spell. While it holds, such a clause unresolves the cwd.
+    # A cd kept through a tainted line (cdkeep below) rests on the count of literal cd words, and
+    # the shell can still reach a cd that is no literal word: one built at run time, a sourced or
+    # evaluated text, a zsh precommand modifier (noglob, nocorrect, -), zsh chdir or autocd. While
+    # it holds, a later clause keeps it only when its command word, as written, is one of
+    # _BWIMC_KEEP_CMDS (commands and closers that cannot move the shell); anything else unresolves
+    # the cwd.
     if [ "${_bwimc_ecwd_kept:-0}" = 1 ]; then
         j=$cmdi
         while [ "$j" -lt "$n" ] && [[ ${toks[$j]} =~ ^[A-Za-z_][A-Za-z0-9_]*\+?= ]]; do j=$((j+1)); done
         if [ "$j" -lt "$n" ]; then
-            _bwimc_unqv "${toks[$j]}"
-            case "${toks[$j]}" in
-                *'$'*|*'`'*|*[*?[]*|*[$'\001'$'\002'$'\003'$'\004'$'\005'$'\006']*) _bwimc_ecwd_unres=1 ;;
-            esac
-            case "$_BWIMC_UNQ" in
-                eval|source|.|command|exec|time|nohup|trap) _bwimc_ecwd_unres=1 ;;
+            case " $_BWIMC_KEEP_CMDS " in
+                *" ${toks[$j]} "*) ;;
+                *) _bwimc_ecwd_unres=1 ;;
             esac
         fi
     fi
@@ -2896,7 +2897,7 @@ _bwimc_ecwd_track() {
                             # The same leading cd when a loop, `$(…)`, `<(…)` or a pipe taints the
                             # line (piped=1): the shell is in $r or, if the cd never took, still in
                             # the payload cwd, because the command holds no other literal cd word
-                            # (_bwimc_orig_onecd) and every later clause with a run-time command word
+                            # (_bwimc_orig_onecd) and every later clause whose command word is not allowlisted
                             # unresolves the cwd (_bwimc_ecwd_kept, top of this function). The cwd is
                             # kept, never sure, so _bwimc_cd_guard checks each relative candidate
                             # against both $r and the payload cwd.
@@ -4562,13 +4563,13 @@ case "$cmd" in
     *) if _bwimc_exotic_byte "$cmd"; then _bwimc_orig_dynamic=1; else _bwimc_orig_dynamic=0; fi ;;
 esac
 # _bwimc_orig_onecd=1 when the payload command, quotes, backslashes, braces, brackets and commas
-# deleted, holds exactly one cd, pushd or popd word anywhere (eval strings, heredoc bodies and
-# substitutions included) and no byte outside printable ASCII, tab and newline. Only then may a
-# leading cd hold through a loop, `$(…)` or `<(…)` (see _bwimc_ecwd_track): no later literal cd,
-# however quoted or brace-spelled, can move the shell elsewhere. A cd built at run time is not a
-# literal word; _bwimc_ecwd_track unresolves the cwd on its clause instead.
+# deleted, holds exactly one cd, pushd, popd or chdir word anywhere (eval strings, heredoc bodies
+# and substitutions included) and no byte outside printable ASCII, tab and newline. Only then may
+# a leading cd hold through a loop, `$(…)` or `<(…)` (see _bwimc_ecwd_track): no later literal cd,
+# however quoted or brace-spelled, can move the shell elsewhere. A cd that is no literal word is
+# left to _bwimc_ecwd_track, which keeps the trust only through allowlisted command words.
 _bwimc_one_cd_word() {
-    local LC_ALL=C t="$1" n=0 re='(^|[^A-Za-z0-9_])(cd|pushd|popd)([^A-Za-z0-9_]|$)'
+    local LC_ALL=C t="$1" n=0 re='(^|[^A-Za-z0-9_])(cd|pushd|popd|chdir)([^A-Za-z0-9_]|$)'
     _bwimc_exotic_byte "$t" && return 1
     t="${t//[\'\"\\\{\},\[\]]/}"
     while [[ $t =~ $re ]]; do
@@ -4593,7 +4594,7 @@ if _bwimc_one_cd_word "$cmd"; then _bwimc_orig_onecd=1; else _bwimc_orig_onecd=0
 _BWIMC_GE_RE='^bash[ ]+([A-Za-z0-9_./-]*scripts/vm/guest-exec\.sh)[ ]+[A-Za-z0-9_-]+([ ]+(--sudo|--timeout[ ]+[0-9]+))*[ ]+--[ ]+(.+)$'
 _BWIMC_GE_ARGV_RE="^([A-Za-z0-9_./:,+@%=-]|'[^']*'|[ ])+\$"
 _bwimc_guest_exec_only() {
-    local s u p lib hd f
+    local s u p lib hd f e
     [ -z "${HIMMEL_VMSDK:-}" ] && [ -z "${HIMMEL_GUEST_EXEC_LOG:-}" ] || return 1
     [[ $1 =~ $_BWIMC_GE_RE ]] || return 1
     s="${BASH_REMATCH[1]}"
@@ -4610,6 +4611,18 @@ _bwimc_guest_exec_only() {
     cmp -s "$u" "$hd/../vm/guest-exec.sh" || return 1
     for f in vmsdk.py vbox.py; do
         [ ! -L "$lib/$f" ] && cmp -s "$lib/$f" "$hd/../lib/$f" || return 1
+    done
+    # vmsdk.py puts lib first on sys.path, so any module file or package dir there can shadow an
+    # import: each must be one this hook's own lib holds (byte-identical for a file), and a
+    # __pycache__ is refused outright (guest-exec.sh writes none).
+    [ ! -e "$lib/__pycache__" ] && [ ! -L "$lib/__pycache__" ] || return 1
+    for e in "$lib"/*; do
+        f="${e##*/}"
+        case "$f" in
+            *.py|*.pyc|*.pyo|*.so|*.pyd)
+                [ ! -L "$e" ] && [ -f "$hd/../lib/$f" ] && cmp -s "$e" "$hd/../lib/$f" || return 1 ;;
+            *) if [ -d "$e" ]; then [ -d "$hd/../lib/$f" ] || return 1; fi ;;
+        esac
     done
 }
 if [ "${tool:-Bash}" = Bash ] && _bwimc_guest_exec_only "$cmd"; then

@@ -232,6 +232,21 @@ ln -sfn "$FIX/wtge/scripts/vm" "$FIX/symge/scripts/vm"
 cp "$HOOKS/../lib/vbox.py" "$FIX/symge/scripts/lib/"
 printf 'import os\n' > "$FIX/symge/scripts/lib/vmsdk.py"
 [ -L "$FIX/symge/scripts/vm" ] && [ -f "$FIX/symge/scripts/vm/guest-exec.sh" ] || bad "107k setup: the symlinked scripts/vm was not created"
+for _t in shadow pyc; do
+    mkdir -p "$FIX/$_t/scripts/vm" "$FIX/$_t/scripts/lib"
+    cp "$HOOKS/../vm/guest-exec.sh" "$FIX/$_t/scripts/vm/"
+    cp "$HOOKS/../lib/vmsdk.py" "$HOOKS/../lib/vbox.py" "$FIX/$_t/scripts/lib/"
+done
+printf 'import os\n' > "$FIX/shadow/scripts/lib/json.py"
+mkdir -p "$FIX/pyc/scripts/lib/__pycache__"
+printf 'x' > "$FIX/pyc/scripts/lib/__pycache__/vbox.cpython-312.pyc"
+git -C "$FIX/primary" worktree add -q -b ge9913c "$FIX/wtgec" >/dev/null 2>&1
+mkdir -p "$FIX/nouv"
+ln -sf "$(command -v python3)" "$FIX/nouv/python3"
+ln -sf "$(command -v dirname)" "$FIX/nouv/dirname"
+PATH="$FIX/nouv" "$BASH" "$FIX/wtgec/scripts/vm/guest-exec.sh" nosuchvm9913 -- true >/dev/null 2>&1
+[ -f "$FIX/wtgec/scripts/lib/vbox.py" ] || bad "107n setup: the second guest-exec worktree was not created"
+[ ! -e "$FIX/wtgec/scripts/lib/__pycache__" ] || bad "107n a first guest-exec run left a __pycache__ beside vmsdk.py"
 _GW="$FIX/wtge"
 {
 _subst_row "107a guest-exec -- bash -c 'cd ~/himmel && git log -1' (ALLOW)" allow \
@@ -256,6 +271,12 @@ _subst_row "107j cd /tmp && guest-exec (not the whole command) denies" block \
     "cd /tmp && bash scripts/vm/guest-exec.sh vm -- bash -c 'echo x > $_PR/f'" "$_GW"
 _subst_row "107k a symlinked scripts/vm beside a planted scripts/lib/vmsdk.py denies" block \
     "bash $FIX/symge/scripts/vm/guest-exec.sh vm -- bash -c 'cd ~/himmel && git log -1'" "$_GW"
+_subst_row "107l a shadow json.py beside an identical vmsdk.py denies" block \
+    "bash $FIX/shadow/scripts/vm/guest-exec.sh vm -- bash -c 'cd ~/himmel && git log -1'" "$_GW"
+_subst_row "107m a planted __pycache__ .pyc beside an identical vmsdk.py denies" block \
+    "bash $FIX/pyc/scripts/vm/guest-exec.sh vm -- bash -c 'cd ~/himmel && git log -1'" "$_GW"
+_subst_row "107n a second guest-exec call after a first run in the tree (ALLOW)" allow \
+    "bash scripts/vm/guest-exec.sh vm -- bash -c 'cd ~/himmel && git log -1'" "$FIX/wtgec"
 }
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

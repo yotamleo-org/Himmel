@@ -1031,6 +1031,10 @@ _subst_row "105v fromW: cd scratch && loop running . ./x.sh, relative write deni
     "cd $FIX/scratch8200 && for s in a; do . ./x.sh; done; echo x > f"
 _subst_row "105w fromW: cd scratch && loop running a backtick-built command word, relative write denies" block \
     "cd $FIX/scratch8200 && for s in a; do \`printf cd\` $FIX/primary; done; echo x > f"
+_subst_row "105x fromW: cd scratch && loop running noglob \$(printf %s c d) primary, relative write denies" block \
+    "cd $FIX/scratch8200 && for s in a; do noglob \$(printf %s c d) $FIX/primary; done; echo x > f"
+_subst_row "105y fromW: cd scratch && loop running chdir primary, relative write denies" block \
+    "cd $FIX/scratch8200 && for s in a; do chdir $FIX/primary; done; echo x > f"
 }
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
