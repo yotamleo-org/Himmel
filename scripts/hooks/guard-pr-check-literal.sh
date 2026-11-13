@@ -68,11 +68,6 @@
 # it spells it, so the command-position proofs (cmdpos_clean, then
 # mention_only_wide) allow it before any text classification. Beyond the plain
 # readers, mention_only_wide proves these shapes inert:
-#   - a for loop whose variable is one ASCII letter, and a segment of one-letter
-#     assignments (F=...): no bash or zsh variable of that name changes what a
-#     command runs, and an unexported assignment reaches no environment; an
-#     expansion of it counts as any word at all, and no word may subscript a
-#     variable ($NAME[...]), which zsh evaluates as math that reads the value;
 #   - sort with only -b -d -f -g -h -i -M -n -r -R -s -u -V -z -k -t (no -o and
 #     no --compress-program, which writes or runs a program), and uniq with
 #     -c -d -i -u -z and at most one operand (a second is an output file);
@@ -81,9 +76,11 @@
 #   - gh pr|issue|run view|list|status|checks|diff without -w/--web (the browser
 #     is the one program those reads start);
 #   - the checksum printers (sha*sum, md5sum, b2sum, cksum), which only read.
-# sort, uniq, find, gh, sed and git take literal words only there, and printf a
-# literal format with no %n, so a loop or assignment value cannot become one of
-# their options.
+# A command that binds a name (a for loop variable, a NAME= assignment) is never
+# admitted there: zsh evaluates math (a $NAME[...] subscript, a printf numeric
+# conversion or * width) that reads a bound value, and a substitution inside it
+# runs. sort, uniq, find, gh, sed and git take literal words only, and printf a
+# literal format whose conversions are %s, %b and %q.
 set -uo pipefail
 set -f
 
@@ -2018,8 +2015,7 @@ mention_only_wide() {
             *'>' | *'>|') [ "$w" = /dev/null ] || return 1 ;;
         esac
         if [ "${ST_X[k]}" = 1 ]; then
-            # zsh reads $NAME[sub] as a subscript and evaluates sub as math,
-            # which reads a variable this line may have set
+            # zsh reads $NAME[sub] as a subscript and evaluates sub as math
             [[ ! $w =~ \$(\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)\[ ]] || return 1
             t=$w
             while [[ $t =~ $CMDPOS_REF_RE ]]; do t="${BASH_REMATCH[1]}${BASH_REMATCH[3]}"; done
@@ -2029,17 +2025,9 @@ mention_only_wide() {
             k=$((k + 1))
             continue
         fi
+        [ "${ST_A[k]}" = 0 ] || return 1
         if [ "$cw" -ge 0 ]; then
-            if [ "$kind" = assign ]; then
-                [ "${ST_A[k]}" = 1 ] && [[ $w =~ ^[A-Za-z]\+?= ]] || return 1
-            else
-                [ "${ST_A[k]}" = 0 ] || return 1
-            fi
-            case "$kind" in
-                free) ;;
-                done) return 1 ;;
-                *) [ "${ST_X[k]}${ST_G[k]}" = 00 ] || return 1 ;;
-            esac
+            [ "$kind" = free ] || [ "${ST_X[k]}${ST_G[k]}" = 00 ] || return 1
             case "$kind" in
                 sort)
                     case "$w" in
@@ -2061,40 +2049,23 @@ mention_only_wide() {
             k=$((k + 1))
             continue
         fi
-        if [ "${ST_A[k]}" = 1 ]; then
-            [[ $w =~ ^[A-Za-z]\+?= ]] || return 1
-            cw=$k; kind=assign
-            k=$((k + 1))
-            continue
-        fi
         [ "${ST_Q[k]}${ST_X[k]}${ST_G[k]}" = 000 ] || return 1
         cw=$k
         case "$w" in
-            do) cw=-1 ;;
-            done) kind='done' ;;
-            for)
-                j=$((k + 1))
-                [ "$j" -lt "$ST_N" ] && [ "${ST_S[j]}" = "$sg" ] && [ -z "${ST_RO[j]}" ] || return 1
-                [ "${ST_Q[j]}${ST_X[j]}${ST_G[j]}" = 000 ] && [[ ${ST_W[j]} =~ ^[A-Za-z]$ ]] || return 1
-                k=$j
-                j=$((j + 1))
-                if [ "$j" -lt "$ST_N" ] && [ "${ST_S[j]}" = "$sg" ]; then
-                    [ "${ST_W[j]}${ST_Q[j]}" = in0 ] && [ -z "${ST_RO[j]}" ] || return 1
-                    k=$j
-                fi
-                kind=free
-                ;;
             sed) st_sed_args "$k" 0 || return 1; kind=strict ;;
             git | /usr/bin/git) cmdpos_git "$k" || return 1; kind=strict ;;
             printf)
-                # options come only before the format, so a literal format that
-                # is no option and stores nothing (%n) leaves every later word data
+                # options come only before the format, and zsh evaluates the
+                # argument of a numeric conversion or a * width as math, so a
+                # literal format holding only %s, %b and %q leaves every later word data
                 j=$((k + 1))
                 while [ "$j" -lt "$ST_N" ] && [ -n "${ST_RO[j]}" ]; do j=$((j + 1)); done
                 [ "$j" -lt "$ST_N" ] && [ "${ST_S[j]}" = "$sg" ] || return 1
                 [ "${ST_X[j]}${ST_G[j]}${ST_A[j]}" = 000 ] || return 1
                 case "${ST_W[j]}" in -*) return 1 ;; esac
-                [[ ! ${ST_W[j]} =~ %[^a-zA-Z%]*[hlLqjzt]*n ]] || return 1
+                t=${ST_W[j]//%%/}
+                while [[ $t =~ %[-0-9.]*[sbq] ]]; do t=${t/"${BASH_REMATCH[0]}"/}; done
+                case "$t" in *%*) return 1 ;; esac
                 kind=free
                 ;;
             sort) kind='sort' ;;

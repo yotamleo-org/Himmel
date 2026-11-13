@@ -3098,7 +3098,7 @@ run "7130 class1 control [a changed worktree bullet writer] -> deny" 2 \
     "$(payload "bash scripts/handover/chief-kit/append-results.sh scripts/cr/write-verdicts.sh" "$WT")" "$HR"
 g -C "$WT" checkout -q -- scripts/cr/write-verdicts.sh scripts/handover/chief-kit/append-results.sh
 
-# ---- a mention beside sort, find, gh, a checksum, a loop or an assignment ---
+# ---- a mention beside sort, uniq, find, gh or a checksum --------------------
 echo changed >>"$WT/scripts/cr/write-verdicts.sh"
 while IFS= read -r label && IFS= read -r allow && IFS= read -r deny; do
     run "inert mention [$label] -> allow" 0 "$(payload "$allow" "$WT")" "$HR"
@@ -3116,12 +3116,6 @@ cd scripts/cr; find . -name 'write-*.sh' -newer anchor-handoff.sh -exec bash {} 
 checksum of a glob
 cd scripts/cr; ls -la .; sha256sum *
 cd scripts/cr; ls -la .; bash *
-one-letter assignment
-F=scripts/handover/chief-kit/append-results.sh; grep -c 'bash scripts/cr/write-verdicts.sh $(x)' $F
-F=scripts/handover/chief-kit/append-results.sh; bash -c 'bash scripts/cr/write-verdicts.sh $(x)' $F
-for loop over readers
-for f in scripts/cr/*.sh; do printf '%s: ' "$f"; grep -o -E 'bash [a-z-]*(verdicts|handoff)' "$f" | sort | uniq -c; done
-for f in scripts/cr/*.sh; do printf '%s: ' "$f"; grep -o -E 'bash [a-z-]*(verdicts|handoff)' "$f" | sort | bash; done
 ROWS
 # shellcheck disable=SC2016  # the payload text must stay unexpanded
 for v in \
@@ -3130,6 +3124,8 @@ for v in \
     "for F in 'HOME[\$(bash scripts/cr/write-verdicts.sh)]'; do cat \$HOME[F] docs/a.md; done" \
     "F='HOME[\$(bash scripts/c'; F=\$F'r/write-verdicts.sh)]'; cat \${HOME}[F] docs/a.md; ls . scripts/cr/*" \
     "F='HOME[\$(bash scripts/c'; F=\$F'r/write-verdicts.sh)]'; cat \$HOME[F] docs/a.md; ls . scripts/cr/*" \
+    "for F in 'HOME[\$(bash scripts/cr/write-verdicts.sh)]'; do printf '%d' F; done; ls . scripts/cr/*" \
+    "F='HOME[\$(bash scripts/c'; F=\$F'r/write-verdicts.sh)]'; printf '%d' F; ls . scripts/cr/*" \
     'for s in --compress-program=scripts/cr/write-verdicts.sh; do ls . | sort $s; done' \
     'for a in -exec; do find . -name write-verdicts.sh $a scripts/cr/write-verdicts.sh {} +; done' \
     'for PATH in scripts/cr; do ls . scripts/cr/*; done' \
