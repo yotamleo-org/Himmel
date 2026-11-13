@@ -1108,6 +1108,48 @@ vfp="$(python3 "$HERE/tracker.py" --emit-fp --plan-dir "$plan" --out "$vfout" --
     --luna-root "$W/luna" --handovers "$W/luna/handovers/tester/himmel" 2>&1)"
 if [ -n "$vfp" ] && [ "$(cat "$vfout.fp" 2>/dev/null)" = "$vfp" ]; then pass 'the --version page .fp equals --emit-fp (HIMMEL-6769)'; else fail "--version .fp '$(cat "$vfout.fp" 2>/dev/null)' differs from --emit-fp '$vfp'"; fi
 
+# --- S8b: the fallback open-PR list (no --prs-file) reads through the second token.
+S8_READTOK=ghp_READTOKEN0123456789
+mkdir -p "$W/s8root" "$W/s8emptyroot" "$W/s8tt" "$W/s8bin"
+printf 'himmel_github_token_vm2=%s\n' "$S8_READTOK" > "$W/s8root/.env"
+: > "$W/s8emptyroot/.env"
+ln -s "$HERE/fixtures/gh-two-token-stub.sh" "$W/s8tt/gh"
+S8LOG="$W/s8.log"
+# shellcheck disable=SC2016  # the stub body is written literally; its variables expand when the stub runs
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "${GH_READ_QUIET:-unset}" > "%s"\ncat "%s"\n' "$W/s8quiet" "$W/vp-prs.json" > "$W/s8bin/gh-prs"
+chmod +x "$W/s8bin/gh-prs"
+S8ENV=(env -u TRACKER_GH -u GH_TOKEN -u GITHUB_TOKEN -u himmel_github_token_vm2 -u CREDENTIALS_DIRECTORY -u GH_READ_NO_MAIN_FALLBACK
+    GH_READ_ENV_ROOT="$W/s8root" PATH="$W/s8tt:$PATH" GH_STUB_READ_TOKEN="$S8_READTOK" GHLOG="$S8LOG" HIMMEL_SECRETS_KEYRING=off
+    GH_STUB_DELEGATE="$W/s8bin/gh-prs" TRACKER_JIRA="$W/vpjira")
+s8render() {  # s8render <out> [env assignments...]: the --version page with no --prs-file, main token spent
+    local o="$1"; shift
+    "${S8ENV[@]}" GH_STUB_MAINFAIL=rate "$@" python3 "$HERE/tracker.py" --version v1.1.3 --repo example-org/example-repo --mirror-dir "$vp" \
+        --priority-file "$W/vp-plan.md" --chains-file "$W/vp-chains.json" --jira-base-url https://jira.example.test --out "$o" 2>&1
+}
+: > "$S8LOG"
+s8render "$W/s8-a.html" >/dev/null
+contains 'S8b the fallback list fills the cards under a spent main token' "$(cat "$W/s8-a.html" 2>/dev/null)" 'href="https://github.com/example-org/example-repo/pull/500">#500 · CI green</a>'
+not_contains 'S8b the fallback list is not reported unavailable' "$(cat "$W/s8-a.html" 2>/dev/null)" 'PR state unavailable'
+equals 'S8b the fallback list read rides the read token' "$(grep -c -E '^tok=read argv=pr list ' "$S8LOG" || true)" 1
+equals 'S8b the fallback list read never rides the main token' "$(grep -c -E '^tok=main' "$S8LOG" || true)" 0
+equals 'S8b the gh child runs with GH_READ_QUIET=1' "$(cat "$W/s8quiet" 2>/dev/null)" 1
+: > "$S8LOG"
+s8render "$W/s8-c.html" TRACKER_GH="$W/vpnogh" >/dev/null
+contains 'S8b control: TRACKER_GH set still wins over the helper' "$(cat "$W/s8-c.html" 2>/dev/null)" 'PR state unavailable'
+equals 'S8b control: TRACKER_GH set leaves the two-token stub uncalled' "$(wc -l < "$S8LOG")" 0
+rm -f "$W/s8quiet"
+s8render "$W/s8-q.html" TRACKER_GH="$W/s8bin/gh-prs" >/dev/null
+equals 'S8b control: TRACKER_GH set runs its gh child with GH_READ_QUIET=1' "$(cat "$W/s8quiet" 2>/dev/null)" 1
+contains 'S8b control: TRACKER_GH set still fills the cards' "$(cat "$W/s8-q.html" 2>/dev/null)" '#500 · CI green'
+# a checkout path holding a space still runs the default helper: it is one argv element, never shell-split
+mkdir -p "$W/s8 sp/scripts/handover/chief-kit" "$W/s8 sp/scripts/lib"
+cp "$HERE/tracker.py" "$W/s8 sp/scripts/handover/chief-kit/tracker.py"
+cp "$HERE/../../lib/gh-read.sh" "$HERE/../../lib/timeout-bin.sh" "$HERE/../../lib/env_alias.py" "$HERE/../../lib/load-dotenv.sh" "$W/s8 sp/scripts/lib/"
+: > "$S8LOG"
+"${S8ENV[@]}" GH_STUB_MAINFAIL=rate python3 "$W/s8 sp/scripts/handover/chief-kit/tracker.py" --version v1.1.3 --repo example-org/example-repo --mirror-dir "$vp" \
+    --priority-file "$W/vp-plan.md" --chains-file "$W/vp-chains.json" --jira-base-url https://jira.example.test --out "$W/s8-sp.html" >/dev/null 2>&1
+contains 'S8b a checkout path with a space still runs the default helper' "$(cat "$W/s8-sp.html" 2>/dev/null)" '#500 · CI green'
+equals 'S8b the spaced-path run rides the read token' "$(grep -c -E '^tok=read argv=pr list ' "$S8LOG" || true)" 1
 # --- the held chain step, the worker card and the focus fingerprint.
 printf '%s\n' '---' 'key: "HIMMEL-420"' 'statusCategory: "To Do"' 'status: "To Do"' 'fixVersions: ["v1.1.3"]' 'labels: ["held"]' 'type: "Task"' \
     '---' '# HIMMEL-420: vp held ticket' > "$vp/HIMMEL-420.md"
