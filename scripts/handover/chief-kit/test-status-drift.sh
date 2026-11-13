@@ -1458,6 +1458,15 @@ contains "3e: an admissions-ledger line that does not parse still prints the INT
 vd_held; printf '{"version":"v1.1.4","key":"HIMMEL-90031","actor":"x"}\n' > "$HIMMEL_ADMISSIONS_LEDGER"
 drift
 contains "3e: an admissions-ledger row of the key with no time still prints the INTAKE fix" "$(drows VERSION-DRIFT)" "--key HIMMEL-90031"
+vd_held; printf '{"ts":"invalid","version":"v1.1.4","key":"HIMMEL-90031","actor":"x"}\n' > "$HIMMEL_ADMISSIONS_LEDGER"
+drift
+contains "3e: an admissions-ledger row of the key whose time does not parse still prints the INTAKE fix" "$(drows VERSION-DRIFT)" "--key HIMMEL-90031"
+vd_held; printf '[{"number":703,"title":"fix(x): [HIMMEL-90031] y","mergedAt":"invalid"}]\n' > "$FX/pr-merged.json"
+drift
+contains "3e: a merged PR naming the key whose merge time does not parse still prints the INTAKE fix" "$(drows VERSION-DRIFT)" "--key HIMMEL-90031"
+vd_held; printf '{"id":"R-v1.1.3-0005","ts":"invalid","verb":"INTAKE","key":"HIMMEL-90031","op":{"kind":"none"},"outcome":"BACKLOG","authority":{"kind":"rm"}}\n' >> "$HIMMEL_RELEASE_STATE_DIR/v1.1.3/rulings.jsonl"
+drift
+contains "3e: a latest ruling whose time does not parse is an unreadable store" "$(drows HEALTH)" "HEALTH - release: the rulings of v1.1.3 are unreadable"
 vd_held; vruling HIMMEL-90031 R-v1.1.3-0004 1800 INTAKE add ADMIT rm
 drift
 contains "3e: a latest ruling that admits is no refusal: the INTAKE fix stays" "$(drows VERSION-DRIFT)" "--key HIMMEL-90031"
