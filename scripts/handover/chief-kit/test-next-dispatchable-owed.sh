@@ -47,8 +47,13 @@ mkdir -p "$PR_BODY_DIR"; : > "$GH_ARGS"
 cat > "$WORK/gh" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$GH_ARGS"
-if [ "$2" = view ]; then cat "$PR_BODY_DIR/$3" 2>/dev/null || exit 1; exit 0; fi
-exit 0
+case "$1 $2" in
+    "pr view")
+        [ "$4" = --repo ] && [ -n "${5:-}" ] && [ "${6:-}" = --json ] && [ "${7:-}" = body ] || { echo "gh stub: unexpected pr view: $*" >&2; exit 64; }
+        cat "$PR_BODY_DIR/$3" 2>/dev/null || exit 1; exit 0 ;;
+    "pr list") exit 0 ;;
+esac
+echo "gh stub: unsupported request: $*" >&2; exit 64
 EOF
 # the stub reader: the PR body is the reader's answer line
 printf 'import sys\nsys.stdout.write(sys.stdin.read())\n' > "$WORK/reader.py"

@@ -950,6 +950,7 @@ else
         local cov_now cov_hi_e cov_lo cov_hi
         cov_now="${TICKET_STATUS_NOW:-}"
         case "$cov_now" in ''|*[!0-9]*) cov_now=$(date -u +%s) ;; esac
+        cov_now=$((10#$cov_now))
         cov_hi_e=$((cov_now + 14 * 86400))
         cov_lo=$(date -u -d "@$cov_now" +%Y-%m-%d 2>/dev/null || date -u -r "$cov_now" +%Y-%m-%d 2>/dev/null) || cov_lo=""  # swallow-ok: GNU then BSD spelling; both failing leaves the bound empty, which fails the line below
         cov_hi=$(date -u -d "@$cov_hi_e" +%Y-%m-%d 2>/dev/null || date -u -r "$cov_hi_e" +%Y-%m-%d 2>/dev/null) || cov_hi=""  # swallow-ok: same fallback as above

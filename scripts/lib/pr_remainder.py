@@ -85,7 +85,7 @@ def pr_remainder(body, own_keys=()):
     if not remaining and not owed_bad and whole and owed:  # a deferred line that stays on this ticket is remaining work, and beats an owed step
         due, who, line = min(owed, key=lambda o: o[0])  # min keeps the first of equal dates
         return ('owed', [who, due], re.sub(r'[\t\r\n]+', ' ', line))
-    text = re.sub(r'[\t\r\n]+', ' ', '; '.join(p for p in (' '.join(remaining), '; '.join(deferred + owed_bad)) if p))  # the answer line is tab-separated
+    text = re.sub(r'[\t\r\n]+', ' ', '; '.join(p for p in (' '.join(remaining), '; '.join(deferred + owed_bad + [o[2] for o in owed])) if p))  # the answer line is tab-separated
     if not remaining and not owed_bad and whole:
         return ('handed-off', handed, text)
     return ('remaining', [], text)

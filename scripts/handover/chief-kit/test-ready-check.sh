@@ -1161,6 +1161,8 @@ TICKET_STATUS_AWAIT_MAX=30d o7 "9561 S4a 7c: AWAIT_MAX=30d does not widen the wi
 # the seam: the clock 20 days back makes real today + 2 more than 14 days out
 O_NOW_ROW=$((O_NOW - 20 * 86400)) o7 "9561 S4a 7c: item 7 reads TICKET_STATUS_NOW, not the wall clock" 1 "x: owed $o_ar chief by $(o_day 2)"
 O_NOW_ROW=$((O_NOW - 20 * 86400)) o7 "9561 S4a 7c: the seam row's control: a date inside the seam window passes" 0 "x: owed $o_ar chief by $(o_day -19)"
+O_NOW_ROW="0$O_NOW" o7 "9561 S4a 7c: a clock with a leading zero is read as decimal, so a date 20 days out still fails" 1 "x: owed $o_ar chief by $(o_day 20)"
+O_NOW_ROW="0$O_NOW" o7 "9561 S4a 7c: a clock with a leading zero is read as decimal, so a date 2 days out passes" 0 "x: owed $o_ar chief by $(o_day 2)"
 # agreement (spec S5-1): item 7 decides an owed line's shape only by what the reader says of that line alone
 o_d=$(o_day 3)
 for o_pair in "owed $o_ar operator by $o_d|operator" "owed -> operator by $o_d|operator" "owed  $o_ar  operator  by  $o_d|operator" \
@@ -1168,13 +1170,15 @@ for o_pair in "owed $o_ar operator by $o_d|operator" "owed -> operator by $o_d|o
     o_line=${o_pair%|*}; o_who=${o_pair##*|}
     o7 "9561 S4a 7c agree: item 7 accepts '$o_line'" 0 "x: $o_line"
     o_ans=$(printf '%b' "$(o_body "$o_line")" | python3 -I "$O_READER" HIMMEL-100)
-    case "$o_ans" in owed$'\t'"$o_who"$'\t'"$o_d"$'\t'*) pass ;; *) fail "9561 S4a 7c agree: the reader reads '$o_line' as owed<TAB>$o_who<TAB>$o_d (said: $o_ans)" ;; esac
+    case "$o_ans" in owed$'\t'"$o_who"$'\t'"$o_d"$'\t'*) o_said=ok ;; *) o_said="$o_ans" ;; esac
+    check "9561 S4a 7c agree: the reader reads '$o_line' as owed<TAB>$o_who<TAB>$o_d" "$o_said" ok
 done
 for o_pair in "owed $o_ar bob by $o_d|remaining" "owed $o_ar chief by 2026-02-30|remaining" "owed chief by $o_d|none"; do
     o_line=${o_pair%|*}; o_kind=${o_pair##*|}
     o7 "9561 S4a 7c agree: item 7 refuses '$o_line'" 1 "x: $o_line"
     o_ans=$(printf '%b' "$(o_body "$o_line")" | python3 -I "$O_READER" HIMMEL-100)
-    case "$o_ans" in "$o_kind"|"$o_kind"$'\t'*) pass ;; *) fail "9561 S4a 7c agree: the reader reads '$o_line' as $o_kind, never owed (said: $o_ans)" ;; esac
+    case "$o_ans" in "$o_kind"|"$o_kind"$'\t'*) o_said=ok ;; *) o_said="$o_ans" ;; esac
+    check "9561 S4a 7c agree: the reader reads '$o_line' as $o_kind, never owed" "$o_said" ok
 done
 
 o7raw() { # <name> <exit> <body escapes>: a whole body, one line a section the awk cuts away from the owed line

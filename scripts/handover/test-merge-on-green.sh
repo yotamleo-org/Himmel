@@ -4415,6 +4415,7 @@ assert_err_has "9561 S4a: the no-brief refusal ends with the owed clause" "or an
 s4_read() { printf '%s' "$1" | python3 -I "$SCRIPT_DIR/../lib/pr_remainder.py" HIMMEL-374 2>/dev/null; }
 s4_ans=$(s4_read "$(printf 'Remaining: x\n\n## Ticket coverage\n- a: done\n- b: owed %s operator by %s\n' "$s4_arrow" "$s4_d2")")
 case "$s4_ans" in remaining$'\t'*) pass ;; *) fail "9561 S4a: a Remaining: line beats an owed line (reader said: $s4_ans)" ;; esac
+case "$s4_ans" in remaining$'\t'*"owed $s4_arrow operator by $s4_d2"*) pass ;; *) fail "9561 S4a: a Remaining: line keeps a valid owed line in its text, so the breadcrumb names the owner and date (reader said: $s4_ans)" ;; esac
 s4_ans=$(s4_read "$(printf '## Ticket coverage\n- a: owed %s chief by %s\n- b: owed %s operator by %s\n' "$s4_arrow" "$s4_d4" "$s4_arrow" "$s4_d3")")
 case "$s4_ans" in owed$'\t'operator$'\t'"$s4_d3"$'\t'*) pass ;; *) fail "9561 S4a: two owed lines answer the earlier date and its who (reader said: $s4_ans)" ;; esac
 s4_ans=$(s4_read "${s3_body}$(printf -- '- c: owed %s chief by %s\n' "$s4_arrow" "$s4_d2")")
