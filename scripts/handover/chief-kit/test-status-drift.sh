@@ -1302,8 +1302,6 @@ drift
 check "9561 S4b 7 control: rc 11 FRESH prints neither" "$(dcount HELD-STALE)/$(dcount UNOWNED)" 0/0
 check "9561 S4b 9: rows 6 and 7 wrote nothing" "$(nwrites)" 0
 
-# 9561 S5 net rows (they pass on the base and must pass at the head): an Epic derives no worker state, so the drift
-# check reads its doc and lock itself
 epicfx() { reset "In Progress"; printf '%s\tEpic\tIn Progress\tsummary\n' "$K" >> "$FX/list.tsv"; }
 epicfx; owned "$K" LIVE '{"state":"live"}'; lockfx 11 FRESH
 drift
@@ -1317,7 +1315,6 @@ check "9561 S5 7: the same Epic with a LIVE doc over rc 12 STALE-DEAD prints the
 contains "9561 S5 7: and its fix names the reap" "$(drows UNOWNED)" "queue-lock.sh status --sweep --reap-dead"
 check "9561 S5 7: the rows wrote nothing" "$(nwrites)" 0
 
-# 9561 S5: a wrapped worker's remaining partial merge is a wait on a RESUME worker, 6 h by default
 d6fx; lrow 100000 merge moved - '{"pr":"4480","contract":"no","remainder":"remaining"}'; lrow 3600 wrapped noop D5c; lrow 60 sweep noop D5c
 drift
 check "9561 S5 3: a remaining partial merge parked 1 h is one AWAITING row" "$(dcount AWAITING)/$(dcount UNOWNED)" 1/0

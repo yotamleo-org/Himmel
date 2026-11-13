@@ -179,9 +179,6 @@ partials=""
 OWN_ROWS=$(mktemp "${TMPDIR:-/tmp}/status-drift-owner.XXXXXX" 2>/dev/null) || OWN_ROWS="" # swallow-ok: no temp file means ts_owner reads the log per key
 [ -z "$OWN_ROWS" ] || trap 'rm -f "$OWN_ROWS"' EXIT
 if [ -f "$LOG" ]; then
-    # The log is read ONCE, whole (the last 500 rows hold about five hours, so a ticket a partial merge left days ago would name
-    # nothing there): the partial PRs of every key whose latest merge row carrying a contract is partial (contract=no), and the
-    # hold, owed and park rows ts_owner reads, pre-read into a file.
     mergeout=$(ts_merge_rows "$LOG" 2>/dev/null) # swallow-ok: an unreadable log names no partial PR and no wait, and the generic fix stands
     partials=$(jq -Rrs '[split("\n")[] | fromjson? | select(type == "object" and .event == "merge" and .key != null and has("contract") and .contract != "")]
         | group_by(.key)[] | select(last.contract == "no")
@@ -244,6 +241,7 @@ if [ -z "$DOCS" ]; then DOCS=$(handover_root 2>/dev/null) || DOCS=""; fi # swall
 [ -z "$DOCS" ] || [ ! -d "$DOCS" ] || docs_all=$(find "$DOCS" -maxdepth 4 -type f -name '*-N*.md' 2>/dev/null) # swallow-ok: an unreadable tree narrows the TWO-OWNERS scan only
 
 is_owner_state() { case "$1" in live|idle|IDLE-HELD|parked) return 0 ;; *) return 1 ;; esac; }
+read_doc_state_after_early_derive() { if [ "$TS_WORKER_STATE" = none ] && [ -n "$doc" ]; then _ts_worker_state "$doc"; fi; }
 
 # 0 when a comment on the ticket names a PR that gh reports OPEN and whose title's first [KEY]
 # is this ticket. The pr list above only sees this repo, so a ticket whose PR lives elsewhere
@@ -376,9 +374,7 @@ while IFS= read -r key; do
     [ "$nown" -lt 2 ] || add TWO-OWNERS "$key" "$nown live docs claim it" - "wrap or halt all but one worker doc"
 
     if [ "$(ts_rank "$jstatus")" -ge 1 ] && [ -z "$open_prs" ] && [ "$standing" = 0 ] && [ "$xrepo" = 0 ]; then
-        # ts_owner (the lib) decides who owns the ticket; a derive that stopped early (an Epic, a read miss) left no worker
-        # state, so the doc's own state and lock are read here first
-        if [ "$TS_WORKER_STATE" = none ] && [ -n "$doc" ]; then _ts_worker_state "$doc"; fi
+        read_doc_state_after_early_derive
         export TS_OWNER_HELD=no
         ts_owner "$key" >/dev/null
         held=0
@@ -408,7 +404,6 @@ while IFS= read -r key; do
                     add UNOWNED "$key" "$jstatus with no open PR and no live owner, awaiting $wwho since $osince and overdue (due $odue)$whint" "$wwriter" "$wfix"
                 fi ;;
             *)
-                # rule D5c leaves a partly merged ticket here: name the partial PRs the ticket's merge rows record
                 ppr=$(awk -F'\t' -v k="$key" '$1 == k { print $2 }' <<<"$partials")
                 if [ "$TS_LOCK_DEAD" = yes ]; then
                     add UNOWNED "$key" "$jstatus with no open PR and its worker's lock is STALE-DEAD$hhint" "$FUNNEL" "bash scripts/handover/queue-lock.sh status --sweep --reap-dead (the reap appends a HALTED bullet, so the next derive reads $key wrapped, after two gone sweeps if that append failed; it releases every STALE-DEAD lock under the root, each re-proved under its claim and CAS)"

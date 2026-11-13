@@ -317,7 +317,6 @@ _ts_epoch_of_iso() {
     date -u -d "$1" +%s 2>/dev/null || date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$1" +%s 2>/dev/null
 }
 
-# ts_now — the clock: TICKET_STATUS_NOW (epoch) when it is digits, else the wall clock.
 ts_now() {
     case "${TICKET_STATUS_NOW:-}" in
         ''|*[!0-9]*) date -u +%s ;;

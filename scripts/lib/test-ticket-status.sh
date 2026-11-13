@@ -168,13 +168,9 @@ _TS_LIB_DIR="$tmp/countlib" ts_has_merge_row HIMMEL-9190; a=$?
 _TS_LIB_DIR="$tmp/countlib" ts_has_merge_row HIMMEL-9191; b=$?
 check "9436: a log replaced by a file of the same size is read again, not served from the cache" "$a$b:$(wc -l < "$MRC_LOG" | tr -d ' ')" "10:3"
 
-# --- ts_owner: the one predicate for who owns a parked ticket -------------------------------------------------
-# Every cell writes a real record, log and brief, runs ts_derive and then ts_owner; nothing is stubbed but the
-# queue lock (per doc) and the GitHub seam. A cell that answers none while the ticket derives In Progress, and a
-# cell whose owner is not a proven one, must be named in the LEGACY or exemption list below.
 NOW=1794139200
 export TICKET_STATUS_NOW=$NOW
-iso_at() { # <seconds before NOW> - an ISO time (negative = after NOW)
+iso_at() {
     local e=$((NOW - $1))
     date -u -d "@$e" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$e" +%Y-%m-%dT%H:%M:%SZ
 }
@@ -210,7 +206,7 @@ ocell() {
     _TS_MI_SIG=""
     unset TS_OWNER_HELD TS_OWNER_ROWS
 }
-odoc() { # <file> <Completes flag or -> <bullet>... - a worker doc: the flag line above ## Results, then the bullets
+odoc() {
     local f=$1 flag=$2 b
     shift 2
     {
@@ -219,28 +215,28 @@ odoc() { # <file> <Completes flag or -> <bullet>... - a worker doc: the flag lin
         for b in "$@"; do printf -- '%s\n' "$b"; done
     } > "$f"
 }
-orec() { # <extra json> <doc>... - the key's record: the first doc owns it, every doc is in .docs
+orec() {
     local x=$1 dl
     shift
     dl=$(printf '%s\n' "$@" | jq -Rnc '[inputs]')
     jq -nc --argjson x "$x" --argjson dl "$dl" --arg d "$1" --arg t "$(iso_at 60)" \
         '{doc: $d, docs: $dl, prs: {}, last_event_ts: $t} + $x' > "$TICKET_STATUS_STATE_DIR/workers/$OK.json"
 }
-olock() { printf '%s %s\n' "$2" "$3" > "$PLOCK_DIR/$(basename "$1")"; } # <doc> <rc> <status>
-orow() { # <seconds before NOW> <event> <result> <rule or -> [extra json] - a log row of the key, oldest first
+olock() { printf '%s %s\n' "$2" "$3" > "$PLOCK_DIR/$(basename "$1")"; }
+orow() {
     jq -nc --arg ts "$(iso_at "$1")" --arg e "$2" --arg k "$OK" --arg r "$3" --arg rule "$4" --argjson x "${5:-{\}}" \
         '{ts: $ts, event: $e, key: $k, result: $r} + (if $rule == "-" then {} else {rule: $rule} end) + $x' >> "$olog"
 }
-omerge() { # <seconds before NOW> <contract> [extra json] - a merge row of the key
+omerge() {
     orow "$1" merge moved - "$(jq -nc --argjson x "${3:-{\}}" --arg c "$2" '{pr: "41", head: "h41", contract: $c, stage: "x"} + $x')"
 }
 olive() { odoc "$OD/p.md" - '- 10:00 LIVE — x'; orec '{"lock_seen":true}' "$OD/p.md"; }
 oparked() { odoc "$OD/p.md" - '- 10:00 LIVE — x' '- 10:20 PARKED-USAGE — limit'; orec '{"lock_seen":true}' "$OD/p.md"; }
-owrap() { odoc "$OD/p.md" "$1" '- 10:00 WRAPPED — x'; orec '{"lock_seen":true}' "$OD/p.md"; } # <Completes flag or ->
+owrap() { odoc "$OD/p.md" "$1" '- 10:00 WRAPPED — x'; orec '{"lock_seen":true}' "$OD/p.md"; }
 oans() {
     ts_owner "$OK" | awk -F'\t' '$1 == "worker" { print "worker:" $2; next } $1 == "awaiting" { print "awaiting:" $2 ":" $5 ":" $3; next } { print $1 }'
 }
-ochk() { # <cell> <expected> [<list tag>] - derive, ask, and name what the answer needs listed
+ochk() {
     local ans need="" ok=0
     ts_derive "$OK"
     ans=$(oans)
@@ -260,7 +256,6 @@ ochk() { # <cell> <expected> [<list tag>] - derive, ask, and name what the answe
     check "ts_owner $1: and its none or exemption is listed (${need:-no})" "$ok" 1
 }
 
-# Workers, D5, base values
 ocell; olive; ochk "W1 live" "worker:live"
 ocell; olive; olock "$OD/p.md" 0 -; ochk "W2 lock gone once" "worker:unknown"
 ocell; olive; orec '{"lock_seen":true,"lock_gone_sweeps":1}' "$OD/p.md"; olock "$OD/p.md" 0 -; ochk "W3 lock gone twice (wrapped, D6 To Do)" none
@@ -279,7 +274,6 @@ ocell; oparked; olock "$OD/p.md" 12 STALE-DEAD; ochk "W11 parked, rc 12 STALE-DE
 check "ts_owner W11: the lock is proven dead" "$TS_LOCK_DEAD" yes
 ocell; oparked; orec '{"lock_seen":false}' "$OD/p.md"; olock "$OD/p.md" 0 -; ochk "W16 parked over a free lock never seen held" "worker:parked" UNSEEN
 
-# Dead lock with a wait
 HOLDROW='{"owner":"operator","reason":"r"}'
 OWEDROW='{"remainder":"owed","owed":"operator","owed_due":"'$ODUE'"}'
 for w in W8 W11; do
@@ -293,7 +287,6 @@ for w in W8 W11; do
     check "ts_owner $w with an owed row: the lock is proven dead" "$TS_LOCK_DEAD" yes
 done
 
-# Two docs: the primary wrapped, a second doc A over a dead lock, a third B live
 ocell; odoc "$OD/p.md" - '- 10:00 WRAPPED — x'; odoc "$OD/a.md" - '- 10:00 LIVE — x'; odoc "$OD/b.md" - '- 10:00 LIVE — x'
 orec '{"lock_seen":true}' "$OD/p.md" "$OD/a.md" "$OD/b.md"; olock "$OD/a.md" 12 STALE-DEAD
 ochk "W14 .docs [A dead, B live]" none LEGACY-5
@@ -303,7 +296,6 @@ ocell; odoc "$OD/p.md" - '- 10:00 WRAPPED — x'; odoc "$OD/a.md" - '- 10:00 LIV
 orec '{"lock_seen":true}' "$OD/p.md" "$OD/b.md" "$OD/a.md"; olock "$OD/a.md" 12 STALE-DEAD
 ochk "W15 .docs [B live, A dead]" "worker:live"
 
-# D6n: a wrapped worker, no merge row, the brief says Completes ticket: no
 d6n() { owrap no; }
 ocell; d6n; orow 7200 wrapped noop D6n; orow 60 sweep noop D6n
 ochk "D10 no anchor row, D6n rows only" "awaiting:chief:d6n:$(iso_at 7200)"
@@ -326,15 +318,12 @@ ochk "D8 a hold, then a release" "awaiting:chief:d6n:$(iso_at 7200)"
 ocell; d6n; orow 7200 wrapped noop D6n; orow 3600 hold moved - '{"owner":"Bad Who","reason":"r"}'; TS_OWNER_HELD=yes
 ochk "D9 a hold whose owner fails the pattern" "awaiting:chief:d6n:$(iso_at 7200)"
 
-# Briefs with no merge row, a wrapped worker
 ocell; owrap yes; ochk "B1 brief yes (D6 To Do)" none
 ocell; owrap -; ochk "B2 brief none (D6 To Do)" none
-# A contract=yes merge row
 ocell; owrap -; omerge 7200 yes; ochk "Y1 contract yes, brief none (D6 To Do)" none
 ocell; d6n; omerge 100000 yes; orow 7200 wrapped noop D6n; orow 60 sweep noop D6n
 ochk "Y2 contract yes, brief no, a park after the merge row" "awaiting:chief:d6n:$(iso_at 7200)"
 
-# D5c: a contract=no merge row, a wrapped worker
 ocell; owrap -; omerge 7200 no "$OWEDROW"; orow 3600 hold moved - "$HOLDROW"; TS_OWNER_HELD=yes
 ochk "R14 an owed row and a newer labelled hold" "awaiting:operator:hold:$(iso_at 3600)"
 ocell; owrap -; orow 7200 hold moved - "$HOLDROW"; omerge 3600 no "$OWEDROW"; TS_OWNER_HELD=yes
@@ -361,7 +350,6 @@ ochk "R12 a hold, then a release" "awaiting:chief:resume:$(iso_at 7200)"
 ocell; r5; orow 3600 hold moved - '{"owner":"Bad Who","reason":"r"}'; TS_OWNER_HELD=yes
 ochk "R13 a hold whose owner fails the pattern" "awaiting:chief:resume:$(iso_at 7200)"
 
-# Others
 ocell; d6n; orow 90000 wrapped noop D6n
 orow 7200 merge pending - '{"pr":"11","head":"h11","contract":"no","stage":"pre-merge"}'; orow 60 sweep noop D6n
 ochk "X1 a pre-merge row whose PR is open is no anchor" "awaiting:chief:d6n:$(iso_at 90000)"
@@ -369,8 +357,7 @@ ocell; owrap -; orow 3600 sweep miss - '{"stage":"merged-no-row","merged_pr":"5"
 ochk "X2 no merge row, a merged PR (D5c merged-no-row)" none LEGACY-1
 check "ts_owner X2: the derive says merged-no-row" "$TS_STAGE/$TS_RULE" "merged-no-row/D5c"
 
-# The same answer from a pre-read rows file as from the log
-ts_oans_rows() { # <rows file or ->
+ts_oans_rows() {
     if [ "$1" = - ]; then unset TS_OWNER_ROWS; else export TS_OWNER_ROWS=$1; fi
     ts_owner "$OK"
     unset TS_OWNER_ROWS
@@ -386,15 +373,13 @@ ts_merge_rows "$olog" | ts_owner_rows > "$tmp/orows"
 check "ts_owner rows file, park cell: the same answer as the log" "$(ts_oans_rows "$tmp/orows")" "$(ts_oans_rows -)"
 check "ts_owner rows file, park cell: and it is the park's answer" "$(ts_oans_rows "$tmp/orows" | cut -f1,2,5)" "$(printf 'awaiting\tchief\tresume')"
 
-# A resume park 7 h old is past its 6 h due
 ocell; owrap -; omerge 100000 no '{"remainder":"remaining"}'; orow 25200 wrapped noop D5c; orow 60 sweep noop D5c
 ts_derive "$OK"
 check "ts_owner resume: since is the first D5c row, due 6 h later, already past" "$(ts_owner "$OK" | cut -f3,4)" "$(printf '%s\t%s' "$(iso_at 25200)" "$(iso_at 3600)")"
 
-# ts_park_since_rows: the park start per key and rule
 plog="$tmp/park.jsonl"
 : > "$plog"
-pk() { # <key> <seconds before NOW> <event> <result> <rule or -> [extra json]
+pk() {
     jq -nc --arg ts "$(iso_at "$2")" --arg k "$1" --arg e "$3" --arg r "$4" --arg rule "$5" --argjson x "${6:-{\}}" \
         '{ts: $ts, event: $e, key: $k, result: $r} + (if $rule == "-" then {} else {rule: $rule} end) + $x' >> "$plog"
 }
@@ -419,12 +404,10 @@ check "park rows: a dropped pre-merge row is no anchor" "$(prow 9407)" "D6n=$(is
 check "park rows: no anchor at all, the first rule row is the start" "$(prow 9408)" "D6n=$(iso_at 7200)"
 check "park rows: one row per rule of a key" "$(prow 9409)" "D6n=$(iso_at 7200),D5c=$(iso_at 3600)"
 
-# ts_now
 check "ts_now: prints TICKET_STATUS_NOW when it is digits" "$(ts_now)" "$NOW"
 tnow=$(TICKET_STATUS_NOW=abc ts_now); tdiff=$((tnow - $(date -u +%s))); check "ts_now: abc reads the wall clock (within 5 s)" "$([ "${tdiff#-}" -le 5 ] && echo ok)" ok
 tnow=$(unset TICKET_STATUS_NOW; ts_now); tdiff=$((tnow - $(date -u +%s))); check "ts_now: unset reads the wall clock (within 5 s)" "$([ "${tdiff#-}" -le 5 ] && echo ok)" ok
 
-# ts_await_due and ts_await_env_bad; the BSD date shim of test-status-drift.sh, plus the ISO format it rolls over as BSD does
 bsdpath=$PATH
 if date -u -d 2026-01-01 +%s >/dev/null 2>&1; then # gnu-ok: the probe itself, the shim below needs a GNU date
     mkdir -p "$tmp/bsd"
