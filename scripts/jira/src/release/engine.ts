@@ -171,10 +171,7 @@ function blockedByOf(text: string): string[] {
   }
 }
 
-// The mirror's issue files whatever the cursor says, with `complete` false for an absent, unreadable or
-// complete:false cursor. Only a reader that answers per key (core-check) may use this; a whole-set reader
-// uses readMirror, which refuses a mirror that is not verified complete.
-export function readMirrorFiles(root: string | null): { issues: Map<string, IssueSnap> | null; sync: string | null; complete: boolean } {
+export function readMirrorFilesUnverified(root: string | null): { issues: Map<string, IssueSnap> | null; sync: string | null; complete: boolean } {
   if (!root || !existsSync(root)) return { issues: null, sync: null, complete: false };
   let sync: string | null = null;
   let complete = false;
@@ -209,7 +206,7 @@ export function readMirrorFiles(root: string | null): { issues: Map<string, Issu
 }
 
 export function readMirror(root: string | null): { issues: Map<string, IssueSnap> | null; sync: string | null } {
-  const m = readMirrorFiles(root);
+  const m = readMirrorFilesUnverified(root);
   return m.complete ? { issues: m.issues, sync: m.sync } : { issues: null, sync: null };
 }
 

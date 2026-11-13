@@ -6,7 +6,7 @@ import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   apply, bucketCheck, operatorWords, poolCurrent, claim, coreBypass, declare, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, recordRequestDecision, request, requestWithWords, rule, state, takeover, withdraw,
-  JudgeReplyError, LIVE_LOOKUP_MS, coreSnapshot, pull, readMirror, readMirrorFiles, readOperatorRecords, rmRun, rmRunSummary, pinnedSha, signSpec, specCheck, specReview, standing,
+  JudgeReplyError, LIVE_LOOKUP_MS, coreSnapshot, pull, readMirror, readMirrorFilesUnverified, readOperatorRecords, rmRun, rmRunSummary, pinnedSha, signSpec, specCheck, specReview, standing,
   type Ctx, type JiraPort, type Judge,
 } from './engine.js';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -1064,21 +1064,21 @@ describe('rm-run: the on-demand release manager', () => {
     expect(readMirror(mirror).issues?.get('K-9')?.sector).toBe('Ship loop');
   });
 
-  it('readMirror refuses a mirror with no cursor or a complete:false one, and readMirrorFiles still reads the files', () => {
+  it('readMirror refuses a mirror with no cursor or a complete:false one, and readMirrorFilesUnverified still reads the files', () => {
     const file = '---\nkey: "K-9"\ntype: "Task"\nstatus: "To Do"\npriority: "Medium"\nfixVersions: []\nresolution: null\n---\n';
     const bare = join(root, 'mirror-nocursor');
     mkdirSync(bare, { recursive: true });
     writeFileSync(join(bare, 'K-9.md'), file);
     expect(readMirror(bare).issues).toBeNull();
-    expect(readMirrorFiles(bare).issues?.has('K-9')).toBe(true);
-    expect(readMirrorFiles(bare).sync).toBeNull();
+    expect(readMirrorFilesUnverified(bare).issues?.has('K-9')).toBe(true);
+    expect(readMirrorFilesUnverified(bare).sync).toBeNull();
     const part = join(root, 'mirror-incomplete');
     mkdirSync(part, { recursive: true });
     writeFileSync(join(part, 'K-9.md'), file);
     writeFileSync(join(part, '.cursor.json'), JSON.stringify({ lastSync: '2026-10-23T15:00:55.697Z', complete: false }));
     expect(readMirror(part)).toEqual({ issues: null, sync: null });
-    expect(readMirrorFiles(part).issues?.has('K-9')).toBe(true);
-    expect(readMirrorFiles(part)).toMatchObject({ sync: '2026-10-23T15:00:55.697Z', complete: false });
+    expect(readMirrorFilesUnverified(part).issues?.has('K-9')).toBe(true);
+    expect(readMirrorFilesUnverified(part)).toMatchObject({ sync: '2026-10-23T15:00:55.697Z', complete: false });
     expect(readMirror(join(root, 'mirror-absent')).issues).toBeNull();
   });
 
