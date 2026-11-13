@@ -2124,14 +2124,16 @@ MOG_CWD="$P_REPO" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" \
 assert_audit_has "11j3: audit records the prune" "prune=removed"
 if grepq "$LAST_ERR" -F 'KEPT worktree'; then fail "11j3: a pruning merge printed the keep hint (err: $LAST_ERR)"; else pass; fi
 
-# 11k. A commit pushed after the squash merge (tip != certified sha) keeps the
+# 11k. A worktree whose tip is not the certified sha (here behind it) keeps the
 # tree — clean-garden's exact-head-match rule, and what makes the branch -D
 # fallback in 11h lossless.
 read -r P_REPO P_WT P_SHA <<< "$(mk_prune_fixture)"
-printf 'post-merge\n' >> "$P_WT/work.txt"
-git -C "$P_WT" commit -q -am "post-merge work"
-MOG_CWD="$P_REPO" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" \
-    run_mog 0 "merged but tip moved → kept, exit 0"
+printf 'pushed from elsewhere\n' >> "$P_WT/work.txt"
+git -C "$P_WT" commit -q -am "pushed from elsewhere"
+P_AHEAD_SHA=$(git -C "$P_WT" rev-parse HEAD)
+git -C "$P_WT" reset -q --hard "$P_SHA"
+MOG_CWD="$P_REPO" STUB_SHA="$P_AHEAD_SHA" STUB_HEAD_BRANCH="feat/mog-prune" \
+    run_mog 0 "merged but tip differs → kept, exit 0"
 if [ -d "$P_WT" ]; then pass; else fail "11k: worktree with post-merge commits was removed"; fi
 assert_audit_has "11k: audit records the tip mismatch" "prune=tip-differs-kept"
 
@@ -2176,6 +2178,15 @@ read -r P_REPO P_WT P_SHA <<< "$(mk_prune_fixture)"
 MOG_CWD="$P_WT" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" STUB_CI_COMMIT=1 \
     run_mog 25 "11k1e: commit made during the CI watch → exit 25"
 assert_gh_lacks "11k1e: no merge attempted" "pr merge"
+
+# 11k1f. The bare --go run from the primary still sees the PR worktree's unpushed commit.
+read -r P_REPO P_WT P_SHA <<< "$(mk_prune_fixture)"
+git -C "$P_WT" commit -q --allow-empty -m "unpushed after the GO head"
+MOG_CWD="$P_REPO" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" STUB_NO_CWD_PR=1 \
+    run_mog 25 "11k1f: --go from the primary, PR worktree ahead → exit 25" -- --go "/nonexistent/go/77.$P_SHA"
+assert_gh_has "11k1f: the PR came from the GO name" "pr view 77 --json state,url,number,"
+assert_gh_lacks "11k1f: no merge attempted" "pr merge"
+assert_audit_has "11k1f: refusal audited" "REFUSED reason=local-commits-not-in-pr ahead=1"
 
 # 11k2. POSITIVE CONTROL: a worktree held open by a live native
 # process is detected BEFORE the remove and skipped WHOLE. This is the case
@@ -3626,7 +3637,7 @@ assert_merge_has "2919-b: merge pins the certified head" "--match-head-commit $G
 assert_audit_lacks "8918-a4: a bare --go on the PR's own branch still merges, never exit 27" "go-no-open-pr"
 assert_audit_has "2919-b: MERGED recorded" "MERGED repo="
 assert_err_has "2919-b: the verified GO evidence is printed" "GO evidence: file=$GO_ROOT/.locks/go/77.$GO_SHA pr=77 head=$GO_SHA"
-GO_B_GHLOG=$(grep -v -- '--json state,url,number,' "$LAST_GH_LOG")
+GO_B_GHLOG=$(awk '!d && sub(/^pr view 77 --json state,url,number,/, "pr view --json state,url,number,") { d = 1 } 1' "$LAST_GH_LOG")
 
 # 7165-a — a valid GO file exists but the worker's merge line carries no --go:
 # refused before any merge call, so a merge command always shows its evidence.
@@ -3720,7 +3731,7 @@ rm -f "$GO_ROOT/.locks/go/77.$GO_SHA"
 # adds no gh call of its own (2919-b's gh log is byte-identical).
 HANDOVER_DIR="$GO_ROOT" STUB_SHA="$GO_SHA" run_mog 0 "2919-d: marker unset, no GO → merged (operator path unchanged)"
 assert_audit_lacks "2919-d: no chief-go refusal" "chief-go"
-if [ "$(grep -v -- '--json state,url,number,' "$LAST_GH_LOG")" = "$GO_B_GHLOG" ]; then pass; else fail "2919-b/d: beyond the PR query, the gated merge's gh calls differ from the unmarked merge's"; fi
+if [ "$(cat "$LAST_GH_LOG")" = "$GO_B_GHLOG" ]; then pass; else fail "2919-b/d: beyond naming PR 77 in its one PR query, the gated merge's gh calls differ from the unmarked merge's"; fi
 
 # 2919-d2 — a falsy marker is the unset marker (same truthiness as ARMAUTOMERGE).
 HIMMEL_CONSOLE_LEG=0 HANDOVER_DIR="$GO_ROOT" STUB_SHA="$GO_SHA" \

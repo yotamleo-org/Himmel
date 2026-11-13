@@ -818,19 +818,24 @@ if [ "$meta_shape_ok" -ne 1 ] || [ -z "$head_branch" ]; then
     exit 13
 fi
 
-# 2-local. Local-commit guard — run from a checkout on the PR's head branch, the
-# merge refuses while that HEAD carries commits the PR head does not: a squash
-# merge of the PR head would leave them behind on a branch GitHub then deletes.
-# Mirrors worker-pr-open.sh's unpushed-HEAD refusal. A checkout on any other
-# branch (the primary on main, a selector run) is not the PR's branch and is skipped.
-# The full ref is compared: a tag named like the branch turns --short into heads/<b>.
+# 2-local. Local-commit guard — when a worktree of this checkout has the PR's head
+# branch checked out, the merge refuses while that worktree's HEAD carries commits
+# the PR head does not: a squash merge of the PR head would leave them behind on a
+# branch GitHub then deletes. The worktree is found by branch, as the marker clear
+# finds it, so a run from the primary or another worktree is guarded too. Mirrors
+# worker-pr-open.sh's unpushed-HEAD refusal. No worktree on the branch (or a
+# non-repo cwd) skips the guard.
 # Runs here and again right before the merge, to catch a commit made during the CI watch.
 local_commit_guard() {
-    local cur_ref local_ahead ahead_n
-    # swallow-ok: a detached HEAD or a non-repo cwd is not on the PR's branch, so the guard does not apply
-    cur_ref=$(git symbolic-ref --quiet HEAD 2>/dev/null) || cur_ref=""
-    [ "$cur_ref" = "refs/heads/$head_branch" ] || return 0
-    if ! local_ahead=$(git rev-list "$sha..HEAD"); then
+    local line cur="" wt="" local_ahead ahead_n
+    while IFS= read -r -d '' line; do
+        case "$line" in
+            "worktree "*) cur="${line#worktree }" ;;
+            "branch refs/heads/$head_branch") wt="$cur" ;;
+        esac
+    done < <(git worktree list --porcelain -z 2>/dev/null)
+    [ -n "$wt" ] || return 0
+    if ! local_ahead=$(git -C "$wt" rev-list "$sha..HEAD"); then
         echo "merge-on-green: cannot compare this checkout's HEAD with PR #$pr_num's head ${sha:0:12} (not in the local object store?) — refusing. git fetch, then re-run." >&2
         audit "REFUSED reason=local-commits-unreadable repo=$nwo pr=#$pr_num sha=$sha"
         exit 25
