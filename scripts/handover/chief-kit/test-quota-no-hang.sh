@@ -48,8 +48,6 @@ trap cleanup EXIT
 REAL_QUOTA="${HOME:-/nonexistent}/.himmel/state/quota"
 RUN_ID="9$(date +%s)$$"
 : > "$tmp/fixture-ids"
-# quota_leaked <dir>: rc 0 when this run reached <dir> (the run id in a file, or a blocked marker
-# named for one of this run's fixture heads), 1 when it did not, 2 when the scan failed.
 quota_leaked() {
     local d="$1" id grc
     [ -d "$d" ] || return 1
@@ -736,17 +734,17 @@ for pc in $pids; do
 done
 
 CUR=suite
-guard_dir() { # guard_dir <name> <stamp age secs>: a scratch dir holding a quota.tsv of that age
+guard_dir() {
     gd="$tmp/guard-control/$1"; mkdir -p "$gd"
     printf 'main\tgraphql\t4309\t5000\t%s\t%s\tok\n' "$(( $(date +%s) + 1800 ))" "$(( $(date +%s) - $2 ))" > "$gd/quota.tsv"
 }
-guard_lib() { # guard_lib <dir> <function> <args...>: the library routed at <dir>, answered by the stub gh
+guard_lib() {
     local q="$1"; shift
     ( export HIMMEL_QUOTA_DIR="$q" HOME="$tmp/guard-control/home" PATH="$STUBBIN:$PATH" STUB_MODE=healthy \
         STUB_RUN_ID="$RUN_ID" STUB_FIXDIR="$FIXDIR" GH_TOKEN=maintok GH_READ_ENV_ROOT="$ENVROOT"
       . "$ROOT/scripts/lib/gh-quota.sh"; "$@" ) > /dev/null 2>&1
 }
-guard_expect() { # guard_expect <name> <want rc> <dir>
+guard_expect() {
     quota_leaked "$3"
     if [ "$?" -eq "$2" ]; then emit "PASS suite guard-control-$1"; else emit "FAIL suite guard-control-$1 the guard did not return $2"; fi
 }
