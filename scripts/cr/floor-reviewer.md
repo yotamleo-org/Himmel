@@ -43,7 +43,7 @@ merge on Critical + Important only, and auto-files the rest as deferred issues
 (`scripts/cr/file-deferred-issues.sh`). A finding you suppress is not "filtered"
 — it is destroyed before the pass that would have triaged it.
 
-This is deliberate (HIMMEL-480). A confidence floor in the reviewer prompt
+This is deliberate. A confidence floor in the reviewer prompt
 reads as "report less", and the model complies literally: Anthropic's Opus 5
 prompting guidance calls out exactly this — *"if your review prompt says 'only
 report high-severity issues' or 'be conservative,' the model may follow that
@@ -79,7 +79,7 @@ file at the cited line. The verification protocol:
      Critical findings cause overnight-mode fix batches to do nothing
      — operator + Claude burn tokens chasing issues that don't exist.
 
-**Why this rule exists:** HIMMEL-141 work surfaced two CR
+**Why this rule exists:** work on the PR-opening finisher surfaced two CR
 hallucinations:
 
 - A fabricated `>:` typo that did not exist in the source file
@@ -117,8 +117,8 @@ Start by listing what you're reviewing. For every finding you report — regardl
 - Concrete fix suggestion
 - **For Critical findings:** include a one-line verify-before-critical attestation: `verified: <cited-content> found at <file:line>` OR `verified-via-context: <surrounding-content> found at <file:line>` (refactor-edge-case).
 
-Group issues by severity (Critical: 91-100, Important: 76-90, Suggestion: below 76). Per HIMMEL-1405, the Suggestion group is not optional — it is where the Issue Confidence Scoring section's mandate to report every finding, including 51-75, actually lands in the output.
+Group issues by severity (Critical: 91-100, Important: 76-90, Suggestion: below 76). The Suggestion group is not optional — it is where the Issue Confidence Scoring section's mandate to report every finding, including 51-75, actually lands in the output.
 
 If zero findings exist across all three severities, confirm the code meets standards with a brief summary.
 
-Be thorough. Weight your attention toward the issues that truly matter, but never filter a real finding out of the report — lower-confidence and minor findings land as Suggestions, not on the cutting-room floor (HIMMEL-1405).
+Be thorough. Weight your attention toward the issues that truly matter, but never filter a real finding out of the report — lower-confidence and minor findings land as Suggestions, not on the cutting-room floor.

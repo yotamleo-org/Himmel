@@ -198,12 +198,12 @@ HERMES_PY="$AD_PY" CR_LEDGER="$AD_LEDGER" CRITIC_LEDGER_APPEND="$HERE/ledger-app
     CRITICS_JSON="$AD_JSON" CRITIC_FIRST_PASS="$HERE/critic-first-pass.sh" \
     bash "$PANEL" <<< "$DIFF" > "$tmp/ad-out" 2> "$tmp/ad-err" || ad_rc=$?
 ad_out="$(cat "$tmp/ad-out")"
-check "HIMMEL-1871: all-dropped member remains a responded critic" "$ad_rc" "0"
-check_contains "HIMMEL-1871: panel as a whole emits a blocking Critical" "$ad_out" "## Critical Issues (1 found)"
-check_contains "HIMMEL-1871: blocking Critical names citation validation" "$ad_out" "[citation-guard-"
-check_contains "HIMMEL-1871: merged review counts both dropped findings" "$ad_out" "## Dropped Citations (2 dropped)"
-check_contains "HIMMEL-1871: first dropped finding is recoverable" "$ad_out" "missing rollback guard"
-check_contains "HIMMEL-1871: second dropped finding is recoverable" "$ad_out" "unbounded retry"
+check "citation guard: all-dropped member remains a responded critic" "$ad_rc" "0"
+check_contains "citation guard: panel as a whole emits a blocking Critical" "$ad_out" "## Critical Issues (1 found)"
+check_contains "citation guard: blocking Critical names citation validation" "$ad_out" "[citation-guard-"
+check_contains "citation guard: merged review counts both dropped findings" "$ad_out" "## Dropped Citations (2 dropped)"
+check_contains "citation guard: first dropped finding is recoverable" "$ad_out" "missing rollback guard"
+check_contains "citation guard: second dropped finding is recoverable" "$ad_out" "unbounded retry"
 # Two halves of the ledger invariant (the guard is queued to the LEDGER, not
 # just stdout, so clear-cr-marker's ledger-derived clearance can see it):
 #   1. member accuracy is not inflated — zero finding rows attributed to the
@@ -239,9 +239,9 @@ print('guard-blockers=' + str(len(guard)))
 print('avail-ok=' + str(sum(r.get('kind') == 'avail' and r.get('status') == 'ok' for r in rows)))
 PYEOF
 )"
-check "HIMMEL-1871: dropped findings do not inflate member accuracy (no all-drop finding rows)" "$(printf '%s\n' "$ad_ledger" | sed -n 's/^member-findings=//p')" "0"
-check "HIMMEL-1871: citation guard reaches the ledger as exactly one blocking finding" "$(printf '%s\n' "$ad_ledger" | sed -n 's/^guard-blockers=//p')" "1"
-check "HIMMEL-1871: responding member still records availability" "$(printf '%s\n' "$ad_ledger" | sed -n 's/^avail-ok=//p')" "1"
+check "citation guard: dropped findings do not inflate member accuracy (no all-drop finding rows)" "$(printf '%s\n' "$ad_ledger" | sed -n 's/^member-findings=//p')" "0"
+check "citation guard: citation guard reaches the ledger as exactly one blocking finding" "$(printf '%s\n' "$ad_ledger" | sed -n 's/^guard-blockers=//p')" "1"
+check "citation guard: responding member still records availability" "$(printf '%s\n' "$ad_ledger" | sed -n 's/^avail-ok=//p')" "1"
 
 # the guard row must be self-describing. It used to carry no
 # `text`, so the dropped findings' substance lived only in that run's stdout
@@ -262,12 +262,12 @@ print('text=' + (g[0].get('text', '') if g else ''))
 PYEOF
 )"
 ad_guard_text="$(printf '%s\n' "$ad_guard" | sed -n 's/^text=//p')"
-check "HIMMEL-2554: guard row still exactly one" "$(printf '%s\n' "$ad_guard" | sed -n 's/^n=//p')" "1"
-check "HIMMEL-2554: guard severity stays crit (fail-closed unchanged)" "$(printf '%s\n' "$ad_guard" | sed -n 's/^sev=//p')" "crit"
-check "HIMMEL-2554: guard finding_id UNCHANGED (dedup key must not move)" "$(printf '%s\n' "$ad_guard" | sed -n 's/^id=//p')" "citation-guard-6bd86d6b048c3229"
-check "HIMMEL-2554: guard row carries a text field" "$(printf '%s\n' "$ad_guard" | sed -n 's/^has-text=//p')" "yes"
-check_contains "HIMMEL-2554: guard text has the first dropped citation verbatim" "$ad_guard_text" "missing rollback guard [foo-script.sh:3]"
-check_contains "HIMMEL-2554: guard text has the second dropped citation verbatim" "$ad_guard_text" "unbounded retry [foo.sh:999]"
+check "citation guard text: guard row still exactly one" "$(printf '%s\n' "$ad_guard" | sed -n 's/^n=//p')" "1"
+check "citation guard text: guard severity stays crit (fail-closed unchanged)" "$(printf '%s\n' "$ad_guard" | sed -n 's/^sev=//p')" "crit"
+check "citation guard text: guard finding_id UNCHANGED (dedup key must not move)" "$(printf '%s\n' "$ad_guard" | sed -n 's/^id=//p')" "citation-guard-6bd86d6b048c3229"
+check "citation guard text: guard row carries a text field" "$(printf '%s\n' "$ad_guard" | sed -n 's/^has-text=//p')" "yes"
+check_contains "citation guard text: guard text has the first dropped citation verbatim" "$ad_guard_text" "missing rollback guard [foo-script.sh:3]"
+check_contains "citation guard text: guard text has the second dropped citation verbatim" "$ad_guard_text" "unbounded retry [foo.sh:999]"
 
 # a dropped citation can quote a credential straight out of the
 # reviewed diff. The guard row's text must go
@@ -283,7 +283,7 @@ scrub_rc=0
 HERMES_PY="$AD_PY" CR_LEDGER="$SCRUB_LEDGER" CRITIC_LEDGER_APPEND="$HERE/ledger-append.sh" \
     CRITICS_JSON="$AD_JSON" CRITIC_FIRST_PASS="$HERE/critic-first-pass.sh" \
     bash "$PANEL" <<< "$DIFF" > "$tmp/scrub-out" 2> "$tmp/scrub-err" || scrub_rc=$?
-check "HIMMEL-2554: credential-quoting drop still exits 0" "$scrub_rc" "0"
+check "citation guard text: credential-quoting drop still exits 0" "$scrub_rc" "0"
 scrub_text="$(python3 - "$SCRUB_LEDGER" <<'PYEOF'
 import json, sys
 rows = [json.loads(line) for line in open(sys.argv[1]) if line.strip()]
@@ -291,11 +291,11 @@ g = [r for r in rows if r.get('kind') == 'finding' and r.get('model') == 'citati
 print(g[0].get('text', '') if g else '')
 PYEOF
 )"
-check_contains "HIMMEL-2554: guard text still names the dropped finding" "$scrub_text" "hardcoded"
-check_contains "HIMMEL-2554: guard text has secret= value redacted" "$scrub_text" "secret=[REDACTED]"
-check_contains "HIMMEL-2554: guard text has Bearer value redacted" "$scrub_text" "Bearer [REDACTED]"
-check "HIMMEL-2554: guard text does not leak the raw secret= value" "$(grepq "$scrub_text" -F -- 'abcdefghij0123456789' && echo leaked || echo clean)" "clean"
-check "HIMMEL-2554: guard text does not leak the raw Bearer value" "$(grepq "$scrub_text" -F -- 'abcdefghijklmnopqrstuv' && echo leaked || echo clean)" "clean"
+check_contains "citation guard text: guard text still names the dropped finding" "$scrub_text" "hardcoded"
+check_contains "citation guard text: guard text has secret= value redacted" "$scrub_text" "secret=[REDACTED]"
+check_contains "citation guard text: guard text has Bearer value redacted" "$scrub_text" "Bearer [REDACTED]"
+check "citation guard text: guard text does not leak the raw secret= value" "$(grepq "$scrub_text" -F -- 'abcdefghij0123456789' && echo leaked || echo clean)" "clean"
+check "citation guard text: guard text does not leak the raw Bearer value" "$(grepq "$scrub_text" -F -- 'abcdefghijklmnopqrstuv' && echo leaked || echo clean)" "clean"
 
 # One invalid Critical plus one valid Suggestion. The surviving
 # Suggestion is non-blocking and must not suppress the citation guard on either
@@ -314,12 +314,12 @@ HERMES_PY="$AD_PY" CR_LEDGER="$MIXED_LEDGER" CRITIC_LEDGER_APPEND="$HERE/ledger-
     CRITICS_JSON="$AD_JSON" CRITIC_FIRST_PASS="$HERE/critic-first-pass.sh" \
     bash "$PANEL" <<< "$DIFF" > "$tmp/mixed-out" 2> "$tmp/mixed-err" || mixed_rc=$?
 mixed_out="$(cat "$tmp/mixed-out")"
-check "HIMMEL-1871 round 3: mixed-severity member remains a responded critic" "$mixed_rc" "0"
-check_contains "HIMMEL-1871 round 3: rendered report keeps a blocking Critical" "$mixed_out" "## Critical Issues (1 found)"
-check_contains "HIMMEL-1871 round 3: rendered blocker keeps the citation-guard id" "$mixed_out" "[citation-guard-"
-check_contains "HIMMEL-1871 round 3: guard message remains true for partial drops" "$mixed_out" "were rejected because their citations were unverifiable"
-check_contains "HIMMEL-1871 round 3: valid Suggestion survives" "$mixed_out" "## Suggestions (1 found)"
-check_contains "HIMMEL-1871 round 3: invalid Critical remains recoverable" "$mixed_out" "## Dropped Citations (1 dropped)"
+check "citation guard: mixed-severity member remains a responded critic" "$mixed_rc" "0"
+check_contains "citation guard: rendered report keeps a blocking Critical" "$mixed_out" "## Critical Issues (1 found)"
+check_contains "citation guard: rendered blocker keeps the citation-guard id" "$mixed_out" "[citation-guard-"
+check_contains "citation guard: guard message remains true for partial drops" "$mixed_out" "were rejected because their citations were unverifiable"
+check_contains "citation guard: valid Suggestion survives" "$mixed_out" "## Suggestions (1 found)"
+check_contains "citation guard: invalid Critical remains recoverable" "$mixed_out" "## Dropped Citations (1 dropped)"
 mixed_ledger="$(python3 - "$MIXED_LEDGER" <<'PYEOF'
 import json, re, sys
 rows = [json.loads(line) for line in open(sys.argv[1]) if line.strip()]
@@ -348,9 +348,9 @@ print('member-suggestions=' + str(len(member_suggestions)))
 print('guard-blockers=' + str(len(guard)))
 PYEOF
 )"
-check "HIMMEL-1871 round 3: rejected Critical creates no member-attributed blocker row" "$(printf '%s\n' "$mixed_ledger" | sed -n 's/^member-blockers=//p')" "0"
-check "HIMMEL-1871 round 3: validated Suggestion remains one member finding row" "$(printf '%s\n' "$mixed_ledger" | sed -n 's/^member-suggestions=//p')" "1"
-check "HIMMEL-1871 round 3: ledger has exactly one blocking citation guard" "$(printf '%s\n' "$mixed_ledger" | sed -n 's/^guard-blockers=//p')" "1"
+check "citation guard: rejected Critical creates no member-attributed blocker row" "$(printf '%s\n' "$mixed_ledger" | sed -n 's/^member-blockers=//p')" "0"
+check "citation guard: validated Suggestion remains one member finding row" "$(printf '%s\n' "$mixed_ledger" | sed -n 's/^member-suggestions=//p')" "1"
+check "citation guard: ledger has exactly one blocking citation guard" "$(printf '%s\n' "$mixed_ledger" | sed -n 's/^guard-blockers=//p')" "1"
 
 # A genuinely clean response must remain clean: no synthetic blocker and no
 # Dropped Citations section — and, wired to a ledger exactly like the
@@ -376,11 +376,11 @@ print('findings=' + str(len(findings)))
 print('guard-rows=' + str(sum(r.get('model') == 'citation-guard' for r in findings)))
 PYEOF
 )"
-check "HIMMEL-1871: genuinely clean panel still exits completed" "$clean_rc" "0"
-check_contains "HIMMEL-1871: genuinely clean panel stays Critical=0" "$ad_clean_out" "## Critical Issues (0 found)"
-check "HIMMEL-1871: genuinely clean panel has no Dropped Citations" "$(printf '%s\n' "$ad_clean_out" | grep -c '^## Dropped Citations')" "0"
-check "HIMMEL-1871: genuinely clean panel records zero finding rows (any model)" "$(printf '%s\n' "$clean_ledger" | sed -n 's/^findings=//p')" "0"
-check "HIMMEL-1871: genuinely clean panel records no citation-guard row" "$(printf '%s\n' "$clean_ledger" | sed -n 's/^guard-rows=//p')" "0"
+check "citation guard: genuinely clean panel still exits completed" "$clean_rc" "0"
+check_contains "citation guard: genuinely clean panel stays Critical=0" "$ad_clean_out" "## Critical Issues (0 found)"
+check "citation guard: genuinely clean panel has no Dropped Citations" "$(printf '%s\n' "$ad_clean_out" | grep -c '^## Dropped Citations')" "0"
+check "citation guard: genuinely clean panel records zero finding rows (any model)" "$(printf '%s\n' "$clean_ledger" | sed -n 's/^findings=//p')" "0"
+check "citation guard: genuinely clean panel records no citation-guard row" "$(printf '%s\n' "$clean_ledger" | sed -n 's/^guard-rows=//p')" "0"
 
 # A valid Critical surviving must not make a
 # dropped Important vanish. If the Dropped Citations section fired
@@ -402,10 +402,10 @@ HERMES_PY="$AD_PY" CR_LEDGER="$SEAM1_LEDGER" CRITIC_LEDGER_APPEND="$HERE/ledger-
     CRITICS_JSON="$AD_JSON" CRITIC_FIRST_PASS="$HERE/critic-first-pass.sh" \
     bash "$PANEL" <<< "$DIFF" > "$tmp/seam1-out" 2> "$tmp/seam1-err" || seam1_rc=$?
 seam1_out="$(cat "$tmp/seam1-out")"
-check "HIMMEL-1871 seam 1: partial-drop member remains a responded critic" "$seam1_rc" "0"
-check_contains "HIMMEL-1871 seam 1: surviving Critical plus guard both render" "$seam1_out" "## Critical Issues (2 found)"
-check_contains "HIMMEL-1871 seam 1: dropped Important stays recoverable" "$seam1_out" "## Dropped Citations (1 dropped)"
-check_contains "HIMMEL-1871 seam 1: dropped Important text present" "$seam1_out" "dropped important"
+check "citation guard seam 1: partial-drop member remains a responded critic" "$seam1_rc" "0"
+check_contains "citation guard seam 1: surviving Critical plus guard both render" "$seam1_out" "## Critical Issues (2 found)"
+check_contains "citation guard seam 1: dropped Important stays recoverable" "$seam1_out" "## Dropped Citations (1 dropped)"
+check_contains "citation guard seam 1: dropped Important text present" "$seam1_out" "dropped important"
 seam1_ledger="$(python3 - "$SEAM1_LEDGER" <<'PYEOF'
 import json, sys
 rows = [json.loads(line) for line in open(sys.argv[1]) if line.strip()]
@@ -417,8 +417,8 @@ print('member-findings=' + str(len(member)))
 print('guard-blockers=' + str(len(guard)))
 PYEOF
 )"
-check "HIMMEL-1871 seam 1: surviving Critical is one member row" "$(printf '%s\n' "$seam1_ledger" | sed -n 's/^member-findings=//p')" "1"
-check "HIMMEL-1871 seam 1: dropped Important still blocks in the LEDGER" "$(printf '%s\n' "$seam1_ledger" | sed -n 's/^guard-blockers=//p')" "1"
+check "citation guard seam 1: surviving Critical is one member row" "$(printf '%s\n' "$seam1_ledger" | sed -n 's/^member-findings=//p')" "1"
+check "citation guard seam 1: dropped Important still blocks in the LEDGER" "$(printf '%s\n' "$seam1_ledger" | sed -n 's/^guard-blockers=//p')" "1"
 
 # Other direction: dropped SUGGESTIONS never block. Even when every
 # finding the member produced was a rejected Suggestion (an all-dropped
@@ -437,10 +437,10 @@ HERMES_PY="$AD_PY" CR_LEDGER="$SUGD_LEDGER" CRITIC_LEDGER_APPEND="$HERE/ledger-a
     CRITICS_JSON="$AD_JSON" CRITIC_FIRST_PASS="$HERE/critic-first-pass.sh" \
     bash "$PANEL" <<< "$DIFF" > "$tmp/sugd-out" 2> "$tmp/sugd-err" || sugd_rc=$?
 sugd_out="$(cat "$tmp/sugd-out")"
-check "HIMMEL-1871: suggestion-only drops keep panel rc 0" "$sugd_rc" "0"
-check_contains "HIMMEL-1871: suggestion-only drops add no synthetic Critical" "$sugd_out" "## Critical Issues (0 found)"
-check_contains "HIMMEL-1871: suggestion-only drops stay readable" "$sugd_out" "## Dropped Citations (2 dropped)"
-check "HIMMEL-1871: suggestion-only drops queue no guard row" \
+check "citation guard: suggestion-only drops keep panel rc 0" "$sugd_rc" "0"
+check_contains "citation guard: suggestion-only drops add no synthetic Critical" "$sugd_out" "## Critical Issues (0 found)"
+check_contains "citation guard: suggestion-only drops stay readable" "$sugd_out" "## Dropped Citations (2 dropped)"
+check "citation guard: suggestion-only drops queue no guard row" \
     "$(grep -c '"model":"citation-guard"' "$SUGD_LEDGER" || true)" "0"
 
 # The guard's identity derives from the rejected blocking
@@ -470,13 +470,13 @@ seam2b_rc=0
 HERMES_PY="$AD_PY" CR_LEDGER="$SEAM2_LEDGER" CRITIC_LEDGER_APPEND="$HERE/ledger-append.sh" \
     CRITICS_JSON="$AD_JSON" CRITIC_FIRST_PASS="$HERE/critic-first-pass.sh" \
     bash "$PANEL" <<< "$DIFF" > "$tmp/seam2-out-b" 2>/dev/null || seam2b_rc=$?
-check "HIMMEL-1871 seam 2: rerun with new evidence completes" "$seam2b_rc" "0"
+check "citation guard seam 2: rerun with new evidence completes" "$seam2b_rc" "0"
 # Identical rerun of the beta evidence: quiet dedup, still rc 0, no third row.
 seam2c_rc=0
 HERMES_PY="$AD_PY" CR_LEDGER="$SEAM2_LEDGER" CRITIC_LEDGER_APPEND="$HERE/ledger-append.sh" \
     CRITICS_JSON="$AD_JSON" CRITIC_FIRST_PASS="$HERE/critic-first-pass.sh" \
     bash "$PANEL" <<< "$DIFF" > "$tmp/seam2-out-c" 2>/dev/null || seam2c_rc=$?
-check "HIMMEL-1871 seam 2: identical rerun stays idempotent (rc 0)" "$seam2c_rc" "0"
+check "citation guard seam 2: identical rerun stays idempotent (rc 0)" "$seam2c_rc" "0"
 # HERMETIC probe: the panel stamps
 # REVIEW_HEAD from the cwd repo, so a commit landing on this branch while the
 # suite is mid-run legitimately puts seam-2's later runs at a NEW head — and
@@ -501,9 +501,9 @@ print('dup-pairs=' + str(len(pairs) - len(set(pairs))))
 print('all-verdictless=' + ('yes' if guards and all(not r.get('verdict') for r in guards) else 'no'))
 PYEOF
 )"
-check "HIMMEL-1871 seam 2: alpha and beta evidence mint exactly two distinct ids" "$(printf '%s\n' "$seam2_ledger" | sed -n 's/^distinct-ids=//p')" "2"
-check "HIMMEL-1871 seam 2: identical rerun never duplicates a (head, finding_id) pair" "$(printf '%s\n' "$seam2_ledger" | sed -n 's/^dup-pairs=//p')" "0"
-check "HIMMEL-1871 seam 2: every guard row blocks (no inherited verdict)" "$(printf '%s\n' "$seam2_ledger" | sed -n 's/^all-verdictless=//p')" "yes"
+check "citation guard seam 2: alpha and beta evidence mint exactly two distinct ids" "$(printf '%s\n' "$seam2_ledger" | sed -n 's/^distinct-ids=//p')" "2"
+check "citation guard seam 2: identical rerun never duplicates a (head, finding_id) pair" "$(printf '%s\n' "$seam2_ledger" | sed -n 's/^dup-pairs=//p')" "0"
+check "citation guard seam 2: every guard row blocks (no inherited verdict)" "$(printf '%s\n' "$seam2_ledger" | sed -n 's/^all-verdictless=//p')" "yes"
 
 # Tab injectivity: member_parsed is a TAB-delimited channel and
 # the guard digest is computed over what crosses it. A literal
@@ -549,8 +549,8 @@ HERMES_PY="$AD_PY" CR_LEDGER="$TABI_LEDGER" CRITIC_LEDGER_APPEND="$HERE/ledger-a
     CRITICS_JSON="$AD_JSON" CRITIC_FIRST_PASS="$HERE/critic-first-pass.sh" \
     bash "$PANEL" <<< "$DIFF" > "$tmp/tabi-out-c" 2>/dev/null || true
 tabi_out_a="$(cat "$tmp/tabi-out-a")"
-check "HIMMEL-1871 round 5: tab-bearing rejected blocker completes" "$tabi_rc" "0"
-check_contains "HIMMEL-1871 round 6: tab evidence reaches Dropped Citations byte-exact" "$tabi_out_a" $'prefix\ttail-alpha'
+check "citation guard: tab-bearing rejected blocker completes" "$tabi_rc" "0"
+check_contains "citation guard: tab evidence reaches Dropped Citations byte-exact" "$tabi_out_a" $'prefix\ttail-alpha'
 tabi_ledger="$(python3 - "$TABI_LEDGER" <<'PYEOF'
 import json, re, sys
 rows = [json.loads(line) for line in open(sys.argv[1]) if line.strip()]
@@ -563,10 +563,10 @@ print('verdictless=' + str(sum(not r.get('verdict') for r in guards)))
 print('id-shape=' + ('yes' if ids and all(re.fullmatch(r'citation-guard-[0-9a-f]{16}', i) for i in ids) else 'no'))
 PYEOF
 )"
-check "HIMMEL-1871 rounds 5-6: tab-alpha, tab-beta, space-alpha each mint a guard row" "$(printf '%s\n' "$tabi_ledger" | sed -n 's/^guard-rows=//p')" "3"
-check "HIMMEL-1871 rounds 5-6: all three guard ids are distinct (incl. tab-vs-space)" "$(printf '%s\n' "$tabi_ledger" | sed -n 's/^distinct-ids=//p')" "3"
-check "HIMMEL-1871 rounds 5-6: all three guard rows block (no inherited verdict)" "$(printf '%s\n' "$tabi_ledger" | sed -n 's/^verdictless=//p')" "3"
-check "HIMMEL-1871 round 5: guard ids are 16-hex sha256 digests" "$(printf '%s\n' "$tabi_ledger" | sed -n 's/^id-shape=//p')" "yes"
+check "citation guard: tab-alpha, tab-beta, space-alpha each mint a guard row" "$(printf '%s\n' "$tabi_ledger" | sed -n 's/^guard-rows=//p')" "3"
+check "citation guard: all three guard ids are distinct (incl. tab-vs-space)" "$(printf '%s\n' "$tabi_ledger" | sed -n 's/^distinct-ids=//p')" "3"
+check "citation guard: all three guard rows block (no inherited verdict)" "$(printf '%s\n' "$tabi_ledger" | sed -n 's/^verdictless=//p')" "3"
+check "citation guard: guard ids are 16-hex sha256 digests" "$(printf '%s\n' "$tabi_ledger" | sed -n 's/^id-shape=//p')" "yes"
 
 # Binary-byte evidence: GNU grep's binary heuristic (Git Bash grep
 # 3.0, UTF-8 locale) suppresses matched LINES when stdin carries a
@@ -589,8 +589,8 @@ HERMES_PY="$AD_PY" CR_LEDGER="$BINB_LEDGER" CRITIC_LEDGER_APPEND="$HERE/ledger-a
     CRITICS_JSON="$AD_JSON" CRITIC_FIRST_PASS="$HERE/critic-first-pass.sh" \
     bash "$PANEL" <<< "$DIFF" > "$tmp/binb-out" 2>/dev/null || binb_rc=$?
 binb_out="$(cat "$tmp/binb-out")"
-check "HIMMEL-1871 round 5: binary-byte rejected blocker completes" "$binb_rc" "0"
-check_contains "HIMMEL-1871 round 5: binary-byte evidence still fires the guard on stdout" "$binb_out" "[citation-guard-"
+check "citation guard: binary-byte rejected blocker completes" "$binb_rc" "0"
+check_contains "citation guard: binary-byte evidence still fires the guard on stdout" "$binb_out" "[citation-guard-"
 binb_guards="$(python3 - "$BINB_LEDGER" <<'PYEOF'
 import json, sys
 rows = [json.loads(line) for line in open(sys.argv[1]) if line.strip()]
@@ -598,7 +598,7 @@ print(sum(r.get('kind') == 'finding' and r.get('model') == 'citation-guard'
           and r.get('severity') == 'crit' and not r.get('verdict') for r in rows))
 PYEOF
 )"
-check "HIMMEL-1871 round 5: binary-byte evidence blocks in the ledger" "$binb_guards" "1"
+check "citation guard: binary-byte evidence blocks in the ledger" "$binb_guards" "1"
 
 # Slash-bearing slug: the registry accepts ANY non-empty slug
 # (local-overlay values like "openai/gpt"). A classifier that re-parsed the
@@ -623,9 +623,9 @@ HERMES_PY="$AD_PY" CR_LEDGER="$SLASH_LEDGER" CRITIC_LEDGER_APPEND="$HERE/ledger-
     CRITICS_JSON="$SLASH_JSON" CRITIC_FIRST_PASS="$HERE/critic-first-pass.sh" \
     bash "$PANEL" <<< "$DIFF" > "$tmp/slash-out" 2>/dev/null || slash_rc=$?
 slash_out="$(cat "$tmp/slash-out")"
-check "HIMMEL-1871 round 6: slash-slug member remains a responded critic" "$slash_rc" "0"
-check_contains "HIMMEL-1871 round 6: slash-slug dropped blocker still fires the guard" "$slash_out" "[citation-guard-"
-check_contains "HIMMEL-1871 round 6: slash-slug rejected evidence stays recoverable" "$slash_out" "## Dropped Citations (1 dropped)"
+check "citation guard: slash-slug member remains a responded critic" "$slash_rc" "0"
+check_contains "citation guard: slash-slug dropped blocker still fires the guard" "$slash_out" "[citation-guard-"
+check_contains "citation guard: slash-slug rejected evidence stays recoverable" "$slash_out" "## Dropped Citations (1 dropped)"
 slash_ledger="$(python3 - "$SLASH_LEDGER" <<'PYEOF'
 import json, sys
 rows = [json.loads(line) for line in open(sys.argv[1]) if line.strip()]
@@ -635,8 +635,8 @@ print('avail-ok=' + str(sum(r.get('kind') == 'avail' and r.get('status') == 'ok'
       and r.get('model') == 'openai/gpt' for r in rows)))
 PYEOF
 )"
-check "HIMMEL-1871 round 6: slash-slug dropped blocker blocks in the ledger" "$(printf '%s\n' "$slash_ledger" | sed -n 's/^guard-blockers=//p')" "1"
-check "HIMMEL-1871 round 6: slash-slug avail row survives the spool (exact slug)" "$(printf '%s\n' "$slash_ledger" | sed -n 's/^avail-ok=//p')" "1"
+check "citation guard: slash-slug dropped blocker blocks in the ledger" "$(printf '%s\n' "$slash_ledger" | sed -n 's/^guard-blockers=//p')" "1"
+check "citation guard: slash-slug avail row survives the spool (exact slug)" "$(printf '%s\n' "$slash_ledger" | sed -n 's/^avail-ok=//p')" "1"
 # Other direction: a slash slug's dropped SUGGESTION must still classify
 # non-blocking (the Suggestions prefix match also embeds the slug).
 cat > "$AD_STUB_PY" <<'PYEOF'
@@ -651,9 +651,9 @@ HERMES_PY="$AD_PY" CR_LEDGER="$SLASHS_LEDGER" CRITIC_LEDGER_APPEND="$HERE/ledger
     CRITICS_JSON="$SLASH_JSON" CRITIC_FIRST_PASS="$HERE/critic-first-pass.sh" \
     bash "$PANEL" <<< "$DIFF" > "$tmp/slash-sug-out" 2>/dev/null || slashs_rc=$?
 slashs_out="$(cat "$tmp/slash-sug-out")"
-check "HIMMEL-1871 round 6: slash-slug suggestion-only drop keeps rc 0" "$slashs_rc" "0"
-check_contains "HIMMEL-1871 round 6: slash-slug suggestion-only drop adds no synthetic Critical" "$slashs_out" "## Critical Issues (0 found)"
-check "HIMMEL-1871 round 6: slash-slug suggestion-only drop queues no guard row" \
+check "citation guard: slash-slug suggestion-only drop keeps rc 0" "$slashs_rc" "0"
+check_contains "citation guard: slash-slug suggestion-only drop adds no synthetic Critical" "$slashs_out" "## Critical Issues (0 found)"
+check "citation guard: slash-slug suggestion-only drop queues no guard row" \
     "$(grep -c '"model":"citation-guard"' "$SLASHS_LEDGER" || true)" "0"
 
 # Digest failure fails CLOSED. command -v checks tool EXISTENCE
@@ -687,9 +687,9 @@ digf_rc=0
 ( cd "$DIGF_REPO" && PATH="$FAKEBIN:$PATH" HERMES_PY="$AD_PY" CR_LEDGER="$DIGF_LEDGER" CRITIC_LEDGER_APPEND="$HERE/ledger-append.sh" \
     CRITICS_JSON="$AD_JSON" CRITIC_FIRST_PASS="$HERE/critic-first-pass.sh" \
     bash "$PANEL" <<< "$DIFF" > "$tmp/digf-out-a" 2> "$tmp/digf-err-a" ) || digf_rc=$?
-check "HIMMEL-1871 round 7: digest failure refuses the run (exit 6)" "$digf_rc" "6"
-check_contains "HIMMEL-1871 round 7: refusal is loud on stderr" "$(cat "$tmp/digf-err-a")" "refusing to certify"
-check "HIMMEL-1871 round 7: no review body is emitted on refusal" \
+check "citation guard: digest failure refuses the run (exit 6)" "$digf_rc" "6"
+check_contains "citation guard: refusal is loud on stderr" "$(cat "$tmp/digf-err-a")" "refusing to certify"
+check "citation guard: no review body is emitted on refusal" \
     "$(grep -c '^## Critical Issues' "$tmp/digf-out-a" || true)" "0"
 cat > "$AD_STUB_PY" <<'PYEOF'
 print("## Critical Issues (1 found)")
@@ -701,8 +701,8 @@ digf_rc_b=0
 ( cd "$DIGF_REPO" && PATH="$FAKEBIN:$PATH" HERMES_PY="$AD_PY" CR_LEDGER="$DIGF_LEDGER" CRITIC_LEDGER_APPEND="$HERE/ledger-append.sh" \
     CRITICS_JSON="$AD_JSON" CRITIC_FIRST_PASS="$HERE/critic-first-pass.sh" \
     bash "$PANEL" <<< "$DIFF" > "$tmp/digf-out-b" 2> "$tmp/digf-err-b" ) || digf_rc_b=$?
-check "HIMMEL-1871 round 7: second distinct-evidence run also refuses (exit 6)" "$digf_rc_b" "6"
-check "HIMMEL-1871 round 7: distinct same-head drops share NO ledger key (no guard rows)" \
+check "citation guard: second distinct-evidence run also refuses (exit 6)" "$digf_rc_b" "6"
+check "citation guard: distinct same-head drops share NO ledger key (no guard rows)" \
     "$(grep -c '"model":"citation-guard"' "$DIGF_LEDGER" || true)" "0"
 # the critic DID answer on both refused runs, so CFP keeps the
 # raw response and records one `score` row each (audit evidence the panel
@@ -711,18 +711,18 @@ check "HIMMEL-1871 round 7: distinct same-head drops share NO ledger key (no gua
 # (head, model), so the two refused runs leave one). An avail row is not a
 # finding: the guarantee that nothing can inherit or dedup against a
 # refused run still holds for every other kind.
-check "HIMMEL-1871 round 7: refused runs append NOTHING to the ledger but score rows and the refusal avail row" \
+check "citation guard: refused runs append NOTHING to the ledger but score rows and the refusal avail row" \
     "$(grep -vc '"kind":"score"\|"kind":"avail"' "$DIGF_LEDGER" || true)" "0"
-check "HIMMEL-1932: the refusal is recorded as exactly one avail unavailable certify-refused row" \
+check "certify refusal: the refusal is recorded as exactly one avail unavailable certify-refused row" \
     "$(grep -c '"kind":"avail".*"status":"unavailable".*"reason":"certify-refused"' "$DIGF_LEDGER" || true)" "1"
 # CR_LEDGER pointed the run at an override ledger, but
 # clear-review-marker.sh reads only the FIXED <git-common-dir> one, so the refusal
 # must land there too or the gate never sees it.
-check "HIMMEL-5110: the refusal is also recorded on the fixed git-common-dir ledger" \
+check "certify refusal: the refusal is also recorded on the fixed git-common-dir ledger" \
     "$(grep -c '"kind":"avail".*"status":"unavailable".*"reason":"certify-refused"' "$DIGF_REPO/.git/cr-critic-scores.jsonl" 2>/dev/null || true)" "1"
-check "HIMMEL-1932: the refusal row is an avail row, not a finding (no finding row, no guard id)" \
+check "certify refusal: the refusal row is an avail row, not a finding (no finding row, no guard id)" \
     "$(grep -c '"kind":"finding"\|citation-guard-' "$DIGF_LEDGER" || true)" "0"
-check "HIMMEL-3104: each refused run that got an answer records one score row" \
+check "score rows: each refused run that got an answer records one score row" \
     "$(grep -c '"kind":"score"' "$DIGF_LEDGER" || true)" "2"
 
 # The FALLBACK chain shares the rc=4 contract of the primary path. A chain
@@ -772,10 +772,10 @@ HERMES_PY="$FBD_STUB" CR_LEDGER="$FBD_LEDGER" CRITIC_LEDGER_APPEND="$HERE/ledger
     CRITICS_JSON="$FBD_JSON" CRITIC_FIRST_PASS="$HERE/critic-first-pass.sh" \
     bash "$PANEL" <<< "$DIFF" > "$tmp/fbd-out" 2> "$tmp/fbd-err" || fbd_rc=$?
 fbd_out="$(cat "$tmp/fbd-out")"
-check "HIMMEL-1871 round 9: rc-4 fallback keeps the panel responding (rc 0)" "$fbd_rc" "0"
-check_contains "HIMMEL-1871 round 9: rc-4 fallback still fires the guard on stdout" "$fbd_out" "[citation-guard-"
-check_contains "HIMMEL-1871 round 9: fallback's rejected blocker stays recoverable" "$fbd_out" "## Dropped Citations (1 dropped)"
-check "HIMMEL-1871 round 9: chain STOPPED at the rc-4 candidate (fb2 never consulted)" "$(cat "$FBD_COUNT")" "2"
+check "citation guard: rc-4 fallback keeps the panel responding (rc 0)" "$fbd_rc" "0"
+check_contains "citation guard: rc-4 fallback still fires the guard on stdout" "$fbd_out" "[citation-guard-"
+check_contains "citation guard: fallback's rejected blocker stays recoverable" "$fbd_out" "## Dropped Citations (1 dropped)"
+check "citation guard: chain STOPPED at the rc-4 candidate (fb2 never consulted)" "$(cat "$FBD_COUNT")" "2"
 fbd_ledger="$(python3 - "$FBD_LEDGER" <<'PYEOF'
 import json, sys
 rows = [json.loads(line) for line in open(sys.argv[1]) if line.strip()]
@@ -786,9 +786,9 @@ print('avail-ok-fb1=' + str(sum(r.get('kind') == 'avail' and r.get('status') == 
 print('member-findings=' + str(sum(r.get('kind') == 'finding' and r.get('model') == 'fbdrop' for r in rows)))
 PYEOF
 )"
-check "HIMMEL-1871 round 9: fallback's dropped blocker blocks in the LEDGER" "$(printf '%s\n' "$fbd_ledger" | sed -n 's/^guard-blockers=//p')" "1"
-check "HIMMEL-1871 round 9: availability is truthful (ok via responding-model fb1)" "$(printf '%s\n' "$fbd_ledger" | sed -n 's/^avail-ok-fb1=//p')" "1"
-check "HIMMEL-1871 round 9: rejected fallback bullets stay out of member accuracy" "$(printf '%s\n' "$fbd_ledger" | sed -n 's/^member-findings=//p')" "0"
+check "citation guard: fallback's dropped blocker blocks in the LEDGER" "$(printf '%s\n' "$fbd_ledger" | sed -n 's/^guard-blockers=//p')" "1"
+check "citation guard: availability is truthful (ok via responding-model fb1)" "$(printf '%s\n' "$fbd_ledger" | sed -n 's/^avail-ok-fb1=//p')" "1"
+check "citation guard: rejected fallback bullets stay out of member accuracy" "$(printf '%s\n' "$fbd_ledger" | sed -n 's/^member-findings=//p')" "0"
 
 # A member exiting critic-first-pass.sh's rc 5 (SKIPPED, a clean no-op) is
 # neither a failure nor a fallback trigger: one avail row, unavailable reason
@@ -819,10 +819,10 @@ print('detail-skipped=' + ('yes' if av and all('api lane is OFF' in r.get('detai
 print('attempt-errors=' + str(sum(r.get('kind') == 'attempt' and r.get('status') == 'error' for r in rows)))
 PYEOF
 )"
-check "HIMMEL-6475: rc-5 member records reason critic-skipped, never generic-rc-5" "$(printf '%s\n' "$sk_summary" | sed -n 's/^reason=//p')" "critic-skipped"
-check "HIMMEL-6475: critic-skipped avail row carries the captured stderr, not the default detail" "$(printf '%s\n' "$sk_summary" | sed -n 's/^detail-skipped=//p')" "yes"
-check "HIMMEL-6475: rc-5 member writes no attempt error row" "$(printf '%s\n' "$sk_summary" | sed -n 's/^attempt-errors=//p')" "0"
-check "HIMMEL-6475: rc-5 member runs no fallback (stub called once)" "$(cat "$SK_COUNT")" "1"
+check "skipped critic: rc-5 member records reason critic-skipped, never generic-rc-5" "$(printf '%s\n' "$sk_summary" | sed -n 's/^reason=//p')" "critic-skipped"
+check "skipped critic: critic-skipped avail row carries the captured stderr, not the default detail" "$(printf '%s\n' "$sk_summary" | sed -n 's/^detail-skipped=//p')" "yes"
+check "skipped critic: rc-5 member writes no attempt error row" "$(printf '%s\n' "$sk_summary" | sed -n 's/^attempt-errors=//p')" "0"
+check "skipped critic: rc-5 member runs no fallback (stub called once)" "$(cat "$SK_COUNT")" "1"
 
 # rc 5 with nothing on stderr still records a non-empty detail.
 SK2_STUB="$tmp/sk2-stub.sh"
@@ -831,12 +831,12 @@ SK2_LEDGER="$tmp/sk2-ledger.jsonl"; : > "$SK2_LEDGER"
 CR_LEDGER="$SK2_LEDGER" CRITIC_LEDGER_APPEND="$HERE/ledger-append.sh" \
     CRITICS_JSON="$SK_JSON" CRITIC_FIRST_PASS="$SK2_STUB" \
     bash "$PANEL" <<< "$DIFF" > /dev/null 2> /dev/null || true
-check "HIMMEL-6475: rc-5 with empty stderr still carries a detail" "$(grep -c '"reason":"critic-skipped".*"detail":"critic SKIPPED' "$SK2_LEDGER" || true)" "1"
+check "skipped critic: rc-5 with empty stderr still carries a detail" "$(grep -c '"reason":"critic-skipped".*"detail":"critic SKIPPED' "$SK2_LEDGER" || true)" "1"
 # A skipped primary still leaves its attempt row, status skipped (not error).
-check "HIMMEL-6530: a skipped primary writes one attempt row" "$(grep -c '"kind":"attempt".*"model":"skipper"' "$SK_LEDGER" || true)" "1"
-check "HIMMEL-6530: the skipped attempt row has status skipped" "$(grep -c '"kind":"attempt".*"status":"skipped"' "$SK_LEDGER" || true)" "1"
-check "HIMMEL-6530: the skipped attempt row carries the SKIPPED stderr" "$(grep -c '"status":"skipped".*api lane is OFF' "$SK_LEDGER" || true)" "1"
-check "HIMMEL-6530: a skipped primary with empty stderr still writes its attempt row" "$(grep -c '"kind":"attempt".*"status":"skipped"' "$SK2_LEDGER" || true)" "1"
+check "skip vs broke: a skipped primary writes one attempt row" "$(grep -c '"kind":"attempt".*"model":"skipper"' "$SK_LEDGER" || true)" "1"
+check "skip vs broke: the skipped attempt row has status skipped" "$(grep -c '"kind":"attempt".*"status":"skipped"' "$SK_LEDGER" || true)" "1"
+check "skip vs broke: the skipped attempt row carries the SKIPPED stderr" "$(grep -c '"status":"skipped".*api lane is OFF' "$SK_LEDGER" || true)" "1"
+check "skip vs broke: a skipped primary with empty stderr still writes its attempt row" "$(grep -c '"kind":"attempt".*"status":"skipped"' "$SK2_LEDGER" || true)" "1"
 
 # A crashed gate (exit 1 + cfp's BROKE line) is reason critic-broke on the avail row, an error attempt row, never critic-skipped.
 BK_STUB="$tmp/bk-stub.sh"
@@ -847,9 +847,9 @@ BK_LEDGER="$tmp/bk-ledger.jsonl"; : > "$BK_LEDGER"
 CR_LEDGER="$BK_LEDGER" CRITIC_LEDGER_APPEND="$HERE/ledger-append.sh" \
     CRITICS_JSON="$BK_JSON" CRITIC_FIRST_PASS="$BK_STUB" \
     bash "$PANEL" <<< "$DIFF" > /dev/null 2> /dev/null || true
-check "HIMMEL-6530: a crashed bank preflight records reason critic-broke" "$(grep -c '"kind":"avail".*"reason":"critic-broke"' "$BK_LEDGER" || true)" "1"
-check "HIMMEL-6530: a crashed bank preflight never records critic-skipped" "$(grep -c 'critic-skipped' "$BK_LEDGER" || true)" "0"
-check "HIMMEL-6530: a crashed bank preflight writes an error attempt row" "$(grep -c '"kind":"attempt".*"status":"error"' "$BK_LEDGER" || true)" "1"
+check "skip vs broke: a crashed bank preflight records reason critic-broke" "$(grep -c '"kind":"avail".*"reason":"critic-broke"' "$BK_LEDGER" || true)" "1"
+check "skip vs broke: a crashed bank preflight never records critic-skipped" "$(grep -c 'critic-skipped' "$BK_LEDGER" || true)" "0"
+check "skip vs broke: a crashed bank preflight writes an error attempt row" "$(grep -c '"kind":"attempt".*"status":"error"' "$BK_LEDGER" || true)" "1"
 
 # Test LA: the panel persists its OWN evidence through ledger-append.sh. One run
 # contains two responders + one unavailable member and four findings, so it
@@ -935,8 +935,8 @@ for l in open(p):
 print(n)
 PYEOF
 }
-check "HIMMEL-8992 LAC: failed copy leaves no passing avail row" "$(ledger_rows "$LAC_LEDGER" avail ok)" "0"
-check "HIMMEL-8992 LAC: the responders are recorded unavailable (record-failed)" "$(ledger_rows "$LAC_LEDGER" avail unavailable record-failed)" "2"
+check "unrecorded findings LAC: failed copy leaves no passing avail row" "$(ledger_rows "$LAC_LEDGER" avail ok)" "0"
+check "unrecorded findings LAC: the responders are recorded unavailable (record-failed)" "$(ledger_rows "$LAC_LEDGER" avail unavailable record-failed)" "2"
 
 LAW_APPEND="$tmp/law-append.sh"
 cat > "$LAW_APPEND" <<LAWEOF
@@ -950,18 +950,18 @@ law_rc=0
 LAW_FAIL=1 CR_LEDGER="$LAW_LEDGER" CRITIC_LEDGER_APPEND="$LAW_APPEND" \
     CRITICS_JSON="$tmp/critics-all.json" CRITIC_FIRST_PASS="$STUB" \
     bash "$PANEL" <<< "$DIFF" > "$tmp/law-out" 2> "$tmp/law-err" || law_rc=$?
-check "HIMMEL-8992 LAW: a failed finding batch makes the panel uncertified" "$law_rc" "5"
-check "HIMMEL-8992 LAW: a failed finding batch leaves no passing avail row" "$(ledger_rows "$LAW_LEDGER" avail ok)" "0"
-check "HIMMEL-8992 LAW: the responders are recorded unavailable (record-failed)" "$(ledger_rows "$LAW_LEDGER" avail unavailable record-failed)" "2"
-check "HIMMEL-8992 LAW: the failing member keeps its own unavailable reason" "$(ledger_rows "$LAW_LEDGER" avail unavailable)" "3"
+check "unrecorded findings LAW: a failed finding batch makes the panel uncertified" "$law_rc" "5"
+check "unrecorded findings LAW: a failed finding batch leaves no passing avail row" "$(ledger_rows "$LAW_LEDGER" avail ok)" "0"
+check "unrecorded findings LAW: the responders are recorded unavailable (record-failed)" "$(ledger_rows "$LAW_LEDGER" avail unavailable record-failed)" "2"
+check "unrecorded findings LAW: the failing member keeps its own unavailable reason" "$(ledger_rows "$LAW_LEDGER" avail unavailable)" "3"
 LAW2_LEDGER="$tmp/law2-ledger.jsonl"; : > "$LAW2_LEDGER"
 law2_rc=0
 LAW_FAIL='' CR_LEDGER="$LAW2_LEDGER" CRITIC_LEDGER_APPEND="$LAW_APPEND" \
     CRITICS_JSON="$tmp/critics-all.json" CRITIC_FIRST_PASS="$STUB" \
     bash "$PANEL" <<< "$DIFF" > "$tmp/law2-out" 2> "$tmp/law2-err" || law2_rc=$?
-check "HIMMEL-8992 LAW control: a recorded run is certified" "$law2_rc" "0"
-check "HIMMEL-8992 LAW control: a recorded run still writes avail ok" "$(ledger_rows "$LAW2_LEDGER" avail ok)" "2"
-check "HIMMEL-8992 LAW control: a recorded run still writes its findings" "$(ledger_rows "$LAW2_LEDGER" finding)" "4"
+check "unrecorded findings LAW control: a recorded run is certified" "$law2_rc" "0"
+check "unrecorded findings LAW control: a recorded run still writes avail ok" "$(ledger_rows "$LAW2_LEDGER" avail ok)" "2"
+check "unrecorded findings LAW control: a recorded run still writes its findings" "$(ledger_rows "$LAW2_LEDGER" finding)" "4"
 
 # Test LAP: parallel mode self-appends the SAME ledger evidence as sequential.
 # The evidence path flows through
@@ -1174,7 +1174,7 @@ PR_DUMP="$tmp/pr-dump.txt"; export PR_DUMP
 PATH="$PR_BIN:$PATH" CR_LEDGER="$tmp/pr-ledger.jsonl" CRITIC_LEDGER_APPEND="$HERE/ledger-append.sh" \
     CRITICS_JSON="$tmp/critics-pin.json" CRITIC_FIRST_PASS="$PR_STUB" \
     bash "$PANEL" --worktree "$WT_REPO" --head "$wt_head" --branch feature > /dev/null 2>&1 || true  # swallow-ok: asserted on the dump below
-check "HIMMEL-6490: the critic receives the branch's open PR number" "$(cat "$PR_DUMP" 2>/dev/null)" "4242"
+check "launch record: the critic receives the branch's open PR number" "$(cat "$PR_DUMP" 2>/dev/null)" "4242"
 check "PIN1: the critic saw the diff of the PINNED range" \
     "$(cat "$PIN_DUMP" 2>/dev/null)" "$(git -C "$WT_REPO" diff "main...$wt_head")"
 check "PIN1: ledger rows stamp the pinned head" \
@@ -1788,7 +1788,7 @@ check "F: paid kimi skipped -> 2/2" "$(printf '%s\n' "$out_f" | grep -cF '(2/2 c
 # reported tier-excluded instead of silently invisible, so a ledger row lands
 # for clear-cr-marker's CR_FLOOR_FALLBACK=claude-only exhaustion check. Assert
 # the honest diagnostic, and that kimi was still never actually CONSULTED.
-check_contains "F: paid kimi reported tier-excluded (HIMMEL-2129)" "$stderr_f" \
+check_contains "F: paid kimi reported tier-excluded" "$stderr_f" \
     "panel-availability: kimi unavailable (tier=paid not in filter(free)) reason=tier-excluded"
 check "F: kimi never actually consulted (no ok line)" \
     "$(printf '%s\n' "$stderr_f" | grep -cF 'panel-availability: kimi ok')" "0"
@@ -2083,7 +2083,7 @@ check "L1: paid-only -> 1/1 responded" "$(printf '%s\n' "$out_l1" | grep -cF '(1
 # gptoss (tier=free, excluded by CR_PROFILE=paid) is now reported
 # tier-excluded instead of silently invisible. Assert the honest diagnostic,
 # and that gptoss was still never actually CONSULTED (no "ok" avail line).
-check_contains "L1: free row gptoss reported tier-excluded (HIMMEL-2129)" "$stderr_l1" \
+check_contains "L1: free row gptoss reported tier-excluded" "$stderr_l1" \
     "panel-availability: gptoss unavailable (tier=free not in filter(paid)) reason=tier-excluded"
 check "L1: gptoss never actually consulted (no ok line)" \
     "$(printf '%s\n' "$stderr_l1" | grep -cF 'panel-availability: gptoss ok')" "0"
@@ -2265,7 +2265,7 @@ stderr_l="$(printf '%s' "$DIFF" | CRITIC_FIRST_PASS="$CAPTURE_STUB" bash "$tmp/p
 check "O1: local overlay used when present" "$(printf '%s\n' "$stderr_l" | grep -cF 'panel-availability: localoverlay')" "1"
 # the base row is now MERGED IN (not masked by the overlay). Reverting
 # Change 2 to wholesale replacement makes this assertion fail — it guards the shift.
-check "O1: base row also merged in (HIMMEL-1221)" "$(printf '%s\n' "$stderr_l" | grep -cF 'panel-availability: repodefault')" "1"
+check "O1: base row also merged in" "$(printf '%s\n' "$stderr_l" | grep -cF 'panel-availability: repodefault')" "1"
 check "O1: overlay merge announced on stderr" "$(printf '%s\n' "$stderr_l" | grep -cF 'critics.local.json')" "1"
 stderr_l2="$(printf '%s' "$DIFF" | CRITICS_JSON="$tmp/panelcopy/critics.json" CRITIC_FIRST_PASS="$CAPTURE_STUB" bash "$tmp/panelcopy/critic-panel.sh" 2>&1 >/dev/null)"
 check "O2: CRITICS_JSON env wins over local overlay" "$(printf '%s\n' "$stderr_l2" | grep -cF 'panel-availability: repodefault')" "1"
@@ -2519,13 +2519,13 @@ chmod +x "$P1065_STUB"
 ( cd "$P1065_CWX" && unset CLIPROXY_API_KEY \
     && printf '%s' "$DIFF" | CR_PROFILE=paid CRITICS_JSON="$P1065_JSON" CRITIC_FIRST_PASS="$P1065_STUB" \
        bash "$P1065_ROOT/scripts/cr/critic-panel.sh" >/dev/null 2>&1 )
-check "HIMMEL-1065: codex credential resolves from the primary .env (not the cwd repo's decoy)" "$(cat "$P1065_KEY" 2>/dev/null)" "cpx-himmel-root"
+check "worktree fail-open: codex credential resolves from the primary .env (not the cwd repo's decoy)" "$(cat "$P1065_KEY" 2>/dev/null)" "cpx-himmel-root"
 # A live process value still wins (load_dotenv only-when-unset).
 : > "$P1065_KEY"
 ( cd "$P1065_CWX" && export CLIPROXY_API_KEY=process-key \
     && printf '%s' "$DIFF" | CR_PROFILE=paid CRITICS_JSON="$P1065_JSON" CRITIC_FIRST_PASS="$P1065_STUB" \
        bash "$P1065_ROOT/scripts/cr/critic-panel.sh" >/dev/null 2>&1 )
-check "HIMMEL-1065: live process CLIPROXY_API_KEY wins over the .env value" "$(cat "$P1065_KEY" 2>/dev/null)" "process-key"
+check "worktree fail-open: live process CLIPROXY_API_KEY wins over the .env value" "$(cat "$P1065_KEY" 2>/dev/null)" "process-key"
 
 # --- zero-responder fail-closed output ------------------
 # When EVERY critic is unavailable, the panel must emit NO "(N found)" findings
@@ -2543,13 +2543,13 @@ EOS
 chmod +x "$P1065_FAIL_STUB"
 P1065_ZRC=0
 P1065_ZOUT="$(printf '%s' "$DIFF" | CR_PROFILE=paid CRITICS_JSON="$P1065_ZJSON" CRITIC_FIRST_PASS="$P1065_FAIL_STUB" bash "$PANEL" 2>/dev/null)" || P1065_ZRC=$?
-check "HIMMEL-1065: zero responders -> non-zero exit (regression)" "$([ "$P1065_ZRC" -ne 0 ] && echo nonzero || echo zero)" "nonzero"
-check "HIMMEL-1065: zero responders -> NO '## Critical Issues' section" "$(printf '%s\n' "$P1065_ZOUT" | grep -cF '## Critical Issues')" "0"
-check "HIMMEL-1065: zero responders -> NO '## Important Issues' section" "$(printf '%s\n' "$P1065_ZOUT" | grep -cF '## Important Issues')" "0"
-check "HIMMEL-1065: zero responders -> NO '## Suggestions' section" "$(printf '%s\n' "$P1065_ZOUT" | grep -cF '## Suggestions')" "0"
-check_contains "HIMMEL-1065: zero responders -> unmistakable REVIEW NOT PERFORMED block" "$P1065_ZOUT" "REVIEW NOT PERFORMED"
-check_contains "HIMMEL-1065: zero responders -> names the unavailable critic" "$P1065_ZOUT" "- codex: unavailable"
-check_contains "HIMMEL-1065: zero responders -> header reports 0/1" "$P1065_ZOUT" "(0/1 critics responded)"
+check "worktree fail-open: zero responders -> non-zero exit (regression)" "$([ "$P1065_ZRC" -ne 0 ] && echo nonzero || echo zero)" "nonzero"
+check "worktree fail-open: zero responders -> NO '## Critical Issues' section" "$(printf '%s\n' "$P1065_ZOUT" | grep -cF '## Critical Issues')" "0"
+check "worktree fail-open: zero responders -> NO '## Important Issues' section" "$(printf '%s\n' "$P1065_ZOUT" | grep -cF '## Important Issues')" "0"
+check "worktree fail-open: zero responders -> NO '## Suggestions' section" "$(printf '%s\n' "$P1065_ZOUT" | grep -cF '## Suggestions')" "0"
+check_contains "worktree fail-open: zero responders -> unmistakable REVIEW NOT PERFORMED block" "$P1065_ZOUT" "REVIEW NOT PERFORMED"
+check_contains "worktree fail-open: zero responders -> names the unavailable critic" "$P1065_ZOUT" "- codex: unavailable"
+check_contains "worktree fail-open: zero responders -> header reports 0/1" "$P1065_ZOUT" "(0/1 critics responded)"
 
 # ===========================================================================
 # the panel's finding rows reach the ledger through ONE
@@ -2588,15 +2588,15 @@ printf '%s' "$DIFF" | HERMES_PY="$P2052_PY" CR_LEDGER="$P2052_LEDGER" \
     CRITIC_LEDGER_APPEND="$HERE/ledger-append.sh" CRITICS_JSON="$P2052_JSON" \
     CRITIC_FIRST_PASS="$HERE/critic-first-pass.sh" bash "$PANEL" >/dev/null 2>&1 || true
 
-check "HIMMEL-2052: multi-critic batch path writes EVERY finding row to the ledger" \
+check "batch ledger path: multi-critic batch path writes EVERY finding row to the ledger" \
     "$(grep -c '"kind":"finding"' "$P2052_LEDGER" 2>/dev/null || echo 0)" "4"
-check "HIMMEL-2052: batch rows keep per-finding severity (crit + imp, not one blanket value)" \
+check "batch ledger path: batch rows keep per-finding severity (crit + imp, not one blanket value)" \
     "$(node -e 'const fs=require("fs");const rs=fs.readFileSync(process.argv[1],"utf8").trim().split("\n").filter(Boolean).map(JSON.parse).filter(r=>r.kind==="finding");console.log(rs.map(r=>r.severity).sort().join(","))' "$P2052_LEDGER" 2>/dev/null)" \
     "crit,crit,imp,imp"
-check "HIMMEL-2052: batch rows carry the citation file+line through the \\034 split" \
+check "batch ledger path: batch rows carry the citation file+line through the \\034 split" \
     "$(node -e 'const fs=require("fs");const rs=fs.readFileSync(process.argv[1],"utf8").trim().split("\n").filter(Boolean).map(JSON.parse).filter(r=>r.kind==="finding"&&r.severity==="crit");console.log(rs[0]&&(rs[0].file+":"+rs[0].line))' "$P2052_LEDGER" 2>/dev/null)" \
     "foo.sh:2"
-check "HIMMEL-2052: EVERY critic's spool reaches the ledger, not just the first" \
+check "batch ledger path: EVERY critic's spool reaches the ledger, not just the first" \
     "$(node -e 'const fs=require("fs");const rs=fs.readFileSync(process.argv[1],"utf8").trim().split("\n").filter(Boolean).map(JSON.parse).filter(r=>r.kind==="finding");console.log([...new Set(rs.map(r=>r.model))].sort().join(","))' "$P2052_LEDGER" 2>/dev/null)" \
     "batchy,batchy2"
 
@@ -2615,8 +2615,8 @@ chmod +x "$M3492_BIN/mktemp"
 m3492_err="$(printf '%s' "$DIFF" | PATH="$M3492_BIN:$PATH" CRITICS_JSON="$tmp/critics-all.json" \
     CRITIC_FIRST_PASS="$STUB" bash "$PANEL" 2>&1 >/dev/null)"
 m3492_rc=$?
-check "HIMMEL-3492: failed spool mktemp exits 2" "$m3492_rc" "2"
-check_contains "HIMMEL-3492: failed spool mktemp names the failure" "$m3492_err" "critic-panel: mktemp failed"
+check "failed spool mktemp exits 2" "$m3492_rc" "2"
+check_contains "failed spool mktemp names the failure" "$m3492_err" "critic-panel: mktemp failed"
 
 # A failed diff temp-file mktemp must stop the panel with the same
 # clear message, not build review input from an empty path. The stub fails ONLY
@@ -2631,14 +2631,14 @@ chmod +x "$M5830_BIN/mktemp"
 m5830_err="$(printf '%s' "$DIFF" | PATH="$M5830_BIN:$PATH" CRITICS_JSON="$tmp/critics-all.json" \
     CRITIC_FIRST_PASS="$STUB" bash "$PANEL" 2>&1 >/dev/null)"
 m5830_rc=$?
-check "HIMMEL-5830: failed diff temp mktemp exits 2" "$m5830_rc" "2"
-check_contains "HIMMEL-5830: failed diff temp mktemp names the failure" "$m5830_err" "critic-panel: mktemp failed"
+check "failed diff temp mktemp exits 2" "$m5830_rc" "2"
+check_contains "failed diff temp mktemp names the failure" "$m5830_err" "critic-panel: mktemp failed"
 
 # Exit 2 is documented as usage error OR temp-file failure, in the header and
 # in usage(), so an operator with a full TMPDIR is not sent chasing a critic
 # outage.
-check_contains "HIMMEL-6088: header documents the temp-file exit 2" "$(sed -n 1,20p "$PANEL")" "mktemp temp-file failure"
-check_contains "HIMMEL-6088: usage() documents the temp-file exit 2" "$(bash "$PANEL" --bogus-flag 2>&1 >/dev/null)" "mktemp temp-file failure"
+check_contains "header documents the temp-file exit 2" "$(sed -n 1,20p "$PANEL")" "mktemp temp-file failure"
+check_contains "usage() documents the temp-file exit 2" "$(bash "$PANEL" --bogus-flag 2>&1 >/dev/null)" "mktemp temp-file failure"
 
 # The remaining mktemp sites (check prompt, fallback out/err, sequential out/err,
 # parallel outdir) stop with the same clear message and exit 2. One PATH-shadowed
@@ -2657,8 +2657,8 @@ STUBEOF
 }
 m5866_assert() {
     local label="$1" rc="$2" err="$3"
-    check "HIMMEL-5866: failed $label mktemp exits 2" "$rc" "2"
-    check_contains "HIMMEL-5866: failed $label mktemp names the failure" "$err" "critic-panel: mktemp failed"
+    check "failed $label mktemp exits 2" "$rc" "2"
+    check_contains "failed $label mktemp names the failure" "$err" "critic-panel: mktemp failed"
 }
 
 m5866_bin="$(m5866_stub check '*critic-panel-check.*')"
@@ -2711,7 +2711,7 @@ m5866_assert "fallback err" "$?" "$m5866_err"
 m5866_bin="$(m5866_stub none '*no-such-template*')"
 m5866_err="$(printf '%s' "$DIFF" | PATH="$m5866_bin:$PATH" CRITICS_JSON="$tmp/critics-all.json" \
     CRITIC_FIRST_PASS="$STUB" bash "$PANEL" 2>&1 >/dev/null)"
-check "HIMMEL-5866: pass-through mktemp leaves the panel running (rc 0)" "$?" "0"
+check "pass-through mktemp leaves the panel running (rc 0)" "$?" "0"
 
 # The ledger helper runs inside `while read ... < spool` loops; a helper
 # that reads stdin must not consume the remaining spool lines. Two
@@ -2728,7 +2728,7 @@ printf '%s\n' "\$1" >> "$H1505_CALLS"
 EOSTUB
 CRITIC_LEDGER_APPEND="$H1505_APPEND" CRITICS_JSON="$H1505_JSON" CRITIC_FIRST_PASS="$STUB" \
     bash "$PANEL" <<< "$DIFF" > /dev/null 2>&1
-check "HIMMEL-1505: stdin-draining ledger helper is called once per spooled avail row" \
+check "stdin-draining ledger helper is called once per spooled avail row" \
     "$(grep -c '^avail$' "$H1505_CALLS" || true)" "2"
 
 # --context-file reaches every member, sequential and

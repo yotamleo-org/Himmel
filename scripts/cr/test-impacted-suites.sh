@@ -318,7 +318,7 @@ if grepq "$out" '^scripts/test-diff-var\.sh$'; then pass "extensionless diff: a 
 if grepq "$out" '^scripts/test-diff-source\.sh$'; then pass "bare 'source diff' after a cd is listed"; else fail "source diff suite under-listed: $out"; fi
 if grepq "$out" '^scripts/test-diff-dot\.sh$'; then pass "bare '. \"diff\"' after a cd is listed"; else fail ". diff suite under-listed: $out"; fi
 if grepq "$out" '^scripts/test-diff-directive\.sh$'; then pass "'# shellcheck source=diff' is listed"; else fail "shellcheck source=diff suite under-listed: $out"; fi
-if grepq "$out" '^scripts/test-diff-dashdash\.sh$'; then pass "'source -- diff' is listed (HIMMEL-4978)"; else fail "source -- diff suite under-listed: $out"; fi
+if grepq "$out" '^scripts/test-diff-dashdash\.sh$'; then pass "'source -- diff' is listed"; else fail "source -- diff suite under-listed: $out"; fi
 if grepq "$out" '^scripts/test-diff-helper\.sh$'; then pass "a suite reaching diff through a sourcing helper is listed"; else fail "source-closure bare-name suite under-listed: $out"; fi
 if ! grepq "$out" 'test-diff-plain\.sh' && ! grepq "$out" 'test-diff-prose\.sh' && ! grepq "$out" 'test-diff-word\.sh'; then pass "a plain 'diff a b' command and comment prose stay unlisted"; else fail "plain diff over-listed: $out"; fi
 
