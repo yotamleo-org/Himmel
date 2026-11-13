@@ -634,7 +634,7 @@ out=$(run_upgrade --yes 2>&1); rc=$?
 # (a) classified as a conflict, NOT an error. The conflict branch writes the
 #     sidecar and plans "(CONFLICT — ...)" ; the error branch writes no sidecar
 #     and plans "(ERROR — git merge-file failed)". Either alone discriminates.
-if [ -f "$V/_CLAUDE.md.template-merge" ]; then pass "T27 multi-hunk classified as conflict (sidecar written)"; else fail "T27 multi-hunk classified as conflict (sidecar written)" "no sidecar — fell into the error branch (HIMMEL-1366)"; fi
+if [ -f "$V/_CLAUDE.md.template-merge" ]; then pass "T27 multi-hunk classified as conflict (sidecar written)"; else fail "T27 multi-hunk classified as conflict (sidecar written)" "no sidecar — a multi-hunk conflict fell into the merge-file error branch"; fi
 case "$out" in *"ERROR — git merge-file failed"*) fail "T27 multi-hunk not classified as error" "error plan hit: $out" ;; *) pass "T27 multi-hunk not classified as error" ;; esac
 # (b) the sidecar actually holds the conflicted 3-way merge (>=2 conflict markers).
 if [ -f "$V/_CLAUDE.md.template-merge" ]; then markers=$(grep -c '<<<<<<<' "$V/_CLAUDE.md.template-merge"); else markers=0; fi

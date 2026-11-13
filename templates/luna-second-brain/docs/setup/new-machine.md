@@ -108,7 +108,7 @@ This sweeper is the template's default sync path. The bundled **GitHub Sync**
 Obsidian plugin is an alternative, opt-in mechanism (`bash scripts/upgrade.sh
 --with-github-sync`, or `LUNA_WITH_GITHUB_SYNC=1`) — pick one, not both: the
 plugin commits from inside Obsidian on its own ~10-minute tick, which races
-the sweeper's own commits (HIMMEL-3066). See `.obsidian/PLUGINS-SETUP.md`.
+the sweeper's own commits. See `.obsidian/PLUGINS-SETUP.md`.
 
 ### Push authentication
 

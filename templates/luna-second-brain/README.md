@@ -98,8 +98,8 @@ the detail.
 | **PARA folder layout + templates**              | `_CLAUDE.md` (`## Folder Map` + `## Templates`)                                        |
 | **Pre-commit + pre-push hooks**                 | `.pre-commit-config.yaml` (trailing-ws, eof-fixer, yaml/json, shellcheck, gitleaks, worktree-isolation, no-push-to-main, no-force-push) |
 | **Shared git-state predicates**                 | `scripts/guardrails/lib.sh` (`is_on_main`, `is_main_ref`, `is_dirty` + `guard_call`)   |
-| **Handover-path resolver (HIMMEL-118)**         | `scripts/lib/handover-path.sh` (Mode A inline default, Mode B external via HANDOVER_DIR) |
-| **USER_SLUG resolver (HIMMEL-145)**             | `scripts/lib/user-slug.sh` (env var → git config fallback)                             |
+| **Handover-path resolver**                      | `scripts/lib/handover-path.sh` (Mode A inline default, Mode B external via HANDOVER_DIR) |
+| **USER_SLUG resolver**                          | `scripts/lib/user-slug.sh` (env var → git config fallback)                             |
 | **Setup script**                                | `scripts/setup.sh`                                                                     |
 
 ## Vault layout

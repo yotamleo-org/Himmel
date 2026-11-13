@@ -89,8 +89,7 @@ mode:
 - **Access paths in use:** read the vault with grep, qmd and the graphify
   CLI (see Retrieval Routing above); write notes as plain files. No vault
   MCP server or claude-obsidian skill is loaded in a default session, so do
-  not assume one is there. obsidian-second-brain is no longer part of himmel
-  (HIMMEL-8416).
+  not assume one is there. obsidian-second-brain is no longer part of himmel.
 - **Session capture:** a `SessionEnd` hook (`scripts/hooks/end-session-wiki.sh`)
   writes eligible session notes under `sessions/YYYY/MM/` in the resolved
   target vault. If the target key is rejected because another vault owns the
@@ -102,8 +101,8 @@ mode:
   `docs/luna/end-session-wiki.md` in the himmel repo.
 - **Where the structure came from:** a custom PARA tree, the
   obsidian-second-brain manual pattern, and the claude-obsidian hot cache
-  (`hot.md`). Research: `specs/research/HIMMEL-7168-luna-structure-2026-10-23.md`
-  in the state repo bucket.
+  (`hot.md`). Research: the luna structure note of 2026-10-23 under
+  `specs/research/` in the state repo bucket.
 
 ---
 
