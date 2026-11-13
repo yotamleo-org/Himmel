@@ -2090,17 +2090,21 @@ esac
 _arm_bridge_marked() {
     [ "${HIMMEL_BRIDGE_SESSION:-}" = "1" ] && return 0
     [ -d /proc/self ] || return 1
-    local pid=$$ hop=0 uid own_uid ppid
+    local pid=$$ hop=0 uid own_uid ppid env_lines
     own_uid=$(awk '/^Uid:/{print $2; exit}' "/proc/$$/status" 2>/dev/null) || return 0
     [ -n "$own_uid" ] || return 0
     while [ "$pid" -gt 1 ] && [ "$hop" -lt 64 ]; do
-        uid=$(awk '/^Uid:/{print $2; exit}' "/proc/$pid/status" 2>/dev/null)
+        uid=$(awk '/^Uid:/{print $2; exit}' "/proc/$pid/status" 2>/dev/null) || return 0
         [ -n "$uid" ] || return 0
         [ "$uid" = "$own_uid" ] || return 1
-        [ -r "/proc/$pid/environ" ] || return 0
-        tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | grep -qx 'HIMMEL_BRIDGE_SESSION=1' && return 0
-        ppid=$(awk '/^PPid:/{print $2; exit}' "/proc/$pid/status" 2>/dev/null)
+        ppid=$(awk '/^PPid:/{print $2; exit}' "/proc/$pid/status" 2>/dev/null) || return 0
         [ -n "$ppid" ] || return 0
+        # The user service manager (a child of pid 1 in the host pid namespace) guards its env, as in the fence.
+        if env_lines=$(tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null); then
+            case $'\n'"$env_lines"$'\n' in *$'\n'HIMMEL_BRIDGE_SESSION=1$'\n'*) return 0 ;; esac
+        elif [ "$ppid" != 1 ] || [ "$(awk '/^NSpid:/{print NF - 1; exit}' "/proc/$pid/status" 2>/dev/null)" != 1 ]; then
+            return 0
+        fi
         pid=$ppid; hop=$((hop + 1))
     done
     return 1
