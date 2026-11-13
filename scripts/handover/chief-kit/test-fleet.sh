@@ -502,12 +502,14 @@ ttfleet() {
         "$@" node "$SUT" --json "${COMMON[@]}"
 }
 : > "$TTLOG"
-J8="$(ttfleet GH_STUB_MAINFAIL=rate)"
+J8="$(ttfleet GH_STUB_MAINFAIL=rate)"; rc8=$?
+eq "S8a main spent: the snapshot exits 0" "$rc8" "0"
 eq "S8a main spent: the open-PR read logs tok=read" "$(ttlog '^tok=read argv=pr list --state open')" "1"
 eq "S8a main spent: no PR read logs tok=main" "$(ttlog '^tok=main ')" "0"
 eq "S8a main spent: the PR still joins its worker" "$(printf '%s' "$J8" | q 'L("N1").pr.number+":"+L("N1").pr.ci')" "2002:failing"
 : > "$TTLOG"; : > "$ENVLOG"
-J8="$(ttfleet GH_STUB_MAINFAIL=rate FLEET_GH="$W/bin/gh-rec")"
+J8="$(ttfleet GH_STUB_MAINFAIL=rate FLEET_GH="$W/bin/gh-rec")"; rc8=$?
+eq "S8a control: the snapshot exits 0 with FLEET_GH set" "$rc8" "0"
 eq "S8a control: FLEET_GH set, the helper is never used" "$(ttlog '^tok=')" "0"
 eq "S8a control: FLEET_GH set, the PR still joins its worker" "$(printf '%s' "$J8" | q 'L("N1").pr.number+":"+L("N1").pr.ci')" "2002:failing"
 eq "S8a control: the gh child has GH_READ_QUIET=1" "$(sort -u "$ENVLOG")" "1"

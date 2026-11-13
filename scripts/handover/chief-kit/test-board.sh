@@ -1658,7 +1658,10 @@ STUB
 cat > "$W/bin/cloud-gh-rec" <<'STUB'
 #!/usr/bin/env bash
 printf '%s|%s\n' "${GH_READ_QUIET:-unset}" "${GH_READ_NO_MAIN_FALLBACK:-unset}" >> "$S8A_CLOUD_ENVLOG"
-cat "$CLOUD_FIXTURE"
+case "$*" in
+    "pr list --state all --limit "*" --json number,title,body,state,headRefName,createdAt,mergedAt,closedAt,comments,commits") cat "$CLOUD_FIXTURE" ;;
+    *) echo "cloud-gh-rec: unexpected argv: $*" >&2; exit 1 ;;
+esac
 STUB
 chmod +x "$W/bin/gh-s8a" "$W/bin/gh-s8a-rec" "$W/bin/cloud-gh-rec"
 ttboard() {
@@ -1686,12 +1689,14 @@ printf '%s\t%s\t%s\t%s\n' \
     > "$M/cloud-sessions.tsv"
 : > "$TTLOG"
 ttboard GH_STUB_MAINFAIL=rate >/dev/null; rc=$?
+same 'S8a main spent with cloud sessions: the board exits 0' "$rc" 0
 html="$(cat "$M/tt-board.html")"
 contains 'S8a main spent: the cloud panel lists the session, not unavailable' "$html" 'data-cloud-ticket="HIMMEL-5077" data-state="unshepherded"'
 same 'S8a main spent: the cloud list logs tok=read' "$(ttlog '^tok=read argv=pr list --state all')" 1
 same 'S8a main spent: no read, cloud list included, logs tok=main' "$(ttlog '^tok=main ')" 0
 : > "$TTLOG"
 ttboard GH_STUB_READFAIL=rate >/dev/null; rc=$?
+same 'S8a read token limited: the board exits 0' "$rc" 0
 html="$(cat "$M/tt-board.html")"
 contains 'S8a read token limited, main healthy: the cloud scan reports unavailable' "$html" 'data-cloud-panel="unavailable"'
 same 'S8a read token limited: the cloud list is tried on the read token' "$(ttlog '^tok=read argv=pr list --state all')" 1
@@ -1699,6 +1704,7 @@ same 'S8a read token limited: the cloud list never reads on main' "$(ttlog '^tok
 same 'S8a read token limited: the board'"'"'s own open-PR read still falls back to main' "$(ttlog '^tok=main argv=pr list --state open')" 1
 : > "$TTLOG"; : > "$ENVLOG"; : > "$CENVLOG"
 ttboard GH_STUB_MAINFAIL=rate BOARD_GH="$W/bin/gh-s8a-rec" CLOUD_LIVENESS_GH_CMD="$W/bin/cloud-gh-rec" >/dev/null; rc=$?
+same 'S8a control: the board exits 0 with both seams set' "$rc" 0
 html="$(cat "$M/tt-board.html")"
 same 'S8a control: BOARD_GH and CLOUD_LIVENESS_GH_CMD set, the helper is never used' "$(ttlog '^tok=')" 0
 contains 'S8a control: the set cloud seam still feeds the panel' "$html" 'data-cloud-ticket="HIMMEL-5077" data-state="unshepherded"'
