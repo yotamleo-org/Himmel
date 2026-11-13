@@ -1021,6 +1021,16 @@ _subst_row "105q fromW: cd scratch && loop running rm on a relative file allows"
     "cd $FIX/scratch8200 && for s in a; do rm f; done"
 _subst_row "105r fromP: cd scratch && loop running rm on a relative file denies" block \
     "cd $FIX/scratch8200 && for s in a; do rm f; done" "$FIX/primary"
+_subst_row "105s fromW: cd scratch && \$(printf %s c d) primary && echo x > f denies" block \
+    "cd $FIX/scratch8200 && \$(printf %s c d) $FIX/primary && echo x > f"
+_subst_row "105t fromW: cd scratch && c=c && d=d, loop running \$c\$d primary, relative write denies" block \
+    "cd $FIX/scratch8200 && c=c && d=d && for s in a; do \$c\$d $FIX/primary; done; echo x > f"
+_subst_row "105u fromW: cd scratch && loop running source ./x.sh, relative write denies" block \
+    "cd $FIX/scratch8200 && for s in a; do source ./x.sh; done; echo x > f"
+_subst_row "105v fromW: cd scratch && loop running . ./x.sh, relative write denies" block \
+    "cd $FIX/scratch8200 && for s in a; do . ./x.sh; done; echo x > f"
+_subst_row "105w fromW: cd scratch && loop running a backtick-built command word, relative write denies" block \
+    "cd $FIX/scratch8200 && for s in a; do \`printf cd\` $FIX/primary; done; echo x > f"
 }
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

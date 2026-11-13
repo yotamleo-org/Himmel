@@ -227,6 +227,11 @@ cp "$HOOKS/../lib/vmsdk.py" "$FIX/loose/scripts/lib/"
 printf '# other\n' > "$FIX/loose/scripts/lib/vbox.py"
 [ -f "$FIX/wtge/scripts/lib/vbox.py" ] || bad "107 setup: the guest-exec fixture worktree was not created"
 grep -q '^echo edited$' "$FIX/wtgeb/scripts/vm/guest-exec.sh" || bad "107 setup: the edited guest-exec worktree was not created"
+mkdir -p "$FIX/symge/scripts/lib"
+ln -sfn "$FIX/wtge/scripts/vm" "$FIX/symge/scripts/vm"
+cp "$HOOKS/../lib/vbox.py" "$FIX/symge/scripts/lib/"
+printf 'import os\n' > "$FIX/symge/scripts/lib/vmsdk.py"
+[ -L "$FIX/symge/scripts/vm" ] && [ -f "$FIX/symge/scripts/vm/guest-exec.sh" ] || bad "107k setup: the symlinked scripts/vm was not created"
 _GW="$FIX/wtge"
 {
 _subst_row "107a guest-exec -- bash -c 'cd ~/himmel && git log -1' (ALLOW)" allow \
@@ -249,6 +254,8 @@ _subst_row "107i a guest-exec.sh whose bytes differ from this checkout's denies"
     "bash $FIX/wtgeb/scripts/vm/guest-exec.sh vm -- bash -c 'echo x > $_PR/f'" "$_GW"
 _subst_row "107j cd /tmp && guest-exec (not the whole command) denies" block \
     "cd /tmp && bash scripts/vm/guest-exec.sh vm -- bash -c 'echo x > $_PR/f'" "$_GW"
+_subst_row "107k a symlinked scripts/vm beside a planted scripts/lib/vmsdk.py denies" block \
+    "bash $FIX/symge/scripts/vm/guest-exec.sh vm -- bash -c 'cd ~/himmel && git log -1'" "$_GW"
 }
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

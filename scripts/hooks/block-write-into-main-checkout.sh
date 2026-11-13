@@ -2739,6 +2739,22 @@ _bwimc_ecwd_track() {
     [ "$i" -lt "$n" ] || return 0
     _bwimc_unqv "${toks[$i]}"; tu=$_BWIMC_UNQ
     cmdi=$i
+    # A cd kept through a tainted line (cdkeep below) rests on the count of literal cd words,
+    # which a command word built at run time ($(printf %s c d), $c$d, a backtick, a glob) or a
+    # sourced or evaluated text can still spell. While it holds, such a clause unresolves the cwd.
+    if [ "${_bwimc_ecwd_kept:-0}" = 1 ]; then
+        j=$cmdi
+        while [ "$j" -lt "$n" ] && [[ ${toks[$j]} =~ ^[A-Za-z_][A-Za-z0-9_]*\+?= ]]; do j=$((j+1)); done
+        if [ "$j" -lt "$n" ]; then
+            _bwimc_unqv "${toks[$j]}"
+            case "${toks[$j]}" in
+                *'$'*|*'`'*|*[*?[]*|*[$'\001'$'\002'$'\003'$'\004'$'\005'$'\006']*) _bwimc_ecwd_unres=1 ;;
+            esac
+            case "$_BWIMC_UNQ" in
+                eval|source|.|command|exec|time|nohup|trap) _bwimc_ecwd_unres=1 ;;
+            esac
+        fi
+    fi
     # A sure cd (set at the end of this function) survives only a later clause whose command
     # word is a literal from this closed set of commands that cannot move the shell's cwd.
     # Anything else (a cd/pushd/popd, eval, `.`/source, a variable or brace-expanded command word,
@@ -2879,15 +2895,18 @@ _bwimc_ecwd_track() {
                                 && _bwimc_ecwd_sure=1 && _bwimc_ecwd_cs="$cs"
                             # The same leading cd when a loop, `$(…)`, `<(…)` or a pipe taints the
                             # line (piped=1): the shell is in $r or, if the cd never took, still in
-                            # the payload cwd, because the command holds no other cd word
-                            # (_bwimc_orig_onecd). The cwd is kept, never sure, so _bwimc_cd_guard
-                            # checks each relative candidate against both $r and the payload cwd.
+                            # the payload cwd, because the command holds no other literal cd word
+                            # (_bwimc_orig_onecd) and every later clause with a run-time command word
+                            # unresolves the cwd (_bwimc_ecwd_kept, top of this function). The cwd is
+                            # kept, never sure, so _bwimc_cd_guard checks each relative candidate
+                            # against both $r and the payload cwd.
                             if [ "$first" = 1 ] && [ "$cmdi" = 0 ] && [ "$piped" = 1 ] \
                                 && [ "${_bwimc_orig_onecd:-0}" = 1 ] \
                                 && [ "$i" = 1 ] && case "$carg" in /*) true ;; *) false ;; esac \
                                 && _bwimc_plain_word "$craw"; then
                                 cs=$(guard_canon_path "$r") && [ -n "$cs" ] \
-                                    && main_checkout_verdict_set "$cs" && [ -z "$_MCV_ROOT" ] && cdkeep=1
+                                    && main_checkout_verdict_set "$cs" && [ -z "$_MCV_ROOT" ] \
+                                    && cdkeep=1 && _bwimc_ecwd_kept=1
                             fi
                         else
                             # also reached when an earlier clause
@@ -4545,8 +4564,9 @@ esac
 # _bwimc_orig_onecd=1 when the payload command, quotes, backslashes, braces, brackets and commas
 # deleted, holds exactly one cd, pushd or popd word anywhere (eval strings, heredoc bodies and
 # substitutions included) and no byte outside printable ASCII, tab and newline. Only then may a
-# leading cd hold through a loop, `$(…)` or `<(…)` (see _bwimc_ecwd_track): no later cd, hidden or
-# not, can move the shell elsewhere. Any other spelling of a cd word counts, so it only over-counts.
+# leading cd hold through a loop, `$(…)` or `<(…)` (see _bwimc_ecwd_track): no later literal cd,
+# however quoted or brace-spelled, can move the shell elsewhere. A cd built at run time is not a
+# literal word; _bwimc_ecwd_track unresolves the cwd on its clause instead.
 _bwimc_one_cd_word() {
     local LC_ALL=C t="$1" n=0 re='(^|[^A-Za-z0-9_])(cd|pushd|popd)([^A-Za-z0-9_]|$)'
     _bwimc_exotic_byte "$t" && return 1
@@ -4567,24 +4587,29 @@ if _bwimc_one_cd_word "$cmd"; then _bwimc_orig_onecd=1; else _bwimc_orig_onecd=0
 # runs no part of it: ARGV holds only plain words, single-quoted spans and spaces (no
 # separator, redirect, expansion, double quote or backslash outside single quotes). Refused
 # (rc 1, the normal scan runs): an assignment prefix or an exported HIMMEL_VMSDK or
-# HIMMEL_GUEST_EXEC_LOG (they repoint the program or the log), and a guest-exec.sh, or the
-# vmsdk.py and vbox.py beside it, whose bytes differ from this hook's own checkout's copies.
+# HIMMEL_GUEST_EXEC_LOG (they repoint the program or the log), a script path that is not the
+# path it resolves to, and a guest-exec.sh, or the vmsdk.py and vbox.py it loads, whose bytes
+# differ from this hook's own checkout's copies.
 _BWIMC_GE_RE='^bash[ ]+([A-Za-z0-9_./-]*scripts/vm/guest-exec\.sh)[ ]+[A-Za-z0-9_-]+([ ]+(--sudo|--timeout[ ]+[0-9]+))*[ ]+--[ ]+(.+)$'
 _BWIMC_GE_ARGV_RE="^([A-Za-z0-9_./:,+@%=-]|'[^']*'|[ ])+\$"
 _bwimc_guest_exec_only() {
-    local s p root hd f
+    local s u p lib hd f
     [ -z "${HIMMEL_VMSDK:-}" ] && [ -z "${HIMMEL_GUEST_EXEC_LOG:-}" ] || return 1
     [[ $1 =~ $_BWIMC_GE_RE ]] || return 1
     s="${BASH_REMATCH[1]}"
     [[ ${BASH_REMATCH[4]} =~ $_BWIMC_GE_ARGV_RE ]] || return 1
-    case "$s" in /*) p="$s" ;; *) p="$_bwimc_cwd/$s" ;; esac
-    p=$(guard_canon_path "$p") || return 1
-    case "$p" in */scripts/vm/guest-exec.sh) ;; *) return 1 ;; esac
-    root="${p%/scripts/vm/guest-exec.sh}"
+    case "$s" in *..*|*//*|./*|*/./*) return 1 ;; esac
+    case "$s" in /*) u="$s" ;; *) u="$_bwimc_cwd/$s" ;; esac
+    # guest-exec.sh loads vmsdk.py from dirname($0)/../lib as spelled (cd -L), so the path as
+    # given must be the path it resolves to, and lib and the files in it must not be symlinks.
+    p=$(guard_canon_path "$u") || return 1
+    [ "$p" = "$u" ] || return 1
+    lib="${u%/vm/guest-exec.sh}/lib"
+    [ ! -L "$lib" ] || return 1
     hd="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || return 1
-    cmp -s "$p" "$hd/../vm/guest-exec.sh" || return 1
+    cmp -s "$u" "$hd/../vm/guest-exec.sh" || return 1
     for f in vmsdk.py vbox.py; do
-        cmp -s "$root/scripts/lib/$f" "$hd/../lib/$f" || return 1
+        [ ! -L "$lib/$f" ] && cmp -s "$lib/$f" "$hd/../lib/$f" || return 1
     done
 }
 if [ "${tool:-Bash}" = Bash ] && _bwimc_guest_exec_only "$cmd"; then
@@ -5400,7 +5425,7 @@ _bwimc_ecwd_unres=0
 _bwimc_ecwd_pushn=0
 _bwimc_ecwd_pure=1
 _bwimc_ecwd_first=1
-_bwimc_ecwd_sure=0
+_bwimc_ecwd_sure=0; _bwimc_ecwd_kept=0
 _bwimc_fsmut=""
 [ "$_bwimc_engine" = ast ] || _bwimc_redir_scan_text "$_bwimc_hb"
 
@@ -7187,7 +7212,7 @@ _bwimc_ecwd_unres=0
 _bwimc_ecwd_pushn=0
 _bwimc_ecwd_pure=1
 _bwimc_ecwd_first=1
-_bwimc_ecwd_sure=0
+_bwimc_ecwd_sure=0; _bwimc_ecwd_kept=0
 _bwimc_fsmut=""
 _bwimc_spd_on=0
 _bwimc_sub_ecwd=(); _bwimc_sub_unres=(); _bwimc_sub_pushn=(); _bwimc_sub_d=0
