@@ -413,10 +413,10 @@ fi
 
 enter_gated_checkout() {
     local gate_dir
+    unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GH_REPO
     case "${HIMMEL_REPO:-}" in
         /*) gate_dir=$HIMMEL_REPO ;;
-        '') gate_dir=$( (unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE; git -C "$SELF_DIR" rev-parse --path-format=absolute --git-common-dir) 2>/dev/null) || gate_dir=""  # swallow-ok: a tree outside git reads empty, which falls back to this script's own tree root below
-            gate_dir=${gate_dir%/.git} ;;
+        '') if gate_dir=$(git -C "$SELF_DIR" rev-parse --path-format=absolute --git-common-dir); then gate_dir=${gate_dir%/.git}; else gate_dir=""; fi ;;
         *) echo "ready-check: HIMMEL_REPO ($HIMMEL_REPO) is not an absolute path - refusing to let it pick the gated checkout; nothing was judged" >&2
            exit 2 ;;
     esac
@@ -425,7 +425,6 @@ enter_gated_checkout() {
         echo "ready-check: the gated checkout HIMMEL_REPO ($gate_dir) is not a directory; nothing was judged" >&2
         exit 2
     fi
-    unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GH_REPO
 }
 enter_gated_checkout
 
