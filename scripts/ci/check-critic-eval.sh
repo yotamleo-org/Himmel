@@ -109,4 +109,5 @@ if python3 "$SCORE" gate "$diff_base" "$head" --repo "$repo"; then
     exit 0
 fi
 echo "check-critic-eval: FAIL - a critic change merges only with keep or no-loss eval rows (scripts/eval/review-panel/README.md)" >&2
+echo "check-critic-eval: the paid eval sweep is the default route for a critic change and needs no operator ask; only skipping it needs an operator decision (a $BYPASS_REL row). Launch: docs/internals/bypass-launch-route.md" >&2
 exit 1

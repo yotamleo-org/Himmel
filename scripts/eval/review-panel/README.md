@@ -34,7 +34,11 @@ a codex-only sweep. A roster that still holds the claude row refuses before the
 first case unless `--allow-claude-api` is passed (operator decision 525). Every
 case in the key is one panel call per critic in the roster, so a codex-only sweep
 is 94 panel calls; that is a floor, because each critic can take up to 3 attempts.
-Workers never run it. From the primary checkout, after
+`run.sh` refuses without `HIMMEL_BILLED_OK=1`, and no session sets that flag
+itself: the chief writes a sweep worker's brief and launches it through the
+go-code route (`scripts/station-ops/bypass-launchd.sh`, described in
+`docs/internals/bypass-launch-route.md`), which sets the flag on the operator's
+go code. No other worker runs it. From the primary checkout, after
 `bash scripts/lib/usage-preflight.sh` says PROCEED and with the codex
 `used_percent` noted:
 
@@ -423,6 +427,14 @@ they start a new eval-compare series and need the base re-baseline sweeps.
 the panel reports (a `dir/` prefix or a glob at the same `/` depth). A PR that
 changes one of them, at its base or its head, merges only when the eval says the
 change lost nothing.
+
+**The paid eval is the default route** (operator policy, 2026-11-12). A
+critic change gets its four sweeps without asking the operator whether to
+spend: the chief launches them as soon as the PR's head is final. The operator's
+go code on the launch (above) authorises the billing flag for that worker; it is
+not a decision about whether to run the eval. Only skipping the eval needs an
+operator decision, recorded as a `gate-bypass.tsv` row (item 5). The gate's
+failure line says so.
 
 1. The chief sweeps twice at the tree the gate compares against (on CI's merge
    ref, main as that ref was built) and twice at the PR's head (`run.sh`,
