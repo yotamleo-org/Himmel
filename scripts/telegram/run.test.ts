@@ -1,7 +1,7 @@
 import { beforeEach, expect, test } from "bun:test";
 import { buildRunArgs, DEFAULT_MODEL, detectCap, detectContentFilter, buildPrompt, killTree, REPO_ROOT, sessionEnv, spawnSpec, laneEffort, withSessionId, writeLaunchRecord } from "./run";
 import { spawn, spawnSync } from "bun";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -474,7 +474,7 @@ const envelopeFixture = () => {
     "handovers/u/himmel/release/v9/operator.jsonl", "handovers/u/himmel/release/v9/rulings.jsonl", "handovers/u/himmel/release/v9/events.jsonl",
     "handovers/u/himmel/release/v9/baseline-v9-g1.json", "vault/CLAUDE.md"]) writeFileSync(p(f), "");
   writeFileSync(p("handovers/u/himmel/release/v9/release.json"), "{}");
-  writeFileSync(p("himmel/config.json"), JSON.stringify({ telegram: { bridgeVaultRoots: ["Inbox", "Notes"] } }));
+  writeFileSync(p("himmel/config.json"), JSON.stringify({ telegram: { bridgeVaultRoots: { [p("vault")]: ["Inbox", "Notes"] } } }));
   for (const repo of ["vault", "primary"]) spawnSync(["git", "init", "-q", p(repo)]);
   const seams = {
     home: p("home"), configDir: p("home/.claude"), managedSettings: p("managed/managed-settings.json"), bridgeRoot: p("bridge"),
@@ -501,14 +501,15 @@ test("T16: a bridge spawn runs dontAsk with --setting-sources \"\" and the envel
     expect(s.sandbox.network.allowedDomains).toEqual(["example.atlassian.net", "github.com", "api.github.com"]);
     const allowW = s.sandbox.filesystem.allowWrite, denyW = s.sandbox.filesystem.denyWrite;
     expect(allowW).toEqual([f.p("bridge/sessions/__chat__"), f.p("bridge/outgoing"), f.p("vault/Inbox"), f.p("vault/Notes"), f.p("handovers/u/himmel/release/v9")]);
-    for (const d of [f.p("handovers"), f.p("primary"), f.p("himmel"), f.p("vault"), f.p("vault/.git"), f.p("vault/.claude"), f.p("vault/CLAUDE.md"),
+    for (const d of [f.p("handovers"), f.p("primary"), f.p("himmel"), f.p("vault"), f.p("vault/.git/hooks"), f.p("vault/.git/config"), f.p("vault/.claude"), f.p("vault/CLAUDE.md"),
       f.p("bridge/inbound.jsonl"), f.p("bridge/poller-epoch"), f.p("bridge/host-ns"), f.p("bridge/consoles"), f.p("bridge/sessions/other"),
       f.p("host/host-ns"), f.p("handovers/u/himmel/release/v9/operator.jsonl"), f.p("handovers/u/himmel/release/v9/release.json"),
       f.p("handovers/u/himmel/release/v9/baseline-v9-g1.json"), f.p("keys/v9.key")]) expect(denyW).toContain(d);
     expect(denyW).not.toContain(f.p("bridge/sessions/__chat__"));
     expect(s.permissions.allow).toContain(`Edit(/${f.p("vault/Inbox")}/**)`);
     expect(s.permissions.allow).not.toContain(`Edit(/${f.p("handovers/u/himmel/release/v9")}/**)`);
-    expect(s.permissions.deny).toContain(`Edit(/${f.p("vault/.git")}/**)`);
+    expect(s.permissions.deny).toContain(`Edit(/${f.p("vault/.git/hooks")}/**)`);
+    expect(s.permissions.deny).toContain(`Edit(/${f.p("vault/.git/config")})`);
   } finally { f.cleanup(); }
 });
 
@@ -608,9 +609,9 @@ test("T16: a symlinked root refuses the spawn", () => {
   const f = envelopeFixture();
   try {
     symlinkSync(f.p("vault/Notes"), f.p("vault/Linked"));
-    writeFileSync(f.p("himmel/config.json"), JSON.stringify({ telegram: { bridgeVaultRoots: ["Linked"] } }));
+    writeFileSync(f.p("himmel/config.json"), JSON.stringify({ telegram: { bridgeVaultRoots: { [f.p("vault")]: ["Linked"] } } }));
     expect(() => buildRunArgs("p", undefined, undefined, undefined, undefined, { spawn: DM, cwd: f.p("vault"), seams: f.seams })).toThrow(/symlink/);
-    writeFileSync(f.p("himmel/config.json"), JSON.stringify({ telegram: { bridgeVaultRoots: ["../escape"] } }));
+    writeFileSync(f.p("himmel/config.json"), JSON.stringify({ telegram: { bridgeVaultRoots: { [f.p("vault")]: ["../escape"] } } }));
     expect(() => buildRunArgs("p", undefined, undefined, undefined, undefined, { spawn: DM, cwd: f.p("vault"), seams: f.seams })).toThrow(/bridgeVaultRoots/);
   } finally { f.cleanup(); }
 });
@@ -629,12 +630,125 @@ test("T16: with no seam, the sandbox's one Jira domain is the host of the real J
   }
 });
 
-test("T16: no bridgeVaultRoots key means no vault write root", () => {
+// Claude Code's rule order: a matching deny wins over any allow. The sandbox side is read the same
+// conservative way (a path under a denyWrite entry is not writable), so allow-inside-deny proves nothing here.
+const under = (path: string, root: string) => path === root || path.startsWith(root + "/");
+const ruleRoot = (r: string) => r.slice("Edit(/".length, -1).replace(/\/\*\*$/, "");
+const editable = (s: any, path: string) =>
+  !s.permissions.deny.some((r: string) => r.startsWith("Edit(/") && under(path, ruleRoot(r))) &&
+  s.permissions.allow.some((r: string) => r.startsWith("Edit(/") && under(path, ruleRoot(r)));
+const bashWritable = (s: any, path: string) =>
+  !s.sandbox.filesystem.denyWrite.some((d: string) => under(path, d)) && s.sandbox.filesystem.allowWrite.some((w: string) => under(path, w));
+
+test("T16 (lockout): with the key unset, a luna-shaped chat keeps its filing paths and the denies still hold", () => {
+  const f = envelopeFixture();
+  try {
+    writeFileSync(f.p("himmel/config.json"), "{}");
+    for (const d of ["vault/Clippings", "vault/30-Resources/Tech", "vault/handovers/u"]) mkdirSync(f.p(d), { recursive: true });
+    writeFileSync(f.p("vault/log.md"), "");
+    const seams = { ...f.seams, handoverRoot: f.p("vault/handovers") };
+    for (const spawn of [DM, { ...DM, session: "group_-5", chat: -5, releaseWrite: false }]) {
+      mkdirSync(f.p("bridge/sessions", spawn.session), { recursive: true });
+      const s = envOf(buildRunArgs("p", undefined, undefined, undefined, undefined, { spawn, cwd: f.p("vault"), seams }).cmd);
+      for (const w of ["vault/Clippings/c.md", "vault/30-Resources/Tech/r.md", "vault/log.md"]) {
+        expect(editable(s, f.p(w)), `${spawn.session} Edit ${w}`).toBe(true);
+        expect(bashWritable(s, f.p(w)), `${spawn.session} Bash ${w}`).toBe(true);
+      }
+      for (const d of ["vault/handovers/u/x.md", "vault/.git/config", "vault/.claude/settings.json", "vault/CLAUDE.md", "primary/x", "himmel/config.json"]) {
+        expect(editable(s, f.p(d)), `${spawn.session} Edit ${d}`).toBe(false);
+        expect(bashWritable(s, f.p(d)), `${spawn.session} Bash ${d}`).toBe(false);
+      }
+    }
+  } finally { f.cleanup(); }
+});
+
+test("T16 (lockout): a salus-shaped group (its own vault and git dir, another layout) keeps its edit root with the key unset", () => {
+  const f = envelopeFixture();
+  try {
+    writeFileSync(f.p("himmel/config.json"), "{}");
+    for (const d of ["salus/00-Sources", "salus/.claude", "bridge/sessions/group_-7"]) mkdirSync(f.p(d), { recursive: true });
+    writeFileSync(f.p("salus/_STATUS.md"), "");
+    spawnSync(["git", "init", "-q", f.p("salus")]);
+    const s = envOf(buildRunArgs("p", undefined, undefined, undefined, undefined, { spawn: { session: "group_-7", chat: -7, routed: false, releaseWrite: false }, cwd: f.p("salus"), seams: f.seams }).cmd);
+    for (const w of ["salus/00-Sources/s.md", "salus/_STATUS.md"]) {
+      expect(editable(s, f.p(w)), `Edit ${w}`).toBe(true);
+      expect(bashWritable(s, f.p(w)), `Bash ${w}`).toBe(true);
+    }
+    for (const d of ["salus/.git/config", "salus/.claude/settings.json", "vault/Inbox/x.md"]) {
+      expect(editable(s, f.p(d)), `Edit ${d}`).toBe(false);
+      expect(bashWritable(s, f.p(d)), `Bash ${d}`).toBe(false);
+    }
+  } finally { f.cleanup(); }
+});
+
+test("T16 (lockout): a configured vault folder is editable, not shadowed by a deny on the vault itself", () => {
+  const f = envelopeFixture();
+  try {
+    const s = envOf(buildRunArgs("p", undefined, undefined, undefined, undefined, { spawn: DM, cwd: f.p("vault"), seams: f.seams }).cmd);
+    expect(editable(s, f.p("vault/Inbox/n.md"))).toBe(true);
+  } finally { f.cleanup(); }
+});
+
+test("T16 (R7-1): no bridgeVaultRoots key, or a vault the map does not name, makes the whole vault the write root", () => {
+  const f = envelopeFixture();
+  try {
+    for (const conf of [{}, { telegram: { bridgeVaultRoots: { [f.p("elsewhere")]: ["Inbox"] } } }]) {
+      writeFileSync(f.p("himmel/config.json"), JSON.stringify(conf));
+      const s = envOf(buildRunArgs("p", undefined, undefined, undefined, undefined, { spawn: DM, cwd: f.p("vault"), seams: f.seams }).cmd);
+      expect(s.sandbox.filesystem.allowWrite).toContain(f.p("vault"));
+      expect(s.sandbox.filesystem.denyWrite).not.toContain(f.p("vault"));
+      expect(s.permissions.allow).toContain(`Edit(/${f.p("vault")}/**)`);
+      expect(JSON.stringify(s.permissions.deny)).not.toContain(`Edit(/${f.p("vault")}/**)`);
+    }
+    writeFileSync(f.p("himmel/config.json"), JSON.stringify({ telegram: { bridgeVaultRoots: ["Inbox"] } }));
+    expect(() => buildRunArgs("p", undefined, undefined, undefined, undefined, { spawn: DM, cwd: f.p("vault"), seams: f.seams })).toThrow(/map an absolute vault path/);
+  } finally { f.cleanup(); }
+});
+
+test("T16 (R7-2): the vault's hooks and config are refused, and a git commit in the vault writes only writable paths", () => {
   const f = envelopeFixture();
   try {
     writeFileSync(f.p("himmel/config.json"), "{}");
     const s = envOf(buildRunArgs("p", undefined, undefined, undefined, undefined, { spawn: DM, cwd: f.p("vault"), seams: f.seams }).cmd);
-    expect(s.sandbox.filesystem.allowWrite.filter((w: string) => w.startsWith(f.p("vault")))).toEqual([]);
+    for (const d of ["vault/.git/hooks/pre-commit", "vault/.git/config", "vault/.git/info/exclude", "vault/.git/modules/m/config", "vault/.gitattributes", "vault/.gitmodules"]) {
+      expect(editable(s, f.p(d)), `Edit ${d}`).toBe(false);
+      expect(bashWritable(s, f.p(d)), `Bash ${d}`).toBe(false);
+    }
+    const files = (dir: string): Map<string, number> => {
+      const out = new Map<string, number>();
+      for (const n of readdirSync(dir, { recursive: true }) as string[]) {
+        const st = statSync(join(dir, n));
+        if (st.isFile()) out.set(join(dir, n), st.mtimeMs);
+      }
+      return out;
+    };
+    const before = files(f.p("vault/.git"));
+    writeFileSync(f.p("vault/Inbox/clip.md"), "a clip\n");
+    const git = (...a: string[]) => spawnSync(["git", "-C", f.p("vault"), "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", ...a]);
+    expect(git("add", "Inbox/clip.md").exitCode).toBe(0);
+    expect(git("commit", "-q", "-m", "clip").exitCode).toBe(0);
+    const written = [...files(f.p("vault/.git"))].filter(([p, m]) => before.get(p) !== m).map(([p]) => p);
+    expect(written.length).toBeGreaterThan(0);
+    for (const w of written) expect(bashWritable(s, w), `commit wrote ${w}`).toBe(true);
+  } finally { f.cleanup(); }
+});
+
+test("T16 (R7-4): bridgeEgress gives extra hosts to the chat it names and to no other; unset gives none", () => {
+  const f = envelopeFixture();
+  try {
+    const domains = (chat: number, session: string) => {
+      mkdirSync(f.p("bridge/sessions", session), { recursive: true });
+      return envOf(buildRunArgs("p", undefined, undefined, undefined, undefined, { spawn: { session, chat, routed: false, releaseWrite: false }, cwd: f.p("vault"), seams: f.seams }).cmd).sandbox.network.allowedDomains;
+    };
+    const base = ["example.atlassian.net", "github.com", "api.github.com"];
+    writeFileSync(f.p("himmel/config.json"), "{}");
+    expect(domains(-9, "group_-9")).toEqual(base);
+    writeFileSync(f.p("himmel/config.json"), JSON.stringify({ telegram: { bridgeEgress: { "-9": ["ha.example.invalid", "ha1"] } } }));
+    expect(domains(-9, "group_-9")).toEqual([...base, "ha.example.invalid", "ha1"]);
+    expect(domains(12345, "__chat__")).toEqual(base);
+    expect(domains(-77, "group_-77")).toEqual(base);
+    writeFileSync(f.p("himmel/config.json"), JSON.stringify({ telegram: { bridgeEgress: { "-9": ["*.example.invalid"] } } }));
+    expect(() => domains(-9, "group_-9")).toThrow(/bridgeEgress/);
   } finally { f.cleanup(); }
 });
 

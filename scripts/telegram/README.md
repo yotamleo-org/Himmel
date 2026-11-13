@@ -360,15 +360,22 @@ that `run.ts` builds from the descriptor at spawn:
 - The allow list: `Read`, `Grep`, `Glob`, `Bash` (sandboxed), `WebFetch`,
   `WebSearch`, the profile's MCP tools, and `Edit` only under the write roots.
 - The write roots: the session's own folder, `<bridge root>/outgoing/`, and the
-  vault folders in `~/.himmel/config.json` `telegram.bridgeVaultRoots` (unset
-  means none; only the operator sets it). On a granted, non-routed spawn, Bash
-  also writes the one declared release folder.
+  vault the session spawned in. `~/.himmel/config.json` `telegram.bridgeVaultRoots`
+  narrows a vault: a map from its absolute path to the vault-relative files or
+  folders it may write, e.g. `{"/home/me/vault": ["Clippings", "log.md"]}`.
+  Unset, or a vault the map does not name, means the whole vault. Only the
+  operator sets the key. On a granted, non-routed spawn, Bash also writes the
+  one declared release folder.
 - Denied for every tool and in the sandbox: the handover root, the primary
-  checkout and its worktrees, `~/.himmel/`, the vault's git dir and the cwd's
-  `.claude/`, `.mcp.json`, `CLAUDE.md` and `_CLAUDE.md`, the poller's own files
-  and every other session's folder, the release folder's signed files and key,
-  and the fixed `host-ns` path. The Bash sandbox opens the Jira host and GitHub
-  only, and no Unix socket.
+  checkout and its worktrees, `~/.himmel/`, the vault's `.git/hooks`,
+  `.git/config`, `.git/info` and `.git/modules` (the rest of `.git` stays
+  writable, so a session can commit), its `.gitattributes` and `.gitmodules`,
+  the cwd's `.claude/`, `.mcp.json`, `CLAUDE.md` and `_CLAUDE.md`, the poller's
+  own files and every other session's folder, the release folder's signed files
+  and key, and the fixed `host-ns` path. A deny wins inside a write root.
+- The Bash sandbox opens the Jira host and GitHub, and no Unix socket.
+  `telegram.bridgeEgress` maps a chat id to the extra hosts its Bash may reach,
+  e.g. `{"-100123": ["ha.lan"]}`; unset, no chat gets an extra host.
 - On a granted spawn, the one command run outside the sandbox is
   `bash <primary>/scripts/handover/arm-resume.sh …` (DM `/arm`), with no env
   prefix. `arm-resume.sh` then writes `export HIMMEL_BRIDGE_SESSION=1` into the

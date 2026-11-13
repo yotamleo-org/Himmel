@@ -76,10 +76,9 @@ cp -R "$primary/scripts/jira/dist" "$CK/scripts/jira/dist" || { echo "FAIL smoke
 VAULT="$work/vault"
 mkdir -p "$VAULT/.claude"
 git init -q -b p1-smoke "$VAULT"
-roots_json="$(jq -c '.telegram.bridgeVaultRoots // []' "$HOME/.himmel/config.json" 2>/dev/null || echo '[]')"
-[ "$roots_json" != "[]" ] || { echo "FAIL smoke-bridge-sandbox: ~/.himmel/config.json has no telegram.bridgeVaultRoots (the operator step comes first)"; exit 1; }
-VROOT="$(jq -r '.[0]' <<<"$roots_json")"
-while IFS= read -r r; do mkdir -p "$VAULT/$r"; done < <(jq -r '.[]' <<<"$roots_json")
+# No telegram.bridgeVaultRoots entry names this scratch vault, so the envelope makes the whole vault the write root (R7-1).
+VROOT=00-Inbox
+mkdir -p "$VAULT/$VROOT"
 printf '# scratch vault\n' > "$VAULT/CLAUDE.md"
 printf '{}\n' > "$VAULT/.mcp.json"
 printf '{}\n' > "$VAULT/.claude/settings.json"
