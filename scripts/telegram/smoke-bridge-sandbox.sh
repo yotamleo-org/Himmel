@@ -157,7 +157,7 @@ const srv = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(req) {
   if (req.method === "POST" && u.pathname === "/rest/api/3/issue") { n++; return j({ id: String(900000 + n), key: `HIMMEL-${990000 + n}` }, 201); }
   if (u.pathname.includes("/context") && u.pathname.includes("/option")) return j({ values: [{ id: "10001", value: "Planning & tracking" }], isLast: true, total: 1 });
   if (u.pathname.includes("/context")) return j({ values: [{ id: "20001", isGlobalContext: true }], isLast: true, total: 1 });
-  if (u.pathname.startsWith("/rest/api/3/issue/")) return j({ id: "900001", key: ["HIMMEL", "990001"].join("-"), fields: { summary: "p1", status: { name: "To Do", statusCategory: { key: "new" } }, issuetype: { name: "Task" }, labels: [], fixVersions: [], project: { key: "HIMMEL" } } });
+  if (u.pathname.startsWith("/rest/api/3/issue/")) return j({ id: "900001", key: ["HIMMEL", "990001"].join("-"), fields: { summary: "p1", status: { name: "To Do", statusCategory: { key: "new" } }, issuetype: { name: "Task" }, labels: [], project: { key: "HIMMEL" } } });
   return j({ values: [], issues: [], total: 0, isLast: true });
 } });
 console.log(srv.port);
