@@ -24,6 +24,8 @@
   },
   "forks": [
     { "fork_repo": "yotamleo-org/effective-html", "branch": "himmel-main", "hold-reason": "env-literal-ok: fork identity registry; pinned by marketplace.json at e4b08eb as the carrier of upstream plannotator/effective-html#31 (next 16.4.1); re-pin to upstream once #31 merges (HIMMEL-7170)" },
+    { "fork_repo": "yotamleo-org/graphify", "branch": "himmel-main", "hold-reason": "env-literal-ok: fork identity registry; hand rebase owed: the 6 carried commits conflict with upstream v8 in graphify/cli.py, graphify/serve.py and tests/test_serve.py (rationale scoring is a semantic merge); the graphify pin and synced_base stay until it lands" },
+    { "fork_repo": "yotamleo-org/obsidian-skills", "branch": "himmel-main", "hold-reason": "env-literal-ok: fork identity registry; re-home owed: upstream 1.2.0 absorbed 8 of the 9 carried doc fixes and moved skills/ to plugins/obsidian/skills/, only the multi-line wikilink list section (upstream PR 36) remains to re-carry as one additive commit" },
     { "fork_repo": "yotamleo-org/core", "branch": "dev", "exclude": true, "reason": "env-literal-ok: fork identity registry; Home Assistant voice fork belongs to the voice add-on, not a himmel version (HIMMEL-8333)" },
     { "fork_repo": "yotamleo-org/home-assistant.io", "branch": "current", "exclude": true, "reason": "env-literal-ok: fork identity registry; Home Assistant voice docs fork belongs to the voice add-on, not a himmel version (HIMMEL-8333)" },
     { "fork_repo": "yotamleo/effective-html", "hold-reason": "env-literal-ok: fork identity registry; head repo of upstream plannotator/effective-html#31, keep until it merges or closes (HIMMEL-7170)" },
@@ -45,7 +47,7 @@
       "kind": "commit_head",
       "mode": "pin",
       "tracked_repo": "blader/humanizer",
-      "pinned_commit": "0ef9fe5bc3572734fd3ae6c448fe00a30cd5dcf0",
+      "pinned_commit": "b48c832f0f809c1b5658edbb838c2521b72f2413",
       "tier": "B",
       "note": "Vendored at marketplace/plugins/humanizer (VENDORED.md records the same commit). Repair is a reviewed re-copy at the new commit (HIMMEL-8282)."
     },
@@ -202,7 +204,7 @@
       "kind": "tag_release",
       "mode": "base",
       "tracked_repo": "router-for-me/CLIProxyAPI",
-      "synced_base": "8.0.48",
+      "synced_base": "8.0.64",
       "version_pin": { "file": "scripts/setup/cli-proxy-lane.sh", "template": "VERSION=\"{version}\"" },
       "companion_pins": [
         { "file": "scripts/setup/cli-proxy-lane.sh", "template": "ASSET_SHA256=\"{sha256}\"" }
@@ -266,7 +268,7 @@
       "kind": "tag_release",
       "mode": "base",
       "tracked_repo": "anthropics/claude-code",
-      "synced_base": "2.1.319",
+      "synced_base": "2.1.322",
       "latest_source": "release",
       "version_pin": {
         "file": "scripts/machine-setup/installer-pins.sh",

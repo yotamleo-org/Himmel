@@ -3098,6 +3098,48 @@ run "7130 class1 control [a changed worktree bullet writer] -> deny" 2 \
     "$(payload "bash scripts/handover/chief-kit/append-results.sh scripts/cr/write-verdicts.sh" "$WT")" "$HR"
 g -C "$WT" checkout -q -- scripts/cr/write-verdicts.sh scripts/handover/chief-kit/append-results.sh
 
+# ---- a mention beside sort, uniq, find, gh or a checksum --------------------
+echo changed >>"$WT/scripts/cr/write-verdicts.sh"
+while IFS= read -r label && IFS= read -r allow && IFS= read -r deny; do
+    run "inert mention [$label] -> allow" 0 "$(payload "$allow" "$WT")" "$HR"
+    run "inert mention control [$label] -> deny" 2 "$(payload "$deny" "$WT")" "$HR"
+done <<'ROWS'
+gh pr read
+gh pr list --json=files --jq '.[] | select(.path | test("scripts/cr/write-verdicts.sh|chief-kit/(go|tick)|x"))'
+gh pr list --web --jq '.[] | select(.path | test("scripts/cr/write-verdicts.sh|chief-kit/(go|tick)|x"))'
+sort and uniq
+grep -h -o -E 'bash [a-z/-]*(verdicts|handoff)' scripts/cr/* | sort | uniq -c | sort -rn
+grep -h -o -E 'bash [a-z/-]*(verdicts|handoff)' scripts/cr/* | sort | uniq -c | sort --compress-program=bash
+find without an action that runs
+cd scripts/cr; find . -name 'write-*.sh' -newer anchor-handoff.sh -print
+cd scripts/cr; find . -name 'write-*.sh' -newer anchor-handoff.sh -exec bash {} +
+checksum of a glob
+cd scripts/cr; ls -la .; sha256sum *
+cd scripts/cr; ls -la .; bash *
+ROWS
+# shellcheck disable=SC2016  # the payload text must stay unexpanded
+for v in \
+    'for x in -e1escripts/cr/write-verdicts.sh; do sed -n 1p docs/a.md $x; done; ls .' \
+    'for v in -vBASH_CMDS[cat]; do printf $v %s scripts/cr/write-verdicts.sh; done; cat docs/a.md; ls .' \
+    "for F in 'HOME[\$(bash scripts/cr/write-verdicts.sh)]'; do cat \$HOME[F] docs/a.md; done" \
+    "F='HOME[\$(bash scripts/c'; F=\$F'r/write-verdicts.sh)]'; cat \${HOME}[F] docs/a.md; ls . scripts/cr/*" \
+    "F='HOME[\$(bash scripts/c'; F=\$F'r/write-verdicts.sh)]'; cat \$HOME[F] docs/a.md; ls . scripts/cr/*" \
+    "for F in 'HOME[\$(bash scripts/cr/write-verdicts.sh)]'; do printf '%d' F; done; ls . scripts/cr/*" \
+    "F='HOME[\$(bash scripts/c'; F=\$F'r/write-verdicts.sh)]'; printf '%d' F; ls . scripts/cr/*" \
+    "printf '%d\\n' 'HOME[\$(bash scripts/cr/write-verdicts.sh)]' | sort -u" \
+    "printf '%*s\\n' 'HOME[\$(bash scripts/cr/write-verdicts.sh)]' x | sort -u" \
+    "printf '%.*x\\n' 'HOME[\$(bash scripts/cr/write-verdicts.sh)]' 1; sha256sum scripts/cr/*" \
+    'for s in --compress-program=scripts/cr/write-verdicts.sh; do ls . | sort $s; done' \
+    'for a in -exec; do find . -name write-verdicts.sh $a scripts/cr/write-verdicts.sh {} +; done' \
+    'for PATH in scripts/cr; do ls . scripts/cr/*; done' \
+    'PATH=scripts/cr; ls . scripts/cr/* | sort -u' \
+    'ls . scripts/cr | sort | uniq - scripts/cr/write-verdicts.sh' \
+    'ls . scripts/cr | sort -o scripts/cr/write-verdicts.sh' \
+    'find . -name write-verdicts.sh -fprint scripts/cr/write-verdicts.sh'; do
+    run "inert mention bypass [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
+done
+g -C "$WT" checkout -q -- scripts/cr/write-verdicts.sh
+
 # ---- 5763: a gate path is read from the executable position only ----------
 # Interpreter code or a heredoc body that merely NAMES a gate path is not an
 # invocation; every shape that runs one stays denied. Both on a clean tree and

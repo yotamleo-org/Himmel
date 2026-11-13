@@ -989,7 +989,7 @@ exit 0
 SHEOF
 chmod +x "$sb14g/test-tier-extended-ok.sh"
 tier14g="$TIER_FIXTURE
-test-tier-extended-ok.sh  extended  # fixture: HIMMEL-2120 tier test (tool-satisfied twin)"
+test-tier-extended-ok.sh  extended  # fixture: tier test (tool-satisfied twin)"
 out14g=$(SUITE_TIER="$tier14g" SUITE_TIER_MODE=extended \
   SUITE_REQUIRE_TOOL='test-tier-extended.sh  himmel-no-such-tool-2120  # deterministic absent-tool stub' \
   bash "$RUNNER" "$sb14g" 2>&1); rc14g=$?
@@ -2479,10 +2479,10 @@ SHEOF
   chmod +x "$fakebin25/uname"
   rm -f "$sentinel25" "$vmsentinel25"
   out25=$(HIMMEL_RUNTIME_PREFLIGHT=0 PATH="$fakebin25:$PATH" bash "$RUNNER" "$sb25/scripts" 2>&1); rc25=$?
-  if [ ! -f "$sentinel25" ] && grepq "$out25" -E '\[SKIP\] .*test-adopt\.sh .*HIMMEL-7300: quarantined'; then
-    pass "25a: uname=$os25 -> scripts/test-adopt.sh SKIPped with the HIMMEL-7300 reason, not run"
+  if [ ! -f "$sentinel25" ] && grepq "$out25" -E '\[SKIP\] .*test-adopt\.sh .*quarantined, 1203'; then
+    pass "25a: uname=$os25 -> scripts/test-adopt.sh SKIPped with its quarantine reason, not run"
   else
-    fail "25a: uname=$os25 -> expected loud HIMMEL-7300 skip; rc=$rc25 sentinel=$([ -f "$sentinel25" ] && echo yes || echo no); out: $out25"
+    fail "25a: uname=$os25 -> expected loud quarantine skip; rc=$rc25 sentinel=$([ -f "$sentinel25" ] && echo yes || echo no); out: $out25"
   fi
   if [ "$os25" = "Linux" ]; then
     if [ "$rc25" -eq 0 ] && [ -f "$vmsentinel25" ] && grepq "$out25" -E '\[PASS\] .*test-vm-clone-lib\.sh' && ! grepq "$out25" -E '\[SKIP\] .*test-vm-clone-lib\.sh'; then

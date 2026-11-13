@@ -22,7 +22,7 @@ usage() { echo "usage: outside-security-audit.sh --pr <pr-number> --head <40-hex
 PR=$2 H=$4
 [[ "$PR" =~ ^[1-9][0-9]{0,8}$ ]] && [[ "$H" =~ ^[0-9a-f]{40}$ ]] || usage
 CAP=196608
-LIFECYCLE='["preinstall","install","postinstall","prepare","prepack","postpack"]'
+LIFECYCLE='["preinstall","install","postinstall","prepare","prepack","postpack","prepublish","preprepare","postprepare"]'
 die() { local c=$1; shift; echo "outside-security-audit: $* - no audit row was written" >&2; exit "$c"; }
 anchor=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd) || exit 2
 lib="$anchor/scripts/lib"

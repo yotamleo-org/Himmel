@@ -266,7 +266,7 @@ SOFTWARE.
 
 Added 2026-10-16. `marketplace/plugins/humanizer/`, one skill
 (`humanizer`) sourced from `blader/humanizer` at pinned commit
-`0ef9fe5bc3572734fd3ae6c448fe00a30cd5dcf0`. The `SKILL.md` header names the
+`b48c832f0f809c1b5658edbb838c2521b72f2413`. The `SKILL.md` header names the
 pin and its one deviation (an added `disable-model-invocation: true`
 frontmatter line). Opt-in, off in every profile (eval:
 [`tool-adoption/humanizer.md`](tool-adoption/humanizer.md)).

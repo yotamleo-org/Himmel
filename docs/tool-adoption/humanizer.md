@@ -12,9 +12,9 @@ Audited 2026-10-16. Method: [`rubric.md`](rubric.md). Verdict: **ADOPT, opt-in**
 
 | Item | Finding |
 |---|---|
-| Source | `https://github.com/blader/humanizer`, pinned `0ef9fe5bc3572734fd3ae6c448fe00a30cd5dcf0` (2026-10-28, merge of PR 307) |
+| Source | `https://github.com/blader/humanizer`, pinned `b48c832f0f809c1b5658edbb838c2521b72f2413` (2026-11-10, merge of PR 333, the upstream 4.0.0 release) |
 | License | MIT, (c) 2025 Siqi Chen. Permissive for vendoring |
-| Activity | 97 commits, 54 in the last 60 days. Skill version 3.1.0 |
+| Activity | 97 commits, 54 in the last 60 days. Skill version 4.0.0 |
 | What runs | Nothing. One prompt file (`SKILL.md`, 32 KB). Upstream also carries a validator script and CI files; none are vendored |
 | Hooks, egress, keys | None. No network call, no credential, no `allowed-tools` grant. No `egress-matrix.json` row is needed |
 | Injection surface | The skill reads text the user hands it. It tells the model to treat that text as material, never as instructions. Scan of `SKILL.md` for override phrases, fake system tags, tool-call requests and approval manipulation found none |

@@ -1002,6 +1002,13 @@ reset "In Progress"; jl "$K" "In Progress"; owned "$K" PARKED-USAGE '{"state":"p
 drift
 check "9561 S1 8 control: a parked worker over a FRESH lock keeps its owner" "$(dcount UNOWNED)" 0
 
+reset "In Progress"; jl "$K" "In Progress"; jl HIMMEL-9002 "In Progress"
+owned "$K" LIVE '{"state":"live"}'; owned HIMMEL-9002 WRAPPED '{"state":"wrapped"}'; lockfx 11 FRESH
+drift
+DSUM_OUT=$(DRIFT_SUMMARY_KNOWN="$tmp/none.tsv" node "$HERE/drift-summary.mjs" --json --drift "$tmp/dout" --mirror-dir "$tmp/no-mirror" 2>&1)
+check "9686 S5: unowned is exactly the wrapped key" "$(printf '%s' "$DSUM_OUT" | jq -r '.unowned | join(",")' 2>&1)" "HIMMEL-9002"
+check "9686 S5: and the key with a live worker is absent" "$(printf '%s' "$DSUM_OUT" | jq -r '.unowned | index("'"$K"'")' 2>&1)" null
+
 epoch_of() { date -u -d "$1" +%s 2>/dev/null || date -u -j -f %Y-%m-%dT%H:%M:%SZ "$1" +%s; }
 iso_e() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ; }
 day_e() { date -u -d "@$1" +%Y-%m-%d 2>/dev/null || date -u -r "$1" +%Y-%m-%d; }
@@ -1538,7 +1545,7 @@ echo "tracker $*" >> "$FX/fr.log"
 [ -e "$FX/fr.sleep" ] && sleep "$(cat "$FX/fr.sleep")"
 [ -e "$FX/fr.again" ] && date +%s > "$(cat "$FX/fr.again")"
 out=""; ver=""; prev=""
-for a in "$@"; do [ "$prev" = --out ] && out="$a"; [ "$prev" = --version ] && ver="$a"; prev="$a"; done
+for a in "$@"; do [ "$prev" = --out ] && out="$a"; [ "$prev" = --version ] && ver="$a"; [ "$prev" = --stale-file ] && cp "$a" "$FX/stale.seen"; prev="$a"; done
 n=$(( $(cat "$FX/render.n" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$FX/render.n"
 v=$(cat "$FX/vfp" 2>/dev/null || echo vfp1)
 printf 'render %s\n<meta name="himmel-focus" content="%s %s">\n' "$n" "$ver" "$v" > "$out"
@@ -1572,8 +1579,17 @@ done
 [ "$(cat "$FX/fr.fail" 2>/dev/null)" = ksync-hang ] && sleep 30
 exit 0
 EOS
-chmod +x "$tmp/frbin/jira" "$tmp/frbin/sweep" "$tmp/frbin/tracker" "$tmp/frbin/drift" "$tmp/frbin/ksync"
-export FR_JIRA="$tmp/frbin/jira" FR_SWEEP="$tmp/frbin/sweep" FR_TRACKER="$tmp/frbin/tracker" FR_DRIFT="$tmp/frbin/drift" FR_KNOWN_SYNC="$tmp/frbin/ksync"
+cat >"$tmp/frbin/dsum" <<'EOS'
+#!/usr/bin/env bash
+# the drift-summary stand-in: logs its argv to its own file (never fr.log, which is the stage order) and keeps the drift file it was handed
+echo "dsum $*" >> "$FX/dsum.log"
+prev=""
+for a in "$@"; do [ "$prev" = --drift ] && cp "$a" "$FX/dsum.drift"; prev="$a"; done
+if [ -e "$FX/dsum.out" ]; then cat "$FX/dsum.out"; else echo '{"unknown":false,"stale":false,"unowned":["HIMMEL-1"]}'; fi
+exit "$(cat "$FX/dsum.rc" 2>/dev/null || echo 0)"
+EOS
+chmod +x "$tmp/frbin/jira" "$tmp/frbin/sweep" "$tmp/frbin/tracker" "$tmp/frbin/drift" "$tmp/frbin/ksync" "$tmp/frbin/dsum"
+export FR_JIRA="$tmp/frbin/jira" FR_SWEEP="$tmp/frbin/sweep" FR_TRACKER="$tmp/frbin/tracker" FR_DRIFT="$tmp/frbin/drift" FR_KNOWN_SYNC="$tmp/frbin/ksync" FR_DRIFT_SUMMARY="$tmp/frbin/dsum"
 export TICK_TRACKER_MIRROR_DIR="$FR/mir/HIMMEL"
 export HANDOVER_DIR="$tmp/no-handover-root" # the chains stage reads <root>/<user>/himmel/chains.json; none here, so it is skipped (test-focus-refresh-chains.sh covers it)
 fr_reset() { # fresh fixtures plus a chief doc with a focus-version line
@@ -1602,7 +1618,7 @@ fr_reset
 fr
 check "3c: a full refresh prints ok" "$(frout)" "focus=ok"
 check "3c: and exits 0" "$(frrc)" 0
-check "3c: the steps run in order: mirror, versions, sweep, render, drift, known-bugs sync" "$(frseq)" "jira,jira,sweep,tracker,drift,ksync"
+check "3c: the steps run in order: mirror, versions, sweep, drift, render, known-bugs sync" "$(frseq)" "jira,jira,sweep,drift,tracker,ksync"
 check "3c: the page is written" "$(head -n 1 "$PAGE")" "render 1"
 check "3c: the state records status ok" "$(fst status)" ok
 check "3c: the state records generation 1" "$(fst gen)" 1
@@ -1651,6 +1667,70 @@ if [ -n "$_TIMEOUT_BIN" ]; then
 else
     echo "skip - 3c: hung known-bugs sync (no timeout binary)"
 fi
+
+fr_reset
+fr
+trk=$(grep '^tracker ' "$FX/fr.log")
+contains "9686 S5: the render gets the staged stale file" "$trk" "--stale-file $FR/doc/.focus-stage."
+contains "9686 S5: and it is named stale.tsv" "$trk" "/stale.tsv"
+check "9686 S5: a clean pass stages state complete and the owner-less key" "$(cat "$FX/stale.seen")" "$(printf 'state\tcomplete\nHIMMEL-1')"
+check "9686 S5: focus-state carries stale=<n>:<keys>" "$(fst stale)" "1:HIMMEL-1"
+contains "9686 S5: the summary is handed the staged report" "$(cat "$FX/dsum.log")" "--drift $FR/doc/.focus-stage."
+check "9686 S5: which holds the pass's own rows" "$(sed -n 1p "$FX/dsum.drift")" "UNOWNED HIMMEL-1 x | writer=- | fix=y"
+contains "9686 S5: and the mirror the render reads" "$(cat "$FX/dsum.log")" "--mirror-dir $FR/mir/HIMMEL"
+fr --mark-dirty
+check "9686 S5: a state read and written back (load_state, save_state) keeps stale=" "$(fst stale)" "1:HIMMEL-1"
+fr
+check "9686 S5: a second pass writes it again unchanged" "$(fst stale)" "1:HIMMEL-1"
+fr_reset; echo drift > "$FX/fr.fail"
+printf 'UNOWNED HIMMEL-5 x | writer=- | fix=y\nsdrift=1:aaaaaaaa\n' > "$FR/doc/focus-drift.txt"
+fr
+contains "9686 S5: a drift stage that exits non-zero still publishes the page (WARN)" "$(frout)" "drift rc1"
+check "9686 S5: and the summary is handed the published focus-drift.txt" "$(sed -n 1p "$FX/dsum.drift")" "UNOWNED HIMMEL-5 x | writer=- | fix=y"
+contains "9686 S5: by its path" "$(cat "$FX/dsum.log")" "--drift $FR/doc/focus-drift.txt"
+fr_reset; echo drift > "$FX/fr.fail"
+fr
+check "9686 S5: no published file and a failing drift stages state unknown" "$(cat "$FX/stale.seen")" "$(printf 'state\tunknown')"
+check "9686 S5: and focus-state reads stale=unknown" "$(fst stale)" unknown
+check "9686 S5: and the summary is never asked" "$([ -e "$FX/dsum.log" ] && echo asked || echo none)" none
+check "9686 S5: and the page still publishes" "$([ -e "$PAGE" ] && echo set || echo none)" set
+fr_reset; printf '{"unknown":true,"stale":false,"unowned":["HIMMEL-2","HIMMEL-3"]}\n' > "$FX/dsum.out"
+fr
+check "9686 S5: an unknown summary stages state partial with its keys" "$(cat "$FX/stale.seen")" "$(printf 'state\tpartial\nHIMMEL-2\nHIMMEL-3')"
+check "9686 S5: and focus-state reads stale=partial:<n>:<keys>" "$(fst stale)" "partial:2:HIMMEL-2,HIMMEL-3"
+fr_reset; printf '{"unknown":false,"stale":true,"unowned":["HIMMEL-2"]}\n' > "$FX/dsum.out"
+fr
+check "9686 S5: a stale summary stages state partial" "$(fst stale)" "partial:1:HIMMEL-2"
+fr_reset; echo drift > "$FX/fr.fail"
+printf 'UNOWNED HIMMEL-5 x | writer=- | fix=y\nsdrift=1:aaaaaaaa\n' > "$FR/doc/focus-drift.txt"; touch -d '1 hour ago' "$FR/doc/focus-drift.txt" # gnu-ok: Linux-only kit
+DRIFT_SUMMARY_KNOWN="$tmp/none.tsv" FR_DRIFT_SUMMARY="" fr
+check "9686 S5 control: a published drift file 1 h old (real summary) reads complete" "$(fst stale)" "1:HIMMEL-5"
+fr_reset; echo drift > "$FX/fr.fail"
+printf 'UNOWNED HIMMEL-5 x | writer=- | fix=y\nsdrift=1:aaaaaaaa\n' > "$FR/doc/focus-drift.txt"; touch -d '4 hours ago' "$FR/doc/focus-drift.txt" # gnu-ok: Linux-only kit
+DRIFT_SUMMARY_KNOWN="$tmp/none.tsv" FR_DRIFT_SUMMARY="" fr
+check "9686 S5: a published drift file 4 h old (drift failing) stages state partial" "$(cat "$FX/stale.seen")" "$(printf 'state\tpartial\nHIMMEL-5')"
+check "9686 S5: and focus-state reads stale=partial" "$(fst stale)" "partial:1:HIMMEL-5"
+fr_reset; printf '{"unknown":false,"stale":false,"unowned":[%s]}\n' "$(printf '"HIMMEL-%s",' 1 2 3 4 5 6 7 8 9 10 11 | sed 's/,$//')" > "$FX/dsum.out"
+fr
+check "9686 S5: eleven keys read stale=11:<8 keys>,+3" "$(fst stale)" "11:HIMMEL-1,HIMMEL-2,HIMMEL-3,HIMMEL-4,HIMMEL-5,HIMMEL-6,HIMMEL-7,HIMMEL-8,+3"
+check "9686 S5: and stale.tsv still holds all eleven" "$(sed 1d "$FX/stale.seen" | wc -l | tr -d ' ')" 11
+fr_reset; printf '{"unknown":false,"stale":false,"unowned":[]}\n' > "$FX/dsum.out"
+fr
+check "9686 S5: no unowned key reads stale=0:" "$(fst stale)" "0:"
+check "9686 S5: and stale.tsv is the state line alone" "$(cat "$FX/stale.seen")" "$(printf 'state\tcomplete')"
+fr_reset; echo 3 > "$FX/dsum.rc"
+fr
+check "9686 S5: a summary that exits non-zero reads state unknown" "$(fst stale)" unknown
+fr_reset; echo 'not json' > "$FX/dsum.out"
+fr
+check "9686 S5: an unparseable summary reads state unknown" "$(fst stale)" unknown
+fr_reset; echo '{"unknown":false,"stale":false,"unowned":[123]}' > "$FX/dsum.out"
+fr
+check "9686 S5: a key that is not a ticket key reads state unknown, never a complete empty list" "$(fst stale)" unknown
+fr_reset; echo '{"unowned":["HIMMEL-2"]}' > "$FX/dsum.out"
+fr
+check "9686 S5: a summary with no unknown and stale flags reads state unknown" "$(fst stale)" unknown
+check "9686 S5: and the refresh still ends ok" "$(frout)" "focus=ok"
 
 # focus-version: auto (or no line beside a release: line) follows the declared release's current version.
 fr_auto() { # <focus-version line or ''> <release line or ''> [versions json]
@@ -1717,7 +1797,7 @@ done
 fr_reset
 mkdir -p "$FR/m2"
 fr --mirror-fresh "$FR/m2"
-check "3c: a fresh mirror from the caller skips the mirror and versions steps" "$(frseq)" "sweep,tracker,drift,ksync"
+check "3c: a fresh mirror from the caller skips the mirror and versions steps" "$(frseq)" "sweep,drift,tracker,ksync"
 contains "3c: the render reads that mirror" "$(grep '^tracker ' "$FX/fr.log")" "--mirror-dir $FR/m2"
 
 for stage in mirror versions sweep:rc1 render; do
@@ -1770,7 +1850,7 @@ contains "3c: a drift pass that exits 1 is WARN:drift rc1" "$(frout)" "drift rc1
 check "3c: and the page is still published" "$([ -e "$PAGE" ] && echo set || echo none)" set
 fr_reset; echo 2 > "$FX/sweep.moved"
 fr
-check "3c: a sweep that moved a ticket re-reads the mirror before the render" "$(frseq)" "jira,jira,sweep,jira,tracker,drift,ksync"
+check "3c: a sweep that moved a ticket re-reads the mirror, then drift runs, then the render" "$(frseq)" "jira,jira,sweep,jira,drift,tracker,ksync"
 check "3c: and the refresh is ok" "$(frout)" "focus=ok"
 fr_reset; echo 2 > "$FX/sweep.moved"; echo mirror > "$FX/fr.fail"
 fr
