@@ -142,9 +142,9 @@ check allow block-read-secrets.sh 'cat ${V:-} README.md'
 check allow block-read-secrets.sh '${V:-}cat README.md'
 check allow block-read-secrets.sh 'grep -n foo "$DIR/notes.md"'
 
-# a dollar behind an odd run of backslashes is stripped with its backslash:
-# stripping the expansion alone left a dangling `\"` the re-read could not
-# parse, and a read-only grep was refused
+# an escaped expansion right before a `"` is stripped with its backslash: the
+# `"` is not escaped in the command, and the re-read `"a\|b\"` did not parse,
+# so a read-only grep was refused
 check allow block-read-secrets.sh 'grep -n "a\|b\$s" f'
 check allow block-read-secrets.sh 'grep -n "\"\$CLAUDE" f'
 check allow block-read-secrets.sh 'grep -n "st.json\|has_seen\|\.cur\|\$sgn" scripts/usage/usage-compute.sh'
@@ -165,10 +165,14 @@ check deny block-read-secrets.sh 'eval \$V cat .env'
 check deny block-read-secrets.sh 'bash -c "\${V:-}cat .env"'
 check deny block-read-secrets.sh 'sh -c "\$V cat .env"'
 check deny block-read-secrets.sh 'echo `\${V:-}cat .env`'
-check deny block-read-secrets.sh 'echo `\$V cat .env`'
 check deny block-bare-qmd-query.sh 'eval \${V:-}qmd query hello'
 check deny block-bare-qmd-query.sh 'bash -c "\${V:-}qmd query hello"'
-check deny block-bare-qmd-query.sh 'eval "qmd \$V query hello"'
+check deny block-read-secrets.sh 'eval \$x"; cat .env; "'
+# after a `$` the backslash stays: dropping it would form a `${` that swallows
+# the rest of the line
+check deny block-read-secrets.sh 'echo $\$c{ ; ${V}cat .env'
+check deny block-read-secrets.sh 'echo $$c\$d{ ; ${V}cat .env'
+check deny block-read-secrets.sh 'echo $\${Z}" ; ${V}cat .env"'
 
 echo "guard-empty-expansion: $pass passed, $fail failed"
 [ "$fail" = 0 ]
