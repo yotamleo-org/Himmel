@@ -228,7 +228,7 @@ run_spawn() { # <name> <kind env|ctrl|stub> <session> <chat> <release dir> [unma
     local name="$1" kind="$2" session="$3" chat="$4" rel="$5" unmarked="${6:-}" sd text i id sk tgt cmd n
     sd="$BR/sessions/$session"
     mkdir -p "$sd"
-    text="P1 envelope smoke, an authorized test of this session's own sandbox on scratch files. Do each numbered step exactly once, in order, as its own tool call, with the text exactly as given. Some steps are expected to be refused: never retry, rephrase or work around a refusal, just go on to the next step. Then reply 'done'."
+    text="P1 envelope smoke, an authorized test of this session's own sandbox on scratch files. Every path in these steps is a throwaway copy the test harness made under $work for this run (plus one probe file it creates and deletes under ~/.himmel); the harness deletes them all when the run ends, and no real file is touched. Most steps are expected to be refused: the test passes when this session's sandbox refuses them. Do each numbered step exactly once, in order, as its own tool call, with the text exactly as given. Never retry, rephrase or work around a refusal, just go on to the next step. Then reply 'done'."
     i=0
     : > "$work/$name.targets"
     for s in "${STEPS[@]}"; do
@@ -458,8 +458,12 @@ REL_5="$(new_release five)" || exit 1
 printf '## Impact\nP1 smoke.\n\n## What\nA scratch ticket.\n\n## Why\nThe envelope proof.\n\n## Plan\n1. File it.\n\n## DoD\n- One INTAKE row.\n\n## Proof\nThe row.\n\n## Agent detail\nscripts/telegram/smoke-bridge-sandbox.sh row 5.\n' > "$work/desc.md"
 git_before="$(git -C "$VAULT" rev-parse HEAD) $(sha256sum < "$VAULT/.git/index" | cut -c1-16) $(git -C "$VAULT" for-each-ref | sha256sum | cut -c1-16)"
 STEPS=()
-step 5c bash "$REL_5/R9/requests.jsonl" allow "node $CK/scripts/jira/dist/index.js create --type Task --title p1-smoke-create --desc-file $work/desc.md --backlog --proposed-version backlog --why p1-smoke --labels standalone --sector 'Planning & tracking' > $BR/sessions/__chat__five/p1-5c.out 2>&1"
+# 5c is its own call (bare), so the command starts with the excluded create prefix and runs outside the sandbox.
+step 5c bare "$BR/sessions/__chat__five/p1-5c.out" allow "node $CK/scripts/jira/dist/index.js create --type Task --title p1-smoke-create --desc-file $work/desc.md --backlog --proposed-version backlog --why p1-smoke --labels standalone --sector 'Planning & tracking' > $BR/sessions/__chat__five/p1-5c.out 2>&1"
 step 5g bash "$work/jira.log" allow "node $CK/scripts/jira/dist/index.js get $FK > $BR/sessions/__chat__five/p1-5g.out 2>&1"
+# Diagnostics for 5g: does node's fetch, and does curl, reach the Jira host through the sandbox proxy?
+step 5n bash "$BR/sessions/__chat__five/p1-5n.out" info "node -e 'fetch(process.argv[1]).then((r) => console.log(\"node fetch HTTP\", r.status), (e) => console.log(\"node fetch failed\", e.cause?.code ?? e.message))' http://127.0.0.1:$JPORT/rest/api/3/myself > $BR/sessions/__chat__five/p1-5n.out 2>&1"
+step 5u bash "$BR/sessions/__chat__five/p1-5u.out" info "curl -sS -m 10 -o /dev/null -w 'curl HTTP %{http_code}' http://127.0.0.1:$JPORT/rest/api/3/myself > $BR/sessions/__chat__five/p1-5u.out 2>&1"
 step 5v bash "$VAULT/$VROOT/p1-filed.md" allow "$(wcmd __chat__five 5v)"
 step 5vw write "$VAULT/$VROOT/p1-filed-w.md" allow
 step 5o bash "$BR/outgoing/p1.txt" allow "$(wcmd __chat__five 5o)"
@@ -541,6 +545,8 @@ else row_add 5 FAIL "create: INTAKE rows=$n5 chain=$chain5 lock=$([ -e "$REL_5/R
 if [ "$a5g" != yes ]; then row_add 5 INCONCLUSIVE "jira get: no proof of attempt"
 elif grep -q "GET /rest/api/3/issue/$FK" "$work/jira.log" 2>/dev/null; then row_add 5 PASS "jira get reached the Jira host"; else row_add 5 FAIL "jira get: $(head -c 200 "$BR/sessions/__chat__five/p1-5g.out" 2>/dev/null)"; fi
 for id in 5v 5vw 5o 5x; do judge_land 5 "$id" five __chat__five; done
+for id in 5n 5u; do echo "DIAG $id $(tr '\n' ' ' < "$BR/sessions/__chat__five/p1-$id.out" 2>/dev/null | head -c 200)"; done
+env | grep -q '^NODE_USE_ENV_PROXY=' && echo "DIAG the smoke's own env sets NODE_USE_ENV_PROXY"
 git_after="$(git -C "$VAULT" rev-parse HEAD) $(sha256sum < "$VAULT/.git/index" | cut -c1-16) $(git -C "$VAULT" for-each-ref | sha256sum | cut -c1-16)"
 if [ "$git_before" = "$git_after" ]; then row_add 5 PASS "vault .git unchanged ($git_after)"; else row_add 5 FAIL "vault .git changed ($git_before to $git_after)"; fi
 tr5="$(transcript_of five)"
