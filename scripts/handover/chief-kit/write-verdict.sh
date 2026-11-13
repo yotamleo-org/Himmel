@@ -117,8 +117,9 @@
 #
 # a judge often rules on a head that follows the last reviewed one
 # by a test-only or comment-only commit. `--bind-reviewed <sha>` (NO-GO only)
-# checks, with review-round.sh's own `trivial-descendant` verb run in the cwd's
-# repo, that <head> is a strict descendant of <sha> and the delta changes only
+# checks, with review-round.sh's own `trivial-descendant` verb run in the repo
+# under review (the gated checkout; with --repo, the caller's cwd), that <head>
+# is a strict descendant of <sha> and the delta changes only
 # test paths or comment lines, then writes the NO-GO for <head> as usual and
 # records <sha> in a signed `reviewed-head:` annotation; any other delta exits 2,
 # nothing written. The verdict line keeps naming the judged head, so every veto
@@ -126,7 +127,7 @@
 # on it; the round gate binds such a NO-GO to the reviewed head at read time.
 # `--delta-noop <judged-head>` (GO only) records that <head> needs no judge of its
 # own: this judge's real GO under <qid> rules on <judged-head>, and
-# `delta-class.sh --qid <qid> <judged-head> <head>`, run here in the cwd's repo,
+# `delta-class.sh --qid <qid> <judged-head> <head>`, run in the repo under review,
 # prints `none` (no trust-path file, no judged finding's lines touched). The record
 # is written as <name> = delta-noop-<head> (so the judged head's own record is
 # never replaced) and its signed header carries `delta: no-op`,
@@ -458,21 +459,43 @@ fi
 . "$HERE/../../lib/handover-path.sh" || { echo "write-verdict: cannot load scripts/lib/handover-path.sh" >&2; exit 3; }
 ANCHOR="$(cd "$HERE/../../.." && pwd)"
 ROOT=$(go_resolve_root "$ANCHOR") || { echo "write-verdict: cannot resolve the handover root go.sh reads" >&2; exit 3; }
-# A run from another repo's checkout (an adopter or a fork) with no --repo must not
-# fall into this harness's bucket: refuse and name the repo the checkout belongs to.
+# The gated checkout: HIMMEL_REPO, else the primary checkout of this script's own tree,
+# never the caller's cwd. Without --repo the reads of the repo under review (the
+# --bind-reviewed and --delta-noop delta checks, the ceiling lookup, the PR and thread
+# reads) run there, so the verdict is the same from any directory.
+# shellcheck source=scripts/lib/git-clean.sh
+# shellcheck disable=SC1091
+. "$HERE/../../lib/git-clean.sh" 2>/dev/null && git_env_scrub
+case "${HIMMEL_REPO:-}" in
+    /*) GATE_DIR=$HIMMEL_REPO ;;
+    '') GATE_DIR=$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || GATE_DIR=""  # swallow-ok: a tree outside git reads empty, which falls back to this script's own tree root below
+        GATE_DIR=${GATE_DIR%/.git} ;;
+    *) echo "write-verdict: HIMMEL_REPO ($HIMMEL_REPO) is not an absolute path - refusing to let it pick the gated checkout; nothing written" >&2
+       exit 2 ;;
+esac
+[ -n "$GATE_DIR" ] || GATE_DIR=$ANCHOR
+if [ ! -d "$GATE_DIR" ]; then
+    echo "write-verdict: the gated checkout HIMMEL_REPO ($GATE_DIR) is not a directory; nothing written" >&2
+    exit 2
+fi
+origin_nwo() { git -C "$1" remote get-url origin 2>/dev/null | sed -E 's#^(https?://[^/]+/|git@[^:]+:|ssh://git@[^/]+/)##; s#\.git$##' | LC_ALL=C tr '[:upper:]' '[:lower:]'; }  # swallow-ok: no origin reads empty, which keeps the harness bucket
+# A HIMMEL_REPO whose origin is another repo than this harness's must not write into
+# this harness's bucket: refuse. An adopted repo's verdict names it with --repo.
+GATE_NWO=$(origin_nwo "$GATE_DIR")
 if [ "$VREPO_SET" -eq 0 ]; then
-    # shellcheck source=scripts/lib/git-clean.sh
-    # shellcheck disable=SC1091
-    . "$HERE/../../lib/git-clean.sh" 2>/dev/null && git_env_scrub
-    origin_nwo() { git -C "$1" remote get-url origin 2>/dev/null | sed -E 's#^(https?://[^/]+/|git@[^:]+:|ssh://git@[^/]+/)##; s#\.git$##' | LC_ALL=C tr '[:upper:]' '[:lower:]'; }  # swallow-ok: no origin reads empty, which keeps the harness bucket
-    HERE_NWO=$(origin_nwo .)
     HARNESS_NWO=$(origin_nwo "$ANCHOR")
     nwo_ok() { case "$1" in ""|*/*/*|*[!a-z0-9._/-]*|*/|/*|.*|*/.*) return 1 ;; */*) return 0 ;; *) return 1 ;; esac; }
-    if nwo_ok "$HERE_NWO" && nwo_ok "$HARNESS_NWO" && [ "$HERE_NWO" != "$HARNESS_NWO" ]; then
-        echo "write-verdict: refusing - this checkout's origin is $HERE_NWO, not the harness repo; pass --repo $HERE_NWO to write into its bucket, or run it from the harness checkout" >&2
+    if nwo_ok "$GATE_NWO" && nwo_ok "$HARNESS_NWO" && [ "$GATE_NWO" != "$HARNESS_NWO" ]; then
+        echo "write-verdict: refusing - HIMMEL_REPO ($GATE_DIR) has origin $GATE_NWO, not this harness's $HARNESS_NWO; point HIMMEL_REPO at the harness checkout (an adopted repo's verdict is written with --repo <owner/name>)" >&2
         exit 2
     fi
 fi
+# The repo under review: --repo names an adopted repo, read in the caller's checkout of it;
+# else the gated checkout, by its origin.
+WV_REPO=${VREPO:-$GATE_NWO}
+WV_OWNER='{owner}' WV_NAME='{repo}'
+[ -z "$WV_REPO" ] || { WV_OWNER=${WV_REPO%%/*}; WV_NAME=${WV_REPO#*/}; }
+in_reviewed() { if [ -n "$VREPO" ]; then "$@"; else (cd "$GATE_DIR" && "$@"); fi; }
 SCOPE=$(go_verdict_scope "$ANCHOR" "$VREPO") || { echo "write-verdict: cannot resolve this repo's <user>/<bucket> verdict scope" >&2; exit 3; }
 [ -d "$ROOT" ] || { echo "write-verdict: handover root '$ROOT' is not a directory" >&2; exit 3; }
 
@@ -506,7 +529,7 @@ if [ "$PRBIND" -eq 1 ]; then
     # shellcheck source=scripts/lib/timeout-bin.sh
     # shellcheck disable=SC1091
     bb_tb=""; . "$HERE/../../lib/timeout-bin.sh" 2>/dev/null && bb_tb=${_TIMEOUT_BIN:-}
-    bb_rc=0; BIND_PRHEAD=$(${bb_tb:+"$bb_tb" -k 5 30} gh pr view "$PR" ${VREPO:+--repo "$VREPO"} --json headRefOid --jq .headRefOid 2>/dev/null </dev/null) || bb_rc=$? # swallow-ok: rc captured, a failed or empty read exits 7 below
+    bb_rc=0; BIND_PRHEAD=$(in_reviewed ${bb_tb:+"$bb_tb" -k 5 30} gh pr view "$PR" ${WV_REPO:+--repo "$WV_REPO"} --json headRefOid --jq .headRefOid 2>/dev/null </dev/null) || bb_rc=$? # swallow-ok: rc captured, a failed or empty read exits 7 below
     if [ "$bb_rc" -ne 0 ] || [ -z "$BIND_PRHEAD" ]; then
         echo "write-verdict: --bind refused - could not read PR #$PR's head from gh (rc $bb_rc); nothing written" >&2
         exit 7
@@ -531,13 +554,13 @@ fi
 # the judged head must be a strict descendant of the reviewed head
 # whose delta is test-path-only or comment-only - review-round.sh's own rule,
 # asked through its read-only verb so the writer and the gate cannot disagree.
-# It runs in the caller's cwd (the repo under review); the absolute script path
+# It runs in the repo under review (in_reviewed); the absolute script path
 # is never handed off to the anchor. The verdict line stays on the judged head
 # (moving it to the reviewed head would strip the judged head of its veto); the
 # reviewed head is only annotated.
 REVIEWED=""
 if [ -n "$BIND" ]; then
-    if ! bash "$ANCHOR/scripts/cr/review-round.sh" trivial-descendant "$BIND" "$HEAD" >/dev/null 2>&1; then
+    if ! in_reviewed bash "$ANCHOR/scripts/cr/review-round.sh" trivial-descendant "$BIND" "$HEAD" >/dev/null 2>&1; then
         echo "write-verdict: --bind-reviewed refused - $HEAD is not a strict descendant of $BIND whose delta changes only test paths or comment lines (run from the repo under review); nothing written" >&2
         exit 2
     fi
@@ -545,7 +568,7 @@ if [ -n "$BIND" ]; then
 fi
 
 # --delta-noop: the judged head must carry this qid's signed GO, and the classifier
-# must call the delta none. It runs in the caller's cwd (the repo under review) and
+# must call the delta none. It runs in the repo under review (in_reviewed) and
 # only as the anchor's own copy; anything it prints but `none`, or any failure, refuses.
 if [ -n "$DNOOP" ]; then
     # A no-op is never itself a judged head. This is checked here, not left to delta-class.sh,
@@ -566,7 +589,7 @@ if [ -n "$DNOOP" ]; then
         echo "write-verdict: --delta-noop refused - the judged head has no GO from $QID: $dn_why" >&2
         exit 2
     fi
-    dn_class=$(bash "$ANCHOR/scripts/handover/chief-kit/delta-class.sh" --qid "$QID" "$DNOOP" "$HEAD" 2>/dev/null) || dn_class=trust # swallow-ok: a failed classifier reads trust, which refuses, on this line
+    dn_class=$(in_reviewed bash "$ANCHOR/scripts/handover/chief-kit/delta-class.sh" --qid "$QID" "$DNOOP" "$HEAD" 2>/dev/null) || dn_class=trust # swallow-ok: a failed classifier reads trust, which refuses, on this line
     if [ "$dn_class" != none ]; then
         echo "write-verdict: --delta-noop refused - delta-class.sh classifies $DNOOP..$HEAD as '$dn_class', not none; a judge must rule on it (run from the repo under review); nothing written" >&2
         exit 2
@@ -578,7 +601,7 @@ if [ -n "$DNOOP" ]; then
     # shellcheck source=scripts/lib/open-review-threads.sh
     # shellcheck disable=SC1091
     if ! . "$HERE/../../lib/open-review-threads.sh" 2>/dev/null \
-        || ! dn_th=$(open_review_threads '{owner}' '{repo}' "$PR" ${dn_tb:+"$dn_tb" -k 5 30} gh); then
+        || ! dn_th=$(in_reviewed open_review_threads "$WV_OWNER" "$WV_NAME" "$PR" ${dn_tb:+"$dn_tb" -k 5 30} gh); then
         echo "write-verdict: WARNING - could not read the review threads of PR #$PR; this no-op GO is not checked against open threads (check-ci still refuses the merge over one)" >&2
     elif [ "${dn_th%%$'\n'*}" != 0 ]; then
         if [ "$THREADS_OK_SET" -ne 1 ]; then
@@ -598,7 +621,7 @@ if [ -n "$PR" ] && [ -z "$DNOOP" ]; then
         CEILINGS_BLOCK="CEILINGS: not read (no scripts/ledger/ceiling-lookup.sh at $ANCHOR)"
     else
         lk_rc=0
-        CEILINGS_BLOCK=$(bash "$ANCHOR/scripts/ledger/ceiling-lookup.sh" --ids ${VREPO:+--repo "$VREPO"} --range "origin/main...$HEAD" </dev/null 2>/dev/null) || lk_rc=$?  # swallow-ok: a failed lookup is recorded as not read with its rc below
+        CEILINGS_BLOCK=$(in_reviewed bash "$ANCHOR/scripts/ledger/ceiling-lookup.sh" --ids ${VREPO:+--repo "$VREPO"} --range "origin/main...$HEAD" </dev/null 2>/dev/null) || lk_rc=$?  # swallow-ok: a failed lookup is recorded as not read with its rc below
         case "$CEILINGS_BLOCK" in
             CEILINGS:*) ;;
             *) CEILINGS_BLOCK="CEILINGS: not read (ceiling-lookup.sh failed, rc=$lk_rc)" ;;

@@ -125,7 +125,7 @@ LIB="$(cd "$(dirname "$SCRIPT")/../lib" && pwd)"
 mkdir -p "$TMP/t14home"
 t14_root=$(cd "$T14_REPO" && unset HANDOVER_DIR && export HOME="$TMP/t14home" HIMMEL_CONFIG_DIR="$TMP/t14home/.himmel" && . "$LIB/load-dotenv.sh" && . "$LIB/handover-path.sh" \
     && load_dotenv --root "$T14_REPO" HANDOVER_DIR 2>/dev/null && handover_root 2>&1)
-assert_eq "T14 resolver lands on the repo handovers/" "$(cd "$T14_REPO/handovers" && pwd)" "$t14_root"
+assert_eq "T14 resolver lands on the repo handovers/" "$(cd "$T14_REPO/handovers" && pwd -P)" "$t14_root"
 
 # file_mode <path>: octal mode, GNU stat first then BSD stat (macOS).
 file_mode() { stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1" 2>/dev/null; }

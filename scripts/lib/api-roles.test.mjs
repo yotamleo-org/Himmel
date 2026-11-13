@@ -242,3 +242,51 @@ test('check reports accounts unreadable and no warnings for a missing, non-JSON 
     assert.equal(out.roleMap.state, 'valid');
   }
 });
+
+const walk = (f) => f.cli(['walk', 'graphify']);
+
+test('R1: walk graphify prints the map letters, else the configured letters, else every account when the roster cannot be read', () => {
+  const f = fixture(doc({ graphify: ['C'] }));
+  withAccounts(f, ['A', 'B', 'C']);
+  const r = walk(f);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, 'C\n');
+  const g = fixture();
+  withAccounts(g, ['A', 'C']);
+  assert.equal(walk(g).stdout, 'A,C\n');
+  const u = walk(fixture());
+  assert.equal(u.status, 0, u.stderr);
+  assert.equal(u.stdout, 'A,B,C\n');
+});
+
+test('R2: a map that would widen the walk refuses with exit 3 and names its state or error', () => {
+  const cases = [['{not json', 'refuse invalid-role-map:not-json'], [JSON.stringify({ version: 2, roles: {} }), 'refuse invalid-role-map:version'],
+    [doc({ graphify: ['D'] }), 'refuse empty-role:graphify']];
+  for (const [map, line] of cases) {
+    const f = fixture(map);
+    withAccounts(f, ['A', 'B', 'C']);
+    const r = walk(f);
+    assert.equal(r.status, 3, `${line}: ${r.stdout}${r.stderr}`);
+    assert.equal(r.stdout, `${line}\n`);
+  }
+});
+
+test('R3: damage that does not widen walks as on main', () => {
+  const f = fixture(doc({ graphify: ['C', 'D'] }));
+  withAccounts(f, ['A', 'B', 'C']);
+  const r = walk(f);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, 'C\n');
+  assert.match(r.stderr, /graphify entry kept as \[C\]/);
+  const g = fixture(doc({ graphify: ['B'] }));
+  withAccounts(g, ['A', 'C']);
+  assert.equal(walk(g).stdout, 'B\n');
+  const h = fixture(doc({ graphify: ['A'], jduge: ['B'] }));
+  withAccounts(h, ['A', 'B', 'C']);
+  assert.equal(walk(h).stdout, 'A\n');
+});
+
+test('walk takes graphify only: another kind or none is a usage error', () => {
+  const f = fixture();
+  for (const args of [['walk', 'judge'], ['walk']]) assert.equal(f.cli(args).status, 2);
+});

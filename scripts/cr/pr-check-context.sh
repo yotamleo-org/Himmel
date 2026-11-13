@@ -860,7 +860,9 @@ scripts/handover/chief-kit/chain-push-check.sh
 marketplace/plugins/himmel-ops/scripts/humanizer-facts.py
 scripts/handover/chief-kit/append-results.sh scripts/handover/chief-kit/worker-doc-lock.sh
 scripts/handover/chief-kit/bucket-gitleaks.sh scripts/handover/chief-kit/vault-status.sh
-scripts/handover/suite-coverage.sh"
+scripts/handover/suite-coverage.sh
+scripts/luna/cadence-alert.sh scripts/luna/vault-stall-alert.sh scripts/luna/qmd-embed-model.sh scripts/luna/qmd-reindex.sh
+scripts/qmd/qmd-jina-gate.mjs scripts/qmd/vocab-expand.py"
 cr_pathspecs=(':(top)scripts/cr/' ':(top)scripts/lib/' ':(top)scripts/api-lane/' ':(top)scripts/ledger/' ':(top)scripts/guardrails/lib.sh' ':(top)scripts/check-ci.sh'
     ':(top)scripts/handover/resolve-active-item.sh'
     ':(top)scripts/handover/resolve-active-item-report.sh'
@@ -898,6 +900,8 @@ cr_pathspecs=(':(top)scripts/cr/' ':(top)scripts/lib/' ':(top)scripts/api-lane/'
     ':(top)scripts/handover/chief-kit/append-results.sh' ':(top)scripts/handover/chief-kit/worker-doc-lock.sh'
     ':(top)scripts/handover/chief-kit/bucket-gitleaks.sh' ':(top)scripts/handover/chief-kit/vault-status.sh'
     ':(top)scripts/handover/suite-coverage.sh'
+    ':(top)scripts/luna/cadence-alert.sh' ':(top)scripts/luna/vault-stall-alert.sh' ':(top)scripts/luna/qmd-embed-model.sh' ':(top)scripts/luna/qmd-reindex.sh'
+    ':(top)scripts/qmd/qmd-jina-gate.mjs' ':(top)scripts/qmd/vocab-expand.py'
     ':(top)scripts/eval/cr-ledger/cr_ledger_eval.py' ':(top)scripts/eval/lib/eval_runs.py'
     ':(top,exclude,glob)scripts/**/__pycache__/**')
 cr_manifest() { # cr_manifest <root> - "<mode> <blob-id> <path>" per guarded file, sorted

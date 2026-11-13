@@ -39,6 +39,7 @@ for s in write-verdict go append-results; do
 printf '%s' "$s" >> "$LOG"
 for a in "\$@"; do printf ' [%s]' "\$a" >> "$LOG"; done
 printf '\n' >> "$LOG"
+printf '%s %s\n' "$s" "\$PWD" >> "$LOG.cwd"
 case "$s" in
     write-verdict) exit "\${WV_RC:-0}" ;;
     go) # GO_NEEDS_CONTRACT models go.sh on a PR titled with a [KEY]: no --contract is its exit 4
@@ -207,5 +208,24 @@ check    "9g: --contract twice rc 2" "$rc" 2
 run q9h NO-GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC" --contract no
 check    "9h: a NO-GO accepts --contract and never runs go.sh: rc 0" "$rc" 0
 lacks    "9h: go.sh never runs" "$log" "go ["
+
+# --- 10. the caller's cwd never decides the gated repo -------------------------
+# write-verdict.sh and go.sh run in HIMMEL_REPO from any cwd; a relative --doc and
+# --evidence-file still mean the caller's path. RED control (verdict-go.sh before this
+# change): the steps run in the caller's cwd.
+GATED="$tmp/gated"; NOWHERE="$tmp/nowhere"; mkdir -p "$GATED" "$NOWHERE/rel" || { echo "FAIL: 10 setup" >&2; exit 1; }
+: > "$NOWHERE/rel/chief.md"
+for cwd10 in "$NOWHERE" "$GATED"; do
+    rm -f "$LOG.cwd"
+    rc=0; out="$(cd "$cwd10" && HIMMEL_REPO="$GATED" bash "$KIT/verdict-go.sh" q10 GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$NOWHERE/rel/chief.md" 2>&1)" || rc=$?
+    check "10 (${cwd10##*/}): rc 0" "$rc" 0
+    check "10 (${cwd10##*/}): write-verdict and go run in HIMMEL_REPO" "$(grep -E '^(write-verdict|go) ' "$LOG.cwd" 2>/dev/null | tr '\n' ',')" "write-verdict $GATED,go $GATED,"
+done
+: > "$LOG"
+rc=0; out="$(cd "$NOWHERE" && HIMMEL_REPO="$GATED" bash "$KIT/verdict-go.sh" q10r GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc rel/chief.md 2>&1)" || rc=$?
+check    "10: a relative --doc rc 0" "$rc" 0
+contains "10: a relative --doc is the caller's path" "$(cat "$LOG")" "append-results [$NOWHERE/rel/chief.md]"  # read-sink-ok: the test's own sandbox log
+rc=0; out="$(cd "$NOWHERE" && HIMMEL_REPO=rel bash "$KIT/verdict-go.sh" q10x GO "$HEAD40" --pr 77 --evidence-file "$EV" 2>&1)" || rc=$?
+check    "10: a relative HIMMEL_REPO is refused rc 2" "$rc" 2
 
 [ "$fails" -eq 0 ] && echo "all ok" || { echo "$fails failure(s)"; exit 1; }

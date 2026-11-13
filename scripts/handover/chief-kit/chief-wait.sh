@@ -190,8 +190,9 @@
 #                               same change never wakes twice. No change is silent; a REST failure
 #                               is silent and retried next interval; a field the row left unset is a
 #                               silent baseline. Seams (tests): CHIEF_WAIT_GH replaces `gh`; CHIEF_WAIT_PR_WATCH_SEC=0
-#                               polls every sample. The repository is the row's `repo` or, as for
-#                               `gh pr checks` below, the one `gh` resolves from the waiter's cwd.
+#                               polls every sample. The repository is the row's `repo` or the
+#                               gated checkout's (HIMMEL_REPO, else this script's own primary
+#                               checkout), never the waiter's cwd; so is `gh pr checks` below.
 #   WAKE succession complete <k/n>   with --succession <successor> --doc <chief doc>
 #   <tracker output>            (the successor's waiter): every inherited worker quoted
 #                               back; the block carries succession-tracker.sh's table
@@ -471,6 +472,23 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
 # shellcheck source=../../lib/prim.sh
 . "$REPO/scripts/lib/prim.sh" || exit 2
+# The gated checkout: HIMMEL_REPO, else the primary checkout of this script's own tree,
+# never the waiter's cwd. ready-check.sh, cr-disposition.sh and every gh read of the
+# PR run there, so the waiter reads the same repo from any directory.
+# git-env-ok: the one git call runs in a subshell that unsets GIT_DIR, GIT_WORK_TREE, GIT_COMMON_DIR and GIT_INDEX_FILE first
+case "${HIMMEL_REPO:-}" in
+    /*) GATE_DIR=$HIMMEL_REPO ;;
+    '') GATE_DIR=$( (unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE; git -C "$HERE" rev-parse --path-format=absolute --git-common-dir) 2>/dev/null) || GATE_DIR=""  # swallow-ok: a tree outside git reads empty, which falls back to this script's own tree root below
+        GATE_DIR=${GATE_DIR%/.git} ;;
+    *) echo "chief-wait: HIMMEL_REPO ($HIMMEL_REPO) is not an absolute path - refusing to let it pick the gated checkout" >&2
+       exit 2 ;;
+esac
+[ -n "$GATE_DIR" ] || GATE_DIR=$REPO
+[ -d "$GATE_DIR" ] || { echo "chief-wait: the gated checkout HIMMEL_REPO ($GATE_DIR) is not a directory" >&2; exit 2; }
+# gate_nwo: the gated checkout's owner/name from its origin URL (empty when it has none).
+gate_nwo() {
+    (. "$REPO/scripts/lib/git-clean.sh" && git_env_scrub && git -C "$GATE_DIR" config --get remote.origin.url | sed -E 's#^.*github\.com[:/]##; s#\.git$##')
+}
 # the manifest worker array is `workers`; a manifest not yet rewritten holds the pre-rename `legs`, read only while legacy names are on
 # shellcheck source=../../lib/legacy-names.sh
 . "$REPO/scripts/lib/legacy-names.sh" || exit 2
@@ -1843,7 +1861,7 @@ ready_wake() {
         aq=""
         [ ! -s "$ready_hint_file" ] || aq="$(awk -v k="$pr $head" '$1 " " $2 == k { c = $3 } END { print c }' "$ready_hint_file")"
         heartbeat sampling
-        rc_out="$(timeout -k 5 $((rcd + ready_check_grace)) bash "${CHIEF_WAIT_READY_CHECK:-$HERE/ready-check.sh}" --observe "$pr" "$head" </dev/null 2>&1 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
+        rc_out="$(cd "$GATE_DIR" && timeout -k 5 $((rcd + ready_check_grace)) bash "${CHIEF_WAIT_READY_CHECK:-$HERE/ready-check.sh}" --observe "$pr" "$head" </dev/null 2>&1 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
         word="$(checks_word "$rc" "$rc_out")"
         if [ "$word" = pause ]; then return 1; fi
         outf="$inbox.wait.ready-$pr"
@@ -1863,7 +1881,7 @@ ready_wake() {
         heartbeat sampling
         ci="$(ready_ci "$pr" "$head" "$ci_t")"
         heartbeat sampling
-        disp="$(timeout -k 5 "$disp_t" bash "${CHIEF_WAIT_DISPOSITION:-$HERE/cr-disposition.sh}" check "$pr" "$head" --trust-path "$trust" </dev/null 2>&1 9>&-)"; drc=$?  # gnu-ok: Linux-only kit
+        disp="$(cd "$GATE_DIR" && timeout -k 5 "$disp_t" bash "${CHIEF_WAIT_DISPOSITION:-$HERE/cr-disposition.sh}" check "$pr" "$head" --trust-path "$trust" </dev/null 2>&1 9>&-)"; drc=$?  # gnu-ok: Linux-only kit
         word="$(checks_word "$drc" "$disp")"
         if [ "$word" = pause ]; then return 1; fi
         if [ "$word" = stall ]; then
@@ -1898,7 +1916,7 @@ ready_hint_drop() {
 quota_waiter_repo=""
 quota_repo() {
     [ -z "$quota_waiter_repo" ] || { printf '%s' "$quota_waiter_repo"; return; }
-    quota_waiter_repo="${GHQ_REPO:-$(. "$REPO/scripts/lib/git-clean.sh" && git_env_scrub && git config --get remote.origin.url | sed -E 's#^.*github\.com[:/]##; s#\.git$##')}"
+    quota_waiter_repo="${GHQ_REPO:-$(gate_nwo)}"
     printf '%s' "$quota_waiter_repo"
 }
 quota_field() {
@@ -2048,8 +2066,8 @@ pr_watch_wake() {
     heartbeat sampling
     while IFS=$'\t' read -r pr head com rev repo st; do
         [ -n "$pr" ] || continue
-        pj="$(timeout -k 2 20 "$gh_cmd" api "repos/$repo/pulls/$pr" </dev/null 2>/dev/null 9>&-)" || continue  # gnu-ok: Linux-only kit; swallow-ok: a failed read is retried next interval, never a wake
-        rj="$(timeout -k 2 20 "$gh_cmd" api "repos/$repo/pulls/$pr/reviews?per_page=100" </dev/null 2>/dev/null 9>&-)" || continue  # gnu-ok: Linux-only kit; swallow-ok: as above
+        pj="$(cd "$GATE_DIR" && timeout -k 2 20 "$gh_cmd" api "repos/$repo/pulls/$pr" </dev/null 2>/dev/null 9>&-)" || continue  # gnu-ok: Linux-only kit; swallow-ok: a failed read is retried next interval, never a wake
+        rj="$(cd "$GATE_DIR" && timeout -k 2 20 "$gh_cmd" api "repos/$repo/pulls/$pr/reviews?per_page=100" </dev/null 2>/dev/null 9>&-)" || continue  # gnu-ok: Linux-only kit; swallow-ok: as above
         nh="$(printf '%s' "$pj" | jq -r '.head.sha // empty' 2>/dev/null)"  # swallow-ok: an unparsed reply fails the checks below
         nc="$(printf '%s' "$pj" | jq -r 'if (.comments | type) == "number" and (.review_comments | type) == "number" then .comments + .review_comments else empty end' 2>/dev/null)"  # swallow-ok: as above
         nr="$(printf '%s' "$rj" | jq -r 'if type == "array" then length else empty end' 2>/dev/null)"  # swallow-ok: as above
@@ -2075,13 +2093,15 @@ EOF
     return 1
 }
 ready_ci() {
-    local b rc err="$inbox.wait.ci-err"
+    local b rc nwo err="$inbox.wait.ci-err"
+    case "$err" in /*) ;; *) err="$PWD/$err" ;; esac
     if [ -n "${CHIEF_WAIT_CI:-}" ]; then
         b="$(timeout -k 5 "$3" bash "$CHIEF_WAIT_CI" "$1" "$2" </dev/null 2>/dev/null 9>&- | head -n 1)"  # gnu-ok: Linux-only kit
         case "$b" in GREEN|RED|PENDING|PAUSED) printf '%s\n' "$b" ;; *) printf 'PENDING\n' ;; esac
         return
     fi
-    b="$(timeout -k 5 "$3" gh pr checks "$1" --json bucket -q '.[].bucket' </dev/null 2>"$err" 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
+    nwo="$(gate_nwo)"
+    b="$(cd "$GATE_DIR" && timeout -k 5 "$3" gh pr checks "$1" ${nwo:+-R "$nwo"} --json bucket -q '.[].bucket' </dev/null 2>"$err" 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
     # a refusal exits 1 like a failed check, so its stderr decides (stdout is check names)
     if [ -z "$b" ] && [ "$rc" -ne 0 ] && ghq_is_rate_limited "$(cat "$err")"; then
         rm -f "$err"; printf 'PAUSED\n'; return

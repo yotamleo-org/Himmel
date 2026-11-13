@@ -2916,7 +2916,7 @@ for sx_case in sx-ok sx-unsigned sx-edited sx-other-pr sx-other-branch sx-nogo-b
         sx-bound-nogo-beside)
             # A NO-GO written with --bind-reviewed still vetoes its judged head
             printf 'class: tool-defaults\n\na bound NO-GO for the same head\n' > "$jev/judge-evidence.md"
-            (cd "$repo" && env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CLAUDE_CODE_SESSION_ID=judge-sess-5109 \
+            (cd "$repo" && env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY HIMMEL_REPO="$repo" CLAUDE_CODE_SESSION_ID=judge-sess-5109 \
                 bash "$fx/scripts/handover/chief-kit/write-verdict.sh" "$sx_case-nogo" NO-GO "$sx_head" \
                 --pr 1 --evidence-file "$jev/judge-evidence.md" --bind-reviewed "$sx_r3") \
                 >/dev/null 2>"$tmp/judge-$sx_case-nogo.err" || fail "judge writes $sx_case-nogo bound" ;;
