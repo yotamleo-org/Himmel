@@ -401,8 +401,6 @@ while [ $# -gt 0 ]; do
             selector="$1"; shift ;;
     esac
 done
-# A GO file is named <pr>.<head>, so with no selector it names the PR: the merge
-# runs from any cwd. The chief-GO gate below still binds it to the live head.
 if [ -z "$selector" ] && [[ "${GO_FLAG##*/}" =~ ^([1-9][0-9]*)\.[0-9a-f]{40}$ ]]; then
     selector="${BASH_REMATCH[1]}"
 fi
