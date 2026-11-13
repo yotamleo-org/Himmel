@@ -1148,6 +1148,11 @@ cp "$HERE/../../lib/gh-read.sh" "$HERE/../../lib/timeout-bin.sh" "$HERE/../../li
     --priority-file "$W/vp-plan.md" --chains-file "$W/vp-chains.json" --jira-base-url https://jira.example.test --out "$W/s8-sp.html" >/dev/null 2>&1
 contains 'S8b a checkout path with a space still runs the default helper' "$(cat "$W/s8-sp.html" 2>/dev/null)" '#500 · CI green'
 equals 'S8b the spaced-path run rides the read token' "$(grep -c -E '^tok=read argv=pr list ' "$S8LOG" || true)" 1
+: > "$S8LOG"
+s8render "$W/s8-e.html" GH_READ_ENV_ROOT="$W/s8emptyroot" GH_STUB_MAINFAIL= >/dev/null
+contains 'S8b control, no read token: the cards still fill' "$(cat "$W/s8-e.html" 2>/dev/null)" '#500 · CI green'
+equals 'S8b control, no read token: the fallback list read logs tok=main' "$(grep -c -E '^tok=main argv=pr list ' "$S8LOG" || true)" 1
+equals 'S8b control, no read token: no read rides the read token' "$(grep -c -E '^tok=read' "$S8LOG" || true)" 0
 # --- the held chain step, the worker card and the focus fingerprint.
 printf '%s\n' '---' 'key: "HIMMEL-420"' 'statusCategory: "To Do"' 'status: "To Do"' 'fixVersions: ["v1.1.3"]' 'labels: ["held"]' 'type: "Task"' \
     '---' '# HIMMEL-420: vp held ticket' > "$vp/HIMMEL-420.md"

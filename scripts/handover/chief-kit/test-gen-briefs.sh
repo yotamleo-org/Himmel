@@ -2197,6 +2197,14 @@ cp "$HERE/../../lib/gh-read.sh" "$HERE/../../lib/timeout-bin.sh" "$HERE/../../li
 s8o="$("${S8ENV[@]}" GH_STUB_MAINFAIL=rate python3 -I "$WORK/s8reads.py" "$WORK/s8 sp/scripts/handover/chief-kit" "$REPO" 2>&1)"
 has "S8b a checkout path with a space still runs the default helper" "$s8o" "REM='S5 stays open' OPEN=1"
 [ "$(s8cnt '^tok=read ')" = 2 ] && pass "S8b the spaced-path run rides the read token" || fail "S8b spaced-path reads: $(cat "$S8LOG")"
+mkdir -p "$WORK/s8emptyroot"
+: > "$WORK/s8emptyroot/.env"
+: > "$S8LOG"
+s8o="$("${S8ENV[@]}" GH_READ_ENV_ROOT="$WORK/s8emptyroot" GH_STUB_MAINFAIL= python3 -I "$WORK/s8reads.py" "$HERE" "$REPO" 2>&1)"
+has "S8b control, no read token: both reads still answer" "$s8o" "REM='S5 stays open' OPEN=1"
+[ "$(s8cnt '^tok=main argv=pr view 9 ')" = 1 ] && pass "S8b control, no read token: the body read logs tok=main" || fail "S8b control: body read not on main: $(cat "$S8LOG")"
+[ "$(s8cnt '^tok=main argv=pr list --state open --limit 200 ')" = 1 ] && pass "S8b control, no read token: the open-PR read logs tok=main" || fail "S8b control: open-PR read not on main: $(cat "$S8LOG")"
+[ "$(s8cnt '^tok=read')" = 0 ] && pass "S8b control, no read token: no read rides the read token" || fail "S8b control: a read rode the read token: $(cat "$S8LOG")"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
