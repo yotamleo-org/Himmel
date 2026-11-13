@@ -20,7 +20,8 @@ B="$W/bucket"
 D="$B/specs/decisions"
 L="$D/rulings-in-force.jsonl"
 mkdir -p "$D"
-for n in 901 902 903 904 905; do printf 'OPERATOR words of ruling %s.\n' "$n" > "$D/verbatim-decision-$n-2026-11-11.txt"; done
+for n in 901 902 903 904 905 906; do printf 'OPERATOR words of ruling %s.\n' "$n" > "$D/verbatim-decision-$n-2026-11-11.txt"; done
+for n in 908 909; do printf 'OPERATOR words of ruling %s.\n' "$n" > "$D/verbatim-decision-$n-operator-11-12-ZH.txt"; done
 printf '%s\n\n' '# Current direction, full text (part 1 of 1), byte for byte, written by chief.sh next' \
     'OPERATOR 11-11 ZA (BINDING, decision 901): alpha reading of 901, the full text.' \
     'OPERATOR 11-11 ZA (BINDING, decision 902): bravo reading of 902, the full text.' \
@@ -33,7 +34,8 @@ printf '%s\n\n' '# Current direction, full text (part 1 of 1), byte for byte, wr
     'OPERATOR 11-01 AA (BINDING, decisions 100 to 1): a reversed range, the full text.' \
     'OPERATOR 11-12 ZD, decision 903 (BINDING; verbatim specs/decisions/verbatim-decision-903-x.txt): hotel, its number before the parenthesis.' \
     'OPERATOR 11-12 ZE (BINDING, decision 907): india same opening words, numbered.' \
-    'OPERATOR 11-12 ZE (BINDING): india same opening words, unnumbered, citing decision 907.' > "$D/chief-direction-2026-11-11-p1.md"
+    'OPERATOR 11-12 ZE (BINDING): india same opening words, unnumbered, citing decision 907.' \
+    'OPERATOR 11-11 ZF (relayed to ZG), decision 906 (BINDING): kilo, relayed, the full text.' > "$D/chief-direction-2026-11-11-p1.md"
 rec() { bash "$SUT" record --bucket "$B" "$@" >/dev/null 2>&1; echo $?; }
 v() { printf 'specs/decisions/verbatim-decision-%s-2026-11-11.txt' "$1"; }
 
@@ -69,8 +71,9 @@ Chain order: one context line."
 render() { printf '%s\n' "$1" | bash "$SUT" render --bucket "${2:-$B}"; }
 out="$(render "$blk")"; rc=$?
 same "render: exits 0" "$rc" "0"
-same "render: the in-force ruling 901 is indexed with its date, line and verbatim path" \
-    "$(printf '%s\n' "$out" | grep -cxF "IN FORCE 901, 2026-11-11: alpha one line for 901 (verbatim: $(v 901))")" "1"
+same "render: the in-force ruling 901 is indexed with its date, line and short verbatim id" \
+    "$(printf '%s\n' "$out" | grep -cxF "IN FORCE 901, 2026-11-11: alpha one line for 901 (verbatim: 901-2026-11-11)")" "1"
+same "render: the pointer says how a short verbatim id names its file" "$(printf '%s\n' "$out" | grep '^Full original text' | grep -c 'specs/decisions/verbatim-decision-<id>.txt')" "1"
 same "render: only 901 is indexed (superseded 902 and done 904 are not)" "$(printf '%s\n' "$out" | grep -c '^IN FORCE ')" "1"
 same "render: the ledgered lines of 901, 902 and 904 leave the block" "$(printf '%s\n' "$out" | grep -cE 'decision (901|902|904):')" "0"
 same "render: a ruling with no ledger row (905) is kept as it was" "$(printf '%s\n' "$out" | grep -cxF 'OPERATOR 11-10 YZ, decision 905: delta reading of 905, no ledger row …')" "1"
@@ -119,14 +122,29 @@ OPERATOR 11-11 ZB, decision 901: replaces decision 901 with the golf rule …
 OPERATOR 11-12 ZC, decision 902: an index line with no full text in the companions …
 OPERATOR 11-12 ZD, decision 903: hotel, its number before the parenthesis.
 OPERATOR 11-12 ZE, decision 907: india same opening words, numbered …
-OPERATOR 11-12 ZE, decision 907: india same opening words, unnumbered …"
+OPERATOR 11-12 ZE, decision 907: india same opening words, unnumbered …
+OPERATOR 11-11 ZF, decision 906: kilo, relayed …
+OPERATOR 11-12 ZH, decision 908: lima, the full text in the block, verbatim specs/decisions/verbatim-decision-908-operator-11-12-ZH.txt.
+CHIEF ZH 11-12, decision 908: mike, a chief rule under 908, verbatim specs/decisions/verbatim-decision-908-operator-11-12-ZH.txt.
+OPERATOR 11-12 ZJ, decision 908: november, a later ruling citing verbatim specs/decisions/verbatim-decision-908-operator-11-12-ZH.txt.
+OPERATOR 11-12 ZH, decision 908: oscar, the same shift citing 908 with no verbatim path.
+OPERATOR 11-12 ZH, decisions 908 and 909: papa, the same shift citing two numbers, verbatim specs/decisions/verbatim-decision-908-operator-11-12-ZH.txt and specs/decisions/verbatim-decision-909-operator-11-12-ZH.txt."
 rec --id 903 --status "done" --date 2026-11-12 --line 'hotel' --path "$(v 903)" >/dev/null
 rec --id 907 --status "done" --date 2026-11-12 --line 'india' --path "$(v 905)" >/dev/null
+rec --id 906 --status "done" --date 2026-11-11 --line 'kilo' --path "$(v 906)" >/dev/null
+rec --id 908 --status "done" --date 2026-11-12 --line 'lima' --path specs/decisions/verbatim-decision-908-operator-11-12-ZH.txt >/dev/null
+rec --id 909 --status "done" --date 2026-11-12 --line 'papa' --path specs/decisions/verbatim-decision-909-operator-11-12-ZH.txt >/dev/null
 out="$(render "$cite")"
 same "render: two full texts an index line matches, one unnumbered, keep both lines" "$(printf '%s\n' "$out" | grep -c '^OPERATOR 11-12 ZE, decision 907: india same opening words')" "2"
 same "render: a ruling whose own number precedes its parenthesis leaves once ledgered" "$(printf '%s\n' "$out" | grep -c '^OPERATOR 11-12 ZD, decision 903:')" "0"
 same "render: the ruling numbered 901 leaves once 901 is ledgered" "$(printf '%s\n' "$out" | grep -c '^OPERATOR 11-11 ZA, decision 901:')" "0"
 same "render: an unnumbered ruling that only cites ledgered 901 stays" "$(printf '%s\n' "$out" | grep -cxF 'OPERATOR 11-11 ZB, decision 901: replaces decision 901 with the golf rule …')" "1"
+same "render: a ruling whose number follows a numberless parenthesis leaves once ledgered" "$(printf '%s\n' "$out" | grep -c '^OPERATOR 11-11 ZF, decision 906:')" "0"
+same "render: an OPERATOR line with no companion text that names its ledgered verbatim file leaves" "$(printf '%s\n' "$out" | grep -c '^OPERATOR 11-12 ZH, decision 908: lima')" "0"
+same "render: a CHIEF line naming that verbatim file stays" "$(printf '%s\n' "$out" | grep -c '^CHIEF ZH 11-12, decision 908:')" "1"
+same "render: a same-shift OPERATOR line citing the number without its verbatim path stays" "$(printf '%s\n' "$out" | grep -c '^OPERATOR 11-12 ZH, decision 908: oscar')" "1"
+same "render: a same-shift OPERATOR line citing two ledgered numbers stays" "$(printf '%s\n' "$out" | grep -c '^OPERATOR 11-12 ZH, decisions 908 and 909: papa')" "1"
+same "render: an OPERATOR line of another shift naming that verbatim file stays" "$(printf '%s\n' "$out" | grep -c '^OPERATOR 11-12 ZJ, decision 908:')" "1"
 same "render: an index line whose full text is in no companion stays" "$(printf '%s\n' "$out" | grep -c '^OPERATOR 11-12 ZC, decision 902:')" "1"
 same "render: with those rulings left, the read-all duty stays" "$(printf '%s\n' "$out" | grep '^Full original text' | grep -c 'READ ALL OF those files in your first turn')" "1"
 same "record: superseding by a decision with no ledger row warns" "$(bash "$SUT" record --bucket "$B" --id 905 --status 'superseded-by 9999' --date 2026-11-10 --line 'delta' --path "$(v 905)" 2>&1 >/dev/null | grep -c 'decision 9999 has no ledger row yet')" "1"
@@ -147,6 +165,16 @@ same "render: 40 rulings in force fit under 12,000 bytes" "$([ "$(printf '%s' "$
 named=0; for n in $(seq 1001 1040); do grep -q "^IN FORCE $n, 2026-11-11: ruling $n " <<< "$out40" && named=$((named + 1)); done
 same "render: every one of the 40 ids is indexed" "$named" "40"
 same "render: with every ruling indexed the read-all duty is gone" "$(printf '%s\n' "$out40" | grep '^Full original text' | grep -c 'READ ALL')" "0"
+
+T="$HERE/../../../docs/handover/chief-template.md"
+az="$(awk '/^1\. \*\*One batch/ { f = 1 } /^   Steps 2/ { f = 0 } f' "$T" | tr '\n' ' ' | tr -s ' ')"
+cz="$(awk '$0 == "## Compact instructions" { f = 1; next } f && /^## / { exit } f' "$T" | tr '\n' ' ' | tr -s ' ')"
+# shellcheck disable=SC2016
+same "template: the first batch reads the companions only while a line sits outside the index" "$(grep -c 'line sits outside its `Rulings in force` index' <<< "$az")" "1"
+# shellcheck disable=SC2016
+same "template: the first batch reads an indexed ruling's verbatim file before acting on it" "$(grep -c 'An indexed ruling: `Read` its verbatim file before acting on it' <<< "$az")" "1"
+# shellcheck disable=SC2016
+same "template: compaction recovery reads the companions only while a line sits outside the index" "$(grep -c 'line sits outside the `Rulings in force` index, each direction companion file' <<< "$cz")" "1"
 
 printf 'not json\n' >> "$L"
 out="$(render "$blk")"; rc=$?

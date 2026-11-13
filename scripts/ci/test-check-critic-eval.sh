@@ -93,6 +93,8 @@ with_rows() { rm -f "$R/$RES"; rows "$R/$RES" "$@"; gitc add -A && gitc commit -
 fixture no-rows
 commit_edit scripts/cr/critic-first-pass.sh '# a critic change' >/dev/null
 gate "a critic-file change with no eval rows fails" 1 "no eval rows"
+gate "RED 9922: the failure names the paid eval as the default route, needing no operator ask" 1 \
+    "the paid eval sweep is the default route for a critic change and needs no operator ask; only skipping it needs an operator decision"
 
 # --- the verdicts over one critic change ----------------------------------------------------
 fixture verdicts
