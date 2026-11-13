@@ -49,7 +49,7 @@ PHI="$WS/phicfg";       mkdir -p "$PHI"
 PHI_BADROOTS="$WS/phicfg2"; mkdir -p "$PHI_BADROOTS/phi-roots"   # phi-roots is a DIR -> unreadable
 DENYROOT="$WS/secretvault"; mkdir -p "$DENYROOT/x"
 NOWHERE="$WS/nowhere";  mkdir -p "$NOWHERE"
-HIMMEL_UPPER="$HIMMEL/CorpusDir"; mkdir -p "$HIMMEL_UPPER"      # codex-1: uppercase-C path, non-PHI
+HIMMEL_UPPER="$HIMMEL/CorpusDir"; mkdir -p "$HIMMEL_UPPER"
 
 # an egress-denylist root (path-list membership -> salus corpus)
 printf '%s\n' "$DENYROOT" > "$PHI/egress-denylist"
