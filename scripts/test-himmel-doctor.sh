@@ -6824,7 +6824,7 @@ case "$url" in
 esac
 EOF
 chmod +x "$n_t/gbin/curl"
-c19g() { # <xdg dir> -- HIMMEL_DOCTOR_ROOT: the assets were seeded from this tree
+c19g() {
     HIMMEL_DOCTOR_ROOT="$REPO_ROOT" DOCTOR_OBSERVABILITY_DESIRED="" DOCTOR_OBSERVABILITY_SKIP=0 DOCTOR_STATUS_JSON="$n_t/status-graf.json" XDG_DATA_HOME="$1" DOCTOR_CURL_BIN="$n_t/gbin/curl" \
         GRAFANA_TELEGRAM_BOT_TOKEN="" GRAFANA_TELEGRAM_CHAT_ID="" PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$n_t/claude" HOME="$n_t/home" HIMMEL_DOCTOR_MCP_ROOT="$n_t/root" bash "$DOC" --no-color 2>&1
 }
