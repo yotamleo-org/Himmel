@@ -324,8 +324,9 @@ update_record() { # <Jira status now> [the move, "<from> -> <to>"]
     fi
     rec=$(jq -c --arg k "$KEY" --arg ev "$EVENT" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         --arg ws "$TS_WORKER_STATE" --arg mv "${2:-}" --arg prs "$TS_PR_STATE" \
-        --arg seen "$TS_LOCK_SEEN" --argjson gone "$TS_GONE" --arg cid "$cid" --arg chash "$chash" '
+        --arg seen "$TS_LOCK_SEEN" --argjson gone "$TS_GONE" --arg cid "$cid" --arg chash "$chash" --arg own "$TS_D5D_OWNER" '
         .key = $k | .last_event = $ev | .last_event_ts = $ts | .state = $ws
+        | if $own != "" then .owner = $own else del(.owner) end
         | .lock_seen = ($seen == "true") | .lock_gone_sweeps = $gone
         | if $cid != "" then .comment_id = $cid else del(.comment_id) end
         | if $chash != "" then .comment_hash = $chash else del(.comment_hash) end
@@ -413,7 +414,7 @@ while :; do
     ts_derive "$KEY"
     if [ "$TS_DERIVED" = no-write ]; then
         if [ "$TS_RESULT" = miss ]; then miss "$TS_STAGE"; fi
-        if [ "$TS_RULE" = D0 ] && [ "$TS_J_STATUS" = Done ]; then refresh_done_record; fi
+        if [ "$TS_RULE" = D0 ]; then refresh_done_record; fi
         row result=skip rule="$TS_RULE" from="${TS_J_STATUS:-}"
         finish
     fi
@@ -421,9 +422,10 @@ while :; do
     # derive answers D5c from the log with no gh call. No other rule's row changes.
     mnr_stage="" mnr_pr=""
     if [ "$TS_RULE" = D5c ] && [ "$TS_STAGE" = merged-no-row ]; then mnr_stage=merged-no-row mnr_pr=$TS_MERGED_PR; fi
+    if [ "$TS_RULE" = D5d ]; then mnr_stage=$TS_STAGE mnr_pr=$TS_MERGED_PR; fi
     if [ "$TS_DERIVED" = "$TS_J_STATUS" ]; then
         update_record "$TS_J_STATUS"
-        row result=noop rule="$TS_RULE" from="$TS_J_STATUS" ${mnr_stage:+stage="$mnr_stage"} ${mnr_pr:+merged_pr="$mnr_pr"}
+        row result=noop rule="$TS_RULE" from="$TS_J_STATUS" ${mnr_stage:+stage="$mnr_stage"} ${mnr_pr:+merged_pr="$mnr_pr"} ${TS_D5D_OWNER:+owner="$TS_D5D_OWNER"}
         finish
     fi
     seen_j="$TS_J_STATUS" seen_heads="$TS_HEADS"
@@ -449,7 +451,7 @@ if ! ts_read_jira "$KEY" || [ "$TS_J_STATUS" != "$to" ]; then
     warn "$KEY reads '${TS_J_STATUS:-?}' after the move to '$to'"
 fi
 update_record "$to" "$from -> $to"
-row result=moved rule="$TS_RULE" from="$from" to="$to" dir="$dir" ${mnr_stage:+stage="$mnr_stage"} ${mnr_pr:+merged_pr="$mnr_pr"}
+row result=moved rule="$TS_RULE" from="$from" to="$to" dir="$dir" ${mnr_stage:+stage="$mnr_stage"} ${mnr_pr:+merged_pr="$mnr_pr"} ${TS_D5D_OWNER:+owner="$TS_D5D_OWNER"}
 mark_focus_dirty
 echo "worker-jira-status: $KEY $from -> $to ($TS_RULE)"
 finish

@@ -33,10 +33,12 @@
 #         denies (trap, git -c alias, tmux, expect and at run such strings),
 #         and a call made only of cat, tee or a non-identity bus verb is data
 #         (a heredoc body, a --summary). A call to grep, egrep, fgrep, rg, sed,
-#         awk, python or append-results.sh is data too: its words are a pattern,
-#         a program or a bullet, and it is not read for a bus word and a verb
-#         (rg `--pre` and `--hostname-bin` run a command, so such a call is not
-#         data; RESIDUAL: `awk`, `sed` and `python` can run what they quote). A call
+#         awk, python, `git grep`, append-results.sh or `qmd-bounded.sh query`,
+#         bare or under `rtk proxy`, is data too: its words are a pattern,
+#         a program, a question or a bullet, and it is not read for a bus word
+#         and a verb (rg `--pre` and `--hostname-bin` and git grep `-O` and
+#         `--open-files-in-pager` run a command, so such a call is not
+#         data, nor is a git grep with an expanded word before its `--`; RESIDUAL: `awk`, `sed` and `python` can run what they quote). A call
 #         whose every word is literal, names neither bus nor a verb and has no
 #         heredoc passes beside them, unless a cat or tee call in it wrote a
 #         heredoc body. Every other call goes to the word walker below.
@@ -457,13 +459,20 @@ def sink: .opaque == null and ((.via // []) | length == 0) and ((.assigns // [])
     or (.argv[0].v == "bus" and (.argv[1].v // "" | IN("status", "peers", "wait", "send", "adopt"))));
 def ar: (.argv[0] | select(lit) | .v) // "";
 def arscript: test("(^|/)append-results\\.sh$");
+def qbscript: test("(^|/)qmd-bounded\\.sh$");
 def optargs: .argv as $a | ([range(1; $a | length) | select(($a[.] | lit and .v == "--") and ($a[. - 1] | lit and (.v | startswith("-") | not)))][0]) as $i | if $i == null then $a else $a[:$i] end;
-def runsopt: ar == "rg" and any(optargs[]; select(lit) | .v | test("^--(pre|hostname-bin)($|=)"));
+def gitgrep: ar == "git" and (.argv[1] | lit and .v == "grep");
+def runsopt: (ar == "rg" and any(optargs[]; select(lit) | .v | test("^--(pre|hostname-bin)($|=)")))
+  or (gitgrep and any(optargs[]; .t != "lit" or (.v | test("^(-[^-]*O|--op)"))));
 def data: .opaque == null and ((.via // []) | length == 0) and ((.assigns // []) | length == 0)
   and (runsopt | not)
   and (ar as $a | ($a | IN("grep", "egrep", "fgrep", "rg", "sed", "awk", "gawk", "mawk", "python", "python3"))
+    or gitgrep
+    or ($a == "rtk") and (.argv[1] | lit and .v == "proxy") and (.argv |= .[2:] | data)
     or ($a | arscript)
-    or ($a | IN("bash", "sh")) and ((.argv[1] | select(lit) | .v // "") | arscript));
+    or ($a | IN("bash", "sh")) and ((.argv[1] | select(lit) | .v // "") | arscript)
+    or ($a | qbscript) and (.argv[1] | lit and .v == "query")
+    or ($a | IN("bash", "sh")) and (.argv[1] | lit and (.v | qbscript)) and (.argv[2] | lit and .v == "query"));
 def mentions: lit and (tokens | any(. == "bus" or verb));
 def barevar: .t != "lit" and ((.raw // "") | test("^\"?\\$\\{?[A-Za-z_][A-Za-z0-9_]*\\}?(/[A-Za-z0-9_./-]*)?\"?$"));
 def cleanw: (lit and (mentions | not)) or barevar;

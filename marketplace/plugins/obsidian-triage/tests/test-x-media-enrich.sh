@@ -1229,6 +1229,27 @@ assert "untried known media goes first, newest first; the failed clip is not in 
 grep -qF '1 clip(s) would be probed' "$tmp/order.out" && a=ok || a=no
 assert "the never-probed clip goes before the failed clip" ok "$a"
 
+echo "Test 23b: queue order - a clip the helper cannot fetch goes behind the other tried clips"
+VH="$tmp/vault-helper-miss"; mkdir -p "$VH/Clippings"
+miss_clip() {
+  local name="$1" id="$2" date="$3" err="$4" extra=""
+  [ -n "$err" ] && extra=$'media_enrichment_status: deferred\nmedia_last_error: '"$err"$'\nx_media_pending: true\n'
+  printf -- '---\ntitle: "%s"\nsource: "https://x.com/u/status/%s"\ntype: tweet\ndate_clipped: %s\n%s---\n# %s\n%s\n' \
+    "$name" "$id" "$date" "$extra" "$name" "$VIDEO_MEDIA" > "$VH/Clippings/$name.md"
+}
+miss_clip a-timeout 711 2026-06-01 scrapling:download_timeout
+miss_clip b-miss 712 2026-11-10 scrapling:download_error
+miss_clip c-nomedia 713 2026-11-09 scrapling:no_media
+miss_clip d-other 714 2026-11-05 scrapling:download_resumable
+miss_clip e-untried 715 2026-01-01 ""
+run_tool "$VH" --dry-run --limit 0 >"$tmp/miss.out" 2>"$tmp/miss.err"
+plans="$(sed -n 's/^PLAN Clippings\/\([a-z-]*\)\.md.*/\1/p' "$tmp/miss.out" | tr '\n' ' ')"
+assert "untried first, other tried clips keep newest-first, helper misses last" "e-untried d-other a-timeout b-miss c-nomedia " "$plans"
+rm -f "$VH/Clippings/b-miss.md" "$VH/Clippings/c-nomedia.md"
+run_tool "$VH" --dry-run --limit 0 >"$tmp/miss.out" 2>"$tmp/miss.err"
+plans="$(sed -n 's/^PLAN Clippings\/\([a-z-]*\)\.md.*/\1/p' "$tmp/miss.out" | tr '\n' ' ')"
+assert "control: without helper misses the untried clip is first and the tried clips keep newest-first" "e-untried d-other a-timeout " "$plans"
+
 echo "Test 24: X_MEDIA_BUDGET_S - no clip starts once the budget is spent"
 cat > "$tmp/bin/gallery-dl" <<'STUB'
 #!/usr/bin/env bash

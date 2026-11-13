@@ -4192,7 +4192,7 @@ _arm_probe() {
 }
 
 _arm_shipped_preflight() {
-    local _ticket="$1" _branch _jira _common _status _prs _num _state _mergeable
+    local _ticket="$1" _branch _jira _common _status _prs _num _state _mergeable _gh_read_bin
 
     # (a) TICKET STATUS. The Jira CLI is an untracked build artifact
     # (scripts/jira/dist/index.js), so it is routinely absent in a worktree --
@@ -4224,10 +4224,12 @@ _arm_shipped_preflight() {
     # GH_CMD is the house seam for this (scripts/graphify/graph-publish.sh,
     # scripts/cr/*): invoked DIRECTLY rather than found on PATH, so a test
     # seam cannot silently exercise the REAL gh.
+    _gh_read_bin="$SCRIPT_DIR/../lib/gh-read.sh"
+    [ -f "$_gh_read_bin" ] || _gh_read_bin=gh
     _branch=$(_arm_branch_for_preflight)
     if [ -n "$_branch" ] && [ -n "${RESUME_CWD:-}" ] && [ -d "${RESUME_CWD:-}" ] \
-       && command -v "${GH_CMD:-gh}" >/dev/null 2>&1; then
-        _prs=$(cd "$RESUME_CWD" && _arm_probe "${GH_CMD:-gh}" pr list --head "$_branch" --state all \
+       && command -v "${GH_CMD:-$_gh_read_bin}" >/dev/null 2>&1; then
+        _prs=$(cd "$RESUME_CWD" && _arm_probe "${GH_CMD:-$_gh_read_bin}" pr list --head "$_branch" --state all \
                  --json number,state,mergeable \
                  --jq '.[] | [(.number|tostring), .state, (.mergeable // "UNKNOWN")] | @tsv') || _prs=""
         while IFS=$'\t' read -r _num _state _mergeable; do

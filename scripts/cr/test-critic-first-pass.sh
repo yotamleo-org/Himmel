@@ -161,13 +161,10 @@ check "surviving Critical does not hide a dropped Important" "$(printf '%s' "$se
 check "dropped Important keeps its blocking section tag" "$(printf '%s' "$seam1_out" | grep -cF -e '- s / Important Issues: - [CRITIC-2]: dropped important [nope.sh:999]')" "1"
 
 # --- [file#symbol] citations in DIFF mode --------------------
-# The observed incident (2026-08-10, LUNA-101): a critic cited
-# [ha/cloudbridge/ggs_config_control.py#_publish_live_state] — a legitimate,
-# line-drift-proof shape — the guard accepted only [file:line] in diff mode, so
-# the finding was dropped and the panel printed a CLEAN 0/0/0 verdict on a diff
-# with a real bug. The form is now validated the same way the line form is: the
-# file must be in the diff AND the symbol must appear in that file's NEW-SIDE
-# hunk text.
+# A [file#symbol] citation (a line-drift-proof shape) is validated the same way
+# the line form is: the file must be in the diff AND the symbol must appear in
+# that file's NEW-SIDE hunk text. Rejecting it would drop a real finding and
+# print a CLEAN 0/0/0 verdict.
 SYMDIFF='diff --git a/ggs_config_control.py b/ggs_config_control.py
 index 0000000..1111111 100644
 --- a/ggs_config_control.py

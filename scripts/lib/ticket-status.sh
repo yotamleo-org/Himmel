@@ -52,6 +52,8 @@
 #       (several open PRs: the least advanced wins)
 #   D4b no PR, a completes=yes merge row         no-write + miss stage=done-pending
 #   D5  no PR, an owner not provably ended       In Progress
+#   D5d as D5c, but the merged PR's remainder names its owner (a deferred -> KEY line, or a Remaining:
+#       line with `owner: KEY` or an arrow to KEY, or naming a chief step): To Do, the owner in TS_D5D_OWNER
 #   D5c no PR, the latest merge row contract=no  In Progress (a partial: work remains)
 #       or, a wrapped owner and no merge row at all, a merged PR whose first [KEY] is the
 #       ticket (TS_STAGE=merged-no-row, TS_MERGED_PR); an unreadable merged list or merge-row
@@ -384,18 +386,20 @@ ts_partial_merge() {
 _TS_MI="" _TS_MI_SIG=""
 _ts_merge_last() {
     local sig line rows
-    TS_ML_CONTRACT="" TS_ML_RESULT=""
+    TS_ML_CONTRACT="" TS_ML_RESULT="" TS_ML_PR="" TS_ML_REPO=""
     sig="$1|$_TS_LIB_DIR|$(stat -c '%s:%y:%i' "$1" 2>/dev/null || stat -f '%z:%m:%i' "$1" 2>/dev/null)" # gnu-ok: the BSD form follows; size, mtime and inode, so a replaced log of the same size is read again (GNU stat gives the mtime to the nanosecond, BSD stat to the second: there a same-size rewrite in place inside one second is not seen)
     if [ "$_TS_MI_SIG" != "$sig" ]; then
         _TS_MI_SIG=""
         rows=$(ts_merge_rows "$1" 2>/dev/null) || return 2
-        _TS_MI=$(jq -R -r 'fromjson? | select(type == "object" and .event == "merge" and has("contract")) | [.key, .contract, (.result // "")] | @tsv' <<<"$rows" 2>/dev/null) || return 2
+        _TS_MI=$(jq -R -r 'fromjson? | select(type == "object" and .event == "merge" and has("contract")) | [.key, .contract, (.result // ""), (.pr // "" | tostring), (.repo // "")] | @tsv' <<<"$rows" 2>/dev/null) || return 2
         _TS_MI_SIG=$sig
     fi
     line=$(awk -F'\t' -v k="$2" '$1 == k { l = $0 } END { if (l != "") print l }' <<<"$_TS_MI")
     [ -n "$line" ] || return 1
     TS_ML_CONTRACT=$(cut -f2 <<<"$line")
     TS_ML_RESULT=$(cut -f3 <<<"$line")
+    TS_ML_PR=$(cut -f4 <<<"$line")
+    TS_ML_REPO=$(cut -f5 <<<"$line")
 }
 
 # ts_has_merge_row <KEY> — rc 0 when the key has any merge row that carries a contract
@@ -450,6 +454,36 @@ ts_done_pending() {
 
 _ts_no_write() { TS_DERIVED="no-write"; TS_RESULT="$1"; TS_RULE="$2"; TS_STAGE="${3:-}"; }
 
+_ts_remainder_owner() {
+    local keys
+    keys=$(printf '%s\n' "$2" | grep -oE '([Oo]wner:[[:space:]]*|→[[:space:]]*|->[[:space:]]*)[A-Z][A-Z0-9]*-[0-9]+([^[:alnum:]-]|$)' | grep -oE '[A-Z][A-Z0-9]*-[0-9]+' | grep -vxF "$1" | sort -u | paste -sd, - | sed 's/,/, /g') || keys=""  # swallow-ok: no key in the text is the empty answer
+    if [ -n "$keys" ]; then printf '%s' "$keys"; return 0; fi
+    if grep -qiE 'chief[ -](step|run)' <<<"$2"; then printf 'chief step'; return 0; fi
+    return 1
+}
+
+_ts_d5d() {
+    local key=$1 mpr=$2 repo=${3:-} log body ans kind rest owner
+    TS_D5D_OWNER=""
+    case "$mpr" in ''|*[!0-9]*) return 1 ;; esac
+    log="$(ts_state_dir)/status-events.jsonl"
+    if [ -r "$log" ]; then
+        owner=$(jq -Rr --arg k "$key" --arg p "$mpr" 'fromjson? | select(.key == $k and .rule == "D5d" and .merged_pr == $p) | .owner // empty' "$log" 2>/dev/null | tail -n 1)  # swallow-ok: an unreadable log is no logged answer
+        if [ -n "$owner" ]; then TS_D5D_OWNER=$owner TS_MERGED_PR=$mpr; return 0; fi
+    fi
+    [ -z "${TS_SNAPSHOT_DIR:-}" ] || return 1
+    body=$(gh pr view "$mpr" ${repo:+--repo "$repo"} --json body -q .body 2>/dev/null) || return 1
+    ans=$(printf '%s' "$body" | python3 -I "$_TS_LIB_DIR/pr_remainder.py" "$key" 2>/dev/null) || return 1
+    kind=${ans%%$'\t'*}
+    case "$kind" in
+        handed-off) rest=${ans#*$'\t'}; owner=${rest%%$'\t'*} ;;
+        remaining) rest=$(grep -iE '^[[:space:]]*remaining:' <<<"$body") || return 1; owner=$(_ts_remainder_owner "$key" "$rest") || return 1 ;;
+        *) return 1 ;;
+    esac
+    [ -n "$owner" ] || return 1
+    TS_D5D_OWNER=$owner TS_MERGED_PR=$mpr
+}
+
 # _ts_brief_completes_no <doc> — rc 0 when the owner's brief (the doc, else the record's resume_brief) says
 # `> **Completes ticket:** no` above `## Results`. Same read as merge-on-green.sh; a missing or unreadable
 # brief or flag line is rc 1, never read as "no".
@@ -473,7 +507,7 @@ _ts_derive_d6() {
 
 ts_derive() {
     local key="$1" num head base rd class latch threads s rule best=9 r doc rc other owner=""
-    TS_DERIVED=""; TS_RULE=""; TS_RESULT=""; TS_STAGE=""; TS_PR_STATE=""; TS_HEADS=""; TS_WORKER_STATE=none; TS_MERGED_PR=""
+    TS_DERIVED=""; TS_RULE=""; TS_RESULT=""; TS_STAGE=""; TS_PR_STATE=""; TS_HEADS=""; TS_WORKER_STATE=none; TS_MERGED_PR=""; TS_D5D_OWNER=""
     TS_LOCK_HELD=""; TS_LOCK_SEEN=false; TS_GONE=0; TS_OWNER_DOC=""
     ts_read_jira "$key" || { _ts_no_write miss "" get; return 0; }
     [ "$(ts_rank "$TS_J_STATUS")" -ge 0 ] || { _ts_no_write skip D0; return 0; }
@@ -530,7 +564,7 @@ ts_derive() {
     ts_done_pending "$key"; rc=$?
     [ "$rc" -ne 0 ] || { _ts_no_write miss D4b done-pending; return 0; }
     [ "$rc" -ne 2 ] || { _ts_no_write miss "" log; return 0; }
-    if [ -z "$doc" ] && [ "$(jq -r '(.prs // {}) | length' <<<"$TS_REC")" = 0 ]; then
+    if [ -z "$doc" ]; then
         _ts_no_write skip D7
         return 0
     fi
@@ -538,14 +572,20 @@ ts_derive() {
     else
         rc=0; ts_partial_merge "$key" || rc=$?
         if [ "$rc" -eq 2 ]; then _ts_no_write miss "" log
-        elif [ "$rc" -eq 0 ]; then TS_DERIVED="In Progress"; TS_RULE=D5c
+        elif [ "$rc" -eq 0 ]; then
+            if _ts_d5d "$key" "$TS_ML_PR" "$TS_ML_REPO"; then TS_DERIVED="To Do"; TS_RULE=D5d
+            else TS_DERIVED="In Progress"; TS_RULE=D5c
+            fi
         else
             # No partial row: a ticket with no merge row at all may still have shipped a PR merged
             # outside merge-on-green; that is a partial too.
             rc=0; ts_has_merge_row "$key" || rc=$?
             if [ "$rc" -eq 1 ]; then
                 rc=0; ts_merged_no_row "$key" || rc=$?
-                if [ "$rc" -eq 0 ]; then TS_DERIVED="In Progress"; TS_RULE=D5c; TS_STAGE=merged-no-row
+                if [ "$rc" -eq 0 ]; then
+                    if _ts_d5d "$key" "$TS_MERGED_PR"; then TS_DERIVED="To Do"; TS_RULE=D5d; TS_STAGE=merged-no-row
+                    else TS_DERIVED="In Progress"; TS_RULE=D5c; TS_STAGE=merged-no-row
+                    fi
                 elif [ "$rc" -eq 2 ]; then _ts_no_write miss "" gh
                 else _ts_derive_d6 "$doc"
                 fi
@@ -569,11 +609,12 @@ ts_worker_comment() {
     worker=$(jq -r '.leg // ""' <<<"$TS_REC")
     [ -n "$worker$(jq -r '.doc // ""' <<<"$TS_REC")" ] || return 0
     heads=$(printf '%s' "$TS_PR_STATE" | awk -F'\t' 'NF { printf "%s#%s@%s", (n++ ? "," : ""), $1, substr($2, 1, 9) }')
-    hash=$(printf '%s|%s|%s|%s' "$worker" "$TS_WORKER_STATE" "$heads" "$status" | cksum | awk '{ print $1 }')
+    hash=$(printf '%s|%s|%s|%s%s' "$worker" "$TS_WORKER_STATE" "$heads" "$status" "${TS_D5D_OWNER:+|owner:$TS_D5D_OWNER}" | cksum | awk '{ print $1 }')
     [ "$hash" != "$TS_CHASH" ] || return 0
     body=$(mktemp "${TMPDIR:-/tmp}/ts-worker-comment.XXXXXX") || return 1
     printf 'WORKER %s (%s)\n\nPRs: %s\n\nJira status: %s\n\nlast move: %s\n' \
         "${worker:-?}" "$TS_WORKER_STATE" "${heads:-none}" "$status" "${move:-none}" > "$body"
+    [ -z "${TS_D5D_OWNER:-}" ] || printf '\nRemainder owner: %s\n' "$TS_D5D_OWNER" >> "$body"
     if [ -n "$TS_CID" ]; then
         out=$(ts_jira comment "$key" --edit "$TS_CID" --comment-file "$body" --print-id 2>&1) && rc=0
         case "$out" in *"HTTP 404:"*) [ "$rc" -eq 0 ] || TS_CID="" ;; esac

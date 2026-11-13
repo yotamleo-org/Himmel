@@ -246,7 +246,7 @@ check_contains "6: the surviving critic answered" "$out6" "(1/1 critics responde
 # identical to "never configured" to clear-cr-marker's
 # CR_FLOOR_FALLBACK=claude-only exhaustion check). The surviving critic's own
 # counts (1/1, exit 0) stay exactly as asserted above.
-check_contains "6: dropped critic reported keep-one-skipped (HIMMEL-2129)" "$err6" \
+check_contains "6: dropped critic reported keep-one-skipped" "$err6" \
     "panel-availability: paidcrit2 unavailable (trivial-diff keep-one cap) reason=keep-one-skipped"
 check "6: dropped critic never actually consulted (no ok line)" \
     "$(printf '%s\n' "$err6" | grep -cF 'panel-availability: paidcrit2 ok')" "0"

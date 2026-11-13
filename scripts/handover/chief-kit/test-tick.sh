@@ -2495,6 +2495,54 @@ printf '%s\n' '# DC — CHIEF' '' '## Current direction' '' 'In work: the fixtur
 not_contains '(9502) a doc with no Full original text line is not flagged' "$(dc_tick)" 'direction-companions-unread'
 rm -f "$TICK_PROJECTS_DIR/p/dc9502.jsonl" "$dc_doc"
 
+uw_m="$W/uw-mirror/HIMMEL"; mkdir -p "$uw_m" "$W/uw-tmp" "$W/uw-dir"
+uw_doc="$W/uw-dir/uw-chief.md"
+uw_mirror() {
+    printf '%s\n' '---' "key: \"$1\"" "statusCategory: \"$2\"" 'links:' "  blocks: ${4:-[]}" "  blocked_by: $3" '  relates: []' '---' '' "# $1" > "$uw_m/$1.md"
+}
+uw_live() { printf '%s\n' '# UW — CHIEF' '' '## Live state' '' "$@" '' '## Results' > "$uw_doc"; }
+uw_tick() { NEXT_DISPATCH_MIRROR="$uw_m" TMPDIR="$W/uw-tmp" TOKEN='' bash "$SUT" "$@" --doc "$uw_doc" 2>/dev/null; }
+uw_chains() { uw_tick --verbose | sed -n 's/^chains: //p'; }
+uw_mirror HIMMEL-1 'In Progress' '[]'
+uw_mirror HIMMEL-2 'To Do' '[]'
+uw_live 'pool-disposition: HIMMEL-2 question after HIMMEL-1 merges'
+contains '(9860) an after disposition with no blocked-by link in the mirror prints chains=UNWIRED:1' "$(uw_tick)" ' chains=UNWIRED:1'
+contains '(9860) the verbose tick names the same unwired count' "$(uw_tick --verbose)" 'chains: UNWIRED:1'
+uw_mirror HIMMEL-2 'To Do' '["HIMMEL-1"]'
+not_contains '(9860) the wired twin (HIMMEL-2 blocked by HIMMEL-1 in the mirror) prints no UNWIRED value' "$(uw_tick)" 'UNWIRED'
+uw_mirror HIMMEL-2 'To Do' '[]'
+uw_mirror HIMMEL-1 'In Progress' '[]' '["HIMMEL-2"]'
+not_contains '(9860) a link read from the blocking side (HIMMEL-1 blocks HIMMEL-2) is wired too' "$(uw_tick)" 'UNWIRED'
+uw_mirror HIMMEL-1 'Done' '[]'
+not_contains '(9860) a closed key does not count' "$(uw_tick)" 'UNWIRED'
+uw_mirror HIMMEL-1 'In Progress' '[]'
+uw_live 'pool-disposition: HIMMEL-2 slice after HIMMEL-1 lands'
+contains '(9860) a slice disposition counts like a question disposition' "$(uw_tick)" ' chains=UNWIRED:1'
+uw_live 'pool-disposition: HIMMEL-2 question when HIMMEL-1 merges'
+not_contains '(9860) a disposition with no after clause counts nothing' "$(uw_tick)" 'UNWIRED'
+uw_live 'pool-disposition: HIMMEL-2 question after HIMMEL-1 merges'
+chmod 000 "$uw_m/HIMMEL-2.md"
+if [ -r "$uw_m/HIMMEL-2.md" ]; then
+    rm -f "$uw_m/HIMMEL-2.md"
+fi
+not_contains '(9860) an unreadable mirror file counts nothing' "$(uw_tick)" 'UNWIRED'
+rm -f "$uw_m/HIMMEL-2.md"; uw_mirror HIMMEL-2 'To Do' '[]'
+mkdir -p "$W/uw-tmp/himmel-chain-links-$UID"
+printf '%s\n' 'HIMMEL-1 blocks HIMMEL-2' > "$W/uw-tmp/himmel-chain-links-$UID/$(realpath -- "$uw_doc" | sha256sum | cut -d' ' -f1)"
+not_contains '(9860) a pair live-state.sh recorded as final counts nothing' "$(uw_tick)" 'UNWIRED'
+rm -rf "$W/uw-tmp"
+uw_mirror HIMMEL-5 'Done' '[]'
+printf '%s\n' '[{"name":"c","steps":[{"key":"HIMMEL-1"},{"key":"HIMMEL-5"}]}]' > "$W/uw-dir/focus-chains.json"
+contains '(9860) a stale focus chain and an unwired pair print chains=STALE:<n>/<m>,UNWIRED:<k>' "$(uw_tick)" ' chains=STALE:1/2,UNWIRED:1'
+uw_mirror HIMMEL-2 'To Do' '["HIMMEL-1"]'
+uw_stale="$(uw_chains)"
+printf '%s\n' '[{"name":"c","steps":[{"key":"HIMMEL-1"},{"key":"HIMMEL-2"}]}]' > "$W/uw-dir/focus-chains.json"
+uw_ok="$(uw_chains)"
+printf '%s\n' '[{"name":"c","steps":[{"key":"HIMMEL-1"},{"key":"HIMMEL-99"}]}]' > "$W/uw-dir/focus-chains.json"
+uw_skip="$(uw_chains)"
+[ "$uw_stale|$uw_ok|$uw_skip" = 'STALE:1/2|ok|skip' ] && pass '(9860) with only a wired pair the STALE, ok and skip values stay byte-identical' || fail "(9860) with only a wired pair chains read $uw_stale|$uw_ok|$uw_skip, not STALE:1/2|ok|skip"
+rm -rf "$W/uw-tmp" "$W/uw-mirror" "$W/uw-dir"
+
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick.sh'
     exit 0

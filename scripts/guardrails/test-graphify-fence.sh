@@ -49,7 +49,7 @@ PHI="$WS/phicfg";       mkdir -p "$PHI"
 PHI_BADROOTS="$WS/phicfg2"; mkdir -p "$PHI_BADROOTS/phi-roots"   # phi-roots is a DIR -> unreadable
 DENYROOT="$WS/secretvault"; mkdir -p "$DENYROOT/x"
 NOWHERE="$WS/nowhere";  mkdir -p "$NOWHERE"
-HIMMEL_UPPER="$HIMMEL/CorpusDir"; mkdir -p "$HIMMEL_UPPER"      # HIMMEL-3641 codex-1: uppercase-C path, non-PHI
+HIMMEL_UPPER="$HIMMEL/CorpusDir"; mkdir -p "$HIMMEL_UPPER"
 
 # an egress-denylist root (path-list membership -> salus corpus)
 printf '%s\n' "$DENYROOT" > "$PHI/egress-denylist"
@@ -156,7 +156,7 @@ run_fence allow yes "$HIMMEL" "salus x ollama opt-in -> allow+ledger" \
 # an explicit deny — no CN/cloud extraction lane remains for
 # luna-personal now that kimi/moonshot is also retired;
 # claude-cli, the operating substrate, is the sanctioned semantic backend).
-run_fence deny no "$HIMMEL" "luna-personal x glm -> deny (GLM de-listed, HIMMEL-2224/1749)" \
+run_fence deny no "$HIMMEL" "luna-personal x glm -> deny (GLM de-listed)" \
     "graphify update $LUNA/journal-2026.md --backend glm"
 
 # kimi/Moonshot is retired:
@@ -175,11 +175,11 @@ run_fence deny no "$HIMMEL" "clippings x glm no-optin -> deny" \
 # still DENY (the cell is an explicit
 # deny rather than conditional, so the retired opt-in can no longer open it — the single most
 # valuable control here, proving the flag is dead, not merely unset).
-run_fence deny no "$HIMMEL" "clippings x glm opt-in -> deny (retired opt-in, HIMMEL-2224/1749)" \
+run_fence deny no "$HIMMEL" "clippings x glm opt-in -> deny (retired opt-in)" \
     "graphify update $LUNA/Clippings/clip.md --backend glm" GRAPHIFY_CLIPPINGS_GLM_OK=1
 
 # luna personal + deepseek -> DENY
-run_fence deny no "$HIMMEL" "luna-personal x deepseek -> deny (HIMMEL-1257 de-listed)" \
+run_fence deny no "$HIMMEL" "luna-personal x deepseek -> deny (DeepSeek de-listed)" \
     "graphify update $LUNA/journal-2026.md --backend deepseek"
 
 # luna personal + openai backend WITH deepseek base url -> DENY (maps to the
@@ -189,7 +189,7 @@ run_fence deny no "$HIMMEL" "luna-personal x deepseek -> deny (HIMMEL-1257 de-li
 # longer observable by verdict — a himmel-code probe would allow whether or not
 # the base-url mapped (the wildcard admits any openai). This case pins the
 # POLICY that matters (luna denies the deepseek-base-url'd backend).
-run_fence deny no "$HIMMEL" "luna-personal x openai(deepseek-baseurl) -> deny (HIMMEL-1257)" \
+run_fence deny no "$HIMMEL" "luna-personal x openai(deepseek-baseurl) -> deny (DeepSeek base URL de-listed)" \
     "graphify update $LUNA/journal-2026.md --backend openai" OPENAI_BASE_URL=https://api.deepseek.com/v1
 
 # luna personal + openai WITHOUT deepseek base url -> deny (undeclared provider)
@@ -265,12 +265,12 @@ echo "== claude backend is ENDPOINT-AWARE (codex-adv-1: no Anthropic-labelled Z.
 # come back ALLOW, so this `deny`
 # assertion still discriminates correct zai-glm classification from an anthropic
 # misclassification.
-run_fence deny no "$HIMMEL" "luna-personal x claude(z.ai baseurl) -> zai-glm deny (GLM de-listed, HIMMEL-2224/1749)" \
+run_fence deny no "$HIMMEL" "luna-personal x claude(z.ai baseurl) -> zai-glm deny (GLM de-listed)" \
     "graphify update $LUNA/journal-2026.md --backend claude" ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic
 
 # same z.ai gateway on Clippings -> deny (the cell itself is a
 # plain matrix deny, not a conditional cell gated by a missing opt-in)
-run_fence deny no "$HIMMEL" "clippings x claude(z.ai baseurl) -> zai-glm deny (GLM de-listed, HIMMEL-2224/1749)" \
+run_fence deny no "$HIMMEL" "clippings x claude(z.ai baseurl) -> zai-glm deny (GLM de-listed)" \
     "graphify update $LUNA/Clippings/clip.md --backend claude" ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic
 
 # z.ai gateway on himmel-code -> zai-glm -> himmel-code STILL allows any ratified
@@ -281,7 +281,7 @@ run_fence allow no "$HIMMEL" "himmel-code x claude(z.ai baseurl) -> zai-glm allo
 # plain --backend glm twin of the case above -> same allow, without going
 # through the claude/ANTHROPIC_BASE_URL endpoint-aware path (positive
 # control: himmel-code x glm still allows after de-listing)
-run_fence allow no "$HIMMEL" "himmel-code x glm -> allow (public code, HIMMEL-2224)" \
+run_fence allow no "$HIMMEL" "himmel-code x glm -> allow (public code)" \
     "graphify update $HIMMEL/scripts/thing.sh --backend glm"
 
 # explicit real Anthropic endpoint -> anthropic -> luna allow (operating substrate)
@@ -516,7 +516,7 @@ echo "== HIMMEL-1085: command-local endpoint-selector assignments in front of gr
 # command-local override changes the verdict.
 
 # direct form: VAR=x graphify ...
-run_fence deny no "$HIMMEL" "luna x claude, command-local ANTHROPIC_BASE_URL=z.ai -> deny (HIMMEL-1085)" \
+run_fence deny no "$HIMMEL" "luna x claude, command-local ANTHROPIC_BASE_URL=z.ai -> deny (a command-local base URL cannot dodge the fence)" \
     "ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic graphify update $LUNA/journal-2026.md --backend claude"
 run_fence deny no "$HIMMEL" "luna x claude-cli, command-local CLAUDE_CODE_USE_BEDROCK=1 -> deny" \
     "CLAUDE_CODE_USE_BEDROCK=1 graphify update $LUNA/journal-2026.md --backend claude-cli"
@@ -1079,9 +1079,9 @@ else
         "graphify update $HIMMEL/scripts/thing.sh --backend deepseek" CLAUDE_GLM_CONFIG_DIR="$LOCK_LINK_SELF"
     run_fence deny no "$HIMMEL" "symlinked config dir whose target sits under a locked parent + listed root -> deny" \
         "graphify update $HIMMEL/scripts/thing.sh --backend deepseek" CLAUDE_GLM_CONFIG_DIR="$LOCK_LINK_PARENT"
-    run_fence deny no "$HIMMEL" "config dir at mode 000 + listed root -> deny (HIMMEL-8923)" \
+    run_fence deny no "$HIMMEL" "config dir at mode 000 + listed root -> deny (an unreadable config dir fails closed)" \
         "graphify update $HIMMEL/scripts/thing.sh --backend deepseek" CLAUDE_GLM_CONFIG_DIR="$LOCK_SELF/cfg"
-    run_fence deny no "$HIMMEL" "config dir's parent at mode 000 + listed root -> deny (HIMMEL-8923)" \
+    run_fence deny no "$HIMMEL" "config dir's parent at mode 000 + listed root -> deny (an unreadable config dir fails closed)" \
         "graphify update $HIMMEL/scripts/thing.sh --backend deepseek" CLAUDE_GLM_CONFIG_DIR="$LOCK_PARENT/cfg"
 fi
 chmod 755 "$LOCK_SELF/cfg" "$LOCK_PARENT"
@@ -1089,11 +1089,11 @@ chmod 755 "$LOCK_SELF/cfg" "$LOCK_PARENT"
 run_fence deny no "$HIMMEL" "dangling phi-roots symlink -> deny (present, unreadable)" \
     "graphify update $HIMMEL/scripts/thing.sh --backend deepseek" CLAUDE_GLM_CONFIG_DIR="$DANGLING_CFG"
 # control: a truly absent list dir under a reachable parent is still a miss
-run_fence allow no "$HIMMEL" "absent PHI config dir + unlisted root -> allow (miss, HIMMEL-8923 control)" \
+run_fence allow no "$HIMMEL" "absent PHI config dir + unlisted root -> allow (miss, control for the fail-closed rows)" \
     "graphify update $HIMMEL/scripts/thing.sh --backend deepseek" CLAUDE_GLM_CONFIG_DIR="$WS/no-such-cfg/deeper"
 # control: a reachable dir with the lists absent is a miss too
 mkdir -p "$WS/empty-cfg"
-run_fence allow no "$HIMMEL" "empty PHI config dir + unlisted root -> allow (miss, HIMMEL-8923 control)" \
+run_fence allow no "$HIMMEL" "empty PHI config dir + unlisted root -> allow (miss, control for the fail-closed rows)" \
     "graphify update $HIMMEL/scripts/thing.sh --backend deepseek" CLAUDE_GLM_CONFIG_DIR="$WS/empty-cfg"
 
 # (9b) the phi-roots / egress-denylist reader trims surrounding

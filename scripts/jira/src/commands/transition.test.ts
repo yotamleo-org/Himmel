@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Command } from 'commander';
@@ -372,6 +372,210 @@ describe('a versionless Done close into a frozen release goes through the releas
     await run('HIMMEL-1', 'Done', '--no-version');
     expect(puts()).toHaveLength(0);
     expect(intakeRows()).toHaveLength(0);
+  });
+});
+
+describe('a Done close folds a ticket held in a later unreleased version into the current one', () => {
+  const OPEN = [
+    { id: '1', name: 'v1.1.2', released: true, releaseDate: '2026-10-11' },
+    { id: '2', name: 'v1.0.0', released: false, archived: true },
+    { id: '3', name: 'v1.1.4', released: false, releaseDate: '2026-12-01' },
+    { id: '4', name: 'v1.1.3', released: false, releaseDate: '2026-11-20' },
+  ];
+  const FROZEN = OPEN.map((v) => (v.name === 'v1.1.3' ? { ...v, description: 'frozen: 2026-11-01\nfrozen-keys: HIMMEL-2' } : v));
+  let dir: string;
+  let held: string[];
+  let out: string[];
+  let errs: string[];
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    out = [];
+    errs = [];
+    vi.spyOn(console, 'log').mockImplementation((s: unknown) => { out.push(String(s)); });
+    vi.spyOn(console, 'error').mockImplementation((s: unknown) => { errs.push(String(s)); });
+    dir = mkdtempSync(join(tmpdir(), 'transition-fold-'));
+    vi.stubEnv('HIMMEL_ADMISSIONS_LEDGER', join(dir, 'admissions-ledger.jsonl'));
+    vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', join(dir, 'state'));
+    vi.stubEnv('HIMMEL_RELEASE_KEY_DIR', join(dir, 'keys'));
+    vi.stubEnv('HIMMEL_RELEASE_MANAGER', '');
+    vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
+    writeFileSync(join(dir, 'verbatim.txt'), 'R1 = v1.1.3\n');
+    const { registerRelease } = await import('./release.js');
+    const p = new Command();
+    p.exitOverride();
+    registerRelease(p);
+    await p.parseAsync(['node', 'jira', 'release', 'operator', 'declare', 'R1', '--versions', 'v1.1.3', '--decision', '214', '--verbatim-file', join(dir, 'verbatim.txt')]);
+    ghPrs.length = 0;
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    process.exitCode = undefined;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  function wireFold(start: string[], versions: unknown[] = OPEN) {
+    held = start;
+    let status = 'To Do';
+    mockRequest.mockImplementation(async (method: string, path: string, body?: unknown) => {
+      if (method === 'PUT') {
+        for (const o of (body as { update: { fixVersions: Array<{ add?: { name: string }; remove?: { name: string } }> } }).update.fixVersions) {
+          if (o.add && !held.includes(o.add.name)) held = [...held, o.add.name];
+          if (o.remove) held = held.filter((n) => n !== o.remove!.name);
+        }
+      }
+      if (method === 'POST' && path.endsWith('/transitions')) {
+        status = LIVE.find((t) => t.id === (body as { transition: { id: string } }).transition.id)!.name;
+      }
+      if (method === 'GET' && path.endsWith('/transitions')) return { transitions: LIVE };
+      if (method === 'GET' && path.endsWith('/versions')) return versions;
+      if (method === 'GET' && path.includes('/issue/')) return { fields: { fixVersions: held.map((name) => ({ name })), status: { name: status } } };
+      return {};
+    });
+  }
+  const ledger = (...rows: object[]) =>
+    writeFileSync(process.env['HIMMEL_ADMISSIONS_LEDGER']!, rows.map((r) => JSON.stringify(r) + '\n').join(''));
+  const intakeRows = () => {
+    const found: string[] = [];
+    const walk = (d: string) => {
+      for (const e of readdirSync(d, { withFileTypes: true })) {
+        if (e.isDirectory()) walk(join(d, e.name));
+        else found.push(...readFileSync(join(d, e.name), 'utf8').split('\n').filter((l) => l.includes('"INTAKE"') && l.includes('"HIMMEL-1"')));
+      }
+    };
+    if (existsSync(join(dir, 'state'))) walk(join(dir, 'state'));
+    return found;
+  };
+
+  it('RED: a ticket held in a later unreleased version ends holding the current version only, and says so on one line', async () => {
+    wireFold(['v1.1.4'], OPEN);
+    await run('HIMMEL-1', 'Done');
+    expect(held).toEqual(['v1.1.3']);
+    expect(puts().map((c) => c[3])).toEqual(['transition-stamp', 'transition-stamp']);
+    expect(out.filter((l) => /^HIMMEL-1 fixVersion \+v1\.1\.3 -v1\.1\.4 /.test(l))).toHaveLength(1);
+    expect(process.exitCode ?? 0).toBe(0);
+  });
+
+  it('RED: the current version is the earliest unreleased by release date, not by list order', async () => {
+    wireFold(['v1.1.4'], OPEN);
+    await run('HIMMEL-1', 'Done');
+    expect(held).not.toContain('v1.1.4');
+    expect(held).toContain('v1.1.3');
+  });
+
+  it('RED: a held released version and a held archived version are kept', async () => {
+    wireFold(['v1.1.2', 'v1.0.0', 'v1.1.4'], OPEN);
+    await run('HIMMEL-1', 'Done');
+    expect([...held].sort()).toEqual(['v1.0.0', 'v1.1.2', 'v1.1.3']);
+  });
+
+  it('control: a ticket already holding the current version is not touched', async () => {
+    wireFold(['v1.1.3'], OPEN);
+    await run('HIMMEL-1', 'Done');
+    expect(puts()).toHaveLength(0);
+  });
+
+  it('control: a ticket holding only released or archived versions is not touched', async () => {
+    wireFold(['v1.1.2', 'v1.0.0'], OPEN);
+    await run('HIMMEL-1', 'Done');
+    expect(puts()).toHaveLength(0);
+  });
+
+  it('RED: a ticket holding both the current and a later version drops the later one', async () => {
+    wireFold(['v1.1.3', 'v1.1.4'], OPEN);
+    await run('HIMMEL-1', 'Done');
+    expect(held).toEqual(['v1.1.3']);
+  });
+
+  it('control: --no-version folds nothing', async () => {
+    wireFold(['v1.1.4'], OPEN);
+    await run('HIMMEL-1', 'Done', '--no-version');
+    expect(puts()).toHaveLength(0);
+    expect(held).toEqual(['v1.1.4']);
+  });
+
+  it('control: a non-Done close folds nothing', async () => {
+    wireFold(['v1.1.4'], OPEN);
+    await run('HIMMEL-1', 'In Progress');
+    await run('HIMMEL-1', 'Closed');
+    await run('HIMMEL-1', 'wont do');
+    expect(puts()).toHaveLength(0);
+  });
+
+  it('RED: a frozen current version the ticket is deferred out of is not written, and the skip is one printed line', async () => {
+    ledger({ ts: 't', version: 'v1.1.3', key: 'HIMMEL-1', kind: 'deferral', actor: 'a' });
+    wireFold(['v1.1.4'], FROZEN);
+    await run('HIMMEL-1', 'Done');
+    expect(puts()).toHaveLength(0);
+    expect(held).toEqual(['v1.1.4']);
+    expect(mockRequest.mock.calls.some((c) => c[0] === 'POST' && String(c[1]).endsWith('/transitions'))).toBe(true);
+    expect(out.filter((l) => /^HIMMEL-1 keeps v1\.1\.4: .*deferral/.test(l))).toHaveLength(1);
+    expect(process.exitCode ?? 0).toBe(0);
+  });
+
+  it('RED: a rm-remove row is skipped the same way', async () => {
+    ledger({ ts: 't', version: 'v1.1.3', key: 'HIMMEL-1', kind: 'rm-remove', actor: 'a' });
+    wireFold(['v1.1.4'], FROZEN);
+    await run('HIMMEL-1', 'Done');
+    expect(puts()).toHaveLength(0);
+    expect(out.filter((l) => /^HIMMEL-1 keeps v1\.1\.4: .*rm-remove/.test(l))).toHaveLength(1);
+  });
+
+  it('RED: a frozen current version the ticket is not admitted to files the INTAKE with the merged PR, then folds', async () => {
+    ghPrs.push({ number: 4242, url: 'https://github.com/o/r/pull/4242', title: 'fix(jira): [HIMMEL-1] the close' });
+    wireFold(['v1.1.4'], FROZEN);
+    await run('HIMMEL-1', 'Done');
+    expect(intakeRows()).toHaveLength(1);
+    expect(intakeRows()[0]).toContain('pull/4242');
+    expect(held).toEqual(['v1.1.3']);
+  });
+
+  it('RED: a frozen current version with no merged PR to file the INTAKE leaves the held version and prints the request line', async () => {
+    wireFold(['v1.1.4'], FROZEN);
+    await run('HIMMEL-1', 'Done');
+    expect(puts()).toHaveLength(0);
+    expect(intakeRows()).toHaveLength(0);
+    expect(out.filter((l) => /^HIMMEL-1 keeps v1\.1\.4: .*jira release request R1 --verb INTAKE --key HIMMEL-1 --to v1\.1\.3/.test(l))).toHaveLength(1);
+  });
+
+  it('control: a key in the frozen set folds with no request', async () => {
+    wireFold(['v1.1.4'], FROZEN);
+    await run('HIMMEL-2', 'Done');
+    expect(held).toEqual(['v1.1.3']);
+    expect(intakeRows()).toHaveLength(0);
+  });
+
+  it('control: a frozen current version with an admission row folds', async () => {
+    ledger({ ts: 't', version: 'v1.1.3', key: 'HIMMEL-1', kind: 'rm-admit', actor: 'a' });
+    wireFold(['v1.1.4'], FROZEN);
+    await run('HIMMEL-1', 'Done');
+    expect(held).toEqual(['v1.1.3']);
+  });
+
+  it('an unreadable version list does not stop the close of an already-versioned ticket', async () => {
+    wireFold(['v1.1.4'], OPEN);
+    const base = mockRequest.getMockImplementation()!;
+    mockRequest.mockImplementation(async (method: string, path: string, body?: unknown) => {
+      if (method === 'GET' && path.endsWith('/versions')) throw new Error('HTTP 503');
+      return base(method, path, body);
+    });
+    await run('HIMMEL-1', 'Done');
+    expect(puts()).toHaveLength(0);
+    expect(mockRequest.mock.calls.some((c) => c[0] === 'POST' && String(c[1]).endsWith('/transitions'))).toBe(true);
+    expect(errs.join('\n')).toMatch(/^WARN HIMMEL-1 keeps v1\.1\.4: the version list could not be read \(HTTP 503\)/m);
+  });
+
+  it('a failed add leaves the later version in place and the close still lands', async () => {
+    wireFold(['v1.1.4'], OPEN);
+    const base = mockRequest.getMockImplementation()!;
+    mockRequest.mockImplementation(async (method: string, path: string, body?: unknown) => {
+      if (method === 'PUT') throw new Error('edit rejected');
+      return base(method, path, body);
+    });
+    await run('HIMMEL-1', 'Done');
+    expect(held).toEqual(['v1.1.4']);
+    expect(mockRequest.mock.calls.some((c) => c[0] === 'POST' && String(c[1]).endsWith('/transitions'))).toBe(true);
+    expect(errs.join('\n')).toMatch(/^WARN HIMMEL-1 .*v1\.1\.4.*edit rejected/m);
   });
 });
 

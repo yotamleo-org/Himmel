@@ -204,6 +204,11 @@ TMP=$(mktemp -d "${TMPDIR:-/tmp}/arm-resume.XXXXXX") || exit 1
 # (/private/var/...); canonicalise so path assertions compare like with like.
 TMP=$(cd "$TMP" && pwd -P)
 trap 'rm -rf "$TMP"' EXIT
+mkdir -p "$TMP/gh-emptyroot" "$TMP/gh-ttroot" "$TMP/gh-tt" "$TMP/gh-himmelcfg"
+: > "$TMP/gh-emptyroot/.env"
+printf 'himmel_github_token_vm2=%s\n' "ghp_READTOKEN0123456789" > "$TMP/gh-ttroot/.env"
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
+export GH_READ_ENV_ROOT="$TMP/gh-emptyroot" HIMMEL_SECRETS_KEYRING=off HIMMEL_CONFIG_DIR="$TMP/gh-himmelcfg"
 # No .git under it, so the default worktree isolation never fires outside W9-W17.
 mkdir -p "$TMP/no-primary"
 export ARM_ISOLATION_ROOT="$TMP/no-primary"
@@ -2955,6 +2960,27 @@ assert_not_11 "1331 fails open when gh is unavailable" "$?"
 # (h) --dry-run must stay side-effect-free: it skips the network probes.
 mk_gh_stub '1428	MERGED	UNKNOWN'
 _a1331 --dry-run; assert_not_11 "1331 --dry-run skips the shipped preflight" "$?"
+
+ln -sf "$(cd "$(dirname "$ARM")" && pwd)/chief-kit/fixtures/gh-two-token-stub.sh" "$TMP/gh-tt/gh"
+GH_TTLOG="$R1331/tt.log"
+cp "$R1331/state/handovers/shipped.md" "$R1331/state/handovers/shipped-tt1.md"
+cp "$R1331/state/handovers/shipped.md" "$R1331/state/handovers/shipped-tt2.md"
+_a1331_tt() {
+    : > "$GH_TTLOG"
+    out=$(env -u GH_CMD TMPDIR="$TMP" GH_READ_ENV_ROOT="$1" PATH="$TMP/gh-tt:$ARMED_STUB:$PATH" GH_STUB_DELEGATE="$GH_FAKE" \
+        GH_STUB_READ_TOKEN="ghp_READTOKEN0123456789" GHLOG="$GH_TTLOG" \
+        bash "$ARM" --time "$(future_time)" --handover "$R1331/state/handovers/$2" 2>&1)
+}
+mk_gh_stub '1428	MERGED	UNKNOWN'
+GH_STUB_MAINFAIL=rate _a1331_tt "$TMP/gh-ttroot" shipped-tt1.md; rc=$?
+assert_rc "1331 main spent: the PR probe returns its rows, a merged PR refuses (rc=11)" 11 "$rc"
+assert_contains "1331 main spent: the refusal names the merged PR" "PR #1428" "$out"
+assert_rc "1331 main spent: the probe logs tok=read" 1 "$(grep -c -E '^tok=read argv=pr list --head feat/shipped-thing ' "$GH_TTLOG")"
+assert_rc "1331 main spent: no read logs tok=main" 0 "$(grep -c -E '^tok=main ' "$GH_TTLOG")"
+_a1331_tt "$TMP/gh-emptyroot" shipped-tt2.md; rc=$?
+assert_rc "1331 control, no read token: a merged PR refuses (rc=11)" 11 "$rc"
+assert_rc "1331 control: the probe logs tok=main" 1 "$(grep -c -E '^tok=main argv=pr list --head feat/shipped-thing ' "$GH_TTLOG")"
+assert_rc "1331 control: no call logs tok=read" 0 "$(grep -c -E '^tok=read ' "$GH_TTLOG")"
 fi
 
 # ---------------------------------------------------------------------------

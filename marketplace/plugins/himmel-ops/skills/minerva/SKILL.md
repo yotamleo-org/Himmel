@@ -15,9 +15,9 @@ stage — you decide when each critic runs and when to advance.
 
 **One front door.** grill / stress-test / interrogate / brainstorm
 / "build / design / implement X" / `/minerva` all land here. The grilling
-stance is minerva's Stage 1a, not a second skill: if
-`lean-skills:grilling` fires, run Stage 1a below and continue the
-pipeline rather than stopping at a shared understanding. A standalone
+stance is minerva's Stage 1a, not a second skill: when
+`lean-skills:grilling` runs, finish its rounds as Stage 1a; Stage 1a says
+where the run goes next. A standalone
 `lean-skills:brainstorming` that sizes the work "a small change", or runs
 outside a himmel-managed repo, finishes on its own without minerva:
 it has no estimate record, so the Stage-2 gate would refuse it.
@@ -54,36 +54,20 @@ bash "$S/autonomy-mode.sh" 2>/dev/null || echo interactive
 
 ### 1a. Grill (the interrogation phase)
 
-Before any design is written, interrogate the idea until it survives. Map it as
-a **design tree**: every decision branches into the decisions that hang off it.
-
-Work the tree in **rounds**. The **frontier** is every decision whose
-prerequisites are already settled — the questions you can ask *now* without
-guessing at answers you have not heard yet. Ask the WHOLE frontier in one
-round, numbered, each with your recommended answer:
-
-```
-❓ **Q1** — **<question title>**: <question body, options if any>
-
-➡️ <your recommended answer>
-```
-
-Then wait. Each round's answers reshape the tree: settled decisions push the
-frontier outward and unblock the questions that depended on them. Recompute the
-frontier and ask the next round. A question whose answer depends on another
-question still open in THIS round belongs to a LATER round.
+Before any design is written, interrogate the idea until it survives. Invoke
+`lean-skills:grilling` (unless it is already running) and work its design
+tree, rounds and question format, with the himmel rules below taking
+precedence over it. When the stop condition below and its confirmation are
+met, go on to 1b; never end at a shared understanding.
 
 **Round 1 asks why.** When the request does not state the goal
 behind it, round 1 asks why, open-ended, even when you can guess; the answer
 feeds `effort-assess --goal`. Never re-ask what the request already settled.
 
-**Facts are your job, never the operator's.** When a frontier question needs a
-fact from the environment, go get it — never ask for what you could look up.
-Look it up inline when a handful of tool calls settles it; delegate only a
-genuinely independent, sizeable search (CLAUDE.md subagent policy). Do not
-block on it: only the questions downstream of a running exploration wait; ask
-the rest of the frontier now. The *decisions* are the operator's — put each to
-them and wait.
+**Facts are your job, never the operator's.** Where `lean-skills:grilling`
+sends a sub-agent for every fact, look it up inline when a handful of tool
+calls settles it; delegate only a genuinely independent, sizeable search
+(CLAUDE.md subagent policy).
 
 **The eight standing questions.** Besides the design tree, every
 grill asks these, each with your recommended answer. Facts (open PRs, the
@@ -170,9 +154,8 @@ and the terminal lint both read the written spec.
 
 **Optional, non-trivial designs only: base and graft.** Use it when the 1a grill
 left two or more architectures open, or the design adds a surface or contract
-that would be hard to undo; skip it when 1a settled one obvious shape. Taken from
-pstack's `arena` skill (cursor/plugins@99743e9c151c8537cbbf1f98bb38f34ef3368453,
-MIT, Lauren Tan); re-stated here, not vendored.
+that would be hard to undo; skip it when 1a settled one obvious shape. Inspired
+by pstack's `arena` skill; credit in `docs/credits.md`.
 
 - **Rubric, then fan out.** Write 3-6 gradeable criteria for this design (for
   example: smallest surface, each fact owned once, reuses an existing mechanism,
