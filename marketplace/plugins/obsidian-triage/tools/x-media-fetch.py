@@ -2004,9 +2004,8 @@ def main():
                           str(fm.get("date_clipped", "")).strip().strip('"'),
                           _helper_miss(fm)))
     # A clip that already failed goes behind every clip not yet tried, so one that
-    # fails every night cannot hold the queue; a clip the helper cannot fetch goes
-    # behind the other failed clips; known media goes before a probe, and within
-    # each group the newest clip goes first.
+    # fails every night cannot hold the queue; known media goes before a probe,
+    # and within each group the newest clip goes first.
     cands.sort(key=lambda c: c[4], reverse=True)
     cands.sort(key=lambda c: (c[3], c[5], c[2]))
     cands = [c[:3] for c in cands]
