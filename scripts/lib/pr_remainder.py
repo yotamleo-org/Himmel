@@ -38,12 +38,13 @@ def pr_remainder(body, own_keys=()):
       ('remaining', [], text)         the remainder stays on the ticket
       ('handed-off', [keys], text)    no Remaining: line, and every deferred line names one other ticket
       ('owed', [who, date], text)     no Remaining: line, and an owed line (the earliest date) beats a hand-off"""
+    body = body.replace('\r', '')
     own = {k.upper() for k in own_keys}
     remaining = [m.strip() for m in REMAINING_RE.findall(body)]
     deferred, handed, whole = [], [], True
     owed, owed_bad = [], []
     in_coverage = False
-    owed_open = False  # ready-check item 7 window-checks only list lines before the first heading: an owed line elsewhere is never owed
+    owed_open = False
     for raw in body.splitlines():
         line = raw.strip()
         heading = HEADING_RE.match(line)

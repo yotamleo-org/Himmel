@@ -98,7 +98,7 @@ printf 'owed\toperator\t2026-11-22\tlater check\n' > "$PR_BODY_DIR/6015"
     done
 } > "$STATE/status-events.jsonl"
 
-run() { NEXT_DISPATCH_BODY_CACHE="${CACHE_PATH:-off}" NEXT_DISPATCH_READER="$WORK/reader.py" NEXT_DISPATCH_MIRROR="$M" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" \
+run() { NEXT_DISPATCH_BODY_CACHE="${CACHE_PATH:-off}" NEXT_DISPATCH_READER="${READER_OVERRIDE:-$WORK/reader.py}" NEXT_DISPATCH_MIRROR="$M" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" \
     bash "$SUT" --workers-dir "$STATE/workers" --workers-from "$WORK/fleet.json" 2>/dev/null; }
 row() { printf '%s\n' "$1" | grep -E "(^|	)$2(	|:|$)" || true; }
 
@@ -140,5 +140,15 @@ lacks "(f) no RESUME row for it" "$out" "RESUME	HIMMEL-306"
 # (g) several owed PRs: the row names the earliest due date, whichever PR carries it
 has "(g) two owed PRs, the newer due first: the row names the newer PR and its date" "$out" "OWED HIMMEL-307: merged PR #6013 owes operator by 2026-11-19"
 has "(g) two owed PRs, the older due first: the row names the older PR and its date" "$out" "OWED HIMMEL-308: merged PR #6014 owes chief by 2026-11-18"
+
+# (h) the real reader: a lone CR joins two items for the merge and for ready-check, so the dispatcher must not read them as two
+mk HIMMEL-309 "In Progress" "a lone CR joins the owed line to the next" "Edit scripts/lib/o9.sh."
+mk HIMMEL-310 "In Progress" "the same body with a newline, the control" "Edit scripts/lib/o10.sh."
+printf '## Ticket coverage\n- a: owed -> operator by %s\r- c: done\n' "$DUE" > "$PR_BODY_DIR/6016"
+printf '## Ticket coverage\n- a: owed -> operator by %s\n- c: done\n' "$DUE" > "$PR_BODY_DIR/6017"
+printf '{"ts":"t","event":"merge","key":"HIMMEL-309","pr":"6016","contract":"no","result":"noop"}\n{"ts":"t","event":"merge","key":"HIMMEL-310","pr":"6017","contract":"no","result":"noop"}\n' >> "$STATE/status-events.jsonl"
+out_h="$(READER_OVERRIDE="$(cd "$(dirname "$SUT")/../../lib" && pwd)/pr_remainder.py" run)"
+has "(h) the control body with a newline reads as owed through the real reader" "$out_h" "OWED HIMMEL-310: merged PR #6017 owes operator by $DUE"
+lacks "(h) a lone CR is stripped, so the joined line is not owed" "$out_h" "OWED HIMMEL-309"
 
 if [ "$fails" -eq 0 ]; then echo "next-dispatchable-owed: all rows passed"; else echo "next-dispatchable-owed: $fails row(s) failed"; exit 1; fi

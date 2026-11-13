@@ -1217,7 +1217,7 @@ def remainder_of(pr, key):
             remainder_cache[(pr, key)] = hit
             return hit
         try:
-            body = ghrun([gh, 'pr', 'view', pr, '--repo', gh_repo, '--json', 'body', '--jq', '.body'], capture_output=True, text=True, timeout=gh_t(60), check=True).stdout
+            body = ghrun([gh, 'pr', 'view', pr, '--repo', gh_repo, '--json', 'body', '--jq', '.body'], capture_output=True, timeout=gh_t(60), check=True).stdout.decode('utf-8', 'replace')
             out = subprocess.run([sys.executable, '-I', reader, key], input=body.encode('utf-8'), capture_output=True, timeout=60, check=True).stdout.decode('utf-8', 'replace').rstrip('\n').split('\t')
             if out[0] == 'remaining' and len(out) == 2:
                 ans = ('remaining', [], out[1])
