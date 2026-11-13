@@ -612,6 +612,43 @@ contains "6: control: the shim is the gh on PATH and logs what it is given" "$(c
 lacks "6: the gh shim saw no pr create" "$(cat "$GH_LOG")" "pr create"
 lacks "6: the script never names a PR-opening verb" "$(cat "$SCRIPT" 2>/dev/null)" "gh pr create"
 
+READTOK=ghp_READTOKEN0123456789
+mkdir -p "$tmp/ttroot" "$tmp/emptyroot" "$tmp/tt" "$tmp/himmelcfg"
+printf 'himmel_github_token_vm2=%s\n' "$READTOK" > "$tmp/ttroot/.env"
+: > "$tmp/emptyroot/.env"
+ln -s "$HERE/fixtures/gh-two-token-stub.sh" "$tmp/tt/gh"
+TTLOG="$tmp/tt.log"
+logn() { grep -c -E -- "$1" "$TTLOG"; }
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
+tt_sp() {
+    : > "$TTLOG"
+    rc=0
+    out="$( cd "$REPO" && env -u GH_CMD GH_READ_ENV_ROOT="$1" PATH="$tmp/tt:$PATH" GH_STUB_DELEGATE="$tmp/bin/gh" \
+        GH_STUB_READ_TOKEN="$READTOK" GHLOG="$TTLOG" HIMMEL_SECRETS_KEYRING=off HIMMEL_CONFIG_DIR="$tmp/himmelcfg" \
+        bash "$SCRIPT" --ledger "$2" --doc "$B" K2 2>&1 )" || rc=$?
+}
+stack s3tt; land_k1 s3tt
+GH_STUB_MAINFAIL=rate tt_sp "$tmp/ttroot" "$tmp/ledgers/s3tt.json"
+check "18: main spent: the publish rc 0" "$rc" 0
+contains "18: main spent: the previous item's PR list resolves, K2 publishes" "$out" "PUBLISHED-BRANCH K2 series-pub/s3tt/K2"
+lacks "18: main spent: no PUBLISH-WAIT" "$out" "PUBLISH-WAIT"
+check "18: main spent: the PR list logs tok=read" "$(logn '^tok=read argv=pr list --head series-pub/s3tt/K1 ')" 1
+check "18: main spent: no read logs tok=main" "$(logn '^tok=main ')" 0
+stack s3ttc; land_k1 s3ttc
+tt_sp "$tmp/emptyroot" "$tmp/ledgers/s3ttc.json"
+check "18: control, no read token: the publish rc 0" "$rc" 0
+contains "18: control: K2 publishes" "$out" "PUBLISHED-BRANCH K2 series-pub/s3ttc/K2"
+check "18: control: the PR list logs tok=main" "$(logn '^tok=main argv=pr list --head series-pub/s3ttc/K1 ')" 1
+check "18: control: no call logs tok=read" "$(logn '^tok=read ')" 0
+stack s3tts; land_k1 s3tts
+: > "$TTLOG"; : > "$GH_LOG"
+rc=0
+out="$( cd "$REPO" && GH_CMD="$tmp/bin/gh" GH_READ_ENV_ROOT="$tmp/ttroot" PATH="$tmp/tt:$PATH" GH_STUB_DELEGATE="$tmp/bin/gh" \
+    GH_STUB_READ_TOKEN="$READTOK" GHLOG="$TTLOG" GH_STUB_MAINFAIL=rate HIMMEL_SECRETS_KEYRING=off bash "$SCRIPT" --ledger "$tmp/ledgers/s3tts.json" --doc "$B" K2 2>&1 )" || rc=$?
+check "18: a set GH_CMD seam still wins: the publish rc 0" "$rc" 0
+check "18: a set GH_CMD seam never reaches the two-token stub" "$(wc -l < "$TTLOG" | tr -d ' ')" 0
+contains "18: a set GH_CMD seam answers the PR read" "$(cat "$GH_LOG")" "pr list --head series-pub/s3tts/K1 "
+
 echo
 [ "$fails" = 0 ] && { echo "PASS: all rows ok"; exit 0; }
 echo "FAIL: $fails row(s) failed"; exit 1
