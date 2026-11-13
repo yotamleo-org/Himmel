@@ -224,7 +224,7 @@ done
 : > "$LOG"
 rc=0; out="$(cd "$NOWHERE" && HIMMEL_REPO="$GATED" bash "$KIT/verdict-go.sh" q10r GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc rel/chief.md 2>&1)" || rc=$?
 check    "10: a relative --doc rc 0" "$rc" 0
-contains "10: a relative --doc is the caller's path" "$(cat "$LOG")" "append-results [$NOWHERE/rel/chief.md]"
+contains "10: a relative --doc is the caller's path" "$(cat "$LOG")" "append-results [$NOWHERE/rel/chief.md]"  # read-sink-ok: the test's own sandbox log
 rc=0; out="$(cd "$NOWHERE" && HIMMEL_REPO=rel bash "$KIT/verdict-go.sh" q10x GO "$HEAD40" --pr 77 --evidence-file "$EV" 2>&1)" || rc=$?
 check    "10: a relative HIMMEL_REPO is refused rc 2" "$rc" 2
 
