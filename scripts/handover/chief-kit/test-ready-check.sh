@@ -1163,6 +1163,12 @@ O_NOW_ROW=$((O_NOW - 20 * 86400)) o7 "9561 S4a 7c: item 7 reads TICKET_STATUS_NO
 O_NOW_ROW=$((O_NOW - 20 * 86400)) o7 "9561 S4a 7c: the seam row's control: a date inside the seam window passes" 0 "x: owed $o_ar chief by $(o_day -19)"
 O_NOW_ROW="0$O_NOW" o7 "9561 S4a 7c: a clock with a leading zero is read as decimal, so a date 20 days out still fails" 1 "x: owed $o_ar chief by $(o_day 20)"
 O_NOW_ROW="0$O_NOW" o7 "9561 S4a 7c: a clock with a leading zero is read as decimal, so a date 2 days out passes" 0 "x: owed $o_ar chief by $(o_day 2)"
+# a date that prints no epoch leaves item 7 no clock: it fails closed instead of skipping the check
+mkdir -p "$tmp/nodate"
+printf '#!/usr/bin/env bash\ncase "$*" in *+%%s*) exit 0 ;; esac\nexec %s "$@"\n' "$(command -v date)" > "$tmp/nodate/date"
+chmod +x "$tmp/nodate/date"
+O_NOW_ROW=x o7 "9561 S4a 7c: a date that prints no epoch fails item 7 closed" 1 "x: owed $o_ar chief by $(o_day 2)" "$tmp/nodate:$PATH"
+contains "9561 S4a 7c: the no-epoch failure says the window cannot be computed" "$out" "cannot compute the owed window"
 # agreement (spec S5-1): item 7 decides an owed line's shape only by what the reader says of that line alone
 o_d=$(o_day 3)
 for o_pair in "owed $o_ar operator by $o_d|operator" "owed -> operator by $o_d|operator" "owed  $o_ar  operator  by  $o_d|operator" \
