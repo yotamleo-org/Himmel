@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # Tests for scripts/station-ops/bypass-launchd.sh, the go-code launch route for allowlisted HIMMEL_*_OK flags.
 # Usage: bash scripts/station-ops/test-bypass-launchd.sh
-# Hermetic: each row runs the daemon on a temp bucket and queue with a stub sender (records each Telegram text),
-# a stub launcher (records its environment), a temp access.json and inbound journal. No Telegram, no worker.
 set -uo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
@@ -30,14 +28,13 @@ printf '%s\n' "$1" >> "$BYPASSD_TEST_DIR/sent"
 STUB
 cat > "$tmp/launcher" <<'STUB'
 #!/usr/bin/env bash
-env | grep -E '^(HIMMEL_BILLED_OK|HIMMEL_HOOK_INTEGRITY_BYPASS_OK|WORKER_SESSION_EFFORT)=' | sort > "$BYPASSD_TEST_DIR/launch.env"
+env | grep -E '^([A-Za-z0-9_]*_OK|WORKER_SESSION_EFFORT)=' | sort > "$BYPASSD_TEST_DIR/launch.env"
 printf '%s\n' "$@" > "$BYPASSD_TEST_DIR/launch.args"
 exit "${BYPASSD_TEST_RC:-0}"
 STUB
 chmod +x "$tmp/send" "$tmp/launcher"
 UNTIL="$(date -u -d '+3 days' +%F)"
 
-# setup <name>: a fresh bucket with a queue, a brief, access.json and an empty inbound journal; sets D, B, Q, BRIEF.
 setup() {
     D="$tmp/$1"; B="$D/bucket"; Q="$B/bypass-queue"
     mkdir -p "$Q" "$D/bridge" "$D/run"
@@ -46,7 +43,6 @@ setup() {
     printf '{"allowFrom": ["%s"]}\n' "$OPERATOR" > "$D/access.json"
     : > "$D/bridge/inbound.jsonl"
 }
-# start [env...]: run the daemon in the background on the current row's bucket.
 start() {
     env -u CLAUDECODE -u HIMMEL_BILLED_OK -u HIMMEL_HOOK_INTEGRITY_BYPASS_OK BYPASSD_TEST_DIR="$D" \
         BYPASSD_SEND="$tmp/send" BYPASSD_LAUNCHER="$tmp/launcher" BYPASSD_POLL=0.1 BYPASSD_SETTLE=0.5 \
@@ -55,21 +51,19 @@ start() {
     DPID=$!
 }
 stop() { touch "$Q/stop"; wait "$DPID" 2>/dev/null; DPID=""; }
-# wait_for <file> <text>: up to 10 s for the text to appear in the file.
 wait_for() { local _; for _ in $(seq 100); do grep -qF -- "$2" "$1" 2>/dev/null && return 0; sleep 0.1; done; return 1; }
-# ask <name> <lines...>: drop a request and wait for its Telegram ask; sets CODE.
-ask() {
+ask_code() {
     local n=$1; shift
     printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=HIMMEL-nextleg-2026-11-13A-roadmap-chief "$@" > "$Q/$n.req"
-    wait_for "$D/sent" "Reply: go " || { CODE=""; return 1; }
-    CODE="$(sed -n 's/.*Reply: go \([A-Z2-9]\{6\}\) to launch.*/\1/p' "$D/sent" | tail -n 1)"
+    wait_for "$D/sent" "Reply: go " || return 1
+    sed -n 's/.*Reply: go \([A-Z2-9]\{6\}\) to launch.*/\1/p' "$D/sent" | tail -n 1
 }
 reply() { printf '{"from": %s, "chat_id": %s, "text": "%s", "forwarded": %s}\n' "$1" "$2" "$3" "${4:-false}" >> "$D/bridge/inbound.jsonl"; }
 
 echo "== a billed request launches only on the operator's go code =="
 setup billed-go
 start
-ask r flags=HIMMEL_BILLED_OK decision=921 effort=high
+CODE=$(ask_code r flags=HIMMEL_BILLED_OK decision=921 effort=high)
 assert_contains "the ask names the paid run and its decision" "PAID RUN (decision 921)" "$(cat "$D/sent" 2>/dev/null)"
 reply "$OPERATOR" "$OPERATOR" "go $CODE"
 wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
@@ -84,7 +78,7 @@ stop
 echo "== a request with no go code launches nothing =="
 setup no-go
 start
-ask r flags=HIMMEL_BILLED_OK decision=921
+CODE=$(ask_code r flags=HIMMEL_BILLED_OK decision=921)
 reply 9999 9999 "go $CODE"
 sleep 1
 assert_eq "another sender's go launches nothing" "no-launch r.req.pending" \
@@ -92,6 +86,10 @@ assert_eq "another sender's go launches nothing" "no-launch r.req.pending" \
 reply "$OPERATOR" "$OPERATOR" "go $CODE" true
 sleep 1
 assert_eq "the operator's forwarded go launches nothing" "no-launch r.req.pending" \
+    "$([ -e "$D/launch.env" ] && echo launched || echo no-launch) $(cd "$Q" && ls r.req.*)"
+reply "$OPERATOR" 9999 "go $CODE"
+sleep 1
+assert_eq "RED 9922: the operator's go from another chat launches nothing" "no-launch r.req.pending" \
     "$([ -e "$D/launch.env" ] && echo launched || echo no-launch) $(cd "$Q" && ls r.req.*)"
 reply "$OPERATOR" "$OPERATOR" "no $CODE"
 wait_for "$Q/daemon.log" "no HIMMEL-1-N1-sweep-pr1"
@@ -112,23 +110,27 @@ assert_eq "a billed request with no decision is refused" "b.req.refused" "$(cd "
 printf '%s\n' "brief=/etc/passwd" model=claude-sonnet-5-5 chief=HIMMEL-nextleg-2026-11-13A-roadmap-chief > "$Q/c.req"
 wait_for "$Q/daemon.log" "REFUSED malformed"
 assert_eq "a brief outside the bucket is refused" "c.req.refused" "$(cd "$Q" && ls c.req.* 2>/dev/null)"
+ln -s "$BRIEF" "$B/HIMMEL-1-N2-link.md"
+printf '%s\n' "brief=$B/HIMMEL-1-N2-link.md" model=claude-sonnet-5-5 chief=HIMMEL-nextleg-2026-11-13A-roadmap-chief > "$Q/d.req"
+wait_for "$Q/daemon.log" "REFUSED malformed $Q/d.req"
+assert_eq "RED 9922: a symlinked brief inside the bucket is refused" "d.req.refused" "$(cd "$Q" && ls d.req.* 2>/dev/null)"
 assert_absent "no refusal sends an ask" "Reply: go" "$(cat "$D/sent" 2>/dev/null)"
 stop
 
 echo "== nothing else sets the flag =="
 setup inherited
-start HIMMEL_BILLED_OK=1 WORKER_SESSION_EFFORT=xhigh
-ask r
+start HIMMEL_BILLED_OK=1 WORKER_SESSION_EFFORT=xhigh SOME_GUARD_OK=1
+CODE=$(ask_code r)
 reply "$OPERATOR" "$OPERATOR" "go $CODE"
 wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
-assert_eq "a billed flag in the daemon's own environment does not reach a non-billed launch" \
+assert_eq "RED 9922: no *_OK in the daemon's own environment reaches a launch, only the granted flag" \
     "HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1" "$(cat "$D/launch.env" 2>/dev/null)"
 stop
 
 echo "== a brief edited after the ask is refused after the go =="
 setup changed
 start
-ask r flags=HIMMEL_BILLED_OK decision=921
+CODE=$(ask_code r flags=HIMMEL_BILLED_OK decision=921)
 printf 'more\n' >> "$BRIEF"
 reply "$OPERATOR" "$OPERATOR" "go $CODE"
 wait_for "$Q/daemon.log" "REFUSED after go"
@@ -139,7 +141,7 @@ stop
 echo "== a launcher that fails is reported as failed =="
 setup failed
 start BYPASSD_TEST_RC=3
-ask r
+CODE=$(ask_code r)
 reply "$OPERATOR" "$OPERATOR" "go $CODE"
 wait_for "$Q/daemon.log" "LAUNCH-FAILED"
 assert_contains "LAUNCH-FAILED names the launcher's rc" "LAUNCH-FAILED HIMMEL-1-N1-sweep-pr1 rc=3" "$(cat "$Q/daemon.log")"

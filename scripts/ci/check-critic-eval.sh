@@ -6,8 +6,7 @@
 # at head, so deleting a line from cbs.txt does not hide the file it named) merges only when
 # `score.py gate <diff base> <head>` says keep or no-loss: two eval rows at the diff base's cbs_hash and two at
 # the head's, all at the head tree's confighash, in the head tree's results.jsonl. Rows come from the chief's
-# sweeps (scripts/eval/review-panel/README.md "The merge gate"), the default route for a critic change;
-# only skipping the sweep needs an operator decision.
+# sweeps (scripts/eval/review-panel/README.md "The merge gate").
 # Run from inside the checkout; CI passes the event's base sha (the main the PR opened on) and HEAD (the merge ref).
 # Exit 0 no critic path changed, or keep / no-loss; 1 loss / unmeasured / no rows; 2 usage.
 set -uo pipefail

@@ -67,8 +67,10 @@ skipping the eval needs an operator decision, as a `gate-bypass.tsv` row.
   launches only if the brief still has the sha the ask named. It appends
   `granted_at=`, `go=` and `sha=` to the request, which ends as `.done`, and
   writes `GRANT <brief> env=<flags> decision=<n> go=<code>` to `daemon.log`.
-- **Nothing inherited leaks through.** The launch strips both flags and any
-  inherited effort, then sets exactly the granted ones.
+- **Nothing inherited leaks through.** The launch clears every `*_OK` variable
+  in the daemon's environment, and any inherited effort, then sets only the
+  granted flags. A station opt-in such as `HIMMEL_DEEPSEEK_INFERENCE_OK`
+  therefore does not reach a worker launched this way.
 - **Failures are reported.** A launcher that exits non-zero within the settle
   window logs `LAUNCH-FAILED <brief> rc=<n>`, and the request ends `.failed`.
 - **It is bounded.** `--until <YYYY-MM-DD>` is required and may be at most 7

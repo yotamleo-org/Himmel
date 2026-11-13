@@ -13,12 +13,7 @@
 #   flags=<comma list from the allowlist below>   (optional; default HIMMEL_HOOK_INTEGRITY_BYPASS_OK)
 #   effort=<low|medium|high|xhigh>                 (optional)
 #   decision=<operator decision number>            (required when flags name HIMMEL_BILLED_OK)
-# The daemon sends the operator a one-time code naming every flag, the decision and the brief's sha; only the
-# reply "go <code>" from the operator's own chat (bridge inbound.jsonl, not forwarded) launches, "no <code>"
-# denies, 6 h with no answer expires. A go launches only if the brief still has the sha the ask named. The
-# launch strips every inherited flag and sets exactly the granted ones. The grant (go code, decision, sha,
-# time) is appended to the request, which ends as .done, .failed, .no, .expired or .refused; daemon.log has
-# a GRANT line per launch.
+# A launch clears every *_OK variable in the daemon's environment, then sets only the granted flags.
 # The operator id is allowFrom[0] of the bridge access.json (TELEGRAM_ACCESS_PATH); the inbound journal is
 # BRIDGE_ROOT/inbound.jsonl. Test seams: BYPASSD_SEND (a program given the message), BYPASSD_LAUNCHER (run in
 # place of headed-arm-worker.sh with its arguments), BYPASSD_POLL, BYPASSD_SETTLE.
@@ -48,9 +43,10 @@ Q="$BUCKET/bypass-queue"
 EXPIRES="$(date -u -d "$until" +%s 2>/dev/null)" || die "--until $until is not a date"
 now="$(date +%s)"
 [ "$EXPIRES" -gt "$now" ] && [ "$EXPIRES" -le $((now + 7 * 86400)) ] || die "--until must be after now and at most 7 days ahead"
-OP="$(jq -r '.allowFrom[0] // empty' "$ACCESS" 2>/dev/null)" # swallow-ok: an unreadable access.json leaves OP empty, refused below
-[[ "$OP" =~ ^[1-9][0-9]*$ ]] || die "no operator id (allowFrom[0]) in $ACCESS"
+OP="$(jq -r '.allowFrom[0] // empty' "$ACCESS" 2>/dev/null)" && [[ "$OP" =~ ^[1-9][0-9]*$ ]] || die "no operator id (allowFrom[0]) in $ACCESS"
 LOG="$Q/daemon.log"
+strip=()
+while IFS= read -r v; do [[ "$v" == *_OK ]] && strip+=(-u "$v"); done < <(compgen -e)
 W="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/himmel-chief/gen-briefs"
 
 log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" >>"$LOG"; }
@@ -119,7 +115,7 @@ while :; do
         log "GRANT $base env=${envs[*]} decision=${decision:-none} go=$code"
         mkdir -p "$W"
         [ -f "$BUCKET/$chief.fleet.json" ] && bash "$KIT/fleet-manifest.sh" add "$BUCKET/$chief.fleet.json" "$brief" --lane native >>"$LOG" 2>&1
-        env -u HIMMEL_HOOK_INTEGRITY_BYPASS_OK -u HIMMEL_BILLED_OK -u WORKER_SESSION_EFFORT -u CLAUDE_CODE_EFFORT_LEVEL \
+        env "${strip[@]}" -u WORKER_SESSION_EFFORT -u CLAUDE_CODE_EFFORT_LEVEL \
             -u HEADED_ARM_LAUNCHER_ENV -u HEADED_ARM_LAUNCHER_ENV_LINES "${envs[@]}" setsid nohup bash "$LAUNCHER" \
             --profile worker-impl --chief "$chief" "$base" "$brief" "$W/sig-$base" "$EXPIRES" "$W/$base.log" "$model" \
             >"$W/$base.launch.out" 2>&1 9>&- &
