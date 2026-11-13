@@ -293,8 +293,8 @@ the key; every class has an open and a sealed pair, and each half holds 15 pairs
 the full set passes `--min-real 60`. By class: logic 8, fail-open 5,
 test-cannot-fail 5, cross-file 4, spec-miss 4, quoting 2, toctou 2. Slice 1
 (PR 4424) shipped `real-001` to `real-010`; the remainder PR shipped
-`real-011` to `real-030`. The 30 count has no shortfall. `PR` is the merged pull
-request the escape shipped in.
+`real-011` to `real-030`. The 30 count has no shortfall. `PR` is the pull request
+whose judge NO-GO head the escape is frozen from.
 
 | pair | class | split | PR | seed site |
 |---|---|---|---|---|
