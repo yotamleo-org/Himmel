@@ -359,8 +359,11 @@ that `run.ts` builds from the descriptor at spawn:
   widen the lists refuses the spawn.
 - The allow list: `Read`, `Grep`, `Glob`, `Bash` (sandboxed), `WebFetch`,
   `WebSearch`, the profile's MCP tools, and `Edit` only under the write roots.
-- The write roots: the session's own folder, `<bridge root>/outgoing/`, and the
-  whole vault the session spawned in. A vault cannot be narrowed to folders:
+- The write roots: the session's `outbox.jsonl` and `context.md` (the rest of
+  its folder is the poller's, and a link in either refuses the spawn),
+  `<bridge root>/outgoing/`, and the whole vault the session spawned in. The
+  poller writes its own session files through a random, exclusively created
+  tmp name and never follows a link. A vault cannot be narrowed to folders:
   the sandbox mounts an allowed folder inside a denied one read-only, so a set
   `telegram.bridgeVaultRoots` in `~/.himmel/config.json` refuses the spawn.
 - Denied for every tool and in the sandbox: the handover root, the primary

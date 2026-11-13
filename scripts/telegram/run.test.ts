@@ -497,7 +497,7 @@ test("T16: a bridge spawn runs dontAsk with --setting-sources \"\" and the envel
     expect(s.sandbox.network.allowUnixSockets).toEqual([]);
     expect(s.sandbox.network.allowedDomains).toEqual(["example.atlassian.net", "github.com", "api.github.com"]);
     const allowW = s.sandbox.filesystem.allowWrite, denyW = s.sandbox.filesystem.denyWrite;
-    expect(allowW).toEqual([f.p("bridge/sessions/__chat__"), f.p("bridge/outgoing"), f.p("vault")]);
+    expect(allowW).toEqual([f.p("bridge/sessions/__chat__/outbox.jsonl"), f.p("bridge/sessions/__chat__/context.md"), f.p("bridge/outgoing"), f.p("vault")]);
     expect(denyW).not.toContain(f.p("vault"));
     for (const d of [f.p("handovers"), f.p("primary"), f.p("himmel"), f.p("vault/.git/hooks"), f.p("vault/.git/config"), f.p("vault/.claude"), f.p("vault/CLAUDE.md"),
       f.p("bridge/inbound.jsonl"), f.p("bridge/poller-epoch"), f.p("bridge/host-ns"), f.p("bridge/consoles"), f.p("bridge/sessions/other"),
@@ -684,6 +684,51 @@ test("T16 (lockout): a vault folder is editable, not shadowed by a deny on the v
   try {
     const s = envOf(buildRunArgs("p", undefined, undefined, undefined, undefined, { spawn: DM, cwd: f.p("vault"), seams: f.seams }).cmd);
     expect(editable(s, f.p("vault/Inbox/n.md"))).toBe(true);
+  } finally { f.cleanup(); }
+});
+
+const POLLER_OWNED = ["meta.json", "meta.json.tmp", "inbox.jsonl", "inbox.jsonl.consumed", "inbox.jsonl.consumed.tmp",
+  "inbox.pending.jsonl", "inbox.pending.jsonl.tmp", "run.log", "stop", "outbox.jsonl.cursor", "planted-link"];
+
+test("T16 (judge Jj9849a): a link planted in the session's own folder is not writable; only its outbox and context are", () => {
+  const f = envelopeFixture();
+  try {
+    const own = f.p("bridge/sessions/__chat__");
+    for (const name of POLLER_OWNED) symlinkSync(f.p("himmel/config.json"), join(own, name));
+    const s = envOf(buildRunArgs("p", undefined, undefined, undefined, undefined, { spawn: DM, cwd: f.p("vault"), seams: f.seams }).cmd);
+    for (const name of POLLER_OWNED) {
+      expect(editable(s, join(own, name)), `Edit ${name}`).toBe(false);
+      expect(bashWritable(s, join(own, name)), `Bash ${name}`).toBe(false);
+    }
+    for (const name of ["outbox.jsonl", "context.md"]) {
+      expect(editable(s, join(own, name)), `Edit ${name}`).toBe(true);
+      expect(bashWritable(s, join(own, name)), `Bash ${name}`).toBe(true);
+    }
+  } finally { f.cleanup(); }
+});
+
+test("T16 (judge Jj9849a): a linked outbox or context refuses the spawn instead of granting a write through it", () => {
+  for (const name of ["outbox.jsonl", "context.md"]) {
+    const f = envelopeFixture();
+    try {
+      symlinkSync(f.p("himmel/config.json"), f.p("bridge/sessions/__chat__", name));
+      expect(() => buildRunArgs("p", undefined, undefined, undefined, undefined, { spawn: DM, cwd: f.p("vault"), seams: f.seams }), name).toThrow(/plain file/);
+      expect(readFileSync(f.p("himmel/config.json"), "utf8")).toBe("{}");
+    } finally { f.cleanup(); }
+  }
+});
+
+test("T16 (judge Jj9849a): a ticket session stamped with the operator's chat cannot forge the lines its grant reads", () => {
+  const f = envelopeFixture();
+  try {
+    const own = f.p("bridge/sessions/HIMMEL-1");
+    mkdirSync(own, { recursive: true });
+    for (const name of ["inbox.jsonl", "inbox.jsonl.consumed", "inbox.pending.jsonl"]) writeFileSync(join(own, name), "");
+    const s = envOf(buildRunArgs("p", undefined, undefined, undefined, undefined, { spawn: { session: "HIMMEL-1", chat: 12345, routed: false, releaseWrite: false }, cwd: f.p("vault"), seams: f.seams }).cmd);
+    for (const name of ["inbox.jsonl", "inbox.jsonl.consumed", "inbox.pending.jsonl"]) {
+      expect(editable(s, join(own, name)), `Edit ${name}`).toBe(false);
+      expect(bashWritable(s, join(own, name)), `Bash ${name}`).toBe(false);
+    }
   } finally { f.cleanup(); }
 });
 

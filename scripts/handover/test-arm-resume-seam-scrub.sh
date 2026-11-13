@@ -186,6 +186,29 @@ for w in "" "nohup" "timeout 60" "nice -n 5"; do
     case "$BW" in *"$MARK_LINE"*) echo "PASS T18 wrapper '${w:-env -u}' still yields a marked body" ;;
         *) echo "FAIL T18 wrapper '${w:-env -u}' dropped the marker"; FAILED=$((FAILED + 1)) ;; esac
 done
+walk_case() { # <case>: the marker walk, lifted from arm-resume.sh onto a fake /proc whose ancestors <case> shapes
+    local fake="$TMP/fakeproc-$1"
+    rm -rf "$fake"; mkdir -p "$fake/self"
+    sed -n '/^_arm_bridge_marked() {/,/^}/p; /^_arm_is_host_user_manager() {/,/^}/p' "$ARM" | sed "s#/proc#$fake#g" > "$TMP/walk-$1.sh"
+    # shellcheck disable=SC2016  # expanded by the child bash, not here
+    env -u HIMMEL_BRIDGE_SESSION FAKE="$fake" CASE="$1" bash -c '
+        . "$0"
+        mk() { mkdir -p "$FAKE/$1"; printf "Uid:\t%s\nPPid:\t%s\nNSpid:\t%s\n" "$2" "$3" "$4" > "$FAKE/$1/status"; }
+        mk "$$" 1000 900 "$$"; printf "A=1\0" > "$FAKE/$$/environ"
+        case "$CASE" in
+            unreadable) mk 900 1000 800 900; mkdir "$FAKE/900/environ"; mk 800 1000 1 800; printf "A=1\0" > "$FAKE/800/environ" ;;
+            awk-fails) mkdir -p "$FAKE/900" ;;
+            user-manager) mk 900 1000 1 900; mkdir "$FAKE/900/environ" ;;
+            user-manager-nested-ns) mk 900 1000 1 "900 5"; mkdir "$FAKE/900/environ" ;;
+            marked-ancestor) mk 900 1000 1 900; printf "HIMMEL_BRIDGE_SESSION=1\0" > "$FAKE/900/environ" ;;
+        esac
+        if _arm_bridge_marked; then echo marked; else echo unmarked; fi' "$TMP/walk-$1.sh"
+}
+assert_eq "T18 walk: an unreadable same-uid ancestor env fails closed (marked)" "marked" "$(walk_case unreadable)"
+assert_eq "T18 walk: an ancestor status awk cannot read fails closed (marked)" "marked" "$(walk_case awk-fails)"
+assert_eq "T18 walk: the host user manager's guarded env is passed (unmarked)" "unmarked" "$(walk_case user-manager)"
+assert_eq "T18 walk: a guarded env in a nested pid namespace is not the user manager (marked)" "marked" "$(walk_case user-manager-nested-ns)"
+assert_eq "T18 walk: a marked ancestor marks the arm" "marked" "$(walk_case marked-ancestor)"
 B_AT=$(dry_body 1 at)
 env -u HIMMEL_BRIDGE_SESSION PATH="$STUB_BIN:$PATH" CLAUDE_REC="$TMP/rec-at" WATCH=HIMMEL_BRIDGE_SESSION \
     HIMMEL_PTY_SCRIPT_CMD="$TMP/no-such-script" sh -c "$B_AT" </dev/null >/dev/null 2>&1

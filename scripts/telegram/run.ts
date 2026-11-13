@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { killTree, SPAWN_OWN_GROUP } from "../lib/kill-tree.mjs";
 import { isTicketKey } from "./router";
 import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { closeSync, constants, existsSync, lstatSync, openSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -209,6 +209,23 @@ function bridgeRootDenies(bRoot: string, own: string): string[] {
   return [...BRIDGE_ROOT_DENIES.map((n) => canonPath(join(bRoot, n))), ...others];
 }
 
+// The rest of the session folder (meta, inbox, its cursors, the pending batch) is the unsandboxed poller's:
+// a session that could write there could plant a link its writes follow, or forge the lines the grant reads.
+const SESSION_WRITABLE = ["outbox.jsonl", "context.md"];
+function sessionWritable(own: string): string[] {
+  return SESSION_WRITABLE.map((name) => {
+    const path = join(own, name);
+    try {
+      // oxlint-disable-next-line oxc/bad-bitwise-operator -- combine integer open(2) flags, not boolean conditions
+      closeSync(openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_APPEND | constants.O_NOFOLLOW | constants.O_NONBLOCK, 0o600));
+    } catch (e) {
+      throw new Error(`bridge envelope: the session's ${name} cannot be opened as a plain file (${e instanceof Error ? e.message : e}); a link or special file there refuses the spawn`);
+    }
+    if (!lstatSync(path).isFile()) throw new Error(`bridge envelope: the session's ${name} is not a regular file`);
+    return path;
+  });
+}
+
 // Carried from the scopes --setting-sources "" no longer loads: hooks, deny and ask rules, env (not CLAUDE_*).
 function carriedScopes(home: string, configDir: string, cwd: string): any[] {
   const common = gitDir(["rev-parse", "--path-format=absolute", "--git-common-dir"], cwd);
@@ -261,7 +278,7 @@ export function bridgeEnvelope(bridge: BridgeRun, settings?: string, mcpConfig?:
   // The cwd is sandbox-writable by default, so the sandbox denies it unless it is the vault, a write root.
   // dontAsk already refuses an Edit with no allow, so the file tools need no cwd deny.
   const sandboxDenies = vault || denies.includes(cwd) ? denies : [...denies, cwd];
-  const fileRoots = [own, outgoing, ...(vault ? [vault] : [])];
+  const fileRoots = [...sessionWritable(own), outgoing, ...(vault ? [vault] : [])];
   const excluded = granted ? [`bash ${primary}/scripts/handover/arm-resume.sh`, `node ${primary}/scripts/jira/dist/index.js create`] : [];
   // A path not created yet gets both forms, so a folder made after spawn is still covered.
   const editRule = (p: string): string[] => {
