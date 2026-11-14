@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015,SC2016,SC2317,SC2329
-# test-graph-choices-pass.sh -- hermetic rows P1 to P25 for scripts/graphify/graph-choices-pass.sh.
-#
 set -u
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -108,8 +106,7 @@ nsent() { cnt '' "$FX/sent.log"; }
 nsentinel() { local n=0 f; for f in "$FX/dedupe/$1".*; do [ -e "$f" ] && n=$((n + 1)); done; echo "$n"; }
 out_dir() { XDG_DATA_HOME="$FX/xdg" HOME="$H" HIMMEL_CONFIG_DIR="$H/.himmel" node "$GC" out "$1"; }
 
-# file so a stub library and a modified pass copy can replace single entries
-mk_tree() { # <dir> <libmode: shadow|pin1>
+mk_tree() {
   local t="$1" mode="$2" e b d f
   mkdir -p "$t/scripts"
   for e in "$REPO"/scripts/*; do
