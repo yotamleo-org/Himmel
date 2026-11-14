@@ -3,16 +3,9 @@
 # (pgrep, atq, /tmp suite locks, and claudex/konsole); this Bash 3.2 suite
 # exercises that platform-specific script.
 # shellcheck disable=SC2154  # fails is set by the sourced tick-test-fixture.sh
-# test-tick-parked.sh — the tick counts the rows a fresh pool-disposition line parks
-# apart from the free ones. `tick.sh --pool-dispositions` prints `# pool-parked <KEY>` and
-# `# pool-chief-owed <KEY>` beside the unchanged `# pool-dispatchable <KEY>` lines (chief-wait.sh
-# counts those for its dispatchable=), the tick line carries pool-parked=<n> chief-owed=<m>, and
-# supply=SHORT:<free> says an underfilled fleet is short of startable rows, not of a chief.
-# Fixture: the 2026-11-14 shape, 25 listed rows, 24 with a pool-disposition line, one with none.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-# Fail closed: a missing or broken fixture must fail the suite, never run it with zero rows.
 if ! { [ -r "$HERE/tick-test-fixture.sh" ] && . "$HERE/tick-test-fixture.sh"; } 2>/dev/null; then
     printf 'FAIL - %s (tick-test-fixture.sh missing, unreadable or failing to load)\n' "$(basename "$0")"
     exit 1
@@ -20,7 +13,6 @@ fi
 same() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (got '$2', want '$3')"; fi; }
 count_line() { printf '%s\n' "$1" | grep -c "^# $2 HIMMEL-$3\$"; }  # <output> <line kind> <key number>
 
-# --- the 11-14 shape: 25 listed LOCAL rows; 8001-8024 carry a line, 8025 carries none
 PDOC="$W/handover/parked-chief.md"
 mkdir -p "$W/handover"
 {
@@ -56,11 +48,9 @@ same 'negative control: a key with no disposition line is not parked' "$(count_l
 same 'negative control: a key with no disposition line stays dispatchable' "$(count_line "$out" pool-dispatchable 8025)" 1
 same 'every chief-owed key is also parked' "$(comm -13 <(printf '%s\n' "$out" | sed -n 's/^# pool-parked //p' | sort) <(printf '%s\n' "$out" | sed -n 's/^# pool-chief-owed //p' | sort) | wc -l | tr -d ' ')" 0
 
-# no --doc: no decision lines, so nothing is parked
 nodoc="$(DOC='' bash "$SUT" --pool-dispositions < "$W/pool25.rows" 2>/dev/null)"
 same 'without --doc nothing is parked' "$(printf '%s\n' "$nodoc" | grep -c '^# pool-parked ')" 0
 
-# an invalid (duplicate), an unowned (free text) and a decision on a row the pool does not list never park a key
 PDOC2="$W/handover/parked-bad.md"
 printf '%s\n' '# chief' '' '## Live state' \
     'pool-disposition: HIMMEL-8001 question decision 936 chief live proof owed' \
@@ -75,7 +65,6 @@ same 'an unowned free-text line parks nothing' "$(count_line "$bad" pool-parked 
 same 'a line for a key the pool does not list parks nothing' "$(count_line "$bad" pool-parked 8999)" 0
 same 'the one valid line in that doc is parked, and only it' "$(printf '%s\n' "$bad" | sed -n 's/^# pool-parked //p' | paste -sd,)" "$(printf 'HIMMEL-%s' 8003)"
 
-# --- a stale line is not fresh: reuse the saved --pool-stale verdict the pool counts already read
 ST="$W/parked-state"; mkdir -p "$ST"
 PM="$W/parked-mirror/HIMMEL"; mkdir -p "$PM"
 DOC3="$W/handover/parked-stale.md"
@@ -91,19 +80,18 @@ stale="$(NEXT_DISPATCH_MIRROR="$PM" TICK_STATE_DIR="$ST" DOC='' bash "$SUT" --po
 same 'a stale line is not fresh: its key is not parked' "$(count_line "$stale" pool-parked 8001)" 0
 same 'a fresh line beside it still parks' "$(count_line "$stale" pool-parked 8002)" 1
 
-# --- the tick line: pool-parked=, chief-owed=, supply=SHORT:<free> on an underfilled fleet
 launch_log="$W/chief-work/chain/HIMMEL-9-N1-x.launch.log"
 mkdir -p "$W/chief-work/chain"
 : > "$launch_log"; touch -d '2 hours ago' "$launch_log"
 TM="$W/tick-mirror/HIMMEL"; mkdir -p "$TM"
 TS="$W/tick-state"; mkdir -p "$TS"
-bake() { # <doc> <rows>: a fresh pool snapshot where the tick reads it, so it never launches the dispatcher
+seed_fresh_pool_snapshot() {
     local base
     base="$TS/tick-pool-$(printf '%s\n%s' "$(realpath -m "$1")" "$TM" | cksum | cut -d' ' -f1)"
     cp "$2" "$base.rows"
 }
 tick() { NEXT_DISPATCH_MIRROR="$TM" TICK_STATE_DIR="$TS" TICK_POOL_WAIT=0 TICK_POOL_MIN_SECS=99999 bash "$SUT" --doc "$1" 2>/dev/null; }
-bake "$PDOC" "$W/pool25.rows"
+seed_fresh_pool_snapshot "$PDOC" "$W/pool25.rows"
 t="$(tick "$PDOC")"
 contains 'RED/GREEN: the tick line carries pool-parked=24' "$t" ' pool-parked=24 '
 contains 'the tick line carries chief-owed=16' "$t" ' chief-owed=16 '
@@ -112,23 +100,20 @@ contains 'capacity= is unchanged, chief-wait.sh reads UNDERFILLED:<slack> from i
 v="$(NEXT_DISPATCH_MIRROR="$TM" TICK_STATE_DIR="$TS" TICK_POOL_WAIT=0 TICK_POOL_MIN_SECS=99999 bash "$SUT" --verbose --doc "$PDOC" 2>/dev/null)"
 contains '--verbose says supply short' "$v" 'supply: SHORT:1'
 
-# negative control: 8 free rows against a slack of 7 is not short
 free_doc="$W/handover/parked-free.md"
 printf '%s\n' '# chief' '' '## Live state' '' '## Results' > "$free_doc"
 : > "$W/pool8.rows"
 for n in $(seq 8101 8108); do printf 'LOCAL\tHIMMEL-%s\tMedium\tv1\trow\tfiles=g%s.sh\n' "$n" "$n" >> "$W/pool8.rows"; done
 for n in $(seq 8101 8108); do printf '# disposition HIMMEL-%s listed LOCAL\n' "$n" >> "$W/pool8.rows"; done
-bake "$free_doc" "$W/pool8.rows"
+seed_fresh_pool_snapshot "$free_doc" "$W/pool8.rows"
 t8="$(tick "$free_doc")"
 not_contains 'negative control: free rows at or above the slack print no supply=' "$t8" ' supply='
 not_contains 'negative control: nothing parked prints no pool-parked=' "$t8" ' pool-parked='
 
-# a fleet that is not underfilled is not short of anything
 tok="$(STUB_FLEET_LINE='bank-preflight: FLEET native=8 claudex=0 reserved=0 total=8/8' NEXT_DISPATCH_MIRROR="$TM" TICK_STATE_DIR="$TS" TICK_POOL_WAIT=0 TICK_POOL_MIN_SECS=99999 bash "$SUT" --doc "$PDOC" 2>/dev/null)"
 not_contains 'a full fleet prints no supply=' "$tok" ' supply='
 contains 'a full fleet still counts the parked rows' "$tok" ' pool-parked=24 '
 
-# an unreadable pool says nothing about supply
 nopool="$(NEXT_DISPATCH_MIRROR="$W/no-such-mirror" TICK_STATE_DIR="$TS" bash "$SUT" --doc "$PDOC" 2>/dev/null)"
 not_contains 'a tick with no readable pool prints no supply=' "$nopool" ' supply='
 

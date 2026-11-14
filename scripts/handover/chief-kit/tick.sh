@@ -759,8 +759,6 @@ for key, reason in sorted(invalid.items()):
 for key, reason in sorted(rows.items()):
     if key not in dispatchable:
         print("# pool-left-out %s %s" % (key, reason))
-# a listed row whose key carries a fresh, valid line is parked by the chief: stale, changed, invalid and unowned lines are
-# in `unresolved` and park nothing. The line stays in pool-dispatchable (chief-wait.sh counts that list); parked rows are named apart.
 unres_keys = {k for _, k, _ in unresolved}
 owed = re.compile(r"\b(?:proof|signature|critic round|owed|go code)\b", re.I)
 for key in sorted(dispatchable):
@@ -3161,7 +3159,6 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
         pd_summary="$(pool_dispositions "$console_doc" < "$pd_base.rows")"
         pool_summary="$(printf '%s\n' "$pd_summary" | sed -n 's/^# pool-counts //p')"
         [ -n "$pool_summary" ] || pool_summary='?'
-        # parked and chief-owed rows, and the free rest: counted only on a numeric pool, never on `?`
         case "$pool_summary" in
             [0-9]*/*)
                 pool_parked_n="$(printf '%s\n' "$pd_summary" | grep -c '^# pool-parked ' || true)"  # swallow-ok: grep -c prints 0 and exits 1 on no match
@@ -3932,8 +3929,6 @@ if [ -n "$fleet_total" ]; then
         capacity=ok
     else
         capacity="UNDERFILLED:$((10#$fleet_cap - 10#$fleet_live))"
-        # supply=SHORT:<free>: fewer free (unparked) listed rows than slots, so the shortage is startable work, not the chief.
-        # Its own field: chief-wait.sh matches capacity=UNDERFILLED:<slack> and must keep reading it.
         case "$pool_free" in
             '' | *[!0-9]*) ;;
             *) [ "$pool_free" -ge $((10#$fleet_cap - 10#$fleet_live)) ] || supply="SHORT:$pool_free" ;;
