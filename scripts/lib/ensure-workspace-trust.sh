@@ -39,8 +39,8 @@
 #   3  config exists but is unreadable, not parseable JSON, or not a JSON
 #      object — REFUSES to overwrite (never clobber Claude's state on a
 #      transient read or parse error)
-#   4  the temp write or atomic rename failed, or the config changed under
-#      every attempt — warns, leaves any existing config untouched (rename
+#   4  the temp write, the re-read before the rename or the atomic rename
+#      failed, or the config changed under every attempt — warns, leaves any existing config untouched (rename
 #      never happened), and orphans no temp file
 #
 # Callers MUST treat a non-zero exit as NON-FATAL (warn, then continue): a
