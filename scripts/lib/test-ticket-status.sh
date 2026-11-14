@@ -556,12 +556,15 @@ mkdir -p "$tmp/mrbin"
 cat > "$tmp/mrbin/gh" <<'EOF'
 #!/usr/bin/env bash
 printf '%s %s %s %s\n' "${GH_TOKEN:-main}" "$1" "$2" "$3" >> "$MR_TOK_LOG"
+[ -z "${MR_HANG:-}" ] || exec -a "mr-sleep-$MR_HANG" sleep 30
 [ "$1 $2" != "pr view" ] || echo "MERGED h12"
 EOF
 chmod +x "$tmp/mrbin/gh"
-mr_t11() { # <env root>: the effective rows of PR 12's pre-merge row, the token log fresh
+mr_t11() { # <env root> [VAR=value...]: the effective rows of PR 12's pre-merge row, the token log fresh
+    local root="$1"
+    shift
     : > "$tmp/mrtok.log"
-    env -u MERGE_ROWS_GH -u himmel_github_token_vm2 PATH="$tmp/mrbin:$PATH" GH_READ_ENV_ROOT="$1" MR_TOK_LOG="$tmp/mrtok.log" \
+    env -u MERGE_ROWS_GH -u himmel_github_token_vm2 PATH="$tmp/mrbin:$PATH" GH_READ_ENV_ROOT="$root" MR_TOK_LOG="$tmp/mrtok.log" "$@" \
         python3 -I "$HERE/merge-rows-effective.py" "$tmp/mr12.jsonl" 2>/dev/null | grep -c '"pr":"12"'
 }
 printf '{"ts":"t","event":"merge","key":"HIMMEL-9102","pr":"12","head":"h12","contract":"yes","result":"pending","stage":"pre-merge"}\n' > "$tmp/mr12.jsonl"
@@ -569,6 +572,11 @@ check "9479 T11: merge-rows keeps a merged PR's pre-merge row read through the r
 check "9479 T11: merge-rows' PR read goes out on the read token" "$(grep -c '^ghp_TSREAD0123456789 pr view 12$' "$tmp/mrtok.log")" 1
 check "9479 T11 RED control: with no read token configured merge-rows reads on main" "$(mr_t11 "$tmp/qnoroot")" 1
 check "9479 T11 RED control: its PR read goes out on main, as today" "$(grep -c '^main pr view 12$' "$tmp/mrtok.log")" 1
+mrtag="mrhang$$"
+check "9479 T11: a hung read under a 3 s budget is not counted" "$(mr_t11 "$tmp/qroot" MR_HANG="$mrtag" MERGE_ROWS_BUDGET_SECS=3)" 0
+sleep 1
+check "9479 T11: and the router's own bound left no gh behind" "$(pgrep -f "mr-sleep-$mrtag" | grep -c .)" 0
+pkill -f "mr-sleep-$mrtag" 2>/dev/null
 
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-ticket-status.sh"

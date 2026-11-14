@@ -38,7 +38,6 @@ REPO_RE = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')
 BUDGET_SECS = float(os.environ.get('MERGE_ROWS_BUDGET_SECS') or 45)  # all GitHub reads of one run together; a row left unasked past it is not counted
 DEADLINE = time.monotonic() + BUDGET_SECS
 GH_READ = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'gh-read.sh')
-os.environ.setdefault('GH_READ_TIMEOUT', '20')  # one read's cap below, so a read cut by its timeout leaves no gh behind
 
 
 def merged_on_github(pr, head, repo, cache):
@@ -56,7 +55,10 @@ def merged_on_github(pr, head, repo, cache):
             'pr', 'view', pr, '--json', 'state,headRefOid', '--jq', '"\\(.state) \\(.headRefOid)"']
         if REPO_RE.match(repo):
             cmd += ['--repo', repo]
-        out = subprocess.run(cmd, capture_output=True, text=True, timeout=min(20, left))
+        bound = min(20, left)
+        # the router ends its own gh a second before this bound, so a kill here never orphans a read
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=bound,
+                             env=dict(os.environ, GH_READ_TIMEOUT=str(max(1, int(bound) - 1))))
         if out.returncode == 0:
             parts = out.stdout.split()
             ok = len(parts) == 2 and parts[0] == 'MERGED' and (not head or parts[1] == head)

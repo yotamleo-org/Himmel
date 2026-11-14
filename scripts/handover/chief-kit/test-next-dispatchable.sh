@@ -2784,11 +2784,13 @@ cat > "$T11B/gh" <<'EOF'
 exec "$T11_NEXT" "$@"
 EOF
 chmod +x "$T11B/gh"
-t11run() { # <env root> <mode>: sets T11_OUT, the read log fresh
+t11run() { # <env root> <mode> [VAR=value...]: sets T11_OUT, the read log fresh
+    local root="$1" mode="$2"
+    shift 2
     Q6Q="$(mktemp -d "$Q6/quota.XXXXXX")" || { fail "T11: mktemp -d failed"; return 1; }; : > "$Q6/log"; : > "$WORK/t11.log"
-    T11_OUT="$(env -u himmel_github_token_vm2 -u NEXT_DISPATCH_GH_CMD PATH="$T11B:$PATH" HIMMEL_QUOTA_DIR="$Q6Q" GH_READ_ENV_ROOT="$1" GHQ_PROBE_TIMEOUT=2 \
-        Q_MODE="$2" Q_LOG="$Q6/log" T11_LOG="$WORK/t11.log" T11_NEXT="$WORK/gh-q" NEXT_DISPATCH_MIRROR="$Q6M" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify-q" \
-        timeout -k 2 40 bash "$SUT" --top 4 --workers-from "$Q6/fleet.json" --priority-pool-only 2>/dev/null)"  # gnu-ok: the chief kit is Linux-only
+    T11_OUT="$(env -u himmel_github_token_vm2 -u NEXT_DISPATCH_GH_CMD PATH="$T11B:$PATH" HIMMEL_QUOTA_DIR="$Q6Q" GH_READ_ENV_ROOT="$root" GHQ_PROBE_TIMEOUT=2 \
+        Q_MODE="$mode" Q_LOG="$Q6/log" T11_LOG="$WORK/t11.log" T11_NEXT="$WORK/gh-q" NEXT_DISPATCH_MIRROR="$Q6M" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify-q" \
+        "$@" timeout -k 2 40 bash "$SUT" --top 4 --workers-from "$Q6/fleet.json" --priority-pool-only 2>/dev/null)"  # gnu-ok: the chief kit is Linux-only
 }
 t11run "$WORK/t11root" healthy
 has "T11: a run with a read token lists the pool row" "$T11_OUT" "LOCAL	HIMMEL-9801"
@@ -2800,6 +2802,12 @@ has "T11: the scan gate pauses on the read token's row" "$T11_OUT" "# quota-paus
 t11run "$WORK/t11root" from-third
 has "T11: a read refused mid-run names the read token" "$T11_OUT" "# quota-pause QUOTA-PAUSE github core token=read"
 lacks "T11: and is not retried on main (a scan)" "$(cat "$WORK/t11.log")" "main "
+T11T="t11hung$$"
+t11run "$WORK/t11root" hung-after-probe Q_TAG="$T11T" NEXT_DISPATCH_GH_TIMEOUT=3
+has "T11: a hung read on the read token ends as a gh-stall (the router's bound speaks first)" "$T11_OUT" "# gh-stall GH-STALL github"
+sleep 1
+! pgrep -f "q6-sleep-$T11T" > /dev/null && pass "T11: and leaves no gh read behind" || fail "T11: and leaves no gh read behind ($(pgrep -af "q6-sleep-$T11T" | head -2))"
+pkill -f "q6-sleep-$T11T" 2> /dev/null
 t11run "$Q6/envroot" healthy
 has "T11 RED control: with no read token configured the run lists the pool row" "$T11_OUT" "LOCAL	HIMMEL-9801"
 has "T11 RED control: its PR list goes out on main, as today" "$(cat "$WORK/t11.log")" "main pr list"

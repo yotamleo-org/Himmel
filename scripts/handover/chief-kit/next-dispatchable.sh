@@ -286,14 +286,17 @@ def ghrun(argv, **kw):
     if rate_limited or timed_out:
         raise subprocess.SubprocessError('an earlier GitHub read was refused or stalled')
     if kw.get('timeout'):
-        # the router's own bound matches this read's, so a read cut here leaves no gh behind
-        kw['env'] = dict(os.environ, GH_READ_TIMEOUT=str(kw['timeout']))
+        # the router ends its own gh a second before this bound, so a kill here never orphans a read
+        kw['env'] = dict(os.environ, GH_READ_TIMEOUT=str(max(1, int(kw['timeout']) - 1)))
     try:
         return subprocess.run(argv, **kw)
     except subprocess.TimeoutExpired:
         note_flag('stall', gh_bucket(argv), kw.get('timeout') or 0)
         raise
     except subprocess.CalledProcessError as e:
+        if e.returncode in (124, 137):
+            note_flag('stall', gh_bucket(argv), kw.get('timeout') or 0)
+            raise
         err = e.stderr if isinstance(e.stderr, str) else (e.stderr or b'').decode('utf-8', 'replace')
         if RATE_LIMIT_RE.search(err):
             note_flag('rate-limit', gh_bucket(argv), err.strip().splitlines()[0][:200])
