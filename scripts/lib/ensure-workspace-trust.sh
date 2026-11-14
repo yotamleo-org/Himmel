@@ -23,9 +23,7 @@
 # attempts). So a parallel helper's trust entry, or a change Claude Code made
 # meanwhile, is merged rather than overwritten. No lock is taken: Claude Code
 # writes ~/.claude.json without one of ours, so only the compare protects its
-# changes. Residual: a write landing between that final compare and the rename
-# (a sub-millisecond window) can still be lost; excluding it needs a lock every
-# writer takes. A small randomized jitter (TRUST_WRITE_JITTER_MS, default 500,
+# changes. A small randomized jitter (TRUST_WRITE_JITTER_MS, default 500,
 # 0 disables) runs before the read to de-synchronize two launches that fire
 # within ~1s, so fewer attempts are spent on retries.
 #
@@ -40,8 +38,9 @@
 #      object — REFUSES to overwrite (never clobber Claude's state on a
 #      transient read or parse error)
 #   4  the temp write, the re-read before the rename or the atomic rename
-#      failed, or the config changed under every attempt — warns, leaves any existing config untouched (rename
-#      never happened), and orphans no temp file
+#      failed, or the config changed under every attempt — warns, leaves
+#      any existing config untouched (rename never happened), and orphans no
+#      temp file
 #
 # Callers MUST treat a non-zero exit as NON-FATAL (warn, then continue): a
 # trust pre-seed problem must never block an arm. The exit codes exist so
@@ -90,8 +89,7 @@ fi
 
 # node does the read-modify-write: tolerant of a missing file (fresh create),
 # strict on a present-but-unparseable file (refuse to clobber), atomic via
-# write-to-temp + rename, renaming only over the exact bytes it read.
-# Key/config passed by env to avoid all shell quoting.
+# write-to-temp + rename. Key/config passed by env to avoid all shell quoting.
 WT_KEY="$key" WT_CONFIG="$config" node -e '
 const fs = require("fs");
 const p = process.env.WT_CONFIG, key = process.env.WT_KEY;
