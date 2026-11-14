@@ -43,7 +43,6 @@ export interface Ctx {
   now: () => Date;
   jira: JiraPort;
   mirrorRoot: string | null;
-  /** The merged PR that names a key: the evidence a delivered-follows-merge ruling is verified against. */
   deliveredPr?: (key: string) => number | undefined;
   procRoot?: string;
   hostNsPath?: string;
