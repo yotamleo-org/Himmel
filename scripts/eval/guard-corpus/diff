@@ -11,7 +11,8 @@
 # ISOLATION. Every hook run gets its OWN fresh sandbox (base and head each, per
 # row -- never shared), so a hook that writes state cannot contaminate another
 # row or the other side of a comparison, and concurrent rows cannot race:
-#   - a private HOME and HANDOVER_DIR under a per-invocation tempdir,
+#   - a private HOME and HANDOVER_DIR under a per-invocation dir in
+#     ~/.cache/himmel-guard-corpus,
 #   - cwd set to a per-invocation COPY of a throwaway scratch git repo on
 #     branch `main` that stands in for the primary checkout (the row's
 #     @PRIMARY@ token is substituted with that copy's path and also passed as
@@ -670,7 +671,20 @@ def main(argv):
               file=sys.stderr)
         return 2
 
-    workdir = tempfile.mkdtemp(prefix="guard-corpus-diff.")
+    # Not under TMPDIR: block-write-into-main-checkout.sh exempts any path with
+    # a tmp/temp segment, so a scratch primary there is never guarded.
+    scratch_root = os.path.join(os.path.expanduser("~"), ".cache", "himmel-guard-corpus")
+    try:
+        os.makedirs(scratch_root, exist_ok=True)
+        workdir = tempfile.mkdtemp(prefix="guard-corpus-diff.", dir=scratch_root)
+    except OSError as e:
+        print("guard-corpus diff: setup error: %s" % e, file=sys.stderr)
+        return 2
+    probe = os.path.realpath(workdir).lower() + "/"
+    if "/tmp/" in probe or "/temp/" in probe or "appdata/local/temp" in probe:
+        print("guard-corpus diff: WARNING scratch primary %s is under a tmp-named "
+              "path, which block-write-into-main-checkout.sh exempts: its deny "
+              "controls cannot fire" % workdir, file=sys.stderr)
     try:
         base_dir = os.path.join(workdir, "base")
         head_dir = os.path.join(workdir, "head")
