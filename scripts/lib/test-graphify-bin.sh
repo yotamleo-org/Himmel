@@ -136,7 +136,6 @@ assert "hint installs graphifyy[ollama] from the fork at a 40-hex commit sha, si
   grep -qE "'graphifyy\[ollama\] @ git\+https://github\.com/yotamleo-org/graphify@[0-9a-f]{40}'" <<<"$hint"
 fork_ref="$(env -u GRAPHIFY_FORK_REF bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_fork_ref')"
 assert "hint installs the resolver's own fork commit" grep -qF "yotamleo-org/graphify@$fork_ref'" <<<"$hint"
-# The pin is the fork hand-rebased on upstream v0.9.106 with its six carried commits.
 assert "default fork ref is the fork build hand-rebased on upstream 0.9.106 with the mcp below-3 bound" \
   test "$fork_ref" = "f12bad6b63e6f719025f6906e52a585ce98563c1"
 assert "default version is the fork stamp 0.9.106+himmel.1" \
