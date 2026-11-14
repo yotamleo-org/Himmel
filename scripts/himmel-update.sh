@@ -820,7 +820,7 @@ report_cadence_stale() {
     uh="$(cadence_user_home)"
     while IFS='|' read -r label bat_dir rearm; do
         [ -n "$label" ] || continue
-        ver="$(cadence_runner_stamp "$bat_dir")" || continue
+        ver="$(CADENCE_RUNNER_BASENAMES="$CADENCE_RUNNER_BASENAMES graph-choices" cadence_runner_stamp "$bat_dir")" || continue
         [ "$ver" -lt "$CADENCE_RUNNER_FORMAT_VERSION" ] || continue
         echo ""
         echo "==> $label runners are STALE (format v$ver < v$CADENCE_RUNNER_FORMAT_VERSION)"
@@ -831,6 +831,7 @@ pipeline-cadence|${PIPELINE_BAT_DIR:-$uh/.claude/pipeline-cadence}|bash scripts/
 graphmap-cadence|${GRAPHMAP_BAT_DIR:-$uh/.claude/graphmap-cadence}|bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed
 qmd-cadence|${QMD_CADENCE_BAT_DIR:-$uh/.claude/qmd-cadence}|bash scripts/luna/qmd-cadence.sh arm --force
 upstream-watch-cadence|${UPSTREAMWATCH_BAT_DIR:-$uh/.claude/upstream-watch-cadence}|bash scripts/upstreams/upstream-watch-cadence.sh arm --force
+graph-choices-cadence|${GRAPH_CHOICES_BAT_DIR:-$uh/.claude/graph-choices-cadence}|bash scripts/graphify/graph-choices-cadence.sh arm --force
 EOF
     return 0
 }

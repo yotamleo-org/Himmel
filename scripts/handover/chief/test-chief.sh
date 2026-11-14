@@ -49,7 +49,7 @@ trap 'rm -rf "$tmp"' EXIT
 # launch repo must not contaminate the --arm fixture. Release discovery is fixture-only.
 export HIMMEL_CONFIG_DIR="$tmp/config" HIMMEL_RELEASE_STATE_DIR="$tmp/releases"
 unset HEADED_ARM_REPO
-export UNGUARDED_LAUNCH_OK=1  # HIMMEL-9026: scratch --project fixtures; the guard rows drop it
+export UNGUARDED_LAUNCH_OK=1  # scratch --project fixtures; the guard rows drop it
 
 # chief.sh records the launch context of the chief it prints a
 # launch line for, under ${HIMMELCTL_CACHE_DIR:-$HOME/.claude/himmel}/launch-logs.
@@ -388,9 +388,9 @@ check "6 handoff has no surviving placeholder" "$(grep -c '{{' "$handoff6A" 2>/d
 check "6 handoff pre-fills the usage line" "$(grep -c '^\*\*Usage at write:\*\* 5-hour 9.0 %, 7-day 91.0 %' "$handoff6A")" "1"
 check "6 handoff pre-fills the open PRs" "$(grep -c '^#5 \[DEMO-1\] stub pr' "$handoff6A")" "1"
 check "6 handoff keeps no sha/url placeholder" "$(grep -E '^\*\*(Head|Usage at write):\*\*' "$handoff6A" | grep -c '<sha>\|<origin url>\|<n> %')" "0"
-check "6 handoff carries a WRAPPED worker whose PR is still open (HIMMEL-5542)" "$(grep -c '^- PR #5 (N9), orphan since .*DEMO-1-N9-wrapped.md' "$handoff6A")" "1"
-check "6 handoff omits a WRAPPED worker whose PR is closed (HIMMEL-5542)" "$(grep -c '^- PR #77' "$handoff6A")" "0"
-check "6 handoff section tells the successor to disposition before dispatch (HIMMEL-5542)" "$(grep -c '^## Wrapped with open PR' "$handoff6A")" "1"
+check "6 handoff carries a WRAPPED worker whose PR is still open" "$(grep -c '^- PR #5 (N9), orphan since .*DEMO-1-N9-wrapped.md' "$handoff6A")" "1"
+check "6 handoff omits a WRAPPED worker whose PR is closed" "$(grep -c '^- PR #77' "$handoff6A")" "0"
+check "6 handoff section tells the successor to disposition before dispatch" "$(grep -c '^## Wrapped with open PR' "$handoff6A")" "1"
 check "6 handoff leaves one judgement-notes block" "$(grep -c '^## Rulings and judgement notes' "$handoff6A")" "1"
 check "6 next puts the predecessor waiter in handover mode" "$(cat "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-chief.md.handover" 2>/dev/null)" "DEMO-nextleg-${today}B-chief"
 
@@ -1565,7 +1565,7 @@ out56b="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PR
     bash "$C" next --bucket rolerepo --arm --deadline-min 0 ) )"
 check "56 next --arm reports armed" "$(printf '%s\n' "$out56b" | grep -c '^armed: ')" "1"
 check "56 CONSOLE_ROLE=chief (retired): the stub was invoked" "$(grep -c '' "$record56" 2>/dev/null)" "1"
-check "56 CONSOLE_ROLE=chief (retired): the arm is launched --role chief (HIMMEL-4052)" \
+check "56 CONSOLE_ROLE=chief (retired): the arm is launched --role chief" \
     "$(grep -c -- '--role chief ' "$record56" 2>/dev/null)" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$doc56A" "$token56a" >/dev/null 2>&1
 
@@ -1583,7 +1583,7 @@ out57b="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PR
     CHIEF_HEADED_ARM="$tmp/stub-arm-role-57.sh" CHIEF_ARM_FOREGROUND=1 CHIEF_WORK_DIR="$tmp/work" \
     bash "$C" next --bucket rolerepo2 --arm --deadline-min 0 ) )"
 check "57 next --arm reports armed" "$(printf '%s\n' "$out57b" | grep -c '^armed: ')" "1"
-check "57 no CONSOLE_ROLE: the arm is launched --role chief (HIMMEL-4052)" \
+check "57 no CONSOLE_ROLE: the arm is launched --role chief" \
     "$(grep -c -- '--role chief ' "$record57" 2>/dev/null)" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$doc57A" "$token57a" >/dev/null 2>&1
 
@@ -1609,7 +1609,7 @@ out58b="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PR
 check "58 CONSOLE_ROLE=relay (retired): exits 0" "$rc58b" "0"
 check "58 CONSOLE_ROLE=relay (retired): armed line printed" "$(printf '%s\n' "$out58b" | grep -c '^armed: ')" "1"
 check "58 CONSOLE_ROLE=relay (retired): stub invoked" "$([ -e "$record58" ] && echo 1 || echo 0)" "1"
-check "58 CONSOLE_ROLE=relay (retired): --role chief, never relay (HIMMEL-4052)" \
+check "58 CONSOLE_ROLE=relay (retired): --role chief, never relay" \
     "$(grep -c -- '--role chief ' "$record58" 2>/dev/null)$(grep -c -- '--role relay' "$record58" 2>/dev/null)" "10"
 HANDOVER_DIR="$root" bash "$QL" release "$doc58A" "$token58a" >/dev/null 2>&1
 
@@ -1633,9 +1633,9 @@ check "58b new --arm with an unresolvable chief profile: exit 2" "$rc58n" "2"
 # The profile is resolved BEFORE the lock, so the refusal leaves no
 # doc and no held lock (the release token must not even have been printed).
 doc58nA="$root/tester/rolerepo4/DEMO-nextleg-${today}A-chief.md"
-check "58b new refusal: no doc left behind (HIMMEL-4058)" "$([ -e "$doc58nA" ] && echo 1 || echo 0)" "0"
-check "58b new refusal: no release-token printed (HIMMEL-4058)" "$(printf '%s\n' "$out58n" | grep -c 'release-token')" "0"
-check "58b new refusal: no queue lock held (HIMMEL-4058)" \
+check "58b new refusal: no doc left behind" "$([ -e "$doc58nA" ] && echo 1 || echo 0)" "0"
+check "58b new refusal: no release-token printed" "$(printf '%s\n' "$out58n" | grep -c 'release-token')" "0"
+check "58b new refusal: no queue lock held" \
     "$(HANDOVER_DIR="$root" bash "$QL" status "$doc58nA" 2>&1)" "free"
 check "58b refusal: no launch line printed" "$(printf '%s\n' "$out58n" | grep -c '^launch: ')" "0"
 check "58b refusal: the arm was never started" "$([ -e "$record58b" ] && echo 1 || echo 0)" "0"
@@ -1866,17 +1866,17 @@ HANDOVER_DIR="$root" bash "$QL" release "$doc60bA" "$token60b" >/dev/null 2>&1
 # reachable through an explicit --model / CHIEF_MODEL.
 out61a="$( ( cd "$fixture_repo" && unset CHIEF_MODEL && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
     CHIEF_WORK_DIR="$tmp/work" bash "$C" new --bucket modeldefault --dry-run --arm ) )"
-check "61 dry-run --arm launch line defaults to bare claude-opus-5-5 (native 1M, HIMMEL-5501)" \
+check "61 dry-run --arm launch line defaults to bare claude-opus-5-5 (native 1M)" \
     "$(printf '%s\n' "$out61a" | grep -cF -- '--model claude-opus-5-5 ')" "1"
 check "61 dry-run --arm launch line carries no [1m] suffix on a native-1M model" \
     "$(printf '%s\n' "$out61a" | grep -cF -- 'claude-opus-5-5\[1m\]')" "0"
 out61c="$( ( cd "$fixture_repo" && unset CHIEF_MODEL && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
     CHIEF_WORK_DIR="$tmp/work" bash "$C" new --bucket modeldefault --dry-run --arm --model claude-opus-4-6 ) )"
-check "61 a 4.6-family model keeps the [1m] suffix (HIMMEL-5501)" \
+check "61 a 4.6-family model keeps the [1m] suffix" \
     "$(printf '%s\n' "$out61c" | grep -cF -- '--model claude-opus-4-6\[1m\] ')" "1"
 out61d="$( ( cd "$fixture_repo" && unset CHIEF_MODEL && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
     CHIEF_WORK_DIR="$tmp/work" bash "$C" new --bucket modeldefault --dry-run --arm --model gpt-5.6-sol ) )"
-check "61 a non-Anthropic model never gets [1m] (HIMMEL-5501)" \
+check "61 a non-Anthropic model never gets [1m]" \
     "$(printf '%s\n' "$out61d" | grep -cF -- '--model gpt-5.6-sol ')" "1"
 
 # --- 61f: a Claude Code below the version floor refuses an
@@ -2984,8 +2984,8 @@ check "82 the decisions line survives the fallback" "$(grep -c '^decisions: KEEP
 check "82 the priority line survives the fallback" "$(grep -c '^priority: KEEP-82-PRI' "$doc82B")" "1"
 check "82 over budget: last GO becomes a pointer to the successor's Live state" "$(grep -c "^\*\*Last GO:\*\* over the HANDOFF size budget — read \`last GO:\` in the Live state of \`[^\`]*DEMO-nextleg-${today}B-chief.md\`$" "$handoff82A")" "1"
 # shellcheck disable=SC2016  # literal fixture text
-check "82 the last GO survives the fallback, without the prior-GO chain (HIMMEL-8198)" "$(grep -c '^last GO: `82:abc` KEEP-82-GO$' "$doc82B")" "1"
-check "82 the prior-GO chain is kept verbatim in the history file (HIMMEL-8198)" "$(grep -cF "$go82" "$root/tester/cap82dst/specs/history/chief-live-state-DEMO-nextleg-${today}A-chief.md")" "1"
+check "82 the last GO survives the fallback, without the prior-GO chain" "$(grep -c '^last GO: `82:abc` KEEP-82-GO$' "$doc82B")" "1"
+check "82 the prior-GO chain is kept verbatim in the history file" "$(grep -cF "$go82" "$root/tester/cap82dst/specs/history/chief-live-state-DEMO-nextleg-${today}A-chief.md")" "1"
 check "82 the rulings section stays" "$(grep -c '^## Rulings and judgement notes' "$handoff82A")" "1"
 check "82 the open-PR pointer names the repo" "$(grep -c 'gh pr list -R example/himmel --state open' "$handoff82A")" "1"
 check "82 under budget: no over-budget note" "$(grep -c '^> HANDOFF over budget' "$handoff82A")" "0"

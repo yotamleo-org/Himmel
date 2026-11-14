@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test";
 // @ts-ignore plain browser ES module, no types
-import { render, renderNav, renderHeader, renderProbe, rollup, isOpen } from "../public/render.js";
+import { render, renderNav, renderHeader, renderProbe, rollup, isOpen, settingsCommand } from "../public/render.js";
 
 const row = (id: string, health: string, source = "item", control: Record<string, unknown> = { class: "display-only" }, extra: Record<string, unknown> = {}) => ({
   id, source, group: "core", title: id, health,
@@ -97,6 +97,15 @@ test("done: a failed audit append is shown, never `logged`", () => {
   const h = withPlan({ stage: "done", command: "c", rc: 0, reprobe: "ok", audit: "failed", before: {}, after: {} });
   expect(h).toContain("audit log append FAILED");
   expect(h).not.toContain("logged to actions.jsonl");
+});
+
+test("A3: a cadence's arm command takes its script path from the feed row", () => {
+  expect(settingsCommand({ action: "cadence.arm", target: "graph-choices", script: "scripts/graphify/graph-choices-cadence.sh" }, "/R"))
+    .toBe("bash /R/scripts/graphify/graph-choices-cadence.sh arm");
+  expect(settingsCommand({ action: "cadence.disarm", target: "graph-choices", script: "scripts/graphify/graph-choices-cadence.sh" }, "/R"))
+    .toBe("bash /R/scripts/graphify/graph-choices-cadence.sh disarm");
+  expect(settingsCommand({ action: "cadence.arm", target: "x", script: "scripts/y/other-cadence.sh" }, "/R")).toBe("bash /R/scripts/y/other-cadence.sh arm");
+  expect(settingsCommand({ action: "cadence.arm", target: "graphmap" }, "/R")).toBe("bash /R/scripts/luna/graphmap-cadence.sh arm");
 });
 
 test("plan text from the server is escaped", () => {

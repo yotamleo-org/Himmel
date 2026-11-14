@@ -67,6 +67,8 @@ printf '[fired 2026-11-04 04:00:00]\nboom\n[exit rc=1]\n' > "$homeDir/.claude/pi
 printf '[fired 2026-11-05 09:00:00]\n[exit rc=0]\n' > "$homeDir/.claude/pipeline-cadence/pipeline-health.log.prev"
 printf '[fired 2026-11-04 05:00:00]\nqmd-reindex: start\n' > "$homeDir/.claude/qmd-cadence/qmd-reindex.log"
 : > "$homeDir/.claude/graphmap-cadence/graphmap-himmel.log"
+mkdir -p "$homeDir/.claude/graph-choices-cadence"
+printf "[fired 2026-11-06 04:40:00]\ngraph-choices-pass: c1 no-op\n[exit rc=0]\n" > "$homeDir/.claude/graph-choices-cadence/graph-choices.log"
 cacheDir="$work/cache"; mkdir -p "$cacheDir"
 cat > "$cacheDir/install-profile.json" <<'JSON'
 {"role":"adopter","tier":"standard","scope":"user","vault":{"mode":"none","path":""},"handover":{"mode":"inline","path":""},"pluginSet":"lean","lanes":[],"lanesMeaningful":true,"alwaysOn":false}
@@ -88,8 +90,8 @@ chmod +x "$stubDoctor"
 
 # stub cadence scripts + plugin-profile.sh under one script root
 scriptRoot="$work/scripts-root"
-mkdir -p "$scriptRoot/scripts/luna" "$scriptRoot/scripts/cleanup" "$scriptRoot/scripts/machine-setup" "$scriptRoot/scripts/eval"
-for s in luna/pipeline-cadence luna/qmd-cadence luna/graphmap-cadence doctor-cadence eval/rollup-cadence; do
+mkdir -p "$scriptRoot/scripts/luna" "$scriptRoot/scripts/graphify" "$scriptRoot/scripts/cleanup" "$scriptRoot/scripts/machine-setup" "$scriptRoot/scripts/eval"
+for s in luna/pipeline-cadence luna/qmd-cadence luna/graphmap-cadence graphify/graph-choices-cadence doctor-cadence eval/rollup-cadence; do
   cat > "$scriptRoot/scripts/$s.sh" <<'STUB'
 #!/usr/bin/env bash
 [ "$1" = status ] || exit 2
@@ -163,10 +165,10 @@ manifest_n=$(jq '.items|length' "$repo_root/scripts/install/manifest.json")
 n_item=$(jq '[.rows[]|select(.source=="item")]|length' "$out")
 # a cadence's manifest item folds into its cadence row (spec §4: one identity)
 n_item_cad=$(jq '[.rows[]|select(.source=="cadence")]|length' "$out")
-[ "$n_item_cad" -eq 5 ] || fail "expected 5 cadence rows, got $n_item_cad"
+[ "$n_item_cad" -eq 6 ] || fail "expected 6 cadence rows, got $n_item_cad"
 folded=$(jq -r '[.items[].id|select(.=="pipeline-cadence" or .=="graphmap-cadence" or .=="doctor-cadence" or .=="rollup-cadence")]|length' "$repo_root/scripts/install/manifest.json")
 [ "$n_item" -eq $((manifest_n - folded)) ] || fail "item rows $n_item != manifest $manifest_n - folded $folded"
-pass "a1 item rows and 5 cadence rows"
+pass "a1 item rows and 6 cadence rows"
 
 [ "$(jq '[.rows[]|select(.source=="doctor")]|length' "$out")" -eq 3 ] || fail "doctor rows != 3"
 jq -e '[.rows[]|select(.id=="doctor:C3-luna")]|length==1' "$out" >/dev/null || fail "doctor:C3-luna row id"
@@ -222,7 +224,12 @@ fires_of() { jq -c ".rows[]|select(.id==\"$1\")|.fires" "${2:-$out}"; }
 [ "$(fires_of qmd-cadence)" = '{"state":"yes","evidence":"qmd-reindex.log run log, no exit line (still running, or died)","at":"2026-11-04T05:00:00.000Z"}' ] || fail "c qmd fires: $(fires_of qmd-cadence)"
 # an empty log is not a run: a named no-run state, never unverified
 jq -e '.rows[]|select(.id=="graphmap-cadence")|.fires.state=="no-run" and .fires.at==null and (.fires.evidence|contains("graphmap-cadence"))' "$out" >/dev/null || fail "c graphmap (empty log) fires: $(fires_of graphmap-cadence)"
-[ "$(jq '[.rows[]|select(.fires.state=="yes")]|map(.id)|sort|join(",")' "$out")" = '"doctor-cadence,pipeline-cadence,qmd-cadence"' ] || fail "fires=yes on a row other than doctor and the logged cadences"
+[ "$(fires_of graph-choices-cadence)" = '{"state":"yes","evidence":"graph-choices.log run log, exit rc=0","at":"2026-11-06T04:40:00.000Z"}' ] || fail "F1 graph-choices fires: $(fires_of graph-choices-cadence)"
+want_gc_cost="With no graph choice: a semantic pass that runs uses this machine's Claude subscription; usage is checked once, before the run starts, and the run does not stop if the budget runs out while it works."
+jq -e --arg w "$want_gc_cost" '.rows[]|select(.id=="graph-choices-cadence")|.control.cost==$w' "$out" >/dev/null || fail "F1 graph-choices cost is not the worst-case text: $(jq -r '.rows[]|select(.id=="graph-choices-cadence")|.control.cost' "$out")"
+jq -e '.rows[]|select(.id=="graph-choices-cadence")|.control.script=="scripts/graphify/graph-choices-cadence.sh"' "$out" >/dev/null || fail "F1 graph-choices row carries no script path"
+pass "F1 graph-choices reads its last run from its own log and carries its worst-case cost and script path"
+[ "$(jq '[.rows[]|select(.fires.state=="yes")]|map(.id)|sort|join(",")' "$out")" = '"doctor-cadence,graph-choices-cadence,pipeline-cadence,qmd-cadence"' ] || fail "fires=yes on a row other than doctor and the logged cadences"
 # no log directory at all: the same named state
 rm -rf "$homeDir/.claude/graphmap-cadence"
 run_report --items graphmap-cadence > "$work/nolog.json" 2> "$work/nolog.err" || { cat "$work/nolog.err" >&2; fail "report --items graphmap-cadence exited non-zero"; }

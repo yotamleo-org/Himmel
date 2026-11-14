@@ -132,7 +132,7 @@ export WORKER_BRIDGE_ROOT="$TMP/bridge"
 # opt-out as test-arm-resume.sh; missing it cost 30 failures first caught by
 # the public wave-2k CI (the private repo runs no Actions by design).
 export ARM_TEMP_CWD_OK=1
-export UNGUARDED_LAUNCH_OK=1  # HIMMEL-9026: scratch fixtures; guard rows drop it
+export UNGUARDED_LAUNCH_OK=1  # scratch fixtures; guard rows drop it
 # keep the real bank-preflight's usage-cache refresh off the live cache.
 export CADENCE_USAGE_CACHE="$TMP/bank-cache.json" CLAUDE_USAGE_CACHE="$TMP/bank-cache.json"
 # Shipped-work shield: the preflight derives a ticket
@@ -707,18 +707,18 @@ assert_rc "G3.4 failing arm exits rc=4 (schedule_arm create failed)" 4 "$rc" "$o
 # THIS platform, which is exactly the mapping 1567 established. ***
 case "${OSTYPE:-$(uname -s 2>/dev/null)}" in
     msys*|cygwin*|win32*|MINGW*)
-        assert_not_contains "G3.4 foreign victim NOT named for replacement (HIMMEL-1563)" "HIMMEL-Resume-G3-4-unrelated-victim" "$out" ;;
+        assert_not_contains "G3.4 foreign victim NOT named for replacement" "HIMMEL-Resume-G3-4-unrelated-victim" "$out" ;;
     darwin*)
-        assert_not_contains "G3.4 foreign victim NOT named for replacement (HIMMEL-1563)" "HIMMEL-Resume-G3-4-unrelated-victim" "$out" ;;
+        assert_not_contains "G3.4 foreign victim NOT named for replacement" "HIMMEL-Resume-G3-4-unrelated-victim" "$out" ;;
     *)
-        assert_not_contains "G3.4 foreign victim NOT named for replacement (HIMMEL-1563)" "at-job-1" "$out" ;;
+        assert_not_contains "G3.4 foreign victim NOT named for replacement" "at-job-1" "$out" ;;
 esac
 # The POSITIVE control that keeps the negatives above honest. This string is
 # arm-resume's own stderr on the own-identity-empty branch, so it is identical
 # on all three platforms and it can only appear if the --force path actually ran
 # and actually declined to reap. Without it, a change that made arm-resume exit
 # before the force block would satisfy every assert_not_contains above.
-assert_contains "G3.4 says it leaves other chains' arms untouched (HIMMEL-1563)" "leaving other chains' resume job(s) untouched" "$out"
+assert_contains "G3.4 says it leaves other chains' arms untouched" "leaving other chains' resume job(s) untouched" "$out"
 assert_slots "G3.4 UNRELATED victim slot is NOT destroyed by a failed --dedup-any --force" 1 "$DB10" "${DB10}.atdir" "$out"
 rm -f "$HANDOVER_DIR/.locks/arms.jsonl"
 
@@ -826,7 +826,7 @@ out=$(SCHED_DB="$DB12" SCHED_DB_DIR="${DB12}.atdir" PATH="$STUB:$PATH" \
     bash "$ARM" --time "$FUTURE_TIME" --long-gap --handover "$G5X" --dedup-any --force 2>&1)
 rc=$?
 assert_rc "G5.1 --dedup-any --force arms alongside a foreign chain arm (rc 0)" 0 "$rc" "$out"
-assert_slots "G5.1 foreign chain arm SURVIVES a --dedup-any --force of our own (HIMMEL-1563)" 2 "$DB12" "${DB12}.atdir" "$out"
+assert_slots "G5.1 foreign chain arm SURVIVES a --dedup-any --force of our own" 2 "$DB12" "${DB12}.atdir" "$out"
 # Cardinality alone is not enough: prove the survivor IS the foreign victim
 # (recorded verbatim), not merely that two slots exist.
 if marker_recorded "$DB12" "${DB12}.atdir" "$G5_FOREIGN"; then

@@ -497,6 +497,35 @@ bad input. It also prints the commit time of the ref it measured against, and a
 checkout makes the lag read too low.
 `--now` ends the window at a fixed time instead of the present.
 
+### The daily graph pass
+
+`HIMMEL-GraphChoices` fires `scripts/graphify/graph-choices-pass.sh` once a day. Storing a graph choice spends
+nothing; arming the row is the opt-in:
+
+```sh
+bash scripts/graphify/graph-choices-cadence.sh arm --time 04:40
+bash scripts/graphify/graph-choices-cadence.sh status
+bash scripts/graphify/graph-choices-cadence.sh disarm
+```
+
+`arm --dry-run` prints the cron row and writes nothing; `arm --force` re-renders the runner (the update nudge and the
+doctor's C8 name it when the runner format moved). The runner and its log live in `~/.claude/graph-choices-cadence/`;
+the graphs the pass builds live outside the repos, in `~/.local/share/himmel/graphify/choices/<name>/graphify-out`.
+
+Each fire, a publisher touches nothing and an unreadable config alerts under `graph-config-unreadable`. Otherwise the
+pass checks each chosen root, runs its free structure pass, and then walks the stored route on each corpus in order:
+a run of letters is one `semantic-update.sh --backend claude-api --account-order` call under the stored
+`max_usd_per_pass`, and `subscription` is one `--backend claude-cli` call. At most one new batch or one subscription
+run happens a fire. The pass reads only each call's result word, and it exits 0 whenever it finished, so a daily
+`over-cap` does not read as a broken job; every alert also lands as a `graph-choices-pass: <corpus> ALERT <word>` line
+in the log, which the doctor's C88 reads.
+
+The subscription step cannot be reached with an API credential in reach. Its subshell sources
+`scripts/lib/native-auth-pin.sh`, runs the pin and `native_auth_scrub_env`, and launches only inside a keyword-only
+gate whose then arm holds the launch. A planted `ANTHROPIC_*`, `CLAUDE_CODE_USE_*` or `LQ_API_*` name, a shadowed
+`exit`, `return` or `unset`, or a failing pin each end in the word `stopped` with no launch. `claude-api.sh`'s
+subscription fallback uses the same shape.
+
 ## Luna graph freshness
 
 The luna vault graph is rebuilt AST-only nightly (`HIMMEL-GraphMapAst-Luna`), so
