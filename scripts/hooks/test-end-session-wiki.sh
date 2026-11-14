@@ -757,34 +757,34 @@ printf '%s\n' \
 run_hook "$SB" >/dev/null
 NOTE15="$(find "$SB/vault/sessions" -type f -name '*.md' 2>/dev/null | head -1)"
 if [ -n "$NOTE15" ] && grep -q '<elided>' "$NOTE15"; then
-    pass "HIMMEL-1345: high-entropy operand elided"
+    pass "high-entropy operand elided"
 else
-    fail "HIMMEL-1345: high-entropy operand was NOT elided"
+    fail "high-entropy operand was NOT elided"
 fi
 if [ -n "$NOTE15" ] && ! grep -qF "$TOK_GQL" "$NOTE15"; then
-    pass "HIMMEL-1345: the raw high-entropy token does not appear in the note"
+    pass "the raw high-entropy token does not appear in the note"
 else
-    fail "HIMMEL-1345: the raw high-entropy token leaked into the note"
+    fail "the raw high-entropy token leaked into the note"
 fi
 if [ -n "$NOTE15" ] && grep -qF 'gh api graphql -F threadId="<elided>"' "$NOTE15"; then
-    pass "HIMMEL-1345: program/subcommand/flag text survives around the elision"
+    pass "program/subcommand/flag text survives around the elision"
 else
-    fail "HIMMEL-1345: surrounding command text did not survive the scrub"
+    fail "surrounding command text did not survive the scrub"
 fi
 if [ -n "$NOTE15" ] && grep -qF 'client --api-key <elided>' "$NOTE15" && ! grep -qF "$TOK_KEY" "$NOTE15"; then
-    pass "HIMMEL-1345: API key containing a hyphen is elided"
+    pass "API key containing a hyphen is elided"
 else
-    fail "HIMMEL-1345: API key containing a hyphen leaked or lost surrounding text"
+    fail "API key containing a hyphen leaked or lost surrounding text"
 fi
 if [ -n "$NOTE15" ] && grep -qF 'client --blob=<elided>' "$NOTE15" && ! grep -qF "$TOK_B64" "$NOTE15"; then
-    pass "HIMMEL-1345: base64 blob containing +, /, and = padding is elided"
+    pass "base64 blob containing +, /, and = padding is elided"
 else
-    fail "HIMMEL-1345: base64 blob containing +, /, and = padding leaked or lost surrounding text"
+    fail "base64 blob containing +, /, and = padding leaked or lost surrounding text"
 fi
 if [ -n "$NOTE15" ] && grep -q 'git status' "$NOTE15"; then
-    pass "HIMMEL-1345: an unrelated ordinary command in the same session is untouched"
+    pass "an unrelated ordinary command in the same session is untouched"
 else
-    fail "HIMMEL-1345: an ordinary command in the same session was altered"
+    fail "an ordinary command in the same session was altered"
 fi
 rm -rf "$SB"
 
@@ -803,14 +803,14 @@ printf '%s\n' \
 run_hook "$SB" >/dev/null
 NOTE16="$(find "$SB/vault/sessions" -type f -name '*.md' 2>/dev/null | head -1)"
 if [ -n "$NOTE16" ] && ! grep -q '<elided>' "$NOTE16"; then
-    pass "HIMMEL-1345: ordinary commands pass through with no elision"
+    pass "ordinary commands pass through with no elision"
 else
-    fail "HIMMEL-1345: an ordinary command was unexpectedly elided"
+    fail "an ordinary command was unexpectedly elided"
 fi
 if [ -n "$NOTE16" ] && grep -qF 'git   log --oneline' "$NOTE16" && grep -qF 'git commit -m "a  b"' "$NOTE16" && grep -qF 'deploy --dry-run --date 2026-07-29 /tmp/releases/2026-07-29/artifact https://example.com/releases/2026-07-29' "$NOTE16"; then
-    pass "HIMMEL-1345: ordinary commands are byte-for-byte unchanged (spacing, dates, paths, URLs, and flags survive)"
+    pass "ordinary commands are byte-for-byte unchanged (spacing, dates, paths, URLs, and flags survive)"
 else
-    fail "HIMMEL-1345: an ordinary command's text was altered"
+    fail "an ordinary command's text was altered"
 fi
 rm -rf "$SB"
 
@@ -845,14 +845,14 @@ printf '%s\n' \
 run_hook "$SB" >/dev/null
 NOTE17="$(find "$SB/vault/sessions" -type f -name '*.md' 2>/dev/null | head -1)"
 if [ -n "$NOTE17" ] && grep -qF "client --sha $TOK_HEX_LOWER" "$NOTE17"; then
-    pass "HIMMEL-1345: all-lowercase high-entropy token (hex-SHA shape) is NOT elided"
+    pass "all-lowercase high-entropy token (hex-SHA shape) is NOT elided"
 else
-    fail "HIMMEL-1345: all-lowercase high-entropy token was elided or altered"
+    fail "all-lowercase high-entropy token was elided or altered"
 fi
 if [ -n "$NOTE17" ] && grep -qF "client --env $TOK_SCREAM_UPPER" "$NOTE17"; then
-    pass "HIMMEL-1345: ALL-UPPERCASE/SCREAMING_SNAKE high-entropy token is NOT elided"
+    pass "ALL-UPPERCASE/SCREAMING_SNAKE high-entropy token is NOT elided"
 else
-    fail "HIMMEL-1345: ALL-UPPERCASE/SCREAMING_SNAKE high-entropy token was elided or altered"
+    fail "ALL-UPPERCASE/SCREAMING_SNAKE high-entropy token was elided or altered"
 fi
 rm -rf "$SB"
 
@@ -877,14 +877,14 @@ printf '%s\n' \
 run_hook "$SB" >/dev/null
 NOTE18="$(find "$SB/vault/sessions" -type f -name '*.md' 2>/dev/null | head -1)"
 if [ -n "$NOTE18" ] && grep -qF 'client push <elided>' "$NOTE18" && ! grep -qF "$TOK_B64_STANDALONE" "$NOTE18"; then
-    pass "HIMMEL-1345: standalone padded base64 operand (no key= prefix) is elided"
+    pass "standalone padded base64 operand (no key= prefix) is elided"
 else
-    fail "HIMMEL-1345: standalone padded base64 operand leaked verbatim"
+    fail "standalone padded base64 operand leaked verbatim"
 fi
 if [ -n "$NOTE18" ] && grep -qF 'git config env=prod' "$NOTE18"; then
-    pass "HIMMEL-1345: an ordinary short key=value word is untouched"
+    pass "an ordinary short key=value word is untouched"
 else
-    fail "HIMMEL-1345: an ordinary short key=value word was altered"
+    fail "an ordinary short key=value word was altered"
 fi
 rm -rf "$SB"
 
@@ -914,9 +914,9 @@ printf '%s\n' \
 run_hook "$SB" >/dev/null
 NOTE19="$(find "$SB/vault/sessions" -type f -name '*.md' 2>/dev/null | head -1)"
 if [ -n "$NOTE19" ] && grep -qF 'client sync <elided>' "$NOTE19" && ! grep -qF '<elided>=tail' "$NOTE19" && ! grep -qF "$TOK_POC" "$NOTE19" && ! grep -qF "$TOK_MIXED_PREFIX" "$NOTE19"; then
-    pass "HIMMEL-1345: mixed-case opaque prefix before a non-padding = is elided whole"
+    pass "mixed-case opaque prefix before a non-padding = is elided whole"
 else
-    fail "HIMMEL-1345: mixed-case opaque prefix before a non-padding = leaked verbatim"
+    fail "mixed-case opaque prefix before a non-padding = leaked verbatim"
 fi
 rm -rf "$SB"
 
@@ -954,7 +954,7 @@ while [ ! -e "$CURL_MARKER" ] && [ "$i" -lt 100 ]; do
     i=$((i + 1))
 done
 if [ ! -e "$CURL_MARKER" ]; then
-    fail "HIMMEL-3629: curl stub never started (test setup broken, not a hook bug)"
+    fail "curl stub never started (test setup broken, not a hook bug)"
     kill -TERM -- -"$HOOK_PID" 2>/dev/null
     wait "$HOOK_PID" 2>/dev/null
 else
@@ -962,9 +962,9 @@ else
     wait "$HOOK_PID" 2>/dev/null
     LOGP="$(log_path_for "$SB/home" "$SB/proj")"
     if [ -r "$LOGP" ] && grep -q 'cancelled by signal 15 (session sigtest)' "$LOGP"; then
-        pass "HIMMEL-3629: SIGTERM mid-run logs cancelled-by-signal, not the generic FAILED line"
+        pass "SIGTERM mid-run logs cancelled-by-signal, not the generic FAILED line"
     else
-        fail "HIMMEL-3629: SIGTERM mid-run did not log cancelled-by-signal ($([ -r "$LOGP" ] && tail -3 "$LOGP" | tr '\n' '|' || echo '<no log>'))"
+        fail "SIGTERM mid-run did not log cancelled-by-signal ($([ -r "$LOGP" ] && tail -3 "$LOGP" | tr '\n' '|' || echo '<no log>'))"
     fi
 fi
 rm -rf "$SB" "$CURL_STUB_DIR"
@@ -997,7 +997,7 @@ while [ ! -s "$PORT_FILE" ] && [ "$i" -lt 100 ]; do
     i=$((i + 1))
 done
 if [ ! -s "$PORT_FILE" ]; then
-    fail "HIMMEL-3646: stub listener never reported its port (test setup broken, not a hook bug)"
+    fail "stub listener never reported its port (test setup broken, not a hook bug)"
     kill "$LISTENER_PID" 2>/dev/null
     wait "$LISTENER_PID" 2>/dev/null
 else
@@ -1029,9 +1029,9 @@ else
     wait "$LISTENER_PID" 2>/dev/null
     LOGP="$(log_path_for "$SB/home" "$SB/proj")"
     if [ "$BOUNDED" -eq 1 ] && [ "$HOOK_RC" -eq 0 ] && [ "$ELAPSED" -lt 45 ] && [ -r "$LOGP" ] && grep -q 'local fs fallback' "$LOGP"; then
-        pass "HIMMEL-3646: silent (connects, never answers) endpoint bounded to ${ELAPSED}s via curl timeout, took the local-fs fallback"
+        pass "silent (connects, never answers) endpoint bounded to ${ELAPSED}s via curl timeout, took the local-fs fallback"
     else
-        fail "HIMMEL-3646: silent endpoint not bounded (bounded=$BOUNDED rc=$HOOK_RC elapsed=${ELAPSED}s log=$([ -r "$LOGP" ] && tail -3 "$LOGP" | tr '\n' '|' || echo '<no log>'))"
+        fail "silent endpoint not bounded (bounded=$BOUNDED rc=$HOOK_RC elapsed=${ELAPSED}s log=$([ -r "$LOGP" ] && tail -3 "$LOGP" | tr '\n' '|' || echo '<no log>'))"
     fi
 fi
 rm -rf "$SB"
@@ -1048,9 +1048,9 @@ run_hook "$SB" >/dev/null
 run_hook "$SB" >/dev/null
 NOTE_COUNT="$(find "$SB/vault/sessions" -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
 if [ "$NOTE_COUNT" = "1" ]; then
-    pass "HIMMEL-3629: two hook runs for the same session_id write exactly one note"
+    pass "two hook runs for the same session_id write exactly one note"
 else
-    fail "HIMMEL-3629: two hook runs for the same session_id wrote $NOTE_COUNT notes (want 1)"
+    fail "two hook runs for the same session_id wrote $NOTE_COUNT notes (want 1)"
 fi
 rm -rf "$SB"
 
@@ -1079,9 +1079,9 @@ done
 wait
 WINS="$(grep -l win "$RESULT_DIR"/* 2>/dev/null | wc -l | tr -d ' ')"
 if [ "$WINS" = "1" ]; then
-    pass "HIMMEL-3633: $N concurrent claim_capture callers for one session_id — exactly 1 won"
+    pass "$N concurrent claim_capture callers for one session_id — exactly 1 won"
 else
-    fail "HIMMEL-3633: $N concurrent claim_capture callers for one session_id — $WINS won (want 1)"
+    fail "$N concurrent claim_capture callers for one session_id — $WINS won (want 1)"
 fi
 rm -rf "$RACE_DIR"
 
@@ -1096,17 +1096,17 @@ printf '%s\n' '{"timestamp":"2026-06-17T00:00:00Z","type":"user","message":{"rol
 run_hook "$SB" >/dev/null
 NOTE_COUNT23_RUN1="$(find "$SB/vault/sessions" -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
 if [ "$NOTE_COUNT23_RUN1" = "0" ]; then
-    pass "HIMMEL-3633: run 1 (husk) writes no note"
+    pass "run 1 (husk) writes no note"
 else
-    fail "HIMMEL-3633: run 1 (husk) was expected to write 0 notes, wrote $NOTE_COUNT23_RUN1 (run 1 was not a husk — this case is vacuous)"
+    fail "run 1 (husk) was expected to write 0 notes, wrote $NOTE_COUNT23_RUN1 (run 1 was not a husk — this case is vacuous)"
 fi
 printf '%s\n' '{"timestamp":"2026-06-17T00:00:00Z","message":{"role":"assistant","content":[{"type":"text","text":"line one\nline two"}]}}' > "$SB/transcript.jsonl"
 run_hook "$SB" >/dev/null
 NOTE_COUNT23="$(find "$SB/vault/sessions" -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
 if [ "$NOTE_COUNT23" = "1" ]; then
-    pass "HIMMEL-3633: a husk-skip claim releases, so a same-session_id retry with real content still writes"
+    pass "a husk-skip claim releases, so a same-session_id retry with real content still writes"
 else
-    fail "HIMMEL-3633: a husk-skip claim wrongly stuck — retry wrote $NOTE_COUNT23 notes (want 1)"
+    fail "a husk-skip claim wrongly stuck — retry wrote $NOTE_COUNT23 notes (want 1)"
 fi
 rm -rf "$SB"
 

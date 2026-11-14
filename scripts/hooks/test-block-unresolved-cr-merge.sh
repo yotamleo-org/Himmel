@@ -106,8 +106,8 @@ case "$1 $2" in
   "api graphql")
     case "$GH_STUB_MODE" in
       cr-ci-api-error) exit 1 ;;
-      cr-hang) sleep 30; exit 1 ;;   # HIMMEL-3918: a hung GraphQL read
-      cr-hang-noterm) trap '' TERM; sleep 30; exit 1 ;;   # HIMMEL-5746: a gh that ignores SIGTERM
+      cr-hang) sleep 30; exit 1 ;;   # a hung GraphQL read
+      cr-hang-noterm) trap '' TERM; sleep 30; exit 1 ;;   # a gh that ignores SIGTERM
       unresolved) echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"isResolved":false,"comments":{"nodes":[{"author":{"login":"coderabbitai"}}]}}]}}}}}' ;;
       other-author) echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[{"isResolved":false,"comments":{"nodes":[{"author":{"login":"someuser"}}]}}]}}}}}' ;;
       *) echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[{"isResolved":true,"comments":{"nodes":[{"author":{"login":"coderabbitai"}}]}}]}}}}}' ;;
@@ -117,7 +117,7 @@ case "$1 $2" in
   "api repos/o/r/commits/abc123/check-runs"*)
     case "$GH_STUB_MODE" in
       cr-ci-api-error) exit 1 ;;
-      ci-hang)  sleep 30; exit 1 ;;   # HIMMEL-3918: a hung check-runs read
+      ci-hang)  sleep 30; exit 1 ;;   # a hung check-runs read
       ci-red)   echo '{"check_runs":[{"name":"tests","status":"completed","conclusion":"failure"}]}' ;;
       ci-green) echo '{"check_runs":[{"name":"tests","status":"completed","conclusion":"success"}]}' ;;
       *)        echo '{"check_runs":[]}' ;;
@@ -808,7 +808,7 @@ red_notb_rc=$?
 if [ "$red_notb_rc" -eq 124 ]; then
     pass=$((pass+1)); echo "ok   red-control-no-timeout-bin-hangs (base hook ran unbounded past 8s with no timeout/gtimeout on PATH, as expected pre-fix)"
 else
-    fail=$((fail+1)); echo "FAIL red-control-no-timeout-bin-hangs rc=$red_notb_rc (want 124 -- expected the pre-HIMMEL-3585 hook to hang unbounded)"
+    fail=$((fail+1)); echo "FAIL red-control-no-timeout-bin-hangs rc=$red_notb_rc (want 124 -- expected the hook from before its time limit was added to hang unbounded)"
 fi
 # bounded_run must reap the hook AND its gh-stub descendants. A hook
 # left running past this suite's EXIT trap keeps a deleted cwd under /tmp and
@@ -1490,7 +1490,7 @@ grep -q "no chief GO" "$TMP/err-trust-path-host-prefixed-repo-blocks" \
 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean GH_STUB_TRUST_FILE=scripts/ci/run.sh \
     t trust-path-quoted-host-repo-blocks 2 Bash "gh pr merge --repo \\\"github.com/o/r\\\" 42 --squash --match-head-commit abc123"
 grep -q "single plain command" "$TMP/err-trust-path-quoted-host-repo-blocks" \
-    || { fail=$((fail+1)); echo "FAIL trust-path-quoted-host-repo-blocks: a quoted repo is not refused by the plain-command rule (HIMMEL-3918 B1)"; }
+    || { fail=$((fail+1)); echo "FAIL trust-path-quoted-host-repo-blocks: a quoted repo is not refused by the plain-command rule"; }
 # Control: a PR genuinely on another repo (no list there, the anchor's origin
 # is o/r) is still not-adopted and passes with no GO (past the
 # cross-repo refusal, via CR_MERGE_GATE_OK=1).
@@ -1588,7 +1588,7 @@ fi
 # past ref.
 if grep -vE '^[[:space:]]*#' "$SCRIPT_DIR/test-block-unresolved-cr-merge.sh" \
     | grep -Eq 'git[[:space:]]+(-C[[:space:]]+\S+[[:space:]]+)?show[[:space:]].*:scripts/'; then
-    fail=$((fail+1)); echo "FAIL lint: this file extracts a historical blob via git show <ref>:<path> — use a committed fixtures/red-control/ snapshot instead (HIMMEL-3154)"
+    fail=$((fail+1)); echo "FAIL lint: this file extracts a historical blob via git show <ref>:<path> — use a committed fixtures/red-control/ snapshot instead"
 else
     pass=$((pass+1)); echo "ok   lint-no-historical-git-show-extraction"
 fi

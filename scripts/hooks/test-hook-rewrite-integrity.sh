@@ -268,9 +268,9 @@ fi
 # recorder can live) a missing, empty or unparseable record DENIES.
 SID='worker-session-1'
 if [ "$(cat "$OUT_DIR/$SID.recorder" 2>/dev/null)" = "done" ]; then
-  ok "HIMMEL-2588: the recorder marks itself done beside the record it wrote"
+  ok "the recorder marks itself done beside the record it wrote"
 else
-  bad "HIMMEL-2588: expected $OUT_DIR/$SID.recorder = done, got '$(cat "$OUT_DIR/$SID.recorder" 2>&1)'"
+  bad "expected $OUT_DIR/$SID.recorder = done, got '$(cat "$OUT_DIR/$SID.recorder" 2>&1)'"
 fi
 gone_run() {   # <label> <out-dir>: run the launcher against a copied pin dir
   printf '%s' "$PAYLOAD" | CLAUDE_PROJECT_DIR="$PROJECT" HIMMEL_HOOK_INTEGRITY_DIR="$2" \
@@ -282,42 +282,42 @@ gone_dir() {   # <name>: a copy of the recorded pin dir, record mode restored
 gone_dir g1; rm -f "$T/g1/$SID.json"
 gone_run g1 "$T/g1"; rc=$?
 if [ "$rc" -eq 2 ] && grep -q 'record is missing' "$T/g1.err"; then
-  ok "HIMMEL-2588: record deleted after the recorder ran is denied"
+  ok "record deleted after the recorder ran is denied"
 else
   bad "HIMMEL-2588 deleted record: expected rc=2 + 'record is missing', got rc=$rc err=$(cat "$T/g1.err")"
 fi
 gone_dir g2; : > "$T/g2/$SID.json"
 gone_run g2 "$T/g2"; rc=$?
 if [ "$rc" -eq 2 ] && grep -q 'record is missing' "$T/g2.err"; then
-  ok "HIMMEL-2588: record truncated to 0 bytes is denied"
+  ok "record truncated to 0 bytes is denied"
 else
   bad "HIMMEL-2588 truncated record: expected rc=2, got rc=$rc err=$(cat "$T/g2.err")"
 fi
 gone_dir g3; printf '{"session_id":"%s"}\n' "$SID" > "$T/g3/$SID.json"
 gone_run g3 "$T/g3"; rc=$?
 if [ "$rc" -eq 2 ]; then
-  ok "HIMMEL-2588: a parseable record with no pins is denied"
+  ok "a parseable record with no pins is denied"
 else
   bad "HIMMEL-2588 pinless record: expected rc=2, got rc=$rc err=$(cat "$T/g3.err")"
 fi
 gone_dir g4; rm -f "$T/g4/$SID.json" "$T/g4/$SID.recorder"
 gone_run g4 "$T/g4"; rc=$?
 if [ "$rc" -eq 0 ]; then
-  ok "HIMMEL-2588: no recorder has run this session (no marker, no record) still fails open"
+  ok "no recorder has run this session (no marker, no record) still fails open"
 else
   bad "HIMMEL-2588 no recorder: expected rc=0, got rc=$rc err=$(cat "$T/g4.err")"
 fi
 gone_dir g5; rm -f "$T/g5/$SID.json"; printf 'started\n' > "$T/g5/$SID.recorder"
 gone_run g5 "$T/g5"; rc=$?
 if [ "$rc" -eq 0 ]; then
-  ok "HIMMEL-2588: a recorder still running (fresh 'started' marker) fails open"
+  ok "a recorder still running (fresh 'started' marker) fails open"
 else
   bad "HIMMEL-2588 recorder running: expected rc=0, got rc=$rc err=$(cat "$T/g5.err")"
 fi
 gone_dir g7; rm -f "$T/g7/$SID.json"; : > "$T/g7/$SID.recorder"
 gone_run g7 "$T/g7"; rc=$?
 if [ "$rc" -eq 0 ]; then
-  ok "HIMMEL-2588: a fresh empty marker (recorder caught mid-write) fails open"
+  ok "a fresh empty marker (recorder caught mid-write) fails open"
 else
   bad "HIMMEL-2588 empty marker: expected rc=0, got rc=$rc err=$(cat "$T/g7.err")"
 fi
@@ -328,14 +328,14 @@ gone_run g6 "$T/g6"; rc=$?
 # merged into the hook's own JSON.
 if [ "$rc" -eq 0 ] && jq -e '.systemMessage | test("ran UNVERIFIED")' "$T/g6.out" >/dev/null 2>&1 \
    && jq -e '.hookSpecificOutput.permissionDecision' "$T/g6.out" >/dev/null 2>&1; then
-  ok "HIMMEL-5171: a 'started' marker older than any recorder can live (killed recorder) fails open with a systemMessage notice"
+  ok "a 'started' marker older than any recorder can live (killed recorder) fails open with a systemMessage notice"
 else
   bad "HIMMEL-5171 stale started: expected rc=0 + systemMessage notice, got rc=$rc out=$(cat "$T/g6.out") err=$(cat "$T/g6.err")"
 fi
 # The notice is once per session: a second hook call stays silent.
 gone_run g6 "$T/g6"; rc=$?
 if [ "$rc" -eq 0 ] && absent 'ran UNVERIFIED' "$T/g6.out" "$T/g6.err"; then
-  ok "HIMMEL-5171: the fail-open notice is shown once per session"
+  ok "the fail-open notice is shown once per session"
 else
   bad "HIMMEL-5171 notice once: expected rc=0 and no notice, got rc=$rc out=$(cat "$T/g6.out") err=$(cat "$T/g6.err")"
 fi
@@ -347,7 +347,7 @@ printf '%s' "$PAYLOAD" | CLAUDE_PROJECT_DIR="$PROJECT" HIMMEL_HOOK_INTEGRITY_DIR
   node "$LAUNCHER" --chain "$GUARD" >"$T/g8.out" 2>"$T/g8.err"
 rc=$?
 if [ "$rc" -eq 0 ] && jq -e '.systemMessage | test("ran UNVERIFIED")' "$T/g8.out" >/dev/null 2>&1; then
-  ok "HIMMEL-5171: the chain path surfaces the fail-open notice as a systemMessage"
+  ok "the chain path surfaces the fail-open notice as a systemMessage"
 else
   bad "HIMMEL-5171 chain notice: expected rc=0 + systemMessage, got rc=$rc out=$(cat "$T/g8.out") err=$(cat "$T/g8.err")"
 fi
@@ -361,13 +361,13 @@ printf '%s' "$PAYLOAD" | CLAUDE_PROJECT_DIR="$PROJECT" HIMMEL_HOOK_INTEGRITY_DIR
   node "$LAUNCHER" --optional "$PLAIN" >"$T/g9.out" 2>"$T/g9.err"
 rc=$?
 if [ "$rc" -eq 0 ] && [ "$(cat "$T/g9.out")" = "plain text" ] && [ ! -e "$T/g9/$SID.recorder-notified" ]; then
-  ok "HIMMEL-5171: plain-text hook output passes through and does not consume the notice"
+  ok "plain-text hook output passes through and does not consume the notice"
 else
   bad "HIMMEL-5171 plain output: expected rc=0, 'plain text', no notified flag, got rc=$rc out=$(cat "$T/g9.out") dir=$(ls "$T/g9")"
 fi
 gone_run g9 "$T/g9"; rc=$?
 if [ "$rc" -eq 0 ] && jq -e '.systemMessage | test("ran UNVERIFIED")' "$T/g9.out" >/dev/null 2>&1; then
-  ok "HIMMEL-5171: the notice is delivered by the next call whose output is JSON"
+  ok "the notice is delivered by the next call whose output is JSON"
 else
   bad "HIMMEL-5171 deferred notice: expected systemMessage, got rc=$rc out=$(cat "$T/g9.out") err=$(cat "$T/g9.err")"
 fi
@@ -382,7 +382,7 @@ printf '%s' "$PAYLOAD" | CLAUDE_PROJECT_DIR="$PROJECT" HIMMEL_HOOK_INTEGRITY_DIR
   node "$LAUNCHER" --chain "$DENYG" "$GUARD" >"$T/g10.out" 2>"$T/g10.err"
 rc=$?
 if [ "$rc" -eq 2 ] && [ ! -e "$T/g10/$SID.recorder-notified" ]; then
-  ok "HIMMEL-5171: a chain member that denies under an unvouched session leaves the notice unconsumed"
+  ok "a chain member that denies under an unvouched session leaves the notice unconsumed"
 else
   bad "HIMMEL-5171 chain deny: expected rc=2 and no notified flag, got rc=$rc dir=$(ls "$T/g10") err=$(cat "$T/g10.err")"
 fi
@@ -390,12 +390,12 @@ printf '%s' "$PAYLOAD" | CLAUDE_PROJECT_DIR="$PROJECT" HIMMEL_HOOK_INTEGRITY_DIR
   node "$LAUNCHER" --chain "$GUARD" >"$T/g10.out" 2>"$T/g10.err"
 rc=$?
 if [ "$rc" -eq 0 ] && jq -e '.systemMessage | test("ran UNVERIFIED")' "$T/g10.out" >/dev/null 2>&1; then
-  ok "HIMMEL-5171: the next allowed chain call after a deny shows the notice"
+  ok "the next allowed chain call after a deny shows the notice"
 else
   bad "HIMMEL-5171 chain after deny: expected systemMessage, got rc=$rc out=$(cat "$T/g10.out") err=$(cat "$T/g10.err")"
 fi
 if grep -q 'ran UNVERIFIED' "$T/g10.err"; then
-  ok "HIMMEL-5171: the notice is also written to stderr"
+  ok "the notice is also written to stderr"
 else
   bad "HIMMEL-5171 stderr notice missing: $(cat "$T/g10.err")"
 fi
@@ -409,7 +409,7 @@ printf '%s' "$PAYLOAD" | CLAUDE_PROJECT_DIR="$PROJECT" HIMMEL_HOOK_INTEGRITY_DIR
   node "$LAUNCHER" --chain "$FAILG" >"$T/g10b.out" 2>"$T/g10b.err"
 rc=$?
 if [ "$rc" -eq 1 ] && [ ! -e "$T/g10b/$SID.recorder-notified" ]; then
-  ok "HIMMEL-5171: a chain whose only member exits 1 with no JSON leaves the notice unconsumed"
+  ok "a chain whose only member exits 1 with no JSON leaves the notice unconsumed"
 else
   bad "HIMMEL-5171 chain exit-1: expected rc=1 and no notified flag, got rc=$rc dir=$(ls "$T/g10b") out=$(cat "$T/g10b.out") err=$(cat "$T/g10b.err")"
 fi
@@ -417,7 +417,7 @@ printf '%s' "$PAYLOAD" | CLAUDE_PROJECT_DIR="$PROJECT" HIMMEL_HOOK_INTEGRITY_DIR
   node "$LAUNCHER" --chain "$GUARD" >"$T/g10b.out" 2>"$T/g10b.err"
 rc=$?
 if [ "$rc" -eq 0 ] && jq -e '.systemMessage | test("ran UNVERIFIED")' "$T/g10b.out" >/dev/null 2>&1; then
-  ok "HIMMEL-5171: the next clean chain call after an exit-1 shows the notice"
+  ok "the next clean chain call after an exit-1 shows the notice"
 else
   bad "HIMMEL-5171 chain after exit-1: expected systemMessage, got rc=$rc out=$(cat "$T/g10b.out") err=$(cat "$T/g10b.err")"
 fi
@@ -427,13 +427,13 @@ printf '%s' "$PAYLOAD" | CLAUDE_PROJECT_DIR="$PROJECT" HIMMEL_HOOK_INTEGRITY_DIR
   node "$LAUNCHER" --optional "$DENYG" >"$T/g11.out" 2>"$T/g11.err"
 rc=$?
 if [ "$rc" -eq 2 ] && [ ! -e "$T/g11/$SID.recorder-notified" ]; then
-  ok "HIMMEL-5171: a single-path hook that exits 2 under an unvouched session leaves the notice unconsumed"
+  ok "a single-path hook that exits 2 under an unvouched session leaves the notice unconsumed"
 else
   bad "HIMMEL-5171 single deny: expected rc=2 and no notified flag, got rc=$rc dir=$(ls "$T/g11") err=$(cat "$T/g11.err")"
 fi
 gone_run g11 "$T/g11"; rc=$?
 if [ "$rc" -eq 0 ] && jq -e '.systemMessage | test("ran UNVERIFIED")' "$T/g11.out" >/dev/null 2>&1; then
-  ok "HIMMEL-5171: the next allowed single-path call after an exit-2 shows the notice"
+  ok "the next allowed single-path call after an exit-2 shows the notice"
 else
   bad "HIMMEL-5171 single after deny: expected systemMessage, got rc=$rc out=$(cat "$T/g11.out") err=$(cat "$T/g11.err")"
 fi
@@ -444,7 +444,7 @@ printf '\n# tampered\n' >> "$GUARD"
 gone_dir g12; printf 'failed\n' > "$T/g12/$SID.recorder"
 gone_run g12 "$T/g12"; rc=$?
 if [ "$rc" -eq 2 ] && absent 'ran UNVERIFIED' "$T/g12.out"; then
-  ok "HIMMEL-5171: a tampered pinned guard with a valid record and a failed marker is still denied"
+  ok "a tampered pinned guard with a valid record and a failed marker is still denied"
 else
   bad "HIMMEL-5171 tamper + failed marker: expected rc=2, got rc=$rc out=$(cat "$T/g12.out") err=$(cat "$T/g12.err")"
 fi
@@ -452,14 +452,14 @@ gone_dir g13; printf 'started\n' > "$T/g13/$SID.recorder"
 touch -t 202001010000 "$T/g13/$SID.recorder"
 gone_run g13 "$T/g13"; rc=$?
 if [ "$rc" -eq 2 ]; then
-  ok "HIMMEL-5171: a tampered pinned guard with a valid record and a stale started marker is still denied"
+  ok "a tampered pinned guard with a valid record and a stale started marker is still denied"
 else
   bad "HIMMEL-5171 tamper + stale started: expected rc=2, got rc=$rc out=$(cat "$T/g13.out") err=$(cat "$T/g13.err")"
 fi
 cp "$T/guard.orig" "$GUARD"
 # The deny a deleted-after-verified-publish record earns names the recovery.
 if grep -q 'record-hook-integrity.sh' "$T/g1.err" && grep -q "$SID.recorder" "$T/g1.err"; then
-  ok "HIMMEL-5171: the missing-record deny names the manual recovery (marker + recorder)"
+  ok "the missing-record deny names the manual recovery (marker + recorder)"
 else
   bad "HIMMEL-5171 recovery text missing from deny: $(cat "$T/g1.err")"
 fi
@@ -499,7 +499,7 @@ expect_open() {   # <name> <label>: marker is not `done`, no record, launcher fa
   # `started` for a kill): an absent or empty marker would fail open through the
   # launcher's no-marker path and pass without the failure ever being reached.
   if { [ "$state" = "failed" ] || [ "$state" = "started" ]; } && [ ! -s "$dir/$SID.json" ] && [ "$rc" -eq 0 ]; then
-    ok "HIMMEL-5171: $label -> marker '$state', launcher fails open"
+    ok "$label -> marker '$state', launcher fails open"
   else
     bad "HIMMEL-5171 $label: marker='$state' record=$([ -s "$dir/$SID.json" ] && echo present || echo none) launcher rc=$rc err=$(cat "$T/$name.err")"
   fi
@@ -2216,7 +2216,7 @@ E
 sc_case "row 63 control: a bare source of the same unresolvable ref denies" 0 1 <<'E'
 source $X/y.sh
 E
-sc_case "row 64: a self-dir cd that climbs out of the checkout denies (HIMMEL-4993)" 0 1 <<'E'
+sc_case "row 64: a self-dir cd that climbs out of the checkout denies" 0 1 <<'E'
 source "$(cd "$(dirname "$0")/../../.." && pwd)/scripts/lib/armor.sh"
 E
 sc_case "row 64: a cd - after the self cd denies" 0 1 <<'E'

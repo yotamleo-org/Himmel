@@ -916,7 +916,7 @@ diff_row noleak "non-seam \$(( )) assignment as the chokepoint argument" '@P@ $(
 # string-reconstruction residual. If a future change closes this, flip the row
 # to `leak` deliberately. The raw backstop now denies the literal
 # `SEAM=` text (1813 backstop over-deny (chief X ruling 07:05)). ---
-diff_row leak "indirect: x=SEAM=0; (( x )) assigns via the VALUE (HIMMEL-3195)" 'x=HIMMEL_CONSOLE_LEG=0; (( x )); @P@'
+diff_row leak "indirect: x=SEAM=0; (( x )) assigns via the VALUE" 'x=HIMMEL_CONSOLE_LEG=0; (( x )); @P@'
 rm -rf "$ORACLE_DIR"
 
 # --- Seam-var env-prefix denies onto the suite chokepoints (unrelated to any
@@ -1154,7 +1154,7 @@ assert_allow "3921 I1 control: plain chokepoint call" "$(j "bash $MERGE_ON_GREEN
 # The standalone -u*/-i*/--u*/--i*/bare - token counts only in env
 # position (after an env-like word), so these ordinary commands stop over-denying.
 # This was denied only because --id read as --i*; it is not env-clearing.
-assert_allow "4095 no relief (glob/quote): ledger-append amend: --id, --set k=v, ? in the reason" "$(j "bash scripts/cr/ledger-append.sh amend --id 4 --set verdict=deferred --set deferred_to=HIMMEL-3929 --reason \"see scripts/hooks/x? why?\"")"
+assert_allow "4095 no relief (glob/quote): ledger-append amend: --id, --set k=v, ? in the reason" "$(j "bash scripts/cr/ledger-append.sh amend --id 4 --set verdict=deferred --set deferred_to=PROJ-3929 --reason \"see scripts/hooks/x? why?\"")"
 # These were the 3955 "no relief, main verdict" pins; the
 # pobf_relief stages now place each -i/-u in a read-only stage or among sed's
 # own options, so none of them clears an environment.
@@ -1198,7 +1198,7 @@ assert_allow "4572 stat --printf= beside a scripts glob" "$(j "stat --printf='%n
 assert_allow "4572 a -printf at a word end beside a scripts glob" "$(j "find scripts/hooks/g*.sh -printf")"
 assert_deny "4572 process.env beside a scripts glob" "$(j "node -e 'process.env.FOO=1' scripts/hooks/g*.sh")"
 assert_allow "4572 a bare .env beside a scripts glob" "$(j "cat .env scripts/hooks/g*.sh")"
-assert_allow "4572 .env.example (data in a read-only stage; HIMMEL-4933)" "$(j "cat .env.example scripts/hooks/g*.sh")"
+assert_allow "4572 .env.example (data in a read-only stage)" "$(j "cat .env.example scripts/hooks/g*.sh")"
 assert_deny "4572 /usr/bin/env still counts as the env verb" "$(j "/usr/bin/env FOO=1 bash scripts/hooks/g*.sh")"
 assert_deny "4572 eval after a separator still counts" "$(j "true;eval bash scripts/hooks/g*.sh")"
 # A glob-only scripts/ word whose only seam trigger is a verb word
@@ -1542,15 +1542,15 @@ assert_allow "4157 CR10 interpreter in \$( ), no glob word, beside the seam name
 # rg script) beside a seam name is everyday text, not a hidden anchor. A sed
 # or awk script gets no relief (it can run a program; a parse that tells the
 # inert ones apart is a known gap), so these still deny as on main.
-assert_deny "4157 queue-lock sweep piped to a sed regex (HIMMEL-3930)" "$(j "HANDOVER_DIR=/home/u/handovers bash /home/u/himmel/scripts/handover/queue-lock.sh status --sweep /home/u/handovers | sed 's/.*session=//'")"
+assert_deny "4157 queue-lock sweep piped to a sed regex" "$(j "HANDOVER_DIR=/home/u/handovers bash /home/u/himmel/scripts/handover/queue-lock.sh status --sweep /home/u/handovers | sed 's/.*session=//'")"
 assert_allow "4157 export seam then ls glob" "$(j 'export HANDOVER_DIR=/tmp/h; ls docs/*.md')"
 # shellcheck disable=SC2016 # $HIMMEL_CONSOLE_LEG is probe text, not an expansion
 assert_allow "4157 echo the worker marker then ls glob" "$(j 'echo $HIMMEL_CONSOLE_LEG; ls src/*.ts')"
 assert_allow "4157 grep the worker marker, grep -v a quoted pattern" "$(j "grep -rn HIMMEL_CONSOLE_LEG docs/ | grep -v '^./docs/'")"
-assert_deny "4157 awk program with a path regex (HIMMEL-3930)" "$(j "unset HIMMEL_CONSOLE_LEG; awk '/x\\/(y|z)*/ {print}' f")"
+assert_deny "4157 awk program with a path regex" "$(j "unset HIMMEL_CONSOLE_LEG; awk '/x\\/(y|z)*/ {print}' f")"
 SWEEP="HANDOVER_DIR=/home/u/handovers bash /home/u/himmel/scripts/handover/queue-lock.sh status --sweep /home/u/handovers"
 assert_allow "4157 sweep, grep -oE a quoted alternation" "$(j "$SWEEP 2>&1 | grep -oE 'N1(4[89]|5[0-4])[^ ]* session=[^ ]+'")"
-assert_deny "4157 sweep, sed -E capture groups (HIMMEL-3930)" "$(j "$SWEEP | sed -E 's/.*(N2[0-9]+).*session=([^ ]*).*/\\1 \\2/'")"
+assert_deny "4157 sweep, sed -E capture groups" "$(j "$SWEEP | sed -E 's/.*(N2[0-9]+).*session=([^ ]*).*/\\1 \\2/'")"
 assert_allow "4157 sweep beside an unquoted ls glob" "$(j "ls /tmp/s/N27[67].launch.log; $SWEEP")"
 assert_allow "4157 sweep inside a function definition" "$(j "S() { $SWEEP 2>&1; }; S | grep -E 'N27[67]'")"
 assert_allow "4157 heredoc prose append beside the sweep" "$(j "cat >> /tmp/h.md <<'EOF'

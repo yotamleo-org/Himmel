@@ -190,7 +190,7 @@ assert_rc "quiet-run.sh as argument" 2 "$RC"
 run_case "$(j_bash 'cat <<EOF
 bash scripts/test-check-ci.sh
 EOF')"
-assert_rc "heredoc DATA no longer a false positive (HIMMEL-2322)" 0 "$RC"
+assert_rc "heredoc DATA no longer a false positive" 0 "$RC"
 
 # 12. Compound command: a wrapped quiet-run call, then a SEPARATE bare suite
 # call -> still denied. The old allow-check
@@ -251,26 +251,26 @@ assert_contains "dotted suite filename replacement"     "bash scripts/quiet-run.
 run_case "$(j_bash "cat <<'EOF' | bash
 bash scripts/ci/run-shell-tests.sh
 EOF")"
-assert_rc "heredoc piped to bash (HIMMEL-2322)" 2 "$RC"
+assert_rc "heredoc piped to bash" 2 "$RC"
 
 run_case "$(j_bash "bash <<'EOF'
 bash scripts/test-check-ci.sh
 EOF")"
-assert_rc "bash reads its own heredoc (HIMMEL-2322)" 2 "$RC"
+assert_rc "bash reads its own heredoc" 2 "$RC"
 
 run_case "$(j_bash 'bash -s <<EOF
 bash scripts/test-check-ci.sh
 EOF')"
-assert_rc "bash -s heredoc variant (HIMMEL-2322)" 2 "$RC"
+assert_rc "bash -s heredoc variant" 2 "$RC"
 
 # 20. a quoted command word must still match: the SUITE/
 # INTERP_RE regexes see plain text, so a quoted suite path has to be
 # unwrapped (there are no embedded separators here to neutralize).
 run_case "$(j_bash 'bash "scripts/ci/run-shell-tests.sh"')"
-assert_rc "double-quoted suite path (HIMMEL-2322)" 2 "$RC"
+assert_rc "double-quoted suite path" 2 "$RC"
 
 run_case "$(j_bash "bash 'scripts/test-check-ci.sh'")"
-assert_rc "single-quoted suite path (HIMMEL-2322)" 2 "$RC"
+assert_rc "single-quoted suite path" 2 "$RC"
 
 # 21. a command that BOTH writes a prose heredoc AND
 # separately runs a bare suite: stripping the prose heredoc body must not
@@ -279,7 +279,7 @@ run_case "$(j_bash "cat > handover.md <<'EOF'
 bash scripts/ci/run-shell-tests.sh scripts/hooks
 EOF
 bash scripts/ci/run-shell-tests.sh")"
-assert_rc "prose heredoc plus separate bare suite (HIMMEL-2322)" 2 "$RC"
+assert_rc "prose heredoc plus separate bare suite" 2 "$RC"
 
 # 22. the reported shape (2026-08-31): a heredoc body
 # redirected to a file, whose prose happens to quote a suite command, must
@@ -287,24 +287,24 @@ assert_rc "prose heredoc plus separate bare suite (HIMMEL-2322)" 2 "$RC"
 run_case "$(j_bash "cat > handover.md <<'EOF'
 prose line quoting bash scripts/ci/run-shell-tests.sh scripts/hooks
 EOF")"
-assert_rc "reported shape - prose heredoc to a file (HIMMEL-2322)" 0 "$RC"
+assert_rc "reported shape - prose heredoc to a file" 0 "$RC"
 
 # 23. Redirect-after form of the same shape - the '>' can come before OR
 # after the heredoc operator.
 run_case "$(j_bash "cat <<'EOF' > handover.md
 bash scripts/ci/run-shell-tests.sh scripts/hooks
 EOF")"
-assert_rc "redirect-after heredoc form (HIMMEL-2322)" 0 "$RC"
+assert_rc "redirect-after heredoc form" 0 "$RC"
 
 # 24. <<- form: the closing delimiter line may be tab-indented.
 run_case "$(j_bash $'cat <<-EOF\n\tbash scripts/ci/run-shell-tests.sh scripts/hooks\n\tEOF')"
-assert_rc "<<- with tab-indented terminator (HIMMEL-2322)" 0 "$RC"
+assert_rc "<<- with tab-indented terminator" 0 "$RC"
 
 # 25. Bare (unquoted) delimiter - not just the quoted forms.
 run_case "$(j_bash "cat > handover.md <<EOF
 bash scripts/ci/run-shell-tests.sh scripts/hooks
 EOF")"
-assert_rc "bare unquoted heredoc delimiter (HIMMEL-2322)" 0 "$RC"
+assert_rc "bare unquoted heredoc delimiter" 0 "$RC"
 
 # 26. Two heredocs in one command, only the second is prose - the first
 # (shell-fed) heredoc's real content must not be mistaken for prose, and
@@ -316,7 +316,7 @@ EOF
 cat > handover.md <<'EOF2'
 bash scripts/ci/run-shell-tests.sh scripts/hooks
 EOF2")"
-assert_rc "two heredocs, only second is prose (HIMMEL-2322)" 0 "$RC"
+assert_rc "two heredocs, only second is prose" 0 "$RC"
 
 # 27. unterminated heredoc: no closing delimiter
 # line before the command ends. Dropping everything from the intro
@@ -328,25 +328,25 @@ assert_rc "two heredocs, only second is prose (HIMMEL-2322)" 0 "$RC"
 # case denies again (a possible false positive, never a false negative).
 run_case "$(j_bash "cat <<'EOF'
 bash scripts/ci/run-shell-tests.sh scripts/hooks")"
-assert_rc "unterminated heredoc now fails closed (HIMMEL-2322 CR round 2)" 2 "$RC"
+assert_rc "unterminated heredoc now fails closed" 2 "$RC"
 
 # 28. A quoted ';' must not create a new segment - it collapses into the
 # surrounding word instead of acting as a real command separator.
 run_case "$(j_bash 'echo "step one; bash scripts/ci/run-shell-tests.sh scripts/hooks"')"
-assert_rc "quoted semicolon inside echo (HIMMEL-2322)" 0 "$RC"
+assert_rc "quoted semicolon inside echo" 0 "$RC"
 
 run_case "$(j_bash 'git commit -m "ran bash scripts/ci/run-shell-tests.sh; all green"')"
-assert_rc "quoted semicolon inside commit message (HIMMEL-2322)" 0 "$RC"
+assert_rc "quoted semicolon inside commit message" 0 "$RC"
 
 run_case "$(j_bash "printf '%s\n' 'bash scripts/test-foo.sh; done'")"
-assert_rc "quoted semicolon inside single-quoted printf arg (HIMMEL-2322)" 0 "$RC"
+assert_rc "quoted semicolon inside single-quoted printf arg" 0 "$RC"
 
 # 29. gh pr create --body-file heredoc - the other reported shape (a PR
 # body quoting a suite command).
 run_case "$(j_bash "gh pr create --body-file - <<'EOF'
 bash scripts/ci/run-shell-tests.sh scripts/hooks
 EOF")"
-assert_rc "gh pr create body-file heredoc (HIMMEL-2322)" 0 "$RC"
+assert_rc "gh pr create body-file heredoc" 0 "$RC"
 
 # 30. an EARLIER, unrelated segment on the intro
 # line naming bash/sh/zsh must not make a LATER, unrelated heredoc
@@ -354,12 +354,12 @@ assert_rc "gh pr create body-file heredoc (HIMMEL-2322)" 0 "$RC"
 run_case "$(j_bash "echo hi; cat <<'EOF' > handover.md
 bash scripts/ci/run-shell-tests.sh scripts/hooks
 EOF")"
-assert_rc "unrelated bash-named segment before an unrelated heredoc (HIMMEL-2322)" 0 "$RC"
+assert_rc "unrelated bash-named segment before an unrelated heredoc" 0 "$RC"
 
 run_case "$(j_bash "bash scripts/quiet-run.sh foo -- true; cat <<'EOF' > handover.md
 bash scripts/ci/run-shell-tests.sh scripts/hooks
 EOF")"
-assert_rc "sanctioned quiet-run call before an unrelated heredoc (HIMMEL-2322)" 0 "$RC"
+assert_rc "sanctioned quiet-run call before an unrelated heredoc" 0 "$RC"
 
 # 31. a QUOTED `<<EOF` in prose
 # is not a real heredoc operator; the old (non-quote-aware) detector opened
@@ -368,11 +368,11 @@ assert_rc "sanctioned quiet-run call before an unrelated heredoc (HIMMEL-2322)" 
 # bypass.
 run_case "$(j_bash "echo '<<EOF'
 bash scripts/ci/run-shell-tests.sh")"
-assert_rc "quoted single-quote heredoc-lookalike does not swallow the next line (HIMMEL-2322)" 2 "$RC"
+assert_rc "quoted single-quote heredoc-lookalike does not swallow the next line" 2 "$RC"
 
 run_case "$(j_bash 'echo "<<EOF"
 bash scripts/ci/run-shell-tests.sh')"
-assert_rc "quoted double-quote heredoc-lookalike does not swallow the next line (HIMMEL-2322)" 2 "$RC"
+assert_rc "quoted double-quote heredoc-lookalike does not swallow the next line" 2 "$RC"
 
 # 32. an escaped bare
 # delimiter (`<<\EOF`) suppresses body expansion exactly like a quoted one;
@@ -380,7 +380,7 @@ assert_rc "quoted double-quote heredoc-lookalike does not swallow the next line 
 run_case "$(j_bash "cat <<\EOF > doc.md
 prose line bash scripts/ci/run-shell-tests.sh scripts/hooks
 EOF")"
-assert_rc "escaped bare heredoc delimiter allows its prose body (HIMMEL-2322)" 0 "$RC"
+assert_rc "escaped bare heredoc delimiter allows its prose body" 0 "$RC"
 
 # 33. controls proving a REAL heredoc intro is
 # still detected after the quote-aware detector change (not just the fake
@@ -388,12 +388,12 @@ assert_rc "escaped bare heredoc delimiter allows its prose body (HIMMEL-2322)" 0
 run_case "$(j_bash "cat <<'EOF' > doc.md
 prose
 EOF")"
-assert_rc "real single-quoted heredoc to a file still allows (HIMMEL-2322)" 0 "$RC"
+assert_rc "real single-quoted heredoc to a file still allows" 0 "$RC"
 
 run_case "$(j_bash "cat <<'EOF' | bash
 bash scripts/ci/run-shell-tests.sh
 EOF")"
-assert_rc "real single-quoted heredoc piped to bash still denies (HIMMEL-2322)" 2 "$RC"
+assert_rc "real single-quoted heredoc piped to bash still denies" 2 "$RC"
 
 # 34. The panel
 # claimed `cat <<EOF | env bash` reads as prose because `env` isn't
@@ -404,7 +404,7 @@ assert_rc "real single-quoted heredoc piped to bash still denies (HIMMEL-2322)" 
 run_case "$(j_bash "cat <<EOF | env bash
 bash scripts/ci/run-shell-tests.sh
 EOF")"
-assert_rc "heredoc piped through env bash still denies (HIMMEL-2322)" 2 "$RC"
+assert_rc "heredoc piped through env bash still denies" 2 "$RC"
 
 # 35. `source`/`.` genuinely
 # execute a heredoc body too; they were missing from the shell-fed verb
@@ -412,12 +412,12 @@ assert_rc "heredoc piped through env bash still denies (HIMMEL-2322)" 2 "$RC"
 run_case "$(j_bash "source /dev/stdin <<EOF
 bash scripts/ci/run-shell-tests.sh
 EOF")"
-assert_rc "source /dev/stdin heredoc denies (HIMMEL-2322 CR round 2)" 2 "$RC"
+assert_rc "source /dev/stdin heredoc denies" 2 "$RC"
 
 run_case "$(j_bash ". /dev/stdin <<EOF
 bash scripts/ci/run-shell-tests.sh
 EOF")"
-assert_rc ". /dev/stdin heredoc denies (HIMMEL-2322 CR round 2)" 2 "$RC"
+assert_rc ". /dev/stdin heredoc denies" 2 "$RC"
 
 # 36. `<<END-MARK` is a real
 # delimiter, but the old identifier-only charset captured just "END",
@@ -428,7 +428,7 @@ run_case "$(j_bash "cat <<END-MARK > doc.md
 prose
 END-MARK
 bash scripts/ci/run-shell-tests.sh")"
-assert_rc "trailing real call after an END-MARK heredoc still denies (HIMMEL-2322 CR round 2)" 2 "$RC"
+assert_rc "trailing real call after an END-MARK heredoc still denies" 2 "$RC"
 
 # 37. Same delimiter, but this time the ticket's actual goal: a suite-
 # shaped PROSE line inside the (correctly terminated) heredoc body must
@@ -436,7 +436,7 @@ assert_rc "trailing real call after an END-MARK heredoc still denies (HIMMEL-232
 run_case "$(j_bash "cat <<END-MARK > doc.md
 bash scripts/ci/run-shell-tests.sh scripts/hooks
 END-MARK")"
-assert_rc "END-MARK heredoc prose body still allows (HIMMEL-2322 CR round 2)" 0 "$RC"
+assert_rc "END-MARK heredoc prose body still allows" 0 "$RC"
 
 # 38. a quoted heredoc-
 # lookalike EARLIER on the same line as a REAL heredoc operator still
@@ -448,7 +448,7 @@ run_case "$(j_bash "echo '<<FAKE' && cat <<'REAL' > doc.md
 prose
 REAL
 bash scripts/ci/run-shell-tests.sh")"
-assert_rc "quoted-then-real heredoc mis-capture still denies the trailing call (HIMMEL-2322 CR round 2)" 2 "$RC"
+assert_rc "quoted-then-real heredoc mis-capture still denies the trailing call" 2 "$RC"
 
 # 39. an UNQUOTED heredoc
 # delimiter leaves the body subject to command substitution, which
@@ -457,13 +457,13 @@ assert_rc "quoted-then-real heredoc mis-capture still denies the trailing call (
 run_case "$(j_bash "cat <<EOF > doc.md
 \$(bash scripts/test-check-ci.sh)
 EOF")"
-assert_rc "unquoted-delimiter body with \$(...) denies (HIMMEL-2322 CR round 3)" 2 "$RC"
+assert_rc "unquoted-delimiter body with \$(...) denies" 2 "$RC"
 
 # shellcheck disable=SC2016  # the payload is literal shell text, not expanded here
 run_case "$(j_bash 'cat <<EOF > doc.md
 `bash scripts/test-check-ci.sh`
 EOF')"
-assert_rc "unquoted-delimiter body with backticks denies (HIMMEL-2322 CR round 3)" 2 "$RC"
+assert_rc "unquoted-delimiter body with backticks denies" 2 "$RC"
 
 # 40. A QUOTED or ESCAPED delimiter makes the body literal data - real bash
 # never expands it, so it must stay allowed even though it contains the
@@ -471,26 +471,26 @@ assert_rc "unquoted-delimiter body with backticks denies (HIMMEL-2322 CR round 3
 run_case "$(j_bash "cat <<'EOF' > doc.md
 \$(bash scripts/test-check-ci.sh)
 EOF")"
-assert_rc "single-quoted-delimiter body with \$(...) still allows (HIMMEL-2322 CR round 3)" 0 "$RC"
+assert_rc "single-quoted-delimiter body with \$(...) still allows" 0 "$RC"
 
 run_case "$(j_bash "cat <<\EOF > doc.md
 \$(bash scripts/test-check-ci.sh)
 EOF")"
-assert_rc "escaped-delimiter body with \$(...) still allows (HIMMEL-2322 CR round 3)" 0 "$RC"
+assert_rc "escaped-delimiter body with \$(...) still allows" 0 "$RC"
 
 # 41. The ticket's original goal, unchanged: an unquoted-delimiter body
 # with plain prose (nothing to expand) is still inert and still allowed.
 run_case "$(j_bash "cat <<EOF > doc.md
 bash scripts/test-check-ci.sh
 EOF")"
-assert_rc "unquoted-delimiter plain prose body still allows (HIMMEL-2322 CR round 3)" 0 "$RC"
+assert_rc "unquoted-delimiter plain prose body still allows" 0 "$RC"
 
 # 42. Shell-fed path is unaffected by any of the above - a \$(...) body fed
 # to bash directly still denies via the existing shell_fed=1 rule.
 run_case "$(j_bash "cat <<EOF | bash
 \$(bash scripts/test-check-ci.sh)
 EOF")"
-assert_rc "shell-fed heredoc with \$(...) body still denies (HIMMEL-2322 CR round 3)" 2 "$RC"
+assert_rc "shell-fed heredoc with \$(...) body still denies" 2 "$RC"
 
 
 # --- the forms the shell runs, not the text it was given ---
