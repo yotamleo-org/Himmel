@@ -22,7 +22,9 @@
 // carrying the mark, an AWAITING row without it or with a malformed who is REAL. Every other row is
 // REAL and counts at once (K2): nothing waits for a second run. A checker ticket whose status
 // cannot be read keeps its rows REAL. `unowned` is the sorted unique keys of the REAL UNOWNED rows
-// (the STALE list focus-refresh.sh hands the tracker and the tick); `unknown` and `stale` say how
+// (the STALE list focus-refresh.sh hands the tracker and the tick), with the keys of the REAL
+// CLOSE-OR-DISPATCH rows (that row replaces the key's UNOWNED row, so the key stays on the list);
+// `closeOrDispatch` is the sorted unique keys of those rows alone; `unknown` and `stale` say how
 // complete it is.
 //
 // ponytail: fresh for a fixed 3 h because focus refreshes are event driven, upgrade path = read the
@@ -112,7 +114,7 @@ const out = {
   sdrift: null, unknown: false, stale: false,
   ...readMode(),
   real: [], known: [], transient: [], waiting: [], exempt: [],
-  checkers: [], unowned: [],
+  checkers: [], unowned: [], closeOrDispatch: [],
 };
 
 const raw = driftFile ? readText(driftFile) : null;
@@ -154,7 +156,8 @@ if (raw !== null) {
     }
   }
   out.checkers = [...new Set(out.known.map((k) => k.checker))];
-  out.unowned = [...new Set(out.real.filter((r) => r.class === 'UNOWNED').map((r) => r.key))].sort();
+  out.unowned = [...new Set(out.real.filter((r) => r.class === 'UNOWNED' || r.class === 'CLOSE-OR-DISPATCH').map((r) => r.key))].sort();
+  out.closeOrDispatch = [...new Set(out.real.filter((r) => r.class === 'CLOSE-OR-DISPATCH').map((r) => r.key))].sort();
 }
 out.counts = { real: out.real.length, known: out.known.length, transient: out.transient.length, waiting: out.waiting.length, exempt: out.exempt.length };
 

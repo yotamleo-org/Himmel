@@ -843,7 +843,10 @@ wipe_docs
 reset "In Progress"; jl "$K" "In Progress"
 drift
 contains "3b: started, no open PR and no owner is UNOWNED" "$(drows UNOWNED)" "UNOWNED $K"
-# The row of a ticket a partial merge left In Progress (rule D5c) names that PR and the one action that clears it
+# The row of a ticket a partial merge left In Progress (rule D5c) names that PR and the one action that clears it.
+# The merge rows below are stamped 2026-10-21T10:00Z: the clock is pinned 2 h after them, inside the 72 h a
+# CLOSE-OR-DISPATCH row needs (that class is tested at its end)
+export TICKET_STATUS_NOW=1792584000
 reset "In Progress"; jl "$K" "In Progress"; logrow merge "$K" noop 4480 no
 drift
 contains "3b (HIMMEL-8673): the UNOWNED row of a partly merged ticket names its partial PR" "$(drows UNOWNED)" "partial merge PR #4480"
@@ -879,6 +882,7 @@ contains "3b (HIMMEL-8673): a merge row with an empty contract after the partial
 reset "In Progress"; jl "$K" "In Progress"; logrow merge "$K" moved 4481 yes; logrow merge "$K" noop 4480 no
 drift
 contains "3b (HIMMEL-8673): a completing merge before the partial one is not named" "$(drows UNOWNED)" "partial merge PR #4480 |"
+unset TICKET_STATUS_NOW
 reset "In Progress"; owned "$K" LIVE '{"state":"live"}'; jl "$K" "In Progress"
 drift
 check "3b: a live owner means not UNOWNED" "$(dcount UNOWNED)" 0
@@ -2085,6 +2089,99 @@ check "T8: a paused drift pass makes no gh call" "$(ngh)" 0
 HIMMEL_QUOTA_DIR="$tmp/q-ok" drift
 contains "T8 RED control: a healthy drift pass reports drift" "$(dlast)" "sdrift=0:"
 check "T8 RED control: a healthy drift pass prints no pause line" "$(grep -c 'QUOTA-PAUSE' "$tmp/dout")" 0
+
+# --- 9561 CLOSE-OR-DISPATCH: a started ticket nobody owns whose last event is over 72 h old ----------
+NOW=1794139200
+export TICKET_STATUS_NOW=$NOW
+ts_touch() { # <file> <epoch> - set the file's mtime
+    TZ=UTC touch -t "$(date -u -d "@$2" +%Y%m%d%H%M.%S 2>/dev/null || date -u -r "$2" +%Y%m%d%H%M.%S)" "$1"
+}
+cod_doc() { ts_touch "$tmp/$K-N1-slug-2026-10-21.md" "$((NOW - $1))"; } # <seconds before NOW> - age the record's worker doc
+cod_comment() { printf 'Yotam Leopold\t%s\n%s\n' "$(iso_at "$1")" "$2" > "$FX/comments.$K"; } # <seconds before NOW> <body>
+past=$(day_e $((NOW - 259200)))
+codfx() { # <hours> - a wrapped completes-no worker; its last merge row <hours> old, an owed chief step due 3 days ago, the doc older still
+    d6fx; owedrow $(($1 * 3600)) chief "$past"; cod_doc $((($1 + 10) * 3600))
+}
+H73=$((73 * 3600))
+codfx 73; cod_comment $((100 * 3600)) 'PR #4480 merged as a partial merge. Remaining: S6 backfill, owed -> chief by 11-20'
+drift
+check "9561 COD 1: a last merge row 73 h old with no later event is one CLOSE-OR-DISPATCH row" "$(dcount CLOSE-OR-DISPATCH)" 1
+check "9561 COD 1: it replaces the UNOWNED row of the same key" "$(dcount UNOWNED)" 0
+check "9561 COD 1: it counts once in sdrift" "$(sdn)" "sdrift=1"
+contains "9561 COD 1: it names the key and the status" "$(drows CLOSE-OR-DISPATCH)" "CLOSE-OR-DISPATCH $K In Progress with no open PR, no live owner"
+contains "9561 COD 1: it names the last PR" "$(drows CLOSE-OR-DISPATCH)" "last PR #4480"
+contains "9561 COD 1: it quotes the owed ask of the ticket's Remaining line" "$(drows CLOSE-OR-DISPATCH)" "owed: S6 backfill, owed -> chief by 11-20 |"
+contains "9561 COD 1: it names the time of the last event" "$(drows CLOSE-OR-DISPATCH)" "no event since $(iso_at $H73) (73 h)"
+check "9561 COD 1: the row wrote nothing" "$(nwrites)" 0
+codfx 73
+drift
+contains "9561 COD 1b: with no Remaining line the ask names the owed step" "$(drows CLOSE-OR-DISPATCH)" "owed: a step owed by chief"
+
+codfx 71; cod_comment $((100 * 3600)) 'x'
+drift
+check "9561 COD 2: control: a last merge row 71 h old is UNOWNED and no CLOSE-OR-DISPATCH row" "$(dcount UNOWNED)/$(dcount CLOSE-OR-DISPATCH)" 1/0
+
+codfx 73; pr 7 "[$K] feat" aaa111; checks 7 pass
+drift
+check "9561 COD 3: control: an open PR raises neither" "$(dcount UNOWNED)/$(dcount CLOSE-OR-DISPATCH)" 0/0
+codfx 73; owned "$K" LIVE '{"state":"live"}'
+drift
+check "9561 COD 4: control: a live owner raises neither" "$(dcount UNOWNED)/$(dcount CLOSE-OR-DISPATCH)" 0/0
+codfx 73; owedrow 3600 chief "$past"
+drift
+check "9561 COD 5: control: a later merge row is an event" "$(dcount CLOSE-OR-DISPATCH)" 0
+codfx 73; cod_doc 3600
+drift
+check "9561 COD 6: control: a later worker doc is an event" "$(dcount CLOSE-OR-DISPATCH)" 0
+codfx 73; cod_comment 3600 'later word'
+drift
+check "9561 COD 7: control: a later Jira comment is an event" "$(dcount CLOSE-OR-DISPATCH)" 0
+check "9561 COD 7: and the ticket stays UNOWNED" "$(dcount UNOWNED)" 1
+codfx 73; label; hand 400000 '{"owner":"chief","reason":"r"}'
+drift
+check "9561 COD 8: control: a held key never gets the row" "$(dcount CLOSE-OR-DISPATCH)" 0
+codfx 73; label; hand 7200 '{"owner":"operator","reason":"r"}'
+drift
+check "9561 COD 8: control: a hold row inside its wait is AWAITING, not the row" "$(dcount AWAITING)/$(dcount CLOSE-OR-DISPATCH)" 1/0
+codfx 73; printf 'standing\n' > "$FX/labels.$K"
+drift
+check "9561 COD 9: control: a standing ticket never gets the row" "$(dcount CLOSE-OR-DISPATCH)/$(dcount UNOWNED)" 0/0
+codfx 73; : > "$FX/list.tsv"; jl "$K" Done; printf 'Done\n' > "$FX/status.cur"
+drift
+check "9561 COD 10: control: a Done key never gets the row" "$(dcount CLOSE-OR-DISPATCH)" 0
+d6fx; owedrow $H73 chief "$ud"; cod_doc $(((73 + 10) * 3600))
+drift
+check "9561 COD 11: control: an owed step still inside its due date is AWAITING, never the row" "$(dcount AWAITING)/$(dcount CLOSE-OR-DISPATCH)" 1/0
+d6fx; lrow 262800 merge moved - '{"pr":"4480","contract":"no"}'; cod_doc $((83 * 3600))
+drift
+check "9561 COD 12: a partial merge with no owed step is the row too" "$(dcount CLOSE-OR-DISPATCH)/$(dcount UNOWNED)" 1/0
+d6fx; lrow 255600 merge moved - '{"pr":"4480","contract":"no"}'; cod_doc $((83 * 3600))
+drift
+check "9561 COD 12: control: the same partial merge 71 h old is the UNOWNED row" "$(dcount CLOSE-OR-DISPATCH)/$(dcount UNOWNED)" 0/1
+check "9561 COD 12: and it still names its partial PR" "$(drows UNOWNED | grep -c 'left by partial merge PR #4480')" 1
+
+rca() { # <KEY> <PR> <merged ISO> <run ISO> <owed due YYYY-MM-DD or -> <want rows> - the RCA's tickets, run at the time named
+    local keepk=$K keepnow=$NOW m
+    K=$1; NOW=$(epoch_of "$4"); export TICKET_STATUS_NOW=$NOW
+    m=$((NOW - $(epoch_of "$3")))
+    d6fx
+    if [ "$5" = - ]; then lrow "$m" merge moved - "$(jq -nc --arg p "$2" '{pr: $p, contract: "no"}')"
+    else lrow "$m" merge moved - "$(jq -nc --arg p "$2" --arg d "$5" '{pr: $p, contract: "no", remainder: "owed", owed: "chief", owed_due: $d}')"; fi
+    cod_doc $((m + 3600))
+    drift
+    check "9561 COD RCA: $1 run at $4: CLOSE-OR-DISPATCH rows" "$(dcount CLOSE-OR-DISPATCH)" "$6"
+    K=$keepk NOW=$keepnow; export TICKET_STATUS_NOW=$NOW
+}
+rca HIMMEL-9688 5155 2026-11-10T18:00:00Z 2026-11-13T18:01:00Z - 1
+rca HIMMEL-9688 5155 2026-11-10T18:00:00Z 2026-11-13T17:59:00Z - 0
+rca HIMMEL-9687 5203 2026-11-11T12:00:00Z 2026-11-14T12:01:00Z - 1
+rca HIMMEL-9687 5203 2026-11-11T12:00:00Z 2026-11-14T11:59:00Z - 0
+rca HIMMEL-9904 5303 2026-11-13T08:18:00Z 2026-11-16T08:19:00Z - 1
+rca HIMMEL-9904 5303 2026-11-13T08:18:00Z 2026-11-16T08:17:00Z - 0
+rca HIMMEL-9686 5330 2026-11-13T18:08:00Z 2026-11-16T18:09:00Z 2026-11-20 0
+rca HIMMEL-9686 5330 2026-11-13T18:08:00Z 2026-11-21T00:10:00Z 2026-11-20 1
+rca HIMMEL-9900 5365 2026-11-14T10:00:00Z 2026-11-17T10:01:00Z 2026-11-21 0
+rca HIMMEL-9900 5365 2026-11-14T10:00:00Z 2026-11-22T00:10:00Z 2026-11-21 1
 
 echo "---"
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; } || { echo "$fails failed"; exit 1; }
