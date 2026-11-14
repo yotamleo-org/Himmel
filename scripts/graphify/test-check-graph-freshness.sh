@@ -317,6 +317,8 @@ out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
 [ "$rc" -eq 3 ] && [[ "$out" == *"SEMANTIC-STALE"* ]] && [[ "$out" == *"3d ago"* ]] && ! printf '%s\n' "$out" | grep -q '^graph-freshness: OK' \
   && pass "T11a semantic 3 days old on a fresh AST graph -> rc=3 SEMANTIC-STALE naming the age, no OK" || fail "T11a (rc=$rc): $out"
 [[ "$out" == *"run the semantic pass"* ]] && pass "T11a the message names the remedy" || fail "T11a no remedy: $out"
+[[ "$out" == *"graph-pass-detached.sh start"* ]] && [[ "$out" == *"graph-pass-detached.sh status"* ]] && [[ "$out" != *"graphmap-himmel.sh"* ]] \
+  && pass "T11a the remedy names the detached wrapper (start and status), not a by-hand graphmap-himmel.sh run" || fail "T11a remedy does not name the detached wrapper: $out"
 
 # --- T11b: semantic last merge 2h old -> OK ---
 new_sem_fixture t11b
