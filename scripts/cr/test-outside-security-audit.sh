@@ -71,6 +71,10 @@ fi
 exit "$rc"
 STUB
 chmod +x "$A/scripts/handover/chief-kit/ready-check.sh" "$A/scripts/check-ci.sh" "$A/scripts/cr/pr-check-outside.sh" "$A/scripts/cr/critic-first-pass.sh"
+# The anchor is a primary checkout, as the audit requires: a real repository with a .git directory.
+{ git -c init.defaultBranch=main init -q "$A" && git -C "$A" add -A \
+    && git -C "$A" -c user.email=t@t.test -c user.name=tester -c commit.gpgsign=false commit -q -m anchor; } \
+    || { echo "FAIL: fixture anchor checkout" >&2; exit 1; }
 cr_row() { printf '{"context":"%s","state":"%s","description":"%s","created_at":"2026-11-11T00:00:00Z","creator":{"id":%s,"login":"x[bot]","type":"Bot"}}' "$2" "$3" "$4" "$1"; }
 CR_OK="[$(cr_row 136622811 CodeRabbit success 'Review completed')]"
 cat > "$tmp/bin/gh" <<'STUB'
@@ -109,9 +113,9 @@ newpr() {
     git -C "$W" push -q -f origin HEAD:refs/pull/7/head
 }
 reset() { rm -f "$LEDGER" "$LOG"/* "$CANARY"; rm -rf "$GCD/outside-audits"; git -C "$P" update-ref -d refs/himmel/outside/7 2>/dev/null; return 0; }
-# audit [VAR=value ...]: runs the anchor's copy from the primary; sets out, err, rc.
+# audit [VAR=value ...]: runs the anchor's copy from the primary, HIMMEL_REPO naming the anchor; sets out, err, rc.
 audit() {
-    out=$(cd "$P" && env HOME="$tmp/home" PATH="$tmp/bin:$PATH" LOG="$LOG" STUB_OID="${STUB_OID:-$H}" STUB_CR_STATUSES="${STUB_CR_STATUSES:-$CR_OK}" "$@" \
+    out=$(cd "$P" && env HOME="$tmp/home" PATH="$tmp/bin:$PATH" LOG="$LOG" HIMMEL_REPO="$A" STUB_OID="${STUB_OID:-$H}" STUB_CR_STATUSES="${STUB_CR_STATUSES:-$CR_OK}" "$@" \
         bash "$AUDIT" --pr 7 --head "$H" 2>"$tmp/err"); rc=$?
     err=$(cat "$tmp/err")
 }
@@ -194,6 +198,26 @@ reset; audit STUB_STATE=CLOSED; expect_none "T3.4 a closed PR" 2
 reset; audit RC_ANSWER=no; expect_none "T3.4 a PR that is not outside" 2
 eq "$(called)" no "T3.4 no critic call"
 reset; out=$(cd "$P" && bash "$AUDIT" --pr 7 --head abc 2>&1); rc=$?; eq "$rc" 2 "T3.4 a short head is a usage error"
+
+# The audit runs only as the copy of the primary checkout HIMMEL_REPO names.
+reset; newpr 'echo anchor >> f.txt'
+AW="$tmp/anchor-wt"
+git -C "$A" worktree add -q --detach "$AW" 2>/dev/null || fail "fixture: a linked worktree of the anchor"
+keep="$AUDIT"; AUDIT="$AW/scripts/cr/outside-security-audit.sh"; audit HIMMEL_REPO="$AW"; AUDIT="$keep"
+expect_none "a linked worktree's copy, with HIMMEL_REPO naming that worktree" 2
+has "$err" "the anchor's primary checkout" "a linked worktree's copy: the refusal names the anchor's primary checkout"
+reset
+BC="$tmp/auditcopy"; cp -R "$A" "$BC"
+# shellcheck disable=SC2016  # expands when the copy sources it
+printf '\ntouch "$LOG/sourced"\n' >> "$BC/scripts/lib/timeout-bin.sh"
+keep="$AUDIT"; AUDIT="$BC/scripts/cr/outside-security-audit.sh"; audit; AUDIT="$keep"
+expect_none "a branch copy run by absolute path, with HIMMEL_REPO naming the primary checkout" 2
+has "$err" "the anchor's primary checkout" "a branch copy: the refusal names the anchor's primary checkout"
+if [ -e "$LOG/sourced" ]; then fail "a branch copy sourced its own timeout-bin.sh before the anchor check"; else pass "a branch copy is refused before any source"; fi
+reset; ln -s "$A" "$tmp/anchor-link"
+audit HIMMEL_REPO="$tmp/anchor-link"
+eq "$rc/$(audits)" "0/1" "HIMMEL_REPO spelled through a symlink to the anchor writes the row"
+eq "$(cat "$LOG/pco.repo" 2>/dev/null)" "$tmp/anchor-link" "the pr-check-outside.sh call receives the caller's HIMMEL_REPO, not the audit's own root"
 
 for cp in 342200252 342200253 342200254 342200255 342200256 342201246 342201247 342201250 342201251 \
           342200213 342200214 342200215 342200216 342200217 357273277; do
@@ -312,7 +336,7 @@ eq "$rc/$(audits)/$(called)" "0/2/yes" "T3.17 under a changed perspective sha th
 printf '# fixture outside-security perspective\n' > "$PERSP"
 
 reset; newpr 'echo locked >> f.txt'
-race() { (cd "$P" && env HOME="$tmp/home" PATH="$tmp/bin:$PATH" LOG="$LOG" STUB_OID="$H" STUB_CR_STATUSES="$CR_OK" STUB_CRIT_SLEEP=2 STUB_CRIT_I="$1" \
+race() { (cd "$P" && env HOME="$tmp/home" PATH="$tmp/bin:$PATH" LOG="$LOG" HIMMEL_REPO="$A" STUB_OID="$H" STUB_CR_STATUSES="$CR_OK" STUB_CRIT_SLEEP=2 STUB_CRIT_I="$1" \
     bash "$AUDIT" --pr 7 --head "$H" >/dev/null 2>&1; echo "$?" > "$tmp/race.$1"); }
 race 0 & r0=$!; race 1 & r1=$!; wait "$r0" "$r1"
 eq "$(sort "$tmp/race.0" "$tmp/race.1" | tr '\n' ' ')" "0 8 " "two concurrent runs at one head: one writes, the other finds its row (exit 8)"

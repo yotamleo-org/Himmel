@@ -8,14 +8,16 @@
 # diff --no-ext-diff --no-textconv and git cat-file, and only jq and grep parse them.
 #
 # Exit: 0 a row was written, whatever its verdict; prints `outside-audit: <verdict> <report>`.
-#       2 a usage error, or the PR is not OPEN, not outside, or not at <head> (the fetch included).
+#       2 a usage error, a non-anchor copy, or the PR is not OPEN, not outside, or not at <head> (the fetch included).
 #       6 stage 1 is incomplete at <head> (CodeRabbit, CI, or a lint-surface path).
 #       7 no verdict: the size cap, an empty diff, a critic exit other than 0 or 4, no registry row,
 #         no new score row, a trust_path_check refusal, or a record that could not be written.
 #       8 the head is already audited (a fail row, or an ok row under the current perspective).
 # Every non-zero exit writes no row. There is no verdict argument and no override flag. The anchor
-# is the repo two directories above this file; no environment variable moves it, the cap or the
-# ledger. Run it from the primary checkout, whose CR ledger outside_audit_passed reads.
+# is the repo two directories above this file, and it runs only when HIMMEL_REPO names that same
+# primary checkout (a .git directory, so never a linked worktree); HIMMEL_REPO does not move the
+# anchor, it must equal it, and no environment variable moves the cap or the ledger. Run it from
+# the primary checkout, whose CR ledger outside_audit_passed reads.
 set -uo pipefail
 usage() { echo "usage: outside-security-audit.sh --pr <pr-number> --head <40-hex sha>" >&2; exit 2; }
 [ "$#" -eq 4 ] && [ "$1" = --pr ] && [ "$3" = --head ] || usage
@@ -25,6 +27,11 @@ CAP=196608
 LIFECYCLE='["preinstall","install","postinstall","prepare","prepack","postpack","prepublish","preprepare","postprepare"]'
 die() { local c=$1; shift; echo "outside-security-audit: $* - no audit row was written" >&2; exit "$c"; }
 anchor=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd) || exit 2
+# Before any file of this tree is sourced: this copy must be the primary checkout HIMMEL_REPO names.
+oa_repo="${HIMMEL_REPO:-}"
+if [ -z "$oa_repo" ] || ! [ "$anchor" -ef "$oa_repo" ] || ! [ -d "$oa_repo/.git" ]; then
+    die 2 "runs only as the copy in the anchor's primary checkout that HIMMEL_REPO names, never a branch copy or a linked worktree ($anchor); HIMMEL_REPO is unset or empty, or names another tree. Adopt/setup wires it into settings.json env, or export it in your launching shell, then re-run"
+fi
 lib="$anchor/scripts/lib"
 command -v jq >/dev/null 2>&1 || die 2 "jq not found on PATH"
 # shellcheck source=../lib/timeout-bin.sh
@@ -97,7 +104,7 @@ audit_locked() {
         bash "$anchor/scripts/check-ci.sh" "$PR" --max-wait 120 --except-context codeowner-review-gate >&2 </dev/null || ci_rc=$?
     [ "$ci_rc" -eq 0 ] || die 6 "stage 1 is incomplete: check-ci.sh $PR --max-wait 120 --except-context codeowner-review-gate exited $ci_rc (every required context but the code-owner gate must be green at ${H:0:7})"
 
-    pco=$(HIMMEL_REPO="$anchor" bash "$anchor/scripts/cr/pr-check-outside.sh" --pr "$PR" --head "$H" --fetch-only </dev/null) \
+    pco=$(bash "$anchor/scripts/cr/pr-check-outside.sh" --pr "$PR" --head "$H" --fetch-only </dev/null) \
         || die 2 "pr-check-outside.sh --pr $PR --head $H --fetch-only refused (see above)"
     case "$pco" in "outside-pr: yes $PR $H "*) ;; *) die 2 "pr-check-outside.sh --fetch-only printed '$pco'" ;; esac
     ref="refs/himmel/outside/$PR"

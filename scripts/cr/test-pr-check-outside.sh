@@ -3,7 +3,7 @@
 # (--pr <n> --head <40hex>) and the --pr boundary of the one-argument classifier.
 # Fixtures are synthetic: a bare "origin" whose refs/pull/7/head holds a tree that plants a canary in
 # every file shape a checkout could run (a script, a test, a filter driver, a submodule file, a hook);
-# a copy of the scripts under a temp anchor; a temp HOME; a gh stub on PATH. Nothing from the PR is
+# a copy of the scripts under a temp anchor that is a real primary checkout; a temp HOME; a gh stub on PATH. Nothing from the PR is
 # executed, and neither ~/.himmel/outside-contributors.json nor ~/.himmel/outside-pr-approvals.jsonl
 # is read or written. Bash 3.2-safe; no network.
 set -uo pipefail
@@ -51,6 +51,10 @@ cat > "${STDIN_LOG:-/dev/null}"
 exit 0
 STUB
 chmod +x "$A/scripts/handover/chief-kit/ready-check.sh" "$A/scripts/cr/critic-panel.sh"
+# The anchor is a primary checkout, as the route requires: a real repository with a .git directory.
+{ git -c init.defaultBranch=main init -q "$A" && git -C "$A" add -A \
+    && git -C "$A" -c user.email=t@t.test -c user.name=tester -c commit.gpgsign=false commit -q -m anchor; } \
+    || { echo "FAIL: fixture anchor checkout" >&2; exit 1; }
 
 # --- the gh stub: one PR, served as real JSON ------------------------------------------------------
 mkdir -p "$tmp/bin"
@@ -158,6 +162,12 @@ has "$out" "outside-pr: yes 7 $H1 feat/outside-thing base=main authorized=allowl
 eq "$(git -C "$P" rev-parse refs/himmel/outside/7)" "$H1" "T2.5 refs/himmel/outside/7 holds the head"
 canary_absent "T2.5"
 
+reset; listed
+rm -f "$GCD/FETCH_HEAD"
+route "$H1"
+eq "$rc" "0" "a successful route exits 0"
+if [ -e "$GCD/FETCH_HEAD" ]; then fail "a successful route fetch left a FETCH_HEAD"; else pass "a successful route fetch leaves no FETCH_HEAD"; fi
+
 # the route runs only as the anchor's own copy: a branch copy, or no HIMMEL_REPO at all, runs nothing
 reset; listed
 cp -R "$A" "$tmp/branchcopy"
@@ -171,6 +181,16 @@ if git -C "$P" rev-parse --verify --quiet refs/himmel/outside/7 >/dev/null; then
 out="$(cd "$P" && HIMMEL_REPO="" HOME="$HOMEDIR" PATH="$tmp/bin:$PATH" STUB_OID="$H1" bash "$ROUTE" --pr 7 --head "$H1" 2>"$tmp/err")"; rc=$?
 eq "$rc" "2" "the route with no HIMMEL_REPO exits 2"
 if git -C "$P" rev-parse --verify --quiet refs/himmel/outside/7 >/dev/null; then fail "no HIMMEL_REPO: the PR head was fetched"; else pass "no HIMMEL_REPO: nothing fetched"; fi
+
+# a linked worktree of the anchor is not its primary checkout, even when HIMMEL_REPO names that worktree
+reset; listed
+AW="$tmp/anchor-wt"
+git -C "$A" worktree add -q --detach "$AW" 2>/dev/null || fail "fixture: a linked worktree of the anchor"
+out="$(cd "$P" && HIMMEL_REPO="$AW" HOME="$HOMEDIR" PATH="$tmp/bin:$PATH" STUB_OID="$H1" bash "$AW/scripts/cr/pr-check-outside.sh" --pr 7 --head "$H1" 2>"$tmp/err")"; rc=$?
+err="$(cat "$tmp/err")"
+eq "$rc" "2" "a linked worktree's copy, with HIMMEL_REPO naming that worktree, exits 2"
+has "$err" "the anchor's primary checkout" "a linked worktree's copy: the refusal names the anchor's primary checkout"
+if git -C "$P" rev-parse --verify --quiet refs/himmel/outside/7 >/dev/null; then fail "a linked worktree's copy fetched the PR head"; else pass "a linked worktree's copy fetched nothing"; fi
 
 reset
 route "$H1" Stranger U_stranger
@@ -273,6 +293,14 @@ git -C "$P" branch -q feat/outside-thing main
 route "$H1"
 eq "$rc" "2" "T2.15 a local branch named headRefName exits 2"
 has "$err" "maintainer takeover" "T2.15 the line names the takeover"
+
+reset; listed
+git -C "$P" branch -q Feat/Outside-Thing main
+route "$H1"
+eq "$rc" "2" "a local branch differing from headRefName only by case exits 2"
+has "$err" "collides with a local branch" "a case-only local branch: the refusal is the collision refusal"
+if git -C "$P" rev-parse --verify --quiet refs/himmel/outside/7 >/dev/null; then fail "a case-only local branch: the PR head was fetched"; else pass "a case-only local branch: nothing fetched"; fi
+git -C "$P" branch -q -D Feat/Outside-Thing
 
 reset; listed
 route "$H1"
