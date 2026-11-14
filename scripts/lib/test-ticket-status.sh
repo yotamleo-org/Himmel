@@ -576,6 +576,8 @@ check "9479 T11: a hung read under a 3 s budget is not counted" "$(mr_t11 "$tmp/
 sleep 1
 check "9479 T11: and the router's own bound left no gh behind" "$(pgrep -f "mr-sleep-$mrtag" | grep -c .)" 0
 pkill -f "mr-sleep-$mrtag" 2>/dev/null
+check "9479 T11: under 2 s of budget no read starts (the router's bound could not end first)" "$(mr_t11 "$tmp/qroot" MERGE_ROWS_BUDGET_SECS=1.5)" 0
+check "9479 T11: and nothing went out" "$(grep -c . "$tmp/mrtok.log")" 0
 
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-ticket-status.sh"

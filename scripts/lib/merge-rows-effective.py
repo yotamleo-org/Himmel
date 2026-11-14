@@ -45,7 +45,7 @@ def merged_on_github(pr, head, repo, cache):
         return cache[(pr, head, repo)]
     ok = False
     left = DEADLINE - time.monotonic()
-    if left <= 0:
+    if left < 2:
         print('merge-rows-effective: warn: GitHub read budget spent; PR %s is not counted' % pr, file=sys.stderr)
         cache[(pr, head, repo)] = ok
         return ok
