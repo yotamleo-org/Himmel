@@ -1226,12 +1226,15 @@ resume_stale_body='
 declare -F ts_park_since_rows >/dev/null || exit 70
 log="$(ts_state_dir)/status-events.jsonl"
 : > "$3/stale"
-[ -r "$log" ] || exit 0
+[ -e "$log" ] || exit 0
+[ -r "$log" ] || exit 70
 warn="$3/warn"
 ts_merge_rows() { python3 -I "$_TS_LIB_DIR/merge-rows-effective.py" "$@" 2>>"$warn" || echo "merge-rows-effective: warn: the read failed" >> "$warn"; }
 jq() { command jq "$@" || echo "merge-rows-effective: warn: the park rows could not be read" >> "$warn"; }
 printf "%s\n" "$2" > "$3/keys"
-grep -F -f "$3/keys" "$log" > "$3/rows" || exit 0
+grep -F -f "$3/keys" "$log" > "$3/rows"; found=$?
+[ "$found" -le 1 ] || exit 70
+[ "$found" -eq 0 ] || exit 0
 now="$(ts_now)" || exit 70
 ts_park_since_rows "$3/rows" | while IFS="$(printf "\t")" read -r k rule since; do
     [ "$rule" = D5c ] || continue

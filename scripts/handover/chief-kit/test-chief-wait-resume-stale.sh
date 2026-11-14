@@ -62,6 +62,7 @@ EOF
 export CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh"
 # shellcheck disable=SC2016  # $STUB expands in the stub, not here
 printf '#!/usr/bin/env bash\necho x >> "$STUB/gh-calls"\nexec sleep 60\n' > "$STUB/gh-slow.sh"
+chmod +x "$STUB/gh-slow.sh"
 export MERGE_ROWS_GH="$STUB/gh-slow.sh"
 unset MERGE_ROWS_BUDGET_SECS TICKET_STATUS_AWAIT_TTL_RESUME
 
@@ -88,6 +89,7 @@ row() {
 arm() { timeout "$2" bash "$WAIT" "$INBOX" --workers "N1.md" > "$1" 2> "$1.err"; rc=$?; }  # gnu-ok: Linux-only kit
 stale_wakes() { grep -c '^WAKE resume-stale FIXT-7' "$1" 2>/dev/null; }
 ticks() { if [ -f "$STUB/ticks" ]; then wc -l < "$STUB/ticks" | tr -d ' '; else echo 0; fi; }
+ghcalls() { if [ -f "$STUB/gh-calls" ]; then wc -l < "$STUB/gh-calls" | tr -d ' '; else echo 0; fi; }
 
 case_new r1
 row $((7 * H)) sweep noop D5c
@@ -128,13 +130,13 @@ case_new r6a
 three_prs
 CHIEF_WAIT_UNDERFILL_REPOOL_SEC=3600 arm "$WORK/r6a.out" 20
 ticks6a="$(ticks)"
-check '6a (control, default budget) the sample returns inside 20 s and prints no WAKE resume-stale' '124:0:yes' "$rc:$(stale_wakes "$WORK/r6a.out"):$([ "$ticks6a" -ge 5 ] && echo yes || echo "ticks=$ticks6a")"
+check '6a (default budget) the sample returns inside 20 s after one slow GitHub read and prints no WAKE resume-stale' '124:0:yes:1' "$rc:$(stale_wakes "$WORK/r6a.out"):$([ "$ticks6a" -ge 5 ] && echo yes || echo "ticks=$ticks6a"):$(ghcalls)"
 
 case_new r6b
 three_prs
 CHIEF_WAIT_UNDERFILL_REPOOL_SEC=3600 MERGE_ROWS_BUDGET_SECS=120 arm "$WORK/r6b.out" 40
 ticks6b="$(ticks)"
-check '6b (control, timeout) the sample returns inside 40 s and prints no WAKE resume-stale' '124:0:yes' "$rc:$(stale_wakes "$WORK/r6b.out"):$([ "$ticks6b" -ge 3 ] && echo yes || echo "ticks=$ticks6b")"
+check '6b (timeout) the sample returns inside 40 s after slow GitHub reads and prints no WAKE resume-stale' '124:0:yes:yes' "$rc:$(stale_wakes "$WORK/r6b.out"):$([ "$ticks6b" -ge 3 ] && echo yes || echo "ticks=$ticks6b"):$([ "$(ghcalls)" -ge 1 ] && echo yes || echo none)"
 
 mkdir -p "$STUB/bin"
 JQ_REAL="$(command -v jq)"
@@ -148,6 +150,14 @@ printf 'FIXT-7\n' > "$INBOX.wait.resume-stale"
 touch -d '5 hours ago' "$INBOX.wait.resume-stale"  # gnu-ok: Linux-only suite
 PATH="$STUB/bin:$PATH" arm "$WORK/r7.out" 6
 check '7 a failed park read wakes nothing and leaves the resume-stale marker as it was' '124:0:FIXT-7' "$rc:$(stale_wakes "$WORK/r7.out"):$(cat "$INBOX.wait.resume-stale" 2>/dev/null)"
+
+case_new r8
+row $((5 * H)) sweep noop D5c
+printf 'FIXT-7\n' > "$INBOX.wait.resume-stale"
+touch -d '5 hours ago' "$INBOX.wait.resume-stale"  # gnu-ok: Linux-only suite
+chmod 000 "$LOG"
+arm "$WORK/r8.out" 6
+check '8 an unreadable status log wakes nothing and leaves the resume-stale marker as it was' '124:0:FIXT-7' "$rc:$(stale_wakes "$WORK/r8.out"):$(cat "$INBOX.wait.resume-stale" 2>/dev/null)"
 
 printf '\n%s failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
