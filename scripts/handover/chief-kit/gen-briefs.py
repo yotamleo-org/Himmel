@@ -211,9 +211,6 @@ INHERITED_BLOCK = ("> **Inherited PR (the resume of an `ORPHAN PR`, or a takeove
            "> authors in the PR body with identities read from their commits, never guessed. Model attribution is not contributor credit\n"
            "> (tstack @ 7de017b3: modernize :38-70, :81-87; takeover :12-25).\n")
 
-# kind proof: the Contract and Scope blocks of a proof leg, which opens no PR and writes only bucket evidence files.
-# The Contract text is the "Proof leg" section of docs/handover/worker-brief-template.md (between its proof-contract markers) with the
-# slots {doc} {keys} {extra} {envline}; test-gen-briefs.sh holds the two equal. The slots are filled by substitution, never str.format.
 PROOF_LIVE_TEST = 'proof leg: one verdict comment on its own key'
 PROOF_COMMIT = 'none: proof leg, no commit, no PR'
 PROOF_CONTRACT = '\n'.join([
@@ -626,9 +623,6 @@ def check_lane_reads(l, hroot):
 
 
 def proof_writes(l, hroot):
-    # A proof leg writes bucket evidence only: every Writes token is an absolute .md path directly in a specs/audits/ directory
-    # under the handover root (by realpath, never a prefix test). The raw Writes text is read, never write_paths' output, because
-    # write_paths drops an absolute path outside the root without a word. Refuses every other token, naming each.
     toks = [t.rstrip('.,;:)]') for t in re.findall(r'[\w.+@/-]+', _writes_scope(l['writes']))]
     toks = [t for t in toks if t.strip('.-')]
     if not toks:
@@ -1787,7 +1781,7 @@ def main():
         if not rm:
             core_worker_gate(l, ctx)
             if l.get('kind') == 'proof':
-                l['leg_kind'] = None  # a proof leg is no phase anchor: a Leg kind line would label a shipped ticket phase:design
+                l['leg_kind'] = None
             writer_round_gate(l, ctx)
             live_test_gate(l)
         if os.path.exists(os.path.join(a.bucket, l['stem'] + '.md')):

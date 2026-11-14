@@ -2213,7 +2213,6 @@ has "S8b control, no read token: both reads still answer" "$s8o" "REM='S5 stays 
 [ "$(s8cnt '^tok=main argv=pr list --state open --limit 200 ')" = 1 ] && pass "S8b control, no read token: the open-PR read logs tok=main" || fail "S8b control: open-PR read not on main: $(cat "$S8LOG")"
 [ "$(s8cnt '^tok=read')" = 0 ] && pass "S8b control, no read token: no read rides the read token" || fail "S8b control: a read rode the read token: $(cat "$S8LOG")"
 
-# --- kind "proof": a brief whose Writes are .md evidence files directly in a specs/audits/ directory under the handover root ---
 PF_ROOT="$WORK/handovers"; mkdir -p "$PF_ROOT/specs/audits"
 PF_EV="$PF_ROOT/specs/audits/HIMMEL-1-proof.md"
 PF_KEYS="HIMMEL-1"
@@ -2222,7 +2221,7 @@ cg_mirror HIMMEL-9801 Task Medium '["core"]'
 cat > "$CG/pf-base.json" <<PFEOF
 {"kind":"proof","label":"N941","keys":["HIMMEL-1"],"slug":"cg","branch":"feat/himmel-9400-cg","title":"prove the thing","desc":"d","why":"w","prior":"HIMMEL-9000 (the earlier fix). Source: \`git log -3 -- scripts/x\`.","writes":"$PF_EV","scope":"read only, the evidence goes in the bucket","scope_short":"proof","extra":"post the verdict with jira comment"}
 PFEOF
-pfmk() { # <name> <python statements over w, the entry, and R, the handover root>
+pfmk() {
     python3 -I -c 'import json,sys; w=json.load(open(sys.argv[1])); R=sys.argv[4]; exec(sys.argv[3]); json.dump([w],open(sys.argv[2],"w"))' "$CG/pf-base.json" "$CG/$1.json" "$2" "$PF_ROOT"
 }
 pf_lines() { if [ -f "$1" ]; then wc -l < "$1" | tr -d ' '; else echo 0; fi; }
@@ -2269,9 +2268,8 @@ for blk in PC PSC POV PHD; do
     lacks "P1 $blk carries no READY" "$bt" "READY"
 done
 
-# P2: each refused Writes is refused with its token named, writes no brief or launcher, and reaches neither the worktree nor round-status
 ln -s "$REPO" "$PF_ROOT/lnk"
-pf_refuse() { # <name> <python expr for writes, over R> <the tokens the refusal names>
+pf_refuse() {
     local name="$1" wl rl o rc
     pfmk "$name" "w['writes']=$2"
     wl="$(pf_lines "$WT_LOG")"; rl="$(pf_lines "$ROUTE_LOG")"
@@ -2295,8 +2293,7 @@ pfmk p2empty "w['writes']='()'"
 o="$(cgrun p2empty)"; rc=$?
 { [ "$rc" = 1 ] && has "P2 a Writes with no token names no evidence file" "$o" "worker N941: a proof brief names no evidence file"; } || fail "P2 empty Writes rc=$rc: $o"
 
-# P3: the PR-only keys and a completing scope are refused for kind proof
-pf_key() { # <name> <python statement setting the key> <key>
+pf_key() {
     pfmk "$1" "$2"
     o="$(cgrun "$1")"; rc=$?
     [ "$rc" = 1 ] && has "P3 kind proof refuses $3" "$o" "worker N941: kind proof refuses $3 (a proof leg opens no PR and writes no repo file)" || fail "P3 $3 rc=$rc: $o"
@@ -2309,7 +2306,6 @@ pfmk p3yes "w['scope']='read only. completes-ticket: yes'"
 o="$(cgrun p3yes)"; rc=$?
 [ "$rc" = 1 ] && has "P3 a completes-ticket: yes scope is refused with the operator-closes text" "$o" "worker N941: a proof brief never completes its ticket; the operator closes it (decision 847)" || fail "P3 completes yes rc=$rc: $o"
 
-# P4: the class changes no model, profile, lane or Core gate line; only the entry without the kind carries a Leg kind line
 pfmk p4proof "w['keys']=['HIMMEL-9801']"
 pfmk p4plain "w['keys']=['HIMMEL-9801']; del w['kind']; w['commit']='docs(x): [HIMMEL-9801] f'; w['live_test']={'none':'x'}"
 o1="$(cgrun p4proof)"; rc1=$?; o2="$(cgrun p4plain)"; rc2=$?
@@ -2320,7 +2316,6 @@ cl1="$(grep '^> \*\*Core gate:\*\*' "$(cg_brief p4proof)" 2>/dev/null)"; cl2="$(
 { [ -n "$cl1" ] && [ "$cl1" = "$cl2" ]; } && pass "P4 the same Core gate line with and without the kind" || fail "P4 Core gate lines: [$cl1] vs [$cl2]"
 [ "$(lk_lines "$(cg_brief p4plain)")" = "$LK_DESIGN" ] && [ -z "$(lk_lines "$(cg_brief p4proof)")" ] && pass "P4 only the entry without the kind carries the design Leg kind line" || fail "P4 Leg kind: proof [$(lk_lines "$(cg_brief p4proof)")] plain [$(lk_lines "$(cg_brief p4plain)")]"
 
-# P5: the template's Proof leg section holds the Contract; filled with P1's values it equals P1's rendered Contract byte for byte
 cat > "$WORK/pf5.py" <<'PFPY'
 import re, shlex, sys
 tpl, brief, doc, extra, envline, keys = sys.argv[1:7]
