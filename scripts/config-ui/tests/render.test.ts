@@ -410,7 +410,6 @@ test("the graph card shows the sentence first, then Q1, Q2 and Q3 in order, the 
   expect(h).toContain("/home/me/acme");
   expect(h).toMatch(/what leaves this machine/i);
   expect(h).toContain('href="#/config?tile=scope"');
-  // Q2 offers none, subscription and the configured letters only; C carries its tag
   const q2 = h.slice(h.indexOf('data-q="2"'), h.indexOf('data-q="3"'));
   expect([...q2.matchAll(/<option value="([^"]+)"/g)].map((m) => m[1])).toEqual(["none", "subscription", "A", "C"]);
   expect(q2).toContain('value="C" selected');

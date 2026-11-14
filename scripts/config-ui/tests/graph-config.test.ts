@@ -1,8 +1,5 @@
-// GET/POST /api/graph-choices: the Configure card's read and write of graphify.choices in ~/.himmel/config.json.
-// The route reads through graph-choices.js (role, route, the shape, root and roster checks) and writes through
-// luna-config.js inspect/save. Hermetic: HOME, the station dir, config-audit, the API roster, the alert dedupe dir and
-// the crontab are all fixtures under one temp dir. HIMMEL_LUNA_CONFIG_PATH names the same file as HIMMEL_CONFIG_DIR,
-// because bun's os.homedir() does not follow a HOME set at run time, and the write must land where the read looks.
+// HIMMEL_LUNA_CONFIG_PATH names the same file as HIMMEL_CONFIG_DIR: bun's os.homedir() does not follow a HOME set at
+// run time, so without it luna-config.js would save to the real home while graph-choices.js reads the fixture.
 import { test, expect, beforeEach, afterEach } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -52,7 +49,7 @@ function roster(letters: string[]) {
 }
 
 function boot() {
-  expect(configPath()).toBe(join(station, "config.json")); // never the live config
+  expect(configPath()).toBe(join(station, "config.json"));
   const env: Record<string, string | undefined> = { PATH: process.env.PATH, CONFIG_UI_IDLE_MS: "60000", HIMMEL_SECRETS_KEYRING: "off" };
   for (const k of SEAMS) env[k] = process.env[k];
   const s = startServer({ onIdle: () => {}, port: 0, token: TOKEN, root: join(dir, "root"), projectRoot: join(dir, "project"), env });

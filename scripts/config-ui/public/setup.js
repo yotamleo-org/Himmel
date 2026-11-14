@@ -416,7 +416,7 @@ function scopePanel({ setup, feed, state }) {
   const group = (ids, fold) => (feed ? renderSettingsGroups(feed, state, ids, fold, true) : loading("the station report"));
   const choices = setup && setup.choices;
   const unread = !setup || setup.error;
-  // Six categories, the first open; each opens and closes on its own and keeps that for the session (render.js category()).
+  // The first category is open; each opens and closes on its own and keeps that for the session (render.js category()).
   const host = unread ? setupFailed(setup) : choices ? `<div class="setgroup">${forgeRow(choices, true)}</div>` : "";
   const folders = unread ? setupFailed(setup)
     : choices ? `<div class="setgroup"><p class="sub">Each folder change shows a dry run you confirm before it writes. A folder is an absolute path, with no <code>.</code> or <code>..</code> part, quote, <code>#</code>, <code>$</code> or backslash.</p>${pathRows(choices, plans, true)}</div>` : "";

@@ -53,7 +53,7 @@ let healthGen = 0; // declared before route() runs: a reload at #/health calls l
 let reviewGateLoadGen = 0, reviewGateSaving = false; // declared before route() runs: a reload at #/config calls loadReviewGate() from it
 let apiRolesLoadGen = 0, apiRolesSaving = false; // likewise for loadApiRoles(): the Multi accounts section
 let fleetCapLoadGen = 0, fleetCapSaving = false; // likewise for loadFleetCap()
-let graphLoadGen = 0, graphSaving = false; // likewise for loadGraphChoices(): the Code graph card
+let graphLoadGen = 0, graphSaving = false;
 // Tool health: three reads, each keeping its last good answer when a newer one fails (tool-health.js toolHealthLoader).
 const thGet = (path) => async (q) => {
   const r = await fetch(path + (q ? "?" + q : ""), { headers: { "X-Himmel-Token": token }, cache: "no-store" });
@@ -447,7 +447,6 @@ async function saveVm() {
   paint();
 }
 
-// the Code graph card (graph choices). The draft is what the operator is typing; a saved or loaded answer resets it.
 const graphDraft = (d) => ({ roots: d.corpora.map((c) => c.root).join("\n"), primary: d.primary || "none", fallbacks: d.fallbacks.join(", "), cap: d.max_usd_per_pass == null ? "5.00" : String(d.max_usd_per_pass) });
 async function loadGraphChoices() {
   const gen = ++graphLoadGen;
@@ -460,7 +459,6 @@ async function loadGraphChoices() {
   } catch (_) { if (gen !== graphLoadGen) return; state.graph = { data: null, error: "graph choices: server unreachable" }; }
   if (currentPage.id === "config") paint();
 }
-// A stored corpus keeps its name while its root is listed; a new root gets its name from the server.
 async function saveGraphChoices() {
   const g = state.graph, d = g && g.draft;
   if (!d || graphSaving) return;

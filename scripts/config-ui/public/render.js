@@ -217,9 +217,6 @@ export function renderVm(vm, plain = false) {
     <button class="btn" data-act="vm-save">save</button>${msg}</div>`);
 }
 
-// the graph choices card: what to graph, who pays and the fallbacks. gc = { data: GET /api/graph-choices, error,
-// draft: { roots, primary, fallbacks, cap }, msg }. The server checks and writes; on a publisher or an unreadable config
-// the card is read-only with the server's reason. The letters offered are the configured ones the server read.
 const GRAPH_LEAVES = "What leaves this machine: a model can describe your repos' markdown files. Those files go to the provider, including uncommitted ones and any session notes kept in the repo; nothing scans them for secrets, and a .graphify-corpus-ignore file keeps a path out. Code stays here.";
 export function renderGraphChoices(gc, plain = true) {
   const d = gc && gc.data;

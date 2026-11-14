@@ -899,7 +899,6 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       if (path === "/api/fleet-cap" && req.method === "GET") { const c = readCap(capEnvFile(), env); return json(redactOut(c.body), c.status); }
       // the API account role map (Multi accounts): the map and one row per account; a write goes through the role map owner's validated writer.
       if (path === "/api/api-roles" && req.method === "GET") { const r = await readRoles(env); return json(redactOut(r.body), r.status); }
-      // the graph choices (Configure, Project scope): what to graph, who pays and the fallbacks; read-only on a publisher or an unreadable config.
       if (path === "/api/graph-choices" && req.method === "GET") { const g = await readGraph(env); return json(redactOut(g.body), g.status); }
       if (path !== "/api/board/drift-refresh" && path !== "/api/preview" && path !== "/api/run" && path !== "/api/vm" && path !== "/api/report-settings" && path !== "/api/review-gate" && path !== "/api/api-roles" && path !== "/api/graph-choices" && path !== "/api/fleet-cap" && path !== "/api/roadmap/write" && path !== "/api/setup/secret" && path !== "/api/setup/account" && path !== "/api/setup/verify") return new Response("not found", { status: 404 });
       if (req.method !== "POST") return new Response("method not allowed", { status: 405 });

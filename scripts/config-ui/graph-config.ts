@@ -1,8 +1,3 @@
-// the config UI's read and write of graphify.choices in ~/.himmel/config.json: what to graph, who pays and the fallbacks.
-// graph-choices.js owns every fact: the role, the validated route, the sentences, the cause and fix lines, and the three
-// save checks (validateShape, rootCheck, rosterCheck), which run in that order and are not copied here. The write goes
-// through luna-config.js inspect/save, as vm-config.ts writes the vm section. The roster comes from api-credit-state.mjs
-// accounts; the worst-case lines, the first question and the job state come from their owners' CLIs.
 import { spawn } from "node:child_process";
 import { basename, resolve } from "node:path";
 // @ts-ignore CommonJS module without types
@@ -26,7 +21,6 @@ const PUBLISHER_REASON = "This station publishes the himmel graph, so graph choi
 
 const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
-// One bounded child run; stdout is the answer, "" on a failure or the bound.
 function run(cmd: string, args: string[], env: Env): Promise<{ code: number | null; out: string }> {
   const clean: Record<string, string> = {};
   for (const [k, v] of Object.entries(env)) if (v !== undefined) clean[k] = v;
@@ -41,7 +35,6 @@ function run(cmd: string, args: string[], env: Env): Promise<{ code: number | nu
   });
 }
 
-// The roster's own answer, or the unreadable answer its owner gives for a missing roster: a failed read offers no letter.
 async function roster(env: Env): Promise<unknown> {
   const r = await run("node", [CREDIT_CLI, "accounts"], env);
   try { return JSON.parse(r.out); } catch { return { accounts: "unreadable", reason: "unreadable-state" }; }
@@ -83,7 +76,6 @@ export async function readGraph(env: Env): Promise<GraphResult> {
   } };
 }
 
-// A corpus name the store accepts: the root's basename with every other character turned to "-", then -2, -3 on a clash.
 function corpusName(root: string, taken: Set<string>): string {
   const base = basename(root).replace(/[^A-Za-z0-9._-]/g, "-").replace(/^[^A-Za-z0-9]+/, "") || "repo";
   let name = base;
@@ -109,10 +101,15 @@ function clearGraphKey(letter: string, env: Env): Promise<unknown> {
   return run("bash", [CADENCE_ALERT, "clear", `graph-key-${letter}`], env);
 }
 
-export async function writeGraph(b: Record<string, unknown>, env: Env): Promise<GraphResult> {
-  const station = choices.readStation();
+function roleRefusal(station: { role: string; cause: string }): GraphResult | null {
   if (station.role === "publisher") return { status: 409, body: { error: PUBLISHER_REASON } };
   if (station.role === "unreadable") return { status: 409, body: { error: unreadableLine(station.cause) } };
+  return null;
+}
+
+export async function writeGraph(b: Record<string, unknown>, env: Env): Promise<GraphResult> {
+  const early = roleRefusal(choices.readStation());
+  if (early) return early;
   const next = toChoices(b);
   const shape: string[] = choices.validateShape(next);
   if (shape.length) return { status: 400, body: { error: shape.join("; ") } };
@@ -120,6 +117,9 @@ export async function writeGraph(b: Record<string, unknown>, env: Env): Promise<
   if (roots.length) return { status: 400, body: { error: roots.join("; ") } };
   const refused: string[] = choices.rosterCheck(next, await roster(env));
   if (refused.length) return { status: 400, body: { error: refused.join("; ") } };
+  const station = choices.readStation();
+  const late = roleRefusal(station);
+  if (late) return late;
   const before = letters(choices.route(station));
   try {
     const { doc } = inspect();

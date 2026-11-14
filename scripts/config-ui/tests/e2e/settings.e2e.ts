@@ -173,7 +173,7 @@ test("J3. the Code graph card: the sentence first, a refused repo, then a save t
   await open(page);
   const card = await graphCard(page);
   await expect(card.locator("p.why")).toContainText("Without a graph choice", SETUP_WAIT);
-  await expect(card).toContainText("no API account is set up here"); // the fixture roster is missing: none and subscription only
+  await expect(card).toContainText("no API account is set up here");
   const plain = join(h.home, "plain");
   mkdirSync(plain);
   await card.locator('[data-gc="roots"]').fill(plain);
