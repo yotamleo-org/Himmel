@@ -765,9 +765,29 @@ def retire_stage(stage):
     shutil.rmtree(stage, ignore_errors=True)
 
 
+def installer_alive(stage):
+    needle = stage.encode()
+    try:
+        pids = [d for d in os.listdir("/proc") if d.isdigit() and int(d) not in (os.getpid(), os.getppid())]
+    except OSError:
+        return True
+    for d in pids:
+        try:
+            with open("/proc/%s/cmdline" % d, "rb") as f:
+                if needle in f.read():
+                    return True
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return True
+    return False
+
+
 def interrupted():
     m, rows = load_marker()
     rid = san(m.get("id", "?"), 32)
+    if installer_alive(m["stage"]):
+        fail("installer of run %s is still running; try again" % rid)
     if not m.get("restoring") and superseded(m, rows):
         left = sudoers_leftovers(rows)
         os.rename(P(MARKER), P(STATE) + "/helper-update.superseded." + rid)

@@ -1215,6 +1215,22 @@ out=$(hu_chk)
 assert_contains "RED: a corrupt snapshot copy is reported, not installed" "restore incomplete" "$out"
 assert_eq "the live broker keeps the installed bytes, not the corrupt copy" "yes" "$(cmp -s "$R/gh/$HU_MAIN/scripts/lib/afk-sudo/approval_broker.py" "$R/usr/local/libexec/himmel/approval_broker.py" && echo yes || echo no)"
 
+echo "== helper-update: a restore waits for an installer that outlived its op =="
+hu_root orphan stale; before=$(hu_state)
+out=$(hu_req 0); id=$(rid "$out")
+HIMMEL_OPS_KILL_AT=installed hu_approve_read 3 "$id" >/dev/null
+stage=$(echo "$R"/var/lib/himmel/afk-sudo/helper-update/stage.*)
+bash -c 'sleep 25; exit 0' "$stage/scripts/lib/afk-sudo/install.sh" &
+ORPHAN=$!; STUBS="${STUBS:-} $ORPHAN"; sleep 0.3
+mid=$(hu_state)
+out=$(hu_chk)
+assert_contains "RED: a live process holding the stage path stops the restore" "still running" "$out"
+assert_eq "the restore wrote nothing while the installer lived" "$mid" "$(hu_state)"
+assert_eq "the marker is kept for the next call" "yes" "$([ -e "$R/$HU_PEND" ] && echo yes || echo no)"
+kill -KILL "$ORPHAN"; wait "$ORPHAN" 2>/dev/null
+assert_contains "once the installer is gone the next call restores" "restored an interrupted run" "$(hu_chk)"
+assert_eq "and the station is back as it was" "$before" "$(hu_state)"
+
 echo "== helper-update judge fixes: a special file in the snapshot is reported, not opened =="
 hu_root fifo stale
 mkfifo "$R/usr/local/libexec/himmel/ops/odd"
