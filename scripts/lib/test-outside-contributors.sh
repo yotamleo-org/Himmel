@@ -221,5 +221,16 @@ check 'merge-base: prints the fixture merge base after fetching the base' "$(mba
 check 'merge-base: a missing base ref prints nothing and returns 1' "$(mbase 7 nope)" ':1'
 check 'merge-base: a missing PR ref prints nothing and returns 1' "$(mbase 9 main)" ':1'
 check 'merge-base: a junk base name' "$(mbase 7 '../x')" ':1'
+rm -f "$MB/.git/FETCH_HEAD"
+check 'merge-base: the base fetch leaves no FETCH_HEAD' "$(mbase 7 main >/dev/null; [ -e "$MB/.git/FETCH_HEAD" ] && echo present || echo absent)" absent
+
+collides() { local d="$1"; shift; (cd "$d" && . "$ANCHOR/scripts/lib/outside-contributors.sh" && outside_branch_collides "$@") >/dev/null 2>&1; echo $?; }
+mbgit branch -q feat/x; mbgit branch -q Up/Case
+check 'collides: a local feat/x collides with Feat/X' "$(collides "$MB" Feat/X)" 0
+check 'collides: a local feat/x collides with feat/x' "$(collides "$MB" feat/x)" 0
+check 'collides: a local Up/Case collides with up/case' "$(collides "$MB" up/case)" 0
+check 'collides: feat/xy is no collision with a local feat/x' "$(collides "$MB" feat/xy)" 1
+check 'collides: feat is no collision with a local feat/x' "$(collides "$MB" feat)" 1
+check 'collides: outside a repository git cannot list' "$(collides "$W" feat/x)" 2
 [ "$fails" -eq 0 ] || { printf '%s FAILED\n' "$fails"; exit 1; }
 printf 'ALL PASS\n'

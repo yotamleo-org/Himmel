@@ -64,8 +64,11 @@ outside_audit_passed() {
 #   $HOME/.himmel/outside-pr-approvals.jsonl holds a row naming <pr> and exactly
 #   <head> with stage "review" and, for an unlisted author, an audit pass at <head>.
 # outside_pr_merge_base <pr> <baseRefName>
-#   fetches origin's base branch and prints its merge base with
-#   refs/himmel/outside/<pr>; any failure is rc 1 and prints nothing.
+#   fetches origin's base branch (no FETCH_HEAD written) and prints its merge
+#   base with refs/himmel/outside/<pr>; any failure is rc 1 and prints nothing.
+# outside_branch_collides <name>
+#   rc 0 when a local branch's name equals <name> under ASCII case-folding
+#   (both sides folded), rc 1 when none does, rc 2 when git cannot list them.
 
 outside_pr_authorize() {
   local pr="${1:-}" head="${2:-}" used="${3:-}" anchor f login id branch oid mid ap="$HOME/.himmel/outside-pr-approvals.jsonl"
@@ -102,10 +105,22 @@ outside_pr_merge_base() {
   # shellcheck source=timeout-bin.sh
   . "$anchor/scripts/lib/timeout-bin.sh" 2>/dev/null || return 1
   [ -n "${_TIMEOUT_BIN:-}" ] || return 1
-  "$_TIMEOUT_BIN" -k 5 60 git fetch -q origin "+refs/heads/$base:refs/remotes/origin/$base" >/dev/null 2>&1 || return 1
+  "$_TIMEOUT_BIN" -k 5 60 git fetch -q --no-write-fetch-head origin "+refs/heads/$base:refs/remotes/origin/$base" >/dev/null 2>&1 || return 1
   mb=$(git merge-base "refs/remotes/origin/$base" "refs/himmel/outside/$pr" 2>/dev/null) || return 1
   [[ "$mb" =~ ^[0-9a-f]{40}$ ]] || return 1
   printf '%s\n' "$mb"
+}
+
+# shellcheck disable=SC2018,SC2019  # ASCII folding on purpose, never by locale: the same bytes fold the same on every station
+outside_branch_collides() {
+  local want heads h
+  want=$(printf '%s' "${1:-}" | LC_ALL=C tr 'A-Z' 'a-z')
+  heads=$(git for-each-ref --format='%(refname:lstrip=2)' refs/heads/ 2>/dev/null) || return 2
+  heads=$(printf '%s\n' "$heads" | LC_ALL=C tr 'A-Z' 'a-z')
+  while IFS= read -r h; do
+    [ "$h" = "$want" ] && return 0
+  done <<< "$heads"
+  return 1
 }
 
 # author_class and outside_pr_of: the item 16 predicate, shared by ready-check.sh and
