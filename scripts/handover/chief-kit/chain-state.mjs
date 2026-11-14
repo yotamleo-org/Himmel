@@ -14,6 +14,7 @@
 //   status-events.jsonl beside it: merge rows (contract=yes that moved Jira completes a ticket, L5; the others
 //     are partial PR ticks), hold-release rows, and hold rows that have no chain-log row.
 // --version keeps only tickets in that fixVersion; an open blocker outside it is a real block.
+// `cycles` (each loop's keys, sorted) and `unknown` ({key, on}: a link whose status cannot be read) are the integrity lists.
 //
 // Per chain: steps (L1: a topological layer over the chain's links, so tickets that can run
 // side by side share a step), done/total, next, and links across other work (L2).
@@ -243,20 +244,29 @@ for (const c of registry.chains) {
 }
 const chainsOf = key => [...chains.values()].filter(c => c.members.has(key)).map(c => c.id).sort();
 
-// Cycles are diagnosed over all current hard links, not just one chain's members.
+// Cycles are diagnosed over all current hard links, not just one chain's members. With --version the walk also
+// starts from every open ticket of that version, registered or standalone, and never enters a ticket of another
+// version; `unknown` lists each link of a walked start ticket whose status cannot be read.
 const cycles = [];
+const unknown = [];
 const visited = new Set(), active = new Set(), stack = [];
 function visit(key) {
     if (active.has(key)) {
         cycles.push(stack.slice(stack.indexOf(key)).sort());
         return;
     }
-    if (visited.has(key) || isDone(key)) return;
+    if (visited.has(key) || isDone(key) || (opt.version && issues.get(key)?.known && !inVersion(issues.get(key)))) return;
     visited.add(key); active.add(key); stack.push(key);
     for (const l of linksAt(key, now)) if (l.on && l.status === 'open') visit(l.on);
     stack.pop(); active.delete(key);
 }
-for (const c of chains.values()) for (const k of c.members) visit(k);
+const starts = [...new Set([...[...chains.values()].flatMap(c => [...c.members]),
+    ...(opt.version ? [...issues.values()].filter(i => i.known && inVersion(i) && !isDone(i.key)).map(i => i.key).sort() : [])])];
+for (const k of starts) visit(k);
+for (const k of starts) {
+    if (isDone(k)) continue;
+    for (const l of linksAt(k, now)) if (l.status === 'unknown') unknown.push({ key: k, on: l.on });
+}
 for (const cycle of cycles) warn(`cycle ${cycle.join(' ')}`);
 if (opt.version) {
     const members = new Set(registry.chains.flatMap(c => c.members));
@@ -396,4 +406,4 @@ for (const c of [...chains.values()].sort((a, b) => cmp(a.id, b.id))) {
 // Oldest issue mtime: a partial refresh must not make the whole snapshot look fresh.
 const sourceAge = sourceTime === null ? null : Math.max(0, Math.floor((now - sourceTime) / 60000));
 process.stdout.write(`${JSON.stringify({ schema: SCHEMA, now: iso(now), version: opt.version,
-    registry: provenance, source_age_min: sourceAge, cycles, chains: out, tickets }, null, 2)}\n`);
+    registry: provenance, source_age_min: sourceAge, cycles, unknown, chains: out, tickets }, null, 2)}\n`);
