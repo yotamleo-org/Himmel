@@ -950,7 +950,7 @@ p5="$w5/stubs:$(build_path "$w5" bash jq python3 npm --)"
 fixture_w5="$w5/fixture"; make_fixture "$fixture_w5"
 w5_env() {
   local _h="$1"; shift; mkdir -p "$_h/.himmel" "$_h/cache"
-  env -u HIMMEL_LUNA_CONFIG_PATH PATH="$p5" HOME="$_h" USERPROFILE="$(winpath "$_h")" \
+  env PATH="$p5" HOME="$_h" USERPROFILE="$(winpath "$_h")" \
     HIMMEL_CONFIG_DIR="$_h/.himmel" HIMMEL_CONFIG_AUDIT_DIR="$_h/.himmel/state/config-audit" \
     HIMMEL_CONFIG_AUDIT_ENV_FILE="$w5/dotenv/.env" HIMMEL_CONFIG_ALERT_CMD="$w5/alert-stub.sh" HIMMEL_TEST_FIXTURE=1 \
     HIMMEL_API_CREDIT_CONFIG="$w5/no-roster.json" HIMMELCTL_CACHE_DIR="$(winpath "$_h/cache")" \
@@ -964,7 +964,7 @@ out_w5=$(
   ( for a in "${W5_ANSWERS[@]}"; do stage "$a"; done
     stage y
     stage w5profile
-  ) | w5_env "$w5/h-a" env HIMMELCTL_INTERACTIVE=1 "$node_bin" "$wizard" install 2>&1
+  ) | w5_env "$w5/h-a" env HIMMELCTL_CACHE_DIR="$(winpath "$w5/h-a/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$w5/h-a/.himmel/config.json")" HIMMELCTL_INTERACTIVE=1 "$node_bin" "$wizard" install 2>&1
 )
 rc_w5=$?
 set -e
@@ -976,7 +976,7 @@ saved_w5="$w5/profiles/w5profile.install-profile.json"
 grepq "$(cat "$saved_w5")" -i 'choices\|acme' && fail "W5: the saved profile must carry no graph choice (got: $(cat "$saved_w5"))"
 grepq "$(cat "$w5/h-a/cache/install-profile.json")" -i 'choices\|acme' && fail "W5: the answer cache must carry no graph choice"
 set +e
-out_w5b=$(w5_env "$w5/h-b" env HIMMELCTL_INTERACTIVE=0 "$node_bin" "$wizard" install --from-profile "$(winpath "$saved_w5")" </dev/null 2>&1); rc_w5b=$?
+out_w5b=$(w5_env "$w5/h-b" env HIMMELCTL_CACHE_DIR="$(winpath "$w5/h-b/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$w5/h-b/.himmel/config.json")" HIMMELCTL_INTERACTIVE=0 "$node_bin" "$wizard" install --from-profile "$(winpath "$saved_w5")" </dev/null 2>&1); rc_w5b=$?
 set -e
 [ "$rc_w5b" -eq 0 ] || fail "W5: --from-profile on the saved profile should succeed (got rc=$rc_w5b): $out_w5b"
 [ "$(jq -c '.graphify.choices // "absent"' "$w5/h-b/.himmel/config.json" 2>/dev/null || echo no-file)" != "$(jq -c '.graphify.choices' "$w5/h-a/.himmel/config.json")" ] \

@@ -900,7 +900,7 @@ grepq "$out" -F 'RC 0' || fail "W1: applying an Enter must succeed (got: $out)"
 [ ! -e "$GW_CRON_CALLS" ] || fail "W1: applying an Enter must not touch the crontab ($(cat "$GW_CRON_CALLS"))"
 gw_home w1e
 set +e
-out=$(PATH="$GW_PATH" HIMMELCTL_INTERACTIVE=1 "$node_bin" "$wizard" install --dry-run 2>&1 <<< "starter"); rc=$?
+out=$(PATH="$GW_PATH" HIMMELCTL_CACHE_DIR="$(winpath "$HOME/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$HOME/.himmel/config.json")" HIMMELCTL_INTERACTIVE=1 "$node_bin" "$wizard" install --dry-run 2>&1 <<< "starter"); rc=$?
 set -e
 [ "$rc" -eq 0 ] || fail "W1: the dry-run install with Enter at Q1 should succeed (got rc=$rc): $out"
 grepq "$out" -F 'Which of your own git repos should be graphed on this machine?' || fail "W1: the install must ask Q1 when graphify is installed (got: $out)"
@@ -940,9 +940,9 @@ printf '{"schemaVersion":2,"profile":"starter","devOverlay":false,"scope":"user"
 for mode in profile scope; do
   set +e
   if [ "$mode" = profile ]; then
-    out=$(PATH="$GW_PATH" HIMMELCTL_INTERACTIVE=0 "$node_bin" "$wizard" install --dry-run --from-profile "$(winpath "$prof_w4")" </dev/null 2>&1); rc=$?
+    out=$(PATH="$GW_PATH" HIMMELCTL_CACHE_DIR="$(winpath "$HOME/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$HOME/.himmel/config.json")" HIMMELCTL_INTERACTIVE=0 "$node_bin" "$wizard" install --dry-run --from-profile "$(winpath "$prof_w4")" </dev/null 2>&1); rc=$?
   else
-    out=$(PATH="$GW_PATH" HIMMELCTL_INTERACTIVE=0 "$node_bin" "$wizard" install --dry-run --scope user </dev/null 2>&1); rc=$?
+    out=$(PATH="$GW_PATH" HIMMELCTL_CACHE_DIR="$(winpath "$HOME/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$HOME/.himmel/config.json")" HIMMELCTL_INTERACTIVE=0 "$node_bin" "$wizard" install --dry-run --scope user </dev/null 2>&1); rc=$?
   fi
   set -e
   [ "$rc" -eq 0 ] || fail "W4($mode): the run should succeed (got rc=$rc): $out"
@@ -992,7 +992,7 @@ grepq "$out" -F 'RC 0' || fail "W9: the apply step must save and arm (got: $out)
 grepq "$(cat "$GW_CRON_TAB" 2>/dev/null)" -F '# HIMMEL-GraphChoices' || fail "W9: a typed yes must install the HIMMEL-GraphChoices row (got: $out)"
 gw_home w9s
 set +e
-out=$(PATH="$GW_PATH" HIMMELCTL_INTERACTIVE=1 "$node_bin" "$wizard" install --dry-run 2>&1 <<INPUT
+out=$(PATH="$GW_PATH" HIMMELCTL_CACHE_DIR="$(winpath "$HOME/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$HOME/.himmel/config.json")" HIMMELCTL_INTERACTIVE=1 "$node_bin" "$wizard" install --dry-run 2>&1 <<INPUT
 starter
 
 
@@ -1035,7 +1035,7 @@ grepq "$out" -F "$NO_CHOICE_S" || fail "W12: no graphify must print the state's 
 grepq "$out" -F 'bash scripts/setup.sh --with-graphify' || fail "W12: no graphify must print the install command (got: $out)"
 gw_home w12e
 set +e
-out=$(PATH="$GW_NO_GRAPHIFY_PATH" HIMMELCTL_INTERACTIVE=1 "$node_bin" "$wizard" install --dry-run 2>&1 <<< "starter"); rc=$?
+out=$(PATH="$GW_NO_GRAPHIFY_PATH" HIMMELCTL_CACHE_DIR="$(winpath "$HOME/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$HOME/.himmel/config.json")" HIMMELCTL_INTERACTIVE=1 "$node_bin" "$wizard" install --dry-run 2>&1 <<< "starter"); rc=$?
 set -e
 [ "$rc" -eq 0 ] || fail "W12: the dry-run install without graphify should succeed (got rc=$rc): $out"
 grepq "$out" -F 'bash scripts/setup.sh --with-graphify' || fail "W12: the install without graphify must print the install command (got: $out)"
