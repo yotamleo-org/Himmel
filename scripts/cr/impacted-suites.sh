@@ -601,7 +601,7 @@ fi
 work=$(mktemp -d "${TMPDIR:-/tmp}/impacted-suites.XXXXXX") || { echo "impacted-suites.sh: mktemp failed" >&2; exit 2; }
 trap 'rm -rf "$work"' EXIT
 pats="$work/patterns"
-lits="$work/literals"   # HIMMEL-5363: one literal per pattern in $pats, see grep_narrowed
+lits="$work/literals"
 found="$work/found"
 : > "$pats"
 : > "$lits"
