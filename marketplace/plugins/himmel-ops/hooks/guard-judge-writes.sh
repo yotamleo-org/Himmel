@@ -29,8 +29,8 @@
 #     --input); or the Jira CLI (a word ending in "jira" or naming
 #     scripts/jira/) with a write op (create, comment, transition, update,
 #     edit, assign, link, delete, worklog, attach); or a package fetch: the
-#     word bunx, npx or uvx, "bun" with "x", "npm" with install or i, or
-#     "pip"/"pip3" with install.
+#     word bunx, npx or uvx, "bun" with x, add, install or i, "npm" with
+#     install, i, add, exec or x, "uv" with tool, or "pip"/"pip3" with install.
 #   mcp__* — any MCP tool other than qmd (mcp__qmd__*, mcp__plugin_qmd_qmd__*).
 #   Write|Edit|MultiEdit|NotebookEdit — the path is relative or has a ".."
 #     segment; or it cannot be resolved (readlink -f, then parent + missing
