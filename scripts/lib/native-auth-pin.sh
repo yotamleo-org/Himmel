@@ -210,6 +210,19 @@ native_auth_pin_env() {
   [[ $_failed = 0 ]]
 }
 
+# The unset loop of claude-api.sh's subscription fallback, shared with the daily graph pass: drops the session markers
+# and the API-lane hand-off names, keeps CLAUDE_CODE_OAUTH_TOKEN. Its status is advisory, like the pin's: the launch
+# never depends on this call, only on the caller's keyword gate (see LAUNCH GATE above).
+native_auth_scrub_env() {
+  local v
+  for v in $(compgen -e); do
+    case "$v" in
+      CLAUDE_CODE_OAUTH_TOKEN) ;;
+      CLAUDECODE | AI_AGENT | CLAUDE_PID | CLAUDE_EFFORT | CLAUDE_JOB_DIR | CLAUDE_CODE_* | HIMMEL_API_* | LQ_API_* | HIMMEL_DOTENV_FILE | HIMMEL_CLAUDE_LANE) unset "$v" ;;
+    esac
+  done
+}
+
 native_auth_pin_screen_settings() { # $1 = --settings value (file path or inline JSON)
   local _payload="${1:-}" _rc
   # Fail closed when node is absent -- a screen that cannot run must not pass.

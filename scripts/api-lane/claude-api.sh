@@ -163,23 +163,23 @@ run_fallback() {
     # shellcheck source=scripts/lib/native-auth-pin.sh
     { [ -r "$REPO/scripts/lib/native-auth-pin.sh" ] && . "$REPO/scripts/lib/native-auth-pin.sh"; } 2>/dev/null || exit 2
     native_auth_pin_env || exit 2
+    native_auth_scrub_env
     local v
-    for v in $(compgen -e); do
-      case "$v" in
-        CLAUDE_CODE_OAUTH_TOKEN) ;;
-        CLAUDECODE|AI_AGENT|CLAUDE_PID|CLAUDE_EFFORT|CLAUDE_JOB_DIR|CLAUDE_CODE_*|HIMMEL_API_*|LQ_API_*|HIMMEL_DOTENV_FILE|HIMMEL_CLAUDE_LANE) unset "$v" ;;
-      esac
-    done
-    # LAUNCH GATE (native-auth-pin.sh header): keyword-only, no API-key name or value survives into the call
-    [[ -z "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}${!LQ_API_*}" ]] || exit 2
-    if [ -n "$KEY" ]; then
-      for v in $(compgen -e); do [[ "${!v}" != *"$KEY"* ]] || exit 2; done
+    # LAUNCH GATE (native-auth-pin.sh header): keyword-only, no API-key name or value survives into the call; the
+    # launch sits inside the then arm, so a shadowed exit or return in the refusal can never reach it
+    if [[ -z "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}${!LQ_API_*}" ]]; then
+      if [ -n "$KEY" ]; then
+        for v in $(compgen -e); do [[ "${!v}" != *"$KEY"* ]] || exit 2; done
+      fi
+      KEY=""
+      export CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1
+      # subscription fallback after an API-lane failure; usage preflight above, explicit --permission-mode
+      exec "$CLAUDE_BIN" "${ARGS[@]}" --model "$MODEL" --permission-mode "$MODE" \
+        "${TOOL_ARGS[@]}" --max-budget-usd "$BUDGET" --output-format json ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} >"$FB_OUT"
+    else
+      echo "claude-api: fallback refused: an API credential name survived the scrub" >&2
+      exit 2
     fi
-    KEY=""
-    export CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1
-    # subscription fallback after an API-lane failure; usage preflight above, explicit --permission-mode
-    exec "$CLAUDE_BIN" "${ARGS[@]}" --model "$MODEL" --permission-mode "$MODE" \
-      "${TOOL_ARGS[@]}" --max-budget-usd "$BUDGET" --output-format json ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} >"$FB_OUT"
   }
   # a stdin prompt that was buffered replays from the scratch file; a refusal before the buffer has not read stdin, so
   # a piped prompt still reaches the fallback; an argv prompt needs no stdin
