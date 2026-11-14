@@ -1373,5 +1373,4 @@ scripts/hooks/test-block-subagent-release-operator.sh	1
 scripts/hooks/test-read-clamp-failure.sh	0
 scripts/hooks/test-record-read-clamp.sh	6
 scripts/lanes/bench/scorecard/test-spend-evaluation.sh	8
-scripts/luna/test-post-merge-refresh.sh	23
 scripts/station-ops/test-bypass-launchd.sh	6
