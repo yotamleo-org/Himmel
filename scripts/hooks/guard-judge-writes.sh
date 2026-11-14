@@ -28,7 +28,9 @@
 #     method or body flag (-X, --method, -f, -F, --field, --raw-field,
 #     --input); or the Jira CLI (a word ending in "jira" or naming
 #     scripts/jira/) with a write op (create, comment, transition, update,
-#     edit, assign, link, delete, worklog, attach).
+#     edit, assign, link, delete, worklog, attach); or a package fetch: the
+#     word bunx, npx or uvx, "bun" with "x", "npm" with install or i, or
+#     "pip"/"pip3" with install.
 #   mcp__* — any MCP tool other than qmd (mcp__qmd__*, mcp__plugin_qmd_qmd__*).
 #   Write|Edit|MultiEdit|NotebookEdit — the path is relative or has a ".."
 #     segment; or it cannot be resolved (readlink -f, then parent + missing
@@ -164,6 +166,16 @@ case "$tool" in
         done
         if [ "$jira" -eq 1 ] && has_word create comment transition update edit assign link delete worklog attach; then
             deny "jira-write" "Jira CLI write op"
+        fi
+        has_word bunx npx uvx && deny "package-fetch" "bunx, npx or uvx: run an installed tool by its own name, or report the check as not run"
+        if has_word bun && has_word x; then
+            deny "package-fetch" "bun x: run an installed tool by its own name, or report the check as not run"
+        fi
+        if has_word npm && has_word install i; then
+            deny "package-fetch" "npm install: run an installed tool by its own name, or report the check as not run"
+        fi
+        if has_word pip pip3 && has_word install; then
+            deny "package-fetch" "pip install: run an installed tool by its own name, or report the check as not run"
         fi
         exit 0
         ;;

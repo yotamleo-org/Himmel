@@ -113,6 +113,17 @@ row "foreign MCP write" 2 "$(mcp_payload 'mcp__claude_ai_Slack__slack_send_messa
 row "inbox-send.sh" 2 "$(bash_payload 'bash scripts/handover/chief-kit/inbox-send.sh --to c --file m.md')"
 # --- marker override ---
 row "marker named in command" 2 "$(bash_payload 'env -u HIMMEL_CONSOLE_JUDGE bash x.sh')"
+# --- fetching or running a package that is not installed ---
+row "bun x oxlint" 2 "$(bash_payload 'bun x oxlint .')"
+row "bunx" 2 "$(bash_payload 'bunx oxlint@1.88.0 .')"
+row "npx" 2 "$(bash_payload 'npx prettier --check .')"
+row "npm install" 2 "$(bash_payload 'npm install left-pad')"
+row "npm i" 2 "$(bash_payload 'npm i left-pad')"
+row "pip install" 2 "$(bash_payload 'pip install requests')"
+row "python3 -m pip install" 2 "$(bash_payload 'python3 -m pip install requests')"
+row "uvx" 2 "$(bash_payload 'uvx ruff check .')"
+row "an installed tool run by its own name" 0 "$(bash_payload 'oxlint --version')"
+row "npm ls read" 0 "$(bash_payload 'npm ls --depth=0')"
 # --- Edit / Write outside the verdict and scratch dirs ---
 row "Write into a repo file" 2 "$(file_payload Write "$REPO/scripts/x.sh")"
 row "Edit a repo file" 2 "$(file_payload Edit "$REPO/scripts/x.sh")"
@@ -143,6 +154,16 @@ row "jira get read" 0 "$(bash_payload 'node /repo/scripts/jira/dist/index.js get
 row "append-results bullet" 0 "$(bash_payload 'bash scripts/handover/chief-kit/append-results.sh d.md "LIVE x"')"
 row "qmd MCP read" 0 "$(mcp_payload 'mcp__qmd__query')"
 row "Read tool" 0 "$(jq -nc '{tool_name:"Read", tool_input:{file_path:"/etc/hostname"}}')"
+
+# --- the judge docs carry the no-fetch rule ---
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+for doc in .claude/agents/judge-ro.md .claude/agents/judge.md docs/handover/judge-brief-template.md; do
+    if grep -qF 'Never fetch or run a package that is not already installed' "$REPO_ROOT/$doc"; then
+        echo "ok   doc: $doc carries the no-fetch rule"; pass=$((pass + 1))
+    else
+        echo "FAIL doc: $doc lacks the no-fetch rule"; fail=$((fail + 1))
+    fi
+done
 
 echo
 echo "RESULTS: $pass passed, $fail failed"
