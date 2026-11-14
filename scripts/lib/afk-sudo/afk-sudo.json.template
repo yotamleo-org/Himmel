@@ -9,6 +9,7 @@
   "classifier_requests": false,
   "grant": {"enabled": false, "ttl_s": 900},
   "ops": {"enabled": false, "ttl_s": 900},
+  "helper_update": {"enabled": false, "checkout": "", "repo": ""},
   "never_remote_extra": [],
   "classes": {}
 }
