@@ -9,7 +9,8 @@
 // when it parses and nothing would be rewritten (changed === 0). No lock, no write.
 //
 // added-hook.sh: scripts/hooks/ names the folder's own branch adds (the caller
-// proves each is in the branch diff and executable in the folder). Their wiring
+// proves each is in the branch diff and executable in the folder); a name the
+// anchor's EXPECTED_SCRIPT_ORDER owns is never one. Their wiring
 // is taken out of a copy of the settings before the anchor judges it: a hook entry
 // naming only added scripts is dropped, and an added member is cut from a --chain
 // member list. A kept entry naming an added script anywhere else refuses.
@@ -61,7 +62,9 @@ function withoutAddedHooks(text, names) {
 try {
   const mod = await import(pathToFileURL(join(anchor, 'scripts', 'hooks', 'wire-hook-bash.mjs')).href);
   const text = readFileSync(file, 'utf8');
-  const res = mod.rewriteSettingsText(added.length > 0 ? withoutAddedHooks(text, added) : text);
+  const owned = new Set(mod.EXPECTED_SCRIPT_ORDER || []);
+  const unowned = added.filter((s) => !owned.has(s));
+  const res = mod.rewriteSettingsText(unowned.length > 0 ? withoutAddedHooks(text, unowned) : text);
   if (res.changed !== 0) {
     console.error(`launch-guard-p: ${res.changed} hook command(s) would be rewritten`);
     process.exit(1);
