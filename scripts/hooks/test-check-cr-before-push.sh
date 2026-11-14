@@ -340,7 +340,7 @@ git -C "$REPO" checkout -q main
 
 # up-to-date push (empty stdin) mints a bound marker ------------
 
-echo "TEST: empty-stdin up-to-date push mints marker binding from upstream (HIMMEL-2104)"
+echo "TEST: empty-stdin up-to-date push mints marker binding from upstream"
 git -C "$REPO" checkout -q -b feat/uptodate-2104 main
 printf 'function uptodate() {}\n' > "$REPO/uptodate.sh"
 git -C "$REPO" -c user.email=t@test.com -c user.name=test add uptodate.sh
@@ -558,7 +558,7 @@ if [ -f "$m2" ]; then
         fail "ancestor-pref: marker lane '$lane2' != docs-audit — likely diffed stale local main (advance.sh leaked)" "out: $hook_out2"
     fi
 else
-    fail "ancestor-pref: no marker for docs change (HIMMEL-303 expects a docs-audit marker)" "out: $hook_out2"
+    fail "ancestor-pref: no marker for docs change (expects a docs-audit marker)" "out: $hook_out2"
 fi
 
 echo "TEST: origin/main NOT ancestor of local main -> uses local main as diff_base"
@@ -717,7 +717,7 @@ if [ "$rc" -eq 0 ] && [ -f "$pm_ssh" ]; then
         *s3cr3t*|*ghost:*@*)
             fail "ssh:// endpoint userinfo not scrubbed: '$pm_ssh_endpoint'" "out: $out" ;;
         ssh://example.com/repo.git)
-            pass "ssh:// endpoint userinfo scrubbed (HIMMEL-1565)" ;;
+            pass "ssh:// endpoint userinfo scrubbed" ;;
         *)
             fail "unexpected scrubbed ssh:// endpoint '$pm_ssh_endpoint'" "out: $out" ;;
     esac
@@ -732,7 +732,7 @@ pm_ssh_bare="$PB/.git/cr-pending/feat/pub"
 if [ "$rc" -eq 0 ] && [ -f "$pm_ssh_bare" ]; then
     pm_ssh_bare_endpoint=$(awk -F' [|] ' '{gsub(/^[ \t]+|[ \t]+$/,"",$6); print $6; exit}' "$pm_ssh_bare" 2>/dev/null || true)
     if [ "$pm_ssh_bare_endpoint" = "ssh://git@example.com/repo.git" ]; then
-        pass "bare ssh:// username preserved -- later ls-remote must resolve identity as the pushed endpoint did (HIMMEL-1565)"
+        pass "bare ssh:// username preserved -- later ls-remote must resolve identity as the pushed endpoint did"
     else
         fail "bare ssh:// username was altered: '$pm_ssh_bare_endpoint'" "out: $out"
     fi
@@ -749,7 +749,7 @@ if [ "$rc" -eq 0 ] && [ -f "$pm_rel" ]; then
     pm_rel_endpoint=$(awk -F' [|] ' '{gsub(/^[ \t]+|[ \t]+$/,"",$6); print $6; exit}' "$pm_rel" 2>/dev/null || true)
     case "$pm_rel_endpoint" in
         /*relremote.git)
-            pass "relative endpoint canonicalized to an absolute path (HIMMEL-1565)" ;;
+            pass "relative endpoint canonicalized to an absolute path" ;;
         *)
             fail "relative endpoint persisted verbatim (not canonicalized): '$pm_rel_endpoint'" "out: $out" ;;
     esac
@@ -766,7 +766,7 @@ if [ "$rc" -eq 0 ] && [ -f "$pm_colonrel" ]; then
     pm_colonrel_endpoint=$(awk -F' [|] ' '{gsub(/^[ \t]+|[ \t]+$/,"",$6); print $6; exit}' "$pm_colonrel" 2>/dev/null || true)
     case "$pm_colonrel_endpoint" in
         /*a:b.git)
-            pass "relative path with a post-slash colon canonicalized, not mistaken for scp-style (HIMMEL-1565)" ;;
+            pass "relative path with a post-slash colon canonicalized, not mistaken for scp-style" ;;
         *)
             fail "relative path with a post-slash colon persisted verbatim: '$pm_colonrel_endpoint'" "out: $out" ;;
     esac
@@ -777,13 +777,13 @@ fi
 echo "TEST: HIMMEL-1565 -- an uncanonicalizable relative endpoint fails CLOSED rather than persisting verbatim"
 rc=0; out=$(cd "$PB" && bash "$HOOK" relremote "../does-not-exist.git" <<< "refs/heads/feat/pub $pb_tip refs/heads/feat/pub $Z40" 2>&1) || rc=$?
 if [ "$rc" -eq 2 ]; then
-    pass "uncanonicalizable relative endpoint -> exit 2 (fail closed, HIMMEL-1565)"
+    pass "uncanonicalizable relative endpoint -> exit 2 (fail closed)"
 else
     fail "uncanonicalizable relative endpoint -> expected exit 2 got $rc" "out: $out"
 fi
 case "$out" in
     *"cannot canonicalize push endpoint"*)
-        pass "uncanonicalizable relative endpoint: refusal names the specific reason (HIMMEL-1554)" ;;
+        pass "uncanonicalizable relative endpoint: refusal names the specific reason" ;;
     *)
         fail "uncanonicalizable relative endpoint: refusal must name the canonicalization failure" "out: $out" ;;
 esac
@@ -802,7 +802,7 @@ pm_suf="$PB/.git/cr-pending/feat/pub"
 if [ "$rc" -eq 0 ] && [ -f "$pm_suf" ]; then
     pm_suf_endpoint=$(awk -F' [|] ' '{gsub(/^[ \t]+|[ \t]+$/,"",$6); print $6; exit}' "$pm_suf" 2>/dev/null || true)
     case "$pm_suf_endpoint" in
-        /*sufremote.git) pass "../sufremote resolved to the absolute sufremote.git (HIMMEL-3737)" ;;
+        /*sufremote.git) pass "../sufremote resolved to the absolute sufremote.git" ;;
         *) fail "suffix endpoint not canonicalized to the .git directory: '$pm_suf_endpoint'" "out: $out" ;;
     esac
 else
@@ -818,7 +818,7 @@ pm_gf="$PB/.git/cr-pending/feat/pub"
 if [ "$rc" -eq 0 ] && [ -f "$pm_gf" ]; then
     pm_gf_endpoint=$(awk -F' [|] ' '{gsub(/^[ \t]+|[ \t]+$/,"",$6); print $6; exit}' "$pm_gf" 2>/dev/null || true)
     case "$pm_gf_endpoint" in
-        /*gfreal.git) pass "gitfile endpoint resolved to the directory it names (HIMMEL-3737)" ;;
+        /*gfreal.git) pass "gitfile endpoint resolved to the directory it names" ;;
         *) fail "gitfile endpoint not followed: '$pm_gf_endpoint'" "out: $out" ;;
     esac
 else
@@ -833,7 +833,7 @@ pm_gfcr="$PB/.git/cr-pending/feat/pub"
 if [ "$rc" -eq 0 ] && [ -f "$pm_gfcr" ]; then
     pm_gfcr_endpoint=$(awk -F' [|] ' '{gsub(/^[ \t]+|[ \t]+$/,"",$6); print $6; exit}' "$pm_gfcr" 2>/dev/null || true)
     case "$pm_gfcr_endpoint" in
-        /*gfreal.git) pass "CRLF gitfile endpoint resolved to the directory it names (HIMMEL-3737)" ;;
+        /*gfreal.git) pass "CRLF gitfile endpoint resolved to the directory it names" ;;
         *) fail "CRLF gitfile endpoint not followed: '$pm_gfcr_endpoint'" "out: $out" ;;
     esac
 else
@@ -849,7 +849,7 @@ pm_gfb="$PB/.git/cr-pending/feat/pub"
 if [ "$rc" -eq 0 ] && [ -f "$pm_gfb" ]; then
     pm_gfb_endpoint=$(awk -F' [|] ' '{gsub(/^[ \t]+|[ \t]+$/,"",$6); print $6; exit}' "$pm_gfb" 2>/dev/null || true)
     case "$pm_gfb_endpoint" in
-        /*gfreal.git) pass "gitfile endpoint beats the sibling .git directory (HIMMEL-3737)" ;;
+        /*gfreal.git) pass "gitfile endpoint beats the sibling .git directory" ;;
         *) fail "sibling .git directory chosen over the gitfile: '$pm_gfb_endpoint'" "out: $out" ;;
     esac
 else
@@ -865,7 +865,7 @@ pm_gfrel="$PB/.git/cr-pending/feat/pub"
 if [ "$rc" -eq 0 ] && [ -f "$pm_gfrel" ]; then
     pm_gfrel_endpoint=$(awk -F' [|] ' '{gsub(/^[ \t]+|[ \t]+$/,"",$6); print $6; exit}' "$pm_gfrel" 2>/dev/null || true)
     case "${pm_gfrel_endpoint}" in
-        /*gfreal.git) pass "relative gitdir joined against the gitfile directory (HIMMEL-6085)" ;;
+        /*gfreal.git) pass "relative gitdir joined against the gitfile directory" ;;
         *) fail "relative gitdir resolved against the wrong directory: '${pm_gfrel_endpoint}'" "out: $out" ;;
     esac
 else
@@ -883,7 +883,7 @@ pm_sym="$PB/.git/cr-pending/feat/pub"
 if [ "$rc" -eq 0 ] && [ -f "$pm_sym" ]; then
     pm_sym_endpoint=$(awk -F' [|] ' '{gsub(/^[ \t]+|[ \t]+$/,"",$6); print $6; exit}' "$pm_sym" 2>/dev/null || true)
     case "${pm_sym_endpoint}" in
-        /*symreal/a/symrepo.git) pass "symlink + .. resolved physically (HIMMEL-6085)" ;;
+        /*symreal/a/symrepo.git) pass "symlink + .. resolved physically" ;;
         *) fail "logical resolution diverged from git's physical resolution: '${pm_sym_endpoint}'" "out: $out" ;;
     esac
 else
@@ -898,7 +898,7 @@ pm_gfsuf="$PB/.git/cr-pending/feat/pub"
 if [ "$rc" -eq 0 ] && [ -f "$pm_gfsuf" ]; then
     pm_gfsuf_endpoint=$(awk -F' [|] ' '{gsub(/^[ \t]+|[ \t]+$/,"",$6); print $6; exit}' "$pm_gfsuf" 2>/dev/null || true)
     case "${pm_gfsuf_endpoint}" in
-        /*gfreal.git) pass "gitfile at <path>.git followed (HIMMEL-6085)" ;;
+        /*gfreal.git) pass "gitfile at <path>.git followed" ;;
         *) fail "gitfile at <path>.git not followed: '${pm_gfsuf_endpoint}'" "out: $out" ;;
     esac
 else
@@ -908,19 +908,19 @@ fi
 echo "TEST: HIMMEL-3737 -- a relative file that is not a gitfile still fails closed"
 printf 'not a gitfile\n' > "$TMP_ROOT/plainfile"
 rc=0; out=$(cd "$PB" && bash "$HOOK" relremote "../plainfile" <<< "refs/heads/feat/pub $pb_tip refs/heads/feat/pub $Z40" 2>&1) || rc=$?
-if [ "$rc" -eq 2 ]; then pass "non-gitfile relative file -> exit 2 (HIMMEL-3737)"; else fail "non-gitfile relative file -> expected exit 2 got $rc" "out: $out"; fi
+if [ "$rc" -eq 2 ]; then pass "non-gitfile relative file -> exit 2"; else fail "non-gitfile relative file -> expected exit 2 got $rc" "out: $out"; fi
 
 echo "TEST: push to a remote with NO local tracking ref -> fail CLOSED naming the missing ref"
 rc=0; out=$(cd "$PB" && bash "$HOOK" nowhere "file:///nowhere.git" <<< "refs/heads/feat/pub $pb_tip refs/heads/feat/pub $Z40" 2>&1) || rc=$?
 if [ "$rc" -eq 2 ]; then pass "unfetched pushed remote -> exit 2 (fail closed)"; else fail "unfetched pushed remote -> expected exit 2 got $rc" "out: $out"; fi
 case "$out" in
     *"no tracking ref refs/remotes/nowhere/main for pushed remote 'nowhere'"*)
-        pass "refusal names the missing tracking ref (reason-specific, HIMMEL-1554)" ;;
+        pass "refusal names the missing tracking ref (reason-specific)" ;;
     *)
         fail "refusal must name refs/remotes/nowhere/main" "out: $out" ;;
 esac
 
-echo "TEST: explicit-URL push (no named remote) resolves the FORK's OWN base (HIMMEL-3477)"
+echo "TEST: explicit-URL push (no named remote) resolves the FORK's OWN base"
 FX="$TMP_ROOT/forkbase"
 git init -q -b main "$FX"
 touch "$FX/.single-writer"
@@ -973,7 +973,7 @@ case "$out" in
         fail "unexpected refusal message" "out: $out" ;;
 esac
 
-echo "TEST: explicit-URL push after the fork REWINDS its default branch -> scratch ref still refreshes (HIMMEL-3477 codex-1 round 3)"
+echo "TEST: explicit-URL push after the fork REWINDS its default branch -> scratch ref still refreshes"
 # The scratch ref refs/cr/<hash>/fork-head is reused across pushes to the SAME
 # fork URL. Rewind the fork's bare "main" backwards (non-fast-forward from the
 # ref's currently-fetched value) and push again: an unforced fetch refspec
@@ -988,7 +988,7 @@ else
     fail "rewound fork -> expected exit 0 + base=$fx_origin_tip, got rc=$rc base='$fxm_rewind_base'" "out: $out"
 fi
 
-echo "TEST: explicit-URL push does not clobber the caller's own FETCH_HEAD (HIMMEL-3477 CR round 4, CodeRabbit)"
+echo "TEST: explicit-URL push does not clobber the caller's own FETCH_HEAD"
 printf 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\t\tsentinel from a real manual fetch moments earlier\n' > "$FX/.git/FETCH_HEAD"
 fetch_head_before=$(cat "$FX/.git/FETCH_HEAD")
 rc=0; out=$(cd "$FX" && bash "$HOOK" "$FORK_URL" "$FORK_URL" <<< "refs/heads/feat/urlpush $fx_feat_sha refs/heads/feat/urlpush $Z40" 2>&1) || rc=$?
@@ -1044,7 +1044,7 @@ echo "TEST: HIMMEL-1565 -- an https PAT carried as a bare username (no password)
 rc=0; out=$(cd "$REPO" && bash "$HOOK" origin "https://ghp_TOKEN@example.com/repo.git" <<< "refs/heads/feat/scrub $scrub_sha refs/heads/feat/scrub $Z40" 2>&1) || rc=$?
 sm_tok_endpoint=$(awk -F' [|] ' '{gsub(/^[ \t]+|[ \t]+$/,"",$6); print $6; exit}' "$sm" 2>/dev/null || true)
 if [ "$rc" -eq 0 ] && [ "$sm_tok_endpoint" = "https://example.com/repo.git" ]; then
-    pass "https bare-username PAT stripped: endpoint is https://example.com/repo.git (HIMMEL-1565)"
+    pass "https bare-username PAT stripped: endpoint is https://example.com/repo.git"
 else
     fail "expected the PAT stripped, got '$sm_tok_endpoint' (rc=$rc)" "out: $out"
 fi
@@ -1058,7 +1058,7 @@ echo "TEST: CodeRabbit (dd570f08) -- an '@' in the query string or fragment is n
 rc=0; out=$(cd "$REPO" && bash "$HOOK" origin "https://example.com?contact=alice@example.org" <<< "refs/heads/feat/scrub $scrub_sha refs/heads/feat/scrub $Z40" 2>&1) || rc=$?
 sm_q_endpoint=$(awk -F' [|] ' '{gsub(/^[ \t]+|[ \t]+$/,"",$6); print $6; exit}' "$sm" 2>/dev/null || true)
 if [ "$rc" -eq 0 ] && [ "$sm_q_endpoint" = "https://example.com?contact=alice@example.org" ]; then
-    pass "query-string '@' left untouched, host is still example.com (HIMMEL-1565, CodeRabbit dd570f08)"
+    pass "query-string '@' left untouched, host is still example.com"
 else
     fail "expected the query string preserved and host to stay example.com, got '$sm_q_endpoint'" "out: $out"
 fi
@@ -1095,7 +1095,7 @@ git -C "$REPO" -c user.email=t@test.com -c user.name=test commit -q -m "code"
 foreign_sha=$(git -C "$REPO" rev-parse --verify refs/heads/feat/foreign-1809)
 foreign_line="refs/heads/feat/foreign-1809 $foreign_sha refs/heads/feat/foreign-1809 $Z40"
 
-echo "TEST: pushing a branch that is not the checked-out one -> refused (HIMMEL-1809)"
+echo "TEST: pushing a branch that is not the checked-out one -> refused"
 git -C "$REPO" checkout -q main
 rc=0; out=$(run_hook_gated "$foreign_line") || rc=$?
 if [ "$rc" -eq 2 ]; then
@@ -1111,7 +1111,7 @@ case "$out" in
 esac
 case "$out" in
     *"LAUNCHING shell"*)
-        fail "refusal must not say a per-call prefix cannot reach the hook (HIMMEL-5360)" "out: $out" ;;
+        fail "refusal must not say a per-call prefix cannot reach the hook" "out: $out" ;;
     *"PUSH_FOREIGN_REF_OK=1 git push"*)
         pass "refusal names the per-command prefix remedy" ;;
     *)

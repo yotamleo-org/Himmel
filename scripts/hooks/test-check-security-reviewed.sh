@@ -83,7 +83,7 @@ if [ "$empty_mktemp_rc" -ne 0 ] && [ "$empty_mktemp_before" = "$empty_mktemp_aft
         [ -z "$(git -C "$empty_mktemp_caller" status --porcelain)" ]; then
     echo "PASS HIMMEL-1673 empty mktemp fails closed without committing in cwd"
 else
-    echo "FAIL HIMMEL-1673 empty mktemp guard (rc=$empty_mktemp_rc before=$empty_mktemp_before after=$empty_mktemp_after)"
+    echo "FAIL empty mktemp guard (rc=$empty_mktemp_rc before=$empty_mktemp_before after=$empty_mktemp_after)"
     FAILED=$((FAILED + 1))
 fi
 rm -rf "$empty_mktemp_caller" "$empty_mktemp_stub"
@@ -406,7 +406,7 @@ fixture_rc=$?
 # to exercise the >64KB SIGPIPE path, so PROVE the range was actually built
 # before asserting a hook verdict on it.
 if [ "$fixture_rc" -ne 0 ]; then
-    echo "FAIL HIMMEL-1115: >64KB fixture setup failed (rc=$fixture_rc); cannot assert on a broken fixture"
+    echo "FAIL >64KB fixture setup failed (rc=$fixture_rc); cannot assert on a broken fixture"
     FAILED=$((FAILED + 1))
 else
     # `git log | wc -c` cannot SIGPIPE — wc reads to EOF and never exits
@@ -415,10 +415,10 @@ else
     # $((range_bytes)) coerces to a clean integer for the compare.
     range_bytes=$(git -C "$d" log --format=%B main..HEAD | wc -c)
     if [ "$((range_bytes))" -le 65536 ]; then
-        echo "FAIL HIMMEL-1115: >64KB range collapsed to $((range_bytes)) bytes (<= 65536); SIGPIPE path NOT exercised"
+        echo "FAIL >64KB range collapsed to $((range_bytes)) bytes (<= 65536); SIGPIPE path NOT exercised"
         FAILED=$((FAILED + 1))
     else
-        assert_rc "HIMMEL-1115: >64KB range, attestation in newest commit" 0 "$(run_in "$d")"
+        assert_rc ">64KB range, attestation in newest commit" 0 "$(run_in "$d")"
     fi
 fi
 rm -rf "$d"
