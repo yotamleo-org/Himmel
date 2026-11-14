@@ -660,14 +660,20 @@ check "(9853) a tick line without rm-refused= reads no tsv (rc 124)" 124 "$rc"
 rf_line '4:ABC-2@R-1,ABC-5@R-2,ABC-7@R-3'
 rf_arm "$I" "$WORK/rf4.out" 15
 check "(9853) a new operator pair wakes once, naming only itself" "WAKE rm-refused ABC-7@R-3 — fix: new ask" "$(rf_wakes "$WORK/rf4.out")"
+printf 'ABC-8\tR-5\tunknown key\t?\n' >> "$rf_tsv"
+rm -f "$I.wait.refused.day"
+rf_line '5:ABC-2@R-1,ABC-5@R-2,ABC-7@R-3'
+rf_arm "$I" "$WORK/rf5.out" 15
+check "(9853) a pair whose operator status is unknown is neither woken nor digested" "WAKE rm-refused-digest 1 new: ABC-6@R-4" "$(rf_wakes "$WORK/rf5.out")"
+check "(9853) and stays out of the marker until its status is known" 0 "$(grep -c '^ABC-8@' "$I.wait.refused" 2>/dev/null)"
 
 I="$(new_inbox rfd)"
 : > "$rf_tsv"
-for i in $(seq 101 125); do printf 'HIMMEL-%s\tR-%s\tother\t0\n' "$i" "$i" >> "$rf_tsv"; done
+for i in $(seq 101 125); do printf 'ABC-%s\tR-%s\tother\t0\n' "$i" "$i" >> "$rf_tsv"; done
 rf_line '25:'
 rf_arm "$I" "$WORK/rfd1.out" 15
 check "(9853) 25 new non-operator refused asks give one digest line listing 20" \
-    "WAKE rm-refused-digest 25 new: $(seq 101 120 | sed 's/.*/HIMMEL-&@R-&/' | paste -sd, -)" "$(rf_wakes "$WORK/rfd1.out")"
+    "WAKE rm-refused-digest 25 new: $(seq 101 120 | sed 's/.*/ABC-&@R-&/' | paste -sd, -)" "$(rf_wakes "$WORK/rfd1.out")"
 printf 'ABC-126\tR-126\tother\t0\n' >> "$rf_tsv"
 rf_line '26:'
 rf_arm "$I" "$WORK/rfd2.out" 4

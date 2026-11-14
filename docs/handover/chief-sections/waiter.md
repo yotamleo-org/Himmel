@@ -85,7 +85,9 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     with `--doc` and the tick's `rm-refused=` field on the line, the waiter reads the tick's
     `rm-refused-<doc stem>.tsv` (KEY, ruling, reason, asks_operator) from `$TICK_STATE_DIR`. Each new
     operator-asked pair wakes you once, one line each, with the ruling's reason cut to 200 characters; the
-    other new pairs arrive as one digest a day (the first 20 listed), never sooner. The marker
+    other new pairs arrive as one digest a day (the first 20 listed), never sooner. A pair whose operator status
+    reads `?` (the mirror does not hold the key) waits, neither woken nor digested, until a tick knows it; a tick
+    whose mirror is unreadable prints no `rm-refused=` and keeps the last tsv. The marker
     `<inbox>.wait.refused` holds the pairs already reported and keeps only those the tsv still lists;
     `<inbox>.wait.refused.day` holds the digest's UTC day. A line without the field reads nothing.
     Act on it as release-manager.md says: ask again with the operator's words, or ack a right refusal.

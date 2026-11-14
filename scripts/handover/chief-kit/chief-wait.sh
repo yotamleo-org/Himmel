@@ -316,8 +316,9 @@
 # rm-refused-<doc stem>.tsv under $TICK_STATE_DIR is read. Each operator-asked KEY@ruling new to the
 # marker `<inbox>.wait.refused` wakes once (`WAKE rm-refused <KEY>@<ruling> — fix: <reason, 200 chars>`,
 # one line each); the other new pairs wait for one digest a day (`WAKE rm-refused-digest <n> new:
-# <KEY>@<ruling>,...`, the first 20; the UTC day in `<inbox>.wait.refused.day`). A woken pair joins the
-# marker, which keeps only pairs the tsv still lists; an absent field reads nothing and keeps it.
+# <KEY>@<ruling>,...`, the first 20; the UTC day in `<inbox>.wait.refused.day`). A pair whose operator status
+# is `?` (the mirror does not hold the key) is neither woken nor digested until it is known. A woken pair joins
+# the marker, which keeps only pairs the tsv still lists; an absent field reads nothing and keeps it.
 # procs=...,unwatched=N1+N2 (a live worker outside the fleet manifest; tick.sh drops other
 # chiefs' workers) wakes the same way (`WAKE unwatched <labels>`): first sight, a label new
 # to the marker `<inbox>.wait.unwatched`, or every CHIEF_WAIT_UNWATCHED_REWAKE_MIN (default
@@ -1471,7 +1472,7 @@ pair = lambda r: "%s@%s" % (r[0], r[1])
 fresh = [r for r in rows if pair(r) not in seen]
 lines = ["WAKE rm-refused %s — fix: %s" % (pair(r), r[2][:200]) for r in fresh if r[3] == "1"]
 woke = [pair(r) for r in fresh if r[3] == "1"]
-other = [pair(r) for r in fresh if r[3] != "1"]
+other = [pair(r) for r in fresh if r[3] == "0"]
 if other and day != today:
     lines.append("WAKE rm-refused-digest %d new: %s" % (len(other), ",".join(other[:20])))
     woke += other

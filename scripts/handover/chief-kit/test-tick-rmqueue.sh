@@ -9,7 +9,7 @@
 set -uo pipefail
 
 if [ "$(uname -s)" = Darwin ]; then
-  echo "SKIP - tick.sh is Linux-only by design (tick.sh:11-12); ABC-7641"
+  echo "SKIP - tick.sh is Linux-only by design (tick.sh:11-12); HIMMEL-7641"
   exit 0
 fi
 
@@ -253,6 +253,12 @@ mkdir -p "$W/state/.rm-refused-chief.tsv.tmp" "$W/state/.release-state-chief.jso
 out="$(tick)"
 check "another writer's temp file never blocks publication: each tick writes its own" '3:ABC-2@R-R1-0001|3' \
     "$(field rm-refused "$out")|$(wc -l < "$W/state/rm-refused-chief.tsv" 2>/dev/null | tr -d ' ')"
+rf_before="$(cat "$W/state/rm-refused-chief.tsv")"
+python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); d["inputs"]["mirror"]="UNKNOWN"; [a.update(asks_operator=None) for a in d["refused_asks"]]; d["asks_operator_keys"]=[]; print(json.dumps(d))' "$GOLDEN" > "$W/state.json"
+out="$(tick)"
+check 'an unknown mirror shows no rm-refused field' '' "$(field rm-refused "$out")"
+check 'and leaves the tsv as the last known read' "$rf_before" "$(cat "$W/state/rm-refused-chief.tsv" 2>/dev/null)"
+check 'and deletes release-state-<stem>.json rather than claim no operator keys' 'gone' "$([ -e "$W/state/release-state-chief.json" ] || echo gone)"
 
 echo
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

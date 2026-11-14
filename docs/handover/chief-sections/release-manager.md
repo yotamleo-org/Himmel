@@ -64,8 +64,9 @@ release is declared (`jira release state <R>` prints a status other than
   operator-asked one by asking again with the operator's words (`--decision
   --words`), recording an `O-` record, or closing the ticket. A refusal you hold
   right on any other key ends with `jira release ack <R> --ruling <R-id> --reason
-  "<why the refusal is right>"`; the ack is refused for an operator-asked key and
-  inside a worker you spawned.
+  "<why the refusal is right>"`; the ack is refused for an operator-asked key, for a
+  key the mirror does not hold, and inside a worker you spawned. With the mirror
+  unreadable a refused ask's `asks_operator` reads `null`, and the tick skips the field.
 - **The batch reads only disk.** Anything the RM must weigh goes in the
   request's `--why` or in an operator `O-` record; nothing said in a message
   reaches it.

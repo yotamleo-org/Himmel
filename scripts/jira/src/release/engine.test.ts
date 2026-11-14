@@ -3164,6 +3164,30 @@ describe('a ruled-away operator ask wakes the chief', () => {
     expect(state(ctx()).refused_asks.map((x) => x.key)).toEqual(['K-5']);
   });
 
+  it('an unreadable mirror leaves asks_operator unknown, never false', async () => {
+    await setup();
+    mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-5', fixVersions: [], labels: ['operator-directed'] }]);
+    const r = await refuseIntake('K-5');
+    writeFileSync(join(root, 'mirror', '.cursor.json'), JSON.stringify({ lastSync: '2026-10-21T09:00:00.000Z', complete: false }));
+    const s = state(ctx());
+    expect(s.inputs.mirror).toBe('UNKNOWN');
+    expect(s.refused_asks).toEqual([{ key: 'K-5', ruling: r.id, req: r.req, reason: "name the operator's words for K-5", asks_operator: null }]);
+  });
+
+  it('a key the mirror does not hold is unknown, not a non-operator ask', async () => {
+    await setup();
+    mirror([{ key: 'K-1', fixVersions: ['v1'] }]);
+    await refuseIntake('K-6');
+    expect(state(ctx()).refused_asks.map((x) => x.asks_operator)).toEqual([null]);
+  });
+
+  it('ack refuses a key the mirror does not hold', async () => {
+    await setup();
+    mirror([{ key: 'K-1', fixVersions: ['v1'] }]);
+    const r = await refuseIntake('K-6');
+    expect(() => ack(at(), { ruling: r.id, reason: 'right' })).toThrow(/K-6 is not in the Jira mirror/);
+  });
+
   it('ack refuses inside a chief-spawned worker', async () => {
     await setup();
     mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-6', fixVersions: [] }]);

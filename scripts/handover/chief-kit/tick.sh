@@ -179,9 +179,10 @@ TICK_RMQ_TIMEOUT. Not in chief-wait's action key.
 
 rm-refused=<n>:<KEY>@<ruling>,... follows rm-queue= and is ABSENT unless the same OK state read lists refused
 asks (a backlog-to-version request ruled away and not yet ended): n counts all, the list names the operator-asked
-ones. Each OK read writes rm-refused-<doc stem>.tsv (KEY, ruling, reason, asks_operator 1|0) and
-release-state-<doc stem>.json ({ts, status, words_records, asks_operator_keys}) under $TICK_STATE_DIR; any other
-read deletes both. Not in chief-wait's action key: chief-wait reads the tsv (WAKE rm-refused, rm-refused-digest).
+ones. Each OK read writes rm-refused-<doc stem>.tsv (KEY, ruling, reason, asks_operator 1|0, or ? for a key the
+mirror does not hold) and release-state-<doc stem>.json ({ts, status, words_records, asks_operator_keys}) under
+$TICK_STATE_DIR; any other read deletes both. An OK read whose mirror input is UNKNOWN prints no field, keeps the
+tsv and deletes the json. Not in chief-wait's action key: chief-wait reads the tsv (WAKE rm-refused, rm-refused-digest).
 
 held=<n>:<sig8> unfiled=<n> repair=off:<why> follow rm-queue= and are ABSENT unless set: held= is
 the version repair's held key count and the first 8 hex of its held signature (repair-held.json in the
@@ -2890,13 +2891,20 @@ d = json.load(sys.stdin)
 out, stem = sys.argv[1], sys.argv[2]
 asks = [a for a in d.get("refused_asks") or [] if isinstance(a, dict)]
 clean = lambda s: " ".join(str(s).split())
+if (d.get("inputs") or {}).get("mirror") == "UNKNOWN":
+    try:
+        os.remove(os.path.join(out, "release-state-%s.json" % stem))
+    except FileNotFoundError:
+        pass
+    sys.exit(0)
 os.makedirs(out, exist_ok=True)
 def put(name, text):
     fd, tmp = tempfile.mkstemp(dir=out, prefix="." + name + ".")
     with os.fdopen(fd, "w") as f:
         f.write(text)
     os.replace(tmp, os.path.join(out, name))
-put("rm-refused-%s.tsv" % stem, "".join("%s\t%s\t%s\t%d\n" % (clean(a.get("key")), clean(a.get("ruling")), clean(a.get("reason")), 1 if a.get("asks_operator") is True else 0) for a in asks))
+flag = lambda a: {True: "1", False: "0"}.get(a.get("asks_operator"), "?")
+put("rm-refused-%s.tsv" % stem, "".join("%s\t%s\t%s\t%s\n" % (clean(a.get("key")), clean(a.get("ruling")), clean(a.get("reason")), flag(a)) for a in asks))
 ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 put("release-state-%s.json" % stem, json.dumps({"ts": ts, "status": d.get("status"), "words_records": d.get("words_records") or [], "asks_operator_keys": d.get("asks_operator_keys") or []}) + "\n")
 if asks:

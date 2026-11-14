@@ -1546,7 +1546,8 @@ export interface StateOut extends ReleaseState {
   asks_operator_keys: string[];
 }
 
-export interface RefusedAsk { key: string; ruling: string; req: string; reason: string; asks_operator: boolean }
+/** asks_operator is null when the mirror cannot say: it is unreadable, or does not hold the key. */
+export interface RefusedAsk { key: string; ruling: string; req: string; reason: string; asks_operator: boolean | null }
 export interface WordsRecord { id: string; decision: string | null; keys: string[]; op: string | null; verbatim: string }
 
 const factsOf = (i: IssueSnap | undefined): TicketFacts | null =>
@@ -1577,7 +1578,7 @@ function refusedAsks(l: Loaded, issues: Map<string, IssueSnap> | null): RefusedA
     if (acked.has(r.id) || askedAgain || (named.get(key) ?? -Infinity) > since) continue;
     const issue = issues?.get(key);
     if (issue && terminalOf(issue) !== null) continue;
-    out.push({ key, ruling: r.id, req: r.req, reason: r.reason, asks_operator: asksOperator(factsOf(issue)) });
+    out.push({ key, ruling: r.id, req: r.req, reason: r.reason, asks_operator: issue ? asksOperator(factsOf(issue)) : null });
   }
   return out.sort((a, b) => a.key.localeCompare(b.key, 'en', { numeric: true }));
 }
@@ -1599,6 +1600,7 @@ export function ack(ctx: Ctx, o: { ruling: string; reason: string }): EventRow {
     if (!issues) throw new Error('release ack: the Jira mirror is unreadable, so whether the key is operator-asked is unknown; sync it first');
     const a = refusedAsks(l, issues).find((x) => x.ruling === o.ruling);
     if (!a) throw new Error(`release ack: ${o.ruling} is no open refused ask of ${ctx.release}`);
+    if (a.asks_operator === null) throw new Error(`release ack: ${a.key} is not in the Jira mirror, so whether it is operator-asked is unknown; sync it first`);
     if (a.asks_operator) {
       throw new Error(`release ack: ${a.key} is operator-asked (labelled operator-directed, or High or Highest); its refusal ends only by a new request, an O- record of the operator's words, or the ticket closing`);
     }
