@@ -31,6 +31,7 @@
 # signed verdict rules GO on <head-sha> for this PR (go_trust_verdict).
 # --repo <owner/repo> reads the judge verdicts from that adopted repo's bucket (where
 # write-verdict.sh --repo writes them); without it, today's harness bucket.
+# The head-branch read rides the read token through scripts/lib/gh-read.sh, main when none is set.
 # JIRA_CMD and GH_CMD replace the CLIs (tests).
 #
 # Exit codes: 0 recorded / PASS, 1 check refused, 2 usage or cannot evaluate (a head-branch
@@ -77,6 +78,17 @@ _TIMEOUT_BIN=""
 # shellcheck source=scripts/lib/timeout-bin.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""  # swallow-ok: an empty _TIMEOUT_BIN reads without the bound, as go.sh does
+# with no GH_CMD seam the read rides the read token (gh-read.sh); a station with none reads on main, silently, as before
+CRD_TOK=main
+if [ -z "${GH_CMD:-}" ] && [ -f "$HERE/../../lib/gh-read.sh" ]; then
+    # shellcheck source=scripts/lib/gh-read.sh
+    # shellcheck disable=SC1091
+    . "$HERE/../../lib/gh-read.sh"
+    _ghr_load
+    if [ -n "$_GHR_TOK" ]; then CRD_TOK="read"; else export GH_READ_QUIET=1; fi
+    GH="$HERE/../../lib/gh-read.sh"
+    [ "$GH_ERRF" = /dev/null ] || export GH_READ_REFUSED_FILE="$GH_ERRF.refused"
+fi
 BRANCH_RC=0
 if [ "$CRD_T" -gt 0 ] && [ -n "$_TIMEOUT_BIN" ]; then
     BRANCH=$("$_TIMEOUT_BIN" -k 5 "$CRD_T" "$GH" pr view "$PR" --json headRefName -q .headRefName 2>"$GH_ERRF") || BRANCH_RC=$?
@@ -84,34 +96,37 @@ else
     BRANCH=$("$GH" pr view "$PR" --json headRefName -q .headRefName 2>"$GH_ERRF") || BRANCH_RC=$?
 fi
 [ "$BRANCH_RC" -eq 0 ] || BRANCH=""
+# the router's row names the token that refused last (main after a fallback); a cut by our own bound leaves none
+CRD_REFUSED_TOK=""
+[ ! -s "${GH_READ_REFUSED_FILE:-}" ] || read -r CRD_REFUSED_TOK _ < "$GH_READ_REFUSED_FILE" || true  # read-sink-ok: our own mktemp buffer; swallow-ok: an unread row names the token the read set out on
 if [ -z "$BRANCH" ]; then
     crd_report() {
         (
             # shellcheck source=scripts/lib/gh-quota.sh
             # shellcheck disable=SC1091
             . "$HERE/../../lib/gh-quota.sh" 2>/dev/null || exit 0
-            ghq_line main graphql cr-disposition.sh "$1" "$CRD_T" >&2
+            ghq_line "${CRD_REFUSED_TOK:-$CRD_TOK}" graphql cr-disposition.sh "$1" "$CRD_T" >&2
             [ "$VERB" = check ] && ghq_mark_blocked "$PR" "$SHA" cr-disposition.sh graphql "$1"
             exit 0
         ) || true
     }
     if [ "$BRANCH_RC" -eq 124 ] || [ "$BRANCH_RC" -eq 137 ]; then
-        [ "$GH_ERRF" = /dev/null ] || rm -f "$GH_ERRF"
+        [ "$GH_ERRF" = /dev/null ] || rm -f "$GH_ERRF" "$GH_ERRF.refused"
         crd_report stall
         echo "cr-disposition: reading PR #$PR's head branch timed out after ${CRD_T}s; nothing was judged" >&2
         exit 2
     fi
     if ( . "$HERE/../../lib/gh-quota.sh" 2>/dev/null && ghq_is_rate_limited "$(cat "$GH_ERRF" 2>/dev/null)" ); then  # read-sink-ok: our own mktemp buffer; swallow-ok: an unreadable buffer or lib reads as not a rate limit, which falls to the plain unreadable-branch exit 2 below
-        [ "$GH_ERRF" = /dev/null ] || rm -f "$GH_ERRF"
+        [ "$GH_ERRF" = /dev/null ] || rm -f "$GH_ERRF" "$GH_ERRF.refused"
         crd_report rate-limit
         echo "cr-disposition: GitHub rate limit hit reading PR #$PR's head branch; retry after the quota returns" >&2
         exit 2
     fi
-    [ "$GH_ERRF" = /dev/null ] || rm -f "$GH_ERRF"
+    [ "$GH_ERRF" = /dev/null ] || rm -f "$GH_ERRF" "$GH_ERRF.refused"
     echo "cr-disposition: cannot read PR #$PR's head branch" >&2
     exit 2
 fi
-[ "$GH_ERRF" = /dev/null ] || rm -f "$GH_ERRF"
+[ "$GH_ERRF" = /dev/null ] || rm -f "$GH_ERRF" "$GH_ERRF.refused"
 
 
 disp_mac() {  # <finding_id> <target_head> <disposition> <source> <attest>

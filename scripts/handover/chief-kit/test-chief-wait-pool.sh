@@ -873,5 +873,40 @@ check "(R9d) the unresolved line is byte-identical across the merge" "${s2w_line
 check "(R9d) the detail lines differ in their <n>-behind" "@$s2_sha=0-behind@$s2_sha=1-behind" "$(printf '%s' "${s2w_det[1]}" | grep -o "@$s2_sha=[0-9]*-behind")$(printf '%s' "${s2w_det[3]}" | grep -o "@$s2_sha=[0-9]*-behind")"
 rm -f "$STUB/pool.rows" "$STUB/dispositions"
 
+# --- 9479 T11: the READY wake's CI read rides the read token ----------------------------
+# ready-check and cr-disposition are stubbed; a gh first on PATH logs the token of each `pr checks` and passes it.
+T11="$WORK/t11"; mkdir -p "$T11/bin" "$T11/root" "$T11/noroot" "$T11/quota"
+printf 'himmel_github_token_vm2=ghp_CWREAD0123456789\n' > "$T11/root/.env"
+: > "$T11/noroot/.env"
+cat > "$T11/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+case "$1 $2" in "pr checks") printf '%s %s %s %s\n' "${GH_TOKEN:-main}" "$1" "$2" "$3" >> "$T11_LOG"; printf 'pass\n'; exit 0 ;; esac
+exit 1
+EOF
+printf '#!/usr/bin/env bash\nprintf "[PASS] 7. coverage\\n"\nexit 0\n' > "$T11/ready-check.sh"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$T11/disposition.sh"
+sed 's/capacity=UNDERFILLED:7/capacity=ok/' "$STUB/tick.line" > "$T11/tick.line"
+printf '#!/usr/bin/env bash\ncat "%s"\n' "$T11/tick.line" > "$T11/tick.sh"
+chmod +x "$T11/bin/gh" "$T11/ready-check.sh" "$T11/disposition.sh" "$T11/tick.sh"
+git init -q "$T11/repo"
+T11_SHA=0123456789abcdef0123456789abcdef01234567
+t11_wait() { # <name> <env root>: one READY wake; sets t11_out and the token log
+    local I d m
+    I="$(new_inbox "t11-$1")"; : > "$I.announced"; : > "$T11/$1.log"
+    d="$WORK/t11-$1/worker-N1-x.md"; printf '# worker on branch docs/x\n\n## Results\n- 11:00 READY 77 %s GREEN\n' "$T11_SHA" > "$d"
+    m="$WORK/t11-$1/fleet.json"; printf '{"schema":1,"workers":[{"label":"N1","doc":"%s"}]}\n' "$d" > "$m"
+    env -u GH_READ_OFF -u himmel_github_token_vm2 -u GH_TOKEN PATH="$T11/bin:$PATH" GH_READ_ENV_ROOT="$2" T11_LOG="$T11/$1.log" \
+        HIMMEL_QUOTA_DIR="$T11/quota" HIMMEL_REPO="$T11/repo" HIMMEL_FLAG_AUTO_GO=off CHIEF_WAIT_TICK="$T11/tick.sh" \
+        CHIEF_WAIT_READY_CHECK="$T11/ready-check.sh" CHIEF_WAIT_DISPOSITION="$T11/disposition.sh" \
+        timeout 8 bash "$WAIT" "$I" --workers-from "$m" > "$T11/$1.out" 2>/dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
+    t11_out="$(grep '^WAKE ready ' "$T11/$1.out")"
+}
+t11_wait read "$T11/root"
+check "T11: a READY wakes with its CI read" "ci=GREEN" "$(printf '%s\n' "$t11_out" | grep -oE 'ci=[A-Z]+')"
+check "T11: the waiter's CI read goes out on the read token" "ghp_CWREAD0123456789 pr checks 77" "$(cat "$T11/read.log")"
+t11_wait main "$T11/noroot"
+check "T11 RED control: with no read token configured the READY still wakes" "ci=GREEN" "$(printf '%s\n' "$t11_out" | grep -oE 'ci=[A-Z]+')"
+check "T11 RED control: its CI read goes out on main, as today" "main pr checks 77" "$(cat "$T11/main.log")"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

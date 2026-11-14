@@ -28,6 +28,8 @@
 #                                       unions buckets and routes, stores / as %2F, and
 #                                       never fails the caller
 #   ghq_routes <caller>                 the tokens a caller's reads ride: read,main or main
+#   ghq_scan_token <caller>             the token a scan gates on: read when its reads ride
+#                                       the read token and one is configured, else main
 #
 # Numbers, one job each:
 #   GH_BUDGET_FLOOR      200   a gate's wait (gh-graphql-budget.sh), and quota return
@@ -82,8 +84,16 @@ ghq_bucket_of() {
 ghq_routes() {
     case "${1##*/}" in
         ready-check|ready-check.sh|check-ci|check-ci.sh|go|go.sh|tick|tick.sh|ready-go|ready-go.sh|shepherd|shepherd.sh) echo read,main ;;
+        cr-disposition|cr-disposition.sh|next-dispatchable|next-dispatchable.sh|ticket-status|ticket-status.sh) echo read,main ;;
         *) echo main ;;
     esac
+}
+
+ghq_scan_token() {
+    case ",$(ghq_routes "${1:-}")," in
+        *,read,*) [ -z "$(_ghb_read_token)" ] || { echo read; return 0; } ;;
+    esac
+    echo main
 }
 
 _ghq_observed() {

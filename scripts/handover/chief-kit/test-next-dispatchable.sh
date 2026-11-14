@@ -2774,6 +2774,39 @@ q6_healthy="$Q6_OUT"
 q6run healthy -- --priority-pool-only
 [ "$Q6_OUT" = "$q6_healthy" ] && pass "T6 RED control: two healthy runs print the same bytes" || fail "T6 RED control: two healthy runs print the same bytes"
 
+# 9479 T11: with no NEXT_DISPATCH_GH_CMD seam the reads ride the read token (gh-read.sh) and the scan gate reads its row.
+# A gh first on PATH logs each call's token and hands it to the T6 stub; probes (api -i) are left out of the read log.
+T11B="$WORK/t11bin"; mkdir -p "$T11B" "$WORK/t11root"
+printf 'himmel_github_token_vm2=ghp_NDREAD0123456789\n' > "$WORK/t11root/.env"
+cat > "$T11B/gh" <<'EOF'
+#!/usr/bin/env bash
+[ "${2:-}" = -i ] || printf '%s %s %s\n' "${GH_TOKEN:-main}" "$1" "$2" >> "$T11_LOG"
+exec "$T11_NEXT" "$@"
+EOF
+chmod +x "$T11B/gh"
+t11run() { # <env root> <mode>: sets T11_OUT, the read log fresh
+    Q6Q="$(mktemp -d "$Q6/quota.XXXXXX")" || { fail "T11: mktemp -d failed"; return 1; }; : > "$Q6/log"; : > "$WORK/t11.log"
+    T11_OUT="$(env -u himmel_github_token_vm2 -u NEXT_DISPATCH_GH_CMD PATH="$T11B:$PATH" HIMMEL_QUOTA_DIR="$Q6Q" GH_READ_ENV_ROOT="$1" GHQ_PROBE_TIMEOUT=2 \
+        Q_MODE="$2" Q_LOG="$Q6/log" T11_LOG="$WORK/t11.log" T11_NEXT="$WORK/gh-q" NEXT_DISPATCH_MIRROR="$Q6M" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify-q" \
+        timeout -k 2 40 bash "$SUT" --top 4 --workers-from "$Q6/fleet.json" --priority-pool-only 2>/dev/null)"  # gnu-ok: the chief kit is Linux-only
+}
+t11run "$WORK/t11root" healthy
+has "T11: a run with a read token lists the pool row" "$T11_OUT" "LOCAL	HIMMEL-9801"
+has "T11: its PR list goes out on the read token" "$(cat "$WORK/t11.log")" "ghp_NDREAD0123456789 pr list"
+lacks "T11: and no read rides main" "$(cat "$WORK/t11.log")" "main "
+t11run "$WORK/t11root" gql-out
+has "T11: the scan gate pauses on the read token's row" "$T11_OUT" "# quota-pause QUOTA-PAUSE github graphql token=read"
+[ ! -s "$WORK/t11.log" ] && pass "T11: a paused run makes no read" || fail "T11: a paused run makes no read ($(head -3 "$WORK/t11.log"))"
+t11run "$WORK/t11root" from-third
+has "T11: a read refused mid-run names the read token" "$T11_OUT" "# quota-pause QUOTA-PAUSE github core token=read"
+lacks "T11: and is not retried on main (a scan)" "$(cat "$WORK/t11.log")" "main "
+t11run "$Q6/envroot" healthy
+has "T11 RED control: with no read token configured the run lists the pool row" "$T11_OUT" "LOCAL	HIMMEL-9801"
+has "T11 RED control: its PR list goes out on main, as today" "$(cat "$WORK/t11.log")" "main pr list"
+lacks "T11 RED control: no read rides a read token" "$(cat "$WORK/t11.log")" "ghp_"
+t11run "$Q6/envroot" gql-out
+has "T11 RED control: with no read token the gate pauses on main's row" "$T11_OUT" "# quota-pause QUOTA-PAUSE github graphql token=main"
+
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.
 real_hits="$(grep -rlF "$WORK" "$REAL_HOME/.himmel/state/holds" 2>/dev/null | grep -c . || true)"

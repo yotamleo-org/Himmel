@@ -486,7 +486,9 @@ unset TICKET_STATUS_NOW
 export TICKET_STATUS_QUEUE_LOCK="$tmp/lock.sh"
 unset TS_SNAPSHOT_DIR TS_EVENT TS_OWNER_HELD TS_OWNER_ROWS
 export TICKET_STATUS_STATE_DIR="$tmp/qstate"
-mkdir -p "$TICKET_STATUS_STATE_DIR/workers" "$tmp/qbin"
+mkdir -p "$TICKET_STATUS_STATE_DIR/workers" "$tmp/qbin" "$tmp/qroot" "$tmp/qnoroot"
+printf 'himmel_github_token_vm2=ghp_TSREAD0123456789\n' > "$tmp/qroot/.env"
+: > "$tmp/qnoroot/.env"
 cat > "$tmp/qjira" <<'EOF'
 #!/usr/bin/env bash
 printf '{"fields":{"status":{"name":"In Progress"},"issuetype":{"name":"Task"}}}\n'
@@ -494,6 +496,7 @@ EOF
 cat > "$tmp/qbin/gh" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$QGH_LOG"
+printf '%s %s %s\n' "${GH_TOKEN:-main}" "$1" "$2" >> "$QGH_LOG.tok"
 [ "$1 $2" != "pr list" ] || echo '[]'
 EOF
 chmod +x "$tmp/qjira" "$tmp/qbin/gh"
@@ -511,9 +514,10 @@ printf '%s/%s/%s/%s' "$TS_DERIVED" "$TS_RESULT" "$TS_STAGE" "$TS_RULE"
 EOF
 qderive() {
     local q=()
-    : > "$tmp/qgh.log"
+    : > "$tmp/qgh.log"; : > "$tmp/qgh.log.tok"
     [ "$1" = - ] || q=("HIMMEL_QUOTA_DIR=$1")
-    env -u HIMMEL_QUOTA_DIR ${q[@]+"${q[@]}"} PATH="$tmp/qbin:$PATH" QGH_LOG="$tmp/qgh.log" WORKER_SESSION_JIRA_CLI="$tmp/qjira" \
+    env -u HIMMEL_QUOTA_DIR -u himmel_github_token_vm2 ${q[@]+"${q[@]}"} GH_READ_ENV_ROOT="${QROOT:-$tmp/qnoroot}" \
+        PATH="$tmp/qbin:$PATH" QGH_LOG="$tmp/qgh.log" WORKER_SESSION_JIRA_CLI="$tmp/qjira" \
         bash "$tmp/qderive.sh" 2> "$tmp/qerr"
 }
 qplant "$tmp/q-out" 0 refused
@@ -530,6 +534,41 @@ check "9479 T8 RED control: the healthy derive reads the PR list" "$(grep -c '^p
 qplant "$tmp/q-hung" 4000 timed-out
 check "9479 T8: a timed-out probe is a pause too" "$(qderive "$tmp/q-hung")" "no-write/miss/gh/"
 check "9479 T8: named GH-STALL on stderr" "$(grep -c '^GH-STALL github read timed out' "$tmp/qerr")" 1
+
+qplant_read() { # <dir> <read graphql remaining> <read graphql state>: main healthy, the read token's row as given
+    qplant "$1" 4000 ok
+    local now; now=$(date +%s)
+    printf 'read\tgraphql\t%s\t5000\t%s\t%s\t%s\nread\tcore\t4000\t5000\t%s\t%s\tok\n' "$2" "$((now + 1800))" "$now" "$3" "$((now + 1800))" "$now" >> "$1/quota.tsv"
+}
+qplant_read "$tmp/q-rok" 4000 ok
+check "9479 T11: a healthy derive with a read token derives" "$(QROOT="$tmp/qroot" qderive "$tmp/q-rok")" "In Progress///D5"
+check "9479 T11: its PR list goes out on the read token" "$(grep -c '^ghp_TSREAD0123456789 pr list$' "$tmp/qgh.log.tok")" 1
+check "9479 T11: and no read rides main" "$(grep -c '^main ' "$tmp/qgh.log.tok")" 0
+qplant_read "$tmp/q-rout" 0 refused
+check "9479 T11: the scan gate pauses on the read token's row" "$(QROOT="$tmp/qroot" qderive "$tmp/q-rout")" "no-write/miss/gh/"
+check "9479 T11: the pause line names the read token" "$(grep -c '^QUOTA-PAUSE github graphql token=read remaining=0 .* caller=ticket-status nothing-was-judged$' "$tmp/qerr")" 1
+check "9479 T11: a paused derive makes no gh call" "$(wc -l < "$tmp/qgh.log" | tr -d ' ')" 0
+check "9479 T11 RED control: with no read token configured the derive reads on main, as today" "$(qderive "$tmp/q-rok")" "In Progress///D5"
+check "9479 T11 RED control: the PR list goes out on main" "$(grep -c '^main pr list$' "$tmp/qgh.log.tok")" 1
+
+# merge-rows-effective.py: with no MERGE_ROWS_GH seam its read rides the read token
+mkdir -p "$tmp/mrbin"
+cat > "$tmp/mrbin/gh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s %s %s %s\n' "${GH_TOKEN:-main}" "$1" "$2" "$3" >> "$MR_TOK_LOG"
+[ "$1 $2" != "pr view" ] || echo "MERGED h12"
+EOF
+chmod +x "$tmp/mrbin/gh"
+mr_t11() { # <env root>: the effective rows of PR 12's pre-merge row, the token log fresh
+    : > "$tmp/mrtok.log"
+    env -u MERGE_ROWS_GH -u himmel_github_token_vm2 PATH="$tmp/mrbin:$PATH" GH_READ_ENV_ROOT="$1" MR_TOK_LOG="$tmp/mrtok.log" \
+        python3 -I "$HERE/merge-rows-effective.py" "$tmp/mr12.jsonl" 2>/dev/null | grep -c '"pr":"12"'
+}
+printf '{"ts":"t","event":"merge","key":"HIMMEL-9102","pr":"12","head":"h12","contract":"yes","result":"pending","stage":"pre-merge"}\n' > "$tmp/mr12.jsonl"
+check "9479 T11: merge-rows keeps a merged PR's pre-merge row read through the router" "$(mr_t11 "$tmp/qroot")" 1
+check "9479 T11: merge-rows' PR read goes out on the read token" "$(grep -c '^ghp_TSREAD0123456789 pr view 12$' "$tmp/mrtok.log")" 1
+check "9479 T11 RED control: with no read token configured merge-rows reads on main" "$(mr_t11 "$tmp/qnoroot")" 1
+check "9479 T11 RED control: its PR read goes out on main, as today" "$(grep -c '^main pr view 12$' "$tmp/mrtok.log")" 1
 
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-ticket-status.sh"
