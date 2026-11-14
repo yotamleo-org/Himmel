@@ -23,8 +23,6 @@
 # the script runs exactly as without it.
 set -uo pipefail
 
-# The reporter by absolute path from this script's own location, so it still
-# resolves after the cd below and when the script runs against another repo.
 report_dir="${HOOK_LIB_TEST_REPORT_DIR:-}"
 reporter=""
 if [ -n "$report_dir" ]; then

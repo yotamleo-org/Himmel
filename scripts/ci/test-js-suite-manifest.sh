@@ -1,22 +1,4 @@
 #!/usr/bin/env bash
-# scripts/ci/test-js-suite-manifest.sh — the JS/TS suite manifest: the node
-# reporter (scripts/ci/node-suite-reporter.mjs), the writer
-# (scripts/ci/js-suite-manifest.mjs) and their ci.yml wiring.
-#
-# The writer turns each runner's own report into `ran <rc> <path>` / `skip <path>`
-# lines. Rows M1, M2 and M7 run the real node and bun runners on fixtures written
-# at run time into a throwaway git repo, so no fixture test file is tracked (the
-# selector lists any tracked *.test.* file as a suite). M3 reads a vitest 5.1.0
-# report captured on the station from six files (passed, failed, all skipped,
-# load crash, passed plus skipped, describe.skipIf(true) plus it.todo), with the
-# capture directory replaced by /CAPTURE_ROOT/vitest-capture and the vitest
-# install by /CAPTURE_ROOT/node_modules. W1 and W3 read text this repo owns:
-# they are regression rows, not a guard.
-#
-# HIMMEL_REQUIRE_BUN_TEST=1 turns a missing bun into a FAIL (CI sets it).
-#
-# Usage: bash scripts/ci/test-js-suite-manifest.sh
-# Exit codes: 0 all rows passed; 1 at least one failed.
 # shellcheck disable=SC2016  # single-quoted needles are literal ci.yml text
 set -uo pipefail
 
@@ -39,20 +21,15 @@ if ! { mkdir -p "$REPO" && git -C "$REPO" init -q && git -C "$REPO" config user.
   echo "cannot create the fixture repo" >&2; exit 1
 fi
 
-# put <repo-relative path> <content> — writes a fixture file into the repo.
 put() { mkdir -p "$REPO/$(dirname "$1")" && printf '%s\n' "$2" > "$REPO/$1"; }
 commit_all() { git -C "$REPO" add -A && git -C "$REPO" commit -qm fixtures; }
 
-# write_manifest <out> <args...> — runs the writer in the fixture repo; stdout
-# goes to <out>.stdout, the rc to $wrc.
 write_manifest() {
   local out="$1"; shift
   wrc=0
   (cd "$REPO" && node "$WRITER" --out "$out" "$@") > "$out.stdout" 2>&1 || wrc=$?
 }
 
-# same_lines <name> <manifest> <expected lines...> — the manifest holds exactly
-# these lines, in any order.
 same_lines() {
   local name="$1" file="$2"; shift 2
   local want got
@@ -62,7 +39,6 @@ same_lines() {
   else bad "$name: want [$(printf '%s' "$want" | tr '\n' ';')] got [$(printf '%s' "$got" | tr '\n' ';')]"; fi
 }
 
-# one_notice <name> <stdout file> <path> — exactly one js-suite-mixed notice, for <path>.
 one_notice() {
   local n
   n=$(grep -c '^::notice title=js-suite-mixed::' "$2" 2>/dev/null) || n=0
@@ -70,7 +46,6 @@ one_notice() {
   else bad "$1: want one js-suite-mixed notice for $3, got $n"; fi
 }
 
-# ---- M0: no tracked fixture is a suite by the selector's own pattern.
 suite_re=$(sed -n "s/^suite_re='\(.*\)'$/\1/p" "$ROOT/scripts/cr/impacted-suites.sh")
 if [ -z "$suite_re" ]; then
   bad "M0: cannot read suite_re from scripts/cr/impacted-suites.sh"
@@ -80,7 +55,6 @@ else
   else bad "M0: tracked fixture matches suite_re: $hits"; fi
 fi
 
-# ---- fixtures (node, bun, a flaky bun file, the vitest capture's files)
 put node/pass.test.mjs "import test from 'node:test'; test('a', () => {});"
 put node/fail.test.mjs "import test from 'node:test'; test('a', () => { throw new Error('x'); });"
 put node/allskip.test.mjs "import test from 'node:test'; test.skip('a', () => {}); test('b', { skip: true }, () => {});"
@@ -103,7 +77,6 @@ put bunflaky/always.test.ts "import { test, expect } from 'bun:test'; test('alwa
 for f in passed failed skipped crash mixed skipif-todo; do put "vitest-capture/$f.test.ts" "// fixture named by the captured report"; done
 commit_all || bad "fixture repo commit failed"
 
-# ---- M1: real node --test through the reporter.
 node_major=$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null) || node_major=0
 if [ "${node_major:-0}" -lt 22 ]; then
   bad "M1: node ${node_major} is below 22, the lowest version CI runs the reporter on"
@@ -121,7 +94,6 @@ else
   one_notice "M9 (node): mixed file reads ran 0 with one js-suite-mixed notice" "$T/m1.txt.stdout" node/mixed.test.mjs
 fi
 
-# ---- M2: real bun test, junit report, paths relative to the package cwd.
 if command -v bun >/dev/null 2>&1; then
   (cd "$REPO/bun" && bun test --reporter=junit --reporter-outfile="$T/bun.xml" .) > "$T/bun.log" 2>&1
   write_manifest "$T/m2.txt" --report bun "$T/bun.xml" bun
@@ -136,7 +108,6 @@ else
   skip "M2: bun not installed"
 fi
 
-# ---- M3: the captured vitest report, placeholder rewritten to the fixture repo.
 if [ -r "$CAPTURE" ]; then
   sed "s|/CAPTURE_ROOT/vitest-capture|$REPO/vitest-capture|g" "$CAPTURE" > "$T/vitest.json"
   write_manifest "$T/m3.txt" --report vitest "$T/vitest.json" vitest-capture
@@ -154,7 +125,6 @@ else
   bad "M3: the vitest capture is missing: $CAPTURE"
 fi
 
-# ---- M4: relative and absolute paths become repo-relative; untracked and outside paths drop.
 cat > "$T/m4.xml" <<'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <testsuites name="bun test" tests="3" failures="0" skipped="0">
@@ -169,21 +139,18 @@ write_manifest "$T/m4.txt" --report bun "$T/m4.xml" bun --report vitest "$T/m4.j
 same_lines "M4: a relative path under its cwd and an absolute path become repo-relative; untracked and outside paths drop" "$T/m4.txt" \
   "ran 0 bun/pass.test.ts" "ran 0 vitest-capture/passed.test.ts"
 
-# ---- M5: a missing report.
 write_manifest "$T/m5.txt" --report node "$T/no-such-report.jsonl" .
 if [ "$wrc" = 0 ] && grep -q '^::warning' "$T/m5.txt.stdout"; then ok "M5: a missing report exits 0 with a ::warning"
 else bad "M5: missing report gave rc=$wrc, output: $(head -2 "$T/m5.txt.stdout")"; fi
 same_lines "M5: a missing report gives no lines" "$T/m5.txt"
 
-# ---- M6: two reports naming one file, one failing.
 printf '{"file":"%s","name":"a","nesting":0,"fail":false,"kind":"test"}\n' "$REPO/node/pass.test.mjs" > "$T/m6a.jsonl"
 printf '{"file":"%s","name":"a","nesting":0,"fail":true,"kind":"test"}\n' "$REPO/node/pass.test.mjs" > "$T/m6b.jsonl"
 write_manifest "$T/m6.txt" --report node "$T/m6a.jsonl" . --report node "$T/m6b.jsonl" .
 same_lines "M6: two reports naming one file, one failing, read ran 1" "$T/m6.txt" "ran 1 node/pass.test.mjs"
 
-# ---- M7: the real run-bun-tests.sh retry, with the junit flags.
 if command -v bun >/dev/null 2>&1; then
-  m7() { # m7 <suite> <report> — runs the wrapper as CI does, flake ledger and Actions output isolated.
+  m7() {
     (cd "$REPO" && env -u GITHUB_ACTIONS -u GITHUB_STEP_SUMMARY \
       SUITE_FLAKE_LEDGER="$T/flake-ledger.jsonl" SUITE_FLAKE_REPO_ID=js-suite-manifest-fixture FLAKY_MARKER="$T/flaky.marker" \
       bash "$ROOT/scripts/ci/run-bun-tests.sh" "$1" "$1" --reporter=junit --reporter-outfile="$2") > "$T/m7.log" 2>&1
@@ -202,7 +169,6 @@ else
   skip "M7: bun not installed"
 fi
 
-# ---- M8: the reporter survives a malformed event and an unknown type.
 cat > "$T/m8.mjs" <<EOF
 import reporter from '$REPORTER';
 async function* source() {
@@ -221,10 +187,8 @@ if [ "$rc" = 0 ] && [ "$(grep -c . "$T/m8.out")" = 1 ] && grep -q '"file":"/x/a.
   ok "M8: malformed and unknown events write nothing, never throw, and the readable event keeps its line"
 else bad "M8: rc=$rc output: $(head -3 "$T/m8.out")"; fi
 
-# ---- W1: ci.yml wiring, read per job (comments stripped).
 stripped="$(sed -e '/^[[:space:]]*#/d' -e 's/[[:space:]][[:space:]]*#.*$//' "$CI_YML")"
 job_block() { awk -v j="$1" '$0 == "  " j ":" {f=1; next} f && /^  [a-zA-Z_-]+:/ {f=0} f' <<< "$stripped"; }
-# step_of <job> <fixed string> — the whole step (from its `      - ` line) holding the string.
 step_of() {
   job_block "$1" | awk -v s="$2" '
     /^      - / { if (hit) exit; buf = "" }
@@ -246,7 +210,6 @@ for job in lanes-and-trust-suites bun-suites node-suites; do
     ok "W1 $job: upload step with overwrite: true, if !cancelled()"
   else bad "W1 $job: no js-suite-manifest upload with overwrite: true and !cancelled()"; fi
   grep -q 'continue-on-error' <<< "$wstep$ustep" && bad "W1 $job: a manifest step carries continue-on-error"
-  # Every --report file the writer names is a destination a test step in this job writes.
   dests=$(grep -oE -- '(--test-reporter-destination=|--reporter-outfile=|--outputFile\.json=)("[^"]*"|[^ ]+)' <<< "$blk" | sed -E 's/^[^=]*=//' | unquote)
   hookdir=$(grep -oE 'HOOK_LIB_TEST_REPORT_DIR=("[^"]*"|[^ ]+)' <<< "$blk" | head -1 | sed 's/^[^=]*=//' | unquote)
   if [ -n "$hookdir" ]; then dests=$(printf '%s\n%s/hooks.jsonl\n%s/lib.jsonl\n' "$dests" "$hookdir" "$hookdir"); fi
@@ -279,7 +242,6 @@ if grep -qE "node-version: '22\.23\.4'" <<< "$nstep" && [ "$ncond" = '${{ !job.c
   ok "W1 shell-unit-shard: setup-node 22.23.4 whose only condition is !job.container.id"
 else bad "W1 shell-unit-shard: no setup-node 22.23.4 step gated only on !job.container.id (if: '$ncond')"; fi
 
-# ---- W3: the hook-lib script that now feeds the proof is a trust path.
 trust_re=$(grep -vE '^[[:space:]]*(#|$)' "$ROOT/scripts/ci/ci-trust-paths.txt")
 if grep -qE -f <(printf '%s\n' "$trust_re") <<< "scripts/hooks/check-hook-lib-suites.sh"; then
   ok "W3: scripts/hooks/check-hook-lib-suites.sh matches scripts/ci/ci-trust-paths.txt"

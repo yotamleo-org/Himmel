@@ -48,7 +48,6 @@ function warn(msg) {
   process.stdout.write(`::warning title=js-suite-manifest::${msg}\n`);
 }
 
-// count(tally, absPath, kind) — kind is 'pass', 'skip' or 'fail'.
 function count(tally, absPath, kind, n = 1) {
   if (!absPath || n <= 0) return;
   const t = tally.get(absPath) || { pass: 0, skip: 0, fail: 0 };
@@ -74,13 +73,17 @@ function readNode(text, cwd, tally) {
       count(tally, file, 'skip');
     } else if (e.fail) {
       count(tally, file, 'fail');
-    } else if (e.kind === 'test' && !(prev !== undefined && prev > nesting) && !namesItsFile(e.name, file)) {
+    } else if (e.kind === 'test' && !isParentTest(prev, nesting) && !isEmptyFilePass(e.name, file)) {
       count(tally, file, 'pass');
     }
   }
 }
 
-function namesItsFile(name, file) {
+function isParentTest(previousNesting, nesting) {
+  return previousNesting !== undefined && previousNesting > nesting;
+}
+
+function isEmptyFilePass(name, file) {
   return typeof name === 'string' && name !== '' && (file === name || file.endsWith(sep + name) || file.endsWith('/' + name));
 }
 

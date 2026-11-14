@@ -122,8 +122,6 @@ run_test "bare node --test on an empty glob still exits 0 (the ls-guard premise)
   expect_rc 0 node --test "scripts/hooks/*.test.mjs"
 '
 
-# H1 (control): with HOOK_LIB_TEST_REPORT_DIR unset — the pre-commit route —
-# the output and rc are the base script's, and no report file appears anywhere.
 run_test "H1 HOOK_LIB_TEST_REPORT_DIR unset → base output, rc=0, no report written" '
   setup_repo; cd "$R";
   out=$(env -u HOOK_LIB_TEST_REPORT_DIR bash "$SCRIPT" 2>&1) || exit 1;
@@ -132,8 +130,6 @@ run_test "H1 HOOK_LIB_TEST_REPORT_DIR unset → base output, rc=0, no report wri
   [ -z "$(find "$TMPROOT" -name "*.jsonl")" ]
 '
 
-# H2: with it set (the CI step), one node-suite-reporter report per glob, each
-# naming its own suite, and nothing else in the directory.
 run_test "H2 HOOK_LIB_TEST_REPORT_DIR set → hooks.jsonl and lib.jsonl, nothing else" '
   setup_repo; cd "$R";
   D="$R.report";

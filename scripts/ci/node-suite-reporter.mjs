@@ -34,6 +34,6 @@ export default async function* nodeSuiteReporter(source) {
       if (out) yield out;
     }
   } catch {
-    // A broken event stream ends the report; the lines already written stand.
+    return;
   }
 }
