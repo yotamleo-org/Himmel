@@ -24,14 +24,16 @@ TMP=$(mktemp -d "${TMPDIR:-/tmp}/gate-repo-resolver.XXXXXX") || { echo "FAIL cou
 trap 'rm -rf "$TMP"' EXIT
 TMP=$(cd "$TMP" && pwd -P)
 
-g() { env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git "$@"; }
+# shellcheck source=git-clean.sh
+# shellcheck disable=SC1091
+. "$LIB_DIR/git-clean.sh" || { echo "FAIL could not load git-clean.sh"; exit 1; }
 PRIM="$TMP/prim"; LINKED="$TMP/linked"; DECOY="$TMP/decoy"; NOWHERE="$TMP/nowhere"; LOOSE="$TMP/loose"
 mkdir -p "$NOWHERE" "$LOOSE/scripts/lib"
 for r in "$PRIM" "$DECOY"; do
-    g init -q "$r"
-    g -C "$r" -c user.email=t@example.com -c user.name=tester commit -q --allow-empty -m "chore: init"
+    git_clean init -q "$r"
+    git_clean -C "$r" -c user.email=t@example.com -c user.name=tester commit -q --allow-empty -m "chore: init"
 done
-g -C "$PRIM" worktree add -q --detach "$LINKED"
+git_clean -C "$PRIM" worktree add -q --detach "$LINKED"
 mkdir -p "$LINKED/scripts/lib"
 for d in "$LINKED/scripts/lib" "$LOOSE/scripts/lib"; do
     cp "$LIB_DIR/gate-repo-resolver.sh" "$LIB_DIR/git-clean.sh" "$d/" 2>/dev/null || true
