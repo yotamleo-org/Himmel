@@ -330,10 +330,10 @@ const PATH_KEYS = { "handover-root": "handover.root", "luna-vault": "luna.vaultP
 // An argv as one line a shell reads back as the same argv: an argument outside the plain set is single-quoted.
 export const shellLine = (argv) => argv.map((a) => (/^[A-Za-z0-9@%+=:,.\/~_-]+$/.test(a) ? a : `'${a.replace(/'/g, "'\\''")}'`)).join(" ");
 
-export function settingsCommand({ action, target }, root = HIMMEL_HOME, value) {
+export function settingsCommand({ action, target, script }, root = HIMMEL_HOME, value) {
   const ctl = ["node", `${root}/scripts/himmelctl/bin.js`];
   const [ns, verb] = action.split(".");
-  if (ns === "cadence") return shellLine(["bash", `${root}/${CADENCE_PATH[target]}`, verb]);
+  if (ns === "cadence") return shellLine(["bash", `${root}/${script || CADENCE_PATH[target]}`, verb]);
   if (ns === "plugin") return shellLine([...ctl, "profile", verb, target]);
   if (action === "profile.set") return shellLine([...ctl, "profile", target]);
   if (!value) return ["on", "off"].map((v) => settingsCommand({ action, target }, root, v)).join("\n");
@@ -365,6 +365,7 @@ const STEP = {
 const JOB = {
   pipeline: ["Clip pipeline", "Runs the clip pipeline on a schedule, so new clips are processed without you asking."],
   graphmap: ["Code map refresh", "Refreshes the code map on a schedule, so it keeps up with your changes."],
+  "graph-choices": ["Daily graph pass", "Builds the code graph of the repos you chose each day, on the accounts you chose, within the spend cap you set."],
   qmd: ["Search index refresh", "Refreshes the note search index on a schedule, so recent notes can be found."],
   doctor: ["Daily health check", "Runs the health checks each day and tells you when it finds something new."],
 };

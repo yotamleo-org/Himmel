@@ -26,7 +26,9 @@ mkdir -p "$T/bin"
 # shellcheck disable=SC2016  # the stub's own $-expansions must stay literal
 printf '#!/bin/sh\n[ "$1" = --help ] && { echo "  --rationale"; exit 0; }\necho "STUB GRAPHIFY_OUT=$GRAPHIFY_OUT ARGS=$*"\n' > "$T/bin/graphify"
 chmod +x "$T/bin/graphify"
-run() { (cd "$T/wt" && PATH="$T/bin:$PATH" bash "$SCRIPT" "$@" 2>"$T/err"); }
+mkdir -p "$T/home/.himmel" "$T/xdg"
+printf '{}\n' > "$T/home/.himmel/config.json"
+run() { (cd "$T/wt" && HOME="$T/home" HIMMEL_CONFIG_DIR="$T/home/.himmel" XDG_DATA_HOME="$T/xdg" PATH="$T/bin:$PATH" bash "$SCRIPT" "$@" 2>"$T/err"); }
 
 # T1: query from the worktree resolves to the primary's graphify-out.
 out="$(run query "what is X")"; rc=$?
@@ -136,11 +138,44 @@ printf '{"nodes":[{"id":"scripts_go","source_file":"scripts/go.sh","label":"go.s
 # shellcheck disable=SC2016  # the stub's own $-expansions must stay literal
 printf '#!/bin/sh\n[ "$1" = --help ] && { echo "  --rationale"; exit 0; }\necho "GRAPHIFY_OUT=$GRAPHIFY_OUT ARGS=$*" >> "%s/calls"\necho x\n' "$T" > "$T/bin/graphify"
 rm -f "$T/calls"
-(cd "$T/wt" && WORKER_GRAPH_OUT="$T/seam" PATH="$T/bin:$PATH" bash "$SCRIPT" query "where is go.sh used" >/dev/null 2>"$T/err"); rc=$?
+(cd "$T/wt" && HOME="$T/home" HIMMEL_CONFIG_DIR="$T/home/.himmel" XDG_DATA_HOME="$T/xdg" WORKER_GRAPH_OUT="$T/seam" PATH="$T/bin:$PATH" bash "$SCRIPT" query "where is go.sh used" >/dev/null 2>"$T/err"); rc=$?
 if [ "$rc" = 0 ] && grep -q "^GRAPHIFY_OUT=$T/seam ARGS=query .*--seed scripts_go .*--budget 4000" "$T/calls" \
    && ! grep -q "GRAPHIFY_OUT=$P/graphify-out" "$T/calls"; then
   pass "T9 worker_graph_out_seam reads the seam's graph and keeps its seeds and budget"
 else fail "T9 rc=$rc calls='$(cat "$T/calls" 2>/dev/null)' err='$(cat "$T/err")'"; fi
+
+GCJS="$HERE/../himmelctl/lib/graph-choices.js"
+LISTED_OUT="$T/xdg/himmel/graphify/choices/mine/graphify-out"
+mkdir -p "$LISTED_OUT"
+printf '{"nodes":[],"built_at_commit": "%s"}\n' "$BASE" > "$LISTED_OUT/graph.json"
+# shellcheck disable=SC2016  # the stub's own $-expansions must stay literal
+printf '#!/bin/sh\n[ "$1" = --help ] && { echo "  --rationale"; exit 0; }\necho "STUB GRAPHIFY_OUT=$GRAPHIFY_OUT ARGS=$*"\n' > "$T/bin/graphify"
+mv "$P/graphify-out/graph.json.x" "$P/graphify-out/graph.json"
+printf '{"graphify":{"choices":{"version":1,"corpora":[{"name":"mine","root":"%s"}],"primary":"none"}}}\n' "$P" > "$T/home/.himmel/config.json"
+out="$(run query "what is X")"; rc=$?
+if [ "$rc" = 0 ] && [ "$out" = "STUB GRAPHIFY_OUT=$LISTED_OUT ARGS=query what is X --rationale --budget 8000" ]; then
+  pass "W1 a listed repo queries the graph the daily pass builds"
+else fail "W1 rc=$rc out='$out'"; fi
+
+printf '{"graphify":{"choices":{"version":1,"corpora":[{"name":"other","root":"%s"}],"primary":"none"}}}\n' "$T/elsewhere" > "$T/home/.himmel/config.json"
+out="$(run query "what is X")"; rc=$?
+if [ "$rc" = 0 ] && [ "$out" = "STUB GRAPHIFY_OUT=$P/graphify-out ARGS=query what is X --rationale --budget 8000" ]; then
+  pass "W2 an unlisted repo behaves as at the merge base"
+else fail "W2 rc=$rc out='$out'"; fi
+
+rm -f "$LISTED_OUT/graph.json"
+mv "$P/graphify-out/graph.json" "$P/graphify-out/graph.json.x"
+printf '{"graphify":{"choices":{"version":1,"corpora":[{"name":"mine","root":"%s"}],"primary":"none"}}}\n' "$P" > "$T/home/.himmel/config.json"
+run query q >/dev/null; rc=$?
+REMEDY="$(HOME="$T/home" HIMMEL_CONFIG_DIR="$T/home/.himmel" node "$GCJS" remedy)"
+if [ "$rc" = 2 ] && grep -qF "$REMEDY" "$T/err" && ! grep -q 'graph-refresh' "$T/err" && grep -q 'worker-graph.sh' "$T/err"; then
+  pass "W3 a non-publisher's no-graph message prints the remedy and no refusing command"
+else fail "W3 rc=$rc err=$(cat "$T/err")"; fi
+
+printf '{"graphify":{"semantic_api_ok":true}}\n' > "$T/home/.himmel/config.json"
+run query q >/dev/null; rc=$?
+if [ "$rc" = 2 ] && grep -q 'graph-refresh' "$T/err"; then pass "W4 a publisher keeps the build instruction"
+else fail "W4 rc=$rc err=$(cat "$T/err")"; fi
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"

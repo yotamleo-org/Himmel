@@ -493,7 +493,7 @@ check_c8() {
     uh="$(cadence_user_home)"
     while IFS='|' read -r label bat_dir rearm; do
         [ -n "$label" ] || continue
-        if ! ver="$(cadence_runner_stamp "$bat_dir")"; then
+        if ! ver="$(CADENCE_RUNNER_BASENAMES="$CADENCE_RUNNER_BASENAMES graph-choices" cadence_runner_stamp "$bat_dir")"; then
             continue
         fi
         saw_any=1
@@ -509,6 +509,7 @@ pipeline-cadence|${PIPELINE_BAT_DIR:-$uh/.claude/pipeline-cadence}|bash scripts/
 graphmap-cadence|${GRAPHMAP_BAT_DIR:-$uh/.claude/graphmap-cadence}|bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed
 qmd-cadence|${QMD_CADENCE_BAT_DIR:-$uh/.claude/qmd-cadence}|bash scripts/luna/qmd-cadence.sh arm --force
 upstream-watch-cadence|${UPSTREAMWATCH_BAT_DIR:-$uh/.claude/upstream-watch-cadence}|bash scripts/upstreams/upstream-watch-cadence.sh arm --force
+graph-choices-cadence|${GRAPH_CHOICES_BAT_DIR:-$uh/.claude/graph-choices-cadence}|bash scripts/graphify/graph-choices-cadence.sh arm --force
 EOF
     if [ "$saw_any" -eq 0 ]; then
         emit OK C8-cadence "no armed cadence runners (skipped)"

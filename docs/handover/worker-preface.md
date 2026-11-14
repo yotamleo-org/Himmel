@@ -149,7 +149,7 @@ commands are VM-only): `worker-sections/shell-and-tests.md`.
   the chief's merge, then wrap. [prose]
 - **Closing the ticket at merge.** `<anchor>` is the primary
   checkout's absolute path (`git rev-parse
-  --path-format=absolute --git-common-dir`, minus `/.git`); type the merge as ONE command ending `--go <GO file>`. The Jira transition is opt-in
+  --path-format=absolute --git-common-dir`, minus `/.git`); type the merge as ONE command, from any directory, never after `cd … &&`, ending `--go <GO file>`. The Jira transition is opt-in
   (`--jira-transition`); a bare run leaves it open. Read the
   brief's `completes-ticket:` line; if absent, decide it yourself.
   - **`completes-ticket: yes`** → pass the flag:

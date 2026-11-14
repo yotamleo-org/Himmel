@@ -366,6 +366,105 @@ rc=$(run_screen "$td/ok.json")
 check "S10 benign file-backed payload passes (rc 0)" "$rc" "0"
 check "S10 launch happens (marker present)" "$(marker_gone)" "yes"
 
+repo_root="$(cd "$here/../.." && pwd)"
+SCRUB_SET=(CLAUDE_CODE_FOO CLAUDECODE AI_AGENT CLAUDE_PID CLAUDE_EFFORT CLAUDE_JOB_DIR HIMMEL_API_LANE HIMMEL_API_ACCOUNT LQ_API_KEY HIMMEL_DOTENV_FILE HIMMEL_CLAUDE_LANE)
+KEEP_SET=(CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_BASE_URL)
+scrub_then_observe() {
+  (
+    observer="$1"; shift
+    for v in "${SCRUB_SET[@]}" "${KEEP_SET[@]}"; do export "$v=planted"; done
+    . "$lib"
+    native_auth_scrub_env
+    exec bash "$observer" "$@"
+  )
+}
+scrub_then_observe "$td/absent.sh" "${SCRUB_SET[@]}" >/dev/null 2>&1; r_abs=$?
+scrub_then_observe "$td/present.sh" "${KEEP_SET[@]}" >/dev/null 2>&1; r_keep=$?
+check "SC1 native_auth_scrub_env unsets the names fallback_child unsets" "$r_abs" "0"
+check "SC1 it keeps CLAUDE_CODE_OAUTH_TOKEN and leaves the ANTHROPIC_* names to the pin" "$r_keep" "0"
+
+SC_ARGS=(-p "say hi" --model claude-haiku-5-5 --permission-mode plan --max-budget-usd 0.10)
+sc_tree() {
+  local t="$1" mode="$2" e b d f
+  mkdir -p "$t/scripts"
+  for e in "$repo_root"/scripts/*; do
+    b="$(basename "$e")"
+    case "$b" in lib | api-lane) ;; *) ln -s "$e" "$t/scripts/$b" ;; esac
+  done
+  for d in lib api-lane; do
+    mkdir -p "$t/scripts/$d"
+    for f in "$repo_root/scripts/$d"/*; do [ -e "$f" ] && ln -s "$f" "$t/scripts/$d/$(basename "$f")"; done
+  done
+  rm -f "$t/scripts/lib/native-auth-pin.sh"
+  case "$mode" in
+    shadow3) printf '. "%s"\nexit() { :; }\nreturn() { :; }\nunset() { :; }\n' "$lib" >"$t/scripts/lib/native-auth-pin.sh" ;;
+    pinok) printf '. "%s"\nnative_auth_pin_env() { :; }\nunset() { :; }\n' "$lib" >"$t/scripts/lib/native-auth-pin.sh" ;;
+    pin1x) printf '. "%s"\nnative_auth_pin_env() { return 1; }\nexit() { :; }\n' "$lib" >"$t/scripts/lib/native-auth-pin.sh" ;;
+  esac
+}
+sc_run() {
+  local t="$1" planted="$2" d="$td/sc-$RANDOM"
+  mkdir -p "$d"
+  cat >"$d/claude-stub" <<'EOF'
+#!/bin/bash
+echo "called token=${ANTHROPIC_AUTH_TOKEN:-}" >>"$SC_LOG"
+printf '%s' '{"type":"result","is_error":false,"total_cost_usd":0.5,"result":"from-sub"}'
+EOF
+  chmod +x "$d/claude-stub"
+  printf '{"oauthAccount":{"accountUuid":"u-test"}}\n' >"$d/.claude.json"
+  printf '{"account":"%s","primaries_refreshed_at":%s,"five_hour":{"utilization":10},"seven_day":{"utilization":10}}\n' \
+    "$(printf 'u-test' | { sha256sum 2>/dev/null || shasum -a 256; } | cut -c1-16)" "$(date +%s)" >"$d/native-cache.json"
+  printf '#!/bin/bash\nexit 0\n' >"$d/ps"; chmod +x "$d/ps"
+  printf '#!/bin/bash\nexit 0\n' >"$d/alert"; chmod +x "$d/alert"
+  local -a e=(PATH="$PATH" HOME="$d" TMPDIR="$d" HIMMEL_API_LANE= HIMMEL_API_ACCOUNT=A HIMMEL_API_FALLBACK=on
+    HIMMEL_API_CLAUDE_BIN="$d/claude-stub" HIMMEL_API_JOB_ID=job-1 SC_LOG="$d/calls.log"
+    HIMMEL_API_ALERT_CMD="$d/alert" HIMMEL_API_ALERT_DIR="$d/alerts" CADENCE_USAGE_LEDGER="$d/bank-ledger"
+    CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_CACHE="$d/native-cache.json" HIMMEL_FLEET_CAP=4
+    HIMMEL_FLEET_SLOTS="$d/slots" FLEET_PS_CMD="$d/ps" FLEET_PROC="$d")
+  [ "$planted" = 1 ] && e+=(ANTHROPIC_AUTH_TOKEN=planted)
+  ( cd "$repo_root" && env -i "${e[@]}" bash "$t/scripts/api-lane/claude-api.sh" "${SC_ARGS[@]}" >"$d/out" 2>"$d/err" )
+  SC_RC=$?
+  SC_CALLS=0 SC_TOKEN=""
+  [ -f "$d/calls.log" ] && SC_CALLS=$(grep -c '^called' "$d/calls.log") && SC_TOKEN="$(cat "$d/calls.log")"
+  SC_ERR="$(cat "$d/err")"
+}
+SC_REFUSAL="claude-api: fallback refused: an API credential name survived the scrub"
+
+sc_tree "$td/sc-a" shadow3
+sc_run "$td/sc-a" 1
+check "SC2a shadowed exit, return, unset and a planted token: zero launches" "$SC_CALLS" "0"
+case "$SC_ERR" in *"$SC_REFUSAL"*) echo "ok - SC2a the gate's own refusal line is on stderr" ;; *) echo "FAIL - SC2a refusal line missing: [$(printf '%s' "$SC_ERR" | head -c 300)]"; fails=$((fails+1)) ;; esac
+
+sc_tree "$td/sc-b" pinok
+sc_run "$td/sc-b" 1
+check "SC2b hidden pin verdict, unset shadowed, real exit: zero launches" "$SC_CALLS" "0"
+check "SC2b rc 2" "$SC_RC" "2"
+case "$SC_ERR" in *"$SC_REFUSAL"*) echo "ok - SC2b the refusal line is on stderr" ;; *) echo "FAIL - SC2b refusal line missing: [$(printf '%s' "$SC_ERR" | head -c 300)]"; fails=$((fails+1)) ;; esac
+
+sc_tree "$td/sc-c" shadow3
+sc_run "$td/sc-c" 0
+check "SC2c control: all three shadows, nothing planted: one launch" "$SC_CALLS" "1"
+check "SC2c control: rc 0" "$SC_RC" "0"
+case "$SC_ERR" in *"$SC_REFUSAL"*) echo "FAIL - SC2c the refusal line appeared with nothing planted"; fails=$((fails+1)) ;; *) echo "ok - SC2c no refusal line" ;; esac
+
+sc_tree "$td/sc-d" pin1x
+sc_run "$td/sc-d" 0
+check "SC2d a failing pin with exit shadowed and nothing planted: zero launches" "$SC_CALLS" "0"
+
+for mode in shadow3 pinok; do
+  sc_tree "$td/sc-red-$mode" "$mode"
+  rm -f "$td/sc-red-$mode/scripts/api-lane/claude-api.sh"
+  sed -E 's/^([[:space:]]*)if \[\[ -z "\$\{!ANTHROPIC_\*\}.*\]\]; then$/\1if true; then/' "$repo_root/scripts/api-lane/claude-api.sh" >"$td/sc-red-$mode/scripts/api-lane/claude-api.sh"
+  if cmp -s "$repo_root/scripts/api-lane/claude-api.sh" "$td/sc-red-$mode/scripts/api-lane/claude-api.sh"; then
+    echo "FAIL - SC2 RED control ($mode): the gate line was not found to rewrite"; fails=$((fails+1))
+  else
+    sc_run "$td/sc-red-$mode" 1
+    case "$SC_TOKEN" in *"called token=planted"*) ;; *) SC_CALLS=0 ;; esac
+    [ "$SC_CALLS" -ge 1 ] && echo "ok - SC2 RED control ($mode): with the gate deleted the stub records a launch carrying the token" \
+      || { echo "FAIL - SC2 RED control ($mode): no launch recorded with the gate deleted"; fails=$((fails+1)); }
+  fi
+done
+
 rm -rf "$td"
 if [ "$fails" -eq 0 ]; then
   echo "ALL PASS"
