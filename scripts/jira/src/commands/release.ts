@@ -328,6 +328,17 @@ function arrayCandidates(text: string): unknown[][] {
   return found;
 }
 
+// The permission mode both judge spawns declare. Plan mode makes the model answer with an ExitPlanMode call instead of
+// the array; dontAsk denies any tool that is not allowed, and the judge is given none.
+export const JUDGE_PERMISSION_MODE = 'dontAsk';
+
+// The kind of a reply that holds no array, in a fixed set of words for the refusal.
+function replyShape(text: string): string {
+  if (!text.trim()) return 'empty reply';
+  if (/<invoke\s+name="ExitPlanMode"|\bExitPlanMode\b/.test(text)) return 'ExitPlanMode block';
+  return 'prose';
+}
+
 // stdout of `claude -p --output-format json`: the envelope, whose result holds the array.
 export function parseDecisions(stdout: string): Decision[] {
   let env: { is_error?: boolean; result?: string };
@@ -339,7 +350,7 @@ export function parseDecisions(stdout: string): Decision[] {
   if (env === null || typeof env !== 'object' || env.is_error || typeof env.result !== 'string') throw new JudgeReplyError('rm-run: the judge call failed; nothing ruled', stdout);
   const text = env.result;
   const candidates = arrayCandidates(text);
-  if (!candidates.length) throw new JudgeReplyError('rm-run: the judge reply holds no JSON array of decisions; nothing ruled', text);
+  if (!candidates.length) throw new JudgeReplyError(`rm-run: the judge reply holds no JSON array of decisions (reply shape: ${replyShape(text)}); nothing ruled`, text);
   let firstFault = '';
   for (const got of candidates) {
     const bad = got.findIndex((d) => decisionFault(d));
@@ -408,7 +419,7 @@ export const liveJudge: Judge = async (input, opts) => {
   let rc = 1;
   try {
     out = await judgeCall('claude', [
-      '-p', '--session-id', sid, '--settings', settings, '--model', 'opus', '--effort', 'high', '--output-format', 'json', '--permission-mode', 'plan',
+      '-p', '--session-id', sid, '--settings', settings, '--model', 'opus', '--effort', 'high', '--output-format', 'json', '--permission-mode', JUDGE_PERMISSION_MODE,
       '--tools', '', '--max-turns', '1', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
     ], { input: judgePrompt(input, skill), cwd, env: judgeEnv(process.env), timeoutMs: JUDGE_TIMEOUT_S * 1000, signal: opts?.signal });
     rc = 0;
@@ -493,7 +504,7 @@ export function judgeApiEnv(processEnv: NodeJS.ProcessEnv, repoDir: string = aut
 }
 
 // ponytail: the API judge loads the operator's full plugin set and user memory and has no turn cap (the launcher refuses
-// --settings, --max-turns and --mcp-config); its budget cap (JUDGE_API_BUDGET_USD) and plan mode bound the cost; plan P5
+// --settings, --max-turns and --mcp-config); its budget cap (JUDGE_API_BUDGET_USD) bounds the cost; plan P5
 // proposes a launcher allowlist entry for --settings under the profile settings dir, with a mutation test.
 const SIGNALLED_EXIT = new Set([128 + 1, 128 + 2, 128 + 15]);
 
@@ -523,7 +534,7 @@ export function makeRoutedJudge(fallback: Judge = liveJudge, callTimeoutS: numbe
       let out: string;
       try {
         out = await judgeCall('bash', [join(repoRoot, 'scripts', 'api-lane', 'claude-api.sh'),
-          '-p', '--model', 'opus', '--effort', 'high', '--permission-mode', 'plan', '--max-budget-usd', String(JUDGE_API_BUDGET_USD), '--output-format', 'json',
+          '-p', '--model', 'opus', '--effort', 'high', '--permission-mode', JUDGE_PERMISSION_MODE, '--max-budget-usd', String(JUDGE_API_BUDGET_USD), '--output-format', 'json',
         ], { input: judgePrompt(input, skill), cwd, env, timeoutMs: spawnTimeoutMs, signal: opts?.signal });
       } catch (e) {
         if (opts?.signal?.aborted || launcherStopped(e)) throw e;

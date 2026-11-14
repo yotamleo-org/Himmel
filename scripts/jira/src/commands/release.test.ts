@@ -243,7 +243,9 @@ describe('jira release rm-run', () => {
     expect(out.some((l) => /R-R1-\d+/.test(l))).toBe(true);
     expect(judgeReply.calls.some((c) => String(c.args[0]).endsWith('claude-api.sh'))).toBe(false);
     const call = judgeReply.calls.find((c) => c.file === 'claude');
-    expect(call?.args).toEqual(expect.arrayContaining(['--permission-mode', 'plan', '--output-format', 'json', '--max-turns', '1', '--strict-mcp-config']));
+    expect(call?.args).toEqual(expect.arrayContaining(['--permission-mode', 'dontAsk', '--output-format', 'json', '--max-turns', '1', '--strict-mcp-config']));
+    expect(call?.args).not.toContain('plan');
+    expect(call?.args).not.toContain('bypassPermissions');
     expect(call?.args[call.args.indexOf('--tools') + 1]).toBe('');
     expect(call?.args[call.args.indexOf('--mcp-config') + 1]).toBe('{"mcpServers":{}}');
     expect(Object.keys(call?.env ?? {}).filter((k) => /^(ANTHROPIC_|HIMMEL_API_)/i.test(k))).toEqual([]);
@@ -251,6 +253,26 @@ describe('jira release rm-run', () => {
     const pre = judgeReply.calls.find((c) => String(c.args[0]).endsWith('usage-preflight.sh'));
     expect(pre?.env).toMatchObject({ CADENCE_USAGE_LANE: 'native', CADENCE_USAGE_WORKER: 'rm-judge' });
     for (const k of ['WORKER_SESSION_LANE', 'CADENCE_USAGE_LAUNCH', 'CADENCE_USAGE_CALLER_PID']) expect(pre?.env).not.toHaveProperty(k);
+  });
+
+  // The 2026-11-14 run record: in plan mode the model answered with an ExitPlanMode call, not the array.
+  const EXIT_PLAN_REPLY = '<function_calls>\n<invoke name="ExitPlanMode">\n<parameter name="plan">The rulings JSON array was already delivered.</parameter>\n</invoke>\n</function_calls>';
+
+  it('a reply that is an ExitPlanMode block rules nothing, returns the claim to open and names its shape', async () => {
+    await oneRequest();
+    judgeReply.out = JSON.stringify({ is_error: false, result: EXIT_PLAN_REPLY });
+    await expect(run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'))).rejects.toThrow(/reply shape: ExitPlanMode block/);
+    const dir = join(root, 'state', 'R1');
+    expect(JSON.parse(readFileSync(join(dir, 'requests.jsonl'), 'utf8').trim().split('\n').at(-1) ?? '{}')).toMatchObject({ req: 'Q-R1-0001', state: 'open' });
+  });
+
+  it.each([
+    ['', 'empty reply'],
+    ['  \n', 'empty reply'],
+    ['The rulings are all in the backlog.', 'prose'],
+    [EXIT_PLAN_REPLY, 'ExitPlanMode block'],
+  ])('a reply with no JSON array (%j) names its shape: %s', (result, shape) => {
+    expect(() => parseDecisions(JSON.stringify({ is_error: false, result }))).toThrow(new RegExp(`holds no JSON array of decisions \\(reply shape: ${shape}\\); nothing ruled`));
   });
 
   it('the judge run writes a launch record the digest reads back by the session id', async () => {
@@ -870,7 +892,9 @@ describe('routedJudge', () => {
     expect(log).toMatch(/^acct=B$/m);
     const args = [...log.matchAll(/^arg=(.*)$/gm)].map((m) => m[1]);
     expect(args[args.indexOf('--tools') + 1]).toBe('');
-    expect(args[args.indexOf('--permission-mode') + 1]).toBe('plan');
+    expect(args[args.indexOf('--permission-mode') + 1]).toBe('dontAsk');
+    expect(args).not.toContain('plan');
+    expect(args).not.toContain('bypassPermissions');
     for (const bad of ['--settings', '--max-turns', '--mcp-config']) expect(args).not.toContain(bad);
     const cwd = /^cwd=(.*)$/m.exec(log)?.[1] ?? '';
     expect(cwd).not.toBe('');
