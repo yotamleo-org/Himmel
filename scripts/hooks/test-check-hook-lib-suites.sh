@@ -122,6 +122,22 @@ run_test "bare node --test on an empty glob still exits 0 (the ls-guard premise)
   expect_rc 0 node --test "scripts/hooks/*.test.mjs"
 '
 
+run_test "H1 HOOK_LIB_TEST_REPORT_DIR unset → base output, rc=0, no report written" '
+  setup_repo; cd "$R";
+  out=$(env -u HOOK_LIB_TEST_REPORT_DIR bash "$SCRIPT" 2>&1) || exit 1;
+  [ "$out" = "$(printf "  ok  scripts/hooks/*.test.mjs\n  ok  scripts/lib/*.test.mjs")" ] || exit 1;
+  [ -z "$(git status --porcelain --untracked-files=all | grep -v "fixture.test.mjs")" ]
+'
+
+run_test "H2 HOOK_LIB_TEST_REPORT_DIR set → hooks.jsonl and lib.jsonl, nothing else" '
+  setup_repo; cd "$R";
+  D="$R.report";
+  HOOK_LIB_TEST_REPORT_DIR="$D" expect_rc 0 bash "$SCRIPT" || exit 1;
+  grep -q "/scripts/hooks/fixture.test.mjs\"" "$D/hooks.jsonl" || exit 1;
+  grep -q "/scripts/lib/fixture.test.mjs\"" "$D/lib.jsonl" || exit 1;
+  [ "$(ls -A "$D" | tr "\n" " ")" = "hooks.jsonl lib.jsonl " ]
+'
+
 if [ "$_failures" -eq 0 ]; then
   printf 'check-hook-lib-suites: all cases passed\n'
   exit 0

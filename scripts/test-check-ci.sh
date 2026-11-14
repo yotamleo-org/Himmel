@@ -202,10 +202,16 @@ if [ "$cmd" = "api" ] && [ -n "${GH_STUB_RL_PROBE:-}" ] && [ "${2:-}" = "-i" ]; 
     exit 1
 fi
 if [ "$cmd" = "run" ] && [ "${2:-}" = "download" ]; then
-    # the shell-unit manifest artifact of a failed run: GH_STUB_MANIFEST (printf %b lines) lands in the -D dir.
-    [ -n "${GH_STUB_MANIFEST:-}" ] || { echo "no valid artifacts found to download" >&2; exit 1; }
-    while [ $# -gt 0 ]; do [ "$1" = "-D" ] && { _d="${2:-}"; break; }; shift; done
-    mkdir -p "$_d/shell-unit-manifest-ubuntu-latest-shard1" && printf '%b' "$GH_STUB_MANIFEST" > "$_d/shell-unit-manifest-ubuntu-latest-shard1/manifest-shard1.txt"
+    _p=""; _d=""
+    while [ $# -gt 0 ]; do case "$1" in -D) _d="${2:-}" ;; -p) _p="${2:-}" ;; esac; shift; done
+    case "$_p" in
+        js-suite-manifest-*)
+            [ -n "${GH_STUB_JS_MANIFEST:-}" ] || { echo "no valid artifacts found to download" >&2; exit 1; }
+            mkdir -p "$_d/js-suite-manifest-bun-suites" && printf '%b' "$GH_STUB_JS_MANIFEST" > "$_d/js-suite-manifest-bun-suites/manifest-js-bun-suites.txt" ;;
+        *)
+            [ -n "${GH_STUB_MANIFEST:-}" ] || { echo "no valid artifacts found to download" >&2; exit 1; }
+            mkdir -p "$_d/shell-unit-manifest-ubuntu-latest-shard1" && printf '%b' "$GH_STUB_MANIFEST" > "$_d/shell-unit-manifest-ubuntu-latest-shard1/manifest-shard1.txt" ;;
+    esac
     exit 0
 fi
 if [ "$cmd" = "api" ]; then
@@ -2769,6 +2775,22 @@ assert_rc 0 "9183-f a green exits 0"
 if [ ! -s "$FL9183" ]; then pass "9183-f a green leaves no row"; else fail "9183-f a green leaves no row" "ledger: $(cat "$FL9183")"; fi
 unset CI_FAIL_RECORD_IMPACTED GH_STUB_MANIFEST
 
+export GH_STUB_FAILLINKS='bun-suites (ubuntu-latest)\thttps://github.com/octo/demo/actions/runs/777/job/4242\n'
+export CI_FAIL_RECORD_IMPACTED="$STUBDIR/impacted.txt"
+printf '%s\n' scripts/test-x.sh scripts/lib/j.test.mjs > "$CI_FAIL_RECORD_IMPACTED"
+export GH_STUB_MANIFEST='ran 0 scripts/test-x.sh\n'
+export GH_STUB_JS_MANIFEST='ran 1 scripts/lib/j.test.mjs\nran 1 scripts/lib/other.test.mjs\n'
+rm -f "$FL9183"
+run red
+assert_rc 1 "9524-F1 a red watch exits 1"
+if [ "$(jq -c 'select(.kind == "fail") | [.suite, .run, .rc]' "$FL9183" 2>/dev/null)" = '["scripts/lib/j.test.mjs",777,1]' ]; then pass "9524-F1 shell and JS artifacts: one fail row, the impacted JS suite"; else fail "9524-F1 shell and JS artifacts: one fail row, the impacted JS suite" "ledger: $(cat "$FL9183" 2>/dev/null)"; fi
+unset GH_STUB_MANIFEST
+rm -f "$FL9183"
+run red
+if [ "$(jq -c 'select(.kind == "fail") | [.suite, .run, .rc]' "$FL9183" 2>/dev/null)" = '["scripts/lib/j.test.mjs",777,1]' ]; then pass "9524-F2 no shell artifact, JS ran 1: still one fail row"; else fail "9524-F2 no shell artifact, JS ran 1: still one fail row" "ledger: $(cat "$FL9183" 2>/dev/null)"; fi
+rm -f "$FL9183"
+unset CI_FAIL_RECORD_IMPACTED GH_STUB_JS_MANIFEST GH_STUB_FAILLINKS
+
 # 3381-g — dedupe: the SAME head refused twice sends ONE alert; the printed line
 # still appears both times.
 KEEP_ALERT_STATE=0
@@ -3428,5 +3450,5 @@ if [ "$RC" -ne 0 ]; then pass "T3.23-d even with --fail-fast kept, a pending con
 
 echo
 echo "ran $COUNT cases; PASS=$PASS FAIL=$FAIL"
-if [ "$COUNT" -ne 259 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 259"; exit 1; fi
+if [ "$COUNT" -ne 261 ]; then echo "CASE-COUNT MISMATCH: ran $COUNT want 261"; exit 1; fi
 [ "$FAIL" -eq 0 ] || exit 1

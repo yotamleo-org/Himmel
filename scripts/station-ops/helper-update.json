@@ -1,0 +1,8 @@
+{"name": "helper-update",
+ "version": 1,
+ "run_as": "root",
+ "timeout_s": 300,
+ "effect": "re-installs the afk-sudo helper, broker, floor and station ops by running the install.sh of the GitHub commit named below, after checking it is on main, has a passing ci.yml run at that sha, is not older than the installed commit, and that the station's checkout holds the same files; changes the root-owned approval system itself, including the sudoers line and new config keys",
+ "params": {
+  "commit": {"re": "^[0-9a-f]{40}$"}
+ }}
