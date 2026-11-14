@@ -38,7 +38,7 @@
 # reads the CR ledger.
 #
 # Platform guard: POSIX bash 3.2+; the chief kit is Linux-only (needs node for the board).
-# git-env-ok: both git calls are read-only rev-parse of this script's own tree; the gating one runs with GIT_DIR, GIT_WORK_TREE, GIT_COMMON_DIR and GIT_INDEX_FILE unset
+# git-env-ok: the one git call is a read-only rev-parse of this script's own tree for the printed merge path; the gating read runs in scripts/lib/gate-repo-resolver.sh with the GIT_* list cleared
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -86,15 +86,10 @@ fi
 # The steps run in the gated checkout: HIMMEL_REPO, else the primary checkout of this
 # script's own tree, never the caller's cwd. A relative --evidence-file or --doc keeps
 # meaning the caller's path.
-case "${HIMMEL_REPO:-}" in
-    /*) GATE_DIR=$HIMMEL_REPO ;;
-    '') GATE_DIR=$( (unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE; git -C "$HERE" rev-parse --path-format=absolute --git-common-dir) 2>/dev/null) || GATE_DIR=""  # swallow-ok: a tree outside git reads empty, which falls back to this script's own tree root below
-        GATE_DIR=${GATE_DIR%/.git} ;;
-    *) echo "verdict-go: HIMMEL_REPO ($HIMMEL_REPO) is not an absolute path - refusing to let it pick the gated checkout; nothing ran" >&2
-       exit 2 ;;
-esac
-[ -n "$GATE_DIR" ] || GATE_DIR="$(cd "$HERE/../../.." && pwd)"
-[ -d "$GATE_DIR" ] || { echo "verdict-go: the gated checkout HIMMEL_REPO ($GATE_DIR) is not a directory; nothing ran" >&2; exit 2; }
+# shellcheck source=scripts/lib/gate-repo-resolver.sh
+# shellcheck disable=SC1091
+. "$HERE/../../lib/gate-repo-resolver.sh" || { echo "verdict-go: cannot load scripts/lib/gate-repo-resolver.sh; nothing ran" >&2; exit 2; }
+GATE_DIR=$(gate_repo_dir verdict-go "; nothing ran" "; nothing ran") || exit 2
 case "$EVIDENCE" in /*) ;; *) EVIDENCE="$PWD/$EVIDENCE" ;; esac
 case "$DOC" in ''|/*) ;; *) DOC="$PWD/$DOC" ;; esac
 cd "$GATE_DIR" || { echo "verdict-go: cannot enter the gated checkout $GATE_DIR; nothing ran" >&2; exit 2; }

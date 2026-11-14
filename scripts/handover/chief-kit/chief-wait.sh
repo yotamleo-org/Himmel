@@ -65,6 +65,22 @@
 #                               pool-disposition: line), ` backlog=unread` when the
 #                               second pass failed (CHIEF_WAIT_DISPATCH
 #                               replaces the command, tests; it never launches).
+#   WAKE resume-stale <KEY>,...  at an underfilled sample that probed the pool (the first sample and
+#   <tick line>                 each re-probe, before the pool-signature check): a RESUME row the pool
+#                               lists whose park start (ts_park_since_rows, the first D5c row at or
+#                               after the key's newest anchor) is at least the resume wait old
+#                               (ts_await_due <since> resume, 6 h unless
+#                               TICKET_STATUS_AWAIT_TTL_RESUME) at ts_now (TICKET_STATUS_NOW, else
+#                               the wall clock). One wake per CHIEF_WAIT_RESUME_STALE_REWAKE_MIN (default
+#                               240) for an unchanged key set; marker <inbox>.wait.resume-stale, removed
+#                               by a sample that read no stale key. The read runs in one subshell that
+#                               sources scripts/lib/ticket-status.sh, with MERGE_ROWS_BUDGET_SECS
+#                               (default 10 here) for the GitHub reads of the merge rows and the whole
+#                               subshell under timeout -k 2 30. A non-zero rc, a timeout, a pool that
+#                               read empty, a failed read of the rows (jq or the merge-row reader exiting
+#                               non-zero) or a `merge-rows-effective: warn:` line (a pre-merge row the
+#                               read could not settle) is an unread sample: no wake, the marker unchanged.
+#                               The pool-wide wakes above take precedence at a sample that wakes on both.
 #   WAKE pool-unresolved capacity=<value> pool=<open>/<in-flight>/<dispositioned>/<undispositioned>
 #                               --dispositions still has unresolved tickets: list their keys
 #                               by class, even at full capacity; re-wake on the bounded
@@ -206,8 +222,9 @@
 #                               (default 15) paces the tally; CHIEF_WAIT_TRACKER
 #                               replaces the tracker (tests).
 #   WAKE handover-budget [repeat] <line>  with --doc <chief doc>: chief-budget.sh --title
-#                               <the doc's basename> says HANDOVER (110 turns, 30M
-#                               cache-read or 45 % context fill); the marker clears on OK
+#                               <the doc's basename> says HANDOVER (400 turns, 120M
+#                               cache-read or 45 % context fill (chief-budget.sh defaults));
+#                               the marker clears on OK
 #                               and, while HANDOVER holds, the wake repeats (marked
 #                               `repeat`) every CHIEF_WAIT_BUDGET_REPEAT_MIN minutes
 #                               (default 30). CHIEF_WAIT_BUDGET replaces the command, tests.
@@ -1187,6 +1204,7 @@ underfill_repool() {
     saved_sig="$(sed -n 1p "$underfill_file" 2>/dev/null)"  # swallow-ok: an unreadable marker reads no saved set, so a non-empty pool wakes
     heartbeat sampling
     pool_probe "${CHIEF_WAIT_REPOOL_TIMEOUT:-120}" || return 1
+    resume_stale_scan
     if [ -n "$pool_unresolved" ]; then
         printf '%s\n' "$pool_sig" > "$underfill_file" 2>/dev/null
         return 0
@@ -1198,6 +1216,55 @@ underfill_repool() {
     fi
     touch "$underfill_file" 2>/dev/null
     return 1
+}
+
+resume_stale_file="$inbox.wait.resume-stale"
+resume_stale_read=""
+resume_stale_keys=""
+# shellcheck disable=SC2016
+resume_stale_body='
+. "$1/ticket-status.sh" || exit 70
+declare -F ts_park_since_rows >/dev/null || exit 70
+log="$(ts_state_dir)/status-events.jsonl"
+: > "$3/stale"
+[ -e "$log" ] || exit 0
+[ -r "$log" ] || exit 70
+warn="$3/warn"
+ts_merge_rows() { python3 -I "$_TS_LIB_DIR/merge-rows-effective.py" "$@" 2>>"$warn" || echo "merge-rows-effective: warn: the read failed" >> "$warn"; }
+jq() { command jq "$@" || echo "merge-rows-effective: warn: the park rows could not be read" >> "$warn"; }
+printf "%s\n" "$2" > "$3/keys"
+grep -F -f "$3/keys" "$log" > "$3/rows"; found=$?
+[ "$found" -le 1 ] || exit 70
+[ "$found" -eq 0 ] || exit 0
+now="$(ts_now)" || exit 70
+ts_park_since_rows "$3/rows" | while IFS="$(printf "\t")" read -r k rule since; do
+    [ "$rule" = D5c ] || continue
+    grep -qxF -- "$k" "$3/keys" || continue
+    due="$(ts_await_due "$since" resume)" || continue
+    due_e="$(_ts_epoch_of_iso "$due")" || continue
+    [ "$now" -lt "$due_e" ] || printf "%s\n" "$k" >> "$3/stale"
+done
+! grep -q "merge-rows-effective: warn:" "$warn" 2>/dev/null
+'
+resume_stale_scan() {
+    local keys dir
+    resume_stale_read=""; resume_stale_keys=""
+    [ -n "$pool_out" ] || return 0
+    keys="$(printf '%s\n' "$pool_out" | awk -F'\t' '$1 == "RESUME" && $2 ~ /^[A-Z][A-Z0-9]*-[0-9]+$/ { print $2 }' | sort -u)"
+    if [ -z "$keys" ]; then resume_stale_read=1; return 0; fi
+    [ -r "$HERE/../../lib/ticket-status.sh" ] || return 0
+    dir="$(tmpdir 2>/dev/null)" || return 0  # swallow-ok: no scratch dir is an unread sample
+    if MERGE_ROWS_BUDGET_SECS="${MERGE_ROWS_BUDGET_SECS:-10}" timeout -k 2 30 bash -c "$resume_stale_body" _ "$HERE/../../lib" "$keys" "$dir" </dev/null >/dev/null 2>&1 9>&-; then  # gnu-ok: Linux-only kit; swallow-ok: a non-zero rc or a timeout is an unread sample, read below
+        resume_stale_read=1
+        resume_stale_keys="$(sort -u "$dir/stale" 2>/dev/null | paste -sd, -)"  # swallow-ok: an unreadable result file reads no stale key
+    fi
+    rm -rf "$dir"
+}
+resume_stale_wake() {
+    [ -n "$resume_stale_read" ] || return 1
+    if [ -z "$resume_stale_keys" ]; then rm -f "$resume_stale_file"; return 1; fi
+    set_wake "$(printf '%s\n' "$resume_stale_keys" | tr ',' '\n')" "$resume_stale_file" "${CHIEF_WAIT_RESUME_STALE_REWAKE_MIN:-240}" || return 1
+    printf '%s\n' "$resume_stale_keys"
 }
 
 # unowned_wake: <unowned-prs value> — succeeds (and refreshes the marker) when the list is
@@ -2384,15 +2451,21 @@ while :; do
                 printf '%s\n%s\n' "$silent_out" "$tick_line"
                 exit_reason='wake-worker-silent'; exit 0
             fi
+            resume_stale_read="" resume_stale_keys=""
             case "$cap_val" in
                 UNDERFILLED:*)
                     if [ ! -e "$underfill_file" ]; then
                         if pool_probe; then
                             printf '%s\n' "$pool_sig" > "$underfill_file" 2>/dev/null
+                            resume_stale_scan
                             if underfill_wake; then exit_reason='wake-pool'; exit 0; fi
                         fi
                     elif underfill_repool; then
                         if underfill_wake; then exit_reason='wake-pool'; exit 0; fi
+                    fi
+                    if resume_stale_out="$(resume_stale_wake)"; then
+                        printf 'WAKE resume-stale %s\n%s\n' "$resume_stale_out" "$tick_line"
+                        exit_reason='wake-resume-stale'; exit 0
                     fi ;;
                 *)
                     rm -f "$underfill_file"

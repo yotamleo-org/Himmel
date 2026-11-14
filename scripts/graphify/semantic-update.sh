@@ -103,7 +103,7 @@
 # run it once on a corpus whose graph already carries a semantic pass, or the
 # first run treats every file as changed.
 #
-# Exit: 0 ok / no-op (a batch submitted or still pending is 0: the graph is untouched, the next run resumes it); 1 usage or IO; 2 fence deny, batch submit failure (nothing submitted), graphify or merge failure;
+# Exit: 0 ok / no-op (a batch submitted or still pending is 0: the graph is untouched, the next run resumes it); 1 usage or IO; 2 fence deny, batch submit failure (nothing submitted), graphify or merge failure, a claude-api run while the station's graph config reads unreadable (nothing copied, no model call; --seed-manifest and --dry-run are exempt);
 # 3 bank at/over threshold, or a refusal only the new flags make (a waiting batch, a verdict other than PROCEED,
 # over-cap), nothing touched; 4 promote lock held; 5 some chunks failed (the good ones merged, the failed
 # files stay unstamped): either a plain chunk failure or the lane's exit 6, a credit or key rejection that the
@@ -182,6 +182,9 @@ if [ "$OUT_DIR" != "$CORPUS_ROOT/graphify-out" ] && [ -L "$OUT_DIR" ]; then
 fi
 API_CALL_BUDGET="${GRAPHIFY_API_CALL_BUDGET_USD:-1.00}"
 API_EFFORT="${GRAPHIFY_API_EFFORT:-high}"
+if [ "$BACKEND" = "claude-api" ] && [ "$SEED" -eq 0 ] && [ "$DRY" -eq 0 ] && [ "$(node "$REPO_ROOT/scripts/himmelctl/lib/graph-choices.js" role 2>/dev/null)" = unreadable ]; then
+  echo "semantic-update: refusing claude-api: the station's graph config reads unreadable, so no paid call is made (node scripts/himmelctl/lib/graph-choices.js check names the repair) -- nothing copied" >&2; exit 2
+fi
 BATCH_MODE=0 RESUME=0 PENDING="$OUT_DIR/semantic-batch"
 if [ "$BACKEND" = "claude-api" ] && [ "${GRAPHIFY_API_BATCH:-1}" != 0 ]; then BATCH_MODE=1; fi
 if [ "$BATCH_MODE" -eq 1 ] && [ -f "$PENDING/batch.json" ]; then RESUME=1; fi

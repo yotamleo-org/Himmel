@@ -163,12 +163,36 @@ resolve_user_home() {
 # graphify.salus_ollama_cloud_ok) and no env var overrides it. Absent, unreadable, malformed, a
 # symlink, or any value but true means no opt-in. The himmel station opts in once, by hand:
 #   {"graphify": {"semantic_api_ok": true}}
-# ponytail: read at render time, so a runner already armed keeps its lane until the next
-# arm --rewrite-armed; upgrade path: a fire-time read inside the runner.
+# The opt-in is read at render time: a runner already armed keeps its lane until the next arm --rewrite-armed
+# (--leave-publisher while the config reads unreadable). Meanwhile semantic-update.sh refuses claude-api at fire time
+# whenever the config reads unreadable.
 SEMANTIC_API_SKIP_PREFIX="semantic skipped: API lane not opted in"
 SEMANTIC_API_SKIP_TEXT="$SEMANTIC_API_SKIP_PREFIX; on this station the himmel graph comes from us with each update"
+graph_role() {
+    HOME="$(resolve_user_home)" node "$HIMMEL_ROOT/scripts/himmelctl/lib/graph-choices.js" role 2>/dev/null
+}
 semantic_api_opted_in() {
     [ "$(HOME="$(resolve_user_home)" node "$HIMMEL_ROOT/scripts/himmelctl/lib/graph-choices.js" role 2>/dev/null)" = publisher ]
+}
+KEPT_LANE_RUNNERS=""
+keep_lane_runners_while_unreadable() {
+    local gc="$HIMMEL_ROOT/scripts/himmelctl/lib/graph-choices.js" cause names fix leave
+    [ "$LEAVE_PUBLISHER" -eq 0 ] || return 0
+    [ "$(graph_role)" = unreadable ] || return 0
+    names=$(HOME="$(resolve_user_home)" node "$gc" lane-runners 2>/dev/null | awk '{ printf "%s%s", (n++ ? " " : ""), $1 }')
+    [ -n "$names" ] || return 0
+    KEPT_LANE_RUNNERS=" $names "
+    cause=$(HOME="$(resolve_user_home)" node "$gc" check 2>/dev/null | sed -n 's/^cause=//p' | head -n 1)
+    fix=$(HOME="$(resolve_user_home)" node "$gc" alert-lines "$cause" 2>/dev/null | sed -n 2p)
+    case "$fix" in
+        *--leave-publisher*) leave="" ;;
+        *) leave="; to drop their lane on purpose: bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed --leave-publisher" ;;
+    esac
+    echo "NOTE graphmap-cadence: the graph config is unreadable (cause=${cause:-unknown}), so the armed lane runners were left as they are: ${names% }; $fix$leave" >&2
+}
+lane_runner_kept() {
+    case "$KEPT_LANE_RUNNERS" in *" $(basename "$1") "*) return 0 ;; esac
+    return 1
 }
 # One stderr line at arm and rewrite time, so a skipped lane is never a silent downgrade.
 note_semantic_api_off() {
@@ -295,6 +319,7 @@ default_vault() {
 VAULT="$(default_vault)"
 FORCE=0
 REWRITE_ARMED=0
+LEAVE_PUBLISHER=0
 PUBLISH_EVERY_SET=0
 DRY_RUN=0
 # --ast-only: arm/dedup-check ONLY the free structural (AST)
@@ -401,7 +426,14 @@ Flags (arm only, except --dry-run and --luna-only):
                          this invocation, as with arm --force). Refused
                          with --force, --ast-only, --with-publish, --publish-semantic,
                          --with-luna-semantic, --semantic-active, --publish-every-hours.
-  --dry-run              Print what would happen, touch nothing
+                         While the graph config reads unreadable (see
+                         docs/internals/graph-cadence.md, "Repairing an unreadable
+                         graph config"), arm --rewrite-armed and arm --force leave
+                         every armed runner that holds HIMMEL_API_LANE=on as it is.
+  --leave-publisher      With --rewrite-armed only: re-render those runners without the
+                         lane even while the graph config reads unreadable. Refused
+                         (exit 2) while graphify.semantic_api_ok is true: remove it first.
+  --dry-run             Print what would happen, touch nothing
                          (honored by arm AND disarm)
   --luna-only            Scope arm or disarm to the Luna-corpus rows alone
                          (HIMMEL-GraphMap-Luna, HIMMEL-GraphMapAst-Luna and
@@ -495,6 +527,7 @@ while [ $# -gt 0 ]; do
         --vault=*)       VAULT="${1#--vault=}"; shift ;;
         --force)         FORCE=1; shift ;;
         --rewrite-armed) REWRITE_ARMED=1; shift ;;
+        --leave-publisher) LEAVE_PUBLISHER=1; shift ;;
         --dry-run)       DRY_RUN=1; shift ;;
         --ast-only)      AST_ONLY=1; shift ;;
         --luna-only)     LUNA_ONLY=1; shift ;;
@@ -557,6 +590,14 @@ if [ "$REWRITE_ARMED" -eq 1 ] && { [ "$FORCE" -eq 1 ] || [ "$AST_ONLY" -eq 1 ] |
         || [ "$PUBLISH_SEMANTIC" -eq 1 ] || [ "$WITH_LUNA_SEMANTIC" -eq 1 ] || [ "$SEMANTIC_ACTIVE" -eq 1 ] \
         || [ "$PUBLISH_EVERY_SET" -eq 1 ] || [ -n "$API_ACCOUNT" ]; }; then
     echo "ERR graphmap-cadence: --rewrite-armed cannot combine with --force, --ast-only, --with-publish, --publish-semantic, --with-luna-semantic, --semantic-active, --publish-every-hours or --api-account (it touches no crontab row; the account is read from the armed runner)" >&2; exit 1
+fi
+if [ "$LEAVE_PUBLISHER" -eq 1 ]; then
+    if [ "$SUBCMD" != arm ] || [ "$REWRITE_ARMED" -ne 1 ]; then
+        echo "ERR graphmap-cadence: --leave-publisher only combines with arm --rewrite-armed" >&2; exit 1
+    fi
+    if [ "$(graph_role)" = publisher ]; then
+        echo "ERR graphmap-cadence: --leave-publisher refused: remove graphify.semantic_api_ok first (then bash scripts/lib/config-audit.sh accept); nothing was rewritten" >&2; exit 2
+    fi
 fi
 # The luna semantic runner spends an API account the operator names: auto is the himmel graph pass alone (decision 525).
 if [ "$WITH_LUNA_SEMANTIC" -eq 1 ] && ! llm_backend_api_account_ok "$API_ACCOUNT"; then
@@ -1474,6 +1515,8 @@ cmd_arm() {
         fi
     fi
 
+    if [ "$REWRITE_ARMED" -eq 1 ] || [ "$FORCE" -eq 1 ]; then keep_lane_runners_while_unreadable; fi
+
     local q_bash q_script q_ast_script q_publish_script q_node_dir q_graphify_dir q_claude_dir q_vault q_himmel q_maps q_luna_title q_himmel_title q_log_luna q_log_himmel q_log_ast_luna q_log_ast_himmel q_log_publish_himmel q_semantic_script q_log_semantic_luna
     q_bash=$(printf '%q' "$bash_bin")
     q_script=$(printf '%q' "$REFRESH_SCRIPT")
@@ -1566,6 +1609,10 @@ cmd_arm() {
             esac
             if [ ! -f "$rw_runner" ]; then
                 echo "graphmap-cadence: $rw_runner not armed; left absent"
+                continue
+            fi
+            if lane_runner_kept "$rw_runner"; then
+                echo "graphmap-cadence: $rw_runner kept as it is (graph config unreadable)"
                 continue
             fi
             if [ "$DRY_RUN" -eq 1 ]; then
@@ -1761,6 +1808,13 @@ cmd_arm() {
         fi
     fi
 
+    if [ -n "$tmp_luna" ] && lane_runner_kept "$CRON_RUNNER_LUNA"; then rm -f "$tmp_luna"; tmp_luna=""; fi
+    if [ -n "$tmp_himmel" ] && lane_runner_kept "$CRON_RUNNER_HIMMEL"; then rm -f "$tmp_himmel"; tmp_himmel=""; fi
+    if [ -n "$tmp_ast_luna" ] && lane_runner_kept "$CRON_RUNNER_AST_LUNA"; then rm -f "$tmp_ast_luna"; tmp_ast_luna=""; fi
+    if [ -n "$tmp_ast_himmel" ] && lane_runner_kept "$CRON_RUNNER_AST_HIMMEL"; then rm -f "$tmp_ast_himmel"; tmp_ast_himmel=""; fi
+    if [ -n "$tmp_publish_himmel" ] && lane_runner_kept "$CRON_RUNNER_PUBLISH_HIMMEL"; then rm -f "$tmp_publish_himmel"; tmp_publish_himmel=""; fi
+    if [ -n "$tmp_semantic_luna" ] && lane_runner_kept "$CRON_RUNNER_SEMANTIC_LUNA"; then rm -f "$tmp_semantic_luna"; tmp_semantic_luna=""; fi
+
     # Single atomic rewrite: everything that isn't ours (scoped by
     # own_match_re: the structural row of the scope being armed, plus the
     # semantic/opt-in rows this arm asks for), then this arm's own entries.
@@ -1812,12 +1866,12 @@ cmd_arm() {
     # flow-run-ledger rows the runner actually emits (both sides DERIVE the name from
     # the same corpus-slug computation instead of a hardcoded literal).
     if [ "$WITH_PUBLISH" -eq 1 ]; then
-        mv -f "$tmp_publish_himmel" "$CRON_RUNNER_PUBLISH_HIMMEL"  # prim-ok: preserve the staged executable mode at publication.
+        if [ -n "$tmp_publish_himmel" ]; then mv -f "$tmp_publish_himmel" "$CRON_RUNNER_PUBLISH_HIMMEL"; fi  # prim-ok: preserve the staged executable mode at publication.
         observability_register_cadence "$PUBLISH_FLOW_NAME" $((PUBLISH_EVERY_HOURS * 3600)) "$TASK_PUBLISH_HIMMEL"
         cadence_prov_record "$TASK_PUBLISH_HIMMEL"
     fi
     if [ "$WITH_LUNA_SEMANTIC" -eq 1 ]; then
-        mv -f "$tmp_semantic_luna" "$CRON_RUNNER_SEMANTIC_LUNA"  # prim-ok: same stage-then-promote as the sibling runners above
+        if [ -n "$tmp_semantic_luna" ]; then mv -f "$tmp_semantic_luna" "$CRON_RUNNER_SEMANTIC_LUNA"; fi  # prim-ok: same stage-then-promote as the sibling runners above
         observability_register_cadence graphmap-semantic-luna $((LUNA_SEMANTIC_EVERY_HOURS * 3600)) "$TASK_SEMANTIC_LUNA"
         cadence_prov_record "$TASK_SEMANTIC_LUNA"
     fi

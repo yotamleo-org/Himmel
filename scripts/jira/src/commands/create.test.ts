@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
-import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -13,8 +13,17 @@ vi.mock('../client.js', () => ({
   projectKey: () => 'HIMMEL',
 }));
 vi.mock('../breadcrumb.js', () => ({ writeJiraBreadcrumb: vi.fn() }));
+// The chat stamp is read from a fake process tree, never this test runner's own ancestry. This mock
+// replaces vitest.setup.ts's, so it keeps that one's walk over an absent /proc.
+const ancestry = vi.hoisted(() => ({ procRoot: undefined as string | undefined }));
+vi.mock('../release/fence-ancestry.js', async (orig) => {
+  const m = await orig<typeof import('../release/fence-ancestry.js')>();
+  const noProc = join(mkdtempSync(join(tmpdir(), 'jira-test-proc-')), 'absent');
+  const walk: typeof m.walk = (o = {}) => m.walk(o.procRoot === undefined && o.hostNsPath === undefined ? { ...o, procRoot: noProc } : o);
+  return { ...m, walk, ancestorValue: (name: string) => (ancestry.procRoot === undefined ? null : m.ancestorValue(name, { procRoot: ancestry.procRoot })) };
+});
 
-import { resolveTitle, registerCreate, agentDetailOf, agentDetailOfAdf, pathsIn } from './create.js';
+import { resolveTitle, registerCreate, agentDetailOf, agentDetailOfAdf, pathsIn, bridgePointer } from './create.js';
 import { registerRelease } from './release.js';
 import { request } from '../client.js';
 import { PLAIN_BLOCK_TEMPLATE } from '../plain-block.js';
@@ -2581,5 +2590,111 @@ describe('create — a test project is not work (I13)', () => {
   it('control: a HIMMEL Task with placement still queues its INTAKE', async () => {
     await file('HIMMEL', '--desc', PLAIN, '--proposed-version', 'v1.1.3', ...HOME);
     expect(errs.some((e) => /INTAKE queued/.test(e))).toBe(true);
+  });
+});
+
+describe('create --operator-update: the bridge names the operator\'s update (T4, T5)', () => {
+  let procRoot: string;
+  let errs: string[];
+  const UPDATE = '900000001';
+  const BRIDGE = { HIMMEL_BRIDGE_SESSION: '1' };
+
+  const tree = (farthest: Record<string, string>, nearer: Record<string, string>) => {
+    procRoot = mkdtempSync(join(tmpdir(), 'create-pointer-proc-'));
+    const procs: [number, number, number, Record<string, string> | null][] = [
+      [300, 200, 1000, { PATH: '/usr/bin', ...BRIDGE }],
+      [200, 100, 1000, { PATH: '/usr/bin', ...nearer }],
+      [100, 1, 1000, { PATH: '/usr/bin', ...farthest }],
+      [1, 0, 0, null],
+    ];
+    for (const [pid, ppid, uid, env] of procs) {
+      mkdirSync(join(procRoot, String(pid)));
+      writeFileSync(join(procRoot, String(pid), 'status'), `Name:\tp\nPid:\t${pid}\nPPid:\t${ppid}\nUid:\t${uid}\t${uid}\t${uid}\t${uid}\nNSpid:\t${pid}\n`);
+      if (env) writeFileSync(join(procRoot, String(pid), 'environ'), Object.entries(env).map(([k, v]) => `${k}=${v}\0`).join(''));
+    }
+    symlinkSync('300', join(procRoot, 'self'));
+    ancestry.procRoot = procRoot;
+  };
+  const file = async (...args: string[]) => {
+    const p = new Command();
+    p.exitOverride();
+    registerCreate(p);
+    await p.parseAsync(['node', 'jira', 'create', '--title', 'the console loses a worker', '--desc', PLAIN, ...HOME, '--operator-update', UPDATE, ...args]);
+  };
+  const requests = () => {
+    const f = join(baseRoot, 'state', 'R1', 'requests.jsonl');
+    return existsSync(f) ? readFileSync(f, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as Record<string, unknown>) : [];
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    errs = [];
+    vi.spyOn(console, 'error').mockImplementation((s: unknown) => { errs.push(String(s)); });
+    vi.spyOn(process, 'exit').mockImplementation(((c?: number) => {
+      throw new Error(`exit ${c}`);
+    }) as never);
+    vi.stubEnv('HIMMEL_BRIDGE_SESSION', '1');
+    mockRequest.mockImplementation(async (method: string, path: string) => {
+      if (method === 'GET' && path.endsWith('/versions')) return [{ name: 'v1.1.3', released: false }];
+      if (method === 'GET' && path.startsWith('/search/jql')) return { issues: [] };
+      if (method === 'GET' && path.includes('/issue/')) return { fields: { labels: [], status: { name: 'To Do' }, fixVersions: [] } };
+      return { key: 'HIMMEL-77' };
+    });
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    ancestry.procRoot = undefined;
+    rmSync(procRoot, { recursive: true, force: true });
+  });
+
+  it('T4: under the bridge marker with the poller stamp 111 on the farthest marked ancestor, the INTAKE evidence carries the pointer', async () => {
+    tree({ ...BRIDGE, HIMMEL_BRIDGE_CHAT: '111' }, { ...BRIDGE, HIMMEL_BRIDGE_CHAT: '222' });
+    await file('--type', 'Task', '--proposed-version', 'v1.1.3');
+    expect(requests()).toEqual([expect.objectContaining({
+      verb: 'INTAKE', key: 'HIMMEL-77', to_v: 'v1.1.3', from: 'console',
+      evidence: { operator_update: 900000001, filed_by: 'bridge', bridge_chat: 111 },
+    })]);
+  });
+
+  it('refuses an update_id that is not digits only, at option parse', async () => {
+    tree({ ...BRIDGE, HIMMEL_BRIDGE_CHAT: '111' }, {});
+    await expect(file('--type', 'Task', '--proposed-version', 'v1.1.3', '--operator-update', '9e8')).rejects.toThrow(/digits only/);
+    expect(mockRequest).not.toHaveBeenCalled();
+  });
+
+  type Setup = { env?: Record<string, string>; farthest?: Record<string, string>; nearer?: Record<string, string>; opts?: { type?: string; fixVersion?: string; proposedVersion?: string } };
+  type Row = [string, RegExp, string[], Setup, Setup];
+  const STAMP = { ...BRIDGE, HIMMEL_BRIDGE_CHAT: '111' };
+  const FORGED = { ...BRIDGE, HIMMEL_BRIDGE_CHAT: '111' };
+  const TASK = ['--type', 'Task', '--proposed-version', 'v1.1.3'];
+  const rows: Row[] = [
+    ['no bridge marker', /HIMMEL_BRIDGE_SESSION=1/, TASK, { env: { HIMMEL_BRIDGE_SESSION: '' } }, { env: { HIMMEL_BRIDGE_SESSION: '1' } }],
+    ['the marker plus HIMMEL_CONSOLE_LEG=1', /chief-spawned worker or the release manager/, TASK, { env: { HIMMEL_CONSOLE_LEG: '1' } }, { env: { HIMMEL_CONSOLE_LEG: '' } }],
+    ['the marker plus HIMMEL_RELEASE_MANAGER=1', /chief-spawned worker or the release manager/, TASK, { env: { HIMMEL_RELEASE_MANAGER: '1' } }, { env: { HIMMEL_RELEASE_MANAGER: '' } }],
+    ['--fix-version', /no INTAKE is owed/, ['--type', 'Task', '--fix-version', 'v1.1.3', '--proposed-version', 'v1.1.3'], {}, { opts: { fixVersion: undefined } }],
+    ['--type Epic', /no INTAKE is owed/, ['--type', 'Epic', '--proposed-version', 'v1.1.3'], {}, { opts: { type: 'Task' } }],
+    ['no version', /names no version/, ['--type', 'Task', '--backlog', '--proposed-version', 'backlog', '--why', 'waits'], {}, { opts: { proposedVersion: 'v1.1.3' } }],
+    ['no chat stamp in the ancestry', /chat stamp .* is missing/, TASK, { farthest: BRIDGE }, { farthest: STAMP }],
+    ['a negative (group) stamp under a nearer forged 111', /chat stamp .* is -100500/, TASK, { farthest: { ...BRIDGE, HIMMEL_BRIDGE_CHAT: '-100500' }, nearer: FORGED }, { farthest: STAMP, nearer: FORGED }],
+    ['a stamp only in the command\'s own env (a prefix, absent from the farthest marked ancestor)', /chat stamp .* is missing/, TASK, { farthest: BRIDGE, nearer: FORGED }, { farthest: STAMP, nearer: FORGED }],
+    ['a farthest marked ancestor that is a chief-spawned worker, not the bridge', /chat stamp .* is missing/, TASK, { farthest: { HIMMEL_CONSOLE_LEG: '1', HIMMEL_BRIDGE_CHAT: '111' }, nearer: FORGED }, { farthest: STAMP, nearer: FORGED }],
+  ];
+
+  it.each(rows)('T5: refuses %s before any Jira call and files nothing; with only that condition fixed it passes', async (_name, why, args, bad, fix) => {
+    tree(bad.farthest ?? STAMP, bad.nearer ?? {});
+    for (const [k, v] of Object.entries(bad.env ?? {})) vi.stubEnv(k, v);
+    await expect(file(...args)).rejects.toThrow(/exit 1/);
+    expect(errs.join('\n')).toMatch(why);
+    expect(mockRequest).not.toHaveBeenCalled();
+    expect(requests()).toEqual([]);
+
+    const flag = (n: string) => (args.includes(n) ? args[args.indexOf(n) + 1] : undefined);
+    const opts = { operatorUpdate: Number(UPDATE), type: flag('--type')!, fixVersion: flag('--fix-version'), proposedVersion: flag('--proposed-version') };
+    expect(() => bridgePointer(opts)).toThrow(why);
+    rmSync(procRoot, { recursive: true, force: true });
+    tree(fix.farthest ?? bad.farthest ?? STAMP, fix.nearer ?? bad.nearer ?? {});
+    for (const [k, v] of Object.entries(fix.env ?? {})) vi.stubEnv(k, v);
+    expect(bridgePointer({ ...opts, ...fix.opts })).toEqual({ operator_update: 900000001, filed_by: 'bridge', bridge_chat: 111 });
   });
 });

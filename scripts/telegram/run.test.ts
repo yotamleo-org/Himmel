@@ -870,3 +870,22 @@ test("run-prompt.md template matches buildPrompt's per-message operator marker",
   expect(doc).not.toContain("treat them as the operator's requests");
   expect(doc).toContain(`a line carrying the top-level \`"operator":true\` field`);
 });
+
+test("buildPrompt has a DM session name the operator's update_id when it files into a version; a group session never does", () => {
+  const dm = buildPrompt("__chat__", { inbox:"i", outbox:"o", context:"c", cwd:"/r" }, null, false, 111);
+  expect(dm).toContain("--operator-update");
+  expect(dm).toContain(`"update_id"`);
+  expect(dm).toContain("--proposed-version");
+  expect(dm).toContain("the one line that states the version");
+  const group = buildPrompt("group_-1", { inbox:"i", outbox:"o", context:"c", cwd:"/r" }, null, false, -1);
+  for (const s of ["--operator-update", "update_id", "the one line that states the version"]) expect(group).not.toContain(s);
+});
+
+test("run-prompt.md carries the operator-update sentences buildPrompt emits", () => {
+  const doc = readFileSync(join(import.meta.dir, "run-prompt.md"), "utf8");
+  const dm = buildPrompt("__chat__", { inbox:"i", outbox:"o", context:"c", cwd:"<cwd>" });
+  const line = dm.split("\n").find((l) => l.includes("--operator-update"));
+  expect(line).toBeDefined();
+  const sentences = line!.slice(line!.indexOf("When a \"operator\":true line asks to file"));
+  expect(doc).toContain(sentences);
+});

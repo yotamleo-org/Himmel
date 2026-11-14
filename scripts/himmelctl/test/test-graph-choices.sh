@@ -284,6 +284,185 @@ expect_eq "C26 --fix credential" "$(gc sentence --fix credential)" "$FIX_C"
 expect_eq "C26 --fix helper" "$(gc sentence --fix helper)" "$FIX_H"
 gc sentence --fix other >/dev/null 2>&1 && fail "C26 an unknown --fix word passes" || pass "C26 an unknown --fix word refuses"
 
+echo "S1b setup: stub CLIs, a fixture .env with a planted key, and the real config-audit under its test seams"
+SB="$WS/s1b"; mkdir -p "$SB/stubs" "$SB/vault" "$SB/dotenv"
+printf '#!/bin/sh\nexit 0\n' > "$SB/stubs/graphify"; cp "$SB/stubs/graphify" "$SB/stubs/claude"; chmod +x "$SB/stubs/graphify" "$SB/stubs/claude"
+PLANT='sk-ant-api03-planted-by-c19b'
+printf 'ANTHROPIC_API_KEY=%s\n' "$PLANT" > "$SB/fixture.env"
+# shellcheck disable=SC2016  # the stub body expands at its own run time
+printf '#!/bin/sh\necho "$1" >> "%s/alerts.log"\n' "$SB" > "$SB/alert-stub.sh"; chmod +x "$SB/alert-stub.sh"
+printf 'ZAI_API_KEY=dummy-not-a-real-key\n' > "$SB/dotenv/.env"
+CA="$repo_root/scripts/lib/config-audit.sh"
+sfresh() {
+    fresh_home "$1"
+    AUD="$HOME/.himmel/state/config-audit"
+    export HIMMEL_CONFIG_AUDIT_ENV_FILE="$SB/fixture-$1.env" HIMMEL_CONFIG_ALERT_CMD="$SB/alert-stub.sh" HIMMEL_TEST_FIXTURE=1
+    export GRAPHMAP_BAT_DIR="$HOME/bat" GRAPHMAP_CRONTAB="$HOME/crontab-fake.sh" HIMMEL_OBSERVABILITY_CONFIG="$HOME/obs.json"
+    cp "$SB/fixture.env" "$HIMMEL_CONFIG_AUDIT_ENV_FILE"
+    mkdir -p "$HOME/cron-state" "$GRAPHMAP_BAT_DIR"
+    cat > "$HOME/crontab-fake.sh" <<FAKE
+#!/bin/sh
+CSTATE="$HOME/cron-state"
+case "\${1:-}" in
+    -l) if [ -f "\$CSTATE/crontab" ]; then cat "\$CSTATE/crontab"; else echo "no crontab" >&2; exit 1; fi ;;
+    -) cat > "\$CSTATE/crontab" ;;
+    *) exit 64 ;;
+esac
+FAKE
+    chmod +x "$HOME/crontab-fake.sh"
+}
+arm_cadence() {
+    env OSTYPE=linux-gnu GRAPHMAP_TEST_MODE=1 GRAPHMAP_DOTENV_ROOT="$SB/dotenv" PATH="$SB/stubs:$PATH" \
+        bash "$repo_root/scripts/luna/graphmap-cadence.sh" arm --vault "$SB/vault" "$@" >"$HOME/arm.out" 2>"$HOME/arm.err"
+}
+arm_publisher() { arm_cadence --ast-only --with-publish --publish-semantic --semantic-active; }
+publisher_cfg() { cfg '{"graphify":{"semantic_api_ok":true}}'; }
+watch() { bash "$CA" watch >/dev/null 2>&1; }
+backup_ids() { local d; for d in "$AUD/backups"/*; do [ -d "$d" ] && printf '%s\n' "${d##*/}"; done | sort; }
+new_backup() { backup_ids > "$HOME/ids.now"; comm -13 "$HOME/ids.before" "$HOME/ids.now" | tail -n 1; cp "$HOME/ids.now" "$HOME/ids.before"; }
+mark_ids() { backup_ids > "$HOME/ids.before"; }
+sfresh_ids() { sfresh "$1"; : > "$HOME/ids.before"; }
+
+echo "C19b: the backup is chosen by check; every backup is made by the real config-audit"
+sfresh_ids c19b-a; publisher_cfg; watch; w1="$(new_backup)"
+cfg '{"graphify":{"semantic_api_ok":true,"choices":{"version":1,"primary":"auto"}}}'; watch; w2="$(new_backup)"
+printf 'not json {\n' > "$HOME/.himmel/config.json"
+out="$(gc check)"
+has "C19b a restore backup is named" "$out" "fix=restore"
+has "C19b the newest watcher backup holds the same broken value, so the older good one is named" "$out" "backup=$w1 kind=watch"
+hasnt "C19b the broken newer watcher backup is not named" "$out" "backup=$w2"
+has "C19b a consent value that differs from the last healthy read is marked" "$out" "consent graphify.semantic_api_ok restores=true"
+hasnt "C19b no output holds the planted key" "$out" "$PLANT"
+has "C19b the Telegram restore line names the id" "$out" "/config restore $w1 <code>"
+has "C19b the terminal restore line names the id" "$out" "bash scripts/lib/config-audit.sh restore $w1"
+sfresh_ids c19b-b; cfg '{"graphify":{"salus_ollama_cloud_ok":false}}'; mark_ids; a1="$(bash "$CA" pre "$HOME/.himmel/config.json" --script s1b-test)"
+if cmp -s "$AUD/backups/$a1/.env" "$HIMMEL_CONFIG_AUDIT_ENV_FILE"; then pass "C19b the audited backup's .env member is byte-equal to the fixture .env"; else fail "C19b the audited .env member differs from the fixture .env"; fi
+printf 'ANTHROPIC_API_KEY=changed-after-the-backup\n' > "$HIMMEL_CONFIG_AUDIT_ENV_FILE"
+printf 'not json {\n' > "$HOME/.himmel/config.json"
+out="$(gc check)"
+has "C19b with only audited backups one is named" "$out" "backup=$a1 kind=audited"
+has "C19b the audited backup prints the .env rollback line" "$out" ".env will also be rolled back"
+hasnt "C19b no output holds the planted key (audited)" "$out" "$PLANT"
+sfresh_ids c19b-c; printf 'not json {\n' > "$HOME/.himmel/config.json"
+out="$(gc check)"; has "C19b with no backup the fix is by-hand" "$out" "fix=by-hand"; hasnt "C19b no backup line without a backup" "$out" "backup="
+
+echo "C19b: consent keys, one unchanged-key row per digest key, the salus opt-in and the rollback lines"
+sfresh_ids c19b-d
+cfg "{\"graphify\":{\"salus_ollama_cloud_ok\":true,\"semantic_api_ok\":true,\"choices\":{\"version\":1,\"corpora\":[{\"name\":\"a\",\"root\":\"$WS/c4-repo\"},{\"name\":\"b\",\"root\":\"$WS/c5-repo\"}],\"primary\":\"A\",\"fallbacks\":[\"subscription\"],\"max_usd_per_pass\":5}}}"
+printf 'PLANTED_KEY=%s\n' "$PLANT" > "$HOME/.himmel/himmel.conf"; watch; w1="$(new_backup)"
+printf 'not json {\n' > "$HOME/.himmel/config.json"; out="$(gc check)"
+for k in graphify.salus_ollama_cloud_ok graphify.semantic_api_ok graphify.choices.primary graphify.choices.fallbacks graphify.choices.corpora; do
+    line="$(printf '%s\n' "$out" | grep -m 1 "^consent $k restores=")" || line=""
+    if [ -n "$line" ]; then hasnt "C19b $k unchanged since the last healthy read reads unmarked" "$line" "differs"; else fail "C19b $k has no consent line"; fi
+done
+has "C19b the salus opt-in prints its value" "$out" "consent graphify.salus_ollama_cloud_ok restores=true"
+has "C19b the corpora line prints the roots" "$out" "$WS/c4-repo"
+hasnt "C19b no himmel.conf value reaches the output" "$out" "$PLANT"
+hasnt "C19b an equal himmel.conf prints no rollback line" "$out" "himmel.conf will also be rolled back"
+hasnt "C19b himmel.conf.local absent both times prints no line" "$out" "himmel.conf.local will also be rolled back"
+printf 'PLANTED_KEY=changed-after\n' > "$HOME/.himmel/himmel.conf"; out="$(gc check)"
+has "C19b a himmel.conf that differs from the live one prints the rollback line" "$out" "himmel.conf will also be rolled back"
+hasnt "C19b a non-consent value never appears" "$out" "max_usd_per_pass"
+
+echo "C19b: mode 000 on every non-config member of the backup; the output is byte-equal"
+sfresh_ids c19b-e; cfg '{"graphify":{"salus_ollama_cloud_ok":false}}'; printf 'PLANTED_KEY=%s\n' "$PLANT" > "$HOME/.himmel/himmel.conf"; : > "$HOME/.himmel/himmel.conf.local"
+a1="$(bash "$CA" pre "$HOME/.himmel/config.json" --script s1b-test)"
+printf 'not json {\n' > "$HOME/.himmel/config.json"
+before="$(gc check)"
+has "C19b the mode 000 row names the audited backup first" "$before" "backup=$a1 kind=audited"
+chmod 000 "$AUD/backups/$a1/himmel.conf" "$AUD/backups/$a1/himmel.conf.local" "$AUD/backups/$a1/.env"
+if [ -r "$AUD/backups/$a1/himmel.conf" ]; then echo "  SKIP: C19b mode 000 (this user reads mode 000)"
+else expect_eq "C19b check is byte-equal with the three members at mode 000" "$(gc check)" "$before"; fi
+chmod 600 "$AUD/backups/$a1/himmel.conf" "$AUD/backups/$a1/himmel.conf.local" "$AUD/backups/$a1/.env"
+
+echo "C19b: the footprint rule for a backup holding semantic_api_ok true"
+sfresh_ids c19b-f; cfg '{"graphify":{"salus_ollama_cloud_ok":false}}'; watch; w1="$(new_backup)"
+publisher_cfg; w2="$(bash "$CA" pre "$HOME/.himmel/config.json" --script watch)"
+printf 'not json {\n' > "$HOME/.himmel/config.json"
+out="$(gc check)"
+has "C19b with no footprint a newer backup holding true is passed over for an older one" "$out" "backup=$w1 kind=watch"
+hasnt "C19b the backup holding true is not named" "$out" "backup=$w2"
+sfresh_ids c19b-g; publisher_cfg; arm_publisher; mark_ids; w1="$(bash "$CA" pre "$HOME/.himmel/config.json" --script watch)"
+cfg '{"graphify":{"salus_ollama_cloud_ok":false}}'; w2="$(bash "$CA" pre "$HOME/.himmel/config.json" --script watch)"
+rm -f "$HOME/.himmel/config.json"; out="$(gc check)"
+has "C19b cause missing with footprint (a): the file reads missing" "$out" "cause=missing"
+has "C19b only a backup holding semantic_api_ok true is named" "$out" "backup=$w1 kind=watch"
+hasnt "C19b a newer backup without the key is not named" "$out" "backup=$w2"
+
+echo "C19b: with a publisher footprint every cause names only a backup holding semantic_api_ok true"
+sfresh_ids c19b-j; publisher_cfg; arm_publisher; w1="$(bash "$CA" pre "$HOME/.himmel/config.json" --script watch)"
+cfg '{"graphify":{"salus_ollama_cloud_ok":false}}'; w2="$(bash "$CA" pre "$HOME/.himmel/config.json" --script watch)"
+printf 'not json {\n' > "$HOME/.himmel/config.json"; out="$(gc check)"
+has "C19b footprint (a) with cause not-json names the older backup that holds the key" "$out" "backup=$w1 kind=watch"
+hasnt "C19b the newer backup without the key is not named" "$out" "backup=$w2"
+sfresh_ids c19b-k; publisher_cfg; arm_publisher; cfg '{"graphify":{"salus_ollama_cloud_ok":false}}'; bash "$CA" pre "$HOME/.himmel/config.json" --script watch >/dev/null
+printf 'not json {\n' > "$HOME/.himmel/config.json"; out="$(gc check)"
+has "C19b footprint (a) and no backup holding the key reads by-hand" "$out" "fix=by-hand"
+has "C19b by-hand with no usable backup says to write the file" "$out" "no usable config backup exists"
+
+echo "C19b: a rename-shaped edit keeps footprint (a)"
+sfresh_ids c19b-h; publisher_cfg; arm_publisher; watch
+cfg '{"graphify":{"salus_ollama_cloud_ok":true}}'; : > "$SB/alerts.log"; watch
+expect_eq "C19b the rename-shaped edit raises no alert" "$(wc -c < "$SB/alerts.log" | tr -d ' ')" 0
+expect_eq "C19b role reads unreadable through footprint (a)" "$(gc role)" unreadable
+has "C19b its cause is publisher-key-lost" "$(gc check)" "cause=publisher-key-lost"
+sfresh_ids c19b-i; publisher_cfg; watch; cfg '{"graphify":{"salus_ollama_cloud_ok":true}}'; watch
+expect_eq "C19b the same edit with no runner reads adopter (the stated ceiling)" "$(gc role)" adopter
+
+echo "C19c: a key-shaped file never reaches role, route or check"
+sfresh_ids c19c-a; printf 'sk-ant-api03-zzzz-c19c-planted-key\n' > "$HOME/.himmel/config.json"
+out="$(gc role; gc route; gc check)"; hasnt "C19c a non-JSON file starting with the key prefix" "$out" "sk-ant"
+sfresh_ids c19c-b; printf 'sk-ant-api03-short' > "$HOME/.himmel/config.json"
+out="$(gc role; gc route; gc check)"; hasnt "C19c a short file holding a key alone" "$out" "sk-ant"
+has "C19c the file still reads unreadable" "$out" "unreadable"
+
+echo "C20: graph-cadence.md holds the repair section with every fixed line and both restore lines"
+flat="$(tr '\n' ' ' < "$repo_root/docs/internals/graph-cadence.md" | tr -s ' ')"
+has "C20 the repair section is there" "$flat" "Repairing an unreadable graph config"
+for c in symlink not-a-file mode not-json empty graphify-shape missing publisher-key-lost; do
+    fl="$(node -e 'const g=require(process.argv[1]);process.stdout.write(g.FIX_LINES[process.argv[2]]||"")' "$GC" "$c")"
+    if [ -n "$fl" ]; then has "C20 the doc holds the fixed fix line for $c" "$flat" "$fl"; else fail "C20 FIX_LINES has no line for $c"; fi
+done
+for rl in RESTORE_TELEGRAM_LINE RESTORE_TERMINAL_LINE; do
+    fl="$(node -e 'const g=require(process.argv[1]);process.stdout.write(g[process.argv[2]]||"")' "$GC" "$rl")"
+    if [ -n "$fl" ]; then has "C20 the doc holds $rl" "$flat" "$fl"; else fail "C20 $rl is not exported"; fi
+done
+
+echo "C22: role with no file or no key, by publisher footprint"
+sfresh_ids c22-a; publisher_cfg; arm_publisher; rm -f "$HOME/.himmel/config.json"
+expect_eq "C22 no file with an armed publish runner (a real render): unreadable" "$(gc role)" unreadable
+has "C22 its cause is missing" "$(gc check)" "cause=missing"
+printf '{}\n' > "$HOME/.himmel/config.json"
+has "C22 a file lacking the key with footprint (a): publisher-key-lost" "$(gc check)" "cause=publisher-key-lost"
+cfg '{"graphify":{"semantic_api_ok":false}}'; has "C22 a present false with footprint (a): publisher-key-lost" "$(gc check)" "cause=publisher-key-lost"
+cfg '{"graphify":{"semantic_api_ok":"true"}}'; has "C22 a present \"true\" string with footprint (a): graphify-shape" "$(gc check)" "cause=graphify-shape"
+sfresh_ids c22-b; publisher_cfg; arm_cadence --ast-only --with-publish --publish-semantic; rm -f "$HOME/.himmel/config.json"
+if [ -e "$GRAPHMAP_BAT_DIR/semantic.paused" ]; then pass "C22 fixture: the real arm wrote the pause marker"; else fail "C22 fixture: no pause marker"; fi
+expect_eq "C22 a paused-branch render (the pause marker present) is footprint (a)" "$(gc role)" unreadable
+sfresh_ids c22-c; cfg '{}'; arm_cadence --ast-only --with-publish --publish-semantic --semantic-active; rm -f "$HOME/.himmel/config.json"
+expect_eq "C22 a skip render (no opt-in at arm time) is no footprint" "$(gc role)" adopter
+expect_eq "C22 lane-runners lists the first and not the second" "$(gc lane-runners)" ""
+sfresh_ids c22-d; publisher_cfg; watch; rm -f "$HOME/.himmel/config.json"
+expect_eq "C22 only a real watch.json whose baseline held true: unreadable" "$(gc role)" unreadable
+sfresh_ids c22-e; cfg '{"graphify":{"semantic_api_ok":false}}'; watch; cfg '{}'
+expect_eq "C22 a baseline that held false, then the key removed: adopter, no footprint" "$(gc role)" adopter
+sfresh_ids c22-f; expect_eq "C22 no file and no footprint: adopter" "$(gc role)" adopter
+
+echo "C22: the runner directory is the one the writer uses"
+sfresh_ids c22-g; publisher_cfg; arm_publisher; mkdir -p "$HOME/.claude/graphmap-cadence"; mv "$GRAPHMAP_BAT_DIR/graphmap-publish-himmel.sh" "$HOME/.claude/graphmap-cadence/"
+rm -f "$HOME/.himmel/config.json"
+expect_eq "C22 a runner under the default dir is not footprint while GRAPHMAP_BAT_DIR is set" "$(gc role)" adopter
+unset GRAPHMAP_BAT_DIR
+expect_eq "C22 with GRAPHMAP_BAT_DIR unset the default dir counts" "$(gc role)" unreadable
+
+echo "C22: lane-runners names each armed lane runner and the letter it pins"
+sfresh_ids c22-h; publisher_cfg; arm_publisher
+out="$(gc lane-runners)"; has "C22 the publish runner lists with auto" "$out" "graphmap-publish-himmel.sh auto"
+arm_cadence --luna-only --ast-only --with-luna-semantic --api-account A; out="$(gc lane-runners)"
+has "C22 a pinned luna semantic runner lists with letter A" "$out" "graphmap-semantic-luna.sh A"
+printf '#!/bin/sh\necho HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=sk-ant-xx\n' > "$GRAPHMAP_BAT_DIR/graphmap-odd.sh"; out="$(gc lane-runners)"
+hasnt "C22 a pinned value that is not a capital letter or auto is never echoed" "$out" "sk-ant"
+
 echo
 if [ "$FAILS" -eq 0 ]; then echo "test-graph-choices: all passed"; exit 0; fi
 echo "test-graph-choices: $FAILS FAILURES"; exit 1
