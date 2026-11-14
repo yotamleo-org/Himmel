@@ -211,8 +211,6 @@ out="$(TICK_RMRUN_MIN=60 tick)"
 sleep 1
 check 'TICK_RMRUN_MIN=60 moves the threshold past a 45 min request' '' "$([ -e "$W/rmrun-ran" ] && echo ran)"
 
-# ABC-9853: the refused asks of the same state read. The golden is the engine's own state() output
-# (engine.test.ts writes it), so the tick reads what the producer prints.
 GOLDEN="$HERE/fixtures/state-golden.json"
 mkdoc R1
 reset; cp "$GOLDEN" "$W/state.json"
@@ -224,7 +222,6 @@ check 'the tsv holds one row per refused ask: key, ruling, reason, asks_operator
 check 'release-state-<stem>.json carries status OK and the golden words_records and asks_operator_keys' 'OK|1|O-R1-0003|ABC-2' \
     "$(python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); print("%s|%d|%s|%s" % (d["status"], len(d["words_records"]), d["words_records"][0]["id"], ",".join(d["asks_operator_keys"])) + ("" if d.get("ts") else "|no-ts"))' "$W/state/release-state-chief.json" 2>/dev/null)"
 
-# the tick's real tsv feeds chief-wait: the operator-asked pair wakes once, the other two arrive as the digest
 mkdir -p "$W/cw/consoles"
 : > "$W/cw/consoles/c.md"
 printf 'TICK 03:00 hb=1m workers=N1:FRESH livestate=ok procs=2 models=x ceiling=ok atq=0 suites=0alive/0dead prs=#10 bank=5h8/wk15/codex=? fill=40 tails=N1:LIVE inbox=none tick=UNKNOWN fleet=3/15 capacity=ok gql=4000/04:00 orphans=none nonces=ok legset=ok board=ok denials=none or=skip fails=none rm-refused=%s\n' \

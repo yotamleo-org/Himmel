@@ -128,7 +128,6 @@ export interface EventRow {
   from: string | null;
   to: string | null;
   ruling?: string;
-  // kind 'ack': why the chief holds the refusal right.
   reason?: string;
   pr?: number;
   sha?: string;

@@ -1445,9 +1445,6 @@ stale_wake() {
 }
 
 refused_file="$inbox.wait.refused"
-# refused_wake: with --doc, the tick's rm-refused-<doc stem>.tsv (KEY, ruling, reason, asks_operator 1|0).
-# Prints the wake lines and succeeds when an operator-asked pair is new, or other pairs are new and no
-# digest went out this UTC day; the printed pairs join the marker.
 refused_wake() {
     local stem
     [ -n "$console_doc" ] || return 1

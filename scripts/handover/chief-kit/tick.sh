@@ -2877,10 +2877,6 @@ print(n, age, "held" if ls and not ls.get("released") else "free", d.get("status
     esac
 fi
 
-# rm-refused=<n>:<KEY>@<ruling>,...: the refused asks of the same state read (refused_asks), n counting all and the
-# list naming only the operator-asked ones. Every OK read rewrites, under the state dir, rm-refused-<doc stem>.tsv
-# (KEY, ruling, reason, asks_operator 1|0, tab-separated) and release-state-<doc stem>.json ({ts, status,
-# words_records, asks_operator_keys}); any other read deletes both. Absent at n=0 or when the state is not OK.
 rm_refused=""
 rf_stem="${console_doc##*/}"
 rf_stem="${rf_stem%.md}"

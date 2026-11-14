@@ -1552,9 +1552,6 @@ export interface WordsRecord { id: string; decision: string | null; keys: string
 const factsOf = (i: IssueSnap | undefined): TicketFacts | null =>
   (i ? { labels: i.labels ?? [], priority: i.priority, open: terminalOf(i) === null } : null);
 
-// A refused ask: the key's latest receipted ruling, on a request from the backlog into a version, left the key outside
-// it (BACKLOG, or KEEP on a REVERSION). A newer request for the key, a later O- row naming it, the ticket closing or a
-// chief ack of that ruling ends it. A closed ticket needs the mirror; with none, only the ledger ends an ask.
 function refusedAsks(l: Loaded, issues: Map<string, IssueSnap> | null): RefusedAsk[] {
   const firstOf = new Map<string, RequestRow>();
   for (const q of l.requests.verified) if (!firstOf.has(q.req)) firstOf.set(q.req, q);
@@ -1593,8 +1590,6 @@ function wordsRecords(l: Loaded): WordsRecord[] {
 const asksOperatorKeys = (issues: Map<string, IssueSnap> | null): string[] =>
   [...(issues?.values() ?? [])].filter((i) => terminalOf(i) === null && asksOperator(factsOf(i))).map((i) => i.key).sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
 
-// The chief holds a refusal right: one signed events row that ends that refused ask. An operator-asked key's refusal
-// ends only by a new request, an O- record of the operator's words, or the ticket closing.
 export function ack(ctx: Ctx, o: { ruling: string; reason: string }): EventRow {
   operatorFence(ctx);
   if (!o.reason.trim()) throw new Error('release ack: --reason says why the refusal is right');

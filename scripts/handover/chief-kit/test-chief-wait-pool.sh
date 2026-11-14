@@ -635,7 +635,6 @@ arm "$I" "$WORK/sp4.out" 4
 check "(6604) the full read afterwards wakes nothing twice (rc 124)" "124" "$rc"
 cp "$STUB/tick.line.orig" "$STUB/tick.line"
 
-# --- (9853) a ruled-away operator ask wakes the chief once; the other refused asks arrive as one digest a day ----
 export TICK_STATE_DIR="$WORK/rf-state"
 mkdir -p "$TICK_STATE_DIR" "$WORK/rf"
 rf_doc="$WORK/rf/chief-rf.md"
