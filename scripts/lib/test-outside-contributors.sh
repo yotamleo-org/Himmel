@@ -224,7 +224,6 @@ check 'merge-base: a junk base name' "$(mbase 7 '../x')" ':1'
 rm -f "$MB/.git/FETCH_HEAD"
 check 'merge-base: the base fetch leaves no FETCH_HEAD' "$(mbase 7 main >/dev/null; [ -e "$MB/.git/FETCH_HEAD" ] && echo present || echo absent)" absent
 
-# outside_branch_collides <name>: a local branch whose name equals <name> under ASCII case-folding
 collides() { local d="$1"; shift; (cd "$d" && . "$ANCHOR/scripts/lib/outside-contributors.sh" && outside_branch_collides "$@") >/dev/null 2>&1; echo $?; }
 mbgit branch -q feat/x; mbgit branch -q Up/Case
 check 'collides: a local feat/x collides with Feat/X' "$(collides "$MB" Feat/X)" 0

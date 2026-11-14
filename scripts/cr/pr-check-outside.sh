@@ -90,7 +90,7 @@ if [ "${1:-}" = "--pr" ]; then
         echo "pr-check-outside: the authorization step failed (review-round.sh check --pr rc=$pc_rc). Nothing was fetched or reviewed." >&2
         exit 2
     fi
-    # 3. a local branch of that name, compared without case, would make the ledger key ambiguous.
+    # 3. a local branch of that name would make the ledger key ambiguous.
     pc_col=0
     outside_branch_collides "$pc_branch" || pc_col=$?
     if [ "$pc_col" -eq 0 ]; then
@@ -101,7 +101,7 @@ if [ "${1:-}" = "--pr" ]; then
         echo "pr-check-outside: cannot list the local branches to check PR #$PR's head name for a collision. Nothing was fetched or reviewed." >&2
         exit 2
     fi
-    # 4. fetch: objects plus one ref under refs/himmel/outside/; the + admits a force-push; no FETCH_HEAD is written.
+    # 4. fetch: objects plus one ref under refs/himmel/outside/; the + admits a force-push.
     # swallow-ok: a failed fetch or a ref that is not at the head is refused by this same condition (exit 2)
     if ! "$_TIMEOUT_BIN" -k 5 120 git fetch -q --no-tags --no-recurse-submodules --no-write-fetch-head origin "+refs/pull/$PR/head:refs/himmel/outside/$PR" >/dev/null 2>&1 \
         || [ "$(git rev-parse --verify --quiet "refs/himmel/outside/$PR^{commit}" 2>/dev/null)" != "$HEAD" ]; then # swallow-ok: an unresolved ref differs from $HEAD and is refused here (exit 2)

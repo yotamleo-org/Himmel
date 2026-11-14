@@ -27,7 +27,6 @@ CAP=196608
 LIFECYCLE='["preinstall","install","postinstall","prepare","prepack","postpack","prepublish","preprepare","postprepare"]'
 die() { local c=$1; shift; echo "outside-security-audit: $* - no audit row was written" >&2; exit "$c"; }
 anchor=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd) || exit 2
-# Before any file of this tree is sourced: this copy must be the primary checkout HIMMEL_REPO names.
 oa_repo="${HIMMEL_REPO:-}"
 if [ -z "$oa_repo" ] || ! [ "$anchor" -ef "$oa_repo" ] || ! [ -d "$oa_repo/.git" ]; then
     die 2 "runs only as the copy in the anchor's primary checkout that HIMMEL_REPO names, never a branch copy or a linked worktree ($anchor); HIMMEL_REPO is unset or empty, or names another tree. Adopt/setup wires it into settings.json env, or export it in your launching shell, then re-run"

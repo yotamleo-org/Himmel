@@ -71,7 +71,6 @@ fi
 exit "$rc"
 STUB
 chmod +x "$A/scripts/handover/chief-kit/ready-check.sh" "$A/scripts/check-ci.sh" "$A/scripts/cr/pr-check-outside.sh" "$A/scripts/cr/critic-first-pass.sh"
-# The anchor is a primary checkout, as the audit requires: a real repository with a .git directory.
 { git -c init.defaultBranch=main init -q "$A" && git -C "$A" add -A \
     && git -C "$A" -c user.email=t@t.test -c user.name=tester -c commit.gpgsign=false commit -q -m anchor; } \
     || { echo "FAIL: fixture anchor checkout" >&2; exit 1; }
@@ -113,7 +112,7 @@ newpr() {
     git -C "$W" push -q -f origin HEAD:refs/pull/7/head
 }
 reset() { rm -f "$LEDGER" "$LOG"/* "$CANARY"; rm -rf "$GCD/outside-audits"; git -C "$P" update-ref -d refs/himmel/outside/7 2>/dev/null; return 0; }
-# audit [VAR=value ...]: runs the anchor's copy from the primary, HIMMEL_REPO naming the anchor; sets out, err, rc.
+# audit [VAR=value ...]: runs the anchor's copy from the primary; sets out, err, rc.
 audit() {
     out=$(cd "$P" && env HOME="$tmp/home" PATH="$tmp/bin:$PATH" LOG="$LOG" HIMMEL_REPO="$A" STUB_OID="${STUB_OID:-$H}" STUB_CR_STATUSES="${STUB_CR_STATUSES:-$CR_OK}" "$@" \
         bash "$AUDIT" --pr 7 --head "$H" 2>"$tmp/err"); rc=$?
@@ -199,7 +198,6 @@ reset; audit RC_ANSWER=no; expect_none "T3.4 a PR that is not outside" 2
 eq "$(called)" no "T3.4 no critic call"
 reset; out=$(cd "$P" && bash "$AUDIT" --pr 7 --head abc 2>&1); rc=$?; eq "$rc" 2 "T3.4 a short head is a usage error"
 
-# The audit runs only as the copy of the primary checkout HIMMEL_REPO names.
 reset; newpr 'echo anchor >> f.txt'
 AW="$tmp/anchor-wt"
 git -C "$A" worktree add -q --detach "$AW" 2>/dev/null || fail "fixture: a linked worktree of the anchor"

@@ -3,7 +3,7 @@
 # (--pr <n> --head <40hex>) and the --pr boundary of the one-argument classifier.
 # Fixtures are synthetic: a bare "origin" whose refs/pull/7/head holds a tree that plants a canary in
 # every file shape a checkout could run (a script, a test, a filter driver, a submodule file, a hook);
-# a copy of the scripts under a temp anchor that is a real primary checkout; a temp HOME; a gh stub on PATH. Nothing from the PR is
+# a copy of the scripts under a temp anchor; a temp HOME; a gh stub on PATH. Nothing from the PR is
 # executed, and neither ~/.himmel/outside-contributors.json nor ~/.himmel/outside-pr-approvals.jsonl
 # is read or written. Bash 3.2-safe; no network.
 set -uo pipefail
@@ -51,7 +51,6 @@ cat > "${STDIN_LOG:-/dev/null}"
 exit 0
 STUB
 chmod +x "$A/scripts/handover/chief-kit/ready-check.sh" "$A/scripts/cr/critic-panel.sh"
-# The anchor is a primary checkout, as the route requires: a real repository with a .git directory.
 { git -c init.defaultBranch=main init -q "$A" && git -C "$A" add -A \
     && git -C "$A" -c user.email=t@t.test -c user.name=tester -c commit.gpgsign=false commit -q -m anchor; } \
     || { echo "FAIL: fixture anchor checkout" >&2; exit 1; }
@@ -182,7 +181,6 @@ out="$(cd "$P" && HIMMEL_REPO="" HOME="$HOMEDIR" PATH="$tmp/bin:$PATH" STUB_OID=
 eq "$rc" "2" "the route with no HIMMEL_REPO exits 2"
 if git -C "$P" rev-parse --verify --quiet refs/himmel/outside/7 >/dev/null; then fail "no HIMMEL_REPO: the PR head was fetched"; else pass "no HIMMEL_REPO: nothing fetched"; fi
 
-# a linked worktree of the anchor is not its primary checkout, even when HIMMEL_REPO names that worktree
 reset; listed
 AW="$tmp/anchor-wt"
 git -C "$A" worktree add -q --detach "$AW" 2>/dev/null || fail "fixture: a linked worktree of the anchor"
