@@ -285,7 +285,6 @@ cs; rc=$?
 check "chain-log: a log that cannot be read fails the read instead of reading as no holds" "$rc" 2
 contains "chain-log: and the error names the file" "$(cat "$tmp/err")" "chain-log.jsonl"
 
-# --- integrity: loops and unreadable links among every open ticket of the version, registered or not
 reset
 reg chain-x=1,31
 issue HIMMEL-1 "To Do" labels='["chain-x"]'

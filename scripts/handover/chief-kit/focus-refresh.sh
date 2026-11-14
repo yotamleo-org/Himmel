@@ -317,6 +317,16 @@ chains_fail() { # <registry|graph|render> <detail file> - the run goes on with t
     # swallow-ok: an unreadable detail file leaves the WARN detail empty; the reason class is already set. read-sink-ok: the detail file is one of this script's own stage files
     echo "focus-refresh: WARN: chains $1: $(head -n 1 "$2" 2>/dev/null | tr -c 'A-Za-z0-9 ._:/=,-' '_' | cut -c1-200); focus-chains.json is as it was" >&2
 }
+version_loops_and_unknown_links() { # prints `cycle <keys>`, `unknown <keys>`, both joined by `, `, or nothing
+    bounded 30 node "$HERE/chain-state.mjs" --json --registry "$chains_reg" --mirror "$MIR" --version "$VER" > "$stage/chain-version.json" || return 1
+    python3 -I -c 'import json, re, sys
+d = json.load(open(sys.argv[1]))
+def part(word, keys):
+    keys = sorted({k for k in keys if isinstance(k, str) and re.fullmatch(r"[A-Z][A-Z0-9]*-[0-9]+", k)})
+    return "%s %s" % (word, ",".join(keys[:8]) + (",+%d" % (len(keys) - 8) if len(keys) > 8 else "")) if keys else ""
+print(", ".join(p for p in (part("cycle", [k for c in d["cycles"] for k in c]),
+                            part("unknown", [k for u in d["unknown"] for k in (u["key"], u["on"])])) if p))' "$stage/chain-version.json"
+}
 chains_reg=$(chains_registry) || chains_reg=""
 chains_skip_visible() { # a chains.json under the configured root but none under the resolved one is a WARN, never ok
     local cfg slug
@@ -330,15 +340,7 @@ if [ -z "$chains_reg" ] || [ ! -f "$chains_reg" ]; then chains_skip_visible; fi
 if [ -n "$chains_reg" ] && [ -f "$chains_reg" ]; then
     if ! bounded 30 node "$HERE/chain-state.mjs" --json --registry "$chains_reg" --mirror "$MIR" > "$stage/chain-state.json" 2> "$stage/chains.err"; then
         chains_fail registry "$stage/chains.err"
-    # the integrity read: every open ticket of the version, registered or standalone (the read above keeps every member for the graph)
-    elif ! bounded 30 node "$HERE/chain-state.mjs" --json --registry "$chains_reg" --mirror "$MIR" --version "$VER" > "$stage/chain-version.json" 2> "$stage/chains.err" \
-        || ! CHAINS_INTEGRITY=$(python3 -I -c 'import json, re, sys
-d = json.load(open(sys.argv[1]))
-def part(word, keys):
-    keys = sorted({k for k in keys if isinstance(k, str) and re.fullmatch(r"[A-Z][A-Z0-9]*-[0-9]+", k)})
-    return "%s %s" % (word, ",".join(keys[:8]) + (",+%d" % (len(keys) - 8) if len(keys) > 8 else "")) if keys else ""
-print(", ".join(p for p in (part("cycle", [k for c in d["cycles"] for k in c]),
-                            part("unknown", [k for u in d["unknown"] for k in (u["key"], u["on"])])) if p))' "$stage/chain-version.json" 2> "$stage/chains.err"); then
+    elif ! CHAINS_INTEGRITY=$(version_loops_and_unknown_links 2> "$stage/chains.err"); then
         chains_fail registry "$stage/chains.err"
     elif ! members=$(python3 -I -c 'import json, sys
 print(",".join(dict.fromkeys(k for c in json.load(open(sys.argv[1]))["chains"] for k in c["members"])))' "$stage/chain-state.json" 2> "$stage/chains.err"); then

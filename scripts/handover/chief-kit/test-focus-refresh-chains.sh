@@ -79,8 +79,9 @@ export TICK_TRACKER_MIRROR_DIR="$tmp/mir/HIMMEL"
 
 DOC="$tmp/doc/chief.md"
 REGISTRY="$HANDOVER_DIR/fxuser/himmel/chains.json"
-mir() { # <n> <labels json> [<blocked_by json>]: an open v1.1.3 ticket
-    printf -- '---\nkey: "HIMMEL-%s"\ntype: "Task"\nstatus: "To Do"\nstatusCategory: "To Do"\nlabels: %s\nfixVersions: ["v1.1.3"]\nresolution: null\nblocked_by: %s\n---\n\n# HIMMEL-%s: t\n' "$1" "$2" "${3:-[]}" "$1" > "$tmp/mir/HIMMEL/HIMMEL-$1.md"
+mir() { # <n> <labels json>: an open v1.1.3 ticket
+    local n="$1" labels="$2" blocked_by="${3:-[]}"
+    printf -- '---\nkey: "HIMMEL-%s"\ntype: "Task"\nstatus: "To Do"\nstatusCategory: "To Do"\nlabels: %s\nfixVersions: ["v1.1.3"]\nresolution: null\nblocked_by: %s\n---\n\n# HIMMEL-%s: t\n' "$n" "$labels" "$blocked_by" "$n" > "$tmp/mir/HIMMEL/HIMMEL-$n.md"
 }
 reset() { # fresh doc dir, mirror, registry and logs
     rm -rf "$tmp/doc" "$tmp/mir" "$HANDOVER_DIR" "${FX:?}"/*
@@ -330,8 +331,6 @@ refresh
 check "the next refresh with a working drift pass recovers" "$(out)" "focus=ok"
 check "and clears the warning" "$(st warn)" ""
 
-# --- integrity: a loop or an unreadable link among the version's open tickets ends the run WARN, the page published
-# The dispatcher runs read-only over the same mirror (the negative control): every gh, classify and Jira read is a stub.
 cat >"$tmp/bin/nd-gh" <<'EOS'
 #!/usr/bin/env bash
 exit 0
@@ -344,7 +343,7 @@ EOS
 chmod +x "$tmp/bin/nd-gh"
 mkdir -p "$tmp/nd-git"
 git -C "$tmp/nd-git" init -q -b main && git -C "$tmp/nd-git" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -q --allow-empty -m init
-eligible() { # an unrelated, unblocked To Do ticket of v1.1.3 with a readable scope
+eligible() {
     printf -- '---\nkey: "HIMMEL-9110"\ntype: "Task"\nstatus: "To Do"\nstatusCategory: "To Do"\npriority: "Medium"\nlabels: ["standalone"]\nfixVersions: ["v1.1.3"]\nparent: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# HIMMEL-9110: free\n\n## Description\n\nEdit scripts/lib/alpha.sh only.\n\nDoD\n- the row is green\n\nProof\n- a RED row\n' > "$tmp/mir/HIMMEL/HIMMEL-9110.md"
 }
 dispatcher() {

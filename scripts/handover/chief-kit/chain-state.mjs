@@ -244,27 +244,26 @@ for (const c of registry.chains) {
 }
 const chainsOf = key => [...chains.values()].filter(c => c.members.has(key)).map(c => c.id).sort();
 
-// Cycles are diagnosed over all current hard links, not just one chain's members. With --version the walk also
-// starts from every open ticket of that version, registered or standalone, and never enters a ticket of another
-// version; `unknown` lists each link of a walked start ticket whose status cannot be read.
+// Cycles are diagnosed over all current hard links, not just one chain's members.
 const cycles = [];
 const unknown = [];
 const visited = new Set(), active = new Set(), stack = [];
+const inOtherVersion = key => Boolean(opt.version && issues.get(key)?.known && !inVersion(issues.get(key)));
 function visit(key) {
     if (active.has(key)) {
         cycles.push(stack.slice(stack.indexOf(key)).sort());
         return;
     }
-    if (visited.has(key) || isDone(key) || (opt.version && issues.get(key)?.known && !inVersion(issues.get(key)))) return;
+    if (visited.has(key) || isDone(key) || inOtherVersion(key)) return;
     visited.add(key); active.add(key); stack.push(key);
     for (const l of linksAt(key, now)) if (l.on && l.status === 'open') visit(l.on);
     stack.pop(); active.delete(key);
 }
-const starts = [...new Set([...[...chains.values()].flatMap(c => [...c.members]),
-    ...(opt.version ? [...issues.values()].filter(i => i.known && inVersion(i) && !isDone(i.key)).map(i => i.key).sort() : [])])];
-for (const k of starts) visit(k);
-for (const k of starts) {
-    if (isDone(k)) continue;
+const chainMembers = [...chains.values()].flatMap(c => [...c.members]);
+const openOfVersion = opt.version ? [...issues.values()].filter(i => i.known && inVersion(i) && !isDone(i.key)).map(i => i.key).sort() : [];
+const walkStarts = [...new Set([...chainMembers, ...openOfVersion])];
+for (const k of walkStarts) visit(k);
+for (const k of walkStarts.filter(k => !isDone(k))) {
     for (const l of linksAt(k, now)) if (l.status === 'unknown') unknown.push({ key: k, on: l.on });
 }
 for (const cycle of cycles) warn(`cycle ${cycle.join(' ')}`);
