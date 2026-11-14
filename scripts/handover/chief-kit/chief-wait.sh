@@ -222,8 +222,9 @@
 #                               (default 15) paces the tally; CHIEF_WAIT_TRACKER
 #                               replaces the tracker (tests).
 #   WAKE handover-budget [repeat] <line>  with --doc <chief doc>: chief-budget.sh --title
-#                               <the doc's basename> says HANDOVER (110 turns, 30M
-#                               cache-read or 45 % context fill); the marker clears on OK
+#                               <the doc's basename> says HANDOVER (400 turns, 120M
+#                               cache-read or 45 % context fill (chief-budget.sh defaults));
+#                               the marker clears on OK
 #                               and, while HANDOVER holds, the wake repeats (marked
 #                               `repeat`) every CHIEF_WAIT_BUDGET_REPEAT_MIN minutes
 #                               (default 30). CHIEF_WAIT_BUDGET replaces the command, tests.
