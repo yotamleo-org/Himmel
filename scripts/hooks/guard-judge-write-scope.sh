@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # guard-judge-write-scope.sh - PreToolUse hook, FIRST on the Edit|Write|MultiEdit|NotebookEdit chain: confines a
-# judge-ro subagent's writes to one evidence file directly inside its own judge dir.
+# judge-ro subagent's writes to .md/.txt files directly inside a judge dir judge-dir.sh made. It does not bind a dir to
+# one judge: .holder names the holding process, which in-process judges share with their chief.
 #
 # judge-ro carries the Write tool so it can record its own evidence; its Bash heredocs of that evidence are refused by
 # the Bash text guards, which read the body. This fence keys on the payload's agent_type, which Claude Code sends inside
@@ -29,8 +30,12 @@ set -uo pipefail
 
 [ "${JUDGE_WRITE_SCOPE_OK:-0}" != "1" ] || exit 0
 
-input=""
-IFS= read -r -d '' input || true  # swallow-ok: read returns 1 at end of input with no NUL; input holds every byte read. A builtin, so the read needs nothing on PATH
+# cat reads a large Write in blocks and works on the socket the launcher passes as stdin (/dev/stdin cannot be opened
+# on one); without cat, the builtin read takes the same bytes, one at a time.
+if ! input=$(cat 2>/dev/null); then  # swallow-ok: a failed cat leaves stdin unread for the builtin read below
+    input=""
+    IFS= read -r -d '' input || true  # swallow-ok: read returns 1 at end of input with no NUL; input holds every byte read
+fi
 
 deny() {  # deny <reason> [PR]: the structured decision plus stderr, exit 2
     local pr=${2:-"<PR>"} primary here common msg reason
@@ -50,7 +55,7 @@ JUDGE_WRITE_SCOPE_OK=1"
     if command -v jq >/dev/null 2>&1 && reason=$(printf '%s' "$msg" | jq -Rs . 2>/dev/null); then  # swallow-ok: a failed encode falls to the fixed deny text below; the deny still happens
         :
     else
-        reason='"guard-judge-write-scope: a judge-ro write outside its judge dir is refused. Bypass: JUDGE_WRITE_SCOPE_OK=1 in the launching shell"'
+        reason='"guard-judge-write-scope: a judge-ro write outside a judge dir is refused. Bypass: JUDGE_WRITE_SCOPE_OK=1 in the launching shell"'
     fi
     printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":%s}}\n' "$reason"
     printf '%s\n' "$msg" >&2

@@ -145,8 +145,8 @@ esac
 # implementation workers. Plan is lane-exempt, but the bank guard still applies if
 # a Plan prompt is genuinely implementation-shaped. A judge-ro id is exempt only
 # while its agent file pins the tool list to Read, Grep, Glob and Bash, or that
-# list plus Write, which guard-judge-write-scope.sh confines to one evidence
-# file in its judge dir.
+# list plus Write, which guard-judge-write-scope.sh confines to a judge dir
+# judge-dir.sh made.
 ro_judge_pinned() {
     local f t
     f="$(dirname "${BASH_SOURCE[0]}")/../../.claude/agents/$1.md"

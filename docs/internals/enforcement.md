@@ -4043,7 +4043,7 @@ conjunction is the false-positive budget keeping bounded read-only research
 frictionless. `subagent_type: Explore` always allows, and `judge-ro` allows while `.claude/agents/<id>.md` pins exactly
 one `tools:` line, `tools: Read, Grep, Glob, Bash` or `tools: Read, Grep, Glob, Bash, Write`, the same structural
 read-only lane: [`guard-judge-write-scope.sh`](#guard-judge-write-scopesh--judge-ro-write-fence) confines that Write
-to one evidence file in the judge's own judge dir. Any other grant (`Edit`, `MultiEdit`, `NotebookEdit`) costs the lane.
+to `.md`/`.txt` files directly in a judge dir `judge-dir.sh` made. Any other grant (`Edit`, `MultiEdit`, `NotebookEdit`) costs the lane.
 `brief-drafter` is a separate allowance for drafting worker briefs: it allows
 while `.claude/agents/brief-drafter.md` pins exactly `tools: Read, Write, Edit,
 Bash`, and each such dispatch is appended to the `CHIEF_DISPATCH_LOG` audit log
@@ -4093,7 +4093,8 @@ the Bash text guards, which read the body. The fence keys on the payload's
   and a `Write` anywhere but one `.md`/`.txt` file directly in
   `/tmp/claude-<uid>/j<PR>[a-z]/`, under a 0700 root this uid owns, in a judge dir
   `scripts/judge-dir.sh` made (a regular `.holder`) that no verdict has released
-  (`.verdict-written`), reached through no symlink.
+  (`.verdict-written`), reached through no symlink. It does not bind a judge dir to one
+  judge: `.holder` names the holding process, which in-process judges share with their chief.
 - A subagent payload (`agent_id` set) with no `agent_type` is denied: it cannot be
   scoped.
 - Any other caller: exit 0, no output. The fence never prints an allow, so the rest of

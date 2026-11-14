@@ -46,7 +46,7 @@
 #   * subagent_type: Explore, or judge-ro (a
 #     repo agent whose frontmatter pins tools Read, Grep, Glob, Bash, or that
 #     line plus Write, checked at dispatch; guard-judge-write-scope.sh confines
-#     that Write to one evidence file in its judge dir), or
+#     that Write to a judge dir judge-dir.sh made), or
 #     brief-drafter (a repo agent whose frontmatter pins tools
 #     Read, Write, Edit, Bash; its job is writing brief files for the chief,
 #     and its prompt forbids launch, commit, push and PR. Each such dispatch
@@ -160,7 +160,7 @@ subagent_type="${subagent_type%$'\n'}"
 # judge-ro and brief-drafter are matched exactly and keep their lane only
 # while the project agent file has one tools: line, exactly an expected one
 # (judge-ro: Read, Grep, Glob, Bash, or that line plus Write, which
-# guard-judge-write-scope.sh confines to one evidence file in its judge dir;
+# guard-judge-write-scope.sh confines to a judge dir judge-dir.sh made;
 # brief-drafter: Read, Write, Edit, Bash). A file that grants more, or no file,
 # gets none.
 agent_pinned() {

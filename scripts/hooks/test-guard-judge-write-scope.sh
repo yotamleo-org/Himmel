@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-guard-judge-write-scope.sh - the suite for guard-judge-write-scope.sh, the fence that confines a judge-ro
-# subagent's Write to one evidence file directly in its own judge dir.
+# subagent's Write to .md/.txt files directly in a judge dir judge-dir.sh made.
 #
 # Every W, A and P(b) row runs the Edit|Write|MultiEdit|NotebookEdit chain exactly as .claude/settings.json wires it,
 # through run-hook-with-bash.js. The fixture uid comes from an `id` shim on PATH: the fence, judge-dir.sh and
@@ -163,7 +163,7 @@ mkdir -p "$T/primary/.claude"
 printf '{}\n' > "$T/primary/.claude/settings.json"
 git -C "$T/primary" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
 
-echo "=== W: a judge-ro write outside one evidence file in its own judge dir is refused by the fence"
+echo "=== W: a judge-ro write anywhere but a .md/.txt file directly in a judge dir is refused by the fence"
 fence_denies W1-worktree-file "$(wpayload judge-ro aj1 Write "$WT/notes.md")"
 fence_denies W2-root "$(wpayload judge-ro aj1 Write "$FXROOT/evidence.md")"
 fence_denies W2b-plugin-scoped-type "$(wpayload himmel-ops:judge-ro aj1 Write "$WT/notes.md")"

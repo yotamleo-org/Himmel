@@ -275,7 +275,7 @@
       "hooks": [
         "scripts/hooks/guard-judge-write-scope.sh"
       ],
-      "bypasses": "Lets a judge-ro subagent write outside one evidence file in its own judge dir (scripts/hooks/guard-judge-write-scope.sh).",
+      "bypasses": "Lets a judge-ro subagent write anything but a .md/.txt file directly in a judge dir judge-dir.sh made (scripts/hooks/guard-judge-write-scope.sh).",
       "remedy": "JUDGE_WRITE_SCOPE_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
     },
     {
