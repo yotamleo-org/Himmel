@@ -1,0 +1,184 @@
+{
+  "numTotalTestSuites": 8,
+  "numPassedTestSuites": 6,
+  "numFailedTestSuites": 2,
+  "numPendingTestSuites": 0,
+  "numTotalTests": 9,
+  "numPassedTests": 3,
+  "numFailedTests": 1,
+  "numPendingTests": 4,
+  "numTodoTests": 1,
+  "snapshot": {
+    "added": 0,
+    "failure": false,
+    "filesAdded": 0,
+    "filesRemoved": 0,
+    "filesRemovedList": [],
+    "filesUnmatched": 0,
+    "filesUpdated": 0,
+    "matched": 0,
+    "total": 0,
+    "unchecked": 0,
+    "uncheckedKeysByFile": [],
+    "unmatched": 0,
+    "updated": 0,
+    "didUpdate": false
+  },
+  "startTime": 1794651653582,
+  "success": false,
+  "testResults": [
+    {
+      "assertionResults": [],
+      "startTime": 1794651653582,
+      "endTime": 1794651653582,
+      "status": "failed",
+      "message": "boom at load",
+      "name": "/CAPTURE_ROOT/vitest-capture/crash.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "ok",
+          "status": "passed",
+          "title": "ok",
+          "duration": 0.7483759999999933,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "bad",
+          "status": "failed",
+          "title": "bad",
+          "duration": 3.2145909999999986,
+          "failureMessages": [
+            "AssertionError: expected 1 to be 2 // Object.is equality\n    at /CAPTURE_ROOT/vitest-capture/failed.test.ts:2:29\n    at file:///CAPTURE_ROOT/node_modules/vitest/dist/chunks/run.CjdgFZiW.js:1632:35\n    at file:///CAPTURE_ROOT/node_modules/vitest/dist/chunks/run.CjdgFZiW.js:2801:26\n    at file:///CAPTURE_ROOT/node_modules/vitest/dist/chunks/run.CjdgFZiW.js:3338:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///CAPTURE_ROOT/node_modules/vitest/dist/chunks/run.CjdgFZiW.js:3333:10)\n    at file:///CAPTURE_ROOT/node_modules/vitest/dist/chunks/run.CjdgFZiW.js:3318:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///CAPTURE_ROOT/node_modules/vitest/dist/chunks/run.CjdgFZiW.js:3276:10)\n    at file:///CAPTURE_ROOT/node_modules/vitest/dist/chunks/run.CjdgFZiW.js:3922:64"
+          ],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1794651653661,
+      "endTime": 1794651653665.2146,
+      "status": "failed",
+      "message": "",
+      "name": "/CAPTURE_ROOT/vitest-capture/failed.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "runs",
+          "status": "passed",
+          "title": "runs",
+          "duration": 0.8035849999999982,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "station only",
+          "status": "skipped",
+          "title": "station only",
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1794651653658,
+      "endTime": 1794651653658.8035,
+      "status": "passed",
+      "message": "",
+      "name": "/CAPTURE_ROOT/vitest-capture/mixed.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "passed"
+          ],
+          "fullName": "passed one",
+          "status": "passed",
+          "title": "one",
+          "duration": 1.1419790000000063,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1794651653662,
+      "endTime": 1794651653663.142,
+      "status": "passed",
+      "message": "",
+      "name": "/CAPTURE_ROOT/vitest-capture/passed.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "live only"
+          ],
+          "fullName": "live only needs creds",
+          "status": "skipped",
+          "title": "needs creds",
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "later",
+          "status": "todo",
+          "title": "later",
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1794651653582,
+      "endTime": 1794651653582,
+      "status": "passed",
+      "message": "",
+      "name": "/CAPTURE_ROOT/vitest-capture/skipif-todo.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "a",
+          "status": "skipped",
+          "title": "a",
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "b",
+          "status": "skipped",
+          "title": "b",
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1794651653582,
+      "endTime": 1794651653582,
+      "status": "passed",
+      "message": "",
+      "name": "/CAPTURE_ROOT/vitest-capture/skipped.test.ts"
+    }
+  ]
+}
