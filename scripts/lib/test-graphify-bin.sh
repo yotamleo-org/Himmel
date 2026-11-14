@@ -136,13 +136,13 @@ assert "hint installs graphifyy[ollama] from the fork at a 40-hex commit sha, si
   grep -qE "'graphifyy\[ollama\] @ git\+https://github\.com/yotamleo-org/graphify@[0-9a-f]{40}'" <<<"$hint"
 fork_ref="$(env -u GRAPHIFY_FORK_REF bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_fork_ref')"
 assert "hint installs the resolver's own fork commit" grep -qF "yotamleo-org/graphify@$fork_ref'" <<<"$hint"
-# The pin is the fork rebased on upstream v8 (0.9.103) plus the mcp below-3 lift.
-assert "default fork ref is the fork build with the mcp below-3 bound and the rebase on upstream 0.9.103" \
-  test "$fork_ref" = "f427fbe9fde68301180239aa39246ea0b1511ffb"
-assert "default version is the fork stamp 0.9.103+himmel.1" \
-  test "$(env -u GRAPHIFY_VERSION bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_version')" = "0.9.103+himmel.1"
-assert "upstreams.json graphify synced_base is 0.9.103" \
-  test "$(node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const l=Array.isArray(r)?r:(r.upstreams||r.entries||[]);console.log(l.find(e=>e.name==="graphify").synced_base)' "$SCRIPT_DIR/../upstreams.json")" = "0.9.103"
+# The pin is the fork hand-rebased on upstream v0.9.106 with its six carried commits.
+assert "default fork ref is the fork build hand-rebased on upstream 0.9.106 with the mcp below-3 bound" \
+  test "$fork_ref" = "f12bad6b63e6f719025f6906e52a585ce98563c1"
+assert "default version is the fork stamp 0.9.106+himmel.1" \
+  test "$(env -u GRAPHIFY_VERSION bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_version')" = "0.9.106+himmel.1"
+assert "upstreams.json graphify synced_base is 0.9.106" \
+  test "$(node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const l=Array.isArray(r)?r:(r.upstreams||r.entries||[]);console.log(l.find(e=>e.name==="graphify").synced_base)' "$SCRIPT_DIR/../upstreams.json")" = "0.9.106"
 assert "hint carries --with mcp (HIMMEL-996: upstream keeps the mcp dep optional)" \
   grep -q -- '--with ' <<<"$hint"
 assert "hint binds the patched mcp floor, single-quoted (the extras do not pull mcp in)" \
