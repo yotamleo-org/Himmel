@@ -7,13 +7,6 @@ set -uo pipefail
 
 [ "${JUDGE_WRITE_SCOPE_OK:-0}" != "1" ] || exit 0
 
-# cat reads a large Write in blocks and works on the socket the launcher passes as stdin (/dev/stdin cannot be opened
-# on one); without cat, the builtin read takes the same bytes, one at a time.
-if ! input=$(cat 2>/dev/null); then  # swallow-ok: a failed cat leaves stdin unread for the builtin read below
-    input=""
-    IFS= read -r -d '' input || true  # swallow-ok: read returns 1 at end of input with no NUL; input holds every byte read
-fi
-
 deny() {
     local pr=${2:-"<PR>"} primary here common msg reason
     here=${BASH_SOURCE[0]%/*}
@@ -38,6 +31,15 @@ JUDGE_WRITE_SCOPE_OK=1"
     printf '%s\n' "$msg" >&2
     exit 2
 }
+
+# cat reads a large Write in blocks and works on the socket the launcher passes as stdin (/dev/stdin cannot be opened
+# on one); without cat, the builtin read takes the same bytes, one at a time.
+if command -v cat >/dev/null 2>&1; then
+    input=$(cat) || deny "the hook payload could not be read"
+else
+    input=""
+    IFS= read -r -d '' input || true  # swallow-ok: read returns 1 at end of input with no NUL; input holds every byte read
+fi
 
 raw_names_judge() { case "$input" in *judge-ro*) return 0 ;; esac; return 1; }
 
