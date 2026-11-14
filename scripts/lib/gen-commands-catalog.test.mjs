@@ -117,7 +117,7 @@ test('write mode: an exempt row inside an upgraded table gets padded to 3 column
   ].join('\n'));
 });
 
-test('check mode: flags a 2-column exempt row inside an ALREADY 3-column table, but not one inside a still-legacy 2-column table (codex-2, HIMMEL-2064 CR round)', () => {
+test('check mode: flags a 2-column exempt row inside an ALREADY 3-column table, but not one inside a still-legacy 2-column table (codex-2, CR round)', () => {
   const alreadyMigrated = [
     '| Command | Description | Notes |',
     '|---|---|---|',
@@ -138,7 +138,7 @@ test('check mode: flags a 2-column exempt row inside an ALREADY 3-column table, 
   assert.deepEqual(legacyViolations, []);
 });
 
-test('a hand-written Notes cell with an UNESCAPED pipe is flagged by check and self-heals under write (no silent truncation) (codex-1, HIMMEL-2064 CR round)', () => {
+test('a hand-written Notes cell with an UNESCAPED pipe is flagged by check and self-heals under write (no silent truncation) (codex-1, CR round)', () => {
   const catalog = '| /foo | Does the thing. | uses cmd1 | cmd2 as fallback |';
   const generated = new Map([['foo', 'Does the thing.']]);
 
@@ -156,7 +156,7 @@ test('a hand-written Notes cell with an UNESCAPED pipe is flagged by check and s
   assert.deepEqual(afterWrite, []);
 });
 
-test('an unescaped pipe with NO surrounding whitespace is still caught (codex-1, HIMMEL-2064 CR round: split(\' | \') missed a no-space "|")', () => {
+test('an unescaped pipe with NO surrounding whitespace is still caught (codex-1, CR round: split(\' | \') missed a no-space "|")', () => {
   const catalog = '| /foo | Does the thing. | note-a|note-b |';
   const generated = new Map([['foo', 'Does the thing.']]);
 
@@ -216,7 +216,7 @@ test('a Notes cell containing a literal | round-trips through escape/unescape', 
   assert.equal(changed, false);
 });
 
-test('a description containing a literal backslash-pipe doubles the backslash so CommonMark rendering does not swallow it (codex-1, HIMMEL-2064 CR round)', () => {
+test('a description containing a literal backslash-pipe doubles the backslash so CommonMark rendering does not swallow it (codex-1, CR round)', () => {
   // frontmatter description is the 4 chars: a \ | b (one literal backslash
   // directly before a literal pipe).
   const generated = new Map([['foo', 'a\\|b']]);
@@ -305,7 +305,7 @@ test('a TAGGED row is exempt (never dropped/flagged) even outside an exempt sect
   assert.deepEqual(violations, []);
 });
 
-test('an untagged parenthetical that is not a real plugin marker cannot fake exemption (codex-2, HIMMEL-2064 CR round: /foo (beta) evading the orphan check)', () => {
+test('an untagged parenthetical that is not a real plugin marker cannot fake exemption (codex-2, CR round: /foo (beta) evading the orphan check)', () => {
   const catalog = '| /foo (beta) | Some paraphrase |';
   const { violations } = regenerateCatalog(catalog, new Map(), 'check');
   assert.equal(violations.length, 1);
@@ -372,14 +372,14 @@ test('loadGeneratedStaged reads the STAGED command frontmatter, ignoring an unst
   }
 });
 
-test('check mode: a well-formed row with trailing whitespace is not falsely flagged (codex-2, HIMMEL-2064 CR round: slice(1,-1) removed a space, not the closing pipe)', () => {
+test('check mode: a well-formed row with trailing whitespace is not falsely flagged (codex-2, CR round: slice(1,-1) removed a space, not the closing pipe)', () => {
   const catalog = '| /foo | Does the thing. | |  ';
   const generated = new Map([['foo', 'Does the thing.']]);
   const { violations } = regenerateCatalog(catalog, generated, 'check');
   assert.deepEqual(violations, []);
 });
 
-test('write mode: a row missing the OPTIONAL trailing pipe is not silently truncated (codex-1, HIMMEL-2064 CR round, CRITICAL: GFM makes the trailing | optional)', () => {
+test('write mode: a row missing the OPTIONAL trailing pipe is not silently truncated (codex-1, CR round, CRITICAL: GFM makes the trailing | optional)', () => {
   const catalog = '| /foo | Does the thing. | note';
   const generated = new Map([['foo', 'Does the thing.']]);
   const { text } = regenerateCatalog(catalog, generated, 'write');
@@ -388,7 +388,7 @@ test('write mode: a row missing the OPTIONAL trailing pipe is not silently trunc
   assert.equal(text, '| /foo | Does the thing. | note |');
 });
 
-test('write mode: a row missing the trailing pipe whose Notes cell legitimately ends in an escaped literal pipe is not corrupted (codex-1, HIMMEL-2105 CR round, Important)', () => {
+test('write mode: a row missing the trailing pipe whose Notes cell legitimately ends in an escaped literal pipe is not corrupted (codex-1, CR round, Important)', () => {
   const catalog = '| /foo | Does the thing. | note\\|';
   const generated = new Map([['foo', 'Does the thing.']]);
   const { text } = regenerateCatalog(catalog, generated, 'write');
@@ -397,7 +397,7 @@ test('write mode: a row missing the trailing pipe whose Notes cell legitimately 
   assert.equal(text, '| /foo | Does the thing. | note\\| |');
 });
 
-test('loadGeneratedStaged skips a NESTED staged command file (codex-1, HIMMEL-2064 CR round: git\'s * pathspec crosses directories, readdirSync does not)', () => {
+test('loadGeneratedStaged skips a NESTED staged command file (codex-1, CR round: git\'s * pathspec crosses directories, readdirSync does not)', () => {
   const root = makeTmpDir('gen-catalog-nested-');
   try {
     execFileSync('git', ['init', '-q'], { cwd: root });
