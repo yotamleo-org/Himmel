@@ -350,9 +350,15 @@ if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
     exit 96
 fi
 chokepoint_seam_guard scripts/handover/merge-on-green.sh || exit 96
+# an inherited gh-read knob must not load code or fail a read this gate makes
+unset _GHR_LOAD_DOTENV GH_READ_REFUSED_FILE GH_READ_OFF GH_READ_TIMEOUT GH_READ_NO_MAIN_FALLBACK GH_READ_QUIET
 
 
 GH="gh"
+# Reads whose answer is the same for any caller go through the helper in its executed form, as "$GH_READ_BIN".
+# GH stays the literal gh: every write, and every read whose answer depends on the caller's permission.
+GH_READ_BIN="$_csg_dir/../lib/gh-read.sh"
+[ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
 # The ONE public repo armed auto-merge may target. Deliberately a
 # fixed literal, NOT environment-overridable: the GATE INTEGRITY paragraph above
 # forbids an env seam on a merge gate, and this one would be the WIDENING kind —
@@ -494,7 +500,7 @@ _protection_classic() {
     local nwo="$1" branch="$2" prot admins rest n_contexts n_checks
     PROT_CLASSIC_DETAIL="unreadable"
     prot=$("$GH" api "repos/$nwo/branches/$branch/protection" \
-            --jq '"\(.enforce_admins.enabled // false)|\((.required_status_checks.contexts // []) | if type == "array" then length else 0 end)|\((.required_status_checks.checks // []) | if type == "array" then length else 0 end)"' 2>/dev/null || true)  # jq-alt-ok: every `//` default here is the FAIL-CLOSED answer, so swallowing false is harmless — absent, null and false all yield the value that REFUSES (enforce_admins must equal the string "true"; an empty contexts/checks list means zero required checks). has() would be weaker, not stronger: it would read a present-but-false enforce_admins as satisfied.
+            --jq '"\(.enforce_admins.enabled // false)|\((.required_status_checks.contexts // []) | if type == "array" then length else 0 end)|\((.required_status_checks.checks // []) | if type == "array" then length else 0 end)"' 2>/dev/null || true)  # gh-main-ok: permission-dependent answer  # jq-alt-ok: every `//` default here is the FAIL-CLOSED answer, so swallowing false is harmless — absent, null and false all yield the value that REFUSES (enforce_admins must equal the string "true"; an empty contexts/checks list means zero required checks). has() would be weaker, not stronger: it would read a present-but-false enforce_admins as satisfied.
     [ -n "$prot" ] || return 1
     admins=${prot%%|*}
     rest=${prot#*|}
@@ -520,7 +526,7 @@ _protection_ruleset() {
     PROT_RULESET_DETAIL="unreadable"
     # shellcheck disable=SC2016  # jq program: $r is a jq variable, not shell
     rules=$("$GH" api "repos/$nwo/rules/branches/$branch" \
-            --jq '(if type == "array" then . else [] end) | [.[] | select(.type == "required_status_checks")] as $r | "\([$r[] | .parameters.required_status_checks | if type == "array" then length else 0 end] | add | if . == null then 0 else . end)|\([$r[] | .ruleset_id] | unique | join(","))"' 2>/dev/null || true)
+            --jq '(if type == "array" then . else [] end) | [.[] | select(.type == "required_status_checks")] as $r | "\([$r[] | .parameters.required_status_checks | if type == "array" then length else 0 end] | add | if . == null then 0 else . end)|\([$r[] | .ruleset_id] | unique | join(","))"' 2>/dev/null || true)  # gh-main-ok: permission-dependent answer
     [ -n "$rules" ] || return 1
     n_checks=${rules%%|*}
     ids=${rules#*|}
@@ -532,7 +538,7 @@ _protection_ruleset() {
     for id in $ids; do
         [ -n "$id" ] || return 1
         rs=$("$GH" api "repos/$nwo/rulesets/$id" \
-                --jq '"\(.enforcement)|\(.bypass_actors | if type == "array" then length else -1 end)"' 2>/dev/null || true)
+                --jq '"\(.enforcement)|\(.bypass_actors | if type == "array" then length else -1 end)"' 2>/dev/null || true)  # gh-main-ok: permission-dependent answer
         [ -n "$rs" ] || { PROT_RULESET_DETAIL="$PROT_RULESET_DETAIL ruleset=$id:unreadable"; return 1; }
         enf=${rs%%|*}
         byp=${rs#*|}
@@ -677,7 +683,7 @@ _go_nothing_merged_exit() {
 
 # gh helper honoring an optional selector (mirrors check-ci's pr_view shape).
 gh_pr_view() {
-    if [ -n "$selector" ]; then "$GH" pr view "$selector" "$@"; else "$GH" pr view "$@"; fi
+    if [ -n "$selector" ]; then "$GH_READ_BIN" pr view "$selector" "$@"; else "$GH_READ_BIN" pr view "$@"; fi
 }
 
 # Resolve the PR (state + url + number + head SHA) in ONE query, scoped to the
@@ -688,7 +694,7 @@ gh_pr_view() {
 # real auth/network failure (must refuse, never a silent no-op), like check-ci.
 meta=""
 meta_rc=0
-meta=$(gh_pr_view --json state,url,number,headRefOid,baseRefName,headRefName \
+meta=$(GH_READ_QUIET=1 gh_pr_view --json state,url,number,headRefOid,baseRefName,headRefName \
         --jq '"\(.state)|\(.url)|\(.number)|\(.headRefOid)|\(.baseRefName)|\(.headRefName)"' 2>&1) || meta_rc=$?
 if [ "$meta_rc" -ne 0 ]; then
     if printf '%s' "$meta" | grep -qi 'no pull requests found'; then
@@ -741,7 +747,7 @@ _jira_breadcrumb() {
 # jira_auto_transition_on_merge; never fails the run.
 jira_closed_pr_event() {
     local nwo="$1" pr_num="$2" title key common repo_root issue_json issue_type crumb
-    title=$("$GH" pr view "$pr_num" --repo "$nwo" --json title -q .title 2>/dev/null) || return 0
+    title=$("$GH_READ_BIN" pr view "$pr_num" --repo "$nwo" --json title -q .title 2>/dev/null) || return 0
     declare -F ticket_key_from_title >/dev/null || return 0
     key=$(ticket_key_from_title "$title") || return 0
     common=$(git rev-parse --git-common-dir 2>/dev/null) || return 0
@@ -861,7 +867,7 @@ local_commit_guard
 # repos the credentials can see: refuse any selector whose PR lives outside the
 # repo this wrapper was invoked from. (The default no-selector path is already
 # the cwd branch's PR, so this only ever refuses an explicit cross-repo selector.)
-cwd_nwo=$("$GH" repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || true)
+cwd_nwo=$("$GH_READ_BIN" repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || true)
 if [ -z "$cwd_nwo" ]; then
     echo "merge-on-green: cannot resolve the current checkout's repo — refusing (cannot bind the merge target)." >&2
     audit "REFUSED reason=no-cwd-repo pr=#$pr_num"
@@ -885,7 +891,7 @@ fi
 # The boundary widens for ONE named public repo (the configured
 # public origin), and only while it is live-verified under branch protection
 # with required status checks — see public_origin_merge_allowed above.
-repo_meta=$("$GH" repo view "$nwo" --json isPrivate,defaultBranchRef \
+repo_meta=$("$GH_READ_BIN" repo view "$nwo" --json isPrivate,defaultBranchRef \
         --jq '"\(.isPrivate)|\(.defaultBranchRef.name // "")"' 2>/dev/null || true)
 is_private=${repo_meta%%|*}
 default_branch=${repo_meta#*|}
@@ -1000,7 +1006,7 @@ while :; do
     fi || ci_rc=$?
     [ "$ci_rc" -eq 7 ] || break
     [ "$ci_round" -lt "$CI_DEADLINE_ROUNDS" ] || break
-    round_line=$("$GH" pr view "$pr_num" --repo "$nwo" --json state,headRefOid --jq '"\(.state) \(.headRefOid)"' 2>/dev/null) || round_line=""
+    round_line=$("$GH_READ_BIN" pr view "$pr_num" --repo "$nwo" --json state,headRefOid --jq '"\(.state) \(.headRefOid)"' 2>/dev/null) || round_line=""
     if [ "$round_line" != "OPEN $sha" ]; then
         echo "merge-on-green: check-ci was still pending at its deadline, and PR #$pr_num is no longer OPEN at the certified head $sha (read: '${round_line:-unreadable}') — not watching again, not merging." >&2
         audit "REFUSED reason=head-moved-during-ci-wait gate=check-ci:7 round=$ci_round now=$(printf '%s' "${round_line:-unreadable}" | tr -c 'A-Za-z0-9_.-' '_') repo=$nwo pr=#$pr_num sha=$sha"
@@ -1237,7 +1243,7 @@ if ! . "$himmel_repo/scripts/lib/go-gate.sh" 2>/dev/null || ! declare -F trust_p
     trust_refuse go-lib "cannot load trust_path_check and go_trust_gate from the anchor's scripts/lib/go-gate.sh"
 fi
 trust_rc=0
-trust_out=$(trust_path_check "$nwo" "$pr_num" "$sha" "$default_branch" "$himmel_repo") || trust_rc=$?
+trust_out=$(GH_READ_QUIET=1 GH="$GH_READ_BIN" trust_path_check "$nwo" "$pr_num" "$sha" "$default_branch" "$himmel_repo") || trust_rc=$?
 # An anchor merely behind origin catches up (fast-forward only) and the whole
 # gate re-runs from the fresh bytes: every helper above was sourced from the
 # stale anchor, and this file itself may have just changed on disk. A moved
@@ -1362,11 +1368,11 @@ main_red_classify() {
     mr_cls="" mr_list=""
     if [ "$mr_log_rc" -lt 0 ]; then
         mr_log_rc=0
-        mr_log=$("$GH" run view "$mr_run" --repo "$nwo" ${mr_att:+--attempt "$mr_att"} --log-failed) || mr_log_rc=$?
+        mr_log=$("$GH_READ_BIN" run view "$mr_run" --repo "$nwo" ${mr_att:+--attempt "$mr_att"} --log-failed) || mr_log_rc=$?
     fi
     if [ "$mr_log_rc" -ne 0 ]; then mr_cls=unclassified; return 0; fi
     local mr_res mr_bad
-    mr_bad=$("$GH" run view "$mr_run" --repo "$nwo" ${mr_att:+--attempt "$mr_att"} --json jobs \
+    mr_bad=$("$GH_READ_BIN" run view "$mr_run" --repo "$nwo" ${mr_att:+--attempt "$mr_att"} --json jobs \
         --jq '.jobs[] | select((.conclusion == "success" or .conclusion == "skipped") | not) | .name') || { mr_cls=unclassified; return 0; }
     mr_res=$(printf '%s\n' "$mr_log" | MR_BAD="$mr_bad" awk -F'\t' '
         BEGIN { nrj = split(ENVIRON["MR_BAD"], rjob, "\n") }
@@ -1440,7 +1446,7 @@ main_red_classify() {
     mr_ok=cap-only
 }
 mr_rc=0
-mr_rows=$("$GH" run list --repo "$nwo" --branch "$default_branch" --workflow CI --limit 50 \
+mr_rows=$("$GH_READ_BIN" run list --repo "$nwo" --branch "$default_branch" --workflow CI --limit 50 \
     --json databaseId,conclusion,status,event,headSha,createdAt,attempt \
     --jq '.[] | "\(.databaseId)|\(.status)|\(.conclusion)|\(.event)|\(.headSha)|\(.attempt // 1)"' 2>/dev/null) || mr_rc=$?
 [ "$mr_rc" -eq 0 ] || main_red_refuse "cannot read $nwo's $default_branch CI runs (gh run list exit $mr_rc), so main's state is unverified" "phase=run-list rc=$mr_rc"
@@ -1459,7 +1465,7 @@ while IFS='|' read -r mr_id mr_status mr_c mr_ev mr_sha mr_attn; do
         [ -z "$mr_run" ] || continue
         case "$mr_attn" in "" | *[!0-9]* | 0 | 1) continue ;; esac
         mr_prev=$((mr_attn - 1)) mr_prc=0
-        mr_c=$("$GH" run view "$mr_id" --repo "$nwo" --attempt "$mr_prev" --json conclusion --jq .conclusion) || mr_prc=$?
+        mr_c=$("$GH_READ_BIN" run view "$mr_id" --repo "$nwo" --attempt "$mr_prev" --json conclusion --jq .conclusion) || mr_prc=$?
         [ "$mr_prc" -eq 0 ] || main_red_refuse "main-pending: CI run $mr_id is being re-run and its previous attempt $mr_prev cannot be read (gh run view exit $mr_prc), so main's state is unverified" "run=$mr_id attempt=$mr_prev phase=attempt rc=$mr_prc"
     fi
     case "$mr_c" in cancelled | skipped | null | "") continue ;; esac
@@ -1486,7 +1492,7 @@ elif [ "$mr_conc" != success ]; then
     if [ -n "$mr_root" ] && go_fixred_gate "$pr_num" "$sha" "$mr_root" "$nwo" "$mr_run" >/dev/null 2>&1; then
         mr_ok="fix-go:run=$mr_run"
     else
-        mr_msgs=$("$GH" pr view "$pr_num" --repo "$nwo" --json commits --jq '.commits[] | .messageHeadline, .messageBody' 2>/dev/null) || mr_rc=$?
+        mr_msgs=$("$GH_READ_BIN" pr view "$pr_num" --repo "$nwo" --json commits --jq '.commits[] | .messageHeadline, .messageBody' 2>/dev/null) || mr_rc=$?
     fi
     # An unreadable commit list only means no declaration can be
     # verified; the PR is green (the check-ci gate above), so it merges as advisory.
@@ -1507,7 +1513,7 @@ elif [ "$mr_conc" != success ]; then
                 [ "${#mr_tok}" -ge 4 ] || continue
                 if [ "$mr_log_rc" -lt 0 ]; then
                     mr_log_rc=0
-                    mr_log=$("$GH" run view "$mr_run" --repo "$nwo" ${mr_att:+--attempt "$mr_att"} --log-failed 2>/dev/null) || mr_log_rc=$?
+                    mr_log=$("$GH_READ_BIN" run view "$mr_run" --repo "$nwo" ${mr_att:+--attempt "$mr_att"} --log-failed 2>/dev/null) || mr_log_rc=$?
                 fi
                 [ "$mr_log_rc" -eq 0 ] || continue # unverifiable declaration: advisory, not a refusal
                 if printf '%s\n' "$mr_log" | awk -F'\t' -v t="$mr_tok" '
@@ -1577,7 +1583,7 @@ bump_refuse() {
     exit 23
 }
 bp_rc=0
-bp_files=$("$GH" api "repos/$nwo/pulls/$pr_num/files" --paginate \
+bp_files=$("$GH_READ_BIN" api "repos/$nwo/pulls/$pr_num/files" --paginate \
     --jq '.[] | .filename, (.previous_filename // empty)' 2>/dev/null) || bp_rc=$?
 [ "$bp_rc" -eq 0 ] || bump_refuse "cannot list PR #$pr_num's files (gh api exit $bp_rc), so it is unknown whether it changes a plugin" "phase=files rc=$bp_rc"
 # Match in-shell, never `| grep -q` / `| grep -m1` under pipefail: an early
@@ -1892,7 +1898,7 @@ clear_cr_marker_for_branch() {
 # below last, after this additional round-trip and the marker-clear work.
 policy_rc=0
 policy=$("$GH" pr view "$pr_num" --repo "$nwo" --json mergeStateStatus,reviewDecision \
-        --jq '"\(.mergeStateStatus)|\(.reviewDecision)"' 2>/dev/null) || policy_rc=$?
+        --jq '"\(.mergeStateStatus)|\(.reviewDecision)"' 2>/dev/null) || policy_rc=$?  # gh-main-ok: permission-dependent answer
 if [ "$policy_rc" -ne 0 ] || [[ "$policy" != *'|'* ]] || [ -z "${policy%%|*}" ] || [ "${policy%%|*}" = "null" ]; then
     echo "merge-on-green: cannot read the PR's pre-merge policy — refusing to guess." >&2
     audit "REFUSED reason=policy-query-failed repo=$nwo pr=#$pr_num sha=$sha"
@@ -1931,8 +1937,8 @@ fi
 # — because branch protection can be weakened during check-ci.sh's multi-minute
 # watch exactly like isPrivate and the base can (the same staleness class the
 # comment above already describes for those two).
-fresh_base=$("$GH" pr view "$pr_num" --repo "$nwo" --json baseRefName --jq '.baseRefName' 2>/dev/null || true)
-fresh_repo_meta=$("$GH" repo view "$nwo" --json isPrivate,defaultBranchRef \
+fresh_base=$("$GH_READ_BIN" pr view "$pr_num" --repo "$nwo" --json baseRefName --jq '.baseRefName' 2>/dev/null || true)
+fresh_repo_meta=$("$GH_READ_BIN" repo view "$nwo" --json isPrivate,defaultBranchRef \
         --jq '"\(.isPrivate)|\(.defaultBranchRef.name // "")"' 2>/dev/null || true)
 fresh_private=${fresh_repo_meta%%|*}
 fresh_default=${fresh_repo_meta#*|}
@@ -1961,7 +1967,7 @@ fi
 # (and during) the check-ci.sh watch above. Re-query it fresh, right before
 # merging, same staleness class as fresh_base above, and refuse rather than
 # land a non-conventional subject on main.
-fresh_title_meta=$("$GH" pr view "$pr_num" --repo "$nwo" --json title,author --jq '"\(.title)\t\(.author.login // "")"' 2>/dev/null || true)
+fresh_title_meta=$("$GH_READ_BIN" pr view "$pr_num" --repo "$nwo" --json title,author --jq '"\(.title)\t\(.author.login // "")"' 2>/dev/null || true)
 fresh_title=${fresh_title_meta%%$'\t'*}
 fresh_title_author=${fresh_title_meta#*$'\t'}
 if [ -z "$fresh_title" ]; then
@@ -2016,7 +2022,7 @@ if [ -n "$partial_key" ]; then
         partial_gh_rc=0
         partial_reader_rc=0
         # swallow-ok: a failed read sets partial_gh_rc, which refuses below (exit 26), so no plausible value reaches the decision
-        partial_body=$("$GH" pr view "$pr_num" --repo "$nwo" --json body -q .body 2>/dev/null) || partial_gh_rc=$?
+        partial_body=$("$GH_READ_BIN" pr view "$pr_num" --repo "$nwo" --json body -q .body 2>/dev/null) || partial_gh_rc=$?
         partial_ans=""
         if [ "$partial_gh_rc" -eq 0 ]; then partial_ans=$(_pr_remainder_answer "$partial_key" "$partial_body") || partial_reader_rc=$?; fi
         # a failed read never reaches the reader, so it leaves no answer and refuses here too
@@ -2128,7 +2134,7 @@ _merge_intent_row
 # cwd that is not the PR's worktree) would make the re-query miss — or hit a
 # different PR — after the merge already landed.
 pr_state_and_head_now() {
-    "$GH" pr view "$pr_num" --repo "$nwo" --json state,headRefOid,baseRefName --jq '"\(.state) \(.headRefOid) \(.baseRefName)"'
+    "$GH_READ_BIN" pr view "$pr_num" --repo "$nwo" --json state,headRefOid,baseRefName --jq '"\(.state) \(.headRefOid) \(.baseRefName)"'
 }
 
 # Bounded confirmation poll over that re-query, shared by the success path and
@@ -2513,7 +2519,7 @@ record_after_report_pending_marker() {
     # hang the audit-marker path indefinitely;
     # skipped when `timeout` isn't on PATH rather than failing the query
     # outright.
-    local _gh_view_cmd=("$GH" pr view "$pr" --repo "$nwo" --comments --json comments)
+    local _gh_view_cmd=("$GH_READ_BIN" pr view "$pr" --repo "$nwo" --comments --json comments)
     command -v timeout >/dev/null 2>&1 && _gh_view_cmd=(timeout "${GH_TIMEOUT_SECS:-30}" "${_gh_view_cmd[@]}")
     local n_summaries=""
     n_summaries=$("${_gh_view_cmd[@]}" 2>/dev/null \
@@ -2602,7 +2608,7 @@ record_bug_origin() {
     BUG_ORIGIN_RESULT="failed"
     snap=$(mktemp "${TMPDIR:-/tmp}/mog-bug-origin.XXXXXX") || {
         echo "merge-on-green: WARN bug-origin ingest of PR #$pr skipped: no scratch file; the row is not written" >&2; return 0; }
-    if view=$($bo_to_gh "$GH" pr view "$pr" --repo "$nwo" --json number,title,body,mergedAt,headRefName,headRefOid,mergeCommit); then
+    if view=$($bo_to_gh "$GH_READ_BIN" pr view "$pr" --repo "$nwo" --json number,title,body,mergedAt,headRefName,headRefOid,mergeCommit); then
         printf '[%s]\n' "$view" > "$snap"
         out=$($bo_to_ing python3 -I "$report" ingest --prs "$snap" 2>&1) || rc=$?
     else
@@ -2646,7 +2652,7 @@ _record_conflicts_run() {
     gcd=${gcd##*$'\n'}
     snap=$(mktemp "${TMPDIR:-/tmp}/mog-conflicts.XXXXXX") || {
         echo "merge-on-green: WARN conflicts record of PR #$pr skipped: no scratch file; run conflicts.py backfill by hand" >&2; return 0; }
-    if view=$($cf_to_gh "$GH" pr view "$pr" --repo "$nwo" --json number,title,body,mergedAt,mergeCommit,headRefOid,isCrossRepository); then
+    if view=$($cf_to_gh "$GH_READ_BIN" pr view "$pr" --repo "$nwo" --json number,title,body,mergedAt,mergeCommit,headRefOid,isCrossRepository); then
         printf '%s\n' "$view" > "$snap"
         out=$(env -u HANDOVER_DIR -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE \
             ${cf_to_rec:+$cf_to_rec} python3 -I "$script" record --snapshot "$snap" --repo-dir "$gcd" --base-ref "origin/$default_branch" 2>&1) || rc=$?
@@ -2801,7 +2807,7 @@ _jira_close_on_merge() {
     JIRA_AUTO_TRANSITION_RESULT="not-attempted"
 
     local title
-    title=$("$GH" pr view "$pr_num" --repo "$nwo" --json title -q .title 2>/dev/null) \
+    title=$("$GH_READ_BIN" pr view "$pr_num" --repo "$nwo" --json title -q .title 2>/dev/null) \
         || { JIRA_AUTO_TRANSITION_RESULT="skip=no-title"; return 0; }
 
     local key=""
@@ -2894,7 +2900,7 @@ _jira_close_on_merge() {
         # The shared reader's text: the Remaining: line(s) and the deferred lines under ## Ticket coverage.
         local pr_body
         # swallow-ok: the merge already landed; an unreadable body makes the breadcrumb say "not recorded", it decides nothing
-        pr_body=$("$GH" pr view "$pr_num" --repo "$nwo" --json body -q .body 2>/dev/null)
+        pr_body=$("$GH_READ_BIN" pr view "$pr_num" --repo "$nwo" --json body -q .body 2>/dev/null)
         # swallow-ok: the merge already landed; a reader that fails makes the breadcrumb say "not recorded", it decides nothing
         remaining=$(_pr_remainder_answer "$key" "$pr_body" | awk -F'\t' 'NF > 1 { print "Remaining: " $NF }') || remaining=""
         [ -n "$remaining" ] || remaining="Remaining: not recorded in the PR body, see PR #$pr_num."
@@ -3008,7 +3014,7 @@ $remaining")
 _merge_pre_row() {
     local title key
     declare -F status_event >/dev/null && declare -F ticket_key_from_title >/dev/null || return 0
-    title=$("$GH" pr view "$2" --repo "$1" --json title -q .title 2>/dev/null) || return 0  # swallow-ok: an unread title writes no pre-Jira row; the row after the Jira step still records the merge
+    title=$("$GH_READ_BIN" pr view "$2" --repo "$1" --json title -q .title 2>/dev/null) || return 0  # swallow-ok: an unread title writes no pre-Jira row; the row after the Jira step still records the merge
     key=$(ticket_key_from_title "$title") || return 0
     [ -n "$key" ] || return 0
     _merge_contract
@@ -3062,7 +3068,7 @@ jira_auto_transition_on_merge() {
 # WARN and an audit line, never a failed merge: this always returns 0.
 main_recheck_dispatch() {
     local mc_nwo="$1" mc_base="$2" mc_before="" mc_new="" mc_out mc_rc=0 mc_try=0 mc_max=5
-    mc_before=$("$GH" run list --repo "$mc_nwo" --branch "$mc_base" --workflow CI --event workflow_dispatch --limit 5 \
+    mc_before=$("$GH_READ_BIN" run list --repo "$mc_nwo" --branch "$mc_base" --workflow CI --event workflow_dispatch --limit 5 \
         --json databaseId --jq '[.[].databaseId] | max // 0') || mc_before=""
     case "$mc_before" in "" | *[!0-9]*) mc_before="" ;; esac
     mc_out=$("$GH" workflow run ci.yml --repo "$mc_nwo" --ref "$mc_base" 2>&1) || mc_rc=$?
@@ -3072,7 +3078,7 @@ main_recheck_dispatch() {
         return 0
     fi
     while [ -n "$mc_before" ] && [ -z "$mc_new" ] && [ "$mc_try" -lt "$mc_max" ]; do
-        mc_new=$("$GH" run list --repo "$mc_nwo" --branch "$mc_base" --workflow CI --event workflow_dispatch --limit 5 \
+        mc_new=$("$GH_READ_BIN" run list --repo "$mc_nwo" --branch "$mc_base" --workflow CI --event workflow_dispatch --limit 5 \
             --json databaseId --jq "[.[].databaseId | select(. > $mc_before)] | max // empty") || mc_new=""
         case "$mc_new" in *[!0-9]*) mc_new="" ;; esac
         mc_try=$((mc_try + 1))

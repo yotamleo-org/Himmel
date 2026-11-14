@@ -6292,6 +6292,121 @@ else
 fi
 rm -rf "$bk_root"
 
+# --- 8691 S5: the reads ride the read token; the writes and the caller-dependent reads stay on main --
+# The two-token stub wraps the fixture's own gh. A fixture that runs a case through it also carries the helper
+# (the other fixtures carry none, so the script's read variable falls back to plain gh there).
+S5_STUB="$SCRIPT_DIR/chief-kit/fixtures/gh-two-token-stub.sh"
+S5_TOKEN=ghp_READTOKEN0123456789
+S5_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/mog-s5.XXXXXX") || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
+mkdir -p "$S5_ROOT/full" "$S5_ROOT/empty" "$S5_ROOT/cfg"
+printf 'himmel_github_token_vm2=%s\n' "$S5_TOKEN" > "$S5_ROOT/full/.env"
+: > "$S5_ROOT/empty/.env"
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
+export HIMMEL_SECRETS_KEYRING=off HIMMEL_CONFIG_DIR="$S5_ROOT/cfg"
+s5_setup() {
+    local t="$1"
+    cp "$SCRIPT_DIR/../lib/gh-read.sh" "$SCRIPT_DIR/../lib/timeout-bin.sh" "$SCRIPT_DIR/../lib/load-dotenv.sh" "$SCRIPT_DIR/../lib/gh-quota.sh" "$t/scripts/lib/" || return 1
+    mv "$t/bin/gh" "$t/bin/gh.real" || return 1
+    # S5_NOBYPASS=1: the read token's answer to a ruleset read carries no bypass_actors field, as a token without the right does
+    cat > "$t/bin/gh.mid" <<'MID'
+#!/usr/bin/env bash
+if [ -n "${GH_TOKEN:-}" ] && [ "${S5_NOBYPASS:-0}" = 1 ]; then
+    case "$*" in
+        *"/rulesets/"*)
+            echo "$*" >> "$GH_LOG"
+            jqexpr=""
+            while [ $# -gt 0 ]; do [ "$1" = --jq ] && jqexpr="${2:-}"; shift; done
+            printf '{"enforcement":"active"}' | jq -r "$jqexpr"
+            exit 0 ;;
+    esac
+fi
+exec "$(dirname "$0")/gh.real" "$@"
+MID
+    printf '#!/usr/bin/env bash\nexport GHLOG="%s/tt.log" GH_STUB_DELEGATE="%s/bin/gh.mid"\nexec "%s" "$@"\n' "$t" "$t" "$S5_STUB" > "$t/bin/gh"
+    chmod +x "$t/bin/gh" "$t/bin/gh.mid"
+}
+# s5_mog <expected exit> <name> [-- args]: run_mog on a private fixture through the two-token stub; the caller overrides by prefix
+s5_mog() {
+    GH_READ_ENV_ROOT="${S5_SEL:-$S5_ROOT/full}" GH_STUB_READ_TOKEN="$S5_TOKEN" MOG_ANCHOR_SETUP=s5_setup \
+        STUB_NWO="${STUB_NWO:-acme/private-repo}" STUB_CWD_NWO="${STUB_CWD_NWO:-acme/private-repo}" STUB_PRIVATE="${STUB_PRIVATE:-true}" \
+        STUB_SHA="${STUB_SHA:-s5ok01}" run_mog "$@"
+}
+s5n() { if [ -f "$LAST_TMP/tt.log" ]; then grep -c -E -- "$1" "$LAST_TMP/tt.log"; else echo 0; fi; }
+s5_is() {  # <label> <pattern> <expected count>
+    local got; got=$(s5n "$2")
+    if [ "$got" = "$3" ]; then pass; else fail "$1 (tok log: $3 expected, $got seen for /$2/)"; fi
+}
+s5_some() {  # <label> <pattern>: seen at least once
+    local got; got=$(s5n "$2")
+    if [ "$got" -ge 1 ]; then pass; else fail "$1 (tok log: /$2/ never seen)"; fi
+}
+
+# a. main's REST core spent (the 11-10 quota-out), private repo: the REST reads ride the read token, the merge and the policy read stay on main
+S5_SEL="$S5_ROOT/full" GH_STUB_MAINFAIL=rate GH_STUB_MAINFAIL_BUCKET=core s5_mog 0 "8691-a: main's REST core spent, private repo: merged"
+assert_merge_has "8691-a: the merge pins the certified sha" "--match-head-commit s5ok01"
+s5_some "8691-a: the main-branch run list logs tok=read" '^tok=read argv=run list --repo acme/private-repo --branch main --workflow CI'
+s5_some "8691-a: the PR file listing logs tok=read" '^tok=read argv=api repos/acme/private-repo/pulls/77/files'
+s5_some "8691-a: the trust check's list read logs tok=read" '^tok=read argv=api repos/acme/private-repo/contents/scripts/ci/ci-trust-paths.txt'
+s5_some "8691-a: the repo read logs tok=read" '^tok=read argv=repo view acme/private-repo --json isPrivate,defaultBranchRef'
+s5_some "8691-a: the title read logs tok=read" '^tok=read argv=pr view 77 --repo acme/private-repo --json title,author'
+s5_some "8691-a: the policy read (mergeStateStatus) logs tok=main" '^tok=main argv=pr view 77 --repo acme/private-repo --json mergeStateStatus,reviewDecision'
+s5_some "8691-a: pr merge logs tok=main" '^tok=main argv=pr merge 77 --repo acme/private-repo --squash --match-head-commit s5ok01'
+s5_is "8691-a: no policy read and no write rides the read token" '^tok=read argv=(pr merge|workflow run|.*mergeStateStatus)' 0
+s5_is "8691-a: the token is never in a log line" "$S5_TOKEN" 0
+
+# b. the same quota-out on the configured public origin: the protection reads are N, stay on main and are refused, so the gate refuses
+S5_SEL="$S5_ROOT/full" STUB_NWO=yotamleo-org/Himmel STUB_CWD_NWO=yotamleo-org/Himmel STUB_PRIVATE=false \
+    GH_STUB_MAINFAIL=rate GH_STUB_MAINFAIL_BUCKET=core s5_mog 12 "8691-b: main's REST core spent, public origin: refused at the protection read"
+assert_err_has "8691-b: the refusal says the repo is not confirmed PRIVATE" "not confirmed PRIVATE"
+assert_audit_has "8691-b: the audit line carries the unreadable protection" "protection=classic:unreadable"
+s5_some "8691-b: the repo read before the gate logs tok=read" '^tok=read argv=repo view yotamleo-org/Himmel --json isPrivate,defaultBranchRef'
+s5_some "8691-b: the classic protection read logs tok=main" '^tok=main argv=api repos/yotamleo-org/Himmel/branches/main/protection'
+s5_is "8691-b: no protection, rules or ruleset read rides the read token" '^tok=read argv=api repos/.*(protection|/rules/|/rulesets/)' 0
+s5_is "8691-b: nothing merged" '^tok=[a-z]+ argv=pr merge' 0
+
+# c. a ruleset answered without bypass_actors under the read token: the read goes to main, whose answer carries [], so the gate passes
+S5_RULES='[{"type":"required_status_checks","ruleset_id":7,"parameters":{"required_status_checks":[{"context":"ci"}]}}]'
+S5_RULESET='{"enforcement":"active","bypass_actors":[]}'
+S5_SEL="$S5_ROOT/full" S5_NOBYPASS=1 STUB_NWO=yotamleo-org/Himmel STUB_CWD_NWO=yotamleo-org/Himmel STUB_PRIVATE=false STUB_SHA=s5rs01 \
+    STUB_PROTECTION_FAIL=1 STUB_RULES_JSON="$S5_RULES" STUB_RULESET_JSON="$S5_RULESET" s5_mog 0 "8691-c: ruleset bypass_actors absent under the read token: merged"
+assert_audit_has "8691-c: the gate passed on the ruleset source" "source=ruleset"
+s5_some "8691-c: the ruleset read logs tok=main" '^tok=main argv=api repos/yotamleo-org/Himmel/rulesets/7'
+s5_is "8691-c: the effective rules read logs tok=main" '^tok=read argv=api repos/yotamleo-org/Himmel/rules/branches' 0
+s5_is "8691-c: no ruleset read rides the read token" '^tok=read argv=api repos/yotamleo-org/Himmel/rulesets/' 0
+# RED control: the ruleset read moved to the read variable reads the answer without bypass_actors, so the gate refuses
+s5_mutant="$S5_ROOT/mog-ruleset-on-read.sh"
+# shellcheck disable=SC2016  # the sed pattern is literal script text
+sed 's|rs=\$("\$GH" api "repos/\$nwo/rulesets/\$id"|rs=$("${GH_READ_BIN:-gh}" api "repos/$nwo/rulesets/$id"|' "$MOG" > "$s5_mutant"
+if cmp -s "$MOG" "$s5_mutant"; then fail "8691-c control: the sed did not change the ruleset line"; fi
+S5_SEL="$S5_ROOT/full" S5_NOBYPASS=1 STUB_NWO=yotamleo-org/Himmel STUB_CWD_NWO=yotamleo-org/Himmel STUB_PRIVATE=false STUB_SHA=s5rs01 \
+    STUB_PROTECTION_FAIL=1 STUB_RULES_JSON="$S5_RULES" STUB_RULESET_JSON="$S5_RULESET" MOG_SRC="$s5_mutant" \
+    s5_mog 12 "8691-c control: a ruleset read on the read token is refused (bypass_actors=-1)"
+
+# d. no read token: every call logs tok=main and the merge is unchanged
+S5_SEL="$S5_ROOT/empty" s5_mog 0 "8691-d: no read token: merged"
+assert_merge_has "8691-d: the merge pins the certified sha" "--match-head-commit s5ok01"
+s5_is "8691-d: no call logs tok=read" '^tok=read ' 0
+s5_some "8691-d: the reads log tok=main" '^tok=main argv=run list --repo acme/private-repo'
+
+# e. both tokens refused: the trust check's list read (before the main-red gate's run list) is the first refused REST read
+S5_SEL="$S5_ROOT/full" GH_STUB_READFAIL=rate GH_STUB_MAINFAIL=rate GH_STUB_MAINFAIL_BUCKET=core s5_mog 21 "8691-e: both tokens refused: the trust-path gate refuses"
+assert_err_has "8691-e: the refusal names the trust list read" "cannot read scripts/ci/ci-trust-paths.txt"
+s5_some "8691-e: the read token was tried first" '^tok=read argv=api repos/acme/private-repo/contents/scripts/ci/ci-trust-paths.txt'
+s5_some "8691-e: the retry rode the main token" '^tok=main argv=api repos/acme/private-repo/contents/scripts/ci/ci-trust-paths.txt'
+s5_is "8691-e: nothing merged" '^tok=[a-z]+ argv=pr merge' 0
+
+# f. an inherited _GHR_LOAD_DOTENV never loads: the gate clears it before it runs the helper
+printf 'touch "%s/dotenv-marker"\n' "$S5_ROOT" > "$S5_ROOT/evil-load-dotenv.sh"
+rm -f "$S5_ROOT/dotenv-marker"
+S5_SEL="$S5_ROOT/full" _GHR_LOAD_DOTENV="$S5_ROOT/evil-load-dotenv.sh" s5_mog 0 "8691-f: _GHR_LOAD_DOTENV set: merged"
+if [ -e "$S5_ROOT/dotenv-marker" ]; then fail "8691-f: the named file was sourced"; else pass; fi
+s5_some "8691-f: the helper ran (a read logs tok=read)" '^tok=read argv=run list'
+s5_nounset="$S5_ROOT/mog-no-unset.sh"
+grep -v '^unset _GHR_LOAD_DOTENV ' "$MOG" > "$s5_nounset"
+rm -f "$S5_ROOT/dotenv-marker"
+S5_SEL="$S5_ROOT/full" _GHR_LOAD_DOTENV="$S5_ROOT/evil-load-dotenv.sh" MOG_SRC="$s5_nounset" s5_mog 0 "8691-f control: a copy without the unset line"
+if [ -e "$S5_ROOT/dotenv-marker" ]; then pass; else fail "8691-f control: a copy without the unset line never sourced the file (the row proves nothing)"; fi
+
 echo
 echo "merge-on-green: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
