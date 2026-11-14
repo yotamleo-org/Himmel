@@ -413,7 +413,7 @@ EOF
   chmod +x "$d/claude-stub"
   printf '{"oauthAccount":{"accountUuid":"u-test"}}\n' >"$d/.claude.json"
   printf '{"account":"%s","primaries_refreshed_at":%s,"five_hour":{"utilization":10},"seven_day":{"utilization":10}}\n' \
-    "$(printf 'u-test' | sha256sum | cut -c1-16)" "$(date +%s)" >"$d/native-cache.json"
+    "$(printf 'u-test' | { sha256sum 2>/dev/null || shasum -a 256; } | cut -c1-16)" "$(date +%s)" >"$d/native-cache.json"
   printf '#!/bin/bash\nexit 0\n' >"$d/ps"; chmod +x "$d/ps"
   printf '#!/bin/bash\nexit 0\n' >"$d/alert"; chmod +x "$d/alert"
   local -a e=(PATH="$PATH" HOME="$d" TMPDIR="$d" HIMMEL_API_LANE= HIMMEL_API_ACCOUNT=A HIMMEL_API_FALLBACK=on
@@ -424,8 +424,8 @@ EOF
   [ "$planted" = 1 ] && e+=(ANTHROPIC_AUTH_TOKEN=planted)
   ( cd "$repo_root" && env -i "${e[@]}" bash "$t/scripts/api-lane/claude-api.sh" "${SC_ARGS[@]}" >"$d/out" 2>"$d/err" )
   SC_RC=$?
-  SC_CALLS=0
-  [ -f "$d/calls.log" ] && SC_CALLS=$(grep -c '^called' "$d/calls.log")
+  SC_CALLS=0 SC_TOKEN=""
+  [ -f "$d/calls.log" ] && SC_CALLS=$(grep -c '^called' "$d/calls.log") && SC_TOKEN="$(cat "$d/calls.log")"
   SC_ERR="$(cat "$d/err")"
 }
 SC_REFUSAL="claude-api: fallback refused: an API credential name survived the scrub"
@@ -459,6 +459,7 @@ for mode in shadow3 pinok; do
     echo "FAIL - SC2 RED control ($mode): the gate line was not found to rewrite"; fails=$((fails+1))
   else
     sc_run "$td/sc-red-$mode" 1
+    case "$SC_TOKEN" in *"called token=planted"*) ;; *) SC_CALLS=0 ;; esac
     [ "$SC_CALLS" -ge 1 ] && echo "ok - SC2 RED control ($mode): with the gate deleted the stub records a launch carrying the token" \
       || { echo "FAIL - SC2 RED control ($mode): no launch recorded with the gate deleted"; fails=$((fails+1)); }
   fi

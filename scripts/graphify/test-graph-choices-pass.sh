@@ -42,6 +42,7 @@ EOF
 n=$(( $(cat "$FX/sem.n" 2>/dev/null || echo 0) + 1 ))
 echo "$n" >"$FX/sem.n"
 echo "$*" >>"$FX/sem.log"
+echo "out=${GRAPHIFY_OUT:-}" >>"$FX/sem-out.log"
 env | sed 's/=.*//' | sort >"$FX/sem-env.$n"
 rf="" p=""
 for a in "$@"; do [ "$p" = --result-file ] && rf="$a"; p="$a"; done
@@ -163,6 +164,7 @@ has "P4 the letter call" "$(cat "$FX/sem.log")" "--backend claude-api"
 has "P4 the corpus class" "$(cat "$FX/sem.log")" "--corpus-class adopter-repo"
 has "P4 the order" "$(cat "$FX/sem.log")" "--account-order C,A"
 has "P4 the cap from the store" "$(cat "$FX/sem.log")" "--max-run-usd 5"
+check "P4 the call reads the choices graph dir" "$(cat "$FX/sem-out.log")" "out=$(out_dir c1)"
 new_fx p4b
 cfg '"primary":"C","fallbacks":["A"]' c1
 queue no-route
@@ -177,6 +179,7 @@ queue no-route extracted
 run_pass "${PLANTED[@]}" CLAUDE_CODE_OAUTH_TOKEN=planted
 check "P5 two calls" "$(nsem)" 2
 check "P5 one claude-cli call" "$(ncli)" 1
+check "P5 both steps read the choices graph dir" "$(grep -c "^out=$(out_dir c1)\$" "$FX/sem-out.log")" 2
 envs="$(cat "$FX/sem-env.2" 2>/dev/null)"
 has "P5 the oauth token reaches the stub" "$envs" "CLAUDE_CODE_OAUTH_TOKEN"
 for v in ANTHROPIC_ORG_D_KEY ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL CLAUDE_CODE_USE_BEDROCK anthropic_api_key; do
@@ -347,6 +350,7 @@ if command -v graphify >/dev/null 2>&1; then
   printf '{"graphify":{"choices":{"version":1,"corpora":[{"name":"c1","root":"%s"}],"primary":"none"}}}\n' "$FX/repos/c1" >"$H/.himmel/config.json"
   run_pass GRAPH_CHOICES_AST_UPDATE="$REPO/scripts/graphify/ast-update.sh"
   check "P13 git status is empty after the real ast pass" "$(git -C "$FX/repos/c1" status --porcelain)" ""
+  check "P13 the real ast pass built a graph" "$([ -f "$(out_dir c1)/graph.json" ] && echo yes || echo no)" yes
 else
   echo "SKIP - P13 graphify is not installed here; S7 step 4 is the proof"
 fi

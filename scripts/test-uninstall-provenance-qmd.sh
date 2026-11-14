@@ -565,6 +565,7 @@ check "RED33 the cron row is armed" "$(grep -c '# HIMMEL-GraphChoices$' "$CASE_C
 check "RED33 the runner directory exists" "$([ -x "$HOME/.claude/graph-choices-cadence/graph-choices.sh" ] && echo yes || echo no)" "yes"
 mkdir -p "$HOME/.local/share/himmel/graphify/choices/c1/graphify-out"
 printf '{}\n' > "$HOME/.local/share/himmel/graphify/choices/c1/graphify-out/graph.json"
+check "RED33 the choices graph fixture is in place" "$([ -f "$HOME/.local/share/himmel/graphify/choices/c1/graphify-out/graph.json" ] && echo yes || echo no)" "yes"
 out33=$(run_uninstall --yes --skip-plugins --skip-hooks --skip-settings); rc33=$?
 check "RED33 uninstall exit status" "$rc33" "0"
 check "RED33 the cron row is gone" "$(grep -c 'HIMMEL-GraphChoices' "$CASE_CRONTAB_FILE")" "0"

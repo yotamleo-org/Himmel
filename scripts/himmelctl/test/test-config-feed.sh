@@ -225,7 +225,8 @@ fires_of() { jq -c ".rows[]|select(.id==\"$1\")|.fires" "${2:-$out}"; }
 # an empty log is not a run: a named no-run state, never unverified
 jq -e '.rows[]|select(.id=="graphmap-cadence")|.fires.state=="no-run" and .fires.at==null and (.fires.evidence|contains("graphmap-cadence"))' "$out" >/dev/null || fail "c graphmap (empty log) fires: $(fires_of graphmap-cadence)"
 [ "$(fires_of graph-choices-cadence)" = '{"state":"yes","evidence":"graph-choices.log run log, exit rc=0","at":"2026-11-06T04:40:00.000Z"}' ] || fail "F1 graph-choices fires: $(fires_of graph-choices-cadence)"
-jq -e '.rows[]|select(.id=="graph-choices-cadence")|.control.cost|contains("With no graph choice")' "$out" >/dev/null || fail "F1 graph-choices cost is not the worst-case text: $(jq -r '.rows[]|select(.id=="graph-choices-cadence")|.control.cost' "$out")"
+want_gc_cost="With no graph choice: a semantic pass that runs uses this machine's Claude subscription; usage is checked once, before the run starts, and the run does not stop if the budget runs out while it works."
+jq -e --arg w "$want_gc_cost" '.rows[]|select(.id=="graph-choices-cadence")|.control.cost==$w' "$out" >/dev/null || fail "F1 graph-choices cost is not the worst-case text: $(jq -r '.rows[]|select(.id=="graph-choices-cadence")|.control.cost' "$out")"
 jq -e '.rows[]|select(.id=="graph-choices-cadence")|.control.script=="scripts/graphify/graph-choices-cadence.sh"' "$out" >/dev/null || fail "F1 graph-choices row carries no script path"
 pass "F1 graph-choices reads its last run from its own log and carries its worst-case cost and script path"
 [ "$(jq '[.rows[]|select(.fires.state=="yes")]|map(.id)|sort|join(",")' "$out")" = '"doctor-cadence,graph-choices-cadence,pipeline-cadence,qmd-cadence"' ] || fail "fires=yes on a row other than doctor and the logged cadences"
