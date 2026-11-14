@@ -190,6 +190,11 @@ fence_denies W14-nested-subdir "$(wpayload judge-ro aj1 Write "$JD/sub/evidence.
 printf 'x\n' > "$T/elsewhere.md"
 ln -s "$T/elsewhere.md" "$JD/link.md"
 fence_denies W14b-target-is-symlink "$(wpayload judge-ro aj1 Write "$JD/link.md")"
+printf 'x\n' > "$T/outside-hl.md"
+ln "$T/outside-hl.md" "$JD/hl.md" || { echo "FATAL: cannot hard-link into the fixture judge dir"; exit 1; }
+fence_denies W14c-target-is-hard-link "$(wpayload judge-ro aj1 Write "$JD/hl.md")"
+rm -f "$T/outside-hl.md"
+fence_silent W14d-hard-link-count-back-to-one "$(wpayload judge-ro aj1 Write "$JD/hl.md")"
 
 if grep -q 'bash .*/scripts/judge-dir.sh' "$T/err-W1-worktree-file" && grep -q 'JUDGE_WRITE_SCOPE_OK=1' "$T/err-W1-worktree-file"; then
     ok "W1 deny text names judge-dir.sh and the single-run bypass"
