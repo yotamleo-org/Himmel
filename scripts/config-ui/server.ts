@@ -42,6 +42,7 @@ import { optsOf, readReports, writeReports } from "./report-settings";
 import { DAY as REPORT_DAY, listReports, readReport, soFar } from "./reports";
 import { readGate, writeGate } from "./review-gate";
 import { readRoles, saveRoles } from "./api-roles-settings";
+import { readGraph, writeGraph } from "./graph-config";
 import { readConfLayers } from "./conf-layers";
 import { envFileOf, readCap, writeCap } from "./fleet-cap";
 import { applyWrite, KEY_RE, parseWrite, projectKeyOf, type WriteResult } from "./jira-write";
@@ -898,7 +899,9 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       if (path === "/api/fleet-cap" && req.method === "GET") { const c = readCap(capEnvFile(), env); return json(redactOut(c.body), c.status); }
       // the API account role map (Multi accounts): the map and one row per account; a write goes through the role map owner's validated writer.
       if (path === "/api/api-roles" && req.method === "GET") { const r = await readRoles(env); return json(redactOut(r.body), r.status); }
-      if (path !== "/api/board/drift-refresh" && path !== "/api/preview" && path !== "/api/run" && path !== "/api/vm" && path !== "/api/report-settings" && path !== "/api/review-gate" && path !== "/api/api-roles" && path !== "/api/fleet-cap" && path !== "/api/roadmap/write" && path !== "/api/setup/secret" && path !== "/api/setup/account" && path !== "/api/setup/verify") return new Response("not found", { status: 404 });
+      // the graph choices (Configure, Project scope): what to graph, who pays and the fallbacks; read-only on a publisher or an unreadable config.
+      if (path === "/api/graph-choices" && req.method === "GET") { const g = await readGraph(env); return json(redactOut(g.body), g.status); }
+      if (path !== "/api/board/drift-refresh" && path !== "/api/preview" && path !== "/api/run" && path !== "/api/vm" && path !== "/api/report-settings" && path !== "/api/review-gate" && path !== "/api/api-roles" && path !== "/api/graph-choices" && path !== "/api/fleet-cap" && path !== "/api/roadmap/write" && path !== "/api/setup/secret" && path !== "/api/setup/account" && path !== "/api/setup/verify") return new Response("not found", { status: 404 });
       if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
       if (req.headers.get("origin") !== origin) return new Response("bad origin", { status: 403 });
       if ((req.headers.get("content-type") || "").split(";")[0].trim().toLowerCase() !== "application/json") return new Response("json only", { status: 415 });
@@ -909,6 +912,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       if (!b || typeof b !== "object" || Array.isArray(b)) return json({ error: "bad json" }, 400);
       if (path === "/api/review-gate") { const g = writeGate(env, b as Record<string, unknown>); return json(redactOut(g.body), g.status); }
       if (path === "/api/api-roles") { const r = await saveRoles(b as Record<string, unknown>, env); return json(redactOut(r.body), r.status); }
+      if (path === "/api/graph-choices") { const g = await writeGraph(b as Record<string, unknown>, env); return json(redactOut(g.body), g.status); }
       if (path === "/api/fleet-cap") {
         const lock = acquireLock(lockPath);
         if ("busy" in lock) return json({ error: lock.busy }, 409);

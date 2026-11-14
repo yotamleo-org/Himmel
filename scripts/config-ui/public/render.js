@@ -217,6 +217,42 @@ export function renderVm(vm, plain = false) {
     <button class="btn" data-act="vm-save">save</button>${msg}</div>`);
 }
 
+// the graph choices card: what to graph, who pays and the fallbacks. gc = { data: GET /api/graph-choices, error,
+// draft: { roots, primary, fallbacks, cap }, msg }. The server checks and writes; on a publisher or an unreadable config
+// the card is read-only with the server's reason. The letters offered are the configured ones the server read.
+const GRAPH_LEAVES = "What leaves this machine: a model can describe your repos' markdown files. Those files go to the provider, including uncommitted ones and any session notes kept in the repo; nothing scans them for secrets, and a .graphify-corpus-ignore file keeps a path out. Code stays here.";
+export function renderGraphChoices(gc, plain = true) {
+  const d = gc && gc.data;
+  const box = (inner) => machineBox(plain, "graph-choices", "Code graph: what to graph and who pays", d ? esc(d.sentence) : "Which of your repos graphify describes with a model, and who pays for it.",
+    d ? esc(d.sentence) : "Which of your repos graphify describes with a model, and who pays for it (graphify.choices in the himmel config).", inner);
+  if (!gc || (!gc.data && !gc.error)) return box(`<div class="empty">loading…</div>`);
+  if (!d) return box(`<div class="nodata">${esc(gc.error)}</div>`);
+  const worst = `<ul class="gc-worst">${d.worst_case.map((l) => `<li>${esc(l)}</li>`).join("")}</ul>`;
+  const job = `<p class="sub">Daily graph job: <b>${esc(d.job)}</b> · arm or disarm it under <a href="#/config?tile=scope">Scheduled jobs</a>.</p>`;
+  const msg = gc.msg ? `<div class="${gc.msg.ok ? "ro" : "nodata"}" role="status">${esc(gc.msg.text)}</div>` : "";
+  if (d.role === "publisher" || d.role === "unreadable") {
+    const route = d.primary ? [d.primary, ...d.fallbacks].join(", ") : "no choice";
+    return box(`<div class="card"><div class="ro" role="status">Read-only here. ${esc(d.reason)}</div>
+      <p class="sub">Repos: ${d.corpora.length ? d.corpora.map((c) => esc(c.root)).join(", ") : "none"} · who pays: ${esc(route)}</p>${worst}${job}</div>`);
+  }
+  const dr = gc.draft || { roots: d.corpora.map((c) => c.root).join("\n"), primary: d.primary || "none", fallbacks: d.fallbacks.join(", "), cap: d.max_usd_per_pass == null ? "5.00" : String(d.max_usd_per_pass) };
+  const configured = d.accounts.filter((a) => a.configured);
+  const offered = [{ v: "none", l: "none" }, { v: "subscription", l: "subscription" }, ...configured.map((a) => ({ v: a.account, l: `${a.account} · ${a.tag}` }))];
+  if (/^[A-Z]$/.test(dr.primary) && !configured.some((a) => a.account === dr.primary)) offered.push({ v: dr.primary, l: `${dr.primary} · not configured` });
+  const opts = offered.map((o) => `<option value="${esc(o.v)}"${dr.primary === o.v ? " selected" : ""}>${esc(o.l)}</option>`).join("");
+  const rest = [...configured.map((a) => a.account), "subscription"].filter((v) => v !== dr.primary);
+  const q3 = dr.primary === "none" ? "" : `<div class="gc-q" data-q="3"><label>If that one has no credit or budget left, try what next, in order? A comma list, empty for nothing (offered: ${esc(rest.join(", "))}).
+      <input data-gc="fallbacks" value="${esc(dr.fallbacks)}" aria-label="fallbacks, in order"></label>
+      <label>At most how many USD, estimated, per pass while an API account is in the route? <input data-gc="cap" value="${esc(dr.cap)}" inputmode="decimal" aria-label="most USD per pass"></label></div>`;
+  return box(`<div class="card">
+    <div class="gc-q" data-q="1"><label>${esc(d.first_question)} Which of your own git repos should be graphed on this machine? One path per line, empty for none. Notes vaults cannot be added.
+      <textarea data-gc="roots" rows="3" aria-label="repos to graph">${esc(dr.roots)}</textarea></label></div>
+    <div class="gc-q" data-q="2"><p class="sub">${esc(GRAPH_LEAVES)}</p>${d.roster ? `<p class="sub" role="status">${esc(d.roster)}</p>` : ""}
+      <label>Who pays first? <select data-gc="primary" aria-label="who pays first">${opts}</select></label></div>
+    ${q3}${worst}${job}
+    <button class="btn" data-act="gc-save">save</button>${msg}</div>`);
+}
+
 // the Reports and shifts card: the four settings behind the Morning report and the Shift page.
 // rs = { data: GET /api/report-settings, error, draft: { report_day, idle, cut1, cut2, minrun }, msg }. The server validates; this only shows its answer.
 export function renderReports(rs, plain = false) {

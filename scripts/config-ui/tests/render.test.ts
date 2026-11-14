@@ -1,6 +1,8 @@
 import { test, expect } from "bun:test";
 // @ts-ignore plain browser ES module, no types
 import { render, renderNav, renderHeader, renderProbe, rollup, isOpen, settingsCommand } from "../public/render.js";
+// @ts-ignore plain browser ES module, no types
+import * as RenderModule from "../public/render.js";
 
 const row = (id: string, health: string, source = "item", control: Record<string, unknown> = { class: "display-only" }, extra: Record<string, unknown> = {}) => ({
   id, source, group: "core", title: id, health,
@@ -388,4 +390,61 @@ test("renderProbe escapes the source and only takes integer steps", () => {
   expect(h).toContain("&lt;img");
   const bad = renderProbe({ elapsedMs: 0, progress: { i: '1" onclick="x', n: 2, source: "s" } });
   expect(bad).not.toContain("onclick");
+});
+
+// The graph choices card (Configure, Project scope). Read through a namespace import, so a missing export fails only these rows.
+const graphCard = (data: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
+  (RenderModule as Record<string, (gc: unknown, plain?: boolean) => string>).renderGraphChoices({ data, error: null, ...extra }, true);
+const graphData = (over: Record<string, unknown> = {}) => ({
+  role: "adopter", state: "set", corpora: [{ name: "acme", root: "/home/me/acme" }], primary: "C", fallbacks: ["A", "subscription"], max_usd_per_pass: 5,
+  sentence: "THE-SENTENCE", worst_case: ["WORST-API-LINE", "WORST-SUB-LINE"], first_question: "THE-FIRST-QUESTION",
+  accounts: [{ account: "A", configured: true, tag: "room" }, { account: "B", configured: false, tag: "not configured" }, { account: "C", configured: true, tag: "key rejected" }],
+  roster: null, job: "not armed", reason: null, ...over,
+});
+
+test("the graph card shows the sentence first, then Q1, Q2 and Q3 in order, the worst-case lines and whether the job is armed", () => {
+  const h = graphCard(graphData());
+  const at = ["THE-SENTENCE", 'data-q="1"', "THE-FIRST-QUESTION", 'data-q="2"', 'data-q="3"', "WORST-API-LINE", "WORST-SUB-LINE", "not armed"].map((s) => h.indexOf(s));
+  expect(at.every((n) => n >= 0), String(at)).toBe(true);
+  expect([...at].sort((a, b) => a - b)).toEqual(at);
+  expect(h).toContain("/home/me/acme");
+  expect(h).toMatch(/what leaves this machine/i);
+  expect(h).toContain('href="#/config?tile=scope"');
+  // Q2 offers none, subscription and the configured letters only; C carries its tag
+  const q2 = h.slice(h.indexOf('data-q="2"'), h.indexOf('data-q="3"'));
+  expect([...q2.matchAll(/<option value="([^"]+)"/g)].map((m) => m[1])).toEqual(["none", "subscription", "A", "C"]);
+  expect(q2).toContain('value="C" selected');
+  expect(q2).toContain("key rejected");
+  expect(h).toContain('data-act="gc-save"');
+});
+
+test("the graph card asks no Q3 and no cap when the first payer is none", () => {
+  const h = graphCard(graphData({ state: "none", primary: "none", fallbacks: [], max_usd_per_pass: null }));
+  expect(h).toContain('data-q="2"');
+  expect(h).not.toContain('data-q="3"');
+  expect(h).not.toContain('data-gc="cap"');
+});
+
+test("with an unreadable roster the graph card offers none and subscription and prints the roster's fixed line", () => {
+  const h = graphCard(graphData({ primary: "subscription", fallbacks: [], accounts: [], roster: "THE-ROSTER-LINE" }));
+  const q2 = h.slice(h.indexOf('data-q="2"'), h.indexOf('data-q="3"'));
+  expect([...q2.matchAll(/<option value="([^"]+)"/g)].map((m) => m[1])).toEqual(["none", "subscription"]);
+  expect(q2).toContain("THE-ROSTER-LINE");
+});
+
+for (const [role, state] of [["publisher", "set"], ["unreadable", "unreadable"]]) {
+  test(`on ${role === "publisher" ? "a publisher" : "an unreadable config"} the graph card is read-only with the reason`, () => {
+    const h = graphCard(graphData({ role, state, reason: `THE-REASON-${role}` }));
+    expect(h).toContain(`THE-REASON-${role}`);
+    expect(h).toContain("THE-SENTENCE");
+    expect(h).not.toContain("data-gc=");
+    expect(h).not.toContain('data-act="gc-save"');
+  });
+}
+
+test("the graph card escapes what it shows and prints the save answer", () => {
+  const h = graphCard(graphData({ corpora: [{ name: "x", root: "/a/<img src=x>" }] }), { msg: { ok: false, text: "<b>refused</b>" } });
+  expect(h).not.toContain("<img");
+  expect(h).not.toContain("<b>refused");
+  expect(h).toContain("&lt;b&gt;refused");
 });
