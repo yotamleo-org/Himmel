@@ -1288,7 +1288,7 @@ function checkDelivered(ctx: Ctx, p: {
     throw new Error(`release rule: delivered-follows-merge: ${p.key} no longer sits in ${from ?? 'a later version'} outside ${p.decl.current}`);
   }
   const t = terminalOf(snap);
-  if (t === "Won't Do" || t === 'Other') throw new Error(`release rule: delivered-follows-merge: ${p.key} is ${t}, not delivered`);
+  if (t !== 'Done' && t !== 'Duplicate') throw new Error(`release rule: delivered-follows-merge: ${p.key} is ${t ?? 'not closed'}, not delivered`);
   const g = p.governing;
   if (g && Date.parse(g.ts) > Date.parse(standingRow.ts)) {
     throw new Error(`release rule: CONFLICT ${p.key}: ${g.id} (newer) ${g.op} ${vName(g.from_v ?? null)}→${vName(g.to_v ?? null)} governs ${p.key}; its work merged`);
@@ -1654,13 +1654,15 @@ function supersedesOf(now: Loaded, mirror: ReturnType<typeof readMirror>, key: s
   return [...new Set(now.decl.versions.filter((v) => effectOn(op, v)).flatMap((v) => recordOf(s, key, v)?.ruling ?? []))];
 }
 
-// The merge evidence a request carries: a PR number (merged, or a duplicate's) or the merged PR's url.
-function deliveryOf(evidence: unknown): string | undefined {
+const prLabel = (n: unknown): string | undefined => (typeof n === 'number' && Number.isInteger(n) && n > 0 ? `PR #${n}` : undefined);
+
+// The merge evidence a request carries: the PR that merged the key (a number or its url) and a duplicate's original's PR.
+function deliveryOf(evidence: unknown): { merged?: string; duplicate?: string } {
   const e = (evidence && typeof evidence === 'object' ? evidence : {}) as Record<string, unknown>;
-  for (const k of ['pr_number', 'pr', 'duplicate_pr']) {
-    if (typeof e[k] === 'number' && Number.isInteger(e[k]) && e[k] > 0) return `PR #${e[k]}`;
-  }
-  return typeof e.merged_pr === 'string' && e.merged_pr.trim() ? e.merged_pr.trim() : undefined;
+  return {
+    merged: prLabel(e.pr_number) ?? prLabel(e.pr) ?? (typeof e.merged_pr === 'string' && e.merged_pr.trim() ? e.merged_pr.trim() : undefined),
+    duplicate: prLabel(e.duplicate_pr),
+  };
 }
 
 // The ruling of a standing delivered-follows-merge move (decision 929): an INTAKE of a delivered key (Done, or a duplicate)
@@ -1677,8 +1679,12 @@ function deliveredDecision(now: Loaded, mirror: ReturnType<typeof readMirror>, q
   if (t !== 'Done' && t !== 'Duplicate') return null;
   const from = versions.find((v) => v !== current && snap.fixVersions.includes(v));
   if (!from || q.from_v !== from) return null;
-  const found = deliveryOf(q.evidence) ? undefined : lookup?.(q.key);
-  const evidence = deliveryOf(q.evidence) ?? (found !== undefined ? `PR #${found}` : undefined);
+  // With a lookup wired (rm-run), a merged PR naming the key must exist and is the evidence; a request's own claim
+  // stands only for a duplicate's PR, which no search by key can find. Without one, the request's evidence stands.
+  const claimed = deliveryOf(q.evidence);
+  const duplicate = t === 'Duplicate' ? claimed.duplicate : undefined;
+  const found = lookup?.(q.key);
+  const evidence = duplicate ?? (lookup ? (found !== undefined ? `PR #${found}` : undefined) : claimed.merged);
   if (!evidence) return null;
   const op: Op = { kind: 'move', from_v: from, to_v: current };
   return {

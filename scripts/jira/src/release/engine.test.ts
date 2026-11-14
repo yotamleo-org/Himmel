@@ -1691,6 +1691,33 @@ describe('a delivered ticket in a later version follows its merge (decision 929)
     expect(jira.fv.get('K-1')).toEqual(['v2']);
   });
 
+  it('control: with a lookup wired, a PR the request names is not enough when no merged PR names the key', async () => {
+    declared();
+    scene();
+    ask();
+    await rmRun(ctx(), holdAll, { deliveredPr: () => undefined });
+    expect(judged).toEqual(['K-1']);
+    expect(rulingRows()).toEqual([]);
+  });
+
+  it('control: a duplicate\'s PR is no evidence for a Done key', async () => {
+    declared();
+    scene();
+    ask({ duplicate_pr: 9 });
+    await rmRun(ctx(), holdAll);
+    expect(judged).toEqual(['K-1']);
+    expect(rulingRows()).toEqual([]);
+  });
+
+  it('control: a judge cannot cite the record for a key that is not closed', () => {
+    declared();
+    scene({ status: 'In Progress', category: 'In Progress', resolution: undefined });
+    leaseAcquire(ctx(rmEnv), { expectEpoch: 0, doc: DOC, session: 'rm-1' });
+    const q = ask();
+    claim(ctx(rmEnv));
+    expect(() => admit(q.req, { op: { kind: 'move', from_v: 'v2', to_v: 'v1' }, authority: { kind: 'operator', ref: id, delivered: 'PR #5' } })).toThrow(/not closed, not delivered/);
+  });
+
   it('control: a Won\'t Do key with a merged PR is not admitted mechanically', async () => {
     declared();
     scene({ status: "Won't Do", resolution: "Won't Do" });
