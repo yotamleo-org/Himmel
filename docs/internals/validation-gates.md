@@ -346,18 +346,45 @@ typical PR plan 5 or fewer `LOCAL` lines:
 |---|---|
 | local | the head's `impacted` ledger row lists the suite in `local_pass` |
 | ruled SKIP | that row lists it in `ruled_skip` (`SUITE <p> = SKIP ruled <chief-session> <reason>`); the PASS line counts and names it apart from the local count. Only a hand GO reads that line: `auto-go.sh` does not stop on a ruled SKIP |
-| CI | an exact `ran 0 <path>` line in a shard manifest of the run behind the latest `SUCCESS` `shell-unit (ubuntu-latest)` check-run of workflow `CI`, whose `head_sha` is the head |
+| CI | an exact `ran 0 <path>` line in a manifest of the run behind the latest `SUCCESS` `shell-unit (ubuntu-latest)` check-run of workflow `CI`, whose `head_sha` is the head: a shell shard manifest (artifacts `shell-unit-manifest-ubuntu-latest-shard*`, files `manifest-shard*.txt`), or, for a suite no shard line proves, a JS suite manifest (artifacts `js-suite-manifest-*`, files `manifest-js-*.txt`) whose producing job concluded `success` in that run. A nonzero `ran` line in any JS manifest is red even if another job wrote `ran 0` |
 
+A suite the PR changed (it is on the PR's file list) needs the local proof or a
+ruled SKIP even when CI proved it: `<p> (the PR changed it: a CI line does not count, run it locally)`.
+With any impacted suite, an unreadable file list FAILs item 19.
 A PR-body `Local suites: <path>` line needs the local proof even when CI proved
 the suite. The subprocess and network reads (`gh`, `impacted-suites.sh`) are bounded, and one that fails
 or times out FAILs item 19. Reads of local files (the ledger, the manifests once downloaded) are not
 bounded; a ledger that cannot be read means no `impacted` row, so no local proof.
+The JS manifests are downloaded only when some suite still needs CI proof after the shard manifests,
+and then the run's jobs are read (`gh api .../actions/runs/<run>/jobs`). A JS artifact
+`js-suite-manifest-<job>` belongs to the job whose name is `<job>` or `<job> (<matrix values>)`, or, for a matrix
+artifact `js-suite-manifest-<job>-<value>`, `<job> (<value>[, ...])`. A manifest whose job is not `success`, or
+is not in the list, proves nothing, and its suites read `CI job <job> did not succeed`. A JS
+download that fails for any reason other than `no valid artifacts found`, or a jobs list that cannot be read,
+FAILs item 19. Under the verdict, PASS or FAIL, `note: from JS manifests: <paths>` names every suite a JS
+manifest proved.
+
+Who can fake a CI line: item 19 reads one only from the artifacts of the run it picked, and takes the head
+from the run through the API, never from the file.
+
+| Route | Result |
+|---|---|
+| A worker uploads an artifact or writes a local file | Not read: an upload needs a running job's token, and item 19 reads CI proof only from the run's artifacts |
+| A manifest from an older head | That run's `head_sha` differs, so item 19 refuses it |
+| A `workflow_dispatch` run on the branch | Its aggregator is `shell-unit (dispatch verify) (...)`, which the pick never selects |
+| A PR edits `ci.yml`, a CI script, the JS reporter or writer, `check-hook-lib-suites.sh` or the reader | Trust paths (`scripts/ci/ci-trust-paths.txt`, read from main): the merge needs a trust-reviewed GO |
+| A second writer inside `shell-unit-manifest-*`: the `claude-startup` job publishes its suites' manifest there | CI writes it, but item 19 reads every artifact the glob matches, so a PR's own code could add one more (an open follow-up narrows the read to the artifacts the run expects) |
+| A vitest failure not tied to one file (an unhandled error, a crash after the report) leaves `ran 0` for the files that passed | **Closed:** a JS manifest counts only when its producing job concluded `success` |
+| A PR's own code writes a false line from a test or a source file a job runs | **Open**, ceiling row C-0039 |
+| A PR changes a package's `test` script, `vitest.config.*` or `bunfig.toml`, so a step runs less and stays green | **Open**, ceiling row C-0039 |
+
 A red CI run at the head appends one `fail` row per failed suite left to CI to
 `~/.himmel/state/suite-evidence/ci-failures.jsonl`, and a later head of that PR one
 `round` row; `scripts/cr/suite-fail-ledger.sh` prints the failure count and the
 extra-round rate. `scripts/check-ci.sh` writes those rows the moment it sees the red
-(through `scripts/cr/ci-fail-record.sh`), so a red that goes green on a re-run still
-leaves its row; item 19 writes the same rows by the same key if it reads a red later.
+(through `scripts/cr/ci-fail-record.sh`, which reads the run's shard and JS manifests apart), so a red
+that goes green on a re-run still leaves its row. Item 19 writes the same rows, keyed alike, for a shell suite
+only, if it reads a red later; a JS suite's row comes only from `ci-fail-record.sh`.
 The ledger never changes a verdict.
 
 Lane-rubric verdict persistence remains behavioral (validating-session

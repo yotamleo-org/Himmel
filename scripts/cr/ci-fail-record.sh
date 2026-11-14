@@ -2,9 +2,12 @@
 # scripts/cr/ci-fail-record.sh <owner/repo> <pr> <head> [<run id>...]
 # Append the CI failure ledger rows for a red at a PR head: one `fail` row per
 # impacted suite whose manifest `ran` line is nonzero in each named run, and a `round`
-# row for every earlier failed head of that PR. check-ci.sh calls it the moment a
-# red is known (the step every worker passes at final CI); ready-check's item 19
-# writes the same rows by the same key, so a row is never doubled.
+# row for every earlier failed head of that PR. The run's shell shard manifests and
+# its JS suite manifests are downloaded apart, so a JS red in a run with no shell
+# artifact still gets its row. check-ci.sh calls it the moment a red is known (the
+# step every worker passes at final CI); ready-check's item 19 writes the same rows,
+# keyed alike, for a shell suite only, so a row is never doubled; a JS row comes only
+# from this script.
 #
 # Ledger: $READY_CHECK_FAIL_LEDGER, else ~/.himmel/state/suite-evidence/ci-failures.jsonl
 # (append-only, dir 700, file 600). Row shapes are scripts/cr/suite-fail-ledger.sh's.
@@ -24,6 +27,8 @@ for r in "$@"; do case "$r" in ''|*[!0-9]*) usage ;; esac; done
 
 here="$(cd "$(dirname "$0")" && pwd)"
 ledger="${READY_CHECK_FAIL_LEDGER:-${HOME:-/tmp}/.himmel/state/suite-evidence/ci-failures.jsonl}"
+js_art='js-suite-manifest-*'
+js_file='manifest-js-*.txt'
 _TIMEOUT_BIN=""
 # shellcheck source=../lib/timeout-bin.sh
 . "$here/../lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""  # swallow-ok: an empty _TIMEOUT_BIN skips the advisory write below
@@ -52,9 +57,15 @@ if [ $# -gt 0 ]; then
     for run in "$@"; do
         rd 15 api "repos/$nwo/actions/runs/$run" --jq .head_sha > "$d/hs" 2>/dev/null || continue
         [ "$(tr -d '[:space:]' < "$d/hs")" = "$head" ] || continue
-        rm -rf "$d/m"; mkdir "$d/m" || continue
-        rd 30 run download "$run" -R "$nwo" -p 'shell-unit-manifest-ubuntu-latest-shard*' -D "$d/m" > /dev/null 2>&1 || continue
-        find "$d/m" -type f -name 'manifest-shard*.txt' -exec cat {} + 2>/dev/null | tr -d '\r' \
+        rm -rf "$d/m" "$d/j"
+        : > "$d/man"
+        if mkdir "$d/m" && rd 30 run download "$run" -R "$nwo" -p 'shell-unit-manifest-ubuntu-latest-shard*' -D "$d/m" > /dev/null 2>&1; then
+            find "$d/m" -type f -name 'manifest-shard*.txt' -exec cat {} + >> "$d/man" 2>/dev/null  # swallow-ok: advisory
+        fi
+        if mkdir "$d/j" && rd 30 run download "$run" -R "$nwo" -p "$js_art" -D "$d/j" > /dev/null 2>&1; then
+            find "$d/j" -type f -name "$js_file" -exec cat {} + >> "$d/man" 2>/dev/null  # swallow-ok: advisory
+        fi
+        tr -d '\r' < "$d/man" \
             | awk '$1 == "ran" && $2 ~ /^[0-9]+$/ && $2 != "0" && NF == 3 { print $2, $3 }' > "$d/red" || continue  # swallow-ok: advisory
         while read -r rc s; do
             grep -Fxq -- "$s" "$d/imp" || continue

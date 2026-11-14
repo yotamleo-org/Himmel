@@ -243,6 +243,41 @@ if grep -qE "node-version: '22\.23\.4'" <<< "$nstep" && [ "$ncond" = '${{ !job.c
   ok "W1 shell-unit-shard: setup-node 22.23.4 whose only condition is !job.container.id"
 else bad "W1 shell-unit-shard: no setup-node 22.23.4 step gated only on !job.container.id (if: '$ncond')"; fi
 
+w2_glob() {  # <file> <prefix>: the distinct single-quoted globs starting with <prefix> in a reader
+  grep -oE "'$2[^']*'" "$1" | tr -d "'" | LC_ALL=C sort -u
+}
+rc_f="$ROOT/scripts/handover/chief-kit/ready-check.sh"
+fr_f="$ROOT/scripts/cr/ci-fail-record.sh"
+pa=$(w2_glob "$rc_f" js-suite-manifest-); pc=$(w2_glob "$fr_f" js-suite-manifest-)
+na=$(w2_glob "$rc_f" manifest-js-); nc=$(w2_glob "$fr_f" manifest-js-)
+if [ "$(grep -c . <<< "$pa")" = 1 ] && [ "$pa" = "$pc" ] && [ "$(grep -c . <<< "$na")" = 1 ] && [ "$na" = "$nc" ]; then
+  ok "W2: ready-check.sh and ci-fail-record.sh read one artifact glob ($pa) and one file glob ($na)"
+else bad "W2: the readers' JS globs differ or are not one each: ready-check [$pa] [$na], ci-fail-record [$pc] [$nc]"; fi
+for jf in "$rc_f" "$fr_f"; do
+  for kv in "-p:$pa" "-name:$na"; do
+    v=$(grep -F -- "='${kv#*:}'" "$jf" | sed -nE 's/^[[:space:]]*([A-Za-z0-9_]+)=.*/\1/p' | head -n 1)
+    if [ -n "$v" ] && grep -qF -- "${kv%%:*} \"\$$v\"" "$jf"; then ok "W2 ${jf##*/}: ${kv%%:*} reads \$$v"
+    else bad "W2 ${jf##*/}: no ${kv%%:*} \"\$<var>\" read of the glob ${kv#*:}"; fi
+  done
+done
+w2_n=0
+for job in lanes-and-trust-suites bun-suites node-suites; do
+  ustep=$(step_of "$job" 'name: js-suite-manifest-' | sed 's/\${{ matrix\.pkg }}/x/g')
+  art_x=$(sed -nE 's/^[[:space:]]+name: (js-suite-manifest-[^[:space:]]+)$/\1/p' <<< "$ustep" | head -n 1)
+  out=$(step_of "$job" 'scripts/ci/js-suite-manifest.mjs' | sed 's/\${{ matrix\.pkg }}/x/g' | grep -oE -- '--out [^ ]+' | head -n 1 | sed 's/^--out //')
+  art=$art_x; out_x=$out
+  suffix=${art_x#js-suite-manifest-}
+  # shellcheck disable=SC2254  # the readers' globs are matched as globs on purpose
+  case "$art_x" in $pa) a_ok=1 ;; *) a_ok=0 ;; esac
+  # shellcheck disable=SC2254
+  case "${out_x##*/}" in $na) n_ok=1 ;; *) n_ok=0 ;; esac
+  if [ -n "$art" ] && [ "$a_ok" = 1 ] && [ "$n_ok" = 1 ] && [ "${out_x##*/}" = "manifest-js-$suffix.txt" ] && [ "$(dirname "$out")/" = "$(sed -nE 's/^[[:space:]]+path: //p' <<< "$ustep" | head -n 1)" ]; then
+    case "$suffix" in "$job"|"$job"-x) ok "W2 $job: artifact $art and --out $out match the readers' globs and name the job"; w2_n=$((w2_n + 1)) ;;
+      *) bad "W2 $job: artifact $art does not name its job as js-suite-manifest-${job}[-\${{ matrix.pkg }}]" ;; esac
+  else bad "W2 $job: artifact [$art] / --out [$out] do not match the readers' globs [$pa] [$na] or each other"; fi
+done
+[ "$w2_n" = 3 ] || bad "W2: $w2_n of 3 JS jobs checked"
+
 trust_re=$(grep -vE '^[[:space:]]*(#|$)' "$ROOT/scripts/ci/ci-trust-paths.txt")
 if grep -qE -f <(printf '%s\n' "$trust_re") <<< "scripts/hooks/check-hook-lib-suites.sh"; then
   ok "W3: scripts/hooks/check-hook-lib-suites.sh matches scripts/ci/ci-trust-paths.txt"
