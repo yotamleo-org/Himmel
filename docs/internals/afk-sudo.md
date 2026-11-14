@@ -381,8 +381,11 @@ operator set.
 While away, the operator applies the same re-install with the `helper-update` op: a chief sends
 `/op helper-update commit=<sha>` (the sha from
 `gh run list --workflow ci.yml --branch main --status success --limit 1 --json headSha`). The operator approves the
-notice with the nonce and code. It needs `ops.enabled` and `helper_update.enabled` (with `checkout` and `repo`, the `<owner>/<name>` of the himmel repo), set with
-`sudoedit` only after the op's VM proof has passed, and it reaches a station with the next manual install. A release
+notice with the nonce and code. It needs `ops.enabled` and `helper_update.enabled`, and it reaches a station with the
+next manual install. The template ships `helper_update` off with an empty `repo` and `checkout`, and the op fails
+closed until both are set. The one-time station step, after the op's VM proof has passed: run
+`sudoedit /etc/himmel/afk-sudo.json` and set `helper_update.repo` to the himmel repo's `<owner>/<name>`,
+`helper_update.checkout` to the station checkout's absolute path, and `helper_update.enabled` to `true`. A release
 that changes `never_remote.py` or a sudoers file still needs this command at a terminal. A run that is killed is
 restored by the next call of the op, unless someone has installed since (a terminal re-install is never rolled back).
 

@@ -851,7 +851,7 @@ for part in parts or tops:
                     row(os.path.relpath(os.path.join(dp, n), R))
 ' "$R" "$@" | LC_ALL=C sort
 }
-hu_stage_count() { find "$R/var/lib/himmel/afk-sudo/helper-update" -maxdepth 1 -name 'stage.*' 2>/dev/null | wc -l | tr -d ' '; }
+hu_stage_count() { find "$R/var/lib/himmel/afk-sudo/helper-update" -maxdepth 1 -name 'stage.*' 2>/dev/null | wc -l | tr -d ' '; }  # gnu-ok: the suite is Linux-only (guard at the top)
 HU_PEND=var/lib/himmel/afk-sudo/helper-update.pending
 
 echo "== helper-update R1: one commit parameter, in the sandbox manifest, off in the template =="
@@ -1168,7 +1168,7 @@ for tree in "$GHC" "$GHO"; do
     assert_contains "RED R26: a later install ($tree) makes the interrupted run superseded" "superseded by a later install; nothing restored" "$out"
     assert_eq "R26: nothing was restored over the later install" "$after" "$(hu_state)"
     assert_eq "R26: the marker is retired" "no" "$([ -e "$R/$HU_PEND" ] && echo yes || echo no)"
-    assert_eq "R26: and kept as superseded" "1" "$(find "$R/var/lib/himmel/afk-sudo" -maxdepth 1 -name 'helper-update.superseded.*' | wc -l | tr -d ' ')"
+    assert_eq "R26: and kept as superseded" "1" "$(find "$R/var/lib/himmel/afk-sudo" -maxdepth 1 -name 'helper-update.superseded.*' | wc -l | tr -d ' ')"  # gnu-ok: Linux-only suite
     assert_absent "R26: a clean superseded verdict names no sudoers leftover" "sudoers NOT rolled back" "$out"
     assert_contains "R26: the next --check reads the record as stale" "record stale" "$(hu_chk)"
 done
