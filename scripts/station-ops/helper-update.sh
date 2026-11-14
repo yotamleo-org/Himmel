@@ -8,7 +8,7 @@
 # The commit must be on GitHub's main (by main's sha), have a passing ci.yml Actions run at that sha, not be older than
 # the installed commit, and the station's checkout must hold the same files. After the code root fetches the commit's
 # files itself, snapshots libexec, the sudoers files and the config, runs the commit's own install.sh from a root stage,
-# self-checks, and restores the snapshot on any failure or after an interrupted run (never over a later install).
+# self-checks, and restores the snapshot on any failure or after an interrupted run (not over a later install made more than 305 s after the run began).
 # One python3 -I program does the work; this file sources nothing from the checkout or from GitHub.
 # Last stdout line: op=helper-update id=ID result=changed|unchanged|would-change|bad-param|failed [name=P] detail=...
 # Exit 0 ok, 3 bad-param, 1 failed.

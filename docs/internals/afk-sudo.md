@@ -387,7 +387,7 @@ closed until both are set. The one-time station step, after the op's VM proof ha
 `sudoedit /etc/himmel/afk-sudo.json` and set `helper_update.repo` to the himmel repo's `<owner>/<name>`,
 `helper_update.checkout` to the station checkout's absolute path, and `helper_update.enabled` to `true`. A release
 that changes `never_remote.py` or a sudoers file still needs this command at a terminal. A run that is killed is
-restored by the next call of the op, unless someone has installed since (a terminal re-install is never rolled back).
+restored by the next call of the op, unless someone has installed since: a terminal re-install more than 305 s after the run started is never rolled back, and the op tells installs apart by file change time, so one inside that window is restored over.
 
 ## Turning it off
 
