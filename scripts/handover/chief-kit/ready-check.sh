@@ -133,7 +133,9 @@
 #      branch's scripts/ci/ci-trust-paths.txt. Prints `TRUST-PATH: yes|no` just
 #      before the READY-CHECK line; go.sh refuses a plain GO on `yes`. A refusal
 #      (unreadable list, unresolvable default branch, moved head) FAILs and prints
-#      no TRUST-PATH line. READY_CHECK_ANCHOR (tests) replaces the harness anchor.
+#      no TRUST-PATH line. The anchor is the primary checkout of the script's own
+#      tree (git rev-parse --git-common-dir), so a run from a linked worktree
+#      judges as a run from the primary does; READY_CHECK_ANCHOR (tests) replaces it.
 #
 # 13. RED then GREEN: a PR that changes code carries one body line naming RED, then
 #      GREEN (case-sensitive, whole words). Exempt: a doc-only PR (check 5's filter:
@@ -337,7 +339,7 @@ usage() {
     echo "usage: ready-check.sh [--contract yes|no] [--observe] [--require-contract] <pr-number> <full-40-hex-head-sha>" >&2
     echo "       ready-check.sh --only 7 <pr-number>   (ticket-coverage lint plus the conflicts-resolved check 20, for a worker before READY)" >&2
     echo "       ready-check.sh --outside <pr-number>  (prints outside-pr: yes|no, the item 16 predicate)" >&2
-    echo "it gates HIMMEL_REPO, else the primary checkout of this script's own tree (check 12 needs an up-to-date anchor), from any directory: bash '$rc_primary/scripts/handover/chief-kit/ready-check.sh' <pr-number> <full-40-hex-head-sha>" >&2
+    echo "it gates HIMMEL_REPO, else the primary checkout of this script's own tree (check 12 reads the primary checkout as its anchor, pulled to origin's tip), from any directory: bash '$rc_primary/scripts/handover/chief-kit/ready-check.sh' <pr-number> <full-40-hex-head-sha>" >&2
 }
 
 CONTRACT=""
@@ -1679,7 +1681,15 @@ if [ "$ONLY7" -eq 0 ]; then
 # the default branch's list against the PR's REST file listing). The worker's READY
 # text is never consulted. A refusal (unreadable list, head moved, listing cut
 # short, stale anchor) FAILs and prints no TRUST-PATH line: it never reads as "no".
-tp_anchor="${READY_CHECK_ANCHOR:-$(cd "$SELF_DIR/../../.." && pwd)}"
+tp_anchor="${READY_CHECK_ANCHOR:-}"
+if [ -z "$tp_anchor" ]; then
+    tp_anchor=$(unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
+        git -C "$SELF_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || tp_anchor=""
+    case "$tp_anchor" in
+        */.git) tp_anchor="${tp_anchor%/.git}" ;;
+        *) tp_anchor=$(cd "$SELF_DIR/../../.." && pwd) ;;
+    esac
+fi
 tp_rc=0; tp_out=""
 if [ -z "$tp_branch" ]; then
     tp_rc=2; tp_out="cannot resolve the default branch (gh repo view --json defaultBranchRef gave none)"
@@ -1697,7 +1707,7 @@ fi
 if [ "$tp_rc" -ne 0 ]; then
     echo "[FAIL] 12. trust path: refused ${tp_out:-trust_path_check exited $tp_rc with no reason}"
     case "$tp_out" in
-        *anchor*) echo "       hint: run ready-check.sh from the primary checkout (pulled to origin's tip), not from a worktree" ;;
+        *anchor*) echo "       hint: pull the primary checkout $tp_anchor to origin's tip (git -C '$tp_anchor' pull --ff-only), then re-run from any directory" ;;
     esac
     mark_fail
 else
