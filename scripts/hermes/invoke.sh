@@ -87,8 +87,8 @@ Usage: invoke.sh [--model <name>] [--profile <name>] [--toolsets <list>]
   --provider <name>  Provider override (hermes --provider). Needed when the
                      model id is newer than hermes' internal catalog — without
                      it hermes silently routes unknown ids to its DEFAULT
-                     provider (observed: an OpenRouter :free id landing on
-                     codex, HIMMEL-727). Omit to keep hermes' own routing.
+                     provider (observed: an OpenRouter :free id routed to
+                     codex instead of OpenRouter). Omit to keep hermes' own routing.
   --profile <name>   Run under this hermes profile (hermes -p), i.e. its SOUL +
                      config (e.g. himmel_agent = senior main-tier reviewer). Fail-
                      open: if the profile does not exist, warn and use the default

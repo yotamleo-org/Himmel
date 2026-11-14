@@ -372,6 +372,14 @@ RTEOF
     fi
 fi
 
+echo "test: usage text cites no ticket key" >&2
+help_out="$(bash "$INVOKE" --help 2>&1)" || fail "usage: --help exited non-zero"
+key_hits="$(grep -E 'HIMMEL-[0-9]+' <<< "$help_out" || true)"
+[ -z "$key_hits" ] || fail "usage: --help text still cites a ticket key: $key_hits"
+grep -q "routed to" <<< "$help_out" \
+    || fail "usage: --help text lacks the plain reason for --provider"
+echo "  ok: usage text names no ticket key" >&2
+
 # 7. Optional live smoke (one NIM free-tier call) — opt-in only.
 if [ "${HERMES_LIVE_TEST:-0}" = "1" ]; then
     echo "test: LIVE one-shot (nemotron nano)" >&2

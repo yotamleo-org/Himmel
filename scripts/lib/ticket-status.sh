@@ -317,6 +317,69 @@ _ts_epoch_of_iso() {
     date -u -d "$1" +%s 2>/dev/null || date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$1" +%s 2>/dev/null
 }
 
+ts_now() {
+    case "${TICKET_STATUS_NOW:-}" in
+        ''|*[!0-9]*) date -u +%s ;;
+        *) printf '%s\n' "$TICKET_STATUS_NOW" ;;
+    esac
+}
+
+# _ts_date_ok <YYYY-MM-DD> — rc 0 when it is a real calendar day: parsed, formatted back, and equal to the input.
+# Run on the bare date, before any time of day is added, because the ISO parse alone rolls 2026-02-30 over on BSD.
+_ts_date_ok() {
+    local e
+    [[ "$1" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || return 1
+    e=$(date -u -d "$1" +%s 2>/dev/null || date -u -j -f %Y-%m-%d "$1" +%s 2>/dev/null) || return 1 # swallow-ok: the BSD form follows
+    [ "$(date -u -d "@$e" +%Y-%m-%d 2>/dev/null || date -u -r "$e" +%Y-%m-%d 2>/dev/null)" = "$1" ] # swallow-ok: the BSD form follows
+}
+
+_ts_await_secs() {
+    local v n
+    TS_AWAIT_SECS=$2
+    v="${!1:-}"
+    [ -n "$v" ] || return 0
+    if [[ "$v" =~ ^[1-9][0-9]{0,3}[hd]$ ]]; then
+        n=${v%[hd]}
+        case "$v" in *h) n=$((n * 3600)) ;; *) n=$((n * 86400)) ;; esac
+        if [ "$n" -le "$3" ]; then TS_AWAIT_SECS=$n; return 0; fi
+    fi
+    return 1
+}
+
+# ts_await_env_bad — the name of each TICKET_STATUS_AWAIT_* variable that is set and unusable (never its value).
+ts_await_env_bad() {
+    _ts_await_secs TICKET_STATUS_AWAIT_MAX 1209600 1209600 || echo TICKET_STATUS_AWAIT_MAX
+    _ts_await_secs TICKET_STATUS_AWAIT_TTL_CHIEF 86400 1000000000 || echo TICKET_STATUS_AWAIT_TTL_CHIEF
+    _ts_await_secs TICKET_STATUS_AWAIT_TTL_OPERATOR 259200 1000000000 || echo TICKET_STATUS_AWAIT_TTL_OPERATOR
+    _ts_await_secs TICKET_STATUS_AWAIT_TTL_OTHER 259200 1000000000 || echo TICKET_STATUS_AWAIT_TTL_OTHER
+    _ts_await_secs TICKET_STATUS_AWAIT_TTL_RESUME 21600 1000000000 || echo TICKET_STATUS_AWAIT_TTL_RESUME
+    return 0
+}
+
+# ts_await_due <since ISO> <chief|operator|resume|<other owner>> [<YYYY-MM-DD>] — the ISO time a wait ends: the date's
+# 23:59:59Z, else since plus the owner's TTL, never past since plus TICKET_STATUS_AWAIT_MAX (default 14 d).
+# rc 1 and nothing printed when since does not parse or the date is not a real day.
+ts_await_due() {
+    local since=$1 who=$2 day=${3:-} se due max ttl
+    se=$(_ts_epoch_of_iso "$since") || return 1
+    _ts_await_secs TICKET_STATUS_AWAIT_MAX 1209600 1209600; max=$TS_AWAIT_SECS
+    case "$who" in
+        chief) _ts_await_secs TICKET_STATUS_AWAIT_TTL_CHIEF 86400 1000000000 ;;
+        resume) _ts_await_secs TICKET_STATUS_AWAIT_TTL_RESUME 21600 1000000000 ;;
+        operator) _ts_await_secs TICKET_STATUS_AWAIT_TTL_OPERATOR 259200 1000000000 ;;
+        *) _ts_await_secs TICKET_STATUS_AWAIT_TTL_OTHER 259200 1000000000 ;;
+    esac
+    ttl=$TS_AWAIT_SECS
+    if [ -n "$day" ]; then
+        _ts_date_ok "$day" || return 1
+        due=$(TZ=UTC LC_ALL=C _ts_epoch_of_iso "${day}T23:59:59Z") || return 1
+    else
+        due=$((se + ttl))
+    fi
+    [ "$due" -le $((se + max)) ] || due=$((se + max))
+    TZ=UTC LC_ALL=C date -u -d "@$due" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || TZ=UTC LC_ALL=C date -u -r "$due" +%Y-%m-%dT%H:%M:%SZ # swallow-ok: the BSD form follows
+}
+
 # ts_worker_state <doc> — live | idle | IDLE-HELD | parked | wrapped | unknown, from the
 # doc's newest marker and its queue lock. Only an end marker is positive end
 # evidence: a free lock with no end marker (a hand-off, a cloud or
@@ -327,10 +390,11 @@ ts_worker_state() {
 }
 
 # _ts_worker_state <doc> — ts_worker_state without the subshell: sets
-# TS_WORKER_STATE and TS_LOCK_HELD (yes | no | "" when the lock was not read).
+# TS_WORKER_STATE and TS_LOCK_HELD (yes | no | "" when the lock was not read) and TS_LOCK_DEAD
+# (yes: the lock answered rc 12 with status STALE-DEAD; no: rc 12 with any other status; "" otherwise).
 _ts_worker_state() {
     local marker out rc hb hb_epoch age=0 warn
-    TS_LOCK_HELD=""
+    TS_LOCK_HELD="" TS_LOCK_DEAD=""
     [ -n "$1" ] || { TS_WORKER_STATE=unknown; return 0; }
     marker=$(ts_marker_newest "$1")
     case "$marker" in WRAPPED|HALTED) TS_WORKER_STATE=wrapped; return 0 ;; esac
@@ -344,6 +408,9 @@ _ts_worker_state() {
         0) TS_LOCK_HELD=no ;;
         *) TS_WORKER_STATE=unknown; return 0 ;;
     esac
+    if [ "$rc" -eq 12 ]; then
+        if grep -q '^status: STALE-DEAD' <<<"$out"; then TS_LOCK_DEAD=yes; else TS_LOCK_DEAD=no; fi
+    fi
     if status_marker_is_parked "$marker"; then TS_WORKER_STATE=parked; return 0; fi
     if [ "$TS_LOCK_HELD" = no ]; then TS_WORKER_STATE=unknown; return 0; fi
     hb=$(printf '%s\n' "$out" | sed -n 's/.*"heartbeat"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
@@ -364,6 +431,134 @@ _ts_worker_state() {
 # not merge; see merge-rows-effective.py. Every reader of the merge rows reads this.
 ts_merge_rows() {
     python3 -I "$_TS_LIB_DIR/merge-rows-effective.py" "$@"
+}
+
+# ts_owner_rows — stdin: ts_merge_rows output. Prints the rows ts_owner reads, one per line, fields split by US (\037):
+#   hold  KEY event ts owner until reason    a hold or hold-release row that moved
+#   merge KEY remainder owed owed_due ts     the key's newest contract-carrying merge row, when its contract is no
+#   park  KEY rule since                     the key's park start for D6n and for D5c: the first row of the rule at or after
+#                                            its newest anchor (a moved row that is not a hold, a contract-carrying merge row,
+#                                            or an event=live row that is neither skip nor disabled); with no anchor, the first
+#                                            row of the rule in the key's log
+# Every value from the log is re-checked on the way out: a field that fails its pattern is empty.
+ts_owner_rows() {
+    jq -Rrs 'def ok($re): if type == "string" and test($re) then . else "" end;
+        def tsre: "\\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\\z";
+        def whore: "\\A(chief|operator|[a-z][a-z0-9-]{0,31})\\z";
+        def datere: "\\A[0-9]{4}-[0-9]{2}-[0-9]{2}\\z";
+        [split("\n")[] | fromjson? | select(type == "object" and (.key | type) == "string" and (.key | test("^[A-Za-z][A-Za-z0-9]*-[0-9]+$")))] as $all
+        | ($all[] | select((.event == "hold" or .event == "hold-release") and .result == "moved")
+            | ["hold", .key, .event, (.ts | ok(tsre)), (.owner | ok(whore)), (.until | ok(datere)),
+                ((.reason // "") | if type == "string" then gsub("[|\t\r\n\u001f]"; "") else "" end)] | join("\u001f")),
+          ([$all[] | select(.event == "merge" and has("contract") and .contract != "")] | group_by(.key)[] | select(last.contract == "no") | last as $l
+            | ["merge", .[0].key, ($l.remainder | ok("\\A[a-z-]{1,20}\\z")), (if $l.remainder == "owed" then ($l.owed | ok(whore)) else "" end),
+                ($l.owed_due | ok(datere)), ($l.ts | ok(tsre))] | join("\u001f")),
+          ([$all[] | select((.ts | type) == "string")] | group_by(.key)[] | . as $g
+            | ([range(0; length) | select($g[.] | (.event == "merge" and has("contract") and .contract != "") or (.result == "moved" and .event != "hold" and .event != "hold-release") or (.event == "live" and .result != "skip" and .result != "disabled"))] | last // 0) as $a
+            | ("D6n", "D5c") as $r
+            | ([$g[$a:][] | select(.rule == $r)] | first) as $f
+            | select($f != null)
+            | ["park", $g[0].key, $r, ($f.ts | ok(tsre))] | join("\u001f"))' 2>/dev/null # swallow-ok: unreadable rows are no rows, so no wait is named
+}
+
+# ts_park_since_rows <log> — key<TAB>rule<TAB>since for each key's D6n and D5c park start, from one pass over ts_merge_rows.
+ts_park_since_rows() {
+    ts_merge_rows "$1" 2>/dev/null | ts_owner_rows | awk -F'\037' '$1 == "park" && $4 != "" { print $2 "\t" $3 "\t" $4 }' # swallow-ok: an unreadable log has no park start
+}
+
+# ts_owner <KEY> — who owns the ticket's next step; run after ts_derive <KEY> on the same key. Prints one line and
+# sets TS_OWNER_ANS to it:
+#   worker<TAB><state>                                       a worker owns it (HELD-STALE and a never-seen lock included)
+#   awaiting<TAB>who<TAB>since<TAB>due<TAB>source<TAB>what   a named wait; source is hold, owed, d6n or resume
+#   none                                                     nobody does
+# No worker: TS_WORKER_STATE none or wrapped, or IDLE-HELD or parked over a lock proven dead (TS_LOCK_DEAD=yes). With no
+# worker the newest of the hold (only with TS_OWNER_HELD=yes), the owed merge row and the park start (D6n for rule D6n,
+# D5c for rule D5c when the newest merge row's remainder is remaining) is the wait; on a tie hold, then owed, then park.
+# TS_OWNER_HOLD_VALID is yes or no after a call with TS_OWNER_HELD=yes. The rows come from the TS_OWNER_ROWS file
+# (ts_owner_rows output, pre-read once) when it is set, else from the log.
+ts_owner() {
+    local key=$1 rows hold merge log tw who since due src what
+    local h_ev="" h_since="" h_who="" h_until="" h_reason="" m_rem="" o_who="" o_due="" o_ts="" p_rule="" p_src="" p_since=""
+    local h_sec=-1 o_sec=-1 p_sec=-1
+    TS_OWNER_ANS=none TS_OWNER_HOLD_VALID=""
+    case "${TS_WORKER_STATE:-none}" in
+        none|wrapped) ;;
+        IDLE-HELD|parked)
+            if [ "${TS_LOCK_DEAD:-}" != yes ]; then
+                TS_OWNER_ANS=$(printf 'worker\t%s' "$TS_WORKER_STATE"); printf '%s\n' "$TS_OWNER_ANS"; return 0
+            fi ;;
+        *) TS_OWNER_ANS=$(printf 'worker\t%s' "$TS_WORKER_STATE"); printf '%s\n' "$TS_OWNER_ANS"; return 0 ;;
+    esac
+    if [ -n "${TS_OWNER_ROWS:-}" ]; then
+        rows=$(awk -F'\037' -v k="$key" '$2 == k' "$TS_OWNER_ROWS" 2>/dev/null) # swallow-ok: an unreadable rows file names no wait
+    else
+        rows=""
+        log="$(ts_state_dir)/status-events.jsonl"
+        if [ -r "$log" ]; then rows=$(ts_merge_rows "$log" 2>/dev/null | ts_owner_rows | awk -F'\037' -v k="$key" '$2 == k'); fi
+    fi
+    if [ "${TS_OWNER_HELD:-no}" = yes ]; then
+        TS_OWNER_HOLD_VALID=no
+        hold=$(awk -F'\037' '$1 == "hold" { l = $0 } END { if (l != "") print l }' <<<"$rows")
+        if [ -n "$hold" ]; then
+            IFS=$'\037' read -r _ _ h_ev h_since h_who h_until h_reason <<<"$hold"
+            if [ "$h_ev" = hold ] && [ -n "$h_who" ] && [ -n "$h_since" ] && h_sec=$(_ts_epoch_of_iso "$h_since"); then
+                TS_OWNER_HOLD_VALID=yes
+                _ts_date_ok "$h_until" || h_until=""
+            else
+                h_sec=-1
+            fi
+        fi
+    fi
+    merge=$(awk -F'\037' '$1 == "merge" { l = $0 } END { if (l != "") print l }' <<<"$rows")
+    if [ -n "$merge" ]; then
+        IFS=$'\037' read -r _ _ m_rem o_who o_due o_ts <<<"$merge"
+        if [ "$m_rem" = owed ] && [ -n "$o_who" ] && [ -n "$o_ts" ] && _ts_date_ok "$o_due" \
+            && o_sec=$(_ts_epoch_of_iso "$o_ts") && _ts_epoch_of_iso "${o_due}T23:59:59Z" >/dev/null; then
+            :
+        else
+            o_sec=-1
+        fi
+    fi
+    case "${TS_RULE:-}" in
+        D6n) p_rule=D6n p_src=d6n ;;
+        D5c) [ "$m_rem" != remaining ] || { p_rule=D5c; p_src=resume; } ;;
+    esac
+    if [ -n "$p_rule" ]; then
+        p_since=$(awk -F'\037' -v r="$p_rule" '$1 == "park" && $3 == r { print $4; exit }' <<<"$rows")
+        if [[ "$p_since" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] && p_sec=$(_ts_epoch_of_iso "$p_since"); then
+            :
+        else
+            p_sec=-1
+        fi
+    fi
+    if [ "$h_sec" -ge 0 ] && [ "$h_sec" -ge "$o_sec" ] && [ "$h_sec" -ge "$p_sec" ]; then
+        who=$h_who since=$h_since src=hold what=$h_reason
+        tw=$who; [ "$tw" != resume ] || tw=other
+        due=$(ts_await_due "$since" "$tw" "$h_until") || due=""
+    elif [ "$o_sec" -ge 0 ] && [ "$o_sec" -ge "$p_sec" ]; then
+        who=$o_who since=$o_ts src=owed what="the partial merge left a step owed by $o_who"
+        tw=$who; [ "$tw" != resume ] || tw=other
+        due=$(ts_await_due "$since" "$tw" "$o_due") || due=""
+    elif [ "$p_sec" -ge 0 ]; then
+        who=chief since=$p_since src=$p_src
+        if [ "$src" = d6n ]; then
+            what="the worker wrapped and the brief says Completes ticket: no, so the chief decides the remainder"
+            due=$(ts_await_due "$since" chief) || due=""
+        else
+            what="the partial merge left a remainder for a RESUME worker"
+            due=$(ts_await_due "$since" resume) || due=""
+        fi
+    else
+        printf '%s\n' "$TS_OWNER_ANS"
+        return 0
+    fi
+    if [ -z "$due" ]; then
+        printf '%s\n' "$TS_OWNER_ANS"
+        return 0
+    fi
+    what=$(printf '%s' "$what" | tr -d '|\t\r\n')
+    TS_OWNER_ANS=$(printf 'awaiting\t%s\t%s\t%s\t%s\t%s' "$who" "$since" "$due" "$src" "$what")
+    printf '%s\n' "$TS_OWNER_ANS"
 }
 
 # ts_partial_merge <KEY> — rc 0 when the key's latest merge row that carries a contract is completes=no
@@ -508,7 +703,7 @@ _ts_derive_d6() {
 ts_derive() {
     local key="$1" num head base rd class latch threads s rule best=9 r doc rc other owner=""
     TS_DERIVED=""; TS_RULE=""; TS_RESULT=""; TS_STAGE=""; TS_PR_STATE=""; TS_HEADS=""; TS_WORKER_STATE=none; TS_MERGED_PR=""; TS_D5D_OWNER=""
-    TS_LOCK_HELD=""; TS_LOCK_SEEN=false; TS_GONE=0; TS_OWNER_DOC=""
+    TS_LOCK_HELD=""; TS_LOCK_DEAD=""; TS_LOCK_SEEN=false; TS_GONE=0; TS_OWNER_DOC=""
     ts_read_jira "$key" || { _ts_no_write miss "" get; return 0; }
     [ "$(ts_rank "$TS_J_STATUS")" -ge 0 ] || { _ts_no_write skip D0; return 0; }
     [ "$TS_J_TYPE" != Epic ] || { _ts_no_write skip D0e; return 0; }
