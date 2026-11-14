@@ -938,12 +938,7 @@ b14="$(cat "$work/case14/b-in")"; a14="$(cat "$work/case14/a-out")"
   || fail "case14: waiter B waited $((b14 - a14))ms for a lock its owner had already released (the restored lock stayed behind)"
 echo "ok: case14 a lock restored after a waiter's rename is released by its owner"
 
-# ── W5: graph choices stay outside the profile: a saved profile carries none,
-# and --from-profile neither writes nor replays them ──
-# The interactive install answers the graph step (a repo, Enter for the payer,
-# Enter for the job) after alwaysOn; the config and config-audit seams sit
-# under the row's HOME, HIMMEL_LUNA_CONFIG_PATH unset, so the save lands where
-# graph-choices.js reads.
+# ── W5: graph choices stay outside the profile ──
 w5="$work/w5"; mkdir -p "$w5/stubs" "$w5/repos/acme/.git" "$w5/dotenv"
 printf '#!/bin/sh\nexit 0\n' > "$w5/stubs/graphify"; printf '#!/bin/sh\nexit 0\n' > "$w5/alert-stub.sh"
 # shellcheck disable=SC2016  # the stub body expands at its own run time
@@ -953,7 +948,7 @@ printf 'ANTHROPIC_API_KEY=sk-ant-w5-planted\n' > "$w5/dotenv/.env"
 acme5=$(cd "$w5/repos/acme" && pwd -P)
 p5="$w5/stubs:$(build_path "$w5" bash jq python3 npm --)"
 fixture_w5="$w5/fixture"; make_fixture "$fixture_w5"
-w5_env() { # w5_env <home>: the row's seams, then the command
+w5_env() {
   local _h="$1"; shift; mkdir -p "$_h/.himmel" "$_h/cache"
   env -u HIMMEL_LUNA_CONFIG_PATH PATH="$p5" HOME="$_h" USERPROFILE="$(winpath "$_h")" \
     HIMMEL_CONFIG_DIR="$_h/.himmel" HIMMEL_CONFIG_AUDIT_DIR="$_h/.himmel/state/config-audit" \

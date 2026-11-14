@@ -1731,11 +1731,6 @@ async function askVm(ask, existing) {
   return { mode: 'remote', remote: { ssh: ssh, port: port, identity: identity } };
 }
 
-// The graph step: which repos to graph, who pays first and the fallbacks.
-// graph-choices.js owns the store's rules, its texts and the roster check;
-// this step only asks, and applyGraphChoicesStep() writes graphify.choices
-// through luna-config.js. The answers never enter buildAnswers(), so no cache
-// or saved profile carries them and --from-profile never replays them.
 const graphChoicesLib = require('./lib/graph-choices.js');
 const GRAPH_CHOICES_CLI = path.join(__dirname, 'lib', 'graph-choices.js');
 const GRAPH_CHOICES_CADENCE = path.join(__dirname, '..', 'graphify', 'graph-choices-cadence.sh');
@@ -1764,12 +1759,14 @@ function graphRosterAccounts() {
 }
 
 function graphJobArmed() {
-  const r = spawnSync('bash', [GRAPH_CHOICES_CADENCE, 'status'], { encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'ignore'] });
+  const r = spawnSync(resolveBash(), [GRAPH_CHOICES_CADENCE, 'status'], { encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'ignore'] });
   return r.status === 0 && /^ARMED\b/m.test(String(r.stdout || ''));
 }
 
-// A corpus name: the basename with every other character turned to '-',
-// starting with a letter or digit, with -2, -3 ... added on a clash.
+function realpathOrSelf(p) {
+  try { return fs.realpathSync(p); } catch (_e) { return p; }
+}
+
 function graphCorpusName(root, taken) {
   const base = path.basename(root).replace(/[^A-Za-z0-9._-]/g, '-').replace(/^[^A-Za-z0-9]+/, '') || 'repo';
   let name = base;
@@ -1777,11 +1774,6 @@ function graphCorpusName(root, taken) {
   return name;
 }
 
-// askGraphChoices(ask, { role, cause, firstQuestion, accounts, existing,
-// jobArmed, graphifyPresent }) -> { choices | null, clear, armJob }.
-// `existing` is graph-choices.js route(); `accounts` is api-credit-state.mjs
-// accounts' answer; `jobArmed` is a boolean or a function asked only once a
-// repo is chosen. Enter at the first question on a first run asks nothing else.
 async function askGraphChoices(ask, o) {
   const nothing = { choices: null, clear: false, armJob: false };
   const ex = o.existing || { state: 'default', corpora: [], order: [], max_usd_per_pass: null };
@@ -1801,7 +1793,6 @@ async function askGraphChoices(ask, o) {
     return nothing;
   }
 
-  // Q1: the repos. Enter keeps the stored list (none on a first run); a typed list replaces it.
   const stored = ex.corpora || [];
   console.log(o.firstQuestion);
   if (stored.length > 0) {
@@ -1813,9 +1804,7 @@ async function askGraphChoices(ask, o) {
     const t = String(await ask(`? Which of your own git repos should be graphed on this machine? Type a path for each, one per line. Enter for ${corpora.length || stored.length ? 'no more' : 'none'}. Notes vaults cannot be added.\n> `) || '').trim(); // step: graph
     if (t === '') break;
     if (t === 'clear' && corpora.length === 0 && (stored.length > 0 || ex.state === 'set' || ex.state === 'none')) return { choices: null, clear: true, armJob: false };
-    const typed = path.resolve(expandHome(t));
-    let real = typed;
-    try { real = fs.realpathSync(typed); } catch (_e) { /* rootCheck names the missing root */ }
+    const real = realpathOrSelf(path.resolve(expandHome(t)));
     const errs = graphChoicesLib.rootCheck(real);
     if (errs.length > 0) { console.error(`  ! ${t}: ${errs.join('; ')}`); continue; }
     if (corpora.some((c) => c.root === real)) { console.error(`  ! ${t}: already listed`); continue; }
@@ -1828,7 +1817,6 @@ async function askGraphChoices(ask, o) {
     for (const c of stored) corpora.push({ name: c.name, root: c.root });
   }
 
-  // Q2: who pays first. Only configured letters are offered; Enter keeps the stored payer, else names none (the subscription).
   const rows = Array.isArray(o.accounts) ? o.accounts : [];
   const letters = rows.filter((r) => r && r.configured === true && GRAPH_LETTER.test(r.account)).map((r) => r.account);
   const offered = ['none', 'subscription'].concat(letters);
@@ -1845,7 +1833,6 @@ async function askGraphChoices(ask, o) {
     else console.error(`  ! choose one of: ${offered.join(', ')}`);
   }
 
-  // Q3: the fallbacks, in order, from the configured letters not yet used and the subscription.
   let fallbacks = [];
   if (primary && primary !== 'none') {
     const remaining = letters.concat(['subscription']).filter((v) => v !== primary);
@@ -1869,7 +1856,6 @@ async function askGraphChoices(ask, o) {
     }
   }
 
-  // The cap, with a letter anywhere in the route. Enter keeps the stored cap, else 5.00.
   let cap;
   if (graphRouteLetters({ primary: primary, fallbacks: fallbacks }).length > 0) {
     const def = typeof ex.max_usd_per_pass === 'number' && ex.max_usd_per_pass >= 0.25 ? ex.max_usd_per_pass : GRAPH_DEFAULT_CAP;
@@ -1882,10 +1868,8 @@ async function askGraphChoices(ask, o) {
     }
   }
 
-  // The job: asked with a repo chosen and the job not armed. Only a typed yes arms; a re-run never disarms.
   let armJob = false;
-  const armed = typeof o.jobArmed === 'function' ? o.jobArmed() : Boolean(o.jobArmed);
-  if (!armed) {
+  if (!o.jobArmed()) {
     armJob = (await askEnum(ask, '? Run this once a day from now on? yes/no (default no)\n> ', ['yes', 'no'], 'no')) === 'yes'; // step: graph
   }
 
@@ -1895,10 +1879,6 @@ async function askGraphChoices(ask, o) {
   return { choices: choices, clear: false, armJob: armJob };
 }
 
-// The apply step: inspect, then validateShape + rootCheck + rosterCheck
-// (graph-choices.js), then save; then the job arm on a typed yes. A dropped
-// letter clears its graph-key alert; nothing here runs key-ok. `graph` is null
-// when the step was not asked (a profile or preset run).
 function applyGraphChoicesStep(graph, opts) {
   const dryRun = Boolean(opts && opts.dryRun);
   if (!graph) { console.log(GRAPH_NOT_ASKED_LINE); return { rc: 0 }; }
@@ -1939,13 +1919,13 @@ function applyGraphChoicesStep(graph, opts) {
     console.log(graph.clear ? 'himmelctl: removed graphify.choices from ~/.himmel/config.json' : 'himmelctl: wrote graphify.choices to ~/.himmel/config.json');
     const kept = graphRouteLetters(after);
     for (const l of graphRouteLetters(before).filter((x) => kept.indexOf(x) === -1)) {
-      spawnSync('bash', [GRAPH_ALERT_SCRIPT, 'clear', `graph-key-${l}`], { stdio: 'ignore', timeout: 30000 });
+      spawnSync(resolveBash(), [GRAPH_ALERT_SCRIPT, 'clear', `graph-key-${l}`], { stdio: 'ignore', timeout: 30000 });
     }
   } else {
     console.log('himmelctl: graph choices unchanged — nothing to write');
   }
   if (!graph.armJob) return { rc: 0 };
-  const r = spawnSync('bash', [GRAPH_CHOICES_CADENCE, 'arm'], { stdio: 'inherit', timeout: 60000 });
+  const r = spawnSync(resolveBash(), [GRAPH_CHOICES_CADENCE, 'arm'], { stdio: 'inherit', timeout: 60000 });
   if (r.status !== 0) { console.error(`himmelctl: WARN: the daily graph job did not arm (exit ${r.status}); arm it later with: ${armLine}`); return { rc: 1 }; }
   return { rc: 0 };
 }
@@ -1967,9 +1947,7 @@ function applyGraphChoicesStep(graph, opts) {
 // docs/guide/installer-journey.html step it belongs to (follow-ups reuse their
 // step's id); scripts/docs/test-site-guides.sh derives the guide's steps from
 // those markers, so a question added without one fails that suite.
-// `graphOut`, when given, receives the graph step's result as `graphOut.graph`:
-// it stays out of the returned answers (see askGraphChoices()).
-async function askQuestions(defaultScope, laneOpts, devOverlay, dryRun, graphOut) {
+async function askQuestions(defaultScope, laneOpts, devOverlay, dryRun) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: false });
   const ask = makeAsk(rl);
 
@@ -2022,8 +2000,6 @@ async function askQuestions(defaultScope, laneOpts, devOverlay, dryRun, graphOut
   const ao = await askNumberedEnum(ask, 'always-on machine (unattended/scheduled runs)', ['yes', 'no'], preset.alwaysOn, ALWAYS_ON_HELP); // step: always
   const alwaysOn = ao === 'yes';
 
-  // 7b. graph: which repos to graph, who pays and the fallbacks. Its answers
-  // go to graphOut, never into buildAnswers().
   const station = graphChoicesLib.readStation();
   const graphifyPresent = Boolean(which('graphify'));
   const graph = await askGraphChoices(ask, { // step: graph
@@ -2035,7 +2011,6 @@ async function askQuestions(defaultScope, laneOpts, devOverlay, dryRun, graphOut
     jobArmed: graphJobArmed,
     graphifyPresent: graphifyPresent,
   });
-  if (graphOut) graphOut.graph = graph;
 
   // 8 (installer v1 fix, spec deviation): cadences is PER-ROW
   // gated, not whole-question vault gated. offeredCadenceRows() above
@@ -2238,7 +2213,7 @@ async function askQuestions(defaultScope, laneOpts, devOverlay, dryRun, graphOut
   if (handoverRegister) answers.handover.register = handoverRegister;
   if (commitRules) answers.commitRules = commitRules;
   answers.behaviourConfig = behaviourConfig;
-  return answers;
+  return { answers: answers, graph: graph };
 }
 
 // All-default answers (no prompts) for --dry-run previews.
@@ -5220,11 +5195,11 @@ async function cmdInstall(args) {
   //    that combination, so the profile stays the single authority there.
   const laneOpts = { lanes: args.lanes, withCodex: args.withCodex, withHermes: args.withHermes };
   let answers;
-  const graphOut = {};
+  let graph = null;
   if (profileAnswers) {
     answers = profileAnswers;
   } else if (shouldPrompt(args)) {
-    answers = await askQuestions(args.defaultScope, laneOpts, args.contribute, args.dryRun, graphOut);
+    ({ answers, graph } = await askQuestions(args.defaultScope, laneOpts, args.contribute, args.dryRun));
   } else if (args.dryRun) {
     answers = defaultAnswers(args.defaultScope, laneOpts, args.contribute);
   } else {
@@ -5331,7 +5306,7 @@ async function cmdInstall(args) {
   }
 
   // T4/T4.5/T5a: derivation, vault gate, handover/pluginSet, shell-out.
-  const rc = await runPlan(answers, args, graphOut.graph || null);
+  const rc = await runPlan(answers, args, graph);
   // offer to save the answered profile ONLY after a genuinely
   // successful, non-dry-run, interactive install, never on a failed run
   // (rc !== 0 must reach the caller untouched, no prompt), never on

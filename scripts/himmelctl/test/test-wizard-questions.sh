@@ -815,11 +815,7 @@ grepq "$out14" -F '"whisperModel": "ggml-small.bin"' \
   || fail "case14: pressing Enter should record the default bare filename ggml-small.bin (got: $out14)"
 echo "ok: case14 pressing Enter accepts the whisper-model default; non-operator presets are unchanged"
 
-# ── W1 to W19: the graph step (which repos to graph, who pays, the fallbacks) ──
-# askGraphChoices runs on a scripted ask (gw_ask), applyGraphChoicesStep on a
-# hermetic HOME (gw_apply); W1, W4, W9 and W11 drive the real install. Every
-# row pins the config and config-audit seams under its HOME, a fixture .env
-# holding a planted key, a recording crontab and the alert dedupe directory.
+# ── W1 to W19: the graph step ──
 GW="$work/gw"; mkdir -p "$GW/stubs" "$GW/repos/acme/.git" "$GW/repos/My Project/.git" "$GW/repos/plain"
 printf '#!/bin/sh\nexit 0\n' > "$GW/stubs/graphify"
 # shellcheck disable=SC2016  # the stub body expands at its own run time
@@ -844,8 +840,6 @@ RELEASE_Q1='This release install has no himmel graph; a git install pulls it fro
 GIT_Q1='The himmel code graph comes from us with each update; you do not build it.'
 
 cat > "$GW/driver.js" <<'JS'
-// driver.js <bin.js> ask|apply <json>: ask runs askGraphChoices on scripted answers
-// (an exhausted list answers '' like a closed stdin); apply runs applyGraphChoicesStep.
 const bin = require(process.argv[2]);
 const spec = JSON.parse(process.argv[4]);
 (async () => {
@@ -858,7 +852,8 @@ const spec = JSON.parse(process.argv[4]);
       process.stdout.write(q + '\n');
       return Promise.resolve(answers.length ? answers.shift() : '');
     };
-    const r = await bin.askGraphChoices(ask, spec.opts);
+    const armed = Boolean(spec.opts.jobArmed);
+    const r = await bin.askGraphChoices(ask, { ...spec.opts, jobArmed: () => armed });
     console.log('RESULT ' + JSON.stringify(r));
     console.log('ASKED ' + asked);
   } else {
@@ -868,7 +863,6 @@ const spec = JSON.parse(process.argv[4]);
 })().catch((e) => { console.log('DRIVER-ERROR ' + e.message); process.exitCode = 1; });
 JS
 
-# gw_home <name>: a fresh hermetic HOME for one row, its seams exported.
 gw_home() {
   GH="$GW/h-$1"; mkdir -p "$GH/.himmel" "$GH/dotenv"
   printf 'ANTHROPIC_API_KEY=sk-ant-gw-planted-%s\n' "$1" > "$GH/dotenv/.env"
@@ -884,16 +878,16 @@ gw_ask() { PATH="$GW_PATH" "$node_bin" "$GW/driver.js" "$wizard" ask "$1" 2>&1 |
 gw_apply() { PATH="$GW_PATH" "$node_bin" "$GW/driver.js" "$wizard" apply "$1" 2>&1 || true; }
 gw_choices() { jq -c '.graphify.choices // "absent"' "$HOME/.himmel/config.json" 2>/dev/null || echo "no-file"; }
 gw_accounts() { HIMMEL_API_CREDIT_CONFIG="$1" "$node_bin" "$repo_root/scripts/lib/api-credit-state.mjs" accounts; }
-gw_opts() { # gw_opts <accounts json> [existing json] [jobArmed] [role] [graphifyPresent] [firstQuestion]
-  jq -nc --argjson accounts "$1" --argjson existing "${2:-null}" --argjson jobArmed "${3:-false}" --arg role "${4:-adopter}" \
-    --argjson present "${5:-true}" --arg fq "${6:-$GIT_Q1}" \
+gw_opts() {
+  local accounts="$1" existing="${2:-null}" job_armed="${3:-false}" role="${4:-adopter}" present="${5:-true}" first_q="${6:-$GIT_Q1}"
+  jq -nc --argjson accounts "$accounts" --argjson existing "$existing" --argjson jobArmed "$job_armed" --arg role "$role" \
+    --argjson present "$present" --arg fq "$first_q" \
     '{role:$role, firstQuestion:$fq, accounts:$accounts, existing:$existing, jobArmed:$jobArmed, graphifyPresent:$present}'
 }
 gw_spec() { jq -nc --argjson opts "$1" --argjson answers "$2" '{opts:$opts, answers:$answers}'; }
 DEFAULT_ROUTE='{"state":"default","corpora":[],"order":["subscription"],"max_usd_per_pass":null,"errors":[]}'
 STORED_EXAMPLE=$(jq -nc --arg r "$ACME" '{version:1,corpora:[{name:"acme",root:$r}],primary:"C",fallbacks:["A","subscription"],max_usd_per_pass:5}')
 
-# W1: Enter on Q1 writes no store, prints the sentence, asks nothing else, arms nothing.
 gw_home w1
 out=$(gw_ask "$(gw_spec "$(gw_opts "$(gw_accounts "$GW_ROSTER_AC")" "$DEFAULT_ROUTE")" '[""]')")
 grepq "$out" -F 'RESULT {"choices":null,"clear":false,"armJob":false}' || fail "W1: Enter on Q1 must return no choices and no arm (got: $out)"
@@ -916,7 +910,6 @@ grepq "$out" -F 'Who pays first?' && fail "W1: the install must ask nothing afte
 [ ! -e "$GW_CRON_CALLS" ] || fail "W1: the install must not touch the crontab ($(cat "$GW_CRON_CALLS"))"
 echo "ok: W1 Enter at Q1 writes no store, prints the sentence, asks nothing else and arms nothing"
 
-# W2: a repo, C, A,subscription, cap Enter stores the spec's example.
 gw_home w2
 out=$(gw_ask "$(gw_spec "$(gw_opts "$(gw_accounts "$GW_ROSTER_AC")" "$DEFAULT_ROUTE")" "$(jq -nc --arg r "$ACME" '[$r,"","C","A,subscription","",""]')")")
 got=$(sed -n 's/^RESULT //p' <<< "$out" | jq -c '.choices' || true)
@@ -930,7 +923,6 @@ grep -q 'sk-ant-gw-planted' "$HOME/.himmel/config.json" && fail "W2: the planted
 grepq "$out" -F 'sk-ant-gw-planted' && fail "W2: the planted fixture key reached the output"
 echo "ok: W2 a repo, C, then A,subscription and Enter at the cap store the spec's example"
 
-# W3: a re-run shows the stored answers as defaults; Enter keeps every one and writes nothing.
 STORED_ROUTE=$("$node_bin" "$gc_lib_w" route)
 out=$(gw_ask "$(gw_spec "$(gw_opts "$(gw_accounts "$GW_ROSTER_AC")" "$STORED_ROUTE")" '[]')")
 got=$(sed -n 's/^RESULT //p' <<< "$out" | jq -c '.choices' || true)
@@ -943,7 +935,6 @@ grepq "$out" -F 'RC 0' || fail "W3: applying the unchanged answers must succeed 
 [ "$(cksum < "$HOME/.himmel/config.json")" = "$before" ] || fail "W3: unchanged answers must not rewrite the config"
 echo "ok: W3 a re-run offers the stored answers and Enter keeps them, writing nothing"
 
-# W4: a non-interactive (--from-profile) and a preset (--scope) run leave the store and print one suggestion.
 gw_home w4; prof_w4="$GW/w4-profile.json"
 printf '{"schemaVersion":2,"profile":"starter","devOverlay":false,"scope":"user","vault":{"mode":"none","path":""},"handover":{"mode":"inline","path":""},"pluginSet":"lean","lanes":[],"lanesMeaningful":true,"alwaysOn":false}\n' > "$prof_w4"
 for mode in profile scope; do
@@ -962,14 +953,12 @@ for mode in profile scope; do
 done
 echo "ok: W4 non-interactive and preset runs leave the store untouched and print one suggestion line"
 
-# W6: on a publisher the step is skipped with a line.
 gw_home w6
 out=$(gw_ask "$(gw_spec "$(gw_opts '[]' "$DEFAULT_ROUTE" false publisher)" '[]')")
 grepq "$out" -F 'ASKED 0' || fail "W6: a publisher must be asked nothing (got: $out)"
 grepq "$out" -F 'graph choices: skipped' || fail "W6: a publisher must see the skip line (got: $out)"
 echo "ok: W6 a publisher skips the step with a line"
 
-# W7: no roster file offers none and subscription, prints its fixed line and where accounts are added.
 gw_home w7
 out=$(gw_ask "$(gw_spec "$(gw_opts "$(gw_accounts "$GW/no-roster.json")" "$DEFAULT_ROUTE")" "$(jq -nc --arg r "$ACME" '[$r,""]')")")
 grepq "$out" -F 'Who pays first? none / subscription (Enter for subscription)' || fail "W7: Q2 must offer none and subscription alone (got: $out)"
@@ -977,7 +966,6 @@ grepq "$out" -F "$ROSTER_UNREADABLE" || fail "W7: Q2 must print the unreadable-s
 grepq "$out" -F 'API accounts are added' || fail "W7: Q2 must say where API accounts are added (got: $out)"
 echo "ok: W7 no roster offers none and subscription with its fixed line and where accounts are added"
 
-# W7b: a D row, and a damaged row, offer none and subscription with the invalid-account-config line.
 for r in "$GW_ROSTER_D" "$GW_ROSTER_BAD"; do
   out=$(gw_ask "$(gw_spec "$(gw_opts "$(gw_accounts "$r")" "$DEFAULT_ROUTE")" "$(jq -nc --arg r "$ACME" '[$r,""]')")")
   grepq "$out" -F 'Who pays first? none / subscription (Enter for subscription)' || fail "W7b(${r##*/}): Q2 must offer none and subscription alone (got: $out)"
@@ -985,7 +973,6 @@ for r in "$GW_ROSTER_D" "$GW_ROSTER_BAD"; do
 done
 echo "ok: W7b a D row and a damaged row offer none and subscription with the invalid-account-config line"
 
-# W8: a refused path re-asks naming why; My Project is stored as My-Project and shown back.
 gw_home w8
 out=$(gw_ask "$(gw_spec "$(gw_opts "$(gw_accounts "$GW/no-roster.json")" "$DEFAULT_ROUTE")" "$(jq -nc --arg p "$PLAIN" --arg m "$MYPROJ" '[$p,$m,""]')")")
 grepq "$out" -F "$PLAIN: the root holds no .git entry" || fail "W8: a path with no .git must be refused naming why (got: $out)"
@@ -994,7 +981,6 @@ got=$(sed -n 's/^RESULT //p' <<< "$out" | jq -c '.choices.corpora' || true)
 grepq "$out" -F "My-Project ($MYPROJ)" || fail "W8: the stored name must be shown back (got: $out)"
 echo "ok: W8 a refused path re-asks naming why; My Project is stored as My-Project and shown back"
 
-# W9: Enter on "once a day" arms nothing; a typed yes arms, through the real cadence script.
 gw_home w9
 out=$(gw_ask "$(gw_spec "$(gw_opts "$(gw_accounts "$GW/no-roster.json")" "$DEFAULT_ROUTE")" "$(jq -nc --arg r "$ACME" '[$r,"","",""]')")")
 grepq "$out" -F 'Run this once a day from now on? yes/no (default no)' || fail "W9: the job question must be asked with a repo and no job (got: $out)"
@@ -1025,7 +1011,6 @@ grepq "$out" -F 'Run this once a day from now on?' || fail "W9(starter): the job
 grepq "$out" -F 'graph-choices-cadence.sh arm' || fail "W9(starter): the dry run must name the arm it would run (got: $out)"
 echo "ok: W9 Enter on the job question arms nothing; a typed yes arms, on starter too"
 
-# W10: subscription then C asks the cap.
 gw_home w10
 out=$(gw_ask "$(gw_spec "$(gw_opts "$(gw_accounts "$GW_ROSTER_AC")" "$DEFAULT_ROUTE")" "$(jq -nc --arg r "$ACME" '[$r,"","subscription","C","7",""]')")")
 grepq "$out" -F 'At most how many USD, estimated, per pass? (Enter for 5.00)' || fail "W10: a letter in the fallbacks must ask the cap (got: $out)"
@@ -1033,7 +1018,6 @@ got=$(sed -n 's/^RESULT //p' <<< "$out" | jq -c '[.choices.primary,.choices.fall
 [ "$got" = '["subscription",["C"],7]' ] || fail "W10: want subscription, [C] and a cap of 7 (got $got)"
 echo "ok: W10 subscription then C asks the cap"
 
-# W11: --dry-run writes nothing and prints the plan.
 gw_home w11
 export HIMMEL_API_CREDIT_CONFIG="$GW_ROSTER_AC"
 out=$(gw_apply "$(jq -nc --argjson c "$STORED_EXAMPLE" '{graph:{choices:$c,clear:false,armJob:true},dryRun:true}')")
@@ -1044,7 +1028,6 @@ grepq "$out" -F 'graph-choices-cadence.sh arm' || fail "W11: the dry run must pr
 [ ! -e "$GW_CRON_CALLS" ] || fail "W11: the dry run must not touch the crontab"
 echo "ok: W11 --dry-run writes nothing and prints the plan"
 
-# W12: graphify absent prints the sentence and the install command and asks nothing.
 gw_home w12
 out=$(gw_ask "$(gw_spec "$(gw_opts '[]' "$DEFAULT_ROUTE" false adopter false)" '[]')")
 grepq "$out" -F 'ASKED 0' || fail "W12: no graphify must ask nothing (got: $out)"
@@ -1059,7 +1042,6 @@ grepq "$out" -F 'bash scripts/setup.sh --with-graphify' || fail "W12: the instal
 grepq "$out" -F 'Which of your own git repos' && fail "W12: the install without graphify must not ask Q1 (got: $out)"
 echo "ok: W12 graphify absent prints the sentence and the install command and asks nothing"
 
-# W13: an unreadable config skips the step with the reason; nothing is saved.
 gw_home w13
 out=$(gw_ask "$(gw_spec "$(gw_opts '[]' '{"state":"unreadable","corpora":[],"order":[],"max_usd_per_pass":null,"errors":[]}' false unreadable | jq -c '.cause="not-json"')" '[]')")
 grepq "$out" -F 'ASKED 0' || fail "W13: an unreadable config must ask nothing (got: $out)"
@@ -1067,7 +1049,6 @@ grepq "$out" -F "graph config unreadable (cause=not-json): $NOT_JSON_LINE" || fa
 grepq "$out" -F 'RESULT {"choices":null,"clear":false,"armJob":false}' || fail "W13: nothing is saved (got: $out)"
 echo "ok: W13 an unreadable config skips the step with its reason and saves nothing"
 
-# W14: clear removes the choices; Enter on the cap keeps it; with the job armed it is not asked and nothing disarms.
 gw_home w14
 STORED_W14=$(jq -nc --arg r "$ACME" '{version:1,corpora:[{name:"acme",root:$r}],primary:"A",fallbacks:[],max_usd_per_pass:7}')
 jq -n --argjson c "$STORED_W14" '{graphify:{semantic_api_ok:false,choices:$c}}' > "$HOME/.himmel/config.json"
@@ -1087,14 +1068,12 @@ grepq "$out" -F 'RC 0' || fail "W14: applying a clear must succeed (got: $out)"
 [ ! -e "$GW_CRON_CALLS" ] || fail "W14: a re-run must never disarm ($(cat "$GW_CRON_CALLS"))"
 echo "ok: W14 clear removes the choices, Enter keeps the cap, and an armed job is neither asked nor disarmed"
 
-# W15: a release install says it has no himmel graph, and own repos still work.
 gw_home w15
 out=$(gw_ask "$(gw_spec "$(gw_opts "$(gw_accounts "$GW/no-roster.json")" "$DEFAULT_ROUTE" false adopter true "$RELEASE_Q1")" "$(jq -nc --arg r "$ACME" '[$r,"","",""]')")")
 grepq "$out" -F "$RELEASE_Q1" || fail "W15: a release install must say it has no himmel graph (got: $out)"
 grepq "$out" -F '"name":"acme"' || fail "W15: own repos must still work on a release install (got: $out)"
 echo "ok: W15 a release install says it has no himmel graph and own repos still work"
 
-# W16: only A configured: Q2 reads none / subscription / A; after A, Q3 offers subscription alone.
 gw_home w16
 out=$(gw_ask "$(gw_spec "$(gw_opts "$(gw_accounts "$GW_ROSTER_A")" "$DEFAULT_ROUTE")" "$(jq -nc --arg r "$ACME" '[$r,"","A","","",""]')")")
 grepq "$out" -F 'Who pays first? none / subscription / A (Enter for subscription)' || fail "W16: Q2 must read none / subscription / A (got: $out)"
@@ -1104,7 +1083,6 @@ got=$(sed -n 's/^RESULT //p' <<< "$out" | jq -c '[.choices.primary,.choices.fall
 [ "$got" = '["A",[]]' ] || fail "W16: Enter at Q3 must store fallbacks [] (got $got)"
 echo "ok: W16 one configured account reads none / subscription / A and Q3 offers subscription alone"
 
-# W17: A and C configured: Q2 lists both, C then A keeps that order; a stubbed A, B, D roster lists those three (stub-only).
 gw_home w17
 out=$(gw_ask "$(gw_spec "$(gw_opts "$(gw_accounts "$GW_ROSTER_AC")" "$DEFAULT_ROUTE")" "$(jq -nc --arg r "$ACME" '[$r,"","C","A","",""]')")")
 grepq "$out" -F 'Who pays first? none / subscription / A / C' || fail "W17: Q2 must list A and C (got: $out)"
@@ -1115,7 +1093,6 @@ out=$(gw_ask "$(gw_spec "$(gw_opts "$STUB_ABD" "$DEFAULT_ROUTE")" "$(jq -nc --ar
 grepq "$out" -F 'Who pays first? none / subscription / A / B / D' || fail "W17 (stub-only): a stubbed A, B, D roster must list those three (got: $out)"
 echo "ok: W17 two configured accounts are listed and keep the typed order; a stubbed A, B, D roster lists three (stub-only)"
 
-# W18: a re-run that drops A from A,C clears A's alert sentinel, keeps C's, and runs no key-ok.
 gw_home w18
 STORED_W18=$(jq -nc --arg r "$ACME" '{version:1,corpora:[{name:"acme",root:$r}],primary:"A",fallbacks:["C"],max_usd_per_pass:5}')
 jq -n --argjson c "$STORED_W18" '{graphify:{choices:$c}}' > "$HOME/.himmel/config.json"
@@ -1129,7 +1106,6 @@ grepq "$out" -F 'RC 0' || fail "W18: the re-run must save (got: $out)"
 [ "$(cksum < "$GW/ledger.json")" = "$ledger_before" ] || fail "W18: no key-ok may run (A's key_rejected_at changed)"
 echo "ok: W18 dropping A clears its alert sentinel, keeps C's, and runs no key-ok"
 
-# W19: a typed C that is not configured is refused naming C and re-asked; a roster gone unreadable refuses A at apply.
 gw_home w19
 out=$(gw_ask "$(gw_spec "$(gw_opts "$(gw_accounts "$GW_ROSTER_A")" "$DEFAULT_ROUTE")" "$(jq -nc --arg r "$ACME" '[$r,"","C","A","","",""]')")")
 grepq "$out" -F 'C is not a configured API account' || fail "W19: a typed C must be refused naming C (got: $out)"
