@@ -146,5 +146,47 @@ wait
 valid=$(F="$CFG" node -e 'try{const j=JSON.parse(require("fs").readFileSync(process.env.F,"utf8"));process.stdout.write(j&&typeof j.projects==="object"?"ok":"bad")}catch(e){process.stdout.write("bad")}')
 assert_eq "T12 concurrent writes never corrupt the file" "ok" "$valid"
 
+# --- serialized read-modify-write (lost update) ---
+
+# The key names of a real ~/.claude.json (read with a node one-liner that printed
+# keys only), placeholder values, no account fields.
+SHAPE='{"numStartups":41,"installMethod":"native","autoUpdates":false,"tipsHistory":{"new-user-warmup":1},"firstStartTime":"2026-01-01T00:00:00.000Z","hasCompletedOnboarding":true,"lastOnboardingVersion":"2.0.0","mcpServers":{},"cachedGrowthBookFeatures":{},"githubRepoPaths":{},"skillUsage":{},"projects":{"/srv/existing":{"allowedTools":[],"mcpContextUris":[],"mcpServers":{},"enabledMcpjsonServers":[],"disabledMcpjsonServers":[],"hasTrustDialogAccepted":true,"hasClaudeMdExternalIncludesApproved":false,"lastCost":0,"lastSessionId":"00000000-0000-0000-0000-000000000000"}}}'
+read_top() { F="$1" K="$2" node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(process.env.F,"utf8"))[process.env.K]))'; }
+wait_marker() { local i=0; while [ ! -e "$1" ] && [ "$i" -lt 600 ]; do sleep 0.05; i=$((i + 1)); done; }
+
+# T13: two helpers for distinct dirs both read the config, then an unrelated
+# writer (Claude Code's own tmp+rename) bumps a top-level key, then each helper
+# is released in turn. The TRUST_WRITE_PAUSE_MARKER seam holds each helper
+# between its read and its rename, so the interleaving is forced, not timed.
+CFG="$TMP/rmw.json"; printf '%s\n' "$SHAPE" > "$CFG"
+DIRC="$TMP/rc"; DIRD="$TMP/rd"; mkdir -p "$DIRC" "$DIRD"
+PC="$TMP/pause-c"; PD="$TMP/pause-d"
+TRUST_WRITE_JITTER_MS=0 TRUST_WRITE_PAUSE_MARKER="$PC" WORKSPACE_TRUST_CONFIG="$CFG" bash "$HELPER" "$DIRC" >/dev/null 2>&1 &
+pid_c=$!
+TRUST_WRITE_JITTER_MS=0 TRUST_WRITE_PAUSE_MARKER="$PD" WORKSPACE_TRUST_CONFIG="$CFG" bash "$HELPER" "$DIRD" >/dev/null 2>&1 &
+pid_d=$!
+wait_marker "$PC.reached"; wait_marker "$PD.reached"
+F="$CFG" node -e 'const fs=require("fs");const p=process.env.F;const j=JSON.parse(fs.readFileSync(p,"utf8"));j.numStartups=42;fs.writeFileSync(p+".tmp.writer",JSON.stringify(j,null,2));fs.renameSync(p+".tmp.writer",p)'
+: > "$PC.go"; wait "$pid_c"; rc_c=$?
+: > "$PD.go"; wait "$pid_d"; rc_d=$?
+assert_eq "T13 first helper rc" "0" "$rc_c"
+assert_eq "T13 second helper rc" "0" "$rc_d"
+assert_eq "T13 first trust entry survives" "true" "$(read_flag "$CFG" "$(norm_key "$DIRC")" 2>/dev/null)"
+assert_eq "T13 second trust entry survives" "true" "$(read_flag "$CFG" "$(norm_key "$DIRD")" 2>/dev/null)"
+assert_eq "T13 unrelated top-level change survives" "42" "$(read_top "$CFG" numStartups 2>/dev/null)"
+assert_eq "T13 sibling project kept" "true" "$(read_flag "$CFG" "/srv/existing" 2>/dev/null)"
+leftover=$(find "$TMP" -maxdepth 1 -name 'rmw.json.tmp*' | wc -l | tr -d ' ')
+assert_eq "T13 no temp file orphaned" "0" "$leftover"
+
+# T14 (negative control): one uncontended trust write on the real shape yields
+# exactly the input plus the new entry, byte for byte, and orphans no temp file.
+CFG="$TMP/shape.json"; printf '%s\n' "$SHAPE" > "$CFG"
+S="$SHAPE" K="$KEY" O="$TMP/shape.expected" node -e 'const j=JSON.parse(process.env.S);j.projects[process.env.K]={hasTrustDialogAccepted:true};require("fs").writeFileSync(process.env.O,JSON.stringify(j,null,2))'
+TRUST_WRITE_JITTER_MS=0 WORKSPACE_TRUST_CONFIG="$CFG" bash "$HELPER" "$WORKDIR"; rc=$?
+assert_eq "T14 uncontended rc" "0" "$rc"
+cmp -s "$TMP/shape.expected" "$CFG"; assert_eq "T14 whole file byte for byte" "0" "$?"
+leftover=$(find "$TMP" -maxdepth 1 -name 'shape.json.tmp*' | wc -l | tr -d ' ')
+assert_eq "T14 no temp file orphaned" "0" "$leftover"
+
 echo
 if [ "$FAILED" -eq 0 ]; then echo "All ensure-workspace-trust tests passed."; else echo "$FAILED test(s) failed."; exit 1; fi
