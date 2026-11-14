@@ -124,6 +124,9 @@ export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   'block-read-secrets.sh',
   'read-clamp.sh',
   // PreToolUse `Edit|Write|MultiEdit|NotebookEdit` chain.
+  // FIRST: confines a judge-ro subagent's writes to one evidence file in its
+  // own judge dir (keyed on the payload's agent_type); no opinion otherwise.
+  'guard-judge-write-scope.sh',
   'block-edit-on-main.sh',
   // Denies writes to a LIVE settings.json/settings.local.json
   // (user-scope $HOME/.claude, or the PRIMARY checkout's) while ALLOWING the

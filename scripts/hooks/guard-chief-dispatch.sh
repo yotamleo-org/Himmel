@@ -44,8 +44,9 @@
 # ones left, and both are load-bearing (structural / audited), never
 # spoofable by the dispatch's own prompt text:
 #   * subagent_type: Explore, or judge-ro (a
-#     repo agent whose frontmatter pins tools Read, Grep, Glob, Bash only,
-#     checked at dispatch — the same structural read-only lane), or
+#     repo agent whose frontmatter pins tools Read, Grep, Glob, Bash, or that
+#     line plus Write, checked at dispatch; guard-judge-write-scope.sh confines
+#     that Write to one evidence file in its judge dir), or
 #     brief-drafter (a repo agent whose frontmatter pins tools
 #     Read, Write, Edit, Bash; its job is writing brief files for the chief,
 #     and its prompt forbids launch, commit, push and PR. Each such dispatch
@@ -157,9 +158,11 @@ subagent_type=$({ printf '%s' "$input" | jq -r '.tool_input.subagent_type | sele
 subagent_type="${subagent_type%x}"
 subagent_type="${subagent_type%$'\n'}"
 # judge-ro and brief-drafter are matched exactly and keep their lane only
-# while the project agent file has one tools: line, exactly the expected one
-# (judge-ro: Read, Grep, Glob, Bash; brief-drafter: Read, Write, Edit, Bash).
-# A file that grants more, or no file, gets none.
+# while the project agent file has one tools: line, exactly an expected one
+# (judge-ro: Read, Grep, Glob, Bash, or that line plus Write, which
+# guard-judge-write-scope.sh confines to one evidence file in its judge dir;
+# brief-drafter: Read, Write, Edit, Bash). A file that grants more, or no file,
+# gets none.
 agent_pinned() {
     local f
     f="$(dirname "${BASH_SOURCE[0]}")/../../.claude/agents/$1.md"
@@ -168,7 +171,9 @@ agent_pinned() {
 }
 case "$subagent_type" in
     Explore) exit 0 ;;
-    judge-ro) agent_pinned "$subagent_type" 'Read, Grep, Glob, Bash' && exit 0 ;;
+    judge-ro)
+        agent_pinned "$subagent_type" 'Read, Grep, Glob, Bash' && exit 0
+        agent_pinned "$subagent_type" 'Read, Grep, Glob, Bash, Write' && exit 0 ;;
     brief-drafter)
         if agent_pinned "$subagent_type" 'Read, Write, Edit, Bash'; then
             log_record brief-drafter-dispatch

@@ -66,8 +66,8 @@ for f in judge judge-ro; do
     eq "$f carries no cacheTtl frontmatter" \
        "$(awk '/^---$/{n++} n==1' "$p" | tr -d '\r' | grep -c 'cacheTtl')" "0"
 done
-eq "judge-ro tools pinned read-only" \
-   "$(grep -m1 '^tools:' "$REPO/.claude/agents/judge-ro.md")" "tools: Read, Grep, Glob, Bash"
+eq "judge-ro tools pinned to the fenced line" \
+   "$(grep -m1 '^tools:' "$REPO/.claude/agents/judge-ro.md")" "tools: Read, Grep, Glob, Bash, Write"
 
 printf 'test-judge-cache-row: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

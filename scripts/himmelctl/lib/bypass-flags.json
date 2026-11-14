@@ -271,6 +271,14 @@
       "remedy": "JIRA_COMPOUND_WRITE_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
     },
     {
+      "name": "JUDGE_WRITE_SCOPE_OK",
+      "hooks": [
+        "scripts/hooks/guard-judge-write-scope.sh"
+      ],
+      "bypasses": "Lets a judge-ro subagent write outside one evidence file in its own judge dir (scripts/hooks/guard-judge-write-scope.sh).",
+      "remedy": "JUDGE_WRITE_SCOPE_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+    },
+    {
       "name": "LANES_GUARD_OK",
       "hooks": [
         "scripts/hooks/check-lanes-inventory.sh"

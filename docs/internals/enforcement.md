@@ -4041,7 +4041,9 @@ marker families — `worktree` (`.claude/worktrees`, `clean-garden.sh`,
 `clear-cr-marker`, "CodeRabbit"). A single-family match never denies — that
 conjunction is the false-positive budget keeping bounded read-only research
 frictionless. `subagent_type: Explore` always allows, and `judge-ro` allows while `.claude/agents/<id>.md` pins exactly
-`tools: Read, Grep, Glob, Bash`, the same structural read-only lane.
+one `tools:` line, `tools: Read, Grep, Glob, Bash` or `tools: Read, Grep, Glob, Bash, Write`, the same structural
+read-only lane: [`guard-judge-write-scope.sh`](#guard-judge-write-scopesh--judge-ro-write-fence) confines that Write
+to one evidence file in the judge's own judge dir. Any other grant (`Edit`, `MultiEdit`, `NotebookEdit`) costs the lane.
 `brief-drafter` is a separate allowance for drafting worker briefs: it allows
 while `.claude/agents/brief-drafter.md` pins exactly `tools: Read, Write, Edit,
 Bash`, and each such dispatch is appended to the `CHIEF_DISPATCH_LOG` audit log
@@ -4078,6 +4080,29 @@ test seam).
 after `/himmel-update` (marketplace re-sync) + a fresh session.
 
 Spec: `scripts/hooks/test-guard-chief-dispatch.sh`.
+
+### `guard-judge-write-scope.sh` — judge-ro write fence
+
+A PreToolUse hook, FIRST on the `Edit|Write|MultiEdit|NotebookEdit` chain and a
+`MUST_RUN_CHAIN_MEMBERS` entry. `judge-ro` carries the `Write` tool so it can record
+its own evidence file: a Bash heredoc, `printf` or `tee` of that evidence is refused by
+the Bash text guards, which read the body. The fence keys on the payload's
+`agent_type`, which Claude Code sends inside a subagent call.
+
+- `agent_type` is `judge-ro` or `<plugin>:judge-ro`: it denies every tool but `Write`,
+  and a `Write` anywhere but one `.md`/`.txt` file directly in
+  `/tmp/claude-<uid>/j<PR>[a-z]/`, under a 0700 root this uid owns, in a judge dir
+  `scripts/judge-dir.sh` made (a regular `.holder`) that no verdict has released
+  (`.verdict-written`), reached through no symlink.
+- A subagent payload (`agent_id` set) with no `agent_type` is denied: it cannot be
+  scoped.
+- Any other caller: exit 0, no output. The fence never prints an allow, so the rest of
+  the chain decides exactly as before.
+
+It parses no shell text and fails closed for a judge payload (no `jq`: a payload naming
+`judge-ro` is denied). The deny names `bash <primary checkout>/scripts/judge-dir.sh <PR>`,
+then a Write of `<that dir>/evidence.md`. Bypass (single run, launching shell):
+`JUDGE_WRITE_SCOPE_OK=1`. Suite: `scripts/hooks/test-guard-judge-write-scope.sh`.
 
 ### `guard-chief-foreground.sh` — the chief runs long kit scripts in the background
 
