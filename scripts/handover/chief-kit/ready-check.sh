@@ -413,18 +413,14 @@ fi
 
 # shellcheck source=scripts/lib/git-clean.sh
 . "$SELF_DIR/../../lib/git-clean.sh" || { echo "ready-check: cannot load git-clean.sh; nothing was judged" >&2; exit 2; }
+# shellcheck source=scripts/lib/gate-repo-resolver.sh
+. "$SELF_DIR/../../lib/gate-repo-resolver.sh" || { echo "ready-check: cannot load gate-repo-resolver.sh; nothing was judged" >&2; exit 2; }
 enter_gated_checkout() {
     local gate_dir
     git_env_scrub
     unset GH_REPO
-    case "${HIMMEL_REPO:-}" in
-        /*) gate_dir=$HIMMEL_REPO ;;
-        '') if gate_dir=$(git -C "$SELF_DIR" rev-parse --path-format=absolute --git-common-dir); then gate_dir=${gate_dir%/.git}; else gate_dir=""; fi ;;
-        *) echo "ready-check: HIMMEL_REPO ($HIMMEL_REPO) is not an absolute path - refusing to let it pick the gated checkout; nothing was judged" >&2
-           exit 2 ;;
-    esac
-    [ -n "$gate_dir" ] || gate_dir="$(cd "$SELF_DIR/../../.." && pwd)"
-    if [ ! -d "$gate_dir" ] || ! cd "$gate_dir"; then
+    gate_dir=$(gate_repo_dir ready-check "; nothing was judged" "; nothing was judged") || exit 2
+    if ! cd "$gate_dir"; then
         echo "ready-check: the gated checkout HIMMEL_REPO ($gate_dir) is not a directory; nothing was judged" >&2
         exit 2
     fi

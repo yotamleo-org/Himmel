@@ -466,18 +466,10 @@ ROOT=$(go_resolve_root "$ANCHOR") || { echo "write-verdict: cannot resolve the h
 # shellcheck source=scripts/lib/git-clean.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/git-clean.sh" 2>/dev/null && git_env_scrub
-case "${HIMMEL_REPO:-}" in
-    /*) GATE_DIR=$HIMMEL_REPO ;;
-    '') GATE_DIR=$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || GATE_DIR=""  # swallow-ok: a tree outside git reads empty, which falls back to this script's own tree root below
-        GATE_DIR=${GATE_DIR%/.git} ;;
-    *) echo "write-verdict: HIMMEL_REPO ($HIMMEL_REPO) is not an absolute path - refusing to let it pick the gated checkout; nothing written" >&2
-       exit 2 ;;
-esac
-[ -n "$GATE_DIR" ] || GATE_DIR=$ANCHOR
-if [ ! -d "$GATE_DIR" ]; then
-    echo "write-verdict: the gated checkout HIMMEL_REPO ($GATE_DIR) is not a directory; nothing written" >&2
-    exit 2
-fi
+# shellcheck source=scripts/lib/gate-repo-resolver.sh
+# shellcheck disable=SC1091
+. "$HERE/../../lib/gate-repo-resolver.sh" || { echo "write-verdict: cannot load scripts/lib/gate-repo-resolver.sh; nothing written" >&2; exit 2; }
+GATE_DIR=$(gate_repo_dir write-verdict "; nothing written" "; nothing written") || exit 2
 origin_nwo() { git -C "$1" remote get-url origin 2>/dev/null | sed -E 's#^(https?://[^/]+/|git@[^:]+:|ssh://git@[^/]+/)##; s#\.git$##' | LC_ALL=C tr '[:upper:]' '[:lower:]'; }  # swallow-ok: no origin reads empty, which keeps the harness bucket
 # A HIMMEL_REPO whose origin is another repo than this harness's must not write into
 # this harness's bucket: refuse. An adopted repo's verdict names it with --repo.
