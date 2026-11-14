@@ -522,12 +522,14 @@ ROWS
   has "primary-write: no odd rc" "$OUT6E" "rc not in {0,2}: 0"
   has "primary-write: a write outside the primary stays allowed on both sides" "$OUT6E" \
     "allow-expected rows: 1 (denied by base 0; by head 0)"
-  case "$OUT6E" in
-    *"WARNING scratch primary"*)
+  case "$(cd "$HOME" && pwd -P | tr '[:upper:]' '[:lower:]')/" in
+    */tmp/*|*/temp/*)
       echo "SKIP primary-write deny rows (HOME is under a tmp-named path, as in the CI runner)"
+      has "primary-write: an unguarded primary is named" "$OUT6E" "WARNING scratch primary"
       if [ "$RC6E" = "4" ]; then pass "primary-write: an unguarded primary exits 4 VACUOUS"
       else fail "primary-write: expected exit 4 with an unguarded primary, got $RC6E"; fi ;;
     *)
+      hasnt "primary-write: a non-tmp HOME gives a guarded primary" "$OUT6E" "WARNING scratch primary"
       hasnt "primary-write: not vacuous" "$OUT6E" "VACUOUS: "
       has "primary-write: the Bash write into the primary is denied by both sides" "$OUT6E" \
         "deny-expected rows: 2 (base denied 1; allowed by both: 1)"
@@ -535,7 +537,6 @@ ROWS
       if [ "$RC6E" = "0" ]; then pass "primary-write: exit 0"
       else fail "primary-write: expected exit 0, got $RC6E"; fi ;;
   esac
-  # (e) a HOME under a tmp-named path is named, never a silent VACUOUS
   mkdir -p "$TMP/tmp/home"
   OUT6F=$(HOME="$TMP/tmp/home" python3 "$DIFF" \
       --base "sha:HEAD:scripts/hooks/block-write-into-main-checkout.sh" \
