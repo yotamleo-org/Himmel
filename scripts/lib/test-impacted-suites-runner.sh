@@ -61,7 +61,6 @@ assert_runner "scripts/jira .test.ts -> vitest, cwd scripts/jira" \
     "scripts/jira/src/commands/foo.test.ts" \
     "cd scripts/jira && npx vitest run src/commands/foo.test.ts"
 
-# R1: the node-suites matrix runs these under vitest too (CI writes their ran 0 lines)
 assert_runner "R1 scripts/jira .test.mjs -> vitest, cwd scripts/jira" \
     "scripts/jira/reconcile-lib.test.mjs" \
     "cd scripts/jira && npx vitest run reconcile-lib.test.mjs"

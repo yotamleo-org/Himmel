@@ -1619,9 +1619,6 @@ js_ci_refusal() {
     return 0
 }
 
-# node_suites_gate — run_node_suites from one run of the merge-base's
-# pr-plan.sh over this range, extracted as ci.yml's plan job extracts it;
-# cached for the run. Empty when the plan cannot be read.
 node_suites_gate() {
     local f="$work/node-suites.gate" tools="$work/plan-tools"
     if [ ! -f "$f" ]; then
@@ -1632,10 +1629,6 @@ node_suites_gate() {
     cat "$f" 2>/dev/null
 }
 
-# --plan: which impacted suites run on this machine and which are left to CI.
-# The same tests --check applies to a `= CI` verdict, run forward: a suite the PR changed
-# (its failing-first proof), a JS/TS suite js_ci_refusal refuses and a test-*.sh
-# suite-coverage.sh says CI does not run are LOCAL with the reason named; every other one is CI.
 if [ "$plan" -eq 1 ]; then
     plan_local="$work/plan.local"
     plan_ci="$work/plan.ci"
@@ -1734,13 +1727,6 @@ awk -v blockedf="$blocked_raw" -v cif="$ci_raw" -v skipf="$skip_raw" -v passf="$
         }
     }
 ' | sort -u > "$have.local" || io_fail "reading the verdicts"
-# `SUITE <p> = CI` is accepted for a suite the PR did not change or add, never
-# under HIMMEL_SUITES_LOCAL=1: a test-*.sh that suite-coverage.sh says runs in
-# PR CI, or a JS/TS suite js_ci_refusal lets go. A refused one counts as no
-# verdict and exits 1. This is a pre-filter for the suites CI does not run;
-# ready-check item 19 is the gate that reads CI's per-suite proof at the head.
-# suite-coverage.sh is the reviewed tree's copy, because the tables it reads
-# are the ones that tree's CI runs.
 ci_list="$work/ci"
 ci_ok="$work/ci.ok"
 ci_cand="$work/ci.cand"

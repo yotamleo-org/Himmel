@@ -1576,9 +1576,6 @@ if [ "$rc" -eq 1 ] && grepq "$out" -F 'impacted-suites: CI NOT ACCEPTED scripts/
 # T2b: a suite the PR changed given = CI is refused (DoD-2)
 out="$(cx_check "$V_A" 'SUITE scripts/test-cx-b.sh = CI' "$V_VM" "$V_JS")"; rc=$?
 if [ "$rc" -eq 1 ] && grepq "$out" -F 'impacted-suites: CI NOT ACCEPTED scripts/test-cx-b.sh (the PR changed it'; then pass "T2b a changed suite given = CI is refused"; else fail "T2b changed = CI: rc=$rc out=$out"; fi
-# J1a (was T3): an unchanged node --test suite given = CI is accepted. This repo has
-# no scripts/ci/pr-plan.sh, so a run of the plan would refuse it: only a vitest
-# suite asks the plan.
 out="$(cx_check "$V_A" "$V_B" "$V_VM" 'SUITE scripts/lib/cx.test.mjs = CI')"; rc=$?
 if [ "$rc" -eq 0 ] && grepq "$out" -F 'impacted-suites: 5 impacted, 0 without a verdict, 2 to CI' && ! grepq "$out" -F 'NOT ACCEPTED'; then pass "J1a an unchanged node --test suite given = CI is accepted without the plan"; else fail "J1a mjs = CI: rc=$rc out=$out"; fi
 # T4: HIMMEL_SUITES_LOCAL=1 turns = CI off (DoD-3)
@@ -1603,7 +1600,6 @@ plan_cx() { ( cd "$CX" && bash "$IS" --plan "$crange" 2>&1 ); }
 # P1: the suite the PR changed stays local and the plan says the failing-first proof is required
 out="$(plan_cx)"; rc=$?
 if [ "$rc" -eq 0 ] && grepq "$out" -F 'LOCAL scripts/test-cx-b.sh (changed: failing-first proof required)'; then pass "P1 a changed suite is planned LOCAL with the failing-first proof required"; else fail "P1 changed suite plan: rc=$rc out=$out"; fi
-# P3: a suite CI cannot run stays local with a NAMED reason; an unchanged JS/TS suite CI runs goes to CI
 if grepq "$out" -F 'LOCAL scripts/test-cx-vm.sh (not run in CI (SKIP_LIST)' && grepq "$out" -Fx 'CI scripts/lib/cx.test.mjs'; then pass "P3 a suite CI cannot run is planned LOCAL with its named reason, the node suite CI"; else fail "P3 named reasons: out=$out"; fi
 # P1b: untouched PR-CI suites go to CI, and the summary counts both sides
 if grepq "$out" -F 'CI scripts/test-cx-a.sh' && grepq "$out" -F 'CI scripts/test-cx-c.sh' && grepq "$out" -F 'impacted-suites: plan 5 impacted, 2 local, 3 to CI'; then pass "P1b untouched PR-CI suites are planned CI (2 local, 3 to CI)"; else fail "P1b plan summary: out=$out"; fi
@@ -1638,12 +1634,6 @@ if [ "$rc" -eq 0 ] && [ "$n_local" -le 5 ] && [ "$n_local" -ge 1 ] && grepq "$ou
 ( cd "$CY" && bash "$IS" --plan --check "$yrange" >/dev/null 2>&1 ); rc=$?
 if [ "$rc" -eq 2 ]; then pass "P5 --plan with --check is a usage error (rc 2)"; else fail "P5 --plan --check: rc=$rc"; fi
 
-# --- 39. `SUITE <p> = CI` for an unchanged JS/TS suite CI runs ---------------
-# The base commits the real planner (pr-plan.sh, its gate list, the selector and
-# what the selector extracts with git archive) and origin/main points at it, so
-# the plan says `impacted` and can turn the node_suites gate off. One head turns
-# the gate on (a scripts/jira change), one leaves it off (a root scripts/*.mjs
-# change), and one is cut from before the planner existed (an unreadable plan).
 CJ="$(fixture_mktemp_dir)" || exit 1
 trap 'rm -rf "$FX" "$SHIM" "$SHIM2" "$SHD" "$BIG" "$SHIM3" "$SHIM4" "${SM:-}" "$CX" "$CY" "$CJ"' EXIT
 (
@@ -1694,37 +1684,27 @@ JZ='SUITE scripts/api-lane/z.test.mjs = PASS'
 JW='SUITE scripts/api-lane/w.test.mjs = PASS'
 JL='SUITE scripts/jira/live/jira-live.test.ts = PASS'
 JT='SUITE scripts/jira/live/teardown.test.ts = PASS'
-# control: the fixture's own planner leaves node_suites off for J3's diff
 out="$( cd "$CJ" && bash scripts/ci/pr-plan.sh "$j_base" "$j_off" 2>&1 )"
 if grepq "$out" -Fx 'mode=impacted' && grepq "$out" -Fx 'run_node_suites=false'; then pass "J-control pr-plan.sh prints run_node_suites=false for J3's diff"; else fail "J-control plan for J3's diff: out=$out"; fi
-# J1b: an unchanged vitest suite, gate on: accepted
 out="$(cj_check "$j_rng_on" 'SUITE scripts/jira/y.test.ts = CI' "$JZ" "$JW" "$JL" "$JT")"; rc=$?
 if [ "$rc" -eq 0 ] && grepq "$out" -F 'impacted-suites: 5 impacted, 0 without a verdict, 1 to CI' && ! grepq "$out" -F 'NOT ACCEPTED'; then pass "J1b an unchanged vitest suite with the gate on given = CI is accepted"; else fail "J1b vitest gate on: rc=$rc out=$out"; fi
-# J2: no runner
 out="$(cj_check "$j_rng_on" "$JY" 'SUITE scripts/api-lane/z.test.mjs = CI' "$JW" "$JL" "$JT")"; rc=$?
 if [ "$rc" -eq 1 ] && grepq "$out" -F 'impacted-suites: CI NOT ACCEPTED scripts/api-lane/z.test.mjs (CI has no runner for it'; then pass "J2 a suite --runner does not map given = CI is refused: no runner"; else fail "J2 no runner: rc=$rc out=$out"; fi
-# J3: the diff leaves node_suites off
 out="$(cj_check "$j_rng_off" 'SUITE scripts/jira/x.test.ts = CI')"; rc=$?
 if [ "$rc" -eq 1 ] && grepq "$out" -F 'impacted-suites: CI NOT ACCEPTED scripts/jira/x.test.ts (the node_suites gate is off'; then pass "J3 a vitest suite whose diff leaves node_suites off is refused"; else fail "J3 gate off: rc=$rc out=$out"; fi
-# J4: the plan is unreadable (the merge-base has no planner): refused as gate off
 out="$(cj_check "$j_rng_np" 'SUITE scripts/jira/x.test.ts = CI')"; rc=$?
 if [ "$rc" -eq 1 ] && grepq "$out" -F 'impacted-suites: CI NOT ACCEPTED scripts/jira/x.test.ts (the node_suites gate is off'; then pass "J4 a vitest suite with an unreadable plan is refused as gate off"; else fail "J4 unreadable plan: rc=$rc out=$out"; fi
-# J5: a changed suite --runner does not map gets the changed text, not the no-runner one
 out="$(cj_check "$j_rng_on" "$JY" "$JZ" 'SUITE scripts/api-lane/w.test.mjs = CI' "$JL" "$JT")"; rc=$?
 if [ "$rc" -eq 1 ] && grepq "$out" -F 'impacted-suites: CI NOT ACCEPTED scripts/api-lane/w.test.mjs (the PR changed it: a changed or added suite runs locally)' && ! grepq "$out" -F 'CI has no runner'; then pass "J5 a changed unmapped suite is refused as changed, not as no runner"; else fail "J5 changed first: rc=$rc out=$out"; fi
-# J6 (control): HIMMEL_SUITES_LOCAL=1 refuses a JS/TS = CI
 out="$( cd "$CJ" && printf '%s\n' 'SUITE scripts/jira/y.test.ts = CI' "$JZ" "$JW" "$JL" "$JT" | HIMMEL_SUITES_LOCAL=1 bash "$IS" --check "$j_rng_on" 2>&1 )"; rc=$?
 if [ "$rc" -eq 1 ] && grepq "$out" -F 'impacted-suites: CI NOT ACCEPTED scripts/jira/y.test.ts (HIMMEL_SUITES_LOCAL=1'; then pass "J6 HIMMEL_SUITES_LOCAL=1 refuses a JS/TS = CI"; else fail "J6 local flag: rc=$rc out=$out"; fi
-# J7: the CI-skips list is one exact path: jira-live is refused, its neighbour accepted
 out="$(cj_check "$j_rng_on" "$JY" "$JZ" "$JW" 'SUITE scripts/jira/live/jira-live.test.ts = CI' 'SUITE scripts/jira/live/teardown.test.ts = CI')"; rc=$?
 if [ "$rc" -eq 1 ] && grepq "$out" -F 'impacted-suites: CI NOT ACCEPTED scripts/jira/live/jira-live.test.ts (CI skips it' && ! grepq "$out" -F 'NOT ACCEPTED scripts/jira/live/teardown.test.ts' && grepq "$out" -F '5 impacted, 1 without a verdict, 1 to CI'; then pass "J7 a CI-skips suite is refused and its directory neighbour accepted"; else fail "J7 CI skips: rc=$rc out=$out"; fi
-# P6: --plan prints the same split through the same helper
 out="$( cd "$CJ" && bash "$IS" --plan "$j_rng_on" 2>&1 )"
 if grepq "$out" -Fx 'CI scripts/jira/y.test.ts' && grepq "$out" -Fx 'CI scripts/jira/live/teardown.test.ts' && grepq "$out" -F 'LOCAL scripts/api-lane/z.test.mjs (CI has no runner for it' && grepq "$out" -F 'LOCAL scripts/jira/live/jira-live.test.ts (CI skips it' && grepq "$out" -F 'impacted-suites: plan 5 impacted, 3 local, 2 to CI'; then pass "P6 --plan: J1b and the J7 neighbour CI, J2 and J7 LOCAL with the --check reason"; else fail "P6 plan, gate on: out=$out"; fi
 out="$( cd "$CJ" && bash "$IS" --plan "$j_rng_off" 2>&1 )"
 out_np="$( cd "$CJ" && bash "$IS" --plan "$j_rng_np" 2>&1 )"
 if grepq "$out" -F 'LOCAL scripts/jira/x.test.ts (the node_suites gate is off' && grepq "$out_np" -F 'LOCAL scripts/jira/x.test.ts (the node_suites gate is off'; then pass "P6 --plan: J3 and J4 LOCAL as gate off"; else fail "P6 plan, gate off / unreadable: off=$out np=$out_np"; fi
-# P6 (control): the J5 and J6 halves keep --plan's own text
 out="$( cd "$CJ" && bash "$IS" --plan "$j_rng_on" 2>&1 )"
 out_l="$( cd "$CJ" && HIMMEL_SUITES_LOCAL=1 bash "$IS" --plan "$j_rng_on" 2>&1 )"
 if grepq "$out" -Fx 'LOCAL scripts/api-lane/w.test.mjs (changed: failing-first proof required)' && grepq "$out_l" -Fx 'LOCAL scripts/jira/y.test.ts (HIMMEL_SUITES_LOCAL=1: every impacted suite runs locally)'; then pass "P6 --plan keeps its own changed and HIMMEL_SUITES_LOCAL texts"; else fail "P6 plan J5/J6: out=$out local=$out_l"; fi
