@@ -518,17 +518,20 @@ ROWS
       --base "sha:HEAD:scripts/hooks/block-write-into-main-checkout.sh" \
       --head "sha:HEAD:scripts/hooks/block-write-into-main-checkout.sh" \
       --corpus "$TMP/primary-write.jsonl" --repo "$REPO_ROOT" --jobs 2 2>&1); RC6E=$?
+  has "primary-write: no regression" "$OUT6E" "(REGRESSION): 0"
+  has "primary-write: no odd rc" "$OUT6E" "rc not in {0,2}: 0"
+  has "primary-write: a write outside the primary stays allowed on both sides" "$OUT6E" \
+    "allow-expected rows: 1 (denied by base 0; by head 0)"
   case "$OUT6E" in
     *"WARNING scratch primary"*)
-      echo "SKIP primary-write deny rows (HOME is under a tmp-named path, as in the CI runner)" ;;
+      echo "SKIP primary-write deny rows (HOME is under a tmp-named path, as in the CI runner)"
+      if [ "$RC6E" = "4" ]; then pass "primary-write: an unguarded primary exits 4 VACUOUS"
+      else fail "primary-write: expected exit 4 with an unguarded primary, got $RC6E"; fi ;;
     *)
       hasnt "primary-write: not vacuous" "$OUT6E" "VACUOUS: "
       has "primary-write: the Bash write into the primary is denied by both sides" "$OUT6E" \
         "deny-expected rows: 2 (base denied 1; allowed by both: 1)"
-      has "primary-write: no regression" "$OUT6E" "(REGRESSION): 0"
       has "primary-write: only the Write-tool row is allowed by both" "$OUT6E" "DENY-MISSED idx=1 family=primary-write-tool"
-      has "primary-write: a write outside the primary stays allowed on both sides" "$OUT6E" \
-        "allow-expected rows: 1 (denied by base 0; by head 0)"
       if [ "$RC6E" = "0" ]; then pass "primary-write: exit 0"
       else fail "primary-write: expected exit 0, got $RC6E"; fi ;;
   esac
@@ -537,9 +540,11 @@ ROWS
   OUT6F=$(HOME="$TMP/tmp/home" python3 "$DIFF" \
       --base "sha:HEAD:scripts/hooks/block-write-into-main-checkout.sh" \
       --head "sha:HEAD:scripts/hooks/block-write-into-main-checkout.sh" \
-      --corpus "$TMP/primary-write.jsonl" --repo "$REPO_ROOT" --jobs 2 2>&1)
+      --corpus "$TMP/primary-write.jsonl" --repo "$REPO_ROOT" --jobs 2 2>&1); RC6F=$?
   has "primary-write: a tmp-named HOME is named as unguarded" "$OUT6F" "WARNING scratch primary"
   has "primary-write: a tmp-named HOME still reads VACUOUS" "$OUT6F" "VACUOUS: "
+  if [ "$RC6F" = "4" ]; then pass "primary-write: a tmp-named HOME exits 4"
+  else fail "primary-write: expected exit 4 with a tmp-named HOME, got $RC6F"; fi
 else
   echo "SKIP primary-write (hook not in HEAD or jq missing)"
 fi
