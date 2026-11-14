@@ -317,7 +317,7 @@ chains_fail() { # <registry|graph|render> <detail file> - the run goes on with t
     # swallow-ok: an unreadable detail file leaves the WARN detail empty; the reason class is already set. read-sink-ok: the detail file is one of this script's own stage files
     echo "focus-refresh: WARN: chains $1: $(head -n 1 "$2" 2>/dev/null | tr -c 'A-Za-z0-9 ._:/=,-' '_' | cut -c1-200); focus-chains.json is as it was" >&2
 }
-version_loops_and_unknown_links() { # prints `cycle <keys>`, `unknown <keys>`, both joined by `, `, or nothing
+version_loops_and_unknown_links() {
     bounded 30 node "$HERE/chain-state.mjs" --json --registry "$chains_reg" --mirror "$MIR" --version "$VER" > "$stage/chain-version.json" || return 1
     python3 -I -c 'import json, re, sys
 d = json.load(open(sys.argv[1]))
