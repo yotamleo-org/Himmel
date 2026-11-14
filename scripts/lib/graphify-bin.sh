@@ -8,8 +8,7 @@
 # himmel neither vendors nor redistributes graphify -- `uv tool install` fetches it
 # from PyPI onto the operator's own machine -- so the relicense carries no bundled-
 # notice obligation here; it is a pin-review fact, not a compliance gate.
-# This resolver installs it from the himmel fork (yotamleo-org/graphify, branch
-# himmel-main) pinned to a commit sha via
+# This resolver installs it from the himmel fork (yotamleo-org/graphify) via
 # `uv tool install --with 'mcp>=1.30.0,<3' 'graphifyy[ollama] @ git+https://github.com/yotamleo-org/graphify@<sha>'`.
 # uv tool installs are already
 # self-isolating (their own venv + a shim in uv's tool bin dir), so — unlike
@@ -51,8 +50,8 @@
 # reports (`uv tool list`, importlib.metadata); installed-vs-pinned compares use it.
 # A pin bump is a reviewed change to the two lines below, paired with the `fork`
 # block in scripts/upstreams.json so the nightly fork-drift guard stays truthful.
-_graphify_version() { printf '%s\n' "${GRAPHIFY_VERSION:-0.9.103+himmel.1}"; }
-_graphify_fork_ref() { printf '%s\n' "${GRAPHIFY_FORK_REF:-f427fbe9fde68301180239aa39246ea0b1511ffb}"; }
+_graphify_version() { printf '%s\n' "${GRAPHIFY_VERSION:-0.9.106+himmel.1}"; }
+_graphify_fork_ref() { printf '%s\n' "${GRAPHIFY_FORK_REF:-f12bad6b63e6f719025f6906e52a585ce98563c1}"; }
 _graphify_pypi_name() { printf '%s\n' "graphifyy"; }
 # _graphify_spec <extras> -- the requirement spec for the pin, e.g.
 # `graphifyy[ollama] @ git+https://github.com/yotamleo-org/graphify@<sha>`. With
