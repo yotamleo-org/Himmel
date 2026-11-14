@@ -11,7 +11,7 @@ if ! { [ -r "$HERE/tick-test-fixture.sh" ] && . "$HERE/tick-test-fixture.sh"; } 
     exit 1
 fi
 same() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (got '$2', want '$3')"; fi; }
-count_line() { printf '%s\n' "$1" | grep -c "^# $2 HIMMEL-$3\$"; }  # <output> <line kind> <key number>
+count_line() { printf '%s\n' "$1" | grep -c "^# $2 HIMMEL-$3\$"; }
 
 PDOC="$W/handover/parked-chief.md"
 mkdir -p "$W/handover"
