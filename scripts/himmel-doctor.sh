@@ -127,7 +127,7 @@ ledger_registry_path() {
 # answer for every project), "project" = the default. The per-repo index checks (graph freshness, semantic graph)
 # are project rows that name the repo they judge, so a feed saved under another project does not carry them.
 # A check id is its Cn prefix (C40-qmd-vec -> C40).
-DOCTOR_SHARED_CHECKS=" C12 C19 C20 C22 C38 C40 C44 C45 C49 C50 C52 C56 C69 C80 C83 C86 C89 C91 C92 C93 "
+DOCTOR_SHARED_CHECKS=" C12 C19 C20 C22 C38 C40 C44 C45 C49 C50 C52 C56 C69 C80 C83 C86 C89 C91 C92 C93 C94 "
 DOCTOR_REPO_CHECKS=" C33 C70 "
 DOCTOR_REPO_NAME="himmel"
 
@@ -4012,7 +4012,7 @@ EOF
 }
 
 check_c92_graph_key() {
-    local out tags unknown role route walk="" walk_rc=0 l gc="$SELF_DIR/himmelctl/lib/graph-choices.js"
+    local out tags unknown role route runners pinned walk="" walk_rc=0 l gc="$SELF_DIR/himmelctl/lib/graph-choices.js"
     out="$(node "$SELF_DIR/lib/api-credit-state.mjs" accounts 2>/dev/null)" || out=""
     case "$out" in
         '['*) ;;
@@ -4031,10 +4031,14 @@ check_c92_graph_key() {
         return 0
     fi
     role="$(node "$gc" role 2>/dev/null)" || role=""
+    runners="$(node "$gc" lane-runners 2>/dev/null)" || runners=""
+    pinned="$(printf '%s\n' "$runners" | awk 'NF == 2 && $2 ~ /^[A-Z]$/ { printf "%s,", $2 }')"
     if [ "$role" = adopter ]; then
         route="$(node "$gc" route 2>/dev/null)" || route=""
         case "$route" in *'"order":['*) ;; *) emit INFO C92-graph-key "the graph route cannot be read -- rejected keys (${tags% }) not judged"; return 0 ;; esac
         walk="$(printf '%s' "$route" | sed -n 's/.*"order":\[\([^]]*\)\].*/\1/p' | tr -d '"')"
+    elif [ "$role" = unreadable ] && ! printf '%s\n' "$runners" | grep -q '^graphmap-publish-himmel.sh'; then
+        walk=""
     else
         walk="$(node "$SELF_DIR/lib/api-roles.mjs" walk graphify 2>/dev/null)" || walk_rc=$?
         if [ "$walk_rc" -ne 0 ] && [ "$walk_rc" -ne 3 ]; then
@@ -4044,7 +4048,7 @@ check_c92_graph_key() {
         [ "$walk_rc" -eq 0 ] || walk=""
     fi
     for l in $tags; do
-        case ",$walk," in
+        case ",$walk,$pinned" in
             *",$l,"*) emit WARN "C92-graph-key-$l" "account $l's API key was rejected by the provider (tag: key rejected), and the graph walk reaches $l" \
                 "rotate ~/.himmel/state/api-credit/key-$l.env, or remove $l from the route or the graphify role" ;;
             *) if [ "$walk_rc" -eq 3 ]; then
@@ -4078,6 +4082,25 @@ EOF
     else
         emit OK C93-graph-role "the API role map is $state"
     fi
+}
+
+# C94-graph-config: the station's graph config (~/.himmel/config.json) cannot be read as one, or has lost the publisher
+# key while a publisher footprint stands. While it reads unreadable nothing new is spent; graph-choices.js check names the
+# cause, the backup it chose and the fixed fix line. Its own id, so a wake names it even when C88 already WARNs.
+check_c94_graph_config() {
+    local gc="$SELF_DIR/himmelctl/lib/graph-choices.js" role chk head fix rest
+    role="$(node "$gc" role 2>/dev/null)" || role=""
+    case "$role" in
+        publisher|adopter) emit OK C94-graph-config "the graph config reads (this station is the $role)"; return 0 ;;
+        unreadable) ;;
+        *) emit INFO C94-graph-config "graph-choices.js gave no answer -- the graph config was not checked"; return 0 ;;
+    esac
+    chk="$(node "$gc" check 2>/dev/null)" || chk=""
+    head="$(printf '%s\n' "$chk" | grep -m 1 '^graph config unreadable')" || head=""
+    fix="$(printf '%s\n' "$chk" | awk '/^fix-line: / { sub(/^fix-line: /, ""); print; exit }')"
+    rest="$(printf '%s\n' "$chk" | awk '/^(role=|cause=|linked=|footprint=|graph config unreadable|fix=|fix-line: )/ { next } { printf "%s%s", (n++ ? "; " : ""), $0 }')"
+    emit WARN C94-graph-config "${head:-the graph config cannot be read}: no new semantic spend starts until it reads again" \
+        "${fix:-run node scripts/himmelctl/lib/graph-choices.js check}${rest:+; $rest}"
 }
 
 # ponytail: a marker repo with only dead rows, or rows holds.py cannot judge (state unknown), does not warn; a worker whose
@@ -5609,11 +5632,10 @@ check_c86_morning_report() {
 # with no key in .env draws nothing (INFO). Key NAMES only: no .env value is printed.
 # Seams: HIMMEL_DOCTOR_ENV_FILE (the .env, as C74), GRAPHMAP_BAT_DIR (the runner dir).
 check_c88_graph_api_optin() {
-    local envfile bat keys="" lanes="" f role state gc="$SELF_DIR/himmelctl/lib/graph-choices.js"
+    local envfile keys="" lanes="" role state drop gc="$SELF_DIR/himmelctl/lib/graph-choices.js"
     envfile="${HIMMEL_DOCTOR_ENV_FILE:-$(_doctor_env_file)}"
-    bat="${GRAPHMAP_BAT_DIR:-${HOME:-}/.claude/graphmap-cadence}"
     role="$(node "$gc" role 2>/dev/null)" || role=""
-    state="$(node "$gc" check 2>/dev/null | awk '!/^role=/ { printf "%s%s", (n++ ? "; " : ""), $0 }')" || state=""
+    state="$(node "$gc" check 2>/dev/null | awk '/^(role=|fix=|fix-line: |backup=|consent |restore |.* will also be rolled back$)/ { next } { printf "%s%s", (n++ ? "; " : ""), $0 }')" || state=""
     if [ -f "$envfile" ] && [ -r "$envfile" ]; then
         keys="$(awk '{ sub(/\r$/, "") } /^[[:space:]]*#/ { next } {
             i = index($0, "="); if (i == 0) next
@@ -5622,21 +5644,23 @@ check_c88_graph_api_optin() {
             if (v != "" && !(k in seen) && (k == "ANTHROPIC_API_KEY" || k ~ /^ANTHROPIC_ORG_[ABC]_KEY$/)) { seen[k] = 1; printf "%s%s", (n++ ? ", " : ""), k }
         }' "$envfile")"
     fi
-    for f in "$bat"/graphmap-*.sh; do
-        [ -f "$f" ] || continue
-        grep -qF 'HIMMEL_API_LANE=on' "$f" 2>/dev/null && lanes="${lanes:+$lanes, }$(basename "$f")"
-    done
+    lanes="$(node "$gc" lane-runners 2>/dev/null | awk '{ printf "%s%s", (n++ ? ", " : ""), $1 }')" || lanes=""
+    if [ "$role" = unreadable ]; then
+        drop="see C94-graph-config for the repair; to drop the lane on purpose: bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed --leave-publisher"
+    else
+        drop="bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed  (drops the lane)"
+    fi
     if [ "$role" = publisher ]; then
-        emit OK C88-graph-api-optin "the graph cadence's API lane is opted in: this station builds and publishes the himmel graph (graphify.semantic_api_ok is true in ~/.himmel/config.json); to leave the role: remove the key, run bash scripts/lib/config-audit.sh accept, then bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed"
+        emit OK C88-graph-api-optin "the graph cadence's API lane is opted in: this station builds and publishes the himmel graph (graphify.semantic_api_ok is true in ~/.himmel/config.json); to leave the role: remove the key, run bash scripts/lib/config-audit.sh accept, then bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed --leave-publisher"
     elif [ -n "$lanes" ] && [ -n "$keys" ]; then
         emit WARN C88-graph-api-optin "the API lane is not opted in, but $keys is in $envfile and an armed runner still bakes HIMMEL_API_LANE=on ($lanes): the cadence draws that key without an opt-in until it is re-rendered${state:+; graph state: $state}" \
-            "bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed  (drops the lane)"
+            "$drop"
     elif [ -n "$lanes" ]; then
         emit INFO C88-graph-api-optin "the API lane is not opted in and an armed runner bakes HIMMEL_API_LANE=on ($lanes), but .env holds no API key, so the cadence draws no key from .env (a key in the runner's own environment is not checked)${state:+; graph state: $state}" \
-            "bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed  (drops the lane)"
+            "$drop"
     elif [ "$role" != adopter ]; then
         emit WARN C88-graph-api-optin "the graph config cannot be read, so no semantic pass runs on this station: ${state:-graph-choices.js gave no state}" \
-            "fix ~/.himmel/config.json as the line above says, then bash scripts/lib/config-audit.sh accept"
+            "fix ~/.himmel/config.json as the line above says, then bash scripts/lib/config-audit.sh accept (see C94-graph-config)"
     else
         emit OK C88-graph-api-optin "the API lane is not opted in (this station is not the graph publisher) and no armed runner carries it${keys:+; $keys in .env is never drawn by the cadence}${state:+; graph state: $state}"
     fi
@@ -5914,6 +5938,7 @@ run_check C90 check_c90_effort_pin
 run_check C91 check_c91_api_policy_refusals
 run_check C92 check_c92_graph_key
 run_check C93 check_c93_graph_role
+run_check C94 check_c94_graph_config
 run_heavy C95 check_c95_barrier_off C95-barrier-off
 heavy_join
 echo

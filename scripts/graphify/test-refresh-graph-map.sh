@@ -4867,6 +4867,33 @@ else
 fi
 chmod 600 "$AD_CFG" 2>/dev/null; rm -f "$AD_CFG"; pub_home "$HERMETIC_HOME"
 
+echo "T-adopter-skip (d13, d14): an unreadable config alerts under its own worker, a readable run clears it"
+export HIMMEL_CONFIG_DIR="$HERMETIC_HOME/.himmel" HIMMEL_CONFIG_AUDIT_DIR="$HERMETIC_HOME/.himmel/state/config-audit"
+GCJS="$HERE/../himmelctl/lib/graph-choices.js"
+gcu_lines() { if [ -f "$CADENCE_ALERT_FILE" ]; then grep -c ' graph-config-unreadable ' "$CADENCE_ALERT_FILE" || true; else echo 0; fi; }
+printf 'sk-ant-api03-d13-planted-key {\n' > "$AD_CFG"; ad_cfg_run
+d13_cause="$(node "$GCJS" alert-lines not-json | sed -n 1p)"; d13_fix="$(node "$GCJS" alert-lines not-json | sed -n 2p)"
+if [ "$rc" -eq 3 ] && [ ! -s "$WS/adopter-calls.log" ] && [ "$(gcu_lines)" -eq 1 ] && grep -q ' graph-config-unreadable not-json ' "$CADENCE_ALERT_FILE" \
+   && [ -n "$d13_cause" ] && grep -qF -- "$d13_cause" "$ALERT_SENT" && grep -qF -- "$d13_fix" "$ALERT_SENT"; then
+  pass "T-adopter-skip (d13) a not-json config: rc=3, no graphify call, one alert line, the sender holds the fixed cause and fix lines"
+else
+  fail "T-adopter-skip (d13) expected rc=3, no call, one graph-config-unreadable not-json line and the fixed lines in the sender argument (rc=$rc, lines=$(gcu_lines)): $out"
+fi
+if grep -q 'sk-ant' <<< "$out$(cat "$CADENCE_ALERT_FILE" "$ALERT_SENT" 2>/dev/null)"; then fail "T-adopter-skip (d13) a key-shaped byte of the config reached the output or an alert"; else pass "T-adopter-skip (d13) no key-shaped byte reaches the output or an alert"; fi
+pub_home "$HERMETIC_HOME"; mkdir -p "$CADENCE_ALERT_DEDUPE_DIR"; : > "$CADENCE_ALERT_DEDUPE_DIR/graph-config-unreadable.planted-sentinel"
+out=$(ad_run "$AD_BUILD"); rc=$?
+if [ "$rc" -eq 0 ] && [ ! -e "$CADENCE_ALERT_DEDUPE_DIR/graph-config-unreadable.planted-sentinel" ]; then pass "T-adopter-skip (d13) a readable run clears the graph-config-unreadable sentinel"; else fail "T-adopter-skip (d13) the sentinel survived a readable run (rc=$rc): $out"; fi
+printf 'ANTHROPIC_API_KEY=sk-ant-api03-d14-fixture\n' > "$WS/d14-fixture.env"
+pub_home "$HERMETIC_HOME"
+HIMMEL_CONFIG_AUDIT_ENV_FILE="$WS/d14-fixture.env" HIMMEL_CONFIG_ALERT_CMD="$WS/alert-send" HIMMEL_TEST_FIXTURE=1 bash "$HERE/../lib/config-audit.sh" watch >/dev/null 2>&1
+rm -f "$AD_CFG"; ad_cfg_run
+if [ "$rc" -eq 3 ] && [ ! -s "$WS/adopter-calls.log" ] && [ "$(gcu_lines)" -eq 1 ] && grep -q ' graph-config-unreadable missing ' "$CADENCE_ALERT_FILE" && grep -qF 'cause=missing' "$ALERT_SENT"; then
+  pass "T-adopter-skip (d14) a missing config with footprint (b) and no poller: rc=3, no call, one missing alert line, the sender names missing"
+else
+  fail "T-adopter-skip (d14) expected rc=3, no call and one graph-config-unreadable missing line (rc=$rc, lines=$(gcu_lines)): $out"
+fi
+unset HIMMEL_CONFIG_DIR HIMMEL_CONFIG_AUDIT_DIR; rm -rf "$HERMETIC_HOME/.himmel/state"; pub_home "$HERMETIC_HOME"
+
 echo "T-nochoice: no graph choice runs the semantic pass only on the subscription (F1-F17)"
 NC="$WS/nc"; mkdir -p "$NC/bin" "$NC/maps" "$NC/corpus/notes"
 NC_CORPUS="$NC/corpus"; printf '# n\ncontent\n' > "$NC_CORPUS/notes/a.md"

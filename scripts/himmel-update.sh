@@ -2578,7 +2578,7 @@ sync_graph() {
         adopter) ;;
         unreadable)
             chk="$(node "$gc" check 2>/dev/null)" || chk=""
-            if ! grep -qx 'cause=symlink' <<< "$chk" || grep -qx 'linked=publisher' <<< "$chk"; then
+            if ! grep -qx 'cause=symlink' <<< "$chk" || grep -qx 'linked=publisher' <<< "$chk" || ! grep -qx 'footprint=none' <<< "$chk"; then
                 echo "    skip: the graph config cannot be read ($(grep -m 1 '^cause=' <<< "$chk" || echo cause=unknown)); not pulling over this station's graph"
                 STATUS_graph="skipped"; DETAIL_graph="the graph config in $cfg cannot be read"
                 return 0
