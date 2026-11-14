@@ -1540,7 +1540,7 @@ if [ "$rc" -eq 0 ] && grepq "$out" '^scripts/test-enc\.sh$'; then pass "a suite 
 # A fresh repo with real copies of run-shell-tests.sh (its SKIP_LIST gains one
 # fixture suite) and suite-coverage.sh, so the pre-filter reads real tables.
 CX="$(fixture_mktemp_dir)" || exit 1
-trap 'rm -rf "$FX" "$CX"' EXIT
+trap 'rm -rf "$FX" "$SHIM" "$SHIM2" "$SHD" "$BIG" "$SHIM3" "$SHIM4" "${SM:-}" "$CX"' EXIT
 (
     fixture_enter_git_init_dir "$CX" || exit 1
     git init -q
@@ -1612,7 +1612,7 @@ out="$( cd "$CX" && HIMMEL_SUITES_LOCAL=1 bash "$IS" --plan "$crange" 2>&1 )"
 if grepq "$out" -F 'impacted-suites: plan 5 impacted, 5 local, 0 to CI'; then pass "P4 HIMMEL_SUITES_LOCAL=1 plans every suite local"; else fail "P4 local flag plan: out=$out"; fi
 # P2: a PR with many impacted suites (a changed shared lib, 14 callers, 1 changed suite) plans 5 or fewer local
 CY="$(fixture_mktemp_dir)" || exit 1
-trap 'rm -rf "$FX" "$CX" "$CY"' EXIT
+trap 'rm -rf "$FX" "$SHIM" "$SHIM2" "$SHD" "$BIG" "$SHIM3" "$SHIM4" "${SM:-}" "$CX" "$CY"' EXIT
 (
     fixture_enter_git_init_dir "$CY" || exit 1
     git init -q
@@ -1645,7 +1645,7 @@ if [ "$rc" -eq 2 ]; then pass "P5 --plan with --check is a usage error (rc 2)"; 
 # the gate on (a scripts/jira change), one leaves it off (a root scripts/*.mjs
 # change), and one is cut from before the planner existed (an unreadable plan).
 CJ="$(fixture_mktemp_dir)" || exit 1
-trap 'rm -rf "$FX" "$CX" "$CY" "$CJ"' EXIT
+trap 'rm -rf "$FX" "$SHIM" "$SHIM2" "$SHD" "$BIG" "$SHIM3" "$SHIM4" "${SM:-}" "$CX" "$CY" "$CJ"' EXIT
 (
     fixture_enter_git_init_dir "$CJ" || exit 1
     git init -q
@@ -1730,7 +1730,7 @@ out_l="$( cd "$CJ" && HIMMEL_SUITES_LOCAL=1 bash "$IS" --plan "$j_rng_on" 2>&1 )
 if grepq "$out" -Fx 'LOCAL scripts/api-lane/w.test.mjs (changed: failing-first proof required)' && grepq "$out_l" -Fx 'LOCAL scripts/jira/y.test.ts (HIMMEL_SUITES_LOCAL=1: every impacted suite runs locally)'; then pass "P6 --plan keeps its own changed and HIMMEL_SUITES_LOCAL texts"; else fail "P6 plan J5/J6: out=$out local=$out_l"; fi
 
 CL="$(fixture_mktemp_dir)" || exit 1
-trap 'rm -rf "$FX" "$CX" "$CY" "$CL"' EXIT
+trap 'rm -rf "$FX" "$SHIM" "$SHIM2" "$SHD" "$BIG" "$SHIM3" "$SHIM4" "${SM:-}" "$CX" "$CY" "$CJ" "$CL"' EXIT
 (
     fixture_enter_git_init_dir "$CL" || exit 1
     git init -q
