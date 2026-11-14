@@ -153,6 +153,7 @@ assert_eq "T12 concurrent writes never corrupt the file" "ok" "$valid"
 SHAPE='{"numStartups":41,"installMethod":"native","autoUpdates":false,"tipsHistory":{"new-user-warmup":1},"firstStartTime":"2026-01-01T00:00:00.000Z","hasCompletedOnboarding":true,"lastOnboardingVersion":"2.0.0","mcpServers":{},"cachedGrowthBookFeatures":{},"githubRepoPaths":{},"skillUsage":{},"projects":{"/srv/existing":{"allowedTools":[],"mcpContextUris":[],"mcpServers":{},"enabledMcpjsonServers":[],"disabledMcpjsonServers":[],"hasTrustDialogAccepted":true,"hasClaudeMdExternalIncludesApproved":false,"lastCost":0,"lastSessionId":"00000000-0000-0000-0000-000000000000"}}}'
 read_top() { F="$1" K="$2" node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(process.env.F,"utf8"))[process.env.K]))'; }
 count_existing() { local n=0 f; for f in "$@"; do [ -e "$f" ] && n=$((n + 1)); done; printf '%s' "$n"; }
+bump_top() { K="$1" V="$2" F="$3" node -e 'const fs=require("fs");const p=process.env.F;const j=JSON.parse(fs.readFileSync(p,"utf8"));j[process.env.K]=Number(process.env.V);fs.writeFileSync(p+".tmp.writer",JSON.stringify(j,null,2));fs.renameSync(p+".tmp.writer",p)'; }
 wait_marker() { local i=0; while [ ! -e "$1" ] && [ "$i" -lt 600 ]; do sleep 0.05; i=$((i + 1)); done; }
 
 # T13: two helpers for distinct dirs both read the config, then an unrelated
@@ -166,11 +167,13 @@ TRUST_WRITE_JITTER_MS=0 TRUST_WRITE_PAUSE_MARKER="$PC" WORKSPACE_TRUST_CONFIG="$
 pid_c=$!
 TRUST_WRITE_JITTER_MS=0 TRUST_WRITE_PAUSE_MARKER="$PD" WORKSPACE_TRUST_CONFIG="$CFG" bash "$HELPER" "$DIRD" >/dev/null 2>&1 &
 pid_d=$!
-wait_marker "$PC.reached"; wait_marker "$PD.reached"
-assert_eq "T13 both helpers paused after their read" "2" "$(count_existing "$PC.reached" "$PD.reached")"
-F="$CFG" node -e 'const fs=require("fs");const p=process.env.F;const j=JSON.parse(fs.readFileSync(p,"utf8"));j.numStartups=42;fs.writeFileSync(p+".tmp.writer",JSON.stringify(j,null,2));fs.renameSync(p+".tmp.writer",p)'
-: > "$PC.go"; wait "$pid_c"; rc_c=$?
-: > "$PD.go"; wait "$pid_d"; rc_d=$?
+wait_marker "$PC.reached.1"; wait_marker "$PD.reached.1"
+assert_eq "T13 both helpers paused after their read" "2" "$(count_existing "$PC.reached.1" "$PD.reached.1")"
+bump_top numStartups 42 "$CFG"
+for n in 1 2 3 4 5 6 7 8 9 10; do : > "$PC.go.$n"; done
+wait "$pid_c"; rc_c=$?
+for n in 1 2 3 4 5 6 7 8 9 10; do : > "$PD.go.$n"; done
+wait "$pid_d"; rc_d=$?
 assert_eq "T13 first helper rc" "0" "$rc_c"
 assert_eq "T13 second helper rc" "0" "$rc_d"
 assert_eq "T13 first trust entry survives" "true" "$(read_flag "$CFG" "$(norm_key "$DIRC")" 2>/dev/null)"
@@ -189,6 +192,30 @@ assert_eq "T14 uncontended rc" "0" "$rc"
 cmp -s "$TMP/shape.expected" "$CFG"; assert_eq "T14 whole file byte for byte" "0" "$?"
 leftover=$(count_existing "$TMP"/shape.json.tmp*)
 assert_eq "T14 no temp file orphaned" "0" "$leftover"
+
+# T15: another writer changes the config while the helper is paused in every
+# one of its 10 attempts, so every compare fails: exit 4, a warning, the other
+# writer's last version left byte for byte, and no temp file.
+CFG="$TMP/exhaust.json"; printf '%s\n' "$SHAPE" > "$CFG"
+DIRE="$TMP/re"; mkdir -p "$DIRE"; PE="$TMP/pause-e"
+TRUST_WRITE_JITTER_MS=0 TRUST_WRITE_PAUSE_MARKER="$PE" WORKSPACE_TRUST_CONFIG="$CFG" bash "$HELPER" "$DIRE" >/dev/null 2>"$TMP/exhaust.err" &
+pid_e=$!
+for n in 1 2 3 4 5 6 7 8 9 10; do
+    wait_marker "$PE.reached.$n"
+    bump_top numStartups "$((100 + n))" "$CFG"
+    cp "$CFG" "$TMP/exhaust.last"
+    : > "$PE.go.$n"
+done
+wait "$pid_e"; rc_e=$?
+assert_eq "T15 paused in all 10 attempts" "10" "$(count_existing "$PE".reached.*)"
+assert_eq "T15 exhausted attempts rc" "4" "$rc_e"
+case "$(cat "$TMP/exhaust.err")" in
+  *"changed under each of 10 attempts"*) echo "PASS T15 exhausted attempts warn on stderr" ;;
+  *) echo "FAIL T15 exhausted attempts warn on stderr — got '$(cat "$TMP/exhaust.err")'"; FAILED=$((FAILED + 1)) ;;
+esac
+cmp -s "$TMP/exhaust.last" "$CFG"; assert_eq "T15 other writer's last version kept byte for byte" "0" "$?"
+leftover=$(count_existing "$TMP"/exhaust.json.tmp*)
+assert_eq "T15 no temp file orphaned" "0" "$leftover"
 
 echo
 if [ "$FAILED" -eq 0 ]; then echo "All ensure-workspace-trust tests passed."; else echo "$FAILED test(s) failed."; exit 1; fi

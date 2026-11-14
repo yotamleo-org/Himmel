@@ -28,8 +28,9 @@
 # within ~1s, so fewer attempts are spent on retries.
 #
 # Test seam: TRUST_WRITE_PAUSE_MARKER=<path> (inert when unset) makes the
-# helper create <path>.reached after its first read and wait for <path>.go
-# before it writes, so a test can force the lost-update interleaving.
+# helper create <path>.reached.<n> after the read of attempt <n> and wait for
+# <path>.go.<n> before it writes, so a test can force the lost-update
+# interleaving on any attempt.
 #
 # Exit codes:
 #   0  flag is set (already-true is a no-op that also exits 0)
@@ -129,10 +130,10 @@ for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     if (!j.projects[key] || typeof j.projects[key] !== "object" || Array.isArray(j.projects[key])) j.projects[key] = {};
     if (j.projects[key].hasTrustDialogAccepted === true) process.exit(0);
     j.projects[key].hasTrustDialogAccepted = true;
-    if (pause && attempt === 1) {
-        fs.writeFileSync(pause + ".reached", "");
+    if (pause) {
+        fs.writeFileSync(pause + ".reached." + attempt, "");
         const deadline = Date.now() + 30000;
-        while (!fs.existsSync(pause + ".go") && Date.now() < deadline) {
+        while (!fs.existsSync(pause + ".go." + attempt) && Date.now() < deadline) {
             Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
         }
     }
