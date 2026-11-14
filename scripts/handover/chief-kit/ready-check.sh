@@ -155,7 +155,12 @@
 #      merge-base..SHA has proof. Local proof is the head's `impacted` ledger row
 #      (`local_pass`; a `ruled_skip` is counted and named apart from it); CI proof is an exact `ran 0 <path>` manifest
 #      line of the run behind the latest SUCCESS `shell-unit (ubuntu-latest)`
-#      check-run, whose run head_sha equals SHA. A suite on a PR-body
+#      check-run, whose run head_sha equals SHA: a shell shard manifest
+#      (`shell-unit-manifest-ubuntu-latest-shard*`) or, for a suite no shard line
+#      proves, a JS suite manifest (`js-suite-manifest-*`) whose producing job
+#      concluded success in that run; a nonzero `ran` line in any JS manifest is red.
+#      A suite the PR changed needs local proof, and with any impacted suite an
+#      unreadable PR file list FAILs. A suite on a PR-body
 #      `Local suites: <path>` line needs local proof. Every subprocess and network
 #      read is bounded (the reads of local files are not); an unreadable impacted
 #      list, an unresolvable range, no timeout binary or a timed-out read FAILs. Not part
@@ -2161,8 +2166,10 @@ check_open_findings() {
 check_open_findings
 
 # --- 19. suite evidence. Each impacted suite needs local proof (the head's
-# `impacted` ledger row) or CI proof (an exact `ran 0 <path>` line in a shard
-# manifest of the run behind the latest `shell-unit (ubuntu-latest)` check-run in
+# `impacted` ledger row) or, unless the PR changed it, CI proof (an exact
+# `ran 0 <path>` line in a shard manifest, or in a JS suite manifest whose
+# producing job concluded success in that run, read from the run's jobs list, of
+# the run behind the latest `shell-unit (ubuntu-latest)` check-run in
 # workflow CI that is not a cancelled duplicate and whose run is a SUCCESS with
 # head_sha SHA; when every such row belongs to a cancelled run, the newest other
 # CI run at the head that is not cancelled decides, up to 5 are read). The manifests are read
@@ -2233,6 +2240,47 @@ s17_fl_failures() {  # <dir> <run id>: one `fail` row per suite in <dir>/need wi
     done < "$d/fred"
     [ "$n" -eq 0 ] || echo "       note: CI failure ledger +$n row(s) for run $run ($f)"
 }
+S17_JS_ART='js-suite-manifest-*'
+S17_JS_FILE='manifest-js-*.txt'
+s17_artifact_jobs_all_succeeded() {
+    tr -d '\r' | awk -F '\t' -v x="$1" '
+        { n = $2; b = n; v = ""; i = index(n, " (")
+          if (i > 0 && substr(n, length(n)) == ")") {
+              b = substr(n, 1, i - 1); v = substr(n, i + 2, length(n) - i - 2)
+              j = index(v, ", "); if (j > 0) v = substr(v, 1, j - 1)
+          }
+          if (b == x || (v != "" && b "-" v == x)) { m++; if ($1 != "success") bad = 1 } }
+        END { print ((m > 0 && !bad) ? "yes" : "no") }'
+}
+s17_js_read() {
+    local d="$1" run="$2" f job ok
+    mkdir "$d/js" || { s17_fail "mkdir failed"; return 1; }
+    if ! s17_run "gh run download $run (JS manifests)" "$(s17_bound 30)" "$d/jdl" "$GH" run download "$run" -R "$owner/$repo" -p "$S17_JS_ART" -D "$d/js"; then
+        case "$s17_why" in *"timed out"*) ;; *) ! grep -qF 'no valid artifacts found' "$d/jdl.err" || return 0 ;; esac
+        s17_fail "$s17_why"
+        return 1
+    fi
+    find "$d/js" -type f -name "$S17_JS_FILE" > "$d/jsfiles" 2>/dev/null || : > "$d/jsfiles"  # swallow-ok: no file proves nothing
+    [ -s "$d/jsfiles" ] || return 0
+    if ! s17_run "gh api actions/runs/$run/jobs" "$(s17_bound 15)" "$d/jobs" "$GH" api --paginate "repos/$owner/$repo/actions/runs/$run/jobs?per_page=100" --jq '.jobs[] | "\(.conclusion)\t\(.name)"'; then
+        s17_fail "$s17_why"
+        return 1
+    fi
+    while IFS= read -r f; do
+        job="${f%/*}"; job="${job##*/}"
+        case "$job" in js-suite-manifest-?*) job="${job#js-suite-manifest-}" ;; *) job="?" ;; esac
+        ok=$(s17_artifact_jobs_all_succeeded "$job" < "$d/jobs")
+        tr -d '\r' < "$f" > "$d/jsf"
+        awk 'index($0, "ran ") == 1 && index($0, "ran 0 ") != 1 { r = substr($0, 5); k = index(r, " "); if (k > 1) print substr(r, k + 1) }' "$d/jsf" >> "$d/jsred"
+        if [ "$ok" = yes ]; then
+            awk 'index($0, "ran 0 ") == 1 { print substr($0, 7) }' "$d/jsf" >> "$d/jsran0"
+            awk 'index($0, "skip ") == 1 { print substr($0, 6) }' "$d/jsf" >> "$d/jsskip"
+        else
+            awk -v j="$job" 'index($0, "ran 0 ") == 1 { print substr($0, 7) "\t" j } index($0, "skip ") == 1 { print substr($0, 6) "\t" j }' "$d/jsf" >> "$d/jsbad"
+        fi
+    done < "$d/jsfiles"
+    return 0
+}
 check_suite_evidence() {
     local d
     [ "$ONLY7" -eq 0 ] || return 0
@@ -2247,6 +2295,7 @@ check_suite_evidence() {
 }
 s17_body() {
     local d="$1" anchor n_imp branch ledger row="" have_row=0 run_id="" agg n_ci=0 n_local=0 n_ruled=0 s why bad=0 reasons="" ruled_names="" grc
+    local js_names="" job
     s17_why=""
     _TIMEOUT_BIN=""
     # shellcheck source=../../lib/timeout-bin.sh
@@ -2277,6 +2326,11 @@ s17_body() {
         echo "[PASS] 19. suite evidence: 0 impacted, nothing to prove"
         return 0
     fi
+    if [ -z "${files_json:-}" ]; then
+        s17_fail "cannot read the PR's file list"
+        return 0
+    fi
+    printf '%s\n' "$files_json" | tr -d '\r' | sort -u > "$d/files"
 
     # local proof: the newest ok `impacted` row at this head and branch
     branch=$(printf '%s' "$snapshot" | jq -r '.[0].headRefName // empty' 2>/dev/null) || branch=""  # swallow-ok: an empty branch reads no row
@@ -2307,6 +2361,8 @@ s17_body() {
             n_local=$((n_local + 1))
         elif grep -Fxq -- "$s" "$d/rs"; then
             n_ruled=$((n_ruled + 1)); ruled_names="$ruled_names, $s"
+        elif grep -Fxq -- "$s" "$d/files"; then
+            reasons="$reasons, $s (the PR changed it: a CI line does not count, run it locally)"; bad=$((bad + 1))
         else
             printf '%s\n' "$s" >> "$d/need"
         fi
@@ -2389,6 +2445,13 @@ s17_body() {
             find "$d/m" -type f -name 'manifest-shard*.txt' -exec cat {} + 2>/dev/null | tr -d '\r' > "$d/man" || : > "$d/man"  # swallow-ok: no manifest proves nothing
             awk 'index($0, "ran 0 ") == 1 { print substr($0, 7) }' "$d/man" | sort -u > "$d/ran0"
             awk 'index($0, "skip ") == 1 { print substr($0, 6) }' "$d/man" | sort -u > "$d/skip"
+            : > "$d/jsran0"; : > "$d/jsskip"; : > "$d/jsred"; : > "$d/jsbad"
+            while IFS= read -r s; do
+                if ! grep -Fxq -- "$s" "$d/ran0" && ! grep -Fxq -- "$s" "$d/skip"; then
+                    s17_js_read "$d" "$run_id" || return 0
+                    break
+                fi
+            done < "$d/need"
         fi
         while IFS= read -r s; do
             if [ -z "$run_id" ]; then
@@ -2396,6 +2459,14 @@ s17_body() {
             elif grep -Fxq -- "$s" "$d/ran0"; then
                 n_ci=$((n_ci + 1)); continue
             elif grep -Fxq -- "$s" "$d/skip"; then
+                why="CI skipped it"
+            elif grep -Fxq -- "$s" "$d/jsred"; then
+                why="CI ran it and it failed"
+            elif grep -Fxq -- "$s" "$d/jsran0"; then
+                n_ci=$((n_ci + 1)); js_names="$js_names, $s"; continue
+            elif job=$(awk -F '\t' -v p="$s" '$1 == p { print $2; exit }' "$d/jsbad") && [ -n "$job" ]; then
+                why="CI job $job did not succeed"
+            elif grep -Fxq -- "$s" "$d/jsskip"; then
                 why="CI skipped it"
             else
                 why="no ran-0 row in run $run_id"
@@ -2406,12 +2477,14 @@ s17_body() {
 
     if [ "$bad" -gt 0 ]; then
         s17_fail "$bad suite(s) proven nowhere: ${reasons#, }"
+        [ -z "$js_names" ] || echo "       note: from JS manifests: ${js_names#, }"
         if [ "$have_row" -eq 0 ]; then
             echo "       no impacted row at ${SHA:0:7} on ${branch:-?}: the chief runs pr-check step 3.6 (impacted-suites.sh --check --record) for this head from a worktree of the branch, so the row lands in the shared ledger"
         fi
         return 0
     fi
     echo "[PASS] 19. suite evidence: $n_imp impacted, $n_ci from CI run ${run_id:--}, $n_local local${ruled_names:+, $n_ruled ruled SKIP: ${ruled_names#, }}"
+    [ -z "$js_names" ] || echo "       note: from JS manifests: ${js_names#, }"
 }
 check_suite_evidence
 

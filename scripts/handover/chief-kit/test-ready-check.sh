@@ -91,12 +91,29 @@ case "$args" in
         for kv in ${STUB_RUN_CONC:-}; do [ "${kv%%=*}" = "$id" ] && conc="${kv#*=}"; done
         jq -n --argjson id "$id" --arg h "${STUB_RUN_HEAD_SHA:-$STUB_HEAD}" --arg c "$conc" '{id:$id,head_sha:$h,status:"completed",conclusion:$c}' | jq -r "${args#*--jq }" ;;
     "run download "*)
-        # check 19: copy STUB_MANIFEST_DIR's artifact dirs into -D <dir>; none = gh's no-artifact reply
         [ -z "${STUB_DL_SLEEP:-}" ] || sleep "$STUB_DL_SLEEP"
-        [ -z "${STUB_DL_FAIL:-}" ] || { echo "HTTP 500" >&2; exit 1; }
         d="${args#* -D }"; d="${d%% *}"
-        [ -d "${STUB_MANIFEST_DIR:-/nonexistent}" ] || { echo "no valid artifacts found to download" >&2; exit 1; }
-        cp -R "$STUB_MANIFEST_DIR"/. "$d"/ ;;
+        case "$args" in
+            *" -p js-suite-manifest-"*)
+                [ -z "${STUB_JS_DL_FAIL:-}" ] || { echo "HTTP 502" >&2; exit 1; }
+                id="${args#run download }"; id="${id%% *}"
+                [ -d "${STUB_JS_MANIFEST_DIR:-/nonexistent}/$id" ] || { echo "no valid artifacts found to download" >&2; exit 1; }
+                cp -R "$STUB_JS_MANIFEST_DIR/$id"/. "$d"/ ;;
+            *)
+                [ -z "${STUB_DL_FAIL:-}" ] || { echo "HTTP 500" >&2; exit 1; }
+                [ -d "${STUB_MANIFEST_DIR:-/nonexistent}" ] || { echo "no valid artifacts found to download" >&2; exit 1; }
+                cp -R "$STUB_MANIFEST_DIR"/. "$d"/ ;;
+        esac ;;
+    "api --paginate repos/"*"/actions/runs/"*"/jobs"*)
+        [ -z "${STUB_JOBS_FAIL:-}" ] || { echo "HTTP 502" >&2; exit 1; }
+        printf '%s\n' "${STUB_JOBS:-success|lanes-and-trust-suites
+success|bun-suites (ubuntu-latest)
+success|node-suites (jira)
+success|node-suites (himmel-gh, plugins/himmel-gh)
+success|node-suites (himmel-bus, marketplace/plugins/himmel-bus, 26.13.0)
+success|shell-unit (ubuntu-latest)}" \
+            | jq -R -n '{total_count: 0, jobs: [inputs | select(length > 0) | index("|") as $i | {conclusion: .[:$i], name: .[$i + 1:]}]}' \
+            | jq -r "${args#*--jq }" ;;
     "api repos/"*"/pulls/"*"/files --paginate"*)
         printf '%s\n' "${STUB_FILES:-README.md}" | while IFS= read -r f; do printf '%s\t\n' "$f"; done ;;
     "api repos/"*"/pulls/"*"changed_files"*)
@@ -317,6 +334,7 @@ run() {
         STUB_DEFAULT_BRANCH_FAIL="${STUB_DEFAULT_BRANCH_FAIL:-}" \
         STUB_GH_RL="${STUB_GH_RL:-}" HIMMEL_QUOTA_DIR="${RUN_QUOTA_DIR:-$tmp/quota}" \
         STUB_MANIFEST_DIR="${STUB_MANIFEST_DIR:-}" STUB_DL_FAIL="${STUB_DL_FAIL:-}" STUB_DL_SLEEP="${STUB_DL_SLEEP:-}" \
+        STUB_JS_MANIFEST_DIR="${STUB_JS_MANIFEST_DIR:-}" STUB_JS_DL_FAIL="${STUB_JS_DL_FAIL:-}" STUB_JOBS="${STUB_JOBS:-}" STUB_JOBS_FAIL="${STUB_JOBS_FAIL:-}" \
         STUB_RUN_SLEEP="${STUB_RUN_SLEEP:-}" STUB_RUN_HEAD_SHA="${STUB_RUN_HEAD_SHA:-}" STUB_RUN_CONC="${STUB_RUN_CONC:-}" \
         READY_CHECK_ITEM19_BOUND="${READY_CHECK_ITEM19_BOUND:-}" \
         READY_CHECK_FAIL_LEDGER="${READY_CHECK_FAIL_LEDGER:-$tmp/ci-failures.jsonl}" \
@@ -331,6 +349,7 @@ reset_stubs() {
     unset STUB_TRUST_LIST_FAIL STUB_DEFAULT_BRANCH_FAIL
     unset STUB_HEAD STUB_MSS STUB_ROLLUP STUB_UNRESOLVED STUB_COMMITS STUB_MERGE_OIDS STUB_FILES STUB_FILES_FAIL STUB_FILES_PARTIAL STUB_RENAMES STUB_RENAMES_FAIL STUB_BODY STUB_RED STUB_JIRA_DOWN STUB_LINKS_DB STUB_LINKS_FAIL STUB_SNAPSHOT_FAIL STUB_FILE_STATUS STUB_WF_DIR STUB_WF_PATCH_FILE STUB_RUNS_DIR STUB_RUNS_FAIL STUB_PR_TITLE STUB_PR_BRANCH STUB_AUTHOR
     unset STUB_FORK STUB_FORK_JSON STUB_AUTHOR_ID STUB_AUTHOR_TYPE STUB_RESOLVED_BY STUB_ROLLUP_NULL STUB_FILES16_FAIL STUB_FILES16_EMPTY
+    unset STUB_JS_MANIFEST_DIR STUB_JS_DL_FAIL STUB_JOBS STUB_JOBS_FAIL
     seed_ledger_ok
 }
 
@@ -4139,6 +4158,11 @@ S17_HJS=$(git -C "$S17R" rev-parse HEAD)
 git -C "$S17R" checkout -q --orphan s17-orphan
 git -C "$S17R" commit -q -m "chore: unrelated history"
 S17_ORPHAN=$(git -C "$S17R" rev-parse HEAD)
+git -C "$S17R" checkout -q "$S17_BASE"
+printf 'v2\n' > "$S17R/scripts/lib/s17-lib.sh"
+printf 'v3\n' > "$S17R/scripts/lib/s17-dep.mjs"
+git -C "$S17R" commit -q -am "feat(x): [HIMMEL-1] change the lib and the dep"
+S17_HMIX=$(git -C "$S17R" rev-parse HEAD)
 git -C "$S17R" checkout -q "$S17_H1"
 s17_agg() {  # <status> <conclusion|null> <startedAt> <run id> [name]: one check-run of the aggregator
     local c="$2"
@@ -4176,7 +4200,7 @@ s17_at() {
     SHA="$keep_sha"; REPO="$keep_repo"; LEDGER="$keep_ledger"
 }
 line17() { printf '%s\n' "$1" | grep -F '] 19. ' || true; }
-s17_clear() { unset S17_RUNBOOK_CMD S17_LP S17_RS S17_ROW_BRANCH S17_ROW_PR S17_ROLLUP STUB_MANIFEST_DIR STUB_DL_FAIL STUB_DL_SLEEP STUB_RUN_SLEEP STUB_RUN_HEAD_SHA STUB_RUN_CONC READY_CHECK_ITEM19_BOUND; reset_stubs; }
+s17_clear() { unset S17_RUNBOOK_CMD S17_LP S17_RS S17_ROW_BRANCH S17_ROW_PR S17_ROLLUP STUB_MANIFEST_DIR STUB_DL_FAIL STUB_DL_SLEEP STUB_RUN_SLEEP STUB_RUN_HEAD_SHA STUB_RUN_CONC READY_CHECK_ITEM19_BOUND STUB_JS_MANIFEST_DIR STUB_JS_DL_FAIL STUB_JOBS STUB_JOBS_FAIL; reset_stubs; }
 
 # T6 / T21: every suite has a ran-0 row in the head's run; the PR touches no plugin file
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"
@@ -4510,6 +4534,113 @@ s17_clear; STUB_MANIFEST_DIR="$S17_MAN_CS_77"
 s17_at "$S17_H1"
 check "19 T26c the published file says ran 77 for B: exit 1" "$rc" "1"
 contains "19 T26c: B is the suite proven nowhere" "$(line17 "$out")" "[FAIL] 19. suite evidence: 1 suite(s) proven nowhere: $S17_B (CI skipped it)"
+s17_clear
+
+s17_js_man() {
+    local d="$1/$2/js-suite-manifest-$3"
+    shift 3
+    mkdir -p "$d"
+    printf '%s\n' "$@" > "$d/manifest-js-${d##*/js-suite-manifest-}.txt"
+}
+S17_JSN="note: from JS manifests: $S17_JS"
+S17_JSM_OK="$tmp/s17-jsm-ok"; s17_js_man "$S17_JSM_OK" 555 bun-suites "ran 0 $S17_JS" "ran 0 scripts/lib/other.test.mjs"
+S17_JSM_556="$tmp/s17-jsm-556"; s17_js_man "$S17_JSM_556" 556 bun-suites "ran 0 $S17_JS"
+S17_JSM_NONE="$tmp/s17-jsm-none"; s17_js_man "$S17_JSM_NONE" 555 bun-suites "ran 0 scripts/lib/other.test.mjs"
+S17_JSM_RED="$tmp/s17-jsm-red"; s17_js_man "$S17_JSM_RED" 555 bun-suites "ran 0 $S17_JS"; s17_js_man "$S17_JSM_RED" 555 lanes-and-trust-suites "ran 1 $S17_JS"
+S17_JSM_SKIP="$tmp/s17-jsm-skip"; s17_js_man "$S17_JSM_SKIP" 555 bun-suites "skip $S17_JS"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_JS_MANIFEST_DIR="$S17_JSM_OK"
+s17_at "$S17_HJS"
+check "19 T-JS1 an unchanged JS suite with ran 0 in the run's JS manifest: exit 0" "$rc" "0"
+contains "19 T-JS1: PASS from the run" "$(line17 "$out")" "[PASS] 19. suite evidence: 1 impacted, 1 from CI run 555, 0 local"
+contains "19 T-JS1: the JS manifests of run 555 are downloaded" "$(cat "$GH_LOG")" "run download 555 -R $NWO -p js-suite-manifest-*"
+contains "19 T-JS1: the note names the suite proven from a JS manifest" "$out" "       $S17_JSN"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_JS_MANIFEST_DIR="$S17_JSM_556"
+s17_at "$S17_HJS"
+contains "19 T-JS1 the same artifact only under run 556: no proof" "$(line17 "$out")" "1 suite(s) proven nowhere: $S17_JS (no ran-0 row in run 555)"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_JS_MANIFEST_DIR="$S17_JSM_OK"
+s17_at "$S17_H1"
+notcontains "19 T-JS1 control: suites proven by shell lines print no JS note" "$out" "note: from JS manifests"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_JS_MANIFEST_DIR="$S17_JSM_NONE"
+s17_at "$S17_HJS"
+contains "19 T-JS2 no JS line for the suite: FAIL" "$(line17 "$out")" "1 suite(s) proven nowhere: $S17_JS (no ran-0 row in run 555)"
+contains "19 T-JS2: the JS manifests were read" "$(cat "$GH_LOG")" "run download 555 -R $NWO -p js-suite-manifest-*"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_JS_MANIFEST_DIR="$S17_JSM_OK"; STUB_FILES="$S17_JS"
+s17_at "$S17_HJS"
+contains "19 T-JS3 a changed JS suite with a CI line and no local PASS: FAIL" "$(line17 "$out")" "1 suite(s) proven nowhere: $S17_JS (the PR changed it: a CI line does not count, run it locally)"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_JS_MANIFEST_DIR="$S17_JSM_OK"; STUB_FILES="$S17_JS"; S17_LP="[\"$S17_JS\"]"
+s17_at "$S17_HJS"
+check "19 T-JS4 control: the changed JS suite with its local PASS: exit 0" "$rc" "0"
+contains "19 T-JS4: counted local" "$(line17 "$out")" "[PASS] 19. suite evidence: 1 impacted, 0 from CI run -, 1 local"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_FILES="$S17_A"
+s17_at "$S17_H1"
+contains "19 T-JS5 a changed shell suite with a shard ran 0 and no local PASS: FAIL" "$(line17 "$out")" "1 suite(s) proven nowhere: $S17_A (the PR changed it: a CI line does not count, run it locally)"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_JS_MANIFEST_DIR="$S17_JSM_RED"
+s17_at "$S17_HJS"
+contains "19 T-JS6 ran 0 in one JS artifact, ran 1 in another: FAIL" "$(line17 "$out")" "1 suite(s) proven nowhere: $S17_JS (CI ran it and it failed)"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_JS_MANIFEST_DIR="$S17_JSM_SKIP"
+s17_at "$S17_HJS"
+contains "19 T-JS7 a JS skip line: FAIL" "$(line17 "$out")" "1 suite(s) proven nowhere: $S17_JS (CI skipped it)"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_JS_MANIFEST_DIR="$S17_JSM_OK"; STUB_RUN_HEAD_SHA="$S17_BASE"
+s17_at "$S17_HJS"
+contains "19 T-JS8 control: the run is at another head: FAIL" "$(line17 "$out")" "(no settled CI run (run 555 is not at ${S17_HJS:0:7}))"
+notcontains "19 T-JS8 control: no JS download" "$(cat "$GH_LOG")" "js-suite-manifest"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_JS_MANIFEST_DIR="$S17_JSM_OK"; STUB_JS_DL_FAIL=1
+s17_at "$S17_HJS"
+contains "19 T-JS9 a failed JS download: FAIL naming it" "$(line17 "$out")" "[FAIL] 19. suite evidence: gh run download 555 (JS manifests) failed (rc 1: HTTP 502)"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"
+s17_at "$S17_HJS"
+contains "19 T-JS9 control: no JS artifact at all reads as no proof" "$(line17 "$out")" "1 suite(s) proven nowhere: $S17_JS (no ran-0 row in run 555)"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_JS_MANIFEST_DIR="$S17_JSM_OK"
+s17_at "$S17_H1"
+check "19 T-JS10 control: every suite has a shell ran 0: exit 0" "$rc" "0"
+notcontains "19 T-JS10 control: no JS download" "$(cat "$GH_LOG")" "js-suite-manifest"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_JS_MANIFEST_DIR="$S17_JSM_OK"; STUB_FILES_FAIL=1
+s17_at "$S17_HJS"
+contains "19 T-JS11 an unreadable PR file list: FAIL" "$(line17 "$out")" "[FAIL] 19. suite evidence: cannot read the PR's file list"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_JS_MANIFEST_DIR="$S17_JSM_OK"; STUB_FILES="$S17_JS"; S17_RS="[\"$S17_JS\"]"
+s17_at "$S17_HJS"
+check "19 T-JS12 control: a changed suite with a ruled SKIP: exit 0" "$rc" "0"
+contains "19 T-JS12: named in the ruled list" "$(line17 "$out")" "1 ruled SKIP: $S17_JS"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_FILES="$S17_A"; STUB_BODY="${GREEN_BODY}Local suites: $S17_A\n"
+s17_at "$S17_H1"
+contains "19 T-JS12 control: a changed suite on a Local suites line: the Local suites reason" "$(line17 "$out")" "$S17_A (Local suites line, no local PASS)"
+notcontains "19 T-JS12: not the changed reason" "$(line17 "$out")" "the PR changed it"
+s17_clear; STUB_FILES_FAIL=1
+s17_at "$S17_BASE"
+contains "19 T-JS13 control: 0 impacted with an unreadable file list: PASS" "$(line17 "$out")" "[PASS] 19. suite evidence: 0 impacted, nothing to prove"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_A"; STUB_JS_MANIFEST_DIR="$S17_JSM_OK"
+s17_at "$S17_HMIX"
+contains "19 T-JS14 one shell suite unproven, the JS suite proven: FAIL on the shell suite" "$(line17 "$out")" "1 suite(s) proven nowhere: $S17_B (no ran-0 row in run 555)"
+contains "19 T-JS14: the JS note prints under the FAIL" "$out" "       $S17_JSN"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_JS_MANIFEST_DIR="$S17_JSM_OK"; STUB_JOBS="failure|bun-suites (ubuntu-latest)
+success|shell-unit (ubuntu-latest)"
+s17_at "$S17_HJS"
+contains "19 T-JS15 ran 0 from a job that failed: FAIL" "$(line17 "$out")" "1 suite(s) proven nowhere: $S17_JS (CI job bun-suites did not succeed)"
+notcontains "19 T-JS15: no JS note" "$out" "note: from JS manifests"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_JS_MANIFEST_DIR="$S17_JSM_OK"; STUB_JOBS="success|bun-suites (ubuntu-latest)
+success|shell-unit (ubuntu-latest)"
+s17_at "$S17_HJS"
+check "19 T-JS16 the same, the job succeeded: exit 0" "$rc" "0"
+contains "19 T-JS16: the jobs of the picked run are read" "$(cat "$GH_LOG")" "actions/runs/555/jobs"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_JS_MANIFEST_DIR="$S17_JSM_OK"; STUB_JOBS_FAIL=1
+s17_at "$S17_HJS"
+contains "19 T-JS17 an unreadable jobs list: FAIL naming the read" "$(line17 "$out")" "[FAIL] 19. suite evidence: gh api actions/runs/555/jobs failed (rc 1: HTTP 502)"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_JS_MANIFEST_DIR="$S17_JSM_OK"; STUB_JOBS="success|shell-unit (ubuntu-latest)
+success|bun-suites-extra (ubuntu-latest)"
+s17_at "$S17_HJS"
+contains "19 T-JS18 a manifest whose job is not in the run: no proof" "$(line17 "$out")" "1 suite(s) proven nowhere: $S17_JS (CI job bun-suites did not succeed)"
+S17_JSM_MX="$tmp/s17-jsm-mx"; s17_js_man "$S17_JSM_MX" 555 node-suites-himmel-gh "ran 0 $S17_JS"; s17_js_man "$S17_JSM_MX" 555 node-suites-jira "ran 0 scripts/lib/other.test.mjs"
+S17_JSM_MXR="$tmp/s17-jsm-mxr"; s17_js_man "$S17_JSM_MXR" 555 node-suites-jira "ran 0 $S17_JS"; s17_js_man "$S17_JSM_MXR" 555 node-suites-himmel-gh "ran 0 scripts/lib/other.test.mjs"
+S17_JOBS_MX="failure|node-suites (jira)
+success|node-suites (himmel-gh, plugins/himmel-gh)
+success|shell-unit (ubuntu-latest)"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_JS_MANIFEST_DIR="$S17_JSM_MX"; STUB_JOBS="$S17_JOBS_MX"
+s17_at "$S17_HJS"
+check "19 T-JS19 a matrix package green, another red: the green package's suite is proven" "$rc" "0"
+contains "19 T-JS19: from the green package" "$out" "       $S17_JSN"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_JS_MANIFEST_DIR="$S17_JSM_MXR"; STUB_JOBS="$S17_JOBS_MX"
+s17_at "$S17_HJS"
+contains "19 T-JS19 the suite only in the red package: no proof" "$(line17 "$out")" "1 suite(s) proven nowhere: $S17_JS (CI job node-suites-jira did not succeed)"
 s17_clear
 
 reset_stubs
