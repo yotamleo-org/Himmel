@@ -248,6 +248,11 @@ printf '{"status":"UNKNOWN","requests":{"open":[],"claimed":[]},"refused_asks":[
 out="$(TICK_RMQ_EXIT=3 tick)"
 check 'a state that is not OK shows no rm-refused field' '' "$(field rm-refused "$out")"
 check 'and deletes release-state-<stem>.json and the tsv' 'gone' "$([ -e "$W/state/release-state-chief.json" ] || [ -e "$W/state/rm-refused-chief.tsv" ] || echo gone)"
+cp "$GOLDEN" "$W/state.json"
+mkdir -p "$W/state/.rm-refused-chief.tsv.tmp" "$W/state/.release-state-chief.json.tmp"
+out="$(tick)"
+check "another writer's temp file never blocks publication: each tick writes its own" '3:ABC-2@R-R1-0001|3' \
+    "$(field rm-refused "$out")|$(wc -l < "$W/state/rm-refused-chief.tsv" 2>/dev/null | tr -d ' ')"
 
 echo
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

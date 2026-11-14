@@ -2885,15 +2885,15 @@ if [ -n "$rf_stem" ]; then
     if [ "${rm_status:-}" = OK ]; then
         # shellcheck disable=SC2016  # the python program is single-quoted on purpose
         rm_refused="$(printf '%s' "$rm_json" | python3 -I -c '
-import datetime, json, os, sys
+import datetime, json, os, sys, tempfile
 d = json.load(sys.stdin)
 out, stem = sys.argv[1], sys.argv[2]
 asks = [a for a in d.get("refused_asks") or [] if isinstance(a, dict)]
 clean = lambda s: " ".join(str(s).split())
 os.makedirs(out, exist_ok=True)
 def put(name, text):
-    tmp = os.path.join(out, "." + name + ".tmp")
-    with open(tmp, "w") as f:
+    fd, tmp = tempfile.mkstemp(dir=out, prefix="." + name + ".")
+    with os.fdopen(fd, "w") as f:
         f.write(text)
     os.replace(tmp, os.path.join(out, name))
 put("rm-refused-%s.tsv" % stem, "".join("%s\t%s\t%s\t%d\n" % (clean(a.get("key")), clean(a.get("ruling")), clean(a.get("reason")), 1 if a.get("asks_operator") is True else 0) for a in asks))
