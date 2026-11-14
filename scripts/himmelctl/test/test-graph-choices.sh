@@ -389,6 +389,17 @@ has "C19b cause missing with footprint (a): the file reads missing" "$out" "caus
 has "C19b only a backup holding semantic_api_ok true is named" "$out" "backup=$w1 kind=watch"
 hasnt "C19b a newer backup without the key is not named" "$out" "backup=$w2"
 
+echo "C19b: with a publisher footprint every cause names only a backup holding semantic_api_ok true"
+sfresh_ids c19b-j; publisher_cfg; arm_publisher; w1="$(bash "$CA" pre "$HOME/.himmel/config.json" --script watch)"
+cfg '{"graphify":{"salus_ollama_cloud_ok":false}}'; w2="$(bash "$CA" pre "$HOME/.himmel/config.json" --script watch)"
+printf 'not json {\n' > "$HOME/.himmel/config.json"; out="$(gc check)"
+has "C19b footprint (a) with cause not-json names the older backup that holds the key" "$out" "backup=$w1 kind=watch"
+hasnt "C19b the newer backup without the key is not named" "$out" "backup=$w2"
+sfresh_ids c19b-k; publisher_cfg; arm_publisher; cfg '{"graphify":{"salus_ollama_cloud_ok":false}}'; bash "$CA" pre "$HOME/.himmel/config.json" --script watch >/dev/null
+printf 'not json {\n' > "$HOME/.himmel/config.json"; out="$(gc check)"
+has "C19b footprint (a) and no backup holding the key reads by-hand" "$out" "fix=by-hand"
+has "C19b by-hand with no usable backup says to write the file" "$out" "no usable config backup exists"
+
 echo "C19b: a rename-shaped edit keeps footprint (a)"
 sfresh_ids c19b-h; publisher_cfg; arm_publisher; watch
 cfg '{"graphify":{"salus_ollama_cloud_ok":true}}'; : > "$SB/alerts.log"; watch

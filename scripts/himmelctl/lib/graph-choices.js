@@ -356,7 +356,7 @@ function chooseBackup(cause, footprint) {
       const doc = readJsonRegular(path.join(b.dir, 'config.json'));
       if (!configUsable(doc)) continue;
       const holds = holdsPublisherKey(doc);
-      if (needsKey ? !holds : (!footprint && holds)) continue;
+      if ((needsKey || footprint) ? !holds : holds) continue;
       return { id: b.id, kind: watcher ? 'watch' : 'audited', doc, man: b.man };
     }
   }
@@ -421,6 +421,7 @@ function unreadableLines(station) {
     lines.push(RESTORE_TELEGRAM_LINE.split('<id>').join(chosen.id));
     lines.push(RESTORE_TERMINAL_LINE.split('<id>').join(chosen.id));
   }
+  if (!chosen && !BY_HAND_CAUSES.includes(cause)) lines.push('no usable config backup exists, so no restore line applies: write the file by hand');
   lines.push(`fix-line: ${FIX_LINES[cause]}`);
   return lines;
 }
