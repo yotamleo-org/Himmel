@@ -367,6 +367,22 @@ check_one "27 gh pr create --fill — direct-exec ALLOWS (not the external-write
 check_both "28 FLIP CONTROL: incident shape retargeted at a /tmp-rooted primary -> allow (proves the no-tmp-fixture rule matters)" allow \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cat > $TMPFIX/primary/scripts/hooks/x.sh\",\"cwd\":\"$FIX/wt\"}}"
 
+# 28b-28d: only a real temp root is exempt. A primary under a directory
+# merely NAMED tmp or temp inside the fixture root is guarded like any other
+# primary; a primary under the system temp dir mktemp -t picks (/tmp on
+# Linux, /var/folders/... on macOS) stays exempt.
+mkrepo_committed "$FIX/tmp/primary" main
+mkrepo_committed "$FIX/temp/primary" main
+check_both "28b incident shape into a primary under a tmp-named dir (not a temp root) -> deny" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cat > $FIX/tmp/primary/scripts/hooks/x.sh\",\"cwd\":\"$FIX/wt\"}}"
+check_both "28c incident shape into a primary under a temp-named dir (not a temp root) -> deny" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cat > $FIX/temp/primary/scripts/hooks/x.sh\",\"cwd\":\"$FIX/wt\"}}"
+SYSTMP=$(mktemp -d -t himmel-bwimc-systmp.XXXXXX) || exit 1  # prim-ok: the control asserts the system temp root mktemp picks, so it must not be rooted elsewhere
+trap 'rm -rf "$FIX" "$TMPFIX" "$SYSTMP"' EXIT
+mkrepo_committed "$SYSTMP/primary" main
+check_both "28d NEGATIVE CONTROL: incident shape into a primary under the system temp root -> allow" allow \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cat > $SYSTMP/primary/scripts/hooks/x.sh\",\"cwd\":\"$FIX/wt\"}}"
+
 echo "== CR round 1 fixes (codex-2..6, HIMMEL-2526) =="
 
 # 29 (codex-2): the deny REASON must actually print, not just rc=2. Before the
