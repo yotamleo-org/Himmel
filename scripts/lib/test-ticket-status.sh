@@ -535,7 +535,7 @@ qplant "$tmp/q-hung" 4000 timed-out
 check "9479 T8: a timed-out probe is a pause too" "$(qderive "$tmp/q-hung")" "no-write/miss/gh/"
 check "9479 T8: named GH-STALL on stderr" "$(grep -c '^GH-STALL github read timed out' "$tmp/qerr")" 1
 
-qplant_read() { # <dir> <read graphql remaining> <read graphql state>: main healthy, the read token's row as given
+qplant_read() {
     qplant "$1" 4000 ok
     local now; now=$(date +%s)
     printf 'read\tgraphql\t%s\t5000\t%s\t%s\t%s\nread\tcore\t4000\t5000\t%s\t%s\tok\n' "$2" "$((now + 1800))" "$now" "$3" "$((now + 1800))" "$now" >> "$1/quota.tsv"
@@ -551,7 +551,6 @@ check "9479 T11: a paused derive makes no gh call" "$(wc -l < "$tmp/qgh.log" | t
 check "9479 T11 RED control: with no read token configured the derive reads on main, as today" "$(qderive "$tmp/q-rok")" "In Progress///D5"
 check "9479 T11 RED control: the PR list goes out on main" "$(grep -c '^main pr list$' "$tmp/qgh.log.tok")" 1
 
-# merge-rows-effective.py: with no MERGE_ROWS_GH seam its read rides the read token
 mkdir -p "$tmp/mrbin"
 cat > "$tmp/mrbin/gh" <<'EOF'
 #!/usr/bin/env bash
@@ -560,7 +559,7 @@ printf '%s %s %s %s\n' "${GH_TOKEN:-main}" "$1" "$2" "$3" >> "$MR_TOK_LOG"
 [ "$1 $2" != "pr view" ] || echo "MERGED h12"
 EOF
 chmod +x "$tmp/mrbin/gh"
-mr_t11() { # <env root> [VAR=value...]: the effective rows of PR 12's pre-merge row, the token log fresh
+mr_t11() {
     local root="$1"
     shift
     : > "$tmp/mrtok.log"

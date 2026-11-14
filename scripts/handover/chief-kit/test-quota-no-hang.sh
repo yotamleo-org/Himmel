@@ -294,7 +294,6 @@ run_mode() {
     exec_row "$bound" env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY -u CHIEF_SESSION_NAME \
         -u himmel_github_token_vm2 -u GITHUB_TOKEN -u GH_ENTERPRISE_TOKEN -u GITHUB_ENTERPRISE_TOKEN "${envs[@]}" "$@"
     if [ -n "${AFFECT_FN:-}" ]; then
-        # a stall on a token the caller does not read is no stall to it
         case "$class:$("$AFFECT_FN" "$mode")" in rate:no | stall:no) class=none ;; rate:maybe) class=maybe ;; rate:boundonly) class=boundonly ;; esac
     fi
     judge_row "$caller" "$mode" "$bound" "$want" "$class"

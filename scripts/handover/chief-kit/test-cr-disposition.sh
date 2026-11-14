@@ -318,8 +318,6 @@ check    "11: a hung read prints no false cause" "$(grep -c "cannot read PR" <<<
 check    "11: a hung read leaves one marker" "$(mkers)" "1"
 contains "11: the stall marker names the reason" "$(cat "$HIMMEL_QUOTA_DIR/blocked/90.$SHA")" "reason=stall"
 
-# --- 12. 9479 T11: with no GH_CMD the head-branch read rides the read token ---
-# A stub gh first on PATH logs the token of each head-branch read and hands every other call to the fixture's gh.
 mkdir -p "$tmp/t11bin" "$tmp/t11root" "$tmp/t11noroot"
 printf 'himmel_github_token_vm2=ghp_CRDREAD0123456789\n' > "$tmp/t11root/.env"
 : > "$tmp/t11noroot/.env"
@@ -337,7 +335,7 @@ esac
 exec "$T11_NEXT" "$@"
 STUB
 chmod +x "$tmp/t11bin/gh"
-t11() {  # <env root> [VAR=value...]: one check of PR 90 with no GH_CMD; sets rc and out, the token log fresh
+t11() {
   local root="$1"; shift
   : > "$tmp/t11.log"
   rc=0; out="$(env -u GH_CMD -u himmel_github_token_vm2 "$@" PATH="$tmp/t11bin:$PATH" T11_NEXT="$tmp/ready-bin/gh" T11_LOG="$tmp/t11.log" \

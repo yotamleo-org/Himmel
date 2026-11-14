@@ -2162,7 +2162,6 @@ ready_ci() {
         return
     fi
     nwo="$(gate_nwo)"
-    # the read token through gh-read.sh, main when none is set
     b="$(cd "$GATE_DIR" && timeout -k 5 "$3" bash "$REPO/scripts/lib/gh-read.sh" pr checks "$1" ${nwo:+-R "$nwo"} --json bucket -q '.[].bucket' </dev/null 2>"$err" 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
     # a refusal exits 1 like a failed check, so its stderr decides (stdout is check names)
     if [ -z "$b" ] && [ "$rc" -ne 0 ] && ghq_is_rate_limited "$(cat "$err")"; then

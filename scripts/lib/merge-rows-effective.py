@@ -56,7 +56,6 @@ def merged_on_github(pr, head, repo, cache):
         if REPO_RE.match(repo):
             cmd += ['--repo', repo]
         bound = min(20, left)
-        # the router ends its own gh a second before this bound, so a kill here never orphans a read
         out = subprocess.run(cmd, capture_output=True, text=True, timeout=bound,
                              env=dict(os.environ, GH_READ_TIMEOUT=str(max(1, int(bound) - 1))))
         if out.returncode == 0:

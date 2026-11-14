@@ -78,7 +78,6 @@ _TIMEOUT_BIN=""
 # shellcheck source=scripts/lib/timeout-bin.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""  # swallow-ok: an empty _TIMEOUT_BIN reads without the bound, as go.sh does
-# with no GH_CMD seam the read rides the read token (gh-read.sh); a station with none reads on main, silently, as before
 CRD_TOK=main
 if [ -z "${GH_CMD:-}" ] && [ -f "$HERE/../../lib/gh-read.sh" ]; then
     # shellcheck source=scripts/lib/gh-read.sh
@@ -96,7 +95,6 @@ else
     BRANCH=$("$GH" pr view "$PR" --json headRefName -q .headRefName 2>"$GH_ERRF") || BRANCH_RC=$?
 fi
 [ "$BRANCH_RC" -eq 0 ] || BRANCH=""
-# the router's row names the token that refused last (main after a fallback); a cut by our own bound leaves none
 CRD_REFUSED_TOK=""
 [ ! -s "${GH_READ_REFUSED_FILE:-}" ] || read -r CRD_REFUSED_TOK _ < "$GH_READ_REFUSED_FILE" || true  # read-sink-ok: our own mktemp buffer; swallow-ok: an unread row names the token the read set out on
 if [ -z "$BRANCH" ]; then

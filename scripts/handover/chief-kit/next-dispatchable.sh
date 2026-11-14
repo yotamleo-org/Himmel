@@ -220,7 +220,6 @@ if [ -n "${NEXT_DISPATCH_GH_CMD:-}" ] && [ -z "${HIMMEL_QUOTA_DIR:-}" ]; then
     trap 'rm -rf "$nd_qtmp"' EXIT
 fi
 export GH_READ_NO_MAIN_FALLBACK=1
-# with no seam every read rides the read token (gh-read.sh); a station with none reads on main, silently, as before
 if [ -z "${NEXT_DISPATCH_GH_CMD:-}" ] && [ -f "$REPO/scripts/lib/gh-read.sh" ]; then
     # shellcheck source=scripts/lib/gh-read.sh
     . "$REPO/scripts/lib/gh-read.sh"
@@ -286,7 +285,6 @@ def ghrun(argv, **kw):
     if rate_limited or timed_out:
         raise subprocess.SubprocessError('an earlier GitHub read was refused or stalled')
     if kw.get('timeout'):
-        # the router ends its own gh a second before this bound, so a kill here never orphans a read
         kw['env'] = dict(os.environ, GH_READ_TIMEOUT=str(max(1, int(kw['timeout']) - 1)))
     try:
         return subprocess.run(argv, **kw)

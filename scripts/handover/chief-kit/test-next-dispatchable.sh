@@ -2774,8 +2774,6 @@ q6_healthy="$Q6_OUT"
 q6run healthy -- --priority-pool-only
 [ "$Q6_OUT" = "$q6_healthy" ] && pass "T6 RED control: two healthy runs print the same bytes" || fail "T6 RED control: two healthy runs print the same bytes"
 
-# 9479 T11: with no NEXT_DISPATCH_GH_CMD seam the reads ride the read token (gh-read.sh) and the scan gate reads its row.
-# A gh first on PATH logs each call's token and hands it to the T6 stub; probes (api -i) are left out of the read log.
 T11B="$WORK/t11bin"; mkdir -p "$T11B" "$WORK/t11root"
 printf 'himmel_github_token_vm2=ghp_NDREAD0123456789\n' > "$WORK/t11root/.env"
 cat > "$T11B/gh" <<'EOF'
@@ -2784,7 +2782,7 @@ cat > "$T11B/gh" <<'EOF'
 exec "$T11_NEXT" "$@"
 EOF
 chmod +x "$T11B/gh"
-t11run() { # <env root> <mode> [VAR=value...]: sets T11_OUT, the read log fresh
+t11run() {
     local root="$1" mode="$2"
     shift 2
     Q6Q="$(mktemp -d "$Q6/quota.XXXXXX")" || { fail "T11: mktemp -d failed"; return 1; }; : > "$Q6/log"; : > "$WORK/t11.log"

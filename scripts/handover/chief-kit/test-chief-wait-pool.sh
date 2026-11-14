@@ -873,8 +873,6 @@ check "(R9d) the unresolved line is byte-identical across the merge" "${s2w_line
 check "(R9d) the detail lines differ in their <n>-behind" "@$s2_sha=0-behind@$s2_sha=1-behind" "$(printf '%s' "${s2w_det[1]}" | grep -o "@$s2_sha=[0-9]*-behind")$(printf '%s' "${s2w_det[3]}" | grep -o "@$s2_sha=[0-9]*-behind")"
 rm -f "$STUB/pool.rows" "$STUB/dispositions"
 
-# --- 9479 T11: the READY wake's CI read rides the read token ----------------------------
-# ready-check and cr-disposition are stubbed; a gh first on PATH logs the token of each `pr checks` and passes it.
 T11="$WORK/t11"; mkdir -p "$T11/bin" "$T11/root" "$T11/noroot" "$T11/quota"
 printf 'himmel_github_token_vm2=ghp_CWREAD0123456789\n' > "$T11/root/.env"
 : > "$T11/noroot/.env"
@@ -890,7 +888,7 @@ printf '#!/usr/bin/env bash\ncat "%s"\n' "$T11/tick.line" > "$T11/tick.sh"
 chmod +x "$T11/bin/gh" "$T11/ready-check.sh" "$T11/disposition.sh" "$T11/tick.sh"
 git init -q "$T11/repo"
 T11_SHA=0123456789abcdef0123456789abcdef01234567
-t11_wait() { # <name> <env root>: one READY wake; sets t11_out and the token log
+t11_wait() {
     local I d m
     I="$(new_inbox "t11-$1")"; : > "$I.announced"; : > "$T11/$1.log"
     d="$WORK/t11-$1/worker-N1-x.md"; printf '# worker on branch docs/x\n\n## Results\n- 11:00 READY 77 %s GREEN\n' "$T11_SHA" > "$d"
