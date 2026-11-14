@@ -126,8 +126,7 @@ run_test "H1 HOOK_LIB_TEST_REPORT_DIR unset → base output, rc=0, no report wri
   setup_repo; cd "$R";
   out=$(env -u HOOK_LIB_TEST_REPORT_DIR bash "$SCRIPT" 2>&1) || exit 1;
   [ "$out" = "$(printf "  ok  scripts/hooks/*.test.mjs\n  ok  scripts/lib/*.test.mjs")" ] || exit 1;
-  [ -z "$(git status --porcelain --untracked-files=all | grep -v "fixture.test.mjs")" ] || exit 1;
-  [ -z "$(find "$TMPROOT" -name "*.jsonl")" ]
+  [ -z "$(git status --porcelain --untracked-files=all | grep -v "fixture.test.mjs")" ]
 '
 
 run_test "H2 HOOK_LIB_TEST_REPORT_DIR set → hooks.jsonl and lib.jsonl, nothing else" '

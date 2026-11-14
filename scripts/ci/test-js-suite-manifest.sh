@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# selector: tree-scan
 # shellcheck disable=SC2016  # single-quoted needles are literal ci.yml text
 set -uo pipefail
 
