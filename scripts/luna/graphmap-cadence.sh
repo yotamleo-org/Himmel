@@ -163,8 +163,9 @@ resolve_user_home() {
 # graphify.salus_ollama_cloud_ok) and no env var overrides it. Absent, unreadable, malformed, a
 # symlink, or any value but true means no opt-in. The himmel station opts in once, by hand:
 #   {"graphify": {"semantic_api_ok": true}}
-# ponytail: read at render time, so a runner already armed keeps its lane until the next
-# arm --rewrite-armed; upgrade path: a fire-time read inside the runner.
+# The opt-in is read at render time: a runner already armed keeps its lane until the next arm --rewrite-armed
+# (--leave-publisher while the config reads unreadable). Meanwhile semantic-update.sh refuses claude-api at fire time
+# whenever the config reads unreadable.
 SEMANTIC_API_SKIP_PREFIX="semantic skipped: API lane not opted in"
 SEMANTIC_API_SKIP_TEXT="$SEMANTIC_API_SKIP_PREFIX; on this station the himmel graph comes from us with each update"
 graph_role() {

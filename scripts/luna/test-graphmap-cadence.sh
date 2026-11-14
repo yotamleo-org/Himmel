@@ -2513,6 +2513,31 @@ rc=0; out=$(r10_env arm --vault "$VAULT" --leave-publisher 2>&1) || rc=$?
 assert_rc "R10c --leave-publisher without --rewrite-armed is a usage error" 1 "$rc"
 run_cron3 disarm >/dev/null 2>&1 || true
 
+echo "TEST: R10d a kept runner makes no paid call while the graph config reads unreadable"
+r10_fresh
+r10_env arm --vault "$VAULT" --luna-only --ast-only --with-luna-semantic --api-account A --semantic-active >/dev/null 2>&1
+rm -f "$R10_CFG"
+r10_env arm --vault "$VAULT" --rewrite-armed >/dev/null 2>&1 || true
+assert_contains "R10d fixture: the kept publish runner still holds the lane" "HIMMEL_API_LANE=on" "$(cat "$CRON_DIR3/graphmap-publish-himmel.sh" 2>/dev/null || echo MISSING)"
+assert_contains "R10d fixture: the kept luna semantic runner still holds the lane" "HIMMEL_API_LANE=on" "$(cat "$CRON_DIR3/graphmap-semantic-luna.sh" 2>/dev/null || echo MISSING)"
+r10_bin="$TMP_ROOT/r10-bin"; r10_calls="$TMP_ROOT/r10-claude-calls"
+mkdir -p "$r10_bin"; rm -f "$r10_calls"
+printf '#!/bin/sh\necho called >> "%s"\nexit 0\n' "$r10_calls" > "$r10_bin/claude"; chmod +x "$r10_bin/claude"
+r10_stub="$TMP_ROOT/r10-graph-cadence-stub.sh"
+printf '#!/bin/sh\nexec bash "%s/scripts/graphify/semantic-update.sh" --name himmel --corpus-root "%s" --corpus-class luna-personal --backend claude-api\n' "$HIMMEL_ROOT_EXP" "$VAULT" > "$r10_stub"
+sed "s#[^ ]* [^ ]*scripts/graphify/graph-cadence.sh#sh $r10_stub#g" "$CRON_DIR3/graphmap-publish-himmel.sh" > "$TMP_ROOT/r10-publish-stubbed.sh"
+rm -f "$CRON_DIR3/graphmap-publish-himmel.log" "$CRON_DIR3/semantic.paused"
+HOME="$R10_HOME" HIMMEL_CONFIG_DIR="$R10_HOME/.himmel" HIMMEL_CONFIG_AUDIT_DIR="$R10_HOME/.himmel/state/config-audit" GRAPHMAP_BAT_DIR="$CRON_DIR3" \
+    PATH="$r10_bin:$PATH" sh "$TMP_ROOT/r10-publish-stubbed.sh" >/dev/null 2>&1 || true
+assert_contains "R10d the publish runner's semantic step refuses on the unreadable config" "reads unreadable" "$(cat "$CRON_DIR3/graphmap-publish-himmel.log" 2>/dev/null || echo MISSING)"
+rm -f "$CRON_DIR3/graphmap-semantic-luna.log" "$CRON_DIR3/semantic-luna.paused"
+sed "s#$TMP_ROOT/bin/bash#$REAL_BASH#g" "$CRON_DIR3/graphmap-semantic-luna.sh" > "$TMP_ROOT/r10-luna-real-bash.sh"
+HOME="$R10_HOME" HIMMEL_CONFIG_DIR="$R10_HOME/.himmel" HIMMEL_CONFIG_AUDIT_DIR="$R10_HOME/.himmel/state/config-audit" GRAPHMAP_BAT_DIR="$CRON_DIR3" \
+    PATH="$r10_bin:$PATH" sh "$TMP_ROOT/r10-luna-real-bash.sh" >/dev/null 2>&1 || true
+assert_contains "R10d the luna semantic runner refuses on the unreadable config" "reads unreadable" "$(cat "$CRON_DIR3/graphmap-semantic-luna.log" 2>/dev/null || echo MISSING)"
+if [ ! -e "$r10_calls" ]; then pass "R10d no model call was made by either runner"; else fail "R10d a model call was made while the config read unreadable"; fi
+run_cron3 disarm >/dev/null 2>&1 || true
+
 echo "TEST: G1 the publisher render equals the render of the merge base's own graphmap-cadence.sh"
 g1_repo="$(cd "$SCRIPT_DIR/../.." && pwd)"
 g1_base="$(git -C "$g1_repo" merge-base HEAD origin/main 2>/dev/null || true)"

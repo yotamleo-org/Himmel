@@ -5649,6 +5649,9 @@ check_c88_graph_api_optin() {
     fi
     if [ "$role" = publisher ]; then
         emit OK C88-graph-api-optin "the graph cadence's API lane is opted in: this station builds and publishes the himmel graph (graphify.semantic_api_ok is true in ~/.himmel/config.json); to leave the role: remove the key, run bash scripts/lib/config-audit.sh accept, then bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed --leave-publisher"
+    elif [ -n "$lanes" ] && [ -n "$keys" ] && [ "$role" = unreadable ]; then
+        emit WARN C88-graph-api-optin "the graph config cannot be read and $keys is in $envfile; an armed runner still bakes HIMMEL_API_LANE=on ($lanes), but semantic-update.sh refuses the API lane while the config is unreadable${state:+; graph state: $state}" \
+            "$drop"
     elif [ -n "$lanes" ] && [ -n "$keys" ]; then
         emit WARN C88-graph-api-optin "the API lane is not opted in, but $keys is in $envfile and an armed runner still bakes HIMMEL_API_LANE=on ($lanes): the cadence draws that key without an opt-in until it is re-rendered${state:+; graph state: $state}" \
             "$drop"

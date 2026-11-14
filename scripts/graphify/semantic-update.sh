@@ -182,6 +182,9 @@ if [ "$OUT_DIR" != "$CORPUS_ROOT/graphify-out" ] && [ -L "$OUT_DIR" ]; then
 fi
 API_CALL_BUDGET="${GRAPHIFY_API_CALL_BUDGET_USD:-1.00}"
 API_EFFORT="${GRAPHIFY_API_EFFORT:-high}"
+if [ "$BACKEND" = "claude-api" ] && [ "$(node "$REPO_ROOT/scripts/himmelctl/lib/graph-choices.js" role 2>/dev/null)" = unreadable ]; then
+  echo "semantic-update: refusing claude-api: the station's graph config reads unreadable, so no paid call is made (node scripts/himmelctl/lib/graph-choices.js check names the repair) -- nothing copied" >&2; exit 2
+fi
 BATCH_MODE=0 RESUME=0 PENDING="$OUT_DIR/semantic-batch"
 if [ "$BACKEND" = "claude-api" ] && [ "${GRAPHIFY_API_BATCH:-1}" != 0 ]; then BATCH_MODE=1; fi
 if [ "$BATCH_MODE" -eq 1 ] && [ -f "$PENDING/batch.json" ]; then RESUME=1; fi

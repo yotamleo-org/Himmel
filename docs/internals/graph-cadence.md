@@ -418,7 +418,9 @@ Until the third step the station still reads `unreadable` (cause
 ### Repairing an unreadable graph config
 
 While `role` reads `unreadable` nothing new is spent: `refresh-graph-map.sh` exits 3
-before any semantic call, `himmel-update.sh` pulls nothing over the station's graph
+before any semantic call, `semantic-update.sh` refuses `--backend claude-api` (the
+semantic step of the publish and Luna semantic runners, which keep their baked lane),
+`himmel-update.sh` pulls nothing over the station's graph
 (a symlinked config pulls only when no publisher footprint exists and the linked file
 does not hold `semantic_api_ok` true), and a routine `arm --rewrite-armed` or
 `arm --force` leaves every armed lane runner as it is. The fire raises the
