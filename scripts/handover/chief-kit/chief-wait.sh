@@ -1217,17 +1217,10 @@ underfill_repool() {
     return 1
 }
 
-# resume_stale_scan: after a pool_probe that read the pool, reads the park start of every RESUME key the
-# pool lists and sets resume_stale_read (1 when the read finished) and resume_stale_keys (the keys parked
-# at least the resume wait, comma-joined). The read is one subshell that sources ticket-status.sh, so the
-# park rule, the wait and the clock (ts_now) are the lib's. ts_merge_rows and jq are wrapped there to keep
-# what the lib swallows: a pre-merge row the reader could not settle prints a warn line, and a read that
-# failed leaves no rows; either way a park start read past it would look older than it is or absent, so the
-# sample is unread. Nothing is written to the marker here.
 resume_stale_file="$inbox.wait.resume-stale"
 resume_stale_read=""
 resume_stale_keys=""
-# shellcheck disable=SC2016  # the body runs in its own bash: $1 lib dir, $2 keys, $3 scratch dir
+# shellcheck disable=SC2016
 resume_stale_body='
 . "$1/ticket-status.sh" || exit 70
 declare -F ts_park_since_rows >/dev/null || exit 70
@@ -1252,7 +1245,7 @@ done
 resume_stale_scan() {
     local keys dir
     resume_stale_read=""; resume_stale_keys=""
-    [ -n "$pool_out" ] || return 0  # a failed or cut probe read no pool, so it read no park start
+    [ -n "$pool_out" ] || return 0
     keys="$(printf '%s\n' "$pool_out" | awk -F'\t' '$1 == "RESUME" && $2 ~ /^[A-Z][A-Z0-9]*-[0-9]+$/ { print $2 }' | sort -u)"
     if [ -z "$keys" ]; then resume_stale_read=1; return 0; fi
     [ -r "$HERE/../../lib/ticket-status.sh" ] || return 0
@@ -1263,8 +1256,6 @@ resume_stale_scan() {
     fi
     rm -rf "$dir"
 }
-# resume_stale_wake: prints the stale keys and succeeds when the sample just scanned is due to wake; an
-# unread sample changes nothing, a read with no stale key removes the marker
 resume_stale_wake() {
     [ -n "$resume_stale_read" ] || return 1
     if [ -z "$resume_stale_keys" ]; then rm -f "$resume_stale_file"; return 1; fi
