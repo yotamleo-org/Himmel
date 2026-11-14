@@ -11,7 +11,7 @@ import { renderReport, reportBar } from "/report.js";
 import { fleetDot, healthDot, navLinks, parseLanding, railMarkup } from "/nav.js";
 
 const $ = (s) => document.querySelector(s);
-const state = { open: new Set(), bundles: {}, filt: { health: null, kind: null, q: "", problems: false }, plans: {}, vm: null, reviewGate: null, apiRoles: null, fleetCap: null, tile: null };
+const state = { open: new Set(), bundles: {}, filt: { health: null, kind: null, q: "", problems: false }, plans: {}, vm: null, reviewGate: null, apiRoles: null, fleetCap: null, graph: null, tile: null };
 let feed = null;
 let lastProbe = null; // the newest 202 body ({ elapsedMs, progress }) while the first report runs
 
@@ -53,6 +53,7 @@ let healthGen = 0; // declared before route() runs: a reload at #/health calls l
 let reviewGateLoadGen = 0, reviewGateSaving = false; // declared before route() runs: a reload at #/config calls loadReviewGate() from it
 let apiRolesLoadGen = 0, apiRolesSaving = false; // likewise for loadApiRoles(): the Multi accounts section
 let fleetCapLoadGen = 0, fleetCapSaving = false; // likewise for loadFleetCap()
+let graphLoadGen = 0, graphSaving = false;
 // Tool health: three reads, each keeping its last good answer when a newer one fails (tool-health.js toolHealthLoader).
 const thGet = (path) => async (q) => {
   const r = await fetch(path + (q ? "?" + q : ""), { headers: { "X-Himmel-Token": token }, cache: "no-store" });
@@ -89,7 +90,7 @@ const wfUi = { tab: "workflow", phase: null, step: null, walk: null, at: 0 }; //
 let costModel = null, costErr = false, costGen = 0;
 const costView = { open: [] };
 const PAGES = [
-  { id: "config", label: "Configure", needsFeed: false, refreshFeed: true, render: (f) => withLoginButton(render(f, { tile: state.tile, setup, state, msgs: setupMsgs, verify })), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); if (!state.reviewGate || !state.reviewGate.data) loadReviewGate(); if (!state.apiRoles || !state.apiRoles.data) loadApiRoles(); if (!state.fleetCap || !state.fleetCap.data) loadFleetCap(); if (!state.reports || !state.reports.data) loadReportSettings(); loadSetup(); } },
+  { id: "config", label: "Configure", needsFeed: false, refreshFeed: true, render: (f) => withLoginButton(render(f, { tile: state.tile, setup, state, msgs: setupMsgs, verify })), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); if (!state.reviewGate || !state.reviewGate.data) loadReviewGate(); if (!state.apiRoles || !state.apiRoles.data) loadApiRoles(); if (!state.graph || !state.graph.data) loadGraphChoices(); if (!state.fleetCap || !state.fleetCap.data) loadFleetCap(); if (!state.reports || !state.reports.data) loadReportSettings(); loadSetup(); } },
   { id: "health", label: "Health", needsFeed: false, refreshFeed: true, render: (f) => pageBar() + healthPage(f), onVisit: () => { if (!health) loadHealth(); loadProjects(); } },
   { id: "toolhealth", label: "Tool health", needsFeed: false, render: () => toolHealthPage(), onVisit: () => loadToolHealth(), afterPaint: () => thFocusBack() },
   { id: "board", label: "Board", needsFeed: false, render: trackerPage(() => renderBoard(roadmap, roadmapUi, boardExtras)), afterPaint: () => { whyFocus(null); loadDriftOrigins(); return placeRows(); }, onVisit: () => { if (!(sources && !sources.length)) { if (!roadmap) loadRoadmap(); if (!boardExtras) loadBoard(); if (roadmapUi.tab === "nv" && !roadmapUi.nv) loadNoVersion(); } } },
@@ -313,9 +314,9 @@ function toast(t) {
 // this page does; the page shows the banner and disables the write controls so nothing offers a change that cannot land.
 let readOnly = false;
 const WRITE_CONTROLS = [
-  '[data-act="plan"]', '[data-act="run"]', '[data-act="consent"]', '[data-act="vm-save"]', '[data-act="reports-save"]', '[data-act="review-gate-save"]', '[data-act="role-toggle"]', '[data-act="roles-save"]',
+  '[data-act="plan"]', '[data-act="run"]', '[data-act="consent"]', '[data-act="vm-save"]', '[data-act="reports-save"]', '[data-act="review-gate-save"]', '[data-act="role-toggle"]', '[data-act="roles-save"]', '[data-act="gc-save"]',
   '[data-act="setup-remove"]', '[data-act="setup-verify"]', '[data-act="drift-refresh"]',
-  '[data-vm]', '[data-rs]', '[data-fc]', '[data-rg]', 'select.rm-theme',
+  '[data-vm]', '[data-gc]', '[data-rs]', '[data-fc]', '[data-rg]', 'select.rm-theme',
   'form[data-setup-form] :is(input,button)', 'form[data-path-form] :is(input,button)', 'form[data-account-form] :is(input,button)',
 ].join(",");
 function lockWrites() {
@@ -443,6 +444,36 @@ async function saveVm() {
   const { ok, j } = res;
   const edited = state.vm.draft && JSON.stringify(state.vm.draft) !== sent; // typed while the save was in flight: keep it
   state.vm = ok ? { data: j, error: null, draft: edited ? state.vm.draft : vmDraft(j), msg: { ok: true, text: "saved" } } : { ...state.vm, msg: { ok: false, text: j.error || "save failed" } };
+  paint();
+}
+
+const graphDraft = (d) => ({ roots: d.corpora.map((c) => c.root).join("\n"), primary: d.primary || "none", fallbacks: d.fallbacks.join(", "), cap: d.max_usd_per_pass == null ? "5.00" : String(d.max_usd_per_pass) });
+async function loadGraphChoices() {
+  const gen = ++graphLoadGen;
+  state.graph = { data: null, error: null };
+  try {
+    const r = await fetch("/api/graph-choices", { headers: { "X-Himmel-Token": token }, cache: "no-store" });
+    const j = await r.json();
+    if (gen !== graphLoadGen) return;
+    state.graph = r.ok ? { data: j, error: null, draft: graphDraft(j) } : { data: null, error: j.error || `graph choices failed (${r.status})` };
+  } catch (_) { if (gen !== graphLoadGen) return; state.graph = { data: null, error: "graph choices: server unreachable" }; }
+  if (currentPage.id === "config") paint();
+}
+async function saveGraphChoices() {
+  const g = state.graph, d = g && g.draft;
+  if (!d || graphSaving) return;
+  graphSaving = true;
+  const named = Object.fromEntries(g.data.corpora.map((c) => [c.root, c.name]));
+  const corpora = d.roots.split("\n").map((r) => r.trim()).filter(Boolean).map((root) => (named[root] ? { name: named[root], root } : { root }));
+  const fallbacks = d.primary === "none" ? [] : d.fallbacks.split(",").map((v) => v.trim()).filter(Boolean);
+  const body = { corpora, primary: d.primary, fallbacks };
+  if ([d.primary, ...fallbacks].some((v) => /^[A-Z]$/.test(v))) body.max_usd_per_pass = d.cap.trim() === "" ? null : Number(d.cap);
+  const sent = JSON.stringify(d);
+  let res;
+  try { res = await post("/api/graph-choices", body); } finally { graphSaving = false; }
+  const { ok, j } = res;
+  const edited = state.graph.draft && JSON.stringify(state.graph.draft) !== sent; // typed while the save was in flight: keep it
+  state.graph = ok ? { data: j, error: null, draft: edited ? state.graph.draft : graphDraft(j), msg: { ok: true, text: "saved" } } : { ...state.graph, msg: { ok: false, text: j.error || "save failed" } };
   paint();
 }
 
@@ -935,6 +966,7 @@ document.addEventListener("change", (e) => {
   }
   if (e.target.dataset.fc === "cap" && state.fleetCap && state.fleetCap.data) { state.fleetCap.draft = e.target.value; state.fleetCap.msg = null; return; }
   if (e.target.dataset.vm === "mode" && state.vm && state.vm.draft) { state.vm.draft.mode = e.target.value; state.vm.msg = null; return paint(); }
+  if (e.target.dataset.gc === "primary" && state.graph && state.graph.draft) { state.graph.draft.primary = e.target.value; state.graph.msg = null; return paint(); }
   if (e.target.dataset.rs === "report_day" && state.reports && state.reports.draft) { state.reports.draft.report_day = e.target.value; state.reports.msg = null; return paint(); }
   if (e.target.dataset.rmHideDone !== undefined) { roadmapUi.hideDone = e.target.checked; return paint(); }
   if (e.target.dataset.rmHidePrev !== undefined) { roadmapUi.hidePrev = e.target.checked; return paint(); }
@@ -1045,6 +1077,7 @@ document.addEventListener("click", (e) => {
   if (b.dataset.act === "drift-refresh") return void refreshDriftRun();
   if (b.dataset.act === "refresh-shift") return void loadShift();
   if (b.dataset.act === "vm-save") return void saveVm();
+  if (b.dataset.act === "gc-save") return void saveGraphChoices();
   if (b.dataset.act === "reports-save") return void saveReportSettings();
   if (b.dataset.act === "refresh-report") return void loadReport();
   if (b.dataset.act === "review-gate-save") return void saveReviewGate();
@@ -1110,6 +1143,8 @@ document.addEventListener("input", (e) => {
   const rf = e.target.dataset.rs;
   if (rf && rf !== "report_day" && state.reports && state.reports.draft) { state.reports.draft[rf] = e.target.value; return; } // no repaint: keep the caret
   if (vf && vf !== "mode" && state.vm && state.vm.draft) { state.vm.draft[vf] = e.target.value; return; } // no repaint: keep the caret
+  const gf = e.target.dataset.gc;
+  if (gf && gf !== "primary" && state.graph && state.graph.draft) { state.graph.draft[gf] = e.target.value; return; } // no repaint: keep the caret
   if (e.target.dataset.fc === "cap" && state.fleetCap && state.fleetCap.data) { state.fleetCap.draft = e.target.value; state.fleetCap.msg = null; return; } // typed text survives a repaint before blur
   if (e.target.dataset.rg === "model" && state.reviewGate && state.reviewGate.draft) {
     const x = state.reviewGate.draft.find((y) => y.slug === e.target.dataset.slug);
