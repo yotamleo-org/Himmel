@@ -91,7 +91,8 @@ export HIMMELCTL_BIN_DIR
 # the named absent tools scrubbed.)
 build_path() {
   local _stub="$1"; shift
-  local _present=() _absent=() _stage=0 _t
+  # a station graphify makes the wizard ask its graph step (askGraphChoices); CI has none, so neither does this PATH
+  local _present=() _absent=(graphify) _stage=0 _t
   for _t in "$@"; do
     if [ "$_t" = "--" ]; then _stage=1; continue; fi
     if [ "$_stage" -eq 0 ]; then _present+=("$_t"); else _absent+=("$_t"); fi
@@ -813,5 +814,332 @@ grepq "$out14" -F '? whisper model [tiny|base|small|medium|large-v3|large-v3-tur
 grepq "$out14" -F '"whisperModel": "ggml-small.bin"' \
   || fail "case14: pressing Enter should record the default bare filename ggml-small.bin (got: $out14)"
 echo "ok: case14 pressing Enter accepts the whisper-model default; non-operator presets are unchanged"
+
+# ── W1 to W19: the graph step (which repos to graph, who pays, the fallbacks) ──
+# askGraphChoices runs on a scripted ask (gw_ask), applyGraphChoicesStep on a
+# hermetic HOME (gw_apply); W1, W4, W9 and W11 drive the real install. Every
+# row pins the config and config-audit seams under its HOME, a fixture .env
+# holding a planted key, a recording crontab and the alert dedupe directory.
+GW="$work/gw"; mkdir -p "$GW/stubs" "$GW/repos/acme/.git" "$GW/repos/My Project/.git" "$GW/repos/plain"
+printf '#!/bin/sh\nexit 0\n' > "$GW/stubs/graphify"
+# shellcheck disable=SC2016  # the stub body expands at its own run time
+printf '#!/bin/sh\necho "$*" >> "$GW_CRON_CALLS"\ncase "$1" in -l) [ -f "$GW_CRON_TAB" ] && cat "$GW_CRON_TAB" || { echo "no crontab for tester" >&2; exit 1; } ;; -) cat > "$GW_CRON_TAB" ;; esac\n' > "$GW/stubs/crontab"
+printf '#!/bin/sh\nexit 0\n' > "$GW/alert-stub.sh"
+chmod +x "$GW/stubs/graphify" "$GW/stubs/crontab" "$GW/alert-stub.sh"
+build_hermetic_bin "$GW/stubs-nog" jq python3 npm git; cp "$GW/stubs/crontab" "$GW/stubs-nog/crontab"
+ACME=$(cd "$GW/repos/acme" && pwd -P); MYPROJ=$(cd "$GW/repos/My Project" && pwd -P); PLAIN=$(cd "$GW/repos/plain" && pwd -P)
+GW_PATH="$GW/stubs:$PATH"
+GW_NO_GRAPHIFY_PATH="$GW/stubs-nog:$(scrub_path "$PATH" graphify)"
+GW_ROSTER_AC="$GW/roster-ac.json"; GW_ROSTER_A="$GW/roster-a.json"; GW_ROSTER_D="$GW/roster-d.json"; GW_ROSTER_BAD="$GW/roster-bad.json"
+printf '{"version":1,"ledger_path":"%s","accounts":{"A":{"organization_id":"org-a","cycle_id":"c","cap_usd":"1"},"C":{"organization_id":"org-c","cycle_id":"c","cap_usd":"1"}}}\n' "$GW/ledger.json" > "$GW_ROSTER_AC"
+printf '{"version":1,"ledger_path":"%s","accounts":{"A":{"organization_id":"org-a","cycle_id":"c","cap_usd":"1"}}}\n' "$GW/ledger.json" > "$GW_ROSTER_A"
+printf '{"version":1,"ledger_path":"%s","accounts":{"D":{"organization_id":"org-d","cycle_id":"c","cap_usd":"1"}}}\n' "$GW/ledger.json" > "$GW_ROSTER_D"
+printf '{"version":1,"ledger_path":"%s","accounts":{"A":"x"}}\n' "$GW/ledger.json" > "$GW_ROSTER_BAD"
+gc_lib_w="$(winpath "$repo_root/scripts/himmelctl/lib/graph-choices.js")"
+NO_CHOICE_S=$("$node_bin" -e "process.stdout.write(require('$gc_lib_w').NO_CHOICE_SENTENCE)")
+NOT_JSON_LINE=$("$node_bin" -e "process.stdout.write(require('$gc_lib_w').CAUSE_LINES['not-json'])")
+ROSTER_UNREADABLE='no API account is set up here, or its roster cannot be read; none is offered'
+ROSTER_INVALID='a row in the API roster names a letter outside'
+RELEASE_Q1='This release install has no himmel graph; a git install pulls it from us.'
+GIT_Q1='The himmel code graph comes from us with each update; you do not build it.'
+
+cat > "$GW/driver.js" <<'JS'
+// driver.js <bin.js> ask|apply <json>: ask runs askGraphChoices on scripted answers
+// (an exhausted list answers '' like a closed stdin); apply runs applyGraphChoicesStep.
+const bin = require(process.argv[2]);
+const spec = JSON.parse(process.argv[4]);
+(async () => {
+  if (process.argv[3] === 'ask') {
+    const answers = spec.answers.slice();
+    let asked = 0;
+    const ask = (q) => {
+      asked += 1;
+      if (asked > 40) throw new Error('driver: more than 40 prompts');
+      process.stdout.write(q + '\n');
+      return Promise.resolve(answers.length ? answers.shift() : '');
+    };
+    const r = await bin.askGraphChoices(ask, spec.opts);
+    console.log('RESULT ' + JSON.stringify(r));
+    console.log('ASKED ' + asked);
+  } else {
+    const r = await bin.applyGraphChoicesStep(spec.graph, { dryRun: Boolean(spec.dryRun) });
+    console.log('RC ' + r.rc);
+  }
+})().catch((e) => { console.log('DRIVER-ERROR ' + e.message); process.exitCode = 1; });
+JS
+
+# gw_home <name>: a fresh hermetic HOME for one row, its seams exported.
+gw_home() {
+  GH="$GW/h-$1"; mkdir -p "$GH/.himmel" "$GH/dotenv"
+  printf 'ANTHROPIC_API_KEY=sk-ant-gw-planted-%s\n' "$1" > "$GH/dotenv/.env"
+  export HOME="$GH" USERPROFILE="$GH" HIMMEL_CONFIG_DIR="$GH/.himmel" HIMMEL_CONFIG_AUDIT_DIR="$GH/.himmel/state/config-audit" \
+    HIMMEL_CONFIG_AUDIT_ENV_FILE="$GH/dotenv/.env" HIMMEL_CONFIG_ALERT_CMD="$GW/alert-stub.sh" HIMMEL_TEST_FIXTURE=1 \
+    HIMMEL_API_CREDIT_CONFIG="$GW/no-roster.json" HIMMELCTL_CACHE_DIR="$GH/cache" \
+    GRAPH_CHOICES_CRONTAB="$GW/stubs/crontab" GRAPH_CHOICES_BAT_DIR="$GH/bat" GW_CRON_CALLS="$GH/cron.calls" GW_CRON_TAB="$GH/cron.tab" \
+    CADENCE_ALERT_DEDUPE_DIR="$GH/dedupe" CADENCE_ALERT_FILE="$GH/alerts.log" CADENCE_ALERT_SEND_CMD="$GW/alert-stub.sh" \
+    HIMMEL_PROVENANCE_DIR="$GH/prov"
+  unset HIMMEL_LUNA_CONFIG_PATH
+}
+gw_ask() { PATH="$GW_PATH" "$node_bin" "$GW/driver.js" "$wizard" ask "$1" 2>&1 || true; }
+gw_apply() { PATH="$GW_PATH" "$node_bin" "$GW/driver.js" "$wizard" apply "$1" 2>&1 || true; }
+gw_choices() { jq -c '.graphify.choices // "absent"' "$HOME/.himmel/config.json" 2>/dev/null || echo "no-file"; }
+gw_accounts() { HIMMEL_API_CREDIT_CONFIG="$1" "$node_bin" "$repo_root/scripts/lib/api-credit-state.mjs" accounts; }
+gw_opts() { # gw_opts <accounts json> [existing json] [jobArmed] [role] [graphifyPresent] [firstQuestion]
+  jq -nc --argjson accounts "$1" --argjson existing "${2:-null}" --argjson jobArmed "${3:-false}" --arg role "${4:-adopter}" \
+    --argjson present "${5:-true}" --arg fq "${6:-$GIT_Q1}" \
+    '{role:$role, firstQuestion:$fq, accounts:$accounts, existing:$existing, jobArmed:$jobArmed, graphifyPresent:$present}'
+}
+gw_spec() { jq -nc --argjson opts "$1" --argjson answers "$2" '{opts:$opts, answers:$answers}'; }
+DEFAULT_ROUTE='{"state":"default","corpora":[],"order":["subscription"],"max_usd_per_pass":null,"errors":[]}'
+STORED_EXAMPLE=$(jq -nc --arg r "$ACME" '{version:1,corpora:[{name:"acme",root:$r}],primary:"C",fallbacks:["A","subscription"],max_usd_per_pass:5}')
+
+# W1: Enter on Q1 writes no store, prints the sentence, asks nothing else, arms nothing.
+gw_home w1
+out=$(gw_ask "$(gw_spec "$(gw_opts "$(gw_accounts "$GW_ROSTER_AC")" "$DEFAULT_ROUTE")" '[""]')")
+grepq "$out" -F 'RESULT {"choices":null,"clear":false,"armJob":false}' || fail "W1: Enter on Q1 must return no choices and no arm (got: $out)"
+grepq "$out" -F 'ASKED 1' || fail "W1: Enter on Q1 must ask nothing else (got: $out)"
+grepq "$out" -F "$NO_CHOICE_S" || fail "W1: Enter on Q1 must print the no-choice sentence (got: $out)"
+grepq "$out" -F "$GIT_Q1" || fail "W1: Q1 must open with the git-install first-question text (got: $out)"
+out=$(gw_apply '{"graph":{"choices":null,"clear":false,"armJob":false}}')
+grepq "$out" -F 'RC 0' || fail "W1: applying an Enter must succeed (got: $out)"
+[ ! -e "$HOME/.himmel/config.json" ] || fail "W1: applying an Enter must write no config (found $(cat "$HOME/.himmel/config.json"))"
+[ ! -e "$GW_CRON_CALLS" ] || fail "W1: applying an Enter must not touch the crontab ($(cat "$GW_CRON_CALLS"))"
+gw_home w1e
+set +e
+out=$(PATH="$GW_PATH" HIMMELCTL_INTERACTIVE=1 "$node_bin" "$wizard" install --dry-run 2>&1 <<< "starter"); rc=$?
+set -e
+[ "$rc" -eq 0 ] || fail "W1: the dry-run install with Enter at Q1 should succeed (got rc=$rc): $out"
+grepq "$out" -F 'Which of your own git repos should be graphed on this machine?' || fail "W1: the install must ask Q1 when graphify is installed (got: $out)"
+grepq "$out" -F "$NO_CHOICE_S" || fail "W1: the install must print the no-choice sentence after Enter at Q1 (got: $out)"
+grepq "$out" -F 'Who pays first?' && fail "W1: the install must ask nothing after Enter at Q1 (got: $out)"
+[ ! -e "$HOME/.himmel/config.json" ] || fail "W1: the dry-run install must write no config"
+[ ! -e "$GW_CRON_CALLS" ] || fail "W1: the install must not touch the crontab ($(cat "$GW_CRON_CALLS"))"
+echo "ok: W1 Enter at Q1 writes no store, prints the sentence, asks nothing else and arms nothing"
+
+# W2: a repo, C, A,subscription, cap Enter stores the spec's example.
+gw_home w2
+out=$(gw_ask "$(gw_spec "$(gw_opts "$(gw_accounts "$GW_ROSTER_AC")" "$DEFAULT_ROUTE")" "$(jq -nc --arg r "$ACME" '[$r,"","C","A,subscription","",""]')")")
+got=$(sed -n 's/^RESULT //p' <<< "$out" | jq -c '.choices' || true)
+[ "$got" = "$STORED_EXAMPLE" ] || fail "W2: the answers must build the spec's example (want $STORED_EXAMPLE, got $got): $out"
+grepq "$out" -F "acme ($ACME)" || fail "W2: the stored name must be shown back (got: $out)"
+export HIMMEL_API_CREDIT_CONFIG="$GW_ROSTER_AC"
+out=$(gw_apply "$(jq -nc --argjson c "$STORED_EXAMPLE" '{graph:{choices:$c,clear:false,armJob:false}}')")
+grepq "$out" -F 'RC 0' || fail "W2: the apply step must save (got: $out)"
+[ "$(gw_choices)" = "$STORED_EXAMPLE" ] || fail "W2: the stored object must equal the spec's example (got $(gw_choices))"
+grep -q 'sk-ant-gw-planted' "$HOME/.himmel/config.json" && fail "W2: the planted fixture key reached the config"
+grepq "$out" -F 'sk-ant-gw-planted' && fail "W2: the planted fixture key reached the output"
+echo "ok: W2 a repo, C, then A,subscription and Enter at the cap store the spec's example"
+
+# W3: a re-run shows the stored answers as defaults; Enter keeps every one and writes nothing.
+STORED_ROUTE=$("$node_bin" "$gc_lib_w" route)
+out=$(gw_ask "$(gw_spec "$(gw_opts "$(gw_accounts "$GW_ROSTER_AC")" "$STORED_ROUTE")" '[]')")
+got=$(sed -n 's/^RESULT //p' <<< "$out" | jq -c '.choices' || true)
+[ "$got" = "$STORED_EXAMPLE" ] || fail "W3: Enter at every question must keep the stored answers (got $got): $out"
+grepq "$out" -F '(Enter for C)' || fail "W3: Q2 must show the stored primary as its default (got: $out)"
+grepq "$out" -F '(Enter for A,subscription)' || fail "W3: Q3 must show the stored fallbacks as its default (got: $out)"
+before=$(cksum < "$HOME/.himmel/config.json")
+out=$(gw_apply "$(jq -nc --argjson c "$got" '{graph:{choices:$c,clear:false,armJob:false}}')")
+grepq "$out" -F 'RC 0' || fail "W3: applying the unchanged answers must succeed (got: $out)"
+[ "$(cksum < "$HOME/.himmel/config.json")" = "$before" ] || fail "W3: unchanged answers must not rewrite the config"
+echo "ok: W3 a re-run offers the stored answers and Enter keeps them, writing nothing"
+
+# W4: a non-interactive (--from-profile) and a preset (--scope) run leave the store and print one suggestion.
+gw_home w4; prof_w4="$GW/w4-profile.json"
+printf '{"schemaVersion":2,"profile":"starter","devOverlay":false,"scope":"user","vault":{"mode":"none","path":""},"handover":{"mode":"inline","path":""},"pluginSet":"lean","lanes":[],"lanesMeaningful":true,"alwaysOn":false}\n' > "$prof_w4"
+for mode in profile scope; do
+  set +e
+  if [ "$mode" = profile ]; then
+    out=$(PATH="$GW_PATH" HIMMELCTL_INTERACTIVE=0 "$node_bin" "$wizard" install --dry-run --from-profile "$(winpath "$prof_w4")" </dev/null 2>&1); rc=$?
+  else
+    out=$(PATH="$GW_PATH" HIMMELCTL_INTERACTIVE=0 "$node_bin" "$wizard" install --dry-run --scope user </dev/null 2>&1); rc=$?
+  fi
+  set -e
+  [ "$rc" -eq 0 ] || fail "W4($mode): the run should succeed (got rc=$rc): $out"
+  n=$(grep -c 'graph choices: not asked on this run' <<< "$out" || true)
+  [ "$n" -eq 1 ] || fail "W4($mode): want exactly one suggestion line, got $n: $out"
+  grepq "$out" -F 'Which of your own git repos' && fail "W4($mode): a non-interactive run must not ask Q1 (got: $out)"
+  [ ! -e "$HOME/.himmel/config.json" ] || fail "W4($mode): the store must be untouched"
+done
+echo "ok: W4 non-interactive and preset runs leave the store untouched and print one suggestion line"
+
+# W6: on a publisher the step is skipped with a line.
+gw_home w6
+out=$(gw_ask "$(gw_spec "$(gw_opts '[]' "$DEFAULT_ROUTE" false publisher)" '[]')")
+grepq "$out" -F 'ASKED 0' || fail "W6: a publisher must be asked nothing (got: $out)"
+grepq "$out" -F 'graph choices: skipped' || fail "W6: a publisher must see the skip line (got: $out)"
+echo "ok: W6 a publisher skips the step with a line"
+
+# W7: no roster file offers none and subscription, prints its fixed line and where accounts are added.
+gw_home w7
+out=$(gw_ask "$(gw_spec "$(gw_opts "$(gw_accounts "$GW/no-roster.json")" "$DEFAULT_ROUTE")" "$(jq -nc --arg r "$ACME" '[$r,""]')")")
+grepq "$out" -F 'Who pays first? none / subscription (Enter for subscription)' || fail "W7: Q2 must offer none and subscription alone (got: $out)"
+grepq "$out" -F "$ROSTER_UNREADABLE" || fail "W7: Q2 must print the unreadable-state roster line (got: $out)"
+grepq "$out" -F 'API accounts are added' || fail "W7: Q2 must say where API accounts are added (got: $out)"
+echo "ok: W7 no roster offers none and subscription with its fixed line and where accounts are added"
+
+# W7b: a D row, and a damaged row, offer none and subscription with the invalid-account-config line.
+for r in "$GW_ROSTER_D" "$GW_ROSTER_BAD"; do
+  out=$(gw_ask "$(gw_spec "$(gw_opts "$(gw_accounts "$r")" "$DEFAULT_ROUTE")" "$(jq -nc --arg r "$ACME" '[$r,""]')")")
+  grepq "$out" -F 'Who pays first? none / subscription (Enter for subscription)' || fail "W7b(${r##*/}): Q2 must offer none and subscription alone (got: $out)"
+  grepq "$out" -F "$ROSTER_INVALID" || fail "W7b(${r##*/}): Q2 must print the invalid-account-config line (got: $out)"
+done
+echo "ok: W7b a D row and a damaged row offer none and subscription with the invalid-account-config line"
+
+# W8: a refused path re-asks naming why; My Project is stored as My-Project and shown back.
+gw_home w8
+out=$(gw_ask "$(gw_spec "$(gw_opts "$(gw_accounts "$GW/no-roster.json")" "$DEFAULT_ROUTE")" "$(jq -nc --arg p "$PLAIN" --arg m "$MYPROJ" '[$p,$m,""]')")")
+grepq "$out" -F "$PLAIN: the root holds no .git entry" || fail "W8: a path with no .git must be refused naming why (got: $out)"
+got=$(sed -n 's/^RESULT //p' <<< "$out" | jq -c '.choices.corpora' || true)
+[ "$got" = "$(jq -nc --arg m "$MYPROJ" '[{name:"My-Project",root:$m}]')" ] || fail "W8: My Project must be stored as My-Project (got $got): $out"
+grepq "$out" -F "My-Project ($MYPROJ)" || fail "W8: the stored name must be shown back (got: $out)"
+echo "ok: W8 a refused path re-asks naming why; My Project is stored as My-Project and shown back"
+
+# W9: Enter on "once a day" arms nothing; a typed yes arms, through the real cadence script.
+gw_home w9
+out=$(gw_ask "$(gw_spec "$(gw_opts "$(gw_accounts "$GW/no-roster.json")" "$DEFAULT_ROUTE")" "$(jq -nc --arg r "$ACME" '[$r,"","",""]')")")
+grepq "$out" -F 'Run this once a day from now on? yes/no (default no)' || fail "W9: the job question must be asked with a repo and no job (got: $out)"
+grepq "$out" -F '"armJob":false' || fail "W9: Enter on the job question must arm nothing (got: $out)"
+out=$(gw_ask "$(gw_spec "$(gw_opts "$(gw_accounts "$GW/no-roster.json")" "$DEFAULT_ROUTE")" "$(jq -nc --arg r "$ACME" '[$r,"","","yes"]')")")
+grepq "$out" -F '"armJob":true' || fail "W9: a typed yes must arm (got: $out)"
+out=$(gw_apply "$(jq -nc --arg r "$ACME" '{graph:{choices:{version:1,corpora:[{name:"acme",root:$r}]},clear:false,armJob:true}}')")
+grepq "$out" -F 'RC 0' || fail "W9: the apply step must save and arm (got: $out)"
+grepq "$(cat "$GW_CRON_TAB" 2>/dev/null)" -F '# HIMMEL-GraphChoices' || fail "W9: a typed yes must install the HIMMEL-GraphChoices row (got: $out)"
+gw_home w9s
+set +e
+out=$(PATH="$GW_PATH" HIMMELCTL_INTERACTIVE=1 "$node_bin" "$wizard" install --dry-run 2>&1 <<INPUT
+starter
+
+
+
+
+
+$ACME
+
+
+yes
+INPUT
+); rc=$?
+set -e
+[ "$rc" -eq 0 ] || fail "W9(starter): the dry-run install should succeed (got rc=$rc): $out"
+grepq "$out" -F 'Run this once a day from now on?' || fail "W9(starter): the job question must be asked on starter (got: $out)"
+grepq "$out" -F 'graph-choices-cadence.sh arm' || fail "W9(starter): the dry run must name the arm it would run (got: $out)"
+echo "ok: W9 Enter on the job question arms nothing; a typed yes arms, on starter too"
+
+# W10: subscription then C asks the cap.
+gw_home w10
+out=$(gw_ask "$(gw_spec "$(gw_opts "$(gw_accounts "$GW_ROSTER_AC")" "$DEFAULT_ROUTE")" "$(jq -nc --arg r "$ACME" '[$r,"","subscription","C","7",""]')")")
+grepq "$out" -F 'At most how many USD, estimated, per pass? (Enter for 5.00)' || fail "W10: a letter in the fallbacks must ask the cap (got: $out)"
+got=$(sed -n 's/^RESULT //p' <<< "$out" | jq -c '[.choices.primary,.choices.fallbacks,.choices.max_usd_per_pass]' || true)
+[ "$got" = '["subscription",["C"],7]' ] || fail "W10: want subscription, [C] and a cap of 7 (got $got)"
+echo "ok: W10 subscription then C asks the cap"
+
+# W11: --dry-run writes nothing and prints the plan.
+gw_home w11
+export HIMMEL_API_CREDIT_CONFIG="$GW_ROSTER_AC"
+out=$(gw_apply "$(jq -nc --argjson c "$STORED_EXAMPLE" '{graph:{choices:$c,clear:false,armJob:true},dryRun:true}')")
+grepq "$out" -F 'RC 0' || fail "W11: the dry run must succeed (got: $out)"
+grepq "$out" -F 'would save graphify.choices' || fail "W11: the dry run must print the save it would make (got: $out)"
+grepq "$out" -F 'graph-choices-cadence.sh arm' || fail "W11: the dry run must print the arm it would run (got: $out)"
+[ ! -e "$HOME/.himmel/config.json" ] || fail "W11: the dry run must write no config"
+[ ! -e "$GW_CRON_CALLS" ] || fail "W11: the dry run must not touch the crontab"
+echo "ok: W11 --dry-run writes nothing and prints the plan"
+
+# W12: graphify absent prints the sentence and the install command and asks nothing.
+gw_home w12
+out=$(gw_ask "$(gw_spec "$(gw_opts '[]' "$DEFAULT_ROUTE" false adopter false)" '[]')")
+grepq "$out" -F 'ASKED 0' || fail "W12: no graphify must ask nothing (got: $out)"
+grepq "$out" -F "$NO_CHOICE_S" || fail "W12: no graphify must print the state's sentence (got: $out)"
+grepq "$out" -F 'bash scripts/setup.sh --with-graphify' || fail "W12: no graphify must print the install command (got: $out)"
+gw_home w12e
+set +e
+out=$(PATH="$GW_NO_GRAPHIFY_PATH" HIMMELCTL_INTERACTIVE=1 "$node_bin" "$wizard" install --dry-run 2>&1 <<< "starter"); rc=$?
+set -e
+[ "$rc" -eq 0 ] || fail "W12: the dry-run install without graphify should succeed (got rc=$rc): $out"
+grepq "$out" -F 'bash scripts/setup.sh --with-graphify' || fail "W12: the install without graphify must print the install command (got: $out)"
+grepq "$out" -F 'Which of your own git repos' && fail "W12: the install without graphify must not ask Q1 (got: $out)"
+echo "ok: W12 graphify absent prints the sentence and the install command and asks nothing"
+
+# W13: an unreadable config skips the step with the reason; nothing is saved.
+gw_home w13
+out=$(gw_ask "$(gw_spec "$(gw_opts '[]' '{"state":"unreadable","corpora":[],"order":[],"max_usd_per_pass":null,"errors":[]}' false unreadable | jq -c '.cause="not-json"')" '[]')")
+grepq "$out" -F 'ASKED 0' || fail "W13: an unreadable config must ask nothing (got: $out)"
+grepq "$out" -F "graph config unreadable (cause=not-json): $NOT_JSON_LINE" || fail "W13: the skip must name the cause and its line (got: $out)"
+grepq "$out" -F 'RESULT {"choices":null,"clear":false,"armJob":false}' || fail "W13: nothing is saved (got: $out)"
+echo "ok: W13 an unreadable config skips the step with its reason and saves nothing"
+
+# W14: clear removes the choices; Enter on the cap keeps it; with the job armed it is not asked and nothing disarms.
+gw_home w14
+STORED_W14=$(jq -nc --arg r "$ACME" '{version:1,corpora:[{name:"acme",root:$r}],primary:"A",fallbacks:[],max_usd_per_pass:7}')
+jq -n --argjson c "$STORED_W14" '{graphify:{semantic_api_ok:false,choices:$c}}' > "$HOME/.himmel/config.json"
+ROUTE_W14=$("$node_bin" "$gc_lib_w" route)
+out=$(gw_ask "$(gw_spec "$(gw_opts "$(gw_accounts "$GW_ROSTER_A")" "$ROUTE_W14" true)" '[]')")
+got=$(sed -n 's/^RESULT //p' <<< "$out" | jq -c '.choices.max_usd_per_pass' || true)
+[ "$got" = 7 ] || fail "W14: Enter on the cap must keep the stored 7 (got $got): $out"
+grepq "$out" -F 'once a day' && fail "W14: with the job armed the job question must not be asked (got: $out)"
+grepq "$out" -F '"armJob":false' || fail "W14: a re-run with the job armed arms nothing (got: $out)"
+out=$(gw_ask "$(gw_spec "$(gw_opts "$(gw_accounts "$GW_ROSTER_A")" "$ROUTE_W14" true)" '["clear"]')")
+grepq "$out" -F 'RESULT {"choices":null,"clear":true,"armJob":false}' || fail "W14: clear must return a clear (got: $out)"
+export HIMMEL_API_CREDIT_CONFIG="$GW_ROSTER_A"
+out=$(gw_apply '{"graph":{"choices":null,"clear":true,"armJob":false}}')
+grepq "$out" -F 'RC 0' || fail "W14: applying a clear must succeed (got: $out)"
+[ "$(gw_choices)" = '"absent"' ] || fail "W14: clear must remove graphify.choices (got $(gw_choices))"
+[ "$(jq -c '.graphify.semantic_api_ok' "$HOME/.himmel/config.json")" = false ] || fail "W14: clear must keep the other graphify keys"
+[ ! -e "$GW_CRON_CALLS" ] || fail "W14: a re-run must never disarm ($(cat "$GW_CRON_CALLS"))"
+echo "ok: W14 clear removes the choices, Enter keeps the cap, and an armed job is neither asked nor disarmed"
+
+# W15: a release install says it has no himmel graph, and own repos still work.
+gw_home w15
+out=$(gw_ask "$(gw_spec "$(gw_opts "$(gw_accounts "$GW/no-roster.json")" "$DEFAULT_ROUTE" false adopter true "$RELEASE_Q1")" "$(jq -nc --arg r "$ACME" '[$r,"","",""]')")")
+grepq "$out" -F "$RELEASE_Q1" || fail "W15: a release install must say it has no himmel graph (got: $out)"
+grepq "$out" -F '"name":"acme"' || fail "W15: own repos must still work on a release install (got: $out)"
+echo "ok: W15 a release install says it has no himmel graph and own repos still work"
+
+# W16: only A configured: Q2 reads none / subscription / A; after A, Q3 offers subscription alone.
+gw_home w16
+out=$(gw_ask "$(gw_spec "$(gw_opts "$(gw_accounts "$GW_ROSTER_A")" "$DEFAULT_ROUTE")" "$(jq -nc --arg r "$ACME" '[$r,"","A","","",""]')")")
+grepq "$out" -F 'Who pays first? none / subscription / A (Enter for subscription)' || fail "W16: Q2 must read none / subscription / A (got: $out)"
+grepq "$out" -F 'try what next, in order? subscription (Enter for nothing)' || fail "W16: Q3 must offer subscription alone (got: $out)"
+grepq "$out" -F 'At most how many USD' || fail "W16: the cap must be asked with A in the route (got: $out)"
+got=$(sed -n 's/^RESULT //p' <<< "$out" | jq -c '[.choices.primary,.choices.fallbacks]' || true)
+[ "$got" = '["A",[]]' ] || fail "W16: Enter at Q3 must store fallbacks [] (got $got)"
+echo "ok: W16 one configured account reads none / subscription / A and Q3 offers subscription alone"
+
+# W17: A and C configured: Q2 lists both, C then A keeps that order; a stubbed A, B, D roster lists those three (stub-only).
+gw_home w17
+out=$(gw_ask "$(gw_spec "$(gw_opts "$(gw_accounts "$GW_ROSTER_AC")" "$DEFAULT_ROUTE")" "$(jq -nc --arg r "$ACME" '[$r,"","C","A","",""]')")")
+grepq "$out" -F 'Who pays first? none / subscription / A / C' || fail "W17: Q2 must list A and C (got: $out)"
+got=$(sed -n 's/^RESULT //p' <<< "$out" | jq -c '[.choices.primary,.choices.fallbacks]' || true)
+[ "$got" = '["C",["A"]]' ] || fail "W17: C then A must keep that order (got $got)"
+STUB_ABD='[{"account":"A","configured":true},{"account":"B","configured":true},{"account":"D","configured":true}]'
+out=$(gw_ask "$(gw_spec "$(gw_opts "$STUB_ABD" "$DEFAULT_ROUTE")" "$(jq -nc --arg r "$ACME" '[$r,""]')")")
+grepq "$out" -F 'Who pays first? none / subscription / A / B / D' || fail "W17 (stub-only): a stubbed A, B, D roster must list those three (got: $out)"
+echo "ok: W17 two configured accounts are listed and keep the typed order; a stubbed A, B, D roster lists three (stub-only)"
+
+# W18: a re-run that drops A from A,C clears A's alert sentinel, keeps C's, and runs no key-ok.
+gw_home w18
+STORED_W18=$(jq -nc --arg r "$ACME" '{version:1,corpora:[{name:"acme",root:$r}],primary:"A",fallbacks:["C"],max_usd_per_pass:5}')
+jq -n --argjson c "$STORED_W18" '{graphify:{choices:$c}}' > "$HOME/.himmel/config.json"
+mkdir -p "$CADENCE_ALERT_DEDUPE_DIR"; : > "$CADENCE_ALERT_DEDUPE_DIR/graph-key-A.rejected"; : > "$CADENCE_ALERT_DEDUPE_DIR/graph-key-C.rejected"
+printf '{"accounts":{"A":{"key_rejected_at":1700000000}}}\n' > "$GW/ledger.json"; ledger_before=$(cksum < "$GW/ledger.json")
+export HIMMEL_API_CREDIT_CONFIG="$GW_ROSTER_AC"
+out=$(gw_apply "$(jq -nc --arg r "$ACME" '{graph:{choices:{version:1,corpora:[{name:"acme",root:$r}],primary:"C",fallbacks:[],max_usd_per_pass:5},clear:false,armJob:false}}')")
+grepq "$out" -F 'RC 0' || fail "W18: the re-run must save (got: $out)"
+[ ! -e "$CADENCE_ALERT_DEDUPE_DIR/graph-key-A.rejected" ] || fail "W18: dropping A must clear its alert sentinel"
+[ -e "$CADENCE_ALERT_DEDUPE_DIR/graph-key-C.rejected" ] || fail "W18: C stays in the route, so its sentinel must stay"
+[ "$(cksum < "$GW/ledger.json")" = "$ledger_before" ] || fail "W18: no key-ok may run (A's key_rejected_at changed)"
+echo "ok: W18 dropping A clears its alert sentinel, keeps C's, and runs no key-ok"
+
+# W19: a typed C that is not configured is refused naming C and re-asked; a roster gone unreadable refuses A at apply.
+gw_home w19
+out=$(gw_ask "$(gw_spec "$(gw_opts "$(gw_accounts "$GW_ROSTER_A")" "$DEFAULT_ROUTE")" "$(jq -nc --arg r "$ACME" '[$r,"","C","A","","",""]')")")
+grepq "$out" -F 'C is not a configured API account' || fail "W19: a typed C must be refused naming C (got: $out)"
+[ "$(grep -c 'Who pays first?' <<< "$out")" -eq 2 ] || fail "W19: Q2 must be asked again after the refusal (got: $out)"
+grepq "$out" -F '"primary":"A"' || fail "W19: the re-asked answer A must stand (got: $out)"
+export HIMMEL_API_CREDIT_CONFIG="$GW/no-roster.json"
+out=$(gw_apply "$(jq -nc --arg r "$ACME" '{graph:{choices:{version:1,corpora:[{name:"acme",root:$r}],primary:"A",fallbacks:[],max_usd_per_pass:5},clear:false,armJob:false}}')")
+grepq "$out" -F 'RC 1' || fail "W19: a roster gone unreadable must refuse the save (got: $out)"
+grepq "$out" -F "$ROSTER_UNREADABLE" || fail "W19: the refusal must carry the roster's fixed line (got: $out)"
+[ ! -e "$HOME/.himmel/config.json" ] || fail "W19: a refused save must not write the store"
+echo "ok: W19 an unconfigured letter is refused naming it and re-asked; an unreadable roster refuses the save"
 
 echo "PASS"

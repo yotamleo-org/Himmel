@@ -40,7 +40,8 @@ export HIMMELCTL_BIN_DIR
 
 stub="$work/stub"; mkdir -p "$stub"
 link_hermetic_tool bash "$stub"; link_hermetic_tool jq "$stub"; link_hermetic_tool python3 "$stub"; link_hermetic_tool npm "$stub"
-tpath="$stub:$PATH"
+# a station graphify makes the wizard ask its graph step (askGraphChoices); CI has none, so neither does this PATH
+tpath="$stub:$(scrub_path "$PATH" graphify)"
 
 fixture="$work/fixture"; mkdir -p "$fixture/scripts"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$fixture/scripts/adopt.sh"
