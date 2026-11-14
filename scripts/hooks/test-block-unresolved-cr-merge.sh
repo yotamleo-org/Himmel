@@ -106,8 +106,8 @@ case "$1 $2" in
   "api graphql")
     case "$GH_STUB_MODE" in
       cr-ci-api-error) exit 1 ;;
-      cr-hang) sleep 30; exit 1 ;;   # a hung GraphQL read
-      cr-hang-noterm) trap '' TERM; sleep 30; exit 1 ;;   # a gh that ignores SIGTERM
+      cr-hang) sleep 30; exit 1 ;;
+      cr-hang-noterm) trap '' TERM; sleep 30; exit 1 ;;
       unresolved) echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"isResolved":false,"comments":{"nodes":[{"author":{"login":"coderabbitai"}}]}}]}}}}}' ;;
       other-author) echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[{"isResolved":false,"comments":{"nodes":[{"author":{"login":"someuser"}}]}}]}}}}}' ;;
       *) echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[{"isResolved":true,"comments":{"nodes":[{"author":{"login":"coderabbitai"}}]}}]}}}}}' ;;
@@ -117,7 +117,7 @@ case "$1 $2" in
   "api repos/o/r/commits/abc123/check-runs"*)
     case "$GH_STUB_MODE" in
       cr-ci-api-error) exit 1 ;;
-      ci-hang)  sleep 30; exit 1 ;;   # a hung check-runs read
+      ci-hang)  sleep 30; exit 1 ;;
       ci-red)   echo '{"check_runs":[{"name":"tests","status":"completed","conclusion":"failure"}]}' ;;
       ci-green) echo '{"check_runs":[{"name":"tests","status":"completed","conclusion":"success"}]}' ;;
       *)        echo '{"check_runs":[]}' ;;

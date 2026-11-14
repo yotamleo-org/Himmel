@@ -380,8 +380,6 @@ assert "cd \$(…) substitution"     PASS  "$(decide "$(j_bash 'cd $(cat target)
 
 # --- quote-aware split — separators INSIDE quotes are literal ---
 # A jira comment/desc body containing newlines / ; / | / > must still ALLOW.
-# The old quote-blind sed split shredded a multi-line body into junk segments
-# (e.g. "PROJ-36 (catch-up) …") that failed is_safe_bin → whole write denied.
 nl=$'\n'
 assert "comment newline body"      ALLOW "$(decide "$(j_bash "node scripts/jira/dist/index.js comment PROJ-26 'first${nl}second'")")"
 assert "comment semicolon body"    ALLOW "$(decide "$(j_bash "node scripts/jira/dist/index.js comment PROJ-26 'do x; then y'")")"
