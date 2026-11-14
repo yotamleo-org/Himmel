@@ -27,6 +27,7 @@ import { admissionBudget, commentLeaks, leakDiff, leakLine } from '../release/le
 import { coreMatch, expandPaths, loadCorePatterns, sizeGuard } from '../release/core.js';
 import { releaseDir, releaseKeyPath, releaseRoot } from '../release/paths.js';
 import { terminalOf } from '../release/reducer.js';
+import { mergedPrOf } from '../release/close-placement.js';
 import { asksOperator, operatorWorkOf, type TicketFacts } from '../release/operator-work.js';
 import type { Authority, Op, OperatorKind, Verb } from '../release/types.js';
 
@@ -809,7 +810,7 @@ export function registerRelease(program: Command): void {
       try {
         lines = await rmRun(ctx, judgeFor(ctx), {
           doc: o.doc, session: `rm-run-${process.pid}`, ruling: o.ruling, chiefOverride: chiefOverrideOf(o), signal: stop.signal,
-          judgeTimeoutMs: RM_RUN_JUDGE_DEADLINE_MS,
+          judgeTimeoutMs: RM_RUN_JUDGE_DEADLINE_MS, deliveredPr: (key) => mergedPrOf(key)?.number,
           onJudge: (n, ms) => { judgeLine.push(`RM-RUN ${release} judge: ${n} requests, ${ms} ms`); },
         });
       } catch (e) {
@@ -956,13 +957,15 @@ export function registerRelease(program: Command): void {
     });
   operator.command('standing <release>')
     .description('Record a standing operator rule on a release declared before it existed (new releases get it at declare)')
-    .requiredOption('--kind <kind>', 'blocker-pull')
+    .requiredOption('--kind <kind>', 'blocker-pull | delivered-follows-merge')
     .requiredOption('--decision <n>', 'Operator decision number')
     .requiredOption('--verbatim-file <path>', 'The operator\'s words, verbatim')
     .action((release: string, o: { kind: string; decision: string; verbatimFile: string }) => {
-      if (o.kind !== 'blocker-pull') throw new Error('release operator standing: --kind is blocker-pull');
+      if (o.kind !== 'blocker-pull' && o.kind !== 'delivered-follows-merge') throw new Error('release operator standing: --kind is blocker-pull or delivered-follows-merge');
       const r = standing(ctxFor(release), { kind: o.kind, decision: o.decision, verbatim: readBodyFile(o.verbatimFile, '--verbatim-file').trim() });
-      console.log(`${r.id} recorded; \`jira release pull ${release}\` files the INTAKE requests it covers`);
+      console.log(o.kind === 'blocker-pull'
+        ? `${r.id} recorded; \`jira release pull ${release}\` files the INTAKE requests it covers`
+        : `${r.id} recorded; \`jira release rm-run ${release}\` admits a delivered ticket in a later version under it`);
     });
   operator.command('spec <release>')
     .description('Sign a minerva spec for its keys after the operator approves it')

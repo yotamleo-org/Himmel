@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Command } from 'commander';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -57,7 +57,8 @@ import { admissionBudget } from '../release/leaks.js';
 import { ctxFor, JUDGE_API_PASS_ENV, judgeApiEnv, judgeCall, judgeEnv, judgeFor, judgePrompt, JUDGE_SPAWN_TIMEOUT_MS, JUDGE_TIMEOUT_S, liveJira, liveJudge, makeRoutedJudge, parseDecisions, refuseRequest, registerRelease, renderState, routedJudge } from './release.js';
 import type { Judge, JudgeInput } from '../release/engine.js';
 import { defaultRoot } from './mirror.js';
-import { appendChain, loadKey } from '../release/ledger.js';
+import { appendChain, loadKey, readChain } from '../release/ledger.js';
+import type { OperatorRow } from '../release/types.js';
 
 let out: string[];
 let root: string;
@@ -697,6 +698,23 @@ describe('jira release pull', () => {
       .rejects.toThrow(/already recorded/);
     await expect(run('operator', 'standing', 'R1', '--kind', 'other', '--decision', '385', '--verbatim-file', join(root, 'verbatim.txt')))
       .rejects.toThrow(/--kind is blocker-pull/);
+  });
+
+  it('records delivered-follows-merge once on a release declared before it existed, and refuses a second', async () => {
+    await run('operator', 'declare', 'R1', '--versions', 'v1,v2', '--decision', '106', '--verbatim-file', join(root, 'verbatim.txt'));
+    await expect(run('operator', 'standing', 'R1', '--kind', 'delivered-follows-merge', '--decision', '929', '--verbatim-file', join(root, 'verbatim.txt')))
+      .rejects.toThrow(/O-R1-delivered-follows-merge is already recorded/);
+    const c = ctxFor('R1');
+    const k = loadKey(c.keyPath);
+    const path = join(c.dir, 'operator.jsonl');
+    const kept = readChain<OperatorRow>(path, k).verified.filter((r) => r.id !== 'O-R1-delivered-follows-merge').map(({ prev: _p, mac: _m, ...r }) => r);
+    rmSync(path);
+    for (const r of kept) appendChain(path, k, r);
+    out = [];
+    await run('operator', 'standing', 'R1', '--kind', 'delivered-follows-merge', '--decision', '929', '--verbatim-file', join(root, 'verbatim.txt'));
+    expect(out).toEqual([expect.stringMatching(/^O-R1-delivered-follows-merge recorded/)]);
+    await expect(run('operator', 'standing', 'R1', '--kind', 'delivered-follows-merge', '--decision', '929', '--verbatim-file', join(root, 'verbatim.txt')))
+      .rejects.toThrow(/already recorded/);
   });
 });
 
