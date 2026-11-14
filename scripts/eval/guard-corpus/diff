@@ -12,7 +12,7 @@
 # row -- never shared), so a hook that writes state cannot contaminate another
 # row or the other side of a comparison, and concurrent rows cannot race:
 #   - a private HOME and HANDOVER_DIR under a per-invocation dir in
-#     ~/.cache/himmel-guard-corpus (never under a tmp-named path, see main),
+#     ~/.cache/himmel-guard-corpus,
 #   - cwd set to a per-invocation COPY of a throwaway scratch git repo on
 #     branch `main` that stands in for the primary checkout (the row's
 #     @PRIMARY@ token is substituted with that copy's path and also passed as
@@ -671,10 +671,8 @@ def main(argv):
               file=sys.stderr)
         return 2
 
-    # The scratch primary must sit where a real primary does, on a path with no
-    # tmp/temp segment: block-write-into-main-checkout.sh exempts any target
-    # matching */tmp/* or */temp/* by name, so a primary under TMPDIR or /tmp was
-    # never guarded and every class-4 deny control read VACUOUS.
+    # Not under TMPDIR: block-write-into-main-checkout.sh exempts any path with
+    # a tmp/temp segment, so a scratch primary there is never guarded.
     scratch_root = os.path.join(os.path.expanduser("~"), ".cache", "himmel-guard-corpus")
     try:
         os.makedirs(scratch_root, exist_ok=True)

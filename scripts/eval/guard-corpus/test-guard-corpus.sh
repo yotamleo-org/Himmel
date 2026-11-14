@@ -505,11 +505,8 @@ else
   echo "SKIP real-hook (hook not in HEAD or jq missing)"
 fi
 
-# (d) the REAL block-write-into-main-checkout.sh denies a write into the scratch
-# primary on both sides. Rows 0 and 1 are idx 152 and 171 of the 2026-10-29 class-4
-# corpus (the guard-rates evidence zip), copied verbatim. Row 1 is a
-# Write-tool row, which this Bash-only hook passes at every commit, so it stays allowed
-# on both sides. Row 2 writes beside the primary, outside any repo: allowed on both.
+# (d) the real block-write-into-main-checkout.sh. Row 1 is a Write-tool row, which
+# this Bash-only hook always passes, so it is allowed on both sides.
 if git -C "$REPO_ROOT" cat-file -e "HEAD:scripts/hooks/block-write-into-main-checkout.sh" 2>/dev/null \
    && command -v jq >/dev/null 2>&1; then
   cat > "$TMP/primary-write.jsonl" <<'ROWS'
