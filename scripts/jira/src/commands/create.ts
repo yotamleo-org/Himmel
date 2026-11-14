@@ -626,7 +626,6 @@ const intakeWhy = (o: { why?: string; proposedVersion?: string }, title: string)
 };
 export const intakeOwed = (type: string, fields: Record<string, unknown>, testProject = false): boolean => !testProject && !fields['fixVersions'] && /^(bug|task|story)$/i.test(type);
 
-/** The pointer a bridge-filed INTAKE carries: the operator's Telegram update and the chat the poller stamped. */
 export interface BridgePointer { operator_update: number; filed_by: 'bridge'; bridge_chat: number }
 
 interface IntakeOptions {
@@ -649,38 +648,27 @@ export function parseOperatorUpdate(v: string): number {
   return Number(v);
 }
 
-export type PointerCheck = 'marker' | 'worker' | 'intake' | 'version' | 'stamp';
-
-/**
- * Who may set --operator-update: a Telegram bridge session filing an unversioned
- * Bug, Task or Story toward a version, whose poller-stamped chat is the operator's
- * DM. The stamp is read from the farthest marked ancestor, the bridge's own
- * claude, so a command's env prefix cannot supply it.
- */
 export function bridgePointer(
   o: { operatorUpdate?: number; type: string; fixVersion?: string; proposedVersion?: string; project?: string },
-  // Test-only: run once with a check removed to prove its row fails on that check.
-  seams: { env?: NodeJS.ProcessEnv; disable?: PointerCheck[] } = {},
 ): BridgePointer | undefined {
   if (o.operatorUpdate === undefined) return undefined;
-  const env = seams.env ?? process.env;
-  const on = (c: PointerCheck) => !seams.disable?.includes(c);
+  const env = process.env;
   const refuse = (why: string) => new CreateRefused(`jira create: --operator-update refused, nothing was filed: ${why}`);
-  if (on('marker') && env['HIMMEL_BRIDGE_SESSION'] !== '1') {
+  if (env['HIMMEL_BRIDGE_SESSION'] !== '1') {
     throw refuse('only a Telegram bridge session (HIMMEL_BRIDGE_SESSION=1) names the operator\'s update');
   }
-  if (on('worker') && (env['HIMMEL_CONSOLE_LEG'] === '1' || env['HIMMEL_RELEASE_MANAGER'] === '1')) {
+  if (env['HIMMEL_CONSOLE_LEG'] === '1' || env['HIMMEL_RELEASE_MANAGER'] === '1') {
     throw refuse('a chief-spawned worker or the release manager never names the operator\'s update');
   }
   const fields = o.fixVersion === undefined ? {} : { fixVersions: [{ name: o.fixVersion }] };
-  if (on('intake') && !intakeOwed(o.type, fields, isTestProject(o.project ?? projectKey()))) {
+  if (!intakeOwed(o.type, fields, isTestProject(o.project ?? projectKey()))) {
     throw refuse('no INTAKE is owed (--fix-version, an Epic or Subtask, or a test project), so no request carries the pointer');
   }
-  if (on('version') && toVersionOf(o) === null) {
+  if (toVersionOf(o) === null) {
     throw refuse('the INTAKE names no version; pass --proposed-version <v>, the version the operator\'s line states');
   }
   const stamp = ancestorValue('HIMMEL_BRIDGE_SESSION') === '1' ? ancestorValue('HIMMEL_BRIDGE_CHAT') : null;
-  if (on('stamp') && !/^[1-9]\d*$/.test(stamp ?? '')) {
+  if (!/^[1-9]\d*$/.test(stamp ?? '')) {
     throw refuse(`the poller's chat stamp in the process ancestry is ${stamp === null ? 'missing' : `${stamp}, not the operator's DM`}`);
   }
   return { operator_update: o.operatorUpdate, filed_by: 'bridge', bridge_chat: Number(stamp) };
