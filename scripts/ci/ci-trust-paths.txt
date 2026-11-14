@@ -47,6 +47,7 @@
 ^scripts/cr/blast-scope\.cjs$
 ^scripts/ci/outside-lint-surface\.txt$
 ^scripts/hooks/check-commit-msg\.sh$
+^scripts/hooks/check-hook-lib-suites\.sh$
 
 # Hook wiring and the pre-commit gate set.
 ^\.claude/settings\.json$

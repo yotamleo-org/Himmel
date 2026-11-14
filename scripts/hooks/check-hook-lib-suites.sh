@@ -15,7 +15,23 @@
 # there — so `lanes-and-trust-suites` in ci.yml now calls this script too
 #. Pre-commit remains the fast local gate; CI is the surface a
 # bypassed or skipped local hook can no longer dodge.
+#
+# HOOK_LIB_TEST_REPORT_DIR (set only by the ci.yml step, never by pre-commit):
+# each glob also writes a scripts/ci/node-suite-reporter.mjs report into that
+# directory, <dir>/hooks.jsonl and <dir>/lib.jsonl, which
+# scripts/ci/js-suite-manifest.mjs turns into the job's per-file lines. Unset,
+# the script runs exactly as without it.
 set -uo pipefail
+
+# The reporter by absolute path from this script's own location, so it still
+# resolves after the cd below and when the script runs against another repo.
+report_dir="${HOOK_LIB_TEST_REPORT_DIR:-}"
+reporter=""
+if [ -n "$report_dir" ]; then
+  ci_dir=$(cd "$(dirname "$0")/../ci" && pwd) || { echo "check-hook-lib-suites: cannot find scripts/ci beside this script" >&2; exit 1; }
+  reporter="$ci_dir/node-suite-reporter.mjs"
+  mkdir -p "$report_dir" || { echo "check-hook-lib-suites: cannot create HOOK_LIB_TEST_REPORT_DIR $report_dir" >&2; exit 1; }
+fi
 
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 cd "$repo_root" || { echo "check-hook-lib-suites: cannot cd to $repo_root" >&2; exit 1; }
@@ -66,7 +82,13 @@ do
     status=1
     continue
   fi
-  if ! out=$(node --test "$glob" 2>&1); then
+  report_flags=()
+  if [ -n "$report_dir" ]; then
+    name="${glob#scripts/}"
+    report_flags=(--test-reporter="$reporter" --test-reporter-destination="$report_dir/${name%%/*}.jsonl"
+                  --test-reporter=spec --test-reporter-destination=stdout)
+  fi
+  if ! out=$(node --test ${report_flags[@]+"${report_flags[@]}"} "$glob" 2>&1); then
     echo "check-hook-lib-suites: FAILED $glob" >&2
     echo "$out" >&2
     status=1

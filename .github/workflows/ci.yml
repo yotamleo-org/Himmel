@@ -1497,9 +1497,30 @@ jobs:
       - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
         run: npm ci --ignore-scripts
         working-directory: ${{ matrix.dir || format('scripts/{0}', matrix.pkg) }}
-      - if: ${{ !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
+      # The vitest packages also write a JSON report, which the JS suite
+      # manifest step turns into per-file ran/skip lines. himmel-bus is not
+      # vitest and its suites are not ones the selector lists, so it writes none.
+      - name: JS suite report dir
+        if: ${{ matrix.pkg != 'himmel-bus' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
+        run: mkdir -p "$RUNNER_TEMP/js-suite-report"
+      - if: ${{ matrix.pkg != 'himmel-bus' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label node-suites/${{ matrix.pkg }} -- npm test -- --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/js-suite-report/vitest.json"
+        working-directory: ${{ matrix.dir || format('scripts/{0}', matrix.pkg) }}
+      - if: ${{ matrix.pkg == 'himmel-bus' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
         run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label node-suites/${{ matrix.pkg }} -- npm test
         working-directory: ${{ matrix.dir || format('scripts/{0}', matrix.pkg) }}
+      - name: JS suite manifest
+        if: ${{ !cancelled() && matrix.pkg != 'himmel-bus' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
+        run: node scripts/ci/js-suite-manifest.mjs --out js-suite-manifest/manifest-js-node-suites-${{ matrix.pkg }}.txt --report vitest "$RUNNER_TEMP/js-suite-report/vitest.json" . || echo "::warning title=js-suite-manifest::the writer failed, so these suites go local"
+      - name: Upload JS suite manifest
+        if: ${{ !cancelled() && matrix.pkg != 'himmel-bus' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: js-suite-manifest-node-suites-${{ matrix.pkg }}
+          path: js-suite-manifest/
+          if-no-files-found: ignore
+          retention-days: 14
+          overwrite: true
       # The root vitest.config.ts and sector.test.ts keep a vitest run from the
       # repo root off the real HOME. The guard needs the scripts/jira install above, which
       # the shell-unit shards lack (there its runtime cases SKIP), so it runs here with
@@ -1637,7 +1658,12 @@ jobs:
         if: ${{ !job.container.id }}
         with:
           bun-version-file: .bun-version
-      - run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label lanes-and-trust-suites/lanes -- node --test "scripts/lanes/tests/**/*.test.mjs"
+      # Each node --test step and the hook-lib script also write a
+      # node-suite-reporter report here; the JS suite manifest step turns them
+      # into per-file ran/skip lines.
+      - name: JS suite report dir
+        run: mkdir -p "$RUNNER_TEMP/js-suite-report"
+      - run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label lanes-and-trust-suites/lanes -- node --test --test-reporter=./scripts/ci/node-suite-reporter.mjs --test-reporter-destination="$RUNNER_TEMP/js-suite-report/node-lanes.jsonl" --test-reporter=spec --test-reporter-destination=stdout "scripts/lanes/tests/**/*.test.mjs"
       # Same shape — a zero-dependency node:test suite outside any
       # package.json. Listed explicitly because nothing globs for it; an
       # unlisted suite is a suite nobody runs.
@@ -1645,18 +1671,30 @@ jobs:
       # `ls` first because `node --test` reports zero tests and exits 0 when the
       # glob matches nothing: a renamed or deleted suite would go green with
       # nothing executed. `ls` on an unexpanded pattern fails, so the step does.
-      - run: ls scripts/trust/tests/*.test.mjs && bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label lanes-and-trust-suites/trust -- node --test "scripts/trust/tests/*.test.mjs"
+      - run: ls scripts/trust/tests/*.test.mjs && bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label lanes-and-trust-suites/trust -- node --test --test-reporter=./scripts/ci/node-suite-reporter.mjs --test-reporter-destination="$RUNNER_TEMP/js-suite-report/node-trust.jsonl" --test-reporter=spec --test-reporter-destination=stdout "scripts/trust/tests/*.test.mjs"
       # Zero-dependency node:test suites no runner executed. `ls`
       # first for the same vacuous-glob reason as the trust step above.
-      - run: ls scripts/where-are-we/tests/*.test.mjs && bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label lanes-and-trust-suites/where-are-we -- node --test "scripts/where-are-we/tests/*.test.mjs"
-      - run: ls scripts/lessons/tests/*.test.mjs && bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label lanes-and-trust-suites/lessons -- node --test "scripts/lessons/tests/*.test.mjs"
+      - run: ls scripts/where-are-we/tests/*.test.mjs && bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label lanes-and-trust-suites/where-are-we -- node --test --test-reporter=./scripts/ci/node-suite-reporter.mjs --test-reporter-destination="$RUNNER_TEMP/js-suite-report/node-where-are-we.jsonl" --test-reporter=spec --test-reporter-destination=stdout "scripts/where-are-we/tests/*.test.mjs"
+      - run: ls scripts/lessons/tests/*.test.mjs && bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label lanes-and-trust-suites/lessons -- node --test --test-reporter=./scripts/ci/node-suite-reporter.mjs --test-reporter-destination="$RUNNER_TEMP/js-suite-report/node-lessons.jsonl" --test-reporter=spec --test-reporter-destination=stdout "scripts/lessons/tests/*.test.mjs"
       # A glob, not a file list, so a NEW observability .test.mjs
       # runs without a ci.yml edit; `ls` fails on an unexpanded pattern.
-      - run: ls scripts/op-env-parity.test.mjs scripts/observability/*.test.mjs && bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label lanes-and-trust-suites/observability -- node --test scripts/op-env-parity.test.mjs "scripts/observability/*.test.mjs"
+      - run: ls scripts/op-env-parity.test.mjs scripts/observability/*.test.mjs && bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label lanes-and-trust-suites/observability -- node --test --test-reporter=./scripts/ci/node-suite-reporter.mjs --test-reporter-destination="$RUNNER_TEMP/js-suite-report/node-observability.jsonl" --test-reporter=spec --test-reporter-destination=stdout scripts/op-env-parity.test.mjs "scripts/observability/*.test.mjs"
       # The scripts/hooks + scripts/lib node:test suites (the security gates'
       # own suites). Pre-commit runs them as the fast local gate; this is the
       # authoritative check a bypassed or skipped local hook cannot dodge.
-      - run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label lanes-and-trust-suites/hook-lib-suites -- bash scripts/hooks/check-hook-lib-suites.sh
+      - run: HOOK_LIB_TEST_REPORT_DIR="$RUNNER_TEMP/js-suite-report/hook-lib" bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label lanes-and-trust-suites/hook-lib-suites -- bash scripts/hooks/check-hook-lib-suites.sh
+      - name: JS suite manifest
+        if: ${{ !cancelled() }}
+        run: node scripts/ci/js-suite-manifest.mjs --out js-suite-manifest/manifest-js-lanes-and-trust-suites.txt --report node "$RUNNER_TEMP/js-suite-report/node-lanes.jsonl" . --report node "$RUNNER_TEMP/js-suite-report/node-trust.jsonl" . --report node "$RUNNER_TEMP/js-suite-report/node-where-are-we.jsonl" . --report node "$RUNNER_TEMP/js-suite-report/node-lessons.jsonl" . --report node "$RUNNER_TEMP/js-suite-report/node-observability.jsonl" . --report node "$RUNNER_TEMP/js-suite-report/hook-lib/hooks.jsonl" . --report node "$RUNNER_TEMP/js-suite-report/hook-lib/lib.jsonl" . || echo "::warning title=js-suite-manifest::the writer failed, so these suites go local"
+      - name: Upload JS suite manifest
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: js-suite-manifest-lanes-and-trust-suites
+          path: js-suite-manifest/
+          if-no-files-found: ignore
+          retention-days: 14
+          overwrite: true
 
   guardrail-matrices:
     name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'guardrail-matrices' || 'guardrail-matrices (deferred)' }}
@@ -1727,12 +1765,17 @@ jobs:
         if: ${{ !job.container.id }}
         with:
           bun-version-file: .bun-version
+      # Each run-bun-tests.sh step also writes a junit report here (a retry's
+      # report replaces the first attempt's); the JS suite manifest step turns
+      # them into per-file ran/skip lines.
+      - name: JS suite report dir
+        run: mkdir -p "$RUNNER_TEMP/js-suite-report"
       # The root bunfig.toml preload keeps every bun test below off the real HOME; this guard
       # proves it, and with the require flag a missing bun is a FAIL, never a vacuous SKIP.
       - run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label bun-suites/root-vitest-sandbox -- bash scripts/ci/test-root-vitest-sandbox.sh
         env:
           HIMMEL_REQUIRE_BUN_TEST: "1"
-      - run: cd scripts/luna-vitals && bun install --frozen-lockfile --ignore-scripts && bash ../ci/run-bun-tests.sh scripts/luna-vitals
+      - run: cd scripts/luna-vitals && bun install --frozen-lockfile --ignore-scripts && bash ../ci/run-bun-tests.sh scripts/luna-vitals --reporter=junit --reporter-outfile="$RUNNER_TEMP/js-suite-report/bun-luna-vitals.xml"
       # Must run from the repo root, not scripts/telegram/ — these suites pin
       # their fixtures repo-root-relative, so running them from their own
       # directory fails every wired case (docs/internals/environment-gotchas.md,
@@ -1740,7 +1783,7 @@ jobs:
       # has no package.json of its own and the suites run against the repo tree.
       # It runs on every matrix entry because three of its cases are
       # platform-sensitive by construction.
-      - run: bash scripts/ci/run-bun-tests.sh scripts/telegram scripts/telegram --dots
+      - run: bash scripts/ci/run-bun-tests.sh scripts/telegram scripts/telegram --dots --reporter=junit --reporter-outfile="$RUNNER_TEMP/js-suite-report/bun-telegram.xml"
       # The luna source-identity suites (source-identity + backfill) gate
       # scripts/vault/**. Runs from the repo root like the
       # telegram suite (fixtures are repo-relative). Hermetic: a stub `gh` and a
@@ -1749,28 +1792,40 @@ jobs:
       # `bun-suites (ubuntu-latest)` context: no branch-protection change.
       - name: Vault tests (ubuntu only)
         if: ${{ matrix.os == 'ubuntu-latest' }}
-        run: bash scripts/ci/run-bun-tests.sh scripts/vault/tests scripts/vault/tests --dots
+        run: bash scripts/ci/run-bun-tests.sh scripts/vault/tests scripts/vault/tests --dots --reporter=junit --reporter-outfile="$RUNNER_TEMP/js-suite-report/bun-vault.xml"
       # The read-only config UI (auth/Host/redaction, idle exit,
       # render, the real `himmelctl ui` verb). Repo-root cwd like the suites
       # above; hermetic (stub feed via CONFIG_UI_HIMMELCTL, loopback only).
       # Ubuntu only: it spawns node/bun children with POSIX signal semantics.
       - name: Config UI tests (ubuntu only)
         if: ${{ matrix.os == 'ubuntu-latest' }}
-        run: bash scripts/ci/run-bun-tests.sh scripts/config-ui scripts/config-ui --dots
+        run: bash scripts/ci/run-bun-tests.sh scripts/config-ui scripts/config-ui --dots --reporter=junit --reporter-outfile="$RUNNER_TEMP/js-suite-report/bun-config-ui.xml"
       # --frozen-lockfile fails if bun.lock has drifted from package.json. Catches
       # the class of bug where a dep range is bumped in package.json but the
       # lockfile is never regenerated.
-      - run: cd marketplace/plugins/luna-correlate && bun install --frozen-lockfile --ignore-scripts && bash ../../../scripts/ci/run-bun-tests.sh marketplace/plugins/luna-correlate
+      - run: cd marketplace/plugins/luna-correlate && bun install --frozen-lockfile --ignore-scripts && bash ../../../scripts/ci/run-bun-tests.sh marketplace/plugins/luna-correlate --reporter=junit --reporter-outfile="$RUNNER_TEMP/js-suite-report/bun-luna-correlate.xml"
       # telegram-himmel's own suite (tests/poller-gate-shape.test.ts)
       # had no CI step. Ubuntu only, like the vault step: its fixtures are
       # POSIX-shaped, so a Windows run would be red and file a spurious issue.
       - name: telegram-himmel plugin tests (ubuntu only)
         if: ${{ matrix.os == 'ubuntu-latest' }}
-        run: cd marketplace/plugins/telegram-himmel && bun install --frozen-lockfile --ignore-scripts && bash ../../../scripts/ci/run-bun-tests.sh marketplace/plugins/telegram-himmel
+        run: cd marketplace/plugins/telegram-himmel && bun install --frozen-lockfile --ignore-scripts && bash ../../../scripts/ci/run-bun-tests.sh marketplace/plugins/telegram-himmel --reporter=junit --reporter-outfile="$RUNNER_TEMP/js-suite-report/bun-telegram-himmel.xml"
       # Repo-root cwd; ubuntu only (POSIX fixtures, spawned servers).
       - name: observability tests (ubuntu only)
         if: ${{ matrix.os == 'ubuntu-latest' }}
-        run: ls scripts/observability/*.test.ts && bash scripts/ci/run-bun-tests.sh scripts/observability scripts/observability --path-ignore-patterns='scripts/observability/*.test.mjs' --dots
+        run: ls scripts/observability/*.test.ts && bash scripts/ci/run-bun-tests.sh scripts/observability scripts/observability --path-ignore-patterns='scripts/observability/*.test.mjs' --dots --reporter=junit --reporter-outfile="$RUNNER_TEMP/js-suite-report/bun-observability.xml"
+      - name: JS suite manifest
+        if: ${{ !cancelled() }}
+        run: bun scripts/ci/js-suite-manifest.mjs --out js-suite-manifest/manifest-js-bun-suites.txt --report bun "$RUNNER_TEMP/js-suite-report/bun-luna-vitals.xml" scripts/luna-vitals --report bun "$RUNNER_TEMP/js-suite-report/bun-telegram.xml" . --report bun "$RUNNER_TEMP/js-suite-report/bun-vault.xml" . --report bun "$RUNNER_TEMP/js-suite-report/bun-config-ui.xml" . --report bun "$RUNNER_TEMP/js-suite-report/bun-luna-correlate.xml" marketplace/plugins/luna-correlate --report bun "$RUNNER_TEMP/js-suite-report/bun-telegram-himmel.xml" marketplace/plugins/telegram-himmel --report bun "$RUNNER_TEMP/js-suite-report/bun-observability.xml" . || echo "::warning title=js-suite-manifest::the writer failed, so these suites go local"
+      - name: Upload JS suite manifest
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: js-suite-manifest-bun-suites
+          path: js-suite-manifest/
+          if-no-files-found: ignore
+          retention-days: 14
+          overwrite: true
       - name: Upload bun flake ledger
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -2111,6 +2166,16 @@ jobs:
         with:
           bun-version-file: .bun-version
           no-cache: ${{ runner.environment != 'github-hosted' }}
+      # scripts/ci/test-js-suite-manifest.sh runs the node:test reporter, which
+      # needs node 22 or later; the CI image pins 22.23.4, the other routes get
+      # the same pin here.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: ${{ !job.container.id }}
+        with:
+          node-version: '22.23.4'
+      # Every route has bun, so a bun-backed suite that finds none FAILs, never SKIPs.
+      - name: Require bun for the bun-backed suites
+        run: echo "HIMMEL_REQUIRE_BUN_TEST=1" >> "$GITHUB_ENV"
       # The run step below covers marketplace/ (root `.`), where
       # the obsidian-triage suites need js-yaml + playwright from
       # tools/node_modules. ensure-deps.sh installs them and exits non-zero on
