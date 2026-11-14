@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 # guard-unwrap.sh — re-scan the forms a must-run guard's text matcher cannot
-# see. Sourced by block-read-secrets, block-git-stash,
-# block-destructive-commands, block-tail-pipe-on-gates and require-quiet-run.
+# see. Sourced by block-read-secrets, block-destructive-commands,
+# block-tail-pipe-on-gates, require-quiet-run and block-infra-destroy.
 #
 # Each of those hooks matches the command TEXT. The shell runs a different
 # text whenever it removes quotes (`g'i't stash`), drops a wrapper
@@ -325,6 +325,13 @@ guard_unwrap() {
             && { [ "$GU_NOHD" = "$GU_FLAT" ] || ! st_tokenize "$GU_NOHD"; }; then
             if _gu_fallback "$GU_NOHD"; then
                 echo "guard-unwrap: refusing a command whose quoting this guard cannot read and that runs a nested shell, an eval or a quoted command word." >&2
+                # Inside the expansion re-read the worker's command was
+                # readable; guard-empty-expansion.sh explains that refusal.
+                if [ "${GUARD_EXPANSION_DEPTH:-0}" = 0 ]; then
+                    printf '%s\n' '    Cause: this guard'\''s tokenizer could not read the command as written: a backtick inside double quotes (it opens a command substitution; a Markdown fence such as ```bash in a "…" grep pattern is the usual case), an unterminated quote or heredoc (bash -n fails), a case arm ending in ;;, or more than 8 KiB.' >&2
+                    printf '%s\n' '    Retry: put a pattern that holds a backtick or a quote in single quotes, or write it to a file with the Write tool and pass the file (grep -f <file>); split a case statement or a long command into separate calls; edit a file with the Edit tool.' >&2
+                    printf '%s\n' '    Single-run bypass: the operator runs the command once in their own terminal, where no hook runs; no launch switch skips this check in every hook that runs it.' >&2
+                fi
                 return 2
             fi
             if [[ $GU_NOHD =~ (^|[^A-Za-z0-9_-])(cd|pushd|popd)[[:space:]]|(^|[^A-Za-z0-9_-])env[[:space:]].*(-C|--chdir) ]]; then
