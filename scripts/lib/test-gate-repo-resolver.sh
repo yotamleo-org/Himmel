@@ -38,8 +38,6 @@ for d in "$LINKED/scripts/lib" "$LOOSE/scripts/lib"; do
 done
 : > "$TMP/a-file"
 
-# resolve <cwd> <lib> [env-assignment...]: runs gate_repo_dir in a fresh bash from <cwd>;
-# prints "<rc>|<stdout>|<stderr>".
 resolve() {
     local cwd="$1" lib="$2" out err rc=0
     shift 2
