@@ -721,34 +721,34 @@ printf '# doc\nWorking on `branch %s` today.\n' "$OTHER_BRANCH" > "$DOC2"
 repo_out=$(bash "$SCRIPT_COPY" "$DOC2" --repo "$REPO2" --dry-run 2>&1)
 repo_rc=$?
 if [ "$repo_rc" -eq 0 ] && [[ "$repo_out" == *"$OTHER_BRANCH"* ]]; then
-    ok "HIMMEL-2403: --repo <other repo> briefs a branch that exists only there (exit 0, branch named)"
+    ok "--repo <other repo> briefs a branch that exists only there (exit 0, branch named)"
 else
-    ko "HIMMEL-2403: --repo <other repo> did not brief the branch (rc=$repo_rc): $repo_out"
+    ko "--repo <other repo> did not brief the branch (rc=$repo_rc): $repo_out"
 fi
 
 default_err=$(bash "$SCRIPT_COPY" "$DOC2" --dry-run 2>&1 >/dev/null)
 default_rc=$?
 if [ "$default_rc" -eq 2 ] && [[ "$default_err" == *"$REPO"* ]]; then
-    ok "HIMMEL-2403: without --repo the script's own repo is searched and the miss exits 2 naming it"
+    ok "without --repo the script's own repo is searched and the miss exits 2 naming it"
 else
-    ko "HIMMEL-2403: default-repo miss did not exit 2 naming the repo (rc=$default_rc): $default_err"
+    ko "default-repo miss did not exit 2 naming the repo (rc=$default_rc): $default_err"
 fi
 
 wrong_err=$(bash "$SCRIPT_COPY" "$DOC2" --repo "$REPO" --dry-run 2>&1 >/dev/null)
 wrong_rc=$?
 if [ "$wrong_rc" -eq 2 ] && [[ "$wrong_err" == *"$REPO"* ]]; then
-    ok "HIMMEL-2403: a wrong --repo still exits 2 naming the repo searched"
+    ok "a wrong --repo still exits 2 naming the repo searched"
 else
-    ko "HIMMEL-2403: a wrong --repo did not exit 2 naming the repo (rc=$wrong_rc): $wrong_err"
+    ko "a wrong --repo did not exit 2 naming the repo (rc=$wrong_rc): $wrong_err"
 fi
 
 mkdir -p "$TMP/not-a-repo"
 bash "$SCRIPT_COPY" "$DOC2" --repo "$TMP/not-a-repo" --dry-run >/dev/null 2>&1
 notrepo_rc=$?
 if [ "$notrepo_rc" -eq 1 ]; then
-    ok "HIMMEL-2403: --repo pointing at a non-git directory exits 1"
+    ok "--repo pointing at a non-git directory exits 1"
 else
-    ko "HIMMEL-2403: --repo pointing at a non-git directory exited $notrepo_rc, expected 1"
+    ko "--repo pointing at a non-git directory exited $notrepo_rc, expected 1"
 fi
 
 APPEND_RESULTS="$SCRIPT_DIR/chief-kit/append-results.sh"

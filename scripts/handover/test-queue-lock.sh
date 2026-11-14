@@ -331,7 +331,7 @@ else
 fi
 # shellcheck disable=SC2016  # backticks are a literal part of the expected output, not command substitution
 if grepq "$out" '^release-token: `session-a`$'; then
-    pass "T1: acquire prints the release-token line, token backticked (HIMMEL-2910)"
+    pass "T1: acquire prints the release-token line, token backticked"
 else
     fail "T1: acquire output missing 'release-token: \`session-a\`' (got: $out)"
 fi
@@ -1845,7 +1845,7 @@ fi
 # root divergence to warn about. Pinned here: it finds the lock directly (no
 # WARN), and says what it released.
 if ! grepq "$out" '^WARN queue-lock: cwd resolves root '; then
-    pass "T46b: no cwd-vs-recorded-root WARN -- the doc's key does not depend on the cwd (HIMMEL-3290)"
+    pass "T46b: no cwd-vs-recorded-root WARN -- the doc's key does not depend on the cwd"
 else
     fail "T46b: a cwd-vs-recorded-root WARN fired although the key is doc-derived: $out"
 fi
@@ -2961,7 +2961,7 @@ fi
 F_DOC="$F_HO/fence-t85.md"; : > "$F_DOC"
 F_LK="$(f_lockdir fence-t85)"
 bash "$LIB" acquire "$F_DOC" fenceOldA85 >/dev/null 2>&1
-rm -f "$F_LK/gen"   # simulate a lock minted before HIMMEL-988: no gen at all
+rm -f "$F_LK/gen"   # simulate a lock minted before the generation field existed: no gen at all
 F_P="$TMPDIR_ROOT/pause-t85"; : > "$F_P"
 ( QUEUE_LOCK_TEST_PAUSE_AT=heartbeat-verified QUEUE_LOCK_TEST_PAUSE_FILE="$F_P" \
     bash "$LIB" heartbeat "$F_DOC" fenceOldA85 > "$F_P.out" 2>&1; echo $? > "$F_P.rc" ) &
@@ -3010,7 +3010,7 @@ fi
 F_DOC="$F_HO/fence-t87.md"; : > "$F_DOC"
 F_LK="$(f_lockdir fence-t87)"
 bash "$LIB" acquire "$F_DOC" fenceOldA87 >/dev/null 2>&1
-rm -f "$F_LK/gen"   # simulate a lock minted before HIMMEL-988: no gen at all
+rm -f "$F_LK/gen"   # simulate a lock minted before the generation field existed: no gen at all
 F_P="$TMPDIR_ROOT/pause-t87"; : > "$F_P"
 ( QUEUE_LOCK_TEST_PAUSE_AT=release-verified QUEUE_LOCK_TEST_PAUSE_FILE="$F_P" \
     bash "$LIB" release "$F_DOC" fenceOldA87 > "$F_P.out" 2>&1; echo $? > "$F_P.rc" ) &

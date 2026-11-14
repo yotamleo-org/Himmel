@@ -652,12 +652,18 @@ def has_owner(target, key):
     return m[1] is None or (m[1] != key and m[1].split("-")[0] in projects)
 
 decisions, invalid, unowned = {}, {}, {}
+closing = set()
 if sys.argv[1]:
     try:
         doc = open(sys.argv[1]).read().splitlines()
     except OSError:
         print("# pool-counts ?")
         sys.exit(0)
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(sys.argv[1])), "focus-drift.txt")) as f:
+            closing = set(re.findall(r"^CLOSE-OR-DISPATCH ([A-Z]+-\d+) ", f.read(), re.M))
+    except OSError:
+        pass
     live = False
     for line in doc:
         if line.startswith("## "):
@@ -722,6 +728,8 @@ for key, reason in rows.items():
         unresolved.append(("stale", key, "its pool-disposition target is gone: %s; re-decide or rewrite the line" % stale[key][1]))
     elif sole and key in changed and changed[key][0] == lh:
         unresolved.append(("changed", key, changed[key][1]))
+    elif sole and key in closing and re.match(r"[A-Z]+-\d+ question [Dd]ecisions?\s*#?\d+\b", decisions[key]):
+        unresolved.append(("stale", key, "its question decision names no end: the key carries a CLOSE-OR-DISPATCH drift row; close the ticket or name a worker"))
     elif owned or holder or blocker or key in decisions:
         disposed += 1
     elif key in unowned:

@@ -1630,6 +1630,39 @@ s4fp2="$(python3 "$HERE/tracker.py" "${fpargs[@]}" --stale-file "$s4/stale-compl
 equals 'S4: --emit-fp prints the same value with and without a stale file' "$s4fp2" "$s4fp1"
 case "$s4fp1" in *error*|*usage*|'') fail "S4: --emit-fp gave no fingerprint: $s4fp1" ;; *) pass 'S4: --emit-fp prints a fingerprint' ;; esac
 
+# a CLOSE-OR-DISPATCH drift row is the operator's close ask under Waiting on you
+cod="$W/cod9561"
+mkdir -p "$cod/mirror" "$cod/wk" "$cod/bucket/specs/designs"
+codmk() { # <num> <status>
+    printf '%s\n' '---' "key: \"HIMMEL-$1\"" 'updated: "2026-09-30T10:00:00.000+0000"' "statusCategory: \"$2\"" "status: \"$2\"" \
+        'fixVersions: ["v1.1.3"]' 'labels: []' 'type: "Task"' '---' "# HIMMEL-$1: cod card $1" > "$cod/mirror/HIMMEL-$1.md"
+}
+codmk 21 "In Progress"; codmk 22 "In Progress"; codmk 23 "Done"
+printf '[]\n' > "$cod/prs.json"
+codout="$cod/page.html"
+codrender() {
+    rm -f "$codout" "$codout.vfp"
+    python3 "$HERE/tracker.py" --version v1.1.3 --repo example-org/example-repo --mirror-dir "$cod/mirror" --prs-file "$cod/prs.json" \
+        --workers-dir "$cod/wk" --out "$codout" "$@" 2>&1
+}
+cat > "$cod/bucket/focus-drift.txt" <<'EOF'
+CLOSE-OR-DISPATCH HIMMEL-21 In Progress with no open PR, no live owner and no event since 2026-11-10T18:00:00Z (73 h); last PR #5155, owed: the timing row (DoD 1) | writer=jira | fix=x
+CLOSE-OR-DISPATCH HIMMEL-23 In Progress with no open PR, no live owner and no event since 2026-11-10T18:00:00Z (73 h); last PR #5156, owed: done already | writer=jira | fix=x
+CLOSE-OR-DISPATCH HIMMEL-99 In Progress with no open PR, no live owner and no event since 2026-11-10T18:00:00Z (73 h); last PR #5157, owed: another version | writer=jira | fix=x
+UNOWNED HIMMEL-22 In Progress with no open PR and no live owner | writer=a | fix=b
+sdrift=4:33333333
+EOF
+codrender --owed-dir "$cod/bucket" >/dev/null
+codw="$(grep -F 'data-section="waiting"' "$codout" 2>/dev/null)"
+contains '9561 a CLOSE-OR-DISPATCH row lists its key under Waiting on you with the close-or-name-a-worker line' "$codw" 'close HIMMEL-21 or name a worker (last PR #5155, owed: the timing row (DoD 1))'
+contains '9561 that is the only ask counted' "$codw" 'data-count="1"'
+not_contains '9561 a Done ticket carrying the row is not listed' "$codw" 'HIMMEL-23'
+not_contains '9561 a ticket outside the version carrying the row is not listed' "$codw" 'HIMMEL-99'
+not_contains '9561 an UNOWNED row is not a close ask' "$codw" 'HIMMEL-22'
+rm -f "$cod/bucket/focus-drift.txt"
+codrender --owed-dir "$cod/bucket" >/dev/null
+not_contains '9561 control: with no such row nothing is asked' "$(grep -F 'data-section="waiting"' "$codout" 2>/dev/null)" 'or name a worker'
+
 # --- both pages open dark with no saved choice, whatever the system preference says
 if command -v node >/dev/null 2>&1; then
 cat > "$W/dark-check.mjs" <<'JS'
