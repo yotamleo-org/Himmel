@@ -619,9 +619,13 @@ def ctime_of(path):
             path = parent
 
 
+def bytecode_cache(p):
+    return "__pycache__" in p.split("/")
+
+
 def superseded(m, rows):
     deadline = float(m["deadline"])
-    paths = set(rows) | set(m["identity"]["paths"])
+    paths = {p for p in set(rows) | set(m["identity"]["paths"]) if not bytecode_cache(p)}
     paths.discard(CONFIG)
     for p in sorted(paths):
         live = row_of(P(p))
@@ -635,7 +639,7 @@ def superseded(m, rows):
 def unexpected(m, rows):
     ident, gone, out = m["identity"]["paths"], set(m["identity"].get("gone", [])), []
     for p in sorted(set(rows) | set(ident)):
-        if p == CONFIG or p == LX + "/ops/manifest.json":
+        if p == CONFIG or p == LX + "/ops/manifest.json" or bytecode_cache(p):
             continue
         live = row_of(P(p))
         if same_row(live, rows.get(p)):
@@ -712,15 +716,15 @@ def restore(m, rows):
         r = rows[p]
         if r["t"] == "d" or (p == CONFIG and skip_cfg):
             continue
-        if same_row(row_of(P(p)), r):
+        if same_row(row_of(P(p)), r) or r["t"] not in ("f", "l"):
             continue
         dst = P(p)
         tmp = os.path.join(os.path.dirname(dst), ".helper-update.%s.tmp" % os.path.basename(dst))
         if os.path.lexists(tmp):
             rm_any(tmp)
-        if os.path.isdir(dst) and not os.path.islink(dst):
-            rm_any(dst)
         if r["t"] == "l":
+            if os.path.isdir(dst) and not os.path.islink(dst):
+                rm_any(dst)
             os.symlink(r["link"], tmp)
         else:
             with open(prev + p, "rb") as src, os.fdopen(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "wb") as f:
@@ -728,6 +732,12 @@ def restore(m, rows):
                 f.flush()
                 os.fchmod(f.fileno(), r["mode"])
                 os.fsync(f.fileno())
+            copied = read_regular(tmp)
+            if copied is None or sha256(copied) != r["sha"]:
+                os.unlink(tmp)
+                continue
+            if os.path.isdir(dst) and not os.path.islink(dst):
+                rm_any(dst)
         chown_like(tmp, r)
         os.replace(tmp, dst)
         fsync_dir(os.path.dirname(dst))

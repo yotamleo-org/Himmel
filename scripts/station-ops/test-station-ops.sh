@@ -865,7 +865,7 @@ assert_contains "the op itself refuses a bad commit with exit 3" "result=bad-par
 assert_eq "no bad-param made a curl call" "$n0" "$(curl_n)"
 
 echo "== helper-update R2: off, a relative checkout, a slash in the repo: refused before any call =="
-for edit in 'd["helper_update"]["enabled"] = False' 'd["helper_update"]["checkout"] = "rel/path"' 'd["helper_update"]["repo"] = "a/b/c"' 'del d["helper_update"]'; do
+for edit in 'd["helper_update"]["enabled"] = False' 'd["helper_update"]["checkout"] = "rel/path"' 'd["helper_update"]["repo"] = "a/b/c"' 'd["helper_update"]["repo"] = ""' 'del d["helper_update"]'; do
     hu_root r2
     hu_cfg "$edit"
     assert_contains "RED R2: --check is failed ($edit)" "result=failed" "$(hu_chk)"
@@ -1193,6 +1193,36 @@ out=$(hu_chk)
 assert_contains "RED R27: a pending marker is restored with the rate spent" "restored an interrupted run" "$out"
 assert_eq "R27: the restore made no curl call" "$n0" "$(curl_n)"
 assert_contains "R27: the call after it is rate-refused" "rate" "$(hu_chk)"
+
+echo "== helper-update judge fixes: a rewritten bytecode cache is not a later install =="
+hu_root pyc stale
+mkdir -p "$R/usr/local/libexec/himmel/__pycache__"; printf 'old-bytecode' > "$R/usr/local/libexec/himmel/__pycache__/approval_broker.cpython-3.pyc"
+before=$(hu_state); base=$(date +%s)
+out=$(hu_req 0); id=$(rid "$out")
+HIMMEL_OPS_NOW=$((base - 292)) HIMMEL_OPS_KILL_AT=installed hu_approve_read 3 "$id" >/dev/null
+while [ "$(date +%s)" -lt $((base + 16)) ]; do sleep 1; done
+printf 'new-bytecode' > "$R/usr/local/libexec/himmel/__pycache__/approval_broker.cpython-3.pyc"
+out=$(hu_chk)
+assert_contains "RED: the helper rewriting its .pyc after the deadline is not a later install" "restored an interrupted run" "$out"
+assert_eq "the restore puts everything back, the bytecode cache included" "$before" "$(hu_state)"
+
+echo "== helper-update judge fixes: a snapshot copy that fails its hash is never renamed live =="
+hu_root badcopy stale
+out=$(hu_req 0); id=$(rid "$out")
+HIMMEL_OPS_KILL_AT=installed hu_approve_read 3 "$id" >/dev/null
+printf 'CORRUPT' >> "$R"/var/lib/himmel/afk-sudo/helper-update/stage.*/prev/root/usr/local/libexec/himmel/approval_broker.py
+out=$(hu_chk)
+assert_contains "RED: a corrupt snapshot copy is reported, not installed" "restore incomplete" "$out"
+assert_eq "the live broker keeps the installed bytes, not the corrupt copy" "yes" "$(cmp -s "$R/gh/$HU_MAIN/scripts/lib/afk-sudo/approval_broker.py" "$R/usr/local/libexec/himmel/approval_broker.py" && echo yes || echo no)"
+
+echo "== helper-update judge fixes: a special file in the snapshot is reported, not opened =="
+hu_root fifo stale
+mkfifo "$R/usr/local/libexec/himmel/ops/odd"
+out=$(hu_req 0); id=$(rid "$out")
+HIMMEL_OPS_KILL_AT=installed hu_approve_read 3 "$id" >/dev/null
+out=$(hu_chk)
+assert_contains "RED: a snapshot row of type o is reported as not restorable" "restore incomplete: ops/odd" "$out"
+assert_absent "the restore does not crash on it" "internal error" "$out"
 
 echo "== helper-update C3: names from the commit never reach the notice as a field =="
 hu_root c3
