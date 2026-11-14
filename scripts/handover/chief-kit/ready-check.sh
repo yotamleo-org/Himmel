@@ -1681,10 +1681,6 @@ if [ "$ONLY7" -eq 0 ]; then
 # the default branch's list against the PR's REST file listing). The worker's READY
 # text is never consulted. A refusal (unreadable list, head moved, listing cut
 # short, stale anchor) FAILs and prints no TRUST-PATH line: it never reads as "no".
-# The anchor is the primary checkout that owns the script's tree, from git's
-# common dir, so a run from a linked worktree reads the primary, never the worktree.
-# A tree whose common dir is not <checkout>/.git keeps the script's own tree; either
-# way trust_path_check's anchor-is-current test stays the judge.
 tp_anchor="${READY_CHECK_ANCHOR:-}"
 if [ -z "$tp_anchor" ]; then
     tp_anchor=$(unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE

@@ -437,9 +437,6 @@ notcontains "stale-anchor: never sends the worker out of its worktree" "$out" "n
 notcontains "stale-anchor: the refusal prints no TRUST-PATH line" "$out" "TRUST-PATH:"
 
 # --- 12b-12d. check 12 run from a linked worktree, READY_CHECK_ANCHOR unset ---
-# The worker types the worktree's own copy of the script from the worktree. The
-# primary (with origin) has moved one commit past the worktree's branch, as when
-# main moves while a worker works: the anchor must be the primary, from git facts.
 WT_PRIM="$tmp/wt-prim"; WT_LINKED="$tmp/wt-linked"
 git init -q --bare "$tmp/wt-origin.git"
 git init -q "$WT_PRIM"
@@ -473,7 +470,7 @@ contains "worktree-run control: prints TRUST-PATH: no" "$out" "TRUST-PATH: no"
 
 reset_stubs
 STUB_FILES="scripts/handover/chief-kit/ready-check.sh"
-wt_ahead=$(git -C "$WT_PRIM" commit-tree "HEAD^{tree}" -p HEAD -m "origin moved past the primary")
+wt_ahead=$(git -C "$WT_PRIM" -c user.name=t -c user.email=t@t commit-tree "HEAD^{tree}" -p HEAD -m "origin moved past the primary")
 git -C "$WT_PRIM" push -q origin "$wt_ahead:refs/heads/main" 2>/dev/null
 out="$(wt_run)" || true
 contains "worktree-run stale primary: check 12 still refuses" "$out" "[FAIL] 12."
