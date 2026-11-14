@@ -77,7 +77,8 @@
 #                               sources scripts/lib/ticket-status.sh, with MERGE_ROWS_BUDGET_SECS
 #                               (default 10 here) for the GitHub reads of the merge rows and the whole
 #                               subshell under timeout -k 2 30. A non-zero rc, a timeout, a pool that
-#                               read empty or a `merge-rows-effective: warn:` line (a pre-merge row the
+#                               read empty, a failed read of the rows (jq or the merge-row reader exiting
+#                               non-zero) or a `merge-rows-effective: warn:` line (a pre-merge row the
 #                               read could not settle) is an unread sample: no wake, the marker unchanged.
 #                               The pool-wide wakes above take precedence at a sample that wakes on both.
 #   WAKE pool-unresolved capacity=<value> pool=<open>/<in-flight>/<dispositioned>/<undispositioned>
@@ -1219,9 +1220,10 @@ underfill_repool() {
 # resume_stale_scan: after a pool_probe that read the pool, reads the park start of every RESUME key the
 # pool lists and sets resume_stale_read (1 when the read finished) and resume_stale_keys (the keys parked
 # at least the resume wait, comma-joined). The read is one subshell that sources ticket-status.sh, so the
-# park rule, the wait and the clock (ts_now) are the lib's. ts_merge_rows is redefined there to keep the
-# reader's stderr: a pre-merge row it could not settle prints a warn line, and a park start read past a
-# dropped row would look older than it is, so the sample is unread. Nothing is written to the marker here.
+# park rule, the wait and the clock (ts_now) are the lib's. ts_merge_rows and jq are wrapped there to keep
+# what the lib swallows: a pre-merge row the reader could not settle prints a warn line, and a read that
+# failed leaves no rows; either way a park start read past it would look older than it is or absent, so the
+# sample is unread. Nothing is written to the marker here.
 resume_stale_file="$inbox.wait.resume-stale"
 resume_stale_read=""
 resume_stale_keys=""
@@ -1233,10 +1235,11 @@ log="$(ts_state_dir)/status-events.jsonl"
 : > "$3/stale"
 [ -r "$log" ] || exit 0
 warn="$3/warn"
-ts_merge_rows() { python3 -I "$_TS_LIB_DIR/merge-rows-effective.py" "$@" 2>>"$warn"; }
+ts_merge_rows() { python3 -I "$_TS_LIB_DIR/merge-rows-effective.py" "$@" 2>>"$warn" || echo "merge-rows-effective: warn: the read failed" >> "$warn"; }
+jq() { command jq "$@" || echo "merge-rows-effective: warn: the park rows could not be read" >> "$warn"; }
 printf "%s\n" "$2" > "$3/keys"
 grep -F -f "$3/keys" "$log" > "$3/rows" || exit 0
-now="$(ts_now)"
+now="$(ts_now)" || exit 70
 ts_park_since_rows "$3/rows" | while IFS="$(printf "\t")" read -r k rule since; do
     [ "$rule" = D5c ] || continue
     grep -qxF -- "$k" "$3/keys" || continue

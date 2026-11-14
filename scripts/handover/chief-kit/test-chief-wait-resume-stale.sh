@@ -157,5 +157,19 @@ CHIEF_WAIT_UNDERFILL_REPOOL_SEC=3600 MERGE_ROWS_BUDGET_SECS=120 arm "$WORK/r6b.o
 ticks6b="$(ticks)"
 check '6b (control, timeout) the sample returns inside 40 s and prints no WAKE resume-stale' '124:0:yes' "$rc:$(stale_wakes "$WORK/r6b.out"):$([ "$ticks6b" -ge 3 ] && echo yes || echo "ticks=$ticks6b")"
 
+# --- 7 a park read that fails inside the lib (its jq exits 1) is an unread sample: no wake, the marker stays ---
+mkdir -p "$STUB/bin"
+JQ_REAL="$(command -v jq)"
+export JQ_REAL
+# shellcheck disable=SC2016  # $JQ_REAL expands in the stub, not here
+printf '#!/usr/bin/env bash\n[ "${1:-}" != -Rrs ] || exit 1\nexec "$JQ_REAL" "$@"\n' > "$STUB/bin/jq"
+chmod +x "$STUB/bin/jq"
+case_new r7
+row $((5 * H)) sweep noop D5c
+printf 'FIXT-7\n' > "$INBOX.wait.resume-stale"
+touch -d '5 hours ago' "$INBOX.wait.resume-stale"  # gnu-ok: Linux-only suite
+PATH="$STUB/bin:$PATH" arm "$WORK/r7.out" 6
+check '7 a failed park read wakes nothing and leaves the resume-stale marker as it was' '124:0:FIXT-7' "$rc:$(stale_wakes "$WORK/r7.out"):$(cat "$INBOX.wait.resume-stale" 2>/dev/null)"
+
 printf '\n%s failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
