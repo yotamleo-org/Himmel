@@ -332,10 +332,9 @@ function arrayCandidates(text: string): unknown[][] {
 // the array; dontAsk denies any tool that is not allowed, and the judge is given none.
 export const JUDGE_PERMISSION_MODE = 'dontAsk';
 
-// The kind of a reply that holds no array, in a fixed set of words for the refusal.
 function replyShape(text: string): string {
   if (!text.trim()) return 'empty reply';
-  if (/<invoke\s+name="ExitPlanMode"|\bExitPlanMode\b/.test(text)) return 'ExitPlanMode block';
+  if (/\bExitPlanMode\b/.test(text)) return 'ExitPlanMode block';
   return 'prose';
 }
 

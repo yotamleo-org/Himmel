@@ -255,7 +255,6 @@ describe('jira release rm-run', () => {
     for (const k of ['WORKER_SESSION_LANE', 'CADENCE_USAGE_LAUNCH', 'CADENCE_USAGE_CALLER_PID']) expect(pre?.env).not.toHaveProperty(k);
   });
 
-  // The 2026-11-14 run record: in plan mode the model answered with an ExitPlanMode call, not the array.
   const EXIT_PLAN_REPLY = '<function_calls>\n<invoke name="ExitPlanMode">\n<parameter name="plan">The rulings JSON array was already delivered.</parameter>\n</invoke>\n</function_calls>';
 
   it('a reply that is an ExitPlanMode block rules nothing, returns the claim to open and names its shape', async () => {
