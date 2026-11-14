@@ -26,7 +26,7 @@ was never pruned).  C7 only emits findings and points to `/clean` (which dry-run
 first); it never deletes or modifies anything.  On forge outage (rc 2) it emits a
 single INFO "skipped" rather than a false WARN.
 
-It also reports two **tool-presence gaps up front** (C38/C39, WARN only, HIMMEL-3170) that
+It also reports two **tool-presence gaps up front** (C38/C39, WARN only) that
 `himmel-update` and `refresh-graph-map.sh` otherwise surface only when their own paths run:
 **`uv` missing from PATH** (C38 — graphify is uv-managed, so it never installs/updates;
 remedy `brew install uv` on macOS, the astral curl line elsewhere) and, **on macOS only**,
@@ -34,7 +34,7 @@ remedy `brew install uv` on macOS, the astral curl line elsewhere) and, **on mac
 `brew install coreutils`). On other platforms C39 is an OK skip. Install detail:
 `docs/setup/new-machine.md`.
 
-**C41-mcp-argv-key** (HIMMEL-2762, WARN only) flags any MCP server whose `args` carry a
+**C41-mcp-argv-key** (WARN only) flags any MCP server whose `args` carry a
 credential — a `--*key*`/`--*token*`/`--*secret*`/`--*password*` flag followed by a value
 (or written `--flag=value`), or an argument shaped like a key. A key on the command line is
 readable by any local user via `ps` or `/proc/<pid>/cmdline`. It scans `~/.claude.json`
@@ -43,7 +43,7 @@ readable by any local user via `ps` or `/proc/<pid>/cmdline`. It scans `~/.claud
 **name and flag only, never the value**. Remedy: move the key into the server's `env` block
 (or a file it reads) and rotate the exposed key.
 
-**C42-sweep-health** (HIMMEL-3405, WARN only) runs `bash scripts/worktree.sh prune --health`
+**C42-sweep-health** (WARN only) runs `bash scripts/worktree.sh prune --health`
 (read-only; prints only alarm lines, nothing when healthy) and WARNs once per line:
 `LOST-COMMITS <branch> pr#<n> ahead=<k>` (commits pushed after the PR merged that never
 shipped), `STUCK <path> <reason> since <ts>` (a worktree/branch the prune sweep keeps
@@ -58,7 +58,7 @@ self-mod guards do not apply) via `setup-hooks.{sh,ps1} --guardrail-mode global`
 
 `C1-node` (the old SessionStart/UserPromptSubmit node-hook check, for the
 response-compression plugin himmel no longer carries) is
-**retired** (HIMMEL-2033). The remaining check ids were deliberately NOT
+**retired**. The remaining check ids were deliberately NOT
 renumbered.
 
 This command runs from **any directory** — resolve the himmel checkout the same
