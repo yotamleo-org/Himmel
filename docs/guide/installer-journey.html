@@ -281,13 +281,13 @@
       </details>
       <details class="sstep">
         <summary><span class="n">8</span> Graph choices <small>what to graph and who pays</small></summary>
-        <p class="intro">If graphify is installed, the installer asks which of your own repos to graph on this machine. Press Enter to skip it: nothing is saved, nothing else is asked and no job is armed.</p>
+        <p class="intro">If graphify is installed, the installer asks which of your own repos to graph on this machine. On a first run, press Enter to skip it: nothing is saved, nothing else is asked and no job is armed.</p>
         <div class="term"><pre aria-label="What the terminal shows"><span class="d">The himmel code graph comes from us with each update; you do not build it.</span>
 <span class="q">? Which of your own git repos should be graphed on this machine? Type a path for each, one per line. Enter for none. Notes vaults cannot be added.</span>
 <span class="in">&gt; </span>
 <span>Without a graph choice, graphify builds the code structure from a local parse for free, and a semantic pass that runs on a repo other than himmel describes its markdown on this machine&#39;s Claude subscription, only after a usage check and never on an API key; choose none to keep the structure only.</span></pre></div>
         <div class="means">
-          <div><h3>What you see</h3><ul><li>One question, and Enter means none. With a repo typed, it asks who pays first, the fallbacks in order, a cost cap when an API account is in the route, and whether to run the graph job once a day.</li></ul></div>
+          <div><h3>What you see</h3><ul><li>One question, and on a first run Enter means none; a re-run shows your stored answers and Enter keeps each. With a repo typed, it asks who pays first, the fallbacks in order, a cost cap when an API account is in the route, and whether to run the graph job once a day.</li></ul></div>
           <div><h3>What it does</h3><ul><li>Enter saves nothing and arms nothing. A typed answer is saved as graphify.choices in ~/.himmel/config.json, never in your answer profile, and only a typed yes arms the daily job.</li></ul></div>
         </div>
       </details>
@@ -587,9 +587,9 @@
       means: function () { return { see: ['Two options.'], does: ['yes prints a hardening checklist for unattended machines; no prints a one-line pointer to it. Neither runs anything.'] }; } },
     // source: bin.js askGraphChoices(); graph-choices.js first-question and NO_CHOICE_SENTENCE; asked only when graphify is installed
     { id: 'graph', short: 'Graph choices', sub: 'what to graph and who pays', kind: 'ask',
-      intro: 'If graphify is installed, the installer asks which of your own repos to graph on this machine. Press Enter to skip it: nothing is saved, nothing else is asked and no job is armed.',
+      intro: 'If graphify is installed, the installer asks which of your own repos to graph on this machine. On a first run, press Enter to skip it: nothing is saved, nothing else is asked and no job is armed.',
       term: function () { return [['d', 'The himmel code graph comes from us with each update; you do not build it.'], ['q', '? Which of your own git repos should be graphed on this machine? Type a path for each, one per line. Enter for none. Notes vaults cannot be added.']].concat(answer('')).concat([['', 'Without a graph choice, graphify builds the code structure from a local parse for free, and a semantic pass that runs on a repo other than himmel describes its markdown on this machine\'s Claude subscription, only after a usage check and never on an API key; choose none to keep the structure only.']]); },
-      means: function () { return { see: ['One question, and Enter means none. With a repo typed, it asks who pays first, the fallbacks in order, a cost cap when an API account is in the route, and whether to run the graph job once a day.'], does: ['Enter saves nothing and arms nothing. A typed answer is saved as graphify.choices in ~/.himmel/config.json, never in your answer profile, and only a typed yes arms the daily job.'] }; } },
+      means: function () { return { see: ['One question, and on a first run Enter means none; a re-run shows your stored answers and Enter keeps each. With a repo typed, it asks who pays first, the fallbacks in order, a cost cap when an API account is in the route, and whether to run the graph job once a day.'], does: ['Enter saves nothing and arms nothing. A typed answer is saved as graphify.choices in ~/.himmel/config.json, never in your answer profile, and only a typed yes arms the daily job.'] }; } },
     // source: bin.js askVm() + VM_HELP; asked only when an offered cadence has vm_proof
     { id: 'vm', short: 'Test VM', sub: 'where risky steps are proved', kind: 'ask',
       skip: function () { return hasVault() ? '' : 'Skipped on your path. This question appears only when a job that needs proof on a test VM is on offer, and the only such job (vault-stall) needs a companion vault.'; },
