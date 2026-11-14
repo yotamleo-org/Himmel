@@ -210,6 +210,29 @@ row "brace groups expand left to right, in bash order" \
     'echo a{b,c}{d,e} x{1..2}' \
     '(.[0].argv | map(.v)) == ["echo", "abd", "abe", "acd", "ace", "x1", "x2"]'
 
+# shfmt leaves Value out of an empty SglQuoted node
+row "an empty single-quote pair inside a word joins it: git sta''sh drop" \
+    "git sta''sh drop" \
+    '.[0].prog == "git" and (.[0].argv | map(.v)) == ["git", "stash", "drop"]'
+row "an empty single-quote pair inside the program name: g''it stash drop" \
+    "g''it stash drop" \
+    '.[0].prog == "git" and (.[0].argv | map(.v)) == ["git", "stash", "drop"]'
+row "a leading empty single-quote pair: git ''stash drop" \
+    "git ''stash drop" \
+    '(.[0].argv | map(.v)) == ["git", "stash", "drop"]'
+row "echo a''b reads as echo ab" \
+    "echo a''b" \
+    '(.[0].argv | map(.v)) == ["echo", "ab"]'
+row "a bare empty single-quote word is one empty argv word" \
+    "echo '' x" \
+    '(.[0].argv | map(.v)) == ["echo", "", "x"]'
+row "an empty ANSI-C quote pair is one empty argv word" \
+    "echo \$'' x" \
+    '(.[0].argv | map(.v)) == ["echo", "", "x"]'
+row "control: echo a\"\"b reads as echo ab" \
+    'echo a""b' \
+    '(.[0].argv | map(.v)) == ["echo", "ab"]'
+
 ms_now() {
     local n
     n=$(date +%s%N 2>/dev/null)
