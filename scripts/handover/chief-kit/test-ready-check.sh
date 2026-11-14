@@ -56,6 +56,11 @@ case "${STUB_GH_RL:-}" in
 esac
 case "$args" in
     "repo view --json owner,name"*)
+        if [ -n "${STUB_NWO_BY_CWD:-}" ]; then
+            pwd -P >> "${STUB_CWD_LOG:-/dev/null}"
+            n=$(git config --get ghstub.nwo 2>/dev/null) && [ -n "$n" ] || { echo "fatal: not a git repository (or no ghstub.nwo)" >&2; exit 1; }
+            printf '%s main\n' "$n"; exit 0
+        fi
         [ -z "${STUB_DEFAULT_BRANCH_FAIL:-}" ] || { printf '%s\n' "${STUB_NWO:-acme/repo}"; exit 0; }
         printf '%s main\n' "${STUB_NWO:-acme/repo}" ;;
     *"--json headRefOid,mergeStateStatus"*)
@@ -290,8 +295,9 @@ run() {
         none) set -- ;;
         *) set -- ${RUN_FLAGS:-} "$PR" "$SHA" ;;
     esac
-    (cd "$REPO" && env -u TICKET_ID_PATTERN \
+    (cd "${RUN_CWD:-$REPO}" && env -u TICKET_ID_PATTERN \
         JIRA_PROJECT_KEY=HIMMEL HOME="${RUN_HOME:-$HOME}" \
+        HIMMEL_REPO="${RUN_HIMMEL_REPO-$REPO}" STUB_NWO_BY_CWD="${STUB_NWO_BY_CWD:-}" \
         STUB_NWO="$NWO" \
         STUB_HEAD="${STUB_HEAD:-$SHA}" STUB_MSS="${STUB_MSS:-CLEAN}" \
         STUB_ROLLUP="${STUB_ROLLUP:-$GREEN_ROLLUP}" \
@@ -304,7 +310,7 @@ run() {
         STUB_FILE_STATUS="${STUB_FILE_STATUS:-}" STUB_WF_DIR="${STUB_WF_DIR:-}" \
         STUB_RUNS_DIR="${STUB_RUNS_DIR:-}" STUB_RUNS_FAIL="${STUB_RUNS_FAIL:-}" STUB_WF_PATCH_FILE="${STUB_WF_PATCH_FILE:-}" \
         STUB_AUTHOR="${STUB_AUTHOR:-}" STUB_BODY="${STUB_BODY-$GREEN_BODY}" STUB_RED="${STUB_RED-$GREEN_RED}" STUB_PR_TITLE="${STUB_PR_TITLE:-}" STUB_PR_BRANCH="${STUB_PR_BRANCH-feat/himmel-100-thing}" \
-        JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" STUB_JIRA_DOWN="${STUB_JIRA_DOWN:-}" STUB_LINKS_DB="${STUB_LINKS_DB:-}" STUB_LINKS_FAIL="${STUB_LINKS_FAIL:-}" \
+        JIRA_CMD="${RUN_JIRA_CMD-$tmp/bin/jira-stub}" STUB_JIRA_DB="$JIRA_DB" STUB_JIRA_DOWN="${STUB_JIRA_DOWN:-}" STUB_LINKS_DB="${STUB_LINKS_DB:-}" STUB_LINKS_FAIL="${STUB_LINKS_FAIL:-}" \
         PATH="$PATH" GH_LOG="$GH_LOG" GH_PR_SNAPSHOT_CACHE_DIR="$cache" \
         STUB_SNAPSHOT_FAIL="${STUB_SNAPSHOT_FAIL:-}" \
         STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" STUB_TRUST_LIST_FAIL="${STUB_TRUST_LIST_FAIL:-}" \
@@ -343,8 +349,8 @@ test_primary="${test_primary%/.git}"
 for args in "" "77 ${SHA%?}"; do
   # shellcheck disable=SC2086  # word-splitting the args string IS the point
   uout="$(bash "$SCRIPT" $args 2>&1)" || true
-  contains "usage [$args]: names the run location" "$uout" "run it from the primary checkout"
-  contains "usage [$args]: cds to the real primary checkout and quotes the script path" "$uout" "cd '$test_primary' && bash '$test_primary/scripts/handover/chief-kit/ready-check.sh' <pr-number> <full-40-hex-head-sha>"
+  contains "usage [$args]: says it runs from any directory" "$uout" "from any directory"
+  contains "usage [$args]: quotes the real primary checkout's script path, no cd" "$uout" "from any directory: bash '$test_primary/scripts/handover/chief-kit/ready-check.sh' <pr-number> <full-40-hex-head-sha>"
 done
 
 # --- 0. all-green PR: exit 0, READY-CHECK PASS, all six PASS lines ------
@@ -1057,7 +1063,7 @@ contains "coverage malformed jira reply: reads UNKNOWN" "$out" "UNKNOWN"
 # lints its own PR body before READY with item 7's exact logic (no second copy).
 run7() {
     (cd "$REPO" && env -u TICKET_ID_PATTERN \
-        JIRA_PROJECT_KEY=HIMMEL STUB_NWO="$NWO" \
+        JIRA_PROJECT_KEY=HIMMEL HIMMEL_REPO="$REPO" STUB_NWO="$NWO" \
         STUB_BODY="${STUB_BODY-$GREEN_BODY}" STUB_HEAD="${STUB_HEAD:-$SHA}" \
         STUB_PR_BRANCH="${STUB_PR_BRANCH-feat/himmel-100-thing}" \
         JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" STUB_LINKS_DB="${STUB_LINKS_DB:-}" \
@@ -1205,7 +1211,7 @@ STUB_BODY='## Ticket coverage\n- ask one: done pending verification\n'
 rc=0; out="$(run)" || rc=$?
 contains "full run trailing text: prints the accepted shape" "$out" "- <ask>: done"
 
-rc=0; out="$(cd "$REPO" && bash "$SCRIPT" --only 6 "$PR" 2>&1)" || rc=$?
+rc=0; out="$(cd "$REPO" && HIMMEL_REPO="$REPO" bash "$SCRIPT" --only 6 "$PR" 2>&1)" || rc=$?
 check "only 6 refused: exit 2" "$rc" "2"
 
 # --- 7c. the CR ledger's deferred_to rows for the PR head must agree with the
@@ -1961,6 +1967,7 @@ cp "$REPO_ROOT/scripts/ci/ticket-id-internal-authors.txt" "$own/scripts/ci/ticke
 mkdir -p "$own/scripts/cr"
 cp "$REPO_ROOT/scripts/cr/clear-review-marker.sh" "$REPO_ROOT/scripts/cr/anchor-handoff.sh" "$REPO_ROOT/scripts/cr/ledger-amend-auth.js" "$REPO_ROOT/scripts/cr/review-round.sh" "$own/scripts/cr/"
 cp "$REPO_ROOT/scripts/lib/chokepoint-seam-guard.sh" "$own/scripts/lib/chokepoint-seam-guard.sh"
+cp "$REPO_ROOT/scripts/lib/git-clean.sh" "$REPO_ROOT/scripts/lib/gate-repo-resolver.sh" "$own/scripts/lib/"
 cp "$REPO_ROOT/scripts/chokepoints.json" "$own/scripts/chokepoints.json"
 printf 'JIRA_PROJECT_KEY=HIMMEL\n' > "$own/.env"
 
@@ -1968,7 +1975,7 @@ reset_stubs
 STUB_COMMITS="$GREEN_COMMITS"
 rc=0
 out="$(cd "$REPO" && env -u TICKET_ID_PATTERN -u JIRA_PROJECT_KEY \
-    STUB_NWO="$NWO" STUB_HEAD="$SHA" STUB_MSS=CLEAN \
+    HIMMEL_REPO="$REPO" STUB_NWO="$NWO" STUB_HEAD="$SHA" STUB_MSS=CLEAN \
     STUB_ROLLUP="$GREEN_ROLLUP" STUB_UNRESOLVED=0 \
     STUB_COMMITS="$STUB_COMMITS" STUB_FILES="$GREEN_FILES" \
     STUB_BODY="$GREEN_BODY" STUB_RED="$GREEN_RED" STUB_PR_BRANCH=feat/himmel-100-thing JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
@@ -3261,7 +3268,7 @@ notcontains "trust: unresolvable default branch never prints no" "$out" "TRUST-P
 
 # --only 7 stays a coverage-only lint: no trust check
 reset_stubs
-rc=0; out=$(cd "$REPO" && STUB_BODY="$GREEN_BODY" STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" JIRA_PROJECT_KEY=HIMMEL STUB_HEAD="$SHA" bash "$SCRIPT" --only 7 "$PR" 2>&1) || rc=$?
+rc=0; out=$(cd "$REPO" && STUB_BODY="$GREEN_BODY" STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" JIRA_PROJECT_KEY=HIMMEL HIMMEL_REPO="$REPO" STUB_HEAD="$SHA" bash "$SCRIPT" --only 7 "$PR" 2>&1) || rc=$?
 notcontains "trust: --only 7 prints no TRUST-PATH line" "$out" "TRUST-PATH:"
 reset_stubs
 
@@ -3409,7 +3416,7 @@ rc=0; out="$(run)" || rc=$?
 contains "red-line: unreadable PR files fail row 13 closed" "$out" "[FAIL] 13."
 
 # --only 7 stays a coverage-only lint: row 13 is not part of it
-rc=0; out=$(cd "$REPO" && STUB_BODY="$GREEN_BODY" STUB_RED="" STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" JIRA_PROJECT_KEY=HIMMEL STUB_HEAD="$SHA" bash "$SCRIPT" --only 7 "$PR" 2>&1) || rc=$?
+rc=0; out=$(cd "$REPO" && STUB_BODY="$GREEN_BODY" STUB_RED="" STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" JIRA_PROJECT_KEY=HIMMEL HIMMEL_REPO="$REPO" STUB_HEAD="$SHA" bash "$SCRIPT" --only 7 "$PR" 2>&1) || rc=$?
 notcontains "red-line: --only 7 does not run row 13" "$out" "13."
 
 # --- 14. a Bug-ticket PR names its bug-origin line: warn only, never the verdict
@@ -3509,7 +3516,7 @@ check "bug-origin marker text: last line is the real marker" "$(last_line "$out"
 # A partial copy has neither lib: not checked, and the run still exits 0.
 reset_stubs
 rc=0; out="$(cd "$REPO" && env -u TICKET_ID_PATTERN -u JIRA_PROJECT_KEY \
-    STUB_NWO="$NWO" STUB_HEAD="$SHA" STUB_MSS=CLEAN \
+    HIMMEL_REPO="$REPO" STUB_NWO="$NWO" STUB_HEAD="$SHA" STUB_MSS=CLEAN \
     STUB_ROLLUP="$GREEN_ROLLUP" STUB_UNRESOLVED=0 \
     STUB_COMMITS="$GREEN_COMMITS" STUB_FILES="$GREEN_FILES" \
     STUB_BODY="$GREEN_BODY" STUB_RED="$GREEN_RED" STUB_PR_BRANCH=feat/himmel-100-thing JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
@@ -3523,7 +3530,7 @@ contains "bug-origin partial copy: not checked" "$out" "$BO_NOTCHECKED"
 : > "$own/scripts/lib/ticket-status.sh"
 cp "$REPO_ROOT/scripts/lib/timeout-bin.sh" "$own/scripts/lib/timeout-bin.sh"
 rc=0; out="$(cd "$REPO" && env -u TICKET_ID_PATTERN -u JIRA_PROJECT_KEY \
-    STUB_NWO="$NWO" STUB_HEAD="$SHA" STUB_MSS=CLEAN \
+    HIMMEL_REPO="$REPO" STUB_NWO="$NWO" STUB_HEAD="$SHA" STUB_MSS=CLEAN \
     STUB_ROLLUP="$GREEN_ROLLUP" STUB_UNRESOLVED=0 \
     STUB_COMMITS="$GREEN_COMMITS" STUB_FILES="$GREEN_FILES" \
     STUB_BODY="$GREEN_BODY" STUB_RED="$GREEN_RED" STUB_PR_BRANCH=feat/himmel-100-thing JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
@@ -4218,7 +4225,7 @@ printf '#!/usr/bin/env bash\necho started > "%s/started"\nsleep 40 &\necho $! > 
 kw_sleep_alive() { local p; p=$(cat "$S_KW/sleep.pid" 2>/dev/null); if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then kill "$p" 2>/dev/null; echo yes; else echo no; fi; }
 kw_t0=$SECONDS
 kw_rc=0
-(cd "$REPO" && TMPDIR="$S_KW" GH_CMD="$S_KW/slow-gh" timeout 3 bash "$SCRIPT" --observe "$PR" "$SHA" > /dev/null 2>&1) || kw_rc=$?  # gnu-ok: Linux-only kit
+(cd "$REPO" && HIMMEL_REPO="$REPO" TMPDIR="$S_KW" GH_CMD="$S_KW/slow-gh" timeout 3 bash "$SCRIPT" --observe "$PR" "$SHA" > /dev/null 2>&1) || kw_rc=$?  # gnu-ok: Linux-only kit
 kw_took=$((SECONDS - kw_t0))
 sleep 1
 check "T8d: the outer timeout is what ended the run (exit 124)" "$kw_rc" "124"
@@ -4229,7 +4236,7 @@ check "T8d: the killed wrapper leaves no stalled child" "$(pgrep -f "$S_KW/slow-
 check "T8d: the stalled read's own sleep is gone too" "$(kw_sleep_alive)" "no"
 rm -f "$S_KW/started" "$S_KW/sleep.pid"
 kw_rc=0
-(cd "$REPO" && READY_CHECK_DEADLINE=0 TMPDIR="$S_KW" GH_CMD="$S_KW/slow-gh" timeout 3 bash "$SCRIPT" --observe "$PR" "$SHA" > /dev/null 2>&1) || kw_rc=$?  # gnu-ok: Linux-only kit
+(cd "$REPO" && READY_CHECK_DEADLINE=0 HIMMEL_REPO="$REPO" TMPDIR="$S_KW" GH_CMD="$S_KW/slow-gh" timeout 3 bash "$SCRIPT" --observe "$PR" "$SHA" > /dev/null 2>&1) || kw_rc=$?  # gnu-ok: Linux-only kit
 sleep 1
 check "T8d: unarmed, the outer timeout ended the run (exit 124)" "$kw_rc" "124"
 check "T8d: unarmed, the stalled read was started" "$([ -f "$S_KW/started" ] && echo yes || echo no)" "yes"
@@ -4718,6 +4725,92 @@ contains "item 20 under --only 7: names f.sh" "$out" "- f.sh vs #12: <what you k
 contains "item 20 under --only 7: the FAIL line names the head" "$c20_fail" "${C20_MERGED:0:7}"
 check "item 20 under --only 7: the lint fails" "$rc" "1"
 contains "item 20 under --only 7: says COVERAGE-LINT FAIL" "$out" "COVERAGE-LINT FAIL"
+reset_stubs
+
+git -C "$REPO" config ghstub.nwo "$NWO"
+NOWHERE="$tmp/nowhere"; mkdir -p "$NOWHERE"
+DECOY="$tmp/decoy"; mkdir -p "$DECOY"
+git -C "$DECOY" init -q
+git -C "$DECOY" config ghstub.nwo other/luna
+export STUB_NWO_BY_CWD=1
+reset_stubs
+rc=0; base_out="$(run)" || rc=$?; base_rc=$rc
+check "anchor: control from the checkout passes" "$base_rc" "0"
+contains "anchor: control says READY-CHECK PASS" "$base_out" "READY-CHECK PASS"
+
+: > "$GH_LOG"
+rc=0; out="$(RUN_CWD="$NOWHERE" run)" || rc=$?
+check "anchor R1: from a directory outside any repo, same exit as the checkout" "$rc" "$base_rc"
+check "anchor R1: from a directory outside any repo, same output as the checkout" "$out" "$base_out"
+notcontains "anchor R1: no cannot-resolve refusal from nowhere" "$out" "cannot resolve owner/repo"
+
+: > "$GH_LOG"
+rc=0; out="$(RUN_CWD="$DECOY" run)" || rc=$?
+check "anchor R2: from a decoy repo, same exit as the checkout" "$rc" "$base_rc"
+check "anchor R2: from a decoy repo, same output as the checkout" "$out" "$base_out"
+check "anchor R2: no gh call names the decoy's repo" "$(grep -c 'other/luna' "$GH_LOG")" "0"
+
+: > "$GH_LOG"
+rc=0; out="$(GIT_DIR="$DECOY/.git" GIT_WORK_TREE="$DECOY" run)" || rc=$?
+check "anchor R15: an inherited GIT_DIR on a decoy gives the checkout's exit" "$rc" "$base_rc"
+check "anchor R15: an inherited GIT_DIR on a decoy gives the checkout's output" "$out" "$base_out"
+check "anchor R15: no gh call names the decoy's repo" "$(grep -c 'other/luna' "$GH_LOG")" "0"
+
+mkdir -p "$tmp/empty-objects"
+rc=0; out="$(GIT_OBJECT_DIRECTORY="$tmp/empty-objects" run)" || rc=$?
+check "anchor: an inherited GIT_OBJECT_DIRECTORY gives the checkout's exit" "$rc" "$base_rc"
+check "anchor: an inherited GIT_OBJECT_DIRECTORY gives the checkout's output" "$out" "$base_out"
+
+: > "$GH_LOG"
+rc=0; out="$(GIT_CONFIG_PARAMETERS="'ghstub.nwo=other/luna'" run)" || rc=$?
+check "anchor: an inherited GIT_CONFIG_PARAMETERS gives the checkout's exit" "$rc" "$base_rc"
+check "anchor: an inherited GIT_CONFIG_PARAMETERS gives the checkout's output" "$out" "$base_out"
+check "anchor: an inherited GIT_CONFIG_PARAMETERS names no decoy repo to gh" "$(grep -c 'other/luna' "$GH_LOG")" "0"
+
+mkdir -p "$tmp/nodebin"
+export NODE_LOG="$tmp/node.log"; : > "$NODE_LOG"
+cat > "$tmp/nodebin/node" <<'STUB'
+#!/usr/bin/env bash
+echo "$1" >> "$NODE_LOG"
+exit 1
+STUB
+chmod +x "$tmp/nodebin/node"
+rc=0; out="$(PATH="$tmp/nodebin:$PATH" RUN_JIRA_CMD="" RUN_CWD="$NOWHERE" STUB_BODY="$BO_GOOD" STUB_PR_TITLE='fix(x): [HIMMEL-900] thing' run)" || rc=$?
+check "anchor: no jira CLI call is made through a bare /scripts path" "$(grep -c '^/scripts/jira' "$NODE_LOG")" "0"
+check "anchor: the jira CLI is called through the script's own primary checkout" "$([ "$(grep -c "^$test_primary/scripts/jira/dist/index.js\$" "$NODE_LOG")" -ge 1 ] && echo yes)" "yes"
+
+RW="$tmp/rel-tree"
+mkdir -p "$RW/scripts/handover/chief-kit"
+cp "$SCRIPT" "$RW/scripts/handover/chief-kit/ready-check.sh"
+cp -R "$REPO_ROOT/scripts/lib" "$RW/scripts/lib"
+printf 'echo REL-TREE-LIB-MARKER\n' >> "$RW/scripts/lib/non-gating-contexts.sh"
+rc=0; out="$(RUN_CWD="$RW" RUN_SCRIPT=scripts/handover/chief-kit/ready-check.sh run)" || rc=$?
+contains "anchor R10: relative entry from the tree root reaches the checks" "$out" "[PASS] 1."
+contains "anchor R10: the relative entry loads its own tree's lib" "$out" "REL-TREE-LIB-MARKER"
+
+PRIM="$tmp/prim-repo"; LINKED="$tmp/prim-linked"
+git init -q "$PRIM"
+git -C "$PRIM" config user.email t@example.com
+git -C "$PRIM" config user.name tester
+git -C "$PRIM" commit -q --allow-empty -m "chore: init"
+git -C "$PRIM" config ghstub.nwo "$NWO"
+git -C "$PRIM" worktree add -q --detach "$LINKED"
+mkdir -p "$LINKED/scripts/handover/chief-kit"
+cp "$SCRIPT" "$LINKED/scripts/handover/chief-kit/ready-check.sh"
+cp -R "$REPO_ROOT/scripts/lib" "$LINKED/scripts/lib"
+export STUB_CWD_LOG="$tmp/stub-cwd.log"; : > "$STUB_CWD_LOG"
+rc=0; out="$(RUN_CWD="$NOWHERE" RUN_HIMMEL_REPO="" RUN_SCRIPT="$LINKED/scripts/handover/chief-kit/ready-check.sh" run)" || rc=$?
+contains "anchor: with HIMMEL_REPO empty the script reaches the checks from any cwd" "$out" "[PASS] 1."
+check "anchor: with HIMMEL_REPO empty gh reads the primary checkout, not the linked worktree the script sits in" "$(sort -u "$STUB_CWD_LOG")" "$(cd "$PRIM" && pwd -P)"
+
+rc=0; out="$(cd "$NOWHERE" && HIMMEL_REPO=rel/path bash "$SCRIPT" --observe "$PR" "$SHA" 2>&1)" || rc=$?
+check "anchor: a relative HIMMEL_REPO is refused with exit 2" "$rc" "2"
+contains "anchor: the refusal names HIMMEL_REPO" "$out" "HIMMEL_REPO"
+contains "anchor: the relative refusal is the exact line" "$out" "ready-check: HIMMEL_REPO (rel/path) is not an absolute path - refusing to let it pick the gated checkout; nothing was judged"
+rc=0; out="$(cd "$NOWHERE" && HIMMEL_REPO="$NOWHERE/gone" bash "$SCRIPT" --observe "$PR" "$SHA" 2>&1)" || rc=$?
+check "anchor: a HIMMEL_REPO that is not a directory is refused with exit 2" "$rc" "2"
+contains "anchor: the not-a-directory refusal is the exact line" "$out" "ready-check: the gated checkout HIMMEL_REPO ($NOWHERE/gone) is not a directory; nothing was judged"
+unset STUB_NWO_BY_CWD
 reset_stubs
 
 echo "---"

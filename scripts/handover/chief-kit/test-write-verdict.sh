@@ -973,6 +973,10 @@ check "27: a HIMMEL_REPO whose origin is another repo is refused" "$rc" 2
 contains "27: the refusal names HIMMEL_REPO" "$out" "HIMMEL_REPO"
 case "$out" in *"--repo acme/widget"*) echo "FAIL - 27: the refusal steers to --repo acme/widget"; fails=$((fails+1)) ;; *) echo "ok - 27: the refusal never steers to --repo <that repo>" ;; esac
 check "27: the refusal writes nothing" "$(ls -R "$root" | wc -l | tr -d ' ')" "$before27"
+rc=0; out=$(HIMMEL_REPO=rel wv q27r GO "$SHA_A" --evidence-file "$ev" 2>&1) || rc=$?
+check "27: a relative HIMMEL_REPO -> rc 2 and the exact refusal" "$rc|$out" "2|write-verdict: HIMMEL_REPO (rel) is not an absolute path - refusing to let it pick the gated checkout; nothing written"
+rc=0; out=$(HIMMEL_REPO="$tmp/gone27" wv q27g GO "$SHA_A" --evidence-file "$ev" 2>&1) || rc=$?
+check "27: a HIMMEL_REPO that is not a directory -> rc 2 and the exact refusal" "$rc|$out" "2|write-verdict: the gated checkout HIMMEL_REPO ($tmp/gone27) is not a directory; nothing written"
 rc=0; (cd "$ax" && wv q27 GO "$SHA_A" --repo acme/widget --evidence-file "$ev" >/dev/null 2>&1) || rc=$?
 check "27: the same checkout with --repo acme/widget writes" "$rc" 0
 check "27: it lands in the adopter bucket" "$(cat "$root/$(dirname "$scope")/acme--widget/verdicts/q27/"* 2>/dev/null | grep -c '^repo: acme/widget$')" 1

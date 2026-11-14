@@ -382,10 +382,16 @@ publisher, so it never fetches.
 
 - `role` prints `publisher` (the JSON literal `true` at
   `graphify.semantic_api_ok`), `unreadable` (a symlinked `~/.himmel` or
-  `config.json`, a non-file, a mode this user cannot read, not JSON, empty, or
-  a `graphify` key that is not an object) or `adopter` (everything else, no file
-  included). Only the publisher renders the API lane, skips the fetch above and
-  runs its own semantic pass on himmel.
+  `config.json`, a non-file, a mode this user cannot read, not JSON, empty, a
+  `graphify` key that is not an object, or, on a station with a publisher
+  footprint, a missing file or a `semantic_api_ok` that is no longer `true`) or
+  `adopter` (everything else). The footprint is an armed
+  `graphmap-publish-himmel.sh` runner that holds `HIMMEL_API_LANE=on`, or
+  config-audit's last healthy read, which held the key `true`. Only the
+  publisher renders the API lane, skips the fetch above and runs its own
+  semantic pass on himmel.
+- `lane-runners` prints each armed `graphmap-*.sh` runner that holds
+  `HIMMEL_API_LANE=on`, with the account it pins (`auto` or one letter).
 - `route --state` prints the graph choice state: `default` (no
   `graphify.choices.primary`), `none`, `set`, `invalid` or `unreadable`.
 
@@ -405,7 +411,52 @@ To keep a station to the structure graph, set `graphify.choices` to
 `{"version":1,"corpora":[],"primary":"none"}` in `~/.himmel/config.json` and
 run `bash scripts/lib/config-audit.sh accept`. Leaving the publisher role takes
 three steps: remove the key, run `bash scripts/lib/config-audit.sh accept`, then
-`bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed`.
+`bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed --leave-publisher`.
+Until the third step the station still reads `unreadable` (cause
+`publisher-key-lost`), because its publish runner holds the lane.
+
+### Repairing an unreadable graph config
+
+While `role` reads `unreadable` nothing new is spent: `refresh-graph-map.sh` exits 3
+before any semantic call, `semantic-update.sh` refuses `--backend claude-api` (the
+semantic step of the publish and Luna semantic runners, which keep their baked lane),
+`himmel-update.sh` pulls nothing over the station's graph
+(a symlinked config pulls only when no publisher footprint exists and the linked file
+does not hold `semantic_api_ok` true), and a routine `arm --rewrite-armed` or
+`arm --force` leaves every armed lane runner as it is. The fire raises the
+`graph-config-unreadable` alert and the doctor warns under its own id,
+`C94-graph-config`; the next fire that reads the file again clears the alert. A publish
+fire that the `semantic-update.sh` gate refuses stops before it publishes the structure
+graph, and `cadence-alert.sh` also sends its generic semantic-failed alert for that fire.
+`--seed-manifest` and `--dry-run` call no model, so the gate leaves them alone.
+`node scripts/himmelctl/lib/graph-choices.js check` names the cause word, picks the
+backup, and prints the fixed fix line for the cause. A session only relays that line to
+the operator. A session must not open a backup: the write guard allows plain reads, so
+this is a rule for the session, not a guard. The fixed fix line for each cause:
+
+- `symlink`: replace the symlink with the real file: put the real directory at ~/.himmel and the real config.json in it, then run bash scripts/lib/config-audit.sh accept
+- `not-a-file`: replace ~/.himmel/config.json with a regular JSON file by hand (something else is at that path), then run bash scripts/lib/config-audit.sh accept
+- `mode`: run chmod 600 ~/.himmel/config.json so this user can read it
+- `not-json`: restore the config with one of the two restore lines below, or write the file by hand and run bash scripts/lib/config-audit.sh accept
+- `empty`: restore the config with one of the two restore lines below, or write the file by hand and run bash scripts/lib/config-audit.sh accept
+- `graphify-shape`: restore the config with one of the two restore lines below, or fix the graphify key by hand and run bash scripts/lib/config-audit.sh accept
+- `missing`: restore the config with one of the two restore lines below; to stop publishing on purpose instead, run bash scripts/lib/config-audit.sh accept, then bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed --leave-publisher
+- `publisher-key-lost`: restore the config with one of the two restore lines below; to stop publishing on purpose instead, run bash scripts/lib/config-audit.sh accept, then bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed --leave-publisher
+
+The two restore lines, with the backup id `check` chose:
+
+- restore from Telegram: /config restore <id> <code>
+- restore in your own terminal: bash scripts/lib/config-audit.sh restore <id>
+
+`check` chooses the newest watcher backup whose `config.json` is usable, else the
+newest audited one. It lists each consent value the restore brings back
+(`graphify.salus_ollama_cloud_ok`, `graphify.semantic_api_ok` and the three
+`graphify.choices` keys) and marks one that differs from the last healthy read. It
+also names each other member of the backup (`himmel.conf`, `himmel.conf.local`, and
+`.env` for an audited backup) that the restore will roll back. An audited backup holds
+a copy of `.env`, so restoring one can bring back an older `.env`: read the rollback
+lines before you restore. With no usable backup `check` prints `fix=by-hand`. Spending
+stays stopped until the file reads again.
 
 ### How far behind the published graph is
 

@@ -63,6 +63,11 @@ helpers.
   into a version, then needs a requested INTAKE. Open tickets
   that already have no version: `scripts/handover/chief-kit/intake-backfill.sh` prints a
   proposed version for each (dry run; `--commands` adds the lines for one rm-run).
+- `create --operator-update <update_id>` (digits only) is the Telegram bridge's pointer to the
+  operator's update: the INTAKE evidence gains `operator_update`, `filed_by: bridge` and `bridge_chat`;
+  no words are recorded. Refused before any Jira call unless `HIMMEL_BRIDGE_SESSION=1` with no worker or
+  RM marker, an INTAKE is owed toward a `--proposed-version`, and `HIMMEL_BRIDGE_CHAT` on the farthest
+  marked ancestor (`ancestorValue`, never the command's own env) is a positive id.
 - `edit` that touches description, labels, parent or sector reads the ticket first and
   refuses, before the PUT, any standard error the ticket did not already have. A legacy
   ticket can be repaired one piece at a time; the gaps it keeps print as warnings. An

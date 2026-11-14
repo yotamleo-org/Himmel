@@ -357,7 +357,7 @@ PYEOF
   fi
   SEM_WHY="$(printf '%s\n' "$SEM_OUT" | sed -n 's/^SEMSTALE //p')"
   if [ -n "$SEM_WHY" ]; then
-    SEM_STALE_MSG="semantic layer is stale: $SEM_WHY. The AST layer can be fresh while this is true. Remedy: run the semantic pass for this corpus (himmel station: bash ~/.claude/graphmap-cadence/graphmap-himmel.sh, the HIMMEL-GraphMap-Himmel cron runner)."
+    SEM_STALE_MSG="semantic layer is stale: $SEM_WHY. The AST layer can be fresh while this is true. Remedy: run the semantic pass for this corpus (himmel station: bash scripts/handover/chief-kit/graph-pass-detached.sh start, detached so it outlives your window; bash scripts/handover/chief-kit/graph-pass-detached.sh status says running|finished|none; the HIMMEL-GraphMap-Himmel cron runs the same pass)."
     echo "graph-freshness: SEMANTIC-STALE $SEM_STALE_MSG" >&2
   fi
 fi

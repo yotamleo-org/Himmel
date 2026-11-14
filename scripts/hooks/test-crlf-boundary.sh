@@ -450,7 +450,7 @@ mkdir -p "$MARKER_REPO/.git/cr-pending/feat"
 : > "$MARKER_REPO/.git/cr-pending/feat/x"   # pending marker for feat/x only
 
 check_bounded check-cr-marker-on-pr-create Bash 2 "gh pr crea""te --head feat/x" \
-    "marker present + --head as the last token blocks (HIMMEL-2234 regression)" \
+    "marker present + --head as the last token blocks" \
     CLAUDE_PROJECT_DIR="$MARKER_REPO"
 check_bounded check-cr-marker-on-pr-create Bash 0 "gh pr crea""te --head feat/y" \
     "no marker for this branch allows" CLAUDE_PROJECT_DIR="$MARKER_REPO"
@@ -472,7 +472,7 @@ MPC_REPO="$TMP/mpc-repo"
 _mkrepo "$MPC_REPO" "feat/my-feature"
 
 check_bounded block-merged-pr-commit Bash 2 "gi""t -C $MPC_REPO commi""t" \
-    "bare 'commit' as the last token blocks (HIMMEL-2234 regression)" \
+    "bare 'commit' as the last token blocks" \
     FORGE=github GH_CMD="$GH_MERGED"
 check_bounded block-merged-pr-commit Bash 2 "$(printf 'echo hello\ngi''t -C %s commi''t' "$MPC_REPO")" \
     "same regression across a two-line command" \
@@ -547,7 +547,7 @@ _mkrepo "$BWIMC_MAIN" main
 
 check_bounded block-write-into-main-checkout Bash 2 \
     "echo x > $BWIMC_MAIN/bad.txt" \
-    "redirect write into a checkout on main blocks (HIMMEL-2526)"
+    "redirect write into a checkout on main blocks"
 check_bounded block-write-into-main-checkout Bash 0 "$A_OK" \
     "allow git status"
 
@@ -787,7 +787,7 @@ check_verdict _decide_posted_prcreate_nourl trigger-cr-on-pr-create 0 \
 
 CONT_PUSH="$(printf 'gi''t \134\012  pu''sh')"
 check_verdict _decide_posted_push trigger-cr-on-push 1 "$CONT_PUSH" \
-    "a real backslash-continuation git-push posts (HIMMEL-2234 regression)"
+    "a real backslash-continuation git-push posts"
 check_verdict _decide_posted_push trigger-cr-on-push 0 "gi""t status" \
     "an unrelated command posts nothing"
 

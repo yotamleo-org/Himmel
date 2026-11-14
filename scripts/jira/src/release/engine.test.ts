@@ -1611,6 +1611,204 @@ describe('a blocker of a current-version ticket is pulled into the current versi
   });
 });
 
+describe('a delivered ticket in a later version follows its merge (decision 929)', () => {
+  const declared = () => declare(ctx(), { project: 'HIMMEL', versions: ['v1', 'v2'], decision: '106', verbatim: 'R = v1 + v2', mode: 'observe' });
+  const id = 'O-R1-delivered-follows-merge';
+  const rulingRows = () => readChain<RulingRow>(join(ctx().dir, 'rulings.jsonl'), loadKey(ctx().keyPath)).verified;
+  const operatorRows = () => readChain<OperatorRow>(join(ctx().dir, 'operator.jsonl'), loadKey(ctx().keyPath)).verified;
+  const evidence = { merged_pr: 'https://github.com/o/r/pull/5', pr_number: 5 };
+  const wired = (pr = 5): Ctx => ({ ...ctx(), deliveredPr: () => pr });
+  // K-1 is Done and still sits in v2 while v1 is the current version.
+  const scene = (snap: Partial<Parameters<typeof mirror>[0][number]> = {}, extra: Parameters<typeof mirror>[0] = []) => {
+    const fixVersions = snap.fixVersions ?? ['v2'];
+    mirror([{ key: 'K-1', fixVersions, status: 'Done', category: 'Done', resolution: 'Done', sector: 'Ship loop', ...snap }, ...extra]);
+    jira.fv.set('K-1', fixVersions);
+  };
+  const ask = (ev: Record<string, unknown> = evidence, from_v: string | null = 'v2') =>
+    request(ctx(), { verb: 'INTAKE', key: 'K-1', from_v, to_v: 'v1', why: 'worked ticket held in a later version', evidence: ev, from: 'console' });
+  const judged: string[] = [];
+  const holdAll: Judge = async (input) => {
+    judged.push(...input.requests.map((q) => q.key));
+    return input.requests.map((q) => ({ req: q.req, outcome: 'HOLD' as const, reason: 'no standing delivery' }));
+  };
+  const noJudge: Judge = async () => { throw new Error('the judge must not be called for a delivered ticket'); };
+  const dropStanding = () => {
+    const c = ctx();
+    const k = loadKey(c.keyPath);
+    const path = join(c.dir, 'operator.jsonl');
+    const kept = readChain<OperatorRow>(path, k).verified.filter((r) => r.id !== id).map(({ prev: _p, mac: _m, ...r }) => r);
+    rmSync(path);
+    for (const r of kept) appendChain(path, k, r);
+  };
+  beforeEach(() => { judged.length = 0; });
+
+  it('a declare writes the standing record with decision 929 and the operator\'s words', () => {
+    declared();
+    expect(operatorRows().find((r) => r.id === id)).toMatchObject({ kind: 'delivered-follows-merge', decision: '929', verbatim: expect.stringContaining('merge') });
+  });
+
+  it('standing records it once on a release declared before it existed, and refuses a second', () => {
+    declared();
+    dropStanding();
+    expect(operatorRows().some((r) => r.id === id)).toBe(false);
+    expect(standing(ctx(), { kind: 'delivered-follows-merge', decision: '929', verbatim: 'x' })).toMatchObject({ id, kind: 'delivered-follows-merge', decision: '929' });
+    expect(() => standing(ctx(), { kind: 'delivered-follows-merge', decision: '929', verbatim: 'again' })).toThrow(/already recorded/);
+  });
+
+  it('the RM admits a Done key in a later version with merge evidence at once, with no model call, and Jira moves it', async () => {
+    declared();
+    scene();
+    ask();
+    const lines = await rmRun(wired(), noJudge);
+    expect(lines).toContainEqual(expect.stringMatching(/^RULING R-R1-0001 Q-R1-0001 INTAKE K-1 move v2→v1 ADMIT current sector=Ship loop — delivered-follows-merge: .*decision 929/));
+    expect(jira.fv.get('K-1')).toEqual(['v1']);
+    expect(rulingRows().at(-1)?.authority).toMatchObject({ kind: 'operator', ref: id, delivered: expect.stringContaining('5') });
+    expect(state(ctx()).requests).toEqual({ open: [], claimed: [], oldest_open: null });
+  });
+
+  it('the merged PR the caller looks up counts as evidence when the request carries none', async () => {
+    declared();
+    scene();
+    ask({});
+    const lines = await rmRun({ ...ctx(), deliveredPr: (key) => (key === 'K-1' ? 7 : undefined) }, noJudge);
+    expect(lines).toContainEqual(expect.stringMatching(/^RULING R-R1-0001 Q-R1-0001 INTAKE K-1 move v2→v1 ADMIT /));
+    expect(rulingRows().at(-1)?.authority).toMatchObject({ ref: id, delivered: expect.stringContaining('7') });
+  });
+
+  it('control: a ctx with no merged-PR lookup admits nothing mechanically, whatever evidence the request carries', async () => {
+    declared();
+    scene();
+    ask({ merged_pr: 'https://github.com/o/r/pull/5', pr_number: 5, pr: 5, duplicate_pr: 5 });
+    await rmRun(ctx(), holdAll);
+    expect(judged).toEqual(['K-1']);
+    expect(rulingRows()).toEqual([]);
+    leaseAcquire(ctx(rmEnv), { expectEpoch: 1, doc: DOC, session: 'rm-2' });
+    claim(ctx(rmEnv));
+    expect(() => rule(ctx(rmEnv), {
+      req: 'Q-R1-0001', outcome: 'ADMIT', op: { kind: 'move', from_v: 'v2', to_v: 'v1' }, sector: 'Ship loop', ground: 'g', reason: 'r', supersedes: [],
+      authority: { kind: 'operator', ref: id, delivered: 'PR #5' },
+    })).toThrow(/no verifiable merge evidence/);
+  });
+
+  it('a duplicate is delivered when a merged PR names its original, found through the lookup', async () => {
+    declared();
+    scene({ status: 'Duplicate', resolution: 'Duplicate' });
+    ask({ duplicate_of: 'K-5' });
+    const lines = await rmRun({ ...ctx(), deliveredPr: (key) => (key === 'K-5' ? 12 : undefined) }, noJudge);
+    expect(lines).toContainEqual(expect.stringMatching(/^RULING R-R1-0001 Q-R1-0001 INTAKE K-1 move v2→v1 ADMIT /));
+    expect(rulingRows().at(-1)?.authority).toMatchObject({ delivered: 'PR #12' });
+  });
+
+  it('control: under the production wiring a duplicate with an unmerged PR number is not admitted', async () => {
+    declared();
+    scene({ status: 'Duplicate', resolution: 'Duplicate' });
+    ask({ duplicate_pr: 9, duplicate_of: 'K-5' });
+    await rmRun({ ...ctx(), deliveredPr: () => undefined }, holdAll);
+    expect(judged).toEqual(['K-1']);
+    expect(rulingRows()).toEqual([]);
+  });
+
+  it('control: a judge decision citing the record with a made-up delivered string is refused when no merged PR names the key', () => {
+    declared();
+    scene();
+    leaseAcquire(ctx(rmEnv), { expectEpoch: 0, doc: DOC, session: 'rm-1' });
+    const q = ask({});
+    claim(ctx(rmEnv));
+    const cite = (c: Ctx) => rule(c, {
+      req: q.req, outcome: 'ADMIT', op: { kind: 'move', from_v: 'v2', to_v: 'v1' }, sector: 'Ship loop', ground: 'g', reason: 'r', supersedes: [],
+      authority: { kind: 'operator', ref: id, delivered: 'PR #999' },
+    });
+    expect(() => cite({ ...ctx(rmEnv), deliveredPr: () => undefined })).toThrow(/no verifiable merge evidence/);
+    expect(() => cite(ctx(rmEnv))).toThrow(/no verifiable merge evidence/);
+    expect(cite({ ...ctx(rmEnv), deliveredPr: () => 999 }).authority).toMatchObject({ delivered: 'PR #999' });
+  });
+
+  it('control: with no merge evidence nothing is admitted mechanically; the judge is asked', async () => {
+    declared();
+    scene();
+    ask({});
+    expect(await rmRun({ ...ctx(), deliveredPr: () => undefined }, holdAll)).toEqual([expect.stringMatching(/^HELD Q-R1-0001: /)]);
+    expect(judged).toEqual(['K-1']);
+    expect(rulingRows()).toEqual([]);
+    expect(jira.fv.get('K-1')).toEqual(['v2']);
+  });
+
+  it('control: with a lookup wired, a PR the request names is not enough when no merged PR names the key', async () => {
+    declared();
+    scene();
+    ask();
+    await rmRun({ ...ctx(), deliveredPr: () => undefined }, holdAll);
+    expect(judged).toEqual(['K-1']);
+    expect(rulingRows()).toEqual([]);
+  });
+
+  it('control: a judge cannot cite the record for a key that is not closed', () => {
+    declared();
+    scene({ status: 'In Progress', category: 'In Progress', resolution: undefined });
+    leaseAcquire(ctx(rmEnv), { expectEpoch: 0, doc: DOC, session: 'rm-1' });
+    const q = ask();
+    claim(ctx(rmEnv));
+    expect(() => admit(q.req, { op: { kind: 'move', from_v: 'v2', to_v: 'v1' }, authority: { kind: 'operator', ref: id, delivered: 'PR #5' } })).toThrow(/not closed, not delivered/);
+  });
+
+  it('control: a Won\'t Do key with a merged PR is not admitted mechanically', async () => {
+    declared();
+    scene({ status: "Won't Do", resolution: "Won't Do" });
+    ask();
+    await rmRun(wired(), holdAll);
+    expect(judged).toEqual(['K-1']);
+    expect(rulingRows()).toEqual([]);
+  });
+
+  it('control: a key already in the current version is not admitted mechanically', async () => {
+    declared();
+    scene({ fixVersions: ['v1'] });
+    ask(evidence, null);
+    await rmRun(wired(), holdAll);
+    expect(judged).toEqual(['K-1']);
+    expect(rulingRows()).toEqual([]);
+  });
+
+  it('control: a key in a released version (not one of the release\'s) is not admitted mechanically', async () => {
+    declared();
+    scene({ fixVersions: ['v0'] });
+    ask(evidence, 'v0');
+    await rmRun(wired(), holdAll);
+    expect(judged).toEqual(['K-1']);
+    expect(rulingRows()).toEqual([]);
+    expect(jira.fv.get('K-1')).toEqual(['v0']);
+  });
+
+  it('control: a release without the standing record sends the request to the judge', async () => {
+    declared();
+    dropStanding();
+    scene();
+    ask();
+    await rmRun(wired(), holdAll);
+    expect(judged).toEqual(['K-1']);
+    expect(rulingRows()).toEqual([]);
+  });
+
+  it('a judge cannot cite the record without the evidence it names, or for a version other than the current one', () => {
+    declared();
+    scene();
+    leaseAcquire(ctx(rmEnv), { expectEpoch: 0, doc: DOC, session: 'rm-1' });
+    const q = ask();
+    claim(ctx(rmEnv));
+    expect(() => admit(q.req, { op: { kind: 'move', from_v: 'v2', to_v: 'v1' }, authority: { kind: 'operator', ref: id } })).toThrow(/does not cover K-1/);
+    expect(() => admit(q.req, { op: { kind: 'move', from_v: 'v1', to_v: 'v2' }, authority: { kind: 'operator', ref: id, delivered: 'PR #5' } })).toThrow(/does not cover K-1/);
+  });
+
+  it('a newer operator record that keeps the key where it is wins (CONFLICT)', async () => {
+    declared();
+    scene();
+    const keep = operatorDecision({ ...ctx(), now: () => new Date('2099-01-01T00:00:00.000Z') }, { decision: '390', keys: ['K-1'], op: 'keep', from_v: 'v2', to_v: 'v2', verbatim: 'K-1 stays in v2' });
+    ask();
+    expect(await rmRun(wired(), noJudge)).toEqual([expect.stringMatching(new RegExp(`^REFUSED Q-R1-0001: .*CONFLICT K-1: ${keep.id} \\(newer\\)`))]);
+    expect(jira.fv.get('K-1')).toEqual(['v2']);
+  });
+});
+
 describe('signed minerva specs', () => {
   const specEnv = () => ({ HIMMEL_RELEASE_STATE_DIR: join(root, 'release'), HIMMEL_RELEASE_KEY_DIR: join(root, 'keys') });
   const sctx = (env: Record<string, string> = specEnv()) => ctx(env);

@@ -3602,6 +3602,7 @@
         "unwatched": "a live worker missing from the fleet manifest: watch housekeeping, not a workflow decision",
         "doctor": "a new doctor WARN/FAIL check id: the chief fixes, tickets or rules on it, operational triage",
         "pool-stale": "a pool disposition whose blocker shipped: the chief re-rules the parked ticket, operational triage",
+        "resume-stale": "a free RESUME row parked past its resume wait: the chief relaunches the parked ticket or names who owns it, operational triage",
         "focus": "FOCUS page refresh failure or stale dirty state: operational",
         "status-sweep": "Jira status sweep moved or missed tickets: operational",
         "resolve": "a worker's BLOCKED resolve marker: the chief resolves the thread itself, not a workflow decision",

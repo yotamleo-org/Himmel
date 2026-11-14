@@ -10,11 +10,11 @@ lib="$here/../lib"
 # pr-check-outside.sh --pr <n> --head <40hex>: the no-checkout route. It lets /pr-check review an
 # outside PR from its diff at its head, with no checkout: it refuses unless the PR is outside, open
 # and at <head>, asks review-round.sh check --pr whether this author may be reviewed (it never decides
-# that itself), refuses a local branch of the PR's head name, fetches the head into
+# that itself), refuses a local branch of the PR's head name (compared without case), fetches the head into
 # refs/himmel/outside/<n> (objects plus that one ref; it never touches HEAD, the index, the worktree,
 # config or hooks, and runs nothing from the fetched tree), then prints
 #   outside-pr: yes <n> <head> <headRefName> base=<baseRefName> authorized=allowlist|approval:<id>
-# Exit 0 ok; 5 not authorized; 2 for the state, the head, a collision, the fetch or a usage error.
+# Exit 0 ok; 5 not authorized; 2 for a non-anchor copy, the state, the head, a collision, the fetch or a usage error.
 # A fifth argument --fetch-only skips the authorization step: it fetches and prints authorized=fetch-only,
 # and writes no review-round state (the security audit reads the diff before any approval exists).
 # The one-argument form below stays the classifier.
@@ -26,10 +26,11 @@ if [ "${1:-}" = "--pr" ]; then
         exit 2
     fi
     # The route runs ready-check.sh and the libraries below, none of which a branch under review may supply:
-    # it runs only as the trust anchor's own copy. The anchor comes from HIMMEL_REPO, never from this script's location.
+    # it runs only as the trust anchor's own copy. The anchor comes from HIMMEL_REPO, never from this script's location,
+    # and is a primary checkout: a linked worktree, a submodule or a non-repo has no .git directory.
     pc_anchor="${HIMMEL_REPO:-}"
-    if [ -z "$pc_anchor" ] || ! [ "$here/../.." -ef "$pc_anchor" ]; then
-        echo "pr-check-outside: --pr runs only through the anchor's copy (\${HIMMEL_REPO}/scripts/cr/pr-check-outside.sh), never a branch copy ($here) - nothing was fetched or reviewed" >&2
+    if [ -z "$pc_anchor" ] || ! [ "$here/../.." -ef "$pc_anchor" ] || ! [ -d "$pc_anchor/.git" ]; then
+        echo "pr-check-outside: --pr runs only through the anchor's copy (\${HIMMEL_REPO}/scripts/cr/pr-check-outside.sh) in the anchor's primary checkout, never a branch copy or a linked worktree ($here) - nothing was fetched or reviewed" >&2
         exit 2
     fi
     command -v jq >/dev/null 2>&1 || { echo "pr-check-outside: jq not found on PATH" >&2; exit 2; }
@@ -90,13 +91,19 @@ if [ "${1:-}" = "--pr" ]; then
         exit 2
     fi
     # 3. a local branch of that name would make the ledger key ambiguous.
-    if git show-ref --verify --quiet "refs/heads/$pc_branch"; then
-        echo "pr-check-outside: a local branch named $pc_branch exists, and the ledger keys on that name; use the maintainer takeover instead. Nothing was fetched or reviewed." >&2
+    pc_col=0
+    outside_branch_collides "$pc_branch" || pc_col=$?
+    if [ "$pc_col" -eq 0 ]; then
+        echo "pr-check-outside: PR #$PR's head name collides with a local branch (names compared without case), and the ledger keys on that name; use the maintainer takeover instead. Nothing was fetched or reviewed." >&2
+        exit 2
+    fi
+    if [ "$pc_col" -ne 1 ]; then
+        echo "pr-check-outside: cannot list the local branches to check PR #$PR's head name for a collision. Nothing was fetched or reviewed." >&2
         exit 2
     fi
     # 4. fetch: objects plus one ref under refs/himmel/outside/; the + admits a force-push.
     # swallow-ok: a failed fetch or a ref that is not at the head is refused by this same condition (exit 2)
-    if ! "$_TIMEOUT_BIN" -k 5 120 git fetch -q --no-tags --no-recurse-submodules origin "+refs/pull/$PR/head:refs/himmel/outside/$PR" >/dev/null 2>&1 \
+    if ! "$_TIMEOUT_BIN" -k 5 120 git fetch -q --no-tags --no-recurse-submodules --no-write-fetch-head origin "+refs/pull/$PR/head:refs/himmel/outside/$PR" >/dev/null 2>&1 \
         || [ "$(git rev-parse --verify --quiet "refs/himmel/outside/$PR^{commit}" 2>/dev/null)" != "$HEAD" ]; then # swallow-ok: an unresolved ref differs from $HEAD and is refused here (exit 2)
         echo "pr-check-outside: could not fetch refs/pull/$PR/head to $HEAD (the PR moved, or origin is unreachable). Nothing was reviewed." >&2
         exit 2

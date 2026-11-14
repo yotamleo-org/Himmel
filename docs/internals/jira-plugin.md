@@ -377,7 +377,8 @@ Sector configured the release manager's prompt allows a null sector, a ruling wi
 `sector=none` and applies; `release rule --sector` (and the MCP `sector`) is optional unless a field
 is configured. Configured, a ruling
 without a sector is refused (`REFUSED <req>: release rule: a ruling without a sector refuses`, the request
-stays claimed) and the judge HOLDs a sectorless request. A missing config.json or an absent
+is closed and a re-filed one gets a new id) and the judge HOLDs a sectorless request (nothing is ruled: a
+version-repair request is set aside as held, any other request stays claimed). A missing config.json or an absent
 `jira.sectorField` means sectors are off; malformed JSON or a non-string value throws instead. Code:
 `scripts/jira/src/commands/sector.ts` (config + options) and `sector-setup.ts`.
 

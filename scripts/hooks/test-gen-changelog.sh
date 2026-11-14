@@ -225,7 +225,7 @@ run_test "tag-only drift (no new commits) reports true staleness, not a misleadi
   grep -q "^STALE gen-changelog: CHANGELOG.md structure changed with no new entries" check.txt
 '
 
-run_test "same-commit tags: the release absorbs its own series pre-release (HIMMEL-3603)" '
+run_test "same-commit tags: the release absorbs its own series pre-release" '
   setup_commits && cd "$R" || exit 1;
   git tag v0.1.0-rc.1 && git tag v0.1.0 &&
   bash "$GEN" &&
@@ -304,7 +304,7 @@ setup_broken_tag_ref() {
   echo "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef" > "$R/.git/refs/tags/v9.9.9"
 }
 
-run_test "HIMMEL-2363: gen-changelog.sh fails generation (not silent-drop) on a real merge-base error" '
+run_test "gen-changelog.sh fails generation (not silent-drop) on a real merge-base error" '
   setup_broken_tag_ref && cd "$R" || exit 1;
   bash "$GEN" >out.txt 2>stderr.txt;
   rc=$?;
@@ -337,7 +337,7 @@ setup_slow_merge_base() {
 # TMPDIR. The wait-for-sentinel loop below is a NEGATIVE CONTROL, not politeness:
 # it FAILS the case when the sentinel never appears, so a run that never reached
 # the ancestry filter cannot pass this test by accident.
-run_test "HIMMEL-2376: an interrupted run leaves no merge-base sentinel behind" '
+run_test "an interrupted run leaves no merge-base sentinel behind" '
   setup_slow_merge_base && cd "$R" || exit 1;
   export TMPDIR="$R/tmp";
   PATH="$R/shim:$PATH" bash "$GEN" >/dev/null 2>&1 &
@@ -358,7 +358,7 @@ run_test "HIMMEL-2376: an interrupted run leaves no merge-base sentinel behind" 
 # files despite the trap. The stand-in child is UNBOUNDED (it blocks
 # until killed, never a finite sleep), so a pass cannot be a lucky timeout; the
 # stub is always killed on the way out and every wait here is bounded.
-run_test "HIMMEL-2379: TERM while git hangs exits promptly and removes the temp files" '
+run_test "TERM while git hangs exits promptly and removes the temp files" '
   setup_slow_merge_base && cd "$R" || exit 1;
   export TMPDIR="$R/tmp";
   echo stale > "$R/CHANGELOG.md";
@@ -390,7 +390,7 @@ run_test "HIMMEL-2379: TERM while git hangs exits promptly and removes the temp 
 # The hung git can sit several shells deep -- the tag
 # filter runs git inside a process-substitution pipeline -- so killing only
 # generate()'s direct children left it running after the script exited.
-run_test "HIMMEL-2379: TERM while a NESTED git hangs also kills the git process" '
+run_test "TERM while a NESTED git hangs also kills the git process" '
   setup_slow_merge_base && cd "$R" || exit 1;
   export TMPDIR="$R/tmp";
   {

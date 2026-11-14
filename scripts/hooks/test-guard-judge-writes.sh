@@ -31,7 +31,7 @@ ln -s "$REPO/scripts" "$ROOT/u/himmel/verdicts/J1/escape"
 # A dangling symlink whose target's parent does not exist.
 ln -s "$TMP/no-such-dir/x.md" "$ROOT/u/himmel/verdicts/J1/dangling"
 # The launched judge's binding (headed-arm-worker.sh --judge exports both).
-OWN_DOC="$ROOT/u/himmel/HIMMEL-1-judge-J1-2026-10-06.md"
+OWN_DOC="$ROOT/u/himmel/PROJ-1-judge-J1-2026-10-06.md"
 OWN_QID=J1
 # The /tmp scratch judge-dir.sh and the session scratchpad live under (T7).
 TMP_SCRATCH="/tmp/claude-$(id -u)"
@@ -105,9 +105,9 @@ row "go.sh" 2 "$(bash_payload 'bash scripts/handover/console-kit/go.sh 12 abc')"
 row "go.sh through chief-kit" 2 "$(bash_payload 'bash scripts/handover/chief-kit/go.sh 12 abc')"
 # --- Jira writes ---
 row "jira create" 2 "$(bash_payload 'node /repo/scripts/jira/dist/index.js create --type Task --summary s')"
-row "jira comment" 2 "$(bash_payload 'node /repo/scripts/jira/dist/index.js comment HIMMEL-1 --comment-file c.md')"
-row "jira transition" 2 "$(bash_payload 'node /repo/scripts/jira/dist/index.js transition HIMMEL-1 Done')"
-row "worker-jira-status.sh" 2 "$(bash_payload 'bash scripts/handover/chief-kit/worker-jira-status.sh HIMMEL-1 Done')"
+row "jira comment" 2 "$(bash_payload 'node /repo/scripts/jira/dist/index.js comment PROJ-1 --comment-file c.md')"
+row "jira transition" 2 "$(bash_payload 'node /repo/scripts/jira/dist/index.js transition PROJ-1 Done')"
+row "worker-jira-status.sh" 2 "$(bash_payload 'bash scripts/handover/chief-kit/worker-jira-status.sh PROJ-1 Done')"
 row "foreign MCP write" 2 "$(mcp_payload 'mcp__claude_ai_Slack__slack_send_message')"
 # --- inbox sends ---
 row "inbox-send.sh" 2 "$(bash_payload 'bash scripts/handover/chief-kit/inbox-send.sh --to c --file m.md')"
@@ -122,24 +122,24 @@ row "Write through a symlink out of verdicts" 2 "$(file_payload Write "$ROOT/u/h
 row "Write with a .. segment" 2 "$(file_payload Write "$ROOT/u/himmel/verdicts/J1/../../x.md")"
 row "malformed payload" 2 'not json'
 # --- binding: only the launched judge's own doc and qid ---
-row "another judge's doc" 2 "$(file_payload Write "$ROOT/u/himmel/HIMMEL-2-judge-J2-2026-10-06.md")"
-row "another qid's verdict file" 2 "$(file_payload Write "$ROOT/u/himmel/verdicts/J2/HIMMEL-2-judge-J2.md")"
+row "another judge's doc" 2 "$(file_payload Write "$ROOT/u/himmel/PROJ-2-judge-J2-2026-10-06.md")"
+row "another qid's verdict file" 2 "$(file_payload Write "$ROOT/u/himmel/verdicts/J2/PROJ-2-judge-J2.md")"
 row "a qid that only prefixes the own one" 2 "$(file_payload Write "$ROOT/u/himmel/verdicts/J10/x.md")"
 row_bound "missing doc binding denies the own doc" 2 "$(file_payload Write "$OWN_DOC")" "" "$OWN_QID"
 row_bound "missing qid binding denies the own verdict" 2 "$(file_payload Write "$ROOT/u/himmel/verdicts/J1/v.md")" "$OWN_DOC" ""
 row_bound "a qid with a slash denies" 2 "$(file_payload Write "$ROOT/u/himmel/verdicts/J1/v.md")" "$OWN_DOC" "J1/.."
-row_bound "a relative doc binding denies" 2 "$(file_payload Write "$OWN_DOC")" "HIMMEL-1-judge-J1-2026-10-06.md" "$OWN_QID"
+row_bound "a relative doc binding denies" 2 "$(file_payload Write "$OWN_DOC")" "PROJ-1-judge-J1-2026-10-06.md" "$OWN_QID"
 # --- dangling symlink ---
 row "Write to a dangling symlink" 2 "$(file_payload Write "$ROOT/u/himmel/verdicts/J1/dangling")"
 # --- what a judge must still be able to do ---
-row "verdict file write" 0 "$(file_payload Write "$ROOT/u/himmel/verdicts/J1/HIMMEL-1-judge-J1.md")"
+row "verdict file write" 0 "$(file_payload Write "$ROOT/u/himmel/verdicts/J1/PROJ-1-judge-J1.md")"
 row "scratch write under ~/.cache" 0 "$(file_payload Write "$FAKE_HOME/.cache/himmel/verdicts/J1/scratch/notes.md")"
-row "own judge doc write" 0 "$(file_payload Edit "$ROOT/u/himmel/HIMMEL-1-judge-J1-2026-10-06.md")"
+row "own judge doc write" 0 "$(file_payload Edit "$ROOT/u/himmel/PROJ-1-judge-J1-2026-10-06.md")"
 row "scratch write under /tmp/claude-<uid>" 0 "$(file_payload Write "$TMP_SCRATCH/judge-guard-test-$$.md")"
 row "git log read" 0 "$(bash_payload 'git log -1 --format=%H')"
 row "gh pr view read" 0 "$(bash_payload 'gh pr view 12 --json state')"
 row "gh pr diff read" 0 "$(bash_payload 'gh pr diff 12')"
-row "jira get read" 0 "$(bash_payload 'node /repo/scripts/jira/dist/index.js get HIMMEL-1')"
+row "jira get read" 0 "$(bash_payload 'node /repo/scripts/jira/dist/index.js get PROJ-1')"
 row "append-results bullet" 0 "$(bash_payload 'bash scripts/handover/chief-kit/append-results.sh d.md "LIVE x"')"
 row "qmd MCP read" 0 "$(mcp_payload 'mcp__qmd__query')"
 row "Read tool" 0 "$(jq -nc '{tool_name:"Read", tool_input:{file_path:"/etc/hostname"}}')"

@@ -225,6 +225,11 @@
       "sender": "scripts/luna/graphmap-cadence.sh"
     },
     {
+      "kind": "cadence:graph-config-unreadable",
+      "class": "monitor",
+      "sender": "scripts/graphify/refresh-graph-map.sh"
+    },
+    {
       "kind": "cadence:pipeline-harvest",
       "class": "monitor",
       "sender": "scripts/luna/pipeline-cadence.sh"

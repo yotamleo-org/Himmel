@@ -120,7 +120,7 @@ printf '%s\n' "$(cap_payload 'sid-001b')" | \
 assert_rc "subagent-disable exits 0" 0 $?
 assert_file "no arm call with subagent disable" absent "$ARM_LOG"
 
-echo "Test 1c: disabled hook drains a large stdin payload without SIGPIPE'ing the writer (HIMMEL-2345)"
+echo "Test 1c: disabled hook drains a large stdin payload without SIGPIPE'ing the writer"
 # A payload bigger than one pipe buffer (64 KiB on Linux), with the hook
 # exiting on the kill switch WITHOUT reading stdin, races the writer (this
 # printf) against the hook's own teardown: under this file's own
@@ -138,7 +138,7 @@ printf '%s\n' "$big_payload" | \
 assert_rc "disabled hook drains large stdin, no SIGPIPE" 0 $?
 assert_file "no arm call when disabled (large payload)" absent "$ARM_LOG"
 
-echo "Test 1d: subagent-disable drains a large stdin payload without SIGPIPE (HIMMEL-2345)"
+echo "Test 1d: subagent-disable drains a large stdin payload without SIGPIPE"
 rm -f "$ARM_LOG"
 printf '%s\n' "$big_payload" | \
     AUTO_ARM_SUBAGENT_DISABLE=1 \
@@ -382,7 +382,7 @@ assert_grep "acceptance: snapshot frontmatter type" "type: handover" "$handover_
 assert_grep "acceptance: snapshot credits the hook" "auto-arm-on-subagent-cap hook" "$handover_arg"
 rm -f "$ARM_LOG"
 
-echo "Test 19: sentinel inside double quotes — no false positive (HIMMEL-294)"
+echo "Test 19: sentinel inside double quotes — no false positive"
 # A subagent reviewing hook docs may quote the sentinel string.
 # The text below DISCUSSES the sentinel but the sentinel itself is double-quoted.
 S="$TMP/s19"; mkdir -p "$S"
@@ -391,7 +391,7 @@ run_hook "$S" '{"session_id":"sid-019","tool_name":"Agent","tool_response":{"typ
 assert_rc "double-quoted sentinel exits 0 (no false positive)" 0 $?
 assert_file "no arm call for double-quoted sentinel" absent "$ARM_LOG"
 
-echo "Test 20: sentinel inside backticks — no false positive (HIMMEL-294)"
+echo "Test 20: sentinel inside backticks — no false positive"
 # Use printf to embed real backtick chars in the JSON (single-quote \` is not
 # a valid JSON escape and would cause a parse-error SKIP, masking the bug).
 S="$TMP/s20"; mkdir -p "$S"
@@ -401,7 +401,7 @@ run_hook "$S" "$(printf '{"session_id":"sid-020","tool_name":"Agent","tool_respo
 assert_rc "backtick-quoted sentinel exits 0 (no false positive)" 0 $?
 assert_file "no arm call for backtick-quoted sentinel" absent "$ARM_LOG"
 
-echo "Test 21: genuine unquoted sentinel — still fires (HIMMEL-294 regression guard)"
+echo "Test 21: genuine unquoted sentinel — still fires (regression guard)"
 S="$TMP/s21"; mkdir -p "$S"
 rm -f "$ARM_LOG"
 run_hook "$S" '{"session_id":"sid-021","tool_name":"Agent","tool_response":{"type":"tool_result","content":"You have hit your session limit. Please try again after the reset."}}'
@@ -409,7 +409,7 @@ assert_rc "genuine unquoted sentinel exits 2 (arm fires)" 2 $?
 assert_file "arm call logged for genuine sentinel" present "$ARM_LOG"
 rm -f "$ARM_LOG"
 
-echo "Test 22: snapshot path resolves via HANDOVER_DIR (not cwd), even from a different cwd (HIMMEL-294)"
+echo "Test 22: snapshot path resolves via HANDOVER_DIR (not cwd), even from a different cwd"
 # Verify that with HANDOVER_DIR set, the snapshot always lands in the
 # supplied directory regardless of what the session cwd is at hook runtime.
 # This is the Mode B path; Mode A is covered by the handover-path resolver
@@ -447,7 +447,7 @@ else
 fi
 rm -f "$ARM_LOG"
 
-echo "Test 23: Mode A snapshot resolves via hook_dir git root, not session cwd (HIMMEL-294)"
+echo "Test 23: Mode A snapshot resolves via hook_dir git root, not session cwd"
 # Create a fake worktree-like git repo with a handovers/ dir as the session cwd.
 # HANDOVER_DIR pinned EMPTY (Mode A): the suite may run on a Mode B machine whose
 # launching shell exports the real HANDOVER_DIR. handover_root would then — by

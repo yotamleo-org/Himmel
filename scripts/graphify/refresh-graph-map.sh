@@ -264,11 +264,21 @@ _seeded_api_key_helper() {
 }
 _NC_CREDENTIAL_LINE="refresh-graph-map: no graph choice, and an Anthropic API credential or provider switch is set (ANTHROPIC_*, CLAUDE_CODE_USE_* or LQ_API_*); the subscription fallback refuses (graphify-out left untouched)"
 _NC_STATE_UNREAD_LINE="refresh-graph-map: the graph choice state could not be read; no semantic call (graphify-out left untouched)"
+_gc_alert() {
+  local cause cl fl
+  cause="$(node "$_GRAPH_CHOICES" check 2>/dev/null | sed -n 's/^cause=//p' | head -n 1)" || cause=""
+  cl="$(node "$_GRAPH_CHOICES" alert-lines "$cause" 2>/dev/null | sed -n 1p)" || cl=""
+  fl="$(node "$_GRAPH_CHOICES" alert-lines "$cause" 2>/dev/null | sed -n 2p)" || fl=""
+  [[ -n $cl && -n $fl ]] || return 0
+  bash "$REPO_ROOT/scripts/luna/cadence-alert.sh" fail graph-config-unreadable "$cause" "stderr of refresh-graph-map.sh --name $NAME" "$cl" "$fl" >/dev/null 2>&1 || true
+}
 _nc_early_gate() {
   _nc_role="$(node "$_GRAPH_CHOICES" role 2>/dev/null)" || _nc_role=""
+  [[ $_nc_role != publisher && $_nc_role != adopter ]] || bash "$REPO_ROOT/scripts/luna/cadence-alert.sh" clear graph-config-unreadable >/dev/null 2>&1 || true
   [[ $_nc_role == publisher ]] || _nc_fallback=1
   if [[ $_nc_fallback == 1 ]]; then
     if [[ $_nc_role == unreadable ]]; then
+      _gc_alert
       _nc_line="$(node "$_GRAPH_CHOICES" check 2>/dev/null | grep -m 1 '^graph config unreadable')" || _nc_line=""
       echo "refresh-graph-map: ${_nc_line:-graph config unreadable}; no semantic call (graphify-out left untouched)" >&2
       exit 3

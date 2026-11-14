@@ -391,6 +391,10 @@ check    "4565: PR head moved past the sha -> exit 4" "$rc" "4"
 check    "4565: moved head -> nothing written" "$(find "$ROOT14" -type f | wc -l | tr -d ' ')" "0"
 rc=0; out="$(cd "$ROOT14" && HIMMEL_REPO="$ROOT14" READY_STUB_HEAD="$SHA14" HANDOVER_DIR="$ROOT14" bash "$SCRIPT" 82 "$SHA14" 2>&1)" || rc=$?
 check    "4565: run outside any repo (no ledger to read) -> exit 4" "$rc" "4"
+rc=0; out="$(cd "$ROOT14" && HIMMEL_REPO=rel HANDOVER_DIR="$ROOT14" bash "$SCRIPT" 82 "$SHA14" 2>&1)" || rc=$?
+check    "9841: a relative HIMMEL_REPO -> exit 1 and the exact refusal" "$rc|$out" "1|go: HIMMEL_REPO (rel) is not an absolute path - refusing to let it pick the gated checkout; no GO written"
+rc=0; out="$(cd "$ROOT14" && HIMMEL_REPO="$ROOT14/gone" HANDOVER_DIR="$ROOT14" bash "$SCRIPT" 82 "$SHA14" 2>&1)" || rc=$?
+check    "9841: a HIMMEL_REPO that is not a directory -> exit 1 and the exact refusal" "$rc|$out" "1|go: the gated checkout HIMMEL_REPO ($ROOT14/gone) is not a directory - no GO written"
 rc=0; out="$(READY_STUB_HEAD="$SHA14" HANDOVER_DIR="$ROOT14" bash "$SCRIPT" 82 "$SHA14" 2>/dev/null)" || rc=$?
 check    "4565: reviewed head -> exit 0" "$rc" "0"
 check    "4565: reviewed head -> the GO path" "$out" "$ROOT14/.locks/go/82.$SHA14"

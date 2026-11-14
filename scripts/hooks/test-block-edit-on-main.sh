@@ -128,7 +128,7 @@ assert_rc "T1 main-repo edit blocks" 2 "$(rc_of "$SANDBOX/mainrepo/src/foo.js")"
 # (feature work belongs in a worktree, not a branch checked out in
 # the primary tree). T2b asserts the message names the feature-branch case,
 # distinct from the on-main message.
-assert_rc "T2 feature branch in primary checkout blocks (HIMMEL-507)" 2 "$(rc_of "$SANDBOX/featrepo/foo.js")"
+assert_rc "T2 feature branch in primary checkout blocks" 2 "$(rc_of "$SANDBOX/featrepo/foo.js")"
 t2err=$(printf '%s' "{\"tool_input\":{\"file_path\":\"$SANDBOX/featrepo/foo.js\"}}" | bash "$HOOK" 2>&1 >/dev/null)
 case "$t2err" in
     *"on a feature branch"*) echo "PASS T2b primary-feature block message" ;;
@@ -147,7 +147,7 @@ assert_rc "T3 nested-on-main under outer-feature blocks (Himmel#45)" 2 \
 # longer proves anchoring — assert the MESSAGE is the primary-feature one. If
 # the hook wrongly re-anchored to the outer (main) repo it would print the
 # on-main message instead, so this still guards the Himmel#45 anchoring.
-assert_rc "T3b nested-on-feature in primary blocks (HIMMEL-507)" 2 \
+assert_rc "T3b nested-on-feature in primary blocks" 2 \
     "$(rc_of "$SANDBOX/outer2/sc/nested/src/foo.js" CLAUDE_PROJECT_DIR="$SANDBOX/outer2")"
 t3berr=$(printf '%s' "{\"tool_input\":{\"file_path\":\"$SANDBOX/outer2/sc/nested/src/foo.js\"}}" \
     | env CLAUDE_PROJECT_DIR="$SANDBOX/outer2" bash "$HOOK" 2>&1 >/dev/null)
@@ -173,19 +173,19 @@ mkrepo "$SCR/gfork/onmain" main
 mkrepo "$SCR/gfork/himmelish" feat/h
 : > "$SCR/gfork/himmelish/.himmel-dev"
 ln -sfn "$SANDBOX/featrepo" "$SCR/linkprim"
-assert_rc "T3d scratchpad clone on a feature branch allows (HIMMEL-8443)" 0 \
+assert_rc "T3d scratchpad clone on a feature branch allows" 0 \
     "$(rc_of "$SCR/gfork/feat/src/foo.js" TMPDIR="$SANDBOX")"
-assert_rc "T3d scratchpad clone .single-writer marker allows (HIMMEL-8443)" 0 \
+assert_rc "T3d scratchpad clone .single-writer marker allows" 0 \
     "$(rc_of "$SCR/gfork/feat/.single-writer" TMPDIR="$SANDBOX")"
-assert_rc "T3d scratchpad clone on main allows (HIMMEL-8443)" 0 \
+assert_rc "T3d scratchpad clone on main allows" 0 \
     "$(rc_of "$SCR/gfork/onmain/foo.js" TMPDIR="$SANDBOX")"
-assert_rc "T3d clone outside the scratch roots still blocks (HIMMEL-8443)" 2 \
+assert_rc "T3d clone outside the scratch roots still blocks" 2 \
     "$(rc_of "$SANDBOX/featrepo/foo.js" TMPDIR="$SANDBOX")"
-assert_rc "T3d scratchpad clone with .himmel-dev still blocks (HIMMEL-8443)" 2 \
+assert_rc "T3d scratchpad clone with .himmel-dev still blocks" 2 \
     "$(rc_of "$SCR/gfork/himmelish/foo.js" TMPDIR="$SANDBOX")"
-assert_rc "T3d scratchpad symlink into a primary still blocks (HIMMEL-8443)" 2 \
+assert_rc "T3d scratchpad symlink into a primary still blocks" 2 \
     "$(rc_of "$SCR/linkprim/foo.js" TMPDIR="$SANDBOX")"
-assert_rc "T3d scratchpad .. path into a primary still blocks (HIMMEL-8443)" 2 \
+assert_rc "T3d scratchpad .. path into a primary still blocks" 2 \
     "$(rc_of "$SCR/gfork/../../../../../featrepo/foo.js" TMPDIR="$SANDBOX")"
 # A scratch dir whose git setup leads into a primary checkout borrows no exemption.
 mkdir -p "$SCR/gfork/lnk"
@@ -198,13 +198,13 @@ git -C "$SCR/gfork/cw" config core.worktree "$SANDBOX/featrepo"
 mkrepo "$SCR/gfork/cfgln" feat/c
 rm -f "$SCR/gfork/cfgln/.git/config"
 ln -s "$SANDBOX/featrepo/.git/config" "$SCR/gfork/cfgln/.git/config"
-assert_rc "T3d scratchpad clone with .git/config symlinked into a primary blocks (HIMMEL-8443)" 2 \
+assert_rc "T3d scratchpad clone with .git/config symlinked into a primary blocks" 2 \
     "$(rc_of "$SCR/gfork/cfgln/foo.js" TMPDIR="$SANDBOX")"
-assert_rc "T3d scratchpad dir with a symlinked .git into a primary blocks (HIMMEL-8443)" 2 \
+assert_rc "T3d scratchpad dir with a symlinked .git into a primary blocks" 2 \
     "$(rc_of "$SCR/gfork/lnk/foo.js" TMPDIR="$SANDBOX")"
-assert_rc "T3d scratchpad .git dir with a commondir file into a primary blocks (HIMMEL-8443)" 2 \
+assert_rc "T3d scratchpad .git dir with a commondir file into a primary blocks" 2 \
     "$(rc_of "$SCR/gfork/cdir/foo.js" TMPDIR="$SANDBOX")"
-assert_rc "T3d scratchpad clone with core.worktree set blocks (HIMMEL-8443)" 2 \
+assert_rc "T3d scratchpad clone with core.worktree set blocks" 2 \
     "$(rc_of "$SCR/gfork/cw/foo.js" TMPDIR="$SANDBOX")"
 
 SB9626=$(mktemp -d "${TMPDIR:-/tmp}/t3e.XXXXXX") || exit 1
@@ -300,7 +300,7 @@ assert_rc "T7 new file in new subdir on main blocks" 2 "$(rc_of "$SANDBOX/mainre
 # it does not over-shoot to a parent). T7c: the SAME new-subdir shape inside a linked
 # worktree → ALLOW (worktree `.git` is a file), confirming the walk + the file/dir
 # distinction both work for a not-yet-existing target.
-assert_rc "T7b new file in new subdir on feature-primary blocks (HIMMEL-507)" 2 "$(rc_of "$SANDBOX/featrepo/new/deep/foo.js")"
+assert_rc "T7b new file in new subdir on feature-primary blocks" 2 "$(rc_of "$SANDBOX/featrepo/new/deep/foo.js")"
 assert_rc "T7c new file in new subdir inside a worktree allows" 0 \
     "$(rc_of "$SANDBOX/wtrepo/.claude/worktrees/feat+x/new/deep/foo.js")"
 
@@ -475,7 +475,7 @@ assert_rc "T24 dir-shaped marker on main blocks (fail-closed)" 2 \
 # T21 (no marker, would-block → block) and T20 (marker, main → allow).
 mkrepo "$SANDBOX/swfeat" feat/x
 touch "$SANDBOX/swfeat/.single-writer"
-assert_rc "T25 marker present on feature-branch primary allows (opt-out covers HIMMEL-507)" 0 \
+assert_rc "T25 marker present on feature-branch primary allows" 0 \
     "$(rc_of "$SANDBOX/swfeat/foo.md")"
 
 # T26: EDIT_ON_MAIN_OK=1 + marker present on main → ALLOW via env bypass.
@@ -489,7 +489,7 @@ assert_rc "T26 EDIT_ON_MAIN_OK=1 + marker present allows (env bypass wins)" 0 \
 # block too (no marker present) — confirms the env bypass covers the new block
 # path, mirroring T23 (bypass on main with no marker). featrepo is a primary
 # checkout on a feature branch with no .single-writer.
-assert_rc "T27 EDIT_ON_MAIN_OK=1 allows feature branch in primary (HIMMEL-507)" 0 \
+assert_rc "T27 EDIT_ON_MAIN_OK=1 allows feature branch in primary" 0 \
     "$(rc_of "$SANDBOX/featrepo/foo.js" EDIT_ON_MAIN_OK=1)"
 
 # --- untracked+gitignored exemption cases ---
@@ -512,13 +512,13 @@ printf '*.local.json\n' > "$SANDBOX/ignoredrepo/.gitignore"
 git -C "$SANDBOX/ignoredrepo" add .gitignore
 git -C "$SANDBOX/ignoredrepo" -c user.email=t@t -c user.name=t commit -q -m init
 printf '{}\n' > "$SANDBOX/ignoredrepo/critics.local.json"
-assert_rc "T29 untracked+gitignored file on main allows (HIMMEL-876)" 0 \
+assert_rc "T29 untracked+gitignored file on main allows" 0 \
     "$(rc_of "$SANDBOX/ignoredrepo/critics.local.json")"
 
 # T30: UNTRACKED but NOT gitignored file on main (repo HAS a .gitignore, just
 # one that doesn't match this file) -> BLOCK. Could still be `git add`ed.
 printf '{}\n' > "$SANDBOX/ignoredrepo/plain.js"
-assert_rc "T30 untracked-but-not-ignored file on main blocks (HIMMEL-876)" 2 \
+assert_rc "T30 untracked-but-not-ignored file on main blocks" 2 \
     "$(rc_of "$SANDBOX/ignoredrepo/plain.js")"
 
 # T31: untracked+gitignored file on a FEATURE branch in the PRIMARY checkout
@@ -529,7 +529,7 @@ printf '*.local.json\n' > "$SANDBOX/ignoredfeatrepo/.gitignore"
 git -C "$SANDBOX/ignoredfeatrepo" add .gitignore
 git -C "$SANDBOX/ignoredfeatrepo" -c user.email=t@t -c user.name=t commit -q -m init
 printf '{}\n' > "$SANDBOX/ignoredfeatrepo/critics.local.json"
-assert_rc "T31 untracked+gitignored file on feature-branch primary allows (HIMMEL-876)" 0 \
+assert_rc "T31 untracked+gitignored file on feature-branch primary allows" 0 \
     "$(rc_of "$SANDBOX/ignoredfeatrepo/critics.local.json")"
 
 # T32: a git failure DURING the ls-files/check-ignore check (a stub `git` on
@@ -548,7 +548,7 @@ done
 exec "$REAL_GIT" "\$@"
 EOF
 chmod +x "$GITSTUB_BIN/git"
-assert_rc "T32 git failure during untracked/ignore check fails closed (HIMMEL-876)" 2 \
+assert_rc "T32 git failure during untracked/ignore check fails closed" 2 \
     "$(rc_of "$SANDBOX/ignoredrepo/critics.local.json" PATH="$GITSTUB_BIN:$PATH")"
 rm -rf "$GITSTUB_BIN" 2>/dev/null || true
 
@@ -592,7 +592,7 @@ done
 exec "$REAL_GIT" "\$@"
 EOF
 chmod +x "$CIONLY_BIN/git"
-assert_rc "T36 check-ignore failure alone fails closed (ls-files real, HIMMEL-876)" 2 \
+assert_rc "T36 check-ignore failure alone fails closed (ls-files real)" 2 \
     "$(rc_of "$SANDBOX/ignoredrepo/critics.local.json" PATH="$CIONLY_BIN:$PATH")"
 rm -rf "$CIONLY_BIN" 2>/dev/null || true
 
@@ -624,9 +624,9 @@ assert_rc "T37b untracked ID_RSA on main blocks (case-insensitive carve-out)" 2 
 # only the outward rc=2. No fixture file is created: the hook never requires
 # the edit target to exist (Write targets are pre-creation), and NTFS itself
 # refuses trailing-space/dot names.
-assert_rc "T37c untracked '.env ' (trailing space) on main blocks (HIMMEL-879)" 2 \
+assert_rc "T37c untracked '.env ' (trailing space) on main blocks" 2 \
     "$(rc_of "$SANDBOX/casesecretrepo/.env ")"
-assert_rc "T37d untracked '.env.' (trailing dot) on main blocks (HIMMEL-879)" 2 \
+assert_rc "T37d untracked '.env.' (trailing dot) on main blocks" 2 \
     "$(rc_of "$SANDBOX/casesecretrepo/.env.")"
 
 # --- apply_patch (Codex create/edit envelope) coverage ---
@@ -726,7 +726,7 @@ if ! git -C "$SANDBOX/swwrite" check-ignore -q -- .single-writer; then
     echo "FAIL T50 fixture: .single-writer not ignored in swwrite — row would be vacuous"
     FAILED=$((FAILED + 1))
 fi
-assert_rc "T50 Write .single-writer (untracked+gitignored) on main blocks (HIMMEL-2526)" 2 \
+assert_rc "T50 Write .single-writer (untracked+gitignored) on main blocks" 2 \
     "$(rc_of "$SANDBOX/swwrite/.single-writer")"
 
 # Clean up the worktree registration before removing the sandbox (avoids a

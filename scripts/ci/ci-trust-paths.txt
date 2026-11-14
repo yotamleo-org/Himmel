@@ -101,6 +101,9 @@
 ^scripts/telegram/run\.ts$
 # The operator's phone line for an out-of-version approval: the writer signs no record unless it exits 0.
 ^scripts/handover/chief-kit/(test-)?version-approval-alert\.sh$
+# The operator size-approval route: the station ops run as root after the operator's code, and size-override.sh reads the approval file they write, so an edit to either could mint an approval the operator never gave.
+^scripts/station-ops/
+^scripts/handover/chief-kit/(test-)?size-override\.sh$
 # Hook config files outside the audited dirs.
 ^\.codex/hooks\.json$
 ^marketplace/plugins/[^/]+/hooks/hooks\.json$
