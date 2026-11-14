@@ -395,5 +395,21 @@ refresh
 check "a long loop names eight keys and counts the rest" "$(out)" \
     "focus=WARN:cycle HIMMEL-9120,HIMMEL-9121,HIMMEL-9122,HIMMEL-9123,HIMMEL-9124,HIMMEL-9125,HIMMEL-9126,HIMMEL-9127,+2"
 
+mkdir -p "$tmp/node-version-fails"
+REAL_NODE="$(command -v node)"
+cat >"$tmp/node-version-fails/node" <<EOS
+#!/usr/bin/env bash
+case " \$* " in *chain-state.mjs*" --version "*) echo "chain-state: the version read broke" >&2; exit 2 ;; esac
+exec "$REAL_NODE" "\$@"
+EOS
+chmod +x "$tmp/node-version-fails/node"
+reset
+mir 9104 '["standalone"]' '["HIMMEL-9105"]'; mir 9105 '["standalone"]' '["HIMMEL-9104"]'
+echo v9 > "$FX/vfp"
+PATH="$tmp/node-version-fails:$PATH" refresh
+check "a version read that fails after the member read succeeds ends WARN:chains registry, never ok" "$(out)" "focus=WARN:chains registry"
+contains "and stderr names the version read's own error" "$(cat "$tmp/err")" "chain-state: the version read broke"
+check "and the page was still published" "$(grep -c 'vfpv9' "$tmp/doc/roadmap-tracker.html" 2>/dev/null)" 1
+
 printf '%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

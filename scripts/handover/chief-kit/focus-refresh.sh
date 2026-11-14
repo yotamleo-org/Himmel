@@ -340,8 +340,8 @@ if [ -z "$chains_reg" ] || [ ! -f "$chains_reg" ]; then chains_skip_visible; fi
 if [ -n "$chains_reg" ] && [ -f "$chains_reg" ]; then
     if ! bounded 30 node "$HERE/chain-state.mjs" --json --registry "$chains_reg" --mirror "$MIR" > "$stage/chain-state.json" 2> "$stage/chains.err"; then
         chains_fail registry "$stage/chains.err"
-    elif ! CHAINS_INTEGRITY=$(version_loops_and_unknown_links 2> "$stage/chains.err"); then
-        chains_fail registry "$stage/chains.err"
+    elif ! CHAINS_INTEGRITY=$(version_loops_and_unknown_links 2> "$stage/chain-version.err"); then
+        chains_fail registry "$stage/chain-version.err"
     elif ! members=$(python3 -I -c 'import json, sys
 print(",".join(dict.fromkeys(k for c in json.load(open(sys.argv[1]))["chains"] for k in c["members"])))' "$stage/chain-state.json" 2> "$stage/chains.err"); then
         chains_fail registry "$stage/chains.err"
