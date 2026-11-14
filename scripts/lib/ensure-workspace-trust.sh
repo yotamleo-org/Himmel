@@ -80,8 +80,7 @@ config="${WORKSPACE_TRUST_CONFIG:-$HOME/.claude.json}"
 
 # Jitter the read-modify-write so two launches within ~1s rarely read the same
 # old file (the compare-and-retry below handles it when they do, at the cost of
-# an attempt). Default 500ms cap; 0 disables (test seam). Git Bash `sleep`
-# accepts fractional secs.
+# an attempt). Default 500ms cap; 0 disables (test seam).
 jitter_ms="${TRUST_WRITE_JITTER_MS:-500}"
 if [ "$jitter_ms" -gt 0 ] 2>/dev/null; then
     ms=$(( RANDOM % (jitter_ms + 1) ))          # 0..jitter_ms milliseconds
