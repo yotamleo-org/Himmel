@@ -287,8 +287,6 @@ export function declare(ctx: Ctx, o: { project: string; versions: string[]; deci
   });
 }
 
-// Decision 929 (the operator, 11-14: "471 standing it should move to 1.1.3"): a ticket whose work merges while it sits in a
-// later version moves to the version open at merge time, through the release manager.
 const DELIVERED_DECISION = '929';
 const DELIVERED_VERBATIM = 'standing record: a ticket whose work merges while it sits in a later version moves to the version open at merge time ("471 standing it should move to 1.1.3")';
 
@@ -1272,8 +1270,6 @@ function checkBlockerPull(ctx: Ctx, p: {
   return true;
 }
 
-// The standing delivered-follows-merge move is mechanical too: the key must still sit in the later version it moves from,
-// outside the current one, and a newer explicit operator record naming the key wins. True when the authority is that record.
 function checkDelivered(ctx: Ctx, p: {
   decl: Declaration; ops: Map<string, OperatorRow>; governing: OperatorRow | undefined; key: string; op: Op; authority: Authority;
 }): boolean {
@@ -1355,7 +1351,7 @@ export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
       if (rec?.ruling && !o.supersedes.includes(rec.ruling)) throw new Error(`release rule: supersedes must name ${rec.ruling} (in effect for ${req.key}@${v})`);
       const prior = rec?.ruling ? applied.get(rec.ruling) : undefined;
       if (prior?.authority.kind !== 'operator') continue;
-      // A standing pull or delivered move passed the newer-record check above, so it supersedes the operator ruling it finds.
+      // The pull passed the newer-record check above, so it supersedes the operator ruling it finds.
       if (pulling) continue;
       // Only an operator decision newer than the ruling supersedes it, and only the governing one.
       const since = Date.parse(rulings.find((r) => r.id === prior.id)?.ts ?? prior.ts);
@@ -1656,7 +1652,6 @@ function supersedesOf(now: Loaded, mirror: ReturnType<typeof readMirror>, key: s
 
 const prLabel = (n: unknown): string | undefined => (typeof n === 'number' && Number.isInteger(n) && n > 0 ? `PR #${n}` : undefined);
 
-// The merge evidence a request carries: the PR that merged the key (a number or its url) and a duplicate's original's PR.
 function deliveryOf(evidence: unknown): { merged?: string; duplicate?: string } {
   const e = (evidence && typeof evidence === 'object' ? evidence : {}) as Record<string, unknown>;
   return {
@@ -1665,9 +1660,13 @@ function deliveryOf(evidence: unknown): { merged?: string; duplicate?: string } 
   };
 }
 
-// The ruling of a standing delivered-follows-merge move (decision 929): an INTAKE of a delivered key (Done, or a duplicate)
-// that still sits in a later version of the release, with merge evidence, is ADMITted into the current version under
-// O-<R>-delivered-follows-merge with no model call. Anything else returns null and goes to the judge as before.
+function mergeEvidenceFor(q: RequestRow, t: 'Done' | 'Duplicate', lookup?: (key: string) => number | undefined): string | undefined {
+  const claimed = deliveryOf(q.evidence);
+  const duplicate = t === 'Duplicate' ? claimed.duplicate : undefined;
+  const found = lookup?.(q.key);
+  return duplicate ?? (lookup ? (found !== undefined ? `PR #${found}` : undefined) : claimed.merged);
+}
+
 function deliveredDecision(now: Loaded, mirror: ReturnType<typeof readMirror>, q: RequestRow, lookup?: (key: string) => number | undefined): RuledDecision | null {
   const id = `O-${now.decl.release}-delivered-follows-merge`;
   if (!now.operator.verified.some((x) => x.id === id && x.kind === 'delivered-follows-merge')) return null;
@@ -1679,12 +1678,7 @@ function deliveredDecision(now: Loaded, mirror: ReturnType<typeof readMirror>, q
   if (t !== 'Done' && t !== 'Duplicate') return null;
   const from = versions.find((v) => v !== current && snap.fixVersions.includes(v));
   if (!from || q.from_v !== from) return null;
-  // With a lookup wired (rm-run), a merged PR naming the key must exist and is the evidence; a request's own claim
-  // stands only for a duplicate's PR, which no search by key can find. Without one, the request's evidence stands.
-  const claimed = deliveryOf(q.evidence);
-  const duplicate = t === 'Duplicate' ? claimed.duplicate : undefined;
-  const found = lookup?.(q.key);
-  const evidence = duplicate ?? (lookup ? (found !== undefined ? `PR #${found}` : undefined) : claimed.merged);
+  const evidence = mergeEvidenceFor(q, t, lookup);
   if (!evidence) return null;
   const op: Op = { kind: 'move', from_v: from, to_v: current };
   return {
@@ -1699,7 +1693,6 @@ const isHold = (d: Decision): d is HoldDecision => d.outcome === 'HOLD';
 const authorityOf = (d: RuledDecision): Authority =>
   ({ kind: d.authority ?? 'rm', ref: d.ref ?? null, ...(d.blocks ? { blocks: d.blocks } : {}), ...(d.delivered ? { delivered: d.delivered } : {}) });
 
-// The claimed requests the standing delivered-follows-merge record rules without the judge, by request id.
 function deliveredDecisions(now: Loaded, mirror: ReturnType<typeof readMirror>, claimed: RequestRow[], lookup?: (key: string) => number | undefined): Map<string, RuledDecision> {
   const out = new Map<string, RuledDecision>();
   for (const q of claimed) {
@@ -1938,7 +1931,7 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
     const claimed = claim(rctx);
     if (claimed.length) {
       const now = loadOrThrow(ctx);
-      // A standing blocker pull and a delivered ticket in a later version are ruled mechanically; only the other requests go to the judge.
+      // A standing blocker pull is ruled mechanically; only the other requests go to the judge.
       const mirror = readMirror(ctx.mirrorRoot);
       const delivered = deliveredDecisions(now, mirror, claimed, o.deliveredPr);
       const asked = claimed.filter((q) => !isPullRequest(q) && !delivered.has(q.req));

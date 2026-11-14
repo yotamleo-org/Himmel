@@ -37,7 +37,6 @@ export interface Authority {
   ref: string | null;
   // The current-version tickets a blocker pull unblocks; required by O-<R>-blocker-pull.
   blocks?: string[];
-  // The merge evidence a delivered-follows-merge ruling rests on (a PR); required by O-<R>-delivered-follows-merge.
   delivered?: string;
 }
 
