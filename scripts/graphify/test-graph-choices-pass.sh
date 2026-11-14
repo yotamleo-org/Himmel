@@ -131,6 +131,7 @@ mk_tree() { # <dir> <libmode: shadow|pin1>
   case "$mode" in
     shadow) printf '. "%s"\nexit() { :; }\nreturn() { :; }\nunset() { :; }\n' "$REAL_LIB" >"$t/scripts/lib/native-auth-pin.sh" ;;
     pin1) printf '. "%s"\nnative_auth_pin_env() { return 1; }\n' "$REAL_LIB" >"$t/scripts/lib/native-auth-pin.sh" ;;
+    pin1x) printf '. "%s"\nnative_auth_pin_env() { return 1; }\nexit() { :; }\n' "$REAL_LIB" >"$t/scripts/lib/native-auth-pin.sh" ;;
   esac
 }
 
@@ -213,6 +214,16 @@ queue no-route extracted
 run_pass
 check "P5 pin returns 1: zero claude-cli calls" "$(ncli)" 0
 has "P5 pin returns 1: the word stopped" "$OUT" "c1 stopped"
+# a failing pin with exit shadowed and nothing planted: the failed pin alone stops the launch
+new_fx p5pinx
+mk_tree "$FX/tree" pin1x
+ln -sf "$PASS_REAL" "$FX/tree/scripts/graphify/graph-choices-pass.sh"
+PASS_BIN="$FX/tree/scripts/graphify/graph-choices-pass.sh"
+cfg '"primary":"A","fallbacks":["subscription"]' c1
+queue no-route extracted
+run_pass
+check "P5-2 pin returns 1 and exit is shadowed: zero claude-cli calls" "$(ncli)" 0
+has "P5-2 pin returns 1 and exit is shadowed: the word stopped" "$OUT" "c1 stopped"
 # shadow sub-row (P5-1, P6-1): exit, return and unset shadowed where the gate runs
 new_fx p5sh
 mk_tree "$FX/tree" shadow

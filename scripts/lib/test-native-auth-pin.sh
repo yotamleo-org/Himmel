@@ -403,6 +403,7 @@ sc_tree() { # <dir> <libmode: shadow3|pinok|none>
   case "$mode" in
     shadow3) printf '. "%s"\nexit() { :; }\nreturn() { :; }\nunset() { :; }\n' "$lib" >"$t/scripts/lib/native-auth-pin.sh" ;;
     pinok) printf '. "%s"\nnative_auth_pin_env() { :; }\nunset() { :; }\n' "$lib" >"$t/scripts/lib/native-auth-pin.sh" ;;
+    pin1x) printf '. "%s"\nnative_auth_pin_env() { return 1; }\nexit() { :; }\n' "$lib" >"$t/scripts/lib/native-auth-pin.sh" ;;
   esac
 }
 sc_run() { # <tree> <planted 0|1> -> sets SC_RC, SC_CALLS, SC_ERR
@@ -449,6 +450,10 @@ sc_run "$td/sc-c" 0
 check "SC2c control: all three shadows, nothing planted: one launch" "$SC_CALLS" "1"
 check "SC2c control: rc 0" "$SC_RC" "0"
 case "$SC_ERR" in *"$SC_REFUSAL"*) echo "FAIL - SC2c the refusal line appeared with nothing planted"; fails=$((fails+1)) ;; *) echo "ok - SC2c no refusal line" ;; esac
+
+sc_tree "$td/sc-d" pin1x
+sc_run "$td/sc-d" 0
+check "SC2d a failing pin with exit shadowed and nothing planted: zero launches" "$SC_CALLS" "0"
 
 # RED control: the gate's `if [[ ... ]]; then` line replaced by `if true; then` launches under both SC2a and SC2b
 for mode in shadow3 pinok; do

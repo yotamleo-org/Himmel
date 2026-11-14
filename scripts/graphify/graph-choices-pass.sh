@@ -198,9 +198,10 @@ run_sub() { # name root rf
     export GRAPHIFY_OUT
     # shellcheck source=../lib/native-auth-pin.sh
     if ! { [ -r "$PIN" ] && . "$PIN"; } 2>/dev/null; then printf 'stopped\n' >"$rf"; exit 0; fi
-    native_auth_pin_env || { printf 'stopped\n' >"$rf"; exit 0; }
+    pin_failed=""
+    native_auth_pin_env || { pin_failed=1; printf 'stopped\n' >"$rf"; exit 0; }
     native_auth_scrub_env
-    if [[ -z "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}${!LQ_API_*}" ]]; then
+    if [[ -z "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}${!LQ_API_*}${pin_failed}" ]]; then
       bash "$SEM_UPDATE" --name "$name" --corpus-root "$root" --backend claude-cli --corpus-class adopter-repo \
         --result-file "$rf" </dev/null >>"$WORK/semantic.out" 2>&1
     else

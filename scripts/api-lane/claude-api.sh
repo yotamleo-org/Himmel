@@ -162,12 +162,12 @@ run_fallback() {
   fallback_child() {
     # shellcheck source=scripts/lib/native-auth-pin.sh
     { [ -r "$REPO/scripts/lib/native-auth-pin.sh" ] && . "$REPO/scripts/lib/native-auth-pin.sh"; } 2>/dev/null || exit 2
-    native_auth_pin_env || exit 2
+    local v pin_failed=""
+    native_auth_pin_env || { pin_failed=1; exit 2; }
     native_auth_scrub_env
-    local v
     # LAUNCH GATE (native-auth-pin.sh header): keyword-only, no API-key name or value survives into the call; the
     # launch sits inside the then arm, so a shadowed exit or return in the refusal can never reach it
-    if [[ -z "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}${!LQ_API_*}" ]]; then
+    if [[ -z "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}${!LQ_API_*}${pin_failed}" ]]; then
       if [ -n "$KEY" ]; then
         for v in $(compgen -e); do [[ "${!v}" != *"$KEY"* ]] || exit 2; done
       fi
