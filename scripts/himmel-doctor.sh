@@ -127,7 +127,7 @@ ledger_registry_path() {
 # answer for every project), "project" = the default. The per-repo index checks (graph freshness, semantic graph)
 # are project rows that name the repo they judge, so a feed saved under another project does not carry them.
 # A check id is its Cn prefix (C40-qmd-vec -> C40).
-DOCTOR_SHARED_CHECKS=" C12 C19 C20 C22 C38 C40 C44 C45 C49 C50 C52 C56 C69 C80 C83 C86 C89 C91 C92 C93 C94 "
+DOCTOR_SHARED_CHECKS=" C12 C19 C20 C22 C38 C40 C44 C45 C49 C50 C52 C56 C69 C80 C83 C86 C89 C91 C92 C93 C94 C96 "
 DOCTOR_REPO_CHECKS=" C33 C70 "
 DOCTOR_REPO_NAME="himmel"
 
@@ -4169,6 +4169,55 @@ check_c95_barrier_off() {
     [ "$warned" = 1 ] || emit OK C95-barrier-off "no repo has its single-writer barrier off with a live worker row, and the register reads clean"
 }
 
+# --- C96-jira-test-project: Jira is the tracker and no valid JIRA_TEST_PROJECT ---
+# Asks `jira live-test --json`, the one owner of resolving and validating the station's test
+# project, and reports its answer: WARN when none is set or the set one is invalid (its problem
+# text), OK naming the key, INFO when the tracker is not Jira, the CLI build is missing, or the
+# read gives no answer. Offline: it never asks Jira whether the project exists.
+# Test seam: HIMMEL_DOCTOR_LIVE_TEST_PROBE (a script standing in for `jira live-test --json`).
+check_c96_jira_test_project() {
+    local lib="$REPO_ROOT/scripts/lib/project-mode.sh" tracker="" cli node_bin json="" rc=0 tp problem
+    command -v jq >/dev/null 2>&1 || { emit INFO C96-jira-test-project "jq not on PATH -- the Jira test project was not checked"; return 0; }
+    # shellcheck disable=SC1090  # the judged checkout's resolver
+    [ -f "$lib" ] && tracker="$( { cd "$REPO_ROOT" && load_dotenv --root "$REPO_ROOT" JIRA_PROJECT_KEY >/dev/null 2>&1; . "$lib" && project_mode_tracker; } 2>/dev/null)"
+    if [ "$tracker" != jira ]; then
+        emit INFO C96-jira-test-project "the tracker is ${tracker:-unresolved (see C55)}, not Jira -- no Jira test project is needed"
+        return 0
+    fi
+    if [ -n "${HIMMEL_DOCTOR_LIVE_TEST_PROBE:-}" ]; then
+        json="$(bash "$HIMMEL_DOCTOR_LIVE_TEST_PROBE" --json 2>/dev/null)" || rc=$?  # swallow-ok: rc is read below
+    else
+        cli="$REPO_ROOT/scripts/jira/dist/index.js"
+        [ -f "$cli" ] || cli="$STATION_ROOT/scripts/jira/dist/index.js"
+        if [ ! -s "$cli" ]; then
+            emit INFO C96-jira-test-project "the jira CLI is not built ($REPO_ROOT/scripts/jira/dist/index.js) -- the Jira test project was not checked" \
+                "build it: npm --prefix $REPO_ROOT/scripts/jira run build"
+            return 0
+        fi
+        node_bin="$(resolve_node 2>/dev/null)" || { emit INFO C96-jira-test-project "node not found -- the Jira test project was not checked"; return 0; }
+        json="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 20} "$node_bin" "$cli" live-test --json 2>/dev/null)" || rc=$?  # swallow-ok: rc is read below
+    fi
+    tp="$(jq -r 'if type == "object" and has("test_project") then (.test_project // "") else error end' <<< "$json" 2>/dev/null)" || json=""
+    if [ "$rc" -ne 0 ] || [ -z "$json" ]; then
+        emit INFO C96-jira-test-project "jira live-test --json gave no readable answer (exit $rc) -- the Jira test project was not checked" \
+            "run: node $REPO_ROOT/scripts/jira/dist/index.js live-test --json"
+        return 0
+    fi
+    if [ -n "$tp" ]; then
+        emit OK C96-jira-test-project "JIRA_TEST_PROJECT=$tp: live-test Jira writes go only there"
+        return 0
+    fi
+    problem="$(jq -r '.problem // ""' <<< "$json" 2>/dev/null)" || problem=""
+    case "$problem" in
+        ''|"no JIRA_TEST_PROJECT is set"*)
+            emit WARN C96-jira-test-project "no Jira test project is configured, so a live-test brief cannot be generated and a live Jira write is refused" \
+                "himmelctl config set jira.testProject <KEY>" ;;
+        *)
+            emit WARN C96-jira-test-project "the Jira test project is not valid: $problem -- a live-test brief cannot be generated and a live Jira write is refused" \
+                "himmelctl config set jira.testProject <KEY> (a project that is not a work project)" ;;
+    esac
+}
+
 # --- C41: MCP server credential on the command line ---------------
 # An MCP server entry launched as `npm exec <server> --api-key <key>` puts the key
 # in argv, so any local user reads it via ps or /proc/<pid>/cmdline, and it lands
@@ -5941,6 +5990,7 @@ run_check C92 check_c92_graph_key
 run_check C93 check_c93_graph_role
 run_check C94 check_c94_graph_config
 run_heavy C95 check_c95_barrier_off C95-barrier-off
+run_check C96 check_c96_jira_test_project
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"

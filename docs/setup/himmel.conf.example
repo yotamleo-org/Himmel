@@ -40,7 +40,9 @@
 # JIRA_EMAIL=dummy@example.invalid
 # JIRA_PROJECTS=DUMMY
 # JIRA_PROJECT_KEY=DUMMY
-# JIRA_TEST_PROJECT=DUMMYTEST
+# The Jira project live tests and audits write to; never a work project. Set it with
+# himmelctl config set jira.testProject <KEY> (the doctor's C96 row warns while it is unset).
+# JIRA_TEST_PROJECT=HTEST
 # JIRA_CLOUD_ID=dummy-cloud-id
 # GCP_CI_PROJECT_ID=dummy-project
 # SNYK_ORG_ID=dummy-org-id
