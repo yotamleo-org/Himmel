@@ -124,6 +124,7 @@ export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   'block-read-secrets.sh',
   'read-clamp.sh',
   // PreToolUse `Edit|Write|MultiEdit|NotebookEdit` chain.
+  'guard-judge-write-scope.sh',
   'block-edit-on-main.sh',
   // Denies writes to a LIVE settings.json/settings.local.json
   // (user-scope $HOME/.claude, or the PRIMARY checkout's) while ALLOWING the

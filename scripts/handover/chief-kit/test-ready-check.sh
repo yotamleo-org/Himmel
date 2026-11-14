@@ -338,7 +338,7 @@ run() {
         STUB_RUN_SLEEP="${STUB_RUN_SLEEP:-}" STUB_RUN_HEAD_SHA="${STUB_RUN_HEAD_SHA:-}" STUB_RUN_CONC="${STUB_RUN_CONC:-}" \
         READY_CHECK_ITEM19_BOUND="${READY_CHECK_ITEM19_BOUND:-}" \
         READY_CHECK_FAIL_LEDGER="${READY_CHECK_FAIL_LEDGER:-$tmp/ci-failures.jsonl}" \
-        READY_CHECK_ANCHOR="${READY_CHECK_ANCHOR:-$TP_ANCHOR}" \
+        READY_CHECK_ANCHOR="${READY_CHECK_ANCHOR-$TP_ANCHOR}" \
         STUB_FORK_JSON="${STUB_FORK_JSON:-${STUB_FORK:-false}}" STUB_AUTHOR_ID="${STUB_AUTHOR_ID:-}" STUB_AUTHOR_TYPE="${STUB_AUTHOR_TYPE:-}" \
         STUB_RESOLVED_BY="${STUB_RESOLVED_BY:-}" STUB_ROLLUP_NULL="${STUB_ROLLUP_NULL:-}" \
         STUB_FILES16_FAIL="${STUB_FILES16_FAIL:-}" STUB_FILES16_EMPTY="${STUB_FILES16_EMPTY:-}" \
@@ -432,7 +432,50 @@ rc=0; out="$(READY_CHECK_ANCHOR="$STALE_ANCHOR" run)" || rc=$?
 check "stale-anchor: exit 1" "$rc" "1"
 contains "stale-anchor: check 12 refuses" "$out" "[FAIL] 12."
 contains "stale-anchor: names the cause" "$out" "behind origin"
-contains "stale-anchor: says to run from the primary checkout, not a worktree" "$out" "not from a worktree"
+contains "stale-anchor: says to pull the primary checkout" "$out" "pull the primary checkout"
+notcontains "stale-anchor: never sends the worker out of its worktree" "$out" "not from a worktree"
+notcontains "stale-anchor: the refusal prints no TRUST-PATH line" "$out" "TRUST-PATH:"
+
+# --- 12b-12d. check 12 run from a linked worktree, READY_CHECK_ANCHOR unset ---
+WT_PRIM="$tmp/wt-prim"; WT_LINKED="$tmp/wt-linked"
+git init -q --bare "$tmp/wt-origin.git"
+git init -q "$WT_PRIM"
+mkdir -p "$WT_PRIM/scripts/lib"
+cp "$HERE/../../lib/go-gate.sh" "$WT_PRIM/scripts/lib/go-gate.sh"
+git -C "$WT_PRIM" add -A
+git -C "$WT_PRIM" -c user.name=t -c user.email=t@t commit -q -m init
+git -C "$WT_PRIM" remote add origin "$tmp/wt-origin.git"
+git -C "$WT_PRIM" push -q origin HEAD:refs/heads/main 2>/dev/null
+git -C "$tmp/wt-origin.git" symbolic-ref HEAD refs/heads/main
+git -C "$WT_PRIM" worktree add -q -b wt-branch "$WT_LINKED"
+git -C "$WT_PRIM" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "main moved"
+git -C "$WT_PRIM" push -q origin HEAD:refs/heads/main 2>/dev/null
+mkdir -p "$WT_LINKED/scripts/handover/chief-kit"
+cp "$SCRIPT" "$WT_LINKED/scripts/handover/chief-kit/ready-check.sh"
+rm -rf "$WT_LINKED/scripts/lib"
+cp -R "$HERE/../../lib" "$WT_LINKED/scripts/lib"
+wt_run() { READY_CHECK_ANCHOR="" RUN_CWD="$WT_LINKED" RUN_SCRIPT=scripts/handover/chief-kit/ready-check.sh run; }
+
+reset_stubs
+STUB_FILES="scripts/handover/chief-kit/ready-check.sh"
+out="$(wt_run)" || true
+contains "worktree-run: a trust-path hit passes check 12 against the current primary" "$out" "[PASS] 12. trust path: hit scripts/handover/chief-kit/ready-check.sh"
+contains "worktree-run: a trust-path hit prints TRUST-PATH: yes" "$out" "TRUST-PATH: yes"
+notcontains "worktree-run: check 12 does not refuse the worktree run" "$out" "[FAIL] 12."
+
+reset_stubs
+out="$(wt_run)" || true
+contains "worktree-run control: a file off the list passes check 12" "$out" "[PASS] 12. trust path: none"
+contains "worktree-run control: prints TRUST-PATH: no" "$out" "TRUST-PATH: no"
+
+reset_stubs
+STUB_FILES="scripts/handover/chief-kit/ready-check.sh"
+wt_ahead=$(git -C "$WT_PRIM" -c user.name=t -c user.email=t@t commit-tree "HEAD^{tree}" -p HEAD -m "origin moved past the primary")
+git -C "$WT_PRIM" push -q origin "$wt_ahead:refs/heads/main" 2>/dev/null
+out="$(wt_run)" || true
+contains "worktree-run stale primary: check 12 still refuses" "$out" "[FAIL] 12."
+contains "worktree-run stale primary: names the primary as the stale anchor" "$out" "the anchor $(cd "$WT_PRIM" && pwd -P) is behind origin"
+notcontains "worktree-run stale primary: the refusal prints no TRUST-PATH line" "$out" "TRUST-PATH:"
 
 # --- 2. check 2 fails: a red check in the rollup ------------------------
 reset_stubs

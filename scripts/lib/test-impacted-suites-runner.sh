@@ -61,6 +61,16 @@ assert_runner "scripts/jira .test.ts -> vitest, cwd scripts/jira" \
     "scripts/jira/src/commands/foo.test.ts" \
     "cd scripts/jira && npx vitest run src/commands/foo.test.ts"
 
+assert_runner "R1 scripts/jira .test.mjs -> vitest, cwd scripts/jira" \
+    "scripts/jira/reconcile-lib.test.mjs" \
+    "cd scripts/jira && npx vitest run reconcile-lib.test.mjs"
+assert_runner "R1 plugins/himmel-gh/tests .test.mjs -> vitest, cwd plugins/himmel-gh" \
+    "plugins/himmel-gh/tests/forge-detect.test.mjs" \
+    "cd plugins/himmel-gh && npx vitest run tests/forge-detect.test.mjs"
+assert_runner "R1 plugins/himmel-jira/tests .test.mjs -> vitest, cwd plugins/himmel-jira" \
+    "plugins/himmel-jira/tests/metadata.test.mjs" \
+    "cd plugins/himmel-jira && npx vitest run tests/metadata.test.mjs"
+
 assert_runner "scripts/bitbucket .test.ts -> vitest, cwd scripts/bitbucket" \
     "scripts/bitbucket/src/foo.test.ts" \
     "cd scripts/bitbucket && npx vitest run src/foo.test.ts"

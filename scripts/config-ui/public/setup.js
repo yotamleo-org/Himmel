@@ -1,7 +1,7 @@
 // The Setup page: which secrets are set (presence only, never a value), a form to set or remove one, the commit rules, and the Verify step.
 // A value lives in the password field until the request is sent and the field is cleared at once: it is never kept in
 // page state, localStorage or the markup, and the server answers with the name and the new status only.
-import { category, copyCommand, esc, pg, planHtml, renderFleetCap, renderReports, renderReviewGate, renderSettingsGroups, renderVm } from "./render.js";
+import { category, copyCommand, esc, pg, planHtml, renderFleetCap, renderGraphChoices, renderReports, renderReviewGate, renderSettingsGroups, renderVm } from "./render.js";
 import { TILES, docsHref } from "./nav.js";
 
 const STATUS = { set: "set", "not-set": "not set", placeholder: "placeholder", probe: "checked in the terminal" };
@@ -257,7 +257,7 @@ const setupFailed = (setup) => (setup ? `<div class="nodata" role="alert">${esc(
 
 // ---- Multi accounts: which API account may serve each kind of run on auto. The data is GET /api/api-roles:
 // the role map's state and live roles, ROLES, one row per account and the account letters. The page holds no role list.
-const ROLE_NOTE = { graphify: "every configured account (the himmel graph pass)", judge: "the subscription, no API account" };
+const ROLE_NOTE = { graphify: "every configured account (this station's own himmel graph pass only; the graph choices for your repos are on Project scope)", judge: "the subscription, no API account" };
 const BANK_STYLE = { "not configured": "off", unknown: "warn", "marked exhausted": "fail", "no room": "fail", "last resort": "warn", "no reading": "warn", "stale reading": "warn", room: "ok" };
 const ROLES_FILE = "~/.himmel/state/api-credit/roles.json";
 
@@ -416,7 +416,7 @@ function scopePanel({ setup, feed, state }) {
   const group = (ids, fold) => (feed ? renderSettingsGroups(feed, state, ids, fold, true) : loading("the station report"));
   const choices = setup && setup.choices;
   const unread = !setup || setup.error;
-  // Five categories, the first open; each opens and closes on its own and keeps that for the session (render.js category()).
+  // The first category is open; each opens and closes on its own and keeps that for the session (render.js category()).
   const host = unread ? setupFailed(setup) : choices ? `<div class="setgroup">${forgeRow(choices, true)}</div>` : "";
   const folders = unread ? setupFailed(setup)
     : choices ? `<div class="setgroup"><p class="sub">Each folder change shows a dry run you confirm before it writes. A folder is an absolute path, with no <code>.</code> or <code>..</code> part, quote, <code>#</code>, <code>$</code> or backslash.</p>${pathRows(choices, plans, true)}</div>` : "";
@@ -424,6 +424,7 @@ function scopePanel({ setup, feed, state }) {
     ${category("automation", "Automation: auto-ship, plugins and scheduled jobs", `${group(["auto-ship"])}${group(["plugins"], 3)}${group(["scheduled-jobs"])}`, true)}
     ${category("source-host", "Source code host: GitHub or Bitbucket", host)}
     ${category("folders", "Folders: handover notes and the luna vault", folders)}
+    ${category("graph", "Code graph: what to graph, who pays and the fallbacks", `<div class="setgroup">${renderGraphChoices(state.graph)}</div>`)}
     ${category("machine", "This machine: worker limit, VM mode and reports", `<div class="setgroup">${renderFleetCap(state.fleetCap, true)}${renderVm(state.vm, true)}${renderReports(state.reports, true)}</div>`)}
     ${category("answers", "Saved answers", group(["install-answers"]))}
     <p class="foot">Each change takes effect as its row says; a switch shows a dry run before it writes.</p>`;

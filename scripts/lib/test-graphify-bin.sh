@@ -129,10 +129,10 @@ pinned_ver="$(env -u GRAPHIFY_VERSION bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.s
 # The stub uv reports this version for an install from the fork git ref.
 export STUB_UV_GIT_VERSION="$pinned_ver"
 
-echo "[test-graphify-bin] graphify_install_hint (HIMMEL-6056: yotamleo-org/graphify fork pinned by commit sha)"
+echo "[test-graphify-bin] graphify_install_hint (yotamleo-org/graphify fork pinned by commit sha)"
 hint="$(env -u GRAPHIFY_VERSION bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_install_hint')"
 assert "hint uses uv tool install" grep -q '^uv tool install ' <<<"$hint"
-assert "hint installs graphifyy[ollama] from the fork at a 40-hex commit sha, single-quoted (no [kimi] extra, HIMMEL-2481/4513)" \
+assert "hint installs graphifyy[ollama] from the fork at a 40-hex commit sha, single-quoted (no [kimi] extra)" \
   grep -qE "'graphifyy\[ollama\] @ git\+https://github\.com/yotamleo-org/graphify@[0-9a-f]{40}'" <<<"$hint"
 fork_ref="$(env -u GRAPHIFY_FORK_REF bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_fork_ref')"
 assert "hint installs the resolver's own fork commit" grep -qF "yotamleo-org/graphify@$fork_ref'" <<<"$hint"
@@ -142,12 +142,12 @@ assert "default version is the fork stamp 0.9.106+himmel.1" \
   test "$(env -u GRAPHIFY_VERSION bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_version')" = "0.9.106+himmel.1"
 assert "upstreams.json graphify synced_base is 0.9.106" \
   test "$(node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const l=Array.isArray(r)?r:(r.upstreams||r.entries||[]);console.log(l.find(e=>e.name==="graphify").synced_base)' "$SCRIPT_DIR/../upstreams.json")" = "0.9.106"
-assert "hint carries --with mcp (HIMMEL-996: upstream keeps the mcp dep optional)" \
+assert "hint carries --with mcp (upstream keeps the mcp dep optional)" \
   grep -q -- '--with ' <<<"$hint"
 assert "hint binds the patched mcp floor, single-quoted (the extras do not pull mcp in)" \
   grep -qF -- "--with 'mcp>=1.30.0,<3' '" <<<"$hint"
 
-echo "[test-graphify-bin] pin policy (HIMMEL-1048): the configured version IS a semver, not a movable ref"
+echo "[test-graphify-bin] pin policy: the configured version IS a semver, not a movable ref"
 # `latest`/a branch/a bare tag would be non-reproducible; a published PyPI version
 # is immutable. This pins the POLICY so a future 'bump the pin' change that swaps
 # in `latest` or a non-version string fails here.
@@ -495,7 +495,7 @@ make_fake_graphify_venv() { # <tooldir> <version> -> echoes the fake package dir
 case "\$2" in
   *__file__*)              printf '%s\n' "$pkg" ;;
   *importlib.metadata*)    printf '%s\r\n' "$ver" ;;
-  import\ *)               exit 0 ;;   # mcp/openai import probes (HIMMEL-4513): a healthy venv
+  import\ *)               exit 0 ;;
   *) exit 1 ;;
 esac
 EOF
@@ -564,7 +564,7 @@ assert "skill-refresh redirect current: no refresh performed" bash -c '! grep -q
 assert "skill-refresh redirect current: existing SKILL.md unchanged" test "$(cat "$srr_home/gplug/skills/graphify/SKILL.md")" = "existing current skill"
 assert "skill-refresh redirect current: the routed legacy copy is still retired" test ! -e "$srr_cfg/skills/graphify"
 
-echo "[test-graphify-bin] _graphify_skill_refresh: skill lands in the PLUGIN dir; legacy user-scope copy retired (HIMMEL-6465)"
+echo "[test-graphify-bin] _graphify_skill_refresh: skill lands in the PLUGIN dir; legacy user-scope copy retired"
 srp_home="$tmpdir/sr-plugin"; srp_plug="$tmpdir/sr-plugin-dir"
 mkdir -p "$srp_home/.claude/skills/graphify/references"
 printf '0.0.1' > "$srp_home/.claude/skills/graphify/.graphify_version"
@@ -695,7 +695,7 @@ assert "unsafe staging targets: marker unchanged" test "$(cat "$sru_home/gplug/s
 assert "unsafe staging targets: SKILL.md remains a directory" test -d "$sru_home/gplug/skills/graphify/SKILL.md"
 assert "unsafe staging targets: staged directory cleaned" test ! -e "$sru_home/gplug/skills/graphify/SKILL.md.tmp"
 
-echo "[test-graphify-bin] _graphify_skill_refresh: PRESENT codex skill dir is refreshed; ABSENT hermes dir is left untouched and NOT created (HIMMEL-3050)"
+echo "[test-graphify-bin] _graphify_skill_refresh: PRESENT codex skill dir is refreshed; ABSENT hermes dir is left untouched and NOT created"
 # This once pinned "other platforms are NEVER touched" back when the refresh
 # only knew about Claude. The refresh now widens to every platform
 # ALREADY installed on this station -- codex and hermes drift on every pin
@@ -726,7 +726,7 @@ assert "(b) absent hermes parent NOT created either" test ! -d "$srm_home/.herme
 assert "still-untouched platform: agents marker untouched" test "$(cat "$srm_home/.agents/skills/graphify/.graphify_version")" = "0.0.2"
 assert "still-untouched platform: agents skill content untouched" test "$(cat "$srm_home/.agents/skills/graphify/SKILL.md")" = "stale agents skill body"
 
-echo "[test-graphify-bin] _graphify_skill_refresh: (c) codex CURRENT marker with missing content is repaired (HIMMEL-3050)"
+echo "[test-graphify-bin] _graphify_skill_refresh: (c) codex CURRENT marker with missing content is repaired"
 # Mirrors the existing Claude-only case above (line ~503): a marker that
 # already matches the installed version must NOT short-circuit the refresh
 # when the content it claims to describe is gone -- same rule, now proven for
@@ -783,7 +783,7 @@ assert "no-venv: rc 0" grep -q '^RC=0$' <<<"$out"
 assert "no-venv: silent no-op" bash -c '! grep -qiE "skill refreshed|WARNING" <<<"$1"' _ "$out"
 assert "no-venv: marker unchanged" test "$(cat "$srn_home/gplug/skills/graphify/.graphify_version")" = "0.0.1"
 
-echo "[test-graphify-bin] graphify_update: FRESH install also refreshes the skill (HIMMEL-1750)"
+echo "[test-graphify-bin] graphify_update: FRESH install also refreshes the skill"
 # graphify absent -> update delegates to graphify_install (uv stub drops a
 # working shim) -> the skill refresh must run in the SAME update, not wait for
 # a second one (CR codex-adv finding: first himmelctl update left the skill absent).
@@ -823,10 +823,10 @@ out=$(HOME="$gud_home" GRAPHIFY_PLUGIN_DIR="$gud_home/gplug" PATH="$gud_bin:$stu
       UV_BIN_DIR="$gud_bin" UV_LOG="$gud_log" GRAPHIFY_MCP_HOLDERS=0 \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_update; echo "RC=$?"' 2>&1)
 assert "update diff-ver: rc 0" grep -q '^RC=0$' <<<"$out"
-assert "update diff-ver: force-reinstalls at pin preserving [all] extras plus [ollama] (HIMMEL-4513)" \
+assert "update diff-ver: force-reinstalls at pin preserving [all] extras plus [ollama]" \
   grep -qE 'tool install --force --with mcp>=1\.30\.0,<3 graphifyy\[all,ollama\] @ git\+' "$gud_log"
 
-echo "[test-graphify-bin] graphify_update: the upstream base 0.9.93 is behind its +himmel.1 fork build -> reinstall from the fork (HIMMEL-6056)"
+echo "[test-graphify-bin] graphify_update: the upstream base 0.9.93 is behind its +himmel.1 fork build -> reinstall from the fork"
 gub_home="$tmpdir/gup-upbase"; mkdir -p "$gub_home"
 gub_tools="$tmpdir/gup-upbase-tools"; mkdir -p "$gub_tools/graphifyy"
 printf 'requirements = [{ name = "graphifyy" }]\n' > "$gub_tools/graphifyy/uv-receipt.toml"
@@ -843,7 +843,7 @@ assert "update upstream-base: reinstalls from the fork git ref" \
   grep -qE 'tool install --force --with mcp>=1\.30\.0,<3 graphifyy\[ollama\] @ git\+https://github\.com/yotamleo-org/graphify@[0-9a-f]{40}$' "$gub_log"
 assert "update upstream-base: the uv list now shows the fork build" grep -qx "graphifyy v$pinned_ver" "$gub_list"
 
-echo "[test-graphify-bin] _graphify_installed_extras: a recorded [kimi]-only extra is dropped (HIMMEL-2481)"
+echo "[test-graphify-bin] _graphify_installed_extras: a recorded [kimi]-only extra is dropped"
 # Existing machines installed with the old [kimi]-by-default spec have "kimi"
 # recorded in their uv receipt; an upgrade must not carry it forward forever.
 kex_home="$tmpdir/kimi-extras-only"; mkdir -p "$kex_home"
@@ -1038,7 +1038,7 @@ assert "pgrep rc 0 with 3 matches -> 3"   "$(command -v bash)" -c 'PATH="$1:/usr
 # MENTIONS graphify-mcp (the shell running the update) was counted as a holder
 # and skipped a safe upgrade. Real /proc, a fake pgrep that reports exactly the
 # pids under test via HOLDER_PIDS.
-echo "[test-graphify-bin] _graphify_mcp_holders: only REAL graphify-mcp processes are holders (HIMMEL-5295)"
+echo "[test-graphify-bin] _graphify_mcp_holders: only REAL graphify-mcp processes are holders"
 if [ -d /proc/self ]; then
   # shellcheck disable=SC2016
   printf '#!/bin/sh\nfor p in $HOLDER_PIDS; do echo "$p"; done\nexit 0\n' > "$probe_dir/pgrep"; chmod +x "$probe_dir/pgrep"
@@ -1237,7 +1237,7 @@ out=$(HOME="$gb_home" GRAPHIFY_PLUGIN_DIR="$gb_home/gplug" PATH="$gb_bin:$stub_d
       UV_BIN_DIR="$gb_uvbin" UV_LOG="$gb_log" GRAPHIFY_MCP_HOLDERS=0 \
       bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; graphify_update; echo "RC=$?"' 2>&1)
 assert "broken-after-install: rc 1 (presence is not proof it runs)" grep -q '^RC=1$' <<<"$out"
-assert "empty recorded extras: upgrade spec is just [ollama] (no [kimi] extra, HIMMEL-2481/4513)" \
+assert "empty recorded extras: upgrade spec is just [ollama] (no [kimi] extra)" \
   grep -qE 'tool install --force --with mcp>=1\.30\.0,<3 graphifyy\[ollama\] @ git\+' "$gb_log"
 assert "broken-after-install: names it BROKEN" grep -q 'BROKEN' <<<"$out"
 assert "broken-after-install: gives the repair command" grep -q "uv tool install --force --with 'mcp>=1\.30\.0,<3' 'graphifyy" <<<"$out"
@@ -1420,7 +1420,7 @@ lf_run() {
 lf_live_version() { PATH="$lf_bin:$utils_bin" GRAPHIFY_NO_AUTO_REFRESH=1 graphify --version 2>/dev/null; }
 lf_tmp_empty() { local l; [ -d "$lf_tmp" ] || return 1; l="$(ls -A "$lf_tmp" 2>/dev/null)" || return 1; [ -z "$l" ]; }
 
-echo "[test-graphify-bin] lf_tmp_empty: passes only on a listable, empty scratch dir (HIMMEL-4539)"
+echo "[test-graphify-bin] lf_tmp_empty: passes only on a listable, empty scratch dir"
 lf_tmp_not_empty() { ! lf_tmp_empty; }
 _lf_tmp_save="${lf_tmp:-}"
 lf_tmp="$tmpdir/lf-probe-missing"
@@ -1671,7 +1671,7 @@ assert "update ahead-of-pin: no install call (never downgrade)" bash -c '! grep 
 # motivating package-ahead/skill-stale case.
 assert "update ahead-of-pin: stale skill refreshed to installed version" grep -qi 'skill refreshed' <<<"$out"
 
-echo "[test-graphify-bin] _graphify_version_lt fails safe on empty/unparseable input (CR HIMMEL-1048)"
+echo "[test-graphify-bin] _graphify_version_lt fails safe on empty/unparseable input"
 # Empty or non-numeric version must return 1 (NOT lower), never 0 — else
 # graphify_update force-reinstalls an unreadable-version install (clobber).
 # shellcheck disable=SC2016
@@ -1680,7 +1680,7 @@ assert "version_lt: empty installed -> NOT lower (rc 1)" \
 assert "version_lt: genuine behind -> lower (rc 0)" \
   bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_version_lt "0.9.1" "0.9.22"'
 
-echo "[test-graphify-bin] _graphify_version_lt: +himmel.N is newer than the same base (HIMMEL-6056)"
+echo "[test-graphify-bin] _graphify_version_lt: +himmel.N is newer than the same base"
 # shellcheck disable=SC2016
 assert "version_lt: upstream base is behind its own +himmel.1 build" \
   bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_version_lt "0.9.93" "0.9.93+himmel.1"'
@@ -1700,13 +1700,13 @@ assert "version_lt: the next upstream patch is ahead of +himmel.1 -> NOT lower" 
 assert "version_lt: the previous PyPI pin is behind the fork build" \
   bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_version_lt "0.9.92" "0.9.93+himmel.1"'
 
-echo "[test-graphify-bin] _graphify_installed_version keeps the +himmel.N local part (HIMMEL-6056)"
+echo "[test-graphify-bin] _graphify_installed_version keeps the +himmel.N local part"
 ivl_list="$tmpdir/installed-version-list"; printf 'graphifyy v0.9.93+himmel.1\n- graphify\n' > "$ivl_list"
 ivl_out="$(PATH="$stub_dir/bin:$base_path" UV_LOG="$tmpdir/ivl-log" UV_LIST_FILE="$ivl_list" UV_TOOL_DIR="$tmpdir/ivl-tools" \
   bash -c '. "'"$SCRIPT_DIR"'/graphify-bin.sh"; _graphify_installed_version')"
 assert "installed_version: uv tool list v0.9.93+himmel.1 -> 0.9.93+himmel.1" test "$ivl_out" = "0.9.93+himmel.1"
 
-echo "[test-graphify-bin] graphify_update: uv graphifyy with UNPARSEABLE version -> left as-is, no install (CR HIMMEL-1048)"
+echo "[test-graphify-bin] graphify_update: uv graphifyy with UNPARSEABLE version -> left as-is, no install"
 guu_home="$tmpdir/gup-unparse"; mkdir -p "$guu_home"
 guu_tools="$tmpdir/gup-unparse-tools"; mkdir -p "$guu_tools/graphifyy"
 printf 'requirements = [{ name = "graphifyy" }]\n' > "$guu_tools/graphifyy/uv-receipt.toml"
@@ -1755,7 +1755,7 @@ assert "update foreign non-uv: left as-is" grep -qi 'leaves it as-is' <<<"$out"
 # shellcheck disable=SC2016
 assert "update foreign non-uv: no install call" bash -c '! grep -q "tool install" "$1"' _ "$guf_log"
 
-echo "[test-graphify-bin] POSIX MCP entrypoint wins over a stale executable-suffix shim (HIMMEL-8179)"
+echo "[test-graphify-bin] POSIX MCP entrypoint wins over a stale executable-suffix shim"
 posix_mcp="$tmpdir/posix-mcp"; mkdir -p "$posix_mcp"
 printf '#!/bin/sh\nexit 0\n' > "$posix_mcp/graphify-mcp"
 printf '#!/bin/sh\nexit 1\n' > "$posix_mcp/graphify-mcp.exe"
@@ -1764,7 +1764,7 @@ mcp_path=$(PATH="$stub_dir/bin:$base_path" UV_TOOL_DIR="$posix_mcp" UV_LOG="$tmp
   bash -c '. "$1/graphify-bin.sh"; _graphify_mcp_entrypoint' _ "$SCRIPT_DIR")
 assert "entrypoint uses graphify-mcp, not the retired executable-suffix shim" test "$mcp_path" = "$posix_mcp/graphify-mcp"
 
-echo "[test-graphify-bin] _graphify_mcp_import_ok probes the ENTRYPOINT's interpreter (HIMMEL-996)"
+echo "[test-graphify-bin] _graphify_mcp_import_ok probes the ENTRYPOINT's interpreter"
 # A chief script's shebang python is the most-specific env (covers pip/
 # pipx foreign installs, not just the uv venv). Fake pythons: exit 0 = mcp
 # importable, exit 1 = the missing-dep defect. rc 2 = nothing resolvable.
@@ -1816,7 +1816,7 @@ else
   echo "  skip: no python3 with venv for the planted-mcp probe" >&2
 fi
 
-echo "[test-graphify-bin] consumer wiring — setup.sh/adopt.sh source graphify-bin.sh (HIMMEL-891)"
+echo "[test-graphify-bin] consumer wiring — setup.sh/adopt.sh source graphify-bin.sh"
 repo_root="$(cd "$SCRIPT_DIR/../.." && pwd)"
 assert "setup.sh sources graphify-bin.sh" grep -q 'lib/graphify-bin.sh' "$repo_root/scripts/setup.sh"
 assert "setup.sh calls graphify_install" grep -q 'graphify_install' "$repo_root/scripts/setup.sh"
@@ -2132,7 +2132,7 @@ assert "survive: graphify-freshness-advisory.sh entry survives" test "$(price_fi
 assert "survive: exactly one guard entry left (the priced one)" test "$(price_field "$check2" CLAUDE_GUARD_COUNT)" = "1"
 assert "survive: total is advisory(1) + priced(1)" test "$(price_field "$check2" CLAUDE_TOTAL)" = "2"
 
-echo "[test-graphify-bin] graphify_price_hooks: HOOK-level filtering — a mixed entry keeps its unrelated hook, a pure-guard entry is dropped entirely (HIMMEL-2480 CR finding 1)"
+echo "[test-graphify-bin] graphify_price_hooks: HOOK-level filtering — a mixed entry keeps its unrelated hook, a pure-guard entry is dropped entirely (CR finding 1)"
 # One matcher can legitimately bundle SEVERAL hooks. "Grep" bundles a graphify
 # guard with an unrelated hook (must survive); "Read|Glob" holds ONLY a guard
 # hook (its entry must be removed entirely once emptied, not left as {}).
@@ -2220,12 +2220,12 @@ assert "dispatcher: bogus verb exits 2" test "$bogus_rc" -eq 2
 assert "dispatcher: bogus verb prints usage" grep -qi '^Usage:' <<<"$bogus_out"
 assert "dispatcher: usage mentions price-hooks" grep -q 'price-hooks' <<<"$bogus_out"
 
-echo "[test-graphify-bin] graphify_price_hooks: consumer wiring regression guard (HIMMEL-2480)"
+echo "[test-graphify-bin] graphify_price_hooks: consumer wiring regression guard"
 assert "setup.sh calls graphify_price_hooks" grep -q 'graphify_price_hooks' "$repo_root/scripts/setup.sh"
 assert "adopt.sh calls graphify_price_hooks" grep -q 'graphify_price_hooks' "$repo_root/scripts/adopt.sh"
 assert "himmel-update.sh calls graphify_price_hooks" grep -q 'graphify_price_hooks' "$repo_root/scripts/himmel-update.sh"
 
-echo "[test-graphify-bin] graphify_price_hooks: operator hints are copy-pasteable (HIMMEL-2480 CR finding 3)"
+echo "[test-graphify-bin] graphify_price_hooks: operator hints are copy-pasteable (CR finding 3)"
 # ' -- then ' in a pasted shell line ends option parsing for `graphify install`
 # and turns "then re-price the hooks: ..." into junk positional argv -- the
 # re-price command never runs. None of the four skill-refresh hints (and the
@@ -2332,7 +2332,7 @@ node_probe_out=$(env "${force_python_env[@]}" bash -c '. "'"$SCRIPT_DIR"'/resolv
 assert "positive control: resolve_node fails under the forced-python env" grep -q '^NODE_RESOLVED=no$' <<<"$node_probe_out"
 assert "positive control: command -v node finds nothing under the forced-python env" grep -q '^NODE_ON_PATH=no$' <<<"$node_probe_out"
 
-echo "[test-graphify-bin] graphify_price_hooks: node vs python engines are byte-identical, non-ASCII included (HIMMEL-2480 follow-up)"
+echo "[test-graphify-bin] graphify_price_hooks: node vs python engines are byte-identical, non-ASCII included (follow-up)"
 id_node_fixture="$tmpdir/price-identity-node"
 id_py_fixture="$tmpdir/price-identity-python"
 write_price_identity_fixture "$id_node_fixture"
@@ -2358,7 +2358,7 @@ assert "identity: python engine kept the em-dash raw too (TASK 1 regression guar
 # shellcheck disable=SC2016
 assert "identity: python engine did NOT \\u-escape the em-dash" bash -c '! grep -qF "\u2014" "$1"' _ "$id_py_fixture/.claude/settings.json"
 
-echo "[test-graphify-bin] graphify_price_hooks: forced-python-engine idempotence (HIMMEL-2480 follow-up)"
+echo "[test-graphify-bin] graphify_price_hooks: forced-python-engine idempotence (follow-up)"
 idem_py_fixture="$tmpdir/price-python-idempotence"
 write_price_identity_fixture "$idem_py_fixture"
 
@@ -2377,7 +2377,7 @@ assert "python idempotence: second run reports already priced" price_verdict "$i
 assert "python idempotence: settings.json byte-identical after the second run" cmp -s "$tmpdir/idem-py-settings-mid.json" "$idem_py_fixture/.claude/settings.json"
 assert "python idempotence: hooks.json byte-identical after the second run" cmp -s "$tmpdir/idem-py-codex-mid.json" "$idem_py_fixture/.codex/hooks.json"
 
-echo "[test-graphify-bin] graphify_price_hooks: HOOK-level filtering under the forced-python engine (HIMMEL-2480 CR finding 1)"
+echo "[test-graphify-bin] graphify_price_hooks: HOOK-level filtering under the forced-python engine (CR finding 1)"
 mixed_py_fixture="$tmpdir/price-mixed-hooks-python"
 write_mixed_hook_fixture "$mixed_py_fixture"
 # shellcheck disable=SC2016
@@ -2391,7 +2391,7 @@ assert "mixed (python): the Read|Glob pure-guard entry was removed entirely" \
 assert "mixed (python): the unrelated hook survived" grep -qF "my-other-hook.sh" <<<"$(price_field "$check_mixed_py" CLAUDE_ALL_HOOK_COMMANDS)"
 assert "mixed (python): output is byte-identical to the node engine's" cmp -s "$mixed_fixture/.claude/settings.json" "$mixed_py_fixture/.claude/settings.json"
 
-echo "[test-graphify-bin] graphify_price_hooks: neither engine resolvable -> loud WARNING, rc 0, files untouched (HIMMEL-2480 follow-up)"
+echo "[test-graphify-bin] graphify_price_hooks: neither engine resolvable -> loud WARNING, rc 0, files untouched (follow-up)"
 no_engine_fixture="$tmpdir/price-no-engine"
 write_price_identity_fixture "$no_engine_fixture"
 cp "$no_engine_fixture/.claude/settings.json" "$tmpdir/no-engine-settings-before.json"
@@ -2412,7 +2412,7 @@ assert "no engine: settings.json left byte-identical" cmp -s "$tmpdir/no-engine-
 assert "no engine: hooks.json left byte-identical" cmp -s "$tmpdir/no-engine-codex-before.json" "$no_engine_fixture/.codex/hooks.json"
 
 # ─── graphify_price_hooks: Finding B (guard detection matches command only) ──
-echo "[test-graphify-bin] graphify_price_hooks: Finding B — a hook whose OTHER fields mention graphify/hook-guard, but whose command does not, must SURVIVE (HIMMEL-2480 follow-up)"
+echo "[test-graphify-bin] graphify_price_hooks: Finding B — a hook whose OTHER fields mention graphify/hook-guard, but whose command does not, must SURVIVE (follow-up)"
 # Old behavior (JSON.stringify(hook) / json.dumps(hook)) matched the WHOLE
 # hook object, so an unrelated hook's metadata field mentioning "graphify"
 # and "hook-guard" was enough to get it deleted even though its actual
@@ -2462,7 +2462,7 @@ assert "unrelated fields (python): settings reported repriced" price_verdict "$u
 assert "unrelated fields (python): the unrelated hook's command survives verbatim" grep -qF "unrelated-safety-net.sh" "$unrelated_py_fixture/.claude/settings.json"
 assert "unrelated fields (python): output is byte-identical to the node engine's" cmp -s "$unrelated_fixture/.claude/settings.json" "$unrelated_py_fixture/.claude/settings.json"
 
-echo "[test-graphify-bin] graphify_price_hooks: Finding B regression guard — command-field matching still detects all three positive shapes plus survives the freshness advisory (HIMMEL-2480 follow-up)"
+echo "[test-graphify-bin] graphify_price_hooks: Finding B regression guard — command-field matching still detects all three positive shapes plus survives the freshness advisory (follow-up)"
 write_guard_shapes_fixture() { # $1 = target dir
   local dir="$1"
   mkdir -p "$dir/.claude"
@@ -2520,7 +2520,7 @@ assert "shapes (python): settings reported repriced" price_verdict "$shapes_py_o
 assert "shapes (python): output is byte-identical to the node engine's" cmp -s "$shapes_fixture/.claude/settings.json" "$shapes_py_fixture/.claude/settings.json"
 
 # ─── graphify_price_hooks: Finding 1 (anchored guard matcher) ────────────────
-echo "[test-graphify-bin] graphify_price_hooks: Finding 1 -- anchored guard matcher, all 23 shapes, both engines (HIMMEL-2480 CR round 3, third and final narrowing)"
+echo "[test-graphify-bin] graphify_price_hooks: Finding 1 -- anchored guard matcher, all 23 shapes, both engines (CR round 3, third and final narrowing)"
 # Table-driven regression guard that ends the narrowing sequence (whole-entry
 # -> whole-hook-object -> command field -> anchored-token, this round). Each
 # row gets its OWN single-hook fixture rather than packing them all into one
@@ -2704,7 +2704,7 @@ run_finding1_case py-neg15-mid-cr '{ "type": "command", "command": "graphify\rho
 run_finding1_case py-neg16-trail-cr '{ "type": "command", "command": "graphify hook-guard\r-wrapper" }' survive python
 
 # ─── graphify_price_hooks: Finding 2 (symlinked config survives repricing) ───
-echo "[test-graphify-bin] graphify_price_hooks: Finding 2 -- atomic write follows a symlinked settings.json (HIMMEL-2480 CR round 3)"
+echo "[test-graphify-bin] graphify_price_hooks: Finding 2 -- atomic write follows a symlinked settings.json (CR round 3)"
 # Probe symlink support by actually attempting one, not by platform-sniffing
 # (same pattern as scripts/test-propagate-public.sh's C6 case): Windows
 # needs Developer Mode or admin for a REAL symlink, and this repo's git-bash
@@ -2760,7 +2760,7 @@ else
 fi
 
 # ─── graphify_price_hooks: Finding 3 (mode preservation) ─────────────────────
-echo "[test-graphify-bin] graphify_price_hooks: Finding 3 -- repricing preserves an existing 0600 mode (HIMMEL-2480 CR round 3)"
+echo "[test-graphify-bin] graphify_price_hooks: Finding 3 -- repricing preserves an existing 0600 mode (CR round 3)"
 # POSIX only: Windows has no POSIX permission bits for chmod/stat to round-trip
 # through, so this is moot there (the finding itself says so) -- gate on uname
 # rather than skip silently on a failed chmod assertion.

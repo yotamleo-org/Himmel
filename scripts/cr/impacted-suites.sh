@@ -52,10 +52,13 @@
 #           SUITE <path> = SKIP <reason>          (reason required)
 #           SUITE <path> = BLOCKED <denial>       (denial required)
 #           SUITE <path> = CI                     (CI runs it)
-#       `= CI` is accepted only for a test-*.sh the range did not change, that
-#       scripts/handover/suite-coverage.sh says runs in PR CI, and never with
-#       HIMMEL_SUITES_LOCAL=1 set; else `CI NOT ACCEPTED <path> (<reason>)` on
-#       stderr, the suite counts as unverdicted, and the exit is 1.
+#       `= CI` is accepted for a suite the range did not change, never with
+#       HIMMEL_SUITES_LOCAL=1 set: a test-*.sh that
+#       scripts/handover/suite-coverage.sh says runs in PR CI, or a JS/TS suite
+#       --runner maps, that is not on the CI-skips list and, for a vitest suite,
+#       whose node_suites gate the diff's pr-plan.sh turns on; else
+#       `CI NOT ACCEPTED <path> (<reason>)` on stderr, the suite counts as
+#       unverdicted, and the exit is 1.
 #       Exit 0 when every impacted suite has a PASS, SKIP or accepted CI; exit 1,
 #       naming each on stderr, when any is missing; exit 3 when every suite has a
 #       verdict but one is BLOCKED — accounted for, yet the suite did not run,
@@ -77,10 +80,10 @@
 #       (operator decision 775: little on the host, the rest in CI).
 #       One line per suite: `LOCAL <path> (<reason>)` or `CI <path>`, then
 #       `impacted-suites: plan N impacted, L local, C to CI`. LOCAL means the
-#       suite the PR changed (run it, with its failing-first proof), a suite CI
-#       cannot run (the reason is suite-coverage.sh's own words), or a
-#       non-test-*.sh suite (no per-suite CI proof yet); every other
-#       impacted test-*.sh is CI. HIMMEL_SUITES_LOCAL=1 plans every suite
+#       suite the PR changed (run it, with its failing-first proof), or a suite
+#       CI does not run (the reason is suite-coverage.sh's own words for a
+#       test-*.sh, and the --check reason for a JS/TS suite); every other
+#       impacted suite is CI. HIMMEL_SUITES_LOCAL=1 plans every suite
 #       LOCAL. Read-only; exit 0, or 2 on an unresolvable range; it cannot be
 #       combined with --check or any other mode.
 #   impacted-suites.sh --runner <path>
@@ -167,9 +170,15 @@ runner_for() {
             printf 'node --test %q\n' "$path" ;;
         scripts/observability/*.test.ts)
             printf 'bun test %q --dots\n' "$path" ;;
-        scripts/jira/*.test.ts)
+        scripts/jira/*.test.ts|scripts/jira/*.test.mjs)
             rel="${path#scripts/jira/}"
             printf 'cd scripts/jira && npx vitest run %q\n' "$rel" ;;
+        plugins/himmel-gh/tests/*.test.mjs)
+            rel="${path#plugins/himmel-gh/}"
+            printf 'cd plugins/himmel-gh && npx vitest run %q\n' "$rel" ;;
+        plugins/himmel-jira/tests/*.test.mjs)
+            rel="${path#plugins/himmel-jira/}"
+            printf 'cd plugins/himmel-jira && npx vitest run %q\n' "$rel" ;;
         scripts/bitbucket/*.test.ts)
             rel="${path#scripts/bitbucket/}"
             printf 'cd scripts/bitbucket && npx vitest run %q\n' "$rel" ;;
@@ -1580,10 +1589,46 @@ if [ "$selector_miss" -eq 1 ]; then
     exit "$miss"
 fi
 
-# --plan: which impacted suites run on this machine and which are left to CI.
-# The same tests --check applies to a `= CI` verdict, run forward: a suite the PR changed
-# (its failing-first proof), a non-test-*.sh suite (no per-suite CI proof) and a suite
-# suite-coverage.sh says CI does not run are LOCAL with the reason named; every other one is CI.
+# js_ci_refusal <path> — why CI cannot take a JS/TS suite the PR did not change,
+# or nothing when CI runs it. --check and --plan call it after their
+# HIMMEL_SUITES_LOCAL and changed-suite checks; it reads their range ($mb,
+# $head_sha) and $work. Three tests, in order: --runner maps it, it is not on
+# the CI-skips list (one exact path per entry), and a vitest suite's
+# node_suites gate is on in the plan CI makes for this diff. Only the answer
+# `run_node_suites=true` lets a vitest suite go; a plan that cannot be read
+# refuses. ready-check item 19 is the gate that reads CI's line for the suite.
+js_ci_refusal() {
+    local cmd
+    if ! cmd=$(runner_for "$1" 2>/dev/null); then # swallow-ok: a failed lookup is the refusal below; its stderr repeats it
+        echo "CI has no runner for it: run it locally (step 3.6 names the command)"
+        return 0
+    fi
+    case "$1" in
+        scripts/jira/live/jira-live.test.ts)
+            echo "CI skips it (describe.skipIf: CI has no live Jira credentials): run it locally"; return 0 ;;
+        scripts/telegram/transcribe-integration.test.ts)
+            echo "CI skips it (test.skip unless WHISPER_INTEGRATION_TEST is set): run it locally"; return 0 ;;
+        scripts/config-ui/tests/design-layer.test.ts)
+            echo "CI skips it (bun reports its tests under the suites that import it, so CI writes no line for it): run it locally"; return 0 ;;
+    esac
+    case "$cmd" in
+        *"npx vitest"*)
+            [ "$(node_suites_gate)" = true ] ||
+                echo "the node_suites gate is off for this diff, so CI does not run it: run it locally" ;;
+    esac
+    return 0
+}
+
+node_suites_gate() {
+    local f="$work/node-suites.gate" tools="$work/plan-tools"
+    if [ ! -f "$f" ]; then
+        { mkdir -p "$tools" &&
+            git archive --format=tar "$mb" -- scripts/ci/pr-plan.sh scripts/ci/pr-job-gates.txt scripts/ci/impacted-selection.sh 2>/dev/null | tar -x -C "$tools" 2>/dev/null &&
+            bash "$tools/scripts/ci/pr-plan.sh" "$mb" "$head_sha" 2>/dev/null < /dev/null | sed -n 's/^run_node_suites=//p' > "$f"; } || : > "$f"
+    fi
+    cat "$f" 2>/dev/null
+}
+
 if [ "$plan" -eq 1 ]; then
     plan_local="$work/plan.local"
     plan_ci="$work/plan.ci"
@@ -1602,7 +1647,13 @@ if [ "$plan" -eq 1 ]; then
         fi
         case "${s##*/}" in
             test-*.sh) printf '%s\n' "$s" >> "$plan_cand" || io_fail "writing the plan candidates" ;;
-            *) printf 'LOCAL %s (not a test-*.sh: a JS/TS suite has no per-suite CI proof)\n' "$s" >> "$plan_local" || io_fail "writing the plan" ;;
+            *)
+                why=$(js_ci_refusal "$s")
+                if [ -n "$why" ]; then
+                    printf 'LOCAL %s (%s)\n' "$s" "$why" >> "$plan_local" || io_fail "writing the plan"
+                else
+                    printf 'CI %s\n' "$s" >> "$plan_ci" || io_fail "writing the plan"
+                fi ;;
         esac
     done < "$impacted"
     if [ -s "$plan_cand" ]; then
@@ -1676,12 +1727,6 @@ awk -v blockedf="$blocked_raw" -v cif="$ci_raw" -v skipf="$skip_raw" -v passf="$
         }
     }
 ' | sort -u > "$have.local" || io_fail "reading the verdicts"
-# `SUITE <p> = CI` is accepted only for a test-*.sh the PR did not
-# change or add, that suite-coverage.sh says runs in PR CI, and never under
-# HIMMEL_SUITES_LOCAL=1. A refused one counts as no verdict and exits 1. This is
-# a pre-filter for the suites CI can never run; ready-check item 19 is the gate
-# that reads CI's per-suite proof at the head. suite-coverage.sh is the reviewed
-# tree's copy, because the tables it reads are the ones that tree's CI runs.
 ci_list="$work/ci"
 ci_ok="$work/ci.ok"
 ci_cand="$work/ci.cand"
@@ -1694,13 +1739,20 @@ while IFS= read -r s; do
     if [ "${HIMMEL_SUITES_LOCAL:-0}" != 0 ]; then
         refuse_ci "$s" "HIMMEL_SUITES_LOCAL=1: every impacted suite runs locally"; continue
     fi
-    case "${s##*/}" in
-        test-*.sh) ;;
-        *) refuse_ci "$s" "not a test-*.sh: a JS/TS suite has no per-suite CI proof, run it locally"; continue ;;
-    esac
     if grep -Fxq -- "$s" "$work/diff.changed"; then
         refuse_ci "$s" "the PR changed it: a changed or added suite runs locally"; continue
     fi
+    case "${s##*/}" in
+        test-*.sh) ;;
+        *)
+            why=$(js_ci_refusal "$s")
+            if [ -n "$why" ]; then
+                refuse_ci "$s" "$why"
+            else
+                printf '%s\n' "$s" >> "$ci_ok" || io_fail "writing the CI verdicts"
+            fi
+            continue ;;
+    esac
     printf '%s\n' "$s" >> "$ci_cand" || io_fail "writing the CI candidates"
 done < "$ci_list"
 if [ -s "$ci_cand" ]; then

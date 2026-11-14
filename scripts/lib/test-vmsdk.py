@@ -142,7 +142,7 @@ class TestConstruction(unittest.TestCase):
         self.assertEqual(vm.password, "pw")
 
     def test_literal_user_wins_over_stale_env_var(self):
-        """HIMMEL-2623: a registry entry's literal 'user' must win over
+        """A registry entry's literal 'user' must win over
         'user_env', even when the env var it names is set to something else
         entirely — this is the exact failure mode that shipped silently
         (ubuntu_new's real guest user is 'himmel'; .env's ubuntu_vm_user was
@@ -793,7 +793,7 @@ _RUNNINGVMS_UP = '"ubuntu_new" {1482f800-d810-43b9-80c9-29baa40b8c52}\n'
 
 
 class TestReadback(unittest.TestCase):
-    """HIMMEL-2471: every state-changing verb reads its own result back."""
+    """Every state-changing verb reads its own result back."""
 
     def setUp(self):
         import tempfile
@@ -911,7 +911,7 @@ class TestReadback(unittest.TestCase):
 
 @unittest.skipIf(sys.platform == "darwin", "the resolver skips the keyring on Darwin")
 class TestResolveSecrets(unittest.TestCase):
-    """HIMMEL-8370 S0b: the Python door to himmel-secrets (rows S0-R5, S0-R2)."""
+    """The Python door to himmel-secrets (rows S0-R5, S0-R2)."""
 
     def setUp(self):
         _kreset()
@@ -1008,7 +1008,7 @@ class TestResolveSecrets(unittest.TestCase):
 
 
 class TestDeclaredDeps(unittest.TestCase):
-    """HIMMEL-2471: a clean checkout can act on the missing-dependency error."""
+    """A clean checkout can act on the missing-dependency error."""
 
     def test_missing_dotenv_names_the_uv_invocation(self):
         with mock.patch.dict(sys.modules, {"dotenv": None}):
@@ -1205,7 +1205,7 @@ class TestSyncRepo(unittest.TestCase):
 
 
 class TestKnownHostsReset(unittest.TestCase):
-    """HIMMEL-6962: a snapshot restore regenerates the guest host key, so
+    """A snapshot restore regenerates the guest host key, so
     sync_repo trusts a per-VM known_hosts file that restore() resets. Host-key
     checking stays on (accept-new) and the station's real known_hosts is never
     named or written."""
@@ -1335,7 +1335,7 @@ class TestKnownHostsReset(unittest.TestCase):
 
 
 class TestSecretBoundary(unittest.TestCase):
-    """HIMMEL-2540: the host->guest copy must exclude the secret set and the
+    """The host->guest copy must exclude the secret set and the
     guest must be asserted clean; a snapshot of an unverified guest is refused."""
 
     def setUp(self):
@@ -1744,7 +1744,7 @@ class TestSecretBoundary(unittest.TestCase):
 
 
 class TestScanCommandLocally(unittest.TestCase):
-    """HIMMEL-3239 / HIMMEL-3238: run the generated scan command under a local
+    """Run the generated scan command under a local
     `sh` against throwaway fixtures (never a VM)."""
 
     def setUp(self):
@@ -2267,7 +2267,7 @@ class TestTriggerClaude(unittest.TestCase):
         self.assertNotEqual(remotes[0], remotes[2])    # edit -> new path
 
     def test_scheduled_edited_source_keeps_same_source_key(self):
-        """HIMMEL-841: an edited source gets a new guest path, but the
+        """An edited source gets a new guest path, but the
         arm-resume dedup key (--source-key) must stay stable so the re-arm
         hits arm-resume's dedup instead of queuing a second guest job."""
         import hashlib
@@ -2316,7 +2316,7 @@ class TestTriggerClaude(unittest.TestCase):
         self.assertNotIn("--force", joined)
 
     def test_scheduled_long_gap_forwards_flag(self):
-        """HIMMEL-1475: long_gap=True appends --long-gap to the guest arm-resume
+        """long_gap=True appends --long-gap to the guest arm-resume
         command so a far --at TIME does not trip the long-gap guard (rc 9)."""
         vm = self._vm()
         cmds = []
@@ -2344,7 +2344,7 @@ class TestTriggerClaude(unittest.TestCase):
         self.assertIn("long_gap", str(cm.exception))
 
     def test_scheduled_without_cwd_omits_cwd_flag(self):
-        """HIMMEL-835 CR finding 1: no explicit cwd -> --cwd must be ABSENT so
+        """No explicit cwd -> --cwd must be ABSENT so
         arm-resume.sh's own priority (--cwd > resume_cwd: frontmatter >
         auto-detect) runs, instead of an implicit default silently overriding
         resume_cwd: / hard-failing a resume_worktree: handover (--cwd and
@@ -2386,7 +2386,7 @@ class TestTriggerClaude(unittest.TestCase):
         self.assertIn("arm-resume", str(cm.exception))
 
     def test_scheduled_arm_run_exception_wrapped_as_vmerror(self):
-        """HIMMEL-835 CR finding 4: a raw exception from self.run (e.g. a
+        """A raw exception from self.run (e.g. a
         socket timeout) during the arm-resume call must surface as a clean
         VMError, not a raw traceback from the new CLI verb."""
         vm = self._vm()
@@ -2396,7 +2396,7 @@ class TestTriggerClaude(unittest.TestCase):
                 vm.trigger_claude(str(self.local), when="22:30")
 
     def test_missing_handover_raises_vmerror_not_raw_exception(self):
-        """HIMMEL-835 CR finding 3: Path(...).resolve() does not require
+        """Path(...).resolve() does not require
         existence — the hoisted is_file() check must raise a clean VMError
         before the digest read, not a raw FileNotFoundError, and push_file
         must never be reached."""
@@ -2436,7 +2436,7 @@ class TestTriggerCLI(unittest.TestCase):
         t.assert_called_once_with("h.md", when="22:30", cwd="~/himmel", timeout=60)
 
     def test_trigger_parses_long_gap(self):
-        """HIMMEL-1475: the bare --long-gap flag parses to long_gap=True
+        """The bare --long-gap flag parses to long_gap=True
         alongside --at and flows through to trigger_claude."""
         with self._env(), mock.patch.object(vmsdk, "_load_dotenv_into_env"), \
              mock.patch.object(vmsdk.VM, "trigger_claude",
@@ -2486,7 +2486,7 @@ class TestTriggerCLI(unittest.TestCase):
 
 
 class TestStation(unittest.TestCase):
-    """Physical SSH station entries (HIMMEL-870) — kind: "station", key auth
+    """Physical SSH station entries — kind: "station", key auth
     via an SSH alias resolved through ~/.ssh/config. All station fixtures use
     a temp registry (registry_path=) so they never depend on the real
     scripts/lib/vms.json win2 entry (hermetic, no network)."""
@@ -2535,7 +2535,7 @@ class TestStation(unittest.TestCase):
 
     def test_vm_entry_back_compat_unchanged(self):
         """Existing (non-station) registry entries with NO literal 'user' key
-        behave exactly as before HIMMEL-2623: kind defaults to "vm", auth
+        behave as VM entries: kind defaults to "vm", auth
         defaults to "password", loopback host/port, user_env/pass_env auth.
         Uses a throwaway registry (not the real ubuntu_new entry, which now
         carries a literal 'user' — see TestConstruction's literal-precedence
@@ -2615,7 +2615,7 @@ class TestStation(unittest.TestCase):
     def test_ssh_no_user_anywhere_raises_clear_vmerror(self):
         """No registry user AND no ssh_config User for the alias -> a clear
         VMError naming the entry + both places a user can be set, instead of
-        paramiko.connect(username=None) failing cryptically (HIMMEL-870 CR round-1)."""
+        paramiko.connect(username=None) failing cryptically."""
         vm = self._vm(user=None)
 
         class _FakeSSH:
@@ -2666,7 +2666,7 @@ class TestStation(unittest.TestCase):
     def test_sync_repo_station_pins_registry_user_at_alias(self):
         """Registry user must be pinned as user@alias, so sync_repo can't drift
         from ssh()'s resolved user when the registry user differs from
-        ssh_config's User for the same Host (HIMMEL-870 CR round-1)."""
+        ssh_config's User for the same Host."""
         vm = self._vm(user="testuser")
         calls = []
         def fake_run(argv, **kwargs):
