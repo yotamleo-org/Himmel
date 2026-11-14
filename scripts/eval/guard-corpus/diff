@@ -680,6 +680,13 @@ def main(argv):
     except OSError as e:
         print("guard-corpus diff: setup error: %s" % e, file=sys.stderr)
         return 2
+    # A HOME that itself sits under a tmp-named path (a CI scratch HOME) leaves
+    # the scratch primary exempt; say so instead of letting it pass silently.
+    probe = os.path.realpath(workdir).lower() + "/"
+    if "/tmp/" in probe or "/temp/" in probe or "appdata/local/temp" in probe:
+        print("guard-corpus diff: WARNING scratch primary %s is under a tmp-named "
+              "path, which block-write-into-main-checkout.sh exempts: its deny "
+              "controls cannot fire" % workdir, file=sys.stderr)
     try:
         base_dir = os.path.join(workdir, "base")
         head_dir = os.path.join(workdir, "head")
