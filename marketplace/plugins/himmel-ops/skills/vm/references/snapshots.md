@@ -28,7 +28,7 @@ cloning `himmel-ar-N`, or rebuilding the golden image.
      regenerating both) — each CLONE of it then regenerates its OWN
      identity on its first boot, which is why a clone's own baseline
      snapshot must be taken AFTER that first boot, never before. v4 ships
-     the same unpersonalised state, and the HIMMEL-2747 re-clone of
+     the same unpersonalised state, and the 2026-09-07 re-clone of
      `himmel-ar-1` reconfirmed this empirically rather than assuming it:
      fresh machine-id `3234173620d64e4abedbf4756cb3812c` and freshly
      generated ECDSA/ED25519/RSA host keys at first boot
@@ -38,16 +38,16 @@ cloning `himmel-ar-N`, or rebuilding the golden image.
   base cloud image, four `ubuntu_new` differencing disks deep).
   `suite-ready-v2` and `suite-ready-v3` also still exist on `ubuntu_new` for
   the same reason: superseded, never deleted, not the default.
-- **The default is `suite-ready-v4` (HIMMEL-2738/2681/2747).** v4 adds, over
+- **The default is `suite-ready-v4`.** v4 adds, over
   v3: VirtualBox Guest Additions userspace (`virtualbox-guest-utils`,
   installed guest-side since the host has no `VBoxGuestAdditions.iso` to
   attach); bidirectional clipboard AND drag-and-drop set as MACHINE CONFIG
   (with the VM powered off, so it lives in the snapshot; draganddrop moved
   disabled -> bidirectional); a tty1 auto-login drop-in so an operator has a
   login prompt at all; and node 24.20.0 + npm 11.19.0 + bun 1.4.2 + unzip +
-  Claude Code 2.1.263, closing HIMMEL-2681's runtime-skew precondition (v3
+  Claude Code 2.1.263, closing the runtime skew behind v3's first guest reds (v3
   shipped node 18.19.1 against this repo's `.nvmrc` pin of 24, and no bun).
-  The move was made by delete-and-re-clone (HIMMEL-2747, 2026-09-07), not by
+  The move was made by delete-and-re-clone (2026-09-07), not by
   pointing the existing `himmel-ar-1` clone at a newer snapshot name — a
   linked clone's disk chain is bound to the source snapshot it was cut from,
   and no VBoxManage operation re-points it. The operator ran `VBoxManage
@@ -67,7 +67,7 @@ cloning `himmel-ar-N`, or rebuilding the golden image.
   fixed here. **The vacuous-pass trap for the NEXT migration (v4 -> v5):** a
   snapshot merely NAMED `suite-ready-vN` on a clone that still carries the
   PREVIOUS image's guest content reports green while silently measuring the
-  suites on stale software — the exact trap HIMMEL-2681 exists to stop.
+  suites on stale software — the same stale-runtime trap behind v3's first guest reds.
   Hand-upgrading the guest inside a clone's own writable differencing disk
   is technically possible and is rejected on MERIT, not impossibility: it
   produces a hand-provisioned near-duplicate of the golden image that no
@@ -87,7 +87,7 @@ cloning `himmel-ar-N`, or rebuilding the golden image.
   is a separate snapshot taken after the operator's one manual `claude`
   login — it is personalised and must NEVER be the source of an
   after-report linked clone, or of any image handed to another machine.
-  The HIMMEL-2457 acceptance cells (K1/K2/K2b/K5) run DIRECTLY on
+  The Linux install acceptance-matrix cells (K1/K2/K2b/K5) run DIRECTLY on
   `ubuntu_new@suite-ready-v4-auth`, restoring that snapshot BETWEEN cells —
   never on a linked clone of it: a restore-per-cell gives the same "no cell
   inherits another" guarantee a fresh clone would, without replicating the
