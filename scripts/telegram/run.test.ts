@@ -1,5 +1,5 @@
 import { beforeEach, expect, test } from "bun:test";
-import { buildRunArgs, DEFAULT_MODEL, detectCap, detectContentFilter, buildPrompt, killTree, REPO_ROOT, sessionEnv, spawnSpec, laneEffort, withSessionId, writeLaunchRecord } from "./run";
+import { buildRunArgs, DEFAULT_MODEL, detectCap, detectContentFilter, buildPrompt, isLegacyBridgeChat, killTree, REPO_ROOT, sessionEnv, spawnSpec, laneEffort, withSessionId, writeLaunchRecord } from "./run";
 import { spawn, spawnSync } from "bun";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -509,6 +509,74 @@ test("T16: a bridge spawn runs dontAsk with --setting-sources \"\" and the envel
     expect(s.permissions.deny).toContain(`Edit(/${f.p("vault/.git/hooks")}/**)`);
     expect(s.permissions.deny).toContain(`Edit(/${f.p("vault/.git/config")})`);
   } finally { f.cleanup(); }
+});
+
+const legacyConf = (value: unknown, raw?: string) => {
+  const d = mkdtempSync(join(tmpdir(), "legacy-conf-"));
+  writeFileSync(join(d, "config.json"), raw ?? JSON.stringify(value === undefined ? { telegram: {} } : { telegram: { bridgeLegacyChats: value } }));
+  return d;
+};
+const withErrLog = <T>(fn: () => T): { out: T; logged: string[] } => {
+  const logged: string[] = [];
+  const prior = console.error;
+  console.error = (...a: unknown[]) => { logged.push(a.join(" ")); };
+  try { return { out: fn(), logged }; } finally { console.error = prior; }
+};
+
+test("T19 (a): a legacy bridge chat spawns with the pre-5342 argv, byte for byte", () => {
+  const legacy = buildRunArgs("p", "bypassPermissions", undefined, "S", "C", { spawn: { ...DM, legacy: true }, cwd: "/nonexistent-vault" }).cmd;
+  expect(legacy).toEqual(["claude", "--model", DEFAULT_MODEL, "--permission-mode", "bypassPermissions", "--settings", "S", "--mcp-config", "C", "--strict-mcp-config", "p"]);
+  expect(legacy).toEqual(buildRunArgs("p", "bypassPermissions", undefined, "S", "C").cmd);
+});
+
+test("T19 (b): an unlisted bridge chat gets the envelope", () => {
+  const d = legacyConf(["111", -222]);
+  expect(isLegacyBridgeChat(-333, d)).toBe(false);
+  expect(isLegacyBridgeChat(-222, d)).toBe(true);
+  expect(isLegacyBridgeChat(111, d)).toBe(true);
+  const f = envelopeFixture();
+  try {
+    const { cmd } = buildRunArgs("p", "bypassPermissions", undefined, undefined, undefined, { spawn: { ...DM, legacy: false }, cwd: f.p("vault"), seams: f.seams });
+    expect(cmd[cmd.indexOf("--permission-mode") + 1]).toBe("dontAsk");
+    expect(cmd[cmd.indexOf("--setting-sources") + 1]).toBe("");
+    expect(envOf(cmd).sandbox.enabled).toBe(true);
+  } finally { f.cleanup(); }
+});
+
+test("T19 (c): \"*\" covers every stamped chat, never a null chat", () => {
+  const d = legacyConf("*");
+  expect(isLegacyBridgeChat(111, d)).toBe(true);
+  expect(isLegacyBridgeChat(-1000000000001, d)).toBe(true);
+  expect(isLegacyBridgeChat(null, d)).toBe(false);
+  expect(isLegacyBridgeChat(null, legacyConf(["111"]))).toBe(false);
+});
+
+test("T19 (d): a malformed key or config falls back to the envelope, logs loudly, never throws; an absent key is quiet", () => {
+  for (const bad of [{}, "x", [{}], [null], 5, true, ["7", 1.5]]) {
+    const { out, logged } = withErrLog(() => isLegacyBridgeChat(7, legacyConf(bad)));
+    expect(out).toBe(false);
+    expect(logged.join("\n")).toContain("telegram.bridgeLegacyChats");
+  }
+  const broken = withErrLog(() => isLegacyBridgeChat(7, legacyConf(undefined, "{not json")));
+  expect(broken.out).toBe(false);
+  expect(broken.logged.join("\n")).toContain("telegram.bridgeLegacyChats");
+  const absent = withErrLog(() => isLegacyBridgeChat(7, legacyConf(undefined)));
+  expect(absent).toEqual({ out: false, logged: [] });
+  const noFile = withErrLog(() => isLegacyBridgeChat(7, mkdtempSync(join(tmpdir(), "legacy-none-"))));
+  expect(noFile).toEqual({ out: false, logged: [] });
+});
+
+test("T19 (f): sessionEnv never inherits the legacy flag; only the poller's extraEnv grants it", () => {
+  const prior = process.env.HIMMEL_BRIDGE_LEGACY;
+  process.env.HIMMEL_BRIDGE_LEGACY = "1";
+  try {
+    expect("HIMMEL_BRIDGE_LEGACY" in sessionEnv()).toBe(false);
+    expect(sessionEnv({ HIMMEL_BRIDGE_LEGACY: "1" }).HIMMEL_BRIDGE_LEGACY).toBe("1");
+    expect(sessionEnv({ HIMMEL_BRIDGE_LEGACY: "1" }).HIMMEL_BRIDGE_SESSION).toBe("1");
+  } finally {
+    if (prior === undefined) delete process.env.HIMMEL_BRIDGE_LEGACY;
+    else process.env.HIMMEL_BRIDGE_LEGACY = prior;
+  }
 });
 
 test("T16: a broad allow planted in the user and project settings does not widen the envelope; their hooks and denies are carried", () => {
