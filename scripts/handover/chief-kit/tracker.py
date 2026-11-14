@@ -1507,6 +1507,15 @@ def operator_owed(handover_dir, chief_doc, version, opn, mir):
             for l in sec:
                 if l.strip() and not re.fullmatch(r'[-*\s]*none\.?', l.strip(), re.I):
                     items.append(('handoff', None, clip(l.strip(), 140), os.path.basename(hand[-1]), 'answer the open item'))
+        try:
+            drift_rows = open(os.path.join(handover_dir, 'focus-drift.txt'), encoding='utf-8').read().splitlines()
+        except (OSError, UnicodeDecodeError):
+            drift_rows = []
+        for l in drift_rows:
+            m = re.match(r'CLOSE-OR-DISPATCH (HIMMEL-(\d+)) .*? no event since (\S+) \((\d+) h\); last PR #(\d+), owed: (.*) \| writer=', l)
+            if m and int(m.group(2)) in opn:
+                items.append(('drift', int(m.group(2)), 'close %s or name a worker (last PR #%s, owed: %s)' % (m.group(1), m.group(5), m.group(6)),
+                              'CLOSE-OR-DISPATCH: no event since %s (%s h)' % (m.group(3), m.group(4)), 'close the ticket, or name a worker for the rest'))
     live = md_section(chief_doc, 'Live state') if chief_doc else None
     if live is not None:
         readable = True

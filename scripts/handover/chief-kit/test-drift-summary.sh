@@ -293,5 +293,23 @@ else
 fi
 chmod 600 "$KNOWN"
 
+# a CLOSE-OR-DISPATCH row is real drift and lists its key apart from the other classes
+cat > "$DRIFT" <<'EOF'
+CLOSE-OR-DISPATCH HIMMEL-9688 In Progress with no open PR, no live owner and no event since 2026-11-10T18:00:00Z (73 h); last PR #5155, owed: the timing row | writer=jira | fix=x
+CLOSE-OR-DISPATCH HIMMEL-9687 In Progress with no open PR, no live owner and no event since 2026-11-11T12:00:00Z (80 h); last PR #5203, owed: S6 | writer=jira | fix=x
+UNOWNED HIMMEL-9001 In Progress with no open PR and no live owner | writer=a | fix=b
+sdrift=3:22222222
+EOF
+touch_at "$DRIFT" "$((NOW - 60))"
+out="$(sum)"
+eq '9561 a CLOSE-OR-DISPATCH row is real drift' "$(jqv "$out" '[.real[] | select(.class == "CLOSE-OR-DISPATCH")] | length')" 2
+eq '9561 its keys land in their own sorted list' "$(jqv "$out" '.closeOrDispatch | join(",")')" 'HIMMEL-9687,HIMMEL-9688'
+eq '9561 the stale feed keeps the key of a CLOSE-OR-DISPATCH row beside the UNOWNED one' "$(jqv "$out" '.unowned | join(",")')" 'HIMMEL-9001,HIMMEL-9687,HIMMEL-9688'
+printf 'sdrift=0:00000000\n' > "$DRIFT"; touch_at "$DRIFT" "$((NOW - 60))"
+out="$(sum)"
+eq '9561 control: a file with no such row has an empty list' "$(jqv "$out" '.closeOrDispatch | length')" 0
+out="$(node "$SUM" --json --drift "$WORK/absent.txt" --mirror-dir "$MIR" --now "$NOW" 2>&1)"
+eq '9561 control: an absent file has an empty list' "$(jqv "$out" '.closeOrDispatch | length')" 0
+
 if [ "$fails" -gt 0 ]; then printf '%s failure(s)\n' "$fails"; exit 1; fi
 echo "all passed"

@@ -34,6 +34,13 @@
 #                     `queue-lock.sh status` calls STALE-DEAD (the fix is the reap). A chief-owned
 #                     park (rule D6n: the worker wrapped and its brief says Completes ticket: no)
 #                     is UNOWNED once it is 24 h old, saying it is awaiting the chief and overdue
+#   CLOSE-OR-DISPATCH an In Progress ticket with no open PR, no live owner, no `standing` label and no hold, whose newest
+#                     merge row, worker doc and Jira comment are all over COD_AGE_SECONDS (72 h) old, and that is either
+#                     left by a partial merge or past the end of its wait (an owed step, the chief's D6n park or the
+#                     RESUME remainder; a wait still inside its due date is AWAITING). It REPLACES the key's UNOWNED row,
+#                     so sdrift counts the ticket once. The text names the last PR and the owed ask (the words after
+#                     `Remaining:` in the newest ticket comment that has them): the operator close ask that
+#                     drift-summary.mjs and tracker.py list as `close KEY or name a worker`
 #   AWAITING          the same chief-owned park before its 24 h are up: a wait, not drift. Its row
 #                     ends in ` | wait=chief`. So is a ticket-hold.sh hold (a result=moved hold row with a valid
 #                     owner, while the ticket carries the `held` label) until its until date (end of that UTC day),
@@ -175,6 +182,7 @@ if [ -f "$LOG" ]; then
     logtail=$(tail -n 500 "$LOG" 2>/dev/null | ts_merge_rows 2>/dev/null | jq -Rc 'fromjson? // empty' 2>/dev/null) # swallow-ok: an unreadable log leaves the log-based classes empty and the health row above stands
 fi
 partials=""
+lastmerge="" # "<KEY>\t<ts>\t<pr>" per key: its newest merge row that carries a contract and a PR number
 OWN_ROWS=$(mktemp "${TMPDIR:-/tmp}/status-drift-owner.XXXXXX" 2>/dev/null) || OWN_ROWS="" # swallow-ok: no temp file means ts_owner reads the log per key
 [ -z "$OWN_ROWS" ] || trap 'rm -f "$OWN_ROWS"' EXIT
 if [ -f "$LOG" ]; then
@@ -182,6 +190,9 @@ if [ -f "$LOG" ]; then
     partials=$(jq -Rrs '[split("\n")[] | fromjson? | select(type == "object" and .event == "merge" and .key != null and has("contract") and .contract != "")]
         | group_by(.key)[] | select(last.contract == "no")
         | [.[0].key, ("#" + ([.[] | select(.contract == "no") | .pr // empty | tostring] | reduce .[] as $p ([]; if index([$p]) then . else . + [$p] end) | join(", #")))] | @tsv' <<<"$mergeout" 2>/dev/null) # swallow-ok: as above
+    lastmerge=$(jq -Rrs '[split("\n")[] | fromjson? | select(type == "object" and .event == "merge" and .key != null and has("contract") and .contract != "")]
+        | group_by(.key)[] | last | select((.ts | type) == "string" and .ts != "" and .pr != null and (.pr | tostring) != "")
+        | [.key, .ts, (.pr | tostring)] | @tsv' <<<"$mergeout" 2>/dev/null) # swallow-ok: an unreadable log leaves no merge row, so no key reaches CLOSE-OR-DISPATCH
     if [ -n "$OWN_ROWS" ]; then
         ts_owner_rows <<<"$mergeout" > "$OWN_ROWS"
         export TS_OWNER_ROWS="$OWN_ROWS"
@@ -313,6 +324,52 @@ ts_read_jira() { # <KEY> - the batch row, else the lib's own get
 }
 { [ -f "$SNAP/prs.json" ] && [ -f "$SNAP/threads.tsv" ]; } 2>/dev/null || SNAP=""
 
+# An ISO time with a Z or numeric offset to epoch seconds, for jq (the version drift check and the comment times read it).
+VD_EP='def ep: [sub("\\.[0-9]+"; "") | capture("^(?<d>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})(?<z>Z|[+-][0-9]{2}:?[0-9]{2})$")]
+    | if length == 1 then .[0] else error("not a time") end | (.d + "Z" | fromdateiso8601) - (if .z == "Z" then 0 else ((.z[1:3] | tonumber) * 3600 + (.z[-2:] | tonumber) * 60) * (if .z[0:1] == "+" then 1 else -1 end) end);'
+
+# CLOSE-OR-DISPATCH: how long a started, ownerless ticket may go with no event before it is the operator's close ask.
+COD_AGE_SECONDS=$((72 * 3600))
+# cod_comment_epoch <KEY> - the newest comment's epoch: the mirror's `### <author> — <time>` heads, else the live
+# `<author><TAB><time>` lines. Empty when none reads, which leaves the merge row and the worker docs to decide.
+cod_comment_epoch() {
+    ticket_comments "$1" | awk -F'\t' -v re='^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9:.]+(Z|[+-][0-9][0-9]:?[0-9][0-9])$' '
+        /^### / { n = split($0, a, " — "); if (n > 1 && a[n] ~ re) print a[n]; next }
+        NF >= 2 && $2 ~ re { print $2 }' | jq -Rr "$VD_EP"'try ep catch empty' 2>/dev/null | sort -n | tail -n 1 # swallow-ok: an unreadable comment time is no event, and the merge row and the worker docs still decide
+}
+# cod_ask <KEY> <fallback> - the words after `Remaining:` in the newest ticket comment that has them (one line, no bar, at most
+# 120 characters), else the fallback.
+cod_ask() {
+    local t
+    t=$(ticket_comments "$1" | grep 'Remaining:' | tail -n 1 | sed 's/^.*Remaining:[[:space:]]*//' | tr -d '|\r' | tr '\t' ' ' | jq -Rr '.[0:120]' 2>/dev/null) # swallow-ok: an unreadable comment leaves the fallback ask
+    printf '%s\n' "${t:-$2}"
+}
+# cod_raise <KEY> <status> <fallback ask> - rc 0 after adding the CLOSE-OR-DISPATCH row: the ticket is In Progress, its newest
+# merge row carries a PR, and that row, each worker doc of the key (`owners`) and the newest Jira comment are all over
+# COD_AGE_SECONDS old. rc 1 raises nothing and leaves the caller's UNOWNED row.
+cod_raise() {
+    local key=$1 st=$2 lm mts pr newest e d ce ask when age
+    [ "$st" = "In Progress" ] || return 1
+    lm=$(awk -F'\t' -v k="$key" '$1 == k { print; exit }' <<<"$lastmerge")
+    [ -n "$lm" ] || return 1
+    IFS=$'\t' read -r _ mts pr <<<"$lm"
+    newest=$(_ts_epoch_of_iso "$mts") || return 1
+    while IFS= read -r d; do
+        [ -n "$d" ] && [ -f "$d" ] || continue
+        e=$(stat -c %Y "$d" 2>/dev/null || stat -f %m "$d" 2>/dev/null) || continue # swallow-ok: a doc with no readable time is no event
+        case "$e" in ''|*[!0-9]*) continue ;; esac
+        [ "$e" -le "$newest" ] || newest=$e
+    done <<<"$owners"
+    [ $((10#$NOW - newest)) -gt "$COD_AGE_SECONDS" ] || return 1
+    ce=$(cod_comment_epoch "$key")
+    case "$ce" in ''|*[!0-9]*) ;; *) [ "$ce" -le "$newest" ] || newest=$ce ;; esac
+    [ $((10#$NOW - newest)) -gt "$COD_AGE_SECONDS" ] || return 1
+    ask=$(cod_ask "$key" "$3")
+    when=$(date -u -d "@$newest" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$newest" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || return 1 # swallow-ok: the BSD form follows
+    age=$(((10#$NOW - newest) / 3600))
+    add CLOSE-OR-DISPATCH "$key" "$st with no open PR, no live owner and no event since $when ($age h); last PR #$pr, owed: $ask" jira "the operator closes $key (jira transition $key Done) when nothing remains, or names a worker: dispatch a RESUME worker, or hold it: bash scripts/handover/chief-kit/ticket-hold.sh $key --owner <who> --until <date> --reason <why>"
+}
+
 # --- per key -----------------------------------------------------------------------
 while IFS= read -r key; do
     [ -n "$key" ] || continue
@@ -400,14 +457,22 @@ while IFS= read -r key; do
                 if [ "$NOW" -lt "$(_ts_epoch_of_iso "$odue")" ]; then
                     add AWAITING "$key" "$owho since=$osince due=$odue what=$owhat source=$osrc" "$wwriter" "$wfix" "$owho"
                 else
-                    add UNOWNED "$key" "$jstatus with no open PR and no live owner, awaiting $wwho since $osince and overdue (due $odue)$whint" "$wwriter" "$wfix"
+                    case "$osrc" in
+                        owed) cfb="a step owed by $owho" ;;
+                        d6n) cfb="the chief's decision on the remainder" ;;
+                        *) cfb="a RESUME worker for the remainder" ;;
+                    esac
+                    # a hold is a named owner's wait: its overdue row stays UNOWNED
+                    { [ "$held" = 0 ] && [ "$osrc" != hold ] && cod_raise "$key" "$jstatus" "$cfb"; } \
+                        || add UNOWNED "$key" "$jstatus with no open PR and no live owner, awaiting $wwho since $osince and overdue (due $odue)$whint" "$wwriter" "$wfix"
                 fi ;;
             *)
                 ppr=$(awk -F'\t' -v k="$key" '$1 == k { print $2 }' <<<"$partials")
                 if [ "$TS_LOCK_DEAD" = yes ]; then
                     add UNOWNED "$key" "$jstatus with no open PR and its worker's lock is STALE-DEAD$hhint" "$FUNNEL" "bash scripts/handover/queue-lock.sh status --sweep --reap-dead (the reap appends a HALTED bullet, so the next derive reads $key wrapped, after two gone sweeps if that append failed; it releases every STALE-DEAD lock under the root, each re-proved under its claim and CAS)"
                 elif [ -n "$ppr" ]; then
-                    add UNOWNED "$key" "$jstatus with no open PR and no live owner, left by partial merge PR $ppr$hhint" "$FUNNEL" "bash scripts/handover/chief-kit/next-dispatchable.sh lists $key: dispatch the RESUME worker it names; or hold it: bash scripts/handover/chief-kit/ticket-hold.sh $key --owner <who> --until <date> --reason <why>; or close $key by hand when nothing remains"
+                    { [ "$held" = 0 ] && cod_raise "$key" "$jstatus" "the remainder of partial merge PR $ppr"; } \
+                        || add UNOWNED "$key" "$jstatus with no open PR and no live owner, left by partial merge PR $ppr$hhint" "$FUNNEL" "bash scripts/handover/chief-kit/next-dispatchable.sh lists $key: dispatch the RESUME worker it names; or hold it: bash scripts/handover/chief-kit/ticket-hold.sh $key --owner <who> --until <date> --reason <why>; or close $key by hand when nothing remains"
                 else
                     add UNOWNED "$key" "$jstatus with no open PR and no live owner$hhint" "$FUNNEL" "dispatch a RESUME worker, or $SWEEP_FIX"
                 fi ;;
@@ -522,8 +587,6 @@ esac
 # ponytail: the release is named after the version, upgrade path = a release lookup in the CLI once a
 # release declares several versions.
 proj="${JIRA_PROJECT_KEY:-HIMMEL}"
-VD_EP='def ep: [sub("\\.[0-9]+"; "") | capture("^(?<d>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})(?<z>Z|[+-][0-9]{2}:?[0-9]{2})$")]
-    | if length == 1 then .[0] else error("not a time") end | (.d + "Z" | fromdateiso8601) - (if .z == "Z" then 0 else ((.z[1:3] | tonumber) * 3600 + (.z[-2:] | tonumber) * 60) * (if .z[0:1] == "+" then 1 else -1 end) end);'
 vd_rulings() { # <keys> - VRUL = "key\tid\tts\tepoch\towner" per key whose latest ruling refused its INTAKE; rc 1 = unreadable
     local root hr common rf
     VRUL=""

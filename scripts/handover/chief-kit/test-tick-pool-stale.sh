@@ -389,6 +389,28 @@ check 'DoD-2 replay: six keys count unresolved and 9448 stays disposed' '7/0/1/6
 check 'DoD-2 replay: three stale and three changed' 'changed HIMMEL-9001,changed HIMMEL-9077,changed HIMMEL-9622,stale HIMMEL-7644,stale HIMMEL-8597,stale HIMMEL-9487' \
     "$(printf '%s\n' "$pyo" | sed -n 's/^# pool-unresolved \([a-z]*\) \(HIMMEL-[0-9]*\) .*/\1 \2/p' | paste -sd, -)"
 
+# a `question decision <N>` line stops counting as dispositioned while its key carries a CLOSE-OR-DISPATCH row
+cdd="$WORK/cod9561"; mkdir -p "$cdd/state"
+{ printf '# chief\n\n## Live state\n'
+  printf '%s\n' 'pool-disposition: HIMMEL-6829 question decision 847 (needs a chief note; never closed without operator words)' \
+      'pool-disposition: HIMMEL-6830 question decision 847 (no drift row)' \
+      'pool-disposition: HIMMEL-6831 slice HIMMEL-901 (the rest)' \
+      'pool-disposition: HIMMEL-6832 close HIMMEL-901 (Done)'; } > "$cdd/chief.md"
+printf '# disposition HIMMEL-%s listed LOCAL\n' 6829 6830 6831 6832 > "$cdd/rows"
+cdrows() { TICK_STATE_DIR="$cdd/state" TOKEN='' bash "$SUT" --pool-dispositions --doc "$cdd/chief.md" < "$cdd/rows" 2>/dev/null; }
+cdun() { printf '%s\n' "$1" | sed -n 's/^# pool-unresolved \([a-z]*\) \(HIMMEL-[0-9]*\) .*/\1 \2/p' | paste -sd, -; }
+cdo="$(cdrows)"
+check '9561 control: with no drift file every line is dispositioned' '4/0/4/0' "$(printf '%s\n' "$cdo" | sed -n 's/^# pool-counts //p')"
+printf '%s\n' 'CLOSE-OR-DISPATCH HIMMEL-6829 In Progress with no open PR, no live owner and no event since 2026-11-10T18:00:00Z (73 h); last PR #5155, owed: x | writer=jira | fix=y' \
+    'CLOSE-OR-DISPATCH HIMMEL-6831 In Progress with no open PR, no live owner and no event since 2026-11-10T18:00:00Z (73 h); last PR #5156, owed: x | writer=jira | fix=y' \
+    'CLOSE-OR-DISPATCH HIMMEL-6832 In Progress with no open PR, no live owner and no event since 2026-11-10T18:00:00Z (73 h); last PR #5157, owed: x | writer=jira | fix=y' \
+    'UNOWNED HIMMEL-6830 In Progress with no open PR and no live owner | writer=a | fix=b' 'sdrift=4:44444444' > "$cdd/focus-drift.txt"
+cdo="$(cdrows)"
+check '9561 a question decision line over a CLOSE-OR-DISPATCH row is class stale' 'stale HIMMEL-6829' "$(cdun "$cdo")"
+check '9561 it is the only unresolved line: the question line over an UNOWNED row, a slice line and a close line stay dispositioned' '4/0/3/1' "$(printf '%s\n' "$cdo" | sed -n 's/^# pool-counts //p')"
+cdkey=HIMMEL-6829
+check '9561 its text names the row and the remedy' 1 "$(printf '%s\n' "$cdo" | grep -c "^# pool-unresolved stale $cdkey .*CLOSE-OR-DISPATCH.*close .*name a worker")"
+
 real_scripts="$(cd "$HERE/../.." && pwd)"
 sk="$WORK/kit/scripts"; mkdir -p "$sk/handover/chief-kit"
 for f in "$real_scripts"/*; do [ "${f##*/}" = handover ] || ln -s "$f" "$sk/${f##*/}"; done
