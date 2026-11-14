@@ -35,7 +35,6 @@ esac
 exec bash "$here/critic-panel.real.sh" "$@"
 WRAP
 chmod +x "$A/scripts/cr/critic-panel.sh"
-# panel-first-pass.sh --pr runs only as the copy in the anchor's primary checkout, so the fixture anchor is a real one.
 (
     cd "$A" || exit 1
     git -c init.defaultBranch=main init -q

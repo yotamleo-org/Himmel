@@ -1090,7 +1090,6 @@ if [ "$(rs_count "$rs7")" = 0 ]; then ok "T1.38 an early refusal writes no row";
 # a canary that would fire if anything ran a file from it. The gh stub serves the PR, the allowlist
 # lives in a temp HOME.
 cp "$HERE/../lib/outside-contributors.sh" "$HERE/../lib/timeout-bin.sh" "$fx/scripts/lib/"
-# --pr runs only as the copy in the anchor's primary checkout, so the fixture anchor is a real one.
 (
     cd "$fx" || exit 1
     git -c init.defaultBranch=main init -q
@@ -1330,7 +1329,6 @@ cat > "$tmp/rtkbig/rtk" <<'RTKBIGEOF'
 head -c 300000 /dev/zero | tr '\0' 'b'
 RTKBIGEOF
 chmod +x "$tmp/rtkbig/rtk"
-# a PR with no round yet, so the count this run spends is visible (a start at a reviewed head reuses its round)
 git -C "$prrepo" update-ref refs/himmel/outside/20 "$pr_oid"
 pr20_round() { cat "$prrepo/.git/cr-review-rounds/outside-20.round" 2>/dev/null || echo 0; }
 pr20_before="$(pr20_round)"
@@ -1346,7 +1344,6 @@ pr_run_x PR_LOGIN=Stranger PR_ID=U_stranger PR_BRANCH=feat/other-thing -- --pr 7
 if [ "$pr_rc" -eq 5 ]; then ok "--pr for an unlisted author exits 5 before the preflight"; else bad "--pr unlisted author exit (got $pr_rc)"; fi
 assert_no_ceilings "$pr_err" "--pr authorization refusal exit 5"
 if [ "$(grep -F 'feat/other-thing' "$pr_ledger" 2>/dev/null | grep -c '"kind":"preflight"')" = 0 ]; then ok "--pr for an unlisted author writes no preflight row"; else bad "--pr for an unlisted author wrote a preflight row"; fi
-# pr_run_at <script> [VAR=val...] -- args...: pr_run_x through another copy of the script
 pr_run_at() {
     local s=$1 envs=()
     shift
@@ -1359,14 +1356,12 @@ pr_run_at() {
 }
 pf_rows_for() { grep -F '"kind":"preflight"' "$pr_ledger" 2>/dev/null | grep -F "\"branch\":\"$1\"" | grep -cF "\"head\":\"$2\"" | tr -d ' '; }
 for n in 21 22 23 24 25 26; do git -C "$prrepo" update-ref "refs/himmel/outside/$n" "$pr_oid"; done
-# a branch copy outside the anchor (scripts and scripts/lib, so no earlier check refuses it) is refused before it sources anything
 bcopy="$tmp/branch-copy"; mkdir -p "$bcopy"; cp -R "$fx/scripts" "$bcopy/"
 n_before="$(pr_rounds)"
 pr_run_at "$bcopy/scripts/cr/panel-first-pass.sh" -- --pr 21 --head "$pr_oid" --branch feat/outside-thing
 if [ "$pr_rc" -eq 2 ]; then ok "--pr through a branch copy exits 2"; else bad "--pr through a branch copy exit (got $pr_rc; err: $pr_err)"; fi
 assert_has "$pr_err" "the anchor's primary checkout" "--pr through a branch copy: the refusal names the anchor's primary checkout"
 if [ ! -f "$CALL_LOG" ] && [ "$(pr_rounds)" = "$n_before" ]; then ok "--pr through a branch copy: no panel, no round"; else bad "--pr through a branch copy: the panel ran or a round was spent"; fi
-# a linked worktree of the anchor, named by HIMMEL_REPO and run from its own copy, is refused
 git -C "$fx" worktree add -q --detach "$tmp/fx-wt" || bad "fixture: could not add a worktree of the anchor"
 cp -R "$fx/scripts/." "$tmp/fx-wt/scripts/"
 n_before="$(pr_rounds)"
@@ -1374,18 +1369,15 @@ pr_run_at "$tmp/fx-wt/scripts/cr/panel-first-pass.sh" HIMMEL_REPO="$tmp/fx-wt" -
 if [ "$pr_rc" -eq 2 ]; then ok "--pr from a linked worktree named by HIMMEL_REPO exits 2"; else bad "--pr from a linked worktree exit (got $pr_rc; err: $pr_err)"; fi
 assert_has "$pr_err" "the anchor's primary checkout" "--pr from a linked worktree: the refusal names the anchor's primary checkout"
 if [ ! -f "$CALL_LOG" ] && [ "$(pr_rounds)" = "$n_before" ]; then ok "--pr from a linked worktree: no panel, no round"; else bad "--pr from a linked worktree: the panel ran or a round was spent"; fi
-# control: a run without --pr through the same branch copy is not touched by the anchor check
 (cd "$repo" && CR_PROFILE=none bash "$bcopy/scripts/cr/panel-first-pass.sh" --head "$feature_sha" --branch feature) >"$tmp/out" 2>"$tmp/err"; rc=$?
 if [ "$rc" -eq 0 ]; then ok "control: a run without --pr through a branch copy still exits 0"; else bad "control: a run without --pr through a branch copy exit (got $rc; err: $(cat "$tmp/err"))"; fi
 assert_has "$(cat "$tmp/out")" "claude-only review (CR_PROFILE=none)" "control: a run without --pr through a branch copy runs its path"
-# a --branch that names a local branch of the review repo is refused before the preflight
 n_before="$(pr_rounds)"
 pr_run_x PR_BRANCH=elsewhere -- --pr 23 --head "$pr_oid" --branch elsewhere
 if [ "$pr_rc" -eq 7 ]; then ok "--pr with --branch naming a local branch exits 7"; else bad "--pr local-branch collision exit (got $pr_rc; err: $pr_err)"; fi
 assert_has "$pr_err" "collides with a local branch" "--pr local-branch collision: the refusal names the collision"
 if [ "$(grep -F '"kind":"preflight"' "$pr_ledger" 2>/dev/null | grep -cF '"branch":"elsewhere"')" = 0 ]; then ok "--pr local-branch collision: no preflight row"; else bad "--pr local-branch collision: a preflight row was written"; fi
 if [ ! -f "$CALL_LOG" ] && [ "$(pr_rounds)" = "$n_before" ]; then ok "--pr local-branch collision: no panel, no round"; else bad "--pr local-branch collision: the panel ran or a round was spent"; fi
-# the preflight lookup on --pr matches the exact head: a row at another head of the same name does not stand in
 # shellcheck disable=SC2016 # the stub body expands in the stub, not here
 kf_stub() { cp "$kf_pr" "$tmp/kf-pr.orig"; printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" > "%s"\nexit 0\n' "$tmp/kf-pr-args" > "$kf_pr"; rm -f "$tmp/kf-pr-args"; }
 kf_unstub() { cp "$tmp/kf-pr.orig" "$kf_pr"; }
@@ -1402,12 +1394,10 @@ kf_stub
 pr_run_x PR_BRANCH=patch-1 -- --pr 25 --head "$pr_oid" --branch patch-1
 kf_unstub
 if [ -f "$tmp/kf-pr-args" ]; then ok "--pr: another PR's preflight row with the same headRefName does not stand in"; else bad "--pr: another PR's same-name preflight row stood in (rc $pr_rc; err: $pr_err)"; fi
-# control: a --pr run whose exact head already has a preflight row skips the pass
 kf_stub
 pr_run_x PR_BRANCH=feat/outside-h1 -- --pr 26 --head "$pr_oid" --branch feat/outside-h1
 kf_unstub
 if [ ! -f "$tmp/kf-pr-args" ] && [ "$pr_rc" -eq 0 ]; then ok "control: --pr with a preflight row at its exact head skips the pass"; else bad "control: --pr exact-head row (rc $pr_rc; kf ran: $([ -f "$tmp/kf-pr-args" ] && echo yes || echo no))"; fi
-# control: a run without --pr still finds a preflight row by branch alone
 ledger="$repo/.git/cr-critic-scores.jsonl"
 mv "$ledger" "$tmp/repo-ledger.keep"
 printf '{"kind":"preflight","ts":"2026-11-14T00:00:00Z","branch":"feature","head":"%s","hits":[],"hit_n":0,"fixed":0,"waived":0,"checked":0}\n' "$main_sha" > "$ledger"

@@ -103,8 +103,6 @@ case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HIMMEL_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-# --pr sources and runs this tree's libraries and panel on an outside PR: only the copy in the anchor's
-# primary checkout that HIMMEL_REPO names may do that (a linked worktree's .git is a file, not a directory).
 pr_requested() {
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -179,7 +177,6 @@ if [ -n "$PR" ]; then
     # shellcheck source=scripts/lib/outside-contributors.sh
     # shellcheck disable=SC1091
     . "$HIMMEL_ROOT/scripts/lib/outside-contributors.sh" || { echo "panel-first-pass: cannot load scripts/lib/outside-contributors.sh" >&2; exit 2; }
-    # The preflight row and the round state key on --branch: a local branch of that name (compared without case) would share them.
     pr_col=0
     outside_branch_collides "$BRANCH" || pr_col=$?
     if [ "$pr_col" -ne 1 ]; then
@@ -365,7 +362,6 @@ else
     # with the commands that close them. clear-review-marker.sh gate 4e stays
     # the backstop.
     pf_ledger="$(git rev-parse --git-common-dir 2>/dev/null)/cr-critic-scores.jsonl" # swallow-ok: a failed rev-parse names no ledger, so the preflight runs and ledger-append refuses (exit 9)
-    # --pr: only a row at this exact head stands in (an earlier head, or another PR of the same name, does not).
     pf_found=0
     if [ -n "$PR" ]; then
         { [ -f "$pf_ledger" ] && awk -v b="\"branch\":\"$BRANCH\"" -v h="$HEAD_SHA" 'index($0, "\"kind\":\"preflight\"") && index($0, b) && index($0, "\"head\":\"" h "\"") { f = 1 } END { exit !f }' "$pf_ledger"; } && pf_found=1
