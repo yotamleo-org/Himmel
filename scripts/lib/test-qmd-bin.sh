@@ -28,11 +28,11 @@ assert() {
   fi
 }
 
-echo "[test-qmd-bin] qmd_install_hint emits the fork clone+build+link recipe (HIMMEL-877)"
+echo "[test-qmd-bin] qmd_install_hint emits the fork clone+build+link recipe"
 hint="$(qmd_install_hint)"
 assert "hint mentions git clone" grep -q '^git clone ' <<<"$hint"
-assert "hint mentions the carried qmd fork (HIMMEL-3956)" grep -q 'yotamleo-org/qmd' <<<"$hint"
-assert "hint pins a full commit SHA (HIMMEL-911), not a movable ref" grep -qE 'fetch origin [0-9a-f]{40} ' <<<"$hint"
+assert "hint mentions the carried qmd fork" grep -q 'yotamleo-org/qmd' <<<"$hint"
+assert "hint pins a full commit SHA, not a movable ref" grep -qE 'fetch origin [0-9a-f]{40} ' <<<"$hint"
 # shellcheck disable=SC2016
 # Single quotes intentional — $1 expands inside the spawned bash -c subshell.
 assert "hint does NOT install from the mutable himmel-main branch" \
@@ -42,7 +42,7 @@ assert "hint mentions bun install/build" grep -q 'bun install && bun run build' 
 # Single quotes intentional — $1 expands inside the spawned bash -c subshell.
 assert "hint does NOT mention upstream bun add -g" bash -c '! grep -q "bun add -g" <<<"$1"' _ "$hint"
 
-echo "[test-qmd-bin] pin policy (HIMMEL-911): the configured ref IS a full 40-hex commit SHA"
+echo "[test-qmd-bin] pin policy: the configured ref IS a full 40-hex commit SHA"
 # Tags/branches are force-movable; only a commit SHA is content-addressed.
 # This pins the POLICY so a future 'bump the pin' change that swaps in a tag
 # or branch name fails here. (Run with the env override cleared -- the test
@@ -163,7 +163,7 @@ output="$(HOME="$tmpdir" PATH="$tmpdir/bin:$PATH" BUN_INSTALL="$tmpdir/custom-bu
 assert "BUN_INSTALL is honored" grep -q '^BUN ' <<<"$output"
 assert "BUN_INSTALL path appears in dispatch" grep -q 'custom-bun' <<<"$output"
 
-echo "[test-qmd-bin] qmd_pinned_invocation — absolute tokens for a pinned runner (HIMMEL-1283)"
+echo "[test-qmd-bin] qmd_pinned_invocation — absolute tokens for a pinned runner"
 # The bun branch: two lines, executable then script. A cadence bakes these into
 # a scheduled runner, so both must be ABSOLUTE — the scheduler fires with a
 # minimal PATH and a cwd of its own.
@@ -247,7 +247,7 @@ rc=0
 HOME="$tmpdir" PATH="$tmpdir/bin:$PATH" BUN_INSTALL="$tmpdir/custom-bun" bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_cmd --version' >/dev/null 2>&1 || rc=$?
 assert "wrapped command rc=42 propagates" test "$rc" -eq 42
 
-echo "[test-qmd-bin] QMD_FORK_REPO / QMD_FORK_REF / QMD_FORK_DIR overrides (HIMMEL-877/HIMMEL-911)"
+echo "[test-qmd-bin] QMD_FORK_REPO / QMD_FORK_REF / QMD_FORK_DIR overrides"
 override_hint="$(QMD_FORK_REPO=https://example.test/mirror/qmd.git QMD_FORK_REF=deadbeefdeadbeefdeadbeefdeadbeefdeadbeef QMD_FORK_DIR=/custom/fork/dir qmd_install_hint)"
 assert "hint honors QMD_FORK_REPO override" grep -q 'example.test/mirror/qmd.git' <<<"$override_hint"
 assert "hint honors QMD_FORK_REF override" grep -q 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef' <<<"$override_hint"
@@ -261,7 +261,7 @@ rc=0
 HOME="$tmpdir" PATH="$tmpdir/bin:$PATH" BUN_INSTALL="$tmpdir/broken-bun" bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; has_qmd' || rc=$?
 assert "has_qmd=true even when bun-js is broken (presence only)" test "$rc" -eq 0
 
-echo "[test-qmd-bin] qmd_install() fork clone+build+link recipe (HIMMEL-877/HIMMEL-911)"
+echo "[test-qmd-bin] qmd_install() fork clone+build+link recipe"
 # Hermetic stub env: a fake `git` (init creates a .git marker + package.json,
 # matching what a real `git init` + first fetch/checkout leaves behind;
 # fetch/checkout/reset are individually controllable) and a fake `bun`
@@ -442,7 +442,7 @@ assert "fresh install: no git call references the mutable himmel-main branch" \
 #    read-only `git rev-parse HEAD`, and the version CHECK invokes bun once).
 out=$(qmd_install_env "$fresh_home" bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_install; echo "RC=$?"' 2>&1)
 assert "idempotent re-run: rc 0" grep -q '^RC=0$' <<<"$out"
-assert "idempotent re-run: pin gate probed HEAD (read-only rev-parse, HIMMEL-911)" \
+assert "idempotent re-run: pin gate probed HEAD (read-only rev-parse)" \
   grep -q 'GIT rev-parse HEAD' "$git_log"
 # shellcheck disable=SC2016
 # Single quotes intentional -- $1 expands inside the spawned bash -c subshell.
@@ -768,7 +768,7 @@ out=$(qmd_install_env "$note_home" bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_
 assert "backup-note: rc 0" grep -q '^RC=0$' <<<"$out"
 assert "backup-note: names the preserved backup dir" grep -q 'preserved at' <<<"$out"
 
-echo "[test-qmd-bin] better-sqlite3 node-binding gate (HIMMEL-928 / CR codex-adv)"
+echo "[test-qmd-bin] better-sqlite3 node-binding gate (CR codex-adv)"
 # The binding is node-only (bun takes the bun:sqlite branch), bun install
 # never produces it, and existence alone must never bless it -- the gate
 # load-probes and the installer repairs. Uses the $id2/bin/node stub.
@@ -805,7 +805,7 @@ assert "binding fetch-fail: WARNs not-loadable with the manual command" grep -qi
 out=$(qmd_install_env "$fresh_home" bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_install; echo "RC=$?"' 2>&1)
 assert "binding gate: fresh_home re-converged" grep -q '^RC=0$' <<<"$out"
 
-echo "[test-qmd-bin] packaged better-sqlite3 prebuilds (HIMMEL-2506)"
+echo "[test-qmd-bin] packaged better-sqlite3 prebuilds"
 # Catch the legacy-path early return and attempts to repair a packaged binary.
 prebuild_home="$id2/prebuild-only"
 sqlite_dir="$prebuild_home/.himmel/qmd-fork/node_modules/better-sqlite3"
@@ -837,7 +837,7 @@ assert "prebuild failure: no prebuild-install fetch" test "$(grep -c 'prebuild-i
 assert "prebuild failure: no node-gyp rebuild" test ! -s "$node_gyp_log"
 assert "prebuild failure: no success stamp" test ! -f "$prebuild_home/.himmel/qmd-fork/.himmel-build-ok"
 
-echo "[test-qmd-bin] foreign-only prebuild repair (HIMMEL-2955)"
+echo "[test-qmd-bin] foreign-only prebuild repair"
 # Rejecting every packaged .node must not suppress repair for a different host.
 foreign_home="$id2/foreign-prebuild-only"
 foreign_sqlite="$foreign_home/.himmel/qmd-fork/node_modules/better-sqlite3"
@@ -885,7 +885,7 @@ rc=0
 STUB_NODE_PROBE_OK=1 qmd_install_env "$prebuild_home" bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; _qmd_sqlite_binding_ok' || rc=$?
 assert "advisory discovery: successful loader overrides absent candidates" test "$rc" -eq 0
 
-echo "[test-qmd-bin] qmd_register_collection() add / idempotent-skip / warn (HIMMEL-752)"
+echo "[test-qmd-bin] qmd_register_collection() add / idempotent-skip / warn"
 # Hermetic stub env: a fake `qmd` on PATH (no bun-qmd.js, no bun -> qmd_cmd
 # falls to the PATH qmd). Stubs read behavior from env vars.
 id3="$tmpdir/register"
@@ -973,7 +973,7 @@ err_out=$(reg_err /repo himmel)
 assert "register add-127 prints the resolver install hint" grep -q 'rc=127 means' <<<"$err_out"
 STUB_ADD_RC=0
 
-echo "[test-qmd-bin] qmd_register_collection() records the live identity (HIMMEL-3525 S16)"
+echo "[test-qmd-bin] qmd_register_collection() records the live identity"
 # After a successful add the writer reads the registration straight back
 # (`qmd collection show`) and records its identity token with identity_v=1;
 # a read-back that yields no Path records the legacy path row instead.
@@ -1008,17 +1008,17 @@ assert "setup.sh calls a qmd-bin.sh helper (qmd_cmd/qmd_register_collection)" \
 # directly -- himmel/luna wiring delegates to `himmelctl bootstrap` (the NOTICE
 # at ubuntu.sh). Assert the delegation instead of the removed direct wiring.
 # shellcheck disable=SC2016
-assert "ubuntu.sh does NOT reference lib/qmd-bin.sh (wiring delegated, HIMMEL-887)" \
+assert "ubuntu.sh does NOT reference lib/qmd-bin.sh (wiring delegated)" \
   bash -c '! grep -qF -- "lib/qmd-bin.sh" "$1"' _ "$repo_root/scripts/machine-setup/ubuntu.sh"
 # shellcheck disable=SC2016
-assert "ubuntu.sh does NOT call qmd_cmd (wiring delegated, HIMMEL-887)" \
+assert "ubuntu.sh does NOT call qmd_cmd (wiring delegated)" \
   bash -c '! grep -qF -- "qmd_cmd " "$1"' _ "$repo_root/scripts/machine-setup/ubuntu.sh"
 # The NOTICE alone is not the contract: assert the executable delegation
 # statement too, so removing the exec while keeping the NOTICE fails.
 # shellcheck disable=SC2016
-assert "ubuntu.sh execs himmelctl bootstrap.sh (delegation is real, HIMMEL-887)" \
+assert "ubuntu.sh execs himmelctl bootstrap.sh (delegation is real)" \
   grep -qE -- '^[[:space:]]*(HIMMELCTL_REPO_ROOT="\$HIMMEL_PATH"[[:space:]]+)?exec[[:space:]]+bash[[:space:]]+"\$HIMMEL_PATH/scripts/himmelctl/bootstrap\.sh"([[:space:]]+--default-scope[[:space:]]+[A-Za-z]+)?[[:space:]]*$' "$repo_root/scripts/machine-setup/ubuntu.sh"
-assert "ubuntu.sh prints the himmelctl bootstrap delegation NOTICE (HIMMEL-887)" \
+assert "ubuntu.sh prints the himmelctl bootstrap delegation NOTICE" \
   grep -q 'delegating to himmelctl bootstrap' "$repo_root/scripts/machine-setup/ubuntu.sh"
 
 # --- CDPATH hygiene (public-PR CR) -----------------------------------------
@@ -1126,7 +1126,7 @@ desc_unset_rc=0
 assert "qmd_bin_desc: unset QMD_BIN/QMD_JS under set -u does not abort the caller" \
   test "$desc_unset_rc" -eq 0
 
-echo "[test-qmd-bin] qmd_cmd egress gate: a remote-model config that holds salus never reaches qmd (HIMMEL-5756)"
+echo "[test-qmd-bin] qmd_cmd egress gate: a remote-model config that holds salus never reaches qmd"
 gh_home="$tmpdir/gate-home"
 mkdir -p "$gh_home/.config/qmd" "$gh_home/bin"
 printf '#!/usr/bin/env bash\necho "PATH-QMD $*"\n' >"$gh_home/bin/qmd"
@@ -1156,7 +1156,7 @@ for idx_args in "--index salus query x" "--index=salus query x"; do
   assert "named index ($idx_args) holding salus + remote model: refused (rc 10)" test "$rc" -eq 10
 done
 
-echo "[test-qmd-bin] qmd_cmd egress gate: project-local .qmd/index.yml, env models, timeout, node-absent (HIMMEL-5881)"
+echo "[test-qmd-bin] qmd_cmd egress gate: project-local .qmd/index.yml, env models, timeout, node-absent"
 # A refusal only counts when the GATE said so: rc 10 alone is also what "node missing" returns,
 # so a row asserting just the rc would stay green on a box without node.
 refused_by_gate() { grep -q 'qmd-jina-gate: REFUSED' <<<"$1" && grep -q "$2" <<<"$1"; }
@@ -1295,7 +1295,7 @@ rc=0; out="$(gate_run "$gh_home/lnk")" || rc=$?
 assert "symlinked cwd whose physical ancestry holds a remote salus config: refused (rc 10)" test "$rc" -eq 10
 assert "symlinked cwd refusal comes from the gate and names the physical project file" refused_by_gate "$out" "$gh_home/real/.qmd/index.yml"
 
-echo "[test-qmd-bin] qmd_cmd egress gate: --index read the way the fork's parseArgs reads it (HIMMEL-5927)"
+echo "[test-qmd-bin] qmd_cmd egress gate: --index read the way the fork's parseArgs reads it"
 # gate_args <cwd> <qmd args...> -- qmd_cmd with those args from <cwd>, real node on PATH
 gate_args() {
   local d="$1"; shift

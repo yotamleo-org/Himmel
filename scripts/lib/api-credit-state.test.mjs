@@ -458,7 +458,7 @@ test('pull reads the key from a dotenv file, and spend over the grant leaves not
   assert.equal(f.call().verdict, 'SKIPPED-BANK');
 });
 
-test('HIMMEL-7264: a failed pull names the HTTP status or the network failure, never the key', async () => {
+test('a failed pull names the HTTP status or the network failure, never the key', async () => {
   const f = fixture();
   const { pullSnapshot } = await import('./api-credit-state.mjs');
   const env = { ...f.env, ANTHROPIC_ORG_A_KEY: FIXTURE_KEY };
@@ -534,12 +534,12 @@ test('an empty HIMMEL_API_LOCK_WAIT_MS falls back to the default wait', () => {
 // operator decision 185 resets both grants on one date, whatever expiry a snapshot row carries.
 const iso = (t) => new Date(t * 1000).toISOString().replace('.000Z', 'Z');
 
-test('HIMMEL-7111: the default reset date of both grants is 2026-11-01T00:00:00Z', async () => {
+test('the default reset date of both grants is 2026-11-01T00:00:00Z', async () => {
   const { GRANT_RESET_AT } = await import(SUT);
   assert.deepEqual(GRANT_RESET_AT, { A: '2026-11-01T00:00:00Z', B: '2026-11-01T00:00:00Z' });
 });
 
-test('HIMMEL-7111: the reset date caps a later expiry on the snapshot row', () => {
+test('the reset date caps a later expiry on the snapshot row', () => {
   const f = fixture();
   f.snapshot.accounts.A.expires_at = f.now + 9 * 86400;
   f.config.accounts.A.reset_at = iso(f.now + 1800);
@@ -547,7 +547,7 @@ test('HIMMEL-7111: the reset date caps a later expiry on the snapshot row', () =
   assert.equal(f.call().expires_at, f.now + 1800);
 });
 
-test('HIMMEL-7111: auto routing ranks by the reset date, a tie going to A', () => {
+test('auto routing ranks by the reset date, a tie going to A', () => {
   const f = fixture();
   f.snapshot.accounts.A.expires_at = f.now + 9 * 86400;
   f.snapshot.accounts.B.expires_at = f.now + 5 * 86400;
@@ -558,7 +558,7 @@ test('HIMMEL-7111: auto routing ranks by the reset date, a tie going to A', () =
   assert.equal(pick.account, 'A');
 });
 
-test('HIMMEL-7111: after the reset date the old grant refuses, and a grant starting on it is a fresh cycle', () => {
+test('after the reset date the old grant refuses, and a grant starting on it is a fresh cycle', () => {
   const f = fixture();
   f.snapshot.accounts.A.starts_at = f.now - 7200;
   f.snapshot.accounts.A.expires_at = f.now + 9 * 86400;
@@ -572,7 +572,7 @@ test('HIMMEL-7111: after the reset date the old grant refuses, and a grant start
   assert.equal(f.call().verdict, 'PROCEED');
 });
 
-test('HIMMEL-7111: a malformed reset_at refuses', () => {
+test('a malformed reset_at refuses', () => {
   const f = fixture();
   f.config.accounts.A.reset_at = '2026-11-01';
   f.save();
@@ -586,7 +586,7 @@ function ageJob(f, id, ageSeconds) {
   writeFileSync(f.paths.state, JSON.stringify(ledger));
 }
 
-test('HIMMEL-7111: a reservation older than the call timeout is released, a younger one is kept', () => {
+test('a reservation older than the call timeout is released, a younger one is kept', () => {
   const f = fixture(); f.env.HIMMEL_API_CALL_TIMEOUT_S = '3600';
   f.call('reserve', ['--id', 'dead', '--usd', '0.30']);
   f.call('reserve', ['--id', 'live', '--usd', '0.20']);
@@ -597,7 +597,7 @@ test('HIMMEL-7111: a reservation older than the call timeout is released, a youn
   assert.equal(f.call('reserve', ['--id', 'dead', '--usd', '0.01']).reason, 'duplicate-job');
 });
 
-test('HIMMEL-7111: a reservation is swept on the timeout it was made with, not the status caller\'s', () => {
+test('a reservation is swept on the timeout it was made with, not the status caller\'s', () => {
   const f = fixture(); f.env.HIMMEL_API_CALL_TIMEOUT_S = '7200';
   f.call('reserve', ['--id', 'long', '--usd', '0.30']);
   ageJob(f, 'long', 5000);
@@ -607,7 +607,7 @@ test('HIMMEL-7111: a reservation is swept on the timeout it was made with, not t
   assert.equal(f.call().reserved_usd, '0.000000');
 });
 
-test('HIMMEL-7111: a reservation is kept through the launcher\'s five-second kill grace after its timeout', () => {
+test('a reservation is kept through the launcher\'s five-second kill grace after its timeout', () => {
   const f = fixture(); f.env.HIMMEL_API_CALL_TIMEOUT_S = '3600';
   f.call('reserve', ['--id', 'stopping', '--usd', '0.30']);
   ageJob(f, 'stopping', 3603);
@@ -616,7 +616,7 @@ test('HIMMEL-7111: a reservation is kept through the launcher\'s five-second kil
   assert.equal(f.call().reserved_usd, '0.000000');
 });
 
-test('HIMMEL-7111: an unknown or pre-timestamp reservation is released once past the timeout', () => {
+test('an unknown or pre-timestamp reservation is released once past the timeout', () => {
   const f = fixture(); f.env.HIMMEL_API_CALL_TIMEOUT_S = '3600';
   f.call('reserve', ['--id', 'lost', '--usd', '0.30']); f.call('unknown', ['--id', 'lost']);
   f.call('reserve', ['--id', 'legacy', '--usd', '0.20']);
@@ -625,7 +625,7 @@ test('HIMMEL-7111: an unknown or pre-timestamp reservation is released once past
   assert.equal(f.call('reserve', ['--id', 'next', '--usd', '1.00']).verdict, 'PROCEED');
 });
 
-test('HIMMEL-7264: auto routing proceeds on an operator snapshot older than 24 h while it shows headroom, and a fresh account still wins', () => {
+test('auto routing proceeds on an operator snapshot older than 24 h while it shows headroom, and a fresh account still wins', () => {
   const f = fixture();
   for (const a of ['A', 'B']) { f.snapshot.accounts[a].starts_at = f.now - 400000; f.snapshot.accounts[a].observed_at = f.now - 90000; }
   f.save();
@@ -643,7 +643,7 @@ test('HIMMEL-7264: auto routing proceeds on an operator snapshot older than 24 h
 
 const pickUsd = (f, usd, env = f.env) => JSON.parse(spawnSync(process.execPath, [SUT, 'pick', '--usd', usd], { env, encoding: 'utf8' }).stdout);
 
-test('HIMMEL-7264: a stale reading never blocks the auto route; the caps and a fresh empty reading still do', () => {
+test('a stale reading never blocks the auto route; the caps and a fresh empty reading still do', () => {
   const f = fixture();
   for (const a of ['A', 'B']) {
     Object.assign(f.snapshot.accounts[a], { starts_at: f.now - 400000, observed_at: f.now - 90000, remaining_usd: '0.00' });
@@ -659,7 +659,7 @@ test('HIMMEL-7264: a stale reading never blocks the auto route; the caps and a f
   assert.equal(pickUsd(f, '0.01').verdict, 'SKIPPED-BANK');  // a fresh reading with nothing left is a known fact
 });
 
-test('HIMMEL-7264: with an old reading no estimate refuses a start; the pick and the reserve carry over_estimate', () => {
+test('with an old reading no estimate refuses a start; the pick and the reserve carry over_estimate', () => {
   const f = fixture();
   for (const a of ['A', 'B']) Object.assign(f.snapshot.accounts[a], { starts_at: f.now - 400000, observed_at: f.now - 90000 });
   f.save();
@@ -681,7 +681,7 @@ test('HIMMEL-7264: with an old reading no estimate refuses a start; the pick and
   assert.notEqual(explicit.verdict, 'PROCEED');
 });
 
-test('HIMMEL-7264: an over-estimate pick prefers the unmarked account over one marked credit-exhausted', () => {
+test('an over-estimate pick prefers the unmarked account over one marked credit-exhausted', () => {
   const f = fixture();
   for (const a of ['A', 'B']) Object.assign(f.snapshot.accounts[a], { starts_at: f.now - 400000, observed_at: f.now - 90000 });
   f.save();
@@ -694,7 +694,7 @@ test('HIMMEL-7264: an over-estimate pick prefers the unmarked account over one m
   assert.equal(r.over_estimate, true);
 });
 
-test('HIMMEL-7264: a fresh reading with too little left still refuses a start', () => {
+test('a fresh reading with too little left still refuses a start', () => {
   const f = fixture();
   for (const a of ['A', 'B']) Object.assign(f.snapshot.accounts[a], { observed_at: f.now, remaining_usd: '0.20' });
   f.save();
@@ -753,7 +753,7 @@ test('an expired grant also refuses a reserve under optional routing', () => {
   assert.equal(r.reason, 'expired-grant');
 });
 
-test('HIMMEL-7264: a snapshot flagged unverified or discrepant never routes on the ledger, whatever else is malformed in it', () => {
+test('a snapshot flagged unverified or discrepant never routes on the ledger, whatever else is malformed in it', () => {
   const flags = { discrepancy: { discrepancy: true }, 'not exclusive': { exclusive_org: false }, 'unknown source': { source: 'hand-edited' },
     'exclusive flag absent': { exclusive_org: undefined }, 'discrepancy flag absent': { discrepancy: undefined },
     'source absent': { source: undefined }, 'discrepancy wrong shape': { discrepancy: 'no' } };
@@ -767,7 +767,7 @@ test('HIMMEL-7264: a snapshot flagged unverified or discrepant never routes on t
   }
 });
 
-test('HIMMEL-7264: the optional-snapshot flag lets reserve run with no snapshot; an explicit call still refuses', () => {
+test('the optional-snapshot flag lets reserve run with no snapshot; an explicit call still refuses', () => {
   const f = fixture();
   rmSync(f.paths.snapshot);
   const run = (env) => JSON.parse(spawnSync(process.execPath, [SUT, 'reserve', '--id', 'j1', '--usd', '0.50'], { env, encoding: 'utf8' }).stdout);
@@ -778,7 +778,7 @@ test('HIMMEL-7264: the optional-snapshot flag lets reserve run with no snapshot;
   assert.equal(r.reserved_usd, '0.500000');
 });
 
-test('HIMMEL-7264: an account marked exhausted is skipped, returns after an hour or a newer reading, and still serves when it is the only one', () => {
+test('an account marked exhausted is skipped, returns after an hour or a newer reading, and still serves when it is the only one', () => {
   const f = fixture();
   for (const a of ['A', 'B']) f.snapshot.accounts[a].observed_at = f.now - 200;
   f.save();
@@ -805,7 +805,7 @@ test('HIMMEL-7264: an account marked exhausted is skipped, returns after an hour
   assert.equal(JSON.parse(readFileSync(f.paths.state, 'utf8')).accounts.A.discrepancy, false);
 });
 
-test('HIMMEL-7111: the bank line shows the snapshot age and flags one past 24 h', () => {
+test('the bank line shows the snapshot age and flags one past 24 h', () => {
   const f = fixture();
   f.snapshot.accounts.A.starts_at = f.now - 400000;
   f.snapshot.accounts.A.observed_at = f.now - 90000;
@@ -823,7 +823,7 @@ function withC(f) {
 
 // The operator's "BANK-UNKNOWN invalid-account-config" alert: the station config carried a C row before PR 4669 put C
 // in the account set, and one unknown row refuses the whole config (fail-closed, kept). With C known it is gone.
-test('HIMMEL-9077: one account row outside A, B and C refuses every pick with invalid-account-config; a C row does not', () => {
+test('one account row outside A, B and C refuses every pick with invalid-account-config; a C row does not', () => {
   const f = fixture();
   withC(f);
   assert.equal(pickUsd(f, '0.01').verdict, 'PROCEED');
@@ -832,7 +832,7 @@ test('HIMMEL-9077: one account row outside A, B and C refuses every pick with in
   assert.deepEqual(pickUsd(f, '0.01'), { verdict: 'BANK-UNKNOWN', reason: 'invalid-account-config' });
 });
 
-test('HIMMEL-9052: account C reports its own 200.00 cap by the explicit name', () => {
+test('account C reports its own 200.00 cap by the explicit name', () => {
   const f = fixture();
   withC(f);
   const r = spawnSync(process.execPath, [SUT, 'status', '--usd', '1'], { env: { ...f.env, HIMMEL_API_ACCOUNT: 'C' }, encoding: 'utf8' });
@@ -840,7 +840,7 @@ test('HIMMEL-9052: account C reports its own 200.00 cap by the explicit name', (
   assert.equal(JSON.parse(r.stdout).verdict, 'PROCEED');
 });
 
-test('HIMMEL-9052: auto ranks C like A and B: the earliest-expiring funded account wins, an empty C does not', () => {
+test('auto ranks C like A and B: the earliest-expiring funded account wins, an empty C does not', () => {
   const f = fixture();
   withC(f);
   const pick = (budget) => spawnSync(process.execPath, [SUT, 'pick', '--usd', budget], { env: f.env, encoding: 'utf8' });
@@ -855,7 +855,7 @@ test('HIMMEL-9052: auto ranks C like A and B: the earliest-expiring funded accou
 // A role narrows the auto pick to its own accounts; ranking inside the list is unchanged.
 const pickOnly = (f, usd, only) => JSON.parse(spawnSync(process.execPath, [SUT, 'pick', '--usd', usd, ...(only ? ['--only', only] : [])], { env: f.env, encoding: 'utf8' }).stdout);
 
-test('HIMMEL-9076: pick --only B returns B although A expires first; with no --only A still wins', () => {
+test('pick --only B returns B although A expires first; with no --only A still wins', () => {
   const f = fixture();
   f.snapshot.accounts.B.expires_at = f.now + 7200;
   f.save();
@@ -864,12 +864,12 @@ test('HIMMEL-9076: pick --only B returns B although A expires first; with no --o
   assert.equal(pickOnly(f, '0.01', 'B,A').account, 'A');
 });
 
-test('HIMMEL-9076: pick --only C with no C row is no-role-account-configured, never A or B', () => {
+test('pick --only C with no C row is no-role-account-configured, never A or B', () => {
   const f = fixture();
   assert.deepEqual(pickOnly(f, '0.01', 'C'), { verdict: 'SKIPPED-BANK', reason: 'no-role-account-configured' });
 });
 
-test('HIMMEL-9076: a stale B short of the budget still answers B for a role mapped to B, never A', () => {
+test('a stale B short of the budget still answers B for a role mapped to B, never A', () => {
   const f = fixture();
   f.config.accounts.A.cap_usd = '5.00';
   f.snapshot.accounts.A.grant_usd = '5.00';
@@ -882,7 +882,7 @@ test('HIMMEL-9076: a stale B short of the budget still answers B for a role mapp
   assert.equal(r.over_estimate, true);
 });
 
-test('HIMMEL-9076: a fresh B short of the budget is refused for a role mapped to B, never served by A', () => {
+test('a fresh B short of the budget is refused for a role mapped to B, never served by A', () => {
   const f = fixture();
   f.snapshot.accounts.B.remaining_usd = '0.20';
   f.save();
@@ -890,7 +890,7 @@ test('HIMMEL-9076: a fresh B short of the budget is refused for a role mapped to
   assert.equal(pickOnly(f, '0.50', 'B').verdict, 'SKIPPED-BANK');
 });
 
-test('HIMMEL-9076: pick --only with an unknown letter or a bare flag is invalid-arguments', () => {
+test('pick --only with an unknown letter or a bare flag is invalid-arguments', () => {
   const f = fixture();
   assert.deepEqual(pickOnly(f, '0.01', 'D'), { verdict: 'BANK-UNKNOWN', reason: 'invalid-arguments' });
   const r = spawnSync(process.execPath, [SUT, 'pick', '--usd', '0.01', '--only'], { env: f.env, encoding: 'utf8' });
@@ -905,7 +905,7 @@ const accountsOut = (f) => {
 const tagOf = (f, account = 'A') => accountsOut(f).find((x) => x.account === account);
 const mark = (f, account = 'A') => spawnSync(process.execPath, [SUT, 'exhausted'], { env: { ...f.env, HIMMEL_API_ACCOUNT: account }, encoding: 'utf8' });
 
-test('HIMMEL-9076: the accounts CLI tags a funded fresh account room and an absent C not configured', () => {
+test('the accounts CLI tags a funded fresh account room and an absent C not configured', () => {
   const f = fixture();
   const rows = accountsOut(f);
   assert.deepEqual(rows.map((x) => x.account), ['A', 'B', 'C']);
@@ -913,7 +913,7 @@ test('HIMMEL-9076: the accounts CLI tags a funded fresh account room and an abse
   assert.deepEqual(rows[2], { account: 'C', configured: false, cap_usd: null, tag: 'not configured' });
 });
 
-test('HIMMEL-9076: the accounts CLI tags a reading older than 24 h stale reading and a missing row no reading', () => {
+test('the accounts CLI tags a reading older than 24 h stale reading and a missing row no reading', () => {
   const f = fixture();
   Object.assign(f.snapshot.accounts.A, { starts_at: f.now - 400000, observed_at: f.now - 90000 });
   delete f.snapshot.accounts.B;
@@ -922,7 +922,7 @@ test('HIMMEL-9076: the accounts CLI tags a reading older than 24 h stale reading
   assert.equal(tagOf(f, 'B').tag, 'no reading');
 });
 
-test('HIMMEL-9076: the accounts CLI tags last resort, marked exhausted and no room', () => {
+test('the accounts CLI tags last resort, marked exhausted and no room', () => {
   const f = fixture();
   assert.equal(JSON.parse(spawnSync(process.execPath, [SUT, 'reserve', '--id', 'j1', '--usd', '1.00'], { env: f.env, encoding: 'utf8' }).stdout).verdict, 'PROCEED');
   Object.assign(f.snapshot.accounts.A, { starts_at: f.now - 400000, observed_at: f.now - 90000 });
@@ -937,7 +937,7 @@ test('HIMMEL-9076: the accounts CLI tags last resort, marked exhausted and no ro
   assert.equal(tagOf(h, 'A').tag, 'no room');
 });
 
-test('HIMMEL-9076: the accounts CLI tags an identity mismatch unknown and shows the reason', () => {
+test('the accounts CLI tags an identity mismatch unknown and shows the reason', () => {
   const f = fixture();
   f.snapshot.accounts.A.organization_id = 'someone-else';
   f.save();
@@ -946,7 +946,7 @@ test('HIMMEL-9076: the accounts CLI tags an identity mismatch unknown and shows 
   assert.equal(row.reason, 'identity-or-cycle-mismatch');
 });
 
-test('HIMMEL-9076: the accounts CLI output carries no organization, key or cycle id', () => {
+test('the accounts CLI output carries no organization, key or cycle id', () => {
   const f = fixture();
   f.config.accounts.A.key_id = 'key-secret-looking';
   f.save();
@@ -954,7 +954,7 @@ test('HIMMEL-9076: the accounts CLI output carries no organization, key or cycle
   for (const word of ['organization_id', 'key_id', 'cycle_id', 'org-a', 'cycle-a', 'key-secret-looking']) assert.ok(!text.includes(word), word);
 });
 
-test('HIMMEL-9076: the accounts CLI reports an unreadable account config with the reason the read returned', () => {
+test('the accounts CLI reports an unreadable account config with the reason the read returned', () => {
   const f = fixture();
   writeFileSync(f.paths.config, '{not json');
   assert.deepEqual(accountsOut(f), { accounts: 'unreadable', reason: 'unreadable-state' });
