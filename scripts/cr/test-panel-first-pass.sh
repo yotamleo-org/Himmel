@@ -1090,6 +1090,15 @@ if [ "$(rs_count "$rs7")" = 0 ]; then ok "T1.38 an early refusal writes no row";
 # a canary that would fire if anything ran a file from it. The gh stub serves the PR, the allowlist
 # lives in a temp HOME.
 cp "$HERE/../lib/outside-contributors.sh" "$HERE/../lib/timeout-bin.sh" "$fx/scripts/lib/"
+(
+    cd "$fx" || exit 1
+    git -c init.defaultBranch=main init -q
+    git config user.email t@t.test
+    git config user.name tester
+    git config commit.gpgsign false
+    git add -A
+    git commit -q -m anchor
+) || { echo "FAIL: fixture anchor checkout setup failed" >&2; exit 1; }
 pr_home="$tmp/pr-home"; mkdir -p "$pr_home/.himmel"
 printf '[{"login":"Goomal","id":"U_goomal"}]\n' > "$pr_home/.himmel/outside-contributors.json"
 pr_canary="$tmp/pr-canary"
@@ -1320,15 +1329,85 @@ cat > "$tmp/rtkbig/rtk" <<'RTKBIGEOF'
 head -c 300000 /dev/zero | tr '\0' 'b'
 RTKBIGEOF
 chmod +x "$tmp/rtkbig/rtk"
-pr_run_x PR_BRANCH=feat/outside-retry FAKE_RC=1 PATH="$tmp/rtkbig:$tmp/prbin:$PATH" -- --pr 7 --head "$pr_oid" --branch feat/outside-retry
+git -C "$prrepo" update-ref refs/himmel/outside/20 "$pr_oid"
+pr20_round() { cat "$prrepo/.git/cr-review-rounds/outside-20.round" 2>/dev/null || echo 0; }
+pr20_before="$(pr20_round)"
+pr_run_x PR_BRANCH=feat/outside-retry FAKE_RC=1 PATH="$tmp/rtkbig:$tmp/prbin:$PATH" -- --pr 20 --head "$pr_oid" --branch feat/outside-retry
 if [ "$pr_rc" -eq 7 ]; then ok "--pr: an over-cap rtk retry diff exits 7"; else bad "--pr over-cap retry exit (got $pr_rc)"; fi
 assert_has "$pr_err" "204800" "--pr over-cap retry: the refusal names the cap"
 if [ "$(wc -l < "$CALL_LOG" 2>/dev/null | tr -d ' ')" = 1 ]; then ok "--pr over-cap retry: the panel ran once, never on the retry diff"; else bad "--pr over-cap retry: panel calls (got $(wc -l < "$CALL_LOG" 2>/dev/null))"; fi
+assert_has "$pr_err" "stays counted" "--pr over-cap retry: the refusal says the round stays counted"
+assert_lacks "$pr_err" "nothing was recorded" "--pr over-cap retry: the refusal never says nothing was recorded"
+if [ "$(pr20_round)" = "$((pr20_before + 1))" ]; then ok "--pr over-cap retry: the PR's round count is one higher ($pr20_before to $(pr20_round))"; else bad "--pr over-cap retry: round count went $pr20_before to $(pr20_round)"; fi
 # authorization comes before the preflight: a refused author leaves no preflight row
 pr_run_x PR_LOGIN=Stranger PR_ID=U_stranger PR_BRANCH=feat/other-thing -- --pr 7 --head "$pr_oid" --branch feat/other-thing
 if [ "$pr_rc" -eq 5 ]; then ok "--pr for an unlisted author exits 5 before the preflight"; else bad "--pr unlisted author exit (got $pr_rc)"; fi
 assert_no_ceilings "$pr_err" "--pr authorization refusal exit 5"
 if [ "$(grep -F 'feat/other-thing' "$pr_ledger" 2>/dev/null | grep -c '"kind":"preflight"')" = 0 ]; then ok "--pr for an unlisted author writes no preflight row"; else bad "--pr for an unlisted author wrote a preflight row"; fi
+pr_run_at() {
+    local s=$1 envs=()
+    shift
+    while [ "$1" != "--" ]; do envs+=("$1"); shift; done
+    shift
+    rm -f "$CALL_LOG" "$ARGS_LOG" "$tmp/err"
+    pr_out="$( (cd "$prrepo" && env HOME="$pr_home" GH_FALLBACK="$tmp/ghbin/gh" PR_OID="$pr_oid" FAKE_RC=0 \
+        PATH="$tmp/prbin:$PATH" ${envs[@]+"${envs[@]}"} bash "$s" "$@") 2>"$tmp/err" )"; pr_rc=$?
+    pr_err="$(cat "$tmp/err")"
+}
+pf_rows_for() { grep -F '"kind":"preflight"' "$pr_ledger" 2>/dev/null | grep -F "\"branch\":\"$1\"" | grep -cF "\"head\":\"$2\"" | tr -d ' '; }
+for n in 21 22 23 24 25 26; do git -C "$prrepo" update-ref "refs/himmel/outside/$n" "$pr_oid"; done
+bcopy="$tmp/branch-copy"; mkdir -p "$bcopy"; cp -R "$fx/scripts" "$bcopy/"
+n_before="$(pr_rounds)"
+pr_run_at "$bcopy/scripts/cr/panel-first-pass.sh" -- --pr 21 --head "$pr_oid" --branch feat/outside-thing
+if [ "$pr_rc" -eq 2 ]; then ok "--pr through a branch copy exits 2"; else bad "--pr through a branch copy exit (got $pr_rc; err: $pr_err)"; fi
+assert_has "$pr_err" "the anchor's primary checkout" "--pr through a branch copy: the refusal names the anchor's primary checkout"
+if [ ! -f "$CALL_LOG" ] && [ "$(pr_rounds)" = "$n_before" ]; then ok "--pr through a branch copy: no panel, no round"; else bad "--pr through a branch copy: the panel ran or a round was spent"; fi
+git -C "$fx" worktree add -q --detach "$tmp/fx-wt" || bad "fixture: could not add a worktree of the anchor"
+cp -R "$fx/scripts/." "$tmp/fx-wt/scripts/"
+n_before="$(pr_rounds)"
+pr_run_at "$tmp/fx-wt/scripts/cr/panel-first-pass.sh" HIMMEL_REPO="$tmp/fx-wt" -- --pr 22 --head "$pr_oid" --branch feat/outside-thing
+if [ "$pr_rc" -eq 2 ]; then ok "--pr from a linked worktree named by HIMMEL_REPO exits 2"; else bad "--pr from a linked worktree exit (got $pr_rc; err: $pr_err)"; fi
+assert_has "$pr_err" "the anchor's primary checkout" "--pr from a linked worktree: the refusal names the anchor's primary checkout"
+if [ ! -f "$CALL_LOG" ] && [ "$(pr_rounds)" = "$n_before" ]; then ok "--pr from a linked worktree: no panel, no round"; else bad "--pr from a linked worktree: the panel ran or a round was spent"; fi
+(cd "$repo" && CR_PROFILE=none bash "$bcopy/scripts/cr/panel-first-pass.sh" --head "$feature_sha" --branch feature) >"$tmp/out" 2>"$tmp/err"; rc=$?
+if [ "$rc" -eq 0 ]; then ok "control: a run without --pr through a branch copy still exits 0"; else bad "control: a run without --pr through a branch copy exit (got $rc; err: $(cat "$tmp/err"))"; fi
+assert_has "$(cat "$tmp/out")" "claude-only review (CR_PROFILE=none)" "control: a run without --pr through a branch copy runs its path"
+n_before="$(pr_rounds)"
+pr_run_x PR_BRANCH=elsewhere -- --pr 23 --head "$pr_oid" --branch elsewhere
+if [ "$pr_rc" -eq 7 ]; then ok "--pr with --branch naming a local branch exits 7"; else bad "--pr local-branch collision exit (got $pr_rc; err: $pr_err)"; fi
+assert_has "$pr_err" "collides with a local branch" "--pr local-branch collision: the refusal names the collision"
+if [ "$(grep -F '"kind":"preflight"' "$pr_ledger" 2>/dev/null | grep -cF '"branch":"elsewhere"')" = 0 ]; then ok "--pr local-branch collision: no preflight row"; else bad "--pr local-branch collision: a preflight row was written"; fi
+if [ ! -f "$CALL_LOG" ] && [ "$(pr_rounds)" = "$n_before" ]; then ok "--pr local-branch collision: no panel, no round"; else bad "--pr local-branch collision: the panel ran or a round was spent"; fi
+# shellcheck disable=SC2016 # the stub body expands in the stub, not here
+kf_stub() { cp "$kf_pr" "$tmp/kf-pr.orig"; printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" > "%s"\nexit 0\n' "$tmp/kf-pr-args" > "$kf_pr"; rm -f "$tmp/kf-pr-args"; }
+kf_unstub() { cp "$tmp/kf-pr.orig" "$kf_pr"; }
+pf_seed() { printf '{"kind":"preflight","ts":"2026-11-14T00:00:00Z","branch":"%s","head":"%s","hits":[],"hit_n":0,"fixed":0,"waived":0,"checked":0}\n' "$1" "$2" >> "$pr_ledger"; }
+pr_h1="$pr_base"
+pf_seed feat/outside-h1 "$pr_h1"
+kf_stub
+pr_run_x PR_BRANCH=feat/outside-h1 -- --pr 24 --head "$pr_oid" --branch feat/outside-h1
+kf_unstub
+if [ -f "$tmp/kf-pr-args" ]; then ok "--pr: a preflight row at another head does not stand in, the known-findings pass ran"; else bad "--pr: the known-findings pass was skipped on a row at another head (rc $pr_rc; err: $pr_err)"; fi
+if [ "$(pf_rows_for feat/outside-h1 "$pr_oid")" = 1 ]; then ok "--pr: a new preflight row at this head was written"; else bad "--pr: preflight rows at this head (got $(pf_rows_for feat/outside-h1 "$pr_oid"), want 1)"; fi
+pf_seed patch-1 "$pr_oid9"
+kf_stub
+pr_run_x PR_BRANCH=patch-1 -- --pr 25 --head "$pr_oid" --branch patch-1
+kf_unstub
+if [ -f "$tmp/kf-pr-args" ]; then ok "--pr: another PR's preflight row with the same headRefName does not stand in"; else bad "--pr: another PR's same-name preflight row stood in (rc $pr_rc; err: $pr_err)"; fi
+kf_stub
+pr_run_x PR_BRANCH=feat/outside-h1 -- --pr 26 --head "$pr_oid" --branch feat/outside-h1
+kf_unstub
+if [ ! -f "$tmp/kf-pr-args" ] && [ "$pr_rc" -eq 0 ]; then ok "control: --pr with a preflight row at its exact head skips the pass"; else bad "control: --pr exact-head row (rc $pr_rc; kf ran: $([ -f "$tmp/kf-pr-args" ] && echo yes || echo no))"; fi
+ledger="$repo/.git/cr-critic-scores.jsonl"
+mv "$ledger" "$tmp/repo-ledger.keep"
+printf '{"kind":"preflight","ts":"2026-11-14T00:00:00Z","branch":"feature","head":"%s","hits":[],"hit_n":0,"fixed":0,"waived":0,"checked":0}\n' "$main_sha" > "$ledger"
+kf_stub
+rm -rf "$repo/.git/cr-review-rounds"
+(cd "$repo" && FAKE_RC=0 bash "$SCRIPT" --head "$feature_sha" --branch feature) >/dev/null 2>"$tmp/err"; rc=$?
+kf_unstub
+rm -rf "$repo/.git/cr-review-rounds"
+mv "$tmp/repo-ledger.keep" "$ledger"
+if [ ! -f "$tmp/kf-pr-args" ] && [ "$rc" -eq 0 ]; then ok "control: a run without --pr finds a preflight row by branch alone"; else bad "control: a run without --pr by branch alone (rc $rc; err: $(cat "$tmp/err"))"; fi
 
 ceil_secret="the f.txt reader never handles a CRLF line"
 ceil_ledger="$tmp/ceilings.tsv"

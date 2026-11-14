@@ -60,13 +60,15 @@
 #   0 - ran to completion (panel invoked, skipped, or failed open to
 #       claude-only). Findings, if any, are on stdout.
 #   2 - usage error: missing --head or --branch, or (--pr) a PR number or --head that is
-#       not a plain number / full 40-hex sha, --branch is outside the safe alphabet, or
-#       outside-contributors.sh cannot be loaded.
+#       not a plain number / full 40-hex sha, --branch is outside the safe alphabet,
+#       outside-contributors.sh cannot be loaded, or (--pr) this copy is not the one in the
+#       anchor's primary checkout that HIMMEL_REPO names (a branch copy, a linked worktree, or
+#       HIMMEL_REPO unset), refused before any other file is sourced.
 #   5 - (--pr only) review-round.sh check or start --pr refused: the PR's author is not
 #       authorized for a no-checkout review, or the round state could not be written. The
 #       check runs before the known-findings preflight, so a refused author leaves no
 #       preflight row. Nothing was reviewed or recorded.
-#   3 -the branch has no preflight row and the step 2.8 known-findings pass
+#   3 -the branch has no preflight row (--pr: none at --head) and the step 2.8 known-findings pass
 #       it ran first has open hits: no round was started. Close the hits and
 #       record the pass (the message names both commands), then re-run.
 #   9 - that preflight could not be run or recorded: no round was started.
@@ -81,13 +83,15 @@
 #       resolved; (d) (--pr only) critic-panel.sh does not refuse a --pin-ref ref name git cannot hold
 #       (the probe runs the panel once; no member runs), the PR's base branch name is outside the
 #       safe alphabet, refs/himmel/outside/<n>
-#       is not at --head, --branch is not the PR's headRefName, or the PR's base branch
+#       is not at --head, --branch is not the PR's headRefName, --branch collides with a
+#       local branch (names compared without case) or the local branches cannot be listed,
+#       or the PR's base branch
 #       or merge base cannot be read, or (e) the PR diff is over the 204800 bytes the
-#       critics read (CRITIC_FIRST_PASS_CAP_BYTES), refused before a round starts; the rtk
-#       retry's diff is measured the same way (that round stays counted). ABORT: nothing was reviewed, nothing was recorded,
-#       and a round already started is given back (review-round.sh abort, --pr for an
-#       outside PR). A round whose panel recorded a row stays counted. Never degrades to claude-only - re-run
-#       /pr-check from step 1.
+#       critics read (CRITIC_FIRST_PASS_CAP_BYTES), refused before a round starts. ABORT:
+#       nothing was reviewed, and a round already started is given back (review-round.sh
+#       abort, --pr for an outside PR), except: a round whose panel recorded a row stays
+#       counted, and so does the round of an rtk retry whose diff is over that cap (its
+#       refusal says so). Never degrades to claude-only - re-run /pr-check from step 1.
 #   Every other critic-panel.sh failure fails OPEN to claude-only (this
 #   script still exits 0; panel findings are empty and a loud note went to
 #   stderr). Panel exit 6 (a refusal to certify) gets its own note
@@ -99,6 +103,22 @@ case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HIMMEL_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+pr_requested() {
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --pr) return 0 ;;
+            --head|--branch|--context-file) shift ;;
+        esac
+        shift
+    done
+    return 1
+}
+if pr_requested "$@"; then
+    if [ -z "${HIMMEL_REPO:-}" ] || ! [ "$HIMMEL_ROOT" -ef "$HIMMEL_REPO" ] || ! [ -d "$HIMMEL_REPO/.git" ]; then
+        echo "panel-first-pass: --pr runs only as the copy in the anchor's primary checkout that HIMMEL_REPO names, never a branch copy or a linked worktree ($HIMMEL_ROOT); HIMMEL_REPO is unset or empty, or names another tree. Nothing was reviewed and nothing was recorded." >&2
+        exit 2
+    fi
+fi
 # shellcheck source=scripts/cr/base-resolver.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/base-resolver.sh"
@@ -157,6 +177,12 @@ if [ -n "$PR" ]; then
     # shellcheck source=scripts/lib/outside-contributors.sh
     # shellcheck disable=SC1091
     . "$HIMMEL_ROOT/scripts/lib/outside-contributors.sh" || { echo "panel-first-pass: cannot load scripts/lib/outside-contributors.sh" >&2; exit 2; }
+    pr_col=0
+    outside_branch_collides "$BRANCH" || pr_col=$?
+    if [ "$pr_col" -ne 1 ]; then
+        echo "panel-first-pass ABORT - --branch collides with a local branch of this repo (names compared without case), or the local branches cannot be listed, and the ledger keys on that name; use the maintainer takeover instead. Nothing was reviewed and nothing was recorded." >&2
+        exit 7
+    fi
     # A panel that cannot pin to the ref would verify the live checkout instead and certify the wrong tree.
     pin_probe_err="$(printf 'pin-probe\n' | bash "$HIMMEL_ROOT/scripts/cr/critic-panel.sh" --branch pin-probe --pin-ref refs/himmel/outside/0..0 2>&1 >/dev/null)"
     pin_probe_rc=$?
@@ -336,7 +362,13 @@ else
     # with the commands that close them. clear-review-marker.sh gate 4e stays
     # the backstop.
     pf_ledger="$(git rev-parse --git-common-dir 2>/dev/null)/cr-critic-scores.jsonl" # swallow-ok: a failed rev-parse names no ledger, so the preflight runs and ledger-append refuses (exit 9)
-    if ! { [ -f "$pf_ledger" ] && awk -v b="\"branch\":\"$BRANCH\"" 'index($0, "\"kind\":\"preflight\"") && index($0, b) { f = 1 } END { exit !f }' "$pf_ledger"; }; then
+    pf_found=0
+    if [ -n "$PR" ]; then
+        { [ -f "$pf_ledger" ] && awk -v b="\"branch\":\"$BRANCH\"" -v h="$HEAD_SHA" 'index($0, "\"kind\":\"preflight\"") && index($0, b) && index($0, "\"head\":\"" h "\"") { f = 1 } END { exit !f }' "$pf_ledger"; } && pf_found=1
+    elif { [ -f "$pf_ledger" ] && awk -v b="\"branch\":\"$BRANCH\"" 'index($0, "\"kind\":\"preflight\"") && index($0, b) { f = 1 } END { exit !f }' "$pf_ledger"; }; then
+        pf_found=1
+    fi
+    if [ "$pf_found" -eq 0 ]; then
         pf_t0=$SECONDS
         pf_rc=0
         pf_who=()
@@ -528,7 +560,10 @@ PINABORT
             # Same captured-base rule as the first attempt.
             retry_diff=$(rtk proxy git diff "$diff_range" 2>/dev/null) || retry_diff=""
             # the retry diff is a second diff the panel would read: measure it like the first
-            if [ -n "$PR" ] && [ -n "$retry_diff" ] && pr_over_cap "$retry_diff"; then pr_over_cap_abort; fi
+            if [ -n "$PR" ] && [ -n "$retry_diff" ] && pr_over_cap "$retry_diff"; then
+                echo "panel-first-pass ABORT - PR #$PR's rtk retry diff is $pr_diff_bytes bytes, over the $pr_cap-byte cap the critics read. Nothing was reviewed; the round this run started stays counted (an over-cap PR goes to a maintainer takeover)." >&2
+                exit 7
+            fi
             if [ -n "$retry_diff" ]; then
                 retry_tmp=$(mktemp -t cr-panel-avail.XXXXXX)
                 panel_findings=$(printf '%s' "$retry_diff" | CR_USAGE_LOG=1 CR_REVIEW_ROUND="$review_round" bash "$HIMMEL_ROOT/scripts/cr/critic-panel.sh" --head "$HEAD_SHA" --branch "$BRANCH" ${PR:+--pin-ref "refs/himmel/outside/$PR"} --base "$db" --base-sha "$db_sha" --context-file "$CONTEXT_FILE" 2>"$retry_tmp")

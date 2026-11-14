@@ -35,6 +35,15 @@ esac
 exec bash "$here/critic-panel.real.sh" "$@"
 WRAP
 chmod +x "$A/scripts/cr/critic-panel.sh"
+(
+    cd "$A" || exit 1
+    git -c init.defaultBranch=main init -q
+    git config user.email t@t.test
+    git config user.name tester
+    git config commit.gpgsign false
+    git add -A
+    git commit -q -m anchor
+) || { echo "FAIL: fixture anchor checkout setup" >&2; exit 1; }
 
 CRIT="$tmp/stub-critic.sh"
 cat > "$CRIT" <<'EOS'
