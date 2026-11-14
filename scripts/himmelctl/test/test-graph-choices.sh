@@ -318,7 +318,7 @@ arm_cadence() {
 arm_publisher() { arm_cadence --ast-only --with-publish --publish-semantic --semantic-active; }
 publisher_cfg() { cfg '{"graphify":{"semantic_api_ok":true}}'; }
 watch() { bash "$CA" watch >/dev/null 2>&1; }
-backup_ids() { find "$AUD/backups" -mindepth 1 -maxdepth 1 2>/dev/null | sed 's#.*/##' | sort; }
+backup_ids() { local d; for d in "$AUD/backups"/*; do [ -d "$d" ] && printf '%s\n' "${d##*/}"; done | sort; }
 new_backup() { backup_ids > "$HOME/ids.now"; comm -13 "$HOME/ids.before" "$HOME/ids.now" | tail -n 1; cp "$HOME/ids.now" "$HOME/ids.before"; }
 mark_ids() { backup_ids > "$HOME/ids.before"; }
 sfresh_ids() { sfresh "$1"; : > "$HOME/ids.before"; }

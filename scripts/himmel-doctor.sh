@@ -4037,7 +4037,7 @@ check_c92_graph_key() {
         route="$(node "$gc" route 2>/dev/null)" || route=""
         case "$route" in *'"order":['*) ;; *) emit INFO C92-graph-key "the graph route cannot be read -- rejected keys (${tags% }) not judged"; return 0 ;; esac
         walk="$(printf '%s' "$route" | sed -n 's/.*"order":\[\([^]]*\)\].*/\1/p' | tr -d '"')"
-    elif [ "$role" = unreadable ] && ! printf '%s\n' "$runners" | grep -q '^graphmap-publish-himmel.sh'; then
+    elif [ "$role" = unreadable ] && ! grep -q '^graphmap-publish-himmel.sh' <<< "$runners"; then
         walk=""
     else
         walk="$(node "$SELF_DIR/lib/api-roles.mjs" walk graphify 2>/dev/null)" || walk_rc=$?
