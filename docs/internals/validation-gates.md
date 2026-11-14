@@ -339,8 +339,9 @@ and `ready-check.sh` item 19 needs proof for every impacted suite of
 suite its PR changed, with its failing-first proof, and a suite CI cannot run, each with a
 named reason; `impacted-suites.sh --plan <base>..<head>` prints that split (`LOCAL <p> (<reason>)`
 or `CI <p>`; the failing-first proof is an instruction the plan prints, no gate checks it) (operator decision 775).
-A JS/TS suite has no per-suite CI proof yet, so it stays `LOCAL` until item 19 reads one; only then does a
-typical PR plan 5 or fewer `LOCAL` lines:
+A JS/TS suite follows the same rule: it is `CI` when the PR did not change it, `--runner` maps it, it is not
+on the CI-skips list and, for a vitest suite, the diff's node_suites gate is on. A typical PR plans 5 or fewer
+`LOCAL` lines:
 
 | Proof | Counts when |
 |---|---|

@@ -194,12 +194,12 @@ lacks "brief 1 no longer grants a new suite its own rows" "$(tr '\n' ' ' < "$D1"
 # contract item 3: a worker runs locally only the RED rows it builds; every other impacted suite is CI-gated
 B1="$(tr '\n' ' ' < "$D1" | tr -s ' ')"
 lacks "brief 1 no longer tells the worker to run the full suite of every touched file" "$B1" "the full suite of every file you touched"
-has "brief 1 hands every other impacted test-*.sh on to CI as SUITE <p> = CI" "$B1" "write \`SUITE <p> = CI\` for every other impacted \`test-*.sh\` you did not change and CI runs"
+has "brief 1 hands every other impacted suite --check accepts on to CI as SUITE <p> = CI" "$B1" "write \`SUITE <p> = CI\` for every other impacted suite you did not change and \`--check\` accepts"
 lacks "brief 1 no longer lists suites as SKIP CI-gated per decision 101" "$B1" "SKIP CI-gated per decision 101"
 has "brief 1 points at the one statement of the rule" "$B1" "scripts/cr/pr-check-ref/33-step3-impacted.md"
 has "brief 1 routes VM-only checks through the VM queue" "$B1" "VM queue"
 has "brief 1 forbids run-shell-tests.sh full or sharded locally" "$B1" "never run run-shell-tests.sh full or sharded locally"
-has "brief 1 limits local runs to the RED rows, changed suites, JS/TS and refused suites" "$B1" "Run locally the RED rows of the item you build, the suites you changed or added, JS/TS suites, and every suite \`--check\` refuses \`= CI\` for"
+has "brief 1 limits local runs to the RED rows, changed suites and refused suites" "$B1" "Run locally the RED rows of the item you build, the suites you changed or added, and every suite \`--check\` refuses \`= CI\` for"
 
 # the three most-refused shapes are taught where the worker first meets them (7370, 7371, 7372)
 has "brief 1 teaches the exact quiet-run RED command, nothing inside the backticks after the suite" "$B1" "run it as \`bash scripts/quiet-run.sh suite -- bash <test-*.sh>\` with nothing appended"
