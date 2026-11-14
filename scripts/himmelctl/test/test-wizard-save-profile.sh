@@ -124,7 +124,8 @@ export HIMMELCTL_BIN_DIR
 # test-wizard-questions.sh/test-wizard-adopter-profile.sh.
 build_path() {
   local _stub="$1"; shift
-  local _present=() _absent=() _stage=0 _t
+  # a station graphify makes the wizard ask its graph step (askGraphChoices); CI has none, so neither does this PATH
+  local _present=() _absent=(graphify) _stage=0 _t
   for _t in "$@"; do
     if [ "$_t" = "--" ]; then _stage=1; continue; fi
     if [ "$_stage" -eq 0 ]; then _present+=("$_t"); else _absent+=("$_t"); fi
@@ -936,5 +937,54 @@ b14="$(cat "$work/case14/b-in")"; a14="$(cat "$work/case14/a-out")"
 [ $((b14 - a14)) -lt 2000 ] \
   || fail "case14: waiter B waited $((b14 - a14))ms for a lock its owner had already released (the restored lock stayed behind)"
 echo "ok: case14 a lock restored after a waiter's rename is released by its owner"
+
+# ── W5: graph choices stay outside the profile ──
+w5="$work/w5"; mkdir -p "$w5/stubs" "$w5/repos/acme/.git" "$w5/dotenv"
+printf '#!/bin/sh\nexit 0\n' > "$w5/stubs/graphify"; printf '#!/bin/sh\nexit 0\n' > "$w5/alert-stub.sh"
+# shellcheck disable=SC2016  # the stub body expands at its own run time
+printf '#!/bin/sh\necho "$*" >> "%s/cron.calls"\n[ "$1" = -l ] && { echo "no crontab for tester" >&2; exit 1; }\ncat > /dev/null\n' "$w5" > "$w5/stubs/crontab"
+chmod +x "$w5/stubs/graphify" "$w5/stubs/crontab" "$w5/alert-stub.sh"
+printf 'ANTHROPIC_API_KEY=sk-ant-w5-planted\n' > "$w5/dotenv/.env"
+acme5=$(cd "$w5/repos/acme" && pwd -P)
+p5="$w5/stubs:$(build_path "$w5" bash jq python3 npm --)"
+fixture_w5="$w5/fixture"; make_fixture "$fixture_w5"
+w5_env() {
+  local _h="$1"; shift; mkdir -p "$_h/.himmel" "$_h/cache"
+  env PATH="$p5" HOME="$_h" USERPROFILE="$(winpath "$_h")" \
+    HIMMEL_CONFIG_DIR="$_h/.himmel" HIMMEL_CONFIG_AUDIT_DIR="$_h/.himmel/state/config-audit" \
+    HIMMEL_CONFIG_AUDIT_ENV_FILE="$w5/dotenv/.env" HIMMEL_CONFIG_ALERT_CMD="$w5/alert-stub.sh" HIMMEL_TEST_FIXTURE=1 \
+    HIMMEL_API_CREDIT_CONFIG="$w5/no-roster.json" HIMMELCTL_CACHE_DIR="$(winpath "$_h/cache")" \
+    HIMMEL_PROVENANCE_DIR="$(winpath "$_h/prov")" GRAPH_CHOICES_CRONTAB="$w5/stubs/crontab" GRAPH_CHOICES_BAT_DIR="$_h/bat" \
+    CADENCE_ALERT_DEDUPE_DIR="$_h/dedupe" CADENCE_ALERT_FILE="$_h/alerts.log" CADENCE_ALERT_SEND_CMD="$w5/alert-stub.sh" \
+    HIMMELCTL_PROFILES_DIR="$(winpath "$w5/profiles")" HIMMELCTL_REPO_ROOT="$(winpath "$fixture_w5")" "$@"
+}
+W5_ANSWERS=("${BASE_ANSWERS[@]:0:6}" "$acme5" "" "" "" "${BASE_ANSWERS[@]:6}")
+set +e
+out_w5=$(
+  ( for a in "${W5_ANSWERS[@]}"; do stage "$a"; done
+    stage y
+    stage w5profile
+  ) | w5_env "$w5/h-a" env HIMMELCTL_CACHE_DIR="$(winpath "$w5/h-a/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$w5/h-a/.himmel/config.json")" HIMMELCTL_INTERACTIVE=1 "$node_bin" "$wizard" install 2>&1
+)
+rc_w5=$?
+set -e
+[ "$rc_w5" -eq 0 ] || fail "W5: the interactive install with a graph choice should succeed (got rc=$rc_w5): $out_w5"
+[ "$(jq -c '.graphify.choices.corpora' "$w5/h-a/.himmel/config.json" 2>/dev/null)" = "$(jq -nc --arg r "$acme5" '[{name:"acme",root:$r}]')" ] \
+  || fail "W5: the interactive run must store its graph choice (config: $(cat "$w5/h-a/.himmel/config.json" 2>/dev/null)): $out_w5"
+saved_w5="$w5/profiles/w5profile.install-profile.json"
+[ -f "$saved_w5" ] || fail "W5: the profile should be saved at $saved_w5: $out_w5"
+grepq "$(cat "$saved_w5")" -i 'choices\|acme' && fail "W5: the saved profile must carry no graph choice (got: $(cat "$saved_w5"))"
+grepq "$(cat "$w5/h-a/cache/install-profile.json")" -i 'choices\|acme' && fail "W5: the answer cache must carry no graph choice"
+set +e
+out_w5b=$(w5_env "$w5/h-b" env HIMMELCTL_CACHE_DIR="$(winpath "$w5/h-b/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$w5/h-b/.himmel/config.json")" HIMMELCTL_INTERACTIVE=0 "$node_bin" "$wizard" install --from-profile "$(winpath "$saved_w5")" </dev/null 2>&1); rc_w5b=$?
+set -e
+[ "$rc_w5b" -eq 0 ] || fail "W5: --from-profile on the saved profile should succeed (got rc=$rc_w5b): $out_w5b"
+[ "$(jq -c '.graphify.choices // "absent"' "$w5/h-b/.himmel/config.json" 2>/dev/null || echo no-file)" != "$(jq -c '.graphify.choices' "$w5/h-a/.himmel/config.json")" ] \
+  || fail "W5: --from-profile must not replay the graph choice"
+jq -e '.graphify.choices' "$w5/h-b/.himmel/config.json" >/dev/null 2>&1 && fail "W5: --from-profile must write no graph choice"
+grepq "$out_w5b" -F 'graph choices: not asked on this run' || fail "W5: --from-profile must print the graph suggestion line (got: $out_w5b)"
+grep -q 'sk-ant-w5-planted' "$w5/h-a/.himmel/config.json" "$w5/h-b/.himmel/config.json" 2>/dev/null && fail "W5: the planted fixture key reached a config"
+grepq "$out_w5$out_w5b" -F 'sk-ant-w5-planted' && fail "W5: the planted fixture key reached the output"
+echo "ok: W5 the graph choice stays outside the profile; --from-profile neither writes nor replays it"
 
 echo "PASS"
