@@ -13,7 +13,7 @@ is how to safely edit a hook.
 - **Never rely on `if ! . lib` / `. lib || …` to catch a MISSING lib under
   `set -e`**: bash 3.2 exits the shell (rc=1) on a failed `.` regardless of the
   guard, so a fail-closed hook silently fails open. Test readability first:
-  `if ! { [ -r "$lib" ] && . "$lib"; } 2>/dev/null; then` (HIMMEL-3177).
+  `if ! { [ -r "$lib" ] && . "$lib"; } 2>/dev/null; then`.
 - Hooks fail-closed (non-zero exit blocks the action). Preserve that.
   Exception: `auto-arm-on-cap.sh` is a WATCHDOG, deliberately fail-open
   (it must never block tool calls on its own bugs) — do not "fix" it
@@ -23,10 +23,10 @@ is how to safely edit a hook.
 
 **A misfiled hook is not inert — it INSTALLS.** A script listed in a wirer's
 inventory with zero corresponding target entries is not "legitimately
-missing": `installMissingEntries` (HIMMEL-1643) adds the missing entry on the
+missing": `installMissingEntries` adds the missing entry on the
 next real wirer run. Filing a plugin-delivered hook into the wrong inventory
 does not sit there doing nothing — it gets wired into BOTH targets, and the
-hook then runs TWICE per session (HIMMEL-2593).
+hook then runs TWICE per session.
 
 There are **TWO wirers**, with two separate, disjoint inventories. Pick the
 one that matches how the hook is delivered — never assume there is only one:
@@ -49,10 +49,10 @@ Hand-wiring it produces a hook that either never dispatches or breaks
 1. `scripts/hooks/<name>.sh` — the script.
 2. `EXPECTED_SCRIPT_ORDER` in `wire-hook-bash.mjs` — the **frozen ordered
    inventory**, flattened over `--chain` entries, so a guardrail wired for
-   several disjoint matchers is listed **once per chain it appears in**
-   (HIMMEL-2002). A `scripts/hooks/*.sh` invocation under an owned event
+   several disjoint matchers is listed **once per chain it appears in**.
+   A `scripts/hooks/*.sh` invocation under an owned event
    (`PreToolUse`/`PostToolUse`/`SessionStart`) that is *not* listed is an
-   **impostor** and refused (HIMMEL-1552) — deliberately: it is a command the
+   **impostor** and refused — deliberately: it is a command the
    wirer would otherwise route and execute.
 3. `.claude/settings.json` — in the **same relative order** as the inventory.
 
@@ -65,8 +65,7 @@ section opens with.
 Edit all three **in your own worktree** — the copy there is yours to change and
 rides your PR. The LIVE copies (the primary checkout's `.claude/settings.json`
 and the user-scope `~/.claude/settings.json`) stay guarded by
-`block-edit-live-settings.sh`, since a change there takes effect unreviewed
-(HIMMEL-2360).
+`block-edit-live-settings.sh`, since a change there takes effect unreviewed.
 
 **A committed hook script is not the artifact; a registered, dispatching hook
 is.** Confirm with `node scripts/hooks/wire-hook-bash.mjs --check`.
@@ -74,14 +73,13 @@ is.** Confirm with `node scripts/hooks/wire-hook-bash.mjs --check`.
 **Never assert a hardcoded hook COUNT in a test** — derive it from
 `EXPECTED_SCRIPT_ORDER.length` (exported). Per-event counts are deliberately not
 frozen because a second sanctioned writer (the trust ledger) adds entries. A
-hardcoded count is a wall the next capability that adds a hook has to climb
-(HIMMEL-1952).
+hardcoded count is a wall the next capability that adds a hook has to climb.
 
 ## Merging a hook addition — the silent-duplicate trap
 A frozen ordered list is a **merge hazard**. Two branches that each add an entry
 merge *textually clean, with no conflict markers*, and leave the entry
 **duplicated**. This happened in both `wire-hook-bash.mjs` and
-`.claude/settings.json` when HIMMEL-1952 and HIMMEL-1802 landed in parallel.
+`.claude/settings.json` when two hook PRs landed in parallel.
 
 **A clean auto-merge is not evidence of correctness here — check for duplicates
 explicitly** after any merge that touches the inventory or settings.
@@ -95,7 +93,7 @@ it. Read the assertion before assuming it is yours.
 
 The same hazard shape hits `scripts/himmel-doctor.sh`'s `check_cNN()` namespace:
 two branches independently add a `check_cNN()` and pick the same next-free ID
-(C32 collided twice in one afternoon, HIMMEL-2664), and a diff layout that
+(C32 collided twice in one afternoon), and a diff layout that
 merges textually clean leaves one definition silently shadowing the other. It
 has its own pre-commit gate (`check-doctor-check-ids.sh`) rather than relying
 on this note alone — see that script's header for the two invariants it pins.

@@ -22,7 +22,7 @@ the project is dispatched into it explicitly with `WORKER_SESSION_REPO=<path>`.
 # Resolve the himmel checkout: $HIMMEL_REPO -> canonical paths -> error. Never
 # the cwd's own git toplevel: a foreign repo shipping its own
 # scripts/handover/chief/chief.sh would otherwise get ITS script executed
-# in preference to himmel's (HIMMEL-3623 verdict J1268O change 5, F6).
+# in preference to himmel's (change 5, F6).
 REPO="${HIMMEL_REPO:-}"
 if [ -z "$REPO" ] || [ ! -f "$REPO/scripts/handover/chief/chief.sh" ]; then
   for c in "$HOME/Documents/github/himmel" "$HOME/Documents/github/Himmel" "$HOME/github/himmel" "$HOME/github/Himmel" "$HOME/Himmel" "$HOME/himmel"; do
@@ -53,9 +53,9 @@ fi
 # -- chief.sh's `next` already inherits the predecessor doc's own
 # recorded project when none is passed, and an operator's own explicit
 # --project in $ARGUMENTS is passed through untouched either way (codex-1,
-# pr-check round 1, HIMMEL-3623).
+# pr-check round 1).
 #
-# Two more fixes here (codex-1, codex-2, pr-check round 2, HIMMEL-3623):
+# Two more fixes here (codex-1, codex-2, pr-check round 2):
 # the derived --project is appended only when $ARGUMENTS carries none of its
 # own, so an operator's explicit `/chief new --project <dir>` still wins
 # (chief.sh keeps the LAST --project, so appending ours unconditionally
@@ -90,12 +90,13 @@ esac
   tokens in one turn.
 - `--arm` — also arm the session headed via `scripts/handover/headed-arm.sh`,
   on a signal file plus a deadline; prints the arm log path. Supervisor
-  sessions launch with `--autocompact auto` (1m context) by default
-  (HIMMEL-3884); pass `--context standard` or set `CHIEF_CONTEXT=standard`
+  sessions launch with `--autocompact auto` (1m context) by default, since a
+  supervisor carrying the whole fleet's state reaches autocompact mid-shift on
+  200k; pass `--context standard` or set `CHIEF_CONTEXT=standard`
   in the launching shell to opt down to `--autocompact 200000`. The `[1m]`
   model suffix is appended only to the 4.6 family (native-1M and
   non-Anthropic ids launch bare), and a Claude Code below 2.1.280 refuses the
-  armed launch with `claude update` named (HIMMEL-5501).
+  armed launch with `claude update` named.
 - `--dry-run` — print what it would write, prefixed `would-`, and touch nothing.
 - `--bucket <slug>` / `--prefix <P>` — override the project-derived defaults
   (e.g. `/chief new --arm --bucket websites`); the resolved `--project`
@@ -103,16 +104,16 @@ esac
 - `--project <dir>` — this plugin copy derives one from the cwd this session
   is running in, but ONLY for `new`, and only when your own arguments carry
   no `--project` of their own — an explicit `/chief new --project <dir>`
-  always wins over the derived one (codex-1, pr-check round 2, HIMMEL-3623).
+  always wins over the derived one (codex-1, pr-check round 2).
   `next` derives nothing here: with no `--project` of your own, chief.sh
   inherits the predecessor doc's own recorded project instead (codex-1,
-  pr-check round 1, HIMMEL-3623); an explicit `--project`/`--bucket`/`--prefix`
+  pr-check round 1); an explicit `--project`/`--bucket`/`--prefix`
   on `next` still wins. To target a different repo on `new` without passing
   `--project`, start the session there, or override just the naming with
   `--bucket`/`--prefix`.
 
 Record the printed `release-token: ` line — now backticked around the token
-itself (HIMMEL-2910) — in the chief's first Results bullet verbatim:
+itself — in the chief's first Results bullet verbatim:
 releasing the lock at wrap requires it.
 
 Linux/macOS only — `--arm` launches through konsole. The Windows station arms

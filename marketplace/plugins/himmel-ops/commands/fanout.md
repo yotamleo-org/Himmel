@@ -15,7 +15,7 @@ step 3 has something to validate against; if the policy changes, change both)
 |---|---|---|
 | `judgement` — taste calls, IRREVERSIBLE or destructive operations | Fable | escalation target |
 | `reasoning` — multi-step reasoning, orchestration | Opus | default parent |
-| `implementation` — well-specified implementation | Sonnet (default) or a caller-named claude-tier lane (e.g. Opus for a harder task) | impl routes to native Claude subagents only — HIMMEL-1967; an impl-class lane (claudex, hermes-oneshot, codex-exec/wsl, openrouter-claude) is ALWAYS refused as a /fanout destination, dormant or not — it isn't dispatchable via the `Agent` tool's `model` param. Mark `mechanical: true` (a specified edit list, rename sweep, fixture regeneration — the brief names the exact check; a batch of file-scoped items sharing one gate is `mechanical: true`) and, with no `lane`, it routes to Haiku instead (HIMMEL-2660); never mark behavioral code mechanical |
+| `implementation` — well-specified implementation | Sonnet (default) or a caller-named claude-tier lane (e.g. Opus for a harder task) | impl routes to native Claude subagents only, by operator ruling; an impl-class lane (claudex, hermes-oneshot, codex-exec/wsl, openrouter-claude) is ALWAYS refused as a /fanout destination, dormant or not — it isn't dispatchable via the `Agent` tool's `model` param. Mark `mechanical: true` (a specified edit list, rename sweep, fixture regeneration — the brief names the exact check; a batch of file-scoped items sharing one gate is `mechanical: true`) and, with no `lane`, it routes to Haiku instead (a scoped brief runs at a fraction of Sonnet's context and cost); never mark behavioral code mechanical |
 | `research` — scoped, read-only | Sonnet | |
 | `bulk` — bulk mechanical | Haiku | **never spawns further** |
 
@@ -92,7 +92,7 @@ exists to prevent.
 
 6. Report what was dispatched where, and what's still running.
 
-## Estimate-driven effort (optional, HIMMEL-3997)
+## Estimate-driven effort (optional)
 
 An item may carry `estimate`: an `effort-assess` record. The validator then adds
 `recommended_effort`, `review` and `advisory` to that plan entry (advisory only;
@@ -106,11 +106,11 @@ exactly as before. Thresholds live in `scripts/lanes/effort-routing.json`.
 - `scripts/lanes/fanout-plan.mjs` consults `scripts/lanes/resolve.mjs --json`
   for the LIVE roster on every run — never a hardcoded lane list. A lane that
   is out of bank, unauthenticated, retired, or marked `dormant` simply fails
-  validation (dormant is a policy closure — HIMMEL-1967 — not merely
+  validation (dormant is a policy closure, not merely
   "unavailable"; it is never routed around even when its own probe passes).
 - Spawn-depth limit 2 and "Haiku does not spawn" still hold; this command
   doesn't relax either.
 - `/afk-shift`'s dispatch step should be updated to name models via this
   same validator (one routing implementation, not two) — tracked as a
-  follow-up; see the HIMMEL-1829 PR notes for why it wasn't done in the same
-  change.
+  follow-up; it wasn't done in the same change because `.claude/commands/` is
+  denied to agent sessions at the permission layer, so it is an operator edit.
