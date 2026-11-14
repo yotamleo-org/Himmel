@@ -359,7 +359,7 @@ eq "$rc" "0" "T2.3 the route over the fixture exits 0"
 # commands trip the known-findings preflight, so its pass is recorded first, as step 2.8 would.
 (cd "$P" && CR_LEDGER="$GCD/cr-critic-scores.jsonl" bash "$A/scripts/cr/ledger-append.sh" preflight --branch feat/outside-thing --head "$H1" --duration-secs 1 >/dev/null) \
     || fail "fixture: could not record the preflight row"
-(cd "$P" && HOME="$HOMEDIR" PATH="$tmp/bin:$PATH" STUB_OID="$H1" STDIN_LOG="$tmp/stdin-log" \
+(cd "$P" && HIMMEL_REPO="$A" HOME="$HOMEDIR" PATH="$tmp/bin:$PATH" STUB_OID="$H1" STDIN_LOG="$tmp/stdin-log" \
     bash "$A/scripts/cr/panel-first-pass.sh" --pr 7 --head "$H1" --branch feat/outside-thing >/dev/null 2>"$tmp/pf-err"); pf_rc=$?
 eq "$pf_rc" "0" "T2.3 panel-first-pass --pr over the fetched ref exits 0"
 has "$(cat "$tmp/stdin-log" 2>/dev/null)" "test-evil.sh" "T2.3 the panel read the diff from stdin"
