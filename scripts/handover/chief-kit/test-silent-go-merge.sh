@@ -57,8 +57,7 @@ chmod +x "$STUB/page.sh" "$STUB/ready-check.sh" "$STUB/ps.sh" "$STUB/bin/timeout
 export PATH="$STUB/bin:$PATH"
 export CHIEF_WAIT_PAGE_CMD="$STUB/page.sh" CHIEF_SILENT_GO_READY_CHECK="$STUB/ready-check.sh" CHIEF_SILENT_GO_PS="$STUB/ps.sh"
 
-# The himmel checkout the chief runs from: a git repo whose merge gate is a stub,
-# and which the helper lives in (its chief-kit and lib are links to the real ones).
+# The himmel checkout the chief runs from: a git repo whose merge gate is a stub.
 CO="$WORK/checkout"
 mkdir -p "$CO/scripts/handover"
 git -C "$CO" init -q
@@ -71,7 +70,6 @@ cat > "$CO/scripts/handover/merge-on-green.sh" <<'EOF'
 printf '%s %s\n' "$0" "$*" >> "$STUB/merges"
 exit "$(cat "$STUB/merge.rc" 2>/dev/null || echo 0)"
 EOF
-# Another checkout carrying a merge gate of its own, which the helper does not live in.
 OCO="$WORK/other-checkout"
 mkdir -p "$OCO/scripts/handover"
 git -C "$OCO" init -q
@@ -201,11 +199,9 @@ reset yes "- 03:00 LIVE — no handoff possible, still working"; go_file "$SHA"
 printf '4242 claude --name HIMMEL-1-N9-thing-2026-11-05\n' > "$STUB/ps"; run
 check "(n12) a negated hand-off on a live worker: no merge" "0" "$(n "$STUB/merges")"
 
-# --- (n13) a FINDING after the READY voids the hand-off waiver: no merge ---
 reset yes "- 02:00 FINDING — the diff misses a case, asking the chief" "- 03:00 LIVE — handoff: context full, RESUME written: HIMMEL-1-N9b-thing-2026-11-05-RESUME.md"; go_file "$SHA"; run
 check "(n13) a FINDING between the READY and a hand-off: no merge" "0" "$(n "$STUB/merges")"
 
-# --- (n14) a hand-off is a positive shape; other spellings of none are not one ---
 for b in "- 03:00 LIVE — no real hand-off, still working" "- 03:00 LIVE — hand-off: none, still working"; do
     reset yes "$b"; go_file "$SHA"
     printf '4242 claude --name HIMMEL-1-N9-thing-2026-11-05\n' > "$STUB/ps"; run
@@ -213,7 +209,6 @@ for b in "- 03:00 LIVE — no real hand-off, still working" "- 03:00 LIVE — ha
     check "(n14) '${b#- 03:00 LIVE — }' is a LIVE newer than the READY: no page" "0" "$(n "$STUB/pages")"
 done
 
-# --- (n15) run from a checkout the helper does not live in: no merge ---
 reset yes; go_file "$SHA"
 (cd "$OCO" && CHIEF_WAIT_WORKER_SILENT_MIN=45 bash "$SGM" --doc "$CD" --workers-from "$WM" --state "$STATE" > "$WORK/out" 2>"$WORK/err")
 check "(n15) another checkout's merge gate is never called" "0" "$(n "$STUB/merges")"
