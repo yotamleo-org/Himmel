@@ -17,7 +17,7 @@ behaviour classes count only rows whose agent.role is worker or whose agent.id i
 main; a row marked any_role (suite/*) counts every role. Rows that fail the
 worker_ledger.py validator are ignored.
 
-DECISIONS, one decision-log line each (P4 contract): filed | commented | capped |
+DECISIONS, one decision-log line each (P4 contract): filed | commented |
 recurred-after-done | skipped:<why>. A class whose window workers were all acted on
 before makes no decision; a decision equal to the class's last one on
 the same workers writes no second line. Never-routed and signal-only rows (the
@@ -29,14 +29,14 @@ traj/red-before-green and traj/claim-unverified classes among them) decide nothi
          so readers skip it) is written first; if that write fails nothing is sent and the
          decision is skipped:log-error. JIRA_PROJECT_KEY is required (no default) unless --dry-run.
   state  $HIMMEL_FAILURE_ROUTES_STATE, else ~/.himmel/state/failure-routes.json
-         class -> ticket and counts, plus the day's create count; flock, temp then rename
+         class -> ticket and counts; flock, temp then rename
   inbox  $HIMMEL_FAILURE_INBOX, else --inbox (<bucket>/failure-loop/memory-inbox.md);
          one `- ` line per class ever, under flock; none when neither is set
 
 JIRA (the himmel CLI by absolute path; --jira-bin replaces it, as the tests' stub):
 a --jql label search over every status before any create, one Task per class with
 labels failure-loop + fl-<slug> and no fixVersion, at most one comment a day per
-ticket, at most daily_cap creates a UTC day. A Done ticket is never reopened or
+ticket, and no limit on creates: every class that fires and has no ticket gets one. A Done ticket is never reopened or
 re-filed. FAIL CLOSED: an unreadable state file, a search error, a CLI error or a
 body outside the alphabet files nothing and logs skipped:<why>. slug() is lossy (case,
 punctuation, past char 60), so a class with no ticket of its own whose fl-<slug> is
@@ -327,12 +327,13 @@ def with_file(text, fn):
 def load_state(path):
     """(state, ok). A missing file is an empty state; anything unreadable is not ok."""
     if not os.path.exists(path):
-        return {"v": 1, "classes": {}, "created": {"day": None, "n": 0}}, True
+        return {"v": 1, "classes": {}}, True
     try:
         with open(path, encoding="utf-8") as fh:
             s = json.load(fh)
-        if not (isinstance(s, dict) and isinstance(s.get("classes"), dict) and isinstance(s.get("created"), dict)):
+        if not (isinstance(s, dict) and isinstance(s.get("classes"), dict)):
             return None, False
+        s.pop("created", None)
         return s, True
     except (OSError, ValueError):
         return None, False
@@ -390,7 +391,7 @@ def acted(c, workers):
 
 
 def decide(a, table, cls, t, workers, counted, c, state, state_ok, today, jbin, project, intent, collide=False):
-    """(decision, ticket). Mutates the class entry c and the state's create count.
+    """(decision, ticket). Mutates the class entry c.
 
     intent(kind) logs the send before it happens and returns False when the log write failed:
     no Jira write is made without it."""
@@ -406,11 +407,6 @@ def decide(a, table, cls, t, workers, counted, c, state, state_ok, today, jbin, 
     if a.dry_run:
         if c.get("ticket"):
             return "would-comment", c["ticket"]
-        cap = state["created"]["n"] if state["created"].get("day") == today else 0
-        if cap >= table["daily_cap"]:
-            return "would-cap", None
-        # The dry run is never saved, so counting here only makes it show the cap a live run would hit.
-        state["created"] = {"day": today, "n": cap + 1}
         return "would-file", None
     hits = search(jbin, project, cls)
     if hits is None:
@@ -434,10 +430,6 @@ def decide(a, table, cls, t, workers, counted, c, state, state_ok, today, jbin, 
         acted(c, workers)
         c["last_comment_day"] = today
         return "commented", key
-    if state["created"].get("day") != today:
-        state["created"] = {"day": today, "n": 0}
-    if state["created"]["n"] >= table["daily_cap"]:
-        return "capped", None
     sub = cls.partition("/")[2]
     title = t["summary"].replace("{sub}", sub).replace("{workers}", str(n))
     body = build_body(table, t, cls, workers, counted, False)
@@ -457,7 +449,6 @@ def decide(a, table, cls, t, workers, counted, c, state, state_ok, today, jbin, 
         if out is not None:
             JIRA_ERR = "unexpected output: " + excerpt(out)
         return "skipped:jira-error", None
-    state["created"]["n"] += 1
     c["ticket"] = m.group(1)
     acted(c, workers)
     return "filed", m.group(1)
@@ -494,8 +485,7 @@ def route(a):
         failed = False
         sent = []
         fires = {cls: firing(table, cls, by[cls]) for cls in sorted(by)}
-        # The daily cap stops the walk, so the widest classes go first, not the alphabetical ones.
-        for cls in sorted((c for c in fires if fires[c]), key=lambda c: (-len(fires[c][1]), c)):
+        for cls in sorted(c for c in fires if fires[c]):
             t, workers, counted = fires[cls]
             n = len(workers)
             c = state["classes"].setdefault(cls, {}) if state_ok else {}

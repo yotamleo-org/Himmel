@@ -6,7 +6,7 @@
 #  1. a zero-failure day writes "no failures" and sends nothing;
 #  2. the default run is the router's dry-run: no Jira call, no router state or log;
 #  3. --live routes through the router: one ticket filed through the stub, one Telegram line;
-#  4. a capped day says so (live and dry-run);
+#  4. no daily create cap: an old state file carrying a create count still files (live and dry-run);
 #  5. the two unreliable trajectory signals never reach the digest;
 #  6. new vs recurring classes; a quiet day (no new class, nothing routed) sends nothing;
 #  7. the daily-note section is upserted, never duplicated;
@@ -161,16 +161,16 @@ env -u JIRA_PROJECT_KEY timeout "$BOUND" python3 "$FRV" --ledger "$C3k/ledger.js
 hung "$rc" "review c3k"
 check "a live review with no JIRA_PROJECT_KEY fails closed and says the key is missing" '[ "$rc" = 1 ] && grep -q "JIRA_PROJECT_KEY is required" "$C3k/run.out" && digest "$C3k" | grep -q "router: failed" && [ "$(calls create)" = "$n3" ]'
 
-echo "4. a capped day says so"
+echo "4. no daily create cap: a state file that still carries a day's create count holds nothing back"
 C4="$TMP/c4"; mkdir -p "$C4"; cp "$C2/ledger.jsonl" "$C4/ledger.jsonl"
 printf '{"v":1,"classes":{},"created":{"day":"%s","n":3}}\n' "$DAY" >"$C4/state.json"
-review "$C4" --live >"$C4/run.out" 2>&1 || bad "capped live review exits 0"
-check "live: nothing filed, the digest says capped" '[ "$(calls create)" = 1 ] && digest "$C4" | grep -q "capped: the daily create cap was hit; waiting: denied/guard-pr-check-literal"'
+review "$C4" --live >"$C4/run.out" 2>&1 || bad "live review over an old state file exits 0"
+check "live: the class is filed and the digest has no capped line" '[ "$(calls create)" = 2 ] && digest "$C4" | grep -q "filed denied/guard-pr-check-literal" && ! digest "$C4" | grep -q "capped"'
 C4b="$TMP/c4b"; mkdir -p "$C4b"; cp "$C2/ledger.jsonl" "$C4b/ledger.jsonl"
 printf '{"v":1,"classes":{},"created":{"day":"%s","n":3}}\n' "$DAY" >"$C4b/state.json"
 review "$C4b" >/dev/null 2>&1
-check "dry-run: the digest says capped too" 'digest "$C4b" | grep -q "capped: the daily create cap was hit"'
-check "an uncapped day says none capped" 'digest "$C2" | grep -q "capped: none"'
+check "dry-run: the digest says would-file and has no capped line" 'digest "$C4b" | grep -q "would-file denied/guard-pr-check-literal" && ! digest "$C4b" | grep -q "capped"'
+check "an ordinary day's digest has no capped line" '! digest "$C2" | grep -q "capped"'
 # a class that already has a ticket would be commented on, not filed: the "would be" count is tickets only.
 C4c="$TMP/c4c"; mkdir -p "$C4c"; cp "$C2/ledger.jsonl" "$C4c/ledger.jsonl"
 printf '{"v":1,"classes":{"denied/guard-pr-check-literal":{"ticket":"HIMMEL-9100"}},"created":{}}\n' >"$C4c/state.json"
@@ -498,7 +498,6 @@ cat >"$TMP/golden-c2.md" <<'EOF'
 ### Routing (dry-run)
 
 - would-file denied/guard-pr-check-literal (workers 2 in 14 d)
-- capped: none
 
 ### Trajectory signals
 
