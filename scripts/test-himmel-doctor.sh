@@ -1087,7 +1087,7 @@ fi
 rm -rf "$t"
 
 echo "== C8: stale graph-choices runner -> WARN + graph-choices re-arm hint =="
-t="$(mktemp -d)" || exit 1; mkdir -p "$t/claude" "$t/gc"; write_settings "$t/claude" "$WRAPPER"
+t="$(mktemp -d "${TMPDIR:-/tmp}/doctor-c8.XXXXXX")" || exit 1; mkdir -p "$t/claude" "$t/gc"; write_settings "$t/claude" "$WRAPPER"
 printf '#!/bin/sh\n# himmel-cadence-runner-format: %s\necho old graph-choices\n' "$STALE_CADENCE_VER" > "$t/gc/graph-choices.sh"
 out="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" PIPELINE_BAT_DIR="$t/pipeline-empty" \
     GRAPHMAP_BAT_DIR="$t/graphmap-empty" QMD_CADENCE_BAT_DIR="$t/qmd-empty" GRAPH_CHOICES_BAT_DIR="$t/gc" \

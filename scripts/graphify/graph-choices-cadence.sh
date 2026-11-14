@@ -13,6 +13,10 @@
 # line neither clears nor raises what the pass itself alerted. Its files live in ~/.claude/graph-choices-cadence/; the
 # log keeps the pass's lines across fires (rotated by size), because the doctor counts consecutive words over it.
 #
+# Exit: 0 done (armed, already armed, status, disarmed, dry run); 1 a bad argument or --time; 2 a missing tool at arm
+# time (bash, node or graphify) or a crontab that could not be read; 4 the crontab install failed, the rejected tab is
+# left in TMPDIR.
+#
 # Seams (tests): GRAPH_CHOICES_CRONTAB (command invoked instead of `crontab`), GRAPH_CHOICES_BAT_DIR (the runner dir).
 set -uo pipefail
 
@@ -42,7 +46,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 case "$SUBCMD" in arm | status | disarm) ;; *) echo "usage: graph-choices-cadence.sh arm|status|disarm [--time HH:MM] [--force] [--dry-run]" >&2; exit 1 ;; esac
-if ! printf '%s' "$TIME" | grep -Eq '^([01][0-9]|2[0-3]):[0-5][0-9]$'; then
+if ! grep -Eq '^([01][0-9]|2[0-3]):[0-5][0-9]$' <<<"$TIME"; then
   echo "ERR graph-choices-cadence: --time must be HH:MM on a 24-hour clock (got '$TIME')" >&2
   exit 1
 fi
