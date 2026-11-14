@@ -13,7 +13,7 @@ import { stubKeyring } from "./keyring-stub";
 const TOKEN = "t".repeat(64);
 const CANARY = "ghp_" + "Z9y8".repeat(8);
 const CADENCES = ["scripts/luna/pipeline-cadence.sh", "scripts/luna/graphmap-cadence.sh", "scripts/luna/qmd-cadence.sh",
-  "scripts/doctor-cadence.sh"];
+  "scripts/doctor-cadence.sh", "scripts/graphify/graph-choices-cadence.sh"];
 let dir = "", repo = "", home = "", cad = "", state = "", argvFile = "";
 const stops: (() => void)[] = [];
 
@@ -81,6 +81,28 @@ test("the graphmap consent text is config-feed.js's cost string, true on every s
   const port = boot();
   const b = await (await preview(port)).json();
   expect(b.bank).toBe("free hourly structure refresh; on the publishing station only, a daily himmel extraction on the API lane or the subscription, as its runner was rendered; where the Luna map row is armed, a weekly Luna extraction on the subscription, after a usage check");
+});
+
+test("A2: graph-choices does not arm without the typed word, and its preview carries both worst-case lines", async () => {
+  const cfgDir = join(home, ".himmel");
+  mkdirSync(cfgDir, { recursive: true });
+  writeFileSync(join(cfgDir, "config.json"), JSON.stringify({ graphify: { choices: { version: 1, corpora: [], primary: "A", fallbacks: ["subscription"], max_usd_per_pass: 5 } } }));
+  const saved = process.env.HIMMEL_CONFIG_DIR;
+  process.env.HIMMEL_CONFIG_DIR = cfgDir;
+  try {
+    const port = boot();
+    const body = { action: "cadence.arm", target: "graph-choices" };
+    const b = await (await preview(port, body)).json();
+    expect(b.consent).toEqual({ kind: "typed", expect: "graph-choices" });
+    expect(b.bank).toContain("The API steps (A): up to 5.00 USD a day, as an estimate");
+    expect(b.bank).toContain("The subscription step: up to 150 markdown files a fire");
+    expect((await post(port, "/api/run", { previewId: b.previewId, ...body, consent: "yes" })).status).toBe(403);
+    expect(recorded()).toEqual(["graph-choices-cadence.sh arm --dry-run"]);
+    expect((await post(port, "/api/run", { previewId: b.previewId, ...body, consent: "graph-choices" })).status).toBe(200);
+    expect(recorded().filter((l) => l === "graph-choices-cadence.sh arm")).toHaveLength(1);
+  } finally {
+    if (saved === undefined) delete process.env.HIMMEL_CONFIG_DIR; else process.env.HIMMEL_CONFIG_DIR = saved;
+  }
 });
 
 test("run with the preview id and typed consent runs exactly `arm`, then re-probes that row", async () => {

@@ -553,5 +553,26 @@ for sub in edited control duplicated; do
 done
 unset tok32 rc32 out32
 
+echo "==== RED33 (HIMMEL-9769 S4): the daily graph pass armed through its real arm is removed by a plain uninstall ===="
+# The job's runner directory, its cron row and the graphs the pass built under choices/ are himmel's own derived
+# code: a plain uninstall removes all three. The arm runs the real graph-choices-cadence.sh against the fake crontab.
+new_case red33
+CASE_CRONTAB_FILE="$CASE_DIR/crontab.txt"
+mkdir -p "$CASE_DIR/tools"
+printf '#!/bin/sh\nexit 0\n' > "$CASE_DIR/tools/graphify"; chmod 755 "$CASE_DIR/tools/graphify"
+arm33=$(PATH="$CASE_DIR/tools:$SUITE_TMP/bin:$PATH" CRONTAB_STATE_FILE="$CASE_CRONTAB_FILE" GRAPH_CHOICES_CRONTAB="$SUITE_TMP/bin/crontab" \
+  bash "$repo_root/scripts/graphify/graph-choices-cadence.sh" arm --time 04:40 2>&1); rc_arm33=$?
+check "RED33 the real arm exits 0" "$rc_arm33" "0"
+check "RED33 the cron row is armed" "$(grep -c '# HIMMEL-GraphChoices$' "$CASE_CRONTAB_FILE")" "1"
+check "RED33 the runner directory exists" "$([ -x "$HOME/.claude/graph-choices-cadence/graph-choices.sh" ] && echo yes || echo no)" "yes"
+mkdir -p "$HOME/.local/share/himmel/graphify/choices/c1/graphify-out"
+printf '{}\n' > "$HOME/.local/share/himmel/graphify/choices/c1/graphify-out/graph.json"
+out33=$(run_uninstall --yes --skip-plugins --skip-hooks --skip-settings); rc33=$?
+check "RED33 uninstall exit status" "$rc33" "0"
+check "RED33 the cron row is gone" "$(grep -c 'HIMMEL-GraphChoices' "$CASE_CRONTAB_FILE")" "0"
+check "RED33 the runner directory is gone" "$([ -e "$HOME/.claude/graph-choices-cadence" ] && echo present || echo gone)" "gone"
+check "RED33 choices/ is gone" "$([ -e "$HOME/.local/share/himmel/graphify/choices" ] && echo present || echo gone)" "gone"
+unset arm33 rc_arm33 out33 rc33
+
 
 uninstall_prov_finish

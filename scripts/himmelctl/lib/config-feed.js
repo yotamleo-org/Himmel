@@ -49,6 +49,7 @@ const CADENCES = [
   { name: 'pipeline', script: 'scripts/luna/pipeline-cadence.sh', evidence: 'log', cost: 'runs Claude-backed harvest/synthesize and draws the subscription bank' },
   { name: 'qmd', script: 'scripts/luna/qmd-cadence.sh', evidence: 'log', cost: 'none (local qmd reindex)' },
   { name: 'graphmap', script: 'scripts/luna/graphmap-cadence.sh', evidence: 'log', cost: GRAPHMAP_COST },
+  { name: 'graph-choices', script: 'scripts/graphify/graph-choices-cadence.sh', evidence: 'log', cost: 'worst-case' },
   { name: 'doctor', script: 'scripts/doctor-cadence.sh', evidence: 'doctor-last', cost: 'none' },
   { name: 'rollup', script: 'scripts/eval/rollup-cadence.sh', evidence: 'log', cost: 'none' },
 ];
@@ -306,6 +307,14 @@ function lastRunFromLogs(name) {
   return best;
 }
 
+// The consent text of a cadence whose cost depends on the stored choice: graph-choices.js prints its worst case, one
+// line per kind of step, for the choice on this station.
+function worstCaseText() {
+  const r = spawnSync(process.execPath, [path.join(__dirname, 'graph-choices.js'), 'worst-case'], { encoding: 'utf8', timeout: CADENCE_STATUS_TIMEOUT_MS });
+  const text = String(r.stdout || '').trim();
+  return r.status === 0 && text ? text : 'the stored graph choice could not be read, so its worst case is unknown';
+}
+
 function cadenceRow(c, ctx) {
   const { probedAt, manifest } = ctx;
   const id = `${c.name}-cadence`;
@@ -340,7 +349,7 @@ function cadenceRow(c, ctx) {
     health: broken ? 'warn' : armed ? 'ok' : 'off',
     fix: { remedy: broken ? `bash ${c.script} status` : armed ? '' : `bash ${c.script} arm`, owner: 'user' },
     probedAt,
-    control: { class: 'toggle', action: armed ? 'cadence.disarm' : 'cadence.arm', target: c.name, consent: 'typed', cost: c.cost },
+    control: { class: 'toggle', action: armed ? 'cadence.disarm' : 'cadence.arm', target: c.name, consent: 'typed', cost: c.cost === 'worst-case' ? worstCaseText() : c.cost, script: c.script },
   });
 }
 

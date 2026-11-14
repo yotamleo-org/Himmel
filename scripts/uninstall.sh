@@ -351,6 +351,8 @@ _ix_qmd=$(m_index qmd-fork) || exit 2
 _ix_cadence_pipeline=$(m_index cadence-pipeline-dir) || exit 2
 _ix_cadence_qmd=$(m_index cadence-qmd-dir) || exit 2
 _ix_cadence_graphmap=$(m_index cadence-graphmap-dir) || exit 2
+_ix_cadence_graphchoices=$(m_index cadence-graph-choices-dir) || exit 2
+_ix_graph_choices_graphs=$(m_index graph-choices-graphs) || exit 2
 _ix_obs=$(m_index observability-registry) || exit 2
 _ix_conf=$(m_index himmel-conf) || exit 2
 _ix_conf_local=$(m_index himmel-conf-local) || exit 2
@@ -373,6 +375,8 @@ HIMMEL_CACHE_DIR="$(strip_trailing_slash "$(m_path "$_ix_cache")")"
 CADENCE_PIPELINE_DIR="$(strip_trailing_slash "$(m_path "$_ix_cadence_pipeline")")"
 CADENCE_QMD_DIR="$(strip_trailing_slash "$(m_path "$_ix_cadence_qmd")")"
 CADENCE_GRAPHMAP_DIR="$(strip_trailing_slash "$(m_path "$_ix_cadence_graphmap")")"
+CADENCE_GRAPH_CHOICES_DIR="$(strip_trailing_slash "$(m_path "$_ix_cadence_graphchoices")")"
+GRAPH_CHOICES_GRAPHS_DIR="$(strip_trailing_slash "$(m_path "$_ix_graph_choices_graphs")")"
 OBSERVABILITY_REGISTRY="$(m_path "$_ix_obs")"
 
 # Operator state (manifest class=state) is removed only on --purge-state; the
@@ -662,6 +666,7 @@ protected_path() {
     ".claude/himmel" ".claude/channels/telegram" ".claude/handover/bridge"
     ".himmel" ".himmel/state/config-audit/backups"
     ".claude/pipeline-cadence" ".claude/qmd-cadence" ".claude/graphmap-cadence"
+    ".claude/graph-choices-cadence" ".local/share/himmel/graphify/choices"
   )
   if [ -n "$_t_lexical" ]; then
     for _suffix in "${_allowed_suffixes[@]}"; do
@@ -2492,10 +2497,12 @@ fi
 # runner scripts + settings fragment an arm writes into these dirs are never
 # touched by that, and each cadence script's own disarm only clears files
 # inside its BAT_DIR, never the directory itself.
-for _ix_cad in "$_ix_cadence_pipeline" "$_ix_cadence_qmd" "$_ix_cadence_graphmap"; do
+for _ix_cad in "$_ix_cadence_pipeline" "$_ix_cadence_qmd" "$_ix_cadence_graphmap" "$_ix_cadence_graphchoices" "$_ix_graph_choices_graphs"; do
   case "$_ix_cad" in
     "$_ix_cadence_pipeline") _cad_dir="$CADENCE_PIPELINE_DIR" ;;
     "$_ix_cadence_qmd")      _cad_dir="$CADENCE_QMD_DIR" ;;
+    "$_ix_cadence_graphchoices") _cad_dir="$CADENCE_GRAPH_CHOICES_DIR" ;;
+    "$_ix_graph_choices_graphs") _cad_dir="$GRAPH_CHOICES_GRAPHS_DIR" ;;
     *)                       _cad_dir="$CADENCE_GRAPHMAP_DIR" ;;
   esac
   if [ "$HALTED" -eq 1 ]; then
