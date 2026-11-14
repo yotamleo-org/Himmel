@@ -378,6 +378,17 @@ command to run at a terminal: `sudo bash <checkout>/scripts/lib/afk-sudo/install
 nothing itself. No value of the config is touched by a re-install or by a boot: `ops.enabled` stays what the
 operator set.
 
+While away, the operator applies the same re-install with the `helper-update` op: a chief sends
+`/op helper-update commit=<sha>` (the sha from
+`gh run list --workflow ci.yml --branch main --status success --limit 1 --json headSha`). The operator approves the
+notice with the nonce and code. It needs `ops.enabled` and `helper_update.enabled`, and it reaches a station with the
+next manual install. The template ships `helper_update` off with an empty `repo` and `checkout`, and the op fails
+closed until both are set. The one-time station step, after the op's VM proof has passed: run
+`sudoedit /etc/himmel/afk-sudo.json` and set `helper_update.repo` to the himmel repo's `<owner>/<name>`,
+`helper_update.checkout` to the station checkout's absolute path, and `helper_update.enabled` to `true`. A release
+that changes `never_remote.py` or a sudoers file still needs this command at a terminal. A run that is killed is
+restored by the next call of the op, unless someone has installed since: a terminal re-install more than 305 s after the run started is never rolled back, and the op tells installs apart by file change time, so one inside that window is restored over.
+
 ## Turning it off
 
 Narrowest first. Each is a root edit of `/etc/himmel/afk-sudo.json` (`sudoedit`), read
@@ -436,6 +447,7 @@ OPS-2 adds three more, each `<op>.sh` plus `<op>.json`:
 | `reboot-recover` (`action=arm\|disarm`, `doc`, `repo`) | root | `arm` writes the root-owned marker `/var/lib/himmel/reboot-recover.json` and the user unit `/etc/systemd/user/himmel-recover.service` (enabled through `default.target.wants`, `ConditionPathExists` on the marker). At the next login `scripts/station-ops/recover.sh` runs as the operator, once per arming: it checks the services, verifies the bridge, re-arms the chief from `doc` with `arm-resume.sh --handover` and sends a status through the bridge bot. With no marker it does nothing. |
 | `chief-restart` (`chief-restart.sh`; `chief`, `doc`, `repo`) | operator user | Stops the operator's running session named `chief` (SIGTERM, SIGKILL after 15 s) and re-arms it from `doc`; its stale queue lock passes to the re-armed session. A chief cannot restart itself. |
 | `size-approval` (`size-approval.sh`; `key`, `label`, `files` of 1 to 3 digits, `scope` of 32 hex, `reason` one word of `A-Za-z0-9,.:_-`, all required) | root | The operator keeps one oversized brief whole: writes `/var/lib/himmel/size-approvals/<key>.<label>.<files>.<scope>` (root, 0644, in a root 0755 directory), one line `SIZE-APPROVAL <expires> <key> <label> <files> <scope> <id> <reason>`. `<expires>` is the run plus 7 days, and every run renews it (`changed`). `scripts/handover/chief-kit/size-override.sh check` accepts it for a trust-path brief of 21 to 300 files when the key, label, file count and file-list digest match, it is unexpired, and the file, its directory and that directory's parent are root-owned and not group/other-writable. `scope` is the digest gen-briefs prints with the paste-ready line. |
+| `helper-update` (`helper-update.sh`; `commit` of 40 hex) | root | Re-installs the helper, broker, floor and ops by running the commit's own `install.sh` from a root stage, after the approval. The commit must be on GitHub's main (by main's sha) with a successful `ci.yml` run at that sha, not older than the installed commit (`/var/lib/himmel/afk-sudo/helper-commit`), and the checkout named in `helper_update.checkout` must hold the same files. At the request it fetches metadata only and runs nothing from GitHub; the notice names the PR, its merger and approvers, a compare link from the installed commit and a `WARN` for `install.sh`, `ci.yml` or `never_remote.py`. A changed `never_remote.py` or sudoers file needs a terminal. It snapshots libexec, the sudoers files and the config, restores them on any failure or after an interrupted run, and is off until `helper_update.enabled`. It checks only honest changes: a merged helper that skips the floor installs like any other. |
 
 `size-override.sh operator <KEY> <label> --files <n> --scope <hex> --reason <word>` files the `size-approval` op from a
 terminal (`--session terminal-<pid>`) and, on a terminal, runs `himmelctl approve <id>` for the nonce and code; without
