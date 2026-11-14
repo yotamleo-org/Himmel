@@ -293,8 +293,9 @@ run_mode() {
     # fixture token and put a REAL credential in reach of a row. Unset every ambient token first.
     exec_row "$bound" env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY -u CHIEF_SESSION_NAME \
         -u himmel_github_token_vm2 -u GITHUB_TOKEN -u GH_ENTERPRISE_TOKEN -u GITHUB_ENTERPRISE_TOKEN "${envs[@]}" "$@"
-    if [ "$class" = rate ] && [ -n "${AFFECT_FN:-}" ]; then
-        case "$("$AFFECT_FN" "$mode")" in no) class=none ;; maybe) class=maybe ;; boundonly) class=boundonly ;; esac
+    if [ -n "${AFFECT_FN:-}" ]; then
+        # a stall on a token the caller does not read is no stall to it
+        case "$class:$("$AFFECT_FN" "$mode")" in rate:no | stall:no) class=none ;; rate:maybe) class=maybe ;; rate:boundonly) class=boundonly ;; esac
     fi
     judge_row "$caller" "$mode" "$bound" "$want" "$class"
 }
@@ -320,9 +321,9 @@ gate_fixture() {
 
 modes_for() { if [ -n "$MODE_ONLY" ]; then printf '%s\n' "$MODE_ONLY"; else printf '%s %s %s\n' "$RATE_MODES" "$HUNG_MODES" "$XM"; fi; }
 
-affect_cr_disposition() { case "$1" in rest-out | read-only) echo no ;; *) echo yes ;; esac; }
+affect_cr_disposition() { case "$1" in rest-out | read-only | main-only) echo no ;; *) echo yes ;; esac; }
 affect_ready_check() { case "$1" in read-only) echo no ;; main-only) echo maybe ;; *) echo yes ;; esac; }
-affect_go() { case "$1" in read-only) echo no ;; *) echo yes ;; esac; }
+affect_go() { case "$1" in read-only | main-only | main-hung) echo no ;; *) echo yes ;; esac; }
 
 drive_cr_disposition() {
     CUR=cr-disposition.sh
@@ -365,7 +366,7 @@ drive_go() {
         rm -rf "$cdir/root/.locks"
         EXTRA_ENV="HANDOVER_DIR=$cdir/root"$'\n'"HIMMEL_REPO=$GATE_REPO"
         run_mode go.sh "$m" 14 11 bash "$script" 77 "$SHA"
-        if [ "$(affect_go "$m")" = no ] && [ "$(mode_class "$m")" = rate ]; then
+        if [ "$(affect_go "$m")" = no ]; then
             emit "PASS go.sh $m no-go-written n/a"
         elif [ -e "$cdir/root/.locks/go/77.$SHA" ]; then
             emit "FAIL go.sh $m no-go-written a GO file exists after a refused read"
@@ -376,7 +377,7 @@ drive_go() {
     EXTRA_ENV=""
 }
 
-affect_nd() { case "$1" in read-only) echo no ;; *) echo yes ;; esac; }
+affect_nd() { case "$1" in main-only) echo no ;; *) echo yes ;; esac; }
 
 nd_fixture() {
     local M
@@ -458,7 +459,7 @@ STUB
     EXTRA_ENV=""
 }
 
-affect_cw() { case "$1" in read-only) echo no ;; *) echo yes ;; esac; }
+affect_cw() { case "$1" in read-only | main-only) echo no ;; *) echo yes ;; esac; }
 
 drive_chief_wait() {
     CUR=chief-wait.sh

@@ -317,11 +317,16 @@ spent=""
 for s in 1 2 3; do
     lm=$(logmark)
     sample "$I" "$M" "$WORK/i5m-$s.out"
-    check "(i5m) main at 0, read alive: sample $s wakes nothing" "running" "$rc"
+    if [ "$s" = 1 ]; then
+        check "(i5m) main at 0, read alive: every READY check rides the read token, so sample 1 wakes" "0" "$rc"
+    else
+        check "(i5m) main at 0, read alive: sample $s wakes nothing more" "running" "$rc"
+    fi
     if [ "$(spent_since "$lm")" -gt 0 ]; then spent="$spent$s"; fi
 done
 check "(i5m) the checks ran on the first sample only (stub log)" "1" "$spent"
-check "(i5m) and the READY stays unspent" "" "$(cat "$I.wait.readywoke" 2>/dev/null)"
+check "(i5m) the wake carries the read-token CI read and disposition" "ci=GREEN disposition=ok" "$(grep -m1 '^WAKE ready 77 ' "$WORK/i5m-1.out" | grep -oE 'ci=[A-Z]+|disposition=[a-z]+' | paste -sd' ' -)"
+check "(i5m) and the READY is spent once" "77 $SHA" "$(cat "$I.wait.readywoke" 2>/dev/null)"
 
 fleet stall N1 "READY 77 $SHA GREEN"
 rm -rf "$Q/blocked"
