@@ -33,6 +33,7 @@ dry-run first, then, once confirmed, runs the `himmelctl` command printed under 
 | Setup choices (Configure, Project scope tile) | `HANDOVER_DIR` and `LUNA_VAULT_PATH` in `~/.himmel/himmel.conf`, through `himmelctl config set handover.root` or `luna.vaultPath`; an absolute path with no `.` or `..` part, quote, `#`, `$`, backslash or control character | next Claude launch |
 | Fleet cap (Configure, Project scope tile) | nothing: the tile is read-only. It shows the cap the preflight applies (default 4) and names the key to edit by hand, `~/.himmel/config.json` `.policy.HIMMEL_FLEET_CAP`; a legacy `.env` line still applies until that key is set, and a value exported in the shell that launches a worker is ignored. An empty-string cap or a non-object `.policy` shows 4, the cap the preflight applies | the next worker launch |
 | VM mode (Configure, Project scope tile) | the `vm` section of the himmel config file in `~/.himmel`: `local`, `remote` (ssh target, port, identity) or `none`; validated before the write | the next VM proof run |
+| Code graph (Configure, Project scope tile) | `graphify.choices` in `~/.himmel/config.json`, through `POST /api/graph-choices`: the repos to graph, who pays first (`none`, `subscription` or a configured API account), the fallbacks in order and the most USD per pass. The save runs the shape, repo and API roster checks and writes nothing when one refuses; a save that drops an account from the route clears that account's `graph-key-<L>` alert. Read-only, with the reason, on a station that publishes the himmel graph or whose config cannot be read | the next daily graph pass |
 | Review gate (Configure, Review tile) | the per-machine overlay `critics.local.json` only, through `POST /api/review-gate`: each reviewer's `mode`, `required` and on/off (`drop`). The shared `scripts/cr/critics.json` is never written | the next review round |
 
 The Review gate card lists the reviewers in the order they run, says in plain words what `hard` and `best-effort`
@@ -108,6 +109,7 @@ This is the full set, each mapped to the code that handles it:
 | Fleet cap | `/api/fleet-cap` | `scripts/config-ui/fleet-cap.ts` |
 | VM mode | `/api/vm` | `scripts/config-ui/vm-config.ts` |
 | Reports and shifts settings (Configure) | `/api/report-settings` | `writeReports` in `scripts/config-ui/report-settings.ts` |
+| Graph choices (Configure, Project scope, Code graph) | `/api/graph-choices` | `writeGraph` in `scripts/config-ui/graph-config.ts` |
 | Role map for the API accounts (Configure, Secrets, Multi accounts) | `/api/api-roles` | `saveRoles` in `scripts/config-ui/api-roles-settings.ts` |
 | Board lane move, card Sector | `/api/roadmap/write` | `roadmapWriteRoute` in `scripts/config-ui/server.ts` (a local card: `localWriteRoute`, `scripts/config-ui/local-tracker.ts`) |
 

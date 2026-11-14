@@ -205,7 +205,7 @@ to item 16; 5. the code-owner approval last. Detail: `docs/internals/validation-
 
 **19. suite evidence.** Every impacted suite of `origin/main..<head>` needs proof at the
 exact head: `local_pass` or a ruled SKIP in the head's `impacted` ledger row, or a `ran 0 <path>`
-line in the CI shard manifests (`docs/internals/validation-gates.md`). Read each ruled SKIP the
+line in the CI manifests (`docs/internals/validation-gates.md`). Read each ruled SKIP the
 PASS line names before a hand GO (`auto-go.sh` does not stop on one). No row: run pr-check step 3.6 for that head yourself.
 
 ## Wrapping a worker

@@ -1,11 +1,36 @@
 // Journey J3: the Configure page (it replaced Settings and Setup) with its four group tiles, and the Board follows the tracker source.
-import { readFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, expect, type Page } from "@playwright/test";
 import { boot, type Harness, type TrackerKind } from "./fixtures";
 
 let h: Harness;
 test.afterEach(async () => { await h?.stop(); });
+
+// The Code graph card saves through the real config-audit and reads the API roster and the crontab: the server inherits
+// this process's env, so each card spec points those at fixtures first (no real .env, roster or crontab is read).
+const GRAPH_SEAMS = ["HIMMEL_CONFIG_AUDIT_ENV_FILE", "HIMMEL_CONFIG_ALERT_CMD", "HIMMEL_TEST_FIXTURE", "HIMMEL_API_CREDIT_CONFIG", "GRAPH_CHOICES_CRONTAB", "CADENCE_ALERT_DEDUPE_DIR"];
+let graphUndo: (() => void) | null = null;
+test.afterEach(() => { graphUndo?.(); graphUndo = null; });
+function graphSeams() {
+  const dir = mkdtempSync(join(tmpdir(), "cfgui-graph-")), kept = Object.fromEntries(GRAPH_SEAMS.map((k) => [k, process.env[k]]));
+  writeFileSync(join(dir, "fixture.env"), "ANTHROPIC_API_KEY=sk-ant-api03-PLANTED\n");
+  writeFileSync(join(dir, "stub.sh"), "#!/bin/sh\nexit 1\n");
+  chmodSync(join(dir, "stub.sh"), 0o755);
+  Object.assign(process.env, { HIMMEL_CONFIG_AUDIT_ENV_FILE: join(dir, "fixture.env"), HIMMEL_CONFIG_ALERT_CMD: join(dir, "stub.sh"), HIMMEL_TEST_FIXTURE: "1",
+    HIMMEL_API_CREDIT_CONFIG: join(dir, "no-roster.json"), GRAPH_CHOICES_CRONTAB: join(dir, "stub.sh"), CADENCE_ALERT_DEDUPE_DIR: join(dir, "dedupe") });
+  graphUndo = () => {
+    for (const k of GRAPH_SEAMS) { if (kept[k] === undefined) delete process.env[k]; else process.env[k] = kept[k]; }
+    rmSync(dir, { recursive: true, force: true });
+  };
+}
+async function graphCard(page: Page) {
+  await page.locator('button.tile[data-tile="scope"]').click();
+  const cat = page.locator('#tile-scope details.cat[data-cat="graph"]');
+  if ((await cat.getAttribute("open")) === null) await cat.locator("> summary").click();
+  return page.locator("#graph-choices");
+}
 
 const TILES = ["Secrets", "Review", "Tracker", "Project scope"];
 // the Settings groups that sit under the Project scope tile
@@ -74,7 +99,7 @@ test("J3. the Project scope categories fold, and expand on a click (proof shots 
     await page.setViewportSize({ width, height: width === 1280 ? 900 : 800 });
     await open(page, "jira", "scope");
     const cats = page.locator("#tile-scope details.cat");
-    await expect(cats).toHaveCount(5, SETUP_WAIT);
+    await expect(cats).toHaveCount(6, SETUP_WAIT);
     await expect(cats.first()).toHaveAttribute("open", "");
     await expect(page.locator("#tile-scope details.cat[open]")).toHaveCount(1);
     for (const scheme of ["light", "dark"] as const) {
@@ -142,6 +167,59 @@ for (const [tracker, shown] of [["none", true], ["local", false], ["jira", true]
     expect(labels.includes("Roadmap") || labels.includes("Kanban")).toBe(false);
   });
 }
+
+test("J3. the Code graph card: the sentence first, a refused repo, then a save that a reload keeps (proof shots with E2E_SHOTS)", async ({ page }) => {
+  graphSeams();
+  await open(page);
+  const card = await graphCard(page);
+  await expect(card.locator("p.why")).toContainText("Without a graph choice", SETUP_WAIT);
+  await expect(card).toContainText("no API account is set up here");
+  const plain = join(h.home, "plain");
+  mkdirSync(plain);
+  await card.locator('[data-gc="roots"]').fill(plain);
+  await card.locator('[data-act="gc-save"]').click();
+  await expect(card.locator(".nodata")).toContainText("the root holds no .git entry", SETUP_WAIT);
+  const repo = join(h.home, "acme");
+  mkdirSync(join(repo, ".git"), { recursive: true });
+  const real = realpathSync(repo);
+  await card.locator('[data-gc="roots"]').fill(real);
+  await card.locator('[data-gc="primary"]').selectOption("subscription");
+  await card.locator('[data-act="gc-save"]').click();
+  await expect(card.locator(".ro")).toContainText("saved", SETUP_WAIT);
+  const stored = () => JSON.parse(readFileSync(join(h.home, ".himmel", "config.json"), "utf8")).graphify.choices;
+  await expect.poll(stored, SETUP_WAIT).toEqual({ version: 1, corpora: [{ name: "acme", root: real }], primary: "subscription", fallbacks: [] });
+  // a full page load, as a new tab gets it: the token is kept in memory only, so a bare page.reload() answers 401
+  await page.goto("about:blank");
+  await page.goto(h.url);
+  const again = await graphCard(page);
+  await expect(again.locator('[data-gc="roots"]')).toHaveValue(real, SETUP_WAIT);
+  await expect(again.locator('[data-gc="primary"]')).toHaveValue("subscription");
+  await expect(again.locator("p.why")).toContainText("daily graph job");
+  const shots = process.env.E2E_SHOTS;
+  if (shots) for (const scheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await again.screenshot({ path: `${shots}/configure-graph-choices-${scheme}.png` });
+  }
+});
+
+test("J3. on a station that publishes the himmel graph the Code graph card is read-only and names the way out", async ({ page }) => {
+  graphSeams();
+  h = await boot({}, { tracker: "jira" });
+  mkdirSync(join(h.home, ".himmel"), { recursive: true });
+  writeFileSync(join(h.home, ".himmel", "config.json"), JSON.stringify({ version: 1, graphify: { semantic_api_ok: true } }));
+  await page.goto(h.url);
+  await page.locator("#h-configure").waitFor();
+  const card = await graphCard(page);
+  await expect(card).toContainText("Read-only here", SETUP_WAIT);
+  await expect(card).toContainText("--leave-publisher");
+  await expect(card.locator("[data-gc]")).toHaveCount(0);
+  await expect(card.locator('[data-act="gc-save"]')).toHaveCount(0);
+  const shots = process.env.E2E_SHOTS;
+  if (shots) for (const scheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await card.screenshot({ path: `${shots}/configure-graph-choices-publisher-${scheme}.png` });
+  }
+});
 
 test("J3. at 390 px no tile makes the page scroll sideways", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 800 });

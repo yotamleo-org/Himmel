@@ -118,6 +118,7 @@ edges() {
 # merge-on-green.sh runs conflicts.py only after a merge, from the anchor's bytes (HIMMEL_REPO), never a /pr-check run's branch.
 # pr-check-outside.sh runs ready-check.sh only in its --pr form, and that form refuses unless the script is the HIMMEL_REPO anchor's own copy (an -ef check before it runs anything), so the ready-check.sh it runs is the anchor's bytes, never a branch's. Held by a row in test-pr-check-outside.sh. The pin is per file, so it also hides any later classifier-form edge to ready-check.sh.
 # clear-review-marker.sh gate 4g runs the HIMMEL_REPO anchor's scripts/lint/check-history-comments.sh (an absolute HIMMEL_REPO only, else it refuses closed), never the branch's copy.
+# impacted-suites.sh runs the merge-base's pr-plan.sh and impacted-selection.sh, which git archive extracts into its work dir, never the branch's copies.
 NOT_RUN="scripts/cr/install-cr-gate.sh -> scripts/hooks/check-cr-before-push.sh
 scripts/cr/clear-review-marker.sh -> scripts/lint/check-history-comments.sh
 scripts/cr/pr-check-outside.sh -> scripts/handover/chief-kit/ready-check.sh
@@ -130,7 +131,9 @@ scripts/cr/dependabot-go.sh -> scripts/api-lane/judge-call.sh
 scripts/hooks/block-fork-sync-pr.sh -> scripts/upstreams/resync-fork.sh
 scripts/handover/merge-on-green.sh -> scripts/eval/bug-origin/bug-origin-report.py
 scripts/handover/merge-on-green.sh -> scripts/eval/conflicts/conflicts.py
-scripts/handover/suite-coverage.sh -> scripts/ci/run-shell-tests.sh"
+scripts/handover/suite-coverage.sh -> scripts/ci/run-shell-tests.sh
+scripts/cr/impacted-suites.sh -> scripts/ci/pr-plan.sh
+scripts/cr/impacted-suites.sh -> scripts/ci/impacted-selection.sh"
 
 # Parents allowed to name scripts/jira/dist, pinned as <file>::<regex>. The regex
 # must match the file, proving the dist path there is anchored on the PRIMARY
