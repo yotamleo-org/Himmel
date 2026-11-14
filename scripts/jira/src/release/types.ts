@@ -119,7 +119,7 @@ export interface RequestRow {
   mac?: string;
 }
 
-export type EventKind = 'ruled' | 'fold' | 'reopen' | 'out-of-band' | 'emergency';
+export type EventKind = 'ruled' | 'fold' | 'reopen' | 'out-of-band' | 'emergency' | 'ack';
 
 export interface EventRow {
   ts: string;
@@ -128,6 +128,7 @@ export interface EventRow {
   from: string | null;
   to: string | null;
   ruling?: string;
+  reason?: string;
   pr?: number;
   sha?: string;
   readback?: 'ok' | 'mismatch';

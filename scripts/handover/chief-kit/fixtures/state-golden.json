@@ -1,0 +1,116 @@
+{
+  "status": "OK",
+  "release": "R1",
+  "mode": "observe",
+  "versions": [
+    "v1",
+    "v2"
+  ],
+  "inputs": {
+    "mirror": "FRESH",
+    "ledger": "FRESH",
+    "operator": "FRESH",
+    "events": "FRESH",
+    "admissions": "FRESH"
+  },
+  "records": [
+    {
+      "key": "K-1",
+      "version": "v1",
+      "obligation": "baseline",
+      "placement": "in",
+      "ruling": "baseline-v1-g1",
+      "op": null,
+      "expected_member": true,
+      "actual_member": true,
+      "bookkeeping": null,
+      "emergency": false,
+      "discharged": false,
+      "terminal": null
+    }
+  ],
+  "leaks": {
+    "unauthorized": [],
+    "ruled_in_non_member": []
+  },
+  "integrity": [],
+  "burndown": {
+    "v1": {
+      "baseline": 1,
+      "baseline_open": 1,
+      "admitted_open": 0,
+      "emergency_open": 0,
+      "deferred_out": 0
+    },
+    "v2": {
+      "baseline": 0,
+      "baseline_open": 0,
+      "admitted_open": 0,
+      "emergency_open": 0,
+      "deferred_out": 0
+    }
+  },
+  "trend": {},
+  "admissions_today": {
+    "v1": 1,
+    "v2": 0
+  },
+  "lease": {
+    "release": "R1",
+    "epoch": 1,
+    "owner_session": "rm-1",
+    "owner_doc": "/abs/rm-doc.md",
+    "acquired": "2026-10-21T10:00:00.000Z",
+    "released": false,
+    "prev_epoch": 0
+  },
+  "requests": {
+    "open": [],
+    "claimed": [],
+    "oldest_open": null
+  },
+  "heads": {
+    "rulings": "",
+    "operator": "",
+    "events": "",
+    "requests": "",
+    "mirror": null
+  },
+  "refused_asks": [
+    {
+      "key": "ABC-2",
+      "ruling": "R-R1-0001",
+      "req": "Q-R1-0001",
+      "reason": "name the operator's words for ABC-2",
+      "asks_operator": true
+    },
+    {
+      "key": "ABC-3",
+      "ruling": "R-R1-0002",
+      "req": "Q-R1-0002",
+      "reason": "name the operator's words for ABC-3",
+      "asks_operator": false
+    },
+    {
+      "key": "ABC-4",
+      "ruling": "R-R1-0003",
+      "req": "Q-R1-0003",
+      "reason": "name the operator's words for ABC-4",
+      "asks_operator": false
+    }
+  ],
+  "words_records": [
+    {
+      "id": "O-R1-0003",
+      "decision": "9",
+      "keys": [
+        "ABC-1"
+      ],
+      "op": "add",
+      "verbatim": "Approved one more round"
+    }
+  ],
+  "asks_operator_keys": [
+    "ABC-2"
+  ]
+}
