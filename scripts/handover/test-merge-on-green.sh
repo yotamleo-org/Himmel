@@ -1339,7 +1339,7 @@ if [ "$have_jq_2869" = "1" ]; then
     assert_merge_has "2869-1b: merge pins the certified sha" "--match-head-commit jqok01"
     assert_gh_has "2869-1b: reads branch protection on the configured origin" "api repos/yotamleo-org/Himmel/branches/main/protection"
 else
-    echo "  SKIP: jq not installed — realistic protected-branch-JSON allow case (HIMMEL-2869, [codex-1])"
+    echo "  SKIP: jq not installed — realistic protected-branch-JSON allow case ([codex-1])"
 fi
 
 # 2869-2. Protection unreadable (404 / API failure) → refuse, no merge.
@@ -1439,7 +1439,7 @@ if [ "$have_jq_2869" = "1" ]; then
     assert_gh_lacks "2869-7: no merge attempted" "pr merge"
     assert_audit_has "2869-7: audits not-protected" "reason=not-protected"
 else
-    echo "  SKIP: jq not installed — null required_status_checks case (HIMMEL-2869)"
+    echo "  SKIP: jq not installed — null required_status_checks case"
 fi
 
 # jq length accepts strings and objects too. Removing either
@@ -1469,7 +1469,7 @@ if [ "$have_jq_2869" = "1" ]; then
     assert_audit_has "2876 premerge: not protected" "reason=not-protected-premerge"
     assert_gh_lacks "2876 premerge: no merge attempted" "pr merge"
 else
-    echo "  SKIP: jq not installed — protection array type-check cases (HIMMEL-2876)"
+    echo "  SKIP: jq not installed — protection array type-check cases"
 fi
 
 # ── ruleset-based protection alongside classic ─────────────────
@@ -1638,7 +1638,7 @@ if [ "$have_jq_2869" = "1" ]; then
     assert_gh_lacks "3808-8: private repo reads no rulesets" "/rules/branches/"
     rm -rf "$mode_dir"
 else
-    echo "  SKIP: jq not installed — ruleset protection cases (HIMMEL-3808)"
+    echo "  SKIP: jq not installed — ruleset protection cases"
 fi
 
 # 6. Cannot read head SHA → refuse (exit 13).
@@ -1673,7 +1673,7 @@ assert_audit_has "audit records the certified sha" "sha=feedface99"
 
 # Removing the fresh policy guard would call merge despite an
 # outstanding review rule. The call log proves refusal happens BEFORE merge.
-STUB_MERGE_STATE=BLOCKED STUB_REVIEW_DECISION=REVIEW_REQUIRED run_mog 18 "green checks but required review → exit 18 pre-merge (HIMMEL-3381)"
+STUB_MERGE_STATE=BLOCKED STUB_REVIEW_DECISION=REVIEW_REQUIRED run_mog 18 "green checks but required review → exit 18 pre-merge"
 assert_audit_has "pre-merge policy: deterministic refusal" "REFUSED reason=policy-refused phase=premerge"
 if [ "$(grep -c '^pr merge ' "$LAST_GH_LOG")" -eq 0 ]; then pass; else fail "pre-merge policy: expected zero merge calls"; fi
 assert_audit_lacks "pre-merge policy: no merge intent" "MERGING"
@@ -1772,7 +1772,7 @@ if [ "$have_jq" = "1" ]; then
     assert_gh_lacks "null-default-branch: no merge attempted" "pr merge"
     assert_audit_has "null-default-branch audits undeterminable, not wrong-base" "reason=base-branch-undeterminable"
 else
-    echo "  SKIP: jq not installed — null-defaultBranchRef-at-gate case (CodeRabbit, HIMMEL-1080)"
+    echo "  SKIP: jq not installed — null-defaultBranchRef-at-gate case (CodeRabbit)"
 fi
 
 # 9g. Same nullable-coalesce fix applied to the FIX-1 pre-merge re-query.
@@ -1781,7 +1781,7 @@ if [ "$have_jq" = "1" ]; then
     assert_gh_lacks "null-default-branch-premerge: no merge attempted" "pr merge"
     assert_audit_has "null-default-branch-premerge audits undeterminable" "reason=base-branch-undeterminable"
 else
-    echo "  SKIP: jq not installed — null-defaultBranchRef-pre-merge case (CodeRabbit, HIMMEL-1080)"
+    echo "  SKIP: jq not installed — null-defaultBranchRef-pre-merge case (CodeRabbit)"
 fi
 
 # 9h. Pre-merge title gate (guard 3c): the squash merge below
@@ -1862,7 +1862,7 @@ assert_audit_lacks "unproven merge outcome is not claimed as a refusal" "REFUSED
 
 # An explicit base-policy rejection is definitive, not a queued
 # merge. Without the stderr classification this incorrectly exits 15 pending.
-STUB_MERGE_POLICY_REFUSED=1 STUB_POST_STATE=OPEN run_mog 18 "base branch policy prohibits the merge → exit 18 (HIMMEL-3381)"
+STUB_MERGE_POLICY_REFUSED=1 STUB_POST_STATE=OPEN run_mog 18 "base branch policy prohibits the merge → exit 18"
 assert_merge_has "policy rejection: merge was attempted" "pr merge 77 --repo owner/repo"
 assert_audit_has "policy rejection: deterministic refusal" "REFUSED reason=policy-refused"
 assert_audit_lacks "policy rejection: never pending-unconfirmed" "INDETERMINATE"
@@ -1871,7 +1871,7 @@ assert_err_has "policy rejection: surfaces GitHub's refusal" "base branch policy
 # "Base branch was modified" is GitHub's
 # TRANSIENT refusal — the PR is still OPEN at the same head and a bare re-run
 # merges. It is NOT a rule, so it stays on exit 15 (indeterminate), never 18.
-STUB_MERGE_BASE_MODIFIED=1 STUB_POST_STATE=OPEN run_mog 15 "'Base branch was modified' + PR OPEN → exit 15, not a policy block (HIMMEL-3381)"
+STUB_MERGE_BASE_MODIFIED=1 STUB_POST_STATE=OPEN run_mog 15 "'Base branch was modified' + PR OPEN → exit 15, not a policy block"
 assert_audit_has "base-modified: recorded as INDETERMINATE" "INDETERMINATE reason=merge-pending-unconfirmed"
 assert_audit_lacks "base-modified: never a policy refusal" "REFUSED"
 assert_err_lacks "base-modified: no MERGE-BLOCKED alert" "MERGE-BLOCKED"
@@ -2243,7 +2243,7 @@ case "$(uname -s)" in
                 if [ -f "$P_WT/work.txt" ] && grep -qF "feat/mog-prune" "$P_WT/work.txt"; then
                     pass
                 else
-                    fail "11k2: in-use worktree's work.txt did not survive (the pre-fix HIMMEL-2227 wreck)"
+                    fail "11k2: in-use worktree's work.txt did not survive (the pre-fix wreck)"
                 fi
                 if wt_list_has "$P_REPO" "$P_WT"; then
                     pass
@@ -2265,7 +2265,7 @@ case "$(uname -s)" in
         fi
         ;;
     *)
-        echo "  SKIP: not Windows — a live process's cwd blocks neither rename nor rmdir on POSIX, so the in-use case is not constructible here (HIMMEL-2227)"
+        echo "  SKIP: not Windows — a live process's cwd blocks neither rename nor rmdir on POSIX, so the in-use case is not constructible here"
         ;;
 esac
 
@@ -2517,8 +2517,8 @@ SHEOF
         else
             pass
             MOG_CWD="$P_REPO" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" \
-                run_mog 0 "merged + a FOREIGN non-runner process inside the worktree -> kept, exit 0 (HIMMEL-2602)"
-            assert_audit_has "11k7: a foreign non-runner process now blocks the prune (HIMMEL-2602)" "prune=in-use-confirmed"
+                run_mog 0 "merged + a FOREIGN non-runner process inside the worktree -> kept, exit 0"
+            assert_audit_has "11k7: a foreign non-runner process now blocks the prune" "prune=in-use-confirmed"
             if [ -d "$P_WT" ]; then pass; else fail "11k7: worktree was pruned despite a foreign holder cwd'd inside it"; fi
             case "$LAST_ERR" in
                 *"Process $HOLDER_PID has its working directory"*) pass ;;
@@ -2688,8 +2688,8 @@ SHEOF
                 # Only argv[0] differs from a real runner.
                 pass
                 MOG_CWD="$P_REPO" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" \
-                    run_mog 0 "merged + a FOREIGN process NAMING a runner -> kept, exit 0 (HIMMEL-2602)"
-                assert_audit_has "11k9: a foreign holder blocks the prune regardless of naming a runner (HIMMEL-2602)" "prune=in-use-confirmed"
+                    run_mog 0 "merged + a FOREIGN process NAMING a runner -> kept, exit 0"
+                assert_audit_has "11k9: a foreign holder blocks the prune regardless of naming a runner" "prune=in-use-confirmed"
                 if [ -d "$P_WT" ]; then pass; else fail "11k9: worktree was pruned despite a foreign holder cwd'd inside it"; fi
                 case "$LAST_ERR" in
                     *"Process $HOLDER_PID has its working directory"*) pass ;;
@@ -2837,7 +2837,7 @@ SHEOF
         rm -rf "$SUITE_HOLDER_DIR"
         ;;
     *)
-        echo "  SKIP: not Linux — the live-suite-run detector reads /proc/<pid>/cwd, which exists nowhere else (HIMMEL-2517)"
+        echo "  SKIP: not Linux — the live-suite-run detector reads /proc/<pid>/cwd, which exists nowhere else"
         ;;
 esac
 
@@ -4764,7 +4764,7 @@ STUB_JIRA_BUILD=1 STUB_JIRA_FIX_FAIL=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] r
     run_mog 0 "jira: a failed unversioned stamp is a WARN, the merge still succeeds" -- --jira-transition
 assert_audit_has "jira: failed unversioned stamp is recorded" "jira-transition=ok key=HIMMEL-374 status=Done fixversion=failed"
 # A closed ticket the merge could not place is a visible WARN and a Done-fold request for the release manager.
-assert_err_has "jira: a failed stamp prints a WARN (HIMMEL-7434)" "WARN HIMMEL-374 closed unplaced"
+assert_err_has "jira: a failed stamp prints a WARN" "WARN HIMMEL-374 closed unplaced"
 assert_jira_log_has "jira: a failed stamp files a Done-fold INTAKE into the current version" "release request v1.1.3 --verb INTAKE --key HIMMEL-374 --to v1.1.3"
 assert_audit_has "jira: the Done-fold request rides the audit line" "fixversion=failed fold-request=Q-v1.1.3-0099"
 
@@ -5184,7 +5184,7 @@ assert_alerts 1  "3485: exit 6 sends exactly one operator DM"
 # past ref.
 if grep -vE '^[[:space:]]*#' "$SCRIPT_DIR/test-merge-on-green.sh" \
     | grep -Eq 'git[[:space:]]+(-C[[:space:]]+\S+[[:space:]]+)?show[[:space:]].*:scripts/'; then
-    fail "lint: this file extracts a historical blob via git show <ref>:<path> — use a committed fixtures/red-control/ snapshot instead (HIMMEL-3154)"
+    fail "lint: this file extracts a historical blob via git show <ref>:<path> — use a committed fixtures/red-control/ snapshot instead"
 else
     pass
 fi

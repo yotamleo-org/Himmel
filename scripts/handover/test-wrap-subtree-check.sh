@@ -324,7 +324,7 @@ cat > "$W/claude-hud-decoy.txt" <<'FIX'
   341   340    00:10:00 node /repo/claude-hud/worker.js
 FIX
 out="$(run "$W/claude-hud-decoy.txt" 101 2>&1)"; rc=$?
-eq 'an unrelated service under a claude-hud-named directory withholds: rc 1 (J1355P, HIMMEL-3723)' 1 "$rc"
+eq 'an unrelated service under a claude-hud-named directory withholds: rc 1 (J1355P)' 1 "$rc"
 contains 'the claude-hud-path decoy withholds (J1355P)' "$out" '  pid=340 ppid='
 contains "the decoy's own child withholds too (J1355P)" "$out" '  pid=341 ppid='
 lacks 'no claude-hud exemption remains (J1355P)' "$out" 'why=name-match cmd=node /repo/claude-hud'
@@ -347,10 +347,10 @@ cat > "$W/hud-tree.txt" <<FIX
   404   403       00:00 node /home/u/himmel/scripts/where-are-we/provision.mjs slice
 FIX
 out="$(run "$W/hud-tree.txt" 101 2>&1)"; rc=$?
-eq 'a fresh claude-hud statusline subtree is harness: rc 0 (HIMMEL-4139)' 0 "$rc"
-contains 'the hud subtree prints CLOSABLE, all five counted (HIMMEL-4139)' "$out" 'CLOSABLE: no non-harness process under claude pid 101 (5 harness-owned children ignored)'
-contains 'the hud root is name-matched (HIMMEL-4139)' "$out" "ignored pid=400 ppid=101 etime=00:00 why=statusline-chain cmd=node $HUD"
-contains 'a hud descendant inherits the ignore (HIMMEL-4139)' "$out" 'ignored pid=404 '
+eq 'a fresh claude-hud statusline subtree is harness: rc 0' 0 "$rc"
+contains 'the hud subtree prints CLOSABLE, all five counted' "$out" 'CLOSABLE: no non-harness process under claude pid 101 (5 harness-owned children ignored)'
+contains 'the hud root is name-matched' "$out" "ignored pid=400 ppid=101 etime=00:00 why=statusline-chain cmd=node $HUD"
+contains 'a hud descendant inherits the ignore' "$out" 'ignored pid=404 '
 # The same subtree beside genuine leftovers: only the leftovers withhold.
 {
     cat "$W/hud-tree.txt"
@@ -360,11 +360,11 @@ contains 'a hud descendant inherits the ignore (HIMMEL-4139)' "$out" 'ignored pi
 FIX
 } > "$W/hud-plus-leftovers.txt"
 out="$(run "$W/hud-plus-leftovers.txt" 101 2>&1)"; rc=$?
-eq 'hud subtree plus a worker sleep and loop still withholds: rc 1 (HIMMEL-4139)' 1 "$rc"
-contains 'exactly the two leftovers withhold (HIMMEL-4139)' "$out" 'WITHHELD: 2 process(es) still alive under claude pid 101'
-contains 'the worker sleep is named (HIMMEL-4139)' "$out" '  pid=410 ppid='
-contains 'the worker loop wrapper is named (HIMMEL-4139)' "$out" '  pid=411 ppid='
-lacks 'the hud root is not listed as withheld (HIMMEL-4139)' "$out" '  pid=400 ppid='
+eq 'hud subtree plus a worker sleep and loop still withholds: rc 1' 1 "$rc"
+contains 'exactly the two leftovers withhold' "$out" 'WITHHELD: 2 process(es) still alive under claude pid 101'
+contains 'the worker sleep is named' "$out" '  pid=410 ppid='
+contains 'the worker loop wrapper is named' "$out" '  pid=411 ppid='
+lacks 'the hud root is not listed as withheld' "$out" '  pid=400 ppid='
 # Near-misses of the anchor must NOT be exempt: `..` segment, extra argv, a
 # non-absolute path, a different plugin dir, a different file, a non-node program.
 cat > "$W/hud-decoys.txt" <<'FIX'
@@ -379,13 +379,13 @@ cat > "$W/hud-decoys.txt" <<'FIX'
   426   101    00:10:00 node /home/u/himmel/x/claude-hud/dist/index.js
 FIX
 out="$(run "$W/hud-decoys.txt" 101 2>&1)"; rc=$?
-eq 'near-miss hud paths all withhold: rc 1 (HIMMEL-4139)' 1 "$rc"
-contains 'all seven near-misses withhold (HIMMEL-4139)' "$out" 'WITHHELD: 7 process(es) still alive under claude pid 101'
-lacks 'a decoy never prints CLOSABLE (HIMMEL-4139)' "$out" 'CLOSABLE:'
+eq 'near-miss hud paths all withhold: rc 1' 1 "$rc"
+contains 'all seven near-misses withhold' "$out" 'WITHHELD: 7 process(es) still alive under claude pid 101'
+lacks 'a decoy never prints CLOSABLE' "$out" 'CLOSABLE:'
 # The WITHHELD text does not order a worker to stop what it did not start.
 out="$(run "$W/dirty.txt" 101 2>&1)"
-lacks 'WITHHELD text does not tell the worker to TaskStop every process listed (HIMMEL-4139)' "$out" 'still alive under claude pid 101 — TaskStop every'
-contains 'WITHHELD text limits TaskStop to what the worker started (HIMMEL-4139)' "$out" 'TaskStop only what you started'
+lacks 'WITHHELD text does not tell the worker to TaskStop every process listed' "$out" 'still alive under claude pid 101 — TaskStop every'
+contains 'WITHHELD text limits TaskStop to what the worker started' "$out" 'TaskStop only what you started'
 
 # the whole per-render statusline chain is exempt as a subtree whose
 # EVERY member matches a tight install-path anchor — also when the claude-hud node
@@ -404,8 +404,8 @@ one_row chain-a5 "  500   101       00:00 /usr/bin/node $SL/where-are-we/provisi
 one_row chain-a6 "  500   101       00:00 timeout 3 /usr/bin/node $SL/where-are-we/provision.mjs slice --ledger /l --for K-1"
 for n in a1 a2 a3 a4 a5 a6; do
     out="$(run "$W/chain-$n.txt" 101 2>&1)"; rc=$?
-    eq "chain member $n alone is exempt: rc 0 (HIMMEL-4161)" 0 "$rc"
-    contains "chain member $n alone prints CLOSABLE (HIMMEL-4161)" "$out" 'CLOSABLE: no non-harness process under claude pid 101 (1 harness-owned children ignored)'
+    eq "chain member $n alone is exempt: rc 0" 0 "$rc"
+    contains "chain member $n alone prints CLOSABLE" "$out" 'CLOSABLE: no non-harness process under claude pid 101 (1 harness-owned children ignored)'
 done
 # (b) the chain nested as it really nests, with `timeout` and `$(…)` subshells
 # (same argv as their parent), and the hud node absent from the table.
@@ -422,28 +422,28 @@ cat > "$W/chain-full.txt" <<FIX
   507   506       00:00 /usr/bin/node $SL/where-are-we/provision.mjs slice --ledger /l --for K-1
 FIX
 out="$(run "$W/chain-full.txt" 101 2>&1)"; rc=$?
-eq 'the full nested statusline chain is exempt: rc 0 (HIMMEL-4161)' 0 "$rc"
-contains 'the full chain prints CLOSABLE, all eight counted (HIMMEL-4161)' "$out" 'CLOSABLE: no non-harness process under claude pid 101 (8 harness-owned children ignored)'
+eq 'the full nested statusline chain is exempt: rc 0' 0 "$rc"
+contains 'the full chain prints CLOSABLE, all eight counted' "$out" 'CLOSABLE: no non-harness process under claude pid 101 (8 harness-owned children ignored)'
 grep -v ' node /home/u/himmel/marketplace' "$W/chain-full.txt" | sed 's/^  501   500/  501   101/' > "$W/chain-nohud.txt"
 out="$(run "$W/chain-nohud.txt" 101 2>&1)"; rc=$?
-eq 'the chain without its hud node is exempt too: rc 0 (HIMMEL-4161)' 0 "$rc"
+eq 'the chain without its hud node is exempt too: rc 0' 0 "$rc"
 # (c) a non-chain child of a chain node is a chain descendant and is ignored
 #; a chain member under a non-chain parent still withholds (below).
 { cat "$W/chain-full.txt"; printf '  510   500       00:00 sleep 100\n'; } > "$W/chain-extra-under-hud.txt"
 out="$(run "$W/chain-extra-under-hud.txt" 101 2>&1)"; rc=$?
-eq 'a non-chain child of the hud node is a chain descendant, ignored: rc 0 (HIMMEL-4592)' 0 "$rc"
-contains 'the extra hud child is listed as ignored via the chain top (HIMMEL-4592)' "$out" 'ignored pid=510 ppid=500 etime=00:00 why=statusline-chain via=500 cmd=sleep 100'
+eq 'a non-chain child of the hud node is a chain descendant, ignored: rc 0' 0 "$rc"
+contains 'the extra hud child is listed as ignored via the chain top' "$out" 'ignored pid=510 ppid=500 etime=00:00 why=statusline-chain via=500 cmd=sleep 100'
 { cat "$W/chain-full.txt"; printf '  511   505       00:00 sleep 100\n'; } > "$W/chain-extra-deep.txt"
 out="$(run "$W/chain-extra-deep.txt" 101 2>&1)"; rc=$?
-eq 'a non-chain child deep in the chain is a chain descendant, ignored: rc 0 (HIMMEL-4592)' 0 "$rc"
-contains 'the deep extra child is listed as ignored (HIMMEL-4592)' "$out" 'ignored pid=511 '
+eq 'a non-chain child deep in the chain is a chain descendant, ignored: rc 0' 0 "$rc"
+contains 'the deep extra child is listed as ignored' "$out" 'ignored pid=511 '
 # A chain member beneath a non-chain parent: the parent withholds, the member is
 # NOT laundered by its own shape.
 printf '  520   101    00:10:00 sleep 100\n  521   520       00:00 bash %s/statusline/hud-custom-lines.sh\n' "$SL" > "$W/chain-under-sleep.rows"
 { printf '    1     0 40-00:00:01 /sbin/init\n  101     1    05:00:00 claude --model claude-sonnet-5 -n HIMMEL-111-N61 work\n'; cat "$W/chain-under-sleep.rows"; } > "$W/chain-under-sleep.txt"
 out="$(run "$W/chain-under-sleep.txt" 101 2>&1)"; rc=$?
-eq 'a chain member under a non-chain parent withholds: rc 1 (HIMMEL-4161)' 1 "$rc"
-contains 'both the parent and the member are named (HIMMEL-4161)' "$out" 'WITHHELD: 2 process(es)'
+eq 'a chain member under a non-chain parent withholds: rc 1' 1 "$rc"
+contains 'both the parent and the member are named' "$out" 'WITHHELD: 2 process(es)'
 # (e) a git/other child the statusline chain itself spawns (claude-hud
 # runs `git status --porcelain` in the session cwd, new pid each render, etime
 # 00:00) is a DESCENDANT of an ignored chain node and inherits the ignore, matched
@@ -451,9 +451,9 @@ contains 'both the parent and the member are named (HIMMEL-4161)' "$out" 'WITHHE
 # session) is not under a chain node and still withholds.
 { cat "$W/chain-full.txt"; printf '  540   500       00:00 git status --porcelain\n  541   507       00:00 git -C /home/u/w rev-parse HEAD\n'; } > "$W/chain-git-child.txt"
 out="$(run "$W/chain-git-child.txt" 101 2>&1)"; rc=$?
-eq 'a git child of the hud chain is harness: rc 0 (HIMMEL-4592)' 0 "$rc"
-contains 'the hud git children are counted as ignored (HIMMEL-4592)' "$out" 'CLOSABLE: no non-harness process under claude pid 101 (10 harness-owned children ignored)'
-contains 'the hud git child is listed via the chain top (HIMMEL-4592)' "$out" 'ignored pid=540 ppid=500 etime=00:00 why=statusline-chain via=500 cmd=git status --porcelain'
+eq 'a git child of the hud chain is harness: rc 0' 0 "$rc"
+contains 'the hud git children are counted as ignored' "$out" 'CLOSABLE: no non-harness process under claude pid 101 (10 harness-owned children ignored)'
+contains 'the hud git child is listed via the chain top' "$out" 'ignored pid=540 ppid=500 etime=00:00 why=statusline-chain via=500 cmd=git status --porcelain'
 cat > "$W/worker-git-child.txt" <<FIX
     1     0 40-00:00:01 /sbin/init
   101     1    05:00:00 claude --model claude-sonnet-5 -n HIMMEL-111-N61 work
@@ -465,12 +465,12 @@ cat > "$W/worker-git-child.txt" <<FIX
   553   101    00:10:00 git status --porcelain
 FIX
 out="$(run "$W/worker-git-child.txt" 101 2>&1)"; rc=$?
-eq 'worker-owned git children still withhold beside a hud git child: rc 1 (HIMMEL-4592)' 1 "$rc"
-contains 'exactly the four worker-owned processes withhold (HIMMEL-4592)' "$out" 'WITHHELD: 4 process(es) still alive under claude pid 101'
-contains 'a git under a worker wrapper is named (HIMMEL-4592)' "$out" '  pid=551 ppid='
-contains 'a worker sleep under a worker wrapper is named (HIMMEL-4592)' "$out" '  pid=552 ppid='
-contains 'a git directly under the session is named (HIMMEL-4592)' "$out" '  pid=553 ppid='
-lacks 'the hud git child is not withheld (HIMMEL-4592)' "$out" '  pid=540 ppid='
+eq 'worker-owned git children still withhold beside a hud git child: rc 1' 1 "$rc"
+contains 'exactly the four worker-owned processes withhold' "$out" 'WITHHELD: 4 process(es) still alive under claude pid 101'
+contains 'a git under a worker wrapper is named' "$out" '  pid=551 ppid='
+contains 'a worker sleep under a worker wrapper is named' "$out" '  pid=552 ppid='
+contains 'a git directly under the session is named' "$out" '  pid=553 ppid='
+lacks 'the hud git child is not withheld' "$out" '  pid=540 ppid='
 # (d) look-alike paths all withhold.
 cat > "$W/chain-decoys.txt" <<'FIX'
     1     0 40-00:00:01 /sbin/init
@@ -486,9 +486,9 @@ cat > "$W/chain-decoys.txt" <<'FIX'
   538   101    00:10:00 bash /home/u/himmel/scripts/where-are-we/statusline-segment.sh.bak
 FIX
 out="$(run "$W/chain-decoys.txt" 101 2>&1)"; rc=$?
-eq 'look-alike chain paths all withhold: rc 1 (HIMMEL-4161)' 1 "$rc"
-contains 'all nine look-alikes withhold (HIMMEL-4161)' "$out" 'WITHHELD: 9 process(es) still alive under claude pid 101'
-lacks 'a look-alike never prints CLOSABLE (HIMMEL-4161)' "$out" 'CLOSABLE:'
+eq 'look-alike chain paths all withhold: rc 1' 1 "$rc"
+contains 'all nine look-alikes withhold' "$out" 'WITHHELD: 9 process(es) still alive under claude pid 101'
+lacks 'a look-alike never prints CLOSABLE' "$out" 'CLOSABLE:'
 
 # fx3: the SAME tool call that starts a background job also runs the check —
 # a shell wrapper backgrounds `caffeinate -i ./long-job.sh` and the check
@@ -578,9 +578,9 @@ cat > "$W/mkt-fetch.txt" <<'FIX'
 FIX
 for pp in 500 501 502 503 510 511 512 513 514 515 517 518 520 521 522; do setcwd $pp /home/u/.claude/plugins/cache; done
 out="$(run "$W/mkt-fetch.txt" 101 2>&1)"; rc=$?
-eq 'a marketplace fetch and plugin-cache clone read CLOSABLE: rc 0 (HIMMEL-5923)' 0 "$rc"
-contains 'all four fetch/clone pids are listed as ignored (HIMMEL-5923)' "$out" 'CLOSABLE: no non-harness process under claude pid 101 (4 harness-owned children ignored)'
-contains 'the remote-https child is listed ignored (HIMMEL-5923)' "$out" 'ignored pid=501 '
+eq 'a marketplace fetch and plugin-cache clone read CLOSABLE: rc 0' 0 "$rc"
+contains 'all four fetch/clone pids are listed as ignored' "$out" 'CLOSABLE: no non-harness process under claude pid 101 (4 harness-owned children ignored)'
+contains 'the remote-https child is listed ignored' "$out" 'ignored pid=501 '
 # Claude Code 2.1.303 prefixes its hardened git with a long -c list (protocol.ext.allow,
 # hook.*.enabled, ...) between core.askPass and the verb; the prefix below is copied from
 # a live `ps` row of that git, verb swapped to fetch.
@@ -592,10 +592,10 @@ cat > "$W/mkt-fetch-long.txt" <<'FIX'
   522   101       00:00 /usr/bin/git -c core.fsmonitor= -c core.hooksPath=/dev/null -c core.askPass= -c protocol.ext.allow=never -c submodule.recurse=false -c log.showSignature=false -c format.pretty=medium -c gc.auto=0 -c maintenance.auto=false -c hook.applypatch-msg.enabled=false -c hook.pre-applypatch.enabled=false -c hook.post-applypatch.enabled=false -c hook.pre-commit.enabled=false -c hook.pre-merge-commit.enabled=false -c hook.prepare-commit-msg.enabled=false -c hook.commit-msg.enabled=false -c hook.post-commit.enabled=false -c hook.pre-rebase.enabled=false -c hook.post-checkout.enabled=false -c hook.post-merge.enabled=false -c hook.pre-push.enabled=false -c hook.pre-receive.enabled=false -c hook.update.enabled=false -c hook.proc-receive.enabled=false -c hook.post-receive.enabled=false -c hook.post-update.enabled=false -c hook.reference-transaction.enabled=false -c hook.push-to-checkout.enabled=false -c hook.pre-auto-gc.enabled=false -c hook.post-rewrite.enabled=false -c hook.sendemail-validate.enabled=false -c hook.fsmonitor-watchman.enabled=false -c hook.p4-changelist.enabled=false -c hook.p4-prepare-changelist.enabled=false -c hook.p4-post-changelist.enabled=false -c hook.p4-pre-submit.enabled=false -c hook.post-index-change.enabled=false -c core.quotepath=false push origin HEAD
 FIX
 out="$(run "$W/mkt-fetch-long.txt" 101 2>&1)"; rc=$?
-eq 'the long-prefix marketplace fetch beside a long-prefix push: rc 1 (HIMMEL-6259)' 1 "$rc"
-contains 'long-prefix fetch pid=520 is ignored (HIMMEL-6259)' "$out" 'ignored pid=520 '
-contains 'its remote-https child pid=521 is ignored (HIMMEL-6259)' "$out" 'ignored pid=521 '
-contains 'long-prefix push pid=522 still withholds (HIMMEL-6259)' "$out" '  pid=522 ppid='
+eq 'the long-prefix marketplace fetch beside a long-prefix push: rc 1' 1 "$rc"
+contains 'long-prefix fetch pid=520 is ignored' "$out" 'ignored pid=520 '
+contains 'its remote-https child pid=521 is ignored' "$out" 'ignored pid=521 '
+contains 'long-prefix push pid=522 still withholds' "$out" '  pid=522 ppid='
 # Anything broader still withholds: a worker push, a fetch without the three -c flags,
 # a non-github remote, a remote-https under a non-fetch parent, a wrapper that quotes it.
 cat > "$W/mkt-decoys.txt" <<'FIX'
@@ -612,11 +612,11 @@ cat > "$W/mkt-decoys.txt" <<'FIX'
   518   101       00:00 /usr/bin/git -c core.fsmonitor= -c core.hooksPath=/dev/null -c core.askPass= pull origin main
 FIX
 out="$(run "$W/mkt-decoys.txt" 101 2>&1)"; rc=$?
-eq 'broader git shapes still withhold: rc 1 (HIMMEL-5923)' 1 "$rc"
+eq 'broader git shapes still withhold: rc 1' 1 "$rc"
 for dp in 510 511 512 514 515 516 517 518; do
-    contains "decoy pid=$dp withholds (HIMMEL-5923)" "$out" "  pid=$dp ppid="
+    contains "decoy pid=$dp withholds" "$out" "  pid=$dp ppid="
 done
-lacks 'the exact-shape fetch beside the decoys is still ignored, not withheld (HIMMEL-5923)' "$out" '  pid=513 ppid='
+lacks 'the exact-shape fetch beside the decoys is still ignored, not withheld' "$out" '  pid=513 ppid='
 
 # Claude Code 2.1.303's real refresh, shapes copied from live `ps` rows
 # with the hook.* list dropped: the hardened git is a direct child of the session whose
@@ -645,10 +645,10 @@ for pp in 603 604; do setcwd $pp $PC/temp_git_1792433434919_nbr3qa; done
 for pp in 605 606; do setcwd $pp $PC/temp_subdir_1792433434918_vctuyw.clone; done
 for pp in 607 608; do setcwd $pp /tmp/claude-lsremote-ItRW2a; done
 out="$(run "$W/mkt-live.txt" 101 2>&1)"; rc=$?
-eq 'the 2.1.303 plugin refresh (clone, fetch, read-tree, ls-remote + children) reads CLOSABLE: rc 0 (HIMMEL-6335)' 0 "$rc"
-contains 'all nine refresh pids are listed as ignored (HIMMEL-6335)' "$out" 'CLOSABLE: no non-harness process under claude pid 101 (9 harness-owned children ignored)'
-contains 'the ignore reason is marketplace-refresh (HIMMEL-6335)' "$out" 'ignored pid=601 ppid=600 etime=00:00 why=marketplace-refresh'
-contains 'the index-pack child is ignored (HIMMEL-6335)' "$out" 'ignored pid=602 '
+eq 'the 2.1.303 plugin refresh (clone, fetch, read-tree, ls-remote + children) reads CLOSABLE: rc 0' 0 "$rc"
+contains 'all nine refresh pids are listed as ignored' "$out" 'CLOSABLE: no non-harness process under claude pid 101 (9 harness-owned children ignored)'
+contains 'the ignore reason is marketplace-refresh' "$out" 'ignored pid=601 ppid=600 etime=00:00 why=marketplace-refresh'
+contains 'the index-pack child is ignored' "$out" 'ignored pid=602 '
 
 # What must still withhold beside it: the same hardened argv with a cwd outside the plugin
 # dirs, from a non-GitHub or ssh remote, a tool-call shell's git (even with a cache cwd), a
@@ -685,9 +685,9 @@ setcwd 713 /home/u/claude-lsremote-Test
 setcwd 714 $PC
 setcwd 715 /home/u/work/repo/.claude/plugins/cache
 out="$(run "$W/mkt-live-decoys.txt" 101 2>&1)"; rc=$?
-eq 'the live-shape decoys withhold: rc 1 (HIMMEL-6335)' 1 "$rc"
+eq 'the live-shape decoys withhold: rc 1' 1 "$rc"
 for dp in 700 701 702 703 704 705 706 707 708 709 710 711 712 713 714 715; do
-    contains "live-shape decoy pid=$dp withholds (HIMMEL-6335/5934)" "$out" "  pid=$dp ppid="
+    contains "live-shape decoy pid=$dp withholds" "$out" "  pid=$dp ppid="
 done
 
 # --queue-doc <doc> withholds CLOSABLE while the worker's queue lock
@@ -699,12 +699,12 @@ qenv() { HANDOVER_DIR="$Q6_ROOT" XDG_RUNTIME_DIR="$W/xdg" HANDOVER_REGISTRY="$W/
 Q6_TOK="$(qenv bash "$QL" acquire "$Q6_DOC" 2>/dev/null | sed -n 's/^release-token: //p')"
 Q6_TOK="${Q6_TOK#\`}"; Q6_TOK="${Q6_TOK%\`}"
 out="$(qenv run "$W/clean.txt" 101 --queue-doc "$Q6_DOC" 2>&1)"; rc=$?
-eq '--queue-doc with the lock held: rc 1 (HIMMEL-6038)' 1 "$rc"
+eq '--queue-doc with the lock held: rc 1' 1 "$rc"
 contains '--queue-doc held: WITHHELD names the doc' "$out" "WITHHELD: queue lock still held for $Q6_DOC"
 lacks '--queue-doc held: no CLOSABLE banner' "$out" 'CLOSABLE:'
 qenv bash "$QL" release "$Q6_DOC" "$Q6_TOK" >/dev/null 2>&1
 out="$(qenv run "$W/clean.txt" 101 --queue-doc "$Q6_DOC" 2>&1)"; rc=$?
-eq '--queue-doc after release: rc 0 (HIMMEL-6038)' 0 "$rc"
+eq '--queue-doc after release: rc 0' 0 "$rc"
 contains '--queue-doc after release: CLOSABLE' "$out" 'CLOSABLE: no non-harness process under claude pid 101'
 out="$(qenv run "$W/clean.txt" --queue-doc "$Q6_DOC" 2>&1)"; rc=$?
 eq '--queue-doc before the pid operand is order-independent' 0 "$rc"
@@ -713,7 +713,7 @@ cat > "$W/ql-err.sh" <<'STUB'
 echo "boom" >&2; exit 1
 STUB
 out="$(WRAP_SUBTREE_QUEUE_LOCK="$W/ql-err.sh" run "$W/clean.txt" 101 --queue-doc "$Q6_DOC" 2>&1)"; rc=$?
-eq '--queue-doc with a status error: rc 2 fail-closed (HIMMEL-6038)' 2 "$rc"
+eq '--queue-doc with a status error: rc 2 fail-closed' 2 "$rc"
 contains '--queue-doc status error: WITHHELD' "$out" 'WITHHELD: cannot read the queue lock'
 cat > "$W/ql-junk.sh" <<'STUB'
 #!/usr/bin/env bash

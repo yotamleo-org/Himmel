@@ -308,7 +308,7 @@ contains "happy path: clears CLAUDE_JOB_DIR"               "$rec1" "-u CLAUDE_JO
 contains "happy path: passes --separate (own process, not a hand-off)" "$rec1" "--separate"
 contains "happy path: forces session persistence"       "$rec1" "CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1"
 contains "happy path: carries the session name via -n"  "$rec1" "-n HIMMEL-9999-worker"
-contains     "happy path: carries the default model (Opus parent, HIMMEL-3079)" "$rec1" "claude-opus-5-5"
+contains     "happy path: carries the default model (Opus parent)" "$rec1" "claude-opus-5-5"
 not_contains "happy path: default model is not Fable"   "$rec1" "claude-fable-5-1"
 contains "happy path: doc reaches the prompt"            "$rec1" "load some/handover-doc.md and continue"
 # Direct chiefs default to 1m/auto with honest provenance.
@@ -1731,7 +1731,7 @@ contains "resolved launcher: extra env tokens reach the konsole argv" "$rec36b" 
 contains "resolved launcher: wrapped in script(1) with the SAME log path, appending (-a)" "$rec36b" "script -q -a -f $d36b/log -c"
 contains "resolved launcher: the launcher path reaches the recorded argv" "$rec36b" "/some/repo/scripts/claude-codex"
 not_contains "resolved launcher: not force-wrapped in bash (execs via its own shebang)" "$rec36b" "bash /some/repo/scripts/claude-codex"
-contains "resolved launcher: still carries --model gpt-6-astra, bare (HIMMEL-5501)" "$rec36b" "--model gpt-6-astra --autocompact"
+contains "resolved launcher: still carries --model gpt-6-astra, bare" "$rec36b" "--model gpt-6-astra --autocompact"
 contains "resolved launcher: still carries -n NAME" "$rec36b" "-n HIMMEL-launcher2"
 contains "resolved launcher (recorder branch): clears CLAUDE_JOB_DIR" "$rec36b" "-u CLAUDE_JOB_DIR"
 contains "resolved launcher (recorder branch): clears CLAUDE_CODE_MESSAGING_SOCKET" "$rec36b" "-u CLAUDE_CODE_MESSAGING_SOCKET"
@@ -1950,8 +1950,8 @@ log38f="$(cat "$d38f/log" 2>/dev/null || true)"
 check "38f no --role: exit 0" "$rc38f" "0"
 contains "38f no --role: armed log line stamps role=unsplit" "$log38f" "role=unsplit"
 not_contains "38f no --role: konsole record carries no HIMMEL_CONSOLE_RELAY clear" "$rec38f" "HIMMEL_CONSOLE_RELAY"
-not_contains "38f no --role: konsole record exports no HIMMEL_CONSOLE_DOC (HIMMEL-2973)" "$rec38f" "HIMMEL_CONSOLE_DOC"
-not_contains "38f no --role: konsole record exports no HIMMEL_CONSOLE=1 chief marker (HIMMEL-6918)" "$rec38f" "HIMMEL_CONSOLE=1"
+not_contains "38f no --role: konsole record exports no HIMMEL_CONSOLE_DOC" "$rec38f" "HIMMEL_CONSOLE_DOC"
+not_contains "38f no --role: konsole record exports no HIMMEL_CONSOLE=1 chief marker" "$rec38f" "HIMMEL_CONSOLE=1"
 
 # 38g. --role chief exports HIMMEL_CONSOLE_DOC (the chief
 # doc) and HIMMEL_CONSOLE_WORKDIR (dirname of the signal file = the chief's
@@ -1966,7 +1966,7 @@ rec38g="$(cat "$d38g/record" 2>/dev/null || true)"
 check "38g --role chief: exit 0" "$rc38g" "0"
 contains "38g --role chief: a repo-relative DOC is exported ABSOLUTE (against REPO, where the session runs)" "$rec38g" "HIMMEL_CONSOLE_DOC=$REPO/doc38g.md"
 contains "38g --role chief: konsole record exports HIMMEL_CONSOLE_WORKDIR=dirname(signal)" "$rec38g" "HIMMEL_CONSOLE_WORKDIR=$d38g/chain"
-contains "38g --role chief: konsole record exports the HIMMEL_CONSOLE=1 chief marker (HIMMEL-6918)" "$rec38g" "HIMMEL_CONSOLE=1"
+contains "38g --role chief: konsole record exports the HIMMEL_CONSOLE=1 chief marker" "$rec38g" "HIMMEL_CONSOLE=1"
 d38h="$tmp/c38h"; mk_stub "$d38h" 1 alive "HIMMEL-role38h"
 rc38h=0
 KONSOLE_CMD="$d38h/konsole" PGREP_CMD="$d38h/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d38h/locks" HEADED_ARM_PROC="$d38h/proc" \
@@ -2471,7 +2471,7 @@ out43=$(HEADED_ARM_HEADLESS=1 WORKER_SESSION_PROFILE_SETTINGS=/dev/null HEADED_A
   bash "$SCRIPT" --dry-run --role chief "HIMMEL-hl43" "doc43.md" "$d43/signal-never" "$PAST" "$d43/log" 2>&1) || rc43=$?
 check "43 headless chief --dry-run: exit 0" "$rc43" "0"
 contains "43 headless console: argv is the background launch" "$out43" "--bg"
-contains "43 headless console: argv keeps the chief --settings (HIMMEL-4052)" "$out43" "--settings"
+contains "43 headless console: argv keeps the chief --settings" "$out43" "--settings"
 contains "43 dry-run launch line: clears CLAUDE_JOB_DIR" "$out43" "-u CLAUDE_JOB_DIR"
 contains "43 dry-run launch line: clears CLAUDE_CODE_MESSAGING_SOCKET" "$out43" "-u CLAUDE_CODE_MESSAGING_SOCKET"
 contains "43 dry-run launch line: clears CLAUDE_CODE_MESSAGING_TOKEN" "$out43" "-u CLAUDE_CODE_MESSAGING_TOKEN"
@@ -2487,7 +2487,7 @@ for _m43 in headed headless; do
     KONSOLE_CMD="$d43b/konsole" PGREP_CMD=true HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d43b/locks" HEADED_ARM_PROC="$d43b/proc" \
     bash "$SCRIPT" --dry-run --role chief "HIMMEL-mc43b" "doc43b.md" "$d43b/signal-never" "$PAST" "$d43b/log" 2>&1) || rc43b=$?
   check "43b $_m43 chief --dry-run: exit 0" "$rc43b" "0"
-  contains "43b $_m43 console: argv carries --strict-mcp-config (HIMMEL-5310)" "$out43b" "--strict-mcp-config"
+  contains "43b $_m43 console: argv carries --strict-mcp-config" "$out43b" "--strict-mcp-config"
   contains "43b $_m43 console: argv carries the chief --mcp-config file" "$out43b" "chief.mcp.json"
 done
 

@@ -357,7 +357,7 @@ export HIMMEL_FLOW_RUNS_LEDGER="$TMP/flow-runs.jsonl"
 export ARM_TEMP_CWD_OK=1
 # Scratch-folder shield: the fixtures live under $TMP, which does not load the himmel guard hooks,
 # so arming them is refused (rc 18). The guard rows drop this opt-in from their own environment.
-export UNGUARDED_LAUNCH_OK=1  # HIMMEL-9026: scratch fixtures; guard rows drop it
+export UNGUARDED_LAUNCH_OK=1  # scratch fixtures; guard rows drop it
 
 # Dotenv-read shield. arm-resume load_dotenv's ARMAUTOMERGE /
 # CR_REQUIRE_CROSS_MODEL / CR_FLOOR_FALLBACK out of a `.env` FILE, falling back
@@ -813,7 +813,7 @@ printf '{"five_hour":{"utilization":10.0,"resets_at":"%s"},"seven_day":{"utiliza
 out=$(ARM_COLLISION_CANDIDATES="" RESUME_SLOT_CACHE="$BUSY_CACHE" SLOT_MAX_AGE=0 PATH="$SCHED_STUB_T17:$PATH" \
     bash "$ARM" --time smart --handover "$HO" --force --dry-run 2>&1)
 rc=$?
-assert_rc "T9b default-wall park refuses fast (rc=19, HIMMEL-2113)" 19 "$rc"
+assert_rc "T9b default-wall park refuses fast (rc=19)" 19 "$rc"
 assert_contains "T9b ERR names the park time + reason" "wait for seven-day reset" "$out"
 assert_contains "T9b ERR names the --long-gap override" "--long-gap" "$out"
 
@@ -1722,7 +1722,7 @@ assert_not_contains "T28a refusal does not claim same-handover" "for the SAME ha
 # only THIS handover's own job(s), so the refusal must say so rather than warn
 # of a sibling-endangering wipe. (T28d proves the foreign siblings in fact
 # survive.)
-assert_contains "T28a refusal says --force is own-only (HIMMEL-1563)" "replaces only THIS" "$out"
+assert_contains "T28a refusal says --force is own-only" "replaces only THIS" "$out"
 # Sanity: WITHOUT --dedup-any the same distinct arm would succeed (T25 proves
 # this), so the rc 3 here is the flag's doing, not a stuck scheduler.
 if [ "$(count_slots "$DB28" "$DB28D")" = "1" ]; then
@@ -1798,7 +1798,7 @@ assert_rc "T28d --dedup-any --force arms (rc 0)" 0 "$rc"
 # job(s), so the two FOREIGN siblings are untouched and coexist with the new
 # arm: 3 slots. (On main this is 1 → FAIL; the headline 1563 regression.)
 if [ "$(count_slots "$DB28F" "$DB28FD")" = "3" ]; then
-    echo "PASS T28d --dedup-any --force leaves both foreign siblings + the new arm (3 slots, HIMMEL-1563)"
+    echo "PASS T28d --dedup-any --force leaves both foreign siblings + the new arm (3 slots)"
 else
     echo "FAIL T28d expected 3 slots after --dedup-any --force (2 siblings + new arm), got $(count_slots "$DB28F" "$DB28FD")"
     FAILED=$((FAILED + 1))
@@ -1820,7 +1820,7 @@ while IFS= read -r _id; do
     grepq "$_ids_before" -xF "$_id" || _new=$((_new + 1))
 done <<< "$_ids_after"
 if [ "$_missing" = "0" ] && [ "$_new" = "1" ]; then
-    echo "PASS T28d both sibling identities survived + 1 new arm identity (HIMMEL-1563)"
+    echo "PASS T28d both sibling identities survived + 1 new arm identity"
 else
     echo "FAIL T28d identity check: missing=$_missing new=$_new (before='$(printf '%s' "$_ids_before" | tr '\n' ',')' after='$(printf '%s' "$_ids_after" | tr '\n' ',')')"
     FAILED=$((FAILED + 1))
@@ -2105,7 +2105,7 @@ assert_rc "W1 --worktree dry-run exits 0" 0 "$rc"
 assert_contains "W1 announces worktree create" "would create worktree 'feat/wt-test'" "$out"
 assert_contains "W1 path uses type+slug dir" ".claude/worktrees/feat+wt-test" "$out"
 assert_contains "W1 RESUME_CWD set to worktree" "RESUME_CWD=" "$out"
-assert_contains "W1 pre-trusts the worktree (HIMMEL-386 wiring)" "would pre-trust workspace" "$out"
+assert_contains "W1 pre-trusts the worktree (pre-trust wiring)" "would pre-trust workspace" "$out"
 
 # W2: invalid branch (no type/slug) → loud rc 1, no scheduler touched.
 out=$(PATH="$SCHED_STUB_T17:$PATH" bash "$ARM" --time "$(future_time)" --handover "$HO" --worktree not-valid --dry-run 2>&1)
@@ -2752,7 +2752,7 @@ exec "$AWKFAIL_REAL_AWK" "\$@"
 AWKEOF
 chmod +x "$AWKFAIL_DIR/awk"
 AWKFAIL_MACBIN="$TMP/awkfail-macbin"; mkdir -p "$AWKFAIL_MACBIN"
-printf '#!/bin/sh\nexit 0\n' > "$AWKFAIL_MACBIN/claude"; chmod +x "$AWKFAIL_MACBIN/claude"   # HIMMEL-3074
+printf '#!/bin/sh\nexit 0\n' > "$AWKFAIL_MACBIN/claude"; chmod +x "$AWKFAIL_MACBIN/claude"   # stub claude for the macOS cron PATH launch
 AWKFAIL_CRON_STORE="$TMP/awkfail-cron.store"; : > "$AWKFAIL_CRON_STORE"
 printf '#!/bin/sh\nexit 1\n' > "$AWKFAIL_MACBIN/at"; chmod +x "$AWKFAIL_MACBIN/at"
 printf '#!/bin/sh\nexit 0\n' > "$AWKFAIL_MACBIN/atq"; chmod +x "$AWKFAIL_MACBIN/atq"
@@ -2785,7 +2785,7 @@ if [ "$n" -eq 2 ]; then echo "PASS T-awkfail both the un-reaped old entry and th
 snap_path=$(printf '%s' "$out" | grep -oE '/[^ ]*crontab\.snap\.[A-Za-z0-9]+(\.[A-Za-z0-9]+)?' | head -1)  # BSD mktemp -t appends ".<rand>" after XXXXXX
 if [ -n "$snap_path" ] && [ -s "$snap_path" ]; then
     echo "PASS T-awkfail snapshot preserved ($snap_path)"
-    rm -f "$snap_path"   # HIMMEL-1370: it lives under the real tmp, not $TMP
+    rm -f "$snap_path"   # it lives under the real tmp, not $TMP
 else
     echo "FAIL T-awkfail snapshot missing or empty (path='$snap_path')"
     FAILED=$((FAILED+1))
@@ -4579,7 +4579,7 @@ _SC812='AUTO_ARM_SAFETY_CHILD=1'
 
 # macOS/crontab: one line, so the mark is an export ahead of the launch body.
 MACBIN_812="$TMP/macbin-812"; mkdir -p "$MACBIN_812"
-printf '#!/bin/sh\nexit 0\n' > "$MACBIN_812/claude"; chmod +x "$MACBIN_812/claude"   # HIMMEL-3074
+printf '#!/bin/sh\nexit 0\n' > "$MACBIN_812/claude"; chmod +x "$MACBIN_812/claude"   # stub claude for the macOS cron PATH launch
 CRON_STORE_812="$TMP/cron-812.store"; : > "$CRON_STORE_812"
 printf '#!/bin/sh\nexit 1\n' > "$MACBIN_812/at"; chmod +x "$MACBIN_812/at"
 printf '#!/bin/sh\nexit 0\n' > "$MACBIN_812/atq"; chmod +x "$MACBIN_812/atq"
@@ -4655,13 +4655,13 @@ assert_contains "2973 cron: the entry exports HIMMEL_CONSOLE_DOC" "export HIMMEL
 assert_contains "2973 cron: the entry exports HIMMEL_CONSOLE_WORKDIR (basename slug + path-hash suffix)" "HIMMEL_CONSOLE_WORKDIR=$_WD2973-h" "$out"
 _wd_c=$(printf '%s\n' "$out" | sed -n 's/.*\(HIMMEL_CONSOLE_WORKDIR=[^ ]*\).*/\1/p' | head -n 1)
 assert_contains "2973 cron: the entry CLEARS an ambient pair first" "unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR" "$out"
-assert_contains "2973 cron: the entry exports the HIMMEL_CONSOLE=1 chief marker (HIMMEL-6918)" " HIMMEL_CONSOLE=1" "$out"
-assert_contains "2973 cron: the entry CLEARS an ambient chief marker first (HIMMEL-6918)" "unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR HIMMEL_CONSOLE" "$out"
+assert_contains "2973 cron: the entry exports the HIMMEL_CONSOLE=1 chief marker" " HIMMEL_CONSOLE=1" "$out"
+assert_contains "2973 cron: the entry CLEARS an ambient chief marker first" "unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR HIMMEL_CONSOLE" "$out"
 out=$(env CHIEF_WORK_DIR="$CW_2973" PATH="$MACBIN_2973:$PATH" OSTYPE=darwin23 bash "$ARM" --time "$(future_time)" --handover "$HO_2973" --dry-run 2>&1)
 assert_not_contains "2973 cron: a non-chief arm exports no HIMMEL_CONSOLE_DOC" "export HIMMEL_CONSOLE_DOC" "$out"
 assert_contains "2973 cron: a non-chief arm still CLEARS an ambient pair" "unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR" "$out"
-assert_not_contains "2973 cron: a non-chief arm exports no HIMMEL_CONSOLE=1 (HIMMEL-6918)" " HIMMEL_CONSOLE=1" "$out"
-assert_contains "2973 cron: a non-chief arm still CLEARS an ambient chief marker (HIMMEL-6918)" "unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR HIMMEL_CONSOLE" "$out"
+assert_not_contains "2973 cron: a non-chief arm exports no HIMMEL_CONSOLE=1" " HIMMEL_CONSOLE=1" "$out"
+assert_contains "2973 cron: a non-chief arm still CLEARS an ambient chief marker" "unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR HIMMEL_CONSOLE" "$out"
 
 # Two chief docs sharing a basename (different repos' handovers/) must not
 # share a workdir: the checker picks the highest-numbered snap without checking
@@ -4680,12 +4680,12 @@ assert_rc "2973 at: chief arm dry-run exits 0" 0 "$rc"
 assert_contains "2973 at: the job body exports HIMMEL_CONSOLE_DOC" "export HIMMEL_CONSOLE_DOC=$HO_2973C" "$out"
 assert_contains "2973 at: the job body exports HIMMEL_CONSOLE_WORKDIR (basename slug + path-hash suffix)" "HIMMEL_CONSOLE_WORKDIR=$_WD2973-h" "$out"
 assert_contains "2973 at: the job body CLEARS an ambient pair first" "unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR" "$out"
-assert_contains "2973 at: the job body exports the HIMMEL_CONSOLE=1 chief marker (HIMMEL-6918)" " HIMMEL_CONSOLE=1" "$out"
+assert_contains "2973 at: the job body exports the HIMMEL_CONSOLE=1 chief marker" " HIMMEL_CONSOLE=1" "$out"
 out=$(SCHED_DB="$TMP/h2973-sched.db" SCHED_DB_DIR="$DBD_2973" CHIEF_WORK_DIR="$CW_2973" PATH="$STATEFUL_STUB:$PATH" OSTYPE=linux-gnu \
     bash "$ARM" --time "$(future_time)" --handover "$HO_2973" --dry-run 2>&1)
 assert_not_contains "2973 at: a non-chief arm exports no HIMMEL_CONSOLE_DOC" "export HIMMEL_CONSOLE_DOC" "$out"
 assert_contains "2973 at: a non-chief arm still CLEARS an ambient pair" "unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR" "$out"
-assert_not_contains "2973 at: a non-chief arm exports no HIMMEL_CONSOLE=1 (HIMMEL-6918)" " HIMMEL_CONSOLE=1" "$out"
+assert_not_contains "2973 at: a non-chief arm exports no HIMMEL_CONSOLE=1" " HIMMEL_CONSOLE=1" "$out"
 fi
 
 # ---------------------------------------------------------------------------
@@ -4737,7 +4737,7 @@ assert_contains "1636 at: that refusal is the ticket mutex" "$_1636_WARN" "$out"
 
 # --- crontab backend (macOS): list_existing returns the whole LINE ----------
 MACBIN_1636="$TMP/macbin-1636"; mkdir -p "$MACBIN_1636"
-printf '#!/bin/sh\nexit 0\n' > "$MACBIN_1636/claude"; chmod +x "$MACBIN_1636/claude"   # HIMMEL-3074
+printf '#!/bin/sh\nexit 0\n' > "$MACBIN_1636/claude"; chmod +x "$MACBIN_1636/claude"   # stub claude for the macOS cron PATH launch
 CRON_STORE_1636="$TMP/cron-1636.store"; : > "$CRON_STORE_1636"
 # at/atq must never be reached on macOS (arm-resume picks crontab there); a
 # loud-failing `at` proves it, exactly as the macOS section's stub does.
@@ -4809,7 +4809,7 @@ assert_not_contains "2192 no --model token for a chief-named handover (ruling 25
 # + a stub crontab binary) -- a proven pattern in this suite for deterministic
 # crontab coverage.
 CRONBIN2192="$TMP/cronbin2192"; mkdir -p "$CRONBIN2192"
-printf '#!/bin/sh\nexit 0\n' > "$CRONBIN2192/claude"; chmod +x "$CRONBIN2192/claude"   # HIMMEL-3074
+printf '#!/bin/sh\nexit 0\n' > "$CRONBIN2192/claude"; chmod +x "$CRONBIN2192/claude"   # stub claude for the macOS cron PATH launch
 CRON_STORE_2192="$TMP/cron2192.store"; : > "$CRON_STORE_2192"
 cat > "$CRONBIN2192/crontab" <<CRONEOF
 #!/bin/sh
@@ -4886,7 +4886,7 @@ fi
 # ---------------------------------------------------------------------------
 if _sec_selected "2199" "HIMMEL-2199"; then
 CRONBIN2199="$TMP/cronbin2199"; mkdir -p "$CRONBIN2199"
-printf '#!/bin/sh\nexit 0\n' > "$CRONBIN2199/claude"; chmod +x "$CRONBIN2199/claude"   # HIMMEL-3074
+printf '#!/bin/sh\nexit 0\n' > "$CRONBIN2199/claude"; chmod +x "$CRONBIN2199/claude"   # stub claude for the macOS cron PATH launch
 CRON_STORE_2199="$TMP/cron2199.store"; : > "$CRON_STORE_2199"
 cat > "$CRONBIN2199/crontab" <<CRONEOF
 #!/bin/sh
@@ -4961,7 +4961,7 @@ assert_not_contains "2545a body never grants CLAUDE_CODE_CHILD_SESSION=1" "CLAUD
 # binary), because a one-line entry could easily have been patched only on
 # the multi-line POSIX twin.
 CRONBIN2545="$TMP/cronbin2545"; mkdir -p "$CRONBIN2545"
-printf '#!/bin/sh\nexit 0\n' > "$CRONBIN2545/claude"; chmod +x "$CRONBIN2545/claude"   # HIMMEL-3074
+printf '#!/bin/sh\nexit 0\n' > "$CRONBIN2545/claude"; chmod +x "$CRONBIN2545/claude"   # stub claude for the macOS cron PATH launch
 CRON_STORE_2545="$TMP/cron2545.store"; : > "$CRON_STORE_2545"
 cat > "$CRONBIN2545/crontab" <<CRONEOF
 #!/bin/sh
@@ -5037,7 +5037,7 @@ fi
 # /tmp/claude/statusline-usage-cache.json). A --only run may skip every real arm.
 if [ -z "$ONLY_FILTERS" ]; then
     if [ ! -s "$BANK_PRODUCER_LOG" ]; then
-        echo "FAIL no non-dry-run arm reached the bank-preflight producer refresh -- the cache-redirect check below would be vacuous (HIMMEL-3911)"
+        echo "FAIL no non-dry-run arm reached the bank-preflight producer refresh -- the cache-redirect check below would be vacuous"
         FAILED=$((FAILED + 1))
     elif grep -qvxF "$TMP/bank-cache.json" "$BANK_PRODUCER_LOG"; then
         echo "FAIL a bank-preflight refresh was aimed at a cache other than \$TMP/bank-cache.json -- a real arm may have rewritten the live usage cache (HIMMEL-3846):"
