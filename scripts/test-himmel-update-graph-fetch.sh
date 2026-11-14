@@ -426,7 +426,6 @@ check_eq "U4 sub-row rc 0" 0 "$UP_RC"
 untouched "U4 sub-row linked publisher" "$ADO"
 rm -f "$HOME/.himmel"; mkdir -p "$HOME/.himmel"
 
-# --- a publisher footprint: real arm and real config-audit, under their test seams ---------------------------------
 export HIMMEL_CONFIG_DIR="$HOME/.himmel" HIMMEL_CONFIG_AUDIT_DIR="$HOME/.himmel/state/config-audit"
 export HIMMEL_CONFIG_AUDIT_ENV_FILE="$TMP/fixture.env" HIMMEL_CONFIG_ALERT_CMD="$TMP/alert-send.sh" HIMMEL_TEST_FIXTURE=1
 export GRAPHMAP_BAT_DIR="$TMP/bat" GRAPHMAP_CRONTAB="$TMP/crontab-fake.sh" HIMMEL_OBSERVABILITY_CONFIG="$TMP/obs.json"

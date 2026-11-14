@@ -129,14 +129,12 @@ function laneRunners() {
   return out;
 }
 
-// The footprint of a publisher: (a) an armed publish runner that holds the lane, or (b) config-audit's last healthy
-// read of the config, which held semantic_api_ok true.
 function publisherFootprint() {
-  const a = laneRunners().some((r) => r.name === PUBLISH_RUNNER);
+  const armedPublishRunner = laneRunners().some((r) => r.name === PUBLISH_RUNNER);
   const w = readJsonRegular(path.join(auditDir(), 'watch.json'));
   const d = plainObject(w) && plainObject(w['config.json']) ? w['config.json'].digests : null;
-  const b = plainObject(d) && d['graphify.semantic_api_ok'] === TRUE_DIGEST;
-  return { a, b, any: a || b };
+  const healthyReadHeldKey = plainObject(d) && d['graphify.semantic_api_ok'] === TRUE_DIGEST;
+  return { armedPublishRunner, healthyReadHeldKey, any: armedPublishRunner || healthyReadHeldKey };
 }
 
 function missingStation() {
@@ -336,8 +334,6 @@ function configUsable(doc) {
 
 const holdsPublisherKey = (doc) => plainObject(doc.graphify) && doc.graphify.semantic_api_ok === true;
 
-// The newest watcher backup whose config.json is usable, else the newest audited one. Only a backup's config.json and
-// manifest.json are read; its himmel.conf, himmel.conf.local and .env members are never opened.
 function chooseBackup(cause, footprint) {
   const base = path.join(auditDir(), 'backups');
   let ids;

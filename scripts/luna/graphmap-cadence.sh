@@ -173,9 +173,6 @@ graph_role() {
 semantic_api_opted_in() {
     [ "$(HOME="$(resolve_user_home)" node "$HIMMEL_ROOT/scripts/himmelctl/lib/graph-choices.js" role 2>/dev/null)" = publisher ]
 }
-# While the graph config reads unreadable, arm --rewrite-armed and arm --force leave every armed runner that holds
-# the lane as it is (re-rendering one would drop the lane of a station that may still be the publisher), and say so
-# once. --leave-publisher is the one way to drop the lane meanwhile.
 KEPT_LANE_RUNNERS=""
 keep_lane_runners_while_unreadable() {
     local gc="$HIMMEL_ROOT/scripts/himmelctl/lib/graph-choices.js" cause names fix leave
@@ -1810,8 +1807,6 @@ cmd_arm() {
         fi
     fi
 
-    # A lane runner kept while the graph config is unreadable is never replaced: its crontab row is
-    # re-registered below, its bytes stay.
     if [ -n "$tmp_luna" ] && lane_runner_kept "$CRON_RUNNER_LUNA"; then rm -f "$tmp_luna"; tmp_luna=""; fi
     if [ -n "$tmp_himmel" ] && lane_runner_kept "$CRON_RUNNER_HIMMEL"; then rm -f "$tmp_himmel"; tmp_himmel=""; fi
     if [ -n "$tmp_ast_luna" ] && lane_runner_kept "$CRON_RUNNER_AST_LUNA"; then rm -f "$tmp_ast_luna"; tmp_ast_luna=""; fi

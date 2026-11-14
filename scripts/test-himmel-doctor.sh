@@ -8431,9 +8431,10 @@ c92_reset; c92_roles '{"version":1,"roles":{"graphify":["A","B","C"]}}'; out="$(
 if grepq "$out" 'OK   C93-graph-role'; then pass "C93 valid map -> OK"; else fail "C93 valid -> $out"; fi
 
 echo "== C94: an unreadable graph config WARNs under its own id with the cause and the fix; a readable one is OK =="
-c94_check() { # <label> <cause word>
+c94_check() {
+    local label="$1" cause="$2"
     out="$(c92_run C94)"
-    if grepq "$out" 'WARN C94-graph-config' && grepq "$out" -F "cause=$2" && ! grepq "$out" 'sk-ant'; then pass "C94 $1 -> WARN naming cause=$2"; else fail "C94 $1 -> $out"; fi
+    if grepq "$out" 'WARN C94-graph-config' && grepq "$out" -F "cause=$cause" && ! grepq "$out" 'sk-ant'; then pass "C94 $label -> WARN naming cause=$cause"; else fail "C94 $label -> $out"; fi
 }
 c92_reset; printf 'sk-ant-api03-c94-planted-key {\n' > "$c92_t/home/.himmel/config.json"; c94_check "a non-JSON file holding a key-shaped string" not-json
 c92_reset; : > "$c92_t/home/.himmel/config.json"; c94_check "an empty file" empty

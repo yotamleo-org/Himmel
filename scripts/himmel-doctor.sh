@@ -4084,9 +4084,6 @@ EOF
     fi
 }
 
-# C94-graph-config: the station's graph config (~/.himmel/config.json) cannot be read as one, or has lost the publisher
-# key while a publisher footprint stands. While it reads unreadable nothing new is spent; graph-choices.js check names the
-# cause, the backup it chose and the fixed fix line. Its own id, so a wake names it even when C88 already WARNs.
 check_c94_graph_config() {
     local gc="$SELF_DIR/himmelctl/lib/graph-choices.js" role chk head fix rest
     role="$(node "$gc" role 2>/dev/null)" || role=""
