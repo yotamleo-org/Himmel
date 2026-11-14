@@ -1489,11 +1489,15 @@ GRC=0; GRO="$(HIMMEL_REPO=rel bash "$WAIT" 2>&1)" || GRC=$?
 check "(gr1) a relative HIMMEL_REPO is refused rc 2 with the exact refusal" "2|chief-wait: HIMMEL_REPO (rel) is not an absolute path - refusing to let it pick the gated checkout" "$GRC|$GRO"
 GRC=0; GRO="$(HIMMEL_REPO="$WORK/gone" bash "$WAIT" 2>&1)" || GRC=$?
 check "(gr2) a HIMMEL_REPO that is not a directory is refused rc 2 with the exact refusal" "2|chief-wait: the gated checkout HIMMEL_REPO ($WORK/gone) is not a directory" "$GRC|$GRO"
-GK="$WORK/grkit"; mkdir -p "$GK/scripts/handover/chief-kit" "$GK/scripts/cr" "$GK/scripts/lib"
-cp "$HERE/chief-wait.sh" "$GK/scripts/handover/chief-kit/chief-wait.sh"
-cp -R "$HERE/../../cr/." "$GK/scripts/cr/"
-cp -R "$HERE/../../lib/." "$GK/scripts/lib/"
-rm -f "$GK/scripts/lib/gate-repo-resolver.sh"
+GK="$WORK/grkit"
+if ! { mkdir -p "$GK/scripts/handover/chief-kit" "$GK/scripts/cr" "$GK/scripts/lib" \
+    && cp "$HERE/chief-wait.sh" "$GK/scripts/handover/chief-kit/chief-wait.sh" \
+    && cp -R "$HERE/../../cr/." "$GK/scripts/cr/" \
+    && cp -R "$HERE/../../lib/." "$GK/scripts/lib/" \
+    && rm -f "$GK/scripts/lib/gate-repo-resolver.sh" \
+    && [ ! -e "$GK/scripts/lib/gate-repo-resolver.sh" ]; }; then
+    echo "FAIL: (gr3) fixture setup" >&2; exit 1
+fi
 GRC=0; GRO="$(env -u HIMMEL_REPO bash "$GK/scripts/handover/chief-kit/chief-wait.sh" 2>&1)" || GRC=$?
 GRO=${GRO##*$'\n'}   # bash's own "No such file" line comes first; the refusal is the last line
 check "(gr3) a kit with no resolver lib refuses rc 2 naming the lib" "2|chief-wait: cannot load scripts/lib/gate-repo-resolver.sh; nothing waited" "$GRC|$GRO"
