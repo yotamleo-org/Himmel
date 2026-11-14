@@ -84,6 +84,8 @@ let setup save your commit rules and other answers.
 | The pipeline job's runner scripts | `~/.claude/pipeline-cadence/` | user | himmel | Removed | `cadence-pipeline-dir` |
 | The qmd refresh job's runner scripts | `~/.claude/qmd-cadence/` | user | himmel | Removed | `cadence-qmd-dir` |
 | The graph-map job's runner scripts | `~/.claude/graphmap-cadence/` | user | himmel | Removed | `cadence-graphmap-dir` |
+| The daily graph job's runner script and its log | `~/.claude/graph-choices-cadence/` | user | himmel | Removed | `cadence-graph-choices-dir` |
+| The graphs the daily graph job builds for the repos you chose | `~/.local/share/himmel/graphify/choices/` | user | himmel | Removed; a re-run rebuilds them | `graph-choices-graphs` |
 | The list of jobs a health check expects to see run | `~/.himmel/observability.json` | user | himmel | Removed | `observability-registry` |
 | The personal or medical vault you declare, so local guards keep it away from cloud backends | `~/.config/claude-glm/phi-roots` | user | himmel | Not removed yet: uninstall leaves these lines in place | `phi-roots` |
 | Your behaviour settings, such as the commit rules setup writes when you say yes; on a luna install it is a link into the vault | `~/.himmel/himmel.conf` | user | you | Kept; `--purge-state` removes it, and a link loses only the link, never its vault target | `himmel-conf` |

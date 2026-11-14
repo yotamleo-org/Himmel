@@ -53,6 +53,15 @@ test("consent, timeouts and cwd come from the table", () => {
   expect(resolveAction(table, "cadence.arm", "graphmap").rowIds).toEqual(["graphmap-cadence"]);
 });
 
+test("A1: the daily graph-choices job arms and disarms from the feed's own script path, on typed consent", () => {
+  const arm = resolveAction(table, "cadence.arm", "graph-choices");
+  expect(arm.argv).toEqual(["bash", "/C/scripts/graphify/graph-choices-cadence.sh", "arm"]);
+  expect(arm.dryArgv).toEqual(["bash", "/C/scripts/graphify/graph-choices-cadence.sh", "arm", "--dry-run"]);
+  expect(arm.consent).toEqual({ kind: "typed", expect: "graph-choices" });
+  expect(arm.rowIds).toEqual(["graph-choices-cadence"]);
+  expect(resolveAction(table, "cadence.disarm", "graph-choices").argv).toEqual(["bash", "/C/scripts/graphify/graph-choices-cadence.sh", "disarm"]);
+});
+
 test("the weekly roll-up cadence is a Configure target that says it costs nothing", () => {
   const a = resolveAction(table, "cadence.arm", "rollup");
   expect(a.bank).toBe("none");

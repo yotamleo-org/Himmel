@@ -4,7 +4,8 @@
 // passes himmelctl's own confPathOk. No feed text ever reaches an argv.
 import { execFileSync } from "node:child_process";
 import { confPathOk } from "../himmelctl/lib/behaviour-config.js";
-import { GRAPHMAP_COST } from "../himmelctl/lib/config-feed.js";
+import { fileURLToPath } from "node:url";
+import { GRAPHMAP_COST, CADENCES } from "../himmelctl/lib/config-feed.js";
 
 export type Consent = { kind: "typed" | "plain"; expect: string | null };
 export type Resolved = {
@@ -39,16 +40,29 @@ const PATH_KEYS: Readonly<Record<string, string>> = Object.freeze({ "handover-ro
 export const FLOOR: readonly string[] = Object.freeze(["handover@himmel", "himmel-ops@himmel", "qmd@himmel"]);
 // merge and public are guard-class (critic F4): shown, never toggled here.
 const INITIATIVE: readonly string[] = Object.freeze(["execute", "prcheck", "pr", "ticket", "handover"]);
+const GRAPH_CHOICES_PATH: string = (CADENCES as { name: string; script: string }[]).find((c) => c.name === "graph-choices")!.script;
 const CADENCE_PATH: Readonly<Record<string, string>> = Object.freeze({
   pipeline: "scripts/luna/pipeline-cadence.sh",
   graphmap: "scripts/luna/graphmap-cadence.sh",
+  "graph-choices": GRAPH_CHOICES_PATH,
   qmd: "scripts/luna/qmd-cadence.sh",
   doctor: "scripts/doctor-cadence.sh",
   rollup: "scripts/eval/rollup-cadence.sh",
 });
+const WORST_CASE_UNKNOWN = "the stored graph choice could not be read, so its worst case is unknown";
+function graphChoicesWorstCase(): string {
+  try {
+    const file = fileURLToPath(new URL("../himmelctl/lib/graph-choices.js", import.meta.url));
+    const text = execFileSync("node", [file, "worst-case"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 15_000 }).trim();
+    return text || WORST_CASE_UNKNOWN;
+  } catch {
+    return WORST_CASE_UNKNOWN;
+  }
+}
 const CADENCE_BANK: Readonly<Record<string, string>> = Object.freeze({
   pipeline: "runs Claude-backed harvest/synthesize and draws the subscription bank",
   graphmap: GRAPHMAP_COST,
+  "graph-choices": "worst case",
   qmd: "none (local qmd reindex)",
   doctor: "none",
   rollup: "none",
@@ -79,7 +93,7 @@ export function buildTable(ctx: Ctx): Table {
   const none = () => "none";
   const cadence = (verb: string): Spec => ({
     targets: cadences, argv: (t) => ["bash", `${ctx.cadenceRoot}/${CADENCE_PATH[t]}`, verb], consent: "typed",
-    cwd: ctx.root, timeoutMs: CADENCE_TIMEOUT_MS, effect: "at the next scheduled fire", bank: (t) => CADENCE_BANK[t],
+    cwd: ctx.root, timeoutMs: CADENCE_TIMEOUT_MS, effect: "at the next scheduled fire", bank: (t) => (t === "graph-choices" ? graphChoicesWorstCase() : CADENCE_BANK[t]),
     needsValue: false, rowIds: (t) => [`${t}-cadence`],
   });
   const plugin = (verb: string): Spec => ({
