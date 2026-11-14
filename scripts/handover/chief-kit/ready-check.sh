@@ -2242,12 +2242,16 @@ s17_fl_failures() {  # <dir> <run id>: one `fail` row per suite in <dir>/need wi
 }
 S17_JS_ART='js-suite-manifest-*'
 S17_JS_FILE='manifest-js-*.txt'
-# s17_js_read <dir> <run id>: the run's JS suite manifests into <dir>/jsran0, jsskip,
-# jsred and jsbad (<path><TAB><job>). A manifest's ran 0 and skip lines count only when
-# every job its artifact names concluded success in the run: js-suite-manifest-<X> names
-# the jobs whose name is X or "X (...)", or "J (V[, ...])" when X is J-V. A nonzero `ran`
-# line counts red whatever its job. No artifact is no proof; any other failed read FAILs
-# the item (returns 1).
+s17_artifact_jobs_all_succeeded() {
+    tr -d '\r' < "$1" | awk -F '\t' -v x="$2" '
+        { n = $2; b = n; v = ""; i = index(n, " (")
+          if (i > 0 && substr(n, length(n)) == ")") {
+              b = substr(n, 1, i - 1); v = substr(n, i + 2, length(n) - i - 2)
+              j = index(v, ", "); if (j > 0) v = substr(v, 1, j - 1)
+          }
+          if (b == x || (v != "" && b "-" v == x)) { m++; if ($1 != "success") bad = 1 } }
+        END { print ((m > 0 && !bad) ? "yes" : "no") }'
+}
 s17_js_read() {
     local d="$1" run="$2" f job ok
     mkdir "$d/js" || { s17_fail "mkdir failed"; return 1; }
@@ -2265,14 +2269,7 @@ s17_js_read() {
     while IFS= read -r f; do
         job="${f%/*}"; job="${job##*/}"
         case "$job" in js-suite-manifest-?*) job="${job#js-suite-manifest-}" ;; *) job="?" ;; esac
-        ok=$(tr -d '\r' < "$d/jobs" | awk -F '\t' -v x="$job" '
-            { n = $2; b = n; v = ""; i = index(n, " (")
-              if (i > 0 && substr(n, length(n)) == ")") {
-                  b = substr(n, 1, i - 1); v = substr(n, i + 2, length(n) - i - 2)
-                  j = index(v, ", "); if (j > 0) v = substr(v, 1, j - 1)
-              }
-              if (b == x || (v != "" && b "-" v == x)) { m++; if ($1 != "success") bad = 1 } }
-            END { print ((m > 0 && !bad) ? "yes" : "no") }')
+        ok=$(s17_artifact_jobs_all_succeeded "$d/jobs" "$job")
         tr -d '\r' < "$f" > "$d/jsf"
         awk 'index($0, "ran ") == 1 && index($0, "ran 0 ") != 1 { r = substr($0, 5); k = index(r, " "); if (k > 1) print substr(r, k + 1) }' "$d/jsf" >> "$d/jsred"
         if [ "$ok" = yes ]; then
@@ -2329,7 +2326,6 @@ s17_body() {
         echo "[PASS] 19. suite evidence: 0 impacted, nothing to prove"
         return 0
     fi
-    # the PR's file list (checks 5, 9, 10 and 11 read it too): a PR always changes a file, so empty is a failed read
     if [ -z "${files_json:-}" ]; then
         s17_fail "cannot read the PR's file list"
         return 0
@@ -2449,7 +2445,6 @@ s17_body() {
             find "$d/m" -type f -name 'manifest-shard*.txt' -exec cat {} + 2>/dev/null | tr -d '\r' > "$d/man" || : > "$d/man"  # swallow-ok: no manifest proves nothing
             awk 'index($0, "ran 0 ") == 1 { print substr($0, 7) }' "$d/man" | sort -u > "$d/ran0"
             awk 'index($0, "skip ") == 1 { print substr($0, 6) }' "$d/man" | sort -u > "$d/skip"
-            # the JS manifests, only when a suite has neither shard line
             : > "$d/jsran0"; : > "$d/jsskip"; : > "$d/jsred"; : > "$d/jsbad"
             while IFS= read -r s; do
                 if ! grep -Fxq -- "$s" "$d/ran0" && ! grep -Fxq -- "$s" "$d/skip"; then

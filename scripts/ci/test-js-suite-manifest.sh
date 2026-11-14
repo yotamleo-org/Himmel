@@ -243,7 +243,7 @@ if grep -qE "node-version: '22\.23\.4'" <<< "$nstep" && [ "$ncond" = '${{ !job.c
   ok "W1 shell-unit-shard: setup-node 22.23.4 whose only condition is !job.container.id"
 else bad "W1 shell-unit-shard: no setup-node 22.23.4 step gated only on !job.container.id (if: '$ncond')"; fi
 
-w2_glob() {  # <file> <prefix>: the distinct single-quoted globs starting with <prefix> in a reader
+w2_glob() {
   grep -oE "'$2[^']*'" "$1" | tr -d "'" | LC_ALL=C sort -u
 }
 rc_f="$ROOT/scripts/handover/chief-kit/ready-check.sh"
@@ -267,7 +267,7 @@ for job in lanes-and-trust-suites bun-suites node-suites; do
   out=$(step_of "$job" 'scripts/ci/js-suite-manifest.mjs' | sed 's/\${{ matrix\.pkg }}/x/g' | grep -oE -- '--out [^ ]+' | head -n 1 | sed 's/^--out //')
   art=$art_x; out_x=$out
   suffix=${art_x#js-suite-manifest-}
-  # shellcheck disable=SC2254  # the readers' globs are matched as globs on purpose
+  # shellcheck disable=SC2254
   case "$art_x" in $pa) a_ok=1 ;; *) a_ok=0 ;; esac
   # shellcheck disable=SC2254
   case "${out_x##*/}" in $na) n_ok=1 ;; *) n_ok=0 ;; esac

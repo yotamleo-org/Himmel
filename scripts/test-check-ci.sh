@@ -202,8 +202,6 @@ if [ "$cmd" = "api" ] && [ -n "${GH_STUB_RL_PROBE:-}" ] && [ "${2:-}" = "-i" ]; 
     exit 1
 fi
 if [ "$cmd" = "run" ] && [ "${2:-}" = "download" ]; then
-    # a failed run's artifacts by -p: the shell-unit manifest is GH_STUB_MANIFEST, the JS one
-    # GH_STUB_JS_MANIFEST (printf %b lines each); either lands in the -D dir.
     _p=""; _d=""
     while [ $# -gt 0 ]; do case "$1" in -D) _d="${2:-}" ;; -p) _p="${2:-}" ;; esac; shift; done
     case "$_p" in
@@ -2777,8 +2775,6 @@ assert_rc 0 "9183-f a green exits 0"
 if [ ! -s "$FL9183" ]; then pass "9183-f a green leaves no row"; else fail "9183-f a green leaves no row" "ledger: $(cat "$FL9183")"; fi
 unset CI_FAIL_RECORD_IMPACTED GH_STUB_MANIFEST
 
-# 9524 F1, F2 — a JS red left to CI gets its `fail` row from the run's JS manifest, also when
-# the run has no shell artifact (the run-cancel twin stopped the shards).
 export GH_STUB_FAILLINKS='bun-suites (ubuntu-latest)\thttps://github.com/octo/demo/actions/runs/777/job/4242\n'
 export CI_FAIL_RECORD_IMPACTED="$STUBDIR/impacted.txt"
 printf '%s\n' scripts/test-x.sh scripts/lib/j.test.mjs > "$CI_FAIL_RECORD_IMPACTED"

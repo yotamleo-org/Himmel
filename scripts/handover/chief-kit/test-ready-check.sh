@@ -91,8 +91,6 @@ case "$args" in
         for kv in ${STUB_RUN_CONC:-}; do [ "${kv%%=*}" = "$id" ] && conc="${kv#*=}"; done
         jq -n --argjson id "$id" --arg h "${STUB_RUN_HEAD_SHA:-$STUB_HEAD}" --arg c "$conc" '{id:$id,head_sha:$h,status:"completed",conclusion:$c}' | jq -r "${args#*--jq }" ;;
     "run download "*)
-        # check 19: the shell pattern copies STUB_MANIFEST_DIR's artifact dirs into -D <dir>; the JS pattern
-        # copies STUB_JS_MANIFEST_DIR/<run id>/'s, and STUB_JS_DL_FAIL fails it alone; none = gh's no-artifact reply
         [ -z "${STUB_DL_SLEEP:-}" ] || sleep "$STUB_DL_SLEEP"
         d="${args#* -D }"; d="${d%% *}"
         case "$args" in
@@ -107,8 +105,6 @@ case "$args" in
                 cp -R "$STUB_MANIFEST_DIR"/. "$d"/ ;;
         esac ;;
     "api --paginate repos/"*"/actions/runs/"*"/jobs"*)
-        # check 19: the run's jobs, through the script's own --jq. STUB_JOBS lines are <conclusion>|<name>;
-        # unset, the JS jobs of real run 43589344861, all success. STUB_JOBS_FAIL fails the read.
         [ -z "${STUB_JOBS_FAIL:-}" ] || { echo "HTTP 502" >&2; exit 1; }
         printf '%s\n' "${STUB_JOBS:-success|lanes-and-trust-suites
 success|bun-suites (ubuntu-latest)
@@ -4540,9 +4536,7 @@ check "19 T26c the published file says ran 77 for B: exit 1" "$rc" "1"
 contains "19 T26c: B is the suite proven nowhere" "$(line17 "$out")" "[FAIL] 19. suite evidence: 1 suite(s) proven nowhere: $S17_B (CI skipped it)"
 s17_clear
 
-# T-JS1 to T-JS19: the JS suite manifests, read only from the picked run at the
-# head and only from a job that succeeded; a suite the PR changed needs its local run.
-s17_js_man() {  # <dir> <run id> <job> <line>...: one JS artifact of that run, as the CI download lays it out
+s17_js_man() {
     local d="$1/$2/js-suite-manifest-$3"
     shift 3
     mkdir -p "$d"
