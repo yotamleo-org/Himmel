@@ -1485,10 +1485,6 @@ rv_tick 'none'
 check "(rv8) review=none wakes nothing and the waiter survives" "running" "$(cd_alive)"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
-# --- (gr) the gated checkout comes from scripts/lib/gate-repo-resolver.sh ---
-# No inbox argument: past the gate block the waiter would only print its usage line, so a
-# refusal here is the gate's own and nothing starts a loop. RED control (chief-wait.sh before
-# this change): it resolved inline, so a kit with no resolver lib ran on to the usage line.
 GRC=0; GRO="$(HIMMEL_REPO=rel bash "$WAIT" 2>&1)" || GRC=$?
 check "(gr1) a relative HIMMEL_REPO is refused rc 2 with the exact refusal" "2|chief-wait: HIMMEL_REPO (rel) is not an absolute path - refusing to let it pick the gated checkout" "$GRC|$GRO"
 GRC=0; GRO="$(HIMMEL_REPO="$WORK/gone" bash "$WAIT" 2>&1)" || GRC=$?

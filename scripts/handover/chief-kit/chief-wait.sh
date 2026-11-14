@@ -492,7 +492,6 @@ REPO="$(cd "$HERE/../../.." && pwd)"
 # The gated checkout: HIMMEL_REPO, else the primary checkout of this script's own tree,
 # never the waiter's cwd. ready-check.sh, cr-disposition.sh and every gh read of the
 # PR run there, so the waiter reads the same repo from any directory.
-# The git read runs in scripts/lib/gate-repo-resolver.sh with the GIT_* list cleared.
 # shellcheck source=../../lib/gate-repo-resolver.sh
 . "$REPO/scripts/lib/gate-repo-resolver.sh" || { echo "chief-wait: cannot load scripts/lib/gate-repo-resolver.sh; nothing waited" >&2; exit 2; }
 GATE_DIR=$(gate_repo_dir chief-wait "" "") || exit 2
