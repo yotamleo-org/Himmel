@@ -296,7 +296,7 @@ run() {
     esac
     (cd "${RUN_CWD:-$REPO}" && env -u TICKET_ID_PATTERN \
         JIRA_PROJECT_KEY=HIMMEL HOME="${RUN_HOME:-$HOME}" \
-        HIMMEL_REPO="$REPO" STUB_NWO_BY_CWD="${STUB_NWO_BY_CWD:-}" \
+        HIMMEL_REPO="${RUN_HIMMEL_REPO-$REPO}" STUB_NWO_BY_CWD="${STUB_NWO_BY_CWD:-}" \
         STUB_NWO="$NWO" \
         STUB_HEAD="${STUB_HEAD:-$SHA}" STUB_MSS="${STUB_MSS:-CLEAN}" \
         STUB_ROLLUP="${STUB_ROLLUP:-$GREEN_ROLLUP}" \
@@ -1966,6 +1966,7 @@ cp "$REPO_ROOT/scripts/ci/ticket-id-internal-authors.txt" "$own/scripts/ci/ticke
 mkdir -p "$own/scripts/cr"
 cp "$REPO_ROOT/scripts/cr/clear-review-marker.sh" "$REPO_ROOT/scripts/cr/anchor-handoff.sh" "$REPO_ROOT/scripts/cr/ledger-amend-auth.js" "$REPO_ROOT/scripts/cr/review-round.sh" "$own/scripts/cr/"
 cp "$REPO_ROOT/scripts/lib/chokepoint-seam-guard.sh" "$own/scripts/lib/chokepoint-seam-guard.sh"
+cp "$REPO_ROOT/scripts/lib/git-clean.sh" "$own/scripts/lib/git-clean.sh"
 cp "$REPO_ROOT/scripts/chokepoints.json" "$own/scripts/chokepoints.json"
 printf 'JIRA_PROJECT_KEY=HIMMEL\n' > "$own/.env"
 
@@ -4754,6 +4755,17 @@ check "anchor R15: an inherited GIT_DIR on a decoy gives the checkout's exit" "$
 check "anchor R15: an inherited GIT_DIR on a decoy gives the checkout's output" "$out" "$base_out"
 check "anchor R15: no gh call names the decoy's repo" "$(grep -c 'other/luna' "$GH_LOG")" "0"
 
+mkdir -p "$tmp/empty-objects"
+rc=0; out="$(GIT_OBJECT_DIRECTORY="$tmp/empty-objects" run)" || rc=$?
+check "anchor: an inherited GIT_OBJECT_DIRECTORY gives the checkout's exit" "$rc" "$base_rc"
+check "anchor: an inherited GIT_OBJECT_DIRECTORY gives the checkout's output" "$out" "$base_out"
+
+: > "$GH_LOG"
+rc=0; out="$(GIT_CONFIG_PARAMETERS="'ghstub.nwo=other/luna'" run)" || rc=$?
+check "anchor: an inherited GIT_CONFIG_PARAMETERS gives the checkout's exit" "$rc" "$base_rc"
+check "anchor: an inherited GIT_CONFIG_PARAMETERS gives the checkout's output" "$out" "$base_out"
+check "anchor: an inherited GIT_CONFIG_PARAMETERS names no decoy repo to gh" "$(grep -c 'other/luna' "$GH_LOG")" "0"
+
 mkdir -p "$tmp/nodebin"
 export NODE_LOG="$tmp/node.log"; : > "$NODE_LOG"
 cat > "$tmp/nodebin/node" <<'STUB'
@@ -4774,6 +4786,13 @@ printf 'echo REL-TREE-LIB-MARKER\n' >> "$RW/scripts/lib/non-gating-contexts.sh"
 rc=0; out="$(RUN_CWD="$RW" RUN_SCRIPT=scripts/handover/chief-kit/ready-check.sh run)" || rc=$?
 contains "anchor R10: relative entry from the tree root reaches the checks" "$out" "[PASS] 1."
 contains "anchor R10: the relative entry loads its own tree's lib" "$out" "REL-TREE-LIB-MARKER"
+
+git -C "$RW" init -q
+git -C "$RW" config ghstub.nwo "$NWO"
+: > "$GH_LOG"
+rc=0; out="$(RUN_CWD="$NOWHERE" RUN_HIMMEL_REPO="" RUN_SCRIPT="$RW/scripts/handover/chief-kit/ready-check.sh" run)" || rc=$?
+contains "anchor: with HIMMEL_REPO empty the script's own primary checkout is gated, from any cwd" "$out" "[PASS] 1."
+notcontains "anchor: with HIMMEL_REPO empty there is no cannot-resolve refusal" "$out" "cannot resolve owner/repo"
 
 rc=0; out="$(cd "$NOWHERE" && HIMMEL_REPO=rel/path bash "$SCRIPT" --observe "$PR" "$SHA" 2>&1)" || rc=$?
 check "anchor: a relative HIMMEL_REPO is refused with exit 2" "$rc" "2"

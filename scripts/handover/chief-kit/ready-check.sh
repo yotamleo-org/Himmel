@@ -411,9 +411,12 @@ if ! command -v jq >/dev/null 2>&1; then
     exit 2
 fi
 
+# shellcheck source=scripts/lib/git-clean.sh
+. "$SELF_DIR/../../lib/git-clean.sh" || { echo "ready-check: cannot load git-clean.sh; nothing was judged" >&2; exit 2; }
 enter_gated_checkout() {
     local gate_dir
-    unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GH_REPO
+    git_env_scrub
+    unset GH_REPO
     case "${HIMMEL_REPO:-}" in
         /*) gate_dir=$HIMMEL_REPO ;;
         '') if gate_dir=$(git -C "$SELF_DIR" rev-parse --path-format=absolute --git-common-dir); then gate_dir=${gate_dir%/.git}; else gate_dir=""; fi ;;
