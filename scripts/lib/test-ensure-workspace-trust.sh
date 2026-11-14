@@ -167,6 +167,7 @@ pid_c=$!
 TRUST_WRITE_JITTER_MS=0 TRUST_WRITE_PAUSE_MARKER="$PD" WORKSPACE_TRUST_CONFIG="$CFG" bash "$HELPER" "$DIRD" >/dev/null 2>&1 &
 pid_d=$!
 wait_marker "$PC.reached"; wait_marker "$PD.reached"
+assert_eq "T13 both helpers paused after their read" "2" "$(count_existing "$PC.reached" "$PD.reached")"
 F="$CFG" node -e 'const fs=require("fs");const p=process.env.F;const j=JSON.parse(fs.readFileSync(p,"utf8"));j.numStartups=42;fs.writeFileSync(p+".tmp.writer",JSON.stringify(j,null,2));fs.renameSync(p+".tmp.writer",p)'
 : > "$PC.go"; wait "$pid_c"; rc_c=$?
 : > "$PD.go"; wait "$pid_d"; rc_d=$?
