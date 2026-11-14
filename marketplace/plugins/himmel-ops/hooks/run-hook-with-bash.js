@@ -309,6 +309,7 @@ const MUST_RUN_CHAIN_MEMBERS = new Set([
   'block-himmel-config-writes.sh',
   // Fails CLOSED; a starved run let a subagent write an operator-chain row.
   'block-subagent-release-operator.sh',
+  'guard-judge-write-scope.sh',
 ]);
 
 function envMs(name, fallback) {

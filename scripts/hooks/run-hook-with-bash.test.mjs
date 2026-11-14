@@ -682,6 +682,7 @@ test('MUST_RUN_CHAIN_MEMBERS covers exactly the deny-capable security guards', (
       'block-tail-pipe-on-gates.sh',
       'block-write-into-main-checkout.sh',
       'check-cr-marker-on-pr-create.sh',
+      'guard-judge-write-scope.sh',
       'guard-memory-capture.sh',
       'guard-pr-check-literal.sh',
       'guard-relay-writes.sh',
