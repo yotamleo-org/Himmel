@@ -1,7 +1,7 @@
 # Initiative runbook
 
 The full text behind the `HIMMEL_INITIATIVE` / `HIMMEL_INITIATIVE_AFK`
-SessionStart pointer (`scripts/hooks/inject-initiative.sh`, HIMMEL-2036). The
+SessionStart pointer (`scripts/hooks/inject-initiative.sh`). The
 hook injects ~370 B naming the **active steps** and pointing here; this file
 carries the bodies. The pointer names the two moments to open it, and an
 ordinary session opens it at neither:
@@ -46,19 +46,19 @@ Steps run in this canonical order; only the tokens on the pointer's
 - **ticket** — transition the Jira ticket to the appropriate status.
 
 - **merge** — when CR is clean and the PR is open, squash-merge to main.
-  Armed auto-merge (`ARMAUTOMERGE=1`, HIMMEL-1042) is
+  Armed auto-merge (`ARMAUTOMERGE=1`) is
   `bash <anchor>/scripts/handover/merge-on-green.sh`, with `<anchor>` the
   primary checkout's absolute path written out (the directory holding the
   `.git` that `git rev-parse --path-format=absolute --git-common-dir` prints —
   what the allow rule was built from; not `printenv HIMMEL_REPO`, which can
   name a worktree), typed as one bare command — no `$HIMMEL_REPO`, quotes, redirect or
-  compound (HIMMEL-3491: the entry runs from the anchor; HIMMEL-3567: a worker's
+  compound (the entry runs from the anchor, and a worker's
   settings carry that exact literal as its allow rule) — it gates on
   `check-ci.sh` green + a certified head SHA and
   merges only then. It admits a NON-private repo only when that repo is the ONE
   configured public origin AND a live read shows branch protection on the base
   branch with BOTH `enforce_admins` enabled and a non-empty
-  required-status-checks list (HIMMEL-2869); any other public repo, and a
+  required-status-checks list; any other public repo, and a
   protection read that is missing, empty or unreadable, still refuse (exit 12).
   `origin` is that configured origin, so the armed path IS available on this
   repo. The protection read is re-done fresh immediately
@@ -67,7 +67,7 @@ Steps run in this canonical order; only the tokens on the pointer's
   time, so a merge refused for want of an approval is the rule working — leave
   the PR open and report it. `scripts/handover/pr-merge.sh` (plain-first)
   remains the alternative. Advisory — branch protection still applies.
-  Jira close at merge (HIMMEL-3271): pass `--jira-transition` when this PR
+  Jira close at merge: pass `--jira-transition` when this PR
   completes the cited ticket (`completes-ticket: yes`); omit the flag when the
   ticket spans further PRs (`completes-ticket: no`) — never a default. It closes
   only the first `[KEY]` of the PR title. The separate **ticket** step above
@@ -75,7 +75,7 @@ Steps run in this canonical order; only the tokens on the pointer's
   something other than this merge): the flag is the merge-time close, that step
   the fallback — never both for one ticket. Same rule as
   `docs/handover/worker-preface.md` § Shipping.
-  `merge-on-green.sh` exits 18 (GitHub-blocked, HIMMEL-3381) on a fresh pre-merge `BLOCKED` + `REVIEW_REQUIRED` policy read after green checks, an explicit GitHub base-branch policy / required-check / ruleset rejection at merge time, or `check-ci.sh` exit 5 (a required check never reported, or the required set is unreadable) — once, with one operator DM per (repo, PR, head) and no poll or retry (exit 17 is now the chief-GO refusal only); if no automation identity can satisfy the required review, the merge is a human admin action (HIMMEL-2887).
+  `merge-on-green.sh` exits 18 (GitHub-blocked) on a fresh pre-merge `BLOCKED` + `REVIEW_REQUIRED` policy read after green checks, an explicit GitHub base-branch policy / required-check / ruleset rejection at merge time, or `check-ci.sh` exit 5 (a required check never reported, or the required set is unreadable) — once, with one operator DM per (repo, PR, head) and no poll or retry (exit 17 is now the chief-GO refusal only); if no automation identity can satisfy the required review, the merge is a human admin action.
   A blocked gate on this branch parks it and moves to the next queue item —
   never retry-loop;
   see
