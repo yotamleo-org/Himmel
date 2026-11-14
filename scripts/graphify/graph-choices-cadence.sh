@@ -65,7 +65,7 @@ cron_read() {
 
 cron_install() {
   local tab="$1"
-  if ! "$CRONTAB_BIN" - <"$tab"; then
+  if ! "$CRONTAB_BIN" - <"$tab"; then # read-sink-ok: $tab is this script's own mktemp file, never argv or env
     echo "ERR graph-choices-cadence: crontab install failed; the rejected tab is left at $tab" >&2
     return 4
   fi
