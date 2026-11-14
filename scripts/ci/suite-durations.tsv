@@ -45,10 +45,7 @@ scripts/security/test-security-audit-cadence.sh	6
 #   suites CI printed that had no row gained one. 20 suites CI never prints (local tier,
 #   off-Linux) stay with no row. A suite in the 317-suite Case 22w fixture again carries
 #   95% of that fixture's seconds and 5% of the three-run mean (a pure mean left Case 22w
-#   over its bound). test-review-panel.sh and test-ready-check.sh were measured at 1631 and
-#   1684 (means), past the LD7 ceiling, so they sit AT the ceiling (1350 and 900), not at
-#   the measured values; the ticket for those two suites still owes their real fix. Replay on those three runs:
-#   slowest/floor 1.348 before, 1.197 after.
+#   over its bound). Replay on those three runs: slowest/floor 1.348 before, 1.197 after.
 # The quarantined suites (SKIP_LIST) have no measured row.
 #
 # Read by scripts/ci/run-shell-tests.sh to assign --shard <i>/<n> by a greedy
