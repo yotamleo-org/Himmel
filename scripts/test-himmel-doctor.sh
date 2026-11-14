@@ -1805,7 +1805,7 @@ out="$(env -u DOCTOR_HERMES_HOME -u HERMES_HOME -u LOCALAPPDATA \
     DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" \
     CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"; rc=$?
 if grepq "$out" -F "no hermes install found ($t/home/.hermes)" && [ "$rc" -eq 0 ]; then
-    pass "C21 -> default root resolves to \$HOME/.hermes when nothing overrides it (HIMMEL-2437)"
+    pass "C21 -> default root resolves to \$HOME/.hermes when nothing overrides it, not a Windows AppData path"
 else
     fail "C21 default-root -> rc=$rc; $(printf '%s' "$out" | grep -A2 C21)"
 fi
@@ -2536,14 +2536,14 @@ fi
 mkdir -p "$t/home/.himmel/state"
 out="$(HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color --only C77 --root "$t/repo" 2>&1)"
 if grepq "$out" -F 'automatic after station-sync' && grepq "$out" -F 'last restart: never'; then
-    pass "C77 fix line says the restart is automatic and that none has run yet (HIMMEL-7936)"
+    pass "C77 fix line says the restart is automatic and that none has run yet"
 else
     fail "C77 fix line (no stamp) -> $(printf '%s' "$out" | grep -A1 C77)"
 fi
 printf '1792000000\n' > "$t/home/.himmel/state/bridge-restart.ts"
 out="$(HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color --only C77 --root "$t/repo" 2>&1)"
 if grepq "$out" -F 'automatic after station-sync' && grepq "$out" -F "last restart: $(date -d @1792000000 '+%F %H:%M' 2>/dev/null || date -r 1792000000 '+%F %H:%M')"; then  # gnu-ok: BSD date -r follows on this same line
-    pass "C77 fix line names when station-sync last restarted the bridge (HIMMEL-7936)"
+    pass "C77 fix line names when station-sync last restarted the bridge"
 else
     fail "C77 fix line (stamp) -> $(printf '%s' "$out" | grep -A1 C77)"
 fi
@@ -6267,7 +6267,7 @@ else
 fi
 rm -rf "$t"
 
-echo "== C44: qmd item not wanted (starter install) -> INFO, no FAIL (HIMMEL-4436) =="
+echo "== C44: qmd item not wanted (starter install) -> INFO, no FAIL =="
 t="$(mktemp -d "${TMPDIR:-/tmp}/c44-off.XXXXXX")" && [ -n "$t" ] || exit 1
 cat > "$t/qmd" <<'STUB'
 #!/usr/bin/env bash
@@ -6824,7 +6824,7 @@ case "$url" in
 esac
 EOF
 chmod +x "$n_t/gbin/curl"
-c19g() { # <xdg dir> -- HIMMEL_DOCTOR_ROOT: the assets were seeded from this tree (HIMMEL-4668)
+c19g() {
     HIMMEL_DOCTOR_ROOT="$REPO_ROOT" DOCTOR_OBSERVABILITY_DESIRED="" DOCTOR_OBSERVABILITY_SKIP=0 DOCTOR_STATUS_JSON="$n_t/status-graf.json" XDG_DATA_HOME="$1" DOCTOR_CURL_BIN="$n_t/gbin/curl" \
         GRAFANA_TELEGRAM_BOT_TOKEN="" GRAFANA_TELEGRAM_CHAT_ID="" PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$n_t/claude" HOME="$n_t/home" HIMMEL_DOCTOR_MCP_ROOT="$n_t/root" bash "$DOC" --no-color 2>&1
 }
@@ -7832,7 +7832,7 @@ mkdir -p "$c74_t/env"
 out="$(c74_run)"
 if grepq "$out" -F 'WARN C74-env-keys' && grepq "$out" -F 'not checked' && ! grepq "$out" -F 'OK   C74-env-keys' && ! grepq "$out" -F 'safe default'; then pass "C74 unreadable .env -> WARN unchecked"; else fail "C74 unreadable env -> $(printf '%s' "$out" | head -4)"; fi
 rmdir "$c74_t/env"
-echo "== C74-config-split: config.json gone on an installed station -> FAIL (HIMMEL-8401) =="
+echo "== C74-config-split: config.json gone on an installed station -> FAIL =="
 c74_reset
 mkdir -p "$c74_t/home/.claude/himmel"
 printf '{}\n' > "$c74_t/home/.claude/himmel/install-profile.json"

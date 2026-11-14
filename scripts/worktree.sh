@@ -889,7 +889,7 @@ checkpoint_worktree() {
     # ref (fetchable, not gc-able) without changing what a restore yields.
     index_parent=""
     if [ -n "$index_tree" ] && [ "$index_tree" != "$snap_tree" ] && [ "$index_tree" != "$head_tree" ]; then
-        index_oid=$(git -C "$wt" commit-tree "$index_tree" -p "$head_oid" -m "clean-garden autosave INDEX (HIMMEL-1692): $br" 2>/dev/null)
+        index_oid=$(git -C "$wt" commit-tree "$index_tree" -p "$head_oid" -m "clean-garden autosave INDEX: $br" 2>/dev/null)
         [ -n "$index_oid" ] && index_parent="$index_oid"
     fi
 
@@ -901,7 +901,7 @@ checkpoint_worktree() {
     set -- -p "$head_oid"
     [ -n "$old_oid" ] && set -- "$@" -p "$old_oid"
     [ -n "$index_parent" ] && set -- "$@" -p "$index_parent"
-    oid=$(git -C "$wt" commit-tree "$snap_tree" "$@" -m "clean-garden autosave (HIMMEL-1692): $br" 2>/dev/null)
+    oid=$(git -C "$wt" commit-tree "$snap_tree" "$@" -m "clean-garden autosave: $br" 2>/dev/null)
     if [ -z "$oid" ]; then
         echo "WARN clean-garden: checkpoint commit-tree failed for $br ($wt) — skipping" >&2
         return 1
