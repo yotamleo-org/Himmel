@@ -8,8 +8,7 @@
 # himmel neither vendors nor redistributes graphify -- `uv tool install` fetches it
 # from PyPI onto the operator's own machine -- so the relicense carries no bundled-
 # notice obligation here; it is a pin-review fact, not a compliance gate.
-# This resolver installs it from the himmel fork (yotamleo-org/graphify), pinned
-# to a commit sha that need not sit on any one branch, via
+# This resolver installs it from the himmel fork (yotamleo-org/graphify) via
 # `uv tool install --with 'mcp>=1.30.0,<3' 'graphifyy[ollama] @ git+https://github.com/yotamleo-org/graphify@<sha>'`.
 # uv tool installs are already
 # self-isolating (their own venv + a shim in uv's tool bin dir), so — unlike
