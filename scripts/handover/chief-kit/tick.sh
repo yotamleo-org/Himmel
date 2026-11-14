@@ -122,7 +122,10 @@ HIMMEL_FLEET_CAP) -- never a second count; fleet=? when that census cannot be
 read. capacity=UNDERFILLED:<slack> means live < cap AND no leg launched for
 TICK_UNDERFILL_MIN minutes (default 10); capacity=ok otherwise, capacity=unknown
 when fleet=?. TICK_LAUNCH_DIR overrides the console work dir the launch logs
-are read from.
+are read from. supply=SHORT:<free> is its own field, printed only beside
+capacity=UNDERFILLED:<slack> when the pool count is numeric and free (the listed
+rows minus the pool-parked ones) is below the slack: the shortage is startable
+work, not the chief. capacity= itself never changes, chief-wait.sh matches it.
 
 flakes=<rows>/<suites>@<top-suite>*<k> sits between fails= and spare=
 and is ABSENT unless this repo's suite-flake ledger (run-shell-tests.sh)
@@ -505,6 +508,10 @@ doc's stale file (tick-pool-stale-<cksum>.out in TICK_STATE_DIR, the main tick's
 newest file of the same mirror): a key whose only reason to count as dispositioned is its line, and whose line still hashes to the
 file's line=, is unresolved as class `stale` and names its gone targets. The file has no age bound. A failed or paused read
 keeps a stale verdict while the line is unchanged and no target reads open (--prior, the carry-forward, ends ` carried`).
+Parked rows stay listed: --pool-dispositions prints `# pool-parked <KEY>` for a listed row whose key has a fresh, valid
+line (stale, changed, invalid, unowned and unknown-key lines park nothing), and `# pool-chief-owed <KEY>` when that line
+matches proof|signature|critic round|owed|go code. The tick carries pool-parked=<n> and chief-owed=<m> (hidden at 0); the
+`# pool-dispatchable <KEY>` lines and chief-wait.sh's dispatchable= are unchanged.
 A key whose line the file reads changed (pool-changed=, same line-hash and sole-reason rules) is unresolved as
 class `changed`: `<target> merged <oldest sha since the anchor> since the line was written: re-read and stamp
 (<LL> <MM-DD> <HH:MM>Z)`, the bracket printed as written, never filled in.
