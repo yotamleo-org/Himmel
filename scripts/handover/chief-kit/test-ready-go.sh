@@ -107,6 +107,7 @@ export JIRA_CMD="$tmp/jira"
 READY_REPO="$tmp/ready-repo"
 git init -q "$READY_REPO"
 cd "$READY_REPO" || { echo "FAIL: cd $READY_REPO" >&2; exit 1; }
+export HIMMEL_REPO="$READY_REPO"
 
 # check 19 fetches origin/main and reads origin/main..<head>: real heads
 SHA=$(ready_pass_repo "$READY_REPO") || { echo "FAIL: ready_pass_repo" >&2; exit 1; }
