@@ -281,7 +281,7 @@ else bad "W1 shell-unit-shard: no setup-node 22.23.4 step gated only on !job.con
 
 # ---- W3: the hook-lib script that now feeds the proof is a trust path.
 trust_re=$(grep -vE '^[[:space:]]*(#|$)' "$ROOT/scripts/ci/ci-trust-paths.txt")
-if printf '%s\0' scripts/hooks/check-hook-lib-suites.sh | grep -qz -E -f <(printf '%s\n' "$trust_re"); then
+if grep -qE -f <(printf '%s\n' "$trust_re") <<< "scripts/hooks/check-hook-lib-suites.sh"; then
   ok "W3: scripts/hooks/check-hook-lib-suites.sh matches scripts/ci/ci-trust-paths.txt"
 else bad "W3: scripts/hooks/check-hook-lib-suites.sh matches no pattern of scripts/ci/ci-trust-paths.txt"; fi
 
