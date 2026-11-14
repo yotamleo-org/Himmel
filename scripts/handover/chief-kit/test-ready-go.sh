@@ -81,6 +81,7 @@ case "$*" in
     *"contents/scripts/ci/ci-trust-paths.txt"*)
         [ "${STUB_TRUST_LIST_FAIL:-0}" = 1 ] && { echo "boom" >&2; exit 1; }
         printf '^scripts/ci/\n'; exit 0 ;;
+    *"contents/.claude/settings.json"*) printf '{"env":{"HIMMEL_REPO":"x"}}\n'; exit 0 ;;
     "api repos/"*"/pulls/"*"/files --paginate"*) printf '%s\t\n' "${STUB_FILE:-scripts/x.sh}"; exit 0 ;;
     *"pulls/"*"changed_files"*) printf '%s|1\n' "$READY_STUB_HEAD"; exit 0 ;;
 esac
@@ -248,6 +249,66 @@ lacks    "refused repo view: no GO line" "$OUT" "SENDMESSAGE"
 run --to worker --token tok 77 "$SHA"
 check    "control: nothing refused, still exit 0" "$RC" "0"
 unset HIMMEL_QUOTA_DIR
+
+TTREAD=ghp_READTOKEN0123456789
+mkdir -p "$tmp/ttroot" "$tmp/emptyroot" "$tmp/tt" "$tmp/himmelcfg"
+printf 'himmel_github_token_vm2=%s\n' "$TTREAD" > "$tmp/ttroot/.env"
+: > "$tmp/emptyroot/.env"
+ln -s "$HERE/fixtures/gh-two-token-stub.sh" "$tmp/tt/gh"
+# shellcheck disable=SC2016  # the delegate's own ${PATH#...} and "$@" must stay literal
+printf '#!/usr/bin/env bash\nPATH="${PATH#%s:}" exec "%s/bin/gh" "$@"\n' "$tmp/tt" "$tmp" > "$tmp/ttdelegate"
+chmod +x "$tmp/ttdelegate"
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
+TTLOG="$tmp/tt.log"
+ttn() { grep -c -E -- "$1" "$TTLOG"; }
+ttseen() { [ "$(ttn "$1")" -ge 1 ] && echo yes || echo no; }
+ttrun() {
+    local root="$1"; shift
+    : > "$TTLOG"
+    OUT=$(env "$@" GH_READ_ENV_ROOT="$root" HIMMEL_SECRETS_KEYRING=off HIMMEL_CONFIG_DIR="$tmp/himmelcfg" PATH="$tmp/tt:$PATH" \
+        GH_STUB_DELEGATE="$tmp/ttdelegate" GH_STUB_READ_TOKEN="$TTREAD" GHLOG="$TTLOG" bash "${RG_SCRIPT:-$SCRIPT}" --to worker --token tok 77 "$SHA" 2>&1); RC=$?
+}
+trust_line() { printf '%s\n' "$OUT" | grep '^TRUST:'; }
+
+run --to worker --token tok 77 "$SHA"
+HEALTHY_TRUST="$(trust_line)"
+ttrun "$tmp/ttroot" GH_STUB_MAINFAIL=rate
+check    "8691 main spent: ready-go exits 0" "$RC" "0"
+check    "8691 main spent: the TRUST line equals the healthy-main run" "$(trust_line)" "$HEALTHY_TRUST"
+check    "8691 main spent: no call rides the main token" "$(ttn '^tok=main ')" "0"
+check    "8691 main spent: the repo name read logs tok=read" "$(ttseen '^tok=read argv=repo view --json nameWithOwner')" "yes"
+check    "8691 main spent: the default branch read logs tok=read" "$(ttseen '^tok=read argv=repo view --json defaultBranchRef')" "yes"
+check    "8691 main spent: the title read logs tok=read" "$(ttseen '^tok=read argv=pr view 77 --json title')" "yes"
+check    "8691 main spent: the trust list is read twice, both on the read token" "$(ttn '^tok=read argv=api repos/o/r/contents/scripts/ci/ci-trust-paths.txt')" "2"
+check    "8691 main spent: the file listing is read twice, both on the read token" "$(ttn '^tok=read argv=api repos/o/r/pulls/77/files')" "2"
+ttrun "$tmp/emptyroot"
+check    "8691 control, no read token: exit 0" "$RC" "0"
+check    "8691 control, no read token: the TRUST line equals the healthy-main run" "$(trust_line)" "$HEALTHY_TRUST"
+check    "8691 control, no read token: no call logs tok=read" "$(ttn '^tok=read ')" "0"
+check    "8691 control, no read token: the reads log tok=main" "$(ttseen '^tok=main argv=repo view --json nameWithOwner')" "yes"
+
+# ready-check item 12 asks the same trust question and would refuse first, so only ready-go's anchor
+# carries the core list
+ANCHOR_CORE="$tmp/anchor-core"
+cp -R "$ANCHOR" "$ANCHOR_CORE"
+mkdir -p "$ANCHOR_CORE/scripts/ci"
+cp "$HERE/../../ci/ci-trust-paths-core.txt" "$ANCHOR_CORE/scripts/ci/ci-trust-paths-core.txt"
+READY_GO_ANCHOR="$ANCHOR_CORE" STUB_FILE=scripts/check-ci.sh run --to worker --token tok 77 "$SHA"
+HEALTHY_CORE_TRUST="$(trust_line)"
+check    "8691 refused read token: the healthy run reaches the core-missing refusal" "$(printf '%s' "$HEALTHY_CORE_TRUST" | grep -c 'TRUST: refused list core-missing ')" "1"
+ttrun "$tmp/ttroot" GH_STUB_READFAIL=auth STUB_FILE=scripts/check-ci.sh READY_GO_ANCHOR="$ANCHOR_CORE"
+check    "8691 refused read token: the TRUST line equals the healthy-main run" "$(trust_line)" "$HEALTHY_CORE_TRUST"
+check    "8691 refused read token: the read token was tried first" "$(ttseen '^tok=read argv=api repos/o/r/contents/.claude/settings.json')" "yes"
+check    "8691 refused read token: the retry rides the main token" "$(ttseen '^tok=main argv=api repos/o/r/contents/.claude/settings.json')" "yes"
+CT="$tmp/ctl"; mkdir -p "$CT/scripts/handover/chief-kit"
+for ctd in "$HERE/../.."/*; do [ "$(basename "$ctd")" = handover ] || ln -s "$ctd" "$CT/scripts/$(basename "$ctd")"; done
+for ctf in "$HERE/.."/*; do [ "$(basename "$ctf")" = chief-kit ] || ln -s "$ctf" "$CT/scripts/handover/$(basename "$ctf")"; done
+for ctf in "$HERE"/*; do [ "$(basename "$ctf")" = ready-go.sh ] || ln -s "$ctf" "$CT/scripts/handover/chief-kit/$(basename "$ctf")"; done
+# shellcheck disable=SC2016  # the sed pattern is literal script text
+sed 's/GH_READ_QUIET=1 GH="\$GH_BIN"/GH="$GH_BIN"/' "$SCRIPT" > "$CT/scripts/handover/chief-kit/ready-go.sh"
+RG_SCRIPT="$CT/scripts/handover/chief-kit/ready-go.sh" ttrun "$tmp/ttroot" GH_STUB_READFAIL=auth STUB_FILE=scripts/check-ci.sh READY_GO_ANCHOR="$ANCHOR_CORE"
+check    "8691 control without GH_READ_QUIET=1: the settings JSON is read with the warning" "$(trust_line)" "TRUST: refused list cannot parse .claude/settings.json on main"
+unset RG_SCRIPT
 
 echo
 [ "$fails" -eq 0 ] && { echo "test-ready-go: all passed"; exit 0; }

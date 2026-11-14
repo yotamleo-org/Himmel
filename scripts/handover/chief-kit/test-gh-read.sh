@@ -113,9 +113,37 @@ else
     fail "A2 control needs the helper"
 fi
 callers="$(cd "$REPO" && git grep -l 'gh-read.sh' -- scripts | tr '\n' ' ')"
-for w in scripts/handover/merge-on-green.sh scripts/lib/go-gate.sh scripts/handover/chief-kit/write-verdict.sh scripts/cr/write-verdicts.sh; do
+for w in scripts/lib/go-gate.sh scripts/handover/chief-kit/write-verdict.sh scripts/cr/write-verdicts.sh; do
     lacks "A3 write path $w does not source the read helper" "$w " "$callers"
 done
+join_continuations() {
+    awk '{ buf = (buf == "" ? $0 : buf " " $0); if ($0 ~ /\\$/) next; print buf; buf = "" } END { if (buf != "") print buf }' "$1"
+}
+a3b_ok() {
+    local f="$1" stm bad="" n v pat
+    stm="$(join_continuations "$f")"
+    n="$(printf '%s\n' "$stm" | grep -cE '"\$[A-Za-z_]+"[[:space:]]+(pr merge|workflow run)|GH_CMD="\$[A-Za-z_]+"[[:space:]]+cr_trigger_post_review')"
+    [ "$n" -eq 3 ] || bad="$bad [$n write calls found, want 3]"
+    v="$(printf '%s\n' "$stm" | grep -E '"\$[A-Za-z_]+"[[:space:]]+(pr merge|workflow run)|GH_CMD="\$[A-Za-z_]+"[[:space:]]+cr_trigger_post_review' | grep -vE '"\$GH"[[:space:]]+(pr merge|workflow run)|GH_CMD="\$GH"[[:space:]]+cr_trigger_post_review')" || true
+    [ -z "$v" ] || bad="$bad [a write call not on \"\$GH\"]"
+    [ "$(grep -cE '^GH=' "$f")" -eq 1 ] && [ "$(grep -cE '^GH="gh"$' "$f")" -eq 1 ] || bad="$bad [GH is not assigned exactly once, to the literal gh]"
+    v="$(printf '%s\n' "$stm" | grep -E 'GH_READ_BIN' | grep -E '(pr merge|workflow run|cr_trigger_post_review)')" || true
+    [ -z "$v" ] || bad="$bad [a line names the read variable beside a write verb]"
+    for pat in '"\$GH" api "repos/\$nwo/branches/\$branch/protection"' '"\$GH" api "repos/\$nwo/rules/branches/\$branch"' \
+               '"\$GH" api "repos/\$nwo/rulesets/\$id"' '"\$GH" pr view "\$pr_num" --repo "\$nwo" --json mergeStateStatus,reviewDecision'; do
+        n="$(printf '%s\n' "$stm" | grep -cE "$pat.*gh-main-ok: permission-dependent answer")"
+        [ "$n" -eq 1 ] || bad="$bad [the caller-dependent read $pat is not on \"\$GH\" with its marker ($n)]"
+    done
+    [ -n "$bad" ] && printf '%s\n' "$bad" || echo ok
+}
+MOG_REAL="$REPO/scripts/handover/merge-on-green.sh"
+check "A3b merge-on-green.sh keeps its writes and its caller-dependent reads on the literal gh" ok "$(a3b_ok "$MOG_REAL")"
+sed 's|"\$GH" pr merge|"$GH_READ_BIN" pr merge|' "$MOG_REAL" > "$W/mog-merge-on-read.sh"
+cmp -s "$MOG_REAL" "$W/mog-merge-on-read.sh" && fail "A3b control: the pr merge copy equals the original (nothing moved)"
+check "A3b control: pr merge moved to the read variable is caught" "caught" "$([ "$(a3b_ok "$W/mog-merge-on-read.sh")" = ok ] && echo missed || echo caught)"
+sed 's|rs=\$("\$GH" api "repos/\$nwo/rulesets/\$id"|rs=$("$GH_READ_BIN" api "repos/$nwo/rulesets/$id"|' "$MOG_REAL" > "$W/mog-ruleset-on-read.sh"
+cmp -s "$MOG_REAL" "$W/mog-ruleset-on-read.sh" && fail "A3b control: the ruleset copy equals the original (nothing moved)"
+check "A3b control: the ruleset read moved to the read variable is caught" "caught" "$([ "$(a3b_ok "$W/mog-ruleset-on-read.sh")" = ok ] && echo missed || echo caught)"
 
 # ---- B: read paths use the read token ---------------------------------------------
 for shape in "pr view 12 --json state" "pr list --limit 5" "pr checks 12" "repo view --json name" \

@@ -117,6 +117,8 @@ if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
     exit 96
 fi
 chokepoint_seam_guard scripts/handover/chief-kit/auto-go.sh || exit 96
+# an inherited gh-read knob must not decide a read this gate, or the ready-go.sh it runs, makes
+unset _GHR_LOAD_DOTENV GH_READ_REFUSED_FILE GH_READ_OFF GH_READ_TIMEOUT GH_READ_NO_MAIN_FALLBACK GH_READ_QUIET
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../lib/git-clean.sh
@@ -130,7 +132,9 @@ git_env_scrub || { echo "auto-go: cannot scrub the git environment - refusing" >
 . "$HERE/../../lib/legacy-names.sh" 2>/dev/null || { echo "auto-go: cannot load scripts/lib/legacy-names.sh - refusing" >&2; exit 1; }
 if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
 ANCHOR="${AUTO_GO_ANCHOR:-$(cd "$HERE/../../.." && pwd)}"
-GH_BIN="${GH_CMD:-gh}"
+GH_READ_BIN="$HERE/../../lib/gh-read.sh"
+[ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
+GH_BIN="${GH_CMD:-$GH_READ_BIN}"
 
 # a function inherited from the environment must not stand in for the shared go-gate helpers
 unset -f chief_worker go_resolve_root go_verdict_scope go_trust_verdict go_verdict_line go_pr_qids go_noop_chain go_nogo_after go_noop_carry 2>/dev/null || true

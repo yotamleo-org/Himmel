@@ -37,6 +37,8 @@
 #
 # Platform guard: POSIX bash 3.2+, no mapfile.
 set -u
+# an inherited gh-read knob must not decide a read this gate makes (it runs by hand too)
+unset _GHR_LOAD_DOTENV GH_READ_REFUSED_FILE GH_READ_OFF GH_READ_TIMEOUT GH_READ_NO_MAIN_FALLBACK GH_READ_QUIET
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../lib/git-clean.sh
@@ -70,7 +72,9 @@ case "$TO$TOKEN" in *[!A-Za-z0-9._:-]*) echo "ready-go: --to and --token must be
 { [ -z "$TO" ] && [ -z "$TOKEN" ]; } || { [ -n "$TO" ] && [ -n "$TOKEN" ]; } || usage
 [ -z "$LEDGER" ] || [ -f "$LEDGER" ] || { echo "ready-go: --ledger doc not found: $LEDGER" >&2; exit 2; }
 
-GH_BIN="${GH_CMD:-gh}"
+GH_READ_BIN="$HERE/../../lib/gh-read.sh"
+[ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
+GH_BIN="${GH_CMD:-$GH_READ_BIN}"
 
 # 1. the gate go.sh runs: head, CI, threads, CR-ledger ok row, trailers, tickets, coverage
 rc=0
@@ -110,7 +114,8 @@ else
     # shellcheck source=scripts/lib/go-gate.sh
     # shellcheck disable=SC1091
     if . "$ANCHOR/scripts/lib/go-gate.sh" 2>/dev/null && declare -F trust_path_check >/dev/null 2>&1; then
-        TRUST_OUT=$(GH="$GH_BIN" trust_path_check "$NWO" "$PR" "$SHA" "$DEFAULT_BRANCH" "$ANCHOR") || TRUST_RC=$?
+        # go-gate captures stderr into its data (the settings and trust-list reads), so a gh-read warning must not print
+        TRUST_OUT=$(GH_READ_QUIET=1 GH="$GH_BIN" trust_path_check "$NWO" "$PR" "$SHA" "$DEFAULT_BRANCH" "$ANCHOR") || TRUST_RC=$?
     else
         TRUST_RC=2; TRUST_OUT="go-lib cannot load trust_path_check from scripts/lib/go-gate.sh"
     fi
