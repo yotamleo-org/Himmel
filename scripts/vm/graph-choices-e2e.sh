@@ -114,10 +114,29 @@ guest_main() {
   local W="$HOME/gce-work" SD="$HOME/.himmel/state/api-credit"
   local GC="$TREE/scripts/himmelctl/lib/graph-choices.js" CTL="$TREE/scripts/himmelctl/bin.js"
   local RUNNER_DIR="$HOME/.claude/graph-choices-cadence"
-  local BASE_PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
+  local BASE_PATH="$HOME/.local/bin:$HOME/.bun/bin:/usr/local/bin:/usr/bin:/bin"
   rm -rf "$W" "$HOME/.himmel" "$RUNNER_DIR" "$HOME/.claude/himmel"
-  mkdir -p "$W/stubbin" "$W/repos" "$W/proj" "$W/shots"
+  mkdir -p "$W/stubbin" "$W/repos" "$W/proj" "$W/shots" "$HOME/.local/bin"
   export PATH="$BASE_PATH"
+  # a git identity and a slug: setup.sh asks for one, and every commit below needs one
+  git config --global user.name gce
+  git config --global user.email gce@example.invalid
+  export USER_SLUG=gce
+
+  # the guest image ships no uv: install the one pinned release the machine installer uses
+  if ! command -v uv >/dev/null 2>&1; then
+    echo "==> 0b. the pinned uv (the guest image ships none)"
+    pt="$(mktemp -d "${TMPDIR:-/tmp}/gce-uv.XXXXXX")" || { fail "a scratch directory for the uv download"; verdict; } # prim-ok: the guest image has no scripts/lib/prim.sh on this path before setup runs
+    if ( . "$TREE/scripts/machine-setup/installer-pins.sh" \
+         && pin_fetch "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz" "$UV_SHA256" "$pt/uv.tar.gz" \
+         && tar -xzf "$pt/uv.tar.gz" -C "$pt" \
+         && install -m 0755 "$pt/uv-x86_64-unknown-linux-gnu/uv" "$pt/uv-x86_64-unknown-linux-gnu/uvx" "$HOME/.local/bin/" ) > "$pt/uv.log" 2>&1; then
+      pass "the pinned uv is installed ($(uv --version))"
+    else
+      fail "the pinned uv is installed"; tail_of "$pt/uv.log" 8; verdict
+    fi
+    rm -rf "$pt"
+  fi
 
   # the tree is a git checkout so himmel-update.sh can fetch into it
   git -C "$TREE" init -q -b main 2>/dev/null
@@ -129,6 +148,12 @@ guest_main() {
   # --- the stub claude: logs one CALL line per call, never reads a key ------------------
   cat > "$W/stubbin/claude" <<'EOS'
 #!/usr/bin/env bash
+# only a print-mode call (graphify's per-chunk `claude -p`) reads a prompt; the plugin and version
+# calls the installer and uninstaller make get an empty answer, never a wait on stdin
+case " $* " in
+  *" -p "* | *" --print "*) ;;
+  *) case "$1" in plugin) echo '[]' ;; esac; exit 0 ;;
+esac
 prompt="$(cat)"
 h="$(printf '%s' "$prompt" | sha256sum | cut -c1-16)"
 kv="$(env | sed 's/=.*//' | grep -E '^(ANTHROPIC_|anthropic_|CLAUDE_CODE_USE_|claude_code_use_|LQ_API_)' | paste -sd, -)"
@@ -159,7 +184,8 @@ EOS
 
   # --- a prompt-driven answer driver for the interactive himmelctl install ----------------
   # argv: <rules-json> <cmd...>. Each rule is [prompt-substring, [answers...]]; a prompt with no rule, or a
-  # rule out of answers, gets Enter. Everything the install prints is echoed.
+  # rule out of answers, gets Enter (which also accepts the final `Proceed? [Y/n]`). Everything the install
+# prints is echoed.
   cat > "$W/answer.py" <<'EOS'
 import json, os, select, subprocess, sys, time
 rules = json.loads(sys.argv[1])
@@ -171,8 +197,12 @@ last = time.time()
 while True:
     r, _, _ = select.select([fd], [], [], 5)
     if not r:
-        if p.poll() is not None or time.time() - last > 300:
+        if p.poll() is not None:
             break
+        if time.time() - last > 900:
+            p.kill()
+            sys.stdout.write("\nanswer.py: no output for 900 s, killed the install\n")
+            sys.exit(124)
         continue
     chunk = os.read(fd, 65536)
     if not chunk:
@@ -182,7 +212,7 @@ while True:
     sys.stdout.write(text)
     sys.stdout.flush()
     pending += text
-    if pending.endswith("> "):
+    if pending.endswith("> ") or pending.endswith("[Y/n] "):
         ans = ""
         for i, (needle, answers) in enumerate(rules):
             if needle in pending:
@@ -206,7 +236,10 @@ except Exception:
 sys.exit(p.returncode if p.returncode is not None else 1)
 EOS
 
-  ctl_env() { env -i HOME="$HOME" PATH="$W/stubbin:$BASE_PATH" HIMMELCTL_INTERACTIVE=1 HIMMELCTL_CACHE_DIR="$HOME/.claude/himmel" GCE_CALL_LOG="$CALLS" "$@"; }
+  # the install and uninstall use the guest's real claude (plugin installs); only the adopter-row check and the
+  # armed runner see the stub
+  ctl_env() { env -i HOME="$HOME" PATH="$BASE_PATH" HIMMELCTL_INTERACTIVE=1 HIMMELCTL_CACHE_DIR="$HOME/.claude/himmel" "$@"; }
+  stub_env() { env -i HOME="$HOME" PATH="$W/stubbin:$BASE_PATH" GCE_CALL_LOG="$CALLS" "$@"; }
   gc() { env -i HOME="$HOME" PATH="$BASE_PATH" node "$GC" "$@"; }
 
   # --- step 1: install graphify for real -----------------------------------------------
@@ -214,6 +247,7 @@ EOS
   ( cd "$TREE" && bash scripts/setup.sh --with-graphify ) > "$W/setup.log" 2>&1; rc=$?
   if [ "$rc" -eq 0 ]; then pass "setup.sh --with-graphify exits 0"; else fail "setup.sh --with-graphify exits 0 (rc=$rc)"; tail_of "$W/setup.log" 25; fi
   if command -v graphify >/dev/null 2>&1; then pass "graphify is on PATH ($(command -v graphify))"; else fail "graphify is on PATH"; tail_of "$W/setup.log" 25; verdict; fi
+  uv cache clean >/dev/null 2>&1
 
   # --- step 2: Enter at the first question ------------------------------------------------
   echo "==> 2. himmelctl install, Enter at the first graph question"
@@ -233,7 +267,7 @@ EOS
   printf '# note\n' > "$W/repos/adopter-check/note.md"
   git -C "$W/repos/adopter-check" add -A
   git -C "$W/repos/adopter-check" -c user.email=gce@example.invalid -c user.name=gce commit -q -m seed
-  ( cd "$TREE" && ctl_env bash scripts/graphify/refresh-graph-map.sh --name gce-adopter --corpus-root "$W/repos/adopter-check" \
+  ( cd "$TREE" && stub_env bash scripts/graphify/refresh-graph-map.sh --name gce-adopter --corpus-root "$W/repos/adopter-check" \
       --maps-dir "$W/maps" --title gce --slug gce --backend claude-api ) > "$W/adopter-row.log" 2>&1; rc=$?
   if [ "$rc" -eq 3 ] && grep -qF 'no API account is chosen on this station' "$W/adopter-row.log"; then
     pass "the refresh-graph-map.sh adopter row refuses with no choice (rc 3)"
@@ -295,8 +329,13 @@ EOS
   route="$(gc route)"
   case "$route" in *'"order":["A","subscription"]'*) pass "the stored route is A then subscription" ;; *) fail "the stored route is A then subscription ($route)" ;; esac
   case "$route" in *'"name":"gce-repo"'*) pass "the stored corpus is gce-repo" ;; *) fail "the stored corpus is gce-repo" ;; esac
+  # the wizard armed the job under the guest's real claude; re-render the runner so its PATH reaches the stub
+  stub_env bash "$TREE/scripts/graphify/graph-choices-cadence.sh" arm --force > "$W/rearm.log" 2>&1; rc=$?
+  if [ "$rc" -eq 0 ] && grep -qF "$W/stubbin" "$RUNNER_DIR/graph-choices.sh" 2>/dev/null; then pass "the runner is re-rendered with the stub claude first on its PATH"
+  else fail "the runner is re-rendered with the stub claude first on its PATH (rc=$rc)"; tail_of "$W/rearm.log" 8; fi
   crontab -l > "$W/cron.step4" 2>/dev/null
-  if [ "$(gce_cron_rows "$W/cron.step4")" -eq 1 ] && [ -x "$RUNNER_DIR/graph-choices.sh" ]; then pass "the job is armed: one cron row and the runner"; else fail "the job is armed: one cron row and the runner"; fi
+  if [ "$(gce_cron_rows "$W/cron.step4")" -eq 1 ] && [ -x "$RUNNER_DIR/graph-choices.sh" ]; then pass "the job is armed: one cron row and the runner"
+  else fail "the job is armed: one cron row and the runner"; tail_of "$W/install-route.log" 30; kill "$STUB_PID" 2>/dev/null; verdict; fi
 
   fire() { # one fire of the rendered runner against the stub API and the fixture bank
     local now; now=$(date +%s)
@@ -346,7 +385,8 @@ EOS
   # --- step 5: the real usage-preflight under the runner's environment -----------------------
   echo "==> 5. the real usage-preflight under the runner's environment"
   runner_env="$(grep -E '^export (PATH|CLAUDE_CODE_OAUTH_TOKEN)=' "$RUNNER_DIR/graph-choices.sh" 2>/dev/null)"
-  pf="$(cd "$TREE" && env -i HOME="$HOME" PATH=/usr/bin:/bin sh -c "$runner_env"'; bash scripts/lib/usage-preflight.sh' 2>"$W/preflight.err" | tail -n 1)"
+  pf="$(cd "$TREE" && env -i HOME="$HOME" PATH=/usr/bin:/bin sh -c ":; $runner_env"'
+bash scripts/lib/usage-preflight.sh' 2>"$W/preflight.err" | tail -n 1)"
   note "usage-preflight verdict under the runner environment: ${pf:-<none>}"
   case "$pf" in
     PROCEED | SKIPPED-BANK | SKIPPED-FLEET | BANK-STALE | BANK-UNKNOWN) pass "the real usage-preflight printed a verdict ($pf)" ;;
@@ -359,7 +399,7 @@ EOS
   choices_dir="$(dirname "$(dirname "$(gc out probe)")")"
   bash "$TREE/scripts/graphify/graph-choices-cadence.sh" disarm > "$W/disarm.log" 2>&1; rc=$?
   if [ "$rc" -eq 0 ]; then pass "graph-choices-cadence.sh disarm exits 0"; else fail "graph-choices-cadence.sh disarm exits 0 (rc=$rc)"; tail_of "$W/disarm.log" 8; fi
-  ( cd "$W/proj" && ctl_env node "$CTL" uninstall --yes ) > "$W/uninstall.log" 2>&1; rc=$?
+  ( cd "$W/proj" && ctl_env timeout 600 node "$CTL" uninstall --yes ) > "$W/uninstall.log" 2>&1; rc=$?
   if [ "$rc" -eq 0 ]; then pass "himmelctl uninstall (no --purge-state) exits 0"; else fail "himmelctl uninstall (no --purge-state) exits 0 (rc=$rc)"; tail_of "$W/uninstall.log" 20; fi
   crontab -l > "$W/cron.step6" 2>/dev/null
   if [ "$(gce_cron_rows "$W/cron.step6")" -eq 0 ]; then pass "no HIMMEL-GraphChoices cron row is left"; else fail "no HIMMEL-GraphChoices cron row is left"; fi
@@ -369,6 +409,9 @@ EOS
   # --- step 7: settings.e2e.ts, light and dark screenshots ---------------------------------------
   echo "==> 7. settings.e2e.ts on the guest"
   export PATH="$HOME/.bun/bin:$BASE_PATH"
+  # the guest disk is 8.7 GB: the install above left caches (uv, qmd models) that the browser needs the room of
+  rm -rf "$HOME/.cache/uv" "$HOME/.cache/node-gyp" "$HOME/.cache/qmd"
+  note "free space before the browser download: $(df -h / | awk 'NR==2 { print $4 }')"
   if ! command -v bun >/dev/null 2>&1; then
     fail "bun is on the guest PATH (settings.e2e.ts needs it)"
   else
@@ -376,6 +419,9 @@ EOS
     ( cd "$E2E" && bun install ) > "$W/e2e-install.log" 2>&1; rc=$?
     if [ "$rc" -ne 0 ]; then fail "bun install in tests/e2e exits 0 (rc=$rc)"; tail_of "$W/e2e-install.log" 12
     else
+      # the guest has no browser: fetch the one Playwright pins, and its system libraries through apt
+      ( cd "$E2E" && bunx playwright install chromium && sudo -n env "PATH=$PATH" bunx playwright install-deps chromium ) > "$W/e2e-browser.log" 2>&1; rc=$?
+      if [ "$rc" -eq 0 ]; then pass "the pinned Chromium and its libraries are installed"; else fail "the pinned Chromium and its libraries are installed (rc=$rc)"; tail_of "$W/e2e-browser.log" 12; fi
       ( cd "$E2E" && E2E_SHOTS="$W/shots" bunx playwright test settings.e2e.ts ) > "$W/e2e.log" 2>&1; rc=$?
       if [ "$rc" -eq 0 ]; then pass "settings.e2e.ts passes on the guest"; else fail "settings.e2e.ts passes on the guest (rc=$rc)"; tail_of "$W/e2e.log" 25; fi
     fi
