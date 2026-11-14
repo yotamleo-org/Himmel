@@ -1967,7 +1967,7 @@ cp "$REPO_ROOT/scripts/ci/ticket-id-internal-authors.txt" "$own/scripts/ci/ticke
 mkdir -p "$own/scripts/cr"
 cp "$REPO_ROOT/scripts/cr/clear-review-marker.sh" "$REPO_ROOT/scripts/cr/anchor-handoff.sh" "$REPO_ROOT/scripts/cr/ledger-amend-auth.js" "$REPO_ROOT/scripts/cr/review-round.sh" "$own/scripts/cr/"
 cp "$REPO_ROOT/scripts/lib/chokepoint-seam-guard.sh" "$own/scripts/lib/chokepoint-seam-guard.sh"
-cp "$REPO_ROOT/scripts/lib/git-clean.sh" "$own/scripts/lib/git-clean.sh"
+cp "$REPO_ROOT/scripts/lib/git-clean.sh" "$REPO_ROOT/scripts/lib/gate-repo-resolver.sh" "$own/scripts/lib/"
 cp "$REPO_ROOT/scripts/chokepoints.json" "$own/scripts/chokepoints.json"
 printf 'JIRA_PROJECT_KEY=HIMMEL\n' > "$own/.env"
 
@@ -4806,6 +4806,10 @@ check "anchor: with HIMMEL_REPO empty gh reads the primary checkout, not the lin
 rc=0; out="$(cd "$NOWHERE" && HIMMEL_REPO=rel/path bash "$SCRIPT" --observe "$PR" "$SHA" 2>&1)" || rc=$?
 check "anchor: a relative HIMMEL_REPO is refused with exit 2" "$rc" "2"
 contains "anchor: the refusal names HIMMEL_REPO" "$out" "HIMMEL_REPO"
+contains "anchor: the relative refusal is the exact line" "$out" "ready-check: HIMMEL_REPO (rel/path) is not an absolute path - refusing to let it pick the gated checkout; nothing was judged"
+rc=0; out="$(cd "$NOWHERE" && HIMMEL_REPO="$NOWHERE/gone" bash "$SCRIPT" --observe "$PR" "$SHA" 2>&1)" || rc=$?
+check "anchor: a HIMMEL_REPO that is not a directory is refused with exit 2" "$rc" "2"
+contains "anchor: the not-a-directory refusal is the exact line" "$out" "ready-check: the gated checkout HIMMEL_REPO ($NOWHERE/gone) is not a directory; nothing was judged"
 unset STUB_NWO_BY_CWD
 reset_stubs
 

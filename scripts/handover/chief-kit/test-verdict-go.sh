@@ -30,7 +30,8 @@ contains() { case "$2" in *"$3"*) echo "ok - $1" ;; *) echo "FAIL - $1: output d
 lacks()    { case "$2" in *"$3"*) echo "FAIL - $1: output contains [$3]"; fails=$((fails+1)) ;; *) echo "ok - $1" ;; esac; }
 
 # A sandbox kit: the script under test beside four stubs that log their argv.
-KIT="$tmp/kit"; LOG="$tmp/log"; mkdir -p "$KIT"
+KIT="$tmp/kit/scripts/handover/chief-kit"; LOG="$tmp/log"; mkdir -p "$KIT" "$tmp/kit/scripts/lib"
+cp "$HERE/../../lib/gate-repo-resolver.sh" "$HERE/../../lib/git-clean.sh" "$tmp/kit/scripts/lib/" 2>/dev/null || true
 cp "$SCRIPT" "$KIT/verdict-go.sh" 2>/dev/null || true
 cp "$HERE/residual-lines.sh" "$KIT/residual-lines.sh" 2>/dev/null || true
 for s in write-verdict go append-results; do
@@ -227,5 +228,8 @@ check    "10: a relative --doc rc 0" "$rc" 0
 contains "10: a relative --doc is the caller's path" "$(cat "$LOG")" "append-results [$NOWHERE/rel/chief.md]"  # read-sink-ok: the test's own sandbox log
 rc=0; out="$(cd "$NOWHERE" && HIMMEL_REPO=rel bash "$KIT/verdict-go.sh" q10x GO "$HEAD40" --pr 77 --evidence-file "$EV" 2>&1)" || rc=$?
 check    "10: a relative HIMMEL_REPO is refused rc 2" "$rc" 2
+check    "10: ...with the exact refusal" "$out" "verdict-go: HIMMEL_REPO (rel) is not an absolute path - refusing to let it pick the gated checkout; nothing ran"
+rc=0; out="$(cd "$NOWHERE" && HIMMEL_REPO="$tmp/gone" bash "$KIT/verdict-go.sh" q10g GO "$HEAD40" --pr 77 --evidence-file "$EV" 2>&1)" || rc=$?
+check    "10: a HIMMEL_REPO that is not a directory -> rc 2 and the exact refusal" "$rc|$out" "2|verdict-go: the gated checkout HIMMEL_REPO ($tmp/gone) is not a directory; nothing ran"
 
 [ "$fails" -eq 0 ] && echo "all ok" || { echo "$fails failure(s)"; exit 1; }

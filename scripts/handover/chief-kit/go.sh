@@ -425,19 +425,13 @@ fi
 # HANDOVER_DIR for the anchor's .env-configured root, and fails (never falls
 # back to the stub) when that configured root is gone.
 ANCHOR="$(cd "$HERE/../../.." && pwd)"
-# git-env-ok: the one git call runs in a subshell that unsets GIT_DIR, GIT_WORK_TREE, GIT_COMMON_DIR and GIT_INDEX_FILE first
-case "${HIMMEL_REPO:-}" in
-    /*) GATE_DIR=$HIMMEL_REPO ;;
-    '') GATE_DIR=$( (unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE; git -C "$HERE" rev-parse --path-format=absolute --git-common-dir) 2>/dev/null) || GATE_DIR=""  # swallow-ok: a tree outside git reads empty, which falls back to this script's own tree root below
-        GATE_DIR=${GATE_DIR%/.git} ;;
-    *) echo "go: HIMMEL_REPO ($HIMMEL_REPO) is not an absolute path - refusing to let it pick the gated checkout; no GO written" >&2
-       exit 1 ;;
-esac
-[ -n "$GATE_DIR" ] || GATE_DIR=$ANCHOR
-if [ ! -d "$GATE_DIR" ]; then
-    echo "go: the gated checkout HIMMEL_REPO ($GATE_DIR) is not a directory - no GO written" >&2
+# shellcheck source=scripts/lib/gate-repo-resolver.sh
+# shellcheck disable=SC1091
+if ! . "$HERE/../../lib/gate-repo-resolver.sh"; then
+    echo "go: cannot load scripts/lib/gate-repo-resolver.sh" >&2
     exit 1
 fi
+GATE_DIR=$(gate_repo_dir go "; no GO written" " - no GO written") || exit 1
 if ! ROOT=$(go_resolve_root "$ANCHOR"); then
     # shellcheck disable=SC2031  # go_resolve_root scopes HANDOVER_DIR in a subshell on purpose; this reads the caller's own value
     echo "go: cannot resolve the handover root merge-on-green reads (HANDOVER_DIR='${HANDOVER_DIR:-}', or the HANDOVER_DIR in $ANCHOR/.env is not a directory) - no GO written" >&2

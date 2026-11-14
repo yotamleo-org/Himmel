@@ -2293,7 +2293,7 @@ assert_eq "$promote_lines_after" "$((promote_lines_before + 1))" "malformed-ledg
 # and review-round.sh resolve must agree.
 mkdir -p "$fx/scripts/handover/chief-kit"
 cp "$HERE/../handover/chief-kit/write-verdict.sh" "$fx/scripts/handover/chief-kit/write-verdict.sh"
-for lib in go-gate.sh handover-path.sh user-slug.sh forge.sh forge-github.sh forge-bitbucket.sh; do
+for lib in go-gate.sh handover-path.sh user-slug.sh forge.sh forge-github.sh forge-bitbucket.sh git-clean.sh gate-repo-resolver.sh; do
     cp "$HERE/../lib/$lib" "$fx/scripts/lib/$lib"
 done
 git -C "$fx" -c init.defaultBranch=main init -q
