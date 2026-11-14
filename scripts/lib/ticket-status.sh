@@ -207,9 +207,15 @@ ts_read_prs() {
 }
 
 # ts_required_set <base> — check-ci's effective required set, read through the
-# same rules + classic-protection endpoints. rc 1 = unreadable (a 403 included).
+# same rules + classic-protection endpoints. rc 1 = unreadable (a 403 included), or main's core
+# bucket is under the scan floor: the classic read is main's, and a refused read token retries on main.
 ts_required_set() {
-    local rules classic
+    local rules classic line
+    declare -F ghq_scan_gate >/dev/null 2>&1 || . "$_TS_LIB_DIR/gh-quota.sh"
+    if ! line=$(HIMMEL_QUOTA_DIR="${HIMMEL_QUOTA_DIR:-$(ts_state_dir)/quota}" ghq_scan_gate main core ticket-status); then
+        printf '%s\n' "$line" >&2
+        return 1
+    fi
     rules=$(_ts_gh api "repos/{owner}/{repo}/rules/branches/$1" 2>/dev/null) || return 1
     rules=$(jq -r '.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]? | "\(.context)\t\(.integration_id // "")"' <<<"$rules" 2>/dev/null) || return 1
     if classic=$(gh api "repos/{owner}/{repo}/branches/$1/protection/required_status_checks" 2>&1); then
