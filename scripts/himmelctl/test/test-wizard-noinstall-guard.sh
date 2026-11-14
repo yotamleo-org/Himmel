@@ -111,6 +111,10 @@ trap cleanup EXIT
 # register-state.sh: the wizard's handover step registers the repo's state
 # through this single registry writer and reads its rc; the registry write and
 # validation stay in scripts/handover/register-state.sh.
+#
+# graph-choices-cadence.sh, cadence-alert.sh, api-credit-state.mjs: the graph
+# step reads the job's status and the API roster, arms the job on a typed yes
+# and clears a dropped letter's alert, each through its existing owner.
 allow_full="$work/allow-full.txt"
 cat > "$allow_full" <<'NAMES'
 check-user-slug.sh
@@ -129,6 +133,9 @@ ensure-workspace-trust.sh
 release-check.sh
 vm-mode.sh
 register-state.sh
+graph-choices-cadence.sh
+cadence-alert.sh
+api-credit-state.mjs
 NAMES
 
 # extract_script_targets: every 'name.sh' / "name.sh" /
