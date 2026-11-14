@@ -2243,7 +2243,7 @@ s17_fl_failures() {  # <dir> <run id>: one `fail` row per suite in <dir>/need wi
 S17_JS_ART='js-suite-manifest-*'
 S17_JS_FILE='manifest-js-*.txt'
 s17_artifact_jobs_all_succeeded() {
-    tr -d '\r' < "$1" | awk -F '\t' -v x="$2" '
+    tr -d '\r' | awk -F '\t' -v x="$1" '
         { n = $2; b = n; v = ""; i = index(n, " (")
           if (i > 0 && substr(n, length(n)) == ")") {
               b = substr(n, 1, i - 1); v = substr(n, i + 2, length(n) - i - 2)
@@ -2269,7 +2269,7 @@ s17_js_read() {
     while IFS= read -r f; do
         job="${f%/*}"; job="${job##*/}"
         case "$job" in js-suite-manifest-?*) job="${job#js-suite-manifest-}" ;; *) job="?" ;; esac
-        ok=$(s17_artifact_jobs_all_succeeded "$d/jobs" "$job")
+        ok=$(s17_artifact_jobs_all_succeeded "$job" < "$d/jobs")
         tr -d '\r' < "$f" > "$d/jsf"
         awk 'index($0, "ran ") == 1 && index($0, "ran 0 ") != 1 { r = substr($0, 5); k = index(r, " "); if (k > 1) print substr(r, k + 1) }' "$d/jsf" >> "$d/jsred"
         if [ "$ok" = yes ]; then
