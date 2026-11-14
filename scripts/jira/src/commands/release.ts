@@ -95,6 +95,7 @@ export function ctxFor(release: string, mirrorRoot?: string): Ctx {
   return {
     release, dir, keyPath, env: process.env, now: () => new Date(),
     jira: liveJira, mirrorRoot: mirrorRoot ?? (process.env.JIRA_PROJECT_KEY ? defaultRoot(process.env.JIRA_PROJECT_KEY) : null),
+    deliveredPr: (key) => mergedPrOf(key)?.number,
   };
 }
 
@@ -275,6 +276,7 @@ function decisionFault(x: unknown): string | null {
   if (!isStrOrNull(d.from)) return 'from';
   if (!isStrOrNull(d.to)) return 'to';
   if (d.ref !== undefined && !isStrOrNull(d.ref)) return 'ref';
+  if (d.delivered !== undefined) return 'delivered';
   if (d.supersedes !== undefined && !(Array.isArray(d.supersedes) && d.supersedes.every(isStr))) return 'supersedes';
   if (d.authority !== undefined && !['rm', 'operator', 'import'].includes(d.authority as string)) return 'authority';
   return null;
@@ -810,7 +812,7 @@ export function registerRelease(program: Command): void {
       try {
         lines = await rmRun(ctx, judgeFor(ctx), {
           doc: o.doc, session: `rm-run-${process.pid}`, ruling: o.ruling, chiefOverride: chiefOverrideOf(o), signal: stop.signal,
-          judgeTimeoutMs: RM_RUN_JUDGE_DEADLINE_MS, deliveredPr: (key) => mergedPrOf(key)?.number,
+          judgeTimeoutMs: RM_RUN_JUDGE_DEADLINE_MS,
           onJudge: (n, ms) => { judgeLine.push(`RM-RUN ${release} judge: ${n} requests, ${ms} ms`); },
         });
       } catch (e) {

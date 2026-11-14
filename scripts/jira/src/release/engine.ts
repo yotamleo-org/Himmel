@@ -43,6 +43,8 @@ export interface Ctx {
   now: () => Date;
   jira: JiraPort;
   mirrorRoot: string | null;
+  /** The merged PR that names a key: the evidence a delivered-follows-merge ruling is verified against. */
+  deliveredPr?: (key: string) => number | undefined;
   procRoot?: string;
   hostNsPath?: string;
 }
@@ -1271,7 +1273,7 @@ function checkBlockerPull(ctx: Ctx, p: {
 }
 
 function checkDelivered(ctx: Ctx, p: {
-  decl: Declaration; ops: Map<string, OperatorRow>; governing: OperatorRow | undefined; key: string; op: Op; authority: Authority;
+  decl: Declaration; ops: Map<string, OperatorRow>; governing: OperatorRow | undefined; key: string; op: Op; authority: Authority; req: RequestRow;
 }): boolean {
   const standingRow = p.authority.kind === 'operator' && p.authority.ref ? p.ops.get(p.authority.ref) : undefined;
   if (standingRow?.kind !== 'delivered-follows-merge') return false;
@@ -1285,6 +1287,10 @@ function checkDelivered(ctx: Ctx, p: {
   }
   const t = terminalOf(snap);
   if (t !== 'Done' && t !== 'Duplicate') throw new Error(`release rule: delivered-follows-merge: ${p.key} is ${t ?? 'not closed'}, not delivered`);
+  const evidence = mergeEvidenceFor(p.req, t, ctx.deliveredPr);
+  if (!evidence || evidence !== p.authority.delivered) {
+    throw new Error(`release rule: delivered-follows-merge: ${p.key} has no verifiable merge evidence (${p.authority.delivered ?? 'none'})`);
+  }
   const g = p.governing;
   if (g && Date.parse(g.ts) > Date.parse(standingRow.ts)) {
     throw new Error(`release rule: CONFLICT ${p.key}: ${g.id} (newer) ${g.op} ${vName(g.from_v ?? null)}→${vName(g.to_v ?? null)} governs ${p.key}; its work merged`);
@@ -1340,7 +1346,7 @@ export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
     let authority = o.authority;
     let op = o.op;
     const restored = restoreAsAdd(req.verb, o.op, governing, keyNewestDecision(l.operator.verified, req.key));
-    const checked = { decl: l.decl, ops, governing, key: req.key, op: o.op, authority };
+    const checked = { decl: l.decl, ops, governing, key: req.key, op: o.op, authority, req };
     const pulling = checkBlockerPull(ctx, checked) || checkDelivered(ctx, checked);
     for (const v of l.decl.versions) {
       if (!effectOn(o.op, v) && !(o.op.kind === 'none' && (o.op.from_v === v || o.op.to_v === v))) continue;
@@ -1652,19 +1658,20 @@ function supersedesOf(now: Loaded, mirror: ReturnType<typeof readMirror>, key: s
 
 const prLabel = (n: unknown): string | undefined => (typeof n === 'number' && Number.isInteger(n) && n > 0 ? `PR #${n}` : undefined);
 
-function deliveryOf(evidence: unknown): { merged?: string; duplicate?: string } {
+function deliveryOf(evidence: unknown): { merged?: string; duplicate?: string; original?: string } {
   const e = (evidence && typeof evidence === 'object' ? evidence : {}) as Record<string, unknown>;
   return {
     merged: prLabel(e.pr_number) ?? prLabel(e.pr) ?? (typeof e.merged_pr === 'string' && e.merged_pr.trim() ? e.merged_pr.trim() : undefined),
     duplicate: prLabel(e.duplicate_pr),
+    original: typeof e.duplicate_of === 'string' && ISSUE_KEY.test(e.duplicate_of) ? e.duplicate_of : undefined,
   };
 }
 
 function mergeEvidenceFor(q: RequestRow, t: 'Done' | 'Duplicate', lookup?: (key: string) => number | undefined): string | undefined {
   const claimed = deliveryOf(q.evidence);
-  const duplicate = t === 'Duplicate' ? claimed.duplicate : undefined;
-  const found = lookup?.(q.key);
-  return duplicate ?? (lookup ? (found !== undefined ? `PR #${found}` : undefined) : claimed.merged);
+  if (!lookup) return t === 'Duplicate' ? claimed.duplicate ?? claimed.merged : claimed.merged;
+  const found = lookup(q.key) ?? (t === 'Duplicate' && claimed.original ? lookup(claimed.original) : undefined);
+  return found !== undefined ? `PR #${found}` : undefined;
 }
 
 function deliveredDecision(now: Loaded, mirror: ReturnType<typeof readMirror>, q: RequestRow, lookup?: (key: string) => number | undefined): RuledDecision | null {
@@ -1869,8 +1876,6 @@ export interface RmRunOptions {
   ruling?: string;
   /** The chief's reason for the same, console marker only; one ledger row records it with the count. */
   chiefOverride?: string;
-  /** The merged PR that names a key, when the request carries none: a delivered ticket in a later version is then admitted with it. */
-  deliveredPr?: (key: string) => number | undefined;
 }
 
 // The last line of an rm-run that refused anything: how many requests the engine refused, so a refusal is not
@@ -1933,7 +1938,7 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
       const now = loadOrThrow(ctx);
       // A standing blocker pull is ruled mechanically; only the other requests go to the judge.
       const mirror = readMirror(ctx.mirrorRoot);
-      const delivered = deliveredDecisions(now, mirror, claimed, o.deliveredPr);
+      const delivered = deliveredDecisions(now, mirror, claimed, ctx.deliveredPr);
       const asked = claimed.filter((q) => !isPullRequest(q) && !delivered.has(q.req));
       const keys = new Set(asked.map((r) => r.key));
       const receipted = now.rulings.verified.filter((r) => r.phase === 'receipted');

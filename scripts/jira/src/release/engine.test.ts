@@ -1669,7 +1669,7 @@ describe('a delivered ticket in a later version follows its merge (decision 929)
     declared();
     scene();
     ask({});
-    const lines = await rmRun(ctx(), noJudge, { deliveredPr: (key) => (key === 'K-1' ? 7 : undefined) });
+    const lines = await rmRun({ ...ctx(), deliveredPr: (key) => (key === 'K-1' ? 7 : undefined) }, noJudge);
     expect(lines).toContainEqual(expect.stringMatching(/^RULING R-R1-0001 Q-R1-0001 INTAKE K-1 move v2→v1 ADMIT /));
     expect(rulingRows().at(-1)?.authority).toMatchObject({ ref: id, delivered: expect.stringContaining('7') });
   });
@@ -1681,11 +1681,44 @@ describe('a delivered ticket in a later version follows its merge (decision 929)
     expect(await rmRun(ctx(), noJudge)).toContainEqual(expect.stringMatching(/^RULING R-R1-0001 Q-R1-0001 INTAKE K-1 move v2→v1 ADMIT /));
   });
 
+  it('a duplicate is delivered when a merged PR names its original, found through the lookup', async () => {
+    declared();
+    scene({ status: 'Duplicate', resolution: 'Duplicate' });
+    ask({ duplicate_of: 'K-5' });
+    const lines = await rmRun({ ...ctx(), deliveredPr: (key) => (key === 'K-5' ? 12 : undefined) }, noJudge);
+    expect(lines).toContainEqual(expect.stringMatching(/^RULING R-R1-0001 Q-R1-0001 INTAKE K-1 move v2→v1 ADMIT /));
+    expect(rulingRows().at(-1)?.authority).toMatchObject({ delivered: 'PR #12' });
+  });
+
+  it('control: under the production wiring a duplicate with an unmerged PR number is not admitted', async () => {
+    declared();
+    scene({ status: 'Duplicate', resolution: 'Duplicate' });
+    ask({ duplicate_pr: 9, duplicate_of: 'K-5' });
+    await rmRun({ ...ctx(), deliveredPr: () => undefined }, holdAll);
+    expect(judged).toEqual(['K-1']);
+    expect(rulingRows()).toEqual([]);
+  });
+
+  it('control: a judge decision citing the record with a made-up delivered string is refused when no merged PR names the key', () => {
+    declared();
+    scene();
+    leaseAcquire(ctx(rmEnv), { expectEpoch: 0, doc: DOC, session: 'rm-1' });
+    const q = ask({});
+    claim(ctx(rmEnv));
+    const cite = (c: Ctx) => rule(c, {
+      req: q.req, outcome: 'ADMIT', op: { kind: 'move', from_v: 'v2', to_v: 'v1' }, sector: 'Ship loop', ground: 'g', reason: 'r', supersedes: [],
+      authority: { kind: 'operator', ref: id, delivered: 'PR #999' },
+    });
+    expect(() => cite({ ...ctx(rmEnv), deliveredPr: () => undefined })).toThrow(/no verifiable merge evidence/);
+    expect(() => cite(ctx(rmEnv))).toThrow(/no verifiable merge evidence/);
+    expect(cite({ ...ctx(rmEnv), deliveredPr: () => 999 }).authority).toMatchObject({ delivered: 'PR #999' });
+  });
+
   it('control: with no merge evidence nothing is admitted mechanically; the judge is asked', async () => {
     declared();
     scene();
     ask({});
-    expect(await rmRun(ctx(), holdAll, { deliveredPr: () => undefined })).toEqual([expect.stringMatching(/^HELD Q-R1-0001: /)]);
+    expect(await rmRun({ ...ctx(), deliveredPr: () => undefined }, holdAll)).toEqual([expect.stringMatching(/^HELD Q-R1-0001: /)]);
     expect(judged).toEqual(['K-1']);
     expect(rulingRows()).toEqual([]);
     expect(jira.fv.get('K-1')).toEqual(['v2']);
@@ -1695,7 +1728,7 @@ describe('a delivered ticket in a later version follows its merge (decision 929)
     declared();
     scene();
     ask();
-    await rmRun(ctx(), holdAll, { deliveredPr: () => undefined });
+    await rmRun({ ...ctx(), deliveredPr: () => undefined }, holdAll);
     expect(judged).toEqual(['K-1']);
     expect(rulingRows()).toEqual([]);
   });
