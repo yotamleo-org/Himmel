@@ -1231,7 +1231,7 @@ log="$(ts_state_dir)/status-events.jsonl"
 [ -e "$log" ] || exit 0
 [ -r "$log" ] || exit 70
 warn="$3/warn"
-ts_merge_rows() { python3 -I "$_TS_LIB_DIR/merge-rows-effective.py" "$@" 2>>"$warn" || echo "merge-rows-effective: warn: the read failed" >> "$warn"; }
+ts_merge_rows() { GH_READ_NO_MAIN_FALLBACK=1 python3 -I "$_TS_LIB_DIR/merge-rows-effective.py" "$@" 2>>"$warn" || echo "merge-rows-effective: warn: the read failed" >> "$warn"; }
 jq() { command jq "$@" || echo "merge-rows-effective: warn: the park rows could not be read" >> "$warn"; }
 printf "%s\n" "$2" > "$3/keys"
 grep -F -f "$3/keys" "$log" > "$3/rows"; found=$?

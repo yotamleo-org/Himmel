@@ -70,7 +70,8 @@
 # CLI; an executable or a .js run under node), TICKET_STATUS_QUEUE_LOCK (an
 # executable standing in for queue-lock.sh), TICKET_STATUS_PR_LIMIT (default 50),
 # QUEUE_LOCK_IDLE_WARN_SECONDS (default 2700). Needs jq and gh. Every GitHub read but the
-# classic branch protection (an admin read, so main's) rides the read token through gh-read.sh.
+# classic branch protection (an admin read, so main's) rides the read token through gh-read.sh,
+# and a rate-limited read is not retried on main (a scan).
 #
 # bash 3.2-safe.
 # shellcheck disable=SC2034  # the TS_* globals are this lib's outputs, read by the caller
@@ -90,6 +91,8 @@ if ! declare -F gh_read >/dev/null 2>&1; then
     # shellcheck disable=SC1091
     . "$_TS_LIB_DIR/gh-read.sh"
 fi
+
+_ts_gh() { GH_READ_NO_MAIN_FALLBACK=1 gh_read "$@"; }
 
 ts_state_dir() { printf '%s' "${TICKET_STATUS_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"; }
 
@@ -185,7 +188,7 @@ ts_read_prs() {
         limit=300
         json=$(cat "$TS_SNAPSHOT_DIR/prs.json" 2>/dev/null) || { TS_STAGE=gh; return 1; }
     else
-        json=$(gh_read pr list --state open --search "$1 in:title" --limit "$limit" \
+        json=$(_ts_gh pr list --state open --search "$1 in:title" --limit "$limit" \
             --json number,title,headRefOid,baseRefName,reviewDecision 2>/dev/null) || { TS_STAGE=gh; return 1; }
     fi
     n=$(jq 'length' <<<"$json" 2>/dev/null) || { TS_STAGE=gh; return 1; }
@@ -207,7 +210,7 @@ ts_read_prs() {
 # same rules + classic-protection endpoints. rc 1 = unreadable (a 403 included).
 ts_required_set() {
     local rules classic
-    rules=$(gh_read api "repos/{owner}/{repo}/rules/branches/$1" 2>/dev/null) || return 1
+    rules=$(_ts_gh api "repos/{owner}/{repo}/rules/branches/$1" 2>/dev/null) || return 1
     rules=$(jq -r '.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]? | "\(.context)\t\(.integration_id // "")"' <<<"$rules" 2>/dev/null) || return 1
     if classic=$(gh api "repos/{owner}/{repo}/branches/$1/protection/required_status_checks" 2>&1); then
         classic=$(jq -r '((.contexts // [])[] | "\(.)\t"), ((.checks // [])[]? | "\(.context)\t\(.app_id // "")")' <<<"$classic" 2>/dev/null) || return 1
@@ -240,7 +243,7 @@ ts_pr_class() {
         prows=$(cat "$TS_SNAPSHOT_DIR/prows-$1.tsv" 2>/dev/null)
     else
         reqs=$(ts_required_set "$3") || { echo "!required-set"; return 1; }
-        out=$(GH_READ_QUIET=1 gh_read pr checks "$1" --json bucket,name 2>&1)
+        out=$(GH_READ_QUIET=1 _ts_gh pr checks "$1" --json bucket,name 2>&1)
         if rows=$(jq -r '.[] | "\(.bucket)\t\(.name)"' <<<"$out" 2>/dev/null); then
             :
         else
@@ -255,7 +258,7 @@ ts_pr_class() {
         return 0
     fi
     if [ -z "${TS_SNAPSHOT_DIR:-}" ] && _has_producer_ids "$reqs"; then
-        out=$(gh_read api "repos/{owner}/{repo}/commits/$2/check-runs?per_page=100" --paginate 2>/dev/null) || { echo "!gh"; return 1; }
+        out=$(_ts_gh api "repos/{owner}/{repo}/commits/$2/check-runs?per_page=100" --paginate 2>/dev/null) || { echo "!gh"; return 1; }
         prows=$(jq -r '.check_runs[] | if .id == null then error("check-run with no id") else "\(if .status != "completed" then "pending" elif (.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped") then "pass" elif .conclusion == "cancelled" then "cancel" else "fail" end)\t\(.name)\t\(.app.id // "")\t\(.started_at // "")\t\(.id)" end' <<<"$out" 2>/dev/null) || { echo "!gh"; return 1; }
     fi
     st=$(_required_status "$reqs" "$rows" "$prows")
@@ -280,7 +283,7 @@ ts_unresolved_threads() {
         return
     fi
     # shellcheck disable=SC2016  # $owner/$name/$number are GraphQL variables
-    out=$(gh_read api graphql -F owner='{owner}' -F name='{repo}' -F number="$1" \
+    out=$(_ts_gh api graphql -F owner='{owner}' -F name='{repo}' -F number="$1" \
         -f query='query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){pageInfo{hasNextPage} nodes{isResolved}}}}}' 2>/dev/null) || return 1
     n=$(jq -r '.data.repository.pullRequest.reviewThreads
         | if .pageInfo.hasNextPage != false then error("more threads") else .nodes | map(select(.isResolved | not)) | length end' <<<"$out" 2>/dev/null) || return 1
@@ -439,7 +442,7 @@ _ts_worker_state() {
 # ts_merge_rows [<log>] — the status-events log (stdin without a file) minus every pre-merge row whose PR did
 # not merge; see merge-rows-effective.py. Every reader of the merge rows reads this.
 ts_merge_rows() {
-    python3 -I "$_TS_LIB_DIR/merge-rows-effective.py" "$@"
+    GH_READ_NO_MAIN_FALLBACK=1 python3 -I "$_TS_LIB_DIR/merge-rows-effective.py" "$@"
 }
 
 # ts_owner_rows — stdin: ts_merge_rows output. Prints the rows ts_owner reads, one per line, fields split by US (\037):
@@ -630,7 +633,7 @@ ts_merged_no_row() {
         case "$num" in ''|*[!0-9]*) ;; *) TS_MERGED_PR=$num; return 0 ;; esac
     fi
     [ -z "${TS_SNAPSHOT_DIR:-}" ] || return 1
-    json=$(gh_read pr list --state merged --search "$1 in:title" --limit "${TICKET_STATUS_PR_LIMIT:-50}" \
+    json=$(_ts_gh pr list --state merged --search "$1 in:title" --limit "${TICKET_STATUS_PR_LIMIT:-50}" \
         --json number,title 2>/dev/null) || return 2
     rows=$(jq -r 'sort_by(.number) | reverse | .[] | [.number, .title] | @tsv' <<<"$json" 2>/dev/null) || return 2
     while IFS=$'\t' read -r num title; do
@@ -676,7 +679,7 @@ _ts_d5d() {
         if [ -n "$owner" ]; then TS_D5D_OWNER=$owner TS_MERGED_PR=$mpr; return 0; fi
     fi
     [ -z "${TS_SNAPSHOT_DIR:-}" ] || return 1
-    body=$(gh_read pr view "$mpr" ${repo:+--repo "$repo"} --json body -q .body 2>/dev/null) || return 1
+    body=$(_ts_gh pr view "$mpr" ${repo:+--repo "$repo"} --json body -q .body 2>/dev/null) || return 1
     ans=$(printf '%s' "$body" | python3 -I "$_TS_LIB_DIR/pr_remainder.py" "$key" 2>/dev/null) || return 1
     kind=${ans%%$'\t'*}
     case "$kind" in

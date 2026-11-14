@@ -497,6 +497,7 @@ cat > "$tmp/qbin/gh" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$QGH_LOG"
 printf '%s %s %s\n' "${GH_TOKEN:-main}" "$1" "$2" >> "$QGH_LOG.tok"
+if [ -n "${GH_TOKEN:-}" ] && [ -n "${QGH_READ_RL:-}" ]; then echo 'GraphQL: API rate limit already exceeded for user ID 2.' >&2; exit 1; fi
 [ "$1 $2" != "pr list" ] || echo '[]'
 EOF
 chmod +x "$tmp/qjira" "$tmp/qbin/gh"
@@ -544,6 +545,8 @@ qplant_read "$tmp/q-rok" 4000 ok
 check "9479 T11: a healthy derive with a read token derives" "$(QROOT="$tmp/qroot" qderive "$tmp/q-rok")" "In Progress///D5"
 check "9479 T11: its PR list goes out on the read token" "$(grep -c '^ghp_TSREAD0123456789 pr list$' "$tmp/qgh.log.tok")" 1
 check "9479 T11: and no read rides main" "$(grep -c '^main ' "$tmp/qgh.log.tok")" 0
+check "9479 T11: a read token rate-limited after an ok probe leaves the derive unread (a scan)" "$(QGH_READ_RL=1 QROOT="$tmp/qroot" qderive "$tmp/q-rok")" "no-write/miss/gh/"
+check "9479 T11: and the refused read is not retried on main" "$(grep -c '^main ' "$tmp/qgh.log.tok")" 0
 qplant_read "$tmp/q-rout" 0 refused
 check "9479 T11: the scan gate pauses on the read token's row" "$(QROOT="$tmp/qroot" qderive "$tmp/q-rout")" "no-write/miss/gh/"
 check "9479 T11: the pause line names the read token" "$(grep -c '^QUOTA-PAUSE github graphql token=read remaining=0 .* caller=ticket-status nothing-was-judged$' "$tmp/qerr")" 1
@@ -561,6 +564,7 @@ cat > "$tmp/mrbin/gh" <<'EOF'
 #!/usr/bin/env bash
 printf '%s %s %s %s\n' "${GH_TOKEN:-main}" "$1" "$2" "$3" >> "$MR_TOK_LOG"
 [ -z "${MR_HANG:-}" ] || exec -a "mr-sleep-$MR_HANG" sleep 30
+if [ -n "${GH_TOKEN:-}" ] && [ -n "${MR_READ_RL:-}" ]; then echo 'GraphQL: API rate limit already exceeded for user ID 2.' >&2; exit 1; fi
 [ "$1 $2" != "pr view" ] || echo "MERGED h12"
 EOF
 chmod +x "$tmp/mrbin/gh"
@@ -583,6 +587,15 @@ check "9479 T11: and the router's own bound left no gh behind" "$(pgrep -f "mr-s
 pkill -f "mr-sleep-$mrtag" 2>/dev/null
 check "9479 T11: under 2 s of budget no read starts (the router's bound could not end first)" "$(mr_t11 "$tmp/qroot" MERGE_ROWS_BUDGET_SECS=1.5)" 0
 check "9479 T11: and nothing went out" "$(grep -c . "$tmp/mrtok.log")" 0
+printf '. %q\n' "$HERE/ticket-status.sh" > "$tmp/mrts.sh"
+cat >> "$tmp/mrts.sh" <<'EOF'
+ts_merge_rows "$1"
+EOF
+: > "$tmp/mrtok.log"
+check "9479 T11: ticket-status's merge-rows read, rate-limited on the read token, counts no row (a scan)" \
+    "$(env -u MERGE_ROWS_GH -u himmel_github_token_vm2 PATH="$tmp/mrbin:$PATH" GH_READ_ENV_ROOT="$tmp/qroot" MR_TOK_LOG="$tmp/mrtok.log" MR_READ_RL=1 \
+        bash "$tmp/mrts.sh" "$tmp/mr12.jsonl" 2>/dev/null | grep -c '"pr":"12"')" 0
+check "9479 T11: and is not retried on main" "$(grep -c '^main ' "$tmp/mrtok.log")" 0
 
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-ticket-status.sh"
