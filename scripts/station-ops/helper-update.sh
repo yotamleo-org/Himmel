@@ -201,15 +201,13 @@ def take_lock():
     if not os.path.isdir(P(STATE)):
         fail("no state directory")
     fd = os.open(P(LOCK), os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-    end = time.monotonic() + 5
-    while True:
+    for _ in range(51):
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             return fd
         except OSError:
-            if time.monotonic() >= end:
-                fail("busy")
             time.sleep(0.1)
+    fail("busy")
 
 
 def rate_gate():
@@ -609,14 +607,12 @@ def load_marker():
 
 
 def ctime_of(path):
-    while True:
+    for _ in range(64):
         try:
             return os.lstat(path).st_ctime
         except OSError:
-            parent = os.path.dirname(path)
-            if parent == path:
-                return 0
-            path = parent
+            path = os.path.dirname(path)
+    return 0
 
 
 def bytecode_cache(p):
