@@ -1,19 +1,11 @@
 #!/bin/bash
-# helper-update v1: re-install the afk-sudo helper, broker, floor and station ops from a CI-green main commit.
-# Run by the afk-sudo helper as root from the root-owned copy in /usr/local/libexec/himmel/ops/: with --check at the
 # request (metadata only, nothing fetched is written, sourced or run), and without it after the operator's NONCE CODE.
 #
 #   helper-update.sh [--check] --id ID --operator-user U --commit <40 hex>
 #
-# The commit must be on GitHub's main (by main's sha), have a passing ci.yml Actions run at that sha, not be older than
-# the installed commit, and the station's checkout must hold the same files. After the code root fetches the commit's
-# files itself, snapshots libexec, the sudoers files and the config, runs the commit's own install.sh from a root stage,
-# self-checks, and restores the snapshot on any failure or after an interrupted run (not over a later install made more than 305 s after the run began).
 # One python3 -I program does the work; this file sources nothing from the checkout or from GitHub.
 # Last stdout line: op=helper-update id=ID result=changed|unchanged|would-change|bad-param|failed [name=P] detail=...
 # Exit 0 ok, 3 bad-param, 1 failed.
-# Test seam: HIMMEL_OPS_ROOT (a path prefix), HIMMEL_OPS_BIN (a PATH prefix), HIMMEL_OPS_NOW (the op's clock) and
-# HIMMEL_OPS_KILL_AT (killed after step marker|installed|restore:N) are honoured only when euid != 0.
 set -u
 PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 ROOT=""
@@ -24,7 +16,7 @@ fi
 export PATH
 
 id=- check=0 commit='' ouser=''
-say() { # result [name] detail
+say() {
     if [ $# -eq 3 ]; then printf 'op=helper-update id=%s result=%s name=%s detail=%s\n' "$id" "$1" "$2" "$3"
     else printf 'op=helper-update id=%s result=%s detail=%s\n' "$id" "$1" "$2"; fi
 }
@@ -91,7 +83,6 @@ def san(s, n=200):
 
 
 def sname(s, n=60):
-    """A file name from the commit or the checkout, as it may appear in a notice: plain characters only."""
     return re.sub(r"[^A-Za-z0-9._+/-]", "?", str(s))[:n]
 
 
@@ -180,7 +171,6 @@ def write_atomic(path, data, mode=0o600):
     fsync_dir(d)
 
 
-# ---- the config, the lock, the rate ----
 def load_config():
     p = P(CONFIG)
     try:
@@ -235,7 +225,6 @@ def rate_gate():
     write_atomic(P(RATE), "\n".join("%.0f" % x for x in times) + "\n")
 
 
-# ---- GitHub ----
 def curl_base(max_time):
     return [tool("curl"), "-q", "--proto", "=https", "--max-redirs", "0", "--fail", "--globoff", "--silent", "--show-error",
             "--max-time", str(max_time), "-A", "himmel-helper-update"]
@@ -333,7 +322,6 @@ def read_tree(repo):
     return tree
 
 
-# ---- the installed files, the record, the checkout ----
 def installed_blobs():
     out = {}
     for rel in ("afk-sudo", "approval_broker.py", "never_remote.py"):
@@ -467,7 +455,6 @@ def prio(n):
     return (0 if b == "install.sh" else 1 if b == "never_remote.py" else 2 if b in ("afk-sudo", "afk_sudo.py") else 3 if b == "approval_broker.py" else 4, n)
 
 
-# ---- the --check line (D2: fixed budgets, at most 400 characters) ----
 def login(s):
     s = s if isinstance(s, str) and re.fullmatch(r"[A-Za-z0-9-]{1,39}", s) else "?"
     return s if len(s) <= 16 else s[:15] + "~"
@@ -538,7 +525,6 @@ def who(repo):
             "approved": [u for u, s in last.items() if s == "APPROVED"]}
 
 
-# ---- the snapshot, the marker, the restore ----
 def row_of(path):
     try:
         st = os.lstat(path)
@@ -790,7 +776,6 @@ def interrupted():
     fail("restored an interrupted run %s%s" % (rid, "; unexpected: " + ", ".join(sname(disp_path(x), 50) for x in odd[:4]) if odd else ""))
 
 
-# ---- the run ----
 def fixed_line():
     return "%s ALL=(root) NOPASSWD: %s/afk-sudo\n" % (OPUSER, LX)
 
@@ -936,7 +921,6 @@ def main():
         say_raw("would-change", line(repo, f, rec, rec_state, rng, installed, source, pr))
         raise Stop(0)
     names = sorted(installed + (source or []), key=prio)
-    # D3 step 3: stage
     stage = fetch_stage(repo, tree)
     if read_regular(os.path.join(stage, LIBP + "never_remote.py")) != read_regular(P(LX + "/never_remote.py")):
         shutil.rmtree(stage, ignore_errors=True)

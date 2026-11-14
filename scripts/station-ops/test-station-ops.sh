@@ -618,10 +618,10 @@ assert_contains "RED 9691: the sent row carries the Bot API message_id as its re
 assert_absent "the sent row holds no token" "$NTOK" "$(ledger)"
 
 echo "== helper-update (HIMMEL-9732): the fixture, a fake GitHub on HIMMEL_OPS_BIN =="
-GHC=cccccccccccccccccccccccccccccccccccccccc   # the fixture commit: main's head, green
-GHX=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa   # the commit the sandbox station was installed at
-GHO=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb   # an older third commit
-GHN=dddddddddddddddddddddddddddddddddddddddd   # a newer green commit
+HU_MAIN=cccccccccccccccccccccccccccccccccccccccc
+HU_OLD=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+HU_OLDER=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+HU_NEWER=dddddddddddddddddddddddddddddddddddddddd
 HU="$tmp/hu"; mkdir -p "$HU"
 cat > "$HU/fake-gh-curl.py" <<'FAKEGH'
 #!/usr/bin/env python3
@@ -740,7 +740,6 @@ json.dump({"commit": sha, "run": "setup000", "time": 1.0, "files": files}, open(
 MKREC
 cat > "$HU/install-tree.sh" <<'INSTTREE'
 #!/bin/bash
-# install-tree.sh <tree> <sandbox>: what install.sh does to the libexec files, inside the sandbox
 set -e
 t=$1; lx=$2/usr/local/libexec/himmel
 install -d -m 0755 "$lx"
@@ -758,7 +757,6 @@ python3 -I "$t/scripts/station-ops/build-manifest.py" "$lx/ops" >/dev/null
 INSTTREE
 cat > "$HU/stub-install.sh" <<'STUBINST'
 #!/bin/bash
-# a test stub for scripts/lib/afk-sudo/install.sh: it installs the staged tree into the sandbox the way install.sh does
 R=${HIMMEL_OPS_ROOT:?}
 : > "$R/sourced-marker"
 src=$(cd "$(dirname "$0")" && pwd)
@@ -791,18 +789,16 @@ gh_edit() { python3 -I -c 'import json, sys
 p = sys.argv[1]; d = json.load(open(p)); exec(sys.argv[2]); json.dump(d, open(p, "w"))' "$R/gh/fixture.json" "$1"; }
 hu_cfg() { python3 -I -c 'import json, sys
 p = sys.argv[1]; d = json.load(open(p)); exec(sys.argv[2]); json.dump(d, open(p, "w"))' "$R/etc/himmel/afk-sudo.json" "$1"; }
-hu_tree() { # hu_tree <sha>: the fixture commit's tree = the repo's two directories, with the stub installer
+hu_tree() {
     local d="$R/gh/$1/scripts"
     mkdir -p "$d/lib/afk-sudo" "$d/station-ops"
     cp -p "$LIB"/* "$d/lib/afk-sudo/" 2>/dev/null
     cp -p "$OPS"/* "$d/station-ops/" 2>/dev/null
     cp "$HU/stub-install.sh" "$d/lib/afk-sudo/install.sh"; chmod 0755 "$d/lib/afk-sudo/install.sh"
 }
-hu_fixture() { python3 -I "$HU/mkfix.py" "$R" "$GHC" "$GHX" "${1:-t/h}"; }
+hu_fixture() { python3 -I "$HU/mkfix.py" "$R" "$HU_MAIN" "$HU_OLD" "${1:-t/h}"; }
 hu_record() { python3 -I "$HU/mkrec.py" "$R" "$1" "$R/gh/$1"; }
-hu_terminal() { bash "$R/install-tree.sh" "$R/gh/$1" "$R"; }   # the operator's re-install at a terminal
-# hu_root <name> [fresh|stale]: a sandbox station. fresh = libexec holds the fixture commit, no record; stale = libexec holds
-# the older commit X (its approval_broker.py and size-approval.sh differ) and the record names X.
+hu_terminal() { bash "$R/install-tree.sh" "$R/gh/$1" "$R"; }
 hu_root() {
     rm -rf "${tmp:?}/$1"
     new_root "$1"
@@ -811,12 +807,12 @@ hu_root() {
     cp "$HU/fake-gh-curl.py" "$R/bin/curl"; chmod +x "$R/bin/curl"
     printf '#!/bin/sh\nshift 3\nexec /usr/bin/timeout -k 1 4 "$@"\n' > "$R/bin/timeout"; chmod +x "$R/bin/timeout"
     cp "$HU/install-tree.sh" "$R/install-tree.sh"
-    hu_tree "$GHC"; hu_tree "$GHX"; hu_tree "$GHO"
-    printf '# older\n' >> "$R/gh/$GHX/scripts/lib/afk-sudo/approval_broker.py"
-    printf '# older\n' >> "$R/gh/$GHX/scripts/station-ops/size-approval.sh"
-    printf '# older still\n' >> "$R/gh/$GHO/scripts/lib/afk-sudo/approval_broker.py"
-    printf '# older still\n' >> "$R/gh/$GHO/scripts/station-ops/cron-entry.sh"
-    mkdir -p "$R/checkout"; cp -rp "$R/gh/$GHC/scripts" "$R/checkout/scripts"
+    hu_tree "$HU_MAIN"; hu_tree "$HU_OLD"; hu_tree "$HU_OLDER"
+    printf '# older\n' >> "$R/gh/$HU_OLD/scripts/lib/afk-sudo/approval_broker.py"
+    printf '# older\n' >> "$R/gh/$HU_OLD/scripts/station-ops/size-approval.sh"
+    printf '# older still\n' >> "$R/gh/$HU_OLDER/scripts/lib/afk-sudo/approval_broker.py"
+    printf '# older still\n' >> "$R/gh/$HU_OLDER/scripts/station-ops/cron-entry.sh"
+    mkdir -p "$R/checkout"; cp -rp "$R/gh/$HU_MAIN/scripts" "$R/checkout/scripts"
     mkdir -p "$R/checkout/scripts/lib/afk-sudo/__pycache__"; echo x > "$R/checkout/scripts/lib/afk-sudo/__pycache__/x.pyc"
     printf 'Defaults env_reset\n' > "$R/etc/sudoers"; chmod 0440 "$R/etc/sudoers"
     printf '# other\n' > "$R/etc/sudoers.d/90-other"; chmod 0440 "$R/etc/sudoers.d/90-other"
@@ -824,17 +820,17 @@ hu_root() {
     printf '{"enabled": true, "operator_id": %s, "window_s": 120, "operator_user": "%s", "ops": {"enabled": true}, "helper_update": {"enabled": true, "checkout": "%s", "repo": "t/h"}, "classes": {}}\n' \
         "$OPERATOR" "$HU_USER" "$R/checkout" > "$R/etc/himmel/afk-sudo.json"
     hu_fixture
-    if [ "${2:-fresh}" = stale ]; then hu_terminal "$GHX"; hu_record "$GHX"; else hu_terminal "$GHC"; fi
+    if [ "${2:-fresh}" = stale ]; then hu_terminal "$HU_OLD"; hu_record "$HU_OLD"; else hu_terminal "$HU_MAIN"; fi
 }
-hu_chk() { op helper-update --check --commit "${1:-$GHC}"; }
-hu_req() { oreq "$1" S1 helper-update "commit=${2:-$GHC}"; }
-hu_ok() { # hu_ok <offset> <id>: approve, then show the helper's output and the result notice (which carries the op's detail)
+hu_chk() { op helper-update --check --commit "${1:-$HU_MAIN}"; }
+hu_req() { oreq "$1" S1 helper-update "commit=${2:-$HU_MAIN}"; }
+hu_approve_read() {
     approve "$1" "$2" "$(code "$1")"; printf '\n'
     cat "$(find "$TG" -name '*.txt' 2>/dev/null | sort | tail -1)" 2>/dev/null
 }
 hu_detail() { printf '%s\n' "$1" | sed -n 's/.*detail=//p' | tail -1; }
 curl_n() { if [ -e "$R/curl.log" ]; then wc -l < "$R/curl.log" | tr -d ' '; else echo 0; fi; }
-hu_state() { # hu_state [libexec|sudoers|config]...: path, mode, owner and sha256 of the approval system's files
+hu_state() {
     python3 -I -c 'import hashlib, os, stat, sys
 R, parts = sys.argv[1], sys.argv[2:]
 tops = {"libexec": ["usr/local/libexec/himmel"], "sudoers": ["etc/sudoers", "etc/sudoers.d"], "config": ["etc/himmel/afk-sudo.json"]}
@@ -860,11 +856,11 @@ assert_contains "RED R1: the op is in the sandbox manifest" '"helper-update"' "$
 assert_contains "RED R1: a commit of 40 hex is filed" "result=pending" "$(hu_req 0)"
 assert_contains "the template ships helper_update off" '"helper_update": {"enabled": false' "$(cat "$LIB/afk-sudo.json.template")"
 n0=$(curl_n)
-for bad in "commit=$(printf '%s' "$GHC" | tr a-f A-F)" "commit=${GHC%?}" "commit=${GHC}0" "commit=zz"; do
+for bad in "commit=$(printf '%s' "$HU_MAIN" | tr a-f A-F)" "commit=${HU_MAIN%?}" "commit=${HU_MAIN}0" "commit=zz"; do
     assert_contains "RED R1: '${bad:0:12}...' is bad-param" "result=bad-param name=commit" "$(oreq 1 S1 helper-update "$bad")"
 done
-assert_contains "RED R1: an extra path parameter is bad-param" "result=bad-param name=path" "$(oreq 2 S1 helper-update "commit=$GHC" path=/x)"
-assert_contains "RED R1: a repo parameter is bad-param" "result=bad-param name=repo" "$(oreq 3 S1 helper-update "commit=$GHC" repo=a/b)"
+assert_contains "RED R1: an extra path parameter is bad-param" "result=bad-param name=path" "$(oreq 2 S1 helper-update "commit=$HU_MAIN" path=/x)"
+assert_contains "RED R1: a repo parameter is bad-param" "result=bad-param name=repo" "$(oreq 3 S1 helper-update "commit=$HU_MAIN" repo=a/b)"
 assert_contains "the op itself refuses a bad commit with exit 3" "result=bad-param name=commit" "$(op helper-update --check --commit nothex)"
 assert_eq "no bad-param made a curl call" "$n0" "$(curl_n)"
 
@@ -879,38 +875,38 @@ done
 
 echo "== helper-update R3: a commit that is not on main =="
 for st in behind diverged; do
-    hu_root r3; gh_edit "d['compare']['$GHC...$GHC']['status'] = '$st'"
+    hu_root r3; gh_edit "d['compare']['$HU_MAIN...$HU_MAIN']['status'] = '$st'"
     out=$(hu_chk)
     assert_contains "RED R3: compare says $st: not-on-main" "not-on-main" "$out"
     assert_contains "R3: and it is failed" "result=failed" "$out"
 done
 
 echo "== helper-update R4: only a green ci.yml Actions run of this repo at this sha counts =="
-for edit in "d['runs']['$GHC'] = []" "d['runs']['$GHC'][0]['conclusion'] = 'failure'" "d['runs']['$GHC'][0]['path'] = '.github/workflows/other.yml'" \
-    "d['runs']['$GHC'][0]['head_repository']['full_name'] = 'fork/h'" "d['runs']['$GHC'][0]['event'] = 'pull_request'" "d['runs']['$GHC'][0]['event'] = 'push'"; do
+for edit in "d['runs']['$HU_MAIN'] = []" "d['runs']['$HU_MAIN'][0]['conclusion'] = 'failure'" "d['runs']['$HU_MAIN'][0]['path'] = '.github/workflows/other.yml'" \
+    "d['runs']['$HU_MAIN'][0]['head_repository']['full_name'] = 'fork/h'" "d['runs']['$HU_MAIN'][0]['event'] = 'pull_request'" "d['runs']['$HU_MAIN'][0]['event'] = 'push'"; do
     hu_root r4; gh_edit "$edit"
     out=$(hu_chk)
     assert_contains "RED R4: no passing ci.yml run is failed ($edit)" "result=failed" "$out"
 done
-hu_root r4; gh_edit "d['runs']['$GHC'][0]['event'] = 'workflow_dispatch'"
+hu_root r4; gh_edit "d['runs']['$HU_MAIN'][0]['event'] = 'workflow_dispatch'"
 assert_contains "R4: a workflow_dispatch run counts" "result=would-change" "$(hu_chk)"
 
 echo "== helper-update R5: only the newest green main commit at filing, not at the run =="
-hu_root r5; gh_edit "d['newest'][0]['head_sha'] = '$GHN'"
+hu_root r5; gh_edit "d['newest'][0]['head_sha'] = '$HU_NEWER'"
 assert_contains "RED R5: a newer green main commit refuses --check" "result=failed" "$(hu_chk)"
 hu_root r5b
 out=$(hu_req 0); id=$(rid "$out")
 assert_contains "R5: the request is filed while it is the newest" "result=pending" "$out"
-gh_edit "d['newest'][0]['head_sha'] = '$GHN'"
-assert_contains "RED R5: a newer green commit after the request does not refuse the run" "op_result=changed" "$(hu_ok 3 "$id")"
+gh_edit "d['newest'][0]['head_sha'] = '$HU_NEWER'"
+assert_contains "RED R5: a newer green commit after the request does not refuse the run" "op_result=changed" "$(hu_approve_read 3 "$id")"
 
 echo "== helper-update R6: the tree listing and the fetched bytes are checked; a refusal changes nothing =="
 for edit in \
-    "d.setdefault('tree_extra', {}).setdefault('$GHC', []).append({'path': 'scripts/lib/afk-sudo/sub', 'mode': '040000', 'type': 'tree', 'sha': '0'*40})" \
-    "d.setdefault('tree_extra', {}).setdefault('$GHC', []).append({'path': 'scripts/station-ops/lnk', 'mode': '120000', 'type': 'blob', 'sha': '1'*40, 'size': 3})" \
-    "d.setdefault('tree_extra', {}).setdefault('$GHC', []).append({'path': 'scripts/station-ops/sm', 'mode': '160000', 'type': 'commit', 'sha': '2'*40})" \
-    "d.setdefault('tree_extra', {}).setdefault('$GHC', []).append({'path': 'scripts/lib/afk-sudo/sub/x.py', 'mode': '100644', 'type': 'blob', 'sha': '3'*40, 'size': 3})" \
-    "d.setdefault('tree_extra', {}).setdefault('$GHC', []).append({'path': 'scripts/station-ops/big.sh', 'mode': '100644', 'type': 'blob', 'sha': '4'*40, 'size': 1048577})" \
+    "d.setdefault('tree_extra', {}).setdefault('$HU_MAIN', []).append({'path': 'scripts/lib/afk-sudo/sub', 'mode': '040000', 'type': 'tree', 'sha': '0'*40})" \
+    "d.setdefault('tree_extra', {}).setdefault('$HU_MAIN', []).append({'path': 'scripts/station-ops/lnk', 'mode': '120000', 'type': 'blob', 'sha': '1'*40, 'size': 3})" \
+    "d.setdefault('tree_extra', {}).setdefault('$HU_MAIN', []).append({'path': 'scripts/station-ops/sm', 'mode': '160000', 'type': 'commit', 'sha': '2'*40})" \
+    "d.setdefault('tree_extra', {}).setdefault('$HU_MAIN', []).append({'path': 'scripts/lib/afk-sudo/sub/x.py', 'mode': '100644', 'type': 'blob', 'sha': '3'*40, 'size': 3})" \
+    "d.setdefault('tree_extra', {}).setdefault('$HU_MAIN', []).append({'path': 'scripts/station-ops/big.sh', 'mode': '100644', 'type': 'blob', 'sha': '4'*40, 'size': 1048577})" \
     "d['truncated'] = True"; do
     hu_root r6; before=$(hu_state)
     gh_edit "$edit"
@@ -921,7 +917,7 @@ done
 hu_root r6b; before=$(hu_state)
 gh_edit "d['raw_override'] = {'scripts/lib/afk-sudo/never_remote.py': 'evil'}"
 out=$(hu_req 0); id=$(rid "$out")
-out=$(hu_ok 3 "$id")
+out=$(hu_approve_read 3 "$id")
 assert_contains "RED R6: raw bytes whose blob id differs from the listing are failed" "op_result=failed" "$out"
 assert_eq "R6: the libexec, sudoers and config are unchanged after the bad bytes" "$before" "$(hu_state)"
 assert_eq "R6: the stage is gone" "0" "$(hu_stage_count)"
@@ -940,12 +936,12 @@ printf 'junk\n' > "$R/checkout/scripts/lib/afk-sudo/__pycache__/y.pyc"
 assert_contains "R7: __pycache__ alone is not a difference" "result=would-change" "$(hu_chk)"
 out=$(hu_req 0); id=$(rid "$out"); before=$(hu_state)
 printf x >> "$R/checkout/scripts/lib/afk-sudo/afk_sudo.py"
-out=$(hu_ok 3 "$id")
+out=$(hu_approve_read 3 "$id")
 assert_contains "RED R7: a checkout changed after filing fails the run" "checkout differs" "$out"
 assert_eq "R7: and the approval system is unchanged" "$before" "$(hu_state)"
 
 echo "== helper-update R8: nothing differs files nothing; with no record the request is still offered =="
-hu_root r8; hu_record "$GHC"
+hu_root r8; hu_record "$HU_MAIN"
 out=$(hu_chk)
 assert_contains "RED R8: libexec equal to the commit, record naming it: nothing differs" "nothing differs" "$out"
 assert_contains "R8: nothing differs is failed" "result=failed" "$out"
@@ -960,26 +956,26 @@ hu_root r9 stale; before=$(hu_state libexec)
 out=$(hu_req 0); id=$(rid "$out")
 assert_contains "RED R9: a stale station files a pending request" "result=pending" "$out"
 notice=$(cat "$TG"/*.txt 2>/dev/null)
-assert_contains "R9: the notice names the commit" "${GHC:0:12}" "$notice"
+assert_contains "R9: the notice names the commit" "${HU_MAIN:0:12}" "$notice"
 assert_contains "R9: the notice names the PR" "PR #77" "$notice"
 assert_contains "R9: the notice names the merger" "merged by merger1" "$notice"
 assert_contains "R9: the notice names an approver" "approved by approver1" "$notice"
-assert_contains "R9: the notice carries the compare link" "github.com/t/h/compare/${GHX:0:12}...${GHC:0:12}" "$notice"
+assert_contains "R9: the notice carries the compare link" "github.com/t/h/compare/${HU_OLD:0:12}...${HU_MAIN:0:12}" "$notice"
 assert_contains "R9: the notice names the changed broker" "approval_broker.py" "$notice"
 assert_contains "R9: the notice names the changed op" "ops/size-approval.sh" "$notice"
 assert_eq "R14: --check ran no fetched installer" "no" "$([ -e "$R/sourced-marker" ] && echo yes || echo no)"
 assert_eq "R14: --check made no stage" "0" "$(hu_stage_count)"
 assert_eq "R14: --check made no raw call" "0" "$(grep -c raw.githubusercontent "$R/curl.log")"
 assert_eq "R9: nothing changed before the code" "$before" "$(hu_state libexec)"
-out=$(hu_ok 3 "$id")
+out=$(hu_approve_read 3 "$id")
 assert_contains "RED R9: NONCE CODE changes the station" "op_result=changed" "$out"
 assert_contains "R9: the detail names the broker" "approval_broker.py" "$out"
 assert_contains "R9: the detail names the op" "ops/size-approval.sh" "$out"
 assert_absent "R9: the installer's noise is not on the op's stdout" "INSTALLER-NOISE" "$out"
 assert_contains "R9: the installer's noise is in the root log" "INSTALLER-NOISE" "$(cat "$R/var/log/himmel/ops/$id.log" 2>/dev/null)"
-assert_eq "R9: the broker equals the commit's" "yes" "$(cmp -s "$R/gh/$GHC/scripts/lib/afk-sudo/approval_broker.py" "$R/usr/local/libexec/himmel/approval_broker.py" && echo yes || echo no)"
-assert_eq "R9: the op script equals the commit's" "yes" "$(cmp -s "$R/gh/$GHC/scripts/station-ops/size-approval.sh" "$R/usr/local/libexec/himmel/ops/size-approval.sh" && echo yes || echo no)"
-assert_contains "R9: the record names the commit" "\"commit\": \"$GHC\"" "$(cat "$R/var/lib/himmel/afk-sudo/helper-commit" 2>/dev/null)"
+assert_eq "R9: the broker equals the commit's" "yes" "$(cmp -s "$R/gh/$HU_MAIN/scripts/lib/afk-sudo/approval_broker.py" "$R/usr/local/libexec/himmel/approval_broker.py" && echo yes || echo no)"
+assert_eq "R9: the op script equals the commit's" "yes" "$(cmp -s "$R/gh/$HU_MAIN/scripts/station-ops/size-approval.sh" "$R/usr/local/libexec/himmel/ops/size-approval.sh" && echo yes || echo no)"
+assert_contains "R9: the record names the commit" "\"commit\": \"$HU_MAIN\"" "$(cat "$R/var/lib/himmel/afk-sudo/helper-commit" 2>/dev/null)"
 assert_contains "R9: the record holds a row for a fixture file" 'scripts/station-ops/size-approval.sh' "$(cat "$R/var/lib/himmel/afk-sudo/helper-commit" 2>/dev/null)"
 assert_eq "R9: the marker is gone" "no" "$([ -e "$R/$HU_PEND" ] && echo yes || echo no)"
 assert_eq "R9: the stage is gone" "0" "$(hu_stage_count)"
@@ -992,7 +988,7 @@ assert_eq "RED C3: every call carries --globoff" "$(curl_n)" "$(grep -c -e '--gl
 assert_eq "R13: every URL is one of the two hosts" "0" "$(grep -o 'https://[^ ]*' "$R/curl.log" | grep -vc -e '^https://api.github.com/' -e '^https://raw.githubusercontent.com/')"
 assert_eq "R13: raw files are fetched only once, after the approval" "1" "$(grep -c raw.githubusercontent "$R/curl.log")"
 assert_eq "R15: no call names the bare word main after ..." "0" "$(grep -c -e '\.\.\.main' "$R/curl.log")"
-assert_contains "R15: the compares name main's sha" "compare/$GHC...$GHC" "$(cat "$R/curl.log")"
+assert_contains "R15: the compares name main's sha" "compare/$HU_MAIN...$HU_MAIN" "$(cat "$R/curl.log")"
 
 echo "== helper-update R10: no go code changes nothing =="
 hu_root r10 stale; before=$(hu_state)
@@ -1003,7 +999,7 @@ assert_eq "R10: a wrong code changes nothing" "$before" "$(hu_state)"
 out=$(h 3 deny "$id" --from "$OPERATOR" --chat "$OPERATOR")
 assert_eq "R10: a deny changes nothing" "$before" "$(hu_state)"
 out=$(hu_req 10); id=$(rid "$out")
-out=$(hu_ok 2000 "$id")
+out=$(hu_approve_read 2000 "$id")
 assert_absent "R10: an expired request runs nothing" "result=ran" "$out"
 assert_eq "R10: an expiry changes nothing" "$before" "$(hu_state)"
 assert_eq "R10: no stage and no marker" "0" "$(hu_stage_count)$([ -e "$R/$HU_PEND" ] && echo 1)"
@@ -1013,7 +1009,7 @@ for v in broken-afk-sudo ops-removed config-changed; do
     hu_root r11 stale; before=$(hu_state)
     printf '%s' "$v" > "$R/gh/variant"
     out=$(hu_req 0); id=$(rid "$out")
-    out=$(hu_ok 3 "$id")
+    out=$(hu_approve_read 3 "$id")
     assert_contains "RED R11: $v is failed" "op_result=failed" "$out"
     assert_contains "R11: $v says rolled back" "rolled back" "$out"
     assert_eq "R11: $v leaves libexec, sudoers and config as they were" "$before" "$(hu_state)"
@@ -1029,15 +1025,15 @@ for rmv in etc/himmel/afk-sudo/totp.seed etc/himmel/afk-sudo/notice-bot.env usr/
 done
 
 echo "== helper-update R15/R16: a tag named main, a downgrade =="
-hu_root r15; gh_edit "d['newest'].insert(0, dict(d['newest'][0], head_sha='$GHN'))"
+hu_root r15; gh_edit "d['newest'].insert(0, dict(d['newest'][0], head_sha='$HU_NEWER'))"
 assert_contains "RED R15: a newer run under a tag named main refuses, never passes" "result=failed" "$(hu_chk)"
-hu_root r16 stale; gh_edit "d['compare']['$GHX...$GHC']['status'] = 'behind'"
+hu_root r16 stale; gh_edit "d['compare']['$HU_OLD...$HU_MAIN']['status'] = 'behind'"
 out=$(hu_chk)
 assert_contains "RED R16: older than the installed commit is failed" "older than the installed commit" "$out"
 assert_contains "R16: the helper files nothing" "result=check-failed" "$(hu_req 0)"
 
 echo "== helper-update R17/R23: the hourly rate and the lock =="
-hu_root r17; hu_record "$GHC"
+hu_root r17; hu_record "$HU_MAIN"
 for i in 1 2 3 4; do HIMMEL_OPS_NOW=$((T0 + i)) hu_chk >/dev/null; done
 n0=$(curl_n)
 out=$(HIMMEL_OPS_NOW=$((T0 + 10)) hu_chk)
@@ -1056,12 +1052,12 @@ wait $LOCKPID 2>/dev/null
 
 echo "== helper-update R18/C1: kill, restore, and a restore that is itself killed =="
 hu_root r18a stale; before=$(hu_state); printf sleep > "$R/gh/variant"
-out=$(hu_req 0); id=$(rid "$out"); out=$(hu_ok 3 "$id")
+out=$(hu_req 0); id=$(rid "$out"); out=$(hu_approve_read 3 "$id")
 assert_contains "RED R18: an installer killed by the timeout is rolled back" "rolled back" "$out"
 assert_eq "R18: the timeout kill leaves the station as it was" "$before" "$(hu_state)"
 hu_root r18b stale; before=$(hu_state)
 out=$(hu_req 0); id=$(rid "$out")
-HIMMEL_OPS_KILL_AT=installed hu_ok 3 "$id" >/dev/null
+HIMMEL_OPS_KILL_AT=installed hu_approve_read 3 "$id" >/dev/null
 assert_eq "RED R18: a killed run leaves its marker" "yes" "$([ -e "$R/$HU_PEND" ] && echo yes || echo no)"
 assert_eq "R18: and the installed files changed" "no" "$([ "$before" = "$(hu_state)" ] && echo yes || echo no)"
 out=$(hu_chk)
@@ -1073,9 +1069,9 @@ for clock in real back; do
     paths_before=$(hu_state libexec | cut -d' ' -f1)
     out=$(hu_req 0); id=$(rid "$out")
     if [ "$clock" = back ]; then
-        HIMMEL_OPS_NOW=$(( $(date +%s) - 400 )) HIMMEL_OPS_KILL_AT=restore:1 hu_ok 3 "$id" >/dev/null
+        HIMMEL_OPS_NOW=$(( $(date +%s) - 400 )) HIMMEL_OPS_KILL_AT=restore:1 hu_approve_read 3 "$id" >/dev/null
     else
-        HIMMEL_OPS_KILL_AT=restore:1 hu_ok 3 "$id" >/dev/null
+        HIMMEL_OPS_KILL_AT=restore:1 hu_approve_read 3 "$id" >/dev/null
     fi
     assert_eq "RED R18 ($clock clock): a killed restore leaves the marker" "yes" "$([ -e "$R/$HU_PEND" ] && echo yes || echo no)"
     assert_contains "C1 ($clock clock): the marker says it is restoring" '"restoring": true' "$(cat "$R/$HU_PEND" 2>/dev/null)"
@@ -1088,48 +1084,48 @@ done
 
 echo "== helper-update R19: a lockdown during the run =="
 hu_root r19a stale; before=$(hu_state libexec sudoers); printf lockdown-fail > "$R/gh/variant"
-out=$(hu_req 0); id=$(rid "$out"); out=$(hu_ok 3 "$id")
+out=$(hu_req 0); id=$(rid "$out"); out=$(hu_approve_read 3 "$id")
 assert_contains "R19: a failed installer after a lockdown is rolled back" "rolled back" "$out"
 assert_eq "RED R19: the rollback never undoes the lockdown" "False" "$(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["enabled"])' "$R/etc/himmel/afk-sudo.json")"
 assert_eq "R19: libexec and sudoers are as they were" "$before" "$(hu_state libexec sudoers)"
 hu_root r19b stale; printf lockdown-row > "$R/gh/variant"
-out=$(hu_req 0); id=$(rid "$out"); out=$(hu_ok 3 "$id")
+out=$(hu_req 0); id=$(rid "$out"); out=$(hu_approve_read 3 "$id")
 assert_contains "RED R19: a lockdown row during a run that left enabled true is flagged" "LOCKDOWN-DURING-RUN" "$out"
 
 echo "== helper-update R20: a changed floor needs a terminal =="
 hu_root r20 stale
-printf '# older floor\n' >> "$R/gh/$GHX/scripts/lib/afk-sudo/never_remote.py"
-hu_terminal "$GHX"; hu_record "$GHX"
-gh_edit "d['compare']['$GHX...$GHC']['files'].append('scripts/lib/afk-sudo/never_remote.py')"
+printf '# older floor\n' >> "$R/gh/$HU_OLD/scripts/lib/afk-sudo/never_remote.py"
+hu_terminal "$HU_OLD"; hu_record "$HU_OLD"
+gh_edit "d['compare']['$HU_OLD...$HU_MAIN']['files'].append('scripts/lib/afk-sudo/never_remote.py')"
 before=$(hu_state)
 out=$(hu_req 0); id=$(rid "$out")
 assert_contains "RED R20: the notice carries WARN never_remote.py" "WARN never_remote.py" "$(cat "$TG"/*.txt 2>/dev/null)"
-out=$(hu_ok 3 "$id")
+out=$(hu_approve_read 3 "$id")
 assert_contains "RED R20: the approved run is refused as a floor change" "floor-change" "$out"
 assert_eq "R20: libexec, sudoers and config are unchanged" "$before" "$(hu_state)"
 
 echo "== helper-update R21: a sudoers form other than the fixed one is rolled back =="
 for v in wider-line extra-file sudoers-main; do
     hu_root r21 stale; before=$(hu_state); printf '%s' "$v" > "$R/gh/variant"
-    out=$(hu_req 0); id=$(rid "$out"); out=$(hu_ok 3 "$id")
+    out=$(hu_req 0); id=$(rid "$out"); out=$(hu_approve_read 3 "$id")
     assert_contains "RED R21: $v is rolled back" "rolled back" "$out"
     assert_eq "R21: $v leaves sudoers, libexec and config as they were" "$before" "$(hu_state)"
 done
 
 echo "== helper-update R22: the 400-character line =="
-hu_root r22 stale; hu_record "$GHX"
-printf '# new installer\n' >> "$R/gh/$GHC/scripts/lib/afk-sudo/install.sh"; cp "$R/gh/$GHC/scripts/lib/afk-sudo/install.sh" "$R/checkout/scripts/lib/afk-sudo/install.sh"
-gh_edit "d['compare']['$GHX...$GHC']['files'].append('scripts/lib/afk-sudo/install.sh')"
+hu_root r22 stale; hu_record "$HU_OLD"
+printf '# new installer\n' >> "$R/gh/$HU_MAIN/scripts/lib/afk-sudo/install.sh"; cp "$R/gh/$HU_MAIN/scripts/lib/afk-sudo/install.sh" "$R/checkout/scripts/lib/afk-sudo/install.sh"
+gh_edit "d['compare']['$HU_OLD...$HU_MAIN']['files'].append('scripts/lib/afk-sudo/install.sh')"
 out=$(hu_chk)
 assert_contains "RED R22: a changed install.sh is a would-change" "result=would-change" "$out"
 assert_contains "R22: the detail starts WARN install.sh" "detail=WARN install.sh" "$out"
 assert_contains "R22: and names afk-sudo/install.sh" "afk-sudo/install.sh" "$out"
 hu_root r22b stale
 for i in $(seq 1 40); do
-    printf 'x%s\n' "$i" > "$R/gh/$GHC/scripts/station-ops/extra-$i.txt"; cp "$R/gh/$GHC/scripts/station-ops/extra-$i.txt" "$R/checkout/scripts/station-ops/"
+    printf 'x%s\n' "$i" > "$R/gh/$HU_MAIN/scripts/station-ops/extra-$i.txt"; cp "$R/gh/$HU_MAIN/scripts/station-ops/extra-$i.txt" "$R/checkout/scripts/station-ops/"
 done
 L39=$(printf 'a%.0s' $(seq 1 39))
-gh_edit "d['repo'] = 'abcdefghijklmn/abcdefghijklmn'; [r['head_repository'].update(full_name=d['repo']) for r in d['runs']['$GHC'] + d['newest']]; d['compare']['$GHX...$GHC']['ahead_by'] = 12345; d['compare']['$GHX...$GHC']['files'] = ['scripts/station-ops/file-%03d.sh' % i for i in range(300)]; d['compare']['$GHC...$GHC']['message'] = 'a very long subject with \"quotes\" and | bars and more words to cut'; d['pull']['77'] = {'user': {'login': '$L39'}, 'merged_by': {'login': '$L39'}}; d['reviews']['77'] = [{'user': {'login': '$L39'}, 'state': 'APPROVED'}, {'user': {'login': 'b2'}, 'state': 'APPROVED'}, {'user': {'login': 'b3'}, 'state': 'APPROVED'}]"
+gh_edit "d['repo'] = 'abcdefghijklmn/abcdefghijklmn'; [r['head_repository'].update(full_name=d['repo']) for r in d['runs']['$HU_MAIN'] + d['newest']]; d['compare']['$HU_OLD...$HU_MAIN']['ahead_by'] = 12345; d['compare']['$HU_OLD...$HU_MAIN']['files'] = ['scripts/station-ops/file-%03d.sh' % i for i in range(300)]; d['compare']['$HU_MAIN...$HU_MAIN']['message'] = 'a very long subject with \"quotes\" and | bars and more words to cut'; d['pull']['77'] = {'user': {'login': '$L39'}, 'merged_by': {'login': '$L39'}}; d['reviews']['77'] = [{'user': {'login': '$L39'}, 'state': 'APPROVED'}, {'user': {'login': 'b2'}, 'state': 'APPROVED'}, {'user': {'login': 'b3'}, 'state': 'APPROVED'}]"
 hu_cfg 'd["helper_update"]["repo"] = "abcdefghijklmn/abcdefghijklmn"'
 out=$(hu_chk); det=$(hu_detail "$out")
 assert_eq "R22: the worst-case detail is at most 400 characters" "yes" "$([ "${#det}" -le 400 ] && [ "${#det}" -gt 100 ] && echo yes || echo no)"
@@ -1143,7 +1139,7 @@ assert_eq "R22: the detail is ASCII" "" "$(printf '%s' "$det" | LC_ALL=C tr -d '
 hu_root r22c stale; rm -f "$R/var/lib/himmel/afk-sudo/helper-commit"
 out=$(hu_chk); det=$(hu_detail "$out")
 assert_contains "RED R22: with no record the detail starts WARN no baseline" "WARN no baseline, install.sh unseen" "$det"
-assert_contains "R22: with no record the link is the tree of the commit" "https://github.com/t/h/tree/${GHC:0:12}/scripts/lib/afk-sudo" "$det"
+assert_contains "R22: with no record the link is the tree of the commit" "https://github.com/t/h/tree/${HU_MAIN:0:12}/scripts/lib/afk-sudo" "$det"
 assert_contains "R22: with no record the count reads ? commits" "? commits" "$det"
 assert_contains "R22: with no record the notice says installed commit unknown" "installed commit unknown" "$det"
 
@@ -1154,15 +1150,15 @@ out=$(hu_chk)
 assert_contains "RED R24: a stale record is named" "record stale" "$out"
 assert_contains "R24: and the installed commit is unknown" "installed commit unknown" "$out"
 assert_contains "R24: and there is no baseline" "WARN no baseline, install.sh unseen" "$out"
-assert_eq "R24: no compare against the recorded commit" "0" "$(grep -c "compare/$GHX\\.\\.\\." "$R/curl.log")"
+assert_eq "R24: no compare against the recorded commit" "0" "$(grep -c "compare/$HU_OLD\\.\\.\\." "$R/curl.log")"
 
 echo "== helper-update R26/C2: a later install wins over an interrupted run =="
-kill_run() { # kill_run <variant>: a run of the stale root killed after its installer, the marker 400 s in the past
+kill_run() {
     printf '%s' "$1" > "$R/gh/variant"
     local out id; out=$(hu_req 0); id=$(rid "$out")
-    HIMMEL_OPS_NOW=$(( $(date +%s) - 400 )) HIMMEL_OPS_KILL_AT=installed hu_ok 3 "$id" >/dev/null
+    HIMMEL_OPS_NOW=$(( $(date +%s) - 400 )) HIMMEL_OPS_KILL_AT=installed hu_approve_read 3 "$id" >/dev/null
 }
-for tree in "$GHC" "$GHO"; do
+for tree in "$HU_MAIN" "$HU_OLDER"; do
     hu_root r26 stale; kill_run base; hu_terminal "$tree"; after=$(hu_state)
     out=$(hu_chk)
     assert_contains "RED R26: a later install ($tree) makes the interrupted run superseded" "superseded by a later install; nothing restored" "$out"
@@ -1174,23 +1170,23 @@ for tree in "$GHC" "$GHO"; do
 done
 hu_root r26c stale; before=$(hu_state)
 printf wider-line > "$R/gh/variant"; out=$(hu_req 0); id=$(rid "$out")
-HIMMEL_OPS_KILL_AT=installed hu_ok 3 "$id" >/dev/null
+HIMMEL_OPS_KILL_AT=installed hu_approve_read 3 "$id" >/dev/null
 out=$(hu_chk)
 assert_contains "RED R26: a killed run whose installer wrote a wider line is restored" "restored an interrupted run" "$out"
 assert_contains "R26: and the unexpected write is named" "unexpected:" "$out"
 assert_contains "R26: with the sudoers file" "sudoers.d/himmel-afk-sudo" "$out"
 assert_eq "R26: the wider line is gone" "$before" "$(hu_state)"
 hu_root r26d stale; before=$(hu_state)
-out=$(hu_req 0); id=$(rid "$out"); HIMMEL_OPS_KILL_AT=installed hu_ok 3 "$id" >/dev/null
+out=$(hu_req 0); id=$(rid "$out"); HIMMEL_OPS_KILL_AT=installed hu_approve_read 3 "$id" >/dev/null
 assert_contains "R26 control: with no later install the same kill is restored" "restored an interrupted run" "$(hu_chk)"
-hu_root r26e stale; kill_run extra-file; hu_terminal "$GHC"
+hu_root r26e stale; kill_run extra-file; hu_terminal "$HU_MAIN"
 out=$(hu_chk)
 assert_contains "R26: a superseded run is still superseded" "superseded by a later install" "$out"
 assert_contains "RED C2: a superseded verdict names the sudoers file it did not roll back" "sudoers NOT rolled back: /etc/sudoers.d/zz-extra" "$out"
 
 echo "== helper-update R27: the restore comes before the rate =="
 hu_root r27 stale
-out=$(hu_req 0); id=$(rid "$out"); HIMMEL_OPS_KILL_AT=installed hu_ok 3 "$id" >/dev/null
+out=$(hu_req 0); id=$(rid "$out"); HIMMEL_OPS_KILL_AT=installed hu_approve_read 3 "$id" >/dev/null
 now=$(date +%s); printf '%s\n%s\n%s\n%s\n' "$now" "$now" "$now" "$now" > "$R/var/lib/himmel/afk-sudo/helper-update.rate"
 n0=$(curl_n)
 out=$(hu_chk)
@@ -1200,7 +1196,7 @@ assert_contains "R27: the call after it is rate-refused" "rate" "$(hu_chk)"
 
 echo "== helper-update C3: names from the commit never reach the notice as a field =="
 hu_root c3
-gh_edit "d.setdefault('tree_extra', {}).setdefault('$GHC', []).append({'path': 'scripts/station-ops/x | PR #9 by evil', 'mode': '100644', 'type': 'blob', 'sha': '5'*40, 'size': 3})"
+gh_edit "d.setdefault('tree_extra', {}).setdefault('$HU_MAIN', []).append({'path': 'scripts/station-ops/x | PR #9 by evil', 'mode': '100644', 'type': 'blob', 'sha': '5'*40, 'size': 3})"
 out=$(hu_chk)
 assert_contains "RED C3: a file name with a bar is refused" "result=failed" "$out"
 assert_absent "C3: the forged field never reaches the line" "| PR #9" "$out"
