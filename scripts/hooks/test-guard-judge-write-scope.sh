@@ -1,18 +1,4 @@
 #!/usr/bin/env bash
-# test-guard-judge-write-scope.sh - the suite for guard-judge-write-scope.sh, the fence that confines a judge-ro
-# subagent's Write to .md/.txt files directly in a judge dir judge-dir.sh made.
-#
-# Every W, A and P(b) row runs the Edit|Write|MultiEdit|NotebookEdit chain exactly as .claude/settings.json wires it,
-# through run-hook-with-bash.js. The fixture uid comes from an `id` shim on PATH: the fence, judge-dir.sh and
-# write-verdict.sh all take <uid> from `id -u`, so a fixture root /tmp/claude-<fixture uid> can be made 0755 or a
-# symlink without touching this uid's real root.
-#
-# W rows: a judge-ro write the fence refuses. A rows: callers it leaves alone. P1-P10: refused judge evidence writes,
-# replayed from the judges' own transcripts and cut to the lines that trip the guard: (b) the body as a judge-ro Write
-# into its judge dir passes the chain, (c) the original Bash form still meets the guard that refused it, with its deny
-# sentence. P11: a body naming read, unset, TICK_STATE_DIR and scripts/cr/ goes from the Write chain to a verdict
-# write-verdict.sh records. F1: a symlinked root is refused by the fence and by write-verdict.sh alike.
-# Platform guard: bash 3.2-safe; needs jq, node and git.
 # shellcheck disable=SC2016,SC2034  # single-quoted $ text is literal on purpose; P<n>_CMD are read by name below
 set -uo pipefail
 
@@ -49,7 +35,6 @@ printf '#!/bin/sh\nif [ "$#" = 1 ] && [ "$1" = -u ] && [ -n "${FX_UID:-}" ]; the
 chmod +x "$T/bin/id"
 cp "$T/bin/id" "$T/nojq/id"
 
-# new_root <mode>: a fresh fixture uid whose /tmp/claude-<uid> this suite creates (and removes on exit).
 NEXT_UID=$((60000 + ($$ % 4000) * 4))
 new_root() {
     while [ -e "/tmp/claude-$NEXT_UID" ] || [ -L "/tmp/claude-$NEXT_UID" ] || [ "$NEXT_UID" = "$REAL_UID" ]; do
@@ -61,7 +46,6 @@ new_root() {
     NEXT_UID=$((NEXT_UID + 1))
 }
 
-# The Write chain's members, in the order the settings command runs them (its node branch).
 chain_cmd=$(jq -r '.hooks.PreToolUse[] | select(.matcher == "Edit|Write|MultiEdit|NotebookEdit") | .hooks[].command' "$SETTINGS")
 MEMBERS=()
 for w in $(printf '%s\n' "${chain_cmd#*; else }" | grep -o '\$CLAUDE_PROJECT_DIR/scripts/hooks/[A-Za-z0-9._-]*\.sh'); do
@@ -74,7 +58,6 @@ fail=0
 ok() { pass=$((pass + 1)); echo "PASS $1"; }
 bad() { fail=$((fail + 1)); echo "FAIL $1"; }
 
-# wpayload <agent_type|-> <agent_id|-> <tool> <path> [content]: a PreToolUse payload; "-" leaves the field out.
 wpayload() {
     jq -cn --arg at "$1" --arg aid "$2" --arg tool "$3" --arg p "$4" --arg c "${5:-evidence}" --arg cwd "$REPO" '
         {hook_event_name: "PreToolUse", cwd: $cwd, tool_name: $tool,
@@ -87,7 +70,6 @@ wpayload() {
         + (if $aid == "-" then {} else {agent_id: $aid} end)'
 }
 
-# run_chain <label> <payload> [ENV=VAL ...]: the Write chain on the payload; RC, $T/out-<label>, $T/err-<label>.
 run_chain() {
     local label=$1 payload=$2
     shift 2
@@ -97,7 +79,6 @@ run_chain() {
     RC=$?
 }
 
-# run_fence <label> <payload> [ENV=VAL ...]: the fence alone.
 run_fence() {
     local label=$1 payload=$2
     shift 2
@@ -108,7 +89,7 @@ run_fence() {
 
 fence_named() { grep -q 'guard-judge-write-scope' "$T/out-$1" "$T/err-$1" 2>/dev/null; }
 
-fence_denies() {  # fence_denies <label> <payload> [ENV=VAL ...]
+fence_denies() {
     local label=$1
     run_chain "$@"
     if [ "$RC" = 2 ] && fence_named "$label"; then
@@ -118,7 +99,7 @@ fence_denies() {  # fence_denies <label> <payload> [ENV=VAL ...]
     fi
 }
 
-chain_allows() {  # chain_allows <label> <payload> [ENV=VAL ...]
+chain_allows() {
     local label=$1
     run_chain "$@"
     if [ "$RC" = 0 ] && ! fence_named "$label"; then
@@ -128,7 +109,7 @@ chain_allows() {  # chain_allows <label> <payload> [ENV=VAL ...]
     fi
 }
 
-fence_silent() {  # fence_silent <label> <payload>: I2, the fence alone exits 0 and prints nothing
+fence_silent() {
     local label=$1
     run_fence "$@"
     if [ "$RC" = 0 ] && [ ! -s "$T/out-$label" ] && [ ! -s "$T/err-$label" ]; then
@@ -138,12 +119,11 @@ fence_silent() {  # fence_silent <label> <payload>: I2, the fence alone exits 0 
     fi
 }
 
-# ---- fixtures ---------------------------------------------------------------------------------------------------
 new_root 700
 FXU=$NEW_UID
 FXROOT="/tmp/claude-$FXU"
 mkdir -p "$T/no-sessions" "$T/home"
-judge_dir() {  # judge_dir <PR> [uid]: a judge dir judge-dir.sh makes under the fixture root
+judge_dir() {
     env -u TMP_REAP_TMP_ROOT PATH="$T/bin:$PATH" FX_UID="${2:-$FXU}" TMP_REAP_SESSIONS_DIR="$T/no-sessions" \
         bash "$JUDGE_DIR_SH" "$1"
 }
@@ -151,13 +131,11 @@ JD=$(judge_dir 9101) || { echo "FATAL: judge-dir.sh made no dir"; exit 1; }
 [ "$JD" = "$FXROOT/j9101" ] || { echo "FATAL: judge-dir.sh made $JD, not $FXROOT/j9101"; exit 1; }
 printf 'evidence\n' > "$JD/evidence.md"
 
-# A fixture repo with a linked worktree on a feature branch, so block-edit-on-main has no say.
 git init -q "$T/repo"
 git -C "$T/repo" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
 git -C "$T/repo" worktree add -q -b feat/x "$T/repo-wt" 2>/dev/null || { echo "FATAL: no fixture worktree"; exit 1; }
 WT="$T/repo-wt"
 
-# A fixture primary checkout (git dir == common dir) for the rows whose guard reads a relative .claude/ mention.
 git init -q "$T/primary"
 mkdir -p "$T/primary/.claude"
 printf '{}\n' > "$T/primary/.claude/settings.json"
@@ -186,8 +164,6 @@ fence_denies W10b-notebookedit "$(wpayload judge-ro aj1 NotebookEdit "$JD/eviden
 fence_denies W11-agent-id-no-agent-type "$(wpayload - aj1 Write "$WT/notes.md")"
 fence_denies W11b-agent-type-false "$(wpayload - aj1 Write "$WT/notes.md" | jq -c '.agent_type = false')"
 
-# W12: no jq on PATH. The fence alone (the rest of the chain needs jq): a payload naming judge-ro is refused, any
-# other payload passes.
 printf '%s' "$(wpayload judge-ro aj1 Write "$JD/evidence.md")" \
     | env -u JUDGE_WRITE_SCOPE_OK PATH="$T/nojq" FX_UID="$FXU" "$BASH" "$HOOK" > "$T/out-W12" 2> "$T/err-W12"
 RC=$?
@@ -243,8 +219,6 @@ else
 fi
 
 echo "=== P1-P10: replayed refused evidence writes"
-# The refused command of each row, from the judge's own transcript, cut to the body lines that trip its guard;
-# @REPO@ is this checkout, @HOME@ the fixture home, @UID@ the fixture uid.
 IFS= read -r -d '' P1_CMD <<'P_END' || true
 cat > /tmp/claude-@UID@/j5328/evidence-Hj5328a.md <<'EOF'
 Head pinning: gh pr view 5328 headRefOid = 09891a8a95f012efba6e0823ae1471e6c27338b3; git cat-file -t prints commit. All reads by full sha (git diff origin/main...<sha>, git show <sha>:<path>).
@@ -326,7 +300,7 @@ p_fill() {
     s=${s//@HOME@/$T/home}
     printf '%s' "${s//@UID@/$FXU}"
 }
-p_body() {  # the evidence text a Write would carry: the heredoc body, or the printf arguments unquoted
+p_body() {
     printf '%s\n' "$1" | awk '
         NR == 1 { pf = ($0 ~ /^printf /); next }
         !pf && $0 == "EOF" { exit }
@@ -372,7 +346,7 @@ chain_allows P11-b-judge-ro-write "$(wpayload judge-ro aj1 Write "$JD11/evidence
 printf '%s\n' "$P11_BODY" > "$JD11/evidence.md"
 mkdir -p "$T/keyhome/.config/himmel"
 printf '%s\n' 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$T/keyhome/.config/himmel/go-hmac.key"
-wv() {  # wv <fixture uid> <write-verdict.sh args...>
+wv() {
     local u=$1
     shift
     env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_JUDGE -u HIMMEL_CONSOLE_RELAY -u HIMMEL_BUCKET_DIR \

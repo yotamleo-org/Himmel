@@ -1,31 +1,8 @@
 #!/usr/bin/env bash
-# guard-judge-write-scope.sh - PreToolUse hook, FIRST on the Edit|Write|MultiEdit|NotebookEdit chain: confines a
-# judge-ro subagent's writes to .md/.txt files directly inside a judge dir judge-dir.sh made. It does not bind a dir to
-# one judge: .holder names the holding process, which in-process judges share with their chief.
-#
-# judge-ro carries the Write tool so it can record its own evidence; its Bash heredocs of that evidence are refused by
-# the Bash text guards, which read the body. This fence keys on the payload's agent_type, which Claude Code sends inside
-# a subagent (code.claude.com/docs/en/hooks, "Common input fields": "For subagents, the subagent's type takes
-# precedence"; the sub-agents page: a subagent's name "is what hooks receive as agent_type").
-#
-# Decision, in order (it never prints an allow; it exits 0 with no output, or it denies):
-#   1. One jq read of agent_type, agent_id, tool_name and tool_input.file_path / notebook_path. No jq, or a payload jq
-#      cannot parse: deny when the raw bytes name judge-ro, else exit 0.
-#   2. agent_type is a non-empty string other than judge-ro or <plugin>:judge-ro: exit 0. A non-empty string agent_id
-#      with no non-empty string agent_type is denied: a subagent payload with no type cannot be scoped.
-#   3. A judge-ro tool other than Write: deny.
-#   4. Deny unless all hold: the path matches ^/tmp/claude-<uid>/j<PR>[a-z]?/<name>.(md|txt)$ (<uid> = id -u, the
-#      name starts with a letter or digit, so no dot file, no subdir, no . or .. segment); /tmp/claude-<uid> is a
-#      directory this uid owns, not a symlink, mode 0700 with no ACL (write-verdict.sh's root rule); the judge dir is a
-#      directory this uid owns, not a symlink, with a regular non-empty .holder that is not a symlink (judge-dir.sh made
-#      it) and no .verdict-written (released to the reaper); the target, if present, is a regular file, not a symlink.
-#
-# A security fence: it fails closed for a judge payload and is a MUST_RUN_CHAIN_MEMBERS entry. It parses no shell
-# text. Bypass (single run, set in the LAUNCHING shell): JUDGE_WRITE_SCOPE_OK=1.
-# Platform guard: bash 3.2-safe.
-#
-# Hook I/O: JSON on stdin. exit 0 with nothing on stdout = no opinion; exit 2 = deny (a hookSpecificOutput
-# permissionDecision on stdout plus the reason on stderr).
+# agent_type is the subagent's name inside a subagent call (code.claude.com/docs/en/hooks, "Common input fields": "For
+# subagents, the subagent's type takes precedence"; the sub-agents page: a subagent's name "is what hooks receive as
+# agent_type").
+# A security fence: fails closed for a judge-ro payload. Bypass (single run, launching shell): JUDGE_WRITE_SCOPE_OK=1.
 set -uo pipefail
 
 [ "${JUDGE_WRITE_SCOPE_OK:-0}" != "1" ] || exit 0
@@ -37,7 +14,7 @@ if ! input=$(cat 2>/dev/null); then  # swallow-ok: a failed cat leaves stdin unr
     IFS= read -r -d '' input || true  # swallow-ok: read returns 1 at end of input with no NUL; input holds every byte read
 fi
 
-deny() {  # deny <reason> [PR]: the structured decision plus stderr, exit 2
+deny() {
     local pr=${2:-"<PR>"} primary here common msg reason
     here=${BASH_SOURCE[0]%/*}
     [ "$here" != "${BASH_SOURCE[0]}" ] || here=.
