@@ -224,8 +224,6 @@ export HIMMEL_DOCTOR_VM_PROBE="$FAKEROOT/no-such-vm-probe"
 # Same for C59-codex-bank-cache: never read the operator's real
 # codex bank cache; an absent file is INFO, dedicated cases point at a fixture.
 export CODEX_USAGE_CACHE="$FAKEROOT/no-such-codex-bank.json"
-# Same for C96-jira-test-project: never run the real `jira live-test --json`; an
-# absent probe reads as not checked, dedicated cases point at a stub.
 export HIMMEL_DOCTOR_LIVE_TEST_PROBE="$FAKEROOT/no-such-live-test-probe"
 
 # Same for C60/C61: never read the operator's real hermes checkout
@@ -8585,9 +8583,6 @@ else
 fi
 rm -rf "$c95_t"
 
-# --- C96-jira-test-project: Jira is the tracker and no valid JIRA_TEST_PROJECT ---
-# The C74/C75 fixture pattern: fixture HOME, HIMMEL_CONFIG_DIR empty, --only C96. The probe
-# stands in for `jira live-test --json` and prints the canned file C96_JSON names.
 c96_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c96.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
 mkdir -p "$c96_t/home/.himmel" "$c96_t/claude"
 c96_fx="$REPO_ROOT/scripts/jira/src/fixtures"

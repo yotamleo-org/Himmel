@@ -4169,12 +4169,6 @@ check_c95_barrier_off() {
     [ "$warned" = 1 ] || emit OK C95-barrier-off "no repo has its single-writer barrier off with a live worker row, and the register reads clean"
 }
 
-# --- C96-jira-test-project: Jira is the tracker and no valid JIRA_TEST_PROJECT ---
-# Asks `jira live-test --json`, the one owner of resolving and validating the station's test
-# project, and reports its answer: WARN when none is set or the set one is invalid (its problem
-# text), OK naming the key, INFO when the tracker is not Jira, the CLI build is missing, or the
-# read gives no answer. Offline: it never asks Jira whether the project exists.
-# Test seam: HIMMEL_DOCTOR_LIVE_TEST_PROBE (a script standing in for `jira live-test --json`).
 check_c96_jira_test_project() {
     local lib="$REPO_ROOT/scripts/lib/project-mode.sh" tracker="" cli node_bin json="" rc=0 tp problem
     command -v jq >/dev/null 2>&1 || { emit INFO C96-jira-test-project "jq not on PATH -- the Jira test project was not checked"; return 0; }
