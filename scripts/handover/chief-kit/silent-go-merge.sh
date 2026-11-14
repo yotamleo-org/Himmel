@@ -8,8 +8,9 @@
 # manifest worker this checks the following, in order, and stops at the first
 # that fails:
 #   - the newest marker bullet is `READY <pr> <head40> GREEN`, or the last bullet
-#     is a hand-off (`handoff` / `hand-off`), no HALTED, BLOCKED, PARKED-*, WRAPPED
-#     or MERGED marker is newer than the newest READY, and that READY gives pr and head;
+#     is a hand-off (it names its brief: `RESUME written: <…-RESUME.md>`), no FINDING,
+#     HALTED, BLOCKED, PARKED-*, WRAPPED or MERGED marker is newer than the newest
+#     READY, and that READY gives pr and head;
 #   - the GO file <GO root>/.locks/go/<pr>.<head> exists and carries head=<head>;
 #   - neither the worker doc nor the GO file has been written for
 #     CHIEF_WAIT_WORKER_SILENT_MIN minutes (default 45, the waiter's worker-silent bound);
@@ -17,7 +18,8 @@
 #     hand-off. Alive and only quiet: one alert, no merge.
 # Then ready-check.sh <pr> <head> must PASS, and either print `TRUST-PATH: no` or,
 # with `TRUST-PATH: yes`, find a trust-reviewed= line in the GO file.
-# If all of that holds, it runs, from the himmel checkout root (the cwd), the bare
+# If all of that holds, it runs, from the root of the himmel checkout this helper
+# lives in (the cwd must be that root, else it holds as not-checkout-root), the bare
 # relative form the merge allow rule matches (any other spelling is classifier-denied):
 #   bash scripts/handover/merge-on-green.sh <pr> [--jira-transition] --worker-doc <doc> --go <GO file>
 # --jira-transition is added only when the worker doc says `completes-ticket: yes`
@@ -109,13 +111,12 @@ while IFS=$'\t' read -r label wdoc; do
     marker="$(grep -E '^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?(LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|PARKED-USAGE|RESUMED|MERGED)([^A-Za-z0-9_]|$)' "$wdoc" | tail -n 1)"
     last="$(grep -E '^- ' "$wdoc" | tail -n 1)"
     handoff=0
-    printf '%s\n' "$last" | grep -qiE 'hand-?off' \
-        && ! printf '%s\n' "$last" | grep -qiE "(no|not|never|without|cannot|can't)[[:space:]]+(a[[:space:]]+|the[[:space:]]+)?hand-?off" \
-        && handoff=1
+    # shellcheck disable=SC2016  # the backtick is a literal Markdown quote around the path
+    printf '%s\n' "$last" | grep -qE 'RESUME written:[[:space:]]*`?[^[:space:]`"<>():,;]+-RESUME\.md' && handoff=1
     if [ "$handoff" -eq 1 ]; then
         # The waiver holds only when no stop marker is newer than the newest READY.
         ready_ln="$(grep -nE '^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?READY[[:space:]]' "$wdoc" | tail -n 1 | cut -d: -f1)"
-        stop_ln="$(grep -nE '^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?(HALTED|BLOCKED|PARKED-[A-Z]+|WRAPPED|MERGED)([^A-Za-z0-9_]|$)' "$wdoc" | tail -n 1 | cut -d: -f1)"
+        stop_ln="$(grep -nE '^- ([0-9]{1,2}:[0-9]{2} )?(\*\*)?(FINDING|HALTED|BLOCKED|PARKED-[A-Z]+|WRAPPED|MERGED)([^A-Za-z0-9_]|$)' "$wdoc" | tail -n 1 | cut -d: -f1)"
         if [ -n "$ready_ln" ] && [ "${stop_ln:-0}" -lt "$ready_ln" ]; then
             marker="$(sed -n "${ready_ln}p" "$wdoc")"
         else
@@ -147,8 +148,8 @@ while IFS=$'\t' read -r label wdoc; do
         continue
     fi
     top="$(git rev-parse --show-toplevel 2>/dev/null)"  # swallow-ok: outside a checkout reads as empty, which refuses
-    if [ "$top" != "$(pwd -P)" ] || [ ! -f scripts/handover/merge-on-green.sh ]; then
-        once "$label $pr $head not-checkout-root" && { alert "$id reason=not-checkout-root: the waiter does not run from a himmel checkout root, not merged"; acted=1; }
+    if [ "$top" != "$(pwd -P)" ] || [ "$top" != "$(cd "$REPO" && pwd -P)" ] || [ ! -f scripts/handover/merge-on-green.sh ]; then
+        once "$label $pr $head not-checkout-root" && { alert "$id reason=not-checkout-root: the waiter does not run from the root of the himmel checkout this helper lives in, not merged"; acted=1; }
         continue
     fi
     once "$label $pr $head merge" || continue

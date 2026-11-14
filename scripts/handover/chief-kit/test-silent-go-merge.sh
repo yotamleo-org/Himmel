@@ -61,11 +61,19 @@ export CHIEF_WAIT_PAGE_CMD="$STUB/page.sh" CHIEF_SILENT_GO_READY_CHECK="$STUB/re
 CO="$WORK/checkout"
 mkdir -p "$CO/scripts/handover"
 git -C "$CO" init -q
+SGM_DIR="$(cd "$(dirname "$SGM")" && pwd)"
+ln -s "$SGM_DIR" "$CO/scripts/handover/chief-kit"
+ln -s "$(cd "$SGM_DIR/../../lib" && pwd)" "$CO/scripts/lib"
+SGM="$CO/scripts/handover/chief-kit/${SGM##*/}"
 cat > "$CO/scripts/handover/merge-on-green.sh" <<'EOF'
 #!/usr/bin/env bash
 printf '%s %s\n' "$0" "$*" >> "$STUB/merges"
 exit "$(cat "$STUB/merge.rc" 2>/dev/null || echo 0)"
 EOF
+OCO="$WORK/other-checkout"
+mkdir -p "$OCO/scripts/handover"
+git -C "$OCO" init -q
+cp "$CO/scripts/handover/merge-on-green.sh" "$OCO/scripts/handover/merge-on-green.sh"
 
 export HANDOVER_DIR="$WORK/root"
 mkdir -p "$HANDOVER_DIR/.locks/go" "$HANDOVER_DIR/u/b"
@@ -124,7 +132,7 @@ check "(g3) completes-ticket no: no --jira-transition" \
     "scripts/handover/merge-on-green.sh 77 --worker-doc $WD --go $GOF" "$(cat "$STUB/merges" 2>/dev/null)"
 
 # --- (g4) a live worker whose last bullet is a hand-off merges ---
-reset yes "- 01:00 LIVE — handoff: context full, RESUME written, stopping"; go_file "$SHA"
+reset yes "- 01:00 LIVE — handoff: context full, RESUME written: HIMMEL-1-N9b-thing-2026-11-05-RESUME.md, stopping"; go_file "$SHA"
 printf '4242 claude --name HIMMEL-1-N9-thing-2026-11-05\n' > "$STUB/ps"; run
 check "(g4) a hand-off worker still alive merges" "1" "$(n "$STUB/merges")"
 
@@ -181,15 +189,30 @@ check "(n11) a failing process table: no merge" "0" "$(n "$STUB/merges")"
 check "(n11) it is held as alive" "1" "$(n "$STUB/pages" "reason=alive")"
 
 # --- (n12) a stop marker after the READY voids the hand-off waiver: no merge ---
-reset yes "- 03:00 HALTED — chief halt; hand-off RESUME written"; go_file "$SHA"; run
+reset yes "- 03:00 HALTED — chief halt; hand-off RESUME written: HIMMEL-1-N9b-thing-2026-11-05-RESUME.md"; go_file "$SHA"; run
 check "(n12) a HALTED last bullet that mentions hand-off: no merge" "0" "$(n "$STUB/merges")"
 reset yes "- 03:00 BLOCKED — no hand-off possible"; go_file "$SHA"; run
 check "(n12) a BLOCKED last bullet that mentions hand-off: no merge" "0" "$(n "$STUB/merges")"
-reset yes "- 02:00 HALTED — chief halt" "- 03:00 LIVE — handoff written"; go_file "$SHA"; run
+reset yes "- 02:00 HALTED — chief halt" "- 03:00 LIVE — handoff, RESUME written: HIMMEL-1-N9b-thing-2026-11-05-RESUME.md"; go_file "$SHA"; run
 check "(n12) a HALTED between the READY and a hand-off: no merge" "0" "$(n "$STUB/merges")"
 reset yes "- 03:00 LIVE — no handoff possible, still working"; go_file "$SHA"
 printf '4242 claude --name HIMMEL-1-N9-thing-2026-11-05\n' > "$STUB/ps"; run
 check "(n12) a negated hand-off on a live worker: no merge" "0" "$(n "$STUB/merges")"
+
+reset yes "- 02:00 FINDING — the diff misses a case, asking the chief" "- 03:00 LIVE — handoff: context full, RESUME written: HIMMEL-1-N9b-thing-2026-11-05-RESUME.md"; go_file "$SHA"; run
+check "(n13) a FINDING between the READY and a hand-off: no merge" "0" "$(n "$STUB/merges")"
+
+for b in "- 03:00 LIVE — no real hand-off, still working" "- 03:00 LIVE — hand-off: none, still working"; do
+    reset yes "$b"; go_file "$SHA"
+    printf '4242 claude --name HIMMEL-1-N9-thing-2026-11-05\n' > "$STUB/ps"; run
+    check "(n14) '${b#- 03:00 LIVE — }' on a live worker: no merge" "0" "$(n "$STUB/merges")"
+    check "(n14) '${b#- 03:00 LIVE — }' is a LIVE newer than the READY: no page" "0" "$(n "$STUB/pages")"
+done
+
+reset yes; go_file "$SHA"
+(cd "$OCO" && CHIEF_WAIT_WORKER_SILENT_MIN=45 bash "$SGM" --doc "$CD" --workers-from "$WM" --state "$STATE" > "$WORK/out" 2>"$WORK/err")
+check "(n15) another checkout's merge gate is never called" "0" "$(n "$STUB/merges")"
+check "(n15) the operator is alerted" "1" "$(n "$STUB/pages" "reason=not-checkout-root")"
 
 # --- (w1) the waiter runs the helper each sample and wakes on its lines ---
 # The helper is a seam here (its rows are above); the waiter's tick and bank are stubbed.
