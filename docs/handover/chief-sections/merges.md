@@ -42,7 +42,8 @@ judge or trust review the PR needs, then
 `ready-check.sh` and `go.sh` read the himmel anchor (`HIMMEL_REPO`, else the
 primary checkout of the script's own tree), never the caller's cwd, so from any
 other directory (the luna bucket, `/tmp`) run them with `bash` before the absolute path
-`"$HIMMEL_REPO/scripts/handover/chief-kit/ready-check.sh"` (likewise `go.sh`);
+`"$HIMMEL_REPO/scripts/handover/chief-kit/ready-check.sh"` (likewise `go.sh`; a chief's
+environment sets `HIMMEL_REPO`, otherwise write the primary checkout's absolute path out);
 keep the relative spellings above at the primary root, which the project allow rules approve.
 `--contract` is the worker doc's `Completes ticket:` answer: without it a PR titled
 with a ticket key fails item 17 in both calls and `go.sh` writes nothing (exit 4).

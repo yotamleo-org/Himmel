@@ -57,6 +57,7 @@ esac
 case "$args" in
     "repo view --json owner,name"*)
         if [ -n "${STUB_NWO_BY_CWD:-}" ]; then
+            pwd -P >> "${STUB_CWD_LOG:-/dev/null}"
             n=$(git config --get ghstub.nwo 2>/dev/null) && [ -n "$n" ] || { echo "fatal: not a git repository (or no ghstub.nwo)" >&2; exit 1; }
             printf '%s main\n' "$n"; exit 0
         fi
@@ -4787,12 +4788,20 @@ rc=0; out="$(RUN_CWD="$RW" RUN_SCRIPT=scripts/handover/chief-kit/ready-check.sh 
 contains "anchor R10: relative entry from the tree root reaches the checks" "$out" "[PASS] 1."
 contains "anchor R10: the relative entry loads its own tree's lib" "$out" "REL-TREE-LIB-MARKER"
 
-git -C "$RW" init -q
-git -C "$RW" config ghstub.nwo "$NWO"
-: > "$GH_LOG"
-rc=0; out="$(RUN_CWD="$NOWHERE" RUN_HIMMEL_REPO="" RUN_SCRIPT="$RW/scripts/handover/chief-kit/ready-check.sh" run)" || rc=$?
-contains "anchor: with HIMMEL_REPO empty the script's own primary checkout is gated, from any cwd" "$out" "[PASS] 1."
-notcontains "anchor: with HIMMEL_REPO empty there is no cannot-resolve refusal" "$out" "cannot resolve owner/repo"
+PRIM="$tmp/prim-repo"; LINKED="$tmp/prim-linked"
+git init -q "$PRIM"
+git -C "$PRIM" config user.email t@example.com
+git -C "$PRIM" config user.name tester
+git -C "$PRIM" commit -q --allow-empty -m "chore: init"
+git -C "$PRIM" config ghstub.nwo "$NWO"
+git -C "$PRIM" worktree add -q --detach "$LINKED"
+mkdir -p "$LINKED/scripts/handover/chief-kit"
+cp "$SCRIPT" "$LINKED/scripts/handover/chief-kit/ready-check.sh"
+cp -R "$REPO_ROOT/scripts/lib" "$LINKED/scripts/lib"
+export STUB_CWD_LOG="$tmp/stub-cwd.log"; : > "$STUB_CWD_LOG"
+rc=0; out="$(RUN_CWD="$NOWHERE" RUN_HIMMEL_REPO="" RUN_SCRIPT="$LINKED/scripts/handover/chief-kit/ready-check.sh" run)" || rc=$?
+contains "anchor: with HIMMEL_REPO empty the script reaches the checks from any cwd" "$out" "[PASS] 1."
+check "anchor: with HIMMEL_REPO empty gh reads the primary checkout, not the linked worktree the script sits in" "$(sort -u "$STUB_CWD_LOG")" "$(cd "$PRIM" && pwd -P)"
 
 rc=0; out="$(cd "$NOWHERE" && HIMMEL_REPO=rel/path bash "$SCRIPT" --observe "$PR" "$SHA" 2>&1)" || rc=$?
 check "anchor: a relative HIMMEL_REPO is refused with exit 2" "$rc" "2"
