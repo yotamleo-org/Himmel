@@ -369,15 +369,17 @@ check_both "28 FLIP CONTROL: incident shape retargeted at a /tmp-rooted primary 
 
 # 28b-28d: only a real temp root is exempt. A primary under a directory
 # merely NAMED tmp or temp inside the fixture root is guarded like any other
-# primary; a primary under the system temp dir mktemp -t picks (/tmp on
-# Linux, /var/folders/... on macOS) stays exempt.
+# primary; a primary under the platform's own temp root (/tmp on Linux, the
+# per-user /var/folders/.../T/ on macOS, read from getconf rather than TMPDIR
+# so a custom TMPDIR cannot move it) stays exempt.
 mkrepo_committed "$FIX/tmp/primary" main
 mkrepo_committed "$FIX/temp/primary" main
 check_both "28b incident shape into a primary under a tmp-named dir (not a temp root) -> deny" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cat > $FIX/tmp/primary/scripts/hooks/x.sh\",\"cwd\":\"$FIX/wt\"}}"
 check_both "28c incident shape into a primary under a temp-named dir (not a temp root) -> deny" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cat > $FIX/temp/primary/scripts/hooks/x.sh\",\"cwd\":\"$FIX/wt\"}}"
-SYSTMP=$(mktemp -d -t himmel-bwimc-systmp.XXXXXX) || exit 1  # prim-ok: the control asserts the system temp root mktemp picks, so it must not be rooted elsewhere
+_systmp_root=$(getconf DARWIN_USER_TEMP_DIR 2>/dev/null) || _systmp_root=/tmp  # swallow-ok: off macOS the key is unknown and /tmp is the system temp root
+SYSTMP=$(mktemp -d "${_systmp_root%/}/himmel-bwimc-systmp.XXXXXX") || exit 1  # prim-ok: the control asserts the system temp root itself, so it must not be rooted elsewhere
 trap 'rm -rf "$FIX" "$TMPFIX" "$SYSTMP"' EXIT
 mkrepo_committed "$SYSTMP/primary" main
 check_both "28d NEGATIVE CONTROL: incident shape into a primary under the system temp root -> allow" allow \

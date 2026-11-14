@@ -192,10 +192,12 @@ check "redirect to real file on main denied" block "{\"tool_name\":\"Bash\",\"to
 check "redirect into a repo beneath /tmp allowed (ratified exemption, is_temp_or_devnull :155)" allow "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"echo hi > out.txt\",\"cwd\":\"$TMPMAIN\"}}"
 # Only a real temp root is exempt. A repo on main under a directory merely
 # NAMED tmp inside the fixture root is guarded; a repo on main under the
-# system temp dir mktemp -t picks (TMPDIR or /tmp) stays exempt.
+# platform's own temp root (/tmp on Linux, the per-user /var/folders/.../T/ on
+# macOS, read from getconf rather than TMPDIR) stays exempt.
 mkrepo "$T/tmp/mainrepo" "main"
 check "redirect into a repo on main under a tmp-named dir (not a temp root) denied" block "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"echo hi > out.txt\",\"cwd\":\"$T/tmp/mainrepo\"}}"
-SYSTMP="$(mktemp -d -t himmel-fence-systmp.XXXXXX)" || exit 1  # prim-ok: the control asserts the system temp root mktemp picks, so it must not be rooted elsewhere
+_systmp_root=$(getconf DARWIN_USER_TEMP_DIR 2>/dev/null) || _systmp_root=/tmp  # swallow-ok: off macOS the key is unknown and /tmp is the system temp root
+SYSTMP="$(mktemp -d "${_systmp_root%/}/himmel-fence-systmp.XXXXXX")" || exit 1  # prim-ok: the control asserts the system temp root itself, so it must not be rooted elsewhere
 trap 'rm -rf "$T" "$TMPMAIN_ROOT" "$SYSTMP"' EXIT
 mkrepo "$SYSTMP/mainrepo" "main"
 check "redirect into a repo on main under the system temp root allowed" allow "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"echo hi > out.txt\",\"cwd\":\"$SYSTMP/mainrepo\"}}"
