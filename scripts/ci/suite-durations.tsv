@@ -38,14 +38,11 @@ scripts/security/test-security-audit-cadence.sh	6
 #   allowlist that names it, and this file would be one.
 #   Replay on those three runs: slowest/floor 1.232 before, 1.250 after (the 59 new
 #   rows alone gave 1.324, over the 1.3 threshold).
-#   Refresh of 2026-11-14 (a full refresh after ledger-drift went red): the mean of the green main runs
+#   Refresh of 2026-11-14: the mean of the green main runs
 #   43577298747 (head a6a954005a022e385d439c824c131da39bbdd590), 43570446888 (head
 #   f1938a23a81e98e701a5d38f3412861301ea8f0d) and 43542480152 (head
-#   68e21adf5b2412cba0e3055e8889470fd7aa3b51), 1301 unique suites in those logs, and the 20
-#   suites CI printed that had no row gained one. 20 suites CI never prints (local tier,
-#   off-Linux) stay with no row. A suite in the 317-suite Case 22w fixture again carries
-#   95% of that fixture's seconds and 5% of the three-run mean (a pure mean left Case 22w
-#   over its bound). Replay on those three runs: slowest/floor 1.348 before, 1.197 after.
+#   68e21adf5b2412cba0e3055e8889470fd7aa3b51), 1301 unique suites in those logs.
+#   Replay on those three runs: slowest/floor 1.348 before, 1.197 after.
 # The quarantined suites (SKIP_LIST) have no measured row.
 #
 # Read by scripts/ci/run-shell-tests.sh to assign --shard <i>/<n> by a greedy
