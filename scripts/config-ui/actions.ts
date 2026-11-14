@@ -40,7 +40,6 @@ const PATH_KEYS: Readonly<Record<string, string>> = Object.freeze({ "handover-ro
 export const FLOOR: readonly string[] = Object.freeze(["handover@himmel", "himmel-ops@himmel", "qmd@himmel"]);
 // merge and public are guard-class (critic F4): shown, never toggled here.
 const INITIATIVE: readonly string[] = Object.freeze(["execute", "prcheck", "pr", "ticket", "handover"]);
-// The daily graph-choices job's path is the config feed's own, so the table and the feed row can never disagree.
 const GRAPH_CHOICES_PATH: string = (CADENCES as { name: string; script: string }[]).find((c) => c.name === "graph-choices")!.script;
 const CADENCE_PATH: Readonly<Record<string, string>> = Object.freeze({
   pipeline: "scripts/luna/pipeline-cadence.sh",
@@ -50,14 +49,15 @@ const CADENCE_PATH: Readonly<Record<string, string>> = Object.freeze({
   doctor: "scripts/doctor-cadence.sh",
   rollup: "scripts/eval/rollup-cadence.sh",
 });
-// The consent text of the graph-choices job is the stored choice's worst case, read from graph-choices.js at preview time.
+const WORST_CASE_UNKNOWN = "the stored graph choice could not be read, so its worst case is unknown";
 function graphChoicesWorstCase(): string {
   try {
     const file = fileURLToPath(new URL("../himmelctl/lib/graph-choices.js", import.meta.url));
     const text = execFileSync("node", [file, "worst-case"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 15_000 }).trim();
-    if (text) return text;
-  } catch { /* fall through */ }
-  return "the stored graph choice could not be read, so its worst case is unknown";
+    return text || WORST_CASE_UNKNOWN;
+  } catch {
+    return WORST_CASE_UNKNOWN;
+  }
 }
 const CADENCE_BANK: Readonly<Record<string, string>> = Object.freeze({
   pipeline: "runs Claude-backed harvest/synthesize and draws the subscription bank",

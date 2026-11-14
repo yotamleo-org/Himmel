@@ -26,7 +26,6 @@ mkdir -p "$T/bin"
 # shellcheck disable=SC2016  # the stub's own $-expansions must stay literal
 printf '#!/bin/sh\n[ "$1" = --help ] && { echo "  --rationale"; exit 0; }\necho "STUB GRAPHIFY_OUT=$GRAPHIFY_OUT ARGS=$*"\n' > "$T/bin/graphify"
 chmod +x "$T/bin/graphify"
-# a throwaway HOME: the station's own graph choice must never decide a row
 mkdir -p "$T/home/.himmel" "$T/xdg"
 printf '{}\n' > "$T/home/.himmel/config.json"
 run() { (cd "$T/wt" && HOME="$T/home" HIMMEL_CONFIG_DIR="$T/home/.himmel" XDG_DATA_HOME="$T/xdg" PATH="$T/bin:$PATH" bash "$SCRIPT" "$@" 2>"$T/err"); }
@@ -145,7 +144,6 @@ if [ "$rc" = 0 ] && grep -q "^GRAPHIFY_OUT=$T/seam ARGS=query .*--seed scripts_g
   pass "T9 worker_graph_out_seam reads the seam's graph and keeps its seeds and budget"
 else fail "T9 rc=$rc calls='$(cat "$T/calls" 2>/dev/null)' err='$(cat "$T/err")'"; fi
 
-# --- the listed-repo path (S4): a repo the graph choice lists reads the graph the daily pass builds ---------------
 GCJS="$HERE/../himmelctl/lib/graph-choices.js"
 LISTED_OUT="$T/xdg/himmel/graphify/choices/mine/graphify-out"
 mkdir -p "$LISTED_OUT"
@@ -165,7 +163,6 @@ if [ "$rc" = 0 ] && [ "$out" = "STUB GRAPHIFY_OUT=$P/graphify-out ARGS=query wha
   pass "W2 an unlisted repo behaves as at the merge base"
 else fail "W2 rc=$rc out='$out'"; fi
 
-# a non-publisher with no graph is told the remedy, and the message names no command a guard refuses
 rm -f "$LISTED_OUT/graph.json"
 mv "$P/graphify-out/graph.json" "$P/graphify-out/graph.json.x"
 printf '{"graphify":{"choices":{"version":1,"corpora":[{"name":"mine","root":"%s"}],"primary":"none"}}}\n' "$P" > "$T/home/.himmel/config.json"
@@ -175,7 +172,6 @@ if [ "$rc" = 2 ] && grep -qF "$REMEDY" "$T/err" && ! grep -q 'graph-refresh' "$T
   pass "W3 a non-publisher's no-graph message prints the remedy and no refusing command"
 else fail "W3 rc=$rc err=$(cat "$T/err")"; fi
 
-# a publisher keeps the merge-base message
 printf '{"graphify":{"semantic_api_ok":true}}\n' > "$T/home/.himmel/config.json"
 run query q >/dev/null; rc=$?
 if [ "$rc" = 2 ] && grep -q 'graph-refresh' "$T/err"; then pass "W4 a publisher keeps the build instruction"

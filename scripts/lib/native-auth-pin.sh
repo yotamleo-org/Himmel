@@ -210,9 +210,6 @@ native_auth_pin_env() {
   [[ $_failed = 0 ]]
 }
 
-# The unset loop of claude-api.sh's subscription fallback, shared with the daily graph pass: drops the session markers
-# and the API-lane hand-off names, keeps CLAUDE_CODE_OAUTH_TOKEN. Its status is advisory, like the pin's: the launch
-# never depends on this call, only on the caller's keyword gate (see LAUNCH GATE above).
 native_auth_scrub_env() {
   local v
   for v in $(compgen -e); do

@@ -165,15 +165,12 @@ run_fallback() {
     local v pin_failed=""
     native_auth_pin_env || { pin_failed=1; exit 2; }
     native_auth_scrub_env
-    # LAUNCH GATE (native-auth-pin.sh header): keyword-only, no API-key name or value survives into the call; the
-    # launch sits inside the then arm, so a shadowed exit or return in the refusal can never reach it
     if [[ -z "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}${!LQ_API_*}${pin_failed}" ]]; then
       if [ -n "$KEY" ]; then
         for v in $(compgen -e); do [[ "${!v}" != *"$KEY"* ]] || exit 2; done
       fi
       KEY=""
       export CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1
-      # subscription fallback after an API-lane failure; usage preflight above, explicit --permission-mode
       exec "$CLAUDE_BIN" "${ARGS[@]}" --model "$MODEL" --permission-mode "$MODE" \
         "${TOOL_ARGS[@]}" --max-budget-usd "$BUDGET" --output-format json ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} >"$FB_OUT"
     else

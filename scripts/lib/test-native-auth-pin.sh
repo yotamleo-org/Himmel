@@ -366,29 +366,25 @@ rc=$(run_screen "$td/ok.json")
 check "S10 benign file-backed payload passes (rc 0)" "$rc" "0"
 check "S10 launch happens (marker present)" "$(marker_gone)" "yes"
 
-# --- native_auth_scrub_env and the lane client's launch gate (SC1, SC2) ----------------------------------------------
 repo_root="$(cd "$here/../.." && pwd)"
-SCRUB_SET="CLAUDE_CODE_FOO CLAUDECODE AI_AGENT CLAUDE_PID CLAUDE_EFFORT CLAUDE_JOB_DIR HIMMEL_API_LANE HIMMEL_API_ACCOUNT LQ_API_KEY HIMMEL_DOTENV_FILE HIMMEL_CLAUDE_LANE"
-KEEP_SET="CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_BASE_URL"
-scrub_then_observe() { # <observer> <var...>: set every scrub-set and keep-set name, scrub, then observe in a child
+SCRUB_SET=(CLAUDE_CODE_FOO CLAUDECODE AI_AGENT CLAUDE_PID CLAUDE_EFFORT CLAUDE_JOB_DIR HIMMEL_API_LANE HIMMEL_API_ACCOUNT LQ_API_KEY HIMMEL_DOTENV_FILE HIMMEL_CLAUDE_LANE)
+KEEP_SET=(CLAUDE_CODE_OAUTH_TOKEN ANTHROPIC_BASE_URL)
+scrub_then_observe() {
   (
     observer="$1"; shift
-    for v in $SCRUB_SET $KEEP_SET; do export "$v=planted"; done
+    for v in "${SCRUB_SET[@]}" "${KEEP_SET[@]}"; do export "$v=planted"; done
     . "$lib"
     native_auth_scrub_env
     exec bash "$observer" "$@"
   )
 }
-# shellcheck disable=SC2086
-scrub_then_observe "$td/absent.sh" $SCRUB_SET >/dev/null 2>&1; r_abs=$?
-# shellcheck disable=SC2086
-scrub_then_observe "$td/present.sh" $KEEP_SET >/dev/null 2>&1; r_keep=$?
+scrub_then_observe "$td/absent.sh" "${SCRUB_SET[@]}" >/dev/null 2>&1; r_abs=$?
+scrub_then_observe "$td/present.sh" "${KEEP_SET[@]}" >/dev/null 2>&1; r_keep=$?
 check "SC1 native_auth_scrub_env unsets the names fallback_child unsets" "$r_abs" "0"
 check "SC1 it keeps CLAUDE_CODE_OAUTH_TOKEN and leaves the ANTHROPIC_* names to the pin" "$r_keep" "0"
 
-# SC2: claude-api.sh's lane-off subscription fallback, run from a scratch tree whose native-auth-pin.sh is a stub
 SC_ARGS=(-p "say hi" --model claude-haiku-5-5 --permission-mode plan --max-budget-usd 0.10)
-sc_tree() { # <dir> <libmode: shadow3|pinok|none>
+sc_tree() {
   local t="$1" mode="$2" e b d f
   mkdir -p "$t/scripts"
   for e in "$repo_root"/scripts/*; do
@@ -406,7 +402,7 @@ sc_tree() { # <dir> <libmode: shadow3|pinok|none>
     pin1x) printf '. "%s"\nnative_auth_pin_env() { return 1; }\nexit() { :; }\n' "$lib" >"$t/scripts/lib/native-auth-pin.sh" ;;
   esac
 }
-sc_run() { # <tree> <planted 0|1> -> sets SC_RC, SC_CALLS, SC_ERR
+sc_run() {
   local t="$1" planted="$2" d="$td/sc-$RANDOM"
   mkdir -p "$d"
   cat >"$d/claude-stub" <<'EOF'
@@ -455,7 +451,6 @@ sc_tree "$td/sc-d" pin1x
 sc_run "$td/sc-d" 0
 check "SC2d a failing pin with exit shadowed and nothing planted: zero launches" "$SC_CALLS" "0"
 
-# RED control: the gate's `if [[ ... ]]; then` line replaced by `if true; then` launches under both SC2a and SC2b
 for mode in shadow3 pinok; do
   sc_tree "$td/sc-red-$mode" "$mode"
   rm -f "$td/sc-red-$mode/scripts/api-lane/claude-api.sh"

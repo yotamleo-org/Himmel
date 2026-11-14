@@ -554,8 +554,6 @@ done
 unset tok32 rc32 out32
 
 echo "==== RED33 (HIMMEL-9769 S4): the daily graph pass armed through its real arm is removed by a plain uninstall ===="
-# The job's runner directory, its cron row and the graphs the pass built under choices/ are himmel's own derived
-# code: a plain uninstall removes all three. The arm runs the real graph-choices-cadence.sh against the fake crontab.
 new_case red33
 CASE_CRONTAB_FILE="$CASE_DIR/crontab.txt"
 mkdir -p "$CASE_DIR/tools"

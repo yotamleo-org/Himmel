@@ -9,12 +9,6 @@
 # the runner's log (~/.claude/graph-choices-cadence/graph-choices.log). Lines that name no corpus read
 # `graph-choices-pass: - <text>`.
 #
-# Per fire: role (a publisher touches nothing; an unreadable config alerts under graph-config-unreadable); a batch
-# directory whose corpus left the store is printed; each corpus's root is checked and its free AST pass runs with the
-# graph outside the repo; with no route (none, or no choice) the sentence is printed and nothing else runs; otherwise
-# the route runs per corpus in store order, each step at most once, at most one new batch or one subscription run a
-# fire. A step's outcome is the first line of its --result-file, never log text.
-#
 # Exit: 0 when the pass finished, whatever the words were; non-zero only on a crash.
 #
 # Seams (tests): GRAPH_CHOICES_AST_UPDATE, GRAPH_CHOICES_SEMANTIC_UPDATE.
@@ -45,7 +39,6 @@ alert_text() {
   esac
 }
 
-# alert <corpus> <word> [detail]: the sender (deduped by its own script) and the log line C88 reads
 alert() {
   local name="$1" word="$2" detail="${3:-}"
   alert_text "$word"
@@ -56,7 +49,6 @@ clear_alert() { bash "$ALERT" clear "graph-choices-$1" >/dev/null 2>&1; }
 
 command -v node >/dev/null 2>&1 || { echo "graph-choices-pass: node is not on PATH" >&2; exit 1; }
 
-# --- 1. role -----------------------------------------------------------------------------------------------------
 role="$(node "$GC" role 2>/dev/null)"
 [ -n "$role" ] || { echo "graph-choices-pass: the choice store could not be read (graph-choices.js role failed)" >&2; exit 1; }
 case "$role" in
@@ -82,7 +74,6 @@ case "$role" in
 esac
 bash "$ALERT" clear graph-config-unreadable >/dev/null 2>&1
 
-# --- the route, read once ----------------------------------------------------------------------------------------
 parsed="$(node "$GC" route 2>/dev/null | node -e '
 const r = JSON.parse(require("fs").readFileSync(0, "utf8"));
 console.log("S\t" + r.state);
@@ -107,7 +98,6 @@ done <<<"$parsed"
 in_store() { local n; for n in ${NAMES[@]+"${NAMES[@]}"}; do [ "$n" != "$1" ] || return 0; done; return 1; }
 out_of() { node "$GC" out "$1" 2>/dev/null; }
 
-# --- 2. a batch directory whose corpus left the store -------------------------------------------------------------
 probe_out="$(out_of probe)"
 if [ -n "$probe_out" ]; then
   choices_dir="$(dirname "$(dirname "$probe_out")")"
@@ -130,7 +120,6 @@ if [ "${#NAMES[@]}" -eq 0 ]; then
   exit 0
 fi
 
-# --- 3. each corpus: root check, then the free AST pass ----------------------------------------------------------
 # shellcheck source=../lib/prim.sh
 . "$REPO/scripts/lib/prim.sh" || exit 1
 WORK="$(tmpdir)" || { echo "graph-choices-pass: no scratch directory" >&2; exit 1; }
@@ -160,7 +149,6 @@ while [ "$i" -lt "${#NAMES[@]}" ]; do
   OK_NAMES+=("$name") OK_ROOTS+=("$root")
 done
 
-# --- 4. no route: the sentence, and any waiting batch's path -----------------------------------------------------------
 if [ "$STATE" != set ]; then
   for name in ${OK_NAMES[@]+"${OK_NAMES[@]}"}; do
     waiting="$(node "$GC" pending "$name" 2>/dev/null)"
@@ -171,7 +159,6 @@ if [ "$STATE" != set ]; then
   exit 0
 fi
 
-# --- 5. the route on each corpus ---------------------------------------------------------------------------------------
 STEPS=()
 run=""
 for tok in $(printf '%s' "$ORDER" | tr ',' ' '); do
@@ -184,14 +171,12 @@ for tok in $(printf '%s' "$ORDER" | tr ',' ' '); do
 done
 [ -z "$run" ] || STEPS+=("L:$run")
 
-run_letters() { # name root letters rf
+run_letters() {
   GRAPHIFY_OUT="$(out_of "$1")" HIMMEL_API_LANE=on bash "$SEM_UPDATE" --name "$1" --corpus-root "$2" --backend claude-api \
     --corpus-class adopter-repo --account-order "$3" --max-run-usd "$CAP" --result-file "$4" </dev/null >>"$WORK/semantic.out" 2>&1
 }
 
-# the subscription step: its own subshell sources the pin library, so any function shadowing exit, return or unset
-# exists only here; the launch sits inside the keyword gate's then arm and nothing relies on a return or an exit
-run_sub() { # name root rf
+run_sub() {
   local name="$1" root="$2" rf="$3"
   (
     GRAPHIFY_OUT="$(out_of "$name")"
@@ -211,7 +196,7 @@ run_sub() { # name root rf
   )
 }
 
-next_letter_step() { # from-index -> prints the index of the next L step, or nothing
+next_letter_step() {
   local j="$1"
   while [ "$j" -lt "${#STEPS[@]}" ]; do
     case "${STEPS[$j]}" in L:*) printf '%s' "$j"; return 0 ;; esac

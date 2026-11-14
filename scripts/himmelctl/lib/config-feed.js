@@ -307,8 +307,6 @@ function lastRunFromLogs(name) {
   return best;
 }
 
-// The consent text of a cadence whose cost depends on the stored choice: graph-choices.js prints its worst case, one
-// line per kind of step, for the choice on this station.
 function worstCaseText() {
   const r = spawnSync(process.execPath, [path.join(__dirname, 'graph-choices.js'), 'worst-case'], { encoding: 'utf8', timeout: CADENCE_STATUS_TIMEOUT_MS });
   const text = String(r.stdout || '').trim();

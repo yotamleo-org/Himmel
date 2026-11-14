@@ -48,7 +48,6 @@ out="${WORKER_GRAPH_OUT:-}"
 role=""
 if [ -z "$out" ]; then
   out="$primary/graphify-out"
-  # a repo the graph choice lists reads the graph the daily pass builds for it, never a graph in the repo
   if command -v node >/dev/null 2>&1 && [ -f "$GC" ]; then
     role="$(node "$GC" role 2>/dev/null)"
     if [ "$role" = adopter ] && node "$GC" listed "$primary" 2>/dev/null; then
@@ -66,7 +65,6 @@ fi
 if [ ! -f "$out/graph.json" ]; then
   # absolute paths: the reader may stand in a vault, where a repo-relative scripts/ path does not exist
   if [ -n "$role" ] && [ "$role" != publisher ]; then
-    # a station that does not build its own graph is told where the graph comes from, not a command it refuses
     echo "worker-graph: no graph at $out/graph.json. The graph covers code repos, not notes: to search notes run: bash $(dirname "$here")/lib/qmd-bounded.sh query -c <name> \"<question>\". $(node "$GC" remedy 2>/dev/null), then run: bash $here/worker-graph.sh query|explain|path \"<q>\"" >&2
   else
     echo "worker-graph: no graph at $out/graph.json. The graph covers code repos, not notes: to search notes run: bash $(dirname "$here")/lib/qmd-bounded.sh query -c <name> \"<question>\". In a code repo, build the graph from its primary checkout (/graph-refresh), then run: bash $here/worker-graph.sh query|explain|path \"<q>\"" >&2

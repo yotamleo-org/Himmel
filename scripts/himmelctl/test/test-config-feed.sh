@@ -224,8 +224,6 @@ fires_of() { jq -c ".rows[]|select(.id==\"$1\")|.fires" "${2:-$out}"; }
 [ "$(fires_of qmd-cadence)" = '{"state":"yes","evidence":"qmd-reindex.log run log, no exit line (still running, or died)","at":"2026-11-04T05:00:00.000Z"}' ] || fail "c qmd fires: $(fires_of qmd-cadence)"
 # an empty log is not a run: a named no-run state, never unverified
 jq -e '.rows[]|select(.id=="graphmap-cadence")|.fires.state=="no-run" and .fires.at==null and (.fires.evidence|contains("graphmap-cadence"))' "$out" >/dev/null || fail "c graphmap (empty log) fires: $(fires_of graphmap-cadence)"
-# F1: the daily graph-choices job reads its last run from the pass log in its own directory, and its consent text is
-# the stored choice's worst case
 [ "$(fires_of graph-choices-cadence)" = '{"state":"yes","evidence":"graph-choices.log run log, exit rc=0","at":"2026-11-06T04:40:00.000Z"}' ] || fail "F1 graph-choices fires: $(fires_of graph-choices-cadence)"
 jq -e '.rows[]|select(.id=="graph-choices-cadence")|.control.cost|contains("With no graph choice")' "$out" >/dev/null || fail "F1 graph-choices cost is not the worst-case text: $(jq -r '.rows[]|select(.id=="graph-choices-cadence")|.control.cost' "$out")"
 jq -e '.rows[]|select(.id=="graph-choices-cadence")|.control.script=="scripts/graphify/graph-choices-cadence.sh"' "$out" >/dev/null || fail "F1 graph-choices row carries no script path"
