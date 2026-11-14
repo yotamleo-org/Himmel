@@ -1301,6 +1301,38 @@ reset "In Progress"; jl "$K" "In Progress"; owned "$K" LIVE '{"state":"live"}'; 
 drift
 check "9561 S4b 7 control: rc 11 FRESH prints neither" "$(dcount HELD-STALE)/$(dcount UNOWNED)" 0/0
 check "9561 S4b 9: rows 6 and 7 wrote nothing" "$(nwrites)" 0
+
+epicfx() { reset "In Progress"; printf '%s\tEpic\tIn Progress\tsummary\n' "$K" >> "$FX/list.tsv"; }
+epicfx; owned "$K" LIVE '{"state":"live"}'; lockfx 11 FRESH
+drift
+check "9561 S5 7: an Epic with a LIVE doc over a FRESH lock prints no UNOWNED" "$(dcount UNOWNED)" 0
+epicfx; owned "$K" WRAPPED '{"state":"wrapped"}'; lockfx 11 FRESH
+drift
+check "9561 S5 7: the same Epic with a WRAPPED doc prints one UNOWNED" "$(dcount UNOWNED)" 1
+epicfx; owned "$K" LIVE '{"state":"live"}'; lockfx 12 STALE-DEAD
+drift
+check "9561 S5 7: the same Epic with a LIVE doc over rc 12 STALE-DEAD prints the reap row" "$(dcount UNOWNED)" 1
+contains "9561 S5 7: and its fix names the reap" "$(drows UNOWNED)" "queue-lock.sh status --sweep --reap-dead"
+check "9561 S5 7: the rows wrote nothing" "$(nwrites)" 0
+
+d6fx; lrow 100000 merge moved - '{"pr":"4480","contract":"no","remainder":"remaining"}'; lrow 3600 wrapped noop D5c; lrow 60 sweep noop D5c
+drift
+check "9561 S5 3: a remaining partial merge parked 1 h is one AWAITING row" "$(dcount AWAITING)/$(dcount UNOWNED)" 1/0
+contains "9561 S5 3: it waits on the chief" "$(drows AWAITING)" "wait=chief"
+contains "9561 S5 3: its source is the resume" "$(drows AWAITING)" "source=resume"
+contains "9561 S5 3: its since is the first D5c row after the merge row" "$(drows AWAITING)" "since=$(iso_at 3600) "
+contains "9561 S5 3: its due is 6 h after it" "$(drows AWAITING)" "due=$(iso_at -18000) "
+contains "9561 S5 3: and the wait is no drift: sdrift=0" "$(dlast)" "sdrift=0:"
+d6fx; lrow 100000 merge moved - '{"pr":"4480","contract":"no","remainder":"remaining"}'; lrow 25200 wrapped noop D5c; lrow 60 sweep noop D5c
+drift
+check "9561 S5 3: parked 7 h it is no AWAITING row" "$(dcount AWAITING)" 0
+contains "9561 S5 3: it is UNOWNED, awaiting the chief since the first D5c row, and overdue" "$(drows UNOWNED)" "awaiting the chief since $(iso_at 25200) and overdue (due $(iso_at 3600))"
+contains "9561 S5 3: and counts as drift: sdrift=1" "$(dlast)" "sdrift=1:"
+driftenv TICKET_STATUS_AWAIT_TTL_RESUME=12h
+contains "9561 S5 3: TICKET_STATUS_AWAIT_TTL_RESUME=12h makes the 7 h park a wait again" "$(drows AWAITING)" "source=resume"
+driftenv TICKET_STATUS_AWAIT_TTL_RESUME=abc
+check "9561 S5 2: a bad TICKET_STATUS_AWAIT_TTL_RESUME is one HEALTH row naming it, never its value" "$(drows HEALTH | grep -c 'env: TICKET_STATUS_AWAIT_TTL_RESUME')/$(drows HEALTH | grep -c abc)" 1/0
+check "9561 S5: the rows wrote nothing" "$(nwrites)" 0
 unset TICKET_STATUS_NOW
 
 # a `standing` ticket is started on purpose with no single PR; a ticket whose PR is open in
