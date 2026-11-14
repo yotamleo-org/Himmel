@@ -168,11 +168,14 @@ case "$tool" in
             deny "jira-write" "Jira CLI write op"
         fi
         has_word bunx npx uvx && deny "package-fetch" "bunx, npx or uvx: run an installed tool by its own name, or report the check as not run"
-        if has_word bun && has_word x; then
-            deny "package-fetch" "bun x: run an installed tool by its own name, or report the check as not run"
+        if has_word bun && has_word x add install i; then
+            deny "package-fetch" "bun x or bun install: run an installed tool by its own name, or report the check as not run"
         fi
-        if has_word npm && has_word install i; then
-            deny "package-fetch" "npm install: run an installed tool by its own name, or report the check as not run"
+        if has_word npm && has_word install i add exec x; then
+            deny "package-fetch" "npm install or npm exec: run an installed tool by its own name, or report the check as not run"
+        fi
+        if has_word uv && has_word tool; then
+            deny "package-fetch" "uv tool: run an installed tool by its own name, or report the check as not run"
         fi
         if has_word pip pip3 && has_word install; then
             deny "package-fetch" "pip install: run an installed tool by its own name, or report the check as not run"
