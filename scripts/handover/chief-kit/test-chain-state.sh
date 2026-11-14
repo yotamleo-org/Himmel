@@ -285,5 +285,40 @@ cs; rc=$?
 check "chain-log: a log that cannot be read fails the read instead of reading as no holds" "$rc" 2
 contains "chain-log: and the error names the file" "$(cat "$tmp/err")" "chain-log.jsonl"
 
+reset
+reg chain-x=1,31
+issue HIMMEL-1 "To Do" labels='["chain-x"]'
+issue HIMMEL-21 "To Do" labels='["standalone"]' bb='["HIMMEL-22"]'
+issue HIMMEL-22 "To Do" labels='["standalone"]' bb='["HIMMEL-21"]'
+issue HIMMEL-31 "To Do" labels='["chain-x"]' bb='["HIMMEL-32"]'
+issue HIMMEL-32 "To Do" labels='["standalone"]' bb='["HIMMEL-31"]'
+issue HIMMEL-41 "To Do" bb='["HIMMEL-43"]'
+issue HIMMEL-42 "To Do" bb='["HIMMEL-41"]'
+issue HIMMEL-43 "In Progress" bb='["HIMMEL-42"]'
+issue HIMMEL-51 "To Do" versions='["v2"]' bb='["HIMMEL-52","HIMMEL-53"]'
+issue HIMMEL-52 "To Do" versions='["v2"]' bb='["HIMMEL-51"]'
+issue HIMMEL-53 "To Do" labels='["standalone"]' bb='["HIMMEL-51"]'
+issue HIMMEL-61 "To Do" labels='["standalone"]' bb='["HIMMEL-69"]'
+issue HIMMEL-71 Done bb='["HIMMEL-72"]' resolved=2026-11-01T00:00:00.000+0000
+issue HIMMEL-72 "To Do" bb='["HIMMEL-71"]'
+cs; rc=$?
+check "integrity: exits 0" "$rc" 0
+check "integrity: a loop of two standalone tickets, a registered-standalone loop and a loop of three are each listed" \
+    "$(q '.cycles | map(join(" ")) | sort | join(",")')" "HIMMEL-21 HIMMEL-22,HIMMEL-31 HIMMEL-32,HIMMEL-41 HIMMEL-42 HIMMEL-43"
+contains "integrity: the standalone loop keeps its stderr warn line" "$(cat "$tmp/err")" "WARN cycle HIMMEL-21 HIMMEL-22"
+check "integrity: a link whose status cannot be read is listed with the ticket that holds it" \
+    "$(q '.unknown | map(.key + " on " + .on) | join(",")')" "HIMMEL-61 on HIMMEL-69"
+free_state=$(tk HIMMEL-1 .state)
+check "integrity: an unrelated ticket still can launch" "$free_state" "can launch"
+node "$SUT" --json --registry "$tmp/registry.json" --mirror "$M" --state "$S" --now "$NOW" > "$tmp/out" 2>"$tmp/err"
+check "integrity: with no --version the walk starts from the registry's members only" \
+    "$(q '.cycles | map(join(" ")) | join(",")') $(q '.unknown | length')" "HIMMEL-31 HIMMEL-32 0"
+reset
+reg chain-x=1
+issue HIMMEL-1 "To Do" labels='["chain-x"]'
+issue HIMMEL-2 "To Do" labels='["standalone"]' bb='["HIMMEL-1"]'
+cs
+check "integrity: a clean version lists no loop and no unreadable link" "$(q '.cycles | length') $(q '.unknown | length')" "0 0"
+
 echo "---"
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; } || { echo "$fails failed"; exit 1; }

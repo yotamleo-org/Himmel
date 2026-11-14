@@ -35,7 +35,10 @@
 #             run goes on with the last good focus-chains.json, byte for byte, and ends
 #             `focus=WARN:chains <registry|graph|render>` (exit 0; the reason's detail is on stderr). A dispositions
 #             read the dispatcher paused on GitHub quota (`# quota-pause` / `# gh-stall`) keeps the last good file too,
-#             with that line on stderr and no WARN.
+#             with that line on stderr and no WARN. A second chain-state.mjs read with --version walks every open ticket
+#             of the version, registered or standalone: a Blocks loop or a link whose status cannot be read still
+#             publishes the page and ends `focus=WARN:cycle <keys>` and/or `unknown <keys>` (each set sorted, comma-joined,
+#             eight keys then `+<n>`), joined to any other warning by `, `.
 #   drift     status-drift.sh over the sweep's snapshot, staged (report only). It runs after the mirror re-read
 #             that follows a move, so it sees the mirror the render reads. A failure is not a FAILED stage:
 #             the page is still published and the run ends `focus=WARN:drift <why>` (exit 0), why being timeout,
@@ -59,11 +62,11 @@
 # focus-state (<doc dir>/focus-state, key=value): status (ok|FAILED), stage, gen,
 # dirty (epoch of the first unrefreshed ship event), sha8 (page fingerprint), sdrift, stale, ver (the version the page shows)
 # (the drift line; stale = <n>:<K1,...,K8>[,+<m>] | partial:<n>:<...> | unknown, the keys of the STALE feed, at most
-# eight named), warn (chains <reason> of the last good run, else empty), drain-unchained (the drain line's
+# eight named), warn (chains <reason>, drift <why>, cycle <keys>, unknown <keys> of the last good run, else empty), drain-unchained (the drain line's
 # unchained count; a WARN on stderr when above 0), ts. A refresh marks the state dirty when it starts and clears
 # that only on success, so a run that dies midway reads as DIRTY.
 # --status prints focus=ok | focus=DIRTY:<minutes>m | focus=FAILED:<stage> |
-# focus=WARN:<warn> (a good run whose chains or drift stage failed); focus=skip; --mark-dirty marks a ship event the refresh
+# focus=WARN:<warn> (a good run whose chains or drift stage failed, or whose version holds a loop or an unreadable link); focus=skip; --mark-dirty marks a ship event the refresh
 # has not yet seen.
 # The whole run is cut off at FOCUS_REFRESH_BUDGET seconds (default 240) and reads
 # FAILED:timeout.
@@ -302,7 +305,7 @@ bounded 60 gh pr list --state open --limit 300 --json number,title,headRefName,h
 # chains: focus-chains.json regenerated from the chain registry. A registry that is absent (or a handover root or
 # user slug that does not resolve) skips the stage: nothing is configured and a hand-kept file stays. A registry
 # that is there and fails is a WARN, never a FAILED stage: the last good file is read and published as it was.
-CHAINS_NEW="" CHAINS_WARN="" DRAIN_UNCHAINED=""
+CHAINS_NEW="" CHAINS_WARN="" DRAIN_UNCHAINED="" CHAINS_INTEGRITY=""
 chains_registry() { # print the registry path when it resolves
     local root slug
     root=$(handover_root 2>/dev/null) || return 1 # swallow-ok: no handover root means no registry configured
@@ -313,6 +316,16 @@ chains_fail() { # <registry|graph|render> <detail file> - the run goes on with t
     CHAINS_WARN="chains $1"
     # swallow-ok: an unreadable detail file leaves the WARN detail empty; the reason class is already set. read-sink-ok: the detail file is one of this script's own stage files
     echo "focus-refresh: WARN: chains $1: $(head -n 1 "$2" 2>/dev/null | tr -c 'A-Za-z0-9 ._:/=,-' '_' | cut -c1-200); focus-chains.json is as it was" >&2
+}
+version_loops_and_unknown_links() {
+    bounded 30 node "$HERE/chain-state.mjs" --json --registry "$chains_reg" --mirror "$MIR" --version "$VER" > "$stage/chain-version.json" || return 1
+    python3 -I -c 'import json, re, sys
+d = json.load(open(sys.argv[1]))
+def part(word, keys):
+    keys = sorted({k for k in keys if isinstance(k, str) and re.fullmatch(r"[A-Z][A-Z0-9]*-[0-9]+", k)})
+    return "%s %s" % (word, ",".join(keys[:8]) + (",+%d" % (len(keys) - 8) if len(keys) > 8 else "")) if keys else ""
+print(", ".join(p for p in (part("cycle", [k for c in d["cycles"] for k in c]),
+                            part("unknown", [k for u in d["unknown"] for k in (u["key"], u["on"])])) if p))' "$stage/chain-version.json"
 }
 chains_reg=$(chains_registry) || chains_reg=""
 chains_skip_visible() { # a chains.json under the configured root but none under the resolved one is a WARN, never ok
@@ -327,6 +340,8 @@ if [ -z "$chains_reg" ] || [ ! -f "$chains_reg" ]; then chains_skip_visible; fi
 if [ -n "$chains_reg" ] && [ -f "$chains_reg" ]; then
     if ! bounded 30 node "$HERE/chain-state.mjs" --json --registry "$chains_reg" --mirror "$MIR" > "$stage/chain-state.json" 2> "$stage/chains.err"; then
         chains_fail registry "$stage/chains.err"
+    elif ! CHAINS_INTEGRITY=$(version_loops_and_unknown_links 2> "$stage/chain-version.err"); then
+        chains_fail registry "$stage/chain-version.err"
     elif ! members=$(python3 -I -c 'import json, sys
 print(",".join(dict.fromkeys(k for c in json.load(open(sys.argv[1]))["chains"] for k in c["members"])))' "$stage/chain-state.json" 2> "$stage/chains.err"); then
         chains_fail registry "$stage/chains.err"
@@ -354,6 +369,10 @@ for c in json.load(open(sys.argv[1])):
             chains_fail render "$stage/chains.err"
         fi
     fi
+fi
+if [ -n "$CHAINS_INTEGRITY" ]; then
+    echo "focus-refresh: WARN: $CHAINS_INTEGRITY: the page is published; cut or justify each Blocks link, or make the linked ticket readable" >&2
+    if [ -n "$CHAINS_WARN" ]; then CHAINS_WARN="$CHAINS_WARN, $CHAINS_INTEGRITY"; else CHAINS_WARN="$CHAINS_INTEGRITY"; fi
 fi
 
 # The drift stage is report only: a failure here never stops the page. It is a WARN, as the chains stage is, and the
