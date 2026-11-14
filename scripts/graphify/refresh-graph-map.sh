@@ -279,7 +279,7 @@ _nc_early_gate() {
   if [[ $_nc_fallback == 1 ]]; then
     if [[ $_nc_role == unreadable ]]; then
       _gc_alert
-      _nc_line="$(node "$_GRAPH_CHOICES" check 2>/dev/null | grep -m 1 '^graph config unreadable')" || _nc_line=""
+      _nc_line="$(node "$_GRAPH_CHOICES" check 2>/dev/null | grep '^graph config unreadable' | head -n 1)" || _nc_line=""
       echo "refresh-graph-map: ${_nc_line:-graph config unreadable}; no semantic call (graphify-out left untouched)" >&2
       exit 3
     fi

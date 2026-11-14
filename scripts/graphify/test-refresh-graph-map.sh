@@ -4859,6 +4859,19 @@ printf '[]\n' > "$AD_CFG"; ad_cfg_run
 ad_cause "(d9) a config that is JSON but not an object is unreadable" not-json
 printf '{"graphify":"x"}\n' > "$AD_CFG"; ad_cfg_run
 ad_cause "(d10) a config whose graphify key is not an object is unreadable" graphify-shape
+SLOWNODE_BIN="$WS/slownode-bin"; mkdir -p "$SLOWNODE_BIN"
+cat > "$SLOWNODE_BIN/node" <<SLOWNODE
+#!/usr/bin/env bash
+if [ "\$2" = check ]; then
+  "$(command -v node)" "\$@" | while IFS= read -r sn_line; do
+    printf '%s\n' "\$sn_line" || exit 1
+    case "\$sn_line" in 'graph config unreadable'*) sleep 0.4 ;; esac
+  done
+else exec "$(command -v node)" "\$@"; fi
+SLOWNODE
+chmod +x "$SLOWNODE_BIN/node"
+ad_cfg_run "$SLOWNODE_BIN:$PATH"
+ad_cause "(d15) the cause line survives a check that is still writing when the reader has its line" graphify-shape
 printf '{"graphify":{"semantic_api_ok":true}}\n' > "$AD_CFG"; chmod 000 "$AD_CFG"
 if [ -r "$AD_CFG" ]; then
   skip "T-adopter-skip (d4) an unreadable config (this user reads a mode-000 file)"
