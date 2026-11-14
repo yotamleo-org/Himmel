@@ -77,10 +77,6 @@ settings_on_main_history() {
   } | grep -xF "$want" >/dev/null  # no -q: an early-exiting grep would SIGPIPE the writers under pipefail
 }
 
-# hooks_added_by_branch: one name per line, each a scripts/hooks/<name>.sh the folder's
-# branch adds between its merge-base with the anchor's origin/main (else main) and its HEAD,
-# that is an executable regular file (not a symlink) in <dir>. Git plumbing against the
-# ANCHOR repo plus file tests; nothing from the folder is run, sourced or parsed.
 hooks_added_by_branch() {
   local ref="" r head mb p name f
   for r in refs/remotes/origin/main refs/heads/main; do

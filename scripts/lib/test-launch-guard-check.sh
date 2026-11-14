@@ -185,9 +185,6 @@ git -C "$tmp/hm" worktree add -q "$tmp/hm-wt-late" -b wt-late >/dev/null 2>&1
 cp "$PARTIAL" "$tmp/hm-wt-late/.claude/settings.json"
 run "$tmp/hm-wt-late" HIMMEL_REPO="$tmp/hm"; expect "old_blob_before_merge_base_refused" 1 "$CHAIN_DIFF"
 
-# A branch that adds a hook wires it before main's inventory knows it.
-# wire_hooks <settings> <script>... : each script joins the first --chain entry and gets
-# a PreToolUse group of its own, in the wired launcher form.
 wire_hooks() {
   local f="$1"; shift
   "$NODE" -e '
@@ -202,8 +199,6 @@ for (const n of names) {
 }
 fs.writeFileSync(f,JSON.stringify(s,null,2)+"\n");' "$f" "$@"
 }
-# addhook_wt <name> : a worktree of $tmp/hm whose one commit adds an executable
-# scripts/hooks/new-guard.sh and wires it
 addhook_wt() {
   git -C "$tmp/hm" worktree add -q "$tmp/$1" -b "$1" >/dev/null 2>&1
   printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/$1/scripts/hooks/new-guard.sh"
@@ -213,20 +208,16 @@ addhook_wt() {
 }
 addhook_wt add-hook
 run "$tmp/add-hook" HIMMEL_REPO="$tmp/hm"; expect "branch_adds_hook_passes" 0 "guarded: project $tmp/add-hook"
-# control 1: the wiring is there, the added script file is gone from the tree
 addhook_wt add-hook-gone; rm "$tmp/add-hook-gone/scripts/hooks/new-guard.sh"
 run "$tmp/add-hook-gone" HIMMEL_REPO="$tmp/hm"; expect "added_hook_file_absent_refused" 1 "$CHAIN_DIFF"
-# control 2: the added script is not executable in the tree
 addhook_wt add-hook-noexec; chmod 644 "$tmp/add-hook-noexec/scripts/hooks/new-guard.sh"
 run "$tmp/add-hook-noexec" HIMMEL_REPO="$tmp/hm"; expect "added_hook_not_executable_refused" 1 "$CHAIN_DIFF"
-# control 3: the branch adds a hook and drops an owned one
 addhook_wt add-hook-drop
 "$NODE" -e '
 const fs=require("fs");const f=process.argv[1];const s=JSON.parse(fs.readFileSync(f,"utf8"));
 s.hooks.PreToolUse.shift();fs.writeFileSync(f,JSON.stringify(s,null,2)+"\n");' "$tmp/add-hook-drop/.claude/settings.json"
 git -C "$tmp/add-hook-drop" commit -q -am "drop an owned hook"
 run "$tmp/add-hook-drop" HIMMEL_REPO="$tmp/hm"; expect "added_hook_with_owned_hook_dropped_refused" 1 "$CHAIN_DIFF"
-# control 4: a wired hook outside the diff and the anchor's chain (present, executable, untracked)
 addhook_wt add-hook-ghost
 printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/add-hook-ghost/scripts/hooks/ghost-guard.sh"
 chmod 755 "$tmp/add-hook-ghost/scripts/hooks/ghost-guard.sh"
