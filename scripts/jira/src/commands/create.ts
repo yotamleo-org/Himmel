@@ -542,7 +542,6 @@ interface PlacementOptions {
 /** The label a proposed version leaves on the ticket until the release manager confirms or moves it. */
 const proposedLabel = (v: string): string => `proposed-${labelSlug(v)}`;
 
-/** A Bug at High or above, or any ticket with a security label, enters the backlog only by an operator decision. */
 function assertBacklogDecision(o: PlacementOptions): void {
   if (o.decision !== undefined || !/^(bug|task|story)$/i.test(o.type)) return;
   const highBug = /^bug$/i.test(o.type) && /^(high|highest|critical|blocker)$/i.test(o.priority ?? '');

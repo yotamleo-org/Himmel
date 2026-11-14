@@ -2699,7 +2699,6 @@ describe('create --operator-update: the bridge names the operator\'s update (T4,
   });
 });
 
-// A High or security ticket enters the backlog only by an operator decision.
 describe('create — backlog needs --decision for a High or security Bug', () => {
   const BACKLOG = { backlog: true, proposedVersion: 'backlog', why: 'waits' };
   const rule = /High or security.*--decision/s;
