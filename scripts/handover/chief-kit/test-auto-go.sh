@@ -802,15 +802,12 @@ check    "A1b auto-go.sh calls the chokepoint seam guard with its registry key" 
 check    "A1b auto-go.sh hands a relative entry off to the anchor" "$(grep -cE '^\. .*anchor-handoff\.sh' "$AG")" "1"
 check    "A1b the registry names every seam auto-go.sh reads" "$(jq -r '."scripts/handover/chief-kit/auto-go.sh".seam_env_vars // [] | sort | join(",")' "$HERE/../../chokepoints.json")" "AUTO_GO_ANCHOR,AUTO_GO_BUS,AUTO_GO_CENSUS,GH_CMD,HIMMEL_LEGACY_NAMES,JIRA_CMD"
 
-# --- 9. the reads ride the read token ----------------------------------------------------
-# A PATH `gh` that is the two-token stub wraps the suite's own stub; the read token is the fixture's.
 reset
 TTREAD=ghp_READTOKEN0123456789
 mkdir -p "$tmp/ttroot" "$tmp/emptyroot" "$tmp/tt" "$tmp/himmelcfg"
 printf 'himmel_github_token_vm2=%s\n' "$TTREAD" > "$tmp/ttroot/.env"
 : > "$tmp/emptyroot/.env"
 ln -s "$HERE/fixtures/gh-two-token-stub.sh" "$tmp/tt/gh"
-# the suite's stub finds the next gh on PATH: the delegate drops the two-token dir from PATH first
 # shellcheck disable=SC2016  # the delegate's own ${PATH#...} and "$@" must stay literal
 printf '#!/usr/bin/env bash\nPATH="${PATH#%s:}" exec "%s/bin/gh" "$@"\n' "$tmp/tt" "$tmp" > "$tmp/ttdelegate"
 chmod +x "$tmp/ttdelegate"
@@ -818,40 +815,36 @@ unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
 TTLOG="$tmp/tt.log"
 ttn() { grep -c -E -- "$1" "$TTLOG"; }
 ttseen() { [ "$(ttn "$1")" -ge 1 ] && echo yes || echo no; }
-ttrun() {  # <read-token root> [VAR=value ...]: a dry run through the two-token stub
+ttrun() {
     local root="$1"; shift
     : > "$TTLOG"
     OUT=$(env "$@" GH_READ_ENV_ROOT="$root" HIMMEL_SECRETS_KEYRING=off HIMMEL_CONFIG_DIR="$tmp/himmelcfg" PATH="$tmp/tt:$PATH" \
         GH_STUB_DELEGATE="$tmp/ttdelegate" GH_STUB_READ_TOKEN="$TTREAD" GHLOG="$TTLOG" \
         bash "${AG_SCRIPT:-$SCRIPT}" --doc "$CHIEF" --fleet "$FLEET" --worker N1 --dry-run 77 "$SHA" 2>&1); RC=$?
 }
-# cr-disposition.sh (check 6) reads the head branch on the main token: it is not a read this slice moves
-tt_main_other() { grep '^tok=main ' "$TTLOG" | grep -vc 'argv=pr view 77 --json headRefName -q .headRefName'; }
+tt_main_reads_besides_the_crd_branch_read() { grep '^tok=main ' "$TTLOG" | grep -vc 'argv=pr view 77 --json headRefName -q .headRefName'; }
 ttrun "$tmp/ttroot" GH_STUB_MAINFAIL=rate GH_STUB_MAINFAIL_BUCKET=core
 check    "8691 main REST core spent: exit 0" "$RC" "0"
 check    "8691 main REST core spent: exactly WOULD-GO <pr> <head>" "$OUT" "WOULD-GO 77 $SHA"
-check    "8691 main REST core spent: no read rides the main token but cr-disposition's branch read, its ready-go child's reads included" "$(tt_main_other)" "0"
+check    "8691 main REST core spent: no read rides the main token but cr-disposition's branch read, its ready-go child's reads included" "$(tt_main_reads_besides_the_crd_branch_read)" "0"
 check    "8691 main REST core spent: the repo name read logs tok=read" "$(ttseen '^tok=read argv=repo view --json nameWithOwner')" "yes"
 check    "8691 main REST core spent: the PR state read logs tok=read" "$(ttseen '^tok=read argv=pr view 77 --json state,headRefOid,baseRefName')" "yes"
 check    "8691 main REST core spent: the title read logs tok=read" "$(ttseen '^tok=read argv=pr view 77 --json title')" "yes"
 check    "8691 main REST core spent: the file listing read logs tok=read" "$(ttseen '^tok=read argv=api repos/o/r/pulls/77/files')" "yes"
 check    "8691 main REST core spent: the commit list read logs tok=read" "$(ttseen '^tok=read argv=api repos/o/r/pulls/77/commits')" "yes"
-# every bucket spent: checks 1 to 5 still pass on the read token, and check 6 is the one that escalates
 ttrun "$tmp/ttroot" GH_STUB_MAINFAIL=rate
 check    "8691 main spent in every bucket: the escalation is check 6 (cr-disposition), not a read of this gate" "$(printf '%s' "$OUT" | grep -c 'ESCALATE auto-go 6 cr-disposition.sh')" "1"
-check    "8691 main spent in every bucket: no read rides the main token but cr-disposition's branch read" "$(tt_main_other)" "0"
+check    "8691 main spent in every bucket: no read rides the main token but cr-disposition's branch read" "$(tt_main_reads_besides_the_crd_branch_read)" "0"
 ttrun "$tmp/emptyroot"
 check    "8691 control, no read token: exit 0" "$RC" "0"
 check    "8691 control, no read token: exactly WOULD-GO <pr> <head>" "$OUT" "WOULD-GO 77 $SHA"
 check    "8691 control, no read token: no call logs tok=read" "$(ttn '^tok=read ')" "0"
 check    "8691 control, no read token: the commit list read logs tok=main" "$(ttseen '^tok=main argv=api repos/o/r/pulls/77/commits')" "yes"
 
-# gh-read knobs inherited from a launching shell are cleared before any read: GH_READ_OFF would fail every read with 124
 ttrun "$tmp/ttroot" GH_READ_QUIET=1 GH_READ_OFF=1 GH_READ_NO_MAIN_FALLBACK=1
 check    "8691 GH_READ_QUIET, GH_READ_OFF and GH_READ_NO_MAIN_FALLBACK inherited: exit 0, not 96" "$RC" "0"
 check    "8691 GH_READ_* inherited: exactly WOULD-GO <pr> <head>" "$OUT" "WOULD-GO 77 $SHA"
 check    "8691 GH_READ_* inherited: the reads still ride the read token" "$(ttseen '^tok=read argv=api repos/o/r/pulls/77/commits')" "yes"
-# RED control: a copy of auto-go.sh without the unset line lets GH_READ_OFF fail the reads of its ready-go child
 CA="$tmp/ctlag"; mkdir -p "$CA/scripts/handover/chief-kit"
 for cad in "$HERE/../.."/*; do [ "$(basename "$cad")" = handover ] || ln -s "$cad" "$CA/scripts/$(basename "$cad")"; done
 for caf in "$HERE/.."/*; do [ "$(basename "$caf")" = chief-kit ] || ln -s "$caf" "$CA/scripts/handover/$(basename "$caf")"; done

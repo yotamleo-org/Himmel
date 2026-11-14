@@ -116,13 +116,12 @@ callers="$(cd "$REPO" && git grep -l 'gh-read.sh' -- scripts | tr '\n' ' ')"
 for w in scripts/lib/go-gate.sh scripts/handover/chief-kit/write-verdict.sh scripts/cr/write-verdicts.sh; do
     lacks "A3 write path $w does not source the read helper" "$w " "$callers"
 done
-# A3b: merge-on-green.sh runs the helper for its reads, so the text list above no longer holds it. What holds
-# instead: the three writes and the four caller-dependent reads stay on the literal gh, and nothing names
-# the read variable beside a write.
-a3b_ok() { # <a merge-on-green.sh>: prints ok, or every rule it breaks
+join_continuations() {
+    awk '{ buf = (buf == "" ? $0 : buf " " $0); if ($0 ~ /\\$/) next; print buf; buf = "" } END { if (buf != "") print buf }' "$1"
+}
+a3b_ok() {
     local f="$1" stm bad="" n v pat
-    # one line per statement: a backslash continuation is joined to the line it continues
-    stm="$(awk '{ buf = (buf == "" ? $0 : buf " " $0); if ($0 ~ /\\$/) next; print buf; buf = "" } END { if (buf != "") print buf }' "$f")"
+    stm="$(join_continuations "$f")"
     n="$(printf '%s\n' "$stm" | grep -cE '"\$[A-Za-z_]+"[[:space:]]+(pr merge|workflow run)|GH_CMD="\$[A-Za-z_]+"[[:space:]]+cr_trigger_post_review')"
     [ "$n" -eq 3 ] || bad="$bad [$n write calls found, want 3]"
     v="$(printf '%s\n' "$stm" | grep -E '"\$[A-Za-z_]+"[[:space:]]+(pr merge|workflow run)|GH_CMD="\$[A-Za-z_]+"[[:space:]]+cr_trigger_post_review' | grep -vE '"\$GH"[[:space:]]+(pr merge|workflow run)|GH_CMD="\$GH"[[:space:]]+cr_trigger_post_review')" || true
