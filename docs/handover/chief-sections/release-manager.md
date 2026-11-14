@@ -73,9 +73,15 @@ release is declared (`jira release state <R>` prints a status other than
   them), and `BRIEF_LINT_VERDICT_TIMEOUT` can only shorten the wait. A judge, consult or
   relay launch is not asked.
 - **A RULING is a `RULING <id> <req> …` line printed by `rm-run`** for a
-  request you wrote. `REFUSED <req>: <why>` is an engine refusal: the request
-  stays claimed, so fix the cause (a missing sector, an uncovered authority)
-  and run `rm-run` again. `PENDING <id>` is a ruling Jira did not fully take. If
+  request you wrote. `REFUSED <req>: <why>` is an engine refusal: the request is
+  closed, so fix the cause (a missing sector, an uncovered authority) and file it
+  again, which opens a new request id. Only `REFUSED <req>: the judge returned no
+  decision` leaves the request claimed for the next `rm-run`. `HELD <req>: <why>`
+  means the judge could not rule it and nothing was ruled: a version-repair request
+  is set aside as held and leaves the queue, and any other request stays claimed. A held one
+  shows in the repair's held list until an operator record answers it or the
+  key's Fix Version changes again, and then a repair run withdraws it; you can
+  also withdraw it with `jira release withdraw`. `PENDING <id>` is a ruling Jira did not fully take. If
   Jira took none of it, the next run finishes it by readback. If Jira took part
   of it, the ruling stays `PENDING` on every run until the key's fixVersions
   are fixed by hand in Jira. A run that dies (bank-preflight not
@@ -127,7 +133,14 @@ release is declared (`jira release state <R>` prints a status other than
   backoff from `TICK_RMRUN_MIN_SECS`, capped at 6 h, and `repair-run.log` holds its
   stderr), or `unreviewed` (no `repair-reviewed` marker,
   so the first `jira release repair <R> --apply --repo <owner/name>` is yours, after
-  a dry run). With the marker the tick launches the apply itself, detached, only when
+  a dry run). That first apply is the station's first repair run. Run the same
+  command without `--apply` first: the dry run writes nothing, prints the lanes and
+  looks up at most 20 merged PRs, so `capped: true` means some keys wait for a later
+  run. The apply files at most 20 requests and 20 folds per run, each only after a
+  live Jira read agrees with the mirror, so a long fold lane takes many runs. It
+  writes `repair-held.json`, and on a clean finish the `repair-reviewed` marker,
+  which turns the tick's own runs on. Run it from your console: a worker you
+  spawned is refused. With the marker the tick launches the apply itself, detached, only when
   the run signature (leak set plus the operator, requests, journal and mirror
   heads) changed, or when the last launch left no end record; it never writes a Fix Version. What you do: put the held batch
   in one line of the milestone report's "Blocked on you" list (the path, the
