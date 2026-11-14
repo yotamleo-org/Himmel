@@ -43,6 +43,7 @@ export interface Ctx {
   now: () => Date;
   jira: JiraPort;
   mirrorRoot: string | null;
+  deliveredPr?: (key: string) => number | undefined;
   procRoot?: string;
   hostNsPath?: string;
 }
@@ -282,22 +283,26 @@ export function declare(ctx: Ctx, o: { project: string; versions: string[]; deci
       verbatim: 'standing record: an evidenced emergency (Highest or Blocker, a red main run, or a regression of a merged PR) is placed in the current version',
     });
     appendOperator(ctx, k, { id: `O-${ctx.release}-blocker-pull`, kind: 'blocker-pull', decision: BLOCKER_PULL_DECISION, verbatim: BLOCKER_PULL_VERBATIM });
+    appendOperator(ctx, k, { id: `O-${ctx.release}-delivered-follows-merge`, kind: 'delivered-follows-merge', decision: DELIVERED_DECISION, verbatim: DELIVERED_VERBATIM });
     return decl;
   });
 }
+
+const DELIVERED_DECISION = '929';
+const DELIVERED_VERBATIM = 'standing record: a ticket whose work merges while it sits in a later version moves to the version open at merge time ("471 standing it should move to 1.1.3")';
 
 // Decision 385: a blocker of a current-version ticket is fixed in the current version as its related item.
 const BLOCKER_PULL_DECISION = '385';
 const BLOCKER_PULL_VERBATIM = 'standing record: a blocker of a ticket in the current version is placed in the current version as its related item';
 
 // The standing records a release declared before they existed take their row from the chief here.
-export function standing(ctx: Ctx, o: { kind: 'blocker-pull'; decision: string; verbatim: string }): OperatorRow {
+export function standing(ctx: Ctx, o: { kind: 'blocker-pull' | 'delivered-follows-merge'; decision: string; verbatim: string }): OperatorRow {
   operatorFence(ctx);
-  if (o.kind !== 'blocker-pull') throw new Error('release operator standing: --kind is blocker-pull');
+  if (o.kind !== 'blocker-pull' && o.kind !== 'delivered-follows-merge') throw new Error('release operator standing: --kind is blocker-pull or delivered-follows-merge');
   return locked(ctx, (l) => {
-    const id = `O-${ctx.release}-blocker-pull`;
+    const id = `O-${ctx.release}-${o.kind}`;
     if (l.operator.verified.some((x) => x.id === id)) throw new Error(`release operator standing: ${id} is already recorded`);
-    return appendOperator(ctx, l.k, { id, kind: 'blocker-pull', decision: o.decision, verbatim: o.verbatim });
+    return appendOperator(ctx, l.k, { id, kind: o.kind, decision: o.decision, verbatim: o.verbatim });
   });
 }
 
@@ -1266,6 +1271,32 @@ function checkBlockerPull(ctx: Ctx, p: {
   return true;
 }
 
+function checkDelivered(ctx: Ctx, p: {
+  decl: Declaration; ops: Map<string, OperatorRow>; governing: OperatorRow | undefined; key: string; op: Op; authority: Authority; req: RequestRow;
+}): boolean {
+  const standingRow = p.authority.kind === 'operator' && p.authority.ref ? p.ops.get(p.authority.ref) : undefined;
+  if (standingRow?.kind !== 'delivered-follows-merge') return false;
+  if (!scopeOk({ authority: p.authority, key: p.key, op: p.op }, p.ops, p.decl.current)) {
+    throw new Error(`release rule: ${p.authority.ref} does not cover ${p.key} ${p.op.kind} ${p.op.from_v}→${p.op.to_v}`);
+  }
+  const snap = readMirror(ctx.mirrorRoot).issues?.get(p.key);
+  const from = p.op.from_v;
+  if (!snap || !from || !snap.fixVersions.includes(from) || snap.fixVersions.includes(p.decl.current)) {
+    throw new Error(`release rule: delivered-follows-merge: ${p.key} no longer sits in ${from ?? 'a later version'} outside ${p.decl.current}`);
+  }
+  const t = terminalOf(snap);
+  if (t !== 'Done' && t !== 'Duplicate') throw new Error(`release rule: delivered-follows-merge: ${p.key} is ${t ?? 'not closed'}, not delivered`);
+  const evidence = mergeEvidenceFor(p.req, t, ctx.deliveredPr);
+  if (!evidence || evidence !== p.authority.delivered) {
+    throw new Error(`release rule: delivered-follows-merge: ${p.key} has no verifiable merge evidence (${p.authority.delivered ?? 'none'})`);
+  }
+  const g = p.governing;
+  if (g && Date.parse(g.ts) > Date.parse(standingRow.ts)) {
+    throw new Error(`release rule: CONFLICT ${p.key}: ${g.id} (newer) ${g.op} ${vName(g.from_v ?? null)}→${vName(g.to_v ?? null)} governs ${p.key}; its work merged`);
+  }
+  return true;
+}
+
 // The operator's newest decision naming the key, whatever version it touches: the key's latest word.
 const keyNewestDecision = (rows: OperatorRow[], key: string): OperatorRow | undefined =>
   rows.filter((x) => x.kind === 'decision' && (x.keys ?? []).includes(key)).sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts)).pop();
@@ -1314,7 +1345,8 @@ export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
     let authority = o.authority;
     let op = o.op;
     const restored = restoreAsAdd(req.verb, o.op, governing, keyNewestDecision(l.operator.verified, req.key));
-    const pulling = checkBlockerPull(ctx, { decl: l.decl, ops, governing, key: req.key, op: o.op, authority });
+    const checked = { decl: l.decl, ops, governing, key: req.key, op: o.op, authority, req };
+    const pulling = checkBlockerPull(ctx, checked) || checkDelivered(ctx, checked);
     for (const v of l.decl.versions) {
       if (!effectOn(o.op, v) && !(o.op.kind === 'none' && (o.op.from_v === v || o.op.to_v === v))) continue;
       const rec = recordOf(s, req.key, v);
@@ -1594,6 +1626,7 @@ export interface RuledDecision {
   authority?: Authority['kind'];
   ref?: string | null;
   blocks?: string[];
+  delivered?: string;
 }
 
 export type Decision = HoldDecision | RuledDecision;
@@ -1610,16 +1643,64 @@ function pullDecision(now: Loaded, mirror: ReturnType<typeof readMirror>, q: Req
   const snap = mirror.issues?.get(q.key);
   if (snap?.fixVersions.includes(q.to_v)) return { noop: `${q.key} is already in ${q.to_v}; nothing to pull` };
   const op: Op = { kind: q.from_v ? 'move' : 'add', from_v: q.from_v, to_v: q.to_v };
-  const s = reduceLoaded(now, mirror);
-  const supersedes = [...new Set(now.decl.versions.filter((v) => effectOn(op, v)).flatMap((v) => recordOf(s, q.key, v)?.ruling ?? []))];
   return {
     req: q.req, outcome: 'ADMIT', op: op.kind, from: q.from_v, to: q.to_v, sector: snap?.sector ?? null, ground: 'blocker-pull',
     reason: `blocks ${blocks.join(', ')} in ${now.decl.current}; standing rule ${id} (decision ${BLOCKER_PULL_DECISION})`,
-    supersedes, authority: 'operator', ref: id, blocks,
+    supersedes: supersedesOf(now, mirror, q.key, op), authority: 'operator', ref: id, blocks,
+  };
+}
+
+function supersedesOf(now: Loaded, mirror: ReturnType<typeof readMirror>, key: string, op: Op): string[] {
+  const s = reduceLoaded(now, mirror);
+  return [...new Set(now.decl.versions.filter((v) => effectOn(op, v)).flatMap((v) => recordOf(s, key, v)?.ruling ?? []))];
+}
+
+function duplicateOf(evidence: unknown): string | undefined {
+  const original = (evidence as { duplicate_of?: unknown } | null)?.duplicate_of;
+  return typeof original === 'string' && ISSUE_KEY.test(original) ? original : undefined;
+}
+
+function mergeEvidenceFor(q: RequestRow, t: 'Done' | 'Duplicate', lookup?: (key: string) => number | undefined): string | undefined {
+  if (!lookup) return undefined;
+  const original = t === 'Duplicate' ? duplicateOf(q.evidence) : undefined;
+  const found = lookup(q.key) ?? (original ? lookup(original) : undefined);
+  return found !== undefined ? `PR #${found}` : undefined;
+}
+
+function deliveredDecision(now: Loaded, mirror: ReturnType<typeof readMirror>, q: RequestRow, lookup?: (key: string) => number | undefined): RuledDecision | null {
+  const id = `O-${now.decl.release}-delivered-follows-merge`;
+  if (!now.operator.verified.some((x) => x.id === id && x.kind === 'delivered-follows-merge')) return null;
+  const { current, versions } = now.decl;
+  if (q.verb !== 'INTAKE' || q.to_v !== current) return null;
+  const snap = mirror.issues?.get(q.key);
+  if (!snap || snap.fixVersions.includes(current)) return null;
+  const t = terminalOf(snap);
+  if (t !== 'Done' && t !== 'Duplicate') return null;
+  const from = versions.find((v) => v !== current && snap.fixVersions.includes(v));
+  if (!from || q.from_v !== from) return null;
+  const evidence = mergeEvidenceFor(q, t, lookup);
+  if (!evidence) return null;
+  const op: Op = { kind: 'move', from_v: from, to_v: current };
+  return {
+    req: q.req, outcome: 'ADMIT', op: op.kind, from, to: current, sector: snap.sector ?? null, ground: 'delivered-follows-merge',
+    reason: `${q.key} is ${t} with ${evidence}; merged work follows its merge version ${current}; standing rule ${id} (decision ${DELIVERED_DECISION})`,
+    supersedes: supersedesOf(now, mirror, q.key, op), authority: 'operator', ref: id, delivered: evidence,
   };
 }
 
 const isHold = (d: Decision): d is HoldDecision => d.outcome === 'HOLD';
+
+const authorityOf = (d: RuledDecision): Authority =>
+  ({ kind: d.authority ?? 'rm', ref: d.ref ?? null, ...(d.blocks ? { blocks: d.blocks } : {}), ...(d.delivered ? { delivered: d.delivered } : {}) });
+
+function deliveredDecisions(now: Loaded, mirror: ReturnType<typeof readMirror>, claimed: RequestRow[], lookup?: (key: string) => number | undefined): Map<string, RuledDecision> {
+  const out = new Map<string, RuledDecision>();
+  for (const q of claimed) {
+    const got = isPullRequest(q) ? null : deliveredDecision(now, mirror, q, lookup);
+    if (got) out.set(q.req, got);
+  }
+  return out;
+}
 
 // Everything a ruling weighs, read from disk: a standing session kept nothing else that counts.
 export interface JudgeInput {
@@ -1849,9 +1930,10 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
     if (claimed.length) {
       const now = loadOrThrow(ctx);
       // A standing blocker pull is ruled mechanically; only the other requests go to the judge.
-      const asked = claimed.filter((q) => !isPullRequest(q));
-      const keys = new Set(asked.map((r) => r.key));
       const mirror = readMirror(ctx.mirrorRoot);
+      const delivered = deliveredDecisions(now, mirror, claimed, ctx.deliveredPr);
+      const asked = claimed.filter((q) => !isPullRequest(q) && !delivered.has(q.req));
+      const keys = new Set(asked.map((r) => r.key));
       const receipted = now.rulings.verified.filter((r) => r.phase === 'receipted');
       const issues = (await Promise.all([...keys].map((k) => issueFor(ctx, k, mirror.issues?.get(k))))).flatMap((i) => i ?? []);
       halt();
@@ -1877,7 +1959,7 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
       for (const q of claimed) {
         halt();
         let id: string;
-        let d = decisions.find((x) => x?.req === q.req);
+        let d = delivered.get(q.req) ?? decisions.find((x) => x?.req === q.req);
         const pulled = isPullRequest(q);
         try {
           if (pulled) {
@@ -1903,7 +1985,7 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
           id = rule(rctx, {
             req: q.req, outcome: d.outcome, op: { kind: d.op, from_v: d.from ?? null, to_v: d.to ?? null }, sector: d.sector ?? '',
             ground: d.ground ?? '', reason: d.reason ?? '', supersedes: d.supersedes ?? [],
-            authority: { kind: d.authority ?? 'rm', ref: d.ref ?? null, ...(d.blocks ? { blocks: d.blocks } : {}) },
+            authority: authorityOf(d),
           }).id;
         } catch (e) {
           lines.push(`REFUSED ${q.req}: ${(e as Error).message}`);

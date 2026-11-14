@@ -37,6 +37,7 @@ export interface Authority {
   ref: string | null;
   // The current-version tickets a blocker pull unblocks; required by O-<R>-blocker-pull.
   blocks?: string[];
+  delivered?: string;
 }
 
 export interface RulingRow {
@@ -61,7 +62,7 @@ export interface RulingRow {
   mac?: string;
 }
 
-export type OperatorKind = 'declare' | 'freeze' | 'decision' | 'takeover' | 'emergency' | 'blocker-pull' | 'spec' | 'spec-review' | 'core-bypass' | 'core-snapshot' | 'out-of-version';
+export type OperatorKind = 'declare' | 'freeze' | 'decision' | 'takeover' | 'emergency' | 'blocker-pull' | 'delivered-follows-merge' | 'spec' | 'spec-review' | 'core-bypass' | 'core-snapshot' | 'out-of-version';
 
 export interface OperatorRow {
   id: string;
