@@ -182,7 +182,7 @@ if [ -f "$LOG" ]; then
     logtail=$(tail -n 500 "$LOG" 2>/dev/null | ts_merge_rows 2>/dev/null | jq -Rc 'fromjson? // empty' 2>/dev/null) # swallow-ok: an unreadable log leaves the log-based classes empty and the health row above stands
 fi
 partials=""
-lastmerge="" # "<KEY>\t<ts>\t<pr>" per key: its newest merge row that carries a contract and a PR number
+lastmerge=""
 OWN_ROWS=$(mktemp "${TMPDIR:-/tmp}/status-drift-owner.XXXXXX" 2>/dev/null) || OWN_ROWS="" # swallow-ok: no temp file means ts_owner reads the log per key
 [ -z "$OWN_ROWS" ] || trap 'rm -f "$OWN_ROWS"' EXIT
 if [ -f "$LOG" ]; then
@@ -324,29 +324,20 @@ ts_read_jira() { # <KEY> - the batch row, else the lib's own get
 }
 { [ -f "$SNAP/prs.json" ] && [ -f "$SNAP/threads.tsv" ]; } 2>/dev/null || SNAP=""
 
-# An ISO time with a Z or numeric offset to epoch seconds, for jq (the version drift check and the comment times read it).
 VD_EP='def ep: [sub("\\.[0-9]+"; "") | capture("^(?<d>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})(?<z>Z|[+-][0-9]{2}:?[0-9]{2})$")]
     | if length == 1 then .[0] else error("not a time") end | (.d + "Z" | fromdateiso8601) - (if .z == "Z" then 0 else ((.z[1:3] | tonumber) * 3600 + (.z[-2:] | tonumber) * 60) * (if .z[0:1] == "+" then 1 else -1 end) end);'
 
-# CLOSE-OR-DISPATCH: how long a started, ownerless ticket may go with no event before it is the operator's close ask.
 COD_AGE_SECONDS=$((72 * 3600))
-# cod_comment_epoch <KEY> - the newest comment's epoch: the mirror's `### <author> — <time>` heads, else the live
-# `<author><TAB><time>` lines. Empty when none reads, which leaves the merge row and the worker docs to decide.
 cod_comment_epoch() {
     ticket_comments "$1" | awk -F'\t' -v re='^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9:.]+(Z|[+-][0-9][0-9]:?[0-9][0-9])$' '
         /^### / { n = split($0, a, " — "); if (n > 1 && a[n] ~ re) print a[n]; next }
         NF >= 2 && $2 ~ re { print $2 }' | jq -Rr "$VD_EP"'try ep catch empty' 2>/dev/null | sort -n | tail -n 1 # swallow-ok: an unreadable comment time is no event, and the merge row and the worker docs still decide
 }
-# cod_ask <KEY> <fallback> - the words after `Remaining:` in the newest ticket comment that has them (one line, no bar, at most
-# 120 characters), else the fallback.
 cod_ask() {
     local t
     t=$(ticket_comments "$1" | grep 'Remaining:' | tail -n 1 | sed 's/^.*Remaining:[[:space:]]*//' | tr -d '|\r' | tr '\t' ' ' | jq -Rr '.[0:120]' 2>/dev/null) # swallow-ok: an unreadable comment leaves the fallback ask
     printf '%s\n' "${t:-$2}"
 }
-# cod_raise <KEY> <status> <fallback ask> - rc 0 after adding the CLOSE-OR-DISPATCH row: the ticket is In Progress, its newest
-# merge row carries a PR, and that row, each worker doc of the key (`owners`) and the newest Jira comment are all over
-# COD_AGE_SECONDS old. rc 1 raises nothing and leaves the caller's UNOWNED row.
 cod_raise() {
     local key=$1 st=$2 lm mts pr newest e d ce ask when age
     [ "$st" = "In Progress" ] || return 1
@@ -462,7 +453,6 @@ while IFS= read -r key; do
                         d6n) cfb="the chief's decision on the remainder" ;;
                         *) cfb="a RESUME worker for the remainder" ;;
                     esac
-                    # a hold is a named owner's wait: its overdue row stays UNOWNED
                     { [ "$held" = 0 ] && [ "$osrc" != hold ] && cod_raise "$key" "$jstatus" "$cfb"; } \
                         || add UNOWNED "$key" "$jstatus with no open PR and no live owner, awaiting $wwho since $osince and overdue (due $odue)$whint" "$wwriter" "$wfix"
                 fi ;;
