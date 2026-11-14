@@ -5,7 +5,6 @@
 #  a. denied/guard-pr-check-literal with identical retry in 2 distinct workers files exactly ONE ticket,
 #     whose body passes the alphabet check and carries no canary;
 #  b. a third worker adds one comment and no ticket; a run with no new worker writes nothing;
-#  c. a 4th class on the same day files too: the router has no daily create cap;
 #  d. a denied/classifier:* recurrence writes one memory-inbox candidate;
 #  e. two chained sessions of one worker (N500 + N500b) do not trip recurrence;
 #  f. every decision has exactly one decision-log line.
@@ -371,7 +370,9 @@ check "the dry run prints would-file for all four classes and no would-cap" '[ "
 n23="$(calls create)"
 python3 "$FR" route --ledger "$F23/l.jsonl" --state "$F23/s.json" --log "$F23/log" --inbox "$F23/inbox" --now "$NOW" --jira-bin "$STUB/jira" >/dev/null 2>&1
 check "a live run makes four creates and logs four filed lines and no capped line" '[ "$(calls create)" = "$((n23 + 4))" ] && [ "$(decs "$F23/log" | jq -r "select(.decision == \"filed\") | .class" | grep -c .)" = 4 ] && ! decs "$F23/log" | grep -q capped'
-check "negative control: a rerun the same day with no new worker files and comments nothing" '[ "$(python3 "$FR" route --ledger "$F23/l.jsonl" --state "$F23/s.json" --log "$F23/log" --inbox "$F23/inbox" --now "$NOW" --jira-bin "$STUB/jira" >/dev/null 2>&1; calls create)" = "$((n23 + 4))" ]'
+nr23="$(calls comment)"
+python3 "$FR" route --ledger "$F23/l.jsonl" --state "$F23/s.json" --log "$F23/log" --inbox "$F23/inbox" --now "$NOW" --jira-bin "$STUB/jira" >/dev/null 2>&1; rc23=$?
+check "negative control: a rerun the same day with no new worker exits 0, files nothing and comments nothing" '[ "$rc23" = 0 ] && [ "$(calls create)" = "$((n23 + 4))" ] && [ "$(calls comment)" = "$nr23" ]'
 LED="$F23/l.jsonl"; row N3 denied/cap-one 1; LED="$SAVE"
 printf 'HIMMEL-9101\tTask\tTo Do\tcap-one\n' >"$STUB/list.fl-denied-cap-one"
 jq '.classes["denied/cap-one"].ticket = "HIMMEL-9101"' "$F23/s.json" >"$F23/s.tmp" && mv "$F23/s.tmp" "$F23/s.json"

@@ -6,7 +6,6 @@
 #  1. a zero-failure day writes "no failures" and sends nothing;
 #  2. the default run is the router's dry-run: no Jira call, no router state or log;
 #  3. --live routes through the router: one ticket filed through the stub, one Telegram line;
-#  4. no daily create cap: an old state file carrying a create count still files (live and dry-run);
 #  5. the two unreliable trajectory signals never reach the digest;
 #  6. new vs recurring classes; a quiet day (no new class, nothing routed) sends nothing;
 #  7. the daily-note section is upserted, never duplicated;
