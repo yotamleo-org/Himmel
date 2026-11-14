@@ -30,6 +30,11 @@
 #   ghq_routes <caller>                 the tokens a caller's reads ride: read,main or main
 #   ghq_scan_token <caller>             the token a scan gates on: read when its reads ride
 #                                       the read token and one is configured, else main
+#   ghq_scan_gate_routed <token> <bucket> <caller>
+#                                       ghq_scan_gate on <token>; for read, also on main
+#                                       unless the read row is ok, since a refused read
+#                                       token (a 401) is retried on main
+#   ghq_row_ok <token> <bucket>         rc 0 when quota.tsv holds an ok row for it
 #
 # Numbers, one job each:
 #   GH_BUDGET_FLOOR      200   a gate's wait (gh-graphql-budget.sh), and quota return
@@ -94,6 +99,19 @@ ghq_scan_token() {
         *,read,*) [ -z "$(_ghb_read_token)" ] || { echo read; return 0; } ;;
     esac
     echo main
+}
+
+ghq_scan_gate_routed() {
+    local tok="${1:-}" bucket="${2:-}" caller="${3:-}"
+    if [ "$tok" = read ]; then
+        ghq_scan_gate read "$bucket" "$caller" || return $?
+        ghq_row_ok read "$bucket" && return 0
+    fi
+    ghq_scan_gate main "$bucket" "$caller"
+}
+
+ghq_row_ok() {
+    ghq_read "${1:-}" "${2:-}" && [ "$GHQ_STATE" = ok ]
 }
 
 _ghq_observed() {

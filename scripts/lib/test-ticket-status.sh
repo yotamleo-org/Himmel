@@ -548,6 +548,11 @@ qplant_read "$tmp/q-rout" 0 refused
 check "9479 T11: the scan gate pauses on the read token's row" "$(QROOT="$tmp/qroot" qderive "$tmp/q-rout")" "no-write/miss/gh/"
 check "9479 T11: the pause line names the read token" "$(grep -c '^QUOTA-PAUSE github graphql token=read remaining=0 .* caller=ticket-status nothing-was-judged$' "$tmp/qerr")" 1
 check "9479 T11: a paused derive makes no gh call" "$(wc -l < "$tmp/qgh.log" | tr -d ' ')" 0
+qplant "$tmp/q-r401" 0 refused
+printf 'read\tgraphql\t-\t-\t-\t%s\tunreadable\nread\tcore\t-\t-\t-\t%s\tunreadable\n' "$(date +%s)" "$(date +%s)" >> "$tmp/q-r401/quota.tsv"
+check "9479 T11: a read token that probes unreadable (a 401) gates on main's row, and main at 0 pauses the derive" "$(QROOT="$tmp/qroot" qderive "$tmp/q-r401")" "no-write/miss/gh/"
+check "9479 T11: that pause line names main" "$(grep -c '^QUOTA-PAUSE github graphql token=main remaining=0 .* caller=ticket-status nothing-was-judged$' "$tmp/qerr")" 1
+check "9479 T11: and no read went out" "$(wc -l < "$tmp/qgh.log" | tr -d ' ')" 0
 check "9479 T11 RED control: with no read token configured the derive reads on main, as today" "$(qderive "$tmp/q-rok")" "In Progress///D5"
 check "9479 T11 RED control: the PR list goes out on main" "$(grep -c '^main pr list$' "$tmp/qgh.log.tok")" 1
 

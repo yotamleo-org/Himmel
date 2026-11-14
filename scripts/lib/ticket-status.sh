@@ -103,7 +103,7 @@ ts_scan_gate() {
     tok=$(ghq_scan_token "$who")
     for bucket in "$@"; do
         rc=0
-        line=$(HIMMEL_QUOTA_DIR="${HIMMEL_QUOTA_DIR:-$(ts_state_dir)/quota}" ghq_scan_gate "$tok" "$bucket" "$who") || rc=$?
+        line=$(HIMMEL_QUOTA_DIR="${HIMMEL_QUOTA_DIR:-$(ts_state_dir)/quota}" ghq_scan_gate_routed "$tok" "$bucket" "$who") || rc=$?
         [ "$rc" -eq 75 ] || continue
         printf '%s\n' "$line" >&2
         return 75

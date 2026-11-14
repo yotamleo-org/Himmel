@@ -233,10 +233,14 @@ nd_pause() {
 }
 nd_tok=main
 [ -z "${ND_GH_READ:-}" ] || nd_tok=$(ghq_scan_token next-dispatchable)
-export ND_TOK="$nd_tok"
 for nd_bucket in graphql core; do
-    nd_line=$(ghq_scan_gate "$nd_tok" "$nd_bucket" next-dispatchable) || { [ $? -ne 75 ] || nd_pause "$nd_line"; }
+    nd_line=$(ghq_scan_gate_routed "$nd_tok" "$nd_bucket" next-dispatchable) || { [ $? -ne 75 ] || nd_pause "$nd_line"; }
 done
+if [ "$nd_tok" = read ] && ! { ghq_row_ok read graphql && ghq_row_ok read core; }; then
+    nd_tok=main
+    unset ND_GH_READ
+fi
+export ND_TOK="$nd_tok"
 nd_deadline="${NEXT_DISPATCH_DEADLINE:-400}"
 case "$nd_deadline" in ''|*[!0-9]*) nd_deadline=400 ;; esac
 nd_out=$(mktemp "${TMPDIR:-/tmp}/next-dispatch-out.XXXXXX") || exit 1
