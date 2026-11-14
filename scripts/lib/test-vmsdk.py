@@ -2344,7 +2344,7 @@ class TestTriggerClaude(unittest.TestCase):
         self.assertIn("long_gap", str(cm.exception))
 
     def test_scheduled_without_cwd_omits_cwd_flag(self):
-        """CR finding 1: no explicit cwd -> --cwd must be ABSENT so
+        """No explicit cwd -> --cwd must be ABSENT so
         arm-resume.sh's own priority (--cwd > resume_cwd: frontmatter >
         auto-detect) runs, instead of an implicit default silently overriding
         resume_cwd: / hard-failing a resume_worktree: handover (--cwd and
@@ -2386,7 +2386,7 @@ class TestTriggerClaude(unittest.TestCase):
         self.assertIn("arm-resume", str(cm.exception))
 
     def test_scheduled_arm_run_exception_wrapped_as_vmerror(self):
-        """CR finding 4: a raw exception from self.run (e.g. a
+        """A raw exception from self.run (e.g. a
         socket timeout) during the arm-resume call must surface as a clean
         VMError, not a raw traceback from the new CLI verb."""
         vm = self._vm()
@@ -2396,7 +2396,7 @@ class TestTriggerClaude(unittest.TestCase):
                 vm.trigger_claude(str(self.local), when="22:30")
 
     def test_missing_handover_raises_vmerror_not_raw_exception(self):
-        """CR finding 3: Path(...).resolve() does not require
+        """Path(...).resolve() does not require
         existence — the hoisted is_file() check must raise a clean VMError
         before the digest read, not a raw FileNotFoundError, and push_file
         must never be reached."""
@@ -2535,7 +2535,7 @@ class TestStation(unittest.TestCase):
 
     def test_vm_entry_back_compat_unchanged(self):
         """Existing (non-station) registry entries with NO literal 'user' key
-        behave exactly as before the station kind existed: kind defaults to "vm", auth
+        behave as VM entries: kind defaults to "vm", auth
         defaults to "password", loopback host/port, user_env/pass_env auth.
         Uses a throwaway registry (not the real ubuntu_new entry, which now
         carries a literal 'user' — see TestConstruction's literal-precedence
@@ -2615,7 +2615,7 @@ class TestStation(unittest.TestCase):
     def test_ssh_no_user_anywhere_raises_clear_vmerror(self):
         """No registry user AND no ssh_config User for the alias -> a clear
         VMError naming the entry + both places a user can be set, instead of
-        paramiko.connect(username=None) failing cryptically (CR round-1)."""
+        paramiko.connect(username=None) failing cryptically."""
         vm = self._vm(user=None)
 
         class _FakeSSH:
@@ -2666,7 +2666,7 @@ class TestStation(unittest.TestCase):
     def test_sync_repo_station_pins_registry_user_at_alias(self):
         """Registry user must be pinned as user@alias, so sync_repo can't drift
         from ssh()'s resolved user when the registry user differs from
-        ssh_config's User for the same Host (CR round-1)."""
+        ssh_config's User for the same Host."""
         vm = self._vm(user="testuser")
         calls = []
         def fake_run(argv, **kwargs):

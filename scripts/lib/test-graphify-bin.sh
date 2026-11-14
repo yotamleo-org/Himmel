@@ -495,7 +495,7 @@ make_fake_graphify_venv() { # <tooldir> <version> -> echoes the fake package dir
 case "\$2" in
   *__file__*)              printf '%s\n' "$pkg" ;;
   *importlib.metadata*)    printf '%s\r\n' "$ver" ;;
-  import\ *)               exit 0 ;;   # mcp/openai import probes: a healthy venv
+  import\ *)               exit 0 ;;
   *) exit 1 ;;
 esac
 EOF
