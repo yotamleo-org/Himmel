@@ -2224,7 +2224,7 @@ PFEOF
 pfmk() {
     python3 -I -c 'import json,sys; w=json.load(open(sys.argv[1])); R=sys.argv[4]; exec(sys.argv[3]); json.dump([w],open(sys.argv[2],"w"))' "$CG/pf-base.json" "$CG/$1.json" "$2" "$PF_ROOT"
 }
-pf_lines() { if [ -f "$1" ]; then wc -l < "$1" | tr -d ' '; else echo 0; fi; }  # read-sink-ok: $1 is a brief file this suite wrote under its own temp dir
+pf_lines() { if [ -f "$WORK/$1" ]; then wc -l < "$WORK/$1" | tr -d ' '; else echo 0; fi; }
 pf_contract() { awk '/^> \*\*Contract:\*\*/{f=1} f&&!/^> /{exit} f' "$1"; }
 pf_head() { awk '/^> \*\*You are/{f=1} /^> \*\*Why/{exit} f' "$1"; }
 
@@ -2272,12 +2272,12 @@ ln -s "$REPO" "$PF_ROOT/lnk"
 pf_refuse() {
     local name="$1" wl rl o rc
     pfmk "$name" "w['writes']=$2"
-    wl="$(pf_lines "$WT_LOG")"; rl="$(pf_lines "$ROUTE_LOG")"
+    wl="$(pf_lines wt.log)"; rl="$(pf_lines route.log)"
     o="$(cgrun "$name")"; rc=$?
     case "$o" in *"worker N941: a proof brief writes only .md files in a specs/audits/ directory under $PF_ROOT; its Writes name $3") ok=1 ;; *) ok=0 ;; esac
     [ "$rc" = 1 ] && [ "$ok" = 1 ] && pass "P2 $name: refused, naming $3" || fail "P2 $name: rc=$rc out=$o"
     [ -z "$(find "$CG/b-$name" -type f -print -quit 2>/dev/null)" ] && pass "P2 $name: no brief, launcher or ledger written" || fail "P2 $name: left $(find "$CG/b-$name" -type f)"
-    [ "$(pf_lines "$WT_LOG")" = "$wl" ] && [ "$(pf_lines "$ROUTE_LOG")" = "$rl" ] && pass "P2 $name: no worktree call and no round-status call" || fail "P2 $name: a seam was called"
+    [ "$(pf_lines wt.log)" = "$wl" ] && [ "$(pf_lines route.log)" = "$rl" ] && pass "P2 $name: no worktree call and no round-status call" || fail "P2 $name: a seam was called"
 }
 pf_refuse p2rel "'scripts/x.sh'" 'scripts/x.sh'
 pf_refuse p2abs "'/srv/elsewhere/repo/scripts/x.sh'" '/srv/elsewhere/repo/scripts/x.sh'
