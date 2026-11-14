@@ -411,11 +411,15 @@ rm -rf "$HOME/.himmel" "$TMP/linked-himmel"; mkdir -p "$TMP/linked-himmel"
 printf '{}\n' > "$TMP/linked-himmel/config.json"; ln -s "$TMP/linked-himmel" "$HOME/.himmel"
 run_update "$ADO" --only graph
 installed "U4 symlinked ~/.himmel: the published graph is installed" "$ADO"
+check_has "U4 symlinked ~/.himmel: the semantic pass is marked skipped" "the local semantic pass is skipped" "$UP_OUT"
+check_eq "U4 symlinked ~/.himmel: the stamp left a semantic pass nothing to extract" 0 "$(plan_batch "$ADO")"
 rm -f "$HOME/.himmel"; mkdir -p "$HOME/.himmel"
 make_adopter "$ADO" "$BARE" || exit 1
 printf '{}\n' > "$TMP/linked-config.json"; ln -s "$TMP/linked-config.json" "$HOME/.himmel/config.json"
 run_update "$ADO" --only graph
 installed "U4 symlinked config.json: the published graph is installed" "$ADO"
+check_has "U4 symlinked config.json: the semantic pass is marked skipped" "the local semantic pass is skipped" "$UP_OUT"
+check_eq "U4 symlinked config.json: the stamp left a semantic pass nothing to extract" 0 "$(plan_batch "$ADO")"
 rm -f "$HOME/.himmel/config.json"
 echo "fetch: U4 sub-row a symlinked ~/.himmel whose file holds semantic_api_ok true does not pull, as main does"
 make_adopter "$ADO" "$BARE" || exit 1
@@ -425,6 +429,76 @@ run_update "$ADO" --only graph
 check_eq "U4 sub-row rc 0" 0 "$UP_RC"
 untouched "U4 sub-row linked publisher" "$ADO"
 rm -f "$HOME/.himmel"; mkdir -p "$HOME/.himmel"
+
+export HIMMEL_CONFIG_DIR="$HOME/.himmel" HIMMEL_CONFIG_AUDIT_DIR="$HOME/.himmel/state/config-audit"
+export HIMMEL_CONFIG_AUDIT_ENV_FILE="$TMP/fixture.env" HIMMEL_CONFIG_ALERT_CMD="$TMP/alert-send.sh" HIMMEL_TEST_FIXTURE=1
+export GRAPHMAP_BAT_DIR="$TMP/bat" GRAPHMAP_CRONTAB="$TMP/crontab-fake.sh" HIMMEL_OBSERVABILITY_CONFIG="$TMP/obs.json"
+printf 'ANTHROPIC_API_KEY=sk-ant-api03-u5-fixture\n' > "$TMP/fixture.env"
+mkdir -p "$TMP/stubs" "$TMP/vault" "$TMP/dotenv" "$TMP/cron-state"
+printf '#!/bin/sh\nexit 0\n' > "$TMP/stubs/graphify"; cp "$TMP/stubs/graphify" "$TMP/stubs/claude"; chmod +x "$TMP/stubs/graphify" "$TMP/stubs/claude"
+printf 'ZAI_API_KEY=dummy-not-a-real-key\n' > "$TMP/dotenv/.env"
+cat > "$TMP/crontab-fake.sh" <<FAKE
+#!/bin/sh
+CSTATE="$TMP/cron-state"
+case "\${1:-}" in
+    -l) if [ -f "\$CSTATE/crontab" ]; then cat "\$CSTATE/crontab"; else echo "no crontab" >&2; exit 1; fi ;;
+    -) cat > "\$CSTATE/crontab" ;;
+    *) exit 64 ;;
+esac
+FAKE
+chmod +x "$TMP/crontab-fake.sh"
+cadence() {
+    env OSTYPE=linux-gnu GRAPHMAP_TEST_MODE=1 GRAPHMAP_DOTENV_ROOT="$TMP/dotenv" PATH="$TMP/stubs:$PATH" \
+        bash "$HERE/luna/graphmap-cadence.sh" arm --vault "$TMP/vault" "$@" >"$TMP/arm.out" 2>&1
+}
+footprint_reset() { rm -rf "$HOME/.himmel" "$GRAPHMAP_BAT_DIR" "$TMP/cron-state/crontab"; mkdir -p "$HOME/.himmel" "$GRAPHMAP_BAT_DIR"; }
+arm_publisher_station() {
+    footprint_reset
+    printf '{"graphify":{"semantic_api_ok":true}}\n' > "$HOME/.himmel/config.json"
+    cadence --ast-only --with-publish --publish-semantic --semantic-active
+}
+ca_watch() { bash "$HERE/lib/config-audit.sh" watch >/dev/null 2>&1; }
+
+echo "fetch: U3 no config file and an armed publish runner does not pull"
+make_adopter "$ADO" "$BARE" || exit 1
+arm_publisher_station; rm -f "$HOME/.himmel/config.json"
+check_has "U3 fixture: the real render holds the lane" "HIMMEL_API_LANE=on" "$(cat "$GRAPHMAP_BAT_DIR/graphmap-publish-himmel.sh" 2>/dev/null)"
+run_update "$ADO" --only graph
+check_eq "U3 rc 0" 0 "$UP_RC"
+untouched "U3 missing config with footprint (a)" "$ADO"
+check_has "U3 says why it did not pull" "cause=missing" "$UP_OUT"
+
+echo "fetch: U4b a symlinked ~/.himmel with the same footprint does not pull"
+make_adopter "$ADO" "$BARE" || exit 1
+arm_publisher_station
+rm -rf "$HOME/.himmel" "$TMP/linked-himmel-b"; mkdir -p "$TMP/linked-himmel-b"; printf '{}\n' > "$TMP/linked-himmel-b/config.json"; ln -s "$TMP/linked-himmel-b" "$HOME/.himmel"
+run_update "$ADO" --only graph
+untouched "U4b symlinked ~/.himmel with footprint (a)" "$ADO"
+
+echo "fetch: U5 a rename-shaped edit after a real watch, with the armed runner, does not pull"
+make_adopter "$ADO" "$BARE" || exit 1
+arm_publisher_station; ca_watch
+printf '{"graphify":{"salus_ollama_cloud_ok":true}}\n' > "$HOME/.himmel/config.json"; ca_watch
+run_update "$ADO" --only graph
+untouched "U5 rename-shaped edit" "$ADO"
+check_has "U5 says why it did not pull" "cause=publisher-key-lost" "$UP_OUT"
+
+echo "fetch: U6 footprints (a) and (b) with the key removed do not pull; leaving the role does"
+make_adopter "$ADO" "$BARE" || exit 1
+arm_publisher_station; ca_watch
+printf '{}\n' > "$HOME/.himmel/config.json"
+run_update "$ADO" --only graph
+untouched "U6 key removed, footprints (a) and (b)" "$ADO"
+bash "$HERE/lib/config-audit.sh" accept >/dev/null 2>&1
+cadence_rc=0; env OSTYPE=linux-gnu GRAPHMAP_TEST_MODE=1 GRAPHMAP_DOTENV_ROOT="$TMP/dotenv" PATH="$TMP/stubs:$PATH" \
+    bash "$HERE/luna/graphmap-cadence.sh" arm --vault "$TMP/vault" --rewrite-armed --leave-publisher >"$TMP/arm.out" 2>&1 || cadence_rc=$?
+check_eq "U6 --leave-publisher exits 0" 0 "$cadence_rc"
+check_eq "U6 the role then reads adopter" adopter "$(node "$HERE/himmelctl/lib/graph-choices.js" role)"
+run_update "$ADO" --only graph
+check_eq "U6 rc 0" 0 "$UP_RC"
+installed "U6 after leaving the role the published graph is installed" "$ADO"
+unset GRAPHMAP_BAT_DIR GRAPHMAP_CRONTAB HIMMEL_OBSERVABILITY_CONFIG HIMMEL_CONFIG_AUDIT_ENV_FILE HIMMEL_CONFIG_ALERT_CMD HIMMEL_TEST_FIXTURE
+rm -rf "$HOME/.himmel" "$TMP/bat"; mkdir -p "$HOME/.himmel"
 
 echo "fetch: --check reports what it would fetch and writes nothing"
 make_adopter "$ADO" "$BARE" || exit 1

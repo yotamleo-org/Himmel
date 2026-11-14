@@ -8328,7 +8328,7 @@ rm -rf "$c91_t"
 c92_t="$(mktemp -d "${TMPDIR:-/tmp}/c92.XXXXXX")" || { echo "FATAL: C92 setup mktemp failed" >&2; exit 1; }
 c92_key="sk-ant-planted-not-a-real-key-c92"
 c92_reset() {
-    rm -rf "${c92_t:?}/home" "${c92_t:?}/credit"; mkdir -p "$c92_t/home/.himmel" "$c92_t/claude" "$c92_t/credit" "$c92_t/bat"
+    rm -rf "${c92_t:?}/home" "${c92_t:?}/credit" "${c92_t:?}/bat" "${c92_t:?}/env"; mkdir -p "$c92_t/home/.himmel" "$c92_t/claude" "$c92_t/credit" "$c92_t/bat"
     printf '{"version":1,"ledger_path":"%s","accounts":{"A":{"organization_id":"org-a","cycle_id":"cycle-a","cap_usd":"50.00"},"B":{"organization_id":"org-b","cycle_id":"cycle-b","cap_usd":"50.00"},"C":{"organization_id":"org-c","cycle_id":"cycle-c","cap_usd":"50.00"}}}' \
         "$c92_t/credit/ledger.json" > "$c92_t/credit/config.json"
     printf '{"graphify":{"semantic_api_ok":true}}\n' > "$c92_t/home/.himmel/config.json"
@@ -8387,9 +8387,24 @@ echo "== C92: an adopter whose route is C, with A tagged -> OK; an unreadable co
 c92_reset; c92_tag A; printf '{"graphify":{"choices":{"version":1,"primary":"C","max_usd_per_pass":5}}}\n' > "$c92_t/home/.himmel/config.json"
 out="$(c92_run)"
 if grepq "$out" 'OK   C92-graph-key-A' && ! grepq "$out" 'WARN C92'; then pass "C92 adopter route C, A tagged -> OK"; else fail "C92 adopter route C -> $out"; fi
+c92_lane_runner() { printf '#!/bin/sh\n_rc=0; HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api graph-cadence.sh --semantic || _rc=$?\n' > "$c92_t/bat/graphmap-publish-himmel.sh"; }
 c92_reset; c92_tag A; printf '{not json' > "$c92_t/home/.himmel/config.json"
 out="$(c92_run)"
-if grepq "$out" 'WARN C92-graph-key-A'; then pass "C92 an unreadable config reads the station walk -> WARN"; else fail "C92 unreadable config -> $out"; fi
+if grepq "$out" 'OK   C92-graph-key-A' && ! grepq "$out" 'WARN C92'; then pass "C92 an unreadable config with no armed publish runner has no auto walk -> OK"; else fail "C92 unreadable config, no runner -> $out"; fi
+c92_reset; c92_tag A; printf '{not json' > "$c92_t/home/.himmel/config.json"; c92_lane_runner
+out="$(c92_run)"
+if grepq "$out" 'WARN C92-graph-key-A'; then pass "C92 an unreadable config with footprint (a) reads the station walk -> WARN"; else fail "C92 unreadable config with footprint (a) -> $out"; fi
+c92_reset; c92_tag A; rm -f "$c92_t/home/.himmel/config.json"; c92_lane_runner
+out="$(c92_run)"
+if grepq "$out" 'WARN C92-graph-key-A'; then pass "C92 a missing config with footprint (a) reads the station walk -> WARN"; else fail "C92 missing config with footprint (a) -> $out"; fi
+echo "== C92: a pinned luna semantic runner reaches its letter even when the walk does not =="
+c92_reset; c92_tag A; c92_roles '{"version":1,"roles":{"graphify":["C"]}}'
+printf '#!/bin/sh\nif [ -e x ]; then :; else HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A GRAPHIFY_OUT=/o bash semantic-update.sh --name luna; fi\n' > "$c92_t/bat/graphmap-semantic-luna.sh"
+out="$(c92_run)"
+if grepq "$out" 'WARN C92-graph-key-A' && grepq "$out" -F "$c92_fix"; then pass "C92 a pinned runner's letter outside the walk -> WARN"; else fail "C92 pinned runner -> $out"; fi
+c92_reset; c92_tag A; c92_roles '{"version":1,"roles":{"graphify":["C"]}}'
+out="$(c92_run)"
+if grepq "$out" 'OK   C92-graph-key-A' && ! grepq "$out" 'WARN C92'; then pass "C92 the same tag with no pinned runner -> OK"; else fail "C92 no pinned runner -> $out"; fi
 
 echo "== C92: A tagged, then A and B tagged -> the doctor's own --json WARN ids, each passing tick.sh's doctor= filter =="
 c92_reset; c92_tag A
@@ -8415,8 +8430,54 @@ if grepq "$out" 'OK   C93-graph-role'; then pass "C93 absent map -> OK"; else fa
 c92_reset; c92_roles '{"version":1,"roles":{"graphify":["A","B","C"]}}'; out="$(c92_run C93)"
 if grepq "$out" 'OK   C93-graph-role'; then pass "C93 valid map -> OK"; else fail "C93 valid -> $out"; fi
 
+echo "== C94: an unreadable graph config WARNs under its own id with the cause and the fix; a readable one is OK =="
+c94_check() {
+    local label="$1" cause="$2"
+    out="$(c92_run C94)"
+    if grepq "$out" 'WARN C94-graph-config' && grepq "$out" -F "cause=$cause" && ! grepq "$out" 'sk-ant'; then pass "C94 $label -> WARN naming cause=$cause"; else fail "C94 $label -> $out"; fi
+}
+c92_reset; printf 'sk-ant-api03-c94-planted-key {\n' > "$c92_t/home/.himmel/config.json"; c94_check "a non-JSON file holding a key-shaped string" not-json
+c92_reset; : > "$c92_t/home/.himmel/config.json"; c94_check "an empty file" empty
+c92_reset; printf '{"graphify":"x"}\n' > "$c92_t/home/.himmel/config.json"; c94_check "a graphify string" graphify-shape
+c92_reset; printf '{}\n' > "$c92_t/real-config.json"; rm -f "$c92_t/home/.himmel/config.json"; ln -s "$c92_t/real-config.json" "$c92_t/home/.himmel/config.json"; c94_check "a symlinked config.json" symlink
+c92_reset; rm -f "$c92_t/home/.himmel/config.json"; mkdir "$c92_t/home/.himmel/config.json"; c94_check "a directory at config.json" not-a-file
+c92_reset; printf '{}\n' > "$c92_t/home/.himmel/config.json"; chmod 000 "$c92_t/home/.himmel/config.json"
+if [ -r "$c92_t/home/.himmel/config.json" ]; then echo "  SKIP  C94 mode row: this user reads mode 000"; else c94_check "a mode-000 file" mode; fi
+chmod 600 "$c92_t/home/.himmel/config.json"
+c92_reset; rm -f "$c92_t/home/.himmel/config.json"; c92_lane_runner; c94_check "a missing file with an armed publish runner" missing
+c92_reset; printf '{}\n' > "$c92_t/home/.himmel/config.json"; c92_lane_runner; c94_check "a file lacking the key with an armed publish runner" publisher-key-lost
+c92_reset; out="$(c92_run C94)"
+if grepq "$out" 'OK   C94-graph-config' && ! grepq "$out" 'WARN C94'; then pass "C94 a readable file (a publisher) -> OK"; else fail "C94 readable -> $out"; fi
+c92_reset; rm -f "$c92_t/home/.himmel/config.json"; out="$(c92_run C94)"
+if grepq "$out" 'OK   C94-graph-config'; then pass "C94 no file and no footprint (an adopter) -> OK"; else fail "C94 adopter -> $out"; fi
+c92_reset; printf 'sk-ant-api03-c19c-planted-key-in-a-short-file' > "$c92_t/home/.himmel/config.json"; out="$(c92_run C94)"
+if ! grepq "$out" 'sk-ant'; then pass "C94 the C19c fixture's output holds no key-shaped string"; else fail "C94 leaked the planted key: $out"; fi
+
+echo "== C88: the lane warning names the runners lane-runners prints; unreadable names C94's fix and --leave-publisher =="
+c88_reset; c88_key_in_env; c88_lane_runner
+printf '#!/bin/sh\nHIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A bash semantic-update.sh\n' > "$c88_t/bat/graphmap-semantic-luna.sh"
+out="$(c88_run)"
+if grepq "$out" -F 'graphmap-publish-himmel.sh, graphmap-semantic-luna.sh)'; then pass "C88 the lane list is lane-runners' list"; else fail "C88 lane list -> $(printf '%s' "$out" | head -4)"; fi
+c88_reset; c88_key_in_env; printf '{}\n' > "$c88_t/home/.himmel/config.json"
+printf '#!/bin/sh\nHIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A bash semantic-update.sh\n' > "$c88_t/bat/graphmap-semantic-luna.sh"
+out="$(c88_run)"
+if grepq "$out" -F '(drops the lane)' && ! grepq "$out" -F 'leave-publisher'; then pass "C88 an adopter's fix still says it drops the lane"; else fail "C88 adopter fix -> $(printf '%s' "$out" | head -4)"; fi
+c88_reset; c88_key_in_env; c88_lane_runner; printf 'this is not json\n' > "$c88_t/home/.himmel/config.json"
+out="$(c88_run)"
+if grepq "$out" 'WARN C88-graph-api-optin' && grepq "$out" -F 'cause=not-json' && grepq "$out" -F 'arm --rewrite-armed --leave-publisher' && ! grepq "$out" -F '(drops the lane)'; then pass "C88 unreadable with a lane runner -> the leave-publisher fix, no drop-the-lane promise"; else fail "C88 unreadable + lane -> $(printf '%s' "$out" | head -4)"; fi
+c88_reset; c88_optin
+out="$(c88_run)"
+if grepq "$out" -F 'arm --rewrite-armed --leave-publisher'; then pass "C88 a publisher's leave-the-role text ends in --leave-publisher"; else fail "C88 publisher text -> $(printf '%s' "$out" | head -4)"; fi
+
+echo "== C88 and C94 both WARN: the doctor's own --json ids carry both, each passing the chief wait's doctor= filter =="
+c92_reset; printf 'this is not json\n' > "$c92_t/home/.himmel/config.json"; c92_lane_runner; printf 'ANTHROPIC_ORG_A_KEY=dummy-not-a-real-key-c94\n' > "$c92_t/env"
+ids="$(c92_ids C88,C94)"
+case "$ids" in ""|*[!0-9A-Za-z_,?.-]*) ids_ok=0 ;; *) ids_ok=1 ;; esac
+if [ "$ids" = "C88-graph-api-optin,C94-graph-config" ] && [ "$ids_ok" = 1 ]; then pass "C94 sits beside a WARN C88: [$ids]"; else fail "C94 masking -> [$ids]"; fi
+
 echo "== C92 and C93 with C88 already WARN: both ids still reach doctor= =="
 c92_reset; c92_tag A; c92_roles '{"version":1,"roles":{"graphify":["A","D"]}}'; printf '{not json' > "$c92_t/home/.himmel/config.json"
+c92_lane_runner; printf 'ANTHROPIC_ORG_A_KEY=dummy-not-a-real-key-c92\n' > "$c92_t/env"
 ids="$(c92_ids C88,C92,C93)"
 if [ "$ids" = "C88-graph-api-optin,C92-graph-key-A,C93-graph-role" ]; then pass "C92 and C93 sit beside a WARN C88: [$ids]"; else fail "C88 masking -> [$ids]"; fi
 chmod -R u+rw "$c92_t" 2>/dev/null

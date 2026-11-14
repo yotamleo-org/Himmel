@@ -6,13 +6,15 @@
 //   out <name>                the corpus's graph directory
 //   pending <name>            the waiting batch's directory, or nothing
 //   sentence [--state S | --fix preflight|credential|helper]
-//   worst-case | remedy | first-question | check
+//   worst-case | remedy | first-question | check | lane-runners | alert-lines <cause>
 //
-// Seams: HIMMEL_CONFIG_DIR (the station dir, default ~/.himmel), the same one config-audit.sh writes.
+// Seams: HIMMEL_CONFIG_DIR (the station dir, default ~/.himmel), HIMMEL_CONFIG_AUDIT_DIR (config-audit's state dir)
+// and GRAPHMAP_BAT_DIR (the runner dir), each the one its writer uses.
 'use strict';
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const crypto = require('crypto');
 
 const HIMMEL_ROOT = path.resolve(__dirname, '..', '..', '..');
 
@@ -39,8 +41,27 @@ const CAUSE_LINES = {
   mode: '~/.himmel/config.json cannot be read by this user; fix its mode (chmod 600 ~/.himmel/config.json)',
   'not-json': '~/.himmel/config.json is not a JSON object; restore it from a config-audit backup (bash scripts/lib/config-audit.sh restore <id>) or fix it by hand',
   empty: '~/.himmel/config.json is empty; restore it from a config-audit backup (bash scripts/lib/config-audit.sh restore <id>)',
-  'graphify-shape': 'the graphify key in ~/.himmel/config.json is not an object; fix it by hand, then run bash scripts/lib/config-audit.sh accept',
+  'graphify-shape': 'the graphify key in ~/.himmel/config.json is not an object (or semantic_api_ok is neither true nor false); fix it by hand, then run bash scripts/lib/config-audit.sh accept',
+  missing: '~/.himmel/config.json is missing while this station publishes the himmel graph (an armed publisher runner or the last healthy read says so)',
+  'publisher-key-lost': 'graphify.semantic_api_ok is no longer true in ~/.himmel/config.json while this station publishes the himmel graph (an armed publisher runner or the last healthy read says so)',
 };
+
+const LEAVE_PUBLISHER = 'to stop publishing on purpose instead, run bash scripts/lib/config-audit.sh accept, then bash scripts/luna/graphmap-cadence.sh arm --rewrite-armed --leave-publisher';
+const FIX_LINES = {
+  symlink: 'replace the symlink with the real file: put the real directory at ~/.himmel and the real config.json in it, then run bash scripts/lib/config-audit.sh accept',
+  'not-a-file': 'replace ~/.himmel/config.json with a regular JSON file by hand (something else is at that path), then run bash scripts/lib/config-audit.sh accept',
+  mode: 'run chmod 600 ~/.himmel/config.json so this user can read it',
+  'not-json': 'restore the config with one of the two restore lines below, or write the file by hand and run bash scripts/lib/config-audit.sh accept',
+  empty: 'restore the config with one of the two restore lines below, or write the file by hand and run bash scripts/lib/config-audit.sh accept',
+  'graphify-shape': 'restore the config with one of the two restore lines below, or fix the graphify key by hand and run bash scripts/lib/config-audit.sh accept',
+  missing: `restore the config with one of the two restore lines below; ${LEAVE_PUBLISHER}`,
+  'publisher-key-lost': `restore the config with one of the two restore lines below; ${LEAVE_PUBLISHER}`,
+};
+const RESTORE_TELEGRAM_LINE = 'restore from Telegram: /config restore <id> <code>';
+const RESTORE_TERMINAL_LINE = 'restore in your own terminal: bash scripts/lib/config-audit.sh restore <id>';
+const BY_HAND_CAUSES = ['symlink', 'not-a-file', 'mode'];
+const CONSENT_KEYS = ['graphify.salus_ollama_cloud_ok', 'graphify.semantic_api_ok', 'graphify.choices.primary', 'graphify.choices.fallbacks', 'graphify.choices.corpora'];
+const BACKUP_ID = /^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}$/;
 
 const ROSTER_LINES = {
   'unreadable-state': 'no API account is set up here, or its roster cannot be read; none is offered',
@@ -72,6 +93,54 @@ function linkedPublisher(file) {
   } catch { return false; }
 }
 
+const sha256 = (text) => crypto.createHash('sha256').update(text).digest('hex');
+const TRUE_DIGEST = sha256('true');
+
+function runnerDir() { return process.env.GRAPHMAP_BAT_DIR || path.join(homeDir(), '.claude', 'graphmap-cadence'); }
+function auditDir() { return process.env.HIMMEL_CONFIG_AUDIT_DIR || path.join(stationDir(), 'state', 'config-audit'); }
+
+function readRegular(file, max = 4 * 1024 * 1024) {
+  try {
+    const st = fs.lstatSync(file);
+    if (!st.isFile() || st.size > max) return null;
+    return fs.readFileSync(file, 'utf8');
+  } catch { return null; }
+}
+
+function readJsonRegular(file) {
+  const text = readRegular(file);
+  if (text === null) return undefined;
+  try { return JSON.parse(text); } catch { return undefined; }
+}
+
+const RUNNER_NAME = /^graphmap-[A-Za-z0-9._-]+\.sh$/;
+const PUBLISH_RUNNER = 'graphmap-publish-himmel.sh';
+
+function laneRunners() {
+  let names;
+  try { names = fs.readdirSync(runnerDir()); } catch { return []; }
+  const out = [];
+  for (const name of names.filter((n) => RUNNER_NAME.test(n)).sort()) {
+    const text = readRegular(path.join(runnerDir(), name), 1024 * 1024);
+    if (text === null || !text.includes('HIMMEL_API_LANE=on')) continue;
+    const m = /HIMMEL_API_ACCOUNT=(\S+)/.exec(text);
+    out.push({ name, pin: m && (m[1] === 'auto' || LETTER.test(m[1])) ? m[1] : '' });
+  }
+  return out;
+}
+
+function publisherFootprint() {
+  const armedPublishRunner = laneRunners().some((r) => r.name === PUBLISH_RUNNER);
+  const w = readJsonRegular(path.join(auditDir(), 'watch.json'));
+  const d = plainObject(w) && plainObject(w['config.json']) ? w['config.json'].digests : null;
+  const healthyReadHeldKey = plainObject(d) && d['graphify.semantic_api_ok'] === TRUE_DIGEST;
+  return { armedPublishRunner, healthyReadHeldKey, any: armedPublishRunner || healthyReadHeldKey };
+}
+
+function missingStation() {
+  return publisherFootprint().any ? { role: 'unreadable', cause: 'missing' } : { role: 'adopter', cause: '', doc: {} };
+}
+
 function readStation() {
   const dir = stationDir();
   const file = configFile();
@@ -79,11 +148,11 @@ function readStation() {
   try {
     if (fs.lstatSync(dir).isSymbolicLink()) return { role: 'unreadable', cause: 'symlink', linked: linkedPublisher(file) };
   } catch (e) {
-    if (e && e.code === 'ENOENT') return { role: 'adopter', cause: '', doc: {} };
+    if (e && e.code === 'ENOENT') return missingStation();
     return { role: 'unreadable', cause: 'mode' };
   }
   try { st = fs.lstatSync(file); } catch (e) {
-    if (e && e.code === 'ENOENT') return { role: 'adopter', cause: '', doc: {} };
+    if (e && e.code === 'ENOENT') return missingStation();
     return { role: 'unreadable', cause: 'mode' };
   }
   if (st.isSymbolicLink()) return { role: 'unreadable', cause: 'symlink', linked: linkedPublisher(file) };
@@ -96,7 +165,12 @@ function readStation() {
   if (!plainObject(doc)) return { role: 'unreadable', cause: 'not-json' };
   if (own(doc, 'graphify') && !plainObject(doc.graphify)) return { role: 'unreadable', cause: 'graphify-shape' };
   const g = doc.graphify || {};
-  return { role: g.semantic_api_ok === true ? 'publisher' : 'adopter', cause: '', doc };
+  if (g.semantic_api_ok === true) return { role: 'publisher', cause: '', doc };
+  if (publisherFootprint().any) {
+    if (own(g, 'semantic_api_ok') && typeof g.semantic_api_ok !== 'boolean') return { role: 'unreadable', cause: 'graphify-shape' };
+    return { role: 'unreadable', cause: 'publisher-key-lost' };
+  }
+  return { role: 'adopter', cause: '', doc };
 }
 
 const LETTER = /^[A-Z]$/;
@@ -248,15 +322,110 @@ function rosterAnswer() {
   } catch { return { accounts: 'unreadable', reason: 'unreadable-state' }; }
 }
 
+function configUsable(doc) {
+  if (!plainObject(doc)) return false;
+  if (own(doc, 'graphify')) {
+    if (!plainObject(doc.graphify)) return false;
+    if (own(doc.graphify, 'semantic_api_ok') && typeof doc.graphify.semantic_api_ok !== 'boolean') return false;
+    if (own(doc.graphify, 'choices') && validateShape(doc.graphify.choices).length) return false;
+  }
+  return true;
+}
+
+const holdsPublisherKey = (doc) => plainObject(doc.graphify) && doc.graphify.semantic_api_ok === true;
+
+function chooseBackup(cause, footprint) {
+  const base = path.join(auditDir(), 'backups');
+  let ids;
+  try { ids = fs.readdirSync(base).filter((d) => BACKUP_ID.test(d)); } catch { return null; }
+  const all = [];
+  for (const id of ids) {
+    const dir = path.join(base, id);
+    const man = readJsonRegular(path.join(dir, 'manifest.json'));
+    if (plainObject(man)) all.push({ id, dir, man });
+  }
+  all.sort((x, y) => ((Number(y.man.ms) || 0) - (Number(x.man.ms) || 0)) || (x.id < y.id ? 1 : -1));
+  const needsKey = cause === 'missing' || cause === 'publisher-key-lost';
+  for (const watcher of [true, false]) {
+    for (const b of all) {
+      if ((b.man.script === 'watch') !== watcher) continue;
+      const doc = readJsonRegular(path.join(b.dir, 'config.json'));
+      if (!configUsable(doc)) continue;
+      const holds = holdsPublisherKey(doc);
+      if ((needsKey || footprint) ? !holds : holds) continue;
+      return { id: b.id, kind: watcher ? 'watch' : 'audited', doc, man: b.man };
+    }
+  }
+  return null;
+}
+
+function leafAt(doc, dotted) {
+  const parts = dotted.split('.');
+  let cur = doc;
+  for (let i = 0; i < parts.length; i++) {
+    if (!plainObject(cur) || !own(cur, parts[i])) return { found: false };
+    cur = cur[parts[i]];
+    if (i < parts.length - 1 && !(plainObject(cur) && Object.keys(cur).length)) return { found: false };
+  }
+  if (plainObject(cur) && Object.keys(cur).length) return { found: false };
+  return { found: true, value: cur };
+}
+
+const printable = (s) => String(s).replace(/[^ -~]/g, '?');
+
+function consentText(key, v) {
+  if (key === 'graphify.choices.primary') return typeof v === 'string' && (v === 'none' || v === 'subscription' || LETTER.test(v)) ? v : '?';
+  if (key === 'graphify.choices.fallbacks') return Array.isArray(v) && v.every(isRouteValue) ? (v.length ? v.join(',') : '(none)') : '?';
+  if (key === 'graphify.choices.corpora') {
+    return Array.isArray(v) && v.every((c) => plainObject(c) && absoluteClean(c.root)) ? (v.length ? v.map((c) => printable(c.root)).join(' ') : '(none)') : '?';
+  }
+  return typeof v === 'boolean' ? String(v) : '?';
+}
+
+function liveSha(file) {
+  try { return sha256(fs.readFileSync(file)); } catch { return null; }
+}
+
+function unreadableLines(station) {
+  const cause = station.cause;
+  const lines = [];
+  const fp = publisherFootprint();
+  lines.push(`cause=${cause}`);
+  if (cause === 'symlink') {
+    lines.push(`linked=${station.linked ? 'publisher' : 'not-publisher'}`);
+    lines.push(`footprint=${fp.any ? 'publisher' : 'none'}`);
+  }
+  lines.push(`graph config unreadable (cause=${cause}): ${CAUSE_LINES[cause]}`);
+  const chosen = BY_HAND_CAUSES.includes(cause) ? null : chooseBackup(cause, fp.any);
+  lines.push(`fix=${chosen ? 'restore' : 'by-hand'}`);
+  if (chosen) {
+    lines.push(`backup=${chosen.id} kind=${chosen.kind}`);
+    const w = readJsonRegular(path.join(auditDir(), 'watch.json'));
+    const digests = plainObject(w) && plainObject(w['config.json']) && plainObject(w['config.json'].digests) ? w['config.json'].digests : {};
+    for (const key of CONSENT_KEYS) {
+      const leaf = leafAt(chosen.doc, key);
+      if (!leaf.found) continue;
+      const marked = digests[key] !== sha256(JSON.stringify(leaf.value));
+      lines.push(`consent ${key} restores=${consentText(key, leaf.value)}${marked ? ' [differs from the last healthy copy]' : ''}`);
+    }
+    const files = plainObject(chosen.man.files) ? chosen.man.files : {};
+    for (const member of ['himmel.conf', 'himmel.conf.local', '.env']) {
+      const f = files[member];
+      if (!plainObject(f) || typeof f.sha256 !== 'string' || typeof f.path !== 'string' || !path.isAbsolute(f.path)) continue;
+      if (liveSha(f.path) !== f.sha256) lines.push(`${member} will also be rolled back`);
+    }
+    lines.push(RESTORE_TELEGRAM_LINE.split('<id>').join(chosen.id));
+    lines.push(RESTORE_TERMINAL_LINE.split('<id>').join(chosen.id));
+  }
+  if (!chosen && !BY_HAND_CAUSES.includes(cause)) lines.push('no usable config backup exists, so no restore line applies: write the file by hand');
+  lines.push(`fix-line: ${FIX_LINES[cause]}`);
+  return lines;
+}
+
 function check() {
   const station = readStation();
   const lines = [`role=${station.role}`];
-  if (station.role === 'unreadable') {
-    lines.push(`cause=${station.cause}`);
-    if (station.cause === 'symlink') lines.push(`linked=${station.linked ? 'publisher' : 'not-publisher'}`);
-    lines.push(`graph config unreadable (cause=${station.cause}): ${CAUSE_LINES[station.cause]}`);
-    return lines;
-  }
+  if (station.role === 'unreadable') return lines.concat(unreadableLines(station));
   const r = route(station);
   lines.push(`state=${r.state}`);
   if (station.role === 'adopter' && r.state === 'default') lines.push(CHECK_DEFAULT_LINE);
@@ -337,16 +506,20 @@ function main(argv) {
     case 'remedy': say(remedy(readStation().role)); return 0;
     case 'first-question': say(firstQuestion()); return 0;
     case 'check': check().forEach(say); return 0;
+    case 'lane-runners': laneRunners().forEach((r) => say(r.pin ? `${r.name} ${r.pin}` : r.name)); return 0;
+    case 'alert-lines':
+      if (!own(FIX_LINES, args[0] || '')) { process.stderr.write('graph-choices: alert-lines needs one of the eight cause words\n'); return 1; }
+      say(`graph config unreadable (cause=${args[0]}): ${CAUSE_LINES[args[0]]}`); say(FIX_LINES[args[0]]); return 0;
     default:
-      process.stderr.write('usage: graph-choices.js role|route [--state]|listed <abs>|root-check <abs>|out <name>|pending <name>|sentence [--state S|--fix F]|worst-case|remedy|first-question|check\n');
+      process.stderr.write('usage: graph-choices.js role|route [--state]|listed <abs>|root-check <abs>|out <name>|pending <name>|sentence [--state S|--fix F]|worst-case|remedy|first-question|check|lane-runners|alert-lines <cause>\n');
       return 2;
   }
 }
 
 module.exports = {
   NO_CHOICE_SENTENCE, NONE_SENTENCE, SET_SENTENCE, INVALID_SENTENCE, CHECK_DEFAULT_LINE, WORST_DEFAULT_LINE,
-  FIX_PREFLIGHT, FIX_CREDENTIAL, FIX_HELPER, ROSTER_LINES, CAUSE_LINES,
-  validateShape, rootCheck, rosterCheck, route, readStation,
+  FIX_PREFLIGHT, FIX_CREDENTIAL, FIX_HELPER, ROSTER_LINES, CAUSE_LINES, FIX_LINES, RESTORE_TELEGRAM_LINE, RESTORE_TERMINAL_LINE,
+  validateShape, rootCheck, rosterCheck, route, readStation, laneRunners,
 };
 
 if (require.main === module) process.exitCode = main(process.argv.slice(2));

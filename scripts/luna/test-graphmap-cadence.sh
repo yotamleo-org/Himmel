@@ -2172,8 +2172,8 @@ run_optin arm --vault "$VAULT" --ast-only --with-publish --publish-semantic --se
 run_optin arm --vault "$VAULT" --luna-only --ast-only --with-luna-semantic --api-account A --semantic-active >/dev/null 2>&1 || true
 assert_contains "fixture: the opted-in publish runner carries the lane" "HIMMEL_API_LANE=on" "$(cat "$CRON_DIR3/graphmap-publish-himmel.sh" 2>/dev/null || echo MISSING)"
 assert_contains "fixture: the opted-in luna semantic runner carries the lane" "HIMMEL_API_LANE=on" "$(cat "$CRON_DIR3/graphmap-semantic-luna.sh" 2>/dev/null || echo MISSING)"
-rc=0; out=$(run_adopter arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
-assert_rc "adopter arm --rewrite-armed exits 0" 0 "$rc"
+rc=0; out=$(run_adopter arm --vault "$VAULT" --rewrite-armed --leave-publisher 2>&1) || rc=$?
+assert_rc "adopter arm --rewrite-armed --leave-publisher exits 0" 0 "$rc"
 publish_sh=$(cat "$CRON_DIR3/graphmap-publish-himmel.sh" 2>/dev/null || echo MISSING)
 sem_sh=$(cat "$CRON_DIR3/graphmap-semantic-luna.sh" 2>/dev/null || echo MISSING)
 assert_not_contains "adopter rewrite drops the lane from the publish runner" "HIMMEL_API_LANE" "$publish_sh"
@@ -2182,7 +2182,7 @@ assert_not_contains "adopter rewrite drops the lane from the luna semantic runne
 assert_not_contains "adopter rewrite drops claude-api from the luna semantic runner" "claude-api" "$sem_sh"
 assert_contains "adopter rewrite keeps the publish worker's skip line" "[$SKIP_TEXT" "$publish_sh"
 assert_contains "adopter rewrite says the API lane is not opted in" "API lane is not opted in" "$out"
-rc=0; out=$(run_adopter arm --vault "$VAULT" --rewrite-armed --dry-run 2>&1) || rc=$?
+rc=0; out=$(run_adopter arm --vault "$VAULT" --rewrite-armed --leave-publisher --dry-run 2>&1) || rc=$?
 assert_not_contains "adopter --rewrite-armed --dry-run plans no lane" "HIMMEL_API_LANE" "$out"
 # the skip line is what remembers the publish runner's semantic mode, so an opt-in plus a re-render restores it
 rc=0; out=$(run_optin arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
@@ -2207,8 +2207,8 @@ OLD_AUTO_FIXTURE="$SCRIPT_DIR/fixtures/graphmap-semantic-luna-old-auto.txt"
 run_optin arm --vault "$VAULT" --ast-only --with-publish --publish-semantic --semantic-active >/dev/null 2>&1 || true
 assert_contains "fixture: the publish runner carries the lane" "HIMMEL_API_LANE=on" "$(cat "$CRON_DIR3/graphmap-publish-himmel.sh" 2>/dev/null || echo MISSING)"
 cp "$OLD_AUTO_FIXTURE" "$CRON_DIR3/graphmap-semantic-luna.sh"
-rc=0; out=$(run_adopter arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
-assert_rc "adopter --rewrite-armed over an old auto luna runner exits 0" 0 "$rc"
+rc=0; out=$(run_adopter arm --vault "$VAULT" --rewrite-armed --leave-publisher 2>&1) || rc=$?
+assert_rc "adopter --rewrite-armed --leave-publisher over an old auto luna runner exits 0" 0 "$rc"
 assert_not_contains "adopter rewrite of an old auto runner drops the publish lane" "HIMMEL_API_LANE" "$(cat "$CRON_DIR3/graphmap-publish-himmel.sh" 2>/dev/null || echo MISSING)"
 sem_sh=$(cat "$CRON_DIR3/graphmap-semantic-luna.sh" 2>/dev/null || echo MISSING)
 assert_not_contains "adopter rewrite of an old auto runner drops the luna lane" "HIMMEL_API_LANE" "$sem_sh"
@@ -2217,8 +2217,8 @@ run_optin arm --vault "$VAULT" --ast-only --with-publish --publish-semantic --se
 # the skip line an earlier arm rendered: no account suffix
 sed 's/_rc=0; if .*; fi || _rc=\$?/_rc=0; echo "[semantic skipped: API lane not opted in (graphify.semantic_api_ok in ~\/.himmel\/config.json)]" || _rc=$?/' "$OLD_AUTO_FIXTURE" > "$CRON_DIR3/graphmap-semantic-luna.sh"
 assert_not_contains "fixture: the old skip line names no lane" "HIMMEL_API_LANE" "$(cat "$CRON_DIR3/graphmap-semantic-luna.sh")"
-rc=0; out=$(run_adopter arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
-assert_rc "adopter --rewrite-armed over an old skip line exits 0" 0 "$rc"
+rc=0; out=$(run_adopter arm --vault "$VAULT" --rewrite-armed --leave-publisher 2>&1) || rc=$?
+assert_rc "adopter --rewrite-armed --leave-publisher over an old skip line exits 0" 0 "$rc"
 assert_not_contains "adopter rewrite of an old skip line drops the publish lane" "HIMMEL_API_LANE" "$(cat "$CRON_DIR3/graphmap-publish-himmel.sh" 2>/dev/null || echo MISSING)"
 assert_contains "adopter rewrite of an old skip line keeps the skip line" "[$SKIP_TEXT" "$(cat "$CRON_DIR3/graphmap-semantic-luna.sh" 2>/dev/null || echo MISSING)"
 # an opted-in station still refuses: a rewrite there would render a lane with no account
@@ -2457,6 +2457,85 @@ assert_contains "fixture: the publish runner holds main's exact skip line" "[$ol
 rc=0; out=$(run_optin arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
 assert_rc "the opted-in rewrite over main's skip line exits 0" 0 "$rc"
 assert_contains "the rewritten publish runner keeps its semantic branch" "GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api" "$(cat "$CRON_DIR3/graphmap-publish-himmel.sh" 2>/dev/null || echo MISSING)"
+run_cron3 disarm >/dev/null 2>&1 || true
+
+echo "TEST: R10 the re-arm rule while the graph config reads unreadable (a broken config keeps footprint (a))"
+R10_HOME="$TMP_ROOT/r10-home"; R10_CFG="$R10_HOME/.himmel/config.json"
+mkdir -p "$R10_HOME/.himmel"
+r10_env() {
+    HOME="$R10_HOME" HIMMEL_CONFIG_DIR="$R10_HOME/.himmel" HIMMEL_CONFIG_AUDIT_DIR="$R10_HOME/.himmel/state/config-audit" \
+        GRAPHMAP_DOTENV_ROOT="$ADOPTER_ENV" PATH="$CLAUDE_BIN_DIR_PATH:$PATH" run_cron3 "$@"
+}
+r10_gc() {
+    HOME="$R10_HOME" HIMMEL_CONFIG_DIR="$R10_HOME/.himmel" HIMMEL_CONFIG_AUDIT_DIR="$R10_HOME/.himmel/state/config-audit" GRAPHMAP_BAT_DIR="$CRON_DIR3" \
+        node "$HIMMEL_ROOT_EXP/scripts/himmelctl/lib/graph-choices.js" "$@"
+}
+r10_fresh() {
+    run_cron3 disarm >/dev/null 2>&1 || true
+    rm -rf "$R10_HOME/.himmel/state"
+    printf '{"graphify":{"semantic_api_ok":true}}\n' > "$R10_CFG"
+    r10_env arm --vault "$VAULT" --ast-only --with-publish --publish-semantic --semantic-active >/dev/null 2>&1
+}
+for r10_cause in missing not-json; do
+    for r10_mode in rewrite force; do
+        r10_fresh
+        r10_before="$(cat "$CRON_DIR3/graphmap-publish-himmel.sh" 2>/dev/null || echo MISSING)"
+        assert_contains "R10a fixture ($r10_cause, $r10_mode): the real render holds the lane" "HIMMEL_API_LANE=on" "$r10_before"
+        if [ "$r10_cause" = missing ]; then rm -f "$R10_CFG"; else printf 'nope {\n' > "$R10_CFG"; fi
+        assert_contains "R10a fixture ($r10_cause, $r10_mode): the role reads unreadable" "unreadable" "$(r10_gc role)"
+        r10_fix="$(r10_gc alert-lines "$r10_cause" | tail -n 1)"
+        rc=0
+        if [ "$r10_mode" = rewrite ]; then out=$(r10_env arm --vault "$VAULT" --rewrite-armed 2>&1) || rc=$?
+        else out=$(r10_env arm --vault "$VAULT" --ast-only --with-publish --publish-semantic --semantic-active --force 2>&1) || rc=$?; fi
+        assert_rc "R10a ($r10_cause, $r10_mode) the re-arm exits 0" 0 "$rc"
+        [ "$rc" = 0 ] || printf '    arm said: %s\n' "$out"
+        if [ "$(cat "$CRON_DIR3/graphmap-publish-himmel.sh" 2>/dev/null || echo MISSING)" = "$r10_before" ]; then pass "R10a ($r10_cause, $r10_mode) the publish runner's bytes are unchanged"; else fail "R10a ($r10_cause, $r10_mode) the publish runner changed"; fi
+        assert_contains "R10a ($r10_cause, $r10_mode) one NOTE names the kept runner" "NOTE graphmap-cadence" "$out"
+        assert_contains "R10a ($r10_cause, $r10_mode) the NOTE names graphmap-publish-himmel.sh" "graphmap-publish-himmel.sh" "$out"
+        assert_contains "R10a ($r10_cause, $r10_mode) the NOTE carries the fixed fix line" "$r10_fix" "$out"
+        assert_contains "R10a ($r10_cause, $r10_mode) the role still reads unreadable" "unreadable" "$(r10_gc role)"
+    done
+done
+r10_fresh; rm -f "$R10_CFG"
+rc=0; out=$(r10_env arm --vault "$VAULT" --rewrite-armed --leave-publisher 2>&1) || rc=$?
+assert_rc "R10b --leave-publisher while unreadable exits 0" 0 "$rc"
+r10_after="$(cat "$CRON_DIR3/graphmap-publish-himmel.sh" 2>/dev/null || echo MISSING)"
+assert_not_contains "R10b the publish runner drops the lane" "HIMMEL_API_LANE=on" "$r10_after"
+assert_contains "R10b the publish runner logs the skip line and keeps its mode" "[$SKIP_TEXT" "$r10_after"
+assert_contains "R10b the role then reads adopter once footprint (b) is gone" "adopter" "$(r10_gc role)"
+r10_fresh
+r10_before="$(cat "$CRON_DIR3/graphmap-publish-himmel.sh" 2>/dev/null || echo MISSING)"
+rc=0; out=$(r10_env arm --vault "$VAULT" --rewrite-armed --leave-publisher 2>&1) || rc=$?
+assert_rc "R10c --leave-publisher on a publisher exits 2" 2 "$rc"
+assert_contains "R10c it says to remove the key first" "remove graphify.semantic_api_ok first" "$out"
+if [ "$(cat "$CRON_DIR3/graphmap-publish-himmel.sh" 2>/dev/null || echo MISSING)" = "$r10_before" ]; then pass "R10c it writes nothing"; else fail "R10c the publish runner changed"; fi
+rc=0; out=$(r10_env arm --vault "$VAULT" --leave-publisher 2>&1) || rc=$?
+assert_rc "R10c --leave-publisher without --rewrite-armed is a usage error" 1 "$rc"
+run_cron3 disarm >/dev/null 2>&1 || true
+
+echo "TEST: R10d a kept runner makes no paid call while the graph config reads unreadable"
+r10_fresh
+r10_env arm --vault "$VAULT" --luna-only --ast-only --with-luna-semantic --api-account A --semantic-active >/dev/null 2>&1
+rm -f "$R10_CFG"
+r10_env arm --vault "$VAULT" --rewrite-armed >/dev/null 2>&1 || true
+assert_contains "R10d fixture: the kept publish runner still holds the lane" "HIMMEL_API_LANE=on" "$(cat "$CRON_DIR3/graphmap-publish-himmel.sh" 2>/dev/null || echo MISSING)"
+assert_contains "R10d fixture: the kept luna semantic runner still holds the lane" "HIMMEL_API_LANE=on" "$(cat "$CRON_DIR3/graphmap-semantic-luna.sh" 2>/dev/null || echo MISSING)"
+r10_bin="$TMP_ROOT/r10-bin"; r10_calls="$TMP_ROOT/r10-claude-calls"
+mkdir -p "$r10_bin"; rm -f "$r10_calls"
+printf '#!/bin/sh\necho called >> "%s"\nexit 0\n' "$r10_calls" > "$r10_bin/claude"; chmod +x "$r10_bin/claude"
+r10_stub="$TMP_ROOT/r10-graph-cadence-stub.sh"
+printf '#!/bin/sh\nexec bash "%s/scripts/graphify/semantic-update.sh" --name himmel --corpus-root "%s" --corpus-class luna-personal --backend claude-api\n' "$HIMMEL_ROOT_EXP" "$VAULT" > "$r10_stub"
+sed "s#[^ ]* [^ ]*scripts/graphify/graph-cadence.sh#sh $r10_stub#g" "$CRON_DIR3/graphmap-publish-himmel.sh" > "$TMP_ROOT/r10-publish-stubbed.sh"
+rm -f "$CRON_DIR3/graphmap-publish-himmel.log" "$CRON_DIR3/semantic.paused"
+HOME="$R10_HOME" HIMMEL_CONFIG_DIR="$R10_HOME/.himmel" HIMMEL_CONFIG_AUDIT_DIR="$R10_HOME/.himmel/state/config-audit" GRAPHMAP_BAT_DIR="$CRON_DIR3" \
+    PATH="$r10_bin:$PATH" sh "$TMP_ROOT/r10-publish-stubbed.sh" >/dev/null 2>&1 || true
+assert_contains "R10d the publish runner's semantic step refuses on the unreadable config" "reads unreadable" "$(cat "$CRON_DIR3/graphmap-publish-himmel.log" 2>/dev/null || echo MISSING)"
+rm -f "$CRON_DIR3/graphmap-semantic-luna.log" "$CRON_DIR3/semantic-luna.paused"
+sed "s#$TMP_ROOT/bin/bash#$REAL_BASH#g" "$CRON_DIR3/graphmap-semantic-luna.sh" > "$TMP_ROOT/r10-luna-real-bash.sh"
+HOME="$R10_HOME" HIMMEL_CONFIG_DIR="$R10_HOME/.himmel" HIMMEL_CONFIG_AUDIT_DIR="$R10_HOME/.himmel/state/config-audit" GRAPHMAP_BAT_DIR="$CRON_DIR3" \
+    PATH="$r10_bin:$PATH" sh "$TMP_ROOT/r10-luna-real-bash.sh" >/dev/null 2>&1 || true
+assert_contains "R10d the luna semantic runner refuses on the unreadable config" "reads unreadable" "$(cat "$CRON_DIR3/graphmap-semantic-luna.log" 2>/dev/null || echo MISSING)"
+if [ ! -e "$r10_calls" ]; then pass "R10d no model call was made by either runner"; else fail "R10d a model call was made while the config read unreadable"; fi
 run_cron3 disarm >/dev/null 2>&1 || true
 
 echo "TEST: G1 the publisher render equals the render of the merge base's own graphmap-cadence.sh"
