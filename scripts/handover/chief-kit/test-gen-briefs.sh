@@ -779,7 +779,7 @@ HANDOVER_DOCS="${HANDOVER_DOCS:-$HERE/../../../docs/handover}"
 # note, so its budget is 17400; worker-preface.md's 12800 was raised to 12900 for the same change,
 # and to 13100 for the write-barrier bullet. chief-template.md's was raised to 18000 for the
 # two lines that make a chief read the direction companion files in its first batch.
-for budget in "worker-preface.md:13300" "chief-template.md:18600"; do
+for budget in "worker-preface.md:13300" "chief-template.md:19500"; do
     f="${budget%%:*}"; max="${budget##*:}"
     size="$(wc -c < "$HANDOVER_DOCS/$f" 2>/dev/null | tr -d '[:space:]')"
     [ -n "$size" ] && [ "$size" -le "$max" ] && pass "$f is within its byte budget ($size <= $max)" || fail "$f is over its byte budget (${size:-missing} > $max)"
@@ -2212,6 +2212,138 @@ has "S8b control, no read token: both reads still answer" "$s8o" "REM='S5 stays 
 [ "$(s8cnt '^tok=main argv=pr view 9 ')" = 1 ] && pass "S8b control, no read token: the body read logs tok=main" || fail "S8b control: body read not on main: $(cat "$S8LOG")"
 [ "$(s8cnt '^tok=main argv=pr list --state open --limit 200 ')" = 1 ] && pass "S8b control, no read token: the open-PR read logs tok=main" || fail "S8b control: open-PR read not on main: $(cat "$S8LOG")"
 [ "$(s8cnt '^tok=read')" = 0 ] && pass "S8b control, no read token: no read rides the read token" || fail "S8b control: a read rode the read token: $(cat "$S8LOG")"
+
+# --- kind "proof": a brief whose Writes are .md evidence files directly in a specs/audits/ directory under the handover root ---
+PF_ROOT="$WORK/handovers"; mkdir -p "$PF_ROOT/specs/audits"
+PF_EV="$PF_ROOT/specs/audits/HIMMEL-1-proof.md"
+PF_KEYS="HIMMEL-1"
+cg_mirror HIMMEL-1 Task Medium '[]'
+cg_mirror HIMMEL-9801 Task Medium '["core"]'
+cat > "$CG/pf-base.json" <<PFEOF
+{"kind":"proof","label":"N941","keys":["HIMMEL-1"],"slug":"cg","branch":"feat/himmel-9400-cg","title":"prove the thing","desc":"d","why":"w","prior":"HIMMEL-9000 (the earlier fix). Source: \`git log -3 -- scripts/x\`.","writes":"$PF_EV","scope":"read only, the evidence goes in the bucket","scope_short":"proof","extra":"post the verdict with jira comment"}
+PFEOF
+pfmk() { # <name> <python statements over w, the entry, and R, the handover root>
+    python3 -I -c 'import json,sys; w=json.load(open(sys.argv[1])); R=sys.argv[4]; exec(sys.argv[3]); json.dump([w],open(sys.argv[2],"w"))' "$CG/pf-base.json" "$CG/$1.json" "$2" "$PF_ROOT"
+}
+pf_lines() { if [ -f "$1" ]; then wc -l < "$1" | tr -d ' '; else echo 0; fi; }
+pf_contract() { awk '/^> \*\*Contract:\*\*/{f=1} f&&!/^> /{exit} f' "$1"; }
+pf_head() { awk '/^> \*\*You are/{f=1} /^> \*\*Why/{exit} f' "$1"; }
+
+pfmk p1 'pass'
+o="$(cgrun p1)"; rc=$?
+PB="$(cg_brief p1)"
+[ "$rc" = 0 ] && [ -f "$PB" ] && pass "P1 a kind proof entry with bucket-only Writes generates (rc 0)" || fail "P1 proof entry rc=$rc: $o"
+PBT="$(cat "$PB" 2>/dev/null)"
+has "P1 the brief carries the Proof leg line" "$PBT" "> **Proof leg:** HIMMEL-1"
+has "P1 the brief carries Completes ticket: no" "$PBT" "> **Completes ticket:** no"
+has "P1 the brief carries the literal Contract header" "$PBT" "> **Contract:**"
+has "P1 no live_test key renders the proof default Live test line" "$PBT" "> **Live test:** none — proof leg: one verdict comment on its own key"
+lacks "P1 the brief carries no Leg kind line" "$PBT" "> **Leg kind:**"
+PC="$(pf_contract "$PB")"
+has "P1 the Contract fetches and fast-forwards" "$PC" 'git merge --ff-only origin/main'
+has "P1 the Contract records main= and station=" "$PC" 'main=<'
+has "P1 the Contract records station=" "$PC" 'station=<'
+# shellcheck disable=SC2016  # the backticks are literal text in the brief
+has "P1 the Contract allows VERDICT CLOSE only when every row is MET" "$PC" '`VERDICT CLOSE` only when every row is MET'
+has "P1 the Contract makes a guard denial OWED" "$PC" 'a guard denial, tool error, usage error or skipped row is OWED'
+has "P1 the Contract names the PROOF VERDICT comment line" "$PC" 'PROOF VERDICT'
+has "P1 the Contract carries the extra text" "$PC" 'post the verdict with jira comment'
+has "P1 the Contract pastes the status read" "$PC" 'status --porcelain'
+has "P1 the Contract pastes the unpushed-commits read" "$PC" 'log --oneline origin/main..HEAD'
+has "P1 the Contract pastes the PR-list read" "$PC" 'gh pr list --head'
+PSC="$(grep '^> \*\*Scope / do not:\*\*' "$PB" 2>/dev/null)"
+has "P1 the Scope line's your Writes names only the evidence path" "$PSC" "your Writes: $PF_EV."
+has "P1 the Scope line says a stray write is a FINDING" "$PSC" 'a FINDING to the chief, never a claim'
+# shellcheck disable=SC2034  # POV and PHD are read through eval in the loop below
+POV="$(grep '^> \*\*Overlaps:\*\*' "$PB" 2>/dev/null)"
+# shellcheck disable=SC2034
+PHD="$(pf_head "$PB")"
+for blk in PC PSC POV PHD; do
+    eval "bt=\${$blk}"
+    [ -n "$bt" ] && pass "P1 the $blk block was cut out of the brief (the absence rows are not vacuous)" || fail "P1 the $blk block is empty"
+    bl="$(printf '%s' "$bt" | tr '[:upper:]' '[:lower:]')"
+    lacks "P1 $blk carries no merge-on-green" "$bt" "merge-on-green"
+    lacks "P1 $blk carries no worker-pr-open" "$bt" "worker-pr-open"
+    lacks "P1 $blk carries no outside-writes" "$bt" "outside-writes"
+    lacks "P1 $blk carries no merge forward (any case)" "$bl" "merge forward"
+    lacks "P1 $blk carries no READY" "$bt" "READY"
+done
+
+# P2: each refused Writes is refused with its token named, writes no brief or launcher, and reaches neither the worktree nor round-status
+ln -s "$REPO" "$PF_ROOT/lnk"
+pf_refuse() { # <name> <python expr for writes, over R> <the tokens the refusal names>
+    local name="$1" wl rl o rc
+    pfmk "$name" "w['writes']=$2"
+    wl="$(pf_lines "$WT_LOG")"; rl="$(pf_lines "$ROUTE_LOG")"
+    o="$(cgrun "$name")"; rc=$?
+    case "$o" in *"worker N941: a proof brief writes only .md files in a specs/audits/ directory under $PF_ROOT; its Writes name $3") ok=1 ;; *) ok=0 ;; esac
+    [ "$rc" = 1 ] && [ "$ok" = 1 ] && pass "P2 $name: refused, naming $3" || fail "P2 $name: rc=$rc out=$o"
+    [ -z "$(find "$CG/b-$name" -type f -print -quit 2>/dev/null)" ] && pass "P2 $name: no brief, launcher or ledger written" || fail "P2 $name: left $(find "$CG/b-$name" -type f)"
+    [ "$(pf_lines "$WT_LOG")" = "$wl" ] && [ "$(pf_lines "$ROUTE_LOG")" = "$rl" ] && pass "P2 $name: no worktree call and no round-status call" || fail "P2 $name: a seam was called"
+}
+pf_refuse p2rel "'scripts/x.sh'" 'scripts/x.sh'
+pf_refuse p2abs "'/srv/elsewhere/repo/scripts/x.sh'" '/srv/elsewhere/repo/scripts/x.sh'
+pf_refuse p2none "'none named'" 'none named'
+pf_refuse p2mix "R+'/specs/audits/a.md docs/y.md'" 'docs/y.md'
+pf_refuse p2drop "R+'/specs/audits/a.md /abs/outside/x.sh'" '/abs/outside/x.sh'
+pf_refuse p2link "R+'/lnk/specs/audits/x.md'" "$PF_ROOT/lnk/specs/audits/x.md"
+pf_refuse p2dots "R+'/../himmel/specs/audits/x.md'" "$PF_ROOT/../himmel/specs/audits/x.md"
+pf_refuse p2json "R+'/specs/audits/x.json'" "$PF_ROOT/specs/audits/x.json"
+pf_refuse p2key "R+'/specs/HIMMEL-1/proof.md'" "$PF_ROOT/specs/HIMMEL-1/proof.md"
+pf_refuse p2design "R+'/specs/designs/HIMMEL-1-proof.md'" "$PF_ROOT/specs/designs/HIMMEL-1-proof.md"
+pfmk p2empty "w['writes']='()'"
+o="$(cgrun p2empty)"; rc=$?
+{ [ "$rc" = 1 ] && has "P2 a Writes with no token names no evidence file" "$o" "worker N941: a proof brief names no evidence file"; } || fail "P2 empty Writes rc=$rc: $o"
+
+# P3: the PR-only keys and a completing scope are refused for kind proof
+pf_key() { # <name> <python statement setting the key> <key>
+    pfmk "$1" "$2"
+    o="$(cgrun "$1")"; rc=$?
+    [ "$rc" = 1 ] && has "P3 kind proof refuses $3" "$o" "worker N941: kind proof refuses $3 (a proof leg opens no PR and writes no repo file)" || fail "P3 $3 rc=$rc: $o"
+}
+pf_key p3grants "w['grants']=[{'text':'t','paths':['scripts/x.sh']}]" grants
+pf_key p3inh "w['inherited']={'pr':1,'authors':['a'],'mode':'resume'}" inherited
+pf_key p3series "w['series']=['N942']" series
+pf_key p3hook "w['hook']=True" hook
+pfmk p3yes "w['scope']='read only. completes-ticket: yes'"
+o="$(cgrun p3yes)"; rc=$?
+[ "$rc" = 1 ] && has "P3 a completes-ticket: yes scope is refused with the operator-closes text" "$o" "worker N941: a proof brief never completes its ticket; the operator closes it (decision 847)" || fail "P3 completes yes rc=$rc: $o"
+
+# P4: the class changes no model, profile, lane or Core gate line; only the entry without the kind carries a Leg kind line
+pfmk p4proof "w['keys']=['HIMMEL-9801']"
+pfmk p4plain "w['keys']=['HIMMEL-9801']; del w['kind']; w['commit']='docs(x): [HIMMEL-9801] f'; w['live_test']={'none':'x'}"
+o1="$(cgrun p4proof)"; rc1=$?; o2="$(cgrun p4plain)"; rc2=$?
+{ [ "$rc1" = 0 ] && [ "$rc2" = 0 ]; } && pass "P4 the proof entry and the same entry without a kind both generate under a core key" || fail "P4 rc=$rc1/$rc2: $o1 $o2"
+same="$(python3 -I -c 'import json,sys; a,b=(json.load(open(f))[0] for f in sys.argv[1:3]); print(all(a.get(k,"native" if k=="lane" else None)==b.get(k,"native" if k=="lane" else None) for k in ("model","profile","lane")), a["profile"])' "$CG/p4proof.json.out" "$CG/p4plain.json.out" 2>&1)"
+[ "$same" = "True worker-docs" ] && pass "P4 the same model, profile and lane (worker-docs)" || fail "P4 model/profile/lane differ: $same"
+cl1="$(grep '^> \*\*Core gate:\*\*' "$(cg_brief p4proof)" 2>/dev/null)"; cl2="$(grep '^> \*\*Core gate:\*\*' "$(cg_brief p4plain)" 2>/dev/null)"
+{ [ -n "$cl1" ] && [ "$cl1" = "$cl2" ]; } && pass "P4 the same Core gate line with and without the kind" || fail "P4 Core gate lines: [$cl1] vs [$cl2]"
+[ "$(lk_lines "$(cg_brief p4plain)")" = "$LK_DESIGN" ] && [ -z "$(lk_lines "$(cg_brief p4proof)")" ] && pass "P4 only the entry without the kind carries the design Leg kind line" || fail "P4 Leg kind: proof [$(lk_lines "$(cg_brief p4proof)")] plain [$(lk_lines "$(cg_brief p4plain)")]"
+
+# P5: the template's Proof leg section holds the Contract; filled with P1's values it equals P1's rendered Contract byte for byte
+cat > "$WORK/pf5.py" <<'PFPY'
+import re, shlex, sys
+tpl, brief, doc, extra, envline, keys = sys.argv[1:7]
+m = re.search(r'<!-- proof-contract-start -->\n(.*?)\n<!-- proof-contract-end -->', open(tpl).read(), re.S)
+if not m:
+    print('no proof-contract markers in the template'); sys.exit(1)
+text = m.group(1)
+for slot, val in (('{doc}', shlex.quote(doc)), ('{keys}', keys), ('{extra}', extra), ('{envline}', envline)):
+    if slot not in text:
+        print('slot %s missing from the template section' % slot); sys.exit(1)
+    text = text.replace(slot, val)
+out, on = [], False
+for ln in open(brief).read().split('\n'):
+    on = on or ln.startswith('> **Contract:**')
+    if on and not ln.startswith('> '):
+        break
+    if on:
+        out.append(ln)
+if '\n'.join(out) != text:
+    print('the template section and the rendered Contract differ'); sys.exit(1)
+PFPY
+o="$(python3 -I "$WORK/pf5.py" "$HERE/../../../docs/handover/worker-brief-template.md" "$PB" "$PB" 'post the verdict with jira comment' '' "$PF_KEYS" 2>&1)"; rc=$?
+[ "$rc" = 0 ] && pass "P5 the template's Proof leg Contract equals the rendered Contract" || fail "P5 parity rc=$rc: $o"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

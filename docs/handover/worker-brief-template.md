@@ -347,6 +347,45 @@ template_version: 3
 
 ---
 
+## Proof leg (kind proof)
+
+A ticket whose next step writes nothing (a proof the chief would otherwise run by hand) is dispatched to a **proof leg**:
+a worker entry with `"kind": "proof"` in `gen-briefs.py`. The generated brief is the fenced brief above with four blocks replaced,
+and every other block (front matter, head lines, Why, Prior art, the Writes line and note, RETASK) unchanged:
+
+- a `> **Proof leg:** <keys>` line and `> **Completes ticket:** no` (the operator closes a proved ticket, decision 847);
+- no `> **Leg kind:**` line, so a proof LIVE never sets a phase label; with no `live_test` key it carries
+  `> **Live test:** none — proof leg: one verdict comment on its own key`;
+- the Contract below, in place of the PR Contract (no PR, no GO, no merge);
+- a Scope / do not block whose "your Writes:" is the bucket evidence path and whose Overlaps line has no merge-forward sentence.
+
+Writes must name at least one absolute `.md` path directly in a `specs/audits/` directory under the handover root, and nothing else:
+`gen-briefs.py` refuses any other token before it writes a file. A proof leg refuses `grants`, `inherited`, `series` and `hook`, and a
+scope that states `completes-ticket: yes`. Nothing in code stops a repo edit before a PR would open; the barriers are that refusal,
+the brief's text and the three empty reads of step 5, so the chief asks the operator for a close only on evidence that carries them.
+
+`gen-briefs.py` keeps its own copy of the Contract (`PROOF_CONTRACT`); a row of `test-gen-briefs.sh` fills this section's slots
+(`{doc}` the brief path, `{keys}` the ticket keys, `{extra}` the entry's `extra`, `{envline}` the CI/infra line) and holds the two byte-equal.
+Edit both together.
+
+<!-- proof-contract-start -->
+> **Contract:**
+> 1. LIVE; paste `git log -1 --format=%H` and the base-ancestor check via `append-results.sh` (never `>` in a bullet); then `git fetch origin main` and `git merge --ff-only origin/main` (never a commit; a refused fast-forward is BLOCKED), and paste `main=<git rev-parse HEAD>` and `station=<git -C <primary checkout> rev-parse HEAD>` into the LIVE bullet.
+> 2. Read the ticket(s) and their comments. Run each Proof step and each DoD row as written, read-only. Suites run as `bash scripts/quiet-run.sh suite -- bash <test-*.sh>`; reads are commands, `git grep`, `git log`, read-only `gh` and `jira` reads and station reads. Never edit a repo file, commit, open a PR, merge, or run a Jira write other than the one `comment` of step 4. A step that needs a write, a paid model call, a live API write, the operator, a VM outside the VM queue, or another ticket's work is OWED: write the exact command and why, and do not attempt it. {extra}{envline}
+> 3. Write the evidence file(s) named on Writes, under these rules:
+>    - one row per DoD and Proof line: `MET` / `NOT MET` / `OWED`, the sha it ran at (`main=` or `station=`), and the evidence;
+>    - MET quotes the named test row's own PASS line, or the exact DoD string with the output that shows it; an exit code alone is never MET;
+>    - a row that proves a refusal shows its positive control: the same command on an input that must be accepted, accepted, beside the refusal text;
+>    - a guard denial, tool error, usage error or skipped row is OWED, with the line that shows it;
+>    - a row that needs a merge commit that is not an ancestor of the sha it ran at is OWED and names the fix (`himmel-update` for the station);
+>    - a RED that cannot be reproduced without an old checkout is cited from the PR or ticket that recorded it, or written `RED NOT REPRODUCED` with why;
+>    - the last line is `VERDICT CLOSE` only when every row is MET; any OWED or NOT MET row makes it `VERDICT KEEP <the smallest next slice, with a Writes line>`.
+> 4. Post one comment per key ({keys}) with `jira comment <KEY> --comment-file <file>`. Its first line is `PROOF VERDICT <CLOSE|KEEP> evidence=<path>`, then the KEEP slice's Writes line when it is KEEP. No transition, edit, label, link or fixVersion.
+> 5. Paste three reads into the evidence file and the WRAPPED bullet, each of which must print nothing: `git -C <worktree> status --porcelain`, `git -C <worktree> log --oneline origin/main..HEAD`, `gh pr list --head <branch> --state all`. A read that prints anything is a FINDING to the chief, and the verdict is void. Then append `WRAPPED — proof {keys} verdict=<CLOSE|KEEP> evidence=<path>`, release the lock, and run `bash scripts/handover/wrap-subtree-check.sh --queue-doc {doc}`. There is no GO: the chief checks the verdict and rules, and the close is the operator's (decision 847).
+<!-- proof-contract-end -->
+
+---
+
 ## Why each part is load-bearing
 
 <!-- mem:6b25f86c9a6f -->
@@ -362,6 +401,7 @@ template_version: 3
 | Exemplar line (optional) | A worker told only to "add a gate" copies the nearest older gate, which may be the stale shape. Naming the one file that shows the paved path (e.g. `scripts/hooks/check-unchecked-mktemp.sh`, `scripts/handover/chief-kit/test-ready-check.sh`) makes the worker imitate that. Instructional only, no validator: judge it by drift before anyone gates it. |
 | The standing preface | Every rule the brief no longer repeats — reporting, RETASK asymmetry, RED-first, trailers in the first commit, GO-gated merge, the fill ceiling. It is injected by `--profile`, so a brief that omits it AND uses `--no-profile` is a worker running on vibes (a launch with neither is refused). |
 | `completes-ticket:` line | `merge-on-green.sh` closes the ticket only on `--jira-transition` (opt-in, because a default closes multi-PR tickets early). Without the line every worker guesses whether its PR finishes the ticket: in one shift six bare merges did not close their tickets and five were closed by hand. It is a per-brief decision, never a default. |
+| Proof leg section (`kind: proof`) | A hand-written proof brief keeps the PR Contract and overrides it in prose ("no commit, no PR"), so the worker reconciles two contracts: it opens a PR, or edits a repo file the brief never allowed, and a CLOSE rests on an exit code. The generated brief replaces the Contract and the Scope block as a unit, refuses a Writes that is not a bucket `specs/audits/*.md` file, and ends in three empty reads that show no repo write. |
 | Pre-granted follow-ups block (optional) | A mid-flight ruling that widens scope reads to an auto-mode classifier as instruction poisoning: claudex workers refused five token-quoting expansions on 2026-10-02. A ruling that only selects scope the dispatch already wrote down widens nothing, so the worker can verify it against its own system prompt. |
 | Guard escape tests block (guard/hook tickets) | A worker hand-writing bypass-shaped rows was stopped by a safety classifier and parked (N1308); without the block the next guard worker improvises instances again, or retries a stop by rephrasing it. |
 | Tier line (Opus/Fable only) | Without a trimmed, non-blank reason opening with one of the four exact-lowercase category tags (`design`, `unverified-finding`, `tier-return`, `operator-ruling`), `headed-arm-worker.sh` refuses the launch (CLAUDE.md: "raise effort before tier") — the tag is validated and the free text after it must be non-blank, but its content is otherwise unrestricted, so a paraphrase can never be falsely rejected. For a standing operator ruling on model choice, `operator-ruling:` free text names the ruling, its date and where it was given, so the chief can trace the Opus/Fable spend back to it. |
