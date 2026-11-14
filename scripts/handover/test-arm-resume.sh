@@ -214,6 +214,12 @@ mkdir -p "$TMP/no-primary"
 export ARM_ISOLATION_ROOT="$TMP/no-primary"
 # The policy dir comes from the account entry; this seam points it back at HOME.
 export HIMMEL_POLICY_FOLLOWS_HOME=1
+# The policy keys come from $HOME/.himmel/config.json under that seam, ahead of
+# the .env shield: a station whose own policy file sets ARMAUTOMERGE or the
+# cross-model keys would otherwise suppress the WARN cases and fill the .env
+# default cases. Those cases run with HOME pointed at this empty directory.
+POLICY_EMPTY_HOME="$TMP/policy-empty-home"
+mkdir -p "$POLICY_EMPTY_HOME"
 # any case below that fails to stub crontab/at must not be able
 # to silently touch the operator's REAL scheduler. Snapshot now, before any
 # case runs, and diff again right before the summary -- a change either way
@@ -3329,7 +3335,7 @@ assert_not_contains "2128a2 no WARN when --automerge is passed" "will NOT set AR
 # .env shield above (load_dotenv's non-clobber contract would otherwise
 # let a live ambient ARMAUTOMERGE win before .env is ever consulted).
 HO_2128A=$(make_handover "$WORK_REPO")
-out=$(env -u ARMAUTOMERGE PATH="$SCHED_STUB_T17:$PATH" \
+out=$(env -u ARMAUTOMERGE HOME="$POLICY_EMPTY_HOME" PATH="$SCHED_STUB_T17:$PATH" \
     bash "$ARM" --time "$(future_time)" --handover "$HO_2128A" --dry-run 2>&1)
 rc=$?
 assert_rc "2128a no --automerge still arms (rc=0, advisory only)" 0 "$rc"
@@ -3339,7 +3345,7 @@ assert_contains "2128a WARN fires when --automerge is not passed" "will NOT set 
 # every 2128b case drives them through the suite-owned .env seam.
 printf 'CR_REQUIRE_CROSS_MODEL=1\n' > "$ARM_RESUME_DOTENV_ROOT/.env"
 HO_2128B=$(make_handover "$WORK_REPO")
-out=$(PATH="$SCHED_STUB_T17:$PATH" \
+out=$(HOME="$POLICY_EMPTY_HOME" PATH="$SCHED_STUB_T17:$PATH" \
     bash "$ARM" --time "$(future_time)" --handover "$HO_2128B" --dry-run 2>&1)
 rc=$?
 assert_rc "2128b cross-model + no fallback still arms (rc=0, advisory only)" 0 "$rc"
@@ -3351,7 +3357,7 @@ assert_contains "2128b WARN fires when CR_REQUIRE_CROSS_MODEL is on and CR_FLOOR
 # string), so production SHOULD warn here too.
 printf 'CR_REQUIRE_CROSS_MODEL=1\nCR_FLOOR_FALLBACK=claude_only\n' > "$ARM_RESUME_DOTENV_ROOT/.env"
 HO_2128B3=$(make_handover "$WORK_REPO")
-out=$(PATH="$SCHED_STUB_T17:$PATH" \
+out=$(HOME="$POLICY_EMPTY_HOME" PATH="$SCHED_STUB_T17:$PATH" \
     bash "$ARM" --time "$(future_time)" --handover "$HO_2128B3" --dry-run 2>&1)
 rc=$?
 assert_rc "2128b3 cross-model + typo'd fallback value still arms (rc=0)" 0 "$rc"
@@ -3360,7 +3366,7 @@ assert_contains "2128b3 WARN fires when CR_FLOOR_FALLBACK does not match the rec
 # (b2) CR_FLOOR_FALLBACK set to the recognized value -> no WARN.
 printf 'CR_REQUIRE_CROSS_MODEL=1\nCR_FLOOR_FALLBACK=claude-only\n' > "$ARM_RESUME_DOTENV_ROOT/.env"
 HO_2128B2=$(make_handover "$WORK_REPO")
-out=$(PATH="$SCHED_STUB_T17:$PATH" \
+out=$(HOME="$POLICY_EMPTY_HOME" PATH="$SCHED_STUB_T17:$PATH" \
     bash "$ARM" --time "$(future_time)" --handover "$HO_2128B2" --dry-run 2>&1)
 rc=$?
 assert_rc "2128b2 cross-model + fallback set still arms (rc=0)" 0 "$rc"
@@ -3397,7 +3403,7 @@ if _sec_selected "2147" "HIMMEL-2147"; then
 # launch text carries the grant.
 printf 'ARMAUTOMERGE=1\n' > "$ARM_RESUME_DOTENV_ROOT/.env"
 HO_2147A=$(make_handover "$WORK_REPO")
-out=$(env -u ARMAUTOMERGE PATH="$SCHED_STUB_T17:$PATH" \
+out=$(env -u ARMAUTOMERGE HOME="$POLICY_EMPTY_HOME" PATH="$SCHED_STUB_T17:$PATH" \
     bash "$ARM" --time "$(future_time)" --handover "$HO_2147A" --dry-run 2>&1)
 rc=$?
 assert_rc "2147a .env ARMAUTOMERGE=1 (no --automerge flag) still arms (rc=0)" 0 "$rc"
@@ -3407,7 +3413,7 @@ assert_contains "2147a launch carries ARMAUTOMERGE=1 from the .env default" "ARM
 # (b) .env ARMAUTOMERGE=TRUE (mixed-case truthy) -> same as (a).
 printf 'ARMAUTOMERGE=TRUE\n' > "$ARM_RESUME_DOTENV_ROOT/.env"
 HO_2147B=$(make_handover "$WORK_REPO")
-out=$(env -u ARMAUTOMERGE PATH="$SCHED_STUB_T17:$PATH" \
+out=$(env -u ARMAUTOMERGE HOME="$POLICY_EMPTY_HOME" PATH="$SCHED_STUB_T17:$PATH" \
     bash "$ARM" --time "$(future_time)" --handover "$HO_2147B" --dry-run 2>&1)
 rc=$?
 assert_rc "2147b .env ARMAUTOMERGE=TRUE still arms (rc=0)" 0 "$rc"
@@ -3417,7 +3423,7 @@ assert_not_contains "2147b no WARN -- truthy .env value is case-insensitive" "wi
 # default applied.
 printf 'ARMAUTOMERGE=nope\n' > "$ARM_RESUME_DOTENV_ROOT/.env"
 HO_2147C=$(make_handover "$WORK_REPO")
-out=$(env -u ARMAUTOMERGE PATH="$SCHED_STUB_T17:$PATH" \
+out=$(env -u ARMAUTOMERGE HOME="$POLICY_EMPTY_HOME" PATH="$SCHED_STUB_T17:$PATH" \
     bash "$ARM" --time "$(future_time)" --handover "$HO_2147C" --dry-run 2>&1)
 rc=$?
 assert_rc "2147c .env ARMAUTOMERGE=nope still arms (rc=0)" 0 "$rc"
@@ -3426,7 +3432,7 @@ assert_contains "2147c WARN fires -- unrecognized .env value is not truthy" "wil
 # (d) explicit --automerge flag wins even when .env holds a falsy value.
 printf 'ARMAUTOMERGE=0\n' > "$ARM_RESUME_DOTENV_ROOT/.env"
 HO_2147D=$(make_handover "$WORK_REPO")
-out=$(env -u ARMAUTOMERGE PATH="$SCHED_STUB_T17:$PATH" \
+out=$(env -u ARMAUTOMERGE HOME="$POLICY_EMPTY_HOME" PATH="$SCHED_STUB_T17:$PATH" \
     bash "$ARM" --time "$(future_time)" --handover "$HO_2147D" --dry-run --automerge 2>&1)
 rc=$?
 assert_rc "2147d --automerge flag wins over a falsy .env value (rc=0)" 0 "$rc"
