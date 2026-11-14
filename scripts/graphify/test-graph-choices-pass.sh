@@ -537,6 +537,56 @@ has "P25 mixed: the log names A as rejected" "$OUT" "ALERT key-rejected A"
 printf '%s\n' "$OUT" >"$H/.claude/graph-choices-cadence/graph-choices.log" 2>/dev/null || { mkdir -p "$H/.claude/graph-choices-cadence"; printf '%s\n' "$OUT" >"$H/.claude/graph-choices-cadence/graph-choices.log"; }
 has "P25 mixed: check names A as rejected" "$(run_check)" "key-rejected A"
 
+# --- K rows: graph-choices-cadence.sh arm, status and disarm over a fake crontab ------------------------------------------
+CADENCE="$here/graph-choices-cadence.sh"
+new_fx k
+mkdir -p "$FX/tools" "$FX/prov"
+printf '#!/bin/sh\nexit 0\n' >"$FX/tools/graphify"
+cat >"$FX/tools/crontab" <<'EOF'
+#!/bin/sh
+case "$1" in
+  -l) if [ -f "$CRON_FILE" ]; then cat "$CRON_FILE"; else echo "no crontab for tester" >&2; exit 1; fi ;;
+  -) cat >"$CRON_FILE" ;;
+esac
+EOF
+chmod +x "$FX/tools/graphify" "$FX/tools/crontab"
+cad() { # cad <args...> -> OUT, RC; a throwaway HOME, the fake crontab, a stub graphify on PATH
+  OUT="$(env -i PATH="$FX/tools:$BASE_PATH" HOME="$H" HIMMEL_PROVENANCE_DIR="$FX/prov" CRON_FILE="$FX/cron.txt" \
+    GRAPH_CHOICES_CRONTAB="$FX/tools/crontab" GRAPH_CHOICES_BAT_DIR="$FX/bat-gc" bash "$CADENCE" "$@" 2>&1)"
+  RC=$?
+}
+cad arm --dry-run
+check "K1 arm --dry-run rc" "$RC" 0
+has "K1 arm --dry-run prints the row" "$OUT" "40 4 * * * "
+has "K1 the row carries the marker" "$OUT" "# HIMMEL-GraphChoices"
+check "K1 arm --dry-run writes no crontab and no runner" "$([ -e "$FX/cron.txt" ] || [ -e "$FX/bat-gc" ] && echo wrote || echo clean)" clean
+cad arm
+check "K2 arm rc" "$RC" 0
+check "K2 one cron row at 04:40 with the marker" "$(grep -c '^40 4 \* \* \* .* # HIMMEL-GraphChoices$' "$FX/cron.txt")" 1
+runner="$(cat "$FX/bat-gc/graph-choices.sh" 2>/dev/null)"
+has "K2 the runner stamps the format" "$runner" "himmel-cadence-runner-format:"
+has "K2 the runner pins the graphify directory" "$runner" "export PATH=$FX/tools:"
+has "K2 the runner carries the oauth token lines" "$runner" "CLAUDE_CODE_OAUTH_TOKEN"
+has "K2 the runner fires the pass" "$runner" "graph-choices-pass.sh"
+lacks "K2 the runner passes an empty flow" "$runner" "flow-run-ledger"
+check "K2 the runner is executable" "$([ -x "$FX/bat-gc/graph-choices.sh" ] && echo yes || echo no)" yes
+cad status
+has "K3 status says ARMED" "$OUT" "ARMED      HIMMEL-GraphChoices"
+cad arm
+has "K4 a second arm without --force changes nothing" "$OUT" "already armed"
+check "K4 still one row" "$(grep -c 'HIMMEL-GraphChoices' "$FX/cron.txt")" 1
+cad arm --force --time 05:15
+check "K4 --force re-renders the row at the new time" "$(grep -c '^15 5 \* \* \* .* # HIMMEL-GraphChoices$' "$FX/cron.txt")" 1
+check "K4 and leaves exactly one row" "$(grep -c 'HIMMEL-GraphChoices' "$FX/cron.txt")" 1
+printf '[fired 2026-11-06 04:40:00]\n[exit rc=0]\n' >"$FX/bat-gc/graph-choices.log"
+cad disarm
+check "K5 disarm removes the row" "$(grep -c 'HIMMEL-GraphChoices' "$FX/cron.txt")" 0
+check "K5 disarm removes the runner but keeps the log" "$([ -e "$FX/bat-gc/graph-choices.sh" ] && echo runner || echo none):$([ -e "$FX/bat-gc/graph-choices.log" ] && echo log || echo nolog)" none:log
+cad status
+has "K5 status says not armed" "$OUT" "not armed  HIMMEL-GraphChoices"
+cad arm --time 25:99
+check "K6 a bad time is refused" "$RC" 1
+
 echo
 [ "$fails" -eq 0 ] && echo "all rows passed" || echo "$fails row(s) failed"
 exit "$([ "$fails" -eq 0 ] && echo 0 || echo 1)"
