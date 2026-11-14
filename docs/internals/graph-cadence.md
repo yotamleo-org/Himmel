@@ -425,7 +425,10 @@ semantic step of the publish and Luna semantic runners, which keep their baked l
 does not hold `semantic_api_ok` true), and a routine `arm --rewrite-armed` or
 `arm --force` leaves every armed lane runner as it is. The fire raises the
 `graph-config-unreadable` alert and the doctor warns under its own id,
-`C94-graph-config`; the next fire that reads the file again clears the alert.
+`C94-graph-config`; the next fire that reads the file again clears the alert. A publish
+fire that the `semantic-update.sh` gate refuses stops before it publishes the structure
+graph, and `cadence-alert.sh` also sends its generic semantic-failed alert for that fire.
+`--seed-manifest` and `--dry-run` call no model, so the gate leaves them alone.
 `node scripts/himmelctl/lib/graph-choices.js check` names the cause word, picks the
 backup, and prints the fixed fix line for the cause. A session only relays that line to
 the operator. A session must not open a backup: the write guard allows plain reads, so

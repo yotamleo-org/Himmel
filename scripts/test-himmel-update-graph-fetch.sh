@@ -411,11 +411,15 @@ rm -rf "$HOME/.himmel" "$TMP/linked-himmel"; mkdir -p "$TMP/linked-himmel"
 printf '{}\n' > "$TMP/linked-himmel/config.json"; ln -s "$TMP/linked-himmel" "$HOME/.himmel"
 run_update "$ADO" --only graph
 installed "U4 symlinked ~/.himmel: the published graph is installed" "$ADO"
+check_has "U4 symlinked ~/.himmel: the semantic pass is marked skipped" "the local semantic pass is skipped" "$UP_OUT"
+check_eq "U4 symlinked ~/.himmel: the stamp left a semantic pass nothing to extract" 0 "$(plan_batch "$ADO")"
 rm -f "$HOME/.himmel"; mkdir -p "$HOME/.himmel"
 make_adopter "$ADO" "$BARE" || exit 1
 printf '{}\n' > "$TMP/linked-config.json"; ln -s "$TMP/linked-config.json" "$HOME/.himmel/config.json"
 run_update "$ADO" --only graph
 installed "U4 symlinked config.json: the published graph is installed" "$ADO"
+check_has "U4 symlinked config.json: the semantic pass is marked skipped" "the local semantic pass is skipped" "$UP_OUT"
+check_eq "U4 symlinked config.json: the stamp left a semantic pass nothing to extract" 0 "$(plan_batch "$ADO")"
 rm -f "$HOME/.himmel/config.json"
 echo "fetch: U4 sub-row a symlinked ~/.himmel whose file holds semantic_api_ok true does not pull, as main does"
 make_adopter "$ADO" "$BARE" || exit 1
