@@ -201,7 +201,8 @@ def persist_text(s):
                 'is your reply, and your parent persists it.')
     return ('**Persist your verdict before you reply** (your parent may wrap before it reads your reply, and '
             '`verdicts/%s/` is what its successor reads): make your scratch dir with '
-            '`bash <primary checkout>/scripts/judge-dir.sh %s`, write your evidence to one file in it with the '
+            '`bash <primary checkout>/scripts/judge-dir.sh %s`, write your evidence to one file in it with the Write '
+            'tool (a heredoc, printf or tee in Bash is refused by the Bash text guards) with the '
             'verdict line left out, then run '
             '`bash <primary checkout>/scripts/handover/chief-kit/write-verdict.sh %s <GO|NO-GO> %s --pr %s '
             '--evidence-file <your evidence file> --model %s --effort %s` and put the path it prints in your reply. '

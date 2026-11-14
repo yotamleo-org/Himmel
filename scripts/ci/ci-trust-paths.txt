@@ -53,6 +53,9 @@
 ^\.claude/settings\.json$
 ^\.pre-commit-config\.yaml$
 
+# The judge-ro tools: line; with guard-judge-write-scope.sh it decides what a judge can write.
+^\.claude/agents/judge-ro\.md$
+
 # Hook denials and allow-list logic.
 ^scripts/hooks/(block|guard|cadence-deny)-
 # The AFK approval hooks: they send a refused command toward the operator's code request.

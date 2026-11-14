@@ -269,7 +269,11 @@ assert_rc "judge-ro whose agent file pins Read/Grep/Glob/Bash allowed" 0 "$RC7G"
 
 agent_md judge-ro 'Read, Grep, Glob, Bash, Write'
 RC7H=$(run_tree tree-judge-ro-write "$(payload judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief)
-assert_rc "judge-ro whose agent file declares Write gets no read-only carve-out" 2 "$RC7H"
+assert_rc "judge-ro whose agent file pins Read/Grep/Glob/Bash/Write allowed (guard-judge-write-scope.sh confines the Write)" 0 "$RC7H"
+
+agent_md judge-ro 'Read, Grep, Glob, Bash, Write, Edit'
+RC7HE=$(run_tree tree-judge-ro-edit "$(payload judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief)
+assert_rc "judge-ro whose agent file also declares Edit gets no read-only carve-out" 2 "$RC7HE"
 
 rm -f "$FT/.claude/agents/judge-ro.md"
 RC7J=$(run_tree tree-judge-ro-missing "$(payload judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief)

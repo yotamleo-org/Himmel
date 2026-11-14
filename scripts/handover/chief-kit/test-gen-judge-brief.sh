@@ -290,6 +290,8 @@ lacks "dispatch: no ESCALATION on a first judge" "$p" "ESCALATION:"
 has "dispatch: the prompt names the write-verdict.sh line with qid, head, PR, model and effort filled" "$p" \
     "scripts/handover/chief-kit/write-verdict.sh j2599a <GO|NO-GO> $HEAD40 --pr 2599 --evidence-file <your evidence file> --model claude-opus-5-5 --effort high\`"
 has "dispatch: the prompt makes the evidence scratch dir with judge-dir.sh" "$p" "scripts/judge-dir.sh 2599\`"
+has "dispatch: the prompt names the Write tool for the evidence file" "$p" "write your evidence to one file in it with the Write tool"
+has "dispatch: the prompt says a Bash heredoc, printf or tee of the evidence is refused" "$p" "a heredoc, printf or tee in Bash is refused by the Bash text guards"
 [ ! -e "$DBUCKET" ] && pass "dispatch: no bucket document written" || fail "dispatch wrote $DBUCKET: $(ls -R "$DBUCKET")"
 [ ! -e "$DSCRATCH" ] && pass "dispatch: no scratch dir created" || fail "dispatch created $DSCRATCH"
 diag="$(cat "$WORK/dj.err")"

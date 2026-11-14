@@ -20,11 +20,14 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
   lives only in your context dies with it; the file is what a successor reads.
   **The judge writes it, not you**: a `gen-judge-brief.py --dispatch-json`
   prompt for a PR head names the judge's own `write-verdict.sh` line (qid,
-  head, PR, model and effort filled in), and `judge-ro` runs it through Bash
-  with its evidence in the scratch dir `scripts/judge-dir.sh <PR>` makes. Its
-  tools line stays `Read, Grep, Glob, Bash`, because `guard-chief-dispatch.sh`
-  gives the read-only lane only to that exact line. You write the file by hand
-  only when the judge's reply reports a refused write.
+  head, PR, model and effort filled in). judge-ro writes its evidence with the
+  Write tool into the dir `scripts/judge-dir.sh <PR>` makes, then runs that
+  line through Bash. Its tools line is `Read, Grep, Glob, Bash, Write`:
+  `guard-judge-write-scope.sh` refuses any judge-ro write but one `.md`/`.txt`
+  file directly in a judge dir that `judge-dir.sh` made, and the two dispatch
+  guards give the read-only lane to that line and to the older `Read, Grep,
+  Glob, Bash`. You write the file by hand only when the judge's reply reports a
+  refused write.
 - **A judge whose verdict never landed is re-dispatched by code**: `chief.sh
   next` reads the outgoing session's subagent registry (the one
   `live-subagents.sh` reads). For every `judge-ro` call whose description is the
