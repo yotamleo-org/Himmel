@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 # guard-empty-expansion.sh — re-read a command with its variable expansions
 # removed. Sourced by
-# block-bare-qmd-query.sh, block-git-stash.sh and block-read-secrets.sh.
+# block-bare-qmd-query.sh and block-read-secrets.sh.
 #
 # Those hooks match the command TEXT at command position. A variable expansion
 # that expands to nothing (`${V:-}git stash`, `$V${Z}cat .env`, `$V qmd query x`,
@@ -180,5 +180,8 @@ _gee_rerun() {
     fi
     [ -z "$err" ] || printf '%s\n' "$err" >&2
     echo "    (denied with its variable expansions removed or defaulted — a variable that expands to nothing, or to its default word, leaves this command; rc=$rc)" >&2
+    printf '%s\n' '    Cause: this guard cannot know what a variable holds, so it also reads the command with every $name and ${…} removed or set to its default word; an escaped \$ and a $ inside single quotes are removed too, because one shell level down (eval, bash -c, a backtick) they expand again. That reading was refused; when the line above it is the guard-unwrap quoting line, the removal left quotes that no longer pair up.' >&2
+    printf '%s\n' '    Retry with no $ in the command text: write a literal $ in a regex as [$] (grep '\''a[$]{b'\''), or write the pattern to a file with the Write tool and pass the file (grep -f <file>); spell a variable'\''s value out instead of $NAME; edit a file with the Edit tool.' >&2
+    printf '%s\n' '    Single-run bypass: the operator runs the command once in their own terminal, where no hook runs.' >&2
     return 2
 }
