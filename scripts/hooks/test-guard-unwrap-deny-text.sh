@@ -1,12 +1,4 @@
 #!/usr/bin/env bash
-# test-guard-unwrap-deny-text.sh — the two guard-unwrap deny texts
-# (scripts/hooks/lib/guard-unwrap.sh and scripts/lib/guard-empty-expansion.sh)
-# name the cause, a retry shape the guard accepts and the single-run bypass,
-# and every retry shape they name is accepted by every hook that runs them.
-#
-# Nothing is executed: each command is only piped to a hook as JSON, with a
-# scratch HOME and a linked-worktree cwd. Platform guard: bash 3.2-safe; needs
-# jq and git (SKIP without).
 # shellcheck disable=SC2016  # commands are literal text with $ and backticks, never expanded here
 set -uo pipefail
 
@@ -34,7 +26,6 @@ pass=0; fail=0
 ok() { pass=$((pass+1)); }
 no() { fail=$((fail+1)); echo "FAIL $1"; }
 
-# run <hook> <command> [VAR=value ...] -> RC, and the hook's stderr in $T/err
 run() {
   local hook=$1 c=$2 json
   shift 2
@@ -44,17 +35,15 @@ run() {
   RC=$?
 }
 
-want_rc() {  # <row> <rc>
+want_rc() {
   if [ "$RC" = "$2" ]; then ok; else no "$1: want rc $2, got $RC"; sed 's/^/    | /' "$T/err"; fi
 }
-first_is() {  # <row> <line>
+first_is() {
   if [ "$(head -n 1 "$T/err")" = "$2" ]; then ok; else no "$1: first stderr line is not: $2"; fi
 }
-has_exact() {  # <row> <line>
+has_exact() {
   if grep -qxF -- "$2" "$T/err"; then ok; else no "$1: no stderr line: $2"; fi
 }
-# has_line <row> <line prefix> <substring>... : one line starts with the prefix
-# and holds every substring
 has_line() {
   local row=$1 pre=$2 line s hit
   shift 2
@@ -66,22 +55,21 @@ has_line() {
   done <"$T/err"
   no "$row: no stderr line starting '$pre' holding: $*"
 }
-lacks() {  # <row> <substring>
+lacks() {
   if grep -qF -- "$2" "$T/err"; then no "$1: stderr holds '$2'"; else ok; fi
 }
-after_is() {  # <row> <line> <prefix of the next line>
+after_is() {
   local next
   next=$(grep -A1 -xF -- "$2" "$T/err" | sed -n 2p)
   case "$next" in "$3"*) ok ;; *) no "$1: the line after '$2' does not start '$3'" ;; esac
 }
-# the only -f a deny text teaches is grep -f
-only_grep_f() {  # <row>
+only_grep_f() {
   local all gf
   all=$(grep -o -- '-f' "$T/err" | wc -l | tr -d ' ')
   gf=$(grep -o -- 'grep -f' "$T/err" | wc -l | tr -d ' ')
   if [ "$all" = "$gf" ]; then ok; else no "$1: stderr names a -f other than grep -f"; fi
 }
-allowed_by_six() {  # <row> <command>: rc 0 and empty stderr from every hook
+allowed_by_six() {
   local h
   for h in $SIX; do
     run "$h" "$2"
@@ -94,7 +82,6 @@ R1='grep -n -E "^   ```bash" -A3 f'
 R2='grep -n '\''ready-go\|READY_GO\|AUTO_GO_[A-Z_]*=\|\${AUTO_GO_[A-Z_]*'\'' f'
 R3='grep -n "^load_dotenv()\|^_load_dotenv_primary_for()\|LOAD_DOTENV\|-z \"\${!\|already set\|wins" f'
 
-# R1 (site 1): the tokenizer could not read the command
 run "$BRS" "$R1"
 want_rc R1 2
 first_is R1 "$L1"
@@ -105,9 +92,7 @@ after_is R1 "$L1" '    Cause: '
 only_grep_f R1
 lacks R1 'sed -f'
 
-# R2, R3 (site 2): the re-read with the expansions removed was refused; the
-# child's site-1 line prints alone, with no tokenizer cause
-site2() {  # <row> <command>
+site2_text_without_tokenizer_cause() {
   run "$BRS" "$2"
   want_rc "$1" 2
   first_is "$1" "$L1"
@@ -119,35 +104,28 @@ site2() {  # <row> <command>
   only_grep_f "$1"
   lacks "$1" 'sed -f'
 }
-site2 R2 "$R2"
-site2 R3 "$R3"
+site2_text_without_tokenizer_cause R2 "$R2"
+site2_text_without_tokenizer_cause R3 "$R3"
 
-# G rows: each retry shape the texts name is accepted, silently
 allowed_by_six G1 'grep -n -E '\''^   ```bash'\'' -A3 f'
 allowed_by_six G2 'grep -n -f pat.txt f'
 allowed_by_six G4 'grep -n '\''ready-go\|READY_GO\|AUTO_GO_[A-Z_]*=\|[$]{AUTO_GO_[A-Z_]*'\'' f'
 allowed_by_six G5 'grep -n "^load_dotenv()\|^_load_dotenv_primary_for()\|LOAD_DOTENV\|-z \"[$]{!\|already set\|wins" f'
 
-# G6: single quotes alone do not clear the expansion re-read, which is why
-# site 2 says "no $ in the command text"
 run "$BRS" 'grep -n '\''^load_dotenv()\|^_load_dotenv_primary_for()\|LOAD_DOTENV\|-z "${!\|already set\|wins'\'' f'
-want_rc G6 2
+want_rc "G6 single quotes alone stay denied by the expansion re-read" 2
 
-# S1: "spell a variable's value out" — denied with the site-2 text, accepted spelled out
 run "$BRS" 'bash -c "grep -n \"\$X\" f"'
-want_rc S1 2
-has_exact S1 "$P2"
-allowed_by_six S1-spelled 'bash -c "grep -n \"x\" f"'
+want_rc "S1 variable in a nested shell" 2
+has_exact "S1 variable in a nested shell" "$P2"
+allowed_by_six "S1 value spelled out" 'bash -c "grep -n \"x\" f"'
 
-# S2: "split a case statement into separate calls" — denied with the site-1
-# text naming the case arm, the nested call accepted on its own
 run "$BRS" 'case x in a) bash -c '\''echo hi'\'';; esac'
-want_rc S2 2
-first_is S2 "$L1"
-has_line S2 '    Cause: ' 'a case arm ending in ;;'
-allowed_by_six S2-split 'bash -c '\''echo hi'\'''
+want_rc "S2 case statement" 2
+first_is "S2 case statement" "$L1"
+has_line "S2 case statement" '    Cause: ' 'a case arm ending in ;;'
+allowed_by_six "S2 nested call split out" 'bash -c '\''echo hi'\'''
 
-# N1, N2, M1: a retry applied to a real secret target stays refused
 run "$BRS" '$V${Z}cat .env'
 want_rc N1 2
 case "$(head -n 1 "$T/err")" in
@@ -159,16 +137,13 @@ want_rc N2 2
 run "$BRS" 'grep -n -f pat.txt .env'
 want_rc M1 2
 
-# N4 and the I5 rows: an allowed command prints nothing, whether it tokenizes,
-# fails to tokenize, or passes the expansion re-read
 allowed_by_six N4 'grep -n '\''a'\'' f'
-allowed_by_six I5-untokenized 'echo "abc'
-allowed_by_six I5-reread 'cat $F'
+allowed_by_six "I5 untokenizable" 'echo "abc'
+allowed_by_six "I5 expansion re-read" 'cat $F'
 
-# N5: no launch switch skips this check (the text's bypass claim)
 run "$BRS" "$R1" READ_SECRETS_OK=1
-want_rc N5 2
-first_is N5 "$L1"
+want_rc "N5 READ_SECRETS_OK" 2
+first_is "N5 READ_SECRETS_OK" "$L1"
 
 echo "guard-unwrap-deny-text: $pass passed, $fail failed"
 [ "$fail" = 0 ]
