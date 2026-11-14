@@ -11,7 +11,8 @@
 // added-hook.sh: scripts/hooks/ names the folder's own branch adds (the caller
 // proves each is in the branch diff and executable in the folder). Their wiring
 // is taken out of a copy of the settings before the anchor judges it: a hook entry
-// naming only added scripts is dropped, and an added member is cut from a --chain.
+// naming only added scripts is dropped, and an added member is cut from a --chain
+// member list. A kept entry naming an added script anywhere else refuses.
 // Anything else in the file is judged as written.
 //
 // Exit codes: 0 chain complete | 1 incomplete or unreadable (one line on stderr)
@@ -25,6 +26,10 @@ if (!anchor || !file) {
   process.exit(1);
 }
 
+const HOOK_SCRIPT = /scripts\/hooks\/([A-Za-z0-9._-]+\.sh)/g;
+const MEMBER_PREFIX = '"$CLAUDE_PROJECT_DIR/scripts/hooks/';
+const CHAIN_MEMBERS = /(run-hook-with-bash\.js" --chain (?:--lifecycle )?)((?:"\$CLAUDE_PROJECT_DIR\/scripts\/hooks\/[A-Za-z0-9._-]+\.sh" )*"\$CLAUDE_PROJECT_DIR\/scripts\/hooks\/[A-Za-z0-9._-]+\.sh")(?=;|$)/g;
+
 function withoutAddedHooks(text, names) {
   const settings = JSON.parse(text);
   const hooks = settings && settings.hooks;
@@ -36,11 +41,15 @@ function withoutAddedHooks(text, names) {
       if (!group || !Array.isArray(group.hooks) || group.hooks.length === 0) return true;
       group.hooks = group.hooks.filter((hook) => {
         if (!hook || typeof hook.command !== 'string') return true;
-        const used = [...hook.command.matchAll(/scripts\/hooks\/([A-Za-z0-9._-]+\.sh)/g)].map((m) => m[1]);
+        const used = [...hook.command.matchAll(HOOK_SCRIPT)].map((m) => m[1]);
         if (used.length > 0 && used.every((s) => addedSet.has(s))) return false;
-        for (const s of used.filter((u) => addedSet.has(u))) {
-          hook.command = hook.command.split(` "$CLAUDE_PROJECT_DIR/scripts/hooks/${s}"`).join('');
-        }
+        if (!used.some((s) => addedSet.has(s))) return true;
+        hook.command = hook.command.replace(CHAIN_MEMBERS, (whole, head, list) => {
+          const kept = list.split(' ').filter((m) => !addedSet.has(m.slice(MEMBER_PREFIX.length, -1)));
+          return kept.length > 0 ? head + kept.join(' ') : whole;
+        });
+        const left = [...hook.command.matchAll(HOOK_SCRIPT)].map((m) => m[1]).filter((s) => addedSet.has(s));
+        if (left.length > 0) throw new Error(`added hook ${left[0]} is named outside a --chain member list`);
         return true;
       });
       return group.hooks.length > 0;

@@ -223,6 +223,20 @@ printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/add-hook-ghost/scripts/hooks/ghos
 chmod 755 "$tmp/add-hook-ghost/scripts/hooks/ghost-guard.sh"
 wire_hooks "$tmp/add-hook-ghost/.claude/settings.json" ghost-guard.sh
 run "$tmp/add-hook-ghost" HIMMEL_REPO="$tmp/hm"; expect "hook_outside_diff_and_chain_refused" 1 "$CHAIN_DIFF"
+# The added script named in the launcher scaffold of an owned chain runs instead of the chain.
+scaffold_token() { # <worktree> <scaffold words the token follows>
+  "$NODE" -e '
+const fs=require("fs");const [f,at]=process.argv.slice(1);const s=JSON.parse(fs.readFileSync(f,"utf8"));
+const chain=s.hooks.PreToolUse.flatMap((g)=>g.hooks).find((h)=>String(h.command).includes("--chain \""));
+chain.command=chain.command.replace(`${at} `,`${at} "$CLAUDE_PROJECT_DIR/scripts/hooks/new-guard.sh" `);
+fs.writeFileSync(f,JSON.stringify(s,null,2)+"\n");' "$1/.claude/settings.json" "$2"
+  git -C "$1" commit -q -am "added hook in the chain scaffold"
+}
+for row in "then:then" "else:else" "sh:-p sh"; do
+  wt="add-hook-scaffold-${row%%:*}"
+  addhook_wt "$wt"; scaffold_token "$tmp/$wt" "${row#*:}"
+  run "$tmp/$wt" HIMMEL_REPO="$tmp/hm"; expect "added_hook_after_${row%%:*}_in_chain_scaffold_refused" 1 "$CHAIN_DIFF"
+done
 # no origin/main ref and no main: nothing to match against -> refused (strict check only)
 mkanchor "$tmp/hm-norefs" "$REAL_CHECKER"; git -C "$tmp/hm-norefs" branch -m trunk
 run "$tmp/hm-norefs" HIMMEL_REPO="$tmp/hm-norefs"; expect "no_main_ref_refused" 1 "$CHAIN_DIFF"
