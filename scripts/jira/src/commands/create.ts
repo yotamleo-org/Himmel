@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Command } from 'commander';
+import { InvalidArgumentError, type Command } from 'commander';
 import { coreMatch, loadCorePatterns, type ChangeClass } from '../release/core.js';
 import { request, projectKey } from '../client.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
@@ -24,6 +24,8 @@ import type { TicketFacts } from '../release/operator-work.js';
 import { admits } from '../release/leaks.js';
 import { loadKey } from '../release/ledger.js';
 import { releaseKeyPath, releaseRoot } from '../release/paths.js';
+import { ancestorValue } from '../release/fence-ancestry.js';
+import { isTestProject } from '../live-test-guard.js';
 
 function collect(value: string, prev: string[]): string[] {
   return [...prev, value];
@@ -624,6 +626,8 @@ const intakeWhy = (o: { why?: string; proposedVersion?: string }, title: string)
 };
 export const intakeOwed = (type: string, fields: Record<string, unknown>, testProject = false): boolean => !testProject && !fields['fixVersions'] && /^(bug|task|story)$/i.test(type);
 
+export interface BridgePointer { operator_update: number; filed_by: 'bridge'; bridge_chat: number }
+
 interface IntakeOptions {
   type: string;
   proposedVersion?: string;
@@ -631,12 +635,44 @@ interface IntakeOptions {
   evidence?: Record<string, unknown>;
   decision?: string;
   words?: string;
+  pointer?: BridgePointer;
 }
 
-type IntakeWords = { decision?: string; words?: string; ticket?: TicketFacts };
+type IntakeWords = { decision?: string; words?: string; ticket?: TicketFacts; pointer?: BridgePointer };
 
 const toVersionOf = (o: { proposedVersion?: string }): string | null =>
   o.proposedVersion === undefined || o.proposedVersion === 'backlog' ? null : o.proposedVersion;
+
+export function parseOperatorUpdate(v: string): number {
+  if (!/^\d+$/.test(v) || !Number.isSafeInteger(Number(v))) throw new InvalidArgumentError('the Telegram update_id, digits only');
+  return Number(v);
+}
+
+export function bridgePointer(
+  o: { operatorUpdate?: number; type: string; fixVersion?: string; proposedVersion?: string; project?: string },
+): BridgePointer | undefined {
+  if (o.operatorUpdate === undefined) return undefined;
+  const env = process.env;
+  const refuse = (why: string) => new CreateRefused(`jira create: --operator-update refused, nothing was filed: ${why}`);
+  if (env['HIMMEL_BRIDGE_SESSION'] !== '1') {
+    throw refuse('only a Telegram bridge session (HIMMEL_BRIDGE_SESSION=1) names the operator\'s update');
+  }
+  if (env['HIMMEL_CONSOLE_LEG'] === '1' || env['HIMMEL_RELEASE_MANAGER'] === '1') {
+    throw refuse('a chief-spawned worker or the release manager never names the operator\'s update');
+  }
+  const fields = o.fixVersion === undefined ? {} : { fixVersions: [{ name: o.fixVersion }] };
+  if (!intakeOwed(o.type, fields, isTestProject(o.project ?? projectKey()))) {
+    throw refuse('no INTAKE is owed (--fix-version, an Epic or Subtask, or a test project), so no request carries the pointer');
+  }
+  if (toVersionOf(o) === null) {
+    throw refuse('the INTAKE names no version; pass --proposed-version <v>, the version the operator\'s line states');
+  }
+  const stamp = ancestorValue('HIMMEL_BRIDGE_SESSION') === '1' ? ancestorValue('HIMMEL_BRIDGE_CHAT') : null;
+  if (!/^[1-9]\d*$/.test(stamp ?? '')) {
+    throw refuse(`the poller's chat stamp in the process ancestry is ${stamp === null ? 'missing' : `${stamp}, not the operator's DM`}`);
+  }
+  return { operator_update: o.operatorUpdate, filed_by: 'bridge', bridge_chat: Number(stamp) };
+}
 
 const factsOf = (fields: Record<string, unknown>): TicketFacts => ({
   labels: Array.isArray(fields['labels']) ? (fields['labels'] as string[]) : [],
@@ -731,7 +767,7 @@ export async function followUpIntake<T extends IntakeOptions & { followUpOf?: st
 export function queueIntakeIfUnversioned(key: string, fields: Record<string, unknown>, title: string, o: IntakeOptions, testProject = false): void {
   if (!intakeOwed(o.type, fields, testProject)) return;
   try {
-    queueBacklogIntake(key, intakeWhy(o, title), toVersionOf(o), true, o.evidence, { decision: o.decision, words: o.words, ticket: factsOf(fields) });
+    queueBacklogIntake(key, intakeWhy(o, title), toVersionOf(o), true, o.evidence, { decision: o.decision, words: o.words, ticket: factsOf(fields), pointer: o.pointer });
   } catch (e) {
     console.error(
       `jira: PARTIAL: Created ${key} but INTAKE not queued: ${(e as Error).message}; still owed: the INTAKE request ` +
@@ -755,7 +791,7 @@ export function queueBacklogIntake(
     release = intakeRelease();
     const ctx = ctxFor(release);
     refuseRequest(ctx, { verb: 'INTAKE', key, from_v: null, to_v: toVersion, why, origin: 'create', ticket: opts.ticket, decision: opts.decision });
-    const row = { verb: 'INTAKE' as const, key, from_v: null, to_v: toVersion, why, evidence, from: 'console' };
+    const row = { verb: 'INTAKE' as const, key, from_v: null, to_v: toVersion, why, evidence: { ...evidence, ...opts.pointer }, from: 'console' };
     if (opts.decision !== undefined && opts.words !== undefined) {
       const got = requestWithWords(ctx, row, { decision: opts.decision, words: opts.words });
       console.error(`jira: INTAKE queued for ${key} as REQ ${got.request.req} (release ${release}), citing the operator's words ${got.operator.id}`);
@@ -895,6 +931,11 @@ export function registerCreate(program: Command): void {
     .option('--decision <n>', 'The operator decision that places an operator-directed or High ticket into a version (its specs/decisions verbatim file); needs --words')
     .option('--words <text>', 'The operator\'s exact words in that decision file; recorded as an O- record the INTAKE request cites')
     .option(
+      '--operator-update <update_id>',
+      "Telegram bridge only: the operator's update that asked for this filing, recorded in the INTAKE evidence; needs --proposed-version <v> and the poller's DM chat stamp",
+      parseOperatorUpdate,
+    )
+    .option(
       '--gate <reason>',
       'Why this may enter a version (' + INTAKE_GATES + '): a Bug without --fix-version goes to the earliest unreleased version, and a frozen version takes nothing without it',
     )
@@ -935,13 +976,14 @@ export function registerCreate(program: Command): void {
       'Print the seven-section body (Impact, What, Why, Plan, DoD, Proof, Agent detail) to fill, then exit; creates nothing',
     )
     .action(
-      async (options: CreateOptions & { skeleton?: boolean }) => {
+      async (options: CreateOptions & { skeleton?: boolean; operatorUpdate?: number }) => {
         if (options.skeleton) {
           console.log(PLAIN_BLOCK_TEMPLATE);
           return;
         }
         try {
-          await runCreate(options);
+          const withPointer: CreateOptions & { pointer?: BridgePointer } = { ...options, pointer: bridgePointer(options) };
+          await runCreate(withPointer);
         } catch (e) {
           if (!(e instanceof CreateRefused || e instanceof CreatePartial)) throw e;
           console.error(e.message);
