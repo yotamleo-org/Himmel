@@ -47,9 +47,26 @@ release is declared (`jira release state <R>` prints a status other than
   can read is refused with both fixes (`jira mirror`, or `--decision`). `jira
   create`, `jira move` and the MCP `create` tool take the same `--decision` and
   `--words` and check them before anything is filed. A backlog target, a closed
-  ticket, a request filed inside a worker you spawned, the close-time Done fold and
-  the version repair are not gated; a worker's request that the RM refuses comes
-  back to you as a refusal.
+  ticket, a request filed inside a worker you spawned, the close-time Done fold,
+  the version repair and the blocker pull (`jira release pull`, which files its
+  INTAKE under the standing `O-<R>-blocker-pull` record) are not gated; a worker's
+  request that the RM refuses comes back to you as a refusal.
+- **A ruled-away ask wakes you once.** A refused ask is a key whose latest
+  receipted ruling, on a request from the backlog into a version, left it outside
+  that version (`BACKLOG`, or `KEEP` on such a REVERSION); a demotion is never one.
+  `jira release state <R> --json` lists them under `refused_asks` until a newer
+  request for the key, a later `O-` record naming it, the ticket closing, or your
+  ack ends one. The tick prints `rm-refused=<n>:<KEY>@<ruling>,...` (n counts all,
+  the list names the operator-asked ones) and writes them to
+  `rm-refused-<doc stem>.tsv` in its state dir; the waiter wakes you once per new
+  operator-asked pair (`WAKE rm-refused <KEY>@<ruling> — fix: <reason>`) and sends
+  the rest as one digest a day (`WAKE rm-refused-digest <n> new: ...`). Answer an
+  operator-asked one by asking again with the operator's words (`--decision
+  --words`), recording an `O-` record, or closing the ticket. A refusal you hold
+  right on any other key ends with `jira release ack <R> --ruling <R-id> --reason
+  "<why the refusal is right>"`; the ack is refused for an operator-asked key, for a
+  key the mirror does not hold, and inside a worker you spawned. With the mirror
+  unreadable a refused ask's `asks_operator` reads `null`, and the tick skips the field.
 - **The batch reads only disk.** Anything the RM must weigh goes in the
   request's `--why` or in an operator `O-` record; nothing said in a message
   reaches it.

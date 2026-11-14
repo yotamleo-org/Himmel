@@ -80,7 +80,8 @@ export TICK_TRACKER_MIRROR_DIR="$tmp/mir/HIMMEL"
 DOC="$tmp/doc/chief.md"
 REGISTRY="$HANDOVER_DIR/fxuser/himmel/chains.json"
 mir() { # <n> <labels json>: an open v1.1.3 ticket
-    printf -- '---\nkey: "HIMMEL-%s"\ntype: "Task"\nstatus: "To Do"\nstatusCategory: "To Do"\nlabels: %s\nfixVersions: ["v1.1.3"]\nresolution: null\n---\n\n# HIMMEL-%s: t\n' "$1" "$2" "$1" > "$tmp/mir/HIMMEL/HIMMEL-$1.md"
+    local n="$1" labels="$2" blocked_by="${3:-[]}"
+    printf -- '---\nkey: "HIMMEL-%s"\ntype: "Task"\nstatus: "To Do"\nstatusCategory: "To Do"\nlabels: %s\nfixVersions: ["v1.1.3"]\nresolution: null\nblocked_by: %s\n---\n\n# HIMMEL-%s: t\n' "$n" "$labels" "$blocked_by" "$n" > "$tmp/mir/HIMMEL/HIMMEL-$n.md"
 }
 reset() { # fresh doc dir, mirror, registry and logs
     rm -rf "$tmp/doc" "$tmp/mir" "$HANDOVER_DIR" "${FX:?}"/*
@@ -329,6 +330,86 @@ check "a later drift failure with no report leaves the last drift file as it was
 refresh
 check "the next refresh with a working drift pass recovers" "$(out)" "focus=ok"
 check "and clears the warning" "$(st warn)" ""
+
+cat >"$tmp/bin/nd-gh" <<'EOS'
+#!/usr/bin/env bash
+exit 0
+EOS
+cat >"$tmp/bin/nd-jira.js" <<'EOS'
+const a = process.argv.slice(2);
+if (a[0] === 'release' && a[1] === 'core-check') for (const k of a.slice(a.indexOf('--key') + 1)) console.log('NOT-CORE ' + k);
+else process.exit(2);
+EOS
+chmod +x "$tmp/bin/nd-gh"
+mkdir -p "$tmp/nd-git"
+git -C "$tmp/nd-git" init -q -b main && git -C "$tmp/nd-git" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false -c core.hooksPath=/dev/null commit -q --allow-empty -m init
+eligible() {
+    printf -- '---\nkey: "HIMMEL-9110"\ntype: "Task"\nstatus: "To Do"\nstatusCategory: "To Do"\npriority: "Medium"\nlabels: ["standalone"]\nfixVersions: ["v1.1.3"]\nparent: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# HIMMEL-9110: free\n\n## Description\n\nEdit scripts/lib/alpha.sh only.\n\nDoD\n- the row is green\n\nProof\n- a RED row\n' > "$tmp/mir/HIMMEL/HIMMEL-9110.md"
+}
+dispatcher() {
+    NEXT_DISPATCH_MIRROR="$tmp/mir/HIMMEL" NEXT_DISPATCH_GH_CMD="$tmp/bin/nd-gh" NEXT_DISPATCH_JIRA_CLI="$tmp/bin/nd-jira.js" \
+        NEXT_DISPATCH_GIT_DIR="$tmp/nd-git" NEXT_DISPATCH_MAIN_REF=main NEXT_DISPATCH_BODY_CACHE=off HIMMEL_ADMISSIONS_LEDGER="$tmp/ledger-none.jsonl" \
+        bash "$HERE/next-dispatchable.sh" --no-classify --mirror "$tmp/mir/HIMMEL" 2>/dev/null
+}
+reset
+mir 9104 '["standalone"]' '["HIMMEL-9105"]'; mir 9105 '["standalone"]' '["HIMMEL-9104"]'
+eligible
+echo c1 > "$FX/vfp"
+refresh
+check "two standalone tickets blocking each other end the run focus=WARN:cycle naming both" "$(out)" "focus=WARN:cycle HIMMEL-9104,HIMMEL-9105"
+check "a loop: exits 0" "$(cat "$tmp/rc")" 0
+check "a loop: the page was still published" "$(grep -c 'vfpc1' "$tmp/doc/roadmap-tracker.html" 2>/dev/null)" 1
+check "a loop: focus-chains.json is still regenerated" "$(cmp -s "$CH" "$FX/tracker-chains.json" && echo same)" same
+check "a loop: the state is ok with the keys recorded" "$(st status):$(st warn)" "ok:cycle HIMMEL-9104,HIMMEL-9105"
+contains "a loop: stderr names the keys and the fix" "$(cat "$tmp/err")" "WARN: cycle HIMMEL-9104,HIMMEL-9105"
+refresh --status
+check "a loop: --status (what the tick prints) carries the keys" "$(out)" "focus=WARN:cycle HIMMEL-9104,HIMMEL-9105"
+nd_out="$(dispatcher)"
+contains "a loop: the dispatcher still lists an unrelated eligible ticket" "$nd_out" "	HIMMEL-9110	"
+lacks "a loop: and lists neither looped ticket" "$nd_out" "HIMMEL-9104	"
+FR_SWEEP="$tmp/bin/sweep-fail" refresh
+check "a loop: a failed stage still ends FAILED" "$(out)" "focus=FAILED:sweep:rc3"
+mir 9105 '["standalone"]'
+refresh
+check "a loop cut: the next refresh ends focus=ok" "$(out)" "focus=ok"
+check "a loop cut: and clears the warning" "$(st warn)" ""
+
+reset
+mir 9104 '["standalone"]' '["HIMMEL-9199"]'
+refresh
+check "a link whose status cannot be read ends focus=WARN:unknown naming the key" "$(out)" "focus=WARN:unknown HIMMEL-9104,HIMMEL-9199"
+refresh --status
+check "an unreadable link: --status carries the keys" "$(out)" "focus=WARN:unknown HIMMEL-9104,HIMMEL-9199"
+
+reset
+mir 9101 '[]' '["HIMMEL-9103"]'; mir 9103 '["standalone"]' '["HIMMEL-9101"]'
+mir 9106 '[]' '["HIMMEL-9108"]'; mir 9107 '[]' '["HIMMEL-9106"]'; mir 9108 '[]' '["HIMMEL-9107"]'
+mir 9104 '["standalone"]' '["HIMMEL-9199"]'
+refresh
+check "a registered-standalone loop, a loop of three and an unreadable link are one sorted set each" "$(out)" \
+    "focus=WARN:cycle HIMMEL-9101,HIMMEL-9103,HIMMEL-9106,HIMMEL-9107,HIMMEL-9108, unknown HIMMEL-9104,HIMMEL-9199"
+
+reset
+for n in 0 1 2 3 4 5 6 7 8 9; do mir "912$n" '[]' "[\"HIMMEL-912$(( (n + 1) % 10 ))\"]"; done
+refresh
+check "a long loop names eight keys and counts the rest" "$(out)" \
+    "focus=WARN:cycle HIMMEL-9120,HIMMEL-9121,HIMMEL-9122,HIMMEL-9123,HIMMEL-9124,HIMMEL-9125,HIMMEL-9126,HIMMEL-9127,+2"
+
+mkdir -p "$tmp/node-version-fails"
+REAL_NODE="$(command -v node)"
+cat >"$tmp/node-version-fails/node" <<EOS
+#!/usr/bin/env bash
+case " \$* " in *chain-state.mjs*" --version "*) echo "chain-state: the version read broke" >&2; exit 2 ;; esac
+exec "$REAL_NODE" "\$@"
+EOS
+chmod +x "$tmp/node-version-fails/node"
+reset
+mir 9104 '["standalone"]' '["HIMMEL-9105"]'; mir 9105 '["standalone"]' '["HIMMEL-9104"]'
+echo v9 > "$FX/vfp"
+PATH="$tmp/node-version-fails:$PATH" refresh
+check "a version read that fails after the member read succeeds ends WARN:chains registry, never ok" "$(out)" "focus=WARN:chains registry"
+contains "and stderr names the version read's own error" "$(cat "$tmp/err")" "chain-state: the version read broke"
+check "and the page was still published" "$(grep -c 'vfpv9' "$tmp/doc/roadmap-tracker.html" 2>/dev/null)" 1
 
 printf '%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

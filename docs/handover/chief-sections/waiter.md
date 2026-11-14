@@ -81,6 +81,17 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     more failures, or the create cap was hit, and once per last-review date when the review is STALE (no
     review for 26 h). A class with a single failure never wakes you (`<inbox>.wait.review`).
 
+    **`WAKE rm-refused <KEY>@<ruling> — fix: <reason>`** and **`WAKE rm-refused-digest <n> new: <KEY>@<ruling>,...`**:
+    with `--doc` and the tick's `rm-refused=` field on the line, the waiter reads the tick's
+    `rm-refused-<doc stem>.tsv` (KEY, ruling, reason, asks_operator) from `$TICK_STATE_DIR`. Each new
+    operator-asked pair wakes you once, one line each, with the ruling's reason cut to 200 characters; the
+    other new pairs arrive as one digest a day (the first 20 listed), never sooner. A pair whose operator status
+    reads `?` (the mirror does not hold the key) waits, neither woken nor digested, until a tick knows it; a tick
+    whose mirror is unreadable prints no `rm-refused=` and keeps the last tsv. The marker
+    `<inbox>.wait.refused` holds the pairs already reported and keeps only those the tsv still lists;
+    `<inbox>.wait.refused.day` holds the digest's UTC day. A line without the field reads nothing.
+    Act on it as release-manager.md says: ask again with the operator's words, or ack a right refusal.
+
     **`WAKE pool-stale <KEYS>`**: the tick re-checks every Live-state
     `pool-disposition: KEY slice|close|question <target>` line whose target names a
     ticket key of the mirror's project or `PR <n>` and reports `pool-stale=<n>:<KEY>,...` when every named
@@ -278,7 +289,7 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     carry a 40-hex head, still wakes as `WAKE tick changed=tails,acts`. Workers
     write READY as a bullet only, never a message.
 
-    **A GO'd PR whose worker went silent merges without it**: with `--doc` and `--workers-from`, a READY worker that has had a GO file and no doc write for `CHIEF_WAIT_WORKER_SILENT_MIN` minutes (default 45), and no live process unless its last bullet is a hand-off, is merged by `silent-go-merge.sh` through ready-check at the GO head and `merge-on-green.sh --go`; you wake as `WAKE silent-go` with one `SILENT-WORKER-MERGE`, `-MERGE-FAILED` or `-HELD reason=<why>` line; the operator was already paged with it and your doc carries it as a bullet.
+    **A GO'd PR whose worker went silent merges without it**: with `--doc` and `--workers-from`, a READY worker that has had a GO file and no doc write for `CHIEF_WAIT_WORKER_SILENT_MIN` minutes (default 45), and no live process unless its last bullet names its resume brief (`RESUME written: <…-RESUME.md>`) with no FINDING, HALTED, BLOCKED, PARKED-*, WRAPPED or MERGED newer than its READY, is merged by `silent-go-merge.sh` through ready-check at the GO head and `merge-on-green.sh --go`; you wake as `WAKE silent-go` with one `SILENT-WORKER-MERGE`, `-MERGE-FAILED` or `-HELD reason=<why>` line; the operator was already paged with it and your doc carries it as a bullet.
 
     **A watched outside PR that moved wakes you once.** A worker waiting on an outside event
     does not keep a window open: it writes `LIVE — HOLD-OUTSIDE pr=<n> owes: <what>` and WRAPs

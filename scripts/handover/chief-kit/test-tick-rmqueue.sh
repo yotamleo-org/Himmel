@@ -211,5 +211,54 @@ out="$(TICK_RMRUN_MIN=60 tick)"
 sleep 1
 check 'TICK_RMRUN_MIN=60 moves the threshold past a 45 min request' '' "$([ -e "$W/rmrun-ran" ] && echo ran)"
 
+GOLDEN="$HERE/fixtures/state-golden.json"
+mkdoc R1
+reset; cp "$GOLDEN" "$W/state.json"
+out="$(tick)"
+check 'rm-refused= counts every refused ask and lists the operator-asked one' '3:ABC-2@R-R1-0001' "$(field rm-refused "$out")"
+check 'the tsv holds one row per refused ask: key, ruling, reason, asks_operator' \
+    "$(printf 'ABC-2\tR-R1-0001\tname the operator'"'"'s words for ABC-2\t1\nABC-3\tR-R1-0002\tname the operator'"'"'s words for ABC-3\t0\nABC-4\tR-R1-0003\tname the operator'"'"'s words for ABC-4\t0')" \
+    "$(cat "$W/state/rm-refused-chief.tsv" 2>/dev/null)"
+check 'release-state-<stem>.json carries status OK and the golden words_records and asks_operator_keys' 'OK|1|O-R1-0003|ABC-2' \
+    "$(python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); print("%s|%d|%s|%s" % (d["status"], len(d["words_records"]), d["words_records"][0]["id"], ",".join(d["asks_operator_keys"])) + ("" if d.get("ts") else "|no-ts"))' "$W/state/release-state-chief.json" 2>/dev/null)"
+
+mkdir -p "$W/cw/consoles"
+: > "$W/cw/consoles/c.md"
+printf 'TICK 03:00 hb=1m workers=N1:FRESH livestate=ok procs=2 models=x ceiling=ok atq=0 suites=0alive/0dead prs=#10 bank=5h8/wk15/codex=? fill=40 tails=N1:LIVE inbox=none tick=UNKNOWN fleet=3/15 capacity=ok gql=4000/04:00 orphans=none nonces=ok legset=ok board=ok denials=none or=skip fails=none rm-refused=%s\n' \
+    "$(field rm-refused "$out")" > "$W/cw.line"
+printf '#!/usr/bin/env bash\ncat "%s/cw.line"\n' "$W" > "$W/cw-tick.sh"
+printf '#!/usr/bin/env bash\necho PROCEED\n' > "$W/cw-bank.sh"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$W/cw-off.sh"
+printf '#!/usr/bin/env bash\nexit 2\n' > "$W/cw-budget.sh"
+cw_out="$(CHIEF_WAIT_TICK="$W/cw-tick.sh" CHIEF_WAIT_USAGE="$W/cw-bank.sh" CHIEF_WAIT_INTERVAL=1 CHIEF_WAIT_POLL_SEC=0.2 CHIEF_WAIT_FAIL_WAKE=1000 \
+    CHIEF_WAIT_PAGE_CMD="$W/cw-off.sh" CHIEF_WAIT_BUDGET="$W/cw-budget.sh" CHIEF_WAIT_ORPHAN="$W/cw-off.sh" CHIEF_WAIT_DISPATCH="$W/cw-off.sh" \
+    WAIT_SWEEP_CMD="$W/cw-off.sh" WAIT_FOCUS_CMD="$W/cw-off.sh" HIMMEL_DENIAL_ACK_DIR="$W/acks" \
+    timeout 20 bash "$HERE/chief-wait.sh" "$W/cw/consoles/c.md" --doc "$W/handover/chief.md" --workers N1.md 2>/dev/null)"  # gnu-ok: Linux-only kit
+check "the tick's real tsv feeds chief-wait: one operator wake naming key, ruling and fix, then the digest" \
+    "WAKE rm-refused ABC-2@R-R1-0001 — fix: name the operator's words for ABC-2|WAKE rm-refused-digest 2 new: ABC-3@R-R1-0002,ABC-4@R-R1-0003" \
+    "$(printf '%s\n' "$cw_out" | grep '^WAKE ' | paste -sd'|' -)"
+
+state '[]' null null
+out="$(tick)"
+check 'no refused ask shows no rm-refused field' '' "$(field rm-refused "$out")"
+check 'and leaves an empty tsv' '' "$(cat "$W/state/rm-refused-chief.tsv" 2>/dev/null)"
+cp "$GOLDEN" "$W/state.json"
+tick > /dev/null
+printf '{"status":"UNKNOWN","requests":{"open":[],"claimed":[]},"refused_asks":[{"key":"ABC-2","ruling":"R-R1-0001","req":"Q-R1-0001","reason":"x","asks_operator":true}]}\n' > "$W/state.json"
+out="$(TICK_RMQ_EXIT=3 tick)"
+check 'a state that is not OK shows no rm-refused field' '' "$(field rm-refused "$out")"
+check 'and deletes release-state-<stem>.json and the tsv' 'gone' "$([ -e "$W/state/release-state-chief.json" ] || [ -e "$W/state/rm-refused-chief.tsv" ] || echo gone)"
+cp "$GOLDEN" "$W/state.json"
+mkdir -p "$W/state/.rm-refused-chief.tsv.tmp" "$W/state/.release-state-chief.json.tmp"
+out="$(tick)"
+check "another writer's temp file never blocks publication: each tick writes its own" '3:ABC-2@R-R1-0001|3' \
+    "$(field rm-refused "$out")|$(wc -l < "$W/state/rm-refused-chief.tsv" 2>/dev/null | tr -d ' ')"
+rf_before="$(cat "$W/state/rm-refused-chief.tsv")"
+python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); d["inputs"]["mirror"]="UNKNOWN"; [a.update(asks_operator=None) for a in d["refused_asks"]]; d["asks_operator_keys"]=[]; print(json.dumps(d))' "$GOLDEN" > "$W/state.json"
+out="$(tick)"
+check 'an unknown mirror shows no rm-refused field' '' "$(field rm-refused "$out")"
+check 'and leaves the tsv as the last known read' "$rf_before" "$(cat "$W/state/rm-refused-chief.tsv" 2>/dev/null)"
+check 'and deletes release-state-<stem>.json rather than claim no operator keys' 'gone' "$([ -e "$W/state/release-state-chief.json" ] || echo gone)"
+
 echo
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

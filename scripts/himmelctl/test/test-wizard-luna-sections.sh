@@ -80,7 +80,8 @@ luna_config_lib_w="$(winpath "$luna_config_lib")"
 
 build_path() {
   local _stub="$1"; shift
-  local _present=(awk) _absent=() _stage=0 _tt
+  # a station graphify makes the wizard ask its graph step (askGraphChoices); CI has none, so neither does this PATH
+  local _present=(awk) _absent=(graphify) _stage=0 _tt
   for _tt in "$@"; do
     if [ "$_tt" = "--" ]; then _stage=1; continue; fi
     if [ "$_stage" -eq 0 ]; then _present+=("$_tt"); else _absent+=("$_tt"); fi

@@ -505,6 +505,51 @@ else
   echo "SKIP real-hook (hook not in HEAD or jq missing)"
 fi
 
+# (d) the real block-write-into-main-checkout.sh. Row 1 is a Write-tool row, which
+# this Bash-only hook always passes, so it is allowed on both sides.
+if git -C "$REPO_ROOT" cat-file -e "HEAD:scripts/hooks/block-write-into-main-checkout.sh" 2>/dev/null \
+   && command -v jq >/dev/null 2>&1; then
+  cat > "$TMP/primary-write.jsonl" <<'ROWS'
+{"tool_name": "Bash", "tool_input": {"command": "echo x > @PRIMARY@/a.txt"}, "family": "primary-write", "seed_verb": "supplied", "transform": "identity", "expect": "deny"}
+{"tool_name": "Write", "tool_input": {"file_path": "@PRIMARY@/a.txt", "content": "x"}, "family": "primary-write-tool", "transform": "identity", "expect": "deny"}
+{"tool_name": "Bash", "tool_input": {"command": "echo x > @PRIMARY@/../outside.txt"}, "family": "outside-write", "transform": "identity", "expect": "allow"}
+ROWS
+  OUT6E=$(python3 "$DIFF" \
+      --base "sha:HEAD:scripts/hooks/block-write-into-main-checkout.sh" \
+      --head "sha:HEAD:scripts/hooks/block-write-into-main-checkout.sh" \
+      --corpus "$TMP/primary-write.jsonl" --repo "$REPO_ROOT" --jobs 2 2>&1); RC6E=$?
+  has "primary-write: no regression" "$OUT6E" "(REGRESSION): 0"
+  has "primary-write: no odd rc" "$OUT6E" "rc not in {0,2}: 0"
+  has "primary-write: a write outside the primary stays allowed on both sides" "$OUT6E" \
+    "allow-expected rows: 1 (denied by base 0; by head 0)"
+  case "$(cd "$HOME" && pwd -P | tr '[:upper:]' '[:lower:]')/" in
+    */tmp/*|*/temp/*)
+      echo "SKIP primary-write deny rows (HOME is under a tmp-named path, as in the CI runner)"
+      has "primary-write: an unguarded primary is named" "$OUT6E" "WARNING scratch primary"
+      if [ "$RC6E" = "4" ]; then pass "primary-write: an unguarded primary exits 4 VACUOUS"
+      else fail "primary-write: expected exit 4 with an unguarded primary, got $RC6E"; fi ;;
+    *)
+      hasnt "primary-write: a non-tmp HOME gives a guarded primary" "$OUT6E" "WARNING scratch primary"
+      hasnt "primary-write: not vacuous" "$OUT6E" "VACUOUS: "
+      has "primary-write: the Bash write into the primary is denied by both sides" "$OUT6E" \
+        "deny-expected rows: 2 (base denied 1; allowed by both: 1)"
+      has "primary-write: only the Write-tool row is allowed by both" "$OUT6E" "DENY-MISSED idx=1 family=primary-write-tool"
+      if [ "$RC6E" = "0" ]; then pass "primary-write: exit 0"
+      else fail "primary-write: expected exit 0, got $RC6E"; fi ;;
+  esac
+  mkdir -p "$TMP/tmp/home"
+  OUT6F=$(HOME="$TMP/tmp/home" python3 "$DIFF" \
+      --base "sha:HEAD:scripts/hooks/block-write-into-main-checkout.sh" \
+      --head "sha:HEAD:scripts/hooks/block-write-into-main-checkout.sh" \
+      --corpus "$TMP/primary-write.jsonl" --repo "$REPO_ROOT" --jobs 2 2>&1); RC6F=$?
+  has "primary-write: a tmp-named HOME is named as unguarded" "$OUT6F" "WARNING scratch primary"
+  has "primary-write: a tmp-named HOME still reads VACUOUS" "$OUT6F" "VACUOUS: "
+  if [ "$RC6F" = "4" ]; then pass "primary-write: a tmp-named HOME exits 4"
+  else fail "primary-write: expected exit 4 with a tmp-named HOME, got $RC6F"; fi
+else
+  echo "SKIP primary-write (hook not in HEAD or jq missing)"
+fi
+
 # --- 7. a malformed corpus is a setup error (exit 2), never a regression ----
 # CodeRabbit: json.loads on a truncated line, or a row missing
 # tool_input.command, raised an uncaught exception -> Python exit 1, which is
