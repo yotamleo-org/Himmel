@@ -100,7 +100,7 @@ else
     fail "installer did not install the hook (rc=$rc)" "out: $out"
 fi
 
-echo "TEST: installer run from a SUBDIRECTORY still resolves the real .git/hooks (HIMMEL-2640)"
+echo "TEST: installer run from a SUBDIRECTORY still resolves the real .git/hooks"
 # The old installer joined a RELATIVE `--git-common-dir` against
 # `--show-toplevel` by hand -- correct only when cwd IS the toplevel. One
 # level down, --git-common-dir returns "../.git" (relative to cwd), and the
@@ -134,7 +134,7 @@ case "$out" in
     *) fail "primary invocation did not reach the current gate" "out: $out" ;;
 esac
 case "$out" in
-    *"PUSH-GATE-OK"*) pass "primary invocation runs the push-target gate too (HIMMEL-2371)" ;;
+    *"PUSH-GATE-OK"*) pass "primary invocation runs the push-target gate too" ;;
     *) fail "primary invocation did not reach the push-target gate" "out: $out" ;;
 esac
 # Both gates forward the ref stream to stdout (see the fixtures above), so a
@@ -151,7 +151,7 @@ fi
 echo "TEST: invoked from a worktree based on an OLDER commit -> still runs the PRIMARY's gate"
 out=$(run_legacy_from "$WORKTREE")
 case "$out" in
-    *"GATE-STALE"*) fail "worktree invocation ran the worktree's stale gate (HIMMEL-1574)" "out: $out" ;;
+    *"GATE-STALE"*) fail "worktree invocation ran the worktree's stale gate" "out: $out" ;;
     *"GATE-CURRENT"*) pass "worktree invocation runs the primary's current gate" ;;
     *) fail "worktree invocation reached no gate at all" "out: $out" ;;
 esac
@@ -171,7 +171,7 @@ case "$out" in
     *) fail "GIT_DIR-scoped worktree invocation did not reach the current gate" "out: $out" ;;
 esac
 
-echo "TEST: push-target gate BLOCKS (exit 1) -> shim refuses, CR gate never runs (HIMMEL-2371)"
+echo "TEST: push-target gate BLOCKS (exit 1) -> shim refuses, CR gate never runs"
 printf '#!/usr/bin/env bash\necho "PUSH-GATE-BLOCKED"\ncat >/dev/null\nexit 1\n' > "$PRIMARY/$PUSH_GATE_REL"
 rc=0; out=$(run_legacy_from "$PRIMARY") || rc=$?
 if [ "$rc" -eq 1 ]; then

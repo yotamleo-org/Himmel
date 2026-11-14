@@ -115,9 +115,9 @@ assert() {
 }
 
 # --- ALLOW: the simple_expansion cases that motivate this hook ---
-assert "jira get literal"          ALLOW "$(decide "$(j_bash 'node scripts/jira/dist/index.js get LUNA-57')")"
-assert "jira get loop with \$t"    ALLOW "$(decide "$(j_bash 'for t in LUNA-57 LUNA-58; do node scripts/jira/dist/index.js get $t; done')")"
-assert "jira write (transition)"   ALLOW "$(decide "$(j_bash 'node scripts/jira/dist/index.js transition LUNA-60 Done')")"
+assert "jira get literal"          ALLOW "$(decide "$(j_bash 'node scripts/jira/dist/index.js get PROJ-57')")"
+assert "jira get loop with \$t"    ALLOW "$(decide "$(j_bash 'for t in PROJ-57 PROJ-58; do node scripts/jira/dist/index.js get $t; done')")"
+assert "jira write (transition)"   ALLOW "$(decide "$(j_bash 'node scripts/jira/dist/index.js transition PROJ-60 Done')")"
 assert "cat \$f loop"              ALLOW "$(decide "$(j_bash 'for f in a b c; do cat $f; done')")"
 assert "git log oneline"           ALLOW "$(decide "$(j_bash 'git log --oneline -1')")"
 assert "git -C path status"        ALLOW "$(decide "$(j_bash 'git -C /some/repo status')")"
@@ -184,9 +184,9 @@ assert "node jira after flags"    ALLOW "$(decide "$(j_bash 'node --no-warnings 
 # a literal JIRA_PROJECT_KEY=<KEY> prefix on the jira CLI approves
 # exactly like the bare form; the key only picks a project, which --project
 # already may. Scoped to the jira CLI and to a bare literal key.
-assert "JIRA_PROJECT_KEY jira comment" ALLOW "$(decide "$(j_bash 'JIRA_PROJECT_KEY=HIMMEL node /c/repo/scripts/jira/dist/index.js comment HIMMEL-1 --comment-file f.md')")"
+assert "JIRA_PROJECT_KEY jira comment" ALLOW "$(decide "$(j_bash 'JIRA_PROJECT_KEY=HIMMEL node /c/repo/scripts/jira/dist/index.js comment PROJ-1 --comment-file f.md')")"
 assert "JIRA_PROJECT_KEY jira create"  ALLOW "$(decide "$(j_bash 'JIRA_PROJECT_KEY=HIMMEL node scripts/jira/dist/index.js create --type Task --title x --desc-file f.md')")"
-assert "JIRA_PROJECT_KEY + LANG jira"  ALLOW "$(decide "$(j_bash 'LANG=C JIRA_PROJECT_KEY=LUNA node scripts/jira/dist/index.js get LUNA-1')")"
+assert "JIRA_PROJECT_KEY + LANG jira"  ALLOW "$(decide "$(j_bash 'LANG=C JIRA_PROJECT_KEY=LUNA node scripts/jira/dist/index.js get PROJ-1')")"
 assert "JIRA_PROJECT_KEY on cat"       PASS  "$(decide "$(j_bash 'JIRA_PROJECT_KEY=HIMMEL cat f')")"
 assert "JIRA_PROJECT_KEY on git"       PASS  "$(decide "$(j_bash 'JIRA_PROJECT_KEY=HIMMEL git log')")"
 assert "JIRA_PROJECT_KEY other script" PASS  "$(decide "$(j_bash 'JIRA_PROJECT_KEY=HIMMEL node /tmp/evil.js')")"
@@ -366,8 +366,8 @@ assert "git -C dir still ok"      ALLOW "$(decide "$(j_bash 'git -C /repo log --
 # --- cd/pushd/popd navigation so cd-prefixed safe cmds ALLOW ---
 # The motivating bug: a `cd <repo> && node …/jira transition …` fell through
 # (cd unrecognised) → auto-mode classifier denied the jira write.
-assert "cd && jira transition"    ALLOW "$(decide "$(j_bash 'cd /c/repo && node scripts/jira/dist/index.js transition LUNA-65 Done')")"
-assert "cd && jira (piped, 2 ops)" ALLOW "$(decide "$(j_bash 'cd /c/repo && node scripts/jira/dist/index.js transition LUNA-65 Done 2>&1 | tail -3 && node scripts/jira/dist/index.js transition LUNA-66 Done 2>&1 | tail -3')")"
+assert "cd && jira transition"    ALLOW "$(decide "$(j_bash 'cd /c/repo && node scripts/jira/dist/index.js transition PROJ-65 Done')")"
+assert "cd && jira (piped, 2 ops)" ALLOW "$(decide "$(j_bash 'cd /c/repo && node scripts/jira/dist/index.js transition PROJ-65 Done 2>&1 | tail -3 && node scripts/jira/dist/index.js transition PROJ-66 Done 2>&1 | tail -3')")"
 assert "cd && cat"                ALLOW "$(decide "$(j_bash 'cd src && cat README.md')")"
 assert "cd alone"                 ALLOW "$(decide "$(j_bash 'cd /some/dir')")"
 # pushd/popd leave the cwd unknown, so a recursive reader after one prompts
@@ -380,20 +380,18 @@ assert "cd \$(…) substitution"     PASS  "$(decide "$(j_bash 'cd $(cat target)
 
 # --- quote-aware split — separators INSIDE quotes are literal ---
 # A jira comment/desc body containing newlines / ; / | / > must still ALLOW.
-# The old quote-blind sed split shredded a multi-line body into junk segments
-# (e.g. "LUNA-36 (catch-up) …") that failed is_safe_bin → whole write denied.
 nl=$'\n'
-assert "comment newline body"      ALLOW "$(decide "$(j_bash "node scripts/jira/dist/index.js comment LUNA-26 'first${nl}second'")")"
-assert "comment semicolon body"    ALLOW "$(decide "$(j_bash "node scripts/jira/dist/index.js comment LUNA-26 'do x; then y'")")"
-assert "comment pipe body"         ALLOW "$(decide "$(j_bash "node scripts/jira/dist/index.js comment LUNA-26 'a | b'")")"
-assert "comment gt body"           ALLOW "$(decide "$(j_bash "node scripts/jira/dist/index.js comment LUNA-26 'fewer > more'")")"
-assert "comment dq separators"     ALLOW "$(decide "$(j_bash 'node scripts/jira/dist/index.js comment LUNA-26 "a; b | c > d"')")"
+assert "comment newline body"      ALLOW "$(decide "$(j_bash "node scripts/jira/dist/index.js comment PROJ-26 'first${nl}second'")")"
+assert "comment semicolon body"    ALLOW "$(decide "$(j_bash "node scripts/jira/dist/index.js comment PROJ-26 'do x; then y'")")"
+assert "comment pipe body"         ALLOW "$(decide "$(j_bash "node scripts/jira/dist/index.js comment PROJ-26 'a | b'")")"
+assert "comment gt body"           ALLOW "$(decide "$(j_bash "node scripts/jira/dist/index.js comment PROJ-26 'fewer > more'")")"
+assert "comment dq separators"     ALLOW "$(decide "$(j_bash 'node scripts/jira/dist/index.js comment PROJ-26 "a; b | c > d"')")"
 # SAFETY: a real (UNQUOTED) separator after a safe write must still gate.
-assert "jira then rm still PASS"   PASS  "$(decide "$(j_bash "node scripts/jira/dist/index.js get LUNA-1; rm -rf x")")"
+assert "jira then rm still PASS"   PASS  "$(decide "$(j_bash "node scripts/jira/dist/index.js get PROJ-1; rm -rf x")")"
 # SAFETY: a real (UNQUOTED) redirect to a real file must still gate.
 assert "real redirect still PASS"  PASS  "$(decide "$(j_bash 'cat foo > realfile.txt')")"
 # SAFETY: unbalanced quotes → fail closed (never grant on an ambiguous parse).
-assert "unbalanced quote fails"    PASS  "$(decide "$(j_bash "node scripts/jira/dist/index.js comment LUNA-26 'oops")")"
+assert "unbalanced quote fails"    PASS  "$(decide "$(j_bash "node scripts/jira/dist/index.js comment PROJ-26 'oops")")"
 
 # --- git push --force-with-lease on a NON-main branch → ALLOW ---
 # These cases depend on the CURRENT branch (the hook calls `git rev-parse
@@ -1210,7 +1208,7 @@ assert "native jq: same payload, unaffected by win-jq detection, stays PASS" \
 # Control: a genuine continuation under win-jq rendering must still ALLOW —
 # this is a usability loss an earlier fix introduced, closed
 # by folding on the win-jq path instead of deferring it.
-assert "win-jq: genuine continuation still ALLOW (HIMMEL-3776 closed)" \
+assert "win-jq: genuine continuation still ALLOW" \
     ALLOW "$(decide_win "$(j_bash "git status \\"$'\n'"  --help")")"
 # Control: a CR-free command takes the fast path (no CR at all to fold, on
 # either jq rendering) — same verdict either way.
@@ -1238,7 +1236,7 @@ assert "escaped amp, even (2) backslashes: real && (HIDDEN-RAN, pre-existing PAS
 # BOTH &s individually backslash-escaped is truly literal text — no operator
 # ever reaches the &-branch, no hidden run. It still falls through
 # now (uniform rule: any unquoted `\&` stops auto-approving), a harmless prompt.
-assert "both amps escaped: literal, no hidden run (falls through, HIMMEL-3793)" \
+assert "both amps escaped: literal, no hidden run (falls through)" \
     PASS "$(decide "$(j_bash 'echo a\&\&b touch M')")"
 # Controls: an escaped `;` or `|` is likewise fully consumed as literal data
 # by the existing single-character escape walk (no lookback involved), so
@@ -1314,9 +1312,9 @@ assert "ordinary 2>&1, no CR, still ALLOW under CRLF-shim (J1397A finding 1)" \
 # keeps it from being read as a hidden second command, at the cost of not
 # auto-approving it either (PASS, not ALLOW) — same verdict as any other case
 # scan_cmd can't prove safe.
-assert "escaped \\>&1 before fd-dup &: not falsely ALLOW/DENY (HIMMEL-3786 pin)" \
+assert "escaped \\>&1 before fd-dup &: not falsely ALLOW/DENY" \
     PASS "$(decide "$(j_bash 'grep x f 2\>&1 | head')")"
-assert "escaped \\>&2: not falsely ALLOW/DENY (HIMMEL-3786 pin)" \
+assert "escaped \\>&2: not falsely ALLOW/DENY" \
     PASS "$(decide "$(j_bash 'grep x f \>&2 | head')")"
 
 # --- the fd-dup boundary class must use [:blank:]
