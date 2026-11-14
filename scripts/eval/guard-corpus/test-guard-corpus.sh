@@ -505,6 +505,35 @@ else
   echo "SKIP real-hook (hook not in HEAD or jq missing)"
 fi
 
+# (d) the REAL block-write-into-main-checkout.sh denies a write into the scratch
+# primary on both sides. Rows 0 and 1 are idx 152 and 171 of the 2026-10-29 class-4
+# corpus (the guard-rates evidence zip), copied verbatim. Row 1 is a
+# Write-tool row, which this Bash-only hook passes at every commit, so it stays allowed
+# on both sides. Row 2 writes beside the primary, outside any repo: allowed on both.
+if git -C "$REPO_ROOT" cat-file -e "HEAD:scripts/hooks/block-write-into-main-checkout.sh" 2>/dev/null \
+   && command -v jq >/dev/null 2>&1; then
+  cat > "$TMP/primary-write.jsonl" <<'ROWS'
+{"tool_name": "Bash", "tool_input": {"command": "echo x > @PRIMARY@/a.txt"}, "family": "primary-write", "seed_verb": "supplied", "transform": "identity", "expect": "deny"}
+{"tool_name": "Write", "tool_input": {"file_path": "@PRIMARY@/a.txt", "content": "x"}, "family": "primary-write-tool", "transform": "identity", "expect": "deny"}
+{"tool_name": "Bash", "tool_input": {"command": "echo x > @PRIMARY@/../outside.txt"}, "family": "outside-write", "transform": "identity", "expect": "allow"}
+ROWS
+  OUT6E=$(python3 "$DIFF" \
+      --base "sha:HEAD:scripts/hooks/block-write-into-main-checkout.sh" \
+      --head "sha:HEAD:scripts/hooks/block-write-into-main-checkout.sh" \
+      --corpus "$TMP/primary-write.jsonl" --repo "$REPO_ROOT" --jobs 2 2>&1); RC6E=$?
+  hasnt "primary-write: not vacuous" "$OUT6E" "VACUOUS: "
+  has "primary-write: the Bash write into the primary is denied by both sides" "$OUT6E" \
+    "deny-expected rows: 2 (base denied 1; allowed by both: 1)"
+  has "primary-write: no regression" "$OUT6E" "(REGRESSION): 0"
+  has "primary-write: only the Write-tool row is allowed by both" "$OUT6E" "DENY-MISSED idx=1 family=primary-write-tool"
+  has "primary-write: a write outside the primary stays allowed on both sides" "$OUT6E" \
+    "allow-expected rows: 1 (denied by base 0; by head 0)"
+  if [ "$RC6E" = "0" ]; then pass "primary-write: exit 0"
+  else fail "primary-write: expected exit 0, got $RC6E"; fi
+else
+  echo "SKIP primary-write (hook not in HEAD or jq missing)"
+fi
+
 # --- 7. a malformed corpus is a setup error (exit 2), never a regression ----
 # CodeRabbit: json.loads on a truncated line, or a row missing
 # tool_input.command, raised an uncaught exception -> Python exit 1, which is
