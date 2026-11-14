@@ -20,7 +20,7 @@ import { chiefOverrideOf } from './intake-gate.js';
 import { readAdmissions, underTmp } from './admissions-ledger.js';
 import { parseFrozen } from './version-freeze.js';
 import {
-  apply, bucketCheck, claim, clearProposedLabels, coreBypass, coreSnapshot, declare, decisionWords, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, outOfVersion, outOfVersionApproval, OUT_OF_VERSION_MS, PLACEHOLDER, PULL_MAX, pull, readMirror, readMirrorFilesUnverified, readOperatorRecords, reopen, request as releaseRequest, requestWithWords, rmRun, rmRunSummary, rule, signSpec, specCheck, specReview, standing, state, takeover, withdraw,
+  ack, apply, bucketCheck, claim, clearProposedLabels, coreBypass, coreSnapshot, declare, decisionWords, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, outOfVersion, outOfVersionApproval, OUT_OF_VERSION_MS, PLACEHOLDER, PULL_MAX, pull, readMirror, readMirrorFilesUnverified, readOperatorRecords, reopen, request as releaseRequest, requestWithWords, rmRun, rmRunSummary, rule, signSpec, specCheck, specReview, standing, state, takeover, withdraw,
   type ApprovalAlert, type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type RunRecord, type StateOut,
 } from '../release/engine.js';
 import { admissionBudget, commentLeaks, leakDiff, leakLine } from '../release/leaks.js';
@@ -789,6 +789,16 @@ export function registerRelease(program: Command): void {
       console.log(`WITHDRAWN ${r.req} (${r.state}): ${r.reason}`);
       // Withdraw is ledger-only; an INTAKE's proposal ends here, so its proposed-* label goes. The request is already withdrawn if this throws.
       if (r.verb === 'INTAKE') await clearProposedLabels(ctx.jira, r.key);
+    });
+
+  rel.command('ack <release>')
+    .description('End a refused ask the chief holds right: one signed events row (the chief; never an operator-asked key)')
+    .requiredOption('--ruling <id>', 'The refusing ruling (R-<R>-NNNN), as state --json lists it under refused_asks')
+    .requiredOption('--reason <text>', 'Why the refusal is right')
+    .option('--mirror-root <dir>', 'Jira mirror directory (default: the JIRA_PROJECT_KEY mirror)')
+    .action((release: string, o: { ruling: string; reason: string; mirrorRoot?: string }) => {
+      const e = ack(ctxFor(release, o.mirrorRoot), { ruling: o.ruling, reason: o.reason });
+      console.log(`ACK ${e.key}@${e.ruling}: ${e.reason}`);
     });
 
   rel.command('rm-run <release>')

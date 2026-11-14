@@ -312,6 +312,12 @@
 # window. A `?`-only value, a partial read (`1:KEY,?`, which only adds to the marker) and an
 # absent or skip field keep it (a failed read is not an all-clear); an explicit 0 clears it,
 # so a key that leaves and rejoins wakes again.
+# rm-refused= (`n:KEY@ruling,...`, never in the action key), with --doc: the tick's
+# rm-refused-<doc stem>.tsv under $TICK_STATE_DIR is read. Each operator-asked KEY@ruling new to the
+# marker `<inbox>.wait.refused` wakes once (`WAKE rm-refused <KEY>@<ruling> — fix: <reason, 200 chars>`,
+# one line each); the other new pairs wait for one digest a day (`WAKE rm-refused-digest <n> new:
+# <KEY>@<ruling>,...`, the first 20; the UTC day in `<inbox>.wait.refused.day`). A woken pair joins the
+# marker, which keeps only pairs the tsv still lists; an absent field reads nothing and keeps it.
 # procs=...,unwatched=N1+N2 (a live worker outside the fleet manifest; tick.sh drops other
 # chiefs' workers) wakes the same way (`WAKE unwatched <labels>`): first sight, a label new
 # to the marker `<inbox>.wait.unwatched`, or every CHIEF_WAIT_UNWATCHED_REWAKE_MIN (default
@@ -1438,6 +1444,52 @@ stale_wake() {
     printf '%s\n' "$new"
 }
 
+refused_file="$inbox.wait.refused"
+# refused_wake: with --doc, the tick's rm-refused-<doc stem>.tsv (KEY, ruling, reason, asks_operator 1|0).
+# Prints the wake lines and succeeds when an operator-asked pair is new, or other pairs are new and no
+# digest went out this UTC day; the printed pairs join the marker.
+refused_wake() {
+    local stem
+    [ -n "$console_doc" ] || return 1
+    stem="${console_doc##*/}"
+    stem="${stem%.md}"
+    # shellcheck disable=SC2016  # the python program is single-quoted on purpose
+    python3 -I -c '
+import os, sys
+tsv, marker, today = sys.argv[1:4]
+try:
+    rows = [l.rstrip("\n").split("\t") for l in open(tsv) if l.strip()]
+except OSError:
+    sys.exit(1)
+rows = [r for r in rows if len(r) == 4]
+try:
+    seen = set(l.strip() for l in open(marker))
+except OSError:
+    seen = set()
+try:
+    day = open(marker + ".day").read().strip()
+except OSError:
+    day = ""
+pair = lambda r: "%s@%s" % (r[0], r[1])
+fresh = [r for r in rows if pair(r) not in seen]
+lines = ["WAKE rm-refused %s — fix: %s" % (pair(r), r[2][:200]) for r in fresh if r[3] == "1"]
+woke = [pair(r) for r in fresh if r[3] == "1"]
+other = [pair(r) for r in fresh if r[3] != "1"]
+if other and day != today:
+    lines.append("WAKE rm-refused-digest %d new: %s" % (len(other), ",".join(other[:20])))
+    woke += other
+    with open(marker + ".day", "w") as f:
+        f.write(today + "\n")
+keep = [pair(r) for r in rows if pair(r) in seen or pair(r) in woke]
+with open(marker + ".tmp", "w") as f:
+    f.write("".join(p + "\n" for p in keep))
+os.replace(marker + ".tmp", marker)
+if not lines:
+    sys.exit(1)
+print("\n".join(lines))
+' "${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/rm-refused-$stem.tsv" "$refused_file" "$(date -u +%Y-%m-%d)" 2>/dev/null
+}
+
 doctor_file="$inbox.wait.doctor"
 # doctor_wake: <doctor= ids, comma-joined> — a doctor WARN/FAIL id the marker does not hold. Prints
 # the new ids (comma-joined) and succeeds; the marker then holds the whole current set. No re-wake
@@ -2555,6 +2607,10 @@ while :; do
                         exit_reason='wake-pool-stale'; exit 0
                     fi ;;
             esac
+            if [ -n "$(field rm-refused "$tick_line")" ] && refused_out="$(refused_wake)"; then
+                printf '%s\n%s\n' "$refused_out" "$tick_line"
+                exit_reason='wake-rm-refused'; exit 0
+            fi
             if tracker_stale_wake "$(field tracker "$tick_line")"; then
                 printf 'WAKE tracker-stale tracker=%s\n%s\n' "$(field tracker "$tick_line")" "$tick_line"
                 exit_reason='wake-tracker-stale'; exit 0

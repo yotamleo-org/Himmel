@@ -14,6 +14,7 @@ import { appendAdmission, assertAdmissionsWritable, readAdmissions, readAdmissio
 import { checkConsoleOverride } from '../commands/intake-gate.js';
 import { baselineId, effectOn, reduce, recordOf, scopeOk, terminalOf, unknownState, type ReleaseState } from './reducer.js';
 import { checkWords, decisionsDirFor, resolveDecision } from './verbatim.js';
+import { asksOperator, type TicketFacts } from './operator-work.js';
 import { FENCE_MARKERS, walk } from './fence-ancestry.js';
 import type {
   Authority, Baseline, Declaration, EventRow, IssueSnap, Lease, Op, OperatorKind, OperatorRow, OutOfVersionRow, PlacementClass, RequestRow, RulingRow, Verb,
@@ -1538,6 +1539,76 @@ export interface StateOut extends ReleaseState {
   lease: Omit<Lease, 'mac'> | null;
   requests: { open: string[]; claimed: string[]; /** ts of the oldest open request, null with none. */ oldest_open: string | null };
   heads: { rulings: string; operator: string; events: string; requests: string; mirror: string | null };
+  refused_asks: RefusedAsk[];
+  /** Every verified `words: 1` O- row: the records a hold line may cite. */
+  words_records: WordsRecord[];
+  /** Open mirror keys labelled operator-directed or of priority High or Highest. */
+  asks_operator_keys: string[];
+}
+
+export interface RefusedAsk { key: string; ruling: string; req: string; reason: string; asks_operator: boolean }
+export interface WordsRecord { id: string; decision: string | null; keys: string[]; op: string | null; verbatim: string }
+
+const factsOf = (i: IssueSnap | undefined): TicketFacts | null =>
+  (i ? { labels: i.labels ?? [], priority: i.priority, open: terminalOf(i) === null } : null);
+
+// A refused ask: the key's latest receipted ruling, on a request from the backlog into a version, left the key outside
+// it (BACKLOG, or KEEP on a REVERSION). A newer request for the key, a later O- row naming it, the ticket closing or a
+// chief ack of that ruling ends it. A closed ticket needs the mirror; with none, only the ledger ends an ask.
+function refusedAsks(l: Loaded, issues: Map<string, IssueSnap> | null): RefusedAsk[] {
+  const firstOf = new Map<string, RequestRow>();
+  for (const q of l.requests.verified) if (!firstOf.has(q.req)) firstOf.set(q.req, q);
+  const ruledAt = new Map<string, string>();
+  const latest = new Map<string, RulingRow>();
+  for (const r of l.rulings.verified) {
+    if (!ruledAt.has(r.id)) ruledAt.set(r.id, r.ts);
+    if (r.phase === 'receipted') latest.set(r.key, r);
+  }
+  const newest = (into: Map<string, number>, key: string, t: string) => into.set(key, Math.max(into.get(key) ?? -Infinity, Date.parse(t)));
+  const asksOf = new Map<string, RequestRow[]>();
+  for (const q of firstOf.values()) asksOf.set(q.key, [...(asksOf.get(q.key) ?? []), q]);
+  const named = new Map<string, number>();
+  for (const o of l.operator.verified) for (const k of o.keys ?? []) newest(named, k, o.ts);
+  const acked = new Set(l.events.verified.filter((e) => e.kind === 'ack').map((e) => e.ruling));
+  const out: RefusedAsk[] = [];
+  for (const [key, r] of latest) {
+    const q = firstOf.get(r.req);
+    if (!q || q.from_v !== null || q.to_v === null) continue;
+    if (r.outcome !== 'BACKLOG' && !(r.verb === 'REVERSION' && r.outcome === 'KEEP')) continue;
+    const since = Date.parse(ruledAt.get(r.id) ?? r.ts);
+    const askedAgain = (asksOf.get(key) ?? []).some((x) => x.req !== r.req && Date.parse(x.ts) > since);
+    if (acked.has(r.id) || askedAgain || (named.get(key) ?? -Infinity) > since) continue;
+    const issue = issues?.get(key);
+    if (issue && terminalOf(issue) !== null) continue;
+    out.push({ key, ruling: r.id, req: r.req, reason: r.reason, asks_operator: asksOperator(factsOf(issue)) });
+  }
+  return out.sort((a, b) => a.key.localeCompare(b.key, 'en', { numeric: true }));
+}
+
+function wordsRecords(l: Loaded): WordsRecord[] {
+  return l.operator.verified.filter((o) => o.words === 1)
+    .map((o) => ({ id: o.id, decision: o.decision, keys: o.keys ?? [], op: o.op ?? null, verbatim: o.verbatim ?? '' }));
+}
+
+const asksOperatorKeys = (issues: Map<string, IssueSnap> | null): string[] =>
+  [...(issues?.values() ?? [])].filter((i) => terminalOf(i) === null && asksOperator(factsOf(i))).map((i) => i.key).sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+
+// The chief holds a refusal right: one signed events row that ends that refused ask. An operator-asked key's refusal
+// ends only by a new request, an O- record of the operator's words, or the ticket closing.
+export function ack(ctx: Ctx, o: { ruling: string; reason: string }): EventRow {
+  operatorFence(ctx);
+  if (!o.reason.trim()) throw new Error('release ack: --reason says why the refusal is right');
+  return locked(ctx, (l) => {
+    if (l.events.bad.length) throw new Error(`release: events.jsonl does not verify (${l.events.bad[0]})`);
+    const { issues } = readMirror(ctx.mirrorRoot);
+    if (!issues) throw new Error('release ack: the Jira mirror is unreadable, so whether the key is operator-asked is unknown; sync it first');
+    const a = refusedAsks(l, issues).find((x) => x.ruling === o.ruling);
+    if (!a) throw new Error(`release ack: ${o.ruling} is no open refused ask of ${ctx.release}`);
+    if (a.asks_operator) {
+      throw new Error(`release ack: ${a.key} is operator-asked (labelled operator-directed, or High or Highest); its refusal ends only by a new request, an O- record of the operator's words, or the ticket closing`);
+    }
+    return appendChain<EventRow>(f(ctx, 'events.jsonl'), l.k, { ts: ts(ctx), kind: 'ack', key: a.key, from: null, to: null, ruling: a.ruling, reason: o.reason.trim() });
+  });
 }
 
 function admissionsToday(ctx: Ctx, l: Loaded): Record<string, number> {
@@ -1552,7 +1623,10 @@ function admissionsToday(ctx: Ctx, l: Loaded): Record<string, number> {
 
 export function state(ctx: Ctx): StateOut {
   const l = load(ctx);
-  const empty = { admissions_today: {}, lease: null, requests: { open: [], claimed: [], oldest_open: null }, heads: { rulings: '', operator: '', events: '', requests: '', mirror: null } };
+  const empty = {
+    admissions_today: {}, lease: null, requests: { open: [], claimed: [], oldest_open: null }, heads: { rulings: '', operator: '', events: '', requests: '', mirror: null },
+    refused_asks: [], words_records: [], asks_operator_keys: [],
+  };
   if ('unknown' in l) return { ...unknownState(ctx.release, l.unknown), ...empty };
   const mirror = readMirror(ctx.mirrorRoot);
   const s = reduceLoaded(l, mirror);
@@ -1580,6 +1654,9 @@ export function state(ctx: Ctx): StateOut {
     lease: lease ? leaseOut : null,
     requests: { open, claimed, oldest_open: oldestOpen },
     heads: { rulings: l.rulings.head, operator: l.operator.head, events: l.events.head, requests: l.requests.head, mirror: mirror.sync },
+    refused_asks: refusedAsks(l, mirror.issues),
+    words_records: wordsRecords(l),
+    asks_operator_keys: asksOperatorKeys(mirror.issues),
   };
 }
 

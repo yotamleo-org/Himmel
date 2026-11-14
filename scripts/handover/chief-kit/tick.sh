@@ -177,6 +177,12 @@ rm-run <R>` (at most one per TICK_RMRUN_MIN_SECS, default 600) and appends `,run
 $TICK_STATE_DIR/tick-rm-run.log. Env seams: TICK_RMQ_PROBE, TICK_RMRUN_PROBE, TICK_RMRUN_LAUNCHER,
 TICK_RMQ_TIMEOUT. Not in chief-wait's action key.
 
+rm-refused=<n>:<KEY>@<ruling>,... follows rm-queue= and is ABSENT unless the same OK state read lists refused
+asks (a backlog-to-version request ruled away and not yet ended): n counts all, the list names the operator-asked
+ones. Each OK read writes rm-refused-<doc stem>.tsv (KEY, ruling, reason, asks_operator 1|0) and
+release-state-<doc stem>.json ({ts, status, words_records, asks_operator_keys}) under $TICK_STATE_DIR; any other
+read deletes both. Not in chief-wait's action key: chief-wait reads the tsv (WAKE rm-refused, rm-refused-digest).
+
 held=<n>:<sig8> unfiled=<n> repair=off:<why> follow rm-queue= and are ABSENT unless set: held= is
 the version repair's held key count and the first 8 hex of its held signature (repair-held.json in the
 release dir), unfiled= the signed records no request carries yet, each elided at zero; repair=off:<why> shows
@@ -2871,6 +2877,40 @@ print(n, age, "held" if ls and not ls.get("released") else "free", d.get("status
     esac
 fi
 
+# rm-refused=<n>:<KEY>@<ruling>,...: the refused asks of the same state read (refused_asks), n counting all and the
+# list naming only the operator-asked ones. Every OK read rewrites, under the state dir, rm-refused-<doc stem>.tsv
+# (KEY, ruling, reason, asks_operator 1|0, tab-separated) and release-state-<doc stem>.json ({ts, status,
+# words_records, asks_operator_keys}); any other read deletes both. Absent at n=0 or when the state is not OK.
+rm_refused=""
+rf_stem="${console_doc##*/}"
+rf_stem="${rf_stem%.md}"
+rf_dir="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
+if [ -n "$rf_stem" ]; then
+    if [ "${rm_status:-}" = OK ]; then
+        # shellcheck disable=SC2016  # the python program is single-quoted on purpose
+        rm_refused="$(printf '%s' "$rm_json" | python3 -I -c '
+import datetime, json, os, sys
+d = json.load(sys.stdin)
+out, stem = sys.argv[1], sys.argv[2]
+asks = [a for a in d.get("refused_asks") or [] if isinstance(a, dict)]
+clean = lambda s: " ".join(str(s).split())
+os.makedirs(out, exist_ok=True)
+def put(name, text):
+    tmp = os.path.join(out, "." + name + ".tmp")
+    with open(tmp, "w") as f:
+        f.write(text)
+    os.replace(tmp, os.path.join(out, name))
+put("rm-refused-%s.tsv" % stem, "".join("%s\t%s\t%s\t%d\n" % (clean(a.get("key")), clean(a.get("ruling")), clean(a.get("reason")), 1 if a.get("asks_operator") is True else 0) for a in asks))
+ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+put("release-state-%s.json" % stem, json.dumps({"ts": ts, "status": d.get("status"), "words_records": d.get("words_records") or [], "asks_operator_keys": d.get("asks_operator_keys") or []}) + "\n")
+if asks:
+    print("%d:%s" % (len(asks), ",".join("%s@%s" % (clean(a.get("key")), clean(a.get("ruling"))) for a in asks if a.get("asks_operator") is True)))
+' "$rf_dir" "$rf_stem" 2>/dev/null)" || rm_refused=""  # swallow-ok: an unparseable state or a failed write leaves the field off
+    else
+        rm -f "$rf_dir/release-state-$rf_stem.json" "$rf_dir/rm-refused-$rf_stem.tsv"
+    fi
+fi
+
 # held=<n>:<sig8> unfiled=<n> repair=off:<why>: the version repair's state, read from the
 # release dir of the chief doc's `release:` release. held= and unfiled= come from repair-held.json (the held key
 # count with the first 8 hex of its held_signature; the signed records no request carries yet), each elided at
@@ -4239,6 +4279,7 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$cap_summary" ] || printf 'cap: %s\n' "$cap_summary"
     printf 'version leaks: %s\n' "$leaks_summary"
     printf 'rm-queue: %s\n' "$rm_queue"
+    [ -z "$rm_refused" ] || printf 'rm-refused: %s\n' "$rm_refused"
     [ -z "$held_summary" ] || printf 'repair held: %s\n' "$held_summary"
     [ -z "$unfiled_summary" ] || printf 'repair unfiled: %s\n' "$unfiled_summary"
     [ -z "$repair_summary" ] || printf 'repair: %s\n' "$repair_summary"
@@ -4353,6 +4394,7 @@ else
     compact_field cap "$cap_summary"
     compact_field leaks "$leaks_summary"
     compact_field rm-queue "$rm_queue"
+    compact_field rm-refused "$rm_refused"
     compact_field held "$held_summary"
     compact_field unfiled "$unfiled_summary"
     compact_field repair "$repair_summary"

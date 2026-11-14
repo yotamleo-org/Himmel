@@ -60,8 +60,12 @@ The chief writes the request and sends `REQ <id>`. Then:
    against the decision's verbatim file: admit on it when the words say this
    placement, under `--authority operator --ref <O-id>`; when they do not, rule
    as you would without it. A request filed by a worker, by the close-time Done
-   fold or by the version repair is not gated and may cite no such record: rule
-   it as before, never hold it for the missing record. A record with no
+   fold, by the version repair or by the blocker pull (evidence `rule:
+   blocker-pull`, ruled under `O-<R>-blocker-pull`) is not gated and may cite no
+   such record: rule it as before, never hold it for the missing record. A
+   `BACKLOG` (or REVERSION `KEEP`) ruling on a request from the backlog into a
+   version wakes the chief, so its reason must name the fix: what record or fact
+   would let the key in. A record with no
    `words: 1` (the legacy form) is read as before.
    A REVERSION restoring a key to a version rules `MOVE` with `--op move
    --from backlog --to <v>`. Only for a key whose current ruling carries

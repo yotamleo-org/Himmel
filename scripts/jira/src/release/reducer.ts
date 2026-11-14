@@ -153,11 +153,12 @@ function partition(inp: ReduceInput, integrity: string[]): Partition {
 }
 
 // The mirror is UNKNOWN without a sync, STALE when an event postdates it (those keys read unknown).
+// An ack changes no membership, so it never makes the mirror stale.
 function mirrorOf(inp: ReduceInput): { mirror: InputState; staleKeys: Set<string> } {
   const staleKeys = new Set<string>();
   if (inp.issues === null || inp.mirrorSync === null) return { mirror: 'UNKNOWN', staleKeys };
   const sync = Date.parse(inp.mirrorSync);
-  for (const e of inp.events.verified) if (Date.parse(e.ts) > sync) staleKeys.add(e.key);
+  for (const e of inp.events.verified) if (e.kind !== 'ack' && Date.parse(e.ts) > sync) staleKeys.add(e.key);
   return { mirror: staleKeys.size ? 'STALE' : 'FRESH', staleKeys };
 }
 
@@ -264,7 +265,7 @@ function tally(c: VersionCtx, out: { rec: KeyRecord; isIn: boolean; everOut: boo
 function trendOf(decl: Declaration, events: EventRow[]): ReleaseState['trend'] {
   const trend: ReleaseState['trend'] = {};
   for (const e of events) {
-    if (!decl.versions.some((v) => v === e.from || v === e.to) || e.readback === 'mismatch') continue;
+    if (e.kind === 'ack' || !decl.versions.some((v) => v === e.from || v === e.to) || e.readback === 'mismatch') continue;
     const day = e.ts.slice(0, 10);
     trend[day] ??= {};
     trend[day][e.kind] = (trend[day][e.kind] ?? 0) + 1;

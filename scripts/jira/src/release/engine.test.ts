@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  apply, bucketCheck, operatorWords, poolCurrent, claim, coreBypass, declare, decisionWords, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, operatorFence, recordRequestDecision, request, requestWithWords, rule, state, takeover, withdraw,
+  ack, apply, bucketCheck, operatorWords, poolCurrent, claim, coreBypass, declare, decisionWords, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, operatorFence, recordRequestDecision, request, requestWithWords, rule, state, takeover, withdraw,
   JudgeReplyError, LIVE_LOOKUP_MS, coreSnapshot, pull, readMirror, readMirrorFilesUnverified, readOperatorRecords, rmRun, rmRunSummary, pinnedSha, signSpec, specCheck, specReview, standing,
   type Ctx, type JiraPort, type Judge,
 } from './engine.js';
@@ -97,14 +97,15 @@ function fakeProc(marker: Record<string, string> = {}): { procRoot: string; host
   return { procRoot, hostNsPath };
 }
 
-function mirror(issues: Array<{ key: string; fixVersions: string[]; status?: string; category?: string; resolution?: string; sector?: string; type?: string; blockedBy?: string[] }>, lastSync = '2026-10-21T09:00:00.000Z') {
+function mirror(issues: Array<{ key: string; fixVersions: string[]; status?: string; category?: string; resolution?: string; sector?: string; type?: string; blockedBy?: string[]; priority?: string; labels?: string[] }>, lastSync = '2026-10-21T09:00:00.000Z') {
   const dir = join(root, 'mirror');
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, '.cursor.json'), JSON.stringify({ lastSync, total: issues.length }));
   for (const i of issues) {
     writeFileSync(join(dir, `${i.key}.md`), [
       '---', `key: "${i.key}"`, `type: "${i.type ?? 'Task'}"`, `status: "${i.status ?? 'To Do'}"`,
-      ...(i.category ? [`statusCategory: "${i.category}"`] : []), 'priority: "Medium"',
+      ...(i.category ? [`statusCategory: "${i.category}"`] : []), `priority: "${i.priority ?? 'Medium'}"`,
+      ...(i.labels ? [`labels: ${JSON.stringify(i.labels)}`] : []),
       ...(i.sector ? [`sector: "${i.sector}"`] : []),
       `fixVersions: ${JSON.stringify(i.fixVersions)}`, `resolution: ${i.resolution ? JSON.stringify(i.resolution) : 'null'}`,
       'links:', '  blocks: []', `  blocked_by: ${JSON.stringify(i.blockedBy ?? [])}`, '  relates: []',
@@ -3086,5 +3087,123 @@ describe('a request names the operator\'s words', () => {
     recordRequestDecision(ctx(), { decision: '9', words: WORDS, key: 'HIMMEL-1', verb: 'INTAKE', from_v: null, to_v: 'v1' });
     rmSync(path);
     expect(state(ctx()).status).toBe('OK');
+  });
+});
+
+describe('a ruled-away operator ask wakes the chief', () => {
+  const GOLDEN = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'handover', 'chief-kit', 'fixtures', 'state-golden.json');
+  const WORDS = 'Approved one more round';
+  let clock = 0;
+  // Each write lands a minute after the last, so "after the ruling" is a real order.
+  const at = (env: Record<string, string> = consoleEnv): Ctx => {
+    clock += 60_000;
+    const d = new Date(Date.parse('2026-10-21T10:00:00.000Z') + clock);
+    return { ...ctx(env), now: () => d };
+  };
+  beforeEach(() => { clock = 0; });
+  const ruleOn = async (key: string, verb: 'INTAKE' | 'REVERSION', from_v: string | null, to_v: string | null, outcome: string,
+    op: { kind: 'none' | 'keep'; from_v: string | null; to_v: string | null }) => {
+    const q = request(at(), { verb, key, from_v, to_v, why: 'w', evidence: {}, from: 'console' });
+    claim(at(rmEnv));
+    const r = rule(at(rmEnv), {
+      req: q.req, outcome, op, sector: 'Planning & tracking', ground: 'no operator words', reason: `name the operator's words for ${key}`,
+      supersedes: [], authority: { kind: 'rm', ref: null },
+    });
+    await apply(at(rmEnv), r.id);
+    return r;
+  };
+  const refuseIntake = (key: string) => ruleOn(key, 'INTAKE', null, 'v1', 'BACKLOG', { kind: 'none', from_v: null, to_v: null });
+  const decisionFile = () => {
+    const dir = join(root, 'specs', 'decisions');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'verbatim-decision-9-op.txt'), `Operator, verbatim:\n\n"${WORDS}"\n\nAnswering the ask on HIMMEL-1: stop and park.\n`);
+  };
+
+  it('a BACKLOG ruling of a backlog-to-version request is a refused ask', async () => {
+    await setup();
+    mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-5', fixVersions: [], labels: ['operator-directed'] }, { key: 'K-6', fixVersions: [] }]);
+    const r5 = await refuseIntake('K-5');
+    const r6 = await refuseIntake('K-6');
+    expect(state(ctx()).refused_asks).toEqual([
+      { key: 'K-5', ruling: r5.id, req: r5.req, reason: "name the operator's words for K-5", asks_operator: true },
+      { key: 'K-6', ruling: r6.id, req: r6.req, reason: "name the operator's words for K-6", asks_operator: false },
+    ]);
+  });
+
+  it('KEEP on a backlog-to-version REVERSION counts, a demotion never does', async () => {
+    await setup();
+    mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-7', fixVersions: [] }, { key: 'K-8', fixVersions: ['v1'] }, { key: 'K-9', fixVersions: [] }]);
+    jira.fv.set('K-7', ['v2']);
+    jira.fv.set('K-8', ['v1']);
+    const r7 = await ruleOn('K-7', 'REVERSION', null, 'v1', 'KEEP', { kind: 'keep', from_v: 'v2', to_v: 'v2' });
+    await ruleOn('K-8', 'REVERSION', 'v1', null, 'KEEP', { kind: 'keep', from_v: 'v1', to_v: 'v1' });
+    await ruleOn('K-9', 'INTAKE', null, null, 'BACKLOG', { kind: 'none', from_v: null, to_v: null });
+    expect(state(ctx()).refused_asks.map((x) => `${x.key}@${x.ruling}`)).toEqual([`K-7@${r7.id}`]);
+  });
+
+  it('a newer request, a later O- row naming the key, Done, or an ack each ends it', async () => {
+    await setup();
+    const keys = ['K-10', 'K-11', 'K-12', 'K-13', 'K-14'];
+    mirror([{ key: 'K-1', fixVersions: ['v1'] }, ...keys.map((key) => ({ key, fixVersions: [] }))]);
+    const rulings = new Map<string, RulingRow>();
+    for (const k of keys) rulings.set(k, await refuseIntake(k));
+    request(at(), { verb: 'INTAKE', key: 'K-10', from_v: null, to_v: 'v2', why: 'asked again', evidence: {}, from: 'console' });
+    operatorDecision(at(), { decision: '120', keys: ['K-11'], op: 'add', from_v: null, to_v: 'v2', verbatim: 'x' });
+    const acked = ack(at(), { ruling: rulings.get('K-13')?.id ?? '', reason: 'the refusal is right: a duplicate' });
+    expect(acked).toMatchObject({ kind: 'ack', key: 'K-13', ruling: rulings.get('K-13')?.id, reason: 'the refusal is right: a duplicate' });
+    mirror([{ key: 'K-1', fixVersions: ['v1'] }, ...keys.map((key) => ({ key, fixVersions: [], ...(key === 'K-12' ? { status: 'Done', category: 'Done' } : {}) }))],
+      '2026-10-21T12:00:00.000Z');
+    expect(state(ctx()).refused_asks.map((x) => x.key)).toEqual(['K-14']);
+  });
+
+  it('ack is refused for an asks_operator key', async () => {
+    await setup();
+    mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-5', fixVersions: [], priority: 'High' }]);
+    const r = await refuseIntake('K-5');
+    expect(() => ack(at(), { ruling: r.id, reason: 'right' })).toThrow(/K-5 is operator-asked/);
+    expect(state(ctx()).refused_asks.map((x) => x.key)).toEqual(['K-5']);
+  });
+
+  it('ack refuses inside a chief-spawned worker', async () => {
+    await setup();
+    mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-6', fixVersions: [] }]);
+    const r = await refuseIntake('K-6');
+    expect(() => ack(at({ HIMMEL_CONSOLE_LEG: '1' }), { ruling: r.id, reason: 'right' })).toThrow(/chief-spawned worker/);
+  });
+
+  it('words_records lists only verified words:1 rows', async () => {
+    await setup();
+    decisionFile();
+    const words = recordRequestDecision(ctx(), { decision: '9', words: WORDS, key: 'ABC-1', verb: 'INTAKE', from_v: null, to_v: 'v1' });
+    operatorDecision(ctx(), { decision: '120', keys: ['ABC-2'], op: 'add', from_v: null, to_v: 'v1', verbatim: 'legacy, no words' });
+    expect(state(ctx()).words_records).toEqual([{ id: words.id, decision: '9', keys: ['ABC-1'], op: 'add', verbatim: WORDS }]);
+  });
+
+  it('asks_operator_keys lists open labelled or High keys', async () => {
+    await setup();
+    mirror([
+      { key: 'K-1', fixVersions: ['v1'] }, { key: 'K-20', fixVersions: [], labels: ['operator-directed'] }, { key: 'K-21', fixVersions: [], priority: 'High' },
+      { key: 'K-22', fixVersions: [], priority: 'Highest', status: 'Done', category: 'Done' }, { key: 'K-23', fixVersions: [] },
+    ]);
+    expect(state(ctx()).asks_operator_keys).toEqual(['K-20', 'K-21']);
+  });
+
+  it('an unknown state serializes the three fields empty', () => {
+    expect(state(ctx())).toMatchObject({ status: 'UNKNOWN', refused_asks: [], words_records: [], asks_operator_keys: [] });
+  });
+
+  it('state-golden.json matches the producer', async () => {
+    await setup();
+    decisionFile();
+    mirror([
+      { key: 'K-1', fixVersions: ['v1'] }, { key: 'ABC-1', fixVersions: [] }, { key: 'ABC-2', fixVersions: [], labels: ['operator-directed'] },
+      { key: 'ABC-3', fixVersions: [] }, { key: 'ABC-4', fixVersions: [] },
+    ]);
+    recordRequestDecision(at(), { decision: '9', words: WORDS, key: 'ABC-1', verb: 'INTAKE', from_v: null, to_v: 'v1' });
+    for (const k of ['ABC-2', 'ABC-3', 'ABC-4']) await refuseIntake(k);
+    // The chain heads hash rows signed with a key minted per run; every other field is fixed by the fixture and the clock.
+    const got = `${JSON.stringify({ ...state(ctx()), heads: { rulings: '', operator: '', events: '', requests: '', mirror: null } }, null, 2)}\n`;
+    if (process.env.UPDATE_GOLDEN === '1') writeFileSync(GOLDEN, got);
+    expect(got).toBe(readFileSync(GOLDEN, 'utf8'));
   });
 });

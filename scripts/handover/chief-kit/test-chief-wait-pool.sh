@@ -635,6 +635,48 @@ arm "$I" "$WORK/sp4.out" 4
 check "(6604) the full read afterwards wakes nothing twice (rc 124)" "124" "$rc"
 cp "$STUB/tick.line.orig" "$STUB/tick.line"
 
+# --- (9853) a ruled-away operator ask wakes the chief once; the other refused asks arrive as one digest a day ----
+export TICK_STATE_DIR="$WORK/rf-state"
+mkdir -p "$TICK_STATE_DIR" "$WORK/rf"
+rf_doc="$WORK/rf/chief-rf.md"
+printf '# chief\n' > "$rf_doc"
+rf_tsv="$TICK_STATE_DIR/rm-refused-chief-rf.tsv"
+rf_line() { sed "s/capacity=UNDERFILLED:7/capacity=ok${1:+ rm-refused=$1}/" "$STUB/tick.line.orig" > "$STUB/tick.line"; }
+rf_arm() { timeout "$3" bash "$WAIT" "$1" --doc "$rf_doc" --workers N1.md > "$2" 2>/dev/null; rc=$?; }  # gnu-ok: Linux-only kit; pipefail-ok: none set
+rf_wakes() { grep '^WAKE ' "$1" | paste -sd'|' -; }
+printf 'ABC-2\tR-1\tname the operator words for ABC-2\t1\nABC-5\tR-2\tthe ask needs decision 9\t1\nABC-6\tR-4\tother\t0\n' > "$rf_tsv"
+rf_line '3:ABC-2@R-1,ABC-5@R-2'
+I="$(new_inbox rf)"
+date -u +%Y-%m-%d > "$I.wait.refused.day"  # a digest already went out today: only the operator pairs wake here
+rf_arm "$I" "$WORK/rf1.out" 15
+check "(9853) one wake per new operator refused ask: one line per pair, naming key, ruling and fix" \
+    "WAKE rm-refused ABC-2@R-1 — fix: name the operator words for ABC-2|WAKE rm-refused ABC-5@R-2 — fix: the ask needs decision 9" \
+    "$(rf_wakes "$WORK/rf1.out")"
+rf_arm "$I" "$WORK/rf2.out" 4
+check "(9853) the same tsv again wakes nothing (rc 124)" 124 "$rc"
+printf 'ABC-7\tR-3\tnew ask\t1\n' >> "$rf_tsv"
+rf_line ''
+rf_arm "$I" "$WORK/rf3.out" 4
+check "(9853) a tick line without rm-refused= reads no tsv (rc 124)" 124 "$rc"
+rf_line '4:ABC-2@R-1,ABC-5@R-2,ABC-7@R-3'
+rf_arm "$I" "$WORK/rf4.out" 15
+check "(9853) a new operator pair wakes once, naming only itself" "WAKE rm-refused ABC-7@R-3 — fix: new ask" "$(rf_wakes "$WORK/rf4.out")"
+
+I="$(new_inbox rfd)"
+: > "$rf_tsv"
+for i in $(seq 101 125); do printf 'HIMMEL-%s\tR-%s\tother\t0\n' "$i" "$i" >> "$rf_tsv"; done
+rf_line '25:'
+rf_arm "$I" "$WORK/rfd1.out" 15
+check "(9853) 25 new non-operator refused asks give one digest line listing 20" \
+    "WAKE rm-refused-digest 25 new: $(seq 101 120 | sed 's/.*/HIMMEL-&@R-&/' | paste -sd, -)" "$(rf_wakes "$WORK/rfd1.out")"
+printf 'ABC-126\tR-126\tother\t0\n' >> "$rf_tsv"
+rf_line '26:'
+rf_arm "$I" "$WORK/rfd2.out" 4
+check "(9853) a second run the same day sends no digest (rc 124)" 124 "$rc"
+check "(9853) the held-back pair stays out of the marker for the next day's digest" 0 "$(grep -c '^ABC-126@' "$I.wait.refused" 2>/dev/null)"
+unset TICK_STATE_DIR
+cp "$STUB/tick.line.orig" "$STUB/tick.line"
+
 # --- (8170) versionless operator work: the pool line reads INTAKE:<m>, and the wake names the
 # candidates and the one command that files their INTAKE requests ----
 export CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh"
