@@ -157,6 +157,9 @@ commands are VM-only): `worker-sections/shell-and-tests.md`.
   - **`completes-ticket: no`** → omit the flag; never turn it on by default.
   - The flag closes only the **first** `[KEY]` of the PR title; check a second
     key by hand; re-read the ticket after merge. [prose]
+  - Type that one command from any directory (the script takes the PR from the GO file
+    name); never `cd <worktree> && bash …` or a variable-built spelling: it matches no
+    allow rule, and the classifier denied one on 2026-11-12. [prose]
 
 ## Wrapping up
 
