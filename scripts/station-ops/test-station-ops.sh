@@ -617,5 +617,18 @@ assert_contains "RED 9691: a delivered notice writes a notice row of result sent
 assert_contains "RED 9691: the sent row carries the Bot API message_id as its receipt" '"message_id": 100' "$sent_row"
 assert_absent "the sent row holds no token" "$NTOK" "$(ledger)"
 
+echo "== the station ops and the size-override signer are CI trust paths =="
+TP_PATS="$tmp/trust-pats.txt"
+grep -Ev '^[[:space:]]*(#|$)' "$REPO_ROOT/scripts/ci/ci-trust-paths.txt" > "$TP_PATS"
+trust_hit() { printf '%s\n' "$1" | grep -E -f "$TP_PATS" >/dev/null 2>&1 && echo yes || echo no; }
+for tp in scripts/station-ops/size-approval.sh scripts/station-ops/size-approval.json scripts/station-ops/helper-update.sh \
+    scripts/station-ops/test-station-ops.sh scripts/handover/chief-kit/size-override.sh scripts/handover/chief-kit/test-size-override.sh; do
+    assert_eq "RED: $tp matches a trust-path pattern" "yes" "$(trust_hit "$tp")"
+done
+for tp in scripts/handover/chief-kit/size-override.sh.bak scripts/handover/chief-kit/size-overrides.sh scripts/handover/chief-kit/gen-briefs.py \
+    docs/station-ops/notes.md scripts/other/station-ops/x.sh; do
+    assert_eq "negative control: $tp matches no trust-path pattern" "no" "$(trust_hit "$tp")"
+done
+
 echo "test summary: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
