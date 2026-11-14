@@ -752,6 +752,15 @@ for key, reason in sorted(invalid.items()):
 for key, reason in sorted(rows.items()):
     if key not in dispatchable:
         print("# pool-left-out %s %s" % (key, reason))
+# a listed row whose key carries a fresh, valid line is parked by the chief: stale, changed, invalid and unowned lines are
+# in `unresolved` and park nothing. The line stays in pool-dispatchable (chief-wait.sh counts that list); parked rows are named apart.
+unres_keys = {k for _, k, _ in unresolved}
+owed = re.compile(r"\b(?:proof|signature|critic round|owed|go code)\b", re.I)
+for key in sorted(dispatchable):
+    if key in decisions and key not in unres_keys and key not in invalid:
+        print("# pool-parked " + key)
+        if owed.search(decisions[key]):
+            print("# pool-chief-owed " + key)
 PY
 }
 
@@ -3102,6 +3111,9 @@ fi
 # else ?. The chief's current pool-disposition lines are read on every tick.
 pool_summary=skip
 intake_summary=skip
+pool_parked_n=""
+pool_owed_n=""
+pool_free=""
 if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
     pool_summary='?'
     pd_dir="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
@@ -3142,6 +3154,16 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
         pd_summary="$(pool_dispositions "$console_doc" < "$pd_base.rows")"
         pool_summary="$(printf '%s\n' "$pd_summary" | sed -n 's/^# pool-counts //p')"
         [ -n "$pool_summary" ] || pool_summary='?'
+        # parked and chief-owed rows, and the free rest: counted only on a numeric pool, never on `?`
+        case "$pool_summary" in
+            [0-9]*/*)
+                pool_parked_n="$(printf '%s\n' "$pd_summary" | grep -c '^# pool-parked ' || true)"  # swallow-ok: grep -c prints 0 and exits 1 on no match
+                pool_owed_n="$(printf '%s\n' "$pd_summary" | grep -c '^# pool-chief-owed ' || true)"  # swallow-ok: grep -c prints 0 and exits 1 on no match
+                pool_free=$(( $(printf '%s\n' "$pd_summary" | grep -c '^# pool-dispatchable ' || true) - pool_parked_n ))  # swallow-ok: grep -c prints 0 and exits 1 on no match
+                [ "$pool_parked_n" -gt 0 ] || { pool_parked_n=""; pool_owed_n=""; }
+                [ -z "$pool_owed_n" ] || [ "$pool_owed_n" -gt 0 ] || pool_owed_n=""
+                ;;
+        esac
         # INTAKE=<n>: versionless operator work the pool cannot list, from the snapshot's `# intake` line
         intake_summary="$(sed -n 's/^# intake \([0-9][0-9]*\)[ :].*/\1/p' "$pd_base.rows" | head -n 1)"  # swallow-ok: no line reads 0
         [ -n "$intake_summary" ] || intake_summary=0
@@ -3885,6 +3907,7 @@ if [ "${CADENCE_USAGE_LANE:-${WORKER_SESSION_LANE:-native}}" = openrouter ]; the
     bank="openrouter:${or_verdict:-BANK-UNKNOWN}"
 fi
 fleet_total="$(printf '%s\n' "$fleet_out" | sed -n 's/^bank-preflight: FLEET .*total=\([0-9][0-9]*\)\/\([0-9][0-9]*\)$/\1 \2/p' | tail -n 1)"
+supply=""
 underfill_min="${TICK_UNDERFILL_MIN:-10}"
 case "$underfill_min" in ''|*[!0-9]*) underfill_min=10 ;; esac
 if [ -n "$fleet_total" ]; then
@@ -3902,6 +3925,12 @@ if [ -n "$fleet_total" ]; then
         capacity=ok
     else
         capacity="UNDERFILLED:$((10#$fleet_cap - 10#$fleet_live))"
+        # supply=SHORT:<free>: fewer free (unparked) listed rows than slots, so the shortage is startable work, not the chief.
+        # Its own field: chief-wait.sh matches capacity=UNDERFILLED:<slack> and must keep reading it.
+        case "$pool_free" in
+            '' | *[!0-9]*) ;;
+            *) [ "$pool_free" -ge $((10#$fleet_cap - 10#$fleet_live)) ] || supply="SHORT:$pool_free" ;;
+        esac
     fi
 else
     fleet='?'
@@ -4255,6 +4284,7 @@ if [ "$verbose" -eq 1 ]; then
     fi
     printf 'fleet: %s\n' "$fleet"
     printf 'capacity: %s\n' "$capacity"
+    [ -z "$supply" ] || printf 'supply: %s\n' "$supply"
     printf 'gql: %s\n' "$gql"
     [ -z "$quota_items" ] || printf 'quota: %s\n' "$quota_items"
     case "$rest_main_line" in ''|'?'*) ;; *) printf 'rest main: %s\n' "$rest_main_line" ;; esac
@@ -4381,6 +4411,9 @@ else
     compact_field INTAKE "$intake_summary"
     compact_field pool-stale "$pool_stale"
     compact_field pool-changed "$pool_changed"
+    compact_field pool-parked "$pool_parked_n"
+    compact_field chief-owed "$pool_owed_n"
+    compact_field supply "$supply"
     compact_field chains "$chains_summary"
     compact_field residual-unversioned "$residual_unversioned"
     compact_field denials "$denials_summary"
