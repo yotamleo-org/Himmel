@@ -152,6 +152,7 @@ assert_eq "T12 concurrent writes never corrupt the file" "ok" "$valid"
 # keys only), placeholder values, no account fields.
 SHAPE='{"numStartups":41,"installMethod":"native","autoUpdates":false,"tipsHistory":{"new-user-warmup":1},"firstStartTime":"2026-01-01T00:00:00.000Z","hasCompletedOnboarding":true,"lastOnboardingVersion":"2.0.0","mcpServers":{},"cachedGrowthBookFeatures":{},"githubRepoPaths":{},"skillUsage":{},"projects":{"/srv/existing":{"allowedTools":[],"mcpContextUris":[],"mcpServers":{},"enabledMcpjsonServers":[],"disabledMcpjsonServers":[],"hasTrustDialogAccepted":true,"hasClaudeMdExternalIncludesApproved":false,"lastCost":0,"lastSessionId":"00000000-0000-0000-0000-000000000000"}}}'
 read_top() { F="$1" K="$2" node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(process.env.F,"utf8"))[process.env.K]))'; }
+count_existing() { local n=0 f; for f in "$@"; do [ -e "$f" ] && n=$((n + 1)); done; printf '%s' "$n"; }
 wait_marker() { local i=0; while [ ! -e "$1" ] && [ "$i" -lt 600 ]; do sleep 0.05; i=$((i + 1)); done; }
 
 # T13: two helpers for distinct dirs both read the config, then an unrelated
@@ -175,7 +176,7 @@ assert_eq "T13 first trust entry survives" "true" "$(read_flag "$CFG" "$(norm_ke
 assert_eq "T13 second trust entry survives" "true" "$(read_flag "$CFG" "$(norm_key "$DIRD")" 2>/dev/null)"
 assert_eq "T13 unrelated top-level change survives" "42" "$(read_top "$CFG" numStartups 2>/dev/null)"
 assert_eq "T13 sibling project kept" "true" "$(read_flag "$CFG" "/srv/existing" 2>/dev/null)"
-leftover=$(find "$TMP" -maxdepth 1 -name 'rmw.json.tmp*' | wc -l | tr -d ' ')
+leftover=$(count_existing "$TMP"/rmw.json.tmp*)
 assert_eq "T13 no temp file orphaned" "0" "$leftover"
 
 # T14 (negative control): one uncontended trust write on the real shape yields
@@ -185,7 +186,7 @@ S="$SHAPE" K="$KEY" O="$TMP/shape.expected" node -e 'const j=JSON.parse(process.
 TRUST_WRITE_JITTER_MS=0 WORKSPACE_TRUST_CONFIG="$CFG" bash "$HELPER" "$WORKDIR"; rc=$?
 assert_eq "T14 uncontended rc" "0" "$rc"
 cmp -s "$TMP/shape.expected" "$CFG"; assert_eq "T14 whole file byte for byte" "0" "$?"
-leftover=$(find "$TMP" -maxdepth 1 -name 'shape.json.tmp*' | wc -l | tr -d ' ')
+leftover=$(count_existing "$TMP"/shape.json.tmp*)
 assert_eq "T14 no temp file orphaned" "0" "$leftover"
 
 echo
