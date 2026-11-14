@@ -492,16 +492,9 @@ REPO="$(cd "$HERE/../../.." && pwd)"
 # The gated checkout: HIMMEL_REPO, else the primary checkout of this script's own tree,
 # never the waiter's cwd. ready-check.sh, cr-disposition.sh and every gh read of the
 # PR run there, so the waiter reads the same repo from any directory.
-# git-env-ok: the one git call runs in a subshell that unsets GIT_DIR, GIT_WORK_TREE, GIT_COMMON_DIR and GIT_INDEX_FILE first
-case "${HIMMEL_REPO:-}" in
-    /*) GATE_DIR=$HIMMEL_REPO ;;
-    '') GATE_DIR=$( (unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE; git -C "$HERE" rev-parse --path-format=absolute --git-common-dir) 2>/dev/null) || GATE_DIR=""  # swallow-ok: a tree outside git reads empty, which falls back to this script's own tree root below
-        GATE_DIR=${GATE_DIR%/.git} ;;
-    *) echo "chief-wait: HIMMEL_REPO ($HIMMEL_REPO) is not an absolute path - refusing to let it pick the gated checkout" >&2
-       exit 2 ;;
-esac
-[ -n "$GATE_DIR" ] || GATE_DIR=$REPO
-[ -d "$GATE_DIR" ] || { echo "chief-wait: the gated checkout HIMMEL_REPO ($GATE_DIR) is not a directory" >&2; exit 2; }
+# shellcheck source=../../lib/gate-repo-resolver.sh
+. "$REPO/scripts/lib/gate-repo-resolver.sh" || { echo "chief-wait: cannot load scripts/lib/gate-repo-resolver.sh; nothing waited" >&2; exit 2; }
+GATE_DIR=$(gate_repo_dir chief-wait "" "") || exit 2
 # gate_nwo: the gated checkout's owner/name from its origin URL (empty when it has none).
 gate_nwo() {
     (. "$REPO/scripts/lib/git-clean.sh" && git_env_scrub && git -C "$GATE_DIR" config --get remote.origin.url | sed -E 's#^.*github\.com[:/]##; s#\.git$##')
