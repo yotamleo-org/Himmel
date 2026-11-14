@@ -2224,7 +2224,7 @@ PFEOF
 pfmk() {
     python3 -I -c 'import json,sys; w=json.load(open(sys.argv[1])); R=sys.argv[4]; exec(sys.argv[3]); json.dump([w],open(sys.argv[2],"w"))' "$CG/pf-base.json" "$CG/$1.json" "$2" "$PF_ROOT"
 }
-pf_lines() { if [ -f "$1" ]; then wc -l < "$1" | tr -d ' '; else echo 0; fi; }
+pf_lines() { if [ -f "$1" ]; then wc -l < "$1" | tr -d ' '; else echo 0; fi; }  # read-sink-ok: $1 is a brief file this suite wrote under its own temp dir
 pf_contract() { awk '/^> \*\*Contract:\*\*/{f=1} f&&!/^> /{exit} f' "$1"; }
 pf_head() { awk '/^> \*\*You are/{f=1} /^> \*\*Why/{exit} f' "$1"; }
 
