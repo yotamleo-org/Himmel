@@ -1780,6 +1780,38 @@ apply_tty y "$SYSPATH"
 quote_stays "R32 a blank line then a real one" "$TMP/st/.env" "  JIRA_API_TOKEN  secret  stays (it has several entries; keep one)"
 no_item "R32 a blank line then a real one" JIRA_API_TOKEN
 
+# --- A TERM between replace_file's cp and mv leaves no .migrate.<pid> copy, and a leftover is named ---
+# A stub mv sends TERM to the migration (its parent) and refuses to rename, as a kill landing between the two would.
+mkdir -p "$TMP/mvstub"
+cat > "$TMP/mvstub/mv" <<'STUB' || fail "fixture write of the mv stub failed"
+#!/usr/bin/env bash
+case "$*" in *.migrate.*) kill -TERM "$PPID"; exit 1 ;; esac
+exec /bin/mv "$@"
+STUB
+chmod +x "$TMP/mvstub/mv"
+leftovers() { find "$TMP/st" "$HOME/.himmel" -name '*.migrate.[0-9]*' 2>/dev/null; }
+fixture_env
+apply_tty y "PATH=$TMP/mvstub:\$PATH "
+left=$(leftovers)
+if [ -z "$left" ]; then pass "T10059 a TERM mid-replace leaves no .migrate.<pid> copy"; else fail "T10059 a TERM mid-replace left: $left"; fi
+no_canary "T10059 the interrupted run prints no value" "$out"
+# A leftover from an earlier run is named by path, never by content, and is not removed.
+fixture_env
+fxput "$TMP/st/.env.migrate.99999" 'X=%s\n' "$(canary leftover)"
+apply_tty y
+has "T10059 a leftover copy is named by path" "$TMP/st/.env.migrate.99999" "$out"
+no_canary "T10059 the leftover report prints no value" "$out"
+if [ -e "$TMP/st/.env.migrate.99999" ]; then pass "T10059 the leftover is left for the operator"; else fail "T10059 the leftover was removed"; fi
+# Control: a normal run still replaces the file and keeps its mode.
+fixture_env
+chmod 640 "$TMP/st/.env"
+apply_tty y
+if [ "$rc" = 0 ] && [ "$(mode_of "$TMP/st/.env")" = 640 ] && [ -z "$(leftovers)" ]; then
+    pass "T10059 a normal run replaces .env, keeps its mode, leaves no copy"
+else
+    fail "T10059 a normal run: rc=$rc mode=$(mode_of "$TMP/st/.env") left=$(leftovers)"
+fi
+
 if [ "$FAILED" -gt 0 ]; then
     echo "test-migrate-env: $FAILED FAILED"
     exit 1
