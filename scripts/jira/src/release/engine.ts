@@ -1655,21 +1655,15 @@ function supersedesOf(now: Loaded, mirror: ReturnType<typeof readMirror>, key: s
   return [...new Set(now.decl.versions.filter((v) => effectOn(op, v)).flatMap((v) => recordOf(s, key, v)?.ruling ?? []))];
 }
 
-const prLabel = (n: unknown): string | undefined => (typeof n === 'number' && Number.isInteger(n) && n > 0 ? `PR #${n}` : undefined);
-
-function deliveryOf(evidence: unknown): { merged?: string; duplicate?: string; original?: string } {
-  const e = (evidence && typeof evidence === 'object' ? evidence : {}) as Record<string, unknown>;
-  return {
-    merged: prLabel(e.pr_number) ?? prLabel(e.pr) ?? (typeof e.merged_pr === 'string' && e.merged_pr.trim() ? e.merged_pr.trim() : undefined),
-    duplicate: prLabel(e.duplicate_pr),
-    original: typeof e.duplicate_of === 'string' && ISSUE_KEY.test(e.duplicate_of) ? e.duplicate_of : undefined,
-  };
+function duplicateOf(evidence: unknown): string | undefined {
+  const original = (evidence as { duplicate_of?: unknown } | null)?.duplicate_of;
+  return typeof original === 'string' && ISSUE_KEY.test(original) ? original : undefined;
 }
 
 function mergeEvidenceFor(q: RequestRow, t: 'Done' | 'Duplicate', lookup?: (key: string) => number | undefined): string | undefined {
-  const claimed = deliveryOf(q.evidence);
-  if (!lookup) return t === 'Duplicate' ? claimed.duplicate ?? claimed.merged : claimed.merged;
-  const found = lookup(q.key) ?? (t === 'Duplicate' && claimed.original ? lookup(claimed.original) : undefined);
+  if (!lookup) return undefined;
+  const original = t === 'Duplicate' ? duplicateOf(q.evidence) : undefined;
+  const found = lookup(q.key) ?? (original ? lookup(original) : undefined);
   return found !== undefined ? `PR #${found}` : undefined;
 }
 

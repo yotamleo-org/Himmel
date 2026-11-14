@@ -700,6 +700,17 @@ describe('jira release pull', () => {
       .rejects.toThrow(/--kind is blocker-pull/);
   });
 
+  it('ctxFor wires the merged-PR lookup to gh, so rule and rm-run verify merge evidence', () => {
+    const bin = join(root, 'bin');
+    mkdirSync(bin);
+    writeFileSync(join(bin, 'gh'), '#!/bin/sh\necho \'[{"number":77,"url":"https://github.com/o/r/pull/77","title":"fix: [K-9] a thing"}]\'\n');
+    chmodSync(join(bin, 'gh'), 0o755);
+    vi.stubEnv('PATH', `${bin}:${process.env.PATH}`);
+    const lookup = ctxFor('R1').deliveredPr;
+    expect(lookup?.('K-9')).toBe(77);
+    expect(lookup?.('K-8')).toBeUndefined();
+  });
+
   it('records delivered-follows-merge once on a release declared before it existed, and refuses a second', async () => {
     await run('operator', 'declare', 'R1', '--versions', 'v1,v2', '--decision', '106', '--verbatim-file', join(root, 'verbatim.txt'));
     await expect(run('operator', 'standing', 'R1', '--kind', 'delivered-follows-merge', '--decision', '929', '--verbatim-file', join(root, 'verbatim.txt')))
