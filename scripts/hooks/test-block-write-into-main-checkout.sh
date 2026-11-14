@@ -367,11 +367,6 @@ check_one "27 gh pr create --fill — direct-exec ALLOWS (not the external-write
 check_both "28 FLIP CONTROL: incident shape retargeted at a /tmp-rooted primary -> allow (proves the no-tmp-fixture rule matters)" allow \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cat > $TMPFIX/primary/scripts/hooks/x.sh\",\"cwd\":\"$FIX/wt\"}}"
 
-# 28b-28d: only a real temp root is exempt. A primary under a directory
-# merely NAMED tmp or temp inside the fixture root is guarded like any other
-# primary; a primary under the platform's own temp root (/tmp on Linux, the
-# per-user /var/folders/.../T/ on macOS, read from getconf rather than TMPDIR
-# so a custom TMPDIR cannot move it) stays exempt.
 mkrepo_committed "$FIX/tmp/primary" main
 mkrepo_committed "$FIX/temp/primary" main
 check_both "28b incident shape into a primary under a tmp-named dir (not a temp root) -> deny" block \
