@@ -88,7 +88,7 @@ export WAIT_SWEEP_CMD="$STUB/sweep-off.sh" WAIT_FOCUS_CMD="$STUB/sweep-off.sh"
 export CHIEF_WAIT_DISPATCH="$STUB/no-dispatch.sh"
 DISPATCH_SEAM_AT_START="${CHIEF_WAIT_DISPATCH:-}"
 
-# tick_line<workers> <board> [hb] [prs] [or] [fails]: a tick line whose action fields are set.
+# tick_line <workers> <board> [hb] [prs] [or] [fails]: a tick line whose action fields are set.
 tick_line() {
     printf 'TICK 03:00 hb=%s legs=%s livestate=ok procs=2 models=x ceiling=ok atq=0 suites=0alive/0dead prs=%s bank=5h8/wk15/codex=? fill=40 tails=N1:LIVE inbox=none tick=UNKNOWN fleet=3/15 capacity=ok gql=4000/04:00 orphans=none nonces=ok legset=ok board=%s denials=none or=%s fails=%s\n' \
         "${3:-1m}" "$1" "${4:-#10}" "$2" "${5:-skip}" "${6:-none}" > "$STUB/tick.line"
