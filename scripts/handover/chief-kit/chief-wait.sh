@@ -1413,10 +1413,10 @@ intake_wake() {
     first="$(sed -n 1p "$intake_file" 2>/dev/null)"  # swallow-ok: no file reads empty, so the clock starts now
     case "$first" in ''|*[!0-9]*) first="$now"; printf '%s\n0\n' "$now" > "$intake_file" 2>/dev/null ;; esac  # swallow-ok: an unwritable file only delays the clock
     case "$cap_val" in UNDERFILLED:*) ;; *) return 1 ;; esac
-    [ $(( now - first )) -gt $(( ${CHIEF_WAIT_INTAKE_ARM_HOURS:-6} * 3600 )) ] || return 1
+    [ $(( now - 10#$first )) -gt $(( 10#${CHIEF_WAIT_INTAKE_ARM_HOURS:-6} * 3600 )) ] || return 1
     last="$(sed -n 2p "$intake_file" 2>/dev/null)"  # swallow-ok: a missing second line reads as never woken
     case "$last" in ''|*[!0-9]*) last=0 ;; esac
-    [ $(( now - last )) -ge $(( ${CHIEF_WAIT_INTAKE_REWAKE_MIN:-360} * 60 )) ] || return 1
+    [ $(( now - 10#$last )) -ge $(( 10#${CHIEF_WAIT_INTAKE_REWAKE_MIN:-360} * 60 )) ] || return 1
     [ -n "$console_doc" ] && [ -r "$console_doc" ] || return 1
     rel="$(sed -n 's/^release:[[:space:]]*//p' "$console_doc" 2>/dev/null | head -n 1 | sed 's/[[:space:]]*$//')"  # swallow-ok: an unreadable doc reads no release
     [[ "$rel" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || return 1

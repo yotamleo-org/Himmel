@@ -61,6 +61,10 @@ contains 'the next line names the rm-run command' "$(sed -n 2p "$WORK/a1.out")" 
 # one at a time: the wake is stamped, so the same streak arms nothing again
 if run_waiter "$WORK/a2.out" 30; then fail "a second wake in the same streak armed again: $(head -n 1 "$WORK/a2.out")"; else pass 'a second wake inside the re-wake window arms nothing'; fi
 
+# a leading-zero bound is decimal, not an arithmetic error
+reset; tick UNDERFILLED:3 INTAKE=48; seed 9
+if CHIEF_WAIT_INTAKE_ARM_HOURS=08 run_waiter "$WORK/z1.out" 60; then pass 'CHIEF_WAIT_INTAKE_ARM_HOURS=08 reads as 8 h and arms at 9 h'; else fail 'a leading-zero bound armed nothing'; fi
+
 # negative control: 5 h is under the bound
 reset; tick UNDERFILLED:3 INTAKE=48; seed 5
 if run_waiter "$WORK/b1.out" 30; then fail "5 h of INTAKE armed: $(head -n 1 "$WORK/b1.out")"; else pass 'INTAKE above 0 for 5 h arms nothing'; fi
