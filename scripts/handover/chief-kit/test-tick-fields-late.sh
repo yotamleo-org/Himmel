@@ -1215,7 +1215,7 @@ same 'a bucket with no declaration keeps today'"'"'s rule: the step says so' "$p
 ph_nlo="$(TICK_STATE_DIR="$PH/state" bash "$SUT" --pool-dispositions --doc "$ph_doc" < "$PH/rows" 2>/dev/null)"
 same 'a bucket with no declaration keeps today'"'"'s rule: a bare question is dispositioned' "$(ph_unres "$ph_nlo" 4)" ''
 rm -f "$ph_file"
-same 'with no declaration a missing holds file changes nothing' "$(ph_unres "$(TICK_STATE_DIR="$PH/state" bash "$SUT" --pool-dispositions --doc "$ph_doc" < "$PH/rows" 2>/dev/null)" HIMMEL-4)" ''
+same 'with no declaration a missing holds file changes nothing' "$(ph_unres "$(TICK_STATE_DIR="$PH/state" bash "$SUT" --pool-dispositions --doc "$ph_doc" < "$PH/rows" 2>/dev/null)" 4)" ''
 
 # The main tick runs the step itself: a corrupt state file and invalid lines never fail the tick (I8).
 PHM="$PH/mirror/HIMMEL"; mkdir -p "$PHM"
@@ -1228,6 +1228,105 @@ same 'a corrupt state file never fails the tick (rc 0)' "$ph_rc" 0
 contains 'the tick still prints with invalid lines' "$ph_tick" 'TICK '
 same 'the tick ran the pool-holds step: the authority= line reads unchecked' "$(ph_class 49)" unchecked
 same 'and the invalid line is invalid' "$(ph_class 52)" invalid
+
+# --- (9853) wake= validity: pr:<n> / pr-<n>-merge, done:<KEY>, date:<date> at most 7 days out, file:<state path>.
+# A fired wake never holds a line; a failed read is unchecked, never invalid and never fired.
+ph_field() { jq -r --arg k "HIMMEL-$1" --arg f "$2" '.rows[] | select(.key == $k) | .[$f] | tostring' "$ph_file" 2>/dev/null; }
+mk_ph() { # <num> <status> <statusCategory> <fixVersions json>
+    printf -- '---\nkey: "HIMMEL-%s"\ntype: "Task"\nstatus: "%s"\nstatusCategory: "%s"\npriority: "Medium"\nlabels: []\nfixVersions: %s\nparent: null\n---\n\n# HIMMEL-%s: t\n' \
+        "$1" "$2" "$3" "$4" "$1" > "$PHM/HIMMEL-$1.md"
+}
+mk_ph 901 "To Do" "To Do" '[]'
+mk_ph 902 Done Done '[]'
+mk_ph 903 "To Do" "To Do" '["v1.1.3"]'
+mk_ph 904 "To Do" "To Do" '[]'
+printf 'v1.1.3\tfalse\t\n' > "$PH/mirror/HIMMEL.versions.tsv"
+printf '4999\tfeat/other\tfalse\tme\tfalse\n5001\tfeat/himmel-904-x\tfalse\tme\tfalse\n4761\tupstream/fix\tfalse\tbob\ttrue\n' > "$PH/open-prs.tsv"
+cat > "$PH/gh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$PH_GH_LOG"
+[ -z "${PH_GH_FAIL:-}" ] || exit 1
+case "$*" in *"api graphql"*) ;; *) exit 1 ;; esac
+out=""
+for n in $(printf '%s\n' "$*" | grep -o 'issueOrPullRequest(number:[0-9]*)' | grep -o '[0-9][0-9]*'); do
+    s="$(printf '%s\n' "${PH_GH_STATES:-}" | tr ',' '\n' | sed -n "s/^$n://p")"
+    if [ -n "$s" ]; then out="$out${out:+,}\"p$n\":{\"__typename\":\"PullRequest\",\"state\":\"$s\"}"; else out="$out${out:+,}\"p$n\":null"; fi
+done
+printf '{"data":{"repository":{%s}}}\n' "$out"
+STUB
+chmod +x "$PH/gh"
+ph_day() { date -u -d "$1" +%Y-%m-%d; }  # gnu-ok: chief kit is Linux-only
+ph_wake() { ph_env env NEXT_DISPATCH_MIRROR="$PHM" TICK_GH_CMD="$PH/gh" PH_GH_LOG="$PH/gh.log" PH_GH_STATES="${PH_GH_STATES:-4999:OPEN,5001:OPEN,4761:OPEN,3905:MERGED}" \
+    bash "$SUT" --pool-holds --doc "$ph_doc" --repo "$PH" "$@" 2>/dev/null; }
+ph_state "$ph_words" '[]'
+ph_mk 'release: v1.1.3' \
+    "pool-disposition: HIMMEL-60 park until then wake=date:$(ph_day '+3 days')" \
+    "pool-disposition: HIMMEL-61 park until then wake=date:$(ph_day yesterday)" \
+    "pool-disposition: HIMMEL-62 park until then wake=date:$(ph_day '+30 days')" \
+    'pool-disposition: HIMMEL-63 hold after it wake=done:HIMMEL-901' \
+    'pool-disposition: HIMMEL-64 hold after it wake=done:HIMMEL-904' \
+    'pool-disposition: HIMMEL-65 hold after it wake=done:HIMMEL-902' \
+    'pool-disposition: HIMMEL-66 hold after it wake=done:HIMMEL-903' \
+    'pool-disposition: HIMMEL-67 hold for a file wake=file:relative/x' \
+    'pool-disposition: HIMMEL-68 hold for a file wake=file:/etc/x' \
+    "pool-disposition: HIMMEL-69 hold for a file wake=file:$PH/state/../x" \
+    "pool-disposition: HIMMEL-70 hold for a file wake=file:$PH/state/flag-not-yet" \
+    'pool-disposition: HIMMEL-71 hold on the merge wake=pr-4999-merge' \
+    'pool-disposition: HIMMEL-72 hold on the merge wake=pr:777' \
+    "pool-disposition: HIMMEL-46 close obsolete authority=O-v1.1.3-0001 wake=date:$(ph_day '+30 days')" \
+    "pool-disposition: HIMMEL-73 park for now authority=bogus wake=date:$(ph_day '+3 days')" \
+    'pool-disposition: HIMMEL-74 hold waits on PR 4761 wake=pr:4761' \
+    'pool-disposition: HIMMEL-75 park soon wake=sometime'
+: > "$PH/gh.log"
+ph_wake --open-prs "$PH/open-prs.tsv" > /dev/null
+same 'a valid unfired dated wake is handled' "$(ph_class 60)" wake
+same 'a fired wake does not hold' "$(ph_class 61)|$(ph_field 61 fired)" 'no-authority|true'
+same 'a wake more than 7 days out is a park' "$(ph_class 62)" invalid
+contains 'and says so' "$(ph_field 62 reason)" 'more than 7 days'
+same 'done: on a backlog To Do key with no PR and no worker is invalid' "$(ph_class 63)" invalid
+same 'done: on a key an open PR'"'"'s head branch names is handled' "$(ph_class 64)" wake
+same 'done: on a Done key is fired, never invalid' "$(ph_class 65)|$(ph_field 65 fired)" 'no-authority|true'
+same 'done: on a key in the current version is handled' "$(ph_class 66)" wake
+same 'file: with a relative path is invalid' "$(ph_class 67)" invalid
+same 'file: outside the handover root and the state dir is invalid' "$(ph_class 68)" invalid
+same 'file: with a .. segment is invalid' "$(ph_class 69)" invalid
+same 'file: under the state dir that does not exist yet is handled' "$(ph_class 70)" wake
+same 'wake=pr-<n>-merge on an open PR is handled' "$(ph_class 71)" wake
+same 'wake=pr:<n> GitHub cannot resolve on a successful read is invalid' "$(ph_class 72)|$(ph_field 72 reason)" 'invalid|PR 777 not found'
+same 'an invalid part wins: a valid authority beside an invalid wake' "$(ph_class 46)" invalid
+same 'an invalid part wins: an invalid authority beside a valid wake' "$(ph_class 73)" invalid
+same 'an unknown wake form is invalid' "$(ph_class 75)" invalid
+same 'the PR read names exactly the cited PRs in one call' "$(grep -c 'api graphql' "$PH/gh.log")" 1
+same 'the holds file carries the PR state map' "$(jq -r '.prs | to_entries | map("\(.key)=\(.value)") | join(",")' "$ph_file")" '4761=OPEN,4999=OPEN'
+same 'outside from the real read: a cross-repository PR with no manifest reads null' "$(ph_field 74 outside)" null
+printf '{"schema":1,"workers":[]}\n' > "$PH/manifest.json"
+ph_wake --open-prs "$PH/open-prs.tsv" --workers-from "$PH/manifest.json" > /dev/null
+same 'outside from the real read: a cross-repository PR with no watch row is outside' "$(ph_field 74 outside)" true
+printf '{"schema":1,"workers":[],"watch":[{"pr":4761,"repo":""}]}\n' > "$PH/manifest.json"
+ph_wake --open-prs "$PH/open-prs.tsv" --workers-from "$PH/manifest.json" > /dev/null
+same 'outside from the real read: a watch row makes it a live wake' "$(ph_field 74 outside)" false
+printf '{"schema":1,"workers":[{"doc":"HIMMEL-901-N1-x-2026-11-15.md"}]}\n' > "$PH/manifest.json"
+ph_wake --open-prs "$PH/open-prs.tsv" --workers-from "$PH/manifest.json" > /dev/null
+same 'done: on a key a worker holds is handled' "$(ph_class 63)" wake
+ph_rc=0; PH_GH_FAIL=1 ph_wake --open-prs "$PH/open-prs.tsv" > /dev/null || ph_rc=$?
+same 'a failed PR read never fails the step' "$ph_rc" 0
+same 'a failed PR read is unchecked, neither invalid nor fired' "$(ph_class 71)|$(ph_field 71 fired)" 'unchecked|false'
+same 'and a not-found PR is unchecked too' "$(ph_class 72)" unchecked
+ph_wake > /dev/null
+same 'an unread open-PR list leaves done: worked test unchecked' "$(ph_class 63)" unchecked
+same 'but done: in the current version still holds' "$(ph_class 66)" wake
+ph_mk 'release: v1.1.3' "pool-disposition: HIMMEL-60 park until then wake=date:$(ph_day '+3 days')" 'pool-disposition: HIMMEL-63 hold after it wake=done:HIMMEL-903'
+: > "$PH/gh.log"
+ph_wake --open-prs "$PH/open-prs.tsv" > /dev/null
+same 'no PR target, no gh call' "$(wc -l < "$PH/gh.log" | tr -d ' ')" 0
+ph_mk 'release: v1.1.3' 'pool-disposition: HIMMEL-71 hold on the merge wake=pr-4999-merge'
+printf '#!/usr/bin/env bash\nexit 1\n' > "$PH/gh-fail"; chmod +x "$PH/gh-fail"
+ph_state "$ph_words" '[]'; rm -f "$ph_file"
+ph_rc=0
+ph_tick="$(ph_env env NEXT_DISPATCH_MIRROR="$PHM" TICK_GH_CMD="$PH/gh-fail" GH_READ_BIN="$PH/gh-fail" TOKEN='' bash "$SUT" --doc "$ph_doc" 2>/dev/null)" || ph_rc=$?
+same 'a failing gh never fails the tick (rc 0)' "$ph_rc" 0
+contains 'and the tick still prints' "$ph_tick" 'TICK '
+same 'and the PR-dependent line reads unchecked' "$(ph_class 71)" unchecked
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick-fields-late.sh'

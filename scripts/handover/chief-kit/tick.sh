@@ -659,9 +659,14 @@ pool_stale_file() {
         "$(printf '%s\n%s' "$(realpath -m "$doc")" "$(realpath -m "$mirror")" | cksum | cut -d' ' -f1)"  # prim-ok: the doc and the mirror need not exist, which canon_path refuses; gnu-ok: chief kit is Linux-only
 }
 
+# pool_stale_serialized <doc> <repo> <stale file> [pool-holds args...]: under the stale file's lock, the
+# pool_holds step (when given its args) and then one --pool-stale run, so a slower older tick never
+# saves its holds or stale verdict after a newer tick's.
 pool_stale_serialized() {
-    local doc="$1" repo="$2" file="$3" out=""
+    local doc="$1" repo="$2" file="$3" out="" holds=""
+    shift 3
     if mkdir -p "${file%/*}" 2>/dev/null && { exec 7>>"$file.lock"; } 2>/dev/null && flock -w "$(tick_bound 20)" 7; then  # prim-ok: a per-stale-file lock held for one producer run and its save; gnu-ok: chief kit is Linux-only
+        [ "$#" -eq 0 ] || holds="$(timeout -k 2 "$(tick_bound 40)" bash "$HERE/tick.sh" "$@" 7>&- 2>/dev/null | sed -n 's/^pool-holds=/&/p')"  # gnu-ok: chief kit is Linux-only; swallow-ok: a failed step writes no holds file, which pool_dispositions reads as unchecked
         out="$(timeout -k 2 "$(tick_bound 40)" bash "$HERE/tick.sh" --pool-stale --doc "$doc" --repo "$repo" --prior "$file" 7>&- 2>/dev/null)" || out=""  # gnu-ok: chief kit is Linux-only; swallow-ok: a failed read reads skip
         if printf '%s\n' "$out" | grep -q '^pool-stale=' && ! printf '%s\n' "$out" | grep -q '^pool-stale=skip$'; then
             { printf '%s\n' "$out" > "$file.$$" && mv -f "$file.$$" "$file"; } || printf 'tick: pool-stale file not saved: %s\n' "$file" >&2
@@ -670,6 +675,7 @@ pool_stale_serialized() {
     fi
     exec 7>&-
     printf '%s\n' "$out"
+    [ -z "$holds" ] || printf '%s\n' "$holds"
 }
 
 # One interpretation for both the tick and waiter; stdin is a complete
@@ -857,13 +863,15 @@ PY
 }
 
 # The pool_holds step: one row per give-up pool-disposition: line of the doc's Live state, classed
-# authority (a words record of the doc's release names the key), no-authority, invalid or unchecked,
-# written to pool-holds-<doc stem>.json for pool_dispositions to count. It writes nothing else.
-pool_holds() { # <doc> <ledger> <release state file> <holds file>
+# authority (a words record of the doc's release names the key), wake (a valid wake that has not
+# fired), no-authority, invalid or unchecked, written to pool-holds-<doc stem>.json with the state of
+# every PR a pool-disposition line cites, for pool_dispositions and pool_stale. It writes nothing else.
+pool_holds() { # <doc> <ledger> <release state file> <holds file> <open-PR tsv|""> <manifest|""> <repo> <gh> <noread> <handover root> <mirror|"">
     python3 -I - "$@" "$POOL_TARGET_RE" <<'PY'
-import datetime, hashlib, json, os, re, sys, tempfile
-doc, ledger, state_file, out, target_re = sys.argv[1:6]
+import datetime, hashlib, json, os, re, subprocess, sys, tempfile
+doc, ledger, state_file, out, open_tsv, manifest, repo, gh, noread, hroot, mirror, target_re = sys.argv[1:13]
 target_re = re.compile(target_re)
+state_dir = os.path.dirname(out)
 now = datetime.datetime.now(datetime.timezone.utc)
 if os.environ.get("TICK_NOW"):
     try:
@@ -881,15 +889,146 @@ def gives_up(key, verb, rest):
     rest = re.sub(r"(?<!\S)(?:authority|wake)=\S+", "", rest)
     return verb != "slice" or not any(t for t in target_re.findall(rest) if t != key and (not re.fullmatch(r"[A-Z]+-\d+", t) or t.split("-")[0] == key.split("-")[0]))
 
-lines, live = {}, False
+def text_prs(rest):
+    return {int(n) for g in re.findall(r"\bPRs?\s*#?(\d+(?:\s*(?:,|and|&)\s*#?\d+)*)", rest) for n in re.findall(r"\d+", g)}
+def wake_events(rest):
+    return [e for w in re.findall(r"(?<!\S)wake=(\S+)", rest) for e in w.split(",") if e]
+def wake_pr(e):
+    m = re.fullmatch(r"pr:(\d+)|pr-(\d+)-merge", e)
+    return int(m[1] or m[2]) if m else None
+
+lines, cited, live = {}, set(), False
 for line in text:
     if line.startswith("## "):
         live = line == "## Live state"
     if live and line.startswith("pool-disposition:"):
         value = line.split(":", 1)[1].strip()
         m = re.fullmatch(r"([A-Z]+-\d+) (slice|close|question|hold|park) (\S.*)", value)
+        if m:
+            cited |= text_prs(m[3]) | {n for n in map(wake_pr, wake_events(m[3])) if n is not None}
         if m and m[1] not in lines and gives_up(m[1], m[2], m[3]):
             lines[m[1]] = (m[2], m[3], value)
+
+# the exact read pool_stale used: one GraphQL query per 100 numbers naming exactly the cited PRs, never a
+# second read on the main token; a failed read leaves every PR unread (None), a number GitHub cannot
+# resolve on a successful read is absent from the map
+prstate = None
+nums = sorted(cited)
+if not nums:
+    prstate = {}
+elif noread != "1":
+    try:
+        got = {}
+        for i in range(0, len(nums), 100):
+            chunk = nums[i:i + 100]
+            q = "query($owner:String!,$name:String!){repository(owner:$owner,name:$name){%s}}" % " ".join(
+                "p%d:issueOrPullRequest(number:%d){__typename ... on PullRequest{state}}" % (n, n) for n in chunk)
+            r = subprocess.run([gh, "api", "graphql", "-F", "owner={owner}", "-F", "name={repo}", "-f", "query=" + q],
+                               cwd=repo if os.path.isdir(repo) else None, capture_output=True, text=True, timeout=30,
+                               env=dict(os.environ, GH_READ_NO_MAIN_FALLBACK="1"))
+            for err in r.stderr.splitlines():
+                if err.startswith("gh-read:"):
+                    print(err, file=sys.stderr)
+            found = json.loads(r.stdout).get("data", {}).get("repository")
+            if not isinstance(found, dict):
+                raise ValueError("no repository in the answer")
+            for n in chunk:
+                node = found.get("p%d" % n)
+                if isinstance(node, dict) and node.get("__typename") == "PullRequest" and node.get("state"):
+                    got[str(n)] = node["state"]
+        prstate = got
+    except (OSError, subprocess.SubprocessError, ValueError, TypeError, AttributeError):
+        prstate = None
+
+open_prs = None
+if open_tsv:
+    try:
+        open_prs = {}
+        for row in open(open_tsv).read().splitlines():
+            f = row.split("\t")
+            if len(f) > 4 and f[0].isdigit():
+                open_prs[int(f[0])] = (f[1], f[4] == "true")
+    except OSError:
+        open_prs = None
+watched, worker_docs = None, set()
+if manifest:
+    try:
+        mf = json.load(open(manifest))
+        watched = {int(w["pr"]) for w in mf.get("watch") or [] if isinstance(w, dict) and str(w.get("pr", "")).isdigit()}
+        worker_docs = {os.path.basename(str(w.get("doc", ""))) for w in (mf.get("workers") or mf.get("legs") or []) if isinstance(w, dict)}
+    except (OSError, ValueError, TypeError, AttributeError):
+        watched = None
+worker_docs |= {os.path.basename(w) for w in (os.environ.get("WORKERS") or "").split()}
+
+def front(key):
+    if not mirror:
+        return None
+    try:
+        head = open(os.path.join(mirror, key + ".md")).read().split("\n---", 1)[0]
+    except OSError:
+        return None
+    return {m[1]: m[2].strip() for m in (re.match(r"\s*([A-Za-z_]+):\s*(.*)$", l) for l in head.splitlines()) if m}
+
+def focus_version():
+    for line in text:
+        m = re.match(r"focus-version:\s*(v\d\S*)", line)
+        if m:
+            return m[1]
+    try:
+        for row in open(mirror.rstrip("/") + ".versions.tsv").read().splitlines():
+            c = row.split("\t")
+            if len(c) > 1 and c[1] == "false":
+                return c[0]
+    except OSError:
+        pass
+    return ""
+
+def under(path, base):
+    base = os.path.normpath(base) if base else ""
+    return bool(base) and (path == base or path.startswith(base.rstrip("/") + "/"))
+
+def event(e):
+    """(state, reason, fired): state valid, invalid or unchecked."""
+    n = wake_pr(e)
+    if n is not None:
+        if prstate is None:
+            return ("unchecked", "PR %d unread: the PR read failed or was paused" % n, False)
+        s = prstate.get(str(n))
+        if s is None:
+            return ("invalid", "PR %d not found" % n, False)
+        return ("valid", "", s in ("MERGED", "CLOSED"))
+    m = re.fullmatch(r"done:([A-Z]+-\d+)", e)
+    if m:
+        f = front(m[1])
+        if f is None:
+            return ("unchecked", "%s is not in the Jira mirror" % m[1], False)
+        if f.get("statusCategory", "").strip('"') == "Done":
+            return ("valid", "", True)
+        focus = focus_version()
+        if (focus and ('"%s"' % focus) in f.get("fixVersions", "")) or any(d == m[1] or d.startswith(m[1] + "-") for d in worker_docs) \
+                or (open_prs is not None and any(m[1].lower() in b.lower() for b, _ in open_prs.values())):
+            return ("valid", "", False)
+        if open_prs is None:
+            return ("unchecked", "%s is not in the current version and the open-PR read is missing" % m[1], False)
+        return ("invalid", "%s is neither worked (no open PR, no worker) nor in the current version" % m[1], False)
+    m = re.fullmatch(r"date:(\d{4}-\d{2}-\d{2})(?:T(\d{2}):(\d{2})Z)?", e)
+    if m:
+        try:
+            t = datetime.datetime.fromisoformat("%sT%s:%s:00+00:00" % (m[1], m[2] or "00", m[3] or "00"))
+        except ValueError:
+            return ("invalid", "wake=%s is not a date" % e, False)
+        if t <= now:
+            return ("valid", "", True)
+        if (t - now).total_seconds() > 7 * 86400:
+            return ("invalid", "wake=%s is more than 7 days out: a park needs the operator's words" % e, False)
+        return ("valid", "", False)
+    m = re.fullmatch(r"file:(.+)", e)
+    if m:
+        p = m[1]
+        if not p.startswith("/") or ".." in p.split("/") or not (under(os.path.normpath(p), hroot) or under(os.path.normpath(p), state_dir)):
+            return ("invalid", "wake=%s is not an absolute path under the handover root or the state dir" % e, False)
+        return ("valid", "", os.path.exists(p))
+    return ("invalid", "wake=%s is not pr:<n>, done:<KEY>, date:<date> or file:<path>" % e, False)
 
 release = ledger[3:] if ledger.startswith("on:") else None
 words = asks = None
@@ -926,25 +1065,38 @@ for key, (verb, rest, value) in (lines.items() if ledger.startswith("on:") else 
                 said = hit.get("verbatim")
             else:
                 parts.append(("invalid", "authority=%s names no record of the operator's words for %s" % (ref, key)))
+    events = wake_events(rest)
+    ev = [event(e) for e in events]
+    fired = any(f for _, _, f in ev)
+    parts += [(s, r) for s, r, _ in ev if s != "valid"]
     kinds = [k for k, _ in parts]
     first = lambda k: next(r for c, r in parts if c == k)
     if "invalid" in kinds:
         cls, reason = "invalid", first("invalid")
     elif "authority" in kinds:
         cls, reason = "authority", "on the operator's words"
+    elif ev and not fired and "unchecked" not in kinds:
+        cls, reason = "wake", "on wake=" + ",".join(events)
     elif "unchecked" in kinds:
         cls, reason = "unchecked", first("unchecked")
+    elif fired:
+        cls, reason = "no-authority", "its wake=%s fired, and no operator words" % ",".join(events)
     else:
         cls, reason = "no-authority", "no operator words and no wake"
     if not release and cls != "invalid":
         cls, reason = "unchecked", why
+    waits = text_prs(rest) | {n for n in map(wake_pr, events) if n is not None}
+    outside = None
+    if watched is not None and open_prs is not None:
+        outside = any(n in open_prs and open_prs[n][1] and n not in watched for n in waits)
     rows.append({"key": key, "verb": verb, "class": cls, "reason": reason, "first_seen": None, "age_gen": None,
-                 "age_days": None, "words": said, "fired": False, "outside": None, "wake": None,
+                 "age_days": None, "words": said, "fired": fired, "outside": outside, "wake": ",".join(events) or None,
                  "line": hashlib.sha256(value.encode()).hexdigest()[:12],
                  "asks_operator": None if asks is None else key in asks})
 
 mode = "on" if ledger.startswith("on:") else "off:no-ledger"
-body = {"ts": iso(now), "doc": os.path.abspath(doc), "mode": mode, "release": release, "rows": rows, "prs": {}}
+body = {"ts": iso(now), "doc": os.path.abspath(doc), "mode": mode, "release": release, "rows": rows,
+        "prs": dict(sorted((prstate or {}).items(), key=lambda kv: int(kv[0])))}
 try:
     os.makedirs(os.path.dirname(out), exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(out), prefix="." + os.path.basename(out) + ".")
@@ -1318,6 +1470,8 @@ pool_mode=0
 stale_mode=0
 holds_mode=0
 ph_state=""
+ph_prs=""
+ph_mirror=""
 ps_prior=""
 emit_fp=0
 ready_mode=0
@@ -1337,10 +1491,12 @@ while [ "$#" -gt 0 ]; do
         --pool-dispositions) pool_mode=1; shift ;;
         --pool-stale) stale_mode=1; shift ;;
         --pool-holds) holds_mode=1; shift ;;
-        --doc|--token|--workers|--workers-from|--handover-dir|--repo|--ready-dir|--prior|--state-file)
+        --doc|--token|--workers|--workers-from|--handover-dir|--repo|--ready-dir|--prior|--state-file|--open-prs|--mirror)
             [ "$#" -ge 2 ] || { usage >&2; exit 2; }
             case "$1" in
                 --state-file) ph_state="$2" ;;
+                --mirror) ph_mirror="$2" ;;
+                --open-prs) ph_prs="$2" ;;
                 --prior) ps_prior="$2" ;;
                 --doc) DOC="$2" ;;
                 --token) TOKEN="$2" ;;
@@ -1385,7 +1541,21 @@ if [ "$holds_mode" -eq 1 ]; then
     [ -n "$DOC" ] || { usage >&2; exit 2; }
     DOC="$(resolve_doc "$DOC")"
     ph_stem="${DOC##*/}"
-    pool_holds "$DOC" "$(holds_ledger "$DOC")" "${ph_state:-${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/release-state-${ph_stem%.md}.json}" "$(pool_holds_file "$DOC")"
+    # With GitHub paused (scripts/lib/gh-quota.sh ghq_scan_gate, main GraphQL) the PR read is skipped and
+    # every PR-dependent wake reads unchecked; it judges only a quota.tsv reading under 170 s old.
+    ph_noread=0
+    if [ -f "$HERE/../../lib/gh-quota.sh" ]; then
+        # shellcheck source=../../lib/gh-quota.sh
+        . "$HERE/../../lib/gh-quota.sh"
+        if ghq_read main graphql && [ $(($(date +%s) - GHQ_OBSERVED)) -lt 170 ] \
+            && ! ph_line=$(GHQ_GH_CMD="${TICK_GH_CMD:-${GHQ_GH_CMD:-gh}}" ghq_scan_gate main graphql tick); then
+            printf '%s\n' "$ph_line" >&2
+            export GH_READ_OFF=1
+            ph_noread=1
+        fi
+    fi
+    pool_holds "$DOC" "$(holds_ledger "$DOC")" "${ph_state:-${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/release-state-${ph_stem%.md}.json}" \
+        "$(pool_holds_file "$DOC")" "$ph_prs" "$WORKERS_FROM" "$REPO" "${TICK_GH_CMD:-$GH_READ_BIN}" "$ph_noread" "$root" "${ph_mirror:-${NEXT_DISPATCH_MIRROR:-}}"
     exit 0
 fi
 
@@ -3303,19 +3473,24 @@ fi
 
 # pool-holds=off:no-ledger: the doc's bucket declares no release, so a well-formed pool-disposition:
 # line keeps counting as dispositioned. Otherwise hidden: the step's unhandled lines count in pool=.
-pool_holds_f=""
-if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
-    pool_holds_f="$(timeout -k 2 "$(tick_bound 40)" bash "$HERE/tick.sh" --pool-holds --doc "$console_doc" 2>/dev/null | sed -n 's/^pool-holds=//p')"  # gnu-ok: chief kit is Linux-only; swallow-ok: a failed step writes no holds file, which pool_dispositions reads as unchecked
-    case "$pool_holds_f" in off:*) ;; *) pool_holds_f="" ;; esac
-fi
-
 # pool-stale=<n>:<KEY>,... and residual-unversioned=<n>:<KEY>,...: the Jira mirror
 # plus one batched gh read, only when a disposition names a PR. skip = no doc or mirror.
+pool_holds_f=""
 pool_stale=skip
 pool_changed=skip
 residual_unversioned=skip
 if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
-    ps_out="$(pool_stale_serialized "$console_doc" "$pr_repo" "$(pool_stale_file "$console_doc" "$nd_mirror")")"
+    ph_args=(--pool-holds --doc "$console_doc" --repo "$pr_repo" --mirror "$nd_mirror")
+    [ -z "$WORKERS_FROM" ] || ph_args+=(--workers-from "$WORKERS_FROM")
+    ph_tsv=""
+    if [ -z "${pr_read_failed:-}" ]; then
+        ph_tsv="$(mktemp "${TICK_TMPDIR:-${TMPDIR:-/tmp}}/tick-holds-prs.XXXXXX" 2>/dev/null)" || ph_tsv=""  # swallow-ok: no file reads the open-PR list as missing, so done: wakes read unchecked
+        if [ -n "$ph_tsv" ] && printf '%s\n' "$pr_out" > "$ph_tsv"; then ph_args+=(--open-prs "$ph_tsv"); fi
+    fi
+    ps_out="$(pool_stale_serialized "$console_doc" "$pr_repo" "$(pool_stale_file "$console_doc" "$nd_mirror")" "${ph_args[@]}")"
+    [ -z "$ph_tsv" ] || rm -f "$ph_tsv"
+    pool_holds_f="$(printf '%s\n' "$ps_out" | sed -n 's/^pool-holds=//p')"
+    case "$pool_holds_f" in off:*) ;; *) pool_holds_f="" ;; esac
     pool_stale="$(printf '%s\n' "$ps_out" | sed -n 's/^pool-stale=//p')"; [ -n "$pool_stale" ] || pool_stale=skip
     pool_changed="$(printf '%s\n' "$ps_out" | sed -n 's/^pool-changed=//p')"; [ -n "$pool_changed" ] || pool_changed=skip
     residual_unversioned="$(printf '%s\n' "$ps_out" | sed -n 's/^residual-unversioned=//p')"; [ -n "$residual_unversioned" ] || residual_unversioned=skip
