@@ -614,7 +614,7 @@ backdate_wt() {
     gd=$(git -C "$1" rev-parse --absolute-git-dir) || return 1
     touch -t 202001010000 "$gd/HEAD" "$gd/logs/HEAD"
 }
-printf '.claude/logs/\n.claude/settings.local.json\n.claude/other.txt\n.env\n' >> "$REPO/.git/info/exclude"
+printf '.claude/logs/\n.claude/settings.local.json\n.claude/other.txt\n.claude/..notes\n.env\n' >> "$REPO/.git/info/exclude"
 
 WT_S_AGED=$(mk_wt wt-s-aged none/s-aged);       backdate_wt "$WT_S_AGED"
 WT_S_FRESH=$(mk_wt wt-s-fresh none/s-fresh)
@@ -630,6 +630,8 @@ WT_S_IGN=$(mk_wt wt-s-ign none/s-ign);          backdate_wt "$WT_S_IGN"
 mkdir -p "$WT_S_IGN/.claude/logs"; printf '{}\n' > "$WT_S_IGN/.claude/settings.local.json"
 WT_S_CL=$(mk_wt wt-s-cl none/s-cl);             backdate_wt "$WT_S_CL"
 mkdir -p "$WT_S_CL/.claude"; printf '{}\n' > "$WT_S_CL/.claude/settings.local.json"; printf 'n\n' > "$WT_S_CL/.claude/other.txt"
+WT_S_DD=$(mk_wt wt-s-dd none/s-dd);             backdate_wt "$WT_S_DD"
+mkdir -p "$WT_S_DD/.claude"; printf 'n\n' > "$WT_S_DD/.claude/..notes"
 WT_S_ENV=$(mk_wt wt-s-env none/s-env);          backdate_wt "$WT_S_ENV"
 printf 'SECRET=1\n' > "$WT_S_ENV/.env"
 WT_S_HELD=$(mk_wt wt-s-held none/s-held);       backdate_wt "$WT_S_HELD"
@@ -664,6 +666,9 @@ expect "12e: ignored .claude/settings.local.json + logs/ do not block" "$out" is
 out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_S_CL")
 expect "12e: another ignored file under .claude/ blocks" "$out" rc_nonzero "$out"
 expect "12e: .claude/other.txt worktree kept" "$out" is_dir "$WT_S_CL"
+out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_S_DD")
+expect "12e: an ignored dot-dot name under .claude/ blocks" "$out" rc_nonzero "$out"
+expect "12e: .claude/..notes worktree kept" "$out" is_dir "$WT_S_DD"
 out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_S_ENV")
 expect "12e: an ignored .env (user data) blocks" "$out" rc_nonzero "$out"
 expect "12e: .env worktree kept" "$out" is_dir "$WT_S_ENV"

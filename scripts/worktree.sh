@@ -1585,8 +1585,8 @@ superseded_ignored_ok() {
             .claude/logs/|.claude/settings.local.json|__pycache__/|*/__pycache__/) ;;
             # git collapses a wholly-ignored .claude/ into one entry: look inside.
             .claude/)
-                for e in "$1"/.claude/* "$1"/.claude/.[!.]*; do
-                    [ -e "$e" ] || continue
+                for e in "$1"/.claude/* "$1"/.claude/.[!.]* "$1"/.claude/..?*; do
+                    [ -e "$e" ] || [ -L "$e" ] || continue
                     case "${e##*/}" in logs|settings.local.json) ;; *) return 1 ;; esac
                 done ;;
             *) is_ignorable_ignored_stray "$u" || return 1 ;;
