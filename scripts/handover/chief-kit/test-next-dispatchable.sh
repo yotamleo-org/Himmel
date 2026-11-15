@@ -460,6 +460,7 @@ for nf_lib in env_alias.py gh-quota.sh gh-graphql-budget.sh prim.sh timeout-bin.
     cp "$(dirname "$SUT")/../../lib/$nf_lib" "$NF/scripts/lib/$nf_lib"
 done
 cp "$SUT" "$NF/scripts/handover/chief-kit/next-dispatchable.sh"
+cp "$HERE/proof_staging.py" "$NF/scripts/handover/chief-kit/proof_staging.py"
 env -u HIMMEL_QUOTA_DIR NEXT_DISPATCH_MIRROR="$M6" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$NF/scripts/handover/chief-kit/next-dispatchable.sh" --no-classify >/dev/null 2>&1; nf_rc=$?
 [ "$nf_rc" = 2 ] && pass "a missing pattern file exits 2" || fail "missing pattern file rc=$nf_rc"
 
@@ -2520,7 +2521,8 @@ for n in 10301 10302; do
     [ "$(lastf "$(prow RESUME "$n")")" != proof ] && pass "U1/U2 ($n): and is not tagged proof" || fail "U1/U2 ($n): tagged proof: '$(prow RESUME "$n")'"
 done
 for n in 10303 10304 10305 10313 10314; do
-    [ "$(lastf "$(prow RESUME "$n")")" = proof ] && pass "U3/U4/U5/U13/U14 ($n): a remainder whose every slice writes nothing ends in proof" || fail "U3/U4/U5/U13/U14 ($n): last field of '$(prow RESUME "$n")'"
+    case "$(lastf "$(prow RESUME "$n")")" in proof|proof-staging=*) u_proof=1 ;; *) u_proof=0 ;; esac
+    [ "$u_proof" = 1 ] && pass "U3/U4/U5/U13/U14 ($n): a remainder whose every slice writes nothing ends in proof" || fail "U3/U4/U5/U13/U14 ($n): last field of '$(prow RESUME "$n")'"
 done
 [ "$(lastf "$(row91 RESUME 9615)")" = proof ] && pass "U4: the PR 9625 remainder (a clean live shift, no code) ends in proof" || fail "U4: last field of '$(row91 RESUME 9615)'"
 for n in 10306 10315; do
@@ -2537,6 +2539,92 @@ rm -f "$U12/scripts/lib/pr_remainder.py"
 u12_err="$(U_SUT="$U12/scripts/handover/chief-kit/next-dispatchable.sh" runu 2>&1 >/dev/null)"; u12_rc=$?
 [ "$u12_rc" = 3 ] && pass "U12: a pr_remainder.py that cannot be loaded exits 3" || fail "U12: a pr_remainder.py that cannot be loaded exits 3 (rc $u12_rc)"
 has "U12: and says so on stderr" "$u12_err" "# next-dispatchable: pr_remainder.py unreadable ("
+
+DOD_9556='- A grouping table of the denials, each group marked allowed or kept, with the reason.
+- In a VM session, a worker merges a throwaway trust-path PR on a valid go.sh GO file with no classifier refusal.
+- In a VM session, a kept-refused shape still refuses.
+- docs/setup/settings-template.json carries the change.'
+PROOF_9556='RED then GREEN on the DoD rows. A settings-template row in the existing settings suite fails on main at the base and passes at the head once docs/setup/settings-template.json carries the allowed shapes. The grouping table (each group marked allowed or kept, with its reason) is in the PR. The two VM rows are run on a test VM with the exact commands the PR lists: a worker merges a throwaway trust-path PR on a valid go.sh GO file with no classifier refusal, and one kept-refused shape still refuses.'
+MSG="$WORK/m10203/HIMMEL"; mkdir -p "$MSG" "$WORK/s10203/workers"; cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/m10203/HIMMEL.versions.tsv"
+mkps() {
+    local m_save="$M"; M="$MSG"
+    MK_BARE=1 mk "$1" "$2" Medium '[]' '["v1.0.1"]' '[]' "S row $1" "$(printf '%s\n\nDoD\n%s\n\nProof\n%s\n%s' "$3" "$4" "$5" "${6:-}")"
+    M="$m_save"
+}
+mkps HIMMEL-10401 "To Do" "Writes: none (chief-run proof, no code)" "$DOD_9556" "$PROOF_9556"
+mkps HIMMEL-10402 "To Do" "Writes: none (chief-run proof, no code)" "$DOD_9556" "$PROOF_9556" "Staging: gh-token, bypass-launch"
+mkps HIMMEL-10403 "In Progress" "Edit scripts/lib/p10203-s10.sh." "$DOD_9556" "$PROOF_9556"
+mkps HIMMEL-10404 "In Progress" "Edit scripts/lib/p10203-s4.sh." "$DOD_9556" "$PROOF_9556" "Staging: none"
+mkps HIMMEL-10405 "To Do" "Writes: none (chief-run proof, no code)" "- the row is green" "A Go code style row and a note to pat the cache."
+mkps HIMMEL-10406 "In Progress" "Edit scripts/lib/p10203-a.sh." "$DOD_9556" "$PROOF_9556"
+mkps HIMMEL-10407 "To Do" "Writes: none (chief-run proof, no code)" "- the row is green" "A RED row that fails before the change."
+s13=0
+for pair in 'a guest gh token on the VM|gh-token' 'a PAT for the bot|gh-token' 'relaunch with READ_SECRETS_OK=1|read-secrets' 'the TOTP from the seed|read-secrets' \
+            'a bypass-queue launch|bypass-launch' 'an operator go code|go-code' 'the operator approves the command|operator-step' 'real credentials on the guest|guest-credential'; do
+    s13=$((s13 + 1)); mkps "HIMMEL-1042$s13" "To Do" "Writes: none (chief-run proof, no code)" "- the row is green" "Run it with ${pair%%|*}."
+done
+mkps HIMMEL-10408 "To Do" "Writes: none (chief-run proof, no code)" "- the row is green" "A RED row that fails before the change." "Staging: sudoedit the config, rotate the key"
+mkps HIMMEL-10409 "To Do" "Writes: none (chief-run proof, no code)" "- the row is green" "The operator approves the run." "Staging: rotate the key"
+mkps HIMMEL-10431 "To Do" "Writes: none (chief-run proof, no code)" "- the row is green" "A pat on the back and Go file names."
+mkps HIMMEL-10432 "To Do" "Writes: none (chief-run proof, no code)" "- the row is green" "A Go code review and pat the cache."
+printf 'Remaining: S3 (chief-run, no code)\n' > "$PR_BODY_DIR/10403"
+printf 'Remaining: S3 (chief-run, no code)\n\n## Ticket coverage\n\n- a throwaway PR run: owed → chief by 2026-11-25\n' > "$PR_BODY_DIR/10404"
+printf '## Ticket coverage\n\n- a throwaway PR run: owed → chief by 2026-11-25\n' > "$PR_BODY_DIR/10406"
+printf 'Remaining: edit scripts/lib/p10203-a.sh\n' > "$PR_BODY_DIR/10416"
+: > "$WORK/s10203/status-events.jsonl"
+for pair in 10403:10403 10404:10404 10406:10406 10406:10416; do
+    printf '{"ts":"t","event":"merge","key":"HIMMEL-%s","pr":"%s","contract":"no","result":"noop"}\n' "${pair%%:*}" "${pair##*:}" >> "$WORK/s10203/status-events.jsonl"
+done
+runst() { NEXT_DISPATCH_MIRROR="$MSG" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify-p" bash "$SUT" --top 40 --workers-dir "$WORK/s10203/workers" --workers-from "$WORK/fleet5.json" "$@"; }
+rp="$(runst --why 2>/dev/null)"
+S9556_ALL='proof-staging=guest-credential,throwaway-repo,go-file'
+[ "$(lastf "$(prow LOCAL 10401)")" = "$S9556_ALL" ] && pass "S1: a proof row needing staging ends in proof-staging=<needs>" || fail "S1: last field of '$(prow LOCAL 10401)'"
+has "S1: --why names the go-file need" "$rp" '# staging HIMMEL-10401 go-file (chief): "GO file"'
+[ "$(lastf "$(prow LOCAL 10402)")" = 'proof-staging=guest-credential,gh-token,bypass-launch,throwaway-repo,go-file' ] && pass "S2: a Staging: line adds its needs in table order" || fail "S2: last field of '$(prow LOCAL 10402)'"
+[ "$(lastf "$(prow RESUME 10403)")" = "$S9556_ALL" ] && pass "S10: a RESUME row with a no-write remainder carries the field" || fail "S10: last field of '$(prow RESUME 10403)'"
+[ "$(lastf "$(prow RESUME 10404)")" = "proof-staging=$(cat "$HERE/fixtures/proof-staging-expected.txt")" ] && pass "S4: Staging: none drops the DoD needs and keeps a chief-owed need (shared expected list)" || fail "S4: last field of '$(prow RESUME 10404)'"
+[ "$(lastf "$(prow LOCAL 10405)")" = proof ] && pass "S8: Go code style and pat the cache are no need" || fail "S8: last field of '$(prow LOCAL 10405)'"
+lacks "S8: and no staging line is printed" "$rp" "# staging HIMMEL-10405"
+has "S9: a code remainder beside a chief-owed text keeps its file" "$(prow RESUME 10406)" "files=scripts/lib/p10203-a.sh"
+lacks "S9: and carries neither proof nor proof-staging" "$(prow RESUME 10406)" "proof"
+for n in 1 2 3 4 5 6 7 8; do
+    want="$(printf 'gh-token\ngh-token\nread-secrets\nread-secrets\nbypass-launch\ngo-code\noperator-step\nguest-credential\n' | sed -n "${n}p")"
+    [ "$(lastf "$(prow LOCAL "1042$n")")" = "proof-staging=$want" ] && pass "S13 ($n): the $want pattern matches its text" || fail "S13 ($n): last field of '$(prow LOCAL "1042$n")', want $want"
+done
+for n in 1 2; do
+    [ "$(lastf "$(prow LOCAL "1043$n")")" = proof ] && pass "S14 ($n): a case control yields no need" || fail "S14 ($n): last field of '$(prow LOCAL "1043$n")'"
+done
+[ "$(lastf "$(prow LOCAL 10408)")" = "proof-staging=operator-step" ] && pass "S15: free-text Staging tokens list as one operator-step need" || fail "S15: last field of '$(prow LOCAL 10408)'"
+has "S15: and --why keeps every token" "$rp" '# staging HIMMEL-10408 operator-step (operator): "sudoedit the config; rotate the key"'
+has "S15: a free-text token beside a matched operator-step keeps both" "$rp" '# staging HIMMEL-10409 operator-step (operator): "operator approves; rotate the key"'
+cat > "$WORK/s6-staging.py" <<'EOF'
+def needs(mirror_text, answers=(), unread=(), cli=None):
+    return [('x-need', 'operator', 'w')]
+EOF
+rp="$(ND_STAGING="$WORK/s6-staging.py" runst 2>/dev/null)"
+[ "$(lastf "$(prow LOCAL 10407)")" = "proof-staging=x-need" ] && pass "S6: the listing takes its needs from the ND_STAGING module" || fail "S6: last field of '$(prow LOCAL 10407)'"
+rp="$(ND_TICKET_POLICY_CLI="$WORK/no-such-cli.mjs" runst 2>/dev/null)"
+[ "$(lastf "$(prow LOCAL 10407)")" = "proof-staging=unknown" ] && pass "S11: a failed --sections call lists proof-staging=unknown" || fail "S11: last field of '$(prow LOCAL 10407)'"
+s11_err="$(ND_STAGING="$WORK/no-such-staging.py" runst 2>&1 >/dev/null)"; s11_rc=$?
+[ "$s11_rc" = 3 ] && pass "S11: a proof_staging.py that cannot be loaded exits 3" || fail "S11: a proof_staging.py that cannot be loaded exits 3 (rc $s11_rc)"
+has "S11: and says so on stderr" "$s11_err" "# next-dispatchable: proof_staging.py unreadable ("
+cat > "$WORK/s12-staging.py" <<'EOF'
+import importlib.util, os
+_s = importlib.util.spec_from_file_location('proof_staging_real', os.environ['STAGING_REAL'])
+_m = importlib.util.module_from_spec(_s)
+_s.loader.exec_module(_m)
+def __getattr__(name):
+    if name == 'needs':
+        if os.path.exists(os.environ['STAGING_DEL']):
+            os.remove(os.environ['STAGING_DEL'])
+        return _m.needs
+    raise AttributeError(name)
+EOF
+MS12="$WORK/m10203b/HIMMEL"; mkdir -p "$MS12"; cp "$MSG/HIMMEL-10407.md" "$MS12/"; cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/m10203b/HIMMEL.versions.tsv"
+GONE_FILE="$MS12/HIMMEL-10407.md"
+rp="$(STAGING_DEL="$GONE_FILE" STAGING_REAL="$HERE/proof_staging.py" ND_STAGING="$WORK/s12-staging.py" NEXT_DISPATCH_MIRROR="$MS12" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify-p" bash "$SUT" --top 40 --workers-dir "$WORK/s10203/workers" --workers-from "$WORK/fleet5.json" 2>/dev/null)"
+[ "$(lastf "$(prow LOCAL 10407)")" = "proof-staging=unknown" ] && pass "S12: a mirror file that vanishes before the listing's second read lists proof-staging=unknown" || fail "S12: last field of '$(prow LOCAL 10407)'"
+mkps HIMMEL-10407 "To Do" "Writes: none (chief-run proof, no code)" "- the row is green" "A RED row that fails before the change."
 printf '%s\n' "$P_PRS" > "$PRS_TSV"; printf '%s\n' "$P_MERGED" > "$MERGED_TSV"
 
 # A chain sibling's worker owns its ticket only while it can be alive: a fresh queue lock, or a doc armed within the hour.
