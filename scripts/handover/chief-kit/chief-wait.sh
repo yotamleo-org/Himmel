@@ -342,10 +342,6 @@
 # conflict or no-ci token (a PR, a class): ci-slow and idle are report-only, an unchanged set
 # and a stall resolving do not wake; stall=? (a probe outage) keeps the saved set; absent
 # from an older tick line, never a failure),
-# owed= (tick.sh's `ACTION owed-stale=<n>:<ids>`: keyless ticket rows of the owed ledger past OWED_STALE_SECS) is in the
-# key as the stale COUNT only, never the age or the ids: it wakes once (`WAKE tick changed=owed`) when the count rises,
-# and a row closed with a key (the count falling or the field going absent) wakes nothing; open rows that are not
-# stale never wake; owed=? keeps the saved count; absent from the line is never a failure),
 # denials= (a new worker, a higher count or a higher class
 # (SHIP-STEP > PAUSE-RISK > REPEAT) is exactly the alert this exists to
 # surface; the same denial ageing out of tick.sh's 30-min window, moving it to
@@ -800,13 +796,8 @@ sample() {
         fi
         key="$key$f=$v|"
     done
-    # owed= keeps the stale ticket-row count only, read from tick.sh's `ACTION owed-stale=<n>:<ids>`
-    # line (the tick's owed=<n>:<age> counts every open row and its age grows every tick). Absent when
-    # no keyless ticket row is past OWED_STALE_SECS, so a tick line without it is not a failed sample.
-    # owed=? (an unreadable ledger) keeps the saved count, so a blip is no change.
-    owed_n="$(printf '%s\n' "$raw" | sed -n 's/^ACTION owed-stale=\([0-9][0-9]*\):.*/\1/p' | head -n 1)"
-    [ "$(field owed "$tick_line")" != '?' ] || owed_n="$(key_field owed "$saved")"
-    case "$owed_n" in ''|*[!0-9]*|0) ;; *) key="${key}owed=$owed_n|" ;; esac
+    owed_n="$(stale_owed_count "$raw" "$tick_line" "$saved")"
+    [ -z "$owed_n" ] || key="${key}owed=$owed_n|"
     key="${key}usage=$bank"
 }
 
@@ -901,9 +892,13 @@ drop_holds_left() {
     done | paste -sd, -
 }
 
-# drop_owed_fall: <changed csv> <old key> <new key> — strips owed from a changed= list unless the
-# stale count rose: a row closed with a key (the count falling, or the field going absent) ends the
-# wake and is no new event.
+stale_owed_count() { # <raw tick output> <tick line> <saved key>
+    local n
+    n="$(printf '%s\n' "$1" | sed -n 's/^ACTION owed-stale=\([0-9][0-9]*\):.*/\1/p' | head -n 1)"
+    [ "$(field owed "$2")" != '?' ] || n="$(key_field owed "$3")"
+    case "$n" in ''|*[!0-9]*|0) ;; *) printf '%s' "$n" ;; esac
+}
+
 drop_owed_fall() {
     local old new
     old="$(key_field owed "$2")"; new="$(key_field owed "$3")"

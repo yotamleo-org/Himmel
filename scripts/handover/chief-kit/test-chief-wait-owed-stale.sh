@@ -1,14 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2016  # single-quoted stub bodies expand at run time
-# test-chief-wait-owed-stale.sh — the waiter wakes the chief once when a keyless
-# ticket row of the owed ledger goes stale (tick.sh's `ACTION owed-stale=<n>:<ids>`
-# line), and stays quiet when only the age moves, the count falls, or the field
-# is absent. tick.sh and the bank verdict are stubbed, so no ledger, gh or bank
-# read happens here. The other owed wake (owed-undelivered) is test-chief-wait-owed.sh.
-#
 # Linux-only: chief-wait.sh uses GNU timeout, so run-shell-tests.sh skips it off-Linux.
-#
-# Run: bash scripts/handover/chief-kit/test-chief-wait-owed-stale.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 WAIT="${CHIEF_WAIT:-$HERE/chief-wait.sh}"
@@ -36,13 +28,14 @@ export CHIEF_WAIT_PAGE_CMD="$STUB/page.sh" CHIEF_WAIT_PAGE_TIMEOUT=2
 export CHIEF_WAIT_INTERVAL=1 CHIEF_WAIT_POLL_SEC=0.2 CHIEF_WAIT_FAIL_WAKE=1000
 export HIMMEL_DENIAL_ACK_DIR="$WORK/acks"
 
-# set_tick <owed= value or ""> <ACTION owed-stale= value or "">: the tick line the stub serves.
 set_tick() {
     local owed="" action=""
     [ -z "$1" ] || owed=" owed=$1"
     [ -z "$2" ] || action="ACTION owed-stale=$2: a ticket you owe has no key after 4h: file it, then close the row"
-    printf 'TICK 03:00 hb=1m workers=N1:FRESH livestate=ok procs=2 models=x ceiling=ok atq=0 suites=0alive/0dead prs=#10 bank=5h8/wk15/codex=? fill=40 tails=N1:LIVE inbox=none tick=UNKNOWN fleet=3/15 capacity=ok gql=4000/04:00 orphans=none nonces=ok legset=ok board=ok%s denials=none or=skip\n' "$owed" > "$STUB/tick.line"
-    [ -z "$action" ] || printf '%s\n' "$action" >> "$STUB/tick.line"
+    {
+        printf 'TICK 03:00 hb=1m workers=N1:FRESH livestate=ok procs=2 models=x ceiling=ok atq=0 suites=0alive/0dead prs=#10 bank=5h8/wk15/codex=? fill=40 tails=N1:LIVE inbox=none tick=UNKNOWN fleet=3/15 capacity=ok gql=4000/04:00 orphans=none nonces=ok legset=ok board=ok%s denials=none or=skip\n' "$owed"
+        [ -z "$action" ] || printf '%s\n' "$action"
+    } > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"
 }
 
 wait_hb() { # <inbox>: block until the waiter has taken its baseline key, at most ~5 s
@@ -68,7 +61,6 @@ start() { # <inbox> <outfile>
 }
 stop() { kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; }
 
-# (a) a keyless ticket row going stale wakes once, named owed
 set_tick "" ""
 I="$(new_inbox a)"; start "$I" "$WORK/a.out"
 wait_hb "$I" || fail "(a) no baseline heartbeat"
@@ -78,7 +70,6 @@ check "(a) a row going stale ends the wait" "0" "$rc"
 check "(a) the wake names owed" "WAKE tick changed=owed usage=PROCEED" "$(head -n1 "$WORK/a.out")"
 stop
 
-# (b) the same value with only the age changed wakes nothing
 set_tick 1:5h 1:o1
 I="$(new_inbox b)"; start "$I" "$WORK/b.out"
 wait_hb "$I" || fail "(b) no baseline heartbeat"
@@ -90,7 +81,6 @@ wait_exit "$WPID"
 check "(b) nor does it on the next sample" "running" "$rc"
 stop
 
-# (c) the row closed with a key: the field goes absent, nothing wakes, and it stays quiet
 set_tick 1:5h 1:o1
 I="$(new_inbox c)"; start "$I" "$WORK/c.out"
 wait_hb "$I" || fail "(c) no baseline heartbeat"
@@ -102,7 +92,6 @@ wait_exit "$WPID"
 check "(c) and nothing wakes afterwards" "running" "$rc"
 stop
 
-# (c2) the stale count falling from two to one does not wake
 set_tick 2:6h 2:o1,o2
 I="$(new_inbox c2)"; start "$I" "$WORK/c2.out"
 wait_hb "$I" || fail "(c2) no baseline heartbeat"
@@ -111,7 +100,6 @@ wait_exit "$WPID"
 check "(c2) a lower stale count does not wake" "running" "$rc"
 stop
 
-# (e) a second row going stale (the count rising) wakes again
 set_tick 1:5h 1:o1
 I="$(new_inbox e)"; start "$I" "$WORK/e.out"
 wait_hb "$I" || fail "(e) no baseline heartbeat"
@@ -121,7 +109,6 @@ check "(e) a higher stale count wakes" "0" "$rc"
 check "(e) the wake names owed" "WAKE tick changed=owed usage=PROCEED" "$(head -n1 "$WORK/e.out")"
 stop
 
-# (f) a row that is open but not stale (no ACTION line) wakes nothing
 set_tick "" ""
 I="$(new_inbox f)"; start "$I" "$WORK/f.out"
 wait_hb "$I" || fail "(f) no baseline heartbeat"
@@ -133,7 +120,6 @@ wait_exit "$WPID"
 check "(f) nor does a higher open count" "running" "$rc"
 stop
 
-# (g) owed=? (an unreadable ledger) keeps the saved value: the blip and the return are no change
 set_tick 1:5h 1:o1
 I="$(new_inbox g)"; start "$I" "$WORK/g.out"
 wait_hb "$I" || fail "(g) no baseline heartbeat"
@@ -145,7 +131,6 @@ wait_exit "$WPID"
 check "(g) the same stale row returning after the blip does not wake" "running" "$rc"
 stop
 
-# (d) negative control: a tick line with no owed= field is a good sample, not a failed one
 set_tick "" ""
 I="$(new_inbox d)"; start "$I" "$WORK/d.out"
 check "(d) a tick line with no owed= field takes a baseline" "0" "$(wait_hb "$I"; echo $?)"
