@@ -616,7 +616,6 @@ has "the no Ship step names the relative merge spelling" "$ship_no" '`bash scrip
 has "the yes Ship step ends the merge with the --go GO file" "$ship_yes" 'then `--go <the GO file'
 # shellcheck disable=SC2016 # literal backticks in the expected brief text
 has "the no Ship step ends the merge with the --go GO file" "$ship_no" 'then `--go <the GO file'
-# The merge is one bare command from the current directory, never a cd compound.
 for any_dir_case in "yes:$ship_yes" "no:$ship_no"; do
     any_dir_name="${any_dir_case%%:*}"; any_dir_ship="${any_dir_case#*:}"
     # shellcheck disable=SC2016 # literal backticks in the expected brief text
