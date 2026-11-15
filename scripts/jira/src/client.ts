@@ -157,6 +157,18 @@ export function confluenceAuthHeader(): string {
   return authHeader();
 }
 
+// A bad, stale or revoked token gets HTTP 200 with an empty body from a Jira search, and the only sign is this header.
+export function assertAuthenticated(res: { status: number; headers?: Headers }): void {
+  const reason = res.headers?.get('x-seraph-loginreason');
+  if (reason === null || reason === undefined || reason === 'OK') return;
+  throw new Error(
+    `Jira did not accept the API token (HTTP ${res.status}, x-seraph-loginreason: ${reason}). ` +
+      'The token is stale, revoked or not the one for this site. It lives in the keyring: ' +
+      '`himmel-secrets put --stdin JIRA_API_TOKEN` (the value on stdin, never on argv). ' +
+      '`jira config` shows whether the token is set and where it came from, never the value.',
+  );
+}
+
 // The version-write hook's reads carry their own deadline: the write's fetch has none, so a hung read
 // must not hang a real write.
 export const HOOK_DEADLINE_MS = 5000;
@@ -232,6 +244,7 @@ export async function requestAt<T>(
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
+  assertAuthenticated(res);
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`HTTP ${res.status}: ${text}`);
@@ -276,6 +289,7 @@ export async function uploadMultipart(
     },
     body: fd,
   });
+  assertAuthenticated(res);
   if (!res.ok) {
     const text = (await res.text()).slice(0, 500);
     throw new Error(`HTTP ${res.status}: ${text}`);
@@ -294,6 +308,7 @@ export function uploadAttachment(issueKey: string, filePath: string): Promise<un
 
 export async function downloadTo(fullUrl: string, outPath: string, auth: string = authHeader()): Promise<number> {
   const res = await fetch(fullUrl, { headers: { Authorization: auth } });
+  assertAuthenticated(res);
   if (!res.ok) {
     const text = (await res.text()).slice(0, 500);
     throw new Error(`HTTP ${res.status}: ${text}`);
