@@ -249,10 +249,11 @@
 #       --jira-transition, or the brief says completes-ticket: no) on a ticket-tagged
 #       PR whose body has neither a `Remaining:` line nor a `<ask>: deferred -> <KEY>`
 #       line under `## Ticket coverage`, or whose every remaining ask is deferred to
-#       other tickets (this merge then completes the ticket), or whose body cannot be read, or when the
-#       anchor's scripts/lib/pr_remainder.py is missing or prints no answer. The
-#       refusal names the missing line. Checked after the title gate, before
-#       the audit preflight, on --dry-run too.
+#       other tickets (this merge then completes the ticket), or whose `owed -> chief` line
+#       names a relative repo path (code, which belongs on a `Remaining:` line), or whose body
+#       cannot be read, or when the anchor's scripts/lib/pr_remainder.py is missing, prints no
+#       answer or gives no chief-owed field under --units. The refusal names the missing line
+#       or the path. Checked after the title gate, before the audit preflight, on --dry-run too.
 #   27  --go was given and no OPEN PR resolved (no PR for the target, or it is
 #       CLOSED, or its state is empty or unknown): nothing was merged. A PR
 #       already MERGED at the head the GO file names exits 0 ("already
