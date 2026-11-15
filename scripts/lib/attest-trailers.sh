@@ -158,9 +158,11 @@ _attest_pr_json() {
     [ -r "$commits_file" ] || { _attest_error "cannot read the commits file $commits_file"; return 2; }
     [ -r "$files_file" ] || { _attest_error "cannot read the files file $files_file"; return 2; }
     jq -e 'type == "array"' "$commits_file" >/dev/null 2>&1 || { _attest_error "the commits file is not a JSON array"; return 2; }
+    # a commit whose parent count is unknown could be a merge, and a merge never attests: refuse it
+    jq -e 'all(.[]; (.parents.totalCount | type) == "number")' "$commits_file" >/dev/null 2>&1 || { _attest_error "a commit in the commits file has no numeric parents.totalCount"; return 2; }
     files=$(cat "$files_file")
     [ -n "$files" ] || { _attest_error "the PR file list is empty"; return 2; }
-    msgs=$(jq -r '.[] | select((.parents.totalCount // 1) <= 1) | (.messageHeadline // "") + "\n\n" + (.messageBody // "") + "\n"' "$commits_file" 2>/dev/null) || { _attest_error "cannot read the commit messages from the commits file"; return 2; }
+    msgs=$(jq -r '.[] | select(.parents.totalCount <= 1) | (.messageHeadline // "") + "\n\n" + (.messageBody // "") + "\n"' "$commits_file" 2>/dev/null) || { _attest_error "cannot read the commit messages from the commits file"; return 2; }
     _attest_verdict "$only" "$files" "$msgs"
 }
 

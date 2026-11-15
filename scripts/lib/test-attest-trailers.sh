@@ -179,6 +179,10 @@ printf '%s' '[]' > "$tmp/empty-commits.json"
 rc=0; out="$(bash "$LIB" pr-json "$tmp/empty-commits.json" "$tmp/empty.txt" 2>&1)" || rc=$?
 check "pr-json empty file list: rc" "$rc" "2"
 contains "pr-json empty file list: ATTEST ERROR" "$out" "ATTEST ERROR"
+printf '%s' '[{"messageHeadline":"Merge main","messageBody":"Platforms tested: linux\nSecurity reviewed: manual"}]' > "$tmp/noparents.json"
+rc=0; out="$(bash "$LIB" pr-json "$tmp/noparents.json" "$tmp/one.txt" 2>&1)" || rc=$?
+check "pr-json a commit with no parent count (could be a merge): rc 2" "$rc" "2"
+contains "pr-json a commit with no parent count: ATTEST ERROR" "$out" "ATTEST ERROR"
 rc=0; out="$(bash "$LIB" pr-json "$tmp/no-such.json" "$tmp/one.txt" 2>&1)" || rc=$?
 check "pr-json unreadable commits file: rc" "$rc" "2"
 rc=0; out="$(bash "$LIB" bogus 2>&1)" || rc=$?
