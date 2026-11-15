@@ -243,12 +243,24 @@ contains 'the plain tick intake: line carries the oldest age' "$(ic_tick --verbo
 printf '%s\n0\n' "$((ia_now - 3 * 3600 - 60))" > "$W/handover/inbox/N65.md.wait.intake"
 contains 'the oldest of several waiter clocks wins' "$(ic_tick)" ' INTAKE-AGE=7h'
 rm -f "$W/handover/inbox/N65.md.wait.intake"
-printf 'garbage\n0\n' > "$ia_clock"
-not_contains 'an unreadable clock line prints no INTAKE-AGE and no error' "$(ic_tick)" ' INTAKE-AGE='
+ic_stderr() { NEXT_DISPATCH_MIRROR="$PDI" NEXT_DISPATCH_GH_CMD="$W/ow-gh" NEXT_DISPATCH_CLASSIFY_CMD="$W/pd-classify" OW_PR_ROWS='4001\tfix: [HIMMEL-901] x\tfix/himmel-901-x\n' TICK_STATE_DIR="$W/ic-state" TOKEN='' bash "$SUT" --doc "$ic_doc" >/dev/null 2>"$W/ic-err"; cat "$W/ic-err"; }
+for ia_bad_clock in 'garbage' '18446744073709551616'; do
+    printf '%s\n0\n' "$ia_bad_clock" > "$ia_clock"
+    ia_bad="$(ic_tick)"; ia_rc=$?
+    same "a clock line '$ia_bad_clock' leaves the tick exiting 0" "$ia_rc" 0
+    contains "a clock line '$ia_bad_clock' still prints INTAKE=1" "$ia_bad" ' INTAKE=1 '
+    not_contains "a clock line '$ia_bad_clock' prints no INTAKE-AGE" "$ia_bad" ' INTAKE-AGE='
+    not_contains "a clock line '$ia_bad_clock' prints no error naming the clock" "$(ic_stderr)" 'wait.intake'
+done
 printf '%s\n0\n' "$((ia_now - 7 * 3600 - 60))" > "$ia_clock"
 rm -f "$PDI/HIMMEL-905.md"; rm -rf "$W/ic-state"
-not_contains 'INTAKE at 0 prints no INTAKE field and no age, whatever the clock file says' "$(ic_tick)" ' INTAKE'
-not_contains 'INTAKE at 0 prints no oldest age on the plain line' "$(ic_tick --verbose)" 'oldest'
+ia_zero="$(ic_tick)"; ia_rc=$?
+same 'INTAKE at 0 leaves the tick exiting 0' "$ia_rc" 0
+contains 'INTAKE at 0 still prints the pool field of a real tick' "$ia_zero" ' pool='
+not_contains 'INTAKE at 0 prints no INTAKE field and no age, whatever the clock file says' "$ia_zero" ' INTAKE'
+ia_zero_v="$(ic_tick --verbose)"
+contains 'INTAKE at 0 reads intake: 0 on the plain line' "$ia_zero_v" 'intake: 0'
+not_contains 'INTAKE at 0 prints no oldest age on the plain line' "$ia_zero_v" 'oldest'
 sed -e 's/^labels: \[\]/labels: ["operator-directed"]/' -e 's/904/905/g' "$OW/HIMMEL-904.md" > "$PDI/HIMMEL-905.md"
 rm -f "$ia_clock"; rm -rf "$W/ic-state"
 printf '[{"name":"c","steps":[{"key":"HIMMEL-901"},{"key":"HIMMEL-906"},{"key":"HIMMEL-904"},{"key":"HIMMEL-907"}]},{"drain":"x"}]\n' > "$W/ic-dir/focus-chains.json"

@@ -3186,6 +3186,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
                 [ -f "$ia_file" ] && [ -r "$ia_file" ] || continue
                 ia_first="$(sed -n 1p "$ia_file")"
                 case "$ia_first" in ''|*[!0-9]*) continue ;; esac
+                [ "${#ia_first}" -le 18 ] || continue
                 [ "$((10#$ia_first))" -le "$ia_now" ] || continue
                 [ -n "$intake_age" ] && [ "$((10#$ia_first))" -ge "$intake_age_first" ] && continue
                 intake_age_first="$((10#$ia_first))"
