@@ -1380,7 +1380,7 @@ describe('every Jira request has a deadline and a read is retried on a busy Jira
       const dflt = requestDeadlineMs();
       expect(dflt).toBeGreaterThanOrEqual(10_000);
       expect(dflt).toBeLessThanOrEqual(120_000);
-      for (const bad of ['abc', '0', '-5', 'NaN', 'Infinity', '1e999']) {
+      for (const bad of ['abc', '0', '-5', 'NaN', 'Infinity', '1e999', '1.5', '1e20']) {
         vi.stubEnv('JIRA_REQUEST_TIMEOUT_MS', bad);
         expect(requestDeadlineMs()).toBe(dflt);
       }

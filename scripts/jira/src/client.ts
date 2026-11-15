@@ -171,9 +171,10 @@ export function assertAuthenticated(res: { status: number; headers?: Headers }):
 
 // Every Jira request has a deadline, from the process environment only (not the dotenv or config keys).
 export const DEFAULT_REQUEST_DEADLINE_MS = 30_000;
+const MAX_REQUEST_DEADLINE_MS = 2_147_483_647;
 export function requestDeadlineMs(): number {
   const n = Number(process.env.JIRA_REQUEST_TIMEOUT_MS);
-  return Number.isFinite(n) && n > 0 ? n : DEFAULT_REQUEST_DEADLINE_MS;
+  return Number.isInteger(n) && n > 0 && n <= MAX_REQUEST_DEADLINE_MS ? n : DEFAULT_REQUEST_DEADLINE_MS;
 }
 
 // A read is retried on a busy Jira, a write never: a repeated comment or issue is worse than a failure.
@@ -209,11 +210,12 @@ async function fetchWithDeadline(
   for (let attempt = 0; ; attempt++) {
     let res: Response;
     let body: string | Buffer;
+    const signal = AbortSignal.timeout(ms);
     try {
-      res = await fetch(url, { ...init, signal: AbortSignal.timeout(ms) });
+      res = await fetch(url, { ...init, signal });
       body = bytes ? Buffer.from(await res.arrayBuffer()) : await res.text();
     } catch (err) {
-      if ((err as { name?: string })?.name !== 'TimeoutError') throw err;
+      if (!signal.aborted) throw err;
       throw new Error(
         `Jira request timed out after ${ms} ms: ${what}` +
           (retry ? '' : '. The request may have been applied: check Jira before repeating it.'),
