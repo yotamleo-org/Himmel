@@ -389,18 +389,6 @@ _qmd_ensure_global_link() {
   return 0
 }
 
-# The bare `qmd` on PATH (~/.local/bin/qmd) is the fork's own launcher, which
-# sends no provider key: every shell `qmd query`/`qmd embed` against an
-# OpenRouter config answered 401 while the daemon (and qmd_cmd) used the key
-# from the daemon env file. _qmd_ensure_wrapper makes that path a wrapper that
-# loads the key through qmd_daemon_key_load (the same loader qmd_cmd uses),
-# then execs the fork launcher. It replaces ONLY an absent path, a symlink that
-# resolves to the fork launcher, or an earlier copy of this wrapper; any other
-# file or symlink is the operator's own and is left untouched (rc 1).
-# The loader path is baked at install time; if it later goes missing the
-# wrapper warns on stderr and still runs the fork launcher, never bricks qmd.
-# Not ledger-recorded: a qmd-fork row's uninstall handler treats every file
-# unit as the fork checkout, so uninstall handling is its own follow-up.
 _qmd_wrapper_path() {
   printf '%s\n' "$HOME/.local/bin/qmd"
 }
@@ -409,7 +397,6 @@ _qmd_wrapper_text() {
   local lib="$1" fork_bin="$2"
   printf '#!/usr/bin/env bash\n'
   printf '# himmel-qmd-wrapper: v1 -- written by himmel scripts/lib/qmd-bin.sh qmd_install\n'
-  printf '# Loads the provider key from the qmd daemon env file, then runs the fork launcher.\n'
   printf 'LIB=%q\n' "$lib"
   printf 'FORK_BIN=%q\n' "$fork_bin"
   cat <<'WRAPPER'

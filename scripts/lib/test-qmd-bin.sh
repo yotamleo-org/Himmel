@@ -1501,23 +1501,19 @@ else
 fi
 
 echo "[test-qmd-bin] the bare ~/.local/bin/qmd wrapper loads the daemon key file"
-# A fork bin stub that records only WHETHER the key is set, never its value.
 wr_fork="$tmpdir/wr-fork"; mkdir -p "$wr_fork/bin"
 # shellcheck disable=SC2016  # the stub expands its own variables when run
 printf '#!/usr/bin/env bash\necho "FORK-QMD KEY=${QMD_OPENAI_API_KEY:+set} ARGS=$*"\n' >"$wr_fork/bin/qmd"; chmod +x "$wr_fork/bin/qmd"
 WR_SENTINEL=sk-wrapper-sentinel-10088
-# wr_home <name> -> a fresh HOME carrying a decoy daemon env file (mode 600)
 wr_home() {
   local h="$tmpdir/wr-$1"
   mkdir -p "$h/.himmel/state" "$h/.local/bin"
   printf 'QMD_OPENAI_API_KEY=%s\n' "$WR_SENTINEL" >"$h/.himmel/state/qmd-daemon.env"; chmod 600 "$h/.himmel/state/qmd-daemon.env"
   printf '%s\n' "$h"
 }
-# wr_ensure <home>: run the installer's wrapper step under that HOME
 wr_ensure() {
   env -i HOME="$1" PATH="$PATH" QMD_FORK_DIR="$wr_fork" bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; _qmd_ensure_wrapper' 2>&1
 }
-# wr_run <home> [VAR=value...] -- run the bare wrapper from a fresh env (no session key)
 wr_run() {
   local h="$1"; shift
   env -i HOME="$h" PATH="$PATH" "$@" "$h/.local/bin/qmd" query x 2>&1
