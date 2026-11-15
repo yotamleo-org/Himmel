@@ -2473,7 +2473,6 @@ has "R5: and its no-path control the same" "$rpp" "# disposition HIMMEL-9853 lis
 rp="$rpp"
 has "R5: and column 0 is LOCAL for the proof row" "$(prow LOCAL 9851)" "files=-"
 
-# the reader's units answer decides whether a remainder writes nothing; a slice is cut only at an S<n> label at parenthesis depth 0
 MU="$WORK/m10199/HIMMEL"; mkdir -p "$MU" "$WORK/s10199/workers"; cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/m10199/HIMMEL.versions.tsv"
 M_SAVE="$M"; M="$MU"
 for n in 10301 10302 10303 10304 10305 10306 10307 10311 10313 10314 10315; do

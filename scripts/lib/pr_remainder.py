@@ -16,7 +16,7 @@ CLI: `pr_remainder.py [--units] KEY[,KEY...]` with the PR body on stdin prints O
   handed-off<TAB>KEY, KEY<TAB>text
   owed<TAB>who<TAB>YYYY-MM-DD<TAB>text
 The own keys are the ticket's own: a deferred line naming one is not a hand-off. Exit 0 with the line; any other exit is no answer.
-With --units every kind carries two more fields, `nowrite=<0|1>` and `chief-owed=<text ¦ text>` (pr_remainder_units).
+With --units every kind carries two more fields, `nowrite=<0|1>` and `chief-owed=<text¦text>` (pr_remainder_units).
 """
 import datetime
 import re
@@ -36,7 +36,6 @@ SLICE_LABEL_RE = re.compile(r'[ \t]*S\d+[A-Za-z]?\b')
 
 
 def slices(line):
-    """A `Remaining:` line cut at each `,` or `;` that sits at parenthesis depth 0 and is followed by a slice label `S<n>`."""
     out, depth, start = [], 0, 0
     for n, c in enumerate(line):
         if c == '(':

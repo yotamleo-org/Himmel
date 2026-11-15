@@ -55,7 +55,6 @@ case "$1 $2" in
 esac
 echo "gh stub: unsupported request: $*" >&2; exit 64
 EOF
-# the stub reader: the PR body is the reader's answer line; with --units it adds the two units fields
 printf 'import sys\nsys.stdout.write(sys.stdin.read().rstrip("\\n") + ("\\tnowrite=0\\tchief-owed=" if "--units" in sys.argv else "") + "\\n")\n' > "$WORK/reader.py"
 cat > "$WORK/classify" <<'EOF'
 #!/usr/bin/env bash
@@ -151,8 +150,7 @@ out_h="$(READER_OVERRIDE="$(cd "$(dirname "$SUT")/../../lib" && pwd)/pr_remainde
 has "(h) the control body with a newline reads as owed through the real reader" "$out_h" "OWED HIMMEL-310: merged PR #6017 owes operator by $DUE"
 lacks "(h) a lone CR is stripped, so the joined line is not owed" "$out_h" "OWED HIMMEL-309"
 
-# the real reader's units answer, over real PR bodies (their Ticket coverage sections, verbatim from gh pr view)
-UK="HIMMEL-$((300 + 99))"  # the own key; these bodies carry no deferred line, so any key reads them the same
+UK="HIMMEL-$((300 + 99))"
 REAL_READER="$(cd "$(dirname "$SUT")/../../lib" && pwd)/pr_remainder.py"
 U8="$WORK/u8"; mkdir -p "$U8"
 git -C "$(dirname "$REAL_READER")" show 4a9dc2e4f:scripts/lib/pr_remainder.py > "$U8/base_reader.py" || fail "U8: the base reader copy (git show 4a9dc2e4f) could not be read"
@@ -223,7 +221,6 @@ has "U10: PR 5341's owed answer keeps its fields" "$u10_5341" "owed	chief	2026-1
 has "U10: and ends in nowrite=0 and its chief-owed texts" "$u10_5341" "	nowrite=0	chief-owed=VM row 1, "
 [ "$(printf '%s' "${u10_5341##*	}" | grep -o '¦' | wc -l | tr -d ' ')" = 2 ] && pass "U10: the three chief-owed lines are joined by ¦" || fail "U10: chief-owed field of '$u10_5341'"
 
-# U9a, U9b: a stub reader without the --units fields leaves the PR unread, never silently untagged
 printf 'import sys\nsys.stdout.write(sys.stdin.read())\n' > "$WORK/reader-nofields.py"
 mk HIMMEL-311 "In Progress" "a remaining answer without the units fields" "Edit scripts/lib/o11.sh."
 mk HIMMEL-312 "In Progress" "an owed answer without the units fields" "Edit scripts/lib/o12.sh."

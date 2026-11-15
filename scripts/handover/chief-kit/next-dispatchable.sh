@@ -61,8 +61,8 @@
 # Scope: a ticket waits only on the files its next step writes. That is the latest `Remaining:` text when it names a write path or
 # the reader (`--units`) answers that it writes nothing: every slice of each `Remaining:` line (cut at a `, S<n>` or `; S<n>` label
 # outside parentheses), every deferred line kept on the ticket and every malformed owed line says so (no code, no repo write,
-# chief-run, state repo). Else a `Writes:` or `Files:` line of the description, else the description's paths, comments left out. A path a text only runs (`run`, `bash <path>`) holds nothing, unless a line naming it
-# edits it or reports it broken. A ticket with no path and no such statement prints `NEEDS-CHIEF-NOTE <KEY>: no readable scope` and
+# chief-run, state repo). Else a `Writes:` or `Files:` line of the description, else the description's paths, comments left out.
+# A path a text only runs (`run`, `bash <path>`) holds nothing, unless a line naming it edits it or reports it broken. A ticket with no path and no such statement prints `NEEDS-CHIEF-NOTE <KEY>: no readable scope` and
 # is not listed; those rows stop at --top, best ranked first, and --why prints them all. --why also prints `# scope <KEY> <source>: <paths> reads=<paths>`
 # and `(from <source>)` on an `# overlap` line. A ticket whose next step is stated to write nothing (a `Writes:` line with no path and
 # that statement, or a remainder with no path and that statement) lists with files=- and a trailing `proof` field, and --why adds ` nowrite` after its source.
@@ -345,7 +345,7 @@ RUN_BEFORE_RE = re.compile(r"(?<![\w/.-])(?:(?:re-?)?run(?:s|ning)?(?:\s+(?:bash
 WRITTEN_RE = re.compile(r'(?<![\w/.-])(?:edit|fix|change|modify|modifies|patch|add|extend|write|rewrite|remove|delete|rename|update|replace|refactor|touch|teach|wire|move|port|implement)(?:e?s|ing|ed)?(?![\w/-])'
                         r'|(?<![\w/.-])(?:fail|crash|error|bug|regress|refus|deni|hang|stall)\w*|(?<![\w/.-])(?:wrong|broken)(?![\w/-])', re.I)
 # ponytail: prose can say `no code` of something else, only ever read on a text naming no path; upgrade path = a ticket field
-try:  # NO_WRITE_RE and the supersede rule come from the real reader file, never the NEXT_DISPATCH_READER seam
+try:
     import importlib.util
     _spec = importlib.util.spec_from_file_location('pr_remainder', os.path.join(repo, 'scripts', 'lib', 'pr_remainder.py'))
     _reader = importlib.util.module_from_spec(_spec)
@@ -1197,9 +1197,8 @@ except (OSError, subprocess.SubprocessError):
 
 # The remainder of a merged partial PR's body, read by the ONE reader every partial-merge site shares
 # (scripts/lib/pr_remainder.py): a `Remaining:` line, or the `deferred -> <KEY>` lines under `## Ticket coverage`.
-# Returns the reader's units answer {kind, handed, text, nowrite, chief_owed}, kind none | remaining | handed-off | owed (for owed
-# handed is [who, date]). A body gh cannot read, or a reader that fails or answers without the two --units fields, is
-# recorded in unread_prs and returns kind none, so the ticket is never dispatched blind.
+# A body gh cannot read, or a reader that fails or answers without the two --units fields, is recorded in unread_prs and
+# returns kind none, so the ticket is never dispatched blind.
 remainder_cache = {}
 unread_prs = set()
 reader = os.environ.get('NEXT_DISPATCH_READER') or os.path.join(repo, 'scripts', 'lib', 'pr_remainder.py')  # NEXT_DISPATCH_READER: the test seam for the reader
@@ -1293,9 +1292,6 @@ def resume_eligible(i):
         return False
     return not (pool_only and (platform_dropped(i) or residual_out(i)))
 
-# A partly merged ticket's next step. PRs are in merge order and the reader's live_answers keeps the live ones. The latest
-# `remaining` is the scope when it names a write path or the reader answers that it writes nothing; a remainder doing neither
-# (a path it only runs included) leaves the description's scope, so it frees nothing.
 for i in issues.values() if not pr_unknown else ():
     if partial_resume(i['key']) and i['key'] not in worker_keys and i['key'] not in pr_keys and resume_eligible(i):
         i['parts'] = live_answers([dict(remainder_of(pr, i['key']), pr=pr) for pr in partials[i['key']]])
