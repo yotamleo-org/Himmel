@@ -780,6 +780,12 @@
       "// Strip a UTF-8 BOM (Windows editors/PowerShell 5.1 prepend one; it would"
     ]
   },
+  "scripts/lib/attest-trailers.sh": {
+    "reason": "classifier vocabulary (platform names the Platforms tested trailer accepts), not a Windows code path",
+    "lines": [
+      "ATTEST_PLATFORM_RE='(linux|windows|macos|ubuntu|debian|fedora|arch|mac|darwin|wsl|posix|gitbash|git-bash|powershell|pwsh)'"
+    ]
+  },
   "scripts/lib/graphify-bin.sh": {
     "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
     "lines": [
