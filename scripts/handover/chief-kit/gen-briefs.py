@@ -1197,7 +1197,7 @@ def item_instructions(m):
 def plan_series(workers):
     # Every series refusal, before anything is written. Sets l['series_plan'] on each series writer and returns the
     # workers without the ones it names, which get no brief or launcher.
-    by_label = {w['label']: w for w in workers if w.get('kind') != 'rm'}
+    by_label = {w['label']: w for w in workers if w.get('kind') not in ('rm', 'proof')}
     named = set()
     for w in workers:
         if 'series' not in w or w.get('kind') == 'rm':

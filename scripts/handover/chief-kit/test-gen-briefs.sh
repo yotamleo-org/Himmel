@@ -1589,6 +1589,7 @@ srbad nograntkey 'del w[0]["series_grant"]' "decision"
 srbad compact 'w[0]["context_guard"] = "compact"' "compact mode"
 srbad fifth 'w += [dict(w[2], label="N93%d" % i, keys=["HIMMEL-930%d" % i], slug="sr-x%d" % i, branch="feat/himmel-930%d-sr-x%d" % (i, i)) for i in (4, 5)]; w[0]["series"] = ["N932", "N933", "N934", "N935"]' "at most 4"
 srbad unknown 'w[0]["series"] = ["N932", "N999"]' "N999"
+srbad proofmember 'w[2]["kind"] = "proof"' "series names 'N933'"
 srbad dupkey 'w[2]["keys"] = ["HIMMEL-9302"]' "more than once"
 
 # a manifest outside the bucket would hide the ledger from next-dispatchable.sh, which reads series/ beside the manifest
