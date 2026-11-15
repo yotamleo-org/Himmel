@@ -612,7 +612,7 @@ f0_hits() { # <ext> <content> -> the number of hit lines over a one-file tree
     printf 'scripts/handover/ctl.%s\n' "$1" | python3 -I "$W/f0.py" "$W/f0t" 2>/dev/null | grep -c .
 }
 f0_row() { check "F0 $2" "$1" "$(f0_hits "$3" "$4")"; }
-f0_row 1 'control: timeout -k 2 30 gh pr list is a hit' sh 'timeout -k 2 30 gh pr list --state open'
+f0_row 1 'control: timeout -k 2 30 gh pr list is a hit' sh 'timeout -k 2 30 gh pr list --state open'  # gnu-ok: scanner input text, never run
 f0_row 1 'control: bounded 30 gh api x is a hit' sh 'bounded 30 gh api x'
 f0_row 1 'control: x=$(gh repo view) is a hit' sh 'x=$(gh repo view --json name)'
 f0_row 1 'control: "${GH_CMD:-gh}" pr view is a hit' sh '"${GH_CMD:-gh}" pr view 1'
@@ -633,9 +633,10 @@ f0_row 0 'control: a hit with gh-main-ok on its line is no hit' sh $'GH="gh"\n"$
 mkdir -p "$W/f0real/scripts/handover/chief-kit"
 sed 's|CHIEF_WAIT_GH:-\$GH_READ_BIN|CHIEF_WAIT_GH:-gh|' "$REPO/scripts/handover/chief-kit/chief-wait.sh" > "$W/f0real/scripts/handover/chief-kit/chief-wait.sh"
 cmp -s "$REPO/scripts/handover/chief-kit/chief-wait.sh" "$W/f0real/scripts/handover/chief-kit/chief-wait.sh" && fail "F0 control: the chief-wait.sh copy equals the original (nothing moved)"
-check "F0 control: chief-wait.sh with its PR watch seam default back on gh is a hit" "yes" "$(printf 'scripts/handover/chief-kit/chief-wait.sh\n' | python3 -I "$W/f0.py" "$W/f0real" 2>/dev/null | grep -q '"\$gh_cmd" api' && echo yes)"
+f0_mut="$(printf 'scripts/handover/chief-kit/chief-wait.sh\n' | python3 -I "$W/f0.py" "$W/f0real" 2>/dev/null)"
+check "F0 control: chief-wait.sh with its PR watch seam default back on gh is a hit" "yes" "$(case "$f0_mut" in *'"$gh_cmd" api'*) echo yes ;; esac)"
 f0_tracked="$(git -C "$REPO" ls-files scripts/handover)"
-check "F0 reads the tracked files (chief-wait.sh is among them, so the empty result below is not vacuous)" "yes" "$(printf '%s\n' "$f0_tracked" | grep -q 'chief-kit/chief-wait.sh$' && echo yes)"
+check "F0 reads the tracked files (chief-wait.sh is among them, so the empty result below is not vacuous)" "yes" "$(case "$f0_tracked" in *chief-kit/chief-wait.sh*) echo yes ;; esac)"
 check "F0 no read-shaped gh call under scripts/handover is unjustified" "" "$(printf '%s\n' "$f0_tracked" | python3 -I "$W/f0.py" "$REPO" 2>&1)"
 
 printf '%s fail\n' "$fails"
