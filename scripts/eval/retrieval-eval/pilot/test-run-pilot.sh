@@ -246,13 +246,13 @@ json.dump({"passed": True}, open(g + "/bare.json", "w"))
 EOF
 CARD=$(printf 'card' | sha256sum | cut -d' ' -f1)
 g0() { python3 -I "$HERE/auth-preflight.py" --readiness "$1" --lock "$W/g0/tools.lock" --card-sha256 "${2:-$CARD}" "${@:3}"; }
-out=$(g0 "$W/g0/ready.json"); rc=$?
+out=$(g0 "$W/g0/ready.json" "$CARD" --stance eval-only-reachable); rc=$?
 eq "G0: a complete record under the recorded reachable stance is READY (P2 not required for R5)" 0 "$rc"
 has "G0: READY names the stance and never claims isolation" "never called isolation" "$out"
 eq "G0: a bare passed:true record proves nothing" 3 "$(g0 "$W/g0/bare.json" >/dev/null; echo $?)"
 mut() { # <label> <reason fragment> <python mutation of r>
   python3 -I -c 'import json,sys; r=json.load(open(sys.argv[1])); exec(sys.argv[3]); json.dump(r, open(sys.argv[2],"w"))' "$W/g0/ready.json" "$W/g0/m.json" "$3"
-  local o; o=$(g0 "$W/g0/m.json"); local rc=$?
+  local o; o=$(g0 "$W/g0/m.json" "$CARD" --stance eval-only-reachable); local rc=$?
   eq "G0: $1 blocks paid work" 3 "$rc"
   has "G0: $1 names its reason" "$2" "$o"
 }
@@ -274,6 +274,235 @@ mut "token bytes in the record" "credential-shaped value" 'r["provisioning"]["ev
 eq "G0: the legacy unreadable stance refuses any readable channel (negative control)" 3 "$(g0 "$W/g0/ready.json" "$CARD" --stance unreadable >/dev/null; echo $?)"
 python3 -I -c 'import json,sys; r=json.load(open(sys.argv[1])); r["stance"]["selected"]="unreadable"; r["r4"]["channels"]["session_home"]={"Read":"no","Grep":"no","Glob":"no","Bash":"no"}; json.dump(r, open(sys.argv[2],"w"))' "$W/g0/ready.json" "$W/g0/strict.json"
 eq "G0: an all-denied record satisfies the unreadable stance" 0 "$(g0 "$W/g0/strict.json" "$CARD" --stance unreadable >/dev/null; echo $?)"
+
+python3 -I - "$W/g0" <<'EOF'
+import hashlib, json, os, sys
+g = sys.argv[1]
+sha = lambda p: hashlib.sha256(open(p, "rb").read()).hexdigest()
+def mk(p, data, mode=0o600):
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    with open(p, "w") as f:
+        f.write(data)
+    os.chmod(p, mode)
+mk(g + "/secrets/claude-oauth-token", "fixture-not-a-token\n")
+mk(g + "/state/qmd-key.env", "QMD_OPENAI_API_KEY=fixture-key\n")
+os.makedirs(g + "/HIMMEL-9264-rerun-2026-11-14/private", mode=0o700)
+mk(g + "/proof/rotate-answer.md", "fixture: rotate the shared token, fleet-wide\n", 0o644)
+mk(g + "/proof/rotate-search.md", "fixture: rotate the regular key, re-derive s-key, re-pin the binding\n", 0o644)
+mk(g + "/var/empty-token", "")
+mk(g + "/var/group-token", "x\n", 0o640)
+mk(g + "/var/linked-token", "x\n"); os.link(g + "/var/linked-token", g + "/var/linked-token-2")
+os.symlink(g + "/secrets/claude-oauth-token", g + "/var/symlink-token")
+mk(g + "/var/.credentials.json", "{}\n")
+legacy = json.load(open(g + "/ready.json"))
+r = {"schema": "rag-pilot-auth-readiness/1", "lock_sha256": legacy["lock_sha256"],
+     "credentials": {"answer": {"kind": "shared-subscription", "source_path": g + "/secrets/claude-oauth-token"},
+                     "search": {"kind": "regular-openrouter-key", "source_path": g + "/state/qmd-key.env",
+                                "derived_path": g + "/HIMMEL-9264-rerun-2026-11-14/private/s-key"}},
+     "stance": {"selected": "shared-credentials", "decision": "decision 946 (operator 2026-11-15)", "design_revision": "r20",
+                "card_sha256": legacy["stance"]["card_sha256"]},
+     "r4": legacy["r4"], "scrub": {"fixtures_pass": True, "artifacts": legacy["scrub"]["artifacts"]},
+     "rotation": {"answer": {"path": "proof/rotate-answer.md", "sha256": sha(g + "/proof/rotate-answer.md")},
+                  "search": {"path": "proof/rotate-search.md", "sha256": sha(g + "/proof/rotate-search.md")}}}
+json.dump(r, open(g + "/shared.json", "w"), indent=1)
+EOF
+TOK="$W/g0/secrets/claude-oauth-token"; SKEY="$W/g0/HIMMEL-9264-rerun-2026-11-14/private/s-key"
+sg0() { g0 "$1" "$CARD" --answer-file "${2:-$TOK}" --search-key-file "${3:-$SKEY}"; }
+out=$(sg0 "$W/g0/shared.json"); rc=$?
+eq "G0 r20: a complete shared-credentials record is READY under the default stance" 0 "$rc"
+has "G0 r20: READY names the stance on its own line" "stance: shared-credentials" "$out"
+has "G0 r20: READY says the credentials are shared with the fleet" "shared with the fleet" "$out"
+smut() {
+  python3 -I -c 'import json,sys; g=sys.argv[4]; r=json.load(open(sys.argv[1])); exec(sys.argv[3]); json.dump(r, open(sys.argv[2],"w"))' "$W/g0/shared.json" "$W/g0/sm.json" "$3" "$W/g0"
+  local o; o=$(sg0 "$W/g0/sm.json"); local rc=$?
+  eq "G0 r20: $1 blocks paid work" 3 "$rc"
+  has "G0 r20: $1 names its reason" "$2" "$o"
+}
+smut "an unknown channel" "S: unknown channel embed" 'r["credentials"]["embed"] = {"kind": "regular-openrouter-key", "source_path": "/x"}'
+smut "a missing search channel" "S: missing channel search" 'del r["credentials"]["search"]'
+smut "the API key as the answer kind" "S: unknown kind api-key for answer" 'r["credentials"]["answer"]["kind"] = "api-key"'
+smut "a symlinked answer source" "S: the answer source is a symlink" 'r["credentials"]["answer"]["source_path"] = g + "/var/symlink-token"'
+smut "an answer source with two hard links" "S: the answer source has 2 hard links" 'r["credentials"]["answer"]["source_path"] = g + "/var/linked-token"'
+smut "an empty answer source" "S: the answer source is empty" 'r["credentials"]["answer"]["source_path"] = g + "/var/empty-token"'
+smut "a group-readable answer source" "S: the answer source has mode 0640" 'r["credentials"]["answer"]["source_path"] = g + "/var/group-token"'
+smut "the interactive login file as the answer source" "S: the answer source is the interactive login file" 'r["credentials"]["answer"]["source_path"] = g + "/var/.credentials.json"'
+smut "a token-shaped value in the statement" "credential-shaped value at .credentials.search.note" 'r["credentials"]["search"]["note"] = "sk-or-v1-" + "a1B2" * 12'
+smut "a credential field beside the paths" "S: search carries a field that is not a path or kind (note)" 'r["credentials"]["search"]["note"] = "plain"'
+smut "a token pasted as a path component" "credential-shaped value at .credentials.answer.source_path" 'r["credentials"]["answer"]["source_path"] = g + "/" + "aB3dE5" * 8'
+smut "a stance bound to r18" "4: the stance" 'r["stance"]["design_revision"] = "r18"'
+smut "a stance without decision 946" "4: the stance" 'r["stance"]["decision"] = "operator conversation"'
+smut "a stance naming decision 1946" "4: the stance" 'r["stance"]["decision"] = "decision 1946"'
+smut "a token in the kind field" "S: unknown kind [redacted] for answer" 'r["credentials"]["answer"]["kind"] = "sk-ant-oat01-" + "Zq9" * 20'
+smut "a token as a channel name" "S: unknown channel [redacted]" 'r["credentials"]["sk-or-v1-" + "Zq9" * 20] = {}'
+python3 -I -c 'import json,sys; r=json.load(open(sys.argv[1])); r["credentials"]["answer"]["kind"]="sk-ant-oat01-"+"Zq9"*20; r["r4"]["channels"]["bash_env"]="sk-or-v1-"+"Zq9"*20; json.dump(r, open(sys.argv[2],"w"))' "$W/g0/shared.json" "$W/g0/tok.json"
+eq "G0 r20: no diagnostic repeats a token-shaped record value" no "$(case "$(sg0 "$W/g0/tok.json")" in *Zq9Zq9*) echo yes ;; *) echo no ;; esac)"
+smut "a missing rotation procedure" "6: the rotation procedure for search is missing or its hash changed" 'del r["rotation"]["search"]'
+smut "a changed rotation procedure" "6: the rotation procedure for answer is missing or its hash changed" 'r["rotation"]["answer"]["sha256"] = "0" * 64'
+smut "an unknown channel result" "5: channel native_proc has no definite result" 'r["r4"]["channels"]["native_proc"]["Glob"] = "unknown"'
+smut "station reachability" "5: station or other-account" 'r["r4"]["station_reachable"] = True'
+smut "failed scrub fixtures" "6: scrub fixtures" 'r["scrub"]["fixtures_pass"] = False'
+smut "a changed proof artifact" "6: proof artifact scrub" 'r["scrub"]["artifacts"]["scrub"]["sha256"] = "0" * 64'
+o=$(sg0 "$W/g0/shared.json" "$W/g0/var/group-token"); rc=$?
+eq "G0 r20: a configured answer file that disagrees with the statement blocks paid work" 3 "$rc"
+has "G0 r20: the answer disagreement names its reason" "S: the configured answer file is not the stated answer source_path" "$o"
+o=$(sg0 "$W/g0/shared.json" "$TOK" "$W/g0/other-s-key"); rc=$?
+eq "G0 r20: a configured S key file that disagrees with the statement blocks paid work" 3 "$rc"
+has "G0 r20: the S key disagreement names its reason" "S: the configured S key file is not the stated search derived_path" "$o"
+eq "G0 r20: the legacy record does not pass the default shared-credentials stance" 3 "$(sg0 "$W/g0/ready.json" >/dev/null; echo $?)"
+
+D="$W/derive"; mkdir -p "$D/out"; chmod 700 "$D/out"
+printf 'QMD_OPENAI_PROVIDER=openrouter\nQMD_OPENAI_API_KEY=fixture-or-key-123\nQMD_OPENAI_EMBED_BATCH_SIZE=64\nQMD_OPENAI_EMBED_CONCURRENCY=4\nQMD_QUERY_MAX_QUEUED=8\nQMD_OPENAI_API_KEY=second-line-ignored\n' > "$D/qmd-key.env"  # gitleaks:allow fake fixture key
+chmod 600 "$D/qmd-key.env"
+dsk() { python3 -I "$HERE/run-pilot.py" derive-s-key --source "$1" --out "$2" 2>&1; }
+out=$(dsk "$D/qmd-key.env" "$D/out/s-key"); rc=$?
+eq "derive-s-key: the qmd key-file line format yields exactly the first key line's value in a 0600 file" "0 fixture-or-key-123 600" "$rc $(cat "$D/out/s-key" 2>/dev/null) $(python3 -I -c 'import os,sys; print("%o" % (os.stat(sys.argv[1]).st_mode & 0o777))' "$D/out/s-key" 2>/dev/null)"
+eq "derive-s-key: the value is never printed" no "$(case "$out" in *fixture-or-key*) echo yes ;; *) echo no ;; esac)"
+printf 'models:\n  embed: openai:x\nbase_url: https://openrouter.ai/api/v1\n' > "$D/index.yml"
+PARITY=$(bash -c '. "$1"; QMD_DAEMON_ENV_FILE="$2" qmd_daemon_key_load "$3" && printf %s "$QMD_OPENAI_API_KEY"' _ "$HERE/../../../lib/qmd-daemon-env.sh" "$D/qmd-key.env" "$D/index.yml")  # t13b-ok: sources the qmd key loader to read a fixture file, starts nothing
+eq "derive-s-key: parity with the qmd key loader on the same file" "$PARITY" "$(cat "$D/out/s-key" 2>/dev/null)"
+for m in 640 700; do
+  cp "$D/qmd-key.env" "$D/env-$m"; chmod "$m" "$D/env-$m"
+  dsk "$D/env-$m" "$D/out/k-$m" > /dev/null; rc=$?
+  eq "derive-s-key: a source with mode $m refuses and writes nothing" "3 no" "$rc $([ -e "$D/out/k-$m" ] && echo yes || echo no)"
+done
+printf 'QMD_OPENAI_PROVIDER=openrouter\n' > "$D/env-nokey"; printf 'QMD_OPENAI_API_KEY=\n' > "$D/env-empty"; chmod 600 "$D/env-nokey" "$D/env-empty"
+for c in nokey empty; do
+  dsk "$D/env-$c" "$D/out/k-$c" > /dev/null; rc=$?
+  eq "derive-s-key: a source with $c refuses and writes nothing" "3 no" "$rc $([ -e "$D/out/k-$c" ] && echo yes || echo no)"
+done
+dsk "$D/qmd-key.env" "$D/out/s-key" > /dev/null; rc=$?
+eq "derive-s-key: an existing output refuses and is left as it was" "3 fixture-or-key-123" "$rc $(cat "$D/out/s-key")"
+ln -s "$D/nowhere" "$D/out/dangling"
+dsk "$D/qmd-key.env" "$D/out/dangling" > /dev/null; rc=$?
+eq "derive-s-key: a dangling symlink at the output refuses and creates nothing" "3 no" "$rc $([ -e "$D/nowhere" ] && echo yes || echo no)"
+ln -s "$D/qmd-key.env" "$D/env-link"
+dsk "$D/env-link" "$D/out/k-link" > /dev/null; rc=$?
+eq "derive-s-key: a symlinked source refuses and writes nothing" "3 no" "$rc $([ -e "$D/out/k-link" ] && echo yes || echo no)"
+mkdir -p "$D/open"; chmod 755 "$D/open"
+dsk "$D/qmd-key.env" "$D/open/s-key" > /dev/null; rc=$?
+eq "derive-s-key: an output directory that is not 0700 refuses" "3 no" "$rc $([ -e "$D/open/s-key" ] && echo yes || echo no)"
+
+printf 'card' > "$W/g0/card"; : > "$W/g0/r8go"
+NZ=$(python3 -I - "$HERE" "$W" <<'EOF'
+import hashlib, importlib.util, json, os, sys
+here, w = sys.argv[1], sys.argv[2]
+s = importlib.util.spec_from_file_location("rp", here + "/run-pilot.py"); rp = importlib.util.module_from_spec(s); s.loader.exec_module(rp)
+L = rp.L; g = w + "/g0"; out = {}
+cfg = {"card": g + "/card", "astra_review": g + "/noreview", "r8_go": g + "/r8go", "lock": g + "/tools.lock", "auth_readiness": g + "/shared.json",
+       "eval_token_file": g + "/secrets/claude-oauth-token", "s_key_file": g + "/HIMMEL-9264-rerun-2026-11-14/private/s-key", "run_root": w + "/nzrun"}
+os.makedirs(cfg["run_root"])
+g0lines = lambda c: [b for b in rp.gates(c) if b.startswith("G0")]
+out["g0_match"] = g0lines(cfg)
+out["g0_answer_mismatch"] = g0lines(dict(cfg, eval_token_file=g + "/var/group-token"))
+out["g0_key_mismatch"] = g0lines(dict(cfg, s_key_file=g + "/other-s-key"))
+out["gates_run_root_files"] = sum(len(fs) for _, _, fs in os.walk(cfg["run_root"]))
+tf = w + "/tok1"; open(tf, "w").write("  tok-value  \n")
+t2 = w + "/tok2"; open(t2, "w").write("tok-value\nsecond\n")
+try:
+    rp.read_token(t2); two = "accepted"
+except ValueError:
+    two = "refused"
+out["token"] = [rp.read_token(tf), two]
+key = w + "/fake-s-key"; open(key, "w").write("fixture-key"); fpk = hashlib.sha256(b"fixture-key").hexdigest()
+
+class Meter:
+    def __init__(self, vals):
+        self.vals = list(vals)
+    def read(self):
+        return self.vals.pop(0)
+class Clk:
+    t = 5000.0
+    def now(self):
+        return self.t
+    def sleep(self, s):
+        self.t += s
+def mb(name, vals, window=600):
+    p = w + "/mb-" + name + ".json"
+    try:
+        rp.meter_baseline(key, window, p, Meter(vals), Clk())
+        rec = json.load(open(p))
+        return [round(rec["rate"], 9), rec["window_s"], rec["key_fingerprint"] == fpk, oct(os.stat(p).st_mode & 0o777), "fixture-key" in open(p).read()]
+    except rp.Refuse as e:
+        return ["refused", os.path.exists(p)]
+out["mb_ok"] = mb("ok", [1.0, 1.06]); out["mb_neg"] = mb("neg", [1.0, 0.9]); out["mb_none"] = mb("none", [None, 1.0]); out["mb_window"] = mb("win", [1.0, 1.0], 100)
+
+base = {"start_meter": 1.0, "end_meter": 1.06, "start_ts": 4400.0, "end_ts": 5000.0, "window_s": 600, "key_fingerprint": fpk, "rate": 0.0001}
+bp = w + "/bl.json"; json.dump(base, open(bp, "w"))
+nb = lambda stance, c: rp.noise_binding(stance, c)[1]
+c2 = dict(cfg, s_key_file=key, noise_baseline=bp, expected_duration_s=1200)
+out["nb_ok"] = nb("shared-credentials", c2)
+out["nb_missing"] = nb("shared-credentials", dict(c2, noise_baseline=None))
+json.dump(dict(base, key_fingerprint="0" * 64), open(w + "/bl-fp.json", "w")); out["nb_fp"] = nb("shared-credentials", dict(c2, noise_baseline=w + "/bl-fp.json"))
+json.dump(dict(base, window_s=300), open(w + "/bl-win.json", "w")); out["nb_window"] = nb("shared-credentials", dict(c2, noise_baseline=w + "/bl-win.json"))
+out["nb_noisy"] = nb("shared-credentials", dict(c2, expected_duration_s=600000))
+json.dump(dict(base, rate=0.0002), open(w + "/bl-rate.json", "w")); out["nb_inconsistent"] = nb("shared-credentials", dict(c2, noise_baseline=w + "/bl-rate.json"))
+open(w + "/bl-bad.json", "w").write("{not json"); out["nb_malformed"] = nb("shared-credentials", dict(c2, noise_baseline=w + "/bl-bad.json"))
+out["nb_legacy_with"] = nb("eval-only-reachable", c2)
+out["nb_legacy_without"] = nb("eval-only-reachable", dict(c2, noise_baseline=None))
+print(json.dumps(out, sort_keys=True))
+EOF
+)
+eq "R8 gates: a config that matches the statement raises no G0 refusal" '[]' "$(f "$NZ" g0_match)"
+has "R8 gates: a configured answer file that disagrees with the record refuses with a G0 reason" "configured answer file" "$(f "$NZ" g0_answer_mismatch)"
+has "R8 gates: a configured S key file that disagrees with the record refuses with a G0 reason" "configured S key file" "$(f "$NZ" g0_key_mismatch)"
+eq "R8 gates: the refusals booked and launched nothing (the run root stays empty)" 0 "$(f "$NZ" gates_run_root_files)"
+eq "token: the answer token is the first line, whitespace stripped; a second line refuses" '["tok-value", "refused"]' "$(f "$NZ" token)"
+eq "meter-baseline: two reads over the window give the rate, the key fingerprint, mode 0600 and no key value" '[0.0001, 600, true, "0o600", false]' "$(f "$NZ" mb_ok)"
+eq "meter-baseline: a negative delta refuses and writes nothing" '["refused", false]' "$(f "$NZ" mb_neg)"
+eq "meter-baseline: an unreadable meter refuses and writes nothing" '["refused", false]' "$(f "$NZ" mb_none)"
+eq "meter-baseline: a window outside 600 to 1800 s refuses" '["refused", false]' "$(f "$NZ" mb_window)"
+eq "noise binding: a current baseline on the bound key with a feasible duration is accepted" '[]' "$(f "$NZ" nb_ok)"
+has "noise binding: shared-credentials without a baseline refuses" "needs a noise baseline" "$(f "$NZ" nb_missing)"
+has "noise binding: a baseline taken on another key refuses" "another key" "$(f "$NZ" nb_fp)"
+has "noise binding: a baseline window out of range refuses" "window" "$(f "$NZ" nb_window)"
+has "noise binding: a fleet too noisy for the stated duration refuses" "too noisy" "$(f "$NZ" nb_noisy)"
+has "noise binding: a rate that does not match the meters over the window refuses" "inconsistent" "$(f "$NZ" nb_inconsistent)"
+has "noise binding: a malformed baseline refuses" "unreadable" "$(f "$NZ" nb_malformed)"
+has "noise binding: a baseline under a legacy stance refuses (a file never switches the allowance on)" "legacy stance" "$(f "$NZ" nb_legacy_with)"
+eq "noise binding: a legacy stance without a baseline needs none" '[]' "$(f "$NZ" nb_legacy_without)"
+
+python3 -I - "$HERE" "$W" > "$W/noise.out" 2>&1 <<'EOF'
+import importlib.util, json, sys
+s = importlib.util.spec_from_file_location("ledger", sys.argv[1] + "/ledger.py"); L = importlib.util.module_from_spec(s); s.loader.exec_module(L)
+W = sys.argv[2]; out = {}
+def led(name, cap=L.CAP_PILOT, noise=L.NOISE_CAP_R8, rate=0.0003):
+    l = L.Ledger(W + "/" + name + ".jsonl", cap=cap)
+    l.noise_start("/run/noise-baseline-R8.json", "f" * 64, rate, 1000.0)
+    l.reserve("noise", noise)
+    l.meter_start(0.0, 1000.0)
+    return l
+a = led("n1"); a.book("q1", "s_query", .004); a.book("q2", "s_query", .004)
+ok = a.settle_s_interval(.018, 2, meter=.018, ts=1060.0)
+e = a.events[-1]
+out["within"] = [ok, a.stop, round(a.spent, 6), round(e["absorbed"], 6), round(e["expected_noise"], 6), round(a.reserves["noise"], 6), a.b]
+b = led("n2"); b.book("q1", "s_query", .004); b.book("q2", "s_query", .004)
+out["above"] = [b.settle_s_interval(.068, 2, meter=.068, ts=1060.0), b.stop]
+c = led("n3"); out["unbooked_under"] = [c.settle_s_interval(.03, 0, meter=.03, ts=1060.0), c.stop, round(c.spent, 6)]
+d = led("n4"); out["unbooked_above"] = [d.settle_s_interval(.06, 0, meter=.06, ts=1060.0), d.stop]
+x = led("n5", cap=0.033, noise=0.02); x.book("q1", "s_query", .004); x.book("q2", "s_query", .004)
+r1 = x.settle_s_interval(.028, 2, meter=.028, ts=1060.0)
+edge = [r1, x.committed() <= x.cap + L.EPS, round(x.reserves.get("noise", 0.0), 6)]
+x.book("q3", "s_query", .004)
+out["reserve_edge"] = edge + [x.settle_s_interval(.005, 1, meter=.033, ts=1120.0), x.stop]
+y = L.Ledger(W + "/n1.jsonl")
+out["replay"] = [round(y.noise_absorbed, 6), round(y.reserves["noise"], 6), y.noise_rate, y.last_meter()]
+print(json.dumps(out, sort_keys=True))
+EOF
+NO=$(tail -1 "$W/noise.out")
+eq "noise R8: an excess within A(t) settles, books the full delta, draws absorbed from the reserve and reprices net of E(t)" '[true, null, 0.018, 0.01, 0.018, 0.49, 0.004]' "$(f "$NO" within 2>/dev/null)"
+eq "noise R8: an excess above A(t) is a HARD_STOP overrun" '[false, {"kind": "HARD_STOP", "reason": "overrun"}]' "$(f "$NO" above 2>/dev/null)"
+eq "noise R8: an unbooked delta under A(t) settles and counts as spend" '[true, null, 0.03]' "$(f "$NO" unbooked_under 2>/dev/null)"
+eq "noise R8: an unbooked delta above A(t) is unknown_spend" '[false, {"kind": "HARD_STOP", "reason": "unknown_spend"}]' "$(f "$NO" unbooked_above 2>/dev/null)"
+eq "noise R8: absorbing at the reserve's edge keeps committed within the cap; a spent reserve stops the next excess" '[true, true, 0.0, false, {"kind": "HARD_STOP", "reason": "overrun"}]' "$(f "$NO" reserve_edge 2>/dev/null)"
+eq "noise R8: a restart replays the absorbed total, the reserve, the rate and the last reading" '[0.01, 0.49, 0.0003, 0.018]' "$(f "$NO" replay 2>/dev/null)"
+R=$(sc meter-start); eq "R8: the first meter reading is a durable event before the first S booking, and the first interval is metered from it" 'true 1 true' "$(f "$R" start_before_first_s) $(f "$R" starts) $(f "$R" first_delta_ok)"
+R=$(sc meter-start-restart); eq "R8: a restart before the first settle replays meter_start, never re-reads it" '1 true' "$(f "$R" starts) $(f "$R" first_delta_ok)"
+R=$(sc fleet-noise); eq "R8: steady fleet noise on the shared key is absorbed and the run completes" '["NONE", null] 40 true true' "$(f "$R" stop) $(f "$R" common) $(f "$R" absorbed_positive) $(f "$R" first_event_is_baseline)"
+R=$(sc fleet-noise-legacy); eq "R8: the same fleet noise without a baseline (legacy stance) still stops as r19 does" '["HARD_STOP", "overrun"]' "$(f "$R" stop)"
+R=$(sc noise-stale); eq "R8: a baseline older than 2 hours refuses before any booking or launch" '"noise" 0 0' "$(f "$R" refused) $(f "$R" launches) $(f "$R" events)"
+R=$(sc noise-other-baseline); eq "R8: a restart with a different baseline refuses" '"noise"' "$(f "$R" refused)"
+R=$(sc noise-future); eq "R8: a baseline that ends after the run's start refuses before any booking" '"noise" 0' "$(f "$R" refused) $(f "$R" events)"
+R=$(sc noise-late-baseline); eq "R8: a baseline added to a run that started without one refuses" '"noise"' "$(f "$R" refused)"
 
 cat > "$W/runner.py" <<'EOF'
 import importlib.util, os, sys, time
