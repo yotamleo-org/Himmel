@@ -702,8 +702,7 @@ ts_owed_lines() {
 # ts_owed_chief_paths <reader> <KEY> — stdin: a PR body. Runs the reader (pr_remainder.py, the caller's anchor copy) with
 # --units and prints paths<TAB>text for each owed-to-chief line it lists (chief-owed=) that names a relative repo path:
 # a file with a code or doc extension (tick.sh, scripts/lib/x.py, ./x.sh) or a directory of two or more parts ending in
-# `/` (scripts/lib/), with or without a leading ./ or ../. An absolute or home path (/etc/x.json, ~/.codex/config.toml) is not a repo path. Such a line is code
-# written as chief work; it belongs on a `Remaining:` line, which gets a RESUME row.
+# `/` (scripts/lib/), with or without a leading ./ or ../. An absolute or home path (/etc/x.json, ~/.codex/config.toml) is not a repo path.
 # rc 0 = one or more, 1 = none, 3 = the reader failed or gave no chief-owed field.
 ts_owed_chief_paths() {
     local ans owed text paths found=1
@@ -723,7 +722,7 @@ ts_owed_chief_paths() {
 }
 
 # _ts_d5d <KEY> <merged PR> [repo] [owed who] [owed due] — rc 0 when the merged PR's remainder names its owner, in
-# TS_D5D_OWNER. The owed pair comes from the merge row (merge-on-green writes it), so a snapshot derive answers it too.
+# TS_D5D_OWNER.
 _ts_d5d() {
     local key=$1 mpr=$2 repo=${3:-} owho=${4:-} odue=${5:-} log body ans kind rest owner
     TS_D5D_OWNER=""
