@@ -237,9 +237,8 @@ bare `clean.sh` sweep for a worker. long-running.txt: `run_in_background` (a sho
   call is `judge-ro`, never built-in Explore: `chief-sections/judge.md`. [prose]
 - **With a release declared, every placement is a request to the release
   manager**, never a direct fixVersions write: `chief-sections/release-manager.md`. [prose]
-- **Weekly standards duty** when the board's cadence line is stale:
-  `chief-sections/weekly-duty.md`. [prose]
-- **Owed** tickets, proofs, rulings are `owe.sh` rows: `chief-sections/owed.md`. [prose]
+- **Weekly standards duty** (cadence stale): `chief-sections/weekly-duty.md`. [prose]
+- **Owed** items are `owe.sh` rows: `chief-sections/owed.md`. [prose]
 
 ## Handing over
 
