@@ -28,10 +28,15 @@
 #     method or body flag (-X, --method, -f, -F, --field, --raw-field,
 #     --input); or the Jira CLI (a word ending in "jira" or naming
 #     scripts/jira/) with a write op (create, comment, transition, update,
-#     edit, assign, link, delete, worklog, attach); or a package fetch: the
-#     word bunx, npx or uvx, "bun" with x, add, install or i, "npm" with
-#     install, i, add, exec or x, "uv" with tool, or "pip"/"pip3" with install.
-#   mcp__* — any MCP tool other than qmd (mcp__qmd__*, mcp__plugin_qmd_qmd__*).
+#     edit, assign, link, delete, worklog, attach); or a package fetch (below).
+#   Package fetch, ALSO with the marker unset when the payload's agent_type is
+#     judge or judge-ro (bare or plugin-namespaced: an in-process judge
+#     subagent) — Bash only, and only this check: the word bunx, npx or uvx;
+#     "bun" with x, add, install, i or create; "npm" with install, i, in, ins,
+#     inst, isntall, add, ci, exec, x, init or create; "uv" with tool, or with
+#     run and a --with flag; "pip"/"pip3" with install or download; "cargo"
+#     with install.
+#   mcp__*— any MCP tool other than qmd (mcp__qmd__*, mcp__plugin_qmd_qmd__*).
 #   Write|Edit|MultiEdit|NotebookEdit — the path is relative or has a ".."
 #     segment; or it cannot be resolved (readlink -f, then parent + missing
 #     leaf); or the RESOLVED path is outside every allowed place:
@@ -44,10 +49,11 @@
 #     With HANDOVER_DIR unset only the cache and /tmp scratch are allowed.
 #     A symlink that does not resolve is denied, never judged by its own path.
 #
-# DEFAULT ACTION: with the marker unset this hook is a silent no-op — the
-# marker check is the FIRST statement, before stdin is read. With the marker
-# set it is a SECURITY FENCE and fails CLOSED: missing jq, an unparseable
-# payload or a field of the wrong type all DENY.
+# DEFAULT ACTION: with the marker unset this hook allows silently unless the
+# raw payload text contains "judge"; such a payload is parsed for agent_type.
+# With the marker set, or for that payload, it is a SECURITY FENCE and fails
+# CLOSED: missing jq, an unparseable payload or a field of the wrong type all
+# DENY.
 #
 # RESIDUAL (deliberate): the Bash checks are textual, over whitespace and
 # shell-separator words, not a shell parser — eval, a wrapper script that does
@@ -59,8 +65,8 @@
 # merely carries a verb word, e.g. `gh pr view 12 --comments` is fine but
 # `git log --grep push` denies) is the safe direction.
 #
-# BYPASS: launch the session without --judge (the marker is then unset). There
-# is no per-call bypass.
+# BYPASS: launch the session without --judge (the marker is then unset); a
+# judge subagent has no bypass. There is no per-call bypass.
 #
 # Bash 3.2-compatible. Exit codes: 0 allow (no output); 2 deny (JSON
 # hookSpecificOutput with permissionDecision "deny" on stdout,
@@ -68,8 +74,11 @@
 # git-env-ok: no git invocation; "git" is only a word matched in the screened command text
 set -uo pipefail
 
-# Zero-cost no-op for every non-judge session.
-[ "${HIMMEL_CONSOLE_JUDGE:-}" = "1" ] || exit 0
+input=$(cat 2>/dev/null || true)
+subagent_judge=0
+if [ "${HIMMEL_CONSOLE_JUDGE:-}" != "1" ]; then
+    case "$input" in *judge*) subagent_judge=1 ;; *) exit 0 ;; esac
+fi
 
 deny() {
     # deny <rule> <fragment>
@@ -82,8 +91,14 @@ deny() {
 
 command -v jq >/dev/null 2>&1 || deny "unparseable-payload" "jq not on PATH"
 
-input=$(cat 2>/dev/null || true)
 [ -n "$input" ] || deny "unparseable-payload" "empty stdin"
+if [ "$subagent_judge" = 1 ]; then
+    agent_type=$(printf '%s' "$input" | jq -r '.agent_type | select(type == "string") // empty' 2>/dev/null) || deny "unparseable-payload" "cannot parse JSON stdin"  # swallow-ok: an unparseable payload is denied
+    case "$agent_type" in
+        judge | judge-ro | *:judge | *:judge-ro) ;;
+        *) exit 0 ;;
+    esac
+fi
 
 if ! tool=$(printf '%s' "$input" | jq -r '.tool_name | select(type == "string") // empty' 2>/dev/null); then
     deny "unparseable-payload" "cannot parse JSON stdin"
@@ -123,6 +138,28 @@ resolve() {
     printf '%s\n' "$r/$leaf"
 }
 
+package_fetch() {
+    local t hint="run an installed tool by its own name, or report the check as not run"
+    has_word bunx npx uvx && deny "package-fetch" "bunx, npx or uvx: $hint"
+    if has_word bun && has_word x add install i create; then
+        deny "package-fetch" "bun x, bun install or bun create: $hint"
+    fi
+    if has_word npm && has_word install i in ins inst isntall add ci exec x init create; then
+        deny "package-fetch" "npm install, npm ci, npm exec or npm init: $hint"
+    fi
+    has_word uv && has_word tool && deny "package-fetch" "uv tool: $hint"
+    if has_word uv && has_word run; then
+        for t in $words; do
+            case "$t" in --with*) deny "package-fetch" "uv run --with: $hint" ;; esac
+        done
+    fi
+    has_word pip pip3 && has_word install download && deny "package-fetch" "pip install or pip download: $hint"
+    has_word cargo && has_word install && deny "package-fetch" "cargo install: $hint"
+    return 0
+}
+
+[ "$subagent_judge" = 1 ] && [ "$tool" != Bash ] && exit 0
+
 case "$tool" in
     Bash)
         cmd_type=$(printf '%s' "$input" | jq -r '.tool_input.command | type' 2>/dev/null) \
@@ -130,6 +167,13 @@ case "$tool" in
         [ "$cmd_type" = "string" ] || deny "unparseable-payload" "command not a string"
         cmd=$(printf '%s' "$input" | jq -r '.tool_input.command' 2>/dev/null) \
             || deny "unparseable-payload" "cannot read command"
+
+        # Words: split on whitespace and shell separators, quotes dropped.
+        words=$(printf '%s' "$cmd" | tr ';|&()<>`"'"'"'\n\t\r' '             ')
+        if [ "$subagent_judge" = 1 ]; then
+            package_fetch
+            exit 0
+        fi
 
         case "$cmd" in
             *HIMMEL_CONSOLE_JUDGE*) deny "marker-override" "command names HIMMEL_CONSOLE_JUDGE" ;;
@@ -139,9 +183,6 @@ case "$tool" in
             *inbox-send*) deny "inbox-send" "inbox-send" ;;
             *worker-jira-status*) deny "jira-write" "worker-jira-status" ;;
         esac
-
-        # Words: split on whitespace and shell separators, quotes dropped.
-        words=$(printf '%s' "$cmd" | tr ';|&()<>`"'"'"'\n\t\r' '             ')
 
         if has_word git && has_word push commit merge rebase reset cherry-pick revert; then
             deny "git-write" "mutating git verb"
@@ -167,19 +208,7 @@ case "$tool" in
         if [ "$jira" -eq 1 ] && has_word create comment transition update edit assign link delete worklog attach; then
             deny "jira-write" "Jira CLI write op"
         fi
-        has_word bunx npx uvx && deny "package-fetch" "bunx, npx or uvx: run an installed tool by its own name, or report the check as not run"
-        if has_word bun && has_word x add install i; then
-            deny "package-fetch" "bun x or bun install: run an installed tool by its own name, or report the check as not run"
-        fi
-        if has_word npm && has_word install i add exec x; then
-            deny "package-fetch" "npm install or npm exec: run an installed tool by its own name, or report the check as not run"
-        fi
-        if has_word uv && has_word tool; then
-            deny "package-fetch" "uv tool: run an installed tool by its own name, or report the check as not run"
-        fi
-        if has_word pip pip3 && has_word install; then
-            deny "package-fetch" "pip install: run an installed tool by its own name, or report the check as not run"
-        fi
+        package_fetch
         exit 0
         ;;
     mcp__qmd__* | mcp__plugin_qmd_qmd__*)

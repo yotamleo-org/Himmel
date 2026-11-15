@@ -128,8 +128,39 @@ row "bun add" 2 "$(bash_payload 'bun add left-pad')"
 row "bun install" 2 "$(bash_payload 'bun install')"
 row "uv tool run" 2 "$(bash_payload 'uv tool run ruff check .')"
 row "uv pip install" 2 "$(bash_payload 'uv pip install requests')"
+row "uv run --with" 2 "$(bash_payload 'uv run --with ruff ruff check .')"
+row "npm init" 2 "$(bash_payload 'npm init vite@latest app')"
+row "npm create" 2 "$(bash_payload 'npm create vite@latest app')"
+row "npm in" 2 "$(bash_payload 'npm in left-pad')"
+row "npm ins" 2 "$(bash_payload 'npm ins left-pad')"
+row "npm inst" 2 "$(bash_payload 'npm inst left-pad')"
+row "npm isntall" 2 "$(bash_payload 'npm isntall left-pad')"
+row "npm ci" 2 "$(bash_payload 'npm ci')"
+row "bun create" 2 "$(bash_payload 'bun create vite app')"
+row "pip download" 2 "$(bash_payload 'pip download requests')"
+row "cargo install" 2 "$(bash_payload 'cargo install ripgrep')"
 row "an installed tool run by its own name" 0 "$(bash_payload 'oxlint --version')"
 row "npm ls read" 0 "$(bash_payload 'npm ls --depth=0')"
+
+# sub_row <label> <expected rc> <payload-json> — marker unset: an in-process
+# subagent call, judged by the payload's agent_type alone.
+sub_row() {
+    local got
+    got=$(run "$3" 0)
+    if [ "$got" = "$2" ]; then
+        echo "ok   subagent: $1 (rc=$got)"; pass=$((pass + 1))
+    else
+        echo "FAIL subagent: $1 — expected rc=$2, got rc=$got"; fail=$((fail + 1))
+    fi
+}
+agent_bash_payload() { jq -nc --arg a "$1" --arg c "$2" '{agent_type:$a, agent_id:"a1", tool_name:"Bash", tool_input:{command:$c}}'; }
+sub_row "judge-ro runs bun x oxlint" 2 "$(agent_bash_payload judge-ro 'bun x oxlint .')"
+sub_row "judge runs npx" 2 "$(agent_bash_payload judge 'npx prettier --check .')"
+sub_row "plugin-namespaced judge-ro runs uvx" 2 "$(agent_bash_payload himmel-ops:judge-ro 'uvx ruff check .')"
+sub_row "judge-ro reads git log" 0 "$(agent_bash_payload judge-ro 'git log -p -- package.json')"
+sub_row "judge-ro unparseable payload" 2 '{"agent_type":"judge-ro","tool_name":'
+sub_row "no agent_type runs bun x oxlint" 0 "$(bash_payload 'bun x oxlint .')"
+sub_row "another subagent runs bun x oxlint" 0 "$(agent_bash_payload general-purpose 'bun x oxlint .')"
 # --- Edit / Write outside the verdict and scratch dirs ---
 row "Write into a repo file" 2 "$(file_payload Write "$REPO/scripts/x.sh")"
 row "Edit a repo file" 2 "$(file_payload Edit "$REPO/scripts/x.sh")"

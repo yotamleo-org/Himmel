@@ -190,8 +190,8 @@ gathering, per the rule below.>
 > `bun x`, `bunx`, `npx`, `npm install`, `pip install` or `uvx`: each can
 > download and run code from a public registry. Run an installed tool by its
 > own name; if a check needs a tool the station lacks, report the check as not
-> run and rule on what you could verify. The judge-session guard refuses these
-> shapes.
+> run and rule on what you could verify. The judge guard refuses these shapes
+> in a headed judge session and in a judge or judge-ro subagent call.
 
 > **Guard escape tests (guard/hook PRs).** When the PR under
 > review changes a hook or guard, its escapes are tested by exactly three
