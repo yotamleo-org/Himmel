@@ -14,9 +14,9 @@ at a handover; the ledger is carried by the tick, the HANDOFF and the queue fold
   `owe.sh list --bucket <dir>` prints the open rows (`--all` adds the closed ones).
 - **The tick ages it.** `owed=<n>:<oldest-age>` counts the open rows (hidden at 0; `?` when
   the ledger cannot be read). A `ticket` row with no key after 4 hours (`OWED_STALE_SECS`) adds
-  `ACTION owed-stale=<n>:<ids>`: file the ticket, then close the row with its key. That line does
-  not wake the waiter: `owed` is not yet in chief-wait.sh's action key (a follow-up), so read the
-  tick line when you wake.
+  `ACTION owed-stale=<n>:<ids>`: file the ticket, then close the row with its key. The waiter
+  wakes you once (`WAKE tick changed=owed`) when that stale count rises; closing the row with a key
+  ends it, and the age or an open row that is not stale never wakes.
 - **The handover keeps it.** `chief.sh next` refuses (exit 9) while a `ticket` row has no key
   after one shift (`OWED_SHIFT_SECS`, default 21600 = 6 h, the queue lock's TTL), naming each row.
   File the ticket and close the row, then retry. The HANDOFF gets an `## Owed` section listing

@@ -49,7 +49,10 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     its worker wrapped: the wake is `WAKE tick changed=dispatch` and the tick line carries one
     `ACTION dispatch-stall <run> <worker> (<branch>): <reasons>` line per run; look with
     `gh run view <run>`, cancel it or tell the worker. Elapsed time, job counts and `stale-head` never
-    wake, and a run leaving the set does not), `board=` (its class — the STALE age alone does not wake, and a
+    wake, and a run leaving the set does not), `owed=` (the `ACTION owed-stale=<n>:<ids>` count of keyless
+    ticket rows of the owed ledger past 4 h: the wake is `WAKE tick changed=owed` when that count rises;
+    the age, an open row that is not stale and a row closed with a key never wake, and `owed=?` keeps
+    the saved count; see `owed.md`), `board=` (its class — the STALE age alone does not wake, and a
     move TO `ok` never wakes on its own either, since that's just the chief's
     own render; the key still saves, so a later move to STALE/MISSING wakes
     again) and the

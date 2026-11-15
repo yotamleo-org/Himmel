@@ -723,7 +723,7 @@ old_key_names() {
 
 # sample: sets tick_line and key (empty on a failed tick, with fail_step naming why).
 sample() {
-    local f v raw bank rc
+    local f v raw bank rc owed_n
     key=""; cap_val=""; fail_step=""
     # A tick that exits non-zero failed, whatever it printed first.
     raw="$(timeout -k 5 "$tick_timeout" bash "$tick_cmd" "$@" 2>/dev/null)" || {  # gnu-ok: Linux-only kit
@@ -796,6 +796,8 @@ sample() {
         fi
         key="$key$f=$v|"
     done
+    owed_n="$(stale_owed_count "$raw" "$tick_line" "$saved")"
+    [ -z "$owed_n" ] || key="${key}owed=$owed_n|"
     key="${key}usage=$bank"
 }
 
@@ -886,6 +888,23 @@ drop_holds_left() {
     if [ -n "$joined" ]; then printf '%s\n' "$1"; return; fi
     printf '%s\n' "$1" | tr ',' '\n' | while read -r f; do
         [ "$f" = holds ] && continue
+        printf '%s\n' "$f"
+    done | paste -sd, -
+}
+
+stale_owed_count() {
+    local raw="$1" line="$2" saved_key="$3" n
+    n="$(printf '%s\n' "$raw" | sed -n 's/^ACTION owed-stale=\([0-9][0-9]*\):.*/\1/p' | head -n 1)"
+    [ "$(field owed "$line")" != '?' ] || n="$(key_field owed "$saved_key")"
+    case "$n" in ''|*[!0-9]*|0) ;; *) printf '%s' "$n" ;; esac
+}
+
+drop_owed_fall() {
+    local old new
+    old="$(key_field owed "$2")"; new="$(key_field owed "$3")"
+    if [ -n "$new" ] && [ "$new" -gt "${old:-0}" ] 2>/dev/null; then printf '%s\n' "$1"; return; fi
+    printf '%s\n' "$1" | tr ',' '\n' | while IFS= read -r f; do
+        [ "$f" = owed ] && continue
         printf '%s\n' "$f"
     done | paste -sd, -
 }
@@ -2708,6 +2727,7 @@ while :; do
                 real_changed="$(drop_board_ok "$(changed_fields "$saved" "$key")" "$key")"
                 real_changed="$(drop_denials_expiry "$real_changed" "$saved" "$key")"
                 real_changed="$(drop_holds_left "$real_changed" "$saved" "$key")"
+                real_changed="$(drop_owed_fall "$real_changed" "$saved" "$key")"
                 real_changed="$(drop_stall_resolved "$real_changed" "$saved" "$key")"
                 real_changed="$(drop_stall_resolved "$real_changed" "$saved" "$key" dispatch)"
                 if [ -z "$real_changed" ]; then

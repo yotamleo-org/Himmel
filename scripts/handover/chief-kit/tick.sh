@@ -514,7 +514,7 @@ matches proof|signature|critic round|owed|go code. The tick carries pool-parked=
 `# pool-dispatchable <KEY>` lines and chief-wait.sh's dispatchable= are unchanged.
 owed=<n>:<oldest-age> counts the open rows of the owed ledger beside --doc (owed.jsonl, owe.sh; <m>m under an hour, else <h>h),
 hidden at 0, `?` when unreadable. A ticket-kind row with no key past OWED_STALE_SECS (default 14400) adds
-`ACTION owed-stale=<n>:<ids>`; closing the row with a key ends it. Not in chief-wait.sh's wake key.
+`ACTION owed-stale=<n>:<ids>`; closing the row with a key ends it. chief-wait.sh wakes on that stale count (changed=owed).
 A key whose line the file reads changed (pool-changed=, same line-hash and sole-reason rules) is unresolved as
 class `changed`: `<target> merged <oldest sha since the anchor> since the line was written: re-read and stamp
 (<LL> <MM-DD> <HH:MM>Z)`, the bracket printed as written, never filled in.
