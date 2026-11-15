@@ -169,7 +169,6 @@ export function assertAuthenticated(res: { status: number; headers?: Headers }):
   );
 }
 
-// Every Jira request has a deadline, from the process environment only (not the dotenv or config keys).
 export const DEFAULT_REQUEST_DEADLINE_MS = 30_000;
 const MAX_REQUEST_DEADLINE_MS = 2_147_483_647;
 export function requestDeadlineMs(): number {
@@ -177,7 +176,6 @@ export function requestDeadlineMs(): number {
   return Number.isInteger(n) && n > 0 && n <= MAX_REQUEST_DEADLINE_MS ? n : DEFAULT_REQUEST_DEADLINE_MS;
 }
 
-// A read is retried on a busy Jira, a write never: a repeated comment or issue is worse than a failure.
 export const READ_RETRIES = 3;
 export const RETRY_AFTER_CAP_MS = 10_000;
 export const RETRY_TOTAL_CAP_MS = 20_000;
@@ -192,17 +190,11 @@ function retryAfterMs(res: { headers?: Headers }): number | undefined {
   return Number.isNaN(at) ? undefined : Math.max(0, at - Date.now());
 }
 
-/**
- * The one fetch every Jira request goes through: a deadline on the request and the body read, and for a
- * read (`retry`) up to READ_RETRIES more attempts on 429/502/503/504 within the Retry-After caps. A
- * Retry-After over a cap returns the busy response at once. A timeout is never retried, and a write that
- * times out says it may have been applied. The caller still checks the response it gets back.
- */
 async function fetchWithDeadline(
   what: string,
   url: string,
   init: RequestInit,
-  retry: boolean,
+  isRead: boolean,
   bytes = false,
 ): Promise<{ res: Response; body: string | Buffer }> {
   const ms = requestDeadlineMs();
@@ -218,10 +210,10 @@ async function fetchWithDeadline(
       if (!signal.aborted) throw err;
       throw new Error(
         `Jira request timed out after ${ms} ms: ${what}` +
-          (retry ? '' : '. The request may have been applied: check Jira before repeating it.'),
+          (isRead ? '' : '. The request may have been applied: check Jira before repeating it.'),
       );
     }
-    if (!retry || attempt >= READ_RETRIES || !BUSY_STATUSES.has(res.status)) return { res, body };
+    if (!isRead || attempt >= READ_RETRIES || !BUSY_STATUSES.has(res.status)) return { res, body };
     const wait = retryAfterMs(res) ?? RETRY_BACKOFF_MS * 2 ** attempt;
     if (wait > RETRY_AFTER_CAP_MS || waited + wait > RETRY_TOTAL_CAP_MS) return { res, body };
     waited += wait;
