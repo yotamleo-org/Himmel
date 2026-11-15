@@ -107,9 +107,7 @@ wait_hb() {
 SAMPLES_AFTER_CHANGE=4
 NO_SAMPLE_CUTOFF_TICKS=80
 STALL_CAP_TICKS=300
-# wait_exit <pid> [samples]: sets rc to the waiter's exit code, or "running"
-# once it has taken <samples> more samples. Not a $(...) helper: `wait` must
-# run in the shell that started the waiter.
+# Not a $(...) helper: `wait` must run in the shell that started the waiter.
 wait_exit() {
     local want="${2:-$SAMPLES_AFTER_CHANGE}" base seen
     base=$(wc -c < "$STUB/ticks" 2>/dev/null) || base=0
