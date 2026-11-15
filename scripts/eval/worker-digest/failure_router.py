@@ -7,7 +7,7 @@ recur across distinct workers, and routes each through failure-routes.table.json
 memory-inbox candidate for classifier denials. Deterministic, local, no model.
 
   failure_router.py route [--dry-run] [--ledger P] [--state P] [--log P] [--inbox P]
-                          [--table P] [--now ISO] [--jira-bin P] [--backfill [--covered FILE]]
+                          [--table P] [--now ISO] [--jira-bin P] [--backfill [--covered FILE]] [--intake-batch FILE]
   failure_router.py check-body <file>     the body alphabet check, exit 1 on a refusal
 
 RECURRENCE (spec 4.1): a class recurs at the table row's threshold in DISTINCT workers
@@ -52,8 +52,12 @@ row (the daily create cap, now gone, left them unrouted). Each is judged on the 
 window that ended at its last capped row, then goes through the same decide() path, so the fail-closed
 rules, the slug-collision skip and the decision-equal skip apply. A class the table no longer routes
 ends skipped:noise; a class in the --covered file (<class><TAB><Jira key or sha>, already fixed or
-covered) ends skipped:covered carrying that ref; neither calls Jira. A class that ends on another
-skipped:<why> stays pending and is retried by the next backfill.
+covered) ends skipped:covered carrying that ref; neither calls Jira. A class with no ledger row in
+its window ends skipped:no-evidence (a missing record, not a table verdict). A class that ends on
+another skipped:<why> stays pending and is retried by the next backfill.
+
+--intake-batch FILE (any run) replaces the per-ticket intake notification with one line per filed
+ticket appended to FILE: <key><TAB><class><TAB><last-seen date>. The chief summary still goes once.
 """
 
 import argparse
@@ -555,7 +559,8 @@ def route(a):
             if a.backfill and cls in covered:
                 special = ("skipped:covered", covered[cls])
             elif not fires[cls]:
-                special = ("skipped:noise", None)
+                # No ledger rows in the window is a missing record, not a table verdict: it stays pending.
+                special = ("skipped:noise" if counted else "skipped:no-evidence", None)
             n = len(workers)
             c = state["classes"].setdefault(cls, {}) if state_ok else {}
             if "last_legs" in c:  # a state file written before the rename
@@ -610,8 +615,11 @@ def route(a):
                 print("failure-router: %s reason: %s" % (cls, JIRA_ERR))
             if dec in ("filed", "commented"):
                 sent.append((dec, cls, ticket))
+            if dec == "filed" and a.intake_batch:
+                with open(a.intake_batch, "a", encoding="utf-8") as fh:
+                    fh.write("%s\t%s\t%s\n" % (ticket, cls, max(r["ts"] for r in counted)[:10]))
         for dec, cls, ticket in sent:
-            if dec == "filed":
+            if dec == "filed" and not a.intake_batch:
                 notify(a, "intake", ticket, "the daily failure review filed it: class %s recurred in distinct workers" % cls)
         if sent:
             notify(a, "chief", "failure-router: " + ", ".join("%s %s (%s)" % (dec, ticket, cls) for dec, cls, ticket in sent))
@@ -642,6 +650,7 @@ def main(argv=None):
     r.add_argument("--notify-cmd", default=os.environ.get(NOTIFY_ENV))
     r.add_argument("--backfill", action="store_true")
     r.add_argument("--covered")
+    r.add_argument("--intake-batch")
     b = sub.add_parser("check-body")
     b.add_argument("file")
     a = ap.parse_args(argv)

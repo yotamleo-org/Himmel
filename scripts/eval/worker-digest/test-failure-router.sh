@@ -554,7 +554,7 @@ row N1 suite/test-bf-noise.sh 0 false worker "$BF_SEEN"; row N2 suite/test-bf-no
 LED="$SAVE"
 bfrow() { jq -nc --arg c "$1" --arg d "$2" --arg t "${3:-}" --arg ts "$4" '{v:1, ts:$ts, host:"h", source:"scripts/eval/worker-digest/failure_router.py",
   kind:"route-decision", class:$c, workers:2, decision:$d, ticket:(if $t == "" then null else $t end)}' >>"$FBF/log"; }
-for c in denied/guard-bf-new denied/guard-bf-control denied/guard-bf-open denied/guard-bf-done denied/guard-bf-fixed suite/test-bf-noise.sh; do bfrow "$c" capped "" "$BF_CAPPED"; done
+for c in denied/guard-bf-new denied/guard-bf-control denied/guard-bf-open denied/guard-bf-done denied/guard-bf-fixed suite/test-bf-noise.sh denied/guard-bf-noev; do bfrow "$c" capped "" "$BF_CAPPED"; done
 bfrow denied/guard-bf-control filed HIMMEL-9400 2026-09-22T10:00:00Z
 printf 'HIMMEL-9500\tTask\tTo Do\tan open ticket\n' >"$STUB/list.fl-denied-guard-bf-open"
 printf 'HIMMEL-9501\tTask\tDone\ta done ticket\n' >"$STUB/list.fl-denied-guard-bf-done"
@@ -565,15 +565,15 @@ pending() { jq -s -r '[.[] | select(.kind == "route-decision")] | group_by(.clas
   | (map(.decision) | rindex("capped")) as $c | select(([.[($c + 1):][] | .decision] | map(select(. == "filed" or . == "commented" or . == "recurred-after-done"
   or . == "skipped:noise" or . == "skipped:covered")) | length) == 0)) | length' "$1"; }
 cp "$FBF/log" "$FBF/log.orig"
-check "before: 5 classes are capped and never filed (the control was filed after its capped row)" '[ "$(pending "$FBF/log")" = 5 ]'
+check "before: 6 classes are capped and never filed (the control was filed after its capped row)" '[ "$(pending "$FBF/log")" = 6 ]'
 nc="$(lines "$STUB/calls.log")"
 python3 "$FR" route --ledger "$FBF/l.jsonl" --state "$FBF/plain.json" --log "$FBF/plain.log" --inbox "$FBF/inbox" --now "$NOW" --jira-bin "$STUB/jira" >"$FBF/plain.out" 2>&1
 check "without --backfill the router makes no decision for a capped class outside the window" '[ "$(lines "$FBF/plain.log")" = 0 ] && [ "$(lines "$STUB/calls.log")" = "$nc" ]'
 bf --backfill --dry-run --covered "$FBF/covered.tsv" >"$FBF/dry.out" 2>&1; rc=$?
 check "backfill --dry-run exits 0 and names what it would do for each pending class" '[ "$rc" = 0 ] && grep -q "\"class\":\"denied/guard-bf-new\".*would-file" "$FBF/dry.out" && grep -q "\"class\":\"suite/test-bf-noise.sh\".*skipped:noise" "$FBF/dry.out" && grep -q "\"class\":\"denied/guard-bf-fixed\".*skipped:covered.*abc1234def" "$FBF/dry.out" && ! grep -q "guard-bf-control" "$FBF/dry.out"'
 check "backfill --dry-run writes no log, state or inbox and calls no Jira" '[ "$(cat "$FBF/log" | sha256sum)" = "$(cat "$FBF/log.orig" | sha256sum)" ] && [ ! -e "$FBF/s.json" ] && [ "$(lines "$STUB/calls.log")" = "$nc" ]'
-ncreate="$(calls create)"; ncomment="$(calls comment)"
-bf --backfill --covered "$FBF/covered.tsv" >"$FBF/bf.out" 2>&1; rc=$?
+ncreate="$(calls create)"; ncomment="$(calls comment)"; nintake="$(grep -c '^intake ' "$STUB/notify.log" 2>/dev/null || true)"; nchief="$(grep -c '^chief ' "$STUB/notify.log" 2>/dev/null || true)"
+bf --backfill --covered "$FBF/covered.tsv" --intake-batch "$FBF/batch.tsv" >"$FBF/bf.out" 2>&1; rc=$?
 check "backfill exits 0" '[ "$rc" = 0 ] || { head -c 600 "$FBF/bf.out"; false; }'
 bfdec() { decs "$FBF/log" | jq -r --arg c "$1" 'select(.class == $c and (.ts | startswith("2026-10-07"))) | "\(.decision) \(.ticket // "")"'; }
 check "a capped, never-filed class files one ticket" 'bfdec denied/guard-bf-new | grep -Eq "^filed HIMMEL-[0-9]+\$" && [ "$(calls create)" = "$((ncreate + 1))" ]'
@@ -582,7 +582,10 @@ check "a class with an open ticket gets a comment on it, not a second ticket" '[
 check "a class whose ticket is Done is recorded recurred-after-done, never reopened" '[ "$(bfdec denied/guard-bf-done)" = "recurred-after-done HIMMEL-9501" ]'
 check "a class the table no longer routes ends skipped:noise, with no Jira call" '[ "$(bfdec suite/test-bf-noise.sh)" = "skipped:noise " ] && ! grep -q "fl-suite-test-bf-noise" "$STUB/calls.log"'
 check "a class named in --covered ends skipped:covered carrying its sha, with no Jira call" '[ "$(bfdec denied/guard-bf-fixed)" = "skipped:covered abc1234def" ] && ! grep -q "fl-denied-guard-bf-fixed" "$STUB/calls.log"'
-check "after: no class is left with only a capped row" '[ "$(pending "$FBF/log")" = 0 ]'
+check "a class with no ledger row in its window ends skipped:no-evidence, not noise, with no Jira call" '[ "$(bfdec denied/guard-bf-noev)" = "skipped:no-evidence " ] && ! grep -q "fl-denied-guard-bf-noev" "$STUB/calls.log"'
+check "after: only the no-evidence class is left with a capped row, and nothing else" '[ "$(pending "$FBF/log")" = 1 ] && jq -s -e "[.[] | select(.kind == \"route-decision\" and .class == \"denied/guard-bf-noev\")] | last.decision == \"skipped:no-evidence\"" "$FBF/log" >/dev/null'
+check "--intake-batch sends no per-ticket intake: one summary line for the filed ticket, its class and last-seen date" '[ "$(grep -c "^intake " "$STUB/notify.log" 2>/dev/null || true)" = "$nintake" ] && [ "$(lines "$FBF/batch.tsv")" = 1 ] && grep -Eq "^HIMMEL-[0-9]+	denied/guard-bf-new	2026-09-20$" "$FBF/batch.tsv"'
+check "--intake-batch still sends the one chief summary" '[ "$(grep -c "^chief " "$STUB/notify.log")" = "$((nchief + 1))" ]'
 nd="$(dlines "$FBF/log")"; nc="$(lines "$STUB/calls.log")"
 bf --backfill --covered "$FBF/covered.tsv" >"$FBF/bf2.out" 2>&1
 check "a second backfill makes no decision and no Jira call: it runs once" '[ "$(dlines "$FBF/log")" = "$nd" ] && [ "$(lines "$STUB/calls.log")" = "$nc" ]'
