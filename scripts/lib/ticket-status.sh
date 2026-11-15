@@ -682,8 +682,7 @@ _ts_remainder_owner() {
 
 # ts_owed_lines — stdin: a PR body. Prints who<TAB>due<TAB>ask<TAB>text for each `<ask>: owed -> chief|operator by YYYY-MM-DD`
 # list line under `## Ticket coverage` before the next heading (`→` or `->`); text is the line without its list mark, ask the
-# text before the owed clause, the date as written. Only the owed ledger writer reads it, after the merge: every merge
-# decision reads pr_remainder.py, which names no operator line.
+# text before the owed clause, the date as written.
 ts_owed_lines() {
     awk '{ sub(/\r$/, "") }
         /^#/ { cov = (tolower($0) ~ /^##[ \t]+ticket coverage[ \t]*$/); next }

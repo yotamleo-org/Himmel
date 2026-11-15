@@ -255,7 +255,6 @@ mkdir -p "$TP_ANCHOR/scripts/lib"
 cp "$HERE/../../lib/go-gate.sh" "$TP_ANCHOR/scripts/lib/go-gate.sh"
 # item 17 runs the merge's remainder reader from the anchor, never from the checkout under review
 cp "$HERE/../../lib/pr_remainder.py" "$TP_ANCHOR/scripts/lib/pr_remainder.py"
-# and its owed-line path check from the anchor's status lib
 cp "$HERE/../../lib/ticket-status.sh" "$HERE/../../lib/required-checks.sh" "$HERE/../../lib/prim.sh" "$HERE/../../lib/status-marker.sh" "$TP_ANCHOR/scripts/lib/"
 mkdir -p "$TP_ANCHOR/scripts/eval/conflicts" "$TP_ANCHOR/scripts/eval/judge-accuracy" "$TP_ANCHOR/scripts/eval/lib"
 cp "$HERE/../../eval/conflicts/conflicts.py" "$TP_ANCHOR/scripts/eval/conflicts/"
@@ -4121,7 +4120,6 @@ R17_OUT="$(STUB_BODY="$R17_OWED" run || true)"
 R17_LINE="$(printf '%s\n' "$R17_OUT" | grep '\] 17\.' || true)"
 contains "9561 S4a 17m: an owed remainder passes item 17 as owed" "$R17_LINE" "[PASS] 17."
 contains "9561 S4a 17m: the PASS line says owed" "$R17_LINE" "(owed)"
-# An `owed → chief` line naming a repo path is code written as chief work; the merge refuses it (exit 26)
 R17_RC=0; R17_OUT="$(STUB_BODY='## Ticket coverage\n- ask one: done\n- the INTAKE age (tick.sh, held): owed \xe2\x86\x92 chief by '"$(o_day 2)"'\n' run)" || R17_RC=$?
 R17_LINE="$(printf '%s\n' "$R17_OUT" | grep '\] 17\.' || true)"
 check "10194 17n an owed-to-chief line naming a repo file: exit 1" "$R17_RC" "1"

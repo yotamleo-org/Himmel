@@ -85,9 +85,7 @@ for jstatus in "To Do" "In Progress"; do
 done
 printf 'HIMMEL-9001\tTask\tIn Progress\n' > "$TS_SNAPSHOT_DIR/jira.tsv"
 
-# A wrapped partial whose merge row records a step owed to the chief or operator by a date leaves
-# In Progress: To Do (D5d) with the owner and due date named, read from the merge row with no PR body read.
-owed_merge() { # <owed> <owed_due> - the key's one merge row: a contract=no merge whose remainder is owed
+owed_merge() {
     printf '{"ts":"2026-11-15T10:00:00Z","event":"merge","key":"HIMMEL-9001","pr":"21","repo":"octo/repo","contract":"no","result":"noop","remainder":"owed","owed":"%s","owed_due":"%s"}\n' "$1" "$2" \
         > "$TICKET_STATUS_STATE_DIR/status-events.jsonl"
     brief no
@@ -102,7 +100,6 @@ check "10194 an owed row with no valid due date stays D5c" "$TS_RULE/$TS_DERIVED
 owed_merge 'chief;x' 2026-11-22
 check "10194 an owed row whose owner is not chief or operator stays D5c" "$TS_RULE/$TS_DERIVED" 'D5c/In Progress'
 rm -f "$TICKET_STATUS_STATE_DIR/status-events.jsonl"
-# ts_owed_chief_paths: an owed-to-chief coverage line, as the reader lists it, whose ask names a relative repo path
 opaths() { printf '## Ticket coverage\n- a: done\n- %s: owed → %s by 2026-11-22\n' "$1" "${2:-chief}" | ts_owed_chief_paths "$HERE/pr_remainder.py" K-1 | cut -f1; }
 check "10194 a bare file name is a repo path" "$(opaths 'the INTAKE age (tick.sh, held)')" 'tick.sh'
 check "10194 a dot-relative file is a repo path" "$(opaths 'run ./tick.sh and ../lib/x.py')" '../lib/x.py, ./tick.sh'

@@ -2142,7 +2142,6 @@ check_partial_remainder() {
         echo "[FAIL] 17. $key is a partial merge (--contract no) but every remaining ask is on $(printf '%s' "$ans" | cut -f2), so this merge completes $key and the merge refuses it (exit 26). If the brief says Completes ticket: no, the chief changes it to yes and re-issues the GO with --contract yes; else re-issue the GO with --contract yes (the merge then runs with --jira-transition); or record what stays on $key with a Remaining: line or an owed → line (gh pr edit $PR --body-file <file>)"
         mark_fail
     else
-        # the merge's own check (merge-on-green.sh refuses with exit 26): an `owed → chief` line naming a repo path is code
         rc=0
         op=$(
             # shellcheck source=/dev/null

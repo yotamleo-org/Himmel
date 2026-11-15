@@ -259,7 +259,6 @@ mog_build_fixture() {
     # The PARTIAL report appends to the chief doc through this sibling.
     mkdir -p "$tmp/scripts/handover/chief-kit"
     cp "$SCRIPT_DIR/chief-kit/append-results.sh" "$tmp/scripts/handover/chief-kit/append-results.sh"
-    # A partial merge's owed lines go to the owed ledger through the anchor's owe.sh.
     cp "$SCRIPT_DIR/chief-kit/owe.sh" "$tmp/scripts/handover/chief-kit/owe.sh"
     # The partial-merge remainder reader, read from the anchor's scripts/lib.
     cp "$SCRIPT_DIR/../lib/pr_remainder.py" "$tmp/scripts/lib/pr_remainder.py"
@@ -4376,7 +4375,6 @@ else
         run_mog 26 "8673: a reader that exits non-zero refuses even with an answer"
     assert_audit_has "8673: a failing reader is audited as unreadable" "REFUSED reason=partial-remainder-unreadable"
     assert_gh_lacks "8673: a failing reader merged nothing" "pr merge"
-    # the owed-path check reads the anchor reader's --units answer: one that never gives a chief-owed field refuses
     printf 'import sys\nprint("remaining\\tslice 2")\n' > "$mog_rdr/no-units.py"
     MOG_ANCHOR_READER="$mog_rdr/no-units.py" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="Remaining: slice 2" \
         run_mog 26 "10194: an anchor reader with no --units answer refuses"
@@ -4471,8 +4469,6 @@ assert_err_has "9561 S4a: the brief-no refusal ends with the owed clause" "or an
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="$s3_body" \
     run_mog 26 "9561 S4a: the no-brief handed-off refusal offers an owed line"
 assert_err_has "9561 S4a: the no-brief refusal ends with the owed clause" "or an owed $s4_arrow line"
-# An `owed → chief` line naming a repo path is code mislabelled as chief work: refused, so it is written
-# Remaining: and gets a RESUME row. An operator line, an absolute path and a Remaining: line naming a path still merge.
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     STUB_PR_BODY=$'## Ticket coverage\n- a: done\n- the INTAKE age (tick.sh, held by another worker): owed '"$s4_arrow"' chief by '"$s4_d2"$'\n' \
     run_mog 26 "10194: an owed-to-chief line naming a repo file is refused"
@@ -4491,8 +4487,6 @@ STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "10194 control: an owed-to-chief line naming only absolute or home paths merges"
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY=$'Remaining: the INTAKE age in tick.sh\n' \
     run_mog 0 "10194 control: a Remaining: line naming a repo path merges"
-# Each owed line of a partial merge becomes an open owe.sh row in the chief's bucket (the chief doc's
-# directory), kind step, keyed to the ticket, so the tick ages it and the HANDOFF carries it.
 s10194_dir=$(mktemp -d "${TMPDIR:-/tmp}/mog-10194.XXXXXX")
 if [ -z "$s10194_dir" ] || [ ! -d "$s10194_dir" ]; then
     fail "10194 setup: mktemp -d produced no chief bucket"
