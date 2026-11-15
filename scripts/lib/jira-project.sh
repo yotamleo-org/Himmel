@@ -24,8 +24,6 @@ jira_project_key() {
     if [ -z "$_jp_key" ]; then
         _jp_key=$(load_dotenv JIRA_PROJECT_KEY; printf '%s' "${JIRA_PROJECT_KEY:-}")
     fi
-    # A key is one upper-case letter then upper-case letters, digits or underscores. Anything else
-    # (a path, a space, a newline) is refused so a bad value can never build a mirror path.
     local LC_ALL=C
     case "$_jp_key" in
         '') _jp_key=HIMMEL ;;
