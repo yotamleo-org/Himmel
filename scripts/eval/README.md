@@ -159,6 +159,14 @@ python3 scripts/eval/retrieval-eval/retrieval-eval.py exposure --days 14
 - Seams (tests): `RETRIEVAL_EVAL_QMD_STATUS_CMD` (prints the status JSON), `RETRIEVAL_EVAL_LAG_CMD`
   (prints `keyword-lag.py --report`'s output).
 
+**The RED and control pair.** `test-staleness-fixture.sh` builds the fixture repo at two
+commits as state `s` (stale) and state `l` (fresh), serves each through the stub qmd, and
+reads each `pair.json` for the state, the pair and the served URL. A text that is new at
+the second commit in the gold document (the Added stratum) must not be found through the
+`s` index (RED) and must be found through the `l` index (control); a text both commits hold
+is found through both, so a blanket failure cannot pass RED. No provider key, no embed, no
+`HIMMEL_BILLED_OK`. Run it with `bash scripts/eval/retrieval-eval/test-staleness-fixture.sh`.
+
 ## Tokens per file hit (answer-ab)
 
 The retrieval token metric is the cost of naming a gold file.
