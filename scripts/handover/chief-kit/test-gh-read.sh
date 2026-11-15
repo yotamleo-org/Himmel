@@ -289,5 +289,52 @@ check "E6 GH_READ_OFF: non-zero, no gh call, one stall row" "nz||read graphql st
 GH_READ_OFF=1 GH_READ_ENV_ROOT="$W/root" bash "$HELPER" pr comment 12 --body x >/dev/null 2>&1
 check "E6b GH_READ_OFF does not stop a write" "tok=main argv=pr comment 12 --body x" "$(cat "$GHLOG")"
 
+# ---- F: a GH_READ_ENV_ROOT fixture reads only its own .env ----------------------
+AMBTOK=ghp_AMBIENTDUMMY0123456789
+KEYTOK=ghp_KEYRINGDUMMY0123456789
+DOTTOK=ghp_DOTENVDUMMY0123456789
+: > "$W/seen"
+seen() { cat "$GHLOG" "$W/err" >> "$W/seen" 2>/dev/null; }
+stub_keyring() { # <dir> — the shared stub keyring holding KEYTOK as the user default
+    TMP="$1"; mkdir -p "$TMP"
+    # shellcheck source=scripts/lib/fixtures/keyring-stub.sh
+    . "$REPO/scripts/lib/fixtures/keyring-stub.sh"
+    kreset
+    printf 'service=himmel key=himmel_github_token_vm2 scope=user\t%s\n' "$KEYTOK" > "$KSTUB_STORE"
+}
+# shellcheck disable=SC2030  # the exported token is meant to stay inside the row's subshell
+( export himmel_github_token_vm2="$AMBTOK"; run_gh_read "$W/root" pr view 12 )
+check "F1 an exported token never beats the fixture root's" "$READTOK" "$(last_tok)"; seen
+( stub_keyring "$W/k1"; run_gh_read "$W/root" pr view 12 )
+check "F2 a keyring token never beats the fixture root's" "$READTOK" "$(last_tok)"; seen
+mkdir -p "$W/creds" && printf '%s' "$KEYTOK" > "$W/creds/himmel_github_token_vm2"
+( export CREDENTIALS_DIRECTORY="$W/creds"; run_gh_read "$W/root" pr view 12 )
+check "F3 a credentials-dir token never beats the fixture root's" "$READTOK" "$(last_tok)"; seen
+
+# negative rows: with no GH_READ_ENV_ROOT the order stays environment, keyring, .env.
+# The helper runs from a symlinked copy of scripts/lib whose default root holds a
+# fixture .env, so no row reads the checkout's real .env.
+mkdir -p "$W/tree/scripts/lib"
+for f in "$REPO"/scripts/lib/*; do ln -s "$f" "$W/tree/scripts/lib/${f##*/}"; done
+printf 'himmel_github_token_vm2=%s\n' "$DOTTOK" > "$W/tree/.env"
+run_default() { : > "$GHLOG"; ( unset GH_READ_ENV_ROOT; bash "$W/tree/scripts/lib/gh-read.sh" "$@" 2>"$W/err" >/dev/null ); return 0; }
+run_default pr view 12
+check "N1 no fixture root: the default root's .env serves the token" "$DOTTOK" "$(last_tok)"; seen
+( stub_keyring "$W/k2"; run_default pr view 12 )
+check "N2 no fixture root: the keyring still beats .env" "$KEYTOK" "$(last_tok)"; seen
+# shellcheck disable=SC2031  # a second row-local export, not the F1 one
+( stub_keyring "$W/k3"; export himmel_github_token_vm2="$AMBTOK"; run_default pr view 12 )
+check "N3 no fixture root: the environment still beats the keyring" "$AMBTOK" "$(last_tok)"; seen
+
+leaked() { # <file> — each token-shaped value in it that is not a fixture token
+    local t
+    grep -oE '(github_pat_|gh[pousr]_)[A-Za-z0-9_]+' "$1" | sort -u | while read -r t; do
+        case " $READTOK $AMBTOK $KEYTOK $DOTTOK " in *" $t "*) ;; *) printf '%s ' "$t" ;; esac
+    done
+}
+check "F4 every token the F and N rows handed gh or printed is a fixture" "" "$(leaked "$W/seen")"
+printf 'tok=ghp_NOTAFIXTURE0123456789\n' > "$W/leak-probe"
+check "F4b control: a non-fixture token is reported" "ghp_NOTAFIXTURE0123456789 " "$(leaked "$W/leak-probe")"
+
 printf '%s fail\n' "$fails"
 [ "$fails" -eq 0 ]

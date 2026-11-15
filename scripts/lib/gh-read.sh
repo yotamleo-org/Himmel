@@ -19,7 +19,8 @@
 # process; the fallback is never an error.
 #
 # Env (optional): GH_READ_ENV_ROOT — directory whose .env holds the token (default:
-# the primary checkout's .env, found from this file).
+# the primary checkout's .env, found from this file). When set, that .env is the
+# only source: the environment, a credentials dir and the keyring are skipped.
 #   GH_READ_TIMEOUT           seconds one read may take (default 120, 0 = none), as
 #                             `timeout --foreground` so a caller's outer kill reaches it.
 #                             A timed-out read exits 124 and is not retried
@@ -57,6 +58,11 @@ _ghr_load() {
         # shellcheck source=scripts/lib/load-dotenv.sh
         . "${_GHR_LOAD_DOTENV:-$_GHR_HERE/load-dotenv.sh}" 2>/dev/null || exit 0
         root="${GH_READ_ENV_ROOT:-$(_load_dotenv_primary_for "$_GHR_HERE/../.." 2>/dev/null)}"
+        # a fixture root is the only source: no inherited value, credentials dir or keyring
+        if [ -n "${GH_READ_ENV_ROOT:-}" ]; then
+            unset himmel_github_token_vm2 CREDENTIALS_DIRECTORY
+            export HIMMEL_SECRETS_KEYRING=off
+        fi
         load_dotenv --root "$root" himmel_github_token_vm2 2>/dev/null
         printf '%s' "${himmel_github_token_vm2:-}"
     ) || _GHR_TOK=""
