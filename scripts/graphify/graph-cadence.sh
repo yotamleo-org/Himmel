@@ -173,7 +173,9 @@
 # fires. A failure alerts through scripts/luna/cadence-alert.sh (worker
 # graph-semantic-<corpus-slug>) and fails the run (rc 3); a success clears
 # that worker's alert. semantic-update.sh rc 3 (bank at/over threshold) and rc 4
-# (promote lock held) are benign skips: no alert, run stays green. Without the flag nothing changes for an armed cadence.
+# (promote lock held) are benign skips: no alert, run stays green, except that 3 claude-api fires in a row ending
+# over-cap (result word over-cap) raise one alert on worker graph-semantic-<corpus-slug>-over-cap, cleared by the next rc 0.
+# Without the flag nothing changes for an armed cadence.
 # After a successful semantic step (rc 0) the merged graph (graph.json,
 # semantic-manifest.json, semantic-runs.jsonl) is PROMOTED from the worktree's
 # graphify-out into the primary checkout's graphify-out -- the directory workers and
@@ -1122,13 +1124,21 @@ if [ "$SEMANTIC" -eq 1 ]; then
     [ -f "$_run_log" ] || _run_log=$(lsof -a -p "$$" -d 1 -Fn 2>/dev/null | sed -n 's/^n//p')
     [ -f "$_run_log" ] || _run_log="$LOG_FILE"
     _sem_worker="graph-semantic-$CORPUS_SLUG"
+    OVER_CAP_ALERT_AFTER=3
+    _over_cap_state="${WORKTREE_DIR}.over-cap"
     # claude -p bills an exported API key outside the API lane's accounting: only claude-api may carry the caller env
     # (semantic-update.sh refuses a caller key itself)
     _sem_env=()
     [ "$SEMANTIC_BACKEND" = "claude-api" ] || _sem_env=(env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u ANTHROPIC_ORG_C_KEY -u LQ_API_KEY)
+    # Only the claude-api path ends over-cap, and only there is the result word asked for: the word changes how the
+    # claude-cli path refuses (a pending batch, a bank verdict), so that path is called as it always was.
+    _sem_result_file="${WORKTREE_DIR}.sem-result" _sem_rf=()
+    rm -f "$_sem_result_file"
+    [ "$SEMANTIC_BACKEND" != "claude-api" ] || _sem_rf=(--result-file "$_sem_result_file")
     _sem_out=$(${_sem_env[@]+"${_sem_env[@]}"} bash "$SEMANTIC_UPDATE" --name "$CORPUS_SLUG" --corpus-root "$WORKTREE_DIR" \
-        --corpus-class himmel-code --backend "$SEMANTIC_BACKEND" 2>&1)
+        --corpus-class himmel-code --backend "$SEMANTIC_BACKEND" ${_sem_rf[@]+"${_sem_rf[@]}"} 2>&1)
     _sem_rc=$?
+    _sem_word=$(head -n 1 "$_sem_result_file" 2>/dev/null)
     printf '%s\n' "$_sem_out"
     _batch_line=$(printf '%s\n' "$_sem_out" | grep '^semantic-update: BATCH ' | tail -n 1)
     for _tok in $_batch_line; do
@@ -1151,12 +1161,33 @@ if [ "$SEMANTIC" -eq 1 ]; then
         0)
             bash "$CADENCE_ALERT" clear "$_sem_worker"
             [ "$_sem_backoff" -eq 1 ] || bash "$CADENCE_ALERT" clear "$_sem_worker-backoff"
+            rm -f "$_over_cap_state"
+            bash "$CADENCE_ALERT" clear "$_sem_worker-over-cap"
             _promote_semantic_to_primary
             ;;
-        # 3 = bank at/over threshold, 4 = promote lock held. Nothing
+        # 3 = bank at/over threshold or over the run cap, 4 = promote lock held. Nothing
         # was touched and the next fire retries, so neither alerts nor fails the
         # run. An existing alert is left standing: a skip is not a recovery.
-        3|4) echo "graph-cadence: semantic step skipped (rc=$_sem_rc, benign: next fire retries)" ;;
+        # Over-cap is the one skip that repeats forever when a file can never fit, so
+        # OVER_CAP_ALERT_AFTER of them in a row raise one alert of their own.
+        3|4)
+            echo "graph-cadence: semantic step skipped (rc=$_sem_rc, benign: next fire retries)"
+            if [ "$_sem_rc" -eq 3 ] && [ "$_sem_word" = over-cap ]; then
+                _over_cap_n=$(cat "$_over_cap_state" 2>/dev/null)
+                case "$_over_cap_n" in '' | *[!0-9]*) _over_cap_n=0 ;; esac
+                _over_cap_n=$((_over_cap_n + 1))
+                printf '%s\n' "$_over_cap_n" | atomic_write "$_over_cap_state" 2>/dev/null
+                if [ "$_over_cap_n" -ge "$OVER_CAP_ALERT_AFTER" ]; then
+                    _over_cap_usd=$(printf '%s\n' "$_sem_out" | sed -n 's/.*run cap of \([0-9.]*\) USD.*/\1/p' | head -n 1)
+                    _over_cap_file=$(printf '%s\n' "$_sem_out" | sed -n 's/.*the estimate for \(.*\) alone is over the run cap.*/\1/p' | head -n 1)
+                    # the reason stays the same every fire so the alert's own dedupe sends it once
+                    bash "$CADENCE_ALERT" fail "$_sem_worker-over-cap" \
+                        "the semantic update was over the run cap on $OVER_CAP_ALERT_AFTER fires in a row, so the graph is not growing" "$_run_log" \
+                        "the run cap is ${_over_cap_usd:-unknown} USD and the first file over it is ${_over_cap_file:-not named, see the log}" \
+                        "raise the run cap (GRAPHIFY_API_RUN_BUDGET_USD) or list the file in .graphify-corpus-ignore"
+                fi
+            fi
+            ;;
         *)
             _sem_result="the semantic update failed (exit $_sem_rc)" _sem_cause="" _sem_do=""
             _sem_cap=$(printf '%s\n' "$_sem_out" | grep -c 'chunk [0-9]*/[0-9]* failed:.*run spend cap reached')

@@ -1334,6 +1334,9 @@ echo "key=${ANTHROPIC_API_KEY:-unset} auth=${ANTHROPIC_AUTH_TOKEN:-unset} orgc=$
 mkdir -p "$root/graphify-out" && echo '{}' > "$root/graphify-out/semantic-manifest.json"
 [ -z "${FAKE_SEM_RUNS:-}" ] || echo "$FAKE_SEM_RUNS" >> "$root/graphify-out/semantic-runs.jsonl"
 [ -z "${FAKE_SEM_OUT:-}" ] || echo "$FAKE_SEM_OUT"
+rf=""; prev=""
+for a in "$@"; do [ "$prev" = "--result-file" ] && rf="$a"; prev="$a"; done
+[ -z "$rf" ] || [ -z "${FAKE_SEM_WORD:-}" ] || echo "$FAKE_SEM_WORD" > "$rf"
 exit "${FAKE_SEM_RC:-0}"
 FAKESEM
 chmod +x "$FAKE_SEM"
@@ -1504,6 +1507,51 @@ seed_repo "$TMP_ROOT/t9-$tag-primary" "$TMP_ROOT/t9-$tag-origin.git" 20
 : > "$FAKE_SEND_LOG"; rc=0
 out=$(FAKE_SEM_RC=5 FAKE_SEM_OUT="semantic-merge: BACKED OFF a.md after 3 attempts (r)" run_sem "$tag" --semantic) || rc=$?
 assert_contains "a back-off before a non-zero semantic exit still appends the back-off alert" "graph-semantic-$(corpus_slug_of "$TMP_ROOT/t9-$tag-primary")-backoff a file was skipped after repeated semantic failures" "$(cat "$TMP_ROOT/t9-$tag-alerts.log" 2>/dev/null)"
+# (e4) a claude-api fire that ends over-cap (rc 3, result word over-cap) three fires in a row alerts once, naming
+# the cap and the first file; one over-cap fire and a usage-budget skip raise none; the next fire that is not over-cap clears it.
+OC_OUT='semantic-update: over-cap: the estimate for docs/big.md alone is over the run cap of 15.00 USD; list it in .graphify-corpus-ignore or raise --max-run-usd -- nothing submitted'
+tag=overcap; mkdir -p "$TMP_ROOT/t9-$tag-home" "$TMP_ROOT/t9-$tag-ledger"
+seed_repo "$TMP_ROOT/t9-$tag-primary" "$TMP_ROOT/t9-$tag-origin.git" 20
+oc_slug="graph-semantic-$(corpus_slug_of "$TMP_ROOT/t9-$tag-primary")-over-cap"
+oc_fire() { # <tag> [word] -- one claude-api fire that ends rc 3 with the given result word
+    GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api ANTHROPIC_API_KEY=dummy-not-a-key FAKE_SEM_RC=3 FAKE_SEM_WORD="${2:-over-cap}" \
+        FAKE_SEM_OUT="$OC_OUT" run_sem "$1" --semantic
+}
+: > "$FAKE_SEND_LOG"; rc=0
+out=$(oc_fire "$tag") || rc=$?
+assert_eq "one over-cap fire keeps the run rc=0" "0" "$rc"
+assert_eq "one over-cap fire raises no alert" "" "$(cat "$FAKE_SEND_LOG")"
+assert_contains "one over-cap fire is still reported as a skip" "semantic step skipped (rc=3" "$out"
+out=$(oc_fire "$tag") || true
+assert_eq "two over-cap fires in a row raise no alert" "" "$(cat "$FAKE_SEND_LOG")"
+rc=0; out=$(oc_fire "$tag") || rc=$?
+assert_eq "the alerting over-cap fire keeps the run rc=0" "0" "$rc"
+oc_msg="$(cat "$FAKE_SEND_LOG")"
+assert_contains "three over-cap fires in a row raise the alert on the over-cap worker" "sent: $oc_slug: " "$oc_msg"
+assert_contains "the over-cap alert names the run cap" "15.00 USD" "$oc_msg"
+assert_contains "the over-cap alert names the first file" "docs/big.md" "$oc_msg"
+assert_contains "the over-cap alert gives the ignore-list way out" ".graphify-corpus-ignore" "$oc_msg"
+out=$(oc_fire "$tag") || true
+assert_eq "a fourth over-cap fire does not re-send" "1" "$(grep -c "$oc_slug" "$FAKE_SEND_LOG")"
+# a usage-budget skip is not an over-cap fire and not a recovery: no alert of its own, the streak stands.
+out=$(oc_fire "$tag" bank-refused) || true
+assert_eq "a usage-budget skip adds no alert" "1" "$(grep -c "$oc_slug" "$FAKE_SEND_LOG")"
+# the next fire that gets past the cap clears the alert and the count: two more over-cap fires stay quiet, the third alerts again.
+rc=0; out=$(run_sem "$tag" --semantic) || rc=$?
+assert_eq "an ok fire after the alert keeps the run rc=0" "0" "$rc"
+out=$(oc_fire "$tag") || true; out=$(oc_fire "$tag") || true
+assert_eq "two over-cap fires after an ok fire raise no new alert" "1" "$(grep -c "$oc_slug" "$FAKE_SEND_LOG")"
+out=$(oc_fire "$tag") || true
+assert_eq "three over-cap fires after an ok fire alert again" "2" "$(grep -c "$oc_slug" "$FAKE_SEND_LOG")"
+# negative control: usage-budget skips alone never raise the over-cap alert.
+tag=overcapbank; mkdir -p "$TMP_ROOT/t9-$tag-home" "$TMP_ROOT/t9-$tag-ledger"
+seed_repo "$TMP_ROOT/t9-$tag-primary" "$TMP_ROOT/t9-$tag-origin.git" 20
+: > "$FAKE_SEND_LOG"
+for _ in 1 2 3 4; do out=$(oc_fire "$tag" bank-refused) || true; done
+assert_eq "four usage-budget skips raise no over-cap alert" "" "$(cat "$FAKE_SEND_LOG")"
+# the result word is asked for on the claude-api path only: claude-cli keeps its own refusals as they were.
+: > "$FAKE_SEM_LOG"; out=$(run_sem off --semantic) || true
+assert_not_contains "the claude-cli semantic step is not given --result-file" "--result-file" "$(cat "$FAKE_SEM_LOG")"
 # (f) the backend is GRAPH_CADENCE_SEMANTIC_BACKEND, default
 # claude-cli; claude-api and ollama are explicit opt-ins; anything else refuses before any work.
 for tag in ollama bogus cliopt apidefoff; do
