@@ -18,12 +18,81 @@ fails=0
 pass() { printf 'ok - %s\n' "$1"; }
 fail() { printf 'FAIL - %s\n' "$1"; fails=$((fails + 1)); }
 eq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (expected '$2', got '$3')"; fi; }
+has() { case "$3" in *"$2"*) pass "$1" ;; *) fail "$1 (no '$2' in '$3')" ;; esac; }
 f() { python3 -I -c 'import json,sys; v=json.loads(sys.argv[1])
 for k in sys.argv[2].split("."): v = v[k]
 print(json.dumps(v, sort_keys=True))' "$1" "$2"; }
 gitc() { git -C "$1" -c user.email=t@t -c user.name=t "${@:2}"; }
 
 eq "losses: the free saved-list replay accounts the nine fusion losses" '{"fused_hits": 2, "fusion_losses": 9, "questions": 12, "union_hits": 11}' "$(python3 -I "$RH" losses --results "$FX/saved-results.jsonl")"
+NR=$(python3 -I - "$RH" "$W" <<'EOF'
+import argparse, importlib.machinery, importlib.util, json, sys
+rh, W = sys.argv[1:3]
+l = importlib.machinery.SourceFileLoader("rh", rh); s = importlib.util.spec_from_loader("rh", l); m = importlib.util.module_from_spec(s); l.exec_module(m)
+class Clk:
+    t = 10000.0
+    def now(self):
+        return self.t
+    def sleep(self, x):
+        self.t += x
+m.CLOCK = Clk()
+a = argparse.Namespace(usage_cmd=None, settle_seconds=60)
+def at(v):
+    a.usage_cmd = "echo '{\"usage\": %r}'" % v
+def state(name, rate=0.0003):
+    st = m.State(W + "/" + name + ".jsonl")
+    st.log({"ev": "noise_baseline", "path": "/run/noise-baseline-R5.json", "sha256": "f" * 64, "rate": rate, "ts": m.CLOCK.now()})
+    at(1.0); m.settle(st, a, {"binding": {}}, "before")
+    return st
+stops = lambda st: [e.get("reason") for e in st.events if e["ev"] == "stop"]
+last = lambda st: [e for e in st.events if e["ev"] == "settle"][-1]
+out = {}
+st = state("u1"); at(1.03); out["unbooked_under"] = [m.settle(st, a, {"binding": {}}, "after-5"), stops(st), round(last(st)["absorbed"], 6)]
+st = state("u2"); at(1.06); out["unbooked_above"] = [m.settle(st, a, {"binding": {}}, "after-5"), stops(st)]
+st = state("u3", rate=0.0001); st.log({"ev": "book", "task": "o01", "amount": 0.004}); at(1.04)
+ok = m.settle(st, a, {"binding": {}}, "after-5"); e = last(st)
+out["booked_beyond"] = [ok, stops(st), round(e["unabsorbed"], 6), round(e["absorbed"], 6)]
+st = state("u4", rate=1.0); at(1.06); out["cap"] = [m.settle(st, a, {"binding": {}}, "after-5"), stops(st), round(last(st)["absorbed"], 6)]
+st = state("u5", rate=0.0001); st.log({"ev": "book", "task": "o01", "amount": 0.004}); at(1.47); out["over_cap"] = [m.settle(st, a, {"binding": {}}, "after-5"), stops(st)]
+st = state("u6"); st.log({"ev": "settle", "meter": 1.45, "at": "x", "ts": m.CLOCK.now()})
+out["admission"] = [m.admit_ok(st), m.admit_ok(state("u7"))]
+legacy = m.State(W + "/u8.jsonl"); at(1.0); m.settle(legacy, a, {"binding": {}}, "before"); at(1.0001)
+out["legacy"] = [m.settle(legacy, a, {"binding": {}}, "end"), stops(legacy)]
+out["cadence"] = [[q for q in range(1, 76) if m.settle_due(q, True)], [q for q in range(1, 76) if m.settle_due(q, False)]]
+print(json.dumps(out, sort_keys=True))
+EOF
+)
+eq "noise R5: an unbooked delta under A(t) continues and logs absorbed" '[true, [], 0.03]' "$(f "$NR" unbooked_under 2>/dev/null)"
+eq "noise R5: an unbooked delta above A(t) stops with unexplained_usage" '[false, ["unexplained_usage"]]' "$(f "$NR" unbooked_above 2>/dev/null)"
+eq "noise R5: booked-interval noise beyond A(t) is logged unabsorbed, not a stop" '[true, [], 0.017, 0.019]' "$(f "$NR" booked_beyond 2>/dev/null)"
+eq "noise R5: the absorbed total never passes the 0.05 noise cap" '[false, ["unexplained_usage"], 0.05]' "$(f "$NR" cap 2>/dev/null)"
+eq "noise R5: cash plus the noise reserve left above 0.50 after a settle stops" '[false, ["over_cap"]]' "$(f "$NR" over_cap 2>/dev/null)"
+eq "noise R5: admission keeps the noise reserve" '[false, true]' "$(f "$NR" admission 2>/dev/null)"
+eq "noise R5: without a baseline (legacy) any unbooked rise still stops" '[false, ["unexplained_usage"]]' "$(f "$NR" legacy 2>/dev/null)"
+eq "noise R5: shared-credentials settles after query 5 and every 10; legacy after 5 only" '[[5, 15, 25, 35, 45, 55, 65, 75], [5]]' "$(f "$NR" cadence 2>/dev/null)"
+printf '{"binding": {"key_fingerprint": "%s"}}\n' "$(printf 'fixture-key' | sha256sum | cut -d' ' -f1)" > "$W/nctx.json"
+printf 'r5 go\n' > "$W/nr5-go"; printf '{"g3": "PASS"}\n' > "$W/ng3.json"
+python3 -I -c 'import json,sys,hashlib; json.dump({"start_meter": 1.0, "end_meter": 1.06, "start_ts": 0, "end_ts": 9e9, "window_s": 600, "key_fingerprint": hashlib.sha256(b"fixture-key").hexdigest(), "rate": 0.0001}, open(sys.argv[1], "w"))' "$W/nbl.json"
+nrun() { # <g0_stance or -> <noise baseline or -> -- the R5 run path up to its refusals; the fake ctx makes any query impossible
+  python3 -I - "$RH" "$W" "$1" "$2" <<'EOF'
+import argparse, importlib.machinery, importlib.util, json, sys
+rh, W, stance, bl = sys.argv[1:5]
+l = importlib.machinery.SourceFileLoader("rh", rh); s = importlib.util.spec_from_loader("rh", l); m = importlib.util.module_from_spec(s); l.exec_module(m)
+g = {"g0": "READY", "g1": True, "g1_evidence": "fixture", "g3_report": W + "/ng3.json", "r5_go": W + "/nr5-go"}
+if stance != "-":
+    g["g0_stance"] = stance
+json.dump(g, open(W + "/ngates.json", "w"))
+a = argparse.Namespace(questions=W + "/none.jsonl", ctx=W + "/nctx.json", state=W + "/nstate-%s.jsonl" % stance, gates=W + "/ngates.json",
+                       out=W + "/nrows.jsonl", usage_cmd="false", settle_seconds=0, noise_baseline=None if bl == "-" else bl, expected_duration=1800)
+sys.exit(m.run(a))
+EOF
+}
+for c in "-|-|G0 stance not recorded" "shared-credentials|-|needs a noise baseline" "eval-only-reachable|$W/nbl.json|legacy stance"; do
+  IFS='|' read -r st bl why <<< "$c"
+  o=$(nrun "$st" "$bl" 2>&1); rc=$?
+  eq "noise R5: g0_stance=$st baseline=${bl##*/} refuses before any query" 3 "$rc"
+  has "noise R5: that refusal names its reason" "$why" "$o"
+done
 QMD="${PILOT_QMD:-$(command -v qmd || true)}"
 if [ -z "$QMD" ] || ! command -v node >/dev/null 2>&1 || ! command -v bwrap >/dev/null 2>&1 || ! bwrap --bind / / --unshare-net true 2>/dev/null; then
   printf 'SKIP - every rerun row: the pinned qmd, node or an unprivileged bwrap network namespace is absent on this host\n'
@@ -67,7 +136,7 @@ EOF
 head -12 "$W/old80.jsonl" > "$W/old12.jsonl"
 printf 'r5 go\n' > "$W/r5-go"
 printf '{"g3": "PASS"}\n' > "$W/g3.json"; printf '{"g3": "INCOMPLETE"}\n' > "$W/g3-incomplete.json"
-gates() { python3 -I -c 'import json,sys; g={"g0": "READY", "g1": True, "g1_evidence": "fixture: the free fixes are merged", "g3_report": sys.argv[2], "r5_go": sys.argv[3]}; [g.__setitem__(*kv.split("=",1)) for kv in sys.argv[4:]]; json.dump(g, open(sys.argv[1],"w"))' "$@"; }
+gates() { python3 -I -c 'import json,sys; g={"g0": "READY", "g0_stance": "eval-only-reachable", "g1": True, "g1_evidence": "fixture: the free fixes are merged", "g3_report": sys.argv[2], "r5_go": sys.argv[3]}; [g.__setitem__(*kv.split("=",1)) for kv in sys.argv[4:]]; json.dump(g, open(sys.argv[1],"w"))' "$@"; }
 gates "$W/gates.json" "$W/g3.json" "$W/r5-go"
 lib() { # <name> <questions> <price> [gates] [settle seconds] -- the run path through the library (no opt-in set)
   rm -f "$W/fake/calls.log" "$W/fake/reads.log"; printf '%s\n' "$3" > "$W/fake/price.txt"
@@ -76,7 +145,7 @@ import argparse, importlib.machinery, importlib.util, json, sys
 rh, name, qs, W, gates, settle, meter = sys.argv[1:8]
 l = importlib.machinery.SourceFileLoader("rh", rh); s = importlib.util.spec_from_loader("rh", l); m = importlib.util.module_from_spec(s); l.exec_module(m)
 a = argparse.Namespace(questions=qs, ctx=W + "/ctx.json", state=W + "/%s.state.jsonl" % name, gates=gates, out=W + "/%s.rows.jsonl" % name,
-                       usage_cmd="bash %s %s/fake" % (meter, W), settle_seconds=float(settle))
+                       usage_cmd="bash %s %s/fake" % (meter, W), settle_seconds=float(settle), noise_baseline=None, expected_duration=None)
 sys.exit(m.run(a))
 EOF
 }

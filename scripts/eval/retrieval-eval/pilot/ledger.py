@@ -18,11 +18,17 @@ it, so a crash or kill resumes from exactly what was durably booked. Money is in
 * Repricing: b = max(b, .004, 1.5 x interval cash / admitted S invocations); the remaining H
   and the next Btriple follow the new b. A prospective rise never cures an actual overrun.
 * One persisted usage-pause deadline per run: the first usage refusal + 7 days, never reset.
+* The first key-meter reading (meter_start) is durable and taken before the first S booking.
+* Noise allowance (design r20, shared-credentials only): the run's first event names a pre-run
+  meter baseline (rate, USD/s). For an interval of t seconds, A(t) = 3 x rate x t + .001; an
+  excess over the interval's bookings up to A(t) is absorbed from the reserved `noise` cap
+  ($.50 in R8, $.05 in R5) instead of stopping. The full delta is always spent; b is repriced
+  net of the expected noise E(t) = min(delta, rate x t). Without a baseline the allowance is 0.
 
 The stop classifier lives here too (D1): HARD_STOP dominates FINALIZE_ONLY; nothing in this
 file reads an answer score.
 """
-import json, math, os, time
+import hashlib, json, math, os, time
 
 CAP_PILOT = 25.0
 CAP_R5 = 0.50
@@ -38,6 +44,67 @@ HARD_REASONS = {"pre_g6", "g5_failed", "g6_failed", "first_four_failure", "lock_
                 "secret_output", "overrun", "unsettled", "unknown_spend", "integrity", "skip_ceiling",
                 "insufficient_common_cohort", "unclassified", "security_probe_failure"}
 FINALIZE_REASONS = {"capacity_refused", "usage_expired", "benign_probe_failure", "auth_refused", "readiness_refused"}
+NOISE_CAP_R8, NOISE_CAP_R5 = 0.50, 0.05
+NOISE_FACTOR, NOISE_FLOOR = 3.0, 0.001
+BASELINE_WINDOW = (600, 1800)
+BASELINE_MAX_AGE = 7200
+BASELINE_KEYS = ("start_meter", "end_meter", "start_ts", "end_ts", "window_s", "key_fingerprint", "rate")
+
+
+def allowance(rate, t):
+    return NOISE_FACTOR * rate * t + NOISE_FLOOR
+
+
+def absorb(delta, booked, rate, t, left):
+    """(A(t), E(t), absorbed) for one settle interval: absorbed is the excess over the bookings
+    that A(t) and the noise reserve left can cover."""
+    a = allowance(rate, t)
+    e = min(delta, rate * t)
+    return a, e, max(0.0, min(max(0.0, delta - booked), a, left))
+
+
+def _num(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+
+
+def baseline_problems(b, cap, now=None):
+    """Refusals for a noise baseline record (plus its stated expected_duration_s); `now` adds the
+    age check, which only a run's first start makes."""
+    if not isinstance(b, dict) or not all(k in b for k in BASELINE_KEYS) or not all(_num(b[k]) for k in BASELINE_KEYS if k != "key_fingerprint"):
+        return ["the noise baseline is unreadable or malformed"]
+    bad = []
+    if not BASELINE_WINDOW[0] <= b["window_s"] <= BASELINE_WINDOW[1]:
+        bad.append("the noise baseline window %s s is outside %d to %d s" % (b["window_s"], BASELINE_WINDOW[0], BASELINE_WINDOW[1]))
+    if b["rate"] < 0 or b["end_meter"] < b["start_meter"]:
+        bad.append("the noise baseline has a negative delta")
+    dur = b.get("expected_duration_s")
+    if not _num(dur) or dur <= 0:
+        bad.append("no expected run duration is stated")
+    elif NOISE_FACTOR * b["rate"] * dur > cap + EPS:
+        bad.append("the fleet is too noisy for this run: 3 x rate x %ss exceeds the $%.2f noise cap; lower it and take a new baseline" % (dur, cap))
+    if now is not None and now - b["end_ts"] > BASELINE_MAX_AGE:
+        bad.append("the noise baseline ended more than 2 hours before the run's start")
+    return bad
+
+
+def load_baseline(stance, path, key_fingerprint, expected_duration, cap):
+    """The stance-to-baseline rule shared by R5 and R8: (noise dict or None, refusals)."""
+    if stance != "shared-credentials":
+        return None, (["noise: a noise baseline is given under the legacy stance %s" % stance] if path else [])
+    if not path:
+        return None, ["noise: shared-credentials needs a noise baseline"]
+    try:
+        with open(path, "rb") as f:
+            raw = f.read()
+        b = json.loads(raw)
+    except (OSError, ValueError):
+        return None, ["noise: the noise baseline is unreadable or malformed"]
+    bad = ["noise: " + x for x in baseline_problems(dict(b, expected_duration_s=expected_duration) if isinstance(b, dict) else b, cap)]
+    if not bad and b["key_fingerprint"] != key_fingerprint:
+        bad.append("noise: the noise baseline was taken on another key")
+    if bad:
+        return None, bad
+    return dict(b, path=path, sha256=hashlib.sha256(raw).hexdigest(), expected_duration_s=expected_duration), []
 
 
 def H(b):
@@ -75,6 +142,8 @@ class Ledger:
         self.inflight, self.unsettled, self.reserves = {}, {}, {}
         self.s_interval = {}
         self.usage_pause_deadline = None
+        self.noise_rate, self.noise_absorbed, self.noise_expected = None, 0.0, 0.0
+        self.reading = None
         self.stop = None
         self.events = []
         self.triples = {}
@@ -129,6 +198,18 @@ class Ledger:
             for a in ev["attempts"]:
                 self.s_interval.pop(a, None)
             self.spent += ev["delta"]
+            if ev.get("absorbed"):
+                self.reserves["noise"] = max(0.0, self.reserves.get("noise", 0.0) - ev["absorbed"])
+                if self.reserves["noise"] <= EPS:
+                    self.reserves.pop("noise")
+                self.noise_absorbed += ev["absorbed"]
+            self.noise_expected += ev.get("expected_noise") or 0.0
+            if ev.get("meter") is not None:
+                self.reading = (ev["meter"], ev.get("ts"))
+        elif k == "meter_start":
+            self.reading = (ev["meter"], ev["ts"])
+        elif k == "noise_baseline":
+            self.noise_rate = ev["rate"]
         elif k == "reprice":
             self.b = ev["b"]
         elif k == "pause_deadline":
@@ -221,31 +302,47 @@ class Ledger:
         for i in range(n):
             self.book("%s-q%02d" % (attempt_prefix, i + 1), "s_query", self.b, from_reserve, incurred=True)
 
-    def last_meter(self):
-        """The key meter reading of the last settled interval (durable across a restart)."""
-        for e in reversed(self.events):
-            if e["ev"] == "s_settle" and e.get("meter") is not None:
-                return e["meter"]
-        return None
+    def noise_start(self, path, sha256, rate, ts):
+        """The run's first durable event under shared-credentials: the noise baseline it runs on."""
+        self._log({"ev": "noise_baseline", "path": path, "sha256": sha256, "rate": rate, "ts": ts})
 
-    def settle_s_interval(self, delta, invocations, meter=None):
-        """Settle the dedicated key's cash delta for the admitted S invocations of the interval,
-        then reprice. Returns False on a HARD_STOP (overrun or unexplained usage)."""
+    def noise_baseline_event(self):
+        return next((e for e in self.events if e["ev"] == "noise_baseline"), None)
+
+    def meter_start(self, meter, ts):
+        self._log({"ev": "meter_start", "meter": meter, "ts": ts})
+
+    def last_meter(self):
+        """The last key meter reading: the last settled interval's, else meter_start (durable)."""
+        return self.reading[0] if self.reading else None
+
+    def settle_s_interval(self, delta, invocations, meter=None, ts=None):
+        """Settle the key's cash delta for the admitted S invocations of the interval, absorbing
+        fleet noise within the allowance when the run has a noise baseline, then reprice. Returns
+        False on a HARD_STOP (overrun or unexplained usage)."""
         if not isinstance(delta, (int, float)) or not math.isfinite(delta) or delta < 0:
             self.halt("HARD_STOP", "unknown_spend")
             return False
         attempts = sorted(self.s_interval)
         booked = sum(self.s_interval.values())
-        self._log({"ev": "s_settle", "attempts": attempts, "delta": delta, "invocations": invocations, "booked": booked, "meter": meter})
+        ev = {"ev": "s_settle", "attempts": attempts, "delta": delta, "invocations": invocations, "booked": booked, "meter": meter}
+        absorbed = expected = 0.0
+        if ts is not None:
+            ev["ts"] = ts
+        if self.noise_rate is not None and ts is not None and self.reading and self.reading[1] is not None:
+            t = max(0.0, ts - self.reading[1])
+            a, expected, absorbed = absorb(delta, booked, self.noise_rate, t, self.reserves.get("noise", 0.0))
+            ev.update(t=t, allowance=a, expected_noise=expected, absorbed=absorbed, absorbed_total=self.noise_absorbed + absorbed)
+        self._log(ev)
         if invocations == 0:
-            if delta > EPS:
+            if delta - absorbed > EPS:
                 self.halt("HARD_STOP", "unknown_spend")
                 return False
             return True
-        if delta > booked + EPS:
+        if delta - absorbed > booked + EPS:
             self.halt("HARD_STOP", "overrun")
             return False
-        self.reprice(max(self.b, B_MIN, 1.5 * delta / invocations))
+        self.reprice(max(self.b, B_MIN, 1.5 * (delta - expected) / invocations))
         return True
 
     def reprice(self, new_b):

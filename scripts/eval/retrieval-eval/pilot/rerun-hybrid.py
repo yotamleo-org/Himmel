@@ -3,7 +3,7 @@
 """rerun-hybrid.py -- R5: the separately capped old-75 S hybrid rerun (design §6, plan B7).
 
   rerun-hybrid.py run --questions OLD75.jsonl --ctx CTX.json --state STATE.jsonl --gates GATES.json --out ROWS.jsonl
-                      [--usage-cmd CMD] [--settle-seconds 60]
+                      [--usage-cmd CMD] [--settle-seconds 60] [--noise-baseline FILE --expected-duration SECONDS]
   rerun-hybrid.py final --state STATE.jsonl        the settled final b for the R6 card; refuses without it
   rerun-hybrid.py losses --results SAVED.jsonl     the free saved-list fusion-loss account (no query)
 
@@ -17,14 +17,32 @@ query 5 and at the end; b = max(.004, 1.5 x measured cash per query). A query is
 while settled cash + unsettled bookings + b <= $0.50 and it is query 75 or earlier; a larger b
 may admit fewer than 75 and the report says how many ran. No retry, no answer session. A failed
 or skipped query keeps its row with its raw evidence. A usage-reading failure stops the rerun.
-Requires HIMMEL_BILLED_OK=1, G0 READY, G1 (the free fixes merged), a G3 PASS and the distinct R5
-go: any missing gate runs zero queries. Exit 0 ok, 2 refused opt-in/usage, 3 refusal or stop.
+Requires HIMMEL_BILLED_OK=1, G0 READY with its stance recorded (g0_stance), G1 (the free fixes
+merged), a G3 PASS and the distinct R5 go: any missing gate runs zero queries. Exit 0 ok, 2
+refused opt-in/usage, 3 refusal or stop.
+
+Under g0_stance shared-credentials (design r20) the key is the fleet's regular key, so the run
+needs a noise baseline (ledger.py's rule, recorded as the state's first event) and tolerates
+fleet noise: an unbooked rise up to A(t), within the $.05 noise reserve, is absorbed instead of
+stopping; booked-interval noise beyond it is logged unabsorbed; b is repriced net of E(t); it
+settles after query 5 and every 10 queries; admission and every settle keep cash plus the noise
+reserve left within $0.50. Under a legacy stance the allowance is zero.
 """
 import argparse, hashlib, importlib.machinery, importlib.util, json, os, shutil, subprocess, sys, tempfile, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.normpath(os.path.join(HERE, "..", "..", "..", ".."))
 CAP, B_MIN, MAX_Q, REPRICE_AT, N = 0.50, 0.004, 75, 5, 20
+SETTLE_EVERY = 10
+STANCES = ("shared-credentials", "eval-only-reachable", "unreadable")
+
+
+class Clock:
+    now = staticmethod(time.time)
+    sleep = staticmethod(time.sleep)
+
+
+CLOCK = Clock()
 
 
 def load(path, name):
@@ -33,6 +51,9 @@ def load(path, name):
     m = importlib.util.module_from_spec(spec)
     loader.exec_module(m)
     return m
+
+
+L = load(os.path.join(HERE, "ledger.py"), "ledger")
 
 
 class State:
@@ -66,6 +87,22 @@ class State:
     def queries(self):
         return sum(1 for e in self.events if e["ev"] == "book")
 
+    def rate(self):
+        return next((e["rate"] for e in self.events if e["ev"] == "noise_baseline"), None)
+
+    def noise_left(self):
+        if self.rate() is None:
+            return 0.0
+        return max(0.0, L.NOISE_CAP_R5 - sum(e.get("absorbed", 0.0) for e in self.events if e["ev"] == "settle"))
+
+
+def admit_ok(st):
+    return st.cash() + st.unsettled() + st.b() + st.noise_left() <= CAP + 1e-9
+
+
+def settle_due(queries, shared):
+    return queries == REPRICE_AT or (shared and queries > REPRICE_AT and (queries - REPRICE_AT) % SETTLE_EVERY == 0)
+
 
 def gates_ok(gates_path):
     bad = []
@@ -75,6 +112,8 @@ def gates_ok(gates_path):
         return ["no gates record"]
     if g.get("g0") != "READY":
         bad.append("G0 auth readiness is not READY")
+    if g.get("g0_stance") not in STANCES:
+        bad.append("G0 stance not recorded (g0_stance, from auth-preflight's READY output)")
     if g.get("g1") is not True or not g.get("g1_evidence"):
         bad.append("G1: the free fixes are not recorded merged")
     try:
@@ -108,8 +147,9 @@ def read_usage(cmd, key_file):
 
 
 def settle(st, a, ctx, at):
-    time.sleep(a.settle_seconds)
+    CLOCK.sleep(a.settle_seconds)
     meter = read_usage(a.usage_cmd, ctx["binding"].get("key_file"))
+    ts = CLOCK.now()
     if meter is None:
         st.log({"ev": "stop", "reason": "usage_unreadable", "at": at})
         return False
@@ -117,17 +157,50 @@ def settle(st, a, ctx, at):
     if prev and meter < prev[-1]["meter"]:
         st.log({"ev": "stop", "reason": "usage_reset", "at": at})
         return False
-    st.log({"ev": "settle", "meter": meter, "at": at})
+    ev = {"ev": "settle", "meter": meter, "at": at, "ts": ts}
+    rate, n, delta, expected, absorbed = st.rate(), 0, 0.0, 0.0, 0.0
     if prev:
-        n = sum(1 for e in st.events[st.events.index(prev[-1]) + 1:] if e["ev"] == "book")
+        since = st.events[st.events.index(prev[-1]) + 1:]
+        n = sum(1 for e in since if e["ev"] == "book")
+        booked = sum(e["amount"] for e in since if e["ev"] == "book")
+        delta = meter - prev[-1]["meter"]
+        if rate is not None and prev[-1].get("ts") is not None:
+            t = max(0.0, ts - prev[-1]["ts"])
+            allow, expected, absorbed = L.absorb(delta, booked, rate, t, st.noise_left())
+            ev.update(delta=delta, booked=booked, t=t, allowance=allow, expected_noise=expected, absorbed=absorbed,
+                      unabsorbed=max(0.0, delta - booked - absorbed), absorbed_total=L.NOISE_CAP_R5 - st.noise_left() + absorbed)
+    st.log(ev)
+    if prev:
         if n:
-            nb = round(max(st.b(), B_MIN, 1.5 * (meter - prev[-1]["meter"]) / n), 6)
+            nb = round(max(st.b(), B_MIN, 1.5 * (delta - expected) / n), 6)
             if nb > st.b():
-                st.log({"ev": "reprice", "b": nb, "measured": (meter - prev[-1]["meter"]) / n})
-        elif meter - prev[-1]["meter"] > 1e-9:
+                st.log({"ev": "reprice", "b": nb, "measured": (delta - expected) / n})
+        elif delta - absorbed > 1e-9:
             st.log({"ev": "stop", "reason": "unexplained_usage", "at": at})
             return False
+    if rate is not None and st.cash() + st.noise_left() > CAP + 1e-9:
+        st.log({"ev": "stop", "reason": "over_cap", "at": at})
+        return False
     return True
+
+
+def start_noise(st, a, ctx, stance):
+    """The noise baseline for this stance, as the state's first event; refusals as a list."""
+    noise, bad = L.load_baseline(stance, a.noise_baseline, ctx.get("binding", {}).get("key_fingerprint"), a.expected_duration, L.NOISE_CAP_R5)
+    if bad:
+        return bad
+    ev = next((e for e in st.events if e["ev"] == "noise_baseline"), None)
+    if noise is None:
+        return ["noise: the rerun started with a noise baseline"] if ev else []
+    if ev:
+        return [] if ev["sha256"] == noise["sha256"] else ["noise: a different noise baseline than the rerun started with"]
+    if st.events:
+        return ["noise: the rerun state already has events without a noise baseline"]
+    bad = L.baseline_problems(noise, L.NOISE_CAP_R5, now=CLOCK.now())
+    if bad:
+        return ["noise: " + b for b in bad]
+    st.log({"ev": "noise_baseline", "path": noise["path"], "sha256": noise["sha256"], "rate": noise["rate"], "ts": CLOCK.now()})
+    return []
 
 
 def one(ctx, sq, task, query, work):
@@ -180,14 +253,17 @@ def one(ctx, sq, task, query, work):
 
 def run(a):
     bad = gates_ok(a.gates)
+    if not bad:
+        ctx = json.load(open(a.ctx))
+        st = State(a.state)
+        bad = start_noise(st, a, ctx, json.load(open(a.gates))["g0_stance"])
     if bad:
         for b in bad:
             print("rerun-hybrid: refused: " + b, file=sys.stderr)
         return 3
-    ctx = json.load(open(a.ctx))
+    shared = st.rate() is not None
     vocab = load(os.path.join(REPO, "scripts", "qmd", "vocab-expand.py"), "vocab_expand")
     sq = load(os.path.join(HERE, "tools", "s-qmd"), "s_qmd")
-    st = State(a.state)
     qs = [json.loads(l) for l in open(a.questions) if l.strip()]
     if not any(e["ev"] == "settle" for e in st.events) and not settle(st, a, ctx, "before"):
         print("rerun-hybrid: stopped: the key usage could not be read", file=sys.stderr)
@@ -200,7 +276,7 @@ def run(a):
         if st.queries() >= MAX_Q:
             refused += 1
             continue
-        if st.cash() + st.unsettled() + st.b() > CAP + 1e-9:
+        if not admit_ok(st):
             refused += 1
             continue
         query = vocab.document("query", q["q"])
@@ -214,7 +290,7 @@ def run(a):
         r.update(id=q["id"], hit5=bool(gold & set(r.get("top5") or [])) if gold else None,
                  hit20=bool(gold & set(r.get("top20") or [])) if gold else None)
         rows.append(r)
-        if st.queries() == REPRICE_AT and not settle(st, a, ctx, "after-%d" % REPRICE_AT):
+        if settle_due(st.queries(), shared) and not settle(st, a, ctx, "after-%d" % st.queries()):
             break
     stopped = next((e for e in st.events if e["ev"] == "stop"), None)
     if not stopped and settle(st, a, ctx, "end"):
@@ -261,6 +337,7 @@ def main(argv):
     for k in ("questions", "ctx", "state", "gates", "out"):
         r.add_argument("--" + k, required=True)
     r.add_argument("--usage-cmd"); r.add_argument("--settle-seconds", type=float, default=60.0)
+    r.add_argument("--noise-baseline"); r.add_argument("--expected-duration", type=float)
     f = sub.add_parser("final"); f.add_argument("--state", required=True)
     s = sub.add_parser("losses"); s.add_argument("--results", required=True)
     a = ap.parse_args(argv)
