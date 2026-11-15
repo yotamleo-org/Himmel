@@ -70,7 +70,10 @@ test("the AG-UI harness stop() leaves no temp dir behind", async () => {
   const agui = () => new Set(readdirSync(tmpdir()).filter((n) => n.startsWith("agui-e2e-")));
   const before = agui();
   const h = await bootAgui();
-  expect([...agui()].filter((n) => !before.has(n))).toHaveLength(1);
-  await h.stop();
+  try {
+    expect([...agui()].filter((n) => !before.has(n))).toHaveLength(1);
+  } finally {
+    await h.stop();
+  }
   expect([...agui()].filter((n) => !before.has(n))).toEqual([]);
 });
