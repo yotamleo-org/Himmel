@@ -86,14 +86,11 @@ def needs(mirror_text, answers=(), unread=(), cli=None):
     if 'none' in (t.lower() for t in staging):
         text_found = {}
     found = dict(text_found)
-    extra = []
     for t in staging:
         if t.lower() == 'none':
             continue
         if t in _WHO:
             found.setdefault(t, (_WHO[t], 'Staging: ' + t))
-        else:
-            extra.append(('operator-step', 'operator', t))
     live = _live_answers(answers)
     steps = []
     latest = [a for a in live if a['kind'] == 'remaining']
@@ -103,9 +100,9 @@ def needs(mirror_text, answers=(), unread=(), cli=None):
         steps.extend(a.get('chief_owed') or [])
     for s in steps:
         _scan(s, found)
+    free = [t for t in staging if t.lower() != 'none' and t not in _WHO]
+    if free:  # one entry per name: every free-text token is kept in its words
+        matched = found.get('operator-step', ('operator', ''))[1]
+        found['operator-step'] = ('operator', '; '.join(([matched] if matched else []) + free))
     out = [(n, found[n][0], found[n][1]) for n in _ORDER if n in found]
-    for e in extra:
-        if not any(o[0] == 'operator-step' for o in out):
-            out.append(e)
-            out.sort(key=lambda o: _ORDER.index(o[0]))
     return out + [('unknown', 'chief', r) for r in unread]

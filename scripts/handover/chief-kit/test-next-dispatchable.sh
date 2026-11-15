@@ -2565,6 +2565,8 @@ for pair in 'a guest gh token on the VM|gh-token' 'a PAT for the bot|gh-token' '
             'a bypass-queue launch|bypass-launch' 'an operator go code|go-code' 'the operator approves the command|operator-step' 'real credentials on the guest|guest-credential'; do
     s13=$((s13 + 1)); mkps "HIMMEL-1042$s13" "To Do" "Writes: none (chief-run proof, no code)" "- the row is green" "Run it with ${pair%%|*}."
 done
+mkps HIMMEL-10408 "To Do" "Writes: none (chief-run proof, no code)" "- the row is green" "A RED row that fails before the change." "Staging: sudoedit the config, rotate the key"
+mkps HIMMEL-10409 "To Do" "Writes: none (chief-run proof, no code)" "- the row is green" "The operator approves the run." "Staging: rotate the key"
 mkps HIMMEL-10431 "To Do" "Writes: none (chief-run proof, no code)" "- the row is green" "A pat on the back and Go file names."
 mkps HIMMEL-10432 "To Do" "Writes: none (chief-run proof, no code)" "- the row is green" "A Go code review and pat the cache."
 printf 'Remaining: S3 (chief-run, no code)\n' > "$PR_BODY_DIR/10403"
@@ -2594,6 +2596,9 @@ done
 for n in 1 2; do
     [ "$(lastf "$(prow LOCAL "1043$n")")" = proof ] && pass "S14 ($n): a case control yields no need" || fail "S14 ($n): last field of '$(prow LOCAL "1043$n")'"
 done
+[ "$(lastf "$(prow LOCAL 10408)")" = "proof-staging=operator-step" ] && pass "S15: free-text Staging tokens list as one operator-step need" || fail "S15: last field of '$(prow LOCAL 10408)'"
+has "S15: and --why keeps every token" "$rp" '# staging HIMMEL-10408 operator-step (operator): "sudoedit the config; rotate the key"'
+has "S15: a free-text token beside a matched operator-step keeps both" "$rp" '# staging HIMMEL-10409 operator-step (operator): "operator approves; rotate the key"'
 cat > "$WORK/s6-staging.py" <<'EOF'
 def needs(mirror_text, answers=(), unread=(), cli=None):
     return [('x-need', 'operator', 'w')]
