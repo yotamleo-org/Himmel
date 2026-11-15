@@ -866,8 +866,8 @@ gitd() { git --no-replace-objects -c core.fsmonitor=false -c core.untrackedCache
 # closure test excludes scripts/jira/dist/.
 # merge-on-green.sh appends its PARTIAL line through chief-kit/append-results.sh,
 # which takes chief-kit/worker-doc-lock.sh and scans the bullet with
-# chief-kit/bucket-gitleaks.sh (which runs chief-kit/vault-status.sh), so all
-# four are guarded.
+# chief-kit/bucket-gitleaks.sh (which runs chief-kit/vault-status.sh), and writes a
+# partial merge's owed rows through chief-kit/owe.sh, so all five are guarded.
 # worker-pr-open.sh runs chief-kit/holds.py narrow (the PR claim), so holds.py is guarded too.
 cr_guarded="scripts/cr scripts/lib scripts/api-lane scripts/ledger scripts/guardrails/lib.sh scripts/check-ci.sh scripts/handover/resolve-active-item.sh
 scripts/eval/cr-ledger/cr_ledger_eval.py scripts/eval/lib/eval_runs.py
@@ -897,7 +897,7 @@ scripts/lanes/plugin-profiles.mjs scripts/lanes/plugin-profiles.json scripts/lan
 scripts/handover/chief-kit/worker-jira-status.sh scripts/handover/chief-kit/holds.py
 scripts/handover/chief-kit/chain-push-check.sh
 marketplace/plugins/himmel-ops/scripts/humanizer-facts.py
-scripts/handover/chief-kit/append-results.sh scripts/handover/chief-kit/worker-doc-lock.sh
+scripts/handover/chief-kit/append-results.sh scripts/handover/chief-kit/worker-doc-lock.sh scripts/handover/chief-kit/owe.sh
 scripts/handover/chief-kit/bucket-gitleaks.sh scripts/handover/chief-kit/vault-status.sh
 scripts/handover/suite-coverage.sh
 scripts/luna/cadence-alert.sh scripts/luna/vault-stall-alert.sh scripts/luna/qmd-embed-model.sh scripts/luna/qmd-reindex.sh
@@ -939,7 +939,7 @@ cr_pathspecs=(':(top)scripts/cr/' ':(top)scripts/lib/' ':(top)scripts/api-lane/'
     ':(top)scripts/handover/chief-kit/worker-jira-status.sh' ':(top)scripts/handover/chief-kit/holds.py'
     ':(top)scripts/handover/chief-kit/chain-push-check.sh'
     ':(top)marketplace/plugins/himmel-ops/scripts/humanizer-facts.py'
-    ':(top)scripts/handover/chief-kit/append-results.sh' ':(top)scripts/handover/chief-kit/worker-doc-lock.sh'
+    ':(top)scripts/handover/chief-kit/append-results.sh' ':(top)scripts/handover/chief-kit/worker-doc-lock.sh' ':(top)scripts/handover/chief-kit/owe.sh'
     ':(top)scripts/handover/chief-kit/bucket-gitleaks.sh' ':(top)scripts/handover/chief-kit/vault-status.sh'
     ':(top)scripts/handover/suite-coverage.sh'
     ':(top)scripts/luna/cadence-alert.sh' ':(top)scripts/luna/vault-stall-alert.sh' ':(top)scripts/luna/qmd-embed-model.sh' ':(top)scripts/luna/qmd-reindex.sh'

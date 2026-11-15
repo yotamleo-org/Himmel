@@ -1241,14 +1241,15 @@ contains "9561 S4b 1: it waits on the operator" "$(drows AWAITING)" "wait=operat
 contains "9561 S4b 1: its source is the owed row" "$(drows AWAITING)" "source=owed"
 contains "9561 S4b 1: its since is the merge row's ts" "$(drows AWAITING)" "since=$(iso_at 3600) "
 contains "9561 S4b 1: its due is the end of the owed_due day" "$(drows AWAITING)" "due=${ud}T23:59:59Z "
-contains "9561 S4b 1: a wait row is no drift: sdrift=0" "$(dlast)" "sdrift=0:"
+contains "9561 S4b 1: the wait row adds no drift: sdrift=2, the funnel's pending move and comment" "$(dlast)" "sdrift=2:"
+contains "9561 S4b 1: an In Progress owed partial is a derive mismatch to To Do" "$(drows DERIVE-MISMATCH)" "derived=To Do rule=D5d"
 check "9561 S4b 9: rows 1 wrote nothing" "$(nwrites)" 0
 
 d6fx; owedrow 259200 operator "$(day_e $((NOW - 172800)))"
 drift
 check "9561 S4b 2: past the owed_due day the key is no AWAITING row" "$(dcount AWAITING)" 0
 contains "9561 S4b 2: it is UNOWNED, awaiting the operator since the merge row, and overdue" "$(drows UNOWNED)" "awaiting operator since $(iso_at 259200) and overdue"
-contains "9561 S4b 2: and counts as drift: sdrift=1" "$(dlast)" "sdrift=1:"
+contains "9561 S4b 2: and counts as drift: sdrift=3, with the pending move and comment" "$(dlast)" "sdrift=3:"
 
 d6fx; owedrow 3600 operator "$(day_e $((NOW + 2592000)))"
 drift
@@ -2114,7 +2115,7 @@ codfx 73; cod_comment $((100 * 3600)) 'PR #4480 merged as a partial merge. Remai
 drift
 check "9561 COD 1: a last merge row 73 h old with no later event is one CLOSE-OR-DISPATCH row" "$(dcount CLOSE-OR-DISPATCH)" 1
 check "9561 COD 1: it replaces the UNOWNED row of the same key" "$(dcount UNOWNED)" 0
-check "9561 COD 1: it counts once in sdrift" "$(sdn)" "sdrift=1"
+check "9561 COD 1: it counts once in sdrift, beside the pending move and comment" "$(sdn)" "sdrift=3"
 contains "9561 COD 1: it names the key and the status" "$(drows CLOSE-OR-DISPATCH)" "CLOSE-OR-DISPATCH $K In Progress with no open PR, no live owner"
 contains "9561 COD 1: it names the last PR" "$(drows CLOSE-OR-DISPATCH)" "last PR #4480"
 contains "9561 COD 1: it quotes the owed ask of the ticket's Remaining line" "$(drows CLOSE-OR-DISPATCH)" "owed: S6 backfill, owed -> chief by 11-20 |"
