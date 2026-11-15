@@ -547,11 +547,12 @@ else fail "IS26: broken tar: rc=$rc out: $out"; fi
 rm -rf "$TS"
 
 # --- IS27 ------------------------------------------------------
-# The reference search already selects a page either suite names, so these
-# pages must be ones neither suite names.
 DP="$(fixture_mktemp_dir)" || exit 1
 DT=scripts/docs/test-docs-dropped-terms.sh
 DV=scripts/docs/test-docs-current-version.sh
+if grep -qE 'troubleshooting\.md|hero\.html' "$SRC_ROOT/$DT" "$SRC_ROOT/$DV"; then
+  fail "IS27: a docs suite names a fixture page, so the reference search selects it and IS27 proves nothing"
+else pass "IS27: neither docs suite names a fixture page"; fi
 (
   cd "$DP" && git init -q && git config user.email t@e && git config user.name t \
     && mkdir -p scripts/ci scripts/cr scripts/docs scripts/tools docs \
