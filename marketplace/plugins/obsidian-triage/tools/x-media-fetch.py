@@ -837,9 +837,7 @@ def fmt_duration(seconds) -> str:
     return f"{s // 60}:{s % 60:02d}"
 
 
-# Every probe result that means "this post has downloadable media". A photo-only
-# post is "photo": it is fetched like any other media post, never stamped no-video.
-PROBE_VIDEO = ("video", "video+media", "photo")
+PROBE_MEDIA = ("video", "video+media", "photo")
 
 
 def _pct(s: str) -> float:
@@ -903,7 +901,6 @@ def fxt_probe(x: dict):
         videos, photos = videos or [], photos or []
         counts = (len(videos), len(photos))
         if not videos:
-            # photos are media: only a post with neither is "no-video".
             return ("photo" if photos else "no-video"), None, counts
         total = sum(float(v.get("duration") or 0) for v in videos)
         dur = int(round(total)) if total > 0 else None
@@ -1435,7 +1432,7 @@ def is_selected(fm: dict, fm_raw: str, body: str):
         return None
     if already_media_enriched(fm_raw):
         return None
-    if not _has_twimg_media(body) and fm.get("media_probe_result") not in PROBE_VIDEO:
+    if not _has_twimg_media(body) and fm.get("media_probe_result") not in PROBE_MEDIA:
         return None     # a probed-video clip stays selectable until enriched
     return x
 
@@ -1514,7 +1511,7 @@ def probe_clip(p: Path, x: dict, relpath: str) -> str:
         _log_decision(x, relpath, "skip", "no-frontmatter")
         return "error"
     markers = {"media_probe_at": TODAY, "media_probe_result": result}
-    if result in PROBE_VIDEO and duration:
+    if result in PROBE_MEDIA and duration:
         markers["media_video_duration_s"] = duration
     if not write_probe(p, text, fm_raw, body, has_crlf, markers):
         print(f"marker write REVERTED - probe NOT recorded for {relpath}",
@@ -1544,18 +1541,21 @@ def reprobe_no_video(args) -> int:
         x = is_x_source(fm.get("source", ""))
         if x and not already_media_enriched(fm_raw):
             todo.append((p, x))
-    if args.dry_run:
-        print(f"x-media-fetch: {len(todo)} clip(s) stamped no-video would be "
-              f"re-probed (no probe in --dry-run)")
-        return 0
     capped = todo[: args.limit] if args.limit > 0 else todo
+    if args.dry_run:
+        print(f"x-media-fetch: {len(capped)} clip(s) stamped no-video would be "
+              f"re-probed (no probe in --dry-run)")
+        if len(todo) > len(capped):
+            print(f"x-media-fetch: {len(todo) - len(capped)} more no-video clip(s) "
+                  f"remain (capped by --limit; pass --limit 0 for all)")
+        return 0
     restamped = kept = 0
     for p, x in capped:
         relpath = p.relative_to(args.vault).as_posix()
         if RATE_LIMIT_S > 0:
             time.sleep(RATE_LIMIT_S)
         result, duration = _probe_logged(x, relpath)
-        if result not in PROBE_VIDEO:
+        if result not in PROBE_MEDIA:
             kept += 1
             _log_decision(x, relpath, "skip",
                           "still-no-video" if result == "no-video"
@@ -2162,7 +2162,7 @@ def main():
                         run["unstarted"] = len(cands) - i
                         return
                 run["probed"] += 1
-                if probe_clip(p, x, p.relative_to(args.vault).as_posix()) not in PROBE_VIDEO:
+                if probe_clip(p, x, p.relative_to(args.vault).as_posix()) not in PROBE_MEDIA:
                     continue
                 if _budget_spent():
                     run["unstarted"] = len(cands) - i

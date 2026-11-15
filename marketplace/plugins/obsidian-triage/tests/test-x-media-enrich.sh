@@ -1477,6 +1477,9 @@ assert "backfill dry-run prints how many it would re-probe" ok "$a"
 assert "backfill dry-run changes no file" "$bf_before" "$(snap)"
 [ ! -s "$tmp/fxt-bf.count" ] && a=ok || a=no
 assert "backfill dry-run makes no fxtwitter call" ok "$a"
+X_MEDIA_FXT_CMD="$tmp/bin/fxt-by-id" X_TEST_FXT_DIR="$FXD" HOME="$H2" run_tool "$BF" --reprobe-no-video --dry-run --limit 1 >"$tmp/bf-dry1.out" 2>&1
+grep -qF '1 clip(s) stamped no-video would be re-probed' "$tmp/bf-dry1.out" && a=ok || a="$(cat "$tmp/bf-dry1.out")"
+assert "backfill dry-run counts only what --limit would probe" ok "$a"
 X_MEDIA_FXT_CMD="$tmp/bin/fxt-by-id" X_TEST_FXT_DIR="$FXD" X_TEST_FXT_COUNT="$tmp/fxt-bf.count" HOME="$H2" run_tool "$BF" --reprobe-no-video --limit 0 >"$tmp/bf-live.out" 2>"$tmp/bf-live.err"
 assert "backfill live run exits 0" 0 "$?"
 grep -q '^media_probe_result: photo$' "$BF/Clippings/wrong.md" && a=ok || a=no
