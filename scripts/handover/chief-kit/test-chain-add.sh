@@ -94,8 +94,6 @@ check '5. the same key twice is a usage error' 2 "$rc"
 bash "$SUT" HIMMEL-1 HIMMEL-2 --bogus >/dev/null 2>&1; rc=$?
 check '5. an unknown option is a usage error' 2 "$rc"
 
-# 6. default mirror directory: a scratch HOME, no --mirror flag. The key comes from the process env,
-# else from himmel.conf; with neither, the HIMMEL mirror is still read.
 H="$tmp/home"; C="$tmp/conf"; K="$tmp/cache"; JM="$H/.himmel/state/jira-mirror"
 mkdir -p "$C" "$K" "$JM"; : > "$K/.env"
 printf '{"schema":"himmel.chain-registry/1","chains":[]}\n' > "$tmp/empty.json"

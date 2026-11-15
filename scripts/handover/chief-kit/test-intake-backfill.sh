@@ -70,7 +70,6 @@ has "--commands prints the label command" "$cmds" "jira edit HIMMEL-701 --add-la
 has "--commands prints the INTAKE request for the proposed version" "$cmds" 'jira release request R-fixture --verb INTAKE --key HIMMEL-703 --to v1.2.0 --why "backfill: scope-label"'
 has "--commands prints a backlog proposal too" "$cmds" "jira edit HIMMEL-708 --add-labels proposed-backlog"
 
-# Default mirror directory: a scratch HOME, no override variable, no flag.
 H="$WORK/home"; C="$WORK/conf"; K="$WORK/cache"
 mkdir -p "$C" "$K" "$H/.himmel/state/jira-mirror"; : > "$K/.env"
 res() { env -u NEXT_DISPATCH_MIRROR -u HIMMEL_JIRA_MIRROR -u JIRA_PROJECT_KEY HOME="$H" HIMMEL_CONFIG_DIR="$C" HIMMELCTL_CACHE_DIR="$K" "$@"; }

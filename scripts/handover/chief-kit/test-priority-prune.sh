@@ -64,7 +64,6 @@ same "a bulleted bold priority: line keeps its prefix" "$(run --doc "$WORK/m.md"
 printf '%s\n' '## Live state' 'priority: 6127 | 6138' > "$WORK/all.md"
 same "every key closed reads none" "$(run --doc "$WORK/all.md")" 'priority: none'
 
-# Default mirror directory: a scratch HOME, no override variable, no --mirror flag.
 H="$WORK/home"; C="$WORK/conf"; K="$WORK/cache"; JM="$H/.himmel/state/jira-mirror"
 mkdir -p "$C" "$K" "$JM"; : > "$K/.env"
 res() { env -u NEXT_DISPATCH_MIRROR -u HIMMEL_JIRA_MIRROR -u JIRA_PROJECT_KEY HOME="$H" HIMMEL_CONFIG_DIR="$C" HIMMELCTL_CACHE_DIR="$K" "$@" bash "$SUT" --doc "$DOC" --count 2>/dev/null; }

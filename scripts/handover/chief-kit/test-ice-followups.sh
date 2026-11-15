@@ -51,8 +51,6 @@ same 'an unreadable mirror reads ? and still rc 0' "$out/$rc" "ice-followups=?/0
 out="$(timeout 10 bash "$SUT" "$M" --days 2>&1)"; rc=$?
 same 'a trailing --days with no value terminates (default window)' "$(printf '%s' "$out" | head -1)/$rc" "ice-followups=2/0"
 
-# Default mirror directory: a scratch HOME, no override variable, no flag. The key comes from the
-# process env, else from himmel.conf; with neither, the HIMMEL mirror is still read.
 H="$W/home"; C="$W/conf"; K="$W/cache"
 mkdir -p "$C" "$K"; : > "$K/.env"
 res() { env -u BOARD_MIRROR -u HIMMEL_JIRA_MIRROR -u JIRA_PROJECT_KEY HOME="$H" HIMMEL_CONFIG_DIR="$C" HIMMELCTL_CACHE_DIR="$K" "$@"; }

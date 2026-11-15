@@ -117,7 +117,6 @@ hasnt "a Done ticket is quiet" 'HIMMEL-9011' "$out"
 hasnt "a To Do ticket is quiet" 'HIMMEL-9012' "$out"
 has   "age in days past 48h" '^STUCK HIMMEL-9013 In Progress 2d$' "$out"
 
-# Default mirror directory: a scratch HOME, no STUCK_SCAN_MIRROR, no --mirror flag.
 H="$WORK/home"; K="$WORK/cache"; JM="$H/.himmel/state/jira-mirror"
 mkdir -p "$JM" "$K"; : > "$K/.env"
 res() { env -u STUCK_SCAN_MIRROR -u HIMMEL_JIRA_MIRROR -u JIRA_PROJECT_KEY HOME="$H" HIMMELCTL_CACHE_DIR="$K" "$@" bash "$SS" 2>&1; }
