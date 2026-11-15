@@ -66,6 +66,14 @@ export XDG_RUNTIME_DIR="$WORK/run"
 mkdir -p "$XDG_RUNTIME_DIR"
 export HIMMEL_QUOTA_DIR="$WORK/quota"
 
+READTOK=ghp_READTOKEN0123456789
+mkdir -p "$WORK/root" "$WORK/emptyroot" "$WORK/tt"
+printf 'himmel_github_token_vm2=%s\n' "$READTOK" > "$WORK/root/.env"
+: > "$WORK/emptyroot/.env"
+ln -s "$HERE/fixtures/gh-two-token-stub.sh" "$WORK/tt/gh"
+export GH_READ_ENV_ROOT="$WORK/emptyroot" HIMMEL_SECRETS_KEYRING=off
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
+
 run() { bash "$PS" --repo o/r --manifest "$MAN" "$@" 2>&1; }
 
 out="$(run)"; rc=$?
@@ -165,6 +173,30 @@ qrun "$WORK/q-ok"
 check "RED control: a healthy budget exits 0" "0" "$rc"
 hasnt "RED control: a healthy budget prints no pause line" 'QUOTA-PAUSE|GH-STALL' "$err"
 has "RED control: the healthy run reads the PR list" '^pr list ' "$(cat "$WORK/gh.log")"
+
+qplant "$WORK/q-tt" 4000 ok
+ttrun() {
+    local root="$1"; shift
+    : > "$WORK/tt.log"
+    out="$(env PATH="$WORK/tt:$PATH" GHLOG="$WORK/tt.log" GH_STUB_DELEGATE="$WORK/bin/gh" GH_STUB_READ_TOKEN="$READTOK" \
+        GH_READ_ENV_ROOT="$root" HIMMEL_QUOTA_DIR="$WORK/q-tt" "$@" bash "$PS" --repo o/r --manifest "$MAN" 2> "$WORK/err")"; rc=$?
+    err="$(cat "$WORK/err")"
+    ttlog="$(cat "$WORK/tt.log")"
+}
+ttrun "$WORK/root"
+check "two-token: a healthy run exits 0" "0" "$rc"
+check "two-token: exactly one runs read, on the read token, and none on main" "$(printf '%s\n' "$ttlog" | grep -c '^tok=read argv=run list ')/$(printf '%s\n' "$ttlog" | grep -c '^tok=main argv=run list ')" "1/0"
+has "two-token: the PR list logs tok=main" '^tok=main argv=pr list ' "$ttlog"
+has "two-token: the per-PR read logs tok=main" '^tok=main argv=pr view ' "$ttlog"
+hasnt "two-token: no PR read rides the read token" '^tok=read argv=pr ' "$ttlog"
+hasnt "two-token: the read token value never reaches the stub log or the scan's output" "$READTOK" "$ttlog$out$err"
+ttrun "$WORK/root" GH_STUB_MAINFAIL=rate
+check "two-token: a spent main token stays STALL-UNKNOWN, exit 3" "3:STALL-UNKNOWN gh failed" "$rc:$out"
+has "two-token: the spent-main list read is tried on main" '^tok=main argv=pr list ' "$ttlog"
+hasnt "two-token: the list is never moved to the read token" '^tok=read argv=pr list ' "$ttlog"
+ttrun "$WORK/emptyroot"
+check "two-token control: an empty root exits 0" "0" "$rc"
+has "two-token control: with no read token the runs read logs tok=main" '^tok=main argv=run list ' "$ttlog"
 
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; }
 echo "$fails FAILED"; exit 1

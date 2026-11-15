@@ -22,6 +22,13 @@ WORK="$(mktemp -d "${TMPDIR:-/tmp}/orphan-pr-check-test.XXXXXX")" || { echo "mkt
 trap 'rm -rf "$WORK"' EXIT
 
 export TICKET_STATUS_STATE_DIR="$WORK/state"
+READTOK=ghp_READTOKEN0123456789
+mkdir -p "$WORK/root" "$WORK/emptyroot" "$WORK/tt"
+printf 'himmel_github_token_vm2=%s\n' "$READTOK" > "$WORK/root/.env"
+: > "$WORK/emptyroot/.env"
+ln -s "$HERE/fixtures/gh-two-token-stub.sh" "$WORK/tt/gh"
+export GH_READ_ENV_ROOT="$WORK/emptyroot" HIMMEL_SECRETS_KEYRING=off
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
 mkdir -p "$TICKET_STATUS_STATE_DIR/workers"
 record() { # <KEY> <state> — one worker record
     printf '{"key":"%s","state":"%s","prs":{"1":{"open":true}}}\n' "$1" "$2" > "$TICKET_STATUS_STATE_DIR/workers/$1.json"
@@ -207,6 +214,27 @@ qplant "$WORK/q-ok" 4000 ok
 qrun "$WORK/q-ok"
 check "RED control: a healthy budget reads the list and finds the orphan" "1:UNMAPPED 109 fix/himmel-999-quota" "$rc:$out"
 check "RED control: a healthy budget prints no pause line" "0" "$(grep -c 'QUOTA-PAUSE\|GH-STALL' "$WORK/err")"
+
+ttrun() {
+    local root="$1"; shift
+    : > "$WORK/tt.log"
+    out="$(env -u ORPHAN_PR_CHECK_PRS PATH="$WORK/tt:$PATH" GHLOG="$WORK/tt.log" GH_STUB_DELEGATE="$WORK/ghbin/gh" OPC_GH_LOG="$WORK/gh.log" \
+        GH_STUB_READ_TOKEN="$READTOK" GH_READ_ENV_ROOT="$root" HIMMEL_QUOTA_DIR="$WORK/q-ok" "$@" bash "$OPC" --doc "$DOC" --repo "$WORK" 2>"$WORK/err")"; rc=$?
+    ttlog="$(cat "$WORK/tt.log")"
+}
+ttrun "$WORK/root" GH_STUB_MAINFAIL=rate
+check "two-token: a spent main token still gives a verdict, not unavailable" "1:UNMAPPED 109 fix/himmel-999-quota" "$rc:$out"
+check "two-token: the list read logs tok=read" "1" "$(printf '%s\n' "$ttlog" | grep -c '^tok=read argv=pr list ')"
+check "two-token: no list read logs tok=main" "0" "$(printf '%s\n' "$ttlog" | grep -c '^tok=main argv=pr list ')"
+check "two-token: the read token value never reaches the stub log or the scan's output" "0" "$(printf '%s\n' "$ttlog" "$out" "$(cat "$WORK/err")" | grep -c "$READTOK")"
+ttrun "$WORK/root" GH_STUB_READFAIL=rate
+check "no-fallback: a rate-limited read token with main healthy reports unavailable, exit 3" "3:" "$rc:$out"
+check "no-fallback: says unavailable on stderr" "1" "$(grep -c 'orphan-pr-check: unavailable' "$WORK/err")"
+check "no-fallback: the stub log holds the read attempt" "1" "$(printf '%s\n' "$ttlog" | grep -c '^tok=read argv=pr list ')"
+check "no-fallback: the stub log holds no tok=main read" "0" "$(printf '%s\n' "$ttlog" | grep -c '^tok=main argv=pr list ')"
+ttrun "$WORK/emptyroot"
+check "two-token control: an empty root still gives the verdict" "1:UNMAPPED 109 fix/himmel-999-quota" "$rc:$out"
+check "two-token control: with no read token the list logs tok=main" "1" "$(printf '%s\n' "$ttlog" | grep -c '^tok=main argv=pr list ')"
 
 # --- chief-wait.sh: an underfilled wake adds `WAKE orphan-pr <n>` while a PR is unmapped
 WAIT="${CHIEF_WAIT:-$HERE/chief-wait.sh}"

@@ -91,6 +91,14 @@ export LC_ALL=C
 # shellcheck source=../../lib/timeout-bin.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/timeout-bin.sh"
+GH_READ_BIN="$HERE/../../lib/gh-read.sh"
+[ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
+if [ "$GH_READ_BIN" != gh ]; then
+    # shellcheck source=../../lib/gh-read.sh
+    # shellcheck disable=SC1091
+    . "$GH_READ_BIN"
+    GH_READ_QUIET=1 gh_read_init
+fi
 # shellcheck source=../../lib/env-value.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/env-value.sh"
@@ -300,7 +308,7 @@ if [ "${moved:-0}" -gt 0 ]; then
     JIRA_PROJECT_KEY="${JIRA_PROJECT_KEY:-HIMMEL}" bounded 120 "${JIRA[@]}" mirror --root "$MIR" >/dev/null 2>&1 || failed mirror
 fi
 
-bounded 60 gh pr list --state open --limit 300 --json number,title,headRefName,headRefOid,isDraft,statusCheckRollup > "$stage/prs.json" 2>/dev/null || failed prs
+GH_READ_NO_MAIN_FALLBACK=1 bounded 60 "$GH_READ_BIN" pr list --state open --limit 300 --json number,title,headRefName,headRefOid,isDraft,statusCheckRollup > "$stage/prs.json" 2>/dev/null || failed prs
 
 # chains: focus-chains.json regenerated from the chain registry. A registry that is absent (or a handover root or
 # user slug that does not resolve) skips the stage: nothing is configured and a hand-kept file stays. A registry

@@ -342,5 +342,40 @@ fi
 out=$(bash_ast_positions 'if then' 2>/dev/null); rc=$?
 if [ "$rc" = 3 ]; then ok "a parse error is rc 3"; else bad "a parse error is rc 3 — rc=$rc"; fi
 
+# The stub execs the real jq unless an argument equals the program in $FIX/fail-prog.
+stub="$FIX/fail-jq"; mkdir -p "$stub"
+real_jq=$(command -v jq)
+printf '#!/bin/sh\nfp=$(cat "%s/fail-prog" 2>/dev/null)\nfor a in "$@"; do [ "$a" = "$fp" ] && exit 5; done\nexec "%s" "$@"\n' "$FIX" "$real_jq" >"$stub/jq"
+chmod +x "$stub/jq"
+# rc_row LABEL WANT-RC FAIL-PROG CMD
+rc_row() {
+    local rc
+    printf '%s' "$3" >"$FIX/fail-prog"
+    (
+        PATH="$stub:$PATH"
+        hash -r
+        bash_ast_positions "$4" >/dev/null 2>&1
+    )
+    rc=$?
+    : >"$FIX/fail-prog"
+    if [ "$rc" = "$2" ]; then ok "$1"; else bad "$1 — rc=$rc"; fi
+}
+rc_row '9600: S1 a failed body test returns rc 4' 4 'any(.[]; .body != null)' "bash -c 'echo hi | sh'"
+rc_row '9600: S2 a failed depth-cap rewrite returns rc 4' 4 'map(if .body != null then .opaque = "shell bodies nested past depth 4" else . end)' 'eval eval eval eval eval echo hi'
+rc_row '9600: S3 a failed body read returns rc 4' 4 '.body' "bash -c 'echo hi | sh'"
+rc_row '9600: S3b a failed cwd read returns rc 4' 4 '.cwd + (if (.assigns | index("CDPATH")) != null then [null] else [] end) | unique | if length > 16 then [null] else . end' "bash -c 'echo hi | sh'"
+rc_row '9600: S3c a failed tags read returns rc 4' 4 '.in + [if .prog == "eval" then "eval" else "shell-c" end]' "bash -c 'echo hi | sh'"
+rc_row '9600: S3d a failed pipe read returns rc 4' 4 '.pipe' "bash -c 'echo hi | sh'"
+rc_row '9600: S4 a failed body list returns rc 4' 4 '.[] | select(.body != null)' "bash -c 'echo hi | sh'"
+rc_row '9600: S5 a failed final add returns rc 4, not the timeout rc' 4 'add' "bash -c 'echo hi | sh'"
+
+row '9600: L1 a runner in front of a shell reading stdin carries stdin' 'nice -n 5 sh' '.[0] | .prog == "nice" and .stdin == true and (.opaque | startswith("it runs its arguments"))'
+row '9600: L2 sudo with options and env in front of bash -s carries stdin' 'sudo -u root env X=1 bash -s' '.[0].stdin == true'
+row '9600: L3 a runner whose shell is given -c is not a stdin shell' "timeout 5 sh -c 'echo hi'" '.[0].stdin == false'
+row '9600: L4 noglob, nocorrect and - are read as wrappers' 'noglob sh; nocorrect sh; - sh' 'length == 3 and all(.[]; .prog == "sh" and .stdin == true) and ([.[].via[0]] == ["noglob","nocorrect","-"])'
+row '9600: L5 an =cmd word is read as cmd' '=sh' '.[0] | .prog == "sh" and .stdin == true'
+row '9600: L6 a direct shell keeps its opaque text and -c is not stdin' "bash; sh -c 'x'" '.[0].stdin == true and (.[0].opaque | test("stdin")) and .[1].stdin == false'
+row '9600: L7 =cmd after a runner and a precommand word after a runner' 'nice =sh; timeout 5 noglob sh' 'length == 2 and all(.[]; .stdin == true)'
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

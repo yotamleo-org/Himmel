@@ -83,6 +83,7 @@ case "$mode" in
     rest-out) [ "$bucket" = core ] && refused=1 ;;
     both-out | secondary | reset-past | reset-absent | reset-absurd) refused=1 ;;
     main-only) [ "$tok" = main ] && refused=1 ;;
+    main-reads-out) [ "$tok" = main ] && [ "$probe" = 0 ] && refused=1 ;;
     read-only) [ "$tok" = read ] && refused=1 ;;
     hung) exec sleep 600 ;;
     hung-after-probe) [ "$probe" = 1 ] || exec sleep 600 ;;
@@ -588,6 +589,38 @@ no_list_row() {
     fi
 }
 
+affect_proceeds() { echo maybe; }
+
+answering_gh() {
+    cat > "$cdir/finalgh" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+    "pr list"*) echo '[]' ;;
+    *graphql*) echo '{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}' ;;
+esac
+exit 0
+STUB
+    chmod +x "$cdir/finalgh"
+}
+
+read_token_rows() {
+    if grep -qE "$3" <<< "$ROW_OUT"; then
+        emit "FAIL $1 $2 read-token-list the scan reports a failed stage: $(grep -oE "$3" <<< "$ROW_OUT" | head -n 1)"
+    else
+        emit "PASS $1 $2 read-token-list no failed stage"
+    fi
+    if [ -r "$ROW_DIR/stub.log" ] && grep -q ' read pr list --state open --limit 300' "$ROW_DIR/stub.log"; then
+        emit "PASS $1 $2 read-token-list the PR list logged tok=read"
+    else
+        emit "FAIL $1 $2 read-token-list the PR list was not read on the read token"
+    fi
+    if [ -r "$ROW_DIR/stub.log" ] && ! grep -q ' main pr list' "$ROW_DIR/stub.log"; then
+        emit "PASS $1 $2 read-token-list no PR list read on main"
+    else
+        emit "FAIL $1 $2 read-token-list a PR list read was spent on main"
+    fi
+}
+
 drive_scans() {
     CUR=scans
     local m sweep="$HERE/status-sweep.sh" focus="$HERE/focus-refresh.sh" doc
@@ -603,6 +636,18 @@ drive_scans() {
         run_mode status-sweep.sh "$m" 12 0 bash "$sweep" --repo o/r
         no_list_row status-sweep.sh "$m"
     done
+    m=main-reads-out
+    AFFECT_FN=affect_proceeds
+    rm -rf "$cdir/quota/quota.tsv" "$cdir/ts"
+    answering_gh
+    EXTRA_ENV="$(printf '%s\n' "TICKET_STATUS_STATE_DIR=$cdir/ts" "WORKER_SESSION_JIRA_CLI=$cdir/jira" "STUB_NEXT_GH=$cdir/finalgh")"
+    run_mode status-sweep.sh "$m" 12 0 bash "$sweep" --repo o/r
+    read_token_rows status-sweep.sh "$m" 'status-sweep: unknown'
+    if [ "$ROW_RC" = 0 ] && grep -q 'status-sweep: keys=' <<< "$ROW_OUT"; then
+        emit "PASS status-sweep.sh $m read-token-list exit rc=0 with the sweep summary"
+    else
+        emit "FAIL status-sweep.sh $m read-token-list exit rc=$ROW_RC without the sweep summary"
+    fi
     setup_caller_dir scans-focus
     printf '#!/usr/bin/env bash\nexit 0\n' > "$cdir/jira"; chmod +x "$cdir/jira"
     mkdir -p "$cdir/doc" "$cdir/mirror"
@@ -617,6 +662,14 @@ drive_scans() {
         run_mode focus-refresh.sh "$m" 12 1 bash "$focus" --doc "$doc" --repo o/r
         no_list_row focus-refresh.sh "$m"
     done
+    m=main-reads-out
+    AFFECT_FN=affect_proceeds
+    rm -rf "$cdir/quota/quota.tsv" "$cdir/ts" "$cdir/doc/focus-state"
+    answering_gh
+    EXTRA_ENV="$(printf '%s\n' "TICKET_STATUS_STATE_DIR=$cdir/ts" "WORKER_SESSION_JIRA_CLI=$cdir/jira" "FR_JIRA=$cdir/jira" \
+        "TICK_TRACKER_MIRROR_DIR=$cdir/mirror/HIMMEL" "HANDOVER_DIR=$cdir/h" "STUB_NEXT_GH=$cdir/finalgh")"
+    run_mode focus-refresh.sh "$m" 12 1 bash "$focus" --doc "$doc" --repo o/r
+    read_token_rows focus-refresh.sh "$m" 'FAILED:prs|FAILED:sweep'
     EXTRA_ENV=""
 }
 
