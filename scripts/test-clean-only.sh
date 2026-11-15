@@ -610,6 +610,7 @@ backdate_wt() {
     gd=$(git -C "$1" rev-parse --absolute-git-dir) || return 1
     touch -t 202001010000 "$gd/HEAD" "$gd/logs/HEAD"
 }
+mkdir -p "$REPO/.git/info"
 printf '.claude/logs/\n.claude/settings.local.json\n.claude/other.txt\n.claude/..notes\n.env\n' >> "$REPO/.git/info/exclude"
 
 WT_S_AGED=$(mk_wt wt-s-aged none/s-aged);       backdate_wt "$WT_S_AGED"
