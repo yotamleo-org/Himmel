@@ -616,10 +616,11 @@ fi
 exec "$KBIN/secret-tool" "$@"
 WRAP
 chmod +x "$RBIN/secret-tool"
+r19wait() { local _w=0; while [ "$_w" -lt 100 ] && [ ! -L "$LOCKLINK" ]; do sleep 0.1; _w=$((_w + 1)); done; }
 kreset
 (cd "$REPO" && printf 'fake-new' | env -u CLAUDECODE KBIN="$KBIN" PATH="$RBIN:$PATH" RACE_SLEEP=2 "$HS" put --stdin TEST_HS_R19 >"$TMP/r19.a" 2>&1; echo "rc=$?" >>"$TMP/r19.a") &
 r19_pid=$!
-sleep 1
+r19wait
 got=$(cd "$REPO" && printf 'fake-old' | env -u CLAUDECODE KBIN="$KBIN" PATH="$RBIN:$PATH" "$HS" put-if-absent --stdin TEST_HS_R19 2>&1; echo "rc=$?")
 wait "$r19_pid"
 assert_eq "R19 a put-if-absent that starts mid-write is refused" "1|rc=2" "$(printf '%s' "$got" | grep -c 'another import-env')|$(printf '%s' "$got" | grep rc=)"
@@ -628,7 +629,7 @@ assert_eq "R19 the first writer finished whole" "stored TEST_HS_R19|rc=0" "$(tr 
 kreset
 (cd "$REPO" && printf 'fake-old' | env -u CLAUDECODE KBIN="$KBIN" PATH="$RBIN:$PATH" RACE_SLEEP=2 "$HS" put-if-absent --stdin TEST_HS_R19 >"$TMP/r19.b" 2>&1; echo "rc=$?" >>"$TMP/r19.b") &
 r19_pid=$!
-sleep 1
+r19wait
 got=$(cd "$REPO" && printf 'fake-new' | env -u CLAUDECODE KBIN="$KBIN" PATH="$RBIN:$PATH" "$HS" put --stdin TEST_HS_R19 2>&1; echo "rc=$?")
 wait "$r19_pid"
 assert_eq "R19 a plain put between put-if-absent's check and store is refused" "1|rc=2" "$(printf '%s' "$got" | grep -c 'another import-env')|$(printf '%s' "$got" | grep rc=)"
@@ -637,7 +638,7 @@ assert_eq "R19 the put-if-absent finished whole" "stored TEST_HS_R19|rc=0" "$(tr
 kreset
 (cd "$REPO" && env -u CLAUDECODE KSTUB_STORE_SLEEP=2 "$HS" import-env "$TMP/r17.env" >"$TMP/r19.c" 2>&1) &
 r19_pid=$!
-sleep 1
+r19wait
 got=$(cd "$REPO2" && printf 'fake-put' | env -u CLAUDECODE "$HS" put --stdin JIRA_API_TOKEN 2>&1; echo "rc=$?")
 wait "$r19_pid"
 assert_eq "R19 a plain put during an import is refused with the busy message" "1|rc=2" "$(printf '%s' "$got" | grep -c 'another import-env')|$(printf '%s' "$got" | grep rc=)"
