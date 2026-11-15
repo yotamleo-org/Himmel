@@ -73,6 +73,10 @@ cat > "$BIN/vmsdk" <<'EOS'
 #!/usr/bin/env bash
 echo "vmsdk $*" >> "${FAKE_LOG:?}"
 if [ "$2" = push ] && [ -n "${FAKE_PUSH_COPY:-}" ]; then cp "$3" "$FAKE_PUSH_COPY"; fi
+if [ "$2" = restore ] && [ -n "${FAKE_RESTORE_FAIL_NTH:-}" ]; then
+  n="$(grep -c ' restore ' "$FAKE_LOG")"
+  [ "$n" -ne "$FAKE_RESTORE_FAIL_NTH" ] || exit 1
+fi
 exit "${FAKE_VMSDK_RC:-0}"
 EOS
 cat > "$BIN/guest-exec" <<'EOS'
@@ -93,6 +97,7 @@ run_driver() {
   env -i PATH="$PATH" HOME="$WORK/hhome" FAKE_LOG="$LOG" FAKE_GUEST_RC="$grc" FAKE_GUEST_OUT="$gout" FAKE_PUSH_COPY="$WORK/pushed.tgz" \
     HIMMEL_GCE_VMSDK="$BIN/vmsdk" HIMMEL_GCE_GUEST_EXEC="$BIN/guest-exec" \
     HIMMEL_VM_LOCK_DIR="$WORK/locks" HIMMEL_GCE_STAGE_TMP="$WORK/stage" HIMMEL_GCE_SHOTS_DIR="$WORK/shots" \
+    HIMMEL_GCE_RESTORE_RETRY_SECS=0 FAKE_RESTORE_FAIL_NTH="${FAKE_RESTORE_FAIL_NTH:-}" \
     bash "$SCRIPT" "$@" >"$WORK/driver.out" 2>&1
   DRV_RC=$?
 }
@@ -155,6 +160,11 @@ env -i PATH="$PATH" HOME="$WORK/hhome" FAKE_LOG="$LOG" FAKE_VMSDK_RC=1 HIMMEL_GC
   HIMMEL_VM_LOCK_DIR="$WORK/locks" HIMMEL_GCE_STAGE_TMP="$WORK/stage" bash "$SCRIPT" himmel-ar-1 >"$WORK/driver.out" 2>&1; rc=$?
 expect_rc "a VM that will not restore exits 3" 3 "$rc"
 if ! grep -qe '--guest' "$LOG"; then pass "...and the guest never ran"; else fail_case "...and the guest never ran"; fi
+
+FAKE_RESTORE_FAIL_NTH=2 run_driver 0 "$GOOD_OUT" himmel-ar-1
+expect_rc "a post-run restore that fails once is retried and the stage still passes" 0 "$DRV_RC"
+expect_eq "...with three restore calls in all" 3 "$(grep -c ' restore ' "$LOG")"
+
 
 run_driver 1 'FAIL graph-choices-pass.sh is in the tree (S4 present)
 RESULT: 1 failure(s)' --expect-red himmel-ar-1

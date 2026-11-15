@@ -20,7 +20,7 @@
 # No real key and no paid call: the key is a dummy file, the API a loopback stub, claude a stub.
 #
 # Seams (tests): HIMMEL_GCE_VMSDK, HIMMEL_GCE_GUEST_EXEC, HIMMEL_GCE_STAGE_TMP, HIMMEL_GCE_SHOTS_DIR,
-# HIMMEL_GCE_SNAPSHOT (default suite-ready-v4), HIMMEL_VM_LOCK_DIR.
+# HIMMEL_GCE_SNAPSHOT (default suite-ready-v4), HIMMEL_GCE_RESTORE_RETRY_SECS (default 10), HIMMEL_VM_LOCK_DIR.
 #
 # Sourced (BASH_SOURCE != $0) it defines only the pure helpers, for the hermetic test.
 
@@ -443,7 +443,12 @@ host_main() {
     [ -z "$TARBALL" ] || rm -f "$TARBALL"
     [ -z "$OUT" ] || rm -f "$OUT"
     if [ "$BOOTED" = 1 ]; then
-      vmsdk restore "$SNAPSHOT" >/dev/null || { echo "graph-choices-e2e: restore $SNAPSHOT after the run failed; $VM may be dirty" >&2; rc=3; }
+      local tries=0
+      until vmsdk restore "$SNAPSHOT" >/dev/null; do
+        tries=$((tries + 1))
+        if [ "$tries" -ge 3 ]; then echo "graph-choices-e2e: restore $SNAPSHOT after the run failed; $VM may be dirty" >&2; rc=3; break; fi
+        sleep "${HIMMEL_GCE_RESTORE_RETRY_SECS:-10}"
+      done
       vmsdk down >/dev/null 2>&1 || { echo "graph-choices-e2e: could not power $VM off" >&2; rc=3; }
     fi
     [ "$LOCKED" != 1 ] || vm_lock_release "$VM"
