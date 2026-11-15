@@ -18,9 +18,9 @@ NVM_INSTALL_SHA256="045932fe05f0d4247c946f2ec0ec4026dbfd8ce88a5f67ea28d8ea833227
 # node — exact patch release (its major must equal .nvmrc); sha256 of the
 # linux-x64 .tar.xz and of the bin/node inside it. This release also drops the emSign
 # ECC G3 root from node's bundled CA store.
-NODE_VERSION="26.13.0"
-NODE_TARBALL_SHA256="d28a96af6c38596f6d9d97c0ee531c13d238d757742387d1928de822d959e997"
-NODE_BIN_SHA256="0adde40d1b7dfa57c8bc83cbc319758c3ec6ebba21363bb2fa752ea6b267ad1b"
+NODE_VERSION="26.13.1"
+NODE_TARBALL_SHA256="5c063e46bab0fbc1c17cc445d7ff129cbdcd0471be6ed83b6ab864f8143bc864"
+NODE_BIN_SHA256="d931c649850ffa7155b8ceffb400dc916ef325866e509cc52ae36e33e8fbb9a9"
 
 # uv — GHSA-hq85-5cpj-mr62 is fixed from 0.13.4.
 UV_VERSION="0.13.7"

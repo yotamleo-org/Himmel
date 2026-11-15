@@ -281,11 +281,10 @@ fi
 # with the identical (path, PLATFORM) genuinely SKIPS recomputation rather
 # than merely landing on the same answer by coincidence: a counting `realpath`
 # stub on PATH proves it is invoked exactly once across two lookups.
-# Clear cache CONTENTS only — $_ARM_CACHE_DIR itself is created ONCE at
-# source time (top-level library code, not re-run per subshell), so unsetting
-# or removing the directory here would leave every subsequent subshell with
-# no cache dir to write into (caught in review: a first draft of this test
-# did exactly that and made T9a fail against a WORKING library).
+# The suite mints $_ARM_CACHE_DIR once here at top level (sandboxed TMPDIR and
+# HOME, so the real /tmp and stamp are untouched) and clears its CONTENTS only:
+# removing the directory would leave every later subshell with no cache dir.
+TMPDIR="$TMP" HOME="$TMP/home" _arm_cache_dir_ensure
 rm -f "${_ARM_CACHE_DIR:?}/identity" 2>/dev/null || true
 T9PATH="$TMP/layout-a/handovers/HIMMEL-1344-test/next-session-1.md"
 first9=$(PLATFORM=linux _arm_identity_path "$T9PATH")
@@ -418,6 +417,149 @@ else
     echo "PASS T9i a vanished \$_ARM_CACHE_DIR produced NOTHING on stderr"
 fi
 _ARM_CACHE_DIR="$T9I_SAVED_CACHE_DIR"
+
+# T9J-T9N: sourcing the library mints nothing and searches nothing; only
+# _arm_cache_dir_ensure mints, once per top-level process, never in a subshell,
+# and its GC sweep is rate-limited by a stamp. Every row runs a
+# fresh `bash -c` child with TMPDIR and HOME in the row's own sandbox and
+# _ARM_CACHE_DIR unset, so no row touches the real /tmp or the real $HOME. The
+# child's `find` is a stub that counts the GC's aggregate search (first argument
+# = the child's TMPDIR) and then runs the real find. The child scripts are
+# single-quoted on purpose: their $LIB and $P expand in the child, not here.
+T9X_REAL_FIND=$(command -v find)
+t9x_sandbox() {
+    local sb
+    sb=$(mktemp -d "$TMP/t9x.XXXXXX") || return 1
+    mkdir -p "$sb/tmp" "$sb/home" "$sb/bin"
+    : > "$sb/find-calls"
+    cat > "$sb/bin/find" <<'EOF'
+#!/usr/bin/env bash
+[ "${1:-}" = "$STUB_TMPDIR" ] && echo x >> "$STUB_COUNT"
+exec "$STUB_REAL_FIND" "$@"
+EOF
+    chmod +x "$sb/bin/find"
+    printf '%s\n' "$sb"
+}
+t9x_run() {
+    env -u _ARM_CACHE_DIR PATH="$1/bin:$PATH" TMPDIR="$2" HOME="$1/home" LIB="$LIB" P="${T9X_P:-}" \
+        STUB_TMPDIR="$2" STUB_COUNT="$1/find-calls" STUB_REAL_FIND="$T9X_REAL_FIND" \
+        bash -c "$3" 2>/dev/null
+}
+t9x_dirs() { "$T9X_REAL_FIND" "$1" -maxdepth 1 -name 'arm-resume-cache.*' -type d | wc -l | tr -d ' '; }
+t9x_calls() { wc -l < "$1/find-calls" | tr -d ' '; }
+t9x_fresh() { grep -q . <<< "$("$T9X_REAL_FIND" "$1" -maxdepth 0 -mmin -1 ! -mmin -0 2>/dev/null)"; }
+T9X_STAMP_REL=home/.himmel/state/arm-resume-cache-gc.stamp
+# shellcheck disable=SC2016
+T9X_SRC='. "$LIB"'
+# shellcheck disable=SC2016
+T9X_LOOKUPS='for _i in 1 2 3 4 5; do x=$(_arm_identity_path "$P"); done'
+# shellcheck disable=SC2016
+T9X_LOOKUPS_ECHO='for _i in 1 2 3 4 5; do _arm_identity_path "$P"; echo; done'
+T9X_STRICT='set -euo pipefail'
+
+t9j_sb=$(t9x_sandbox)
+for _t9j_i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    t9x_run "$t9j_sb" "$t9j_sb/tmp" "$T9X_SRC; handover_root >/dev/null 2>&1"
+done
+assert_eq "T9J 20 runs that only source the library leave 0 arm-resume-cache directories" "0" "$(t9x_dirs "$t9j_sb/tmp")"
+
+t9k_sb=$(t9x_sandbox)
+t9x_run "$t9k_sb" "$t9k_sb/tmp" "$T9X_SRC; handover_root >/dev/null 2>&1"
+assert_eq "T9K sourcing the library runs 0 GC finds" "0" "$(t9x_calls "$t9k_sb")"
+
+T9X_P="$TMP/layout-a/handovers/HIMMEL-1344-test/next-session-1.md"
+t9l_sb=$(t9x_sandbox)
+t9x_run "$t9l_sb" "$t9l_sb/tmp" "$T9X_SRC; _arm_cache_dir_ensure; $T9X_LOOKUPS"
+assert_eq "T9L ensure plus 5 lookups mint exactly 1 directory" "1" "$(t9x_dirs "$t9l_sb/tmp")"
+t9l_lines=0
+for _t9l_f in "$t9l_sb"/tmp/arm-resume-cache.*/identity; do
+    [ -f "$_t9l_f" ] && t9l_lines=$(wc -l < "$_t9l_f" | tr -d ' ')
+done
+assert_eq "T9L the memo file holds 1 line after 5 lookups of one path" "1" "$t9l_lines"
+t9l_sb2=$(t9x_sandbox)
+t9l_expected=$(_arm_realpath "$T9X_P")
+t9l_vals=$(T9X_P="$T9X_P" t9x_run "$t9l_sb2" "$t9l_sb2/tmp" "$T9X_SRC; $T9X_LOOKUPS_ECHO")
+t9l_want=$(printf '%s\n%s\n%s\n%s\n%s' "$t9l_expected" "$t9l_expected" "$t9l_expected" "$t9l_expected" "$t9l_expected")
+assert_eq "T9L 5 lookups with no ensure return the uncached value" "$t9l_want" "$t9l_vals"
+assert_eq "T9L 5 lookups with no ensure mint 0 directories" "0" "$(t9x_dirs "$t9l_sb2/tmp")"
+t9l_sb3=$(t9x_sandbox)
+t9x_run "$t9l_sb3" "$t9l_sb3/tmp" "$T9X_SRC; ( _arm_cache_dir_ensure )"
+assert_eq "T9L ensure inside a subshell mints 0 directories" "0" "$(t9x_dirs "$t9l_sb3/tmp")"
+T9X_P=""
+
+t9x_touch_rel() {
+    touch -d "$2" "$1" 2>/dev/null || touch -t "$3" "$1" 2>/dev/null || true
+}
+t9m_sb=$(t9x_sandbox); mkdir -p "$t9m_sb/home/.himmel/state"; printf '%s\n' "$t9m_sb/tmp" > "$t9m_sb/$T9X_STAMP_REL"
+t9x_run "$t9m_sb" "$t9m_sb/tmp" "$T9X_SRC; _arm_cache_dir_ensure"
+assert_eq "T9M a fresh stamp for this TMPDIR skips the GC find" "0" "$(t9x_calls "$t9m_sb")"
+t9m_sb=$(t9x_sandbox); mkdir -p "$t9m_sb/home/.himmel/state"; printf '%s\n' "$t9m_sb/tmp" > "$t9m_sb/$T9X_STAMP_REL"
+t9x_touch_rel "$t9m_sb/$T9X_STAMP_REL" '2 hours ago' 202001010000
+t9x_run "$t9m_sb" "$t9m_sb/tmp" "$T9X_SRC; _arm_cache_dir_ensure"
+assert_eq "T9M a stamp backdated 2 hours runs the GC find once" "1" "$(t9x_calls "$t9m_sb")"
+if t9x_fresh "$t9m_sb/$T9X_STAMP_REL"; then echo "PASS T9M the backdated stamp was refreshed"; else echo "FAIL T9M the backdated stamp was not refreshed"; FAILED=$((FAILED + 1)); fi
+t9m_sb=$(t9x_sandbox); mkdir -p "$t9m_sb/home/.himmel/state"; printf '%s\n' "$t9m_sb/tmp" > "$t9m_sb/$T9X_STAMP_REL"
+t9x_touch_rel "$t9m_sb/$T9X_STAMP_REL" '2 hours' 203601010000
+t9x_run "$t9m_sb" "$t9m_sb/tmp" "$T9X_SRC; _arm_cache_dir_ensure"
+assert_eq "T9M a stamp dated 2 hours ahead counts as stale and runs the GC find once" "1" "$(t9x_calls "$t9m_sb")"
+if t9x_fresh "$t9m_sb/$T9X_STAMP_REL"; then echo "PASS T9M the future-dated stamp was refreshed"; else echo "FAIL T9M the future-dated stamp was not refreshed"; FAILED=$((FAILED + 1)); fi
+t9m_sb=$(t9x_sandbox); mkdir -p "$t9m_sb/home/.himmel/state" "$t9m_sb/tmpB"; printf '%s\n' "$t9m_sb/tmpB" > "$t9m_sb/$T9X_STAMP_REL"
+t9x_run "$t9m_sb" "$t9m_sb/tmp" "$T9X_SRC; _arm_cache_dir_ensure"
+assert_eq "T9M a fresh stamp that records another TMPDIR does not skip this TMPDIR's GC find" "1" "$(t9x_calls "$t9m_sb")"
+assert_eq "T9M the stamp now records this TMPDIR" "$t9m_sb/tmp" "$(cat "$t9m_sb/$T9X_STAMP_REL")"
+t9m_sb=$(t9x_sandbox); mkdir -p "$t9m_sb/home/.himmel/state"
+printf 'target-original\n' > "$t9m_sb/target"
+t9x_touch_rel "$t9m_sb/target" '3 hours ago' 202001010000
+ln -s "$t9m_sb/target" "$t9m_sb/$T9X_STAMP_REL"
+t9x_run "$t9m_sb" "$t9m_sb/tmp" "$T9X_SRC; _arm_cache_dir_ensure"
+assert_eq "T9M a symlinked stamp runs the GC find once" "1" "$(t9x_calls "$t9m_sb")"
+assert_eq "T9M a symlinked stamp's target content is not written through" "target-original" "$(cat "$t9m_sb/target")"
+if grep -q . <<< "$("$T9X_REAL_FIND" "$t9m_sb/target" -maxdepth 0 -mmin +60)"; then echo "PASS T9M a symlinked stamp's target mtime is unchanged"; else echo "FAIL T9M a symlinked stamp's target was touched"; FAILED=$((FAILED + 1)); fi
+t9m_sb=$(t9x_sandbox); mkdir -p "$t9m_sb/$T9X_STAMP_REL"
+t9x_run "$t9m_sb" "$t9m_sb/tmp" "$T9X_SRC; _arm_cache_dir_ensure"
+assert_eq "T9M a stamp that is a directory runs the GC find once" "1" "$(t9x_calls "$t9m_sb")"
+t9m_sb=$(t9x_sandbox)
+t9x_run "$t9m_sb" "$t9m_sb/tmp" "$T9X_SRC; _arm_cache_dir_ensure"
+assert_eq "T9M a home with no state directory runs the GC find once" "1" "$(t9x_calls "$t9m_sb")"
+assert_eq "T9M a home with no state directory is not written to" "absent" "$([ -e "$t9m_sb/home/.himmel" ] && echo present || echo absent)"
+if [ "$(id -u)" -eq 0 ]; then
+    echo "SKIP T9M read-only state directory cases: running as root ignores the mode bits"
+else
+    t9m_sb=$(t9x_sandbox); mkdir -p "$t9m_sb/home/.himmel/state"; chmod 0500 "$t9m_sb/home/.himmel/state"
+    t9x_run "$t9m_sb" "$t9m_sb/tmp" "$T9X_SRC; _arm_cache_dir_ensure"
+    assert_eq "T9M a read-only state directory runs the GC find once" "1" "$(t9x_calls "$t9m_sb")"
+    chmod 0700 "$t9m_sb/home/.himmel/state"
+    t9m_sb=$(t9x_sandbox); mkdir -p "$t9m_sb/home/.himmel/state"; chmod 0500 "$t9m_sb/home/.himmel/state"
+    t9m_out=$(t9x_run "$t9m_sb" "$t9m_sb/tmp" "$T9X_STRICT; $T9X_SRC; _arm_cache_dir_ensure; echo reached"); t9m_rc=$?
+    chmod 0700 "$t9m_sb/home/.himmel/state"
+    assert_eq "T9M ensure under set -euo pipefail with a read-only state directory reaches the next line" "reached 0" "$t9m_out $t9m_rc"
+fi
+t9m_sb=$(t9x_sandbox)
+t9m_out=$(t9x_run "$t9m_sb" "$t9m_sb/tmp" "$T9X_STRICT; unset HOME _ARM_CACHE_DIR; $T9X_SRC; _arm_cache_dir_ensure; echo reached"); t9m_rc=$?
+assert_eq "T9M ensure under set -euo pipefail with HOME unset reaches the next line" "reached 0" "$t9m_out $t9m_rc"
+t9m_sb=$(t9x_sandbox); mkdir -p "$t9m_sb/home/.himmel/state"
+printf 'target-original\n' > "$t9m_sb/target"
+ln -s "$t9m_sb/target" "$t9m_sb/$T9X_STAMP_REL"
+t9m_out=$(t9x_run "$t9m_sb" "$t9m_sb/tmp" "$T9X_STRICT; $T9X_SRC; _arm_cache_dir_ensure; echo reached"); t9m_rc=$?
+assert_eq "T9M ensure under set -euo pipefail with a symlinked stamp reaches the next line" "reached 0" "$t9m_out $t9m_rc"
+
+# T9N: a directory the user does not own is not a usable cache directory.
+# /tmp is writable but owned by root, so only the ownership test can reject it;
+# the row runs no lookup, so nothing is written to /tmp.
+if [ -O /tmp ]; then
+    echo "SKIP T9N: /tmp is owned by this user (running as root), so no foreign-owned directory exists to test"
+else
+    t9n_saved="$_ARM_CACHE_DIR"
+    _ARM_CACHE_DIR=/tmp
+    _arm_cache_dir_usable; t9n_rc=$?
+    _ARM_CACHE_DIR="$t9n_saved"
+    if [ "$t9n_rc" -ne 0 ]; then
+        echo "PASS T9N a writable directory owned by another user is not usable"
+    else
+        echo "FAIL T9N a writable directory owned by another user was accepted as the cache directory"
+        FAILED=$((FAILED + 1))
+    fi
+fi
 
 # T10: _arm_realpath on a host whose realpath lacks -m (macOS/BSD)
 # and has no armored python must still canonicalise -- T8a/T8b/T9f went red in the

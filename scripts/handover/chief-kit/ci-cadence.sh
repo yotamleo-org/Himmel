@@ -7,7 +7,7 @@
 #   ci-cadence.sh field             the tick's cadence= value: <name>:<state>:<age>:<run id>[:RED|:SKIP|:MISSED],...
 #                                   or `?` when gh cannot be read and nothing fresh is cached
 #   ci-cadence.sh review            the tick's review= value: the daily failure review as one more scheduled
-#                                   row (see cmd_review): <date>:<age>:<failures>:<new>:<new 5+>:<filed>[:CAPPED][:STALE]
+#                                   row (see cmd_review): <date>:<age>:<failures>:<new>:<new 5+>:<filed>[:STALE]
 #   ci-cadence.sh cause <workflow> <run id> <RED|SKIP|MISSED>
 #                                   one line for the wake: the run URL and why (the first failing job and
 #                                   step, the skip, or the missing run)
@@ -130,9 +130,9 @@ cmd_field() {
 
 # cmd_review — the daily failure review as one more scheduled row (operator decision 593). A read-only
 # look at the newest failure-review-<date>.md and its .json sidecar (scripts/eval/worker-digest):
-#   <date>:<age>:<failures>:<new classes>:<new classes with 5+ rows>:<filed keys joined by +, or ->[:CAPPED][:STALE]
+#   <date>:<age>:<failures>:<new classes>:<new classes with 5+ rows>:<filed keys joined by +, or ->[:STALE]
 # `new` = classes the ledger had no earlier row of (recurring false); filed = the routing decisions that
-# filed a ticket; CAPPED = the router hit its daily create cap; STALE = no review for 26 hours.
+# filed a ticket; STALE = no review for 26 hours.
 # `none` = no review file; a missing or unreadable sidecar reads `?` for the counts.
 cmd_review() {
     local dir md day mtime age counts rows new big filed flags=""
@@ -143,10 +143,9 @@ cmd_review() {
     day="${md##*failure-review-}"; day="${day%.md}"
     mtime="$(stat -c %Y "$md" 2>/dev/null)" || mtime=0  # gnu-ok: Linux-only kit; swallow-ok: an unreadable mtime reads as age unknown
     age=$(( $(now) - mtime )); [ "$age" -ge 0 ] || age=0
-    counts="$(jq -r '[(.totals.rows // 0), ([.classes[] | select(.recurring == false and (.class | startswith("traj/") | not))] | length), ([.classes[] | select(.recurring == false and .rows >= 5 and (.class | startswith("traj/") | not))] | length), ([.routing[] | select(.decision == "filed") | .ticket] | map(select(. != null and . != "")) | join("+") | if . == "" then "-" else . end), (any(.routing[]; .decision == "capped" or .decision == "would-cap") | tostring)] | @tsv' "${md%.md}.json" 2>/dev/null)" || counts=""  # swallow-ok: a missing sidecar reads ? for the counts
+    counts="$(jq -r '[(.totals.rows // 0), ([.classes[] | select(.recurring == false and (.class | startswith("traj/") | not))] | length), ([.classes[] | select(.recurring == false and .rows >= 5 and (.class | startswith("traj/") | not))] | length), ([.routing[] | select(.decision == "filed") | .ticket] | map(select(. != null and . != "")) | join("+") | if . == "" then "-" else . end)] | @tsv' "${md%.md}.json" 2>/dev/null)" || counts=""  # swallow-ok: a missing sidecar reads ? for the counts
     if [ -n "$counts" ]; then
-        IFS=$'\t' read -r rows new big filed capped <<< "$counts"
-        [ "$capped" != true ] || flags="$flags:CAPPED"
+        IFS=$'\t' read -r rows new big filed <<< "$counts"
     else
         rows='?'; new='?'; big='?'
     fi

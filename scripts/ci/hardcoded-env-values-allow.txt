@@ -24,3 +24,5 @@
 # fork registry and pin rows carry repo slugs by design; JSON cannot hold an env-literal-ok marker
 ^marketplace/\.claude-plugin/marketplace\.json$
 ^scripts/guardrails/himmel-adapters\.json$
+# the Jira project resolver names the default project and builds the mirror path
+^scripts/lib/jira-project\.sh$

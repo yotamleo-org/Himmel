@@ -3,6 +3,12 @@
 Specs and plans to approve go as HTML (Markdown is hard to read on a phone); any other
 file (report, log, PDF, image) up to 50 MB goes as it is.
 
+**A text reply is short.** The operator reads `chief-route.ts reply` on a phone: one idea per message,
+plain words, the ask on its own last line. Several short replies beat one long one. A reply over 3000
+characters is never cut: it goes as several messages in order, each opening `(1/3)`, `(2/3)`, `(3/3)`,
+split at a paragraph, then a line, then a sentence break. Needing the split usually means the reply is
+too long: say less, or send the detail as a file.
+
 Read on demand from `chief-template.md` step 11 (Telegram inbox). Run from the repo root:
 
 ```

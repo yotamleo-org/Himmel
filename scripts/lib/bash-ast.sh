@@ -7,8 +7,9 @@
 #   one simple command (inside substitutions, subshells, nested `bash -c` and
 #   `eval` bodies too):
 #
-#     prog     the program after unwrapping command/builtin/exec/nohup/env,
-#              basename only; null for a redirect-only statement
+#     prog     the program after unwrapping command/builtin/exec/nohup/env and
+#              the zsh precommand words noglob/nocorrect/-, basename only (an
+#              =cmd word reads as cmd); null for a redirect-only statement
 #     argv     [arg] from the program word on; arg is {t:"lit", v, g, raw}
 #              (one per word bash makes: brace expansion splits a word, g = an
 #              unquoted glob char survived) or {t:"dyn"|"amb", raw}
@@ -27,6 +28,9 @@
 #              stdin, …), else null
 #     body     the literal `bash -c`/`eval` body, re-parsed into the
 #              positions that follow it
+#     stdin    true when it is a shell reading its script from stdin, directly
+#              or as the inner command of a runner (nice sh, timeout 5 sh); a
+#              shell given -c or a script file is false; every position has it
 #     pipe     {id, stage, n}: the innermost pipeline it runs in, its stage
 #              (0-based) of n, else null. A brace group, subshell, loop or
 #              `bash -c` body takes its element's stage; a $(…) or backtick
@@ -34,7 +38,8 @@
 #
 #   S0 is the starting cwd set (default [[]]); TAGS the starting `in`.
 #   rc 2 = shfmt or jq missing (the message says so; the caller fails closed),
-#   rc 3 = shfmt could not parse the command, rc 4 = the model failed, rc 5 =
+#   rc 3 = shfmt could not parse the command, rc 4 = the model failed (the main
+#   call or any jq step after it: a body is never dropped with rc 0), rc 5 =
 #   the model ran past its bound: BASH_AST_TIMEOUT_S (1-13) when set, else
 #   10 s plus 1 s per KiB of command past 4 KiB, at most 40 s, which stays 5 s
 #   inside the hook runner's member window; BASH_AST_MAX_S caps either (a
@@ -436,12 +441,18 @@ def _opts_env:
       (if ($o | split("=")[0] | test(_names)) then .taint = true else . end) | .ea += [$o | split("=")[0]] | .a |= .[1:] | _opts_env
     else . end;
 
+# a command word's name: zsh's =cmd reads as cmd, then the directory part goes
+def _cmdname: (if test("^=.") then .[1:] else . end) | sub("^.*/"; "");
+# zsh precommand modifiers: they wrap the command that follows
+def _precmds: ["noglob", "nocorrect", "-"];
+
 def _unwrap:
   if .opaque != null or .lookup or (.a | length) == 0 then .
   else (.a[0] | _l1) as $c0
   | if $c0 == null then .opaque = "a command word this model cannot read"
-    else ($c0 | sub("^.*/"; "")) as $n
-    | if $n == "command" then .via += [$n] | .a |= .[1:] | _opts_command | _unwrap
+    else ($c0 | _cmdname) as $n
+    | if ($n | IN(_precmds[])) then .via += [$n] | .a |= .[1:] | _unwrap
+      elif $n == "command" then .via += [$n] | .a |= .[1:] | _opts_command | _unwrap
       elif $n == "builtin" then .via += [$n] | .a |= .[1:] | _unwrap
       elif $n == "exec" then .via += [$n] | .a |= .[1:] | _opts_exec | _unwrap
       elif $n == "nohup" then .via += [$n] | .a |= .[1:] | (if (.a[0] | _l1) == "--" then .a |= .[1:] else . end) | _unwrap
@@ -454,12 +465,12 @@ def _unwrap:
 def _shell:
   def go($i; $c):
     .a[$i] as $x | ($x | _l1) as $o
-    | if $x == null then (if $c then . else .opaque = "a shell reading commands from stdin" end)
+    | if $x == null then (if $c then . else .opaque = "a shell reading commands from stdin" | .stdin = true end)
       elif $o == null then .opaque = "a shell argument this model cannot read"
       elif $o == "--" or $o == "-" then go($i + 1; $c)
       elif ($o | startswith("--")) then go($i + 1; $c)
       elif ($o | test("^[-+][A-Za-z]+$")) then
-        if ($o | test("s")) then .opaque = "a shell reading commands from stdin"
+        if ($o | test("s")) then .opaque = "a shell reading commands from stdin" | .stdin = true
         else go($i + (if ($o | test("[oO]")) then 2 else 1 end); $c or ($o | test("^-[A-Za-z]*c"))) end
       elif $c then .body = $o
       else . end;
@@ -467,7 +478,7 @@ def _shell:
 
 def _classify:
   if .opaque != null or .lookup or (.a | length) == 0 then .prog = (.via | last)
-  else (.a[0].v | sub("^.*/"; "")) as $n
+  else (.a[0].v | _cmdname) as $n
   | .prog = $n
   | if ($n | IN(_shells[])) then _shell
     elif $n == "eval" then
@@ -475,7 +486,11 @@ def _classify:
       elif all(.a[1:][]; .t == "lit" and (.g | not)) then .body = (.a[1:] | map(.v) | join(" ")) | .taint = true
       else .opaque = "an eval of a word this model cannot read" | .taint = true end
     elif $n == "source" or $n == "." then .opaque = "it runs a file in this shell" | .taint = true
-    elif ($n | IN(_runners[])) then .opaque = "it runs its arguments as a command (" + $n + ")"
+    elif ($n | IN(_runners[])) then
+      .opaque = "it runs its arguments as a command (" + $n + ")"
+      # the first argument word naming a shell starts the runner's stdin shell; .opaque and .body stay the runner's
+      | ([range(1; .a | length) as $i | select(.a[$i] | _l1 | (. != null) and (_cmdname | IN(_shells[]))) | $i] | first) as $k
+      | if $k != null then .stdin = ({a: .a[$k:], opaque: null} | _shell | .stdin // false) else . end
     elif $n == "find" and any(.a[]; (.v // "") | IN("-exec", "-execdir", "-ok", "-okdir")) then .opaque = "find runs a command"
     elif ($n | IN("set", "shopt", "alias", "unalias", "enable", "trap")) then .taint = true
     # the two array readers are spelled split so shell-lint's bash32 check skips this jq text
@@ -510,7 +525,7 @@ def _nav($S; $env):
 
 def _pos($st; $S; $tg; $env):
   {prog, argv: .a, via, lookup, redirs: ($st.redirs | map(_redir)), assigns: [], cwd: $S, ecwd: $S,
-   in: $tg, opaque, body, pipe: $env.pp};
+   in: $tg, opaque, body, pipe: $env.pp, stdin: (.stdin // false)};
 
 # . = a pipe cmd; the chain's elements in order, d = how many pipe nodes
 # enclose each (shfmt nests a | b | c to the left)
@@ -608,7 +623,7 @@ _bash_ast_timed_out() { # _bash_ast_timed_out CMD SECS: say so and log the comma
 }
 
 bash_ast_positions() {
-    local cmd=$1 s0=${2:-'[[]]'} tags=${3:-'[]'} depth=${4:-0} scope=${5:-0} p0=${6:-null} tree pos line inner acc rc k=0 tb secs over
+    local cmd=$1 s0=${2:-'[[]]'} tags=${3:-'[]'} depth=${4:-0} scope=${5:-0} p0=${6:-null} tree pos line inner acc rc k=0 tb secs over has bodies b cw tg pp
     if ! command -v shfmt >/dev/null 2>&1; then
         echo "bash-ast: shfmt not on PATH, so the command model cannot run and the guard fails closed. Install shfmt (a station install goes to a test VM first)." >&2
         return 2
@@ -665,24 +680,37 @@ bash_ast_positions() {
         fi
         return 4
     }
-    if ! printf '%s' "$pos" | jq -e 'any(.[]; .body != null)' >/dev/null; then
-        printf '%s\n' "$pos"
-        return 0
-    fi
+    has=0
+    printf '%s' "$pos" | jq -e 'any(.[]; .body != null)' >/dev/null 2>&1 || has=$?
+    case $has in
+        0) ;;
+        1)
+            printf '%s\n' "$pos"
+            return 0
+            ;;
+        *)
+            echo "bash-ast: the command model could not read the command." >&2
+            return 4
+            ;;
+    esac
     if [ "$depth" -ge 4 ]; then
-        printf '%s' "$pos" | jq -c 'map(if .body != null then .opaque = "shell bodies nested past depth 4" else . end)'
+        printf '%s' "$pos" | jq -c 'map(if .body != null then .opaque = "shell bodies nested past depth 4" else . end)' || return 4
         return 0
     fi
+    bodies=$(printf '%s' "$pos" | jq -c '.[] | select(.body != null)') || return 4
     acc=$pos
     while IFS= read -r line; do
-        inner=$(bash_ast_positions "$(printf '%s' "$line" | jq -r .body)" \
-            "$(printf '%s' "$line" | jq -c '.cwd + (if (.assigns | index("CDPATH")) != null then [null] else [] end) | unique | if length > 16 then [null] else . end')" \
-            "$(printf '%s' "$line" | jq -c '.in + [if .prog == "eval" then "eval" else "shell-c" end]')" \
-            $((depth + 1)) "$scope.$k" "$(printf '%s' "$line" | jq -c .pipe)")
+        b=$(printf '%s' "$line" | jq -r .body) || return 4
+        cw=$(printf '%s' "$line" | jq -c '.cwd + (if (.assigns | index("CDPATH")) != null then [null] else [] end) | unique | if length > 16 then [null] else . end') || return 4
+        tg=$(printf '%s' "$line" | jq -c '.in + [if .prog == "eval" then "eval" else "shell-c" end]') || return 4
+        pp=$(printf '%s' "$line" | jq -c .pipe) || return 4
+        inner=$(bash_ast_positions "$b" "$cw" "$tg" $((depth + 1)) "$scope.$k" "$pp")
         rc=$?
         [ "$rc" = 0 ] || return "$rc"
         k=$((k + 1))
         acc="$acc"$'\n'"$inner"
-    done < <(printf '%s' "$pos" | jq -c '.[] | select(.body != null)')
-    printf '%s\n' "$acc" | jq -cs 'add'
+    done <<EOF
+$bodies
+EOF
+    printf '%s\n' "$acc" | jq -cs 'add' || return 4
 }

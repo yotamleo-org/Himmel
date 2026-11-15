@@ -62,6 +62,13 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
 # shellcheck source=../../lib/gh-quota.sh
 . "$HERE/../../lib/gh-quota.sh"
+GH_READ_BIN="$HERE/../../lib/gh-read.sh"
+[ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
+if [ "$GH_READ_BIN" != gh ]; then
+    # shellcheck source=../../lib/gh-read.sh
+    . "$GH_READ_BIN"
+    GH_READ_QUIET=1 gh_read_init
+fi
 
 usage() {
     printf 'usage: pr-stall.sh [--repo owner/name] [--manifest fleet.json] [--conflict-min N] [--noci-min N] [--slow-min M] [--idle-h H] [--notify]\n' >&2
@@ -98,9 +105,9 @@ done
 
 fields="number,headRefName,headRefOid,mergeable,mergeStateStatus,statusCheckRollup,updatedAt,createdAt"
 # swallow-ok: stderr only; every failed read below exits 3 through unknown
-list="$(gh pr list -R "$repo" --state open --limit 1000 --json "$fields" 2>/dev/null)" || unknown
+list="$(gh pr list -R "$repo" --state open --limit 1000 --json "$fields" 2>/dev/null)" || unknown  # gh-main-ok: permission-dependent answer
 # swallow-ok: stderr only; a failed read exits 3 through unknown
-runs="$(gh run list -R "$repo" --limit 50 --json status 2>/dev/null)" || unknown
+runs="$(GH_READ_NO_MAIN_FALLBACK=1 "$GH_READ_BIN" run list -R "$repo" --limit 50 --json status 2>/dev/null)" || unknown
 # swallow-ok: stderr only; a failed read exits 3 through unknown
 queue="$(printf '%s' "$runs" | jq '[.[] | select(.status == "queued" or .status == "in_progress")] | length' 2>/dev/null)" || unknown
 # swallow-ok: stderr only; a failed read exits 3 through unknown
@@ -217,7 +224,7 @@ for n in $numbers; do
     # swallow-ok: a failed mergeable read skips the re-read; the classify step below fails closed
     if [ "$(printf '%s' "$pr" | jq -r '.mergeable' 2>/dev/null)" = "UNKNOWN" ]; then
         # swallow-ok: stderr only; a failed read exits 3 through unknown
-        pr="$(gh pr view "$n" -R "$repo" --json "$fields" 2>/dev/null)" || unknown
+        pr="$(gh pr view "$n" -R "$repo" --json "$fields" 2>/dev/null)" || unknown  # gh-main-ok: permission-dependent answer
     fi
     # swallow-ok: stderr only; a failed classify exits 3 through unknown
     res="$(printf '%s' "$pr" | jq -r --argjson now "$now" --argjson noci "$noci_min" --argjson slow "$slow_min" --argjson idle "$idle_h" --argjson queue "$queue" "$JQ_CLASSIFY" 2>/dev/null)" || unknown

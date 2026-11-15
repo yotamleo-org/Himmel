@@ -49,7 +49,10 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     its worker wrapped: the wake is `WAKE tick changed=dispatch` and the tick line carries one
     `ACTION dispatch-stall <run> <worker> (<branch>): <reasons>` line per run; look with
     `gh run view <run>`, cancel it or tell the worker. Elapsed time, job counts and `stale-head` never
-    wake, and a run leaving the set does not), `board=` (its class — the STALE age alone does not wake, and a
+    wake, and a run leaving the set does not), `owed=` (the `ACTION owed-stale=<n>:<ids>` count of keyless
+    ticket rows of the owed ledger past 4 h: the wake is `WAKE tick changed=owed` when that count rises;
+    the age, an open row that is not stale and a row closed with a key never wake, and `owed=?` keeps
+    the saved count; see `owed.md`), `board=` (its class — the STALE age alone does not wake, and a
     move TO `ok` never wakes on its own either, since that's just the chief's
     own render; the key still saves, so a later move to STALE/MISSING wakes
     again) and the
@@ -76,10 +79,17 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     here is yours to triage: open the link, fix or ticket it, never leave it for the next wake.
 
     **`WAKE review <date> <reasons>`** (decision 593): the tick prints the daily failure
-    review as `review=<date>:<age>:<failures>:<new>:<new5+>:<filed>[:CAPPED][:STALE]` (`none` is left off
-    the line). The waiter wakes once per review day when the router filed a ticket, a new class has 5 or
-    more failures, or the create cap was hit, and once per last-review date when the review is STALE (no
+    review as `review=<date>:<age>:<failures>:<new>:<new5+>:<filed>[:STALE]` (`none` is left off
+    the line). The waiter wakes once per review day when the router filed a ticket or a new class has 5 or
+    more failures, and once per last-review date when the review is STALE (no
     review for 26 h). A class with a single failure never wakes you (`<inbox>.wait.review`).
+
+    **`WAKE rm-intake INTAKE=<n> since=<h>h capacity=UNDERFILLED:<m>`**: with `--doc` whose
+    `release:` line names a release, the tick's `INTAKE=<n>` (versionless work outside the pool) has stood
+    above 0 for more than 6 h (`CHIEF_WAIT_INTAKE_ARM_HOURS`) while the fleet is UNDERFILLED. The next line
+    names the `rm-run` command: file each INTAKE key, then run the pass; the waiter launches nothing. The
+    clock is `<inbox>.wait.intake` and resets when INTAKE returns to 0. One wake per 6 h
+    (`CHIEF_WAIT_INTAKE_REWAKE_MIN`), none while the release manager lease is held or unreadable.
 
     **`WAKE rm-refused <KEY>@<ruling> — fix: <reason>`** and **`WAKE rm-refused-digest <n> new: <KEY>@<ruling>,...`**:
     with `--doc` and the tick's `rm-refused=` field on the line, the waiter reads the tick's

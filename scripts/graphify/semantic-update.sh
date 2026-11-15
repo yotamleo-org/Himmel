@@ -58,9 +58,10 @@
 # doc-to-code edges of relation `documents`, `explains` or `rationale_for`. Its
 # extraction cache is kept apart (cache/semantic-r1), so a chunk cached under the
 # old prompt is never replayed without them. The per-run spend cap (--max-run-usd,
-# default 15.00; GRAPHIFY_API_RUN_BUDGET_USD) sizes the run. On the synchronous lane path it is a planning input:
-# chunks are sized to fit it, spend past it is logged as a WARN and the calls go on; only the API refusing for lack
-# of credit stops a chunk, and the finished chunks still merge. A batch is held to it: its chunks are sized with
+# default 15.00; GRAPHIFY_API_RUN_BUDGET_USD) sizes the run and holds on both paths. On the synchronous lane path a
+# call is not sent when the verified spend, the budgets reserved by failed and in-flight calls, and its own per-call
+# budget would pass the cap: the shim exits 7, the finished chunks merge, the refused files stay unstamped and the run
+# ends over-cap (exit 3). A batch is held to it too: its chunks are sized with
 # the batch client's per-request bound (`semantic-batch.mjs bound`: the prompt's bytes, framing and the output cap),
 # the same figure the client sums, and the client refuses a submit whose estimate is over the cap (exit 7). The
 # plan counts chunks by ideal packing, while graphify slices a large markdown file into more requests, so on that
@@ -109,8 +110,9 @@
 # first run treats every file as changed.
 #
 # Exit: 0 ok / no-op (a batch submitted or still pending is 0: the graph is untouched, the next run resumes it); 1 usage or IO; 2 fence deny, batch submit failure (nothing submitted), graphify or merge failure, a claude-api run while the station's graph config reads unreadable (nothing copied, no model call; --seed-manifest and --dry-run are exempt);
-# 3 bank at/over threshold, or a refusal only the new flags make (a waiting batch, a verdict other than PROCEED,
-# over-cap), nothing touched; 4 promote lock held; 5 some chunks failed (the good ones merged, the failed
+# 3 bank at/over threshold, or a refusal only the new flags make (a waiting batch, a verdict other than PROCEED),
+# nothing touched, or over-cap (a batch: nothing submitted; the synchronous path: the chunks sent before the cap
+# merged, the refused files unstamped); 4 promote lock held; 5 some chunks failed (the good ones merged, the failed
 # files stay unstamped): either a plain chunk failure or the lane's exit 6, a credit or key rejection that the
 # subscription fallback did not replay (fallback off, or its usage preflight skipped it), which also stops
 # dispatching the remaining chunks (one rejection on a pinned account, one per account in play on auto routing). A rejection the fallback
@@ -635,11 +637,6 @@ export HIMMEL_API_TOOLS=""
 # so the chunk-failed line carries the real reason (a budget stop, a refusal) and the exit code.
 out="$here/lane-out.$$"
 err="$here/lane-err.$$"
-# The run cap sized the plan; spend past it is a warning, never a refusal.
-spent="$(awk '{ s += $1 } END { printf "%.6f", s + 0 }' "$GRAPHIFY_SEMANTIC_SPEND_FILE" "$GRAPHIFY_SEMANTIC_RESERVE_FILE")"
-if awk -v s="$spent" -v c="$GRAPHIFY_SEMANTIC_RUN_CAP" 'BEGIN { exit !(s + 0 >= c + 0) }'; then
-  echo "claude-api shim: WARN: run spend $spent is past the planned cap $GRAPHIFY_SEMANTIC_RUN_CAP USD; the call goes on" >&2
-fi
 in="$here/lane-in.$$"
 cat > "$in" || { rm -f "$in"; echo "claude-api shim: could not capture the prompt; not dispatching this chunk" >&2; exit 1; }
 # The addendum is fixed text, so it goes ahead of the chunk, right after graphify's instructions, where every call
@@ -655,6 +652,26 @@ if [ "${GRAPHIFY_API_SYSTEM_PROMPT:-}" = 1 ] && [ -n "$mark" ] && [ "$mark" -gt 
     && system_args=(--append-system-prompt-file "$system")
   rm -f "$candidate"
 fi
+# shellcheck source=/dev/null
+. "$GRAPHIFY_SEMANTIC_PRIM" || { rm -f "$in"; echo "claude-api shim: cannot load the lock primitive; not dispatching this chunk" >&2; exit 2; }
+held="$here/inflight.$$"
+cap_reserve() {
+  local f held_files=()
+  for f in "$here"/inflight.*; do [ ! -f "$f" ] || held_files+=("$f"); done
+  awk -v b="$GRAPHIFY_SEMANTIC_LANE_BUDGET" -v c="$GRAPHIFY_SEMANTIC_RUN_CAP" -v sf="$GRAPHIFY_SEMANTIC_SPEND_FILE" '
+    function u(x) { return int(x * 1000000 + 0.5) }
+    FILENAME == sf { s += u($1); next }
+    { r += u($1) }
+    END {
+      if (s + r + u(b) <= u(c)) exit 0
+      printf "claude-api shim: run spend cap reached (spent %.2f of %s USD); call refused: spend %.2f + reserved %.2f + this call'\''s budget %s would pass the cap; not dispatching this chunk\n", s / 1e6, c, s / 1e6, r / 1e6, b
+      exit 7
+    }' "$GRAPHIFY_SEMANTIC_SPEND_FILE" "$GRAPHIFY_SEMANTIC_RESERVE_FILE" ${held_files[@]+"${held_files[@]}"} >&2 || return
+  echo "$GRAPHIFY_SEMANTIC_LANE_BUDGET" > "$held"
+}
+with_lock "$here/cap.lock" cap_reserve; crc=$?
+if [ "$crc" -eq 7 ]; then rm -f "$in"; echo capped >> "$here/capped"; exit 7; fi
+[ "$crc" -eq 0 ] || { rm -f "$in"; echo "claude-api shim: the run cap check failed (rc $crc); not dispatching this chunk" >&2; exit 2; }
 if [ "${#system_args[@]}" -gt 0 ]; then
   tail -n +"$mark" "$in"
 elif [ -n "$mark" ] && [ "$mark" -gt 1 ]; then
@@ -674,11 +691,15 @@ cat "$err" >&2
 # attempt before the replay may still have been billed (a timeout, a budget stop), so its per-call budget is
 # reserved unless it was refused or rejected before any billable work.
 cost="$(node "$GRAPHIFY_SEMANTIC_OUTCOME_BIN" "$out" 2>/dev/null)"
-if grep -q '^claude-api: fallback: running on the subscription' "$err"; then
-  grep -Eq '^claude-api: (refused: |account .* (credit exhausted|API key rejected))' "$err" || echo "$GRAPHIFY_SEMANTIC_LANE_BUDGET" >> "$GRAPHIFY_SEMANTIC_RESERVE_FILE"
-elif [ "$rc" -eq 6 ]; then echo rejected >> "$here/rejected"
-elif [ "$rc" -eq 2 ] && [ ! -s "$out" ] && grep -q '^claude-api: refused: ' "$err"; then :
-elif [ -n "$cost" ]; then echo "$cost" >> "$GRAPHIFY_SEMANTIC_SPEND_FILE"; else echo "$GRAPHIFY_SEMANTIC_LANE_BUDGET" >> "$GRAPHIFY_SEMANTIC_RESERVE_FILE"; fi
+settle() {
+  if grep -q '^claude-api: fallback: running on the subscription' "$err"; then
+    grep -Eq '^claude-api: (refused: |account .* (credit exhausted|API key rejected))' "$err" || echo "$GRAPHIFY_SEMANTIC_LANE_BUDGET" >> "$GRAPHIFY_SEMANTIC_RESERVE_FILE"
+  elif [ "$rc" -eq 6 ]; then echo rejected >> "$here/rejected"
+  elif [ "$rc" -eq 2 ] && [ ! -s "$out" ] && grep -q '^claude-api: refused: ' "$err"; then :
+  elif [ -n "$cost" ]; then echo "$cost" >> "$GRAPHIFY_SEMANTIC_SPEND_FILE"; else echo "$GRAPHIFY_SEMANTIC_LANE_BUDGET" >> "$GRAPHIFY_SEMANTIC_RESERVE_FILE"; fi || return
+  rm -f "$held"
+}
+with_lock "$here/cap.lock" settle
 [ "$rc" -eq 0 ] || echo "claude-api shim: lane exited $rc; result: $(tail -c 400 "$out" | tr '\n' ' ')" >&2
 cat "$out"; rm -f "$out" "$err" "$in"
 exit "$rc"
@@ -694,7 +715,7 @@ ADD
     : > "$WORK/spend.log"; : > "$WORK/reserve.log"
     export GRAPHIFY_SEMANTIC_ADDENDUM="$WORK/addendum.txt" GRAPHIFY_SEMANTIC_SPEND_FILE="$WORK/spend.log" GRAPHIFY_SEMANTIC_RUN_CAP="$RUN_CAP"
     export GRAPHIFY_SEMANTIC_RESERVE_FILE="$WORK/reserve.log"
-    export GRAPHIFY_SEMANTIC_OUTCOME_BIN="$REPO_ROOT/scripts/api-lane/outcome.mjs"
+    export GRAPHIFY_SEMANTIC_OUTCOME_BIN="$REPO_ROOT/scripts/api-lane/outcome.mjs" GRAPHIFY_SEMANTIC_PRIM="$REPO_ROOT/scripts/lib/prim.sh"
     export GRAPHIFY_SEMANTIC_LANE_BIN="$REPO_ROOT/scripts/api-lane/claude-api.sh" GRAPHIFY_SEMANTIC_LANE_BUDGET="$API_CALL_BUDGET" GRAPHIFY_SEMANTIC_LANE_EFFORT="$API_EFFORT"
     export PATH="$WORK/bin:$PATH"
   fi
@@ -808,6 +829,12 @@ if [ "$RESUME" -eq 1 ]; then batch_line merged "$(batch_field cost_usd)"; fi
 [ "$BATCH_MODE" -eq 0 ] || rm -rf "$PENDING"
 RESULT_WORD=extracted
 if [ "$RESUME" -eq 1 ] || [ "$N_BATCH" -eq 0 ] || [ "$BATCH_MODE" -eq 1 ]; then RESULT_WORD=merged; fi
+CAPPED=0; [ ! -f "$WORK/bin/capped" ] || CAPPED="$(wc -l < "$WORK/bin/capped" | tr -d ' ')"
+_failed_n="${FAILED_CHUNKS%%/*}"
+if [ "$CAPPED" -gt 0 ] && [ "${_failed_n:-0}" -le "$CAPPED" ]; then
+  echo "semantic-update: over-cap: $CAPPED chunk(s) not sent at the run cap of $RUN_CAP USD (spent $(spent_usd)) -- the finished chunks merged, the refused files stay unstamped for the next run; raise --max-run-usd (GRAPHIFY_API_RUN_BUDGET_USD) to send them" >&2
+  RESULT_WORD=over-cap; exit 3
+fi
 # The chunks that did land are merged and stamped; the failed ones stay unstamped and retry next run. Exit 5 so a
 # loop on the exit code stops instead of re-billing the same failure.
 if [ -n "$FAILED_CHUNKS" ]; then

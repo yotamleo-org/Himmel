@@ -643,6 +643,12 @@
       "     \"CADENCE_POWERSHELL_OK=1 must be set in the shell that LAUNCHES claude\" \\"
     ]
   },
+  "scripts/hooks/check-commit-msg.sh": {
+    "reason": "classifier vocabulary (platform names the Platforms tested trailer accepts, a pinned copy of scripts/lib/attest-trailers.sh), not a Windows code path",
+    "lines": [
+      "  local plat_token_re='(linux|windows|macos|ubuntu|debian|fedora|arch|mac|darwin|wsl|posix|gitbash|git-bash|powershell|pwsh)'"
+    ]
+  },
   "scripts/hooks/check-no-headless-gemini.sh": {
     "reason": "guard detector: matches a Windows spelling (.exe / pwsh / PowerShell tool) so the guard stays closed",
     "lines": [
@@ -772,6 +778,12 @@
     "reason": "BOM strip stays defensive on any OS; comment true",
     "lines": [
       "// Strip a UTF-8 BOM (Windows editors/PowerShell 5.1 prepend one; it would"
+    ]
+  },
+  "scripts/lib/attest-trailers.sh": {
+    "reason": "classifier vocabulary (platform names the Platforms tested trailer accepts), not a Windows code path",
+    "lines": [
+      "ATTEST_PLATFORM_RE='(linux|windows|macos|ubuntu|debian|fedora|arch|mac|darwin|wsl|posix|gitbash|git-bash|powershell|pwsh)'"
     ]
   },
   "scripts/lib/graphify-bin.sh": {

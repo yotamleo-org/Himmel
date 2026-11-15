@@ -32,13 +32,13 @@
 set -uo pipefail
 
 PROM_VER="3.16.0"
-GRAF_VER="13.3.0"
+GRAF_VER="13.3.1"
 # sha256 of the upstream tarballs (prometheus: the release's sha256sums.txt;
 # grafana: dl.grafana.com's <tarball>.sha256). A mismatch aborts the install.
 PROM_SHA_AMD64="68727009472a2c02e1ff7f062fd5b3e637285bffc8fc2d340c76fb449d6e0f34"
 PROM_SHA_ARM64="fd8571b8162f4020232d886f17340bcf92e1722985ae3b4c1d096157826c0fbe"
-GRAF_SHA_AMD64="cec8f98cc59bc1a1945833b652371a073be678c5c159a9b1695ad63c04fae5a7"
-GRAF_SHA_ARM64="07015a0c34a8cfad8b3548984a86a7afe689e1929f5f77d9ae8f7636429e67fe"
+GRAF_SHA_AMD64="6acf8939dd2f73332cbcafc27a33973fb1115b8867e7ffa3223c6e2ecbed8531"
+GRAF_SHA_ARM64="a96fa3dfe94eebb036e53bb4c9c19a9b35bb19fb42f788baf17000f8b6972b33"
 
 HOST="127.0.0.1"
 PROM_PORT=9090

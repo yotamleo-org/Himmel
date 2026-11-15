@@ -7,13 +7,13 @@
 #   ~/.himmel/scrapling-venv/bin/python -m patchright install chromium   # user-level browser; NOT `scrapling install` (it runs sudo install-deps)
 # Run the harvest with that venv's python. ~360 MB venv + a Chromium download
 # (~1.3 GB shared ms-playwright cache); ~20 s venv install on a warm pip cache.
-anyio==4.15.1 \
-    --hash=sha256:6152fdbbf9a77fdec97731721bebf7c4c44f7c29b424b0065826173efc7ed101 \
-    --hash=sha256:9f28306018cbd6d329e64a36d58256edff76dd996fe423bc957326e578b82a94
+anyio==4.16.0 \
+    --hash=sha256:59bb03251907983d1603d27c3087ddb1e93299ea2163adcdba37899a4fb12ffb \
+    --hash=sha256:c66ae634e0b8228396b801741beb3294326d4b6102f7bba4041c0dfb58c29026
     # via scrapling
-apify-fingerprint-datapoints==0.15.0 \
-    --hash=sha256:5776fe73feaa3910265cae55599552b098f3a716d8872c9a0c2295ff2bb680dc \
-    --hash=sha256:fc9299b3136880f47b468897cd00ac622ad2c2a93e9cc9f972d10dbf5ed2b3aa
+apify-fingerprint-datapoints==0.16.0 \
+    --hash=sha256:0d187bf8d24566a517f915ad8e168208e4ab47fea5e900b08e9d0e7e9ba71da8 \
+    --hash=sha256:738742d9ed356dbbef9f8b8d7ae00ddc472abda9a0cf52d1baaf1557feae85c5
     # via
     #   browserforge
     #   scrapling
@@ -461,7 +461,7 @@ lxml==6.1.3 \
 markdownify==1.2.3 \
     --hash=sha256:1a176f05522c8a2cb1dd3ab9d307dcdadbed5c26ae717855bfc42b3b6d38d937 \
     --hash=sha256:a189a0bedfd14009030fde5f85bb6f77c56897cb839b5c25315dd7d4e3e290ba
-    # via -r /tmp/claude-1000/-home-overlord-Documents-github-himmel/230c4231-1fff-49ec-b5bb-594f3138d143/scratchpad/scrapling.in
+    # via -r requirements-scrapling.in
 msgspec==0.22.0 \
     --hash=sha256:0067057df265795f742658b15dbe53f3b6f21d19dcfa53676db11088cfa41e0a \
     --hash=sha256:024138c51afd335d0b4dce401be33902caafac2b64f8c9f2509a378986175d98 \
@@ -617,15 +617,16 @@ patchright==1.64.4 \
     --hash=sha256:a580aee16e89ef2552c67e8f388bbaf1b7d31b4b51211a1d4b584302b9feb69f \
     --hash=sha256:e8656d523df868304ca25b77c2a94f17fe9e582085d46a1e2c2d25469d66f7a9
     # via scrapling
-playwright==1.64.1 \
-    --hash=sha256:29453ff76e25c17d0b45658cacd6b92e9eec46e8db21e134fb3b7143df50f013 \
-    --hash=sha256:577b8d88778c245cfbd145ae17cf53044f084b1b46c55c69081d4069d56057e2 \
-    --hash=sha256:59f7b041284ce8d1b72098ae50ca48a2d83692eec25154ab5ba79d4b6b4fe8a9 \
-    --hash=sha256:5e240a79464434c9260957b9ef59a5808e02e96e3fcabdc717fd7485260b9730 \
-    --hash=sha256:6a6f99adad1ae40e6ee62efe89785db861ce7ddd57651521cb31894183cc4ae3 \
-    --hash=sha256:983ccd085453ea5a7588193657fc349a6ffbf7bf7ba663fd58dc81e4aa3af9d9 \
-    --hash=sha256:a29fda44725e11b0b625c4bff6458a1f6dbee97b88c9788d12e18a8344458c2d \
-    --hash=sha256:d3c48b31da426c2f3562d0919cb9ea4e5415f6dbd29d7211fa4d66cca24fbd2f
+playwright==1.65.1 \
+    --hash=sha256:0178cec62bfcc9c202f7d2c2c79c14ebac620c672f36ba31f0d7f0ee5ce87032 \
+    --hash=sha256:43541b89fa293819eb98383feea837368ee681e67cc105b19f3dd58f1409f1d6 \
+    --hash=sha256:4ffb9e62ee226130ec9333a062a3a30d6a12ee5e4d164a9076c2b54cd15cc14e \
+    --hash=sha256:5660e0b050a5bd5672bf8e366ed2580288a3d3640ff9444436ed2d890d3dc442 \
+    --hash=sha256:5f9542db4d3bff9943510297c1de4252bf8ee62c47fd5f5af3213645035ba6d7 \
+    --hash=sha256:a6c0db1447bcbe0493dcd23c84faf8e993fa7f8c1573b146a5c786df262f90b5 \
+    --hash=sha256:cd0eabebdadd45bd897a5465b358c26546cf0d7298492d66f609eec012a68de1 \
+    --hash=sha256:d50ad4dd217d4ee9e4672efd7ec4ab0523b5e73f64f6e0c5eae258961fa73a49 \
+    --hash=sha256:f9ea4f4b4f70ecc27ef0bd46a1b929798f1a8bf68b3e771261fc098bc98e1a0b
     # via scrapling
 protego==0.7.0 \
     --hash=sha256:2c032d9736a1f4f0c4318f3558353ae34da5cd038f1a5e064ded7548df315e5a \
@@ -635,23 +636,25 @@ pycparser==3.12 ; implementation_name != 'PyPy' \
     --hash=sha256:a076f3f489b39b43ed13563a1dafe42447445bec2e294154ec5c57fcdda4c85e \
     --hash=sha256:f03387877eab82ce01bbdfd0ba7252ee55a90b1c708d5129e2ce915475cf1db6
     # via cffi
-pyee==13.0.1 \
+pyee==13.0.1 ; python_full_version < '3.12' \
     --hash=sha256:0b931f7c14535667ed4c7e0d531716368715e860b988770fc7eb8578d1f67fc8 \
     --hash=sha256:af2f8fede4171ef667dfded53f96e2ed0d6e6bd7ee3bb46437f77e3b57689228
-    # via
-    #   patchright
-    #   playwright
+    # via patchright
+pyee==14.0.0 ; python_full_version >= '3.12' \
+    --hash=sha256:3ac2d3229a9677f7de2c33d7f52fe25b638a46b19c413fea2edc8c6d0a644e4d \
+    --hash=sha256:76dd0f4314ecd27f02dc73589dea7fd3853f9b6176d8ef9b122860657e3602de
+    # via patchright
 scrapling==0.5.1 \
     --hash=sha256:210e2b96cf2a67b0bb77e3671b2767bbad4ba41444b9a12adea7fd735b8cabaa \
     --hash=sha256:c9eb0ef22a05e00e19827a179544fea2bc91b663585f637d428453d3b00ceb17
-    # via -r /tmp/claude-1000/-home-overlord-Documents-github-himmel/230c4231-1fff-49ec-b5bb-594f3138d143/scratchpad/scrapling.in
+    # via -r requirements-scrapling.in
 six==1.17.0 \
     --hash=sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274 \
     --hash=sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81
     # via markdownify
-soupsieve==4.0 \
-    --hash=sha256:5e7494bfce90e06676cfb4c5c2cf22243e98e5cf24646bb1ecdda46d318550a0 \
-    --hash=sha256:ccd6470b256394ac44b08b86fd94b30a17d335a5335c8a3d15565f7b03d3c8cf
+soupsieve==4.1 \
+    --hash=sha256:ca9abf7126667010d8f6e9b39bfc1bc3b23c8aed9bcb0f54a754dde969bb8aab \
+    --hash=sha256:e4d667b3974ce6e038e7390486b8093369854a1d345ffdd4c121dfc4a782e809
     # via beautifulsoup4
 tld==0.13.2 \
     --hash=sha256:9b8fdbdb880e7ba65b216a4937f2c94c49a7226723783d5838fc958ac76f4e0c \
