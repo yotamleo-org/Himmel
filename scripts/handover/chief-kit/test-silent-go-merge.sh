@@ -214,7 +214,6 @@ reset yes; go_file "$SHA"
 check "(n15) another checkout's merge gate is never called" "0" "$(n "$STUB/merges")"
 check "(n15) the operator is alerted" "1" "$(n "$STUB/pages" "reason=not-checkout-root")"
 
-# --- (k1) the default page path passes the message kind silent-go-merge ---
 printf '#!/usr/bin/env bash\nprintf "%%s|%%s|%%s\\n" "$#" "${3-}" "$2" >> "$STUB/kind-pages"\n' > "$STUB/kind-sender.sh"
 chmod +x "$STUB/kind-sender.sh"
 printf '{"allowFrom":["4242"]}\n' > "$WORK/access.json"

@@ -87,7 +87,6 @@ alert worker-a rc-1 /tmp/q.log >/dev/null
 assert_has "A9g control: a delivered send writes the sentinel" "sentinels=1" "sentinels=$(sent_files)"
 assert_has "A9h control: a delivered send clears the marker" "mark=no" "mark=$([ -e "$TMP/send-failed" ] && echo yes || echo no)"
 
-# The sender gets the message kind cadence:<worker> in HIMMEL_ALERT_KIND; its one argument stays the message.
 cat >"$TMP/kind-sender.sh" <<EOF
 #!/usr/bin/env bash
 printf '%s|%s|%s\n' "\$#" "\${HIMMEL_ALERT_KIND-unset}" "\$1" >"$TMP/sent.msg"
@@ -98,8 +97,6 @@ assert_has "K1 the sender gets HIMMEL_ALERT_KIND=cadence:<worker> and the messag
 msg=$(SENDER="$TMP/kind-sender.sh" alert 'odd worker.x' rc-3 /tmp/q.log)
 assert_has "K2 the kind carries the worker's sentinel slug" "|cadence:odd_worker_x|" "$msg"
 
-# The whole chain: cadence-alert.sh, its default sender vault-stall-alert.sh, the
-# merge-block-alert.sh seam, then the real router with a fixture bridge root.
 if command -v bun >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
     cat >"$TMP/route-sender.sh" <<'EOF'
 #!/usr/bin/env bash

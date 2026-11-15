@@ -45,8 +45,6 @@ TELEGRAM_ACCESS_PATH="$TMP/access.json" MERGE_BLOCK_ALERT_CMD="$TMP/sender.sh" \
     bash "$SINK" 2>/dev/null
 assert_eq "V4 empty message: rejected (2)" "2" "$?"
 
-# The seam gets the message kind as its third argument: a cadence kind from
-# cadence-alert.sh, else cadence:vault-stall (vault-autosync.sh passes one message only).
 cat >"$TMP/kind-sender.sh" <<EOF
 #!/usr/bin/env bash
 printf '%s|%s\n' "\$#" "\${3-}" >"$TMP/kind.log"

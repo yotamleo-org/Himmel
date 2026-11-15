@@ -145,7 +145,6 @@ if [ "$(uname -s)" = Linux ]; then
     check "(j) control: the next scan with a working sender alerts" "$((before + 1))" "$(sent)"
 fi
 
-# --- (k) the alert carries its message kind denied-launch to the sender --------
 cat > "$WORK/kind-sender.sh" <<'EOF'
 #!/usr/bin/env bash
 printf '%s|%s\n' "$#" "${3-}" >> "$KIND_LOG"
@@ -158,7 +157,6 @@ mkrow 2 feat+worker-k sid-k Bash 'bash scripts/handover/chief-kit/headed-arm-wor
 MERGE_BLOCK_ALERT_CMD="$WORK/kind-sender.sh" bash "$SUT" >/dev/null 2>&1
 check "(k) the sender gets the kind denied-launch as its third argument" "3|denied-launch" "$(cat "$KIND_LOG" 2>/dev/null)"
 
-# --- (l) through the real router it lands in the monitor outbox, not the operator's ----
 if command -v bun >/dev/null 2>&1; then
     cat > "$WORK/route-sender.sh" <<'EOF'
 #!/usr/bin/env bash

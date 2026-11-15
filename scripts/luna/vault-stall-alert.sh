@@ -19,9 +19,6 @@
 # TELEGRAM_ACCESS_PATH (access.json holding the operator id).
 set -uo pipefail
 
-# The router's message kind: cadence-alert.sh passes HIMMEL_ALERT_KIND=cadence:<worker>;
-# vault-autosync.sh passes none. Only a cadence kind is taken, so a stray value
-# can never route this alert into a silent class.
 kind="${HIMMEL_ALERT_KIND:-}"
 case "$kind" in cadence:?*) ;; *) kind=cadence:vault-stall ;; esac
 
