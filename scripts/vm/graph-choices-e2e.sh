@@ -156,11 +156,13 @@ p = subprocess.Popen(sys.argv[2:], stdin=subprocess.PIPE, stdout=subprocess.PIPE
 fd = p.stdout.fileno()
 pending = ""
 last = time.time()
-while True:
+open_pipe = True
+while open_pipe:
     r, _, _ = select.select([fd], [], [], 5)
     if not r:
         if p.poll() is not None:
-            break
+            open_pipe = False
+            continue
         if time.time() - last > 240:
             p.kill()
             sys.stdout.write("\nanswer.py: no output for 240 s, killed the install\n")
@@ -168,7 +170,8 @@ while True:
         continue
     chunk = os.read(fd, 65536)
     if not chunk:
-        break
+        open_pipe = False
+        continue
     last = time.time()
     text = chunk.decode("utf-8", "replace")
     sys.stdout.write(text)
