@@ -145,6 +145,8 @@ for v in insta instal isnt isnta isntal it cit sit ic install-clean innit ini cr
 done
 row "bun a" 2 "$(bash_payload 'bun a left-pad')"
 row "bun c" 2 "$(bash_payload 'bun c vite app')"
+row "npm global flag value shadows the subcommand" 2 "$(bash_payload 'npm --prefix run install left-pad')"
+row "bun global flag before the subcommand" 2 "$(bash_payload 'bun --cwd run add left-pad')"
 row "an installed tool run by its own name" 0 "$(bash_payload 'oxlint --version')"
 row "npm ls read" 0 "$(bash_payload 'npm ls --depth=0')"
 row "npm view read" 0 "$(bash_payload 'npm view left-pad version')"

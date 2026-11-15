@@ -138,16 +138,20 @@ resolve() {
     printf '%s\n' "$r/$leaf"
 }
 
-# first_off_list <prog> <pattern>... — prints the first subcommand (the first
-# non-flag word after a <prog> word) that matches no <pattern>; prints nothing
-# when every <prog> word has an allowed subcommand or none.
+# first_off_list <prog> <pattern>... — prints the first word right after a
+# <prog> word that matches no <pattern>; a flag there passes only as -v,
+# --version, -h or --help, so a global flag's value is never read as the
+# subcommand. Prints nothing when every <prog> word passes or ends the text.
 first_off_list() {
     local prog=$1 t a want=0 ok
     shift
     for t in $words; do
         if [ "$want" = 1 ]; then
-            case "$t" in -*) continue ;; esac
             want=0
+            case "$t" in
+                -v | --version | -h | --help) continue ;;
+                -*) printf '%s\n' "$t"; return 0 ;;
+            esac
             ok=0
             for a in "$@"; do
                 # shellcheck disable=SC2254 # each allowed entry is a glob pattern
