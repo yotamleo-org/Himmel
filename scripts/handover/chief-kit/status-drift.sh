@@ -98,6 +98,14 @@ export LC_ALL=C
 # shellcheck source=../../lib/timeout-bin.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/timeout-bin.sh"
+GH_READ_BIN="$HERE/../../lib/gh-read.sh"
+[ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
+if [ "$GH_READ_BIN" != gh ]; then
+    # shellcheck source=../../lib/gh-read.sh
+    # shellcheck disable=SC1091
+    . "$GH_READ_BIN"
+    GH_READ_QUIET=1 gh_read_init
+fi
 # shellcheck source=../../lib/env-value.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/env-value.sh"
@@ -207,7 +215,7 @@ fi
 prs=""
 if ts_scan_gate status-drift graphql core; then
     # swallow-ok: an unreadable PR list becomes a HEALTH row below, never a plausible count
-    prs=$(bounded 30 gh pr list --state open --limit 300 --json number,title 2>/dev/null) || prs=""
+    prs=$(GH_READ_NO_MAIN_FALLBACK=1 bounded 30 "$GH_READ_BIN" pr list --state open --limit 300 --json number,title 2>/dev/null) || prs=""
 fi
 # swallow-ok: a non-numeric count is the unreadable case the next line turns into a HEALTH row
 npr=$(jq 'length' <<<"$prs" 2>/dev/null)
@@ -293,7 +301,7 @@ xrepo_open() { # <KEY>
     while IFS= read -r u; do
         [ -n "$u" ] || continue
         # swallow-ok: a failed gh read is not proof the PR is open, so the rows stay
-        row=$(bounded 20 gh pr view "$u" --json state,title --jq '.state + "\t" + .title' 2>/dev/null) || continue
+        row=$(GH_READ_NO_MAIN_FALLBACK=1 bounded 20 "$GH_READ_BIN" pr view "$u" --json state,title --jq '.state + "\t" + .title' 2>/dev/null) || continue
         [ "${row%%$'\t'*}" = OPEN ] || continue
         tkey=$(ticket_key_from_title "${row#*$'\t'}") || continue
         [ "$tkey" = "$1" ] && return 0
@@ -502,7 +510,7 @@ done <<<"$keys"
 MNR_LIMIT="${TICKET_STATUS_DRIFT_MNR_LIMIT:-1000}"
 case "$MNR_LIMIT" in ''|*[!0-9]*) MNR_LIMIT=1000 ;; esac
 mday() { date -u -d "$1 days ago" +%Y-%m-%d 2>/dev/null || date -u -v-"$1"d +%Y-%m-%d 2>/dev/null; } # swallow-ok: no date is the unreadable case the merged list check turns into a HEALTH row
-mlist() { bounded 20 gh pr list --state merged --search "$1" --limit "$MNR_LIMIT" --json number,title,mergedAt 2>/dev/null; }
+mlist() { GH_READ_NO_MAIN_FALLBACK=1 bounded 20 "$GH_READ_BIN" pr list --state merged --search "$1" --limit "$MNR_LIMIT" --json number,title,mergedAt 2>/dev/null; }
 md14=$(mday 14) md8=$(mday 8) md7=$(mday 7) # swallow-ok: an empty date is an unreadable list below
 mprs=""
 if [ -n "$md14" ] && [ -n "$md8" ] && [ -n "$md7" ] && m1=$(mlist "merged:$md14..$md8") && m2=$(mlist "merged:>=$md7"); then

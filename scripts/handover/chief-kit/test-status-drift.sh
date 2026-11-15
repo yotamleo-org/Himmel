@@ -172,6 +172,13 @@ chmod +x "$tmp/jira-stub.sh" "$tmp/bin/gh" "$tmp/lock-stub.sh"
 export WORKER_SESSION_JIRA_CLI="$tmp/jira-stub.sh"
 export TICKET_STATUS_QUEUE_LOCK="$tmp/lock-stub.sh"
 export PATH="$tmp/bin:$PATH"
+READTOK=ghp_READTOKEN0123456789
+mkdir -p "$tmp/root" "$tmp/emptyroot" "$tmp/tt"
+printf 'himmel_github_token_vm2=%s\n' "$READTOK" > "$tmp/root/.env"
+: > "$tmp/emptyroot/.env"
+ln -s "$HERE/fixtures/gh-two-token-stub.sh" "$tmp/tt/gh"
+export GH_READ_ENV_ROOT="$tmp/emptyroot" HIMMEL_SECRETS_KEYRING=off
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
 
 K=HIMMEL-9001
 LOG="$TICKET_STATUS_STATE_DIR/status-events.jsonl"
@@ -2208,6 +2215,93 @@ rca HIMMEL-9686 5330 2026-11-13T18:08:00Z 2026-11-16T18:09:00Z 2026-11-20 0
 rca HIMMEL-9686 5330 2026-11-13T18:08:00Z 2026-11-21T00:10:00Z 2026-11-20 1
 rca HIMMEL-9900 5365 2026-11-14T10:00:00Z 2026-11-17T10:01:00Z 2026-11-21 0
 rca HIMMEL-9900 5365 2026-11-14T10:00:00Z 2026-11-22T00:10:00Z 2026-11-21 1
+
+# --- the sweep and the drift check read GitHub through the read token ---------
+# ttx <env root> [VAR=value ...] <cmd...>: the real scan, the shared two-token stub first on PATH
+ttx() {
+    local root="$1"; shift
+    : > "$tmp/tt.log"
+    env PATH="$tmp/tt:$PATH" GHLOG="$tmp/tt.log" GH_STUB_DELEGATE="$tmp/bin/gh" GH_STUB_READ_TOKEN="$READTOK" \
+        GH_READ_ENV_ROOT="$root" HIMMEL_QUOTA_DIR="$tmp/q-tt" "$@"
+}
+ttn() { grep -Ec -- "$1" "$tmp/tt.log" || true; }
+ttany() { [ "$(ttn "$1")" -ge 1 ] && echo yes || echo no; }
+qplant "$tmp/q-tt" 4000 ok
+overflow_fx() { # the 2b overflow scenario: a red required check on a PR whose checks overflow one GraphQL page
+    reset "IN CI"; owned "$K" LIVE '{"state":"live","lock_seen":true,"lock_gone_sweeps":0,"prs":{"11":{"head":"ccc333","ci":"pending","red_latch":false,"open":true}}}'
+    pr 11 "[$K] many checks" ccc333; checks 11 fail
+    jq -c 'map(.statusCheckRollup = [])' "$FX/pr-list.json" > "$FX/p.t" && mv "$FX/p.t" "$FX/pr-list.json"
+    printf '11\n' > "$FX/contexts.more"
+    printf '%s\n%s\n' '{"check_runs":[{"id":1,"name":"shell-unit","status":"completed","conclusion":"failure","app":{"id":15368},"started_at":"2026-10-25T01:00:00Z"}]}' \
+        '{"check_runs":[{"id":2,"name":"lint","status":"completed","conclusion":"success","app":{"id":15368},"started_at":"2026-10-25T01:00:00Z"}]}' > "$FX/check-runs-ccc333.json"
+    jl "$K" "IN CI"
+}
+MAINREADS='^tok=main argv=(pr list|pr checks|pr view|api graphql|api repos/\{owner\}/\{repo\}/commits/)'
+
+overflow_fx
+ttx "$tmp/root" GH_STUB_MAINFAIL=rate bash "$SWEEP" >"$tmp/sout" 2>&1
+contains "8691 S6 sweep: a spent main token is no unknown sweep" "$(cat "$tmp/sout")" "status-sweep: keys="
+check "8691 S6 sweep: the open-PR list logs tok=read" "$(ttany '^tok=read argv=pr list --state open --limit 300 ')" yes
+check "8691 S6 sweep: the GraphQL read logs tok=read" "$(ttany '^tok=read argv=api graphql ')" yes
+check "8691 S6 sweep: the pr checks read logs tok=read" "$(ttany '^tok=read argv=pr checks 11 --json bucket,name')" yes
+check "8691 S6 sweep: the check-runs read logs tok=read" "$(ttany '^tok=read argv=api repos/\{owner\}/\{repo\}/commits/ccc333/check-runs')" yes
+check "8691 S6 sweep: the head read logs tok=read" "$(ttany '^tok=read argv=pr view 11 --json headRefOid')" yes
+check "8691 S6 sweep: no snapshot read logs tok=main" "$(ttn "$MAINREADS")" 0
+check "8691 S6 sweep: the read token value never reaches the stub log" "$(ttn "$READTOK")" 0
+
+overflow_fx
+ttx "$tmp/root" GH_STUB_MAINFAIL=rate GH_STUB_MAINFAIL_BUCKET=graphql bash "$SWEEP" >"$tmp/sout" 2>&1
+check "8691 S6 sweep: with main's GraphQL spent the red required check moves the ticket" "$(grep '^transition' "$STUB_LOG")" "transition $K In Progress"
+
+reset "In Review"; owned "$K" LIVE '{"state":"live","lock_seen":true,"lock_gone_sweeps":0,"prs":{"7":{"head":"aaa111","ci":"pending","red_latch":false,"open":true}}}'
+jl "$K" "In Review"
+printf '{"title":"[%s] feat","state":"CLOSED"}\n' "$K" > "$FX/view-7.json"
+ttx "$tmp/root" GH_STUB_MAINFAIL=rate bash "$SWEEP" >"$tmp/sout" 2>&1
+check "8691 S6 sweep: a spent main token still applies the UI close" "$(grep '^transition' "$STUB_LOG")" "transition $K In Progress"
+check "8691 S6 sweep: the title read logs tok=read" "$(ttany '^tok=read argv=pr view 7 --json title')" yes
+check "8691 S6 sweep: and no title read logs tok=main" "$(ttn '^tok=main argv=pr view 7 ')" 0
+
+# a refused read token with main healthy: the pr checks JSON still parses, no gh-read: line in it (I5)
+overflow_fx
+ttx "$tmp/root" GH_STUB_READFAIL=auth bash "$SWEEP" >"$tmp/sout" 2>&1
+contains "8691 S6 sweep: a refused read token is no unknown sweep" "$(cat "$tmp/sout")" "status-sweep: keys="
+check "8691 S6 sweep: and the red required check still moves the ticket" "$(grep '^transition' "$STUB_LOG")" "transition $K In Progress"
+check "8691 S6 sweep: the pr checks read was tried on the read token first" "$(ttany '^tok=read argv=pr checks 11 ')" yes
+check "8691 S6 sweep: and retried on main" "$(ttany '^tok=main argv=pr checks 11 ')" yes
+check "8691 S6 sweep: the sweep output carries no gh-read: line" "$(grep -c '^gh-read:' "$tmp/sout" || true)" 0
+
+overflow_fx
+ttx "$tmp/emptyroot" GH_STUB_MAINFAIL=rate bash "$SWEEP" >"$tmp/sout" 2>&1
+contains "8691 S6 sweep control: with no read token a spent main token is an unknown sweep" "$(cat "$tmp/sout")" "unknown (snapshot gh)"
+overflow_fx
+ttx "$tmp/emptyroot" bash "$SWEEP" >"$tmp/sout" 2>&1
+check "8691 S6 sweep control: an empty root moves the ticket on main" "$(grep '^transition' "$STUB_LOG")" "transition $K In Progress"
+check "8691 S6 sweep control: and logs the list read tok=main" "$(ttn '^tok=main argv=pr list --state open --limit 300 ')" 1
+
+# the drift check: the open-PR list, the per-URL view and both merged-PR slices
+XPR=https://github.com/yotamleo-org/himmel-voice/pull/13
+drift_fx() {
+    wipe_docs
+    reset "In Review"; owned "$K" WRAPPED '{"state":"wrapped"}'; jl "$K" "In Review"; xpr OPEN
+    mergedpr '[{"number":77,"title":"fix: [HIMMEL-9002] shipped by hand"}]'
+}
+drift_fx
+ttx "$tmp/root" GH_STUB_MAINFAIL=rate bash "$DRIFT" --docs-dir "$tmp/docs" >"$tmp/dout" 2>&1
+check "8691 S6 drift: a spent main token is not sdrift=unknown" "$(dlast | cut -d: -f1)" "sdrift=1"
+contains "8691 S6 drift: the merged list read fills MERGED-NO-ROW" "$(drows MERGED-NO-ROW)" "MERGED-NO-ROW HIMMEL-9002 PR #77"
+check "8691 S6 drift: no HEALTH row for an unreadable list" "$(dcount HEALTH)" 0
+check "8691 S6 drift: the open-PR list logs tok=read" "$(ttany '^tok=read argv=pr list --state open ')" yes
+check "8691 S6 drift: the per-URL view logs tok=read" "$(ttany "^tok=read argv=pr view $XPR ")" yes
+check "8691 S6 drift: every merged slice read logs tok=read" "$(ttn '^tok=read argv=pr list --state merged ')" "$(ttn 'argv=pr list --state merged ')"
+check "8691 S6 drift: and both slices were read" "$([ "$(ttn '^tok=read argv=pr list --state merged ')" -ge 2 ] && echo yes || echo no)" yes
+check "8691 S6 drift: no read logs tok=main" "$(ttn '^tok=main argv=pr (list|view) ')" 0
+drift_fx
+ttx "$tmp/emptyroot" bash "$DRIFT" --docs-dir "$tmp/docs" >"$tmp/dout" 2>&1
+check "8691 S6 drift control: an empty root reads on main and finds the same row" "$(dcount MERGED-NO-ROW)" 1
+check "8691 S6 drift control: the open-PR list logs tok=main" "$(ttany '^tok=main argv=pr list --state open ')" yes
+drift_fx
+ttx "$tmp/emptyroot" GH_STUB_MAINFAIL=rate bash "$DRIFT" --docs-dir "$tmp/docs" >"$tmp/dout" 2>&1
+check "8691 S6 drift control: with no read token a spent main token is sdrift=unknown" "$(dlast | cut -d: -f1)" "sdrift=unknown"
 
 echo "---"
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; } || { echo "$fails failed"; exit 1; }
