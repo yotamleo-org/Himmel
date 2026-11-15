@@ -1644,7 +1644,6 @@ lacks "N22 a silent keyring is not called held" "held GGS_MQTT_PASS" "$out"
 has "N22 the report says the keyring did not answer" "failed GGS_MQTT_PASS (the keyring did not answer)" "$out"
 if [ "$rc" != 0 ]; then pass "N22 the run fails (exit $rc)"; else fail "N22 the run exited 0"; fi
 if cmp -s "$TMP/st/.env" "$TMP/st.orig"; then pass "N22 the entry stays"; else fail "N22 the entry left .env"; fi
-# N22b: the mover stores a named entry through put-if-absent, with no existence check of its own before it and never a plain put.
 mv "$FX/scripts/lib/himmel-secrets" "$FX/scripts/lib/himmel-secrets.real"
 cat > "$FX/scripts/lib/himmel-secrets" <<'STUB' || fail "fixture write of the verb-logging wrapper failed"
 #!/usr/bin/env bash

@@ -586,7 +586,6 @@ got=$(cd "$REPO2" && env -u CLAUDECODE "$HS" import-env --project "$TMP/r17.env"
 wait "$r17_pid"
 assert_eq "R17 a project-scope import is not held up by a user-scope one" "stored JIRA_API_TOKEN|imported 1 key(s) into the keyring|rc=0" "$(printf '%s' "$got" | tr '\n' '|' | sed 's/|$//')"
 
-# R19: put-if-absent stores only an absent item, and put and put-if-absent take the per-scope lock.
 kreset
 out=$(cd "$REPO" && printf 'fake-a' | "$HS" put-if-absent --stdin TEST_HS_R19 2>&1; echo "rc=$?")
 assert_eq "R19 put-if-absent stores an absent item" "stored TEST_HS_R19|rc=0" "$(printf '%s' "$out" | tr '\n' '|' | sed 's/|$//')"
@@ -604,7 +603,6 @@ got=$(cd "$REPO" && export KSTUB_LOCKED=true && printf 'fake-a' | "$HS" put-if-a
 assert_eq "R19 a locked keyring refuses put-if-absent" "rc=2" "$got"
 got=$(cd "$REPO" && printf 'x' | "$HS" put-if-absent TEST_HS_R19 extra 2>&1; echo "rc=$?")
 assert_eq "R19 put-if-absent takes one name" "1|rc=2" "$(printf '%s' "$got" | grep -c 'usage: himmel-secrets put-if-absent')|$(printf '%s' "$got" | grep rc=)"
-# A store that replaces an item of the same attributes after a pause: the window between a check and a store.
 RBIN="$TMP/race-bin"
 mkdir -p "$RBIN"
 cat >"$RBIN/secret-tool" <<'WRAP'
@@ -618,7 +616,6 @@ fi
 exec "$KBIN/secret-tool" "$@"
 WRAP
 chmod +x "$RBIN/secret-tool"
-# The newer writer is slow and holds the scope; the older env-file value arrives between its check and its store.
 kreset
 (cd "$REPO" && printf 'fake-new' | env -u CLAUDECODE KBIN="$KBIN" PATH="$RBIN:$PATH" RACE_SLEEP=2 "$HS" put --stdin TEST_HS_R19 >"$TMP/r19.a" 2>&1; echo "rc=$?" >>"$TMP/r19.a") &
 r19_pid=$!
@@ -628,7 +625,6 @@ wait "$r19_pid"
 assert_eq "R19 a put-if-absent that starts mid-write is refused" "1|rc=2" "$(printf '%s' "$got" | grep -c 'another import-env')|$(printf '%s' "$got" | grep rc=)"
 assert_eq "R19 the newer value survives the older writer" "service=himmel key=TEST_HS_R19 scope=user	fake-new" "$(cat "$KSTUB_STORE")"
 assert_eq "R19 the first writer finished whole" "stored TEST_HS_R19|rc=0" "$(tr '\n' '|' <"$TMP/r19.a" | sed 's/|$//')"
-# A plain put racing put-if-absent on one item: the verb checked an absent item, so the put waits outside (is refused) until the store lands.
 kreset
 (cd "$REPO" && printf 'fake-old' | env -u CLAUDECODE KBIN="$KBIN" PATH="$RBIN:$PATH" RACE_SLEEP=2 "$HS" put-if-absent --stdin TEST_HS_R19 >"$TMP/r19.b" 2>&1; echo "rc=$?" >>"$TMP/r19.b") &
 r19_pid=$!
@@ -638,7 +634,6 @@ wait "$r19_pid"
 assert_eq "R19 a plain put between put-if-absent's check and store is refused" "1|rc=2" "$(printf '%s' "$got" | grep -c 'another import-env')|$(printf '%s' "$got" | grep rc=)"
 assert_eq "R19 the put-if-absent store is the one that landed" "service=himmel key=TEST_HS_R19 scope=user	fake-old" "$(cat "$KSTUB_STORE")"
 assert_eq "R19 the put-if-absent finished whole" "stored TEST_HS_R19|rc=0" "$(tr '\n' '|' <"$TMP/r19.b" | sed 's/|$//')"
-# A plain put while an import holds the scope is refused, and stores nothing.
 kreset
 (cd "$REPO" && env -u CLAUDECODE KSTUB_STORE_SLEEP=2 "$HS" import-env "$TMP/r17.env" >"$TMP/r19.c" 2>&1) &
 r19_pid=$!
@@ -648,7 +643,6 @@ wait "$r19_pid"
 assert_eq "R19 a plain put during an import is refused with the busy message" "1|rc=2" "$(printf '%s' "$got" | grep -c 'another import-env')|$(printf '%s' "$got" | grep rc=)"
 assert_eq "R19 the refused put stored nothing" "0" "$(grep -c 'fake-put' "$KSTUB_STORE")"
 assert_eq "R19 the import finished whole" "1" "$(grep -c '^imported 1 key(s)' "$TMP/r19.c")"
-# No verb leaves a lock behind.
 assert_eq "R19 no lock is left once the verbs end" "0" "$(find "$HIMMEL_CONFIG_DIR" -name 'import-env.*' 2>/dev/null | grep -c .)"
 got=$(cd "$REPO" && printf 'fake-q' | env -u CLAUDECODE "$HS" put --stdin TEST_HS_R19 2>&1; echo "rc=$?")
 assert_eq "R19 a plain put runs once no lock is held" "stored TEST_HS_R19|rc=0" "$(printf '%s' "$got" | tr '\n' '|' | sed 's/|$//')"
