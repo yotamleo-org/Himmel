@@ -2532,8 +2532,8 @@ has "U7: a pathless remainder that only runs a script keeps the description's wr
 has "U11: a newer code remainder supersedes an older no-write one" "$(prow RESUME 10311)" "files=scripts/lib/p10199-d.sh"
 [ "$(lastf "$(prow RESUME 10311)")" != proof ] && pass "U11: and is not tagged proof" || fail "U11: tagged proof: '$(prow RESUME 10311)'"
 U12="$WORK/u12"; mkdir -p "$U12/scripts/handover/chief-kit" "$U12/scripts/lib"
-find "$HERE" -maxdepth 1 -type f -exec cp {} "$U12/scripts/handover/chief-kit/" \;
-find "$HERE/../../lib" -maxdepth 1 -type f -exec cp {} "$U12/scripts/lib/" \;
+for u12_f in "$HERE"/*; do [ ! -f "$u12_f" ] || cp "$u12_f" "$U12/scripts/handover/chief-kit/"; done
+for u12_f in "$HERE"/../../lib/*; do [ ! -f "$u12_f" ] || cp "$u12_f" "$U12/scripts/lib/"; done
 rm -f "$U12/scripts/lib/pr_remainder.py"
 u12_err="$(U_SUT="$U12/scripts/handover/chief-kit/next-dispatchable.sh" runu 2>&1 >/dev/null)"; u12_rc=$?
 [ "$u12_rc" = 3 ] && pass "U12: a pr_remainder.py that cannot be loaded exits 3" || fail "U12: a pr_remainder.py that cannot be loaded exits 3 (rc $u12_rc)"
