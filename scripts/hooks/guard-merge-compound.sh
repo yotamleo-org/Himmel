@@ -15,7 +15,8 @@ MOG=scripts/handover/merge-on-green.sh
 
 note() { echo "guard-merge-compound: $1 - not checked (fail open)" >&2; exit 0; }
 
-payload=$(cat) || exit 0
+payload=""
+IFS= read -r -d '' payload 2>/dev/null || true # swallow-ok: read returns 1 at EOF by design; an unreadable stdin leaves payload empty and the fast path passes it
 case "$payload" in *merge-on-green*) ;; *) exit 0 ;; esac
 command -v jq >/dev/null 2>&1 || note "jq not on PATH"
 cmd=$(printf '%s' "$payload" | jq -r '.tool_input.command // empty' 2>/dev/null) || note "unparseable hook input" # swallow-ok: a jq failure fails open with a note
