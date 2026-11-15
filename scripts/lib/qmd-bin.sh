@@ -404,7 +404,7 @@ if [ -r "$LIB" ]; then
   . "$LIB"  # read-sink-ok: LIB is the install-time absolute path baked above, never argv or env
   _qmd_egress_ok "$@" || exit $?
 else
-  echo "qmd: $LIB is missing - running without the egress gate and the daemon key (re-run scripts/lib/qmd-bin.sh install)." >&2
+  echo "qmd: $LIB is missing - running without the egress gate and the provider key (re-run scripts/lib/qmd-bin.sh install)." >&2
 fi
 exec "$FORK_BIN" "$@"
 WRAPPER
