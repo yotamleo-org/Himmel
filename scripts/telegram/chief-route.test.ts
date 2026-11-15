@@ -3313,7 +3313,6 @@ test("a config-audit broadcast in an old inbox is never moved, only the operator
   expect(inboxText(r, HZ)).toMatch(/^\[config-audit\] settings\.json lost keys\n- 00:02 \[telegram from=1 chat=1\] raced\n- \d\d:\d\d \[telegram from=1 chat=1\] after\n$/);
 });
 
-// round-status lists a critic round file that has no seal row.
 const US_KEY = "HIMMEL-9731"; const US_OTHER = "HIMMEL-9732";
 const unsealedLines = (out: string) => out.split("\n").filter((l) => l.startsWith("unsealed: "));
 const sealCmd = "bash scripts/handover/chief-kit/critic-seal.sh";

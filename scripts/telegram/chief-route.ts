@@ -879,9 +879,6 @@ export async function roundState(specsRoot: string, key: string): Promise<RoundS
   return stateOf(key, await loadLedger(specsRoot, key));
 }
 
-// Every critic round file of `key` in the specs folders (`<stem>.critic-<kind>-r<n>.md`, and the older
-// `<stem>.critic-r<n>-<kind>.md`) that no ledger row accounts for: a round that ran without `critic-seal.sh`.
-// A file is accounted for when a round row or the seed row names its path, or its round is within the seed's count.
 const CRITIC_FILE = /^(.+?)\.critic-(?:(spec|plan)-r(\d+)|r(\d+)-(spec|plan))\.md$/;
 export type UnsealedRound = { file: string; kind: Kind; round: number; command: string };
 export async function unsealedRounds(specsRoot: string, key: string): Promise<UnsealedRound[]> {
@@ -890,6 +887,7 @@ export async function unsealedRounds(specsRoot: string, key: string): Promise<Un
   const named = new Set<string>();
   for (const r of rows) if (r.row === "round" && typeof r.verdict_path === "string") named.add(await real(r.verdict_path));
   for (const kind of KINDS) for (const x of (seedOf(rows)?.latest?.[kind] as SeededReturn[] | undefined) ?? []) named.add(await real(x.verdict_path));
+  const isAccountedFor = (kind: Kind, round: number, realFile: string) => round <= (Number(seedOf(rows)?.[kind]) || 0) || named.has(realFile);
   const out: UnsealedRound[] = [];
   for (const folder of [...SIGNATURE_DIRS, key].map(d => join(specsRoot, d))) {
     for (const name of await listDir(folder)) {
@@ -898,7 +896,7 @@ export async function unsealedRounds(specsRoot: string, key: string): Promise<Un
       const file = join(folder, name);
       if (!await isFile(file)) continue;
       const kind = (m[2] ?? m[5]) as Kind; const round = Number(m[3] ?? m[4]);
-      if (round <= (Number(seedOf(rows)?.[kind]) || 0) || named.has(await real(file))) continue;
+      if (isAccountedFor(kind, round, await real(file))) continue;
       out.push({ file, kind, round, command: `bash scripts/handover/chief-kit/critic-seal.sh '${file.replace(/'/g, "'\\''")}' <file the critic read> <sha256 the critic quoted>` });
     }
   }
