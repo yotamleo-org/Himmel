@@ -486,7 +486,9 @@ unset TICKET_STATUS_NOW
 export TICKET_STATUS_QUEUE_LOCK="$tmp/lock.sh"
 unset TS_SNAPSHOT_DIR TS_EVENT TS_OWNER_HELD TS_OWNER_ROWS
 export TICKET_STATUS_STATE_DIR="$tmp/qstate"
-mkdir -p "$TICKET_STATUS_STATE_DIR/workers" "$tmp/qbin"
+mkdir -p "$TICKET_STATUS_STATE_DIR/workers" "$tmp/qbin" "$tmp/qroot" "$tmp/qnoroot"
+printf 'himmel_github_token_vm2=ghp_TSREAD0123456789\n' > "$tmp/qroot/.env"
+: > "$tmp/qnoroot/.env"
 cat > "$tmp/qjira" <<'EOF'
 #!/usr/bin/env bash
 printf '{"fields":{"status":{"name":"In Progress"},"issuetype":{"name":"Task"}}}\n'
@@ -494,6 +496,11 @@ EOF
 cat > "$tmp/qbin/gh" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$QGH_LOG"
+printf '%s %s %s\n' "${GH_TOKEN:-main}" "$1" "$2" >> "$QGH_LOG.tok"
+if [ -n "${GH_TOKEN:-}" ] && [ -n "${QGH_READ_RL:-}" ]; then echo 'GraphQL: API rate limit already exceeded for user ID 2.' >&2; exit 1; fi
+if [ -n "${QGH_ONE_PR:-}" ] && [ "$1 $2" = "pr list" ]; then
+    case "$*" in *"--state open"*) echo '[{"number":7,"title":"fix: [HIMMEL-9201] x","headRefOid":"h7","baseRefName":"main","reviewDecision":""}]'; exit 0 ;; esac
+fi
 [ "$1 $2" != "pr list" ] || echo '[]'
 EOF
 chmod +x "$tmp/qjira" "$tmp/qbin/gh"
@@ -511,9 +518,10 @@ printf '%s/%s/%s/%s' "$TS_DERIVED" "$TS_RESULT" "$TS_STAGE" "$TS_RULE"
 EOF
 qderive() {
     local q=()
-    : > "$tmp/qgh.log"
+    : > "$tmp/qgh.log"; : > "$tmp/qgh.log.tok"
     [ "$1" = - ] || q=("HIMMEL_QUOTA_DIR=$1")
-    env -u HIMMEL_QUOTA_DIR ${q[@]+"${q[@]}"} PATH="$tmp/qbin:$PATH" QGH_LOG="$tmp/qgh.log" WORKER_SESSION_JIRA_CLI="$tmp/qjira" \
+    env -u HIMMEL_QUOTA_DIR -u himmel_github_token_vm2 ${q[@]+"${q[@]}"} GH_READ_ENV_ROOT="${QROOT:-$tmp/qnoroot}" \
+        PATH="$tmp/qbin:$PATH" QGH_LOG="$tmp/qgh.log" WORKER_SESSION_JIRA_CLI="$tmp/qjira" \
         bash "$tmp/qderive.sh" 2> "$tmp/qerr"
 }
 qplant "$tmp/q-out" 0 refused
@@ -530,6 +538,74 @@ check "9479 T8 RED control: the healthy derive reads the PR list" "$(grep -c '^p
 qplant "$tmp/q-hung" 4000 timed-out
 check "9479 T8: a timed-out probe is a pause too" "$(qderive "$tmp/q-hung")" "no-write/miss/gh/"
 check "9479 T8: named GH-STALL on stderr" "$(grep -c '^GH-STALL github read timed out' "$tmp/qerr")" 1
+
+qplant_read() {
+    qplant "$1" 4000 ok
+    local now; now=$(date +%s)
+    printf 'read\tgraphql\t%s\t5000\t%s\t%s\t%s\nread\tcore\t4000\t5000\t%s\t%s\tok\n' "$2" "$((now + 1800))" "$now" "$3" "$((now + 1800))" "$now" >> "$1/quota.tsv"
+}
+qplant_read "$tmp/q-rok" 4000 ok
+check "9479 T11: a healthy derive with a read token derives" "$(QROOT="$tmp/qroot" qderive "$tmp/q-rok")" "In Progress///D5"
+check "9479 T11: its PR list goes out on the read token" "$(grep -c '^ghp_TSREAD0123456789 pr list$' "$tmp/qgh.log.tok")" 1
+check "9479 T11: and no read rides main" "$(grep -c '^main ' "$tmp/qgh.log.tok")" 0
+check "9479 T11: a read token rate-limited after an ok probe leaves the derive unread (a scan)" "$(QGH_READ_RL=1 QROOT="$tmp/qroot" qderive "$tmp/q-rok")" "no-write/miss/gh/"
+check "9479 T11: and the refused read is not retried on main" "$(grep -c '^main ' "$tmp/qgh.log.tok")" 0
+mkdir -p "$tmp/q-rcore"
+qnow=$(date +%s)
+printf 'main\tgraphql\t4000\t5000\t%s\t%s\tok\nmain\tcore\t100\t5000\t%s\t%s\tok\nread\tgraphql\t4000\t5000\t%s\t%s\tok\nread\tcore\t4000\t5000\t%s\t%s\tok\n' \
+    "$((qnow + 1800))" "$qnow" "$((qnow + 1800))" "$qnow" "$((qnow + 1800))" "$qnow" "$((qnow + 1800))" "$qnow" > "$tmp/q-rcore/quota.tsv"
+check "9479 T11: an open PR's classic protection read (main's) pauses on main core under the floor" "$(QGH_ONE_PR=1 QROOT="$tmp/qroot" qderive "$tmp/q-rcore" | cut -d/ -f1-2)" "no-write/miss"
+check "9479 T11: that pause line names main core" "$(grep -c '^QUOTA-PAUSE github core token=main remaining=100 .* caller=ticket-status nothing-was-judged$' "$tmp/qerr")" 1
+check "9479 T11: and no read spends main" "$(grep -c '^main ' "$tmp/qgh.log.tok")" 0
+qplant_read "$tmp/q-rout" 0 refused
+check "9479 T11: the scan gate pauses on the read token's row" "$(QROOT="$tmp/qroot" qderive "$tmp/q-rout")" "no-write/miss/gh/"
+check "9479 T11: the pause line names the read token" "$(grep -c '^QUOTA-PAUSE github graphql token=read remaining=0 .* caller=ticket-status nothing-was-judged$' "$tmp/qerr")" 1
+check "9479 T11: a paused derive makes no gh call" "$(wc -l < "$tmp/qgh.log" | tr -d ' ')" 0
+qplant "$tmp/q-r401" 0 refused
+printf 'read\tgraphql\t-\t-\t-\t%s\tunreadable\nread\tcore\t-\t-\t-\t%s\tunreadable\n' "$(date +%s)" "$(date +%s)" >> "$tmp/q-r401/quota.tsv"
+check "9479 T11: a read token that probes unreadable (a 401) gates on main's row, and main at 0 pauses the derive" "$(QROOT="$tmp/qroot" qderive "$tmp/q-r401")" "no-write/miss/gh/"
+check "9479 T11: that pause line names main" "$(grep -c '^QUOTA-PAUSE github graphql token=main remaining=0 .* caller=ticket-status nothing-was-judged$' "$tmp/qerr")" 1
+check "9479 T11: and no read went out" "$(wc -l < "$tmp/qgh.log" | tr -d ' ')" 0
+check "9479 T11 RED control: with no read token configured the derive reads on main, as today" "$(qderive "$tmp/q-rok")" "In Progress///D5"
+check "9479 T11 RED control: the PR list goes out on main" "$(grep -c '^main pr list$' "$tmp/qgh.log.tok")" 1
+
+mkdir -p "$tmp/mrbin"
+cat > "$tmp/mrbin/gh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s %s %s %s\n' "${GH_TOKEN:-main}" "$1" "$2" "$3" >> "$MR_TOK_LOG"
+[ -z "${MR_HANG:-}" ] || exec -a "mr-sleep-$MR_HANG" sleep 30
+if [ -n "${GH_TOKEN:-}" ] && [ -n "${MR_READ_RL:-}" ]; then echo 'GraphQL: API rate limit already exceeded for user ID 2.' >&2; exit 1; fi
+[ "$1 $2" != "pr view" ] || echo "MERGED h12"
+EOF
+chmod +x "$tmp/mrbin/gh"
+mr_t11() {
+    local root="$1"
+    shift
+    : > "$tmp/mrtok.log"
+    env -u MERGE_ROWS_GH -u himmel_github_token_vm2 PATH="$tmp/mrbin:$PATH" GH_READ_ENV_ROOT="$root" MR_TOK_LOG="$tmp/mrtok.log" "$@" \
+        python3 -I "$HERE/merge-rows-effective.py" "$tmp/mr12.jsonl" 2>/dev/null | grep -c '"pr":"12"'
+}
+printf '{"ts":"t","event":"merge","key":"HIMMEL-9102","pr":"12","head":"h12","contract":"yes","result":"pending","stage":"pre-merge"}\n' > "$tmp/mr12.jsonl"
+check "9479 T11: merge-rows keeps a merged PR's pre-merge row read through the router" "$(mr_t11 "$tmp/qroot")" 1
+check "9479 T11: merge-rows' PR read goes out on the read token" "$(grep -c '^ghp_TSREAD0123456789 pr view 12$' "$tmp/mrtok.log")" 1
+check "9479 T11 RED control: with no read token configured merge-rows reads on main" "$(mr_t11 "$tmp/qnoroot")" 1
+check "9479 T11 RED control: its PR read goes out on main, as today" "$(grep -c '^main pr view 12$' "$tmp/mrtok.log")" 1
+mrtag="mrhang$$"
+check "9479 T11: a hung read under a 3 s budget is not counted" "$(mr_t11 "$tmp/qroot" MR_HANG="$mrtag" MERGE_ROWS_BUDGET_SECS=3)" 0
+sleep 1
+check "9479 T11: and the router's own bound left no gh behind" "$(pgrep -f "mr-sleep-$mrtag" | grep -c .)" 0
+pkill -f "mr-sleep-$mrtag" 2>/dev/null
+check "9479 T11: under 2 s of budget no read starts (the router's bound could not end first)" "$(mr_t11 "$tmp/qroot" MERGE_ROWS_BUDGET_SECS=1.5)" 0
+check "9479 T11: and nothing went out" "$(grep -c . "$tmp/mrtok.log")" 0
+printf '. %q\n' "$HERE/ticket-status.sh" > "$tmp/mrts.sh"
+cat >> "$tmp/mrts.sh" <<'EOF'
+ts_merge_rows "$1"
+EOF
+: > "$tmp/mrtok.log"
+check "9479 T11: ticket-status's merge-rows read, rate-limited on the read token, counts no row (a scan)" \
+    "$(env -u MERGE_ROWS_GH -u himmel_github_token_vm2 PATH="$tmp/mrbin:$PATH" GH_READ_ENV_ROOT="$tmp/qroot" MR_TOK_LOG="$tmp/mrtok.log" MR_READ_RL=1 \
+        bash "$tmp/mrts.sh" "$tmp/mr12.jsonl" 2>/dev/null | grep -c '"pr":"12"')" 0
+check "9479 T11: and is not retried on main" "$(grep -c '^main ' "$tmp/mrtok.log")" 0
 
 if [ "$fails" -eq 0 ]; then
     echo "PASS - test-ticket-status.sh"

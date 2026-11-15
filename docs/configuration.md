@@ -449,12 +449,13 @@ in `.env` or the launching shell):
 | `GH_READ_NO_MAIN_FALLBACK` | (unset) | `1` = a rate-limited read is not retried on the main token (scans); a bad, missing or 404 read token still falls back |
 | `GH_READ_OFF` | (unset) | `1` = every read fails at once with exit 124 and a stall row; writes are untouched |
 | `HIMMEL_QUOTA_DIR` | `$HOME/.himmel/state/quota` | where `scripts/lib/gh-quota.sh` keeps `quota.tsv` (one row per token and bucket) and `blocked/` markers. `quiet-run.sh suite` points it at a scratch dir unless you set it |
-| `GHQ_SCAN_FLOOR` | `500` | a scan (not a gate) pauses when the bucket it would spend has fewer points left, and prints one `QUOTA-PAUSE` line |
+| `GHQ_SCAN_FLOOR` | `500` | a scan (not a gate) pauses when the bucket it would spend has fewer points left, and prints one `QUOTA-PAUSE` line. The bucket is the read token's when the scan's reads ride it (`ghq_routes`, below) and a read token is configured, else main's |
 | `GHQ_PROBE_TIMEOUT` | `10` | seconds one quota probe may take; a timed-out probe pauses scans with a `GH-STALL` line |
 | `GHQ_GH_CMD` | `gh` | the gh the quota probes run (a test seam) |
+| `GHQ_REPO` | (the `origin` remote) | the `owner/name` a `blocked/` marker records |
 | `GO_DEADLINE` | `270` | seconds `scripts/handover/chief-kit/go.sh` may run in all before it is cut; `0` = no bound. A cut before the GO file is written exits 11 (no GO, a quota marker); a cut after it exits 0 and the GO stands |
 | `CR_DISPOSITION_GH_TIMEOUT` | `60` | seconds `cr-disposition.sh` waits for its head-branch read; a timeout exits 2 with a `GH-STALL` line and (on `check`) a quota marker; `0` = no bound |
-| `CHIEF_WAIT_READY_CI_TIMEOUT` | `30` | seconds the chief waiter's one CI read for a READY may take (`gh pr checks`); a timeout reads `ci=PENDING` |
+| `CHIEF_WAIT_READY_CI_TIMEOUT` | `30` | seconds the chief waiter's one CI read for a READY may take (`gh pr checks` on the read token through `gh-read.sh`); a timeout reads `ci=PENDING` |
 | `CHIEF_WAIT_PAUSED_REPROBE_SEC` | `300` | seconds the chief waiter waits before it probes a paused pool again (one the dispatcher answered with `# quota-pause` / `# gh-stall`, or one its outer timeout killed), so a stalled dispatcher cannot block every sample |
 | `CHIEF_WAIT_DISPOSITION_TIMEOUT` | `90` | seconds the chief waiter's `cr-disposition.sh check` for a READY may take; a cut is a stall, and the second stalled sample wakes `disposition=STALLED` |
 | `NEXT_DISPATCH_DEADLINE` | `400` | seconds `scripts/handover/chief-kit/next-dispatchable.sh` may run in all; a cut prints the one `# gh-stall` line and no rows; `0` = no bound |
@@ -463,6 +464,10 @@ in `.env` or the launching shell):
 The cache is a head-bound file per PR: a snapshot is used only for the head SHA
 the run bound at start, so a push never reads a stale-head green. `scripts/ci/api-budget.sh`
 prints the live budget as one read-only line (`gh-api: remaining=R/5000 reset=HH:MMZ graphql=G/5000`).
+`ghq_routes` in `scripts/lib/gh-quota.sh` is the one table of the callers whose reads ride the read token
+(`read,main`): `ready-check`, `check-ci`, `go`, `tick`, `ready-go`, `shepherd`, `cr-disposition`,
+`next-dispatchable` and `ticket-status`; every other caller is `main`. A scan gates on the token its
+reads ride (`ghq_scan_token`), and a `blocked/` marker records the caller's routes.
 `scripts/measurements/gh-graphql-callers.sh` is a read-only measurement that prints an estimate of GraphQL points per hour by calling script (1 point per call), with `watch` (samples the live fleet, changes nothing), `run` (one command under a counting shim) and `report` modes.
 Never run your own `gh pr checks` poll loop — that is the spend this replaces;
 call `scripts/check-ci.sh` once, bounded by `--max-wait`. Run a long wait with
@@ -627,7 +632,7 @@ sites are changed here.
 | Cloud-init / Ubuntu provisioner | `ubuntu_vm_user`, `ubuntu_vm_pass` |
 | VM after-report | `himmel_github_token_vm` |
 | VM SDK clone (`vmsdk.py <vm> clone`) | `himmel_github_token_vm`, else `himmel_github_token_vm2` (first present wins) |
-| Read-only `gh` calls (tick, check-ci, ready-check, go.sh reads) | `himmel_github_token_vm2` (read-only token, loaded per call by `scripts/lib/gh-read.sh`; missing or exhausted falls back to the main token) |
+| Read-only `gh` calls (tick, check-ci, ready-check, go.sh reads; cr-disposition's head-branch read, the dispatcher, ticket-status, `merge-rows-effective.py` and the chief waiter's CI read) | `himmel_github_token_vm2` (read-only token, loaded per call by `scripts/lib/gh-read.sh`; missing or exhausted falls back to the main token, except a rate-limited read under `GH_READ_NO_MAIN_FALLBACK=1`, which the dispatcher sets) |
 | Google Health pull cadence | `GOOGLE_HEALTH_REFRESH_TOKEN` |
 | Chat-note enrichment / graphmap provider selection | Only the selected provider's named key (`DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, `ZAI_API_KEY`, or `ANTHROPIC_API_KEY` for chat-note enrichment) |
 | Fetch-health probe lookup | `BITBUCKET_EMAIL`, `BITBUCKET_API_TOKEN`, `FIRECRAWL_API_KEY`, `FIRECRAWL_BASE_URL`, `HIMMEL_FETCH_HEALTH_STATE`, `HIMMEL_FIRECRAWL_LEDGER`, `HIMMEL_IG_PROBE_CACHE`, `HIMMEL_IG_PROBE_TTL_S`, `IG_SCRAPLING_PYTHON`, `X_SCRAPLING_PYTHON`, `YT_SCRAPLING_PYTHON`, and the explicit `FETCH_HEALTH_REDDIT_URL`, `FETCH_HEALTH_FXTWITTER_URL`, `FETCH_HEALTH_INSTAGRAM_EMBED_URL`, `FETCH_HEALTH_INSTAGRAM_MEDIA_URL`, `FETCH_HEALTH_X_MEDIA_URL`, `FETCH_HEALTH_YOUTUBE_URL`, `FETCH_HEALTH_JINA_URL` overrides; file-derived config is not passed wholesale to children |

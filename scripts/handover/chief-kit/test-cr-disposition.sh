@@ -318,6 +318,48 @@ check    "11: a hung read prints no false cause" "$(grep -c "cannot read PR" <<<
 check    "11: a hung read leaves one marker" "$(mkers)" "1"
 contains "11: the stall marker names the reason" "$(cat "$HIMMEL_QUOTA_DIR/blocked/90.$SHA")" "reason=stall"
 
+mkdir -p "$tmp/t11bin" "$tmp/t11root" "$tmp/t11noroot"
+printf 'himmel_github_token_vm2=ghp_CRDREAD0123456789\n' > "$tmp/t11root/.env"
+: > "$tmp/t11noroot/.env"
+cat > "$tmp/t11bin/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in
+    "pr view "*"--json headRefName"*)
+        printf '%s %s %s %s\n' "${GH_TOKEN:-main}" "$1" "$2" "$3" >> "$T11_LOG"
+        case "${T11_MODE:-ok}" in
+            hung) exec sleep 60 ;;
+            rl) echo 'GraphQL: API rate limit already exceeded for user ID 1. (RATE_LIMIT)' >&2; exit 1 ;;
+        esac
+        printf '%s\n' "$READY_STUB_BRANCH"; exit 0 ;;
+esac
+exec "$T11_NEXT" "$@"
+STUB
+chmod +x "$tmp/t11bin/gh"
+t11() {
+  local root="$1"; shift
+  : > "$tmp/t11.log"
+  rc=0; out="$(env -u GH_CMD -u himmel_github_token_vm2 "$@" PATH="$tmp/t11bin:$PATH" T11_NEXT="$tmp/ready-bin/gh" T11_LOG="$tmp/t11.log" \
+    GH_READ_ENV_ROOT="$root" bash "$DISP" check 90 "$SHA" 2>&1)" || rc=$?
+}
+rm -rf "$HIMMEL_QUOTA_DIR"
+t11 "$tmp/t11root"
+contains "12: a read on the read token reaches the check" "$out" "[OPEN] crit adopt-9@$FHEAD"
+check    "12: the head-branch read goes out on the read token" "$(cat "$tmp/t11.log")" "ghp_CRDREAD0123456789 pr view 90"
+t0=$SECONDS
+t11 "$tmp/t11root" T11_MODE=hung CR_DISPOSITION_GH_TIMEOUT=2
+check    "12: a hung read on the read token ends in exit 2" "$rc" "2"
+check    "12: and is cut within the bound" "$([ $((SECONDS - t0)) -le 12 ] && echo yes || echo no)" "yes"
+contains "12: its GH-STALL line names the read token" "$out" "GH-STALL github read timed out after 2s token=read caller=cr-disposition.sh"
+rm -rf "$HIMMEL_QUOTA_DIR"
+t11 "$tmp/t11root" T11_MODE=rl
+check    "12: a read refused on both tokens is exit 2" "$rc" "2"
+check    "12: the refused read token falls back to main once (a gate)" "$(tr '\n' '|' < "$tmp/t11.log")" "ghp_CRDREAD0123456789 pr view 90|main pr view 90|"
+contains "12: the QUOTA-PAUSE line names main, the token that refused last" "$out" "QUOTA-PAUSE github graphql token=main"
+contains "12: the marker carries both routes" "$(cat "$HIMMEL_QUOTA_DIR/blocked/90.$SHA" 2>/dev/null)" "routes=main,read"
+t11 "$tmp/t11noroot"
+contains "12 RED control: with no read token configured the check still runs" "$out" "[OPEN] crit adopt-9@$FHEAD"
+check    "12 RED control: the head-branch read goes out on main, as today" "$(cat "$tmp/t11.log")" "main pr view 90"
+
 echo "---"
 if [ "$fails" -eq 0 ]; then
   echo "PASS - test-cr-disposition.sh"
