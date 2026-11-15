@@ -2174,7 +2174,8 @@ mirror_card() {
 other_merge() { local keep=$K; K=$1; lrow "$2" merge moved - '{"pr":"4481","contract":"no"}'; K=$keep; }
 codfx 73; cod_comment $((100 * 3600)) 'x'
 mirror_card "$K" null HIMMEL-9990; mirror_card HIMMEL-9990 null "" '"residual","standalone"'; other_merge HIMMEL-9990 3600
-drift
+drift; rc13=$?
+check "10189 COD 13: the drift run exits 0" "$rc13" 0
 check "10189 COD 13: a recent merge of a residual-labelled key the parent links to is an event, so no CLOSE-OR-DISPATCH row" "$(dcount CLOSE-OR-DISPATCH)" 0
 codfx 73; cod_comment $((100 * 3600)) 'x'
 mirror_card "$K" null HIMMEL-9990; mirror_card HIMMEL-9990 null "" '"standalone"'; other_merge HIMMEL-9990 3600
@@ -2182,7 +2183,8 @@ drift
 check "10189 COD 13: control: a recent merge of a linked key with no residual or follow-up label is no event, the row stays" "$(dcount CLOSE-OR-DISPATCH)" 1
 codfx 73; cod_comment $((100 * 3600)) 'x'
 mirror_card "$K" null; mirror_card HIMMEL-9991 "\"$K\""; other_merge HIMMEL-9991 3600
-drift
+drift; rc14=$?
+check "10189 COD 14: the drift run exits 0" "$rc14" 0
 check "10189 COD 14: a recent merge of a child key is an event, so no CLOSE-OR-DISPATCH row" "$(dcount CLOSE-OR-DISPATCH)" 0
 codfx 73; cod_comment $((100 * 3600)) 'x'
 mirror_card "$K" null HIMMEL-9990; mirror_card HIMMEL-9990 null "" '"residual"'; other_merge HIMMEL-9990 $((90 * 3600))
