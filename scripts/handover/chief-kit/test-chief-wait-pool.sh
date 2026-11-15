@@ -198,6 +198,8 @@ EOF
     check '(9982) focus=WARN:cycle with two keys wakes once with the keys and the fix' '0:1:1' "$digest_rc:$(grep -c '^WAKE focus WARN:cycle ZZ-1,ZZ-2 ' "$WORK/warn-cycle-first.out"):$(grep -c 'cut or justify' "$WORK/warn-cycle-first.out")"
     warn_poll 'WARN:cycle ZZ-1,ZZ-2' warn-cycle-again
     check '(9982) the same key set polled again does not wake' '124:0' "$digest_rc:$(grep -c '^WAKE ' "$WORK/warn-cycle-again.out")"
+    warn_poll 'WARN:cycle ZZ-1,ZZ-2, drift gh' warn-cycle-drift
+    check '(9982) the same key set with a drift warning beside it does not wake again' '124:0' "$digest_rc:$(grep -c '^WAKE ' "$WORK/warn-cycle-drift.out")"
     warn_poll 'WARN:cycle ZZ-1,ZZ-3' warn-cycle-changed
     check '(9982) a changed key set wakes again' '0:1' "$digest_rc:$(grep -c '^WAKE focus WARN:cycle ZZ-1,ZZ-3 ' "$WORK/warn-cycle-changed.out")"
     warn_poll 'WARN:unknown ZZ-4' warn-unknown
