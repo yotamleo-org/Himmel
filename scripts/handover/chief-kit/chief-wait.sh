@@ -233,9 +233,14 @@
 #                               (WAIT_SWEEP_SEC), bounded at 60 s, woke only when it
 #                               moved a ticket or its failure signature is new.
 #   WAKE focus <state>          the same pass: focus-refresh.sh --status is FAILED:<stage>,
-#                               or DIRTY:<n>m with n of 10 or more; once per state.
+#                               or DIRTY:<n>m with n of 10 or more; once per state. It is also
+#                               WARN:cycle <keys> or WARN:unknown <keys> (a Blocks loop or an
+#                               unreadable link; alone or joined to another warning): once per
+#                               distinct sorted key set, and the line names the fix (cut or
+#                               justify the edge). Other WARN states wake nothing.
 #                               Each tick also starts one background refresh of a
-#                               DIRTY or FAILED page (none while one runs); no wake.
+#                               DIRTY or FAILED page (none while one runs); no wake. A WARN
+#                               page starts none.
 #   WAKE cadence <workflow> run=<id> <RED|SKIP|MISSED> <run url> cause: <why>   the tick's
 #                               cadence= field flags the last scheduled run of a workflow: RED (failure or
 #                               timed_out), SKIP (concluded skipped) or MISSED (no scheduled run inside 1.5
@@ -1720,6 +1725,7 @@ sweep_cmd="${WAIT_SWEEP_CMD:-$HERE/status-sweep.sh}"
 focus_cmd="${WAIT_FOCUS_CMD:-$HERE/focus-refresh.sh}"
 sweep_sec="${WAIT_SWEEP_SEC:-900}"
 sweep_timeout="${WAIT_SWEEP_TIMEOUT:-60}"
+warn_loop_key_set() { printf '%s\n' "${1#WARN:}" | sed 's/, /\n/g' | grep -E '^(cycle|unknown) ' | paste -sd, -; }
 sweep_wake() {
     local last now out moved fstat age
     [ -n "$console_doc" ] || return 1
@@ -1740,6 +1746,7 @@ sweep_wake() {
     fstat="${fstat#focus=}"
     case "$fstat" in
         FAILED:* | DIRTY:unknown) ;;
+        WARN:cycle\ * | WARN:unknown\ * | WARN:*,\ cycle\ * | WARN:*,\ unknown\ *) ;;
         DIRTY:*m)
             age="${fstat#DIRTY:}"; age="${age%m}"
             case "$age" in ''|*[!0-9]*) rm -f "$sweep_focus_file"; return 1 ;; esac
@@ -1748,9 +1755,10 @@ sweep_wake() {
     esac
     fkey="$fstat"
     case "$fstat" in DIRTY:*) fkey=DIRTY ;; FAILED:*) fkey=FAILED ;; esac # the marker keys on the state, not the stage: a failure that flips its stage name (timeout, drift:budget) is one failure
+    case "$fstat" in WARN:*) fkey="WARN:$(warn_loop_key_set "$fstat")" ;; esac
     [ "$(cat "$sweep_focus_file" 2>/dev/null)" != "$fkey" ] || return 1  # swallow-ok: no marker reads empty, so the first sight wakes
     printf '%s\n' "$fkey" > "$sweep_focus_file" 2>/dev/null
-    printf 'WAKE focus %s\n' "$fstat"
+    case "$fstat" in WARN:*) printf 'WAKE focus %s — fix: cut or justify each Blocks edge in the loop, or make the unreadable link readable\n' "$fstat" ;; *) printf 'WAKE focus %s\n' "$fstat" ;; esac
 }
 
 # focus_rebuild: with --doc, each tick reads the FOCUS state and, when a status write marked it

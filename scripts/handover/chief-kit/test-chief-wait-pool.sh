@@ -172,7 +172,7 @@ EOF
 
     cat > "$STUB/digest-focus.sh" <<'EOF'
 #!/usr/bin/env bash
-case " $* " in *" --status "*) cat "$STUB/focus.state" ;; esac
+case " $* " in *" --status "*) cat "$STUB/focus.state" ;; *) echo run >> "$STUB/focus.runs" ;; esac
 EOF
     export WAIT_FOCUS_CMD="$STUB/digest-focus.sh" WAIT_SWEEP_CMD="$STUB/digest-sweep.sh" WAIT_SWEEP_SEC=60
     local focus_state
@@ -184,6 +184,33 @@ EOF
         timeout 4 bash "$WAIT" "$I" --doc "$WORK/digest-chief.md" --workers N1.md > "$WORK/focus-$focus_state.out" 2> "$WORK/focus-$focus_state.err"; digest_rc=$?
         check "(8197) $focus_state wakes immediately when a status sweep is buffered" "0:WAKE focus $focus_state" "$digest_rc:$(head -n 1 "$WORK/focus-$focus_state.out")"
         check "(8197) $focus_state leaves the simultaneous status sweep queued" 1 "$(grep -c '^status-sweep status-sweep moved=1 wake=1' "$I.wait.housekeeping")"
+    done
+
+    export WAIT_SWEEP_CMD="$STUB/off.sh"
+    rm -f "$STUB/focus.runs"
+    I="$(new_inbox focus-warn)"
+    warn_poll() {
+        printf 'focus=%s\n' "$1" > "$STUB/focus.state"
+        printf '%s\n' "$(( $(date +%s) - 61 ))" > "$I.wait.sweep"
+        timeout 3 bash "$WAIT" "$I" --doc "$WORK/digest-chief.md" --workers N1.md > "$WORK/$2.out" 2> "$WORK/$2.err"; digest_rc=$?
+    }
+    warn_poll 'WARN:cycle ZZ-1,ZZ-2' warn-cycle-first
+    check '(9982) focus=WARN:cycle with two keys wakes once with the keys and the fix' '0:1:1' "$digest_rc:$(grep -c '^WAKE focus WARN:cycle ZZ-1,ZZ-2 ' "$WORK/warn-cycle-first.out"):$(grep -c 'cut or justify' "$WORK/warn-cycle-first.out")"
+    warn_poll 'WARN:cycle ZZ-1,ZZ-2' warn-cycle-again
+    check '(9982) the same key set polled again does not wake' '124:0' "$digest_rc:$(grep -c '^WAKE ' "$WORK/warn-cycle-again.out")"
+    warn_poll 'WARN:cycle ZZ-1,ZZ-2, drift gh' warn-cycle-drift
+    check '(9982) the same key set with a drift warning beside it does not wake again' '124:0' "$digest_rc:$(grep -c '^WAKE ' "$WORK/warn-cycle-drift.out")"
+    warn_poll 'WARN:cycle ZZ-1,ZZ-3' warn-cycle-changed
+    check '(9982) a changed key set wakes again' '0:1' "$digest_rc:$(grep -c '^WAKE focus WARN:cycle ZZ-1,ZZ-3 ' "$WORK/warn-cycle-changed.out")"
+    warn_poll 'WARN:unknown ZZ-4' warn-unknown
+    check '(9982) focus=WARN:unknown wakes with the key' '0:1' "$digest_rc:$(grep -c '^WAKE focus WARN:unknown ZZ-4 ' "$WORK/warn-unknown.out")"
+    warn_poll 'WARN:chains render, cycle ZZ-5,ZZ-6' warn-joined
+    check '(9982) a loop joined to another warning still wakes' '0:1' "$digest_rc:$(grep -c '^WAKE focus WARN:' "$WORK/warn-joined.out")"
+    check '(9982) the refresh-start guard started no refresh for a WARN state' no "$([ -e "$STUB/focus.runs" ] && echo yes || echo no)"
+    for focus_state in ok DIRTY:5m WARN:drift\ unknown WARN:chains\ render; do
+        rm -f "$I.wait.focus"
+        warn_poll "$focus_state" "warn-neg"
+        check "(9982) negative control: focus=$focus_state does not wake" '124:0' "$digest_rc:$(grep -c '^WAKE ' "$WORK/warn-neg.out")"
     done
     export WAIT_FOCUS_CMD="$STUB/off.sh" WAIT_SWEEP_CMD="$STUB/off.sh" WAIT_SWEEP_SEC=1
 
