@@ -4,7 +4,7 @@
 // API at 50 % of the list price. One batch per run, one request per chunk prompt; the batch id is persisted in
 // <dir>/batch.json so a later run resumes it and never resubmits.
 //
-//   submit  --dir D --prompts P --account A|B --model M --effort E [--max-tokens N]
+//   submit  --dir D --prompts P --account A|B --model M --effort E [--max-tokens N] [--max-usd U]
 //           P holds one file per chunk prompt, named <sha256 of the prompt>.txt (the custom_id), and optionally a
 //           <sha256>.key sidecar with the shim's chunk-body key (kept in batch.json, written back by results as
 //           R/bodies.json for the replay shim). Refuses when
@@ -20,7 +20,8 @@
 //       5 credit exhausted, 6 API key rejected (HTTP 401 or 403); on either the caller rotates account.
 // Key: read here from <state_dir>/key-<account>.env (mode 600, the lane's own file), never printed or put on argv.
 // Endpoint: https://api.anthropic.com, or HIMMEL_BATCH_BASE_URL when it is a loopback http(s) URL (test stub).
-// Spend is not gated here (operator decision 229): the cost lands in the run row and the provider's cost report.
+// Budget: submit needs --max-usd (or GRAPHIFY_API_RUN_BUDGET_USD) and refuses (exit 2) before the POST when requests x the
+// per-request bound is over it, or when no budget is given. The actual cost lands in the run row and the provider's report.
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -147,6 +148,8 @@ async function submit(o) {
   if (!EFFORT.includes(effort)) refuse(`--effort must be one of ${EFFORT.join(', ')}`);
   const maxTokens = Number(o['max-tokens'] ?? 32000);
   if (!Number.isInteger(maxTokens) || maxTokens < 1) refuse('--max-tokens must be a positive integer');
+  const budget = o['max-usd'] ?? process.env.GRAPHIFY_API_RUN_BUDGET_USD ?? refuse('no budget: pass --max-usd or set GRAPHIFY_API_RUN_BUDGET_USD; nothing submitted');
+  if (!/^(\d+\.?\d*|\.\d+)$/.test(budget) || !(Number(budget) > 0)) refuse('--max-usd must be a positive decimal (GRAPHIFY_API_RUN_BUDGET_USD likewise)');
   const files = readdirSync(o.prompts ?? refuse('--prompts is required')).filter((f) => f.endsWith('.txt')).sort();
   if (files.length === 0) refuse('no prompts to submit');
   const prompts = files.map((f) => {
@@ -169,11 +172,16 @@ async function submit(o) {
   const requests = prompts.map(({ id, text }) => ({ custom_id: id, params: { model, max_tokens: maxTokens, output_config: { effort },
     ...(prefix && { system: [{ type: 'text', text: prefix, cache_control: { type: 'ephemeral', ttl: CACHE_TTL } }] }),
     messages: [{ role: 'user', content: prefix ? text.slice(prefix.length) : text }] } }));
+  // The estimate gates the POST: once the batch is created it bills to the end, so the budget is checked before.
+  const estimate = prompts.reduce((sum, { text }) => sum + requestBound(model, text, maxTokens), 0);
+  if (estimate > Number(budget)) {
+    refuse(`estimate ${estimate.toFixed(6)} USD (${requests.length} requests, each up to ${requestBound(model, prompts[0].text, maxTokens).toFixed(6)} USD) is over the budget of ${budget} USD; nothing submitted`);
+  }
   const key = await accountKey(o.account);
   const made = JSON.parse(await call(key, 'POST', '/v1/messages/batches', { requests }));
   if (typeof made.id !== 'string' || !made.id) refuse('the create reply carries no batch id', 3);
   mkdirSync(dir, { recursive: true });
-  const state = { version: 1, batch_id: made.id, account: o.account, model, effort, request_count: requests.length,
+  const state = { version: 1, batch_id: made.id, account: o.account, estimate_usd: estimate.toFixed(6), budget_usd: budget, model, effort, request_count: requests.length,
     custom_ids: requests.map((r) => r.custom_id), bodies, created_at: made.created_at ?? null, status: made.processing_status ?? 'in_progress' };
   save(dir, state);
   out({ batch_id: state.batch_id, request_count: state.request_count, status: state.status });
@@ -198,6 +206,13 @@ function cost(model, u) {
     : 1.25 * (u.cache_creation_input_tokens ?? 0);
   const inTok = (u.input_tokens ?? 0) + write + readMult * (u.cache_read_input_tokens ?? 0);
   return (inTok * pin + (u.output_tokens ?? 0) * pout) / 1e6;
+}
+
+// The most one request can bill: its input at twice the input rate (the dearest cache write) over bytes / 3, which
+// overcounts tokens, plus max_tokens at the output rate. A real request costs less; the bound is for the budget gate.
+function requestBound(model, text, maxTokens) {
+  const [pin, pout] = PRICE[model];
+  return (Math.ceil(Buffer.byteLength(text) / 3) * 2 * pin + maxTokens * pout) / 1e6;
 }
 
 async function results(o) {

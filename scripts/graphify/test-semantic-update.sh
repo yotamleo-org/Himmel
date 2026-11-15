@@ -992,7 +992,7 @@ if (cmd === 'submit') {
   // as the real client: the shim's chunk-body key sidecars ride in batch.json
   const bodies = {};
   for (const id of ids) if (existsSync(join(o.prompts, `${id}.key`))) bodies[readFileSync(join(o.prompts, `${id}.key`), 'utf8').trim()] = id;
-  writeFileSync(sp, JSON.stringify({ batch_id: 'msgbatch_stub', account: o.account, request_count: ids.length, custom_ids: ids, bodies, status: 'in_progress' }));
+  writeFileSync(sp, JSON.stringify({ batch_id: 'msgbatch_stub', account: o.account, budget_usd: o['max-usd'], request_count: ids.length, custom_ids: ids, bodies, status: 'in_progress' }));
   console.log(JSON.stringify({ batch_id: 'msgbatch_stub', request_count: ids.length, status: 'in_progress' }));
 } else if (cmd === 'poll') {
   if (process.env.BATCH_STUB_POLLFAIL) { console.error('semantic-batch: HTTP 503 on poll'); process.exit(3); }
@@ -1074,6 +1074,8 @@ P70="$C70/graphify-out/semantic-batch"
   && pass "T70 one submit: account A, one recorded prompt, sonnet at high effort" || fail "T70 batch.log: $(cat "$WS/batch.log")"
 [ -f "$P70/batch.json" ] && [ -f "$P70/plan.json" ] && [ -f "$P70/corpus/a.md" ] \
   && pass "T70 batch.json, plan and the frozen corpus are persisted" || fail "T70 pending dir: $(ls -R "$P70" 2>&1)"
+[ "$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["budget_usd"])' "$P70/batch.json")" = "15.00" ] \
+  && pass "T70 the run cap (15.00 by default) reaches the client as --max-usd" || fail "T70 budget handed to the client: $(cat "$P70/batch.json")"
 [ ! -e "$P70/corpus/graphify-out/cache/semantic/new.json" ] \
   && pass "T70 the record run's placeholder cache is not in the frozen corpus" || fail "T70 placeholder cache leaked into the frozen corpus"
 [[ "$out" == *"BATCH id=msgbatch_stub state=submitted requests=1 cost_usd=-"* ]] \
@@ -1100,6 +1102,8 @@ out=$(GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t70 --corpus-root "$C70" --co
 [ "$(lastrun "$C70" batch_id)" = "msgbatch_stub" ] && [ "$(lastrun "$C70" batch_requests)" = "1" ] \
   && [ "$(lastrun "$C70" cost_usd)" = "0.0035" ] && [ "$(lastrun "$C70" backend)" = "claude-api" ] \
   && pass "T72 run row: batch_id msgbatch_stub, batch_requests 1, cost_usd 0.0035" || fail "T72 row: $(tail -1 "$C70/graphify-out/semantic-runs.jsonl")"
+[ "$(lastrun "$C70" account)" = "A" ] \
+  && pass "T72 the run row names the account that paid" || fail "T72 account on the row: $(tail -1 "$C70/graphify-out/semantic-runs.jsonl")"
 [[ "$out" == *"state=merged requests=1 cost_usd=0.003500"* ]] && pass "T72 the BATCH line closes the run as merged" || fail "T72 BATCH line: $out"
 grep -q 'claude-shim-rc' "$WS/calls.log" && fail "T72 the replay shim missed an answer: $(cat "$WS/calls.log")" || pass "T72 every chunk prompt was answered from the batch"
 [[ "$out" == *"semantic-update: replay answered 1 chunk(s) by full prompt hash and 0 by chunk-body key"* ]] \

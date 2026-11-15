@@ -82,8 +82,11 @@ function fixture() {
   const batch = join(dir, 'pending');
   const client = (...a) => run(process.execPath, [CLIENT, ...a], { env, encoding: 'utf8' }).then(
     (r) => ({ code: 0, ...r }), (e) => ({ code: e.code, stdout: e.stdout, stderr: e.stderr }));
-  const submit = (extra = [], model = 'sonnet') => client('submit', '--dir', batch, '--prompts', prompts, '--account', 'A', '--model', model, '--effort', 'high', ...extra);
-  return { dir, env, prompts, prompt, batch, client, submit };
+  // a roomy budget unless the case names its own: every submit needs one, and most cases are not about it
+  const submit = (extra = [], model = 'sonnet') => client('submit', '--dir', batch, '--prompts', prompts, '--account', 'A', '--model', model, '--effort', 'high',
+    ...(extra.includes('--max-usd') ? [] : ['--max-usd', '100']), ...extra);
+  const bare = (...a) => client('submit', '--dir', batch, '--prompts', prompts, '--account', 'A', '--model', 'sonnet', '--effort', 'high', ...a);
+  return { dir, env, prompts, prompt, batch, client, submit, bare };
 }
 const reset = () => { seen.posts.length = 0; seen.gets.length = 0; seen.keys.clear(); stub.create = 'ok'; stub.status = 'in_progress'; stub.errored.clear(); stub.realLine = null; stub.usage = null; };
 
@@ -324,7 +327,7 @@ test('shim: record writes the prompt under its hash, replay answers from the bat
   assert.ok(placeholder.nodes.length > 0, 'a placeholder with no node would be retried by graphify as a hollow reply');
 
   // the recorded prompts go through submit and results, then replay returns the batch's own answer
-  assert.equal((await f.client('submit', '--dir', f.batch, '--prompts', rec, '--account', 'A', '--model', 'sonnet')).code, 0);
+  assert.equal((await f.client('submit', '--dir', f.batch, '--prompts', rec, '--account', 'A', '--model', 'sonnet', '--max-usd', '100')).code, 0);
   stub.status = 'ended';
   assert.equal((await f.client('poll', '--dir', f.batch)).code, 0);
   const res = join(f.dir, 'res');
@@ -355,7 +358,7 @@ test('shim: a resumed batch answers every chunk although graphify\'s instruction
     const r = shim({ GRAPHIFY_BATCH_MODE: 'record', GRAPHIFY_BATCH_DIR: rec, GRAPHIFY_SEMANTIC_ADDENDUM: addendumOld }, prompt('You are the old extractor.', c), ...flags);
     assert.equal(r.status, 0, r.stderr);
   }
-  assert.equal((await f.client('submit', '--dir', f.batch, '--prompts', rec, '--account', 'A', '--model', 'sonnet')).code, 0);
+  assert.equal((await f.client('submit', '--dir', f.batch, '--prompts', rec, '--account', 'A', '--model', 'sonnet', '--max-usd', '100')).code, 0);
   stub.status = 'ended';
   assert.equal((await f.client('poll', '--dir', f.batch)).code, 0);
   const res = join(f.dir, 'res');
@@ -386,4 +389,56 @@ test('shim: a resumed batch answers every chunk although graphify\'s instruction
 test('shim: refuses an argument graphify does not send and a missing mode', () => {
   assert.equal(shim({ GRAPHIFY_BATCH_MODE: 'record', GRAPHIFY_BATCH_DIR: T }, '', '-p', '--dangerous').status, 2);
   assert.equal(shim({}, '', '-p').status, 2);
+});
+
+// The estimate (requests x a per-request bound) is checked against the approved budget before the POST.
+// Two prompts of ~30 bytes on sonnet-5-5: each request is bounded by its input at twice the input rate plus max_tokens
+// (32000) at the $5/M output rate, about 0.16002 USD, so the batch is about 0.32004 USD.
+test('a batch whose estimate is over the budget is refused before submit, one line naming estimate and budget', async () => {
+  reset();
+  const f = fixture();
+  const s = await f.submit(['--max-usd', '0.30']);
+  assert.equal(s.code, 2, `submitted anyway: ${s.stdout}`);
+  assert.match(s.stderr.trim(), /^semantic-batch: estimate 0\.32\d* USD .*2 requests.* is over the budget of 0\.30 USD; nothing submitted$/);
+  assert.equal(seen.posts.length, 0, 'nothing reached the endpoint');
+  assert.equal(existsSync(join(f.batch, 'batch.json')), false, 'no state left behind');
+});
+
+test('a batch within the budget submits, and batch.json records the paying account, the estimate and the budget', async () => {
+  reset();
+  const f = fixture();
+  const s = await f.submit(['--max-usd', '0.33']);
+  assert.equal(s.code, 0, s.stderr);
+  const st = JSON.parse(readFileSync(join(f.batch, 'batch.json'), 'utf8'));
+  assert.equal(st.account, 'A');
+  assert.match(st.estimate_usd, /^0\.3200\d\d$/, 'two requests at about 0.16 USD each');
+  assert.equal(st.budget_usd, '0.33');
+});
+
+test('no budget refuses (fail closed): no flag and no env, a bad value, a zero value', async () => {
+  reset();
+  const f = fixture();
+  const none = await f.bare();
+  assert.equal(none.code, 2);
+  assert.match(none.stderr, /no budget: pass --max-usd or set GRAPHIFY_API_RUN_BUDGET_USD; nothing submitted/);
+  for (const bad of ['abc', '0', '-1', '1e3', '']) {
+    const r = await f.bare('--max-usd', bad);
+    assert.equal(r.code, 2, `'${bad}'`);
+    assert.match(r.stderr, /--max-usd must be a positive decimal/);
+  }
+  assert.equal(seen.posts.length, 0);
+});
+
+test('the budget may come from GRAPHIFY_API_RUN_BUDGET_USD; the flag wins when both are set', async () => {
+  reset();
+  const f = fixture();
+  const args = [CLIENT, 'submit', '--dir', f.batch, '--prompts', f.prompts, '--account', 'A', '--model', 'sonnet', '--effort', 'high'];
+  // async: the stub server lives in this process, so a blocking spawn would starve it
+  const env = { ...f.env, GRAPHIFY_API_RUN_BUDGET_USD: '0.30' };
+  const over = await run(process.execPath, args, { env, encoding: 'utf8' }).then(() => ({ code: 0 }), (e) => ({ code: e.code, stderr: e.stderr }));
+  assert.equal(over.code, 2, over.stderr);
+  assert.match(over.stderr, /over the budget of 0\.30 USD/);
+  assert.equal(seen.posts.length, 0);
+  const flagWins = await run(process.execPath, [...args, '--max-usd', '0.33'], { env, encoding: 'utf8' }).then(() => ({ code: 0 }), (e) => ({ code: e.code, stderr: e.stderr }));
+  assert.equal(flagWins.code, 0, flagWins.stderr);
 });

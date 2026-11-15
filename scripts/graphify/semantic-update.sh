@@ -507,7 +507,7 @@ batch_submit() {
     fi
     rc=0
     node "$BATCH_CLIENT" submit --dir "$PENDING" --prompts "$WORK/prompts" --account "$acct" \
-      --model "${GRAPHIFY_CLAUDE_CLI_MODEL-sonnet}" --effort "$API_EFFORT" >&2 || rc=$?
+      --model "${GRAPHIFY_CLAUDE_CLI_MODEL-sonnet}" --effort "$API_EFFORT" --max-usd "$RUN_CAP" >&2 || rc=$?
     case "$rc" in
       5) what="credit exhausted" ;;
       6) what="API key rejected"
@@ -760,7 +760,7 @@ fi
 # A failed or refused file's cache entry is evicted from both copies, or the cp-back below would restore it.
 EVICT=() BATCH_ARGS=()
 if [ "$RESUME" -eq 1 ]; then
-  BATCH_ARGS=(--batch-id "$(batch_field batch_id)" --batch-requests "$(batch_field request_count)")
+  BATCH_ARGS=(--batch-id "$(batch_field batch_id)" --batch-requests "$(batch_field request_count)" --account "$(batch_field account)")
   # the batch cost joins the spend the run row sums
   batch_field cost_usd >> "$WORK/spend.log"
 fi
