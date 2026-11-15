@@ -64,7 +64,6 @@ TIER_REL=scripts/station-ops/bypass-flag-tiers.tsv
 REG_REL=scripts/himmelctl/lib/bypass-flags.json
 DAEMON_REL=scripts/station-ops/bypass-launchd.sh
 g() { env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_COMMON_DIR git -c core.hooksPath=/dev/null -c commit.gpgsign=false -c user.name=t -c user.email=t@t "$@"; }
-# A temp git repo holding committed copies of the daemon, the registry and the tier file; the daemon run from it resolves REPO to it.
 mk_repo() {
     mkdir -p "$1/scripts/station-ops" "$1/scripts/himmelctl/lib"
     cp "$REPO_ROOT/$DAEMON_REL" "$1/$DAEMON_REL"
@@ -73,7 +72,6 @@ mk_repo() {
     g -C "$1" init -q && g -C "$1" add -A && g -C "$1" commit -q -m seed
 }
 setup_repo() { setup "$1"; R="$D/repo"; mk_repo "$R"; DAEMON="$R/$DAEMON_REL"; }
-# run the temp repo's daemon in the foreground; a daemon that does not refuse is cut off by timeout
 run_repo() {
     env -u CLAUDECODE BYPASSD_TEST_DIR="$D" BYPASSD_SEND="$tmp/send" BYPASSD_LAUNCHER="$tmp/launcher" BYPASSD_POLL=0.1 \
         BRIDGE_ROOT="$D/bridge" TELEGRAM_ACCESS_PATH="$D/access.json" XDG_RUNTIME_DIR="$D/run" \
@@ -85,7 +83,6 @@ launch_env_after_go() {
     code=$(ask_code r "$@"); reply "$OPERATOR" "$OPERATOR" "go $code"
     wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
 }
-# every registry name and every override-env name has one tier row; the rows are well formed
 tier_problems() {
     local tiers="$REPO_ROOT/$TIER_REL" reg ovr names n t s w extra out=""
     [ -f "$tiers" ] || { echo "no tier file"; return; }
@@ -262,7 +259,7 @@ stop
 echo "== 9973 R2 R4 R5 R6 R7: refusals before any ask =="
 setup_repo refuse
 start
-refusal() { # <label> <req name> <reason fragment> <flags and fields...>
+refusal() {
     local label=$1 n=$2 frag=$3; shift 3
     printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=HIMMEL-nextleg-2026-11-13A-roadmap-chief "$@" > "$Q/$n.req"
     wait_for "$Q/daemon.log" "REFUSED $frag"
@@ -293,13 +290,14 @@ stop
 
 echo "== 9973 R10: a dirty trust input refuses start =="
 setup_repo r10
-dirty() { # <label> <relative path> <staged: yes|no>
-    printf '\n# edit\n' >> "$R/$2"
-    [ "$3" = yes ] && g -C "$R" add "$2"
+dirty() {
+    local label=$1 rel=$2 staged=$3
+    printf '\n# edit\n' >> "$R/$rel"
+    [ "$staged" = yes ] && g -C "$R" add "$rel"
     out=$(run_repo); rc=$?
-    assert_eq "R10 $1: start is refused with exit 2" "2" "$rc"
-    assert_contains "R10 $1: the refusal says uncommitted changes" "uncommitted changes" "$out"
-    assert_absent "R10 $1: no start line is logged" "start pid" "$(cat "$Q/daemon.log" 2>/dev/null)"
+    assert_eq "R10 $label: start is refused with exit 2" "2" "$rc"
+    assert_contains "R10 $label: the refusal says uncommitted changes" "uncommitted changes" "$out"
+    assert_absent "R10 $label: no start line is logged" "start pid" "$(cat "$Q/daemon.log" 2>/dev/null)"
     g -C "$R" reset -q --hard
 }
 dirty "the tier file" "$TIER_REL" no

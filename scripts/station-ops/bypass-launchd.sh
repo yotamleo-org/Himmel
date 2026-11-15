@@ -52,8 +52,6 @@ now="$(date +%s)"
 OP="$(jq -r '.allowFrom[0] // empty' "$ACCESS" 2>/dev/null)" && [[ "$OP" =~ ^[1-9][0-9]*$ ]] || die "no operator id (allowFrom[0]) in $ACCESS"
 LOG="$Q/daemon.log" # t13b-ok: the queue log file name the bucket and chief docs already read; operator-started, bounded by --until
 
-# The grantable list is committed text: the registry and the tier file at HEAD of this checkout, read once, here.
-# No inherited git location may point these reads at another tree.
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
 SELF_REL=scripts/station-ops/bypass-launchd.sh TIER_REL=scripts/station-ops/bypass-flag-tiers.tsv REG_REL=scripts/himmelctl/lib/bypass-flags.json
 for p in "$SELF_REL" "$TIER_REL" "$REG_REL"; do
@@ -68,10 +66,8 @@ TIER_ROWS=$(git -C "$REPO" show "$HEAD_SHA:$TIER_REL" 2>/dev/null | grep -v -e '
 while IFS=$'\t' read -r n t s _; do
     [[ "$n" =~ ^[A-Z][A-Z0-9_]*$ && "$t" =~ ^(grant|decision|floor|none)$ && -n "$s" ]] || die "cannot read $TIER_REL at HEAD: bad row for '$n'"
 done <<<"$TIER_ROWS"
-# grant and decision rows whose name is in the registry (or whose source is eval) are what a go code can grant
 GRANTABLE=$(awk -F'\t' 'NR == FNR { r[$1] = 1; next } ($2 == "grant" || $2 == "decision") && (r[$1] || $3 == "eval") { print $1 }' <(printf '%s\n' "$REG_NAMES") <(printf '%s\n' "$TIER_ROWS"))
 grantable=$(printf '%s\n' "$GRANTABLE" | grep -c .)
-# Cleared from every launch: each name the registry or the tier file holds, and every inherited *_OK or *_BYPASS* name.
 strip=()
 while IFS= read -r n; do strip+=(-u "$n"); done < <({ printf '%s\n' "$REG_NAMES"; printf '%s\n' "$TIER_ROWS" | cut -f1; compgen -e | grep -E '_OK$|_BYPASS'; } | sort -u)
 W="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/himmel-chief/gen-briefs"
