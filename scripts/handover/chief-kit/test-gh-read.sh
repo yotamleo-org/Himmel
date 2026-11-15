@@ -345,15 +345,9 @@ check "F4 every token the F and N rows handed gh or printed is a fixture" "" "$(
 printf 'tok=ghp_NOTAFIXTURE0123456789\n' > "$W/leak-probe"
 check "F4b control: a non-fixture token is reported" "ghp_NOTAFIXTURE0123456789 " "$(leaked "$W/leak-probe")"
 
-# ---- F0: the DoD fence — no read-shaped gh call under scripts/handover is left on the main token ----
-# The scanner (python3 -I) reads the git-tracked files of scripts/handover minus tests, fixtures and docs. A hit is a
-# command-position gh (or a variable that holds plain gh) before a read verb, or a 'gh' literal in a .py/.mjs file; it passes
-# only with `gh-main-ok: <why>` on its line. The control rows run it over one-line trees, both directions.
 cat > "$W/f0.py" <<'F0PY'
 import re, sys, os
 
-# F0: every read-shaped gh call under scripts/handover goes through the read helper, or says why not.
-# usage: python3 -I f0.py <root>   (file paths relative to <root>, one per line, on stdin)
 ROOT = sys.argv[1]
 MARK = 'gh-main-ok:'
 VERBS = r'(?:pr\s+(?:view|list|checks|status|diff)|repo\s+view|run\s+(?:list|view)|issue\s+(?:view|list)|api)\b'
@@ -389,7 +383,6 @@ def blank_heredocs(lines):
 
 
 def mask_text(text):
-    """-> (masked text, {line: comment column}); same line count as the input."""
     out, cuts = [], {}
     st, i, n, line = ['c'], 0, len(text), 0
     while i < n:
@@ -442,7 +435,8 @@ def mask_text(text):
 
 def normalise(text):
     text = re.sub(r'"\$\{\w+:-gh\}"', 'gh', text)
-    return re.sub(r'\$\{\w+:-gh\}', 'gh', text)
+    text = re.sub(r'\$\{\w+:-gh\}', 'gh', text)
+    return re.sub(r'(?<![\\`])`([^`\n]*)`', r'$(\1)', text)
 
 
 def api_is_read(tokens):
@@ -468,7 +462,6 @@ def api_is_read(tokens):
 
 
 def tokens_after(plain, pos):
-    """words of the command that starts at pos (quotes stripped), up to an unquoted control operator."""
     toks, cur, q, depth = [], '', None, 0
     i, s = pos, plain
     while i < len(s):
@@ -507,7 +500,6 @@ def verb_is_read(plain_line, verb_start):
 
 
 def logical_lines(masked_lines, raw_lines):
-    """-> [(first line index, masked text, raw text)] with backslash continuations joined."""
     out, i = [], 0
     while i < len(masked_lines):
         j, m, r = i, masked_lines[i], raw_lines[i]
@@ -528,7 +520,6 @@ def scan_shell(path, text):
     masked, cuts = mask_text(norm)
     mlines, nlines = masked.split('\n'), norm.split('\n')
     plain = [(l[:cuts[k]] if k in cuts else l) for k, l in enumerate(nlines)]
-    # variables that hold plain gh (not the `[ -f "$V" ] || V=gh` fallback), minus any the file also points at the helper
     plain_vars, helper_vars = set(), set()
     for k, l in enumerate(plain):
         for m in re.finditer(r'(?:^|[\s;(])(\w+)=(["\']?)gh\2(?=\s|;|\)|$)', l):
@@ -564,7 +555,6 @@ def scan_shell(path, text):
 
 
 def scan_script(path, text):
-    """.py / .mjs: a 'gh' literal used as a command or a seam default."""
     hits = []
     cmt = '#' if path.endswith('.py') else '//'
     for k, ln in enumerate(text.split('\n')):
@@ -606,7 +596,7 @@ def main():
 
 main()
 F0PY
-f0_hits() { # <ext> <content> -> the number of hit lines over a one-file tree
+f0_hits() {
     rm -rf "$W/f0t"; mkdir -p "$W/f0t/scripts/handover"
     printf '%s\n' "$2" > "$W/f0t/scripts/handover/ctl.$1"
     printf 'scripts/handover/ctl.%s\n' "$1" | python3 -I "$W/f0.py" "$W/f0t" 2>/dev/null | grep -c .
@@ -615,6 +605,7 @@ f0_row() { check "F0 $2" "$1" "$(f0_hits "$3" "$4")"; }
 f0_row 1 'control: timeout -k 2 30 gh pr list is a hit' sh 'timeout -k 2 30 gh pr list --state open'  # gnu-ok: scanner input text, never run
 f0_row 1 'control: bounded 30 gh api x is a hit' sh 'bounded 30 gh api x'
 f0_row 1 'control: x=$(gh repo view) is a hit' sh 'x=$(gh repo view --json name)'
+f0_row 1 'control: x=`gh pr list` is a hit' sh 'x=`gh pr list --state open`'
 f0_row 1 'control: "${GH_CMD:-gh}" pr view is a hit' sh '"${GH_CMD:-gh}" pr view 1'
 f0_row 1 'control: a variable set from ${X:-gh} then used on pr view is a hit' sh $'GH="${X_GH:-gh}"\n"$GH" pr view 1'
 f0_row 1 'control: GH="gh" then an api rulesets read is a hit' sh $'GH="gh"\n"$GH" api repos/o/r/rulesets/1'
