@@ -5144,10 +5144,6 @@ _c69_probe_key() {  # t13b-ok: reads the key file and asks the provider, starts 
     echo "code:${code:-000}"
 }
 
-# One authenticated call through the bare qmd CLI, the path an operator's shell takes: a fresh shell
-# holds no session key, so QMD_OPENAI_API_KEY is unset for the call. The qmd_bounded group deadline
-# (not a bare timeout) reaps the launcher's bun child. Prints one verdict word, never the output.
-# Seams: HIMMEL_DOCTOR_QMD_BIN (the qmd to run), HIMMEL_DOCTOR_QMD_CLI_SECS (the bound, default 60).
 _c69_probe_cli() {  # t13b-ok: one bounded read-only vsearch through the bare CLI, never a search path for an agent
     local lib="${1%/*}/qmd-bounded.sh" qbin="${HIMMEL_DOCTOR_QMD_BIN:-qmd}" secs="${HIMMEL_DOCTOR_QMD_CLI_SECS:-60}" out="" rc=0
     command -v "$qbin" >/dev/null 2>&1 || { echo "no-qmd"; return 0; }

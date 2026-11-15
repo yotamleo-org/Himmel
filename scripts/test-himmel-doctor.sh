@@ -7514,8 +7514,6 @@ C69_SENTINEL=sk-test-sentinel-c69
 # the stub answers C69_CODE only when the key arrives as an Authorization header on stdin, else 403
 printf "#!/bin/sh\nin=\"\$(cat)\"\ncase \"\$in\" in *'Authorization: Bearer $C69_SENTINEL\"'*) printf \"%%s\" \"\${C69_CODE:-200}\" ;; *) printf 403 ;; esac\n" > "$c69_t/curl"; chmod +x "$c69_t/curl"
 printf 'QMD_OPENAI_API_KEY=%s\n' "$C69_SENTINEL" > "$c69_t/home/.himmel/state/qmd-daemon.env"; chmod 600 "$c69_t/home/.himmel/state/qmd-daemon.env"
-# the bare qmd CLI stub: C69_CLI=nokey answers the real OpenRouter 401 (text copied from the station's
-# 2026-10-16 qmd-reindex run) unless QMD_OPENAI_API_KEY is in its environment; C69_CLI=hang never answers
 cat > "$c69_t/qmd" <<'STUB'
 #!/bin/sh
 case "$C69_CLI" in
@@ -7525,8 +7523,8 @@ esac
 echo hit
 STUB
 chmod +x "$c69_t/qmd"
-c69_run() { env -u XDG_CONFIG_HOME -u QMD_CONFIG_DIR -u QMD_DAEMON_ENV_FILE -u QMD_OPENAI_API_KEY -u QMD_OPENAI_BASE_URL HIMMEL_DOCTOR_QMD_CURL="$c69_t/curl" HIMMEL_DOCTOR_QMD_BIN="$c69_t/qmd" PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c69_t/home/claude" HOME="$c69_t/home" "$@" bash "$DOC" --no-color --only C69 2>&1; }
-c69_run_x() { env -u XDG_CONFIG_HOME -u QMD_CONFIG_DIR -u QMD_DAEMON_ENV_FILE -u QMD_OPENAI_API_KEY -u QMD_OPENAI_BASE_URL HIMMEL_DOCTOR_QMD_CURL="$c69_t/curl" HIMMEL_DOCTOR_QMD_BIN="$c69_t/qmd" PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c69_t/home/claude" HOME="$c69_t/home" "$@" bash -x "$DOC" --no-color --only C69 2>&1; }
+c69_run() { env -u XDG_CONFIG_HOME -u QMD_CONFIG_DIR -u QMD_DAEMON_ENV_FILE -u QMD_OPENAI_API_KEY -u QMD_OPENAI_BASE_URL -u C69_CLI HIMMEL_DOCTOR_QMD_CURL="$c69_t/curl" HIMMEL_DOCTOR_QMD_BIN="$c69_t/qmd" PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c69_t/home/claude" HOME="$c69_t/home" "$@" bash "$DOC" --no-color --only C69 2>&1; }
+c69_run_x() { env -u XDG_CONFIG_HOME -u QMD_CONFIG_DIR -u QMD_DAEMON_ENV_FILE -u QMD_OPENAI_API_KEY -u QMD_OPENAI_BASE_URL -u C69_CLI HIMMEL_DOCTOR_QMD_CURL="$c69_t/curl" HIMMEL_DOCTOR_QMD_BIN="$c69_t/qmd" PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c69_t/home/claude" HOME="$c69_t/home" "$@" bash -x "$DOC" --no-color --only C69 2>&1; }
 out="$(c69_run C69_CODE=200)"
 if grepq "$out" -F 'OK   C69-qmd-cli-key'; then pass "C69 key accepted -> OK"; else fail "C69 key accepted -> $(printf '%s' "$out" | head -3)"; fi
 if grepq "$out" -F "$C69_SENTINEL"; then fail "C69 printed the key"; else pass "C69 never prints the key"; fi
