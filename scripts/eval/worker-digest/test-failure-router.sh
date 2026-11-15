@@ -589,6 +589,11 @@ check "--intake-batch still sends the one chief summary" '[ "$(grep -c "^chief "
 nd="$(dlines "$FBF/log")"; nc="$(lines "$STUB/calls.log")"
 bf --backfill --covered "$FBF/covered.tsv" >"$FBF/bf2.out" 2>&1
 check "a second backfill makes no decision and no Jira call: it runs once" '[ "$(dlines "$FBF/log")" = "$nd" ] && [ "$(lines "$STUB/calls.log")" = "$nc" ]'
+bfrow denied/guard-bf-late capped "" "$BF_CAPPED"
+SAVE="$LED"; LED="$FBF/l.jsonl"; row N1 denied/guard-bf-late 1 false worker "$BF_SEEN"; row N2 denied/guard-bf-late 1 false worker "$BF_SEEN"; LED="$SAVE"
+nc="$(lines "$STUB/calls.log")"; nd="$(dlines "$FBF/log")"
+bf --backfill --intake-batch "$FBF/no-such-dir/batch.tsv" >"$FBF/nb.out" 2>&1; rc=$?
+check "an unwritable --intake-batch path is refused before any Jira call: exit 1, nothing filed, no decision line" '[ "$rc" = 1 ] && grep -q "intake batch" "$FBF/nb.out" && [ "$(lines "$STUB/calls.log")" = "$nc" ] && [ "$(dlines "$FBF/log")" = "$nd" ]'
 printf 'denied/guard-bf-new\tnot-a-ref\n' >"$FBF/bad.tsv"
 bf --backfill --dry-run --covered "$FBF/bad.tsv" >"$FBF/bad.out" 2>&1; rc=$?
 check "a --covered line with no Jira key or sha is refused: exit 1, nothing routed" '[ "$rc" = 1 ] && grep -q "covered" "$FBF/bad.out"'

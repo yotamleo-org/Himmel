@@ -530,6 +530,12 @@ def route(a):
     except OSError as e:
         print("failure-router: cannot read the ledger: %s" % e, file=sys.stderr)
         return 1
+    if a.intake_batch and not a.dry_run:
+        try:
+            open(a.intake_batch, "a", encoding="utf-8").close()
+        except OSError as e:
+            print("failure-router: cannot write the intake batch file, nothing routed: %s" % e, file=sys.stderr)
+            return 1
     jbin = [a.jira_bin] if a.jira_bin else default_jira()
     lock = None
     if not a.dry_run:
