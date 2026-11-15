@@ -134,24 +134,73 @@ Operator decisions 746 and 762: a polish follow-up never earned its ticket (sinc
 |---|---|
 | `escape` | Files, as above. A broken real flow always files. |
 | `hardening` | Files only with `--fu-override <id>`, a judge verdict id (`XX-jNNNN-N`) or a chief decision number (`decision-<n>`). The id is an unverified audit label: only its shape is checked, not that the verdict or decision exists. The ticket carries the `fu-override` label and a `fu-override: <id>` line in its description. Without one it is refused. |
-| `polish` | Refused with a message, nothing filed, with or without `--fu-override`. Note it in the PR body, or file a plain ticket (`jira create` without `--residual-of`) if someone will really work it. |
+| `polish` | Refused with a message, nothing filed, with or without `--fu-override`. It is noted with no ticket: on a Jira repo the record is a `polish-noted:` comment on the PR's own ticket, on a local or none repo the note in the PR body. Or file a plain ticket (`jira create` without `--residual-of`) if someone will really work it. |
+
+**The class flags need `--residual-of`.** `--fu-class`, `--fu-why` and
+`--fu-override` are read only by the follow-up writer. On any other create, a
+plain ticket or a `--follow-up-of` follow-up, the verb refuses them before any
+Jira call and names the flag, so a class is never dropped without a word.
 
 A refusal exits non-zero and writes nothing, so a caller that retries the same
 command gets the same refusal. No review step may retry it; each caller below
-takes the other road:
+takes the other road.
+
+The design and audit behind the rest of this section are in the state repo's
+`specs/designs/HIMMEL-9511-filing-stop-escape-audit.md`. The audit kept the rule
+that polish files no ticket. Among the 68 PRs with noted rows it found 11
+keyword-negative bodies, so at most 11 missing notes, and that is why the record
+moved to Jira on a Jira repo.
 
 - **`review-round.sh defer`** (the review loop's cap and early-close path) never
   asks the verb to file a polish Suggestion or nit. With no `--defer-to`, it amends
   the finding's ledger row `verdict=deferred`, `fu_class=polish`, with no
-  `deferred_to`, and the reason "Polish finding noted in the PR body". The row still
-  counts as a recorded decision, the marker clears, and the item needs no
-  `deferred →` coverage line, since there is no ticket to name. Write the finding in
-  the PR body. A hardening finding needs `--fu-override <id>`; without one `defer`
-  exits 6 and files nothing. `--defer-to <ticket>` still attaches every pending
-  finding to a ticket the worker named, as before.
-- **`file-deferred-issues.sh`** on a Jira repo prints the batch for the PR body
-  when the class is polish (its default), and files only a hardening batch that
-  carries `--fu-override`.
+  `deferred_to`, and the reason "Polish finding noted in the PR body". That reason
+  stays word for word, so rows noted before stay settled. The row still counts as a
+  recorded decision, the marker clears, and the item needs no `deferred →` coverage
+  line, since there is no ticket to name. A hardening finding needs
+  `--fu-override <id>`; without one `defer` exits 6 and files nothing.
+  `--defer-to <ticket>` still attaches every pending finding to a ticket the worker
+  named, as before, and then nothing is noted.
+  - **The record, by tracker.** The tracker is `scripts/lib/project-mode.sh`'s
+    answer, read after the checkout's `.env` is loaded. On a Jira repo, before
+    anything in the run is commented, filed or amended, `defer` posts one
+    `polish-noted: <branch> <head>` comment on the PR's own ticket through
+    `scripts/cr/note-polish.sh`, one line per noted finding. That comment is the
+    record, and the PR-body note is optional. On a local or none repo no Jira call
+    is made, and the note in the PR body stays the required record. A failed
+    comment, a PR ticket that cannot be found, or a tracker setting that cannot be
+    resolved exits 6 with nothing written: put the ticket key in the PR title as
+    `[KEY-n]` (or in the branch name), then rerun.
+  - **Which ticket.** The one open PR's title gives it, its first bracketed key.
+    With no open PR it is the one `<JIRA_PROJECT_KEY>-<n>` key in the branch name.
+    That is a third rule, stricter than the filing parent's and ready-check's: it
+    needs exactly one key, so a branch with two keys and no open PR makes the note
+    exit 6 (exit 5 in `file-deferred-issues.sh`). Two open PRs, or a title with no
+    bracketed key, exit 6 too.
+  - **A Suggestion keeps its class.** A Suggestion or nit with no verdict is routed
+    by its ledger `fu_class`. `escape` blocks on every tracker (exit 4): fix it in
+    the PR, or amend the class. `hardening` on a Jira repo takes the hardening road
+    (`fu_why` plus `--fu-override`); on a local or none repo, which cannot file it,
+    it is noted. `polish` or no class is noted. An `agreed` escape or hardening
+    Suggestion takes the same road; an `agreed` polish or unclassed one is left for
+    `review-round.sh promote`, as before.
+  - **A downgraded Important is routed as an Important.** A finding raised
+    Critical or Important and amended to `sug` or `nit` is routed by the severity it
+    was raised with, so `defer` never notes it as polish and never defers a
+    Critical (exit 4). A note reason written on such a row by hand does not settle
+    it either. The cost is accepted: a real misgrade, a minor finding graded
+    Important, has only the Important's exits. Fix it, disprove it, class it
+    `hardening` with an override, or `--defer-to` a ticket: one fix or one ticket
+    per misgrade, 2 cases in the audit's 8 days. Gate 4 of
+    `clear-review-marker.sh` still reads the lowered severity; that door is a
+    recorded ceiling with its own follow-up ticket, HIMMEL-10235.
+- **`file-deferred-issues.sh`** files only a hardening batch that carries
+  `--fu-override`. On a Jira repo, when the class is polish (its default), it posts
+  the batch as one `polish-noted:` comment on the PR's own ticket through
+  `note-polish.sh`, the same record, with the batch's `crbatch<hash>` on line 1, so
+  a rerun on the same batch posts nothing new. `--dry-run` prints `would note <n>
+  finding(s) on the PR ticket` and makes no Jira call. A failed note, a detached
+  HEAD, or a branch the PR ticket cannot be found from exits 5 with nothing filed.
 
 ## Recording the class
 
@@ -229,6 +278,15 @@ version close (decision 23), the release manager looks at:
   to another. Many moves mean the definitions are unclear to the people filing.
 - **The mix per version.** How many follow-ups each class adds, and how many
   were displaced from a version for lack of room.
+- **The polish recount.** At the v1.1.3 close the release manager re-runs the
+  audit of findings noted as polish with no ticket (the spec named under "What the
+  verb files", decision D7). It counts the noted rows since the audit's cutoff and
+  the mirror's `polish-noted:` batch comments, draws a sample of 30, and re-checks
+  the 21 unproven rows of the first audit by their keys. It also checks every
+  `fu-override` id against a real verdict or decision, and looks for a downgraded
+  Important that cleared gate 4. A real bug whose only record was the note puts
+  the rule back to the operator. The procedure is in its follow-up Task,
+  HIMMEL-10234.
 
 A definition changes only by an operator ruling, never silently.
 
