@@ -51,8 +51,6 @@ normalize() {
   printf '%s\n' "${out[*]}"
 }
 
-# edges <repo-relative file> - print each repo-relative path the file
-# sources or execs (existing files only).
 PATH_RE='(\$\{?[A-Za-z_][A-Za-z0-9_]*\}?|[)}])?/?[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*\.(sh|js|mjs|cjs|ts|py)'
 # A script path in command position: line start, after ; & | ( $( or
 # then/do/else, optionally quoted - a direct call with no interpreter word.
@@ -64,7 +62,7 @@ CMD_RE='(^|[;&|(]|\$\(|(then|do|else)[[:space:]])[[:space:]]*"?\$\{?[A-Za-z_][A-
 # every path on it is an edge. Over-matching only widens the closure, which is
 # the fail-safe direction.
 ASSIGN_RE='[A-Za-z_][A-Za-z0-9_]*=|:-'
-edges() {
+raw_edges() {
   local f="$1" dir raw tail target cand
   dir="$(dirname "$f")"
   {
@@ -94,7 +92,12 @@ edges() {
     for cand in "$target" "$target.ts" "$target.js" "$target.mjs" "$target.cjs" "$target/index.js"; do
       [ -f "$ROOT/$cand" ] && { printf '%s\n' "$cand"; break; }
     done
-  done | sort -u | while IFS= read -r target; do
+  done
+}
+
+edges() {
+  local f="$1" target
+  raw_edges "$f" | sort -u | while IFS= read -r target; do
     # (scripts/jira/dist is the Jira CLI's untracked build,
     # present only where it was built, so the closure result must not depend on
     # whether it exists. Only an edge whose parent is pinned in DIST_PRIMARY is
@@ -103,9 +106,16 @@ edges() {
     case "$target" in
       scripts/jira/dist/*) [[ $'\n'"$DIST_PRIMARY" == *$'\n'"$f::"* ]] && continue ;;
     esac
-    # Drop the pinned non-executed edges (NOT_RUN below).
-    grep -qxF -- "$f -> $target" <<< "$NOT_RUN" || printf '%s\n' "$target"
+    [[ $'\n'"$NOT_RUN"$'\n' =~ $'\n'"$f -> $target x"[0-9]+$'\n' ]] || printf '%s\n' "$target"
   done
+}
+
+pin_mismatch() {
+  local parent="${1%% -> *}" target="${1#* -> }" want got
+  want="${target##* x}"
+  target="${target% x*}"
+  got="$(raw_edges "$parent" | grep -cxF -- "$target")"
+  [ "$got" = "$want" ] || printf '%s -> %s: %s extractor sites, pinned x%s\n' "$parent" "$target" "$got" "$want"
 }
 
 # Edges the lexical scan sees that no "no" run executes: the path is written
@@ -116,24 +126,25 @@ edges() {
 # suite-coverage.sh (run by impacted-suites.sh --check) only READS run-shell-tests.sh's SKIP_LIST and timeout tables as text; it never runs it.
 # merge-on-green.sh runs bug-origin-report.py only after a merge, from the anchor's bytes (HIMMEL_REPO), never a /pr-check run's branch.
 # merge-on-green.sh runs conflicts.py only after a merge, from the anchor's bytes (HIMMEL_REPO), never a /pr-check run's branch.
-# pr-check-outside.sh runs ready-check.sh only in its --pr form, and that form refuses unless the script is the HIMMEL_REPO anchor's own copy (an -ef check before it runs anything), so the ready-check.sh it runs is the anchor's bytes, never a branch's. Held by a row in test-pr-check-outside.sh. The pin is per file, so it also hides any later classifier-form edge to ready-check.sh.
+# pr-check-outside.sh runs ready-check.sh only in its --pr form, and that form refuses unless the script is the HIMMEL_REPO anchor's own copy (an -ef check before it runs anything), so the ready-check.sh it runs is the anchor's bytes, never a branch's. Held by a row in test-pr-check-outside.sh.
+# Each pin's x<N> is its parent's extractor-site count for the target, so a further site naming the same target fails the count below.
 # clear-review-marker.sh gate 4g runs the HIMMEL_REPO anchor's scripts/lint/check-history-comments.sh (an absolute HIMMEL_REPO only, else it refuses closed), never the branch's copy.
 # impacted-suites.sh runs the merge-base's pr-plan.sh and impacted-selection.sh, which git archive extracts into its work dir, never the branch's copies.
-NOT_RUN="scripts/cr/install-cr-gate.sh -> scripts/hooks/check-cr-before-push.sh
-scripts/cr/clear-review-marker.sh -> scripts/lint/check-history-comments.sh
-scripts/cr/pr-check-outside.sh -> scripts/handover/chief-kit/ready-check.sh
-scripts/lib/wire-statusline.sh -> marketplace/plugins/claude-hud/dist/index.js
-scripts/lib/usage-preflight.sh -> scripts/lanes/codex-usage-probe.ts
-scripts/lanes/bank-status-core.mjs -> scripts/lanes/codex-usage-probe.ts
-scripts/cr/live-gate-e2e.sh -> scripts/handover/chief-kit/ready-check.sh
-scripts/cr/outside-security-audit.sh -> scripts/handover/chief-kit/ready-check.sh
-scripts/cr/dependabot-go.sh -> scripts/api-lane/judge-call.sh
-scripts/hooks/block-fork-sync-pr.sh -> scripts/upstreams/resync-fork.sh
-scripts/handover/merge-on-green.sh -> scripts/eval/bug-origin/bug-origin-report.py
-scripts/handover/merge-on-green.sh -> scripts/eval/conflicts/conflicts.py
-scripts/handover/suite-coverage.sh -> scripts/ci/run-shell-tests.sh
-scripts/cr/impacted-suites.sh -> scripts/ci/pr-plan.sh
-scripts/cr/impacted-suites.sh -> scripts/ci/impacted-selection.sh"
+NOT_RUN="scripts/cr/install-cr-gate.sh -> scripts/hooks/check-cr-before-push.sh x2
+scripts/cr/clear-review-marker.sh -> scripts/lint/check-history-comments.sh x2
+scripts/cr/pr-check-outside.sh -> scripts/handover/chief-kit/ready-check.sh x2
+scripts/lib/wire-statusline.sh -> marketplace/plugins/claude-hud/dist/index.js x1
+scripts/lib/usage-preflight.sh -> scripts/lanes/codex-usage-probe.ts x2
+scripts/lanes/bank-status-core.mjs -> scripts/lanes/codex-usage-probe.ts x1
+scripts/cr/live-gate-e2e.sh -> scripts/handover/chief-kit/ready-check.sh x1
+scripts/cr/outside-security-audit.sh -> scripts/handover/chief-kit/ready-check.sh x2
+scripts/cr/dependabot-go.sh -> scripts/api-lane/judge-call.sh x2
+scripts/hooks/block-fork-sync-pr.sh -> scripts/upstreams/resync-fork.sh x1
+scripts/handover/merge-on-green.sh -> scripts/eval/bug-origin/bug-origin-report.py x1
+scripts/handover/merge-on-green.sh -> scripts/eval/conflicts/conflicts.py x1
+scripts/handover/suite-coverage.sh -> scripts/ci/run-shell-tests.sh x1
+scripts/cr/impacted-suites.sh -> scripts/ci/pr-plan.sh x3
+scripts/cr/impacted-suites.sh -> scripts/ci/impacted-selection.sh x1"
 
 # Parents allowed to name scripts/jira/dist, pinned as <file>::<regex>. The regex
 # must match the file, proving the dist path there is anchored on the PRIMARY
@@ -273,11 +284,23 @@ printf '%s\n' '_jira="${X_CLI:-$SCRIPT_DIR/../jira/dist/index.js}"' > "$fx/scrip
 printf '%s\n' 'node "$repo_root/scripts/jira/dist/index.js" get' > "$fx/scripts/lib/ticket-status.sh"
 check "$(ROOT="$fx" edges scripts/handover/relative-dist.sh)" "scripts/jira/dist/index.js" "edges() keeps a script-relative scripts/jira/dist edge"
 check "$(ROOT="$fx" edges scripts/lib/ticket-status.sh)" "" "edges() drops the dist edge of a DIST_PRIMARY-pinned parent"
+: >"$fx/scripts/handover/chief-kit/ready-check.sh"
+# shellcheck disable=SC2016  # fixture text, the $ must stay literal
+awk -v extra='bash "$here/../handover/chief-kit/ready-check.sh" --outside "$PR"' '$0 == "PR=\"${1:-}\"" { print extra } { print }' \
+  "$ROOT/scripts/cr/pr-check-outside.sh" > "$fx/scripts/cr/pr-check-outside.sh"
+pin="$(grep -F 'scripts/cr/pr-check-outside.sh -> scripts/handover/chief-kit/ready-check.sh' <<< "$NOT_RUN")"
+check "$(ROOT="$fx" pin_mismatch "$pin")" "scripts/cr/pr-check-outside.sh -> scripts/handover/chief-kit/ready-check.sh: 3 extractor sites, pinned x2" \
+  "a third extractor site naming ready-check.sh in pr-check-outside.sh fails the site count"
 rm -rf "$fx"
 
 # Every pinned NOT_RUN edge is still a real edge of its parent.
 while IFS= read -r pin; do
-  check "$(NOT_RUN='' edges "${pin%% -> *}" | grep -cxF -- "${pin#* -> }")" "1" "NOT_RUN pin is still an edge: $pin"
+  target="${pin#* -> }"
+  check "$(NOT_RUN='' edges "${pin%% -> *}" | grep -cxF -- "${target% x*}")" "1" "NOT_RUN pin is still an edge: $pin"
+done <<< "$NOT_RUN"
+
+while IFS= read -r pin; do
+  check "$(pin_mismatch "$pin")" "" "NOT_RUN pin site count holds: $pin"
 done <<< "$NOT_RUN"
 
 # Every DIST_PRIMARY pin still matches its file: the dist path there is anchored

@@ -287,6 +287,10 @@ console.log("import '../data/fake.mjs'");
     assert 'scripts/targets/unnamed.sh' not in without_row['files'][walker], 'walker mutation did not remove the edge'
     stale = dict(miniature, **{walker: 'true\n'})
     rejected(lambda: module['resolve'](stale, closure_walkers=(walker,)), 'stale closure walker row passed')
+    pinned_walker = dict(miniature, **{walker: miniature[walker] + 'NOT_RUN="scripts/lanes/guarded.sh -> scripts/targets/unnamed.sh x1"\n'})
+    pinned_walk = module['resolve'](pinned_walker, closure_walkers=(walker,))
+    assert 'scripts/targets/unnamed.sh' not in pinned_walk['files'][walker], 'a NOT_RUN pin with its x<N> site count did not drop the edge'
+    assert pinned_walk['closure_pins'] == ['scripts/lanes/guarded.sh -> scripts/targets/unnamed.sh'], pinned_walk['closure_pins']
     print('PASS pinned closure walker reaches unnamed target and has anti-rot/mutation controls', flush=True)
 
     for path, text in {
