@@ -662,29 +662,24 @@ jobs:
           else
             bash scripts/ci/check-commit-range.sh
           fi
-      # The attestation trailers are checked only at pre-push and in
-      # ready-check, both skipped by a --no-verify commit. These re-run the SAME
-      # pre-push gates over the PR range; the wrapper builds a branch-shaped
-      # scratch clone (the hooks no-op on a detached merge ref) and keeps only
-      # the PR's FIRST commit message, the rule CLAUDE.md states.
       - id: commit-lint__platforms
-        name: First commit carries Platforms tested on shell/script diffs
+        name: Branch carries Platforms tested on shell/script diffs
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         timeout-minutes: 10
         env:
           TICKET_ID_REQUIRED: '1'
           JIRA_PROJECT_KEY: HIMMEL
           TICKET_ID_TRUSTED_AUTHOR: ${{ github.event.pull_request.user.login }}
-        run: bash scripts/ci/check-hooks-on-pr-range.sh --first-commit -- scripts/hooks/check-platforms-tested.sh
+        run: bash scripts/ci/check-hooks-on-pr-range.sh --attest platforms
       - id: commit-lint__security
-        name: First commit carries Security reviewed on non-docs code
+        name: Branch carries Security reviewed on non-docs code
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         timeout-minutes: 10
         env:
           TICKET_ID_REQUIRED: '1'
           JIRA_PROJECT_KEY: HIMMEL
           TICKET_ID_TRUSTED_AUTHOR: ${{ github.event.pull_request.user.login }}
-        run: bash scripts/ci/check-hooks-on-pr-range.sh --first-commit -- scripts/hooks/check-security-reviewed.sh
+        run: bash scripts/ci/check-hooks-on-pr-range.sh --attest security
       # The PR-title lint (the squash merge makes the title
       # main's commit subject) lives in its own workflow,
       # .github/workflows/pr-title-lint.yml — not here. commit-lint's

@@ -3,6 +3,7 @@
 # throw-away repos shaped like a CI PR checkout (a detached merge commit whose
 # first parent is the base tip and second parent the PR head) and asserts the
 # verdict of the real hooks run through the wrapper.
+# shellcheck disable=SC2046  # attest_args prints an argument word list on purpose
 set -uo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
@@ -43,7 +44,11 @@ mkpr() {
     done
     git commit -q -m "$m1"
     if [ -n "$m2" ]; then
-      echo two > "${PR_SECOND:-docs/note.md}"; git add -A; git commit -q -m "$m2"
+      if [ -n "${PR_SECOND_EMPTY:-}" ]; then
+        git commit -q --allow-empty -m "$m2"
+      else
+        echo two > "${PR_SECOND:-docs/note.md}"; git add -A; git commit -q -m "$m2"
+      fi
     fi
     git checkout -q main
     mkdir -p scripts; echo main > scripts/main-only.sh; git add -A; git commit -q -m "chore: main moved on"
@@ -58,6 +63,18 @@ run() { ( cd "$1" && shift && env -u GITHUB_EVENT_NAME bash "$W" "$@" 2>&1 ); }
 mk() { local t; t="$(fixture_mktemp_dir)" || exit 1; echo "$t"; }
 
 TRAIL=$'\n\nPlatforms tested: linux\nSecurity reviewed: manual — read the diff'
+BAD='Security reviewed: outbound write is one PR comment'
+GOOD='Security reviewed: ad-hoc — reason'
+
+if grep -q -e '--attest' "$W"; then form=new; else form=old; fi
+echo "form=$form"
+attest_args() {
+  local kind="$1" hook; shift
+  if [ "$form" = new ]; then echo "--attest $kind $*"; return; fi
+  case "$kind" in platforms) hook=$PLAT ;; *) hook=$SEC ;; esac
+  echo "--first-commit $* -- $hook"
+}
+if [ "$form" = new ]; then pass "form=new: the wrapper takes --attest"; else fail "form=new: the wrapper takes --attest (form=old)"; fi
 
 # --- the defect: today's hook, run bare on the detached merge ref, passes ---
 t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 no trailers"
@@ -67,48 +84,126 @@ rm -rf "$t"
 
 # --- missing trailers in the first commit: both attestation hooks fail ---
 t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 no trailers"
-out="$(run "$t" --first-commit -- $PLAT)"; rc=$?
+out="$(run "$t" $(attest_args platforms))"; rc=$?
 expect "no Platforms tested -> rc1" 1 "$rc" "$out"
-out="$(run "$t" --first-commit -- $SEC)"; rc=$?
+out="$(run "$t" $(attest_args security))"; rc=$?
 expect "no Security reviewed -> rc1" 1 "$rc" "$out"
 rm -rf "$t"
 
 # --- trailers in the first commit: both pass ---
 t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 attested$TRAIL"
-out="$(run "$t" --first-commit -- $PLAT)"; rc=$?
+out="$(run "$t" $(attest_args platforms))"; rc=$?
 expect "first commit attested -> platforms rc0" 0 "$rc" "$out"
-out="$(run "$t" --first-commit -- $SEC)"; rc=$?
+out="$(run "$t" $(attest_args security))"; rc=$?
 expect "first commit attested -> security rc0" 0 "$rc" "$out"
 rm -rf "$t"
 
-# --- trailers only in a LATER commit: the first-commit rule fails it ---
 t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 first" "fix: HIMMEL-1 second$TRAIL"
-out="$(run "$t" --first-commit -- $PLAT)"; rc=$?
-expect "trailer only in second commit -> rc1" 1 "$rc" "$out"
+out="$(run "$t" $(attest_args platforms))"; rc=$?
+expect "trailer only in second commit -> rc0" 0 "$rc" "$out"
+rm -rf "$t"
+
+t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 skip
+
+[skip platforms-check]"
+out="$(run "$t" $(attest_args platforms))"; rc=$?
+expect "first-commit [skip platforms-check], no trailer -> rc1" 1 "$rc" "$out"
+rm -rf "$t"
+
+t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 first
+
+Platforms tested: linux
+$BAD" "fix: HIMMEL-1 second
+
+$GOOD"
+out="$(run "$t" $(attest_args security))"; rc=$?
+expect "split verdict (security): bad token first, good later -> rc0" 0 "$rc" "$out"
+rm -rf "$t"
+t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 first
+
+Platforms tested: yes
+$GOOD" "fix: HIMMEL-1 second
+
+Platforms tested: linux"
+out="$(run "$t" $(attest_args platforms))"; rc=$?
+expect "split verdict (platforms): yes first, linux later -> rc0" 0 "$rc" "$out"
+rm -rf "$t"
+
+t="$(mk)"; PR_SECOND_EMPTY=1 mkpr "$t" "feat: HIMMEL-1 no trailer" "chore: HIMMEL-1 attest
+
+Platforms tested: linux
+$GOOD"
+out="$(run "$t" $(attest_args platforms))"; rc=$?
+expect "named fix (platforms): an empty follow-up commit with the line -> rc0" 0 "$rc" "$out"
+out="$(run "$t" $(attest_args security))"; rc=$?
+expect "named fix (security): an empty follow-up commit with the line -> rc0" 0 "$rc" "$out"
+rm -rf "$t"
+
+t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 first
+
+Platforms tested: linux
+$BAD"
+out="$(run "$t" $(attest_args security))"; rc=$?
+expect "malformed-only security line -> rc1" 1 "$rc" "$out"
+rm -rf "$t"
+
+t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 x
+
+Platforms tested: linux
+$BAD"
+(
+  trap "exit 1" ERR
+  cd "$t"
+  main="$(git rev-parse 'HEAD^1')"; pr="$(git rev-parse 'HEAD^2')"
+  fork="$(git rev-parse "$pr~1")"
+  git checkout -q --detach "$fork"
+  echo s > side.txt; git add side.txt; git commit -q -m "chore: HIMMEL-1 side"
+  s="$(git rev-parse HEAD)"
+  git checkout -q --detach "$pr"
+  git merge -q --no-ff -m "Merge side
+
+$GOOD" "$s"
+  echo three > scripts/three.sh; git add scripts/three.sh; git commit -q -m "fix: HIMMEL-1 bare"
+  c3="$(git rev-parse HEAD)"
+  mg="$(git commit-tree "$(git rev-parse "$c3^{tree}")" -p "$main" -p "$c3" -m "merge ref")"
+  git checkout -q --detach "$mg"
+)
+setup_rc=$?
+[ "$setup_rc" -eq 0 ] || fail "incident-shape fixture setup"
+out="$(run "$t" $(attest_args security))"; rc=$?
+expect "incident shape (GOOD only on a merge) -> rc1" 1 "$rc" "$out"
+rm -rf "$t"
+
+t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 x$TRAIL"
+orphan="$(git -C "$t" commit-tree "$(git -C "$t" rev-parse 'HEAD^{tree}')" -m "unrelated root")"
+git -C "$t" checkout -q --detach 'HEAD^2'
+out="$(run "$t" $(attest_args platforms --base "$orphan"))"; rc=$?
+expect "helper cannot evaluate (no merge base) -> rc2" 2 "$rc" "$out"
+case "$out" in *"ATTEST ERROR"*) pass "helper failure names ATTEST ERROR" ;; *) fail "helper failure names ATTEST ERROR: $out" ;; esac
 rm -rf "$t"
 
 # --- a PR-body attestation (the hooks' gh fallback) does not count ---
 t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 no trailers"
 b="$(mk)"
 printf '#!/bin/sh\necho "Platforms tested: linux"\necho "Security reviewed: manual"\n' > "$b/gh"; chmod +x "$b/gh"
-out="$( cd "$t" && PATH="$b:$PATH" bash "$W" --first-commit -- $PLAT 2>&1 )"; rc=$?
+out="$( cd "$t" && PATH="$b:$PATH" bash "$W" $(attest_args platforms) 2>&1 )"; rc=$?
 expect "PR-body attestation ignored -> rc1" 1 "$rc" "$out"
 rm -rf "$t" "$b"
 
 # --- a docs-only PR needs no trailer, and main's own unattested script is
 # not the PR's (merge-ref first parent, not the stale fork point) ---
 t="$(mk)"; PR_FILES=docs/readme.md mkpr "$t" "docs: HIMMEL-1 words"
-out="$(run "$t" --first-commit -- $PLAT)"; rc=$?
+out="$(run "$t" $(attest_args platforms))"; rc=$?
 expect "docs-only PR -> platforms rc0" 0 "$rc" "$out"
-out="$(run "$t" --first-commit -- $SEC)"; rc=$?
+out="$(run "$t" $(attest_args security))"; rc=$?
 expect "docs-only PR -> security rc0" 0 "$rc" "$out"
 rm -rf "$t"
 
 # --- a bot PR author is exempt ---
 t="$(mk)"; mkpr "$t" "chore(deps): bump x"
-out="$( cd "$t" && TICKET_ID_TRUSTED_AUTHOR='dependabot[bot]' bash "$W" --first-commit -- $SEC 2>&1 )"; rc=$?
+out="$( cd "$t" && TICKET_ID_TRUSTED_AUTHOR='dependabot[bot]' bash "$W" $(attest_args security) 2>&1 )"; rc=$?
 expect "dependabot author exempt -> rc0" 0 "$rc" "$out"
-out="$( cd "$t" && TICKET_ID_TRUSTED_AUTHOR='someone' bash "$W" --first-commit -- $SEC 2>&1 )"; rc=$?
+out="$( cd "$t" && TICKET_ID_TRUSTED_AUTHOR='someone' bash "$W" $(attest_args security) 2>&1 )"; rc=$?
 expect "other author not exempt -> rc1" 1 "$rc" "$out"
 rm -rf "$t"
 
@@ -125,14 +220,14 @@ rm -rf "$t"
 # --- no PR range (cron / dispatch): nothing to check, rc0 ---
 t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 no trailers"
 git -C "$t" checkout -q --detach 'HEAD^1'
-out="$(run "$t" --first-commit -- $PLAT)"; rc=$?
+out="$(run "$t" $(attest_args platforms))"; rc=$?
 expect "no range -> rc0" 0 "$rc" "$out"
 rm -rf "$t"
 
 # --- an explicit --base on a plain (non-merge) HEAD ---
 t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 no trailers"
 git -C "$t" checkout -q --detach 'HEAD^2'
-out="$(run "$t" --first-commit --base 'HEAD^' -- $PLAT)"; rc=$?
+out="$(run "$t" $(attest_args platforms --base 'HEAD^'))"; rc=$?
 expect "--base on a plain HEAD -> rc1" 1 "$rc" "$out"
 rm -rf "$t"
 
@@ -147,7 +242,7 @@ expect "--base without a value -> rc2" 2 "$rc" "$out"
 # --- an explicit base that does not resolve is an error, not a silent pass ---
 t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 no trailers"
 git -C "$t" checkout -q --detach 'HEAD^2'
-out="$(run "$t" --first-commit --base deadbeefdeadbeef -- $PLAT)"; rc=$?
+out="$(run "$t" $(attest_args platforms --base deadbeefdeadbeef))"; rc=$?
 expect "unresolvable --base -> rc2" 2 "$rc" "$out"
 rm -rf "$t"
 
@@ -166,7 +261,7 @@ t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 x$TRAIL"
 )
 setup_rc=$?
 [ "$setup_rc" -eq 0 ] || fail "merge-only fixture setup"
-out="$(run "$t" --first-commit -- $PLAT)"; rc=$?
+out="$(run "$t" $(attest_args platforms))"; rc=$?
 expect "merge-only range, unattested script -> rc1" 1 "$rc" "$out"
 rm -rf "$t"
 
@@ -189,8 +284,30 @@ t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 x$TRAIL"
 )
 setup_rc=$?
 [ "$setup_rc" -eq 0 ] || fail "merge-first fixture setup"
-out="$(run "$t" --first-commit -- $PLAT)"; rc=$?
-expect "unattested first merge, attested later commit -> rc1" 1 "$rc" "$out"
+out="$(run "$t" $(attest_args platforms))"; rc=$?
+expect "unattested first merge, attested later commit -> rc0" 0 "$rc" "$out"
+rm -rf "$t"
+
+t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 x$TRAIL"
+(
+  trap "exit 1" ERR
+  cd "$t"
+  main="$(git rev-parse 'HEAD^1')"; old="$(git rev-parse 'HEAD^1~1')"
+  git checkout -q --detach "$main"
+  mkdir -p scripts; echo evil > scripts/evil.sh; git add scripts/evil.sh
+  tree1="$(git write-tree)"
+  m1="$(git commit-tree "$tree1" -p "$main" -p "$old" -m "merge first$TRAIL")"
+  git checkout -q --detach "$m1"
+  echo note > docs-note.md; git add docs-note.md
+  git commit -q -m "feat: HIMMEL-1 later"
+  c="$(git rev-parse HEAD)"
+  m="$(git commit-tree "$(git write-tree)" -p "$main" -p "$c" -m "merge")"
+  git checkout -q --detach "$m"
+)
+setup_rc=$?
+[ "$setup_rc" -eq 0 ] || fail "trailer-bearing merge-first fixture setup"
+out="$(run "$t" $(attest_args platforms))"; rc=$?
+expect "trailer only on a first merge, later commit bare -> rc1" 1 "$rc" "$out"
 rm -rf "$t"
 
 # --- A pull_request run that cannot resolve its range fails closed ---
@@ -199,18 +316,18 @@ rm -rf "$t"
 t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 no trailers"
 sh="$(mk)"; rmdir "$sh"
 git clone -q --depth 1 "file://$t" "$sh" 2>/dev/null || fail "shallow clone fixture"
-out="$( cd "$sh" && GITHUB_EVENT_NAME=pull_request bash "$W" --first-commit -- $PLAT 2>&1 )"; rc=$?
+out="$( cd "$sh" && GITHUB_EVENT_NAME=pull_request bash "$W" $(attest_args platforms) 2>&1 )"; rc=$?
 expect "pull_request, shallow merge ref -> rc2" 2 "$rc" "$out"
-out="$( cd "$sh" && env -u GITHUB_EVENT_NAME bash "$W" --first-commit -- $PLAT 2>&1 )"; rc=$?
+out="$( cd "$sh" && env -u GITHUB_EVENT_NAME bash "$W" $(attest_args platforms) 2>&1 )"; rc=$?
 expect "push (no PR event), shallow merge ref -> still rc0" 0 "$rc" "$out"
 rm -rf "$t" "$sh"
 
 # an empty range on a pull_request is unresolved, not "nothing to check"
 t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 no trailers"
 git -C "$t" checkout -q --detach 'HEAD^2'
-out="$( cd "$t" && GITHUB_EVENT_NAME=pull_request bash "$W" --first-commit --base HEAD -- $PLAT 2>&1 )"; rc=$?
+out="$( cd "$t" && GITHUB_EVENT_NAME=pull_request bash "$W" $(attest_args platforms --base HEAD) 2>&1 )"; rc=$?
 expect "pull_request, empty range -> rc2" 2 "$rc" "$out"
-out="$( cd "$t" && env -u GITHUB_EVENT_NAME bash "$W" --first-commit --base HEAD -- $PLAT 2>&1 )"; rc=$?
+out="$( cd "$t" && env -u GITHUB_EVENT_NAME bash "$W" $(attest_args platforms --base HEAD) 2>&1 )"; rc=$?
 expect "push (no PR event), empty range -> still rc0" 0 "$rc" "$out"
 rm -rf "$t"
 
@@ -242,8 +359,8 @@ t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 base"
 # a separate statement: as the left side of `||` the subshell's set -e is off
 setup_rc=$?
 [ "$setup_rc" -eq 0 ] || fail "backdated fixture setup"
-out="$(run "$t" --first-commit -- $PLAT)"; rc=$?
-expect "backdated attested commit is not first -> rc1" 1 "$rc" "$out"
+out="$(run "$t" $(attest_args platforms))"; rc=$?
+expect "backdated attested commit counts (no first commit) -> rc0" 0 "$rc" "$out"
 rm -rf "$t"
 
 # --- Ci.yml keeps full history on the jobs that walk the range ---
