@@ -68,7 +68,10 @@ guest_main() {
   fail() { echo "FAIL $1"; fails=$((fails + 1)); }
   note() { echo "NOTE $1"; }
   verdict() { echo "RESULT: $fails failure(s)"; [ "$fails" -eq 0 ]; exit $?; }
-  tail_of() { tail -n "${2:-15}" "$1" 2>/dev/null | sed 's/^/    | /'; }
+  tail_of() {
+    case "$1" in /*) ;; *) return 1 ;; esac
+    tail -n "${2:-15}" "$1" 2>/dev/null | sed 's/^/    | /'
+  }
 
   echo "==> 0. the tree carries S4"
   if [ -f "$TREE/scripts/graphify/graph-choices-pass.sh" ] && [ -f "$TREE/scripts/graphify/graph-choices-cadence.sh" ]; then
