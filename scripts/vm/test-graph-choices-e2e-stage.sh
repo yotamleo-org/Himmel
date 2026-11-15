@@ -17,27 +17,24 @@ trap 'rm -rf "$WORK"' EXIT
 FAILED=0
 pass() { echo "PASS $1"; }
 fail_case() { echo "FAIL $1"; FAILED=$((FAILED + 1)); }
-expect_rc() { # <label> <want> <got>
+expect_rc() {
   if [ "$2" = "$3" ]; then pass "$1 (rc=$3)"; else fail_case "$1 (want rc=$2, got rc=$3)"; fi
 }
-expect_has() { # <label> <needle> <haystack>
+expect_has() {
   if grep -qF -- "$2" <<<"$3"; then pass "$1"; else fail_case "$1 (missing: $2)"; fi
 }
-expect_lacks() { # <label> <needle> <haystack>
+expect_lacks() {
   if grep -qF -- "$2" <<<"$3"; then fail_case "$1 (unexpected: $2)"; else pass "$1"; fi
 }
-expect_eq() { # <label> <want> <got>
+expect_eq() {
   if [ "$2" = "$3" ]; then pass "$1"; else fail_case "$1 (want '$2', got '$3')"; fi
 }
 
 [ -f "$SCRIPT" ] || { fail_case "graph-choices-e2e.sh exists: $SCRIPT"; echo "$FAILED FAILED"; exit 1; }
 
-# --- guest helpers (sourced: a sourced script defines only its pure helpers) ------
 # shellcheck source=graph-choices-e2e.sh
 . "$SCRIPT"
 
-# A pass log copied from the real runner on the guest (graph-choices-pass.sh, the first fire: A answered
-# credit-exhausted, the subscription step ran), plus a real ALERT line from the second fire.
 cat > "$WORK/pass.log" <<'EOF'
 [fired 2026-11-15 02:03:04]
 graph-choices-pass: - gce-repo no-route: trying the next step
@@ -65,13 +62,11 @@ expect_eq "cron rows named HIMMEL-GraphChoices are counted" 1 "$(gce_cron_rows "
 printf '0 1 * * * /y # HIMMEL-GraphMap\n' > "$WORK/tab"
 expect_eq "no GraphChoices row reads zero" 0 "$(gce_cron_rows "$WORK/tab")"
 
-# --- guest guard: refuses to run the destructive steps anywhere but the VM --------
 env -i PATH="$PATH" HOME="$WORK/home" bash "$SCRIPT" --guest "$WORK" >"$WORK/g.out" 2>&1; rc=$?
 expect_rc "--guest refuses without the guest marker" 2 "$rc"
 expect_has "...and says why" "HIMMEL_GCE_GUEST" "$(cat "$WORK/g.out")"
 if [ ! -e "$WORK/home/.himmel" ]; then pass "...before anything is written"; else fail_case "...before anything is written"; fi
 
-# --- host driver ---------------------------------------------------------------------
 BIN="$WORK/bin"; mkdir -p "$BIN" "$WORK/hhome" "$WORK/locks" "$WORK/stage"
 LOG="$WORK/calls-host.log"
 cat > "$BIN/vmsdk" <<'EOS'
@@ -92,7 +87,7 @@ chmod +x "$BIN/vmsdk" "$BIN/guest-exec"
 PNG_B64="$(printf 'not-really-a-png' | base64 | tr -d '\n')"
 GOOD_OUT="$(printf 'PASS one\nSHOT settings-graph-choices-light.png %s\nSHOT settings-graph-choices-dark.png %s\nRESULT: 0 failure(s)' "$PNG_B64" "$PNG_B64")"
 
-run_driver() { # <guest-rc> <guest-out> args...
+run_driver() {
   local grc="$1" gout="$2"; shift 2
   : > "$LOG"
   env -i PATH="$PATH" HOME="$WORK/hhome" FAKE_LOG="$LOG" FAKE_GUEST_RC="$grc" FAKE_GUEST_OUT="$gout" FAKE_PUSH_COPY="$WORK/pushed.tgz" \
@@ -102,12 +97,11 @@ run_driver() { # <guest-rc> <guest-out> args...
   DRV_RC=$?
 }
 
-# usage and exit 2 on bad inputs, before any VM call
 for bad in "" "ubuntu_new" "himmel-ar-1;id" "himmel-ar-x" "himmel-ar-1 extra"; do
   : > "$LOG"
-  # shellcheck disable=SC2086  # the case with a space is two words on purpose
+  read -r -a bad_argv <<< "$bad"
   env -i PATH="$PATH" HOME="$WORK/hhome" FAKE_LOG="$LOG" HIMMEL_GCE_VMSDK="$BIN/vmsdk" HIMMEL_GCE_GUEST_EXEC="$BIN/guest-exec" \
-    bash "$SCRIPT" $bad >"$WORK/bad.out" 2>&1; rc=$?
+    bash "$SCRIPT" ${bad_argv[@]+"${bad_argv[@]}"} >"$WORK/bad.out" 2>&1; rc=$?
   expect_rc "bad input '${bad:-<none>}' exits 2" 2 "$rc"
   expect_has "...and prints the usage" "usage: graph-choices-e2e.sh" "$(cat "$WORK/bad.out")"
   if [ ! -s "$LOG" ]; then pass "...before any VM call"; else fail_case "...before any VM call"; fi
@@ -141,33 +135,27 @@ else
 fi
 expect_lacks "the screenshot bytes are not echoed to the console" "$PNG_B64" "$(cat "$WORK/driver.out")"
 
-# a stage that passed but whose screenshots were not saved is not a pass (the screenshots are part of the proof)
 run_driver 0 'PASS one
 RESULT: 0 failure(s)' himmel-ar-1
 expect_rc "a pass with no screenshot saved fails the stage" 1 "$DRV_RC"
 expect_has "...and names the missing screenshot" "settings-graph-choices-light.png was not saved" "$(cat "$WORK/driver.out")"
 
-# a FAIL line gives exit 1
 run_driver 1 'FAIL the sentence is printed
 RESULT: 1 failure(s)' himmel-ar-1
 expect_rc "driver fails when the guest stage fails" 1 "$DRV_RC"
 expect_has "...and shows the FAIL line" "FAIL the sentence is printed" "$(cat "$WORK/driver.out")"
 if [ "$(tail -1 "$LOG")" = "vmsdk himmel-ar-1 down" ]; then pass "a failed run still powers the VM off"; else fail_case "a failed run still powers the VM off"; fi
-# a guest that exits 0 but printed a FAIL line is still a failure
 run_driver 0 'FAIL a row failed quietly
 RESULT: 1 failure(s)' himmel-ar-1
 expect_rc "a FAIL line fails the run even when the guest exits 0" 1 "$DRV_RC"
-# a guest that printed no RESULT line proved nothing
 run_driver 0 'PASS only a start' himmel-ar-1
 expect_rc "a run with no RESULT line fails" 1 "$DRV_RC"
-# a lifecycle failure is exit 3
 : > "$LOG"
 env -i PATH="$PATH" HOME="$WORK/hhome" FAKE_LOG="$LOG" FAKE_VMSDK_RC=1 HIMMEL_GCE_VMSDK="$BIN/vmsdk" HIMMEL_GCE_GUEST_EXEC="$BIN/guest-exec" \
   HIMMEL_VM_LOCK_DIR="$WORK/locks" HIMMEL_GCE_STAGE_TMP="$WORK/stage" bash "$SCRIPT" himmel-ar-1 >"$WORK/driver.out" 2>&1; rc=$?
 expect_rc "a VM that will not restore exits 3" 3 "$rc"
 if ! grep -qe '--guest' "$LOG"; then pass "...and the guest never ran"; else fail_case "...and the guest never ran"; fi
 
-# RED control: --expect-red stages a tree with no S4 pass; the first guest assertion must fail on it
 run_driver 1 'FAIL graph-choices-pass.sh is in the tree (S4 present)
 RESULT: 1 failure(s)' --expect-red himmel-ar-1
 expect_rc "--expect-red passes when the stage fails on its first assertion" 0 "$DRV_RC"

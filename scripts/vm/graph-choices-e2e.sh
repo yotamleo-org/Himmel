@@ -17,22 +17,6 @@
 # --expect-red is the RED control: the staged tree has no S4 pass (graph-choices-pass.sh is left out of the
 # tarball), so the guest's FIRST assertion must fail; the driver exits 0 only then.
 #
-# The guest steps (every destructive or installing one runs on the VM, never the station):
-#   0. the S4 pass is in the tree                                  (RED point)
-#   1. bash scripts/setup.sh --with-graphify installs graphify for real
-#   2. himmelctl install, Enter at the first question: no store, the sentence printed, no job, and the
-#      refresh-graph-map.sh adopter row makes no call
-#   3. himmel-update.sh --only graph against a throwaway bare remote (HIMMEL_UPDATE_GRAPH_REMOTE):
-#      graphify-out/ holds the published bytes (cmp)
-#   4. himmelctl install with route A,subscription, yes to the job, then the runner fires once against a stub
-#      API (HIMMEL_BATCH_BASE_URL) that answers credit-exhausted: words no-route then extracted, exactly one
-#      stub claude call per chunk and none with a key variable in its env, git status clean, the graph under
-#      choices/; then the stub answers 401: key-rejected, no claude call, `accounts` tags A, doctor C92 WARN
-#   5. the real usage-preflight once under the runner's environment (a read, no bank draw): the verdict is
-#      recorded (a guest with no subscription login reads BANK-UNKNOWN)
-#   6. disarm, then a plain himmelctl uninstall: no cron row, no runner, no choices/ directory
-#   7. settings.e2e.ts on the guest; its light and dark graph screenshots come back as SHOT lines and the
-#      host decodes them into $HIMMEL_GCE_SHOTS_DIR (default ./graph-choices-e2e-shots)
 # No real key and no paid call: the key is a dummy file, the API a loopback stub, claude a stub.
 #
 # Seams (tests): HIMMEL_GCE_VMSDK, HIMMEL_GCE_GUEST_EXEC, HIMMEL_GCE_STAGE_TMP, HIMMEL_GCE_SHOTS_DIR,
@@ -40,33 +24,21 @@
 #
 # Sourced (BASH_SOURCE != $0) it defines only the pure helpers, for the hermetic test.
 
-# --- pure helpers (unit-tested) ----------------------------------------------
 
-# gce_words <pass-log> <corpus> -- the result words the pass wrote for the corpus, in file order.
-# An ALERT line is not a word; a `- <corpus> <word>: why` say line is (the pass prints no-route that way
-# while a next step remains).
 gce_words() {
   sed -n "s/^graph-choices-pass: \(- \)\{0,1\}$2 \([a-z][a-z-]*\)\([: ].*\)\{0,1\}\$/\2/p" "$1" 2>/dev/null
 }
 
-# gce_word_before <pass-log> <corpus> <first> <second> -- rc 0 when both words appear and the first
-# one's first line comes before the second one's first line.
 gce_word_before() {
   gce_words "$1" "$2" | awk -v a="$3" -v b="$4" '$0 == a && !ia { ia = NR } $0 == b && !ib { ib = NR } END { exit !(ia && ib && ia < ib) }'
 }
 
-# gce_call_count <stub-claude-call-log> -- the number of stub claude calls (a missing log is zero).
 gce_call_count() { local n; n="$(grep -c '^CALL ' "$1" 2>/dev/null)" || n=0; printf '%s\n' "${n:-0}"; }
 
-# gce_call_distinct <log> -- the number of distinct prompts among the calls: equal to the call count
-# when each chunk was called exactly once.
 gce_call_distinct() { grep '^CALL ' "$1" 2>/dev/null | awk '{ print $2 }' | sort -u | wc -l | tr -d ' '; }
 
-# gce_calls_with_key_var <log> -- the calls whose env held a key variable name (a CALL line ends
-# keyvars=none when none did).
 gce_calls_with_key_var() { local n; n="$(grep '^CALL ' "$1" 2>/dev/null | grep -vc 'keyvars=none$')" || n=0; printf '%s\n' "${n:-0}"; }
 
-# gce_cron_rows <crontab-text-file> -- the HIMMEL-GraphChoices rows.
 gce_cron_rows() { local n; n="$(grep -c '# HIMMEL-GraphChoices$' "$1" 2>/dev/null)" || n=0; printf '%s\n' "${n:-0}"; }
 
 [ "${BASH_SOURCE[0]}" = "$0" ] || return 0
@@ -82,9 +54,6 @@ usage() {
   exit 2
 }
 
-# ============================================================================
-# guest mode
-# ============================================================================
 guest_main() {
   [ "$#" -eq 1 ] || usage
   if [ "${HIMMEL_GCE_GUEST:-}" != 1 ]; then
@@ -101,7 +70,6 @@ guest_main() {
   verdict() { echo "RESULT: $fails failure(s)"; [ "$fails" -eq 0 ]; exit $?; }
   tail_of() { tail -n "${2:-15}" "$1" 2>/dev/null | sed 's/^/    | /'; }
 
-  # --- step 0: the RED point ---------------------------------------------------------
   echo "==> 0. the tree carries S4"
   if [ -f "$TREE/scripts/graphify/graph-choices-pass.sh" ] && [ -f "$TREE/scripts/graphify/graph-choices-cadence.sh" ]; then
     pass "graph-choices-pass.sh is in the tree (S4 present)"
@@ -119,15 +87,14 @@ guest_main() {
   rm -rf "$W" "$HOME/.himmel" "$RUNNER_DIR" "$HOME/.claude/himmel"
   mkdir -p "$W/stubbin" "$W/repos" "$W/proj" "$W/shots" "$HOME/.local/bin"
   export PATH="$BASE_PATH"
-  # a git identity and a slug: setup.sh asks for one, and every commit below needs one
   git config --global user.name gce
   git config --global user.email gce@example.invalid
   export USER_SLUG=gce
 
-  # the guest image ships no uv: install the one pinned release the machine installer uses
   if ! command -v uv >/dev/null 2>&1; then
     echo "==> 0b. the pinned uv (the guest image ships none)"
-    pt="$(mktemp -d "${TMPDIR:-/tmp}/gce-uv.XXXXXX")" || { fail "a scratch directory for the uv download"; verdict; } # prim-ok: the guest image has no scripts/lib/prim.sh on this path before setup runs
+    . "$TREE/scripts/lib/prim.sh"
+    pt="$(tmpdir)" || { fail "a scratch directory for the uv download"; verdict; }
     if ( . "$TREE/scripts/machine-setup/installer-pins.sh" \
          && pin_fetch "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz" "$UV_SHA256" "$pt/uv.tar.gz" \
          && tar -xzf "$pt/uv.tar.gz" -C "$pt" \
@@ -139,18 +106,14 @@ guest_main() {
     rm -rf "$pt"
   fi
 
-  # the tree is a git checkout so himmel-update.sh can fetch into it
   git -C "$TREE" init -q -b main 2>/dev/null
   git -C "$TREE" add -A >/dev/null 2>&1
   git -C "$TREE" -c user.email=gce@example.invalid -c user.name=gce commit -q -m "stage" >/dev/null 2>&1
   git -C "$W/proj" init -q -b main
   git -C "$W/proj" -c user.email=gce@example.invalid -c user.name=gce commit -q --allow-empty -m init
 
-  # --- the stub claude: logs one CALL line per call, never reads a key ------------------
   cat > "$W/stubbin/claude" <<'EOS'
 #!/usr/bin/env bash
-# only a print-mode call (graphify's per-chunk `claude -p`) reads a prompt; the plugin and version
-# calls the installer and uninstaller make get an empty answer, never a wait on stdin
 case " $* " in
   *" -p "* | *" --print "*) ;;
   *) case "$1" in plugin) echo '[]' ;; esac; exit 0 ;;
@@ -165,7 +128,6 @@ EOS
   local CALLS="$W/claude-calls.log"
   : > "$CALLS"
 
-  # --- the stub API: loopback only, answers per $W/stub-mode (credit | 401) --------------
   cat > "$W/stub-api.js" <<'EOS'
 const http = require('http');
 const fs = require('fs');
@@ -183,10 +145,6 @@ http.createServer((req, res) => {
 }).listen(0, '127.0.0.1', function () { fs.writeFileSync(portFile, String(this.address().port)); });
 EOS
 
-  # --- a prompt-driven answer driver for the interactive himmelctl install ----------------
-  # argv: <rules-json> <cmd...>. Each rule is [prompt-substring, [answers...]]; a prompt with no rule, or a
-  # rule out of answers, gets Enter (which also accepts the final `Proceed? [Y/n]`). Everything the install
-# prints is echoed.
   cat > "$W/answer.py" <<'EOS'
 import json, os, select, subprocess, sys, time
 rules = json.loads(sys.argv[1])
@@ -241,20 +199,16 @@ except Exception:
 sys.exit(p.returncode if p.returncode is not None else 1)
 EOS
 
-  # the install and uninstall use the guest's real claude (plugin installs); only the adopter-row check and the
-  # armed runner see the stub
   ctl_env() { env -i HOME="$HOME" PATH="$BASE_PATH" HIMMELCTL_INTERACTIVE=1 HIMMELCTL_CACHE_DIR="$HOME/.claude/himmel" "$@"; }
   stub_env() { env -i HOME="$HOME" PATH="$W/stubbin:$BASE_PATH" GCE_CALL_LOG="$CALLS" "$@"; }
   gc() { env -i HOME="$HOME" PATH="$BASE_PATH" node "$GC" "$@"; }
 
-  # --- step 1: install graphify for real -----------------------------------------------
   echo "==> 1. setup.sh --with-graphify"
   ( cd "$TREE" && bash scripts/setup.sh --with-graphify ) > "$W/setup.log" 2>&1; rc=$?
   if [ "$rc" -eq 0 ]; then pass "setup.sh --with-graphify exits 0"; else fail "setup.sh --with-graphify exits 0 (rc=$rc)"; tail_of "$W/setup.log" 25; fi
   if command -v graphify >/dev/null 2>&1; then pass "graphify is on PATH ($(command -v graphify))"; else fail "graphify is on PATH"; tail_of "$W/setup.log" 25; verdict; fi
   uv cache clean >/dev/null 2>&1
 
-  # --- step 2: Enter at the first question ------------------------------------------------
   echo "==> 2. himmelctl install, Enter at the first graph question"
   ( cd "$W/proj" && ctl_env python3 -I "$W/answer.py" '[]' node "$CTL" install ) > "$W/install-enter.log" 2>&1; rc=$?
   if [ "$rc" -eq 0 ]; then pass "himmelctl install exits 0"; else fail "himmelctl install exits 0 (rc=$rc)"; tail_of "$W/install-enter.log" 25; fi
@@ -281,7 +235,6 @@ EOS
   fi
   if [ "$(gce_call_count "$CALLS")" -eq 0 ]; then pass "the adopter row made no call"; else fail "the adopter row made no call ($(gce_call_count "$CALLS") calls)"; fi
 
-  # --- step 3: himmel-update pulls the published graph bytes ----------------------------
   echo "==> 3. himmel-update.sh --only graph against a throwaway bare remote"
   built="$(git -C "$TREE" rev-parse HEAD)"
   git init -q --bare "$W/graph-remote.git"
@@ -301,7 +254,6 @@ EOS
   done
   if [ "$ok" -eq 0 ]; then pass "graphify-out/ holds the published bytes (cmp)"; else fail "graphify-out/ holds the published bytes (cmp)"; tail_of "$W/update-graph.log" 15; fi
 
-  # --- step 4: route A,subscription, the job, the stub API ---------------------------------
   echo "==> 4. setup with route A then subscription; the runner fires once against a stub API"
   mkdir -p "$SD"; chmod 700 "$SD"
   printf '{"version":1,"ledger_path":"%s/ledger.json","accounts":{"A":{"organization_id":"org-a","cycle_id":"cycle-a","cap_usd":"50.00","key_id":"key-a","reset_at":"2099-01-01T00:00:00Z"}}}\n' "$SD" > "$SD/config.json"
@@ -309,13 +261,14 @@ EOS
     local now; now=$(date +%s)
     printf '{"version":1,"accounts":{"A":{"organization_id":"org-a","cycle_id":"cycle-a","grant_usd":"50.00","remaining_usd":"50.00","reconciled_spent_usd":"0","starts_at":%d,"expires_at":%d,"observed_at":%d,"source":"operator-console-snapshot","exclusive_org":true,"discrepancy":false}}}\n' $((now - 1000)) $((now + 3600)) "$now" > "$SD/snapshot.json"
   }
+  seed_dummy_subscription_login() {
+    mkdir -p "$HOME/.claude"
+    printf '{"claudeAiOauth":{"accessToken":"sk-ant-oat01-dummy-not-a-real-token","refreshToken":"dummy","expiresAt":4102444800000}}\n' > "$HOME/.claude/.credentials.json"
+    chmod 600 "$HOME/.claude/.credentials.json"
+  }
   write_snapshot
   printf 'ANTHROPIC_API_KEY=sk-ant-dummy-not-a-real-key-0000\n' > "$SD/key-A.env"; chmod 600 "$SD/key-A.env"
-  # semantic-update.sh seeds its hook-free Claude profile from ~/.claude/.credentials.json before any step runs,
-  # so the guest (no login) needs a file there; a dummy, never a real token, and the guest is restored after the run
-  mkdir -p "$HOME/.claude"
-  printf '{"claudeAiOauth":{"accessToken":"sk-ant-oat01-dummy-not-a-real-token","refreshToken":"dummy","expiresAt":4102444800000}}\n' > "$HOME/.claude/.credentials.json"
-  chmod 600 "$HOME/.claude/.credentials.json"
+  seed_dummy_subscription_login
   printf 'credit\n' > "$W/stub-mode"; : > "$W/stub-api.log"
   node "$W/stub-api.js" "$W/stub-mode" "$W/stub-api.log" "$W/stub-port" > "$W/stub-api.out" 2>&1 &
   STUB_PID=$!
@@ -339,7 +292,6 @@ EOS
   route="$(gc route)"
   case "$route" in *'"order":["A","subscription"]'*) pass "the stored route is A then subscription" ;; *) fail "the stored route is A then subscription ($route)" ;; esac
   case "$route" in *'"name":"gce-repo"'*) pass "the stored corpus is gce-repo" ;; *) fail "the stored corpus is gce-repo" ;; esac
-  # the wizard armed the job under the guest's real claude; re-render the runner so its PATH reaches the stub
   stub_env bash "$TREE/scripts/graphify/graph-choices-cadence.sh" arm --force > "$W/rearm.log" 2>&1; rc=$?
   if [ "$rc" -eq 0 ] && grep -qF "$W/stubbin" "$RUNNER_DIR/graph-choices.sh" 2>/dev/null; then pass "the runner is re-rendered with the stub claude first on its PATH"
   else fail "the runner is re-rendered with the stub claude first on its PATH (rc=$rc)"; tail_of "$W/rearm.log" 8; fi
@@ -347,12 +299,10 @@ EOS
   if [ "$(gce_cron_rows "$W/cron.step4")" -eq 1 ] && [ -x "$RUNNER_DIR/graph-choices.sh" ]; then pass "the job is armed: one cron row and the runner"
   else fail "the job is armed: one cron row and the runner"; tail_of "$W/install-route.log" 30; kill "$STUB_PID" 2>/dev/null; verdict; fi
 
-  # usage-preflight trusts a usage cache only when its .account equals the hash of ~/.claude.json's accountUuid:
-  # give the guest a dummy identity and stamp the fixture cache with its hash
   jq '.oauthAccount = {"accountUuid": "00000000-0000-4000-8000-00000000gce0"}' "$HOME/.claude.json" > "$W/claude.json.new" \
     && mv "$W/claude.json.new" "$HOME/.claude.json"
   acct_hash="$(. "$TREE/scripts/lib/usage-cache-identity.sh"; current_account_hash)"
-  fire() { # one fire of the rendered runner against the stub API and the fixture bank
+  fire() {
     local now; now=$(date +%s)
     printf '{"account":"%s","five_hour":{"utilization":10},"seven_day":{"utilization":20},"primaries_refreshed_at":%d}\n' "$acct_hash" "$now" > "$W/usage-cache.json"
     env HIMMEL_BATCH_BASE_URL="http://127.0.0.1:$PORT" CADENCE_USAGE_CACHE="$W/usage-cache.json" GCE_CALL_LOG="$CALLS" \
@@ -360,7 +310,6 @@ EOS
   }
   LOGF="$RUNNER_DIR/graph-choices.log"
 
-  # fire 1: A answers credit-exhausted, the subscription step runs on the stub claude
   fire; rc=$?
   if [ "$rc" -eq 0 ]; then pass "the runner exits 0 (fire 1)"; else fail "the runner exits 0 (fire 1, rc=$rc)"; fi
   note "pass log after fire 1:"; sed 's/^/    | /' "$LOGF"
@@ -377,7 +326,6 @@ EOS
   if [ -s "$out_dir/graph.json" ]; then pass "the choices graph.json exists"; else fail "the choices graph.json exists"; fi
   if grep -q 'mode=credit' "$W/stub-api.log"; then pass "the stub API was called and answered credit-exhausted"; else fail "the stub API was called and answered credit-exhausted"; fi
 
-  # fire 2: A answers 401. A doc changed, and a fresh snapshot lifts the exhausted mark.
   printf '\nA second paragraph, written after the first fire.\n' >> "$REPO_FX/docs/notes.md"
   git -C "$REPO_FX" -c user.email=gce@example.invalid -c user.name=gce commit -q -am "edit notes"
   write_snapshot
@@ -399,7 +347,6 @@ EOS
   if grep -q 'C92-graph-key-A' <<< "$warn_rows"; then pass "doctor C92 WARNs about account A"; else fail "doctor C92 WARNs about account A"; tail_of "$W/doctor-c92.log" 10; fi
   kill "$STUB_PID" 2>/dev/null
 
-  # --- step 5: the real usage-preflight under the runner's environment -----------------------
   echo "==> 5. the real usage-preflight under the runner's environment"
   runner_env="$(grep -E '^export (PATH|CLAUDE_CODE_OAUTH_TOKEN)=' "$RUNNER_DIR/graph-choices.sh" 2>/dev/null)"
   pf="$(cd "$TREE" && env -i HOME="$HOME" PATH=/usr/bin:/bin sh -c ":; $runner_env"'
@@ -411,7 +358,6 @@ bash scripts/lib/usage-preflight.sh' 2>"$W/preflight.err" | tail -n 1)"
   esac
   [ "$pf" != BANK-UNKNOWN ] || note "no real subscription login or usage bank on this guest: the route would answer bank-refused"
 
-  # --- step 6: disarm, then a plain uninstall --------------------------------------------------
   echo "==> 6. disarm, then a plain himmelctl uninstall"
   choices_dir="$(dirname "$(dirname "$(gc out probe)")")"
   bash "$TREE/scripts/graphify/graph-choices-cadence.sh" disarm > "$W/disarm.log" 2>&1; rc=$?
@@ -423,10 +369,8 @@ bash scripts/lib/usage-preflight.sh' 2>"$W/preflight.err" | tail -n 1)"
   if [ ! -e "$RUNNER_DIR/graph-choices.sh" ]; then pass "no runner is left"; else fail "no runner is left"; fi
   if [ ! -e "$choices_dir" ]; then pass "no choices/ directory is left"; else fail "no choices/ directory is left ($choices_dir)"; find "$choices_dir" -maxdepth 2 | head -8 | sed 's/^/    | /'; fi # gnu-ok: guest mode runs only on the Ubuntu test VM
 
-  # --- step 7: settings.e2e.ts, light and dark screenshots ---------------------------------------
   echo "==> 7. settings.e2e.ts on the guest"
   export PATH="$HOME/.bun/bin:$BASE_PATH"
-  # the guest disk is 8.7 GB: the install above left caches (uv, qmd models) that the browser needs the room of
   rm -rf "$HOME/.cache/uv" "$HOME/.cache/node-gyp" "$HOME/.cache/qmd"
   note "free space before the browser download: $(df -h / | awk 'NR==2 { print $4 }')"
   if ! command -v bun >/dev/null 2>&1; then
@@ -436,7 +380,6 @@ bash scripts/lib/usage-preflight.sh' 2>"$W/preflight.err" | tail -n 1)"
     ( cd "$E2E" && bun install ) > "$W/e2e-install.log" 2>&1; rc=$?
     if [ "$rc" -ne 0 ]; then fail "bun install in tests/e2e exits 0 (rc=$rc)"; tail_of "$W/e2e-install.log" 12
     else
-      # the guest has no browser: fetch the one Playwright pins, and its system libraries through apt
       ( cd "$E2E" && bunx playwright install chromium && sudo -n env "PATH=$PATH" bunx playwright install-deps chromium ) > "$W/e2e-browser.log" 2>&1; rc=$?
       if [ "$rc" -eq 0 ]; then pass "the pinned Chromium and its libraries are installed"; else fail "the pinned Chromium and its libraries are installed (rc=$rc)"; tail_of "$W/e2e-browser.log" 12; fi
       ( cd "$E2E" && E2E_SHOTS="$W/shots" bunx playwright test settings.e2e.ts ) > "$W/e2e.log" 2>&1; rc=$?
@@ -451,8 +394,6 @@ bash scripts/lib/usage-preflight.sh' 2>"$W/preflight.err" | tail -n 1)"
         fail "the $scheme screenshot exists"
       fi
     done
-    # the UI is dark by default and light only under data-theme="light"; settings.e2e.ts switches with
-    # emulateMedia, which that stylesheet does not read, so the two shots can be the same bytes
     if [ -s "$W/shots/configure-graph-choices-light.png" ] && cmp -s "$W/shots/configure-graph-choices-light.png" "$W/shots/configure-graph-choices-dark.png"; then
       note "the light and dark screenshots are byte-identical: settings.e2e.ts emulateMedia does not switch the UI theme (data-theme)"
     fi
@@ -461,9 +402,6 @@ bash scripts/lib/usage-preflight.sh' 2>"$W/preflight.err" | tail -n 1)"
   verdict
 }
 
-# ============================================================================
-# host mode
-# ============================================================================
 host_main() {
   local EXPECT_RED=0
   if [ "${1:-}" = "--expect-red" ]; then EXPECT_RED=1; shift; fi
@@ -485,7 +423,7 @@ host_main() {
     elif command -v uv >/dev/null 2>&1; then uv run "$REPO/scripts/lib/vmsdk.py" "$VM" "$@"
     else python3 "$REPO/scripts/lib/vmsdk.py" "$VM" "$@"; fi
   }
-  gx() { # guest-exec has no stdin: one command string per call
+  gx() {
     if [ -n "${HIMMEL_GCE_GUEST_EXEC:-}" ]; then "$HIMMEL_GCE_GUEST_EXEC" "$VM" "$@"
     else bash "$REPO/scripts/vm/guest-exec.sh" "$VM" "$@"; fi
   }
@@ -521,8 +459,6 @@ host_main() {
   vmsdk restore "$SNAPSHOT" >/dev/null || { echo "graph-choices-e2e: restore $SNAPSHOT failed" >&2; exit 3; }
   vmsdk up >/dev/null || { echo "graph-choices-e2e: up failed" >&2; exit 3; }
 
-  # Stage a host-built tarball of the tracked files (secret globs excluded, symlinks left out: a
-  # dangling fixture link makes the guest secret scan refuse the tree), pushed over SFTP.
   TARBALL="$(mktemp "$STAGE_TMP/graph-choices-tree.XXXXXX")" || exit 3
   local tar_excl=() _x
   while IFS= read -r _x; do tar_excl+=("$_x"); done < <(vm_guest_tar_excludes)
@@ -536,12 +472,10 @@ host_main() {
     || { echo "graph-choices-e2e: could not unpack the tree on $VM" >&2; exit 3; }
   vm_guest_assert_clean gx_run "$REMOTE_DIR" full || exit 3
 
-  # a screenshot left by an earlier run must not count as this run's
   rm -f "$SHOTS/settings-graph-choices-light.png" "$SHOTS/settings-graph-choices-dark.png"
   OUT="$(mktemp "$STAGE_TMP/graph-choices-out.XXXXXX")" || exit 3
   local red=""
   [ "$EXPECT_RED" -ne 1 ] || red="HIMMEL_GCE_RED=1 "
-  # The SHOT lines carry screenshot bytes: they are saved from the capture and shown without their payload.
   gx --timeout 3000 -- "${red}HIMMEL_GCE_GUEST=1 bash $REMOTE_DIR/scripts/vm/graph-choices-e2e.sh --guest $REMOTE_DIR" 2>&1 \
     | tee "$OUT" | sed -E 's/^(SHOT [^ ]+) .*/\1 (saved)/'
   local rc="${PIPESTATUS[0]}"
