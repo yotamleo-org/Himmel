@@ -1404,7 +1404,7 @@ intake_clock() {
     local first
     case "$1" in ''|0|*[!0-9]*) rm -f "$intake_file" "$intake_at_file"; return 1 ;; esac
     first="$(sed -n 1p "$intake_file" 2>/dev/null)"  # swallow-ok: no file reads empty, so the clock starts now
-    case "$first" in ''|*[!0-9]*) printf '%s\n0\n' "$(date +%s)" > "$intake_file" 2>/dev/null ;; esac  # swallow-ok: an unwritable file only delays the clock
+    case "$first" in ''|*[!0-9]*) printf '%s\n0\n' "$(date +%s)" > "$intake_file" 2>/dev/null ;; esac
 }
 intake_wake() {
     local n="$1" now first last rel pk anchor cli out held
