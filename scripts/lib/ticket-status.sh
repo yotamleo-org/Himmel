@@ -55,7 +55,9 @@
 #   D4b no PR, a completes=yes merge row         no-write + miss stage=done-pending
 #   D5  no PR, an owner not provably ended       In Progress
 #   D5d as D5c, but the merged PR's remainder names its owner (a deferred -> KEY line, or a Remaining:
-#       line with `owner: KEY` or an arrow to KEY, or naming a chief step): To Do, the owner in TS_D5D_OWNER
+#       line with `owner: KEY` or an arrow to KEY, or naming a chief step, or an `owed -> chief|operator by
+#       YYYY-MM-DD` step, read from the merge row or the PR body): To Do, the owner in TS_D5D_OWNER
+#       (`chief by 2026-11-22` for an owed step)
 #   D5c no PR, the latest merge row contract=no  In Progress (a partial: work remains)
 #       or, a wrapped owner and no merge row at all, a merged PR whose first [KEY] is the
 #       ticket (TS_STAGE=merged-no-row, TS_MERGED_PR); an unreadable merged list or merge-row
@@ -591,7 +593,8 @@ ts_partial_merge() {
     [ "$rc" -eq 0 ] && [ "$TS_ML_CONTRACT" = no ]
 }
 
-# _ts_merge_last <log> <KEY> — the key's latest merge row that carries a contract: TS_ML_CONTRACT and TS_ML_RESULT.
+# _ts_merge_last <log> <KEY> — the key's latest merge row that carries a contract: TS_ML_CONTRACT, TS_ML_RESULT, TS_ML_PR,
+# TS_ML_REPO and, for a row whose remainder is owed, TS_ML_OWED and TS_ML_OWED_DUE (who and the due date, as written).
 # rc 0 = found, 1 = none, 2 = the filter failed (not read as "none"). The filter (merge-rows-effective.py, which may
 # ask GitHub) and the jq over its rows run once per state of the log, not once per key and question: the answer is
 # kept as one `key<TAB>contract<TAB>result` line per row, and a log that grew or moved since is read again
@@ -599,12 +602,12 @@ ts_partial_merge() {
 _TS_MI="" _TS_MI_SIG=""
 _ts_merge_last() {
     local sig line rows
-    TS_ML_CONTRACT="" TS_ML_RESULT="" TS_ML_PR="" TS_ML_REPO=""
+    TS_ML_CONTRACT="" TS_ML_RESULT="" TS_ML_PR="" TS_ML_REPO="" TS_ML_OWED="" TS_ML_OWED_DUE=""
     sig="$1|$_TS_LIB_DIR|$(stat -c '%s:%y:%i' "$1" 2>/dev/null || stat -f '%z:%m:%i' "$1" 2>/dev/null)" # gnu-ok: the BSD form follows; size, mtime and inode, so a replaced log of the same size is read again (GNU stat gives the mtime to the nanosecond, BSD stat to the second: there a same-size rewrite in place inside one second is not seen)
     if [ "$_TS_MI_SIG" != "$sig" ]; then
         _TS_MI_SIG=""
         rows=$(ts_merge_rows "$1" 2>/dev/null) || return 2
-        _TS_MI=$(jq -R -r 'fromjson? | select(type == "object" and .event == "merge" and has("contract")) | [.key, .contract, (.result // ""), (.pr // "" | tostring), (.repo // "")] | @tsv' <<<"$rows" 2>/dev/null) || return 2
+        _TS_MI=$(jq -R -r 'fromjson? | select(type == "object" and .event == "merge" and has("contract")) | [.key, .contract, (.result // ""), (.pr // "" | tostring), (.repo // ""), (if .remainder == "owed" then (.owed // "" | tostring) else "" end), (if .remainder == "owed" then (.owed_due // "" | tostring) else "" end)] | @tsv' <<<"$rows" 2>/dev/null) || return 2
         _TS_MI_SIG=$sig
     fi
     line=$(awk -F'\t' -v k="$2" '$1 == k { l = $0 } END { if (l != "") print l }' <<<"$_TS_MI")
@@ -613,6 +616,8 @@ _ts_merge_last() {
     TS_ML_RESULT=$(cut -f3 <<<"$line")
     TS_ML_PR=$(cut -f4 <<<"$line")
     TS_ML_REPO=$(cut -f5 <<<"$line")
+    TS_ML_OWED=$(cut -f6 <<<"$line")
+    TS_ML_OWED_DUE=$(cut -f7 <<<"$line")
 }
 
 # ts_has_merge_row <KEY> — rc 0 when the key has any merge row that carries a contract
@@ -675,8 +680,46 @@ _ts_remainder_owner() {
     return 1
 }
 
+# _ts_d5d <KEY> <merged PR> [repo] [owed who] [owed due] — rc 0 when the merged PR's remainder names its owner, in
+# TS_D5D_OWNER. The owed pair comes from the merge row (merge-on-green writes it), so a snapshot derive answers it too.
+# ts_owed_lines — stdin: a PR body. Prints who<TAB>due<TAB>ask<TAB>text for each `<ask>: owed -> chief|operator by YYYY-MM-DD`
+# list line under `## Ticket coverage` before the next heading, the place pr_remainder.py reads an owed line from
+# (`→` or `->`); text is the line without its list mark, ask the text before the owed clause. The date is as written.
+ts_owed_lines() {
+    awk '{ sub(/\r$/, "") }
+        /^#/ { cov = (tolower($0) ~ /^##[ \t]+ticket coverage[ \t]*$/); next }
+        cov && /^([-*]|[0-9]+[.)])[ \t]/ {
+            l = tolower($0)
+            if (l ~ /deferred[ \t]*(→|->)/) next
+            if (!match(l, /owed[ \t]*(→|->)[ \t]*(chief|operator)[ \t]+by[ \t]+[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9][^a-z0-9]*$/)) next
+            s = substr(l, RSTART)
+            who = (s ~ /^owed[ \t]*(→|->)[ \t]*chief/) ? "chief" : "operator"
+            match(s, /[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/)
+            a = substr($0, 1, length($0) - length(s)); sub(/^([-*]|[0-9]+[.)])[ \t]+/, "", a); sub(/[ \t:]+$/, "", a); gsub(/\t/, " ", a)
+            t = $0; sub(/^([-*]|[0-9]+[.)])[ \t]+/, "", t); gsub(/\t/, " ", t)
+            print who "\t" substr(s, RSTART, RLENGTH) "\t" a "\t" t
+        }'
+}
+
+# ts_owed_chief_paths — stdin: a PR body. Prints paths<TAB>text for each owed-to-chief line (ts_owed_lines) whose ask names
+# a relative repo path: a file with a code or doc extension (tick.sh, scripts/lib/x.py) or a directory of two or more
+# parts ending in `/` (scripts/lib/). An absolute or home path (/etc/x.json, ~/.codex/config.toml) is not a repo path.
+# Such a line is code written as chief work; it belongs on a `Remaining:` line, which gets a RESUME row. rc 0 = one or more.
+ts_owed_chief_paths() {
+    local who due text ask paths found=1
+    local re='(^|[[:space:]`'"'"'"(,;[])(([A-Za-z0-9_][A-Za-z0-9_.-]*/)*[A-Za-z0-9_][A-Za-z0-9_.-]*\.(sh|bash|py|mjs|cjs|js|ts|tsx|json|jsonl|tsv|yml|yaml|md|toml)|([A-Za-z0-9_][A-Za-z0-9_.-]*/){2,})([[:space:]`'"'"'"),;:.]|$)'
+    while IFS=$'\t' read -r who due ask text; do
+        [ "$who" = chief ] || continue
+        paths=$(printf '%s\n' "$ask" | grep -oE "$re" | sed -E 's/^[^A-Za-z0-9_]//; s/[^A-Za-z0-9_/]$//' | sort -u | paste -sd, - | sed 's/,/, /g') || paths=""  # swallow-ok: no path in the ask is the empty answer
+        [ -n "$paths" ] || continue
+        printf '%s\t%s\n' "$paths" "$text"
+        found=0
+    done <<<"$(ts_owed_lines)"
+    return "$found"
+}
+
 _ts_d5d() {
-    local key=$1 mpr=$2 repo=${3:-} log body ans kind rest owner
+    local key=$1 mpr=$2 repo=${3:-} owho=${4:-} odue=${5:-} log body ans kind rest owner
     TS_D5D_OWNER=""
     case "$mpr" in ''|*[!0-9]*) return 1 ;; esac
     log="$(ts_state_dir)/status-events.jsonl"
@@ -684,6 +727,9 @@ _ts_d5d() {
         owner=$(jq -Rr --arg k "$key" --arg p "$mpr" 'fromjson? | select(.key == $k and .rule == "D5d" and .merged_pr == $p) | .owner // empty' "$log" 2>/dev/null | tail -n 1)  # swallow-ok: an unreadable log is no logged answer
         if [ -n "$owner" ]; then TS_D5D_OWNER=$owner TS_MERGED_PR=$mpr; return 0; fi
     fi
+    case "$owho" in
+        chief|operator) if _ts_date_ok "$odue"; then TS_D5D_OWNER="$owho by $odue" TS_MERGED_PR=$mpr; return 0; fi ;;
+    esac
     [ -z "${TS_SNAPSHOT_DIR:-}" ] || return 1
     body=$(_ts_gh pr view "$mpr" ${repo:+--repo "$repo"} --json body -q .body 2>/dev/null) || return 1
     ans=$(printf '%s' "$body" | python3 -I "$_TS_LIB_DIR/pr_remainder.py" "$key" 2>/dev/null) || return 1
@@ -691,6 +737,9 @@ _ts_d5d() {
     case "$kind" in
         handed-off) rest=${ans#*$'\t'}; owner=${rest%%$'\t'*} ;;
         remaining) rest=$(grep -iE '^[[:space:]]*remaining:' <<<"$body") || return 1; owner=$(_ts_remainder_owner "$key" "$rest") || return 1 ;;
+        owed)
+            rest=${ans#*$'\t'}; owho=${rest%%$'\t'*}; rest=${rest#*$'\t'}; odue=${rest%%$'\t'*}
+            case "$owho" in chief|operator) _ts_date_ok "$odue" || return 1; owner="$owho by $odue" ;; *) return 1 ;; esac ;;
         *) return 1 ;;
     esac
     [ -n "$owner" ] || return 1
@@ -786,7 +835,7 @@ ts_derive() {
         rc=0; ts_partial_merge "$key" || rc=$?
         if [ "$rc" -eq 2 ]; then _ts_no_write miss "" log
         elif [ "$rc" -eq 0 ]; then
-            if _ts_d5d "$key" "$TS_ML_PR" "$TS_ML_REPO"; then TS_DERIVED="To Do"; TS_RULE=D5d
+            if _ts_d5d "$key" "$TS_ML_PR" "$TS_ML_REPO" "$TS_ML_OWED" "$TS_ML_OWED_DUE"; then TS_DERIVED="To Do"; TS_RULE=D5d
             else TS_DERIVED="In Progress"; TS_RULE=D5c
             fi
         else

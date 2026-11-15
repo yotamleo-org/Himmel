@@ -259,6 +259,8 @@ mog_build_fixture() {
     # The PARTIAL report appends to the chief doc through this sibling.
     mkdir -p "$tmp/scripts/handover/chief-kit"
     cp "$SCRIPT_DIR/chief-kit/append-results.sh" "$tmp/scripts/handover/chief-kit/append-results.sh"
+    # A partial merge's owed lines go to the owed ledger through the anchor's owe.sh.
+    cp "$SCRIPT_DIR/chief-kit/owe.sh" "$tmp/scripts/handover/chief-kit/owe.sh"
     # The partial-merge remainder reader, read from the anchor's scripts/lib.
     cp "$SCRIPT_DIR/../lib/pr_remainder.py" "$tmp/scripts/lib/pr_remainder.py"
     # The bug-origin ingest runs from the anchor after a merge. The real tree is linked, not copied (it is large and
@@ -4463,6 +4465,55 @@ assert_err_has "9561 S4a: the brief-no refusal ends with the owed clause" "or an
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="$s3_body" \
     run_mog 26 "9561 S4a: the no-brief handed-off refusal offers an owed line"
 assert_err_has "9561 S4a: the no-brief refusal ends with the owed clause" "or an owed $s4_arrow line"
+# An `owed → chief` line naming a repo path is code mislabelled as chief work: refused, so it is written
+# Remaining: and gets a RESUME row. An operator line, an absolute path and a Remaining: line naming a path still merge.
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    STUB_PR_BODY=$'## Ticket coverage\n- a: done\n- the INTAKE age (tick.sh, held by another worker): owed '"$s4_arrow"' chief by '"$s4_d2"$'\n' \
+    run_mog 26 "10194: an owed-to-chief line naming a repo file is refused"
+assert_err_has "10194: the refusal names the path" "tick.sh"
+assert_err_has "10194: the refusal says to write it as Remaining:" "Remaining:"
+assert_audit_has "10194: the refusal is audited" "REFUSED reason=partial-owed-names-path"
+assert_gh_lacks "10194: the refused merge never called pr merge" "pr merge"
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    STUB_PR_BODY=$'## Ticket coverage\n- a: done\n- part B under scripts/handover/chief-kit/ held for the chief: owed '"$s4_arrow"' chief by '"$s4_d2"$'\n' \
+    run_mog 26 "10194: an owed-to-chief line naming a repo directory is refused"
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    STUB_PR_BODY=$'## Ticket coverage\n- a: done\n- run sudo bash scripts/lib/afk-sudo/install.sh on the station: owed '"$s4_arrow"' operator by '"$s4_d2"$'\n' \
+    run_mog 0 "10194 control: an owed-to-operator line naming a repo path merges"
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    STUB_PR_BODY=$'## Ticket coverage\n- a: done\n- set enabled in /etc/himmel/afk-sudo.json and ~/.codex/config.toml on the VM: owed '"$s4_arrow"' chief by '"$s4_d2"$'\n' \
+    run_mog 0 "10194 control: an owed-to-chief line naming only absolute or home paths merges"
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY=$'Remaining: the INTAKE age in tick.sh\n' \
+    run_mog 0 "10194 control: a Remaining: line naming a repo path merges"
+# Each owed line of a partial merge becomes an open owe.sh row in the chief's bucket (the chief doc's
+# directory), kind step, keyed to the ticket, so the tick ages it and the HANDOFF carries it.
+s10194_dir=$(mktemp -d "${TMPDIR:-/tmp}/mog-10194.XXXXXX")
+if [ -z "$s10194_dir" ] || [ ! -d "$s10194_dir" ]; then
+    fail "10194 setup: mktemp -d produced no chief bucket"
+else
+    printf '# chief\n\n## Results\n' > "$s10194_dir/chief.md"
+    HIMMEL_CONSOLE_DOC="$s10194_dir/chief.md" HIMMEL_CONSOLE_NAME=AJ-chief STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+        STUB_PR_BODY=$'## Ticket coverage\n- a: done\n- the live proof: owed '"$s4_arrow"' chief by '"$s4_d2"$'\n- rotate the key: owed -> operator by '"$s4_d3"$'\n' \
+        run_mog 0 "10194: a partial merge with two owed lines merges"
+    if jq -e -s --arg k "$(printf '%s-%s' HIMMEL 374)" 'length == 2 and all(.op == "add" and .kind == "step" and .key == $k and .chief == "AJ-chief")' "$s10194_dir/owed.jsonl" >/dev/null 2>&1; then pass
+    else fail "10194: two open step rows keyed to the ticket, chief from HIMMEL_CONSOLE_NAME (ledger: $(cat "$s10194_dir/owed.jsonl" 2>/dev/null))"; fi
+    if jq -e -s 'any(.text | test("PR #[0-9]+: the live proof: owed → chief by '"$s4_d2"'$")) and any(.text | test("rotate the key: owed -> operator by '"$s4_d3"'$"))' "$s10194_dir/owed.jsonl" >/dev/null 2>&1; then pass
+    else fail "10194: each row's text names the PR, the ask, who and the due date (ledger: $(cat "$s10194_dir/owed.jsonl" 2>/dev/null))"; fi
+    rm -f "$s10194_dir/owed.jsonl"
+    HIMMEL_CONSOLE_DOC="$s10194_dir/chief.md" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY=$'Remaining: slice 2\n' \
+        run_mog 0 "10194 control: a Remaining: merge"
+    if [ -e "$s10194_dir/owed.jsonl" ]; then fail "10194 control: a Remaining: merge writes no owe row ($(cat "$s10194_dir/owed.jsonl"))"; else pass; fi
+    HIMMEL_CONSOLE_DOC="$s10194_dir/chief.md" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+        STUB_PR_BODY=$'## Ticket coverage\n- a: done\n- the live proof: owed '"$s4_arrow"' chief by '"$s4_d2"$'\n' \
+        run_mog 0 "10194 control: a completing merge with an owed line" -- --jira-transition
+    if [ -e "$s10194_dir/owed.jsonl" ]; then fail "10194 control: a completing merge writes no owe row ($(cat "$s10194_dir/owed.jsonl"))"; else pass; fi
+    HIMMEL_CONSOLE_DOC="$s10194_dir/chief.md" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+        STUB_PR_BODY=$'## Ticket coverage\n- a: done\n- the live proof: owed '"$s4_arrow"' chief by '"$s4_d2"$'\n' \
+        run_mog 0 "10194: with no HIMMEL_CONSOLE_NAME"
+    if jq -e -s 'length == 1 and .[0].chief == "chief"' "$s10194_dir/owed.jsonl" >/dev/null 2>&1; then pass
+    else fail "10194: with no HIMMEL_CONSOLE_NAME the chief is the chief doc's stem (ledger: $(cat "$s10194_dir/owed.jsonl" 2>/dev/null))"; fi
+    rm -rf "$s10194_dir"
+fi
 # the reader's precedence: remaining > owed > handed-off > none; several owed lines answer the earliest date
 s4_read() { printf '%s' "$1" | python3 -I "$SCRIPT_DIR/../lib/pr_remainder.py" HIMMEL-374 2>/dev/null; }
 s4_ans=$(s4_read "$(printf 'Remaining: x\n\n## Ticket coverage\n- a: done\n- b: owed %s operator by %s\n' "$s4_arrow" "$s4_d2")")

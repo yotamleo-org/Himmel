@@ -85,6 +85,33 @@ for jstatus in "To Do" "In Progress"; do
 done
 printf 'HIMMEL-9001\tTask\tIn Progress\n' > "$TS_SNAPSHOT_DIR/jira.tsv"
 
+# A wrapped partial whose merge row records a step owed to the chief or operator by a date leaves
+# In Progress: To Do (D5d) with the owner and due date named, read from the merge row with no PR body read.
+owed_merge() { # <owed> <owed_due> - the key's one merge row: a contract=no merge whose remainder is owed
+    printf '{"ts":"2026-11-15T10:00:00Z","event":"merge","key":"HIMMEL-9001","pr":"21","repo":"octo/repo","contract":"no","result":"noop","remainder":"owed","owed":"%s","owed_due":"%s"}\n' "$1" "$2" \
+        > "$TICKET_STATUS_STATE_DIR/status-events.jsonl"
+    brief no
+}
+owed_merge chief 2026-11-22
+check "10194 an owed-to-chief partial leaves In Progress: D5d To Do" "$TS_RULE/$TS_DERIVED" 'D5d/To Do'
+check "10194 the owner names who and the due date" "$TS_D5D_OWNER" 'chief by 2026-11-22'
+owed_merge operator 2026-11-29
+check "10194 an owed-to-operator partial: D5d with the operator named" "$TS_RULE/$TS_D5D_OWNER" 'D5d/operator by 2026-11-29'
+owed_merge chief not-a-date
+check "10194 an owed row with no valid due date stays D5c" "$TS_RULE/$TS_DERIVED" 'D5c/In Progress'
+owed_merge 'chief;x' 2026-11-22
+check "10194 an owed row whose owner is not chief or operator stays D5c" "$TS_RULE/$TS_DERIVED" 'D5c/In Progress'
+rm -f "$TICKET_STATUS_STATE_DIR/status-events.jsonl"
+# ts_owed_chief_paths: an owed-to-chief coverage line whose ask names a relative repo path
+opaths() { printf '## Ticket coverage\n- a: done\n- %s: owed → %s by 2026-11-22\n' "$1" "${2:-chief}" | ts_owed_chief_paths | cut -f1; }
+check "10194 a bare file name is a repo path" "$(opaths 'the INTAKE age (tick.sh, held)')" 'tick.sh'
+check "10194 a relative directory is a repo path" "$(opaths 'part B under scripts/handover/chief-kit/')" 'scripts/handover/chief-kit/'
+check "10194 absolute and home paths are not" "$(opaths 'set /etc/himmel/x.json and ~/.codex/config.toml')" ''
+check "10194 versions, dates and and/or are not" "$(opaths 'v1.1.3 tag and node 26.13.1, and/or w/ the fix')" ''
+check "10194 an operator line is not checked" "$(opaths 'run scripts/lib/x.sh' operator)" ''
+check "10194 an owed line under a ### heading is not an owed line" \
+    "$(printf '## Ticket coverage\n- a: done\n### More\n- tick.sh: owed → chief by 2026-11-22\n' | ts_owed_chief_paths | cut -f1)" ''
+
 # ts_merge_rows drops a pre-merge row whose PR did not merge; ts_partial_merge and
 # ts_done_pending read through it. The gh seam answers: PR 11 OPEN, PR 12 MERGED at h12, PR 13 never asked.
 cat > "$tmp/mrgh" <<'EOF'
