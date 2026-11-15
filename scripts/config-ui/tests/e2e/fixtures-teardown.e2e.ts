@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ChildProcess } from "node:child_process";
@@ -17,7 +17,14 @@ const STUBS: Record<string, string> = {
   prompt: `process.on("SIGTERM", () => process.exit(0)); console.log("ready"); setInterval(() => {}, 1000);`,
 };
 
-const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+const alive = (pid: number) => {
+  try { process.kill(pid, 0); } catch { return false; }
+  try { return !/^\d+ \(.*\) Z/.test(readFileSync(`/proc/${pid}/stat`, "utf8")); } catch { return true; }
+};
+const dies = async (pid: number) => {
+  for (let i = 0; i < 100 && alive(pid); i++) await new Promise((r) => setTimeout(r, 20));
+  return !alive(pid);
+};
 const exited = (c: ChildProcess) => c.exitCode !== null || c.signalCode !== null;
 
 async function run(kind: string) {
@@ -33,7 +40,7 @@ async function run(kind: string) {
     });
     const t0 = Date.now();
     await stopChild(child, dir, GRACE_MS);
-    return { gone: !existsSync(dir), exited: exited(child), grandchildAlive: grandchild !== undefined && alive(grandchild), ms: Date.now() - t0 };
+    return { gone: !existsSync(dir), exited: exited(child), grandchildAlive: grandchild !== undefined && !(await dies(grandchild)), ms: Date.now() - t0 };
   } finally {
     try { process.kill(-child.pid!, "SIGKILL"); } catch {}
   }
