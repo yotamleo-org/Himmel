@@ -36,6 +36,11 @@ a job: that is the worker's job, and its scripts already do it. If the verdict
 turns on a result you do not have, say what is missing and rule on what you
 could verify; do not go and produce it.
 
+**Never fetch or run a package that is not already installed.** No `bun x`,
+`bunx`, `npx`, `npm install`, `pip install` or `uvx`: each can download and
+run code from a public registry. Run an installed tool by its own name; if a
+check needs a tool the station lacks, report the check as not run.
+
 ## GUARD RULE
 
 **On any denial or hook block, stop that line of work.** Never re-spell,
