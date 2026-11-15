@@ -2937,6 +2937,7 @@ const ADVISORY_CHAIN_MEMBERS = new Map([
   ['read-clamp.sh', 'fail-open nudge by design (J1310O F1)'],
   ['require-quiet-run.sh', 'fail-open nudge by design (J1310O F1)'],
   ['guard-identical-denied-retry.sh', 'fail-open by design: it may only deny the precisely counted third identical command'],
+  ['guard-merge-compound.sh', 'workflow nudge, fails open: a starved skip lets one merge spelling reach the classifier as before'],
   ['guard-bus-store.sh', 'speed bump, not a fence (HIMMEL-4829): a starved skip is acceptable'],
   ['allow-thread-resolve.sh', 'allow-only, never denies: a starved skip leaves no decision, which is the default'],
   ['approval-grant-check.sh', 'allow-only, never denies (HIMMEL-7686): a starved skip leaves no decision, so the classifier refuses as before'],
