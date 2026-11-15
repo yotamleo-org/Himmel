@@ -5193,7 +5193,7 @@ check_c69_qmd_cli_key() {  # t13b-ok: doctor row that reads the key file and ask
             case "$cli" in
                 refused)
                     emit WARN C69-qmd-cli-key "the bare qmd CLI, run with no QMD_OPENAI_API_KEY in its environment, answers 401 although the key file is valid -- a shell that does not export the key cannot embed or vsearch" \
-                        "this stays WARN until the installed qmd launcher loads the qmd daemon env key; meanwhile bash scripts/lib/qmd-bounded.sh loads it, and so does a shell that exports QMD_OPENAI_API_KEY from that file" ;;
+                        "this stays WARN until the installed qmd launcher loads the qmd provider key file; meanwhile bash scripts/lib/qmd-bounded.sh loads it, and so does a shell that exports QMD_OPENAI_API_KEY from that file" ;;
                 no-qmd) emit INFO C69-qmd-cli-key "the qmd key is accepted but qmd is not installed -- the bare CLI path was not checked" ;;
                 timeout) emit INFO C69-qmd-cli-key "the bare qmd CLI did not answer within its bound -- not a credential verdict" ;;
                 other:*) emit INFO C69-qmd-cli-key "the bare qmd CLI exited ${cli#other:} without a 401 -- not a credential verdict" ;;
