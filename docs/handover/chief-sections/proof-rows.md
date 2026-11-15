@@ -1,6 +1,6 @@
 # Chief section — proof rows
 
-Read on demand from `chief-template.md` `## Standing rules`.
+Read on demand from `chief-sections/live-state.md`, when a `pool-disposition:` row is tagged `proof`.
 
 Once the listing carries it, a row tagged `proof` is dispatched to a `kind: proof` worker (gen-briefs), never run by the chief. Before dispatching one, read the key's latest `PROOF VERDICT` comment.
 

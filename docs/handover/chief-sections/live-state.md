@@ -166,3 +166,5 @@ Read on demand from `chief-template.md` `## Live state`. Moved verbatim from the
 > `rulings-in-force.sh check --bucket <bucket> [--before <old block>]` proves the index
 > names every ruling in force and loses no unledgered line. The index line is not the
 > ruling: read its verbatim file before you act on it.
+
+A `pool-disposition:` row tagged `proof` goes to a `kind: proof` worker: `chief-sections/proof-rows.md`.
