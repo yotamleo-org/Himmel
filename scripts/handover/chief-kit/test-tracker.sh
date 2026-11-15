@@ -709,8 +709,6 @@ rbfile="$W/rb-out.md"
 python3 "$HERE/tracker.py" --remaining v1.1.3 --mirror-dir "$rb" --priority-file "$pf" --out "$rbfile" >/dev/null 2>&1
 contains '--out writes the board to a file' "$(cat "$rbfile" 2>/dev/null)" 'HIMMEL-72 [In Progress] second group open'
 
-# --- the defaults come from the shared resolvers. The Jira key lives ONLY in a himmel.conf fixture
-# (HIMMEL_CONFIG_DIR), the home is a scratch dir, and no --mirror-dir / --luna-root / --handovers is passed.
 s2h="$W/s2home"; s2c="$W/s2cfg"; s2v="$W/s2vault"
 mkdir -p "$s2h/.himmel/state/jira-mirror" "$s2c" "$s2v/handovers/s2user/himmel"
 printf 'JIRA_PROJECT_KEY=ACME\n' > "$s2c/himmel.conf"
@@ -720,7 +718,6 @@ s2got="$(env -u HIMMEL_JIRA_MIRROR HOME="$s2h" HIMMEL_CONFIG_DIR="$s2c" JIRA_PRO
 equals 'the default mirror dir follows the key only himmel.conf names' "$s2got" "$s2want"
 s2got="$(env -u HIMMEL_JIRA_MIRROR HOME="$s2h" HIMMEL_CONFIG_DIR="$s2c" JIRA_PROJECT_KEY= python3 "$HERE/tracker.py" --remaining v1.1.3 --mirror-dir "$rb" --priority-file "$pf" 2>&1)"
 equals '--mirror-dir still wins over the resolver default' "$s2got" "$s2want"
-# the live worker the default handover dir holds: <vault>/handovers/<USER_SLUG>/himmel
 printf '%s\n' '# worker' '## Results' '- 10:00 LIVE — up' > "$s2v/handovers/s2user/himmel/HIMMEL-7-N57-s2-worker-2026-11-15.md"
 printf '{"schema":1,"workers":[{"doc":"%s","label":"N57"}]}\n' "$s2v/handovers/s2user/himmel/HIMMEL-7-N57-s2-worker-2026-11-15.md" > "$s2v/handovers/s2user/himmel/test-console.fleet.json"
 env -u TRACKER_HANDOVERS_DIR HOME="$s2h" HIMMEL_CONFIG_DIR="$s2c" JIRA_PROJECT_KEY= USER_SLUG=s2user LUNA_VAULT_PATH="$s2v" \

@@ -50,7 +50,6 @@ LIB = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib'
 
 
 def lib_call(lib, body, *args):
-    """stdout of one bash line run after sourcing scripts/lib/<lib>; SystemExit when it fails, so no default is guessed."""
     r = subprocess.run(['bash', '-c', '. "$1/%s" && %s' % (lib, body), 'tracker', LIB] + list(args),
                        capture_output=True, text=True, timeout=60)
     if r.returncode != 0 or not r.stdout.strip():
@@ -59,24 +58,20 @@ def lib_call(lib, body, *args):
 
 
 def jira_project_key():
-    """The Jira project key: JIRA_PROJECT_KEY, else himmel.conf or .env, else the resolver's default."""
     return lib_call('jira-project.sh', 'jira_project_key')
 
 
 def default_mirror():
-    """HIMMEL_JIRA_MIRROR, else the mirror directory of the configured project key."""
     return lib_call('jira-project.sh', 'jira_mirror_dir')
 
 
 def default_luna():
-    """LUNA_VAULT_PATH from the env, .env or himmel.conf, else the ~/Documents/luna convention."""
     r = subprocess.run(['bash', '-c', '. "$1/load-dotenv.sh" && load_dotenv LUNA_VAULT_PATH >/dev/null 2>&1; printf %s "${LUNA_VAULT_PATH:-}"',
                         'tracker', LIB], capture_output=True, text=True, timeout=60)
     return os.path.expanduser(r.stdout.strip() or '~/Documents/luna')
 
 
 def default_handovers(luna):
-    """<luna>/handovers/<user slug>/himmel, the slug from USER_SLUG (env, .env, himmel.conf), else the forge or git login."""
     slug = lib_call('load-dotenv.sh', 'load_dotenv USER_SLUG >/dev/null 2>&1; . "$1/user-slug.sh" && user_slug')
     return os.path.join(luna, 'handovers', slug, 'himmel')
 LAYERS = ['bugs', 'enhancements', 'features', 'misc', 'audit']

@@ -144,7 +144,6 @@ gh_unknown = False
 
 
 def repo_args():
-    """['--repo', owner/name] from VSA_REPO, else this checkout's GitHub origin; [] lets gh read the cwd's repo."""
     repo = os.environ.get('VSA_REPO', '')
     if not repo:
         try:

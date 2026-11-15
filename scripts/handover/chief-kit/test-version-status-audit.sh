@@ -216,7 +216,6 @@ out="$(VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/nofail" bash "$SUT" --mirror "$P" --
 has "front matter without status is warned about" "$out" "1 mirror file(s) lack front matter"
 [ "$rc" = 3 ] && pass "front matter without status exits 3" || fail "front matter without status exits 3 (rc=$rc)"
 
-# The default mirror follows the Jira project key, here set ONLY in a himmel.conf fixture.
 S2H="$WORK/s2home"; S2C="$WORK/s2cfg"; mkdir -p "$S2H/.himmel/state/jira-mirror" "$S2C"
 printf 'JIRA_PROJECT_KEY=ACME\n' > "$S2C/himmel.conf"
 cp -R "$M" "$S2H/.himmel/state/jira-mirror/ACME"; cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$S2H/.himmel/state/jira-mirror/ACME.versions.tsv"
@@ -232,7 +231,6 @@ out="$(s2run)"
 [ "$out" = "$s2want" ] && pass "control: no key anywhere still reads jira-mirror/HIMMEL" || fail "control: no key anywhere still reads jira-mirror/HIMMEL (got: $out)"
 out="$(s2run --mirror "$WORK/absent/HIMMEL")"
 has "--mirror still wins over the resolver default" "$out" "absent"
-# the open-PR read names the repo VSA_REPO gives, never a literal
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" > "%s"\n' "$WORK/gh-args" > "$WORK/gh-rec"; chmod +x "$WORK/gh-rec"
 VSA_REPO=acme/widgets VSA_GH_CMD="$WORK/gh-rec" bash "$SUT" --mirror "$M" >/dev/null 2>&1
 has "the open-PR read names VSA_REPO" "$(cat "$WORK/gh-args" 2>/dev/null)" "--repo acme/widgets"
