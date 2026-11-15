@@ -941,6 +941,8 @@ printf '%s\n' '# disposition HIMMEL-141 listed LOCAL' '# disposition HIMMEL-142 
     '# disposition HIMMEL-144 in-flight owned by worker N1' > "$S2/rows"
 s2_produce() {
     local doc="$1" out sf; shift
+    # the tick's order: the pool_holds step holds the one PR read, then --pool-stale reads its file
+    s2 env "$@" bash "$SUT" --pool-holds --doc "$doc" > /dev/null 2>&1
     out="$(s2 env "$@" bash "$SUT" --pool-stale --doc "$doc" --prior "$S2ST/none.out" 2>/dev/null)"
     sf="$(printf '%s\n' "$out" | sed -n 's/^# stale-file=//p')"
     [ -n "$sf" ] || return 1
@@ -1057,6 +1059,7 @@ c15a="$(g15 2026-11-09T12:00:00Z "$sub15a")"
 c15b="$(g15 2026-11-09T15:00:00Z "$sub15b")"
 s3_produce() {
     local out sf
+    s2 bash "$SUT" --pool-holds --doc "$1" --repo "$2" > /dev/null 2>&1
     out="$(s2 bash "$SUT" --pool-stale --doc "$1" --repo "$2" --prior "$3" 2>/dev/null)"
     sf="$(printf '%s\n' "$out" | sed -n 's/^# stale-file=//p')"
     [ -n "$sf" ] || return 1

@@ -521,14 +521,14 @@ class `changed`: `<target> merged <oldest sha since the anchor> since the line w
 pool-stale=<n>:<KEY>,... re-checks each pool-disposition: line whose target
 names a ticket key of the mirror's project or `PR <n>`: when every named blocker is Done (Jira mirror)
 or its PR merged or closed the line is stale, `?` marks an unreadable target (never stale), and
-the waiter wakes once per newly stale key. The PR states come from one GraphQL query per 100 numbers
-that names exactly the PRs the lines cite (issueOrPullRequest aliases through gh-read.sh, owner and
-repo from gh's {owner}/{repo} placeholders, GH_READ_NO_MAIN_FALLBACK=1); an issue number or a number
-GitHub cannot resolve reads `?`. Another KEY-shaped token (a wave label such as ZA-1) is text. Before
+the waiter wakes once per newly stale key. The PR states come from the prs map of the doc's holds file
+(pool-holds-<stem>.json, the --pool-holds step below; missing or over 30 min old: every PR target and every
+wake= line reads `?`); --pool-stale makes no gh call. A line whose holds row is unchanged is also stale when
+its wake fired (`wake=<event>=fired`) or it waits on an outside PR with no watch row (`outside-PR=unwatched`).
+An issue number or a number GitHub cannot resolve reads `?`. Another KEY-shaped token (a wave label such as ZA-1) is text. Before
 the field, --pool-stale prints one `STALE-DISPOSITION <KEY> line=<12 hex> <target>=<state>...` line per
 stale key: line= is the sha256 prefix of the line's text after `pool-disposition:`, and every
-target is listed, keys then PRs by number, then `@<sha>=<n>-behind`. A `gh-read:` warning of that read is
-copied to stderr. A line may end `@<sha>`, the head the chief
+target is listed, keys then PRs by number, then `@<sha>=<n>-behind`. A line may end `@<sha>`, the head the chief
 ruled at: more than TICK_POOL_MAX_MERGES (30) commits behind origin/main (else HEAD) it is stale
 whatever its blockers say, and an unknown sha prints `?`. The line is never rewritten.
 pool-changed=<n>:<KEY>,... (doc order) names each line that is not stale whose open project-key target
@@ -546,15 +546,23 @@ residual-unversioned=
 other than a To Do ticket below High whose latest release-ruling comment is a BACKLOG ruling (or a MOVE to the backlog) of that same ticket.
 residual-unversioned hides when 0 or skip. pool-stale hides only on skip (no --doc, or a failed
 read): an explicit pool-stale=0 is the all-clear the waiter needs to clear its marker, so it stays
-on the compact line. --pool-stale --doc <doc> prints its STALE-DISPOSITION lines, then these two fields. With GitHub out
-(scripts/lib/gh-quota.sh ghq_scan_gate, main GraphQL) nothing is read: pool-stale=? and residual-unversioned=skip.
-It judges only a quota.tsv reading under 170 s old (the tick's own refresh) and never probes itself.
---pool-holds --doc <doc> [--state-file <f>] is the pool_holds step the tick runs before pool-stale=: it
-writes pool-holds-<doc stem>.json in TICK_STATE_DIR and nothing else. In a bucket that declares a release,
+on the compact line. --pool-stale --doc <doc> prints its STALE-DISPOSITION lines, then these two fields.
+--pool-holds --doc <doc> [--state-file <f>] [--open-prs <tsv>] [--workers-from <manifest>] [--mirror <dir>] [--repo <dir>]
+is the pool_holds step the tick runs, under the pool-stale producer lock, before pool-stale=: it writes
+pool-holds-<doc stem>.json in TICK_STATE_DIR and nothing else. It holds the one PR read: one GraphQL query per
+100 numbers naming exactly the PRs the lines cite (issueOrPullRequest aliases through gh-read.sh, owner and repo
+from gh's {owner}/{repo} placeholders, GH_READ_NO_MAIN_FALLBACK=1; a `gh-read:` warning is copied to stderr), made
+only when a line cites a PR. With GitHub out (scripts/lib/gh-quota.sh ghq_scan_gate, main GraphQL, judged only on
+a quota.tsv reading under 170 s old) nothing is read and every PR-dependent wake reads unchecked. In a bucket that declares a release,
 a give-up line (question, close, hold, park, or a slice naming no key, PR or @sha) on a pool key or an
 asks_operator key counts as dispositioned only on `authority=O-<R>-<n>|decision-<n>` that a words
-record of release-state-<stem>.json names the key with, and is otherwise unresolved as no-authority,
-invalid or unchecked (no or an old or not-OK state file; a doc with no release: line). A missing holds
+record of release-state-<stem>.json names the key with, or on a valid `wake=` that has not fired: pr:<n>
+(or pr-<n>-merge) on an open PR, done:<KEY> on a key an open PR's head branch or a worker names or the
+current version lists, date:<YYYY-MM-DD[THH:MMZ]> at most 7 days out, file:<absolute path under the handover
+root or TICK_STATE_DIR>; a list fires when any event fires, and an invalid part wins. Otherwise it is
+unresolved as no-authority, invalid or unchecked (a failed PR read; no, an old or a not-OK state file; a doc
+with no release: line). outside is true for a cross-repository PR of the open-PR list with no manifest watch
+row, null with no manifest or no open-PR list. A missing holds
 file, or one over 30 min old, reads every give-up line unchecked. With no declared release the step
 prints pool-holds=off:no-ledger, which the tick shows, and the lines keep the rule above.
 
@@ -1174,15 +1182,16 @@ PY
 # `residual-unversioned=` lines. pool-stale re-reads every Live-state pool-disposition: line
 # whose target names a ticket key or `PR <n>`; a line is stale only when every named blocker
 # is Done or merged, and an unreadable blocker prints `?`, never stale. The PR states come
-# from ONE batched gh read, made only when some target names a PR. residual-unversioned lists
+# from the pool_holds step's file, which also flags a line whose wake fired or which waits on an
+# outside PR with no watch row; it makes no gh call itself. residual-unversioned lists
 # open residual tickets of an open focus-version ticket that carry no fixVersion, except a To Do ticket
 # below High ruled into the backlog by its latest release-ruling comment (a mirror copy of the ruling;
 # the release ledger is the record). It never
 # rewrites the doc.
-pool_stale() { # <doc> <mirror> <gh command> <repo dir>
+pool_stale() { # <doc> <mirror> <repo dir> <prior> <stale file> <real mirror> <holds file>
     python3 -I - "$@" <<'PY'
-import datetime, glob, hashlib, json, os, re, subprocess, sys
-doc, mirror, gh, repo, prior, stale_file, mirror_real, noread = sys.argv[1:9]
+import datetime, glob, hashlib, json, os, re, subprocess, sys, time
+doc, mirror, repo, prior, stale_file, mirror_real, holds = sys.argv[1:8]
 if stale_file:
     print("# mirror=" + mirror_real)
     print("# stale-file=" + stale_file)
@@ -1214,7 +1223,7 @@ for line in open(doc).read().splitlines():
         live = line == "## Live state"
     if live and line.startswith("pool-disposition:"):
         value = line.split(":", 1)[1].strip()
-        m = re.fullmatch(r"([A-Z]+-\d+) (?:slice|close|question) (\S.*)", value)
+        m = re.fullmatch(r"([A-Z]+-\d+) (?:slice|close|question|hold|park) (\S.*)", value)
         if m:
             refs = {k for k in key_re.findall(m[2]) if k != m[1]}
             prs = {n for g in re.findall(r"\bPRs?\s*#?(\d+(?:\s*(?:,|and|&)\s*#?\d+)*)", m[2]) for n in re.findall(r"\d+", g)}
@@ -1253,32 +1262,17 @@ for line in prior_lines or []:
     if m:
         ccarry[m[2]] = (m[3], m[4], m[1])
 
-prstate = None
-nums = sorted({int(p) for _, _, prs, _, _ in lines for p in prs})
-if nums and noread != "1":
-    try:
-        got = {}
-        for i in range(0, len(nums), 100):
-            chunk = nums[i:i + 100]
-            q = "query($owner:String!,$name:String!){repository(owner:$owner,name:$name){%s}}" % " ".join(
-                "p%d:issueOrPullRequest(number:%d){__typename ... on PullRequest{state}}" % (n, n) for n in chunk)
-            r = subprocess.run([gh, "api", "graphql", "-F", "owner={owner}", "-F", "name={repo}", "-f", "query=" + q],
-                               cwd=repo if os.path.isdir(repo) else None, capture_output=True, text=True, timeout=30,
-                               env=dict(os.environ, GH_READ_NO_MAIN_FALLBACK="1"))
-            for err in r.stderr.splitlines():
-                if err.startswith("gh-read:"):
-                    print(err, file=sys.stderr)
-            # a NOT_FOUND alias makes gh exit 1 with the other aliases' data on stdout: read it whatever the rc
-            found = json.loads(r.stdout).get("data", {}).get("repository")
-            if not isinstance(found, dict):
-                raise ValueError("no repository in the answer")
-            for n in chunk:
-                node = found.get("p%d" % n)
-                if isinstance(node, dict) and node.get("__typename") == "PullRequest" and node.get("state"):
-                    got[str(n)] = node["state"]
-        prstate = got
-    except (OSError, subprocess.SubprocessError, ValueError, TypeError, AttributeError):
-        prstate = None
+# every PR state comes from the pool_holds step's file (its prs map, the one exact read of the cited
+# PRs); a missing file, or one over 30 minutes old, reads every PR target ?. A holds row whose line
+# is unchanged flags the line stale when its wake fired or it waits on an outside PR.
+prstate, hold = None, {}
+try:
+    if time.time() - os.path.getmtime(holds) <= 1800:
+        hd = json.load(open(holds))
+        prstate = {str(k): v for k, v in (hd.get("prs") or {}).items()}
+        hold = {r["key"]: r for r in hd.get("rows") or [] if r.get("fired") or r.get("outside") is True}
+except (OSError, ValueError, TypeError, KeyError, AttributeError):
+    prstate, hold = None, {}
 
 def state(kind, ref):
     if kind == "key":
@@ -1325,6 +1319,14 @@ for key, refs, prs, sha, h in lines:
     if key in carry and carry[key][0] == h and "open" not in states and key not in stale:
         stale.append(key)
         details.append(carry[key][1] + " carried")
+for key, (refs, prs, sha, h, value) in latest.items():
+    r = hold.get(key)
+    if r and r.get("line") == h and key not in stale:
+        stale.append(key)
+        cause = (["wake=%s=fired" % r.get("wake")] if r.get("fired") else []) + (["outside-PR=unwatched"] if r.get("outside") is True else [])
+        details.append(" ".join(x for x in (detail(key, refs, prs, sha, h, ages.get(key)).rstrip(), " ".join(cause)) if x.strip()))
+    elif prstate is None and re.search(r"(?<!\S)wake=\S", value):
+        unreadable = True
 
 def refdate():
     m = re.search(r"(\d{4})-(\d{2})-(\d{2})", os.path.basename(doc))
@@ -1567,19 +1569,7 @@ if [ "$stale_mode" -eq 1 ]; then
         ps_self="$(pool_stale_file "$DOC" "$ps_mirror")"
         ps_mirror_real="$(realpath -m "$ps_mirror")"  # prim-ok: the mirror need not exist, which canon_path refuses; gnu-ok: chief kit is Linux-only
     fi
-    ps_noread=0
-    if [ -f "$HERE/../../lib/gh-quota.sh" ]; then
-        # shellcheck source=../../lib/gh-quota.sh
-        . "$HERE/../../lib/gh-quota.sh"
-        if ghq_read main graphql && [ $(($(date +%s) - GHQ_OBSERVED)) -lt 170 ] \
-            && ! ps_line=$(GHQ_GH_CMD="${TICK_GH_CMD:-${GHQ_GH_CMD:-gh}}" ghq_scan_gate main graphql tick); then
-            printf '%s\n' "$ps_line" >&2
-            [ -n "$ps_prior" ] || { printf 'pool-stale=?\nresidual-unversioned=skip\n'; exit 0; }
-            export GH_READ_OFF=1
-            ps_noread=1
-        fi
-    fi
-    pool_stale "$DOC" "$ps_mirror" "${TICK_GH_CMD:-$GH_READ_BIN}" "$REPO" "$ps_prior" "$ps_self" "$ps_mirror_real" "$ps_noread"
+    pool_stale "$DOC" "$ps_mirror" "$REPO" "$ps_prior" "$ps_self" "$ps_mirror_real" "${DOC:+$(pool_holds_file "$DOC")}"
     exit $?
 fi
 

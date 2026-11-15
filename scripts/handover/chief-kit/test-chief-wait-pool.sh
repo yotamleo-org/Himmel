@@ -621,6 +621,20 @@ check "(6604) the same stale key does not wake again on a re-arm" "124" "$rc"
 stale_line '2:HIMMEL-7120,HIMMEL-6866'
 arm "$I" "$WORK/st3.out" 15
 check "(6604) a newly stale key wakes and names only the new key" "WAKE pool-stale HIMMEL-6866" "$(head -n1 "$WORK/st3.out")"
+hs_dir="$WORK/hs-state"; mkdir -p "$hs_dir"
+hs_doc="$WORK/hs-chief.md"
+printf '# chief\n\n## Live state\npool-disposition: HIMMEL-9190 hold waits on PR 5002 upstream wake=pr:5002\n\n## Results\n' > "$hs_doc"
+hs_line="$(python3 -I -c 'import hashlib, sys; print(hashlib.sha256(sys.argv[1].encode()).hexdigest()[:12])' "$(sed -n 's/^pool-disposition: //p' "$hs_doc")")"
+printf '{"ts":"x","mode":"on","rows":[{"key":"HIMMEL-9190","verb":"hold","class":"wake","fired":false,"outside":true,"wake":"pr:5002","line":"%s"}],"prs":{"5002":"OPEN"}}\n' "$hs_line" > "$hs_dir/pool-holds-hs-chief.json"
+mkdir -p "$WORK/hs-mirror/HIMMEL"
+hs_val="$(TICK_STATE_DIR="$hs_dir" NEXT_DISPATCH_MIRROR="$WORK/hs-mirror/HIMMEL" bash "$HERE/tick.sh" --pool-stale --doc "$hs_doc" 2>/dev/null | sed -n 's/^pool-stale=//p')"
+check "(9853) an outside-PR holds row makes the line stale through --pool-stale" "1:HIMMEL-9190" "$hs_val"
+I2="$(new_inbox st-holds)"
+stale_line "$hs_val"
+arm "$I2" "$WORK/sh1.out" 15
+check "(9853) one pool-stale wake per newly stale key: the outside-PR hold wakes" "WAKE pool-stale HIMMEL-9190" "$(head -n1 "$WORK/sh1.out")"
+arm "$I2" "$WORK/sh2.out" 4
+check "(9853) one pool-stale wake per newly stale key: the same stale set does not wake again" "124" "$rc"
 stale_line '?'
 arm "$I" "$WORK/st4.out" 4
 check "(6604) an unreadable blocker (?) never wakes" "124" "$rc"
@@ -890,6 +904,8 @@ s2w_produce() {
     local args out sf
     args=(--pool-stale --doc "$1" --prior "$TICK_STATE_DIR/none.out")
     [ -z "${3:-}" ] || args+=(--repo "$3")
+    # the tick's order: the pool_holds step holds the one PR read, then --pool-stale reads its file
+    PS_GH_FAIL="$2" bash "$HERE/tick.sh" --pool-holds --doc "$1" ${3:+--repo "$3"} > /dev/null 2>&1
     out="$(PS_GH_FAIL="$2" bash "$HERE/tick.sh" "${args[@]}" 2>/dev/null)"
     sf="$(printf '%s\n' "$out" | sed -n 's/^# stale-file=//p')"
     [ -n "$sf" ] || return 1
