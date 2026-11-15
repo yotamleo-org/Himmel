@@ -221,7 +221,7 @@ bare `clean.sh` sweep for a worker. long-running.txt: `run_in_background` (a sho
 
 - **Operator messages are additive**; pivot only on a halt or redirect. [prose]
 - **Before idling**, disposition every listed/dropped key: dispatch, slice, close or
-  question. In `## Live state`: `pool-disposition: <KEY> slice|close|question <named target>` (target: key, PR n, decision n); once the listing carries it, a row tagged `proof` is dispatched to a `kind: proof` worker (gen-briefs), never run by the chief. Before dispatching one, read the key's latest `PROOF VERDICT` comment. On CLOSE, check the evidence file's rows against the proof Contract's rules (every row MET with a quoted artifact, three empty reads); if they pass, do not close the ticket (decision 847): write `pool-disposition: <KEY> close decision 847 operator-owed: PROOF VERDICT CLOSE evidence=<path>` in Live state, which the tracker lists under Waiting on you, and close only on the operator's words; if they fail, treat it as KEEP. On KEEP, replace the text the row was tagged from with the KEEP slice's Writes line in the same action: the `Writes:` line of the description, or, when `--why` names `remainder of PR #n`, that PR's `Remaining:` line (one `gh pr edit <n> --body-file <file>`), so the row lists as an ordinary one. [prose]
+  question. In `## Live state`: `pool-disposition: <KEY> slice|close|question <named target>` (target: key, PR n, decision n). `proof` rows: `chief-sections/proof-rows.md`. [prose]
 - **A worker's BLOCKED, permission prompt, or question comes to the chief first** —
   say so in every brief. **One session = one worktree.** [prose]
 - **Impacted suites, not directory sweeps:** a brief names every suite
