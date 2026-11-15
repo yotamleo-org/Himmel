@@ -612,6 +612,9 @@ imports, so its suite runs in CI without an install.
   Morning report page selects the newest day, switches to the earlier one and says so for a
   day with no report; the four Reports and shifts settings show their defaults on Configure,
   save, and land in the himmel config. `E2E_SHOTS=<dir>` saves a screenshot of each frame.
+- Fixture teardown e2e (`fixtures-teardown.e2e.ts`, same opt-in suite): the harness's `stopChild` removes a test's
+  temp dir only after the server and anything it started have exited. Stub children that ignore SIGTERM or leave a
+  grandchild writing into the dir must not leave it behind, and a child that exits promptly is not made to wait.
 - Configure e2e (`settings.e2e.ts`, journey J3, same opt-in suite): Configure is
   the one rail entry (it replaced Settings and Setup; `#/setup` and the install
   hand-off's `page=setup` land on it with the Secrets tile open) with four tiles
