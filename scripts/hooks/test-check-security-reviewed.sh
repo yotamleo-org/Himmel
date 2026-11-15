@@ -430,7 +430,8 @@ rm -rf "$d"
 # unrelated prose). -> pass.
 d=$(make_repo "src/foo.ts" "feat: foo no attestation") || exit 1
 stub=$(make_gh_stub "$(printf '## Summary\nSome PR description prose.\n\n## Security review\n\nSecurity reviewed: manual\n')") || exit 1
-assert_rc "code + PR-body has 'manual' via gh stub"  0 "$(run_in_with_path "$d" "$stub")"
+# the PR body attests at no gate (CI and ready-check never read it), so this is a block
+assert_rc "code + PR-body has 'manual' via gh stub = block"  1 "$(run_in_with_path "$d" "$stub")"
 rm -rf "$d" "$stub"
 
 # Stub gh returns a body WITHOUT the token -> block.
@@ -646,6 +647,147 @@ d=$(fixture_mktemp_dir) || exit 1
     git add -A; git -c commit.gpgsign=false commit -q -m "feat: orphan code"
 ) >/dev/null 2>&1 || exit 1
 assert_rc "orphan branch (no merge base) -> fail CLOSED (exit 2)"    2 "$(run_in "$d" "SECURITY_REVIEW_NO_FETCH=1")"
+rm -rf "$d"
+
+# --- the branch carries the trailer in ANY non-merge commit ---
+BAD='Security reviewed: outbound write is one PR comment'
+GOOD='Security reviewed: ad-hoc — reason'
+# make_repo2 <files> <msg1> <msg2> [empty]: two commits on feat/x; the second adds a line to the
+# first file, or is `git commit --allow-empty` when a fourth argument is given.
+make_repo2() {
+    local files="$1" msg1="$2" msg2="$3" empty="${4:-}" dir
+    dir=$(fixture_mktemp_dir) || return 1
+    (
+        fixture_enter_git_init_dir "$dir" || exit 1
+        git init -q -b main
+        git config user.email t@t
+        git config user.name t
+        echo r > README.md
+        git add README.md
+        git -c commit.gpgsign=false commit -q -m "init"
+        git checkout -q -b feat/x
+        # shellcheck disable=SC2086 # files is space-separated, intentional split
+        for f in $files; do
+            mkdir -p "$(dirname "$f")"
+            echo "x" > "$f"
+        done
+        git add -A
+        git -c commit.gpgsign=false commit -q -m "$msg1"
+        if [ -n "$empty" ]; then
+            git -c commit.gpgsign=false commit -q --allow-empty -m "$msg2"
+        else
+            # shellcheck disable=SC2086 # files is space-separated
+            set -- $files
+            echo y >> "$1"
+            git add -A
+            git -c commit.gpgsign=false commit -q -m "$msg2"
+        fi
+    ) || { rm -rf "$dir"; return 1; }
+    echo "$dir"
+}
+# make_merge_only_repo <files> <merge-msg>: a branch commit with no trailer, then a --no-ff merge of a
+# side branch whose message is <merge-msg> (the only commit that could carry a trailer).
+make_merge_only_repo() {
+    local files="$1" msg="$2" dir
+    dir=$(fixture_mktemp_dir) || return 1
+    (
+        fixture_enter_git_init_dir "$dir" || exit 1
+        git init -q -b main
+        git config user.email t@t
+        git config user.name t
+        echo r > README.md
+        git add README.md
+        git -c commit.gpgsign=false commit -q -m "init"
+        git checkout -q -b feat/x
+        # shellcheck disable=SC2086 # files is space-separated, intentional split
+        for f in $files; do
+            mkdir -p "$(dirname "$f")"
+            echo "x" > "$f"
+        done
+        git add -A
+        git -c commit.gpgsign=false commit -q -m "feat: no trailer"
+        git checkout -q -b side main
+        echo s > side.txt
+        git add side.txt
+        git -c commit.gpgsign=false commit -q -m "chore: side"
+        git checkout -q feat/x
+        git -c commit.gpgsign=false merge -q --no-ff side -m "$msg"
+    ) || { rm -rf "$dir"; return 1; }
+    echo "$dir"
+}
+# run_out <dir> [env_assign]: the hook's rc in LAST_RC2 and its stdout+stderr in LAST_OUT (RUN_HOOK overrides the hook path).
+LAST_OUT=""
+LAST_RC2=""
+run_out() {
+    local dir="$1" env_assign="${2:-}"
+    if [ -n "$env_assign" ]; then
+        LAST_OUT=$( cd "$dir" && env "$env_assign" bash "${RUN_HOOK:-$HOOK}" 2>&1 )
+    else
+        LAST_OUT=$( cd "$dir" && bash "${RUN_HOOK:-$HOOK}" 2>&1 )
+    fi
+    LAST_RC2=$?
+}
+assert_has() {
+    case "$3" in
+        *"$2"*) echo "PASS $1" ;;
+        *) echo "FAIL $1 — output lacks [$2]"; FAILED=$((FAILED + 1)) ;;
+    esac
+}
+assert_lacks() {
+    case "$3" in
+        *"$2"*) echo "FAIL $1 — output holds [$2]"; FAILED=$((FAILED + 1)) ;;
+        *) echo "PASS $1" ;;
+    esac
+}
+
+# control: the trailer only in the second commit (pins I1 for the hook)
+d=$(make_repo2 "src/foo.ts" "feat: a" "$(printf 'feat: b\n\nSecurity reviewed: manual\n')") || exit 1
+assert_rc "trailer only in commit 2"                   0 "$(run_in "$d")"
+rm -rf "$d"
+d=$(make_repo2 "src/foo.ts" "feat: a" "$(printf 'feat: b\n\nSecurity reviewed: Manual — x\n')") || exit 1
+assert_rc "mixed-case trailer in commit 2"             0 "$(run_in "$d")"
+rm -rf "$d"
+# control (the split verdict): a bad token first, a good one later
+d=$(make_repo2 "src/foo.ts" "$(printf 'feat: a\n\n%s\n' "$BAD")" "$(printf 'feat: b\n\n%s\n' "$GOOD")") || exit 1
+assert_rc "split verdict: bad token first, good later" 0 "$(run_in "$d")"
+rm -rf "$d"
+# control (the named fix): no trailer, then an empty commit carrying the line
+d=$(make_repo2 "src/foo.ts" "feat: a" "$(printf 'chore: attest\n\n%s\n' "$GOOD")" empty) || exit 1
+assert_rc "named fix: an empty follow-up commit"  0 "$(run_in "$d")"
+rm -rf "$d"
+# control (definition of done 3): a branch whose only line is malformed is refused
+d=$(make_repo "src/foo.ts" "$(printf 'feat: a\n\n%s\n' "$BAD")") || exit 1
+assert_rc "malformed-only security line = block"  1 "$(run_in "$d")"
+rm -rf "$d"
+
+# RED: a trailer carried only by a merge commit never counts (the shape of the closed PR #5052)
+d=$(make_merge_only_repo "src/foo.ts" "$(printf 'Merge side\n\n%s\n' "$GOOD")") || exit 1
+run_out "$d"
+assert_rc "merge-only trailer = block"                 1 "$LAST_RC2"
+assert_has "merge-only trailer names case (c)" "present only in a merge commit" "$LAST_OUT"
+rm -rf "$d"
+
+# RED: the helper unreadable -> rc2 naming the lib (the tree keeps guardrails/lib.sh, so rc2 cannot come from that guard)
+d=$(make_repo "src/foo.ts" "$(printf 'feat: foo\n\nSecurity reviewed: manual\n')") || exit 1
+nolib=$(fixture_mktemp_dir) || exit 1
+mkdir -p "$nolib/scripts/hooks" "$nolib/scripts/guardrails"
+cp "$HOOK" "$nolib/scripts/hooks/check-security-reviewed.sh"
+cp "$SCRIPT_DIR/../guardrails/lib.sh" "$nolib/scripts/guardrails/lib.sh"
+RUN_HOOK="$nolib/scripts/hooks/check-security-reviewed.sh" run_out "$d"
+assert_rc "attest-trailers.sh missing = rc2 (cannot evaluate)" 2 "$LAST_RC2"
+assert_has "lib missing names the file" "cannot source scripts/lib/attest-trailers.sh" "$LAST_OUT"
+rm -rf "$d" "$nolib"
+
+# RED: the refusal names one fix and nothing CI refuses
+d=$(make_repo "src/foo.ts" "feat: add foo") || exit 1
+run_out "$d"
+assert_rc "no attestation = block (refusal text)"      1 "$LAST_RC2"
+assert_has "refusal names the one fix" "one more ordinary (non-merge) commit" "$LAST_OUT"
+assert_lacks "refusal does not say (or amend)" "(or amend)" "$LAST_OUT"
+assert_lacks "refusal does not offer the PR description" "PR description" "$LAST_OUT"
+assert_lacks "refusal does not mention the PR body" "PR body" "$LAST_OUT"
+assert_lacks "refusal does not offer the env bypass" "SKIP_SECURITY_REVIEW=1" "$LAST_OUT"
+assert_lacks "refusal does not offer the skip marker" "[skip security-review]" "$LAST_OUT"
 rm -rf "$d"
 
 echo ""

@@ -219,10 +219,28 @@ done
 cd "$REPO_ROOT" || exit 1
 vocab=$(git grep -l -F -e 'pr-review-toolkit|ad-hoc' -e 'pr-review-toolkit*|ad-hoc*' -e 'gitbash|git-bash' -- scripts ':!scripts/lint' ':!scripts/lib/test-attest-trailers.sh' | sort | tr '\n' ' ')
 check "I4 vocabulary: only the helper and W1's pinned copy hold the token and platform lists" "$vocab" \
-    "scripts/hooks/check-commit-msg.sh scripts/hooks/check-platforms-tested.sh scripts/hooks/check-security-reviewed.sh scripts/lib/attest-trailers.sh "
+    "scripts/hooks/check-commit-msg.sh scripts/lib/attest-trailers.sh "
 classes=$(git grep -l -F -e '^docs/|^handovers/' -e 'ps1|psm1|psd1|cmd|bat' -- scripts ':!scripts/lint' ':!scripts/lib/test-attest-trailers.sh' | sort | tr '\n' ' ')
 check "I4 file classes: only the helper and the CR-lane filter hold the file classes" "$classes" \
-    "scripts/hooks/check-cr-before-push.sh scripts/hooks/check-platforms-tested.sh scripts/hooks/check-security-reviewed.sh scripts/lib/attest-trailers.sh "
+    "scripts/hooks/check-cr-before-push.sh scripts/lib/attest-trailers.sh "
+
+# --- display parity: the refusal texts keep human-readable lists, which must name every alternative the helper accepts
+plat_alts=${ATTEST_PLATFORM_RE#(}; plat_alts=${plat_alts%)}
+old_ifs=$IFS; IFS='|'
+for alt in $plat_alts; do
+    case "$(cat scripts/hooks/check-platforms-tested.sh)" in
+        *"$alt"*) echo "ok - check-platforms-tested.sh names the platform [$alt]" ;;
+        *) echo "FAIL - check-platforms-tested.sh does not name the platform [$alt]"; fails=$((fails+1)) ;;
+    esac
+done
+tok_alts=${ATTEST_SEC_TOKEN_RE#(}; tok_alts=${tok_alts%%)*}
+for alt in $tok_alts; do
+    case "$(cat scripts/hooks/check-security-reviewed.sh)" in
+        *"$alt"*) echo "ok - check-security-reviewed.sh names the token [$alt]" ;;
+        *) echo "FAIL - check-security-reviewed.sh does not name the token [$alt]"; fails=$((fails+1)) ;;
+    esac
+done
+IFS=$old_ifs
 
 # --- W1 token parity: check-commit-msg.sh keeps a pinned copy of the token regex
 w1=$(grep -E "^[[:space:]]*(local )?sec_token_re='" scripts/hooks/check-commit-msg.sh | head -n 1)
