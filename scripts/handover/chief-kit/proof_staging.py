@@ -1,8 +1,5 @@
 """The one owner of "which staging a ticket's proof needs before a read-only worker can run it".
 
-Imported by next-dispatchable.sh (the listing) and gen-briefs.py (the proof brief); neither holds a pattern, a
-description cut or a next-step selection of its own.
-
 needs(mirror_text, answers=(), unread=(), cli=None) -> [(name, who, words)], in NEEDS order, one entry per name.
 Inputs: the DoD and Proof sections of the ticket's description (cut by `ticket-policy-cli.mjs --sections`), the
 description's `Staging:` line, the next-step texts of the ticket's live partial-PR answers, and `unread` reasons the
