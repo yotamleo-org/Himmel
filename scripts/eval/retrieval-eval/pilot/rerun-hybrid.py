@@ -185,7 +185,6 @@ def settle(st, a, ctx, at):
 
 
 def start_noise(st, a, ctx, stance):
-    """The noise baseline for this stance, as the state's first event; refusals as a list."""
     noise, bad = L.load_baseline(stance, a.noise_baseline, ctx.get("binding", {}).get("key_fingerprint"), a.expected_duration, L.NOISE_CAP_R5)
     if bad:
         return bad
@@ -196,7 +195,7 @@ def start_noise(st, a, ctx, stance):
         return [] if ev["sha256"] == noise["sha256"] else ["noise: a different noise baseline than the rerun started with"]
     if st.events:
         return ["noise: the rerun state already has events without a noise baseline"]
-    bad = L.baseline_problems(noise, L.NOISE_CAP_R5, now=CLOCK.now())
+    bad = L.baseline_problems(noise, L.NOISE_CAP_R5) or L.baseline_age_problems(noise, CLOCK.now())
     if bad:
         return ["noise: " + b for b in bad]
     st.log({"ev": "noise_baseline", "path": noise["path"], "sha256": noise["sha256"], "rate": noise["rate"], "ts": CLOCK.now()})

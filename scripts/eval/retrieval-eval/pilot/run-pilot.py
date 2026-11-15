@@ -154,7 +154,6 @@ class Pilot:
         return self.ledger.settle_s_interval(total - prev, len(self.ledger.s_interval), meter=total, ts=self.clock.now())
 
     def start_noise(self):
-        """The noise baseline is the run's first durable event; a restart needs the same one."""
         ev = self.ledger.noise_baseline_event()
         if self.noise is None:
             return "the run started with a noise baseline" if ev else None
@@ -162,7 +161,7 @@ class Pilot:
             return None if ev["sha256"] == self.noise["sha256"] else "a different noise baseline than the run started with"
         if self.ledger.events:
             return "the run already has events without a noise baseline"
-        bad = L.baseline_problems(self.noise, L.NOISE_CAP_R8, now=self.clock.now())
+        bad = L.baseline_problems(self.noise, L.NOISE_CAP_R8) or L.baseline_age_problems(self.noise, self.clock.now())
         if bad:
             return bad[0]
         self.ledger.noise_start(self.noise["path"], self.noise["sha256"], self.noise["rate"], self.clock.now())
@@ -507,7 +506,6 @@ def sha_file(path):
 
 
 def g0_check(cfg, card_sha):
-    """auth-preflight's verdict for this config: (refusal or None, the stance it printed)."""
     cmd = [sys.executable, "-I", os.path.join(HERE, "auth-preflight.py"), "--readiness", cfg["auth_readiness"], "--lock", cfg["lock"],
            "--card-sha256", card_sha]
     cmd += ["--stance", cfg["stance"]] if cfg.get("stance") else []
@@ -522,7 +520,6 @@ def g0_check(cfg, card_sha):
 
 
 def noise_binding(stance, cfg):
-    """The R8 noise baseline for this stance: (noise dict or None, refusals)."""
     try:
         fp = sha_file(cfg["s_key_file"]) if cfg.get("noise_baseline") else None
     except OSError:
@@ -663,7 +660,6 @@ def write_private(path, data):
 
 
 def meter_baseline(key_file, window, out, usage=None, clock=None):
-    """Two key-meter reads `window` seconds apart while no eval step runs: the fleet-noise rate."""
     lo, hi = L.BASELINE_WINDOW
     if not lo <= window <= hi:
         raise Refuse("the window must be %d to %d seconds" % (lo, hi))

@@ -28,7 +28,7 @@ it, so a crash or kill resumes from exactly what was durably booked. Money is in
 The stop classifier lives here too (D1): HARD_STOP dominates FINALIZE_ONLY; nothing in this
 file reads an answer score.
 """
-import hashlib, json, math, os, time
+import collections, hashlib, json, math, os, time
 
 CAP_PILOT = 25.0
 CAP_R5 = 0.50
@@ -56,21 +56,19 @@ def allowance(rate, t):
     return NOISE_FACTOR * rate * t + NOISE_FLOOR
 
 
+Absorbed = collections.namedtuple("Absorbed", "allowance expected_noise absorbed")
+
+
 def absorb(delta, booked, rate, t, left):
-    """(A(t), E(t), absorbed) for one settle interval: absorbed is the excess over the bookings
-    that A(t) and the noise reserve left can cover."""
     a = allowance(rate, t)
-    e = min(delta, rate * t)
-    return a, e, max(0.0, min(max(0.0, delta - booked), a, left))
+    return Absorbed(a, min(delta, rate * t), max(0.0, min(max(0.0, delta - booked), a, left)))
 
 
 def _num(v):
     return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
 
 
-def baseline_problems(b, cap, now=None):
-    """Refusals for a noise baseline record (plus its stated expected_duration_s); `now` adds the
-    age check, which only a run's first start makes."""
+def baseline_problems(b, cap):
     if not isinstance(b, dict) or not all(k in b for k in BASELINE_KEYS) or not all(_num(b[k]) for k in BASELINE_KEYS if k != "key_fingerprint"):
         return ["the noise baseline is unreadable or malformed"]
     bad = []
@@ -86,15 +84,18 @@ def baseline_problems(b, cap, now=None):
         bad.append("no expected run duration is stated")
     elif NOISE_FACTOR * b["rate"] * dur > cap + EPS:
         bad.append("the fleet is too noisy for this run: 3 x rate x %ss exceeds the $%.2f noise cap; lower it and take a new baseline" % (dur, cap))
-    if now is not None and now - b["end_ts"] > BASELINE_MAX_AGE:
-        bad.append("the noise baseline ended more than 2 hours before the run's start")
-    if now is not None and b["end_ts"] > now:
-        bad.append("the noise baseline ends after the run's start")
     return bad
 
 
+def baseline_age_problems(b, now):
+    if now - b["end_ts"] > BASELINE_MAX_AGE:
+        return ["the noise baseline ended more than 2 hours before the run's start"]
+    if b["end_ts"] > now:
+        return ["the noise baseline ends after the run's start"]
+    return []
+
+
 def load_baseline(stance, path, key_fingerprint, expected_duration, cap):
-    """The stance-to-baseline rule shared by R5 and R8: (noise dict or None, refusals)."""
     if stance != "shared-credentials":
         return None, (["noise: a noise baseline is given under the legacy stance %s" % stance] if path else [])
     if not path:
@@ -309,7 +310,6 @@ class Ledger:
             self.book("%s-q%02d" % (attempt_prefix, i + 1), "s_query", self.b, from_reserve, incurred=True)
 
     def noise_start(self, path, sha256, rate, ts):
-        """The run's first durable event under shared-credentials: the noise baseline it runs on."""
         self._log({"ev": "noise_baseline", "path": path, "sha256": sha256, "rate": rate, "ts": ts})
 
     def noise_baseline_event(self):
@@ -319,7 +319,6 @@ class Ledger:
         self._log({"ev": "meter_start", "meter": meter, "ts": ts})
 
     def last_meter(self):
-        """The last key meter reading: the last settled interval's, else meter_start (durable)."""
         return self.reading[0] if self.reading else None
 
     def settle_s_interval(self, delta, invocations, meter=None, ts=None):

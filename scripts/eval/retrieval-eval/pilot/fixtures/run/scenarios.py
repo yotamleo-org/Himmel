@@ -70,9 +70,6 @@ class Launcher:
 
 
 class Usage:
-    """The S key meter: an offset, the eval's own S queries at per_query, and steady fleet traffic
-    on a shared key at fleet_rate USD per clock second."""
-
     def __init__(self, per_query=0.002, offset=0.0, fleet_rate=0.0):
         self.per_query, self.offset, self.fleet_rate = per_query, offset, fleet_rate
         self.ledger = self.clock = self.t0 = None

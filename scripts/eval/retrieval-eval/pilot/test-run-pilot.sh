@@ -312,7 +312,7 @@ out=$(sg0 "$W/g0/shared.json"); rc=$?
 eq "G0 r20: a complete shared-credentials record is READY under the default stance" 0 "$rc"
 has "G0 r20: READY names the stance on its own line" "stance: shared-credentials" "$out"
 has "G0 r20: READY says the credentials are shared with the fleet" "shared with the fleet" "$out"
-smut() { # <label> <reason fragment> <python mutation of r; g is the fixture dir>
+smut() {
   python3 -I -c 'import json,sys; g=sys.argv[4]; r=json.load(open(sys.argv[1])); exec(sys.argv[3]); json.dump(r, open(sys.argv[2],"w"))' "$W/g0/shared.json" "$W/g0/sm.json" "$3" "$W/g0"
   local o; o=$(sg0 "$W/g0/sm.json"); local rc=$?
   eq "G0 r20: $1 blocks paid work" 3 "$rc"

@@ -73,7 +73,7 @@ eq "noise R5: shared-credentials settles after query 5 and every 10; legacy afte
 printf '{"binding": {"key_fingerprint": "%s"}}\n' "$(printf 'fixture-key' | sha256sum | cut -d' ' -f1)" > "$W/nctx.json"
 printf 'r5 go\n' > "$W/nr5-go"; printf '{"g3": "PASS"}\n' > "$W/ng3.json"
 python3 -I -c 'import json,sys,hashlib; json.dump({"start_meter": 1.0, "end_meter": 1.06, "start_ts": 0, "end_ts": 9e9, "window_s": 600, "key_fingerprint": hashlib.sha256(b"fixture-key").hexdigest(), "rate": 0.0001}, open(sys.argv[1], "w"))' "$W/nbl.json"
-nrun() { # <g0_stance or -> <noise baseline or -> -- the R5 run path up to its refusals; the fake ctx makes any query impossible
+nrun() {
   python3 -I - "$RH" "$W" "$1" "$2" <<'EOF'
 import argparse, importlib.machinery, importlib.util, json, sys
 rh, W, stance, bl = sys.argv[1:5]

@@ -63,7 +63,6 @@ def secretish(s):
 
 
 def shown(v):
-    """A record-supplied value as a diagnostic may print it: never a credential-shaped one."""
     return "[redacted]" if secretish(str(v)) else v
 
 
@@ -88,7 +87,6 @@ def same_path(a, b):
 
 
 def answer_source_problems(p):
-    """lstat-only checks of the shared token file; the file is never opened."""
     if not isinstance(p, str) or not p:
         return ["S: the answer channel states no source_path"]
     real = os.path.realpath(p)
@@ -114,7 +112,6 @@ def answer_source_problems(p):
 
 
 def check_shared(r, card_sha, base, answer_file, search_key_file):
-    """Item S, and items 4 and 6 as r20 reads them under shared-credentials."""
     bad = []
     creds = r.get("credentials")
     creds = creds if isinstance(creds, dict) else {}
@@ -166,7 +163,7 @@ def check(r, lock, lock_sha, card_sha, stance, base, answer_file=None, search_ke
     files = lock.get("files", {})
     if stance == "shared-credentials":
         bad += check_shared(r, card_sha, base, answer_file, search_key_file)
-        return bad + check_r4_scrub(r, files, stance, base, revocation=False)
+        return bad + check_r4_scrub(r, files, stance, base, require_revocation_flag=False)
     m = r.get("mechanism") or {}
     if m.get("id") != MECHANISM:
         bad.append("1: mechanism %s is not the reviewed supported candidate" % shown(m.get("id")))
@@ -192,11 +189,10 @@ def check(r, lock, lock_sha, card_sha, stance, base, answer_file=None, search_ke
     s = r.get("stance") or {}
     if s.get("selected") != stance or s.get("design_revision") != "r18" or s.get("card_sha256") != card_sha or not s.get("decision"):
         bad.append("4: the stance is not the recorded %s choice bound to r18 and this card" % stance)
-    return bad + check_r4_scrub(r, files, stance, base, revocation=True)
+    return bad + check_r4_scrub(r, files, stance, base, require_revocation_flag=True)
 
 
-def check_r4_scrub(r, files, stance, base, revocation):
-    """Items 5 and 6, shared by every stance; the bare revocation flag counts only for the legacy ones."""
+def check_r4_scrub(r, files, stance, base, require_revocation_flag):
     bad = []
     r4 = r.get("r4") or {}
     if r4.get("ran") is not True or r4.get("shape_sha256") != (files.get("sandbox") or {}).get("sha256"):
@@ -212,7 +208,7 @@ def check_r4_scrub(r, files, stance, base, revocation):
     if r4.get("station_reachable") is not False or r4.get("other_account_reachable") is not False:
         bad.append("5: station or other-account reachability is not ruled out")
     sc = r.get("scrub") or {}
-    if sc.get("fixtures_pass") is not True or (revocation and sc.get("revocation_recorded") is not True):
+    if sc.get("fixtures_pass") is not True or (require_revocation_flag and sc.get("revocation_recorded") is not True):
         bad.append("6: scrub fixtures or the revocation procedure are not recorded as passed")
     arts = sc.get("artifacts") or {}
     if not arts:
