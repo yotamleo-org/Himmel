@@ -173,9 +173,10 @@ async function submit(o) {
     ...(prefix && { system: [{ type: 'text', text: prefix, cache_control: { type: 'ephemeral', ttl: CACHE_TTL } }] }),
     messages: [{ role: 'user', content: prefix ? text.slice(prefix.length) : text }] } }));
   // The estimate gates the POST: once the batch is created it bills to the end, so the budget is checked before.
-  const estimate = prompts.reduce((sum, { text }) => sum + requestBound(model, text, maxTokens), 0);
+  const bounds = prompts.map(({ text }) => requestBound(model, text, maxTokens));
+  const estimate = bounds.reduce((sum, b) => sum + b, 0);
   if (estimate > Number(budget)) {
-    refuse(`estimate ${estimate.toFixed(6)} USD (${requests.length} requests, each up to ${requestBound(model, prompts[0].text, maxTokens).toFixed(6)} USD) is over the budget of ${budget} USD; nothing submitted`);
+    refuse(`estimate ${estimate.toFixed(6)} USD (${requests.length} requests, the largest up to ${Math.max(...bounds).toFixed(6)} USD) is over the budget of ${budget} USD; nothing submitted`);
   }
   const key = await accountKey(o.account);
   const made = JSON.parse(await call(key, 'POST', '/v1/messages/batches', { requests }));
@@ -208,11 +209,12 @@ function cost(model, u) {
   return (inTok * pin + (u.output_tokens ?? 0) * pout) / 1e6;
 }
 
-// The most one request can bill: its input at twice the input rate (the dearest cache write) over bytes / 3, which
-// overcounts tokens, plus max_tokens at the output rate. A real request costs less; the bound is for the budget gate.
+// The most one request can bill: its input at twice the input rate (the dearest cache write) over one token per byte,
+// which can only overcount (a token is at least one byte), plus max_tokens at the output rate. A real request costs
+// less; the bound is for the budget gate.
 function requestBound(model, text, maxTokens) {
   const [pin, pout] = PRICE[model];
-  return (Math.ceil(Buffer.byteLength(text) / 3) * 2 * pin + maxTokens * pout) / 1e6;
+  return (Buffer.byteLength(text) * 2 * pin + maxTokens * pout) / 1e6;
 }
 
 async function results(o) {

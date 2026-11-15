@@ -393,7 +393,7 @@ test('shim: refuses an argument graphify does not send and a missing mode', () =
 
 // The estimate (requests x a per-request bound) is checked against the approved budget before the POST.
 // Two prompts of ~30 bytes on sonnet-5-5: each request is bounded by its input at twice the input rate plus max_tokens
-// (32000) at the $5/M output rate, about 0.16002 USD, so the batch is about 0.32004 USD.
+// (32000) at the $5/M output rate, about 0.16006 USD, so the batch is about 0.3201 USD.
 test('a batch whose estimate is over the budget is refused before submit, one line naming estimate and budget', async () => {
   reset();
   const f = fixture();
@@ -411,7 +411,7 @@ test('a batch within the budget submits, and batch.json records the paying accou
   assert.equal(s.code, 0, s.stderr);
   const st = JSON.parse(readFileSync(join(f.batch, 'batch.json'), 'utf8'));
   assert.equal(st.account, 'A');
-  assert.match(st.estimate_usd, /^0\.3200\d\d$/, 'two requests at about 0.16 USD each');
+  assert.match(st.estimate_usd, /^0\.320\d{3}$/, 'two requests at about 0.16 USD each');
   assert.equal(st.budget_usd, '0.33');
 });
 
@@ -441,4 +441,22 @@ test('the budget may come from GRAPHIFY_API_RUN_BUDGET_USD; the flag wins when b
   assert.equal(seen.posts.length, 0);
   const flagWins = await run(process.execPath, [...args, '--max-usd', '0.33'], { env, encoding: 'utf8' }).then(() => ({ code: 0 }), (e) => ({ code: e.code, stderr: e.stderr }));
   assert.equal(flagWins.code, 0, flagWins.stderr);
+});
+
+test('the input bound counts one token per byte, and the refusal names the largest request bound', async () => {
+  reset();
+  const f = fixture();
+  rmSync(f.prompts, { recursive: true });
+  mkdirSync(f.prompts);
+  // 100000 bytes of 3-byte characters: at bytes / 3 the bound is 0.293 USD, at one token per byte 0.36 USD
+  const big = 'é'.repeat(50000);
+  writeFileSync(join(f.prompts, `${sha(big)}.txt`), big);
+  const under = await f.submit(['--max-usd', '0.30']);
+  assert.equal(under.code, 2, `a token-dense prompt got through: ${under.stdout}`);
+  assert.match(under.stderr, /estimate 0\.36\d* USD \(1 requests, the largest up to 0\.36\d* USD\)/);
+  const small = 'small prompt';
+  writeFileSync(join(f.prompts, `${sha(small)}.txt`), small);
+  const two = await f.submit(['--max-usd', '0.30']);
+  assert.match(two.stderr, /estimate 0\.52\d* USD \(2 requests, the largest up to 0\.36\d* USD\)/);
+  assert.equal(seen.posts.length, 0);
 });
