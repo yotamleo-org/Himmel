@@ -32,10 +32,10 @@
 #   Package fetch, ALSO with the marker unset when the payload's agent_type is
 #     judge or judge-ro (bare or plugin-namespaced: an in-process judge
 #     subagent) — Bash only, and only this check: the word bunx, npx or uvx;
-#     an "npm" or "bun" word whose subcommand (the next non-flag word) is off
-#     its read-only list in first_off_list's callers; "uv" with tool, or with
-#     run and a --with or -w flag; "pip"/"pip3" with install or download;
-#     "cargo" with install.
+#     an "npm" or "bun" word whose next word (past -v, --version, -h, --help)
+#     is off its read-only list in first_off_list's callers; "uv" with tool,
+#     or with run and a --with flag or a single-dash flag group holding w;
+#     "pip"/"pip3" with install or download; "cargo" with install.
 #   mcp__* — any MCP tool other than qmd (mcp__qmd__*, mcp__plugin_qmd_qmd__*).
 #   Write|Edit|MultiEdit|NotebookEdit — the path is relative or has a ".."
 #     segment; or it cannot be resolved (readlink -f, then parent + missing
@@ -140,18 +140,19 @@ resolve() {
 
 # first_off_list <prog> <pattern>... — prints the first word right after a
 # <prog> word that matches no <pattern>; a flag there passes only as -v,
-# --version, -h or --help, so a global flag's value is never read as the
-# subcommand. Prints nothing when every <prog> word passes or ends the text.
+# --version, -h or --help, and the word after it is checked the same way, so
+# a global flag's value is never read as the subcommand. Prints nothing when
+# every <prog> word passes or ends the text.
 first_off_list() {
     local prog=$1 t a want=0 ok
     shift
     for t in $words; do
         if [ "$want" = 1 ]; then
-            want=0
             case "$t" in
                 -v | --version | -h | --help) continue ;;
                 -*) printf '%s\n' "$t"; return 0 ;;
             esac
+            want=0
             ok=0
             for a in "$@"; do
                 # shellcheck disable=SC2254 # each allowed entry is a glob pattern
@@ -174,7 +175,7 @@ package_fetch() {
     has_word uv && has_word tool && deny "package-fetch" "uv tool: $hint"
     if has_word uv && has_word run; then
         for t in $words; do
-            case "$t" in --with* | -w*) deny "package-fetch" "uv run --with: $hint" ;; esac
+            case "$t" in --with* | -[!-]*w* | -w*) deny "package-fetch" "uv run --with: $hint" ;; esac
         done
     fi
     has_word pip pip3 && has_word install download && deny "package-fetch" "pip install or pip download: $hint"
