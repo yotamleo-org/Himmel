@@ -536,6 +536,8 @@ host_main() {
     || { echo "graph-choices-e2e: could not unpack the tree on $VM" >&2; exit 3; }
   vm_guest_assert_clean gx_run "$REMOTE_DIR" full || exit 3
 
+  # a screenshot left by an earlier run must not count as this run's
+  rm -f "$SHOTS/settings-graph-choices-light.png" "$SHOTS/settings-graph-choices-dark.png"
   OUT="$(mktemp "$STAGE_TMP/graph-choices-out.XXXXXX")" || exit 3
   local red=""
   [ "$EXPECT_RED" -ne 1 ] || red="HIMMEL_GCE_RED=1 "
@@ -552,6 +554,12 @@ host_main() {
     if printf '%s' "$b64" | base64 -d > "$SHOTS/$name" 2>/dev/null; then saved=$((saved + 1)); else rm -f "$SHOTS/$name"; fi
   done < <(grep '^SHOT ' "$OUT")
   [ "$saved" -eq 0 ] || echo "==> saved $saved screenshot(s) to $SHOTS"
+  local shot_missing=0 shot
+  if [ "$EXPECT_RED" -ne 1 ]; then
+    for shot in settings-graph-choices-light.png settings-graph-choices-dark.png; do
+      [ -s "$SHOTS/$shot" ] || { echo "graph-choices-e2e: screenshot $shot was not saved to $SHOTS" >&2; shot_missing=1; }
+    done
+  fi
 
   local first_line nfail
   first_line="$(grep -m1 -E '^(PASS|FAIL) ' "$OUT")"
@@ -564,7 +572,7 @@ host_main() {
     echo "==> RED control FAILED: the tree without S4 did not fail the stage on its first assertion (rc=$rc, first line: ${first_line:-none})" >&2
     exit 1
   fi
-  if [ "$rc" -eq 0 ] && [ "$nfail" -eq 0 ] && grep -q '^RESULT: 0 failure(s)' "$OUT"; then
+  if [ "$rc" -eq 0 ] && [ "$nfail" -eq 0 ] && [ "$shot_missing" -eq 0 ] && grep -q '^RESULT: 0 failure(s)' "$OUT"; then
     echo "==> graph-choices stage PASSED"
     exit 0
   fi

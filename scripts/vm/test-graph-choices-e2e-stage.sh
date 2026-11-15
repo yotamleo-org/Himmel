@@ -90,7 +90,7 @@ exit 0
 EOS
 chmod +x "$BIN/vmsdk" "$BIN/guest-exec"
 PNG_B64="$(printf 'not-really-a-png' | base64 | tr -d '\n')"
-GOOD_OUT="$(printf 'PASS one\nSHOT settings-light.png %s\nSHOT settings-dark.png %s\nRESULT: 0 failure(s)' "$PNG_B64" "$PNG_B64")"
+GOOD_OUT="$(printf 'PASS one\nSHOT settings-graph-choices-light.png %s\nSHOT settings-graph-choices-dark.png %s\nRESULT: 0 failure(s)' "$PNG_B64" "$PNG_B64")"
 
 run_driver() { # <guest-rc> <guest-out> args...
   local grc="$1" gout="$2"; shift 2
@@ -134,12 +134,18 @@ else
 fi
 if [ "$(tail -1 "$LOG")" = "vmsdk himmel-ar-1 down" ]; then pass "the VM is powered off last"; else fail_case "the VM is powered off last ($(tail -1 "$LOG"))"; fi
 if [ ! -e "$WORK/locks/himmel-vm-lock-himmel-ar-1" ]; then pass "the vm-lock is released"; else fail_case "the vm-lock is released"; fi
-if [ "$(cat "$WORK/shots/settings-light.png" 2>/dev/null)" = "not-really-a-png" ] && [ "$(cat "$WORK/shots/settings-dark.png" 2>/dev/null)" = "not-really-a-png" ]; then
+if [ "$(cat "$WORK/shots/settings-graph-choices-light.png" 2>/dev/null)" = "not-really-a-png" ] && [ "$(cat "$WORK/shots/settings-graph-choices-dark.png" 2>/dev/null)" = "not-really-a-png" ]; then
   pass "the light and dark screenshots are decoded to the shots dir"
 else
   fail_case "the light and dark screenshots are decoded to the shots dir"
 fi
 expect_lacks "the screenshot bytes are not echoed to the console" "$PNG_B64" "$(cat "$WORK/driver.out")"
+
+# a stage that passed but whose screenshots were not saved is not a pass (the screenshots are part of the proof)
+run_driver 0 'PASS one
+RESULT: 0 failure(s)' himmel-ar-1
+expect_rc "a pass with no screenshot saved fails the stage" 1 "$DRV_RC"
+expect_has "...and names the missing screenshot" "settings-graph-choices-light.png was not saved" "$(cat "$WORK/driver.out")"
 
 # a FAIL line gives exit 1
 run_driver 1 'FAIL the sentence is printed
