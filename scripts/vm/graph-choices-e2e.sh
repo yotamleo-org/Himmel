@@ -388,13 +388,15 @@ EOS
   tail -c +"$(( $(cat "$W/log.mark") + 1 ))" "$LOGF" > "$W/fire2.log"
   if [ "$rc" -eq 0 ]; then pass "the runner exits 0 (fire 2)"; else fail "the runner exits 0 (fire 2, rc=$rc)"; fi
   note "pass log of fire 2:"; sed 's/^/    | /' "$W/fire2.log"
-  if gce_words "$W/fire2.log" gce-repo | grep -qx key-rejected; then pass "the word key-rejected"; else fail "the word key-rejected"; fi
+  words2="$(gce_words "$W/fire2.log" gce-repo)"
+  if grep -qx key-rejected <<< "$words2"; then pass "the word key-rejected"; else fail "the word key-rejected"; fi
   if grep -q 'gce-repo ALERT key-rejected A' "$W/fire2.log"; then pass "the pass log names A as rejected"; else fail "the pass log names A as rejected"; fi
   if [ "$(gce_call_count "$CALLS")" -eq "$calls_before" ]; then pass "no stub claude call after the 401"; else fail "no stub claude call after the 401"; fi
   acc="$(env -i HOME="$HOME" PATH="$BASE_PATH" node "$TREE/scripts/lib/api-credit-state.mjs" accounts 2>/dev/null)"
   case "$acc" in *'"tag":"key rejected"'*) pass "accounts tags A key rejected" ;; *) fail "accounts tags A key rejected (accounts: $acc)" ;; esac
   ( cd "$TREE" && env -i HOME="$HOME" PATH="$BASE_PATH" bash scripts/himmel-doctor.sh --only C92 ) > "$W/doctor-c92.log" 2>&1
-  if grep -E 'WARN' "$W/doctor-c92.log" | grep -q 'C92-graph-key-A'; then pass "doctor C92 WARNs about account A"; else fail "doctor C92 WARNs about account A"; tail_of "$W/doctor-c92.log" 10; fi
+  warn_rows="$(grep -E 'WARN' "$W/doctor-c92.log")"
+  if grep -q 'C92-graph-key-A' <<< "$warn_rows"; then pass "doctor C92 WARNs about account A"; else fail "doctor C92 WARNs about account A"; tail_of "$W/doctor-c92.log" 10; fi
   kill "$STUB_PID" 2>/dev/null
 
   # --- step 5: the real usage-preflight under the runner's environment -----------------------
@@ -414,12 +416,12 @@ bash scripts/lib/usage-preflight.sh' 2>"$W/preflight.err" | tail -n 1)"
   choices_dir="$(dirname "$(dirname "$(gc out probe)")")"
   bash "$TREE/scripts/graphify/graph-choices-cadence.sh" disarm > "$W/disarm.log" 2>&1; rc=$?
   if [ "$rc" -eq 0 ]; then pass "graph-choices-cadence.sh disarm exits 0"; else fail "graph-choices-cadence.sh disarm exits 0 (rc=$rc)"; tail_of "$W/disarm.log" 8; fi
-  ( cd "$W/proj" && ctl_env timeout 600 node "$CTL" uninstall --yes ) > "$W/uninstall.log" 2>&1; rc=$?
+  ( cd "$W/proj" && ctl_env timeout 600 node "$CTL" uninstall --yes ) > "$W/uninstall.log" 2>&1; rc=$? # gnu-ok: guest mode runs only on the Ubuntu test VM
   if [ "$rc" -eq 0 ]; then pass "himmelctl uninstall (no --purge-state) exits 0"; else fail "himmelctl uninstall (no --purge-state) exits 0 (rc=$rc)"; tail_of "$W/uninstall.log" 20; fi
   crontab -l > "$W/cron.step6" 2>/dev/null
   if [ "$(gce_cron_rows "$W/cron.step6")" -eq 0 ]; then pass "no HIMMEL-GraphChoices cron row is left"; else fail "no HIMMEL-GraphChoices cron row is left"; fi
   if [ ! -e "$RUNNER_DIR/graph-choices.sh" ]; then pass "no runner is left"; else fail "no runner is left"; fi
-  if [ ! -e "$choices_dir" ]; then pass "no choices/ directory is left"; else fail "no choices/ directory is left ($choices_dir)"; find "$choices_dir" -maxdepth 2 | head -8 | sed 's/^/    | /'; fi
+  if [ ! -e "$choices_dir" ]; then pass "no choices/ directory is left"; else fail "no choices/ directory is left ($choices_dir)"; find "$choices_dir" -maxdepth 2 | head -8 | sed 's/^/    | /'; fi # gnu-ok: guest mode runs only on the Ubuntu test VM
 
   # --- step 7: settings.e2e.ts, light and dark screenshots ---------------------------------------
   echo "==> 7. settings.e2e.ts on the guest"
