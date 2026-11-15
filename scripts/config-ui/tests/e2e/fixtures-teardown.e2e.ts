@@ -13,8 +13,8 @@ const STUBS: Record<string, string> = {
   stubborn: `${WRITER} console.log("ready");`,
   "grandchild": `const { spawn } = require("child_process");
     const g = spawn("node", ["-e", ${JSON.stringify(WRITER + ' console.log("ready");')}, process.argv[1]], { stdio: ["ignore", "pipe", "ignore"] });
-    g.stdout.once("data", () => console.log("ready " + g.pid)); setInterval(() => {}, 1000);`,
-  prompt: `process.on("SIGTERM", () => process.exit(0)); console.log("ready"); setInterval(() => {}, 1000);`,
+    g.stdout.once("data", () => console.log("ready " + g.pid)); setTimeout(() => {}, 2 ** 30);`,
+  prompt: `process.on("SIGTERM", () => process.exit(0)); console.log("ready"); setTimeout(() => {}, 2 ** 30);`,
 };
 
 const alive = (pid: number) => {
