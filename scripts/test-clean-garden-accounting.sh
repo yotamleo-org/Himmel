@@ -1252,8 +1252,6 @@ s_append "$WT_S_AHEAD" x.txt x || S_FAILS=$((S_FAILS+1))
 s_commit "$WT_S_AHEAD" ahead || S_FAILS=$((S_FAILS+1))
 s_backdate "$WT_S_AHEAD" || S_FAILS=$((S_FAILS+1))
 if [ "$S_FAILS" -eq 0 ]; then pass "S0: every superseded fixture was built and backdated"; else fail "S0: $S_FAILS fixture step(s) failed, so S1-S5 prove nothing"; fi
-# A failed add must stop that fixture's follow-on steps: an empty path must never
-# reach a `git -C` that would run in the caller's own checkout.
 touch -t 202001020000 "$TMP_ROOT/s-marker"
 S_PROBE_GD=$(git rev-parse --absolute-git-dir 2>/dev/null) || S_PROBE_GD=""
 S_PROBE_TIP=$(git rev-parse HEAD 2>/dev/null) || S_PROBE_TIP=""
