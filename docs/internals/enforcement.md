@@ -3120,7 +3120,7 @@ sanctioned-script path (`export "$n=1"`), a program word that hides both its
 
 **Suite concurrency budget.** Test suites share a machine-wide
 semaphore (`scripts/lib/suite-semaphore.sh`): `HIMMEL_SUITE_SLOTS` slots
-(default 6) under `${TMPDIR:-/tmp}/himmel-suite-semaphore.d`. Only the two
+(default 6) under `/tmp/himmel-suite-semaphore-<uid>.d`, one path per user whatever the `TMPDIR`. Only the two
 sanctioned scripts take a slot — `bash scripts/quiet-run.sh suite -- <cmd>` (any
 of this worktree's suite runners; a directory option aimed outside the worktree
 is refused with the direct form) and `scripts/ci/run-shell-tests.sh` (once
