@@ -28,7 +28,7 @@ printf '%s\n' "$1" >> "$BYPASSD_TEST_DIR/sent"
 STUB
 cat > "$tmp/launcher" <<'STUB'
 #!/usr/bin/env bash
-env | grep -E '^([A-Za-z0-9_]*_OK|WORKER_SESSION_EFFORT)=' | sort > "$BYPASSD_TEST_DIR/launch.env"
+env | grep -E '^([A-Za-z0-9_]*_OK|WORKER_SESSION_EFFORT|SKIP_FORCE_PUSH_GATE|IMPL_GUARD_DISABLE|SECURITY_REVIEW_NO_FETCH)=' | sort > "$BYPASSD_TEST_DIR/launch.env"
 printf '%s\n' "$@" > "$BYPASSD_TEST_DIR/launch.args"
 exit "${BYPASSD_TEST_RC:-0}"
 STUB
@@ -36,7 +36,7 @@ chmod +x "$tmp/send" "$tmp/launcher"
 UNTIL="$(date -u -d '+3 days' +%F)"
 
 setup() {
-    D="$tmp/$1"; B="$D/bucket"; Q="$B/bypass-queue"
+    D="$tmp/$1"; B="$D/bucket"; Q="$B/bypass-queue"; DAEMON=""
     mkdir -p "$Q" "$D/bridge" "$D/run"
     BRIEF="$B/HIMMEL-1-N1-sweep-pr1.md"
     printf -- '---\ndescription: "a stub sweep brief"\n---\n# brief\n' > "$BRIEF"
@@ -47,7 +47,7 @@ start() {
     env -u CLAUDECODE -u HIMMEL_BILLED_OK -u HIMMEL_HOOK_INTEGRITY_BYPASS_OK BYPASSD_TEST_DIR="$D" \
         BYPASSD_SEND="$tmp/send" BYPASSD_LAUNCHER="$tmp/launcher" BYPASSD_POLL=0.1 BYPASSD_SETTLE=0.5 \
         BRIDGE_ROOT="$D/bridge" TELEGRAM_ACCESS_PATH="$D/access.json" XDG_RUNTIME_DIR="$D/run" \
-        "$@" bash "$SUT" --bucket "$B" --until "$UNTIL" > "$D/daemon.out" 2>&1 &
+        "$@" bash "${DAEMON:-$SUT}" --bucket "$B" --until "$UNTIL" > "$D/daemon.out" 2>&1 &
     DPID=$!
 }
 stop() { touch "$Q/stop"; wait "$DPID" 2>/dev/null; DPID=""; }
@@ -59,6 +59,55 @@ ask_code() {
     sed -n 's/.*Reply: go \([A-Z2-9]\{6\}\) to launch.*/\1/p' "$D/sent" | tail -n 1
 }
 reply() { printf '{"from": %s, "chat_id": %s, "text": "%s", "forwarded": %s}\n' "$1" "$2" "$3" "${4:-false}" >> "$D/bridge/inbound.jsonl"; }
+
+TIER_REL=scripts/station-ops/bypass-flag-tiers.tsv
+REG_REL=scripts/himmelctl/lib/bypass-flags.json
+DAEMON_REL=scripts/station-ops/bypass-launchd.sh
+g() { env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_COMMON_DIR git -c core.hooksPath=/dev/null -c commit.gpgsign=false -c user.name=t -c user.email=t@t "$@"; }
+# A temp git repo holding committed copies of the daemon, the registry and the tier file; the daemon run from it resolves REPO to it.
+mk_repo() {
+    mkdir -p "$1/scripts/station-ops" "$1/scripts/himmelctl/lib"
+    cp "$REPO_ROOT/$DAEMON_REL" "$1/$DAEMON_REL"
+    cp "$REPO_ROOT/$REG_REL" "$1/$REG_REL"
+    [ -f "$REPO_ROOT/$TIER_REL" ] && cp "$REPO_ROOT/$TIER_REL" "$1/$TIER_REL"
+    g -C "$1" init -q && g -C "$1" add -A && g -C "$1" commit -q -m seed
+}
+setup_repo() { setup "$1"; R="$D/repo"; mk_repo "$R"; DAEMON="$R/$DAEMON_REL"; }
+# run the temp repo's daemon in the foreground; a daemon that does not refuse is cut off by timeout
+run_repo() {
+    env -u CLAUDECODE BYPASSD_TEST_DIR="$D" BYPASSD_SEND="$tmp/send" BYPASSD_LAUNCHER="$tmp/launcher" BYPASSD_POLL=0.1 \
+        BRIDGE_ROOT="$D/bridge" TELEGRAM_ACCESS_PATH="$D/access.json" XDG_RUNTIME_DIR="$D/run" \
+        timeout 5 bash "$DAEMON" --bucket "$B" --until "$UNTIL" 2>&1
+}
+start_line() { grep -m1 'start pid=' "$Q/daemon.log" 2>/dev/null; }
+launch_env_after_go() {
+    local code
+    code=$(ask_code r "$@"); reply "$OPERATOR" "$OPERATOR" "go $code"
+    wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+}
+# every registry name and every override-env name has one tier row; the rows are well formed
+tier_problems() {
+    local tiers="$REPO_ROOT/$TIER_REL" reg ovr names n t s w extra out=""
+    [ -f "$tiers" ] || { echo "no tier file"; return; }
+    reg=$(jq -r '.flags[].name' "$REPO_ROOT/$REG_REL" | sort)
+    ovr=$(sed -n '/^HIMMEL_OVERRIDE_ENV_OK_VARS="/,/"$/p;/^HIMMEL_OVERRIDE_ENV_MARKERS="/,/"$/p' "$REPO_ROOT/scripts/lib/override-env.sh" \
+        | sed 's/^[A-Z_]*="//; s/"$//' | tr -s ' ' '\n' | grep -v '^$' | sort -u)
+    names=$(grep -v '^#' "$tiers" | cut -f1 | sort)
+    out+=$(comm -23 <(printf '%s\n%s\n' "$reg" "$ovr" | sort -u) <(printf '%s\n' "$names" | sort -u) | sed 's/^/no row: /')
+    out+=$(printf '%s\n' "$names" | uniq -d | sed 's/^/two rows: /')
+    while IFS=$'\t' read -r n t s w extra; do
+        case "$t" in grant|decision|floor|none) ;; *) out+=" $n: tier '$t'" ;; esac
+        [ -z "$extra" ] || out+=" $n: more than four columns"
+        [ "$w" != "-" ] || [ "$t" = grant ] || out+=" $n: only a grant row has why -"
+        case "$s" in
+            registry) printf '%s\n' "$reg" | grep -qxF "$n" || out+=" $n: source registry but not in the registry" ;;
+            eval) [ "$n" = HIMMEL_BILLED_OK ] || out+=" $n: source eval" ;;
+            *) [ -f "$REPO_ROOT/${s%%:*}" ] || out+=" $n: source path ${s%%:*} does not exist"
+               case "$t" in grant|decision) out+=" $n: a $t row needs source registry or eval" ;; esac ;;
+        esac
+    done < <(grep -v '^#' "$tiers")
+    printf '%s' "$out"
+}
 
 echo "== a billed request launches only on the operator's go code =="
 setup billed-go
@@ -101,8 +150,8 @@ stop
 echo "== refusals before any ask =="
 setup refusals
 start
-printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=HIMMEL-nextleg-2026-11-13A-roadmap-chief flags=HIMMEL_BILLED_OK,SKIP_CR > "$Q/a.req"
-wait_for "$Q/daemon.log" "REFUSED flag SKIP_CR not allowlisted"
+printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=HIMMEL-nextleg-2026-11-13A-roadmap-chief flags=HIMMEL_BILLED_OK,NOT_A_HOOK_GUARD_OK > "$Q/a.req"
+wait_for "$Q/daemon.log" "REFUSED flag NOT_A_HOOK_GUARD_OK is not in bypass-flags.json"
 assert_eq "an unlisted flag is refused" "a.req.refused" "$(cd "$Q" && ls a.req.* 2>/dev/null)"
 printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=HIMMEL-nextleg-2026-11-13A-roadmap-chief flags=HIMMEL_BILLED_OK > "$Q/b.req"
 wait_for "$Q/daemon.log" "REFUSED HIMMEL_BILLED_OK needs decision"
@@ -187,6 +236,93 @@ printf '{"allowFrom": []}\n' > "$D/access.json"
 out=$(env -u CLAUDECODE TELEGRAM_ACCESS_PATH="$D/access.json" bash "$SUT" --bucket "$B" --until "$UNTIL" 2>&1); rc=$?
 assert_eq "no operator id in access.json refuses to start" "2" "$rc"
 assert_absent "a refused start writes no log" "start pid" "$(cat "$Q/daemon.log" 2>/dev/null)"
+
+echo "== 9973 R8: every flag name has exactly one tier row =="
+assert_eq "R8 the tier file covers the registry and both override-env lists, and every row is well formed" "" "$(tier_problems)"
+
+DESTRUCTIVE_TEXT="$(jq -r '.flags[] | select(.name == "DESTRUCTIVE_OK") | .bypasses' "$REPO_ROOT/$REG_REL")"
+echo "== 9973 R1: a registered guard flag launches with it set =="
+setup_repo r1
+start
+launch_env_after_go flags=DESTRUCTIVE_OK
+assert_contains "R1 the ask names the flag and its registry text" "DESTRUCTIVE_OK=1 ($DESTRUCTIVE_TEXT)" "$(cat "$D/sent" 2>/dev/null)"
+assert_eq "R1 the launch holds DESTRUCTIVE_OK and no other flag" "DESTRUCTIVE_OK=1" "$(cat "$D/launch.env" 2>/dev/null)"
+stop
+
+echo "== 9973 R3: the ask and the log name every granted flag =="
+setup_repo r3
+start
+launch_env_after_go flags=DESTRUCTIVE_OK,GIT_STASH_OK
+assert_contains "R3 the ask names the first flag" "DESTRUCTIVE_OK=1 (" "$(cat "$D/sent" 2>/dev/null)"
+assert_contains "R3 the ask names the second flag" "GIT_STASH_OK=1 (" "$(cat "$D/sent" 2>/dev/null)"
+assert_contains "R3 the GRANT line names both" "env=DESTRUCTIVE_OK=1 GIT_STASH_OK=1" "$(grep GRANT "$Q/daemon.log" 2>/dev/null)"
+assert_eq "R3 the launch holds exactly both" "DESTRUCTIVE_OK=1"$'\n'"GIT_STASH_OK=1" "$(cat "$D/launch.env" 2>/dev/null)"
+stop
+
+echo "== 9973 R2 R4 R5 R6 R7: refusals before any ask =="
+setup_repo refuse
+start
+refusal() { # <label> <req name> <reason fragment> <flags and fields...>
+    local label=$1 n=$2 frag=$3; shift 3
+    printf '%s\n' "brief=$BRIEF" model=claude-sonnet-5-5 chief=HIMMEL-nextleg-2026-11-13A-roadmap-chief "$@" > "$Q/$n.req"
+    wait_for "$Q/daemon.log" "REFUSED $frag"
+    assert_contains "$label is refused with its reason" "REFUSED $frag" "$(cat "$Q/daemon.log" 2>/dev/null)"
+    assert_eq "$label ends .refused" "$n.req.refused" "$(cd "$Q" && ls "$n".req.* 2>/dev/null)"
+}
+refusal "R2 an invented flag" r2 "flag NOT_A_HOOK_GUARD_OK is not in bypass-flags.json" flags=NOT_A_HOOK_GUARD_OK
+refusal "R4 a floor flag" r4 "flag ROGUE_SCHEDULE_OK is floor" flags=ROGUE_SCHEDULE_OK
+refusal "R5 a decision flag with no decision" r5 "SKIP_SECURITY_REVIEW needs decision=" flags=SKIP_SECURITY_REVIEW
+refusal "R6 a name that is not a switch" r6 "flag BWIMC_ENGINE is not a switch" flags=BWIMC_ENGINE
+refusal "R7 six flags" r7 "more than 5 flags" flags=DESTRUCTIVE_OK,GIT_STASH_OK,AGENTS_MD_OK,BRANCH_NAME_OK,CHIEF_FG_OK,DOC_GUARD_OK
+assert_absent "R2 R4 R5 R6 R7 no refusal sends an ask" "Reply: go" "$(cat "$D/sent" 2>/dev/null)"
+stop
+
+echo "== 9973 R5: a decision flag with a decision says so in the ask =="
+setup_repo r5
+start
+CODE=$(ask_code r flags=SKIP_SECURITY_REVIEW decision=948)
+assert_contains "R5 the ask carries the operator decision" "OPERATOR DECISION 948" "$(cat "$D/sent" 2>/dev/null)"
+stop
+
+echo "== 9973 R9: no inherited hatch reaches a launch =="
+setup_repo r9
+start SKIP_FORCE_PUSH_GATE=1 IMPL_GUARD_DISABLE=1 GH_ADMIN_MERGE_OK=1 SECURITY_REVIEW_NO_FETCH=1
+launch_env_after_go
+assert_eq "R9 the default launch holds only its own flag" "HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1" "$(cat "$D/launch.env" 2>/dev/null)"
+stop
+
+echo "== 9973 R10: a dirty trust input refuses start =="
+setup_repo r10
+dirty() { # <label> <relative path> <staged: yes|no>
+    printf '\n# edit\n' >> "$R/$2"
+    [ "$3" = yes ] && g -C "$R" add "$2"
+    out=$(run_repo); rc=$?
+    assert_eq "R10 $1: start is refused with exit 2" "2" "$rc"
+    assert_contains "R10 $1: the refusal says uncommitted changes" "uncommitted changes" "$out"
+    assert_absent "R10 $1: no start line is logged" "start pid" "$(cat "$Q/daemon.log" 2>/dev/null)"
+    g -C "$R" reset -q --hard
+}
+dirty "the tier file" "$TIER_REL" no
+dirty "the registry" "$REG_REL" no
+dirty "the daemon" "$DAEMON_REL" no
+dirty "a staged tier file" "$TIER_REL" yes
+
+echo "== 9973 R11: the daemon reads HEAD =="
+setup_repo r11
+start
+wait_for "$Q/daemon.log" "start pid="
+assert_contains "R11 the start line names the tier file blob at HEAD" "tiers=$(g -C "$R" rev-parse "HEAD:$TIER_REL" | cut -c1-12) " "$(start_line)"
+assert_contains "R11 the start line names the registry blob at HEAD" "registry=$(g -C "$R" rev-parse "HEAD:$REG_REL" | cut -c1-12) " "$(start_line)"
+stop
+
+echo "== 9973 R12: an inherited git location is ignored =="
+setup_repo r12
+mk_repo "$D/other"
+printf '# other\n' >> "$D/other/$TIER_REL"; g -C "$D/other" commit -q -am other
+start GIT_DIR="$D/other/.git"
+wait_for "$Q/daemon.log" "start pid="
+assert_contains "R12 the start line holds this repo's tier blob, not the other's" "tiers=$(g -C "$R" rev-parse "HEAD:$TIER_REL" | cut -c1-12) " "$(start_line)"
+stop
 
 echo
 echo "bypass-launchd: $PASS passed, $FAIL failed"

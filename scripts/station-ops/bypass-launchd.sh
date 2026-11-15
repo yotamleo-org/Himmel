@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# bypass-launchd.sh — launch a worker with an allowlisted HIMMEL_*_OK flag on the operator's Telegram go code.
+# bypass-launchd.sh — launch a worker with the hook guard flags the operator approves, on the operator's Telegram go code.
 # Route, threat model and why the classifier refuses the flag: docs/internals/bypass-launch-route.md.
 #
 #   bypass-launchd.sh --bucket <handover bucket> --until <YYYY-MM-DD>
@@ -10,10 +10,16 @@
 #
 # A chief requests a launch by writing <bucket>/bypass-queue/<anything>.req holding these lines:
 #   brief=<absolute brief path directly in the bucket>   model=<allowlisted model id>   chief=<chief session name>
-#   flags=<comma list from the allowlist below>   (optional; default HIMMEL_HOOK_INTEGRITY_BYPASS_OK)
+#   flags=<comma list, at most 5, each in the flag registry>   (optional; default HIMMEL_HOOK_INTEGRITY_BYPASS_OK)
 #   effort=<low|medium|high|xhigh>                 (optional)
-#   decision=<operator decision number>            (required when flags name HIMMEL_BILLED_OK)
-# A launch clears every *_OK variable in the daemon's environment, then sets only the granted flags.
+#   decision=<operator decision number>            (required when a flag is decision tier, HIMMEL_BILLED_OK included)
+# Which flag a go code may grant: the registry scripts/himmelctl/lib/bypass-flags.json is the list of hook flags and
+# scripts/station-ops/bypass-flag-tiers.tsv gives each a tier: grant, decision (needs decision=), floor (never granted;
+# launch it from your own shell) or none (not a switch). Both are read once at start from HEAD of this checkout with the
+# inherited git location variables unset; the daemon refuses to start (exit 2) when this script, the tier file or the
+# registry has uncommitted changes, so a new flag needs a commit, an update and a restart.
+# A launch clears every name the registry or the tier file holds and every inherited *_OK or *_BYPASS* name, then sets only
+# the granted flags. The ask names each granted flag with its registry text.
 # The operator id is allowFrom[0] of the bridge access.json (TELEGRAM_ACCESS_PATH); the inbound journal is
 # BRIDGE_ROOT/inbound.jsonl. Test seams: BYPASSD_SEND (a program given the message), BYPASSD_LAUNCHER (run in
 # place of headed-arm-worker.sh with its arguments), BYPASSD_POLL, BYPASSD_SETTLE.
@@ -45,8 +51,29 @@ now="$(date +%s)"
 [ "$EXPIRES" -gt "$now" ] && [ "$EXPIRES" -le $((now + 7 * 86400)) ] || die "--until must be after now and at most 7 days ahead"
 OP="$(jq -r '.allowFrom[0] // empty' "$ACCESS" 2>/dev/null)" && [[ "$OP" =~ ^[1-9][0-9]*$ ]] || die "no operator id (allowFrom[0]) in $ACCESS"
 LOG="$Q/daemon.log" # t13b-ok: the queue log file name the bucket and chief docs already read; operator-started, bounded by --until
+
+# The grantable list is committed text: the registry and the tier file at HEAD of this checkout, read once, here.
+# No inherited git location may point these reads at another tree.
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
+SELF_REL=scripts/station-ops/bypass-launchd.sh TIER_REL=scripts/station-ops/bypass-flag-tiers.tsv REG_REL=scripts/himmelctl/lib/bypass-flags.json
+for p in "$SELF_REL" "$TIER_REL" "$REG_REL"; do
+    git -C "$REPO" diff --quiet HEAD -- "$p" || die "$p has uncommitted changes in $REPO: commit or restore it, then start again"
+done
+HEAD_SHA=$(git -C "$REPO" rev-parse HEAD 2>/dev/null) || die "cannot read HEAD of $REPO"
+REG_JSON=$(git -C "$REPO" show "$HEAD_SHA:$REG_REL" 2>/dev/null) || die "cannot read $REG_REL at HEAD"
+REG_NAMES=$(jq -r '.flags[].name' <<<"$REG_JSON" 2>/dev/null)
+[ -n "$REG_NAMES" ] || die "cannot read $REG_REL at HEAD: no flags"
+TIER_ROWS=$(git -C "$REPO" show "$HEAD_SHA:$TIER_REL" 2>/dev/null | grep -v -e '^#' -e '^$')
+[ -n "$TIER_ROWS" ] || die "cannot read $TIER_REL at HEAD: no rows"
+while IFS=$'\t' read -r n t s _; do
+    [[ "$n" =~ ^[A-Z][A-Z0-9_]*$ && "$t" =~ ^(grant|decision|floor|none)$ && -n "$s" ]] || die "cannot read $TIER_REL at HEAD: bad row for '$n'"
+done <<<"$TIER_ROWS"
+# grant and decision rows whose name is in the registry (or whose source is eval) are what a go code can grant
+GRANTABLE=$(awk -F'\t' 'NR == FNR { r[$1] = 1; next } ($2 == "grant" || $2 == "decision") && (r[$1] || $3 == "eval") { print $1 }' <(printf '%s\n' "$REG_NAMES") <(printf '%s\n' "$TIER_ROWS"))
+grantable=$(printf '%s\n' "$GRANTABLE" | grep -c .)
+# Cleared from every launch: each name the registry or the tier file holds, and every inherited *_OK or *_BYPASS* name.
 strip=()
-while IFS= read -r v; do [[ "$v" == *_OK ]] && strip+=(-u "$v"); done < <(compgen -e)
+while IFS= read -r n; do strip+=(-u "$n"); done < <({ printf '%s\n' "$REG_NAMES"; printf '%s\n' "$TIER_ROWS" | cut -f1; compgen -e | grep -E '_OK$|_BYPASS'; } | sort -u)
 W="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/himmel-chief/gen-briefs"
 
 log() { printf '%s %s\n' "$(date -u +%FT%TZ)" "$*" >>"$LOG"; }
@@ -60,7 +87,7 @@ live() { [ ! -e "$Q/stop" ] && [ "$(date +%s)" -lt "$EXPIRES" ]; }
 
 exec 9>"$Q/.lock"
 flock -n 9 || { echo "bypass-launchd: already running"; exit 1; } # prim-ok: the lock is held on fd 9 for the whole run; Linux-only
-log "start pid=$$ until=$until"
+log "start pid=$$ until=$until head=${HEAD_SHA:0:12} registry=$(git -C "$REPO" rev-parse "$HEAD_SHA:$REG_REL" | cut -c1-12) tiers=$(git -C "$REPO" rev-parse "$HEAD_SHA:$TIER_REL" | cut -c1-12) grantable=$grantable"
 
 while :; do
     [ -e "$Q/stop" ] && { log "stop file"; exit 0; }
@@ -77,16 +104,36 @@ while :; do
            ! [[ -z "$effort" || "$effort" =~ ^(low|medium|high|xhigh)$ ]]; then
             refuse "$req" malformed; continue
         fi
-        envs=(); bad=""
+        envs=(); bad=""; grant_text=""; paid=""; others=""; undecided=""
         IFS=, read -ra fl <<<"$flags"
+        [ "${#fl[@]}" -le 5 ] || bad="more than 5 flags"
         for f in "${fl[@]}"; do
-            case "$f" in HIMMEL_HOOK_INTEGRITY_BYPASS_OK|HIMMEL_BILLED_OK) envs+=("$f=1") ;; *) bad="flag $f not allowlisted"; break ;; esac
+            [ -z "$bad" ] || break
+            row=""; in_reg=0; text=""
+            if [[ "$f" =~ ^[A-Z][A-Z0-9_]*$ ]]; then
+                row=$(printf '%s\n' "$TIER_ROWS" | awk -F'\t' -v n="$f" '$1 == n { print; exit }')
+                printf '%s\n' "$REG_NAMES" | grep -qxF -- "$f" && in_reg=1
+                text=$(jq -r --arg n "$f" '[.flags[] | select(.name == $n) | .bypasses][0] // empty' <<<"$REG_JSON")
+            fi
+            tier=$(printf '%s' "$row" | cut -f2); src=$(printf '%s' "$row" | cut -f3)
+            if [ "$in_reg" = 0 ] && [ "$src" != eval ]; then bad="flag $f is not in bypass-flags.json"
+            elif [ -z "$tier" ]; then bad="flag $f has no tier row"
+            elif [ "$tier" = none ]; then bad="flag $f is not a switch"
+            elif [ "$tier" = floor ]; then bad="flag $f is floor: launch it from your own shell"
+            else
+                envs+=("$f=1"); grant_text+="${grant_text:+, }$f=1${text:+ ($text)}"
+                if [ "$tier" = decision ]; then
+                    [ -n "$undecided" ] || undecided=$f
+                    if [ "$f" = HIMMEL_BILLED_OK ]; then paid=1; else others=1; fi
+                fi
+            fi
         done
         [ -n "$bad" ] && { refuse "$req" "$bad"; continue; }
         billed=""
-        if [[ ",$flags," == *",HIMMEL_BILLED_OK,"* ]]; then
-            [[ "$decision" =~ ^[0-9]+$ ]] || { refuse "$req" "HIMMEL_BILLED_OK needs decision=<operator decision number>"; continue; }
-            billed=" PAID RUN (decision $decision)."
+        if [ -n "$undecided" ]; then
+            [[ "$decision" =~ ^[0-9]+$ ]] || { refuse "$req" "$undecided needs decision=<operator decision number>"; continue; }
+            [ -z "$paid" ] || billed=" PAID RUN (decision $decision)."
+            [ -z "$others" ] || billed+=" OPERATOR DECISION $decision."
         fi
         [ -n "$effort" ] && envs+=("WORKER_SESSION_EFFORT=$effort")
         code=$(LC_ALL=C tr -dc 'A-Z2-9' </dev/urandom | head -c 6)
@@ -95,7 +142,7 @@ while :; do
         sha=$(sha256sum "$brief" | cut -d" " -f1); [ ${#sha} -eq 64 ] || { refuse "$req" "brief unreadable"; continue; }
         mv "$req" "$req.pending"
         log "ASK $base model=$model chief=$chief flags=$flags effort=${effort:-default} decision=${decision:-none} sha=${sha:0:12}"
-        send "Bypass worker launch asked by $chief: $base on $model, effort ${effort:-default}, grants ${envs[*]}.$billed What it does: $desc (brief sha ${sha:0:12}). Reply: go $code to launch, or no $code to refuse. Expires in 6 h."
+        send "Bypass worker launch asked by $chief: $base on $model, effort ${effort:-default}, grants $grant_text.$billed What it does: $desc (brief sha ${sha:0:12}). Reply: go $code to launch, or no $code to refuse. Expires in 6 h."
         t0=$(date +%s); verdict=expired
         while [ $(( $(date +%s) - t0 )) -lt "$TTL" ] && live; do
             hit=$(tail -c +"$((off + 1))" "$INBOUND" 2>/dev/null | jq -r --argjson op "$OP" --arg c "$code" \

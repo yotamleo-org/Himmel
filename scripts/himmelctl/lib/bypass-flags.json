@@ -18,6 +18,14 @@
       "remedy": "BRANCH_NAME_OK=1 git push ...   # a per-call prefix reaches the pre-push hook"
     },
     {
+      "name": "BUSY_LOOP_BYPASS",
+      "hooks": [
+        "marketplace/plugins/himmel-ops/hooks/block-busy-loop.sh"
+      ],
+      "bypasses": "Skips the busy-loop guard (marketplace/plugins/himmel-ops/hooks/block-busy-loop.sh).",
+      "remedy": "BUSY_LOOP_BYPASS=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+    },
+    {
       "name": "BUS_STORE_GUARD_OK",
       "hooks": [
         "scripts/hooks/guard-bus-store.sh"
@@ -40,6 +48,14 @@
       ],
       "bypasses": "Skips the \"cadence deny powershell\" guard (scripts/hooks/cadence-deny-powershell.sh).",
       "remedy": "CADENCE_POWERSHELL_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+    },
+    {
+      "name": "CHIEF_DISPATCH_DISABLE",
+      "hooks": [
+        "scripts/hooks/guard-chief-dispatch.sh"
+      ],
+      "bypasses": "Skips the chief-dispatch guard (scripts/hooks/guard-chief-dispatch.sh), the same guard as CHIEF_DISPATCH_OK.",
+      "remedy": "CHIEF_DISPATCH_DISABLE=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
     },
     {
       "name": "CI_MERGE_GATE_OK",
@@ -158,6 +174,14 @@
       "remedy": "FIND_ROOTWALK_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
     },
     {
+      "name": "FLEET_CAP_OK",
+      "hooks": [
+        "scripts/lib/usage-preflight.sh"
+      ],
+      "bypasses": "Skips the fleet-cap admission check of the launch preflight (scripts/lib/usage-preflight.sh).",
+      "remedy": "FLEET_CAP_OK=1 claude   # set in the launching shell; the preflight reads it from its environment"
+    },
+    {
       "name": "FORK_SYNC_PR_OK",
       "hooks": [
         "scripts/hooks/block-fork-sync-pr.sh"
@@ -172,6 +196,14 @@
       ],
       "bypasses": "Lets bare git stash through (the stash stack is shared across worktrees).",
       "remedy": "GIT_STASH_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+    },
+    {
+      "name": "GRAPHIFY_UNPROBED_OK",
+      "hooks": [
+        "scripts/lib/graphify-bin.sh"
+      ],
+      "bypasses": "Lets a graphify reinstall run when no process probe exists to prove nothing is using it (scripts/lib/graphify-bin.sh).",
+      "remedy": "GRAPHIFY_UNPROBED_OK=1 claude   # set in the launching shell; graphify-bin.sh reads it from its environment"
     },
     {
       "name": "GRAPH_COMMIT_OK",
@@ -207,6 +239,14 @@
       "remedy": "HIMMEL_READ_CLAMP_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
     },
     {
+      "name": "HIMMEL_VAULT_SWEEP_BYPASS",
+      "hooks": [
+        "marketplace/plugins/himmel-ops/hooks/block-vault-sweep.sh"
+      ],
+      "bypasses": "Skips the vault-sweep guard, which is on only when HIMMEL_VAULT_SWEEP_DENY=1 (marketplace/plugins/himmel-ops/hooks/block-vault-sweep.sh).",
+      "remedy": "HIMMEL_VAULT_SWEEP_BYPASS=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+    },
+    {
       "name": "HIMMEL_WEBFETCH_WALLED_OK",
       "hooks": [
         "scripts/hooks/redirect-webfetch-walled-hosts.sh"
@@ -229,6 +269,14 @@
       ],
       "bypasses": "Not a bypass: an internal variable of end-session-wiki.sh, listed so the registry covers every name the scan finds.",
       "remedy": "none (internal variable; nothing to set)"
+    },
+    {
+      "name": "IMPL_GUARD_DISABLE",
+      "hooks": [
+        "scripts/hooks/guard-implementor-dispatch.sh"
+      ],
+      "bypasses": "Skips the implementor-dispatch guard (scripts/hooks/guard-implementor-dispatch.sh), the same guard as IMPL_GUARD_OK.",
+      "remedy": "IMPL_GUARD_DISABLE=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
     },
     {
       "name": "IMPL_GUARD_OK",
@@ -351,6 +399,14 @@
       "remedy": "MERGED_PR_COMMIT_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
     },
     {
+      "name": "ORCH_GUARD_DISABLE",
+      "hooks": [
+        "scripts/hooks/orchestrator-inline-guard.sh"
+      ],
+      "bypasses": "Skips the orchestrator inline guard (scripts/hooks/orchestrator-inline-guard.sh), the same guard as INLINE_IMPL_OK.",
+      "remedy": "ORCH_GUARD_DISABLE=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+    },
+    {
       "name": "PLATFORMS_TESTED_OK",
       "hooks": [
         "scripts/hooks/check-hookspath.sh",
@@ -409,12 +465,60 @@
       "remedy": "ROGUE_SCHEDULE_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
     },
     {
+      "name": "SKIP_CR",
+      "hooks": [
+        "scripts/hooks/check-cr-before-push.sh"
+      ],
+      "bypasses": "Skips the code-review-before-push marker gate (scripts/hooks/check-cr-before-push.sh).",
+      "remedy": "SKIP_CR=1 git push ...   # a per-call prefix reaches the pre-push hook"
+    },
+    {
+      "name": "SKIP_FORCE_PUSH_GATE",
+      "hooks": [
+        "scripts/hooks/check-no-force-push.sh"
+      ],
+      "bypasses": "Silences the force-push gate's warnings for a non-main ref (scripts/hooks/check-no-force-push.sh); a force-push to main stays refused.",
+      "remedy": "SKIP_FORCE_PUSH_GATE=1 git push ...   # a per-call prefix reaches the pre-push hook"
+    },
+    {
+      "name": "SKIP_PR_MERGEABLE",
+      "hooks": [
+        "scripts/hooks/check-pr-mergeable.sh"
+      ],
+      "bypasses": "Lets a push through when the open PR for the branch has a merge conflict (scripts/hooks/check-pr-mergeable.sh).",
+      "remedy": "SKIP_PR_MERGEABLE=1 git push ...   # a per-call prefix reaches the pre-push hook"
+    },
+    {
+      "name": "SKIP_SECURITY_REVIEW",
+      "hooks": [
+        "scripts/hooks/check-security-reviewed.sh"
+      ],
+      "bypasses": "Skips the Security reviewed: trailer gate on a push (scripts/hooks/check-security-reviewed.sh).",
+      "remedy": "SKIP_SECURITY_REVIEW=1 git push ...   # a per-call prefix reaches the pre-push hook"
+    },
+    {
       "name": "SUBAGENT_MODEL_OK",
       "hooks": [
         "scripts/hooks/guard-subagent-model.sh"
       ],
       "bypasses": "Skips the \"guard subagent model\" guard (scripts/hooks/guard-subagent-model.sh).",
       "remedy": "SUBAGENT_MODEL_OK=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+    },
+    {
+      "name": "SUBAGENT_PARK_GUARD_DISABLE",
+      "hooks": [
+        "scripts/hooks/block-subagent-park.sh"
+      ],
+      "bypasses": "Lets a subagent park on a background Bash call or a Monitor (scripts/hooks/block-subagent-park.sh).",
+      "remedy": "SUBAGENT_PARK_GUARD_DISABLE=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
+    },
+    {
+      "name": "SUBAGENT_RELEASE_OPERATOR_GUARD_DISABLE",
+      "hooks": [
+        "scripts/hooks/block-subagent-release-operator.sh"
+      ],
+      "bypasses": "Lets a subagent write an operator-chain row (jira release operator ...) (scripts/hooks/block-subagent-release-operator.sh).",
+      "remedy": "SUBAGENT_RELEASE_OPERATOR_GUARD_DISABLE=1 claude   # set in the launching shell; a per-call prefix does not reach the hook"
     },
     {
       "name": "T3CODE_UNWATCH_OK",
