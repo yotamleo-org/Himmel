@@ -26,6 +26,7 @@ export WAIT_SWEEP_CMD="$STUB/off.sh" WAIT_FOCUS_CMD="$STUB/off.sh" CHIEF_WAIT_DI
 export CHIEF_WAIT_ORPHAN="$STUB/off.sh" CHIEF_WAIT_RMLEASE="$STUB/rmstate.sh"
 export CHIEF_WAIT_INTERVAL=1 CHIEF_WAIT_POLL_SEC=0.2 CHIEF_WAIT_FAIL_WAKE=1000
 export CHIEF_WAIT_RMLEASE_SAMPLE_MIN=0 CHIEF_WAIT_INTAKE_SAMPLE_MIN=0
+export CHIEF_WAIT_INTAKE_ARM_HOURS=6 CHIEF_WAIT_INTAKE_REWAKE_MIN=360  # an inherited bound must not move the 5 h / 7 h fixtures
 export HIMMEL_DENIAL_ACK_DIR="$WORK/acks"
 
 mkdir -p "$WORK/in/consoles"
@@ -49,8 +50,10 @@ run_waiter() {
     bash "$WAIT" "$inbox" --doc "$chief" > "$1" 2>/dev/null &
     local wp=$! n=0
     while [ "$n" -lt "$2" ] && kill -0 "$wp" 2>/dev/null; do sleep 0.1; n=$((n+1)); done
-    if kill -0 "$wp" 2>/dev/null; then kill "$wp" 2>/dev/null; wait "$wp" 2>/dev/null; return 1; fi
-    wait "$wp" 2>/dev/null
+    if kill -0 "$wp" 2>/dev/null; then kill "$wp" 2>/dev/null; wait "$wp" 2>/dev/null; return 1; fi  # still waiting: no wake
+    local rc=0
+    wait "$wp" 2>/dev/null || rc=$?
+    [ "$rc" -eq 0 ] || { fail "the waiter exited rc=$rc without a wake (a crash, not a quiet sample): $1"; return 1; }
 }
 
 # the 7 h fixture arms once, naming the rm-run command
