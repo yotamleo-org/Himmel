@@ -8654,8 +8654,6 @@ out="$(cd "$c96_x" && env -u HIMMEL_DOCTOR_LIVE_TEST_PROBE -u HIMMEL_REPO -u HIM
 if grepq "$out" -F 'INFO C96-jira-test-project' && grepq "$out" -F 'scripts/jira/dist/index.js' && ! grepq "$out" -F 'WARN C96'; then pass "INFO when the CLI build is missing"; else fail "C96 no CLI build -> $(printf '%s' "$out" | head -4)"; fi
 rm -rf "$c96_t"
 
-# C97: a literal key/token/secret value in a Codex MCP env table. Every fixture value is a dummy;
-# the suite asserts the dummy never reaches the output (rows or remedy).
 c97_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c97.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
 mkdir -p "$c97_t/claude" "$c97_t/home" "$c97_t/codex"
 c97_dummy="FIXTURE-DUMMY-9f3a"
@@ -8716,7 +8714,9 @@ echo "== C97: an empty value followed by a TOML comment -> OK; a literal followe
 c97_cfg "$c97_base
 [mcp_servers.obsidian-vault.env]
 OBSIDIAN_API_KEY = \"\" # unused
-OTHER_TOKEN = '' # unused"
+OTHER_TOKEN = '' # unused
+EMPTY_KEY = \"\"\"\"\"\"
+EMPTY_TOKEN = '''''' # unused"
 out="$(c97_run)"
 if grepq "$out" -F 'OK   C97-codex-mcp-literal-key' && ! grepq "$out" -E '(WARN|INFO) C97'; then pass "C97 OK for an empty value with a trailing comment"; else fail "C97 empty+comment -> $(printf '%s' "$out" | head -4)"; fi
 c97_cfg "[mcp_servers.obsidian-vault.env]

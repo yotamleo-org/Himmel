@@ -2470,25 +2470,6 @@ check_c31() {
         "remove the [mcp_servers.tokensave] table (and its [mcp_servers.tokensave.tools.*] sub-tables) from $cfg_q by hand — the doctor does not edit codex config"
 }
 
-# --- C97: a Codex MCP env table holds a literal key, token or secret -----
-# A Codex MCP server's env table (`[mcp_servers.<name>.env]` or an inline
-# `env = { ... }` in the server table) that carries a plain-text value under a
-# name ending _KEY, _TOKEN or _SECRET leaves the secret readable by anything
-# that reads the home directory, and a backup or a pasted config carries it.
-# The launch-time source already exists: scripts/mcp/secret-launch.mjs starts
-# the server with the value read from a 0600 file. The doctor never edits the
-# Codex config: it WARNs and names the remedy. It never prints a config value:
-# the awk below emits `<server> <variable>` pairs only.
-#
-# A disabled server (enabled = false) still WARNs, because the key is still on
-# disk. An empty value, a commented-out line, an env_vars name list and a
-# secret-named key outside an mcp_servers env table are OK.
-#
-# Same boundary as C31: a regex scan, not a TOML parser. Escape sequences
-# inside a quoted key are not decoded, and a dotted key such as
-# `env.NAME = "v"` in the server table is not read.
-#
-# Test seam: CODEX_HOME, as C31.
 check_c97_codex_mcp_literal_key() {
     local codex_home="${CODEX_HOME:-${HOME:-}/.codex}"
     local cfg="$codex_home/config.toml"
@@ -2511,8 +2492,7 @@ check_c97_codex_mcp_literal_key() {
             if ((c == "\"" || c == "\047") && substr(s, length(s), 1) == c && length(s) >= 2) s = substr(s, 2, length(s) - 2)
             return s
         }
-        # split a header body into dotted segments outside quotes; sets nseg, seg[]
-        function segs(h,   i, c, q, cur) {
+        function split_header_segments(h,   i, c, q, cur) {
             nseg = 0; cur = ""; q = ""
             for (i = 1; i <= length(h); i++) {
                 c = substr(h, i, 1)
@@ -2526,20 +2506,19 @@ check_c97_codex_mcp_literal_key() {
         }
         function secret_name(n) { n = toupper(n); return (n ~ /_(KEY|TOKEN|SECRET)$/) }
         function hit(srv, var) { if (secret_name(var) && !(srv SUBSEP var in seen)) { seen[srv SUBSEP var] = 1; print srv "\t" var } }
-        # a value is literal unless it is empty ("" or the single-quote pair, a trailing comment allowed) or only a comment
-        function literal(v,   c, rest) {
+        function is_plain_text_value(v,   c, rest) {
             v = trim(v); c = substr(v, 1, 1)
             if (c == "\"" || c == "\047") {
-                # empty only when the pair is followed by nothing or a comment: a triple-quoted string starts with the pair too
+                # a triple-quoted string opens with the same two characters as an empty pair
                 if (substr(v, 2, 1) != c) return 1
-                rest = trim(substr(v, 3))
+                if (substr(v, 3, 1) == c) rest = (substr(v, 4, 3) == c c c) ? trim(substr(v, 7)) : "x"
+                else rest = trim(substr(v, 3))
                 return !(rest == "" || substr(rest, 1, 1) == "#")
             }
             sub(/[ \t]*#.*$/, "", v)
             return v != ""
         }
-        # key = value on a table-body line; sets k and v
-        function kv(line,   i, c, q, eq) {
+        function read_key_value(line,   i, c, q, eq) {
             q = ""; eq = 0
             for (i = 1; i <= length(line); i++) {
                 c = substr(line, i, 1)
@@ -2550,8 +2529,7 @@ check_c97_codex_mcp_literal_key() {
             k = unq(substr(line, 1, eq - 1)); v = substr(line, eq + 1)
             return 1
         }
-        # walk the inline table `{ A = "x", B = "y" }` held in s
-        function inline(srv, s,   i, c, q, st, key, val, n) {
+        function scan_inline_env(srv, s,   i, c, q, st, key, val, n) {
             s = trim(s)
             if (substr(s, 1, 1) != "{") return
             s = substr(s, 2); st = "key"; key = ""; val = ""; q = ""
@@ -2565,7 +2543,7 @@ check_c97_codex_mcp_literal_key() {
                     else if (c == "," || c == "}") { key = "" }
                     else key = key c
                 } else if (c == "," || c == "}") {
-                    if (literal(val)) hit(srv, unq(key))
+                    if (is_plain_text_value(val)) hit(srv, unq(key))
                     st = "key"; key = ""; val = ""
                     if (c == "}") return
                 } else val = val c
@@ -2574,17 +2552,16 @@ check_c97_codex_mcp_literal_key() {
         /^[ \t]*\[\[/ { mode = ""; next }
         /^[ \t]*\[/ {
             h = $0; sub(/^[ \t]*\[/, "", h); sub(/\][ \t]*(#.*)?$/, "", h)
-            segs(h); mode = ""
+            split_header_segments(h); mode = ""
             if (seg[1] == "mcp_servers" && nseg == 2) { mode = "srv"; srvname = seg[2] }
             else if (seg[1] == "mcp_servers" && nseg == 3 && seg[3] == "env") { mode = "env"; srvname = seg[2] }
             next
         }
-        mode == "env" && /^[ \t]*[^# \t]/ { if (kv($0) && literal(v)) hit(srvname, k); next }
-        mode == "srv" && /^[ \t]*[^# \t]/ { if (kv($0) && k == "env") inline(srvname, v) }
+        mode == "env" && /^[ \t]*[^# \t]/ { if (read_key_value($0) && is_plain_text_value(v)) hit(srvname, k); next }
+        mode == "srv" && /^[ \t]*[^# \t]/ { if (read_key_value($0) && k == "env") scan_inline_env(srvname, v) }
     ' "$cfg")
     local scan_rc=$?
     if [ "$scan_rc" -ne 0 ]; then
-        # A failed scan establishes nothing about what the config holds: never OK.
         emit INFO C97-codex-mcp-literal-key "scan failed (awk exit $scan_rc) on $cfg — literal MCP keys undetermined"
         return
     fi
