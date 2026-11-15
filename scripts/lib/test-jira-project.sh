@@ -32,7 +32,7 @@ run() {
     local fn="$1"; shift
     # shellcheck disable=SC2016  # the child shell expands $1 and $2, not this one
     (cd "$work" && env -i HOME="$home" PATH="$PATH" HIMMEL_CONFIG_DIR="$conf" HIMMELCTL_CACHE_DIR="$cache" "$@" \
-        bash -c 'set -u; . "$1"; "$2"' _ "$LIB" "$fn" 2>/dev/null)
+        bash -c 'set -u; . "$1"; "$2"' _ "$LIB" "$fn" 2>/dev/null) # read-sink-ok: LIB is this suite's sibling resolver, derived from $0, never caller input
 }
 
 check() { # <name> <want> <got>
