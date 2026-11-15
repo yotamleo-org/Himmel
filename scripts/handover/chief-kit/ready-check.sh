@@ -2079,7 +2079,7 @@ check_outside_pr
 # (scripts/lib/pr_remainder.py, run from the anchor with python3 -I, never from the checkout under review). The contract is
 # the merge line's (--jira-transition, or the brief's `Completes ticket:`), so the caller names it: --contract yes|no.
 check_partial_remainder() {
-    local pr_title lib key rc anchor reader ans
+    local pr_title lib key rc anchor reader ans op
     [ "$ONLY7" -eq 0 ] || return 0
     lib="$(cd "$SELF_DIR/../../lib" 2>/dev/null && pwd)"  # swallow-ok: no lib dir leaves the key unread, reported just below
     pr_title=$(printf '%s' "$snapshot" | jq -r '.[0].title // empty' 2>/dev/null) || pr_title=""  # swallow-ok: an unreadable title is reported just below
@@ -2142,7 +2142,24 @@ check_partial_remainder() {
         echo "[FAIL] 17. $key is a partial merge (--contract no) but every remaining ask is on $(printf '%s' "$ans" | cut -f2), so this merge completes $key and the merge refuses it (exit 26). If the brief says Completes ticket: no, the chief changes it to yes and re-issues the GO with --contract yes; else re-issue the GO with --contract yes (the merge then runs with --jira-transition); or record what stays on $key with a Remaining: line or an owed → line (gh pr edit $PR --body-file <file>)"
         mark_fail
     else
-        echo "[PASS] 17. partial merge $key records what remains (${ans%%$'\t'*})"
+        rc=0
+        op=$(
+            # shellcheck source=/dev/null
+            . "$anchor/scripts/lib/ticket-status.sh" 2>/dev/null  # swallow-ok: declare -F on the next line decides, rc 70 is unreadable
+            declare -F ts_owed_chief_paths >/dev/null || exit 70
+            printf '%s' "${cov_body:-}" | ts_owed_chief_paths "$reader" "$key"
+        ) || rc=$?
+        if [ "$rc" -eq 3 ]; then
+            echo "[FAIL] 17. cannot read the owed lines of partial merge $key: the anchor's scripts/lib/pr_remainder.py --units gave no chief-owed answer ($reader), so the merge refuses it (exit 26)"
+            mark_fail
+        elif [ "$rc" -eq 0 ]; then
+            echo "[FAIL] 17. $key is a partial merge whose \`owed → chief\` line names a repo path ($(printf '%s\n' "$op" | cut -f1 | paste -sd ';' - | sed 's/;/; /g')): that is code, not a chief step, and the merge refuses it (exit 26). Write that work as a \`Remaining: <ask> (<paths>)\` line so it gets a RESUME row, and drop it from the owed lines (gh pr edit $PR --body-file <file>)"
+            mark_fail
+        elif [ "$rc" -eq 70 ]; then
+            echo "[WARN] 17. partial merge $key records what remains (${ans%%$'\t'*}); its owed lines were not checked for repo paths: the anchor's scripts/lib/ticket-status.sh has no ts_owed_chief_paths"
+        else
+            echo "[PASS] 17. partial merge $key records what remains (${ans%%$'\t'*})"
+        fi
     fi
 }
 check_partial_remainder

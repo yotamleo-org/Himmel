@@ -249,10 +249,11 @@
 #       --jira-transition, or the brief says completes-ticket: no) on a ticket-tagged
 #       PR whose body has neither a `Remaining:` line nor a `<ask>: deferred -> <KEY>`
 #       line under `## Ticket coverage`, or whose every remaining ask is deferred to
-#       other tickets (this merge then completes the ticket), or whose body cannot be read, or when the
-#       anchor's scripts/lib/pr_remainder.py is missing or prints no answer. The
-#       refusal names the missing line. Checked after the title gate, before
-#       the audit preflight, on --dry-run too.
+#       other tickets (this merge then completes the ticket), or whose `owed -> chief` line
+#       names a relative repo path (code, which belongs on a `Remaining:` line), or whose body
+#       cannot be read, or when the anchor's scripts/lib/pr_remainder.py is missing, prints no
+#       answer or gives no chief-owed field under --units. The refusal names the missing line
+#       or the path. Checked after the title gate, before the audit preflight, on --dry-run too.
 #   27  --go was given and no OPEN PR resolved (no PR for the target, or it is
 #       CLOSED, or its state is empty or unknown): nothing was merged. A PR
 #       already MERGED at the head the GO file names exits 0 ("already
@@ -2044,6 +2045,21 @@ if [ -n "$partial_key" ]; then
             audit "REFUSED reason=partial-remainder-handed-off repo=$nwo pr=#$pr_num key=$partial_key handed=$partial_handed"
             exit 26
         fi
+        partial_paths_rc=1
+        if declare -F ts_owed_chief_paths >/dev/null; then
+            partial_paths_rc=0
+            partial_paths=$(printf '%s' "$partial_body" | ts_owed_chief_paths "$himmel_repo/scripts/lib/pr_remainder.py" "$partial_key") || partial_paths_rc=$?
+        fi
+        if [ "$partial_paths_rc" -eq 3 ]; then
+            echo "merge-on-green: cannot read the owed lines of partial merge $partial_key (the anchor's scripts/lib/pr_remainder.py --units gave no chief-owed answer) — refusing. Re-run." >&2
+            audit "REFUSED reason=partial-remainder-unreadable repo=$nwo pr=#$pr_num key=$partial_key"
+            exit 26
+        elif [ "$partial_paths_rc" -eq 0 ]; then
+            partial_paths=$(printf '%s\n' "$partial_paths" | cut -f1 | paste -sd ';' - | sed 's/;/; /g')
+            echo "merge-on-green: PR #$pr_num is a partial merge of $partial_key whose \`owed → chief\` line names a repo path ($partial_paths): that is code, not a chief step — refusing. Write that work as a \`Remaining: <ask> (<paths>)\` line, so the dispatcher offers a RESUME worker, and drop it from the owed lines (gh pr edit $pr_num --body-file <file>)." >&2
+            audit "REFUSED reason=partial-owed-names-path repo=$nwo pr=#$pr_num key=$partial_key"
+            exit 26
+        fi
         MERGE_ROW_REMAINDER="${partial_ans%%$'\t'*}"
         if [ "$MERGE_ROW_REMAINDER" = owed ]; then
             MERGE_ROW_OWED=$(printf '%s' "$partial_ans" | cut -f2)
@@ -3021,6 +3037,22 @@ _merge_pre_row() {
     status_event event=merge key="$key" pr="$2" head="$3" contract="$MERGE_ROW_CONTRACT" result=pending stage=pre-jira ${MERGE_ROW_REMAINDER:+remainder="$MERGE_ROW_REMAINDER"} ${MERGE_ROW_OWED:+owed="$MERGE_ROW_OWED" owed_due="$MERGE_ROW_OWED_DUE"}
 }
 
+_merge_owe_rows() {
+    local bucket chief owe who text n=0 total=0
+    case "${HIMMEL_CONSOLE_DOC:-}" in /*) [ -f "$HIMMEL_CONSOLE_DOC" ] || return 0 ;; *) return 0 ;; esac
+    declare -F ts_owed_lines >/dev/null || return 0
+    bucket=${HIMMEL_CONSOLE_DOC%/*}
+    chief=${HIMMEL_CONSOLE_NAME:-}
+    if [ -z "$chief" ]; then chief=${HIMMEL_CONSOLE_DOC##*/}; chief=${chief%.md}; fi
+    owe="$himmel_repo/scripts/handover/chief-kit/owe.sh"
+    while IFS=$'\t' read -r who _ _ text; do
+        [ -n "$who" ] || continue
+        total=$((total + 1))
+        bash "$owe" add --bucket "$bucket" --chief "$chief" --kind step --key "$1" --text "$1 PR #$2: $text" >/dev/null 2>&1 && n=$((n + 1))
+    done <<<"$(printf '%s' "${partial_body//$'\r'/}" | ts_owed_lines)"
+    [ "$total" -eq 0 ] || echo "merge-on-green: owed ledger: $n of $total owed line(s) of $1 recorded in $bucket/owed.jsonl" >&2
+}
+
 # jira_auto_transition_on_merge <nwo> <pr> <sha> — the merge's Jira step, then
 # one status-event row for it, written before the per-key lock is released so
 # an event queued behind it reads done-pending. A merge that does not complete
@@ -3053,6 +3085,9 @@ jira_auto_transition_on_merge() {
             ${MERGE_ROW_REMAINDER:+remainder="$MERGE_ROW_REMAINDER"} ${MERGE_ROW_OWED:+owed="$MERGE_ROW_OWED" owed_due="$MERGE_ROW_OWED_DUE"}
     fi
     exec 8>&-
+    if [ "${MERGE_ROW_CONTRACT:-}" = no ] && [ -n "${partial_key:-}" ] && [ -n "${partial_body:-}" ]; then
+        _merge_owe_rows "$partial_key" "$2"
+    fi
     if [ "$_MERGE_CONTRACT" != yes ] && [ -n "$_MERGE_KEY" ]; then
         _status_event "$_MERGE_KEY" merge "$2" "$3"
     fi
