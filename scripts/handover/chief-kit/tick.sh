@@ -512,6 +512,9 @@ Parked rows stay listed: --pool-dispositions prints `# pool-parked <KEY>` for a 
 line (stale, changed, invalid, unowned and unknown-key lines park nothing), and `# pool-chief-owed <KEY>` when that line
 matches proof|signature|critic round|owed|go code. The tick carries pool-parked=<n> and chief-owed=<m> (hidden at 0); the
 `# pool-dispatchable <KEY>` lines and chief-wait.sh's dispatchable= are unchanged.
+owed=<n>:<oldest-age> counts the open rows of the owed ledger beside --doc (owed.jsonl, owe.sh; <m>m under an hour, else <h>h),
+hidden at 0, `?` when unreadable. A ticket-kind row with no key past OWED_STALE_SECS (default 14400) adds
+`ACTION owed-stale=<n>:<ids>`; closing the row with a key ends it. Not in chief-wait.sh's wake key.
 A key whose line the file reads changed (pool-changed=, same line-hash and sole-reason rules) is unresolved as
 class `changed`: `<target> merged <oldest sha since the anchor> since the line was written: re-read and stamp
 (<LL> <MM-DD> <HH:MM>Z)`, the bracket printed as written, never filled in.
@@ -3272,6 +3275,26 @@ if [ -f "$wto_probe" ]; then
     wtc_summary=$(sed -n 's|^CEILING \([0-9]*/[0-9]*\) .*|\1|p' <<<"$wto_out")
 fi
 
+owed_summary=""
+owed_stale_n=0
+owed_stale_ids=""
+if [ -n "$console_doc" ] && [ -s "${console_doc%/*}/owed.jsonl" ]; then
+    if owed_rows="$(bash "$HERE/owe.sh" list --bucket "${console_doc%/*}" 2>/dev/null)"; then  # swallow-ok: the else branch prints owed=?
+        owed_stale_secs="${OWED_STALE_SECS:-14400}"
+        case "$owed_stale_secs" in ''|*[!0-9]*) owed_stale_secs=14400 ;; esac
+        owed_stale_secs=$((10#$owed_stale_secs))
+        tick_now_s
+        owed_calc="$(printf '%s\n' "$owed_rows" | awk -F'\t' -v now="$tick_now" -v lim="$owed_stale_secs" '
+            NF { n++; if (min == "" || $3 + 0 < min + 0) min = $3
+                 if ($2 == "ticket" && $4 == "" && now - $3 > lim) { s++; ids = ids (ids == "" ? "" : ",") $1 } }
+            END { if (n) { a = int((now - min) / 60); print n ":" (a >= 60 ? int(a / 60) "h" : a "m") "\t" s + 0 "\t" ids } }')"
+        IFS=$'\t' read -r owed_summary owed_stale_n owed_stale_ids <<< "$owed_calc"
+        [ -n "$owed_stale_n" ] || owed_stale_n=0
+    else
+        owed_summary='?'
+    fi
+fi
+
 # This chief's own HANDOFF (<doc stem>-HANDOFF.md, written by chief.sh next)
 # over HANDOFF_BUDGET_BYTES, and its decisions: line over DECISIONS_BUDGET_BYTES.
 # Shown only as ACTION lines after the TICK line; not in chief-wait's wake key.
@@ -4320,6 +4343,7 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$unfiled_summary" ] || printf 'repair unfiled: %s\n' "$unfiled_summary"
     [ -z "$repair_summary" ] || printf 'repair: %s\n' "$repair_summary"
     [ -z "$dbot_summary" ] || printf 'dependabot autoland: %s\n' "$dbot_summary"
+    [ -z "$owed_summary" ] || printf 'owed: %s\n' "$owed_summary"
     printf 'leftover worktrees: %s%s\n' "$wto_summary" "${wtc_summary:+ (ceiling alarm $wtc_summary)}"
     [ -z "$flakes_tail" ] || printf 'suite flakes: %s\n' "${flakes_tail# flakes=}"
     [ "$effort_summary" = ok ] || printf 'effort: %s\n' "$effort_summary"
@@ -4416,6 +4440,7 @@ else
     compact_field pool-parked "$pool_parked_n"
     compact_field chief-owed "$pool_owed_n"
     compact_field supply "$supply"
+    compact_field owed "$owed_summary"
     compact_field chains "$chains_summary"
     compact_field residual-unversioned "$residual_unversioned"
     compact_field denials "$denials_summary"
@@ -4471,6 +4496,10 @@ else
     if [ "$wto_summary" != "0" ] || [ -n "$wtc_summary" ]; then
         printf 'ACTION wt-orphans=%s%s: bash %q prune --orphans lists them; bash %q prune reclaims the merged and detached ones, the rest need a wrap or a salvage\n' \
             "$wto_summary" "${wtc_summary:+ wt-ceiling=$wtc_summary}" "$REPO/scripts/worktree.sh" "$REPO/scripts/worktree.sh"
+    fi
+    if [ "$owed_stale_n" -gt 0 ]; then
+        printf 'ACTION owed-stale=%s:%s: a ticket you owe has no key after %sh: file it, then bash %q close --bucket %q --id <id> --key <KEY> (chief-sections/owed.md)\n' \
+            "$owed_stale_n" "$owed_stale_ids" "$((owed_stale_secs / 3600))" "$HERE/owe.sh" "${console_doc%/*}"
     fi
     decisions_file="${console_doc%/*}/specs/decisions/chief-decisions-$(date +%F).md"
     if [ "$handoff_bytes" -gt "$handoff_budget" ]; then
