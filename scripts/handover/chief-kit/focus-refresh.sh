@@ -242,7 +242,7 @@ if [ -n "${FR_TRACKER:-}" ]; then TRACKER=("$FR_TRACKER"); else TRACKER=(python3
 if [ -n "${FR_DRIFT:-}" ]; then DRIFT=("$FR_DRIFT"); else DRIFT=(bash "$HERE/status-drift.sh"); fi
 if [ -n "${FR_DRIFT_SUMMARY:-}" ]; then DSUM=("$FR_DRIFT_SUMMARY"); else DSUM=(node "$HERE/drift-summary.mjs"); fi
 if [ -n "${FR_KNOWN_SYNC:-}" ]; then KSYNC=("$FR_KNOWN_SYNC"); else KSYNC=(bash "$HERE/known-bugs-sync.sh"); fi
-if [ -n "${FR_CHAIN_GRAPH:-}" ]; then CGRAPH=("$FR_CHAIN_GRAPH"); else CGRAPH=(python3 -I "$HERE/chain-graph.py"); fi
+if [ -n "${FR_CHAIN_GRAPH:-}" ]; then CGRAPH=("$FR_CHAIN_GRAPH"); else CGRAPH=(python3 -I "$HERE/chain-graph.py" --repo-dir "$(cd "$HERE/../../.." && pwd)"); fi
 if [ -n "${FR_DISPOSITIONS:-}" ]; then DISPO=("$FR_DISPOSITIONS"); else DISPO=(bash "$HERE/next-dispatchable.sh"); fi
 
 bounded() {
