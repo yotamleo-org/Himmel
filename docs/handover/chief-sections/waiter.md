@@ -103,9 +103,10 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     Act on it as release-manager.md says: ask again with the operator's words, or ack a right refusal.
 
     **`WAKE pool-stale <KEYS>`**: the tick re-checks every Live-state
-    `pool-disposition: KEY slice|close|question <target>` line whose target names a
+    `pool-disposition: KEY slice|close|question|hold|park <target>` line whose target names a
     ticket key of the mirror's project or `PR <n>` and reports `pool-stale=<n>:<KEY>,...` when every named
-    blocker is Done (Jira mirror) or its PR merged or closed. The PR states come from one GraphQL
+    blocker is Done (Jira mirror) or its PR merged or closed, or when its hold line's wake fired or it waits on
+    an outside PR (below). The PR states come from the pool-holds file, filled by one GraphQL
     query that names exactly the cited PR numbers, however old, on the read token; a wave label such as
     `ZA-1` is text, not a ticket. `?` in the list marks a target it could not read (an issue number, a
     number GitHub cannot resolve, a failed read), never a stale one. `tick.sh --pool-stale --doc <doc>`
@@ -145,6 +146,45 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     `residual-unversioned=<n>:<KEY>,...` (open residuals of an open focus-version
     ticket with no fixVersion, other than a To Do ticket below High whose latest release ruling is a backlog ruling, invisible to every version count): it never wakes;
     give each a fixVersion or a disposition.
+
+    **Hold lines (`pool_holds`).** In a bucket that declares a release, a give-up line needs the
+    operator's words or a near wake the tick checks:
+    `pool-disposition: <KEY> <verb> <free text> [authority=<ref>] [wake=<event>[,<event>...]] [@<sha>]`.
+    A give-up line is a `question`, `close`, `hold` or `park` line, or a `slice` naming no key, PR or `@sha`,
+    on a pool key or on a key of `asks_operator_keys` (other off-pool keys stay invalid; a `slice` with a
+    target keeps the rule above).
+    - `authority=O-<R>-<nnnn>` or `authority=decision-<n>` is valid only when a words record (`words: 1`,
+      or the high-admit record) of the doc's `release:` names the key, and for `decision-<n>` carries that
+      decision. A decision file alone, or a legacy O- row, is not authority.
+    - `wake=pr:<n>` (or `pr-<n>-merge`) fires when the PR merges or closes and is valid while it is open;
+      a PR GitHub cannot resolve is invalid, a failed or paused read is unchecked. `wake=done:<KEY2>` fires
+      when KEY2 is Done and is valid while an open PR's head branch or a worker names it, or it is in the
+      current version. `wake=date:<YYYY-MM-DD>` (or `<YYYY-MM-DDTHH:MMZ>`, UTC) is valid at most 7 days
+      ahead; a later date is a park and needs authority. `wake=file:<path>` fires when the file exists and
+      is valid only as an absolute path under the handover root or `TICK_STATE_DIR` with no `..`. A list
+      fires when any event fires.
+    - Counting, in order: any invalid part makes the line `invalid` (with the reason); a valid authority
+      dispositions it; a valid wake that has not fired dispositions it; otherwise it is unhandled,
+      `no-authority` (`unchecked` when an input could not be read). Each shows as
+      `# pool-unresolved <class> <KEY> <reason>: <line>`; none of them fails the tick.
+    The tick runs `tick.sh --pool-holds --doc <doc>` under the pool-stale lock, before `pool-stale=`; it writes
+    `pool-holds-<doc stem>.json` in `TICK_STATE_DIR` (rows with class, reason, words, `fired`, `outside`
+    and the age, and the PR state map) and nothing else, and `--pool-dispositions` (the tick's and the
+    waiter's) and `--pool-stale` read it. A missing holds file, or one over 30 minutes old, reads every
+    give-up line `unchecked`: never an all-clear. With no release declared in the bucket (`release: none`,
+    or no `release/*/release.json`) the lines keep the rule above and the tick prints
+    `pool-holds=off:no-ledger`; a doc with no `release:` line in a bucket that declares one reads its give-up
+    lines `unchecked`.
+    Stale causes: a line whose wake fired (`wake=<event>=fired`), or that waits on an outside PR
+    (`isCrossRepository`) with no manifest `watch` row (`outside-PR=unwatched`), is stale, one wake per
+    newly stale key.
+    Lineage age: the step appends to the shared `pool-lines.tsv` when a stem's set of give-up lines
+    changes. A line's `age_gen` counts the consecutive stems of its lineage (the stem after
+    `HIMMEL-nextleg-<date><gen>-`) that carried it; another lineage never resets it, and stems unseen for
+    14 days are pruned. `age_days` is the time since its first-seen stamp. `tick.sh --pool-holds --seed-age
+    <list of docs in order>` seeds the file from old docs, stamped with each doc's filename date. Blocked on
+    you (the board and the tracker) shows every unhandled line with its age, every line held on authority
+    with the operator's words, and a `pr:` or `done:` hold once `age_days` reaches 7.
 
     **Housekeeping digest.** Board class changes and `board-stale`,
     `status-sweep`, and informational `tails=`/`acts=` changes to LIVE, ACK,
