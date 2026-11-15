@@ -547,10 +547,8 @@ else fail "IS26: broken tar: rc=$rc out: $out"; fi
 rm -rf "$TS"
 
 # --- IS27 ------------------------------------------------------
-# A content-only edit to a user docs page adds, deletes and renames no file, so
-# the tree-scan rule alone never selects the docs suites that scan the pages.
-# The suites and pages are copied from this repo; a page either suite names is
-# already selected by the reference search, so these pages are named by neither.
+# The reference search already selects a page either suite names, so these
+# pages must be ones neither suite names.
 DP="$(fixture_mktemp_dir)" || exit 1
 DT=scripts/docs/test-docs-dropped-terms.sh
 DV=scripts/docs/test-docs-current-version.sh
