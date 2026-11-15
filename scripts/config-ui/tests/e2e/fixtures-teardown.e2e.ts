@@ -1,7 +1,3 @@
-// stopChild() must not remove the temp dir while the server, or a process it started, can still write into it.
-// A write landing during the rmSync fails the teardown with `ENOTEMPTY, Directory not empty: /tmp/cfgui-e2e-...`.
-// Stub children stand in for the server: they print "ready" once their SIGTERM handling is in place, then write into the dir.
-// The last test boots the real AG-UI server through bootAgui, whose stop() shares stopChild.
 import { test, expect } from "@playwright/test";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -11,17 +7,13 @@ import { spawnServer, stopChild } from "./fixtures";
 import { aguiBuilt, bootAgui } from "./agui-fixtures";
 
 const GRACE_MS = 300;
-// ignore SIGTERM, then create new files in the dir without pause (what a server's late log or state write does)
 const WRITER = `const fs = require("fs"); let i = 0; process.on("SIGTERM", () => {}); setImmediate(() => {
   for (;;) try { fs.writeFileSync(process.argv[1] + "/late-" + i++, "x"); } catch {} });`;
 const STUBS: Record<string, string> = {
-  // (a) never honours SIGTERM, so stopChild has to escalate to SIGKILL
   stubborn: `${WRITER} console.log("ready");`,
-  // (b) exits on SIGTERM at once but leaves a grandchild that also ignores SIGTERM and keeps writing
   "grandchild": `const { spawn } = require("child_process");
     const g = spawn("node", ["-e", ${JSON.stringify(WRITER + ' console.log("ready");')}, process.argv[1]], { stdio: ["ignore", "pipe", "ignore"] });
     g.stdout.once("data", () => console.log("ready " + g.pid)); setInterval(() => {}, 1000);`,
-  // (c) control: exits promptly on SIGTERM
   prompt: `process.on("SIGTERM", () => process.exit(0)); console.log("ready"); setInterval(() => {}, 1000);`,
 };
 
@@ -43,8 +35,7 @@ async function run(kind: string) {
     await stopChild(child, dir, GRACE_MS);
     return { gone: !existsSync(dir), exited: exited(child), grandchildAlive: grandchild !== undefined && alive(grandchild), ms: Date.now() - t0 };
   } finally {
-    // never leak a stub past a failing run: the whole group, grandchild included
-    try { process.kill(-child.pid!, "SIGKILL"); } catch { /* the group is already gone */ }
+    try { process.kill(-child.pid!, "SIGKILL"); } catch {}
   }
 }
 

@@ -118,12 +118,9 @@ export type Harness = {
 
 const writeRows = (file: string, rows: object[]) => { mkdirSync(join(file, ".."), { recursive: true }); writeFileSync(file, rows.map((r) => JSON.stringify(r) + "\n").join("")); };
 
-// detached: the child leads its own process group, so stopChild can signal it and everything it started.
 export const spawnServer = (args: string[], env: NodeJS.ProcessEnv): ChildProcess =>
   spawn("node", args, { env, stdio: ["ignore", "pipe", "pipe"], detached: true });
 
-// SIGTERM the group, SIGKILL it after graceMs, wait for the child's exit, SIGKILL what it left behind, then remove dir.
-// Nothing is left that can write into dir (a process killed a moment ago can still be dying, hence the rmSync retries).
 export async function stopChild(child: ChildProcess, dir: string, graceMs = 5_000): Promise<void> {
   const signal = (sig: NodeJS.Signals) => { try { process.kill(-child.pid!, sig); } catch { child.kill(sig); } };
   const exit = new Promise<void>((r) => {
