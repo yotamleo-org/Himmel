@@ -220,6 +220,7 @@ printf '{"allowFrom":["4242"]}\n' > "$WORK/access.json"
 reset yes; go_file "$SHA"; printf '4242 claude --name HIMMEL-1-N9-thing-2026-11-05\n' > "$STUB/ps"; rm -f "$STUB/kind-pages"
 (cd "$CO" && env -u CHIEF_WAIT_PAGE_CMD MERGE_BLOCK_ALERT_CMD="$STUB/kind-sender.sh" TELEGRAM_ACCESS_PATH="$WORK/access.json" \
     CHIEF_WAIT_WORKER_SILENT_MIN=45 bash "$SGM" --doc "$CD" --workers-from "$WM" --state "$STATE" > "$WORK/out" 2>"$WORK/err")
+check "(k1) the default sender is called exactly once" "1" "$(n "$STUB/kind-pages")"
 check "(k1) the default sender gets the kind silent-go-merge as its third argument" "1" "$(n "$STUB/kind-pages" "^3|silent-go-merge|SILENT-WORKER-HELD N9 pr=77 head=$SHA reason=alive")"
 
 # --- (w1) the waiter runs the helper each sample and wakes on its lines ---

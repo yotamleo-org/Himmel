@@ -51,12 +51,14 @@ printf '%s|%s\n' "\$#" "\${3-}" >"$TMP/kind.log"
 EOF
 chmod +x "$TMP/kind-sender.sh"
 kind_of() { # [<HIMMEL_ALERT_KIND>]: the argc and kind the seam received
+    local rc=0
     rm -f "$TMP/kind.log"
     if [ "$#" -gt 0 ]; then
-        HIMMEL_ALERT_KIND="$1" TELEGRAM_ACCESS_PATH="$TMP/access.json" MERGE_BLOCK_ALERT_CMD="$TMP/kind-sender.sh" bash "$SINK" "msg" 2>/dev/null
+        HIMMEL_ALERT_KIND="$1" TELEGRAM_ACCESS_PATH="$TMP/access.json" MERGE_BLOCK_ALERT_CMD="$TMP/kind-sender.sh" bash "$SINK" "msg" 2>/dev/null || rc=$?
     else
-        env -u HIMMEL_ALERT_KIND TELEGRAM_ACCESS_PATH="$TMP/access.json" MERGE_BLOCK_ALERT_CMD="$TMP/kind-sender.sh" bash "$SINK" "msg" 2>/dev/null
+        env -u HIMMEL_ALERT_KIND TELEGRAM_ACCESS_PATH="$TMP/access.json" MERGE_BLOCK_ALERT_CMD="$TMP/kind-sender.sh" bash "$SINK" "msg" 2>/dev/null || rc=$?
     fi
+    [ "$rc" -eq 0 ] || echo "sink exit $rc"
     cat "$TMP/kind.log" 2>/dev/null
 }
 assert_eq "V7 a cadence kind from cadence-alert.sh reaches the seam" "3|cadence:qmd-reindex" "$(kind_of cadence:qmd-reindex)"
