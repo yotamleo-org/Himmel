@@ -522,7 +522,7 @@ describe('google-health secrets through the resolver', () => {
       'exec "$(dirname "$0")/secret-tool.real" "$@"\n');
     chmodSync(join(bin, 'secret-tool'), 0o755);
     log = join(dir, 'keyring.log');
-    Object.assign(process.env, stub.env, { KSTUB_LOG: log });
+    Object.assign(process.env, stub.env, { KSTUB_LOG: log, HIMMEL_CONFIG_DIR: join(dir, 'himmel-conf') });
     // Suite guard: secret-tool and busctl must resolve to the stub, or the run aborts.
     for (const tool of ['secret-tool', 'busctl']) {
       const where = Bun.which(tool, { PATH: process.env.PATH }) ?? '';

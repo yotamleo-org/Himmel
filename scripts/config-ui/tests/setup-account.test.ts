@@ -122,7 +122,7 @@ test("a create-only write never replaces a login that appeared after the check",
   const dir = mkdtempSync(join(tmpdir(), "login-create-only-"));
   cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
   const k = stubKeyring(dir), p = join(dir, "ui-login");
-  writeLogin(p, "op", canary(), { env: k.env });
+  writeLogin(p, "op", canary(), { env: { ...k.env, HIMMEL_CONFIG_DIR: join(dir, "conf") } });
   const before = k.get(KEY);
   expect(() => writeLogin(p, "intruder", canary(), { createOnly: true, env: k.env })).toThrow(LOGIN_EXISTS);
   expect(k.get(KEY)).toBe(before);
