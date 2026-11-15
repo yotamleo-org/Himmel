@@ -366,7 +366,6 @@ describe('MCP server wiring', () => {
     expect(r.content[0].text).toBe('jira: refused: Task needs a placement');
   });
 
-  // The real CLI against a loopback Jira that answers 200 plus x-seraph-loginreason.
   describe('against a Jira that answers a search with 200', () => {
     let server: Server;
     let home: string;

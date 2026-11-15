@@ -1147,7 +1147,6 @@ describe('the live-test guard at requestAt and uploadMultipart', () => {
 });
 
 // For a bad token Jira Cloud answers 200 with an empty body and x-seraph-loginreason: AUTHENTICATED_FAILED.
-// A loopback stub serves exactly that, and the built CLI runs against it as a child.
 describe('a 200 that carries x-seraph-loginreason: AUTHENTICATED_FAILED', () => {
   const entry = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'index.js');
   let server: Server;

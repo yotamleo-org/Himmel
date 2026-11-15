@@ -158,7 +158,6 @@ export function confluenceAuthHeader(): string {
 }
 
 // A bad, stale or revoked token gets HTTP 200 with an empty body from a Jira search, and the only sign is this header.
-// A response without it, or with the value OK, is unchanged.
 export function assertAuthenticated(res: { status: number; headers?: Headers }): void {
   const reason = res.headers?.get('x-seraph-loginreason');
   if (reason === null || reason === undefined || reason === 'OK') return;
