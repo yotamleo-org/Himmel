@@ -1515,7 +1515,11 @@ not_contains 'a read holds file is not named as unread' "$wgd" 'pool holds unrea
 gd_doc 'question one more round, reworded authority=O-v1.1.3-0001'
 v9611render --owed-dir "$bk" --chief-doc "$bk/$gd_stem.md"
 contains 'a holds row whose doc line changed since the holds run reads unchecked' "$(grep -F 'data-section="waiting"' "$v9611out")" 'question (unchecked: the line changed since the holds run)'
+printf '{"rows":1}\n' > "$TICK_STATE_DIR/pool-holds-$gd_stem.json"
 gd_doc 'question one more round authority=O-v1.1.3-0001'
+v9611render --owed-dir "$bk" --chief-doc "$bk/$gd_stem.md"
+contains 'a holds file with no rows list is named as unread' "$(grep -F 'data-section="waiting"' "$v9611out")" "pool holds unread: pool-holds-$gd_stem.json"
+cp "$HERE/fixtures/pool-holds-golden.json" "$TICK_STATE_DIR/pool-holds-$gd_stem.json"
 touch -d '31 minutes ago' "$TICK_STATE_DIR/pool-holds-$gd_stem.json"  # gnu-ok: chief kit is Linux-only
 v9611render --owed-dir "$bk" --chief-doc "$bk/$gd_stem.md"
 contains 'a holds file over 30 minutes old is named as unread' "$(grep -F 'data-section="waiting"' "$v9611out")" "pool holds unread: pool-holds-$gd_stem.json"

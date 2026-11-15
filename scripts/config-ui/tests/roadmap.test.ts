@@ -1756,6 +1756,9 @@ test("readOwed: the tick's pool-holds file adds the Blocked-on-you rows of the g
   utimesSync(join(state, `pool-holds-${stem}.json`), old, old);
   const aged = readOwed(env);
   expect(aged.state === "ok" && aged.unread).toEqual(["handoff items", "pool holds"]);
+  writeFileSync(join(state, `pool-holds-${stem}.json`), JSON.stringify({ rows: {} }));
+  const bad = readOwed(env);
+  expect(bad.state === "ok" && bad.unread).toEqual(["handoff items", "pool holds"]);
   rmSync(join(state, `pool-holds-${stem}.json`));
   const gone = readOwed(env);
   expect(gone.state === "ok" && gone.unread).toEqual(["handoff items", "pool holds"]);

@@ -748,9 +748,12 @@ hrows, hwhy = {}, ""
 if holds_on:
     try:
         hage = time.time() - os.path.getmtime(sys.argv[5])
-        hrows = {r["key"]: r for r in json.load(open(sys.argv[5])).get("rows") or []}
+        hd = json.load(open(sys.argv[5]))
+        hrows = {r["key"]: r for r in hd.get("rows") or []}
         if hage > 1800:
             hrows, hwhy = {}, "the holds file is %d min old" % (hage // 60)
+        elif (hd.get("release") or "") != sys.argv[4][3:]:
+            hrows, hwhy = {}, "the holds file was written for release %s" % hd.get("release")
     except FileNotFoundError:
         hwhy = "no holds file"
     except (OSError, ValueError, TypeError, KeyError, AttributeError):
@@ -1126,6 +1129,8 @@ if release:
         age = (now - datetime.datetime.fromisoformat(str(st["ts"]).replace("Z", "+00:00"))).total_seconds()
         if st.get("status") != "OK":
             why = "the release state is %s" % st.get("status")
+        elif st.get("release", release) != release:
+            why = "the release state file is for release %s" % st.get("release")
         elif age > 1800:
             why = "the release state file is %d min old" % (age // 60)
         else:
@@ -1187,7 +1192,7 @@ for key, (verb, rest, value) in (lines.items() if ledger.startswith("on:") else 
 
 mode = "on" if ledger.startswith("on:") else "off:no-ledger"
 body = {"ts": iso(now), "doc": os.path.abspath(doc), "mode": mode, "release": release, "rows": rows,
-        "prs": dict(sorted((prstate or {}).items(), key=lambda kv: int(kv[0])))}
+        "prs": None if prstate is None else dict(sorted(prstate.items(), key=lambda kv: int(kv[0])))}
 try:
     os.makedirs(os.path.dirname(out), exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(out), prefix="." + os.path.basename(out) + ".")
@@ -1347,7 +1352,7 @@ prstate, hold = None, {}
 try:
     if time.time() - os.path.getmtime(holds) <= 1800:
         hd = json.load(open(holds))
-        prstate = {str(k): v for k, v in (hd.get("prs") or {}).items()}
+        prstate = None if hd.get("prs") is None else {str(k): v for k, v in hd["prs"].items()}
         hold = {r["key"]: r for r in hd.get("rows") or [] if r.get("fired") or r.get("outside") is True}
 except (OSError, ValueError, TypeError, KeyError, AttributeError):
     prstate, hold = None, {}
@@ -1629,6 +1634,7 @@ if [ "$holds_mode" -eq 1 ]; then
     ph_stem="${DOC##*/}"
     ph_noread=0
     if holds_gh_paused; then export GH_READ_OFF=1; ph_noread=1; fi
+    export WORKERS
     pool_holds "$DOC" "$(holds_ledger "$DOC")" "${ph_state:-${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/release-state-${ph_stem%.md}.json}" \
         "$(pool_holds_file "$DOC")" "$ph_prs" "$WORKERS_FROM" "$REPO" "${TICK_GH_CMD:-$GH_READ_BIN}" "$ph_noread" "$root" "${ph_mirror:-${NEXT_DISPATCH_MIRROR:-}}" ""
     exit 0
@@ -3357,7 +3363,7 @@ def put(name, text):
 flag = lambda a: {True: "1", False: "0"}.get(a.get("asks_operator"), "?")
 put("rm-refused-%s.tsv" % stem, "".join("%s\t%s\t%s\t%s\n" % (clean(a.get("key")), clean(a.get("ruling")), clean(a.get("reason")), flag(a)) for a in asks))
 ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-put("release-state-%s.json" % stem, json.dumps({"ts": ts, "status": d.get("status"), "words_records": d.get("words_records") or [], "asks_operator_keys": d.get("asks_operator_keys") or []}) + "\n")
+put("release-state-%s.json" % stem, json.dumps({"ts": ts, "status": d.get("status"), "release": d.get("release"), "words_records": d.get("words_records") or [], "asks_operator_keys": d.get("asks_operator_keys") or []}) + "\n")
 if asks:
     print("%d:%s" % (len(asks), ",".join("%s@%s" % (clean(a.get("key")), clean(a.get("ruling"))) for a in asks if a.get("asks_operator") is True)))
 ' "$rf_dir" "$rf_stem" 2>/dev/null)" || rm_refused=""  # swallow-ok: an unparseable state or a failed write leaves the field off
@@ -3542,6 +3548,7 @@ pool_changed=skip
 residual_unversioned=skip
 if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
     ph_args=(--pool-holds --doc "$console_doc" --repo "$pr_repo" --mirror "$nd_mirror")
+    [ -z "$WORKERS" ] || ph_args+=(--workers "$WORKERS")
     [ -z "$WORKERS_FROM" ] || ph_args+=(--workers-from "$WORKERS_FROM")
     ph_tsv=""
     if [ -z "${pr_read_failed:-}" ]; then

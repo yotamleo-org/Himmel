@@ -1204,8 +1204,15 @@ same 'a slice naming a key is not a give-up line' "$(ph_unres "$ph_pdo" 54)" ''
 ph_holds > /dev/null; touch -d '31 minutes ago' "$ph_file"  # gnu-ok: chief kit is Linux-only
 contains 'an old holds file reads every give-up line unchecked' "$(ph_pd)" '# pool-unresolved unchecked HIMMEL-49 the holds file is 31 min old'
 ph_holds > /dev/null
-ph_mk 'pool-disposition: HIMMEL-49 question one more round authority=O-v1.1.3-0001' 'pool-disposition: HIMMEL-4 question operator decision 268 and more'
+ph_mk 'release: v1.1.3' 'pool-disposition: HIMMEL-49 question one more round authority=O-v1.1.3-0001' 'pool-disposition: HIMMEL-4 question operator decision 268 and more'
 contains 'a line changed since the holds run reads unchecked' "$(ph_pd)" '# pool-unresolved unchecked HIMMEL-4 the line changed since the holds run'
+ph_mk 'release: v1.1.4' 'pool-disposition: HIMMEL-49 question one more round authority=O-v1.1.3-0001' 'pool-disposition: HIMMEL-4 question operator decision 268 and more'
+contains 'a holds file written for another release reads unchecked' "$(ph_pd)" '# pool-unresolved unchecked HIMMEL-49 the holds file was written for release v1.1.3'
+jq '.release = "v1.1.2"' "$PH/state/release-state-$PH_STEM.json" > "$PH/state/rs.tmp" && mv "$PH/state/rs.tmp" "$PH/state/release-state-$PH_STEM.json"
+ph_mk 'release: v1.1.3' 'pool-disposition: HIMMEL-49 question one more round authority=O-v1.1.3-0001'
+ph_holds > /dev/null
+same 'a release state of another release reads authority unchecked' "$(ph_class 49)" unchecked
+ph_mk 'pool-disposition: HIMMEL-49 question one more round authority=O-v1.1.3-0001' 'pool-disposition: HIMMEL-4 question operator decision 268 and more'
 ph_holds > /dev/null
 same 'a doc with no release line in a declaring bucket reads unchecked' "$(ph_class 49)" unchecked
 contains 'and says why' "$(jq -r '.rows[] | select(.key == "HIMMEL-49") | .reason' "$ph_file")" 'the doc has no release: line'
@@ -1302,6 +1309,8 @@ same 'outside from the real read: a cross-repository PR with no watch row is out
 printf '{"schema":1,"workers":[],"watch":[{"pr":4761,"repo":""}]}\n' > "$PH/manifest.json"
 ph_wake --open-prs "$PH/open-prs.tsv" --workers-from "$PH/manifest.json" > /dev/null
 same 'outside from the real read: a watch row makes it a live wake' "$(ph_field 74 outside)" false
+ph_wake --open-prs "$PH/open-prs.tsv" --workers 'HIMMEL-901-N1-x-2026-11-15.md' > /dev/null
+same 'done: on a key a --workers worker holds is handled' "$(ph_class 63)" wake
 printf '{"schema":1,"workers":[{"doc":"HIMMEL-901-N1-x-2026-11-15.md"}]}\n' > "$PH/manifest.json"
 ph_wake --open-prs "$PH/open-prs.tsv" --workers-from "$PH/manifest.json" > /dev/null
 same 'done: on a key a worker holds is handled' "$(ph_class 63)" wake

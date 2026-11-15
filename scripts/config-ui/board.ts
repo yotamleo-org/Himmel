@@ -245,7 +245,9 @@ function poolHoldItems(doc: string, open: Map<string, string>, env: Env): OwedIt
   let rows: HoldRow[];
   try {
     if (Date.now() - statSync(file).mtimeMs > HOLDS_TTL_MS) return undefined;
-    const got = JSON.parse(readText(file)); rows = Array.isArray(got?.rows) ? got.rows : [];
+    const got = JSON.parse(readText(file));
+    if (!Array.isArray(got?.rows)) throw new Error("the pool-holds file holds no rows list");
+    rows = got.rows;
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw e;

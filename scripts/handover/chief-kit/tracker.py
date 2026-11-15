@@ -1598,7 +1598,9 @@ def pool_hold_items(chief_doc, opn):
     try:
         if time.time() - os.path.getmtime(path) > 1800:
             return [], [os.path.basename(path)]
-        rows = json.load(open(path, encoding='utf-8')).get('rows') or []
+        rows = json.load(open(path, encoding='utf-8')).get('rows')
+        if not isinstance(rows, list):
+            raise ValueError('no rows list')
     except (OSError, ValueError, AttributeError):
         return [], [os.path.basename(path)]
     lines = {}

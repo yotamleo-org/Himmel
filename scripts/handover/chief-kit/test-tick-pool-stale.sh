@@ -512,6 +512,9 @@ check 'no holds file: key targets still judged, PR targets and wake= lines ?' '1
 check 'no holds file: residual-unversioned= still printed' 1 "$(printf '%s\n' "$hn" | grep -c '^residual-unversioned=[0-9]')"
 write_holds "$d" '[]' '{"5001":"MERGED"}'; touch -d '31 minutes ago' "$TICK_STATE_DIR/pool-holds-hs-none.json"  # gnu-ok: chief kit is Linux-only
 check 'an old holds file reads its PR targets ?' '1:HIMMEL-161,?' "$(real_field pool-stale "$d")"
+d="$(doc hs-unread "$pd $hk-164 hold on the merge wake=pr:4999")"
+write_holds "$d" '[]' 'null'
+check 'a holds file whose PR read failed reads a wake line ?, never an all-clear' '?' "$(real_field pool-stale "$d")"
 
 hp="$WORK/hp"; mkdir -p "$hp/rel/v1.1.3" "$hp/state"; printf '{}\n' > "$hp/rel/v1.1.3/release.json"
 d="$hp/HIMMEL-nextleg-2026-11-15HP-roadmap-chief.md"
