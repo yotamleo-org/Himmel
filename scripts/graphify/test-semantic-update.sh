@@ -124,7 +124,6 @@ if [ -n "\${GRAPHIFY_STUB_CALL_CLAUDE:-}" ] && [ "\$1" = extract ] && { [ -z "\$
       || echo "claude-shim-rc=\$?" >> "$WS/calls.log"
   done
   if [ -n "\${GRAPHIFY_STUB_PARALLEL:-}" ]; then
-    # every call has either reached the lane (held at LANE_STUB_GATE) or been refused before the gate opens
     for _ in \$(seq 200); do
       [ "\$(( \$(grep -c '^lane ' "$WS/calls.log") + \$(grep -c '^claude-shim-rc=' "$WS/calls.log") ))" -lt "\$calls_n" ] || break
       sleep 0.05
@@ -165,7 +164,7 @@ for dp, dn, fn in os.walk(root):
         if rel in ignored:
             continue  # graphify honours .graphifyignore: no nodes for an ignored file
         if rel == os.environ.get("GRAPHIFY_STUB_SKIP") or rel in dropped:
-            continue  # the model omitted this file, or its call failed: no nodes for it
+            continue
         src = full  # absolute, as a scratch extraction may write it: the merge normalizes it
         label = open(full).read().strip().splitlines()[0]
         nid = "sem_" + rel.replace("/", "_") + "_" + label.replace(" ", "_")
@@ -716,10 +715,7 @@ for rel in documents explains rationale_for; do
 done
 
 stamped() { python3 -c 'import json,sys;print(" ".join(sorted(json.load(open(sys.argv[1]))["files"])))' "$1/graphify-out/semantic-manifest.json"; }
-# The synchronous cap is the batch path's rule: a call is not sent when verified spend + reserved budgets + its own
-# per-call budget (1.00 by default) would pass the run cap; reaching it exactly still sends.
 echo "T48: a call that would pass the run cap is not sent; the run ends over-cap with the finished chunks merged"
-# 0.60 a call, cap 1.60: a.md (0 + 1.00) and b.md (0.60 + 1.00, reaches the cap) are sent, sub/c.md (1.20 + 1.00) is not
 C48="$WS/c48"; new_corpus "$C48"; : > "$WS/calls.log"; : > "$WS/claude.out"
 out=$(LANE_STUB_COST=0.60 GRAPHIFY_STUB_DROP_FAILED=1 GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t48 --corpus-root "$C48" --corpus-class himmel-code --backend claude-api --max-run-usd 1.60 --result-file "$WS/t48.result"); rc=$?
 [ "$(grep -c '^lane ' "$WS/calls.log")" -eq 2 ] && pass "T48 two calls sent, the third not" || fail "T48 lane calls: $(grep -c '^lane ' "$WS/calls.log") (rc=$rc)"
@@ -736,7 +732,6 @@ ids48=" $(ids "$C48") "
 [ "$(lastrun "$C48" cost_usd)" = "1.2" ] && pass "T48 the run row counts only verified cost" || fail "T48 row: $(tail -1 "$C48/graphify-out/semantic-runs.jsonl")"
 
 echo "T48b: calls in flight count against the cap: parallel calls reserve their budget before they are sent"
-# five calls start together and are held at the lane until each was sent or refused: 1.00 and 2.00 fit 2.50, 3.00 does not
 C48B="$WS/c48b"; new_corpus "$C48B"; : > "$WS/calls.log"; : > "$WS/claude.out"; rm -f "$WS/lane-go"
 out=$(LANE_STUB_COST=0.60 LANE_STUB_GATE="$WS/lane-go" GRAPHIFY_STUB_PARALLEL=1 GRAPHIFY_STUB_CALL_N=5 GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t48b --corpus-root "$C48B" --corpus-class himmel-code --backend claude-api --max-run-usd 2.50); rc=$?
 [ "$(grep -c '^lane ' "$WS/calls.log")" -eq 2 ] && [ "$(grep -c '^claude-shim-rc=7$' "$WS/calls.log")" -eq 3 ] \
@@ -754,7 +749,6 @@ grep -q 'run spend cap' "$WS/claude.out" || [[ "$out" == *over-cap* ]] && fail "
 [ "$(stamped "$C48C")" = "a.md b.md sub/c.md" ] && [ "$(lastrun "$C48C" cost_usd)" = "1.8" ] && pass "T48c every file stamped, the full cost on the row" || fail "T48c stamped $(stamped "$C48C"): $(tail -1 "$C48C/graphify-out/semantic-runs.jsonl")"
 
 echo "T48d: a failed chunk that is not a cap refusal still ends rc 5"
-# every call fails unpriced and reserves 1.00: a.md and b.md fail, sub/c.md (2.00 + 1.00 over 2.50) is refused
 C48D="$WS/c48d"; new_corpus "$C48D"; : > "$WS/calls.log"; : > "$WS/claude.out"
 out=$(LANE_STUB_FAIL=1 GRAPHIFY_STUB_DROP_FAILED=1 GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t48d --corpus-root "$C48D" --corpus-class himmel-code --backend claude-api --max-run-usd 2.50 --result-file "$WS/t48d.result"); rc=$?
 [ "$rc" -eq 5 ] && [ "$(head -1 "$WS/t48d.result")" = partial ] && [ "$(grep -c '^claude-shim-rc=7$' "$WS/calls.log")" -eq 1 ] \

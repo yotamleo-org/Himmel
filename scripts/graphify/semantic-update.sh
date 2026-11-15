@@ -652,10 +652,6 @@ if [ "${GRAPHIFY_API_SYSTEM_PROMPT:-}" = 1 ] && [ -n "$mark" ] && [ "$mark" -gt 
     && system_args=(--append-system-prompt-file "$system")
   rm -f "$candidate"
 fi
-# The run cap holds before dispatch, by the batch path's rule: a call is not sent when the verified spend, the budgets
-# reserved by failed calls and by the calls still in flight, plus this call's own per-call budget, would pass the cap
-# (reaching it still sends). Calls run in parallel, so the check and this call's in-flight reservation are one step
-# under a lock, and the settle below swaps the reservation for the call's outcome under the same lock.
 # shellcheck source=/dev/null
 . "$GRAPHIFY_SEMANTIC_PRIM" || { rm -f "$in"; echo "claude-api shim: cannot load the lock primitive; not dispatching this chunk" >&2; exit 2; }
 held="$here/inflight.$$"
@@ -674,7 +670,6 @@ cap_reserve() {
   echo "$GRAPHIFY_SEMANTIC_LANE_BUDGET" > "$held"
 }
 with_lock "$here/cap.lock" cap_reserve; crc=$?
-# exit 7 is the cap refusal alone (the lane never exits 7); semantic-update.sh counts the refusals in `capped`
 if [ "$crc" -eq 7 ]; then rm -f "$in"; echo capped >> "$here/capped"; exit 7; fi
 [ "$crc" -eq 0 ] || { rm -f "$in"; echo "claude-api shim: the run cap check failed (rc $crc); not dispatching this chunk" >&2; exit 2; }
 if [ "${#system_args[@]}" -gt 0 ]; then
@@ -701,7 +696,7 @@ settle() {
     grep -Eq '^claude-api: (refused: |account .* (credit exhausted|API key rejected))' "$err" || echo "$GRAPHIFY_SEMANTIC_LANE_BUDGET" >> "$GRAPHIFY_SEMANTIC_RESERVE_FILE"
   elif [ "$rc" -eq 6 ]; then echo rejected >> "$here/rejected"
   elif [ "$rc" -eq 2 ] && [ ! -s "$out" ] && grep -q '^claude-api: refused: ' "$err"; then :
-  elif [ -n "$cost" ]; then echo "$cost" >> "$GRAPHIFY_SEMANTIC_SPEND_FILE"; else echo "$GRAPHIFY_SEMANTIC_LANE_BUDGET" >> "$GRAPHIFY_SEMANTIC_RESERVE_FILE"; fi
+  elif [ -n "$cost" ]; then echo "$cost" >> "$GRAPHIFY_SEMANTIC_SPEND_FILE"; else echo "$GRAPHIFY_SEMANTIC_LANE_BUDGET" >> "$GRAPHIFY_SEMANTIC_RESERVE_FILE"; fi || return
   rm -f "$held"
 }
 with_lock "$here/cap.lock" settle
@@ -834,8 +829,6 @@ if [ "$RESUME" -eq 1 ]; then batch_line merged "$(batch_field cost_usd)"; fi
 [ "$BATCH_MODE" -eq 0 ] || rm -rf "$PENDING"
 RESULT_WORD=extracted
 if [ "$RESUME" -eq 1 ] || [ "$N_BATCH" -eq 0 ] || [ "$BATCH_MODE" -eq 1 ]; then RESULT_WORD=merged; fi
-# A chunk the shim refused at the run cap was never sent: the finished chunks merged above, the refused files stay
-# unstamped, and the run ends over-cap as the batch path does. A chunk that failed for another reason ends partial.
 CAPPED=0; [ ! -f "$WORK/bin/capped" ] || CAPPED="$(wc -l < "$WORK/bin/capped" | tr -d ' ')"
 _failed_n="${FAILED_CHUNKS%%/*}"
 if [ "$CAPPED" -gt 0 ] && [ "${_failed_n:-0}" -le "$CAPPED" ]; then
