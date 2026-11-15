@@ -120,6 +120,75 @@ check 'A7. every call was gh api' 0 "$(grep -vc '^api ' "$S/gh.log")"
 : > "$S/gh.log"; "$S/gh" api graphql -f query=x >/dev/null 2>&1
 check 'A7. control: a GraphQL argument is a VIOLATION in the stub' 1 "$(grep -c VIOLATION "$S/gh.log")"
 
+# ---- C: the watch reads ride the read token
+# CHIEF_WAIT_GH is unset in every C row, so the seam default is the real caller path: the helper.
+# A fixture root holds the only read token; the ambient tokens and the keyring are closed.
+READTOK=ghp_READTOKEN0123456789
+mkdir -p "$S/tt" "$S/root" "$S/emptyroot"
+printf 'himmel_github_token_vm2=%s\n' "$READTOK" > "$S/root/.env"; : > "$S/emptyroot/.env"
+ln -s "$HERE/fixtures/gh-two-token-stub.sh" "$S/tt/gh"
+unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
+export HIMMEL_SECRETS_KEYRING=off
+# wrun <inbox> <manifest> <secs> <out> [VAR=val ...] [-- chief-wait args ...]
+wrun() {
+    local inbox="$1" m="$2" secs="$3" out="$4" ev=(); shift 4
+    while [ "$#" -gt 0 ] && [ "$1" != -- ]; do ev+=("$1"); shift; done
+    [ "$#" -eq 0 ] || shift
+    mkdir -p "$(dirname "$inbox")"; : > "$inbox"
+    env -u CHIEF_WAIT_GH \
+    CHIEF_WAIT_TICK="$S/tick.sh" CHIEF_WAIT_USAGE="$S/bank.sh" CHIEF_WAIT_INTERVAL=1 CHIEF_WAIT_POLL_SEC=0.2 \
+    CHIEF_WAIT_DISPATCH="$S/no-dispatch.sh" CHIEF_WAIT_FAIL_WAKE=1000 CHIEF_WAIT_BUDGET="$S/budget.sh" \
+    WAIT_SWEEP_CMD="$S/off.sh" WAIT_FOCUS_CMD="$S/off.sh" CHIEF_WAIT_PAGE_CMD="$S/off.sh" \
+    CHIEF_WAIT_PR_WATCH_SEC=0 HIMMEL_DENIAL_ACK_DIR="$W/acks" \
+    ${ev[@]+"${ev[@]}"} timeout -k 2 "$secs" bash "$WAIT" "$inbox" --workers-from "$m" "$@" > "$out" 2>"$out.err"
+}
+gh_state "$H2" 2 1 1
+M5="$S/tt.fleet.json"; bash "$FM" add "$M5" --lane native "$wd" >/dev/null 2>&1
+bash "$FM" watch "$M5" add 77 --head "$H1" --comments 3 --reviews 1 >/dev/null 2>&1
+: > "$S/tt.log"
+wrun "$S/in9/consoles/c.md" "$M5" 8 "$S/o12" PATH="$S/tt:$PATH" GHLOG="$S/tt.log" GH_STUB_DELEGATE="$S/gh" GH_STUB_READ_TOKEN="$READTOK" GH_READ_ENV_ROOT="$S/root" GH_STUB_MAINFAIL=rate; rc=$?
+check 'C1. spent main token, CHIEF_WAIT_GH unset: the watch still wakes on the new head' "0 1" "$rc $(grep -c '^WAKE pr-watch 77 .*head 1111111' "$S/o12")"
+check 'C1. the pull request read logged tok=read' 1 "$(grep -c '^tok=read argv=api repos/{owner}/{repo}/pulls/77$' "$S/tt.log")"
+check 'C1. the reviews read logged tok=read' 1 "$(grep -c '^tok=read argv=api repos/{owner}/{repo}/pulls/77/reviews' "$S/tt.log")"
+check 'C1. no watch read logged tok=main' 0 "$(grep -c '^tok=main argv=api repos/' "$S/tt.log")"
+M6="$S/ttc.fleet.json"; bash "$FM" add "$M6" --lane native "$wd" >/dev/null 2>&1
+bash "$FM" watch "$M6" add 77 --head "$H1" --comments 3 --reviews 1 >/dev/null 2>&1
+: > "$S/tt.log"
+wrun "$S/in10/consoles/c.md" "$M6" 8 "$S/o13" PATH="$S/tt:$PATH" GHLOG="$S/tt.log" GH_STUB_DELEGATE="$S/gh" GH_STUB_READ_TOKEN="$READTOK" GH_READ_ENV_ROOT="$S/emptyroot"; rc=$?
+check 'C2. control: no read token, main healthy: the watch wakes' "0 1" "$rc $(grep -c '^WAKE pr-watch 77 .*head 1111111' "$S/o13")"
+check 'C2. control: the pull request and reviews reads logged tok=main' 2 "$(grep -c '^tok=main argv=api repos/{owner}/{repo}/pulls/77' "$S/tt.log")"
+
+# child env: the waiter's gate-launching children see no GH_READ_ knob it added. The rows run from an env
+# with none set and no read token configured, the case where a gh_read_init would have exported GH_READ_QUIET.
+printf '#!/usr/bin/env bash\nenv > "$S/env.$(basename "$0" .sh)"\n' > "$S/envsg.sh"
+cp "$S/envsg.sh" "$S/envwe.sh"; cp "$S/envsg.sh" "$S/envrc.sh"; cp "$S/envsg.sh" "$S/envci.sh"; cp "$S/envsg.sh" "$S/envdisp.sh"
+printf 'echo "SILENT-WORKER-MERGE N1 pr=1 head=%s: merged"\n' "$H1" >> "$S/envsg.sh"
+printf 'echo "ESCALATE marker-READY"; exit 10\n' >> "$S/envwe.sh"
+printf 'printf "[PASS] 7. coverage\\nTRUST-PATH: no\\nREADY-CHECK PASS\\n"\n' >> "$S/envrc.sh"
+printf 'echo GREEN\n' >> "$S/envci.sh"
+printf 'echo "DISPOSITION PASS"\n' >> "$S/envdisp.sh"
+chmod +x "$S"/env*.sh
+knobs() { grep -c '^GH_READ_\(NO_MAIN_FALLBACK\|QUIET\|OFF\|TIMEOUT\|REFUSED_FILE\)=' "$1" 2>/dev/null; }
+rm -f "$S"/env.env*
+: > "$S/chief.md"
+wrun "$S/in11/consoles/c.md" "$M6" 8 "$S/o14" GH_READ_ENV_ROOT="$S/emptyroot" CHIEF_WAIT_SILENT_GO="$S/envsg.sh" -- --doc "$S/chief.md"; rc=$?
+check 'C3. the silent-go child ran and the waiter woke on it' "0 1" "$rc $(grep -c '^WAKE silent-go' "$S/o14")"
+check 'C3. the silent-go child saw no GH_READ_ knob' 0 "$(knobs "$S/env.envsg")"
+rm -f "$S/env.envsg"
+wrun "$S/in12/consoles/c.md" "$M6" 8 "$S/o15" GH_READ_ENV_ROOT="$S/emptyroot" CHIEF_WAIT_SILENT_GO="$S/envsg.sh" GH_READ_NO_MAIN_FALLBACK=1 -- --doc "$S/chief.md"
+check 'C3. control: a knob in the waiter env reaches the child (the env dump is not vacuous)' 1 "$(knobs "$S/env.envsg")"
+# READY on a worker with auto_go off: the dry-run relay (CHIEF_WAIT_WORKER_EVENT) and the ready-check child
+HA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+printf 'auto_go\toff\tfeature\tHIMMEL-8349\tHIMMEL-8404\t2099-01-01\tfixture\n' > "$S/flags.tsv"
+wd2="$S/HIMMEL-2-N2-b.md"; printf '# worker\n\n## Results\n- 09:00 LIVE — started\n- 10:00 READY 2566 %s GREEN\n' "$HA" > "$wd2"
+M7="$S/ready.fleet.json"; bash "$FM" add "$M7" --lane native "$wd2" >/dev/null 2>&1
+mkdir -p "$S/in13/consoles"; printf 'N2\t0\n' > "$S/in13/consoles/c.md.wait.ready"
+wrun "$S/in13/consoles/c.md" "$M7" 12 "$S/o16" GH_READ_ENV_ROOT="$S/emptyroot" HIMMEL_FLAGS_TSV="$S/flags.tsv" HIMMEL_CONFIG_DIR="$S/no-conf" \
+    CHIEF_WAIT_WORKER_EVENT="$S/envwe.sh" CHIEF_WAIT_READY_CHECK="$S/envrc.sh" CHIEF_WAIT_CI="$S/envci.sh" CHIEF_WAIT_DISPOSITION="$S/envdisp.sh" -- --doc "$S/chief.md"; rc=$?
+check 'C4. the READY reached the worker-event and ready-check children' "0 1 1 1" "$rc $(grep -c '^WAKE ready 2566' "$S/o16") $([ -s "$S/env.envwe" ] && echo 1) $([ -s "$S/env.envrc" ] && echo 1)"
+check 'C4. the worker-event child saw no GH_READ_ knob' 0 "$(knobs "$S/env.envwe")"
+check 'C4. the ready-check child saw no GH_READ_ knob (no GH_READ_NO_MAIN_FALLBACK)' 0 "$(knobs "$S/env.envrc")"
+
 hold_cases() {
     local stamp out
     export WORKERS=HIMMEL-111-legN61

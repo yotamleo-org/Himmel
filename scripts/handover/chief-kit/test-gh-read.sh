@@ -155,7 +155,19 @@ done
 run_gh_read "$W/root" pr view 12
 lacks "B2 the token is not in argv" "$READTOK" "$(sed 's/^tok=[^ ]* //' "$GHLOG")"
 lacks "B2b the token is not in the stderr" "$READTOK" "$(cat "$W/err")"
-for f in scripts/check-ci.sh scripts/handover/chief-kit/go.sh scripts/handover/chief-kit/ready-check.sh scripts/handover/chief-kit/tick.sh; do
+for f in scripts/check-ci.sh scripts/handover/chief-kit/go.sh scripts/handover/chief-kit/ready-check.sh scripts/handover/chief-kit/tick.sh \
+        scripts/handover/arm-resume.sh scripts/handover/generate-morning-briefing.sh scripts/handover/merge-fork-pr.sh \
+        scripts/handover/merge-forward-check.sh scripts/handover/merge-on-green.sh scripts/handover/pr-merge.sh \
+        scripts/handover/chief-kit/auto-go.sh scripts/handover/chief-kit/board.mjs scripts/handover/chief-kit/cancel-runs.sh \
+        scripts/handover/chief-kit/chain-graph.py scripts/handover/chief-kit/chain-plan-core.sh scripts/handover/chief-kit/chief-wait.sh \
+        scripts/handover/chief-kit/cloud-liveness.mjs scripts/handover/chief-kit/cr-disposition.sh scripts/handover/chief-kit/cut-tag.sh \
+        scripts/handover/chief-kit/fleet.mjs scripts/handover/chief-kit/focus-refresh.sh scripts/handover/chief-kit/gen-briefs.py \
+        scripts/handover/chief-kit/grant-round.sh scripts/handover/chief-kit/handoff-facts.sh scripts/handover/chief-kit/holds.py \
+        scripts/handover/chief-kit/model-check-report.sh scripts/handover/chief-kit/orphan-pr-check.sh scripts/handover/chief-kit/pr-stall.sh \
+        scripts/handover/chief-kit/ready-go.sh scripts/handover/chief-kit/series-next.sh scripts/handover/chief-kit/series-publish.sh \
+        scripts/handover/chief-kit/shepherd.sh scripts/handover/chief-kit/station-sync.sh scripts/handover/chief-kit/status-drift.sh \
+        scripts/handover/chief-kit/status-sweep.sh scripts/handover/chief-kit/stuck-scan.sh scripts/handover/chief-kit/tracker.py \
+        scripts/handover/chief-kit/verdict-retention.sh scripts/handover/chief-kit/wrap-merged.sh; do
     if grep -q 'gh_read\|gh-read.sh\|GH_READ' "$REPO/$f"; then pass "B3 $f routes its reads through the helper"; else fail "B3 $f does not use the helper"; fi
 done
 # ready-check: its first read (repo view) rides the read token end to end
@@ -332,6 +344,299 @@ leaked() { # <file>
 check "F4 every token the F and N rows handed gh or printed is a fixture" "" "$(leaked "$W/seen")"
 printf 'tok=ghp_NOTAFIXTURE0123456789\n' > "$W/leak-probe"
 check "F4b control: a non-fixture token is reported" "ghp_NOTAFIXTURE0123456789 " "$(leaked "$W/leak-probe")"
+
+# ---- F0: the DoD fence — no read-shaped gh call under scripts/handover is left on the main token ----
+# The scanner (python3 -I) reads the git-tracked files of scripts/handover minus tests, fixtures and docs. A hit is a
+# command-position gh (or a variable that holds plain gh) before a read verb, or a 'gh' literal in a .py/.mjs file; it passes
+# only with `gh-main-ok: <why>` on its line. The control rows run it over one-line trees, both directions.
+cat > "$W/f0.py" <<'F0PY'
+import re, sys, os
+
+# F0: every read-shaped gh call under scripts/handover goes through the read helper, or says why not.
+# usage: python3 -I f0.py <root>   (file paths relative to <root>, one per line, on stdin)
+ROOT = sys.argv[1]
+MARK = 'gh-main-ok:'
+VERBS = r'(?:pr\s+(?:view|list|checks|status|diff)|repo\s+view|run\s+(?:list|view)|issue\s+(?:view|list)|api)\b'
+ARG = r'(?:-\S+|\d+[smhd]?|\$\{?\w+\}?|Q)'
+WRAP = r'(?:timeout|bounded|env|command|nice|nohup|exec|time|\$_TIMEOUT_BIN|\$\{_TIMEOUT_BIN[^}]*\})'
+PREFIX = r'(?:(?:\w+=\S*|' + WRAP + r'(?:\s+' + ARG + r')*)\s+)*'
+START = r'(?:^|\$\(|\|\||\||&&|;|!|\(|\{|\b(?:then|do|else|if|elif|while|until)\b)\s*'
+GH_HIT = re.compile(START + PREFIX + r'gh\s+(' + VERBS + r')')
+
+
+def wanted(path):
+    base = os.path.basename(path)
+    if not path.endswith(('.sh', '.py', '.mjs')):
+        return False
+    if '/fixtures/' in path or '/testdata/' in path or base.startswith('test-') or '-test-' in base:
+        return False
+    return True
+
+
+def blank_heredocs(lines):
+    out, end = [], None
+    for ln in lines:
+        if end is not None:
+            if ln.strip() == end:
+                end = None
+            out.append('')
+            continue
+        out.append(ln)
+        m = re.search(r'<<-?\s*([\'"]?)([A-Za-z_]\w*)\1', ln)
+        if m and '<<<' not in ln:
+            end = m.group(2)
+    return out
+
+
+def mask_text(text):
+    """-> (masked text, {line: comment column}); same line count as the input."""
+    out, cuts = [], {}
+    st, i, n, line = ['c'], 0, len(text), 0
+    while i < n:
+        ch, top = text[i], st[-1]
+        if ch == '\n':
+            out.append('\n'); line += 1; i += 1
+            continue
+        if top == 'd':
+            if ch == '\\':
+                i += 2 if text[i + 1:i + 2] != '\n' else 1
+                continue
+            if ch == '"':
+                st.pop(); i += 1; continue
+            if text.startswith('$(', i):
+                st.append('p'); out.append('$('); i += 2; continue
+            i += 1
+            continue
+        if ch == '#' and (i == 0 or text[i - 1] in ' \t;&|(\n'):
+            j = text.find('\n', i)
+            j = n if j < 0 else j
+            cuts[line] = i - (text.rfind('\n', 0, i) + 1)
+            i = j
+            continue
+        if ch == '\\':
+            out.append(text[i:i + 2]); line += text[i:i + 2].count('\n'); i += 2
+            continue
+        if ch == "'":
+            j = text.find("'", i + 1)
+            j = n - 1 if j < 0 else j
+            out.append('Q' + '\n' * text[i:j].count('\n')); line += text[i:j].count('\n'); i = j + 1
+            continue
+        if ch == '`':
+            j = text.find('`', i + 1)
+            j = n - 1 if j < 0 else j
+            out.append('Q' + '\n' * text[i:j].count('\n')); line += text[i:j].count('\n'); i = j + 1
+            continue
+        if ch == '"':
+            m = re.match(r'"(\$\{?\w+\}?)"', text[i:])
+            if m:
+                out.append(m.group(1).replace('{', '').replace('}', '')); i += m.end(); continue
+            st.append('d'); out.append('Q'); i += 1
+            continue
+        if text.startswith('$(', i):
+            st.append('p'); out.append('$('); i += 2; continue
+        if ch == ')' and top == 'p':
+            st.pop(); out.append(')'); i += 1; continue
+        out.append(ch); i += 1
+    return ''.join(out), cuts
+
+
+def normalise(text):
+    text = re.sub(r'"\$\{\w+:-gh\}"', 'gh', text)
+    return re.sub(r'\$\{\w+:-gh\}', 'gh', text)
+
+
+def api_is_read(tokens):
+    graphql = field = 0
+    prev = ''
+    for a in tokens:
+        if prev in ('-X', '--method') and a != 'GET':
+            return False
+        if a in ('--input',) or a.startswith('--input=') or '=@' in a:
+            return False
+        if a == 'graphql':
+            graphql = 1
+        elif a in ('-f', '-F', '--field', '--raw-field') or re.match(r'^(-f|-F).', a) or a.startswith(('--field=', '--raw-field=')):
+            field = 1
+        elif a in ('-XGET', '--method=GET'):
+            pass
+        elif re.match(r'^-X.', a) or a.startswith('--method='):
+            return False
+        elif 'mutation' in a:
+            return False
+        prev = a
+    return field == 0 or graphql == 1
+
+
+def tokens_after(plain, pos):
+    """words of the command that starts at pos (quotes stripped), up to an unquoted control operator."""
+    toks, cur, q, depth = [], '', None, 0
+    i, s = pos, plain
+    while i < len(s):
+        c = s[i]
+        if q:
+            if c == q:
+                q = None
+            else:
+                cur += c
+        elif c in '\'"':
+            q = c
+        elif c == '$' and s[i + 1:i + 2] == '(':
+            depth += 1; cur += '$('; i += 1
+        elif c == ')':
+            if depth == 0:
+                break
+            depth -= 1; cur += c
+        elif c in ';|&<>' and depth == 0:
+            break
+        elif c in ' \t':
+            if cur:
+                toks.append(cur); cur = ''
+        else:
+            cur += c
+        i += 1
+    if cur:
+        toks.append(cur)
+    return toks
+
+
+def verb_is_read(plain_line, verb_start):
+    toks = tokens_after(plain_line, verb_start)
+    if toks and toks[0] == 'api':
+        return api_is_read(toks[1:])
+    return True
+
+
+def logical_lines(masked_lines, raw_lines):
+    """-> [(first line index, masked text, raw text)] with backslash continuations joined."""
+    out, i = [], 0
+    while i < len(masked_lines):
+        j, m, r = i, masked_lines[i], raw_lines[i]
+        while m.rstrip().endswith('\\') and j + 1 < len(masked_lines):
+            j += 1
+            m = m.rstrip()[:-1] + ' ' + masked_lines[j]
+            r = r + '\n' + raw_lines[j]
+        out.append((i, m, r))
+        i = j + 1
+    return out
+
+
+def scan_shell(path, text):
+    hits = []
+    raw_lines = text.split('\n')
+    text = '\n'.join(blank_heredocs(raw_lines))
+    norm = normalise(text)
+    masked, cuts = mask_text(norm)
+    mlines, nlines = masked.split('\n'), norm.split('\n')
+    plain = [(l[:cuts[k]] if k in cuts else l) for k, l in enumerate(nlines)]
+    # variables that hold plain gh (not the `[ -f "$V" ] || V=gh` fallback), minus any the file also points at the helper
+    plain_vars, helper_vars = set(), set()
+    for k, l in enumerate(plain):
+        for m in re.finditer(r'(?:^|[\s;(])(\w+)=(["\']?)gh\2(?=\s|;|\)|$)', l):
+            if not re.search(r'\|\|\s*$', l[:m.start(1)]):
+                plain_vars.add(m.group(1))
+        for m in re.finditer(r'(?:^|[\s;(])(\w+)=("?)[^\s;]*(?:gh-read\.sh|\$\{?GH_READ_\w+)', l):
+            helper_vars.add(m.group(1))
+    plain_vars -= helper_vars
+    var_hit = None
+    if plain_vars:
+        names = '|'.join(re.escape(v) for v in sorted(plain_vars))
+        var_hit = re.compile(START + PREFIX + r'\$\{?(?:' + names + r')\}?\s+(' + VERBS + r')')
+    for k, m, r in logical_lines(mlines, raw_lines):
+        if MARK in r:
+            continue
+        joined = ' '.join(plain[k:k + r.count('\n') + 1])
+        apis = [x.start(1) for x in re.finditer(r'(?:\bgh|"?\$\{?\w+\}?"?)\s+(api)\b', joined)]
+        ms = []
+        for rx in (GH_HIT, var_hit):
+            if rx is not None:
+                ms += list(rx.finditer(m))
+        ms.sort(key=lambda x: x.start())
+        n_api = 0
+        for mm in ms:
+            if mm.group(1) == 'api':
+                pos = apis[n_api] if n_api < len(apis) else None
+                n_api += 1
+                if pos is not None and not verb_is_read(joined, pos):
+                    continue
+            hits.append((path, k + 1, raw_lines[k].strip()))
+            break
+    return hits
+
+
+def scan_script(path, text):
+    """.py / .mjs: a 'gh' literal used as a command or a seam default."""
+    hits = []
+    cmt = '#' if path.endswith('.py') else '//'
+    for k, ln in enumerate(text.split('\n')):
+        if MARK in ln:
+            continue
+        code, q, i = '', None, 0
+        while i < len(ln):
+            c = ln[i]
+            if q:
+                code += c
+                if c == '\\':
+                    code += ln[i + 1:i + 2]; i += 1
+                elif c == q:
+                    q = None
+            elif c in '\'"`':
+                q = c; code += c
+            elif ln.startswith(cmt, i) and not (cmt == '//' and ln[i - 1:i] == ':'):
+                break
+            else:
+                code += c
+            i += 1
+        if re.search(r'''(?<![\w.-])(['"])gh\1(?![\w.-])''', code) and not re.search(r'existsSync|isfile|\.exists\(|is_file', code):
+            hits.append((path, k + 1, ln.strip()))
+    return hits
+
+
+def main():
+    hits = []
+    for path in sys.stdin.read().split('\n'):
+        path = path.strip()
+        if not path or not wanted(path):
+            continue
+        with open(os.path.join(ROOT, path), encoding='utf-8', errors='replace') as fh:
+            text = fh.read()
+        hits += scan_shell(path, text) if path.endswith('.sh') else scan_script(path, text)
+    for path, k, ln in hits:
+        print('%s:%d: %s' % (path, k, ln[:160]))
+
+
+main()
+F0PY
+f0_hits() { # <ext> <content> -> the number of hit lines over a one-file tree
+    rm -rf "$W/f0t"; mkdir -p "$W/f0t/scripts/handover"
+    printf '%s\n' "$2" > "$W/f0t/scripts/handover/ctl.$1"
+    printf 'scripts/handover/ctl.%s\n' "$1" | python3 -I "$W/f0.py" "$W/f0t" 2>/dev/null | grep -c .
+}
+f0_row() { check "F0 $2" "$1" "$(f0_hits "$3" "$4")"; }
+f0_row 1 'control: timeout -k 2 30 gh pr list is a hit' sh 'timeout -k 2 30 gh pr list --state open'
+f0_row 1 'control: bounded 30 gh api x is a hit' sh 'bounded 30 gh api x'
+f0_row 1 'control: x=$(gh repo view) is a hit' sh 'x=$(gh repo view --json name)'
+f0_row 1 'control: "${GH_CMD:-gh}" pr view is a hit' sh '"${GH_CMD:-gh}" pr view 1'
+f0_row 1 'control: a variable set from ${X:-gh} then used on pr view is a hit' sh $'GH="${X_GH:-gh}"\n"$GH" pr view 1'
+f0_row 1 'control: GH="gh" then an api rulesets read is a hit' sh $'GH="gh"\n"$GH" api repos/o/r/rulesets/1'
+f0_row 1 'control: execFileSync(gh, [pr, list]) is a hit' mjs "execFileSync('gh', ['pr','list'])"
+f0_row 1 "control: os.environ.get('X') or 'gh' is a hit" py "gh = os.environ.get('X') or 'gh'"
+f0_row 0 'control: gh named in an echoed message is no hit' sh 'echo "(gh repo view failed)"'
+f0_row 0 'control: gh named in backticks inside a quoted printf is no hit' sh $'printf -- \'query via `gh pr list`\\n\''
+f0_row 0 'control: gh named in a comment is no hit' sh '# gh pr list'
+f0_row 0 'control: "$GH_READ_BIN" pr view is no hit' sh '"$GH_READ_BIN" pr view 1'
+f0_row 0 'control: gh pr merge is no hit' sh 'gh pr merge 1 --squash'
+f0_row 0 'control: a POST api call is no hit' sh 'gh api -X POST repos/o/r/issues/1/comments -f body=x'
+f0_row 0 'control: gh run cancel is no hit' sh 'gh run cancel 5'
+f0_row 0 'control: the fallback form [ -f "$G" ] || G=gh then "$G" pr view is no hit' sh $'[ -f "$G" ] || G=gh\n"$G" pr view 1'
+f0_row 0 'control: a variable the file also points at the helper is no hit' sh $'GH="${GH_CMD:-gh}"\nGH_READ_LIB=/x/scripts/lib/gh-read.sh\nGH="$GH_READ_LIB"\n"$GH" pr view 1'
+f0_row 0 'control: a hit with gh-main-ok on its line is no hit' sh $'GH="gh"\n"$GH" api x  # gh-main-ok: permission-dependent answer'
+mkdir -p "$W/f0real/scripts/handover/chief-kit"
+sed 's|CHIEF_WAIT_GH:-\$GH_READ_BIN|CHIEF_WAIT_GH:-gh|' "$REPO/scripts/handover/chief-kit/chief-wait.sh" > "$W/f0real/scripts/handover/chief-kit/chief-wait.sh"
+cmp -s "$REPO/scripts/handover/chief-kit/chief-wait.sh" "$W/f0real/scripts/handover/chief-kit/chief-wait.sh" && fail "F0 control: the chief-wait.sh copy equals the original (nothing moved)"
+check "F0 control: chief-wait.sh with its PR watch seam default back on gh is a hit" "yes" "$(printf 'scripts/handover/chief-kit/chief-wait.sh\n' | python3 -I "$W/f0.py" "$W/f0real" 2>/dev/null | grep -q '"\$gh_cmd" api' && echo yes)"
+f0_tracked="$(git -C "$REPO" ls-files scripts/handover)"
+check "F0 reads the tracked files (chief-wait.sh is among them, so the empty result below is not vacuous)" "yes" "$(printf '%s\n' "$f0_tracked" | grep -q 'chief-kit/chief-wait.sh$' && echo yes)"
+check "F0 no read-shaped gh call under scripts/handover is unjustified" "" "$(printf '%s\n' "$f0_tracked" | python3 -I "$W/f0.py" "$REPO" 2>&1)"
 
 printf '%s fail\n' "$fails"
 [ "$fails" -eq 0 ]
