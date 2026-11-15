@@ -1,7 +1,12 @@
-import { describe, it, expect, vi } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createTools, buildServer, type ToolDeps, type JiraTool } from './mcp.js';
-import type { CliResult, CliRunner } from './mcp-cli.js';
+import { execCli, type CliResult, type CliRunner } from './mcp-cli.js';
 
 
 const TOOL_NAMES = [
@@ -359,6 +364,47 @@ describe('MCP server wiring', () => {
     const r = await call(deps, 'create', { type: 'Task', title: 'T' });
     expect(r.isError).toBe(true);
     expect(r.content[0].text).toBe('jira: refused: Task needs a placement');
+  });
+
+  // The real CLI against a loopback Jira that answers 200 plus x-seraph-loginreason.
+  describe('against a Jira that answers a search with 200', () => {
+    let server: Server;
+    let home: string;
+    let reason: string | undefined;
+    const deps: ToolDeps = { runCli: execCli(join(dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'index.js')) };
+
+    beforeEach(async () => {
+      home = mkdtempSync(join(tmpdir(), 'jira-mcp-authfail-'));
+      server = createServer((_req, res) => {
+        res.writeHead(200, reason === undefined ? {} : { 'x-seraph-loginreason': reason });
+        res.end(reason === 'AUTHENTICATED_FAILED' ? '' : '{"issues":[]}');
+      });
+      await new Promise<void>((ok) => server.listen(0, '127.0.0.1', ok));
+      vi.stubEnv('JIRA_BASE_URL', `http://127.0.0.1:${(server.address() as AddressInfo).port}`);
+      vi.stubEnv('JIRA_EMAIL', 'u@example.com');
+      vi.stubEnv('JIRA_API_TOKEN', 'bogus');
+      vi.stubEnv('JIRA_PROJECT_KEY', 'HTEST');
+      vi.stubEnv('HOME', home);
+    });
+
+    afterEach(async () => {
+      vi.unstubAllEnvs();
+      await new Promise<void>((ok) => server.close(() => ok()));
+      rmSync(home, { recursive: true, force: true });
+    });
+
+    it('list with x-seraph-loginreason: AUTHENTICATED_FAILED returns isError with the auth text', async () => {
+      reason = 'AUTHENTICATED_FAILED';
+      const r = await call(deps, 'list', { jql: 'project=HTEST' });
+      expect(r.isError).toBe(true);
+      expect(r.content[0].text).toMatch(/token.*keyring|keyring.*token/is);
+    });
+
+    it.each([['no header', undefined], ['x-seraph-loginreason: OK', 'OK']])('list with %s is not an error', async (_n, value) => {
+      reason = value;
+      const r = await call(deps, 'list', { jql: 'project=HTEST' });
+      expect({ isError: r.isError, text: r.content[0].text }).toEqual({ isError: undefined, text: expect.any(String) });
+    });
   });
 
   it('tools/call of a tool that throws before running returns isError and runs nothing', async () => {
