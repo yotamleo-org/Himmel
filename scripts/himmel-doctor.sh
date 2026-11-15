@@ -127,7 +127,7 @@ ledger_registry_path() {
 # answer for every project), "project" = the default. The per-repo index checks (graph freshness, semantic graph)
 # are project rows that name the repo they judge, so a feed saved under another project does not carry them.
 # A check id is its Cn prefix (C40-qmd-vec -> C40).
-DOCTOR_SHARED_CHECKS=" C12 C19 C20 C22 C38 C40 C44 C45 C49 C50 C52 C56 C69 C80 C83 C86 C89 C91 C92 C93 C94 C96 "
+DOCTOR_SHARED_CHECKS=" C12 C19 C20 C22 C38 C40 C44 C45 C49 C50 C52 C56 C69 C80 C83 C86 C89 C91 C92 C93 C94 C96 C97 "
 DOCTOR_REPO_CHECKS=" C33 C70 "
 DOCTOR_REPO_NAME="himmel"
 
@@ -2468,6 +2468,123 @@ check_c31() {
     local cfg_q; cfg_q=$(printf '%q' "$cfg")
     emit WARN C31-tokensave-dropped "codex config at $cfg wires an enabled [mcp_servers.tokensave] — tokensave was tried and dropped (plain Grep and Read beat it on every measured operation); codex will keep trying to spawn a server the harness no longer recommends" \
         "remove the [mcp_servers.tokensave] table (and its [mcp_servers.tokensave.tools.*] sub-tables) from $cfg_q by hand — the doctor does not edit codex config"
+}
+
+# --- C97: a Codex MCP env table holds a literal key, token or secret -----
+# A Codex MCP server's env table (`[mcp_servers.<name>.env]` or an inline
+# `env = { ... }` in the server table) that carries a plain-text value under a
+# name ending _KEY, _TOKEN or _SECRET leaves the secret readable by anything
+# that reads the home directory, and a backup or a pasted config carries it.
+# The launch-time source already exists: scripts/mcp/secret-launch.mjs starts
+# the server with the value read from a 0600 file. The doctor never edits the
+# Codex config: it WARNs and names the remedy. It never prints a config value:
+# the awk below emits `<server> <variable>` pairs only.
+#
+# A disabled server (enabled = false) still WARNs, because the key is still on
+# disk. An empty value, a commented-out line, an env_vars name list and a
+# secret-named key outside an mcp_servers env table are OK.
+#
+# Same boundary as C31: a regex scan, not a TOML parser. Escape sequences
+# inside a quoted key are not decoded, and a dotted key such as
+# `env.NAME = "v"` in the server table is not read.
+#
+# Test seam: CODEX_HOME, as C31.
+check_c97_codex_mcp_literal_key() {
+    local codex_home="${CODEX_HOME:-${HOME:-}/.codex}"
+    local cfg="$codex_home/config.toml"
+
+    if [ ! -f "$cfg" ]; then
+        emit OK C97-codex-mcp-literal-key "no codex config at $cfg — nothing to check"
+        return
+    fi
+    if [ ! -r "$cfg" ]; then
+        local cfg_unread_q; cfg_unread_q=$(printf '%q' "$cfg")
+        emit INFO C97-codex-mcp-literal-key "$cfg exists but is not readable — literal MCP keys undetermined" \
+            "chmod +r $cfg_unread_q   # or re-run this check as the file's owner"
+        return
+    fi
+    local pairs
+    pairs=$(awk '
+        function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
+        function unq(s,   c) {
+            s = trim(s); c = substr(s, 1, 1)
+            if ((c == "\"" || c == "\047") && substr(s, length(s), 1) == c && length(s) >= 2) s = substr(s, 2, length(s) - 2)
+            return s
+        }
+        # split a header body into dotted segments outside quotes; sets nseg, seg[]
+        function segs(h,   i, c, q, cur) {
+            nseg = 0; cur = ""; q = ""
+            for (i = 1; i <= length(h); i++) {
+                c = substr(h, i, 1)
+                if (q == "") {
+                    if (c == "\"" || c == "\047") { q = c; cur = cur c }
+                    else if (c == ".") { seg[++nseg] = unq(cur); cur = "" }
+                    else cur = cur c
+                } else { if (c == q) q = ""; cur = cur c }
+            }
+            seg[++nseg] = unq(cur)
+        }
+        function secret_name(n) { n = toupper(n); return (n ~ /_(KEY|TOKEN|SECRET)$/) }
+        function hit(srv, var) { if (secret_name(var) && !(srv SUBSEP var in seen)) { seen[srv SUBSEP var] = 1; print srv "\t" var } }
+        # a value is literal unless it is empty ("" or the single-quote pair) or only a comment
+        function literal(v) { v = trim(v); return !(v == "" || v == "\"\"" || v == "\047\047" || substr(v, 1, 1) == "#") }
+        # key = value on a table-body line; sets k and v
+        function kv(line,   i, c, q, eq) {
+            q = ""; eq = 0
+            for (i = 1; i <= length(line); i++) {
+                c = substr(line, i, 1)
+                if (q == "") { if (c == "\"" || c == "\047") q = c; else if (c == "=") { eq = i; break } }
+                else if (c == q) q = ""
+            }
+            if (!eq) return 0
+            k = unq(substr(line, 1, eq - 1)); v = substr(line, eq + 1)
+            return 1
+        }
+        # walk the inline table `{ A = "x", B = "y" }` held in s
+        function inline(srv, s,   i, c, q, st, key, val, n) {
+            s = trim(s)
+            if (substr(s, 1, 1) != "{") return
+            s = substr(s, 2); st = "key"; key = ""; val = ""; q = ""
+            n = length(s)
+            for (i = 1; i <= n; i++) {
+                c = substr(s, i, 1)
+                if (q != "") { if (c == q) q = ""; if (st == "key") key = key c; else val = val c; continue }
+                if (c == "\"" || c == "\047") { q = c; if (st == "key") key = key c; else val = val c; continue }
+                if (st == "key") {
+                    if (c == "=") { st = "val"; val = "" }
+                    else if (c == "," || c == "}") { key = "" }
+                    else key = key c
+                } else if (c == "," || c == "}") {
+                    if (literal(val)) hit(srv, unq(key))
+                    st = "key"; key = ""; val = ""
+                    if (c == "}") return
+                } else val = val c
+            }
+        }
+        /^[ \t]*\[\[/ { mode = ""; next }
+        /^[ \t]*\[/ {
+            h = $0; sub(/^[ \t]*\[/, "", h); sub(/\][ \t]*(#.*)?$/, "", h)
+            segs(h); mode = ""
+            if (seg[1] == "mcp_servers" && nseg == 2) { mode = "srv"; srvname = seg[2] }
+            else if (seg[1] == "mcp_servers" && nseg == 3 && seg[3] == "env") { mode = "env"; srvname = seg[2] }
+            next
+        }
+        mode == "env" && /^[ \t]*[^# \t]/ { if (kv($0) && literal(v)) hit(srvname, k); next }
+        mode == "srv" && /^[ \t]*[^# \t]/ { if (kv($0) && k == "env") inline(srvname, v) }
+    ' "$cfg")
+    if [ -z "$pairs" ]; then
+        emit OK C97-codex-mcp-literal-key "codex config at $cfg holds no literal key, token or secret value in an MCP env table"
+        return
+    fi
+    local cfg_q list="" srv var first_srv="" first_var=""
+    cfg_q=$(printf '%q' "$cfg")
+    while IFS=$'\t' read -r srv var; do
+        [ -n "$srv" ] || continue
+        [ -n "$first_srv" ] || { first_srv="$srv"; first_var="$var"; }
+        list="${list:+$list, }[mcp_servers.$srv] $var"
+    done <<< "$pairs"
+    emit WARN C97-codex-mcp-literal-key "codex config at $cfg keeps a plain-text secret in an MCP env table: $list — anything that reads the home directory reads it, and a config backup carries it" \
+        "write each value to a 0600 file ~/.config/himmel/mcp-secrets/<server>/<VAR> (e.g. .../$first_srv/$first_var), set the server's command to node with args [$REPO_ROOT/scripts/mcp/secret-launch.mjs, <server>, <the real command>, <its args>], keep only non-secret variables in the env table of $cfg_q, restart Codex, then rotate the key — the doctor does not edit codex config"
 }
 
 # --- C35: VM after-report runner reachable -------------------
@@ -6009,6 +6126,7 @@ run_check C93 check_c93_graph_role
 run_check C94 check_c94_graph_config
 run_heavy C95 check_c95_barrier_off C95-barrier-off
 run_check C96 check_c96_jira_test_project
+run_check C97 check_c97_codex_mcp_literal_key
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"
