@@ -584,6 +584,34 @@ else
     fail "unwritable log changed the busy result or leaked an error (rc=$RC): $ERR"
 fi
 
+# --- 23: the default dir is machine-wide: it does not depend on TMPDIR. ---
+# Resolved through suite_sem_dir only, so the real shared dir is never taken.
+sem_dir_for() {
+    # shellcheck disable=SC2016  # $1 expands in the child shell
+    env -u HIMMEL_SUITE_SEMAPHORE_DIR "$@" \
+        bash -c '. "$1"; suite_sem_dir' _ "$REPO_ROOT/scripts/lib/suite-semaphore.sh"
+}
+TMP_A="$SCRATCH/tmp-a"; TMP_B="$SCRATCH/tmp-b"
+mkdir -p "$TMP_A" "$TMP_B"
+DIR_A=$(sem_dir_for TMPDIR="$TMP_A"); DIR_B=$(sem_dir_for TMPDIR="$TMP_B")
+if [ -n "$DIR_A" ] && [ "$DIR_A" = "$DIR_B" ]; then
+    pass "two processes with different TMPDIR share one default semaphore dir"
+else
+    fail "different TMPDIR gave different default semaphore dirs: [$DIR_A] vs [$DIR_B]"
+fi
+case "$DIR_A" in
+    "$TMP_A"/*|"$TMP_B"/*) fail "default semaphore dir [$DIR_A] still lives under TMPDIR" ;;
+    *) pass "default semaphore dir is not under TMPDIR" ;;
+esac
+
+# negative control: HIMMEL_SUITE_SEMAPHORE_DIR still picks the dir.
+SEAM_DIR=$(sem_dir_for TMPDIR="$TMP_A" HIMMEL_SUITE_SEMAPHORE_DIR="$SCRATCH/seam")
+if [ "$SEAM_DIR" = "$SCRATCH/seam" ]; then
+    pass "HIMMEL_SUITE_SEMAPHORE_DIR still picks the semaphore dir"
+else
+    fail "HIMMEL_SUITE_SEMAPHORE_DIR ignored, got [$SEAM_DIR]"
+fi
+
 if [ "$FAILED" -eq 0 ]; then
     echo "OK: all $CASES cases passed"
     exit 0
