@@ -1550,16 +1550,8 @@ reclaim_parked() {
     fi
 }
 
-# A branch with no PR whose tip is already on main holds nothing: its worktree
-# and branch go once it has sat untouched for CLEAN_SUPERSEDED_MIN_AGE_SECS
-# (default 24 h). A just-made worker worktree also has ahead=0 and no PR, so
-# the age floor is what keeps it.
 SUPERSEDED_MIN_AGE_SECS=$(num_or "${CLEAN_SUPERSEDED_MIN_AGE_SECS:-}" 86400)
 
-# wt_head_age_secs <wt> — seconds since the newest of the worktree gitdir's HEAD
-# and logs/HEAD changed. Unlike the index or the tree, a status scan never moves
-# them, so a sweep's own accounting cannot reset the age. 0 when neither can be
-# read: an unreadable age counts as fresh.
 wt_head_age_secs() {
     local wt="$1" gd f m newest=0 now
     gd=$(git -C "$wt" rev-parse --absolute-git-dir 2>/dev/null) || { echo 0; return 0; }
@@ -1572,10 +1564,6 @@ wt_head_age_secs() {
     if [ "$newest" -eq 0 ] || [ "$now" -le "$newest" ]; then echo 0; else echo $((now - newest)); fi
 }
 
-# superseded_ignored_ok <wt> — 0 when every ignored path is regenerable: the
-# disposable classes the husk sweep already trusts, plus the per-worktree
-# harness files and Python bytecode. Any other ignored path (a local .env)
-# may be user data and keeps the worktree.
 superseded_ignored_ok() {
     local out u e
     out=$(git -C "$1" ls-files --others --ignored --exclude-standard --directory 2>/dev/null) || return 1
@@ -1597,13 +1585,15 @@ EOF
     return 0
 }
 
-# reclaim_superseded <wt> <br> — the prune arm for a clean worktree whose branch
-# has NO PR (a closed PR keeps it) and whose tip is already on main, aged past
-# SUPERSEDED_MIN_AGE_SECS, with no live process, queue lock, RESUME brief or
-# lock doc holding it. The worktree is removed without --force and the branch
-# with `branch -d`, never -D. Returns 0 when it handled the worktree (pruned,
-# planned, or kept with a warning) and 1 when the worktree is not a candidate,
-# so the caller falls through to reclaim_parked.
+superseded_still_unchanged() {
+    local wt="$1" br="$2" br_tip="$3"
+    [ "$(git -C "$wt" symbolic-ref -q HEAD 2>/dev/null)" = "refs/heads/$br" ] || return 1
+    [ "$(git -C "$PRIMARY_WORKTREE" rev-parse -q --verify "refs/heads/$br^{commit}" 2>/dev/null)" = "$br_tip" ] || return 1
+    [ -z "$(git -C "$wt" status --porcelain 2>/dev/null)" ] || return 1
+    superseded_ignored_ok "$wt" || return 1
+    ! worktree_held "$wt" 0 0
+}
+
 reclaim_superseded() {
     local wt="$1" br="$2" br_tip age
     [ "$HAVE_FORGE" -eq 1 ] && [ "$FORGE_KIND" = "github" ] && [ "$ORIGIN_PR_CACHE_OK" -eq 1 ] || return 1
@@ -1631,12 +1621,7 @@ reclaim_superseded() {
         echo "DRY clean-garden: would prune $br ($wt), superseded: tip already on main"
         PRUNED=$((PRUNED+1)); return 0
     fi
-    # The checks above were for $br_tip; a commit, a change or a holder since would be lost.
-    if [ "$(git -C "$wt" symbolic-ref -q HEAD 2>/dev/null)" != "refs/heads/$br" ] \
-        || [ "$(git -C "$PRIMARY_WORKTREE" rev-parse -q --verify "refs/heads/$br^{commit}" 2>/dev/null)" != "$br_tip" ] \
-        || [ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ] \
-        || ! superseded_ignored_ok "$wt" \
-        || worktree_held "$wt" 0 0; then
+    if ! superseded_still_unchanged "$wt" "$br" "$br_tip"; then
         echo "WARN clean-garden: superseded $br changed during prune — kept ($wt)" >&2
         note_stuck "$wt" "superseded, and the worktree changed during the prune"
         SKIPPED=$((SKIPPED+1)); return 0

@@ -1214,9 +1214,6 @@ case "$(uname -s)" in
 esac
 clear_checkpoints
 
-# RUN S — a fleet-wide prune takes a clean worktree whose branch
-# has no PR and whose tip is already on main, but only once it is aged; every
-# other class stays. Age = newest mtime of the gitdir's HEAD and logs/HEAD.
 echo "RUN S: superseded worktrees"
 s_mk() {
     local name="$1" branch="$2"

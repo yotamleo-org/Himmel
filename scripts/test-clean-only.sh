@@ -604,11 +604,7 @@ out=$(GH_VIEW=fail run_verb)
 expect "11 verb: failed repo-name lookup is rc 1 with empty stdout" "$out" eq "$out" "rc=1"
 expect "11 verb: failed repo-name lookup makes no pulls walk" "$out" eq "$(gh_pull_calls)" 0
 
-# ── case 12: an aged SUPERSEDED worktree (no PR, tip already on main) ────────
 echo "CASE 12: superseded worktrees"
-# Age is the newest mtime of the worktree gitdir's HEAD and logs/HEAD (a scan of
-# the tree never moves them); the default floor is 86400s, so a backdated gitdir
-# is "aged" and a just-made one is "fresh".
 backdate_wt() {
     local gd
     gd=$(git -C "$1" rev-parse --absolute-git-dir) || return 1
