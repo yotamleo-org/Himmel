@@ -759,6 +759,13 @@ for baddesc in 'fix it. Completes ticket: partial' 'fix it. Completes ticket: no
     ct1_gen "$WORK/ct10195g" "{\"desc\":\"$baddesc\"}"
     [ "$ct1_rc" = 1 ] && grep -q "N901" "$WORK/ct1w.err" && grep -qi "completes" "$WORK/ct1w.err" && pass "10195 a description ending '$baddesc' is refused, not read as yes" || fail "10195 bad description value rc=$ct1_rc: $(cat "$WORK/ct1w.err") for $baddesc"
 done
+for nodesc in 'fix it. Completes ticket: no (the chief closes it after the merge)' 'fix it. Completes ticket: no. The chief closes it.' 'fix it. completes-ticket: no'; do
+    ct1_gen "$WORK/ct10195h" "{\"desc\":\"$nodesc\"}"
+    [ "$ct1_rc" = 0 ] && has "10195 a description saying no in the form '$nodesc' writes the no header" "$ct1_out" "> **Completes ticket:** no" || fail "10195 desc form rc=$ct1_rc: $(cat "$WORK/ct1w.err") for $nodesc"
+    lacks "10195 a description saying no in the form '$nodesc' has no --jira-transition" "$ct1_out" "--jira-transition"
+    ct1_gen "$WORK/ct10195i" "{\"desc\":\"$nodesc\",\"scope\":\"scripts/x/ completes-ticket: yes\"}"
+    [ "$ct1_rc" = 1 ] && grep -q "N901" "$WORK/ct1w.err" && grep -qi "completes" "$WORK/ct1w.err" && pass "10195 the same description against a yes scope is refused" || fail "10195 desc form against scope rc=$ct1_rc: $(cat "$WORK/ct1w.err") for $nodesc"
+done
 ct1_gen "$WORK/ct10195f" '{"completes":"partial"}'
 [ "$ct1_rc" = 1 ] && grep -q "N901" "$WORK/ct1w.err" && grep -qi "completes" "$WORK/ct1w.err" && pass "10195 an explicit completes value other than yes or no is refused" || fail "10195 bad explicit value rc=$ct1_rc: $(cat "$WORK/ct1w.err")"
 

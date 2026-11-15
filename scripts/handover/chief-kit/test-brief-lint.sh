@@ -989,6 +989,13 @@ mkct ct_hn_sy no "$SHIP_Y"; expect_rc "13c header no with a yes Ship step fails"
 mkct ct_hy_sn yes "$SHIP_N"; expect_rc "13d header yes with a no Ship step fails" 1 "$tmp/ct_hy_sn.md"
 mkct ct_hn_sny no "$SHIP_NY"; expect_rc "13e a no brief whose Ship step names --jira-transition fails" 1 "$tmp/ct_hn_sny.md"
 mkct ct_hy_snospace yes '> 4. Ship: completes-ticket:no (leave the ticket In Progress after the merge); merge bare.'; expect_rc "13j a no Ship step written with no space after the colon still disagrees with a yes header" 1 "$tmp/ct_hy_snospace.md"
+mkctd() { # name description header ship
+    mk_raw "$1" '---' "description: \"$2\"" "resume_cwd: $CW_HIM" '---' '# brief' '> **Prior art:** none found (qmd -c jira-himmel "ct")' "$DIR_LINE" '' "> **Completes ticket:** $3" '> **Contract:**' "$4"
+}
+mkctd ct_dn_hy_sy 'Fix the thing. Completes ticket: no' yes "$SHIP_Y"; expect_rc "13k a description ending Completes ticket: no against a yes header and Ship step fails" 1 "$tmp/ct_dn_hy_sy.md"
+mkctd ct_dn_hn_sn 'Fix the thing. Completes ticket: no' no "$SHIP_N"; expect_rc "13l a description, header and Ship step that all say no pass" 0 "$tmp/ct_dn_hn_sn.md"
+mkctd ct_dy_hy_sy 'Fix the thing. Completes ticket: yes' yes "$SHIP_Y"; expect_rc "13m a description, header and Ship step that all say yes pass" 0 "$tmp/ct_dy_hy_sy.md"
+mkctd ct_dn2_hy_sy 'Fix the thing. Completes ticket: no (the chief closes it)' yes "$SHIP_Y"; expect_rc "13n a description saying no with trailing prose against a yes header fails" 1 "$tmp/ct_dn2_hy_sy.md"
 mkct ct_hn_only no none; expect_rc "13f a header with no Ship step passes" 0 "$tmp/ct_hn_only.md"
 mkct ct_none_sn none "$SHIP_N"; expect_rc "13g a Ship step with no header passes" 0 "$tmp/ct_none_sn.md"
 rc=0; err="$(bash "$LINT" "$tmp/ct_hn_sy.md" 2>&1 >/dev/null)" || rc=$?

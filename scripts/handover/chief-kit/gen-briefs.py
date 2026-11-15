@@ -195,7 +195,7 @@ READS_HANDOVER_ROOT = ('native', 'claudex')
 EFFORTS = ('low', 'medium', 'high', 'xhigh')
 COMPLETES_RE = re.compile(r'completes-ticket:\s*(yes|no)\b', re.I)
 COMPLETES_ANY_RE = re.compile(r'completes-ticket:\s*([^\s,.;)]*)', re.I)
-DESC_COMPLETES_RE = re.compile(r'Completes ticket:\s*(\w*)\W*\Z', re.I)
+DESC_COMPLETES_RE = re.compile(r'completes[- ]ticket:\s*(\w*)', re.I)
 
 
 def completes_of(worker):
@@ -205,11 +205,10 @@ def completes_of(worker):
         if not isinstance(v, str) or v.lower() not in ('yes', 'no'):
             die('worker %s: completes %r must be yes or no' % (worker.get('label', '?'), v))
         found['the completes key'] = v.lower()
-    m = DESC_COMPLETES_RE.search(str(worker.get('desc', '')).rstrip())
-    if m:
-        if m.group(1).lower() not in ('yes', 'no'):
-            die('worker %s: the description ends Completes ticket: %s; the value must be yes or no (completes)' % (worker.get('label', '?'), m.group(1)))
-        found['the description'] = m.group(1).lower()
+    for n, v in enumerate(DESC_COMPLETES_RE.findall(str(worker.get('desc', '')))):
+        if v.lower() not in ('yes', 'no'):
+            die('worker %s: the description says Completes ticket: %s; the value must be yes or no (completes)' % (worker.get('label', '?'), v))
+        found['the description' if n == 0 else 'the description (statement %d)' % (n + 1)] = v.lower()
     scoped = COMPLETES_RE.findall(str(worker.get('scope', '')))
     if scoped:
         found['the scope'] = scoped[-1].lower()
