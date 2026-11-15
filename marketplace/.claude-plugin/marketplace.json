@@ -235,7 +235,7 @@
       "source": {
         "source": "url",
         "url": "https://github.com/emilkowalski/skills.git",
-        "sha": "715c1807e08c497cfd1dc4feb450a2a3300ef2a9"
+        "sha": "4061b67b8d976a186aca118594f54b638c5f718a"
       },
       "description": "[emilkowalski/skills, MIT, vendor + attribution only, no carried delta] Emil Kowalski's design-engineering and animation skills: all 15 upstream skills load (the web ones, including animation-performance, plus animate-expo, mobile-native, write-swift; a marketplace skills list cannot exclude any). Manifest-less upstream, so the entry is strict:false with no skills list. Sourced via an explicit HTTPS git url (NOT the `github` shorthand, which clones over SSH) and pinned to a full commit sha (upstream has no release tag) per himmel supply-chain policy. Pilot entry of the design kit.",
       "strict": false,
@@ -358,9 +358,9 @@
       "source": {
         "source": "url",
         "url": "https://github.com/youmind-openlab/ai-image-prompts-skill.git",
-        "sha": "7a1233b5a012aea57cd906ba4616fc2eb1f2bb6c"
+        "sha": "2fb602a2cb7114af193d754b60f6c62bb1b300fe"
       },
-      "description": "[youmind-openlab/ai-image-prompts-skill, MIT, vendor + attribution only, no carried delta] Offline AI image prompt library lookups (312 MB clone, no key). Root-skill shape UNPROVEN: add-on profile only. Explicit HTTPS git url, pinned to a full sha 7a1233b5a012aea57cd906ba4616fc2eb1f2bb6c per himmel supply-chain policy. Design kit, design-imagegen profile.",
+      "description": "[youmind-openlab/ai-image-prompts-skill, MIT, vendor + attribution only, no carried delta] Offline AI image prompt library lookups (312 MB clone, no key). Root-skill shape UNPROVEN: add-on profile only. Explicit HTTPS git url, pinned to a full sha 2fb602a2cb7114af193d754b60f6c62bb1b300fe per himmel supply-chain policy. Design kit, design-imagegen profile.",
       "strict": false,
       "skills": [
         "./"
@@ -543,9 +543,9 @@
       "source": {
         "source": "url",
         "url": "https://github.com/Nutlope/hallmark.git",
-        "sha": "80fc3c723ab31eb9a43b7ce6c239d6bce094cdbb"
+        "sha": "04977e15f3dfd6ee4b74c887dac3eb52665d6c92"
       },
-      "description": "[Nutlope/hallmark, MIT, vendor + attribution only, no carried delta] Hallmark design skill (90 MB clone). Opt-in trial profile (a trial, not part of the core kit). Explicit HTTPS git url, pinned to a full sha 80fc3c723ab3 per himmel supply-chain policy. Design kit, design-trial profile.",
+      "description": "[Nutlope/hallmark, MIT, vendor + attribution only, no carried delta] Hallmark design skill (90 MB clone). Opt-in trial profile (a trial, not part of the core kit). Explicit HTTPS git url, pinned to a full sha 04977e15f3df per himmel supply-chain policy. Design kit, design-trial profile.",
       "strict": false,
       "author": {
         "name": "Nutlope",
@@ -598,9 +598,9 @@
         "source": "git-subdir",
         "url": "https://github.com/upstash/context7.git",
         "path": "skills/find-docs",
-        "sha": "c5e34a01799bce82534eb0ed74bb16b025d75f47"
+        "sha": "681554c5d3a688c67879d02d4f01d79ffd15df13"
       },
-      "description": "[upstash/context7, MIT, vendor + attribution only, no carried delta] /find-docs: current library, framework and API documentation lookup through the Context7 CLI. Replaces the user-scope ~/.claude/skills/find-docs copy, which ignored enabledPlugins and loaded in every session including bare. git-subdir on skills/find-docs (a single root SKILL.md, so strict:false with skills ./), explicit HTTPS git url, pinned to upstream commit c5e34a01799bce82534eb0ed74bb16b025d75f47 per himmel supply-chain policy. Enabled by the `user` profile only.",
+      "description": "[upstash/context7, MIT, vendor + attribution only, no carried delta] /find-docs: current library, framework and API documentation lookup through the Context7 CLI. Replaces the user-scope ~/.claude/skills/find-docs copy, which ignored enabledPlugins and loaded in every session including bare. git-subdir on skills/find-docs (a single root SKILL.md, so strict:false with skills ./), explicit HTTPS git url, pinned to upstream commit 681554c5d3a688c67879d02d4f01d79ffd15df13 per himmel supply-chain policy. Enabled by the `user` profile only.",
       "strict": false,
       "skills": [
         "./"
