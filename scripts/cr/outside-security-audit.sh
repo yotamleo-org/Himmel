@@ -153,9 +153,10 @@ audit_locked() {
         [[ "$path" =~ $h2_re ]] && hit H2 "$st $path"
         case "$nmode" in 120000|160000) hit H5 "$path gains mode $nmode" ;; esac
         case "$omode" in 120000|160000) [ "$st" = D ] || hit H5 "$path changes from mode $omode" ;; esac
-        # npm runs node-gyp rebuild on install for a package holding a binding.gyp, with no scripts entry;
-        # the letter case is open because a case-insensitive filesystem finds it either way.
-        case "$st:${path##*/}" in A:[Bb][Ii][Nn][Dd][Ii][Nn][Gg].[Gg][Yy][Pp]) hit H3 "$path is added, so npm install runs node-gyp rebuild" ;; esac
+        # npm runs node-gyp rebuild on install for a package holding a binding.gyp, with no scripts entry,
+        # and node-gyp runs the commands the file names; the letter case is open because a
+        # case-insensitive filesystem finds it either way.
+        case "$st:${path##*/}" in [AM]:[Bb][Ii][Nn][Dd][Ii][Nn][Gg].[Gg][Yy][Pp]) hit H3 "$path is added or changed, so npm install runs node-gyp rebuild on it" ;; esac
         case "${path##*/}:$nmode:$omode" in
             package.json:120000:*|package.json:160000:*|package.json:*:120000|package.json:*:160000|package-lock.json:120000:*|package-lock.json:160000:*) continue ;;
         esac

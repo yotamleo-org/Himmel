@@ -266,6 +266,7 @@ h3gyp 'echo "{}" > binding.gyp' "T3.8 H3 an added binding.gyp at the root"
 h3gyp 'mkdir -p native/addon && echo "{}" > native/addon/binding.gyp' "T3.8 H3 an added binding.gyp two directories down"
 h3gyp 'mkdir -p native && echo "{}" > native/Binding.GYP' "T3.8 H3 an added binding.gyp in another letter case"
 h3gyp 'mkdir -p native && git mv docs/a.md native/binding.gyp' "T3.8 H3 a rename into binding.gyp"
+h3gyp "echo '{\"targets\":[{\"actions\":[{\"action\":[\"touch\",\"x\"]}]}]}' > pkg/binding.gyp" "T3.8 H3 a modified pre-existing binding.gyp"
 reset; newpr 'echo gyp >> f.txt'
 audit; expect_row "T3.8 an unchanged pre-existing binding.gyp is no hit" pass ""
 reset; newpr "printf '{\"name\":' > package.json"
