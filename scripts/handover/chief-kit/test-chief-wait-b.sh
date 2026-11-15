@@ -83,8 +83,6 @@ export CHIEF_WAIT_ORPHAN="$STUB/orphan-off.sh"
 # Nor does any test run the real status sweep or read a real FOCUS state: both seams answer nothing.
 printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB/sweep-off.sh"
 export WAIT_SWEEP_CMD="$STUB/sweep-off.sh" WAIT_FOCUS_CMD="$STUB/sweep-off.sh"
-# No row before (u4959) reads the pool: an absent dispatcher makes the probe a no-op, never a
-# next-dispatchable.sh run over the live mirror (which outlasts wait_hb's 5 s and prints live pool data).
 export CHIEF_WAIT_DISPATCH="$STUB/no-dispatch.sh"
 DISPATCH_SEAM_AT_START="${CHIEF_WAIT_DISPATCH:-}"
 
@@ -1251,8 +1249,6 @@ I="$(new_inbox kctl)"
 timeout 3 bash "$WAIT" "$I" --workers "N1.md" >/dev/null 2>&1; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(k) an absolute inbox path still starts the waiter (rc 124)" "124" "$rc"
 
-# --- (hermetic) the suite read its fixtures, never the live station: the dispatch seam
-# named a $STUB path from the first case on, and no waiter output carries live pool=<n>/<n>/<n>/<n> data.
 case "$DISPATCH_SEAM_AT_START" in "$STUB"/*) seam_at_start=stub ;; *) seam_at_start="$DISPATCH_SEAM_AT_START" ;; esac
 check "(hermetic) the dispatch seam named a stub from the first case" "stub" "$seam_at_start"
 case "${CHIEF_WAIT_DISPATCH:-}" in "$STUB"/*) seam_now=stub ;; *) seam_now="${CHIEF_WAIT_DISPATCH:-}" ;; esac
