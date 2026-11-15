@@ -1400,12 +1400,14 @@ def live_worker_records(workers):
 
 
 OWED_RE = re.compile(r'operator[ -](?:sign-?off|runs?|words|signs?|decides?|on Telegram|only)|Telegram ask|operator-owed', re.I)
-OPERATOR_CLASS_RE = re.compile(r'spend|\bgrants?\b|\bpaid\b|billing|payment|\baccount\b|\bterms\b|\broot\b|\bsudo\b|reinstall|\bphysical\b|hardware|public[ -]polic|policy call', re.I)
+OPERATOR_CLASS_RE = re.compile(r'spend|\bgrants?\b|\bpaid\b|billing|payment|\baccounts?\b|\bterms\b|\btos\b|\broot\b|\bsudo(?:ers)?\b|reinstall|admin install|\boauth\b|api credit|\bphysical(?:ly)?\b|hardware|public[ -]polic|policy call', re.I)
 
 
 def handoff_answered(handover_dir, handoff, line):
     keys = set(re.findall(r'HIMMEL-\d+', line))
-    asks = {q.lower() for q in re.findall(r'"([^"]{6,})"', line)}
+    asks = {' '.join(q.lower().split()) for q in re.findall(r'"([^"]{6,})"', line)}
+    if not keys and not asks:
+        return False
     try:
         since = os.path.getmtime(handoff)
     except OSError:
@@ -1417,7 +1419,8 @@ def handoff_answered(handover_dir, handoff, line):
             text = open(f, encoding='utf-8').read()
         except (OSError, UnicodeDecodeError):
             continue
-        if any(re.search(r'%s\b' % re.escape(k), text) for k in keys) or any(a in text.lower() for a in asks):
+        flat = ' '.join(text.lower().split())
+        if all(re.search(r'%s\b' % re.escape(k), text) for k in keys) and all(a in flat for a in asks):
             return True
     return False
 
@@ -1525,8 +1528,10 @@ def operator_owed(handover_dir, chief_doc, version, opn, mir):
         if sec is not None:
             readable = True
             for l in sec:
-                if l.strip() and not re.fullmatch(r'[-*\s]*none\.?', l.strip(), re.I) and not handoff_answered(handover_dir, hand[-1], l):
-                    items.append(('handoff', None, clip(l.strip(), 140), os.path.basename(hand[-1]), 'answer the open item'))
+                if l.strip() and not re.fullmatch(r'[-*\s]*none\.?', l.strip(), re.I):
+                    answered = handoff_answered(handover_dir, hand[-1], l)
+                    (chief_owes if answered else items).append(('handoff', None, clip(l.strip(), 140), os.path.basename(hand[-1]),
+                                                                'the chief records the operator answer' if answered else 'answer the open item'))
         try:
             drift_rows = open(os.path.join(handover_dir, 'focus-drift.txt'), encoding='utf-8').read().splitlines()
         except (OSError, UnicodeDecodeError):

@@ -345,7 +345,9 @@ cod_comment_epoch() {
 cod_related_epoch() {
     local card=$MIRROR_DIR/$1.md rel r ts e best=0
     rel=$({
-        [ ! -r "$card" ] || awk '/^---$/ { if (++n == 2) exit; next } n == 1 && /^links:/ { on = 1; next } n == 1 && /^[^ ]/ { on = 0 } n == 1 && on' "$card" | grep -oE '[A-Za-z][A-Za-z0-9]*-[0-9]+'
+        [ ! -r "$card" ] || awk '/^---$/ { if (++n == 2) exit; next } n == 1 && /^links:/ { on = 1; next } n == 1 && /^[^ ]/ { on = 0 } n == 1 && on' "$card" | grep -oE '[A-Za-z][A-Za-z0-9]*-[0-9]+' | while IFS= read -r r; do
+            grep -qE '^labels: .*"(residual|follow-up)"' "$MIRROR_DIR/$r.md" 2>/dev/null && printf '%s\n' "$r"
+        done
         grep -rlxF --include='*.md' "parent: \"$1\"" "$MIRROR_DIR" 2>/dev/null | sed 's#.*/##; s#\.md$##'
     } | grep -vxF "$1" | sort -u)
     while IFS= read -r r; do

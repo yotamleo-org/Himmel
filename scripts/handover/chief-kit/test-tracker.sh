@@ -1673,26 +1673,29 @@ not_contains '9561 control: with no such row nothing is asked' "$(grep -F -e 'da
 
 hb="$cod/hbucket"
 mkdir -p "$hb/specs/decisions"
-printf '%s\n' '# handoff' '## Open operator items' '' 'Asked on Telegram: "bypass 9980" and HIMMEL-8001 yes/no' '## Wrapped' 'none' > "$hb/HIMMEL-x-chief-HANDOFF.md"
-touch -d '2026-11-15 10:00:00' "$hb/HIMMEL-x-chief-HANDOFF.md"
-printf '%s\n' 'Decision 951.' 'Reading: the operator asks what "bypass 9980" means: answered.' > "$hb/specs/decisions/verbatim-decision-951-operator-11-15-AE.txt"
-touch -d '2026-11-15 10:30:00' "$hb/specs/decisions/verbatim-decision-951-operator-11-15-AE.txt"
-codrender --owed-dir "$hb" >/dev/null
-not_contains '10189 a HANDOFF item whose quoted ask a newer decision file repeats is dropped' "$(grep -F 'data-section="waiting"' "$codout" 2>/dev/null)" 'bypass 9980'
-touch -d '2026-11-15 09:00:00' "$hb/specs/decisions/verbatim-decision-951-operator-11-15-AE.txt"
-codrender --owed-dir "$hb" >/dev/null
-contains '10189 control: a decision file older than the HANDOFF does not answer its item' "$(grep -F 'data-section="waiting"' "$codout" 2>/dev/null)" 'bypass 9980'
-touch -d '2026-11-15 10:30:00' "$hb/specs/decisions/verbatim-decision-951-operator-11-15-AE.txt"
-printf '%s\n' '# handoff' '## Open operator items' '' 'Asked on Telegram: "merge the held PR" and HIMMEL-8001 yes/no' '## Wrapped' 'none' > "$hb/HIMMEL-x-chief-HANDOFF.md"
-touch -d '2026-11-15 10:00:00' "$hb/HIMMEL-x-chief-HANDOFF.md"
-printf '%s\n' 'Decision 952.' 'The operator ruled on HIMMEL-8001.' > "$hb/specs/decisions/verbatim-decision-952-operator-11-15-AE.txt"
-touch -d '2026-11-15 10:40:00' "$hb/specs/decisions/verbatim-decision-952-operator-11-15-AE.txt"
-codrender --owed-dir "$hb" >/dev/null
-not_contains '10189 a HANDOFF item whose ticket key a newer decision file names is dropped' "$(grep -F 'data-section="waiting"' "$codout" 2>/dev/null)" 'merge the held PR'
-printf '%s\n' '# handoff' '## Open operator items' '' 'Asked on Telegram: "an ask no decision repeats"' '## Wrapped' 'none' > "$hb/HIMMEL-x-chief-HANDOFF.md"
-touch -d '2026-11-15 10:00:00' "$hb/HIMMEL-x-chief-HANDOFF.md"
-codrender --owed-dir "$hb" >/dev/null
-contains '10189 control: a HANDOFF item no newer decision answers stays under Waiting on you' "$(grep -F 'data-section="waiting"' "$codout" 2>/dev/null)" 'an ask no decision repeats'
+hbfx() {
+    printf '%s\n' '# handoff' '## Open operator items' '' "$1" '## Wrapped' 'none' > "$hb/HIMMEL-x-chief-HANDOFF.md"
+    touch -d '2026-11-15 10:00:00' "$hb/HIMMEL-x-chief-HANDOFF.md"
+    rm -f "$hb"/specs/decisions/verbatim-decision-*.txt
+    [ -z "$2" ] || { printf '%s\n' "$2" > "$hb/specs/decisions/verbatim-decision-951-operator-11-15-AE.txt"; touch -d "$3" "$hb/specs/decisions/verbatim-decision-951-operator-11-15-AE.txt"; }
+    codrender --owed-dir "$hb" >/dev/null
+    hbw="$(grep -F 'data-section="waiting"' "$codout" 2>/dev/null)"
+    hbc="$(grep -F 'data-section="chief-owes"' "$codout" 2>/dev/null)"
+}
+hbfx 'Asked on Telegram: "bypass 9980" and HIMMEL-8001 yes/no' 'Reading: the operator asks what "bypass 9980" means. HIMMEL-8001 is ruled.' '2026-11-15 10:30:00'
+not_contains '10189 a HANDOFF item whose every key and quoted ask a newer decision file repeats is not under Waiting on you' "$hbw" 'bypass 9980'
+contains '10189 that answered item moves to Chief owes, never dropped' "$hbc" 'bypass 9980'
+hbfx 'Asked on Telegram: "bypass 9980" and HIMMEL-8001 yes/no' 'Reading: the operator asks what "bypass 9980" means.' '2026-11-15 10:30:00'
+contains '10189 a HANDOFF item with a quoted ask repeated and a key not named stays under Waiting on you' "$hbw" 'bypass 9980'
+hbfx 'Asked on Telegram: "merge the held PR" and HIMMEL-8001 yes/no' 'The operator ruled on HIMMEL-8001.' '2026-11-15 10:40:00'
+contains '10189 a HANDOFF item whose key a newer decision names but whose other ask is not repeated stays under Waiting on you' "$hbw" 'merge the held PR'
+not_contains '10189 that unanswered item is not under Chief owes' "$hbc" 'merge the held PR'
+hbfx 'Asked on Telegram: "bypass 9980" and HIMMEL-8001 yes/no' 'Reading: the operator asks what "bypass 9980" means. HIMMEL-8001 is ruled.' '2026-11-15 09:00:00'
+contains '10189 control: a decision file older than the HANDOFF does not answer its item' "$hbw" 'bypass 9980'
+hbfx 'Asked on Telegram: "an ask no decision repeats"' '' ''
+contains '10189 control: a HANDOFF item no newer decision answers stays under Waiting on you' "$hbw" 'an ask no decision repeats'
+hbfx 'move the obsidian key out of the codex config' 'Decision 951. move the obsidian key out of the codex config.' '2026-11-15 10:30:00'
+contains '10189 control: a HANDOFF item with no key and no quoted ask is never answered' "$hbw" 'obsidian key'
 
 printf '%s\n' '# chief' '## Live state' 'queue: HIMMEL-21 operator-owed lines remain | HIMMEL-25 operator words: the sudo root reinstall' 'pool-disposition: HIMMEL-24 close decision 847 operator-owed: proof verdict' > "$cod/chief.md"
 codrender --owed-dir "$cod/bucket" --chief-doc "$cod/chief.md" >/dev/null
@@ -1702,6 +1705,27 @@ contains '10189 a Live-state operator-owed line with no operator class lists und
 not_contains '10189 a Live-state operator-owed line with no operator class is not under Waiting on you' "$codw" 'operator-owed lines remain'
 contains '10189 a pool-disposition operator-owed line with no operator class lists under Chief owes' "$codc" 'proof verdict'
 contains '10189 control: a Live-state line naming a root step stays under Waiting on you' "$codw" 'the sudo root reinstall'
+printf '%s\n' '# chief' '## Live state' \
+    'pool-disposition: HIMMEL-31 operator words: someone must physically swap the drive' \
+    'pool-disposition: HIMMEL-32 operator words: create the two accounts' \
+    'pool-disposition: HIMMEL-33 operator words: edit the sudoers file' \
+    'pool-disposition: HIMMEL-34 operator words: accept the ToS' \
+    'pool-disposition: HIMMEL-35 operator words: needs the admin install' \
+    'pool-disposition: HIMMEL-36 operator words: the OAuth login' \
+    'pool-disposition: HIMMEL-37 operator words: top up the API credit' \
+    'pool-disposition: HIMMEL-38 operator words: waiting for the chief' > "$cod/chief.md"
+codrender --owed-dir "$cod/bucket" --chief-doc "$cod/chief.md" >/dev/null
+codw="$(grep -F 'data-section="waiting"' "$codout" 2>/dev/null)"
+codc="$(grep -F 'data-section="chief-owes"' "$codout" 2>/dev/null)"
+contains '10189 operator class: physically stays under Waiting on you' "$codw" 'physically swap the drive'
+contains '10189 operator class: accounts stays under Waiting on you' "$codw" 'create the two accounts'
+contains '10189 operator class: sudoers stays under Waiting on you' "$codw" 'edit the sudoers file'
+contains '10189 operator class: ToS stays under Waiting on you' "$codw" 'accept the ToS'
+contains '10189 operator class: admin install stays under Waiting on you' "$codw" 'needs the admin install'
+contains '10189 operator class: OAuth login stays under Waiting on you' "$codw" 'the OAuth login'
+contains '10189 operator class: API credit stays under Waiting on you' "$codw" 'top up the API credit'
+contains '10189 control: a line naming no operator class goes to Chief owes' "$codc" 'waiting for the chief'
+not_contains '10189 control: that line is not under Waiting on you' "$codw" 'waiting for the chief'
 
 # --- both pages open dark with no saved choice, whatever the system preference says
 if command -v node >/dev/null 2>&1; then
