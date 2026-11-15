@@ -627,7 +627,9 @@ def proof_writes(l, hroot):
     toks = [t for t in toks if t.strip('.-')]
     if not toks:
         die('worker %s: a proof brief names no evidence file' % l['label'])
-    bad = [t for t in toks if not (os.path.isabs(t) and under_root(t, hroot) and t.endswith('.md') and os.path.dirname(t).endswith('/specs/audits'))]
+    bad = [t for t in toks if not (os.path.isabs(t) and under_root(t, hroot) and os.path.realpath(t).endswith('.md')
+                                   and os.path.dirname(os.path.realpath(t)).endswith('/specs/audits'))]
+    bad += re.findall(r'\S*[*?{}~$]\S*', _writes_scope(l['writes']))
     if bad:
         die('worker %s: a proof brief writes only .md files in a specs/audits/ directory under %s; its Writes name %s' % (l['label'], hroot, ' '.join(bad)))
 

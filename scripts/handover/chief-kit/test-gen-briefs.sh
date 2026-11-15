@@ -2252,6 +2252,12 @@ has "P1 the Contract pastes the unpushed-commits read" "$PC" 'log --oneline orig
 has "P1 the Contract pastes the PR-list read" "$PC" 'gh pr list --head'
 PSC="$(grep '^> \*\*Scope / do not:\*\*' "$PB" 2>/dev/null)"
 has "P1 the Scope line's your Writes names only the evidence path" "$PSC" "your Writes: $PF_EV."
+# shellcheck disable=SC2016  # the backticks are literal text in the brief
+PSC_TAIL='. No settings, CI workflows, SKIP_CR, --no-verify, bisect or old-commit checkout; READ ONLY `scripts/hooks/lib/` and anything in `scripts/ci/ci-trust-paths.txt`. Remove any fixture you create under the real HOME before you wrap.'
+case "$PSC" in
+    "> **Scope / do not:** your Writes: $PF_EV. No repo edit, commit, push, PR or merge; a write outside Writes is a FINDING to the chief, never a claim. Other live workers and their files: "*"$PSC_TAIL") pass "P1 the Scope line opens and closes with the fixed proof text, nothing added around it" ;;
+    *) fail "P1 the Scope line differs from the fixed proof text: $PSC" ;;
+esac
 has "P1 the Scope line says a stray write is a FINDING" "$PSC" 'a FINDING to the chief, never a claim'
 # shellcheck disable=SC2034  # POV and PHD are read through eval in the loop below
 POV="$(grep '^> \*\*Overlaps:\*\*' "$PB" 2>/dev/null)"
@@ -2289,6 +2295,10 @@ pf_refuse p2dots "R+'/../himmel/specs/audits/x.md'" "$PF_ROOT/../himmel/specs/au
 pf_refuse p2json "R+'/specs/audits/x.json'" "$PF_ROOT/specs/audits/x.json"
 pf_refuse p2key "R+'/specs/HIMMEL-1/proof.md'" "$PF_ROOT/specs/HIMMEL-1/proof.md"
 pf_refuse p2design "R+'/specs/designs/HIMMEL-1-proof.md'" "$PF_ROOT/specs/designs/HIMMEL-1-proof.md"
+pf_refuse p2glob "R+'/specs/audits/x.md*'" "$PF_ROOT/specs/audits/x.md*"
+mkdir -p "$PF_ROOT/symroot/specs" "$PF_ROOT/specs/designs"
+ln -s "$PF_ROOT/specs/designs" "$PF_ROOT/symroot/specs/audits"
+pf_refuse p2sym "R+'/symroot/specs/audits/x.md'" "$PF_ROOT/symroot/specs/audits/x.md"
 pfmk p2empty "w['writes']='()'"
 o="$(cgrun p2empty)"; rc=$?
 { [ "$rc" = 1 ] && has "P2 a Writes with no token names no evidence file" "$o" "worker N941: a proof brief names no evidence file"; } || fail "P2 empty Writes rc=$rc: $o"
