@@ -25,6 +25,9 @@
 # then `vmismatch=<rows>`. When the open-PR read fails, `open PRs unknown` is
 # printed first, so no row is silently trusted as unowned.
 #
+# Default mirror: the shared resolver's jira_mirror_dir (the configured Jira project key). The open-PR read
+# names VSA_REPO, else the owner/name of this checkout's GitHub origin, else no --repo (gh reads the cwd's).
+#
 # Env (tests): VSA_GH_CMD replaces `gh`.
 #
 # Exit: 0 no RESET row; 1 at least one RESET row; 2 usage; 4 versions file
@@ -33,7 +36,9 @@
 # front matter, or the worker manifest unreadable: its unowned rows print UNKNOWN).
 # PLATFORM GUARD: the chief kit is Linux-only.
 set -u
-mirror="${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL"; workers_from="${WORKERS_FROM:-}"; owners=""
+# shellcheck source=../../lib/jira-project.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../lib/jira-project.sh"
+mirror="$(jira_mirror_dir)"; workers_from="${WORKERS_FROM:-}"; owners=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --mirror) mirror="${2:-}"; shift 2 || exit 2 ;;
@@ -136,8 +141,23 @@ if workers_from and os.path.isfile(workers_from):
         workers_unknown = True
 gh = os.environ.get('VSA_GH_CMD', 'gh')
 gh_unknown = False
+
+
+def repo_args():
+    repo = os.environ.get('VSA_REPO', '')
+    if not repo:
+        try:
+            url = subprocess.run(['git', '-C', os.path.join(os.environ['VSA_LIB'], '..', '..'), 'remote', 'get-url', 'origin'],
+                                 capture_output=True, text=True, timeout=10).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            url = ''
+        hit = re.search(r'github\.com[:/]([\w.-]+/[\w.-]+?)(?:\.git)?/?$', url)
+        repo = hit.group(1) if hit else ''
+    return ['--repo', repo] if repo else []
+
+
 try:
-    out = subprocess.run([gh, 'pr', 'list', '--repo', 'yotamleo-org/Himmel', '--state', 'open', '--limit', '200', '--json', 'number,title,headRefName',
+    out = subprocess.run([gh, 'pr', 'list'] + repo_args() + ['--state', 'open', '--limit', '200', '--json', 'number,title,headRefName',
                           '--jq', '.[] | [.number, .title, .headRefName] | @tsv'],
                          capture_output=True, text=True, timeout=60, check=True).stdout
     if len(out.splitlines()) >= 200:

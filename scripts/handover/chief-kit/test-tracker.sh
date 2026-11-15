@@ -709,6 +709,21 @@ rbfile="$W/rb-out.md"
 python3 "$HERE/tracker.py" --remaining v1.1.3 --mirror-dir "$rb" --priority-file "$pf" --out "$rbfile" >/dev/null 2>&1
 contains '--out writes the board to a file' "$(cat "$rbfile" 2>/dev/null)" 'HIMMEL-72 [In Progress] second group open'
 
+s2h="$W/s2home"; s2c="$W/s2cfg"; s2v="$W/s2vault"
+mkdir -p "$s2h/.himmel/state/jira-mirror" "$s2c" "$s2v/handovers/s2user/himmel"
+printf 'JIRA_PROJECT_KEY=ACME\n' > "$s2c/himmel.conf"
+cp -R "$rb" "$s2h/.himmel/state/jira-mirror/ACME"
+s2want="$(python3 "$HERE/tracker.py" --remaining v1.1.3 --mirror-dir "$rb" --priority-file "$pf" 2>&1)"
+s2got="$(env -u HIMMEL_JIRA_MIRROR HOME="$s2h" HIMMEL_CONFIG_DIR="$s2c" JIRA_PROJECT_KEY= python3 "$HERE/tracker.py" --remaining v1.1.3 --priority-file "$pf" 2>&1)"
+equals 'the default mirror dir follows the key only himmel.conf names' "$s2got" "$s2want"
+s2got="$(env -u HIMMEL_JIRA_MIRROR HOME="$s2h" HIMMEL_CONFIG_DIR="$s2c" JIRA_PROJECT_KEY= python3 "$HERE/tracker.py" --remaining v1.1.3 --mirror-dir "$rb" --priority-file "$pf" 2>&1)"
+equals '--mirror-dir still wins over the resolver default' "$s2got" "$s2want"
+printf '%s\n' '# worker' '## Results' '- 10:00 LIVE — up' > "$s2v/handovers/s2user/himmel/HIMMEL-7-N57-s2-worker-2026-11-15.md"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N57"}]}\n' "$s2v/handovers/s2user/himmel/HIMMEL-7-N57-s2-worker-2026-11-15.md" > "$s2v/handovers/s2user/himmel/test-console.fleet.json"
+env -u TRACKER_HANDOVERS_DIR HOME="$s2h" HIMMEL_CONFIG_DIR="$s2c" JIRA_PROJECT_KEY= USER_SLUG=s2user LUNA_VAULT_PATH="$s2v" \
+    python3 "$HERE/tracker.py" --plan-dir "$plan" --out "$W/s2-live.html" --luna-map "$W/s2-luna-map.json" --mirror-dir "$mir" >/dev/null 2>&1
+contains 'the default luna and handover dirs come from LUNA_VAULT_PATH and USER_SLUG' "$(cat "$W/s2-live.html" 2>/dev/null)" '"7":["N57","LIVE"'
+
 # --- remaining board blockers: a parseable ` {blocked-by: HIMMEL-n open|done, ...}` suffix on the card line.
 bb="$W/bb"
 mkdir -p "$bb"
@@ -817,6 +832,10 @@ prc=$?
 phtml="$(cat "$out" 2>/dev/null)"
 contains 'the parity check asks Jira for the version worked on (HIMMEL-6401)' "$(cat "$W/jira-args" 2>/dev/null)" \
     'list --jql project = HIMMEL AND fixVersion = "v1.1.3"'
+pstdout="$(TRACKER_JIRA="$W/fakejira" HOME="$W/s2home" HIMMEL_CONFIG_DIR="$W/s2cfg" JIRA_PROJECT_KEY='' render --mirror-dir "$pf/mirror" --versions-file "$pf/mirror.versions.tsv")"
+contains 'the parity JQL names the project a himmel.conf-only key sets' "$(cat "$W/jira-args" 2>/dev/null)" \
+    'list --jql project = ACME AND fixVersion = "v1.1.3"'
+pstdout="$(TRACKER_JIRA="$W/fakejira" render --mirror-dir "$pf/mirror" --versions-file "$pf/mirror.versions.tsv")"
 contains 'a page count that differs from Jira is a parity DRIFT (HIMMEL-6401)' "$pstdout" \
     'parity: v1.1.3 DRIFT page 2/1/0/0 jira 1/0/1/0 (done/in progress/in review/to do)'
 contains 'the hero note carries the parity line (HIMMEL-6401)' "$phtml" '"PAR":"parity: v1.1.3 DRIFT page 2/1/0/0'
@@ -1040,6 +1059,9 @@ not_contains 'a card its PR CI moved off its Jira column is no parity DRIFT (HIM
 contains 'a CI-moved card keeps its CI column and its Jira note (HIMMEL-7513)' "$(card 401)" 'Jira In Progress, PR CI says IN CI'
 contains 'parity asks Jira for the open tickets of the version (HIMMEL-6769)' "$(cat "$W/vp-jira-args" 2>/dev/null)" \
     'project = HIMMEL AND fixVersion = "v1.1.3" AND statusCategory != Done'
+HOME="$W/s2home" HIMMEL_CONFIG_DIR="$W/s2cfg" JIRA_PROJECT_KEY='' vrender >/dev/null
+contains 'the column parity JQL names the project a himmel.conf-only key sets' "$(cat "$W/vp-jira-args" 2>/dev/null)" \
+    'project = ACME AND fixVersion = "v1.1.3" AND statusCategory != Done'
 contains 'a card sits in its plan priority block (HIMMEL-6769, 6735)' "$(card 400)" 'data-block="0 critical"'
 contains 'a card on no priority line sits in rest of version (HIMMEL-6769, 6735)' "$(card 407)" 'data-block="rest of version"'
 contains 'a sector chip renders in the sector colour (HIMMEL-6769)' "$(card 400)" '<span class="sec" style="--s:#16a34a">Ship loop</span>'
@@ -1142,7 +1164,7 @@ equals 'S8b control: TRACKER_GH set runs its gh child with GH_READ_QUIET=1' "$(c
 contains 'S8b control: TRACKER_GH set still fills the cards' "$(cat "$W/s8-q.html" 2>/dev/null)" '#500 · CI green'
 mkdir -p "$W/s8 sp/scripts/handover/chief-kit" "$W/s8 sp/scripts/lib"
 cp "$HERE/tracker.py" "$W/s8 sp/scripts/handover/chief-kit/tracker.py"
-cp "$HERE/../../lib/gh-read.sh" "$HERE/../../lib/timeout-bin.sh" "$HERE/../../lib/env_alias.py" "$HERE/../../lib/load-dotenv.sh" "$W/s8 sp/scripts/lib/"
+cp "$HERE/../../lib/gh-read.sh" "$HERE/../../lib/timeout-bin.sh" "$HERE/../../lib/env_alias.py" "$HERE/../../lib/load-dotenv.sh" "$HERE/../../lib/jira-project.sh" "$W/s8 sp/scripts/lib/"
 : > "$S8LOG"
 "${S8ENV[@]}" GH_STUB_MAINFAIL=rate python3 "$W/s8 sp/scripts/handover/chief-kit/tracker.py" --version v1.1.3 --repo example-org/example-repo --mirror-dir "$vp" \
     --priority-file "$W/vp-plan.md" --chains-file "$W/vp-chains.json" --jira-base-url https://jira.example.test --out "$W/s8-sp.html" >/dev/null 2>&1
