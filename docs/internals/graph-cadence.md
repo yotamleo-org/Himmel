@@ -261,7 +261,7 @@ aliases, resolved by `scripts/lib/llm-backend.sh`. Any other value refuses (rc 1
 | rc | meaning | cadence result |
 |---|---|---|
 | 0 | ok, no change since the last pass (no-op), or on `claude-api` a batch submitted or still pending (graph untouched) | green; clears the `graph-semantic-<slug>` alert |
-| 3 | subscription usage budget at/over threshold, nothing touched (claude-cli only; the ollama path skips the usage budget check) | benign skip: green, no alert, an existing alert is left standing |
+| 3 | subscription usage budget at/over threshold, nothing touched (claude-cli only; the ollama path skips the usage budget check); or, on `claude-api` batch mode, the batch estimate is over the run cap (word `over-cap`, nothing submitted, nothing pending) | benign skip: green, no alert, an existing alert is left standing |
 | 4 | promote lock held by another graph refresh, nothing touched | benign skip: green, no alert, an existing alert is left standing |
 | 5 | one or more semantic chunks failed (the good chunks merged, the failed files stay unstamped) | alerts (`semantic-update-rc-5`), `action=failed`, rc 3 |
 | 1, 2, other | usage/IO, fence deny, batch submit failure, graphify or merge failure | alerts (`semantic-update-rc-<n>`), `action=failed`, rc 3 |
@@ -269,6 +269,15 @@ aliases, resolved by `scripts/lib/llm-backend.sh`. Any other value refuses (rc 1
 On `claude-api`, `semantic-update.sh` passes graphify `--token-budget` derived from `GRAPHIFY_API_CALL_BUDGET_USD`
 (120000 tokens per USD, capped at graphify's 60000), so a chunk fits one lane call; the default 0.25 USD gives
 30000. The estimate line prints the cap, the chunk size and the expected per-chunk cost.
+
+In batch mode the run cap (`--max-run-usd`, default 15.00, or `GRAPHIFY_API_RUN_BUDGET_USD`) is a hard ceiling, not a
+planning input. The batch is sized with the client's own per-request bound (`semantic-batch.mjs bound`: the prompt's
+bytes at the dearest input rate, a flat framing allowance, and `max_tokens` (32000) at the output rate, about 0.30 USD
+for a 15000-token chunk), and `semantic-batch.mjs submit` refuses with exit 7 when the batch's summed bound is over the
+cap, before any request is sent. `semantic-update.sh` reports that as `over-cap` (rc 3, nothing submitted, nothing
+pending), so a cap too small for even one file shows as a skip until the cap is raised or the file is listed in
+`.graphify-corpus-ignore`. The submit also needs a budget: with none it refuses (exit 2). The batch's `batch.json`
+records the estimate, the budget and the paying account, and the run row in `semantic-runs.jsonl` carries `account`.
 
 `claude-api` extraction runs through the Message Batches API at half price (`GRAPHIFY_API_BATCH=0` keeps the
 synchronous path). A first pass records the chunk prompts and submits one batch; the graph and manifest stay

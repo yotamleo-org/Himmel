@@ -21,7 +21,7 @@ git init -q "$REPO"
 # Other tools share TMPDIR (handover-path.sh's arm-resume-cache.* in CI): the
 # scratch checks look only for this script's own graphify-semantic-* dirs.
 mkdir "$WS/tmp/arm-resume-cache.foreign"
-for f in semantic-update.sh semantic-merge.py harden-graph.py harden-allowlist.json semantic-batch-shim.mjs; do
+for f in semantic-update.sh semantic-merge.py harden-graph.py harden-allowlist.json semantic-batch-shim.mjs semantic-batch.mjs; do
   cp "$HERE/$f" "$REPO/scripts/graphify/$f" 2>/dev/null || true
 done
 ln -s "$REAL_REPO/scripts/guardrails" "$REPO/scripts/guardrails"
@@ -968,18 +968,27 @@ out=$(GRAPHIFY_OUT="$WS/link64" run --name t64 --corpus-root "$C64" --corpus-cla
 # --- --backend claude-api through the Message Batches API (the default) -----
 # The real client (semantic-batch.mjs) is covered by semantic-batch.test.mjs against a loopback stub of the endpoint;
 # here a stand-in client and credit-state with the same command line prove the wiring around them.
+cp "$HERE/semantic-batch.mjs" "$REPO/scripts/graphify/semantic-batch.real.mjs"
 cat > "$REPO/scripts/graphify/semantic-batch.mjs" <<'EOF'
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+// the real client's own bound, so the planner and the stand-in's gate use one figure
+const real = join(dirname(fileURLToPath(import.meta.url)), 'semantic-batch.real.mjs');
+const boundOf = (bytes, model, maxTokens) => Number(spawnSync(process.execPath, [real, 'bound', '--bytes', String(bytes), '--model', model || 'sonnet', '--max-tokens', maxTokens || '32000'], { encoding: 'utf8' }).stdout);
 const [cmd, ...a] = process.argv.slice(2);
 const o = {}; for (let i = 0; i < a.length; i += 2) o[a[i].slice(2)] = a[i + 1];
 const ws = process.env.BATCH_STUB_WS;
 const log = (m) => appendFileSync(join(ws, 'batch.log'), `${m}\n`);
+if (cmd === 'bound') { console.log(boundOf(o.bytes, o.model, o['max-tokens']).toFixed(6)); process.exit(0); }
 const sp = join(o.dir, 'batch.json');
 const state = () => JSON.parse(readFileSync(sp, 'utf8'));
 if (cmd === 'submit') {
   if (existsSync(sp)) { console.error('a pending batch is resumed, never resubmitted'); process.exit(2); }
   const ids = readdirSync(o.prompts).filter((f) => f.endsWith('.txt')).map((f) => f.slice(0, -4));
+  const est = ids.reduce((t, id) => t + boundOf(statSync(join(o.prompts, `${id}.txt`)).size, o.model, o['max-tokens']), 0);
+  if (est > Number(o['max-usd'])) { log(`over-budget estimate=${est.toFixed(6)}`); console.error(`semantic-batch: estimate ${est.toFixed(6)} USD (${ids.length} requests) is over the budget of ${o['max-usd']} USD; nothing submitted`); process.exit(7); }
   log(`submit account=${o.account} prompts=${ids.length} model=${o.model} effort=${o.effort}`);
   if ((process.env.BATCH_STUB_EXHAUSTED || '').split(',').includes(o.account)) { console.error('semantic-batch: credit exhausted (HTTP 400)'); process.exit(5); }
   if ((process.env.BATCH_STUB_REJECTED || '').split(',').includes(o.account)) {
@@ -1423,11 +1432,22 @@ first="$(sed -n 's/.*over-cap: the estimate for \([^ ]*\) alone.*/\1/p' <<<"$out
 [ "$rc" -ne 0 ] && [ ! -s "$WS/batch.log" ] && [ "$(word)" = over-cap ] && [ -n "$first" ] && [ -f "$CO/$first" ] \
   && [[ "$out" == *".graphify-corpus-ignore"* ]] && [[ "$out" == *"--max-run-usd"* ]] && ! grep -q '^graphify extract' "$WS/calls.log" \
   && pass "O4 over-cap names $first and both ways out, nothing extracted or submitted" || fail "O4 (rc=$rc) word '$(word)': $out"
-echo "O4b: the same estimate without --account-order is sized and submitted as on main (the cap stays a planning input)"
+echo "O4b: the same estimate without --account-order reaches the client as its one-file floor, which refuses it over budget (exit 7): over-cap, nothing pending"
 CO="$WS/o4b"; new_corpus "$CO"; o_reset
 out=$(ACCT=A GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name o4b --corpus-root "$CO" --corpus-class himmel-code --backend claude-api --max-run-usd 0.01); rc=$?
-[ "$rc" -eq 0 ] && [ "$(batch_accounts)" = "A " ] && [[ "$out" != *"over-cap"* ]] \
-  && pass "O4b one file submitted on A, no over-cap" || fail "O4b (rc=$rc) accounts '$(batch_accounts)': $out"
+[ "$rc" -eq 3 ] && [ -z "$(batch_accounts)" ] && grep -q '^over-budget estimate=' "$WS/batch.log" && [[ "$out" == *"over-cap"* ]] && [ ! -e "$CO/graphify-out/semantic-batch" ] \
+  && pass "O4b the floor file was refused over budget: over-cap, rc 3, no submit, no pending dir" || fail "O4b (rc=$rc) accounts '$(batch_accounts)': $out"
+
+echo "T94: a cap the planner admits is a cap the client accepts: an estimate over the cap is over-cap (rc 3, re-size), not a stopped run"
+C94="$WS/c94"; new_corpus "$C94"; batch_reset
+out=$(ACCT=A GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t94 --corpus-root "$C94" --corpus-class himmel-code --backend claude-api --max-run-usd 0.15); rc=$?
+[ "$rc" -eq 3 ] && [[ "$out" == *"over-cap"* ]] && [[ "$out" != *"submitting the batch failed"* ]] && [ ! -e "$C94/graphify-out/semantic-batch" ] && [ -z "$(batch_accounts)" ] \
+  && pass "T94 a one-chunk batch over a 0.15 cap is refused as over-cap, nothing pending, the files stay for a re-sized run" || fail "T94 (rc=$rc): $out"
+echo "T94b: the planner sizes a batch with the client's own per-request bound, not the list price"
+C94B="$WS/c94b"; new_corpus "$C94B"; for i in $(seq 1 40); do printf 'file %s\n' "$i" > "$C94B/f$i.md"; done
+out=$(ACCT=A run_batch --name t94b --corpus-root "$C94B" --corpus-class himmel-code --backend claude-api --max-run-usd 0.60 --dry-run); rc=$?
+[ "$rc" -eq 0 ] && [[ "$out" == *"sized: batch of 43 files cut to 14 to fit the run cap of 0.60 USD"* ]] \
+  && pass "T94b 43 files at 6 chunks and a 0.296 USD bound per chunk are cut to 14 (the list price would cut to 35)" || fail "T94b (rc=$rc): $out"
 
 echo "O5: --account-order refuses GRAPHIFY_API_BATCH=0, another backend and a value that is not one capital letter per entry"
 CO="$WS/o5"; new_corpus "$CO"

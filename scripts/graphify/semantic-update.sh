@@ -58,10 +58,13 @@
 # doc-to-code edges of relation `documents`, `explains` or `rationale_for`. Its
 # extraction cache is kept apart (cache/semantic-r1), so a chunk cached under the
 # old prompt is never replayed without them. The per-run spend cap (--max-run-usd,
-# default 15.00; GRAPHIFY_API_RUN_BUDGET_USD) is a planning input: the batch is sized so its estimated chunks fit
-# it, and a run planned inside it is never stopped by it. Spend past the cap is logged as a WARN and the calls
-# go on; only the API refusing for lack of credit stops a chunk, and the finished chunks still merge. The run
-# row carries the summed cost (`cost_usd`), the backend and the cap.
+# default 15.00; GRAPHIFY_API_RUN_BUDGET_USD) sizes the run. On the synchronous lane path it is a planning input:
+# chunks are sized to fit it, spend past it is logged as a WARN and the calls go on; only the API refusing for lack
+# of credit stops a chunk, and the finished chunks still merge. A batch is held to it: its chunks are sized with
+# the batch client's per-request bound (`semantic-batch.mjs bound`: the prompt's bytes, framing and the output cap),
+# the same figure the client sums, and the client refuses a submit whose estimate is over the cap (exit 7), which
+# this script reports as over-cap (exit 3, nothing submitted, nothing pending). The run row carries the summed cost
+# (`cost_usd`), the backend and the cap, and for a batch the account that paid.
 #
 # GRAPHIFY_API_SYSTEM_PROMPT=1 (synchronous lane path only, default off) moves graphify's fixed instructions and
 # those requirements into one per-run --append-system-prompt-file, removed with the run's scratch dir, leaving the
@@ -78,7 +81,7 @@
 # its result by hash), then merged and hardened as usual. A chunk the batch did not answer fails like any failed
 # chunk: its files stay unstamped and ride the next batch. The account follows HIMMEL_API_ACCOUNT (auto picks by
 # the lane's credit state); a credit-exhausted answer or a rejected key (HTTP 401 or 403) marks the account and an auto route goes on to the accounts not yet tried, each at most once per pass (any other error stops the pass).
-# The batch cost is not gated (decision 229); it lands in the run row. Every run prints one
+# The batch estimate is gated before the submit (above); its measured cost lands in the run row. Every run prints one
 # `semantic-update: BATCH id=… state=submitted|pending|merged requests=N cost_usd=…` line for the cadence ledger.
 #
 # --account-order C,A (claude-api batch only) walks those letters in that order instead of HIMMEL_API_ACCOUNT: a
@@ -181,6 +184,8 @@ if [ "$OUT_DIR" != "$CORPUS_ROOT/graphify-out" ] && [ -L "$OUT_DIR" ]; then
   RESULT_WORD=corpus-failed; exit 3
 fi
 API_CALL_BUDGET="${GRAPHIFY_API_CALL_BUDGET_USD:-1.00}"
+# One request's output cap in a batch: the client sends it as max_tokens and the planner's per-chunk bound counts it.
+BATCH_MAX_TOKENS=32000
 API_EFFORT="${GRAPHIFY_API_EFFORT:-high}"
 if [ "$BACKEND" = "claude-api" ] && [ "$SEED" -eq 0 ] && [ "$DRY" -eq 0 ] && [ "$(node "$REPO_ROOT/scripts/himmelctl/lib/graph-choices.js" role 2>/dev/null)" = unreadable ]; then
   echo "semantic-update: refusing claude-api: the station's graph config reads unreadable, so no paid call is made (node scripts/himmelctl/lib/graph-choices.js check names the repair) -- nothing copied" >&2; exit 2
@@ -333,11 +338,19 @@ plan_or_noop
 if [ "$BACKEND" = "claude-api" ] && [ "$RESUME" -eq 0 ]; then
   # ponytail: tokens ~ bytes/4 plus 2000 prompt tokens per file, output a quarter of input, at the sonnet list
   # rate ($3/$15 per M); a rough ceiling, replace with a measured figure once a real run is ledgered.
+  # A batch is sized with the client's own bound for one chunk request (its prompt, graphify's 2000 tokens of
+  # instructions at four bytes a token, plus the output cap), which is what the client refuses a submit over; the
+  # synchronous lane keeps the list-price figure.
+  FIT_USD=""
+  if [ "$BATCH_MODE" -eq 1 ]; then
+    FIT_USD="$(node "$HERE/semantic-batch.mjs" bound --bytes "$(( (CHUNK_TOKENS + 2000) * 4 ))" --model "${GRAPHIFY_CLAUDE_CLI_MODEL-sonnet}" --max-tokens "$BATCH_MAX_TOKENS")" \
+      || { echo "semantic-update: the batch client cannot bound a chunk request; nothing submitted" >&2; exit 2; }
+  fi
   # each cut re-plans, so the estimate is recomputed on the files that remain (a prefix of large files can still be over)
   while :; do
-  FIT_OUT="$(python3 - "$PLAN" "$CORPUS_ROOT" "${GRAPHIFY_CLAUDE_CLI_MODEL-sonnet}" "$API_CALL_BUDGET" "$CHUNK_TOKENS" "$RUN_CAP" <<'PY'
+  FIT_OUT="$(python3 - "$PLAN" "$CORPUS_ROOT" "${GRAPHIFY_CLAUDE_CLI_MODEL-sonnet}" "$API_CALL_BUDGET" "$CHUNK_TOKENS" "$RUN_CAP" "$FIT_USD" <<'PY'
 import json, os, sys
-plan, root, model, budget, chunk, cap = sys.argv[1:7]
+plan, root, model, budget, chunk, cap, fit_usd = sys.argv[1:8]
 files = json.load(open(plan))["batch"]
 size = sum(os.path.getsize(os.path.join(root, f)) for f in files)
 tin = size // 4 + 2000 * len(files)
@@ -352,13 +365,14 @@ chunks = -(-tin // ct)
 log("semantic-update: chunk: call-cap=%s chunk-tokens=%d chunk-cost-est=~%.2f chunks~%d run-cap-usd=%s"
     % (budget, ct, chunk_usd, chunks, cap))
 # the run cap sizes the batch: keep the share of files whose chunks fit it; the rest stay unstamped for the next run
-fit_chunks = int(float(cap) / chunk_usd)
+fit_chunks = int(float(cap) / (float(fit_usd) if fit_usd else chunk_usd))
 print(len(files) if chunks <= fit_chunks else max(1, len(files) * fit_chunks // chunks), int(chunks > fit_chunks))
 PY
 )"
   FIT_FILES="${FIT_OUT%% *}" OVER_CAP="${FIT_OUT##* }"
   [ "$FIT_FILES" -lt "$N_BATCH" ] || break
-  # the floor is one file, so a cap that cannot fund one chunk still runs that file; the shim WARNs on the overshoot
+  # the floor is one file, so a cap that cannot fund one chunk still runs that file; on the synchronous lane the shim
+  # WARNs on the overshoot, and a batch is refused by the client (over-cap)
   echo "semantic-update: sized: batch of $N_BATCH files cut to $FIT_FILES to fit the run cap of $RUN_CAP USD; the rest stay unstamped for the next run" >&2
   MAX_FILES="$FIT_FILES"
   plan_or_noop
@@ -507,11 +521,12 @@ batch_submit() {
     fi
     rc=0
     node "$BATCH_CLIENT" submit --dir "$PENDING" --prompts "$WORK/prompts" --account "$acct" \
-      --model "${GRAPHIFY_CLAUDE_CLI_MODEL-sonnet}" --effort "$API_EFFORT" --max-usd "$RUN_CAP" >&2 || rc=$?
+      --model "${GRAPHIFY_CLAUDE_CLI_MODEL-sonnet}" --effort "$API_EFFORT" --max-tokens "$BATCH_MAX_TOKENS" --max-usd "$RUN_CAP" >&2 || rc=$?
     case "$rc" in
       5) what="credit exhausted" ;;
       6) what="API key rejected"
          key_rejected "$acct" ;;
+      7) return 7 ;;
       *) [ "$rc" -eq 0 ] || { [ "$HIMMEL_API_ACCOUNT" != auto ] && [ "$ORDER_GIVEN" -eq 0 ]; } \
            || echo "semantic-update: account $acct failed (rc $rc), not on credit or its key; only a credit-exhausted or rejected-key answer tries the next account, so no other account is tried" >&2
          [ "$rc" -ne 0 ] || key_ok "$acct"
@@ -746,6 +761,11 @@ PY
     # The record run's graph is placeholders: discard it, submit what it recorded, leave the live graph as it was.
     rm -rf "$SCRATCH"; mv "$PENDING/corpus.orig" "$SCRATCH"; cp "$PLAN" "$PENDING/plan.json"
     rc=0; batch_submit || rc=$?
+    if [ "$rc" -eq 7 ]; then
+      rm -rf "$PENDING"
+      echo "semantic-update: over-cap: the batch estimate is over the run cap of $RUN_CAP USD (line above) -- nothing submitted, graph and manifest untouched; list large files in .graphify-corpus-ignore or raise --max-run-usd" >&2
+      RESULT_WORD=over-cap; exit 3
+    fi
     if [ "$rc" -ne 0 ]; then
       rm -rf "$PENDING"
       echo "semantic-update: submitting the batch failed (rc $rc) -- nothing submitted, graph and manifest untouched" >&2; exit 2

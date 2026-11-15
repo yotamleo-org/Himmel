@@ -398,7 +398,7 @@ test('a batch whose estimate is over the budget is refused before submit, one li
   reset();
   const f = fixture();
   const s = await f.submit(['--max-usd', '0.30']);
-  assert.equal(s.code, 2, `submitted anyway: ${s.stdout}`);
+  assert.equal(s.code, 7, `submitted anyway: ${s.stdout}`);
   assert.match(s.stderr.trim(), /^semantic-batch: estimate 0\.32\d* USD .*2 requests.* is over the budget of 0\.30 USD; nothing submitted$/);
   assert.equal(seen.posts.length, 0, 'nothing reached the endpoint');
   assert.equal(existsSync(join(f.batch, 'batch.json')), false, 'no state left behind');
@@ -436,7 +436,7 @@ test('the budget may come from GRAPHIFY_API_RUN_BUDGET_USD; the flag wins when b
   // async: the stub server lives in this process, so a blocking spawn would starve it
   const env = { ...f.env, GRAPHIFY_API_RUN_BUDGET_USD: '0.30' };
   const over = await run(process.execPath, args, { env, encoding: 'utf8' }).then(() => ({ code: 0 }), (e) => ({ code: e.code, stderr: e.stderr }));
-  assert.equal(over.code, 2, over.stderr);
+  assert.equal(over.code, 7, over.stderr);
   assert.match(over.stderr, /over the budget of 0\.30 USD/);
   assert.equal(seen.posts.length, 0);
   const flagWins = await run(process.execPath, [...args, '--max-usd', '0.33'], { env, encoding: 'utf8' }).then(() => ({ code: 0 }), (e) => ({ code: e.code, stderr: e.stderr }));
@@ -451,7 +451,7 @@ test('the input bound carries a flat framing allowance: a one-byte prompt is bou
   writeFileSync(join(f.prompts, `${sha('x')}.txt`), 'x');
   // 1 byte and 32000 output tokens bound at 0.160002 USD; the framing allowance of 100 tokens at twice the rate adds 0.0002
   const refused = await f.submit(['--max-usd', '0.1601']);
-  assert.equal(refused.code, 2, `the framing tokens were not counted: ${refused.stdout}`);
+  assert.equal(refused.code, 7, `the framing tokens were not counted: ${refused.stdout}`);
   assert.match(refused.stderr, /estimate 0\.1602\d* USD/);
   assert.equal((await f.submit(['--max-usd', '0.1603'])).code, 0);
 });
@@ -466,11 +466,29 @@ test('the input bound counts one token per byte, and the refusal names the large
   const big = 'é'.repeat(50000);
   writeFileSync(join(f.prompts, `${sha(big)}.txt`), big);
   const under = await f.submit(['--max-usd', '0.30']);
-  assert.equal(under.code, 2, `a token-dense prompt got through: ${under.stdout}`);
+  assert.equal(under.code, 7, `a token-dense prompt got through: ${under.stdout}`);
   assert.match(under.stderr, /estimate 0\.36\d* USD \(1 requests, the largest up to 0\.36\d* USD\)/);
   const small = 'small prompt';
   writeFileSync(join(f.prompts, `${sha(small)}.txt`), small);
   const two = await f.submit(['--max-usd', '0.30']);
   assert.match(two.stderr, /estimate 0\.52\d* USD \(2 requests, the largest up to 0\.36\d* USD\)/);
   assert.equal(seen.posts.length, 0);
+});
+
+test('bound prints the figure submit sums, so a planner sizing with it and the gate agree', async () => {
+  reset();
+  const f = fixture();
+  const b = await f.client('bound', '--bytes', '100000', '--model', 'sonnet');
+  assert.equal(b.code, 0, b.stderr);
+  assert.equal(b.stdout.trim(), '0.360200', '100000 bytes plus 100 framing at 2 USD/M, plus 32000 output tokens at 5 USD/M');
+  rmSync(f.prompts, { recursive: true });
+  mkdirSync(f.prompts);
+  const big = 'e'.repeat(100000);
+  writeFileSync(join(f.prompts, `${sha(big)}.txt`), big);
+  const s = await f.submit(['--max-usd', '0.30']);
+  assert.match(s.stderr, /estimate 0\.360200 USD \(1 requests, the largest up to 0\.360200 USD\)/);
+  assert.equal((await f.client('bound', '--bytes', '100000', '--model', 'sonnet', '--max-tokens', '1000')).stdout.trim(), '0.205200');
+  for (const bad of [['--bytes', 'abc', '--model', 'sonnet'], ['--bytes', '10', '--model', 'nope'], ['--bytes', '10', '--model', 'sonnet', '--max-tokens', '0']]) {
+    assert.equal((await f.client('bound', ...bad)).code, 2, bad.join(' '));
+  }
 });

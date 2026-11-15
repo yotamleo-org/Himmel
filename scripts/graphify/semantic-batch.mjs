@@ -16,8 +16,13 @@
 //           json` envelope, for each succeeded request; errored, canceled and expired ones leave no file.
 //           Prints {batch_id, succeeded, missing, cost_usd} and records the cost in D/batch.json.
 //
+//   bound   --bytes B --model M [--max-tokens N]
+//           Prints the most one request of B bytes can bill, in USD: the figure submit's budget gate sums, shared so the
+//           caller that sizes a batch uses the same bound.
+//
 // Exit: 0 ok; 2 usage or refusal; 3 API or network failure (retry next run); 4 batch not ended;
-//       5 credit exhausted, 6 API key rejected (HTTP 401 or 403); on either the caller rotates account.
+//       5 credit exhausted, 6 API key rejected (HTTP 401 or 403); on either the caller rotates account;
+//       7 the batch estimate is over the budget (nothing was sent; re-size the batch, do not rotate account).
 // Key: read here from <state_dir>/key-<account>.env (mode 600, the lane's own file), never printed or put on argv.
 // Endpoint: https://api.anthropic.com, or HIMMEL_BATCH_BASE_URL when it is a loopback http(s) URL (test stub).
 // Budget: submit needs --max-usd (or GRAPHIFY_API_RUN_BUDGET_USD) and refuses (exit 2) before the POST when requests x the
@@ -173,10 +178,10 @@ async function submit(o) {
     ...(prefix && { system: [{ type: 'text', text: prefix, cache_control: { type: 'ephemeral', ttl: CACHE_TTL } }] }),
     messages: [{ role: 'user', content: prefix ? text.slice(prefix.length) : text }] } }));
   // The estimate gates the POST: once the batch is created it bills to the end, so the budget is checked before.
-  const bounds = prompts.map(({ text }) => requestBound(model, text, maxTokens));
+  const bounds = prompts.map(({ text }) => requestBound(model, Buffer.byteLength(text), maxTokens));
   const estimate = bounds.reduce((sum, b) => sum + b, 0);
   if (estimate > Number(budget)) {
-    refuse(`estimate ${estimate.toFixed(6)} USD (${requests.length} requests, the largest up to ${Math.max(...bounds).toFixed(6)} USD) is over the budget of ${budget} USD; nothing submitted`);
+    refuse(`estimate ${estimate.toFixed(6)} USD (${requests.length} requests, the largest up to ${Math.max(...bounds).toFixed(6)} USD) is over the budget of ${budget} USD; nothing submitted`, 7);
   }
   const key = await accountKey(o.account);
   const made = JSON.parse(await call(key, 'POST', '/v1/messages/batches', { requests }));
@@ -213,9 +218,20 @@ function cost(model, u) {
 // which can only overcount (a token is at least one byte), plus a flat allowance for message framing and role markers,
 // plus max_tokens at the output rate. A real request costs less; the bound is for the budget gate.
 const FRAMING_TOKENS = 100;
-function requestBound(model, text, maxTokens) {
+function requestBound(model, bytes, maxTokens) {
   const [pin, pout] = PRICE[model];
-  return ((Buffer.byteLength(text) + FRAMING_TOKENS) * 2 * pin + maxTokens * pout) / 1e6;
+  return ((bytes + FRAMING_TOKENS) * 2 * pin + maxTokens * pout) / 1e6;
+}
+
+// bound --bytes B --model M [--max-tokens N]: the bound of one request of B bytes, in USD, for the planner's sizing.
+function bound(o) {
+  const model = ALIAS[o.model] ?? o.model;
+  if (!PRICE[model]) refuse(`model '${o.model}' has no batch price in the table`);
+  const bytes = Number(o.bytes);
+  const maxTokens = Number(o['max-tokens'] ?? 32000);
+  if (!Number.isInteger(bytes) || bytes < 0) refuse('--bytes must be a non-negative integer');
+  if (!Number.isInteger(maxTokens) || maxTokens < 1) refuse('--max-tokens must be a positive integer');
+  console.log(requestBound(model, bytes, maxTokens).toFixed(6));
 }
 
 async function results(o) {
@@ -247,10 +263,10 @@ async function results(o) {
   out({ batch_id: state.batch_id, succeeded, missing: state.request_count - succeeded, cost_usd: state.cost_usd });
 }
 
-const COMMANDS = { submit, poll, results };
+const COMMANDS = { submit, poll, results, bound };
 const [cmd, ...rest] = process.argv.slice(2);
 try {
-  if (!COMMANDS[cmd]) refuse('usage: semantic-batch.mjs submit|poll|results --dir D ...');
+  if (!COMMANDS[cmd]) refuse('usage: semantic-batch.mjs submit|poll|results --dir D ... | bound --bytes B --model M');
   await COMMANDS[cmd](opts(rest));
 } catch (e) {
   if (!(e instanceof Refusal)) throw e;
