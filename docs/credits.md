@@ -17,7 +17,7 @@ How used: installed from the pin, or vendored in-tree where the pin links a vend
 
 | Name | Source | Author | Licence | Pin / tracking |
 |---|---|---|---|---|
-| ai-image-prompts | https://github.com/youmind-openlab/ai-image-prompts-skill | youmind-openlab | MIT | 7a1233b5a012aea57cd906ba4616fc2eb1f2bb6c |
+| ai-image-prompts | https://github.com/youmind-openlab/ai-image-prompts-skill | youmind-openlab | MIT | 2fb602a2cb7114af193d754b60f6c62bb1b300fe |
 | animejs-skills | https://github.com/BowTiedSwan/animejs-skills | BowTiedSwan | Unknown (not declared upstream) | cf2bed8d6654a6cfd02d3ff11b74ff3a7a7631e2 |
 | anthropic-design-skills | https://github.com/anthropics/skills | anthropics | Mixed: Apache-2.0 design skills; source-available docx/pdf/pptx/xlsx (per-skill LICENSE.txt) | 2c5958ecac7cee2b583967a2c4981d0f4a75c579 |
 | anydesign | https://github.com/uxKero/anydesign | uxKero | MIT | v0.6.0 |
@@ -27,12 +27,12 @@ How used: installed from the pin, or vendored in-tree where the pin links a vend
 | design-md | https://github.com/NousResearch/hermes-agent | Nous Research | MIT | v2026.9.24 |
 | diagram-design | https://github.com/cathrynlavery/diagram-design | cathrynlavery | MIT | f2496acbde9f45ccb55c24d4f75210c8a1355df8 |
 | domain-modeling | https://github.com/mattpocock/skills | Matt Pocock (upstream) / yotamleo (vendor) | MIT | [Vendoring pin](../marketplace/plugins/domain-modeling/VENDORED.md) |
-| emilkowalski-skills | https://github.com/emilkowalski/skills | Emil Kowalski | MIT | 715c1807e08c497cfd1dc4feb450a2a3300ef2a9 |
-| find-docs | https://github.com/upstash/context7 | Upstash | MIT | c5e34a01799bce82534eb0ed74bb16b025d75f47 |
+| emilkowalski-skills | https://github.com/emilkowalski/skills | Emil Kowalski | MIT | 4061b67b8d976a186aca118594f54b638c5f718a |
+| find-docs | https://github.com/upstash/context7 | Upstash | MIT | 681554c5d3a688c67879d02d4f01d79ffd15df13 |
 | frontend-slides | https://github.com/zarazhangrui/frontend-slides | zarazhangrui | MIT | v2.1.0 |
 | graphify | https://github.com/Graphify-Labs/graphify | Graphify-Labs / yotamleo (wrapper) | Apache-2.0 | [Package pin](../scripts/lib/graphify-bin.sh) |
 | gsap-skills | https://github.com/greensock/gsap-skills | greensock | MIT | aed9cfd3277740755f6bfc1155c7aa645403b760 |
-| hallmark | https://github.com/Nutlope/hallmark | Nutlope | MIT | 80fc3c723ab31eb9a43b7ce6c239d6bce094cdbb |
+| hallmark | https://github.com/Nutlope/hallmark | Nutlope | MIT | 04977e15f3dfd6ee4b74c887dac3eb52665d6c92 |
 | handover | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/handover | yotamleo | MIT | In-tree |
 | hermes-artifact-design | https://github.com/NousResearch/hermes-agent | Nous Research | MIT | v2026.9.24 |
 | higgsfield-skills | https://github.com/higgsfield-ai/skills | Higgsfield AI | MIT | 27000402070db19d958789d05b3b52b6f4718d7c |
