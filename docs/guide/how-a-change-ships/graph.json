@@ -507,8 +507,8 @@
               "next": "Name the systems you tested on, such as `Platforms tested: linux`, in the branch's first commit.",
               "source": {
                 "file": "scripts/hooks/check-platforms-tested.sh",
-                "line": 215,
-                "text": "attestation found in commit messages or PR body."
+                "line": 181,
+                "text": "attestation was found in any non-merge commit"
               },
               "reach": {
                 "kind": "clone",
@@ -526,8 +526,8 @@
               "next": "Say how you checked it, such as `Security reviewed: manual — <what you did>`, in the branch's first commit.",
               "source": {
                 "file": "scripts/hooks/check-security-reviewed.sh",
-                "line": 308,
-                "text": "'Security reviewed:' attestation was found in commit messages or"
+                "line": 247,
+                "text": "'Security reviewed:' attestation was found in any non-merge commit on"
               },
               "reach": {
                 "kind": "clone",
