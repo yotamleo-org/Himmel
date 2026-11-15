@@ -2824,6 +2824,19 @@ has "T11 RED control: its PR list goes out on main, as today" "$(cat "$WORK/t11.
 lacks "T11 RED control: no read rides a read token" "$(cat "$WORK/t11.log")" "ghp_"
 t11run "$Q6/envroot" gql-out
 has "T11 RED control: with no read token the gate pauses on main's row" "$T11_OUT" "# quota-pause QUOTA-PAUSE github graphql token=main"
+cat > "$T11B/cr-gh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s %s %s\n' "${GH_TOKEN:-main}" "$1" "$2" >> "$T11_CR_LOG"
+echo '[]'
+EOF
+chmod +x "$T11B/cr-gh"
+: > "$WORK/t11cr.log"
+t11run "$WORK/t11root" healthy T11_MAIN_LOW=1 NEXT_DISPATCH_CLASSIFY_CMD= CLOUD_ROUTE_GH_CMD="$T11B/cr-gh" T11_CR_LOG="$WORK/t11cr.log" CLOUD_ROUTE_JIRA_CMD=false
+has "T11: with the real classifier on, main under the floor pauses the run although the read rows are ok" "$T11_OUT" "# quota-pause QUOTA-PAUSE github graphql token=main remaining=100"
+[ ! -s "$WORK/t11cr.log" ] && pass "T11: and the classifier makes no main read" || fail "T11: and the classifier makes no main read ($(head -3 "$WORK/t11cr.log"))"
+: > "$WORK/t11cr.log"
+t11run "$WORK/t11root" healthy NEXT_DISPATCH_CLASSIFY_CMD= CLOUD_ROUTE_GH_CMD="$T11B/cr-gh" T11_CR_LOG="$WORK/t11cr.log" CLOUD_ROUTE_JIRA_CMD=false
+has "T11 RED control: with main healthy the real classifier runs" "$(cat "$WORK/t11cr.log")" "main pr list"
 
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.

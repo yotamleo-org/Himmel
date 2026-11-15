@@ -148,7 +148,7 @@
 # main on a rate limit.
 #
 # GitHub out: a preflight (scripts/lib/gh-quota.sh ghq_scan_gate, GraphQL and core, on the token the reads ride:
-# ghq_scan_token) that finds a
+# ghq_scan_token; the classifier's searches ride main, so with it on main's GraphQL is gated too) that finds a
 # bucket under the floor or a probe timed out, or a gh read during the run that names a rate limit or times out (the
 # classifier's stderr or a classifier timeout too), makes the WHOLE stdout one line, `# quota-pause QUOTA-PAUSE …` or `# gh-stall GH-STALL …`, exit 0:
 # no rows, no RESUME-HELD, no POOL-EMPTY, since the unread rows are unknown, not empty. After the first refused or
@@ -239,6 +239,9 @@ done
 if [ "$nd_tok" = read ] && ! { ghq_row_ok read graphql && ghq_row_ok read core; }; then
     nd_tok=main
     unset ND_GH_READ
+fi
+if [ "$nd_tok" = read ] && [ "$classify" = 1 ] && [ -z "${NEXT_DISPATCH_CLASSIFY_CMD:-}" ]; then
+    nd_line=$(ghq_scan_gate main graphql next-dispatchable) || { [ $? -ne 75 ] || nd_pause "$nd_line"; }
 fi
 export ND_TOK="$nd_tok"
 nd_deadline="${NEXT_DISPATCH_DEADLINE:-400}"
