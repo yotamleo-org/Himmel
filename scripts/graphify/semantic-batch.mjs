@@ -210,11 +210,12 @@ function cost(model, u) {
 }
 
 // The most one request can bill: its input at twice the input rate (the dearest cache write) over one token per byte,
-// which can only overcount (a token is at least one byte), plus max_tokens at the output rate. A real request costs
-// less; the bound is for the budget gate.
+// which can only overcount (a token is at least one byte), plus a flat allowance for message framing and role markers,
+// plus max_tokens at the output rate. A real request costs less; the bound is for the budget gate.
+const FRAMING_TOKENS = 100;
 function requestBound(model, text, maxTokens) {
   const [pin, pout] = PRICE[model];
-  return (Buffer.byteLength(text) * 2 * pin + maxTokens * pout) / 1e6;
+  return ((Buffer.byteLength(text) + FRAMING_TOKENS) * 2 * pin + maxTokens * pout) / 1e6;
 }
 
 async function results(o) {

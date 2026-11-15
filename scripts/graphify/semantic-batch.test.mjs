@@ -443,6 +443,19 @@ test('the budget may come from GRAPHIFY_API_RUN_BUDGET_USD; the flag wins when b
   assert.equal(flagWins.code, 0, flagWins.stderr);
 });
 
+test('the input bound carries a flat framing allowance: a one-byte prompt is bounded above its bytes plus max_tokens', async () => {
+  reset();
+  const f = fixture();
+  rmSync(f.prompts, { recursive: true });
+  mkdirSync(f.prompts);
+  writeFileSync(join(f.prompts, `${sha('x')}.txt`), 'x');
+  // 1 byte and 32000 output tokens bound at 0.160002 USD; the framing allowance of 100 tokens at twice the rate adds 0.0002
+  const refused = await f.submit(['--max-usd', '0.1601']);
+  assert.equal(refused.code, 2, `the framing tokens were not counted: ${refused.stdout}`);
+  assert.match(refused.stderr, /estimate 0\.1602\d* USD/);
+  assert.equal((await f.submit(['--max-usd', '0.1603'])).code, 0);
+});
+
 test('the input bound counts one token per byte, and the refusal names the largest request bound', async () => {
   reset();
   const f = fixture();
