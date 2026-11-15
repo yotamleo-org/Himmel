@@ -70,6 +70,19 @@ has "--commands prints the label command" "$cmds" "jira edit HIMMEL-701 --add-la
 has "--commands prints the INTAKE request for the proposed version" "$cmds" 'jira release request R-fixture --verb INTAKE --key HIMMEL-703 --to v1.2.0 --why "backfill: scope-label"'
 has "--commands prints a backlog proposal too" "$cmds" "jira edit HIMMEL-708 --add-labels proposed-backlog"
 
+# Default mirror directory: a scratch HOME, no override variable, no flag.
+H="$WORK/home"; C="$WORK/conf"; K="$WORK/cache"
+mkdir -p "$C" "$K" "$H/.himmel/state/jira-mirror"; : > "$K/.env"
+res() { env -u NEXT_DISPATCH_MIRROR -u HIMMEL_JIRA_MIRROR -u JIRA_PROJECT_KEY HOME="$H" HIMMEL_CONFIG_DIR="$C" HIMMELCTL_CACHE_DIR="$K" "$@"; }
+want="# counts total=11 already-proposed-skipped=0 current=v1.0.1"
+JM="$H/.himmel/state/jira-mirror"
+cp -R "$M" "$JM/ACME"; cp "$WORK/mirror/HIMMEL.versions.tsv" "$JM/ACME.versions.tsv"
+has "default dir: JIRA_PROJECT_KEY=ACME reads jira-mirror/ACME" "$(res JIRA_PROJECT_KEY=ACME bash "$SUT" 2>&1)" "$want"
+has "NEXT_DISPATCH_MIRROR still wins over the resolver default" "$(res JIRA_PROJECT_KEY=ACME NEXT_DISPATCH_MIRROR="$WORK/none" bash "$SUT" 2>&1)" "no mirror directory at $WORK/none"
+rm -rf "$JM/ACME" "$JM/ACME.versions.tsv"
+cp -R "$M" "$JM/HIMMEL"; cp "$WORK/mirror/HIMMEL.versions.tsv" "$JM/HIMMEL.versions.tsv"
+has "control: no key set still reads jira-mirror/HIMMEL" "$(res bash "$SUT" 2>&1)" "$want"
+
 rc=0; bash "$SUT" --bogus >/dev/null 2>&1 || rc=$?
 check "an unknown flag exits 2" "2" "$rc"
 rc=0; bash "$SUT" --mirror "$WORK/none" >/dev/null 2>&1 || rc=$?

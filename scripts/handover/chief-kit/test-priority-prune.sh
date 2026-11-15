@@ -64,6 +64,16 @@ same "a bulleted bold priority: line keeps its prefix" "$(run --doc "$WORK/m.md"
 printf '%s\n' '## Live state' 'priority: 6127 | 6138' > "$WORK/all.md"
 same "every key closed reads none" "$(run --doc "$WORK/all.md")" 'priority: none'
 
+# Default mirror directory: a scratch HOME, no override variable, no --mirror flag.
+H="$WORK/home"; C="$WORK/conf"; K="$WORK/cache"; JM="$H/.himmel/state/jira-mirror"
+mkdir -p "$C" "$K" "$JM"; : > "$K/.env"
+res() { env -u NEXT_DISPATCH_MIRROR -u HIMMEL_JIRA_MIRROR -u JIRA_PROJECT_KEY HOME="$H" HIMMEL_CONFIG_DIR="$C" HIMMELCTL_CACHE_DIR="$K" "$@" bash "$SUT" --doc "$DOC" --count 2>/dev/null; }
+cp -R "$M" "$JM/ACME"
+same "default dir: JIRA_PROJECT_KEY=ACME reads jira-mirror/ACME" "$(res JIRA_PROJECT_KEY=ACME)" "7/14"
+same "NEXT_DISPATCH_MIRROR still wins over the resolver default" "$(res JIRA_PROJECT_KEY=ACME NEXT_DISPATCH_MIRROR="$WORK/jira-mirror/none")" ""
+rm -rf "$JM/ACME"; cp -R "$M" "$JM/HIMMEL"
+same "control: no key set still reads jira-mirror/HIMMEL" "$(res)" "7/14"
+
 # --apply rewrites only the Live state priority: line.
 run --doc "$DOC" --apply >/dev/null
 same "--apply rewrites the Live state line" "$(grep -c '^priority: 6143(K7) | 6125 | ' "$DOC")" "1"

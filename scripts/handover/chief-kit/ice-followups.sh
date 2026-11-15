@@ -12,13 +12,17 @@
 # or `Moved to the ICE project`. A citation is a HIMMEL key on a comment line that
 # mentions follow-up / deferred / residual, under a comment header dated within the
 # window; a ticket's own comments never count for itself. The mirror dir defaults to
-# $BOARD_MIRROR, else ~/.himmel/state/jira-mirror/HIMMEL. ICE_FOLLOWUPS_TODAY
+# $BOARD_MIRROR, else the project's mirror (scripts/lib/jira-project.sh: jira_mirror_dir). ICE_FOLLOWUPS_TODAY
 # (YYYY-MM-DD) pins today for tests.
 #
 # ponytail: a ticket moved to ICE without the move comment reads as not-in-ICE, upgrade path:
 # have the mirror writer emit the project move.
 #
 # Platform guard: POSIX awk, bash 3.2+; GNU or BSD date.
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../lib/jira-project.sh
+. "$HERE/../../lib/jira-project.sh"
 
 dir=""
 days=14
@@ -28,7 +32,7 @@ while [ $# -gt 0 ]; do
         *) dir="$1"; shift ;;
     esac
 done
-dir="${dir:-${BOARD_MIRROR:-$HOME/.himmel/state/jira-mirror/HIMMEL}}"
+dir="${dir:-${BOARD_MIRROR:-$(jira_mirror_dir)}}"
 case "$days" in '' | *[!0-9]*) days=14 ;; esac
 
 if [ ! -d "$dir" ] || [ ! -r "$dir" ] || [ ! -x "$dir" ]; then

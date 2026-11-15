@@ -17,8 +17,8 @@
 # refused: merging chains is the chief's call, by hand.
 #
 # Defaults: --registry <handover root>/<user slug>/himmel/chains.json (focus-refresh.sh's path; an
-# absent registry is refused, never created), --mirror ~/.himmel/state/jira-mirror/<JIRA_PROJECT_KEY
-# or HIMMEL>. The write holds the doc lock (worker-doc-lock.sh) on the registry.
+# absent registry is refused, never created), --mirror the project's mirror
+# (scripts/lib/jira-project.sh: jira_mirror_dir). The write holds the doc lock (worker-doc-lock.sh) on the registry.
 #
 # Exit: 0 written or already joined; 1 refused (registry unchanged); 2 usage.
 # PLATFORM GUARD: Linux-only kit; bash, python3, node, sha256sum, flock.
@@ -61,7 +61,9 @@ if [ -z "$reg" ]; then
     slug="$(cd "$HERE/../../.." && user_slug 2>/dev/null)" || refuse "no user slug resolves: pass --registry"  # swallow-ok: no default registry path refuses, naming --registry
     reg="$root/$slug/himmel/chains.json"
 fi
-[ -n "$mir" ] || mir="$HOME/.himmel/state/jira-mirror/${JIRA_PROJECT_KEY:-HIMMEL}"
+# shellcheck source=../../lib/jira-project.sh
+. "$HERE/../../lib/jira-project.sh"
+[ -n "$mir" ] || mir="$(jira_mirror_dir)"
 [ -f "$reg" ] || refuse "no chain registry at $reg"
 [ -d "$mir" ] || refuse "no Jira mirror at $mir"
 

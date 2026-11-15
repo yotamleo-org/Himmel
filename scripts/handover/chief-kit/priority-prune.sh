@@ -34,7 +34,11 @@
 # PLATFORM GUARD: the chief kit is Linux-only.
 set -u
 
-doc=""; chains=""; have_chains=0; registry=""; mirror="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"; mode=print
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../lib/jira-project.sh
+. "$HERE/../../lib/jira-project.sh"
+
+doc=""; chains=""; have_chains=0; registry=""; mirror="${NEXT_DISPATCH_MIRROR:-$(jira_mirror_dir)}"; mode=print
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --doc) doc="${2:-}"; shift 2 || exit 2 ;;
