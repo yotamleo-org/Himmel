@@ -45,6 +45,26 @@ TELEGRAM_ACCESS_PATH="$TMP/access.json" MERGE_BLOCK_ALERT_CMD="$TMP/sender.sh" \
     bash "$SINK" 2>/dev/null
 assert_eq "V4 empty message: rejected (2)" "2" "$?"
 
+# The seam gets the message kind as its third argument: a cadence kind from
+# cadence-alert.sh, else cadence:vault-stall (vault-autosync.sh passes one message only).
+cat >"$TMP/kind-sender.sh" <<EOF
+#!/usr/bin/env bash
+printf '%s|%s\n' "\$#" "\${3-}" >"$TMP/kind.log"
+EOF
+chmod +x "$TMP/kind-sender.sh"
+kind_of() { # [<HIMMEL_ALERT_KIND>]: the argc and kind the seam received
+    rm -f "$TMP/kind.log"
+    if [ "$#" -gt 0 ]; then
+        HIMMEL_ALERT_KIND="$1" TELEGRAM_ACCESS_PATH="$TMP/access.json" MERGE_BLOCK_ALERT_CMD="$TMP/kind-sender.sh" bash "$SINK" "msg" 2>/dev/null
+    else
+        env -u HIMMEL_ALERT_KIND TELEGRAM_ACCESS_PATH="$TMP/access.json" MERGE_BLOCK_ALERT_CMD="$TMP/kind-sender.sh" bash "$SINK" "msg" 2>/dev/null
+    fi
+    cat "$TMP/kind.log" 2>/dev/null
+}
+assert_eq "V7 a cadence kind from cadence-alert.sh reaches the seam" "3|cadence:qmd-reindex" "$(kind_of cadence:qmd-reindex)"
+assert_eq "V8 no kind given: cadence:vault-stall" "3|cadence:vault-stall" "$(kind_of)"
+assert_eq "V9 a kind outside the cadence family is not taken: cadence:vault-stall" "3|cadence:vault-stall" "$(kind_of worker-silent)"
+
 # The fixture refusal runs everywhere; the guard's own refusal needs Linux, where the guard runs.
 rc=0
 env -u MERGE_BLOCK_ALERT_CMD HIMMEL_TEST_FIXTURE=1 BRIDGE_ROOT='' TELEGRAM_ACCESS_PATH="$TMP/access.json" \

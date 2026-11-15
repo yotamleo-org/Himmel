@@ -87,5 +87,47 @@ alert worker-a rc-1 /tmp/q.log >/dev/null
 assert_has "A9g control: a delivered send writes the sentinel" "sentinels=1" "sentinels=$(sent_files)"
 assert_has "A9h control: a delivered send clears the marker" "mark=no" "mark=$([ -e "$TMP/send-failed" ] && echo yes || echo no)"
 
+# The sender gets the message kind cadence:<worker> in HIMMEL_ALERT_KIND; its one argument stays the message.
+cat >"$TMP/kind-sender.sh" <<EOF
+#!/usr/bin/env bash
+printf '%s|%s|%s\n' "\$#" "\${HIMMEL_ALERT_KIND-unset}" "\$1" >"$TMP/sent.msg"
+EOF
+chmod +x "$TMP/kind-sender.sh"
+msg=$(SENDER="$TMP/kind-sender.sh" alert qmd-reindex rc-3 /tmp/q.log)
+assert_has "K1 the sender gets HIMMEL_ALERT_KIND=cadence:<worker> and the message as its only argument" "1|cadence:qmd-reindex|qmd-reindex: rc-3." "$msg"
+msg=$(SENDER="$TMP/kind-sender.sh" alert 'odd worker.x' rc-3 /tmp/q.log)
+assert_has "K2 the kind carries the worker's sentinel slug" "|cadence:odd_worker_x|" "$msg"
+
+# The whole chain: cadence-alert.sh, its default sender vault-stall-alert.sh, the
+# merge-block-alert.sh seam, then the real router with a fixture bridge root.
+if command -v bun >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+    cat >"$TMP/route-sender.sh" <<'EOF'
+#!/usr/bin/env bash
+if [ -n "${3-}" ]; then exec bun "$ROUTE_TS" reply --kind "$3" "$1" "$2"; fi
+exec bun "$ROUTE_TS" reply "$1" "$2"
+EOF
+    chmod +x "$TMP/route-sender.sh"
+    printf '{"allowFrom":["4242"]}\n' >"$TMP/access.json"
+    chain() { # <case> <worker>: one cadence failure through the default sender into <case>/bridge
+        mkdir -p "$TMP/$1/home" "$TMP/$1/mirror"
+        env -u TELEGRAM_MONITOR_CHAT_ID -u TELEGRAM_MONITOR_BOT_TOKEN -u CADENCE_ALERT_SEND_CMD -u HIMMEL_ALERT_KIND \
+            ROUTE_TS="$ROOT/scripts/telegram/chief-route.ts" BRIDGE_ROOT="$TMP/$1/bridge" HOME="$TMP/$1/home" HIMMEL_TEST_FIXTURE=1 \
+            HIMMEL_JIRA_MIRROR="$TMP/$1/mirror" TELEGRAM_ACCESS_PATH="$TMP/access.json" MERGE_BLOCK_ALERT_CMD="$TMP/route-sender.sh" \
+            CADENCE_ALERT_FILE="$TMP/$1/alerts.log" CADENCE_ALERT_DEDUPE_DIR="$TMP/$1/sent" CADENCE_ALERT_SEND_FAILED_MARK="$TMP/$1/send-failed" \
+            CADENCE_ALERT_QMD_STATE="$TMP/absent" bash "$SINK" fail "$2" rc-3 /tmp/q.log >/dev/null 2>&1
+    }
+    lines() { local n; n="$(grep -c . "$1" 2>/dev/null)"; echo "${n:-0}"; }
+    chain r1 qmd-reindex
+    assert_has "K3 a monitor-class cadence kind lands in the monitor outbox, kept on the station with the monitoring chat unset" \
+        "monitor=1" "monitor=$(lines "$TMP/r1/bridge/monitor/outbox.jsonl")"
+    assert_has "K3b its line names the kind" '"kind":"cadence:qmd-reindex"' "$(cat "$TMP/r1/bridge/monitor/outbox.jsonl" 2>/dev/null)"
+    assert_has "K3c and it stays off the operator outbox" "operator=0" "operator=$(lines "$TMP/r1/bridge/sessions/__chat__/outbox.jsonl")"
+    chain r2 zz-nowhere
+    assert_has "K4 control: a cadence kind with no table row still reaches the operator outbox" "operator=1" "operator=$(lines "$TMP/r2/bridge/sessions/__chat__/outbox.jsonl")"
+    assert_has "K4b and nothing goes to the monitor outbox" "monitor=0" "monitor=$(lines "$TMP/r2/bridge/monitor/outbox.jsonl")"
+else
+    echo "SKIP K3-K4: the chain rows need bun and jq"
+fi
+
 [ "$FAILED" -eq 0 ] || { echo "$FAILED FAILURE(S)"; exit 1; }
 echo "all passed"

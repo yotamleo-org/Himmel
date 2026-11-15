@@ -214,6 +214,15 @@ reset yes; go_file "$SHA"
 check "(n15) another checkout's merge gate is never called" "0" "$(n "$STUB/merges")"
 check "(n15) the operator is alerted" "1" "$(n "$STUB/pages" "reason=not-checkout-root")"
 
+# --- (k1) the default page path passes the message kind silent-go-merge ---
+printf '#!/usr/bin/env bash\nprintf "%%s|%%s|%%s\\n" "$#" "${3-}" "$2" >> "$STUB/kind-pages"\n' > "$STUB/kind-sender.sh"
+chmod +x "$STUB/kind-sender.sh"
+printf '{"allowFrom":["4242"]}\n' > "$WORK/access.json"
+reset yes; go_file "$SHA"; printf '4242 claude --name HIMMEL-1-N9-thing-2026-11-05\n' > "$STUB/ps"; rm -f "$STUB/kind-pages"
+(cd "$CO" && env -u CHIEF_WAIT_PAGE_CMD MERGE_BLOCK_ALERT_CMD="$STUB/kind-sender.sh" TELEGRAM_ACCESS_PATH="$WORK/access.json" \
+    CHIEF_WAIT_WORKER_SILENT_MIN=45 bash "$SGM" --doc "$CD" --workers-from "$WM" --state "$STATE" > "$WORK/out" 2>"$WORK/err")
+check "(k1) the default sender gets the kind silent-go-merge as its third argument" "1" "$(n "$STUB/kind-pages" "^3|silent-go-merge|SILENT-WORKER-HELD N9 pr=77 head=$SHA reason=alive")"
+
 # --- (w1) the waiter runs the helper each sample and wakes on its lines ---
 # The helper is a seam here (its rows are above); the waiter's tick and bank are stubbed.
 WAIT="$HERE/chief-wait.sh"

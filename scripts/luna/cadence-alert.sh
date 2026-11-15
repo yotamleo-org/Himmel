@@ -31,7 +31,8 @@
 # Seams: CADENCE_ALERT_FILE (default ~/.himmel/state/cadence-alerts.log),
 # CADENCE_ALERT_DEDUPE_DIR (default ~/.himmel/state/cadence-alert-sent),
 # CADENCE_ALERT_SEND_CMD (default vault-stall-alert.sh; called with one
-# argument, the message).
+# argument, the message, and HIMMEL_ALERT_KIND=cadence:<worker slug> in its
+# environment, the router's message kind; a sender that ignores it still works).
 #
 # Always exits 0: alerting must never change a runner's own exit status. The one
 # opt-in is CADENCE_ALERT_EXIT_ON_SEND_FAIL=1, which makes `fail` exit 1 when
@@ -60,8 +61,8 @@ _hash() { printf '%s' "$1" | { sha256sum 2>/dev/null || shasum -a 256 2>/dev/nul
 
 # Writes the sentinel only after a delivered send, so a failed send retries the
 # DM on the next failure; an unwritable sentinel still counts as delivered.
-send_then_mark() { # <sentinel> <message>
-    "$send_cmd" "$2" || return $?
+send_then_mark() { # <sentinel> <message> <kind>
+    HIMMEL_ALERT_KIND="$3" "$send_cmd" "$2" || return $?
     : > "$1" 2>/dev/null \
         || echo "cadence-alert: could not record dedupe sentinel $1" >&2
 }
@@ -94,7 +95,7 @@ case "${1:-}" in
         # runner per worker per night makes that a harmless double DM at worst.
         if [ ! -e "$sentinel" ]; then
             mark_rc=0
-            send_then_mark "$sentinel" "$worker: $reason. Cause: $cause. Do: $todo. Log: $log" || mark_rc=$?
+            send_then_mark "$sentinel" "$worker: $reason. Cause: $cause. Do: $todo. Log: $log" "cadence:$(_slug "$worker")" || mark_rc=$?
             if [ "$mark_rc" = 0 ]; then
                 rm -f "$send_failed_mark" 2>/dev/null
             elif [ "$mark_rc" = 77 ]; then

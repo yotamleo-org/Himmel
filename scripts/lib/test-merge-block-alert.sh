@@ -343,6 +343,13 @@ eq "16: with no kind the seam gets two arguments, as before" "2|555|page two|" "
 if grep -q 'chief-route.ts reply --kind worker-silent 555 page three$' "$CASE/bun.log"; then pass; else fail "16: the default sender runs chief-route.ts reply --kind worker-silent <chat> <text> (got: $(cat "$CASE/bun.log"))"; fi
 if grep -q 'chief-route.ts reply 555 page four$' "$CASE/bun.log"; then pass; else fail "16: with no kind the default sender is unchanged (got: $(cat "$CASE/bun.log"))"; fi
 
+new_case c18
+( # shellcheck disable=SC1090
+  . "$LIB"; ALERT_LOG="$CASE/alerts.log" MERGE_BLOCK_ALERT_CMD="$TMP/bin/argc-sender" MERGE_BLOCK_ALERT_DIR="$CASE/sentinels" TELEGRAM_ACCESS_PATH="$ACCESS" \
+    merge_block_alert octo/demo 42 aaaaaaaaaaaa "required check(s) FAILED: tests" 2>>"$CASE/err" )
+eq "18: merge_block_alert passes the kind merge-blocked to the seam as its third argument" \
+    "3|555|MERGE-BLOCKED octo/demo#42 @aaaaaaaaaaaa: required check(s) FAILED: tests|merge-blocked" "$(cat "$CASE/alerts.log")"
+
 if command -v bun >/dev/null 2>&1; then
     cat > "$TMP/bin/route-sender" <<'EOF'
 #!/usr/bin/env bash
@@ -359,7 +366,8 @@ EOF
       . "$LIB"; ROUTE_TS="$HERE/../telegram/chief-route.ts" BRIDGE_ROOT="$CASE/bridge" HOME="$CASE/home" HIMMEL_TEST_FIXTURE=1 HIMMEL_JIRA_MIRROR="$CASE/mirror" \
         MERGE_BLOCK_ALERT_CMD="$TMP/bin/route-sender" MERGE_BLOCK_ALERT_DIR="$CASE/sentinels" TELEGRAM_ACCESS_PATH="$ACCESS" \
         merge_block_alert octo/demo 42 aaaaaaaaaaaa "required check(s) FAILED: tests" >/dev/null 2>>"$CASE/err" )
-    eq "17: a merge-blocked page (no kind) lands in the operator outbox (R1.2)" 1 "$(outbox17)"
+    eq "17: a merge-blocked page lands in the operator outbox (R1.2)" 1 "$(outbox17)"
+    eq "17: the route log names the kind merge-blocked" 1 "$(grep -c ' merge-blocked escalate ' "$CASE/bridge/route.log" 2>/dev/null || true)"
 else
     echo "  SKIP: 17 needs bun"
 fi
