@@ -51,8 +51,6 @@ normalize() {
   printf '%s\n' "${out[*]}"
 }
 
-# raw_edges <repo-relative file> - print the repo-relative path each extractor
-# site of the file sources or execs (existing files only), one line per site.
 PATH_RE='(\$\{?[A-Za-z_][A-Za-z0-9_]*\}?|[)}])?/?[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*\.(sh|js|mjs|cjs|ts|py)'
 # A script path in command position: line start, after ; & | ( $( or
 # then/do/else, optionally quoted - a direct call with no interpreter word.
@@ -97,8 +95,6 @@ raw_edges() {
   done
 }
 
-# edges <repo-relative file> - print each repo-relative path the file
-# sources or execs (existing files only), once each, less the pinned drops.
 edges() {
   local f="$1" target
   raw_edges "$f" | sort -u | while IFS= read -r target; do
@@ -110,13 +106,10 @@ edges() {
     case "$target" in
       scripts/jira/dist/*) [[ $'\n'"$DIST_PRIMARY" == *$'\n'"$f::"* ]] && continue ;;
     esac
-    # Drop the pinned non-executed edges (NOT_RUN below, each line ending " x<N>").
     [[ $'\n'"$NOT_RUN"$'\n' =~ $'\n'"$f -> $target x"[0-9]+$'\n' ]] || printf '%s\n' "$target"
   done
 }
 
-# pin_mismatch <NOT_RUN line> - print the parent, the target and both counts when
-# the parent's extractor sites yielding the target are not the pinned x<N>.
 pin_mismatch() {
   local parent="${1%% -> *}" target="${1#* -> }" want got
   want="${target##* x}"
@@ -291,8 +284,7 @@ printf '%s\n' '_jira="${X_CLI:-$SCRIPT_DIR/../jira/dist/index.js}"' > "$fx/scrip
 printf '%s\n' 'node "$repo_root/scripts/jira/dist/index.js" get' > "$fx/scripts/lib/ticket-status.sh"
 check "$(ROOT="$fx" edges scripts/handover/relative-dist.sh)" "scripts/jira/dist/index.js" "edges() keeps a script-relative scripts/jira/dist edge"
 check "$(ROOT="$fx" edges scripts/lib/ticket-status.sh)" "" "edges() drops the dist edge of a DIST_PRIMARY-pinned parent"
-# A further classifier-form call to ready-check.sh in pr-check-outside.sh must fail its pin's site count.
-: > "$fx/scripts/handover/chief-kit/ready-check.sh"
+: >"$fx/scripts/handover/chief-kit/ready-check.sh"
 # shellcheck disable=SC2016  # fixture text, the $ must stay literal
 awk -v extra='bash "$here/../handover/chief-kit/ready-check.sh" --outside "$PR"' '$0 == "PR=\"${1:-}\"" { print extra } { print }' \
   "$ROOT/scripts/cr/pr-check-outside.sh" > "$fx/scripts/cr/pr-check-outside.sh"
@@ -307,7 +299,6 @@ while IFS= read -r pin; do
   check "$(NOT_RUN='' edges "${pin%% -> *}" | grep -cxF -- "${target% x*}")" "1" "NOT_RUN pin is still an edge: $pin"
 done <<< "$NOT_RUN"
 
-# Every pinned NOT_RUN edge has exactly its pinned number of extractor sites.
 while IFS= read -r pin; do
   check "$(pin_mismatch "$pin")" "" "NOT_RUN pin site count holds: $pin"
 done <<< "$NOT_RUN"
