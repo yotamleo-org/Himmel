@@ -19,7 +19,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT="$HERE/headed-arm-worker.sh"
 export HEADED_ARM_WORKER_PROFILES="$HERE/../../lanes/plugin-profiles.mjs"
 export PLUGIN_PROFILES_ADAPTERS="$HERE/../../guardrails/himmel-adapters.json"
-export UNGUARDED_LAUNCH_OK=1  # HIMMEL-9026: scratch fixtures; guard rows drop it
+export UNGUARDED_LAUNCH_OK=1
 unset HIMMEL_CONSOLE_DOC CADENCE_USAGE_LANE WORKER_SESSION_LANE WORKER_SESSION_CONTEXT WORKER_SESSION_REPO WORKER_SESSION_EFFORT HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_LAUNCHER_ENV_LINES \
     HEADED_ARM_RECORDER IMPL_GUARD_OK INLINE_IMPL_OK HIMMEL_CONSOLE_LEG HIMMEL_LEAN_WORKER_SESSION WORKER_SESSION_CLAUDE_BIN WORKER_SESSION_PROFILE \
     WORKER_SESSION_PROFILE_SETTINGS WORKER_SESSION_PROFILE_PREFACE WORKER_SESSION_PROFILE_MCP_CONFIG WORKER_SESSION_PROFILE_NO_SETTING_SOURCES WORKER_SESSION_ID \
@@ -44,7 +44,7 @@ contains() {
 not_contains() {
     case "$2" in *"$3"*) echo "FAIL $1 -- found '$3'"; FAILED=$((FAILED + 1)) ;; *) echo "PASS $1" ;; esac
 }
-dry() { bash "$SCRIPT" --dry-run --no-profile "$@" HIMMEL-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1; }
+dry() { bash "$SCRIPT" --dry-run --no-profile "$@" PROJ-9999-worker some/doc.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1; }
 
 rc=0; out="$(HIMMEL_WORKER_SESSION_CONTEXT_MODE=handoff dry)" || rc=$?
 check "W1 mode set: exit 0" "$rc" "0"
@@ -81,9 +81,9 @@ trap 'rm -rf "$T"' EXIT
 # the single-writer register lives under HOME: pinned, so nothing here can reach the real one
 export HOME="$T/home"
 mkdir -p "$HOME"
-printf '# HIMMEL-9999 brief with no test VM named\n' >"$T/doc.md"
+printf '# PROJ-9999 brief with no test VM named\n' >"$T/doc.md"
 for p in worker-vm leg-vm; do
-    rc=0; out="$(bash "$SCRIPT" --dry-run --profile "$p" HIMMEL-9999-worker "$T/doc.md" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
+    rc=0; out="$(bash "$SCRIPT" --dry-run --profile "$p" PROJ-9999-worker "$T/doc.md" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)" || rc=$?
     check "W7 --profile $p with no VM in the brief refuses (exit 2)" "$rc" "2"
     contains "W7 --profile $p names the VM refusal" "$out" "refusing a worker-vm launch"
 done
@@ -98,10 +98,10 @@ contains "W8 the validation sees the value" "$out" "got: 300000"
 
 # W9. a consult refuses its caller-chosen seams.
 mkdir -p "$T/repo9"
-printf '# HIMMEL-9999 consult brief\n' >"$T/consult.md"
+printf '# PROJ-9999 consult brief\n' >"$T/consult.md"
 printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$T/other.sh"
 for seam9 in HEADED_ARM_WORKER_CLAUDE_BIN HEADED_ARM_WORKER_SYSTEMD_RUN HEADED_ARM_WORKER_TARGET HEADED_ARM_WORKER_PROFILES; do
-    rc=0; out="$(env "$seam9=$T/other.sh" WORKER_SESSION_REPO="$T/repo9" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-9999-c "$T/consult.md" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
+    rc=0; out="$(env "$seam9=$T/other.sh" WORKER_SESSION_REPO="$T/repo9" bash "$SCRIPT" --dry-run --consult --profile design-motion PROJ-9999-c "$T/consult.md" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
     check "W9 a consult with $seam9 refuses (exit 2)" "$rc" "2"
     contains "W9 the $seam9 refusal says so" "$out" "--consult refuses"
 done
@@ -117,10 +117,10 @@ else if (a[0] === 'release' && a[1] === 'bucket-check') for (const k of a.slice(
 else { console.error('stub jira: unknown command ' + a.join(' ')); process.exit(2); }
 NCEOF
 export BRIEF_LINT_JIRA_CLI="$T/notcore-jira/index.js"
-fx10() { printf '%s\n' '---' 'description: fixture brief' '---' '> **Prior art:** none found (qmd -c jira-himmel "fixture")' '' '# HIMMEL-9999 fixture brief' "$@"; }
+fx10() { printf '%s\n' '---' 'description: fixture brief' '---' '> **Prior art:** none found (qmd -c jira-himmel "fixture")' '' '# PROJ-9999 fixture brief' "$@"; }
 fx10 >"$T/doc10.md"
 fx10 '> **Tier:** opus — design: multi-step design' >"$T/opus-doc10.md"
-dry10() { bash "$SCRIPT" --dry-run "${@:4}" --profile "$1" HIMMEL-9999-worker "$2" /tmp/nosig 99999999999 /tmp/worker.log "$3" 2>&1; }
+dry10() { bash "$SCRIPT" --dry-run "${@:4}" --profile "$1" PROJ-9999-worker "$2" /tmp/nosig 99999999999 /tmp/worker.log "$3" 2>&1; }
 out="$(dry10 worker-impl "$T/doc10.md" claude-sonnet-5-5)"
 contains "W10 impl on Sonnet exports the profile share" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=73"
 out="$(dry10 worker-eval "$T/doc10.md" claude-sonnet-5-5)"
@@ -148,7 +148,7 @@ contains "W10 control: impl on a non-native lane keeps the 200000 ceiling" "$out
 contains "W10 control: impl on a non-native lane exports no share" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=<unset>"
 out="$(dry10 worker-impl "$T/doc10.md" claude-sonnet-4-6)"
 contains "W10 control: impl on an older Sonnet exports no share" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=<unset>"
-fx10 '> **Context:** 1m — operator-ruling: HIMMEL-8825 fixture 1m worker' >"$T/onem-doc10.md"
+fx10 '> **Context:** 1m — operator-ruling: PROJ-8825 fixture 1m worker' >"$T/onem-doc10.md"
 out="$(WORKER_SESSION_CONTEXT=1m dry10 worker-impl "$T/onem-doc10.md" claude-sonnet-5-5)"
 contains "W10 control: impl on Sonnet with a sanctioned 1m override resolves auto, not the 850000 ceiling" "$out" "HIMMEL_WORKER_SESSION_AUTOCOMPACT=auto"
 contains "W10 control: impl on Sonnet with a sanctioned 1m override exports no share" "$out" "HIMMEL_WORKER_SESSION_CONTEXT_SHARE=<unset>"
@@ -177,24 +177,24 @@ done
 
 # W11. a worker launch carries its holder key, its launch doc and its label; a role that
 # implements nothing carries none, and a key inherited from the worker that armed it is dropped.
-fx10 >"$T/HIMMEL-9377-N5-case-2026-11-02.md"
-fx10 >"$T/HIMMEL-9378-plain-notes.md"
-out="$(cd "$T" && bash "$SCRIPT" --dry-run --no-profile HIMMEL-9377-N5-case HIMMEL-9377-N5-case-2026-11-02.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)"
-contains "W11 HIMMEL_HOLD_KEY is the first ticket key of the doc's basename" "$out" "HIMMEL_HOLD_KEY=HIMMEL-9377"
-contains "W11 HIMMEL_HOLD_DOC is absolute when the doc is given relative" "$out" "HIMMEL_HOLD_DOC=$T/HIMMEL-9377-N5-case-2026-11-02.md"
+fx10 >"$T/PROJ-9377-N5-case-2026-11-02.md"
+fx10 >"$T/PROJ-9378-plain-notes.md"
+out="$(cd "$T" && bash "$SCRIPT" --dry-run --no-profile PROJ-9377-N5-case PROJ-9377-N5-case-2026-11-02.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)"
+contains "W11 HIMMEL_HOLD_KEY is the first ticket key of the doc's basename" "$out" "HIMMEL_HOLD_KEY=PROJ-9377"
+contains "W11 HIMMEL_HOLD_DOC is absolute when the doc is given relative" "$out" "HIMMEL_HOLD_DOC=$T/PROJ-9377-N5-case-2026-11-02.md"
 contains "W11 HIMMEL_HOLD_LABEL is the worker label" "$out" "HIMMEL_HOLD_LABEL=N5 "
-out="$(cd "$T" && bash "$SCRIPT" --dry-run --no-profile HIMMEL-9378-plain HIMMEL-9378-plain-notes.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)"
+out="$(cd "$T" && bash "$SCRIPT" --dry-run --no-profile PROJ-9378-plain PROJ-9378-plain-notes.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)"
 rc11=$?
 check "W11 a non-template doc launches (exit 0), no unset-function error" "$rc11" "0"
-contains "W11 a non-template doc's label is its whole stem" "$out" "HIMMEL_HOLD_LABEL=HIMMEL-9378-plain-notes "
-out="$(cd "$T" && WRITE_HOLD_OK=1 HIMMEL_HOLD_KEY=HIMMEL-1 HIMMEL_HOLD_LABEL=N99 bash "$SCRIPT" --dry-run --no-profile HIMMEL-9377-N5-case HIMMEL-9377-N5-case-2026-11-02.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)"
+contains "W11 a non-template doc's label is its whole stem" "$out" "HIMMEL_HOLD_LABEL=PROJ-9378-plain-notes "
+out="$(cd "$T" && WRITE_HOLD_OK=1 HIMMEL_HOLD_KEY=PROJ-1 HIMMEL_HOLD_LABEL=N99 bash "$SCRIPT" --dry-run --no-profile PROJ-9377-N5-case PROJ-9377-N5-case-2026-11-02.md /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1)"
 contains "W11 WRITE_HOLD_OK=1 set in the launching shell reaches the worker past the scrub" "$out" "WRITE_HOLD_OK=1"
-contains "W11 a key inherited from another worker is replaced by this doc's" "$out" "HIMMEL_HOLD_KEY=HIMMEL-9377"
+contains "W11 a key inherited from another worker is replaced by this doc's" "$out" "HIMMEL_HOLD_KEY=PROJ-9377"
 not_contains "W11 ... and so is its label" "$out" "HIMMEL_HOLD_LABEL=N99"
-out="$(cd "$T" && HIMMEL_HOLD_KEY=HIMMEL-1 HIMMEL_HOLD_DOC=/x/y.md HIMMEL_HOLD_LABEL=N99 bash "$SCRIPT" --dry-run --relay HIMMEL-9377-N5-relay HIMMEL-9377-N5-case-2026-11-02.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)"
+out="$(cd "$T" && HIMMEL_HOLD_KEY=PROJ-1 HIMMEL_HOLD_DOC=/x/y.md HIMMEL_HOLD_LABEL=N99 bash "$SCRIPT" --dry-run --relay PROJ-9377-N5-relay PROJ-9377-N5-case-2026-11-02.md /tmp/nosig 99999999999 /tmp/worker.log 2>&1)"
 contains "W11 a --relay launch carries no key (an inherited one is dropped)" "$out" "HIMMEL_HOLD_KEY=<unset> HIMMEL_HOLD_DOC=<unset> HIMMEL_HOLD_LABEL=<unset>"
 mkdir -p "$T/repo11"
-out="$(cd "$T" && HIMMEL_HOLD_KEY=HIMMEL-1 WORKER_SESSION_REPO="$T/repo11" bash "$SCRIPT" --dry-run --consult --profile design-motion HIMMEL-9377-N5-c "$T/consult.md" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)"
+out="$(cd "$T" && HIMMEL_HOLD_KEY=PROJ-1 WORKER_SESSION_REPO="$T/repo11" bash "$SCRIPT" --dry-run --consult --profile design-motion PROJ-9377-N5-c "$T/consult.md" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)"
 contains "W11 a --consult launch carries no key" "$out" "HIMMEL_HOLD_KEY=<unset> HIMMEL_HOLD_DOC=<unset> HIMMEL_HOLD_LABEL=<unset>"
 
 # W12. a settings env pin of CLAUDE_CODE_EFFORT_LEVEL overrides the asked effort (claude 2.1.319,
@@ -249,20 +249,20 @@ not_contains "W12 no jq: the scan is skipped, no warning" "$out" "WARNING"
 rm -f "$HOME/.claude/settings.json"
 
 lt_line() { printf '> **Live test:** jira HTEST own=%s — every Jira write this session makes goes to HTEST; the jira CLI refuses any other project except this brief'"'"'s own tickets. Create with --project HTEST.\n' "$1"; }
-LT_OWN=HIMMEL-9999 LT_CALLER=HIMMEL-9377 LT_NAME=HIMMEL-9999-N1-lt
+LT_OWN=PROJ-9999 LT_CALLER=PROJ-9377 LT_NAME=PROJ-9999-N1-lt
 fx10 "$(lt_line "$LT_OWN")" >"$T/lt-doc.md"
 fx10 '> **Live test:** none — reads Jira, writes nothing' >"$T/lt-none-doc.md"
 dry13() { bash "$SCRIPT" --dry-run --no-profile "$LT_NAME" "$1" /tmp/nosig 99999999999 /tmp/worker.log claude-sonnet-5 2>&1; }
 rc=0; out="$(dry13 "$T/lt-doc.md")" || rc=$?
 check "W13 a doc with the Live test jira line launches (exit 0)" "$rc" "0"
-contains "W13 the dry-run report names the marker" "$out" "live-test=jira HIMMEL_JIRA_LIVE_TEST=HIMMEL-9999"
-contains "W13 the marker rides the launcher env to the worker" "$out" "HIMMEL_JIRA_LIVE_TEST=HIMMEL-9999 "
+contains "W13 the dry-run report names the marker" "$out" "live-test=jira HIMMEL_JIRA_LIVE_TEST=PROJ-9999"
+contains "W13 the marker rides the launcher env to the worker" "$out" "HIMMEL_JIRA_LIVE_TEST=PROJ-9999 "
 out="$(HIMMEL_JIRA_LIVE_TEST="$LT_CALLER" HEADED_ARM_LAUNCHER_ENV="HIMMEL_JIRA_LIVE_TEST=$LT_CALLER KEEP_ME=1" dry13 "$T/doc10.md")"
 not_contains "W13 a caller carrying the marker arming an unmarked doc puts no marker in the launch" "$out" "HIMMEL_JIRA_LIVE_TEST="
 contains "W13 ... and keeps the caller's other tokens" "$out" "KEEP_ME=1"
 out="$(HIMMEL_JIRA_LIVE_TEST="$LT_CALLER" HEADED_ARM_LAUNCHER_ENV="HIMMEL_JIRA_LIVE_TEST=$LT_CALLER KEEP_ME=1" dry13 "$T/lt-doc.md")"
-contains "W13 the doc's marker survives the scrub" "$out" "HIMMEL_JIRA_LIVE_TEST=HIMMEL-9999 "
-not_contains "W13 ... and the caller's value is gone" "$out" "HIMMEL_JIRA_LIVE_TEST=HIMMEL-9377"
+contains "W13 the doc's marker survives the scrub" "$out" "HIMMEL_JIRA_LIVE_TEST=PROJ-9999 "
+not_contains "W13 ... and the caller's value is gone" "$out" "HIMMEL_JIRA_LIVE_TEST=PROJ-9377"
 out="$(dry13 "$T/lt-none-doc.md")"
 not_contains "W13 the Live test none line sets nothing" "$out" "HIMMEL_JIRA_LIVE_TEST="
 out="$(dry13 "$T/doc10.md")"

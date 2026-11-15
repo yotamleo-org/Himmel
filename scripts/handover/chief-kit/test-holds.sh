@@ -108,7 +108,7 @@ exec bash "$QL" "\$@"
 STUB
 chmod +x "$W/bin/"*
 
-K1=HIMMEL-9101 K2=HIMMEL-9102
+K1=PROJ-9101 K2=PROJ-9102
 
 # ---- no module yet: the whole suite is RED until holds.py exists
 if [ ! -f "$SUT" ]; then
@@ -116,154 +116,154 @@ if [ ! -f "$SUT" ]; then
 fi
 
 # ---- I1: a second claim is refused and names the holder; a grant lets it through
-D01="$(mkdoc HIMMEL-9101-case.md)"
+D01="$(mkdoc PROJ-9101-case.md)"
 lock_hold "$D01"
 put_row scripts/c01.sh $K1 alpha "$D01"
-run hp claim --key $K2 --label beta --doc "$(mkdoc HIMMEL-9102-case.md)" --repo "$R" scripts/c01.sh
+run hp claim --key $K2 --label beta --doc "$(mkdoc PROJ-9102-case.md)" --repo "$R" scripts/c01.sh
 same "I1 second claim on a live holder's file exits 1" "$RC" 1
 contains "I1 the refusal names the holder" "$ERR" "$K1"
 run hp grant --key $K2 --repo "$R" scripts/c01.sh
 same "I1 grant exits 0" "$RC" 0
-run hp claim --key $K2 --label beta --doc "$(mkdoc HIMMEL-9102-case.md)" --repo "$R" scripts/c01.sh
+run hp claim --key $K2 --label beta --doc "$(mkdoc PROJ-9102-case.md)" --repo "$R" scripts/c01.sh
 same "I1 the granted key claims the file" "$RC" 0
 same "I1 the holder's row is untouched by the grant" "$(cut -f1 "$(rowf scripts/c01.sh)")" "$K1"
 
 # ---- I4 and I3: liveness goes by key
-DB="$(mkdoc HIMMEL-9102-case.md)"
-put_row scripts/c02.sh HIMMEL-9112 alpha "$(mkdoc HIMMEL-9112-case.md)"
+DB="$(mkdoc PROJ-9102-case.md)"
+put_row scripts/c02.sh PROJ-9112 alpha "$(mkdoc PROJ-9112-case.md)"
 touch "$(rowf scripts/c02.sh)"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c02.sh
 same "I4 a row inside the arm grace is alive (lock free)" "$RC" 1
 
-put_row scripts/c03.sh HIMMEL-9113 alpha "$(mkdoc HIMMEL-9113-case.md)"
+put_row scripts/c03.sh PROJ-9113 alpha "$(mkdoc PROJ-9113-case.md)"
 touch -d '1 hour' "$(rowf scripts/c03.sh)"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c03.sh
 same "I4 a future mtime counts as inside the grace" "$RC" 1
 
-D04A="$(mkdoc HIMMEL-9114-case.md)"
-D04B="$(mkdoc sub/HIMMEL-9114-second.md)"
+D04A="$(mkdoc PROJ-9114-case.md)"
+D04B="$(mkdoc sub/PROJ-9114-second.md)"
 lock_hold "$D04B"
-put_row scripts/c04.sh HIMMEL-9114 alpha "$D04A"
+put_row scripts/c04.sh PROJ-9114 alpha "$D04A"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c04.sh
 same "I4 a second doc of the key, one level down, held keeps the row alive" "$RC" 1
 
-put_row scripts/c05.sh HIMMEL-9115 alpha "$(mkdoc HIMMEL-9115-case.md)" pr 77
+put_row scripts/c05.sh PROJ-9115 alpha "$(mkdoc PROJ-9115-case.md)" pr 77
 run env HOLDS_GH="$W/bin/gh-open" python3 -I "$SUT" claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c05.sh
 same "I4 an open PR keeps the row alive" "$RC" 1
 
-put_row scripts/c06.sh HIMMEL-9116 alpha "$(mkdoc HIMMEL-9116-case.md)"
+put_row scripts/c06.sh PROJ-9116 alpha "$(mkdoc PROJ-9116-case.md)"
 before="$(ev_count)"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c06.sh
 same "I4 a dead holder never blocks (no lock, no PR, no RESUME doc)" "$RC" 0
 same "I4 the row is now the taker's" "$(cut -f1 "$(rowf scripts/c06.sh)")" "$K2"
 contains "I4 the takeover is in events.log" "$(tail -n +$((before + 1)) "$EVENTS")" takeover
 
-D07="$(mkdoc HIMMEL-9117-case.md '- 10:00 WRAPPED — done')"
-mkdoc HIMMEL-9117-N1-RESUME.md '# resume doc' > /dev/null
-put_row scripts/c07.sh HIMMEL-9117 alpha "$D07"
+D07="$(mkdoc PROJ-9117-case.md '- 10:00 WRAPPED — done')"
+mkdoc PROJ-9117-N1-RESUME.md '# resume doc' > /dev/null
+put_row scripts/c07.sh PROJ-9117 alpha "$D07"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c07.sh
 same "I3 a wrapped worker with an unwrapped RESUME doc under 24 h keeps its rows" "$RC" 1
 
 # a RESUME doc is consumed only by an explicit mention (a WRAPPED doc names it outside its last bullet), never by a file mtime,
 # a shared leg number or a shared stem: a stale hold costs a 24 h wait, a wrong release a double launch.
 # The old real shape (the worker wrapped its own doc, same leg, no mention) used to release the rows; it now holds.
-D11R="$(mkdoc HIMMEL-9420-N1b-RESUME.md '# resume doc')"
+D11R="$(mkdoc PROJ-9420-N1b-RESUME.md '# resume doc')"
 touch -d '1 hour ago' "$D11R"
-D11="$(mkdoc HIMMEL-9420-N1-case.md '- 10:00 WRAPPED — PR merged')"
-put_row scripts/c11.sh HIMMEL-9420 alpha "$D11"
+D11="$(mkdoc PROJ-9420-N1-case.md '- 10:00 WRAPPED — PR merged')"
+put_row scripts/c11.sh PROJ-9420 alpha "$D11"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c11.sh
 same "I3 a RESUME doc with no marks and a newer same-leg WRAPPED doc with no link to it holds (changed: a leg number is no link)" "$RC" 1
-D12R="$(mkdoc HIMMEL-9421-N1b-RESUME.md '# resume doc')"
+D12R="$(mkdoc PROJ-9421-N1b-RESUME.md '# resume doc')"
 touch -d '1 hour ago' "$D12R"
-D12="$(mkdoc HIMMEL-9421-N1-case.md '- 10:00 WRAPPED — resume doc HIMMEL-9421-N1b-RESUME.md')"
-put_row scripts/c12.sh HIMMEL-9421 alpha "$D12"
+D12="$(mkdoc PROJ-9421-N1-case.md '- 10:00 WRAPPED — resume doc PROJ-9421-N1b-RESUME.md')"
+put_row scripts/c12.sh PROJ-9421 alpha "$D12"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c12.sh
 same "I3 ... unless that WRAPPED bullet hands off to the RESUME doc (the successor lives)" "$RC" 1
 # a newer WRAPPED doc proves nothing about a RESUME doc it has no link to (the 24 h residual the chief accepted)
-D13R="$(mkdoc HIMMEL-9422-N1b-RESUME.md '# resume doc')"
+D13R="$(mkdoc PROJ-9422-N1b-RESUME.md '# resume doc')"
 touch -d '1 hour ago' "$D13R"
-D13="$(mkdoc HIMMEL-9422-N2-case.md '- 10:00 WRAPPED — PR merged')"
-put_row scripts/c13.sh HIMMEL-9422 alpha "$D13"
+D13="$(mkdoc PROJ-9422-N2-case.md '- 10:00 WRAPPED — PR merged')"
+put_row scripts/c13.sh PROJ-9422 alpha "$D13"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c13.sh
 same "I3 a different-leg newer WRAPPED doc with no mention of the RESUME doc holds (unchanged result, now because no link exists, not because of the leg)" "$RC" 1
-D14R="$(mkdoc HIMMEL-9423-N1b-RESUME.md '# resume doc')"
+D14R="$(mkdoc PROJ-9423-N1b-RESUME.md '# resume doc')"
 touch -d '1 hour ago' "$D14R"
-D14="$(mkdoc HIMMEL-9423-N2-case.md $'> **Prior art:** HIMMEL-9423-N1b-RESUME.md\n- 10:00 WRAPPED — PR merged')"
-put_row scripts/c14.sh HIMMEL-9423 alpha "$D14"
+D14="$(mkdoc PROJ-9423-N2-case.md $'> **Prior art:** PROJ-9423-N1b-RESUME.md\n- 10:00 WRAPPED — PR merged')"
+put_row scripts/c14.sh PROJ-9423 alpha "$D14"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c14.sh
 same "I3 a different-leg WRAPPED doc naming the RESUME doc outside its last WRAPPED bullet consumes it" "$RC" 0
-D15R="$(mkdoc HIMMEL-9424-case-RESUME.md '# resume doc')"
+D15R="$(mkdoc PROJ-9424-case-RESUME.md '# resume doc')"
 touch -d '1 hour ago' "$D15R"
-D15="$(mkdoc HIMMEL-9424-case.md '- 10:00 WRAPPED — PR merged')"
-put_row scripts/c15.sh HIMMEL-9424 alpha "$D15"
+D15="$(mkdoc PROJ-9424-case.md '- 10:00 WRAPPED — PR merged')"
+put_row scripts/c15.sh PROJ-9424 alpha "$D15"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c15.sh
 same "I3 a WRAPPED doc named as the RESUME doc minus -RESUME, with no mention of it, holds (changed: a shared stem is no link)" "$RC" 1
 # a RESUME doc made AFTER its stem doc wrapped is new live work: the stem doc's WRAPPED bullet cannot have released it
-D18="$(mkdoc HIMMEL-9427-case.md '- 10:00 WRAPPED — PR merged')"
+D18="$(mkdoc PROJ-9427-case.md '- 10:00 WRAPPED — PR merged')"
 touch -d '3 hours ago' "$D18"
-mkdoc HIMMEL-9427-case-RESUME.md '# resume doc, made after the stem doc wrapped' > /dev/null
-put_row scripts/c18.sh HIMMEL-9427 alpha "$D18"
+mkdoc PROJ-9427-case-RESUME.md '# resume doc, made after the stem doc wrapped' > /dev/null
+put_row scripts/c18.sh PROJ-9427 alpha "$D18"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c18.sh
 same "I3 a RESUME doc created after its stem doc wrapped, the last WRAPPED bullet not naming it, holds" "$RC" 1
-D16R="$(mkdoc HIMMEL-9425-N7f-RESUME.md '# resume doc')"
+D16R="$(mkdoc PROJ-9425-N7f-RESUME.md '# resume doc')"
 touch -d '1 hour ago' "$D16R"
-D16="$(mkdoc HIMMEL-9425-N7c-case.md $'- 09:00 LIVE — HIMMEL-9425-N7f-RESUME.md\n- 10:00 WRAPPED — handed to HIMMEL-9425-N7f-RESUME.md')"
-put_row scripts/c16.sh HIMMEL-9425 alpha "$D16"
+D16="$(mkdoc PROJ-9425-N7c-case.md $'- 09:00 LIVE — PROJ-9425-N7f-RESUME.md\n- 10:00 WRAPPED — handed to PROJ-9425-N7f-RESUME.md')"
+put_row scripts/c16.sh PROJ-9425 alpha "$D16"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c16.sh
 same "I3 a same-leg WRAPPED doc whose last bullet names the RESUME doc still holds, a mention elsewhere too" "$RC" 1
 # touching an old WRAPPED doc of the leg (a later edit bumps its mtime past the RESUME doc) must not release a live RESUME's rows
-D17R="$(mkdoc HIMMEL-9426-N3b-RESUME.md '# resume doc')"
+D17R="$(mkdoc PROJ-9426-N3b-RESUME.md '# resume doc')"
 touch -d '1 hour ago' "$D17R"
-D17="$(mkdoc HIMMEL-9426-N3-case.md '- 10:00 WRAPPED — PR merged')"
+D17="$(mkdoc PROJ-9426-N3-case.md '- 10:00 WRAPPED — PR merged')"
 touch -d '3 hours ago' "$D17"
 touch "$D17"
-put_row scripts/c17.sh HIMMEL-9426 alpha "$D17"
+put_row scripts/c17.sh PROJ-9426 alpha "$D17"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c17.sh
 same "I3 touching an old WRAPPED doc of the leg no longer releases a live RESUME doc's rows" "$RC" 1
 
-mkdoc HIMMEL-9118-N1-RESUME.md '# resume doc' > /dev/null
-touch -d '25 hours ago' "$HANDOVER_DIR/u/r/HIMMEL-9118-N1-RESUME.md"
-put_row scripts/c08.sh HIMMEL-9118 alpha "$(mkdoc HIMMEL-9118-case.md)"
+mkdoc PROJ-9118-N1-RESUME.md '# resume doc' > /dev/null
+touch -d '25 hours ago' "$HANDOVER_DIR/u/r/PROJ-9118-N1-RESUME.md"
+put_row scripts/c08.sh PROJ-9118 alpha "$(mkdoc PROJ-9118-case.md)"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c08.sh
 same "I3 a RESUME doc over 24 h no longer holds the rows (taken over)" "$RC" 0
 # and the late launch is refused, naming the new holder
-run hp seed --key HIMMEL-9118 --label alpha --doc "$(mkdoc HIMMEL-9118-seed.md '> **Writes:** scripts/c08.sh')" --repo "$R"
+run hp seed --key PROJ-9118 --label alpha --doc "$(mkdoc PROJ-9118-seed.md '> **Writes:** scripts/c08.sh')" --repo "$R"
 same "I3 the late launch is refused" "$RC" 1
 contains "I3 the late launch names the new holder" "$ERR" "$K2"
 
-mkdoc HIMMEL-9119-N1-RESUME.md '- 09:00 WRAPPED — done' > /dev/null
-put_row scripts/c09.sh HIMMEL-9119 alpha "$(mkdoc HIMMEL-9119-case.md)"
+mkdoc PROJ-9119-N1-RESUME.md '- 09:00 WRAPPED — done' > /dev/null
+put_row scripts/c09.sh PROJ-9119 alpha "$(mkdoc PROJ-9119-case.md)"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c09.sh
 same "I3 a WRAPPED RESUME doc holds nothing" "$RC" 0
 
 # real queue-lock states: CORRUPT blocks, plain STALE blocks, STALE-DEAD passes, another host's token blocks
-D10="$(mkdoc HIMMEL-9120-case.md)"
+D10="$(mkdoc PROJ-9120-case.md)"
 mkdir -p "$(lock_dir_of "$D10")"
-put_row scripts/c10.sh HIMMEL-9120 alpha "$D10"
+put_row scripts/c10.sh PROJ-9120 alpha "$D10"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c10.sh
 same "I4 a CORRUPT lock blocks" "$RC" 1
 
-D11="$(mkdoc HIMMEL-9121-case.md)"
+D11="$(mkdoc PROJ-9121-case.md)"
 lock_hold "$D11" "sess-live-$$"
 host="$(lock_host "$(lock_dir_of "$D11")")"
 owner_set "$(lock_dir_of "$D11")" session "${host}-pid1"
-put_row scripts/c11.sh HIMMEL-9121 alpha "$D11"
+put_row scripts/c11.sh PROJ-9121 alpha "$D11"
 run env QUEUE_LOCK_TTL_SECONDS=0 python3 -I "$SUT" claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c11.sh
 same "I4 a plain STALE lock (death not proven) blocks" "$RC" 1
 
-D12="$(mkdoc HIMMEL-9122-case.md)"
+D12="$(mkdoc PROJ-9122-case.md)"
 lock_hold "$D12" "sess-x"
 sleep 0 & deadpid=$!
 wait "$deadpid"
 owner_set "$(lock_dir_of "$D12")" session "${host}-pid${deadpid}"
-put_row scripts/c12.sh HIMMEL-9122 alpha "$D12"
+put_row scripts/c12.sh PROJ-9122 alpha "$D12"
 run env QUEUE_LOCK_TTL_SECONDS=0 python3 -I "$SUT" claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c12.sh
 same "I4 a STALE-DEAD lock passes (taken over)" "$RC" 0
 
-D13="$(mkdoc HIMMEL-9123-case.md)"
+D13="$(mkdoc PROJ-9123-case.md)"
 lock_hold "$D13" "sess-y"
 owner_set "$(lock_dir_of "$D13")" host some-other-host
-put_row scripts/c13.sh HIMMEL-9123 alpha "$D13"
+put_row scripts/c13.sh PROJ-9123 alpha "$D13"
 run env QUEUE_LOCK_TTL_SECONDS=0 python3 -I "$SUT" claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c13.sh
 same "I4 another host's token (death not proven) blocks" "$RC" 1
 
@@ -273,46 +273,46 @@ run env HOLDS_GH="$W/bin/gh-merged" python3 -I "$SUT" claim --key $K2 --label be
 same "RF5 a merged PR row is dead, claim passes" "$RC" 0
 
 # ---- I11: parallel claims, parallel takers, refused seed
-hp claim --key HIMMEL-9131 --label p1 --doc "$(mkdoc HIMMEL-9131-case.md)" --repo "$R" scripts/c20.sh > "$W/o1" 2> "$W/e1" &
+hp claim --key PROJ-9131 --label p1 --doc "$(mkdoc PROJ-9131-case.md)" --repo "$R" scripts/c20.sh > "$W/o1" 2> "$W/e1" &
 p1=$!
-hp claim --key HIMMEL-9132 --label p2 --doc "$(mkdoc HIMMEL-9132-case.md)" --repo "$R" scripts/c20.sh > "$W/o2" 2> "$W/e2" &
+hp claim --key PROJ-9132 --label p2 --doc "$(mkdoc PROJ-9132-case.md)" --repo "$R" scripts/c20.sh > "$W/o2" 2> "$W/e2" &
 p2=$!
 wait "$p1"; r1=$?
 wait "$p2"; r2=$?
 same "I11 2 claims on one path: one exit 0, one exit 1" "$(printf '%s%s' "$(( r1 < r2 ? r1 : r2 ))" "$(( r1 > r2 ? r1 : r2 ))")" 01
 same "I11 2 claims on one path leave one row" "$(find "$(slugdir)" -name "$(esc scripts/c20.sh)*" | wc -l | tr -d ' ')" 1
 
-put_row scripts/c21.sh HIMMEL-9133 alpha "$(mkdoc HIMMEL-9133-case.md)"
-hp claim --key HIMMEL-9134 --label t1 --doc "$(mkdoc HIMMEL-9134-case.md)" --repo "$R" scripts/c21.sh > /dev/null 2>&1 &
+put_row scripts/c21.sh PROJ-9133 alpha "$(mkdoc PROJ-9133-case.md)"
+hp claim --key PROJ-9134 --label t1 --doc "$(mkdoc PROJ-9134-case.md)" --repo "$R" scripts/c21.sh > /dev/null 2>&1 &
 p1=$!
-hp claim --key HIMMEL-9135 --label t2 --doc "$(mkdoc HIMMEL-9135-case.md)" --repo "$R" scripts/c21.sh > /dev/null 2>&1 &
+hp claim --key PROJ-9135 --label t2 --doc "$(mkdoc PROJ-9135-case.md)" --repo "$R" scripts/c21.sh > /dev/null 2>&1 &
 p2=$!
 wait "$p1"; r1=$?
 wait "$p2"; r2=$?
 same "I11 2 takers of one dead row: one winner" "$(printf '%s%s' "$(( r1 < r2 ? r1 : r2 ))" "$(( r1 > r2 ? r1 : r2 ))")" 01
 same "I11 2 takers leave one row, no leftover temp or moved file" "$(find "$(slugdir)" \( -name "*c21.sh*" -o -name '%00*' \) | wc -l | tr -d ' ')" 1
 
-D22="$(mkdoc HIMMEL-9136-case.md)"
+D22="$(mkdoc PROJ-9136-case.md)"
 lock_hold "$D22"
-put_row scripts/c22c.sh HIMMEL-9136 alpha "$D22"
-DS="$(mkdoc HIMMEL-9137-case.md '> **Writes:** scripts/c22a.sh scripts/c22b.sh scripts/c22c.sh')"
-run hp seed --key HIMMEL-9137 --label seeder --doc "$DS" --repo "$R"
+put_row scripts/c22c.sh PROJ-9136 alpha "$D22"
+DS="$(mkdoc PROJ-9137-case.md '> **Writes:** scripts/c22a.sh scripts/c22b.sh scripts/c22c.sh')"
+run hp seed --key PROJ-9137 --label seeder --doc "$DS" --repo "$R"
 same "I11 a seed refused on its third file exits 1" "$RC" 1
 same "I11 a refused seed leaves no row (first file)" "$([ -e "$(rowf scripts/c22a.sh)" ] && echo row || echo none)" none
 same "I11 a refused seed leaves no row (second file)" "$([ -e "$(rowf scripts/c22b.sh)" ] && echo row || echo none)" none
 
 # seed with one file granted passes it; an ungranted file in the same seed is refused
-D23="$(mkdoc HIMMEL-9138-case.md)"
+D23="$(mkdoc PROJ-9138-case.md)"
 lock_hold "$D23"
-put_row scripts/c23x.sh HIMMEL-9138 alpha "$D23"
-put_row scripts/c23z.sh HIMMEL-9138 alpha "$D23"
-hp grant --key HIMMEL-9139 --repo "$R" scripts/c23x.sh > /dev/null 2>&1
-DS2="$(mkdoc HIMMEL-9139-case.md '> **Writes:** scripts/c23x.sh scripts/c23y.sh')"
-run hp seed --key HIMMEL-9139 --label seeder --doc "$DS2" --repo "$R"
+put_row scripts/c23x.sh PROJ-9138 alpha "$D23"
+put_row scripts/c23z.sh PROJ-9138 alpha "$D23"
+hp grant --key PROJ-9139 --repo "$R" scripts/c23x.sh > /dev/null 2>&1
+DS2="$(mkdoc PROJ-9139-case.md '> **Writes:** scripts/c23x.sh scripts/c23y.sh')"
+run hp seed --key PROJ-9139 --label seeder --doc "$DS2" --repo "$R"
 same "I11 a seed passes a file granted to its key" "$RC" 0
-same "I11 the seed row for the free file is published" "$(cut -f1,4 "$(rowf scripts/c23y.sh)" | tr '\t' ' ')" "HIMMEL-9139 brief"
-DS3="$(mkdoc HIMMEL-9140-case.md '> **Writes:** scripts/c23x.sh scripts/c23w.sh scripts/c23z.sh')"
-run hp seed --key HIMMEL-9140 --label seeder --doc "$DS3" --repo "$R"
+same "I11 the seed row for the free file is published" "$(cut -f1,4 "$(rowf scripts/c23y.sh)" | tr '\t' ' ')" "PROJ-9139 brief"
+DS3="$(mkdoc PROJ-9140-case.md '> **Writes:** scripts/c23x.sh scripts/c23w.sh scripts/c23z.sh')"
+run hp seed --key PROJ-9140 --label seeder --doc "$DS3" --repo "$R"
 same "I11 an ungranted file in the same seed is refused" "$RC" 1
 same "I11 ... and its earlier row is rolled back" "$([ -e "$(rowf scripts/c23w.sh)" ] && echo row || echo none)" none
 
@@ -324,22 +324,22 @@ fault_case() {  # fault_case <name> <path> <env-prefix...> ; the row at <path> m
     same "I5 $name passes" "$RC" 0
     same "I5 $name leaves one events.log line" "$(( $(ev_count) - before ))" 1
 }
-put_row scripts/f2.sh HIMMEL-9150 alpha "$(mkdoc HIMMEL-9150-case.md)"
+put_row scripts/f2.sh PROJ-9150 alpha "$(mkdoc PROJ-9150-case.md)"
 printf 'not a row\n' > "$(rowf scripts/f2.sh)"
 touch -d '2 hours ago' "$(rowf scripts/f2.sh)"
 fault_case "a corrupt row" scripts/f2.sh X=1
 same "I5 the corrupt row is left in place" "$(cat "$(rowf scripts/f2.sh)")" "not a row"
-put_row scripts/f3.sh HIMMEL-9151 alpha "$(mkdoc HIMMEL-9151-case.md)"
+put_row scripts/f3.sh PROJ-9151 alpha "$(mkdoc PROJ-9151-case.md)"
 fault_case "a queue-lock that returns rc 1" scripts/f3.sh HOLDS_QUEUE_LOCK="$W/bin/ql-rc1"
-same "I5 ... and the row stays the holder's" "$(cut -f1 "$(rowf scripts/f3.sh)")" HIMMEL-9151
-put_row scripts/f4.sh HIMMEL-9152 alpha "$(mkdoc HIMMEL-9152-case.md)"
+same "I5 ... and the row stays the holder's" "$(cut -f1 "$(rowf scripts/f3.sh)")" PROJ-9151
+put_row scripts/f4.sh PROJ-9152 alpha "$(mkdoc PROJ-9152-case.md)"
 fault_case "a missing queue-lock.sh" scripts/f4.sh HOLDS_QUEUE_LOCK="$W/bin/no-such-queue-lock"
-put_row scripts/f5.sh PR-99 branch:x "$(mkdoc HIMMEL-9153-case.md)" pr 99
+put_row scripts/f5.sh PR-99 branch:x "$(mkdoc PROJ-9153-case.md)" pr 99
 t0=$(date +%s)
 fault_case "a gh that hangs past 5 s" scripts/f5.sh HOLDS_GH="$W/bin/gh-hang"
 t1=$(date +%s)
 if [ $((t1 - t0)) -lt 15 ]; then pass "I5 the hung gh is cut off (took $((t1 - t0)) s)"; else fail "I5 the hung gh is cut off (took $((t1 - t0)) s)"; fi
-put_row scripts/f6.sh HIMMEL-9154 alpha "$(mkdoc HIMMEL-9154-case.md)"
+put_row scripts/f6.sh PROJ-9154 alpha "$(mkdoc PROJ-9154-case.md)"
 mkdir -p "$W/long"
 long="scripts/$(printf 'a%.0s' $(seq 300)).sh"
 before="$(ev_count)"
@@ -366,9 +366,9 @@ else
 fi
 
 # off: the sentinel passes a claim of a held path
-D30="$(mkdoc HIMMEL-9160-case.md)"
+D30="$(mkdoc PROJ-9160-case.md)"
 lock_hold "$D30"
-put_row scripts/c30.sh HIMMEL-9160 alpha "$D30"
+put_row scripts/c30.sh PROJ-9160 alpha "$D30"
 run hp off --reason "test fold"
 same "off writes the sentinel" "$RC" 0
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c30.sh
@@ -400,19 +400,19 @@ run hp grant --key $K2 --repo "$R" scripts/handover/chief-kit/holds-exempt.txt
 same "I9 a grant on the exempt list (itself a trust path) exits 1" "$RC" 1
 
 # ---- I10: an exempt file is never held; a file off the list always can be
-D31="$(mkdoc HIMMEL-9161-case.md)"
+D31="$(mkdoc PROJ-9161-case.md)"
 lock_hold "$D31"
-put_row scripts/ci/suite-tiers.tsv HIMMEL-9161 alpha "$D31"
+put_row scripts/ci/suite-tiers.tsv PROJ-9161 alpha "$D31"
 rm -f "$(rowf scripts/ci/suite-tiers.tsv)"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/ci/suite-tiers.tsv
 same "I10 a claim on an exempt path exits 0" "$RC" 0
 same "I10 ... and makes no row" "$([ -e "$(rowf scripts/ci/suite-tiers.tsv)" ] && echo row || echo none)" none
-run hp claim --key HIMMEL-9161 --label alpha --doc "$D31" --repo "$R" scripts/c31.sh
+run hp claim --key PROJ-9161 --label alpha --doc "$D31" --repo "$R" scripts/c31.sh
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/c31.sh
 same "I10 a file off the list can be held" "$RC" 1
 
 # ---- parse
-DP="$(mkdoc HIMMEL-9170-parse.md '# t
+DP="$(mkdoc PROJ-9170-parse.md '# t
 > **Writes:** scripts/p1.sh scripts/ptree/ (read only: docs/x.md) scripts/p2.py
 > scripts/p3.sh
 > **Writes note:** scripts/ignored.sh
@@ -420,14 +420,14 @@ DP="$(mkdoc HIMMEL-9170-parse.md '# t
 want="$(printf 'file\tscripts/p1.sh\ntree\tscripts/ptree/\nfile\tscripts/p2.py\nfile\tscripts/p3.sh')"
 run hp parse "$DP" --repo "$R"
 same "parse: files, trees, parentheses removed, continuation line, Writes note ignored" "$OUT" "$want"
-DN="$(mkdoc HIMMEL-9171-parse.md '> **Writes:** none named')"
+DN="$(mkdoc PROJ-9171-parse.md '> **Writes:** none named')"
 run hp parse "$DN" --repo "$R"
 same "parse: none named yields no lines" "$OUT" ""
-DW="$(mkdoc HIMMEL-9172-parse.md '> **Writes note:** scripts/ignored.sh')"
+DW="$(mkdoc PROJ-9172-parse.md '> **Writes note:** scripts/ignored.sh')"
 run hp parse "$DW" --repo "$R"
 same "parse: a Writes note line yields no lines" "$OUT" ""
 mkdir -p "$R/scripts/real-dir"
-DT="$(mkdoc HIMMEL-9173-parse.md '> **Writes:** scripts/real-dir scripts/newfile.sh')"
+DT="$(mkdoc PROJ-9173-parse.md '> **Writes:** scripts/real-dir scripts/newfile.sh')"
 run hp parse "$DT" --repo "$R"
 same "parse: an existing directory is a tree, an unwritten file a file" "$OUT" "$(printf 'tree\tscripts/real-dir/\nfile\tscripts/newfile.sh')"
 run python3 -I -c "
@@ -437,21 +437,21 @@ print(m.parse_text('> **Writes:** scripts/q1.sh', '$R'))"
 same "parse_text is importable" "$OUT" "[('file', 'scripts/q1.sh')]"
 
 # ---- read and release
-DR="$(mkdoc HIMMEL-9180-case.md)"
-put_row scripts/r1.sh HIMMEL-9180 lab "$DR"
-put_row scripts/r2.sh HIMMEL-9180 lab "$DR"
-put_row scripts/r3.sh HIMMEL-9180 lab "$DR"
-put_row scripts/r4.sh HIMMEL-9181 other "$(mkdoc HIMMEL-9181-case.md)"
+DR="$(mkdoc PROJ-9180-case.md)"
+put_row scripts/r1.sh PROJ-9180 lab "$DR"
+put_row scripts/r2.sh PROJ-9180 lab "$DR"
+put_row scripts/r3.sh PROJ-9180 lab "$DR"
+put_row scripts/r4.sh PROJ-9181 other "$(mkdoc PROJ-9181-case.md)"
 printf 'scripts/r1.sh\nscripts/r2.sh\nscripts/r3.sh\n' > "$W/paths"
 : > "$W/ql-calls"
 run env HOLDS_QUEUE_LOCK="$W/bin/ql-count" python3 -I "$SUT" read --repo "$R" --paths-from "$W/paths"
 same "read --paths-from keeps only the listed paths" "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" 3
-same "read prints path key label source pr state" "$(printf '%s\n' "$OUT" | head -n 1)" "$(printf 'scripts/r1.sh\tHIMMEL-9180\tlab\tbrief\t\tdead')"
+same "read prints path key label source pr state" "$(printf '%s\n' "$OUT" | head -n 1)" "$(printf 'scripts/r1.sh\tPROJ-9180\tlab\tbrief\t\tdead')"
 same "read judges a doc once for 3 of its rows" "$(wc -l < "$W/ql-calls" | tr -d ' ')" 1
 run env HOLDS_QUEUE_LOCK="$W/bin/ql-rc1" python3 -I "$SUT" read --repo "$R" --paths-from "$W/paths"
 contains "read: a failed proof reads state unknown, never free" "$OUT" "$(printf 'lab\tbrief\t\tunknown')"
 run hp read --repo "$R" --keys
-contains "read --keys lists every holder key, whatever the paths" "$OUT" HIMMEL-9181
+contains "read --keys lists every holder key, whatever the paths" "$OUT" PROJ-9181
 run hp read --repo "$W/no-such-repo-register"
 same "read: a repo with no register directory is empty, exit 0" "$RC:$OUT" "0:"
 if [ "$(id -u)" != 0 ]; then
@@ -461,11 +461,11 @@ if [ "$(id -u)" != 0 ]; then
     same "read: an unreadable register directory exits 3" "$RC" 3
 fi
 
-put_row scripts/rel1.sh HIMMEL-9182 lab "$DR"
-hp claim --key HIMMEL-9182 --label lab --doc "$(mkdoc HIMMEL-9182-case.md)" --repo "$R" --source brief scripts/rel2.sh > /dev/null 2>&1
-hp claim --key HIMMEL-9182 --label lab --doc "$(mkdoc HIMMEL-9182-case.md)" --repo "$R" --source claim scripts/rel3.sh > /dev/null 2>&1
-printf 'HIMMEL-9182\tlab\t%s\tbrief\t\n' "$(mkdoc HIMMEL-9182-case.md)" > "$(rowf scripts/rel4.sh)"
-run hp release --key HIMMEL-9182 --repo "$R" --doc "$(mkdoc HIMMEL-9182-case.md)"
+put_row scripts/rel1.sh PROJ-9182 lab "$DR"
+hp claim --key PROJ-9182 --label lab --doc "$(mkdoc PROJ-9182-case.md)" --repo "$R" --source brief scripts/rel2.sh > /dev/null 2>&1
+hp claim --key PROJ-9182 --label lab --doc "$(mkdoc PROJ-9182-case.md)" --repo "$R" --source claim scripts/rel3.sh > /dev/null 2>&1
+printf 'PROJ-9182\tlab\t%s\tbrief\t\n' "$(mkdoc PROJ-9182-case.md)" > "$(rowf scripts/rel4.sh)"
+run hp release --key PROJ-9182 --repo "$R" --doc "$(mkdoc PROJ-9182-case.md)"
 same "release exits 0" "$RC" 0
 same "release removes this doc's brief row" "$([ -e "$(rowf scripts/rel2.sh)" ] && echo row || echo none)" none
 same "release removes the other brief row of this doc" "$([ -e "$(rowf scripts/rel4.sh)" ] && echo row || echo none)" none
@@ -473,43 +473,43 @@ same "release leaves this doc's claim row" "$([ -e "$(rowf scripts/rel3.sh)" ] &
 same "release leaves another doc's brief row" "$([ -e "$(rowf scripts/rel1.sh)" ] && echo row || echo none)" row
 
 # ---- Review Focus 4: spaces and % round-trip through read
-run hp claim --key HIMMEL-9190 --label lab --doc "$(mkdoc HIMMEL-9190-case.md)" --repo "$R" 'scripts/a b%c.sh'
+run hp claim --key PROJ-9190 --label lab --doc "$(mkdoc PROJ-9190-case.md)" --repo "$R" 'scripts/a b%c.sh'
 same "RF4 a path with a space and % is claimed" "$RC" 0
 run hp read --repo "$R"
-contains "RF4 ... and round-trips through read" "$OUT" "$(printf 'scripts/a b%%c.sh\tHIMMEL-9190')"
+contains "RF4 ... and round-trips through read" "$OUT" "$(printf 'scripts/a b%%c.sh\tPROJ-9190')"
 
 # ---- repo identity: a linked worktree and its primary share one row
 git -C "$R" worktree add -q "$W/wt" -b wt-branch
-run hp claim --key HIMMEL-9191 --label lab --doc "$(mkdoc HIMMEL-9191-case.md)" --repo "$W/wt" scripts/w1.sh
+run hp claim --key PROJ-9191 --label lab --doc "$(mkdoc PROJ-9191-case.md)" --repo "$W/wt" scripts/w1.sh
 same "repo identity: claim from a linked worktree exits 0" "$RC" 0
 same "repo identity: the row sits in the primary's directory" "$([ -e "$(rowf scripts/w1.sh)" ] && echo row || echo none)" row
 run hp read --repo "$R" --paths-from <(printf 'scripts/w1.sh\n')
-contains "repo identity: read from the primary shows the worktree's row" "$OUT" HIMMEL-9191
-run hp claim --key HIMMEL-9192 --label lab --doc "$DB" --repo "$R" scripts/w1.sh
+contains "repo identity: read from the primary shows the worktree's row" "$OUT" PROJ-9191
+run hp claim --key PROJ-9192 --label lab --doc "$DB" --repo "$R" scripts/w1.sh
 same "repo identity: the primary sees the same claim" "$RC" 1
 
 # ---- an absolute path inside a linked worktree is the same row as its repo-relative spelling
-run hp claim --key HIMMEL-9210 --label lab --doc "$(mkdoc HIMMEL-9210-case.md)" --repo "$W/wt" "$W/wt/scripts/a1.sh"
+run hp claim --key PROJ-9210 --label lab --doc "$(mkdoc PROJ-9210-case.md)" --repo "$W/wt" "$W/wt/scripts/a1.sh"
 same "abs path in a worktree: the claim exits 0" "$RC" 0
 same "abs path in a worktree: the row sits under the repo-relative name" "$([ -e "$(rowf scripts/a1.sh)" ] && echo row || echo none)" row
-run hp claim --key HIMMEL-9211 --label lab --doc "$DB" --repo "$R" scripts/a1.sh
+run hp claim --key PROJ-9211 --label lab --doc "$DB" --repo "$R" scripts/a1.sh
 same "abs path in a worktree: the repo-relative claim by another key is refused" "$RC" 1
 
 # ---- --repo naming a plain subdirectory of the checkout is not a worktree root
-run hp claim --key HIMMEL-9215 --label lab --doc "$(mkdoc HIMMEL-9215-case.md)" --repo "$R/scripts" "$R/scripts/sub1.sh"
+run hp claim --key PROJ-9215 --label lab --doc "$(mkdoc PROJ-9215-case.md)" --repo "$R/scripts" "$R/scripts/sub1.sh"
 same "repo subdirectory: the claim exits 0" "$RC" 0
 same "repo subdirectory: the row keeps its full repo-relative name" "$([ -e "$(rowf scripts/sub1.sh)" ] && echo row || echo none)" row
 
 # ---- an absolute bucket path outside the repo: seeded, held against a rival, and released with the launch
 ABSF="$W/h/u/r/specs/abs-case.md"
-DAB1="$(mkdoc HIMMEL-9212-case.md "> **Writes:** $ABSF")"
-DAB2="$(mkdoc HIMMEL-9213-case.md "> **Writes:** $ABSF")"
-run hp seed --key HIMMEL-9212 --label lab --doc "$DAB1" --repo "$R"
+DAB1="$(mkdoc PROJ-9212-case.md "> **Writes:** $ABSF")"
+DAB2="$(mkdoc PROJ-9213-case.md "> **Writes:** $ABSF")"
+run hp seed --key PROJ-9212 --label lab --doc "$DAB1" --repo "$R"
 same "abs bucket path: the first seed passes" "$RC" 0
-run hp seed --key HIMMEL-9213 --label lab --doc "$DAB2" --repo "$R"
+run hp seed --key PROJ-9213 --label lab --doc "$DAB2" --repo "$R"
 same "abs bucket path: a rival seed is refused" "$RC" 1
-run hp release --key HIMMEL-9212 --repo "$R" --doc "$DAB1"
-run hp seed --key HIMMEL-9213 --label lab --doc "$DAB2" --repo "$R"
+run hp release --key PROJ-9212 --repo "$R" --doc "$DAB1"
+run hp seed --key PROJ-9213 --label lab --doc "$DAB2" --repo "$R"
 same "abs bucket path: release frees the row, so the rival seed passes" "$RC" 0
 
 S8F="$W/h/u/r/specs/s8-case.md"
@@ -536,24 +536,24 @@ same "bad key: claim exits 2" "$RC" 2
 same "bad key: claim makes no row" "$([ -e "$(rowf scripts/k1.sh)" ] && echo row || echo none)" none
 run hp seed --key not-a-key --label lab --doc "$DAB1" --repo "$R"
 same "bad key: seed exits 2" "$RC" 2
-run hp claim --key $'HIMMEL-9216\n' --label lab --doc "$DB" --repo "$R" scripts/k2.sh
+run hp claim --key $'PROJ-9216\n' --label lab --doc "$DB" --repo "$R" scripts/k2.sh
 same "bad key: a trailing newline is refused too" "$RC" 2
 
 # ---- a real file whose name looks like a grant sibling is never held (it would read as a grant)
-run hp claim --key HIMMEL-9214 --label lab --doc "$DB" --repo "$R" scripts/x6.sh.grant.HIMMEL-42
+run hp claim --key PROJ-9214 --label lab --doc "$DB" --repo "$R" scripts/x6.sh.grant.PROJ-42
 same "grant-looking name: the claim passes" "$RC" 0
-same "grant-looking name: no row is made" "$([ -e "$(rowf scripts/x6.sh.grant.HIMMEL-42)" ] && echo row || echo none)" none
+same "grant-looking name: no row is made" "$([ -e "$(rowf scripts/x6.sh.grant.PROJ-42)" ] && echo row || echo none)" none
 
 # ---- an unreadable part of the bucket is a fault (unknown), never read as "no successor doc"
 if [ "$(id -u)" != 0 ]; then
-    put_row scripts/f9.sh HIMMEL-9220 alpha "$(mkdoc HIMMEL-9220-case.md)"
+    put_row scripts/f9.sh PROJ-9220 alpha "$(mkdoc PROJ-9220-case.md)"
     mkdir -p "$HANDOVER_DIR/u/r/locked9"
     chmod 000 "$HANDOVER_DIR/u/r/locked9"
     before="$(ev_count)"
     run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/f9.sh
     chmod 755 "$HANDOVER_DIR/u/r/locked9"
     same "unreadable bucket subdir: the claim passes" "$RC" 0
-    same "unreadable bucket subdir: the holder's row is not taken over" "$(cut -f1 "$(rowf scripts/f9.sh)")" HIMMEL-9220
+    same "unreadable bucket subdir: the holder's row is not taken over" "$(cut -f1 "$(rowf scripts/f9.sh)")" PROJ-9220
     same "unreadable bucket subdir: one events.log line" "$(( $(ev_count) - before ))" 1
 fi
 
@@ -570,7 +570,7 @@ mkdir -p "$W/gitfail"
 printf '#!/usr/bin/env bash\nexit 128\n' > "$W/gitfail/git"
 chmod +x "$W/gitfail/git"
 before="$(ev_count)"
-run env PATH="$W/gitfail:$PATH" python3 -I "$SUT" claim --key HIMMEL-9301 --label lab --doc "$DB" --repo "$W/wt" scripts/g1.sh
+run env PATH="$W/gitfail:$PATH" python3 -I "$SUT" claim --key PROJ-9301 --label lab --doc "$DB" --repo "$W/wt" scripts/g1.sh
 same "F2 claim, git failing, --repo a linked worktree: fault, exit 2" "$RC" 2
 same "F2 ... no row under the worktree's own slug" "$([ -e "$(rowf scripts/g1.sh "$W/wt")" ] && echo row || echo none)" none
 same "F2 ... one events.log line" "$(( $(ev_count) - before ))" 1
@@ -578,7 +578,7 @@ run env PATH="$W/gitfail:$PATH" python3 -I "$SUT" read --repo "$W/wt"
 same "F2 read, git failing, a linked worktree: exit 2, not an empty register" "$RC" 2
 run env PATH="$W/gitfail:$PATH" python3 -I "$SUT" alive --repo "$W/wt" scripts/w1.sh
 same "F2 alive, git failing, a linked worktree: exit 2, not dead" "$RC:$OUT" "2:"
-run env PATH="$W/gitfail:$PATH" python3 -I "$SUT" claim --key HIMMEL-9302 --label lab --doc "$DB" --repo "$R" scripts/g2.sh
+run env PATH="$W/gitfail:$PATH" python3 -I "$SUT" claim --key PROJ-9302 --label lab --doc "$DB" --repo "$R" scripts/g2.sh
 same "F2 git failing, --repo the primary checkout: the path as given is its identity, exit 0" "$RC" 0
 same "F2 ... the row sits in the primary's directory" "$([ -e "$(rowf scripts/g2.sh)" ] && echo row || echo none)" row
 
@@ -596,57 +596,57 @@ same "F3 ... and writes no grant" "$(find "$(slugdir "$R2")" -name '*.grant.*' 2
 run hp grant --key $K2 --repo "$R2" scripts/oldx/a.sh
 same "F4 a grant on an aliased non-trust path exits 0" "$RC" 0
 same "F4 ... and sits under the new spelling" "$([ -e "$(rowf scripts/newx/a.sh "$R2").grant.$K2" ] && echo grant || echo none)" grant
-run hp claim --key HIMMEL-9303 --label lab --doc "$DB" --repo "$R2" scripts/oldx/b.sh
+run hp claim --key PROJ-9303 --label lab --doc "$DB" --repo "$R2" scripts/oldx/b.sh
 same "F4 a claim by the old spelling exits 0" "$RC" 0
 same "F4 ... and the row sits under the new spelling" "$([ -e "$(rowf scripts/newx/b.sh "$R2")" ] && echo row || echo none)" row
-run hp claim --key HIMMEL-9304 --label lab --doc "$DB" --repo "$R2" scripts/newx/b.sh
+run hp claim --key PROJ-9304 --label lab --doc "$DB" --repo "$R2" scripts/newx/b.sh
 same "F4 the new spelling is the same file: refused" "$RC" 1
-run hp claim --key HIMMEL-9303 --label lab --doc "$DB" --repo "$R" scripts/oldx/b.sh
+run hp claim --key PROJ-9303 --label lab --doc "$DB" --repo "$R" scripts/oldx/b.sh
 same "F4 an empty registry: the claim exits 0" "$RC" 0
 same "F4 ... and the path stays as written" "$([ -e "$(rowf scripts/oldx/b.sh)" ] && echo row || echo none)" row
-run hp claim --key HIMMEL-9304 --label lab --doc "$DB" --repo "$R" scripts/newx/b.sh
+run hp claim --key PROJ-9304 --label lab --doc "$DB" --repo "$R" scripts/newx/b.sh
 same "F4 an empty registry: the new spelling is another file" "$RC" 0
 
 # ---- finding 5: a path is normalised before it is matched against the repo
-run hp claim --key HIMMEL-9310 --label lab --doc "$DB" --repo "$R" "$R/scripts/../../esc1.sh"
+run hp claim --key PROJ-9310 --label lab --doc "$DB" --repo "$R" "$R/scripts/../../esc1.sh"
 same "F5 a path that climbs out of the repo is not read as inside it" "$([ -e "$(rowf ../esc1.sh)" ] && echo row || echo none)" none
 same "F5 ... it is an absolute path, under _abs" "$([ -e "$REG/_abs/$(esc "$W/esc1.sh")" ] && echo row || echo none)" row
-run hp claim --key HIMMEL-9311 --label lab --doc "$DB" --repo "$R" "$R/../repo/scripts/esc2.sh"
+run hp claim --key PROJ-9311 --label lab --doc "$DB" --repo "$R" "$R/../repo/scripts/esc2.sh"
 same "F5 a path that leaves and re-enters the repo is inside it" "$([ -e "$(rowf scripts/esc2.sh)" ] && echo row || echo none)" row
 
 # ---- finding 6: a doc that cannot be found, or a root that cannot be resolved, is put to the lock or reads unknown
-run bash -c 'cd "$1" && shift && exec python3 -I "$@"' _ "$HANDOVER_DIR/u/r" "$SUT" claim --key HIMMEL-9320 --label lab --doc HIMMEL-9320-rel.md --repo "$R" scripts/m0.sh
-same "F6 --doc is made absolute" "$(cut -f3 "$(rowf scripts/m0.sh)")" "$HANDOVER_DIR/u/r/HIMMEL-9320-rel.md"
-GONE="$HANDOVER_DIR/u/r/HIMMEL-9321-gone.md"
-put_row scripts/m1.sh HIMMEL-9321 alpha "$GONE"
+run bash -c 'cd "$1" && shift && exec python3 -I "$@"' _ "$HANDOVER_DIR/u/r" "$SUT" claim --key PROJ-9320 --label lab --doc PROJ-9320-rel.md --repo "$R" scripts/m0.sh
+same "F6 --doc is made absolute" "$(cut -f3 "$(rowf scripts/m0.sh)")" "$HANDOVER_DIR/u/r/PROJ-9320-rel.md"
+GONE="$HANDOVER_DIR/u/r/PROJ-9321-gone.md"
+put_row scripts/m1.sh PROJ-9321 alpha "$GONE"
 : > "$W/ql-calls"
 run env HOLDS_QUEUE_LOCK="$W/bin/ql-count" python3 -I "$SUT" claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/m1.sh
 same "F6 a doc that is gone is still put to the lock (one sweep serves it)" "$(grep -cxF -- 'status --sweep' "$W/ql-calls")" 1
-NOB="$W/nobucket/HIMMEL-9322-case.md"
-put_row scripts/m2.sh HIMMEL-9322 alpha "$NOB"
+NOB="$W/nobucket/PROJ-9322-case.md"
+put_row scripts/m2.sh PROJ-9322 alpha "$NOB"
 : > "$W/ql-calls"
 run env HOLDS_QUEUE_LOCK="$W/bin/ql-count" python3 -I "$SUT" claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/m2.sh
 same "F6 a doc whose bucket is gone is still put to the lock (one sweep serves it)" "$(grep -cxF -- 'status --sweep' "$W/ql-calls")" 1
-GL="$(mkdoc HIMMEL-9324-case.md)"
+GL="$(mkdoc PROJ-9324-case.md)"
 lock_hold "$GL"
 rm -f "$GL"
-put_row scripts/m4.sh HIMMEL-9324 alpha "$GL"
+put_row scripts/m4.sh PROJ-9324 alpha "$GL"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/m4.sh
 same "F6 a doc that is gone, its lock still held: alive, refused" "$RC" 1
-GR="$(mkdoc HIMMEL-9323-case.md)"
-put_row scripts/m3.sh HIMMEL-9323 alpha "$GR"
+GR="$(mkdoc PROJ-9323-case.md)"
+put_row scripts/m3.sh PROJ-9323 alpha "$GR"
 mkdir -p "$W/nogit"
 : > "$W/ql-free-calls"
 before="$(ev_count)"
 run bash -c 'cd "$1" && ql="$2" && shift 2 && exec env -u HANDOVER_DIR HOLDS_QUEUE_LOCK="$ql" python3 -I "$@"' _ "$W/nogit" "$W/bin/ql-free" "$SUT" claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/m3.sh
 same "F6 a handover root that cannot be resolved passes (a fault)" "$RC" 0
-same "F6 ... the holder's row is not taken over" "$(cut -f1 "$(rowf scripts/m3.sh)")" HIMMEL-9323
+same "F6 ... the holder's row is not taken over" "$(cut -f1 "$(rowf scripts/m3.sh)")" PROJ-9323
 same "F6 ... one events.log line" "$(( $(ev_count) - before ))" 1
 same "F6 ... and the lock was asked (one sweep)" "$(grep -cxF -- 'status --sweep' "$W/ql-free-calls")" 1
 
 # ---- F6b: a gone RESUME-named doc with a free lock is dead, not unknown
-GRS="$HANDOVER_DIR/u/r/HIMMEL-9340-N1-RESUME.md"
-put_row scripts/rs1.sh HIMMEL-9340 alpha "$GRS"
+GRS="$HANDOVER_DIR/u/r/PROJ-9340-N1-RESUME.md"
+put_row scripts/rs1.sh PROJ-9340 alpha "$GRS"
 before="$(ev_count)"
 run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/rs1.sh
 same "F6 a gone RESUME-named doc, lock free: the claim exits 0" "$RC" 0
@@ -666,35 +666,35 @@ same "F1 ... and leaves one events.log line" "$(( $(ev_count) - before ))" 1
 R4="$W/repo4"
 mkdir -p "$R4"
 git -C "$R4" init -q -b main || exit 1
-run hp claim --key HIMMEL-9330 --label lab --doc "$DB" --repo "$R4" scripts/z1.sh
+run hp claim --key PROJ-9330 --label lab --doc "$DB" --repo "$R4" scripts/z1.sh
 run hp read --repo "$R4" --keys
 same "F7 read --keys over readable rows exits 0" "$RC" 0
 printf 'not a row\n' > "$(rowf scripts/z2.sh "$R4")"
-printf 'HIMMEL-9331\tlab\t%s\tbogus-source\t\n' "$DB" > "$(rowf scripts/z3.sh "$R4")"
-printf 'HIMMEL-9332\tlab\t\377\tbrief\t\n' > "$(rowf scripts/z5.sh "$R4")"
+printf 'PROJ-9331\tlab\t%s\tbogus-source\t\n' "$DB" > "$(rowf scripts/z3.sh "$R4")"
+printf 'PROJ-9332\tlab\t\377\tbrief\t\n' > "$(rowf scripts/z5.sh "$R4")"
 touch -d '2 hours ago' "$(rowf scripts/z2.sh "$R4")" "$(rowf scripts/z3.sh "$R4")" "$(rowf scripts/z5.sh "$R4")"
 run hp read --repo "$R4" --keys
 same "F7 read --keys with unreadable rows still exits 0 (one junk row must not fault the whole read)" "$RC" 0
 contains "F7 ... names the rows on stderr" "$ERR" scripts/z2.sh
-contains "F7 ... a row with a recoverable key reads that key unknown, never free" "$OUT" "$(printf 'HIMMEL-9331\tunknown\t1')"
-contains "F7 ... invalid UTF-8 after the key still reads that key unknown" "$OUT" "$(printf 'HIMMEL-9332\tunknown\t1')"
+contains "F7 ... a row with a recoverable key reads that key unknown, never free" "$OUT" "$(printf 'PROJ-9331\tunknown\t1')"
+contains "F7 ... invalid UTF-8 after the key still reads that key unknown" "$OUT" "$(printf 'PROJ-9332\tunknown\t1')"
 contains "F7 ... a row with no recoverable key reads ? unknown" "$OUT" "$(printf '?\tunknown\t1')"
-contains "F7 ... and still lists the readable holder" "$OUT" HIMMEL-9330
+contains "F7 ... and still lists the readable holder" "$OUT" PROJ-9330
 rm -f "$(rowf scripts/z3.sh "$R4")"
-printf 'HIMMEL-9330\tlab\t%s\tbogus-source\t\n' "$DB" > "$(rowf scripts/z4.sh "$R4")"
+printf 'PROJ-9330\tlab\t%s\tbogus-source\t\n' "$DB" > "$(rowf scripts/z4.sh "$R4")"
 run hp read --repo "$R4" --keys
-contains "F7 an unreadable row never frees its key: alive stays alive, the count includes the junk row" "$OUT" "$(printf 'HIMMEL-9330\talive\t2')"
+contains "F7 an unreadable row never frees its key: alive stays alive, the count includes the junk row" "$OUT" "$(printf 'PROJ-9330\talive\t2')"
 
 # ---- F6c: a RESUME-named doc that cannot be read is a fault (unknown), never a dead holder
 if [ "$(id -u)" != 0 ]; then
-    GU="$(mkdoc HIMMEL-9350-N1-RESUME.md '# resume doc')"
+    GU="$(mkdoc PROJ-9350-N1-RESUME.md '# resume doc')"
     chmod 000 "$GU"
-    put_row scripts/rs2.sh HIMMEL-9350 alpha "$GU"
+    put_row scripts/rs2.sh PROJ-9350 alpha "$GU"
     before="$(ev_count)"
     run hp claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/rs2.sh
     chmod 644 "$GU"
     same "F6c an unreadable RESUME doc under 24 h, lock free: the claim passes (a fault)" "$RC" 0
-    same "F6c ... the holder's row is left in place" "$(cut -f1 "$(rowf scripts/rs2.sh)")" HIMMEL-9350
+    same "F6c ... the holder's row is left in place" "$(cut -f1 "$(rowf scripts/rs2.sh)")" PROJ-9350
     same "F6c ... one events.log line, a fault" "$(tail -n +$((before + 1)) "$EVENTS" | cut -f2 | tr '\n' ' ')" "fault "
 fi
 
@@ -703,61 +703,61 @@ R5="$W/repo5"
 mkdir -p "$R5"
 git -C "$R5" init -q -b main || exit 1
 mkdir -p "$(slugdir "$R5")"
-printf 'HIMMEL-9351\tlab\t%s\tbrief\t\n' "$(mkdoc HIMMEL-9351-case.md)" > "$(rowf scripts/a1.sh "$R5")"
-printf 'HIMMEL-9351\tlab\t%s\tbogus-source\t\n' "$DB" > "$(rowf scripts/b1.sh "$R5")"
+printf 'PROJ-9351\tlab\t%s\tbrief\t\n' "$(mkdoc PROJ-9351-case.md)" > "$(rowf scripts/a1.sh "$R5")"
+printf 'PROJ-9351\tlab\t%s\tbogus-source\t\n' "$DB" > "$(rowf scripts/b1.sh "$R5")"
 touch -d '2 hours ago' "$(rowf scripts/a1.sh "$R5")" "$(rowf scripts/b1.sh "$R5")"
 run hp read --repo "$R5" --keys
-same "F7b read --keys: a dead row then a junk row of the same key reads that key unknown, never dead" "$(printf '%s\n' "$OUT" | grep '^HIMMEL-9351')" "$(printf 'HIMMEL-9351\tunknown\t2')"
+same "F7b read --keys: a dead row then a junk row of the same key reads that key unknown, never dead" "$(printf '%s\n' "$OUT" | grep '^PROJ-9351')" "$(printf 'PROJ-9351\tunknown\t2')"
 
 # ---- Task 2: seed exit 3 on a claim fault, fallback doc, repoint, deadline, backfill
 mkdir -p "$(slugdir)"
 printf 'not a row\n' > "$(rowf scripts/t2bad.sh)"
-DT1="$(mkdoc HIMMEL-9401-case.md '> **Writes:** scripts/t2bad.sh scripts/t2ok.sh')"
-run hp seed --key HIMMEL-9401 --label seeder --doc "$DT1" --repo "$R"
+DT1="$(mkdoc PROJ-9401-case.md '> **Writes:** scripts/t2bad.sh scripts/t2ok.sh')"
+run hp seed --key PROJ-9401 --label seeder --doc "$DT1" --repo "$R"
 same "T2 seed: a claim fault exits 3" "$RC" 3
-same "T2 seed: the rows made before and after the fault are kept" "$(cut -f1 "$(rowf scripts/t2ok.sh)")" HIMMEL-9401
+same "T2 seed: the rows made before and after the fault are kept" "$(cut -f1 "$(rowf scripts/t2ok.sh)")" PROJ-9401
 
-DT2P="$(mkdoc HIMMEL-9402-N1-case.md '> **Writes:** scripts/t2fb.sh')"
+DT2P="$(mkdoc PROJ-9402-N1-case.md '> **Writes:** scripts/t2fb.sh')"
 touch -d '1 hour ago' "$DT2P"
-DT2="$(mkdoc HIMMEL-9402-N1b-case-RESUME.md '# resume doc, no Writes line')"
-run hp seed --key HIMMEL-9402 --label N1b --doc "$DT2" --repo "$R"
+DT2="$(mkdoc PROJ-9402-N1b-case-RESUME.md '# resume doc, no Writes line')"
+run hp seed --key PROJ-9402 --label N1b --doc "$DT2" --repo "$R"
 same "T2 seed: a doc with no Writes line falls back to the newest doc of the key that has one (exit 0)" "$RC" 0
-same "T2 seed: the fallback row carries the new doc and label" "$(cut -f1,2,3 "$(rowf scripts/t2fb.sh)" | tr '\t' ' ')" "HIMMEL-9402 N1b $DT2"
-DT3="$(mkdoc HIMMEL-9403-case-RESUME.md '# resume doc, nothing anywhere')"
-run hp seed --key HIMMEL-9403 --label N3 --doc "$DT3" --repo "$R"
+same "T2 seed: the fallback row carries the new doc and label" "$(cut -f1,2,3 "$(rowf scripts/t2fb.sh)" | tr '\t' ' ')" "PROJ-9402 N1b $DT2"
+DT3="$(mkdoc PROJ-9403-case-RESUME.md '# resume doc, nothing anywhere')"
+run hp seed --key PROJ-9403 --label N3 --doc "$DT3" --repo "$R"
 same "T2 seed: no Writes anywhere exits 0" "$RC" 0
 same "T2 seed: ... and makes no row" "$(grep -rlF "$DT3" "$(slugdir)" 2>/dev/null | wc -l | tr -d ' ')" 0
 # the fallback is for a RESUME doc only; a plain brief with no Writes line seeds nothing of its predecessor's
-DT4P="$(mkdoc HIMMEL-9406-N1-case.md '> **Writes:** scripts/t2fb2.sh')"
+DT4P="$(mkdoc PROJ-9406-N1-case.md '> **Writes:** scripts/t2fb2.sh')"
 touch -d '1 hour ago' "$DT4P"
-DT4="$(mkdoc HIMMEL-9406-N2-case.md '# plain brief, no Writes line')"
-run hp seed --key HIMMEL-9406 --label N2 --doc "$DT4" --repo "$R"
+DT4="$(mkdoc PROJ-9406-N2-case.md '# plain brief, no Writes line')"
+run hp seed --key PROJ-9406 --label N2 --doc "$DT4" --repo "$R"
 same "T2 seed: a non-RESUME doc with no Writes line does not inherit the predecessor's files: exit 0, no row" "$RC|$([ -e "$(rowf scripts/t2fb2.sh)" ] && echo row || echo none)" "0|none"
 
-put_row scripts/t2rp1.sh HIMMEL-9404 oldlabel "$HANDOVER_DIR/u/r/HIMMEL-9404-old.md"
-put_row scripts/t2rp2.sh HIMMEL-9404 oldlabel "$HANDOVER_DIR/u/r/HIMMEL-9404-old.md"
-put_row scripts/t2rp3.sh HIMMEL-9405 other "$HANDOVER_DIR/u/r/HIMMEL-9405-old.md"
+put_row scripts/t2rp1.sh PROJ-9404 oldlabel "$HANDOVER_DIR/u/r/PROJ-9404-old.md"
+put_row scripts/t2rp2.sh PROJ-9404 oldlabel "$HANDOVER_DIR/u/r/PROJ-9404-old.md"
+put_row scripts/t2rp3.sh PROJ-9405 other "$HANDOVER_DIR/u/r/PROJ-9405-old.md"
 other_before="$(cat "$(rowf scripts/t2rp3.sh)")"
-run hp repoint --key HIMMEL-9404 --label newlabel --doc "$HANDOVER_DIR/u/r/HIMMEL-9404-new-RESUME.md" --repo "$R"
+run hp repoint --key PROJ-9404 --label newlabel --doc "$HANDOVER_DIR/u/r/PROJ-9404-new-RESUME.md" --repo "$R"
 same "T2 repoint exits 0" "$RC" 0
-same "T2 repoint: the key's first row has the new doc and label" "$(cut -f2,3 "$(rowf scripts/t2rp1.sh)" | tr '\t' ' ')" "newlabel $HANDOVER_DIR/u/r/HIMMEL-9404-new-RESUME.md"
+same "T2 repoint: the key's first row has the new doc and label" "$(cut -f2,3 "$(rowf scripts/t2rp1.sh)" | tr '\t' ' ')" "newlabel $HANDOVER_DIR/u/r/PROJ-9404-new-RESUME.md"
 same "T2 repoint: the key's second row too" "$(cut -f2 "$(rowf scripts/t2rp2.sh)")" newlabel
 same "T2 repoint: another key's row is left alone" "$(cat "$(rowf scripts/t2rp3.sh)")" "$other_before"
 
-put_row scripts/t2rp4.sh HIMMEL-9409 oldlabel "$HANDOVER_DIR/u/r/HIMMEL-9409-old.md"
+put_row scripts/t2rp4.sh PROJ-9409 oldlabel "$HANDOVER_DIR/u/r/PROJ-9409-old.md"
 rp4="$(rowf scripts/t2rp4.sh)"; rp4_before="$(cat "$rp4")"
 run python3 -I -c "
 import importlib.util, os
 s = importlib.util.spec_from_file_location('holds', '$SUT'); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
 def boom(d, name, text): raise OSError(28, 'No space left on device')
 m.publish = boom
-print(m.repoint_row(os.path.dirname('$rp4'), os.path.basename('$rp4'), 'HIMMEL-9409', 'newlabel', 'new.md'))
+print(m.repoint_row(os.path.dirname('$rp4'), os.path.basename('$rp4'), 'PROJ-9409', 'newlabel', 'new.md'))
 "
 same "T2 repoint: a failed write reports a fault" "$OUT" fault
 same "T2 repoint: ... and the original row is still there" "$(cat "$rp4" 2>/dev/null)" "$rp4_before"
 
 # the race: a contender claims while repoint has the row renamed aside. It must not take the absent path.
-put_row scripts/t2rp5.sh HIMMEL-9410 oldlabel "$HANDOVER_DIR/u/r/HIMMEL-9410-old.md"
+put_row scripts/t2rp5.sh PROJ-9410 oldlabel "$HANDOVER_DIR/u/r/PROJ-9410-old.md"
 rp5="$(rowf scripts/t2rp5.sh)"
 run python3 -I -c "
 import importlib.util, os
@@ -768,34 +768,34 @@ def racing(a, b):
     real(a, b)
     seen.append(m.claim_one('$R', None, 'scripts/t2rp5.sh', '$K2', 'beta', 'b.md', 'manual', ''))
 os.rename = racing
-print(m.repoint_row(os.path.dirname('$rp5'), os.path.basename('$rp5'), 'HIMMEL-9410', 'newlabel', 'new.md'), seen[0])
+print(m.repoint_row(os.path.dirname('$rp5'), os.path.basename('$rp5'), 'PROJ-9410', 'newlabel', 'new.md'), seen[0])
 "
 same "T2 repoint: a contender during the rename gets a fault, not the row" "$OUT" "repointed fault"
-same "T2 repoint: ... and the key keeps its hold, repointed" "$(cut -f1,2 "$rp5" | tr '\t' ' ')" "HIMMEL-9410 newlabel"
+same "T2 repoint: ... and the key keeps its hold, repointed" "$(cut -f1,2 "$rp5" | tr '\t' ' ')" "PROJ-9410 newlabel"
 same "T2 repoint: the lock leaves no file in the directory" "$(find "$(dirname "$rp5")" -name '%00*' | wc -l | tr -d ' ')" 0
 
-DT4="$(mkdoc HIMMEL-9406-case.md '> **Writes:** scripts/t2fr.sh scripts/t2h1.sh scripts/t2h2.sh')"
-put_row scripts/t2h1.sh HIMMEL-9407 holder1 "$(mkdoc HIMMEL-9407-case.md)"
-put_row scripts/t2h2.sh HIMMEL-9408 holder2 "$(mkdoc HIMMEL-9408-case.md)"
+DT4="$(mkdoc PROJ-9406-case.md '> **Writes:** scripts/t2fr.sh scripts/t2h1.sh scripts/t2h2.sh')"
+put_row scripts/t2h1.sh PROJ-9407 holder1 "$(mkdoc PROJ-9407-case.md)"
+put_row scripts/t2h2.sh PROJ-9408 holder2 "$(mkdoc PROJ-9408-case.md)"
 printf '#!/usr/bin/env bash\necho call >> "%s/ql-hang-calls"\nexec sleep 30\n' "$W" > "$W/bin/ql-hang-count"; chmod 755 "$W/bin/ql-hang-count"
 t0="$(date +%s)"
-HOLDS_QUEUE_LOCK="$W/bin/ql-hang-count" run hp seed --key HIMMEL-9406 --label slow --doc "$DT4" --repo "$R" --deadline "$((t0 + 2))"
+HOLDS_QUEUE_LOCK="$W/bin/ql-hang-count" run hp seed --key PROJ-9406 --label slow --doc "$DT4" --repo "$R" --deadline "$((t0 + 2))"
 t1="$(date +%s)"
 same "T2 seed: a hanging queue-lock stub passes the deadline, exit 3" "$RC" 3
 same "T2 seed: ... inside 20 s (the deadline bounds the stub call)" "$([ "$((t1 - t0))" -lt 20 ] && echo yes || echo no)" yes
 contains "T2 seed: ... and it is the between-claims check that stopped it" "$ERR" "deadline passed before"
 same "T2 seed: ... after exactly one stub call" "$(wc -l < "$W/ql-hang-calls" | tr -d ' ')" 1
-same "T2 seed: ... the row made before the deadline is kept" "$(cut -f1 "$(rowf scripts/t2fr.sh)")" HIMMEL-9406
+same "T2 seed: ... the row made before the deadline is kept" "$(cut -f1 "$(rowf scripts/t2fr.sh)")" PROJ-9406
 
 # a holder with 10 docs and a hung lock script: the deadline is a ceiling for the whole row, not 15 s a doc
-for i in 1 2 3 4 5 6 7 8 9 10; do mkdoc "HIMMEL-9430-N$i-case.md" '# doc' > /dev/null; done
-touch -d '2 hours ago' "$HANDOVER_DIR"/u/r/HIMMEL-9430-N*-case.md
-put_row scripts/t2ten.sh HIMMEL-9430 ten "$HANDOVER_DIR/u/r/HIMMEL-9430-N1-case.md"
+for i in 1 2 3 4 5 6 7 8 9 10; do mkdoc "PROJ-9430-N$i-case.md" '# doc' > /dev/null; done
+touch -d '2 hours ago' "$HANDOVER_DIR"/u/r/PROJ-9430-N*-case.md
+put_row scripts/t2ten.sh PROJ-9430 ten "$HANDOVER_DIR/u/r/PROJ-9430-N1-case.md"
 touch -d '2 hours ago' "$(rowf scripts/t2ten.sh)"
 : > "$W/ql-hang-calls"
-DT10="$(mkdoc HIMMEL-9431-case.md '> **Writes:** scripts/t2ten.sh')"
+DT10="$(mkdoc PROJ-9431-case.md '> **Writes:** scripts/t2ten.sh')"
 t0="$(date +%s)"
-HOLDS_QUEUE_LOCK="$W/bin/ql-hang-count" run hp seed --key HIMMEL-9431 --label ten --doc "$DT10" --repo "$R" --deadline "$((t0 + 1))"
+HOLDS_QUEUE_LOCK="$W/bin/ql-hang-count" run hp seed --key PROJ-9431 --label ten --doc "$DT10" --repo "$R" --deadline "$((t0 + 1))"
 t1="$(date +%s)"
 same "T2 seed: a holder with 10 docs and a hung lock script ends inside 20 s" "$([ "$((t1 - t0))" -lt 20 ] && echo yes || echo no)" yes
 same "T2 seed: ... with at most one stub call (past the deadline nothing is spawned)" "$([ "$(wc -l < "$W/ql-hang-calls" | tr -d ' ')" -le 1 ] && echo yes || echo no)" yes
@@ -803,45 +803,45 @@ same "T2 seed: ... with at most one stub call (past the deadline nothing is spaw
 # a deadline that passes inside the LAST claim (or the last repointed row) is still a passed deadline: exit 3
 R2="$W/repo-last-row"; mkdir -p "$R2"; git -C "$R2" init -q -b main  # its own register: exactly one row, so only the check after the last row can fire
 mkdir -p "$(slugdir "$R2")"
-printf '%s\t%s\t%s\t%s\t%s\n' HIMMEL-9413 slowrp "$HANDOVER_DIR/u/r/HIMMEL-9413-old.md" brief '' > "$(rowf scripts/t2dl.sh "$R2")"
+printf '%s\t%s\t%s\t%s\t%s\n' PROJ-9413 slowrp "$HANDOVER_DIR/u/r/PROJ-9413-old.md" brief '' > "$(rowf scripts/t2dl.sh "$R2")"
 run python3 -I -c "
 import importlib.util, time, argparse
 s = importlib.util.spec_from_file_location('holds', '$SUT'); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
 def slow_claim(*a, **k): time.sleep(1.2); return 'ok'
 m.claim_one = slow_claim
-print(m.seed_rows('$R', m.Judge('$R'), 'HIMMEL-9414', 'N1', 'd.md', '> **Writes:** scripts/t2last.sh', time.time() + 1)[0])
+print(m.seed_rows('$R', m.Judge('$R'), 'PROJ-9414', 'N1', 'd.md', '> **Writes:** scripts/t2last.sh', time.time() + 1)[0])
 real_rp = m.repoint_row
 def slow_rp(*a, **k): time.sleep(1.2); return real_rp(*a, **k)
 m.repoint_row = slow_rp
-print(m.op_repoint(argparse.Namespace(key='HIMMEL-9413', label='n', doc='d.md', repo='$R2', deadline=time.time() + 1)))
+print(m.op_repoint(argparse.Namespace(key='PROJ-9413', label='n', doc='d.md', repo='$R2', deadline=time.time() + 1)))
 "
 same "T2 seed and repoint: a deadline passed inside the last claim or row exits 3" "$OUT" "$(printf '3\n3')"
 
 # repoint on 3 rows with a deadline that passes inside the first: it stops between rows, the later rows keep their old label
 R3="$W/repo-three-rows"; mkdir -p "$R3"; git -C "$R3" init -q -b main
 mkdir -p "$(slugdir "$R3")"
-for f in a b c; do printf '%s\t%s\t%s\t%s\t%s\n' HIMMEL-9415 oldlab "$HANDOVER_DIR/u/r/HIMMEL-9415-old.md" brief '' > "$(rowf scripts/t2m$f.sh "$R3")"; done
+for f in a b c; do printf '%s\t%s\t%s\t%s\t%s\n' PROJ-9415 oldlab "$HANDOVER_DIR/u/r/PROJ-9415-old.md" brief '' > "$(rowf scripts/t2m$f.sh "$R3")"; done
 run python3 -I -c "
 import importlib.util, time, argparse
 s = importlib.util.spec_from_file_location('holds', '$SUT'); m = importlib.util.module_from_spec(s); s.loader.exec_module(m)
 real_rp = m.repoint_row
 def slow_rp(*a, **k): time.sleep(1.2); return real_rp(*a, **k)
 m.repoint_row = slow_rp
-print(m.op_repoint(argparse.Namespace(key='HIMMEL-9415', label='newlab', doc='d.md', repo='$R3', deadline=time.time() + 1)))
+print(m.op_repoint(argparse.Namespace(key='PROJ-9415', label='newlab', doc='d.md', repo='$R3', deadline=time.time() + 1)))
 "
 same "T2 repoint: a deadline passed between rows exits 3" "$OUT" 3
 same "T2 repoint: ... by the between-rows check, not the one after the last row" "$ERR" "holds: the repoint deadline passed"
 same "T2 repoint: ... the first row is repointed, the later rows keep their label" "$(cut -f2 "$(rowf scripts/t2ma.sh "$R3")")|$(cut -f2 "$(rowf scripts/t2mb.sh "$R3")")|$(cut -f2 "$(rowf scripts/t2mc.sh "$R3")")" "newlab|oldlab|oldlab"
 
 BM="$W/fleet.json"
-BA="$(mkdoc HIMMEL-9410-N1-case.md '> **Writes:** scripts/t2ba.sh')"
-BB="$(mkdoc HIMMEL-9411-N2-case.md "$(printf '> **Writes:** scripts/t2bb.sh\n\n## Results\n- 10:00 WRAPPED — done')")"
-BC="$(mkdoc HIMMEL-9412-N3-case.md '> **Writes:** scripts/t2ba.sh')"
+BA="$(mkdoc PROJ-9410-N1-case.md '> **Writes:** scripts/t2ba.sh')"
+BB="$(mkdoc PROJ-9411-N2-case.md "$(printf '> **Writes:** scripts/t2bb.sh\n\n## Results\n- 10:00 WRAPPED — done')")"
+BC="$(mkdoc PROJ-9412-N3-case.md '> **Writes:** scripts/t2ba.sh')"
 printf '{"schema":1,"workers":[{"doc":"%s","label":"N1"},{"doc":"%s","label":"N2"},{"doc":"%s","label":"N3"}]}\n' "$BA" "$BB" "$BC" > "$BM"
 run hp backfill --manifest "$BM" --repo "$R"
 same "T2 backfill: an overlap is reported, not fatal (exit 0)" "$RC" 0
 contains "T2 backfill: the overlap is named" "$OUT" "N3 overlap"
-same "T2 backfill: a non-WRAPPED worker gets its row with its label" "$(cut -f1,2 "$(rowf scripts/t2ba.sh)" | tr '\t' ' ')" "HIMMEL-9410 N1"
+same "T2 backfill: a non-WRAPPED worker gets its row with its label" "$(cut -f1,2 "$(rowf scripts/t2ba.sh)" | tr '\t' ' ')" "PROJ-9410 N1"
 same "T2 backfill: a WRAPPED worker gets none" "$([ -e "$(rowf scripts/t2bb.sh)" ] && echo row || echo none)" none
 lock_hold "$BA"
 touch -d '2 hours ago' "$(rowf scripts/t2ba.sh)"
@@ -849,42 +849,42 @@ run hp alive --repo "$R" scripts/t2ba.sh
 same "T2 backfill: a row past the grace with the worker's lock held reads alive" "$OUT" alive
 
 # ---- merged PR first, sidecars, _abs keys, directory lines, sync-prs, gc, one lock sweep
-G3M="$(mkdoc HIMMEL-9500-N1-case-RESUME.md '# resume doc, unwrapped, fresh')"
-put_row scripts/t3m.sh HIMMEL-9500 alpha "$G3M" pr 4999
+G3M="$(mkdoc PROJ-9500-N1-case-RESUME.md '# resume doc, unwrapped, fresh')"
+put_row scripts/t3m.sh PROJ-9500 alpha "$G3M" pr 4999
 run env HOLDS_GH="$W/bin/gh-merged" python3 -I "$SUT" alive --repo "$R" scripts/t3m.sh
 same "T3 a row whose own PR reads merged is dead, though a RESUME doc of its key is fresh" "$OUT" dead
-put_row scripts/t3o.sh HIMMEL-9500 alpha "$G3M" pr 4999
+put_row scripts/t3o.sh PROJ-9500 alpha "$G3M" pr 4999
 run env HOLDS_GH="$W/bin/gh-open" python3 -I "$SUT" alive --repo "$R" scripts/t3o.sh
 same "T3 ... a row whose PR is open stays alive" "$OUT" alive
 
-mkdoc 'HIMMEL-9501-N1-case-RESUME.md.worker-preface.md' '# sidecar' > /dev/null
-mkdoc 'HIMMEL-9501-N1-case-RESUME.md.worker-contract.md' '# sidecar' > /dev/null
-put_row scripts/t3s.sh HIMMEL-9501 alpha "$HANDOVER_DIR/u/r/HIMMEL-9501-N1-case.md"
+mkdoc 'PROJ-9501-N1-case-RESUME.md.worker-preface.md' '# sidecar' > /dev/null
+mkdoc 'PROJ-9501-N1-case-RESUME.md.worker-contract.md' '# sidecar' > /dev/null
+put_row scripts/t3s.sh PROJ-9501 alpha "$HANDOVER_DIR/u/r/PROJ-9501-N1-case.md"
 run hp alive --repo "$R" scripts/t3s.sh
 same "T3 a .worker-preface.md / .worker-contract.md sidecar is never read as the key's RESUME doc" "$OUT" dead
 
 AB3="$HANDOVER_DIR/u/r/specs/t3abs.md"
-DAB3="$(mkdoc HIMMEL-9502-case.md "> **Writes:** $AB3")"
-hp seed --key HIMMEL-9502 --label lab --doc "$DAB3" --repo "$R" > /dev/null 2>&1
+DAB3="$(mkdoc PROJ-9502-case.md "> **Writes:** $AB3")"
+hp seed --key PROJ-9502 --label lab --doc "$DAB3" --repo "$R" > /dev/null 2>&1
 run hp read --repo "$R" --keys
-contains "T3 read --keys also walks _abs: a key holding only a bucket file is listed" "$OUT" "$(printf 'HIMMEL-9502\talive\t1')"
+contains "T3 read --keys also walks _abs: a key holding only a bucket file is listed" "$OUT" "$(printf 'PROJ-9502\talive\t1')"
 run hp read --repo "$W/no-such-repo-register" --keys
-same "T3 read --keys with no repo directory: exit 0, and no repo row listed (_abs is shared by every repo)" "$RC:$(printf '%s\n' "$OUT" | grep -c '^HIMMEL-9351')" "0:0"
+same "T3 read --keys with no repo directory: exit 0, and no repo row listed (_abs is shared by every repo)" "$RC:$(printf '%s\n' "$OUT" | grep -c '^PROJ-9351')" "0:0"
 
-put_row scripts/t3tree/a.sh HIMMEL-9503 lab "$(mkdoc HIMMEL-9503-case.md)"
-put_row scripts/t3tree/sub/b.sh HIMMEL-9503 lab "$(mkdoc HIMMEL-9503-case.md)"
-put_row scripts/t3tree-other/c.sh HIMMEL-9503 lab "$(mkdoc HIMMEL-9503-case.md)"
+put_row scripts/t3tree/a.sh PROJ-9503 lab "$(mkdoc PROJ-9503-case.md)"
+put_row scripts/t3tree/sub/b.sh PROJ-9503 lab "$(mkdoc PROJ-9503-case.md)"
+put_row scripts/t3tree-other/c.sh PROJ-9503 lab "$(mkdoc PROJ-9503-case.md)"
 printf 'scripts/t3tree/\n' > "$W/paths-tree"
 run hp read --repo "$R" --paths-from "$W/paths-tree"
 same "T3 a --paths-from line ending in / selects the rows under it (and not a sibling dir with the same prefix)" "$(printf '%s\n' "$OUT" | cut -f1 | sort | paste -sd, -)" "scripts/t3tree/a.sh,scripts/t3tree/sub/b.sh"
 
-printf '5050\tfeat/himmel-9504-x\tfeat(x): [HIMMEL-9504] t\tscripts/t3pr.sh\n5050\tfeat/himmel-9504-x\tfeat(x): [HIMMEL-9504] t\tscripts/t3pr-live.sh\n' > "$W/pr-files.tsv"
-put_row scripts/t3pr-live.sh HIMMEL-9599 other "$(mkdoc HIMMEL-9599-case.md)"
+printf '5050\tfeat/himmel-9504-x\tfeat(x): [PROJ-9504] t\tscripts/t3pr.sh\n5050\tfeat/himmel-9504-x\tfeat(x): [PROJ-9504] t\tscripts/t3pr-live.sh\n' > "$W/pr-files.tsv"
+put_row scripts/t3pr-live.sh PROJ-9599 other "$(mkdoc PROJ-9599-case.md)"
 touch "$(rowf scripts/t3pr-live.sh)"
 run env HOLDS_GH="$W/bin/gh-open" python3 -I "$SUT" sync-prs --repo "$R" --files-from "$W/pr-files.tsv"
 same "T3 sync-prs exits 0" "$RC" 0
-same "T3 sync-prs writes a pr row: key from the title, label branch:<head>, source pr, the PR number" "$(cut -f1,2,4,5 "$(rowf scripts/t3pr.sh)" | tr '\t' ' ')" "HIMMEL-9504 branch:feat/himmel-9504-x pr 5050"
-same "T3 sync-prs leaves a file that has a live row alone" "$(cut -f1 "$(rowf scripts/t3pr-live.sh)")" HIMMEL-9599
+same "T3 sync-prs writes a pr row: key from the title, label branch:<head>, source pr, the PR number" "$(cut -f1,2,4,5 "$(rowf scripts/t3pr.sh)" | tr '\t' ' ')" "PROJ-9504 branch:feat/himmel-9504-x pr 5050"
+same "T3 sync-prs leaves a file that has a live row alone" "$(cut -f1 "$(rowf scripts/t3pr-live.sh)")" PROJ-9599
 printf '5051\tfeat/no-key\tno key in the title\tscripts/t3pr2.sh\n' > "$W/pr-files2.tsv"
 run env HOLDS_GH="$W/bin/gh-open" python3 -I "$SUT" sync-prs --repo "$R" --files-from "$W/pr-files2.tsv"
 same "T3 sync-prs: a title with no key uses PR-<n>" "$(cut -f1 "$(rowf scripts/t3pr2.sh)")" "PR-5051"
@@ -909,27 +909,27 @@ put_row scripts/tdup.sh $K2 alpha "$DHB"
 run env HOLDS_GH="$W/bin/gh-open" python3 -I "$SUT" sync-prs --repo "$R" --files-from "$W/pr-files-dup.tsv"
 same "a deny that stopped and came back is logged again" "$(dup_denies $K2)" 2
 
-put_row scripts/t3gc1.sh HIMMEL-9505 lab "$(mkdoc HIMMEL-9505-case.md)"
-: > "$(rowf scripts/t3gc1.sh).grant.HIMMEL-9598"
-put_row scripts/t3gc2.sh HIMMEL-9506 lab "$(mkdoc HIMMEL-9506-case.md)"
+put_row scripts/t3gc1.sh PROJ-9505 lab "$(mkdoc PROJ-9505-case.md)"
+: > "$(rowf scripts/t3gc1.sh).grant.PROJ-9598"
+put_row scripts/t3gc2.sh PROJ-9506 lab "$(mkdoc PROJ-9506-case.md)"
 touch "$(rowf scripts/t3gc2.sh)"
 run hp gc --repo "$R"
 same "T3 gc exits 0" "$RC" 0
 same "T3 gc removes a dead row" "$([ -e "$(rowf scripts/t3gc1.sh)" ] && echo row || echo none)" none
-same "T3 gc removes a dead key's grant sibling" "$([ -e "$(rowf scripts/t3gc1.sh).grant.HIMMEL-9598" ] && echo grant || echo none)" none
+same "T3 gc removes a dead key's grant sibling" "$([ -e "$(rowf scripts/t3gc1.sh).grant.PROJ-9598" ] && echo grant || echo none)" none
 same "T3 gc keeps an alive row" "$([ -e "$(rowf scripts/t3gc2.sh)" ] && echo row || echo none)" row
 
 cat > "$W/bin/ql-sweep" <<STUB
 #!/usr/bin/env bash
 echo "\$*" >> "$W/ql-sweep-calls"
-case "\$*" in "status --sweep"*) echo "slug=u__r__HIMMEL-9507-case session=s host=h age=1s status=OK"; exit 0 ;; esac
+case "\$*" in "status --sweep"*) echo "slug=u__r__PROJ-9507-case session=s host=h age=1s status=OK"; exit 0 ;; esac
 exit 1
 STUB
 chmod +x "$W/bin/ql-sweep"
-D3A="$(mkdoc HIMMEL-9507-case.md)"; D3B="$(mkdoc HIMMEL-9508-case.md)"
-put_row scripts/t3w1.sh HIMMEL-9507 lab "$D3A"
-put_row scripts/t3w2.sh HIMMEL-9507 lab "$D3A"
-put_row scripts/t3w3.sh HIMMEL-9508 lab "$D3B"
+D3A="$(mkdoc PROJ-9507-case.md)"; D3B="$(mkdoc PROJ-9508-case.md)"
+put_row scripts/t3w1.sh PROJ-9507 lab "$D3A"
+put_row scripts/t3w2.sh PROJ-9507 lab "$D3A"
+put_row scripts/t3w3.sh PROJ-9508 lab "$D3B"
 printf 'scripts/t3w1.sh\nscripts/t3w2.sh\nscripts/t3w3.sh\n' > "$W/paths-sweep"
 : > "$W/ql-sweep-calls"
 run env HOLDS_QUEUE_LOCK="$W/bin/ql-sweep" python3 -I "$SUT" read --repo "$R" --paths-from "$W/paths-sweep"
@@ -946,7 +946,7 @@ run env HOLDS_QUEUE_LOCK="$W/bin/ql-none" python3 -I "$SUT" read --repo "$R" --p
 same "T3 a sweep that says no held locks leaves every doc free, so its rows read dead" "$(printf '%s\n' "$OUT" | grep 't3w3.sh' | cut -f6)" dead
 
 # a row freshened after it was judged dead is live again: remove_dead keeps it when the mtime it was judged at has moved
-put_row scripts/t3gc3.sh HIMMEL-9507 lab "$(mkdoc HIMMEL-9507-case.md)"
+put_row scripts/t3gc3.sh PROJ-9507 lab "$(mkdoc PROJ-9507-case.md)"
 run python3 -I -c 'import importlib.util, os, sys
 spec = importlib.util.spec_from_file_location("holds", sys.argv[1]); h = importlib.util.module_from_spec(spec); spec.loader.exec_module(h)
 d, n = os.path.split(sys.argv[2]); st, f = h.read_row(sys.argv[2])
@@ -992,157 +992,157 @@ me_session() { mkdir -p "$CLAUDE_CONFIG_DIR/sessions"; printf '{"pid":%d,"sessio
 # noclaude <cmd...>: run cmd with the Claude Code markers stripped
 noclaude() { python3 -I -c 'import os, sys; os.execvpe(sys.argv[1], sys.argv[1:], {k: v for k, v in os.environ.items() if not (k == "CLAUDECODE" or k.startswith("CLAUDE_CODE_"))})' "$@"; }
 me_session sid-chief
-DCH="$(mkdoc HIMMEL-9218-chief.md)"
+DCH="$(mkdoc PROJ-9218-chief.md)"
 chief_lock "$DCH" sid-chief chief-sess-9218
-run hp grant --key HIMMEL-9201 --repo "$R" --chief-doc "$DCH" scripts/check-ci.sh
+run hp grant --key PROJ-9201 --repo "$R" --chief-doc "$DCH" scripts/check-ci.sh
 same "C1 a chief holding its own doc's lock grants a trust path" "$RC" 0
-same "C1 ... the grant file says grantor=chief and the chief's session" "$(cut -f3,4 "$(grantf scripts/check-ci.sh HIMMEL-9201)" 2>/dev/null)" "$(printf 'chief\tchief-sess-9218')"
+same "C1 ... the grant file says grantor=chief and the chief's session" "$(cut -f3,4 "$(grantf scripts/check-ci.sh PROJ-9201)" 2>/dev/null)" "$(printf 'chief\tchief-sess-9218')"
 contains "C1 ... and events.log records the grantor and session" "$(tail -n 1 "$EVENTS")" "grantor=chief session=chief-sess-9218"
-run env HIMMEL_CONSOLE_DOC="$DCH" python3 -I "$SUT" grant --key HIMMEL-9202 --repo "$R" scripts/check-ci.sh
+run env HIMMEL_CONSOLE_DOC="$DCH" python3 -I "$SUT" grant --key PROJ-9202 --repo "$R" scripts/check-ci.sh
 same "C2 the chief doc defaults to HIMMEL_CONSOLE_DOC, the chief session's own doc" "$RC" 0
-DCX="$(mkdoc HIMMEL-9218-other-chief.md)"
+DCX="$(mkdoc PROJ-9218-other-chief.md)"
 lock_hold "$DCX" other-chief-sess
-run env HIMMEL_CONSOLE_DOC="$DCH" python3 -I "$SUT" grant --key HIMMEL-9213 --repo "$R" --chief-doc "$DCX" scripts/check-ci.sh
+run env HIMMEL_CONSOLE_DOC="$DCH" python3 -I "$SUT" grant --key PROJ-9213 --repo "$R" --chief-doc "$DCX" scripts/check-ci.sh
 same "C2 a chief session naming another chief's locked doc: refused" "$RC" 1
-same "C2 ... and writes no grant" "$([ -e "$(grantf scripts/check-ci.sh HIMMEL-9213)" ] && echo grant || echo none)" none
-run hp grant --key HIMMEL-9203 --repo "$R" --chief-doc "$(mkdoc HIMMEL-9218-free-chief.md)" scripts/check-ci.sh
+same "C2 ... and writes no grant" "$([ -e "$(grantf scripts/check-ci.sh PROJ-9213)" ] && echo grant || echo none)" none
+run hp grant --key PROJ-9203 --repo "$R" --chief-doc "$(mkdoc PROJ-9218-free-chief.md)" scripts/check-ci.sh
 same "C3 a chief doc whose lock is not held: refused" "$RC" 1
-same "C3 ... and writes no grant" "$([ -e "$(grantf scripts/check-ci.sh HIMMEL-9203)" ] && echo grant || echo none)" none
-DCO="$(mkdoc HIMMEL-9218-otherhost-chief.md)"
+same "C3 ... and writes no grant" "$([ -e "$(grantf scripts/check-ci.sh PROJ-9203)" ] && echo grant || echo none)" none
+DCO="$(mkdoc PROJ-9218-otherhost-chief.md)"
 chief_lock "$DCO" sid-chief
 owner_set "$(lock_dir_of "$DCO")" host elsewhere.invalid
-run hp grant --key HIMMEL-9204 --repo "$R" --chief-doc "$DCO" scripts/check-ci.sh
+run hp grant --key PROJ-9204 --repo "$R" --chief-doc "$DCO" scripts/check-ci.sh
 same "C3 a chief doc locked on another host: refused" "$RC" 1
-DCS="$(mkdoc HIMMEL-9218-stale-chief.md)"
+DCS="$(mkdoc PROJ-9218-stale-chief.md)"
 lock_hold "$DCS"
 owner_set "$(lock_dir_of "$DCS")" heartbeat 2020-01-01T00:00:00Z
-run hp grant --key HIMMEL-9214 --repo "$R" --chief-doc "$DCS" scripts/check-ci.sh
+run hp grant --key PROJ-9214 --repo "$R" --chief-doc "$DCS" scripts/check-ci.sh
 same "C3 a chief doc whose lock is STALE: refused" "$RC" 1
 contains "C3 ... because the lock is not held fresh" "$ERR" "status rc 12"
-DCU="$(mkdoc HIMMEL-9218-garbled-chief.md)"
+DCU="$(mkdoc PROJ-9218-garbled-chief.md)"
 chief_lock "$DCU" sid-chief
 owner_set "$(lock_dir_of "$DCU")" heartbeat not-a-time
 bash "$QL" status "$DCU" > /dev/null 2>&1
 same "C3 control: queue-lock reads an unparsable heartbeat as FRESH" "$?" 11
-run hp grant --key HIMMEL-9215 --repo "$R" --chief-doc "$DCU" scripts/check-ci.sh
+run hp grant --key PROJ-9215 --repo "$R" --chief-doc "$DCU" scripts/check-ci.sh
 same "C3 a chief lock with an unparsable heartbeat: refused for a grant" "$RC" 1
 contains "C3 ... the refusal names the heartbeat" "$ERR" "unparsable heartbeat"
-DCW="$(mkdoc HIMMEL-9218-N9-worker-2026-11-05.md)"
+DCW="$(mkdoc PROJ-9218-N9-worker-2026-11-05.md)"
 chief_lock "$DCW" sid-chief
-run hp grant --key HIMMEL-9216 --repo "$R" --chief-doc "$DCW" scripts/check-ci.sh
+run hp grant --key PROJ-9216 --repo "$R" --chief-doc "$DCW" scripts/check-ci.sh
 same "C8 a worker naming its own held worker doc: refused" "$RC" 1
 contains "C8 ... because it is not a chief doc" "$ERR" "is not a chief doc"
-DCA="$(mkdoc HIMMEL-9218-another-chief.md)"
+DCA="$(mkdoc PROJ-9218-another-chief.md)"
 chief_lock "$DCA" sid-another
-run hp grant --key HIMMEL-9217 --repo "$R" --chief-doc "$DCA" scripts/check-ci.sh
+run hp grant --key PROJ-9217 --repo "$R" --chief-doc "$DCA" scripts/check-ci.sh
 same "C8 a caller whose ancestry lacks the lock's holder session: refused" "$RC" 1
 contains "C8 ... the refusal says the holder is not this caller" "$ERR" "not this caller"
 # a Claude session nested under the chief (a subagent, a nested claude): its own session file is nearer than the chief's
-run bash -c 'f="$CLAUDE_CONFIG_DIR/sessions/$$.json"; printf "{\"pid\":%d,\"sessionId\":\"sid-nested\"}\n" "$$" > "$f"; python3 -I "$1" grant --key HIMMEL-9218 --repo "$2" --chief-doc "$3" scripts/check-ci.sh; rc=$?; rm -f "$f"; exit "$rc"' _ "$SUT" "$R" "$DCH"
+run bash -c 'f="$CLAUDE_CONFIG_DIR/sessions/$$.json"; printf "{\"pid\":%d,\"sessionId\":\"sid-nested\"}\n" "$$" > "$f"; python3 -I "$1" grant --key PROJ-9218 --repo "$2" --chief-doc "$3" scripts/check-ci.sh; rc=$?; rm -f "$f"; exit "$rc"' _ "$SUT" "$R" "$DCH"
 same "C8 a Claude session nested under the chief, naming the chief's held doc: refused" "$RC" 1
 contains "C8 ... the refusal says the holder is not this caller" "$ERR" "not this caller"
-DCN="$(mkdoc HIMMEL-9218-nolive-chief.md)"
+DCN="$(mkdoc PROJ-9218-nolive-chief.md)"
 lock_hold "$DCN"
-run hp grant --key HIMMEL-9219 --repo "$R" --chief-doc "$DCN" scripts/check-ci.sh
+run hp grant --key PROJ-9219 --repo "$R" --chief-doc "$DCN" scripts/check-ci.sh
 same "C8 a chief lock with no holder session marker: refused" "$RC" 1
-same "C8 ... and none of these writes a grant" "$(find "$(slugdir)" -name '*.grant.HIMMEL-921[4-9]' | wc -l | tr -d ' ')" 0
-run hp grant --key HIMMEL-9205 --repo "$R" scripts/check-ci.sh
+same "C8 ... and none of these writes a grant" "$(find "$(slugdir)" -name '*.grant.PROJ-921[4-9]' | wc -l | tr -d ' ')" 0
+run hp grant --key PROJ-9205 --repo "$R" scripts/check-ci.sh
 same "C4 a trust path with no chief doc and no terminal: refused" "$RC" 1
 contains "C4 ... the refusal prints the chief's command" "$ERR" "--chief-doc"
-run env CLAUDECODE=1 python3 -I "$SUT" grant --key HIMMEL-9205 --repo "$R" scripts/check-ci.sh </dev/null
+run env CLAUDECODE=1 python3 -I "$SUT" grant --key PROJ-9205 --repo "$R" scripts/check-ci.sh </dev/null
 same "C4 a ! line (no terminal, CLAUDECODE set) is refused on the operator route" "$RC" 1
 contains "C4 ... the refusal says a ! line is no operator terminal" "$ERR" "not a ! line in a Claude window"
 contains "C4 ... and sends the operator in a Claude window to the chief" "$ERR" "the operator asks the chief, who stamps the grant"
-same "C4 ... and writes no grant" "$([ -e "$(grantf scripts/check-ci.sh HIMMEL-9205)" ] && echo grant || echo none)" none
-run env HIMMEL_CONSOLE_LEG=1 python3 -I "$SUT" grant --key HIMMEL-9206 --repo "$R" --chief-doc "$DCH" scripts/check-ci.sh
+same "C4 ... and writes no grant" "$([ -e "$(grantf scripts/check-ci.sh PROJ-9205)" ] && echo grant || echo none)" none
+run env HIMMEL_CONSOLE_LEG=1 python3 -I "$SUT" grant --key PROJ-9206 --repo "$R" --chief-doc "$DCH" scripts/check-ci.sh
 same "C5 a worker session naming a held chief doc is still refused" "$RC" 1
-run hp grant --key HIMMEL-9207 --repo "$R" --chief-doc "$DCH" .claude/settings.json
+run hp grant --key PROJ-9207 --repo "$R" --chief-doc "$DCH" .claude/settings.json
 same "C6 the chief cannot grant a settings path" "$RC" 1
 contains "C6 ... the refusal says the operator grants it at a terminal" "$ERR" "operator"
-run hp grant --key HIMMEL-9207 --repo "$R" --chief-doc "$DCH" .github/workflows/ci.yml
+run hp grant --key PROJ-9207 --repo "$R" --chief-doc "$DCH" .github/workflows/ci.yml
 same "C6 the chief cannot grant a .github/ path" "$RC" 1
-same "C6 ... and writes no grant" "$(find "$(slugdir)" -name '*.grant.HIMMEL-9207' | wc -l | tr -d ' ')" 0
+same "C6 ... and writes no grant" "$(find "$(slugdir)" -name '*.grant.PROJ-9207' | wc -l | tr -d ' ')" 0
 same "C7 grant-route: a trust path is the chief's" "$(hp grant-route --repo "$R" scripts/check-ci.sh)" chief
 same "C7 grant-route: a settings path is the operator's" "$(hp grant-route --repo "$R" .claude/settings.json)" operator
 same "C7 grant-route: any other path is any" "$(hp grant-route --repo "$R" scripts/c01.sh)" any
-tty_run scripts/check-ci.sh python3 -I "$SUT" grant --key HIMMEL-9208 --repo "$R" scripts/check-ci.sh
+tty_run scripts/check-ci.sh python3 -I "$SUT" grant --key PROJ-9208 --repo "$R" scripts/check-ci.sh
 same "O1 the operator at a terminal who types the path back grants a trust path" "$RC" 0
-same "O1 ... the grant file says grantor=operator" "$(cut -f3 "$(grantf scripts/check-ci.sh HIMMEL-9208)" 2>/dev/null)" operator
+same "O1 ... the grant file says grantor=operator" "$(cut -f3 "$(grantf scripts/check-ci.sh PROJ-9208)" 2>/dev/null)" operator
 contains "O1 ... and events.log records it" "$(tail -n 1 "$EVENTS")" "grantor=operator"
-tty_run .claude/settings.json python3 -I "$SUT" grant --key HIMMEL-9209 --repo "$R" .claude/settings.json
+tty_run .claude/settings.json python3 -I "$SUT" grant --key PROJ-9209 --repo "$R" .claude/settings.json
 same "O2 the operator at a terminal grants a settings path" "$RC" 0
-same "O2 ... recorded grantor=operator" "$(cut -f3 "$(grantf .claude/settings.json HIMMEL-9209)" 2>/dev/null)" operator
-tty_run scripts/other.sh python3 -I "$SUT" grant --key HIMMEL-9210 --repo "$R" scripts/check-ci.sh
+same "O2 ... recorded grantor=operator" "$(cut -f3 "$(grantf .claude/settings.json PROJ-9209)" 2>/dev/null)" operator
+tty_run scripts/other.sh python3 -I "$SUT" grant --key PROJ-9210 --repo "$R" scripts/check-ci.sh
 same "O3 a wrong path typed back: refused" "$RC" 1
-same "O3 ... and writes no grant" "$([ -e "$(grantf scripts/check-ci.sh HIMMEL-9210)" ] && echo grant || echo none)" none
-tty_run scripts/check-ci.sh env CLAUDECODE=1 python3 -I "$SUT" grant --key HIMMEL-9211 --repo "$R" scripts/check-ci.sh
+same "O3 ... and writes no grant" "$([ -e "$(grantf scripts/check-ci.sh PROJ-9210)" ] && echo grant || echo none)" none
+tty_run scripts/check-ci.sh env CLAUDECODE=1 python3 -I "$SUT" grant --key PROJ-9211 --repo "$R" scripts/check-ci.sh
 same "O4 a terminal inside a Claude Code session (CLAUDECODE set) is no operator: refused" "$RC" 1
-tty_run scripts/check-ci.sh env HIMMEL_CONSOLE_LEG=1 python3 -I "$SUT" grant --key HIMMEL-9212 --repo "$R" scripts/check-ci.sh
+tty_run scripts/check-ci.sh env HIMMEL_CONSOLE_LEG=1 python3 -I "$SUT" grant --key PROJ-9212 --repo "$R" scripts/check-ci.sh
 same "O5 a worker session at a terminal is refused" "$RC" 1
-tty_run scripts/check-ci.sh env CLAUDE_CODE_ENTRYPOINT=cli python3 -I "$SUT" grant --key HIMMEL-9220 --repo "$R" scripts/check-ci.sh
+tty_run scripts/check-ci.sh env CLAUDE_CODE_ENTRYPOINT=cli python3 -I "$SUT" grant --key PROJ-9220 --repo "$R" scripts/check-ci.sh
 same "O6 a terminal carrying a CLAUDE_CODE_* marker is no operator: refused" "$RC" 1
-OUT=$(printf 'scripts/check-ci.sh\n' | noclaude python3 -I "$SUT" grant --key HIMMEL-9221 --repo "$R" scripts/check-ci.sh 2>&1); RC=$?
+OUT=$(printf 'scripts/check-ci.sh\n' | noclaude python3 -I "$SUT" grant --key PROJ-9221 --repo "$R" scripts/check-ci.sh 2>&1); RC=$?
 same "O7 a non-TTY stdin typing the right path, markers unset: refused" "$RC" 1
-same "O7 ... and none of these writes a grant" "$(find "$(slugdir)" -name '*.grant.HIMMEL-922[01]' | wc -l | tr -d ' ')" 0
+same "O7 ... and none of these writes a grant" "$(find "$(slugdir)" -name '*.grant.PROJ-922[01]' | wc -l | tr -d ' ')" 0
 
 # ---- the register stays true on its own: on seeds, gc drops Done keys, summary and asks feed the tick
 # (a) `on` runs backfill for the chief's fleet manifest: workers launched while the barrier was off get rows
 R9="$W/repo-9186"; mkdir -p "$R9"; git -C "$R9" init -q -b main
-S1="$(mkdoc HIMMEL-9601-N1-case.md '> **Writes:** scripts/s9601.sh')"
-S2="$(mkdoc HIMMEL-9602-N2-case.md '> **Writes:** scripts/s9602.sh')"
+S1="$(mkdoc PROJ-9601-N1-case.md '> **Writes:** scripts/s9601.sh')"
+S2="$(mkdoc PROJ-9602-N2-case.md '> **Writes:** scripts/s9602.sh')"
 printf '{"schema":1,"workers":[{"doc":"%s","label":"N1"},{"doc":"%s","label":"N2"}]}\n' "$S1" "$S2" > "$W/fleet-9186.json"
 run hp off --reason "9186 seeding"
 same "9186 off writes the sentinel" "$RC" 0
 run hp on --workers-from "$W/fleet-9186.json" --repo "$R9"
 same "9186 on with a manifest exits 0" "$RC" 0
 run hp read --repo "$R9" --keys
-contains "9186 after off then on, the first manifest worker's key has rows" "$OUT" "HIMMEL-9601"
-contains "9186 after off then on, the second manifest worker's key has rows" "$OUT" "HIMMEL-9602"
+contains "9186 after off then on, the first manifest worker's key has rows" "$OUT" "PROJ-9601"
+contains "9186 after off then on, the second manifest worker's key has rows" "$OUT" "PROJ-9602"
 run hp on
 same "9186 on with no manifest is the plain sentinel removal (exit 0)" "$RC" 0
 
 # (b) gc drops brief and pr rows of a Done key or a merged PR, and keeps those of an open one (control)
 mkdir -p "$W/mirror9186"
-printf -- '---\nkey: "HIMMEL-9611"\nstatus: "Done"\nstatusCategory: "Done"\n---\n' > "$W/mirror9186/HIMMEL-9611.md"
-printf -- '---\nkey: "HIMMEL-9613"\nstatus: "In Progress"\nstatusCategory: "In Progress"\n---\n' > "$W/mirror9186/HIMMEL-9613.md"
+printf -- '---\nkey: "PROJ-9611"\nstatus: "Done"\nstatusCategory: "Done"\n---\n' > "$W/mirror9186/PROJ-9611.md"
+printf -- '---\nkey: "PROJ-9613"\nstatus: "In Progress"\nstatusCategory: "In Progress"\n---\n' > "$W/mirror9186/PROJ-9613.md"
 cat > "$W/bin/gh-bynum" <<'STUB'
 #!/usr/bin/env bash
 case "$3" in 4701) echo MERGED ;; *) echo OPEN ;; esac
 STUB
 chmod +x "$W/bin/gh-bynum"
-G1="$(mkdoc HIMMEL-9611-case.md)"; lock_hold "$G1"   # the Done key's worker still holds its lock: alive to the judge
-G2="$(mkdoc HIMMEL-9612-case.md)"
-G3="$(mkdoc HIMMEL-9613-case.md)"
-put_row scripts/g9611.sh HIMMEL-9611 lab "$G1" brief "" "$R9"
-put_row scripts/g9612.sh HIMMEL-9612 lab "$G2" pr 4701 "$R9"
-put_row scripts/g9613.sh HIMMEL-9613 lab "$G3" pr 4702 "$R9"
-: > "$(rowf scripts/g9611.sh "$R9").grant.HIMMEL-9699"
+G1="$(mkdoc PROJ-9611-case.md)"; lock_hold "$G1"   # the Done key's worker still holds its lock: alive to the judge
+G2="$(mkdoc PROJ-9612-case.md)"
+G3="$(mkdoc PROJ-9613-case.md)"
+put_row scripts/g9611.sh PROJ-9611 lab "$G1" brief "" "$R9"
+put_row scripts/g9612.sh PROJ-9612 lab "$G2" pr 4701 "$R9"
+put_row scripts/g9613.sh PROJ-9613 lab "$G3" pr 4702 "$R9"
+: > "$(rowf scripts/g9611.sh "$R9").grant.PROJ-9699"
 run env HOLDS_GH="$W/bin/gh-bynum" HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" gc --repo "$R9"
 same "9186 gc exits 0" "$RC" 0
 same "9186 gc removes the brief row of a key the mirror says is Done, though its worker's lock is held" "$([ -e "$(rowf scripts/g9611.sh "$R9")" ] && echo row || echo none)" none
-same "9186 gc removes the grant siblings of that key's row" "$([ -e "$(rowf scripts/g9611.sh "$R9").grant.HIMMEL-9699" ] && echo grant || echo none)" none
+same "9186 gc removes the grant siblings of that key's row" "$([ -e "$(rowf scripts/g9611.sh "$R9").grant.PROJ-9699" ] && echo grant || echo none)" none
 same "9186 gc removes the pr row whose PR reads merged" "$([ -e "$(rowf scripts/g9612.sh "$R9")" ] && echo row || echo none)" none
 same "9186 gc keeps the row of an open PR on an in-progress key (control)" "$([ -e "$(rowf scripts/g9613.sh "$R9")" ] && echo row || echo none)" row
 
 # (c) summary: live workers with no rows / stale rows / pending trust-path asks, from local state only
 R10="$W/repo-9186-summary"; mkdir -p "$R10/scripts/lib"; git -C "$R10" init -q -b main
 : > "$R10/scripts/lib/rename-aliases.tsv"
-L1="$(mkdoc HIMMEL-9621-N1-case.md '> **Writes:** scripts/s9621.sh')"      # live, has Writes, no rows
-L2="$(mkdoc HIMMEL-9622-N2-case.md '# a doc with no Writes line')"          # live, nothing to hold: not counted
-put_row scripts/s9623.sh HIMMEL-9611 lab "$G1" brief "" "$R10"             # a stale row (Done key)
-put_row scripts/s9624.sh HIMMEL-9613 lab "$G3" pr 4702 "$R10"               # a pr row whose PR is still open
-put_row scripts/check-ci.sh HIMMEL-9625 holder "$(mkdoc HIMMEL-9625-case.md)" brief "" "$R10"
-lock_hold "$(mkdoc HIMMEL-9625-case.md)"
-run hp claim --key HIMMEL-9626 --label asker --doc "$(mkdoc HIMMEL-9626-case.md)" --repo "$R10" scripts/check-ci.sh
+L1="$(mkdoc PROJ-9621-N1-case.md '> **Writes:** scripts/s9621.sh')"      # live, has Writes, no rows
+L2="$(mkdoc PROJ-9622-N2-case.md '# a doc with no Writes line')"          # live, nothing to hold: not counted
+put_row scripts/s9623.sh PROJ-9611 lab "$G1" brief "" "$R10"             # a stale row (Done key)
+put_row scripts/s9624.sh PROJ-9613 lab "$G3" pr 4702 "$R10"               # a pr row whose PR is still open
+put_row scripts/check-ci.sh PROJ-9625 holder "$(mkdoc PROJ-9625-case.md)" brief "" "$R10"
+lock_hold "$(mkdoc PROJ-9625-case.md)"
+run hp claim --key PROJ-9626 --label asker --doc "$(mkdoc PROJ-9626-case.md)" --repo "$R10" scripts/check-ci.sh
 same "9186 a claim on a held trust path is refused (the deny the ask is read from)" "$RC" 1
 OUT=$(printf '%s\n%s\n' "$L1" "$L2" | env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" summary --repo "$R10" --live-docs - --open-prs '#4702' 2>/dev/null)
 same "9186 summary: one live worker with no rows, one stale row, one pending trust-path ask" "$OUT" "1/1/1"
 run env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" asks --repo "$R10"
 KIT_P="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)"; KIT_P="${KIT_P%/.git}"  # the checkout holds.py runs from, not the repo --repo names (R10 has no kit)
-same "9186 asks names the key, the path and the full paste-ready grant command, located from the running kit" "$OUT" "$(printf 'HIMMEL-9626\tscripts/check-ci.sh\tHIMMEL-9625\tpython3 -I %s/scripts/handover/chief-kit/holds.py grant --key HIMMEL-9626 --repo %s scripts/check-ci.sh' "$KIT_P" "$R10")"
+same "9186 asks names the key, the path and the full paste-ready grant command, located from the running kit" "$OUT" "$(printf 'PROJ-9626\tscripts/check-ci.sh\tPROJ-9625\tpython3 -I %s/scripts/handover/chief-kit/holds.py grant --key PROJ-9626 --repo %s scripts/check-ci.sh' "$KIT_P" "$R10")"
 OUT=$(printf '%s\n' "$L1" | env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" summary --repo "$R10" --live-docs - --open-prs none 2>/dev/null)
 same "9186 summary: with no open PR the pr row is stale too (2), no other count moves" "$OUT" "1/2/1"
-: > "$(rowf scripts/check-ci.sh "$R10").grant.HIMMEL-9626"
+: > "$(rowf scripts/check-ci.sh "$R10").grant.PROJ-9626"
 run env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" asks --repo "$R10"
 same "9186 a granted ask is no longer pending" "$OUT" ""
 run hp summary --repo "$W/repo-9186-no-register"
@@ -1155,29 +1155,29 @@ if [ "$(id -u)" != 0 ]; then  # root reads a mode-000 directory
 fi
 
 # the refusal text names the route that exists
-put_row scripts/r9186.sh HIMMEL-9628 lab "$(mkdoc HIMMEL-9628-case.md)" brief "" "$R9"
+put_row scripts/r9186.sh PROJ-9628 lab "$(mkdoc PROJ-9628-case.md)" brief "" "$R9"
 touch "$(rowf scripts/r9186.sh "$R9")"
-run hp claim --key HIMMEL-9627 --label asker --doc "$(mkdoc HIMMEL-9627-case.md)" --repo "$R9" scripts/r9186.sh
+run hp claim --key PROJ-9627 --label asker --doc "$(mkdoc PROJ-9627-case.md)" --repo "$R9" scripts/r9186.sh
 case "$ERR" in *"ask your chief: HOLD-ASK"*) fail "9186 the refusal no longer names the HOLD-ASK route that has no consumer" ;; *) pass "9186 the refusal no longer names the HOLD-ASK route that has no consumer" ;; esac
 same "8725 the path off every list routes any" "$(hp grant-route --repo "$R9" scripts/r9186.sh)" any
-contains "8725 route any: the refusal sends a HOLD-ASK" "$ERR" "Message your chief: HOLD-ASK scripts/r9186.sh HIMMEL-9627"
+contains "8725 route any: the refusal sends a HOLD-ASK" "$ERR" "Message your chief: HOLD-ASK scripts/r9186.sh PROJ-9627"
 case "$ERR" in *WRITE_HOLD_OK*) fail "8725 route any: the refusal does not name the bypass" ;; *) pass "8725 route any: the refusal does not name the bypass" ;; esac
 # refused_text <path> <asker key>: a live rival's row on the path, then that asker's claim; $ERR is the refusal
 refused_text() {
-    local rival=HIMMEL-9628
+    local rival=PROJ-9628
     put_row "$1" "$rival" lab "$(mkdoc "$rival-case.md")" brief "" "$R9"
     touch "$(rowf "$1" "$R9")"
     run hp claim --key "$2" --label asker --doc "$(mkdoc "$2-case.md")" --repo "$R9" "$1"
 }
 same "8725 scripts/check-ci.sh routes chief" "$(hp grant-route --repo "$R9" scripts/check-ci.sh)" chief
-refused_text scripts/check-ci.sh HIMMEL-9626
+refused_text scripts/check-ci.sh PROJ-9626
 same "8725 route chief: the claim is refused" "$RC" 1
 contains "9186 the refusal tells the worker the chief sees the deny on its tick and grants it" "$ERR" "hreg="
 contains "8725 route chief: the refusal names the chief's stamp" "$ERR" "can stamp a grant with --chief-doc"
 contains "8725 route chief: the refusal names waiting and the bypass launch" "$ERR" "Otherwise wait for its release, or the operator launches with WRITE_HOLD_OK=1"
 case "$ERR" in *HOLD-ASK*) fail "8725 route chief: the refusal sends no HOLD-ASK" ;; *) pass "8725 route chief: the refusal sends no HOLD-ASK" ;; esac
 same "8725 a CI workflow routes operator" "$(hp grant-route --repo "$R9" .github/workflows/x.yml)" operator
-refused_text .github/workflows/x.yml HIMMEL-9625
+refused_text .github/workflows/x.yml PROJ-9625
 same "8725 route operator: the claim is refused" "$RC" 1
 contains "8725 route operator: only the operator grants" "$ERR" "only the operator grants it"
 contains "8725 route operator: the refusal names waiting and the bypass launch" "$ERR" "Otherwise wait for its release, or the operator launches with WRITE_HOLD_OK=1"
@@ -1185,7 +1185,7 @@ case "$ERR" in *--chief-doc*|*HOLD-ASK*) fail "8725 route operator: the refusal 
 # copy_claim <list content for printf %b, or - for no list> <path> <asker key>: the same claim, by a holds.py copy beside that
 # list. Every caller reads rc 1 as a deny and passes on rc 2, so a bad list must leave the deny a deny.
 copy_claim() {
-    local d="$W/trust-$3" rival=HIMMEL-9628
+    local d="$W/trust-$3" rival=PROJ-9628
     mkdir -p "$d/scripts/handover/chief-kit" "$d/scripts/ci"
     cp "$SUT" "$d/scripts/handover/chief-kit/holds.py"
     if [ "$1" != - ]; then printf '%b' "$1" > "$d/scripts/ci/ci-trust-paths.txt"; fi
@@ -1193,27 +1193,27 @@ copy_claim() {
     touch "$(rowf "$2" "$R9")"
     run python3 -I "$d/scripts/handover/chief-kit/holds.py" claim --key "$3" --label asker --doc "$(mkdoc "$3-case.md")" --repo "$R9" "$2"
 }
-copy_claim '^scripts/tl-good\\.sh$\n' scripts/tl-good.sh HIMMEL-9624
+copy_claim '^scripts/tl-good\\.sh$\n' scripts/tl-good.sh PROJ-9624
 same "8725 control: a copy beside a good list is refused" "$RC" 1
 contains "8725 control: the copy reads its own list, the path routes chief" "$ERR" "can stamp a grant with --chief-doc"
-copy_claim '*bad\n' scripts/tl-invalid.sh HIMMEL-9623
+copy_claim '*bad\n' scripts/tl-invalid.sh PROJ-9623
 same "8725 an invalid pattern in the list: the claim is still refused" "$RC" 1
 contains "8725 an invalid pattern in the list: the refusal is a holds: line" "$ERR" "holds: scripts/tl-invalid.sh is held by"
-copy_claim '\0377\n' scripts/tl-bytes.sh HIMMEL-9622
+copy_claim '\0377\n' scripts/tl-bytes.sh PROJ-9622
 same "8725 a non-UTF-8 byte in the list: the claim is still refused" "$RC" 1
 contains "8725 a non-UTF-8 byte in the list: the refusal is a holds: line" "$ERR" "holds: scripts/tl-bytes.sh is held by"
-copy_claim - scripts/tl-missing.sh HIMMEL-9621
+copy_claim - scripts/tl-missing.sh PROJ-9621
 same "8725 no list: the claim is still refused" "$RC" 1
 contains "8725 no list: the refusal is a holds: line" "$ERR" "holds: scripts/tl-missing.sh is held by"
-copy_claim - .github/workflows/tl-missing.yml HIMMEL-9620
+copy_claim - .github/workflows/tl-missing.yml PROJ-9620
 same "8725 no list, a CI workflow: the claim is still refused" "$RC" 1
 contains "8725 no list, a CI workflow: it still routes operator" "$ERR" "only the operator grants it"
-copy_claim '*bad\n' .github/workflows/tl-invalid.yml HIMMEL-9619
+copy_claim '*bad\n' .github/workflows/tl-invalid.yml PROJ-9619
 same "8725 an invalid list, a CI workflow: the claim is still refused" "$RC" 1
 contains "8725 an invalid list, a CI workflow: it still routes operator" "$ERR" "only the operator grants it"
-run python3 -I "$W/trust-HIMMEL-9623/scripts/handover/chief-kit/holds.py" grant --key HIMMEL-9623 --repo "$R9" scripts/tl-invalid.sh
+run python3 -I "$W/trust-PROJ-9623/scripts/handover/chief-kit/holds.py" grant --key PROJ-9623 --repo "$R9" scripts/tl-invalid.sh
 same "8725 an invalid list: a grant still refuses" "$RC" 2
-same "8725 an invalid list: a grant writes nothing" "$(find "$(slugdir "$R9")" -name '*.grant.HIMMEL-9623' | wc -l | tr -d ' ')" 0
+same "8725 an invalid list: a grant writes nothing" "$(find "$(slugdir "$R9")" -name '*.grant.PROJ-9623' | wc -l | tr -d ' ')" 0
 
 # ---- 8725 Task 5: git-check --staged and --push read git's own file lists (I2, I7, I12)
 # A real repo with an origin and linked worktrees; the commit and push hooks are the real entries of .pre-commit-config.yaml,
@@ -1499,30 +1499,30 @@ STUB
 chmod +x "$W/bin/gh-env"
 for nf in "" 1; do
     nfl="${nf:+ with GH_READ_NO_MAIN_FALLBACK=1}"
-    put_row scripts/s7m.sh HIMMEL-9500 alpha "$G3M" pr 4999
+    put_row scripts/s7m.sh PROJ-9500 alpha "$G3M" pr 4999
     : > "$TTLOG"
     run "${TTW[@]}" ${nf:+GH_READ_NO_MAIN_FALLBACK=1} GH_STUB_DELEGATE="$W/bin/gh-merged" GH_STUB_MAINFAIL=rate python3 -I "$SUT" alive --repo "$R" scripts/s7m.sh
     same "S7 main spent$nfl: a row whose PR is merged reads dead, not a fault" "$OUT" dead
     same "S7 main spent$nfl: the pr_state read logs tok=read" "$(ttlog '^tok=read argv=pr view 4999 --json state')" 1
     same "S7 main spent$nfl: no pr_state read logs tok=main" "$(ttlog '^tok=main ')" 0
-    put_row scripts/s7o.sh HIMMEL-9500 alpha "$G3M" pr 4999
+    put_row scripts/s7o.sh PROJ-9500 alpha "$G3M" pr 4999
     : > "$TTLOG"
     run "${TTW[@]}" ${nf:+GH_READ_NO_MAIN_FALLBACK=1} GH_STUB_DELEGATE="$W/bin/gh-open" GH_STUB_MAINFAIL=rate python3 -I "$SUT" claim --key $K2 --label beta --doc "$DB" --repo "$R" scripts/s7o.sh
     same "S7 main spent$nfl: an open PR keeps the row held" "$RC" 1
     same "S7 main spent$nfl: the open PR read logs tok=read" "$(ttlog '^tok=read argv=pr view 4999 --json state')" 1
 done
-put_row scripts/s7c.sh HIMMEL-9500 alpha "$G3M" pr 4999
+put_row scripts/s7c.sh PROJ-9500 alpha "$G3M" pr 4999
 : > "$TTLOG"
 run "${TTW[@]}" GH_READ_ENV_ROOT="$W/emptyroot" GH_STUB_DELEGATE="$W/bin/gh-merged" python3 -I "$SUT" alive --repo "$R" scripts/s7c.sh
 same "S7 control, no read token: the merged PR still reads dead" "$OUT" dead
 same "S7 control: the pr_state read logs tok=main" "$(ttlog '^tok=main argv=pr view 4999 --json state')" 1
-put_row scripts/s7q.sh HIMMEL-9500 alpha "$G3M" pr 4999
+put_row scripts/s7q.sh PROJ-9500 alpha "$G3M" pr 4999
 : > "$W/envq"
 run "${TTW[@]}" GH_READ_ENV_ROOT="$W/emptyroot" GH_STUB_DELEGATE="$W/bin/gh-env" GH_ENV_FILE="$W/envq" python3 -I "$SUT" alive --repo "$R" scripts/s7q.sh
 same "S7 no read token: the gh child runs with GH_READ_QUIET=1" "$(cat "$W/envq")" 1
 not_contains() { case "$2" in *"$3"*) fail "$1 (found '$3')" ;; *) pass "$1" ;; esac; }
 not_contains "S7 no read token: no gh-read: line on the caller's stderr" "$ERR" "gh-read:"
-put_row scripts/s7h.sh HIMMEL-9500 alpha "$G3M" pr 4999
+put_row scripts/s7h.sh PROJ-9500 alpha "$G3M" pr 4999
 : > "$W/envq"; : > "$TTLOG"
 run "${TTW[@]}" GH_ENV_FILE="$W/envq" HOLDS_GH="$W/bin/gh-env" python3 -I "$SUT" alive --repo "$R" scripts/s7h.sh
 same "S7 HOLDS_GH set: the gh child also runs with GH_READ_QUIET=1" "$(cat "$W/envq")" 1

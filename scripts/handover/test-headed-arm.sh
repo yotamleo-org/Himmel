@@ -291,9 +291,9 @@ FUTURE=$(( $(date +%s) + 100000 ))
 # the session name, the default model, and the doc inside the prompt. This
 # is also the POSITIVE CONTROL for case 4 - it proves konsole IS invoked when
 # nothing dedups it, so case 4's "konsole not invoked" means something.
-d1="$tmp/c1"; mk_stub "$d1" 1 alive "HIMMEL-9999-worker"
+d1="$tmp/c1"; mk_stub "$d1" 1 alive "PROJ-9999-worker"
 rc=0
-run_headed_arm "$d1" "$REPO" "HIMMEL-9999-worker" "some/handover-doc.md" "$d1/signal-never" "$PAST" >/dev/null 2>&1 || rc=$?
+run_headed_arm "$d1" "$REPO" "PROJ-9999-worker" "some/handover-doc.md" "$d1/signal-never" "$PAST" >/dev/null 2>&1 || rc=$?
 wait_record "$d1" || true
 rec1="$(cat "$d1/record" 2>/dev/null || true)"
 check "happy path: exit 0" "$rc" "0"
@@ -307,7 +307,7 @@ contains "happy path: clears CLAUDE_CODE_MESSAGING_TOKEN"  "$rec1" "-u CLAUDE_CO
 contains "happy path: clears CLAUDE_JOB_DIR"               "$rec1" "-u CLAUDE_JOB_DIR"
 contains "happy path: passes --separate (own process, not a hand-off)" "$rec1" "--separate"
 contains "happy path: forces session persistence"       "$rec1" "CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1"
-contains "happy path: carries the session name via -n"  "$rec1" "-n HIMMEL-9999-worker"
+contains "happy path: carries the session name via -n"  "$rec1" "-n PROJ-9999-worker"
 contains     "happy path: carries the default model (Opus parent)" "$rec1" "claude-opus-5-5"
 not_contains "happy path: default model is not Fable"   "$rec1" "claude-fable-5-1"
 contains "happy path: doc reaches the prompt"            "$rec1" "load some/handover-doc.md and continue"
@@ -320,9 +320,9 @@ log1="$(cat "$d1/log" 2>/dev/null || true)"
 contains "happy path: log records the default context (1m)" "$log1" "context=1m (default)"
 
 # --- 1b. CHIEF_CONTEXT=1m opts into 1m without a positional -
-d1b="$tmp/c1b"; mk_stub "$d1b" 1 alive "HIMMEL-9999b-worker"
+d1b="$tmp/c1b"; mk_stub "$d1b" 1 alive "PROJ-9999b-worker"
 rc1b=0
-CHIEF_CONTEXT=1m run_headed_arm "$d1b" "$REPO" "HIMMEL-9999b-worker" "some/handover-doc.md" "$d1b/signal-never" "$PAST" >/dev/null 2>&1 || rc1b=$?
+CHIEF_CONTEXT=1m run_headed_arm "$d1b" "$REPO" "PROJ-9999b-worker" "some/handover-doc.md" "$d1b/signal-never" "$PAST" >/dev/null 2>&1 || rc1b=$?
 wait_record "$d1b" || true
 rec1b="$(cat "$d1b/record" 2>/dev/null || true)"
 check "CHIEF_CONTEXT=1m: exit 0" "$rc1b" "0"
@@ -335,9 +335,9 @@ contains     "CHIEF_CONTEXT=1m: log spells the source (explicit)" "$log1b" "cont
 not_contains "CHIEF_CONTEXT=1m: log no longer spells the mechanism as the source" "$log1b" "(CHIEF_CONTEXT=1m)"
 
 # --- 1b-old. the retired name CONSOLE_CONTEXT=1m does not opt in - # old-term-ok
-d1bo="$tmp/c1bo"; mk_stub "$d1bo" 1 alive "HIMMEL-9999bo-worker"
+d1bo="$tmp/c1bo"; mk_stub "$d1bo" 1 alive "PROJ-9999bo-worker"
 rc1bo=0
-CHIEF_CONTEXT=standard CONSOLE_CONTEXT=1m run_headed_arm "$d1bo" "$REPO" "HIMMEL-9999bo-worker" "some/handover-doc.md" "$d1bo/signal-never" "$PAST" >/dev/null 2>&1 || rc1bo=$? # old-term-ok
+CHIEF_CONTEXT=standard CONSOLE_CONTEXT=1m run_headed_arm "$d1bo" "$REPO" "PROJ-9999bo-worker" "some/handover-doc.md" "$d1bo/signal-never" "$PAST" >/dev/null 2>&1 || rc1bo=$? # old-term-ok
 wait_record "$d1bo" || true
 rec1bo="$(cat "$d1bo/record" 2>/dev/null || true)"
 check "CONSOLE_CONTEXT=1m (retired): exit 0" "$rc1bo" "0" # old-term-ok
@@ -345,23 +345,23 @@ contains "CONSOLE_CONTEXT=1m (retired): autocompact stays 200000" "$rec1bo" "--a
 not_contains "CONSOLE_CONTEXT=1m (retired): no autocompact auto" "$rec1bo" "--autocompact auto" # old-term-ok
 
 # --- 1b-conflict. the retired name disagrees: ignored, CHIEF_CONTEXT=1m still opts in -
-d1bx="$tmp/c1bx"; mk_stub "$d1bx" 1 alive "HIMMEL-9999bx-worker"
+d1bx="$tmp/c1bx"; mk_stub "$d1bx" 1 alive "PROJ-9999bx-worker"
 rc1bx=0
-CHIEF_CONTEXT=1m CONSOLE_CONTEXT=standard run_headed_arm "$d1bx" "$REPO" "HIMMEL-9999bx-worker" "some/handover-doc.md" "$d1bx/signal-never" "$PAST" >/dev/null 2>&1 || rc1bx=$? # old-term-ok
+CHIEF_CONTEXT=1m CONSOLE_CONTEXT=standard run_headed_arm "$d1bx" "$REPO" "PROJ-9999bx-worker" "some/handover-doc.md" "$d1bx/signal-never" "$PAST" >/dev/null 2>&1 || rc1bx=$? # old-term-ok
 wait_record "$d1bx" || true
 rec1bx="$(cat "$d1bx/record" 2>/dev/null || true)"
 check "CHIEF_CONTEXT=1m beside the retired CONSOLE_CONTEXT=standard: exit 0" "$rc1bx" "0" # old-term-ok
 contains "CHIEF_CONTEXT=1m beside the retired CONSOLE_CONTEXT=standard: autocompact auto" "$rec1bx" "--autocompact auto" # old-term-ok
 
 # --- 1c. positional 1m needs no environment workaround ----
-d1c="$tmp/c1c"; mk_stub "$d1c" 1 alive "HIMMEL-9999c-worker"
+d1c="$tmp/c1c"; mk_stub "$d1c" 1 alive "PROJ-9999c-worker"
 outc1c=$(env -u CHIEF_CONTEXT KONSOLE_CMD="$d1c/konsole" PGREP_CMD="$d1c/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d1c/locks" HEADED_ARM_PROC="$d1c/proc" \
-    bash "$SCRIPT" --dry-run "HIMMEL-9999c-worker" "some/handover-doc.md" "$d1c/signal-never" "$PAST" "$d1c/log" claude-opus-5 1m 2>&1)
+    bash "$SCRIPT" --dry-run "PROJ-9999c-worker" "some/handover-doc.md" "$d1c/signal-never" "$PAST" "$d1c/log" claude-opus-5 1m 2>&1)
 rcc1c=$?
 check "positional 1m without env: exit 0" "$rcc1c" "0"
 contains "positional 1m without env: explicit source" "$outc1c" "context=1m (explicit)"
 contains "positional 1m without env: auto" "$outc1c" "--autocompact auto"
-outc1c=$(CHIEF_CONTEXT=standard run_headed_arm "$d1c" "$REPO" "HIMMEL-9999c-worker" "some/handover-doc.md" "$d1c/signal-never" "$PAST" claude-opus-5 standard 2>&1)
+outc1c=$(CHIEF_CONTEXT=standard run_headed_arm "$d1c" "$REPO" "PROJ-9999c-worker" "some/handover-doc.md" "$d1c/signal-never" "$PAST" claude-opus-5 standard 2>&1)
 check "positional standard: exit 0" "$?" "0"
 wait_record "$d1c" || true
 contains "positional standard: argv opts down" "$(cat "$d1c/record" 2>/dev/null || true)" "--autocompact 200000"
@@ -421,7 +421,7 @@ for ambient in profile resolver both stale; do
   esac
   rc=0
   out="$(env -u CHIEF_CONTEXT "${ambient_env[@]}" KONSOLE_CMD="$BASH" PGREP_CMD="$BASH" \
-    bash "$SCRIPT" --dry-run HIMMEL-4094-chief some/doc.md /tmp/nosig 99999999999 "$tmp/ambient-$ambient.log" claude-sonnet-5 standard 2>&1)" || rc=$?
+    bash "$SCRIPT" --dry-run PROJ-4094-chief some/doc.md /tmp/nosig 99999999999 "$tmp/ambient-$ambient.log" claude-sonnet-5 standard 2>&1)" || rc=$?
   check "ambient profile inputs ($ambient): direct standard arm succeeds" "$rc" "0"
   contains "ambient profile inputs ($ambient): chief opt-down wins" "$out" "--autocompact 200000"
   not_contains "ambient profile inputs ($ambient): no profile 1m ceiling" "$out" "--autocompact 600000"
@@ -440,7 +440,7 @@ ab_run() { # <pid-mode: paired|stale|none> <context> <value> <tag> [profile] [mo
   esac
   env -u CHIEF_CONTEXT HEADED_ARM_CONTEXT_PROFILE="$prof" HEADED_ARM_WORKER_PROFILES="$HERE/../lanes/plugin-profiles.mjs" \
     HEADED_ARM_AB_AUTOCOMPACT="$val" HEADED_ARM_SONNET_AUTOCOMPACT="$sonnet" HEADED_ARM_OPUS_AUTOCOMPACT="$opus" KONSOLE_CMD="$BASH" PGREP_CMD="$BASH" \
-    bash -c "$pidx"'; exec bash "$@"' _ "$SCRIPT" --dry-run "HIMMEL-5193-$tag-worker" some/doc.md /tmp/nosig 99999999999 "$tmp/ab-$tag.log" "$model" "$ctx" 2>&1
+    bash -c "$pidx"'; exec bash "$@"' _ "$SCRIPT" --dry-run "PROJ-5193-$tag-worker" some/doc.md /tmp/nosig 99999999999 "$tmp/ab-$tag.log" "$model" "$ctx" 2>&1
 }
 rc=0; out="$(ab_run paired standard 400000 ok)" || rc=$?
 check "A/B arm (paired pid, standard, 400000): exit 0" "$rc" "0"
@@ -516,9 +516,9 @@ check "A/B arm (value 300000): refused exit 2" "$rc" "2"
 not_contains "A/B arm (value 300000): no launch argv" "$out" "--autocompact 300000"
 
 # --- 1d. positional 1m WITH the env is accepted ---------------
-d1d="$tmp/c1d"; mk_stub "$d1d" 1 alive "HIMMEL-9999d-worker"
+d1d="$tmp/c1d"; mk_stub "$d1d" 1 alive "PROJ-9999d-worker"
 rc1d=0
-CHIEF_CONTEXT=1m run_headed_arm "$d1d" "$REPO" "HIMMEL-9999d-worker" "some/handover-doc.md" "$d1d/signal-never" "$PAST" claude-opus-5 1m >/dev/null 2>&1 || rc1d=$?
+CHIEF_CONTEXT=1m run_headed_arm "$d1d" "$REPO" "PROJ-9999d-worker" "some/handover-doc.md" "$d1d/signal-never" "$PAST" claude-opus-5 1m >/dev/null 2>&1 || rc1d=$?
 wait_record "$d1d" || true
 rec1d="$(cat "$d1d/record" 2>/dev/null || true)"
 check "positional 1m with env: exit 0" "$rc1d" "0"
@@ -533,43 +533,43 @@ run_chief_arm() {
   env "$@" KONSOLE_CMD="$stubdir/konsole" PGREP_CMD="$stubdir/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$stubdir/locks" HEADED_ARM_PROC="$stubdir/proc" HIMMELCTL_CACHE_DIR="$stubdir/cache" \
     bash "$SCRIPT" --role chief "$name" "some/handover-doc.md" "$stubdir/signal-never" "$PAST" "$stubdir/log"
 }
-d1e="$tmp/c1e"; mk_stub "$d1e" 1 alive "HIMMEL-9999e-chief"; mkdir -p "$d1e/cache"
+d1e="$tmp/c1e"; mk_stub "$d1e" 1 alive "PROJ-9999e-chief"; mkdir -p "$d1e/cache"
 rc1e=0
-run_chief_arm "$d1e" "HIMMEL-9999e-chief" -u CHIEF_CONTEXT >/dev/null 2>&1 || rc1e=$?
+run_chief_arm "$d1e" "PROJ-9999e-chief" -u CHIEF_CONTEXT >/dev/null 2>&1 || rc1e=$?
 wait_record "$d1e" || true
 check "durable record, default: exit 0 (precondition: the launch happened)" "$rc1e" "0"
 if [ -s "$d1e/record" ]; then echo "ok - durable record, default: konsole IS invoked (precondition)"
 else echo "FAIL - durable record, default: konsole IS invoked (precondition)"; fails=$((fails+1)); fi
-rec1e="$(cat "$d1e/cache/launch-logs/HIMMEL-9999e-chief.log" 2>/dev/null || true)"
-contains "durable record, default: names the role"    "$rec1e" "headed-arm: role=chief session=HIMMEL-9999e-chief "
+rec1e="$(cat "$d1e/cache/launch-logs/PROJ-9999e-chief.log" 2>/dev/null || true)"
+contains "durable record, default: names the role"    "$rec1e" "headed-arm: role=chief session=PROJ-9999e-chief "
 contains "durable record, default: records the mode"  "$rec1e" " context=1m "
 contains "durable record, default: records the source" "$rec1e" " source=default "
 contains "durable record, default: records autocompact" "$rec1e" " autocompact=auto "
 
-d1f="$tmp/c1f"; mk_stub "$d1f" 1 alive "HIMMEL-9999f-chief"; mkdir -p "$d1f/cache"
+d1f="$tmp/c1f"; mk_stub "$d1f" 1 alive "PROJ-9999f-chief"; mkdir -p "$d1f/cache"
 rc1f=0
-run_chief_arm "$d1f" "HIMMEL-9999f-chief" CHIEF_CONTEXT=1m >/dev/null 2>&1 || rc1f=$?
+run_chief_arm "$d1f" "PROJ-9999f-chief" CHIEF_CONTEXT=1m >/dev/null 2>&1 || rc1f=$?
 wait_record "$d1f" || true
 check "durable record, 1m opt-in: exit 0 (precondition: the launch happened)" "$rc1f" "0"
-rec1f="$(cat "$d1f/cache/launch-logs/HIMMEL-9999f-chief.log" 2>/dev/null || true)"
+rec1f="$(cat "$d1f/cache/launch-logs/PROJ-9999f-chief.log" 2>/dev/null || true)"
 contains "durable record, 1m opt-in: records the mode"   "$rec1f" " context=1m "
 contains "durable record, 1m opt-in: records the source" "$rec1f" " source=explicit "
 contains "durable record, 1m opt-in: records autocompact" "$rec1f" " autocompact=auto "
 
 # a non-chief arm (no --role) writes no durable context record
-d1g="$tmp/c1g"; mk_stub "$d1g" 1 alive "HIMMEL-9999g-worker"; mkdir -p "$d1g/cache"
+d1g="$tmp/c1g"; mk_stub "$d1g" 1 alive "PROJ-9999g-worker"; mkdir -p "$d1g/cache"
 rc1g=0
 env -u CHIEF_CONTEXT KONSOLE_CMD="$d1g/konsole" PGREP_CMD="$d1g/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d1g/locks" HEADED_ARM_PROC="$d1g/proc" HIMMELCTL_CACHE_DIR="$d1g/cache" \
-    bash "$SCRIPT" "HIMMEL-9999g-worker" "some/handover-doc.md" "$d1g/signal-never" "$PAST" "$d1g/log" >/dev/null 2>&1 || rc1g=$?
+    bash "$SCRIPT" "PROJ-9999g-worker" "some/handover-doc.md" "$d1g/signal-never" "$PAST" "$d1g/log" >/dev/null 2>&1 || rc1g=$?
 wait_record "$d1g" || true
 check "no --role: exit 0 (precondition: the launch happened)" "$rc1g" "0"
-if [ -e "$d1g/cache/launch-logs/HIMMEL-9999g-worker.log" ]; then echo "FAIL - no --role: a non-chief arm wrote a durable context record"; fails=$((fails+1))
+if [ -e "$d1g/cache/launch-logs/PROJ-9999g-worker.log" ]; then echo "FAIL - no --role: a non-chief arm wrote a durable context record"; fails=$((fails+1))
 else echo "ok - no --role: a non-chief arm writes no durable context record"; fi
 
 # a launch record that cannot be written never stops the launch, and says so
-d1h="$tmp/c1h"; mk_stub "$d1h" 1 alive "HIMMEL-9999h-chief"; : > "$d1h/cache"
+d1h="$tmp/c1h"; mk_stub "$d1h" 1 alive "PROJ-9999h-chief"; : > "$d1h/cache"
 rc1h=0
-run_chief_arm "$d1h" "HIMMEL-9999h-chief" -u CHIEF_CONTEXT >/dev/null 2>&1 || rc1h=$?
+run_chief_arm "$d1h" "PROJ-9999h-chief" -u CHIEF_CONTEXT >/dev/null 2>&1 || rc1h=$?
 wait_record "$d1h" || true
 check "unwritable launch-logs: launch still exits 0" "$rc1h" "0"
 contains "unwritable launch-logs: WARN names the gap in the arm log" "$(cat "$d1h/log" 2>/dev/null || true)" "WARN context record NOT written"
@@ -619,9 +619,9 @@ d4b="$tmp/c4b"; mk_stub "$d4b" 0 alive "HIMMEL-dedup-4b"
 rc4b=0
 HEADED_ARM_OUTCOME_FILE="$d4b/outcome" run_headed_arm "$d4b" "$REPO" "HIMMEL-dedup-4b" "doc4b.md" "$d4b/signal-never" "$PAST" >/dev/null 2>&1 || rc4b=$?
 check "typed outcome: a dedup exits 0 and says already-running" "$rc4b|$(cat "$d4b/outcome" 2>/dev/null)" "0|already-running"
-d4c="$tmp/c4c"; mk_stub "$d4c" 1 alive "HIMMEL-9999-worker4c"
+d4c="$tmp/c4c"; mk_stub "$d4c" 1 alive "PROJ-9999-worker4c"
 rc4c=0
-HEADED_ARM_OUTCOME_FILE="$d4c/outcome" run_headed_arm "$d4c" "$REPO" "HIMMEL-9999-worker4c" "some/handover-doc.md" "$d4c/signal-never" "$PAST" >/dev/null 2>&1 || rc4c=$?
+HEADED_ARM_OUTCOME_FILE="$d4c/outcome" run_headed_arm "$d4c" "$REPO" "PROJ-9999-worker4c" "some/handover-doc.md" "$d4c/signal-never" "$PAST" >/dev/null 2>&1 || rc4c=$?
 wait_record "$d4c" || true
 check "typed outcome: a confirmed launch exits 0 and says launched" "$rc4c|$(cat "$d4c/outcome" 2>/dev/null)" "0|launched"
 rc4d=0
@@ -694,9 +694,9 @@ contains "held lock: log names the claim" "$log9" "still claimed after waiting"
 # different name) would wrongly look like a dedup hit and block the launch.
 d10a="$tmp/c10a"
 mk_stub "$d10a" 0  # konsole stub + a placeholder pgrep; overwritten below by the real matcher
-mk_matcher_pgrep "$d10a" "claude --model x -n HIMMEL-2545Xworker load foo and continue" "HIMMEL-2545.worker"
+mk_matcher_pgrep "$d10a" "claude --model x -n PROJ-2545Xworker load foo and continue" "PROJ-2545.worker"
 rc10a=0
-run_headed_arm "$d10a" "$REPO" "HIMMEL-2545.worker" "doc10a.md" "$d10a/signal-never" "$PAST" >/dev/null 2>&1 || rc10a=$?
+run_headed_arm "$d10a" "$REPO" "PROJ-2545.worker" "doc10a.md" "$d10a/signal-never" "$PAST" >/dev/null 2>&1 || rc10a=$?
 check "regex metachar: exit 0 (a launch, not a dedup)" "$rc10a" "0"
 wait_record "$d10a" || true
 if [ -s "$d10a/record" ]; then echo "ok - regex metachar: literal '.' does NOT false-match a different session"
@@ -704,9 +704,9 @@ else echo "FAIL - regex metachar: literal '.' does NOT false-match a different s
 # (b) must STILL match itself: the exact same literal name, dot and all.
 d10b="$tmp/c10b"
 mk_stub "$d10b" 0
-mk_matcher_pgrep "$d10b" "claude --model x -n HIMMEL-2545.worker load foo and continue" "HIMMEL-2545.worker"
+mk_matcher_pgrep "$d10b" "claude --model x -n PROJ-2545.worker load foo and continue" "PROJ-2545.worker"
 rc10b=0
-run_headed_arm "$d10b" "$REPO" "HIMMEL-2545.worker" "doc10b.md" "$d10b/signal-never" "$PAST" >/dev/null 2>&1 || rc10b=$?
+run_headed_arm "$d10b" "$REPO" "PROJ-2545.worker" "doc10b.md" "$d10b/signal-never" "$PAST" >/dev/null 2>&1 || rc10b=$?
 check "regex metachar: still dedups its own literal name" "$rc10b" "0"
 settle
 if [ -s "$d10b/record" ]; then echo "FAIL - regex metachar: konsole must NOT be invoked (self-match)"; fails=$((fails+1))
@@ -1589,11 +1589,11 @@ check "genuine positional -n match: exit 0, confirmed" "$rc32" "0"
 # positional match --------------------------------------------------------
 d33="$tmp/c33"; mkdir -p "$d33"
 mk_alive_konsole "$d33"
-mk_positional_pgrep "$d33" claude --model claude-fable-5-1 -n HIMMEL-2545-x \
+mk_positional_pgrep "$d33" claude --model claude-fable-5-1 -n PROJ-2545-x \
   "load other.md and continue"
 rc33=0
 KONSOLE_CMD="$d33/konsole" PGREP_CMD="$d33/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d33/locks" HEADED_ARM_PROC="$d33/proc" \
-  bash "$SCRIPT" "HIMMEL-2545" "doc33.md" "$d33/signal-never" "$PAST" "$d33/log" >/dev/null 2>&1 || rc33=$?
+  bash "$SCRIPT" "PROJ-2545" "doc33.md" "$d33/signal-never" "$PAST" "$d33/log" >/dev/null 2>&1 || rc33=$?
 check "name-prefix near-miss: exit 7, never confirmed" "$rc33" "7"
 log33="$(cat "$d33/log" 2>/dev/null || true)"
 contains "name-prefix near-miss: log says UNCONFIRMED" "$log33" "UNCONFIRMED"
@@ -1757,7 +1757,7 @@ sleep 5
 KONSOLE_EOF
   chmod 755 "$1/konsole"
 }
-LINE36='HIMMEL_HOLD_DOC=/x/a b/HIMMEL-1-N1-x.md'
+LINE36='HIMMEL_HOLD_DOC=/x/a b/PROJ-1-N1-x.md'
 # 36f (I1): var unset and var '' give byte-identical terminal argv (no '' element).
 # N36F=31 is the element count captured on the unmodified script.
 d36f="$tmp/c36f"; mk_lines_stub "$d36f" "HIMMEL-lines36f"
@@ -1780,7 +1780,7 @@ HEADED_ARM_LAUNCHER_ENV_LINES="$LINE36" KONSOLE_CMD="$d36e/konsole" PGREP_CMD="$
   bash "$SCRIPT" "HIMMEL-lines36e" "doc36e.md" "$d36e/signal-never" "$PAST" "$d36e/log" >/dev/null 2>&1 || rc36e=$?
 wait_record "$d36e" || true
 check "36e LINES with a space: exit 0" "$rc36e" "0"
-check "36e LINES with a space: ONE argv element" "$(grep -Fxc 'HIMMEL_HOLD_DOC=/x/a\ b/HIMMEL-1-N1-x.md' "$d36e/record" 2>/dev/null || true)" "1"
+check "36e LINES with a space: ONE argv element" "$(grep -Fxc 'HIMMEL_HOLD_DOC=/x/a\ b/PROJ-1-N1-x.md' "$d36e/record" 2>/dev/null || true)" "1"
 
 # 36e2: same through the recorder branch (script -c "<cmd>"): the value is one element of the env part.
 d36e2="$tmp/c36e2"; mk_lines_stub "$d36e2" "HIMMEL-lines36e2"
@@ -1789,7 +1789,7 @@ HEADED_ARM_LAUNCHER_ENV_LINES="$LINE36" HEADED_ARM_RECORDER=1 HEADED_ARM_UNAME=L
   bash "$SCRIPT" "HIMMEL-lines36e2" "doc36e2.md" "$d36e2/signal-never" "$PAST" "$d36e2/log" >/dev/null 2>&1 || rc36e2=$?
 wait_record "$d36e2" || true
 check "36e2 LINES with a space, RECORDER: exit 0" "$rc36e2" "0"
-check "36e2 LINES with a space, RECORDER: ONE argv element" "$(grep -Fxc 'HIMMEL_HOLD_DOC=/x/a\ b/HIMMEL-1-N1-x.md' "$d36e2/record" 2>/dev/null || true)" "1"
+check "36e2 LINES with a space, RECORDER: ONE argv element" "$(grep -Fxc 'HIMMEL_HOLD_DOC=/x/a\ b/PROJ-1-N1-x.md' "$d36e2/record" 2>/dev/null || true)" "1"
 
 # 36g: a line that is not NAME=VALUE is refused (exit 2) before any launch.
 d36g="$tmp/c36g"; mk_lines_stub "$d36g" "HIMMEL-lines36g"
@@ -1838,8 +1838,8 @@ HEADED_ARM_LAUNCHER_ENV_LINES="$LINE36" HEADED_ARM_HEADLESS=1 WORKER_SESSION_PRO
   HEADED_ARM_CLAUDE_CLI="$d36j/cli" HEADED_ARM_LAUNCHER="$d36j/cli" PGREP_CMD="$d36j/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_PROC="$d36j/proc" HEADED_ARM_LOCK_DIR="$d36j/locks" \
   bash "$SCRIPT" "HIMMEL-lines36j" "doc36j.md" "$d36j/signal-never" "$PAST" "$d36j/log" >/dev/null 2>&1 || rc36j=$?
 check "36j headless LINES: exit 0" "$rc36j" "0"
-check "36j headless LINES: launch env holds the spaced value" "$(cat "$d36j/envfile" 2>/dev/null || echo MISSING)" "/x/a b/HIMMEL-1-N1-x.md"
-check "36j headless LINES: settings env block holds the spaced value" "$(jq -r '.env.HIMMEL_HOLD_DOC' "$d36j/settings.json" 2>/dev/null || echo MISSING)" "/x/a b/HIMMEL-1-N1-x.md"
+check "36j headless LINES: launch env holds the spaced value" "$(cat "$d36j/envfile" 2>/dev/null || echo MISSING)" "/x/a b/PROJ-1-N1-x.md"
+check "36j headless LINES: settings env block holds the spaced value" "$(jq -r '.env.HIMMEL_HOLD_DOC' "$d36j/settings.json" 2>/dev/null || echo MISSING)" "/x/a b/PROJ-1-N1-x.md"
 
 # --- 37. RED control: a mutant that always takes the RECORDER=1 branch
 # must fail case 36's "no script(1) wrapper" assertion for the DEFAULT
@@ -2090,7 +2090,7 @@ check "39b --dry-run placeholder name 'session': exit 2" "$rcc39b" "2"
 real_ll="${HOME:-}/.claude/himmel/launch-logs"
 polluted=""
 if [ -n "${HOME:-}" ] && [ -d "$real_ll" ]; then
-  for f in "$real_ll"/HIMMEL-role*.log "$real_ll"/HIMMEL-9999*.log "$real_ll"/HIMMEL-red*.log; do
+  for f in "$real_ll"/HIMMEL-role*.log "$real_ll"/PROJ-9999*.log "$real_ll"/HIMMEL-red*.log; do
     [ -e "$f" ] && [ "$f" -nt "$tmp/suite-start-marker" ] && polluted="$polluted$f "
   done
 fi
@@ -2670,29 +2670,29 @@ mk_tdup() {
   cat > "$dir/pgrep" <<PGREP_EOF
 #!/usr/bin/env bash
 if [ -e "$dir/confirmable" ]; then echo 9001; exit 0; fi
-case "\$*" in *"-n HIMMEL-8436-N"*) echo 9002; exit 0 ;; esac
+case "\$*" in *"-n PROJ-8436-N"*) echo 9002; exit 0 ;; esac
 exit 1
 PGREP_EOF
   chmod 755 "$dir/pgrep"
 }
-td1="$tmp/td1"; mk_tdup "$td1" "HIMMEL-8436-N4000-first-worker-2026-10-31" "HIMMEL-8436-N4332-second-worker-2026-10-31"
-tdout="$(run_headed_arm "$td1" "$REPO" "HIMMEL-8436-N4332-second-worker-2026-10-31" "doc8436.md" "$td1/signal-never" "$PAST" 2>&1)"; tdrc=$?
+td1="$tmp/td1"; mk_tdup "$td1" "PROJ-8436-N4000-first-worker-2026-10-31" "PROJ-8436-N4332-second-worker-2026-10-31"
+tdout="$(run_headed_arm "$td1" "$REPO" "PROJ-8436-N4332-second-worker-2026-10-31" "doc8436.md" "$td1/signal-never" "$PAST" 2>&1)"; tdrc=$?
 check "8436a a second worker on a ticket with a live worker is refused (exit 16)" "$tdrc" "16"
-contains "8436b the refusal names the ticket and the live session" "$tdout" "HIMMEL-8436-N4000-first-worker-2026-10-31"
+contains "8436b the refusal names the ticket and the live session" "$tdout" "PROJ-8436-N4000-first-worker-2026-10-31"
 check "8436c the refused arm launched no konsole" "$([ -e "$td1/record" ] && echo launched || echo none)" "none"
 check "8464p a scan refusal releases the ticket claim" "$(compgen -G "$td1/locks/ticket-*" | grep -c .)" "0"
-td2="$tmp/td2"; mk_tdup "$td2" "HIMMEL-8436-N4332-first-worker-2026-10-31" "HIMMEL-8436-N4332b-second-worker-2026-10-31"
-run_headed_arm "$td2" "$REPO" "HIMMEL-8436-N4332b-second-worker-2026-10-31" "doc8436.md" "$td2/signal-never" "$PAST" >/dev/null 2>&1; tdrc2=$?
+td2="$tmp/td2"; mk_tdup "$td2" "PROJ-8436-N4332-first-worker-2026-10-31" "PROJ-8436-N4332b-second-worker-2026-10-31"
+run_headed_arm "$td2" "$REPO" "PROJ-8436-N4332b-second-worker-2026-10-31" "doc8436.md" "$td2/signal-never" "$PAST" >/dev/null 2>&1; tdrc2=$?
 check "8436d a second worker of the same worker lineage (same N) still launches" "$tdrc2" "0"
-td3="$tmp/td3"; mk_tdup "$td3" "HIMMEL-8436-N4000-first-worker-2026-10-31" "HIMMEL-8436-N4332-second-worker-2026-10-31"
-HEADED_ARM_ALLOW_TICKET_DUP=1 run_headed_arm "$td3" "$REPO" "HIMMEL-8436-N4332-second-worker-2026-10-31" "doc8436.md" "$td3/signal-never" "$PAST" >/dev/null 2>&1; tdrc3=$?
+td3="$tmp/td3"; mk_tdup "$td3" "PROJ-8436-N4000-first-worker-2026-10-31" "PROJ-8436-N4332-second-worker-2026-10-31"
+HEADED_ARM_ALLOW_TICKET_DUP=1 run_headed_arm "$td3" "$REPO" "PROJ-8436-N4332-second-worker-2026-10-31" "doc8436.md" "$td3/signal-never" "$PAST" >/dev/null 2>&1; tdrc3=$?
 check "8436e HEADED_ARM_ALLOW_TICKET_DUP=1 lets a second worker on the ticket launch" "$tdrc3" "0"
-td4="$tmp/td4"; mk_tdup "$td4" "HIMMEL-8436-N4000-first-worker-2026-10-31" "HIMMEL-8437-N4333-other-ticket-2026-10-31"
-run_headed_arm "$td4" "$REPO" "HIMMEL-8437-N4333-other-ticket-2026-10-31" "doc8437.md" "$td4/signal-never" "$PAST" >/dev/null 2>&1; tdrc4=$?
+td4="$tmp/td4"; mk_tdup "$td4" "PROJ-8436-N4000-first-worker-2026-10-31" "PROJ-8437-N4333-other-ticket-2026-10-31"
+run_headed_arm "$td4" "$REPO" "PROJ-8437-N4333-other-ticket-2026-10-31" "doc8437.md" "$td4/signal-never" "$PAST" >/dev/null 2>&1; tdrc4=$?
 check "8436f a worker on a different ticket launches" "$tdrc4" "0"
 not_contains "8436g the refusal hands over no recipe for the override" "$tdout" "HEADED_ARM_ALLOW_TICKET_DUP"
 # the override is read once and cleared: a konsole that records its own env must not see it
-td5="$tmp/td5"; mk_tdup "$td5" "HIMMEL-8436-N4000-first-worker-2026-10-31" "HIMMEL-8436-N4332-second-worker-2026-10-31"
+td5="$tmp/td5"; mk_tdup "$td5" "PROJ-8436-N4000-first-worker-2026-10-31" "PROJ-8436-N4332-second-worker-2026-10-31"
 cat > "$td5/konsole" <<KONSOLE_EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> "$td5/record"
@@ -2701,7 +2701,7 @@ printf '%s\n' "\${HEADED_ARM_ALLOW_TICKET_DUP-unset}" > "$td5/dupenv"
 sleep 5
 KONSOLE_EOF
 chmod 755 "$td5/konsole"
-HEADED_ARM_ALLOW_TICKET_DUP=1 run_headed_arm "$td5" "$REPO" "HIMMEL-8436-N4332-second-worker-2026-10-31" "doc8436.md" "$td5/signal-never" "$PAST" >/dev/null 2>&1; tdrc5=$?
+HEADED_ARM_ALLOW_TICKET_DUP=1 run_headed_arm "$td5" "$REPO" "PROJ-8436-N4332-second-worker-2026-10-31" "doc8436.md" "$td5/signal-never" "$PAST" >/dev/null 2>&1; tdrc5=$?
 check "8436h the override launches the second worker" "$tdrc5" "0"
 check "8436i the override does not ride into the launched worker's env" "$(cat "$td5/dupenv" 2>/dev/null)" "unset"
 
@@ -2747,43 +2747,43 @@ run_pair() {
   rb=0; wait "$pb" || rb=$?
   printf '%s|%s\n' "$(printf '%s\n' "$ra" "$rb" | sort -n | tr '\n' ' ')" "$(grep -c . "$dir/record" 2>/dev/null || echo 0)"
 }
-tp1="$tmp/tp1"; mk_pair "$tp1" "HIMMEL-8464-N1-first-2026-11-02" "HIMMEL-8464-N2-second-2026-11-02"
+tp1="$tmp/tp1"; mk_pair "$tp1" "PROJ-8464-N1-first-2026-11-02" "PROJ-8464-N2-second-2026-11-02"
 check "8464a two arms for one ticket started together: one launches (exit 0), one is refused (exit 16), one session" \
-  "$(run_pair "$tp1" "HIMMEL-8464-N1-first-2026-11-02" "HIMMEL-8464-N2-second-2026-11-02")" "0 16 |1"
+  "$(run_pair "$tp1" "PROJ-8464-N1-first-2026-11-02" "PROJ-8464-N2-second-2026-11-02")" "0 16 |1"
 check "8464b the ticket claim is released after a launch and after a claim-held refusal" "$(compgen -G "$tp1/locks/ticket-*" | grep -c .)" "0"
-tp2="$tmp/tp2"; mk_pair "$tp2" "HIMMEL-8464-N1-first-2026-11-02" "HIMMEL-8465-N2-second-2026-11-02"
+tp2="$tmp/tp2"; mk_pair "$tp2" "PROJ-8464-N1-first-2026-11-02" "PROJ-8465-N2-second-2026-11-02"
 check "8464c two arms for different tickets both launch" \
-  "$(run_pair "$tp2" "HIMMEL-8464-N1-first-2026-11-02" "HIMMEL-8465-N2-second-2026-11-02")" "0 0 |2"
-tp3="$tmp/tp3"; mk_pair "$tp3" "HIMMEL-8464-N7-first-2026-11-02" "HIMMEL-8464-N7b-second-2026-11-02"
+  "$(run_pair "$tp2" "PROJ-8464-N1-first-2026-11-02" "PROJ-8465-N2-second-2026-11-02")" "0 0 |2"
+tp3="$tmp/tp3"; mk_pair "$tp3" "PROJ-8464-N7-first-2026-11-02" "PROJ-8464-N7b-second-2026-11-02"
 check "8464d two arms of one worker lineage (same N) started together both launch" \
-  "$(run_pair "$tp3" "HIMMEL-8464-N7-first-2026-11-02" "HIMMEL-8464-N7b-second-2026-11-02")" "0 0 |2"
+  "$(run_pair "$tp3" "PROJ-8464-N7-first-2026-11-02" "PROJ-8464-N7b-second-2026-11-02")" "0 0 |2"
 # a stale ticket claim (a crashed arm's) is reclaimed; a fresh one held by another lineage refuses
-tp4="$tmp/tp4"; mk_pair "$tp4" "HIMMEL-8464-N1-first-2026-11-02" "HIMMEL-8464-N2-second-2026-11-02"
-mkdir -p "$tp4/locks/ticket-HIMMEL-8464.lock"; echo 1 > "$tp4/locks/ticket-HIMMEL-8464.lock/acquired"; echo "HIMMEL-8464-N9-crashed-2026-11-02" > "$tp4/locks/ticket-HIMMEL-8464.lock/holder"
-run_headed_arm "$tp4" "$REPO" "HIMMEL-8464-N1-first-2026-11-02" "doc8464.md" "$tp4/signal-never" "$PAST" >/dev/null 2>&1; tprc4=$?
+tp4="$tmp/tp4"; mk_pair "$tp4" "PROJ-8464-N1-first-2026-11-02" "PROJ-8464-N2-second-2026-11-02"
+mkdir -p "$tp4/locks/ticket-PROJ-8464.lock"; echo 1 > "$tp4/locks/ticket-PROJ-8464.lock/acquired"; echo "PROJ-8464-N9-crashed-2026-11-02" > "$tp4/locks/ticket-PROJ-8464.lock/holder"
+run_headed_arm "$tp4" "$REPO" "PROJ-8464-N1-first-2026-11-02" "doc8464.md" "$tp4/signal-never" "$PAST" >/dev/null 2>&1; tprc4=$?
 check "8464e a stale ticket claim is reclaimed and the arm launches" "$tprc4" "0"
-tp5="$tmp/tp5"; mk_pair "$tp5" "HIMMEL-8464-N1-first-2026-11-02" "HIMMEL-8464-N2-second-2026-11-02"
-mkdir -p "$tp5/locks/ticket-HIMMEL-8464.lock"; date +%s > "$tp5/locks/ticket-HIMMEL-8464.lock/acquired"; echo "HIMMEL-8464-N9-live-2026-11-02" > "$tp5/locks/ticket-HIMMEL-8464.lock/holder"
-tpout="$(run_headed_arm "$tp5" "$REPO" "HIMMEL-8464-N1-first-2026-11-02" "doc8464.md" "$tp5/signal-never" "$PAST" 2>&1)"; tprc5=$?
+tp5="$tmp/tp5"; mk_pair "$tp5" "PROJ-8464-N1-first-2026-11-02" "PROJ-8464-N2-second-2026-11-02"
+mkdir -p "$tp5/locks/ticket-PROJ-8464.lock"; date +%s > "$tp5/locks/ticket-PROJ-8464.lock/acquired"; echo "PROJ-8464-N9-live-2026-11-02" > "$tp5/locks/ticket-PROJ-8464.lock/holder"
+tpout="$(run_headed_arm "$tp5" "$REPO" "PROJ-8464-N1-first-2026-11-02" "doc8464.md" "$tp5/signal-never" "$PAST" 2>&1)"; tprc5=$?
 check "8464f a fresh ticket claim held by another lineage refuses (exit 16)" "$tprc5" "16"
-contains "8464g the refusal names the holder" "$tpout" "HIMMEL-8464-N9-live-2026-11-02"
+contains "8464g the refusal names the holder" "$tpout" "PROJ-8464-N9-live-2026-11-02"
 check "8464h the refused arm launched no konsole" "$([ -e "$tp5/record" ] && echo launched || echo none)" "none"
 check "8464i the refused arm left no name claim behind" "$(compgen -G "$tp5/locks/*.lock" | grep -c .)" "1"
 # a fresh same-lineage claim that is never released: the arm waits out the visibility budget, then gives up (exit 6)
-tp6="$tmp/tp6"; mk_pair "$tp6" "HIMMEL-8464-N7-first-2026-11-02" "HIMMEL-8464-N7b-second-2026-11-02"
-mkdir -p "$tp6/locks/ticket-HIMMEL-8464.lock"; date +%s > "$tp6/locks/ticket-HIMMEL-8464.lock/acquired"; echo "HIMMEL-8464-N7-first-2026-11-02" > "$tp6/locks/ticket-HIMMEL-8464.lock/holder"
+tp6="$tmp/tp6"; mk_pair "$tp6" "PROJ-8464-N7-first-2026-11-02" "PROJ-8464-N7b-second-2026-11-02"
+mkdir -p "$tp6/locks/ticket-PROJ-8464.lock"; date +%s > "$tp6/locks/ticket-PROJ-8464.lock/acquired"; echo "PROJ-8464-N7-first-2026-11-02" > "$tp6/locks/ticket-PROJ-8464.lock/holder"
 tp6_t0=$(date +%s)
-run_headed_arm "$tp6" "$REPO" "HIMMEL-8464-N7b-second-2026-11-02" "doc8464.md" "$tp6/signal-never" "$PAST" >/dev/null 2>&1; tprc6=$?
+run_headed_arm "$tp6" "$REPO" "PROJ-8464-N7b-second-2026-11-02" "doc8464.md" "$tp6/signal-never" "$PAST" >/dev/null 2>&1; tprc6=$?
 tp6_t1=$(date +%s)
 check "8464j a same-lineage claim that is never released ends the arm with exit 6" "$tprc6" "6"
 check "8464k that arm launched no konsole" "$([ -e "$tp6/record" ] && echo launched || echo none)" "none"
-check "8464l that arm's own name claim is gone" "$(compgen -G "$tp6/locks/HIMMEL-8464-N7b-*.lock" | grep -c .)" "0"
-check "8464m the held ticket claim is untouched" "$(cat "$tp6/locks/ticket-HIMMEL-8464.lock/holder" 2>/dev/null)" "HIMMEL-8464-N7-first-2026-11-02"
+check "8464l that arm's own name claim is gone" "$(compgen -G "$tp6/locks/PROJ-8464-N7b-*.lock" | grep -c .)" "0"
+check "8464m the held ticket claim is untouched" "$(cat "$tp6/locks/ticket-PROJ-8464.lock/holder" 2>/dev/null)" "PROJ-8464-N7-first-2026-11-02"
 # a macOS runner takes about four times a Linux one per launch; an unbounded wait runs for minutes, so 60s still tells them apart
 if [ "$(uname -s)" = Darwin ]; then tp6_bound=60; else tp6_bound=20; fi
 check "8464n the wait is bounded (under ${tp6_bound}s)" "$([ $((tp6_t1 - tp6_t0)) -lt "$tp6_bound" ] && echo yes || echo "no:$((tp6_t1 - tp6_t0))s")" "yes"
 # the ticket claim is released once the session is visible, not held through the slow bus bind
-tp7="$tmp/tp7"; mk_pair "$tp7" "HIMMEL-8464-N1-first-2026-11-02" "HIMMEL-8464-N2-second-2026-11-02"
+tp7="$tmp/tp7"; mk_pair "$tp7" "PROJ-8464-N1-first-2026-11-02" "PROJ-8464-N2-second-2026-11-02"
 cat > "$tp7/bus" <<'BUS_EOF'
 #!/usr/bin/env bash
 : > "$(dirname "$0")/bind-started"
@@ -2791,7 +2791,7 @@ exec sleep 30
 BUS_EOF
 chmod 755 "$tp7/bus"
 HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI="$tp7/bus" HEADED_ARM_BUS_BIND_SECS=3 \
-  run_headed_arm "$tp7" "$REPO" "HIMMEL-8464-N1-first-2026-11-02" "doc8464.md" "$tp7/signal-never" "$PAST" >/dev/null 2>&1 &
+  run_headed_arm "$tp7" "$REPO" "PROJ-8464-N1-first-2026-11-02" "doc8464.md" "$tp7/signal-never" "$PAST" >/dev/null 2>&1 &
 tp7_pid=$!
 tp7_n=0
 while [ ! -e "$tp7/bind-started" ] && [ "$tp7_n" -lt 100 ]; do sleep 0.05; tp7_n=$((tp7_n+1)); done
@@ -2800,9 +2800,9 @@ tp7_alive="$(kill -0 "$tp7_pid" 2>/dev/null && echo yes || echo no)"
 tp7_started="$([ -e "$tp7/bind-started" ] && echo yes || echo no)"
 check "8464o the ticket claim is gone while the bus bind still runs" "$tp7_held|$tp7_alive|$tp7_started" "0|yes|yes"
 # a successor takes the ticket after the release: the first arm's exit must not delete the successor's claim
-mkdir -p "$tp7/locks/ticket-HIMMEL-8464.lock"; date +%s > "$tp7/locks/ticket-HIMMEL-8464.lock/acquired"; echo "HIMMEL-8464-N2-second-2026-11-02" > "$tp7/locks/ticket-HIMMEL-8464.lock/holder"
+mkdir -p "$tp7/locks/ticket-PROJ-8464.lock"; date +%s > "$tp7/locks/ticket-PROJ-8464.lock/acquired"; echo "PROJ-8464-N2-second-2026-11-02" > "$tp7/locks/ticket-PROJ-8464.lock/holder"
 wait "$tp7_pid" 2>/dev/null; pkill -f "$tp7/bus" 2>/dev/null || true
-check "8464q the first arm's exit leaves a successor's ticket claim alone" "$(cat "$tp7/locks/ticket-HIMMEL-8464.lock/holder" 2>/dev/null)" "HIMMEL-8464-N2-second-2026-11-02"
+check "8464q the first arm's exit leaves a successor's ticket claim alone" "$(cat "$tp7/locks/ticket-PROJ-8464.lock/holder" 2>/dev/null)" "PROJ-8464-N2-second-2026-11-02"
 
 # --- single-writer barrier: a launch seeds its exact file holds and refuses an overlap ------------------------------------
 # A worker launch carries HIMMEL_HOLD_KEY/_DOC/_LABEL (headed-arm-worker.sh sets them); headed-arm.sh seeds past the
@@ -2820,137 +2820,137 @@ hlaunch() {
 }
 
 # an overlap is refused: exit 2, the holder and the runnable grant line named, no row of this seed, both claims gone
-HA="$(hdoc HIMMEL-9501-N1-a.md '# a')"
-hp claim --key HIMMEL-9501 --label N1 --doc "$HA" --repo "$REPO" scripts/h1.sh >/dev/null 2>&1
+HA="$(hdoc PROJ-9501-N1-a.md '# a')"
+hp claim --key PROJ-9501 --label N1 --doc "$HA" --repo "$REPO" scripts/h1.sh >/dev/null 2>&1
 h1_before="$(cat "$(hrow scripts/h1.sh)")"
-HB="$(hdoc HIMMEL-9502-N2-b.md '# b' '> **Writes:** scripts/h0.sh scripts/h1.sh')"
-dh1="$tmp/h1"; mk_stub "$dh1" 1 alive "HIMMEL-9502-N2-b"
-h1out="$(hlaunch "$dh1" HIMMEL-9502-N2-b "$HB" N2 2>&1)"; h1rc=$?
+HB="$(hdoc PROJ-9502-N2-b.md '# b' '> **Writes:** scripts/h0.sh scripts/h1.sh')"
+dh1="$tmp/h1"; mk_stub "$dh1" 1 alive "PROJ-9502-N2-b"
+h1out="$(hlaunch "$dh1" PROJ-9502-N2-b "$HB" N2 2>&1)"; h1rc=$?
 check "8725a an overlapping launch is refused (exit 2)" "$h1rc" "2"
-contains "8725b the refusal names the holder" "$h1out" "HIMMEL-9501"
+contains "8725b the refusal names the holder" "$h1out" "PROJ-9501"
 contains "8725c the refusal prints the runnable grant line" "$h1out" "python3 -I "
-contains "8725d ... for the refused key and file" "$h1out" "holds.py grant --key HIMMEL-9502 --repo $REPO scripts/h1.sh"
+contains "8725d ... for the refused key and file" "$h1out" "holds.py grant --key PROJ-9502 --repo $REPO scripts/h1.sh"
 check "8725e the refused launch started no konsole" "$([ -e "$dh1/record" ] && echo launched || echo none)" "none"
 check "8725f the refused seed made no row on an earlier file" "$([ -e "$(hrow scripts/h0.sh)" ] && echo row || echo none)" "none"
 check "8725g the holder's row is byte-identical" "$(cat "$(hrow scripts/h1.sh)")" "$h1_before"
 check "8725h the name lock and the ticket lock are both gone" "$(compgen -G "$dh1/locks/*" | grep -c .)" "0"
 # the chief reads neither stderr nor the exit code (a generated launcher keeps stderr in launch.out, a hand launch discards it): the log and a BLOCKED bullet on the brief carry the refusal
-HB2="$(hdoc HIMMEL-9509-N1-b2.md '# b2' '> **Writes:** scripts/h1.sh' '## Results (newest at the bottom)')"
-dh1b="$tmp/h1b"; mk_stub "$dh1b" 1 alive "HIMMEL-9509-N1-b2"
-hlaunch "$dh1b" HIMMEL-9509-N1-b2 "$HB2" N1 >/dev/null 2>&1; h1brc=$?
+HB2="$(hdoc PROJ-9509-N1-b2.md '# b2' '> **Writes:** scripts/h1.sh' '## Results (newest at the bottom)')"
+dh1b="$tmp/h1b"; mk_stub "$dh1b" 1 alive "PROJ-9509-N1-b2"
+hlaunch "$dh1b" PROJ-9509-N1-b2 "$HB2" N1 >/dev/null 2>&1; h1brc=$?
 check "8725h2 a refused launch with both streams discarded exits 2" "$h1brc" "2"
-contains "8725h3 ... the log names the holder" "$(cat "$dh1b/log")" "holds: scripts/h1.sh is held by HIMMEL-9501"
-contains "8725h4 ... and carries the runnable grant line" "$(cat "$dh1b/log")" "holds.py grant --key HIMMEL-9509 --repo $REPO scripts/h1.sh"
-contains "8725h5 ... the brief gets a BLOCKED bullet naming the holder" "$(tail -n 1 "$HB2")" "BLOCKED launch of HIMMEL-9509-N1-b2 refused, not armed: holds: scripts/h1.sh is held by HIMMEL-9501"
-contains "8725h6 ... and the grant line" "$(tail -n 1 "$HB2")" "holds.py grant --key HIMMEL-9509 --repo $REPO scripts/h1.sh"
+contains "8725h3 ... the log names the holder" "$(cat "$dh1b/log")" "holds: scripts/h1.sh is held by PROJ-9501"
+contains "8725h4 ... and carries the runnable grant line" "$(cat "$dh1b/log")" "holds.py grant --key PROJ-9509 --repo $REPO scripts/h1.sh"
+contains "8725h5 ... the brief gets a BLOCKED bullet naming the holder" "$(tail -n 1 "$HB2")" "BLOCKED launch of PROJ-9509-N1-b2 refused, not armed: holds: scripts/h1.sh is held by PROJ-9501"
+contains "8725h6 ... and the grant line" "$(tail -n 1 "$HB2")" "holds.py grant --key PROJ-9509 --repo $REPO scripts/h1.sh"
 
 # the printed grant command is runnable as typed, so a repo path with a space or a metacharacter is shell-quoted (printf %q)
 RSP="$tmp/repo with space"; mkdir -p "$RSP"
-HA3="$(hdoc HIMMEL-9510-N1-a3.md '# a3')"
-hp claim --key HIMMEL-9510 --label N1 --doc "$HA3" --repo "$RSP" scripts/h1.sh >/dev/null 2>&1
-HB3="$(hdoc HIMMEL-9511-N1-b3.md '# b3' '> **Writes:** scripts/h1.sh' '## Results (newest at the bottom)')"
-dh1c="$tmp/h1c"; mk_stub "$dh1c" 1 alive "HIMMEL-9511-N1-b3"
-h1cout="$(hlaunch "$dh1c" HIMMEL-9511-N1-b3 "$HB3" N1 "$RSP" 2>&1)"
-contains "grant-quote the printed grant command quotes a repo path with a space" "$h1cout" "holds.py grant --key HIMMEL-9511 --repo $(printf '%q' "$RSP") scripts/h1.sh"
+HA3="$(hdoc PROJ-9510-N1-a3.md '# a3')"
+hp claim --key PROJ-9510 --label N1 --doc "$HA3" --repo "$RSP" scripts/h1.sh >/dev/null 2>&1
+HB3="$(hdoc PROJ-9511-N1-b3.md '# b3' '> **Writes:** scripts/h1.sh' '## Results (newest at the bottom)')"
+dh1c="$tmp/h1c"; mk_stub "$dh1c" 1 alive "PROJ-9511-N1-b3"
+h1cout="$(hlaunch "$dh1c" PROJ-9511-N1-b3 "$HB3" N1 "$RSP" 2>&1)"
+contains "grant-quote the printed grant command quotes a repo path with a space" "$h1cout" "holds.py grant --key PROJ-9511 --repo $(printf '%q' "$RSP") scripts/h1.sh"
 
 # the grant line follows holds.py grant-route: a trust path names the chief's --chief-doc, a settings path the operator's terminal
-hp claim --key HIMMEL-9513 --label N1 --doc "$(hdoc HIMMEL-9513-N1-t.md '# t')" --repo "$REPO" scripts/check-ci.sh .claude/settings.json >/dev/null 2>&1
-HT="$(hdoc HIMMEL-9514-N1-t2.md '# t2' '> **Writes:** scripts/check-ci.sh' '## Results (newest at the bottom)')"
-dht="$tmp/ht"; mk_stub "$dht" 1 alive "HIMMEL-9514-N1-t2"
-htout="$(HIMMEL_CONSOLE_DOC="$HH/u/r/chief.md" hlaunch "$dht" HIMMEL-9514-N1-t2 "$HT" N1 2>&1)"
-contains "route-a a held trust path: the chief stamps it with its own doc" "$htout" "holds.py grant --key HIMMEL-9514 --repo $REPO --chief-doc $HH/u/r/chief.md scripts/check-ci.sh"
+hp claim --key PROJ-9513 --label N1 --doc "$(hdoc PROJ-9513-N1-t.md '# t')" --repo "$REPO" scripts/check-ci.sh .claude/settings.json >/dev/null 2>&1
+HT="$(hdoc PROJ-9514-N1-t2.md '# t2' '> **Writes:** scripts/check-ci.sh' '## Results (newest at the bottom)')"
+dht="$tmp/ht"; mk_stub "$dht" 1 alive "PROJ-9514-N1-t2"
+htout="$(HIMMEL_CONSOLE_DOC="$HH/u/r/chief.md" hlaunch "$dht" PROJ-9514-N1-t2 "$HT" N1 2>&1)"
+contains "route-a a held trust path: the chief stamps it with its own doc" "$htout" "holds.py grant --key PROJ-9514 --repo $REPO --chief-doc $HH/u/r/chief.md scripts/check-ci.sh"
 contains "route-b ... and a ! line is no operator terminal" "$htout" "not a ! line in a Claude window"
-HS="$(hdoc HIMMEL-9515-N1-s.md '# s' '> **Writes:** .claude/settings.json' '## Results (newest at the bottom)')"
-dhs="$tmp/hs"; mk_stub "$dhs" 1 alive "HIMMEL-9515-N1-s"
-hsout="$(hlaunch "$dhs" HIMMEL-9515-N1-s "$HS" N1 2>&1)"
+HS="$(hdoc PROJ-9515-N1-s.md '# s' '> **Writes:** .claude/settings.json' '## Results (newest at the bottom)')"
+dhs="$tmp/hs"; mk_stub "$dhs" 1 alive "PROJ-9515-N1-s"
+hsout="$(hlaunch "$dhs" PROJ-9515-N1-s "$HS" N1 2>&1)"
 contains "route-c a held settings path: only the operator grants it" "$hsout" "only the operator grants it, in a real terminal"
 check "route-d ... and no --chief-doc is offered" "$(printf '%s' "$hsout" | grep -c -e '--chief-doc')" "0"
 
 # WRITE_HOLD_OK is the operator's bypass; a worker's own launch (HIMMEL_CONSOLE_LEG set) must not carry it on
-W4DOC="$(hdoc HIMMEL-9512-N1-w4.md '# w4')"
+W4DOC="$(hdoc PROJ-9512-N1-w4.md '# w4')"
 mkdir -p "$tmp/w4-jira"
 printf '%s\n' "const a = process.argv.slice(2);" "if (a[0] === 'release' && a[1] === 'bucket-check') for (const k of a.slice(a.indexOf('--mirror') + 2)) console.log('IN ' + k + ' current=v1.1.3 via=mirror');" "else process.exit(2);" > "$tmp/w4-jira/index.js"
 export BRIEF_LINT_JIRA_CLI="$tmp/w4-jira/index.js"
-w4_lead="$(HIMMEL_CONSOLE_LEG='' WRITE_HOLD_OK=1 bash "$HERE/chief-kit/headed-arm-worker.sh" --dry-run --no-profile --no-prior-art-check HIMMEL-9512-N1-w4 "$W4DOC" /tmp/nosig 99999999999 "$tmp/w4.log" claude-sonnet-5 2>&1)"
+w4_lead="$(HIMMEL_CONSOLE_LEG='' WRITE_HOLD_OK=1 bash "$HERE/chief-kit/headed-arm-worker.sh" --dry-run --no-profile --no-prior-art-check PROJ-9512-N1-w4 "$W4DOC" /tmp/nosig 99999999999 "$tmp/w4.log" claude-sonnet-5 2>&1)"
 # HIMMEL_CONSOLE_LEG is a Claude Code marker: on an anchor checkout with no claude ancestor (CI) the seam guard refuses it beside a set seam, and the suite exports UNGUARDED_LAUNCH_OK; the real repo is a guarded folder, so the seam is dropped for this one launch
-w4_leg="$(unset UNGUARDED_LAUNCH_OK; HIMMEL_CONSOLE_LEG=1 WRITE_HOLD_OK=1 bash "$HERE/chief-kit/headed-arm-worker.sh" --dry-run --no-profile --no-prior-art-check HIMMEL-9512-N1-w4 "$W4DOC" /tmp/nosig 99999999999 "$tmp/w4.log" claude-sonnet-5 2>&1)"
+w4_leg="$(unset UNGUARDED_LAUNCH_OK; HIMMEL_CONSOLE_LEG=1 WRITE_HOLD_OK=1 bash "$HERE/chief-kit/headed-arm-worker.sh" --dry-run --no-profile --no-prior-art-check PROJ-9512-N1-w4 "$W4DOC" /tmp/nosig 99999999999 "$tmp/w4.log" claude-sonnet-5 2>&1)"
 unset BRIEF_LINT_JIRA_CLI
 contains "scrub-a control: WRITE_HOLD_OK=1 from a non-worker launching shell reaches the worker" "$w4_lead" "WRITE_HOLD_OK=1"
 case "$w4_leg" in *"WRITE_HOLD_OK=<unset>"*) ;; *) printf 'scrub-b worker output:\n%s\n' "$w4_leg" | cut -c1-400 | head -n 12 >&2 ;; esac
 contains "scrub-b WRITE_HOLD_OK=1 inherited by a worker's own launch (HIMMEL_CONSOLE_LEG set) is dropped" "$w4_leg" "WRITE_HOLD_OK=<unset>"
 
 # a grant, then the same launch passes
-hp grant --key HIMMEL-9502 --repo "$REPO" scripts/h1.sh >/dev/null 2>&1
-dh2="$tmp/h2"; mk_stub "$dh2" 1 alive "HIMMEL-9502-N2-b"
-hlaunch "$dh2" HIMMEL-9502-N2-b "$HB" N2 >/dev/null 2>&1; h2rc=$?
+hp grant --key PROJ-9502 --repo "$REPO" scripts/h1.sh >/dev/null 2>&1
+dh2="$tmp/h2"; mk_stub "$dh2" 1 alive "PROJ-9502-N2-b"
+hlaunch "$dh2" PROJ-9502-N2-b "$HB" N2 >/dev/null 2>&1; h2rc=$?
 check "8725i a launch naming a file granted to its key launches" "$h2rc" "0"
 
 # a disjoint launch seeds its rows; a tree in Writes is no row
-HC="$(hdoc HIMMEL-9503-N1-c.md '> **Writes:** scripts/h2a.sh scripts/lib/')"
-dh3="$tmp/h3"; mk_stub "$dh3" 1 alive "HIMMEL-9503-N1-c"
-hlaunch "$dh3" HIMMEL-9503-N1-c "$HC" N1 >/dev/null 2>&1; h3rc=$?
+HC="$(hdoc PROJ-9503-N1-c.md '> **Writes:** scripts/h2a.sh scripts/lib/')"
+dh3="$tmp/h3"; mk_stub "$dh3" 1 alive "PROJ-9503-N1-c"
+hlaunch "$dh3" PROJ-9503-N1-c "$HC" N1 >/dev/null 2>&1; h3rc=$?
 check "8725j a disjoint launch launches" "$h3rc" "0"
-check "8725k ... its row has the key, label and doc" "$(cut -f1,2,3 "$(hrow scripts/h2a.sh)" | tr '\t' ' ')" "HIMMEL-9503 N1 $HC"
-check "8725l a tree in Writes makes no row" "$(grep -rlF HIMMEL-9503 "$HOME/.himmel/state/holds" 2>/dev/null | wc -l | tr -d ' ')" "1"
+check "8725k ... its row has the key, label and doc" "$(cut -f1,2,3 "$(hrow scripts/h2a.sh)" | tr '\t' ' ')" "PROJ-9503 N1 $HC"
+check "8725l a tree in Writes makes no row" "$(grep -rlF PROJ-9503 "$HOME/.himmel/state/holds" 2>/dev/null | wc -l | tr -d ' ')" "1"
 
 # an absolute bucket path is a row under _abs, and a second brief on it is refused
-HD="$(hdoc HIMMEL-9504-N1-d.md "> **Writes:** $HH/u/r/HIMMEL-9504-shared.md")"
-dh4="$tmp/h4"; mk_stub "$dh4" 1 alive "HIMMEL-9504-N1-d"
-hlaunch "$dh4" HIMMEL-9504-N1-d "$HD" N1 >/dev/null 2>&1
+HD="$(hdoc PROJ-9504-N1-d.md "> **Writes:** $HH/u/r/PROJ-9504-shared.md")"
+dh4="$tmp/h4"; mk_stub "$dh4" 1 alive "PROJ-9504-N1-d"
+hlaunch "$dh4" PROJ-9504-N1-d "$HD" N1 >/dev/null 2>&1
 check "8725m an absolute bucket path is a row under _abs" "$(find "$HOME/.himmel/state/holds/_abs" -type f 2>/dev/null | grep -c .)" "1"
-HE="$(hdoc HIMMEL-9505-N1-e.md "> **Writes:** $HH/u/r/HIMMEL-9504-shared.md" '## Results (newest at the bottom)')"
-dh5="$tmp/h5"; mk_stub "$dh5" 1 alive "HIMMEL-9505-N1-e"
-h5out="$(hlaunch "$dh5" HIMMEL-9505-N1-e "$HE" N1 2>&1)"; h5rc=$?
+HE="$(hdoc PROJ-9505-N1-e.md "> **Writes:** $HH/u/r/PROJ-9504-shared.md" '## Results (newest at the bottom)')"
+dh5="$tmp/h5"; mk_stub "$dh5" 1 alive "PROJ-9505-N1-e"
+h5out="$(hlaunch "$dh5" PROJ-9505-N1-e "$HE" N1 2>&1)"; h5rc=$?
 check "8725n a second brief on that bucket file is refused (exit 2)" "$h5rc" "2"
 contains "8725n2 ... the refusal says no grant exists for a path outside the repo" "$h5out" "no grant exists for a path outside the repo"
 check "8725n3 ... and prints no grant line that holds.py would refuse" "$(printf '%s' "$h5out" | grep -c 'holds.py grant')" "0"
 contains "8725n4 ... the brief's BLOCKED bullet says the same" "$(tail -n 1 "$HE")" "no grant exists for a path outside the repo"
 
 # the two earlier refusals come first: a ticket rival (exit 16) and a live duplicate name seed nothing
-HF="$(hdoc HIMMEL-9506-N2-f.md '> **Writes:** scripts/h6.sh')"
-dh6="$tmp/h6"; mk_pair "$dh6" "HIMMEL-9506-N1-first-2026-11-02" "HIMMEL-9506-N2-f"
-mkdir -p "$dh6/locks/ticket-HIMMEL-9506.lock"; date +%s > "$dh6/locks/ticket-HIMMEL-9506.lock/acquired"; echo "HIMMEL-9506-N1-first-2026-11-02" > "$dh6/locks/ticket-HIMMEL-9506.lock/holder"
-hlaunch "$dh6" HIMMEL-9506-N2-f "$HF" N2 >/dev/null 2>&1; h6rc=$?
+HF="$(hdoc PROJ-9506-N2-f.md '> **Writes:** scripts/h6.sh')"
+dh6="$tmp/h6"; mk_pair "$dh6" "PROJ-9506-N1-first-2026-11-02" "PROJ-9506-N2-f"
+mkdir -p "$dh6/locks/ticket-PROJ-9506.lock"; date +%s > "$dh6/locks/ticket-PROJ-9506.lock/acquired"; echo "PROJ-9506-N1-first-2026-11-02" > "$dh6/locks/ticket-PROJ-9506.lock/holder"
+hlaunch "$dh6" PROJ-9506-N2-f "$HF" N2 >/dev/null 2>&1; h6rc=$?
 check "8725o a ticket-rival refusal (exit 16) seeds nothing" "$h6rc|$([ -e "$(hrow scripts/h6.sh)" ] && echo row || echo none)" "16|none"
-HG="$(hdoc HIMMEL-9507-N1-g.md '> **Writes:** scripts/h7.sh')"
-dh7="$tmp/h7"; mk_stub "$dh7" 0 alive "HIMMEL-9507-N1-g"
-hlaunch "$dh7" HIMMEL-9507-N1-g "$HG" N1 >/dev/null 2>&1; h7rc=$?
+HG="$(hdoc PROJ-9507-N1-g.md '> **Writes:** scripts/h7.sh')"
+dh7="$tmp/h7"; mk_stub "$dh7" 0 alive "PROJ-9507-N1-g"
+hlaunch "$dh7" PROJ-9507-N1-g "$HG" N1 >/dev/null 2>&1; h7rc=$?
 check "8725p a live duplicate name (exit 0, no launch) seeds nothing" "$h7rc|$([ -e "$(hrow scripts/h7.sh)" ] && echo row || echo none)" "0|none"
 
 # a doc naming two tickets: the first key holds, and its own RESUME doc is not its own rival
-HM="$(hdoc HIMMEL-9540-HIMMEL-9541-N1-multi.md '> **Writes:** scripts/h40.sh')"
-dhm1="$tmp/hm1"; mk_stub "$dhm1" 1 alive "HIMMEL-9540-HIMMEL-9541-N1-multi"
-hlaunch "$dhm1" HIMMEL-9540-HIMMEL-9541-N1-multi "$HM" N1 >/dev/null 2>&1; hm1rc=$?
-check "8725v2 a two-key doc launches and its row is keyed by the first key" "$hm1rc|$(cut -f1 "$(hrow scripts/h40.sh)")" "0|HIMMEL-9540"
-HMR="$(hdoc HIMMEL-9540-HIMMEL-9541-N1b-multi-RESUME.md '# resume, no Writes line')"
-dhm2="$tmp/hm2"; mk_stub "$dhm2" 1 alive "HIMMEL-9540-HIMMEL-9541-N1b-multi"
-hlaunch "$dhm2" HIMMEL-9540-HIMMEL-9541-N1b-multi "$HMR" N1b >/dev/null 2>&1; hm2rc=$?
-check "8725v3 ... its RESUME launch is not refused by its own row, which moves to the new doc" "$hm2rc|$(cut -f1,2 "$(hrow scripts/h40.sh)" | tr '\t' ' ')" "0|HIMMEL-9540 N1b"
+HM="$(hdoc PROJ-9540-PROJ-9541-N1-multi.md '> **Writes:** scripts/h40.sh')"
+dhm1="$tmp/hm1"; mk_stub "$dhm1" 1 alive "PROJ-9540-PROJ-9541-N1-multi"
+hlaunch "$dhm1" PROJ-9540-PROJ-9541-N1-multi "$HM" N1 >/dev/null 2>&1; hm1rc=$?
+check "8725v2 a two-key doc launches and its row is keyed by the first key" "$hm1rc|$(cut -f1 "$(hrow scripts/h40.sh)")" "0|PROJ-9540"
+HMR="$(hdoc PROJ-9540-PROJ-9541-N1b-multi-RESUME.md '# resume, no Writes line')"
+dhm2="$tmp/hm2"; mk_stub "$dhm2" 1 alive "PROJ-9540-PROJ-9541-N1b-multi"
+hlaunch "$dhm2" PROJ-9540-PROJ-9541-N1b-multi "$HMR" N1b >/dev/null 2>&1; hm2rc=$?
+check "8725v3 ... its RESUME launch is not refused by its own row, which moves to the new doc" "$hm2rc|$(cut -f1,2 "$(hrow scripts/h40.sh)" | tr '\t' ' ')" "0|PROJ-9540 N1b"
 
 # no HIMMEL_HOLD_KEY: no seed
-HH2="$(hdoc HIMMEL-9508-N1-h.md '> **Writes:** scripts/h8.sh')"
-dh8="$tmp/h8"; mk_stub "$dh8" 1 alive "HIMMEL-9508-N1-h"
-HANDOVER_DIR="$HH" run_headed_arm "$dh8" "$REPO" HIMMEL-9508-N1-h "$HH2" "$dh8/signal-never" "$PAST" >/dev/null 2>&1; h8rc=$?
+HH2="$(hdoc PROJ-9508-N1-h.md '> **Writes:** scripts/h8.sh')"
+dh8="$tmp/h8"; mk_stub "$dh8" 1 alive "PROJ-9508-N1-h"
+HANDOVER_DIR="$HH" run_headed_arm "$dh8" "$REPO" PROJ-9508-N1-h "$HH2" "$dh8/signal-never" "$PAST" >/dev/null 2>&1; h8rc=$?
 check "8725q no HIMMEL_HOLD_KEY: launches, no row" "$h8rc|$([ -e "$(hrow scripts/h8.sh)" ] && echo row || echo none)" "0|none"
 
 # a RESUME doc with no Writes line re-points its key's rows (I3); read shows the new label
-HP1="$(hdoc HIMMEL-9510-N1-pred.md '> **Writes:** scripts/h10.sh')"
-hp seed --key HIMMEL-9510 --label N1 --doc "$HP1" --repo "$REPO" >/dev/null 2>&1
-HR="$(hdoc HIMMEL-9510-N1b-pred-RESUME.md '# resume, no Writes line')"
-dh9="$tmp/h9"; mk_stub "$dh9" 1 alive "HIMMEL-9510-N1b-pred"
-hlaunch "$dh9" HIMMEL-9510-N1b-pred "$HR" N1b >/dev/null 2>&1; h9rc=$?
+HP1="$(hdoc PROJ-9510-N1-pred.md '> **Writes:** scripts/h10.sh')"
+hp seed --key PROJ-9510 --label N1 --doc "$HP1" --repo "$REPO" >/dev/null 2>&1
+HR="$(hdoc PROJ-9510-N1b-pred-RESUME.md '# resume, no Writes line')"
+dh9="$tmp/h9"; mk_stub "$dh9" 1 alive "PROJ-9510-N1b-pred"
+hlaunch "$dh9" PROJ-9510-N1b-pred "$HR" N1b >/dev/null 2>&1; h9rc=$?
 check "8725r a RESUME launch with rows re-points them to the new doc and label" "$h9rc|$(cut -f2,3 "$(hrow scripts/h10.sh)" | tr '\t' ' ')" "0|N1b $HR"
 contains "8725s holds.py read shows the new label" "$(hp read --repo "$REPO")" "N1b"
 # no rows: the newest doc of the key that carries a Writes line seeds
-hdoc HIMMEL-9511-N1-pred.md '> **Writes:** scripts/h11.sh' >/dev/null
-HR2="$(hdoc HIMMEL-9511-N1b-pred-RESUME.md '# resume, no Writes line')"
-dh10="$tmp/h10"; mk_stub "$dh10" 1 alive "HIMMEL-9511-N1b-pred"
-hlaunch "$dh10" HIMMEL-9511-N1b-pred "$HR2" N1b >/dev/null 2>&1
-check "8725t a RESUME launch with no rows seeds from the predecessor's Writes, under the new doc" "$(cut -f1,2,3 "$(hrow scripts/h11.sh)" | tr '\t' ' ')" "HIMMEL-9511 N1b $HR2"
-HR3="$(hdoc HIMMEL-9512-N1b-none-RESUME.md '# resume, no Writes anywhere')"
-dh11="$tmp/h11"; mk_stub "$dh11" 1 alive "HIMMEL-9512-N1b-none"
-hlaunch "$dh11" HIMMEL-9512-N1b-none "$HR3" N1b >/dev/null 2>&1; h11rc=$?
-check "8725u no Writes anywhere: launches, no row" "$h11rc|$(grep -rlF HIMMEL-9512 "$HOME/.himmel/state/holds" 2>/dev/null | wc -l | tr -d ' ')" "0|0"
+hdoc PROJ-9511-N1-pred.md '> **Writes:** scripts/h11.sh' >/dev/null
+HR2="$(hdoc PROJ-9511-N1b-pred-RESUME.md '# resume, no Writes line')"
+dh10="$tmp/h10"; mk_stub "$dh10" 1 alive "PROJ-9511-N1b-pred"
+hlaunch "$dh10" PROJ-9511-N1b-pred "$HR2" N1b >/dev/null 2>&1
+check "8725t a RESUME launch with no rows seeds from the predecessor's Writes, under the new doc" "$(cut -f1,2,3 "$(hrow scripts/h11.sh)" | tr '\t' ' ')" "PROJ-9511 N1b $HR2"
+HR3="$(hdoc PROJ-9512-N1b-none-RESUME.md '# resume, no Writes anywhere')"
+dh11="$tmp/h11"; mk_stub "$dh11" 1 alive "PROJ-9512-N1b-none"
+hlaunch "$dh11" PROJ-9512-N1b-none "$HR3" N1b >/dev/null 2>&1; h11rc=$?
+check "8725u no Writes anywhere: launches, no row" "$h11rc|$(grep -rlF PROJ-9512 "$HOME/.himmel/state/holds" 2>/dev/null | wc -l | tr -d ' ')" "0|0"
 # rows taken over while the successor was parked past 24 hours: the RESUME launch is refused, naming the new holder
 # age_by <seconds> <file>... backdates mtimes. GNU touch takes a relative -d; BSD touch (macOS) refuses it, so fall back to
 # BSD date -v feeding touch -t.
@@ -2959,55 +2959,55 @@ age_by() {
   touch -d "$s seconds ago" "$@" 2>/dev/null && return 0  # gnu-ok: the BSD form follows
   touch -t "$(date -v-"$s"S +%Y%m%d%H%M.%S)" "$@"
 }
-HP3="$(hdoc HIMMEL-9513-N1-pred.md '> **Writes:** scripts/h13.sh')"
-hp seed --key HIMMEL-9513 --label N1 --doc "$HP3" --repo "$REPO" >/dev/null 2>&1
+HP3="$(hdoc PROJ-9513-N1-pred.md '> **Writes:** scripts/h13.sh')"
+hp seed --key PROJ-9513 --label N1 --doc "$HP3" --repo "$REPO" >/dev/null 2>&1
 age_by 259200 "$HP3" "$(hrow scripts/h13.sh)"
-HR4="$(hdoc HIMMEL-9513-N1b-pred-RESUME.md '> **Writes:** scripts/h13.sh')"
+HR4="$(hdoc PROJ-9513-N1b-pred-RESUME.md '> **Writes:** scripts/h13.sh')"
 age_by 259200 "$HR4"
-HT="$(hdoc HIMMEL-9514-N1-thief.md '# thief')"
-hp claim --key HIMMEL-9514 --label N1 --doc "$HT" --repo "$REPO" scripts/h13.sh >/dev/null 2>&1
-dh12="$tmp/h12"; mk_stub "$dh12" 1 alive "HIMMEL-9513-N1b-pred"
-h12out="$(hlaunch "$dh12" HIMMEL-9513-N1b-pred "$HR4" N1b 2>&1)"; h12rc=$?
+HT="$(hdoc PROJ-9514-N1-thief.md '# thief')"
+hp claim --key PROJ-9514 --label N1 --doc "$HT" --repo "$REPO" scripts/h13.sh >/dev/null 2>&1
+dh12="$tmp/h12"; mk_stub "$dh12" 1 alive "PROJ-9513-N1b-pred"
+h12out="$(hlaunch "$dh12" PROJ-9513-N1b-pred "$HR4" N1b 2>&1)"; h12rc=$?
 check "8725v a RESUME launch whose rows were taken over is refused (exit 2)" "$h12rc" "2"
-contains "8725w ... naming the new holder" "$h12out" "HIMMEL-9514"
+contains "8725w ... naming the new holder" "$h12out" "PROJ-9514"
 # an aborted RESUME launch: the rows re-pointed before the abort stay alive on the key's RESUME clause
-HP4="$(hdoc HIMMEL-9520-N1-pred.md '> **Writes:** scripts/h20a.sh')"
-hp seed --key HIMMEL-9520 --label N1 --doc "$HP4" --repo "$REPO" >/dev/null 2>&1
-hp claim --key HIMMEL-9521 --label N1 --doc "$(hdoc HIMMEL-9521-N1-x.md '# x')" --repo "$REPO" scripts/h20b.sh >/dev/null 2>&1
-HR5="$(hdoc HIMMEL-9520-N1b-pred-RESUME.md '> **Writes:** scripts/h20b.sh')"
-dh13="$tmp/h13"; mk_stub "$dh13" 1 alive "HIMMEL-9520-N1b-pred"
-hlaunch "$dh13" HIMMEL-9520-N1b-pred "$HR5" N1b >/dev/null 2>&1; h13rc=$?
+HP4="$(hdoc PROJ-9520-N1-pred.md '> **Writes:** scripts/h20a.sh')"
+hp seed --key PROJ-9520 --label N1 --doc "$HP4" --repo "$REPO" >/dev/null 2>&1
+hp claim --key PROJ-9521 --label N1 --doc "$(hdoc PROJ-9521-N1-x.md '# x')" --repo "$REPO" scripts/h20b.sh >/dev/null 2>&1
+HR5="$(hdoc PROJ-9520-N1b-pred-RESUME.md '> **Writes:** scripts/h20b.sh')"
+dh13="$tmp/h13"; mk_stub "$dh13" 1 alive "PROJ-9520-N1b-pred"
+hlaunch "$dh13" PROJ-9520-N1b-pred "$HR5" N1b >/dev/null 2>&1; h13rc=$?
 age_by 7200 "$(hrow scripts/h20a.sh)"
 check "8725x an aborted RESUME launch (exit 2) leaves the re-pointed row on the RESUME doc" "$h13rc|$(cut -f3 "$(hrow scripts/h20a.sh)")" "2|$HR5"
 check "8725y ... and it reads alive past the grace on the RESUME clause" "$(hp alive --repo "$REPO" scripts/h20a.sh)" "alive"
 # a launch that fails after the seed keeps its rows, which read dead past the grace with no lock held
-HW="$(hdoc HIMMEL-9522-N1-w.md '> **Writes:** scripts/h22.sh')"
-dh14="$tmp/h14"; mk_stub "$dh14" 1 dying "HIMMEL-9522-N1-w"
-hlaunch "$dh14" HIMMEL-9522-N1-w "$HW" N1 >/dev/null 2>&1; h14rc=$?
+HW="$(hdoc PROJ-9522-N1-w.md '> **Writes:** scripts/h22.sh')"
+dh14="$tmp/h14"; mk_stub "$dh14" 1 dying "PROJ-9522-N1-w"
+hlaunch "$dh14" PROJ-9522-N1-w "$HW" N1 >/dev/null 2>&1; h14rc=$?
 age_by 7200 "$(hrow scripts/h22.sh)"
 check "8725z a launch that fails after the seed keeps its row, dead past the grace with no lock held" "$([ "$h14rc" -ne 0 ] && echo failed)|$(hp alive --repo "$REPO" scripts/h22.sh)" "failed|dead"
 
 # a seed fault warns and launches; a stub with no holds: line is a fault, with one it is a refusal; OFF still calls the seed
-HX="$(hdoc HIMMEL-9530-N1-x.md '> **Writes:** scripts/h30.sh')"
+HX="$(hdoc PROJ-9530-N1-x.md '> **Writes:** scripts/h30.sh')"
 printf 'import sys\nsys.exit(1)\n' > "$tmp/holds-stub-fault.py"
-printf 'import sys\nsys.stderr.write("holds: scripts/h30.sh is held by HIMMEL-1 (x, brief)\\n")\nsys.exit(1)\n' > "$tmp/holds-stub-refuse.py"
+printf 'import sys\nsys.stderr.write("holds: scripts/h30.sh is held by PROJ-1 (x, brief)\\n")\nsys.exit(1)\n' > "$tmp/holds-stub-refuse.py"
 printf 'open(%s, "w").write("called")\n' "'$tmp/holds-stub-called'" > "$tmp/holds-stub-mark.py"
-dh15="$tmp/h15"; mk_stub "$dh15" 1 alive "HIMMEL-9530-N1-x"
-h15out="$(HEADED_ARM_HOLDS_PY="$tmp/holds-stub-fault.py" hlaunch "$dh15" HIMMEL-9530-N1-x "$HX" N1 2>&1)"; h15rc=$?
+dh15="$tmp/h15"; mk_stub "$dh15" 1 alive "PROJ-9530-N1-x"
+h15out="$(HEADED_ARM_HOLDS_PY="$tmp/holds-stub-fault.py" hlaunch "$dh15" PROJ-9530-N1-x "$HX" N1 2>&1)"; h15rc=$?
 check "8725aa a holds.py exiting 1 with no holds: line (a crash) warns and launches" "$h15rc" "0"
 contains "8725ab ... and says so" "$h15out" "WARN holds seed"
-dh16="$tmp/h16"; mk_stub "$dh16" 1 alive "HIMMEL-9530-N1-x"
-HEADED_ARM_HOLDS_PY="$tmp/holds-stub-refuse.py" hlaunch "$dh16" HIMMEL-9530-N1-x "$HX" N1 >/dev/null 2>&1; h16rc=$?
+dh16="$tmp/h16"; mk_stub "$dh16" 1 alive "PROJ-9530-N1-x"
+HEADED_ARM_HOLDS_PY="$tmp/holds-stub-refuse.py" hlaunch "$dh16" PROJ-9530-N1-x "$HX" N1 >/dev/null 2>&1; h16rc=$?
 check "8725ac a holds.py exiting 1 with a holds: line refuses (exit 2)" "$h16rc" "2"
-dh17="$tmp/h17"; mk_stub "$dh17" 1 alive "HIMMEL-9530-N1-x"
-WRITE_HOLD_OK=1 HEADED_ARM_HOLDS_PY="$tmp/holds-stub-refuse.py" hlaunch "$dh17" HIMMEL-9530-N1-x "$HX" N1 >/dev/null 2>&1; h17rc=$?
+dh17="$tmp/h17"; mk_stub "$dh17" 1 alive "PROJ-9530-N1-x"
+WRITE_HOLD_OK=1 HEADED_ARM_HOLDS_PY="$tmp/holds-stub-refuse.py" hlaunch "$dh17" PROJ-9530-N1-x "$HX" N1 >/dev/null 2>&1; h17rc=$?
 check "8725ad WRITE_HOLD_OK=1: the same overlap warns and launches" "$h17rc" "0"
-dh17z="$tmp/h17z"; mk_stub "$dh17z" 1 alive "HIMMEL-9530-N1-x"
-WRITE_HOLD_OK=0 HEADED_ARM_HOLDS_PY="$tmp/holds-stub-refuse.py" hlaunch "$dh17z" HIMMEL-9530-N1-x "$HX" N1 >/dev/null 2>&1; h17zrc=$?
+dh17z="$tmp/h17z"; mk_stub "$dh17z" 1 alive "PROJ-9530-N1-x"
+WRITE_HOLD_OK=0 HEADED_ARM_HOLDS_PY="$tmp/holds-stub-refuse.py" hlaunch "$dh17z" PROJ-9530-N1-x "$HX" N1 >/dev/null 2>&1; h17zrc=$?
 check "8725ad2 WRITE_HOLD_OK=0 is not the bypass: the overlap still refuses (exit 2)" "$h17zrc" "2"
 mkdir -p "$HOME/.himmel/state/holds"; : > "$HOME/.himmel/state/holds/OFF"
-dh18="$tmp/h18"; mk_stub "$dh18" 1 alive "HIMMEL-9530-N1-x"
-HEADED_ARM_HOLDS_PY="$tmp/holds-stub-mark.py" hlaunch "$dh18" HIMMEL-9530-N1-x "$HX" N1 >/dev/null 2>&1; h18rc=$?
+dh18="$tmp/h18"; mk_stub "$dh18" 1 alive "PROJ-9530-N1-x"
+HEADED_ARM_HOLDS_PY="$tmp/holds-stub-mark.py" hlaunch "$dh18" PROJ-9530-N1-x "$HX" N1 >/dev/null 2>&1; h18rc=$?
 rm -f "$HOME/.himmel/state/holds/OFF"
 check "8725ae OFF present: the seed still runs (S8: it claims only bucket files)" "$h18rc|$([ -e "$tmp/holds-stub-called" ] && echo called || echo none)" "0|called"
 S8F="$HH/u/r/ZZS-9560-s8-shared.md"
@@ -3034,13 +3034,13 @@ check "S8f control, OFF absent: a brief naming a repo file another key holds is 
 # an unreadable register: the real seed exits 3, the launch goes ahead
 hrepo2="$tmp/hrepo2"; mkdir -p "$hrepo2" "$HOME/.himmel/state/holds"
 : > "$HOME/.himmel/state/holds/${hrepo2//\//%2F}"
-HY="$(hdoc HIMMEL-9531-N1-y.md '> **Writes:** scripts/h31.sh')"
-dh19="$tmp/h19"; mk_stub "$dh19" 1 alive "HIMMEL-9531-N1-y"
-h19out="$(hlaunch "$dh19" HIMMEL-9531-N1-y "$HY" N1 "$hrepo2" 2>&1)"; h19rc=$?
+HY="$(hdoc PROJ-9531-N1-y.md '> **Writes:** scripts/h31.sh')"
+dh19="$tmp/h19"; mk_stub "$dh19" 1 alive "PROJ-9531-N1-y"
+h19out="$(hlaunch "$dh19" PROJ-9531-N1-y "$HY" N1 "$hrepo2" 2>&1)"; h19rc=$?
 check "8725af an unreadable register: the seed exits 3, the launch goes ahead" "$h19rc" "0"
 contains "8725ag ... warned" "$h19out" "WARN holds seed"
 # a chief launch seeds nothing and the key is gone from the child it starts
-dh20="$tmp/h20"; mk_stub "$dh20" 1 alive "HIMMEL-9532-chief"
+dh20="$tmp/h20"; mk_stub "$dh20" 1 alive "PROJ-9532-chief"
 cat > "$dh20/konsole" <<KONSOLE_EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> "$dh20/record"
@@ -3049,9 +3049,9 @@ printf '%s\n' "\${HIMMEL_HOLD_KEY-unset}" > "$dh20/holdenv"
 sleep 5
 KONSOLE_EOF
 chmod 755 "$dh20/konsole"
-HZ="$(hdoc HIMMEL-9532-chief.md '> **Writes:** scripts/h32.sh')"
-HANDOVER_DIR="$HH" HIMMEL_HOLD_KEY=HIMMEL-9532 HIMMEL_HOLD_DOC="$HZ" HIMMEL_HOLD_LABEL=N1 KONSOLE_CMD="$dh20/konsole" PGREP_CMD="$dh20/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$dh20/locks" HEADED_ARM_PROC="$dh20/proc" \
-  bash "$SCRIPT" --role chief "HIMMEL-9532-chief" "$HZ" "$dh20/signal-never" "$PAST" "$dh20/log" >/dev/null 2>&1; h20rc=$?
+HZ="$(hdoc PROJ-9532-chief.md '> **Writes:** scripts/h32.sh')"
+HANDOVER_DIR="$HH" HIMMEL_HOLD_KEY=PROJ-9532 HIMMEL_HOLD_DOC="$HZ" HIMMEL_HOLD_LABEL=N1 KONSOLE_CMD="$dh20/konsole" PGREP_CMD="$dh20/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$dh20/locks" HEADED_ARM_PROC="$dh20/proc" \
+  bash "$SCRIPT" --role chief "PROJ-9532-chief" "$HZ" "$dh20/signal-never" "$PAST" "$dh20/log" >/dev/null 2>&1; h20rc=$?
 wait_record "$dh20" || true
 check "8725ah a chief launch seeds nothing and the child carries no key" "$h20rc|$([ -e "$(hrow scripts/h32.sh)" ] && echo row || echo none)|$(cat "$dh20/holdenv" 2>/dev/null)" "0|none|unset"
 
@@ -3068,8 +3068,8 @@ glaunch() { # <stubdir> <name> [VAR=val ...]: scratch folder, the suite opt-out 
   ( unset UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED; env "$@" KONSOLE_CMD="$d/konsole" PGREP_CMD="$d/pgrep" HEADED_ARM_REPO="${GREPO:-$GSCR}" \
       HEADED_ARM_LOCK_DIR="$d/locks" HEADED_ARM_PROC="$d/proc" bash "$SCRIPT" "$n" doc.md "$d/signal-never" "$PAST" "$d/log" ) 2>&1
 }
-dg1="$tmp/g1"; mk_stub "$dg1" 1 alive "HIMMEL-9026-g1"
-gout1="$(glaunch "$dg1" HIMMEL-9026-g1 X=1)"; grc1=$?
+dg1="$tmp/g1"; mk_stub "$dg1" 1 alive "PROJ-9026-g1"
+gout1="$(glaunch "$dg1" PROJ-9026-g1 X=1)"; grc1=$?
 settle
 check "guard_refuses_scratch: rc 18" "$grc1" "18"
 contains "guard_refuses_scratch: names the folder" "$gout1" "$GSCR does not load the himmel guard hooks (not a git work tree)"
@@ -3078,52 +3078,52 @@ check "guard_refuses_scratch: konsole never called, no lock dir" "$([ -e "$dg1/r
 
 dg2="$tmp/g2"; mk_stub "$dg2" 1 alive
 printf '#!/usr/bin/env bash\necho "$*" >> "%s/cli-record"\n' "$dg2" > "$dg2/claudecli"; chmod 755 "$dg2/claudecli"
-gout2="$(glaunch "$dg2" HIMMEL-9026-g2 HEADED_ARM_HEADLESS=1 WORKER_SESSION_PROFILE_SETTINGS=/dev/null HEADED_ARM_CLAUDE_CLI="$dg2/claudecli")"; grc2=$?
+gout2="$(glaunch "$dg2" PROJ-9026-g2 HEADED_ARM_HEADLESS=1 WORKER_SESSION_PROFILE_SETTINGS=/dev/null HEADED_ARM_CLAUDE_CLI="$dg2/claudecli")"; grc2=$?
 contains "guard_refuses_headless: refusal text" "$gout2" "does not load the himmel guard hooks"
 bg2=0; [ -e "$dg2/cli-record" ] && { bg2="$(grep -c -e "--bg" "$dg2/cli-record")"; true; }
 check "guard_refuses_headless: rc 18, no --bg call" "$grc2|$bg2" "18|0"
 
 dg3="$tmp/g3"; mk_stub "$dg3" 1 alive
 gout3="$( unset UNGUARDED_LAUNCH_OK; KONSOLE_CMD="$dg3/konsole" PGREP_CMD="$dg3/pgrep" HEADED_ARM_REPO="$GSCR" HEADED_ARM_LOCK_DIR="$dg3/locks" HEADED_ARM_PROC="$dg3/proc" \
-  bash "$SCRIPT" --dry-run HIMMEL-9026-g3 doc.md "$dg3/signal-never" "$PAST" "$dg3/log" 2>&1)"; grc3=$?
+  bash "$SCRIPT" --dry-run PROJ-9026-g3 doc.md "$dg3/signal-never" "$PAST" "$dg3/log" 2>&1)"; grc3=$?
 check "guard_refuses_dry_run: rc 18" "$grc3" "18"
 not_contains "guard_refuses_dry_run: no would-exec report" "$gout3" "would exec"
 
 GLUNA="$tmp/guard-luna"; mkdir -p "$GLUNA"; git -C "$GLUNA" init -q -b main; : > "$GLUNA/.single-writer"
 dg4="$tmp/g4"; mk_stub "$dg4" 1 alive
 gout4="$( unset UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED; HANDOVER_DIR='' KONSOLE_CMD="$dg4/konsole" PGREP_CMD="$dg4/pgrep" HEADED_ARM_REPO="$GLUNA" HEADED_ARM_LOCK_DIR="$dg4/locks" HEADED_ARM_PROC="$dg4/proc" \
-  bash "$SCRIPT" HIMMEL-9026-g4 doc.md "$dg4/signal-never" "$PAST" "$dg4/log" 2>&1)"; grc4=$?
+  bash "$SCRIPT" PROJ-9026-g4 doc.md "$dg4/signal-never" "$PAST" "$dg4/log" 2>&1)"; grc4=$?
 check "guard_luna_no_handover_dir: rc 18" "$grc4" "18"
 contains "guard_luna_no_handover_dir: refusal text" "$gout4" "does not load the himmel guard hooks"
 
-dg5="$tmp/g5"; mk_stub "$dg5" 1 alive "HIMMEL-9026-g5"
-gout5="$(glaunch "$dg5" HIMMEL-9026-g5 UNGUARDED_LAUNCH_OK=1)"; grc5=$?
+dg5="$tmp/g5"; mk_stub "$dg5" 1 alive "PROJ-9026-g5"
+gout5="$(glaunch "$dg5" PROJ-9026-g5 UNGUARDED_LAUNCH_OK=1)"; grc5=$?
 wait_record "$dg5" || true
-gwarn5="WARN unguarded launch of HIMMEL-9026-g5 in $GSCR (not a git work tree; UNGUARDED_LAUNCH_OK=1)"
+gwarn5="WARN unguarded launch of PROJ-9026-g5 in $GSCR (not a git work tree; UNGUARDED_LAUNCH_OK=1)"
 check "guard_optout_warns_once: rc 0, konsole called" "$grc5|$([ -s "$dg5/record" ] && echo called || echo none)" "0|called"
 check "guard_optout_warns_once: one WARN on stderr" "$(grep -cF -e "$gwarn5" <<< "$gout5")" "1"
 check "guard_optout_warns_once: one WARN in the log" "$(grep -cF -e "$gwarn5" "$dg5/log" 2>/dev/null)" "1"
 
-dg6="$tmp/g6"; mk_stub "$dg6" 1 alive "HIMMEL-9026-g6"
-gout6="$(glaunch "$dg6" HIMMEL-9026-g6 UNGUARDED_LAUNCH_OK=1 HIMMEL_LAUNCH_GUARD_WARNED="$(cd -P "$GSCR" && pwd -P)")"; grc6=$?
+dg6="$tmp/g6"; mk_stub "$dg6" 1 alive "PROJ-9026-g6"
+gout6="$(glaunch "$dg6" PROJ-9026-g6 UNGUARDED_LAUNCH_OK=1 HIMMEL_LAUNCH_GUARD_WARNED="$(cd -P "$GSCR" && pwd -P)")"; grc6=$?
 wait_record "$dg6" || true
 not_contains "guard_optout_marker_silences: no WARN" "$gout6" "WARN unguarded launch"
 check "guard_optout_marker_silences: launch proceeds" "$grc6|$([ -s "$dg6/record" ] && echo called || echo none)" "0|called"
 
 dg7="$tmp/g7"; mk_stub "$dg7" 1 alive
-gout7="$(glaunch "$dg7" HIMMEL-9026-g7 HIMMEL_LAUNCH_GUARD_WARNED="$(cd -P "$GSCR" && pwd -P)")"; grc7=$?
+gout7="$(glaunch "$dg7" PROJ-9026-g7 HIMMEL_LAUNCH_GUARD_WARNED="$(cd -P "$GSCR" && pwd -P)")"; grc7=$?
 contains "guard_marker_without_optout_still_refuses: refusal text" "$gout7" "does not load the himmel guard hooks"
 
 # the check's exit 2 (folder cannot be resolved) is also a refusal
 GMISS="$tmp/guard-does-not-exist"
 dg8="$tmp/g8"; mk_stub "$dg8" 1 alive
-gout8="$(GREPO="$GMISS" glaunch "$dg8" HIMMEL-9026-g8 X=1)"; grc8=$?
+gout8="$(GREPO="$GMISS" glaunch "$dg8" PROJ-9026-g8 X=1)"; grc8=$?
 settle
 check "guard_unresolvable_folder: rc 18, no konsole call" "$grc8|$([ -e "$dg8/record" ] && echo called || echo none)" "18|none"
 contains "guard_unresolvable_folder: names the reason" "$gout8" "folder cannot be resolved"
 dg9="$tmp/g9"; mk_stub "$dg9" 1 alive
-gout9="$(GREPO="$GMISS" glaunch "$dg9" HIMMEL-9026-g9 UNGUARDED_LAUNCH_OK=1)"; grc9=$?
-gwarn9="WARN unguarded launch of HIMMEL-9026-g9 in $GMISS (folder cannot be resolved; UNGUARDED_LAUNCH_OK=1)"
+gout9="$(GREPO="$GMISS" glaunch "$dg9" PROJ-9026-g9 UNGUARDED_LAUNCH_OK=1)"; grc9=$?
+gwarn9="WARN unguarded launch of PROJ-9026-g9 in $GMISS (folder cannot be resolved; UNGUARDED_LAUNCH_OK=1)"
 check "guard_unresolvable_folder_optout: exactly one WARN naming the reason" "$(grep -cF -e "$gwarn9" <<< "$gout9")" "1"
 check "guard_unresolvable_folder_optout: passes the guard, then the launch's own cd into REPO fails (rc 1), no konsole call" "$grc9|$([ -e "$dg9/record" ] && echo called || echo none)" "1|none"
 check "guard_marker_without_optout_still_refuses: rc 18" "$grc7" "18"
@@ -3131,8 +3131,8 @@ check "guard_marker_without_optout_still_refuses: rc 18" "$grc7" "18"
 # --- controls: a GUARDED folder launches with the opt-out dropped and no WARN (the suite-level opt-out
 # would otherwise turn a false refusal into a WARN plus a launch)
 GWT="$(cd "$HERE/../.." && pwd -P)"   # the worktree under test: fully wired
-dgc1="$tmp/gc1"; mk_stub "$dgc1" 1 alive "HIMMEL-9026-gc1"
-goutc1="$(GREPO="$GWT" glaunch "$dgc1" HIMMEL-9026-gc1 X=1)"; grcc1=$?
+dgc1="$tmp/gc1"; mk_stub "$dgc1" 1 alive "PROJ-9026-gc1"
+goutc1="$(GREPO="$GWT" glaunch "$dgc1" PROJ-9026-gc1 X=1)"; grcc1=$?
 wait_record "$dgc1" || true
 check "guard_control_worktree_passes: rc 0, konsole called" "$grcc1|$([ -s "$dgc1/record" ] && echo called || echo none)" "0|called"
 not_contains "guard_control_worktree_passes: no WARN" "$goutc1" "WARN unguarded launch"
@@ -3144,8 +3144,8 @@ GSTALE="$tmp/guard-stale-wt"
 GOLDER="$(git -C "$GWT" log -2 --format=%H -- .claude/settings.json | sed -n 2p)"
 if [ -n "$GOLDER" ] && git -C "$GWT" worktree add -q --detach "$GSTALE" "$GOLDER" >/dev/null 2>&1; then
   trap 'git -C "$GWT" worktree remove --force "$GSTALE" >/dev/null 2>&1; rm -rf "$tmp"' EXIT
-  dgc2="$tmp/gc2"; mk_stub "$dgc2" 1 alive "HIMMEL-9026-gc2"
-  goutc2="$(GREPO="$GSTALE" glaunch "$dgc2" HIMMEL-9026-gc2 X=1)"; grcc2=$?
+  dgc2="$tmp/gc2"; mk_stub "$dgc2" 1 alive "PROJ-9026-gc2"
+  goutc2="$(GREPO="$GSTALE" glaunch "$dgc2" PROJ-9026-gc2 X=1)"; grcc2=$?
   wait_record "$dgc2" || true
   check "guard_control_stale_worktree_passes: rc 0, konsole called" "$grcc2|$([ -s "$dgc2/record" ] && echo called || echo none)" "0|called"
   not_contains "guard_control_stale_worktree_passes: no WARN" "$goutc2" "WARN unguarded launch"
@@ -3154,7 +3154,7 @@ else
 fi
 
 # the opt-out and the WARN marker reach the check only: the session this launches must not inherit them
-dgo="$tmp/go"; mk_stub "$dgo" 1 alive "HIMMEL-9026-go"
+dgo="$tmp/go"; mk_stub "$dgo" 1 alive "PROJ-9026-go"
 cat > "$dgo/konsole" <<KONSOLE_EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> "$dgo/record"
@@ -3163,7 +3163,7 @@ printf '%s|%s\n' "\${UNGUARDED_LAUNCH_OK-absent}" "\${HIMMEL_LAUNCH_GUARD_WARNED
 sleep 5
 KONSOLE_EOF
 chmod 755 "$dgo/konsole"
-glaunch "$dgo" HIMMEL-9026-go UNGUARDED_LAUNCH_OK=1 HIMMEL_LAUNCH_GUARD_WARNED=/elsewhere >/dev/null; grcgo=$?
+glaunch "$dgo" PROJ-9026-go UNGUARDED_LAUNCH_OK=1 HIMMEL_LAUNCH_GUARD_WARNED=/elsewhere >/dev/null; grcgo=$?
 wait_record "$dgo" || true
 n=0; while [ ! -s "$dgo/childenv" ] && [ "$n" -lt 40 ]; do sleep 0.05; n=$((n+1)); done
 check "guard_optout_not_inherited: launch proceeds, child env carries neither name" "$grcgo|$(cat "$dgo/childenv" 2>/dev/null)" "0|absent|absent"
