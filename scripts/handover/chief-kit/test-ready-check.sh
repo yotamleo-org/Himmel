@@ -255,6 +255,8 @@ mkdir -p "$TP_ANCHOR/scripts/lib"
 cp "$HERE/../../lib/go-gate.sh" "$TP_ANCHOR/scripts/lib/go-gate.sh"
 # item 17 runs the merge's remainder reader from the anchor, never from the checkout under review
 cp "$HERE/../../lib/pr_remainder.py" "$TP_ANCHOR/scripts/lib/pr_remainder.py"
+# and its owed-line path check from the anchor's status lib
+cp "$HERE/../../lib/ticket-status.sh" "$HERE/../../lib/required-checks.sh" "$HERE/../../lib/prim.sh" "$HERE/../../lib/status-marker.sh" "$TP_ANCHOR/scripts/lib/"
 mkdir -p "$TP_ANCHOR/scripts/eval/conflicts" "$TP_ANCHOR/scripts/eval/judge-accuracy" "$TP_ANCHOR/scripts/eval/lib"
 cp "$HERE/../../eval/conflicts/conflicts.py" "$TP_ANCHOR/scripts/eval/conflicts/"
 cp "$HERE/../../eval/judge-accuracy/judge_accuracy.py" "$TP_ANCHOR/scripts/eval/judge-accuracy/"
