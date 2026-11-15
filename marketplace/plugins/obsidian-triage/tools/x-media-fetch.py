@@ -39,9 +39,14 @@ machine. Run under `uv run --python 3.12` (Windows python3 is a flaky Store stub
 Subtitles first, with provenance:
   - A clip with no twimg body reference and no media_probe_at gets ONE
     api.fxtwitter.com probe (within --limit): a video stamps media_probe_result:
-    video + media_video_duration_s and the clip proceeds; none stamps
+    video + media_video_duration_s and the clip proceeds; photos only stamp
+    media_probe_result: photo and the clip proceeds; no media at all stamps
     media_probe_result: no-video + media_probe_at so it is never re-probed
-    (frontmatter-only, scoped-G-3).
+    (frontmatter-only, scoped-G-3). --reprobe-no-video is the one-time backfill
+    that probes the no-video stamps again (it only counts unless --live is
+    given). Every probe and stamp/skip decision
+    appends a JSON line to ~/.himmel/state/x-media-probe.jsonl
+    (override HIMMEL_X_MEDIA_PROBE_LOG).
   - For a video clip, yt-dlp --skip-download tries the platform's English
     subtitle track (manual first, then auto) into the cache; the VTT is cleaned and
     used when its coverage (last cue end / duration) reaches --min-sub-coverage.
@@ -833,7 +838,7 @@ def fmt_duration(seconds) -> str:
     return f"{s // 60}:{s % 60:02d}"
 
 
-PROBE_VIDEO = ("video", "video+media")
+PROBE_MEDIA = ("video", "video+media", "photo")
 
 
 def _pct(s: str) -> float:
@@ -844,15 +849,22 @@ def _pct(s: str) -> float:
     return v
 
 
-def fxt_probe(x: dict):
-    """ONE api.fxtwitter.com call for an X status. Returns (result, duration_s):
-    "video" (a lone video; + summed duration, None when fxtwitter gave none),
-    "video+media" (photos or several videos), "no-video",
-    "gone" (the post is 404 - permanent, like no-video) or "error" (transient:
-    the caller stamps NOTHING so the clip is probed again). Seam:
-    X_MEDIA_FXT_CMD runs "<cmd> <api-url>" and reads the JSON from its stdout."""
+def _fxt_url(x: dict) -> str:
     m = X_URL_RE.match(x["url"])
-    url = f"{FXT_BASE}/{m.group(1)}/status/{x['shortcode']}"
+    return f"{FXT_BASE}/{m.group(1)}/status/{x['shortcode']}"
+
+
+def fxt_probe(x: dict):
+    """ONE api.fxtwitter.com call for an X status. Returns
+    (result, duration_s, (n_videos, n_photos)):
+    "video" (a lone video; + summed duration, None when fxtwitter gave none),
+    "video+media" (photos plus a video, or several videos), "photo" (photos and
+    no video), "no-video" (no media at all),
+    "gone" (the post is 404 - permanent, like no-video) or "error" (transient:
+    the caller stamps NOTHING so the clip is probed again). The counts are
+    (0, 0) when the payload gave none. Seam:
+    X_MEDIA_FXT_CMD runs "<cmd> <api-url>" and reads the JSON from its stdout."""
+    url = _fxt_url(x)
     try:
         override = os.environ.get("X_MEDIA_FXT_CMD")
         if override:
@@ -867,16 +879,16 @@ def fxt_probe(x: dict):
         data = json.loads(raw)
     except Exception as e:
         if getattr(e, "code", None) == 404:
-            return "gone", None
+            return "gone", None, (0, 0)
         print(f"fxtwitter probe {x['shortcode']}: {str(e)[:120]}", file=sys.stderr)
-        return "error", None
+        return "error", None, (0, 0)
     if not isinstance(data, dict):
-        return "error", None
+        return "error", None, (0, 0)
     if data.get("code") == 404:
-        return "gone", None
+        return "gone", None, (0, 0)
     tweet = data.get("tweet")
     if data.get("code") != 200 or not isinstance(tweet, dict):
-        return "error", None
+        return "error", None, (0, 0)
     try:
         media = tweet.get("media")
         if media is None:
@@ -886,17 +898,18 @@ def fxt_probe(x: dict):
         # present-but-wrong-typed (e.g. "media": [], "videos": {}) is malformed,
         # not "no media": probing again beats a permanent no-video stamp.
         if not all(v is None or isinstance(v, list) for v in (videos, photos)):
-            return "error", None
+            return "error", None, (0, 0)
         videos, photos = videos or [], photos or []
+        counts = (len(videos), len(photos))
         if not videos:
-            return "no-video", None
+            return ("photo" if photos else "no-video"), None, counts
         total = sum(float(v.get("duration") or 0) for v in videos)
         dur = int(round(total)) if total > 0 else None
     except (AttributeError, TypeError, ValueError, OverflowError):
-        return "error", None   # malformed payload: transient, probed again
+        return "error", None, (0, 0)
     # A lone video is the subs-only case; photos or extra videos still need the
     # media download path, so they get their own result.
-    return ("video" if len(videos) == 1 and not photos else "video+media"), dur
+    return ("video" if len(videos) == 1 and not photos else "video+media"), dur, counts
 
 
 TAG_RE = re.compile(r"<[^>]*>")
@@ -1420,7 +1433,7 @@ def is_selected(fm: dict, fm_raw: str, body: str):
         return None
     if already_media_enriched(fm_raw):
         return None
-    if not _has_twimg_media(body) and fm.get("media_probe_result") not in PROBE_VIDEO:
+    if not _has_twimg_media(body) and fm.get("media_probe_result") not in PROBE_MEDIA:
         return None     # a probed-video clip stays selectable until enriched
     return x
 
@@ -1452,26 +1465,113 @@ def write_probe(path: Path, text: str, fm_raw: str, body: str, has_crlf: bool,
     return True
 
 
+def _probe_log_path() -> Path:
+    override = os.environ.get("HIMMEL_X_MEDIA_PROBE_LOG")
+    return Path(override) if override else _home() / ".himmel" / "state" / "x-media-probe.jsonl"
+
+
+def log_probe_event(kind: str, **fields) -> None:
+    rec = {"v": 1, "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+           "host": urllib.parse.urlparse(FXT_BASE).hostname,
+           "source": "x-media-fetch", "kind": kind, **fields}
+    try:
+        path = _probe_log_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except OSError as e:
+        print(f"x-media-fetch: probe log not written: {str(e)[:120]}", file=sys.stderr)
+
+
+def _log_decision(x: dict, relpath: str, action: str, reason: str) -> None:
+    log_probe_event("decision", clip=x["shortcode"], path=relpath,
+                    action=action, reason=reason)
+
+
+def _probe_logged(x: dict, relpath: str):
+    result, duration, counts = fxt_probe(x)
+    log_probe_event("probe", clip=x["shortcode"], path=relpath, url=_fxt_url(x),
+                    result=result, videos=counts[0], photos=counts[1])
+    return result, duration
+
+
 def probe_clip(p: Path, x: dict, relpath: str) -> str:
     """Probe one clip and stamp the result. Returns the fxtwitter result, or
     "error" when nothing was (or could be) stamped."""
-    result, duration = fxt_probe(x)
+    result, duration = _probe_logged(x, relpath)
     if result == "error":
         print(f"? {relpath}: probe failed (will retry next run)")
+        _log_decision(x, relpath, "skip", "probe-error-retry-next-run")
         return "error"
     text, has_crlf = read_clip(p)
     _fm, fm_raw, body, present = parse_frontmatter(text)
     if not present:
+        _log_decision(x, relpath, "skip", "no-frontmatter")
         return "error"
     markers = {"media_probe_at": TODAY, "media_probe_result": result}
-    if result in PROBE_VIDEO and duration:
+    if result in PROBE_MEDIA and duration:
         markers["media_video_duration_s"] = duration
     if not write_probe(p, text, fm_raw, body, has_crlf, markers):
         print(f"marker write REVERTED - probe NOT recorded for {relpath}",
               file=sys.stderr)
+        _log_decision(x, relpath, "skip", "marker-write-reverted")
         return "error"
     print(f"? {relpath}: probe {markers['media_probe_result']}")
+    _log_decision(x, relpath, "stamp", f"probe-{result}")
     return result
+
+
+def reprobe_no_video(args) -> int:
+    todo = []
+    for p in find_clips(args.vault, args.include_evidence, args.include_done):
+        try:
+            text, _crlf = read_clip(p)
+        except Exception:
+            continue
+        fm, fm_raw, _body, present = parse_frontmatter(text)
+        if not present or fm.get("media_probe_result") != "no-video":
+            continue
+        x = is_x_source(fm.get("source", ""))
+        if x and not already_media_enriched(fm_raw):
+            todo.append((p, x))
+    capped = todo[: args.limit] if args.limit > 0 else todo
+    if args.dry_run or not args.live:
+        print(f"x-media-fetch: {len(capped)} clip(s) stamped no-video would be "
+              f"re-probed (no probe without --live)")
+        if len(todo) > len(capped):
+            print(f"x-media-fetch: {len(todo) - len(capped)} more no-video clip(s) "
+                  f"remain (capped by --limit; pass --limit 0 for all)")
+        return 0
+    restamped = kept = 0
+    for p, x in capped:
+        relpath = p.relative_to(args.vault).as_posix()
+        if RATE_LIMIT_S > 0:
+            time.sleep(RATE_LIMIT_S)
+        result, duration = _probe_logged(x, relpath)
+        if result not in PROBE_MEDIA:
+            kept += 1
+            _log_decision(x, relpath, "skip",
+                          "still-no-video" if result == "no-video"
+                          else f"probe-{result}-keep-stamp")
+            continue
+        text, has_crlf = read_clip(p)
+        _fm, fm_raw, body, present = parse_frontmatter(text)
+        markers = {"media_probe_at": TODAY, "media_probe_result": result}
+        if duration:
+            markers["media_video_duration_s"] = duration
+        if present and write_probe(p, text, fm_raw, body, has_crlf, markers):
+            restamped += 1
+            print(f"? {relpath}: re-probed no-video -> {result}")
+            _log_decision(x, relpath, "stamp", f"reprobe-{result}")
+        else:
+            kept += 1
+            _log_decision(x, relpath, "skip", "marker-write-reverted")
+    print(f"x-media-fetch: reprobe-no-video: {len(capped)} re-probed, "
+          f"{restamped} re-stamped as media, {kept} left as no-video")
+    if len(todo) > len(capped):
+        print(f"x-media-fetch: {len(todo) - len(capped)} more no-video clip(s) "
+              f"remain (capped by --limit; pass --limit 0 for all)")
+    return 0
 
 
 def parse_args(argv):
@@ -1480,6 +1580,13 @@ def parse_args(argv):
     ap.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--include-evidence", action="store_true")
+    ap.add_argument("--reprobe-no-video", action="store_true",
+                    help="one-time backfill: probe again the clips stamped "
+                         "media_probe_result: no-video and re-stamp those that "
+                         "have media; writes nothing unless --live is given "
+                         "(honours --limit)")
+    ap.add_argument("--live", action="store_true",
+                    help="with --reprobe-no-video: probe and re-stamp for real")
     ap.add_argument("--include-done", action="store_true",
                     help="also scan _done/ graduated clips (the backfill pass)")
     ap.add_argument("--whisper-model", default=DEFAULT_WHISPER_MODEL)
@@ -1984,6 +2091,8 @@ def main():
     if args.vault is None or not args.vault.is_dir():
         print("x-media-fetch: vault path required (or not a dir)", file=sys.stderr)
         sys.exit(1)
+    if args.reprobe_no_video:
+        sys.exit(reprobe_no_video(args))
     clips = find_clips(args.vault, args.include_evidence, args.include_done)
     cands = []        # (path, x, needs_probe), in vault order; --limit caps THIS list
     for p in clips:
@@ -2049,7 +2158,7 @@ def main():
                         run["unstarted"] = len(cands) - i
                         return
                 run["probed"] += 1
-                if probe_clip(p, x, p.relative_to(args.vault).as_posix()) not in PROBE_VIDEO:
+                if probe_clip(p, x, p.relative_to(args.vault).as_posix()) not in PROBE_MEDIA:
                     continue
                 if _budget_spent():
                     run["unstarted"] = len(cands) - i

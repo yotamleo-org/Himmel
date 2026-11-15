@@ -124,6 +124,8 @@ D_HCFG="echo x > ~/.himmel/con""fig.json"
 D_RELOP="jira rele""ase opera""tor spec R1 --keys K-2"
 D_RELOP_EOL="jira rele""ase opera""tor"
 A_OK="git status"
+D_MERGE="cd /tmp && bash scripts/handover/merge-on-gr""een.sh --go f"
+A_MERGE="bash scripts/handover/merge-on-gr""een.sh --go f"
 
 printf '\nSingle-line command text\n'
 check block-destructive-commands  Bash 2 "$D_RM"     "deny recursive delete"
@@ -893,6 +895,12 @@ check approval-grant-request Bash 0 "$A_OK" "tap exits 0"                 "AFK_G
 check afk-prompt-to-request Bash 0 "$A_OK" "no decision while the helper is off"
 check afk-denied-to-request Bash 0 "$A_OK" "files nothing while the helper is off"
 rmdir "$CRLF_GD"
+
+# guard-merge-compound denies a merge-on-green run outside the bare spelling; a CR
+# must not change that, nor turn the bare spelling into a deny.
+printf '\nMerge-compound guard\n'
+check guard-merge-compound Bash 2 "$D_MERGE" "deny a cd compound before merge-on-green"
+check guard-merge-compound Bash 0 "$A_MERGE" "allow the bare relative spelling"
 
 # ── Completeness guard ──────────────────────────────────────────────────────
 # The audit's real deliverable. Enumerate the command-text hooks FROM THE

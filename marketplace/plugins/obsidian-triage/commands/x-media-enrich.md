@@ -116,10 +116,12 @@ tags/timestamps, collapses adjacent rolling duplicates only, and reflows to
 sentence paragraphs. Whisper (Scrapling download -> ffmpeg -> faster-whisper) runs only when there is no track or subtitle
 coverage is below `--min-sub-coverage` (default 90). An X clip with NO twimg ref
 and no `media_probe_at` (e.g. Telegram-filed) gets ONE fxtwitter probe (within
-`--limit`): a video stamps `media_video_duration_s` and proceeds; otherwise it
-stamps `media_probe_at` + `media_probe_result: no-video` and is never re-probed.
-A post with photos or several videos stamps `media_probe_result: video+media`
-and takes the download path (never subs-only). `--dry-run` makes no probe call. Every transcript carries
+`--limit`): a video stamps `media_video_duration_s` and proceeds; a post with
+only photos stamps `media_probe_result: photo` and proceeds; a post with no media
+stamps `media_probe_at` + `media_probe_result: no-video` and is never re-probed
+(`--reprobe-no-video` is the one-time backfill for old stamps).
+A post with photos and a video, or several videos, stamps
+`media_probe_result: video+media` and takes the download path (never subs-only). `--dry-run` makes no probe call. Every transcript carries
 `media_transcript_source` (`platform-subs` | `auto-subs` | `whisper-<model>` |
 `none`), `media_video_duration_s`, `media_transcript_coverage` and a
 `<!-- source: ..., coverage N%, M:SS -->` line under `### Transcript`.
