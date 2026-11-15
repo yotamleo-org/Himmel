@@ -83,6 +83,38 @@ run_case "no literal at all" 0 scripts/clean.sh 'echo "${JIRA_BASE_URL%/}/browse
 echo "== marker without a reason is refused =="
 run_case "bare marker" 1 scripts/gate3.sh "$SLUG_LINE # env-literal-ok:"
 
+echo "== the Jira project key class: a mirror path or JQL literal naming one project =="
+# shellcheck disable=SC2016  # literal fixture text, nothing should expand
+MIRROR_LINE='MIRROR="$HOME/.himmel/state/jira-mirror/HIMMEL"'
+JQL_LINE='jql="project = HIMMEL AND statusCategory != Done"'
+run_case "an added jira-mirror path literal" 1 scripts/mirror-read.sh "$MIRROR_LINE"
+case "$LAST_OUT" in *scripts/mirror-read.sh:1:*jira-project-key*) pass "mirror finding names file, line and class" ;; *) fail "mirror finding names file, line and class: $LAST_OUT" ;; esac
+run_case "an added project = HIMMEL JQL literal" 1 scripts/jql-read.sh "$JQL_LINE"
+case "$LAST_OUT" in *scripts/jql-read.sh:1:*jira-project-key*) pass "JQL finding names file, line and class" ;; *) fail "JQL finding names file, line and class: $LAST_OUT" ;; esac
+run_case "a quoted project = \"HIMMEL\" JQL literal" 1 scripts/jql-quoted.sh 'jql=project="HIMMEL"'
+run_case "the mirror literal with a marker and a reason" 0 scripts/mirror-ok.sh "$MIRROR_LINE # env-literal-ok: fixture path"
+run_case "the JQL literal with a marker and a reason" 0 scripts/jql-ok.sh "$JQL_LINE # env-literal-ok: fixture query"
+run_case "the mirror literal in a comment-only line" 0 scripts/mirror-note.sh "# reads jira-mirror/HIMMEL today"
+run_case "the mirror literal in the resolver" 0 scripts/lib/jira-project.sh "$MIRROR_LINE"
+run_case "another project key is not this literal" 0 scripts/jql-other.sh 'jql="project = HIMMELX"'
+git -C "$repo" checkout -q -B case "$base"
+printf '%s\n' "$MIRROR_LINE" > "$repo/scripts/old-mirror.sh"
+git -C "$repo" add -A
+git -C "$repo" -c core.hooksPath=/dev/null commit -q -m "existing literal" || { echo "FAIL: existing literal commit failed"; exit 1; }
+ebase=$(git -C "$repo" rev-parse HEAD) || { echo "FAIL: existing literal base lookup failed"; exit 1; }
+printf 'echo more\n' >> "$repo/scripts/old-mirror.sh"
+git -C "$repo" add -A
+git -C "$repo" -c core.hooksPath=/dev/null commit -q -m "touch the file" || { echo "FAIL: existing literal touch commit failed"; exit 1; }
+out=$(cd "$repo" && bash "$LINT" "$ebase" 2>&1); rc=$?
+if [ "$rc" -eq 0 ]; then pass "an unchanged pre-existing literal is not refused (rc=$rc)"; else fail "an unchanged pre-existing literal is not refused: want rc=0 got rc=$rc: $out"; fi
+git -C "$repo" checkout -q -B case "$base"
+printf '%s\n' "$MIRROR_LINE" > "$repo/scripts/staged-mirror.sh"
+git -C "$repo" add scripts/staged-mirror.sh
+out=$(cd "$repo" && bash "$LINT" --staged 2>&1); rc=$?
+if [ "$rc" -eq 1 ]; then pass "a staged mirror literal is refused (rc=$rc)"; else fail "a staged mirror literal is refused: want rc=1 got rc=$rc: $out"; fi
+case "$out" in *scripts/staged-mirror.sh:1:*jira-project-key*) pass "staged mirror finding names file, line and class" ;; *) fail "staged mirror finding names file, line and class: $out" ;; esac
+git -C "$repo" reset -q --hard "$base"
+
 echo "== an added line whose text starts with ++ is scanned, not read as a file header =="
 run_case "added line shaped like a diff file header" 1 scripts/pp.sh "++ b/scripts/pp.sh $SLUG_LINE"
 
@@ -209,6 +241,7 @@ tree_case "a committed pages url in a runtime file" 1 scripts/site.mjs "const u 
 case "$LAST_OUT" in *scripts/site.mjs:1:*pages-url*) pass "tree finding names file, line and class" ;; *) fail "tree finding names file, line and class: $LAST_OUT" ;; esac
 tree_case "a committed ghcr literal" 1 scripts/img.sh "docker pull ghcr.io/someone/image:latest"
 tree_case "a repo slug is left to HIMMEL-6495" 0 scripts/gate.sh "$SLUG_LINE"
+tree_case "a committed jira-mirror path literal is left to the migration slices" 0 scripts/mirror-read.sh "$MIRROR_LINE"
 tree_case "an allowlisted file" 0 scripts/test-gate.sh "const u = 'https://someone.github.io/Repo/';"
 tree_case "a marker with a reason" 0 scripts/site2.mjs "const u = 'https://someone.github.io/Repo/'; // env-literal-ok: public docs link"
 

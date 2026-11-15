@@ -3,11 +3,14 @@
 #
 # check-hardcoded-env-values.sh [<base> | --staged | --tree] — refuse NEW
 # hardcoded environment values (repo/owner slugs, Pages URLs, GHCR owner paths,
-# absolute home paths, Atlassian hosts, Jira field ids) in the lines added by
+# absolute home paths, Atlassian hosts, Jira field ids, the Jira project key in a
+# jira-mirror path or a `project = <KEY>` JQL clause) in the lines added by
 # <base>...HEAD (default origin/main, else main; tip is PRE_COMMIT_TO_REF, else
 # HEAD). --staged scans the index instead (the pre-commit hook). --tree scans
 # every tracked file at the tip for every class except repo-slug, whose existing
-# hits are the inventory in docs/internals/hardcoded-env-values.md.
+# hits are the inventory in docs/internals/hardcoded-env-values.md, and
+# jira-project-key, whose existing hits are the callers still moving onto
+# scripts/lib/jira-project.sh.
 #
 # Skipped: paths matching an ERE in hardcoded-env-values-allow.txt (tests,
 # fixtures, docs, templates), comment-only lines, and a line carrying
@@ -91,6 +94,9 @@ BEGIN {
     cls[k] = "home-path";     re[k++] = "(^|[^A-Za-z0-9_.}-])/home/[a-z][a-z0-9_-]*"
     cls[k] = "jira-host";     re[k++] = "[A-Za-z0-9}-]\\.atlassian\\.net"
     cls[k] = "jira-field-id"; re[k++] = "customfield_[0-9]+"
+    # The Jira project key: a mirror path or a JQL clause naming one project reads that project
+    # on every station. scripts/lib/jira-project.sh resolves the key and the mirror directory.
+    cls[k] = "jira-project-key"; re[k++] = "jira-mirror/HIMMEL|project[[:space:]]*=[[:space:]]*[\"\047]?HIMMEL([^A-Za-z0-9_]|$)"
     nclass = k
 }
 # A file header only sits between its `diff --git` line and its first hunk; an
@@ -110,7 +116,7 @@ inhdr && /^\+\+\+ / {
     if (body ~ /^[[:space:]]*(#|\/\/)/) next
     if (body ~ /env-literal-ok:[[:space:]]*[^[:space:]]/) next
     for (c = 0; c < nclass; c++) {
-        if (tree && cls[c] == "repo-slug") continue
+        if (tree && (cls[c] == "repo-slug" || cls[c] == "jira-project-key")) continue
         scan = body
         if (cls[c] == "home-path") gsub(/\/home\/runner([^a-z0-9_-]|$)/, " ", scan)
         if (scan ~ re[c]) {
