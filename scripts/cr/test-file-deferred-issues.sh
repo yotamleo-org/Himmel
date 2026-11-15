@@ -234,8 +234,7 @@ cat >"$LBIN/gh" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$GLOG"
 case "$* " in
-    # GH_PR_JSON is the open-PR list: the caller's own -q filter runs on it, as gh would.
-    *"pr list"*)                 [ -n "${GH_PR_JSON:-}" ] || exit 0
+    *"pr list"*)                [ -n "${GH_PR_JSON:-}" ] || exit 0
                                  q=""; while [ $# -gt 0 ]; do [ "$1" = -q ] && q="$2"; shift; done
                                  printf '%s' "$GH_PR_JSON" | jq -r "$q" ;;
     *"repo view"*nameWithOwner*) echo "owner/repo" ;;

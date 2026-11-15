@@ -27,8 +27,6 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# The checkout lookup for the Jira CLI answers about this script's own repo,
-# never one a caller's repository-redirecting GIT_* variables point at.
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
     GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_IMPLICIT_WORK_TREE GIT_GRAFT_FILE \
     GIT_REPLACE_REF_BASE GIT_SHALLOW_FILE GIT_CONFIG GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT
@@ -59,14 +57,13 @@ done
 . "$HERE/../lib/ticket-status.sh" || die "could not load scripts/lib/ticket-status.sh"
 
 jira_run() {
-    local common primary
+    local common primary jira_cmd
     if [ -n "${JIRA_CMD:-}" ]; then
-        # shellcheck disable=SC2086  # JIRA_CMD is a command line, e.g. "node <path>"
-        $JIRA_CMD "$@"
+        read -r -a jira_cmd <<< "$JIRA_CMD"
+        "${jira_cmd[@]}" "$@"
         return $?
     fi
-    # swallow-ok: a copy outside any git checkout falls back to its own checkout root below
-    if common="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" && [ -n "$common" ]; then
+    if common="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)" && [ -n "$common" ]; then
         primary="$(dirname "$common")"
     else
         primary="$(cd "$HERE/../.." && pwd)"

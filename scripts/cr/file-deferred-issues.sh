@@ -394,10 +394,6 @@ if [ "$TRACKER_MODE" = jira ]; then
     }
     jira_title="[CR PR #${PR_NUMBER}] Deferred review findings (${batch_count})"
 
-    # Polish is not filed (decisions 746, 762): the verb would refuse it. On a
-    # Jira repo its record is one polish-noted comment on the PR's own ticket
-    # (note-polish.sh, which skips a ticket that already holds this batch);
-    # a note that cannot be recorded exits 5 with nothing filed.
     if [ "$FU_CLASS" = polish ]; then
         if [ "$DRY_RUN" -eq 1 ]; then
             echo "file-deferred-issues: polish is not filed (decisions 746, 762) — would note ${batch_count} finding(s) on the PR ticket (batch ${batch_short}):"

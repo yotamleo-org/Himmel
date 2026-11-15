@@ -135,7 +135,6 @@ function checkFlagCombinations(options: CreateOptions): void {
   if (options.followUpOf !== undefined && options.residualOf !== undefined) {
     throw new Error('--follow-up-of cannot be combined with --residual-of (a residual is already linked to its parent)');
   }
-  // The class flags are read only by the residual writer: without --residual-of they would be dropped silently.
   if (options.residualOf === undefined) {
     const stray = ([['fuClass', '--fu-class'], ['fuWhy', '--fu-why'], ['fuOverride', '--fu-override']] as const).find(([k]) => options[k] !== undefined);
     if (stray) throw new Error(`--fu-class/--fu-why/--fu-override apply only with --residual-of (got ${stray[1]})`);

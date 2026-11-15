@@ -50,11 +50,9 @@ cp "$HERE/../lib/go-gate.sh" "$fx/scripts/lib/go-gate.sh"
 # review-round reads GitHub through the second, read-only token. The
 # fixture carries the router and a fixture .env root; only that token is visible.
 cp "$HERE/../lib/gh-read.sh" "$fx/scripts/lib/gh-read.sh"
-# defer resolves the tracker, and its polish note finds the PR ticket through ticket-status.sh.
 for fx_lib in project-mode.sh ticket-status.sh required-checks.sh prim.sh status-marker.sh; do
     cp "$HERE/../lib/$fx_lib" "$fx/scripts/lib/$fx_lib"
 done
-# The tracker comes from each row: no operator himmel.conf, TRACKER or project key leaks in.
 export HIMMEL_CONFIG_DIR="$tmp/config"
 unset JIRA_PROJECT_KEY TRACKER
 mkdir -p "$tmp/ghr-root"
@@ -709,8 +707,6 @@ for rl1_v in agreed conflict unaddressed deferred; do
     assert_eq "$(rl1_marker)" kept "9892 C2 verdict $rl1_v keeps the marker"
 done
 
-# 9511: what the residual-filing stop let escape. A row sets JIRA_PROJECT_KEY=HIMMEL
-# unless it says otherwise; the one open PR's title names the PR ticket.
 i9_note_reason='Polish finding noted in the PR body: no ticket filed (decisions 746, 762).'
 i9_pr='GH_PR_JSON=[{"title":"fix: [HIMMEL-123] x"}]'
 i9_f() { printf '{"kind":"finding","branch":"@BR@","head":"@HEAD@","finding_id":"%s","severity":"%s","class":"reader-allowlist","file":"docs/guide/x.md","line":1,"text":"- [%s]: a 9511 finding [docs/guide/x.md:1]"%s}\n' "$1" "$2" "$1" "${3:+,$3}"; }
@@ -718,7 +714,7 @@ i9_a() { printf '{"kind":"amend","branch":"@BR@","target_head":"@HEAD@","finding
 i9_calls() { { grep -c "^\[\"$1\"" "$2" || true; } | tr -d ' '; }
 i9_amends() { { printf '%s\n' "$1" | grep -c '"kind":"amend"' || true; } | tr -d ' '; }
 i9_run() { : > "$rl1_log"; rm -f "$rl1_log.comment"; rl1_run "$@"; }
-i9_delta() { # i9_delta <ledger rows> [defer args...]: the one delta round on the recovery fixture
+i9_delta() {
     printf '4\n' > "$recovery_git/cr-review-rounds/recovery.round"
     printf '%s %s fix\n' "$recovery_head" "$recovery_head" > "$recovery_git/cr-review-rounds/recovery.delta"
     printf '%s' "$1" | sed "s#@HEAD@#$recovery_head#g; s#@BR@#recovery#g" > "$recovery_git/cr-critic-scores.jsonl"
@@ -865,7 +861,6 @@ i9_run feat/rl1 1 "$(i9_f critic-1 sug)"$'\n'"$(i9_a critic-1 "\"verdict\":\"def
 assert_eq "$rl1_rc" 0 "9511 legacy noted row stays settled ($rl1_out)"
 assert_eq "$(wc -c < "$rl1_log" | tr -d ' ')" 0 "9511 legacy noted row posts nothing"
 rl1_flags=(--fu-override decision-762)
-# the hardening rows above filed a batch residual; later rows start with none.
 rm -f "$rl1_git/cr-review-rounds/feat/rl1.deferred-to"
 : > "$rl1_log"
 

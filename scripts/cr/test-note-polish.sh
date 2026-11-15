@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# Tests for note-polish.sh: the PR-ticket lookup (D4a) and the one polish-noted
-# Jira comment. Hermetic: gh is GH_CMD and the Jira CLI is JIRA_CMD, both stubs
-# that log their argv; nothing reaches the network.
-# Bash 3.2-safe. Platform guard: requires POSIX Bash 3.2+; on Windows, run under Git Bash.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -51,7 +47,7 @@ printf '%s\n' \
     '{"id":"critic-2","file":"b.md","line":"","severity":"nit","class_source":"default","text":"a typo"}' > "$list"
 head_sha=0123456789abcdef0123456789abcdef01234567
 
-run_np() { # run_np <branch> [list]: one call, logs reset
+run_np() {
     : > "$NP_GH_LOG"; : > "$NP_JIRA_LOG"; rm -f "$NP_BODY"
     np_rc=0
     np_out="$(bash "$NP" --branch "$1" --head "$head_sha" --list-file "${2:-$list}" 2>&1)" || np_rc=$?
