@@ -1,0 +1,83 @@
+# flag	tier	source	why
+# tier: grant (one go is enough), decision (needs decision=<operator decision number>), floor (never by a go code), none (not a switch).
+# source: registry (the name is in scripts/himmelctl/lib/bypass-flags.json), eval (HIMMEL_BILLED_OK only), or <path>:<line> of the reader.
+# why: - only on a grant row. A grant or decision row needs source registry or eval.
+AGENTS_MD_OK	grant	registry	-
+BRANCH_NAME_OK	grant	registry	-
+BUSY_LOOP_BYPASS	grant	registry	-
+BUS_STORE_GUARD_OK	floor	registry	lets a worker bind itself as its own chief on the bus
+BWIMC_ENGINE	none	scripts/hooks/block-write-into-main-checkout.sh:3518	picks the write guard's engine; never loosens
+CADENCE_POWERSHELL_OK	grant	registry	-
+CHIEF_DISPATCH_DISABLE	grant	registry	-
+CI_MERGE_GATE_OK	decision	registry	merge on red is a critical incident
+CHIEF_DISPATCH_OK	grant	registry	-
+CHIEF_FG_OK	grant	registry	-
+CODEX_EXEC_RAW_OK	decision	registry	raw codex exec runs outside the codex chokepoint and every Claude hook
+CODEX_EXTERNAL_WRITES_OK	grant	registry	-
+CR_MERGE_GATE_OK	decision	registry	merge past unresolved review threads
+DESTRUCTIVE_OK	grant	registry	-
+DOCKER_PRIVESC_OK	floor	registry	root-equivalent: a writable bind mount bypasses read-secrets and edit-on-main at once
+DOCTOR_CHECK_IDS_OK	grant	registry	-
+DOC_GUARD_OK	grant	registry	-
+EDIT_LIVE_SETTINGS_OK	floor	registry	a live settings edit outlives the launch and can unhook every later session
+EDIT_ON_MAIN_OK	floor	registry	edits the primary checkout, which holds the daemon and the live hooks; the edit outlives the launch
+ENV_PREFIX_GUARD_OK	floor	registry	a meta flag: one go would grant any seam variable in front of a chokepoint, unnamed
+FIND_ROOTWALK_OK	grant	registry	-
+FLEET_CAP_OK	decision	registry	launches past the fleet cap; budget, the same class as a paid run
+FORK_SYNC_PR_OK	grant	registry	-
+GIT_STASH_OK	grant	registry	-
+GRAPHIFY_UNPROBED_OK	grant	registry	-
+GRAPH_COMMIT_OK	grant	registry	-
+HERMES_EXTERNAL_WRITES_OK	grant	registry	-
+HIMMEL_HOOK_INTEGRITY_BYPASS_OK	grant	registry	-
+HIMMEL_READ_CLAMP_OK	grant	registry	-
+HIMMEL_VAULT_SWEEP_BYPASS	grant	registry	-
+HIMMEL_WEBFETCH_WALLED_OK	grant	registry	-
+HOOKSPATH_OK	floor	registry	skips the core.hooksPath check; a wrong path silently skips every git hook
+HOOK_OK	none	scripts/hooks/end-session-wiki.sh:263	an internal variable
+IMPL_GUARD_DISABLE	grant	registry	-
+IMPL_GUARD_OK	grant	registry	-
+INFRADESTROYOK	decision	registry	destroys infrastructure off the station; irreversible
+INLINE_IMPL_OK	grant	registry	-
+INPLACE_OK	none	scripts/hooks/lib/shell-tokenize.sh	an argument name
+JIRA_COMPOUND_WRITE_OK	grant	registry	-
+JUDGE_WRITE_SCOPE_OK	grant	registry	-
+LANES_GUARD_OK	grant	registry	-
+MAIN_REF_TRANSACTION_OK	floor	registry	lets a commit land on local main; never_remote.py refuses main history remotely
+MCP_ALL_OK	grant	registry	-
+MCP_BITBUCKET_OK	grant	registry	-
+MCP_CONFLUENCE_OK	grant	registry	-
+MCP_GITHUB_OK	grant	registry	-
+MCP_JIRA_OK	grant	registry	-
+MEMORY_CAPTURE_OK	grant	registry	-
+MERGED_PR_COMMIT_OK	grant	registry	-
+ORCH_GUARD_DISABLE	grant	registry	-
+PLATFORMS_TESTED_OK	grant	registry	-
+PR_CHECK_ARGS_OK	grant	registry	-
+PUSH_FOREIGN_REF_OK	decision	registry	push past the CR-before-push gate onto another ref
+QMD_UNBOUNDED_OK	grant	registry	-
+QUIET_RUN_BYPASS	grant	registry	-
+READ_SECRETS_OK	floor	registry	never_remote.py rule secret-read refuses secret reads remotely
+ROGUE_SCHEDULE_OK	floor	registry	arms a scheduler entry that launches claude; that launch outlives this one with no go code
+SKIP_CR	decision	registry	push past the CR-before-push marker gate
+SKIP_FORCE_PUSH_GATE	grant	registry	-
+SKIP_PR_MERGEABLE	decision	registry	merge past the conflict check
+SKIP_SECURITY_REVIEW	decision	registry	push past the security-review attestation
+SUBAGENT_MODEL_OK	grant	registry	-
+SUBAGENT_PARK_GUARD_DISABLE	grant	registry	-
+SUBAGENT_RELEASE_OPERATOR_GUARD_DISABLE	floor	registry	lets a subagent write an operator-chain row: it reaches the approval channel itself
+T3CODE_UNWATCH_OK	grant	registry	-
+TEMPLATE_VERSION_OK	grant	registry	-
+UNCHECKED_MKTEMP_OK	grant	registry	-
+WORKER_SESSION_CONTEXT_HANDOFF_OK	grant	registry	-
+WRITE_HOLD_OK	decision	registry	breaks the single-writer barrier against a live worker or open PR
+HIMMEL_BILLED_OK	decision	eval	paid run
+GH_ADMIN_MERGE_OK	floor	scripts/guardrails/guard-gh.sh:133	admin merge bypasses branch protection; not registered
+GRAPHIFY_SALUS_LOCAL_OK	floor	scripts/guardrails/graphify-fence.sh:1541	salus graph extraction on a local engine; not registered
+SECURITY_REVIEW_NO_FETCH	floor	scripts/hooks/check-security-reviewed.sh:114	offline mode skips the security-review push gate
+PLATFORMS_TESTED_NO_FETCH	floor	scripts/hooks/check-platforms-tested.sh:100	offline mode skips the platforms push gate
+TEMPLATE_VERSION_NO_FETCH	floor	scripts/hooks/check-template-version.sh:106	offline mode skips the template-version push gate
+DOC_GUARD_NO_FETCH	floor	scripts/hooks/check-doc-guard.sh:44	offline mode skips the doc guard
+GLM_EXTERNAL_WRITES_OK	none	scripts/lib/override-env.sh:49	a list entry with no reader anywhere
+HIMMEL_CONSOLE_LEG	none	scripts/lib/override-env.sh:50	a worker marker the launcher sets itself
+CLAUDE_CODE_CHILD_SESSION	none	scripts/lib/override-env.sh:50	a marker Claude Code sets itself
