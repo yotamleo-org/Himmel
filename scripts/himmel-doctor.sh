@@ -2526,8 +2526,13 @@ check_c97_codex_mcp_literal_key() {
         }
         function secret_name(n) { n = toupper(n); return (n ~ /_(KEY|TOKEN|SECRET)$/) }
         function hit(srv, var) { if (secret_name(var) && !(srv SUBSEP var in seen)) { seen[srv SUBSEP var] = 1; print srv "\t" var } }
-        # a value is literal unless it is empty ("" or the single-quote pair) or only a comment
-        function literal(v) { v = trim(v); return !(v == "" || v == "\"\"" || v == "\047\047" || substr(v, 1, 1) == "#") }
+        # a value is literal unless it is empty ("" or the single-quote pair, a trailing comment allowed) or only a comment
+        function literal(v,   c) {
+            v = trim(v); c = substr(v, 1, 1)
+            if (c == "\"" || c == "\047") return index(substr(v, 2), c) != 1
+            sub(/[ \t]*#.*$/, "", v)
+            return v != ""
+        }
         # key = value on a table-body line; sets k and v
         function kv(line,   i, c, q, eq) {
             q = ""; eq = 0
@@ -2572,6 +2577,12 @@ check_c97_codex_mcp_literal_key() {
         mode == "env" && /^[ \t]*[^# \t]/ { if (kv($0) && literal(v)) hit(srvname, k); next }
         mode == "srv" && /^[ \t]*[^# \t]/ { if (kv($0) && k == "env") inline(srvname, v) }
     ' "$cfg")
+    local scan_rc=$?
+    if [ "$scan_rc" -ne 0 ]; then
+        # A failed scan establishes nothing about what the config holds: never OK.
+        emit INFO C97-codex-mcp-literal-key "scan failed (awk exit $scan_rc) on $cfg — literal MCP keys undetermined"
+        return
+    fi
     if [ -z "$pairs" ]; then
         emit OK C97-codex-mcp-literal-key "codex config at $cfg holds no literal key, token or secret value in an MCP env table"
         return

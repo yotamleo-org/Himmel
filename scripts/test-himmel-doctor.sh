@@ -8712,6 +8712,25 @@ OTHER_TOKEN = ''
 # OBSIDIAN_SECRET = \"$c97_dummy\""
 out="$(c97_run)"
 if grepq "$out" -F 'OK   C97-codex-mcp-literal-key' && ! grepq "$out" -E '(WARN|INFO) C97'; then pass "C97 OK for an empty value and a comment"; else fail "C97 empty/comment -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C97: an empty value followed by a TOML comment -> OK; a literal followed by a comment -> WARN =="
+c97_cfg "$c97_base
+[mcp_servers.obsidian-vault.env]
+OBSIDIAN_API_KEY = \"\" # unused
+OTHER_TOKEN = '' # unused"
+out="$(c97_run)"
+if grepq "$out" -F 'OK   C97-codex-mcp-literal-key' && ! grepq "$out" -E '(WARN|INFO) C97'; then pass "C97 OK for an empty value with a trailing comment"; else fail "C97 empty+comment -> $(printf '%s' "$out" | head -4)"; fi
+c97_cfg "[mcp_servers.obsidian-vault.env]
+OBSIDIAN_API_KEY = \"$c97_dummy\" # local
+BARE_TOKEN = 12345 # local"
+out="$(c97_run)"
+if grepq "$out" -F 'WARN C97-codex-mcp-literal-key' && grepq "$out" -F 'OBSIDIAN_API_KEY' && grepq "$out" -F 'BARE_TOKEN' && ! grepq "$out" -F "$c97_dummy" && ! grepq "$out" -F '12345'; then pass "C97 WARN for a literal with a trailing comment"; else fail "C97 literal+comment -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C97: the scan itself fails -> INFO, never OK =="
+mkdir -p "$c97_t/badawk"
+printf '#!/bin/sh\nexit 2\n' > "$c97_t/badawk/awk"; chmod +x "$c97_t/badawk/awk"
+c97_cfg "[mcp_servers.a.env]
+A_API_KEY = \"$c97_dummy\""
+out="$(PATH="$c97_t/badawk:$PATH" c97_run)"
+if grepq "$out" -F 'INFO C97-codex-mcp-literal-key' && grepq "$out" -F 'scan failed' && ! grepq "$out" -E '(OK  |WARN) C97'; then pass "C97 INFO when the scan fails"; else fail "C97 scan failure -> $(printf '%s' "$out" | head -4)"; fi
 echo "== C97: a secret-named key outside any mcp_servers env table -> OK =="
 c97_cfg "[projects.\"/x\"]
 trust_level = \"trusted\"
