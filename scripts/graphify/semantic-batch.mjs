@@ -4,7 +4,7 @@
 // API at 50 % of the list price. One batch per run, one request per chunk prompt; the batch id is persisted in
 // <dir>/batch.json so a later run resumes it and never resubmits.
 //
-//   submit  --dir D --prompts P --account A|B --model M --effort E [--max-tokens N]
+//   submit  --dir D --prompts P --account A|B --model M --effort E [--max-tokens N] [--max-usd U]
 //           P holds one file per chunk prompt, named <sha256 of the prompt>.txt (the custom_id), and optionally a
 //           <sha256>.key sidecar with the shim's chunk-body key (kept in batch.json, written back by results as
 //           R/bodies.json for the replay shim). Refuses when
@@ -16,11 +16,17 @@
 //           json` envelope, for each succeeded request; errored, canceled and expired ones leave no file.
 //           Prints {batch_id, succeeded, missing, cost_usd} and records the cost in D/batch.json.
 //
+//   bound   --bytes B --model M [--max-tokens N]
+//           Prints the most one request of B bytes can bill, in USD: the figure submit's budget gate sums, shared so the
+//           caller that sizes a batch uses the same bound.
+//
 // Exit: 0 ok; 2 usage or refusal; 3 API or network failure (retry next run); 4 batch not ended;
-//       5 credit exhausted, 6 API key rejected (HTTP 401 or 403); on either the caller rotates account.
+//       5 credit exhausted, 6 API key rejected (HTTP 401 or 403); on either the caller rotates account;
+//       7 the batch estimate is over the budget (nothing was sent; re-size the batch, do not rotate account).
 // Key: read here from <state_dir>/key-<account>.env (mode 600, the lane's own file), never printed or put on argv.
 // Endpoint: https://api.anthropic.com, or HIMMEL_BATCH_BASE_URL when it is a loopback http(s) URL (test stub).
-// Spend is not gated here (operator decision 229): the cost lands in the run row and the provider's cost report.
+// Budget: submit needs --max-usd (or GRAPHIFY_API_RUN_BUDGET_USD); it refuses before the POST when requests x the
+// per-request bound is over it (exit 7), or when no budget is given (exit 2). The actual cost lands in the run row and the provider's report.
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -147,6 +153,8 @@ async function submit(o) {
   if (!EFFORT.includes(effort)) refuse(`--effort must be one of ${EFFORT.join(', ')}`);
   const maxTokens = Number(o['max-tokens'] ?? 32000);
   if (!Number.isInteger(maxTokens) || maxTokens < 1) refuse('--max-tokens must be a positive integer');
+  const budget = o['max-usd'] ?? process.env.GRAPHIFY_API_RUN_BUDGET_USD ?? refuse('no budget: pass --max-usd or set GRAPHIFY_API_RUN_BUDGET_USD; nothing submitted');
+  if (!/^(\d+\.?\d*|\.\d+)$/.test(budget) || !(Number(budget) > 0)) refuse('--max-usd must be a positive decimal (GRAPHIFY_API_RUN_BUDGET_USD likewise)');
   const files = readdirSync(o.prompts ?? refuse('--prompts is required')).filter((f) => f.endsWith('.txt')).sort();
   if (files.length === 0) refuse('no prompts to submit');
   const prompts = files.map((f) => {
@@ -169,11 +177,16 @@ async function submit(o) {
   const requests = prompts.map(({ id, text }) => ({ custom_id: id, params: { model, max_tokens: maxTokens, output_config: { effort },
     ...(prefix && { system: [{ type: 'text', text: prefix, cache_control: { type: 'ephemeral', ttl: CACHE_TTL } }] }),
     messages: [{ role: 'user', content: prefix ? text.slice(prefix.length) : text }] } }));
+  const bounds = prompts.map(({ text }) => requestBound(model, Buffer.byteLength(text), maxTokens));
+  const estimate = bounds.reduce((sum, b) => sum + b, 0);
+  if (estimate > Number(budget)) {
+    refuse(`estimate ${estimate.toFixed(6)} USD (${requests.length} requests, the largest up to ${Math.max(...bounds).toFixed(6)} USD) is over the budget of ${budget} USD; nothing submitted`, 7);
+  }
   const key = await accountKey(o.account);
   const made = JSON.parse(await call(key, 'POST', '/v1/messages/batches', { requests }));
   if (typeof made.id !== 'string' || !made.id) refuse('the create reply carries no batch id', 3);
   mkdirSync(dir, { recursive: true });
-  const state = { version: 1, batch_id: made.id, account: o.account, model, effort, request_count: requests.length,
+  const state = { version: 1, batch_id: made.id, account: o.account, estimate_usd: estimate.toFixed(6), budget_usd: budget, model, effort, request_count: requests.length,
     custom_ids: requests.map((r) => r.custom_id), bodies, created_at: made.created_at ?? null, status: made.processing_status ?? 'in_progress' };
   save(dir, state);
   out({ batch_id: state.batch_id, request_count: state.request_count, status: state.status });
@@ -198,6 +211,24 @@ function cost(model, u) {
     : 1.25 * (u.cache_creation_input_tokens ?? 0);
   const inTok = (u.input_tokens ?? 0) + write + readMult * (u.cache_read_input_tokens ?? 0);
   return (inTok * pin + (u.output_tokens ?? 0) * pout) / 1e6;
+}
+
+const FRAMING_TOKENS = 100;
+const CACHE_WRITE_MULTIPLIER = 2;
+const INPUT_TOKENS_PER_BYTE = 1;
+function requestBound(model, bytes, maxTokens) {
+  const [pin, pout] = PRICE[model];
+  return ((bytes * INPUT_TOKENS_PER_BYTE + FRAMING_TOKENS) * CACHE_WRITE_MULTIPLIER * pin + maxTokens * pout) / 1e6;
+}
+
+function bound(o) {
+  const model = ALIAS[o.model] ?? o.model;
+  if (!PRICE[model]) refuse(`model '${o.model}' has no batch price in the table`);
+  const bytes = Number(o.bytes);
+  const maxTokens = Number(o['max-tokens'] ?? 32000);
+  if (!Number.isInteger(bytes) || bytes < 0) refuse('--bytes must be a non-negative integer');
+  if (!Number.isInteger(maxTokens) || maxTokens < 1) refuse('--max-tokens must be a positive integer');
+  console.log(requestBound(model, bytes, maxTokens).toFixed(6));
 }
 
 async function results(o) {
@@ -229,10 +260,10 @@ async function results(o) {
   out({ batch_id: state.batch_id, succeeded, missing: state.request_count - succeeded, cost_usd: state.cost_usd });
 }
 
-const COMMANDS = { submit, poll, results };
+const COMMANDS = { submit, poll, results, bound };
 const [cmd, ...rest] = process.argv.slice(2);
 try {
-  if (!COMMANDS[cmd]) refuse('usage: semantic-batch.mjs submit|poll|results --dir D ...');
+  if (!COMMANDS[cmd]) refuse('usage: semantic-batch.mjs submit|poll|results --dir D ... | bound --bytes B --model M');
   await COMMANDS[cmd](opts(rest));
 } catch (e) {
   if (!(e instanceof Refusal)) throw e;

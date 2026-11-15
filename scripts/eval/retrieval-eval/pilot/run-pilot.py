@@ -4,14 +4,23 @@
 
     run-pilot.py --config RUN.json        (refuses without HIMMEL_BILLED_OK=1, a READY G0,
                                            a clean tools.lock, a current PILOT APPROVED card
-                                           review (G4) and a distinct R8 go file)
+                                           review (G4), a distinct R8 go file and, under the
+                                           shared-credentials stance, a noise baseline)
+    run-pilot.py derive-s-key --source ENV --out RUN/private/s-key
+                                          (free: the key-only S file from the qmd key env
+                                           file, by the qmd key loader's own rules; the value
+                                           is never printed)
+    run-pilot.py meter-baseline --key-file S-KEY --window SECONDS --out BASELINE.json
+                                          (free: two key-meter reads over the window, while no
+                                           eval step runs; the fleet-noise rate for R5/R8)
 
 The state machine (class Pilot) is pure: every paid action goes through an injected launcher,
 the capped ledger and injected usage/quota/readiness/probe/clock objects, so the build fixtures
 drive it with mocks and no session ever starts. Its order:
 
-  H reserved -> P1 (V/S/Q clean profiles + the planted-marker control; P1-S books one s-qmd
-  query at b) -> P2 (one safe access probe per arm) -> initial S/Q P3 probes -> G5 ->
+  [noise baseline event] -> H reserved (and the noise reserve) -> meter_start (the first key
+  reading, before any S booking) -> P1 (V/S/Q clean profiles + the planted-marker control;
+  P1-S books one s-qmd query at b) -> P2 (one safe access probe per arm) -> initial S/Q P3 probes -> G5 ->
   triples in the sealed balanced schedule, each admitted atomically (Btriple) after the
   boundary checks (unsettled spend, skip ceiling, the 36-reachable count, usage pause with
   its one persisted deadline, auth/readiness) -> after four complete triples, G6 (settled S
@@ -24,7 +33,7 @@ it, capacity/usage-expiry/benign-probe/auth/readiness refusals end admission (FI
 while integrity, overrun, unsettled or unclassified failures stop every paid call. A killed
 answer is never replayed: its triple is excluded and its cost stays. No gate reads a score.
 """
-import argparse, hashlib, importlib.util, itertools, json, os, random, re, shutil, subprocess, sys, tempfile, time
+import argparse, hashlib, importlib.util, itertools, json, os, random, re, shutil, stat, subprocess, sys, tempfile, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.normpath(os.path.join(HERE, "..", "..", "..", ".."))
@@ -78,9 +87,13 @@ def schedule(task_ids, seed):
     return list(zip(order, perms))
 
 
+class Refuse(Exception):
+    pass
+
+
 class Pilot:
-    def __init__(self, tasks, ledger, launcher, usage, quota, readiness, prober, clock, seed, finalize=None):
-        self.tasks, self.ledger, self.launcher = tasks, ledger, launcher
+    def __init__(self, tasks, ledger, launcher, usage, quota, readiness, prober, clock, seed, finalize=None, noise=None):
+        self.tasks, self.ledger, self.launcher, self.noise = tasks, ledger, launcher, noise
         self.usage, self.quota, self.readiness, self.prober, self.clock = usage, quota, readiness, prober, clock
         self.finalize_cb = finalize
         self.plan = schedule([t["id"] for t in tasks], seed)
@@ -137,10 +150,22 @@ class Pilot:
             return self.stop("HARD_STOP", "unknown_spend")
         prev = self.ledger.last_meter()
         if prev is None:
-            prev = self.usage.baseline()
-        if prev is None:
             return self.stop("HARD_STOP", "unknown_spend")
-        return self.ledger.settle_s_interval(total - prev, len(self.ledger.s_interval), meter=total)
+        return self.ledger.settle_s_interval(total - prev, len(self.ledger.s_interval), meter=total, ts=self.clock.now())
+
+    def start_noise(self):
+        ev = self.ledger.noise_baseline_event()
+        if self.noise is None:
+            return "the run started with a noise baseline" if ev else None
+        if ev:
+            return None if ev["sha256"] == self.noise["sha256"] else "a different noise baseline than the run started with"
+        if self.ledger.events:
+            return "the run already has events without a noise baseline"
+        bad = L.baseline_problems(self.noise, L.NOISE_CAP_R8) or L.baseline_age_problems(self.noise, self.clock.now())
+        if bad:
+            return bad[0]
+        self.ledger.noise_start(self.noise["path"], self.noise["sha256"], self.noise["rate"], self.clock.now())
+        return None
 
     def probe(self, checkpoint, initial=False):
         """S cash probe (initial from capacity, later from the probes reserve) and a local Q probe."""
@@ -266,15 +291,26 @@ class Pilot:
     def run(self):
         if not self.readiness.g0():
             return {"refused": "G0", "launches": 0}
+        why = self.start_noise()
+        if why:
+            return {"refused": "noise", "why": why, "launches": 0}
         for attempt in sorted(self.ledger.inflight):
             cost, complete = self.launcher.recover(attempt)
             self.ledger.killed(attempt, cost, complete)
         if not self._mark("h_reserved"):
             try:
                 self.ledger.reserve_h()
+                if self.noise is not None:
+                    self.ledger.reserve("noise", L.NOISE_CAP_R8)
             except L.Refused:
                 return {"refused": "capacity", "launches": 0}
             self.mark("h_reserved")
+        if self.ledger.last_meter() is None and not self.stopped():
+            m = self.usage.cumulative()
+            if m is None:
+                self.stop("HARD_STOP", "unknown_spend")
+            else:
+                self.ledger.meter_start(m, self.clock.now())
         if not self._mark("g5_passed") and not self.stopped():
             self.preflight()
         done = {t: v for t, v in self.ledger.triples.items()}
@@ -315,7 +351,8 @@ class Pilot:
                "common_scored": len(cohort), "skip_union": self.skip_union(),
                "excluded": {t: s.split(":", 1)[1] for t, s in self.status.items() if s.startswith("excluded")},
                "spent": round(self.ledger.spent, 6), "committed": round(self.ledger.committed(), 6), "b": self.ledger.b,
-               "g6_passed": self.g6_passed, "lists_cancelled": self.ledger.lists_cancelled()}
+               "g6_passed": self.g6_passed, "lists_cancelled": self.ledger.lists_cancelled(),
+               "noise_absorbed": round(self.ledger.noise_absorbed, 6), "noise_expected": round(self.ledger.noise_expected, 6)}
         if stop and stop["kind"] == "HARD_STOP":
             rep.update(stop_kind="HARD_STOP", reason=stop["reason"], finalization_status="none", cohort=[])
             return rep
@@ -379,7 +416,7 @@ class RealLauncher:
         os.makedirs(os.path.join(home, ".claude"), mode=0o700)
         with open(os.path.join(home, ".claude", "canary.json"), "w") as f:
             json.dump({"canary": "inert-%s" % attempt}, f)
-        token = open(c["eval_token_file"]).read().strip()
+        token = read_token(c["eval_token_file"])
         envs = ["%s=%s" % kv for kv in sorted(self.arms["env"].items())] + ["CLAUDE_CODE_OAUTH_TOKEN=" + token]
         cmd = ["bash", os.path.join(HERE, "sandbox.sh"), "--arm", arm if arm in "VSQ" else "V", "--home", home,
                "--himmel", c["exports"]["himmel"], "--luna", c["exports"]["luna"], "--claude", c["claude"],
@@ -453,9 +490,47 @@ def price(result_path):
     return max(float(d.get("total_cost_usd") or 0), float(p.get("usd") or 0)) if p.get("priced") else None
 
 
+def read_token(path):
+    """The shared answer token: the first line, whitespace stripped (the cadence rule); the file
+    must be exactly one non-empty line."""
+    with open(path) as f:
+        lines = f.read().splitlines()
+    if not lines or not lines[0].strip() or any(l.strip() for l in lines[1:]):
+        raise ValueError("the answer token file must be exactly one non-empty line")
+    return lines[0].strip()
+
+
+def sha_file(path):
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+def g0_check(cfg, card_sha):
+    cmd = [sys.executable, "-I", os.path.join(HERE, "auth-preflight.py"), "--readiness", cfg["auth_readiness"], "--lock", cfg["lock"],
+           "--card-sha256", card_sha]
+    cmd += ["--stance", cfg["stance"]] if cfg.get("stance") else []
+    cmd += ["--answer-file", cfg["eval_token_file"]] if cfg.get("eval_token_file") else []
+    cmd += ["--search-key-file", cfg["s_key_file"]] if cfg.get("s_key_file") else []
+    p = subprocess.run(cmd, capture_output=True, text=True)
+    stance = next((l.split(":", 1)[1].strip() for l in p.stdout.splitlines() if l.startswith("stance:")), None)
+    if p.returncode or stance is None:
+        why = "; ".join(l.strip()[2:] for l in p.stdout.splitlines() if l.strip().startswith("- "))
+        return "G0: auth readiness is not READY" + (": " + why if why else ""), None
+    return None, stance
+
+
+def noise_binding(stance, cfg):
+    try:
+        fp = sha_file(cfg["s_key_file"]) if cfg.get("noise_baseline") else None
+    except OSError:
+        return None, ["noise: the S key file cannot be read for the baseline's key check"]
+    return L.load_baseline(stance, cfg.get("noise_baseline"), fp, cfg.get("expected_duration_s"), L.NOISE_CAP_R8)
+
+
 def gates(cfg):
     """G0 (auth-preflight READY), the tools.lock check, G4 (the card review ends PILOT APPROVED
-    for the current card hash) and the distinct R8 go file. Returns the list of refusals."""
+    for the current card hash), the distinct R8 go file and the noise binding of the stance G0
+    printed. Returns the list of refusals."""
     bad = []
     card_sha = hashlib.sha256(open(cfg["card"], "rb").read()).hexdigest()
     try:
@@ -470,17 +545,19 @@ def gates(cfg):
         bad.append("no distinct R8 go")
     if subprocess.run([sys.executable, "-I", os.path.join(HERE, "tools-lock.py"), "check", cfg["lock"]]).returncode:
         bad.append("tools.lock check failed")
-    if subprocess.run([sys.executable, "-I", os.path.join(HERE, "auth-preflight.py"), "--readiness", cfg["auth_readiness"],
-                       "--lock", cfg["lock"], "--card-sha256", card_sha]).returncode:
-        bad.append("G0: auth readiness is not READY")
+    why, stance = g0_check(cfg, card_sha)
+    if why:
+        bad.append(why)
+    else:
+        bad += noise_binding(stance, cfg)[1]
     return bad
 
 
 class KeyUsage:
-    """The dedicated OpenRouter key's cumulative usage through the unchanged fetchOpenRouterKey."""
+    """The S key's cumulative usage through the unchanged fetchOpenRouterKey."""
 
     def __init__(self, key_file):
-        self.key_file, self.first = key_file, None
+        self.key_file = key_file
 
     def read(self):
         mjs = os.path.join(REPO, "scripts", "api-lane", "shift-spend.mjs")
@@ -492,11 +569,6 @@ class KeyUsage:
         except ValueError:
             return None
         return float(u) if isinstance(u, (int, float)) else None
-
-    def baseline(self):
-        if self.first is None:
-            self.first = self.read()
-        return self.first
 
     def cumulative(self):
         return self.read()
@@ -549,7 +621,85 @@ def _load_path(path, name):
     return m
 
 
+def derive_s_key(source, out):
+    """The key-only S file from the qmd key env file: the first QMD_OPENAI_API_KEY= line's value,
+    a source of mode 0600/0400 only (the qmd key loader's rules), written O_EXCL|O_NOFOLLOW,
+    0600, into a 0700 directory the caller owns."""
+    try:
+        fd = os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError:
+        raise Refuse("the source does not exist or is a symlink")
+    with os.fdopen(fd, "rb") as f:
+        st = os.fstat(f.fileno())
+        if not stat.S_ISREG(st.st_mode) or stat.S_IMODE(st.st_mode) not in (0o600, 0o400):
+            raise Refuse("the source must be a regular file of mode 0600 or 0400")
+        lines = f.read().split(b"\n")
+    value = next((l[len(b"QMD_OPENAI_API_KEY="):] for l in lines if l.startswith(b"QMD_OPENAI_API_KEY=")), b"")
+    if not value:
+        raise Refuse("the source has no QMD_OPENAI_API_KEY value")
+    parent = os.path.dirname(os.path.abspath(out))
+    try:
+        pst = os.lstat(parent)
+    except OSError:
+        raise Refuse("the output directory does not exist")
+    if not stat.S_ISDIR(pst.st_mode) or stat.S_IMODE(pst.st_mode) != 0o700 or pst.st_uid != os.getuid():
+        raise Refuse("the output directory must be a real 0700 directory owned by the caller")
+    write_private(out, value)
+
+
+def write_private(path, data):
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    except OSError:
+        raise Refuse("the output already exists or is a symlink")
+    try:
+        os.fchmod(fd, 0o600)
+        os.write(fd, data)
+    finally:
+        os.close(fd)
+
+
+def meter_baseline(key_file, window, out, usage=None, clock=None):
+    lo, hi = L.BASELINE_WINDOW
+    if not lo <= window <= hi:
+        raise Refuse("the window must be %d to %d seconds" % (lo, hi))
+    usage, clock = usage or KeyUsage(key_file), clock or Clock()
+    m0, t0 = usage.read(), clock.now()
+    if m0 is None:
+        raise Refuse("the key meter is unreadable")
+    clock.sleep(window)
+    m1, t1 = usage.read(), clock.now()
+    if m1 is None:
+        raise Refuse("the key meter is unreadable")
+    if m1 < m0:
+        raise Refuse("the meter went backwards over the window")
+    rec = {"start_meter": m0, "end_meter": m1, "start_ts": t0, "end_ts": t1, "window_s": window,
+           "key_fingerprint": sha_file(key_file), "rate": (m1 - m0) / window}
+    write_private(out, (json.dumps(rec, indent=1, sort_keys=True) + "\n").encode())
+
+
+def free_command(argv):
+    ap = argparse.ArgumentParser(prog="run-pilot.py " + argv[0])
+    if argv[0] == "derive-s-key":
+        ap.add_argument("--source", required=True); ap.add_argument("--out", required=True)
+    else:
+        ap.add_argument("--key-file", required=True); ap.add_argument("--window", type=float, required=True); ap.add_argument("--out", required=True)
+    a = ap.parse_args(argv[1:])
+    try:
+        if argv[0] == "derive-s-key":
+            derive_s_key(a.source, a.out)
+        else:
+            meter_baseline(a.key_file, a.window, a.out)
+    except Refuse as e:
+        print("run-pilot: %s refused: %s" % (argv[0], e), file=sys.stderr)
+        return 3
+    print("run-pilot: %s wrote %s" % (argv[0], a.out))
+    return 0
+
+
 def main(argv):
+    if argv and argv[0] in ("derive-s-key", "meter-baseline"):
+        return free_command(argv)
     ap = argparse.ArgumentParser(prog="run-pilot.py")
     ap.add_argument("--config", required=True)
     a = ap.parse_args(argv)
@@ -570,8 +720,10 @@ def main(argv):
         judge = _load_path(os.path.join(HERE, "judge.py"), "judge")
         return judge.finalize(pilot, cohort, cfg)
 
+    _, stance = g0_check(cfg, hashlib.sha256(open(cfg["card"], "rb").read()).hexdigest())
+    noise, _ = noise_binding(stance, cfg)
     pilot = Pilot(tasks, ledger, RealLauncher(cfg, arms, tasks), KeyUsage(cfg["s_key_file"]), Quota(), Readiness(cfg),
-                  Prober(cfg), Clock(), cfg["seed"], finalize)
+                  Prober(cfg), Clock(), cfg["seed"], finalize, noise=noise)
     rep = pilot.run()
     out = os.path.join(cfg["run_root"], "private", "run-report.json")
     with open(out, "w") as f:

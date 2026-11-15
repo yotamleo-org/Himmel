@@ -70,14 +70,13 @@ class Launcher:
 
 
 class Usage:
-    def __init__(self, per_query=0.002):
-        self.per_query, self.ledger = per_query, None
-
-    def baseline(self):
-        return 0.0
+    def __init__(self, per_query=0.002, offset=0.0, fleet_rate=0.0):
+        self.per_query, self.offset, self.fleet_rate = per_query, offset, fleet_rate
+        self.ledger = self.clock = self.t0 = None
 
     def cumulative(self):
-        return self.per_query * sum(1 for e in self.ledger.events if e["ev"] == "book" and e["kind"] == "s_query")
+        fleet = self.fleet_rate * (self.clock.t - self.t0) if self.fleet_rate else 0.0
+        return self.offset + fleet + self.per_query * sum(1 for e in self.ledger.events if e["ev"] == "book" and e["kind"] == "s_query")
 
 
 class Quota:
@@ -127,7 +126,8 @@ class Clock:
         self.t += s
 
 
-def build(work, cap=25.0, rule=None, usage=None, quota=None, readiness=None, prober=None, finalize=True, name="ledger", recovered=(0.05, True)):
+def build(work, cap=25.0, rule=None, usage=None, quota=None, readiness=None, prober=None, finalize=True, name="ledger", recovered=(0.05, True),
+          noise=None):
     os.makedirs(work, exist_ok=True)
     led = L.Ledger(os.path.join(work, name + ".jsonl"), cap=cap)
     calls = []
@@ -135,9 +135,35 @@ def build(work, cap=25.0, rule=None, usage=None, quota=None, readiness=None, pro
     usage = usage or Usage()
     usage.ledger = led
     quota, readiness = quota or Quota(), readiness or Readiness()
-    p = RP.Pilot(TASKS, led, Launcher(rule, recovered), usage, quota, readiness, prober or Prober(), Clock(), seed=7, finalize=fin)
+    p = RP.Pilot(TASKS, led, Launcher(rule, recovered), usage, quota, readiness, prober or Prober(), Clock(), seed=7, finalize=fin, noise=noise)
+    usage.clock, usage.t0 = p.clock, p.clock.t
     quota.pilot = readiness.pilot = p
     return p, calls
+
+
+def noise_baseline(sha="a" * 64, age=60.0, rate=0.0005):
+    t = Clock().t
+    return {"path": "/run/noise-baseline-R8.json", "sha256": sha, "rate": rate, "start_meter": 0.0, "end_meter": rate * 600,
+            "start_ts": t - age - 600, "end_ts": t - age, "window_s": 600, "key_fingerprint": "f" * 64, "expected_duration_s": 300}
+
+
+def crash_once(phase, n_crash=None):
+    state = {"armed": True}
+
+    def crash(t, a, ph, n):
+        if ph == phase and (n_crash is None or n == n_crash) and state["armed"]:
+            state["armed"] = False
+            raise RP.Crash()
+    return crash
+
+
+def first_interval(p):
+    ev = p.ledger.events
+    first = next((e for e in ev if e["ev"] == "s_settle"), None)
+    if first is None:
+        return False
+    booked = sum(1 for e in ev if e["ev"] == "book" and e["kind"] == "s_query" and e["seq"] < first["seq"])
+    return abs(first["delta"] - p.usage.per_query * booked) < 1e-9
 
 
 def committed_at(work, triples, usage=None):
@@ -185,6 +211,47 @@ def run(name, work):
                    h=sorted([e["name"], round(e["amount"], 4)] for e in ev if e["ev"] == "reserve" and e["name"] in ("judge", "probes", "lists")),
                    probes=len(p.prober.calls))
         return out
+    if name == "meter-start":
+        p, fin = build(work, usage=Usage(offset=5.0))
+        p.run()
+        ev = p.ledger.events
+        start = next((e["seq"] for e in ev if e["ev"] == "meter_start"), None)
+        first_s = next((e["seq"] for e in ev if e["ev"] == "book" and e["kind"] == "s_query"), None)
+        return {"start_before_first_s": start is not None and first_s is not None and start < first_s,
+                "starts": sum(1 for e in ev if e["ev"] == "meter_start"), "first_delta_ok": first_interval(p)}
+    if name in ("meter-start-restart", "noise-other-baseline"):
+        noise = noise_baseline() if name == "noise-other-baseline" else None
+        crash = crash_once("p2") if noise is None else crash_once("answer", 2)
+        usage = lambda: Usage(offset=5.0) if noise is None else Usage(per_query=0.004, fleet_rate=0.001)
+        p, _ = build(work, rule=crash, usage=usage(), noise=noise)
+        try:
+            p.run()
+        except RP.Crash:
+            pass
+        if name == "noise-other-baseline":
+            p2, _ = build(work, rule=crash, usage=usage(), noise=noise_baseline(sha="b" * 64))
+            return {"refused": p2.run().get("refused")}
+        p2, _ = build(work, rule=crash, usage=usage())
+        p2.run()
+        return {"starts": sum(1 for e in p2.ledger.events if e["ev"] == "meter_start"), "first_delta_ok": first_interval(p2)}
+    if name in ("fleet-noise", "fleet-noise-legacy"):
+        p, fin = build(work, usage=Usage(per_query=0.004, fleet_rate=0.001), noise=noise_baseline() if name == "fleet-noise" else None)
+        out = summary(p, fin, p.run())
+        out.update(absorbed_positive=p.ledger.noise_absorbed > 0, first_event_is_baseline=p.ledger.events[0]["ev"] == "noise_baseline")
+        return out
+    if name == "noise-late-baseline":
+        crash = crash_once("answer", 2)
+        p, _ = build(work, rule=crash)
+        try:
+            p.run()
+        except RP.Crash:
+            pass
+        p2, _ = build(work, rule=crash, noise=noise_baseline())
+        return {"refused": p2.run().get("refused")}
+    if name in ("noise-stale", "noise-future"):
+        p, _ = build(work, noise=noise_baseline(age=7201.0 if name == "noise-stale" else -100.0))
+        rep = p.run()
+        return {"refused": rep.get("refused"), "launches": rep["launches"], "events": len(p.ledger.events)}
     if name == "g0":
         p, _ = build(work, readiness=Readiness(g0=False))
         rep = p.run()
