@@ -535,10 +535,21 @@ interface PlacementOptions {
   followUpOf?: string;
   proposedVersion?: string;
   why?: string;
+  labels?: string;
+  decision?: string;
 }
 
 /** The label a proposed version leaves on the ticket until the release manager confirms or moves it. */
 const proposedLabel = (v: string): string => `proposed-${labelSlug(v)}`;
+
+function assertBacklogDecision(o: PlacementOptions): void {
+  if (o.decision !== undefined || !/^(bug|task|story)$/i.test(o.type)) return;
+  const highBug = /^bug$/i.test(o.type) && /^(high|highest|critical|blocker)$/i.test(o.priority ?? '');
+  const security = (o.labels === undefined ? [] : parseLabels(o.labels)).some((l) => l.toLowerCase() === 'security');
+  if (highBug || security) {
+    throw new Error(`a High or security ${o.type} enters the backlog only by an operator decision: pass --decision <n> --words "<the operator's words>", or place it in a version (--fix-version, --proposed-version <v>, --gate)`);
+  }
+}
 
 /** Checks the gate, backlog and chief-override flags before anything is filed; returns the override reason. */
 export function checkPlacementFlags(o: PlacementOptions): string | undefined {
@@ -558,6 +569,7 @@ export function checkPlacementFlags(o: PlacementOptions): string | undefined {
       throw new Error('the backlog is filed with --backlog --proposed-version backlog and a one-line --why (--backlog alone is not a placement; pass --proposed-version <v> to propose a version instead)');
     }
     if (!o.why?.trim()) throw new Error('--backlog --proposed-version backlog needs --why <one line: why this waits in the backlog>');
+    assertBacklogDecision(o);
   }
   const override = chiefOverrideOf(o);
   if (override === undefined) return undefined;
