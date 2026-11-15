@@ -30,7 +30,14 @@ const install = (name: string, ...packages: string[]) => {
     ["install", "--prefix", dir, "--no-audit", "--no-fund", "--save-exact", ...packages],
     {
       stdio: ["ignore", "pipe", "pipe"],
-      env: { ...process.env, HOME: home, USERPROFILE: home, XDG_CACHE_HOME: path.join(home, ".cache") },
+      env: {
+        ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^npm_config_/i.test(k))),
+        HOME: home,
+        USERPROFILE: home,
+        XDG_CACHE_HOME: path.join(home, ".cache"),
+        npm_config_cache: path.join(home, ".npm"),
+        npm_config_userconfig: path.join(home, ".npmrc"),
+      },
     },
   );
   return createRequire(path.join(dir, "package.json"));
