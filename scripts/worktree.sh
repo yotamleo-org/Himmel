@@ -13,7 +13,11 @@
 # prune: removes any non-primary worktree whose branch tip exactly matches the
 # recorded head of a merged PR, and any idle detached HEAD worktree that is
 # clean and not held (its tip pinned to wip/detached-<sha12> first when no ref
-# reaches it). After pruning, every kept worktree is accounted for and
+# reaches it), and any clean worktree whose branch has no PR and whose tip is
+# already on main once it is older than CLEAN_SUPERSEDED_MIN_AGE_SECS (default
+# 86400; age = newest mtime of its gitdir HEAD / logs/HEAD) with no live process,
+# queue lock or RESUME brief holding it: worktree removed without --force, branch
+# deleted with `branch -d`. After pruning, every kept worktree is accounted for and
 # origin's unmerged remote branches are classified.
 #
 # new: creates the worktree via scripts/_new-worktree.sh. `new` prunes FIRST,
@@ -1546,6 +1550,109 @@ reclaim_parked() {
     fi
 }
 
+SUPERSEDED_MIN_AGE_SECS=$(num_or "${CLEAN_SUPERSEDED_MIN_AGE_SECS:-}" 86400)
+
+wt_head_age_secs() {
+    local wt="$1" gd f m newest=0 now
+    gd=$(git -C "$wt" rev-parse --absolute-git-dir 2>/dev/null) || { echo 0; return 0; }
+    for f in "$gd/HEAD" "$gd/logs/HEAD"; do
+        m=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null) || continue
+        case "$m" in ''|*[!0-9]*) continue ;; esac
+        [ "$m" -le "$newest" ] || newest="$m"
+    done
+    now=$(date +%s)
+    if [ "$newest" -eq 0 ] || [ "$now" -le "$newest" ]; then echo 0; else echo $((now - newest)); fi
+}
+
+superseded_ignored_ok() {
+    local out u e
+    out=$(git -C "$1" ls-files --others --ignored --exclude-standard --directory 2>/dev/null) || return 1
+    while IFS= read -r u; do
+        [ -n "$u" ] || continue
+        case "$u" in
+            .claude/logs/|.claude/settings.local.json|__pycache__/|*/__pycache__/) ;;
+            # git collapses a wholly-ignored .claude/ into one entry: look inside.
+            .claude/)
+                for e in "$1"/.claude/* "$1"/.claude/.[!.]* "$1"/.claude/..?*; do
+                    [ -e "$e" ] || [ -L "$e" ] || continue
+                    case "${e##*/}" in logs|settings.local.json) ;; *) return 1 ;; esac
+                done ;;
+            *) is_ignorable_ignored_stray "$u" || return 1 ;;
+        esac
+    done <<EOF
+$out
+EOF
+    return 0
+}
+
+superseded_still_unchanged() {
+    local wt="$1" br="$2" br_tip="$3" st
+    [ "$(git -C "$wt" symbolic-ref -q HEAD 2>/dev/null)" = "refs/heads/$br" ] || return 1
+    [ "$(git -C "$PRIMARY_WORKTREE" rev-parse -q --verify "refs/heads/$br^{commit}" 2>/dev/null)" = "$br_tip" ] || return 1
+    [ "$(wt_head_age_secs "$wt")" -ge "$SUPERSEDED_MIN_AGE_SECS" ] || return 1
+    st=$(git -C "$wt" status --porcelain --untracked-files=all 2>/dev/null) || return 1
+    [ -z "$st" ] || return 1
+    superseded_ignored_ok "$wt" || return 1
+    RESUME_HOLD_LOADED=0
+    FRESH_LOCK_DOCS_LOADED=0
+    FRESH_LOCK_DOCS_FAILED=0
+    ! worktree_held "$wt" 0 0 || return 1
+    ! branch_in_fresh_lock_doc "$br"
+}
+
+reclaim_superseded() {
+    local wt="$1" br="$2" br_tip age
+    [ "$HAVE_FORGE" -eq 1 ] && [ "$FORGE_KIND" = "github" ] && [ "$ORIGIN_PR_CACHE_OK" -eq 1 ] || return 1
+    [ "$PR_STATE" = "none" ] || return 1
+    br_tip=$(git -C "$PRIMARY_WORKTREE" rev-parse -q --verify "refs/heads/$br^{commit}" 2>/dev/null) || return 1
+    [ "$(commits_not_on_main "$br_tip")" = "0" ] || return 1
+    [ "$(git -C "$wt" symbolic-ref -q HEAD 2>/dev/null)" = "refs/heads/$br" ] || return 1
+    age=$(wt_head_age_secs "$wt")
+    if [ "$age" -lt "$SUPERSEDED_MIN_AGE_SECS" ]; then
+        log "  keep superseded $br (younger than ${SUPERSEDED_MIN_AGE_SECS}s): $wt"
+        return 1
+    fi
+    if worktree_held "$wt" 0 0; then
+        log "  keep superseded $br (${WORKTREE_HOLD}): $wt"
+        return 1
+    fi
+    if branch_in_fresh_lock_doc "$br"; then
+        log "  keep superseded $br (named by a live worker doc): $wt"
+        return 1
+    fi
+    [ "$(classify_worktree "$wt")" = "clean" ] || return 1
+    [ -z "$(git -C "$wt" status --porcelain --untracked-files=all 2>/dev/null)" ] || return 1
+    superseded_ignored_ok "$wt" || { log "  keep superseded $br (ignored files that may be user data): $wt"; return 1; }
+    if [ "$DRY_RUN" -eq 1 ]; then
+        echo "DRY clean-garden: would prune $br ($wt), superseded: tip already on main"
+        PRUNED=$((PRUNED+1)); return 0
+    fi
+    if ! superseded_still_unchanged "$wt" "$br" "$br_tip"; then
+        echo "WARN clean-garden: superseded $br changed during prune — kept ($wt)" >&2
+        note_stuck "$wt" "superseded, and the worktree changed during the prune"
+        SKIPPED=$((SKIPPED+1)); return 0
+    fi
+    if git -C "$PRIMARY_WORKTREE" -c status.showUntrackedFiles=all worktree remove "$wt" >/dev/null 2>&1; then
+        if git -C "$PRIMARY_WORKTREE" branch -d "$br" >/dev/null 2>&1; then
+            echo "OK clean-garden: pruned superseded $br ($wt)"
+            PRUNED=$((PRUNED+1))
+        else
+            echo "WARN clean-garden: superseded worktree removed but git branch -d refused $br (its tip is on main, nothing is lost) — counted as partial" >&2
+            note_stuck "$br" "worktree removed but the branch delete failed"
+            PARTIAL=$((PARTIAL+1))
+        fi
+    elif worktree_intact "$PRIMARY_WORKTREE" "$wt"; then
+        note_stuck "$wt" "superseded, but git refused the worktree removal"
+        echo "ERR clean-garden: failed to remove superseded worktree $wt — git refused the removal; the worktree is still registered with its .git link present. Run with --verbose to investigate." >&2
+        FAILED=$((FAILED+1))
+    else
+        note_stuck "$wt" "removal failed partway — the tree may be gutted"
+        echo "ERR clean-garden: removal of superseded worktree $wt FAILED PARTWAY — the tree may be GUTTED. Recover from the primary checkout: 1) git -C '$PRIMARY_WORKTREE' worktree prune  2) make sure '$wt' is empty or removed  3) git -C '$PRIMARY_WORKTREE' worktree add '$wt' '$br'" >&2
+        FAILED=$((FAILED+1))
+    fi
+    return 0
+}
+
 # orphans_report — `prune --orphans`: alarm lines only, never mutates.
 orphans_report() {
     local i wt br tip wt_norm label dirty live=0 alarms=0 ceiling alarm
@@ -1649,7 +1756,7 @@ if [ "$NO_PRUNE" -eq 0 ]; then
         br_tip=$(git -C "$PRIMARY_WORKTREE" rev-parse -q --verify "refs/heads/$br^{commit}" 2>/dev/null || true)
         if ! is_branch_mergeable_for_prune "$br"; then
             log "  keep (PR not merged): $br @ $wt"
-            reclaim_parked "$wt" "$br" "$locked"
+            reclaim_superseded "$wt" "$br" || reclaim_parked "$wt" "$br" "$locked"
             continue
         fi
 
@@ -1794,7 +1901,7 @@ if [ "$NO_PRUNE" -eq 0 ]; then
             if [ "$ONLY_ALLOW_UNMERGED" -eq 1 ]; then
                 echo "ERR clean-garden: --only $ONLY_TARGET was not cleanly pruned — not a prune candidate, or the removal was partial (reason above; --only-allow-unmerged still needs an open-PR-free branch that is either clean-and-pushed to origin or has no commits beyond main, no uncommitted work, no live process inside)" >&2
             else
-                echo "ERR clean-garden: --only $ONLY_TARGET was not cleanly pruned — not a prune candidate, or the removal was partial (reason above; a candidate needs a merged PR whose head is the branch tip, no uncommitted work, no live process inside)" >&2
+                echo "ERR clean-garden: --only $ONLY_TARGET was not cleanly pruned — not a prune candidate, or the removal was partial (reason above; a candidate needs a merged PR whose head is the branch tip, or no PR with its tip already on main for over CLEAN_SUPERSEDED_MIN_AGE_SECS; and no uncommitted work, no live process inside)" >&2
             fi
             exit 1
         fi

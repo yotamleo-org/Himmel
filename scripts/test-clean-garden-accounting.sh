@@ -1214,6 +1214,74 @@ case "$(uname -s)" in
 esac
 clear_checkpoints
 
+echo "RUN S: superseded worktrees"
+s_mk() {
+    local name="$1" branch="$2"
+    git -C "$REPO" worktree add -q "$TMP_ROOT/$name" -b "$branch" refs/remotes/origin/main >/dev/null 2>&1 || return 1
+    printf '%s\n' "$TMP_ROOT/$name"
+}
+s_backdate() {
+    local gd
+    [ -d "$1" ] || return 1
+    gd=$(git -C "$1" rev-parse --absolute-git-dir) || return 1
+    touch -t 202001010000 "$gd/HEAD" "$gd/logs/HEAD"
+}
+s_append() {
+    [ -d "$1" ] || return 1
+    printf '%s\n' "$3" >> "$1/$2"
+}
+s_commit() {
+    [ -d "$1" ] || return 1
+    git -C "$1" add -A && git -C "$1" commit -q -m "$2"
+}
+S_FAILS=0
+WT_S_AGED=$(s_mk wt-s-aged none/s-aged) || S_FAILS=$((S_FAILS+1))
+s_backdate "$WT_S_AGED" || S_FAILS=$((S_FAILS+1))
+WT_S_FRESH=$(s_mk wt-s-fresh none/s-fresh) || S_FAILS=$((S_FAILS+1))
+WT_S_DIRTY=$(s_mk wt-s-dirty none/s-dirty) || S_FAILS=$((S_FAILS+1))
+s_backdate "$WT_S_DIRTY" || S_FAILS=$((S_FAILS+1))
+s_append "$WT_S_DIRTY" README changed || S_FAILS=$((S_FAILS+1))
+WT_S_CLOSED=$(s_mk wt-s-closed chore/s-closed) || S_FAILS=$((S_FAILS+1))
+s_backdate "$WT_S_CLOSED" || S_FAILS=$((S_FAILS+1))
+if [ -d "$WT_S_CLOSED" ]; then
+    # shellcheck disable=SC2031  # GH_ROWS_ORIGIN is only read in run_clean's subshell
+    printf 'owner/repo\tchore/s-closed\tclosed\t%s\n' "$(git -C "$WT_S_CLOSED" rev-parse HEAD)" >> "$GH_ROWS_ORIGIN"
+fi
+WT_S_AHEAD=$(s_mk wt-s-ahead none/s-ahead) || S_FAILS=$((S_FAILS+1))
+s_append "$WT_S_AHEAD" x.txt x || S_FAILS=$((S_FAILS+1))
+s_commit "$WT_S_AHEAD" ahead || S_FAILS=$((S_FAILS+1))
+s_backdate "$WT_S_AHEAD" || S_FAILS=$((S_FAILS+1))
+if [ "$S_FAILS" -eq 0 ]; then pass "S0: every superseded fixture was built and backdated"; else fail "S0: $S_FAILS fixture step(s) failed, so S1-S5 prove nothing"; fi
+touch -t 202001020000 "$TMP_ROOT/s-marker"
+S_PROBE_GD=$(git rev-parse --absolute-git-dir 2>/dev/null) || S_PROBE_GD=""
+S_PROBE_TIP=$(git rev-parse HEAD 2>/dev/null) || S_PROBE_TIP=""
+S_DUP_RC=0
+S_DUP=$(s_mk wt-s-dup none/s-aged) || S_DUP_RC=1
+S_STEPS_RC=0
+s_backdate "$S_DUP" && S_STEPS_RC=1
+s_append "$S_DUP" README x && S_STEPS_RC=1
+s_commit "$S_DUP" dup && S_STEPS_RC=1
+S_TOUCHED=0
+if [ -n "$S_PROBE_GD" ]; then
+    [ "$S_PROBE_GD/HEAD" -nt "$TMP_ROOT/s-marker" ] || S_TOUCHED=1
+    [ "$(git rev-parse HEAD)" = "$S_PROBE_TIP" ] || S_TOUCHED=1
+fi
+if [ "$S_DUP_RC" -eq 1 ] && [ "$S_STEPS_RC" -eq 0 ] && [ "$S_TOUCHED" -eq 0 ]; then
+    pass "S0 control: a failed worktree add fails s_mk, stops its follow-on steps and touches nothing outside TMP_ROOT"
+else
+    fail "S0 control: s_mk rc=$S_DUP_RC follow-on-ran=$S_STEPS_RC caller-touched=$S_TOUCHED"
+fi
+s_out=$(run_clean)
+if [ ! -d "$WT_S_AGED" ] && ! git -C "$REPO" rev-parse --verify -q refs/heads/none/s-aged >/dev/null; then
+    pass "S1: aged superseded worktree and its branch are pruned"
+else
+    fail "S1: aged superseded worktree was kept" "$s_out"
+fi
+if [ -d "$WT_S_FRESH" ]; then pass "S2: a fresh worktree (ahead=0, no PR) is never pruned"; else fail "S2: fresh worktree was pruned" "$s_out"; fi
+if [ -d "$WT_S_DIRTY" ]; then pass "S3: aged but dirty worktree is kept"; else fail "S3: dirty worktree was pruned" "$s_out"; fi
+if [ -d "$WT_S_CLOSED" ]; then pass "S4: a closed-PR branch at ahead=0 is kept"; else fail "S4: closed-PR worktree was pruned" "$s_out"; fi
+if [ -d "$WT_S_AHEAD" ]; then pass "S5: aged worktree with commits off main is kept"; else fail "S5: ahead worktree was pruned" "$s_out"; fi
+
 echo
 echo "===================================="
 echo "test summary: $PASS passed, $FAIL failed"

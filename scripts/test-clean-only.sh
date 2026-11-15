@@ -604,6 +604,110 @@ out=$(GH_VIEW=fail run_verb)
 expect "11 verb: failed repo-name lookup is rc 1 with empty stdout" "$out" eq "$out" "rc=1"
 expect "11 verb: failed repo-name lookup makes no pulls walk" "$out" eq "$(gh_pull_calls)" 0
 
+echo "CASE 12: superseded worktrees"
+backdate_wt() {
+    local gd
+    gd=$(git -C "$1" rev-parse --absolute-git-dir) || return 1
+    touch -t 202001010000 "$gd/HEAD" "$gd/logs/HEAD"
+}
+mkdir -p "$REPO/.git/info"
+printf '.claude/logs/\n.claude/settings.local.json\n.claude/other.txt\n.claude/..notes\n.env\n' >> "$REPO/.git/info/exclude"
+
+WT_S_AGED=$(mk_wt wt-s-aged none/s-aged);       backdate_wt "$WT_S_AGED"
+WT_S_FRESH=$(mk_wt wt-s-fresh none/s-fresh)
+WT_S_DIRTY=$(mk_wt wt-s-dirty none/s-dirty);    backdate_wt "$WT_S_DIRTY"
+printf 'changed\n' >> "$WT_S_DIRTY/README"
+WT_S_UNTR=$(mk_wt wt-s-untr none/s-untr);       backdate_wt "$WT_S_UNTR"
+printf 'work\n' > "$WT_S_UNTR/notes.txt"
+WT_S_CLOSED=$(mk_wt wt-s-closed closed/s-closed); backdate_wt "$WT_S_CLOSED"
+WT_S_AHEAD=$(mk_wt wt-s-ahead none/s-ahead)
+printf 'x\n' > "$WT_S_AHEAD/x.txt"; git -C "$WT_S_AHEAD" add x.txt; git -C "$WT_S_AHEAD" commit -q -m "ahead"
+backdate_wt "$WT_S_AHEAD"
+WT_S_IGN=$(mk_wt wt-s-ign none/s-ign);          backdate_wt "$WT_S_IGN"
+mkdir -p "$WT_S_IGN/.claude/logs"; printf '{}\n' > "$WT_S_IGN/.claude/settings.local.json"
+WT_S_CL=$(mk_wt wt-s-cl none/s-cl);             backdate_wt "$WT_S_CL"
+mkdir -p "$WT_S_CL/.claude"; printf '{}\n' > "$WT_S_CL/.claude/settings.local.json"; printf 'n\n' > "$WT_S_CL/.claude/other.txt"
+WT_S_DD=$(mk_wt wt-s-dd none/s-dd);             backdate_wt "$WT_S_DD"
+mkdir -p "$WT_S_DD/.claude"; printf 'n\n' > "$WT_S_DD/.claude/..notes"
+WT_S_ENV=$(mk_wt wt-s-env none/s-env);          backdate_wt "$WT_S_ENV"
+printf 'SECRET=1\n' > "$WT_S_ENV/.env"
+WT_S_HELD=$(mk_wt wt-s-held none/s-held);       backdate_wt "$WT_S_HELD"
+WT_S_DRY=$(mk_wt wt-s-dry none/s-dry);          backdate_wt "$WT_S_DRY"
+
+out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_S_AGED")
+expect "12a: aged superseded --only rc=0" "$out" rc_is "$out" 0
+expect "12a: aged superseded worktree pruned" "$out" is_gone "$WT_S_AGED"
+expect_not "12a: its branch is deleted with git branch -d" "$out" has_branch none/s-aged
+
+out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_S_FRESH")
+expect "12b: fresh (under the age floor) refused non-zero" "$out" rc_nonzero "$out"
+expect "12b: fresh worktree kept" "$out" is_dir "$WT_S_FRESH"
+expect "12b: fresh branch kept" "$out" has_branch none/s-fresh
+
+out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_S_DIRTY")
+expect "12c: dirty refused non-zero" "$out" rc_nonzero "$out"
+expect "12c: dirty worktree kept" "$out" is_dir "$WT_S_DIRTY"
+out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_S_UNTR")
+expect "12c: untracked non-stray file refused non-zero" "$out" rc_nonzero "$out"
+expect "12c: untracked worktree kept" "$out" is_dir "$WT_S_UNTR"
+
+out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_S_CLOSED")
+expect "12d: a closed-PR branch is kept even at ahead=0" "$out" rc_nonzero "$out"
+expect "12d: closed-PR worktree kept" "$out" is_dir "$WT_S_CLOSED"
+out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_S_AHEAD")
+expect "12d: commits off main refused non-zero" "$out" rc_nonzero "$out"
+expect "12d: ahead worktree kept" "$out" is_dir "$WT_S_AHEAD"
+
+out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_S_IGN")
+expect "12e: ignored .claude/settings.local.json + logs/ do not block" "$out" is_gone "$WT_S_IGN"
+out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_S_CL")
+expect "12e: another ignored file under .claude/ blocks" "$out" rc_nonzero "$out"
+expect "12e: .claude/other.txt worktree kept" "$out" is_dir "$WT_S_CL"
+out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_S_DD")
+expect "12e: an ignored dot-dot name under .claude/ blocks" "$out" rc_nonzero "$out"
+expect "12e: .claude/..notes worktree kept" "$out" is_dir "$WT_S_DD"
+out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_S_ENV")
+expect "12e: an ignored .env (user data) blocks" "$out" rc_nonzero "$out"
+expect "12e: .env worktree kept" "$out" is_dir "$WT_S_ENV"
+
+out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_S_DRY" --dry-run)
+expect "12f: dry-run rc=0" "$out" rc_is "$out" 0
+expect "12f: dry-run names the target" "$out" grepq "$out" "would prune none/s-dry"
+expect "12f: dry-run removed nothing" "$out" is_dir "$WT_S_DRY"
+
+if [ -d /proc/self ]; then
+( cd "$WT_S_HELD" && exec sleep 60 ) &
+HOLDER_PID=$!
+sleep 0.3
+out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_S_HELD")
+expect "12g: live-cwd superseded refused non-zero" "$out" rc_nonzero "$out"
+expect "12g: live-cwd superseded worktree kept" "$out" is_dir "$WT_S_HELD"
+kill "$HOLDER_PID" 2>/dev/null || true
+wait "$HOLDER_PID" 2>/dev/null || true
+HOLDER_PID=""
+out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_S_HELD")
+expect "12g control: same target with no holder is pruned" "$out" is_gone "$WT_S_HELD"
+else
+echo "  SKIP: 12g: no /proc on this platform, live-cwd holder cannot be detected"
+fi
+
+REAL_GIT=$(command -v git)
+SHIM_DIR="$TMP_ROOT_UNIX/bin-late"
+mkdir -p "$SHIM_DIR"
+cat > "$SHIM_DIR/git" <<SHIM
+#!/usr/bin/env bash
+case " \$* " in *" worktree remove "*) for a in "\$@"; do last=\$a; done; [ -d "\$last" ] && printf 'late\n' > "\$last/late.txt";; esac
+exec "$REAL_GIT" "\$@"
+SHIM
+chmod +x "$SHIM_DIR/git"
+git -C "$REPO" config status.showUntrackedFiles no
+WT_S_LATE=$(mk_wt wt-s-late none/s-late)
+backdate_wt "$WT_S_LATE"
+out=$(PATH="$SHIM_DIR:$PATH" run_clean "$CLEAN_GARDEN" prune --only "$WT_S_LATE")
+git -C "$REPO" config --unset status.showUntrackedFiles
+expect "12h: a file written just before the remove keeps the worktree under status.showUntrackedFiles=no" "$out" rc_nonzero "$out"
+expect "12h: the late file is still there" "$out" test -f "$WT_S_LATE/late.txt"
+
 # ── control: the plain (fleet-wide) run still prunes every merged sibling ────
 echo "CONTROL: plain --prune-only"
 out=$(run_clean "$CLEAN_GARDEN" prune --prune-only)
