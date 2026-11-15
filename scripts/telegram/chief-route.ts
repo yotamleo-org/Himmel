@@ -1,9 +1,9 @@
 import { join, dirname, basename, resolve, isAbsolute } from "node:path";
 import { randomUUID, createHash } from "node:crypto";
 import { hostname, homedir } from "node:os";
-import { briefTextCounted, protectedRanges, findDo } from "./key-brief";
+import { briefTextCounted, protectedRanges } from "./key-brief";
 import { killTree, SPAWN_OWN_GROUP } from "../lib/kill-tree.mjs";
-import { readdir, readFile, stat, mkdir, open, unlink, copyFile, rm, rmdir, realpath, appendFile, writeFile } from "node:fs/promises";
+import { readdir, readFile, stat, mkdir, open, unlink, copyFile, rm, rmdir, realpath, appendFile } from "node:fs/promises";
 import { appendIfExists, atomicWrite, defaultRoot } from "./bus";
 import { loadAccess, operatorChatId } from "./gate";
 import { BASH_BIN } from "./run";
@@ -1483,33 +1483,39 @@ export function resolveKind(table: ClassTable | null, kind: string | undefined):
   return table.rows.find((r) => r.kind.endsWith("*") && r.kind.indexOf("*") === r.kind.length - 1 && FAMILY_RE.test(r.kind) && kind.startsWith(r.kind.slice(0, -1))) ?? null;
 }
 
-async function capText(text: string, kind: string, cap: number, root: string): Promise<{ text: string; state: "ok" | "cut" | "over-cap-uncut" }> {
-  if (text.length <= cap) return { text, state: "ok" };
-  const uncut = { text, state: "over-cap-uncut" as const };
-  const doAt = findDo(text);
-  if (doAt < 0) return uncut;
-  const pre = text.slice(0, doAt); const doSeg = text.slice(doAt);
-  const dir = join(root, "route-cut");
-  const file = join(dir, `${new Date().toISOString().replace(/[:.]/g, "-")}-${kind.replace(/[^A-Za-z0-9_-]/g, "_")}.txt`);
-  const suffix = `... (full text on the station: ${file})`;
-  let i = Math.min(cap - suffix.length - doSeg.length, pre.length);
-  const spans = protectedRanges(pre);
-  for (;;) {
-    while (i > 0 && pre[i] !== " " && pre[i] !== "\n") i--;
-    if (i <= 0) return uncut;
-    const span = spans.find(([s, e]) => i > s && i < e);
-    if (!span) break;
-    i = span[0];
+// Telegram takes 4096 characters a message; a part stays well under it, its "(n/m) " marker included.
+const TELEGRAM_PART_LIMIT = 3000;
+const PART_BREAKS = [/\n[ \t]*\n/g, /\n/g, /[.!?]["')\]]*[ \t]+/g, /\s+/g];
+
+function partEnd(s: string, budget: number): number {
+  const head = s.slice(0, budget);
+  const spans = protectedRanges(s);
+  const ends = (re: RegExp) => [...head.matchAll(re)].map((m) => m.index + m[0].length);
+  for (const re of PART_BREAKS) {
+    const free = ends(re).filter((e) => !spans.some(([a, b]) => e > a && e < b));
+    if (free.length) return free[free.length - 1];
   }
-  await mkdir(dir, { recursive: true });
-  await writeFile(file, text, { mode: 0o600, flag: "wx" });
-  return { text: `${pre.slice(0, i).trimEnd()}${suffix}${doSeg}`, state: "cut" };
+  const any = ends(/\s+/g);
+  if (any.length) return any[any.length - 1];
+  return /[\uD800-\uDBFF]/.test(head[budget - 1]) ? budget - 1 : budget;
 }
 
-export async function routeReply(root: string, chatId: number, text: string, o: { kind?: string; consoleName?: string; dest: string }): Promise<MsgClass> {
+function splitParts(text: string, limit = TELEGRAM_PART_LIMIT): string[] {
+  if (text.length <= limit) return [text];
+  for (let digits = 1; ; digits++) {
+    const budget = limit - (2 * digits + 4);
+    const parts: string[] = [];
+    let rest = text;
+    while (rest.length > budget) { const end = partEnd(rest, budget); parts.push(rest.slice(0, end)); rest = rest.slice(end); }
+    parts.push(rest);
+    if (String(parts.length).length <= digits) return parts.map((p, i) => `(${i + 1}/${parts.length}) ${p}`);
+  }
+}
+
+export async function routeReply(root: string, chatId: number, text: string, o: { kind?: string; consoleName?: string; dest: string }): Promise<{ cls: MsgClass; parts: number }> {
   const { replyViaOutbox } = await import("./poller");
   const kind = o.kind !== undefined && KIND_RE.test(o.kind) ? o.kind : undefined;
-  let cls: MsgClass = "escalate"; let logClass: string = "escalate"; let sent = text; let capState = "ok"; let keys = 0;
+  let cls: MsgClass = "escalate"; let logClass: string = "escalate"; let sent = text; let capState = "ok"; let keys = 0; let queued = 0;
   try {
     const table = await loadClassTable();
     const row = resolveKind(table, kind);
@@ -1520,10 +1526,7 @@ export async function routeReply(root: string, chatId: number, text: string, o: 
     }
     // ponytail: a word match, upgrade path = run scripts/handover/chief-kit/salus_marked.py on every path the text names
     if (cls === "monitor" && /salus/i.test(sent)) cls = "escalate";
-    if (cls === "escalate" && row && row.cap !== "none") {
-      const c = await capText(sent, kind!, table!.cap, root);
-      sent = c.text; capState = c.state;
-    }
+    if (cls === "escalate" && row && row.cap !== "none" && sent.length > table!.cap) capState = "over-cap-uncut";
     if (cls === "monitor") {
       await mkdir(join(root, "monitor"), { recursive: true });
       await appendFile(join(root, "monitor", "outbox.jsonl"), `${JSON.stringify({ text: sent, kind, at: new Date().toISOString() })}\n`, { mode: 0o600 });
@@ -1533,13 +1536,18 @@ export async function routeReply(root: string, chatId: number, text: string, o: 
     console.error(`[chief-route] routing failed, sending the raw text to the operator: ${e instanceof Error ? e.message : e}`);
     cls = "escalate"; logClass = "escalate-fallback"; sent = text; capState = "ok";
   }
-  if (cls === "escalate") await replyViaOutbox(root, chatId, sent, o.consoleName);
+  if (cls === "escalate") {
+    const parts = splitParts(sent);
+    if (parts.length > 1) capState = "split";
+    for (const part of parts) await replyViaOutbox(root, chatId, part, o.consoleName);
+    queued = parts.length;
+  }
   const dest = cls === "escalate" ? o.dest : cls === "monitor" ? "monitor" : "none";
   try {
     await mkdir(root, { recursive: true });
     await appendFile(join(root, "route.log"), `${new Date().toISOString()} ${kind ?? "unclassified"} ${logClass} ${dest} ${sent.length} ${keys} ${capState}\n`);
   } catch (e) { console.error(`[chief-route] route log not written: ${e instanceof Error ? e.message : e}`); }
-  return cls;
+  return { cls, parts: queued };
 }
 
 export async function latestReceiptId(root: string, chat: number, name: string): Promise<number> {
@@ -1551,12 +1559,20 @@ export async function latestReceiptId(root: string, chat: number, name: string):
   return best;
 }
 
-export async function awaitSendReceipt(root: string, chat: number, name: string, afterId: number, waitSec: number): Promise<number | null> {
+async function receiptIdsAfter(root: string, chat: number, name: string, afterId: number): Promise<number[]> {
+  const ids: number[] = [];
+  for (const f of await readdir(join(root, "consoles", "replies")).catch(() => [] as string[])) {
+    const m = /^(-?\d+)_(\d+)\.json$/.exec(f);
+    if (m && Number(m[1]) === chat && Number(m[2]) > afterId && await consoleReplyTarget(root, chat, Number(m[2])) === name) ids.push(Number(m[2]));
+  }
+  return ids.sort((a, b) => a - b);
+}
+
+export async function awaitSendReceipts(root: string, chat: number, name: string, afterId: number, count: number, waitSec: number): Promise<number[]> {
   const deadline = Date.now() + waitSec * 1000;
   for (;;) {
-    const id = await latestReceiptId(root, chat, name);
-    if (id > afterId) return id;
-    if (Date.now() >= deadline) return null;
+    const ids = await receiptIdsAfter(root, chat, name, afterId);
+    if (ids.length >= count || Date.now() >= deadline) return ids;
     await new Promise(r => setTimeout(r, 200));
   }
 }
@@ -1667,12 +1683,13 @@ if (import.meta.main) {
     const chatId = chat === "operator" ? (operatorChatId(await loadAccess()) ?? NaN) : Number(chat);
     if (verb === "reply" && Number.isSafeInteger(chatId) && chatId !== 0 && rest.length && owedOk && (flags.owed === undefined || name) && (!name || consoleInboxPath(defaultRoot(), name)) && (satellite === undefined || SATELLITE_ID.test(satellite))) {
       const seenBefore = flags.owed !== undefined && name ? await latestReceiptId(defaultRoot(), chatId, name) : 0;
-      const cls = await routeReply(defaultRoot(), chatId, rest.join(" "), { kind: flags.kind, consoleName: name, dest: chat === "operator" ? "operator" : `chat:${chatId}` });
+      const { cls, parts } = await routeReply(defaultRoot(), chatId, rest.join(" "), { kind: flags.kind, consoleName: name, dest: chat === "operator" ? "operator" : `chat:${chatId}` });
       console.log(cls);
       if (flags.owed !== undefined) {
         if (cls !== "escalate") { console.error(`[chief-route] owed item ${flags.owed}: the text was class ${cls}, not sent to Telegram, so there is no receipt`); process.exit(1); }
-        const id = await awaitSendReceipt(defaultRoot(), chatId, name!, seenBefore, Number(process.env.CHIEF_ROUTE_RECEIPT_WAIT_SEC) || 30);
-        if (id === null) { console.error(`[chief-route] owed item ${flags.owed}: queued, but the poller recorded no send receipt in time (poller down or Telegram refused); nothing marked delivered`); process.exit(1); }
+        const ids = await awaitSendReceipts(defaultRoot(), chatId, name!, seenBefore, parts, Number(process.env.CHIEF_ROUTE_RECEIPT_WAIT_SEC) || 30);
+        if (ids.length < parts) { console.error(`[chief-route] owed item ${flags.owed}: queued, but ${ids.length} of ${parts} parts got a send receipt in time and the poller recorded no send receipt for the rest (poller down or Telegram refused); nothing marked delivered`); process.exit(1); }
+        const id = ids[ids.length - 1];
         await writeOwedReceipt(flags.doc!, flags.owed, id, chatId);
         console.log(`delivered msg=${id}`);
       }
