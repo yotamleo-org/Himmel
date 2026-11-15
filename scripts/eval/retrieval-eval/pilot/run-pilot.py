@@ -7,9 +7,9 @@
                                            review (G4), a distinct R8 go file and, under the
                                            shared-credentials stance, a noise baseline)
     run-pilot.py derive-s-key --source ENV --out RUN/private/s-key
-                                          (free: the key-only S file from the qmd daemon env
-                                           file, by the daemon's own rules; the value is never
-                                           printed)
+                                          (free: the key-only S file from the qmd key env
+                                           file, by the qmd key loader's own rules; the value
+                                           is never printed)
     run-pilot.py meter-baseline --key-file S-KEY --window SECONDS --out BASELINE.json
                                           (free: two key-meter reads over the window, while no
                                            eval step runs; the fleet-noise rate for R5/R8)
@@ -622,8 +622,8 @@ def _load_path(path, name):
 
 
 def derive_s_key(source, out):
-    """The key-only S file from the daemon env file: the first QMD_OPENAI_API_KEY= line's value,
-    a source of mode 0600/0400 only (the qmd-daemon-env.sh rules), written O_EXCL|O_NOFOLLOW,
+    """The key-only S file from the qmd key env file: the first QMD_OPENAI_API_KEY= line's value,
+    a source of mode 0600/0400 only (the qmd key loader's rules), written O_EXCL|O_NOFOLLOW,
     0600, into a 0700 directory the caller owns."""
     try:
         fd = os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)

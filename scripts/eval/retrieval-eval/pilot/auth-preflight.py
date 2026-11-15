@@ -11,7 +11,7 @@ free R4 access probes; a bare passed:true proves nothing.
 The default stance is shared-credentials (design r20, decision 946): the eval runs on the
 fleet's shared credentials, so items 1 to 3 below are replaced by item S, a statement of which
 shared credential each channel uses (answer: shared-subscription, the one-line token file;
-search: regular-openrouter-key, the daemon env file and the key-only file derived from it),
+search: regular-openrouter-key, the qmd key env file and the key-only file derived from it),
 with no credential material. The answer source is checked by lstat only (regular, not a
 symlink, non-empty, mode 0600/0400, one hard link, never the interactive login file). The
 configured --answer-file / --search-key-file must equal the stated source_path / derived_path.

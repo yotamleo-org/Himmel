@@ -285,7 +285,7 @@ def mk(p, data, mode=0o600):
         f.write(data)
     os.chmod(p, mode)
 mk(g + "/secrets/claude-oauth-token", "fixture-not-a-token\n")
-mk(g + "/state/qmd-daemon.env", "QMD_OPENAI_API_KEY=fixture-key\n")
+mk(g + "/state/qmd-key.env", "QMD_OPENAI_API_KEY=fixture-key\n")
 os.makedirs(g + "/HIMMEL-9264-rerun-2026-11-14/private", mode=0o700)
 mk(g + "/proof/rotate-answer.md", "fixture: rotate the shared token, fleet-wide\n", 0o644)
 mk(g + "/proof/rotate-search.md", "fixture: rotate the regular key, re-derive s-key, re-pin the binding\n", 0o644)
@@ -297,7 +297,7 @@ mk(g + "/var/.credentials.json", "{}\n")
 legacy = json.load(open(g + "/ready.json"))
 r = {"schema": "rag-pilot-auth-readiness/1", "lock_sha256": legacy["lock_sha256"],
      "credentials": {"answer": {"kind": "shared-subscription", "source_path": g + "/secrets/claude-oauth-token"},
-                     "search": {"kind": "regular-openrouter-key", "source_path": g + "/state/qmd-daemon.env",
+                     "search": {"kind": "regular-openrouter-key", "source_path": g + "/state/qmd-key.env",
                                 "derived_path": g + "/HIMMEL-9264-rerun-2026-11-14/private/s-key"}},
      "stance": {"selected": "shared-credentials", "decision": "decision 946 (operator 2026-11-15)", "design_revision": "r20",
                 "card_sha256": legacy["stance"]["card_sha256"]},
@@ -351,17 +351,17 @@ has "G0 r20: the S key disagreement names its reason" "S: the configured S key f
 eq "G0 r20: the legacy record does not pass the default shared-credentials stance" 3 "$(sg0 "$W/g0/ready.json" >/dev/null; echo $?)"
 
 D="$W/derive"; mkdir -p "$D/out"; chmod 700 "$D/out"
-printf 'QMD_OPENAI_PROVIDER=openrouter\nQMD_OPENAI_API_KEY=fixture-or-key-123\nQMD_OPENAI_EMBED_BATCH_SIZE=64\nQMD_OPENAI_EMBED_CONCURRENCY=4\nQMD_QUERY_MAX_QUEUED=8\nQMD_OPENAI_API_KEY=second-line-ignored\n' > "$D/qmd-daemon.env"  # gitleaks:allow fake fixture key
-chmod 600 "$D/qmd-daemon.env"
+printf 'QMD_OPENAI_PROVIDER=openrouter\nQMD_OPENAI_API_KEY=fixture-or-key-123\nQMD_OPENAI_EMBED_BATCH_SIZE=64\nQMD_OPENAI_EMBED_CONCURRENCY=4\nQMD_QUERY_MAX_QUEUED=8\nQMD_OPENAI_API_KEY=second-line-ignored\n' > "$D/qmd-key.env"  # gitleaks:allow fake fixture key
+chmod 600 "$D/qmd-key.env"
 dsk() { python3 -I "$HERE/run-pilot.py" derive-s-key --source "$1" --out "$2" 2>&1; }
-out=$(dsk "$D/qmd-daemon.env" "$D/out/s-key"); rc=$?
-eq "derive-s-key: the daemon line format yields exactly the first key line's value in a 0600 file" "0 fixture-or-key-123 600" "$rc $(cat "$D/out/s-key" 2>/dev/null) $(python3 -I -c 'import os,sys; print("%o" % (os.stat(sys.argv[1]).st_mode & 0o777))' "$D/out/s-key" 2>/dev/null)"
+out=$(dsk "$D/qmd-key.env" "$D/out/s-key"); rc=$?
+eq "derive-s-key: the qmd key-file line format yields exactly the first key line's value in a 0600 file" "0 fixture-or-key-123 600" "$rc $(cat "$D/out/s-key" 2>/dev/null) $(python3 -I -c 'import os,sys; print("%o" % (os.stat(sys.argv[1]).st_mode & 0o777))' "$D/out/s-key" 2>/dev/null)"
 eq "derive-s-key: the value is never printed" no "$(case "$out" in *fixture-or-key*) echo yes ;; *) echo no ;; esac)"
 printf 'models:\n  embed: openai:x\nbase_url: https://openrouter.ai/api/v1\n' > "$D/index.yml"
-PARITY=$(bash -c '. "$1"; QMD_DAEMON_ENV_FILE="$2" qmd_daemon_key_load "$3" && printf %s "$QMD_OPENAI_API_KEY"' _ "$HERE/../../../lib/qmd-daemon-env.sh" "$D/qmd-daemon.env" "$D/index.yml")
-eq "derive-s-key: parity with qmd_daemon_key_load on the same file" "$PARITY" "$(cat "$D/out/s-key" 2>/dev/null)"
+PARITY=$(bash -c '. "$1"; QMD_DAEMON_ENV_FILE="$2" qmd_daemon_key_load "$3" && printf %s "$QMD_OPENAI_API_KEY"' _ "$HERE/../../../lib/qmd-daemon-env.sh" "$D/qmd-key.env" "$D/index.yml")  # t13b-ok: sources the qmd key loader to read a fixture file, starts nothing
+eq "derive-s-key: parity with the qmd key loader on the same file" "$PARITY" "$(cat "$D/out/s-key" 2>/dev/null)"
 for m in 640 700; do
-  cp "$D/qmd-daemon.env" "$D/env-$m"; chmod "$m" "$D/env-$m"
+  cp "$D/qmd-key.env" "$D/env-$m"; chmod "$m" "$D/env-$m"
   dsk "$D/env-$m" "$D/out/k-$m" > /dev/null; rc=$?
   eq "derive-s-key: a source with mode $m refuses and writes nothing" "3 no" "$rc $([ -e "$D/out/k-$m" ] && echo yes || echo no)"
 done
@@ -370,16 +370,16 @@ for c in nokey empty; do
   dsk "$D/env-$c" "$D/out/k-$c" > /dev/null; rc=$?
   eq "derive-s-key: a source with $c refuses and writes nothing" "3 no" "$rc $([ -e "$D/out/k-$c" ] && echo yes || echo no)"
 done
-dsk "$D/qmd-daemon.env" "$D/out/s-key" > /dev/null; rc=$?
+dsk "$D/qmd-key.env" "$D/out/s-key" > /dev/null; rc=$?
 eq "derive-s-key: an existing output refuses and is left as it was" "3 fixture-or-key-123" "$rc $(cat "$D/out/s-key")"
 ln -s "$D/nowhere" "$D/out/dangling"
-dsk "$D/qmd-daemon.env" "$D/out/dangling" > /dev/null; rc=$?
+dsk "$D/qmd-key.env" "$D/out/dangling" > /dev/null; rc=$?
 eq "derive-s-key: a dangling symlink at the output refuses and creates nothing" "3 no" "$rc $([ -e "$D/nowhere" ] && echo yes || echo no)"
-ln -s "$D/qmd-daemon.env" "$D/env-link"
+ln -s "$D/qmd-key.env" "$D/env-link"
 dsk "$D/env-link" "$D/out/k-link" > /dev/null; rc=$?
 eq "derive-s-key: a symlinked source refuses and writes nothing" "3 no" "$rc $([ -e "$D/out/k-link" ] && echo yes || echo no)"
 mkdir -p "$D/open"; chmod 755 "$D/open"
-dsk "$D/qmd-daemon.env" "$D/open/s-key" > /dev/null; rc=$?
+dsk "$D/qmd-key.env" "$D/open/s-key" > /dev/null; rc=$?
 eq "derive-s-key: an output directory that is not 0700 refuses" "3 no" "$rc $([ -e "$D/open/s-key" ] && echo yes || echo no)"
 
 printf 'card' > "$W/g0/card"; : > "$W/g0/r8go"
