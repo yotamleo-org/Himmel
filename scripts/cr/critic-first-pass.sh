@@ -575,8 +575,8 @@ fi
 case "$provider" in api) provider="claude-api" ;; subscription) provider="claude-subscription" ;; esac
 
 # Claude critic: provider claude-api / claude-subscription runs the
-# official claude binary with no tool at all (--tools empty, dontAsk, never
-# bypassPermissions) in a scratch cwd, not hermes: a hostile diff cannot make it read a file. rc 5 = SKIPPED: no key, lane
+# official claude binary with no tool (dontAsk, never
+# bypassPermissions) in a scratch cwd, not hermes. rc 5 = SKIPPED: no key, lane
 # off, credit or bank exhausted -- a clean no-op the panel records as unavailable,
 # never a failed review. A gate that crashed instead (no bank verdict, no scratch
 # file, a reservation with no verdict, a policy refusal: a caller asked for account auto) exits 1 behind a "claude critic BROKE" line.
@@ -616,10 +616,9 @@ _cfp_claude_invoke() {
     _cc_dir="$(tmpdir)" || { echo "critic-first-pass.sh: mktemp failed" >&2; return 1; }
     _cc_out=""
     _cc_rc=0
-    # the critic is offered no tool, so the whole prompt rides on stdin; its first line is the marker
-    # scripts/usage/usage-compute.sh reads to price the session as a critic phase
+    _cc_phase_marker='[critic-first-pass]'
     _cc_pf="$_cc_dir/prompt.txt"
-    { printf '%s\n' '[critic-first-pass]'; cat "$pf"; } > "$_cc_pf" || { rm -rf "$_cc_dir"; return 1; }
+    { printf '%s\n' "$_cc_phase_marker"; cat "$pf"; } > "$_cc_pf" || { rm -rf "$_cc_dir"; return 1; }
     case "$provider" in
         claude-api)
             _cc_budget="${CR_CLAUDE_CRITIC_MAX_USD:-1.00}"

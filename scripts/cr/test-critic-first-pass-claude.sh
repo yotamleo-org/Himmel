@@ -340,7 +340,6 @@ reach_shape() {
     fi
     echo ok
 }
-# the critic is offered no tool: no grant, a cwd that is a scratch dir, nothing widening the reach, the prompt on stdin
 fresh_rec 12a; unset FAKE_REFUSE FAKE_FAIL; run_cfp claude-api
 check "12a api route: scratch cwd, no --add-dir, HIMMEL_API_TOOLS set and empty" ok "$(reach_shape 12a "$REC" api)"
 has "12a api route: the critic still returns its findings" "- [claude-1]: off-by-one in loop bound [foo.sh:3]" "$W/out"
@@ -349,7 +348,7 @@ fresh_rec 12b; bank 10; run_cfp claude-subscription
 check "12b subscription route: scratch cwd, no --add-dir, no --allowedTools, --tools empty" ok "$(reach_shape 12b "$REC" sub)"
 has "12b subscription route: the critic still returns its findings" "- [claude-1]: off-by-one in loop bound [foo.sh:3]" "$W/out"
 has "12b subscription route: the prompt rides on stdin" "<diff>" "$REC/stdin"
-mutate() { # mutate <row> <sed expr>: the copied script with one edit; a no-op edit is a vacuous control
+mutate() {
     sed "$2" "$TREE/scripts/cr/critic-first-pass.sh" > "$W/mutant.sh"
     if cmp -s "$W/mutant.sh" "$TREE/scripts/cr/critic-first-pass.sh"; then bad "$1: the mutant is a no-op (vacuous control)"; else ok "$1: the mutant differs from the script"; fi
     cp "$W/mutant.sh" "$TREE/scripts/cr/critic-first-pass.sh"
@@ -374,7 +373,6 @@ mutate 12g "s|HIMMEL_API_TOOLS='' ||"
 run_cfp claude-api
 check "12g mutant: an unset HIMMEL_API_TOOLS on the API route (an inherited grant could ride in) fails 12a" "HIMMEL_API_TOOLS not set" "$(reach_shape 12g "$REC" api)"
 unset CFP_RUN
-# 12e: no read tool is offered on either route: no tool name anywhere in the recorded argv, and the API tool variable is empty
 hasnt "12e api route: no tool name in the recorded argv" "Read|Glob|Grep|Edit|Write|Bash|WebFetch|WebSearch" "$W/rec.12a/argv"
 hasnt "12e subscription route: no tool name in the recorded argv" "Read|Glob|Grep|Edit|Write|Bash|WebFetch|WebSearch" "$W/rec.12b/argv"
 ok "12e NOT-VERIFIED: the claude binary's own refusal of a tool call under --tools empty (a recorder sees what is offered, not what the binary does)"
