@@ -55,8 +55,8 @@ case "$1 $2" in
 esac
 echo "gh stub: unsupported request: $*" >&2; exit 64
 EOF
-# the stub reader: the PR body is the reader's answer line
-printf 'import sys\nsys.stdout.write(sys.stdin.read())\n' > "$WORK/reader.py"
+# the stub reader: the PR body is the reader's answer line; with --units it adds the two units fields
+printf 'import sys\nsys.stdout.write(sys.stdin.read().rstrip("\\n") + ("\\tnowrite=0\\tchief-owed=" if "--units" in sys.argv else "") + "\\n")\n' > "$WORK/reader.py"
 cat > "$WORK/classify" <<'EOF'
 #!/usr/bin/env bash
 for k in "$@"; do printf '%s\tLOCAL-NATIVE\tstub\n' "$k"; done
@@ -150,5 +150,90 @@ printf '{"ts":"t","event":"merge","key":"HIMMEL-309","pr":"6016","contract":"no"
 out_h="$(READER_OVERRIDE="$(cd "$(dirname "$SUT")/../../lib" && pwd)/pr_remainder.py" run)"
 has "(h) the control body with a newline reads as owed through the real reader" "$out_h" "OWED HIMMEL-310: merged PR #6017 owes operator by $DUE"
 lacks "(h) a lone CR is stripped, so the joined line is not owed" "$out_h" "OWED HIMMEL-309"
+
+# the real reader's units answer, over real PR bodies (their Ticket coverage sections, verbatim from gh pr view)
+UK="HIMMEL-$((300 + 99))"  # the own key; these bodies carry no deferred line, so any key reads them the same
+REAL_READER="$(cd "$(dirname "$SUT")/../../lib" && pwd)/pr_remainder.py"
+U8="$WORK/u8"; mkdir -p "$U8"
+git -C "$(dirname "$REAL_READER")" show 4a9dc2e4f:scripts/lib/pr_remainder.py > "$U8/base_reader.py" || fail "U8: the base reader copy (git show 4a9dc2e4f) could not be read"
+cat > "$U8/5341" <<'EOF'
+## Ticket coverage
+
+- The adopter-profile.js wording (lines 1216 to 1224) states what the install writes and does not write, now that the template carries the allowed shapes: done
+- The same stale wording in probes.js (lines 997 to 1005) and its pinning row in test-wizard-probes.sh: done
+- The tooling-line check pin, already landed in PR 5010 as the exact-text row in test-settings-template-allow.sh: done
+- VM row 1, a worker merges a throwaway trust-path PR on a valid go.sh GO file with no classifier refusal: owed → chief by 2026-11-20
+- VM row 2, a kept-refused shape (go.sh --trust-reviewed) still refuses: owed → chief by 2026-11-20
+- The enforcement.md observed-result line for the grouping table, which waits on those two rows: owed → chief by 2026-11-20
+EOF
+cat > "$U8/5398" <<'EOF'
+## Ticket coverage
+
+- spec-r1-U1: done
+- spec-r1-U2: done
+- spec-r1-U3: done
+- spec-r1-U4: done
+- spec-r1-U5: done
+- plan-r1-U1: done
+- plan-r1-U2: done
+- plan-r1-U3: done
+- plan-r1-U4: done
+- Template section in worker-brief-template.md: done
+- The proof class in gen-briefs.py: done
+- The listing change in next-dispatchable.sh (S1, sibling PR): owed → chief by 2026-11-21
+- DoD: the pool listing shows the open tickets as PROOF rows (S3): owed → chief by 2026-11-28
+- DoD: one wave of proof workers closes at least half (S3, operator closes): owed → operator by 2026-11-28
+
+Remaining: S1 (N6265, held after N6235), S3 (chief-run)
+EOF
+cat > "$U8/5451" <<'EOF'
+## Ticket coverage
+
+- spec-r1-U1: done
+- spec-r1-U2: done
+- spec-r1-U3: done
+- spec-r1-U4: done
+- spec-r1-U5: done
+- plan-r1-U1: done
+- plan-r1-U2: done
+- plan-r1-U3: done
+- plan-r1-U4: done
+- The listing change in next-dispatchable.sh (S1): done
+- DoD: the pool listing shows the open tickets as PROOF rows (S3): owed → chief by 2026-11-28
+- DoD: one wave of proof workers closes at least half (S3, operator closes): owed → operator by 2026-11-28
+
+Remaining: S3 (chief-run, no code)
+EOF
+printf 'Remaining: only a clean live shift, no code.\n' > "$U8/9625"
+cp "$PR_BODY_DIR/6016" "$U8/6016"; cp "$PR_BODY_DIR/6017" "$U8/6017"
+for b in 5341 5398 5451 9625 6016 6017; do
+    python3 -I "$U8/base_reader.py" "$UK" < "$U8/$b" > "$U8/$b.base"
+    python3 -I "$REAL_READER" "$UK" < "$U8/$b" > "$U8/$b.head"
+    python3 -I "$REAL_READER" --units "$UK" < "$U8/$b" | awk -F'\t' -v OFS='\t' '{NF -= 2; print}' > "$U8/$b.lead"
+    [ -s "$U8/$b.base" ] && cmp -s "$U8/$b.base" "$U8/$b.head" && pass "U8 ($b): the reader's default output equals the base reader's" || fail "U8 ($b): the default output moved: base '$(cat "$U8/$b.base")' head '$(cat "$U8/$b.head")'"
+    cmp -s "$U8/$b.base" "$U8/$b.lead" && pass "U8 ($b): the --units output's leading fields equal it too" || fail "U8 ($b): --units leading fields '$(cat "$U8/$b.lead")' vs base '$(cat "$U8/$b.base")'"
+done
+u10_5398="$(python3 -I "$REAL_READER" --units "$UK" < "$U8/5398")"
+has "U10: PR 5398's mixed remainder is not no-write" "$u10_5398" "	nowrite=0	chief-owed="
+u10_5451="$(python3 -I "$REAL_READER" --units "$UK" < "$U8/5451")"
+has "U10: PR 5451's chief-run remainder is no-write, and names its one chief-owed line" "$u10_5451" "	nowrite=1	chief-owed=DoD: the pool listing shows the open tickets as PROOF rows (S3): owed → chief by 2026-11-28"
+[ "${u10_5451##*	}" = "chief-owed=DoD: the pool listing shows the open tickets as PROOF rows (S3): owed → chief by 2026-11-28" ] && pass "U10: and the operator-owed line is not in it" || fail "U10: chief-owed field of '$u10_5451'"
+u10_5341="$(python3 -I "$REAL_READER" --units "$UK" < "$U8/5341")"
+has "U10: PR 5341's owed answer keeps its fields" "$u10_5341" "owed	chief	2026-11-20	VM row 1, "
+has "U10: and ends in nowrite=0 and its chief-owed texts" "$u10_5341" "	nowrite=0	chief-owed=VM row 1, "
+[ "$(printf '%s' "${u10_5341##*	}" | grep -o '¦' | wc -l | tr -d ' ')" = 2 ] && pass "U10: the three chief-owed lines are joined by ¦" || fail "U10: chief-owed field of '$u10_5341'"
+
+# U9a, U9b: a stub reader without the --units fields leaves the PR unread, never silently untagged
+printf 'import sys\nsys.stdout.write(sys.stdin.read())\n' > "$WORK/reader-nofields.py"
+mk HIMMEL-311 "In Progress" "a remaining answer without the units fields" "Edit scripts/lib/o11.sh."
+mk HIMMEL-312 "In Progress" "an owed answer without the units fields" "Edit scripts/lib/o12.sh."
+printf 'remaining\tS3 (chief-run)\n' > "$PR_BODY_DIR/6018"
+printf 'owed\tchief\t2026-11-20\tx\n' > "$PR_BODY_DIR/6019"
+printf '{"ts":"t","event":"merge","key":"HIMMEL-311","pr":"6018","contract":"no","result":"noop"}\n{"ts":"t","event":"merge","key":"HIMMEL-312","pr":"6019","contract":"no","result":"noop"}\n' >> "$STATE/status-events.jsonl"
+out_u9="$(READER_OVERRIDE="$WORK/reader-nofields.py" run)"
+has "U9a: a remaining answer without the fields leaves the PR unread" "$out_u9" "NEEDS-CHIEF-NOTE HIMMEL-311: merged PR #6018 body could not be read"
+lacks "U9a: and lists no row from it" "$out_u9" "RESUME	HIMMEL-311"
+has "U9b: an owed answer without the fields leaves the PR unread" "$out_u9" "NEEDS-CHIEF-NOTE HIMMEL-312: merged PR #6019 body could not be read"
+lacks "U9b: and prints no OWED line from it" "$out_u9" "OWED HIMMEL-312"
 
 if [ "$fails" -eq 0 ]; then echo "next-dispatchable-owed: all rows passed"; else echo "next-dispatchable-owed: $fails row(s) failed"; exit 1; fi
