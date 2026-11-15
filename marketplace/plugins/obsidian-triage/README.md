@@ -203,14 +203,16 @@ clip with no twimg ref (e.g. filed from Telegram) is probed once via fxtwitter
 post with no media at all stamps `media_probe_at` +
 `media_probe_result: no-video` and is never re-probed by the normal run.
 `x-media-fetch.py <vault> --reprobe-no-video` is the one-time backfill for
-clips stamped `no-video` before photos were recognised: it probes them again,
-re-stamps those that have media (the next normal run fetches them) and leaves the
-others untouched; with `--dry-run` it prints how many it would re-probe and
-changes nothing; `--limit N` caps it (`0` = all). Every probe, and every stamp or
-skip decision, appends one JSON line to `~/.himmel/state/x-media-probe.jsonl`
-(override `HIMMEL_X_MEDIA_PROBE_LOG`): `v, ts, event` (`probe` or `decision`),
-`clip` (status id), `path`, then for a probe `url`, `result`, `videos`, `photos`,
-and for a decision `action` (`stamp` or `skip`) and `reason`. Never tweet text.
+clips stamped `no-video` before photos were recognised. A bare call (or with
+`--dry-run`) only prints how many it would re-probe and changes nothing; with
+`--live` it probes them again, re-stamps those that have media (the next normal
+run fetches them) and leaves the others untouched; `--limit N` caps it (`0` =
+all). Every probe, and every stamp or skip decision, appends one JSON line to
+`~/.himmel/state/x-media-probe.jsonl` (override `HIMMEL_X_MEDIA_PROBE_LOG`):
+`v, ts, host, source, kind` (`kind` is `probe` or `decision`), `clip` (status id),
+`path`, then for a probe `url`, `result`, `videos`, `photos`, and for a decision
+`action` (`stamp` or `skip`) and `reason`. Never tweet text. A log that cannot be
+written costs a stderr note, never the probe.
 Provenance lands in the
 frontmatter (`media_transcript_source`: `platform-subs` / `auto-subs` /
 `whisper-<model>` / `none`, `media_video_duration_s`, `media_transcript_coverage`)

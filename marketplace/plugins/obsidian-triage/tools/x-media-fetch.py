@@ -43,7 +43,8 @@ Subtitles first, with provenance:
     media_probe_result: photo and the clip proceeds; no media at all stamps
     media_probe_result: no-video + media_probe_at so it is never re-probed
     (frontmatter-only, scoped-G-3). --reprobe-no-video is the one-time backfill
-    that probes the no-video stamps again. Every probe and stamp/skip decision
+    that probes the no-video stamps again (it only counts unless --live is
+    given). Every probe and stamp/skip decision
     appends a JSON line to ~/.himmel/state/x-media-probe.jsonl
     (override HIMMEL_X_MEDIA_PROBE_LOG).
   - For a video clip, yt-dlp --skip-download tries the platform's English
@@ -1469,9 +1470,10 @@ def _probe_log_path() -> Path:
     return Path(override) if override else _home() / ".himmel" / "state" / "x-media-probe.jsonl"
 
 
-def log_probe_event(event: str, **fields) -> None:
+def log_probe_event(kind: str, **fields) -> None:
     rec = {"v": 1, "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-           "event": event, **fields}
+           "host": urllib.parse.urlparse(FXT_BASE).hostname,
+           "source": "x-media-fetch", "kind": kind, **fields}
     try:
         path = _probe_log_path()
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -1533,9 +1535,9 @@ def reprobe_no_video(args) -> int:
         if x and not already_media_enriched(fm_raw):
             todo.append((p, x))
     capped = todo[: args.limit] if args.limit > 0 else todo
-    if args.dry_run:
+    if args.dry_run or not args.live:
         print(f"x-media-fetch: {len(capped)} clip(s) stamped no-video would be "
-              f"re-probed (no probe in --dry-run)")
+              f"re-probed (no probe without --live)")
         if len(todo) > len(capped):
             print(f"x-media-fetch: {len(todo) - len(capped)} more no-video clip(s) "
                   f"remain (capped by --limit; pass --limit 0 for all)")
@@ -1581,7 +1583,10 @@ def parse_args(argv):
     ap.add_argument("--reprobe-no-video", action="store_true",
                     help="one-time backfill: probe again the clips stamped "
                          "media_probe_result: no-video and re-stamp those that "
-                         "have media (honours --dry-run and --limit)")
+                         "have media; writes nothing unless --live is given "
+                         "(honours --limit)")
+    ap.add_argument("--live", action="store_true",
+                    help="with --reprobe-no-video: probe and re-stamp for real")
     ap.add_argument("--include-done", action="store_true",
                     help="also scan _done/ graduated clips (the backfill pass)")
     ap.add_argument("--whisper-model", default=DEFAULT_WHISPER_MODEL)

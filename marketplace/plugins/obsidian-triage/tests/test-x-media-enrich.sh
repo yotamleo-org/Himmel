@@ -1480,7 +1480,15 @@ assert "backfill dry-run makes no fxtwitter call" ok "$a"
 X_MEDIA_FXT_CMD="$tmp/bin/fxt-by-id" X_TEST_FXT_DIR="$FXD" HOME="$H2" run_tool "$BF" --reprobe-no-video --dry-run --limit 1 >"$tmp/bf-dry1.out" 2>&1
 grep -qF '1 clip(s) stamped no-video would be re-probed' "$tmp/bf-dry1.out" && a=ok || a="$(cat "$tmp/bf-dry1.out")"
 assert "backfill dry-run counts only what --limit would probe" ok "$a"
-X_MEDIA_FXT_CMD="$tmp/bin/fxt-by-id" X_TEST_FXT_DIR="$FXD" X_TEST_FXT_COUNT="$tmp/fxt-bf.count" HOME="$H2" run_tool "$BF" --reprobe-no-video --limit 0 >"$tmp/bf-live.out" 2>"$tmp/bf-live.err"
+: > "$tmp/fxt-bare.count"
+X_MEDIA_FXT_CMD="$tmp/bin/fxt-by-id" X_TEST_FXT_DIR="$FXD" X_TEST_FXT_COUNT="$tmp/fxt-bare.count" HOME="$H2" run_tool "$BF" --reprobe-no-video --limit 0 >"$tmp/bf-bare.out" 2>&1
+assert "a bare --reprobe-no-video exits 0" 0 "$?"
+assert "a bare --reprobe-no-video changes no file" "$bf_before" "$(snap)"
+[ ! -s "$tmp/fxt-bare.count" ] && a=ok || a=no
+assert "a bare --reprobe-no-video makes no fxtwitter call" ok "$a"
+grep -qF '2 clip(s) stamped no-video would be re-probed' "$tmp/bf-bare.out" && a=ok || a="$(cat "$tmp/bf-bare.out")"
+assert "a bare --reprobe-no-video prints how many it would re-probe" ok "$a"
+X_MEDIA_FXT_CMD="$tmp/bin/fxt-by-id" X_TEST_FXT_DIR="$FXD" X_TEST_FXT_COUNT="$tmp/fxt-bf.count" HOME="$H2" run_tool "$BF" --reprobe-no-video --live --limit 0 >"$tmp/bf-live.out" 2>"$tmp/bf-live.err"
 assert "backfill live run exits 0" 0 "$?"
 grep -q '^media_probe_result: photo$' "$BF/Clippings/wrong.md" && a=ok || a=no
 assert "a wrongly stamped photo-only clip is re-stamped photo" ok "$a"
@@ -1504,8 +1512,8 @@ echo "Test 30: HIMMEL-10105 - every probe and every stamp or skip decision leave
 python3 -I - "$HIMMEL_X_MEDIA_PROBE_LOG" > "$tmp/log-check.out" 2>&1 <<'PY'
 import json, sys
 rows = [json.loads(l) for l in open(sys.argv[1], encoding="utf-8") if l.strip()]
-probes = [r for r in rows if r.get("event") == "probe"]
-decisions = [r for r in rows if r.get("event") == "decision"]
+probes = [r for r in rows if r.get("kind") == "probe"]
+decisions = [r for r in rows if r.get("kind") == "decision"]
 p = [r for r in probes if r.get("clip") == "2801"]
 ok = bool(p) and p[0].get("result") == "photo" and p[0].get("videos") == 0 and p[0].get("photos") == 2
 ok = ok and "api.fxtwitter.com/someuser/status/2801" in p[0].get("url", "")
@@ -1515,18 +1523,28 @@ print("stamp-decision", "ok" if d and d[0].get("action") == "stamp" and d[0].get
 s = [r for r in decisions if r.get("clip") == "2902"]
 print("skip-decision", "ok" if s and s[-1].get("action") == "skip" and s[-1].get("reason") == "still-no-video" else f"bad {s}")
 print("ts", "ok" if all(r.get("ts") for r in rows) else "bad")
+env = all(r.get("v") == 1 and r.get("host") == "api.fxtwitter.com" and r.get("source") == "x-media-fetch" and r.get("kind") in ("probe", "decision") for r in rows)
+print("envelope", "ok" if rows and env else "bad")
 PY
-for k in probe-fields stamp-decision skip-decision ts; do
+for k in probe-fields stamp-decision skip-decision ts envelope; do
   grep -q "^$k ok$" "$tmp/log-check.out" && a=ok || a="$(grep "^$k" "$tmp/log-check.out")"
   assert "probe log row: $k" ok "$a"
 done
 grep -qF 'SECRET-TWEET-TEXT' "$HIMMEL_X_MEDIA_PROBE_LOG" && a=leaked || a=absent
 assert "the probe log never carries tweet text" absent "$a"
 n1="$(wc -l < "$HIMMEL_X_MEDIA_PROBE_LOG" | tr -d ' ')"
-X_MEDIA_FXT_CMD="$tmp/bin/fxt-by-id" X_TEST_FXT_DIR="$FXD" HOME="$H2" run_tool "$BF" --reprobe-no-video --limit 0 >/dev/null 2>&1
+X_MEDIA_FXT_CMD="$tmp/bin/fxt-by-id" X_TEST_FXT_DIR="$FXD" HOME="$H2" run_tool "$BF" --reprobe-no-video --live --limit 0 >/dev/null 2>&1
 n2="$(wc -l < "$HIMMEL_X_MEDIA_PROBE_LOG" | tr -d ' ')"
 [ "$n2" -gt "$n1" ] && a=ok || a="$n1 -> $n2"
 assert "the log only appends (a second run adds lines)" ok "$a"
+: > "$tmp/log-blocker"
+PU="$tmp/vault-unwritable-log"; make_x_vault "$PU" 3001 ""
+HIMMEL_X_MEDIA_PROBE_LOG="$tmp/log-blocker/x.jsonl" X_TEST_FXT_JSON="$FXP" X_TEST_FXT_COUNT="$tmp/fxt-u.count" X_TEST_YT_MODE=none HOME="$H2" run_tool "$PU" >"$tmp/unw.out" 2>"$tmp/unw.err"
+assert "an unwritable probe log does not fail the run" 0 "$?"
+grep -q '^media_probe_result: photo$' "$PU/Clippings/clip.md" && a=ok || a=no
+assert "an unwritable probe log still lets the probe stamp the clip" ok "$a"
+grep -qF 'probe log not written' "$tmp/unw.err" && a=ok || a="$(cat "$tmp/unw.err")"
+assert "an unwritable probe log leaves a stderr note" ok "$a"
 unset HIMMEL_X_MEDIA_PROBE_LOG
 
 echo ""
