@@ -95,8 +95,6 @@ scan_line() {
                     j=$((j + 1))
                     if [ "$j" -ge "$n" ]; then cont=1; else cur="$cur${L:j:1}"; fi ;;
                 '<')
-                    # A heredoc inside "$(...)" carries a body whose quotes this
-                    # flat scan cannot track; judging it would guess.
                     [ "${L:j+1:1}" = '<' ] && exit 0
                     cur="$cur$c" ;;
                 *) cur="$cur$c" ;;
