@@ -27,7 +27,7 @@ EMIT = re.compile(r"cadence-alert\.sh[\"']?\s+fail\s+(\S+)")
 slug = lambda w: re.sub(r"[^A-Za-z0-9_-]", "_", w)
 
 a = sys.argv[1:]
-opt = {"--table": None, "--repo": None, "--overlay": None, "--emitters-file": None, "--only": None}
+opt = {"--table": None, "--repo": None, "--overlay": None, "--emitters-file": None, "--only": None, "--doc": None}
 while a:
     k = a.pop(0)
     opt[k] = a.pop(0)
@@ -164,6 +164,12 @@ if want("senders"):
     if chief.get("sender") != "docs/handover/running-a-chief.md":
         err("senders", "chief-reply's sender must be docs/handover/running-a-chief.md")
 
+if want("docs"):
+    text = open(opt["--doc"], encoding="utf-8").read()
+    for r in rows:
+        if not re.search(r"^\|\s*`%s`\s*\|\s*%s\s*\|" % (re.escape(r["kind"]), re.escape(r["class"])), text, re.M):
+            err("docs", "%s has no table row with class %s in the doc" % (r["kind"], r["class"]))
+
 print("\n".join(errs))
 sys.exit(1 if errs else 0)
 PY
@@ -274,7 +280,14 @@ lint_clean "every row's sender exists" --table "$TABLE" --only senders
 mut "$T/bad-sender.json" '[r.update({"sender":"scripts/no/such-sender.sh"}) for r in t["kinds"] if r["kind"]=="worker-silent"]'
 lint_dirty "a row whose sender is missing fails the lint" "does not exist" --table "$T/bad-sender.json" --only senders
 
-lint_clean "the whole lint passes on the real table" --table "$TABLE" --emitters-file "$T/emitters"
+DOC="$REPO/docs/internals/telegram-bridge.md"
+lint_clean "every kind has a row with its class in the doc table" --table "$TABLE" --only docs --doc "$DOC"
+grep -v '^| `merge-blocked` ' "$DOC" > "$T/doc-no-row.md"
+lint_dirty "a doc copy with a kind's row removed fails the lint naming the kind" "merge-blocked has no table row" --table "$TABLE" --only docs --doc "$T/doc-no-row.md"
+sed 's/^| `token-in-output` | escalate |/| `token-in-output` | monitor |/' "$DOC" > "$T/doc-wrong-class.md"
+lint_dirty "a doc row with the wrong class fails the lint" "token-in-output has no table row with class escalate" --table "$TABLE" --only docs --doc "$T/doc-wrong-class.md"
+
+lint_clean "the whole lint passes on the real table" --table "$TABLE" --emitters-file "$T/emitters" --doc "$DOC"
 
 echo "1..$((PASS + FAILN)) pass=$PASS fail=$FAILN"
 [ "$FAILN" -eq 0 ]

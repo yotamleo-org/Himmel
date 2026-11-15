@@ -164,6 +164,84 @@ Fast-resume is an independent capability for recovering a closed
 session's stop-point: `scripts/telegram/armed-session-track.ts` +
 `/handover-resume-armed`.
 
+## Message classes
+
+Every message the harness sends to Telegram carries a kind, and `scripts/telegram/message-classes.json` gives each kind one class. **escalate** goes to the operator chat: it needs the operator and no agent can do it, and it is a short brief (what is wrong, what it blocks, the one thing to do). **monitor** goes to the monitoring chat: routine and live monitoring. **silent** sends nothing: the chief or a script handles it. An unset or failing monitoring chat never drops an escalation, and a kind with no row still escalates, so losing a real escalation is never the failure direction. The table is generated from the json and `scripts/telegram/test-message-classes.sh` fails when a kind has no row here, or a row carries a different class.
+
+| Kind | Class | Sender | What it says |
+|---|---|---|---|
+| `merge-blocked` | escalate | `scripts/lib/merge-block-alert.sh` | Merge refused: PR 4882 in octo/demo. Blocks: the merge after GO. Do: ask a reviewer for the one approval GitHub still wants |
+| `token-in-output` | escalate | `scripts/hooks/detect-token-in-output.sh` | A credential leaked: a GitHub token appeared in session 81843b5d. Blocks: nothing yet, it is in the transcript. Do: rotate the GitHub token |
+| `config-audit` | escalate | `scripts/lib/config-audit.sh` | A session changed .env: JIRA_API_TOKEN. Blocks: nothing. Do: check it was you, else restore the file from its backup |
+| `hold-ask-operator` | escalate | `scripts/handover/chief-kit/chief-wait.sh` | A worker on a ticket needs a settings or CI file: .github/workflows/ci.yml. Blocks: that worker. Do: in a real terminal, run: bash scripts/handover/chief-kit/go.sh grant the-ticket |
+| `hold-ask-stuck` | escalate | `scripts/handover/chief-kit/chief-wait.sh` | A file ask waited 30 min: a worker wants scripts/cr/critic-panel.sh, held by another ticket. Blocks: that worker. Do: in a real terminal, run: bash scripts/handover/chief-kit/go.sh grant the-ticket |
+| `denial-stuck` | escalate | `scripts/handover/chief-kit/chief-wait.sh` | A worker N4992b has been parked 30 min by a classifier denial (PAUSE-RISK). Blocks: its ticket. Do: open the session in Remote Control, or run ack-denial.sh with the label |
+| `monitor-chat-down` | escalate | `scripts/telegram/poller.ts` | The monitoring group is getting no messages (unset); 3 are kept on the station. Blocks: routine monitoring only. Do: check the two monitoring lines in the bridge env file and that the monitoring bot is in its group, then restart the bridge |
+| `recover-failed` | escalate | `scripts/station-ops/recover.sh` | Reboot recovery failed: the bridge did not come back. Blocks: every Telegram message. Do: run systemctl --user restart telegram-bridge.service |
+| `chief-reply` | escalate | `docs/handover/running-a-chief.md` | A chief's reply to the operator, sent through chief-route.ts; ticket keys and PR numbers carry their plain words. |
+| `hold-ask-chief` | escalate | `scripts/handover/chief-kit/chief-wait.sh` | A worker wants scripts/cr/critic-panel.sh, held by another ticket. Blocks: that worker. Do: in a real terminal, run: bash scripts/handover/chief-kit/go.sh grant the-ticket |
+| `denial-page` | escalate | `scripts/handover/chief-kit/chief-wait.sh` | Session 81843b5d of the himmel chief has 3 classifier denials (PAUSE-RISK). Blocks: that session. Do: open it in Remote Control and answer the prompt |
+| `worker-silent` | silent | `scripts/handover/chief-kit/chief-wait.sh` | A worker went silent; the chief handles it, so nothing is sent to any chat. |
+| `denied-launch` | monitor | `scripts/handover/chief-kit/denied-launch-alert.sh` | A worker launch was denied by the classifier; details stay on the station log. |
+| `silent-go-merge` | monitor | `scripts/handover/chief-kit/silent-go-merge.sh` | A GO'd PR whose worker went silent was merged by the chief's script. |
+| `claude-only-clear` | monitor | `scripts/cr/clear-review-marker.sh` | The review marker was cleared on the Claude-only fallback after every other review lane was out. |
+| `cache-health` | monitor | `scripts/eval/cache-health-cadence.sh` | The hourly prompt-cache health check crossed a threshold. |
+| `failure-review` | monitor | `scripts/eval/worker-digest/failure_review.py` | The daily failure review found something in the last 24 hours. |
+| `upstream-watch` | monitor | `scripts/upstreams/upstream-watch.sh` | An upstream project the harness tracks has news to review. |
+| `jira-nudge` | monitor | `scripts/hooks/jira-nudge-on-end.sh` | A session committed work tied to a ticket but made no Jira update (advisory). |
+| `luna-sync` | monitor | `scripts/observability/luna-sync-alert.ts` | The luna vault has commits or files waiting to be pushed. |
+| `recover-ok` | monitor | `scripts/station-ops/recover.sh` | Reboot recovery finished and the bridge is back up. |
+| `cadence:himmel-doctor` | monitor | `scripts/doctor-cadence.sh` | The himmel-doctor scheduled worker reported a failure. |
+| `cadence:judge-accuracy` | monitor | `scripts/eval/judge-accuracy/judge-accuracy-cadence.sh` | The judge-accuracy scheduled worker reported a failure. |
+| `cadence:failure-review` | monitor | `scripts/eval/worker-digest/failure-review-cadence.sh` | The failure-review scheduled worker reported a failure. |
+| `cadence:failure-review-digest` | monitor | `scripts/eval/worker-digest/failure-review-cadence.sh` | The failure-review-digest scheduled worker reported a failure. |
+| `cadence:failure-review-route` | monitor | `scripts/eval/worker-digest/failure-route-notify.sh` | The failure-review-route scheduled worker reported a failure. |
+| `cadence:claudex-inbox` | monitor | `scripts/lib/claudex-inbox.sh` | The claudex-inbox scheduled worker reported a failure. |
+| `cadence:steering-cull` | monitor | `scripts/cleanup/steering-cull-cadence.sh` | The steering-cull scheduled worker reported a failure. |
+| `cadence:cache-health` | monitor | `scripts/eval/cache-health-cadence.sh` | The cache-health scheduled worker reported a failure. |
+| `cadence:qmd-quality` | monitor | `scripts/eval/qmd-quality/qmd-quality-cadence.sh` | The qmd-quality scheduled worker reported a failure. |
+| `cadence:ledger-drift` | monitor | `scripts/handover/chief-kit/ci-cadence.sh` | The ledger-drift scheduled worker reported a failure. |
+| `cadence:vault-stall` | monitor | `scripts/luna/vault-stall-cadence.sh` | The vault-stall scheduled worker reported a failure. |
+| `cadence:vm-maintain-cadence` | monitor | `scripts/vm/vm-maintain-cadence.sh` | The vm-maintain-cadence scheduled worker reported a failure. |
+| `cadence:graph-channel-publish` | monitor | `scripts/graphify/publish-graph-channel.sh` | The graph-channel-publish scheduled worker reported a failure. |
+| `cadence:librarian` | monitor | `scripts/handover/librarian-cadence.sh` | The librarian scheduled worker reported a failure. |
+| `cadence:qmd-reindex` | monitor | `scripts/luna/qmd-cadence.sh` | The qmd-reindex scheduled worker reported a failure. |
+| `cadence:rollup` | monitor | `scripts/eval/rollup-cadence.sh` | The rollup scheduled worker reported a failure. |
+| `cadence:graphmap-himmel` | monitor | `scripts/luna/graphmap-cadence.sh` | The graphmap-himmel scheduled worker reported a failure. |
+| `cadence:graphmap-luna` | monitor | `scripts/luna/graphmap-cadence.sh` | The graphmap-luna scheduled worker reported a failure. |
+| `cadence:graphmap-ast-himmel` | monitor | `scripts/luna/graphmap-cadence.sh` | The graphmap-ast-himmel scheduled worker reported a failure. |
+| `cadence:graphmap-ast-luna` | monitor | `scripts/luna/graphmap-cadence.sh` | The graphmap-ast-luna scheduled worker reported a failure. |
+| `cadence:graphmap-semantic-luna` | monitor | `scripts/luna/graphmap-cadence.sh` | The graphmap-semantic-luna scheduled worker reported a failure. |
+| `cadence:graph-config-unreadable` | monitor | `scripts/graphify/refresh-graph-map.sh` | The graph-config-unreadable scheduled worker reported a failure. |
+| `cadence:pipeline-harvest` | monitor | `scripts/luna/pipeline-cadence.sh` | The pipeline-harvest scheduled worker reported a failure. |
+| `cadence:pipeline-harvest-x-media` | monitor | `scripts/luna/pipeline-cadence.sh` | The pipeline-harvest-x-media scheduled worker reported a failure. |
+| `cadence:pipeline-synthesize` | monitor | `scripts/luna/pipeline-cadence.sh` | The pipeline-synthesize scheduled worker reported a failure. |
+| `cadence:pipeline-health` | monitor | `scripts/luna/pipeline-cadence.sh` | The pipeline-health scheduled worker reported a failure. |
+| `cadence:pipeline-fetch-health` | monitor | `scripts/luna/pipeline-cadence.sh` | The pipeline-fetch-health scheduled worker reported a failure. |
+| `cadence:upstream-watch` | monitor | `scripts/upstreams/upstream-watch-cadence.sh` | The upstream-watch scheduled worker reported a failure. |
+| `cadence:security-audit` | escalate | `scripts/security/security-audit-cadence.sh` | security-audit: 2 new high or critical findings. Cause: new-high-critical findings in the dependency audit. Blocks: nothing yet. Do: read the audit log and decide which finding to fix |
+| `cadence:snyk-scan` | escalate | `scripts/security/snyk-scan-cadence.sh` | snyk-scan: the scan found high findings. Cause: high-findings. Blocks: nothing yet. Do: read the scan log and decide which finding to fix |
+| `cadence:graph-semantic-*` | monitor | `scripts/graphify/graph-cadence.sh` | Any `cadence:graph-semantic-*` kind: a scheduled worker of that family reported a failure. |
+| `cadence:vm-maintain-login-*` | monitor | `scripts/vm/vm-maintain.sh` | Any `cadence:vm-maintain-login-*` kind: a scheduled worker of that family reported a failure. |
+| `cadence:grafana-Flow_run_truncated` | monitor | `scripts/observability/grafana-cadence-hook.ts` | Grafana alert rule: Flow run truncated. |
+| `cadence:grafana-Flow_run_error` | monitor | `scripts/observability/grafana-cadence-hook.ts` | Grafana alert rule: Flow run error. |
+| `cadence:grafana-Flow_run_stalled` | monitor | `scripts/observability/grafana-cadence-hook.ts` | Grafana alert rule: Flow run stalled. |
+| `cadence:grafana-Flow_last-success_age_exceeded` | monitor | `scripts/observability/grafana-cadence-hook.ts` | Grafana alert rule: Flow last-success age exceeded. |
+| `cadence:grafana-Orphaned_quiet-run_suites___writer-less_tail_followers` | monitor | `scripts/observability/grafana-cadence-hook.ts` | Grafana alert rule: Orphaned quiet-run suites writer-less tail followers. |
+| `cadence:grafana-Watcher_down` | monitor | `scripts/observability/grafana-cadence-hook.ts` | Grafana alert rule: Watcher down. |
+| `cadence:grafana-Luna_inbox_backlog_rising` | monitor | `scripts/observability/grafana-cadence-hook.ts` | Grafana alert rule: Luna inbox backlog rising. |
+| `cadence:grafana-Session_dead` | monitor | `scripts/observability/grafana-cadence-hook.ts` | Grafana alert rule: Session dead. |
+| `cadence:grafana-Hook_chain_budget_pressure` | monitor | `scripts/observability/grafana-cadence-hook.ts` | Grafana alert rule: Hook chain budget pressure. |
+| `cadence:grafana-Hook_chain_budget_denials` | monitor | `scripts/observability/grafana-cadence-hook.ts` | Grafana alert rule: Hook chain budget denials. |
+| `cadence:grafana-Hook_chain_log_unreadable` | monitor | `scripts/observability/grafana-cadence-hook.ts` | Grafana alert rule: Hook chain log unreadable. |
+| `cadence:grafana-Guard_denies_a_large_share_of_sessions` | monitor | `scripts/observability/grafana-cadence-hook.ts` | Grafana alert rule: Guard denies a large share of sessions. |
+| `cadence:grafana-One_session_repeatedly_denied_by_one_guard` | monitor | `scripts/observability/grafana-cadence-hook.ts` | Grafana alert rule: One session repeatedly denied by one guard. |
+| `cadence:grafana-Eval_regression_beyond_noise_band` | monitor | `scripts/observability/grafana-cadence-hook.ts` | Grafana alert rule: Eval regression beyond noise band. |
+| `cadence:grafana-Scheduled_eval_has_not_run_in_14_days` | monitor | `scripts/observability/grafana-cadence-hook.ts` | Grafana alert rule: Scheduled eval has not run in 14 days. |
+| `cadence:grafana-Scheduled_eval_has_no_ledger_series` | monitor | `scripts/observability/grafana-cadence-hook.ts` | Grafana alert rule: Scheduled eval has no ledger series. |
+| `cadence:grafana-DatasourceNoData` | monitor | `scripts/observability/grafana-cadence-hook.ts` | Grafana alert rule: DatasourceNoData. |
+
+
 ## Ops runbook
 
 **Start:**

@@ -582,9 +582,23 @@ describe('create --residual-of', () => {
 
   it('HIMMEL-9498 DoD 1: a polish residual files nothing and exits with the message', async () => {
     play();
-    await expect(file(...RES, '--fu-class', 'polish')).rejects.toThrow(/polish residual is not filed.*note it in the PR body.*jira link <PR ticket> <plain ticket>/s);
+    await expect(file(...RES, '--fu-class', 'polish')).rejects.toThrow(/polish residual is not filed.*on a Jira repo.*polish-noted comment on the PR ticket.*on a local or none repo note it in the PR body.*jira link <PR ticket> <plain ticket>/s);
     expect(created()).toBeUndefined();
     expect(mockRequest.mock.calls.some((c) => c[0] === 'POST')).toBe(false);
+  });
+
+  it('HIMMEL-9511 I4: --fu-class without --residual-of is refused before any request', async () => {
+    play();
+    const cases: Array<[string[], string]> = [
+      [['--fu-class', 'polish'], '--fu-class'],
+      [['--fu-why', 'no-check'], '--fu-why'],
+      [['--fu-override', 'decision-762'], '--fu-override'],
+      [['--follow-up-of', 'HIMMEL-50', '--fu-class', 'polish'], '--fu-class'],
+    ];
+    for (const [args, flag] of cases) {
+      await expect(file(...args)).rejects.toThrow(`--fu-class/--fu-why/--fu-override apply only with --residual-of (got ${flag})`);
+    }
+    expect(mockRequest).not.toHaveBeenCalled();
   });
 
   it('HIMMEL-9498 DoD 1: a polish residual is refused with a gate, a duplicate and --fu-override too', async () => {

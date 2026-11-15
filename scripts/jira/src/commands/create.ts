@@ -135,12 +135,11 @@ const FU_CLASSES = ['polish', 'escape', 'hardening'];
 export const FU_WHY_CODES = ['unseen-failure', 'no-check', 'vacuous-check', 'no-recovery', 'silent-rot'];
 /**
  * Decisions 746, 762: a named override is a judge verdict id (two capitals, j, number, number) or a chief decision number.
- * ponytail: the id is an unverified audit label, only its shape is checked and nothing ties it to a real judge or chief
- * ruling, so a worker could invent one; upgrade path: look it up in the verdicts folder and the decision register.
  */
 const FU_OVERRIDE_SHAPE = /^(decision-[0-9]+|[A-Z]{2}-j[0-9]+-[0-9]+)$/;
 const POLISH_REFUSAL =
-  'a polish residual is not filed (decisions 746, 762): note it in the PR body, or file it as a plain ticket (jira create without --residual-of) if someone will really work it, ' +
+  'a polish residual is not filed (decisions 746, 762): it is noted with no ticket (on a Jira repo review-round.sh defer and file-deferred-issues.sh record it as a polish-noted comment on the PR ticket; ' +
+  'on a local or none repo note it in the PR body), or file it as a plain ticket (jira create without --residual-of) if someone will really work it, ' +
   'then link it from the PR ticket with `jira link <PR ticket> <plain ticket>` so it can be named as a deferral';
 /** A hardening residual prints its named override into the ticket description. */
 export function appendFuOverride(fields: Record<string, unknown>, override: string | undefined): void {
@@ -975,7 +974,7 @@ export function registerCreate(program: Command): void {
       '--over-cap <reason>',
       'File into the current version although it is at its residual cap; the reason is recorded on the ticket',
     )
-    .option('--fu-class <class>', 'Residual class: escape (current, else next when frozen), hardening (its chain version, else next at High or above, else backlog; needs --fu-override). polish is refused: note it in the PR body')
+    .option('--fu-class <class>', 'Residual class: escape (current, else next when frozen), hardening (its chain version, else next at High or above, else backlog; needs --fu-override). polish is refused: it is noted with no ticket. Applies only with --residual-of')
     .option('--fu-why <code>', 'Why a hardening residual is one (' + FU_WHY_CODES.join('|') + '); required with --fu-class hardening')
     .option('--fu-override <id>', 'The named override a hardening residual needs: a judge verdict id (XX-jNNNN-N) or decision-N; printed into the ticket as an unverified label')
     .option('--class <id>', 'Residual class id, stamped as the class-<id> label')
