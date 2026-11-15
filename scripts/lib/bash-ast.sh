@@ -163,7 +163,7 @@ def _is_pwd_subst:
 
 def _raw_part:
   if .Type == "Lit" then .Value
-  elif .Type == "SglQuoted" then (if .Dollar then "$'" else "'" end) + .Value + "'"
+  elif .Type == "SglQuoted" then (if .Dollar then "$'" else "'" end) + (.Value // "") + "'"
   elif .Type == "DblQuoted" then "\"" + ([.Parts[]? | _raw_part] | join("")) + "\""
   elif .Type == "ParamExp" then (if .Short then "$" + .Param.Value else "${" + (.Param.Value // "") + "…}" end)
   elif .Type == "CmdSubst" then "$(…)"
@@ -176,9 +176,9 @@ def _raw_part:
 def _segs($env; $dq):
   if .Type == "Lit" then [{s: (.Value | if $dq then _dq_lit else _unq_lit end)}]
   elif .Type == "SglQuoted" then
-    if .Dollar then (.Value | _ansic) as $a
+    if .Dollar then (.Value // "" | _ansic) as $a
       | if $a.amb then [{d: "amb", why: ("$'…' with " + $a.amb)}] else [{s: ($a.v | _protect)}] end
-    else [{s: (.Value | _protect)}] end
+    else [{s: (.Value // "" | _protect)}] end
   elif .Type == "DblQuoted" then
     ([.Parts[]? | _segs($env; true)] | add // []) | if . == [] then [{s: ""}] else . end
   elif .Type == "ParamExp" then
