@@ -184,6 +184,69 @@ run "$tmp/hm-wt-new" HIMMEL_REPO="$tmp/hm"; expect "branch_edits_settings_refuse
 git -C "$tmp/hm" worktree add -q "$tmp/hm-wt-late" -b wt-late >/dev/null 2>&1
 cp "$PARTIAL" "$tmp/hm-wt-late/.claude/settings.json"
 run "$tmp/hm-wt-late" HIMMEL_REPO="$tmp/hm"; expect "old_blob_before_merge_base_refused" 1 "$CHAIN_DIFF"
+
+wire_hooks() {
+  local f="$1"; shift
+  "$NODE" -e '
+const fs=require("fs");const [f,...names]=process.argv.slice(1);const s=JSON.parse(fs.readFileSync(f,"utf8"));
+const P="$CLAUDE_PROJECT_DIR/scripts/hooks/";
+const R="\"$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js\"";
+const wired=(n)=>`if [ -f "$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh" ]; then command -p sh "$CLAUDE_PROJECT_DIR/scripts/lib/run-node.sh" ${R} "${P}${n}"; else node ${R} "${P}${n}"; fi`;
+const chain=s.hooks.PreToolUse.flatMap((g)=>g.hooks).find((h)=>String(h.command).includes("--chain \""));
+for (const n of names) {
+  chain.command=chain.command.split("--chain \"").join(`--chain "${P}${n}" "`);
+  s.hooks.PreToolUse.push({matcher:"Bash",hooks:[{type:"command",command:wired(n)}]});
+}
+fs.writeFileSync(f,JSON.stringify(s,null,2)+"\n");' "$f" "$@"
+}
+addhook_wt() {
+  git -C "$tmp/hm" worktree add -q "$tmp/$1" -b "$1" >/dev/null 2>&1 \
+    && printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/$1/scripts/hooks/new-guard.sh" \
+    && chmod 755 "$tmp/$1/scripts/hooks/new-guard.sh" \
+    && wire_hooks "$tmp/$1/.claude/settings.json" new-guard.sh \
+    && git -C "$tmp/$1" add -A && git -C "$tmp/$1" commit -q -m "add new-guard hook" \
+    || fail "fixture: $1"
+}
+addhook_wt add-hook
+run "$tmp/add-hook" HIMMEL_REPO="$tmp/hm"; expect "branch_adds_hook_passes" 0 "guarded: project $tmp/add-hook"
+addhook_wt add-hook-gone; rm "$tmp/add-hook-gone/scripts/hooks/new-guard.sh" || fail "fixture: add-hook-gone"
+run "$tmp/add-hook-gone" HIMMEL_REPO="$tmp/hm"; expect "added_hook_file_absent_refused" 1 "$CHAIN_DIFF"
+addhook_wt add-hook-noexec; chmod 644 "$tmp/add-hook-noexec/scripts/hooks/new-guard.sh" || fail "fixture: add-hook-noexec"
+run "$tmp/add-hook-noexec" HIMMEL_REPO="$tmp/hm"; expect "added_hook_not_executable_refused" 1 "$CHAIN_DIFF"
+addhook_wt add-hook-drop
+"$NODE" -e '
+const fs=require("fs");const f=process.argv[1];const s=JSON.parse(fs.readFileSync(f,"utf8"));
+s.hooks.PreToolUse.shift();fs.writeFileSync(f,JSON.stringify(s,null,2)+"\n");' "$tmp/add-hook-drop/.claude/settings.json" \
+  && git -C "$tmp/add-hook-drop" commit -q -am "drop an owned hook" \
+  || fail "fixture: add-hook-drop"
+run "$tmp/add-hook-drop" HIMMEL_REPO="$tmp/hm"; expect "added_hook_with_owned_hook_dropped_refused" 1 "$CHAIN_DIFF"
+addhook_wt add-hook-ghost
+printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/add-hook-ghost/scripts/hooks/ghost-guard.sh" \
+  && chmod 755 "$tmp/add-hook-ghost/scripts/hooks/ghost-guard.sh" \
+  && wire_hooks "$tmp/add-hook-ghost/.claude/settings.json" ghost-guard.sh \
+  || fail "fixture: add-hook-ghost"
+run "$tmp/add-hook-ghost" HIMMEL_REPO="$tmp/hm"; expect "hook_outside_diff_and_chain_refused" 1 "$CHAIN_DIFF"
+scaffold_token() {
+  local worktree="$1" after_words="$2"
+  "$NODE" -e '
+const fs=require("fs");const [f,at]=process.argv.slice(1);const s=JSON.parse(fs.readFileSync(f,"utf8"));
+const chain=s.hooks.PreToolUse.flatMap((g)=>g.hooks).find((h)=>String(h.command).includes("--chain \""));
+chain.command=chain.command.replace(`${at} `,`${at} "$CLAUDE_PROJECT_DIR/scripts/hooks/new-guard.sh" `);
+fs.writeFileSync(f,JSON.stringify(s,null,2)+"\n");' "$worktree/.claude/settings.json" "$after_words" \
+    && git -C "$worktree" commit -q -am "added hook in the chain scaffold" \
+    || fail "fixture: scaffold $worktree"
+}
+for row in "then:then" "else:else" "sh:-p sh"; do
+  wt="add-hook-scaffold-${row%%:*}"
+  addhook_wt "$wt"; scaffold_token "$tmp/$wt" "${row#*:}"
+  run "$tmp/$wt" HIMMEL_REPO="$tmp/hm"; expect "added_hook_after_${row%%:*}_in_chain_scaffold_refused" 1 "$CHAIN_DIFF"
+done
+addhook_wt add-owned-hook
+printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/add-owned-hook/scripts/hooks/block-edit-on-main.sh" \
+  && chmod 755 "$tmp/add-owned-hook/scripts/hooks/block-edit-on-main.sh" \
+  && git -C "$tmp/add-owned-hook" add -A && git -C "$tmp/add-owned-hook" commit -q -m "add a hook main also owns" \
+  || fail "fixture: add-owned-hook"
+run "$tmp/add-owned-hook" HIMMEL_REPO="$tmp/hm"; expect "branch_adds_anchor_owned_hook_passes" 0 "guarded: project $tmp/add-owned-hook"
 # no origin/main ref and no main: nothing to match against -> refused (strict check only)
 mkanchor "$tmp/hm-norefs" "$REAL_CHECKER"; git -C "$tmp/hm-norefs" branch -m trunk
 run "$tmp/hm-norefs" HIMMEL_REPO="$tmp/hm-norefs"; expect "no_main_ref_refused" 1 "$CHAIN_DIFF"

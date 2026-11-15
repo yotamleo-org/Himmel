@@ -547,8 +547,8 @@ umask 077
 # shellcheck source=../lib/prim.sh
 . "$ROOT/scripts/lib/prim.sh"
 work=$(tmpdir) || exit 1
-next="" names_owed=0
-trap 'rm -rf "$work"; [ -z "$next" ] || [ -L "$envfile" ] || rm -f "$next"; [ "$names_owed" -eq 0 ] || name_kept' EXIT
+next="" names_owed=0 migtmp=""
+trap 'rm -rf "$work"; [ -z "$next" ] || [ -L "$envfile" ] || rm -f "$next"; [ -z "$migtmp" ] || rm -f "$migtmp"; [ "$names_owed" -eq 0 ] || name_kept' EXIT
 trap 'names_owed=0; exit 1' HUP INT TERM
 bdir="$confdir/env-backups"
 apply_cmd=$(printf 'bash %q --env %q -y' "$HERE/migrate-env.sh" "$envfile")
@@ -565,9 +565,10 @@ replace_file() {  # <new content file> <dest>
         case "$link" in /*) dest=$link ;; *) dest="${dest%/*}/$link" ;; esac
     done
     tmp="$dest.migrate.$$"
+    migtmp=$tmp
     # prim-ok: cp -p keeps the file's mode, which atomic_write would reset to 600
-    if cp -p "$dest" "$tmp" && cat "$1" > "$tmp" && mv -f "$tmp" "$dest"; then return 0; fi  # read-sink-ok: $1 is always a scratch file this script built
-    rm -f "$tmp"
+    if cp -p "$dest" "$tmp" && cat "$1" > "$tmp" && mv -f "$tmp" "$dest"; then migtmp=""; return 0; fi  # read-sink-ok: $1 is always a scratch file this script built
+    rm -f "$tmp"; migtmp=""
     return 1
 }
 
@@ -747,6 +748,9 @@ fi
 echo "backup: the apply first copies .env (mode 600) to $bdir/env.<UTC time>.<pid>"
 [ "$dry" -eq 0 ] || { echo "dry run: nothing written."; exit 0; }
 poldir=$(_himmel_policy_dir) || { echo "migrate-env: cannot read this account's home from its passwd entry; nothing written." >&2; exit 1; }
+for f in ${envfile:+"$envfile".migrate.[0-9]*} "$confdir"/*.migrate.[0-9]* "$poldir"/*.migrate.[0-9]* "$bdir"/*.migrate.[0-9]* "${store%/*}"/*.migrate.[0-9]*; do
+    [ -f "$f" ] && echo "migrate-env: WARN a copy an earlier interrupted run left, which can hold secrets: $f; check it, then delete it."
+done
 # -y at a terminal outside an agent session is the operator's own prompt: the consent is not read, so the printed command is true.
 at_prompt=0
 if [ "$yes" -eq 1 ] && [ -t 0 ] && [ -z "${CLAUDECODE:-}" ]; then at_prompt=1; fi

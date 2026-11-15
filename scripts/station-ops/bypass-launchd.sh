@@ -99,7 +99,7 @@ while :; do
         t0=$(date +%s); verdict=expired
         while [ $(( $(date +%s) - t0 )) -lt "$TTL" ] && live; do
             hit=$(tail -c +"$((off + 1))" "$INBOUND" 2>/dev/null | jq -r --argjson op "$OP" --arg c "$code" \
-                'select(.from == $op and .chat_id == $op and .forwarded != true) | (.text // "") | ascii_downcase | gsub("^\\s+|\\s+$"; "") |
+                'select(.from == $op and .chat_id == $op and .forwarded != true) | (.text // "") | ascii_downcase | gsub("^\\s+|\\s+$"; "") | gsub("\\s+"; " ") |
                  select(. == ("go " + ($c|ascii_downcase)) or . == ("no " + ($c|ascii_downcase)))' 2>/dev/null | tail -n 1)
             case "$hit" in go\ *) verdict=go; break ;; no\ *) verdict=no; break ;; esac
             sleep "$POLL"
