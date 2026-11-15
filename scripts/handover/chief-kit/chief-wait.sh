@@ -506,6 +506,7 @@ case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; e
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
+GH_READ_BIN="$REPO/scripts/lib/gh-read.sh"; [ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
 # shellcheck source=../../lib/prim.sh
 . "$REPO/scripts/lib/prim.sh" || exit 2
 # The gated checkout: HIMMEL_REPO, else the primary checkout of this script's own tree,
@@ -2247,7 +2248,7 @@ size_wake() {
 # ponytail: one page of reviews (100) per PR; upgrade = --paginate if a watched PR ever passes 100.
 prwatch_at_file="$inbox.wait.prwatch.at"
 pr_watch_wake() {
-    local rows now last pr head com rev repo st pj rj nh nc nr ns detail repo_arg repo_tag gh_cmd="${CHIEF_WAIT_GH:-gh}"
+    local rows now last pr head com rev repo st pj rj nh nc nr ns detail repo_arg repo_tag gh_cmd="${CHIEF_WAIT_GH:-$GH_READ_BIN}"
     [ -n "$legs_from" ] && [ -r "$legs_from" ] || return 1
     rows="$(jq -r '(.watch // [])[]? | [.pr, (.head // "-"), (.comments // "-"), (.reviews // "-"), (.repo // "{owner}/{repo}"), (.state // "-")] | @tsv' "$legs_from" 2>/dev/null)" || return 1  # swallow-ok: an unreadable manifest has no rows to poll
     [ -n "$rows" ] || return 1
@@ -2258,8 +2259,8 @@ pr_watch_wake() {
     heartbeat sampling
     while IFS=$'\t' read -r pr head com rev repo st; do
         [ -n "$pr" ] || continue
-        pj="$(cd "$GATE_DIR" && timeout -k 2 20 "$gh_cmd" api "repos/$repo/pulls/$pr" </dev/null 2>/dev/null 9>&-)" || continue  # gnu-ok: Linux-only kit; swallow-ok: a failed read is retried next interval, never a wake
-        rj="$(cd "$GATE_DIR" && timeout -k 2 20 "$gh_cmd" api "repos/$repo/pulls/$pr/reviews?per_page=100" </dev/null 2>/dev/null 9>&-)" || continue  # gnu-ok: Linux-only kit; swallow-ok: as above
+        pj="$(cd "$GATE_DIR" && timeout -k 2 20 env GH_READ_NO_MAIN_FALLBACK=1 "$gh_cmd" api "repos/$repo/pulls/$pr" </dev/null 2>/dev/null 9>&-)" || continue  # gnu-ok: Linux-only kit; swallow-ok: a failed read is retried next interval, never a wake
+        rj="$(cd "$GATE_DIR" && timeout -k 2 20 env GH_READ_NO_MAIN_FALLBACK=1 "$gh_cmd" api "repos/$repo/pulls/$pr/reviews?per_page=100" </dev/null 2>/dev/null 9>&-)" || continue  # gnu-ok: Linux-only kit; swallow-ok: as above
         nh="$(printf '%s' "$pj" | jq -r '.head.sha // empty' 2>/dev/null)"  # swallow-ok: an unparsed reply fails the checks below
         nc="$(printf '%s' "$pj" | jq -r 'if (.comments | type) == "number" and (.review_comments | type) == "number" then .comments + .review_comments else empty end' 2>/dev/null)"  # swallow-ok: as above
         nr="$(printf '%s' "$rj" | jq -r 'if type == "array" then length else empty end' 2>/dev/null)"  # swallow-ok: as above
