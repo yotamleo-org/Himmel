@@ -41,6 +41,7 @@ For Jira ops in this repo, use the local CLI at
 | Transitions | `... transitions HIMMEL-N` (id<TAB>name per available transition) | `getTransitionsForJiraIssue`                                  |
 | Move        | `... move HIMMEL-N --to-project LUNA [--type Story] [--parent <epic>\|--labels standalone] [--sector S] [--fix-version v\|--proposed-version v\|--backlog --proposed-version backlog --why W\|--gate G] [--priority P] [--dry-run]` (the target is filed through the shared create, its checks run before either project is touched, `--dry-run` runs them too; the source epic and version are never copied; then copy comments and close the source with a read-back) | (none — Jira Cloud REST API has no direct project-change endpoint) |
 | Projects    | `... projects` / `... project-create ...`                                   | `getVisibleJiraProjects` / no equivalent for create              |
+| Live test   | `... live-test --json [--candidate KEY]` (read only; prints `context`, `own_keys`, `test_project` and `problem`: the station's `JIRA_TEST_PROJECT` read from `himmel.conf.local` then `himmel.conf`, or `--candidate` validated instead; a work project or a bad key gives `test_project: null` with the reason. The doctor's C96 row, gen-briefs and `himmelctl config set jira.testProject` call it) | (none) |
 | Link        | `... link HIMMEL-A HIMMEL-B` (Relates, the default; case-insensitive `--type`, validated against the live type list). Blocks is explicit: `link A --blocks B` (A blocks B) and `link A --blocked-by B` (A is blocked by B); the bare two-key form is refused for Blocks, because the first key is the blocker (`link A B --type Blocks` stores "A blocks B") and callers often expect the reverse; the explicit flags state the direction. The output prints the stored relation (`Linked: A blocks B`), matching `links` and the Jira UI. `scripts/jira/audit-blocks-links.mjs` is a read-only TSV audit of open-ticket Blocks links with proposed flips | `createIssueLink` (+ `getIssueLinkTypes` for the type list) |
 | Links       | `... links HIMMEL-N` (lists id, type, canonical `inward=` / `outward=` keys, and the relation from the queried issue) | `getJiraIssue` with the `issuelinks` field |
 | Unlink      | `... unlink HIMMEL-INWARD HIMMEL-OUTWARD [--type Relates]` (resolves the REST id from the directed pair and refuses ambiguous matches) | (none — use `DELETE /rest/api/3/issueLink/{id}`) |
@@ -163,6 +164,15 @@ filing note, not in the ticket's plain block.
 (`JIRA_BASE_URL`, project key, email, token) with where it came from; email and token show
 only as set or not set plus the source kind. `get`, `edit`, `transition` and `move` print a
 `browse: <site>/browse/<KEY>` line. Never read `.env` or call the Atlassian MCP to find it.
+
+**Under a live test a write leaves only for the test project.** A CLI process carrying
+`HIMMEL_JIRA_LIVE_TEST`, or running under a claude launched with it (a live-test brief), has every
+Jira write checked before it is sent (a loopback or `.invalid` Jira is never checked): it must go
+to the station's own Jira and target only `JIRA_TEST_PROJECT`, or the brief's
+own tickets on an issue-scoped route. Anything else fails with `jira: live-test write refused:`
+and nothing is posted: no valid test project configured (fix: `himmelctl config set
+jira.testProject <KEY>`), another Jira instance, a route the guard cannot tie to one project, or
+a target in another project. Reads are never refused. Unmarked sessions are not checked.
 
 **`transition <key> <numeric-id>` is a vacuous success.** `transitions <key>`
 lists numeric IDs for reading, not for passing back to `transition` — `transition`

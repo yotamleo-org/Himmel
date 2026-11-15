@@ -400,7 +400,7 @@ else
         review_round="$(bash "$HIMMEL_ROOT/scripts/cr/review-round.sh" start --branch "$BRANCH" --head "$HEAD_SHA" --base-sha "$db_sha")"
         round_rc=$?
     fi
-    full_takeover="panel-first-pass ABORT - outside PR past its three full rounds: hand it to a maintainer takeover (HIMMEL-9019). Nothing was reviewed."
+    full_takeover="panel-first-pass ABORT - outside PR past its three full rounds: hand it to a maintainer takeover. Nothing was reviewed."
     if [ "$round_rc" -eq 8 ] && [ "$FULL" -eq 1 ]; then
         echo "$full_takeover" >&2
         exit 8
