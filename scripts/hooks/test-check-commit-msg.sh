@@ -437,6 +437,110 @@ expect_flag_rc "--ticket-optional still rejects a non-conventional message" 1 \
 expect_rc "without the flag the same ticketless message is still rejected" 1 \
   "chore: no ticket id here" TICKET_ID_REQUIRED=1 JIRA_PROJECT_KEY=HIMMEL
 
+# --- --attest-refuse turns the trailer warning into a refusal (himmel's own
+# .pre-commit-config.yaml sets it; adopters and CI's commit-range replay run with no flag) ---
+BAD='Security reviewed: outbound write is one PR comment'
+GOOD='Security reviewed: ad-hoc — reason'
+PBAD='Platforms tested: yes'
+PGOOD='Platforms tested: linux'
+# run_gate_args <message> <hook args...>: the hook arguments go BEFORE the message file (run_gate passes env only).
+run_gate_args() {
+  local message="$1"
+  shift
+  printf '%s\n' "$message" > "$MSG"
+  ( cd "$R" && env -u TICKET_ID_PATTERN -u TICKET_ID_EXEMPT_AUTHORS -u TICKET_ID_AUTHOR -u TICKET_ID_TRUSTED_AUTHOR \
+      -u JIRA_PROJECT_KEY TICKET_ID_REQUIRED=0 bash "$SCRIPT" "$@" "$MSG" )
+}
+# expect_args <name> <want-rc> <must-hold|-> <must-lack|-> <message> <hook args...>
+expect_args() {
+  local name="$1" want="$2" has="$3" lacks="$4" message="$5" out rc=0 ok=1
+  shift 5
+  out=$(run_gate_args "$message" "$@" 2>&1) || rc=$?
+  [ "$rc" -eq "$want" ] || ok=0
+  if [ "$has" != "-" ]; then case "$out" in *"$has"*) ;; *) ok=0 ;; esac; fi
+  if [ "$lacks" != "-" ]; then case "$out" in *"$lacks"*) ok=0 ;; esac; fi
+  if [ "$ok" -eq 1 ]; then
+    printf '  PASS  %s\n' "$name"
+  else
+    printf '  FAIL  %s (rc=%s, want %s; holds [%s], lacks [%s]): %s\n' "$name" "$rc" "$want" "$has" "$lacks" "$out"
+    failures=$((failures + 1))
+  fi
+}
+expect_args "refuse mode: a bad Security reviewed token is refused" 1 \
+  "COMMIT REJECTED: 'Security reviewed:' trailer present" "no readable message file" \
+  "chore: add feature
+
+$BAD" --attest-refuse
+expect_args "refuse mode: a bad Platforms tested value is refused" 1 \
+  "COMMIT REJECTED: 'Platforms tested:'" "no readable message file" \
+  "chore: add feature
+
+$PBAD" --attest-refuse
+expect_args "refuse mode: a [skip security-review] marker exempts" 0 - - \
+  "chore: add feature
+
+$BAD
+[skip security-review]" --attest-refuse
+expect_args "refuse mode: a bad line beside a conforming one passes (any line conforms)" 0 - - \
+  "chore: add feature
+
+$BAD
+$GOOD" --attest-refuse
+expect_args "refuse mode: a conforming trailer pair passes" 0 - "COMMIT REJECTED" \
+  "chore: add feature
+
+$PGOOD
+$GOOD" --attest-refuse
+expect_args "flags parse as --ticket-optional --attest-refuse" 1 \
+  "COMMIT REJECTED: 'Security reviewed:'" "no readable message file" \
+  "chore: add feature
+
+$BAD" --ticket-optional --attest-refuse
+expect_args "flags parse as --attest-refuse --ticket-optional" 1 \
+  "COMMIT REJECTED: 'Security reviewed:'" "no readable message file" \
+  "chore: add feature
+
+$BAD" --attest-refuse --ticket-optional
+expect_args "both flags, a conforming message passes" 0 - "no readable message file" \
+  "chore: add feature
+
+$GOOD" --attest-refuse --ticket-optional
+# a merge never attests, so refusing one gains nothing: MERGE_HEAD skips the refusal
+RM=$(fixture_mktemp_dir) || exit 1
+git -C "$RM" init -q
+git -C "$RM" config user.email t@t
+git -C "$RM" config user.name t
+git -C "$RM" -c commit.gpgsign=false commit -q --allow-empty -m "chore: base"
+git -C "$RM" rev-parse HEAD > "$RM/.git/MERGE_HEAD"
+printf '%s\n' "chore: merge
+
+$BAD" > "$RM/MSG"
+rc=0
+( cd "$RM" && env TICKET_ID_REQUIRED=0 bash "$SCRIPT" --attest-refuse "$RM/MSG" ) >/dev/null 2>&1 || rc=$?
+if [ "$rc" -eq 0 ]; then printf '  PASS  %s\n' "refuse mode: MERGE_HEAD present skips the refusal"; else printf '  FAIL  %s (rc=%s)\n' "refuse mode: MERGE_HEAD present skips the refusal" "$rc"; failures=$((failures + 1)); fi
+rm -rf "$RM"
+# warn mode (no flag, adopters and the CI replay) is unchanged for the security token, and now covers the platform list too
+expect_warn "no flag: a bad Security reviewed token still warns and passes" 0 1 \
+  "chore: add feature
+
+$BAD" TICKET_ID_REQUIRED=0
+expect_warn "no flag: a conforming Security reviewed token and Platforms tested are silent" 0 0 \
+  "chore: add feature
+
+$GOOD
+$PGOOD" TICKET_ID_REQUIRED=0
+expect_warn "no flag: an unrecognised Platforms tested value warns" 0 1 \
+  "chore: add feature
+
+$PBAD" TICKET_ID_REQUIRED=0
+PBAD_OUT=$(run_gate "chore: add feature
+
+$PBAD" TICKET_ID_REQUIRED=0 2>&1)
+case "$PBAD_OUT" in
+  *"WARN check-commit-msg: 'Platforms tested:'"*) printf '  PASS  %s\n' "the platforms warning names the trailer" ;;
+  *) printf '  FAIL  %s\n' "the platforms warning names the trailer"; failures=$((failures + 1)) ;;
+esac
+
 if [ "$failures" -eq 0 ]; then
   echo "OK: all cases passed"
   exit 0

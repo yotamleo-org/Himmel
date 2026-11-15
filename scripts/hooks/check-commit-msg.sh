@@ -20,11 +20,20 @@
 # --ticket-optional (before the file) skips only the ticket requirement, as
 # TICKET_ID_REQUIRED=0 does, so a CI caller exempting an external author does
 # not depend on an environment value. git and pre-commit pass only the file.
+#
+# --attest-refuse (before the file, in any order with --ticket-optional) turns the
+# attestation-trailer WARNING below into a refusal. Only himmel's own
+# .pre-commit-config.yaml sets it; adopter hooks and CI's commit-range replay
+# (scripts/ci/check-commit-range.sh) run without it and only warn.
 TICKET_OPTIONAL=0
-if [ "${1:-}" = --ticket-optional ]; then
-  TICKET_OPTIONAL=1
-  shift
-fi
+ATTEST_REFUSE=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --ticket-optional) TICKET_OPTIONAL=1; shift ;;
+    --attest-refuse) ATTEST_REFUSE=1; shift ;;
+    *) break ;;
+  esac
+done
 COMMIT_MSG_FILE="${1:-}"
 if [ -z "${COMMIT_MSG_FILE}" ]; then
   COMMIT_MSG_FILE=$(git rev-parse --git-path COMMIT_EDITMSG 2>/dev/null || true)
@@ -90,32 +99,33 @@ ${lines[$((i+1))]}"
 }
 warn_negative_existence_claims "${COMMIT_MSG}" || true
 
-# WARN-only, at commit time, when an attestation trailer is present but will
-# not satisfy its pre-push gate — `Security reviewed:` with a token that is not
-# one of the four accepted (check-security-reviewed.sh TOKEN_RE), or
-# `Platforms tested:` with an empty value (check-platforms-tested.sh). Catching
-# it here saves a follow-up commit discovered only at push time.
-# Never blocks (exit code untouched) and fails open on any error, same
-# contract as warn_negative_existence_claims above.
+# At commit time, when an attestation trailer is present but no line of it will
+# satisfy its gate: `Security reviewed:` with no line starting with one of the four
+# accepted tokens, or `Platforms tested:` with no line naming a recognised platform.
+# Each predicate is the gate's own (scripts/lib/attest-trailers.sh, which the pre-push
+# hooks, CI commit-lint and ready-check item 5 all read), so a message that passes here
+# is not refused later for its value. It WARNS (exit code untouched), or REFUSES the
+# commit when --attest-refuse is set (himmel's own .pre-commit-config.yaml; adopter
+# hooks and CI's commit-range replay run without it). Inside the predicate it fails
+# open on any error, same contract as warn_negative_existence_claims above: pre-push
+# and CI are the gates of record, and commit time is only the early lever.
 #
-# Mirrors the two gate escape hatches that would otherwise make this warning
-# a false positive (CodeRabbit, PR #735): a `[skip security-review]` /
-# `[skip platforms-check]` marker anywhere in the message makes the gate
-# pass unconditionally (check-security-reviewed.sh / check-platforms-tested.sh,
-# checked before ATTEST_RE), so this warns only when no such marker is
-# present; and the gate's own ATTEST_RE match is a "does any line conform"
-# test over the whole message, not "does the first matching line conform" —
-# so this checks all matching trailer lines, not just the first. What it
-# still cannot see is a PR-body attestation (the gate's third path): no PR
-# exists yet at commit-msg time, so that path is out of reach for a
-# commit-time warning by construction, not an oversight.
+# Mirrors the two gate escape hatches that would otherwise make this a false positive:
+# a `[skip security-review]` / `[skip platforms-check]` marker anywhere in the message
+# clears the push gate, so this fires only when no such marker is present; and the
+# gate's own match is a "does any line conform" test over the whole message, not "does
+# the first matching line conform", so this checks every matching trailer line.
+#
+# This hook is an adopter payload (scripts/adopt.sh copies it with a hand-listed set of
+# dependencies), so it keeps literal copies of the token regex and the platform list
+# instead of sourcing the helper; scripts/lib/test-attest-trailers.sh holds both copies
+# equal to the helper's (the W1 parity rows).
+ATTEST_SEC_FIRED=0
+ATTEST_PLAT_FIRED=0
 warn_nonconforming_attestation_trailers() {
   local msg="$1"
 
   local sec_skip_re='^[[:space:]]*\[skip security-review\]'
-  # Same token vocabulary as check-security-reviewed.sh's TOKEN_RE — kept as
-  # separate literal text (not sourced) since that script is pre-push-only
-  # and out of scope for this hook to depend on; keep the two in step.
   local sec_token_re='(manual|claude-code-security-review|pr-review-toolkit|ad-hoc)([[:space:]]|$|[.,;])'
   local sec_trailer_re='^[[:space:]]*Security reviewed:'
   local sec_attest_re="${sec_trailer_re}[[:space:]]*${sec_token_re}"
@@ -124,20 +134,23 @@ warn_nonconforming_attestation_trailers() {
   sec_skip_hit=$(printf '%s\n' "$msg" | grep -iE "$sec_skip_re")
   sec_attest_hit=$(printf '%s\n' "$msg" | grep -iE "$sec_attest_re")
   if [ -n "$sec_trailer_hit" ] && [ -z "$sec_skip_hit" ] && [ -z "$sec_attest_hit" ]; then
+    ATTEST_SEC_FIRED=1
     echo "WARN check-commit-msg: 'Security reviewed:' trailer present but its token is not one of the four accepted (manual, claude-code-security-review, pr-review-toolkit, ad-hoc) — the pre-push gate will refuse this push." >&2
     echo "  Fix: Security reviewed: manual — <what you checked>" >&2
   fi
 
   local plat_skip_re='^[[:space:]]*\[skip platforms-check\]'
-  local plat_empty_re='^[[:space:]]*Platforms tested:[[:space:]]*$'
-  local plat_nonempty_re='^[[:space:]]*Platforms tested:[[:space:]]*[^[:space:]]'
-  local plat_empty_hit plat_skip_hit plat_nonempty_hit
-  plat_empty_hit=$(printf '%s\n' "$msg" | grep -iE "$plat_empty_re")
+  local plat_token_re='(linux|windows|macos|ubuntu|debian|fedora|arch|mac|darwin|wsl|posix|gitbash|git-bash|powershell|pwsh)'
+  local plat_trailer_re='^[[:space:]]*Platforms tested:'
+  local plat_attest_re="${plat_trailer_re}[[:space:]]*${plat_token_re}([^[:alnum:]]|$)"
+  local plat_trailer_hit plat_skip_hit plat_attest_hit
+  plat_trailer_hit=$(printf '%s\n' "$msg" | grep -iE "$plat_trailer_re")
   plat_skip_hit=$(printf '%s\n' "$msg" | grep -iE "$plat_skip_re")
-  plat_nonempty_hit=$(printf '%s\n' "$msg" | grep -iE "$plat_nonempty_re")
-  if [ -n "$plat_empty_hit" ] && [ -z "$plat_skip_hit" ] && [ -z "$plat_nonempty_hit" ]; then
-    echo "WARN check-commit-msg: 'Platforms tested:' trailer present with an empty value — the pre-push gate will refuse this push." >&2
-    echo "  Fix: Platforms tested: linux, windows" >&2
+  plat_attest_hit=$(printf '%s\n' "$msg" | grep -iE "$plat_attest_re")
+  if [ -n "$plat_trailer_hit" ] && [ -z "$plat_skip_hit" ] && [ -z "$plat_attest_hit" ]; then
+    ATTEST_PLAT_FIRED=1
+    echo "WARN check-commit-msg: 'Platforms tested:' trailer present but none of its lines names a recognised platform — the pre-push gate will refuse this push." >&2
+    echo "  Fix: Platforms tested: linux" >&2
   fi
 }
 warn_nonconforming_attestation_trailers "${COMMIT_MSG}" || true
@@ -145,6 +158,20 @@ warn_nonconforming_attestation_trailers "${COMMIT_MSG}" || true
 # Skip real merge commits. MERGE_HEAD exists while Git is composing the commit.
 if git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1; then
   exit 0
+fi
+
+# --attest-refuse: the warning above becomes a refusal. It runs after the merge skip
+# (a merge never attests, so refusing one gains nothing).
+if [ "$ATTEST_REFUSE" -eq 1 ] && { [ "$ATTEST_SEC_FIRED" -eq 1 ] || [ "$ATTEST_PLAT_FIRED" -eq 1 ]; }; then
+  if [ "$ATTEST_SEC_FIRED" -eq 1 ]; then
+    echo "COMMIT REJECTED: 'Security reviewed:' trailer present but none of its lines starts with an accepted token (manual, claude-code-security-review, pr-review-toolkit, ad-hoc) — nothing was committed; fix the message and commit again." >&2
+    echo "  Fix: Security reviewed: manual — <what you checked>" >&2
+  fi
+  if [ "$ATTEST_PLAT_FIRED" -eq 1 ]; then
+    echo "COMMIT REJECTED: 'Platforms tested:' trailer present but none of its lines names a recognised platform — nothing was committed; fix the message and commit again." >&2
+    echo "  Fix: Platforms tested: linux" >&2
+  fi
+  exit 1
 fi
 
 FIRST_LINE=$(printf '%s\n' "${COMMIT_MSG}" | head -1)

@@ -254,6 +254,30 @@ expect_committed "seed commit passes with a comment-free .env" "chore: [HIMMEL-2
 expect_rejected "a non-conventional message is REJECTED with a comment-free .env" \
     "zzzz totally invalid message" "COMMIT REJECTED"
 
+echo "== a trailer no gate accepts is refused through the real wiring =="
+# The fixture runs the entry copied from the repo's own .pre-commit-config.yaml, so it carries
+# whatever flag that entry carries: --attest-refuse turns the commit-time warning into a refusal.
+build_repo plain
+expect_committed "seed commit passes before the trailer rows" "chore: [HIMMEL-2461] seed"
+expect_rejected "a bad Security reviewed token is REFUSED through the real hook" \
+    "chore: [HIMMEL-2461] bad token
+
+Security reviewed: outbound write is one PR comment" "COMMIT REJECTED: 'Security reviewed:'"
+good_before=$(head_sha)
+good_out=$(try_commit "chore: [HIMMEL-2461] good token
+
+Platforms tested: linux
+Security reviewed: ad-hoc — reason") && good_rc=0 || good_rc=$?
+good_after=$(head_sha)
+if [ "$good_rc" -eq 0 ] && [ "$good_before" != "$good_after" ]; then
+    case "$good_out" in
+        *WARN*) fail "a conforming trailer pair committed, but the hook warned: $good_out" ;;
+        *) pass "a conforming trailer pair COMMITS through the real hook with no WARN" ;;
+    esac
+else
+    fail "a conforming trailer pair was refused through the real hook (rc=$good_rc): $good_out"
+fi
+
 echo "== fail-closed when the hook is handed no message =="
 # The wiring defect's signature: an empty "$1". Silence + rc=0 here is exactly
 # what let the gate certify every commit for months, so it must be loud and

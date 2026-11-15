@@ -246,6 +246,10 @@ IFS=$old_ifs
 w1=$(grep -E "^[[:space:]]*(local )?sec_token_re='" scripts/hooks/check-commit-msg.sh | head -n 1)
 w1="${w1#*sec_token_re=\'}"; w1="${w1%\'*}"
 check "W1 sec_token_re equals ATTEST_SEC_TOKEN_RE" "$w1" "$ATTEST_SEC_TOKEN_RE"
+# --- W1 platform parity: the same for the platform list
+w1p=$(grep -E "^[[:space:]]*(local )?plat_token_re='" scripts/hooks/check-commit-msg.sh | head -n 1)
+w1p="${w1p#*plat_token_re=\'}"; w1p="${w1p%\'*}"
+check "W1 plat_token_re equals ATTEST_PLATFORM_RE" "$w1p" "$ATTEST_PLATFORM_RE"
 
 if [ "$fails" -ne 0 ]; then
     echo "FAIL - test-attest-trailers.sh ($fails failure(s))"

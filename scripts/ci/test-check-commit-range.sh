@@ -241,5 +241,28 @@ out="$(TICKET_ID_TRUSTED_AUTHOR='YotamLeo' run_cr "$t")"; rc=$?
 if [ "$rc" -eq 1 ]; then pass "allowlist match is case-insensitive -> rc1"; else fail "expected rc1, got $rc: $out"; fi
 rm -rf "$t"
 
+# --- I8: the CI replay runs the commit-msg hook with NO flag, so it warns about a bad
+# trailer and never refuses one. A pushed bad line is cured by a later conforming commit; commit-lint
+# does not refuse it (the commit-lint__security step does, when no commit conforms). ---
+BADT='Security reviewed: outbound write is one PR comment'
+GOODT='Security reviewed: ad-hoc — reason'
+t="$(fixture_mktemp_dir)" || exit 1
+mkrepo "$t" "fix(x): HIMMEL-1 first
+
+Platforms tested: linux
+$BADT" "fix(x): HIMMEL-1 second
+
+$GOODT"
+out="$(run_cr "$t")"; rc=$?
+if [ "$rc" -eq 0 ]; then pass "trailer replay: a bad line then a good one -> rc0"; else fail "trailer replay: expected rc0, got $rc: $out"; fi
+rm -rf "$t"
+t="$(fixture_mktemp_dir)" || exit 1
+mkrepo "$t" "fix(x): HIMMEL-1 only
+
+$BADT"
+out="$(run_cr "$t")"; rc=$?
+if [ "$rc" -eq 0 ]; then pass "trailer replay: a range whose only trailer line is bad -> rc0 (never refused here)"; else fail "trailer replay: expected rc0, got $rc: $out"; fi
+rm -rf "$t"
+
 echo
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; else echo "$failures FAILED"; exit 1; fi
