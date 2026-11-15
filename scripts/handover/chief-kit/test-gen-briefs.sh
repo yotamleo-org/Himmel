@@ -2479,6 +2479,9 @@ o="$(TICKET_STATUS_STATE_DIR="$WORK/g-state-empty" cgrun g7n)"; rc=$?
 pfmk g8 "w['keys']=['HIMMEL-9816']"
 o="$(TICKET_STATUS_STATE_DIR="$WORK/g-state" GEN_BRIEFS_GH_CMD="$WORK/g-gh.sh" cgrun g8)"; rc=$?
 [ "$rc" = 1 ] && has "G8 an unread PR body is refused as unknown" "$o" "unknown (PR #7003 body unread)" || fail "G8 rc=$rc: $o"
+pfmk g8b "w['keys']=['HIMMEL-9814']"
+o="$(GEN_BRIEFS_TICKET_POLICY_CLI="$WORK/no-such-cli.mjs" cgrun g8b)"; rc=$?
+[ "$rc" = 1 ] && has "G8b a missing ticket-policy CLI is refused as unknown" "$o" "unknown (ticket-policy sections unreadable)" || fail "G8b rc=$rc: $o"
 pfmk g9 "w['keys']=['HIMMEL-9814']; w['staged']=True"
 o="$(cgrun g9)"; rc=$?
 [ "$rc" = 0 ] && pass "G9 staged: true on a key with no need writes the brief" || fail "G9 rc=$rc: $o"
