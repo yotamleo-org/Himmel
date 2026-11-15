@@ -3958,4 +3958,54 @@ CLAUDE_CONFIG_DIR="$cfg97" CLAUDE_CODE_SESSION_ID="0a1b2c3d-4e5f-4a6b-8c7d-00000
 check "97 a session with no judge child says none owed" "$(grep -c '^JUDGE-OWED: none$' "$root/tester/p97none/DEMO-nextleg-${today}B-chief.md")" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/p97none/DEMO-nextleg-${today}A-chief.md" "$(token_of "$out97n")" >/dev/null 2>&1
 
+# --- 10006: the owed ledger. The queue fold keeps an older segment that names something owed, a
+# hold or a ticket to file; next refuses while a ticket row has no key after one shift; the HANDOFF
+# lists every open row. owe.sh writes the fixture rows; OWE_NOW_EPOCH sets a row's age.
+owe="$fixture_repo/scripts/handover/chief-kit/owe.sh"
+ow_add() { OWE_NOW_EPOCH="$(( $(date +%s) - $2 ))" bash "$owe" add --bucket "$root/tester/$1" --chief ZZ --kind "$3" --text "$4" >/dev/null; }
+ow_handoff() { printf '%s' "$root/tester/$1/DEMO-nextleg-${today}B-chief-HANDOFF.md"; }
+ow_plain1=' || (XA 02:1xZ; MERGED 5001) 5051 echo foxtrot'
+ow_owed=' || (XB 03:1xZ; MERGED 5002) 5052 the lost proof ticket is owed'
+ow_hold=' || (XC 04:1xZ; MERGED 5003) 5053 charlie HOLD until 9001'
+ow_plain2=' || (XD 05:1xZ; MERGED 5004) 5054 golf hotel'
+ow_file=' || prior XE queue: (XE 06:5xZ; READY 5005) 5055 delta to file after the merge'
+mkq own10006a "$q_new$ow_plain1$ow_owed$ow_hold$ow_plain2$ow_file"; run91 own10006a
+check "10006 a queue with owed, HOLD and to-file segments: next exits 0" "$rc91" "0"
+check "10006 the owed, HOLD and to-file segments stay on the live queue: line, the plain ones move" \
+    "$(sed -n 's/^queue: //p' "$root/tester/own10006a/DEMO-nextleg-${today}C-chief.md")" "$q_new$ow_owed$ow_hold$ow_file || older segments of this line: specs/decisions/chief-history-$today.md"
+printf '## queue: older segments, trimmed by chief.sh next from DEMO-nextleg-%sB-chief\n\n%s\n\n' "$today" "$ow_plain1$ow_plain2" > "$tmp/own10006a.want-hist"
+check "10006 the history file holds the plain segments, byte for byte, and no owed one" "$(cmp -s "$tmp/own10006a.want-hist" "$root/tester/own10006a/specs/decisions/chief-history-$today.md" && echo same || echo differs)" "same"
+mkq own10006b "$q_new$ow_owed$ow_hold"; run91 own10006b
+check "10006 a queue whose older segments are all owed is seeded whole" "$(sed -n 's/^queue: //p' "$root/tester/own10006b/DEMO-nextleg-${today}C-chief.md")" "$q_new$ow_owed$ow_hold"
+check "10006 and no history file is written for it" "$([ -f "$root/tester/own10006b/specs/decisions/chief-history-$today.md" ] && echo yes || echo no)" "no"
+
+mkq own10006c "$q_new"
+ow_add own10006c 25200 ticket 'file the fold bug'
+ow_add own10006c 3600 ticket 'file the young bug'
+ow_add own10006c 36000 proof 'run the live succession'
+run91 own10006c
+check "10006 a ticket row with no key past one shift refuses next (exit 9)" "$rc91" "9"
+check "10006 the refusal names the stale row and its text" "$(printf '%s\n' "$out91" | grep -c 'o1 (chief ZZ, 7 h): file the fold bug')" "1"
+check "10006 the refusal does not name the young ticket row or the old proof row" "$(printf '%s\n' "$out91" | grep -cE 'young bug|live succession')" "0"
+check "10006 the refusal names the close command" "$(printf '%s\n' "$out91" | grep -c 'owe.sh close --bucket .* --id <id> --key <KEY>')" "1"
+check "10006 the refusal writes no HANDOFF" "$([ -f "$(ow_handoff own10006c)" ] && echo yes || echo no)" "no"
+bash "$owe" close --bucket "$root/tester/own10006c" --id o1 --key DEMO-77 >/dev/null
+run91 own10006c
+check "10006 closing the stale ticket row with a key lets next through" "$rc91" "0"
+check "10006 the HANDOFF has one Owed section" "$(grep -c '^## Owed$' "$(ow_handoff own10006c)")" "1"
+check "10006 the HANDOFF lists the open ticket row" "$(grep -c '^- o2 ticket, owed since .* by ZZ: file the young bug$' "$(ow_handoff own10006c)")" "1"
+check "10006 the HANDOFF lists the open proof row" "$(grep -c '^- o3 proof, owed since .* by ZZ: run the live succession$' "$(ow_handoff own10006c)")" "1"
+check "10006 the HANDOFF does not list the closed row" "$(grep -c 'file the fold bug' "$(ow_handoff own10006c)")" "0"
+mkq own10006d "$q_new"
+ow_add own10006d 3600 ticket 'file the young bug'
+OWED_SHIFT_SECS=60 run91 own10006d
+check "10006 OWED_SHIFT_SECS sets the shift: a one-hour row is past a one-minute shift (exit 9)" "$rc91" "9"
+mkq own10006e "$q_new"; run91 own10006e
+check "10006 a bucket with no ledger hands over and has no Owed section" "$rc91/$(grep -c '^## Owed' "$(ow_handoff own10006e)")" "0/0"
+mkq own10006f "$q_new"
+printf '%s\n' 'not json' > "$root/tester/own10006f/owed.jsonl"; run91 own10006f
+check "10006 an unreadable ledger does not refuse next" "$rc91" "0"
+check "10006 an unreadable ledger is said on stderr" "$(printf '%s\n' "$out91" | grep -c 'owed ledger .* is unreadable')" "1"
+check "10006 an unreadable ledger is said in the HANDOFF" "$(grep -c 'owed.jsonl could not be read' "$(ow_handoff own10006f)")" "1"
+
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# scripts/handover/chief-kit/owe.sh - the owed ledger: what a chief owes after a shift
+# (a ticket to file, a proof to run, a ruling to ask for), kept in <bucket>/owed.jsonl so
+# the tick can age it, the HANDOFF carries it and the queue fold never moves it.
+#
+# Usage:
+#   owe.sh add   --bucket <dir> --chief <name> --kind ticket|proof|ruling --text <one line> [--key <KEY>]
+#   owe.sh close --bucket <dir> --id <oN> --key <ticket key | sha | decision id>
+#   owe.sh list  --bucket <dir> [--all]
+#
+# <bucket>/owed.jsonl is append-only, one JSON object per line:
+#   add   {op:"add", id, ts, epoch, chief, kind, text, key?}
+#   close {op:"close", ref:<id>, ts, epoch, chief, key}
+# A close appends a row; no row is ever rewritten. `add` prints the new id (o1, o2, ...).
+# `list` prints each open row as TAB-separated id, kind, epoch, key, chief, text (a tab or
+# newline in the text becomes a space); --all adds the closed rows, the key being the closing
+# one. OWE_NOW_EPOCH replaces the clock (tests).
+#
+# Exit codes: 0 done, 1 close of an unknown or already closed id, 2 usage or a refused value,
+# 3 the bucket directory is absent, 4 the ledger is unreadable.
+#
+# Platform guard: POSIX bash 3.2+, jq.
+set -u
+
+usage() {
+    echo "usage: owe.sh add --bucket <dir> --chief <name> --kind ticket|proof|ruling --text <text> [--key <KEY>]" >&2
+    echo "       owe.sh close --bucket <dir> --id <oN> --key <key|sha|decision id>" >&2
+    echo "       owe.sh list --bucket <dir> [--all]" >&2
+    exit 2
+}
+
+[ "$#" -ge 1 ] || usage
+CMD="$1"; shift
+BUCKET=""; CHIEF=""; KIND=""; TEXT=""; KEY=""; ID=""; ALL=0; HAVE_TEXT=0; HAVE_KEY=0
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --bucket) [ "$#" -ge 2 ] || usage; BUCKET="$2"; shift 2 ;;
+        --chief) [ "$#" -ge 2 ] || usage; CHIEF="$2"; shift 2 ;;
+        --kind) [ "$#" -ge 2 ] || usage; KIND="$2"; shift 2 ;;
+        --text) [ "$#" -ge 2 ] || usage; TEXT="$2"; HAVE_TEXT=1; shift 2 ;;
+        --key) [ "$#" -ge 2 ] || usage; KEY="$2"; HAVE_KEY=1; shift 2 ;;
+        --id) [ "$#" -ge 2 ] || usage; ID="$2"; shift 2 ;;
+        --all) ALL=1; shift ;;
+        *) usage ;;
+    esac
+done
+
+[ -n "$BUCKET" ] || usage
+[ -d "$BUCKET" ] || { echo "owe: bucket directory '$BUCKET' does not exist" >&2; exit 3; }
+F="$BUCKET/owed.jsonl"
+
+NOW="${OWE_NOW_EPOCH:-}"
+case "$NOW" in ''|*[!0-9]*) NOW="$(date +%s)" ;; esac
+
+# The ids of every add row; a ledger jq cannot read stops here.
+ledger_ok() { [ ! -s "$F" ] || jq -e -s 'all(.[]; type == "object" and (.op == "add" or .op == "close"))' "$F" >/dev/null 2>&1; }
+
+case "$CMD" in
+    add)
+        [ -n "$CHIEF" ] || { echo "owe: add needs --chief" >&2; exit 2; }
+        case "$KIND" in ticket|proof|ruling) ;; *) echo "owe: --kind must be ticket, proof or ruling" >&2; exit 2 ;; esac
+        [ "$HAVE_TEXT" -eq 1 ] && [ -n "$TEXT" ] || { echo "owe: add needs a non-empty --text" >&2; exit 2; }
+        case "$TEXT" in *$'\n'*) echo "owe: --text must be one line" >&2; exit 2 ;; esac
+        if [ "$HAVE_KEY" -eq 1 ]; then
+            case "$KEY" in ''|*[[:space:]]*) echo "owe: --key must be one word" >&2; exit 2 ;; esac
+        fi
+        ledger_ok || { echo "owe: $F is unreadable" >&2; exit 4; }
+        n=1
+        [ ! -s "$F" ] || n=$(( $(jq -s '[.[] | select(.op == "add")] | length' "$F") + 1 ))
+        row="$(jq -cn --arg id "o$n" --argjson e "$NOW" --arg chief "$CHIEF" --arg kind "$KIND" --arg text "$TEXT" --arg key "$KEY" \
+            '{op: "add", id: $id, ts: ($e | todate), epoch: $e, chief: $chief, kind: $kind, text: $text} + (if $key == "" then {} else {key: $key} end)')" || exit 4
+        printf '%s\n' "$row" >> "$F" || exit 4
+        printf 'o%s\n' "$n"
+        ;;
+    close)
+        [ -n "$ID" ] || usage
+        case "$KEY" in ''|*[[:space:]]*) echo "owe: close needs --key (a ticket key, sha or decision id), one word" >&2; exit 2 ;; esac
+        ledger_ok || { echo "owe: $F is unreadable" >&2; exit 4; }
+        [ -s "$F" ] || { echo "owe: no open row '$ID'" >&2; exit 1; }
+        open="$(jq -s --arg id "$ID" '([.[] | select(.op == "close") | .ref]) as $c | [.[] | select(.op == "add" and .id == $id and ($c | index($id) | not))] | length' "$F")"
+        [ "$open" = 1 ] || { echo "owe: no open row '$ID'" >&2; exit 1; }
+        row="$(jq -cn --arg ref "$ID" --argjson e "$NOW" --arg chief "${CHIEF:-}" --arg key "$KEY" \
+            '{op: "close", ref: $ref, ts: ($e | todate), epoch: $e, chief: $chief, key: $key}')" || exit 4
+        printf '%s\n' "$row" >> "$F" || exit 4
+        ;;
+    list)
+        [ -s "$F" ] || exit 0
+        ledger_ok || { echo "owe: $F is unreadable" >&2; exit 4; }
+        jq -rs --argjson all "$ALL" '
+            (reduce (.[] | select(.op == "close")) as $c ({}; .[$c.ref] = $c.key)) as $closed
+            | .[] | select(.op == "add")
+            | select($all == 1 or ($closed[.id] == null))
+            | [.id, .kind, .epoch, (if $closed[.id] != null then $closed[.id] else (.key // "") end), .chief, (.text | gsub("[\t\n]"; " "))]
+            | map(tostring) | join("\t")' "$F"
+        ;;
+    *) usage ;;
+esac

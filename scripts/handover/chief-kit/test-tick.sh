@@ -2543,6 +2543,38 @@ uw_skip="$(uw_chains)"
 [ "$uw_stale|$uw_ok|$uw_skip" = 'STALE:1/2|ok|skip' ] && pass '(9860) with only a wired pair the STALE, ok and skip values stay byte-identical' || fail "(9860) with only a wired pair chains read $uw_stale|$uw_ok|$uw_skip, not STALE:1/2|ok|skip"
 rm -rf "$W/uw-tmp" "$W/uw-mirror" "$W/uw-dir"
 
+# (10006) owed=<n>:<oldest-age> from the owed ledger beside --doc, and ACTION owed-stale= for a keyless ticket row past 4 hours
+ow_m="$W/ow-mirror/HIMMEL"; mkdir -p "$ow_m" "$W/ow-tmp" "$W/ow-dir"
+ow_doc="$W/ow-dir/ow-chief.md"
+printf '%s\n' '# OW — CHIEF' '' '## Live state' '' '## Results' > "$ow_doc"
+ow_tick() { NEXT_DISPATCH_MIRROR="$ow_m" TMPDIR="$W/ow-tmp" TOKEN='' bash "$SUT" "$@" --doc "$ow_doc" 2>/dev/null; }
+ow_add() { OWE_NOW_EPOCH="$(( $(date +%s) - $1 ))" bash "$HERE/owe.sh" add --bucket "$W/ow-dir" --chief OW --kind "$2" --text "$3" > /dev/null; }
+not_contains '(10006) no owed ledger prints no owed=' "$(ow_tick)" ' owed='
+ow_add 3600 ticket 'file the fold bug'
+ow_add 1800 proof 'run the live succession'
+ow_out="$(ow_tick)"
+contains '(10006) two open rows print owed=2:1h, the oldest age' "$ow_out" ' owed=2:1h '
+not_contains '(10006) a keyless ticket row under 4 hours wakes nothing' "$ow_out" 'ACTION owed-stale'
+contains '(10006) the verbose tick names the owed count and age' "$(ow_tick --verbose)" 'owed: 2:1h'
+ow_add 18000 proof 'sign the spec'
+not_contains '(10006) a proof row past 4 hours is aged but never an owed-stale action' "$(ow_tick)" 'ACTION owed-stale'
+ow_add 18000 ticket 'file the lost proof ticket'
+ow_out="$(ow_tick)"
+contains '(10006) a keyless ticket row past 4 hours prints ACTION owed-stale= naming its id' "$ow_out" 'ACTION owed-stale=1:o4: '
+contains '(10006) the action names the owe.sh close command' "$ow_out" 'close --bucket'
+contains '(10006) the oldest age follows the 5 hour row' "$ow_out" ' owed=4:5h '
+bash "$HERE/owe.sh" close --bucket "$W/ow-dir" --id o4 --key HIMMEL-99999 > /dev/null
+ow_out="$(ow_tick)"
+not_contains '(10006) closing the stale ticket with a key stops the owed-stale action' "$ow_out" 'ACTION owed-stale'
+contains '(10006) the closed row leaves the count' "$ow_out" ' owed=3:5h '
+ow_out="$(OWED_STALE_SECS=60 ow_tick)"
+contains '(10006) OWED_STALE_SECS moves the stale line for a still-open ticket row' "$ow_out" 'ACTION owed-stale=1:o1: '
+for ow_id in o1 o2 o3; do bash "$HERE/owe.sh" close --bucket "$W/ow-dir" --id "$ow_id" --key 0123abc > /dev/null; done
+not_contains '(10006) every row closed hides owed=' "$(ow_tick)" ' owed='
+printf '%s\n' 'not json' >> "$W/ow-dir/owed.jsonl"
+contains '(10006) an unreadable ledger prints owed=?' "$(ow_tick)" ' owed=?'
+rm -rf "$W/ow-tmp" "$W/ow-mirror" "$W/ow-dir"
+
 help_out="$(bash "$SUT" --help 2>&1)"
 help_cites="$(printf '%s\n' "$help_out" | grep -oE 'HIMMEL-[0-9]+|decision [0-9]+' | sort -u | tr '\n' ' ')"
 if [ -n "$help_cites" ]; then
