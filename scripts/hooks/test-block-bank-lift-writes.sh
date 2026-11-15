@@ -434,6 +434,29 @@ row "usage: echo set | grep"         allow "echo 'bash $US set x' | grep set"
 row "usage: echo set, then bash"     allow "echo 'bash $US set x'; bash -c 'echo hi'"
 row "retired name is no longer fenced: redirect" allow "echo x > ~/.himmel/state/bank-lift.json" # old-term-ok
 row "retired name is no longer fenced: set"   allow "bash scripts/lib/bank-lift.sh set" # old-term-ok
+echo "== 9600: a runner or zsh-spelt shell and a dropped body =="
+P9600="printf '%s\\n' 'bash $US set x'"
+Q9600="printf '%s\\n' '$US set x'"
+row "9600: A1 set piped into nice sh"        deny "$P9600 | nice sh"
+row "9600: A2 set piped into timeout 5 sh"   deny "$P9600 | timeout 5 sh"
+row "9600: A3 set piped into sudo sh"        deny "$P9600 | sudo sh"
+row "9600: A4 set piped into stdbuf -oL sh"  deny "$P9600 | stdbuf -oL sh"
+row "9600: B1 set piped into =sh"            deny "$P9600 | =sh"
+row "9600: B2 set piped into noglob sh"      deny "$P9600 | noglob sh"
+row "9600: B3 set piped into nocorrect sh"   deny "$P9600 | nocorrect sh"
+row "9600: B4 set piped into - sh"           deny "$P9600 | - sh"
+mkdir -p "$T/drop-body"
+# shellcheck disable=SC2016 # $@ and $a belong to the stub
+printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = ".[] | select(.body != null)" ] && exit 5; done\nexec "%s" "$@"\n' "$(command -v jq)" >"$T/drop-body/jq"
+chmod +x "$T/drop-body/jq"
+_model_fail "9600: C1 a body dropped by a failed jq step denies" deny "$T/drop-body:$PATH" "$HOOK" "bash -c \"$P9600 | sh\""
+row "9600: N1 a printed show piped into nice sh"  allow "printf '%s\\n' 'bash $US show' | nice sh"
+row "9600: N2 cat piped into nice sh"             allow "cat f | nice sh"
+row "9600: N3 a runner's shell with -c is no stdin shell" allow "echo hi | timeout 5 sh -c 'cat'"
+row "9600: N4 a runner with no shell in its arguments"    allow "$P9600 | nice grep set"
+row "9600: D1 set piped into ash"            deny "$Q9600 | ash"
+row "9600: D2 set piped into mksh"           deny "$Q9600 | mksh"
+row "9600: D3 set piped into rbash"          deny "$Q9600 | rbash"
 err=$(printf '%s' "$(bash_json "bash $US set")" | bash "$HOOK" 2>&1 >/dev/null)
 case "$err" in
     *'! bash scripts/lib/usage-lift.sh set'*) ok "usage: remedy names usage-lift.sh" ;;
