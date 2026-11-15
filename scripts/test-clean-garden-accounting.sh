@@ -1217,7 +1217,7 @@ clear_checkpoints
 echo "RUN S: superseded worktrees"
 s_mk() {
     local name="$1" branch="$2"
-    git -C "$REPO" worktree add -q "$TMP_ROOT/$name" -b "$branch" refs/remotes/origin/main >/dev/null 2>&1
+    git -C "$REPO" worktree add -q "$TMP_ROOT/$name" -b "$branch" refs/remotes/origin/main >/dev/null 2>&1 || return 1
     printf '%s\n' "$TMP_ROOT/$name"
 }
 s_backdate() {
@@ -1225,16 +1225,22 @@ s_backdate() {
     gd=$(git -C "$1" rev-parse --absolute-git-dir) || return 1
     touch -t 202001010000 "$gd/HEAD" "$gd/logs/HEAD"
 }
-WT_S_AGED=$(s_mk wt-s-aged none/s-aged);       s_backdate "$WT_S_AGED"
+S_FAILS=0
+WT_S_AGED=$(s_mk wt-s-aged none/s-aged);       s_backdate "$WT_S_AGED" || S_FAILS=$((S_FAILS+1))
 WT_S_FRESH=$(s_mk wt-s-fresh none/s-fresh)
-WT_S_DIRTY=$(s_mk wt-s-dirty none/s-dirty);    s_backdate "$WT_S_DIRTY"
+WT_S_DIRTY=$(s_mk wt-s-dirty none/s-dirty);    s_backdate "$WT_S_DIRTY" || S_FAILS=$((S_FAILS+1))
 printf 'changed\n' >> "$WT_S_DIRTY/README"
-WT_S_CLOSED=$(s_mk wt-s-closed chore/s-closed); s_backdate "$WT_S_CLOSED"
+WT_S_CLOSED=$(s_mk wt-s-closed chore/s-closed); s_backdate "$WT_S_CLOSED" || S_FAILS=$((S_FAILS+1))
 # shellcheck disable=SC2031  # GH_ROWS_ORIGIN is only read in run_clean's subshell
 printf 'owner/repo\tchore/s-closed\tclosed\t%s\n' "$(git -C "$WT_S_CLOSED" rev-parse HEAD)" >> "$GH_ROWS_ORIGIN"
 WT_S_AHEAD=$(s_mk wt-s-ahead none/s-ahead)
 printf 'x\n' > "$WT_S_AHEAD/x.txt"; git -C "$WT_S_AHEAD" add x.txt; git -C "$WT_S_AHEAD" commit -q -m "ahead"
-s_backdate "$WT_S_AHEAD"
+s_backdate "$WT_S_AHEAD" || S_FAILS=$((S_FAILS+1))
+for s_wt in "$WT_S_AGED" "$WT_S_FRESH" "$WT_S_DIRTY" "$WT_S_CLOSED" "$WT_S_AHEAD"; do
+    [ -d "$s_wt" ] || S_FAILS=$((S_FAILS+1))
+done
+if [ "$S_FAILS" -eq 0 ]; then pass "S0: every superseded fixture was built and backdated"; else fail "S0: $S_FAILS fixture step(s) failed, so S1-S5 prove nothing"; fi
+if s_mk wt-s-dup none/s-aged >/dev/null; then fail "S0 control: s_mk reported success for a worktree add that must fail"; else pass "S0 control: s_mk fails when the worktree add fails"; fi
 s_out=$(run_clean)
 if [ ! -d "$WT_S_AGED" ] && ! git -C "$REPO" rev-parse --verify -q refs/heads/none/s-aged >/dev/null; then
     pass "S1: aged superseded worktree and its branch are pruned"
