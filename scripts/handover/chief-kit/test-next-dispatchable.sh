@@ -2408,7 +2408,6 @@ has "a newer hand-off supersedes an older missing remainder" "$r91" "HANDED-OFF 
 quiet91="$(run91)"
 lacks "without --why no scope line is printed" "$quiet91" "# scope "
 
-# A ticket whose next step is stated to write nothing lists with a trailing `proof` field.
 MP="$WORK/m9848/HIMMEL"; mkdir -p "$MP" "$WORK/s9848/workers"; cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/m9848/HIMMEL.versions.tsv"
 M_SAVE="$M"; M="$MP"
 NOWRITE='Writes: none (chief-run proof, no code)'
@@ -2445,7 +2444,7 @@ P_PRS="$(cat "$PRS_TSV")"; P_MERGED="$(cat "$MERGED_TSV")"
 printf '4358\tfix(x): [HIMMEL-9858] merged\tfix/himmel-9858-m\n' > "$MERGED_TSV"
 runp() { NEXT_DISPATCH_MIRROR="$MP" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify-p" bash "$SUT" --top 20 --workers-dir "$WORK/s9848/workers" --workers-from "$WORK/fleet5.json" "$@" 2>/dev/null; }
 rp="$(runp --why)"
-prow() { printf '%s\n' "$rp" | grep -E "^(# )?$1[[:space:]]HIMMEL-$2[[:space:]:]" || true; } # <row kind> <ticket number>
+prow() { local kind="$1" num="$2"; printf '%s\n' "$rp" | grep -E "^(# )?${kind}[[:space:]]HIMMEL-${num}[[:space:]:]" || true; }
 lastf() { printf '%s\n' "$1" | awk -F'\t' '{print $NF}'; }
 [ "$(lastf "$(prow LOCAL 9851)")" = proof ] && pass "R1: a no-write Writes line lists the ticket with proof as its last field" || fail "R1: last field of '$(prow LOCAL 9851)'"
 has "R1: and column 0 is LOCAL with no file" "$(prow LOCAL 9851)" "files=-"

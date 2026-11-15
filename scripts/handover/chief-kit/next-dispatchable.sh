@@ -358,8 +358,7 @@ def split_reads(text):
     return [f for f in named if f not in reads], reads
 
 def scope_of(body):
-    # files, the source --why names, reads, no_scope: nothing says what the ticket writes, not even that it writes nothing,
-    # and nowrite: a `Writes:` line says it writes nothing and no `Writes:` line names a path (a `Files:` line's paths do not count)
+    # files, the source --why names, reads, and no_scope: nothing says what the ticket writes, not even that it writes nothing
     cut = body.find('\n## Comments')
     desc = body if cut < 0 else body[:cut]
     explicit, kinds, nowrite_line, writes_hit = [], set(), False, False
