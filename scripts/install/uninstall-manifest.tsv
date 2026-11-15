@@ -64,3 +64,4 @@ adopter-scripts	keep	project-repo	dir	-	{PWD}/scripts	-	himmel scripts copied in
 himmel-clone	keep	himmel-checkout	dir	-	{REPO_ROOT}	-	the himmel clone itself, its .env (Jira config) and worktrees	file
 aur-package	keep	pacman-package	dir	-	/opt/himmel	-	the AUR package payload (/opt/himmel, /usr/bin/himmelctl): pacman owns it; after himmelctl uninstall, remove it with pacman -R himmel	none
 foreign-settings	keep	claude-settings	settings	-	{HOME}/.claude/settings.json	-	non-himmel settings.json keys: MCP config, your own hooks, the rtk guard	none
+qmd-wrapper	code	qmd	file	-	{HOME}/.local/bin/qmd	8	the bare qmd wrapper qmd_install writes (loads the daemon provider key, then runs the qmd fork launcher; replaces only an absent path or a symlink to the fork launcher; removal not yet scheduled, a follow-up owns the uninstall handling)	none

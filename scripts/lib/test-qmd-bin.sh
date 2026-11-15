@@ -437,11 +437,17 @@ assert "fresh install: linked at the bun-global @tobilu/qmd path" \
 assert "fresh install: no git call references the mutable himmel-main branch" \
   bash -c '! grep -q "himmel-main" "$1"' _ "$git_log"
 
+assert "fresh install: wrote the key-loading bare qmd wrapper" \
+  grep -q 'himmel-qmd-wrapper' "$fresh_home/.local/bin/qmd"
+rm -f "$fresh_home/.local/bin/qmd"
+
 # -- idempotent re-run: already fork-served (link + pinned HEAD + version ok)
 #    -> skip, clone/build never re-run (the pin gate legitimately runs ONE
 #    read-only `git rev-parse HEAD`, and the version CHECK invokes bun once).
 out=$(qmd_install_env "$fresh_home" bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; qmd_install; echo "RC=$?"' 2>&1)
 assert "idempotent re-run: rc 0" grep -q '^RC=0$' <<<"$out"
+assert "idempotent re-run: an already-served install still gets the bare qmd wrapper" \
+  grep -q 'himmel-qmd-wrapper' "$fresh_home/.local/bin/qmd"
 assert "idempotent re-run: pin gate probed HEAD (read-only rev-parse)" \
   grep -q 'GIT rev-parse HEAD' "$git_log"
 # shellcheck disable=SC2016
@@ -1493,6 +1499,94 @@ else
   assert "the live update indexed the golden tree" test -n "$live_want"
   assert "qmd_collection_indexes equals the live update's active paths" test "$golden_got" = "$live_want"
 fi
+
+echo "[test-qmd-bin] the bare ~/.local/bin/qmd wrapper loads the daemon key file"
+# A fork bin stub that records only WHETHER the key is set, never its value.
+wr_fork="$tmpdir/wr-fork"; mkdir -p "$wr_fork/bin"
+# shellcheck disable=SC2016  # the stub expands its own variables when run
+printf '#!/usr/bin/env bash\necho "FORK-QMD KEY=${QMD_OPENAI_API_KEY:+set} ARGS=$*"\n' >"$wr_fork/bin/qmd"; chmod +x "$wr_fork/bin/qmd"
+WR_SENTINEL=sk-wrapper-sentinel-10088
+# wr_home <name> -> a fresh HOME carrying a decoy daemon env file (mode 600)
+wr_home() {
+  local h="$tmpdir/wr-$1"
+  mkdir -p "$h/.himmel/state" "$h/.local/bin"
+  printf 'QMD_OPENAI_API_KEY=%s\n' "$WR_SENTINEL" >"$h/.himmel/state/qmd-daemon.env"; chmod 600 "$h/.himmel/state/qmd-daemon.env"
+  printf '%s\n' "$h"
+}
+# wr_ensure <home>: run the installer's wrapper step under that HOME
+wr_ensure() {
+  env -i HOME="$1" PATH="$PATH" QMD_FORK_DIR="$wr_fork" bash -c '. "'"$SCRIPT_DIR"'/qmd-bin.sh"; _qmd_ensure_wrapper' 2>&1
+}
+# wr_run <home> [VAR=value...] -- run the bare wrapper from a fresh env (no session key)
+wr_run() {
+  local h="$1"; shift
+  env -i HOME="$h" PATH="$PATH" "$@" "$h/.local/bin/qmd" query x 2>&1
+}
+
+h="$(wr_home absent)"
+rc=0; out="$(wr_ensure "$h")" || rc=$?
+assert "wrapper step on an absent ~/.local/bin/qmd: rc 0" test "$rc" -eq 0
+assert "wrapper step on an absent path: a real executable file, not a symlink" test -x "$h/.local/bin/qmd" -a ! -L "$h/.local/bin/qmd"
+rc=0; out="$(wr_run "$h")" || rc=$?
+assert "bare wrapper from a fresh env: the fork qmd gets a key" grep -q '^FORK-QMD KEY=set ARGS=query x' <<<"$out"
+# shellcheck disable=SC2016  # $1 expands inside the spawned bash -c
+assert "bare wrapper: the key value never reaches the output" bash -c '! grep -q "$2" <<<"$1"' _ "$out" "$WR_SENTINEL"
+before="$(cksum <"$h/.local/bin/qmd")"
+wr_ensure "$h" >/dev/null
+assert "a second wrapper step leaves the wrapper byte-identical" test "$(cksum <"$h/.local/bin/qmd")" = "$before"
+out="$(env -i HOME="$h" PATH="$PATH" bash -x "$h/.local/bin/qmd" query x 2>&1)" || true
+assert "traced bare wrapper: the fork still gets the key" grep -q 'FORK-QMD KEY=set' <<<"$out"
+# shellcheck disable=SC2016  # $1 expands inside the spawned bash -c
+assert "traced bare wrapper: the key never reaches the trace" bash -c '! grep -q "$2" <<<"$1"' _ "$out" "$WR_SENTINEL"
+
+h="$(wr_home link)"; rm -f "$h/.local/bin/qmd"; ln -s "$wr_fork/bin/qmd" "$h/.local/bin/qmd"
+rc=0; out="$(wr_ensure "$h")" || rc=$?
+assert "a symlink to the fork bin is replaced: rc 0" test "$rc" -eq 0
+assert "a symlink to the fork bin is replaced by a regular file" test -f "$h/.local/bin/qmd" -a ! -L "$h/.local/bin/qmd"
+assert "the fork bin itself was not rewritten through the link" grep -q '^echo "FORK-QMD' "$wr_fork/bin/qmd"
+out="$(wr_run "$h")" || true
+assert "replaced symlink: the fork qmd gets a key" grep -q '^FORK-QMD KEY=set' <<<"$out"
+
+h="$(wr_home own)"; printf '#!/bin/sh\necho mine\n' >"$h/.local/bin/qmd"; chmod +x "$h/.local/bin/qmd"
+before="$(cksum <"$h/.local/bin/qmd")"
+rc=0; out="$(wr_ensure "$h")" || rc=$?
+assert "the user's own file at ~/.local/bin/qmd: refused (rc nonzero)" test "$rc" -ne 0
+assert "the user's own file is left byte-identical" test "$(cksum <"$h/.local/bin/qmd")" = "$before"
+assert "the refusal names the path" grep -q "$h/.local/bin/qmd" <<<"$out"
+
+h="$(wr_home otherlink)"; rm -f "$h/.local/bin/qmd"; ln -s /bin/true "$h/.local/bin/qmd"
+rc=0; out="$(wr_ensure "$h")" || rc=$?
+assert "a symlink to some other binary: refused (rc nonzero)" test "$rc" -ne 0
+assert "a symlink to some other binary is left alone" test "$(readlink "$h/.local/bin/qmd")" = /bin/true
+
+h="$(wr_home perm)"; wr_ensure "$h" >/dev/null; chmod 644 "$h/.himmel/state/qmd-daemon.env"
+rc=0; out="$(wr_run "$h")" || rc=$?
+assert "a group-readable key file: the wrapper refuses (rc 10)" test "$rc" -eq 10
+# shellcheck disable=SC2016  # $1 expands inside the spawned bash -c
+assert "a group-readable key file: the fork qmd never ran" bash -c '! grep -q FORK-QMD <<<"$1"' _ "$out"
+assert "a group-readable key file: the refusal names the file" grep -q 'qmd-daemon.env' <<<"$out"
+# shellcheck disable=SC2016  # $1 expands inside the spawned bash -c
+assert "a group-readable key file: the key never reaches the output" bash -c '! grep -q "$2" <<<"$1"' _ "$out" "$WR_SENTINEL"
+
+h="$(wr_home nokey)"; wr_ensure "$h" >/dev/null; rm -f "$h/.himmel/state/qmd-daemon.env"
+rc=0; out="$(wr_run "$h")" || rc=$?
+assert "no key file and no OpenRouter config: behaviour unchanged (rc 0)" test "$rc" -eq 0
+assert "no key file and no OpenRouter config: the fork qmd runs with no key" grep -q '^FORK-QMD KEY= ARGS=query x' <<<"$out"
+
+h="$(wr_home openrouter)"; wr_ensure "$h" >/dev/null; rm -f "$h/.himmel/state/qmd-daemon.env"
+mkdir -p "$h/.config/qmd"; printf 'models:\n  embed: openai:x\n  openai_base_url: https://openrouter.ai/api/v1\n' >"$h/.config/qmd/index.yml"
+rc=0; out="$(wr_run "$h")" || rc=$?
+assert "an OpenRouter config with no key anywhere: the wrapper refuses (rc 10)" test "$rc" -eq 10
+# shellcheck disable=SC2016  # $1 expands inside the spawned bash -c
+assert "an OpenRouter config with no key anywhere: the fork qmd never ran" bash -c '! grep -q FORK-QMD <<<"$1"' _ "$out"
+out="$(wr_run "$h" QMD_OPENAI_API_KEY=session-key)" || true
+assert "an OpenRouter config, no key file, a session key: the session key still reaches the fork" grep -q '^FORK-QMD KEY=set' <<<"$out"
+
+h="$(wr_home nolib)"; wr_ensure "$h" >/dev/null
+sed 's#^LIB=.*#LIB=/nonexistent/qmd-daemon-env.sh#' "$h/.local/bin/qmd" >"$h/qmd.new" && cat "$h/qmd.new" >"$h/.local/bin/qmd"
+rc=0; out="$(wr_run "$h")" || rc=$?
+assert "a missing key loader: the wrapper warns and still runs the fork qmd" grep -q '^FORK-QMD' <<<"$out"
+assert "a missing key loader: the warning names the loader" grep -q 'nonexistent/qmd-daemon-env.sh' <<<"$out"
 
 echo "[test-qmd-bin] has_qmd matches binary presence in this env"
 if has_qmd; then

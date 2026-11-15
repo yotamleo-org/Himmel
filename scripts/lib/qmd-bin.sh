@@ -389,6 +389,92 @@ _qmd_ensure_global_link() {
   return 0
 }
 
+# The bare `qmd` on PATH (~/.local/bin/qmd) is the fork's own launcher, which
+# sends no provider key: every shell `qmd query`/`qmd embed` against an
+# OpenRouter config answered 401 while the daemon (and qmd_cmd) used the key
+# from the daemon env file. _qmd_ensure_wrapper makes that path a wrapper that
+# loads the key through qmd_daemon_key_load (the same loader qmd_cmd uses),
+# then execs the fork launcher. It replaces ONLY an absent path, a symlink that
+# resolves to the fork launcher, or an earlier copy of this wrapper; any other
+# file or symlink is the operator's own and is left untouched (rc 1).
+# The loader path is baked at install time; if it later goes missing the
+# wrapper warns on stderr and still runs the fork launcher, never bricks qmd.
+# Not ledger-recorded: a qmd-fork row's uninstall handler treats every file
+# unit as the fork checkout, so uninstall handling is its own follow-up.
+_qmd_wrapper_path() {
+  printf '%s\n' "$HOME/.local/bin/qmd"
+}
+
+_qmd_wrapper_text() {
+  local lib="$1" fork_bin="$2"
+  printf '#!/usr/bin/env bash\n'
+  printf '# himmel-qmd-wrapper: v1 -- written by himmel scripts/lib/qmd-bin.sh qmd_install\n'
+  printf '# Loads the provider key from the qmd daemon env file, then runs the fork launcher.\n'
+  printf 'LIB=%q\n' "$lib"
+  printf 'FORK_BIN=%q\n' "$fork_bin"
+  cat <<'WRAPPER'
+key_trace=0
+case "$-" in *x*) key_trace=1 ;; esac
+set +x
+if [ -r "$LIB" ]; then
+  . "$LIB"
+  sess_key="${QMD_OPENAI_API_KEY:-}"
+  key_rc=0
+  qmd_daemon_key_load "${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}/index.yml" || key_rc=$?
+  set +x
+  if [ "$key_rc" -eq 11 ] && [ -n "$sess_key" ]; then
+    QMD_OPENAI_API_KEY="$sess_key"
+    export QMD_OPENAI_API_KEY
+    key_rc=0
+  fi
+  sess_key=""
+  if [ "$key_rc" -eq 10 ]; then
+    echo "qmd: $QMD_KEY_FILE_PATH holds the provider key but is readable by others - qmd not started (chmod 600 it)." >&2
+    exit 10
+  elif [ "$key_rc" -eq 11 ]; then
+    echo "qmd: an OpenRouter config but no provider key - qmd not started. Put a QMD_OPENAI_API_KEY=... line (mode 0600) in $QMD_KEY_FILE_PATH." >&2
+    exit 10
+  fi
+else
+  echo "qmd: key loader $LIB is missing - running without the daemon key (re-run scripts/lib/qmd-bin.sh install)." >&2
+fi
+if [ "$key_trace" -eq 1 ]; then set -x; fi
+exec "$FORK_BIN" "$@"
+WRAPPER
+}
+
+_qmd_ensure_wrapper() {
+  local wrapper fork_bin lib tmp
+  wrapper="$(_qmd_wrapper_path)"
+  fork_bin="$(_qmd_fork_dir)/bin/qmd"
+  lib="$(cd -P -- "$_QMDBIN_LIB_DIR" 2>/dev/null && pwd -P)/qmd-daemon-env.sh" || return 1
+
+  if [ -L "$wrapper" ]; then
+    if ! [ "$wrapper" -ef "$fork_bin" ]; then
+      echo "  WARNING: $wrapper is a symlink to something other than the qmd fork launcher - leaving it; bare qmd keeps sending no provider key." >&2
+      return 1
+    fi
+  elif [ -e "$wrapper" ]; then
+    if ! grep -q 'himmel-qmd-wrapper' "$wrapper" 2>/dev/null; then
+      echo "  WARNING: $wrapper exists and is not himmel's - leaving it; bare qmd keeps sending no provider key." >&2
+      return 1
+    fi
+  fi
+  if ! mkdir -p -- "$(dirname -- "$wrapper")" 2>/dev/null; then
+    echo "  WARNING: could not create $(dirname -- "$wrapper") - no qmd wrapper written." >&2
+    return 1
+  fi
+  tmp="$wrapper.tmp.$$"
+  if ! _qmd_wrapper_text "$lib" "$fork_bin" >"$tmp" 2>/dev/null \
+     || ! chmod +x -- "$tmp" \
+     || ! mv -f -- "$tmp" "$wrapper"; then
+    rm -f -- "$tmp"
+    echo "  WARNING: could not write the qmd wrapper at $wrapper." >&2
+    return 1
+  fi
+  return 0
+}
+
 # True when the fork is already the SERVED install: the bun-global
 # @tobilu/qmd path resolves to the fork clone AND the clone's HEAD is the
 # pinned commit AND the build-success stamp records that exact pin AND the
@@ -450,6 +536,7 @@ qmd_install() {
 
   if qmd_fork_served; then
     echo "  qmd fork already installed and served ($(qmd_cmd --version 2>/dev/null)) - skipping."
+    _qmd_ensure_wrapper || true
     return 0
   fi
 
@@ -632,6 +719,7 @@ qmd_install() {
         --row qmd-fork --writer qmd-bin.sh --field preexisted=false
     fi
     echo "  qmd fork installed and verified ($(qmd_cmd --version 2>/dev/null))."
+    _qmd_ensure_wrapper || true
     return 0
   fi
   echo "  WARNING: qmd fork installed but --version still fails." >&2
