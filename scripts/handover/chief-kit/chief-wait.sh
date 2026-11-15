@@ -478,6 +478,14 @@
 # default 150) sets ready-check's bound 15 s above it; HIMMEL_QUOTA_DIR holds quota.tsv and the
 # blocked/ markers (gh-quota.sh).
 #
+# Per-tick log: every tick the waiter runs appends one line to <inbox>.wait.ticklog:
+#   start=<epoch> wall=<s> cpu=<children user+sys s> rc=<tick rc> timedout=<1|0>
+# timedout=1 is the tick-timeout case (rc 124 or 137 under CHIEF_WAIT_TICK_TIMEOUT, the step a
+# tick-fail wake names tick-timeout:<s>). The file is never trimmed by the waiter.
+#   chief-wait.sh --tick-timeouts <inbox-file>
+# prints `ticks=<n> tick-timeouts=<n> window=24h` for the last 24 h of that log and exits 0; it takes
+# no lock and runs no tick, so it is safe beside a live waiter.
+#
 # Worker messages (SendMessage) wake a chief on their own; only the Telegram
 # and tick paths depend on this waiter.
 #
@@ -526,6 +534,8 @@ gate_nwo() {
 . "$REPO/scripts/lib/gh-quota.sh" || exit 2
 if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
 
+tick_count_mode=0
+if [ "${1:-}" = --tick-timeouts ]; then tick_count_mode=1; shift; fi
 if [ "$#" -lt 1 ] || [ -z "$1" ] || [ "${1#-}" != "$1" ]; then
     echo "usage: chief-wait.sh <inbox-file> [tick.sh args...]" >&2
     exit 2
@@ -557,6 +567,16 @@ inbox_fence() {
     fi
 }
 inbox_fence || exit 2
+tick_log="$inbox.wait.ticklog"
+# --tick-timeouts <inbox>: the 24 h count, read from the per-tick log; takes no lock, runs no tick.
+if [ "$tick_count_mode" = 1 ]; then
+    now="$(date +%s)"
+    [ -f "$tick_log" ] || tick_log=/dev/null
+    awk -v since="$((now - 86400))" '
+        { s = $1; sub(/^start=/, "", s); if (s + 0 < since) next; t++; if ($0 ~ / timedout=1$/) n++ }
+        END { printf "ticks=%d tick-timeouts=%d window=24h\n", t, n }' "$tick_log"
+    exit 0
+fi
 # page/ack record helpers. A missing lib fails open: no records, the
 # page still sends.
 if [ -r "$HERE/denial-ack-lib.sh" ]; then . "$HERE/denial-ack-lib.sh"; else denial_page_write() { return 1; }; fi
@@ -727,15 +747,39 @@ old_key_names() {
     printf '%s\n' "$1" | sed -E 's/(^|\|)legs=/\1workers=/; s/(^|\|)legset=/\1workerset=/; s/(^|\|)bank=/\1usage=/'
 }
 
+# tick_stamp: `<epoch.nanos> <children user> <children sys>`; the `times` builtin's second line is
+# the CPU of every child this shell has reaped, so two stamps around a tick bracket the tick's own CPU.
+# `times` runs in this shell, never in a $(...) or a pipe: a subshell has reaped no children. Sets ts.
+tick_stamp() {
+    ts="$(date +%s.%N)"  # gnu-ok: Linux-only kit (%N)
+    LC_ALL=C times > "$hb_file.times" 2>/dev/null  # C locale: a comma-decimal locale prints 0m0,5s, which awk reads as 0
+    ts="$ts $(sed -n 2p "$hb_file.times" 2>/dev/null)"  # swallow-ok: an unreadable stamp logs a zero CPU, never fails the tick
+}
+# tick_log_add <rc> <stamp before> <stamp after>: one line in <inbox>.wait.ticklog for a tick just run:
+#   start=<epoch> wall=<s> cpu=<user+sys s> rc=<rc> timedout=<1 when rc is 124 or 137, else 0>
+tick_log_add() {
+    local to=0
+    case "$1" in 124|137) to=1 ;; esac
+    printf '%s %s\n' "$2" "$3" | LC_ALL=C awk -v rc="$1" -v to="$to" '
+        function secs(t,   m, s) { m = t; sub(/m.*/, "", m); s = t; sub(/^[0-9]+m/, "", s); sub(/s$/, "", s); return m * 60 + s }
+        { b = $1; e = $4
+          cb = secs($2) + secs($3); ce = secs($5) + secs($6)
+          printf "start=%d wall=%.2f cpu=%.2f rc=%s timedout=%s\n", b, e - b, ce - cb, rc, to }' >> "$tick_log" 2>/dev/null || true  # swallow-ok: a log that cannot be written loses its line, never the tick
+}
+
 # sample: sets tick_line and key (empty on a failed tick, with fail_step naming why).
 sample() {
-    local f v raw bank rc owed_n
+    local f v raw bank rc owed_n t0 t1
     key=""; cap_val=""; fail_step=""
+    tick_stamp; t0="$ts"
+    raw="$(timeout -k 5 "$tick_timeout" bash "$tick_cmd" "$@" 2>/dev/null)"; rc=$?  # gnu-ok: Linux-only kit
+    tick_stamp; t1="$ts"
+    tick_log_add "$rc" "$t0" "$t1"
     # A tick that exits non-zero failed, whatever it printed first.
-    raw="$(timeout -k 5 "$tick_timeout" bash "$tick_cmd" "$@" 2>/dev/null)" || {  # gnu-ok: Linux-only kit
-        rc=$?
+    if [ "$rc" -ne 0 ]; then
         case "$rc" in 124|137) fail_step="tick-timeout:${tick_timeout}s" ;; *) fail_step="tick-exit:$rc" ;; esac
-        tick_state=fail; return; }
+        tick_state=fail; return
+    fi
     tick_line="$(printf '%s\n' "$raw" | grep '^TICK ' | head -n 1)"
     if [ -z "$tick_line" ]; then fail_step=no-tick-line; tick_state=fail; return; fi
     # A failed or garbled bank read is a failed sample, not a verdict.

@@ -32,6 +32,8 @@ mkdir -p "$STUB"
 cat > "$STUB/tick.sh" <<'EOF'
 #!/usr/bin/env bash
 [ -f "$STUB/tick.rc" ] && exit "$(cat "$STUB/tick.rc")"
+# tick.burn: a tick that spends CPU, as a real one does (the per-tick log's cpu= field).
+if [ -f "$STUB/tick.burn" ]; then i=0; while [ "$i" -lt 300000 ]; do i=$((i + 1)); done; fi
 # tick.sleep: a slow tick (seconds), as a real gh-bound tick can be.
 [ -f "$STUB/tick.sleep" ] && sleep "$(cat "$STUB/tick.sleep")"
 # tick.ignoreterm: a hung tick that ignores SIGTERM (timeout needs -k).
@@ -138,6 +140,62 @@ ws_tick() { # [wakerstate value]: the standing tick line, a held worker with no 
 ws_pages() { cat "$STUB/pages" 2>/dev/null | grep -c . || true; }  # pipefail-ok: none set; a missing file counts 0
 ws_bullets() { grep -c '^- [0-9:]* WORKER-SILENT N1 signal=capped-waker' "$WD" 2>/dev/null || true; }
 reset_stub
+
+# --- (tl) one log line per tick, and a one-command 24 h count of the timed-out ticks ---
+# The waiter appends `start=<epoch> wall=<s> cpu=<s> rc=<rc> timedout=<0|1>` to <inbox>.wait.ticklog
+# for every tick it runs; `chief-wait.sh --tick-timeouts <inbox>` counts the last 24 h. RED control
+# (chief-wait.sh before this change): no log file, and the flag is refused as a usage error.
+# Run only these rows with --ticklog-only.
+tl_line() { # <inbox> [tick args...]: run the waiter until its first log line lands (at most ~8 s), then stop it
+    local inbox="$1" n=0; shift
+    start "$inbox" "$WORK/tl.out" "$@"
+    while [ "$n" -lt 80 ] && ! grep -q . "$inbox.wait.ticklog" 2>/dev/null; do sleep 0.1; n=$((n + 1)); done
+    kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+    head -n 1 "$inbox.wait.ticklog" 2>/dev/null || true  # swallow-ok: no log file is the RED reading, shown by the row's check
+}
+TL_RE='^start=[0-9]+ wall=[0-9]+\.[0-9]+ cpu=[0-9]+\.[0-9]+ rc=%s timedout=%s$'
+tl_match() { # <line> <rc> <timedout>
+    # shellcheck disable=SC2059  # TL_RE is the format
+    printf '%s\n' "$1" | grep -Eq "$(printf "$TL_RE" "$2" "$3")" && echo match || echo "no-match:$1"
+}
+reset_stub
+I="$(new_inbox tl1)"
+TL1="$(tl_line "$I" --workers "N1.md")"
+check "(tl1) a tick that finishes logs rc=0 timedout=0 with start, wall and cpu" "match" "$(tl_match "$TL1" 0 0)"
+check "(tl1) its count over 24 h is zero ticks timed out (negative control)" "ticks=1 tick-timeouts=0 window=24h" "$(bash "$WAIT" --tick-timeouts "$I" 2>&1)"
+reset_stub
+printf '5\n' > "$STUB/tick.sleep"
+I="$(new_inbox tl2)"
+export CHIEF_WAIT_TICK_TIMEOUT=1
+TL2="$(tl_line "$I" --workers "N1.md")"
+unset CHIEF_WAIT_TICK_TIMEOUT
+check "(tl2) a tick that outlives the limit logs rc=124 timedout=1" "match" "$(tl_match "$TL2" 124 1)"
+check "(tl2) wall is at least the 1 s limit" "yes" "$(printf '%s\n' "$TL2" | sed -n 's/.* wall=\([0-9]*\)\..*/\1/p' | awk '{ print ($1 >= 1) ? "yes" : "no" }')"
+check "(tl2) its count over 24 h is one tick timed out" "ticks=1 tick-timeouts=1 window=24h" "$(bash "$WAIT" --tick-timeouts "$I" 2>&1)"
+reset_stub
+printf '1\n' > "$STUB/tick.rc"
+I="$(new_inbox tl3)"
+TL3="$(tl_line "$I" --workers "N1.md")"
+check "(tl3) a tick that fails logs its rc with timedout=0" "match" "$(tl_match "$TL3" 1 0)"
+check "(tl3) a failed tick is not a timed-out one in the count" "ticks=1 tick-timeouts=0 window=24h" "$(bash "$WAIT" --tick-timeouts "$I" 2>&1)"
+reset_stub
+: > "$STUB/tick.burn"
+I="$(new_inbox tl6)"
+TL6="$(tl_line "$I" --workers "N1.md")"
+rm -f "$STUB/tick.burn"
+check "(tl6) a tick that spends CPU logs it, children included, whatever the locale's decimal mark" "yes" "$(printf '%s\n' "$TL6" | sed -n 's/.* cpu=\([0-9.]*\) .*/\1/p' | LC_ALL=C awk '{ print ($1 >= 0.05) ? "yes" : "no" }')"
+reset_stub
+I="$(new_inbox tl4)"
+NOW="$(date +%s)"
+printf 'start=%s wall=120.50 cpu=3.10 rc=124 timedout=1\nstart=%s wall=1.00 cpu=0.50 rc=0 timedout=0\nstart=%s wall=120.01 cpu=2.00 rc=137 timedout=1\nstart=%s wall=120.00 cpu=2.00 rc=124 timedout=1\n' \
+    "$((NOW - 3600))" "$((NOW - 60))" "$((NOW - 86400 + 600))" "$((NOW - 86400 - 600))" > "$I.wait.ticklog"
+check "(tl4) the count takes the timed-out ticks of the last 24 h only" "ticks=3 tick-timeouts=2 window=24h" "$(bash "$WAIT" --tick-timeouts "$I" 2>&1)"
+I="$(new_inbox tl5)"
+check "(tl5) no log reads zero ticks, zero timed out" "ticks=0 tick-timeouts=0 window=24h" "$(bash "$WAIT" --tick-timeouts "$I" 2>&1)"
+if [ "${1:-}" = --ticklog-only ]; then
+    printf '\n%d failure(s)\n' "$fails"
+    [ "$fails" -eq 0 ]; exit $?
+fi
 ws_fleet ws1 "2 hours ago"
 ws_tick "N1:capped"
 CHIEF_WAIT_WORKER_SILENT_MIN=30 start "$I" "$WORK/ws1.out" --doc "$WD" --workers-from "$WM"
