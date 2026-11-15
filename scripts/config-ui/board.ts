@@ -6,6 +6,7 @@
 // the page shows both as absent, with the reason, never as a count.
 import { execFile, execFileSync } from "node:child_process";
 import { readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { basename, dirname, join, resolve } from "node:path";
 import { runChild } from "./lock";
 import { readRoadmap } from "./roadmap";
@@ -237,24 +238,32 @@ function handoffItems(bucket: string): OwedItem[] | undefined {
   return sec?.map((l) => l.trim()).filter((l) => l && !/^[-*\s]*none\.?$/i.test(l))
     .map((l) => ({ source: "handoff" as const, key: null, title: clip(l.replace(/^[-*]\s+/, ""), 140), ctx: best!.f, act: "answer the open item" }));
 }
-const POOL_HOLD_ACT = "record the operator's words (O- record) or a near wake=, or dispatch it";
-type HoldRow = { key?: unknown; verb?: unknown; class?: unknown; reason?: unknown; age_gen?: unknown; age_days?: unknown; words?: unknown; wake?: unknown };
-// One row per key: every give-up line counted unhandled, unchecked or invalid; every line held on the operator's words, with the words;
-// a line held on a pr: or done: wake for 7 days or more. A date: wake fires past its date, so it needs no row.
+const POOL_HOLD_ACT = "record the operator's words (O- record) or a near wake=, or dispatch it", HOLDS_TTL_MS = 30 * 60 * 1000;
+type HoldRow = { key?: unknown; line?: unknown; verb?: unknown; class?: unknown; reason?: unknown; age_gen?: unknown; age_days?: unknown; words?: unknown; wake?: unknown };
 function poolHoldItems(doc: string, open: Map<string, string>, env: Env): OwedItem[] | undefined {
   const file = join(env.TICK_STATE_DIR ?? join(env.HOME ?? "", ".himmel", "state"), `pool-holds-${basename(doc, ".md")}.json`);
   let rows: HoldRow[];
-  try { const got = JSON.parse(readText(file)); rows = Array.isArray(got?.rows) ? got.rows : []; } catch (e) {
+  try {
+    if (Date.now() - statSync(file).mtimeMs > HOLDS_TTL_MS) return undefined;
+    const got = JSON.parse(readText(file)); rows = Array.isArray(got?.rows) ? got.rows : [];
+  } catch (e) {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw e;
+  }
+  const lines = new Map<string, string>();
+  for (const l of mdSection(readText(doc), "Live state") ?? []) {
+    const value = l.startsWith("pool-disposition:") ? l.slice(17).trim() : "";
+    const k = value.match(/^[A-Z]+-\d+(?= )/)?.[0];
+    if (k && !lines.has(k)) lines.set(k, createHash("sha256").update(value).digest("hex").slice(0, 12));
   }
   const items: OwedItem[] = [], seen = new Set<string>();
   for (const r of rows) {
     const key = typeof r.key === "string" && /^[A-Z][A-Z0-9]*-\d+$/.test(r.key) ? r.key : undefined;
-    if (!key || seen.has(key)) continue;
+    if (!key || seen.has(key) || !lines.has(key)) continue;
     const verb = String(r.verb), wake = typeof r.wake === "string" ? r.wake : "", days = typeof r.age_days === "number" ? r.age_days : -1;
     let ctx: string, act: string;
-    if (r.class === "invalid") { ctx = `${verb}: ${String(r.reason)}`; act = POOL_HOLD_ACT; }
+    if (lines.get(key) !== r.line) { ctx = `${verb} (unchecked: the line changed since the holds run)`; act = POOL_HOLD_ACT; }
+    else if (r.class === "invalid") { ctx = `${verb}: ${String(r.reason)}`; act = POOL_HOLD_ACT; }
     else if (r.class === "no-authority" || r.class === "unchecked") {
       ctx = `${verb} since ${typeof r.age_gen === "number" && r.age_gen > 0 ? r.age_gen : 1} chief generations, with no operator words and no wake`;
       if (r.class === "unchecked") ctx += ` (unchecked: ${String(r.reason)})`;
@@ -276,7 +285,7 @@ function chiefDocItems(doc: string, open: Map<string, string>, held: Set<string>
     const segs = l.startsWith("queue:") ? l.slice(6).split(" || ")[0].split(" | ") : l.startsWith("pool-disposition:") ? [l.slice(17)] : [];
     for (const s of segs.map((x) => x.trim()).filter((x) => OWED_RE.test(x))) {
       const key = s.match(/[A-Z][A-Z0-9]*-\d+/)?.[0];
-      if (key && held.has(key) && l.startsWith("pool-disposition:")) continue; // the holds row of that key stands for the line
+      if (key && held.has(key) && l.startsWith("pool-disposition:")) continue;
       const known = !!key && open.has(key);
       items.push({ source: "chief doc", key: known ? key! : null, title: known ? open.get(key!)! : clip(s, 140), ctx: known ? clip(s, 160) : "from the chief doc's Live state", act: "the operator acts on what the line names" });
     }

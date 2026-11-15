@@ -909,7 +909,7 @@ printf '%s\n' "$*" >> "$PS_GH_LOG"
 case "$*" in *"api graphql"*"p77:issueOrPullRequest(number:77)"*) printf '{"data":{"repository":{"p77":{"__typename":"PullRequest","state":"MERGED"}}}}\n' ;; esac
 STUB
 chmod +x "$W/ps-gh"
-ps_run() {  # the pool_holds step holds the PR read, as in the tick; --pool-stale then reads its file
+ps_run() {
     local d="$W/ps-$1" rc
     rm -rf "$d"; seed_floor "$d" "$1"; : > "$W/ps-gh.log"
     HIMMEL_QUOTA_DIR="$d" TICK_GH_CMD="$W/ps-gh" PS_GH_LOG="$W/ps-gh.log" NEXT_DISPATCH_MIRROR="$PW" \

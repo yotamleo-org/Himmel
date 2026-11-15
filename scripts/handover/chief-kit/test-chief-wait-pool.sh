@@ -54,8 +54,6 @@ printf '#!/usr/bin/env bash\nexit 2\n' > "$STUB/budget-off.sh"
 export CHIEF_WAIT_PAGE_CMD="$STUB/off.sh" CHIEF_WAIT_BUDGET="$STUB/budget-off.sh" CHIEF_WAIT_ORPHAN="$STUB/off.sh"
 export WAIT_SWEEP_CMD="$STUB/off.sh" WAIT_FOCUS_CMD="$STUB/off.sh"
 export HIMMEL_DENIAL_ACK_DIR="$WORK/acks"
-# tick.sh reads USER_SLUG from the station's .env: pin the release declaration root to an empty fixture
-# dir so no row reads the station's real release ledger (rows that need a declared release set their own)
 export HIMMEL_RELEASE_STATE_DIR="$WORK/no-release-declared"
 # the core gate always asks the jira CLI (scripts/jira/dist is untracked, absent in CI): a fixture stand-in calls every key NOT-CORE
 mkdir -p "$WORK/stub-jira"
@@ -904,7 +902,6 @@ s2w_produce() {
     local args out sf
     args=(--pool-stale --doc "$1" --prior "$TICK_STATE_DIR/none.out")
     [ -z "${3:-}" ] || args+=(--repo "$3")
-    # the tick's order: the pool_holds step holds the one PR read, then --pool-stale reads its file
     PS_GH_FAIL="$2" bash "$HERE/tick.sh" --pool-holds --doc "$1" ${3:+--repo "$3"} > /dev/null 2>&1
     out="$(PS_GH_FAIL="$2" bash "$HERE/tick.sh" "${args[@]}" 2>/dev/null)"
     sf="$(printf '%s\n' "$out" | sed -n 's/^# stale-file=//p')"

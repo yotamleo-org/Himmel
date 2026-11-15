@@ -1593,21 +1593,28 @@ POOL_HOLD_ACT = "record the operator's words (O- record) or a near wake=, or dis
 
 
 def pool_hold_items(chief_doc, opn):
-    """(items, unread): the Blocked-on-you rows of the tick's pool-holds-<doc stem>.json (tick.sh --pool-holds), one per key:
-    every give-up line counted unhandled, unchecked or invalid; every line held on the operator's words, with the words;
-    a line held on a pr: or done: wake for 7 days or more. A date: wake fires past its date, so it needs no row."""
     stem = os.path.basename(chief_doc)[:-3] if chief_doc.endswith('.md') else os.path.basename(chief_doc)
     path = os.path.join(os.environ.get('TICK_STATE_DIR') or os.path.join(os.path.expanduser('~'), '.himmel', 'state'), 'pool-holds-%s.json' % stem)
     try:
+        if time.time() - os.path.getmtime(path) > 1800:
+            return [], [os.path.basename(path)]
         rows = json.load(open(path, encoding='utf-8')).get('rows') or []
     except (OSError, ValueError, AttributeError):
         return [], [os.path.basename(path)]
+    lines = {}
+    for l in md_section(chief_doc, 'Live state') or []:
+        value = l.partition(':')[2].strip() if l.startswith('pool-disposition:') else ''
+        k = re.match(r'([A-Z]+-\d+) ', value)
+        if k and k.group(1) not in lines:
+            lines[k.group(1)] = hashlib.sha256(value.encode()).hexdigest()[:12]
     out, seen = [], set()
     for r in rows:
-        if not isinstance(r, dict) or not KEY_RE.fullmatch(str(r.get('key'))) or r.get('key') in seen:
+        if not isinstance(r, dict) or not KEY_RE.fullmatch(str(r.get('key'))) or r.get('key') in seen or r.get('key') not in lines:
             continue
         key, verb, cls, wake, days = r['key'], r.get('verb'), r.get('class'), str(r.get('wake') or ''), r.get('age_days')
-        if cls == 'invalid':
+        if lines[key] != r.get('line'):
+            ctx, act = '%s (unchecked: the line changed since the holds run)' % verb, POOL_HOLD_ACT
+        elif cls == 'invalid':
             ctx, act = '%s: %s' % (verb, r.get('reason')), POOL_HOLD_ACT
         elif cls in ('no-authority', 'unchecked'):
             ctx = '%s since %s chief generations, with no operator words and no wake' % (verb, r.get('age_gen') or 1)

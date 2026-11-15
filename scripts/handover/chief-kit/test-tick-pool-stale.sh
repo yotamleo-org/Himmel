@@ -69,12 +69,8 @@ esac
 EOF
 chmod +x "$WORK/gh"
 export PS_GH_LOG="$WORK/gh.log" PS_GH_FAIL="$WORK/gh.fail" PS_GH_REPO_NULL="$WORK/gh.reponull" NEXT_DISPATCH_MIRROR="$M" TICK_GH_CMD="$WORK/gh" HIMMEL_QUOTA_DIR="$WORK/quota"
-# the holds file the pool_holds step writes lands under a fixture state dir, and tick.sh reads USER_SLUG from
-# the station's .env: an empty fixture declaration root keeps every row off the station's real release ledger
 mkdir -p "$WORK/state" "$WORK/no-release-declared"
 export TICK_STATE_DIR="$WORK/state" HIMMEL_RELEASE_STATE_DIR="$WORK/no-release-declared" PS_REAL_SUT="$SUT"
-# the tick runs the pool_holds step (the one PR read) before --pool-stale reads its file: every
-# standalone --pool-stale row here goes through the same chain
 cat > "$WORK/tick-chain.sh" <<'EOF'
 #!/usr/bin/env bash
 doc="" repo="" prev=""
@@ -498,8 +494,7 @@ check 'a changed input inside the floor still launches nothing' 15 "$(pl_n)"
 pl_nice_want=$(( $(nice) + 10 )); [ "$pl_nice_want" -le 19 ] || pl_nice_want=19
 check 'every launched snapshot runs at nice +10' "$pl_nice_want" "$(sort -u "$pl_nice")"
 
-# --- (9853) pool_stale reads the PR states and the fired and outside flags from the pool_holds step's file.
-write_holds() { # <doc> <rows json> [prs json]: the holds file the pool_holds step writes for <doc>
+write_holds() {
     local stem="${1##*/}"
     printf '{"ts":"x","mode":"on","rows":%s,"prs":%s}\n' "$2" "$3" > "$TICK_STATE_DIR/pool-holds-${stem%.md}.json"
 }
@@ -518,7 +513,6 @@ check 'no holds file: residual-unversioned= still printed' 1 "$(printf '%s\n' "$
 write_holds "$d" '[]' '{"5001":"MERGED"}'; touch -d '31 minutes ago' "$TICK_STATE_DIR/pool-holds-hs-none.json"  # gnu-ok: chief kit is Linux-only
 check 'an old holds file reads its PR targets ?' '1:HIMMEL-161,?' "$(real_field pool-stale "$d")"
 
-# through the producer, in a bucket that declares a release
 hp="$WORK/hp"; mkdir -p "$hp/rel/v1.1.3" "$hp/state"; printf '{}\n' > "$hp/rel/v1.1.3/release.json"
 d="$hp/HIMMEL-nextleg-2026-11-15HP-roadmap-chief.md"
 printf '# chief\n\nrelease: v1.1.3\n\n## Live state\n%s\n%s\n\n## Results\n' \
@@ -527,7 +521,7 @@ printf '# chief\n\nrelease: v1.1.3\n\n## Live state\n%s\n%s\n\n## Results\n' \
 jq -n --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{ts: $t, status: "OK", words_records: [{id: "O-v1.1.3-0001", decision: "9", keys: ["HIMMEL-9191"], op: "none", verbatim: "keep it held"}], asks_operator_keys: []}' \
     > "$hp/state/release-state-HIMMEL-nextleg-2026-11-15HP-roadmap-chief.json"
 printf '{"schema":1,"workers":[]}\n' > "$hp/manifest.json"
-hp_run() { # <isCrossRepository of PR 5002>: the producer, then pool-stale
+hp_run() {
     printf '5002\tfork/fix\tfalse\tbob\t%s\n' "$1" > "$hp/open.tsv"
     TICK_STATE_DIR="$hp/state" HIMMEL_RELEASE_STATE_DIR="$hp/rel" bash "$PS_REAL_SUT" --pool-holds --doc "$d" --open-prs "$hp/open.tsv" --workers-from "$hp/manifest.json" > /dev/null 2>&1
     TICK_STATE_DIR="$hp/state" HIMMEL_RELEASE_STATE_DIR="$hp/rel" TOKEN='' bash "$PS_REAL_SUT" --pool-stale --doc "$d" 2>/dev/null

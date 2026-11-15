@@ -623,8 +623,6 @@ on a wake-up budget and this reads every project's transcripts.
 USAGE
 }
 
-# A pool-disposition target: a ticket key, `PR <n>` or `@<sha>`. A slice line naming none of them
-# gives the key up, like a question, close, hold or park line.
 POOL_TARGET_RE='\b[A-Z]+-\d+\b|\bPRs?\s*#?\d+|(?<![\w-])@[0-9a-f]{7,40}\b'
 
 pool_holds_file() {
@@ -632,9 +630,6 @@ pool_holds_file() {
     printf '%s/pool-holds-%s.json\n' "${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}" "${stem%.md}"
 }
 
-# holds_ledger <doc>: `off` when the doc's bucket declares no release (no release/*/release.json under
-# the declaration root the rm-queue= read uses), the doc says `release: none`, or it is another
-# project's console; else `on:<release>`, empty after the colon when the doc has no release: line.
 holds_ledger() {
     local rel proj root="${HIMMEL_RELEASE_STATE_DIR:-}" anchor ho decl
     rel="$(sed -n 's/^release:[[:space:]]*//p' "$1" 2>/dev/null | head -n 1 | sed 's/[[:space:]]*$//')"  # swallow-ok: an unreadable doc names no release
@@ -661,9 +656,6 @@ holds_ledger() {
     echo off
 }
 
-# holds_gh_paused: true when GitHub is paused for the pool_holds step's PR read (scripts/lib/gh-quota.sh
-# ghq_scan_gate, main GraphQL), judged only on a quota.tsv reading under 170 s old; it prints the gate's line
-# to stderr. Every PR-dependent wake then reads unchecked.
 holds_gh_paused() {
     local line
     [ -f "$HERE/../../lib/gh-quota.sh" ] || return 1
@@ -680,14 +672,12 @@ pool_stale_file() {
         "$(printf '%s\n%s' "$(realpath -m "$doc")" "$(realpath -m "$mirror")" | cksum | cut -d' ' -f1)"  # prim-ok: the doc and the mirror need not exist, which canon_path refuses; gnu-ok: chief kit is Linux-only
 }
 
-# pool_stale_serialized <doc> <repo> <stale file> [pool-holds args...]: under the stale file's lock, the
-# pool_holds step (when given its args) and then one --pool-stale run, so a slower older tick never
-# saves its holds or stale verdict after a newer tick's.
 pool_stale_serialized() {
     local doc="$1" repo="$2" file="$3" out="" holds=""
     shift 3
     if mkdir -p "${file%/*}" 2>/dev/null && { exec 7>>"$file.lock"; } 2>/dev/null && flock -w "$(tick_bound 20)" 7; then  # prim-ok: a per-stale-file lock held for one producer run and its save; gnu-ok: chief kit is Linux-only
-        [ "$#" -eq 0 ] || holds="$(timeout -k 2 "$(tick_bound 40)" bash "$HERE/tick.sh" "$@" 7>&- 2>/dev/null | sed -n 's/^pool-holds=/&/p')"  # gnu-ok: chief kit is Linux-only; swallow-ok: a failed step writes no holds file, which pool_dispositions reads as unchecked
+        [ "$#" -eq 0 ] || holds="$(timeout -k 2 "$(tick_bound 40)" bash "$HERE/tick.sh" "$@" 7>&- 2>/dev/null | sed -n 's/^pool-holds=/&/p')"  # gnu-ok: chief kit is Linux-only; swallow-ok: a failed step leaves no holds file, which pool_dispositions reads as unchecked
+        case "$holds" in '' | 'pool-holds=?') [ "$#" -eq 0 ] || rm -f "$(pool_holds_file "$doc")" ;; esac
         out="$(timeout -k 2 "$(tick_bound 40)" bash "$HERE/tick.sh" --pool-stale --doc "$doc" --repo "$repo" --prior "$file" 7>&- 2>/dev/null)" || out=""  # gnu-ok: chief kit is Linux-only; swallow-ok: a failed read reads skip
         if printf '%s\n' "$out" | grep -q '^pool-stale=' && ! printf '%s\n' "$out" | grep -q '^pool-stale=skip$'; then
             { printf '%s\n' "$out" > "$file.$$" && mv -f "$file.$$" "$file"; } || printf 'tick: pool-stale file not saved: %s\n' "$file" >&2
@@ -883,13 +873,9 @@ for key in sorted(dispatchable):
 PY
 }
 
-# The pool_holds step: one row per give-up pool-disposition: line of the doc's Live state, classed
-# authority (a words record of the doc's release names the key), wake (a valid wake that has not
-# fired), no-authority, invalid or unchecked, written to pool-holds-<doc stem>.json with the state of
-# every PR a pool-disposition line cites, for pool_dispositions and pool_stale. It writes nothing else.
-pool_holds() { # <doc> <ledger> <release state file> <holds file> <open-PR tsv|""> <manifest|""> <repo> <gh> <noread> <handover root> <mirror|""> <seed list|"">
+pool_holds() {
     python3 -I - "$@" "$POOL_TARGET_RE" <<'PY'
-import datetime, fcntl, hashlib, json, os, re, subprocess, sys, tempfile
+import collections, datetime, fcntl, hashlib, json, os, re, subprocess, sys, tempfile
 doc, ledger, state_file, out, open_tsv, manifest, repo, gh, noread, hroot, mirror, seed, target_re = sys.argv[1:14]
 target_re = re.compile(target_re)
 state_dir = os.path.dirname(out)
@@ -927,10 +913,6 @@ def parse(text):
                 lines[m[1]] = (m[2], m[3], value)
     return lines, cited
 
-# Lineage age. pool-lines.tsv (shared by every chief doc, under flock) holds `<iso ts>\t<stem>\t<KEY verb>,...`,
-# one row each time a stem's set of give-up lines changes; stems unseen for 14 days are pruned. A line's
-# age_gen counts the stems of its lineage (the stem after HIMMEL-nextleg-<date><gen>-), in order of first
-# appearance, that carried it without a gap up to this stem; another lineage never resets it.
 lines_file = os.path.join(state_dir, "pool-lines.tsv")
 def lineage(stem):
     m = re.match(r"HIMMEL-nextleg-\d{4}-\d{2}-\d{2}[A-Z]+-(.+)$", stem)
@@ -949,7 +931,8 @@ def record(adds):
         rows = [(r[0], r[1], frozenset(x for x in r[2].split(",") if x)) for r in got if len(r) == 3]
         changed = False
         for ts, stem, items in adds:
-            if next((g for _, s, g in reversed(rows) if s == stem), None) != items:
+            last = next(((t, g) for t, s, g in reversed(rows) if s == stem), None)
+            if last is None or last[1] != items or last[0] < iso(now - datetime.timedelta(days=7)):
                 rows.append((ts, stem, items))
                 changed = True
         newest = {}
@@ -1016,9 +999,6 @@ except OSError:
     print("pool-holds=?")
     sys.exit(0)
 
-# the exact read pool_stale used: one GraphQL query per 100 numbers naming exactly the cited PRs, never a
-# second read on the main token; a failed read leaves every PR unread (None), a number GitHub cannot
-# resolve on a successful read is absent from the map
 prstate = None
 nums = sorted(cited)
 if not nums:
@@ -1094,48 +1074,48 @@ def under(path, base):
     base = os.path.normpath(base) if base else ""
     return bool(base) and (path == base or path.startswith(base.rstrip("/") + "/"))
 
+Event = collections.namedtuple("Event", "state reason fired")
 def event(e):
-    """(state, reason, fired): state valid, invalid or unchecked."""
     n = wake_pr(e)
     if n is not None:
         if prstate is None:
-            return ("unchecked", "PR %d unread: the PR read failed or was paused" % n, False)
+            return Event("unchecked", "PR %d unread: the PR read failed or was paused" % n, False)
         s = prstate.get(str(n))
         if s is None:
-            return ("invalid", "PR %d not found" % n, False)
-        return ("valid", "", s in ("MERGED", "CLOSED"))
+            return Event("invalid", "PR %d not found" % n, False)
+        return Event("valid", "", s in ("MERGED", "CLOSED"))
     m = re.fullmatch(r"done:([A-Z]+-\d+)", e)
     if m:
         f = front(m[1])
         if f is None:
-            return ("unchecked", "%s is not in the Jira mirror" % m[1], False)
+            return Event("unchecked", "%s is not in the Jira mirror" % m[1], False)
         if f.get("statusCategory", "").strip('"') == "Done":
-            return ("valid", "", True)
+            return Event("valid", "", True)
         focus = focus_version()
         if (focus and ('"%s"' % focus) in f.get("fixVersions", "")) or any(d == m[1] or d.startswith(m[1] + "-") for d in worker_docs) \
-                or (open_prs is not None and any(m[1].lower() in b.lower() for b, _ in open_prs.values())):
-            return ("valid", "", False)
+                or (open_prs is not None and any(re.search(r"(?<![A-Za-z0-9])%s(?![0-9])" % re.escape(m[1]), b, re.I) for b, _ in open_prs.values())):
+            return Event("valid", "", False)
         if open_prs is None:
-            return ("unchecked", "%s is not in the current version and the open-PR read is missing" % m[1], False)
-        return ("invalid", "%s is neither worked (no open PR, no worker) nor in the current version" % m[1], False)
+            return Event("unchecked", "%s is not in the current version and the open-PR read is missing" % m[1], False)
+        return Event("invalid", "%s is neither worked (no open PR, no worker) nor in the current version" % m[1], False)
     m = re.fullmatch(r"date:(\d{4}-\d{2}-\d{2})(?:T(\d{2}):(\d{2})Z)?", e)
     if m:
         try:
             t = datetime.datetime.fromisoformat("%sT%s:%s:00+00:00" % (m[1], m[2] or "00", m[3] or "00"))
         except ValueError:
-            return ("invalid", "wake=%s is not a date" % e, False)
+            return Event("invalid", "wake=%s is not a date" % e, False)
         if t <= now:
-            return ("valid", "", True)
+            return Event("valid", "", True)
         if (t - now).total_seconds() > 7 * 86400:
-            return ("invalid", "wake=%s is more than 7 days out: a park needs the operator's words" % e, False)
-        return ("valid", "", False)
+            return Event("invalid", "wake=%s is more than 7 days out: a park needs the operator's words" % e, False)
+        return Event("valid", "", False)
     m = re.fullmatch(r"file:(.+)", e)
     if m:
         p = m[1]
         if not p.startswith("/") or ".." in p.split("/") or not (under(os.path.normpath(p), hroot) or under(os.path.normpath(p), state_dir)):
-            return ("invalid", "wake=%s is not an absolute path under the handover root or the state dir" % e, False)
-        return ("valid", "", os.path.exists(p))
-    return ("invalid", "wake=%s is not pr:<n>, done:<KEY>, date:<date> or file:<path>" % e, False)
+            return Event("invalid", "wake=%s is not an absolute path under the handover root or the state dir" % e, False)
+        return Event("valid", "", os.path.exists(p))
+    return Event("invalid", "wake=%s is not pr:<n>, done:<KEY>, date:<date> or file:<path>" % e, False)
 
 release = ledger[3:] if ledger.startswith("on:") else None
 words = asks = None
@@ -1174,8 +1154,8 @@ for key, (verb, rest, value) in (lines.items() if ledger.startswith("on:") else 
                 parts.append(("invalid", "authority=%s names no record of the operator's words for %s" % (ref, key)))
     events = wake_events(rest)
     ev = [event(e) for e in events]
-    fired = any(f for _, _, f in ev)
-    parts += [(s, r) for s, r, _ in ev if s != "valid"]
+    fired = any(x.fired for x in ev)
+    parts += [(x.state, x.reason) for x in ev if x.state != "valid"]
     kinds = [k for k, _ in parts]
     first = lambda k: next(r for c, r in parts if c == k)
     if "invalid" in kinds:
@@ -1284,14 +1264,12 @@ PY
 # Two read-only re-checks on the Jira mirror, printed as `pool-stale=` and
 # `residual-unversioned=` lines. pool-stale re-reads every Live-state pool-disposition: line
 # whose target names a ticket key or `PR <n>`; a line is stale only when every named blocker
-# is Done or merged, and an unreadable blocker prints `?`, never stale. The PR states come
-# from the pool_holds step's file, which also flags a line whose wake fired or which waits on an
-# outside PR with no watch row; it makes no gh call itself. residual-unversioned lists
+# is Done or merged, and an unreadable blocker prints `?`, never stale. residual-unversioned lists
 # open residual tickets of an open focus-version ticket that carry no fixVersion, except a To Do ticket
 # below High ruled into the backlog by its latest release-ruling comment (a mirror copy of the ruling;
 # the release ledger is the record). It never
 # rewrites the doc.
-pool_stale() { # <doc> <mirror> <repo dir> <prior> <stale file> <real mirror> <holds file>
+pool_stale() {
     python3 -I - "$@" <<'PY'
 import datetime, glob, hashlib, json, os, re, subprocess, sys, time
 doc, mirror, repo, prior, stale_file, mirror_real, holds = sys.argv[1:8]
@@ -1365,9 +1343,6 @@ for line in prior_lines or []:
     if m:
         ccarry[m[2]] = (m[3], m[4], m[1])
 
-# every PR state comes from the pool_holds step's file (its prs map, the one exact read of the cited
-# PRs); a missing file, or one over 30 minutes old, reads every PR target ?. A holds row whose line
-# is unchanged flags the line stale when its wake fired or it waits on an outside PR.
 prstate, hold = None, {}
 try:
     if time.time() - os.path.getmtime(holds) <= 1800:
@@ -3559,8 +3534,6 @@ if [ "${DEPENDABOT_AUTOLAND:-off}" = on ] && [ -f "$REPO/scripts/cr/dependabot-g
     fi
 fi
 
-# pool-holds=off:no-ledger: the doc's bucket declares no release, so a well-formed pool-disposition:
-# line keeps counting as dispositioned. Otherwise hidden: the step's unhandled lines count in pool=.
 # pool-stale=<n>:<KEY>,... and residual-unversioned=<n>:<KEY>,...: the Jira mirror
 # plus one batched gh read, only when a disposition names a PR. skip = no doc or mirror.
 pool_holds_f=""

@@ -15,7 +15,6 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 W="$(mktemp -d "${TMPDIR:-/tmp}/tracker-test.XXXXXX")" || exit 1
 trap 'rm -rf "$W"' EXIT
-# the Blocked-on-you reader reads the tick's pool-holds file from TICK_STATE_DIR: never the station's real one
 export TICK_STATE_DIR="$W/tick-state"
 fails=0
 # the parity check's Jira CLI: every render here reads a CLI that fails, unless a row names another.
@@ -1492,12 +1491,16 @@ not_contains 'the history after a double bar on the queue line is not live' "$w9
 not_contains 'a segment of that history naming the operator is not listed' "$w9611" 'words old ask'
 contains 'a missing pool-holds file is named as unread' "$w9611" 'pool holds unread: pool-holds-chief.json'
 
-# --- (9853) Blocked-on-you rows from the tick's pool-holds file: the golden file the producer's suite pins
 mkdir -p "$TICK_STATE_DIR"
 gd_stem=HIMMEL-nextleg-2026-11-15GD-roadmap-chief
 cp "$HERE/fixtures/pool-holds-golden.json" "$TICK_STATE_DIR/pool-holds-$gd_stem.json"
 gd_key=HIMMEL
-printf '%s\n' '# chief' '## Live state' "pool-disposition: $gd_key-2 park operator words: hold it" "pool-disposition: $gd_key-6 question operator words: still asked" > "$bk/$gd_stem.md"
+gd_doc() {
+    printf '%s\n' '# chief' '## Live state' "pool-disposition: $gd_key-1 $1" "pool-disposition: $gd_key-2 park operator words: hold it" \
+        "pool-disposition: $gd_key-3 hold on the merge wake=pr:4999" "pool-disposition: $gd_key-4 hold on the other merge wake=pr:4998" \
+        "pool-disposition: $gd_key-5 park until then wake=date:2026-11-18" "pool-disposition: $gd_key-6 question operator words: still asked" > "$bk/$gd_stem.md"
+}
+gd_doc 'question one more round authority=O-v1.1.3-0001'
 v9611render --owed-dir "$bk" --chief-doc "$bk/$gd_stem.md"
 wgd="$(grep -F 'data-section="waiting"' "$v9611out")"
 contains 'a no-authority hold is shown with its generation age' "$wgd" 'park since 3 chief generations, with no operator words and no wake'
@@ -1509,6 +1512,13 @@ not_contains 'a date: wake is never shown' "$wgd" 'wake=date:'
 equals 'the holds row replaces the chief doc line of the same key' "$(grep -F -e 'data-section="waiting"' -e 'data-section="chief-owes"' "$v9611out" | grep -o 'hold it' | wc -l | tr -d ' ')" 0
 contains 'a pool-disposition line naming the operator and absent from the file is still an item' "$wgd$(grep -F 'data-section="chief-owes"' "$v9611out")" 'still asked'
 not_contains 'a read holds file is not named as unread' "$wgd" 'pool holds unread'
+gd_doc 'question one more round, reworded authority=O-v1.1.3-0001'
+v9611render --owed-dir "$bk" --chief-doc "$bk/$gd_stem.md"
+contains 'a holds row whose doc line changed since the holds run reads unchecked' "$(grep -F 'data-section="waiting"' "$v9611out")" 'question (unchecked: the line changed since the holds run)'
+gd_doc 'question one more round authority=O-v1.1.3-0001'
+touch -d '31 minutes ago' "$TICK_STATE_DIR/pool-holds-$gd_stem.json"  # gnu-ok: chief kit is Linux-only
+v9611render --owed-dir "$bk" --chief-doc "$bk/$gd_stem.md"
+contains 'a holds file over 30 minutes old is named as unread' "$(grep -F 'data-section="waiting"' "$v9611out")" "pool holds unread: pool-holds-$gd_stem.json"
 ln -s "$bk" "$W/bk9611-link"
 v9611render --owed-dir "$W/bk9611-link" --chief-doc "$bk/chief.md"
 not_contains 'a spec signed under the real bucket path is not owed when the bucket is given by a symlink' "$(grep -F -e 'data-section="waiting"' -e 'data-section="chief-owes"' "$v9611out")" 'HIMMEL-437-signed'
