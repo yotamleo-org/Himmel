@@ -2,12 +2,12 @@
 // Boots the REAL `himmelctl ui --port 0 --agui <run>` (the same spawn as fixtures.ts, so the
 // in-session refusal stays untouched) with a temp HOME whose ~/.claude/projects holds a
 // session journal the test APPENDS to while the page is open: a live stream over the real SSE path.
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, type ChildProcess } from "node:child_process";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fleetFixture, FLEET } from "../agui-fleet-fixture";
-import { BIN, buildFeed } from "./fixtures";
+import { BIN, buildFeed, spawnServer, stopChild } from "./fixtures";
 
 export const RUN = "0b6e1c2a-3f4d-4e5f-8a9b-0c1d2e3f4a5b";
 const DIST = join(__dirname, "../../agui-web/dist/index.html");
@@ -124,7 +124,7 @@ export async function bootAgui(initial = "", opts: { fleet?: boolean; cloud?: bo
   // the server's boot-time report reads it at once; `feed: null` leaves no report, so that read fails.
   if (opts.feed !== null) writeFileSync(env.E2E_FEED!, JSON.stringify(opts.feed ?? buildFeed()));
   for (const k of Object.keys(env)) if (k === "CLAUDECODE" || k.startsWith("CLAUDE_CODE_")) delete env[k];
-  const child: ChildProcess = spawn("node", [BIN, "ui", "--port", "0", "--agui", ...(fleet ? [] : [RUN])], { env: env as NodeJS.ProcessEnv, stdio: ["ignore", "pipe", "pipe"] });
+  const child: ChildProcess = spawnServer([BIN, "ui", "--port", "0", "--agui", ...(fleet ? [] : [RUN])], env as NodeJS.ProcessEnv);
   const want = fleet ? /(http:\/\/127\.0\.0\.1:\d+\/agui\/#t=[0-9a-f]{64})$/m : /(http:\/\/127\.0\.0\.1:\d+\/agui\/#t=[0-9a-f]{64}&run=[0-9a-f-]{36})/;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const url = await new Promise<string>((ok, fail) => {
@@ -138,9 +138,8 @@ export async function bootAgui(initial = "", opts: { fleet?: boolean; cloud?: bo
     child.on("error", fail);
     child.on("exit", (c) => fail(new Error(`himmelctl ui exited ${c}: ${err}`)));
     timer = setTimeout(() => fail(new Error("himmelctl ui --agui printed no URL in 15 s")), 15_000);
-  }).catch((e) => {
-    child.kill("SIGKILL");
-    rmSync(dir, { recursive: true, force: true });
+  }).catch(async (e) => {
+    await stopChild(child, dir);
     throw e;
   }).finally(() => clearTimeout(timer));
   return {
@@ -151,15 +150,7 @@ export async function bootAgui(initial = "", opts: { fleet?: boolean; cloud?: bo
       mkdirSync(subs, { recursive: true });
       appendFileSync(join(subs, `agent-${id}.jsonl`), r);
     },
-    stop: async () => {
-      child.kill("SIGTERM");
-      await new Promise((r) => {
-        if (child.exitCode !== null || child.signalCode !== null) return r(null);
-        child.once("exit", r);
-        setTimeout(() => { child.kill("SIGKILL"); r(null); }, 5_000).unref();
-      });
-      rmSync(dir, { recursive: true, force: true });
-    },
+    stop: () => stopChild(child, dir),
   };
 }
 
