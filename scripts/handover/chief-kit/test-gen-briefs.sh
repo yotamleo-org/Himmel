@@ -779,7 +779,7 @@ HANDOVER_DOCS="${HANDOVER_DOCS:-$HERE/../../../docs/handover}"
 # note, so its budget is 17400; worker-preface.md's 12800 was raised to 12900 for the same change,
 # and to 13100 for the write-barrier bullet. chief-template.md's was raised to 18000 for the
 # two lines that make a chief read the direction companion files in its first batch.
-for budget in "worker-preface.md:13300" "chief-template.md:19500"; do
+for budget in "worker-preface.md:13300" "chief-template.md:18600"; do
     f="${budget%%:*}"; max="${budget##*:}"
     size="$(wc -c < "$HANDOVER_DOCS/$f" 2>/dev/null | tr -d '[:space:]')"
     [ -n "$size" ] && [ "$size" -le "$max" ] && pass "$f is within its byte budget ($size <= $max)" || fail "$f is over its byte budget (${size:-missing} > $max)"
@@ -2295,6 +2295,7 @@ pf_refuse p2dots "R+'/../himmel/specs/audits/x.md'" "$PF_ROOT/../himmel/specs/au
 pf_refuse p2json "R+'/specs/audits/x.json'" "$PF_ROOT/specs/audits/x.json"
 pf_refuse p2key "R+'/specs/HIMMEL-1/proof.md'" "$PF_ROOT/specs/HIMMEL-1/proof.md"
 pf_refuse p2design "R+'/specs/designs/HIMMEL-1-proof.md'" "$PF_ROOT/specs/designs/HIMMEL-1-proof.md"
+pf_refuse p2slash "R+'/specs/audits/x.md/'" "$PF_ROOT/specs/audits/x.md/"
 pf_refuse p2glob "R+'/specs/audits/x.md*'" "$PF_ROOT/specs/audits/x.md*"
 mkdir -p "$PF_ROOT/symroot/specs" "$PF_ROOT/specs/designs"
 ln -s "$PF_ROOT/specs/designs" "$PF_ROOT/symroot/specs/audits"
