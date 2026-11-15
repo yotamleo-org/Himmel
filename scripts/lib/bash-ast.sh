@@ -680,7 +680,6 @@ bash_ast_positions() {
         fi
         return 4
     }
-    # every jq step from here fails closed: a failed step returns 4, never 0 (a dropped body) or 5 (read as a timeout)
     has=0
     printf '%s' "$pos" | jq -e 'any(.[]; .body != null)' >/dev/null 2>&1 || has=$?
     case $has in

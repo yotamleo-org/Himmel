@@ -342,7 +342,6 @@ fi
 out=$(bash_ast_positions 'if then' 2>/dev/null); rc=$?
 if [ "$rc" = 3 ]; then ok "a parse error is rc 3"; else bad "a parse error is rc 3 — rc=$rc"; fi
 
-# 9600: every jq step after the main model call fails closed (rc 4), never rc 0 or rc 5.
 # The stub execs the real jq unless an argument equals the program in $FIX/fail-prog.
 stub="$FIX/fail-jq"; mkdir -p "$stub"
 real_jq=$(command -v jq)
@@ -370,7 +369,6 @@ rc_row '9600: S3d a failed pipe read returns rc 4' 4 '.pipe' "bash -c 'echo hi |
 rc_row '9600: S4 a failed body list returns rc 4' 4 '.[] | select(.body != null)' "bash -c 'echo hi | sh'"
 rc_row '9600: S5 a failed final add returns rc 4, not the timeout rc' 4 'add' "bash -c 'echo hi | sh'"
 
-# 9600: a typed stdin field on every position, the runner scan and the zsh command words
 row '9600: L1 a runner in front of a shell reading stdin carries stdin' 'nice -n 5 sh' '.[0] | .prog == "nice" and .stdin == true and (.opaque | startswith("it runs its arguments"))'
 row '9600: L2 sudo with options and env in front of bash -s carries stdin' 'sudo -u root env X=1 bash -s' '.[0].stdin == true'
 row '9600: L3 a runner whose shell is given -c is not a stdin shell' "timeout 5 sh -c 'echo hi'" '.[0].stdin == false'
