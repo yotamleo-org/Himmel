@@ -145,5 +145,37 @@ if [ "$(uname -s)" = Linux ]; then
     check "(j) control: the next scan with a working sender alerts" "$((before + 1))" "$(sent)"
 fi
 
+cat > "$WORK/kind-sender.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s|%s\n' "$#" "${3-}" >> "$KIND_LOG"
+EOF
+chmod +x "$WORK/kind-sender.sh"
+export KIND_LOG="$WORK/kind.log"
+export HIMMEL_DENIAL_ALERT_DIR="$WORK/kind-sentinels"
+export HIMMEL_CLASSIFIER_DENIALS_LOG="$WORK/kind-denials.jsonl"
+mkrow 2 feat+worker-k sid-k Bash 'bash scripts/handover/chief-kit/headed-arm-worker.sh' sha-k
+MERGE_BLOCK_ALERT_CMD="$WORK/kind-sender.sh" bash "$SUT" >/dev/null 2>&1
+check "(k) the sender gets the kind denied-launch as its third argument" "3|denied-launch" "$(cat "$KIND_LOG" 2>/dev/null)"
+
+if command -v bun >/dev/null 2>&1; then
+    cat > "$WORK/route-sender.sh" <<'EOF'
+#!/usr/bin/env bash
+if [ -n "${3-}" ]; then exec bun "$ROUTE_TS" reply --kind "$3" "$1" "$2"; fi
+exec bun "$ROUTE_TS" reply "$1" "$2"
+EOF
+    chmod +x "$WORK/route-sender.sh"
+    export HIMMEL_DENIAL_ALERT_DIR="$WORK/route-sentinels"
+    mkdir -p "$WORK/route-home" "$WORK/route-mirror"
+    env -u TELEGRAM_MONITOR_CHAT_ID -u TELEGRAM_MONITOR_BOT_TOKEN ROUTE_TS="$HERE/../../telegram/chief-route.ts" BRIDGE_ROOT="$WORK/bridge" \
+        HOME="$WORK/route-home" HIMMEL_TEST_FIXTURE=1 HIMMEL_JIRA_MIRROR="$WORK/route-mirror" MERGE_BLOCK_ALERT_CMD="$WORK/route-sender.sh" \
+        bash "$SUT" >/dev/null 2>&1
+    lines() { [ -f "$1" ] || { echo 0; return; }; grep -c . "$1" || true; }
+    check "(l) the denied launch lands in the monitor outbox, kept on the station with the monitoring chat unset" "1" "$(lines "$WORK/bridge/monitor/outbox.jsonl")"
+    check "(l) its line names the kind" "yes" "$(grep -q '"kind":"denied-launch"' "$WORK/bridge/monitor/outbox.jsonl" 2>/dev/null && echo yes)"
+    check "(l) and it stays off the operator outbox" "0" "$(lines "$WORK/bridge/sessions/__chat__/outbox.jsonl")"
+else
+    echo "SKIP: (l) needs bun"
+fi
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; exit 0; fi
 echo "$fails FAILED"; exit 1
