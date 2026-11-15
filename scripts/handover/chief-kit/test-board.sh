@@ -466,7 +466,7 @@ lacks 'a short label lookup does not claim no workers' "$shorthtml" 'no worker s
 # --- (Ask 3): a WRAPPED worker whose claude window is still alive is its
 # own needs-the-chief state, derived from an independent process census -- never
 # from tick.sh's procs= (which only counts HELD workers). N5 is the fixture's one
-# WRAPPED worker (its doc stem is dated).
+# WRAPPED worker.
 cat > "$W/bin/sessions-n5-alive.sh" <<'STUB'
 claude_sessions() { printf '999\tHIMMEL-3300-N5-eps\tsonnet\ton\n'; }
 STUB
