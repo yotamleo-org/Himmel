@@ -2304,7 +2304,7 @@ test('`hop/..` after a directory link claims the target-side path, not the lexic
 const nonUtf8 = (dir, before, after) => Buffer.concat([Buffer.from(`${dir}/${before}`), Buffer.from([0xff]), Buffer.from(after)]);
 
 for (const [label, relative] of [['absolute', false], ['relative', true]]) {
-  test(`HIMMEL-3397: a hooks directory swapped for a ${label} non-UTF-8 link target fails closed`, { skip: process.platform === 'win32' }, () => {
+  test(`a hooks directory swapped for a ${label} non-UTF-8 link target fails closed`, { skip: process.platform === 'win32' }, () => {
     const fx = dotdotFixture();
     try {
       const hooks = join(fx.dir, 'scripts', 'hooks');
@@ -2938,9 +2938,9 @@ const ADVISORY_CHAIN_MEMBERS = new Map([
   ['require-quiet-run.sh', 'fail-open nudge by design (J1310O F1)'],
   ['guard-identical-denied-retry.sh', 'fail-open by design: it may only deny the precisely counted third identical command'],
   ['guard-merge-compound.sh', 'workflow nudge, fails open: a starved skip lets one merge spelling reach the classifier as before'],
-  ['guard-bus-store.sh', 'speed bump, not a fence (HIMMEL-4829): a starved skip is acceptable'],
+  ['guard-bus-store.sh', 'speed bump, not a fence: a starved skip is acceptable'],
   ['allow-thread-resolve.sh', 'allow-only, never denies: a starved skip leaves no decision, which is the default'],
-  ['approval-grant-check.sh', 'allow-only, never denies (HIMMEL-7686): a starved skip leaves no decision, so the classifier refuses as before'],
+  ['approval-grant-check.sh', 'allow-only, never denies: a starved skip leaves no decision, so the classifier refuses as before'],
   ['block-fork-sync-pr.sh', 'workflow guard, fails open on its own infra errors: a starved skip lets one sync PR through'],
   ['check-write-hold.sh', 'coordination guard, fails open: a must-run overrun would fail the chain closed, a starved skip passes one write'],
 ]);

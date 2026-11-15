@@ -2356,7 +2356,7 @@ assert_rc "506 sudo -Hu root cat ~/.claude/x allows" 0 \
     "$(bash_rc_of "$PRIMARY" 'sudo -Hu root cat ~/.claude/x' HOME="$FAKEHOME")"
 # Every component spelling that can expand
 # to `.claude` fails closed, from the nested worktree and the primary alike.
-# 4171: a command substitution or a backtick span inside the name.
+# A command substitution or a backtick span inside the name.
 assert_rc "507 nested worktree ln -sf \$SJ ~/.cl\$(printf a)ude denies" 2 \
     "$(bash_rc_of "$NESTED_WT" "ln -sf $SJ ~/.cl\$(printf a)ude" HOME="$FAKEHOME")"
 assert_rc "508 primary cp \$SJ ~/.cl\$(printf a)ude/ denies" 2 \
@@ -2375,7 +2375,7 @@ assert_rc "514 nested worktree ln -sf \$SJ ~/\$(printf .cl)aude denies" 2 \
     "$(bash_rc_of "$NESTED_WT" "ln -sf $SJ ~/\$(printf .cl)aude" HOME="$FAKEHOME")"
 assert_rc "515 primary ln -sf \$SJ ~/\`printf .c\`laude denies" 2 \
     "$(bash_rc_of "$PRIMARY" "ln -sf $SJ ~/\`printf .c\`laude" HOME="$FAKEHOME")"
-# 4188: a quoted "$HOME" parent is the home parent, not a relative `*/`.
+# A quoted "$HOME" parent is the home parent, not a relative `*/`.
 assert_rc "516 nested worktree cp /etc/hostname \"\$HOME\"/.cl(a|x)ude/settings.json denies" 2 \
     "$(bash_rc_of "$NESTED_WT" 'cp /etc/hostname "$HOME"/.cl(a|x)ude/settings.json' HOME="$FAKEHOME")"
 assert_rc "517 nested worktree echo x to \"\$HOME\"/.c(l|x)aude/settings.json denies" 2 \
@@ -2386,7 +2386,7 @@ assert_rc "519 nested worktree chmod 777 \"\$HOME\"/.c(l|x)aude/settings.json de
     "$(bash_rc_of "$NESTED_WT" 'chmod 777 "$HOME"/.c(l|x)aude/settings.json' HOME="$FAKEHOME")"
 assert_rc "520 primary cp settings.json \"\${HOME}\"/.cl(a|x)ude denies" 2 \
     "$(bash_rc_of "$PRIMARY" 'cp settings.json "${HOME}"/.cl(a|x)ude' HOME="$FAKEHOME")"
-# 4189: a trailing zsh glob qualifier is not a group.
+# A trailing zsh glob qualifier is not a group.
 assert_rc "521 nested worktree cp settings.json ~/.cl*(N) denies" 2 \
     "$(bash_rc_of "$NESTED_WT" 'cp settings.json ~/.cl*(N)' HOME="$FAKEHOME")"
 assert_rc "522 nested worktree cp settings.json ~/.cl*(D) denies" 2 \
@@ -2397,7 +2397,7 @@ assert_rc "524 nested worktree cp settings.json ~/.cl*(#qN) denies" 2 \
     "$(bash_rc_of "$NESTED_WT" 'cp settings.json ~/.cl*(#qN)' HOME="$FAKEHOME")"
 assert_rc "525 primary cp settings.json ~/.cl*(N)/settings.json denies" 2 \
     "$(bash_rc_of "$PRIMARY" 'cp settings.json ~/.cl*(N)/settings.json' HOME="$FAKEHOME")"
-# 4165: a leading glob can match a dot-name under dotglob/GLOB_DOTS.
+# A leading glob can match a dot-name under dotglob/GLOB_DOTS.
 assert_rc "526 nested worktree ln -sf \$SJ ~/*claude denies" 2 \
     "$(bash_rc_of "$NESTED_WT" "ln -sf $SJ ~/*claude" HOME="$FAKEHOME")"
 assert_rc "527 nested worktree cp \$SJ ~/[.]claude/settings.json denies" 2 \
@@ -2414,14 +2414,14 @@ assert_rc "532 nested worktree cp settings.json ~/*(D)/settings.json denies" 2 \
     "$(bash_rc_of "$NESTED_WT" 'cp settings.json ~/*(D)/settings.json' HOME="$FAKEHOME")"
 assert_rc "533 nested worktree setopt globdots; ln -sf \$SJ ~/* denies" 2 \
     "$(bash_rc_of "$NESTED_WT" "setopt globdots; ln -sf $SJ ~/*" HOME="$FAKEHOME")"
-# 4167: a quote-led zsh group.
+# A quote-led zsh group.
 assert_rc "534 nested worktree ln -sf \$SJ ~/'.c'l(a)ude denies" 2 \
     "$(bash_rc_of "$NESTED_WT" "ln -sf $SJ ~/'.c'l(a)ude" HOME="$FAKEHOME")"
 assert_rc "535 nested worktree cp \$SJ ~/\".c\"l(a)ude/ denies" 2 \
     "$(bash_rc_of "$NESTED_WT" "cp $SJ ~/\".c\"l(a)ude/" HOME="$FAKEHOME")"
 assert_rc "536 primary cp \$SJ ~/'.c'l(a)ude/ denies" 2 \
     "$(bash_rc_of "$PRIMARY" "cp $SJ ~/'.c'l(a)ude/" HOME="$FAKEHOME")"
-# 4173: a zsh negation or exclusion inside a group.
+# A zsh negation or exclusion inside a group.
 assert_rc "537 nested worktree ln -sf \$SJ ~/.c(^x)aude denies" 2 \
     "$(bash_rc_of "$NESTED_WT" "ln -sf $SJ ~/.c(^x)aude" HOME="$FAKEHOME")"
 assert_rc "538 nested worktree ln -sf \$SJ ~/.cl(^x)ude denies" 2 \
@@ -2445,7 +2445,7 @@ assert_rc "546 nested worktree cp a.txt b/* allows" 0 \
     "$(bash_rc_of "$NESTED_WT" 'cp a.txt b/*' HOME="$FAKEHOME")"
 assert_rc "547 nested worktree cp a \$(pwd)/x allows" 0 \
     "$(bash_rc_of "$NESTED_WT" 'cp a $(pwd)/x' HOME="$FAKEHOME")"
-# 4171 codex-1: a quoted `(`/`)` inside a span is literal, so it must not end
+# A quoted `(`/`)` inside a span is literal, so it must not end
 # or open a group there.
 assert_rc "548 nested worktree cp \$SJ ~/.cl\$(printf a; : '(')ude/settings.json denies" 2 \
     "$(bash_rc_of "$NESTED_WT" "cp $SJ ~/.cl\$(printf a; : '(')ude/settings.json" HOME="$FAKEHOME")"
@@ -2459,7 +2459,7 @@ assert_rc "552 primary ln -sf \$SJ ~/.cl\$(printf a; : '(')ude denies" 2 \
     "$(bash_rc_of "$PRIMARY" "ln -sf $SJ ~/.cl\$(printf a; : '(')ude" HOME="$FAKEHOME")"
 assert_rc "553 nested worktree cp a.txt \"\$(pwd)/x (1).txt\" allows" 0 \
     "$(bash_rc_of "$NESTED_WT" 'cp a.txt "$(pwd)/x (1).txt"' HOME="$FAKEHOME")"
-# 4171: a name led by a span that does not fold is read again inside the span,
+# A name led by a span that does not fold is read again inside the span,
 # so a glob name in it still folds.
 assert_rc "554 nested worktree cp \$SJ \$(echo ~/.cl*)/settings.json denies" 2 \
     "$(bash_rc_of "$NESTED_WT" "cp $SJ \$(echo ~/.cl*)/settings.json" HOME="$FAKEHOME")"
@@ -3071,8 +3071,8 @@ bash -ec 'echo hi > /tmp/x'
 bash -co pipefail 'ls | wc -l'
 sh -c -e 'echo hi'
 ROWS
-# 860-873 (items 3-4): read-only commands and
-# non-live brace targets were denied. An `eval` whose body was judged in its
+# 860-873: read-only commands and
+# non-live brace targets must allow. An `eval` whose body was judged in its
 # own run is no write of its own; a brace confined to a path's leaf cannot
 # move its directory; `checkout`/`restore` inside a read-only git
 # subcommand's argument is a file name; `cut` and `git grep` only read.
