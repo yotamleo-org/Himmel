@@ -1,12 +1,14 @@
 // stopChild() must not remove the temp dir while the server, or a process it started, can still write into it.
 // A write landing during the rmSync fails the teardown with `ENOTEMPTY, Directory not empty: /tmp/cfgui-e2e-...`.
 // Stub children stand in for the server: they print "ready" once their SIGTERM handling is in place, then write into the dir.
+// The last test boots the real AG-UI server through bootAgui, whose stop() shares stopChild.
 import { test, expect } from "@playwright/test";
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ChildProcess } from "node:child_process";
 import { spawnServer, stopChild } from "./fixtures";
+import { aguiBuilt, bootAgui } from "./agui-fixtures";
 
 const GRACE_MS = 300;
 // ignore SIGTERM, then create new files in the dir without pause (what a server's late log or state write does)
@@ -61,4 +63,14 @@ test("control: a child that exits promptly on SIGTERM leaves the dir gone withou
   const r = await run("prompt");
   expect(r).toMatchObject({ gone: true, exited: true });
   expect(r.ms).toBeLessThan(GRACE_MS);
+});
+
+test("the AG-UI harness stop() leaves no temp dir behind", async () => {
+  test.skip(!aguiBuilt(), "agui-web/dist is not built: cd scripts/config-ui/agui-web && bun install && bun run build");
+  const agui = () => new Set(readdirSync(tmpdir()).filter((n) => n.startsWith("agui-e2e-")));
+  const before = agui();
+  const h = await bootAgui();
+  expect([...agui()].filter((n) => !before.has(n))).toHaveLength(1);
+  await h.stop();
+  expect([...agui()].filter((n) => !before.has(n))).toEqual([]);
 });
