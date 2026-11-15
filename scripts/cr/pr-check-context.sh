@@ -327,7 +327,8 @@ HIMMEL_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # refs/himmel/outside/<n>, with its branch never checked out. The branch and head come from the
 # arguments (the head must equal that ref), nothing is delegated to a branch copy of this script
 # whatever the diff touches (the anchor's copy always runs), and the marker clear is skipped.
-# No other argument is accepted.
+# No other argument is accepted. --branch must be the PR's headRefName as the forge names it: a wrong name,
+# a name that collides with a local branch or one the forge does not carry is refused before any write.
 pr_mode=0 pr_num="" pr_head="" pr_branch=""
 if [ "$#" -gt 0 ]; then
     if [ "$#" -ne 6 ] || [ "$1" != "--pr" ] || [ "$3" != "--head" ] || [ "$5" != "--branch" ] \
@@ -354,8 +355,8 @@ if [ -z "$anchor" ]; then
     echo "pr-check-context: HIMMEL_REPO is unset or empty - cannot locate himmel from a trusted source outside the repo under review; adopt/setup wires it into settings.json env, or export it in your launching shell, then re-run" >&2
     exit 2
 fi
-if [ "$pr_mode" = 1 ] && ! [ "$HIMMEL_ROOT" -ef "$anchor" ]; then
-    echo "pr-check-context: --pr runs only through the anchor's copy ($anchor/scripts/cr/pr-check-context.sh), never a branch copy ($SCRIPT_DIR) - nothing was reviewed" >&2
+if [ "$pr_mode" = 1 ] && { ! [ "$HIMMEL_ROOT" -ef "$anchor" ] || ! [ -d "$anchor/.git" ]; }; then
+    echo "pr-check-context: --pr runs only through the anchor's copy ($anchor/scripts/cr/pr-check-context.sh) in the anchor's primary checkout, never a branch copy or a linked worktree ($SCRIPT_DIR) - nothing was reviewed" >&2
     exit 2
 fi
 
@@ -539,6 +540,44 @@ if [ "$pr_mode" = 1 ]; then
     head=$(git rev-parse --verify --quiet "refs/himmel/outside/$pr_num^{commit}" 2>/dev/null) || head=""
     if [ "$head" != "$pr_head" ]; then
         echo "pr-check-context: refs/himmel/outside/$pr_num is not at $pr_head (it is at '${head:-nothing}') - fetch the PR head first, nothing was reviewed" >&2
+        exit 2
+    fi
+    # The branch name keys the verdict files truncated below, and it is the caller's word. Bind it to the forge
+    # before the first write: a valid ref name, no local branch of that name (compared without case), and equal to
+    # the PR's headRefName. The forge's text is compared and never printed: it is the outside author's.
+    if ! git check-ref-format --branch "$pr_branch" >/dev/null 2>&1; then
+        echo "pr-check-context: --branch is not a valid branch name (git check-ref-format --branch refuses it) - nothing was reviewed" >&2
+        exit 2
+    fi
+    # shellcheck source=../lib/outside-contributors.sh
+    # shellcheck disable=SC1091
+    . "$anchor/scripts/lib/outside-contributors.sh" || { echo "pr-check-context: cannot load $anchor/scripts/lib/outside-contributors.sh - nothing was reviewed" >&2; exit 2; }
+    # shellcheck source=../lib/timeout-bin.sh
+    # shellcheck disable=SC1091
+    . "$anchor/scripts/lib/timeout-bin.sh" 2>/dev/null || _TIMEOUT_BIN=""
+    if [ -z "${_TIMEOUT_BIN:-}" ]; then
+        echo "pr-check-context: no GNU timeout on PATH, so the forge read cannot be bounded - nothing was reviewed" >&2
+        exit 2
+    fi
+    pr_col=0
+    outside_branch_collides "$pr_branch" || pr_col=$?
+    if [ "$pr_col" -eq 0 ]; then
+        echo "pr-check-context: --branch collides with a local branch (names compared without case), and the verdict files key on that name - nothing was reviewed" >&2
+        exit 2
+    fi
+    if [ "$pr_col" -ne 1 ]; then
+        echo "pr-check-context: cannot list the local branches to check --branch for a collision - nothing was reviewed" >&2
+        exit 2
+    fi
+    pr_gh=(gh)
+    [ ! -f "$anchor/scripts/lib/gh-read.sh" ] || pr_gh=(bash "$anchor/scripts/lib/gh-read.sh")
+    # swallow-ok: an unreadable or empty answer is refused by the check on the same line (exit 2)
+    if ! pr_forge="$("$_TIMEOUT_BIN" -k 5 20 "${pr_gh[@]}" pr view "$pr_num" --json headRefName --jq .headRefName 2>/dev/null)" || [ -z "$pr_forge" ]; then
+        echo "pr-check-context: cannot read PR #$pr_num's headRefName from the forge - nothing was reviewed" >&2
+        exit 2
+    fi
+    if [ "$pr_forge" != "$pr_branch" ]; then
+        echo "pr-check-context: --branch '$pr_branch' is not PR #$pr_num's headRefName - nothing was reviewed" >&2
         exit 2
     fi
 else
