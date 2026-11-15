@@ -50,6 +50,14 @@ command -v jq >/dev/null 2>&1 || { echo "status-sweep: jq not found (continuing;
 # shellcheck source=../../lib/timeout-bin.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/timeout-bin.sh"
+GH_READ_BIN="$HERE/../../lib/gh-read.sh"
+[ -f "$GH_READ_BIN" ] || GH_READ_BIN=gh
+if [ "$GH_READ_BIN" != gh ]; then
+    # shellcheck source=../../lib/gh-read.sh
+    # shellcheck disable=SC1091
+    . "$GH_READ_BIN"
+    GH_READ_QUIET=1 gh_read_init
+fi
 
 export LC_ALL=C
 # The sweep reads one repo: every gh call (this script's and the lib's) resolves
@@ -171,7 +179,7 @@ bounded() {
 outside_repo() {
     local n t
     for n in $(jq -r '(.prs // {}) | to_entries[] | select(.value.open != false) | .key' <<<"$TS_REC"); do
-        t=$(bounded 30 gh pr view "$n" --json title -q .title 2>/dev/null) || return 0 # swallow-ok: an unreadable PR is not proof it is this repo's, so the key is left unchanged
+        t=$(GH_READ_NO_MAIN_FALLBACK=1 bounded 30 "$GH_READ_BIN" pr view "$n" --json title -q .title 2>/dev/null) || return 0 # swallow-ok: an unreadable PR is not proof it is this repo's, so the key is left unchanged
         [ "$(ticket_key_from_title "$t")" = "$1" ] || return 0
     done
     return 1
@@ -224,24 +232,24 @@ read_overflow_checks() {
     local head out
     head=$(jq -r --argjson n "$1" '.[] | select(.number == $n) | .headRefOid // empty' "$snap/prs.json") || return 1
     [ -n "$head" ] || return 1
-    out=$(bounded 30 gh pr checks "$1" --json bucket,name 2>&1) # swallow-ok: gh exits non-zero on a red or pending check; the JSON parse below is the check
+    out=$(GH_READ_QUIET=1 GH_READ_NO_MAIN_FALLBACK=1 bounded 30 "$GH_READ_BIN" pr checks "$1" --json bucket,name 2>&1) # swallow-ok: gh exits non-zero on a red or pending check; the JSON parse below is the check
     jq -r '.[] | "\(.bucket)\t\(.name)"' <<<"$out" > "$snap/rows-$1.tsv" 2>/dev/null || return 1
-    out=$(bounded 30 gh api "repos/{owner}/{repo}/commits/$head/check-runs?per_page=100" --paginate 2>/dev/null) || return 1 # swallow-ok: stderr only; a failed read returns 1 and the caller marks the sweep unknown
+    out=$(GH_READ_NO_MAIN_FALLBACK=1 bounded 30 "$GH_READ_BIN" api "repos/{owner}/{repo}/commits/$head/check-runs?per_page=100" --paginate 2>/dev/null) || return 1 # swallow-ok: stderr only; a failed read returns 1 and the caller marks the sweep unknown
     jq -r '.check_runs[] | if .id == null then error("check-run with no id") else "\(if .status != "completed" then "pending" elif (.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped") then "pass" elif .conclusion == "cancelled" then "cancel" else "fail" end)\t\(.name)\t\(.app.id // "")\t\(.started_at // "")\t\(.id)" end' \
         <<<"$out" > "$snap/prows-$1.tsv" 2>/dev/null || return 1
-    [ "$(bounded 30 gh pr view "$1" --json headRefOid -q .headRefOid 2>/dev/null)" = "$head" ] # swallow-ok: an unreadable head is a mismatch, so the caller marks the sweep unknown
+    [ "$(GH_READ_NO_MAIN_FALLBACK=1 bounded 30 "$GH_READ_BIN" pr view "$1" --json headRefOid -q .headRefOid 2>/dev/null)" = "$head" ] # swallow-ok: an unreadable head is a mismatch, so the caller marks the sweep unknown
 }
 
 # --- the snapshot ---------------------------------------------------------------
 ts_scan_gate status-sweep graphql core || unknown gh
-bounded 30 gh pr list --state open --limit 300 \
+GH_READ_NO_MAIN_FALLBACK=1 bounded 30 "$GH_READ_BIN" pr list --state open --limit 300 \
     --json number,title,headRefOid,baseRefName,reviewDecision,statusCheckRollup > "$snap/prs.json" 2>/dev/null || unknown gh
 n=$(jq 'length' "$snap/prs.json" 2>/dev/null) || unknown gh # swallow-ok: a failed count is the unknown branch on this line
 case "$n" in ''|*[!0-9]*) unknown gh ;; esac
 [ "$n" -lt 300 ] || unknown pr-limit
 
 # shellcheck disable=SC2016  # $owner/$name are GraphQL variables
-bounded 30 gh api graphql -F owner='{owner}' -F name='{repo}' -f query='query($owner:String!,$name:String!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:100){pageInfo{hasNextPage} nodes{number reviewThreads(first:100){pageInfo{hasNextPage} nodes{isResolved}} commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){pageInfo{hasNextPage} nodes{__typename ... on CheckRun{databaseId name checkSuite{app{databaseId}} status conclusion startedAt}}}}}}}}}}}' \
+GH_READ_NO_MAIN_FALLBACK=1 bounded 30 "$GH_READ_BIN" api graphql -F owner='{owner}' -F name='{repo}' -f query='query($owner:String!,$name:String!){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:100){pageInfo{hasNextPage} nodes{number reviewThreads(first:100){pageInfo{hasNextPage} nodes{isResolved}} commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){pageInfo{hasNextPage} nodes{__typename ... on CheckRun{databaseId name checkSuite{app{databaseId}} status conclusion startedAt}}}}}}}}}}}' \
     > "$snap/graphql.json" 2>/dev/null || unknown gh
 # A further page of PRs or of a PR's threads makes the count partial; a PR whose
 # own check list overflows is re-read on its own below.
