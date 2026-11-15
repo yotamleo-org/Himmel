@@ -1932,6 +1932,36 @@ check_no_orphan_pr() {
     return 1
 }
 
+check_owed_ledger() {
+    local default_shift_secs=21600 rows shift_secs named
+    shift_secs="${OWED_SHIFT_SECS:-$default_shift_secs}"
+    case "$shift_secs" in ''|*[!0-9]*) shift_secs=$default_shift_secs ;; esac
+    shift_secs=$((10#$shift_secs))
+    rows="$(bash "$kit/owe.sh" list --bucket "$1" 2>/dev/null)" || { err "warning: the owed ledger $1/owed.jsonl is unreadable: handover not gated on it"; return 0; }  # swallow-ok: said on stderr, and an unreadable ledger never refuses
+    named="$(printf '%s\n' "$rows" | awk -F'\t' -v now="$(date +%s)" -v lim="$shift_secs" '$2 == "ticket" && $4 == "" && now - $3 > lim { printf "  %s (chief %s, %d h): %s\n", $1, $5, (now - $3) / 3600, $6 }')"
+    [ -n "$named" ] || return 0
+    err "refusing to hand over: a ticket you owe has no key after $(( shift_secs / 3600 )) h:"
+    printf '%s\n' "$named" >&2
+    err "  file each ticket, then close its row, and retry: bash $kit/owe.sh close --bucket $1 --id <id> --key <KEY>"
+    return 1
+}
+
+owed_section() {
+    local rows id kind epoch key chief text
+    [ -s "$1/owed.jsonl" ] || return 0
+    printf '## Owed\n\n'
+    if ! rows="$(bash "$kit/owe.sh" list --bucket "$1" 2>/dev/null)"; then  # swallow-ok: the branch writes that the ledger could not be read
+        printf 'The owed ledger %s/owed.jsonl could not be read: read it yourself before you act (chief-sections/owed.md).\n' "$1"
+        return 0
+    fi
+    [ -n "$rows" ] || { printf 'Every row of %s/owed.jsonl is closed.\n' "$1"; return 0; }
+    printf 'Open rows of %s/owed.jsonl; close each with a key, sha or decision id (chief-sections/owed.md):\n\n' "$1"
+    # the unit separator, not a tab: read collapses a run of whitespace separators, and the key column may be empty
+    while IFS=$'\037' read -r id kind epoch key chief text; do
+        printf -- '- %s %s, owed since %s by %s%s: %s\n' "$id" "$kind" "$(date -u -d "@$epoch" +%Y-%m-%dT%H:%MZ 2>/dev/null || printf '%s' "$epoch")" "$chief" "${key:+ (key $key)}" "$text"  # gnu-ok: the chief kit is Linux-only; swallow-ok: an epoch date cannot format prints the epoch itself
+    done < <(printf '%s\n' "$rows" | awk -F'\t' -v OFS=$'\037' '{ $1 = $1; print }')
+}
+
 # The verbatim quote of every `OPERATOR ... (verbatim): "<quote>"` (or '<quote>')
 # Results bullet of a doc, one per line. A quote ends at the first matching
 # quote mark not followed by a letter or digit, so an apostrophe inside is kept.
@@ -2039,6 +2069,25 @@ hist_file_append() {
 # chief's segment starts with. Prints the whole value when it has one segment. Arg: queue value.
 queue_newest_segment() {
     printf '%s\n' "$1" | awk '{ if (match($0, / \|\| (\([A-Z][A-Z]?[ )]|prior [A-Z][A-Z]? queue:)/)) print substr($0, 1, RSTART - 1); else print }'
+}
+
+queue_older_segments() {
+    printf '%s\n' "$1" | awk '{
+        s = $0
+        while (length(s) > 0) {
+            t = substr(s, 2)
+            if (match(t, / \|\| (\([A-Z][A-Z]?[ )]|prior [A-Z][A-Z]? queue:)/)) { print substr(s, 1, RSTART); s = substr(s, RSTART + 1) }
+            else { print s; s = "" }
+        }
+    }'
+}
+
+queue_segment_owed() {
+    local lc
+    case "$1" in *HOLD*) return 0 ;; esac
+    lc="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+    case "$lc" in *owed*|*"to file"*) return 0 ;; esac
+    return 1
 }
 
 # The pinned head of a `tracker:` value: everything before the first ` — older:` or
@@ -2327,12 +2376,19 @@ seed_live_fields() {
     fi
     # queue: only the newest segment (queue_newest_segment names the markers of an earlier chief's);
     # the older ones are kept byte for byte in the dated history file and the line points at it.
-    local queue newest
+    local queue newest seg moved kept
     queue="$(seeded_live_field "$live" queue)"
     newest="$(queue_newest_segment "$queue")"
     if [ "$newest" != "$queue" ]; then
-        if hist_file_append "$(dirname "$doc")" "queue: older segments, trimmed by chief.sh next from $stem" "${queue#"$newest"}"; then
-            queue="$newest || older segments of this line: $HIST_REL"
+        moved=""; kept=""
+        while IFS= read -r seg; do
+            [ -n "$seg" ] || continue
+            if queue_segment_owed "$seg"; then kept="$kept$seg"; else moved="$moved$seg"; fi
+        done < <(queue_older_segments "${queue#"$newest"}")
+        if [ -z "$moved" ]; then
+            queue="$newest$kept"
+        elif hist_file_append "$(dirname "$doc")" "queue: older segments, trimmed by chief.sh next from $stem" "$moved"; then
+            queue="$newest$kept || older segments of this line: $HIST_REL"
         else
             err "warning: could not write the older queue segments to the history file; seeded the queue: line whole"
         fi
@@ -2447,6 +2503,7 @@ cmd_next() {
     check_direction_companions "$predecessor_doc" || exit 7
     check_workers_listed "$predecessor_doc" "$predecessor_live_state" || exit 1
     check_no_orphan_pr "$predecessor_doc" || exit 8
+    check_owed_ledger "$(dirname "$predecessor_doc")" || exit 9
     # The outgoing direction rides into the successor doc and the HANDOFF; the
     # successor's block starts as the predecessor's (a stale one is not detected).
     local predecessor_direction
@@ -2686,7 +2743,7 @@ cmd_next() {
         hf_prs="$(bash "$facts" prs "$predecessor_doc" --repo "$repo")"
         hf_summary="$(bash "$facts" summary "$predecessor_doc" --repo "$repo")"
         # ponytail: the cap trims only the re-derivable fact sections; the rulings and the wrapped-PR list stay inline even over budget, an oversized wrapped-PR list needs its own pointer.
-        local hf_pass=1 hf_wrapped hf_wrapped_bytes hf_inflight hf_inflight_bytes hf_chain hf_direction hf_lastgo
+        local hf_pass=1 hf_wrapped hf_wrapped_bytes hf_inflight hf_inflight_bytes hf_owed hf_owed_bytes hf_chain hf_direction hf_lastgo
         hf_chain="$(chain_order_line "$predecessor_dir")"
         # The direction block is already carried into the successor doc; the HANDOFF points at it.
         hf_direction="${hf_chain:+$hf_chain
@@ -2698,6 +2755,9 @@ cmd_next() {
         hf_inflight="$(inflight_section "$predecessor_dir")" || hf_inflight=""  # swallow-ok: the listing fails open, it never stops a hand-over
         hf_inflight_bytes=0
         [ -z "$hf_inflight" ] || hf_inflight_bytes="$(printf '\n%s\n' "$hf_inflight" | wc -c | tr -d ' ')"
+        hf_owed="$(owed_section "$predecessor_dir")"
+        hf_owed_bytes=0
+        [ -z "$hf_owed" ] || hf_owed_bytes="$(printf '\n%s\n' "$hf_owed" | wc -c | tr -d ' ')"
         while :; do
             render_template "$handoff_template" "$predecessor_handoff" \
                 CURRENT_DIRECTION "$hf_direction" \
@@ -2719,7 +2779,7 @@ cmd_next() {
                 LIVE_STATE "Live state: seeded into \`$successor_doc_ref\`${LS_HISTORY_REF:+; the closed workers, prior GOs and shift notes left out of that seed are kept verbatim in \`$LS_HISTORY_REF\`}"
             # Over budget: the bulky fact sections (all re-derivable) become
             # pointers; the rulings stay inline.
-            [ "$hf_pass" -eq 1 ] && [ $(( $(wc -c < "$predecessor_handoff") + hf_wrapped_bytes + hf_inflight_bytes )) -gt "$hf_budget" ] || break
+            [ "$hf_pass" -eq 1 ] && [ $(( $(wc -c < "$predecessor_handoff") + hf_wrapped_bytes + hf_inflight_bytes + hf_owed_bytes )) -gt "$hf_budget" ] || break
             hf_pass=2
             hf_legs="over the HANDOFF size budget — run: bash $facts workers $predecessor_doc --repo $repo"
             hf_slug="$(git_clean -C "$repo" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|[a-z+]+://[^/]+/)##; s#\.git$##')" || hf_slug=""  # swallow-ok: an unreadable remote falls back to the <owner/repo> placeholder in the pointer
@@ -2729,6 +2789,7 @@ cmd_next() {
         done
         [ -z "$hf_wrapped" ] || printf '%s\n' "$hf_wrapped" >> "$predecessor_handoff"
         [ -z "$hf_inflight" ] || printf '\n%s\n' "$hf_inflight" >> "$predecessor_handoff"
+        [ -z "$hf_owed" ] || printf '\n%s\n' "$hf_owed" >> "$predecessor_handoff"
         [ -z "$orphan_gate_note" ] || printf '\n> %s\n' "$orphan_gate_note" >> "$predecessor_handoff"
         # Still over budget after the pointer pass: the remainder is the rulings,
         # the wrapped-PR list and the capped pointers, never trimmed — say so loudly.
