@@ -33,6 +33,8 @@
 #        outside SUITE_TIER_MODE=pr
 #   IS24 the same PR under SUITE_TIER_MODE=pr is impacted, its suite selected
 #   IS25 a selector-integrity path is full under every tier mode
+#   IS27 a one-line edit to a user docs page or a site page selects the docs
+#        suites that scan pages; a scripts/ edit selects neither
 #
 # Platform guard: bash-only; git + tar, Linux CI is the caller.
 #
@@ -543,5 +545,55 @@ if [ "$rc" -eq 0 ] && grepq "$out" -x 'mode full' && grepq "$out" -x 'reason bas
   pass "IS26: a tar that really fails is still base-extract-failed"
 else fail "IS26: broken tar: rc=$rc out: $out"; fi
 rm -rf "$TS"
+
+# --- IS27 ------------------------------------------------------
+# A content-only edit to a user docs page adds, deletes and renames no file, so
+# the tree-scan rule alone never selects the docs suites that scan the pages.
+# The suites and pages are copied from this repo; a page either suite names is
+# already selected by the reference search, so these pages are named by neither.
+DP="$(fixture_mktemp_dir)" || exit 1
+DT=scripts/docs/test-docs-dropped-terms.sh
+DV=scripts/docs/test-docs-current-version.sh
+(
+  cd "$DP" && git init -q && git config user.email t@e && git config user.name t \
+    && mkdir -p scripts/ci scripts/cr scripts/docs scripts/tools docs \
+    && cp "$SEL_SRC" scripts/ci/impacted-selection.sh \
+    && cp "$SRC_ROOT/scripts/cr/impacted-suites.sh" "$SRC_ROOT/scripts/cr/anchor-handoff.sh" scripts/cr/ \
+    && printf '# fixture trust list\n\n^scripts/ci/\n' > scripts/ci/ci-trust-paths.txt \
+    && cp "$SRC_ROOT/$DT" "$SRC_ROOT/$DV" scripts/docs/ \
+    && cp "$SRC_ROOT/docs/troubleshooting.md" docs/troubleshooting.md \
+    && mkdir -p site/src/trail && cp "$SRC_ROOT/site/src/trail/hero.html" site/src/trail/hero.html \
+    && printf '# tool\n' > scripts/tools/foo.sh \
+    && git add -A && git commit -q -m base && git update-ref refs/remotes/origin/main HEAD \
+    && git checkout -q -b page \
+    && awk 'NR == 3 { $0 = $0 " (edited)" } { print }' docs/troubleshooting.md > page.tmp \
+    && mv page.tmp docs/troubleshooting.md && git commit -q -am page \
+    && git checkout -q -b site refs/remotes/origin/main \
+    && awk 'NR == 3 { $0 = $0 " (edited)" } { print }' site/src/trail/hero.html > page.tmp \
+    && mv page.tmp site/src/trail/hero.html && git commit -q -am site \
+    && git checkout -q -b script refs/remotes/origin/main \
+    && printf '# edit\n' >> scripts/tools/foo.sh && git commit -q -am script
+) || exit 1
+DP_BASE=$(git -C "$DP" rev-parse refs/remotes/origin/main)
+dsel() { (cd "$DP" && env -u SUITE_TIER_MODE bash scripts/ci/impacted-selection.sh "$DP_BASE" "$1" 2>&1); }
+
+out=$(dsel page); rc=$?
+if [ "$rc" -eq 0 ] && grepq "$out" -x 'mode impacted' \
+   && grepq "$out" -x 'changed docs/troubleshooting.md' \
+   && grepq "$out" -x "suite $DT" && grepq "$out" -x "suite $DV"; then
+  pass "IS27: a one-line edit to a user docs page selects the docs suites that scan pages"
+else fail "IS27: docs page: rc=$rc out: $out"; fi
+
+out=$(dsel site); rc=$?
+if [ "$rc" -eq 0 ] && grepq "$out" -x 'mode impacted' && grepq "$out" -x "suite $DT"; then
+  pass "IS27: a one-line edit to a site page selects test-docs-dropped-terms.sh"
+else fail "IS27: site page: rc=$rc out: $out"; fi
+
+out=$(dsel script); rc=$?
+if [ "$rc" -eq 0 ] && grepq "$out" -x 'mode impacted' \
+   && ! grepq "$out" -x "suite $DT" && ! grepq "$out" -x "suite $DV"; then
+  pass "IS27: a one-line edit outside the docs pages selects neither docs suite"
+else fail "IS27: scripts edit: rc=$rc out: $out"; fi
+rm -rf "$DP"
 
 rst_tally
