@@ -22,7 +22,10 @@
 # Usage: luna-index-hygiene.sh --vault DIR --qmd-config FILE [--collection luna]
 #                              [--offload-root DIR] [--apply]
 # Exit: 0 ok, 1 a file write or the offload move failed, 2 usage, 3 collection
-# not in the config, 4 unsupported config shape.
+# not in the config, 4 unsupported config shape, 5 the collection step 1b would
+# register is not mapped in scripts/qmd/qmd-collection-corpus.json (nothing is
+# written: the egress gate refuses every qmd call over an unmapped collection).
+# LUNA_HYGIENE_CORPUS names another corpus file (the test seam).
 set -uo pipefail
 
 VAULT=""; CFG=""; COLLECTION="luna"; OFFLOAD_ROOT=""; APPLY=0
@@ -57,9 +60,29 @@ QMD_IGNORE=('graphify-out/**' '60-Maps/graph/**' 'handovers/**/verdicts/*/scratc
 GRAPHIFY_IGNORE=('60-Maps/graph/' 'graphify-out/' 'handovers/**/archive/' 'sessions/_archive/')
 ARCHIVE_COLLECTION="luna-archive"
 ARCHIVE_PATTERN='{handovers/**/archive/**/*.md,sessions/_archive/**/*.md}'
+CORPUS="${LUNA_HYGIENE_CORPUS:-$(dirname "$0")/../qmd/qmd-collection-corpus.json}"
 
 mode=$([ "$APPLY" -eq 1 ] && echo apply || echo dry-run)
 echo "luna-index-hygiene: $mode vault=$VAULT collection=$COLLECTION"
+
+python3 -I - "$CFG" "$CORPUS" "$ARCHIVE_COLLECTION" <<'PY'
+import json, sys
+cfg, corpus, name = sys.argv[1:4]
+if ("  %s:" % name) in open(cfg).read().split("\n"):
+    sys.exit(0)
+try:
+    mapped = json.load(open(corpus))["collections"]
+except (OSError, ValueError, KeyError) as e:
+    print("luna-index-hygiene: REFUSED - cannot read the collection corpus %s: %s" % (corpus, e), file=sys.stderr)
+    sys.exit(5)
+if name not in mapped:
+    print("luna-index-hygiene: REFUSED - would register qmd collection '%s' but %s does not map it; "
+          "the egress gate denies an unmapped collection, so every qmd call would be refused. "
+          "Map it in the corpus file first. Nothing was written." % (name, corpus), file=sys.stderr)
+    sys.exit(5)
+PY
+rc=$?
+[ "$rc" -eq 0 ] || exit "$rc"
 
 # --- 1. qmd ignore list -------------------------------------------------------
 # ponytail: line-based edit of the two-level index.yml (qmd's own writer has no
