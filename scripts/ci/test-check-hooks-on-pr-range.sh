@@ -103,7 +103,6 @@ out="$(run "$t" $(attest_args platforms))"; rc=$?
 expect "trailer only in second commit -> rc0" 0 "$rc" "$out"
 rm -rf "$t"
 
-# --- a first-commit [skip platforms-check] marker no longer skips CI (the marker clears the push only) ---
 t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 skip
 
 [skip platforms-check]"
@@ -111,7 +110,6 @@ out="$(run "$t" $(attest_args platforms))"; rc=$?
 expect "first-commit [skip platforms-check], no trailer -> rc1" 1 "$rc" "$out"
 rm -rf "$t"
 
-# --- the split verdict: a bad token first, a good one in a later commit ---
 t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 first
 
 Platforms tested: linux
@@ -131,7 +129,6 @@ out="$(run "$t" $(attest_args platforms))"; rc=$?
 expect "split verdict (platforms): yes first, linux later -> rc0" 0 "$rc" "$out"
 rm -rf "$t"
 
-# --- apply the fix the refusal names: one more ordinary commit carrying the line ---
 t="$(mk)"; PR_SECOND_EMPTY=1 mkpr "$t" "feat: HIMMEL-1 no trailer" "chore: HIMMEL-1 attest
 
 Platforms tested: linux
@@ -142,7 +139,6 @@ out="$(run "$t" $(attest_args security))"; rc=$?
 expect "named fix (security): an empty follow-up commit with the line -> rc0" 0 "$rc" "$out"
 rm -rf "$t"
 
-# --- control: a branch whose only Security reviewed line is malformed is refused ---
 t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 first
 
 Platforms tested: linux
@@ -156,7 +152,7 @@ t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 x
 Platforms tested: linux
 $BAD"
 (
-  trap "exit 1" ERR   # a failed fixture step aborts the subshell, never a misleading verdict
+  trap "exit 1" ERR
   cd "$t"
   main="$(git rev-parse 'HEAD^1')"; pr="$(git rev-parse 'HEAD^2')"
   fork="$(git rev-parse "$pr~1")"
@@ -178,7 +174,6 @@ out="$(run "$t" $(attest_args security))"; rc=$?
 expect "incident shape (GOOD only on a merge) -> rc1" 1 "$rc" "$out"
 rm -rf "$t"
 
-# --- the helper cannot evaluate: a --base on an unrelated history has no merge base -> rc2 with ATTEST ERROR ---
 t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 x$TRAIL"
 orphan="$(git -C "$t" commit-tree "$(git -C "$t" rev-parse 'HEAD^{tree}')" -m "unrelated root")"
 git -C "$t" checkout -q --detach 'HEAD^2'
@@ -293,10 +288,9 @@ out="$(run "$t" $(attest_args platforms))"; rc=$?
 expect "unattested first merge, attested later commit -> rc0" 0 "$rc" "$out"
 rm -rf "$t"
 
-# --- a trailer-bearing first merge with no attesting ordinary commit no longer attests (a merge never does) ---
 t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 x$TRAIL"
 (
-  trap "exit 1" ERR   # a failed fixture step aborts the subshell, never a misleading verdict
+  trap "exit 1" ERR
   cd "$t"
   main="$(git rev-parse 'HEAD^1')"; old="$(git rev-parse 'HEAD^1~1')"
   git checkout -q --detach "$main"

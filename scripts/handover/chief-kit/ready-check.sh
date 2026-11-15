@@ -706,7 +706,6 @@ if [ -z "$commits_json" ] || [ "$commits_json" = "null" ]; then
     echo "[FAIL] 6. cannot read PR commits (gh pr view --json commits failed)"
     mark_fail
 else
-    # ── 5. attestation trailers on the branch ───────────────────────────────
     if [ -z "$files_json" ]; then
         echo "[FAIL] 5. cannot read PR files (gh api .../pulls/$PR/files failed or returned nothing)"
         mark_fail
@@ -1726,8 +1725,7 @@ if [ "$ONLY7" -eq 0 ]; then
 # ── 13. a code PR names a RED-then-GREEN line ──
 # A PR that changes code shows the proof it was built test-first: one line of its body
 # with RED, then GREEN (e.g. `RED → GREEN: test-x.sh row 4`). Exempt: a doc-only PR
-# (the helper's `needs` names no `security`: the same filter check 5 uses via
-# scripts/lib/attest-trailers.sh, so the two never disagree about what is code) and a
+# (the filter check 5 uses, so the two never disagree about what is code) and a
 # Dependabot dependency-only PR (dep_pr_generated, as check 7).
 att13_rc=0
 [ -z "$files_json" ] || att13=$(printf '%s\n' "$files_json" | bash "$ATTEST_HELPER" needs 2>/dev/null) || att13_rc=$?  # swallow-ok: a non-zero exit is the cannot-classify FAIL just below

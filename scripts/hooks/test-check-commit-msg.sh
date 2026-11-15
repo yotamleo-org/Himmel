@@ -437,8 +437,6 @@ expect_flag_rc "--ticket-optional still rejects a non-conventional message" 1 \
 expect_rc "without the flag the same ticketless message is still rejected" 1 \
   "chore: no ticket id here" TICKET_ID_REQUIRED=1 JIRA_PROJECT_KEY=HIMMEL
 
-# --- --attest-refuse turns the trailer warning into a refusal (himmel's own
-# .pre-commit-config.yaml sets it; adopters and CI's commit-range replay run with no flag) ---
 BAD='Security reviewed: outbound write is one PR comment'
 GOOD='Security reviewed: ad-hoc — reason'
 PBAD='Platforms tested: yes'

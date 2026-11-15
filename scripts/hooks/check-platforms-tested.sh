@@ -48,7 +48,6 @@ if ! { [ -r "$SCRIPT_DIR/../guardrails/lib.sh" ] && . "$SCRIPT_DIR/../guardrails
     echo "→ platforms-check: cannot source guardrails/lib.sh — refusing the push (rc=2 = cannot evaluate; bypass with git push --no-verify)" >&2
     exit 2
 fi
-# The one reader of the trailer rule (regexes, file classes, which commits count).
 # shellcheck source=../lib/attest-trailers.sh
 # shellcheck disable=SC1091
 if ! { [ -r "$SCRIPT_DIR/../lib/attest-trailers.sh" ] && . "$SCRIPT_DIR/../lib/attest-trailers.sh"; } 2>/dev/null; then
@@ -135,7 +134,7 @@ fi
 [ -z "$changed" ] && exit 0
 
 # Filter sensitive paths. Docs-only Markdown/text is never a script, even under
-# scripts/ (the file class lives in scripts/lib/attest-trailers.sh).
+# scripts/.
 if ! sensitive=$(attest_files platforms <<<"$changed"); then
     echo "→ platforms-check: cannot classify the changed files — refusing the push (rc=2 = cannot evaluate; bypass with PLATFORMS_TESTED_OK=1 or git push --no-verify)" >&2
     exit 2
@@ -144,8 +143,6 @@ if [ -z "$sensitive" ]; then
     exit 0
 fi
 
-# The skip marker is a push-time bypass: it keeps its own scan of every message in the
-# push range (merges included, as before). CI and ready-check ignore it.
 # `[[:space:]]`, not `\s`: `\s` is a GNU grep extension, and BSD grep (macOS) reads it as
 # a LITERAL 's', so an INDENTED marker would silently fail to match. A here-string, not
 # `printf ... | grep -q` (grep -q's early exit SIGPIPEs the writer once the

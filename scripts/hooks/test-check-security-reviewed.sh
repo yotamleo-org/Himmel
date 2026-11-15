@@ -648,7 +648,6 @@ d=$(fixture_mktemp_dir) || exit 1
 assert_rc "orphan branch (no merge base) -> fail CLOSED (exit 2)"    2 "$(run_in "$d" "SECURITY_REVIEW_NO_FETCH=1")"
 rm -rf "$d"
 
-# --- the branch carries the trailer in ANY non-merge commit ---
 BAD='Security reviewed: outbound write is one PR comment'
 GOOD='Security reviewed: ad-hoc — reason'
 make_repo2() {
@@ -740,11 +739,9 @@ rm -rf "$d"
 d=$(make_repo2 "src/foo.ts" "feat: a" "$(printf 'feat: b\n\nSecurity reviewed: Manual — x\n')") || exit 1
 assert_rc "mixed-case trailer in commit 2"             0 "$(run_in "$d")"
 rm -rf "$d"
-# control (the split verdict): a bad token first, a good one later
 d=$(make_repo2 "src/foo.ts" "$(printf 'feat: a\n\n%s\n' "$BAD")" "$(printf 'feat: b\n\n%s\n' "$GOOD")") || exit 1
 assert_rc "split verdict: bad token first, good later" 0 "$(run_in "$d")"
 rm -rf "$d"
-# control (the named fix): no trailer, then an empty commit carrying the line
 d=$(make_repo2 "src/foo.ts" "feat: a" "$(printf 'chore: attest\n\n%s\n' "$GOOD")" empty) || exit 1
 assert_rc "named fix: an empty follow-up commit"  0 "$(run_in "$d")"
 rm -rf "$d"
@@ -758,7 +755,6 @@ assert_rc "merge-only trailer = block"                 1 "$LAST_RC2"
 assert_has "merge-only trailer names case (c)" "present only in a merge commit" "$LAST_OUT"
 rm -rf "$d"
 
-# RED: the helper unreadable -> rc2 naming the lib (the tree keeps guardrails/lib.sh, so rc2 cannot come from that guard)
 d=$(make_repo "src/foo.ts" "$(printf 'feat: foo\n\nSecurity reviewed: manual\n')") || exit 1
 nolib=$(fixture_mktemp_dir) || exit 1
 mkdir -p "$nolib/scripts/hooks" "$nolib/scripts/guardrails"
@@ -769,7 +765,6 @@ assert_rc "attest-trailers.sh missing = rc2 (cannot evaluate)" 2 "$LAST_RC2"
 assert_has "lib missing names the file" "cannot source scripts/lib/attest-trailers.sh" "$LAST_OUT"
 rm -rf "$d" "$nolib"
 
-# RED: the refusal names one fix and nothing CI refuses
 d=$(make_repo "src/foo.ts" "feat: add foo") || exit 1
 run_out "$d"
 assert_rc "no attestation = block (refusal text)"      1 "$LAST_RC2"

@@ -12,7 +12,15 @@ LIB="$HERE/attest-trailers.sh"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/attest-trailers-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$tmp"' EXIT
 tmp="$(cd "$tmp" && pwd)"
+: > "$tmp/gitconfig-empty"
+export GIT_CONFIG_GLOBAL="$tmp/gitconfig-empty" GIT_CONFIG_SYSTEM="$tmp/gitconfig-empty"
 fails=0
+check_isolated() {
+    [ "${GIT_CONFIG_GLOBAL:-unset}" = "$tmp/gitconfig-empty" ] && [ "${GIT_CONFIG_SYSTEM:-unset}" = "$tmp/gitconfig-empty" ] \
+        && echo "ok - the fixture repos ignore the operator's global and system git config" \
+        || { echo "FAIL - the fixture repos read the operator's global or system git config (signing, hooks path)"; fails=$((fails+1)); }
+}
+check_isolated
 check()    { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
 contains() { case "$2" in *"$3"*) echo "ok - $1" ;; *) echo "FAIL - $1: output does not contain [$3]"; fails=$((fails+1)) ;; esac; }
 
@@ -70,7 +78,6 @@ both() {
     contains "pr-json $2: output" "$out" "$4"
 }
 
-# --- range and pr-json x {first, later, none, merge-only, docs-only, scripts README only}
 R=$(new_repo first)
 git -C "$R" checkout -q -b feat
 commit_file "$R" scripts/x.sh "fix(x): [HIMMEL-1] one
@@ -122,7 +129,6 @@ git -C "$R" checkout -q -b feat
 commit_file "$R" scripts/telegram/README.md "docs: [HIMMEL-1] note"
 both "$R" "scripts README only" 0 "ATTEST platforms not-needed"
 
-# --- mixed case, in the first commit and in a later commit only
 R=$(new_repo mixedfirst)
 git -C "$R" checkout -q -b feat
 commit_file "$R" scripts/x.sh "fix(x): [HIMMEL-1] one
@@ -139,7 +145,6 @@ PLATFORMS TESTED: linux
 Security reviewed: Manual — read the diff"
 both "$R" "mixed case, later commit only" 0 "ATTEST PASS"
 
-# --- the split verdict (a bad token first, a good one later), both kinds
 R=$(new_repo split)
 git -C "$R" checkout -q -b feat
 commit_file "$R" scripts/x.sh "fix(x): [HIMMEL-1] one
@@ -155,7 +160,6 @@ run_range "$R" --only platforms
 contains "range --only platforms: names only platforms" "$out" "ATTEST platforms needed found: Platforms tested: linux"
 case "$out" in *"ATTEST security"*) echo "FAIL - --only platforms: a security line was printed"; fails=$((fails+1)) ;; *) echo "ok - --only platforms: no security line" ;; esac
 
-# --- exit 2: no merge base, bad JSON, an empty file list
 R=$(new_repo nobase)
 git -C "$R" checkout -q --orphan unrelated
 git -C "$R" commit -q --allow-empty -m "chore: unrelated root"
@@ -183,7 +187,6 @@ check "pr-json unreadable commits file: rc" "$rc" "2"
 rc=0; out="$(bash "$LIB" bogus 2>&1)" || rc=$?
 check "an unknown subcommand: rc" "$rc" "2"
 
-# --- attest_files, needs, attest_sec_near_miss, attest_found (sourced)
 # shellcheck source=attest-trailers.sh
 . "$LIB"
 check "attest_files platforms: a script" "$(printf 'scripts/a.sh\ndocs/b.md\n' | attest_files platforms)" "scripts/a.sh"
@@ -206,8 +209,6 @@ check "attest_found security: a near miss does not conform" "$rc" "1"
 rc=0; printf 'Platforms tested: linuxish\n' | attest_found platforms || rc=$?
 check "attest_found platforms: linuxish does not conform" "$rc" "1"
 
-# --- a failing grep is "cannot classify" (exit 2), never "needs nothing": a gate that reads an
-# error as an empty file class would pass a code diff with no attestation
 badbin="$tmp/badbin"
 mkdir -p "$badbin"
 printf '#!/bin/sh\nexit 2\n' > "$badbin/grep"
@@ -239,7 +240,6 @@ classes=$(git grep -l -F -e '^docs/|^handovers/' -e 'ps1|psm1|psd1|cmd|bat' -- s
 check "I4 file classes: only the helper and the CR-lane filter hold the file classes" "$classes" \
     "scripts/hooks/check-cr-before-push.sh scripts/lib/attest-trailers.sh "
 
-# --- display parity: the refusal texts keep human-readable lists, which must name every alternative the helper accepts
 plat_alts=${ATTEST_PLATFORM_RE#(}; plat_alts=${plat_alts%)}
 old_ifs=$IFS; IFS='|'
 for alt in $plat_alts; do

@@ -49,8 +49,6 @@ case "$*" in
                 statusCheckRollup:{contexts:{nodes:[{__typename:"CheckRun",name:"build",status:"COMPLETED",conclusion:"SUCCESS"}],pageInfo:{hasNextPage:false,endCursor:null}}}
             }}}}' \
             | jq -c --argjson c "${READY_STUB_COMMITS:-null}" '
-                # READY_STUB_COMMITS (optional): a JSON array of GraphQL commit objects (oid 40-hex,
-                # messageHeadline, messageBody, parents.totalCount) replaces the one-commit default list
                 if $c == null then . else .data.repository |= with_entries(.value.commits.nodes = [$c[] | {commit: .}]) end'
         exit $? ;;
     # ready-check row 15 (CodeRabbit rate-limit advisory): no statuses at the head, so it

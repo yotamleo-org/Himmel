@@ -477,7 +477,6 @@ d=$(fixture_mktemp_dir) || exit 1
 assert_rc "orphan branch (no merge base) -> fail CLOSED (exit 2)"    2 "$(run_in "$d" "PLATFORMS_TESTED_NO_FETCH=1")"
 rm -rf "$d"
 
-# --- the branch carries the trailer in ANY non-merge commit ---
 make_repo2() {
     local files="$1" msg1="$2" msg2="$3" empty="${4:-}" dir
     dir=$(fixture_mktemp_dir) || return 1
@@ -567,11 +566,9 @@ rm -rf "$d"
 d=$(make_repo2 "scripts/foo.sh" "feat: a" "$(printf 'feat: b\n\nPlatforms tested: Linux\n')") || exit 1
 assert_rc "mixed-case trailer in commit 2"             0 "$(run_in "$d")"
 rm -rf "$d"
-# control (the split verdict): yes first, linux later
 d=$(make_repo2 "scripts/foo.sh" "$(printf 'feat: a\n\nPlatforms tested: yes\n')" "$(printf 'feat: b\n\nPlatforms tested: linux\n')") || exit 1
 assert_rc "split verdict: yes first, linux later" 0 "$(run_in "$d")"
 rm -rf "$d"
-# control (the named fix): no trailer, then an empty commit carrying the line
 d=$(make_repo2 "scripts/foo.sh" "feat: a" "$(printf 'chore: attest\n\nPlatforms tested: linux\n')" empty) || exit 1
 assert_rc "named fix: an empty follow-up commit"  0 "$(run_in "$d")"
 rm -rf "$d"
@@ -582,7 +579,6 @@ assert_rc "merge-only trailer = block"                 1 "$LAST_RC"
 assert_has "merge-only trailer names case (c)" "present only in a merge commit" "$LAST_OUT"
 rm -rf "$d"
 
-# RED: the helper unreadable -> rc2 naming the lib (the tree keeps guardrails/lib.sh, so rc2 cannot come from that guard)
 d=$(make_repo "scripts/foo.sh" "$(printf 'feat: foo\n\nPlatforms tested: linux\n')") || exit 1
 nolib=$(fixture_mktemp_dir) || exit 1
 mkdir -p "$nolib/scripts/hooks" "$nolib/scripts/guardrails"
@@ -593,7 +589,6 @@ assert_rc "attest-trailers.sh missing = rc2 (cannot evaluate)" 2 "$LAST_RC"
 assert_has "lib missing names the file" "cannot source scripts/lib/attest-trailers.sh" "$LAST_OUT"
 rm -rf "$d" "$nolib"
 
-# RED: the refusal names one fix and nothing CI refuses
 d=$(make_repo "scripts/foo.sh" "feat: add foo") || exit 1
 run_out "$d"
 assert_rc "no attestation = block (refusal text)"      1 "$LAST_RC"
@@ -605,7 +600,6 @@ assert_lacks "refusal does not offer the env bypass" "PLATFORMS_TESTED_OK=1" "$L
 assert_lacks "refusal does not offer the skip marker" "[skip platforms-check]" "$LAST_OUT"
 rm -rf "$d"
 
-# RED: the PR body attests at no gate
 d=$(make_repo "scripts/foo.sh" "feat: foo no attestation") || exit 1
 stub_dir=$(fixture_mktemp_dir) || exit 1
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "Platforms tested: linux"\n' > "$stub_dir/gh"

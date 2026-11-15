@@ -6,9 +6,7 @@
 # The rule: a branch that changes shell/script files needs a `Platforms tested:`
 # trailer, a branch that changes non-docs code needs a `Security reviewed:`
 # trailer, and either may sit in ANY non-merge commit of the branch. A merge
-# commit never attests, and neither does the PR body. Every enforcing reader
-# (the two pre-push hooks, CI commit-lint, ready-check items 5 and 13, and with
-# them the GO) calls this file; none keeps a copy of the regexes or file classes.
+# commit never attests, and neither does the PR body.
 #
 # Usage:
 #   attest-trailers.sh range   <base> <head> [--only platforms|security]
@@ -20,11 +18,7 @@
 # `ATTEST PASS` or `ATTEST FAIL missing=<kinds>`; on exit 2 one `ATTEST ERROR <reason>`.
 # Exit: 0 pass, 1 a needed trailer is missing, 2 cannot evaluate.
 #
-# Matching is case-insensitive (grep -iE), as every reader matched before. The
-# regexes hold no backslash escape: BSD grep (macOS) reads `\b` as a literal `b`.
-#
-# Parity copies that cannot source this file (scripts/hooks/check-commit-msg.sh is an
-# adopter payload) are held equal to these values by scripts/lib/test-attest-trailers.sh.
+# The regexes hold no backslash escape: BSD grep (macOS) reads `\b` as a literal `b`.
 
 ATTEST_PLATFORM_RE='(linux|windows|macos|ubuntu|debian|fedora|arch|mac|darwin|wsl|posix|gitbash|git-bash|powershell|pwsh)'
 ATTEST_PLATFORMS_RE="^[[:space:]]*Platforms tested:[[:space:]]*${ATTEST_PLATFORM_RE}([^[:alnum:]]|$)"
@@ -73,7 +67,6 @@ attest_needs() {
     done
 }
 
-# attest_re <kind>: the conforming-line regex of that kind.
 attest_re() {
     case "${1:-}" in
         platforms) printf '%s' "$ATTEST_PLATFORMS_RE" ;;
@@ -92,7 +85,6 @@ attest_found() {
     grep -qiE "$re" <<<"$msgs"
 }
 
-# attest_found_line <kind>: commit messages on stdin; the first conforming line, trimmed.
 attest_found_line() {
     local re msgs
     re=$(attest_re "${1:-}") || return 2

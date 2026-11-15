@@ -883,7 +883,6 @@ rc=0; out="$(run)" || rc=$?
 check "later-commit-trailers: exit 0" "$rc" "0"
 contains "later-commit-trailers: check 5 passes" "$out" "[PASS] 5."
 
-# --- 5f. no trailer in any commit still fails (control) ------------------
 reset_stubs
 STUB_COMMITS='[{"messageHeadline":"docs: [HIMMEL-1] note","messageBody":""},{"messageHeadline":"fix(x): [HIMMEL-2] code","messageBody":""}]'
 rc=0; out="$(run)" || rc=$?
@@ -892,7 +891,6 @@ contains "no-trailer-anywhere: check 5 fails" "$out" "[FAIL] 5."
 contains "no-trailer-anywhere: names platforms" "$out" "missing 'Platforms tested:'"
 contains "no-trailer-anywhere: names security" "$out" "missing 'Security reviewed:'"
 
-# --- 5g. a trailer carried only by a MERGE commit never counts -----------
 reset_stubs
 M5=5555555555555555555555555555555555555555
 L5=6666666666666666666666666666666666666666
@@ -902,24 +900,19 @@ rc=0; out="$(run)" || rc=$?
 check "merge-only-trailer: exit 1" "$rc" "1"
 contains "merge-only-trailer: check 5 fails" "$out" "[FAIL] 5."
 
-# --- 5h. a missing helper fails closed on items 5 and 13 ----------------
-# (the own-checkout copy is built in section 8 below, after the helper is on its copy list)
 
-# --- 5i. mixed-case trailers on a later commit pass (control) ------------
 reset_stubs
 STUB_COMMITS='[{"messageHeadline":"docs: [HIMMEL-1] note","messageBody":"Platforms tested: Linux\nSecurity reviewed: Manual — x"},{"messageHeadline":"fix(x): [HIMMEL-2] code","messageBody":""}]'
 rc=0; out="$(run)" || rc=$?
 check "mixed-case-trailers: exit 0" "$rc" "0"
 contains "mixed-case-trailers: check 5 passes" "$out" "[PASS] 5."
 
-# --- 5j. the split verdict: a bad token first, a good one later --
 reset_stubs
 STUB_COMMITS='[{"messageHeadline":"feat(x): [HIMMEL-1] add thing","messageBody":"Platforms tested: linux\nSecurity reviewed: outbound write is one PR comment"},{"messageHeadline":"fix(x): [HIMMEL-2] tweak","messageBody":"Security reviewed: ad-hoc — reason"}]'
 rc=0; out="$(run)" || rc=$?
 check "split-verdict-security: exit 0" "$rc" "0"
 contains "split-verdict-security: check 5 passes" "$out" "[PASS] 5."
 
-# --- 5k. the Platforms tested twin of 5j ---------------------------------
 reset_stubs
 STUB_COMMITS='[{"messageHeadline":"feat(x): [HIMMEL-1] add thing","messageBody":"Platforms tested: yes\nSecurity reviewed: ad-hoc — reason"},{"messageHeadline":"fix(x): [HIMMEL-2] tweak","messageBody":"Platforms tested: linux"}]'
 rc=0; out="$(run)" || rc=$?
@@ -2098,7 +2091,6 @@ check "own-checkout .env: only check 19 fails" "$(printf '%s\n' "$out" | grep '^
 contains "own-checkout .env: check 19 fails closed without a timeout lib" "$out" "[FAIL] 19. suite evidence: no timeout binary"
 contains "own-checkout .env: check 6 (ticket ID) passes" "$out" "[PASS] 6."
 
-# --- 5h. the same copy without scripts/lib/attest-trailers.sh fails closed on items 5 and 13
 own_nohelper="$tmp/own-checkout-nohelper"
 cp -R "$own" "$own_nohelper"
 rm -f "$own_nohelper/scripts/lib/attest-trailers.sh"
