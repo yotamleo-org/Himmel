@@ -1146,7 +1146,6 @@ describe('the live-test guard at requestAt and uploadMultipart', () => {
   });
 });
 
-// For a bad token Jira Cloud answers 200 with an empty body and x-seraph-loginreason: AUTHENTICATED_FAILED.
 describe('a 200 that carries x-seraph-loginreason: AUTHENTICATED_FAILED', () => {
   const entry = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'index.js');
   let server: Server;
