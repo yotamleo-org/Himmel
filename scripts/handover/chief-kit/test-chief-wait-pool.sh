@@ -186,11 +186,10 @@ EOF
         check "(8197) $focus_state leaves the simultaneous status sweep queued" 1 "$(grep -c '^status-sweep status-sweep moved=1 wake=1' "$I.wait.housekeeping")"
     done
 
-    # (9982) a loop or an unreadable link wakes once per distinct sorted key set; the refresh-start guard still refuses a WARN state.
     export WAIT_SWEEP_CMD="$STUB/off.sh"
     rm -f "$STUB/focus.runs"
     I="$(new_inbox focus-warn)"
-    warn_poll() {  # <state> <out name>: one waiter run on the shared inbox, sweep stamp aged so the focus read runs
+    warn_poll() {
         printf 'focus=%s\n' "$1" > "$STUB/focus.state"
         printf '%s\n' "$(( $(date +%s) - 61 ))" > "$I.wait.sweep"
         timeout 3 bash "$WAIT" "$I" --doc "$WORK/digest-chief.md" --workers N1.md > "$WORK/$2.out" 2> "$WORK/$2.err"; digest_rc=$?

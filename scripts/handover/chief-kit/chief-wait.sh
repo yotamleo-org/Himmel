@@ -1725,6 +1725,7 @@ sweep_cmd="${WAIT_SWEEP_CMD:-$HERE/status-sweep.sh}"
 focus_cmd="${WAIT_FOCUS_CMD:-$HERE/focus-refresh.sh}"
 sweep_sec="${WAIT_SWEEP_SEC:-900}"
 sweep_timeout="${WAIT_SWEEP_TIMEOUT:-60}"
+warn_loop_key_set() { printf '%s\n' "${1#WARN:}" | sed 's/, /\n/g' | grep -E '^(cycle|unknown) ' | paste -sd, -; }
 sweep_wake() {
     local last now out moved fstat age
     [ -n "$console_doc" ] || return 1
@@ -1754,9 +1755,7 @@ sweep_wake() {
     esac
     fkey="$fstat"
     case "$fstat" in DIRTY:*) fkey=DIRTY ;; FAILED:*) fkey=FAILED ;; esac # the marker keys on the state, not the stage: a failure that flips its stage name (timeout, drift:budget) is one failure
-    case "$fstat" in WARN:*) # the marker keys on the sorted loop and unreadable-link key sets only, so a changed drift or chains warning beside them is the same set
-        fkey="WARN:$(printf '%s\n' "${fstat#WARN:}" | sed 's/, /\n/g' | grep -E '^(cycle|unknown) ' | paste -sd, -)" ;;
-    esac
+    case "$fstat" in WARN:*) fkey="WARN:$(warn_loop_key_set "$fstat")" ;; esac
     [ "$(cat "$sweep_focus_file" 2>/dev/null)" != "$fkey" ] || return 1  # swallow-ok: no marker reads empty, so the first sight wakes
     printf '%s\n' "$fkey" > "$sweep_focus_file" 2>/dev/null
     case "$fstat" in WARN:*) printf 'WAKE focus %s — fix: cut or justify each Blocks edge in the loop, or make the unreadable link readable\n' "$fstat" ;; *) printf 'WAKE focus %s\n' "$fstat" ;; esac
