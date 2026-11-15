@@ -5150,11 +5150,11 @@ _c69_probe_cli() {  # t13b-ok: one bounded read-only vsearch through the bare CL
     [ -f "$lib" ] || { echo "no-qmd"; return 0; }
     # shellcheck disable=SC1090
     . "$lib"  # t13b-ok: sources the group-deadline helper, starts nothing
-    out="$( unset QMD_OPENAI_API_KEY; qmd_bounded "$secs" "$qbin" vsearch -n 1 himmel-doctor-probe 2>&1 )" || rc=$?
+    out="$( unset QMD_OPENAI_API_KEY; qmd_bounded "$secs" "$qbin" vsearch -n 1 himmel-doctor-probe 2>&1 >/dev/null )" || rc=$?
     if [ "$rc" -eq 124 ]; then echo "timeout"
+    elif [ "$rc" -eq 0 ]; then echo "ok"
     elif grep -qE 'answered 401|No cookie auth credentials' <<< "$out"; then echo "refused"
-    elif [ "$rc" -ne 0 ]; then echo "other:$rc"
-    else echo "ok"; fi
+    else echo "other:$rc"; fi
 }
 
 # --- C69-qmd-cli-key: the qmd CLI's OpenRouter key is missing or rejected ---
@@ -5192,8 +5192,8 @@ check_c69_qmd_cli_key() {  # t13b-ok: doctor row that reads the key file and ask
             cli="$(_c69_probe_cli)"
             case "$cli" in
                 refused)
-                    emit WARN C69-qmd-cli-key "the bare qmd CLI answers 401 (no credential sent) although the key file is valid -- every shell qmd embed and vsearch fails" \
-                        "export QMD_OPENAI_API_KEY from the qmd daemon env file in the shell, or run qmd through bash scripts/lib/qmd-bounded.sh, which loads it" ;;
+                    emit WARN C69-qmd-cli-key "the bare qmd CLI, run with no QMD_OPENAI_API_KEY in its environment, answers 401 although the key file is valid -- a shell that does not export the key cannot embed or vsearch" \
+                        "this stays WARN until the installed qmd launcher loads the qmd daemon env key; meanwhile bash scripts/lib/qmd-bounded.sh loads it, and so does a shell that exports QMD_OPENAI_API_KEY from that file" ;;
                 no-qmd) emit INFO C69-qmd-cli-key "the qmd key is accepted but qmd is not installed -- the bare CLI path was not checked" ;;
                 timeout) emit INFO C69-qmd-cli-key "the bare qmd CLI did not answer within its bound -- not a credential verdict" ;;
                 other:*) emit INFO C69-qmd-cli-key "the bare qmd CLI exited ${cli#other:} without a 401 -- not a credential verdict" ;;

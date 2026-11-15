@@ -7518,6 +7518,7 @@ cat > "$c69_t/qmd" <<'STUB'
 #!/bin/sh
 case "$C69_CLI" in
   hang) sleep 30 ;;
+  okmatch) echo 'a hit whose text says answered 401 No cookie auth credentials found'; echo 'warn: answered 401 No cookie auth credentials found' >&2 ;;
   nokey) [ -n "$QMD_OPENAI_API_KEY" ] || { echo 'https://openrouter.ai/api/v1/embeddings answered 401 {"message":"No cookie auth credentials found"}' >&2; exit 1; } ;;
 esac
 echo hit
@@ -7573,6 +7574,10 @@ if grepq "$out" -F 'WARN C69-qmd-cli-key'; then pass "C69 session key scrubbed f
 echo "== C69: the bare qmd CLI answers -> OK =="
 out="$(c69_run C69_CODE=200)"
 if grepq "$out" -F 'OK   C69-qmd-cli-key'; then pass "C69 bare CLI answers -> OK"; else fail "C69 bare CLI answers -> $(printf '%s' "$out" | head -3)"; fi
+
+echo "== C69: a working bare qmd CLI whose output carries the 401 strings -> OK, only a failed call is a 401 =="
+out="$(c69_run C69_CODE=200 C69_CLI=okmatch)"
+if grepq "$out" -F 'OK   C69-qmd-cli-key'; then pass "C69 successful CLI output naming a 401 -> OK"; else fail "C69 successful CLI output naming a 401 -> $(printf '%s' "$out" | head -3)"; fi
 
 echo "== C69: the bare qmd CLI hangs past the bound -> INFO, not a credential verdict =="
 out="$(c69_run C69_CODE=200 C69_CLI=hang HIMMEL_DOCTOR_QMD_CLI_SECS=1 QMD_KILL_GRACE_SECS=1)"
