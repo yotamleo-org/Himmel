@@ -113,7 +113,6 @@ row "foreign MCP write" 2 "$(mcp_payload 'mcp__claude_ai_Slack__slack_send_messa
 row "inbox-send.sh" 2 "$(bash_payload 'bash scripts/handover/chief-kit/inbox-send.sh --to c --file m.md')"
 # --- marker override ---
 row "marker named in command" 2 "$(bash_payload 'env -u HIMMEL_CONSOLE_JUDGE bash x.sh')"
-# --- fetching or running a package that is not installed ---
 row "bun x oxlint" 2 "$(bash_payload 'bun x oxlint .')"
 row "bunx" 2 "$(bash_payload 'bunx oxlint@1.88.0 .')"
 row "npx" 2 "$(bash_payload 'npx prettier --check .')"
@@ -162,7 +161,6 @@ row "append-results bullet" 0 "$(bash_payload 'bash scripts/handover/chief-kit/a
 row "qmd MCP read" 0 "$(mcp_payload 'mcp__qmd__query')"
 row "Read tool" 0 "$(jq -nc '{tool_name:"Read", tool_input:{file_path:"/etc/hostname"}}')"
 
-# --- the judge docs carry the no-fetch rule ---
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 for doc in .claude/agents/judge-ro.md .claude/agents/judge.md docs/handover/judge-brief-template.md; do
     if grep -qF 'Never fetch or run a package that is not already installed' "$REPO_ROOT/$doc"; then
