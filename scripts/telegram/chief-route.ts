@@ -1512,10 +1512,10 @@ function splitParts(text: string, limit = TELEGRAM_PART_LIMIT): string[] {
   }
 }
 
-export async function routeReply(root: string, chatId: number, text: string, o: { kind?: string; consoleName?: string; dest: string }): Promise<MsgClass> {
+export async function routeReply(root: string, chatId: number, text: string, o: { kind?: string; consoleName?: string; dest: string }): Promise<{ cls: MsgClass; parts: number }> {
   const { replyViaOutbox } = await import("./poller");
   const kind = o.kind !== undefined && KIND_RE.test(o.kind) ? o.kind : undefined;
-  let cls: MsgClass = "escalate"; let logClass: string = "escalate"; let sent = text; let capState = "ok"; let keys = 0;
+  let cls: MsgClass = "escalate"; let logClass: string = "escalate"; let sent = text; let capState = "ok"; let keys = 0; let queued = 0;
   try {
     const table = await loadClassTable();
     const row = resolveKind(table, kind);
@@ -1540,13 +1540,14 @@ export async function routeReply(root: string, chatId: number, text: string, o: 
     const parts = splitParts(sent);
     if (parts.length > 1) capState = "split";
     for (const part of parts) await replyViaOutbox(root, chatId, part, o.consoleName);
+    queued = parts.length;
   }
   const dest = cls === "escalate" ? o.dest : cls === "monitor" ? "monitor" : "none";
   try {
     await mkdir(root, { recursive: true });
     await appendFile(join(root, "route.log"), `${new Date().toISOString()} ${kind ?? "unclassified"} ${logClass} ${dest} ${sent.length} ${keys} ${capState}\n`);
   } catch (e) { console.error(`[chief-route] route log not written: ${e instanceof Error ? e.message : e}`); }
-  return cls;
+  return { cls, parts: queued };
 }
 
 export async function latestReceiptId(root: string, chat: number, name: string): Promise<number> {
@@ -1558,12 +1559,20 @@ export async function latestReceiptId(root: string, chat: number, name: string):
   return best;
 }
 
-export async function awaitSendReceipt(root: string, chat: number, name: string, afterId: number, waitSec: number): Promise<number | null> {
+async function receiptIdsAfter(root: string, chat: number, name: string, afterId: number): Promise<number[]> {
+  const ids: number[] = [];
+  for (const f of await readdir(join(root, "consoles", "replies")).catch(() => [] as string[])) {
+    const m = /^(-?\d+)_(\d+)\.json$/.exec(f);
+    if (m && Number(m[1]) === chat && Number(m[2]) > afterId && await consoleReplyTarget(root, chat, Number(m[2])) === name) ids.push(Number(m[2]));
+  }
+  return ids.sort((a, b) => a - b);
+}
+
+export async function awaitSendReceipts(root: string, chat: number, name: string, afterId: number, count: number, waitSec: number): Promise<number[]> {
   const deadline = Date.now() + waitSec * 1000;
   for (;;) {
-    const id = await latestReceiptId(root, chat, name);
-    if (id > afterId) return id;
-    if (Date.now() >= deadline) return null;
+    const ids = await receiptIdsAfter(root, chat, name, afterId);
+    if (ids.length >= count || Date.now() >= deadline) return ids;
     await new Promise(r => setTimeout(r, 200));
   }
 }
@@ -1674,12 +1683,13 @@ if (import.meta.main) {
     const chatId = chat === "operator" ? (operatorChatId(await loadAccess()) ?? NaN) : Number(chat);
     if (verb === "reply" && Number.isSafeInteger(chatId) && chatId !== 0 && rest.length && owedOk && (flags.owed === undefined || name) && (!name || consoleInboxPath(defaultRoot(), name)) && (satellite === undefined || SATELLITE_ID.test(satellite))) {
       const seenBefore = flags.owed !== undefined && name ? await latestReceiptId(defaultRoot(), chatId, name) : 0;
-      const cls = await routeReply(defaultRoot(), chatId, rest.join(" "), { kind: flags.kind, consoleName: name, dest: chat === "operator" ? "operator" : `chat:${chatId}` });
+      const { cls, parts } = await routeReply(defaultRoot(), chatId, rest.join(" "), { kind: flags.kind, consoleName: name, dest: chat === "operator" ? "operator" : `chat:${chatId}` });
       console.log(cls);
       if (flags.owed !== undefined) {
         if (cls !== "escalate") { console.error(`[chief-route] owed item ${flags.owed}: the text was class ${cls}, not sent to Telegram, so there is no receipt`); process.exit(1); }
-        const id = await awaitSendReceipt(defaultRoot(), chatId, name!, seenBefore, Number(process.env.CHIEF_ROUTE_RECEIPT_WAIT_SEC) || 30);
-        if (id === null) { console.error(`[chief-route] owed item ${flags.owed}: queued, but the poller recorded no send receipt in time (poller down or Telegram refused); nothing marked delivered`); process.exit(1); }
+        const ids = await awaitSendReceipts(defaultRoot(), chatId, name!, seenBefore, parts, Number(process.env.CHIEF_ROUTE_RECEIPT_WAIT_SEC) || 30);
+        if (ids.length < parts) { console.error(`[chief-route] owed item ${flags.owed}: queued, but ${ids.length} of ${parts} parts got a send receipt in time and the poller recorded no send receipt for the rest (poller down or Telegram refused); nothing marked delivered`); process.exit(1); }
+        const id = ids[ids.length - 1];
         await writeOwedReceipt(flags.doc!, flags.owed, id, chatId);
         console.log(`delivered msg=${id}`);
       }

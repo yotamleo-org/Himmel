@@ -530,18 +530,41 @@ test("reply CLI: the old --console is refused even with HIMMEL_LEGACY_NAMES=1; o
   expect(old.err).toContain("usage: bun chief-route.ts reply");
 });
 
-async function owedReply(r: string, doc: string, flush: boolean, extra: string[] = ["--owed", "sig-1", "--doc", doc]) {
-  const p = Bun.spawn(["bun", join(import.meta.dir, "chief-route.ts"), "reply", "--chief", NAME, ...extra, "1", "please sign"], {
-    env: { ...process.env, BRIDGE_ROOT: r, CHIEF_ROUTE_RECEIPT_WAIT_SEC: flush ? "20" : "1" }, stdout: "pipe", stderr: "pipe",
+async function owedReply(r: string, doc: string, flush: boolean, extra: string[] = ["--owed", "sig-1", "--doc", doc], o: { text?: string; parts?: number; send?: () => Promise<number | undefined>; waitSec?: string } = {}) {
+  const p = Bun.spawn(["bun", join(import.meta.dir, "chief-route.ts"), "reply", "--chief", NAME, ...extra, "1", o.text ?? "please sign"], {
+    env: { ...process.env, BRIDGE_ROOT: r, CHIEF_ROUTE_RECEIPT_WAIT_SEC: o.waitSec ?? (flush ? "20" : "1") }, stdout: "pipe", stderr: "pipe",
   });
   const out = new Response(p.stdout).text(); const err = new Response(p.stderr).text();
   const outbox = join(r, "sessions", "__chat__", "outbox.jsonl");
   if (flush) {
-    for (let i = 0; i < 100 && !existsSync(outbox); i++) await new Promise(res => setTimeout(res, 100));
-    await flushOutboxes(r, async () => 4242);
+    const queued = () => existsSync(outbox) && readFileSync(outbox, "utf8").split("\n").filter(Boolean).length >= (o.parts ?? 1);
+    for (let i = 0; i < 100 && !queued(); i++) await new Promise(res => setTimeout(res, 100));
+    await flushOutboxes(r, o.send ?? (async () => 4242));
   }
   return { code: await p.exited, out: await out, err: await err };
 }
+
+test("HIMMEL-9974 reply --owed on a split reply writes DELIVERED only after every part has a send receipt, naming the last part's message id", async () => {
+  const r = root(); heartbeat(r);
+  const doc = join(r, "chief.md"); writeFileSync(doc, "# chief\n- 10:00 OWED sig-1 sign it\n");
+  let id = 5000;
+  const send = async () => { await new Promise(res => setTimeout(res, 600)); return ++id; };
+  const res = await owedReply(r, doc, true, undefined, { text: filler(7000), parts: 3, send });
+  expect(res.code).toBe(0);
+  expect(res.out).toContain("delivered msg=5003");
+  expect(readFileSync(doc, "utf8")).toMatch(/\n- \d\d:\d\d DELIVERED sig-1 msg=5003 chat=1\n$/);
+});
+
+test("HIMMEL-9974 reply --owed on a split reply whose last part gets no receipt exits non-zero, names 2 of 3, and marks nothing delivered", async () => {
+  const r = root(); heartbeat(r);
+  const doc = join(r, "chief.md"); writeFileSync(doc, "# chief\n- 10:00 OWED sig-1 sign it\n");
+  let id = 6000;
+  const send = async () => { await new Promise(res => setTimeout(res, 600)); return id < 6002 ? ++id : undefined; };
+  const res = await owedReply(r, doc, true, undefined, { text: filler(7000), parts: 3, send, waitSec: "4" });
+  expect(res.code).toBe(1);
+  expect(res.err).toContain("2 of 3");
+  expect(readFileSync(doc, "utf8")).not.toContain("DELIVERED");
+});
 
 test("reply --owed prints the Telegram message id from the poller's send receipt and writes the DELIVERED bullet", async () => {
   const r = root(); heartbeat(r);
