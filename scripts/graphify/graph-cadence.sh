@@ -1130,13 +1130,11 @@ if [ "$SEMANTIC" -eq 1 ]; then
     # (semantic-update.sh refuses a caller key itself)
     _sem_env=()
     [ "$SEMANTIC_BACKEND" = "claude-api" ] || _sem_env=(env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u ANTHROPIC_ORG_C_KEY -u LQ_API_KEY)
-    # Only the claude-api path ends over-cap, and only there is the result word asked for: the word changes how the
-    # claude-cli path refuses (a pending batch, a bank verdict), so that path is called as it always was.
-    _sem_result_file="${WORKTREE_DIR}.sem-result" _sem_rf=()
+    _sem_result_file="${WORKTREE_DIR}.sem-result" _sem_claude_api_result_args=()
     rm -f "$_sem_result_file"
-    [ "$SEMANTIC_BACKEND" != "claude-api" ] || _sem_rf=(--result-file "$_sem_result_file")
+    [ "$SEMANTIC_BACKEND" != "claude-api" ] || _sem_claude_api_result_args=(--result-file "$_sem_result_file")
     _sem_out=$(${_sem_env[@]+"${_sem_env[@]}"} bash "$SEMANTIC_UPDATE" --name "$CORPUS_SLUG" --corpus-root "$WORKTREE_DIR" \
-        --corpus-class himmel-code --backend "$SEMANTIC_BACKEND" ${_sem_rf[@]+"${_sem_rf[@]}"} 2>&1)
+        --corpus-class himmel-code --backend "$SEMANTIC_BACKEND" ${_sem_claude_api_result_args[@]+"${_sem_claude_api_result_args[@]}"} 2>&1)
     _sem_rc=$?
     _sem_word=$(head -n 1 "$_sem_result_file" 2>/dev/null)
     printf '%s\n' "$_sem_out"
@@ -1165,11 +1163,9 @@ if [ "$SEMANTIC" -eq 1 ]; then
             bash "$CADENCE_ALERT" clear "$_sem_worker-over-cap"
             _promote_semantic_to_primary
             ;;
-        # 3 = bank at/over threshold or over the run cap, 4 = promote lock held. Nothing
+        # 3 = bank at/over threshold, 4 = promote lock held. Nothing
         # was touched and the next fire retries, so neither alerts nor fails the
         # run. An existing alert is left standing: a skip is not a recovery.
-        # Over-cap is the one skip that repeats forever when a file can never fit, so
-        # OVER_CAP_ALERT_AFTER of them in a row raise one alert of their own.
         3|4)
             echo "graph-cadence: semantic step skipped (rc=$_sem_rc, benign: next fire retries)"
             if [ "$_sem_rc" -eq 3 ] && [ "$_sem_word" = over-cap ]; then
@@ -1180,7 +1176,6 @@ if [ "$SEMANTIC" -eq 1 ]; then
                 if [ "$_over_cap_n" -ge "$OVER_CAP_ALERT_AFTER" ]; then
                     _over_cap_usd=$(printf '%s\n' "$_sem_out" | sed -n 's/.*run cap of \([0-9.]*\) USD.*/\1/p' | head -n 1)
                     _over_cap_file=$(printf '%s\n' "$_sem_out" | sed -n 's/.*the estimate for \(.*\) alone is over the run cap.*/\1/p' | head -n 1)
-                    # the reason stays the same every fire so the alert's own dedupe sends it once
                     bash "$CADENCE_ALERT" fail "$_sem_worker-over-cap" \
                         "the semantic update was over the run cap on $OVER_CAP_ALERT_AFTER fires in a row, so the graph is not growing" "$_run_log" \
                         "the run cap is ${_over_cap_usd:-unknown} USD and the first file over it is ${_over_cap_file:-not named, see the log}" \
