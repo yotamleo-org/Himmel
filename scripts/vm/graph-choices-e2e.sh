@@ -503,7 +503,7 @@ host_main() {
     [ -z "$TARBALL" ] || rm -f "$TARBALL"
     [ -z "$OUT" ] || rm -f "$OUT"
     if [ "$BOOTED" = 1 ]; then
-      vmsdk restore "$SNAPSHOT" >/dev/null 2>&1 || { echo "graph-choices-e2e: restore $SNAPSHOT after the run failed; $VM may be dirty" >&2; rc=3; }
+      vmsdk restore "$SNAPSHOT" >/dev/null || { echo "graph-choices-e2e: restore $SNAPSHOT after the run failed; $VM may be dirty" >&2; rc=3; }
       vmsdk down >/dev/null 2>&1 || { echo "graph-choices-e2e: could not power $VM off" >&2; rc=3; }
     fi
     [ "$LOCKED" != 1 ] || vm_lock_release "$VM"
