@@ -5,7 +5,6 @@
 #  a. denied/guard-pr-check-literal with identical retry in 2 distinct workers files exactly ONE ticket,
 #     whose body passes the alphabet check and carries no canary;
 #  b. a third worker adds one comment and no ticket; a run with no new worker writes nothing;
-#  c. a 4th class on a capped day files nothing and writes a capped line;
 #  d. a denied/classifier:* recurrence writes one memory-inbox candidate;
 #  e. two chained sessions of one worker (N500 + N500b) do not trip recurrence;
 #  f. every decision has exactly one decision-log line.
@@ -167,25 +166,25 @@ HIMMEL_LEGACY_NAMES=1 route >/dev/null 2>&1
 check "an old last_legs state key still dedupes a repeated decision: no new line" '[ "$(dlines "$LOG")" = "$nd" ]'
 check "the old state key is carried as last_workers" 'jq -e "[.classes[] | select(has(\"last_workers\"))] | length > 0" "$ST" >/dev/null && ! grep -q last_legs "$ST"'
 
-echo "c + d. the daily cap and the memory-inbox candidate"
+echo "c + d. a 4th class the same day and the memory-inbox candidate"
 row N100 suite/test-board.sh 0 false worker 2026-10-06T10:00:00Z true; row N200 suite/test-board.sh 0 false worker 2026-10-06T10:00:00Z true
 row N100 denied/permission-prompt; row N200 denied/permission-prompt
 route >/dev/null 2>&1
 check "two more classes file (3 today)" '[ "$(calls create)" = 3 ] && [ "$(decs "$LOG" | jq -r "select(.decision == \"filed\") | .class" | sort -u | wc -l)" -eq 3 ]'
 row N100 denied/classifier:merge-without-review; row N200 denied/classifier:merge-without-review
-route >"$TMP/c.out" 2>&1 || bad "route exits 0 on the capped day"
-check "c. the 4th class files nothing and writes one capped line" '[ "$(calls create)" = 3 ] && [ "$(decs "$LOG" | jq -r "select(.class == \"denied/classifier:merge-without-review\") | .decision")" = capped ]'
+route >"$TMP/c.out" 2>&1 || bad "route exits 0 on the 4th class"
+check "c. the 4th class files its own ticket and writes one filed line" '[ "$(calls create)" = 4 ] && [ "$(decs "$LOG" | jq -r "select(.class == \"denied/classifier:merge-without-review\") | .decision")" = filed ]'
 check "d. the classifier recurrence writes one memory-inbox candidate" '[ "$(grep -c "^- " "$INBOX")" = 1 ] && grep -q "denied/classifier:merge-without-review" "$INBOX" && grep -q "shell-and-gate-traps.md" "$INBOX"'
 check "the inbox line carries no canary" '! grep -q "$CANARY" "$INBOX"'
 check "only the classifier class writes to the inbox" '! grep -Eq "permission-prompt|test-board|guard-pr-check" "$INBOX"'
 route >/dev/null 2>&1
 check "a rerun with no new worker adds no inbox line and no log line" '[ "$(grep -c "^- " "$INBOX")" = 1 ] && [ "$(dlines "$LOG")" = 6 ]'
 route --now 2026-10-08T12:00:00Z >/dev/null 2>&1
-check "the next day the capped class files and the open ticket gets its daily comment" '[ "$(calls create)" = 4 ] && [ "$(calls comment)" = 2 ] && [ "$(decs "$LOG" | jq -r "select(.class == \"denied/classifier:merge-without-review\") | .decision" | tail -n 1)" = filed ]'
+check "the next day the open ticket gets its daily comment and nothing new is filed" '[ "$(calls create)" = 4 ] && [ "$(calls comment)" = 2 ] && [ "$(decs "$LOG" | jq -r "select(.class == \"denied/classifier:merge-without-review\") | .decision")" = filed ]'
 check "and it still writes no second inbox candidate" '[ "$(grep -c "^- " "$INBOX")" = 1 ]'
 
 echo "f. every decision has exactly one decision-log line"
-check "the log is 8 lines, one per decision, in order" '[ "$(dlines "$LOG")" = 8 ] && [ "$(decs "$LOG" | jq -r .decision | tr "\n" " ")" = "filed commented skipped:comment-daily filed filed capped commented filed " ]'
+check "the log is 7 lines, one per decision, in order" '[ "$(dlines "$LOG")" = 7 ] && [ "$(decs "$LOG" | jq -r .decision | tr "\n" " ")" = "filed commented skipped:comment-daily filed filed filed commented " ]'
 check "every line is the standard envelope plus {class,workers,decision,ticket}" '[ "$(decs "$LOG" | jq -c "keys" | sort -u)" = "[\"class\",\"decision\",\"host\",\"kind\",\"source\",\"ticket\",\"ts\",\"v\",\"workers\"]" ] && decs "$LOG" | jq -e -s "length > 0 and all(.[]; .v == 1 and .kind == \"route-decision\" and .source == \"scripts/eval/worker-digest/failure_router.py\" and (.host | length) > 0)" >/dev/null'
 check "every route-intent line is the standard envelope plus {class,workers,intent}, and each one precedes a decision line" '[ "$(jq -c "select(.kind == \"route-intent\") | keys" "$LOG" | sort -u)" = "[\"class\",\"host\",\"intent\",\"kind\",\"source\",\"ts\",\"v\",\"workers\"]" ] && [ "$(jq -r .kind "$LOG" | grep -c route-intent)" = "$(( $(dlines "$LOG") - $(decs "$LOG" | jq -r .decision | grep -Ec "^(skipped|capped|recurred)") ))" ]'
 
@@ -302,8 +301,7 @@ for n in N1 N2 N3 N4 N5; do row "$n" error/Bash:cr-gate-exit-14; done
 row N1 denied/guard-leg-context-handoff 1; row N2 denied/guard-leg-context-handoff 1
 LED="$SAVE"
 DRY10="$TMP/dry10.out"
-jq '.daily_cap = 99' "$HERE/failure-routes.table.json" >"$F10/table.json"
-python3 "$FR" route --dry-run --table "$F10/table.json" --ledger "$F10/l.jsonl" --state "$F10/s.json" --log "$F10/log" --inbox "$F10/inbox" --now "$NOW" >"$DRY10" 2>&1
+python3 "$FR" route --dry-run --ledger "$F10/l.jsonl" --state "$F10/s.json" --log "$F10/log" --inbox "$F10/inbox" --now "$NOW" >"$DRY10" 2>&1
 wf10() { jq -e --arg c "$1" "select(.class == \$c and .decision == \"would-file\")" "$DRY10" >/dev/null; }
 check "each sub-class would be filed under its own class" '[ -z "$(for c in error/Bash:usage:impacted-suites error/Bash:zsh-nomatch error/Bash:no-such-file error/Bash:cr-gate-exit-14; do wf10 "$c" || echo "$c"; done)" ]'
 check "the usage ticket names the script and the fix, not just Bash errors" 'jq -er ".routes[] | select(.match == \"error/Bash:usage:*\") | .summary" "$HERE/failure-routes.table.json" | grep -q "{sub}" && ! jq -er ".routes[] | select(.match == \"error/Bash:usage:*\") | .summary" "$HERE/failure-routes.table.json" | grep -q "errors recur"'
@@ -345,7 +343,7 @@ python3 "$FR" route --ledger "$F13/l.jsonl" --state "$F13/s.json" --log "$F13/lo
 check "10 distinct workers of one denied/<hook> file exactly one ticket" '[ "$(calls create)" = "$((n13 + 1))" ] && [ "$(decs "$F13/log" | jq -r "select(.class == \"denied/guard-wide\") | .decision")" = filed ]'
 check "9 distinct workers of another denied/<hook> file nothing" '[ -z "$(decs "$F13/log" | jq -r "select(.class == \"denied/guard-narrow\") | .decision")" ]'
 
-echo "65 firing classes under cap 3 file the 3 widest classes, and a dry run shows the same cap"
+echo "65 firing classes in one day file all 65, and a dry run shows all 65 as would-file"
 F14="$TMP/f14"; mkdir -p "$F14"
 SAVE="$LED"; LED="$F14/l.jsonl"
 for i in $(seq 1 62); do c="error/A$(printf '%02d' "$i")"; row N1 "$c"; row N2 "$c"; row N3 "$c"; done
@@ -355,11 +353,39 @@ for n in 1 2 3 4 5 6 7; do row "N$n" error/Zwide7; done
 LED="$SAVE"
 DRY14="$TMP/dry14.out"
 python3 "$FR" route --dry-run --ledger "$F14/l.jsonl" --state "$F14/s.json" --log "$F14/log" --inbox "$F14/inbox" --now "$NOW" >"$DRY14" 2>&1
-check "the dry run would file exactly the 3 widest classes, widest first" '[ "$(jq -r "select(.decision == \"would-file\") | .class" "$DRY14" | paste -sd, -)" = "error/Zwide9,error/Zwide8,error/Zwide7" ]'
-check "the dry run prints every other firing class as would-cap" '[ "$(jq -r "select(.decision == \"would-cap\") | .class" "$DRY14" | grep -c .)" = 62 ]'
+check "the dry run would file all 65 classes" '[ "$(jq -r "select(.decision == \"would-file\") | .class" "$DRY14" | grep -c .)" = 65 ]'
+check "the dry run prints no would-cap" '! grep -q would-cap "$DRY14"'
 n14="$(calls create)"
 python3 "$FR" route --ledger "$F14/l.jsonl" --state "$F14/s.json" --log "$F14/log" --inbox "$F14/inbox" --now "$NOW" --jira-bin "$STUB/jira" >/dev/null 2>&1
-check "a live run files exactly the 3 widest classes" '[ "$(calls create)" = "$((n14 + 3))" ] && [ "$(decs "$F14/log" | jq -r "select(.decision == \"filed\") | .class" | sort | paste -sd, -)" = "error/Zwide7,error/Zwide8,error/Zwide9" ]'
+check "a live run files all 65 classes and logs no capped line" '[ "$(calls create)" = "$((n14 + 65))" ] && [ "$(decs "$F14/log" | jq -r "select(.decision == \"filed\") | .class" | grep -c .)" = 65 ] && ! decs "$F14/log" | grep -q capped'
+
+echo "no daily create cap (HIMMEL-9983): four distinct firing classes in one UTC day file four tickets"
+F23="$TMP/f23"; mkdir -p "$F23"
+SAVE="$LED"; LED="$F23/l.jsonl"
+for c in denied/cap-one denied/cap-two denied/cap-three denied/cap-four; do row N1 "$c" 1; row N2 "$c" 1; done
+LED="$SAVE"
+DRY23="$TMP/dry23.out"
+python3 "$FR" route --dry-run --ledger "$F23/l.jsonl" --state "$F23/s.json" --log "$F23/log" --inbox "$F23/inbox" --now "$NOW" >"$DRY23" 2>&1
+check "the dry run prints would-file for all four classes and no would-cap" '[ "$(jq -r "select(.decision == \"would-file\") | .class" "$DRY23" | grep -c .)" = 4 ] && ! grep -q would-cap "$DRY23"'
+n23="$(calls create)"
+python3 "$FR" route --ledger "$F23/l.jsonl" --state "$F23/s.json" --log "$F23/log" --inbox "$F23/inbox" --now "$NOW" --jira-bin "$STUB/jira" >/dev/null 2>&1
+check "a live run makes four creates and logs four filed lines and no capped line" '[ "$(calls create)" = "$((n23 + 4))" ] && [ "$(decs "$F23/log" | jq -r "select(.decision == \"filed\") | .class" | grep -c .)" = 4 ] && ! decs "$F23/log" | grep -q capped'
+nr23="$(calls comment)"
+python3 "$FR" route --ledger "$F23/l.jsonl" --state "$F23/s.json" --log "$F23/log" --inbox "$F23/inbox" --now "$NOW" --jira-bin "$STUB/jira" >/dev/null 2>&1; rc23=$?
+check "negative control: a rerun the same day with no new worker exits 0, files nothing and comments nothing" '[ "$rc23" = 0 ] && [ "$(calls create)" = "$((n23 + 4))" ] && [ "$(calls comment)" = "$nr23" ]'
+LED="$F23/l.jsonl"; row N3 denied/cap-one 1; LED="$SAVE"
+printf 'HIMMEL-9101\tTask\tTo Do\tcap-one\n' >"$STUB/list.fl-denied-cap-one"
+jq '.classes["denied/cap-one"].ticket = "HIMMEL-9101"' "$F23/s.json" >"$F23/s.tmp" && mv "$F23/s.tmp" "$F23/s.json"
+nc23="$(calls comment)"
+python3 "$FR" route --ledger "$F23/l.jsonl" --state "$F23/s.json" --log "$F23/log" --inbox "$F23/inbox" --now "$NOW" --jira-bin "$STUB/jira" >/dev/null 2>&1
+check "negative control: the same class routed again the same day comments once and never creates a second ticket" '[ "$(calls create)" = "$((n23 + 4))" ] && [ "$(calls comment)" = "$((nc23 + 1))" ] && [ "$(decs "$F23/log" | jq -r "select(.class == \"denied/cap-one\") | .decision" | tr "\n" " ")" = "filed commented " ]'
+F24="$TMP/f24"; mkdir -p "$F24"
+SAVE="$LED"; LED="$F24/l.jsonl"; row N1 denied/cap-done 1; row N2 denied/cap-done 1; LED="$SAVE"
+printf 'HIMMEL-9102\tTask\tDone\tcap-done\n' >"$STUB/list.fl-denied-cap-done"
+n24="$(calls create)"; nc24="$(calls comment)"
+python3 "$FR" route --ledger "$F24/l.jsonl" --state "$F24/s.json" --log "$F24/log" --inbox "$F24/inbox" --now "$NOW" --jira-bin "$STUB/jira" >/dev/null 2>&1
+check "negative control: a Done ticket is still never reopened or re-filed" '[ "$(calls create)" = "$n24" ] && [ "$(calls comment)" = "$nc24" ] && [ "$(decs "$F24/log" | jq -r .decision)" = recurred-after-done ]'
+rm -f "$STUB/list.fl-denied-cap-one" "$STUB/list.fl-denied-cap-done"
 
 echo "the search runs from the primary checkout, says why it fails, and a filed class reaches the chief and the release manager"
 F15="$TMP/f15"; mkdir -p "$F15"
@@ -501,7 +527,7 @@ check "the title opens with the table's Sector, not a fixed one" 'case "$(head -
 
 echo "the routing table is data"
 check "failure-routes.table.json parses and names every spec 4.2 key pattern" 'jq -e "[.routes[].match] | index(\"denied/classifier:*\") and index(\"suite/*\") and index(\"error/*\") and index(\"traj/claim-unverified\")" "$HERE/failure-routes.table.json" >/dev/null'
-check "the window is 14 days and the cap is 3" 'jq -e ".window_days == 14 and .daily_cap == 3" "$HERE/failure-routes.table.json" >/dev/null'
+check "the window is 14 days and the table has no daily_cap key" 'jq -e ".window_days == 14 and (has(\"daily_cap\") | not)" "$HERE/failure-routes.table.json" >/dev/null'
 
 echo "refreshed rows keep their original time: an old session's refresh decides nothing, an in-window one still counts"
 LED_SAVE="$LED"; LED="$TMP/refresh-ledger.jsonl"; : >"$LED"
@@ -516,6 +542,60 @@ check "an older-than-window session refresh makes no filing or comment decision"
 check "a refreshed row inside the window is still read by the router" 'grep -q "would-file.*guard-refresh-new\|guard-refresh-new.*would-file" "$TMP/refresh-dry.out"'
 check "the preview made no Jira call" '[ "$(calls create)" = "$before_calls" ]'
 LED="$LED_SAVE"
+
+echo "backfill: a class capped and never filed is routed once, a class filed after its capped row is not replayed"
+FBF="$TMP/fbf"; mkdir -p "$FBF"
+BF_SEEN=2026-09-20T10:00:00Z; BF_CAPPED=2026-09-21T10:00:00Z
+SAVE="$LED"; LED="$FBF/l.jsonl"
+for c in denied/guard-bf-new denied/guard-bf-control denied/guard-bf-open denied/guard-bf-done denied/guard-bf-fixed; do
+  row N1 "$c" 1 false worker "$BF_SEEN"; row N2 "$c" 1 false worker "$BF_SEEN"
+done
+row N1 suite/test-bf-noise.sh 0 false worker "$BF_SEEN"; row N2 suite/test-bf-noise.sh 0 false worker "$BF_SEEN"
+LED="$SAVE"
+bfrow() { jq -nc --arg c "$1" --arg d "$2" --arg t "${3:-}" --arg ts "$4" '{v:1, ts:$ts, host:"h", source:"scripts/eval/worker-digest/failure_router.py",
+  kind:"route-decision", class:$c, workers:2, decision:$d, ticket:(if $t == "" then null else $t end)}' >>"$FBF/log"; }
+for c in denied/guard-bf-new denied/guard-bf-control denied/guard-bf-open denied/guard-bf-done denied/guard-bf-fixed suite/test-bf-noise.sh denied/guard-bf-noev; do bfrow "$c" capped "" "$BF_CAPPED"; done
+bfrow denied/guard-bf-control filed HIMMEL-9400 2026-09-22T10:00:00Z
+printf 'HIMMEL-9500\tTask\tTo Do\tan open ticket\n' >"$STUB/list.fl-denied-guard-bf-open"
+printf 'HIMMEL-9501\tTask\tDone\ta done ticket\n' >"$STUB/list.fl-denied-guard-bf-done"
+printf 'denied/guard-bf-fixed\tabc1234def\n' >"$FBF/covered.tsv"
+bf() { python3 "$FR" route --ledger "$FBF/l.jsonl" --state "$FBF/s.json" --log "$FBF/log" --inbox "$FBF/inbox" --now "$NOW" --jira-bin "$STUB/jira" "$@"; }
+pending() { jq -s -r '[.[] | select(.kind == "route-decision")] | group_by(.class) | map(select((map(.decision) | index("capped")) != null)
+  | (map(.decision) | rindex("capped")) as $c | select(([.[($c + 1):][] | .decision] | map(select(. == "filed" or . == "commented" or . == "recurred-after-done"
+  or . == "skipped:noise" or . == "skipped:covered")) | length) == 0)) | length' "$1"; }
+cp "$FBF/log" "$FBF/log.orig"
+check "before: 6 classes are capped and never filed (the control was filed after its capped row)" '[ "$(pending "$FBF/log")" = 6 ]'
+nc="$(lines "$STUB/calls.log")"
+python3 "$FR" route --ledger "$FBF/l.jsonl" --state "$FBF/plain.json" --log "$FBF/plain.log" --inbox "$FBF/inbox" --now "$NOW" --jira-bin "$STUB/jira" >"$FBF/plain.out" 2>&1
+check "without --backfill the router makes no decision for a capped class outside the window" '[ "$(lines "$FBF/plain.log")" = 0 ] && [ "$(lines "$STUB/calls.log")" = "$nc" ]'
+bf --backfill --dry-run --covered "$FBF/covered.tsv" >"$FBF/dry.out" 2>&1; rc=$?
+check "backfill --dry-run exits 0 and names what it would do for each pending class" '[ "$rc" = 0 ] && grep -q "\"class\":\"denied/guard-bf-new\".*would-file" "$FBF/dry.out" && grep -q "\"class\":\"suite/test-bf-noise.sh\".*skipped:noise" "$FBF/dry.out" && grep -q "\"class\":\"denied/guard-bf-fixed\".*skipped:covered.*abc1234def" "$FBF/dry.out" && ! grep -q "guard-bf-control" "$FBF/dry.out"'
+check "backfill --dry-run writes no log, state or inbox and calls no Jira" '[ "$(cat "$FBF/log" | sha256sum)" = "$(cat "$FBF/log.orig" | sha256sum)" ] && [ ! -e "$FBF/s.json" ] && [ "$(lines "$STUB/calls.log")" = "$nc" ]'
+ncreate="$(calls create)"; ncomment="$(calls comment)"; nintake="$(grep -c '^intake ' "$STUB/notify.log" 2>/dev/null || true)"; nchief="$(grep -c '^chief ' "$STUB/notify.log" 2>/dev/null || true)"
+bf --backfill --covered "$FBF/covered.tsv" --intake-batch "$FBF/batch.tsv" >"$FBF/bf.out" 2>&1; rc=$?
+check "backfill exits 0" '[ "$rc" = 0 ] || { head -c 600 "$FBF/bf.out"; false; }'
+bfdec() { decs "$FBF/log" | jq -r --arg c "$1" 'select(.class == $c and (.ts | startswith("2026-10-07"))) | "\(.decision) \(.ticket // "")"'; }
+check "a capped, never-filed class files one ticket" 'bfdec denied/guard-bf-new | grep -Eq "^filed HIMMEL-[0-9]+\$" && [ "$(calls create)" = "$((ncreate + 1))" ]'
+check "a class filed after its capped row is not replayed" '[ -z "$(bfdec denied/guard-bf-control)" ] && ! grep -q "fl-denied-guard-bf-control" "$STUB/calls.log"'
+check "a class with an open ticket gets a comment on it, not a second ticket" '[ "$(bfdec denied/guard-bf-open)" = "commented HIMMEL-9500" ] && [ "$(calls comment)" = "$((ncomment + 1))" ]'
+check "a class whose ticket is Done is recorded recurred-after-done, never reopened" '[ "$(bfdec denied/guard-bf-done)" = "recurred-after-done HIMMEL-9501" ]'
+check "a class the table no longer routes ends skipped:noise, with no Jira call" '[ "$(bfdec suite/test-bf-noise.sh)" = "skipped:noise " ] && ! grep -q "fl-suite-test-bf-noise" "$STUB/calls.log"'
+check "a class named in --covered ends skipped:covered carrying its sha, with no Jira call" '[ "$(bfdec denied/guard-bf-fixed)" = "skipped:covered abc1234def" ] && ! grep -q "fl-denied-guard-bf-fixed" "$STUB/calls.log"'
+check "a class with no ledger row in its window ends skipped:no-evidence, not noise, with no Jira call" '[ "$(bfdec denied/guard-bf-noev)" = "skipped:no-evidence " ] && ! grep -q "fl-denied-guard-bf-noev" "$STUB/calls.log"'
+check "after: only the no-evidence class is left with a capped row, and nothing else" '[ "$(pending "$FBF/log")" = 1 ] && jq -s -e "[.[] | select(.kind == \"route-decision\" and .class == \"denied/guard-bf-noev\")] | last.decision == \"skipped:no-evidence\"" "$FBF/log" >/dev/null'
+check "--intake-batch sends no per-ticket intake: one summary line for the filed ticket, its class and last-seen date" '[ "$(grep -c "^intake " "$STUB/notify.log" 2>/dev/null || true)" = "$nintake" ] && [ "$(lines "$FBF/batch.tsv")" = 1 ] && grep -Eq "^HIMMEL-[0-9]+	denied/guard-bf-new	2026-09-20$" "$FBF/batch.tsv"'
+check "--intake-batch still sends the one chief summary" '[ "$(grep -c "^chief " "$STUB/notify.log")" = "$((nchief + 1))" ]'
+nd="$(dlines "$FBF/log")"; nc="$(lines "$STUB/calls.log")"
+bf --backfill --covered "$FBF/covered.tsv" >"$FBF/bf2.out" 2>&1
+check "a second backfill makes no decision and no Jira call: it runs once" '[ "$(dlines "$FBF/log")" = "$nd" ] && [ "$(lines "$STUB/calls.log")" = "$nc" ]'
+bfrow denied/guard-bf-late capped "" "$BF_CAPPED"
+SAVE="$LED"; LED="$FBF/l.jsonl"; row N1 denied/guard-bf-late 1 false worker "$BF_SEEN"; row N2 denied/guard-bf-late 1 false worker "$BF_SEEN"; LED="$SAVE"
+nc="$(lines "$STUB/calls.log")"; nd="$(dlines "$FBF/log")"
+bf --backfill --intake-batch "$FBF/no-such-dir/batch.tsv" >"$FBF/nb.out" 2>&1; rc=$?
+check "an unwritable --intake-batch path is refused before any Jira call: exit 1, nothing filed, no decision line" '[ "$rc" = 1 ] && grep -q "intake batch" "$FBF/nb.out" && [ "$(lines "$STUB/calls.log")" = "$nc" ] && [ "$(dlines "$FBF/log")" = "$nd" ]'
+printf 'denied/guard-bf-new\tnot-a-ref\n' >"$FBF/bad.tsv"
+bf --backfill --dry-run --covered "$FBF/bad.tsv" >"$FBF/bad.out" 2>&1; rc=$?
+check "a --covered line with no Jira key or sha is refused: exit 1, nothing routed" '[ "$rc" = 1 ] && grep -q "covered" "$FBF/bad.out"'
 
 echo
 echo "test-failure-router: $PASS passed, $FAIL failed"

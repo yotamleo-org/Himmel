@@ -178,9 +178,11 @@
 #     script deliberately does not cross.
 #   - A `cp` SOURCE is a READ role and is never checked; only `mv` SOURCES
 #     (rename(2) removes the entry) are.
-#   - `is_temp_or_devnull`'s `*/tmp/*` pattern exempts ANY repo-internal
-#     `tmp/` directory, not only the filesystem `/tmp` — accepted, documented,
-#     unchanged here (inherited from block-terminal-write-fence.sh).
+#   - `is_temp_or_devnull` exempts only the real temp roots (/tmp, /var/tmp,
+#     and on macOS /var/folders plus the /private forms), by a boundary-safe
+#     prefix test on the lexical path and again on the resolved path; a
+#     repo-internal `tmp/` or `temp/` directory is guarded like any other
+#     path (the copy is shared with block-terminal-write-fence.sh).
 #   - A `cd`/`pushd` earlier in the command DOES move the resolution base for
 #     arms (a) (redirect/tee) and (b)/(e) (sed/cp/mv/rm/touch/ln/git-commit/
 #     install/rsync/dd/eval-bash-c) now (corrects the bullet this
@@ -304,7 +306,9 @@ is_temp_or_devnull() {
     # shellcheck disable=SC2016
     case "$1" in
         /dev/null|/dev/null/*) return 0 ;;
-        /tmp|/tmp/*|*/tmp/*|*/temp/*) return 0 ;;
+        /tmp|/tmp/*|/var/tmp|/var/tmp/*) return 0 ;;
+        /private/tmp|/private/tmp/*|/private/var/tmp|/private/var/tmp/*) return 0 ;;
+        /var/folders|/var/folders/*|/private/var/folders|/private/var/folders/*) return 0 ;;
         *appdata/local/temp*) return 0 ;;
         '$tmp'*|'$temp'*|'%temp%'*|'%tmp%'*) return 0 ;;
         *) return 1 ;;
@@ -2235,9 +2239,9 @@ _bwimc_check_abs() {
     _tolower_ascii "$abs"
     lc="$_TOLOWER_OUT"
     if is_temp_or_devnull "$lc"; then
-        # the /tmp exemption is by NAME, so a link under /tmp
-        # that resolves into a protected checkout slipped through. Exempt only
-        # when the RESOLVED path is temp-ish too; entry mode (rm, ln) resolves
+        # the first test reads the lexical path, so a link under /tmp
+        # can resolve into a protected checkout. Exempt only
+        # when the RESOLVED path is under a temp root too; entry mode (rm, ln) resolves
         # ancestors only, since the link itself is what it touches. An
         # unresolvable path stays exempt, as before.
         case "$abs" in /dev/null|/dev/null/*) return 0 ;; esac
@@ -3687,7 +3691,7 @@ def _is_pwd_subst:
 
 def _raw_part:
   if .Type == "Lit" then .Value
-  elif .Type == "SglQuoted" then (if .Dollar then "$'" else "'" end) + .Value + "'"
+  elif .Type == "SglQuoted" then (if .Dollar then "$'" else "'" end) + (.Value // "") + "'"
   elif .Type == "DblQuoted" then "\"" + ([.Parts[]? | _raw_part] | join("")) + "\""
   elif .Type == "ParamExp" then (if .Short then "$" + .Param.Value else "${" + (.Param.Value // "") + "…}" end)
   elif .Type == "CmdSubst" then "$(…)"
@@ -3700,9 +3704,9 @@ def _raw_part:
 def _segs($env; $dq):
   if .Type == "Lit" then [{s: (.Value | if $dq then _dq_lit else _unq_lit end)}]
   elif .Type == "SglQuoted" then
-    if .Dollar then (.Value | _ansic) as $a
+    if .Dollar then (.Value // "" | _ansic) as $a
       | if $a.amb then [{d: "amb", why: ("$'…' with " + $a.amb)}] else [{s: ($a.v | _protect)}] end
-    else [{s: (.Value | _protect)}] end
+    else [{s: (.Value // "" | _protect)}] end
   elif .Type == "DblQuoted" then
     ([.Parts[]? | _segs($env; true)] | add // []) | if . == [] then [{s: ""}] else . end
   elif .Type == "ParamExp" then

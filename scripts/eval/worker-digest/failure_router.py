@@ -7,7 +7,7 @@ recur across distinct workers, and routes each through failure-routes.table.json
 memory-inbox candidate for classifier denials. Deterministic, local, no model.
 
   failure_router.py route [--dry-run] [--ledger P] [--state P] [--log P] [--inbox P]
-                          [--table P] [--now ISO] [--jira-bin P]
+                          [--table P] [--now ISO] [--jira-bin P] [--backfill [--covered FILE]] [--intake-batch FILE]
   failure_router.py check-body <file>     the body alphabet check, exit 1 on a refusal
 
 RECURRENCE (spec 4.1): a class recurs at the table row's threshold in DISTINCT workers
@@ -17,7 +17,7 @@ behaviour classes count only rows whose agent.role is worker or whose agent.id i
 main; a row marked any_role (suite/*) counts every role. Rows that fail the
 worker_ledger.py validator are ignored.
 
-DECISIONS, one decision-log line each (P4 contract): filed | commented | capped |
+DECISIONS, one decision-log line each (P4 contract): filed | commented |
 recurred-after-done | skipped:<why>. A class whose window workers were all acted on
 before makes no decision; a decision equal to the class's last one on
 the same workers writes no second line. Never-routed and signal-only rows (the
@@ -29,14 +29,14 @@ traj/red-before-green and traj/claim-unverified classes among them) decide nothi
          so readers skip it) is written first; if that write fails nothing is sent and the
          decision is skipped:log-error. JIRA_PROJECT_KEY is required (no default) unless --dry-run.
   state  $HIMMEL_FAILURE_ROUTES_STATE, else ~/.himmel/state/failure-routes.json
-         class -> ticket and counts, plus the day's create count; flock, temp then rename
+         class -> ticket and counts; flock, temp then rename
   inbox  $HIMMEL_FAILURE_INBOX, else --inbox (<bucket>/failure-loop/memory-inbox.md);
          one `- ` line per class ever, under flock; none when neither is set
 
 JIRA (the himmel CLI by absolute path; --jira-bin replaces it, as the tests' stub):
 a --jql label search over every status before any create, one Task per class with
 labels failure-loop + fl-<slug> and no fixVersion, at most one comment a day per
-ticket, at most daily_cap creates a UTC day. A Done ticket is never reopened or
+ticket, and no limit on creates: every class that fires and has no ticket gets one. A Done ticket is never reopened or
 re-filed. FAIL CLOSED: an unreadable state file, a search error, a CLI error or a
 body outside the alphabet files nothing and logs skipped:<why>. slug() is lossy (case,
 punctuation, past char 60), so a class with no ticket of its own whose fl-<slug> is
@@ -45,6 +45,19 @@ rather than adopt the other class's ticket.
 
 --dry-run reads only: it prints the would-be decisions and writes no file and makes
 no Jira call, the search included.
+
+--backfill replaces the ledger-window scan with the decision log's PENDING classes:
+a `capped` row with no later filed, commented, recurred-after-done, skipped:noise or skipped:covered
+row (the daily create cap, now gone, left them unrouted). Each is judged on the ledger rows of the
+window that ended at its last capped row, then goes through the same decide() path, so the fail-closed
+rules, the slug-collision skip and the decision-equal skip apply. A class the table no longer routes
+ends skipped:noise; a class in the --covered file (<class><TAB><Jira key or sha>, already fixed or
+covered) ends skipped:covered carrying that ref; neither calls Jira. A class with no ledger row in
+its window ends skipped:no-evidence (a missing record, not a table verdict). A class that ends on
+another skipped:<why> stays pending and is retried by the next backfill.
+
+--intake-batch FILE (any run) replaces the per-ticket intake notification with one line per filed
+ticket appended to FILE: <key><TAB><class><TAB><last-seen date>. The chief summary still goes once.
 """
 
 import argparse
@@ -137,6 +150,44 @@ def keep(row, when):
     if when == "final_red":
         return row.get("final_red") is True
     return True
+
+
+CLEARS = ("filed", "commented", "recurred-after-done", "skipped:noise", "skipped:covered")
+REF = re.compile(r"^([A-Z][A-Z0-9]+-\d+|[0-9a-f]{7,40})$")
+
+
+def capped_pending(log):
+    pend = {}
+    if not os.path.exists(log):
+        return pend
+    with open(log, encoding="utf-8") as fh:
+        for line in fh:
+            try:
+                r = json.loads(line)
+                dec, cls, ts = r.get("decision"), r.get("class"), r.get("ts")
+                if not (isinstance(dec, str) and isinstance(cls, str)):
+                    continue
+                if dec == "capped":
+                    now_utc(ts)
+                    pend[cls] = ts
+                elif dec in CLEARS:
+                    pend.pop(cls, None)
+            except (ValueError, TypeError, AttributeError):
+                continue
+    return pend
+
+
+def load_covered(path):
+    out = {}
+    with open(path, encoding="utf-8") as fh:
+        for n, line in enumerate(fh, 1):
+            if not line.strip():
+                continue
+            cls, _, ref = line.rstrip("\n").partition("\t")
+            if not (CLASS.match(cls) and REF.match(ref)):
+                raise ValueError("covered file line %d is not <class><TAB><Jira key or sha>" % n)
+            out[cls] = ref
+    return out
 
 
 def read_ledger(path, cutoff, now):
@@ -327,12 +378,13 @@ def with_file(text, fn):
 def load_state(path):
     """(state, ok). A missing file is an empty state; anything unreadable is not ok."""
     if not os.path.exists(path):
-        return {"v": 1, "classes": {}, "created": {"day": None, "n": 0}}, True
+        return {"v": 1, "classes": {}}, True
     try:
         with open(path, encoding="utf-8") as fh:
             s = json.load(fh)
-        if not (isinstance(s, dict) and isinstance(s.get("classes"), dict) and isinstance(s.get("created"), dict)):
+        if not (isinstance(s, dict) and isinstance(s.get("classes"), dict)):
             return None, False
+        s.pop("created", None)
         return s, True
     except (OSError, ValueError):
         return None, False
@@ -390,7 +442,7 @@ def acted(c, workers):
 
 
 def decide(a, table, cls, t, workers, counted, c, state, state_ok, today, jbin, project, intent, collide=False):
-    """(decision, ticket). Mutates the class entry c and the state's create count.
+    """(decision, ticket). Mutates the class entry c.
 
     intent(kind) logs the send before it happens and returns False when the log write failed:
     no Jira write is made without it."""
@@ -406,11 +458,6 @@ def decide(a, table, cls, t, workers, counted, c, state, state_ok, today, jbin, 
     if a.dry_run:
         if c.get("ticket"):
             return "would-comment", c["ticket"]
-        cap = state["created"]["n"] if state["created"].get("day") == today else 0
-        if cap >= table["daily_cap"]:
-            return "would-cap", None
-        # The dry run is never saved, so counting here only makes it show the cap a live run would hit.
-        state["created"] = {"day": today, "n": cap + 1}
         return "would-file", None
     hits = search(jbin, project, cls)
     if hits is None:
@@ -434,10 +481,6 @@ def decide(a, table, cls, t, workers, counted, c, state, state_ok, today, jbin, 
         acted(c, workers)
         c["last_comment_day"] = today
         return "commented", key
-    if state["created"].get("day") != today:
-        state["created"] = {"day": today, "n": 0}
-    if state["created"]["n"] >= table["daily_cap"]:
-        return "capped", None
     sub = cls.partition("/")[2]
     title = t["summary"].replace("{sub}", sub).replace("{workers}", str(n))
     body = build_body(table, t, cls, workers, counted, False)
@@ -457,7 +500,6 @@ def decide(a, table, cls, t, workers, counted, c, state, state_ok, today, jbin, 
         if out is not None:
             JIRA_ERR = "unexpected output: " + excerpt(out)
         return "skipped:jira-error", None
-    state["created"]["n"] += 1
     c["ticket"] = m.group(1)
     acted(c, workers)
     return "filed", m.group(1)
@@ -474,11 +516,24 @@ def route(a):
     if project and not PROJECT.match(project):
         print("failure-router: JIRA_PROJECT_KEY %r is not a project key" % project, file=sys.stderr)
         return 1
+    window = timedelta(days=table["window_days"])
+    pend, covered = {}, {}
     try:
-        by = read_ledger(a.ledger, now - timedelta(days=table["window_days"]), now)
+        if a.backfill:
+            pend = {c: now_utc(ts) for c, ts in capped_pending(a.log).items()}
+            covered = load_covered(a.covered) if a.covered else {}
+            by = read_ledger(a.ledger, min(pend.values()) - window, max(pend.values())) if pend else {}
+        else:
+            by = read_ledger(a.ledger, now - window, now)
     except OSError as e:
         print("failure-router: cannot read the ledger: %s" % e, file=sys.stderr)
         return 1
+    if a.intake_batch and not a.dry_run:
+        try:
+            open(a.intake_batch, "a", encoding="utf-8").close()
+        except OSError as e:
+            print("failure-router: cannot write the intake batch file, nothing routed: %s" % e, file=sys.stderr)
+            return 1
     jbin = [a.jira_bin] if a.jira_bin else default_jira()
     lock = None
     if not a.dry_run:
@@ -493,19 +548,31 @@ def route(a):
         decisions = 0
         failed = False
         sent = []
-        fires = {cls: firing(table, cls, by[cls]) for cls in sorted(by)}
-        # The daily cap stops the walk, so the widest classes go first, not the alphabetical ones.
-        for cls in sorted((c for c in fires if fires[c]), key=lambda c: (-len(fires[c][1]), c)):
-            t, workers, counted = fires[cls]
+        if a.backfill:
+            seen = {cls: [r for r in by.get(cls, []) if end - window <= now_utc(r["ts"]) <= end] for cls, end in pend.items()}
+            fires = {cls: firing(table, cls, seen[cls]) for cls in sorted(pend)}
+        else:
+            fires = {cls: firing(table, cls, by[cls]) for cls in sorted(by)}
+        for cls in sorted(pend) if a.backfill else sorted(c for c in fires if fires[c]):
+            special = None
+            if fires[cls]:
+                t, workers, counted = fires[cls]
+            else:
+                t, counted = None, seen[cls]
+                workers = sorted({worker_of(r["leg"]) for r in counted if r["leg"]}, key=lambda x: int(x[1:]))
+            if a.backfill and cls in covered:
+                special = ("skipped:covered", covered[cls])
+            elif not fires[cls]:
+                special = ("skipped:noise" if counted else "skipped:no-evidence", None)
             n = len(workers)
             c = state["classes"].setdefault(cls, {}) if state_ok else {}
             if "last_legs" in c:  # a state file written before the rename
                 old = c.pop("last_legs")
                 if legacy_names_on():
                     c.setdefault("last_workers", old)
-            if set(workers) <= set(c.get("acted", [])):
+            if not special and set(workers) <= set(c.get("acted", [])):
                 continue
-            inbox = a.inbox if t.get("inbox") and state_ok and not c.get("inbox") else None
+            inbox = a.inbox if not special and t.get("inbox") and state_ok and not c.get("inbox") else None
             if inbox and not a.dry_run:
                 line = ("- %s %s workers=%d topic=%s: candidate line, classifier denials recurred, check the "
                         "allow-rule shape" % (today, cls, n, t["inbox"]))
@@ -523,8 +590,11 @@ def route(a):
                     print("failure-router: cannot log the intent, nothing sent: %s" % e, file=sys.stderr)
                     return False
 
-            dec, ticket = decide(a, table, cls, t, workers, counted, c, state, state_ok, today, jbin, project, intent,
-                                 len(slugs[slug(cls)]) > 1)
+            if special and state_ok:
+                dec, ticket = special
+            else:
+                dec, ticket = decide(a, table, cls, t, workers, counted, c, state, state_ok, today, jbin, project, intent,
+                                     len(slugs[slug(cls)]) > 1)
             if a.dry_run:
                 print(json.dumps({"class": cls, "workers": n, "decision": dec, "ticket": ticket,
                                   "inbox": bool(inbox)}, separators=(",", ":")))
@@ -548,8 +618,11 @@ def route(a):
                 print("failure-router: %s reason: %s" % (cls, JIRA_ERR))
             if dec in ("filed", "commented"):
                 sent.append((dec, cls, ticket))
+            if dec == "filed" and a.intake_batch:
+                with open(a.intake_batch, "a", encoding="utf-8") as fh:
+                    fh.write("%s\t%s\t%s\n" % (ticket, cls, max(r["ts"] for r in counted)[:10]))
         for dec, cls, ticket in sent:
-            if dec == "filed":
+            if dec == "filed" and not a.intake_batch:
                 notify(a, "intake", ticket, "the daily failure review filed it: class %s recurred in distinct workers" % cls)
         if sent:
             notify(a, "chief", "failure-router: " + ", ".join("%s %s (%s)" % (dec, ticket, cls) for dec, cls, ticket in sent))
@@ -578,6 +651,9 @@ def main(argv=None):
     r.add_argument("--now")
     r.add_argument("--jira-bin")
     r.add_argument("--notify-cmd", default=os.environ.get(NOTIFY_ENV))
+    r.add_argument("--backfill", action="store_true")
+    r.add_argument("--covered")
+    r.add_argument("--intake-batch")
     b = sub.add_parser("check-body")
     b.add_argument("file")
     a = ap.parse_args(argv)

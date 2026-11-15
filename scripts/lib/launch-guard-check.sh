@@ -8,6 +8,8 @@
 # folder's .claude/settings.json must carry the full chain (launch-guard-p.mjs), or be
 # byte-equal to a blob on the anchor's origin/main since the folder's merge-base (a
 # worktree cut before main added hooks). A subdirectory of the tree needs its own file.
+# The full-chain check sets aside the wiring of a hook the folder's own branch adds
+# (in its diff since the merge-base, executable in <dir>); see hooks_added_by_branch.
 # Layer U (anything else): the user guard layer is complete, <dir> is in a git work
 # tree whose primary checkout is registered, and that checkout is not a state repo: one
 # carrying .single-writer AND any of a .vault-template.json stamp, an .obsidian/ directory,
@@ -75,17 +77,38 @@ settings_on_main_history() {
   } | grep -xF "$want" >/dev/null  # no -q: an early-exiting grep would SIGPIPE the writers under pipefail
 }
 
+hooks_added_by_branch() {
+  local ref="" r head mb p name f
+  for r in refs/remotes/origin/main refs/heads/main; do
+    if git -C "$anchor" rev-parse --verify -q "$r^{commit}" >/dev/null 2>&1; then ref="$r"; break; fi
+  done
+  [ -n "$ref" ] || return 0
+  head="$(git -C "$top" rev-parse HEAD 2>/dev/null)" || return 0
+  mb="$(git -C "$anchor" merge-base "$ref" "$head" 2>/dev/null)" || return 0
+  [ -n "$mb" ] || return 0
+  git -C "$anchor" diff-tree -r --no-renames --name-only --diff-filter=A "$mb" "$head" -- scripts/hooks/ 2>/dev/null \
+    | while IFS= read -r p; do
+        name="${p#scripts/hooks/}"
+        printf '%s\n' "$name" | grep -xE '[A-Za-z0-9._-]+\.sh' >/dev/null || continue
+        f="$dir/scripts/hooks/$name"
+        [ -f "$f" ] && [ ! -L "$f" ] && [ -x "$f" ] && printf '%s\n' "$name"
+      done
+}
+
 # Layer P: a himmel tree must pass P, with no fallback to U. The file judged is the one the
 # session loads, <dir>/.claude/settings.json (a subdirectory without one is refused). P passes
-# when the anchor's own checker finds nothing to rewrite, or when the file is byte-equal to a
+# when the anchor's own checker finds nothing to rewrite once the branch's added hooks are set
+# aside, or when the file is byte-equal to a
 # blob main carried since the folder's merge-base (a worktree cut before main added hooks).
 if [ -n "$top" ] && [ -f "$top/scripts/hooks/wire-hook-bash.mjs" ]; then
   settings="$dir/.claude/settings.json"
   if [ "$dir" != "$top" ] && [ ! -f "$settings" ]; then
     refuse "not a git work tree root (launch from $top)"
   fi
+  added=()
+  while IFS= read -r name; do added+=("$name"); done < <(hooks_added_by_branch)
   if [ -f "$settings" ] \
-     && { node "$HERE/launch-guard-p.mjs" "$anchor" "$settings" >/dev/null 2>&1 \
+     && { node "$HERE/launch-guard-p.mjs" "$anchor" "$settings" ${added[@]+"${added[@]}"} >/dev/null 2>&1 \
           || settings_on_main_history "$settings"; }; then
     echo "guarded: project $dir"
     exit 0

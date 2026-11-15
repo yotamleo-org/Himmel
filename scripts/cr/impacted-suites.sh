@@ -601,7 +601,7 @@ fi
 work=$(mktemp -d "${TMPDIR:-/tmp}/impacted-suites.XXXXXX") || { echo "impacted-suites.sh: mktemp failed" >&2; exit 2; }
 trap 'rm -rf "$work"' EXIT
 pats="$work/patterns"
-lits="$work/literals"   # HIMMEL-5363: one literal per pattern in $pats, see grep_narrowed
+lits="$work/literals"
 found="$work/found"
 : > "$pats"
 : > "$lits"
@@ -852,6 +852,16 @@ templates/luna-second-brain/_CLAUDE.md templates/luna-second-brain/scripts/test-
 templates/luna-second-brain/index.md templates/luna-second-brain/scripts/test-vault-git.sh
 templates/luna-second-brain/log.md templates/luna-second-brain/scripts/test-vault-git.sh
 templates/luna-second-brain/Welcome.md templates/luna-second-brain/scripts/test-vault-git.sh
+docs/*.md scripts/docs/test-docs-dropped-terms.sh
+docs/*.mdx scripts/docs/test-docs-dropped-terms.sh
+docs/*.html scripts/docs/test-docs-dropped-terms.sh
+docs/*.astro scripts/docs/test-docs-dropped-terms.sh
+site/*.md scripts/docs/test-docs-dropped-terms.sh
+site/*.mdx scripts/docs/test-docs-dropped-terms.sh
+site/*.html scripts/docs/test-docs-dropped-terms.sh
+site/*.astro scripts/docs/test-docs-dropped-terms.sh
+README.md scripts/docs/test-docs-dropped-terms.sh
+docs/*.md scripts/docs/test-docs-current-version.sh
 EOF
 }
 scan_roots > "$work/scan-roots" || io_fail "writing the scan-roots map"
@@ -1383,6 +1393,12 @@ done < "$work/changed"
 # (.py, .mts, .tsx, .json, extensionless) that no row selects it for; upgrade
 # path: a row here once a --selector-miss ledger row names one. A VENDORED.md
 # tree it skips is not mirrored, so a vendored file over-selects a 0 s suite.
+# The docs rows mirror the page walks of test-docs-dropped-terms.sh (git
+# ls-files docs README.md site, .md .mdx .html .astro) and
+# test-docs-current-version.sh (the docs/ pages site/allowlist.txt lists), so a
+# content-only page edit selects them. docs/internals/ and docs/release/ get no
+# veto: dropped-terms reads each internals page a user page names, and a
+# release page can add such a name.
 # ponytail: whole-repo walkers are left out on purpose — scripts/test-adopt.sh
 # and scripts/himmelctl/test/test-versioned-layout.sh copy the whole tree (a
 # `*` row would run 554s+19s on every PR);

@@ -122,7 +122,10 @@ HIMMEL_FLEET_CAP) -- never a second count; fleet=? when that census cannot be
 read. capacity=UNDERFILLED:<slack> means live < cap AND no leg launched for
 TICK_UNDERFILL_MIN minutes (default 10); capacity=ok otherwise, capacity=unknown
 when fleet=?. TICK_LAUNCH_DIR overrides the console work dir the launch logs
-are read from.
+are read from. supply=SHORT:<free> is its own field, printed only beside
+capacity=UNDERFILLED:<slack> when the pool count is numeric and free (the listed
+rows minus the pool-parked ones) is below the slack: the shortage is startable
+work, not the chief. capacity= itself never changes, chief-wait.sh matches it.
 
 flakes=<rows>/<suites>@<top-suite>*<k> sits between fails= and spare=
 and is ABSENT unless this repo's suite-flake ledger (run-shell-tests.sh)
@@ -176,6 +179,13 @@ request past TICK_RMRUN_MIN minutes (default 30) with the lease free launches on
 rm-run <R>` (at most one per TICK_RMRUN_MIN_SECS, default 600) and appends `,run`; its output goes to
 $TICK_STATE_DIR/tick-rm-run.log. Env seams: TICK_RMQ_PROBE, TICK_RMRUN_PROBE, TICK_RMRUN_LAUNCHER,
 TICK_RMQ_TIMEOUT. Not in chief-wait's action key.
+
+rm-refused=<n>:<KEY>@<ruling>,... follows rm-queue= and is ABSENT unless the same OK state read lists refused
+asks (a backlog-to-version request ruled away and not yet ended): n counts all, the list names the operator-asked
+ones. Each OK read writes rm-refused-<doc stem>.tsv (KEY, ruling, reason, asks_operator 1|0, or ? for a key the
+mirror does not hold) and release-state-<doc stem>.json ({ts, status, words_records, asks_operator_keys}) under
+$TICK_STATE_DIR; any other read deletes both. An OK read whose mirror input is UNKNOWN prints no field, keeps the
+tsv and deletes the json. Not in chief-wait's action key: chief-wait reads the tsv (WAKE rm-refused, rm-refused-digest).
 
 held=<n>:<sig8> unfiled=<n> repair=off:<why> follow rm-queue= and are ABSENT unless set: held= is
 the version repair's held key count and the first 8 hex of its held signature (repair-held.json in the
@@ -498,6 +508,10 @@ doc's stale file (tick-pool-stale-<cksum>.out in TICK_STATE_DIR, the main tick's
 newest file of the same mirror): a key whose only reason to count as dispositioned is its line, and whose line still hashes to the
 file's line=, is unresolved as class `stale` and names its gone targets. The file has no age bound. A failed or paused read
 keeps a stale verdict while the line is unchanged and no target reads open (--prior, the carry-forward, ends ` carried`).
+Parked rows stay listed: --pool-dispositions prints `# pool-parked <KEY>` for a listed row whose key has a fresh, valid
+line (stale, changed, invalid, unowned and unknown-key lines park nothing), and `# pool-chief-owed <KEY>` when that line
+matches proof|signature|critic round|owed|go code. The tick carries pool-parked=<n> and chief-owed=<m> (hidden at 0); the
+`# pool-dispatchable <KEY>` lines and chief-wait.sh's dispatchable= are unchanged.
 A key whose line the file reads changed (pool-changed=, same line-hash and sole-reason rules) is unresolved as
 class `changed`: `<target> merged <oldest sha since the anchor> since the line was written: re-read and stamp
 (<LL> <MM-DD> <HH:MM>Z)`, the bracket printed as written, never filled in.
@@ -745,6 +759,13 @@ for key, reason in sorted(invalid.items()):
 for key, reason in sorted(rows.items()):
     if key not in dispatchable:
         print("# pool-left-out %s %s" % (key, reason))
+unres_keys = {k for _, k, _ in unresolved}
+owed = re.compile(r"\b(?:proof|signature|critic round|owed|go code)\b", re.I)
+for key in sorted(dispatchable):
+    if key in decisions and key not in unres_keys and key not in invalid:
+        print("# pool-parked " + key)
+        if owed.search(decisions[key]):
+            print("# pool-chief-owed " + key)
 PY
 }
 
@@ -2871,6 +2892,43 @@ print(n, age, "held" if ls and not ls.get("released") else "free", d.get("status
     esac
 fi
 
+rm_refused=""
+rf_stem="${console_doc##*/}"
+rf_stem="${rf_stem%.md}"
+rf_dir="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
+if [ -n "$rf_stem" ]; then
+    if [ "${rm_status:-}" = OK ]; then
+        # shellcheck disable=SC2016  # the python program is single-quoted on purpose
+        rm_refused="$(printf '%s' "$rm_json" | python3 -I -c '
+import datetime, json, os, sys, tempfile
+d = json.load(sys.stdin)
+out, stem = sys.argv[1], sys.argv[2]
+asks = [a for a in d.get("refused_asks") or [] if isinstance(a, dict)]
+clean = lambda s: " ".join(str(s).split())
+if (d.get("inputs") or {}).get("mirror") == "UNKNOWN":
+    try:
+        os.remove(os.path.join(out, "release-state-%s.json" % stem))
+    except FileNotFoundError:
+        pass
+    sys.exit(0)
+os.makedirs(out, exist_ok=True)
+def put(name, text):
+    fd, tmp = tempfile.mkstemp(dir=out, prefix="." + name + ".")
+    with os.fdopen(fd, "w") as f:
+        f.write(text)
+    os.replace(tmp, os.path.join(out, name))
+flag = lambda a: {True: "1", False: "0"}.get(a.get("asks_operator"), "?")
+put("rm-refused-%s.tsv" % stem, "".join("%s\t%s\t%s\t%s\n" % (clean(a.get("key")), clean(a.get("ruling")), clean(a.get("reason")), flag(a)) for a in asks))
+ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+put("release-state-%s.json" % stem, json.dumps({"ts": ts, "status": d.get("status"), "words_records": d.get("words_records") or [], "asks_operator_keys": d.get("asks_operator_keys") or []}) + "\n")
+if asks:
+    print("%d:%s" % (len(asks), ",".join("%s@%s" % (clean(a.get("key")), clean(a.get("ruling"))) for a in asks if a.get("asks_operator") is True)))
+' "$rf_dir" "$rf_stem" 2>/dev/null)" || rm_refused=""  # swallow-ok: an unparseable state or a failed write leaves the field off
+    else
+        rm -f "$rf_dir/release-state-$rf_stem.json" "$rf_dir/rm-refused-$rf_stem.tsv"
+    fi
+fi
+
 # held=<n>:<sig8> unfiled=<n> repair=off:<why>: the version repair's state, read from the
 # release dir of the chief doc's `release:` release. held= and unfiled= come from repair-held.json (the held key
 # count with the first 8 hex of its held_signature; the signed records no request carries yet), each elided at
@@ -3058,6 +3116,9 @@ fi
 # else ?. The chief's current pool-disposition lines are read on every tick.
 pool_summary=skip
 intake_summary=skip
+pool_parked_n=""
+pool_owed_n=""
+pool_free=""
 if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
     pool_summary='?'
     pd_dir="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
@@ -3098,6 +3159,15 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
         pd_summary="$(pool_dispositions "$console_doc" < "$pd_base.rows")"
         pool_summary="$(printf '%s\n' "$pd_summary" | sed -n 's/^# pool-counts //p')"
         [ -n "$pool_summary" ] || pool_summary='?'
+        case "$pool_summary" in
+            [0-9]*/*)
+                pool_parked_n="$(printf '%s\n' "$pd_summary" | grep -c '^# pool-parked ' || true)"  # swallow-ok: grep -c prints 0 and exits 1 on no match
+                pool_owed_n="$(printf '%s\n' "$pd_summary" | grep -c '^# pool-chief-owed ' || true)"  # swallow-ok: grep -c prints 0 and exits 1 on no match
+                pool_free=$(( $(printf '%s\n' "$pd_summary" | grep -c '^# pool-dispatchable ' || true) - pool_parked_n ))  # swallow-ok: grep -c prints 0 and exits 1 on no match
+                [ "$pool_parked_n" -gt 0 ] || { pool_parked_n=""; pool_owed_n=""; }
+                [ -z "$pool_owed_n" ] || [ "$pool_owed_n" -gt 0 ] || pool_owed_n=""
+                ;;
+        esac
         # INTAKE=<n>: versionless operator work the pool cannot list, from the snapshot's `# intake` line
         intake_summary="$(sed -n 's/^# intake \([0-9][0-9]*\)[ :].*/\1/p' "$pd_base.rows" | head -n 1)"  # swallow-ok: no line reads 0
         [ -n "$intake_summary" ] || intake_summary=0
@@ -3841,6 +3911,7 @@ if [ "${CADENCE_USAGE_LANE:-${WORKER_SESSION_LANE:-native}}" = openrouter ]; the
     bank="openrouter:${or_verdict:-BANK-UNKNOWN}"
 fi
 fleet_total="$(printf '%s\n' "$fleet_out" | sed -n 's/^bank-preflight: FLEET .*total=\([0-9][0-9]*\)\/\([0-9][0-9]*\)$/\1 \2/p' | tail -n 1)"
+supply=""
 underfill_min="${TICK_UNDERFILL_MIN:-10}"
 case "$underfill_min" in ''|*[!0-9]*) underfill_min=10 ;; esac
 if [ -n "$fleet_total" ]; then
@@ -3858,6 +3929,10 @@ if [ -n "$fleet_total" ]; then
         capacity=ok
     else
         capacity="UNDERFILLED:$((10#$fleet_cap - 10#$fleet_live))"
+        case "$pool_free" in
+            '' | *[!0-9]*) ;;
+            *) [ "$pool_free" -ge $((10#$fleet_cap - 10#$fleet_live)) ] || supply="SHORT:$pool_free" ;;
+        esac
     fi
 else
     fleet='?'
@@ -4211,6 +4286,7 @@ if [ "$verbose" -eq 1 ]; then
     fi
     printf 'fleet: %s\n' "$fleet"
     printf 'capacity: %s\n' "$capacity"
+    [ -z "$supply" ] || printf 'supply: %s\n' "$supply"
     printf 'gql: %s\n' "$gql"
     [ -z "$quota_items" ] || printf 'quota: %s\n' "$quota_items"
     case "$rest_main_line" in ''|'?'*) ;; *) printf 'rest main: %s\n' "$rest_main_line" ;; esac
@@ -4239,6 +4315,7 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$cap_summary" ] || printf 'cap: %s\n' "$cap_summary"
     printf 'version leaks: %s\n' "$leaks_summary"
     printf 'rm-queue: %s\n' "$rm_queue"
+    [ -z "$rm_refused" ] || printf 'rm-refused: %s\n' "$rm_refused"
     [ -z "$held_summary" ] || printf 'repair held: %s\n' "$held_summary"
     [ -z "$unfiled_summary" ] || printf 'repair unfiled: %s\n' "$unfiled_summary"
     [ -z "$repair_summary" ] || printf 'repair: %s\n' "$repair_summary"
@@ -4336,6 +4413,9 @@ else
     compact_field INTAKE "$intake_summary"
     compact_field pool-stale "$pool_stale"
     compact_field pool-changed "$pool_changed"
+    compact_field pool-parked "$pool_parked_n"
+    compact_field chief-owed "$pool_owed_n"
+    compact_field supply "$supply"
     compact_field chains "$chains_summary"
     compact_field residual-unversioned "$residual_unversioned"
     compact_field denials "$denials_summary"
@@ -4353,6 +4433,7 @@ else
     compact_field cap "$cap_summary"
     compact_field leaks "$leaks_summary"
     compact_field rm-queue "$rm_queue"
+    compact_field rm-refused "$rm_refused"
     compact_field held "$held_summary"
     compact_field unfiled "$unfiled_summary"
     compact_field repair "$repair_summary"

@@ -107,4 +107,8 @@ fi
 if [ -L "$path" ] || { [ -e "$path" ] && [ ! -f "$path" ]; }; then
     deny "$path exists and is not a regular file (or is a symlink)" "$pr"
 fi
+if [ -e "$path" ]; then
+    links=$(stat -c %h "$path" 2>/dev/null) || links=$(stat -f %l "$path" 2>/dev/null) || links=""  # swallow-ok: an unread link count is not 1, so the write is denied
+    [ "$links" = 1 ] || deny "$path has a link count of '${links:-unreadable}', not 1: a hard link can alias a file outside the judge dir" "$pr"
+fi
 exit 0

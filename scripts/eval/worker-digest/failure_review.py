@@ -15,7 +15,7 @@ was armed with --live (judge note on PR #2020: burn in on dry-run before live fi
 DIGEST (the section "## Failure review"), over the ledger rows of the last 24 h:
   - top classes with their rows and workers, each (new) when the ledger has no earlier row of it,
     else (recurring);
-  - what was routed (or would be, on a dry run), what was capped, what the router skipped;
+  - what was routed (or would be, on a dry run), what the router skipped;
   - the trajectory signals, minus traj/claim-unverified and traj/red-before-green (unreliable), which are left out of every count;
   - the friction subsection, whose run also appends the friction eval-runs row (friction.py --record);
   - the eval feedback subsection (scripts/eval/lib/eval_feedback.py run): the change a result past its
@@ -67,7 +67,6 @@ import failure_router  # noqa: E402
 HEADING = "## Failure review"
 EXCLUDED = {"traj/claim-unverified": "verify_before_claim", "traj/red-before-green": "red_before_green"}
 ROUTED = ("filed", "commented", "recurred-after-done", "would-file", "would-comment")
-CAPPED = ("capped", "would-cap")
 LIVE_LINE = re.compile(r"^failure-router: (\S+) workers=(\d+) (\S+)(?: (\S+))?$")
 REASON_LINE = re.compile(r"^failure-router: (\S+) reason: (.+)$")
 TOP = 10
@@ -160,7 +159,6 @@ def build(a, rows, seen_before, rc, decisions, boxed):
     except (OSError, ValueError, KeyError):
         days = "the router window"
     routed = [d for d in decisions if d["decision"] in ROUTED]
-    capped = [d for d in decisions if d["decision"] in CAPPED]
     skipped = [d for d in decisions if d["decision"].startswith("skipped:")]
     if routed:
         out += ["- %s %s%s (workers %d in %s)" % (d["decision"], d["class"], " " + d["ticket"] if d.get("ticket") else "",
@@ -169,10 +167,6 @@ def build(a, rows, seen_before, rc, decisions, boxed):
         out.append("- routed: none")
     if boxed:
         out.append("- memory-inbox candidates: %s" % ", ".join(boxed))
-    if capped:
-        out.append("- capped: the daily create cap was hit; waiting: %s" % ", ".join(d["class"] for d in capped))
-    else:
-        out.append("- capped: none")
     plain = [d for d in skipped if not d.get("reason")]
     if plain:
         out.append("- skipped: %s" % ", ".join("%s (%s)" % (d["class"], d["decision"][8:]) for d in plain))

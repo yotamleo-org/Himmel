@@ -338,4 +338,12 @@ describe('admission rows clear unauthorized', () => {
     const rm = reduce(input({ issueList: members, rulingRows: [out({ kind: 'rm', ref: null })], admissions: [adm('K-2', 'v1', 'override')] }));
     expect(rm.leaks.unauthorized).not.toContain('K-2@v1');
   });
+
+  it('an ack after the sync leaves the mirror FRESH and the key\'s membership known', () => {
+    const ack = { ts: '2026-10-21T11:00:00.000Z', kind: 'ack', key: 'K-1', from: 'v1', to: 'v1', ruling: 'R-1', reason: 'right' } as EventRow;
+    const s = reduce(input({ eventRows: [ack] }));
+    expect(s.inputs.mirror).toBe('FRESH');
+    expect(recordOf(s, 'K-1', 'v1')?.actual_member).toBe(true);
+    expect(s.trend).toEqual({});
+  });
 });
