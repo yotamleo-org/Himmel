@@ -223,8 +223,7 @@ template_version: 3
 >    `<anchor>` the primary checkout's absolute path (the spelling the worker's
 >    rendered allow rule matches; the relative one is retired) (on an adapter
 >    repo not confirmed PRIVATE the worker stops at READY and the chief merges with
->    `merge-fork-pr.sh`) from the
->    worktree root, followed by `--go <GO file>`: the chief's `GO` message
+>    `merge-fork-pr.sh`) as one bare command from the directory the worker is in, never after `cd` or joined with `&&`, followed by `--go <GO file>`: the chief's `GO` message
 >    names the file (`<handover root>/.locks/go/<pr>.<head>`), a chief-launched worker's
 >    merge is refused (exit 17) without it or with the file of another PR or
 >    head, and the verified GO evidence is printed so the merge command shows

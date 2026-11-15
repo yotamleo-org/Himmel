@@ -342,6 +342,23 @@ cod_comment_epoch() {
         /^### / { n = split($0, a, " — "); if (n > 1 && a[n] ~ re) print a[n]; next }
         NF >= 2 && $2 ~ re { print $2 }' | jq -Rr "$VD_EP"'try ep catch empty' 2>/dev/null | sort -n | tail -n 1 # swallow-ok: an unreadable comment time is no event, and the merge row and the worker docs still decide
 }
+cod_related_epoch() {
+    local card=$MIRROR_DIR/$1.md rel r ts e best=0
+    rel=$({
+        [ ! -r "$card" ] || awk '/^---$/ { if (++n == 2) exit; next } n == 1 && /^links:/ { on = 1; next } n == 1 && /^[^ ]/ { on = 0 } n == 1 && on' "$card" | grep -oE '[A-Za-z][A-Za-z0-9]*-[0-9]+' | while IFS= read -r r; do
+            grep -qE '^labels: .*"(residual|follow-up)"' "$MIRROR_DIR/$r.md" 2>/dev/null && printf '%s\n' "$r"
+        done
+        grep -rlxF --include='*.md' "parent: \"$1\"" "$MIRROR_DIR" 2>/dev/null | sed 's#.*/##; s#\.md$##'
+    } | grep -vxF "$1" | sort -u)
+    while IFS= read -r r; do
+        [ -n "$r" ] || continue
+        ts=$(awk -F'\t' -v k="$r" '$1 == k { print $2; exit }' <<<"$lastmerge")
+        [ -n "$ts" ] || continue
+        e=$(_ts_epoch_of_iso "$ts") || continue
+        [ "$e" -le "$best" ] || best=$e
+    done <<<"$rel"
+    printf '%s\n' "$best"
+}
 cod_ask() {
     local t
     t=$(ticket_comments "$1" | grep 'Remaining:' | tail -n 1 | sed 's/^.*Remaining:[[:space:]]*//' | tr -d '|\r' | tr '\t' ' ' | jq -Rr '.[0:120]' 2>/dev/null) # swallow-ok: an unreadable comment leaves the fallback ask
@@ -363,6 +380,8 @@ cod_raise() {
     done <<<"$owners"
     [ "$newest" -eq 0 ] || [ $((10#$NOW - newest)) -gt "$COD_AGE_SECONDS" ] || return 1
     ce=$(cod_comment_epoch "$key")
+    case "$ce" in ''|*[!0-9]*) ;; *) [ "$ce" -le "$newest" ] || newest=$ce ;; esac
+    ce=$(cod_related_epoch "$key")
     case "$ce" in ''|*[!0-9]*) ;; *) [ "$ce" -le "$newest" ] || newest=$ce ;; esac
     [ "$newest" -gt 0 ] || return 1
     [ $((10#$NOW - newest)) -gt "$COD_AGE_SECONDS" ] || return 1

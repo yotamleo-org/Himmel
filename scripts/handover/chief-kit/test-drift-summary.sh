@@ -33,25 +33,25 @@ NOW=1792000000
 mirror() { # <key> <statusCategory>
     printf -- '---\nkey: "%s"\nstatus: "%s"\nstatusCategory: "%s"\n---\n' "$1" "$2" "$2" > "$MIR/$1.md"
 }
-mirror HIMMEL-7980 "To Do"
+mirror PROJ-7980 "To Do"
 
 DRIFT="$WORK/focus-drift.txt"
 KNOWN="$WORK/known.tsv"
 export DRIFT_SUMMARY_KNOWN="$KNOWN"
 printf '# checker\tclass\tkey\tedited-at\n' > "$KNOWN"
-for row in 'DERIVE-MISMATCH HIMMEL-7848' 'UNOWNED HIMMEL-7848' 'WORKER-COMMENT HIMMEL-7848' 'UNOWNED HIMMEL-7588'; do
-    printf 'HIMMEL-7980\t%s\t%s\t2026-10-28T22:00:00Z\n' "${row% *}" "${row#* }" >> "$KNOWN"
+for row in 'DERIVE-MISMATCH PROJ-7848' 'UNOWNED PROJ-7848' 'WORKER-COMMENT PROJ-7848' 'UNOWNED PROJ-7588'; do
+    printf 'PROJ-7980\t%s\t%s\t2026-10-28T22:00:00Z\n' "${row% *}" "${row#* }" >> "$KNOWN"
 done
 # the E12 file: three real, four paired with the checker ticket, one transient
 cat > "$DRIFT" <<'EOF'
-VERSION-DRIFT HIMMEL-6691 Done in v1.1.4, current v1.1.3 | writer=release-manager | fix=x
-VERSION-DRIFT HIMMEL-7891 Done in v1.1.4, current v1.1.3 | writer=release-manager | fix=x
-VERSION-DRIFT HIMMEL-7944 Done in v1.1.4, current v1.1.3 | writer=release-manager | fix=x
-DERIVE-MISMATCH HIMMEL-7848 jira=In Review, derived=To Do | writer=a | fix=b
-UNOWNED HIMMEL-7848 In Review, no open PR | writer=a | fix=b
-WORKER-COMMENT HIMMEL-7848 record hash 1 | writer=a | fix=b
-UNOWNED HIMMEL-7588 In Progress, no open PR | writer=a | fix=b
-WORKER-COMMENT HIMMEL-4862 the record's hash differs | writer=a | fix=b
+VERSION-DRIFT PROJ-6691 Done in v1.1.4, current v1.1.3 | writer=release-manager | fix=x
+VERSION-DRIFT PROJ-7891 Done in v1.1.4, current v1.1.3 | writer=release-manager | fix=x
+VERSION-DRIFT PROJ-7944 Done in v1.1.4, current v1.1.3 | writer=release-manager | fix=x
+DERIVE-MISMATCH PROJ-7848 jira=In Review, derived=To Do | writer=a | fix=b
+UNOWNED PROJ-7848 In Review, no open PR | writer=a | fix=b
+WORKER-COMMENT PROJ-7848 record hash 1 | writer=a | fix=b
+UNOWNED PROJ-7588 In Progress, no open PR | writer=a | fix=b
+WORKER-COMMENT PROJ-4862 the record's hash differs | writer=a | fix=b
 sdrift=8:abcd1234
 EOF
 touch_at "$DRIFT" "$((NOW - 600))"
@@ -64,9 +64,9 @@ out="$(sum)"
 eq 'E12 three real rows count' "$(jqv "$out" '.counts.real')" 3
 eq 'E12 four rows pair with the open checker ticket' "$(jqv "$out" '.counts.known')" 4
 eq 'E12 one transient row is listed apart' "$(jqv "$out" '.counts.transient')" 1
-eq 'E12 the real rows are the three hand closes' "$(jqv "$out" '[.real[].key] | sort | join(",")')" 'HIMMEL-6691,HIMMEL-7891,HIMMEL-7944'
-eq 'E12 the known rows name their checker ticket' "$(jqv "$out" '[.known[].checker] | unique | join(",")')" 'HIMMEL-7980'
-eq 'E12 the transient row is the unpaired WORKER-COMMENT' "$(jqv "$out" '.transient[0].key')" 'HIMMEL-4862'
+eq 'E12 the real rows are the three hand closes' "$(jqv "$out" '[.real[].key] | sort | join(",")')" 'PROJ-6691,PROJ-7891,PROJ-7944'
+eq 'E12 the known rows name their checker ticket' "$(jqv "$out" '[.known[].checker] | unique | join(",")')" 'PROJ-7980'
+eq 'E12 the transient row is the unpaired WORKER-COMMENT' "$(jqv "$out" '.transient[0].key')" 'PROJ-4862'
 eq 'E15 a fresh file is not stale' "$(jqv "$out" '.stale')" false
 eq 'E15 a readable sdrift is not unknown' "$(jqv "$out" '.unknown')" false
 eq 'E14 the saved run time is reported' "$(jqv "$out" '.file.writtenAt')" "$((NOW - 600))"
@@ -88,38 +88,38 @@ eq 'E15 an absent file reports exists=false' "$(jqv "$out" '.file.exists')" fals
 
 # E23 and K2: a known pair counts again once its ticket is Done; an unpaired row counts at once
 cat > "$DRIFT" <<'EOF'
-UNOWNED HIMMEL-7588 In Progress, no open PR | writer=a | fix=b
-UNOWNED HIMMEL-9001 a row new since the last run | writer=a | fix=b
-DONE-WITH-OPEN-PR HIMMEL-7588 the same key under another class | writer=a | fix=b
+UNOWNED PROJ-7588 In Progress, no open PR | writer=a | fix=b
+UNOWNED PROJ-9001 a row new since the last run | writer=a | fix=b
+DONE-WITH-OPEN-PR PROJ-7588 the same key under another class | writer=a | fix=b
 sdrift=3:11111111
 EOF
 touch_at "$DRIFT" "$((NOW - 60))"
 out="$(sum)"
 eq 'E23 while the checker ticket is open the paired row is known' "$(jqv "$out" '[.known[].class] | join(",")')" 'UNOWNED'
-eq 'K2 a row with no pairing counts at once' "$(jqv "$out" '[.real[].key] | sort | join(",")')" 'HIMMEL-7588,HIMMEL-9001'
-mirror HIMMEL-7980 Done
+eq 'K2 a row with no pairing counts at once' "$(jqv "$out" '[.real[].key] | sort | join(",")')" 'PROJ-7588,PROJ-9001'
+mirror PROJ-7980 Done
 out="$(sum)"
 eq 'E23 once the checker ticket is Done the same row counts' "$(jqv "$out" '.counts.real')" 3
 eq 'E23 and no row is listed as a known checker bug' "$(jqv "$out" '.counts.known')" 0
-rm -f "$MIR/HIMMEL-7980.md"
+rm -f "$MIR/PROJ-7980.md"
 out="$(sum)"
 eq 'E23 an unreadable checker status counts the row (a drift is a bug until shown otherwise)' "$(jqv "$out" '.counts.real')" 3
-mkdir "$MIR/HIMMEL-7980.md"
+mkdir "$MIR/PROJ-7980.md"
 out="$(sum)"
 eq 'E23 a checker mirror that cannot be read keeps the rows real instead of failing the summary' "$(jqv "$out" '.counts.real')" 3
-rmdir "$MIR/HIMMEL-7980.md"
+rmdir "$MIR/PROJ-7980.md"
 cp "$DRIFT" "$WORK/drift.keep"; cp "$KNOWN" "$WORK/known.keep"
-printf 'UNOWNED HIMMEL-7588 x | writer=a | fix=b\nsdrift=1:aaaaaaaa\n' > "$DRIFT"; touch_at "$DRIFT" "$((NOW - 60))"
-printf -- '---\nkey: "HIMMEL-7980"\nstatusCategory: ""\n---\n' > "$MIR/HIMMEL-7980.md"
+printf 'UNOWNED PROJ-7588 x | writer=a | fix=b\nsdrift=1:aaaaaaaa\n' > "$DRIFT"; touch_at "$DRIFT" "$((NOW - 60))"
+printf -- '---\nkey: "PROJ-7980"\nstatusCategory: ""\n---\n' > "$MIR/PROJ-7980.md"
 out="$(sum)"
 eq 'E23 an empty checker status is unreadable, so the row counts' "$(jqv "$out" '.counts.known')" 0
-mirror HIMMEL-7980 Done
-mirror HIMMEL-7981 "To Do"
-printf 'HIMMEL-7981\tUNOWNED\tHIMMEL-7588\t2026-10-28T22:00:00Z\n' >> "$KNOWN"
+mirror PROJ-7980 Done
+mirror PROJ-7981 "To Do"
+printf 'PROJ-7981\tUNOWNED\tPROJ-7588\t2026-10-28T22:00:00Z\n' >> "$KNOWN"
 out="$(sum)"
-eq 'E23 a row paired with a Done checker and an open one stays a known bug' "$(jqv "$out" '[.known[].checker] | join(",")')" HIMMEL-7981
+eq 'E23 a row paired with a Done checker and an open one stays a known bug' "$(jqv "$out" '[.known[].checker] | join(",")')" PROJ-7981
 cp "$WORK/drift.keep" "$DRIFT"; cp "$WORK/known.keep" "$KNOWN"; touch_at "$DRIFT" "$((NOW - 600))"
-mirror HIMMEL-7980 "To Do"
+mirror PROJ-7980 "To Do"
 
 # E21: the mode key, default off
 eq 'E21 no key reads single-user' "$(jqv "$out" '.mode')" single-user
@@ -157,131 +157,131 @@ hist() { # <added|removed> <key> <iso>  -> one changelog entry
 reset_sync() {
     : > "$JF/calls"; : > "$SLOG"
     printf '# checker\tclass\tkey\tedited-at\n' > "$KNOWN"
-    echo 'HIMMEL-7980: no issue links' > "$JF/links"
+    echo 'PROJ-7980: no issue links' > "$JF/links"
     echo '[]' > "$JF/history.json"
 }
-run_sync() { bash "$SYNC" --checker HIMMEL-7980 --tsv "$KNOWN" --log "$SLOG" 2>&1; }
+run_sync() { bash "$SYNC" --checker PROJ-7980 --tsv "$KNOWN" --log "$SLOG" 2>&1; }
 
 # E32 (RED first): a pairing removed in Jira after the file row's edit is removed from the file
 reset_sync
-printf 'HIMMEL-7980\tUNOWNED\tHIMMEL-7588\t2026-10-29T10:00:00Z\n' >> "$KNOWN"
-printf '[%s,%s]\n' "$(hist added HIMMEL-7588 2026-10-29T09:00:00.000+0000)" "$(hist removed HIMMEL-7588 2026-10-29T11:00:00.000+0000)" > "$JF/history.json"
+printf 'PROJ-7980\tUNOWNED\tPROJ-7588\t2026-10-29T10:00:00Z\n' >> "$KNOWN"
+printf '[%s,%s]\n' "$(hist added PROJ-7588 2026-10-29T09:00:00.000+0000)" "$(hist removed PROJ-7588 2026-10-29T11:00:00.000+0000)" > "$JF/history.json"
 run_sync > /dev/null
-eq "E32 a pairing removed in Jira after the file row's edit is removed from the file" "$(grep -c HIMMEL-7588 "$KNOWN")" 0
-has 'E32 the removal leaves one log line' "$(cat "$SLOG")" 'HIMMEL-7588'
-lacks 'E32 and nothing is linked back' "$(cat "$JF/calls")" 'link HIMMEL-7980'
+eq "E32 a pairing removed in Jira after the file row's edit is removed from the file" "$(grep -c PROJ-7588 "$KNOWN")" 0
+has 'E32 the removal leaves one log line' "$(cat "$SLOG")" 'PROJ-7588'
+lacks 'E32 and nothing is linked back' "$(cat "$JF/calls")" 'link PROJ-7980'
 
 # E32 reverse: the file row is the newer edit, so the Jira link is restored
 reset_sync
-printf 'HIMMEL-7980\tUNOWNED\tHIMMEL-7588\t2026-10-29T12:00:00Z\n' >> "$KNOWN"
-printf '[%s,%s]\n' "$(hist added HIMMEL-7588 2026-10-29T09:00:00.000+0000)" "$(hist removed HIMMEL-7588 2026-10-29T11:00:00.000+0000)" > "$JF/history.json"
+printf 'PROJ-7980\tUNOWNED\tPROJ-7588\t2026-10-29T12:00:00Z\n' >> "$KNOWN"
+printf '[%s,%s]\n' "$(hist added PROJ-7588 2026-10-29T09:00:00.000+0000)" "$(hist removed PROJ-7588 2026-10-29T11:00:00.000+0000)" > "$JF/history.json"
 run_sync > /dev/null
-has 'E32 a file row newer than the Jira removal restores the link' "$(cat "$JF/calls")" 'link HIMMEL-7980 HIMMEL-7588 --type Relates'
-eq 'E32 and stays in the file' "$(grep -c HIMMEL-7588 "$KNOWN")" 1
-has 'E32 with one log line' "$(cat "$SLOG")" 'HIMMEL-7588'
+has 'E32 a file row newer than the Jira removal restores the link' "$(cat "$JF/calls")" 'link PROJ-7980 PROJ-7588 --type Relates'
+eq 'E32 and stays in the file' "$(grep -c PROJ-7588 "$KNOWN")" 1
+has 'E32 with one log line' "$(cat "$SLOG")" 'PROJ-7588'
 
 # a file row Jira never saw is linked
 reset_sync
-printf 'HIMMEL-7980\tUNOWNED\tHIMMEL-7588\t2026-10-29T12:00:00Z\n' >> "$KNOWN"
+printf 'PROJ-7980\tUNOWNED\tPROJ-7588\t2026-10-29T12:00:00Z\n' >> "$KNOWN"
 run_sync > /dev/null
-has 'a file row with no Jira history is linked' "$(cat "$JF/calls")" 'link HIMMEL-7980 HIMMEL-7588 --type Relates'
+has 'a file row with no Jira history is linked' "$(cat "$JF/calls")" 'link PROJ-7980 PROJ-7588 --type Relates'
 
 # a pair that comes in from Jira reads class unset, and still leaves the count
 reset_sync
-printf '99\tRelates\tinward=HIMMEL-7980\toutward=HIMMEL-7900\tHIMMEL-7980 relates to HIMMEL-7900\n' > "$JF/links"
-printf '[%s]\n' "$(hist added HIMMEL-7900 2026-10-29T09:30:00.000+0000)" > "$JF/history.json"
+printf '99\tRelates\tinward=PROJ-7980\toutward=PROJ-7900\tPROJ-7980 relates to PROJ-7900\n' > "$JF/links"
+printf '[%s]\n' "$(hist added PROJ-7900 2026-10-29T09:30:00.000+0000)" > "$JF/history.json"
 run_sync > /dev/null
-eq 'E32 a pair from Jira is written as class unset with its Jira edit time' "$(grep HIMMEL-7900 "$KNOWN")" "$(printf 'HIMMEL-7980\tunset\tHIMMEL-7900\t2026-10-29T09:30:00Z')"
-has 'E32 and logged' "$(cat "$SLOG")" 'HIMMEL-7900'
-printf 'UNOWNED HIMMEL-7900 x | writer=a | fix=b\nsdrift=1:22222222\n' > "$DRIFT"; touch_at "$DRIFT" "$((NOW - 60))"
+eq 'E32 a pair from Jira is written as class unset with its Jira edit time' "$(grep PROJ-7900 "$KNOWN")" "$(printf 'PROJ-7980\tunset\tPROJ-7900\t2026-10-29T09:30:00Z')"
+has 'E32 and logged' "$(cat "$SLOG")" 'PROJ-7900'
+printf 'UNOWNED PROJ-7900 x | writer=a | fix=b\nsdrift=1:22222222\n' > "$DRIFT"; touch_at "$DRIFT" "$((NOW - 60))"
 out="$(sum)"
 eq 'E32 an unset pair still leaves the count' "$(jqv "$out" '.counts.known')" 1
 
 # a pairing present on both sides writes nothing and logs nothing
 reset_sync
-printf 'HIMMEL-7980\tUNOWNED\tHIMMEL-7900\t2026-10-29T09:30:00Z\n' >> "$KNOWN"
-printf '99\tRelates\tinward=HIMMEL-7980\toutward=HIMMEL-7900\tHIMMEL-7980 relates to HIMMEL-7900\n' > "$JF/links"
-printf '[%s]\n' "$(hist added HIMMEL-7900 2026-10-29T09:30:00.000+0000)" > "$JF/history.json"
+printf 'PROJ-7980\tUNOWNED\tPROJ-7900\t2026-10-29T09:30:00Z\n' >> "$KNOWN"
+printf '99\tRelates\tinward=PROJ-7980\toutward=PROJ-7900\tPROJ-7980 relates to PROJ-7900\n' > "$JF/links"
+printf '[%s]\n' "$(hist added PROJ-7900 2026-10-29T09:30:00.000+0000)" > "$JF/history.json"
 run_sync > /dev/null
 eq 'a pairing on both sides logs nothing' "$(wc -c < "$SLOG" | tr -d ' ')" 0
-lacks 'a pairing on both sides links nothing' "$(cat "$JF/calls")" 'link HIMMEL-7980'
+lacks 'a pairing on both sides links nothing' "$(cat "$JF/calls")" 'link PROJ-7980'
 
 # a Blocks link on the checker ticket is not a pairing
 reset_sync
-printf '5\tBlocks\tinward=HIMMEL-7980\toutward=HIMMEL-7000\tHIMMEL-7980 blocks HIMMEL-7000\n' > "$JF/links"
+printf '5\tBlocks\tinward=PROJ-7980\toutward=PROJ-7000\tPROJ-7980 blocks PROJ-7000\n' > "$JF/links"
 run_sync > /dev/null
-eq 'a Blocks link is not read as a known-bug pairing' "$(grep -c HIMMEL-7000 "$KNOWN")" 0
+eq 'a Blocks link is not read as a known-bug pairing' "$(grep -c PROJ-7000 "$KNOWN")" 0
 
 # one key paired under several classes is linked once
 reset_sync
-printf 'HIMMEL-7980\tUNOWNED\tHIMMEL-7848\t2026-10-29T12:00:00Z\nHIMMEL-7980\tWORKER-COMMENT\tHIMMEL-7848\t2026-10-29T12:00:00Z\n' >> "$KNOWN"
+printf 'PROJ-7980\tUNOWNED\tPROJ-7848\t2026-10-29T12:00:00Z\nPROJ-7980\tWORKER-COMMENT\tPROJ-7848\t2026-10-29T12:00:00Z\n' >> "$KNOWN"
 run_sync > /dev/null
-eq 'a key paired under two classes is linked in Jira once' "$(grep -c '^link HIMMEL-7980 HIMMEL-7848' "$JF/calls")" 1
-eq 'and both file rows stay' "$(grep -c HIMMEL-7848 "$KNOWN")" 2
+eq 'a key paired under two classes is linked in Jira once' "$(grep -c '^link PROJ-7980 PROJ-7848' "$JF/calls")" 1
+eq 'and both file rows stay' "$(grep -c PROJ-7848 "$KNOWN")" 2
 
 # a key that is not a ticket key is never handed to the Jira CLI
 reset_sync
-printf 'HIMMEL-7980\tUNOWNED\t--bogus\t2026-10-29T12:00:00Z\n' >> "$KNOWN"
+printf 'PROJ-7980\tUNOWNED\t--bogus\t2026-10-29T12:00:00Z\n' >> "$KNOWN"
 before_known="$(cat "$KNOWN")"
 if run_sync > /dev/null; then pass 'a sync over a malformed key still exits 0'; else fail 'a sync over a malformed key exits non-zero'; fi
 lacks 'a malformed key is not linked' "$(cat "$JF/calls")" '--bogus'
 eq 'and the file is left exactly as it was' "$(cat "$KNOWN")" "$before_known"
 reset_sync
-printf 'HIMMEL-7980\tUNOWNED\tAPP2-123\t2026-10-29T12:00:00Z\n' >> "$KNOWN"
+printf 'PROJ-7980\tUNOWNED\tAPP2-123\t2026-10-29T12:00:00Z\n' >> "$KNOWN"
 run_sync > /dev/null
-has 'a project key with a digit is linked' "$(cat "$JF/calls")" 'link HIMMEL-7980 APP2-123'
+has 'a project key with a digit is linked' "$(cat "$JF/calls")" 'link PROJ-7980 APP2-123'
 
 # the newest link event wins whatever order the history comes in
 reset_sync
-printf 'HIMMEL-7980\tUNOWNED\tHIMMEL-7588\t2026-10-29T10:00:00Z\n' >> "$KNOWN"
-printf '[%s,%s]\n' "$(hist removed HIMMEL-7588 2026-10-29T11:00:00.000+0000)" "$(hist added HIMMEL-7588 2026-10-29T09:00:00.000+0000)" > "$JF/history.json"
+printf 'PROJ-7980\tUNOWNED\tPROJ-7588\t2026-10-29T10:00:00Z\n' >> "$KNOWN"
+printf '[%s,%s]\n' "$(hist removed PROJ-7588 2026-10-29T11:00:00.000+0000)" "$(hist added PROJ-7588 2026-10-29T09:00:00.000+0000)" > "$JF/history.json"
 run_sync > /dev/null
-eq 'a history listed newest first still reads the removal as the latest event' "$(grep -c HIMMEL-7588 "$KNOWN")" 0
+eq 'a history listed newest first still reads the removal as the latest event' "$(grep -c PROJ-7588 "$KNOWN")" 0
 
 # an sdrift trailer that is not count:signature is an unreadable run
-printf 'UNOWNED HIMMEL-7588 x | writer=a | fix=b\nsdrift=garbage\n' > "$DRIFT"; touch_at "$DRIFT" "$((NOW - 60))"
+printf 'UNOWNED PROJ-7588 x | writer=a | fix=b\nsdrift=garbage\n' > "$DRIFT"; touch_at "$DRIFT" "$((NOW - 60))"
 out="$(sum)"
 eq 'E15 an sdrift trailer that is not count:signature is marked unknown' "$(jqv "$out" '.unknown')" true
 
 printf '# checker\tclass\tkey\tedited-at\n' > "$KNOWN"
-printf 'HIMMEL-7980\tUNOWNED\tHIMMEL-14\t2026-10-28T22:00:00Z\n' >> "$KNOWN"
-mirror HIMMEL-7980 "To Do"
+printf 'PROJ-7980\tUNOWNED\tPROJ-14\t2026-10-28T22:00:00Z\n' >> "$KNOWN"
+mirror PROJ-7980 "To Do"
 cat > "$DRIFT" <<'EOF'
-UNOWNED HIMMEL-11 In Progress, no open PR and no live owner | writer=a | fix=b
-UNOWNED HIMMEL-11 In Progress, no open PR and no live owner | writer=a | fix=b
-AWAITING HIMMEL-12 parked on the chief | writer=a | fix=b | wait=chief
-WORKER-STALE HIMMEL-13 the worker's last line is old | writer=a | fix=b
-UNOWNED HIMMEL-14 In Progress, no open PR and no live owner | writer=a | fix=b
+UNOWNED PROJ-11 In Progress, no open PR and no live owner | writer=a | fix=b
+UNOWNED PROJ-11 In Progress, no open PR and no live owner | writer=a | fix=b
+AWAITING PROJ-12 parked on the chief | writer=a | fix=b | wait=chief
+WORKER-STALE PROJ-13 the worker's last line is old | writer=a | fix=b
+UNOWNED PROJ-14 In Progress, no open PR and no live owner | writer=a | fix=b
 sdrift=5:abcd1234
 EOF
 touch_at "$DRIFT" "$((NOW - 60))"
 out="$(sum)"
-eq 'I6 unowned lists a repeated UNOWNED key once and leaves out AWAITING, WORKER-STALE and a known checker bug' "$(jqv "$out" '.unowned | join(",")')" 'HIMMEL-11'
+eq 'I6 unowned lists a repeated UNOWNED key once and leaves out AWAITING, WORKER-STALE and a known checker bug' "$(jqv "$out" '.unowned | join(",")')" 'PROJ-11'
 cat > "$DRIFT" <<'EOF'
-UNOWNED HIMMEL-30 x | writer=a | fix=b
-UNOWNED HIMMEL-4 x | writer=a | fix=b
-UNOWNED HIMMEL-30 x | writer=a | fix=b
+UNOWNED PROJ-30 x | writer=a | fix=b
+UNOWNED PROJ-4 x | writer=a | fix=b
+UNOWNED PROJ-30 x | writer=a | fix=b
 sdrift=3:abcd1234
 EOF
 touch_at "$DRIFT" "$((NOW - 60))"
 out="$(sum)"
-eq 'I6 unowned is sorted and unique' "$(jqv "$out" '.unowned | join(",")')" 'HIMMEL-30,HIMMEL-4'
+eq 'I6 unowned is sorted and unique' "$(jqv "$out" '.unowned | join(",")')" 'PROJ-30,PROJ-4'
 printf 'sdrift=0:00000000\n' > "$DRIFT"; touch_at "$DRIFT" "$((NOW - 60))"
 out="$(sum)"
 eq 'I6 a drift file with no rows gives an empty unowned list' "$(jqv "$out" '.unowned | length')" 0
 eq 'I6 and it is an array, not null' "$(jqv "$out" '.unowned | type')" array
-printf 'UNOWNED HIMMEL-21 x | writer=a | fix=b\nUNOWNED HIMMEL-22 x | writer=a | fix=b\nsdrift=unknown\n' > "$DRIFT"; touch_at "$DRIFT" "$((NOW - 60))"
+printf 'UNOWNED PROJ-21 x | writer=a | fix=b\nUNOWNED PROJ-22 x | writer=a | fix=b\nsdrift=unknown\n' > "$DRIFT"; touch_at "$DRIFT" "$((NOW - 60))"
 out="$(sum)"
-eq 'I6 an sdrift=unknown file still lists its UNOWNED keys' "$(jqv "$out" '.unowned | join(",")')" 'HIMMEL-21,HIMMEL-22'
+eq 'I6 an sdrift=unknown file still lists its UNOWNED keys' "$(jqv "$out" '.unowned | join(",")')" 'PROJ-21,PROJ-22'
 eq 'I6 and has unknown true, so the feed reads partial' "$(jqv "$out" '.unknown')" true
 out="$(node "$SUM" --json --drift "$WORK/absent.txt" --mirror-dir "$MIR" --now "$NOW" 2>&1)"
 eq 'I6 an absent drift file gives an empty unowned list' "$(jqv "$out" '.unowned | length')" 0
 
 # a file the sync cannot read is left as it was, never rewritten from the Jira side alone
 reset_sync
-printf 'HIMMEL-7980\tUNOWNED\tHIMMEL-7588\t2026-10-29T12:00:00Z\n' >> "$KNOWN"
-printf '99\tRelates\tinward=HIMMEL-7980\toutward=HIMMEL-7900\tHIMMEL-7980 relates to HIMMEL-7900\n' > "$JF/links"
-printf '[%s]\n' "$(hist added HIMMEL-7900 2026-10-29T09:30:00.000+0000)" > "$JF/history.json"
+printf 'PROJ-7980\tUNOWNED\tPROJ-7588\t2026-10-29T12:00:00Z\n' >> "$KNOWN"
+printf '99\tRelates\tinward=PROJ-7980\toutward=PROJ-7900\tPROJ-7980 relates to PROJ-7900\n' > "$JF/links"
+printf '[%s]\n' "$(hist added PROJ-7900 2026-10-29T09:30:00.000+0000)" > "$JF/history.json"
 chmod 000 "$KNOWN"
 if [ -r "$KNOWN" ]; then
     echo "SKIP: this user reads a mode-000 file, the unreadable-TSV case cannot be built"
@@ -289,22 +289,22 @@ else
     run_sync > /dev/null; rc=$?
     chmod 600 "$KNOWN"
     eq 'an unreadable known-bugs file makes the sync fail' "$([ "$rc" -ne 0 ] && echo failed || echo ran)" failed
-    eq 'and its pairings are still there' "$(grep -c HIMMEL-7588 "$KNOWN")" 1
+    eq 'and its pairings are still there' "$(grep -c PROJ-7588 "$KNOWN")" 1
 fi
 chmod 600 "$KNOWN"
 
 # a CLOSE-OR-DISPATCH row is real drift and lists its key apart from the other classes
 cat > "$DRIFT" <<'EOF'
-CLOSE-OR-DISPATCH HIMMEL-9688 In Progress with no open PR, no live owner and no event since 2026-11-10T18:00:00Z (73 h); last PR #5155, owed: the timing row | writer=jira | fix=x
-CLOSE-OR-DISPATCH HIMMEL-9687 In Progress with no open PR, no live owner and no event since 2026-11-11T12:00:00Z (80 h); last PR #5203, owed: S6 | writer=jira | fix=x
-UNOWNED HIMMEL-9001 In Progress with no open PR and no live owner | writer=a | fix=b
+CLOSE-OR-DISPATCH PROJ-9688 In Progress with no open PR, no live owner and no event since 2026-11-10T18:00:00Z (73 h); last PR #5155, owed: the timing row | writer=jira | fix=x
+CLOSE-OR-DISPATCH PROJ-9687 In Progress with no open PR, no live owner and no event since 2026-11-11T12:00:00Z (80 h); last PR #5203, owed: S6 | writer=jira | fix=x
+UNOWNED PROJ-9001 In Progress with no open PR and no live owner | writer=a | fix=b
 sdrift=3:22222222
 EOF
 touch_at "$DRIFT" "$((NOW - 60))"
 out="$(sum)"
 eq '9561 a CLOSE-OR-DISPATCH row is real drift' "$(jqv "$out" '[.real[] | select(.class == "CLOSE-OR-DISPATCH")] | length')" 2
-eq '9561 its keys land in their own sorted list' "$(jqv "$out" '.closeOrDispatch | join(",")')" 'HIMMEL-9687,HIMMEL-9688'
-eq '9561 the stale feed keeps the key of a CLOSE-OR-DISPATCH row beside the UNOWNED one' "$(jqv "$out" '.unowned | join(",")')" 'HIMMEL-9001,HIMMEL-9687,HIMMEL-9688'
+eq '9561 its keys land in their own sorted list' "$(jqv "$out" '.closeOrDispatch | join(",")')" 'PROJ-9687,PROJ-9688'
+eq '9561 the stale feed keeps the key of a CLOSE-OR-DISPATCH row beside the UNOWNED one' "$(jqv "$out" '.unowned | join(",")')" 'PROJ-9001,PROJ-9687,PROJ-9688'
 printf 'sdrift=0:00000000\n' > "$DRIFT"; touch_at "$DRIFT" "$((NOW - 60))"
 out="$(sum)"
 eq '9561 control: a file with no such row has an empty list' "$(jqv "$out" '.closeOrDispatch | length')" 0
