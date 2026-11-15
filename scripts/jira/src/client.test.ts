@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, chmodSync, symlinkSync } from 'node:fs';
+import { execFile, execFileSync } from 'node:child_process';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, chmodSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
-import { uploadAttachment, uploadMultipart, normalizeEnv, baseUrl, loadEnvFile, request, requestAt, agileRequest, confluenceV2 } from './client.js';
+import { uploadAttachment, uploadMultipart, downloadTo, normalizeEnv, baseUrl, loadEnvFile, request, requestAt, agileRequest, confluenceV2 } from './client.js';
 import { registerMove } from './commands/move.js';
 import { readVersionWrites } from './release/version-writes.js';
 import { sameJiraBase, stationJiraBaseUrl } from './env-file.js';
@@ -1141,5 +1143,132 @@ describe('the live-test guard at requestAt and uploadMultipart', () => {
     const j = liveJira();
     await request('POST', '/issue', { fields: { project: { key: 'HIMMEL' } } });
     expect(j.calls.map((c) => c.method)).toEqual(['POST']);
+  });
+});
+
+describe('a 200 that carries x-seraph-loginreason: AUTHENTICATED_FAILED', () => {
+  const entry = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'index.js');
+  let server: Server;
+  let base: string;
+  let reason: string | undefined;
+  let dir: string;
+  let body: string;
+  let status: number;
+
+  beforeEach(async () => {
+    vi.unstubAllGlobals();
+    status = 200;
+    reason = 'AUTHENTICATED_FAILED';
+    body = '';
+    dir = mkdtempSync(join(tmpdir(), 'jira-authfail-'));
+    server = createServer((_req, res) => {
+      const headers: Record<string, string> = reason === undefined ? {} : { 'x-seraph-loginreason': reason };
+      res.writeHead(status, headers);
+      res.end(body);
+    });
+    await new Promise<void>((ok) => server.listen(0, '127.0.0.1', ok));
+    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  });
+
+  afterEach(async () => {
+    vi.unstubAllEnvs();
+    await new Promise<void>((ok) => server.close(() => ok()));
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const cli = (...argv: string[]) =>
+    new Promise<{ code: number; stdout: string; stderr: string }>((ok) => {
+      execFile(process.execPath, [entry, ...argv], {
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH, HOME: dir, JIRA_BASE_URL: base, JIRA_EMAIL: 'u@example.com', JIRA_API_TOKEN: 'bogus', JIRA_PROJECT_KEY: 'HTEST' },
+      }, (err, stdout, stderr) => ok({ code: err ? ((err as { code?: number }).code ?? 1) : 0, stdout, stderr }));
+    });
+
+  const stubEnv = () => {
+    vi.stubEnv('JIRA_BASE_URL', base);
+    vi.stubEnv('JIRA_EMAIL', 'u@example.com');
+    vi.stubEnv('JIRA_API_TOKEN', 'bogus');
+  };
+
+  const authError = /token.*keyring|keyring.*token/is;
+
+  it.each([
+    ['list', ['list', '--jql', 'project=HTEST']],
+    ['projects', ['projects']],
+    ['get', ['get', 'HTEST-1']],
+  ])('%s exits 1 with an auth message naming the token and the keyring', async (_name, argv) => {
+    const r = await cli(...argv);
+    expect(r.code).toBe(1);
+    expect(r.stdout).toBe('');
+    expect(r.stderr).toMatch(authError);
+    expect(r.stderr).toContain('AUTHENTICATED_FAILED');
+    expect(r.stderr).not.toContain('does not exist');
+    expect(r.stderr).not.toContain('bogus');
+  });
+
+  it('mirror exits 1 and leaves the local files and the cursor byte-identical', async () => {
+    const root = join(dir, 'mirror');
+    mkdirSync(root);
+    writeFileSync(join(root, 'HTEST-1.md'), 'old one\n');
+    writeFileSync(join(root, 'HTEST-2.md'), 'old two\n');
+    writeFileSync(join(root, '.mirror-cursor.json'), '{"lastSync":"2026-11-01T00:00:00.000Z","total":2,"project":"HTEST"}\n');
+    const snap = () => readdirSync(root).sort().map((n) => `${n}=${readFileSync(join(root, n), 'utf8')}`);
+    const before = snap();
+    const r = await cli('mirror', '--root', root);
+    expect(r.code).toBe(1);
+    expect(r.stderr).toMatch(authError);
+    expect(snap()).toEqual(before);
+  });
+
+  it('a 404 that carries the header is an auth failure, not a ticket that does not exist', async () => {
+    status = 404;
+    const r = await cli('get', 'HTEST-1');
+    expect(r.code).toBe(1);
+    expect(r.stderr).toMatch(authError);
+    expect(r.stderr).not.toContain('does not exist');
+  });
+
+  it('mirror writes no file into an empty root', async () => {
+    const root = join(dir, 'fresh');
+    const r = await cli('mirror', '--root', root);
+    expect(r.code).toBe(1);
+    expect(readdirSync(root)).toEqual([]);
+  });
+
+  describe('every request path', () => {
+    beforeEach(stubEnv);
+
+    it('requestAt rejects', async () => {
+      await expect(request('GET', '/search/jql?jql=x')).rejects.toThrow(authError);
+    });
+
+    it('uploadMultipart rejects', async () => {
+      const file = join(dir, 'a.txt');
+      writeFileSync(file, 'x');
+      await expect(uploadMultipart(`${base}/rest/api/3/issue/HTEST-1/attachments`, file)).rejects.toThrow(authError);
+    });
+
+    it('downloadTo rejects and writes no file', async () => {
+      const out = join(dir, 'out.bin');
+      await expect(downloadTo(`${base}/secure/attachment/1/a.bin`, out)).rejects.toThrow(authError);
+      expect(existsSync(out)).toBe(false);
+    });
+  });
+
+  describe('control: a response that is not an auth failure is unchanged', () => {
+    it.each([['no header', undefined], ['x-seraph-loginreason: OK', 'OK']])('%s', async (_n, value) => {
+      reason = value;
+      body = '{"issues":[]}';
+      stubEnv();
+      expect(await request('GET', '/search/jql?jql=x')).toEqual({ issues: [] });
+      const out = join(dir, 'out.bin');
+      expect(await downloadTo(`${base}/secure/attachment/1/a.bin`, out)).toBe(13);
+      const file = join(dir, 'a.txt');
+      writeFileSync(file, 'x');
+      expect(await uploadMultipart(`${base}/rest/api/3/issue/HTEST-1/attachments`, file)).toEqual({ issues: [] });
+      const r = await cli('list', '--jql', 'project=HTEST');
+      expect(r.code).toBe(0);
+      expect(r.stderr).toBe('');
+    });
   });
 });
