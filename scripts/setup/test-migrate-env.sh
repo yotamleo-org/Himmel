@@ -1785,31 +1785,38 @@ no_item "R32 a blank line then a real one" JIRA_API_TOKEN
 mkdir -p "$TMP/mvstub"
 cat > "$TMP/mvstub/mv" <<'STUB' || fail "fixture write of the mv stub failed"
 #!/usr/bin/env bash
-case "$*" in *.migrate.*) kill -TERM "$PPID"; exit 1 ;; esac
+case "$*" in *env-backups/*.migrate.*) kill -TERM "$PPID"; exit 1 ;; esac
 exec /bin/mv "$@"
 STUB
 chmod +x "$TMP/mvstub/mv"
 leftovers() { find "$TMP/st" "$HOME/.himmel" -name '*.migrate.[0-9]*' 2>/dev/null; }
-fixture_env
+plant_old_backup() {  # an older backup holding a secret the apply scrubs, so replace_file runs on it
+    fixture_env
+    printf 'JIRA_API_TOKEN=dummy-r1\n' >> "$TMP/st/.env"
+    mkdir -p "$HOME/.himmel/env-backups"
+    printf 'JIRA_API_TOKEN=dummy-r1\nHIMMEL_FLEET_CAP=3\n' > "$HOME/.himmel/env-backups/env.20260101T000000Z.1"
+    chmod "${1:-600}" "$HOME/.himmel/env-backups/env.20260101T000000Z.1"
+}
+plant_old_backup
 apply_tty y "PATH=$TMP/mvstub:\$PATH "
 left=$(leftovers)
 if [ -z "$left" ]; then pass "T10059 a TERM mid-replace leaves no .migrate.<pid> copy"; else fail "T10059 a TERM mid-replace left: $left"; fi
 no_canary "T10059 the interrupted run prints no value" "$out"
 # A leftover from an earlier run is named by path, never by content, and is not removed.
 fixture_env
-fxput "$TMP/st/.env.migrate.99999" 'X=%s\n' "$(canary leftover)"
+fxput "$TMP/st/.env.migrate.$$" 'X=%s\n' "$(canary leftover)"
 apply_tty y
-has "T10059 a leftover copy is named by path" "$TMP/st/.env.migrate.99999" "$out"
+has "T10059 a leftover copy is named by path" "$TMP/st/.env.migrate.$$" "$out"
 no_canary "T10059 the leftover report prints no value" "$out"
-if [ -e "$TMP/st/.env.migrate.99999" ]; then pass "T10059 the leftover is left for the operator"; else fail "T10059 the leftover was removed"; fi
+if [ -e "$TMP/st/.env.migrate.$$" ]; then pass "T10059 the leftover is left for the operator"; else fail "T10059 the leftover was removed"; fi
 # Control: a normal run still replaces the file and keeps its mode.
-fixture_env
-chmod 640 "$TMP/st/.env"
+plant_old_backup 640
 apply_tty y
-if [ "$rc" = 0 ] && [ "$(mode_of "$TMP/st/.env")" = 640 ] && [ -z "$(leftovers)" ]; then
-    pass "T10059 a normal run replaces .env, keeps its mode, leaves no copy"
+oldb="$HOME/.himmel/env-backups/env.20260101T000000Z.1"
+if [ "$rc" = 0 ] && [ "$(mode_of "$oldb")" = 640 ] && ! grep -q JIRA_API_TOKEN "$oldb" && [ -z "$(leftovers)" ]; then
+    pass "T10059 a normal run scrubs the backup, keeps its mode, leaves no copy"
 else
-    fail "T10059 a normal run: rc=$rc mode=$(mode_of "$TMP/st/.env") left=$(leftovers)"
+    fail "T10059 a normal run: rc=$rc mode=$(mode_of "$oldb") left=$(leftovers)"
 fi
 
 if [ "$FAILED" -gt 0 ]; then
