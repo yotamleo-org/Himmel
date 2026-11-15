@@ -1400,12 +1400,18 @@ except Exception:
 }
 intake_file="$inbox.wait.intake"
 intake_at_file="$inbox.wait.intake.at"
+intake_clock() {
+    local first
+    case "$1" in ''|0|*[!0-9]*) rm -f "$intake_file" "$intake_at_file"; return 1 ;; esac
+    first="$(sed -n 1p "$intake_file" 2>/dev/null)"  # swallow-ok: no file reads empty, so the clock starts now
+    case "$first" in ''|*[!0-9]*) printf '%s\n0\n' "$(date +%s)" > "$intake_file" 2>/dev/null ;; esac  # swallow-ok: an unwritable file only delays the clock
+}
 intake_wake() {
     local n="$1" now first last rel pk anchor cli out held
     now="$(date +%s)"
-    case "$n" in ''|0|*[!0-9]*) rm -f "$intake_file" "$intake_at_file"; return 1 ;; esac
-    first="$(sed -n 1p "$intake_file" 2>/dev/null)"  # swallow-ok: no file reads empty, so the clock starts now
-    case "$first" in ''|*[!0-9]*) first="$now"; printf '%s\n0\n' "$now" > "$intake_file" 2>/dev/null ;; esac  # swallow-ok: an unwritable file only delays the clock
+    intake_clock "$n" || return 1
+    first="$(sed -n 1p "$intake_file" 2>/dev/null)"  # swallow-ok: an unwritable file leaves no clock, so nothing arms
+    case "$first" in ''|*[!0-9]*) return 1 ;; esac
     case "$cap_val" in UNDERFILLED:*) ;; *) return 1 ;; esac
     [ $(( now - 10#$first )) -gt $(( 10#${CHIEF_WAIT_INTAKE_ARM_HOURS:-6} * 3600 )) ] || return 1
     last="$(sed -n 2p "$intake_file" 2>/dev/null)"  # swallow-ok: a missing second line reads as never woken
@@ -1439,7 +1445,7 @@ except Exception:
     printf '%s\n%s\n' "$first" "$now" > "$intake_file" 2>/dev/null
     # shellcheck disable=SC2016  # the backticks in the wake text are literal
     printf 'WAKE rm-intake INTAKE=%s since=%sh capacity=%s\nrun: file each INTAKE key (the `# intake` line of the pool, `jira release request %s --verb INTAKE --key <KEY> --to %s --why <why>`), then JIRA_PROJECT_KEY=%s node %s release rm-run %s --doc <absolute run doc>\n' \
-        "$n" "$(( (now - first) / 3600 ))" "$cap_val" "$rel" "$rel" "$pk" "$cli" "$rel"
+        "$n" "$(( (now - 10#$first) / 3600 ))" "$cap_val" "$rel" "$rel" "$pk" "$cli" "$rel"
 }
 # unwatched_wake: <unwatched= labels, `+`-joined> — a live worker the manifest does not list
 # (tick.sh already drops other chiefs' workers). Same marker logic, own marker, own window.
@@ -2520,6 +2526,7 @@ while :; do
             fail_woke && save_key "${saved:-$key}"
             # the worker-event wake carries the tick line and saves its key, so a re-arm
             # does not wake again on the same tails=/acts= move
+            intake_clock "$(field INTAKE "$tick_line")" || true  # swallow-ok: rc 1 only says INTAKE is zero (the clock was cleared)
             if r0_relay; then printf '%s\n' "$tick_line"; save_key "$key"; exit_reason='wake-worker-event'; exit 0; fi
             # a denied thread resolve is the chief's job; its acts= move is folded like the worker-event wake's
             if resolve_wake; then printf '%s\n' "$tick_line"; save_key "$key"; exit_reason='wake-resolve'; exit 0; fi

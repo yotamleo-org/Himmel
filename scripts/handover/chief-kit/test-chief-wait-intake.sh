@@ -17,7 +17,7 @@ printf '#!/usr/bin/env bash\ncat "$STUB/tick.line"\n' > "$STUB/tick.sh"
 printf '#!/usr/bin/env bash\necho PROCEED\n' > "$STUB/bank.sh"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB/off.sh"
 printf '#!/usr/bin/env bash\nexit 2\n' > "$STUB/budget-off.sh"
-printf '#!/usr/bin/env bash\ncat "$STUB/state.json"\n' > "$STUB/rmstate.sh"
+printf '#!/usr/bin/env bash\n[ "$1" = v1.1.3 ] && [ "$2" = --json ] || exit 9\ncat "$STUB/state.json"\n' > "$STUB/rmstate.sh"
 export STUB CHIEF_WAIT_TICK="$STUB/tick.sh" CHIEF_WAIT_USAGE="$STUB/bank.sh" CHIEF_WAIT_BUDGET="$STUB/budget-off.sh"
 export WAIT_SWEEP_CMD="$STUB/off.sh" WAIT_FOCUS_CMD="$STUB/off.sh" CHIEF_WAIT_DISPATCH="$STUB/off.sh"
 export CHIEF_WAIT_ORPHAN="$STUB/off.sh" CHIEF_WAIT_RMLEASE="$STUB/rmstate.sh"
@@ -81,6 +81,13 @@ if [ -s "$marker" ] && [ "$(sed -n 1p "$marker")" -ge "$(( $(date +%s) - 60 ))" 
 tick UNDERFILLED:3 ''
 run_waiter "$WORK/e2.out" 30 >/dev/null
 if [ -e "$marker" ]; then fail 'INTAKE back at 0 left the clock'; else pass 'INTAKE back at 0 clears the clock'; fi
+reset; tick UNDERFILLED:3 INTAKE=0; seed_intake_hours_ago 7
+run_waiter "$WORK/e3.out" 30 >/dev/null
+if [ -e "$marker" ]; then fail 'an explicit INTAKE=0 left the clock'; else pass 'an explicit INTAKE=0 clears a seeded clock'; fi
+
+reset; tick UNDERFILLED:3 INTAKE=48; printf '0%s\n0\n' "$(( $(date +%s) - 7 * 3600 ))" > "$marker"
+if run_waiter "$WORK/e4.out" 60; then pass 'a leading-zero clock epoch still arms, read as decimal'; else fail 'a leading-zero clock epoch armed nothing'; fi
+contains 'the leading-zero clock prints its age' "$(head -n 1 "$WORK/e4.out")" 'since=7h'
 
 reset; tick ok ''; sed -i 's/ denials=none/ review=2026-11-06:2h:80:0:0:-:CAPPED denials=none/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 if run_waiter "$WORK/f1.out" 30; then fail "a CAPPED-only review woke: $(head -n 1 "$WORK/f1.out")"; else pass 'a review that only carries CAPPED wakes nothing'; fi
