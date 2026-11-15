@@ -471,7 +471,10 @@ failure line says so.
      and bundle) of it at the base or the head `cbs_hash` for the head tree's
      `confighash`.
    - **loss** (fail): `panel.recall_gating` fell, or `panel.fp_rate` rose, by
-     more than the baseline rows' spread (max minus min).
+     more than the noise: the larger of the baseline rows' spread (max minus
+     min) and 2 cases over the metric's case count (`defects`,
+     `panel.clean_scored`). A loss is read only when the base and the head have
+     equal row counts; unequal counts are unmeasured.
    - **no-loss** / **keep** (pass): within noise; `keep` when every
      `--target-class` recall also beats the baseline maximum.
 
