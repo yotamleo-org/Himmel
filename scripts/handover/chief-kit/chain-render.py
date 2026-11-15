@@ -182,7 +182,6 @@ def render(graph, chains, mirror, state=None):
 
 
 def resolved_mirror():
-    """The project resolver's mirror dir (scripts/lib/jira-project.sh jira_mirror_dir), so a key kept only in himmel.conf is read."""
     lib = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib')
     try:
         r = subprocess.run(['bash', '-c', '. "$1/jira-project.sh" && jira_mirror_dir', 'chain-render', lib],

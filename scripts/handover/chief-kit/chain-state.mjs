@@ -57,13 +57,12 @@ if (!opt.json || !opt.registry) usage();
 
 const home = process.env.HOME || '/tmp';
 const stateDir = opt.state || process.env.TICKET_STATUS_STATE_DIR || join(home, '.himmel/state');
-// the default mirror comes from the project resolver (scripts/lib/jira-project.sh), so a key kept only in himmel.conf is read
 const resolved = fn => {
     try {
         const out = execFileSync('bash', ['-c', '. "$1/jira-project.sh" && "$2"', 'chain-state', fileURLToPath(new URL('../../lib', import.meta.url)), fn],
             { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
         if (out) return out;
-    } catch { /* reported below */ }
+    } catch {}
     process.stderr.write(`chain-state: scripts/lib/jira-project.sh ${fn} resolved nothing\n`);
     process.exit(2);
 };

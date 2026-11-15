@@ -146,8 +146,6 @@ has "ceilings: the finding key is ceilings" "$out" "· ceilings:"
 out="$(run HIMMEL_CEILINGS_LEDGER="$TMP/ledger.tsv" GAP_AUDIT_MIRROR="$TMP/no-mirror")"
 lacks "ceilings: no mirror skips only the Done check" "$out" "C-0001"
 has "ceilings: no mirror still flags a missing file" "$out" "C-0003"
-# No GAP_AUDIT_MIRROR and a project key only in himmel.conf under a scratch HOME
-# reads jira-mirror/<that key>; the env key and the himmel.conf key are read through the resolver.
 mkdir -p "$TMP/key-home/.himmel/state/jira-mirror/CONFKEY" "$TMP/key-conf" "$TMP/key-cache"
 printf 'JIRA_PROJECT_KEY=CONFKEY\n' > "$TMP/key-conf/himmel.conf"
 : > "$TMP/key-cache/.env"
