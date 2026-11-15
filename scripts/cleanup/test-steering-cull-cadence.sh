@@ -31,6 +31,7 @@ git init -q "$P"
 cp "$DIR/steering-cull-cadence.sh" "$P/scripts/cleanup/" 2>/dev/null || true
 cp "$REAL_ROOT/scripts/luna/cadence-alert.sh" "$P/scripts/luna/"
 cp "$REAL_ROOT/scripts/lib/llm-backend.sh" "$P/scripts/lib/"
+cp "$REAL_ROOT/scripts/lib/cadence-format.sh" "$P/scripts/lib/"
 printf '# project rules\n' > "$P/CLAUDE.md"
 git -C "$P" add -A
 git -C "$P" -c user.name=t -c user.email=t@t commit -q -m fixture
@@ -274,6 +275,12 @@ check "a default arm with --api-account is refused" 1 $?
 bash "$CAD" arm --force --chief test-chief --proposal-dir "$PROP" --backend claude-cli >"$W/arm8d.out" 2>&1
 check "arm --backend claude-cli exits 0" 0 $?
 has "an explicit claude-cli arm pins the backend against an inherited env" "STEERING_CULL_BACKEND=claude-cli" "$W/runner/steering-cull-cadence.sh"
+# cron cannot read the macOS Keychain login: a claude-cli runner loads the token file, a claude-api runner does not.
+has "a claude-cli runner loads the OAuth token file" "export CLAUDE_CODE_OAUTH_TOKEN" "$W/runner/steering-cull-cadence.sh"
+has "a claude-cli runner names the default token path" "$HOME/.himmel/secrets/claude-oauth-token" "$W/runner/steering-cull-cadence.sh"
+bash "$CAD" arm --force --chief test-chief --proposal-dir "$PROP" --backend claude-api --api-account B >"$W/arm8f.out" 2>&1
+check "arm --backend claude-api exits 0 again" 0 $?
+hasnt "a claude-api runner never loads the OAuth token file" "CLAUDE_CODE_OAUTH_TOKEN" "$W/runner/steering-cull-cadence.sh"
 bash "$CAD" disarm >/dev/null 2>&1
 
 echo "steering-cull-cadence: $PASSED passed, $FAILED failed"

@@ -57,6 +57,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ALERT="$SCRIPT_DIR/../luna/cadence-alert.sh"
 # shellcheck source=../lib/llm-backend.sh
 . "$SCRIPT_DIR/../lib/llm-backend.sh"
+# shellcheck source=../lib/cadence-format.sh
+. "$SCRIPT_DIR/../lib/cadence-format.sh"
 STATE_DIR="${STEERING_CULL_STATE_DIR:-${HOME:-}/.himmel/state/steering-cull}"
 CRONTAB_BIN="${STEERING_CULL_CRONTAB:-crontab}"
 RUNNER_DIR="${STEERING_CULL_RUNNER_DIR:-${HOME:-}/.claude/steering-cull-cadence}"
@@ -288,6 +290,8 @@ cmd_arm() {
             printf 'export STEERING_CULL_BACKEND=claude-api HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=%q\n' "$acct"
         elif [ "$backend" = "claude-cli" ]; then
             printf 'export STEERING_CULL_BACKEND=claude-cli\n'
+            # cron cannot read the macOS Keychain login (SCRUM-5): the claude-cli runner loads the token file.
+            cadence_oauth_token_lines
         fi
         printf 'log=%q\n' "$RUNNER_DIR/steering-cull-cadence.log"
         printf '[ -f "$log" ] && mv -f "$log" "$log.prev"\n'
