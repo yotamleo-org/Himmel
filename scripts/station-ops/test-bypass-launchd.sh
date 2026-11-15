@@ -326,6 +326,7 @@ echo "== 9973 R13: a replace ref cannot forge the tier file the daemon reads =="
 setup_repo r13
 awk -F'\t' -v OFS='\t' '$1 == "ROGUE_SCHEDULE_OK" { $2 = "grant"; $4 = "-" } 1' "$R/$TIER_REL" > "$D/forged.tsv"
 g -C "$R" replace "$(g -C "$R" rev-parse "HEAD:$TIER_REL")" "$(g -C "$R" hash-object -w "$D/forged.tsv")"
+assert_contains "R13 control: an ordinary git read sees the forged tier file" $'ROGUE_SCHEDULE_OK\tgrant' "$(g -C "$R" show "HEAD:$TIER_REL")"
 start
 refusal "R13 a floor flag under a forged tier blob" r13 "flag ROGUE_SCHEDULE_OK is floor" flags=ROGUE_SCHEDULE_OK
 assert_absent "R13 no ask is sent" "Reply: go" "$(cat "$D/sent" 2>/dev/null)"
@@ -335,6 +336,9 @@ echo "== 9973 R14: a configured fsmonitor does not run inside the daemon =="
 setup_repo r14
 printf '#!/bin/sh\n: > "%s/fsm.ran"\nexit 0\n' "$D" > "$D/fsm.sh"; chmod +x "$D/fsm.sh"
 g -C "$R" config core.fsmonitor "$D/fsm.sh"
+g -C "$R" diff --quiet HEAD
+assert_eq "R14 control: an ordinary git diff runs the fsmonitor command" "ran" "$([ -e "$D/fsm.ran" ] && echo ran || echo no)"
+rm -f "$D/fsm.ran"
 start
 wait_for "$Q/daemon.log" "start pid="
 assert_eq "R14 the fsmonitor command never ran" "no" "$([ -e "$D/fsm.ran" ] && echo ran || echo no)"
