@@ -1,9 +1,9 @@
 import { join, dirname, basename, resolve, isAbsolute } from "node:path";
 import { randomUUID, createHash } from "node:crypto";
 import { hostname, homedir } from "node:os";
-import { briefTextCounted, protectedRanges, findDo } from "./key-brief";
+import { briefTextCounted, protectedRanges } from "./key-brief";
 import { killTree, SPAWN_OWN_GROUP } from "../lib/kill-tree.mjs";
-import { readdir, readFile, stat, mkdir, open, unlink, copyFile, rm, rmdir, realpath, appendFile, writeFile } from "node:fs/promises";
+import { readdir, readFile, stat, mkdir, open, unlink, copyFile, rm, rmdir, realpath, appendFile } from "node:fs/promises";
 import { appendIfExists, atomicWrite, defaultRoot } from "./bus";
 import { loadAccess, operatorChatId } from "./gate";
 import { BASH_BIN } from "./run";
@@ -1483,27 +1483,35 @@ export function resolveKind(table: ClassTable | null, kind: string | undefined):
   return table.rows.find((r) => r.kind.endsWith("*") && r.kind.indexOf("*") === r.kind.length - 1 && FAMILY_RE.test(r.kind) && kind.startsWith(r.kind.slice(0, -1))) ?? null;
 }
 
-async function capText(text: string, kind: string, cap: number, root: string): Promise<{ text: string; state: "ok" | "cut" | "over-cap-uncut" }> {
-  if (text.length <= cap) return { text, state: "ok" };
-  const uncut = { text, state: "over-cap-uncut" as const };
-  const doAt = findDo(text);
-  if (doAt < 0) return uncut;
-  const pre = text.slice(0, doAt); const doSeg = text.slice(doAt);
-  const dir = join(root, "route-cut");
-  const file = join(dir, `${new Date().toISOString().replace(/[:.]/g, "-")}-${kind.replace(/[^A-Za-z0-9_-]/g, "_")}.txt`);
-  const suffix = `... (full text on the station: ${file})`;
-  let i = Math.min(cap - suffix.length - doSeg.length, pre.length);
-  const spans = protectedRanges(pre);
-  for (;;) {
-    while (i > 0 && pre[i] !== " " && pre[i] !== "\n") i--;
-    if (i <= 0) return uncut;
-    const span = spans.find(([s, e]) => i > s && i < e);
-    if (!span) break;
-    i = span[0];
+// Telegram takes 4096 characters a message; a part stays well under it, its "(n/m) " marker included.
+const TELEGRAM_PART_LIMIT = 3000;
+const PART_BREAKS = [/\n[ \t]*\n/g, /\n/g, /[.!?]["')\]]*[ \t]+/g, /\s+/g];
+
+// Where the first part of s ends: after the last paragraph, line, sentence or word break that fits, never inside a
+// backtick span or a command line if a break outside one fits; a word longer than the budget is the only cut inside a word.
+function partEnd(s: string, budget: number): number {
+  const head = s.slice(0, budget);
+  const spans = protectedRanges(s);
+  const ends = (re: RegExp) => [...head.matchAll(re)].map((m) => m.index + m[0].length);
+  for (const re of PART_BREAKS) {
+    const free = ends(re).filter((e) => !spans.some(([a, b]) => e > a && e < b));
+    if (free.length) return free[free.length - 1];
   }
-  await mkdir(dir, { recursive: true });
-  await writeFile(file, text, { mode: 0o600, flag: "wx" });
-  return { text: `${pre.slice(0, i).trimEnd()}${suffix}${doSeg}`, state: "cut" };
+  const any = ends(/\s+/g);
+  if (any.length) return any[any.length - 1];
+  return /[\uD800-\uDBFF]/.test(head[budget - 1]) ? budget - 1 : budget;
+}
+
+function splitParts(text: string, limit = TELEGRAM_PART_LIMIT): string[] {
+  if (text.length <= limit) return [text];
+  for (let digits = 1; ; digits++) {
+    const budget = limit - (2 * digits + 4);
+    const parts: string[] = [];
+    let rest = text;
+    while (rest.length > budget) { const end = partEnd(rest, budget); parts.push(rest.slice(0, end)); rest = rest.slice(end); }
+    parts.push(rest);
+    if (String(parts.length).length <= digits) return parts.map((p, i) => `(${i + 1}/${parts.length}) ${p}`);
+  }
 }
 
 export async function routeReply(root: string, chatId: number, text: string, o: { kind?: string; consoleName?: string; dest: string }): Promise<MsgClass> {
@@ -1520,10 +1528,7 @@ export async function routeReply(root: string, chatId: number, text: string, o: 
     }
     // ponytail: a word match, upgrade path = run scripts/handover/chief-kit/salus_marked.py on every path the text names
     if (cls === "monitor" && /salus/i.test(sent)) cls = "escalate";
-    if (cls === "escalate" && row && row.cap !== "none") {
-      const c = await capText(sent, kind!, table!.cap, root);
-      sent = c.text; capState = c.state;
-    }
+    if (cls === "escalate" && row && row.cap !== "none" && sent.length > table!.cap) capState = "over-cap-uncut";
     if (cls === "monitor") {
       await mkdir(join(root, "monitor"), { recursive: true });
       await appendFile(join(root, "monitor", "outbox.jsonl"), `${JSON.stringify({ text: sent, kind, at: new Date().toISOString() })}\n`, { mode: 0o600 });
@@ -1533,7 +1538,11 @@ export async function routeReply(root: string, chatId: number, text: string, o: 
     console.error(`[chief-route] routing failed, sending the raw text to the operator: ${e instanceof Error ? e.message : e}`);
     cls = "escalate"; logClass = "escalate-fallback"; sent = text; capState = "ok";
   }
-  if (cls === "escalate") await replyViaOutbox(root, chatId, sent, o.consoleName);
+  if (cls === "escalate") {
+    const parts = splitParts(sent);
+    if (parts.length > 1) capState = "split";
+    for (const part of parts) await replyViaOutbox(root, chatId, part, o.consoleName);
+  }
   const dest = cls === "escalate" ? o.dest : cls === "monitor" ? "monitor" : "none";
   try {
     await mkdir(root, { recursive: true });
