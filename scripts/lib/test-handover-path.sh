@@ -449,7 +449,7 @@ t9x_run() {
 t9x_dirs() { "$T9X_REAL_FIND" "$1" -maxdepth 1 -name 'arm-resume-cache.*' -type d | wc -l | tr -d ' '; }
 t9x_calls() { wc -l < "$1/find-calls" | tr -d ' '; }
 # t9x_fresh <sandbox>: the stamp was written within the last minute (and is not future-dated)
-t9x_fresh() { "$T9X_REAL_FIND" "$1" -maxdepth 0 -mmin -1 ! -mmin -0 2>/dev/null | grep -q .; }
+t9x_fresh() { grep -q . <<< "$("$T9X_REAL_FIND" "$1" -maxdepth 0 -mmin -1 ! -mmin -0 2>/dev/null)"; }
 T9X_STAMP_REL=home/.himmel/state/arm-resume-cache-gc.stamp
 # shellcheck disable=SC2016
 T9X_SRC='. "$LIB"'
@@ -522,7 +522,7 @@ ln -s "$t9m_sb/target" "$t9m_sb/$T9X_STAMP_REL"
 t9x_run "$t9m_sb" "$t9m_sb/tmp" "$T9X_SRC; _arm_cache_dir_ensure"
 assert_eq "T9M a symlinked stamp runs the GC find once" "1" "$(t9x_calls "$t9m_sb")"
 assert_eq "T9M a symlinked stamp's target content is not written through" "target-original" "$(cat "$t9m_sb/target")"
-if "$T9X_REAL_FIND" "$t9m_sb/target" -maxdepth 0 -mmin +60 | grep -q .; then echo "PASS T9M a symlinked stamp's target mtime is unchanged"; else echo "FAIL T9M a symlinked stamp's target was touched"; FAILED=$((FAILED + 1)); fi
+if grep -q . <<< "$("$T9X_REAL_FIND" "$t9m_sb/target" -maxdepth 0 -mmin +60)"; then echo "PASS T9M a symlinked stamp's target mtime is unchanged"; else echo "FAIL T9M a symlinked stamp's target was touched"; FAILED=$((FAILED + 1)); fi
 t9m_sb=$(t9x_sandbox); mkdir -p "$t9m_sb/$T9X_STAMP_REL"
 t9x_run "$t9m_sb" "$t9m_sb/tmp" "$T9X_SRC; _arm_cache_dir_ensure"
 assert_eq "T9M a stamp that is a directory runs the GC find once" "1" "$(t9x_calls "$t9m_sb")"
