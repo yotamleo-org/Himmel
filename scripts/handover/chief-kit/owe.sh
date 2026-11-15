@@ -17,9 +17,10 @@
 # one. OWE_NOW_EPOCH replaces the clock (tests).
 #
 # Exit codes: 0 done, 1 close of an unknown or already closed id, 2 usage or a refused value,
-# 3 the bucket directory is absent, 4 the ledger is unreadable.
+# 3 the bucket directory is absent, 4 the ledger is unreadable, cannot be opened for append or
+# cannot be locked (no flock on the host).
 #
-# Platform guard: POSIX bash 3.2+, jq.
+# Platform guard: bash, jq and flock; the chief kit is Linux-only.
 set -u
 
 usage() {
