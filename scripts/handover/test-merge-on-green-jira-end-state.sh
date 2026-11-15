@@ -117,7 +117,8 @@ STUBNODE
 # (derive/lock.rc: 0 free, 11 held) and the derive's gh shim
 install_status_funnel() {
     local tmp="$1" f
-    for f in ticket-status.sh status-marker.sh required-checks.sh prim.sh git-clean.sh timeout-bin.sh merge-rows-effective.py; do
+    for f in ticket-status.sh status-marker.sh required-checks.sh prim.sh git-clean.sh timeout-bin.sh merge-rows-effective.py \
+        gh-read.sh gh-quota.sh gh-graphql-budget.sh load-dotenv.sh; do
         cp "$REPLAY_TREE/scripts/lib/$f" "$tmp/scripts/lib/$f"
     done
     cp "$REPLAY_TREE/scripts/handover/chief-kit/worker-jira-status.sh" "$tmp/scripts/handover/chief-kit/worker-jira-status.sh"
