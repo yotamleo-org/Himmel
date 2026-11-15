@@ -81,7 +81,7 @@ ready() { # <pr> <head>
 step "repo $REPO"
 if ! gh repo view "$REPO" --json name >/dev/null 2>&1; then
     gh repo create "$REPO" --private --add-readme \
-        --description "Throwaway fixture repo for himmel HIMMEL-5232 review-gate live e2e" >/dev/null || { echo "create failed" >&2; exit 1; }
+        --description "Throwaway fixture repo for the himmel review-gate and merge-on-green live e2e" >/dev/null || { echo "create failed" >&2; exit 1; }
 fi
 priv=$(gh repo view "$REPO" --json isPrivate --jq .isPrivate)
 [ "$priv" = "true" ] || { echo "live-gate-e2e: $REPO is not private — refusing" >&2; exit 2; }

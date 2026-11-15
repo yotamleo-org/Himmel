@@ -491,7 +491,7 @@ console.log(found.size === 1 ? [...found][0] : "");
         "" \
         "## Agent detail" \
         "Origin: PR #${PR_NUMBER} (HEAD ${HEAD_SHA}) in ${batch_repo}." \
-        "Filed by: scripts/cr/file-deferred-issues.sh (HIMMEL-30, HIMMEL-5921)." \
+        "Filed by: scripts/cr/file-deferred-issues.sh, the /pr-check step 7 deferred-finding filer." \
         "Dedupe marker: ${batch_marker}" \
         "" \
         "Findings:" \
@@ -546,7 +546,7 @@ if [ "$DRY_RUN" -eq 0 ] && [ "$FORGE" = "github" ]; then
     label_err=""
     if ! label_err=$(gh label create "$LABEL" \
             --repo "$REPO" \
-            --description "Auto-filed deferred CR finding (HIMMEL-30)" \
+            --description "Auto-filed deferred CR finding" \
             --color B0E0E6 \
             2>&1); then
         case "$label_err" in
@@ -634,7 +634,7 @@ while IFS= read -r line; do
         '```' \
         "" \
         "**Origin:** PR #${PR_NUMBER} (HEAD ${HEAD_SHA})" \
-        "**Filed by:** \`scripts/cr/file-deferred-issues.sh\` (HIMMEL-30)" \
+        "**Filed by:** \`scripts/cr/file-deferred-issues.sh\`, the /pr-check step 7 deferred-finding filer" \
         "**Dedupe marker:** \`${marker}\`" \
         "" \
         "This was flagged as a low-severity / deferred finding during pre-merge" \
