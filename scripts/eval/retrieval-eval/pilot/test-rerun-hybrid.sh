@@ -72,27 +72,64 @@ eq "noise R5: without a baseline (legacy) any unbooked rise still stops" '[false
 eq "noise R5: shared-credentials settles after query 5 and every 10; legacy after 5 only" '[[5, 15, 25, 35, 45, 55, 65, 75], [5]]' "$(f "$NR" cadence 2>/dev/null)"
 printf '{"binding": {"key_fingerprint": "%s"}}\n' "$(printf 'fixture-key' | sha256sum | cut -d' ' -f1)" > "$W/nctx.json"
 printf 'r5 go\n' > "$W/nr5-go"; printf '{"g3": "PASS"}\n' > "$W/ng3.json"
-python3 -I -c 'import json,sys,hashlib; json.dump({"start_meter": 1.0, "end_meter": 1.06, "start_ts": 0, "end_ts": 9e9, "window_s": 600, "key_fingerprint": hashlib.sha256(b"fixture-key").hexdigest(), "rate": 0.0001}, open(sys.argv[1], "w"))' "$W/nbl.json"
+: > "$W/none.jsonl"
+python3 -I - "$W" <<'EOF'
+import hashlib, json, sys
+W = sys.argv[1]
+fp = hashlib.sha256(b"fixture-key").hexdigest()
+good = {"start_meter": 1.0, "end_meter": 1.06, "start_ts": 9400.0, "end_ts": 10000.0, "window_s": 600, "key_fingerprint": fp, "rate": 0.0001}
+for name, b in {"good": good, "other": dict(good, end_meter=1.03, rate=0.00005), "fp": dict(good, key_fingerprint="0" * 64),
+                "window": dict(good, start_ts=9700.0, window_s=300, end_meter=1.03)}.items():
+    json.dump(b, open(W + "/nbl-%s.json" % name, "w"))
+json.dump({"ev": "settle", "meter": 1.0, "at": "before", "ts": 9990.0}, open(W + "/nstate-busy.jsonl", "w"))
+open(W + "/nstate-busy.jsonl", "a").write("\n")
+EOF
 nrun() {
-  python3 -I - "$RH" "$W" "$1" "$2" <<'EOF'
+  python3 -I - "$RH" "$W" "$1" "$2" "$3" "${4:-10060}" "${5:-100}" <<'EOF'
 import argparse, importlib.machinery, importlib.util, json, sys
-rh, W, stance, bl = sys.argv[1:5]
+rh, W, stance, bl, state, now, dur = sys.argv[1:8]
 l = importlib.machinery.SourceFileLoader("rh", rh); s = importlib.util.spec_from_loader("rh", l); m = importlib.util.module_from_spec(s); l.exec_module(m)
+class Clk:
+    t = float(now)
+    def now(self):
+        return self.t
+    def sleep(self, x):
+        self.t += x
+m.CLOCK = Clk()
 g = {"g0": "READY", "g1": True, "g1_evidence": "fixture", "g3_report": W + "/ng3.json", "r5_go": W + "/nr5-go"}
 if stance != "-":
     g["g0_stance"] = stance
 json.dump(g, open(W + "/ngates.json", "w"))
-a = argparse.Namespace(questions=W + "/none.jsonl", ctx=W + "/nctx.json", state=W + "/nstate-%s.jsonl" % stance, gates=W + "/ngates.json",
-                       out=W + "/nrows.jsonl", usage_cmd="false", settle_seconds=0, noise_baseline=None if bl == "-" else bl, expected_duration=1800)
-sys.exit(m.run(a))
+a = argparse.Namespace(questions=W + "/none.jsonl", ctx=W + "/nctx.json", state=W + "/nstate-%s.jsonl" % state, gates=W + "/ngates.json",
+                       out=W + "/nrows.jsonl", usage_cmd="false", settle_seconds=0, noise_baseline=None if bl == "-" else bl, expected_duration=float(dur))
+rc = m.run(a)
+st = m.State(a.state)
+print("first-event=%s queries=%d" % (st.events[0]["ev"] if st.events else "none", st.queries()))
+sys.exit(rc)
 EOF
 }
-for c in "-|-|G0 stance not recorded" "shared-credentials|-|needs a noise baseline" "eval-only-reachable|$W/nbl.json|legacy stance"; do
-  IFS='|' read -r st bl why <<< "$c"
-  o=$(nrun "$st" "$bl" 2>&1); rc=$?
-  eq "noise R5: g0_stance=$st baseline=${bl##*/} refuses before any query" 3 "$rc"
+for c in "-|-|nogst|G0 stance not recorded" "shared-credentials|-|nobl|needs a noise baseline" "eval-only-reachable|$W/nbl-good.json|legacy|legacy stance" \
+         "shared-credentials|$W/nbl-fp.json|fp|taken on another key" "shared-credentials|$W/nbl-window.json|win|outside 600 to 1800" \
+         "shared-credentials|$W/nbl-good.json|busy|already has events without a noise baseline"; do
+  IFS='|' read -r st bl sn why <<< "$c"
+  o=$(nrun "$st" "$bl" "$sn" 2>&1); rc=$?
+  eq "noise R5: g0_stance=$st baseline=${bl##*/} state=$sn refuses before any query" "3 queries=0" "$rc $(printf '%s\n' "$o" | grep -o 'queries=[0-9]*')"
   has "noise R5: that refusal names its reason" "$why" "$o"
 done
+o=$(nrun shared-credentials "$W/nbl-good.json" stale 17201 2>&1); rc=$?
+eq "noise R5: a baseline older than 2 hours at the first start refuses with zero queries" "3 queries=0" "$rc $(printf '%s\n' "$o" | grep -o 'queries=[0-9]*')"
+has "noise R5: the stale refusal names its reason" "more than 2 hours" "$o"
+o=$(nrun shared-credentials "$W/nbl-good.json" noisy 10060 1800 2>&1); rc=$?
+eq "noise R5: 3 x rate x expected duration above the 0.05 cap refuses with zero queries" "3 queries=0" "$rc $(printf '%s\n' "$o" | grep -o 'queries=[0-9]*')"
+has "noise R5: the feasibility refusal names its reason" "too noisy" "$o"
+o=$(nrun shared-credentials "$W/nbl-good.json" ok 2>&1)
+has "noise R5: a current baseline on the bound key passes start_noise and is the state's first event" "first-event=noise_baseline" "$o"
+has "noise R5: past start_noise the run reaches its first settle (the fixture meter is unreadable)" "key usage could not be read" "$o"
+o=$(nrun shared-credentials "$W/nbl-good.json" ok 99999 2>&1)
+has "noise R5: a restart with the same baseline does not re-check its age" "key usage could not be read" "$o"
+o=$(nrun shared-credentials "$W/nbl-other.json" ok 2>&1); rc=$?
+eq "noise R5: a restart with a different baseline refuses with no new query" "3 queries=0" "$rc $(printf '%s\n' "$o" | grep -o 'queries=[0-9]*')"
+has "noise R5: the different-baseline refusal names its reason" "different noise baseline" "$o"
 QMD="${PILOT_QMD:-$(command -v qmd || true)}"
 if [ -z "$QMD" ] || ! command -v node >/dev/null 2>&1 || ! command -v bwrap >/dev/null 2>&1 || ! bwrap --bind / / --unshare-net true 2>/dev/null; then
   printf 'SKIP - every rerun row: the pinned qmd, node or an unprivileged bwrap network namespace is absent on this host\n'
