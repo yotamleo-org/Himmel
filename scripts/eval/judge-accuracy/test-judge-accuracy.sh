@@ -450,5 +450,27 @@ class Strict(datetime):
 j.datetime = Strict
 print(j.when("2026-10-16T11:00:00.000+0200").isoformat())' "$HERE" 2>&1)" "2026-10-16T11:00:00+02:00"
 
+# --- the default mirror follows the project resolver ---------------------------------------------------
+# A station whose project key lives only in himmel.conf: no JIRA_PROJECT_KEY, no HIMMEL_JIRA_MIRROR.
+RH="$TMP/rhome"
+mkdir -p "$RH/.himmel/state/jira-mirror/ZZTEST" "$RH/cache"
+printf 'JIRA_PROJECT_KEY=ZZTEST\n' >"$RH/.himmel/himmel.conf"
+: >"$RH/cache/.env"
+cp "$TMP/mirror/HIMMEL-9005.md" "$RH/.himmel/state/jira-mirror/ZZTEST/HIMMEL-9005.md"
+jar() { env -i HOME="$RH" PATH="$PATH" HIMMELCTL_CACHE_DIR="$RH/cache" "$@" python3 -I "$JA" run --verdicts "$TMP/v" --prs "$TMP/prs.json" \
+  --queue "$TMP/q-resolver.jsonl" --no-ledger; }
+rc=0; err="$(jar 2>&1 >/dev/null)" || rc=$?
+eq "default mirror: a himmel.conf-only key reads that project's mirror" "$rc" "0"
+case "$err" in *"no Jira mirror"*) fail "default mirror: the run still looked for a mirror that is not there: $err";; *) pass "default mirror: no missing-mirror refusal";; esac
+rc=0; err="$(jar HIMMEL_JIRA_MIRROR="$TMP/mirror" 2>&1 >/dev/null)" || rc=$?
+eq "default mirror: HIMMEL_JIRA_MIRROR names the mirror" "$rc" "0"
+rc=0; err="$(env -i HOME="$RH" PATH="$PATH" HIMMELCTL_CACHE_DIR="$RH/cache" python3 -I "$JA" run --verdicts "$TMP/v" --prs "$TMP/prs.json" \
+  --mirror "$TMP/nope" --queue "$TMP/q-resolver.jsonl" --no-ledger 2>&1 >/dev/null)" || rc=$?
+eq "default mirror: an explicit --mirror still wins over the resolver" "$rc" "2"
+has "default mirror: the explicit --mirror is the one reported missing" "$err" "$TMP/nope"
+eq "default mirror: MIRROR stays a module-level string, the resolved path" "$(env -i HOME="$RH" PATH="$PATH" HIMMELCTL_CACHE_DIR="$RH/cache" \
+  python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import judge_accuracy as j; print(type(j.MIRROR).__name__, j.MIRROR)' "$HERE")" \
+  "str $RH/.himmel/state/jira-mirror/ZZTEST"
+
 echo "judge-accuracy: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

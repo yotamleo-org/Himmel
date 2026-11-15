@@ -85,5 +85,18 @@ eq "a missing CR ledger is refused" "$rc" "2"
 eq "--until: a finding raised after the cut is out" "$(python3 -I "$EVAL" --cr-ledger "$TMP/cr.jsonl" --mirror "$TMP/mirror" --until 2026-10-09T00:00:00Z 2>/dev/null | python3 -I -c 'import json, sys; print(json.load(sys.stdin)["metrics"]["deferred"])')" "0"
 case "$(python3 -I "$EVAL" --help 2>&1)" in *"Exit 0 done"*) pass "--help prints the whole usage text";; *) fail "--help prints the whole usage text";; esac
 
+# --- the default mirror follows the project resolver ---------------------------------------------------
+# A station whose project key lives only in himmel.conf: no JIRA_PROJECT_KEY, no HIMMEL_JIRA_MIRROR.
+RH="$TMP/rhome"
+mkdir -p "$RH/.himmel/state/jira-mirror/ZZTEST" "$RH/cache"
+printf 'JIRA_PROJECT_KEY=ZZTEST\n' >"$RH/.himmel/himmel.conf"
+: >"$RH/cache/.env"
+cp "$TMP/mirror/HIMMEL-10.md" "$RH/.himmel/state/jira-mirror/ZZTEST/HIMMEL-10.md"
+rc=0; env -i HOME="$RH" PATH="$PATH" HIMMELCTL_CACHE_DIR="$RH/cache" python3 -I "$EVAL" --cr-ledger "$TMP/cr.jsonl" >/dev/null 2>"$TMP/err-default" || rc=$?
+eq "default mirror: a himmel.conf-only key reads that project's mirror" "$rc" "0"
+eq "default mirror: it joined the one ticket the resolver's mirror holds" "$(env -i HOME="$RH" PATH="$PATH" HIMMELCTL_CACHE_DIR="$RH/cache" python3 -I "$EVAL" --cr-ledger "$TMP/cr.jsonl" 2>/dev/null | python3 -I -c 'import json, sys; print(json.load(sys.stdin)["metrics"]["fixed_later"])')" "1"
+rc=0; env -i HOME="$RH" PATH="$PATH" HIMMELCTL_CACHE_DIR="$RH/cache" python3 -I "$EVAL" --cr-ledger "$TMP/cr.jsonl" --mirror "$TMP/no-mirror" >/dev/null 2>"$TMP/err-explicit" || rc=$?
+eq "default mirror: an explicit --mirror still wins over the resolver" "$rc" "2"
+
 echo "test-deferred-outcome: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

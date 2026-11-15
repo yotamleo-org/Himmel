@@ -11,7 +11,7 @@ and appends one `judge-accuracy` row to the eval-runs ledger (scripts/eval/lib/e
 Inputs. --verdicts is the bucket's verdicts/ tree (verdicts/<qid>/<name>.md, write-verdict.sh's format).
 --prs is `gh pr list --state all --json number,state,mergedAt,headRefOid,mergeCommit`; --main-runs is
 `gh run list --branch main --json databaseId,headSha,conclusion,createdAt`; --mirror is the Jira mirror
-(default ~/.himmel/state/jira-mirror/HIMMEL). The window is the verdicts written in [until - days, until).
+(default: the project resolver's, ~/.himmel/state/jira-mirror/<JIRA_PROJECT_KEY>). The window is the verdicts written in [until - days, until).
 
 Join.
   escape     a PR merged at the head of a GO record in the window written before the merge, and either a Bug
@@ -67,7 +67,23 @@ from wilson import wilson  # noqa: E402
 EVAL_ID = "judge-accuracy"
 SOURCE = "scripts/eval/judge-accuracy/judge_accuracy.py"
 QUEUE_ENV = "HIMMEL_JUDGE_ADJUDICATION"
-MIRROR = os.path.expanduser("~/.himmel/state/jira-mirror/HIMMEL")
+
+
+def default_mirror():
+    """The Jira mirror dir from scripts/lib/jira-project.sh (one bash subprocess, read once); the old
+    HIMMEL path when bash or the library is missing."""
+    old = os.path.expanduser("~/.himmel/state/jira-mirror/HIMMEL")  # env-literal-ok: the path when bash or the resolver is missing
+    lib = os.path.join(HERE, "..", "..", "lib", "jira-project.sh")
+    try:
+        r = subprocess.run(["bash", "-c", '. "$1" && jira_mirror_dir', "judge_accuracy", lib],
+                           capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return old
+    out = r.stdout.strip()
+    return out if r.returncode == 0 and out else old
+
+
+MIRROR = default_mirror()
 DAYS = 28
 RULINGS = ("S", "P", "N")
 VERDICT = re.compile(r"^\*\*(GO|NO-GO)\*\* for head `([0-9a-f]+)`", re.M)
