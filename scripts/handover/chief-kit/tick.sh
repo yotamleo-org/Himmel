@@ -661,6 +661,19 @@ holds_ledger() {
     echo off
 }
 
+# holds_gh_paused: true when GitHub is paused for the pool_holds step's PR read (scripts/lib/gh-quota.sh
+# ghq_scan_gate, main GraphQL), judged only on a quota.tsv reading under 170 s old; it prints the gate's line
+# to stderr. Every PR-dependent wake then reads unchecked.
+holds_gh_paused() {
+    local line
+    [ -f "$HERE/../../lib/gh-quota.sh" ] || return 1
+    # shellcheck source=../../lib/gh-quota.sh
+    . "$HERE/../../lib/gh-quota.sh"
+    ghq_read main graphql && [ $(($(date +%s) - GHQ_OBSERVED)) -lt 170 ] || return 1
+    line="$(GHQ_GH_CMD="${TICK_GH_CMD:-${GHQ_GH_CMD:-gh}}" ghq_scan_gate main graphql tick)" && return 1
+    printf '%s\n' "$line" >&2
+}
+
 pool_stale_file() {
     local doc="$1" mirror="$2"
     printf '%s/tick-pool-stale-%s.out\n' "${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}" \
@@ -1639,19 +1652,8 @@ if [ "$holds_mode" -eq 1 ]; then
     [ -n "$DOC" ] || { usage >&2; exit 2; }
     DOC="$(resolve_doc "$DOC")"
     ph_stem="${DOC##*/}"
-    # With GitHub paused (scripts/lib/gh-quota.sh ghq_scan_gate, main GraphQL) the PR read is skipped and
-    # every PR-dependent wake reads unchecked; it judges only a quota.tsv reading under 170 s old.
     ph_noread=0
-    if [ -f "$HERE/../../lib/gh-quota.sh" ]; then
-        # shellcheck source=../../lib/gh-quota.sh
-        . "$HERE/../../lib/gh-quota.sh"
-        if ghq_read main graphql && [ $(($(date +%s) - GHQ_OBSERVED)) -lt 170 ] \
-            && ! ph_line=$(GHQ_GH_CMD="${TICK_GH_CMD:-${GHQ_GH_CMD:-gh}}" ghq_scan_gate main graphql tick); then
-            printf '%s\n' "$ph_line" >&2
-            export GH_READ_OFF=1
-            ph_noread=1
-        fi
-    fi
+    if holds_gh_paused; then export GH_READ_OFF=1; ph_noread=1; fi
     pool_holds "$DOC" "$(holds_ledger "$DOC")" "${ph_state:-${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/release-state-${ph_stem%.md}.json}" \
         "$(pool_holds_file "$DOC")" "$ph_prs" "$WORKERS_FROM" "$REPO" "${TICK_GH_CMD:-$GH_READ_BIN}" "$ph_noread" "$root" "${ph_mirror:-${NEXT_DISPATCH_MIRROR:-}}" ""
     exit 0
