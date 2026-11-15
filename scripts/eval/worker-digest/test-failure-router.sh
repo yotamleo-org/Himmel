@@ -560,7 +560,6 @@ printf 'HIMMEL-9500\tTask\tTo Do\tan open ticket\n' >"$STUB/list.fl-denied-guard
 printf 'HIMMEL-9501\tTask\tDone\ta done ticket\n' >"$STUB/list.fl-denied-guard-bf-done"
 printf 'denied/guard-bf-fixed\tabc1234def\n' >"$FBF/covered.tsv"
 bf() { python3 "$FR" route --ledger "$FBF/l.jsonl" --state "$FBF/s.json" --log "$FBF/log" --inbox "$FBF/inbox" --now "$NOW" --jira-bin "$STUB/jira" "$@"; }
-# the pending count: classes with a capped row and no later filed, commented, recurred-after-done or skipped:noise/covered row
 pending() { jq -s -r '[.[] | select(.kind == "route-decision")] | group_by(.class) | map(select((map(.decision) | index("capped")) != null)
   | (map(.decision) | rindex("capped")) as $c | select(([.[($c + 1):][] | .decision] | map(select(. == "filed" or . == "commented" or . == "recurred-after-done"
   or . == "skipped:noise" or . == "skipped:covered")) | length) == 0)) | length' "$1"; }

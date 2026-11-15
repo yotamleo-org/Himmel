@@ -157,7 +157,6 @@ REF = re.compile(r"^([A-Z][A-Z0-9]+-\d+|[0-9a-f]{7,40})$")
 
 
 def capped_pending(log):
-    """{class: ts of its last capped row} for each class that row left with no clearing decision after it."""
     pend = {}
     if not os.path.exists(log):
         return pend
@@ -179,7 +178,6 @@ def capped_pending(log):
 
 
 def load_covered(path):
-    """{class: ref} from a <class><TAB><Jira key or sha> file; a line outside that shape is refused."""
     out = {}
     with open(path, encoding="utf-8") as fh:
         for n, line in enumerate(fh, 1):
@@ -565,7 +563,6 @@ def route(a):
             if a.backfill and cls in covered:
                 special = ("skipped:covered", covered[cls])
             elif not fires[cls]:
-                # No ledger rows in the window is a missing record, not a table verdict: it stays pending.
                 special = ("skipped:noise" if counted else "skipped:no-evidence", None)
             n = len(workers)
             c = state["classes"].setdefault(cls, {}) if state_ok else {}
