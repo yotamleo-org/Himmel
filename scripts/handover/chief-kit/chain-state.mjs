@@ -6,7 +6,7 @@
 //
 // Sources:
 //   --registry names every chain's goal and members (himmel.chain-registry/1).
-//   the Jira mirror (one <KEY>.md per issue, default ~/.himmel/state/jira-mirror/HIMMEL):
+//   the Jira mirror (one <KEY>.md per issue, default: the project resolver's mirror dir, ~/.himmel/state/jira-mirror/<project key>):
 //     current status decides readiness; `links.blocked_by` are hard links.
 //   chain-log.jsonl in the state dir (L4, append-only): `hold` rows (kind, on, who, reason, until)
 //     and `release` rows, written by ticket-hold.sh; every row naming a chain or one of its
@@ -57,7 +57,18 @@ if (!opt.json || !opt.registry) usage();
 
 const home = process.env.HOME || '/tmp';
 const stateDir = opt.state || process.env.TICKET_STATUS_STATE_DIR || join(home, '.himmel/state');
-const mirrorDir = opt.mirror || join(stateDir, 'jira-mirror/HIMMEL');
+// the default mirror comes from the project resolver (scripts/lib/jira-project.sh), so a key kept only in himmel.conf is read
+const resolved = fn => {
+    try {
+        const out = execFileSync('bash', ['-c', '. "$1/jira-project.sh" && "$2"', 'chain-state', fileURLToPath(new URL('../../lib', import.meta.url)), fn],
+            { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+        if (out) return out;
+    } catch { /* reported below */ }
+    process.stderr.write(`chain-state: scripts/lib/jira-project.sh ${fn} resolved nothing\n`);
+    process.exit(2);
+};
+const mirrorDir = opt.mirror || (opt.state || process.env.TICKET_STATUS_STATE_DIR
+    ? join(stateDir, 'jira-mirror', resolved('jira_project_key')) : resolved('jira_mirror_dir'));
 const ms = s => { const v = Date.parse(s); return Number.isNaN(v) ? null : v; };
 const iso = v => new Date(v).toISOString().replace(/\.\d{3}Z$/, 'Z');
 const now = opt.now ? ms(opt.now) : Date.now();
