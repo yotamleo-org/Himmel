@@ -629,12 +629,13 @@ def derive_s_key(source, out):
     a source of mode 0600/0400 only (the qmd-daemon-env.sh rules), written O_EXCL|O_NOFOLLOW,
     0600, into a 0700 directory the caller owns."""
     try:
-        st = os.lstat(source)
+        fd = os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     except OSError:
-        raise Refuse("the source does not exist")
-    if not stat.S_ISREG(st.st_mode) or stat.S_IMODE(st.st_mode) not in (0o600, 0o400):
-        raise Refuse("the source must be a regular file of mode 0600 or 0400")
-    with open(source, "rb") as f:
+        raise Refuse("the source does not exist or is a symlink")
+    with os.fdopen(fd, "rb") as f:
+        st = os.fstat(f.fileno())
+        if not stat.S_ISREG(st.st_mode) or stat.S_IMODE(st.st_mode) not in (0o600, 0o400):
+            raise Refuse("the source must be a regular file of mode 0600 or 0400")
         lines = f.read().split(b"\n")
     value = next((l[len(b"QMD_OPENAI_API_KEY="):] for l in lines if l.startswith(b"QMD_OPENAI_API_KEY=")), b"")
     if not value:

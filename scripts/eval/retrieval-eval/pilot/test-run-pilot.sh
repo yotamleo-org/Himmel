@@ -331,6 +331,11 @@ smut "a credential field beside the paths" "S: search carries a field that is no
 smut "a token pasted as a path component" "credential-shaped value at .credentials.answer.source_path" 'r["credentials"]["answer"]["source_path"] = g + "/" + "aB3dE5" * 8'
 smut "a stance bound to r18" "4: the stance" 'r["stance"]["design_revision"] = "r18"'
 smut "a stance without decision 946" "4: the stance" 'r["stance"]["decision"] = "operator conversation"'
+smut "a stance naming decision 1946" "4: the stance" 'r["stance"]["decision"] = "decision 1946"'
+smut "a token in the kind field" "S: unknown kind [redacted] for answer" 'r["credentials"]["answer"]["kind"] = "sk-ant-oat01-" + "Zq9" * 20'
+smut "a token as a channel name" "S: unknown channel [redacted]" 'r["credentials"]["sk-or-v1-" + "Zq9" * 20] = {}'
+python3 -I -c 'import json,sys; r=json.load(open(sys.argv[1])); r["credentials"]["answer"]["kind"]="sk-ant-oat01-"+"Zq9"*20; r["r4"]["channels"]["bash_env"]="sk-or-v1-"+"Zq9"*20; json.dump(r, open(sys.argv[2],"w"))' "$W/g0/shared.json" "$W/g0/tok.json"
+eq "G0 r20: no diagnostic repeats a token-shaped record value" no "$(case "$(sg0 "$W/g0/tok.json")" in *Zq9Zq9*) echo yes ;; *) echo no ;; esac)"
 smut "a missing rotation procedure" "6: the rotation procedure for search is missing or its hash changed" 'del r["rotation"]["search"]'
 smut "a changed rotation procedure" "6: the rotation procedure for answer is missing or its hash changed" 'r["rotation"]["answer"]["sha256"] = "0" * 64'
 smut "an unknown channel result" "5: channel native_proc has no definite result" 'r["r4"]["channels"]["native_proc"]["Glob"] = "unknown"'
@@ -370,6 +375,9 @@ eq "derive-s-key: an existing output refuses and is left as it was" "3 fixture-o
 ln -s "$D/nowhere" "$D/out/dangling"
 dsk "$D/qmd-daemon.env" "$D/out/dangling" > /dev/null; rc=$?
 eq "derive-s-key: a dangling symlink at the output refuses and creates nothing" "3 no" "$rc $([ -e "$D/nowhere" ] && echo yes || echo no)"
+ln -s "$D/qmd-daemon.env" "$D/env-link"
+dsk "$D/env-link" "$D/out/k-link" > /dev/null; rc=$?
+eq "derive-s-key: a symlinked source refuses and writes nothing" "3 no" "$rc $([ -e "$D/out/k-link" ] && echo yes || echo no)"
 mkdir -p "$D/open"; chmod 755 "$D/open"
 dsk "$D/qmd-daemon.env" "$D/open/s-key" > /dev/null; rc=$?
 eq "derive-s-key: an output directory that is not 0700 refuses" "3 no" "$rc $([ -e "$D/open/s-key" ] && echo yes || echo no)"

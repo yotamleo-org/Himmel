@@ -62,6 +62,11 @@ def secretish(s):
     return False
 
 
+def shown(v):
+    """A record-supplied value as a diagnostic may print it: never a credential-shaped one."""
+    return "[redacted]" if secretish(str(v)) else v
+
+
 def sha(p):
     with open(p, "rb") as f:
         return hashlib.sha256(f.read()).hexdigest()
@@ -114,16 +119,16 @@ def check_shared(r, card_sha, base, answer_file, search_key_file):
     creds = r.get("credentials")
     creds = creds if isinstance(creds, dict) else {}
     for name in sorted(set(creds) - set(CHANNELS)):
-        bad.append("S: unknown channel %s" % name)
+        bad.append("S: unknown channel %s" % shown(name))
     for name, (kind, fields) in sorted(CHANNELS.items()):
         c = creds.get(name)
         if not isinstance(c, dict):
             bad.append("S: missing channel %s" % name)
             continue
         if c.get("kind") != kind:
-            bad.append("S: unknown kind %s for %s" % (c.get("kind"), name))
+            bad.append("S: unknown kind %s for %s" % (shown(c.get("kind")), name))
         for k in sorted(set(c) - {"kind"} - set(fields)):
-            bad.append("S: %s carries a field that is not a path or kind (%s)" % (name, k))
+            bad.append("S: %s carries a field that is not a path or kind (%s)" % (name, shown(k)))
         for k in fields:
             if not isinstance(c.get(k), str) or not c[k]:
                 bad.append("S: %s states no %s" % (name, k))
@@ -135,7 +140,7 @@ def check_shared(r, card_sha, base, answer_file, search_key_file):
         bad.append("S: the configured S key file is not the stated search derived_path")
     s = r.get("stance") or {}
     if (s.get("selected") != "shared-credentials" or s.get("design_revision") != "r20" or s.get("card_sha256") != card_sha
-            or "946" not in str(s.get("decision") or "")):
+            or not re.search(r"(?<![0-9])946(?![0-9])", str(s.get("decision") or ""))):
         bad.append("4: the stance is not the recorded shared-credentials choice bound to decision 946, r20 and this card")
     rot = r.get("rotation")
     rot = rot if isinstance(rot, dict) else {}
@@ -152,7 +157,7 @@ def check(r, lock, lock_sha, card_sha, stance, base, answer_file=None, search_ke
     for path, s in strings(r):
         parts = s.split("/") if path in PATH_FIELDS else [s]
         if not HEXSHA.match(s) and not s.startswith("http") and any(secretish(x) for x in parts):
-            bad.append("credential-shaped value at %s: the record must hold no token bytes" % path)
+            bad.append("credential-shaped value at %s: the record must hold no token bytes" % shown(path))
     if r.get("schema") != "rag-pilot-auth-readiness/1":
         bad.append("not an auth-readiness record (a bare pass flag proves nothing)")
         return bad
@@ -164,7 +169,7 @@ def check(r, lock, lock_sha, card_sha, stance, base, answer_file=None, search_ke
         return bad + check_r4_scrub(r, files, stance, base, revocation=False)
     m = r.get("mechanism") or {}
     if m.get("id") != MECHANISM:
-        bad.append("1: mechanism %s is not the reviewed supported candidate" % m.get("id"))
+        bad.append("1: mechanism %s is not the reviewed supported candidate" % shown(m.get("id")))
     if not m.get("sources") or not all(str(u).startswith("https://code.claude.com/docs/") for u in m["sources"]) or not m.get("retrieved"):
         bad.append("1: official source URLs and retrieval date are missing")
     for k, lk in (("cli_sha256", "claude"), ("sandbox_sha256", "sandbox"), ("settings_sha256", "settings")):
@@ -201,7 +206,7 @@ def check_r4_scrub(r, files, stance, base, revocation):
         vals = [ch.get(name)] if tools is None else [(ch.get(name) or {}).get(t) for t in tools]
         for v in vals:
             if v not in ("yes", "no"):
-                bad.append("5: channel %s has no definite result (%s)" % (name, v))
+                bad.append("5: channel %s has no definite result (%s)" % (name, shown(v)))
             elif v == "yes" and stance == "unreadable":
                 bad.append("5: channel %s is readable under the unreadable stance" % name)
     if r4.get("station_reachable") is not False or r4.get("other_account_reachable") is not False:
@@ -215,7 +220,7 @@ def check_r4_scrub(r, files, stance, base, revocation):
     for name, a in arts.items():
         path = os.path.join(base, a.get("path", ""))
         if not os.path.isfile(path) or sha(path) != a.get("sha256"):
-            bad.append("6: proof artifact %s is missing or its hash changed" % name)
+            bad.append("6: proof artifact %s is missing or its hash changed" % shown(name))
     return bad
 
 
