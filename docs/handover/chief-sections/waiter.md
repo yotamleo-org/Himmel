@@ -76,10 +76,17 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     here is yours to triage: open the link, fix or ticket it, never leave it for the next wake.
 
     **`WAKE review <date> <reasons>`** (decision 593): the tick prints the daily failure
-    review as `review=<date>:<age>:<failures>:<new>:<new5+>:<filed>[:CAPPED][:STALE]` (`none` is left off
-    the line). The waiter wakes once per review day when the router filed a ticket, a new class has 5 or
-    more failures, or the create cap was hit, and once per last-review date when the review is STALE (no
+    review as `review=<date>:<age>:<failures>:<new>:<new5+>:<filed>[:STALE]` (`none` is left off
+    the line). The waiter wakes once per review day when the router filed a ticket or a new class has 5 or
+    more failures, and once per last-review date when the review is STALE (no
     review for 26 h). A class with a single failure never wakes you (`<inbox>.wait.review`).
+
+    **`WAKE rm-intake INTAKE=<n> since=<h>h capacity=UNDERFILLED:<m>`**: with `--doc` whose
+    `release:` line names a release, the tick's `INTAKE=<n>` (versionless work outside the pool) has stood
+    above 0 for more than 6 h (`CHIEF_WAIT_INTAKE_ARM_HOURS`) while the fleet is UNDERFILLED. The next line
+    names the `rm-run` command: file each INTAKE key, then run the pass; the waiter launches nothing. The
+    clock is `<inbox>.wait.intake` and resets when INTAKE returns to 0. One wake per 6 h
+    (`CHIEF_WAIT_INTAKE_REWAKE_MIN`), none while the release manager lease is held or unreadable.
 
     **`WAKE rm-refused <KEY>@<ruling> — fix: <reason>`** and **`WAKE rm-refused-digest <n> new: <KEY>@<ruling>,...`**:
     with `--doc` and the tick's `rm-refused=` field on the line, the waiter reads the tick's

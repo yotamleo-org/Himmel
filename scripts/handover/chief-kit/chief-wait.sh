@@ -248,7 +248,7 @@
 #                               line each under one WAKE, then the tick line.
 #   WAKE review <date> <reasons>  (decision 593) the tick's review= field, the daily failure review as one more
 #                               scheduled row. Reasons: filed=<keys> (the router filed a ticket),
-#                               new-classes-5+=<n>, create-cap-hit, and STALE (no review for 26 h). Once per
+#                               new-classes-5+=<n>, and STALE (no review for 26 h). Once per
 #                               review day (and once per last-review date for STALE): <inbox>.wait.review holds
 #                               `<date>` and `stale-<date>`. A 1-count class never wakes; review=none or ? wakes nothing.
 #   WAKE tick-fail samples=<n> step=<step>  CHIEF_WAIT_FAIL_WAKE consecutive samples
@@ -387,6 +387,12 @@
 # run doc or a takeover (a new epoch) clears the marker. A failed, timed-out or unparseable read wakes nothing and
 # keeps it. CHIEF_WAIT_RMLEASE replaces the state reader with `<cmd> <R> --json` (tests); the CLI's exit 3 (not OK)
 # still prints the state and is read.
+# `WAKE rm-intake INTAKE=<n> since=<h>h capacity=UNDERFILLED:<m>` (with --doc whose `release:` line names a release):
+# the tick's INTAKE=<n> (versionless work outside the pool) stood above 0 for more than
+# CHIEF_WAIT_INTAKE_ARM_HOURS (default 6) while the fleet was UNDERFILLED. The next line names the rm-run command
+# the chief runs; the waiter never launches anything. The clock is <inbox>.wait.intake (first-seen epoch, last-wake
+# epoch), cleared when INTAKE returns to 0. One wake per CHIEF_WAIT_INTAKE_REWAKE_MIN (default 360); none while the
+# rm lease is held or unreadable (the same CHIEF_WAIT_RMLEASE reader; sampled every CHIEF_WAIT_INTAKE_SAMPLE_MIN).
 # Everything else on the tick line (heartbeat, procs, fill, fleet, gql,
 # orphans...) moves without needing a chief act and never wakes. Two consecutive samples must differ from the saved key (not
 # necessarily from each other), so one failed `gh` read (prs=none for a single
@@ -1392,6 +1398,55 @@ except Exception:
     printf 'WAKE rm-lease-stale %s %sm\ntakeover: JIRA_PROJECT_KEY=%s node %s release operator takeover %s --epoch %s --doc <absolute successor run doc>, then rm-run %s --doc <the same doc>\n' \
         "$epoch" "$age" "$pk" "$cli" "$rel" "$epoch" "$rel"
 }
+intake_file="$inbox.wait.intake"
+intake_at_file="$inbox.wait.intake.at"
+intake_clock() {
+    local first
+    case "$1" in ''|0|*[!0-9]*) rm -f "$intake_file" "$intake_at_file"; return 1 ;; esac
+    first="$(sed -n 1p "$intake_file" 2>/dev/null)"  # swallow-ok: no file reads empty, so the clock starts now
+    case "$first" in ''|*[!0-9]*) printf '%s\n0\n' "$(date +%s)" > "$intake_file" 2>/dev/null ;; esac
+}
+intake_wake() {
+    local n="$1" now first last rel pk anchor cli out held
+    now="$(date +%s)"
+    intake_clock "$n" || return 1
+    first="$(sed -n 1p "$intake_file" 2>/dev/null)"  # swallow-ok: an unwritable file leaves no clock, so nothing arms
+    case "$first" in ''|*[!0-9]*) return 1 ;; esac
+    case "$cap_val" in UNDERFILLED:*) ;; *) return 1 ;; esac
+    [ $(( now - 10#$first )) -gt $(( 10#${CHIEF_WAIT_INTAKE_ARM_HOURS:-6} * 3600 )) ] || return 1
+    last="$(sed -n 2p "$intake_file" 2>/dev/null)"  # swallow-ok: a missing second line reads as never woken
+    case "$last" in ''|*[!0-9]*) last=0 ;; esac
+    [ $(( now - 10#$last )) -ge $(( 10#${CHIEF_WAIT_INTAKE_REWAKE_MIN:-360} * 60 )) ] || return 1
+    [ -n "$console_doc" ] && [ -r "$console_doc" ] || return 1
+    rel="$(sed -n 's/^release:[[:space:]]*//p' "$console_doc" 2>/dev/null | head -n 1 | sed 's/[[:space:]]*$//')"  # swallow-ok: an unreadable doc reads no release
+    [[ "$rel" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || return 1
+    [ "$rel" != none ] || return 1
+    if [ -e "$intake_at_file" ] && [ -n "$(find "$intake_at_file" -mmin "-${CHIEF_WAIT_INTAKE_SAMPLE_MIN:-5}" 2>/dev/null)" ]; then return 1; fi  # swallow-ok: an unreadable marker reads as stale, so the read runs
+    : > "$intake_at_file" 2>/dev/null
+    pk="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"; pk="${pk##*/}"
+    anchor="$(cd "$REPO" && . "$REPO/scripts/lib/git-clean.sh" && git_env_scrub && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || anchor=""  # swallow-ok: no anchor leaves the CLI unavailable, which reads as an unreadable lease
+    cli="${anchor%/.git}/scripts/jira/dist/index.js"
+    if [ -n "${CHIEF_WAIT_RMLEASE:-}" ]; then
+        out="$(timeout -k 2 "${CHIEF_WAIT_RMLEASE_TIMEOUT:-30}" bash "$CHIEF_WAIT_RMLEASE" "$rel" --json </dev/null 2>/dev/null 9>&-)" || true  # gnu-ok: Linux-only kit; swallow-ok: the CLI's exit 3 still prints the state, a failed read parses to nothing below
+    elif [ -n "$anchor" ] && [ -f "$cli" ]; then
+        out="$(JIRA_PROJECT_KEY="$pk" timeout -k 2 "${CHIEF_WAIT_RMLEASE_TIMEOUT:-30}" node "$cli" release state "$rel" --json </dev/null 2>/dev/null 9>&-)" || true  # gnu-ok: Linux-only kit; swallow-ok: as above
+    else
+        return 1
+    fi
+    held="$(printf '%s' "$out" | python3 -I -c '
+import json, sys
+try:
+    ls = json.load(sys.stdin)["lease"]
+    print("no" if ls is None or ls.get("released") else "yes")
+except Exception:
+    pass
+' 2>/dev/null)"  # swallow-ok: an unparseable state prints nothing and arms nothing
+    [ "$held" = no ] || return 1
+    printf '%s\n%s\n' "$first" "$now" > "$intake_file" 2>/dev/null
+    # shellcheck disable=SC2016  # the backticks in the wake text are literal
+    printf 'WAKE rm-intake INTAKE=%s since=%sh capacity=%s\nrun: file each INTAKE key (the `# intake` line of the pool, `jira release request %s --verb INTAKE --key <KEY> --to %s --why <why>`), then JIRA_PROJECT_KEY=%s node %s release rm-run %s --doc <absolute run doc>\n' \
+        "$n" "$(( (now - 10#$first) / 3600 ))" "$cap_val" "$rel" "$rel" "$pk" "$cli" "$rel"
+}
 # unwatched_wake: <unwatched= labels, `+`-joined> — a live worker the manifest does not list
 # (tick.sh already drops other chiefs' workers). Same marker logic, own marker, own window.
 unwatched_file="$inbox.wait.unwatched"
@@ -1538,9 +1593,9 @@ cadence_wake() {
     printf '%s\n' "$out"
 }
 review_file="$inbox.wait.review"
-# review_wake: <review= value date:age:failures:new:new5+:filed[:CAPPED][:STALE]> — the daily failure review
-# (decision 593). Wakes once per review day when the router filed a ticket, a new class has 5 or more
-# failures, or the router hit its create cap; and once per last-review date when the review is STALE (26 h).
+# review_wake: <review= value date:age:failures:new:new5+:filed[:STALE]> — the daily failure review
+# (decision 593). Wakes once per review day when the router filed a ticket or a new class has 5 or more
+# failures; and once per last-review date when the review is STALE (26 h).
 # A 1-count class never wakes. The marker <inbox>.wait.review holds `<date>` and `stale-<date>`, so a
 # re-armed waiter replays nothing. Prints `review <date> <reasons>` and succeeds when something is new.
 review_wake() {
@@ -1556,7 +1611,6 @@ review_wake() {
         local r=""
         case "$filed" in ''|-|'?') ;; *) r="$r filed=$filed" ;; esac
         case "$big" in ''|0|*[!0-9]*) ;; *) r="$r new-classes-5+=$big" ;; esac
-        case ":$f1:$f2:" in *:CAPPED:*) r="$r create-cap-hit" ;; esac
         if [ -n "$r" ]; then
             printf '%s\n' "$day" >> "$review_file" 2>/dev/null
             reasons="${reasons:+$reasons }${r# }"
@@ -2472,6 +2526,7 @@ while :; do
             fail_woke && save_key "${saved:-$key}"
             # the worker-event wake carries the tick line and saves its key, so a re-arm
             # does not wake again on the same tails=/acts= move
+            intake_clock "$(field INTAKE "$tick_line")" || true  # swallow-ok: rc 1 only says INTAKE is zero (the clock was cleared)
             if r0_relay; then printf '%s\n' "$tick_line"; save_key "$key"; exit_reason='wake-worker-event'; exit 0; fi
             # a denied thread resolve is the chief's job; its acts= move is folded like the worker-event wake's
             if resolve_wake; then printf '%s\n' "$tick_line"; save_key "$key"; exit_reason='wake-resolve'; exit 0; fi
@@ -2567,6 +2622,10 @@ while :; do
             if rmlease_new="$(rmlease_wake)"; then
                 printf '%s\n%s\n' "$rmlease_new" "$tick_line"
                 exit_reason='wake-rm-lease-stale'; exit 0
+            fi
+            if intake_new="$(intake_wake "$(field INTAKE "$tick_line")")"; then
+                printf '%s\n%s\n' "$intake_new" "$tick_line"
+                exit_reason='wake-rm-intake'; exit 0
             fi
             doctor_val="$(field doctor "$tick_line")"
             case "$doctor_val" in
