@@ -2527,9 +2527,14 @@ check_c97_codex_mcp_literal_key() {
         function secret_name(n) { n = toupper(n); return (n ~ /_(KEY|TOKEN|SECRET)$/) }
         function hit(srv, var) { if (secret_name(var) && !(srv SUBSEP var in seen)) { seen[srv SUBSEP var] = 1; print srv "\t" var } }
         # a value is literal unless it is empty ("" or the single-quote pair, a trailing comment allowed) or only a comment
-        function literal(v,   c) {
+        function literal(v,   c, rest) {
             v = trim(v); c = substr(v, 1, 1)
-            if (c == "\"" || c == "\047") return index(substr(v, 2), c) != 1
+            if (c == "\"" || c == "\047") {
+                # empty only when the pair is followed by nothing or a comment: a triple-quoted string starts with the pair too
+                if (substr(v, 2, 1) != c) return 1
+                rest = trim(substr(v, 3))
+                return !(rest == "" || substr(rest, 1, 1) == "#")
+            }
             sub(/[ \t]*#.*$/, "", v)
             return v != ""
         }
