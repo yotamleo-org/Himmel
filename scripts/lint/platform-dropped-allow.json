@@ -180,8 +180,7 @@
   "scripts/handover/chief-kit/ready-check.sh": {
     "reason": "classifier vocabulary (platform names / extension list), not a Windows code path",
     "lines": [
-      "#      tested:` when the diff touches scripts/**, *.sh/.bash/.zsh/.ps1/.psm1/",
-      "    PLATFORM_RE='(linux|windows|macos|ubuntu|debian|fedora|arch|mac|darwin|wsl|posix|gitbash|git-bash|powershell|pwsh)'"
+      "#      tested:` when the diff touches scripts/**, *.sh/.bash/.zsh/.ps1/.psm1/"
     ]
   },
   "scripts/handover/librarian-cadence.sh": {
@@ -660,9 +659,6 @@
     "reason": "classifier vocabulary (platform names / extension list), not a Windows code path",
     "lines": [
       "#   *.sh, *.bash, *.zsh, *.ps1, *.psm1, *.psd1, *.cmd, *.bat",
-      "PLATFORM_RE='(linux|windows|macos|ubuntu|debian|fedora|arch|mac|darwin|wsl|posix|gitbash|git-bash|powershell|pwsh)'",
-      "#      existing values (`linux, windows`, `gitbash (msys2), wsl`) already use.",
-      "# not count while `windows-gitbash` / `gitbash (msys2)` / `linux, windows` do.",
       "        darwin, wsl, posix, gitbash, git-bash, powershell, pwsh"
     ]
   },

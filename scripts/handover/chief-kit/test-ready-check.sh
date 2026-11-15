@@ -877,16 +877,57 @@ rc=0; out="$(run)" || rc=$?
 check "files-unreadable: exit 1" "$rc" "1"
 contains "files-unreadable: check 5 fails" "$out" "[FAIL] 5. cannot read PR files"
 
-# --- 5e. check 5 reads ONLY the first commit --------------
-# A docs-only first commit with the trailers on a LATER commit (what a PR-body
-# or follow-up-commit "recovery" amounts to) must still FAIL: the stuck-playbook
-# recovery is a recut, not a trailer added after the fact.
 reset_stubs
 STUB_COMMITS='[{"messageHeadline":"docs: [HIMMEL-1] note","messageBody":""},{"messageHeadline":"fix(x): [HIMMEL-2] code","messageBody":"Platforms tested: linux\nSecurity reviewed: manual"}]'
 rc=0; out="$(run)" || rc=$?
-check "later-commit-trailers: exit 1" "$rc" "1"
-contains "later-commit-trailers: check 5 fails (platforms)" "$out" "missing 'Platforms tested:'"
-contains "later-commit-trailers: check 5 fails (security)" "$out" "missing 'Security reviewed:'"
+check "later-commit-trailers: exit 0" "$rc" "0"
+contains "later-commit-trailers: check 5 passes" "$out" "[PASS] 5."
+
+reset_stubs
+STUB_COMMITS='[{"messageHeadline":"docs: [HIMMEL-1] note","messageBody":""},{"messageHeadline":"fix(x): [HIMMEL-2] code","messageBody":""}]'
+rc=0; out="$(run)" || rc=$?
+check "no-trailer-anywhere: exit 1" "$rc" "1"
+contains "no-trailer-anywhere: check 5 fails" "$out" "[FAIL] 5."
+contains "no-trailer-anywhere: names platforms" "$out" "missing 'Platforms tested:'"
+contains "no-trailer-anywhere: names security" "$out" "missing 'Security reviewed:'"
+
+reset_stubs
+M5=5555555555555555555555555555555555555555
+L5=6666666666666666666666666666666666666666
+STUB_MERGE_OIDS="$M5"
+STUB_COMMITS='[{"oid":"'"$M5"'","messageHeadline":"chore(x): [HIMMEL-1] merge main","messageBody":"Platforms tested: linux\nSecurity reviewed: manual"},{"oid":"'"$L5"'","messageHeadline":"fix(x): [HIMMEL-2] tweak","messageBody":""}]'
+rc=0; out="$(run)" || rc=$?
+check "merge-only-trailer: exit 1" "$rc" "1"
+contains "merge-only-trailer: check 5 fails" "$out" "[FAIL] 5."
+
+
+reset_stubs
+STUB_COMMITS='[{"messageHeadline":"docs: [HIMMEL-1] note","messageBody":"Platforms tested: Linux\nSecurity reviewed: Manual — x"},{"messageHeadline":"fix(x): [HIMMEL-2] code","messageBody":""}]'
+rc=0; out="$(run)" || rc=$?
+check "mixed-case-trailers: exit 0" "$rc" "0"
+contains "mixed-case-trailers: check 5 passes" "$out" "[PASS] 5."
+
+reset_stubs
+STUB_COMMITS='[{"messageHeadline":"feat(x): [HIMMEL-1] add thing","messageBody":"Platforms tested: linux\nSecurity reviewed: outbound write is one PR comment"},{"messageHeadline":"fix(x): [HIMMEL-2] tweak","messageBody":"Security reviewed: ad-hoc — reason"}]'
+rc=0; out="$(run)" || rc=$?
+check "split-verdict-security: exit 0" "$rc" "0"
+contains "split-verdict-security: check 5 passes" "$out" "[PASS] 5."
+
+reset_stubs
+STUB_COMMITS='[{"messageHeadline":"feat(x): [HIMMEL-1] add thing","messageBody":"Platforms tested: yes\nSecurity reviewed: ad-hoc — reason"},{"messageHeadline":"fix(x): [HIMMEL-2] tweak","messageBody":"Platforms tested: linux"}]'
+rc=0; out="$(run)" || rc=$?
+check "split-verdict-platforms: exit 0" "$rc" "0"
+contains "split-verdict-platforms: check 5 passes" "$out" "[PASS] 5."
+
+reset_stubs
+I1=7777777777777777777777777777777777777777
+I2=8888888888888888888888888888888888888888
+I3=9999999999999999999999999999999999999999
+STUB_MERGE_OIDS="$I2"
+STUB_COMMITS='[{"oid":"'"$I1"'","messageHeadline":"feat(x): [HIMMEL-1] add thing","messageBody":"Platforms tested: linux\nSecurity reviewed: outbound write is one PR comment"},{"oid":"'"$I2"'","messageHeadline":"chore(x): [HIMMEL-1] merge main","messageBody":"Security reviewed: ad-hoc — reason"},{"oid":"'"$I3"'","messageHeadline":"fix(x): [HIMMEL-2] tweak","messageBody":""}]'
+rc=0; out="$(run)" || rc=$?
+check "incident-shape: exit 1" "$rc" "1"
+contains "incident-shape: check 5 names security" "$out" "missing 'Security reviewed:'"
 
 # --- 6. check 6 fails: a commit subject with no ticket ID ---------------
 reset_stubs
@@ -2030,6 +2071,7 @@ mkdir -p "$own/scripts/cr"
 cp "$REPO_ROOT/scripts/cr/clear-review-marker.sh" "$REPO_ROOT/scripts/cr/anchor-handoff.sh" "$REPO_ROOT/scripts/cr/ledger-amend-auth.js" "$REPO_ROOT/scripts/cr/review-round.sh" "$own/scripts/cr/"
 cp "$REPO_ROOT/scripts/lib/chokepoint-seam-guard.sh" "$own/scripts/lib/chokepoint-seam-guard.sh"
 cp "$REPO_ROOT/scripts/lib/git-clean.sh" "$REPO_ROOT/scripts/lib/gate-repo-resolver.sh" "$own/scripts/lib/"
+cp "$REPO_ROOT/scripts/lib/attest-trailers.sh" "$own/scripts/lib/attest-trailers.sh"
 cp "$REPO_ROOT/scripts/chokepoints.json" "$own/scripts/chokepoints.json"
 printf 'JIRA_PROJECT_KEY=HIMMEL\n' > "$own/.env"
 
@@ -2048,6 +2090,21 @@ out="$(cd "$REPO" && env -u TICKET_ID_PATTERN -u JIRA_PROJECT_KEY \
 check "own-checkout .env: only check 19 fails" "$(printf '%s\n' "$out" | grep '^\[FAIL\]' | grep -vc '^\[FAIL\] 19\. suite evidence: no timeout binary')" "0"
 contains "own-checkout .env: check 19 fails closed without a timeout lib" "$out" "[FAIL] 19. suite evidence: no timeout binary"
 contains "own-checkout .env: check 6 (ticket ID) passes" "$out" "[PASS] 6."
+
+own_nohelper="$tmp/own-checkout-nohelper"
+cp -R "$own" "$own_nohelper"
+rm -f "$own_nohelper/scripts/lib/attest-trailers.sh"
+rc=0
+out="$(cd "$REPO" && env -u TICKET_ID_PATTERN -u JIRA_PROJECT_KEY \
+    HIMMEL_REPO="$REPO" STUB_NWO="$NWO" STUB_HEAD="$SHA" STUB_MSS=CLEAN \
+    STUB_ROLLUP="$GREEN_ROLLUP" STUB_UNRESOLVED=0 \
+    STUB_COMMITS="$STUB_COMMITS" STUB_FILES="$GREEN_FILES" \
+    STUB_BODY="$GREEN_BODY" STUB_RED="$GREEN_RED" STUB_PR_BRANCH=feat/himmel-100-thing JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
+    STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" \
+    PATH="$PATH" GH_LOG="$GH_LOG" READY_CHECK_ANCHOR="$TP_ANCHOR" \
+    bash "$own_nohelper/scripts/handover/chief-kit/ready-check.sh" --observe "$PR" "$SHA")" || rc=$?
+contains "helper missing: check 5 fails closed" "$out" "[FAIL] 5. cannot evaluate"
+contains "helper missing: check 13 fails closed" "$out" "[FAIL] 13. cannot classify the PR files"
 
 # --- 9. a PR that changes a plugin bumps that plugin's version above the
 # CURRENT origin/main's; a bump with no other plugin change is
@@ -3743,7 +3800,7 @@ GOLD_MEMBER="[PASS] 1. head=$SHA matches, mergeStateStatus=CLEAN
 [PASS] 2. statusCheckRollup: 2/2 checks completed SUCCESS/SKIPPED/NEUTRAL
 [PASS] 3. unresolved review threads = 0
 [PASS] 4. CR ledger: 1 row(s) for $SHA with status=ok
-[PASS] 5. first commit: Platforms tested (needed=1), Security reviewed (needed=1) — attested where needed
+[PASS] 5. branch: Platforms tested (needed=1), Security reviewed (needed=1) — attested where needed
 [PASS] 6. every commit subject carries a ticket ID
 [PASS] 7. ticket coverage: every ask is done or deferred to an open ticket
 [PASS] 9. no plugin files touched — version bump not applicable

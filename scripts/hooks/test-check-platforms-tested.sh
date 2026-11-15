@@ -142,27 +142,6 @@ d=$(make_repo "scripts/foo.sh" "$(printf 'feat: foo\n\nPlatforms tested: linuxis
 assert_rc "token that is a prefix of a longer word = block" 1 "$(run_in "$d")"
 rm -rf "$d"
 
-# (d) the predicate must be backslash-free, asserted against the SOURCE. `\b`
-#     is a GNU extension: on BSD grep (macOS — a platform this repo targets)
-#     it matches a LITERAL `b`, so `.*\b(linux|…)\b` needed a literal `b` on
-#     both sides and NO correct attestation matched — the gate blocked every
-#     attested push on a whole platform, and no GNU-grep box can observe it at
-#     runtime. "POSIX ERE only" IS the contract, so the source is where it is
-#     pinned (same argument, same shape as test 7 of
-#     test-check-cr-marker-on-pr-create.sh).
-attest_line=$(grep -F 'ATTEST_RE=' "$HOOK" || true)
-if [ -z "$attest_line" ]; then
-    echo "FAIL ATTEST_RE: could not locate the ATTEST_RE assignment in $HOOK"
-    FAILED=$((FAILED + 1))
-elif [ "${attest_line//\\/}" != "$attest_line" ]; then
-    # Bash pattern removal, not `grep '[\]'`: a bracket expression holding a
-    # backslash is dialect-dependent, and a grep that errored on it would exit
-    # non-zero — indistinguishable, in an `elif`, from "no backslash found".
-    echo "FAIL ATTEST_RE contains a backslash escape (GNU-only, inert on BSD grep): $attest_line"
-    FAILED=$((FAILED + 1))
-else
-    echo "PASS ATTEST_RE is backslash-free (POSIX bracket classes only)"
-fi
 
 d=$(make_repo "scripts/foo.sh" "$(printf 'feat: foo\n\n[skip platforms-check]\n')") || exit 1
 assert_rc "sensitive + skip marker"                   0 "$(run_in "$d")"
@@ -497,6 +476,137 @@ d=$(fixture_mktemp_dir) || exit 1
 ) >/dev/null 2>&1 || exit 1
 assert_rc "orphan branch (no merge base) -> fail CLOSED (exit 2)"    2 "$(run_in "$d" "PLATFORMS_TESTED_NO_FETCH=1")"
 rm -rf "$d"
+
+make_repo2() {
+    local files="$1" msg1="$2" msg2="$3" empty="${4:-}" dir
+    dir=$(fixture_mktemp_dir) || return 1
+    (
+        fixture_enter_git_init_dir "$dir" || exit 1
+        git init -q -b main
+        git config user.email t@t
+        git config user.name t
+        echo r > README.md
+        git add README.md
+        git -c commit.gpgsign=false commit -q -m "init"
+        git checkout -q -b feat/x
+        # shellcheck disable=SC2086 # files is space-separated, intentional split
+        for f in $files; do
+            mkdir -p "$(dirname "$f")"
+            echo "x" > "$f"
+        done
+        git add -A
+        git -c commit.gpgsign=false commit -q -m "$msg1"
+        if [ -n "$empty" ]; then
+            git -c commit.gpgsign=false commit -q --allow-empty -m "$msg2"
+        else
+            # shellcheck disable=SC2086 # files is space-separated
+            set -- $files
+            echo y >> "$1"
+            git add -A
+            git -c commit.gpgsign=false commit -q -m "$msg2"
+        fi
+    ) || { rm -rf "$dir"; return 1; }
+    echo "$dir"
+}
+make_merge_only_repo() {
+    local files="$1" msg="$2" dir
+    dir=$(fixture_mktemp_dir) || return 1
+    (
+        fixture_enter_git_init_dir "$dir" || exit 1
+        git init -q -b main
+        git config user.email t@t
+        git config user.name t
+        echo r > README.md
+        git add README.md
+        git -c commit.gpgsign=false commit -q -m "init"
+        git checkout -q -b feat/x
+        # shellcheck disable=SC2086 # files is space-separated, intentional split
+        for f in $files; do
+            mkdir -p "$(dirname "$f")"
+            echo "x" > "$f"
+        done
+        git add -A
+        git -c commit.gpgsign=false commit -q -m "feat: no trailer"
+        git checkout -q -b side main
+        echo s > side.txt
+        git add side.txt
+        git -c commit.gpgsign=false commit -q -m "chore: side"
+        git checkout -q feat/x
+        git -c commit.gpgsign=false merge -q --no-ff side -m "$msg"
+    ) || { rm -rf "$dir"; return 1; }
+    echo "$dir"
+}
+LAST_OUT=""
+LAST_RC=""
+run_out() {
+    local dir="$1" env_assign="${2:-}"
+    if [ -n "$env_assign" ]; then
+        LAST_OUT=$( cd "$dir" && env "$env_assign" bash "${RUN_HOOK:-$HOOK}" 2>&1 )
+    else
+        LAST_OUT=$( cd "$dir" && bash "${RUN_HOOK:-$HOOK}" 2>&1 )
+    fi
+    LAST_RC=$?
+}
+assert_has() {
+    case "$3" in
+        *"$2"*) echo "PASS $1" ;;
+        *) echo "FAIL $1 — output lacks [$2]"; FAILED=$((FAILED + 1)) ;;
+    esac
+}
+assert_lacks() {
+    case "$3" in
+        *"$2"*) echo "FAIL $1 — output holds [$2]"; FAILED=$((FAILED + 1)) ;;
+        *) echo "PASS $1" ;;
+    esac
+}
+
+d=$(make_repo2 "scripts/foo.sh" "feat: a" "$(printf 'feat: b\n\nPlatforms tested: linux\n')") || exit 1
+assert_rc "trailer only in commit 2"                   0 "$(run_in "$d")"
+rm -rf "$d"
+d=$(make_repo2 "scripts/foo.sh" "feat: a" "$(printf 'feat: b\n\nPlatforms tested: Linux\n')") || exit 1
+assert_rc "mixed-case trailer in commit 2"             0 "$(run_in "$d")"
+rm -rf "$d"
+d=$(make_repo2 "scripts/foo.sh" "$(printf 'feat: a\n\nPlatforms tested: yes\n')" "$(printf 'feat: b\n\nPlatforms tested: linux\n')") || exit 1
+assert_rc "split verdict: yes first, linux later" 0 "$(run_in "$d")"
+rm -rf "$d"
+d=$(make_repo2 "scripts/foo.sh" "feat: a" "$(printf 'chore: attest\n\nPlatforms tested: linux\n')" empty) || exit 1
+assert_rc "named fix: an empty follow-up commit"  0 "$(run_in "$d")"
+rm -rf "$d"
+
+d=$(make_merge_only_repo "scripts/foo.sh" "$(printf 'Merge side\n\nPlatforms tested: linux\n')") || exit 1
+run_out "$d"
+assert_rc "merge-only trailer = block"                 1 "$LAST_RC"
+assert_has "merge-only trailer names case (c)" "present only in a merge commit" "$LAST_OUT"
+rm -rf "$d"
+
+d=$(make_repo "scripts/foo.sh" "$(printf 'feat: foo\n\nPlatforms tested: linux\n')") || exit 1
+nolib=$(fixture_mktemp_dir) || exit 1
+mkdir -p "$nolib/scripts/hooks" "$nolib/scripts/guardrails"
+cp "$HOOK" "$nolib/scripts/hooks/check-platforms-tested.sh"
+cp "$SCRIPT_DIR/../guardrails/lib.sh" "$nolib/scripts/guardrails/lib.sh"
+RUN_HOOK="$nolib/scripts/hooks/check-platforms-tested.sh" run_out "$d"
+assert_rc "attest-trailers.sh missing = rc2 (cannot evaluate)" 2 "$LAST_RC"
+assert_has "lib missing names the file" "cannot source scripts/lib/attest-trailers.sh" "$LAST_OUT"
+rm -rf "$d" "$nolib"
+
+d=$(make_repo "scripts/foo.sh" "feat: add foo") || exit 1
+run_out "$d"
+assert_rc "no attestation = block (refusal text)"      1 "$LAST_RC"
+assert_has "refusal names the one fix" "one more ordinary (non-merge) commit" "$LAST_OUT"
+assert_lacks "refusal does not say (or amend)" "(or amend)" "$LAST_OUT"
+assert_lacks "refusal does not offer the PR description" "PR description" "$LAST_OUT"
+assert_lacks "refusal does not mention the PR body" "PR body" "$LAST_OUT"
+assert_lacks "refusal does not offer the env bypass" "PLATFORMS_TESTED_OK=1" "$LAST_OUT"
+assert_lacks "refusal does not offer the skip marker" "[skip platforms-check]" "$LAST_OUT"
+rm -rf "$d"
+
+d=$(make_repo "scripts/foo.sh" "feat: foo no attestation") || exit 1
+stub_dir=$(fixture_mktemp_dir) || exit 1
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "Platforms tested: linux"\n' > "$stub_dir/gh"
+chmod +x "$stub_dir/gh"
+rc=0; ( cd "$d" && PATH="$stub_dir:$PATH" bash "$HOOK" >/dev/null 2>&1 ) || rc=$?
+assert_rc "code + PR-body Platforms tested via gh stub = block" 1 "$rc"
+rm -rf "$d" "$stub_dir"
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then

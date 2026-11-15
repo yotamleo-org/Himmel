@@ -575,6 +575,9 @@ arow $SW2 $T:05.000Z w2 $OP 10 1 100 0 0 > "$PC2S/$SW2/subagents/agent-w1.jsonl"
 arow $SW2 $T:06.000Z w3 $OP 10 1 100 0 0 > "$PC2S/$SW2/subagents/agent-b1.jsonl"; echo '{"agentType":"brief-drafter"}' > "$PC2S/$SW2/subagents/agent-b1.meta.json"
 { uprow "Read ./review-prompt.md SECRETSENTINEL2"; arow $SCR $T:00.000Z r1 $OP 10 1 100 0 0; } > "$PC2S/$SCR.jsonl"
 { uprow "You are the release manager for SECRETSENTINEL2"; arow $SRM $T:00.000Z m1 $OP 10 1 100 0 0; } > "$PC2S/$SRM.jsonl"
+SCS=aaaaaaaa-2222-4222-8222-00000000000a
+{ uprow "[critic-first-pass]
+You are the first-pass code reviewer SECRETSENTINEL2"; arow $SCS $T:00.000Z r2 $OP 10 1 100 0 0; } > "$PC2S/$SCS.jsonl"
 { echo '{"type":"custom-title","customTitle":"HIMMEL-9995-N5-na"}'
   arow $SNA $T:00.000Z n1 $OP 10 1 100 0 0 Read '{"file_path":"/x"}'; arow $SNA $T:01.000Z n2 $OP 10 1 100 0 0
   arow $SNA $T:02.000Z n1 $OP 10 1 100 0 0; } > "$PC2S/$SNA.jsonl"
@@ -592,6 +595,7 @@ check "phase-cost: a chief's subagent goes to chief-turns, counted" "subagent/ch
 check "phase-cost: a worker's subagent is phase agent, counted" "subagent/agent/counted/1" "$(pc2 agent-w1)"
 check "phase-cost: a brief-drafter is chief-turns, counted" "brief-drafter/chief-turns/counted/1" "$(pc2 agent-b1)"
 check "phase-cost: a critic (first prompt Read ./review-prompt.md) is its own phase, counted" "critic/critic/counted/1" "$(pc2 $SCR)"
+check "phase-cost: a tool-free critic (first prompt opens [critic-first-pass], the prompt on stdin) is its own phase, counted" "critic/critic/counted/1" "$(pc2 $SCS)"
 check "phase-cost: a release manager (first prompt) is its own phase, counted" "release-mgr/release-mgr/counted/1" "$(pc2 $SRM)"
 check "phase-cost: a message id repeated non-adjacently counts once" "worker/boot/derived/1,worker/build/derived/1" "$(pc2 $SNA)"
 # a live transcript: a last line with no newline is still being written, so it waits for its newline

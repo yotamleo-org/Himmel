@@ -9,10 +9,11 @@
 # Gate: if the diff vs main touches any cross-platform-sensitive path,
 # require either
 #   1. a commit body line `Platforms tested: <list>` in at least one
-#      commit being pushed, OR
-#   2. the same line in the PR body (looked up via `gh pr view` for the
-#      current branch when a PR already exists), OR
-#   3. an explicit bypass.
+#      non-merge commit of the branch (scripts/lib/attest-trailers.sh, the
+#      one reader CI commit-lint and ready-check item 5 call too), OR
+#   2. an explicit push-time bypass.
+# A trailer carried only by a merge commit, or written in the PR body,
+# counts at no gate.
 #
 # The line itself is a self-attestation — we don't try to verify the
 # claim. The point is forcing the operator to acknowledge the cross-
@@ -24,7 +25,7 @@
 #
 # Skip if changed-file set is empty after filtering.
 #
-# Bypass:
+# Bypass (these clear the PUSH only; CI commit-lint and ready-check ignore them):
 #   PLATFORMS_TESTED_OK=1 git push ...    (env-var skip; logs WARNING)
 #   `[skip platforms-check]` in any commit msg being pushed
 #   git push --no-verify ...              (skip all pre-push hooks)
@@ -45,6 +46,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 if ! { [ -r "$SCRIPT_DIR/../guardrails/lib.sh" ] && . "$SCRIPT_DIR/../guardrails/lib.sh"; } 2>/dev/null; then
     echo "→ platforms-check: cannot source guardrails/lib.sh — refusing the push (rc=2 = cannot evaluate; bypass with git push --no-verify)" >&2
+    exit 2
+fi
+# shellcheck source=../lib/attest-trailers.sh
+# shellcheck disable=SC1091
+if ! { [ -r "$SCRIPT_DIR/../lib/attest-trailers.sh" ] && . "$SCRIPT_DIR/../lib/attest-trailers.sh"; } 2>/dev/null; then
+    echo "→ platforms-check: cannot source scripts/lib/attest-trailers.sh — refusing the push (rc=2 = cannot evaluate; bypass with git push --no-verify)" >&2
     exit 2
 fi
 
@@ -127,108 +134,66 @@ fi
 [ -z "$changed" ] && exit 0
 
 # Filter sensitive paths. Docs-only Markdown/text is never a script, even under
-# scripts/
-sensitive=$(printf '%s\n' "$changed" | grep -Ev '\.(md|txt)$' | grep -E '(\.(sh|bash|zsh|ps1|psm1|psd1|cmd|bat)$|^scripts/|(^|/)bin/[^/]+$)' || true)
+# scripts/.
+if ! sensitive=$(attest_files platforms <<<"$changed"); then
+    echo "→ platforms-check: cannot classify the changed files — refusing the push (rc=2 = cannot evaluate; bypass with PLATFORMS_TESTED_OK=1 or git push --no-verify)" >&2
+    exit 2
+fi
 if [ -z "$sensitive" ]; then
     exit 0
 fi
 
-# Scan commit messages in the push range for `Platforms tested:` line OR
-# the `[skip platforms-check]` opt-out.
+# `[[:space:]]`, not `\s`: `\s` is a GNU grep extension, and BSD grep (macOS) reads it as
+# a LITERAL 's', so an INDENTED marker would silently fail to match. A here-string, not
+# `printf ... | grep -q` (grep -q's early exit SIGPIPEs the writer once the
+# range exceeds the pipe buffer, which pipefail turns into a false "not found").
 commit_msgs=$(git log --format='%B' "${diff_base}..HEAD" 2>/dev/null || true)
-
-# Recognised platform tokens. At least ONE must appear after the colon
-# on a `Platforms tested:` line — empty values (`Platforms tested:`) and
-# unrecognised values (`Platforms tested: yes`) do NOT count, otherwise
-# operators game the gate by typing the prefix without naming a target.
-PLATFORM_RE='(linux|windows|macos|ubuntu|debian|fedora|arch|mac|darwin|wsl|posix|gitbash|git-bash|powershell|pwsh)'
-# POSIX ERE, token FIRST. The previous form was
-#   ^[[:space:]]*Platforms tested:.*\b${PLATFORM_RE}\b
-# which carried both defects fixed in check-cr-marker-on-pr-create.sh:
-#   1. `\b` is a GNU extension. BSD grep (macOS — a platform this repo targets,
-#      scripts/hooks/CLAUDE.md) reads it as a LITERAL `b`, so the predicate
-#      became `.*b(linux|…)b` and `Platforms tested: windows` did NOT match:
-#      the gate BLOCKED every correctly-attested push on macOS. The same file
-#      already fixed `\s` -> `[[:space:]]` for exactly this reason and called
-#      ATTEST_RE "the odd one out" — this is that one.
-#   2. `.*` let the token sit ANYWHERE on the line, so
-#      `Platforms tested: not really, I did not try linux` passed. The
-#      companion security-review gate already demands "token first, prose
-#      after"; this is the same shape, and the same shape the smoke suite's
-#      existing values (`linux, windows`, `gitbash (msys2), wsl`) already use.
-# `\b` is replaced by an explicit end-of-token class, so `linuxish` still does
-# not count while `windows-gitbash` / `gitbash (msys2)` / `linux, windows` do.
-ATTEST_RE="^[[:space:]]*Platforms tested:[[:space:]]*${PLATFORM_RE}([^[:alnum:]]|$)"
-
-# match with a here-string, NOT `printf ... | grep -q`.
-#
-# Under this script's `set -euo pipefail`, the piped form is actively broken
-# once "$commit_msgs" exceeds the OS pipe buffer (~64KB): printf BLOCKS
-# mid-write, `grep -q` matches the attestation early (git log is
-# newest-first, so the newest commit's trailer appears almost immediately)
-# and exits by design, the blocked printf takes SIGPIPE and dies 141, and
-# pipefail promotes that 141 to the pipeline's status. The `if` then went
-# FALSE *because* the attestation was found, and found early — blocking a
-# correctly-attested push, and getting MORE likely to do so the more
-# diligently the operator attested. Observed on PR #1242 at 76,283 bytes.
-#
-# A here-string is backed by a temp file, not a pipe: there is no writer
-# process for grep's early exit to SIGPIPE, so the size dependency is gone
-# entirely. `grep -m1` (below) replaces `| head -1` for the same reason —
-# head's early exit would SIGPIPE grep, and a failing command substitution
-# aborts the script under `set -e`. Both forms are bash 3.2-safe.
-# `[[:space:]]`, not `\s` (CodeRabbit on this PR): `\s` is a GNU grep
-# extension, not POSIX. BSD grep (macOS) reads it as a LITERAL 's', so
-# `^\s*\[skip …\]` degrades to `^s*\[skip …\]` — which still matches an
-# UNINDENTED marker (zero 's') and therefore looks fine, but silently fails
-# to match an INDENTED one. This repo targets macOS (scripts/hooks/CLAUDE.md),
-# and ATTEST_RE above already uses [[:space:]] — this was the odd one out.
 if grep -qiE '^[[:space:]]*\[skip platforms-check\]' <<<"$commit_msgs"; then
     echo "→ platforms-check: [skip platforms-check] in commit msg — skipping (WARNING: verify cross-platform behaviour manually)" >&2
     exit 0
 fi
 
-if grep -qiE "$ATTEST_RE" <<<"$commit_msgs"; then
-    line=$(grep -m1 -iE "$ATTEST_RE" <<<"$commit_msgs" | sed 's/^[[:space:]]*//')
-    echo "→ platforms-check: ${line}" >&2
-    exit 0
-fi
+att_rc=0
+att_out=$(bash "$SCRIPT_DIR/../lib/attest-trailers.sh" range "$diff_base" HEAD --only platforms 2>/dev/null) || att_rc=$?  # swallow-ok: the helper exit code is mapped just below, rc 1 is a missing trailer and any other rc refuses the push
+case "$att_rc" in
+    0)
+        line=$(printf '%s\n' "$att_out" | sed -n 's/^ATTEST platforms needed found: //p' | head -n 1)
+        echo "→ platforms-check: ${line}" >&2
+        exit 0 ;;
+    1) ;;
+    *)
+        echo "→ platforms-check: cannot evaluate the trailers (the helper exited ${att_rc}) — refusing the push (rc=2 = cannot evaluate; bypass with PLATFORMS_TESTED_OK=1 or git push --no-verify)" >&2
+        exit 2 ;;
+esac
 
-# Fall back to PR body (an open PR for this branch may carry the line even
-# when commits don't). Tolerate gh not being available / not authed / no PR.
-pr_body=""
-if command -v gh >/dev/null 2>&1; then
-    pr_body=$(gh pr view "$branch" --json body --jq '.body' 2>/dev/null || true)
-fi
-# Same here-string form as the commit-message matches above. A
-# PR body rarely approaches 64KB, but the hazard is identical in shape and
-# there is no reason to leave one instance of it standing.
-if [ -n "$pr_body" ] && grep -qiE "$ATTEST_RE" <<<"$pr_body"; then
-    line=$(grep -m1 -iE "$ATTEST_RE" <<<"$pr_body" | sed 's/^[[:space:]]*//')
-    echo "→ platforms-check: ${line} (from PR body)" >&2
-    exit 0
+merge_note=""
+merge_msgs=$(git log --merges --format='%B' "${diff_base}..HEAD" 2>/dev/null || true)  # swallow-ok: an unreadable merge list only drops the case (c) note, the refusal below is already decided
+if grep -qiE "$ATTEST_PLATFORMS_RE" <<<"$merge_msgs"; then
+    merge_note="
+   A conforming 'Platforms tested:' trailer is present only in a merge commit;
+   merges never attest — add one ordinary commit carrying it.
+"
 fi
 
 # Block.
 cat >&2 <<EOF
 ⛔ platforms-check: this push touches cross-platform-sensitive files but
-   no \`Platforms tested:\` attestation found in commit messages or PR body.
-
+   no \`Platforms tested:\` attestation was found in any non-merge commit
+   on the branch.
+${merge_note}
    Sensitive files changed vs ${diff_base}:
 $(printf '%s\n' "$sensitive" | sed 's/^/     /')
 
-   Fix one of:
-   1. Add a line to a commit body (or amend):
-          Platforms tested: linux, windows
-      Must name at least one recognised platform token:
+   Fix:
+   Add one more ordinary (non-merge) commit whose body carries the line,
+   then push again (for example \`git commit --allow-empty\` with a body of):
+          Platforms tested: linux
+   Never \`git commit --amend\`.
+   The line must name at least one recognised platform token:
         linux, windows, macos, ubuntu, debian, fedora, arch, mac,
         darwin, wsl, posix, gitbash, git-bash, powershell, pwsh
-      An empty value (\`Platforms tested:\`) or an unrecognised value
-      (\`Platforms tested: yes\`) does NOT count.
-   2. Add the same line to the PR description, then re-push.
-   3. Bypass for an unattested push:
-          PLATFORMS_TESTED_OK=1 git push ...
-      or include \`[skip platforms-check]\` in a commit message.
+   An empty value (\`Platforms tested:\`) or an unrecognised value
+   (\`Platforms tested: yes\`) does NOT count.
 
    Why: bash and node scripts in this repo run on Linux and macOS.
    Platform-specific bugs can slip through CR (python vs python3,

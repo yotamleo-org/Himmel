@@ -19,6 +19,9 @@
 # TELEGRAM_ACCESS_PATH (access.json holding the operator id).
 set -uo pipefail
 
+kind="${HIMMEL_ALERT_KIND:-}"
+case "$kind" in cadence:?*) ;; *) kind=cadence:vault-stall ;; esac
+
 _here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/merge-block-alert.sh
 . "$_here/../lib/merge-block-alert.sh"
@@ -34,7 +37,7 @@ if [ -z "$chat" ]; then
     echo "vault-stall-alert: no operator chat id readable - not delivered" >&2
     exit 1
 fi
-_mba_send "$chat" "$msg" || {
+_mba_send "$chat" "$msg" "$kind" || {
     echo "vault-stall-alert: delivery failed" >&2
     exit 1
 }

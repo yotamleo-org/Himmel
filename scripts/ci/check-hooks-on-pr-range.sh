@@ -1,17 +1,31 @@
 #!/usr/bin/env bash
-# check-hooks-on-pr-range.sh — re-run a pre-push hook over a PR's range in CI,
+# check-hooks-on-pr-range.sh — re-run a pre-push gate over a PR's range in CI,
 # so a commit made with --no-verify cannot skip it.
 #
-# The hooks (check-platforms-tested.sh, check-security-reviewed.sh,
-# check-doc-guard.sh --pre-push) are branch-relative: they diff
-# origin/<default>...HEAD and read `git log origin/<default>..HEAD`. A CI
-# checkout is a detached merge ref, where they all no-op. This wrapper builds a
-# throw-away clone that looks like a feature branch (origin/main = the PR's
-# base tip, HEAD = the PR) and runs the UNMODIFIED hook there, so CI and the
-# author-time gate share one implementation.
+# Two modes:
+#
+#   --attest <platforms|security>   the attestation trailers
+#   -- <hook> [args...]             a branch-relative pre-push hook (doc-guard)
+#
+# --attest: the trailers `Platforms tested:` / `Security reviewed:` must be carried
+# by some non-merge commit of the PR's range, read by scripts/lib/attest-trailers.sh
+# (`range <base> <tip> --only <kind>`), the one reader the pre-push hooks and
+# ready-check item 5 call too. A merge commit never attests; a PR-body line, a
+# `[skip …]` marker and the env bypasses count here as they do in ready-check:
+# not at all (they clear the author's push only). A bot PR author (dependabot) is
+# exempt, as in commit-lint. The helper's exit code is this script's: 0 attested,
+# 1 a needed trailer is missing, 2 cannot evaluate (an `ATTEST ERROR` line says why).
+#
+# Hook mode: the hooks (check-doc-guard.sh --pre-push) are branch-relative: they
+# diff origin/<default>...HEAD and read `git log origin/<default>..HEAD`. A CI
+# checkout is a detached merge ref, where they all no-op. This mode builds a
+# throw-away clone that looks like a feature branch (origin/main = the PR's base
+# tip, HEAD = the PR) and runs the UNMODIFIED hook there, so CI and the
+# author-time gate share one implementation. `gh` is shimmed to fail (no PR body).
 #
 # Usage:
-#   check-hooks-on-pr-range.sh [--first-commit] [--base <sha>] -- <hook> [args...]
+#   check-hooks-on-pr-range.sh --attest <platforms|security> [--base <sha>]
+#   check-hooks-on-pr-range.sh [--base <sha>] -- <hook> [args...]
 #   <hook> is a repo-relative path under scripts/hooks/.
 #
 # Range: HEAD is a PR merge ref (HEAD^2 exists) -> HEAD^1..HEAD^2, the PR's own
@@ -21,14 +35,7 @@
 # unresolved or empty range, or a shallow checkout, is exit 2: a dropped
 # fetch-depth: 0 must fail the gate, never pass it vacuously.
 #
-# --first-commit: the attestation trailers must be in the PR's FIRST commit
-# (CLAUDE.md; ready-check.sh item 5), and the hooks accept a trailer from ANY
-# commit in the range. So the hook runs against a one-commit range: the PR's
-# whole diff, carrying only the first commit's message. A PR-body attestation
-# (the hooks' `gh pr view` fallback) is shut off with a failing gh shim.
-# A bot PR author (dependabot) is exempt, as in commit-lint.
-#
-# Exit: the hook's own exit code; 2 = cannot resolve the range.
+# Exit: the helper's / hook's own exit code; 2 = cannot resolve the range.
 set -uo pipefail
 
 # A pull_request run that cannot name its range is an error; any other event
@@ -40,11 +47,17 @@ no_range() { # <message>
   echo "hooks-on-range: $1 — nothing to check"; exit 0
 }
 
-FIRST=0
+ATTEST=""
 BASE=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --first-commit) FIRST=1; shift ;;
+    --attest)
+      [ $# -ge 2 ] || { echo "ERR hooks-on-range: --attest needs platforms or security" >&2; exit 2; }
+      case "$2" in
+        platforms|security) ATTEST="$2" ;;
+        *) echo "ERR hooks-on-range: --attest takes platforms or security, got '$2'" >&2; exit 2 ;;
+      esac
+      shift 2 ;;
     --base)
       [ $# -ge 2 ] || { echo "ERR hooks-on-range: --base needs a value" >&2; exit 2; }
       BASE="$2"; shift 2 ;;
@@ -52,24 +65,25 @@ while [ $# -gt 0 ]; do
     *) echo "ERR hooks-on-range: unknown arg '$1'" >&2; exit 2 ;;
   esac
 done
-[ $# -ge 1 ] || { echo "ERR hooks-on-range: no hook given after --" >&2; exit 2; }
-HOOK="$1"; shift
-case "$HOOK" in
-  scripts/hooks/check-*.sh) ;;
-  *) echo "ERR hooks-on-range: hook must be scripts/hooks/check-*.sh, got '$HOOK'" >&2; exit 2 ;;
-esac
 
 # REPO = the checkout holding the PR range (cwd); HOOKS = the checkout this
-# script lives in, which supplies the hook (the same tree in CI).
+# script lives in, which supplies the hook and the helper (the same tree in CI).
 REPO="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "ERR hooks-on-range: not in a git checkout" >&2; exit 2; }
 HOOKS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-[ -f "$HOOKS/$HOOK" ] || { echo "ERR hooks-on-range: $HOOK not found" >&2; exit 2; }
 
-if [ "$FIRST" -eq 1 ]; then
+if [ -z "$ATTEST" ]; then
+  [ $# -ge 1 ] || { echo "ERR hooks-on-range: no hook given after --" >&2; exit 2; }
+  HOOK="$1"; shift
+  case "$HOOK" in
+    scripts/hooks/check-*.sh) ;;
+    *) echo "ERR hooks-on-range: hook must be scripts/hooks/check-*.sh, got '$HOOK'" >&2; exit 2 ;;
+  esac
+  [ -f "$HOOKS/$HOOK" ] || { echo "ERR hooks-on-range: $HOOK not found" >&2; exit 2; }
+else
   author="$(printf '%s' "${TICKET_ID_TRUSTED_AUTHOR:-}" | tr '[:upper:]' '[:lower:]')"
   case "$author" in
     dependabot|'dependabot[bot]')
-      echo "hooks-on-range: bot PR author '$author' — first-commit attestation skipped"
+      echo "hooks-on-range: bot PR author '$author' — attestation skipped"
       exit 0 ;;
   esac
 fi
@@ -93,15 +107,15 @@ else
 fi
 head="$(git rev-parse HEAD)"
 
-# The oldest commit of the range, merges included — the same "first commit" the
-# PR's commit list gives ready-check.sh item 5; an unattested merge cannot hide
-# behind a later ordinary commit that carries the trailers. --topo-order, not
-# commit date: a backdated GIT_COMMITTER_DATE must not pick the first commit.
-commits="$(git rev-list --reverse --topo-order "$base..$tip")" \
+commits="$(git rev-list "$base..$tip")" \
   || { echo "ERR hooks-on-range: rev-list $base..$tip failed" >&2; exit 2; }
-first="${commits%%$'\n'*}"
-if [ -z "$first" ]; then
+if [ -z "$commits" ]; then
   no_range "no commits in $base..$tip"
+fi
+
+if [ -n "$ATTEST" ]; then
+  cd "$REPO" || exit 2
+  exec bash "$HOOKS/scripts/lib/attest-trailers.sh" range "$base" "$tip" --only "$ATTEST"
 fi
 
 # shellcheck source=../lib/prim.sh
@@ -119,18 +133,7 @@ if ! git -C "$clone" update-ref refs/remotes/origin/main "$base" \
   echo "ERR hooks-on-range: cannot set base ref" >&2; exit 2
 fi
 
-if [ "$FIRST" -eq 1 ]; then
-  git -C "$REPO" log -1 --format='%B' "$first" > "$tmp/msg"
-  # The PR's diff vs its base (merge-ref tree), the first commit's message.
-  syn="$(GIT_AUTHOR_NAME=ci GIT_AUTHOR_EMAIL=ci@invalid GIT_COMMITTER_NAME=ci GIT_COMMITTER_EMAIL=ci@invalid \
-        git -C "$clone" commit-tree "$head^{tree}" -p "$base" -F "$tmp/msg")" \
-    || { echo "ERR hooks-on-range: cannot synthesize the first-commit range" >&2; exit 2; }
-  target="$syn"
-  echo "hooks-on-range: first commit ${first} checked as the sole commit of ${base}..${tip}"
-else
-  target="$head"
-fi
-git -C "$clone" checkout -q -B ci-pr-range "$target" \
+git -C "$clone" checkout -q -B ci-pr-range "$head" \
   || { echo "ERR hooks-on-range: cannot check out the range" >&2; exit 2; }
 : > "$clone/.himmel-dev"   # the himmel-dev gates (doc-guard) no-op without it
 

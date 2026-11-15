@@ -575,7 +575,7 @@ fi
 case "$provider" in api) provider="claude-api" ;; subscription) provider="claude-subscription" ;; esac
 
 # Claude critic: provider claude-api / claude-subscription runs the
-# official claude binary read-only (Read,Glob,Grep, dontAsk, never
+# official claude binary with no tool (dontAsk, never
 # bypassPermissions) in a scratch cwd, not hermes. rc 5 = SKIPPED: no key, lane
 # off, credit or bank exhausted -- a clean no-op the panel records as unavailable,
 # never a failed review. A gate that crashed instead (no bank verdict, no scratch
@@ -616,20 +616,22 @@ _cfp_claude_invoke() {
     _cc_dir="$(tmpdir)" || { echo "critic-first-pass.sh: mktemp failed" >&2; return 1; }
     _cc_out=""
     _cc_rc=0
+    _cc_phase_marker='[critic-first-pass]'
+    _cc_pf="$_cc_dir/prompt.txt"
+    { printf '%s\n' "$_cc_phase_marker"; cat "$pf"; } > "$_cc_pf" || { rm -rf "$_cc_dir"; return 1; }
     case "$provider" in
         claude-api)
-            cp "$pf" "$_cc_dir/review-prompt.md" || { rm -rf "$_cc_dir"; return 1; }
             _cc_budget="${CR_CLAUDE_CRITIC_MAX_USD:-1.00}"
             case "$_cc_budget" in ''|*[!0-9.]*) _cc_budget="1.00" ;; esac
             _cc_err="$_cc_dir/stderr"
             _cc_branch="$(git branch --show-current 2>/dev/null || true)"  # swallow-ok: an empty branch is recorded as empty
             _cc_head="$(git rev-parse HEAD 2>/dev/null || true)"  # swallow-ok: an empty head is recorded as empty
-            _cc_out="$(cd "$_cc_dir" && HIMMEL_API_TOOLS=Read,Glob,Grep HIMMEL_API_KIND=critic HIMMEL_API_JOB_ID="cr-claude-critic-$$" \
+            _cc_out="$(cd "$_cc_dir" && HIMMEL_API_KIND=critic HIMMEL_API_JOB_ID="cr-claude-critic-$$" \
                 HIMMEL_API_BRANCH="${CR_TARGET_BRANCH:-$_cc_branch}" HIMMEL_API_HEAD="${CR_TARGET_HEAD:-$_cc_head}" HIMMEL_API_PR="${CR_TARGET_PR:-}" \
+                HIMMEL_API_TOOLS='' \
                 bash "${CFP_CLAUDE_API_LAUNCHER:-$SCRIPT_DIR/../api-lane/claude-api.sh}" \
-                -p "Read ./review-prompt.md and follow it exactly. Reply with the review only." \
-                --model "$model" --permission-mode dontAsk --max-budget-usd "$_cc_budget" \
-                --output-format json --effort "$_cc_effort" 2>"$_cc_err")" || _cc_rc=$?
+                -p --model "$model" --permission-mode dontAsk --max-budget-usd "$_cc_budget" \
+                --output-format json --effort "$_cc_effort" < "$_cc_pf" 2>"$_cc_err")" || _cc_rc=$?
             # only the launcher's own exit 2 is a refusal; the same line behind any other rc is a failure
             if [ "$_cc_rc" -eq 2 ] && grep -q '^claude-api: refused:' "$_cc_err" 2>/dev/null; then
                 _cc_why="$(grep -m1 '^claude-api: refused:' "$_cc_err" | sed 's/^claude-api: refused: //')"
@@ -675,7 +677,7 @@ _cfp_claude_invoke() {
             # launch gated on keywords only (native-auth-pin.sh LAUNCH GATE)
             if [[ -z "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}" ]]; then
                 _cc_out="$("${HIMMEL_CLAUDE_BIN:-claude}" -p --output-format json --permission-mode dontAsk \
-                    --allowedTools Read,Glob,Grep --model "$model" --effort "$_cc_effort" < "$pf")" || _cc_rc=$?
+                    --tools "" --model "$model" --effort "$_cc_effort" < "$_cc_pf")" || _cc_rc=$?
             else
                 echo "critic-first-pass.sh: claude critic SKIPPED (native auth pin could not clear ANTHROPIC_*/CLAUDE_CODE_USE_*) — clean no-op" >&2
                 rm -rf "$_cc_dir"
