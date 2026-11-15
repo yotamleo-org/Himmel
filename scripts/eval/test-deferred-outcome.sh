@@ -95,6 +95,14 @@ eq "default mirror: a himmel.conf-only key reads that project's mirror" "$rc" "0
 eq "default mirror: it joined the one ticket the resolver's mirror holds" "$(env -i HOME="$RH" PATH="$PATH" HIMMELCTL_CACHE_DIR="$RH/cache" python3 -I "$EVAL" --cr-ledger "$TMP/cr.jsonl" 2>/dev/null | python3 -I -c 'import json, sys; print(json.load(sys.stdin)["metrics"]["fixed_later"])')" "1"
 rc=0; env -i HOME="$RH" PATH="$PATH" HIMMELCTL_CACHE_DIR="$RH/cache" python3 -I "$EVAL" --cr-ledger "$TMP/cr.jsonl" --mirror "$TMP/no-mirror" >/dev/null 2>"$TMP/err-explicit" || rc=$?
 eq "default mirror: an explicit --mirror still wins over the resolver" "$rc" "2"
+mkdir -p "$RH/.himmel/state/jira-mirror/HIMMEL" "$TMP/failbin"
+cp "$TMP/mirror/HIMMEL-10.md" "$RH/.himmel/state/jira-mirror/HIMMEL/HIMMEL-10.md"
+printf '#!/bin/sh\nexit 1\n' >"$TMP/failbin/bash"; chmod +x "$TMP/failbin/bash"
+rc=0; env -i HOME="$RH" PATH="$TMP/failbin:$PATH" HIMMELCTL_CACHE_DIR="$RH/cache" python3 -I "$EVAL" --cr-ledger "$TMP/cr.jsonl" >/dev/null 2>"$TMP/err-failed" || rc=$?
+eq "failed resolver: no --mirror is refused, never read from the HIMMEL mirror" "$rc" "2"
+case "$(cat "$TMP/err-failed")" in *"no Jira mirror: project resolver failed"*) pass "failed resolver: the refusal names the resolver";; *) fail "failed resolver: the refusal names the resolver: $(cat "$TMP/err-failed")";; esac
+rc=0; env -i HOME="$RH" PATH="$TMP/failbin:$PATH" HIMMELCTL_CACHE_DIR="$RH/cache" python3 -I "$EVAL" --cr-ledger "$TMP/cr.jsonl" --mirror "$TMP/mirror" >/dev/null 2>&1 || rc=$?
+eq "failed resolver: an explicit --mirror still runs" "$rc" "0"
 
 echo "test-deferred-outcome: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

@@ -469,6 +469,18 @@ has "default mirror: the explicit --mirror is the one reported missing" "$err" "
 eq "default mirror: MIRROR stays a module-level string, the resolved path" "$(env -i HOME="$RH" PATH="$PATH" HIMMELCTL_CACHE_DIR="$RH/cache" \
   python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import judge_accuracy as j; print(type(j.MIRROR).__name__, j.MIRROR)' "$HERE")" \
   "str $RH/.himmel/state/jira-mirror/ZZTEST"
+mkdir -p "$RH/.himmel/state/jira-mirror/HIMMEL" "$TMP/failbin"
+cp "$TMP/mirror/HIMMEL-9005.md" "$RH/.himmel/state/jira-mirror/HIMMEL/HIMMEL-9005.md"
+printf '#!/bin/sh\nexit 1\n' >"$TMP/failbin/bash"; chmod +x "$TMP/failbin/bash"
+rc=0; err="$(jar PATH="$TMP/failbin:$PATH" 2>&1 >/dev/null)" || rc=$?
+eq "failed resolver: no --mirror is refused, never read from the HIMMEL mirror" "$rc" "2"
+has "failed resolver: the refusal names the resolver" "$err" "no Jira mirror: project resolver failed"
+has "failed resolver: one stderr line names the cause" "$err" "project resolver failed (exit 1)"
+rc=0; err="$(env -i HOME="$RH" PATH="$TMP/failbin:$PATH" HIMMELCTL_CACHE_DIR="$RH/cache" python3 -I "$JA" run --verdicts "$TMP/v" --prs "$TMP/prs.json" \
+  --mirror "$TMP/mirror" --queue "$TMP/q-resolver.jsonl" --no-ledger 2>&1 >/dev/null)" || rc=$?
+eq "failed resolver: an explicit --mirror still runs" "$rc" "0"
+eq "failed resolver: MIRROR is a module-level None, never a raise at import" "$(env -i HOME="$RH" PATH="$TMP/failbin:$PATH" HIMMELCTL_CACHE_DIR="$RH/cache" \
+  python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import judge_accuracy as j; print(j.MIRROR)' "$HERE" 2>/dev/null)" "None"
 
 echo "judge-accuracy: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

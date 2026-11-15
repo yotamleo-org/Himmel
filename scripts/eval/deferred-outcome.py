@@ -115,6 +115,9 @@ def main(argv=None):
     ap.add_argument("--record", action="store_true")
     ap.add_argument("--ledger")
     a = ap.parse_args(argv)
+    if a.mirror is None:
+        print("deferred-outcome: refused: no Jira mirror: project resolver failed", file=sys.stderr)
+        return 2
     if not os.path.isdir(a.mirror):
         print("deferred-outcome: refused: no Jira mirror: %s" % a.mirror, file=sys.stderr)
         return 2

@@ -70,15 +70,19 @@ QUEUE_ENV = "HIMMEL_JUDGE_ADJUDICATION"
 
 
 def default_mirror():
-    old = os.path.expanduser("~/.himmel/state/jira-mirror/HIMMEL")  # env-literal-ok: the path when bash or the resolver is missing
     lib = os.path.join(HERE, "..", "..", "lib", "jira-project.sh")
     try:
         r = subprocess.run(["bash", "-c", '. "$1" && jira_mirror_dir', "judge_accuracy", lib],
                            capture_output=True, text=True, timeout=60)
-    except (OSError, subprocess.SubprocessError):
-        return old
-    out = r.stdout.strip()
-    return out if r.returncode == 0 and out else old
+    except (OSError, subprocess.SubprocessError) as e:
+        cause = type(e).__name__
+    else:
+        out = r.stdout.strip()
+        if r.returncode == 0 and out:
+            return out
+        cause = "exit %d" % r.returncode if r.returncode else "no output"
+    print("judge-accuracy: project resolver failed (%s): no default Jira mirror" % cause, file=sys.stderr)
+    return None
 
 
 MIRROR = default_mirror()
@@ -161,6 +165,8 @@ def load_verdicts(root):
 def load_bugs(mirror):
     """Bug tickets of the mirror: key, labels, created, caused-by target and the PRs the text cites."""
     bugs = []
+    if mirror is None:
+        raise ValueError("no Jira mirror: project resolver failed")
     if not os.path.isdir(mirror):
         raise ValueError("no Jira mirror: %s" % mirror)
     for f in sorted(os.listdir(mirror)):
@@ -603,7 +609,7 @@ def cmd_run(a):
         raise ValueError("--class needs --ledger P or --no-ledger: a filtered run is not a row of the real ledger's series")
     ledger = class_filter(a.cls, a.bug_origin_dir)
     # a class filter reads the ledger, so a project with no Jira mirror still works; the unfiltered numbers need the mirror
-    bugs = ledger_bugs(ledger) if ledger is not None and not os.path.isdir(a.mirror) else load_bugs(a.mirror)
+    bugs = ledger_bugs(ledger) if ledger is not None and (a.mirror is None or not os.path.isdir(a.mirror)) else load_bugs(a.mirror)
     if ledger is not None:
         # a bug counts when its fix row has the class; a failed main run has no fix row, so no class
         classes = ledger_classes(ledger)

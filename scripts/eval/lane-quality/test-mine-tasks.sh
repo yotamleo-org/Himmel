@@ -101,6 +101,13 @@ env -i HOME="$RH" PATH="$PATH" HIMMELCTL_CACHE_DIR="$RH/cache" python3 "$MT" can
 check "default mirror: a himmel.conf-only key reads that project's mirror (the bug ticket is found)" 'jq -s -e --arg c "$C2" "map(select(.merge_sha == \$c))[0] | .source == \"bug\" and .has_ticket_text == true" "$TMP/cand-default.jsonl" >/dev/null'
 env -i HOME="$RH" PATH="$PATH" HIMMELCTL_CACHE_DIR="$RH/cache" python3 "$MT" candidates --repo "$TMP/src" --rev main --mirror "$TMP/no-mirror" >"$TMP/cand-explicit.jsonl" 2>/dev/null
 check "default mirror: an explicit --mirror still wins over the resolver" 'jq -s -e --arg c "$C2" "map(select(.merge_sha == \$c))[0] | .has_ticket_text == false" "$TMP/cand-explicit.jsonl" >/dev/null'
+mkdir -p "$RH/.himmel/state/jira-mirror/HIMMEL" "$TMP/failbin"
+cp "$TMP/mirror/HIMMEL-9001.md" "$RH/.himmel/state/jira-mirror/HIMMEL/HIMMEL-9001.md"
+printf '#!/bin/sh\nexit 1\n' >"$TMP/failbin/bash"; chmod +x "$TMP/failbin/bash"
+env -i HOME="$RH" PATH="$TMP/failbin:$PATH" HIMMELCTL_CACHE_DIR="$RH/cache" python3 "$MT" candidates --repo "$TMP/src" --rev main >"$TMP/cand-failed.jsonl" 2>"$TMP/cand-failed.err"; failed_rc=$?
+check "failed resolver: no --mirror is refused with exit 2, never read from the HIMMEL mirror" '[ "$failed_rc" -eq 2 ] && [ ! -s "$TMP/cand-failed.jsonl" ] && grep -q "no Jira mirror: project resolver failed" "$TMP/cand-failed.err"'
+env -i HOME="$RH" PATH="$TMP/failbin:$PATH" HIMMELCTL_CACHE_DIR="$RH/cache" python3 "$MT" candidates --repo "$TMP/src" --rev main --mirror "$TMP/mirror" >"$TMP/cand-failed-ok.jsonl" 2>/dev/null; failed_ok_rc=$?
+check "failed resolver: an explicit --mirror still runs" '[ "$failed_ok_rc" -eq 0 ] && jq -s -e --arg c "$C2" "map(select(.merge_sha == \$c))[0] | .source == \"bug\"" "$TMP/cand-failed-ok.jsonl" >/dev/null'
 
 echo "2. emit"
 mkdir -p "$TMP/lq"; cp "$MT" "$TMP/lq/"  # accept.sh finds the miner two levels above its task
