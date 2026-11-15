@@ -448,7 +448,8 @@ test('the input bound counts one token per byte, and the refusal names the large
   const f = fixture();
   rmSync(f.prompts, { recursive: true });
   mkdirSync(f.prompts);
-  // 100000 bytes of 3-byte characters: at bytes / 3 the bound is 0.293 USD, at one token per byte 0.36 USD
+  // 100000 bytes (50000 two-byte characters): at bytes / 3 the bound is about 0.227 USD, under the 0.30 budget; at one
+  // token per byte it is 0.36 USD, over it
   const big = 'é'.repeat(50000);
   writeFileSync(join(f.prompts, `${sha(big)}.txt`), big);
   const under = await f.submit(['--max-usd', '0.30']);
