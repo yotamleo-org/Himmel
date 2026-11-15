@@ -255,6 +255,20 @@ jlrc=0; (cd "$WTR" && env -u HANDOVER_DIR -u HIMMEL_CONFIG_DIR -u JUDGE_LADDER_S
 check "a linked worktree: judge-ladder writes under the primary env's root" "$jlrc $([ -f "$CFG/.judge-ladder" ] && echo yes)" "0 yes"
 lacks "a linked worktree: judge-ladder prints no load-dotenv advisory" "$(cat "$tmp/err")" "load-dotenv: .env absent under worktree"
 
+CGR="$tmp/cgrrepo"; ELSE="$tmp/elsewhere"
+rm -rf "$CGR" "$ELSE"
+mkdir -p "$CGR/scripts/handover" "$CGR/scripts/ci" "$ELSE"
+git -C "$CGR" init -q -b main
+cp -R "$SRC/lib" "$CGR/scripts/lib"; cp -R "$SRC/handover/chief-kit" "$CGR/scripts/handover/chief-kit"
+cp "$SRC/ci/ci-trust-paths.txt" "$CGR/scripts/ci/ci-trust-paths.txt"
+git -C "$CGR" add -A
+git -C "$CGR" -c user.email=t@test.local -c user.name=t -c commit.gpgsign=false commit -q -m fixture
+git -C "$CGR" update-ref refs/remotes/origin/main HEAD
+reset
+cgrrc=0; (cd "$ELSE" && env -u FR_CHAIN_GRAPH CHAIN_GRAPH_JIRA="$tmp/bin/jira" bash "$CGR/scripts/handover/chief-kit/focus-refresh.sh" --doc "$DOC" --repo example-org/example-repo >"$tmp/out" 2>"$tmp/err") || cgrrc=$?
+check "outside the checkout: the real chains graph is read, the refresh prints ok" "$cgrrc $(out)" "0 focus=ok"
+check "outside the checkout: focus-chains.json is regenerated" "$([ -f "$CH" ] && echo yes)" yes
+
 # --- no exit leaves a .focus-stage.* folder in the doc dir (the vault sync stages whatever sits there)
 stages_left() { local f n=0; for f in "$tmp"/doc/.focus-stage.*; do [ -e "$f" ] && n=$((n + 1)); done; echo "$n"; }
 cat >"$tmp/bin/sweep-fail" <<'EOS'
