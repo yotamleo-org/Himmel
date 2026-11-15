@@ -97,7 +97,7 @@ check '5. an unknown option is a usage error' 2 "$rc"
 H="$tmp/home"; C="$tmp/conf"; K="$tmp/cache"; JM="$H/.himmel/state/jira-mirror"
 mkdir -p "$C" "$K" "$JM"; : > "$K/.env"
 printf '{"schema":"himmel.chain-registry/1","chains":[]}\n' > "$tmp/empty.json"
-dflt() { # <name> [VAR=value ...]: chain-add over the default mirror; the chain must hold both keys
+dflt() {
     local name="$1"; shift
     cp "$tmp/empty.json" "$R"
     env -u HIMMEL_JIRA_MIRROR -u JIRA_PROJECT_KEY HOME="$H" HIMMEL_CONFIG_DIR="$C" HIMMELCTL_CACHE_DIR="$K" "$@" \
