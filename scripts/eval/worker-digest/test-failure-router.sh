@@ -543,6 +543,53 @@ check "a refreshed row inside the window is still read by the router" 'grep -q "
 check "the preview made no Jira call" '[ "$(calls create)" = "$before_calls" ]'
 LED="$LED_SAVE"
 
+echo "backfill: a class capped and never filed is routed once, a class filed after its capped row is not replayed"
+FBF="$TMP/fbf"; mkdir -p "$FBF"
+BF_SEEN=2026-09-20T10:00:00Z; BF_CAPPED=2026-09-21T10:00:00Z
+SAVE="$LED"; LED="$FBF/l.jsonl"
+for c in denied/guard-bf-new denied/guard-bf-control denied/guard-bf-open denied/guard-bf-done denied/guard-bf-fixed; do
+  row N1 "$c" 1 false worker "$BF_SEEN"; row N2 "$c" 1 false worker "$BF_SEEN"
+done
+row N1 suite/test-bf-noise.sh 0 false worker "$BF_SEEN"; row N2 suite/test-bf-noise.sh 0 false worker "$BF_SEEN"
+LED="$SAVE"
+bfrow() { jq -nc --arg c "$1" --arg d "$2" --arg t "${3:-}" --arg ts "$4" '{v:1, ts:$ts, host:"h", source:"scripts/eval/worker-digest/failure_router.py",
+  kind:"route-decision", class:$c, workers:2, decision:$d, ticket:(if $t == "" then null else $t end)}' >>"$FBF/log"; }
+for c in denied/guard-bf-new denied/guard-bf-control denied/guard-bf-open denied/guard-bf-done denied/guard-bf-fixed suite/test-bf-noise.sh; do bfrow "$c" capped "" "$BF_CAPPED"; done
+bfrow denied/guard-bf-control filed HIMMEL-9400 2026-09-22T10:00:00Z
+printf 'HIMMEL-9500\tTask\tTo Do\tan open ticket\n' >"$STUB/list.fl-denied-guard-bf-open"
+printf 'HIMMEL-9501\tTask\tDone\ta done ticket\n' >"$STUB/list.fl-denied-guard-bf-done"
+printf 'denied/guard-bf-fixed\tabc1234def\n' >"$FBF/covered.tsv"
+bf() { python3 "$FR" route --ledger "$FBF/l.jsonl" --state "$FBF/s.json" --log "$FBF/log" --inbox "$FBF/inbox" --now "$NOW" --jira-bin "$STUB/jira" "$@"; }
+# the pending count: classes with a capped row and no later filed, commented, recurred-after-done or skipped:noise/covered row
+pending() { jq -s -r '[.[] | select(.kind == "route-decision")] | group_by(.class) | map(select((map(.decision) | index("capped")) != null)
+  | (map(.decision) | rindex("capped")) as $c | select(([.[($c + 1):][] | .decision] | map(select(. == "filed" or . == "commented" or . == "recurred-after-done"
+  or . == "skipped:noise" or . == "skipped:covered")) | length) == 0)) | length' "$1"; }
+cp "$FBF/log" "$FBF/log.orig"
+check "before: 5 classes are capped and never filed (the control was filed after its capped row)" '[ "$(pending "$FBF/log")" = 5 ]'
+nc="$(lines "$STUB/calls.log")"
+python3 "$FR" route --ledger "$FBF/l.jsonl" --state "$FBF/plain.json" --log "$FBF/plain.log" --inbox "$FBF/inbox" --now "$NOW" --jira-bin "$STUB/jira" >"$FBF/plain.out" 2>&1
+check "without --backfill the router makes no decision for a capped class outside the window" '[ "$(lines "$FBF/plain.log")" = 0 ] && [ "$(lines "$STUB/calls.log")" = "$nc" ]'
+bf --backfill --dry-run --covered "$FBF/covered.tsv" >"$FBF/dry.out" 2>&1; rc=$?
+check "backfill --dry-run exits 0 and names what it would do for each pending class" '[ "$rc" = 0 ] && grep -q "\"class\":\"denied/guard-bf-new\".*would-file" "$FBF/dry.out" && grep -q "\"class\":\"suite/test-bf-noise.sh\".*skipped:noise" "$FBF/dry.out" && grep -q "\"class\":\"denied/guard-bf-fixed\".*skipped:covered.*abc1234def" "$FBF/dry.out" && ! grep -q "guard-bf-control" "$FBF/dry.out"'
+check "backfill --dry-run writes no log, state or inbox and calls no Jira" '[ "$(cat "$FBF/log" | sha256sum)" = "$(cat "$FBF/log.orig" | sha256sum)" ] && [ ! -e "$FBF/s.json" ] && [ "$(lines "$STUB/calls.log")" = "$nc" ]'
+ncreate="$(calls create)"; ncomment="$(calls comment)"
+bf --backfill --covered "$FBF/covered.tsv" >"$FBF/bf.out" 2>&1; rc=$?
+check "backfill exits 0" '[ "$rc" = 0 ] || { head -c 600 "$FBF/bf.out"; false; }'
+bfdec() { decs "$FBF/log" | jq -r --arg c "$1" 'select(.class == $c and (.ts | startswith("2026-10-07"))) | "\(.decision) \(.ticket // "")"'; }
+check "a capped, never-filed class files one ticket" 'bfdec denied/guard-bf-new | grep -Eq "^filed HIMMEL-[0-9]+\$" && [ "$(calls create)" = "$((ncreate + 1))" ]'
+check "a class filed after its capped row is not replayed" '[ -z "$(bfdec denied/guard-bf-control)" ] && ! grep -q "fl-denied-guard-bf-control" "$STUB/calls.log"'
+check "a class with an open ticket gets a comment on it, not a second ticket" '[ "$(bfdec denied/guard-bf-open)" = "commented HIMMEL-9500" ] && [ "$(calls comment)" = "$((ncomment + 1))" ]'
+check "a class whose ticket is Done is recorded recurred-after-done, never reopened" '[ "$(bfdec denied/guard-bf-done)" = "recurred-after-done HIMMEL-9501" ]'
+check "a class the table no longer routes ends skipped:noise, with no Jira call" '[ "$(bfdec suite/test-bf-noise.sh)" = "skipped:noise " ] && ! grep -q "fl-suite-test-bf-noise" "$STUB/calls.log"'
+check "a class named in --covered ends skipped:covered carrying its sha, with no Jira call" '[ "$(bfdec denied/guard-bf-fixed)" = "skipped:covered abc1234def" ] && ! grep -q "fl-denied-guard-bf-fixed" "$STUB/calls.log"'
+check "after: no class is left with only a capped row" '[ "$(pending "$FBF/log")" = 0 ]'
+nd="$(dlines "$FBF/log")"; nc="$(lines "$STUB/calls.log")"
+bf --backfill --covered "$FBF/covered.tsv" >"$FBF/bf2.out" 2>&1
+check "a second backfill makes no decision and no Jira call: it runs once" '[ "$(dlines "$FBF/log")" = "$nd" ] && [ "$(lines "$STUB/calls.log")" = "$nc" ]'
+printf 'denied/guard-bf-new\tnot-a-ref\n' >"$FBF/bad.tsv"
+bf --backfill --dry-run --covered "$FBF/bad.tsv" >"$FBF/bad.out" 2>&1; rc=$?
+check "a --covered line with no Jira key or sha is refused: exit 1, nothing routed" '[ "$rc" = 1 ] && grep -q "covered" "$FBF/bad.out"'
+
 echo
 echo "test-failure-router: $PASS passed, $FAIL failed"
 [ "$FAIL" = 0 ]
