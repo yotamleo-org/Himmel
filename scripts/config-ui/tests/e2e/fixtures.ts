@@ -118,6 +118,26 @@ export type Harness = {
 
 const writeRows = (file: string, rows: object[]) => { mkdirSync(join(file, ".."), { recursive: true }); writeFileSync(file, rows.map((r) => JSON.stringify(r) + "\n").join("")); };
 
+// detached: the child leads its own process group, so stopChild can signal it and everything it started.
+export const spawnServer = (args: string[], env: NodeJS.ProcessEnv): ChildProcess =>
+  spawn("node", args, { env, stdio: ["ignore", "pipe", "pipe"], detached: true });
+
+// SIGTERM the group, SIGKILL it after graceMs, wait for the child's exit, SIGKILL what it left behind, then remove dir.
+// Nothing is left that can write into dir (a process killed a moment ago can still be dying, hence the rmSync retries).
+export async function stopChild(child: ChildProcess, dir: string, graceMs = 5_000): Promise<void> {
+  const signal = (sig: NodeJS.Signals) => { try { process.kill(-child.pid!, sig); } catch { child.kill(sig); } };
+  const exit = new Promise<void>((r) => {
+    if (child.exitCode !== null || child.signalCode !== null) return r();
+    child.once("exit", () => r());
+  });
+  signal("SIGTERM");
+  const escalate = setTimeout(() => signal("SIGKILL"), graceMs);
+  await exit;
+  clearTimeout(escalate);
+  signal("SIGKILL");
+  rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+}
+
 // Starts the REAL `himmelctl ui --port 0`. The Claude session markers are
 // dropped from the child env so the refusal is not tripped; the
 // refusal itself is untouched (no --allow-agent-session anywhere).
@@ -173,7 +193,7 @@ export async function boot(v: Variant = {}, o: BootOpts = {}): Promise<Harness> 
   delete env.CADENCE_USAGE_LEDGER; // the operator's own ledger, root and monitoring never reach the child
   delete env.TELEGRAM_ENV; delete env.TELEGRAM_BOT_TOKEN; // the Setup page writes a Telegram token under the temp HOME, never the operator's
   for (const k of Object.keys(env)) if (k === "CLAUDECODE" || k.startsWith("CLAUDE_CODE_")) delete env[k];
-  const child: ChildProcess = spawn("node", [BIN, "ui", "--port", "0"], { env: env as NodeJS.ProcessEnv, stdio: ["ignore", "pipe", "pipe"] });
+  const child = spawnServer([BIN, "ui", "--port", "0"], env as NodeJS.ProcessEnv);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const url = await new Promise<string>((ok, fail) => {
     let buf = "", err = "";
@@ -187,10 +207,9 @@ export async function boot(v: Variant = {}, o: BootOpts = {}): Promise<Harness> 
     child.on("error", fail);
     child.on("exit", (c) => fail(new Error(`himmelctl ui exited ${c}: ${err}`)));
     timer = setTimeout(() => fail(new Error("himmelctl ui printed no URL in 15 s")), 15_000);
-  }).catch((e) => {
-    child.kill("SIGKILL");
+  }).catch(async (e) => {
     prom?.close();
-    rmSync(dir, { recursive: true, force: true });
+    await stopChild(child, dir);
     throw e;
   }).finally(() => clearTimeout(timer));
   return {
@@ -205,13 +224,7 @@ export async function boot(v: Variant = {}, o: BootOpts = {}): Promise<Harness> 
     legDoc,
     stop: async () => {
       prom?.close();
-      child.kill("SIGTERM");
-      await new Promise((r) => {
-        if (child.exitCode !== null || child.signalCode !== null) return r(null);
-        child.once("exit", r);
-        setTimeout(() => { child.kill("SIGKILL"); r(null); }, 5_000).unref();
-      });
-      rmSync(dir, { recursive: true, force: true });
+      await stopChild(child, dir);
     },
   };
 }
