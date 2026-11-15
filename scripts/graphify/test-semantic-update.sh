@@ -974,7 +974,6 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statS
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-// the real client's own bound, so the planner and the stand-in's gate use one figure
 const real = join(dirname(fileURLToPath(import.meta.url)), 'semantic-batch.real.mjs');
 const boundOf = (bytes, model, maxTokens) => Number(spawnSync(process.execPath, [real, 'bound', '--bytes', String(bytes), '--model', model || 'sonnet', '--max-tokens', maxTokens || '32000'], { encoding: 'utf8' }).stdout);
 const [cmd, ...a] = process.argv.slice(2);

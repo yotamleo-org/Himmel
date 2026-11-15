@@ -25,8 +25,8 @@
 //       7 the batch estimate is over the budget (nothing was sent; re-size the batch, do not rotate account).
 // Key: read here from <state_dir>/key-<account>.env (mode 600, the lane's own file), never printed or put on argv.
 // Endpoint: https://api.anthropic.com, or HIMMEL_BATCH_BASE_URL when it is a loopback http(s) URL (test stub).
-// Budget: submit needs --max-usd (or GRAPHIFY_API_RUN_BUDGET_USD) and refuses (exit 2) before the POST when requests x the
-// per-request bound is over it, or when no budget is given. The actual cost lands in the run row and the provider's report.
+// Budget: submit needs --max-usd (or GRAPHIFY_API_RUN_BUDGET_USD); it refuses before the POST when requests x the
+// per-request bound is over it (exit 7), or when no budget is given (exit 2). The actual cost lands in the run row and the provider's report.
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -177,7 +177,6 @@ async function submit(o) {
   const requests = prompts.map(({ id, text }) => ({ custom_id: id, params: { model, max_tokens: maxTokens, output_config: { effort },
     ...(prefix && { system: [{ type: 'text', text: prefix, cache_control: { type: 'ephemeral', ttl: CACHE_TTL } }] }),
     messages: [{ role: 'user', content: prefix ? text.slice(prefix.length) : text }] } }));
-  // The estimate gates the POST: once the batch is created it bills to the end, so the budget is checked before.
   const bounds = prompts.map(({ text }) => requestBound(model, Buffer.byteLength(text), maxTokens));
   const estimate = bounds.reduce((sum, b) => sum + b, 0);
   if (estimate > Number(budget)) {
@@ -214,16 +213,14 @@ function cost(model, u) {
   return (inTok * pin + (u.output_tokens ?? 0) * pout) / 1e6;
 }
 
-// The most one request can bill: its input at twice the input rate (the dearest cache write) over one token per byte,
-// which can only overcount (a token is at least one byte), plus a flat allowance for message framing and role markers,
-// plus max_tokens at the output rate. A real request costs less; the bound is for the budget gate.
 const FRAMING_TOKENS = 100;
+const CACHE_WRITE_MULTIPLIER = 2;
+const INPUT_TOKENS_PER_BYTE = 1;
 function requestBound(model, bytes, maxTokens) {
   const [pin, pout] = PRICE[model];
-  return ((bytes + FRAMING_TOKENS) * 2 * pin + maxTokens * pout) / 1e6;
+  return ((bytes * INPUT_TOKENS_PER_BYTE + FRAMING_TOKENS) * CACHE_WRITE_MULTIPLIER * pin + maxTokens * pout) / 1e6;
 }
 
-// bound --bytes B --model M [--max-tokens N]: the bound of one request of B bytes, in USD, for the planner's sizing.
 function bound(o) {
   const model = ALIAS[o.model] ?? o.model;
   if (!PRICE[model]) refuse(`model '${o.model}' has no batch price in the table`);

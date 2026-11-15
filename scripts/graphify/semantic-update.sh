@@ -184,7 +184,6 @@ if [ "$OUT_DIR" != "$CORPUS_ROOT/graphify-out" ] && [ -L "$OUT_DIR" ]; then
   RESULT_WORD=corpus-failed; exit 3
 fi
 API_CALL_BUDGET="${GRAPHIFY_API_CALL_BUDGET_USD:-1.00}"
-# One request's output cap in a batch: the client sends it as max_tokens and the planner's per-chunk bound counts it.
 BATCH_MAX_TOKENS=32000
 API_EFFORT="${GRAPHIFY_API_EFFORT:-high}"
 if [ "$BACKEND" = "claude-api" ] && [ "$SEED" -eq 0 ] && [ "$DRY" -eq 0 ] && [ "$(node "$REPO_ROOT/scripts/himmelctl/lib/graph-choices.js" role 2>/dev/null)" = unreadable ]; then
@@ -338,12 +337,9 @@ plan_or_noop
 if [ "$BACKEND" = "claude-api" ] && [ "$RESUME" -eq 0 ]; then
   # ponytail: tokens ~ bytes/4 plus 2000 prompt tokens per file, output a quarter of input, at the sonnet list
   # rate ($3/$15 per M); a rough ceiling, replace with a measured figure once a real run is ledgered.
-  # A batch is sized with the client's own bound for one chunk request (its prompt, graphify's 2000 tokens of
-  # instructions at four bytes a token, plus the output cap), which is what the client refuses a submit over; the
-  # synchronous lane keeps the list-price figure.
-  FIT_USD=""
+  PROMPT_OVERHEAD_TOKENS=2000 BYTES_PER_TOKEN=4 FIT_USD=""
   if [ "$BATCH_MODE" -eq 1 ]; then
-    FIT_USD="$(node "$HERE/semantic-batch.mjs" bound --bytes "$(( (CHUNK_TOKENS + 2000) * 4 ))" --model "${GRAPHIFY_CLAUDE_CLI_MODEL-sonnet}" --max-tokens "$BATCH_MAX_TOKENS")" \
+    FIT_USD="$(node "$HERE/semantic-batch.mjs" bound --bytes "$(( (CHUNK_TOKENS + PROMPT_OVERHEAD_TOKENS) * BYTES_PER_TOKEN ))" --model "${GRAPHIFY_CLAUDE_CLI_MODEL-sonnet}" --max-tokens "$BATCH_MAX_TOKENS")" \
       || { echo "semantic-update: the batch client cannot bound a chunk request; nothing submitted" >&2; exit 2; }
   fi
   # each cut re-plans, so the estimate is recomputed on the files that remain (a prefix of large files can still be over)
@@ -371,8 +367,6 @@ PY
 )"
   FIT_FILES="${FIT_OUT%% *}" OVER_CAP="${FIT_OUT##* }"
   [ "$FIT_FILES" -lt "$N_BATCH" ] || break
-  # the floor is one file, so a cap that cannot fund one chunk still runs that file; on the synchronous lane the shim
-  # WARNs on the overshoot, and a batch is refused by the client (over-cap)
   echo "semantic-update: sized: batch of $N_BATCH files cut to $FIT_FILES to fit the run cap of $RUN_CAP USD; the rest stay unstamped for the next run" >&2
   MAX_FILES="$FIT_FILES"
   plan_or_noop

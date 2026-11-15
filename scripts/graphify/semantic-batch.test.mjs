@@ -82,7 +82,6 @@ function fixture() {
   const batch = join(dir, 'pending');
   const client = (...a) => run(process.execPath, [CLIENT, ...a], { env, encoding: 'utf8' }).then(
     (r) => ({ code: 0, ...r }), (e) => ({ code: e.code, stdout: e.stdout, stderr: e.stderr }));
-  // a roomy budget unless the case names its own: every submit needs one, and most cases are not about it
   const submit = (extra = [], model = 'sonnet') => client('submit', '--dir', batch, '--prompts', prompts, '--account', 'A', '--model', model, '--effort', 'high',
     ...(extra.includes('--max-usd') ? [] : ['--max-usd', '100']), ...extra);
   const bare = (...a) => client('submit', '--dir', batch, '--prompts', prompts, '--account', 'A', '--model', 'sonnet', '--effort', 'high', ...a);
@@ -391,9 +390,6 @@ test('shim: refuses an argument graphify does not send and a missing mode', () =
   assert.equal(shim({}, '', '-p').status, 2);
 });
 
-// The estimate (requests x a per-request bound) is checked against the approved budget before the POST.
-// Two prompts of ~30 bytes on sonnet-5-5: each request is bounded by its input at twice the input rate plus max_tokens
-// (32000) at the $5/M output rate, about 0.16006 USD, so the batch is about 0.3201 USD.
 test('a batch whose estimate is over the budget is refused before submit, one line naming estimate and budget', async () => {
   reset();
   const f = fixture();
@@ -433,7 +429,6 @@ test('the budget may come from GRAPHIFY_API_RUN_BUDGET_USD; the flag wins when b
   reset();
   const f = fixture();
   const args = [CLIENT, 'submit', '--dir', f.batch, '--prompts', f.prompts, '--account', 'A', '--model', 'sonnet', '--effort', 'high'];
-  // async: the stub server lives in this process, so a blocking spawn would starve it
   const env = { ...f.env, GRAPHIFY_API_RUN_BUDGET_USD: '0.30' };
   const over = await run(process.execPath, args, { env, encoding: 'utf8' }).then(() => ({ code: 0 }), (e) => ({ code: e.code, stderr: e.stderr }));
   assert.equal(over.code, 7, over.stderr);
@@ -449,7 +444,6 @@ test('the input bound carries a flat framing allowance: a one-byte prompt is bou
   rmSync(f.prompts, { recursive: true });
   mkdirSync(f.prompts);
   writeFileSync(join(f.prompts, `${sha('x')}.txt`), 'x');
-  // 1 byte and 32000 output tokens bound at 0.160002 USD; the framing allowance of 100 tokens at twice the rate adds 0.0002
   const refused = await f.submit(['--max-usd', '0.1601']);
   assert.equal(refused.code, 7, `the framing tokens were not counted: ${refused.stdout}`);
   assert.match(refused.stderr, /estimate 0\.1602\d* USD/);
@@ -461,8 +455,6 @@ test('the input bound counts one token per byte, and the refusal names the large
   const f = fixture();
   rmSync(f.prompts, { recursive: true });
   mkdirSync(f.prompts);
-  // 100000 bytes (50000 two-byte characters): at bytes / 3 the bound is about 0.227 USD, under the 0.30 budget; at one
-  // token per byte it is 0.36 USD, over it
   const big = 'é'.repeat(50000);
   writeFileSync(join(f.prompts, `${sha(big)}.txt`), big);
   const under = await f.submit(['--max-usd', '0.30']);
