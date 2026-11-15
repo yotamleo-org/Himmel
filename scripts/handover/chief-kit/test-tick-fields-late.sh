@@ -233,7 +233,6 @@ sed -e 's/^statusCategory: "x"/statusCategory: "Done"/' -e 's/904/906/g' "$OW/HI
 sed -e 's/^body$/statusCategory: "Done"/' -e 's/904/907/g' "$OW/HIMMEL-904.md" > "$PDI/HIMMEL-907.md"  # open ticket whose description quotes a Done line
 rm -rf "$W/ic-state"
 contains 'a versionless operator-directed ticket shows as INTAKE=<n> beside pool=' "$(ic_tick)" ' INTAKE=1 '
-# (10078) the waiter's clock (<inbox>.wait.intake, line 1 = epoch INTAKE was first seen) gives the oldest INTAKE age.
 ia_now="$(date +%s)"; ia_clock="$W/handover/inbox/N61.md.wait.intake"
 rm -f "$ia_clock"
 not_contains 'INTAKE above 0 with no waiter clock file prints the count and no INTAKE-AGE' "$(ic_tick)" ' INTAKE-AGE='

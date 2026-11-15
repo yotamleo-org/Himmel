@@ -3180,7 +3180,6 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
         # INTAKE=<n>: versionless operator work the pool cannot list, from the snapshot's `# intake` line
         intake_summary="$(sed -n 's/^# intake \([0-9][0-9]*\)[ :].*/\1/p' "$pd_base.rows" | head -n 1)"  # swallow-ok: no line reads 0
         [ -n "$intake_summary" ] || intake_summary=0
-        # The oldest INTAKE age reuses the waiter's clock: line 1 of <inbox>.wait.intake is the epoch INTAKE was first seen.
         if [ "$intake_summary" -gt 0 ] && [ -n "$root" ]; then
             ia_now="$(date +%s)"
             for ia_file in "$root"/inbox/*.wait.intake; do
