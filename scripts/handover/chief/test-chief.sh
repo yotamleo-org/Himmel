@@ -4000,6 +4000,8 @@ mkq own10006d "$q_new"
 ow_add own10006d 3600 ticket 'file the young bug'
 OWED_SHIFT_SECS=60 run91 own10006d
 check "10006 OWED_SHIFT_SECS sets the shift: a one-hour row is past a one-minute shift (exit 9)" "$rc91" "9"
+OWED_SHIFT_SECS=0090 run91 own10006d
+check "10006 a zero-padded OWED_SHIFT_SECS reads as decimal, not octal (exit 9, not an arithmetic error)" "$rc91/$(printf '%s\n' "$out91" | grep -c 'no key after 0 h:')" "9/1"
 mkq own10006e "$q_new"; run91 own10006e
 check "10006 a bucket with no ledger hands over and has no Owed section" "$rc91/$(grep -c '^## Owed' "$(ow_handoff own10006e)")" "0/0"
 mkq own10006f "$q_new"

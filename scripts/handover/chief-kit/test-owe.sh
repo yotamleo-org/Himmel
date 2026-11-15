@@ -81,6 +81,21 @@ bash "$OWE" close --bucket "$B" --id o2 --key 0123abc >/dev/null; rc=$?
 check "a proof closes on a sha" "$rc" "0"
 check "nothing is open" "$(bash "$OWE" list --bucket "$B")" ""
 
+# a tab or newline in --chief would shift the columns of list
+bash "$OWE" add --bucket "$B" --chief $'Z\tX' --kind ticket --text x >/dev/null 2>&1; rc=$?
+check "a tab in --chief exits 2" "$rc" "2"
+bash "$OWE" add --bucket "$B" --chief $'Z\nX' --kind ticket --text x >/dev/null 2>&1; rc=$?
+check "a newline in --chief exits 2" "$rc" "2"
+
+# concurrent adds each get their own id, so every one can be closed
+C="$WORK/concurrent"; mkdir -p "$C"
+for _n in 1 2 3 4 5 6 7 8; do bash "$OWE" add --bucket "$C" --chief Z --kind ticket --text "row $_n" >/dev/null & done
+wait
+check "eight concurrent adds write eight rows" "$(wc -l < "$C/owed.jsonl" | tr -d ' ')" "8"
+check "eight concurrent adds get eight distinct ids" "$(jq -r .id "$C/owed.jsonl" | sort -u | wc -l | tr -d ' ')" "8"
+bash "$OWE" close --bucket "$C" --id o3 --key HIMMEL-1 >/dev/null 2>&1; rc=$?
+check "a row added concurrently can be closed" "$rc" "0"
+
 # a missing file lists nothing
 check "an empty bucket lists nothing" "$(mkdir -p "$WORK/empty" && bash "$OWE" list --bucket "$WORK/empty"; echo "rc=$?")" "rc=0"
 

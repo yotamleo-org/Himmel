@@ -3286,6 +3286,7 @@ if [ -n "$console_doc" ] && [ -s "${console_doc%/*}/owed.jsonl" ]; then
     if owed_rows="$(bash "$HERE/owe.sh" list --bucket "${console_doc%/*}" 2>/dev/null)"; then  # swallow-ok: the else branch prints owed=?
         owed_stale_secs="${OWED_STALE_SECS:-14400}"
         case "$owed_stale_secs" in ''|*[!0-9]*) owed_stale_secs=14400 ;; esac
+        owed_stale_secs=$((10#$owed_stale_secs))
         tick_now_s
         owed_calc="$(printf '%s\n' "$owed_rows" | awk -F'\t' -v now="$tick_now" -v lim="$owed_stale_secs" '
             NF { n++; if (min == "" || $3 + 0 < min + 0) min = $3

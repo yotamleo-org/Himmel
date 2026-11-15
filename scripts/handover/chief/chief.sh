@@ -1940,6 +1940,7 @@ check_no_orphan_pr() {
 check_owed_ledger() {
     local rows lim="${OWED_SHIFT_SECS:-21600}" named
     case "$lim" in ''|*[!0-9]*) lim=21600 ;; esac
+    lim=$((10#$lim))
     rows="$(bash "$kit/owe.sh" list --bucket "$1" 2>/dev/null)" || { err "warning: the owed ledger $1/owed.jsonl is unreadable: handover not gated on it"; return 0; }  # swallow-ok: said on stderr, and an unreadable ledger never refuses
     named="$(printf '%s\n' "$rows" | awk -F'\t' -v now="$(date +%s)" -v lim="$lim" '$2 == "ticket" && $4 == "" && now - $3 > lim { printf "  %s (chief %s, %d h): %s\n", $1, $5, (now - $3) / 3600, $6 }')"
     [ -n "$named" ] || return 0

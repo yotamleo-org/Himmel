@@ -52,18 +52,28 @@ F="$BUCKET/owed.jsonl"
 NOW="${OWE_NOW_EPOCH:-}"
 case "$NOW" in ''|*[!0-9]*) NOW="$(date +%s)" ;; esac
 
-# The ids of every add row; a ledger jq cannot read stops here.
+# Hold the ledger's own lock (flock on the file, no lock file of its own) from the id read to the
+# append, so two writers never take the same id. A host without flock writes unlocked.
+lock_ledger() {
+    exec 9>>"$F" || exit 4
+    command -v flock >/dev/null 2>&1 || return 0
+    flock 9 || exit 4  # prim-ok: the chief kit is Linux-only, and with_lock would leave a lock file in the state bucket
+}
+
+# A ledger jq cannot read stops here.
 ledger_ok() { [ ! -s "$F" ] || jq -e -s 'all(.[]; type == "object" and (.op == "add" or .op == "close"))' "$F" >/dev/null 2>&1; }
 
 case "$CMD" in
     add)
         [ -n "$CHIEF" ] || { echo "owe: add needs --chief" >&2; exit 2; }
+        case "$CHIEF" in *$'\t'*|*$'\n'*) echo "owe: --chief must not hold a tab or newline" >&2; exit 2 ;; esac
         case "$KIND" in ticket|proof|ruling) ;; *) echo "owe: --kind must be ticket, proof or ruling" >&2; exit 2 ;; esac
         [ "$HAVE_TEXT" -eq 1 ] && [ -n "$TEXT" ] || { echo "owe: add needs a non-empty --text" >&2; exit 2; }
         case "$TEXT" in *$'\n'*) echo "owe: --text must be one line" >&2; exit 2 ;; esac
         if [ "$HAVE_KEY" -eq 1 ]; then
             case "$KEY" in ''|*[[:space:]]*) echo "owe: --key must be one word" >&2; exit 2 ;; esac
         fi
+        lock_ledger
         ledger_ok || { echo "owe: $F is unreadable" >&2; exit 4; }
         n=1
         [ ! -s "$F" ] || n=$(( $(jq -s '[.[] | select(.op == "add")] | length' "$F") + 1 ))
@@ -75,6 +85,7 @@ case "$CMD" in
     close)
         [ -n "$ID" ] || usage
         case "$KEY" in ''|*[[:space:]]*) echo "owe: close needs --key (a ticket key, sha or decision id), one word" >&2; exit 2 ;; esac
+        [ ! -e "$F" ] || lock_ledger
         ledger_ok || { echo "owe: $F is unreadable" >&2; exit 4; }
         [ -s "$F" ] || { echo "owe: no open row '$ID'" >&2; exit 1; }
         open="$(jq -s --arg id "$ID" '([.[] | select(.op == "close") | .ref]) as $c | [.[] | select(.op == "add" and .id == $id and ($c | index($id) | not))] | length' "$F")"
