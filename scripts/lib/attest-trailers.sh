@@ -48,9 +48,6 @@ attest_files() {
     esac
 }
 
-# _attest_grep <grep args...>: grep over stdin where rc 1 (no line matched) is an empty answer
-# and any other failure (an erroring or missing grep) is rc 2, so a broken classifier is never
-# read as "this diff needs nothing".
 _attest_grep() {
     local out rc=0
     out=$(grep "$@") || rc=$?
@@ -112,12 +109,10 @@ attest_sec_near_miss() {
     return 1
 }
 
-# _attest_error <reason>: the one ERROR line; the caller returns 2.
 _attest_error() {
     printf 'ATTEST ERROR %s\n' "$1"
 }
 
-# _attest_verdict <only> <files> <msgs>: print the ATTEST lines, rc 0 or 1.
 _attest_verdict() {
     local only="$1" files="$2" msgs="$3" k needs missing="" line is_needed nl
     nl=$'\n'
@@ -126,7 +121,6 @@ _attest_verdict() {
         if [ -n "$only" ] && [ "$only" != "$k" ]; then
             continue
         fi
-        # a case match, not grep -x: a failing grep must never read as "not needed"
         case "${nl}${needs}${nl}" in *"${nl}${k}${nl}"*) is_needed=1 ;; *) is_needed=0 ;; esac
         if [ "$is_needed" -eq 0 ]; then
             printf 'ATTEST %s not-needed\n' "$k"
@@ -158,7 +152,6 @@ _attest_pr_json() {
     [ -r "$commits_file" ] || { _attest_error "cannot read the commits file $commits_file"; return 2; }
     [ -r "$files_file" ] || { _attest_error "cannot read the files file $files_file"; return 2; }
     jq -e 'type == "array"' "$commits_file" >/dev/null 2>&1 || { _attest_error "the commits file is not a JSON array"; return 2; }
-    # a commit whose parent count is unknown could be a merge, and a merge never attests: refuse it
     jq -e 'all(.[]; (.parents.totalCount | type) == "number")' "$commits_file" >/dev/null 2>&1 || { _attest_error "a commit in the commits file has no numeric parents.totalCount"; return 2; }
     files=$(cat "$files_file")
     [ -n "$files" ] || { _attest_error "the PR file list is empty"; return 2; }
@@ -166,7 +159,6 @@ _attest_pr_json() {
     _attest_verdict "$only" "$files" "$msgs"
 }
 
-# _attest_only <args...>: parse an optional trailing `--only <kind>`; prints the kind or nothing.
 _attest_only() {
     case $# in
         0) return 0 ;;

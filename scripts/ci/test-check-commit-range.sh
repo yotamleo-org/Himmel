@@ -241,9 +241,6 @@ out="$(TICKET_ID_TRUSTED_AUTHOR='YotamLeo' run_cr "$t")"; rc=$?
 if [ "$rc" -eq 1 ]; then pass "allowlist match is case-insensitive -> rc1"; else fail "expected rc1, got $rc: $out"; fi
 rm -rf "$t"
 
-# --- I8: the CI replay runs the commit-msg hook with NO flag, so it warns about a bad
-# trailer and never refuses one. A pushed bad line is cured by a later conforming commit; commit-lint
-# does not refuse it (the commit-lint__security step does, when no commit conforms). ---
 BADT='Security reviewed: outbound write is one PR comment'
 GOODT='Security reviewed: ad-hoc — reason'
 t="$(fixture_mktemp_dir)" || exit 1

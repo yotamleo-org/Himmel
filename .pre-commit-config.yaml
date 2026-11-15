@@ -525,9 +525,6 @@ repos:
         # the gate certified every commit, including non-conventional ones,
         # for the whole life of the entry.
         language: system
-        # --attest-refuse: a Security reviewed: / Platforms tested: trailer no gate
-        # accepts is refused here, at the cheapest moment to retype it. Adopter hooks and CI's
-        # commit-range replay run without the flag and only warn.
         entry: bash scripts/hooks/check-commit-msg.sh --attest-refuse
         always_run: true
         stages: [commit-msg]

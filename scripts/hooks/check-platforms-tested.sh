@@ -156,7 +156,6 @@ if grep -qiE '^[[:space:]]*\[skip platforms-check\]' <<<"$commit_msgs"; then
     exit 0
 fi
 
-# The trailer counts in ANY non-merge commit of the branch, read by the one helper.
 att_rc=0
 att_out=$(bash "$SCRIPT_DIR/../lib/attest-trailers.sh" range "$diff_base" HEAD --only platforms 2>/dev/null) || att_rc=$?  # swallow-ok: the helper exit code is mapped just below, rc 1 is a missing trailer and any other rc refuses the push
 case "$att_rc" in
@@ -170,7 +169,6 @@ case "$att_rc" in
         exit 2 ;;
 esac
 
-# Case (c): a conforming line sits only in a merge commit. A merge never attests, so say so.
 merge_note=""
 merge_msgs=$(git log --merges --format='%B' "${diff_base}..HEAD" 2>/dev/null || true)  # swallow-ok: an unreadable merge list only drops the case (c) note, the refusal below is already decided
 if grep -qiE "$ATTEST_PLATFORMS_RE" <<<"$merge_msgs"; then

@@ -142,8 +142,6 @@ d=$(make_repo "scripts/foo.sh" "$(printf 'feat: foo\n\nPlatforms tested: linuxis
 assert_rc "token that is a prefix of a longer word = block" 1 "$(run_in "$d")"
 rm -rf "$d"
 
-# (d) the predicate is backslash-free (BSD grep reads \b as a literal b): the pin lives in
-#     scripts/lib/test-attest-trailers.sh since the regexes moved into scripts/lib/attest-trailers.sh.
 
 d=$(make_repo "scripts/foo.sh" "$(printf 'feat: foo\n\n[skip platforms-check]\n')") || exit 1
 assert_rc "sensitive + skip marker"                   0 "$(run_in "$d")"
@@ -480,8 +478,6 @@ assert_rc "orphan branch (no merge base) -> fail CLOSED (exit 2)"    2 "$(run_in
 rm -rf "$d"
 
 # --- the branch carries the trailer in ANY non-merge commit ---
-# make_repo2 <files> <msg1> <msg2> [empty]: two commits on feat/x; the second adds a line to the
-# first file, or is `git commit --allow-empty` when a fourth argument is given.
 make_repo2() {
     local files="$1" msg1="$2" msg2="$3" empty="${4:-}" dir
     dir=$(fixture_mktemp_dir) || return 1
@@ -513,8 +509,6 @@ make_repo2() {
     ) || { rm -rf "$dir"; return 1; }
     echo "$dir"
 }
-# make_merge_only_repo <files> <merge-msg>: a branch commit with no trailer, then a --no-ff merge of a
-# side branch whose message is <merge-msg> (the only commit that could carry a trailer).
 make_merge_only_repo() {
     local files="$1" msg="$2" dir
     dir=$(fixture_mktemp_dir) || return 1
@@ -543,7 +537,6 @@ make_merge_only_repo() {
     ) || { rm -rf "$dir"; return 1; }
     echo "$dir"
 }
-# run_out <dir> [env_assign]: the hook's rc in LAST_RC and its stdout+stderr in LAST_OUT (RUN_HOOK overrides the hook path).
 LAST_OUT=""
 LAST_RC=""
 run_out() {
@@ -568,7 +561,6 @@ assert_lacks() {
     esac
 }
 
-# control: the trailer only in the second commit (pins I1 for the hook)
 d=$(make_repo2 "scripts/foo.sh" "feat: a" "$(printf 'feat: b\n\nPlatforms tested: linux\n')") || exit 1
 assert_rc "trailer only in commit 2"                   0 "$(run_in "$d")"
 rm -rf "$d"
@@ -584,7 +576,6 @@ d=$(make_repo2 "scripts/foo.sh" "feat: a" "$(printf 'chore: attest\n\nPlatforms 
 assert_rc "named fix: an empty follow-up commit"  0 "$(run_in "$d")"
 rm -rf "$d"
 
-# RED: a trailer carried only by a merge commit never counts (the shape of the closed PR #5052)
 d=$(make_merge_only_repo "scripts/foo.sh" "$(printf 'Merge side\n\nPlatforms tested: linux\n')") || exit 1
 run_out "$d"
 assert_rc "merge-only trailer = block"                 1 "$LAST_RC"

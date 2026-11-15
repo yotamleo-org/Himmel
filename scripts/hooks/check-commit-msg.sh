@@ -99,27 +99,6 @@ ${lines[$((i+1))]}"
 }
 warn_negative_existence_claims "${COMMIT_MSG}" || true
 
-# At commit time, when an attestation trailer is present but no line of it will
-# satisfy its gate: `Security reviewed:` with no line starting with one of the four
-# accepted tokens, or `Platforms tested:` with no line naming a recognised platform.
-# Each predicate is the gate's own (scripts/lib/attest-trailers.sh, which the pre-push
-# hooks, CI commit-lint and ready-check item 5 all read), so a message that passes here
-# is not refused later for its value. It WARNS (exit code untouched), or REFUSES the
-# commit when --attest-refuse is set (himmel's own .pre-commit-config.yaml; adopter
-# hooks and CI's commit-range replay run without it). Inside the predicate it fails
-# open on any error, same contract as warn_negative_existence_claims above: pre-push
-# and CI are the gates of record, and commit time is only the early lever.
-#
-# Mirrors the two gate escape hatches that would otherwise make this a false positive:
-# a `[skip security-review]` / `[skip platforms-check]` marker anywhere in the message
-# clears the push gate, so this fires only when no such marker is present; and the
-# gate's own match is a "does any line conform" test over the whole message, not "does
-# the first matching line conform", so this checks every matching trailer line.
-#
-# This hook is an adopter payload (scripts/adopt.sh copies it with a hand-listed set of
-# dependencies), so it keeps literal copies of the token regex and the platform list
-# instead of sourcing the helper; scripts/lib/test-attest-trailers.sh holds both copies
-# equal to the helper's (the W1 parity rows).
 ATTEST_SEC_FIRED=0
 ATTEST_PLAT_FIRED=0
 warn_nonconforming_attestation_trailers() {
@@ -160,8 +139,6 @@ if git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1; then
   exit 0
 fi
 
-# --attest-refuse: the warning above becomes a refusal. It runs after the merge skip
-# (a merge never attests, so refusing one gains nothing).
 if [ "$ATTEST_REFUSE" -eq 1 ] && { [ "$ATTEST_SEC_FIRED" -eq 1 ] || [ "$ATTEST_PLAT_FIRED" -eq 1 ]; }; then
   if [ "$ATTEST_SEC_FIRED" -eq 1 ]; then
     echo "COMMIT REJECTED: 'Security reviewed:' trailer present but none of its lines starts with an accepted token (manual, claude-code-security-review, pr-review-toolkit, ad-hoc) — nothing was committed; fix the message and commit again." >&2

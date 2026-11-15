@@ -19,7 +19,6 @@ contains() { case "$2" in *"$3"*) echo "ok - $1" ;; *) echo "FAIL - $1: output d
 BAD='Security reviewed: outbound write is one PR comment'
 GOOD='Security reviewed: ad-hoc — reason'
 
-# new_repo <name>: an initialised repo whose main holds one commit; echoes its path.
 new_repo() {
     local r="$tmp/$1"
     mkdir -p "$r"
@@ -29,20 +28,17 @@ new_repo() {
     git -C "$r" commit -q --allow-empty -m "chore: base"
     printf '%s' "$r"
 }
-# commit_file <repo> <file> <message>: add <file> (content = its name) and commit with <message>.
 commit_file() {
     mkdir -p "$(dirname "$1/$2")"
     printf '%s\n' "$2" >> "$1/$2"
     git -C "$1" add "$2"
     git -C "$1" commit -q -m "$3"
 }
-# run_range <repo> [args]: the helper's range over main..HEAD of <repo>; sets out and rc.
 run_range() {
     local r="$1"; shift
     rc=0
     out="$(cd "$r" && bash "$LIB" range main HEAD "$@" 2>&1)" || rc=$?
 }
-# pr_json <repo> <commits-file> <files-file>: derive the PR snapshot shape from main..HEAD.
 pr_files() {
     git -C "$1" diff --name-only main...HEAD > "$2"
 }
@@ -65,7 +61,6 @@ run_pr() {
     rc=0
     out="$(bash "$LIB" pr-json "$tmp/commits.json" "$tmp/files.txt" "$@" 2>&1)" || rc=$?
 }
-# both <repo> <label> <want-rc> <want-text>: assert range and pr-json agree.
 both() {
     run_range "$1"
     check "range $2: rc" "$rc" "$3"
@@ -229,7 +224,6 @@ printf 'scripts/x.sh\n' > "$tmp/bg-files.txt"
 rc=0; out="$(PATH="$badbin:$PATH" bash "$LIB" pr-json "$tmp/bg-commits.json" "$tmp/bg-files.txt" 2>&1)" || rc=$?
 check "pr-json with a failing grep: rc 2" "$rc" "2"
 
-# --- T10 pin moved from the hook suite: the matcher lines hold no backslash (BSD grep reads \b as a literal b)
 for var in ATTEST_PLATFORMS_RE ATTEST_SECURITY_RE; do
     line=$(grep -F -e "${var}=" "$LIB" | head -n 1)
     [ -n "$line" ] || { echo "FAIL - could not locate the $var assignment"; fails=$((fails+1)); continue; }
@@ -237,7 +231,6 @@ for var in ATTEST_PLATFORMS_RE ATTEST_SECURITY_RE; do
     check "$var holds no backslash escape" "$([ "$stripped" = "$line" ] && echo clean || echo backslash)" "clean"
 done
 
-# --- I4: the helper is the only reader. Exact expected lists, run from the repo root.
 cd "$REPO_ROOT" || exit 1
 vocab=$(git grep -l -F -e 'pr-review-toolkit|ad-hoc' -e 'pr-review-toolkit*|ad-hoc*' -e 'gitbash|git-bash' -- scripts ':!scripts/lint' ':!scripts/lib/test-attest-trailers.sh' | sort | tr '\n' ' ')
 check "I4 vocabulary: only the helper and W1's pinned copy hold the token and platform lists" "$vocab" \
@@ -264,11 +257,9 @@ for alt in $tok_alts; do
 done
 IFS=$old_ifs
 
-# --- W1 token parity: check-commit-msg.sh keeps a pinned copy of the token regex
 w1=$(grep -E "^[[:space:]]*(local )?sec_token_re='" scripts/hooks/check-commit-msg.sh | head -n 1)
 w1="${w1#*sec_token_re=\'}"; w1="${w1%\'*}"
 check "W1 sec_token_re equals ATTEST_SEC_TOKEN_RE" "$w1" "$ATTEST_SEC_TOKEN_RE"
-# --- W1 platform parity: the same for the platform list
 w1p=$(grep -E "^[[:space:]]*(local )?plat_token_re='" scripts/hooks/check-commit-msg.sh | head -n 1)
 w1p="${w1p#*plat_token_re=\'}"; w1p="${w1p%\'*}"
 check "W1 plat_token_re equals ATTEST_PLATFORM_RE" "$w1p" "$ATTEST_PLATFORM_RE"

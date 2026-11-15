@@ -698,8 +698,6 @@ fi
 # ── commits (shared by checks 5 and 6) ──────────────────────────────────────
 commits_json=$(printf '%s' "$snapshot" | jq -c '.[0].commits' 2>/dev/null)
 files_json=$("$GH" api --paginate "repos/$owner/$repo/pulls/$PR/files" --jq '.[].filename' 2>/dev/null) || files_json=""  # swallow-ok: a failed or partial read is an empty list, which checks 5, 9, 10 and 11 fail closed on
-# The one reader of the attestation-trailer rule and of "what is code" (items 5 and 13); from this
-# script's own checkout, never READY_CHECK_ANCHOR.
 ATTEST_HELPER="$(cd "$SELF_DIR/../../lib" && pwd)/attest-trailers.sh"
 
 if [ -z "$commits_json" ] || [ "$commits_json" = "null" ]; then
@@ -709,11 +707,6 @@ if [ -z "$commits_json" ] || [ "$commits_json" = "null" ]; then
     mark_fail
 else
     # ── 5. attestation trailers on the branch ───────────────────────────────
-    # Every non-merge commit of the PR is read through scripts/lib/attest-trailers.sh,
-    # the one reader the pre-push hooks and CI commit-lint call too. The helper is
-    # found from this script's own checkout, never READY_CHECK_ANCHOR (a fixture
-    # anchor carries no helper). Exit 0 = attested where needed, 1 = a needed trailer
-    # is missing, anything else (2, or 126/127 for a missing helper) = cannot evaluate.
     if [ -z "$files_json" ]; then
         echo "[FAIL] 5. cannot read PR files (gh api .../pulls/$PR/files failed or returned nothing)"
         mark_fail

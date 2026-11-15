@@ -171,9 +171,6 @@ if grep -qiE '^[[:space:]]*\[skip security-review\]' <<<"$commit_msgs"; then
     exit 0
 fi
 
-# The token must sit IMMEDIATELY after the colon and be followed by whitespace, end-of-line
-# or one of [.,;] (the regex lives in scripts/lib/attest-trailers.sh). The trailer counts in
-# ANY non-merge commit of the branch, read by the one helper.
 att_rc=0
 att_out=$(bash "$SCRIPT_DIR/../lib/attest-trailers.sh" range "$diff_base" HEAD --only security 2>/dev/null) || att_rc=$?  # swallow-ok: the helper exit code is mapped just below, rc 1 is a missing trailer and any other rc refuses the push
 case "$att_rc" in
@@ -187,13 +184,7 @@ case "$att_rc" in
         exit 2 ;;
 esac
 
-# the refusal must distinguish a MISSING attestation (case a) from a PRESENT-but-nonconforming
-# one (case b) and from a conforming line that sits only in a merge commit (case c). The generic
-# "no attestation was found" misdirects the operator when the trailer EXISTS but its value failed
-# to match — the more common and more confusing failure (a 2026-08-05 overnight push burned an
-# empty restatement commit on exactly this).
 
-# Case (c): a conforming line sits only in a merge commit. A merge never attests.
 merge_only=0
 merge_msgs=$(git log --merges --format='%B' "${diff_base}..HEAD" 2>/dev/null || true)  # swallow-ok: an unreadable merge list only drops the case (c) note, the refusal below is already decided
 if grep -qiE "$ATTEST_SECURITY_RE" <<<"$merge_msgs"; then
@@ -212,13 +203,6 @@ truncate_attestation_line() {
     fi
 }
 
-# Scan the non-merge commits of the push range per-commit (so each offending trailer can be
-# quoted with the sha it came from). Collect rendered, truncated offender lines and flag a
-# near-miss: a value that STARTS with an accepted token but fails the end-anchor (e.g.
-# `manually` vs `manual`) — the single most likely operator error. bash 3.2-safe: while-read
-# over here-strings and process substitution; no mapfile or associative arrays. Every
-# command-substitution pipeline is `|| true`-guarded so a non-match never aborts the hook
-# (which would change the exit code).
 offenders_block=""
 near_miss=0
 while IFS= read -r sha; do
@@ -240,14 +224,12 @@ while IFS= read -r sha; do
 done < <(git log --no-merges --format='%H' "${diff_base}..HEAD" 2>/dev/null || true)
 
 if [ "$merge_only" = "1" ]; then
-    # Case (c): the line is only on a merge commit.
     case_intro="⛔ security-review: this push touches non-docs code and a conforming
    'Security reviewed:' trailer is present only in a merge commit;
    merges never attest — add one ordinary commit carrying it."
     offenders_part=""
     near_part=""
 elif [ -n "$offenders_block" ]; then
-    # Case (b): at least one trailer is present but none matched a token.
     case_intro="⛔ security-review: this push touches non-docs code and carries
    'Security reviewed:' trailer(s) in commit messages, but NONE matched an
    accepted method token — the trailer is present but its value did not
@@ -264,7 +246,6 @@ ${offenders_block}
         near_part=""
     fi
 else
-    # Case (a): no trailer anywhere in the range.
     case_intro="⛔ security-review: this push touches non-docs code but no
    'Security reviewed:' attestation was found in any non-merge commit on
    the branch."

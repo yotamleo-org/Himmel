@@ -66,12 +66,8 @@ TRAIL=$'\n\nPlatforms tested: linux\nSecurity reviewed: manual — read the diff
 BAD='Security reviewed: outbound write is one PR comment'
 GOOD='Security reviewed: ad-hoc — reason'
 
-# The wrapper's form: `--attest <kind>` (branch-level) once the script under
-# test accepts it, else the old `--first-commit -- <hook>`. Both run the real script, so at the
-# base a RED row fails on its new expectation, never on an unknown argument.
 if grep -q -e '--attest' "$W"; then form=new; else form=old; fi
 echo "form=$form"
-# attest_args <platforms|security> [--base <x>]: the arguments for one attestation kind.
 attest_args() {
   local kind="$1" hook; shift
   if [ "$form" = new ]; then echo "--attest $kind $*"; return; fi
@@ -102,7 +98,6 @@ out="$(run "$t" $(attest_args security))"; rc=$?
 expect "first commit attested -> security rc0" 0 "$rc" "$out"
 rm -rf "$t"
 
-# --- trailers only in a LATER commit: the branch carries them, so it passes (option A) ---
 t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 first" "fix: HIMMEL-1 second$TRAIL"
 out="$(run "$t" $(attest_args platforms))"; rc=$?
 expect "trailer only in second commit -> rc0" 0 "$rc" "$out"
@@ -156,7 +151,6 @@ out="$(run "$t" $(attest_args security))"; rc=$?
 expect "malformed-only security line -> rc1" 1 "$rc" "$out"
 rm -rf "$t"
 
-# --- control (the incident shape of the closed PR #5052): BAD first, GOOD only on a merge, a bare commit last ---
 t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 x
 
 Platforms tested: linux
@@ -296,7 +290,6 @@ t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 x$TRAIL"
 setup_rc=$?
 [ "$setup_rc" -eq 0 ] || fail "merge-first fixture setup"
 out="$(run "$t" $(attest_args platforms))"; rc=$?
-# deliberate loosening, branch-level attestation per R5 option A (the first-commit CI check's pin): a merge is skipped, the later ordinary commit attests
 expect "unattested first merge, attested later commit -> rc0" 0 "$rc" "$out"
 rm -rf "$t"
 
@@ -373,7 +366,6 @@ t="$(mk)"; mkpr "$t" "feat: HIMMEL-1 base"
 setup_rc=$?
 [ "$setup_rc" -eq 0 ] || fail "backdated fixture setup"
 out="$(run "$t" $(attest_args platforms))"; rc=$?
-# deliberate loosening, branch-level attestation per R5 option A (the topo-order guard's pin): with no "first" commit a date chooses nothing
 expect "backdated attested commit counts (no first commit) -> rc0" 0 "$rc" "$out"
 rm -rf "$t"
 

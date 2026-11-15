@@ -443,7 +443,6 @@ BAD='Security reviewed: outbound write is one PR comment'
 GOOD='Security reviewed: ad-hoc — reason'
 PBAD='Platforms tested: yes'
 PGOOD='Platforms tested: linux'
-# run_gate_args <message> <hook args...>: the hook arguments go BEFORE the message file (run_gate passes env only).
 run_gate_args() {
   local message="$1"
   shift
@@ -451,7 +450,6 @@ run_gate_args() {
   ( cd "$R" && env -u TICKET_ID_PATTERN -u TICKET_ID_EXEMPT_AUTHORS -u TICKET_ID_AUTHOR -u TICKET_ID_TRUSTED_AUTHOR \
       -u JIRA_PROJECT_KEY TICKET_ID_REQUIRED=0 bash "$SCRIPT" "$@" "$MSG" )
 }
-# expect_args <name> <want-rc> <must-hold|-> <must-lack|-> <message> <hook args...>
 expect_args() {
   local name="$1" want="$2" has="$3" lacks="$4" message="$5" out rc=0 ok=1
   shift 5
@@ -505,7 +503,6 @@ expect_args "both flags, a conforming message passes" 0 - "no readable message f
   "chore: add feature
 
 $GOOD" --attest-refuse --ticket-optional
-# a merge never attests, so refusing one gains nothing: MERGE_HEAD skips the refusal
 RM=$(fixture_mktemp_dir) || exit 1
 git -C "$RM" init -q
 git -C "$RM" config user.email t@t
@@ -519,7 +516,6 @@ rc=0
 ( cd "$RM" && env TICKET_ID_REQUIRED=0 bash "$SCRIPT" --attest-refuse "$RM/MSG" ) >/dev/null 2>&1 || rc=$?
 if [ "$rc" -eq 0 ]; then printf '  PASS  %s\n' "refuse mode: MERGE_HEAD present skips the refusal"; else printf '  FAIL  %s (rc=%s)\n' "refuse mode: MERGE_HEAD present skips the refusal" "$rc"; failures=$((failures + 1)); fi
 rm -rf "$RM"
-# warn mode (no flag, adopters and the CI replay) is unchanged for the security token, and now covers the platform list too
 expect_warn "no flag: a bad Security reviewed token still warns and passes" 0 1 \
   "chore: add feature
 

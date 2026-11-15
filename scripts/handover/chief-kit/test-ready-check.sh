@@ -877,10 +877,6 @@ rc=0; out="$(run)" || rc=$?
 check "files-unreadable: exit 1" "$rc" "1"
 contains "files-unreadable: check 5 fails" "$out" "[FAIL] 5. cannot read PR files"
 
-# --- 5e. a trailer on a LATER commit counts (option A) ------
-# The trailers may sit in any non-merge commit of the branch: a docs-only first
-# commit with the trailers on a later commit passes, a forgotten trailer is one
-# more ordinary commit.
 reset_stubs
 STUB_COMMITS='[{"messageHeadline":"docs: [HIMMEL-1] note","messageBody":""},{"messageHeadline":"fix(x): [HIMMEL-2] code","messageBody":"Platforms tested: linux\nSecurity reviewed: manual"}]'
 rc=0; out="$(run)" || rc=$?
@@ -930,7 +926,6 @@ rc=0; out="$(run)" || rc=$?
 check "split-verdict-platforms: exit 0" "$rc" "0"
 contains "split-verdict-platforms: check 5 passes" "$out" "[PASS] 5."
 
-# --- 5l. the incident shape of the closed PR #5052 (control): BAD first, GOOD only on a merge, a bare commit last
 reset_stubs
 I1=7777777777777777777777777777777777777777
 I2=8888888888888888888888888888888888888888

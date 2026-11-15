@@ -399,8 +399,6 @@ rc=0; out="$(READY_STUB_HEAD="$SHA14" HANDOVER_DIR="$ROOT14" bash "$SCRIPT" 82 "
 check    "4565: reviewed head -> exit 0" "$rc" "0"
 check    "4565: reviewed head -> the GO path" "$out" "$ROOT14/.locks/go/82.$SHA14"
 
-# 9671: the trailers count in any non-merge commit of the branch. The stub's file list is
-# scripts/x.sh, which needs both trailers (READY_STUB_COMMITS is the PR's commit list).
 ROOT14L="$tmp/root14-later"; ROOT14N="$tmp/root14-none"
 mkdir -p "$ROOT14L" "$ROOT14N"
 C14A=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; C14B=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb

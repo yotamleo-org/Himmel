@@ -662,12 +662,6 @@ jobs:
           else
             bash scripts/ci/check-commit-range.sh
           fi
-      # The attestation trailers are checked at pre-push and in ready-check,
-      # both skipped by a --no-verify commit. These read every non-merge commit of
-      # the PR range through scripts/lib/attest-trailers.sh, the one reader the
-      # pre-push hooks and ready-check item 5 call too: a trailer in any ordinary
-      # commit of the branch counts, a merge commit or the PR body never does, and
-      # the push-time [skip ...] markers and env bypasses are not honoured here.
       - id: commit-lint__platforms
         name: Branch carries Platforms tested on shell/script diffs
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}

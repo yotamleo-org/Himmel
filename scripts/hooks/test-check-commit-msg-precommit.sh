@@ -255,8 +255,6 @@ expect_rejected "a non-conventional message is REJECTED with a comment-free .env
     "zzzz totally invalid message" "COMMIT REJECTED"
 
 echo "== a trailer no gate accepts is refused through the real wiring =="
-# The fixture runs the entry copied from the repo's own .pre-commit-config.yaml, so it carries
-# whatever flag that entry carries: --attest-refuse turns the commit-time warning into a refusal.
 build_repo plain
 expect_committed "seed commit passes before the trailer rows" "chore: [HIMMEL-2461] seed"
 expect_rejected "a bad Security reviewed token is REFUSED through the real hook" \
