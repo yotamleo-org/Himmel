@@ -34,6 +34,7 @@ STUB="$WORK/stub"
 mkdir -p "$STUB"
 cat > "$STUB/tick.sh" <<'EOF'
 #!/usr/bin/env bash
+printf x >> "$STUB/ticks"
 [ -f "$STUB/tick.rc" ] && exit "$(cat "$STUB/tick.rc")"
 # tick.sleep: a slow tick (seconds), as a real gh-bound tick can be.
 [ -f "$STUB/tick.sleep" ] && sleep "$(cat "$STUB/tick.sleep")"
@@ -103,15 +104,22 @@ wait_hb() {
     done
     return 1
 }
-# wait_exit <pid>: wait at most ~8 s for the waiter to exit; sets rc to its
-# exit code or "running". Not a $(...) helper: `wait` must run in the shell
-# that started the waiter.
+SAMPLES_AFTER_CHANGE=4
+NO_SAMPLE_CUTOFF_TICKS=80
+STALL_CAP_TICKS=300
+# Not a $(...) helper: `wait` must run in the shell that started the waiter.
 wait_exit() {
+    local want="${2:-$SAMPLES_AFTER_CHANGE}" base seen
+    base=$(wc -c < "$STUB/ticks" 2>/dev/null) || base=0
     n=0
-    while [ "$n" -lt 80 ]; do
+    while [ "$n" -lt "$STALL_CAP_TICKS" ]; do
         if ! kill -0 "$1" 2>/dev/null; then wait "$1"; rc=$?; return; fi
+        seen=$(( $(wc -c < "$STUB/ticks" 2>/dev/null || echo 0) - base ))
+        [ "$seen" -ge "$want" ] && break
+        [ "$n" -ge "$NO_SAMPLE_CUTOFF_TICKS" ] && [ "$seen" -eq 0 ] && break
         sleep 0.1; n=$((n + 1))
     done
+    kill -0 "$1" 2>/dev/null || { wait "$1"; rc=$?; return; }
     rc=running
 }
 new_inbox() { mkdir -p "$WORK/$1/consoles"; : > "$WORK/$1/consoles/c.md"; printf '%s' "$WORK/$1/consoles/c.md"; }
@@ -120,6 +128,17 @@ start() { # <inbox> <outfile> [tick args...]
     bash "$WAIT" "$inbox" "$@" > "$out" 2>"$out.err" &
     WPID=$!
 }
+
+reset_stub
+I="$(new_inbox wx)"
+start "$I" "$WORK/wx.out" --workers "N1.md"
+wait_hb "$I" || fail "(wx) no baseline heartbeat"
+wx0=$(wc -c < "$STUB/ticks")
+wait_exit "$WPID"
+wx1=$(wc -c < "$STUB/ticks")
+check "(wx) a waiter with nothing to wake for is still running" "running" "$rc"
+check "(wx) and the quiet window took 4 to 5 samples" "yes" "$([ $((wx1 - wx0)) -ge 4 ] && [ $((wx1 - wx0)) -le 5 ] && echo yes || echo "no: $((wx1 - wx0))")"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
 # tracker_line is shared with the (w) block that stays in test-chief-wait.sh.
 tracker_line() { sed "s/ denials=none/ tracker=$1 denials=none/" "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"; }
