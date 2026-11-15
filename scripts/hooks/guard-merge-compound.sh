@@ -14,9 +14,9 @@
 # This hook denies (exit 2, message on stderr) a command that runs merge-on-green.sh
 # in any spelling but those two, alone, and prints the allowed line. It never emits
 # an allow decision, so it can only narrow what the permission layer does. A command
-# that only names the script (cat, grep, sed, a commit message, a heredoc body) is
-# not a run and passes. It is a workflow nudge, so it fails OPEN (exit 0, a stderr
-# note) when it cannot evaluate: no jq, unparseable input, no resolvable anchor.
+# that only names the script (cat, grep, sed, bash -n, a commit message, a heredoc
+# body) is not a run and passes. It is a workflow nudge, so it fails OPEN (exit 0, a
+# stderr note) when it cannot evaluate: no jq, unparseable input, no resolvable anchor.
 #
 # Known misses, left on purpose: a run hidden inside a quoted string (`bash -c "..."`,
 # `"$(...)"`) or behind a shell function or alias. The scan is flat.
@@ -33,10 +33,12 @@ case "$payload" in *merge-on-green*) ;; *) exit 0 ;; esac
 command -v jq >/dev/null 2>&1 || note "jq not on PATH"
 cmd=$(printf '%s' "$payload" | jq -r '.tool_input.command // empty' 2>/dev/null) || note "unparseable hook input" # swallow-ok: a jq failure fails open with a note
 case "$cmd" in *merge-on-green.sh*) ;; *) exit 0 ;; esac
+export LC_ALL=C
 
 # --- detection: does any simple command in $cmd run merge-on-green.sh? ---------
 RUN=0
 RUN_ARGS=""
+ARGS_SAFE=1
 
 # eval_segment: inspect the words W[0..WN-1] of one simple command.
 eval_segment() {
@@ -49,6 +51,7 @@ eval_segment() {
                 case "${w%%=*}" in *[!A-Za-z0-9_]*) break ;; esac
                 i=$((i + 1)) ;;
             env | command | exec | builtin | nohup | time | nice | sudo) i=$((i + 1)) ;;
+            if | then | elif | else | do | while | until | '!' | '{') i=$((i + 1)) ;;
             -*) if [ "$i" -gt 0 ]; then i=$((i + 1)); else break; fi ;;
             *) break ;;
         esac
@@ -59,7 +62,12 @@ eval_segment() {
         bash | sh | zsh | dash | ksh | source | .)
             i=$((i + 1))
             while [ "$i" -lt "$WN" ]; do
-                case "${W[i]}" in -*) i=$((i + 1)) ;; *) break ;; esac
+                case "${W[i]}" in
+                    --*) i=$((i + 1)) ;;
+                    -*n*) return 0 ;;
+                    -*) i=$((i + 1)) ;;
+                    *) break ;;
+                esac
             done
             [ "$i" -lt "$WN" ] || return 0
             base=${W[i]##*/} ;;
@@ -67,7 +75,10 @@ eval_segment() {
     [ "$base" = merge-on-green.sh ] || return 0
     if [ "$RUN" = 0 ]; then
         i=$((i + 1))
-        while [ "$i" -lt "$WN" ]; do RUN_ARGS="$RUN_ARGS ${W[i]}"; i=$((i + 1)); done
+        while [ "$i" -lt "$WN" ]; do
+            case "${W[i]}" in *[!A-Za-z0-9._/+=:@%,-]* | '') ARGS_SAFE=0 ;; esac
+            RUN_ARGS="$RUN_ARGS ${W[i]}"; i=$((i + 1))
+        done
     fi
     RUN=1
 }
@@ -76,77 +87,91 @@ W=(); WN=0; cur=""; inword=0
 end_word() { if [ "$inword" = 1 ]; then W[WN]=$cur; WN=$((WN + 1)); fi; cur=""; inword=0; }
 end_segment() { end_word; eval_segment; W=(); WN=0; }
 
-n=${#cmd}; i=0; q=""; hd=""; hd_strip=0
-while [ "$i" -lt "$n" ]; do
-    c=${cmd:i:1}
-    if [ "$q" = "'" ]; then
-        if [ "$c" = "'" ]; then q=""; else cur="$cur$c"; fi
-        i=$((i + 1)); continue
-    fi
-    if [ "$q" = '"' ]; then
+# scan_line: tokenize one line L (no newline) into W, carrying quote state q and a
+# pending heredoc delimiter hd across lines. Sets cont=1 on a trailing backslash.
+scan_line() {
+    local n=${#L} j=0 c
+    cont=0
+    while [ "$j" -lt "$n" ]; do
+        c=${L:j:1}
+        if [ "$q" = "'" ]; then
+            if [ "$c" = "'" ]; then q=""; else cur="$cur$c"; fi
+            j=$((j + 1)); continue
+        fi
+        if [ "$q" = '"' ]; then
+            case "$c" in
+                '"') q="" ;;
+                "\\")
+                    j=$((j + 1))
+                    if [ "$j" -ge "$n" ]; then cont=1; else cur="$cur${L:j:1}"; fi ;;
+                *) cur="$cur$c" ;;
+            esac
+            j=$((j + 1)); continue
+        fi
         case "$c" in
-            '"') q="" ;;
-            "\\") i=$((i + 1)); cur="$cur${cmd:i:1}" ;;
-            *) cur="$cur$c" ;;
-        esac
-        i=$((i + 1)); continue
-    fi
-    case "$c" in
-        "'" | '"') q=$c; inword=1 ;;
-        "\\")
-            i=$((i + 1))
-            if [ "${cmd:i:1}" != $'\n' ]; then cur="$cur${cmd:i:1}"; inword=1; fi ;;
-        ' ' | $'\t' | $'\r') end_word ;;
-        '#')
-            if [ "$inword" = 1 ]; then cur="$cur$c"; else
-                while [ "$i" -lt "$n" ] && [ "${cmd:i:1}" != $'\n' ]; do i=$((i + 1)); done
-                continue
-            fi ;;
-        $'\n')
-            end_segment
-            if [ -n "$hd" ]; then
-                i=$((i + 1))
-                while [ "$i" -lt "$n" ]; do
-                    line=""
-                    while [ "$i" -lt "$n" ] && [ "${cmd:i:1}" != $'\n' ]; do
-                        line="$line${cmd:i:1}"; i=$((i + 1))
+            "'" | '"') q=$c; inword=1 ;;
+            "\\")
+                j=$((j + 1))
+                if [ "$j" -ge "$n" ]; then cont=1; else cur="$cur${L:j:1}"; inword=1; fi ;;
+            ' ' | $'\t' | $'\r') end_word ;;
+            '#')
+                if [ "$inword" = 1 ]; then cur="$cur$c"; else return 0; fi ;;
+            ';' | '&' | '|' | '(' | ')' | '`') end_segment ;;
+            '<')
+                end_word
+                if [ "${L:j+1:1}" = '<' ] && [ "${L:j+2:1}" = '<' ]; then
+                    j=$((j + 3)); continue
+                elif [ "${L:j+1:1}" = '<' ]; then
+                    j=$((j + 2))
+                    if [ "${L:j:1}" = '-' ]; then hd_strip=1; j=$((j + 1)); fi
+                    while [ "${L:j:1}" = ' ' ] || [ "${L:j:1}" = $'\t' ]; do j=$((j + 1)); done
+                    hd=""
+                    while [ "$j" -lt "$n" ]; do
+                        c=${L:j:1}
+                        case "$c" in
+                            ' ' | $'\t' | $'\r' | ';' | '&' | '|' | '<' | '>' | ')') break ;;
+                            "'" | '"' | "\\") ;;
+                            *) hd="$hd$c" ;;
+                        esac
+                        j=$((j + 1))
                     done
-                    i=$((i + 1))
-                    if [ "$hd_strip" = 1 ]; then
-                        while [ "${line#$'\t'}" != "$line" ]; do line=${line#$'\t'}; done
-                    fi
-                    [ "${line%$'\r'}" = "$hd" ] && break
-                done
-                hd=""; hd_strip=0
-                continue
-            fi ;;
-        ';' | '&' | '|' | '(' | ')' | '`') end_segment ;;
-        '<')
-            end_word
-            if [ "${cmd:i+1:1}" = '<' ] && [ "${cmd:i+2:1}" = '<' ]; then
-                i=$((i + 3)); continue
-            elif [ "${cmd:i+1:1}" = '<' ]; then
-                i=$((i + 2))
-                if [ "${cmd:i:1}" = '-' ]; then hd_strip=1; i=$((i + 1)); fi
-                while [ "${cmd:i:1}" = ' ' ] || [ "${cmd:i:1}" = $'\t' ]; do i=$((i + 1)); done
-                hd=""
-                while [ "$i" -lt "$n" ]; do
-                    c=${cmd:i:1}
-                    case "$c" in
-                        ' ' | $'\t' | $'\n' | $'\r' | ';' | '&' | '|' | '<' | '>' | ')') break ;;
-                        "'" | '"' | "\\") ;;
-                        *) hd="$hd$c" ;;
-                    esac
-                    i=$((i + 1))
-                done
-                [ -n "$hd" ] || hd_strip=0
-                continue
-            fi ;;
-        '>') end_word ;;
-        *) cur="$cur$c"; inword=1 ;;
-    esac
-    i=$((i + 1))
-done
+                    [ -n "$hd" ] || hd_strip=0
+                    continue
+                fi ;;
+            '>') end_word ;;
+            *) cur="$cur$c"; inword=1 ;;
+        esac
+        j=$((j + 1))
+    done
+}
+
+# Line by line, so each ${L:j:1} copies one line, not the whole command. A line
+# that cannot start or continue a run (fresh segment, no quote open, nothing that
+# names the script, opens a heredoc or quotes) is skipped unscanned.
+q=""; hd=""; hd_strip=0; in_body=0; cont=0
+while IFS= read -r L || [ -n "$L" ]; do
+    if [ "$in_body" = 1 ]; then
+        B=${L%$'\r'}
+        if [ "$hd_strip" = 1 ]; then
+            while [ "${B#$'\t'}" != "$B" ]; do B=${B#$'\t'}; done
+        fi
+        if [ "$B" = "$hd" ]; then in_body=0; hd=""; hd_strip=0; fi
+        continue
+    fi
+    if [ -z "$q" ] && [ "$cont" = 0 ] && [ "$WN" = 0 ] && [ "$inword" = 0 ]; then
+        case "$L" in
+            *merge-on-green* | *'<<'* | *"'"* | *'"'* | *"\\") ;;
+            *) continue ;;
+        esac
+    fi
+    scan_line
+    if [ -n "$q" ]; then
+        cur="$cur"$'\n'
+    elif [ "$cont" = 0 ]; then
+        end_segment
+        [ -z "$hd" ] || in_body=1
+    fi
+done <<< "$cmd"
 end_segment
 
 [ "$RUN" = 1 ] || exit 0
@@ -183,10 +208,7 @@ esac
 if [ "$clean" = 1 ] && allowed_as "$anchor/$MOG"; then exit 0; fi
 
 line="bash $anchor/$MOG --jira-transition --go <GO file>"
-case "$RUN_ARGS" in
-    *[!A-Za-z0-9._/+=:@%,\ -]*) ;;
-    ?*) line="bash $anchor/$MOG$RUN_ARGS" ;;
-esac
+if [ "$ARGS_SAFE" = 1 ] && [ -n "$RUN_ARGS" ]; then line="bash $anchor/$MOG$RUN_ARGS"; fi
 {
     echo "guard-merge-compound: DENIED - \`${cmd:0:200}\`: merge-on-green.sh runs only as one bare command. A cd/;/|/&& compound, an env prefix, the \$HIMMEL_REPO spelling or a worktree's copy matches no allow rule, so the auto-mode classifier judges the merge and can deny it. merge-on-green.sh --go finds the PR worktree from the GO file, so run it from any directory, alone, as exactly:"
     echo

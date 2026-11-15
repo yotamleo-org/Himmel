@@ -73,10 +73,18 @@ deny "direct exec without bash" "$A/$MOG --go $GO"
 deny "newline-separated second command" "cd $WT
 bash $A/$MOG --go $GO"
 
+deny "inside an if condition" "if bash $MOG --go $GO; then :; fi"
+deny "negated with !" "! bash $MOG --go $GO"
+
 run_hook "$(payload "cd $WT && bash $A/$MOG --jira-transition --go $GO")"
 case "$err" in
     *"bash $A/$MOG --jira-transition --go $GO"*) ok "stderr prints the copy-pasteable line with the typed arguments" ;;
     *) bad "stderr lacks the concrete allowed line: $err" ;;
+esac
+run_hook "$(payload "cd $WT && bash $A/$MOG --go \"/a b/go file\"")"
+case "$err" in
+    *"--go <GO file>"*) ok "an argument with a space gets the placeholder line, not a split path" ;;
+    *) bad "an argument with a space was not replaced by the placeholder: $err" ;;
 esac
 
 echo "== GREEN: the two allowed spellings and non-runs -> allow, no output =="
@@ -90,6 +98,18 @@ allow "a commit message naming the compound is data" \
 allow "a heredoc body naming the script is data" "cat <<'EOF'
 cd x && bash $A/$MOG --go $GO
 EOF"
+allow "bash -n is a syntax check, not a run" "bash -n $MOG"
+
+big=""
+line="echo a line that names $MOG as data, padding padding padding padding"
+i=0; while [ "$i" -lt 800 ]; do big="$big$line"$'\n'; i=$((i + 1)); done
+start=$(date +%s)
+run_hook "$(payload "cat > /tmp/x.md <<'EOF'
+$big
+EOF")"
+took=$(( $(date +%s) - start ))
+if [ "$rc" = 0 ] && [ "$took" -lt 15 ]; then ok "a ${#big}-byte heredoc is scanned within the 15 s member window (${took}s)"; else
+    bad "a ${#big}-byte heredoc - rc $rc in ${took}s (the chain member window is 15 s)"; fi
 
 git init -q "$TMP/other" || exit 1
 allow "an inherited GIT_DIR does not move the anchor" "bash $A/$MOG --go $GO" GIT_DIR="$TMP/other/.git"
