@@ -2506,7 +2506,7 @@
     },
     "skills/statechart/scripts/test/render.test.ts": {
       "upstream": "9cb369e5f4c464ca540ccc3de4fdd76670b84e54f06955ccb46908826579ac23",
-      "vendored": "9cb369e5f4c464ca540ccc3de4fdd76670b84e54f06955ccb46908826579ac23",
+      "vendored": "fdd710004e739b32356aca4f7900e1125ce37a01a5daa24f758edc1291fe5d20",
       "upstreamExecutable": false,
       "executable": false
     },
