@@ -64,7 +64,9 @@ if [ "${1:-}" = dispose ]; then
     exit $?
 fi
 
-mirror="${STUCK_SCAN_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"
+# shellcheck source=../../lib/jira-project.sh
+. "$HERE/../../lib/jira-project.sh"
+mirror="${STUCK_SCAN_MIRROR:-$(jira_mirror_dir)}"
 version=""
 min=30
 repo=""

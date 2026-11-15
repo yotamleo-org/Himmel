@@ -117,6 +117,21 @@ hasnt "a Done ticket is quiet" 'HIMMEL-9011' "$out"
 hasnt "a To Do ticket is quiet" 'HIMMEL-9012' "$out"
 has   "age in days past 48h" '^STUCK HIMMEL-9013 In Progress 2d$' "$out"
 
+H="$WORK/home"; K="$WORK/cache"; JM="$H/.himmel/state/jira-mirror"
+mkdir -p "$JM" "$K"; : > "$K/.env"
+res() { env -u STUCK_SCAN_MIRROR -u HIMMEL_JIRA_MIRROR -u JIRA_PROJECT_KEY HOME="$H" HIMMELCTL_CACHE_DIR="$K" "$@" bash "$SS" 2>&1; }
+cp -R "$M" "$JM/ACME"
+check "default dir: JIRA_PROJECT_KEY=ACME reads jira-mirror/ACME" "$base_out" "$(res JIRA_PROJECT_KEY=ACME)"
+rm -rf "$JM/ACME"
+printf 'JIRA_PROJECT_KEY=ACME\n' > "$WORK/himmelcfg/himmel.conf"
+cp -R "$M" "$JM/ACME"
+check "default dir: a key only in himmel.conf reads jira-mirror/ACME" "$base_out" "$(res)"
+rm -rf "$JM/ACME" "$WORK/himmelcfg/himmel.conf"
+cp -R "$M" "$JM/HIMMEL"
+check "control: no key set still reads jira-mirror/HIMMEL" "$base_out" "$(res)"
+check "STUCK_SCAN_MIRROR still wins over the resolver default" "STUCK-UNKNOWN mirror missing" "$(res JIRA_PROJECT_KEY=ACME STUCK_SCAN_MIRROR="$WORK/none")"
+rm -rf "$JM"
+
 out="$(bash "$SS" --version v1.1.4 2>&1)"
 check "--version keeps only that fixVersion" "STUCK HIMMEL-9013 In Progress 2d" "$out"
 

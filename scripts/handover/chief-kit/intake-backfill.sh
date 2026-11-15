@@ -3,7 +3,7 @@
 # mirror and PRINTS a proposed version for each one; it files nothing and writes nothing.
 #
 # USAGE  intake-backfill.sh [--mirror DIR] [--commands --release R] [--batch N]
-#   --mirror DIR  the mirror directory (default: $NEXT_DISPATCH_MIRROR or ~/.himmel/state/jira-mirror/HIMMEL);
+#   --mirror DIR  the mirror directory (default: $NEXT_DISPATCH_MIRROR, else the project's mirror from jira_mirror_dir);
 #                 DIR.versions.tsv beside it lists the versions (name, released, date, archived)
 #   --commands    print label and reasoned INTAKE commands for at most 20 keys; never execute them
 #   --release R   the chief's declared release identifier (required for commands; never guessed from a version)
@@ -28,7 +28,11 @@
 # operator has read a first batch of proposals.
 set -u
 
-mirror="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../../lib/jira-project.sh
+. "$HERE/../../lib/jira-project.sh"
+
+mirror="${NEXT_DISPATCH_MIRROR:-$(jira_mirror_dir)}"
 commands=0
 release=""
 batch=1

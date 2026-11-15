@@ -51,6 +51,23 @@ same 'an unreadable mirror reads ? and still rc 0' "$out/$rc" "ice-followups=?/0
 out="$(timeout 10 bash "$SUT" "$M" --days 2>&1)"; rc=$?
 same 'a trailing --days with no value terminates (default window)' "$(printf '%s' "$out" | head -1)/$rc" "ice-followups=2/0"
 
+H="$W/home"; C="$W/conf"; K="$W/cache"
+mkdir -p "$C" "$K"; : > "$K/.env"
+res() { env -u BOARD_MIRROR -u HIMMEL_JIRA_MIRROR -u JIRA_PROJECT_KEY HOME="$H" HIMMEL_CONFIG_DIR="$C" HIMMELCTL_CACHE_DIR="$K" "$@"; }
+want="ice-followups=2
+HIMMEL-9001
+HIMMEL-9002"
+mkdir -p "$H/.himmel/state/jira-mirror/ACME" "$H/.himmel/state/jira-mirror/HIMMEL"
+cp "$M"/*.md "$H/.himmel/state/jira-mirror/ACME/"
+same 'default dir: JIRA_PROJECT_KEY=ACME reads jira-mirror/ACME' "$(res JIRA_PROJECT_KEY=ACME bash "$SUT" 2>&1)" "$want"
+printf 'JIRA_PROJECT_KEY=ACME\n' > "$C/himmel.conf"
+same 'default dir: a key only in himmel.conf reads jira-mirror/ACME' "$(res bash "$SUT" 2>&1)" "$want"
+rm -f "$C/himmel.conf"
+rm -rf "$H/.himmel/state/jira-mirror/ACME"
+cp "$M"/*.md "$H/.himmel/state/jira-mirror/HIMMEL/"
+same 'control: no key set still reads jira-mirror/HIMMEL' "$(res bash "$SUT" 2>&1)" "$want"
+same 'BOARD_MIRROR still wins over the resolver default' "$(res JIRA_PROJECT_KEY=ACME BOARD_MIRROR="$W/no-mirror" bash "$SUT" 2>&1)" "ice-followups=?"
+
 chmod 000 "$M/HIMMEL-9010.md"
 if [ -r "$M/HIMMEL-9010.md" ]; then
     pass 'unreadable-file row skipped (running as a user that reads mode 000)'

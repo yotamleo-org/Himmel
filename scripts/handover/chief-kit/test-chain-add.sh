@@ -94,4 +94,21 @@ check '5. the same key twice is a usage error' 2 "$rc"
 bash "$SUT" HIMMEL-1 HIMMEL-2 --bogus >/dev/null 2>&1; rc=$?
 check '5. an unknown option is a usage error' 2 "$rc"
 
+H="$tmp/home"; C="$tmp/conf"; K="$tmp/cache"; JM="$H/.himmel/state/jira-mirror"
+mkdir -p "$C" "$K" "$JM"; : > "$K/.env"
+printf '{"schema":"himmel.chain-registry/1","chains":[]}\n' > "$tmp/empty.json"
+dflt() {
+    local name="$1"; shift
+    cp "$tmp/empty.json" "$R"
+    env -u HIMMEL_JIRA_MIRROR -u JIRA_PROJECT_KEY HOME="$H" HIMMEL_CONFIG_DIR="$C" HIMMELCTL_CACHE_DIR="$K" "$@" \
+        bash "$SUT" HIMMEL-1 HIMMEL-2 --goal "The waiter wakes once before the drain line" --registry "$R" > "$tmp/out" 2> "$tmp/err"
+    check "6. $name" 'HIMMEL-1,HIMMEL-2' "$(jq -r '.chains[0].members | join(",")' "$R" 2>/dev/null)"
+}
+cp -R "$M" "$JM/ACME"
+dflt 'default dir: JIRA_PROJECT_KEY=ACME reads jira-mirror/ACME' JIRA_PROJECT_KEY=ACME
+printf 'JIRA_PROJECT_KEY=ACME\n' > "$C/himmel.conf"
+dflt 'default dir: a key only in himmel.conf reads jira-mirror/ACME'
+rm -rf "$JM/ACME" "$C/himmel.conf"; cp -R "$M" "$JM/HIMMEL"
+dflt 'control: no key set still reads jira-mirror/HIMMEL'
+
 [ "$fails" -eq 0 ] && echo "PASS" || { echo "$fails FAILED"; exit 1; }
