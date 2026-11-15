@@ -1847,7 +1847,6 @@ command -v telemetry_emit >/dev/null 2>&1 || telemetry_emit() { return 0; }
     && bash -n "$SCRIPT_DIR/../lib/handover-path.sh" 2>/dev/null \
     && . "$SCRIPT_DIR/../lib/handover-path.sh" 2>/dev/null || true
 command -v handover_root >/dev/null 2>&1 || handover_root() { return 2; }
-# Mint the identity memo dir here, once, before any $(...) lookup can run.
 command -v _arm_cache_dir_ensure >/dev/null 2>&1 && _arm_cache_dir_ensure
 # Identity helpers are optional under the same fail-open contract. If this lib
 # is absent or only partially deployed, degrade to the earlier raw-path
