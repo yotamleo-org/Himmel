@@ -485,10 +485,10 @@ cadence=<name>:<state>:<age>:<run id>[:RED|:SKIP|:MISSED],... is the last SCHEDU
 with a schedule: trigger, from ci-cadence.sh (gh read at most once per CI_CADENCE_INTERVAL_SEC, default 1800, else the
 cache beside the other tick state). RED = failure or timed_out, SKIP = concluded skipped, MISSED = no scheduled run inside 1.5
 periods; a running run flags nothing. ? = gh unreadable. Always on the line; the waiter wakes once per flagged run id.
-review=<date>:<age>:<failures>:<new classes>:<new 5+>:<filed keys joined by +, or ->[:CAPPED][:STALE] is the
+review=<date>:<age>:<failures>:<new classes>:<new 5+>:<filed keys joined by +, or ->[:STALE] is the
 daily failure review (ci-cadence.sh review: a local read of the newest failure-review-<date>.md and its .json sidecar,
-HIMMEL_FAILURE_REVIEW_DIR). STALE = no review for 26 h; CAPPED = the router hit its daily create cap. Hidden when there is no
-review file. The waiter wakes once per review day on a filed key, a new class with 5+ failures or CAPPED, and once per
+HIMMEL_FAILURE_REVIEW_DIR). STALE = no review for 26 h. Hidden when there is no
+review file. The waiter wakes once per review day on a filed key or a new class with 5+ failures, and once per
 last-review date on STALE; never on a 1-count class.
 leaks=<n|?> counts the LEAK lines of one bounded `jira release leaks <active version>`
 read (TICK_LEAKS_PROBE gets the version and the mirror directory as its arguments; TICK_LEAKS_TIMEOUT, default 30 s): open tickets
