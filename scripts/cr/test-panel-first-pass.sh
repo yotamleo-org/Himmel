@@ -1024,7 +1024,7 @@ assert_has "$row" '"round":4' "T1.32 the row carries the post-cap round"
 n_before="$(rs_count "$rs3")"
 rs3_run --full
 if [ "$r5_rc" -eq 8 ]; then ok "T1.35 --full on the post-cap delta round exits 8"; else bad "T1.35 delta exit (got $r5_rc; err: $r5_err)"; fi
-assert_has "$r5_err" "outside PR past its three full rounds: hand it to a maintainer takeover (HIMMEL-9019)" "T1.35 the takeover line on the delta round"
+assert_has "$r5_err" "outside PR past its three full rounds: hand it to a maintainer takeover." "T1.35 the takeover line on the delta round"
 assert_no_ceilings "$r5_err" "T1.35 the FULL-delta takeover exit 8"
 if [ -f "$CALL_LOG" ]; then bad "T1.35 panel invoked past the cap"; else ok "T1.35 panel never invoked on the delta round"; fi
 assert_has "$(cat "$RR_LOG" 2>/dev/null)" "abort" "T1.35 the refused delta round is given back"
@@ -1032,7 +1032,7 @@ rm -f "$CALL_LOG" "$tmp/err"
 r5_out="$( (cd "$rs3" && RR_START_RC=8 RR_FROM="$rs3_h1" FAKE_RC=0 bash "$SCRIPT2" --head "$rs3_h2" --branch feature --full) 2>"$tmp/err" )"; r5_rc=$?
 r5_err="$(cat "$tmp/err")"
 if [ "$r5_rc" -eq 8 ]; then ok "T1.35 --full on a cap refusal exits 8"; else bad "T1.35 cap exit (got $r5_rc; err: $r5_err)"; fi
-assert_has "$r5_err" "outside PR past its three full rounds: hand it to a maintainer takeover (HIMMEL-9019)" "T1.35 the takeover line on a cap refusal"
+assert_has "$r5_err" "outside PR past its three full rounds: hand it to a maintainer takeover." "T1.35 the takeover line on a cap refusal"
 assert_no_ceilings "$r5_err" "T1.35 the cap refusal exit 8"
 rs3_run_bad() {
     rm -f "$CALL_LOG" "$RR_LOG" "$tmp/err"

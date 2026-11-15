@@ -15,12 +15,6 @@ GUARD="$HOOKS/block-terminal-write-fence.sh"
 command -v git >/dev/null 2>&1 || { echo "SKIP: git not on PATH"; exit 0; }
 command -v jq  >/dev/null 2>&1 || { echo "SKIP: jq not on PATH"; exit 0; }
 
-# NOT a bare `mktemp -d`: class (b) is DESTINATION-based
-# (block-write-into-main-checkout.sh, sourced below), so a /tmp-rooted fixture
-# tree would have every destination row's resolved target silently exempted
-# by is_temp_or_devnull's `*/tmp/*` pattern — making the redirect-deny rows
-# vacuous (they'd pass as "allow" for the wrong reason). Root under the REAL
-# HOME instead, captured BEFORE HOME is overridden below.
 # shellcheck source=lib-fixture-root.sh
 . "$HOOKS/lib-fixture-root.sh"
 _FROOT=$(fixture_root) || exit 1
@@ -41,13 +35,10 @@ mkrepo "$T/featrepo"  "feat/x"
 MAIN="$T/mainrepo"
 FEAT="$T/featrepo"
 SWR="$T/swrepo"; mkrepo "$SWR" "feat/x"; touch "$SWR/.single-writer"  # class (b) exempt, so class (a) rows are not masked (HIMMEL-844)
-# A SEPARATE, deliberately /tmp-rooted fixture (unlike $T above) — used by
-# exactly one row below to assert the RATIFIED is_temp_or_devnull `*/tmp/*`
-# exemption on purpose, not by accident.
 # The `/tmp/` prefix is HARDCODED, not `${TMPDIR:-/tmp}` and not a bare
-# `mktemp -d`: this row asserts a `*/tmp/*` pattern match, and on macOS both
-# of those resolve TMPDIR to `/var/folders/.../T/`, which matches neither
-# `*/tmp/*` nor `*/temp/*` — the row would fail there for an unrelated reason.
+# `mktemp -d`: this row asserts the `/tmp` root itself; on macOS both of
+# those resolve TMPDIR to `/var/folders/.../T/`, a different root that the
+# system-temp-root row below covers.
 TMPMAIN_ROOT="$(mktemp -d /tmp/himmel-2526-fence-tmpmain.XXXXXX)" || exit 1
 trap 'rm -rf "$T" "$TMPMAIN_ROOT"' EXIT
 mkrepo "$TMPMAIN_ROOT/mainrepo" "main"
@@ -190,6 +181,13 @@ check "redirect to real file on main denied" block "{\"tool_name\":\"Bash\",\"to
 # (b) is broken: redirect into a repo beneath /tmp -> ALLOW (ratified
 # exemption, is_temp_or_devnull :155 in block-terminal-write-fence.sh).
 check "redirect into a repo beneath /tmp allowed (ratified exemption, is_temp_or_devnull :155)" allow "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"echo hi > out.txt\",\"cwd\":\"$TMPMAIN\"}}"
+mkrepo "$T/tmp/mainrepo" "main"
+check "redirect into a repo on main under a tmp-named dir (not a temp root) denied" block "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"echo hi > out.txt\",\"cwd\":\"$T/tmp/mainrepo\"}}"
+_systmp_root=$(getconf DARWIN_USER_TEMP_DIR 2>/dev/null) || _systmp_root=/tmp  # swallow-ok: off macOS the key is unknown and /tmp is the system temp root
+SYSTMP="$(mktemp -d "${_systmp_root%/}/himmel-fence-systmp.XXXXXX")" || exit 1  # prim-ok: the control asserts the system temp root itself, so it must not be rooted elsewhere
+trap 'rm -rf "$T" "$TMPMAIN_ROOT" "$SYSTMP"' EXIT
+mkrepo "$SYSTMP/mainrepo" "main"
+check "redirect into a repo on main under the system temp root allowed" allow "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"echo hi > out.txt\",\"cwd\":\"$SYSTMP/mainrepo\"}}"
 # $TMP is a literal token in the payload the guard must treat as a temp path.
 # shellcheck disable=SC2016
 check "redirect into \$TMP allowed" allow '{"tool_name":"Bash","tool_input":{"command":"echo hi > $TMP/scratch.txt","cwd":"'"$MAIN"'"}}'

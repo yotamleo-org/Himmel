@@ -347,6 +347,13 @@ fi
 # from block-write-into-main-checkout.sh once sourced below — shellcheck's
 # per-file analysis cannot see that a followed (SC1091) file calls BACK into
 # a function defined in the file that sourced it.
+#
+# The POSIX temp exemption is a boundary-safe prefix test against a fixed list
+# of real temp roots: /tmp and /var/tmp, and on macOS their /private forms
+# plus /var/folders (where TMPDIR points) and /private/var/folders. A
+# directory merely NAMED tmp or temp anywhere else is not exempt. The caller
+# passes a lowercased path, so the roots are lowercase and the match is
+# case-insensitive. The caller tests the lexical path, then the resolved one.
 is_temp_or_devnull() {
     # The '$tmp'* / '%temp%'* branches keep the $ / % literal on purpose (they
     # match an unexpanded env-var temp ref in the payload text), so SC2016 is
@@ -354,7 +361,9 @@ is_temp_or_devnull() {
     # shellcheck disable=SC2016
     case "$1" in
         /dev/null|/dev/null/*) return 0 ;;
-        /tmp|/tmp/*|*/tmp/*|*/temp/*) return 0 ;;
+        /tmp|/tmp/*|/var/tmp|/var/tmp/*) return 0 ;;
+        /private/tmp|/private/tmp/*|/private/var/tmp|/private/var/tmp/*) return 0 ;;
+        /var/folders|/var/folders/*|/private/var/folders|/private/var/folders/*) return 0 ;;
         *appdata/local/temp*) return 0 ;;
         '$tmp'*|'$temp'*|'%temp%'*|'%tmp%'*) return 0 ;;
         *) return 1 ;;
