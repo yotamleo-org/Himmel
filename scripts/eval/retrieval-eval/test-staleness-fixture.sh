@@ -33,7 +33,10 @@ cat > "$W/bin/qmd" <<'STUB'
 key=unset; [ -n "${QMD_OPENAI_API_KEY:-}" ] && key=set
 printf '%s | INDEX_PATH=%s QMD_CONFIG_DIR=%s KEY=%s\n' "$*" "${INDEX_PATH:-}" "${QMD_CONFIG_DIR:-}" "$key" >> "$LOGDIR/qmd.log"
 case "$1" in
-update) mkdir -p "$(dirname "$INDEX_PATH")"; date +%s%N >> "$INDEX_PATH" ;;
+update) mkdir -p "$(dirname "$INDEX_PATH")"; date +%s%N >> "$INDEX_PATH"
+    tree="$(sed -n 's/^    path: //p' "$QMD_CONFIG_DIR/index.yml")"
+    ( cd "$tree" && find . -type f -name '*.md' | sort | while IFS= read -r f; do awk -v p="${f#./}" '{print p "\t" $0}' "$f"; done ) > "$INDEX_PATH.rows"
+    { grep -v -F "$(printf '\t')" "$INDEX_PATH"; cat "$INDEX_PATH.rows"; } > "$INDEX_PATH.new" ; mv "$INDEX_PATH.new" "$INDEX_PATH"; rm -f "$INDEX_PATH.rows" ;;
 mcp)
     port=""; while [ $# -gt 0 ]; do [ "$1" = "--port" ] && port="$2"; shift; done
     exec python3 -I -c 'import os, socket, sys, time
@@ -44,7 +47,16 @@ try:
 except OSError:
     s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(("127.0.0.1", port)); fam = "v4"
 open(os.environ["LOGDIR"] + "/bind-family", "w").write(fam)
-s.listen(5); time.sleep(300)' "$port" mcp --http --port "$port" ;;
+s.listen(5); s.settimeout(300)
+while True:
+    c, _ = s.accept()
+    req = c.recv(4096).decode().split(" ")
+    if len(req) < 2:
+        c.close(); continue
+    q = __import__("urllib.parse").parse.unquote(req[1].partition("q=")[2])
+    rows = [l.rstrip("\n").split("\t", 1) for l in open(os.environ["INDEX_PATH"]) if "\t" in l]
+    body = "\n".join(sorted({p for p, t in rows if q in t}))
+    c.sendall(("HTTP/1.0 200 OK\r\nContent-Length: %d\r\n\r\n%s" % (len(body.encode()), body)).encode()); c.close()' "$port" mcp --http --port "$port" ;;
 esac
 exit 0
 STUB
@@ -575,5 +587,33 @@ py "$W/check-banks.py" "$R" "$W/planted-good.jsonl" > /dev/null 2>&1; rc=$?
 eq "::strata_hold_on_git (a planted bank that follows the rules passes on a fixture repo)" "0" "$rc"
 bad_n="$(py "$W/check-banks.py" "$R" "$W/planted-bad.jsonl" 2>/dev/null | wc -l | tr -d ' ')"
 eq "::strata_hold_on_git (a planted bank that breaks each rule gets one violation a row)" "5" "$bad_n"
+
+IFS=$'\t' read -r PGOLD PEVID < <(py -c 'import json, sys
+r = json.loads(open(sys.argv[1]).readline())
+print(r["gold"][0] + "\t" + r["evidence"])' "$W/planted-good.jsonl")
+pair_hits() {
+    py -c 'import sys, urllib.parse, urllib.request
+try:
+    base = sys.argv[1].rsplit("/mcp", 1)[0]
+    sys.stdout.write(urllib.request.urlopen(base + "/search?q=" + urllib.parse.quote(sys.argv[2]), timeout=5).read().decode())
+except Exception:
+    sys.stdout.write("ERR")' "$(pj "$1" served_url)" "$2"
+}
+reset_logs
+FX_EXTRA=()
+for st in s l; do
+    fx build --first "$C1" --second "$C2" --state "$st" --out "$W/pair-$st" > /dev/null 2>&1
+    fx serve --index "$(pj "$W/pair-$st" index)" > /dev/null 2>&1
+done
+eq "::stale_pair_red_vs_control (each build's pair.json names its state and the pair, and the served URL)" "s l|$C1 $C2|1" \
+    "$(pj "$W/pair-s" state) $(pj "$W/pair-l" state)|$(pj "$W/pair-s" first) $(pj "$W/pair-s" second)|$(case "$(pj "$W/pair-s" served_url)$(pj "$W/pair-l" served_url)" in http://localhost:*/mcp*http://localhost:*/mcp) echo 1 ;; esac)"
+eq "::stale_pair_red_vs_control (the gold document's evidence is new at the second commit: absent at the first, present at the second)" "0|1" \
+    "$(git -C "$R" show "$(pj "$W/pair-s" first):$PGOLD" | grep -c -F "$PEVID")|$(git -C "$R" show "$(pj "$W/pair-s" second):$PGOLD" | grep -c -F "$PEVID")"
+eq "::stale_pair_red_vs_control (not vacuous: text both commits hold is found through both served indexes)" "$PGOLD|$PGOLD" \
+    "$(pair_hits "$W/pair-s" "old line")|$(pair_hits "$W/pair-l" "old line")"
+eq "::stale_pair_red_vs_control (RED: the stale index (state s) does not find the gold document's new text)" "" "$(pair_hits "$W/pair-s" "$PEVID")"
+eq "::stale_pair_red_vs_control (control: the fresh index (state l) finds the same text in the gold document)" "$PGOLD" "$(pair_hits "$W/pair-l" "$PEVID")"
+eq "::stale_pair_red_vs_control (free: no embed, both daemons started with no key)" "0|2" "$(qlog | grep -c '^embed')|$(qlog | grep -c '^mcp.*KEY=unset')"
+for st in s l; do fx stop --index "$(pj "$W/pair-$st" index)" > /dev/null 2>&1; done
 
 if [ "$fails" -eq 0 ]; then printf 'all staleness-fixture rows passed\n'; else printf '%s row(s) failed\n' "$fails"; exit 1; fi

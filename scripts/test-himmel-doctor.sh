@@ -7514,8 +7514,18 @@ C69_SENTINEL=sk-test-sentinel-c69
 # the stub answers C69_CODE only when the key arrives as an Authorization header on stdin, else 403
 printf "#!/bin/sh\nin=\"\$(cat)\"\ncase \"\$in\" in *'Authorization: Bearer $C69_SENTINEL\"'*) printf \"%%s\" \"\${C69_CODE:-200}\" ;; *) printf 403 ;; esac\n" > "$c69_t/curl"; chmod +x "$c69_t/curl"
 printf 'QMD_OPENAI_API_KEY=%s\n' "$C69_SENTINEL" > "$c69_t/home/.himmel/state/qmd-daemon.env"; chmod 600 "$c69_t/home/.himmel/state/qmd-daemon.env"
-c69_run() { env -u XDG_CONFIG_HOME -u QMD_CONFIG_DIR -u QMD_DAEMON_ENV_FILE -u QMD_OPENAI_API_KEY -u QMD_OPENAI_BASE_URL HIMMEL_DOCTOR_QMD_CURL="$c69_t/curl" PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c69_t/home/claude" HOME="$c69_t/home" "$@" bash "$DOC" --no-color --only C69 2>&1; }
-c69_run_x() { env -u XDG_CONFIG_HOME -u QMD_CONFIG_DIR -u QMD_DAEMON_ENV_FILE -u QMD_OPENAI_API_KEY -u QMD_OPENAI_BASE_URL HIMMEL_DOCTOR_QMD_CURL="$c69_t/curl" PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c69_t/home/claude" HOME="$c69_t/home" "$@" bash -x "$DOC" --no-color --only C69 2>&1; }
+cat > "$c69_t/qmd" <<'STUB'
+#!/bin/sh
+case "$C69_CLI" in
+  hang) sleep 30 ;;
+  okmatch) echo 'a hit whose text says answered 401 No cookie auth credentials found'; echo 'warn: answered 401 No cookie auth credentials found' >&2 ;;
+  nokey) [ -n "$QMD_OPENAI_API_KEY" ] || { echo 'https://openrouter.ai/api/v1/embeddings answered 401 {"message":"No cookie auth credentials found"}' >&2; exit 1; } ;;
+esac
+echo hit
+STUB
+chmod +x "$c69_t/qmd"
+c69_run() { env -u XDG_CONFIG_HOME -u QMD_CONFIG_DIR -u QMD_DAEMON_ENV_FILE -u QMD_OPENAI_API_KEY -u QMD_OPENAI_BASE_URL -u C69_CLI HIMMEL_DOCTOR_QMD_CURL="$c69_t/curl" HIMMEL_DOCTOR_QMD_BIN="$c69_t/qmd" PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c69_t/home/claude" HOME="$c69_t/home" "$@" bash "$DOC" --no-color --only C69 2>&1; }
+c69_run_x() { env -u XDG_CONFIG_HOME -u QMD_CONFIG_DIR -u QMD_DAEMON_ENV_FILE -u QMD_OPENAI_API_KEY -u QMD_OPENAI_BASE_URL -u C69_CLI HIMMEL_DOCTOR_QMD_CURL="$c69_t/curl" HIMMEL_DOCTOR_QMD_BIN="$c69_t/qmd" PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c69_t/home/claude" HOME="$c69_t/home" "$@" bash -x "$DOC" --no-color --only C69 2>&1; }
 out="$(c69_run C69_CODE=200)"
 if grepq "$out" -F 'OK   C69-qmd-cli-key'; then pass "C69 key accepted -> OK"; else fail "C69 key accepted -> $(printf '%s' "$out" | head -3)"; fi
 if grepq "$out" -F "$C69_SENTINEL"; then fail "C69 printed the key"; else pass "C69 never prints the key"; fi
@@ -7550,6 +7560,32 @@ if grepq "$out" -F "$C69_SENTINEL"; then fail "C69 trace printed the file key"; 
 echo "== C69: provider answers 403 -> FAIL =="
 out="$(c69_run C69_CODE=403)"
 if grepq "$out" -F 'FAIL C69-qmd-cli-key'; then pass "C69 key forbidden -> FAIL"; else fail "C69 key forbidden -> $(printf '%s' "$out" | head -3)"; fi
+
+echo "== C69: the bare qmd CLI answers 401 while the key file is valid -> WARN naming the CLI path =="
+out="$(c69_run C69_CODE=200 C69_CLI=nokey)"
+if grepq "$out" -F 'WARN C69-qmd-cli-key'; then pass "C69 bare CLI 401 -> WARN"; else fail "C69 bare CLI 401 -> $(printf '%s' "$out" | head -3)"; fi
+if grepq "$out" -F 'bare qmd'; then pass "C69 CLI WARN names the bare qmd path"; else fail "C69 CLI WARN names the bare qmd path -> $(printf '%s' "$out" | head -3)"; fi
+if grepq "$out" -F "$C69_SENTINEL"; then fail "C69 CLI WARN printed the key"; else pass "C69 CLI WARN never prints the key"; fi
+
+echo "== C69: a session key in the doctor's own environment does not hide a key-less bare CLI -> WARN =="
+out="$(c69_run C69_CODE=200 C69_CLI=nokey QMD_OPENAI_API_KEY="$C69_SENTINEL")"
+if grepq "$out" -F 'WARN C69-qmd-cli-key'; then pass "C69 session key scrubbed for the CLI probe -> WARN"; else fail "C69 session key scrubbed for the CLI probe -> $(printf '%s' "$out" | head -3)"; fi
+
+echo "== C69: the bare qmd CLI answers -> OK =="
+out="$(c69_run C69_CODE=200)"
+if grepq "$out" -F 'OK   C69-qmd-cli-key'; then pass "C69 bare CLI answers -> OK"; else fail "C69 bare CLI answers -> $(printf '%s' "$out" | head -3)"; fi
+
+echo "== C69: a working bare qmd CLI whose output carries the 401 strings -> OK, only a failed call is a 401 =="
+out="$(c69_run C69_CODE=200 C69_CLI=okmatch)"
+if grepq "$out" -F 'OK   C69-qmd-cli-key'; then pass "C69 successful CLI output naming a 401 -> OK"; else fail "C69 successful CLI output naming a 401 -> $(printf '%s' "$out" | head -3)"; fi
+
+echo "== C69: the bare qmd CLI hangs past the bound -> INFO, not a credential verdict =="
+out="$(c69_run C69_CODE=200 C69_CLI=hang HIMMEL_DOCTOR_QMD_CLI_SECS=1 QMD_KILL_GRACE_SECS=1)"
+if grepq "$out" -F 'INFO C69-qmd-cli-key'; then pass "C69 bare CLI timeout -> INFO"; else fail "C69 bare CLI timeout -> $(printf '%s' "$out" | head -3)"; fi
+
+echo "== C69: qmd absent -> INFO =="
+out="$(c69_run C69_CODE=200 HIMMEL_DOCTOR_QMD_BIN="$c69_t/no-such-qmd")"
+if grepq "$out" -F 'INFO C69-qmd-cli-key'; then pass "C69 qmd absent -> INFO"; else fail "C69 qmd absent -> $(printf '%s' "$out" | head -3)"; fi
 
 echo "== C69: OpenRouter named only by QMD_OPENAI_BASE_URL, no key anywhere -> FAIL =="
 printf 'models:\n  embed: hf:x/y.gguf\n' > "$c69_t/home/.config/qmd/index.yml"

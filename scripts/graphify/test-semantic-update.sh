@@ -21,7 +21,7 @@ git init -q "$REPO"
 # Other tools share TMPDIR (handover-path.sh's arm-resume-cache.* in CI): the
 # scratch checks look only for this script's own graphify-semantic-* dirs.
 mkdir "$WS/tmp/arm-resume-cache.foreign"
-for f in semantic-update.sh semantic-merge.py harden-graph.py harden-allowlist.json semantic-batch-shim.mjs; do
+for f in semantic-update.sh semantic-merge.py harden-graph.py harden-allowlist.json semantic-batch-shim.mjs semantic-batch.mjs; do
   cp "$HERE/$f" "$REPO/scripts/graphify/$f" 2>/dev/null || true
 done
 ln -s "$REAL_REPO/scripts/guardrails" "$REPO/scripts/guardrails"
@@ -97,7 +97,9 @@ echo "EFFORT=\${CLAUDE_CODE_EFFORT_LEVEL-unset}" >> "$WS/env.log"
 # real key is content plus its own prompt, so it cannot see which mode wrote the entry, and neither does this one.
 if [ -n "\${GRAPHIFY_STUB_CALL_CLAUDE:-}" ] && [ "\$1" = extract ] && { [ -z "\${GRAPHIFY_STUB_CACHE_HIT:-}" ] || [ ! -e "\$2/graphify-out/cache/semantic/new.json" ]; }; then
   claude --help > "$WS/claude-help.out" 2>&1
-  for call_n in \$(seq "\${GRAPHIFY_STUB_CALL_N:-1}"); do
+  calls_n="\${GRAPHIFY_STUB_CALL_N:-1}"
+  [ -z "\${GRAPHIFY_STUB_PER_FILE:-}" ] || calls_n=\$(( \$(cd "\$2" && find . -name '*.md' -not -path './graphify-out/*' | wc -l) * GRAPHIFY_STUB_PER_FILE ))
+  for call_n in \$(seq "\$calls_n"); do
     p="\${GRAPHIFY_STUB_PROMPT:-extract this}"
     printf '%b' "\${p//@CALL@/\$call_n}" | claude -p --output-format json --no-session-persistence --model sonnet --json-schema '{}' >> "$WS/claude.out" 2>&1 \\
       || echo "claude-shim-rc=\$?" >> "$WS/calls.log"
@@ -968,18 +970,26 @@ out=$(GRAPHIFY_OUT="$WS/link64" run --name t64 --corpus-root "$C64" --corpus-cla
 # --- --backend claude-api through the Message Batches API (the default) -----
 # The real client (semantic-batch.mjs) is covered by semantic-batch.test.mjs against a loopback stub of the endpoint;
 # here a stand-in client and credit-state with the same command line prove the wiring around them.
+cp "$HERE/semantic-batch.mjs" "$REPO/scripts/graphify/semantic-batch.real.mjs"
 cat > "$REPO/scripts/graphify/semantic-batch.mjs" <<'EOF'
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const real = join(dirname(fileURLToPath(import.meta.url)), 'semantic-batch.real.mjs');
+const boundOf = (bytes, model, maxTokens) => Number(spawnSync(process.execPath, [real, 'bound', '--bytes', String(bytes), '--model', model || 'sonnet', '--max-tokens', maxTokens || '32000'], { encoding: 'utf8' }).stdout);
 const [cmd, ...a] = process.argv.slice(2);
 const o = {}; for (let i = 0; i < a.length; i += 2) o[a[i].slice(2)] = a[i + 1];
 const ws = process.env.BATCH_STUB_WS;
 const log = (m) => appendFileSync(join(ws, 'batch.log'), `${m}\n`);
+if (cmd === 'bound') { console.log(boundOf(o.bytes, o.model, o['max-tokens']).toFixed(6)); process.exit(0); }
 const sp = join(o.dir, 'batch.json');
 const state = () => JSON.parse(readFileSync(sp, 'utf8'));
 if (cmd === 'submit') {
   if (existsSync(sp)) { console.error('a pending batch is resumed, never resubmitted'); process.exit(2); }
   const ids = readdirSync(o.prompts).filter((f) => f.endsWith('.txt')).map((f) => f.slice(0, -4));
+  const est = ids.reduce((t, id) => t + boundOf(statSync(join(o.prompts, `${id}.txt`)).size, o.model, o['max-tokens']), 0);
+  if (est > Number(o['max-usd'])) { log(`over-budget estimate=${est.toFixed(6)}`); console.error(`semantic-batch: estimate ${est.toFixed(6)} USD (${ids.length} requests) is over the budget of ${o['max-usd']} USD; nothing submitted`); process.exit(7); }
   log(`submit account=${o.account} prompts=${ids.length} model=${o.model} effort=${o.effort}`);
   if ((process.env.BATCH_STUB_EXHAUSTED || '').split(',').includes(o.account)) { console.error('semantic-batch: credit exhausted (HTTP 400)'); process.exit(5); }
   if ((process.env.BATCH_STUB_REJECTED || '').split(',').includes(o.account)) {
@@ -992,7 +1002,7 @@ if (cmd === 'submit') {
   // as the real client: the shim's chunk-body key sidecars ride in batch.json
   const bodies = {};
   for (const id of ids) if (existsSync(join(o.prompts, `${id}.key`))) bodies[readFileSync(join(o.prompts, `${id}.key`), 'utf8').trim()] = id;
-  writeFileSync(sp, JSON.stringify({ batch_id: 'msgbatch_stub', account: o.account, request_count: ids.length, custom_ids: ids, bodies, status: 'in_progress' }));
+  writeFileSync(sp, JSON.stringify({ batch_id: 'msgbatch_stub', account: o.account, budget_usd: o['max-usd'], request_count: ids.length, custom_ids: ids, bodies, status: 'in_progress' }));
   console.log(JSON.stringify({ batch_id: 'msgbatch_stub', request_count: ids.length, status: 'in_progress' }));
 } else if (cmd === 'poll') {
   if (process.env.BATCH_STUB_POLLFAIL) { console.error('semantic-batch: HTTP 503 on poll'); process.exit(3); }
@@ -1074,6 +1084,8 @@ P70="$C70/graphify-out/semantic-batch"
   && pass "T70 one submit: account A, one recorded prompt, sonnet at high effort" || fail "T70 batch.log: $(cat "$WS/batch.log")"
 [ -f "$P70/batch.json" ] && [ -f "$P70/plan.json" ] && [ -f "$P70/corpus/a.md" ] \
   && pass "T70 batch.json, plan and the frozen corpus are persisted" || fail "T70 pending dir: $(ls -R "$P70" 2>&1)"
+[ "$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["budget_usd"])' "$P70/batch.json")" = "15.00" ] \
+  && pass "T70 the run cap (15.00 by default) reaches the client as --max-usd" || fail "T70 budget handed to the client: $(cat "$P70/batch.json")"
 [ ! -e "$P70/corpus/graphify-out/cache/semantic/new.json" ] \
   && pass "T70 the record run's placeholder cache is not in the frozen corpus" || fail "T70 placeholder cache leaked into the frozen corpus"
 [[ "$out" == *"BATCH id=msgbatch_stub state=submitted requests=1 cost_usd=-"* ]] \
@@ -1100,6 +1112,8 @@ out=$(GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t70 --corpus-root "$C70" --co
 [ "$(lastrun "$C70" batch_id)" = "msgbatch_stub" ] && [ "$(lastrun "$C70" batch_requests)" = "1" ] \
   && [ "$(lastrun "$C70" cost_usd)" = "0.0035" ] && [ "$(lastrun "$C70" backend)" = "claude-api" ] \
   && pass "T72 run row: batch_id msgbatch_stub, batch_requests 1, cost_usd 0.0035" || fail "T72 row: $(tail -1 "$C70/graphify-out/semantic-runs.jsonl")"
+[ "$(lastrun "$C70" account)" = "A" ] \
+  && pass "T72 the run row names the account that paid" || fail "T72 account on the row: $(tail -1 "$C70/graphify-out/semantic-runs.jsonl")"
 [[ "$out" == *"state=merged requests=1 cost_usd=0.003500"* ]] && pass "T72 the BATCH line closes the run as merged" || fail "T72 BATCH line: $out"
 grep -q 'claude-shim-rc' "$WS/calls.log" && fail "T72 the replay shim missed an answer: $(cat "$WS/calls.log")" || pass "T72 every chunk prompt was answered from the batch"
 [[ "$out" == *"semantic-update: replay answered 1 chunk(s) by full prompt hash and 0 by chunk-body key"* ]] \
@@ -1419,11 +1433,33 @@ first="$(sed -n 's/.*over-cap: the estimate for \([^ ]*\) alone.*/\1/p' <<<"$out
 [ "$rc" -ne 0 ] && [ ! -s "$WS/batch.log" ] && [ "$(word)" = over-cap ] && [ -n "$first" ] && [ -f "$CO/$first" ] \
   && [[ "$out" == *".graphify-corpus-ignore"* ]] && [[ "$out" == *"--max-run-usd"* ]] && ! grep -q '^graphify extract' "$WS/calls.log" \
   && pass "O4 over-cap names $first and both ways out, nothing extracted or submitted" || fail "O4 (rc=$rc) word '$(word)': $out"
-echo "O4b: the same estimate without --account-order is sized and submitted as on main (the cap stays a planning input)"
+echo "O4b: the same estimate without --account-order reaches the client as its one-file floor, which refuses it over budget (exit 7): over-cap, nothing pending"
 CO="$WS/o4b"; new_corpus "$CO"; o_reset
 out=$(ACCT=A GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name o4b --corpus-root "$CO" --corpus-class himmel-code --backend claude-api --max-run-usd 0.01); rc=$?
-[ "$rc" -eq 0 ] && [ "$(batch_accounts)" = "A " ] && [[ "$out" != *"over-cap"* ]] \
-  && pass "O4b one file submitted on A, no over-cap" || fail "O4b (rc=$rc) accounts '$(batch_accounts)': $out"
+[ "$rc" -eq 3 ] && [ -z "$(batch_accounts)" ] && grep -q '^over-budget estimate=' "$WS/batch.log" && [[ "$out" == *"over-cap"* ]] && [ ! -e "$CO/graphify-out/semantic-batch" ] \
+  && pass "O4b the floor file was refused over budget: over-cap, rc 3, no submit, no pending dir" || fail "O4b (rc=$rc) accounts '$(batch_accounts)': $out"
+
+echo "T94: a cap the planner admits is a cap the client accepts: an estimate over the cap is over-cap (rc 3, re-size), not a stopped run"
+C94="$WS/c94"; new_corpus "$C94"; batch_reset
+out=$(ACCT=A GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t94 --corpus-root "$C94" --corpus-class himmel-code --backend claude-api --max-run-usd 0.15); rc=$?
+[ "$rc" -eq 3 ] && [[ "$out" == *"over-cap"* ]] && [[ "$out" != *"submitting the batch failed"* ]] && [ ! -e "$C94/graphify-out/semantic-batch" ] && [ -z "$(batch_accounts)" ] \
+  && pass "T94 a one-chunk batch over a 0.15 cap is refused as over-cap, nothing pending, the files stay for a re-sized run" || fail "T94 (rc=$rc): $out"
+echo "T94c: the recorded batch has more requests than planned: the client refuses (exit 7), the plan is halved and resubmitted in the same run"
+C94C="$WS/c94c"; new_corpus "$C94C"; for i in $(seq 1 9); do printf 'file %s\n' "$i" > "$C94C/f$i.md"; done; batch_reset
+out=$(ACCT=A GRAPHIFY_STUB_PER_FILE=1 GRAPHIFY_STUB_PROMPT='extract @CALL@' GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t94c --corpus-root "$C94C" --corpus-class himmel-code --backend claude-api --max-run-usd 1.00); rc=$?
+[ "$rc" -eq 0 ] && [ "$(grep -c '^submit' "$WS/batch.log")" -eq 1 ] && grep -q '^submit account=A prompts=6 ' "$WS/batch.log" && [ "$(grep -c '^over-budget' "$WS/batch.log")" -eq 1 ] \
+  && [[ "$out" == *"planning 6 files and trying again"* ]] && [ -f "$C94C/graphify-out/semantic-batch/batch.json" ] \
+  && pass "T94c 12 recorded requests refused at 1.00 USD, 6 files planned, one submit of 6 prompts, nothing stuck" || fail "T94c (rc=$rc) batch.log: $(cat "$WS/batch.log"): $out"
+echo "T94d: a plan halved down to one file that is still over the cap ends over-cap, nothing pending"
+C94D="$WS/c94d"; new_corpus "$C94D"; batch_reset
+out=$(ACCT=A GRAPHIFY_STUB_PER_FILE=8 GRAPHIFY_STUB_PROMPT='extract @CALL@' GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t94d --corpus-root "$C94D" --corpus-class himmel-code --backend claude-api --max-run-usd 1.00); rc=$?
+[ "$rc" -eq 3 ] && [[ "$out" == *"over-cap"* ]] && ! grep -q '^submit' "$WS/batch.log" && [ ! -e "$C94D/graphify-out/semantic-batch" ] \
+  && pass "T94d one file of 8 requests still over 1.00 USD: over-cap, rc 3, no submit, no pending dir" || fail "T94d (rc=$rc): $(cat "$WS/batch.log"): $out"
+echo "T94b: the planner sizes a batch with the client's own per-request bound, not the list price"
+C94B="$WS/c94b"; new_corpus "$C94B"; for i in $(seq 1 40); do printf 'file %s\n' "$i" > "$C94B/f$i.md"; done
+out=$(ACCT=A run_batch --name t94b --corpus-root "$C94B" --corpus-class himmel-code --backend claude-api --max-run-usd 0.60 --dry-run); rc=$?
+[ "$rc" -eq 0 ] && [[ "$out" == *"sized: batch of 43 files cut to 14 to fit the run cap of 0.60 USD"* ]] \
+  && pass "T94b 43 files at 6 chunks and a 0.296 USD bound per chunk are cut to 14 (the list price would cut to 35)" || fail "T94b (rc=$rc): $out"
 
 echo "O5: --account-order refuses GRAPHIFY_API_BATCH=0, another backend and a value that is not one capital letter per entry"
 CO="$WS/o5"; new_corpus "$CO"

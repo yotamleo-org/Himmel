@@ -5144,6 +5144,19 @@ _c69_probe_key() {  # t13b-ok: reads the key file and asks the provider, starts 
     echo "code:${code:-000}"
 }
 
+_c69_probe_cli() {  # t13b-ok: one bounded read-only vsearch through the bare CLI, never a search path for an agent
+    local lib="$REPO_ROOT/scripts/lib/qmd-bounded.sh" qbin="${HIMMEL_DOCTOR_QMD_BIN:-qmd}" secs="${HIMMEL_DOCTOR_QMD_CLI_SECS:-60}" out="" rc=0
+    command -v "$qbin" >/dev/null 2>&1 || { echo "no-qmd"; return 0; }
+    [ -f "$lib" ] || { echo "no-qmd"; return 0; }
+    # shellcheck disable=SC1090
+    . "$lib"  # t13b-ok: sources the group-deadline helper, starts nothing
+    out="$( unset QMD_OPENAI_API_KEY; qmd_bounded "$secs" "$qbin" vsearch -n 1 himmel-doctor-probe 2>&1 >/dev/null )" || rc=$?
+    if [ "$rc" -eq 124 ]; then echo "timeout"
+    elif [ "$rc" -eq 0 ]; then echo "ok"
+    elif grep -qE 'answered 401|No cookie auth credentials' <<< "$out"; then echo "refused"
+    else echo "other:$rc"; fi
+}
+
 # --- C69-qmd-cli-key: the qmd CLI's OpenRouter key is missing or rejected ---
 # A key-less CLI call gets "401 No cookie auth credentials found" on every
 # generate and embed, while the daemon (which loads its own key) still answers,
@@ -5158,6 +5171,7 @@ check_c69_qmd_cli_key() {  # t13b-ok: doctor row that reads the key file and ask
     local curl_bin="${HIMMEL_DOCTOR_QMD_CURL:-curl}"
     local url="${HIMMEL_DOCTOR_QMD_KEY_URL:-https://openrouter.ai/api/v1/auth/key}"
     local lib="$REPO_ROOT/scripts/lib/qmd-daemon-env.sh" out="" code=""
+    local cli=""
     case "${QMD_OPENAI_BASE_URL:-}" in
         *openrouter.ai*) ;;
         *) grep -qs '^[^#]*openrouter\.ai' "$cfg" || return 0 ;;
@@ -5175,7 +5189,17 @@ check_c69_qmd_cli_key() {  # t13b-ok: doctor row that reads the key file and ask
             emit FAIL C69-qmd-cli-key "an OpenRouter qmd config but no QMD_OPENAI_API_KEY line in ${out#*:} -- every CLI generate and embed answers 401" \
                 "put a QMD_OPENAI_API_KEY=... line (mode 0600) in ${out#*:}, then restart the qmd daemon" ;;
         no-curl) emit INFO C69-qmd-cli-key "curl not found -- qmd provider key not checked" ;;
-        code:200) emit OK C69-qmd-cli-key "the qmd provider key is present and OpenRouter accepts it" ;;
+        code:200)
+            cli="$(_c69_probe_cli)"
+            case "$cli" in
+                refused)
+                    emit WARN C69-qmd-cli-key "the bare qmd CLI, run with no QMD_OPENAI_API_KEY in its environment, answers 401 although the key file is valid -- a shell that does not export the key cannot embed or vsearch" \
+                        "this stays WARN until the installed qmd launcher loads the qmd provider key file; meanwhile bash scripts/lib/qmd-bounded.sh loads it, and so does a shell that exports QMD_OPENAI_API_KEY from that file" ;;
+                no-qmd) emit INFO C69-qmd-cli-key "the qmd key is accepted but qmd is not installed -- the bare CLI path was not checked" ;;
+                timeout) emit INFO C69-qmd-cli-key "the bare qmd CLI did not answer within its bound -- not a credential verdict" ;;
+                other:*) emit INFO C69-qmd-cli-key "the bare qmd CLI exited ${cli#other:} without a 401 -- not a credential verdict" ;;
+                *) emit OK C69-qmd-cli-key "the qmd provider key is present, OpenRouter accepts it, and the bare qmd CLI is not refused" ;;
+            esac ;;
         code:401|code:403)
             code="${out#code:}"
             emit FAIL C69-qmd-cli-key "OpenRouter answered HTTP $code for the qmd provider key -- every CLI generate and embed fails" \

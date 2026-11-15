@@ -82,8 +82,10 @@ function fixture() {
   const batch = join(dir, 'pending');
   const client = (...a) => run(process.execPath, [CLIENT, ...a], { env, encoding: 'utf8' }).then(
     (r) => ({ code: 0, ...r }), (e) => ({ code: e.code, stdout: e.stdout, stderr: e.stderr }));
-  const submit = (extra = [], model = 'sonnet') => client('submit', '--dir', batch, '--prompts', prompts, '--account', 'A', '--model', model, '--effort', 'high', ...extra);
-  return { dir, env, prompts, prompt, batch, client, submit };
+  const submit = (extra = [], model = 'sonnet') => client('submit', '--dir', batch, '--prompts', prompts, '--account', 'A', '--model', model, '--effort', 'high',
+    ...(extra.includes('--max-usd') ? [] : ['--max-usd', '100']), ...extra);
+  const bare = (...a) => client('submit', '--dir', batch, '--prompts', prompts, '--account', 'A', '--model', 'sonnet', '--effort', 'high', ...a);
+  return { dir, env, prompts, prompt, batch, client, submit, bare };
 }
 const reset = () => { seen.posts.length = 0; seen.gets.length = 0; seen.keys.clear(); stub.create = 'ok'; stub.status = 'in_progress'; stub.errored.clear(); stub.realLine = null; stub.usage = null; };
 
@@ -324,7 +326,7 @@ test('shim: record writes the prompt under its hash, replay answers from the bat
   assert.ok(placeholder.nodes.length > 0, 'a placeholder with no node would be retried by graphify as a hollow reply');
 
   // the recorded prompts go through submit and results, then replay returns the batch's own answer
-  assert.equal((await f.client('submit', '--dir', f.batch, '--prompts', rec, '--account', 'A', '--model', 'sonnet')).code, 0);
+  assert.equal((await f.client('submit', '--dir', f.batch, '--prompts', rec, '--account', 'A', '--model', 'sonnet', '--max-usd', '100')).code, 0);
   stub.status = 'ended';
   assert.equal((await f.client('poll', '--dir', f.batch)).code, 0);
   const res = join(f.dir, 'res');
@@ -355,7 +357,7 @@ test('shim: a resumed batch answers every chunk although graphify\'s instruction
     const r = shim({ GRAPHIFY_BATCH_MODE: 'record', GRAPHIFY_BATCH_DIR: rec, GRAPHIFY_SEMANTIC_ADDENDUM: addendumOld }, prompt('You are the old extractor.', c), ...flags);
     assert.equal(r.status, 0, r.stderr);
   }
-  assert.equal((await f.client('submit', '--dir', f.batch, '--prompts', rec, '--account', 'A', '--model', 'sonnet')).code, 0);
+  assert.equal((await f.client('submit', '--dir', f.batch, '--prompts', rec, '--account', 'A', '--model', 'sonnet', '--max-usd', '100')).code, 0);
   stub.status = 'ended';
   assert.equal((await f.client('poll', '--dir', f.batch)).code, 0);
   const res = join(f.dir, 'res');
@@ -386,4 +388,99 @@ test('shim: a resumed batch answers every chunk although graphify\'s instruction
 test('shim: refuses an argument graphify does not send and a missing mode', () => {
   assert.equal(shim({ GRAPHIFY_BATCH_MODE: 'record', GRAPHIFY_BATCH_DIR: T }, '', '-p', '--dangerous').status, 2);
   assert.equal(shim({}, '', '-p').status, 2);
+});
+
+test('a batch whose estimate is over the budget is refused before submit, one line naming estimate and budget', async () => {
+  reset();
+  const f = fixture();
+  const s = await f.submit(['--max-usd', '0.30']);
+  assert.equal(s.code, 7, `submitted anyway: ${s.stdout}`);
+  assert.match(s.stderr.trim(), /^semantic-batch: estimate 0\.32\d* USD .*2 requests.* is over the budget of 0\.30 USD; nothing submitted$/);
+  assert.equal(seen.posts.length, 0, 'nothing reached the endpoint');
+  assert.equal(existsSync(join(f.batch, 'batch.json')), false, 'no state left behind');
+});
+
+test('a batch within the budget submits, and batch.json records the paying account, the estimate and the budget', async () => {
+  reset();
+  const f = fixture();
+  const s = await f.submit(['--max-usd', '0.33']);
+  assert.equal(s.code, 0, s.stderr);
+  const st = JSON.parse(readFileSync(join(f.batch, 'batch.json'), 'utf8'));
+  assert.equal(st.account, 'A');
+  assert.match(st.estimate_usd, /^0\.320\d{3}$/, 'two requests at about 0.16 USD each');
+  assert.equal(st.budget_usd, '0.33');
+});
+
+test('no budget refuses (fail closed): no flag and no env, a bad value, a zero value', async () => {
+  reset();
+  const f = fixture();
+  const none = await f.bare();
+  assert.equal(none.code, 2);
+  assert.match(none.stderr, /no budget: pass --max-usd or set GRAPHIFY_API_RUN_BUDGET_USD; nothing submitted/);
+  for (const bad of ['abc', '0', '-1', '1e3', '']) {
+    const r = await f.bare('--max-usd', bad);
+    assert.equal(r.code, 2, `'${bad}'`);
+    assert.match(r.stderr, /--max-usd must be a positive decimal/);
+  }
+  assert.equal(seen.posts.length, 0);
+});
+
+test('the budget may come from GRAPHIFY_API_RUN_BUDGET_USD; the flag wins when both are set', async () => {
+  reset();
+  const f = fixture();
+  const args = [CLIENT, 'submit', '--dir', f.batch, '--prompts', f.prompts, '--account', 'A', '--model', 'sonnet', '--effort', 'high'];
+  const env = { ...f.env, GRAPHIFY_API_RUN_BUDGET_USD: '0.30' };
+  const over = await run(process.execPath, args, { env, encoding: 'utf8' }).then(() => ({ code: 0 }), (e) => ({ code: e.code, stderr: e.stderr }));
+  assert.equal(over.code, 7, over.stderr);
+  assert.match(over.stderr, /over the budget of 0\.30 USD/);
+  assert.equal(seen.posts.length, 0);
+  const flagWins = await run(process.execPath, [...args, '--max-usd', '0.33'], { env, encoding: 'utf8' }).then(() => ({ code: 0 }), (e) => ({ code: e.code, stderr: e.stderr }));
+  assert.equal(flagWins.code, 0, flagWins.stderr);
+});
+
+test('the input bound carries a flat framing allowance: a one-byte prompt is bounded above its bytes plus max_tokens', async () => {
+  reset();
+  const f = fixture();
+  rmSync(f.prompts, { recursive: true });
+  mkdirSync(f.prompts);
+  writeFileSync(join(f.prompts, `${sha('x')}.txt`), 'x');
+  const refused = await f.submit(['--max-usd', '0.1601']);
+  assert.equal(refused.code, 7, `the framing tokens were not counted: ${refused.stdout}`);
+  assert.match(refused.stderr, /estimate 0\.1602\d* USD/);
+  assert.equal((await f.submit(['--max-usd', '0.1603'])).code, 0);
+});
+
+test('the input bound counts one token per byte, and the refusal names the largest request bound', async () => {
+  reset();
+  const f = fixture();
+  rmSync(f.prompts, { recursive: true });
+  mkdirSync(f.prompts);
+  const big = 'é'.repeat(50000);
+  writeFileSync(join(f.prompts, `${sha(big)}.txt`), big);
+  const under = await f.submit(['--max-usd', '0.30']);
+  assert.equal(under.code, 7, `a token-dense prompt got through: ${under.stdout}`);
+  assert.match(under.stderr, /estimate 0\.36\d* USD \(1 requests, the largest up to 0\.36\d* USD\)/);
+  const small = 'small prompt';
+  writeFileSync(join(f.prompts, `${sha(small)}.txt`), small);
+  const two = await f.submit(['--max-usd', '0.30']);
+  assert.match(two.stderr, /estimate 0\.52\d* USD \(2 requests, the largest up to 0\.36\d* USD\)/);
+  assert.equal(seen.posts.length, 0);
+});
+
+test('bound prints the figure submit sums, so a planner sizing with it and the gate agree', async () => {
+  reset();
+  const f = fixture();
+  const b = await f.client('bound', '--bytes', '100000', '--model', 'sonnet');
+  assert.equal(b.code, 0, b.stderr);
+  assert.equal(b.stdout.trim(), '0.360200', '100000 bytes plus 100 framing at 2 USD/M, plus 32000 output tokens at 5 USD/M');
+  rmSync(f.prompts, { recursive: true });
+  mkdirSync(f.prompts);
+  const big = 'e'.repeat(100000);
+  writeFileSync(join(f.prompts, `${sha(big)}.txt`), big);
+  const s = await f.submit(['--max-usd', '0.30']);
+  assert.match(s.stderr, /estimate 0\.360200 USD \(1 requests, the largest up to 0\.360200 USD\)/);
+  assert.equal((await f.client('bound', '--bytes', '100000', '--model', 'sonnet', '--max-tokens', '1000')).stdout.trim(), '0.205200');
+  for (const bad of [['--bytes', 'abc', '--model', 'sonnet'], ['--bytes', '10', '--model', 'nope'], ['--bytes', '10', '--model', 'sonnet', '--max-tokens', '0']]) {
+    assert.equal((await f.client('bound', ...bad)).code, 2, bad.join(' '));
+  }
 });
