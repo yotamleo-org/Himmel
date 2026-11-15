@@ -905,7 +905,7 @@ def fxt_probe(x: dict):
         total = sum(float(v.get("duration") or 0) for v in videos)
         dur = int(round(total)) if total > 0 else None
     except (AttributeError, TypeError, ValueError, OverflowError):
-        return "error", None, (0, 0)   # malformed payload: transient, probed again
+        return "error", None, (0, 0)
     # A lone video is the subs-only case; photos or extra videos still need the
     # media download path, so they get their own result.
     return ("video" if len(videos) == 1 and not photos else "video+media"), dur, counts
