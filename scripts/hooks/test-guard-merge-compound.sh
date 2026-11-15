@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Smoke suite for scripts/hooks/guard-merge-compound.sh. HIMMEL_REPO points at a
-# throwaway git repo, so the anchor is a path this suite owns. bash 3.2-safe.
 set -uo pipefail
 
 HOOKS="$(cd "$(dirname "$0")" && pwd)"
