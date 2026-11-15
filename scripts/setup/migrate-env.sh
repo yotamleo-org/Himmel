@@ -565,7 +565,7 @@ replace_file() {  # <new content file> <dest>
         case "$link" in /*) dest=$link ;; *) dest="${dest%/*}/$link" ;; esac
     done
     tmp="$dest.migrate.$$"
-    migtmp=$tmp  # the EXIT trap removes it when a signal lands before the rename
+    migtmp=$tmp
     # prim-ok: cp -p keeps the file's mode, which atomic_write would reset to 600
     if cp -p "$dest" "$tmp" && cat "$1" > "$tmp" && mv -f "$tmp" "$dest"; then migtmp=""; return 0; fi  # read-sink-ok: $1 is always a scratch file this script built
     rm -f "$tmp"; migtmp=""
@@ -748,7 +748,6 @@ fi
 echo "backup: the apply first copies .env (mode 600) to $bdir/env.<UTC time>.<pid>"
 [ "$dry" -eq 0 ] || { echo "dry run: nothing written."; exit 0; }
 poldir=$(_himmel_policy_dir) || { echo "migrate-env: cannot read this account's home from its passwd entry; nothing written." >&2; exit 1; }
-# A copy an earlier interrupted run left beside a store can hold every secret it was moving: name its path, never its content.
 for f in ${envfile:+"$envfile".migrate.[0-9]*} "$confdir"/*.migrate.[0-9]* "$poldir"/*.migrate.[0-9]* "$bdir"/*.migrate.[0-9]*; do
     [ -f "$f" ] && echo "migrate-env: WARN a copy an earlier interrupted run left, which can hold secrets: $f; check it, then delete it."
 done
