@@ -2216,8 +2216,6 @@ rca HIMMEL-9686 5330 2026-11-13T18:08:00Z 2026-11-21T00:10:00Z 2026-11-20 1
 rca HIMMEL-9900 5365 2026-11-14T10:00:00Z 2026-11-17T10:01:00Z 2026-11-21 0
 rca HIMMEL-9900 5365 2026-11-14T10:00:00Z 2026-11-22T00:10:00Z 2026-11-21 1
 
-# --- the sweep and the drift check read GitHub through the read token ---------
-# ttx <env root> [VAR=value ...] <cmd...>: the real scan, the shared two-token stub first on PATH
 ttx() {
     local root="$1"; shift
     : > "$tmp/tt.log"
@@ -2227,7 +2225,7 @@ ttx() {
 ttn() { grep -Ec -- "$1" "$tmp/tt.log" || true; }
 ttany() { [ "$(ttn "$1")" -ge 1 ] && echo yes || echo no; }
 qplant "$tmp/q-tt" 4000 ok
-overflow_fx() { # the 2b overflow scenario: a red required check on a PR whose checks overflow one GraphQL page
+overflow_fx() {
     reset "IN CI"; owned "$K" LIVE '{"state":"live","lock_seen":true,"lock_gone_sweeps":0,"prs":{"11":{"head":"ccc333","ci":"pending","red_latch":false,"open":true}}}'
     pr 11 "[$K] many checks" ccc333; checks 11 fail
     jq -c 'map(.statusCheckRollup = [])' "$FX/pr-list.json" > "$FX/p.t" && mv "$FX/p.t" "$FX/pr-list.json"
@@ -2261,7 +2259,6 @@ check "8691 S6 sweep: a spent main token still applies the UI close" "$(grep '^t
 check "8691 S6 sweep: the title read logs tok=read" "$(ttany '^tok=read argv=pr view 7 --json title')" yes
 check "8691 S6 sweep: and no title read logs tok=main" "$(ttn '^tok=main argv=pr view 7 ')" 0
 
-# a refused read token with main healthy: the pr checks JSON still parses, no gh-read: line in it (I5)
 overflow_fx
 ttx "$tmp/root" GH_STUB_READFAIL=auth bash "$SWEEP" >"$tmp/sout" 2>&1
 contains "8691 S6 sweep: a refused read token is no unknown sweep" "$(cat "$tmp/sout")" "status-sweep: keys="
@@ -2278,7 +2275,6 @@ ttx "$tmp/emptyroot" bash "$SWEEP" >"$tmp/sout" 2>&1
 check "8691 S6 sweep control: an empty root moves the ticket on main" "$(grep '^transition' "$STUB_LOG")" "transition $K In Progress"
 check "8691 S6 sweep control: and logs the list read tok=main" "$(ttn '^tok=main argv=pr list --state open --limit 300 ')" 1
 
-# the drift check: the open-PR list, the per-URL view and both merged-PR slices
 XPR=https://github.com/yotamleo-org/himmel-voice/pull/13
 drift_fx() {
     wipe_docs

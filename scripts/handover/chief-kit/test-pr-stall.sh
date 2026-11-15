@@ -174,10 +174,8 @@ check "RED control: a healthy budget exits 0" "0" "$rc"
 hasnt "RED control: a healthy budget prints no pause line" 'QUOTA-PAUSE|GH-STALL' "$err"
 has "RED control: the healthy run reads the PR list" '^pr list ' "$(cat "$WORK/gh.log")"
 
-# The runs read rides the read token; the PR list and per-PR reads carry
-# mergeStateStatus, which depends on the caller, so they stay on main (invariant I10).
 qplant "$WORK/q-tt" 4000 ok
-ttrun() { # <env root> [VAR=value ...]: the real scan, the shared two-token stub first on PATH
+ttrun() {
     local root="$1"; shift
     : > "$WORK/tt.log"
     out="$(env PATH="$WORK/tt:$PATH" GHLOG="$WORK/tt.log" GH_STUB_DELEGATE="$WORK/bin/gh" GH_STUB_READ_TOKEN="$READTOK" \

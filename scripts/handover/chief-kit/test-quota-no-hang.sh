@@ -591,8 +591,6 @@ no_list_row() {
 
 affect_proceeds() { echo maybe; }
 
-# the terminal gh of the main-reads-out rows: it answers the PR list and the sweep's GraphQL read with an empty repo,
-# which the shared final gh (no output) cannot, so a healthy read lets the scan reach its later stages
 answering_gh() {
     cat > "$cdir/finalgh" <<'STUB'
 #!/usr/bin/env bash
@@ -605,7 +603,7 @@ STUB
     chmod +x "$cdir/finalgh"
 }
 
-read_token_rows() { # <caller> <mode> <failure pattern>: the scan's PR list rode the read token and no main read was spent
+read_token_rows() {
     if grep -qE "$3" <<< "$ROW_OUT"; then
         emit "FAIL $1 $2 read-token-list the scan reports a failed stage: $(grep -oE "$3" <<< "$ROW_OUT" | head -n 1)"
     else
@@ -659,8 +657,6 @@ drive_scans() {
         run_mode focus-refresh.sh "$m" 12 1 bash "$focus" --doc "$doc" --repo o/r
         no_list_row focus-refresh.sh "$m"
     done
-    # Main's reads are out while its quota probes answer, and the read token is healthy:
-    # the PR list rides the read token, so the scan neither fails its stage nor spends a main read
     m=main-reads-out
     AFFECT_FN=affect_proceeds
     rm -rf "$cdir/quota/quota.tsv" "$cdir/ts" "$cdir/doc/focus-state"

@@ -215,8 +215,7 @@ qrun "$WORK/q-ok"
 check "RED control: a healthy budget reads the list and finds the orphan" "1:UNMAPPED 109 fix/himmel-999-quota" "$rc:$out"
 check "RED control: a healthy budget prints no pause line" "0" "$(grep -c 'QUOTA-PAUSE\|GH-STALL' "$WORK/err")"
 
-# The list rides the read token and a rate-limited read is never retried on main (I7)
-ttrun() { # <env root> [VAR=value ...]: the real scan, the shared two-token stub first on PATH
+ttrun() {
     local root="$1"; shift
     : > "$WORK/tt.log"
     out="$(env -u ORPHAN_PR_CHECK_PRS PATH="$WORK/tt:$PATH" GHLOG="$WORK/tt.log" GH_STUB_DELEGATE="$WORK/ghbin/gh" OPC_GH_LOG="$WORK/gh.log" \
