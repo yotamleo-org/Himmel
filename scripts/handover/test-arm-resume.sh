@@ -137,7 +137,8 @@ T-awkfail|T-awkfail
 2192|2192 HIMMEL-2192
 2199|2199 HIMMEL-2199
 2545|2545 HIMMEL-2545
-3118|3118 HIMMEL-3118'
+3118|3118 HIMMEL-3118
+9525|9525 HIMMEL-9525'
 
 _section_alias_known() {
     local _candidate="$1" _label _aliases _alias
@@ -3537,6 +3538,35 @@ assert_contains "3118g unset ambient resolves the same as a set-but-ignored ambi
 
 # Restore the shield dir to its EMPTY default for any later section.
 rm -f "$ARM_RESUME_DOTENV_ROOT/.env"
+fi
+
+# ---------------------------------------------------------------------------
+# Sourcing handover-path.sh mints no cache directory, so arm-resume.sh
+# must mint its own once at top level (_arm_cache_dir_ensure) or its identity
+# lookups lose the memo. A --dry-run arm with sandboxed TMPDIR and HOME and no
+# inherited _ARM_CACHE_DIR leaves exactly one cache dir, holding `identity`; with
+# $HOME/.himmel/state a regular file the stamp's mkdir fails, the arm still exits
+# 0 and still mints exactly one.
+# ---------------------------------------------------------------------------
+if _sec_selected "9525" "HIMMEL-9525"; then
+for _c9525 in a b; do
+    S9525="$TMP/s9525$_c9525"
+    mkdir -p "$S9525/tmp" "$S9525/home/.himmel"
+    [ "$_c9525" = "a" ] || printf 'not a directory\n' > "$S9525/home/.himmel/state"
+    HO_9525=$(make_handover "$WORK_REPO")
+    out=$(env -u _ARM_CACHE_DIR TMPDIR="$S9525/tmp" HOME="$S9525/home" PATH="$SCHED_STUB_T17:$PATH" \
+        bash "$ARM" --time "$(future_time)" --handover "$HO_9525" --dry-run 2>&1)
+    rc=$?
+    assert_rc "9525$_c9525 dry-run arm exits 0" 0 "$rc"
+    n9525=$(find "$S9525/tmp" -maxdepth 1 -name 'arm-resume-cache.*' -type d | wc -l | tr -d ' ')
+    i9525=$(find "$S9525/tmp" -path '*/arm-resume-cache.*/identity' -type f | wc -l | tr -d ' ')
+    if [ "$n9525" = "1" ] && [ "$i9525" = "1" ]; then
+        echo "PASS 9525$_c9525 the arm mints exactly one cache directory and it holds the identity memo"
+    else
+        echo "FAIL 9525$_c9525 expected 1 cache directory holding identity, got $n9525 directories and $i9525 identity files"
+        FAILED=$((FAILED + 1))
+    fi
+done
 fi
 
 # ---------------------------------------------------------------------------
