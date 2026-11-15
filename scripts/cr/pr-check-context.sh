@@ -866,8 +866,8 @@ gitd() { git --no-replace-objects -c core.fsmonitor=false -c core.untrackedCache
 # closure test excludes scripts/jira/dist/.
 # merge-on-green.sh appends its PARTIAL line through chief-kit/append-results.sh,
 # which takes chief-kit/worker-doc-lock.sh and scans the bullet with
-# chief-kit/bucket-gitleaks.sh (which runs chief-kit/vault-status.sh), and writes a
-# partial merge's owed rows through chief-kit/owe.sh, so all five are guarded.
+# chief-kit/bucket-gitleaks.sh (which runs chief-kit/vault-status.sh), so all
+# four are guarded.
 # worker-pr-open.sh runs chief-kit/holds.py narrow (the PR claim), so holds.py is guarded too.
 cr_guarded="scripts/cr scripts/lib scripts/api-lane scripts/ledger scripts/guardrails/lib.sh scripts/check-ci.sh scripts/handover/resolve-active-item.sh
 scripts/eval/cr-ledger/cr_ledger_eval.py scripts/eval/lib/eval_runs.py
