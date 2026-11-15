@@ -3367,3 +3367,12 @@ test("U4: a verdict file for another key is not flagged", async () => {
   expect(lines[0]).toContain(`${US_KEY}-a.md.critic-spec-r1.md`);
   expect(s.out).not.toContain(US_OTHER);
 }, S1B);
+
+test("U5: the seal command single-quotes a verdict path that holds a space or a quote", async () => {
+  const t = specsTree(); expect((await routeCli("round-seed", "--all", t.specs)).code).toBe(0);
+  const a = join(t.dir, `${US_KEY}-a b's.md`); writeFileSync(a, front(US_KEY, "# A\n"));
+  const f = `${a}.critic-spec-r1.md`; writeFileSync(f, ret("SPEC CLEAN"));
+  const lines = unsealedLines((await routeCli("round-status", US_KEY, "--specs", t.specs)).out);
+  expect(lines).toHaveLength(1);
+  expect(lines[0]).toContain(`${sealCmd} '${f.replace(/'/g, "'\\''")}' <file the critic read>`);
+}, S1B);

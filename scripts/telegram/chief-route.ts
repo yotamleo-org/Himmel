@@ -899,7 +899,7 @@ export async function unsealedRounds(specsRoot: string, key: string): Promise<Un
       if (!await isFile(file)) continue;
       const kind = (m[2] ?? m[5]) as Kind; const round = Number(m[3] ?? m[4]);
       if (round <= (Number(seedOf(rows)?.[kind]) || 0) || named.has(await real(file))) continue;
-      out.push({ file, kind, round, command: `bash scripts/handover/chief-kit/critic-seal.sh ${file} <file the critic read> <sha256 the critic quoted>` });
+      out.push({ file, kind, round, command: `bash scripts/handover/chief-kit/critic-seal.sh '${file.replace(/'/g, "'\\''")}' <file the critic read> <sha256 the critic quoted>` });
     }
   }
   return out;
