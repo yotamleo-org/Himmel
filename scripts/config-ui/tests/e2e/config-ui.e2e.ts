@@ -71,7 +71,6 @@ test("5. searching C45 opens Search & graph with the hit row; clearing restores 
 
 test("5b. a slow redraw after typing or clearing the search still ends on the right sections", async ({ page }) => {
   await open(page);
-  // forced-slow redraw: the filter input reaches the page's handler 400 ms late, as a loaded runner delivers it
   await page.evaluate(() => {
     let replay = false;
     document.addEventListener("input", (e) => {
