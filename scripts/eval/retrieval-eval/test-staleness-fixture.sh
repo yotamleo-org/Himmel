@@ -35,7 +35,6 @@ printf '%s | INDEX_PATH=%s QMD_CONFIG_DIR=%s KEY=%s\n' "$*" "${INDEX_PATH:-}" "$
 case "$1" in
 update) mkdir -p "$(dirname "$INDEX_PATH")"; date +%s%N >> "$INDEX_PATH"
     tree="$(sed -n 's/^    path: //p' "$QMD_CONFIG_DIR/index.yml")"
-    # the stub indexes the tree's markdown as <path>TAB<line> rows; a changed document is re-indexed, not appended
     ( cd "$tree" && find . -type f -name '*.md' | sort | while IFS= read -r f; do awk -v p="${f#./}" '{print p "\t" $0}' "$f"; done ) > "$INDEX_PATH.rows"
     { grep -v -F "$(printf '\t')" "$INDEX_PATH"; cat "$INDEX_PATH.rows"; } > "$INDEX_PATH.new" ; mv "$INDEX_PATH.new" "$INDEX_PATH"; rm -f "$INDEX_PATH.rows" ;;
 mcp)
