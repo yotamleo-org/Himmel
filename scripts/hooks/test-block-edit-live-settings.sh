@@ -31,7 +31,7 @@ assert_rc() {
 # The hook's read-only allowlist vetoes `tee` as a command word (any case: the
 # word is folded first), not as a substring. A sandbox path whose
 # random suffix is a standalone `tee` still turns every read-only row that names
-# the fixture into a deny (main red), and the PowerShell text path
+# the fixture into a deny, and the PowerShell text path
 # treats any name-char boundary around `tee` as a word. Keep redrawing the name
 # until it is clear of the substring, and swap in a clean per-run TMPDIR when
 # TMPDIR itself carries it.
@@ -70,7 +70,7 @@ done
 # so a symlinked TMPDIR (macOS /var -> /private/var) spells the primary
 # differently from the root and the text rows read as unrelated paths. That
 # spelling-alias gap in the hook is not tested here; upgrade path is a hook
-# change that canonicalises path words too (filed as a FINDING).
+# change that canonicalises path words too.
 SANDBOX=$(cd -P "$SANDBOX" && pwd -P) || {
     echo "FATAL: cannot resolve $SANDBOX" >&2
     exit 1
@@ -161,7 +161,7 @@ assert_rc "8 EDIT_LIVE_SETTINGS_OK=1 bypass allows" 0 \
 
 # bash_rc_of CWD COMMAND [EXTRA_ENV...] — {tool_name: Bash, tool_input:
 # {command: COMMAND, cwd: CWD}} on stdin, run the hook, echo its exit code.
-# CWD is REQUIRED (not optional) from v2 onward: the unified
+# CWD is REQUIRED (not optional): the unified
 # Bash/PowerShell arm's live-vs-worktree decision is a function of the
 # invoking cwd (resolve_repo_context), not of the mentioned path's own repo
 # the way check_target's target-anchored walk is — an omitted cwd would
@@ -177,9 +177,9 @@ bash_rc_of() {
     echo "$?"
 }
 
-# Second worktree fixture (v2), OUTSIDE the primary's own
+# Second worktree fixture, OUTSIDE the primary's own
 # directory tree. The existing worktree above is nested under
-# .claude/worktrees/ (needed for test 7's traversal-into-primary case); a v2
+# .claude/worktrees/ (needed for test 7's traversal-into-primary case); a
 # cwd-based test needs a worktree whose own absolute path does NOT contain
 # the primary's, so an absolute-path assertion can't pass by coincidence.
 git -C "$SANDBOX/primary" worktree add -q "$SANDBOX/wt2" -b feat/wt2 >/dev/null 2>&1 || {
@@ -424,11 +424,10 @@ assert_rc "51 bash absolute-path /bin/cp into primary .claude/ dir denies" 2 \
 assert_rc "52 bash relative traversal from nested worktree into primary settings.json denies" 2 \
     "$(bash_rc_of "$SANDBOX/primary/.claude/worktrees/feat+x" "echo pwned > ../../../.claude/settings.json")"
 
-# 53 (was a v2 CR round 3 ALLOW control): an unrelated `..` next to the
-# worktree's own settings is now an accepted false deny. Any `..` in a
-# command that names settings voids the worktree exemption (chief ruling
-# on 1146): the hook cannot tell which word the `..` climbs
-# from, and `../../settings.json` from a nested worktree is the primary's.
+# 53: an unrelated `..` next to the worktree's own settings denies. Any `..`
+# in a command that names settings voids the worktree exemption: the hook
+# cannot tell which word the `..` climbs from, and `../../settings.json`
+# from a nested worktree is the primary's.
 assert_rc "53 accepted false deny: unrelated .. beside the worktree's own settings denies" 2 \
     "$(bash_rc_of "$WT2" "cp ../backup-notes.txt .claude/settings.json")"
 
@@ -463,9 +462,9 @@ assert_rc "56 bash quoted dir-dest with no trailing slash denies" 2 \
 assert_rc "57 bash mention of settings.json from a non-git cwd with unresolved HOME denies (fail-closed)" 2 \
     "$(bash_rc_of "$SANDBOX" "echo pwned > .claude/settings.json" -u HOME)"
 
-# 58-74: the post-#1115 fail-opens, each RED against da43ee9f.
+# 58-74: spellings that used to walk past the hook.
 # Every DENY row below has a baseline sibling in rows 9/26/34/B-rows that
-# already denied at da43ee9f, so the row proves the prefix/spelling is what
+# already denied, so the row proves the prefix/spelling is what
 # used to walk past the hook — not that the target was never guarded.
 NESTED_WT="$SANDBOX/primary/.claude/worktrees/feat+x"
 
@@ -518,22 +517,16 @@ assert_rc "69 nested worktree abs write to its own settings.json allows" 0 \
 # per-segment allowlist: a read piped into another read is a
 # chain of read-only segments, and allows.
 #
-# Row 71 briefly ALLOWed (trusting the tokenizer's word
-# list to drop a heredoc-body-only mention) across this ticket's first three
-# commits, on the theory that a heredoc body is prose/data, not a command
-# word. Judge J1282O found that relaxation unsound in three ways at once —
-# the tokenizer's heredoc model diverges from real bash's on `<<` inside an
-# arithmetic context and on a backslash-newline-joined delimiter (so a real
-# top-level write hides inside what the tokenizer thinks is body text), and
-# no denylist of heredoc CONSUMERS that read the body as code can ever be
-# complete (any stdin reader can turn a body into a write). 28 shapes that
-# write, truncate or redirect into a live settings file ALLOWed at that head
-# where base correctly denies all of them. Per the chief's ruling, heredoc-
-# body parsing leaves this hook entirely rather than trying to patch the
-# tokenizer or extend the consumer list further: row 71 goes back to being an
-# accepted false deny, and mentions_settings is a plain raw-text scan again,
-# with no ST_LW rescan overriding it. The 28 shapes are pinned as DENY rows
-# below (J1282O-F1 through J1282O-F3).
+# Row 71: a heredoc whose body only MENTIONS settings.json. The tokenizer's
+# word list alone cannot decide it: its heredoc model diverges from real
+# bash's on `<<` inside an arithmetic context and on a backslash-newline-
+# joined delimiter (so a real top-level write hides inside what the
+# tokenizer thinks is body text), and no denylist of heredoc CONSUMERS that
+# read the body as code can ever be complete (any stdin reader can turn a
+# body into a write). 28 shapes that write, truncate or redirect into a live
+# settings file would ALLOW if the word list were trusted to drop a
+# heredoc-body-only mention, where the raw-text scan denies all of them;
+# they are pinned as DENY rows below.
 assert_rc "70 accepted false deny: harmless cd + worktree settings write denies" 2 \
     "$(bash_rc_of "$WT2" "cd . && echo x > .claude/settings.json")"
 # Reading a heredoc body as data needs shfmt; a host without it keeps the deny (6548i).
@@ -994,23 +987,18 @@ assert_rc "119 jq read of a scratchpad .leg-settings.json file allows" 0 \
 
 # 120 control: the same read, this time redirected into the PRIMARY's live
 # settings.json (a genuine write) -> DENY — proves 119's exemption only
-# covers the read-only verb, not the file itself. (codex-3 panel finding,
-# later round: the earlier version of this control used `jq -i`,
-# which jq does not actually support as a flag — it denied via the hook's
-# textual `-i` scan, not because it was a real write, so it never exercised
-# an actual write path. Replaced with a genuine `>` redirect, a write shape
-# jq truly performs.)
+# covers the read-only verb, not the file itself. The control uses a genuine
+# `>` redirect, a write shape jq truly performs: `jq -i` is no jq flag, so it
+# would deny via the hook's textual `-i` scan without exercising a real write
+# path.
 assert_rc "120 jq read redirected into primary settings.json still denies (control)" 2 \
     "$(bash_rc_of "$PRIMARY" "jq '{add:.permissions.additionalDirectories}' /tmp/claude-1000/somesession/scratchpad/HIMMEL-3514-N424-bridge-hardening.leg-settings.json > .claude/settings.json")"
 
-# 121: the chief's OWN verbatim reproduction (K ruling 2026-09-23 on
-# K-N431-7980c9b9): a `VAR=path;`-prefixed, `;`-compound, TWO-statement
-# read-only `jq` command, from a PRIMARY-checkout cwd. It denied until
-# the per-segment allowlist landed: two panel rounds each found a real bypass in
-# a TEXT-split per-segment allowlist (an assignment shortcut riding past a
-# later write on a newline-embedded segment, then the same class one round
-# later), so the split was reverted to "any bare `;` vetoes". The per-segment
-# check is now done on tokens (_tok_readonly_ok): a newline is a separator
+# 121: a `VAR=path;`-prefixed, `;`-compound, TWO-statement read-only `jq`
+# command, from a PRIMARY-checkout cwd. A TEXT-split per-segment allowlist is
+# bypassable (an assignment shortcut riding past a later write on a
+# newline-embedded segment, and the same class again), so the per-segment
+# check is done on tokens (_tok_readonly_ok): a newline is a separator
 # like `;`, every segment must be an assignment-only segment or one
 # allowlisted read, and an assignment to an exported or sensitive name
 # denies — so this harmless chain allows and 122-126 still deny.
@@ -1028,10 +1016,10 @@ assert_rc "122 VAR=path; write-in-place still denies (control)" 2 \
 assert_rc "123 jq read; write-in-place (no assignment) still denies (control)" 2 \
     "$(bash_rc_of "$PRIMARY" "jq '.permissions.additionalDirectories' /tmp/claude-1000/somesession/scratchpad/HIMMEL-3514-N424-bridge-hardening.leg-settings.json; sed -i s/a/b/ /tmp/claude-1000/somesession/scratchpad/HIMMEL-3514-N424-bridge-hardening.leg-settings.json")" # gnu-ok: fixture text parsed by the hook, never executed
 
-# 124: a `|` INSIDE a quoted jq filter argument (`test("a|b")`) read as a
-# real shell pipe once quotes were stripped (the earlier text scan), and the
-# command also carried a bare `;`, so it denied twice over. The tokenizer
-# keeps the quoted `|` inside its word, so it allows.
+# 124: a `|` INSIDE a quoted jq filter argument (`test("a|b")`) is not a
+# shell pipe: a text scan that strips quotes would read it as one, and the
+# command also carries a bare `;`. The tokenizer keeps the quoted `|` inside
+# its word, so it allows.
 assert_rc "124 VAR=path; jq with a quoted-pipe regex filter allows (quote-aware)" 0 \
     "$(bash_rc_of "$PRIMARY" "SP=/tmp/claude-1000/somesession/scratchpad; jq '[.permissions.allow[]? | select(test(\"luna|handover\"))]' \$SP/HIMMEL-3514-N424-bridge-hardening.leg-settings.json")"
 
@@ -1051,10 +1039,9 @@ CMD126=$'X=1\nsed -i s/a/b/ .claude/settings.json; jq \'.foo\' .claude/settings.
 assert_rc "126 newline-in-segment write still denies" 2 \
     "$(bash_rc_of "$PRIMARY" "$CMD126")"
 
-# 127-131: named residuals from PR #1146 — extract
-# and checkout tools that clobber a live .claude/ without going through the
-# cp/mv/install/rsync/ln/dd/tee verb list or naming settings.json in the text.
-# Each RED against 6cba9613 (the merge base for this ticket).
+# 127-131: extract and checkout tools that clobber a live .claude/ without
+# going through the cp/mv/install/rsync/ln/dd/tee verb list or naming
+# settings.json in the text.
 assert_rc "127 git checkout <ref> -- .claude from primary denies (probe 1)" 2 \
     "$(bash_rc_of "$PRIMARY" "git checkout origin/x -- .claude")"
 assert_rc "128 tar -x -C .claude from primary denies (probe 2)" 2 \
@@ -1079,22 +1066,19 @@ assert_rc "134 unzip -d .claude from a worktree (own dir) allows" 0 \
 assert_rc "135 git restore --source=HEAD -- .claude from a worktree (own dir) allows" 0 \
     "$(bash_rc_of "$WT2" "git restore --source=HEAD -- .claude")"
 
-# 136: accepted false deny, documented (same shape as the
-# cd/pushd precedent). tar's OWN directory flag is `-C`, the same
+# 136: tar's OWN directory flag is `-C`, the same
 # spelling changes_directory() already treats as "the target may have moved,
 # void the worktree-relative exemption" for `git -C`/`env -C`/`make -C`. That
 # blunt rule cannot distinguish tar's `-C .claude` (which NAMES its own
 # destination, not an unrelated cwd shift) from a genuine directory jump, so
-# it denies this worktree's own extraction too. Accepted: matches the
+# it denies this worktree's own extraction too. It stays denied: that matches the
 # project's stated preference (fail closed, prefer false positive) and needs
 # no new parsing to fix.
 assert_rc "136 tar -x -C .claude from a worktree (own dir) denies (accepted false deny)" 2 \
     "$(bash_rc_of "$WT2" "tar -xf a.tar -C .claude")"
 
-# 137-149 (adversarial round on PR #1210): fixes for
-# false-denies and false-positives the panel found in the first fix
-# itself, verified against the panel's own probe corpus
-# (scratchpad/{run.sh,cases,cases2,cases3}.txt) before being written here.
+# 137-149: rows for the false-denies and false-positives of the checkout, tar
+# and unzip recognition added for 127-131.
 
 # 137-138: a `.claude/worktrees/<name>` mention is a CONTAINER path, not a
 # destination — every linked worktree lives there, so an ordinary
@@ -1155,18 +1139,18 @@ assert_rc "147 grep for the word restore (no git verb) allows" 0 \
 assert_rc "148 git --work-tree=. checkout -- .claude (non-adjacent git flag) still denies" 2 \
     "$(bash_rc_of "$PRIMARY" "git --work-tree=. checkout x -- .claude")"
 
-# 149 control: the four probes still deny after the redesign —
-# regression guard for the fix this panel round revised.
+# 149 control: probe 1 still denies once the false-deny fixes above apply
+# (regression guard).
 assert_rc "149 git checkout <ref> -- .claude from primary still denies (probe 1 regression guard)" 2 \
     "$(bash_rc_of "$PRIMARY" "git checkout origin/x -- .claude")"
 
-# 150-153 (fourth round on #1210, F1 IMPORTANT): a `..`
+# 150-153: a `..`
 # after the `.claude/worktrees/` container-path strip climbs back OUT of the
 # worktrees container into the primary's own `.claude` — the strip must not
 # apply when `..` appears anywhere, mirroring mentions_primary_or_home()'s
 # own-root blanking rule for the identical reason (the hook never resolves
 # `..`, so refusing to strip is what keeps the climb visible to the
-# existing `..` live-check rule). All 4 gave rc=0 everywhere before this fix.
+# existing `..` live-check rule).
 assert_rc "150 cp -r x/. into <primary>/.claude/worktrees/.. denies" 2 \
     "$(bash_rc_of "$WT2" "cp -r x/. $PRIMARY/.claude/worktrees/..")"
 assert_rc "151 rsync -a into <primary>/.claude/worktrees/../ denies" 2 \
@@ -1176,12 +1160,11 @@ assert_rc "152 cp -r x/. into relative .claude/worktrees/.. from primary denies"
 assert_rc "153 cp -r x/. into <nested-worktree>/../../ denies" 2 \
     "$(bash_rc_of "$WT2" "cp -r x/. $NESTED_WT/../../")"
 
-# 154-158 (fourth round on #1210, F2 MED): the tar/unzip
+# 154-158: the tar/unzip
 # mode check is scoped to the shell SEGMENT containing the verb (split on
 # `;`, `&`, `|`, `#`) — a chained or commented trailing token used to spoof
-# it via a coincidental ` -t`/` -c`/` -l`/` -v` elsewhere in the command. All
-# 5 gave rc=0 everywhere before this fix, despite a genuine extraction into
-# a live $HOME/.claude target.
+# it via a coincidental ` -t`/` -c`/` -l`/` -v` elsewhere in the command, so these must still deny: each is a genuine
+# extraction into a live $HOME/.claude target.
 assert_rc "154 tar -C \$HOME/.claude then a chained ls -t still denies" 2 \
     "$(bash_rc_of "$PRIMARY" "tar -xzf a.tgz -C \$HOME/.claude; ls -t" HOME="$FAKEHOME")"
 assert_rc "155 tar -C \$HOME/.claude then && bash -c true still denies" 2 \
@@ -1193,10 +1176,9 @@ assert_rc "157 unzip -d \$HOME/.claude then && ls -l still denies" 2 \
 assert_rc "158 unzip -d \$HOME/.claude with a trailing -x -v still denies" 2 \
     "$(bash_rc_of "$PRIMARY" "unzip -o a.zip -d \$HOME/.claude -x -v" HOME="$FAKEHOME")"
 
-# 159 (fourth round on #1210, F3 LOW): checkout/restore's
-# git-co-occurrence check is scoped to the same segment too — "git" in a
-# LATER, unrelated chained command must not make an unrelated read look like
-# a git-checkout write. Gave rc=2 everywhere before this fix.
+# 159: checkout/restore's git-co-occurrence check is scoped to the same
+# segment too — "git" in a LATER, unrelated chained command must not make an
+# unrelated read look like a git-checkout write.
 assert_rc "159 cat of a checkout.md file, then && git status (unrelated segment), allows" 0 \
     "$(bash_rc_of "$PRIMARY" "cat \$HOME/.claude/checkout.md && git status" HOME="$FAKEHOME")"
 
@@ -1397,9 +1379,10 @@ HIMMEL_3675_CMD="bash \"$NESTED_WT/scripts/cr/impacted-suites.sh\" --check ${SHA
 SUITE scripts/himmelctl/test/test-wizard-install-engine.sh reason
 IMPACTED_EOF"
 
-# 191: the exact N558 shape -> ALLOW (FAILS at base with a false
-# DENY: the `..` in the SHA range voids the .claude/worktrees container-path
-# strip, compounding with the heredoc body's coincidental "install" match).
+# 191: `impacted-suites --check <base>..<head>` with a heredoc body -> ALLOW.
+# The `..` in the SHA range must not void the .claude/worktrees container-path
+# strip, which would compound with the heredoc body's coincidental "install"
+# match into a false DENY.
 assert_rc "191 impacted-suites --check <base>..<head> heredoc from a worktree allows" 0 \
     "$(bash_rc_of "$NESTED_WT" "$HIMMEL_3675_CMD")"
 
@@ -1419,11 +1402,11 @@ assert_rc "195 cp into primary settings.json (double slash) denies" 2 \
 assert_rc "196 mv into primary .claude dir denies" 2 \
     "$(bash_rc_of "$NESTED_WT" "mv x \"$PRIMARY/.claude/\"")"
 
-# 197-204 (judge NO-GO): has_traversal_dots previously
-# required a non-name character on BOTH sides of a literal `..`, so a `..`
-# glued to a short option (`-t..`, `-d..`, `-sft..` — a letter immediately to
-# its left) was never counted as traversal, letting these writes through to
-# a real live settings.json/dir undetected. Two more worktree fixtures:
+# 197-204: has_traversal_dots must count a `..` glued to a short option
+# (`-t..`, `-d..`, `-sft..` — a letter immediately to its left) as
+# traversal; requiring a non-name character on BOTH sides of a literal `..`
+# lets these writes through to a real live settings.json/dir undetected.
+# Two more worktree fixtures:
 # HOMEWT sits directly under a fake $HOME, WTDIRECT directly under the
 # primary itself (neither nested under .claude/worktrees/). Every row below
 # must DENY at head.
@@ -1455,10 +1438,8 @@ assert_rc "203 cp -t glued traversal from a worktree under HOME denies" 2 \
 assert_rc "204 cp -t glued traversal from a worktree directly under primary denies" 2 \
     "$(bash_rc_of "$WTDIRECT" "cp -t../.claude settings.json")"
 
-# 205-211 ("Out of scope, noted" follow-ups): a relative
-# dir-dest climb, a brace-hidden traversal, and a write through a
-# pre-existing symlink all ALLOWed at base (#1313 left these
-# three untouched) and must DENY now.
+# 205-211: a relative dir-dest climb, a brace-hidden traversal, and a write
+# through a pre-existing symlink must all DENY.
 
 # 205: `cp -r x/. ../..` from the nested worktree climbs LEXICALLY all the
 # way back to the primary's own .claude/ itself — no literal ".claude" or
@@ -1559,7 +1540,7 @@ ln -s "$DANGLE_PRIMARY/notes/plan.json" "$WT2/dangle-link-safe"
 assert_rc "216 cp y through a dangling symlink to a non-settings path allows" 0 \
     "$(bash_rc_of "$WT2" "cp y dangle-link-safe")"
 
-# 217: round-5 codex-3 — lex_resolve's `for part in $joined`
+# 217: lex_resolve's `for part in $joined`
 # word-split (with IFS=/) is also subject to bash's default pathname (glob)
 # expansion, which runs against the HOOK SUBPROCESS'S OWN real cwd —
 # unrelated to either BASE or the path being resolved — so a write-
@@ -1616,7 +1597,7 @@ else
     FAILED=$((FAILED + 1))
 fi
 
-# 218: CodeRabbit (round-6) — the TOK=0 fallback's own
+# 218: the TOK=0 fallback's own
 # `for w in $cmd_n; do _check_write_operand "$w"; done` (used whenever the
 # tokenizer can't fully vouch for the command text, e.g. a heredoc is
 # present) is UNQUOTED, so it is also subject to pathname (glob) expansion
@@ -1651,8 +1632,8 @@ else
     FAILED=$((FAILED + 1))
 fi
 
-# 219-238 (I1-I4): four pre-existing ways a live
-# settings.json landed past the guard. Each DENY row below ALLOWed at base.
+# 219-238: four ways a live settings.json could land past the guard; each
+# DENY row below covers one (I1-I4).
 
 # I1: a symlinked DIRECTORY (-> the primary's .claude/) used as the
 # destination; the leaf of the resolved path is not a settings name.
@@ -1713,8 +1694,8 @@ assert_rc "237 cp -rt../other x/. (stays inside worktrees/) allows" 0 \
 assert_rc "238 cp --target-directory=../other x/. allows" 0 \
     "$(bash_rc_of "$NESTED_WT" "cp --target-directory=../other x/.")"
 
-# 239-256 (judge NO-GO on #1513): two regressions the first
-# cut introduced and three trivial siblings of I3/I4 it left open.
+# 239-256: regression guards for the I1-I4 handling (C1 onward) and three
+# trivial siblings of I3/I4.
 
 # C1: the nearest-.claude walk must terminate on a Windows drive-form path
 # (canon() returns `C:/...` there, and `${d%/*}` of `C:` is `C:` forever).
@@ -1772,8 +1753,7 @@ assert_rc "254 ls src/{a,b}/x.ts (brace word with no climb) allows" 0 \
 assert_rc "255 jq with a brace object word and no path separator allows" 0 \
     "$(bash_rc_of "$NESTED_WT" "jq '{a: .x, b: .y}' in.json")"
 
-# 257-290 (judge on #1513): three pre-existing bypasses.
-# Each DENY row ALLOWed at base d43bef1bb.
+# 257-290: three bypasses of the guard; each DENY row below covers one.
 ln -s "$PRIMARY" "$WT2/plink"
 mkdir -p "$WT2/src2/.claude" "$WT2/src" "$WT2/srcloc/.claude"
 printf '{}\n' > "$WT2/src2/.claude/settings.json"
@@ -2785,7 +2765,7 @@ assert_rc "615 nested worktree /usr/bin/cat <<'EOF' to /tmp/notes.md naming ~/.c
 the hook folds ~/.cl\$(printf a)ude now
 EOF" HOME="$FAKEHOME")"
 
-# 630-683: the 1773 out-of-scope gaps. rows_both FIRST WANT
+# 630-683: rows_both FIRST WANT
 # LABEL reads one command per line and asserts it from the nested worktree
 # AND the primary. @P@ is the primary checkout, @H@ the fake home, and a
 # literal two-character \n is a newline (the heredoc rows). @AFS@ is the node
@@ -2882,7 +2862,7 @@ jq '{a:1}' /tmp/a.json > ~/.claude/settings.json
 awk '{print}' /tmp/a > ~/.claude/settings.json
 git -C @P@ diff main | tee ~/.claude/settings.json
 ROWS
-# 684-705 (pr-check): the interpreter write and home
+# 684-705: the interpreter write and home
 # APIs stay matched when the call has whitespace before `(` or around `.`
 # (python, node, perl and ruby all allow it), when ruby calls without parens,
 # and for the os.open/sysopen/openSync and Path.open('w') write forms.
@@ -2913,7 +2893,7 @@ node -e "require('fs').writeFileSync (require('os').homedir()+'/.cl'+'aude/sett'
 node -e "require('fs').@AFS@ (require('os').homedir()+'/.cl'+'aude/sett'+'ings.json','x')"
 perl -e 'open (F,">",$ENV{HOME}."/.cl"."aude/sett"."ings.json")'
 ROWS
-# 706-711 (pr-check): blanks around `mode =`, a `;`
+# 706-711: blanks around `mode =`, a `;`
 # inside a string literal, and a backslash line continuation (LF or CRLF;
 # the row's literal \\n / \\r\n decode to backslash + LF / CRLF) do not end
 # the open-mode match.
@@ -2925,7 +2905,7 @@ python3 -c "from pathlib import Path; open(str(Path.home())+'/.cl'+'aude/sett'+'
 python3 -c "from pathlib import Path; open \\n(str(Path.home())+'/.cl'+'aude/sett'+'ings.json','w')"
 python3 -c "from pathlib import Path; open \\r\n(str(Path.home())+'/.cl'+'aude/sett'+'ings.json','w')"
 ROWS
-# 712-749 (pr-check): a file-mutating API whose name
+# 712-749: a file-mutating API whose name
 # carries no write/open token (io.FileIO, os.truncate/remove/chmod/makedirs,
 # Path.unlink/replace, fs.rm/unlink/truncate/cp, File.delete/new, IO.binwrite,
 # perl unlink/truncate/rename/chmod/+<) still pairs with the home API.
@@ -3212,7 +3192,7 @@ for c in "env -S 'tee ~/.claude/sett\\x69ngs.json'" "env -S 'sh\\_-c\\_\"echo x 
         "$(bash_rc_of "$NESTED_WT" "$c" HOME="$FAKEHOME")"
     n=$((n + 1))
 done
-# 9530-9547 (#1 + ruling c/b): env splices the decoded words back into
+# 9530-9547: env splices the decoded words back into
 # its own argv and getopt re-parses them, so a decoded first word that is an
 # env option (-S, -C, -i, -u, --split-string) or a NAME=VALUE assignment is
 # refused by shape; env's options are not modelled inside -S text.
@@ -3272,7 +3252,7 @@ ROWS
 # a harmless one after them still allows
 assert_rc "9591/wt env -a X -S decoded harmless allows" 0 \
     "$(bash_rc_of "$NESTED_WT" "env -a X -S 'echo a\\_b'" HOME="$FAKEHOME")"
-# 9570-9577 (#2): decoder coverage — the escapes v f #,
+# 9570-9577: decoder coverage — the escapes v f #,
 # a literal quote, a second allowlisted first word, the --split-string= and
 # -vS spellings, /usr/bin/env and `command env` on the decoded path.
 rows_both 9570 0 "env -S decoded harmless text (escapes, spellings, wrappers) allows" <<'ROWS'
@@ -3295,7 +3275,7 @@ ROWS
 # the escape r in text, written as a CR byte by rows_both's own unescaping
 assert_rc "9590/wt env -S \\r escape allows" 0 \
     "$(bash_rc_of "$NESTED_WT" "env -S 'echo a\\rb'" HOME="$FAKEHOME")"
-# 9440-9448 (B1): an extglob leaf with two or more groups
+# 9440-9448: an extglob leaf with two or more groups
 # (`@(settings).js@(on)`, `@(settings)@(.json)`) under a live .claude denies.
 rows_both 9440 2 "an extglob leaf with 2+ groups under a live .claude denies" <<'ROWS'
 echo x > ~/.claude/@(settings).js@(on)
@@ -3308,7 +3288,7 @@ echo x > @P@/.claude/@(settings).js@(on)
 cd ~/.claude && echo x > @(settings).js@(on)
 shopt -s extglob\necho x > ~/.claude/@(settings).js@(on)
 ROWS
-# 9450-9455 (B2): a glob write whose cwd a cd moved
+# 9450-9455: a glob write whose cwd a cd moved
 # unprovably (an eval/bash -c body after the cd, a `..` target, CDPATH), and a
 # direct `..` target, deny.
 rows_both 9450 2 "a glob write after an unproven cd, or through a .. target, denies" <<'ROWS'
@@ -3319,7 +3299,7 @@ CDPATH=~ cd .claude && echo x > sett*.json
 export CDPATH=~; cd .claude; echo x > sett*.json
 echo x > ~/.config/../.claude/sett*.json
 ROWS
-# 9460-9464 (B3): the file a heredoc was written to, run
+# 9460-9464: the file a heredoc was written to, run
 # under a glob that matches it, voids the data read.
 rows_both 9460 2 "a written heredoc file run under a glob name denies" <<'ROWS'
 cat <<'EOF' > /tmp/d/gx.sh\necho x > ~/.cl$(printf a)ude/settings.json\nEOF\ngx.s?
@@ -3456,7 +3436,7 @@ cat claude.txt | grep 'a$' | bash
 f=x grep 'x$' claude
 grep 'a$' claude.txt | tee /tmp/claude-1000/o
 ROWS
-# 1000-1002 (judge T1): bash extquote decodes a `$'…'`
+# 1000-1002: bash extquote decodes a `$'…'`
 # inside a double-quoted `${…}`, so that word is live ANSI-C and the quoted
 # `$'` relaxation must not apply. A plain quoted `$'` stays text; an unquoted
 # one stays denied.
@@ -3490,10 +3470,10 @@ if command -v node >/dev/null 2>&1; then
     # 680 stops at 3000 words: 6000 of them (162 KB) pass the kernel's
     # 128 KiB single-argument cap that bash_rc_of's jq --arg hits.
     # shellcheck disable=SC2088 # literal ~ is payload text the hook must see
-    # 679/6000 ran 3.2 s alone but 13.0 s beside one other suite
-    # (CPU pressure ~29 %, worker N1182); budget = loaded figure x2 = 26 s. The rest
-    # of this suite's timed rows peak at 1.8 s alone (680/3000), so the same
-    # ~4x load factor leaves them well inside the 12 s default.
+    # 679/6000 runs 3.2 s alone but 13.0 s beside one other suite under CPU
+    # pressure, so its budget is that loaded figure x2 = 26 s. The rest of this
+    # suite's timed rows peak at 1.8 s alone (680/3000), so the same ~4x load
+    # factor leaves them well inside the 12 s default.
     for nw in 1500 3000 6000; do
         ob=$TIMING_BUDGET_MS
         [ "$nw" -lt 6000 ] || TIMING_BUDGET_MS=26000
@@ -3523,10 +3503,9 @@ if command -v node >/dev/null 2>&1; then
             "echo $(rep "$((sz / 19))" '(a) ((b)) {c} [d] ')"
     done
     TIMING_BUDGET_MS=$ob
-    # 831-832: each eval re-judged every later eval in
-    # its segment, so the cost doubled per eval word (8 words 2.7 s, 10 words
-    # 22 s). An eval word that is not the command is not a body, and nesting
-    # stops at the depth cap; each must finish well inside 3 s.
+    # 831-832: the cost must not double per eval word (an eval word that is not
+    # the command is not a body), and nesting stops at the depth cap; each
+    # must finish well inside 3 s.
     ob=$TIMING_BUDGET_MS TIMING_BUDGET_MS=3000
     for ne in 8 10 12; do
         timed_rc "831/$ne echo with $ne eval words allows" 0 "echo $(rep "$ne" 'eval ')"

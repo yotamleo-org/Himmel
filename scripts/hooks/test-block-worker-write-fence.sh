@@ -1222,7 +1222,7 @@ fi
 # means a case was silently dropped (or an early exit skipped the tail) even
 # though nothing FAILED. Update EXPECTED_CASES deliberately when adding/
 # removing a case.
-EXPECTED_CASES=244   # rows held only by the removed GLM tail dropped; +1 hooks.json registration row
+EXPECTED_CASES=244   # includes the hooks.json registration row
 if [ "$CASES" -ne "$EXPECTED_CASES" ]; then
     echo "CASE-COUNT MISMATCH — ran $CASES, expected $EXPECTED_CASES"
     exit 1
