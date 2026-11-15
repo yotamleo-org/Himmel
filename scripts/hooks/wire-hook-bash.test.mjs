@@ -259,7 +259,7 @@ test('refuses a known hook script in the wrong inventory entry', () => {
 
     const result = invoke(fixture);
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /script inventory mismatch: expected guard-identical-denied-retry\.sh, found auto-approve-safe-bash\.sh/);
+    assert.match(result.stderr, /script inventory mismatch: expected guard-identical-denied-retry\.sh, found guard-merge-compound\.sh/);
     assert.equal(readFileSync(fixture, 'utf8'), before);
   });
 });

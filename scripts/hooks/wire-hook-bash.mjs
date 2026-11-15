@@ -48,6 +48,7 @@ export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   // FIRST, so the stuck-playbook pointer is what the agent reads on a third identical
   // retry: any later member that also refuses these bytes would otherwise win with its own message.
   'guard-identical-denied-retry.sh',
+  'guard-merge-compound.sh',
   'auto-approve-safe-bash.sh',
   'check-cr-marker-on-pr-create.sh',
   'block-fork-sync-pr.sh',
