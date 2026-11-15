@@ -255,7 +255,6 @@ jlrc=0; (cd "$WTR" && env -u HANDOVER_DIR -u HIMMEL_CONFIG_DIR -u JUDGE_LADDER_S
 check "a linked worktree: judge-ladder writes under the primary env's root" "$jlrc $([ -f "$CFG/.judge-ladder" ] && echo yes)" "0 yes"
 lacks "a linked worktree: judge-ladder prints no load-dotenv advisory" "$(cat "$tmp/err")" "load-dotenv: .env absent under worktree"
 
-# --- run from a folder outside the checkout, the real chains graph still reads the checkout that holds the script
 CGR="$tmp/cgrrepo"; ELSE="$tmp/elsewhere"
 rm -rf "$CGR" "$ELSE"
 mkdir -p "$CGR/scripts/handover" "$CGR/scripts/ci" "$ELSE"
