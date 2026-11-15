@@ -258,7 +258,8 @@ ia_zero="$(ic_tick)"; ia_rc=$?
 same 'INTAKE at 0 leaves the tick exiting 0' "$ia_rc" 0
 contains 'INTAKE at 0 still prints the pool field of a real tick' "$ia_zero" ' pool='
 not_contains 'INTAKE at 0 prints no INTAKE field and no age, whatever the clock file says' "$ia_zero" ' INTAKE'
-ia_zero_v="$(ic_tick --verbose)"
+ia_zero_v="$(ic_tick --verbose)"; ia_rc=$?
+same 'INTAKE at 0 leaves the verbose tick exiting 0' "$ia_rc" 0
 contains 'INTAKE at 0 reads intake: 0 on the plain line' "$ia_zero_v" 'intake: 0'
 not_contains 'INTAKE at 0 prints no oldest age on the plain line' "$ia_zero_v" 'oldest'
 sed -e 's/^labels: \[\]/labels: ["operator-directed"]/' -e 's/904/905/g' "$OW/HIMMEL-904.md" > "$PDI/HIMMEL-905.md"
