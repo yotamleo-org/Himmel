@@ -1158,7 +1158,6 @@ hnow 0
 driftenv TICKET_STATUS_AWAIT_TTL_OPERATOR=2h
 contains "9561 S2 6: TTL_OPERATOR=2h makes an operator hold due in 2 h" "$(drows AWAITING)" "due=$(iso_e $(($(epoch_of "$(hts)") + 7200))) "
 
-# 10224: a hold whose --on ticket is Done is HOLD-STALE, not a quiet wait
 OB=HIMMEL-9002
 onmirror() { mkdir -p "$tmp/mirror"; printf -- '---\nkey: "%s"\ntype: "Task"\nstatus: "%s"\n---\n' "$OB" "$1" > "$tmp/mirror/$OB.md"; }
 d6fx

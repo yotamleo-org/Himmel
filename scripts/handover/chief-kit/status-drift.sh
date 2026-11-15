@@ -290,13 +290,11 @@ has_label() {
     # swallow-ok: an unreadable ticket is not labelled, so its rows stay
     jq -e --arg l "$2" '(.fields.labels // []) | index($l)' >/dev/null 2>&1 <<<"$(ts_jira get "$1" --json 2>/dev/null)"
 }
-# hold_on <KEY>: the `on` ticket of the key's newest hold row (the row ts_owner reads), else empty
 hold_on() {
     # swallow-ok: unreadable rows name no on ticket, so the hold reads as before
     jq -Rrs --arg k "$1" '[split("\n")[] | fromjson? | select(type == "object" and .key == $k and (.event == "hold" or .event == "hold-release") and .result == "moved")]
         | last // empty | select(.event == "hold") | (.on // "") | select(type == "string" and test("^[A-Z][A-Z0-9]*-[0-9]+$"))' <<<"${mergeout:-}" 2>/dev/null
 }
-# mirror_done <KEY>: rc 0 when the key's mirror file says status Done; no file or no status line is rc 1
 mirror_done() {
     local st
     [ -r "$MIRROR_DIR/$1.md" ] || return 1
