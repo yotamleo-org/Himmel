@@ -14,7 +14,7 @@ released and the page says "release state unknown". The plan's own views sit fol
 
 USAGE
     node scripts/jira/dist/index.js mirror
-    node scripts/jira/dist/index.js versions > ~/.himmel/state/jira-mirror/HIMMEL.versions.tsv
+    node scripts/jira/dist/index.js versions > ~/.himmel/state/jira-mirror/<KEY>.versions.tsv
     python3 tracker.py --plan-dir <HIMMEL-3882 plan dir> --out <tracker.html> --luna-map <luna-map.json>
         [--mirror-dir DIR] [--versions-file FILE] [--luna-root DIR] [--handovers DIR] [--jira-base-url URL] [--refresh-luna]
     python3 tracker.py ... --emit-fp     print the freshness fingerprint and exit
@@ -45,9 +45,40 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib'))
 from env_alias import legacy_names_on
 
-MIRROR = os.path.expanduser('~/.himmel/state/jira-mirror/HIMMEL')
-LUNA = os.path.expanduser('~/Documents/luna')
-HANDOVERS = ''
+MIRROR = LUNA = HANDOVERS = ''
+LIB = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib')
+
+
+def lib_call(lib, body, *args):
+    """stdout of one bash line run after sourcing scripts/lib/<lib>; SystemExit when it fails, so no default is guessed."""
+    r = subprocess.run(['bash', '-c', '. "$1/%s" && %s' % (lib, body), 'tracker', LIB] + list(args),
+                       capture_output=True, text=True, timeout=60)
+    if r.returncode != 0 or not r.stdout.strip():
+        raise SystemExit('tracker: scripts/lib/%s resolved nothing (%s)' % (lib, r.stderr.strip() or 'no output'))
+    return r.stdout.strip()
+
+
+def jira_project_key():
+    """The Jira project key: JIRA_PROJECT_KEY, else himmel.conf or .env, else the resolver's default."""
+    return lib_call('jira-project.sh', 'jira_project_key')
+
+
+def default_mirror():
+    """HIMMEL_JIRA_MIRROR, else the mirror directory of the configured project key."""
+    return lib_call('jira-project.sh', 'jira_mirror_dir')
+
+
+def default_luna():
+    """LUNA_VAULT_PATH from the env, .env or himmel.conf, else the ~/Documents/luna convention."""
+    r = subprocess.run(['bash', '-c', '. "$1/load-dotenv.sh" && load_dotenv LUNA_VAULT_PATH >/dev/null 2>&1; printf %s "${LUNA_VAULT_PATH:-}"',
+                        'tracker', LIB], capture_output=True, text=True, timeout=60)
+    return os.path.expanduser(r.stdout.strip() or '~/Documents/luna')
+
+
+def default_handovers(luna):
+    """<luna>/handovers/<user slug>/himmel, the slug from USER_SLUG (env, .env, himmel.conf), else the forge or git login."""
+    slug = lib_call('load-dotenv.sh', 'load_dotenv USER_SLUG >/dev/null 2>&1; . "$1/user-slug.sh" && user_slug')
+    return os.path.join(luna, 'handovers', slug, 'himmel')
 LAYERS = ['bugs', 'enhancements', 'features', 'misc', 'audit']
 VER_RE = re.compile(r'^v1\.0\.(\d+)([a-z]?)$')  # a trail '<version>a', 'b', ... takes its parent's overflow (HIMMEL-4026)
 # the train is every v1.N.x: v1.0.x, the v1.1.x line (ex v1.0.2b..h) and the milestone minors v1.2.0+.
@@ -629,13 +660,13 @@ def jira_parity(tk, vers, cur):
     unavailable, never a render failure."""
     if cur < 0:
         return 'parity: unavailable (no version worked on)'
-    v, cli = vers[cur]['n'], jira_cli()
+    v, cli, pk = vers[cur]['n'], jira_cli(), jira_project_key()
     cmd = (['node', cli] if cli.endswith('.js') else [cli]) + [
-        'list', '--jql', 'project = HIMMEL AND fixVersion = "%s" AND NOT (statusCategory = Done AND resolution is not EMPTY '
-        'AND resolution not in (Done, Fixed))' % v, '--limit', '5000']
+        'list', '--jql', 'project = %s AND fixVersion = "%s" AND NOT (statusCategory = Done AND resolution is not EMPTY '
+        'AND resolution not in (Done, Fixed))' % (pk, v), '--limit', '5000']
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=60,
-                           env=dict(os.environ, JIRA_PROJECT_KEY=os.environ.get('JIRA_PROJECT_KEY') or 'HIMMEL'))
+                           env=dict(os.environ, JIRA_PROJECT_KEY=pk))
     except (OSError, subprocess.SubprocessError):
         return 'parity: %s unavailable' % v
     lines = [l.split('\t') for l in r.stdout.splitlines() if l.strip()]
@@ -1324,12 +1355,12 @@ def worker_line(rec):
 def column_parity(version, cols):
     """{column: (jira count, [differing keys as text])} from one live `jira list` of the version's open tickets, compared
     with the page's {column: [ticket numbers]}; None when the CLI fails or answers garbled."""
-    cli = jira_cli()
+    cli, pk = jira_cli(), jira_project_key()
     cmd = (['node', cli] if cli.endswith('.js') else [cli]) + [
-        'list', '--jql', 'project = HIMMEL AND fixVersion = "%s" AND statusCategory != Done' % version, '--limit', '5000']
+        'list', '--jql', 'project = %s AND fixVersion = "%s" AND statusCategory != Done' % (pk, version), '--limit', '5000']
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=60,
-                           env=dict(os.environ, JIRA_PROJECT_KEY=os.environ.get('JIRA_PROJECT_KEY') or 'HIMMEL'))
+                           env=dict(os.environ, JIRA_PROJECT_KEY=pk))
     except (OSError, subprocess.SubprocessError):
         return None
     lines = [l.split('\t') for l in r.stdout.splitlines() if l.strip()]
@@ -1890,13 +1921,13 @@ def main():
     ap.add_argument('--done-url', default=None, help='split mode: the published Done page, linked from the other pages')
     ap.add_argument('--future-url', default=None, help='split mode: the published future page, linked from the other pages')
     ap.add_argument('--luna-map', help='luna-map.json cache path')
-    ap.add_argument('--mirror-dir', default=MIRROR)
+    ap.add_argument('--mirror-dir', default=None, help='the Jira mirror (default HIMMEL_JIRA_MIRROR, else the mirror of the configured JIRA_PROJECT_KEY)')
     ap.add_argument('--versions-file', default=None,
                     help="a `jira versions` snapshot: name<TAB>released<TAB>releaseDate (default <mirror-dir>.versions.tsv)")
-    ap.add_argument('--luna-root', default=LUNA)
+    ap.add_argument('--luna-root', default=None, help='the luna vault (default LUNA_VAULT_PATH, else ~/Documents/luna)')
     ap.add_argument('--handovers', default=os.environ.get('TRACKER_HANDOVERS_DIR', ''),
                     help='handover tree to grep for notes and live workers (default $TRACKER_HANDOVERS_DIR, '
-                         'else <luna-root>/handovers/yotamleo/himmel)')
+                         'else <luna-root>/handovers/<USER_SLUG>/himmel)')
     ap.add_argument('--owed-dir', default=None, help='--version: the handover bucket dir holding release/<version>/operator.jsonl, specs/designs and the *HANDOFF.md notes (Waiting on you)')
     ap.add_argument('--chief-doc', default=None, help='--version: the chief doc whose `## Live state` queue:/pool-disposition: lines name what waits on the operator')
     ap.add_argument('--drift-log', default=None,
@@ -1909,6 +1940,8 @@ def main():
     ap.add_argument('--refresh-luna', action='store_true')
     ap.add_argument('--emit-fp', action='store_true')
     a = ap.parse_args()
+    a.mirror_dir = a.mirror_dir or default_mirror()
+    a.luna_root = a.luna_root or default_luna()
     if a.remaining:
         MIRROR = os.path.abspath(a.mirror_dir)
         grp = priority_groups(a.priority_file) if a.priority_file else []
@@ -1930,7 +1963,7 @@ def main():
         if a.plan_dir:  # the tick reads tracker= from this page's .fp, the same value --emit-fp derives
             ROOT, LUNA = os.path.abspath(a.plan_dir), os.path.abspath(a.luna_root)
             VERSIONS = os.path.abspath(a.versions_file) if a.versions_file else MIRROR + '.versions.tsv'
-            HANDOVERS = os.path.abspath(a.handovers) if a.handovers else os.path.join(LUNA, 'handovers', 'yotamleo', 'himmel')
+            HANDOVERS = os.path.abspath(a.handovers) if a.handovers else default_handovers(LUNA)
             fp0 = fingerprint()
         grp = priority_groups(a.priority_file) if a.priority_file else []
         if a.priority_file and not grp:
@@ -1965,7 +1998,7 @@ def main():
                                          os.path.abspath(a.luna_map), os.path.abspath(a.mirror_dir),
                                          os.path.abspath(a.luna_root))
     VERSIONS = os.path.abspath(a.versions_file) if a.versions_file else MIRROR + '.versions.tsv'
-    HANDOVERS = os.path.abspath(a.handovers) if a.handovers else os.path.join(LUNA, 'handovers', 'yotamleo', 'himmel')
+    HANDOVERS = os.path.abspath(a.handovers) if a.handovers else default_handovers(LUNA)
     if a.emit_fp:
         global MARKER_MEMO
         MARKER_MEMO = {}  # one short-lived process reads each worker doc's marker once
