@@ -345,16 +345,14 @@ cod_comment_epoch() {
 cod_related_epoch() {
     local card=$MIRROR_DIR/$1.md rel r ts e best=0
     rel=$({
-        # swallow-ok: a card with no readable links block names no linked key
         [ ! -r "$card" ] || awk '/^---$/ { if (++n == 2) exit; next } n == 1 && /^links:/ { on = 1; next } n == 1 && /^[^ ]/ { on = 0 } n == 1 && on' "$card" | grep -oE '[A-Za-z][A-Za-z0-9]*-[0-9]+'
-        # swallow-ok: no child card names no child key
         grep -rlxF --include='*.md' "parent: \"$1\"" "$MIRROR_DIR" 2>/dev/null | sed 's#.*/##; s#\.md$##'
     } | grep -vxF "$1" | sort -u)
     while IFS= read -r r; do
         [ -n "$r" ] || continue
         ts=$(awk -F'\t' -v k="$r" '$1 == k { print $2; exit }' <<<"$lastmerge")
         [ -n "$ts" ] || continue
-        e=$(_ts_epoch_of_iso "$ts") || continue # swallow-ok: an unreadable merge time is no event
+        e=$(_ts_epoch_of_iso "$ts") || continue
         [ "$e" -le "$best" ] || best=$e
     done <<<"$rel"
     printf '%s\n' "$best"
