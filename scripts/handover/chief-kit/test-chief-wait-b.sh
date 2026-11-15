@@ -83,6 +83,8 @@ export CHIEF_WAIT_ORPHAN="$STUB/orphan-off.sh"
 # Nor does any test run the real status sweep or read a real FOCUS state: both seams answer nothing.
 printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB/sweep-off.sh"
 export WAIT_SWEEP_CMD="$STUB/sweep-off.sh" WAIT_FOCUS_CMD="$STUB/sweep-off.sh"
+export CHIEF_WAIT_DISPATCH="$STUB/no-dispatch.sh"
+DISPATCH_SEAM_AT_START="${CHIEF_WAIT_DISPATCH:-}"
 
 # tick_line <workers> <board> [hb] [prs] [or] [fails]: a tick line whose action fields are set.
 tick_line() {
@@ -1246,6 +1248,12 @@ reset_stub
 I="$(new_inbox kctl)"
 timeout 3 bash "$WAIT" "$I" --workers "N1.md" >/dev/null 2>&1; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(k) an absolute inbox path still starts the waiter (rc 124)" "124" "$rc"
+
+case "$DISPATCH_SEAM_AT_START" in "$STUB"/*) seam_at_start=stub ;; *) seam_at_start="$DISPATCH_SEAM_AT_START" ;; esac
+check "(hermetic) the dispatch seam named a stub from the first case" "stub" "$seam_at_start"
+case "${CHIEF_WAIT_DISPATCH:-}" in "$STUB"/*) seam_now=stub ;; *) seam_now="${CHIEF_WAIT_DISPATCH:-}" ;; esac
+check "(hermetic) and still names a stub at the end" "stub" "$seam_now"
+check "(hermetic) no waiter output carries live pool=<n>/<n>/<n>/<n> data" "" "$(grep -rEl 'pool=[0-9]+/[0-9]+/[0-9]+/[0-9]+' "$WORK" 2>/dev/null)"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

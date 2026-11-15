@@ -530,18 +530,41 @@ test("reply CLI: the old --console is refused even with HIMMEL_LEGACY_NAMES=1; o
   expect(old.err).toContain("usage: bun chief-route.ts reply");
 });
 
-async function owedReply(r: string, doc: string, flush: boolean, extra: string[] = ["--owed", "sig-1", "--doc", doc]) {
-  const p = Bun.spawn(["bun", join(import.meta.dir, "chief-route.ts"), "reply", "--chief", NAME, ...extra, "1", "please sign"], {
-    env: { ...process.env, BRIDGE_ROOT: r, CHIEF_ROUTE_RECEIPT_WAIT_SEC: flush ? "20" : "1" }, stdout: "pipe", stderr: "pipe",
+async function owedReply(r: string, doc: string, flush: boolean, extra: string[] = ["--owed", "sig-1", "--doc", doc], o: { text?: string; parts?: number; send?: () => Promise<number | undefined>; waitSec?: string } = {}) {
+  const p = Bun.spawn(["bun", join(import.meta.dir, "chief-route.ts"), "reply", "--chief", NAME, ...extra, "1", o.text ?? "please sign"], {
+    env: { ...process.env, BRIDGE_ROOT: r, CHIEF_ROUTE_RECEIPT_WAIT_SEC: o.waitSec ?? (flush ? "20" : "1") }, stdout: "pipe", stderr: "pipe",
   });
   const out = new Response(p.stdout).text(); const err = new Response(p.stderr).text();
   const outbox = join(r, "sessions", "__chat__", "outbox.jsonl");
   if (flush) {
-    for (let i = 0; i < 100 && !existsSync(outbox); i++) await new Promise(res => setTimeout(res, 100));
-    await flushOutboxes(r, async () => 4242);
+    const queued = () => existsSync(outbox) && readFileSync(outbox, "utf8").split("\n").filter(Boolean).length >= (o.parts ?? 1);
+    for (let i = 0; i < 100 && !queued(); i++) await new Promise(res => setTimeout(res, 100));
+    await flushOutboxes(r, o.send ?? (async () => 4242));
   }
   return { code: await p.exited, out: await out, err: await err };
 }
+
+test("HIMMEL-9974 reply --owed on a split reply writes DELIVERED only after every part has a send receipt, naming the last part's message id", async () => {
+  const r = root(); heartbeat(r);
+  const doc = join(r, "chief.md"); writeFileSync(doc, "# chief\n- 10:00 OWED sig-1 sign it\n");
+  let id = 5000;
+  const send = async () => { await new Promise(res => setTimeout(res, 600)); return ++id; };
+  const res = await owedReply(r, doc, true, undefined, { text: filler(7000), parts: 3, send });
+  expect(res.code).toBe(0);
+  expect(res.out).toContain("delivered msg=5003");
+  expect(readFileSync(doc, "utf8")).toMatch(/\n- \d\d:\d\d DELIVERED sig-1 msg=5003 chat=1\n$/);
+});
+
+test("HIMMEL-9974 reply --owed on a split reply whose last part gets no receipt exits non-zero, names 2 of 3, and marks nothing delivered", async () => {
+  const r = root(); heartbeat(r);
+  const doc = join(r, "chief.md"); writeFileSync(doc, "# chief\n- 10:00 OWED sig-1 sign it\n");
+  let id = 6000;
+  const send = async () => { await new Promise(res => setTimeout(res, 600)); return id < 6002 ? ++id : undefined; };
+  const res = await owedReply(r, doc, true, undefined, { text: filler(7000), parts: 3, send, waitSec: "4" });
+  expect(res.code).toBe(1);
+  expect(res.err).toContain("2 of 3");
+  expect(readFileSync(doc, "utf8")).not.toContain("DELIVERED");
+});
 
 test("reply --owed prints the Telegram message id from the poller's send receipt and writes the DELIVERED bullet", async () => {
   const r = root(); heartbeat(r);
@@ -651,25 +674,12 @@ test("R1.4 replay 11-07: the operator gets the 4 controls, the spool the 4 monit
   expect(spool(s1)).toHaveLength(3);
 });
 
-test("R1.5 the cap: 900 characters of merge-blocked come out at 400 or fewer with the Do: step whole; a long Do: step and chief-reply go uncut", async () => {
+test("R1.5 the cap: 900 characters of merge-blocked go out whole, over the cap and never cut; a long Do: step and chief-reply go uncut", async () => {
   const text = longMerge(900);
   const x = await route(["--kind", "merge-blocked", "operator", text]);
-  const sent = operatorOutbox(x.r)[0].text;
-  expect(sent.length).toBeLessThanOrEqual(400);
-  expect(sent.endsWith(DO_STEP)).toBe(true);
-  const cutDir = join(x.r, "route-cut");
-  const files = readdirSync(cutDir);
-  expect(files).toHaveLength(1);
-  expect(readFileSync(join(cutDir, files[0]), "utf8")).toBe(text);
-  expect(sent).toContain(`full text on the station: ${join(cutDir, files[0])}`);
-  expect(routeLog(x.r)[0].endsWith(" cut")).toBe(true);
-
-  const withTrailer = `${longMerge(900).slice(0, -DO_STEP.length)} Do: go.sh HIMMEL-1 abc`;
-  const t = await route(["--kind", "merge-blocked", "operator", withTrailer]);
-  const sentT = operatorOutbox(t.r)[0].text;
-  expect(sentT.length).toBeLessThanOrEqual(400);
-  expect(sentT.endsWith("Do: go.sh HIMMEL-1 abc")).toBe(true);
-  expect(routeLog(t.r)[0].endsWith(" cut")).toBe(true);
+  expect(operatorOutbox(x.r).map((m) => m.text)).toEqual([text]);
+  expect(existsSync(join(x.r, "route-cut"))).toBe(false);
+  expect(routeLog(x.r)[0].endsWith(" over-cap-uncut")).toBe(true);
 
   const bigDo = `Merge refused. Blocks: the merge. Do: ${"x".repeat(450)}`;
   const y = await route(["--kind", "merge-blocked", "operator", bigDo]);
@@ -682,6 +692,78 @@ test("R1.5 the cap: 900 characters of merge-blocked come out at 400 or fewer wit
   expect(operatorOutbox(z.r).map((m) => m.text)).toEqual([reply]);
   expect(existsSync(join(z.r, "route-cut"))).toBe(false);
   expect(routeLog(z.r)[0].endsWith(" ok")).toBe(true);
+});
+
+const PART_LIMIT = 3000;
+function unmarked(parts: string[]): string[] {
+  expect(parts.length).toBeGreaterThan(1);
+  return parts.map((p, i) => {
+    expect(p.length).toBeLessThanOrEqual(PART_LIMIT);
+    const m = /^\((\d+)\/(\d+)\) /.exec(p);
+    expect(m && [Number(m[1]), Number(m[2])]).toEqual([i + 1, parts.length]);
+    return p.slice(m![0].length);
+  });
+}
+
+test("HIMMEL-9974 (a) a reply about three times the part limit goes out as three ordered parts whose text, markers removed, is the input; a capped kind splits the same way", async () => {
+  const text = [filler(2900), filler(2900), filler(2900)].join("\n\n") + DO_STEP;
+  for (const flags of [[], ["--kind", "merge-blocked"]]) {
+    const x = await route([...flags, "operator", text]);
+    expect(x.out.trim()).toBe("escalate");
+    const parts = operatorOutbox(x.r).map((m) => m.text);
+    expect(parts).toHaveLength(3);
+    const body = unmarked(parts);
+    expect(body.join("")).toBe(text);
+    expect(body[2].endsWith(DO_STEP)).toBe(true);
+    expect(existsSync(join(x.r, "route-cut"))).toBe(false);
+    expect(routeLog(x.r)).toHaveLength(1);
+    expect(routeLog(x.r)[0].endsWith(" split")).toBe(true);
+  }
+});
+
+test("HIMMEL-9974 (b) no part ends mid-word, every part is under the limit, and a backtick command near the break stays in one part", async () => {
+  const cmd = "`bash scripts/handover/chief-kit/go.sh grant the-ticket now`";
+  const text = `${filler(2970)} ${cmd} ${filler(4000)}`;
+  const x = await route(["operator", text]);
+  const body = unmarked(operatorOutbox(x.r).map((m) => m.text));
+  expect(body.join("")).toBe(text);
+  for (const b of body.slice(0, -1)) expect(b).toMatch(/\s$/);
+  expect(body.some((b) => b.includes(cmd))).toBe(true);
+});
+
+test("HIMMEL-9974 (c) control: a short reply is one message with no part marker and the same route-log row as before", async () => {
+  const text = "Merged the PR. Blocks: nothing. Do: nothing";
+  const x = await route(["operator", text]);
+  expect(operatorOutbox(x.r).map((m) => m.text)).toEqual([text]);
+  const f = routeLog(x.r)[0].split(" ");
+  expect(f.slice(1)).toEqual(["unclassified", "escalate", "operator", String(text.length), "0", "ok"]);
+});
+
+test("HIMMEL-9974 (d) control: a long monitor-class reply goes whole to the spool, unsplit, as before", async () => {
+  const text = `stalled. Blocks: nothing. ${filler(8000)} Do: read the log`;
+  const x = await route(["--kind", "cadence:vault-stall", "operator", text]);
+  expect(x.out.trim()).toBe("monitor");
+  expect(operatorOutbox(x.r)).toEqual([]);
+  expect(spool(x.r).map((m) => m.text)).toEqual([text]);
+  expect(routeLog(x.r)[0].endsWith(" ok")).toBe(true);
+});
+
+test("HIMMEL-9974 (e) with no paragraph break a reply splits at lines, then sentences; only a word longer than the limit is split inside the word", async () => {
+  const byLine = Array.from({ length: 60 }, (_, i) => `line ${i} ${filler(110)}`).join("\n");
+  const l = unmarked(operatorOutbox((await route(["operator", byLine])).r).map((m) => m.text));
+  expect(l.join("")).toBe(byLine);
+  for (const b of l.slice(0, -1)) expect(b.endsWith("\n")).toBe(true);
+
+  const bySentence = Array.from({ length: 120 }, (_, i) => `Sentence ${i} of the reply says one plain thing here.`).join(" ");
+  const s = unmarked(operatorOutbox((await route(["operator", bySentence])).r).map((m) => m.text));
+  expect(s.join("")).toBe(bySentence);
+  for (const b of s.slice(0, -1)) expect(b).toMatch(/\. $/);
+
+  const word = "x".repeat(7000);
+  const w = unmarked(operatorOutbox((await route(["operator", word])).r).map((m) => m.text));
+  expect(w).toHaveLength(3);
+  expect(w.join("")).toBe(word);
+  for (const b of w.slice(0, -1)) expect(b).toMatch(/x$/);
 });
 
 test("a silent kind with --satellite speaks nothing, queues nothing and exits 0", async () => {
@@ -742,7 +824,6 @@ test("R1.10 --chief X --kind Y and --kind Y --satellite Z both parse; operator r
 });
 
 test("R1.11 an internal error puts the raw uncut text in the operator outbox, prints escalate and exits 0", async () => {
-  const text = longMerge(900);
   if (process.getuid?.() !== 0) {
     const mirror = mkdtempSync(join(tmpdir(), "chief-route-mirror-")); cpSync(FIX_MIRROR, join(mirror, "HIMMEL"), { recursive: true });
     chmodSync(join(mirror, "HIMMEL", "HIMMEL-9012.md"), 0);
@@ -752,10 +833,6 @@ test("R1.11 an internal error puts the raw uncut text in the operator outbox, pr
     expect(operatorOutbox(x.r).map((m) => m.text)).toEqual([raw]);
     expect(routeLog(x.r)[0]).toContain(" escalate-fallback ");
   }
-  const r2 = root(); writeFileSync(join(r2, "route-cut"), "a file, so mkdir fails");
-  const y = await route(["--kind", "merge-blocked", "operator", text], { r: r2 });
-  expect(y.code).toBe(0); expect(y.out.trim()).toBe("escalate");
-  expect(operatorOutbox(r2).map((m) => m.text)).toEqual([text]);
   const r3 = root(); writeFileSync(join(r3, "monitor"), "a file, so mkdir fails");
   const raw3 = "stalled. Blocks: nothing. Do: read the log";
   const z = await route(["--kind", "cadence:vault-stall", "operator", raw3], { r: r3 });

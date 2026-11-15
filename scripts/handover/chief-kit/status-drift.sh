@@ -35,10 +35,11 @@
 #                     park (rule D6n: the worker wrapped and its brief says Completes ticket: no)
 #                     is UNOWNED once it is 24 h old, saying it is awaiting the chief and overdue
 #   CLOSE-OR-DISPATCH an In Progress ticket with no open PR, no live owner, no `standing` label and no hold, whose newest
-#                     merge row, worker doc and Jira comment are all over COD_AGE_SECONDS (72 h) old, and that is either
+#                     merge row, worker doc and Jira comment are all over COD_AGE_SECONDS (72 h) old (with no merge row,
+#                     its worker docs and Jira comments alone), and that is either
 #                     left by a partial merge or past the end of its wait (an owed step, the chief's D6n park or the
 #                     RESUME remainder; a wait still inside its due date is AWAITING). It REPLACES the key's UNOWNED row,
-#                     so sdrift counts the ticket once. The text names the last PR and the owed ask (the words after
+#                     so sdrift counts the ticket once. The text names the last PR (or `no merged PR`) and the owed ask (the words after
 #                     `Remaining:` in the newest ticket comment that has them): the operator close ask that
 #                     drift-summary.mjs and tracker.py list as `close KEY or name a worker`
 #   AWAITING          the same chief-owned park before its 24 h are up: a wait, not drift. Its row
@@ -339,26 +340,30 @@ cod_ask() {
     printf '%s\n' "${t:-$2}"
 }
 cod_raise() {
-    local key=$1 st=$2 lm mts pr newest e d ce ask when age
+    local key=$1 st=$2 lm mts pr="" newest=0 e d ce ask when age last
     [ "$st" = "In Progress" ] || return 1
     lm=$(awk -F'\t' -v k="$key" '$1 == k { print; exit }' <<<"$lastmerge")
-    [ -n "$lm" ] || return 1
-    IFS=$'\t' read -r _ mts pr <<<"$lm"
-    newest=$(_ts_epoch_of_iso "$mts") || return 1
+    if [ -n "$lm" ]; then
+        IFS=$'\t' read -r _ mts pr <<<"$lm"
+        newest=$(_ts_epoch_of_iso "$mts") || return 1
+    fi
     while IFS= read -r d; do
         [ -n "$d" ] && [ -f "$d" ] || continue
         e=$(stat -c %Y "$d" 2>/dev/null || stat -f %m "$d" 2>/dev/null) || continue # swallow-ok: a doc with no readable time is no event
         case "$e" in ''|*[!0-9]*) continue ;; esac
         [ "$e" -le "$newest" ] || newest=$e
     done <<<"$owners"
-    [ $((10#$NOW - newest)) -gt "$COD_AGE_SECONDS" ] || return 1
+    [ "$newest" -eq 0 ] || [ $((10#$NOW - newest)) -gt "$COD_AGE_SECONDS" ] || return 1
     ce=$(cod_comment_epoch "$key")
     case "$ce" in ''|*[!0-9]*) ;; *) [ "$ce" -le "$newest" ] || newest=$ce ;; esac
+    [ "$newest" -gt 0 ] || return 1
     [ $((10#$NOW - newest)) -gt "$COD_AGE_SECONDS" ] || return 1
     ask=$(cod_ask "$key" "$3")
     when=$(date -u -d "@$newest" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$newest" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || return 1 # swallow-ok: the BSD form follows
     age=$(((10#$NOW - newest) / 3600))
-    add CLOSE-OR-DISPATCH "$key" "$st with no open PR, no live owner and no event since $when ($age h); last PR #$pr, owed: $ask" jira "the operator closes $key (jira transition $key Done) when nothing remains, or names a worker: dispatch a RESUME worker, or hold it: bash scripts/handover/chief-kit/ticket-hold.sh $key --owner <who> --until <date> --reason <why>"
+    last="no merged PR"
+    [ -z "$pr" ] || last="last PR #$pr"
+    add CLOSE-OR-DISPATCH "$key" "$st with no open PR, no live owner and no event since $when ($age h); $last, owed: $ask" jira "the operator closes $key (jira transition $key Done) when nothing remains, or names a worker: dispatch a RESUME worker, or hold it: bash scripts/handover/chief-kit/ticket-hold.sh $key --owner <who> --until <date> --reason <why>"
 }
 
 # --- per key -----------------------------------------------------------------------

@@ -224,6 +224,7 @@ export HIMMEL_DOCTOR_VM_PROBE="$FAKEROOT/no-such-vm-probe"
 # Same for C59-codex-bank-cache: never read the operator's real
 # codex bank cache; an absent file is INFO, dedicated cases point at a fixture.
 export CODEX_USAGE_CACHE="$FAKEROOT/no-such-codex-bank.json"
+export HIMMEL_DOCTOR_LIVE_TEST_PROBE="$FAKEROOT/no-such-live-test-probe"
 
 # Same for C60/C61: never read the operator's real hermes checkout
 # or run the real codex CLI / npm registry; absent seams are an INFO skip,
@@ -7513,8 +7514,18 @@ C69_SENTINEL=sk-test-sentinel-c69
 # the stub answers C69_CODE only when the key arrives as an Authorization header on stdin, else 403
 printf "#!/bin/sh\nin=\"\$(cat)\"\ncase \"\$in\" in *'Authorization: Bearer $C69_SENTINEL\"'*) printf \"%%s\" \"\${C69_CODE:-200}\" ;; *) printf 403 ;; esac\n" > "$c69_t/curl"; chmod +x "$c69_t/curl"
 printf 'QMD_OPENAI_API_KEY=%s\n' "$C69_SENTINEL" > "$c69_t/home/.himmel/state/qmd-daemon.env"; chmod 600 "$c69_t/home/.himmel/state/qmd-daemon.env"
-c69_run() { env -u XDG_CONFIG_HOME -u QMD_CONFIG_DIR -u QMD_DAEMON_ENV_FILE -u QMD_OPENAI_API_KEY -u QMD_OPENAI_BASE_URL HIMMEL_DOCTOR_QMD_CURL="$c69_t/curl" PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c69_t/home/claude" HOME="$c69_t/home" "$@" bash "$DOC" --no-color --only C69 2>&1; }
-c69_run_x() { env -u XDG_CONFIG_HOME -u QMD_CONFIG_DIR -u QMD_DAEMON_ENV_FILE -u QMD_OPENAI_API_KEY -u QMD_OPENAI_BASE_URL HIMMEL_DOCTOR_QMD_CURL="$c69_t/curl" PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c69_t/home/claude" HOME="$c69_t/home" "$@" bash -x "$DOC" --no-color --only C69 2>&1; }
+cat > "$c69_t/qmd" <<'STUB'
+#!/bin/sh
+case "$C69_CLI" in
+  hang) sleep 30 ;;
+  okmatch) echo 'a hit whose text says answered 401 No cookie auth credentials found'; echo 'warn: answered 401 No cookie auth credentials found' >&2 ;;
+  nokey) [ -n "$QMD_OPENAI_API_KEY" ] || { echo 'https://openrouter.ai/api/v1/embeddings answered 401 {"message":"No cookie auth credentials found"}' >&2; exit 1; } ;;
+esac
+echo hit
+STUB
+chmod +x "$c69_t/qmd"
+c69_run() { env -u XDG_CONFIG_HOME -u QMD_CONFIG_DIR -u QMD_DAEMON_ENV_FILE -u QMD_OPENAI_API_KEY -u QMD_OPENAI_BASE_URL -u C69_CLI HIMMEL_DOCTOR_QMD_CURL="$c69_t/curl" HIMMEL_DOCTOR_QMD_BIN="$c69_t/qmd" PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c69_t/home/claude" HOME="$c69_t/home" "$@" bash "$DOC" --no-color --only C69 2>&1; }
+c69_run_x() { env -u XDG_CONFIG_HOME -u QMD_CONFIG_DIR -u QMD_DAEMON_ENV_FILE -u QMD_OPENAI_API_KEY -u QMD_OPENAI_BASE_URL -u C69_CLI HIMMEL_DOCTOR_QMD_CURL="$c69_t/curl" HIMMEL_DOCTOR_QMD_BIN="$c69_t/qmd" PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c69_t/home/claude" HOME="$c69_t/home" "$@" bash -x "$DOC" --no-color --only C69 2>&1; }
 out="$(c69_run C69_CODE=200)"
 if grepq "$out" -F 'OK   C69-qmd-cli-key'; then pass "C69 key accepted -> OK"; else fail "C69 key accepted -> $(printf '%s' "$out" | head -3)"; fi
 if grepq "$out" -F "$C69_SENTINEL"; then fail "C69 printed the key"; else pass "C69 never prints the key"; fi
@@ -7549,6 +7560,32 @@ if grepq "$out" -F "$C69_SENTINEL"; then fail "C69 trace printed the file key"; 
 echo "== C69: provider answers 403 -> FAIL =="
 out="$(c69_run C69_CODE=403)"
 if grepq "$out" -F 'FAIL C69-qmd-cli-key'; then pass "C69 key forbidden -> FAIL"; else fail "C69 key forbidden -> $(printf '%s' "$out" | head -3)"; fi
+
+echo "== C69: the bare qmd CLI answers 401 while the key file is valid -> WARN naming the CLI path =="
+out="$(c69_run C69_CODE=200 C69_CLI=nokey)"
+if grepq "$out" -F 'WARN C69-qmd-cli-key'; then pass "C69 bare CLI 401 -> WARN"; else fail "C69 bare CLI 401 -> $(printf '%s' "$out" | head -3)"; fi
+if grepq "$out" -F 'bare qmd'; then pass "C69 CLI WARN names the bare qmd path"; else fail "C69 CLI WARN names the bare qmd path -> $(printf '%s' "$out" | head -3)"; fi
+if grepq "$out" -F "$C69_SENTINEL"; then fail "C69 CLI WARN printed the key"; else pass "C69 CLI WARN never prints the key"; fi
+
+echo "== C69: a session key in the doctor's own environment does not hide a key-less bare CLI -> WARN =="
+out="$(c69_run C69_CODE=200 C69_CLI=nokey QMD_OPENAI_API_KEY="$C69_SENTINEL")"
+if grepq "$out" -F 'WARN C69-qmd-cli-key'; then pass "C69 session key scrubbed for the CLI probe -> WARN"; else fail "C69 session key scrubbed for the CLI probe -> $(printf '%s' "$out" | head -3)"; fi
+
+echo "== C69: the bare qmd CLI answers -> OK =="
+out="$(c69_run C69_CODE=200)"
+if grepq "$out" -F 'OK   C69-qmd-cli-key'; then pass "C69 bare CLI answers -> OK"; else fail "C69 bare CLI answers -> $(printf '%s' "$out" | head -3)"; fi
+
+echo "== C69: a working bare qmd CLI whose output carries the 401 strings -> OK, only a failed call is a 401 =="
+out="$(c69_run C69_CODE=200 C69_CLI=okmatch)"
+if grepq "$out" -F 'OK   C69-qmd-cli-key'; then pass "C69 successful CLI output naming a 401 -> OK"; else fail "C69 successful CLI output naming a 401 -> $(printf '%s' "$out" | head -3)"; fi
+
+echo "== C69: the bare qmd CLI hangs past the bound -> INFO, not a credential verdict =="
+out="$(c69_run C69_CODE=200 C69_CLI=hang HIMMEL_DOCTOR_QMD_CLI_SECS=1 QMD_KILL_GRACE_SECS=1)"
+if grepq "$out" -F 'INFO C69-qmd-cli-key'; then pass "C69 bare CLI timeout -> INFO"; else fail "C69 bare CLI timeout -> $(printf '%s' "$out" | head -3)"; fi
+
+echo "== C69: qmd absent -> INFO =="
+out="$(c69_run C69_CODE=200 HIMMEL_DOCTOR_QMD_BIN="$c69_t/no-such-qmd")"
+if grepq "$out" -F 'INFO C69-qmd-cli-key'; then pass "C69 qmd absent -> INFO"; else fail "C69 qmd absent -> $(printf '%s' "$out" | head -3)"; fi
 
 echo "== C69: OpenRouter named only by QMD_OPENAI_BASE_URL, no key anywhere -> FAIL =="
 printf 'models:\n  embed: hf:x/y.gguf\n' > "$c69_t/home/.config/qmd/index.yml"
@@ -8581,6 +8618,171 @@ else
     echo "  SKIP: C95 sleeping holds.py — no timeout binary"
 fi
 rm -rf "$c95_t"
+
+c96_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c96.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
+mkdir -p "$c96_t/home/.himmel" "$c96_t/claude"
+c96_fx="$REPO_ROOT/scripts/jira/src/fixtures"
+# shellcheck disable=SC2016  # the probe expands C96_JSON itself
+printf '#!/usr/bin/env bash\ncat "$C96_JSON"\n' > "$c96_t/probe"
+c96_run() { C96_JSON="$1" TRACKER="${C96_TRACKER:-jira}" JIRA_PROJECT_KEY=HIMMEL HIMMEL_DOCTOR_LIVE_TEST_PROBE="$c96_t/probe" \
+    CLAUDE_DIR="$c96_t/claude" HOME="$c96_t/home" HIMMEL_CONFIG_DIR="" bash "$DOC" --root "$REPO_ROOT" --no-color --only C96 "${@:2}" 2>&1; }
+echo "== C96-jira-test-project: Jira is the tracker and no JIRA_TEST_PROJECT -> WARN =="
+out="$(c96_run "$c96_fx/live-test-none.json")"
+if grepq "$out" -F 'WARN C96-jira-test-project' && grepq "$out" -F 'himmelctl config set jira.testProject'; then pass "WARN C96 when Jira is the tracker and no JIRA_TEST_PROJECT"; else fail "C96 none -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C96-jira-test-project: JIRA_TEST_PROJECT=HIMMEL is a work project -> WARN with the problem =="
+out="$(c96_run "$c96_fx/live-test-work.json")"
+if grepq "$out" -F 'WARN C96-jira-test-project' && grepq "$out" -F 'HIMMEL is a work project (JIRA_PROJECTS)' && grepq "$out" -F 'himmelctl config set jira.testProject'; then pass "WARN with the problem for JIRA_TEST_PROJECT=HIMMEL"; else fail "C96 work -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C96-jira-test-project: JIRA_TEST_PROJECT=HTEST -> OK =="
+out="$(c96_run "$c96_fx/live-test-ok.json")"
+if grepq "$out" -F 'OK   C96-jira-test-project' && grepq "$out" -F 'JIRA_TEST_PROJECT=HTEST' && ! grepq "$out" -E '(WARN|INFO) C96'; then pass "OK for HTEST"; else fail "C96 ok -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C96-jira-test-project: the tracker is not Jira -> INFO (negative control) =="
+out="$(C96_TRACKER=local c96_run "$c96_fx/live-test-none.json")"
+if grepq "$out" -F 'INFO C96-jira-test-project' && grepq "$out" -F 'the tracker is local' && ! grepq "$out" -F 'WARN C96'; then pass "INFO when the tracker is not jira"; else fail "C96 tracker local -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C96-jira-test-project: the probe prints no readable JSON -> INFO, not checked =="
+out="$(c96_run "$c96_t/no-such-file.json")"
+if grepq "$out" -F 'INFO C96-jira-test-project' && grepq "$out" -F 'not checked' && ! grepq "$out" -F 'WARN C96'; then pass "INFO when the live-test read fails"; else fail "C96 unreadable -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C96-jira-test-project: the --json row carries scope shared =="
+out="$(c96_run "$c96_fx/live-test-ok.json" --json)"
+if [ "$(printf '%s\n' "$out" | grep '^{' | jq -r 'select(.id == "C96-jira-test-project") | .scope' 2>/dev/null)" = shared ]; then pass "C96 is a shared check"; else fail "C96 --json scope -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C96-jira-test-project: no probe and no jira CLI build -> INFO =="
+c96_x="$c96_t/repo"
+mkdir -p "$c96_x/scripts/lib"
+cp "$REPO_ROOT/scripts/himmel-doctor.sh" "$c96_x/scripts/"
+cp -R "$REPO_ROOT/scripts/lib/." "$c96_x/scripts/lib/"
+out="$(cd "$c96_x" && env -u HIMMEL_DOCTOR_LIVE_TEST_PROBE -u HIMMEL_REPO -u HIMMEL_DOCTOR_ROOT TRACKER=jira JIRA_PROJECT_KEY=HIMMEL CLAUDE_DIR="$c96_t/claude" HOME="$c96_t/home" HIMMEL_CONFIG_DIR="" \
+    bash "$c96_x/scripts/himmel-doctor.sh" --root "$c96_x" --no-color --only C96 2>&1)"
+if grepq "$out" -F 'INFO C96-jira-test-project' && grepq "$out" -F 'scripts/jira/dist/index.js' && ! grepq "$out" -F 'WARN C96'; then pass "INFO when the CLI build is missing"; else fail "C96 no CLI build -> $(printf '%s' "$out" | head -4)"; fi
+rm -rf "$c96_t"
+
+c97_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c97.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
+mkdir -p "$c97_t/claude" "$c97_t/home" "$c97_t/codex"
+c97_dummy="FIXTURE-DUMMY-9f3a"
+c97_run() { CODEX_HOME="$c97_t/codex" CLAUDE_DIR="$c97_t/claude" HOME="$c97_t/home" bash "$DOC" --root "$REPO_ROOT" --no-color --only C97 "$@" 2>&1; }
+c97_cfg() { printf '%s\n' "$1" > "$c97_t/codex/config.toml" || fail "C97 fixture write failed"; }
+c97_base='[mcp_servers.obsidian-vault]
+command = "node"
+args = ["/x/server.js"]
+'
+echo "== C97: a literal OBSIDIAN_API_KEY in [mcp_servers.obsidian-vault.env] -> WARN naming server + variable, never the value =="
+c97_cfg "$c97_base
+[mcp_servers.obsidian-vault.env]
+OBSIDIAN_API_KEY = \"$c97_dummy\"
+OBSIDIAN_HOST = \"127.0.0.1\""
+out="$(c97_run)"
+if grepq "$out" -F 'WARN C97-codex-mcp-literal-key' && grepq "$out" -F 'obsidian-vault' && grepq "$out" -F 'OBSIDIAN_API_KEY' \
+   && grepq "$out" -F "$c97_t/codex/config.toml" && grepq "$out" -F 'scripts/mcp/secret-launch.mjs' && grepq "$out" -F 'mcp-secrets' \
+   && grepq "$out" -F 'does not edit' && ! grepq "$out" -F "$c97_dummy" && ! grepq "$out" -F 'OBSIDIAN_HOST'; then
+    pass "C97 WARN names the server and variable, carries the remedy, and never the value"
+else
+    fail "C97 literal key -> $(printf '%s' "$out" | head -5)"
+fi
+echo "== C97: the --json row carries scope shared and no value =="
+out="$(c97_run --json)"
+if [ "$(printf '%s\n' "$out" | grep '^{' | jq -r 'select(.id == "C97-codex-mcp-literal-key") | .scope' 2>/dev/null)" = shared ] && ! grepq "$out" -F "$c97_dummy"; then pass "C97 is a shared check"; else fail "C97 --json -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C97: the same file with the key line removed -> OK (control) =="
+c97_cfg "$c97_base
+[mcp_servers.obsidian-vault.env]
+OBSIDIAN_HOST = \"127.0.0.1\"
+OBSIDIAN_PORT = \"27124\""
+out="$(c97_run)"
+if grepq "$out" -F 'OK   C97-codex-mcp-literal-key' && ! grepq "$out" -E '(WARN|INFO) C97'; then pass "C97 OK without a secret-named variable (HOST/PORT are not secrets)"; else fail "C97 control -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C97: the inline form env = { SOME_TOKEN = \"...\" } -> WARN =="
+c97_cfg "[mcp_servers.x]
+command = \"node\"
+env = { SOME_TOKEN = \"$c97_dummy-inline\", PLAIN = \"1\" }"
+out="$(c97_run)"
+if grepq "$out" -F 'WARN C97-codex-mcp-literal-key' && grepq "$out" -F 'SOME_TOKEN' && grepq "$out" -F 'mcp_servers.x' && ! grepq "$out" -F "$c97_dummy" && ! grepq "$out" -F 'PLAIN'; then pass "C97 WARN for the inline env table"; else fail "C97 inline -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C97: header spellings (quoted segments, spaces, trailing comment) and a _SECRET name -> WARN =="
+c97_cfg "[ \"mcp_servers\" . 'my-srv' . \"env\" ]  # local
+MY_API_SECRET = \"$c97_dummy\""
+out="$(c97_run)"
+if grepq "$out" -F 'WARN C97-codex-mcp-literal-key' && grepq "$out" -F 'my-srv' && grepq "$out" -F 'MY_API_SECRET' && ! grepq "$out" -F "$c97_dummy"; then pass "C97 WARN for a quoted, spaced, commented header"; else fail "C97 header spelling -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C97: env_vars = [names] (no value) -> OK =="
+c97_cfg "$c97_base
+env_vars = [\"OBSIDIAN_API_KEY\"]"
+out="$(c97_run)"
+if grepq "$out" -F 'OK   C97-codex-mcp-literal-key' && ! grepq "$out" -E '(WARN|INFO) C97'; then pass "C97 OK for an env_vars name list"; else fail "C97 env_vars -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C97: an empty value and a commented-out line -> OK =="
+c97_cfg "$c97_base
+[mcp_servers.obsidian-vault.env]
+OBSIDIAN_API_KEY = \"\"
+OTHER_TOKEN = ''
+# OBSIDIAN_SECRET = \"$c97_dummy\""
+out="$(c97_run)"
+if grepq "$out" -F 'OK   C97-codex-mcp-literal-key' && ! grepq "$out" -E '(WARN|INFO) C97'; then pass "C97 OK for an empty value and a comment"; else fail "C97 empty/comment -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C97: an empty value followed by a TOML comment -> OK; a literal followed by a comment -> WARN =="
+c97_cfg "$c97_base
+[mcp_servers.obsidian-vault.env]
+OBSIDIAN_API_KEY = \"\" # unused
+OTHER_TOKEN = '' # unused
+EMPTY_KEY = \"\"\"\"\"\"
+EMPTY_TOKEN = '''''' # unused"
+out="$(c97_run)"
+if grepq "$out" -F 'OK   C97-codex-mcp-literal-key' && ! grepq "$out" -E '(WARN|INFO) C97'; then pass "C97 OK for an empty value with a trailing comment"; else fail "C97 empty+comment -> $(printf '%s' "$out" | head -4)"; fi
+c97_cfg "[mcp_servers.obsidian-vault.env]
+OBSIDIAN_API_KEY = \"$c97_dummy\" # local
+BARE_TOKEN = 12345 # local
+TRIPLE_SECRET = \"\"\"$c97_dummy\"\"\"
+LITERAL_KEY = '''$c97_dummy'''"
+out="$(c97_run)"
+if grepq "$out" -F 'WARN C97-codex-mcp-literal-key' && grepq "$out" -F 'OBSIDIAN_API_KEY' && grepq "$out" -F 'BARE_TOKEN' && grepq "$out" -F 'TRIPLE_SECRET' && grepq "$out" -F 'LITERAL_KEY' && ! grepq "$out" -F "$c97_dummy" && ! grepq "$out" -F '12345'; then pass "C97 WARN for a literal with a trailing comment"; else fail "C97 literal+comment -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C97: an escaped quote inside an inline basic-string value still commits the pair -> WARN =="
+c97_cfg '[mcp_servers.x]
+command = "node"
+env = { SOME_API_KEY = "FIXTURE-DUMMY-9f3a\"tail", PLAIN = "1" }'
+out="$(c97_run)"
+if grepq "$out" -F 'WARN C97-codex-mcp-literal-key' && grepq "$out" -F 'SOME_API_KEY' && ! grepq "$out" -F 'FIXTURE-DUMMY-9f3a'; then pass "C97 WARN for an escaped quote in an inline value"; else fail "C97 escaped quote -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C97: a CRLF config reads like an LF one -> WARN =="
+printf '[mcp_servers.a.env]\r\nA_API_KEY = "%s"\r\n' "$c97_dummy" > "$c97_t/codex/config.toml"
+out="$(c97_run)"
+if grepq "$out" -F 'WARN C97-codex-mcp-literal-key' && grepq "$out" -F 'A_API_KEY' && ! grepq "$out" -F "$c97_dummy"; then pass "C97 WARN for a CRLF config"; else fail "C97 CRLF -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C97: the scan itself fails -> INFO, never OK =="
+mkdir -p "$c97_t/badawk"
+printf '#!/bin/sh\nexit 2\n' > "$c97_t/badawk/awk"; chmod +x "$c97_t/badawk/awk"
+c97_cfg "[mcp_servers.a.env]
+A_API_KEY = \"$c97_dummy\""
+out="$(PATH="$c97_t/badawk:$PATH" c97_run)"
+if grepq "$out" -F 'INFO C97-codex-mcp-literal-key' && grepq "$out" -F 'scan failed' && ! grepq "$out" -E '(OK  |WARN) C97'; then pass "C97 INFO when the scan fails"; else fail "C97 scan failure -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C97: a secret-named key outside any mcp_servers env table -> OK =="
+c97_cfg "[projects.\"/x\"]
+trust_level = \"trusted\"
+SOME_API_KEY = \"$c97_dummy\"
+[mcp_servers.obsidian-vault.tools.search]
+approval_mode = \"approve\"
+TOOL_TOKEN = \"$c97_dummy\""
+out="$(c97_run)"
+if grepq "$out" -F 'OK   C97-codex-mcp-literal-key' && ! grepq "$out" -E '(WARN|INFO) C97'; then pass "C97 OK for a key outside an mcp_servers env table"; else fail "C97 outside -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C97: a disabled server (enabled = false) with a literal key -> still WARN =="
+c97_cfg "[mcp_servers.obsidian-vault]
+command = \"node\"
+enabled = false
+[mcp_servers.obsidian-vault.env]
+OBSIDIAN_API_KEY = \"$c97_dummy\""
+out="$(c97_run)"
+if grepq "$out" -F 'WARN C97-codex-mcp-literal-key' && grepq "$out" -F 'OBSIDIAN_API_KEY' && ! grepq "$out" -F "$c97_dummy"; then pass "C97 WARN for a disabled server (the key is still on disk)"; else fail "C97 disabled -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C97: two servers, two variables -> one WARN names each pair =="
+c97_cfg "[mcp_servers.a.env]
+A_API_KEY = \"$c97_dummy\"
+[mcp_servers.b.env]
+B_TOKEN = \"$c97_dummy\""
+out="$(c97_run)"
+if [ "$(printf '%s\n' "$out" | grep -c 'WARN C97-codex-mcp-literal-key')" -eq 1 ] && grepq "$out" -F '[mcp_servers.a] A_API_KEY, [mcp_servers.b] B_TOKEN' && ! grepq "$out" -F "$c97_dummy"; then pass "C97 names every offending pair"; else fail "C97 two servers -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C97: no Codex config at CODEX_HOME -> OK =="
+rm -f "$c97_t/codex/config.toml"
+out="$(c97_run)"
+if grepq "$out" -F 'OK   C97-codex-mcp-literal-key' && grepq "$out" -F 'no codex config'; then pass "C97 OK when there is no Codex config"; else fail "C97 no config -> $(printf '%s' "$out" | head -4)"; fi
+if [ "$(id -u 2>/dev/null || echo 0)" = "0" ]; then
+    echo "== C97: unreadable config -> SKIPPED (running as root: mode 000 is still readable) =="
+else
+    echo "== C97: an unreadable config -> INFO, never OK =="
+    c97_cfg "[mcp_servers.a.env]
+A_API_KEY = \"$c97_dummy\""
+    chmod 000 "$c97_t/codex/config.toml"
+    out="$(c97_run)"
+    if grepq "$out" -F 'INFO C97-codex-mcp-literal-key' && grepq "$out" -F 'not readable' && ! grepq "$out" -E '(OK  |WARN) C97'; then pass "C97 INFO for an unreadable config"; else fail "C97 unreadable -> $(printf '%s' "$out" | head -4)"; fi
+    chmod 600 "$c97_t/codex/config.toml"
+fi
+rm -rf "$c97_t"
 
 printed_keys() {
     awk '/^[[:space:]]*#/ { next }

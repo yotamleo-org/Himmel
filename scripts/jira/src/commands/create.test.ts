@@ -2698,3 +2698,26 @@ describe('create --operator-update: the bridge names the operator\'s update (T4,
     expect(bridgePointer({ ...opts, ...fix.opts })).toEqual({ operator_update: 900000001, filed_by: 'bridge', bridge_chat: 111 });
   });
 });
+
+describe('create — backlog needs --decision for a High or security Bug', () => {
+  const BACKLOG = { backlog: true, proposedVersion: 'backlog', why: 'waits' };
+  const rule = /High or security.*--decision/s;
+
+  it.each(['High', 'Highest'])('refuses a %s Bug filed to the backlog with no --decision', async (priority) => {
+    const { checkPlacementFlags } = await import('./create.js');
+    expect(() => checkPlacementFlags({ type: 'Bug', priority, ...BACKLOG })).toThrow(rule);
+  });
+
+  it('refuses a Bug or Task carrying a security label filed to the backlog with no --decision', async () => {
+    const { checkPlacementFlags } = await import('./create.js');
+    expect(() => checkPlacementFlags({ type: 'Bug', priority: 'Medium', labels: 'security', ...BACKLOG })).toThrow(rule);
+    expect(() => checkPlacementFlags({ type: 'Task', labels: 'standalone,Security', ...BACKLOG })).toThrow(rule);
+  });
+
+  it('control: a Medium Bug, a High Bug with --decision, and a High Task with no security label still file', async () => {
+    const { checkPlacementFlags } = await import('./create.js');
+    expect(() => checkPlacementFlags({ type: 'Bug', priority: 'Medium', ...BACKLOG })).not.toThrow();
+    expect(() => checkPlacementFlags({ type: 'Bug', priority: 'High', decision: '454', ...BACKLOG })).not.toThrow();
+    expect(() => checkPlacementFlags({ type: 'Task', priority: 'High', ...BACKLOG })).not.toThrow();
+  });
+});

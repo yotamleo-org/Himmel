@@ -842,7 +842,7 @@ wait "$sr_p1" "$sr_p2"
 same 'two cadences armed at once on a slow crontab both land' "$(sr_n HIMMEL-LedgerDrift)$(sr_n HIMMEL-MorningReport)$(sr_n HIMMEL-Other)" '111'
 rm -rf "$sr"
 
-# --- review=<date>:<age>:<failures>:<new>:<new 5+>:<filed>[:CAPPED][:STALE] (decision 593): the daily failure
+# --- review=<date>:<age>:<failures>:<new>:<new 5+>:<filed>[:STALE] (decision 593): the daily failure
 # review as one more scheduled row, a local read of the newest failure-review-<date>.md and its .json sidecar
 # in HIMMEL_FAILURE_REVIEW_DIR. RED control (tick.sh before this change): the line never carries review=.
 rv="$W/review593"
@@ -857,10 +857,10 @@ rv_write() { # <date> <age as touch -d reads it> <sidecar json>
 rv_json_filed='{"totals":{"rows":100,"classes":4,"workers":9},"classes":[{"class":"denied/a","rows":7,"recurring":false},{"class":"error/b","rows":1,"recurring":false},{"class":"error/c","rows":50,"recurring":true},{"class":"traj/x","rows":9,"recurring":false}],"routing":[{"decision":"filed","class":"denied/a","ticket":"HIMMEL-9256"},{"decision":"filed","class":"error/c","ticket":"HIMMEL-9257"},{"decision":"commented","class":"x","ticket":"HIMMEL-1"},{"decision":"capped","class":"y"}]}'
 rv_json_quiet='{"totals":{"rows":100,"classes":2,"workers":9},"classes":[{"class":"error/b","rows":1,"recurring":false},{"class":"error/c","rows":50,"recurring":true}],"routing":[{"decision":"commented","class":"x","ticket":"HIMMEL-1"}]}'
 rv_write 2026-11-05 '2 hours' "$rv_json_filed"
-same 'a fresh review reads its age, failures, new classes, big new classes, filed keys and the cap (decision 593)' "$(rv_tick | review_of)" '2026-11-05:2h:100:2:1:HIMMEL-9256+HIMMEL-9257:CAPPED'
+same 'a fresh review reads its age, failures, new classes, big new classes and filed keys, and a sidecar with a capped routing row adds no CAPPED flag (decision 593, decision 941)' "$(rv_tick | review_of)" '2026-11-05:2h:100:2:1:HIMMEL-9256+HIMMEL-9257'
 contains 'verbose labels the failure review (decision 593)' "$(rv_tick --verbose)" 'failure review: 2026-11-05:2h:100:2:1:'
 rv_write 2026-11-05 '30 hours' "$rv_json_filed"
-same 'a review older than 26 h reads STALE (decision 593)' "$(rv_tick | review_of)" '2026-11-05:30h:100:2:1:HIMMEL-9256+HIMMEL-9257:CAPPED:STALE'
+same 'a review older than 26 h reads STALE (decision 593)' "$(rv_tick | review_of)" '2026-11-05:30h:100:2:1:HIMMEL-9256+HIMMEL-9257:STALE'
 rv_write 2026-11-05 '3 hours' "$rv_json_quiet"
 same 'a 1-count new class files nothing and flags nothing (decision 593)' "$(rv_tick | review_of)" '2026-11-05:3h:100:1:0:-'
 rm -f "$rv/failure-review-2026-11-05.json"

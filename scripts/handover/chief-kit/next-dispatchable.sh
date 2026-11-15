@@ -144,7 +144,11 @@
 # Output, one line per ticket, tab-separated:
 #   <LOCAL|CLOUD> <KEY> <priority> <fixVersion|-> <title> files=<a,b|->  [hook]
 #
-# GitHub out: a preflight (scripts/lib/gh-quota.sh ghq_scan_gate, main token, GraphQL and core) that finds a
+# GitHub reads ride the read token through scripts/lib/gh-read.sh (main when none is configured), with no fallback to
+# main on a rate limit.
+#
+# GitHub out: a preflight (scripts/lib/gh-quota.sh ghq_scan_gate, GraphQL and core, on the token the reads ride:
+# ghq_scan_token; the classifier's searches ride main, so with it on main's GraphQL is gated too) that finds a
 # bucket under the floor or a probe timed out, or a gh read during the run that names a rate limit or times out (the
 # classifier's stderr or a classifier timeout too), makes the WHOLE stdout one line, `# quota-pause QUOTA-PAUSE …` or `# gh-stall GH-STALL …`, exit 0:
 # no rows, no RESUME-HELD, no POOL-EMPTY, since the unread rows are unknown, not empty. After the first refused or
@@ -216,13 +220,30 @@ if [ -n "${NEXT_DISPATCH_GH_CMD:-}" ] && [ -z "${HIMMEL_QUOTA_DIR:-}" ]; then
     trap 'rm -rf "$nd_qtmp"' EXIT
 fi
 export GH_READ_NO_MAIN_FALLBACK=1
+if [ -z "${NEXT_DISPATCH_GH_CMD:-}" ] && [ -f "$REPO/scripts/lib/gh-read.sh" ]; then
+    # shellcheck source=scripts/lib/gh-read.sh
+    . "$REPO/scripts/lib/gh-read.sh"
+    _ghr_load
+    [ -n "$_GHR_TOK" ] || export GH_READ_QUIET=1
+    export ND_GH_READ="$REPO/scripts/lib/gh-read.sh"
+fi
 nd_pause() {
     case "$1" in GH-STALL*) printf '# gh-stall %s\n' "$1" ;; *) printf '# quota-pause %s\n' "$1" ;; esac
     exit 0
 }
+nd_tok=main
+[ -z "${ND_GH_READ:-}" ] || nd_tok=$(ghq_scan_token next-dispatchable)
 for nd_bucket in graphql core; do
-    nd_line=$(ghq_scan_gate main "$nd_bucket" next-dispatchable) || { [ $? -ne 75 ] || nd_pause "$nd_line"; }
+    nd_line=$(ghq_scan_gate_routed "$nd_tok" "$nd_bucket" next-dispatchable) || { [ $? -ne 75 ] || nd_pause "$nd_line"; }
 done
+if [ "$nd_tok" = read ] && ! { ghq_row_ok read graphql && ghq_row_ok read core; }; then
+    nd_tok=main
+    unset ND_GH_READ
+fi
+if [ "$nd_tok" = read ] && [ "$classify" = 1 ] && [ -z "${NEXT_DISPATCH_CLASSIFY_CMD:-}" ]; then
+    nd_line=$(ghq_scan_gate main graphql next-dispatchable) || { [ $? -ne 75 ] || nd_pause "$nd_line"; }
+fi
+export ND_TOK="$nd_tok"
 nd_deadline="${NEXT_DISPATCH_DEADLINE:-400}"
 case "$nd_deadline" in ''|*[!0-9]*) nd_deadline=400 ;; esac
 nd_out=$(mktemp "${TMPDIR:-/tmp}/next-dispatch-out.XXXXXX") || exit 1
@@ -257,25 +278,30 @@ def gh_bucket(argv):
         return 'graphql' if 'graphql' in argv else 'core'
     return 'core' if argv[1:3] == ['pr', 'diff'] else 'graphql'
 
-def note_flag(kind, bucket, detail):
+def note_flag(kind, bucket, detail, tok=None):
     if rate_limited or timed_out:
         return
     (rate_limited if kind == 'rate-limit' else timed_out).append(detail)
     try:
         with open(os.environ['ND_FLAGS'], 'a') as f:
-            f.write('%s\t%s\t%s\n' % (kind, bucket, int(time.time()) if kind == 'rate-limit' else detail))
+            f.write('%s\t%s\t%s\t%s\n' % (kind, bucket, int(time.time()) if kind == 'rate-limit' else detail, tok or os.environ.get('ND_TOK') or 'main'))
     except (KeyError, OSError):
         pass  # swallow-ok: with no flag file the run prints its rows with the rate-limit WARN header, as before
 
 def ghrun(argv, **kw):
     if rate_limited or timed_out:
         raise subprocess.SubprocessError('an earlier GitHub read was refused or stalled')
+    if kw.get('timeout'):
+        kw['env'] = dict(os.environ, GH_READ_TIMEOUT=str(max(1, int(kw['timeout']) - 1)))
     try:
         return subprocess.run(argv, **kw)
     except subprocess.TimeoutExpired:
         note_flag('stall', gh_bucket(argv), kw.get('timeout') or 0)
         raise
     except subprocess.CalledProcessError as e:
+        if e.returncode in (124, 137):
+            note_flag('stall', gh_bucket(argv), kw.get('timeout') or 0)
+            raise
         err = e.stderr if isinstance(e.stderr, str) else (e.stderr or b'').decode('utf-8', 'replace')
         if RATE_LIMIT_RE.search(err):
             note_flag('rate-limit', gh_bucket(argv), err.strip().splitlines()[0][:200])
@@ -1110,7 +1136,7 @@ pr_file_map = {}  # PR number -> its files
 pr_meta = {}  # PR number -> (title, head branch)
 outside_idle = {}
 now_s = float(os.environ.get('NEXT_DISPATCH_NOW') or time.time())
-gh = os.environ.get('NEXT_DISPATCH_GH_CMD', 'gh')
+gh = os.environ.get('NEXT_DISPATCH_GH_CMD') or os.environ.get('ND_GH_READ') or 'gh'
 gh_repo = 'yotamleo-org/Himmel'  # env-literal-ok: the canonical slug; --search does not follow a repo rename
 try:
     nums = ghrun([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'open', '--limit', '200', '--json', 'number', '--jq', '.[].number'],
@@ -1475,14 +1501,14 @@ def classify(batch):
         r = subprocess.run(argv + [i['key'] for i in batch], capture_output=True, text=True, timeout=gh_t(300))
         hit = next((l for l in r.stderr.splitlines() if RATE_LIMIT_RE.search(l)), None)
         if hit:
-            note_flag('rate-limit', 'graphql' if re.search(r'graphql', hit, re.I) else 'core', hit.strip()[:200])
+            note_flag('rate-limit', 'graphql' if re.search(r'graphql', hit, re.I) else 'core', hit.strip()[:200], 'main')
         for line in r.stdout.splitlines():
             p = line.split('\t')
             if len(p) >= 2 and re.match(r'^[A-Z]+-\d+$', p[0]):
                 cls[p[0]] = p[1]
                 reasons[p[0]] = p[2].strip() if len(p) > 2 else ''
     except subprocess.TimeoutExpired:
-        note_flag('stall', 'graphql', gh_t(300))
+        note_flag('stall', 'graphql', gh_t(300), 'main')
     except (OSError, subprocess.SubprocessError):
         pass
     return cls
@@ -1847,13 +1873,13 @@ PY
 nd_pid=$!
 wait "$nd_pid"; nd_rc=$?
 nd_pid=""
-IFS="$(printf '\t')" read -r nd_why nd_bucket nd_at < "$nd_flags" 2>/dev/null || nd_why=""
+IFS="$(printf '\t')" read -r nd_why nd_bucket nd_at nd_ftok < "$nd_flags" 2>/dev/null || nd_why=""
 case "$nd_why" in
-    rate-limit) nd_pause "$(ghq_line main "$nd_bucket" next-dispatchable rate-limit "$nd_at")" ;;
-    stall) nd_pause "$(ghq_line main "$nd_bucket" next-dispatchable stall "$nd_at")" ;;
+    rate-limit) nd_pause "$(ghq_line "${nd_ftok:-main}" "$nd_bucket" next-dispatchable rate-limit "$nd_at")" ;;
+    stall) nd_pause "$(ghq_line "${nd_ftok:-main}" "$nd_bucket" next-dispatchable stall "$nd_at")" ;;
 esac
 if [ -n "$_TIMEOUT_BIN" ] && { [ "$nd_rc" -eq 124 ] || [ "$nd_rc" -eq 137 ]; }; then
-    nd_pause "$(ghq_line main graphql next-dispatchable stall "$nd_deadline")"
+    nd_pause "$(ghq_line "$nd_tok" graphql next-dispatchable stall "$nd_deadline")"
 fi
 cat "$nd_out"  # read-sink-ok: our own mktemp buffer
 exit "$nd_rc"

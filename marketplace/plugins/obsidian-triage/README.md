@@ -198,8 +198,22 @@ when coverage is at least `--min-sub-coverage` (default 90 percent of the video
 duration). No track or low coverage falls back to the Scrapling download -> ffmpeg ->
 whisper path. A
 clip with no twimg ref (e.g. filed from Telegram) is probed once via fxtwitter
-(`tweet.media.videos[].duration`); no video stamps `media_probe_at` +
-`media_probe_result: no-video` and is never re-probed. Provenance lands in the
+(`tweet.media.videos[].duration`); a post with only photos stamps
+`media_probe_result: photo` and takes the download path like any media post; a
+post with no media at all stamps `media_probe_at` +
+`media_probe_result: no-video` and is never re-probed by the normal run.
+`x-media-fetch.py <vault> --reprobe-no-video` is the one-time backfill for
+clips stamped `no-video` before photos were recognised. A bare call (or with
+`--dry-run`) only prints how many it would re-probe and changes nothing; with
+`--live` it probes them again, re-stamps those that have media (the next normal
+run fetches them) and leaves the others untouched; `--limit N` caps it (`0` =
+all). Every probe, and every stamp or skip decision, appends one JSON line to
+`~/.himmel/state/x-media-probe.jsonl` (override `HIMMEL_X_MEDIA_PROBE_LOG`):
+`v, ts, host, source, kind` (`kind` is `probe` or `decision`), `clip` (status id),
+`path`, then for a probe `url`, `result`, `videos`, `photos`, and for a decision
+`action` (`stamp` or `skip`) and `reason`. Never tweet text. A log that cannot be
+written costs a stderr note, never the probe.
+Provenance lands in the
 frontmatter (`media_transcript_source`: `platform-subs` / `auto-subs` /
 `whisper-<model>` / `none`, `media_video_duration_s`, `media_transcript_coverage`)
 and as a `<!-- source: platform-subs (en), coverage 100%, 38:02 -->` line in the

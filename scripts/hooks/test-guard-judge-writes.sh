@@ -113,6 +113,70 @@ row "foreign MCP write" 2 "$(mcp_payload 'mcp__claude_ai_Slack__slack_send_messa
 row "inbox-send.sh" 2 "$(bash_payload 'bash scripts/handover/chief-kit/inbox-send.sh --to c --file m.md')"
 # --- marker override ---
 row "marker named in command" 2 "$(bash_payload 'env -u HIMMEL_CONSOLE_JUDGE bash x.sh')"
+row "bun x oxlint" 2 "$(bash_payload 'bun x oxlint .')"
+row "bunx" 2 "$(bash_payload 'bunx oxlint@1.88.0 .')"
+row "npx" 2 "$(bash_payload 'npx prettier --check .')"
+row "npm install" 2 "$(bash_payload 'npm install left-pad')"
+row "npm i" 2 "$(bash_payload 'npm i left-pad')"
+row "pip install" 2 "$(bash_payload 'pip install requests')"
+row "python3 -m pip install" 2 "$(bash_payload 'python3 -m pip install requests')"
+row "uvx" 2 "$(bash_payload 'uvx ruff check .')"
+row "npm exec" 2 "$(bash_payload 'npm exec --yes --package=left-pad -- node x.js')"
+row "npm x" 2 "$(bash_payload 'npm x prettier --check .')"
+row "npm add" 2 "$(bash_payload 'npm add left-pad')"
+row "bun add" 2 "$(bash_payload 'bun add left-pad')"
+row "bun install" 2 "$(bash_payload 'bun install')"
+row "uv tool run" 2 "$(bash_payload 'uv tool run ruff check .')"
+row "uv pip install" 2 "$(bash_payload 'uv pip install requests')"
+row "uv run --with" 2 "$(bash_payload 'uv run --with ruff ruff check .')"
+row "npm init" 2 "$(bash_payload 'npm init vite@latest app')"
+row "npm create" 2 "$(bash_payload 'npm create vite@latest app')"
+row "npm in" 2 "$(bash_payload 'npm in left-pad')"
+row "npm ins" 2 "$(bash_payload 'npm ins left-pad')"
+row "npm inst" 2 "$(bash_payload 'npm inst left-pad')"
+row "npm isntall" 2 "$(bash_payload 'npm isntall left-pad')"
+row "npm ci" 2 "$(bash_payload 'npm ci')"
+row "bun create" 2 "$(bash_payload 'bun create vite app')"
+row "pip download" 2 "$(bash_payload 'pip download requests')"
+row "cargo install" 2 "$(bash_payload 'cargo install ripgrep')"
+row "uv run -w" 2 "$(bash_payload 'uv run -w ruff ruff check .')"
+for v in insta instal isnt isnta isntal it cit sit ic install-clean innit ini cre exe; do
+    row "npm $v" 2 "$(bash_payload "npm $v left-pad")"
+done
+row "bun a" 2 "$(bash_payload 'bun a left-pad')"
+row "bun c" 2 "$(bash_payload 'bun c vite app')"
+row "npm global flag value shadows the subcommand" 2 "$(bash_payload 'npm --prefix run install left-pad')"
+row "bun global flag before the subcommand" 2 "$(bash_payload 'bun --cwd run add left-pad')"
+row "bun -v before the subcommand" 2 "$(bash_payload 'bun -v add left-pad')"
+row "uv run grouped short flags with w" 2 "$(bash_payload 'uv run -qw ruff ruff check .')"
+row "an installed tool run by its own name" 0 "$(bash_payload 'oxlint --version')"
+row "npm ls read" 0 "$(bash_payload 'npm ls --depth=0')"
+row "npm view read" 0 "$(bash_payload 'npm view left-pad version')"
+row "npm run script" 0 "$(bash_payload 'npm run lint')"
+row "npm test" 0 "$(bash_payload 'npm test')"
+row "npm --version" 0 "$(bash_payload 'npm --version')"
+row "bun run script" 0 "$(bash_payload 'bun run lint')"
+row "bun test" 0 "$(bash_payload 'bun test scripts/x.test.ts')"
+row "bun runs a script file" 0 "$(bash_payload 'bun scripts/x.ts --flag')"
+row "uv run without --with" 0 "$(bash_payload 'uv run pytest -q')"
+
+sub_row() {
+    local label="$1" want="$2" payload="$3" got
+    got=$(run "$payload" 0)
+    if [ "$got" = "$want" ]; then
+        echo "ok   subagent: $label (rc=$got)"; pass=$((pass + 1))
+    else
+        echo "FAIL subagent: $label — expected rc=$want, got rc=$got"; fail=$((fail + 1))
+    fi
+}
+agent_bash_payload() { jq -nc --arg a "$1" --arg c "$2" '{agent_type:$a, agent_id:"a1", tool_name:"Bash", tool_input:{command:$c}}'; }
+sub_row "judge-ro runs bun x oxlint" 2 "$(agent_bash_payload judge-ro 'bun x oxlint .')"
+sub_row "judge runs npx" 2 "$(agent_bash_payload judge 'npx prettier --check .')"
+sub_row "plugin-namespaced judge-ro runs uvx" 2 "$(agent_bash_payload himmel-ops:judge-ro 'uvx ruff check .')"
+sub_row "judge-ro reads git log" 0 "$(agent_bash_payload judge-ro 'git log -p -- package.json')"
+sub_row "judge-ro unparseable payload" 2 '{"agent_type":"judge-ro","tool_name":'
+sub_row "no agent_type runs bun x oxlint" 0 "$(bash_payload 'bun x oxlint .')"
+sub_row "another subagent runs bun x oxlint" 0 "$(agent_bash_payload general-purpose 'bun x oxlint .')"
 # --- Edit / Write outside the verdict and scratch dirs ---
 row "Write into a repo file" 2 "$(file_payload Write "$REPO/scripts/x.sh")"
 row "Edit a repo file" 2 "$(file_payload Edit "$REPO/scripts/x.sh")"
@@ -143,6 +207,15 @@ row "jira get read" 0 "$(bash_payload 'node /repo/scripts/jira/dist/index.js get
 row "append-results bullet" 0 "$(bash_payload 'bash scripts/handover/chief-kit/append-results.sh d.md "LIVE x"')"
 row "qmd MCP read" 0 "$(mcp_payload 'mcp__qmd__query')"
 row "Read tool" 0 "$(jq -nc '{tool_name:"Read", tool_input:{file_path:"/etc/hostname"}}')"
+
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+for doc in .claude/agents/judge-ro.md .claude/agents/judge.md docs/handover/judge-brief-template.md; do
+    if grep -qF 'Never fetch or run a package that is not already installed' "$REPO_ROOT/$doc"; then
+        echo "ok   doc: $doc carries the no-fetch rule"; pass=$((pass + 1))
+    else
+        echo "FAIL doc: $doc lacks the no-fetch rule"; fail=$((fail + 1))
+    fi
+done
 
 echo
 echo "RESULTS: $pass passed, $fail failed"

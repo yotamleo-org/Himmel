@@ -122,7 +122,10 @@ HIMMEL_FLEET_CAP) -- never a second count; fleet=? when that census cannot be
 read. capacity=UNDERFILLED:<slack> means live < cap AND no leg launched for
 TICK_UNDERFILL_MIN minutes (default 10); capacity=ok otherwise, capacity=unknown
 when fleet=?. TICK_LAUNCH_DIR overrides the console work dir the launch logs
-are read from.
+are read from. supply=SHORT:<free> is its own field, printed only beside
+capacity=UNDERFILLED:<slack> when the pool count is numeric and free (the listed
+rows minus the pool-parked ones) is below the slack: the shortage is startable
+work, not the chief. capacity= itself never changes, chief-wait.sh matches it.
 
 flakes=<rows>/<suites>@<top-suite>*<k> sits between fails= and spare=
 and is ABSENT unless this repo's suite-flake ledger (run-shell-tests.sh)
@@ -505,6 +508,13 @@ doc's stale file (tick-pool-stale-<cksum>.out in TICK_STATE_DIR, the main tick's
 newest file of the same mirror): a key whose only reason to count as dispositioned is its line, and whose line still hashes to the
 file's line=, is unresolved as class `stale` and names its gone targets. The file has no age bound. A failed or paused read
 keeps a stale verdict while the line is unchanged and no target reads open (--prior, the carry-forward, ends ` carried`).
+Parked rows stay listed: --pool-dispositions prints `# pool-parked <KEY>` for a listed row whose key has a fresh, valid
+line (stale, changed, invalid, unowned and unknown-key lines park nothing), and `# pool-chief-owed <KEY>` when that line
+matches proof|signature|critic round|owed|go code. The tick carries pool-parked=<n> and chief-owed=<m> (hidden at 0); the
+`# pool-dispatchable <KEY>` lines and chief-wait.sh's dispatchable= are unchanged.
+owed=<n>:<oldest-age> counts the open rows of the owed ledger beside --doc (owed.jsonl, owe.sh; <m>m under an hour, else <h>h),
+hidden at 0, `?` when unreadable. A ticket-kind row with no key past OWED_STALE_SECS (default 14400) adds
+`ACTION owed-stale=<n>:<ids>`; closing the row with a key ends it. Not in chief-wait.sh's wake key.
 A key whose line the file reads changed (pool-changed=, same line-hash and sole-reason rules) is unresolved as
 class `changed`: `<target> merged <oldest sha since the anchor> since the line was written: re-read and stamp
 (<LL> <MM-DD> <HH:MM>Z)`, the bracket printed as written, never filled in.
@@ -752,6 +762,13 @@ for key, reason in sorted(invalid.items()):
 for key, reason in sorted(rows.items()):
     if key not in dispatchable:
         print("# pool-left-out %s %s" % (key, reason))
+unres_keys = {k for _, k, _ in unresolved}
+owed = re.compile(r"\b(?:proof|signature|critic round|owed|go code)\b", re.I)
+for key in sorted(dispatchable):
+    if key in decisions and key not in unres_keys and key not in invalid:
+        print("# pool-parked " + key)
+        if owed.search(decisions[key]):
+            print("# pool-chief-owed " + key)
 PY
 }
 
@@ -3102,6 +3119,9 @@ fi
 # else ?. The chief's current pool-disposition lines are read on every tick.
 pool_summary=skip
 intake_summary=skip
+pool_parked_n=""
+pool_owed_n=""
+pool_free=""
 if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
     pool_summary='?'
     pd_dir="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
@@ -3142,6 +3162,15 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
         pd_summary="$(pool_dispositions "$console_doc" < "$pd_base.rows")"
         pool_summary="$(printf '%s\n' "$pd_summary" | sed -n 's/^# pool-counts //p')"
         [ -n "$pool_summary" ] || pool_summary='?'
+        case "$pool_summary" in
+            [0-9]*/*)
+                pool_parked_n="$(printf '%s\n' "$pd_summary" | grep -c '^# pool-parked ' || true)"  # swallow-ok: grep -c prints 0 and exits 1 on no match
+                pool_owed_n="$(printf '%s\n' "$pd_summary" | grep -c '^# pool-chief-owed ' || true)"  # swallow-ok: grep -c prints 0 and exits 1 on no match
+                pool_free=$(( $(printf '%s\n' "$pd_summary" | grep -c '^# pool-dispatchable ' || true) - pool_parked_n ))  # swallow-ok: grep -c prints 0 and exits 1 on no match
+                [ "$pool_parked_n" -gt 0 ] || { pool_parked_n=""; pool_owed_n=""; }
+                [ -z "$pool_owed_n" ] || [ "$pool_owed_n" -gt 0 ] || pool_owed_n=""
+                ;;
+        esac
         # INTAKE=<n>: versionless operator work the pool cannot list, from the snapshot's `# intake` line
         intake_summary="$(sed -n 's/^# intake \([0-9][0-9]*\)[ :].*/\1/p' "$pd_base.rows" | head -n 1)"  # swallow-ok: no line reads 0
         [ -n "$intake_summary" ] || intake_summary=0
@@ -3244,6 +3273,26 @@ if [ -f "$wto_probe" ]; then
         *) wto_summary=$(grep -c '^ORPHAN ' <<<"$wto_out") || true ;;  # swallow-ok: grep -c exits 1 on a count of 0
     esac
     wtc_summary=$(sed -n 's|^CEILING \([0-9]*/[0-9]*\) .*|\1|p' <<<"$wto_out")
+fi
+
+owed_summary=""
+owed_stale_n=0
+owed_stale_ids=""
+if [ -n "$console_doc" ] && [ -s "${console_doc%/*}/owed.jsonl" ]; then
+    if owed_rows="$(bash "$HERE/owe.sh" list --bucket "${console_doc%/*}" 2>/dev/null)"; then  # swallow-ok: the else branch prints owed=?
+        owed_stale_secs="${OWED_STALE_SECS:-14400}"
+        case "$owed_stale_secs" in ''|*[!0-9]*) owed_stale_secs=14400 ;; esac
+        owed_stale_secs=$((10#$owed_stale_secs))
+        tick_now_s
+        owed_calc="$(printf '%s\n' "$owed_rows" | awk -F'\t' -v now="$tick_now" -v lim="$owed_stale_secs" '
+            NF { n++; if (min == "" || $3 + 0 < min + 0) min = $3
+                 if ($2 == "ticket" && $4 == "" && now - $3 > lim) { s++; ids = ids (ids == "" ? "" : ",") $1 } }
+            END { if (n) { a = int((now - min) / 60); print n ":" (a >= 60 ? int(a / 60) "h" : a "m") "\t" s + 0 "\t" ids } }')"
+        IFS=$'\t' read -r owed_summary owed_stale_n owed_stale_ids <<< "$owed_calc"
+        [ -n "$owed_stale_n" ] || owed_stale_n=0
+    else
+        owed_summary='?'
+    fi
 fi
 
 # This chief's own HANDOFF (<doc stem>-HANDOFF.md, written by chief.sh next)
@@ -3885,6 +3934,7 @@ if [ "${CADENCE_USAGE_LANE:-${WORKER_SESSION_LANE:-native}}" = openrouter ]; the
     bank="openrouter:${or_verdict:-BANK-UNKNOWN}"
 fi
 fleet_total="$(printf '%s\n' "$fleet_out" | sed -n 's/^bank-preflight: FLEET .*total=\([0-9][0-9]*\)\/\([0-9][0-9]*\)$/\1 \2/p' | tail -n 1)"
+supply=""
 underfill_min="${TICK_UNDERFILL_MIN:-10}"
 case "$underfill_min" in ''|*[!0-9]*) underfill_min=10 ;; esac
 if [ -n "$fleet_total" ]; then
@@ -3902,6 +3952,10 @@ if [ -n "$fleet_total" ]; then
         capacity=ok
     else
         capacity="UNDERFILLED:$((10#$fleet_cap - 10#$fleet_live))"
+        case "$pool_free" in
+            '' | *[!0-9]*) ;;
+            *) [ "$pool_free" -ge $((10#$fleet_cap - 10#$fleet_live)) ] || supply="SHORT:$pool_free" ;;
+        esac
     fi
 else
     fleet='?'
@@ -4255,6 +4309,7 @@ if [ "$verbose" -eq 1 ]; then
     fi
     printf 'fleet: %s\n' "$fleet"
     printf 'capacity: %s\n' "$capacity"
+    [ -z "$supply" ] || printf 'supply: %s\n' "$supply"
     printf 'gql: %s\n' "$gql"
     [ -z "$quota_items" ] || printf 'quota: %s\n' "$quota_items"
     case "$rest_main_line" in ''|'?'*) ;; *) printf 'rest main: %s\n' "$rest_main_line" ;; esac
@@ -4288,6 +4343,7 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$unfiled_summary" ] || printf 'repair unfiled: %s\n' "$unfiled_summary"
     [ -z "$repair_summary" ] || printf 'repair: %s\n' "$repair_summary"
     [ -z "$dbot_summary" ] || printf 'dependabot autoland: %s\n' "$dbot_summary"
+    [ -z "$owed_summary" ] || printf 'owed: %s\n' "$owed_summary"
     printf 'leftover worktrees: %s%s\n' "$wto_summary" "${wtc_summary:+ (ceiling alarm $wtc_summary)}"
     [ -z "$flakes_tail" ] || printf 'suite flakes: %s\n' "${flakes_tail# flakes=}"
     [ "$effort_summary" = ok ] || printf 'effort: %s\n' "$effort_summary"
@@ -4381,6 +4437,10 @@ else
     compact_field INTAKE "$intake_summary"
     compact_field pool-stale "$pool_stale"
     compact_field pool-changed "$pool_changed"
+    compact_field pool-parked "$pool_parked_n"
+    compact_field chief-owed "$pool_owed_n"
+    compact_field supply "$supply"
+    compact_field owed "$owed_summary"
     compact_field chains "$chains_summary"
     compact_field residual-unversioned "$residual_unversioned"
     compact_field denials "$denials_summary"
@@ -4436,6 +4496,10 @@ else
     if [ "$wto_summary" != "0" ] || [ -n "$wtc_summary" ]; then
         printf 'ACTION wt-orphans=%s%s: bash %q prune --orphans lists them; bash %q prune reclaims the merged and detached ones, the rest need a wrap or a salvage\n' \
             "$wto_summary" "${wtc_summary:+ wt-ceiling=$wtc_summary}" "$REPO/scripts/worktree.sh" "$REPO/scripts/worktree.sh"
+    fi
+    if [ "$owed_stale_n" -gt 0 ]; then
+        printf 'ACTION owed-stale=%s:%s: a ticket you owe has no key after %sh: file it, then bash %q close --bucket %q --id <id> --key <KEY> (chief-sections/owed.md)\n' \
+            "$owed_stale_n" "$owed_stale_ids" "$((owed_stale_secs / 3600))" "$HERE/owe.sh" "${console_doc%/*}"
     fi
     decisions_file="${console_doc%/*}/specs/decisions/chief-decisions-$(date +%F).md"
     if [ "$handoff_bytes" -gt "$handoff_budget" ]; then

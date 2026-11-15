@@ -21,10 +21,11 @@ git init -q "$REPO"
 # Other tools share TMPDIR (handover-path.sh's arm-resume-cache.* in CI): the
 # scratch checks look only for this script's own graphify-semantic-* dirs.
 mkdir "$WS/tmp/arm-resume-cache.foreign"
-for f in semantic-update.sh semantic-merge.py harden-graph.py harden-allowlist.json semantic-batch-shim.mjs; do
+for f in semantic-update.sh semantic-merge.py harden-graph.py harden-allowlist.json semantic-batch-shim.mjs semantic-batch.mjs; do
   cp "$HERE/$f" "$REPO/scripts/graphify/$f" 2>/dev/null || true
 done
 ln -s "$REAL_REPO/scripts/guardrails" "$REPO/scripts/guardrails"
+cp "$REAL_REPO/scripts/lib/prim.sh" "$REPO/scripts/lib/prim.sh"
 cat > "$REPO/scripts/graphify/seed-claude-config.sh" <<'EOF'
 #!/usr/bin/env bash
 exit 0
@@ -65,6 +66,9 @@ if [ -n "\${LANE_STUB_FAIL:-}" ]; then
   echo "lane-stub-stderr-banner" >&2
   exit 1
 fi
+if [ -n "\${LANE_STUB_GATE:-}" ]; then
+  for _ in \$(seq 200); do [ ! -e "\$LANE_STUB_GATE" ] || break; sleep 0.05; done
+fi
 echo '{"type":"result","subtype":"success","is_error":false,"result":"{}","total_cost_usd":'"\${LANE_STUB_COST:-0.25}"',"usage":{"input_tokens":1,"output_tokens":1}}'
 EOF
 chmod +x "$REPO/scripts/api-lane/claude-api.sh"
@@ -97,11 +101,36 @@ echo "EFFORT=\${CLAUDE_CODE_EFFORT_LEVEL-unset}" >> "$WS/env.log"
 # real key is content plus its own prompt, so it cannot see which mode wrote the entry, and neither does this one.
 if [ -n "\${GRAPHIFY_STUB_CALL_CLAUDE:-}" ] && [ "\$1" = extract ] && { [ -z "\${GRAPHIFY_STUB_CACHE_HIT:-}" ] || [ ! -e "\$2/graphify-out/cache/semantic/new.json" ]; }; then
   claude --help > "$WS/claude-help.out" 2>&1
-  for call_n in \$(seq "\${GRAPHIFY_STUB_CALL_N:-1}"); do
+  if [ -n "\${GRAPHIFY_STUB_DROP_FAILED:-}" ]; then
+    # one call per file in path order; a file whose call failed gets no nodes and the real WARNING line, as graphify does
+    : > "$WS/stub-dropped"; total=0
+    for rel in \$(cd "\$2" && find . -name '*.md' -not -path './graphify-out/*' | sed 's|^\./||' | sort); do
+      total=\$((total + 1))
+      printf '%s' "extract \$rel" | claude -p --output-format json --no-session-persistence --model sonnet --json-schema '{}' >> "$WS/claude.out" 2>&1 \\
+        || { echo "claude-shim-rc=\$?" >> "$WS/calls.log"; echo "\$rel" >> "$WS/stub-dropped"; }
+    done
+    [ ! -s "$WS/stub-dropped" ] || echo "[graphify] WARNING: \$(wc -l < "$WS/stub-dropped" | tr -d ' ')/\$total semantic chunk(s) failed — see errors above. Partial results returned."
+  else
+  calls_n="\${GRAPHIFY_STUB_CALL_N:-1}"
+  [ -z "\${GRAPHIFY_STUB_PER_FILE:-}" ] || calls_n=\$(( \$(cd "\$2" && find . -name '*.md' -not -path './graphify-out/*' | wc -l) * GRAPHIFY_STUB_PER_FILE ))
+  for call_n in \$(seq "\$calls_n"); do
     p="\${GRAPHIFY_STUB_PROMPT:-extract this}"
+    if [ -n "\${GRAPHIFY_STUB_PARALLEL:-}" ]; then
+      { printf '%b' "\${p//@CALL@/\$call_n}" | claude -p --output-format json --no-session-persistence --model sonnet --json-schema '{}' >> "$WS/claude.out" 2>&1 \\
+        || echo "claude-shim-rc=\$?" >> "$WS/calls.log"; } &
+      continue
+    fi
     printf '%b' "\${p//@CALL@/\$call_n}" | claude -p --output-format json --no-session-persistence --model sonnet --json-schema '{}' >> "$WS/claude.out" 2>&1 \\
       || echo "claude-shim-rc=\$?" >> "$WS/calls.log"
   done
+  if [ -n "\${GRAPHIFY_STUB_PARALLEL:-}" ]; then
+    for _ in \$(seq 200); do
+      [ "\$(( \$(grep -c '^lane ' "$WS/calls.log") + \$(grep -c '^claude-shim-rc=' "$WS/calls.log") ))" -lt "\$calls_n" ] || break
+      sleep 0.05
+    done
+    touch "\$LANE_STUB_GATE"; wait
+  fi
+  fi
 fi
 [ "\$1" = extract ] && ls "\$2/graphify-out/cache/semantic" > "$WS/seeded.log" 2>&1
 [ "\$1" = extract ] || exit 0
@@ -117,9 +146,10 @@ if [ -n "\${GRAPHIFY_STUB_CHUNKFAIL:-}" ]; then
   echo '[graphify] chunk 1/9 failed: claude -p exited 1: bank-preflight: FLEET native=21 claudex=0 openrouter=0 reserved=0 total=21/31'
   echo '[graphify] WARNING: 8/9 semantic chunk(s) failed — see errors above. Partial results returned.'
 fi
-python3 - "\$2" <<'PY'
+python3 - "\$2" "$WS/stub-dropped" <<'PY'
 import json, os, sys
 root = sys.argv[1]
+dropped = set(open(sys.argv[2]).read().split()) if os.environ.get("GRAPHIFY_STUB_DROP_FAILED") and os.path.exists(sys.argv[2]) else set()
 nodes, links = [], []
 gi = os.path.join(root, ".graphifyignore")
 ignored = set(open(gi).read().split()) if os.path.exists(gi) else set()
@@ -133,8 +163,8 @@ for dp, dn, fn in os.walk(root):
         rel = os.path.relpath(full, root)
         if rel in ignored:
             continue  # graphify honours .graphifyignore: no nodes for an ignored file
-        if rel == os.environ.get("GRAPHIFY_STUB_SKIP"):
-            continue  # the model omitted this file: no nodes for it
+        if rel == os.environ.get("GRAPHIFY_STUB_SKIP") or rel in dropped:
+            continue
         src = full  # absolute, as a scratch extraction may write it: the merge normalizes it
         label = open(full).read().strip().splitlines()[0]
         nid = "sem_" + rel.replace("/", "_") + "_" + label.replace(" ", "_")
@@ -684,18 +714,51 @@ for rel in documents explains rationale_for; do
   case "$REAL_SCHEMA_RELATIONS" in *"$rel"*) fail "T47 fixture already lists $rel" ;; *) pass "T47 real schema lacks $rel, so the addendum is needed" ;; esac
 done
 
-echo "T48: --max-run-usd is a planning input; a planned run goes past it with a WARN and no refusal"
+stamped() { python3 -c 'import json,sys;print(" ".join(sorted(json.load(open(sys.argv[1]))["files"])))' "$1/graphify-out/semantic-manifest.json"; }
+echo "T48: a call that would pass the run cap is not sent; the run ends over-cap with the finished chunks merged"
 C48="$WS/c48"; new_corpus "$C48"; : > "$WS/calls.log"; : > "$WS/claude.out"
-out=$(LANE_STUB_COST=0.60 GRAPHIFY_STUB_CALL_N=4 GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t48 --corpus-root "$C48" --corpus-class himmel-code --backend claude-api --max-run-usd 1.00); rc=$?
-[ "$(grep -c '^lane ' "$WS/calls.log")" -eq 4 ] && pass "T48 all four calls ran, none refused at the cap" || fail "T48 lane calls: $(grep -c '^lane ' "$WS/calls.log") (rc=$rc)"
-grep -q 'past the planned cap' "$WS/claude.out" && pass "T48 shim logs the overshoot as a WARN" || fail "T48 no overshoot WARN: $(cat "$WS/claude.out")"
-grep -q 'run spend cap reached' "$WS/claude.out" && fail "T48 a call was refused at the cap: $(cat "$WS/claude.out")" || pass "T48 no cap refusal"
+out=$(LANE_STUB_COST=0.60 GRAPHIFY_STUB_DROP_FAILED=1 GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t48 --corpus-root "$C48" --corpus-class himmel-code --backend claude-api --max-run-usd 1.60 --result-file "$WS/t48.result"); rc=$?
+[ "$(grep -c '^lane ' "$WS/calls.log")" -eq 2 ] && pass "T48 two calls sent, the third not" || fail "T48 lane calls: $(grep -c '^lane ' "$WS/calls.log") (rc=$rc)"
+[ "$(grep -c '^claude-shim-rc=7$' "$WS/calls.log")" -eq 1 ] && ! sed -n '/^claude-shim-rc=7$/,$p' "$WS/calls.log" | grep -q '^lane ' \
+  && pass "T48 one refusal (shim exit 7), no lane call after it" || fail "T48 calls after the refusal: $(cat "$WS/calls.log")"
+grep -q "claude-api shim: run spend cap reached (spent 1.20 of 1.60 USD); call refused: spend 1.20 + reserved 0.00 + this call's budget 1.00 would pass the cap; not dispatching this chunk" "$WS/claude.out" \
+  && pass "T48 the refusal names the cap, the spend and the reserved sum" || fail "T48 refusal line: $(cat "$WS/claude.out")"
+[ "$rc" -eq 3 ] && [ "$(head -1 "$WS/t48.result")" = over-cap ] && [[ "$out" == *"semantic-update: over-cap: 1 chunk(s) not sent"*"--max-run-usd"* ]] \
+  && pass "T48 the run ends over-cap, rc 3, naming what raises the cap" || fail "T48 end (rc=$rc, word $(head -1 "$WS/t48.result")): $out"
+ids48=" $(ids "$C48") "
+[[ "$ids48" == *" sem_a.md_alpha "* && "$ids48" == *" sem_b.md_beta "* && "$ids48" != *sem_sub_c.md* ]] \
+  && pass "T48 the finished chunks merged, the refused one did not" || fail "T48 merge: $ids48"
+[ "$(stamped "$C48")" = "a.md b.md" ] && pass "T48 the refused file stays unstamped" || fail "T48 stamped: $(stamped "$C48")"
+[ "$(lastrun "$C48" cost_usd)" = "1.2" ] && pass "T48 the run row counts only verified cost" || fail "T48 row: $(tail -1 "$C48/graphify-out/semantic-runs.jsonl")"
 
-echo "T54: unpriced failing calls all run past the cap; the failure is not reported as cost"
+echo "T48b: calls in flight count against the cap: parallel calls reserve their budget before they are sent"
+C48B="$WS/c48b"; new_corpus "$C48B"; : > "$WS/calls.log"; : > "$WS/claude.out"; rm -f "$WS/lane-go"
+out=$(LANE_STUB_COST=0.60 LANE_STUB_GATE="$WS/lane-go" GRAPHIFY_STUB_PARALLEL=1 GRAPHIFY_STUB_CALL_N=5 GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t48b --corpus-root "$C48B" --corpus-class himmel-code --backend claude-api --max-run-usd 2.50); rc=$?
+[ "$(grep -c '^lane ' "$WS/calls.log")" -eq 2 ] && [ "$(grep -c '^claude-shim-rc=7$' "$WS/calls.log")" -eq 3 ] \
+  && pass "T48b two parallel calls sent, three refused on the in-flight reservations" || fail "T48b lane calls: $(grep -c '^lane ' "$WS/calls.log") (rc=$rc): $(cat "$WS/calls.log")"
+grep -q "run spend cap reached (spent 0.00 of 2.50 USD); call refused: spend 0.00 + reserved 2.00 + this call's budget 1.00 would pass the cap" "$WS/claude.out" \
+  && pass "T48b the refusal counts the calls in flight as reserved" || fail "T48b refusal line: $(cat "$WS/claude.out")"
+[ "$rc" -eq 3 ] && [ "$(lastrun "$C48B" cost_usd)" = "1.2" ] && pass "T48b over-cap, and the settled reservations are not cost" || fail "T48b (rc=$rc): $(tail -1 "$C48B/graphify-out/semantic-runs.jsonl")"
+
+echo "T48c: negative control: a run inside the cap sends every chunk, no refusal, rc 0"
+C48C="$WS/c48c"; new_corpus "$C48C"; : > "$WS/calls.log"; : > "$WS/claude.out"
+out=$(LANE_STUB_COST=0.60 GRAPHIFY_STUB_DROP_FAILED=1 GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t48c --corpus-root "$C48C" --corpus-class himmel-code --backend claude-api --max-run-usd 5.00 --result-file "$WS/t48c.result"); rc=$?
+[ "$rc" -eq 0 ] && [ "$(grep -c '^lane ' "$WS/calls.log")" -eq 3 ] && ! grep -q 'claude-shim-rc' "$WS/calls.log" && [ "$(head -1 "$WS/t48c.result")" = extracted ] \
+  && pass "T48c all three calls sent, rc 0, extracted" || fail "T48c (rc=$rc, word $(head -1 "$WS/t48c.result")): $(cat "$WS/calls.log")"
+grep -q 'run spend cap' "$WS/claude.out" || [[ "$out" == *over-cap* ]] && fail "T48c a refusal inside the cap: $out" || pass "T48c no refusal line"
+[ "$(stamped "$C48C")" = "a.md b.md sub/c.md" ] && [ "$(lastrun "$C48C" cost_usd)" = "1.8" ] && pass "T48c every file stamped, the full cost on the row" || fail "T48c stamped $(stamped "$C48C"): $(tail -1 "$C48C/graphify-out/semantic-runs.jsonl")"
+
+echo "T48d: a failed chunk that is not a cap refusal still ends rc 5"
+C48D="$WS/c48d"; new_corpus "$C48D"; : > "$WS/calls.log"; : > "$WS/claude.out"
+out=$(LANE_STUB_FAIL=1 GRAPHIFY_STUB_DROP_FAILED=1 GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t48d --corpus-root "$C48D" --corpus-class himmel-code --backend claude-api --max-run-usd 2.50 --result-file "$WS/t48d.result"); rc=$?
+[ "$rc" -eq 5 ] && [ "$(head -1 "$WS/t48d.result")" = partial ] && [ "$(grep -c '^claude-shim-rc=7$' "$WS/calls.log")" -eq 1 ] \
+  && pass "T48d two failed chunks and one refusal end rc 5, partial" || fail "T48d (rc=$rc, word $(head -1 "$WS/t48d.result")): $(cat "$WS/calls.log") $out"
+
+echo "T54: unpriced failing calls reserve their per-call budget, so the cap stops them; the failure is not reported as cost"
 C54="$WS/c54"; new_corpus "$C54"; : > "$WS/calls.log"; : > "$WS/claude.out"
 out=$(LANE_STUB_FAIL=1 GRAPHIFY_STUB_CALL_N=5 GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t54 --corpus-root "$C54" --corpus-class himmel-code --backend claude-api --max-run-usd 2.50); rc=$?
-[ "$(grep -c '^lane ' "$WS/calls.log")" -eq 5 ] && pass "T54 all five unpriced calls ran" || fail "T54 lane calls: $(grep -c '^lane ' "$WS/calls.log") (rc=$rc)"
-grep -q 'past the planned cap' "$WS/claude.out" && pass "T54 the overshoot is a WARN" || fail "T54 no overshoot WARN: $(cat "$WS/claude.out")"
+[ "$(grep -c '^lane ' "$WS/calls.log")" -eq 2 ] && pass "T54 two unpriced calls sent, the reservations refuse the other three" || fail "T54 lane calls: $(grep -c '^lane ' "$WS/calls.log") (rc=$rc)"
+grep -q "run spend cap reached (spent 0.00 of 2.50 USD); call refused: spend 0.00 + reserved 2.00 + this call's budget 1.00 would pass the cap" "$WS/claude.out" && pass "T54 the refusal counts the reservations" || fail "T54 no refusal line: $(cat "$WS/claude.out")"
 [ "$(lastrun "$C54" cost_usd)" = "0.0" ] && pass "T54 the reservation is not reported as cost" || fail "T54 row: $(tail -1 "$C54/graphify-out/semantic-runs.jsonl")"
 
 echo "T65: a call the lane refused before any API request adds nothing to the run cap"
@@ -779,7 +842,7 @@ echo "T68d: through the real launcher, a rejection replayed on the subscription 
 real_lane_on
 C68D="$WS/c68d"; new_corpus "$C68D"
 out=$(RL_STUB_REJECT=1 GRAPHIFY_STUB_CALL_N=3 run_real_lane --name t68d --corpus-root "$C68D" --corpus-class himmel-code --backend claude-api --max-run-usd 1.50); rc=$?
-grep -q 'past the planned cap' "$WS/claude.out" && fail "T68d a rejected (unbilled) attempt reserved against the run cap: $(cat "$WS/claude.out")" || pass "T68d a rejected attempt reserves nothing"
+grep -q 'run spend cap' "$WS/claude.out" && fail "T68d a rejected (unbilled) attempt reserved against the run cap: $(cat "$WS/claude.out")" || pass "T68d a rejected attempt reserves nothing"
 [ "$(grep -c '^sub$' "$WS/rl-calls.log")" -eq 3 ] && pass "T68d all three chunks ran on the subscription" || fail "T68d lane calls: $(tr '\n' ' ' < "$WS/rl-calls.log") (rc=$rc): $out"
 [ "$(grep -c '^claude-shim-rc=' "$WS/calls.log")" -eq 0 ] && pass "T68d no chunk failed: the fallback's exit replaced the rejection" || fail "T68d shim rcs: $(grep claude-shim-rc "$WS/calls.log" | tr '\n' ' ')"
 [ "$(lastrun "$C68D" cost_usd)" = "0.0" ] && pass "T68d the API spend is 0 (the subscription's 0.31 per chunk is not API spend)" || fail "T68d row: $(tail -1 "$C68D/graphify-out/semantic-runs.jsonl" 2>&1)"
@@ -789,9 +852,9 @@ echo "T68f: through the real launcher, a failed API attempt replayed on the subs
 real_lane_on
 C68F="$WS/c68f"; new_corpus "$C68F"
 out=$(RL_STUB_FAIL=1 GRAPHIFY_STUB_CALL_N=3 run_real_lane --name t68f --corpus-root "$C68F" --corpus-class himmel-code --backend claude-api --max-run-usd 1.50); rc=$?
-[ "$(grep -c '^sub$' "$WS/rl-calls.log")" -eq 3 ] && pass "T68f all three chunks ran on the subscription" || fail "T68f lane calls: $(tr "\n" " " < "$WS/rl-calls.log") (rc=$rc): $(head -c 900 "$WS/claude.out")"
+[ "$(grep -c '^sub$' "$WS/rl-calls.log")" -eq 1 ] && pass "T68f the first chunk ran on the subscription, the cap refused the other two" || fail "T68f lane calls: $(tr "\n" " " < "$WS/rl-calls.log") (rc=$rc): $(head -c 900 "$WS/claude.out")"
 [ "$(lastrun "$C68F" cost_usd)" = "0.0" ] && pass "T68f the API spend stays 0" || fail "T68f row: $(tail -1 "$C68F/graphify-out/semantic-runs.jsonl" 2>&1)"
-grep -q 'past the planned cap' "$WS/claude.out" && pass "T68f the failed attempts' reserve (1.00 each) passes the 1.50 cap" || fail "T68f no cap WARN: $(head -c 900 "$WS/claude.out")"
+grep -q "spend 0.00 + reserved 1.00 + this call's budget 1.00 would pass the cap" "$WS/claude.out" && pass "T68f the failed attempt's reserve (1.00) counts against the 1.50 cap" || fail "T68f no cap refusal: $(head -c 900 "$WS/claude.out")"
 real_lane_off
 
 echo "T68e: through the real launcher, an API call that succeeds still adds its cost to the spend"
@@ -826,8 +889,8 @@ out=$(GRAPHIFY_STUB_LEAK=1 GRAPHIFY_STUB_CALL_N=2 GRAPHIFY_STUB_CALL_CLAUDE=1 ru
 [ "$rc" -eq 2 ] && [ "$(lastrun "$C55" cost_usd)" = "0.5" ] && pass "T55 failed merge row carries cost 0.5" || fail "T55 (rc=$rc): $(tail -1 "$C55/graphify-out/semantic-runs.jsonl" 2>&1)"
 
 echo "T49: the run row carries the summed lane cost, the backend and the cap"
-[ "$(lastrun "$C48" cost_usd)" = "2.4" ] && [ "$(lastrun "$C48" backend)" = "claude-api" ] && [ "$(lastrun "$C48" cap_usd)" = "1.0" ] \
-  && pass "T49 cost_usd 2.4, backend claude-api, cap_usd 1.0" || fail "T49 row: $(tail -1 "$C48/graphify-out/semantic-runs.jsonl")"
+[ "$(lastrun "$C48C" cost_usd)" = "1.8" ] && [ "$(lastrun "$C48C" backend)" = "claude-api" ] && [ "$(lastrun "$C48C" cap_usd)" = "5.0" ] \
+  && pass "T49 cost_usd 1.8, backend claude-api, cap_usd 5.0" || fail "T49 row: $(tail -1 "$C48C/graphify-out/semantic-runs.jsonl")"
 [ "$(lastrun "$C46" cost_usd)" = "0.0" ] && pass "T49 a non-api run row has cost_usd 0.0" || fail "T49b row: $(tail -1 "$C46/graphify-out/semantic-runs.jsonl")"
 
 echo "T50: rationale and documents/explains/rationale_for edges survive the merge"
@@ -968,18 +1031,26 @@ out=$(GRAPHIFY_OUT="$WS/link64" run --name t64 --corpus-root "$C64" --corpus-cla
 # --- --backend claude-api through the Message Batches API (the default) -----
 # The real client (semantic-batch.mjs) is covered by semantic-batch.test.mjs against a loopback stub of the endpoint;
 # here a stand-in client and credit-state with the same command line prove the wiring around them.
+cp "$HERE/semantic-batch.mjs" "$REPO/scripts/graphify/semantic-batch.real.mjs"
 cat > "$REPO/scripts/graphify/semantic-batch.mjs" <<'EOF'
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const real = join(dirname(fileURLToPath(import.meta.url)), 'semantic-batch.real.mjs');
+const boundOf = (bytes, model, maxTokens) => Number(spawnSync(process.execPath, [real, 'bound', '--bytes', String(bytes), '--model', model || 'sonnet', '--max-tokens', maxTokens || '32000'], { encoding: 'utf8' }).stdout);
 const [cmd, ...a] = process.argv.slice(2);
 const o = {}; for (let i = 0; i < a.length; i += 2) o[a[i].slice(2)] = a[i + 1];
 const ws = process.env.BATCH_STUB_WS;
 const log = (m) => appendFileSync(join(ws, 'batch.log'), `${m}\n`);
+if (cmd === 'bound') { console.log(boundOf(o.bytes, o.model, o['max-tokens']).toFixed(6)); process.exit(0); }
 const sp = join(o.dir, 'batch.json');
 const state = () => JSON.parse(readFileSync(sp, 'utf8'));
 if (cmd === 'submit') {
   if (existsSync(sp)) { console.error('a pending batch is resumed, never resubmitted'); process.exit(2); }
   const ids = readdirSync(o.prompts).filter((f) => f.endsWith('.txt')).map((f) => f.slice(0, -4));
+  const est = ids.reduce((t, id) => t + boundOf(statSync(join(o.prompts, `${id}.txt`)).size, o.model, o['max-tokens']), 0);
+  if (est > Number(o['max-usd'])) { log(`over-budget estimate=${est.toFixed(6)}`); console.error(`semantic-batch: estimate ${est.toFixed(6)} USD (${ids.length} requests) is over the budget of ${o['max-usd']} USD; nothing submitted`); process.exit(7); }
   log(`submit account=${o.account} prompts=${ids.length} model=${o.model} effort=${o.effort}`);
   if ((process.env.BATCH_STUB_EXHAUSTED || '').split(',').includes(o.account)) { console.error('semantic-batch: credit exhausted (HTTP 400)'); process.exit(5); }
   if ((process.env.BATCH_STUB_REJECTED || '').split(',').includes(o.account)) {
@@ -992,7 +1063,7 @@ if (cmd === 'submit') {
   // as the real client: the shim's chunk-body key sidecars ride in batch.json
   const bodies = {};
   for (const id of ids) if (existsSync(join(o.prompts, `${id}.key`))) bodies[readFileSync(join(o.prompts, `${id}.key`), 'utf8').trim()] = id;
-  writeFileSync(sp, JSON.stringify({ batch_id: 'msgbatch_stub', account: o.account, request_count: ids.length, custom_ids: ids, bodies, status: 'in_progress' }));
+  writeFileSync(sp, JSON.stringify({ batch_id: 'msgbatch_stub', account: o.account, budget_usd: o['max-usd'], request_count: ids.length, custom_ids: ids, bodies, status: 'in_progress' }));
   console.log(JSON.stringify({ batch_id: 'msgbatch_stub', request_count: ids.length, status: 'in_progress' }));
 } else if (cmd === 'poll') {
   if (process.env.BATCH_STUB_POLLFAIL) { console.error('semantic-batch: HTTP 503 on poll'); process.exit(3); }
@@ -1074,6 +1145,8 @@ P70="$C70/graphify-out/semantic-batch"
   && pass "T70 one submit: account A, one recorded prompt, sonnet at high effort" || fail "T70 batch.log: $(cat "$WS/batch.log")"
 [ -f "$P70/batch.json" ] && [ -f "$P70/plan.json" ] && [ -f "$P70/corpus/a.md" ] \
   && pass "T70 batch.json, plan and the frozen corpus are persisted" || fail "T70 pending dir: $(ls -R "$P70" 2>&1)"
+[ "$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["budget_usd"])' "$P70/batch.json")" = "15.00" ] \
+  && pass "T70 the run cap (15.00 by default) reaches the client as --max-usd" || fail "T70 budget handed to the client: $(cat "$P70/batch.json")"
 [ ! -e "$P70/corpus/graphify-out/cache/semantic/new.json" ] \
   && pass "T70 the record run's placeholder cache is not in the frozen corpus" || fail "T70 placeholder cache leaked into the frozen corpus"
 [[ "$out" == *"BATCH id=msgbatch_stub state=submitted requests=1 cost_usd=-"* ]] \
@@ -1100,6 +1173,8 @@ out=$(GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t70 --corpus-root "$C70" --co
 [ "$(lastrun "$C70" batch_id)" = "msgbatch_stub" ] && [ "$(lastrun "$C70" batch_requests)" = "1" ] \
   && [ "$(lastrun "$C70" cost_usd)" = "0.0035" ] && [ "$(lastrun "$C70" backend)" = "claude-api" ] \
   && pass "T72 run row: batch_id msgbatch_stub, batch_requests 1, cost_usd 0.0035" || fail "T72 row: $(tail -1 "$C70/graphify-out/semantic-runs.jsonl")"
+[ "$(lastrun "$C70" account)" = "A" ] \
+  && pass "T72 the run row names the account that paid" || fail "T72 account on the row: $(tail -1 "$C70/graphify-out/semantic-runs.jsonl")"
 [[ "$out" == *"state=merged requests=1 cost_usd=0.003500"* ]] && pass "T72 the BATCH line closes the run as merged" || fail "T72 BATCH line: $out"
 grep -q 'claude-shim-rc' "$WS/calls.log" && fail "T72 the replay shim missed an answer: $(cat "$WS/calls.log")" || pass "T72 every chunk prompt was answered from the batch"
 [[ "$out" == *"semantic-update: replay answered 1 chunk(s) by full prompt hash and 0 by chunk-body key"* ]] \
@@ -1419,11 +1494,33 @@ first="$(sed -n 's/.*over-cap: the estimate for \([^ ]*\) alone.*/\1/p' <<<"$out
 [ "$rc" -ne 0 ] && [ ! -s "$WS/batch.log" ] && [ "$(word)" = over-cap ] && [ -n "$first" ] && [ -f "$CO/$first" ] \
   && [[ "$out" == *".graphify-corpus-ignore"* ]] && [[ "$out" == *"--max-run-usd"* ]] && ! grep -q '^graphify extract' "$WS/calls.log" \
   && pass "O4 over-cap names $first and both ways out, nothing extracted or submitted" || fail "O4 (rc=$rc) word '$(word)': $out"
-echo "O4b: the same estimate without --account-order is sized and submitted as on main (the cap stays a planning input)"
+echo "O4b: the same estimate without --account-order reaches the client as its one-file floor, which refuses it over budget (exit 7): over-cap, nothing pending"
 CO="$WS/o4b"; new_corpus "$CO"; o_reset
 out=$(ACCT=A GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name o4b --corpus-root "$CO" --corpus-class himmel-code --backend claude-api --max-run-usd 0.01); rc=$?
-[ "$rc" -eq 0 ] && [ "$(batch_accounts)" = "A " ] && [[ "$out" != *"over-cap"* ]] \
-  && pass "O4b one file submitted on A, no over-cap" || fail "O4b (rc=$rc) accounts '$(batch_accounts)': $out"
+[ "$rc" -eq 3 ] && [ -z "$(batch_accounts)" ] && grep -q '^over-budget estimate=' "$WS/batch.log" && [[ "$out" == *"over-cap"* ]] && [ ! -e "$CO/graphify-out/semantic-batch" ] \
+  && pass "O4b the floor file was refused over budget: over-cap, rc 3, no submit, no pending dir" || fail "O4b (rc=$rc) accounts '$(batch_accounts)': $out"
+
+echo "T94: a cap the planner admits is a cap the client accepts: an estimate over the cap is over-cap (rc 3, re-size), not a stopped run"
+C94="$WS/c94"; new_corpus "$C94"; batch_reset
+out=$(ACCT=A GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t94 --corpus-root "$C94" --corpus-class himmel-code --backend claude-api --max-run-usd 0.15); rc=$?
+[ "$rc" -eq 3 ] && [[ "$out" == *"over-cap"* ]] && [[ "$out" != *"submitting the batch failed"* ]] && [ ! -e "$C94/graphify-out/semantic-batch" ] && [ -z "$(batch_accounts)" ] \
+  && pass "T94 a one-chunk batch over a 0.15 cap is refused as over-cap, nothing pending, the files stay for a re-sized run" || fail "T94 (rc=$rc): $out"
+echo "T94c: the recorded batch has more requests than planned: the client refuses (exit 7), the plan is halved and resubmitted in the same run"
+C94C="$WS/c94c"; new_corpus "$C94C"; for i in $(seq 1 9); do printf 'file %s\n' "$i" > "$C94C/f$i.md"; done; batch_reset
+out=$(ACCT=A GRAPHIFY_STUB_PER_FILE=1 GRAPHIFY_STUB_PROMPT='extract @CALL@' GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t94c --corpus-root "$C94C" --corpus-class himmel-code --backend claude-api --max-run-usd 1.00); rc=$?
+[ "$rc" -eq 0 ] && [ "$(grep -c '^submit' "$WS/batch.log")" -eq 1 ] && grep -q '^submit account=A prompts=6 ' "$WS/batch.log" && [ "$(grep -c '^over-budget' "$WS/batch.log")" -eq 1 ] \
+  && [[ "$out" == *"planning 6 files and trying again"* ]] && [ -f "$C94C/graphify-out/semantic-batch/batch.json" ] \
+  && pass "T94c 12 recorded requests refused at 1.00 USD, 6 files planned, one submit of 6 prompts, nothing stuck" || fail "T94c (rc=$rc) batch.log: $(cat "$WS/batch.log"): $out"
+echo "T94d: a plan halved down to one file that is still over the cap ends over-cap, nothing pending"
+C94D="$WS/c94d"; new_corpus "$C94D"; batch_reset
+out=$(ACCT=A GRAPHIFY_STUB_PER_FILE=8 GRAPHIFY_STUB_PROMPT='extract @CALL@' GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t94d --corpus-root "$C94D" --corpus-class himmel-code --backend claude-api --max-run-usd 1.00); rc=$?
+[ "$rc" -eq 3 ] && [[ "$out" == *"over-cap"* ]] && ! grep -q '^submit' "$WS/batch.log" && [ ! -e "$C94D/graphify-out/semantic-batch" ] \
+  && pass "T94d one file of 8 requests still over 1.00 USD: over-cap, rc 3, no submit, no pending dir" || fail "T94d (rc=$rc): $(cat "$WS/batch.log"): $out"
+echo "T94b: the planner sizes a batch with the client's own per-request bound, not the list price"
+C94B="$WS/c94b"; new_corpus "$C94B"; for i in $(seq 1 40); do printf 'file %s\n' "$i" > "$C94B/f$i.md"; done
+out=$(ACCT=A run_batch --name t94b --corpus-root "$C94B" --corpus-class himmel-code --backend claude-api --max-run-usd 0.60 --dry-run); rc=$?
+[ "$rc" -eq 0 ] && [[ "$out" == *"sized: batch of 43 files cut to 14 to fit the run cap of 0.60 USD"* ]] \
+  && pass "T94b 43 files at 6 chunks and a 0.296 USD bound per chunk are cut to 14 (the list price would cut to 35)" || fail "T94b (rc=$rc): $out"
 
 echo "O5: --account-order refuses GRAPHIFY_API_BATCH=0, another backend and a value that is not one capital letter per entry"
 CO="$WS/o5"; new_corpus "$CO"

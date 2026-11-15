@@ -127,7 +127,7 @@ ledger_registry_path() {
 # answer for every project), "project" = the default. The per-repo index checks (graph freshness, semantic graph)
 # are project rows that name the repo they judge, so a feed saved under another project does not carry them.
 # A check id is its Cn prefix (C40-qmd-vec -> C40).
-DOCTOR_SHARED_CHECKS=" C12 C19 C20 C22 C38 C40 C44 C45 C49 C50 C52 C56 C69 C80 C83 C86 C89 C91 C92 C93 C94 "
+DOCTOR_SHARED_CHECKS=" C12 C19 C20 C22 C38 C40 C44 C45 C49 C50 C52 C56 C69 C80 C83 C86 C89 C91 C92 C93 C94 C96 C97 "
 DOCTOR_REPO_CHECKS=" C33 C70 "
 DOCTOR_REPO_NAME="himmel"
 
@@ -2470,6 +2470,122 @@ check_c31() {
         "remove the [mcp_servers.tokensave] table (and its [mcp_servers.tokensave.tools.*] sub-tables) from $cfg_q by hand — the doctor does not edit codex config"
 }
 
+check_c97_codex_mcp_literal_key() {
+    local codex_home="${CODEX_HOME:-${HOME:-}/.codex}"
+    local cfg="$codex_home/config.toml"
+
+    if [ ! -f "$cfg" ]; then
+        emit OK C97-codex-mcp-literal-key "no codex config at $cfg — nothing to check"
+        return
+    fi
+    if [ ! -r "$cfg" ]; then
+        local cfg_unread_q; cfg_unread_q=$(printf '%q' "$cfg")
+        emit INFO C97-codex-mcp-literal-key "$cfg exists but is not readable — literal MCP keys undetermined" \
+            "chmod +r $cfg_unread_q   # or re-run this check as the file's owner"
+        return
+    fi
+    local pairs
+    pairs=$(awk '
+        function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
+        function unq(s,   c) {
+            s = trim(s); c = substr(s, 1, 1)
+            if ((c == "\"" || c == "\047") && substr(s, length(s), 1) == c && length(s) >= 2) s = substr(s, 2, length(s) - 2)
+            return s
+        }
+        function split_header_segments(h,   i, c, q, cur) {
+            nseg = 0; cur = ""; q = ""
+            for (i = 1; i <= length(h); i++) {
+                c = substr(h, i, 1)
+                if (q == "") {
+                    if (c == "\"" || c == "\047") { q = c; cur = cur c }
+                    else if (c == ".") { seg[++nseg] = unq(cur); cur = "" }
+                    else cur = cur c
+                } else { if (c == q) q = ""; cur = cur c }
+            }
+            seg[++nseg] = unq(cur)
+        }
+        function secret_name(n) { n = toupper(n); return (n ~ /_(KEY|TOKEN|SECRET)$/) }
+        function hit(srv, var) { if (secret_name(var) && !(srv SUBSEP var in seen)) { seen[srv SUBSEP var] = 1; print srv "\t" var } }
+        function is_plain_text_value(v,   c, rest) {
+            v = trim(v); c = substr(v, 1, 1)
+            if (c == "\"" || c == "\047") {
+                # a triple-quoted string opens with the same two characters as an empty pair
+                if (substr(v, 2, 1) != c) return 1
+                if (substr(v, 3, 1) == c) rest = (substr(v, 4, 3) == c c c) ? trim(substr(v, 7)) : "x"
+                else rest = trim(substr(v, 3))
+                return !(rest == "" || substr(rest, 1, 1) == "#")
+            }
+            sub(/[ \t]*#.*$/, "", v)
+            return v != ""
+        }
+        function read_key_value(line,   i, c, q, eq) {
+            q = ""; eq = 0
+            for (i = 1; i <= length(line); i++) {
+                c = substr(line, i, 1)
+                if (q == "") { if (c == "\"" || c == "\047") q = c; else if (c == "=") { eq = i; break } }
+                else if (c == q) q = ""
+            }
+            if (!eq) return 0
+            k = unq(substr(line, 1, eq - 1)); v = substr(line, eq + 1)
+            return 1
+        }
+        function scan_inline_env(srv, s,   i, c, q, st, key, val, n) {
+            s = trim(s)
+            if (substr(s, 1, 1) != "{") return
+            s = substr(s, 2); st = "key"; key = ""; val = ""; q = ""
+            n = length(s)
+            for (i = 1; i <= n; i++) {
+                c = substr(s, i, 1)
+                if (q != "") {
+                    if (q == "\"" && c == "\\") { c = c substr(s, i + 1, 1); i++ }
+                    else if (c == q) q = ""
+                    if (st == "key") key = key c; else val = val c
+                    continue
+                }
+                if (c == "\"" || c == "\047") { q = c; if (st == "key") key = key c; else val = val c; continue }
+                if (st == "key") {
+                    if (c == "=") { st = "val"; val = "" }
+                    else if (c == "," || c == "}") { key = "" }
+                    else key = key c
+                } else if (c == "," || c == "}") {
+                    if (is_plain_text_value(val)) hit(srv, unq(key))
+                    st = "key"; key = ""; val = ""
+                    if (c == "}") return
+                } else val = val c
+            }
+        }
+        { sub(/\r$/, "") }
+        /^[ \t]*\[\[/ { mode = ""; next }
+        /^[ \t]*\[/ {
+            h = $0; sub(/^[ \t]*\[/, "", h); sub(/\][ \t]*(#.*)?$/, "", h)
+            split_header_segments(h); mode = ""
+            if (seg[1] == "mcp_servers" && nseg == 2) { mode = "srv"; srvname = seg[2] }
+            else if (seg[1] == "mcp_servers" && nseg == 3 && seg[3] == "env") { mode = "env"; srvname = seg[2] }
+            next
+        }
+        mode == "env" && /^[ \t]*[^# \t]/ { if (read_key_value($0) && is_plain_text_value(v)) hit(srvname, k); next }
+        mode == "srv" && /^[ \t]*[^# \t]/ { if (read_key_value($0) && k == "env") scan_inline_env(srvname, v) }
+    ' "$cfg")
+    local scan_rc=$?
+    if [ "$scan_rc" -ne 0 ]; then
+        emit INFO C97-codex-mcp-literal-key "scan failed (awk exit $scan_rc) on $cfg — literal MCP keys undetermined"
+        return
+    fi
+    if [ -z "$pairs" ]; then
+        emit OK C97-codex-mcp-literal-key "codex config at $cfg holds no literal key, token or secret value in an MCP env table"
+        return
+    fi
+    local cfg_q list="" srv var first_srv="" first_var=""
+    cfg_q=$(printf '%q' "$cfg")
+    while IFS=$'\t' read -r srv var; do
+        [ -n "$srv" ] || continue
+        [ -n "$first_srv" ] || { first_srv="$srv"; first_var="$var"; }
+        list="${list:+$list, }[mcp_servers.$srv] $var"
+    done <<< "$pairs"
+    emit WARN C97-codex-mcp-literal-key "codex config at $cfg keeps a plain-text secret in an MCP env table: $list — anything that reads the home directory reads it, and a config backup carries it" \
+        "write each value to a 0600 file ~/.config/himmel/mcp-secrets/<server>/<VAR> (e.g. .../$first_srv/$first_var), set the server's command to node with args [$REPO_ROOT/scripts/mcp/secret-launch.mjs, <server>, <the real command>, <its args>], keep only non-secret variables in the env table of $cfg_q, restart Codex, then rotate the key — the doctor does not edit codex config"
+}
+
 # --- C35: VM after-report runner reachable -------------------
 # Advisory only — scripts/vm/after-report.sh has its own loud fallback to the
 # host invocation when the VM runner is unavailable, so nothing here is ever
@@ -4169,6 +4285,49 @@ check_c95_barrier_off() {
     [ "$warned" = 1 ] || emit OK C95-barrier-off "no repo has its single-writer barrier off with a live worker row, and the register reads clean"
 }
 
+check_c96_jira_test_project() {
+    local lib="$REPO_ROOT/scripts/lib/project-mode.sh" tracker="" cli node_bin json="" rc=0 tp problem
+    command -v jq >/dev/null 2>&1 || { emit INFO C96-jira-test-project "jq not on PATH -- the Jira test project was not checked"; return 0; }
+    # shellcheck disable=SC1090  # the judged checkout's resolver
+    [ -f "$lib" ] && tracker="$( { cd "$REPO_ROOT" && load_dotenv --root "$REPO_ROOT" JIRA_PROJECT_KEY >/dev/null 2>&1; . "$lib" && project_mode_tracker; } 2>/dev/null)"
+    if [ "$tracker" != jira ]; then
+        emit INFO C96-jira-test-project "the tracker is ${tracker:-unresolved (see C55)}, not Jira -- no Jira test project is needed"
+        return 0
+    fi
+    if [ -n "${HIMMEL_DOCTOR_LIVE_TEST_PROBE:-}" ]; then
+        json="$(bash "$HIMMEL_DOCTOR_LIVE_TEST_PROBE" --json 2>/dev/null)" || rc=$?  # swallow-ok: rc is read below
+    else
+        cli="$REPO_ROOT/scripts/jira/dist/index.js"
+        [ -f "$cli" ] || cli="$STATION_ROOT/scripts/jira/dist/index.js"
+        if [ ! -s "$cli" ]; then
+            emit INFO C96-jira-test-project "the jira CLI is not built ($REPO_ROOT/scripts/jira/dist/index.js) -- the Jira test project was not checked" \
+                "build it: npm --prefix $REPO_ROOT/scripts/jira run build"
+            return 0
+        fi
+        node_bin="$(resolve_node 2>/dev/null)" || { emit INFO C96-jira-test-project "node not found -- the Jira test project was not checked"; return 0; }
+        json="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" 20} "$node_bin" "$cli" live-test --json 2>/dev/null)" || rc=$?  # swallow-ok: rc is read below
+    fi
+    tp="$(jq -r 'if type == "object" and has("test_project") then (.test_project // "") else error end' <<< "$json" 2>/dev/null)" || json=""
+    if [ "$rc" -ne 0 ] || [ -z "$json" ]; then
+        emit INFO C96-jira-test-project "jira live-test --json gave no readable answer (exit $rc) -- the Jira test project was not checked" \
+            "run: node $REPO_ROOT/scripts/jira/dist/index.js live-test --json"
+        return 0
+    fi
+    if [ -n "$tp" ]; then
+        emit OK C96-jira-test-project "JIRA_TEST_PROJECT=$tp: live-test Jira writes go only there"
+        return 0
+    fi
+    problem="$(jq -r '.problem // ""' <<< "$json" 2>/dev/null)" || problem=""
+    case "$problem" in
+        ''|"no JIRA_TEST_PROJECT is set"*)
+            emit WARN C96-jira-test-project "no Jira test project is configured, so a live-test brief cannot be generated and a live Jira write is refused" \
+                "himmelctl config set jira.testProject <KEY>" ;;
+        *)
+            emit WARN C96-jira-test-project "the Jira test project is not valid: $problem -- a live-test brief cannot be generated and a live Jira write is refused" \
+                "himmelctl config set jira.testProject <KEY> (a project that is not a work project)" ;;
+    esac
+}
+
 # --- C41: MCP server credential on the command line ---------------
 # An MCP server entry launched as `npm exec <server> --api-key <key>` puts the key
 # in argv, so any local user reads it via ps or /proc/<pid>/cmdline, and it lands
@@ -5101,6 +5260,19 @@ _c69_probe_key() {  # t13b-ok: reads the key file and asks the provider, starts 
     echo "code:${code:-000}"
 }
 
+_c69_probe_cli() {  # t13b-ok: one bounded read-only vsearch through the bare CLI, never a search path for an agent
+    local lib="$REPO_ROOT/scripts/lib/qmd-bounded.sh" qbin="${HIMMEL_DOCTOR_QMD_BIN:-qmd}" secs="${HIMMEL_DOCTOR_QMD_CLI_SECS:-60}" out="" rc=0
+    command -v "$qbin" >/dev/null 2>&1 || { echo "no-qmd"; return 0; }
+    [ -f "$lib" ] || { echo "no-qmd"; return 0; }
+    # shellcheck disable=SC1090
+    . "$lib"  # t13b-ok: sources the group-deadline helper, starts nothing
+    out="$( unset QMD_OPENAI_API_KEY; qmd_bounded "$secs" "$qbin" vsearch -n 1 himmel-doctor-probe 2>&1 >/dev/null )" || rc=$?
+    if [ "$rc" -eq 124 ]; then echo "timeout"
+    elif [ "$rc" -eq 0 ]; then echo "ok"
+    elif grep -qE 'answered 401|No cookie auth credentials' <<< "$out"; then echo "refused"
+    else echo "other:$rc"; fi
+}
+
 # --- C69-qmd-cli-key: the qmd CLI's OpenRouter key is missing or rejected ---
 # A key-less CLI call gets "401 No cookie auth credentials found" on every
 # generate and embed, while the daemon (which loads its own key) still answers,
@@ -5115,6 +5287,7 @@ check_c69_qmd_cli_key() {  # t13b-ok: doctor row that reads the key file and ask
     local curl_bin="${HIMMEL_DOCTOR_QMD_CURL:-curl}"
     local url="${HIMMEL_DOCTOR_QMD_KEY_URL:-https://openrouter.ai/api/v1/auth/key}"
     local lib="$REPO_ROOT/scripts/lib/qmd-daemon-env.sh" out="" code=""
+    local cli=""
     case "${QMD_OPENAI_BASE_URL:-}" in
         *openrouter.ai*) ;;
         *) grep -qs '^[^#]*openrouter\.ai' "$cfg" || return 0 ;;
@@ -5132,7 +5305,17 @@ check_c69_qmd_cli_key() {  # t13b-ok: doctor row that reads the key file and ask
             emit FAIL C69-qmd-cli-key "an OpenRouter qmd config but no QMD_OPENAI_API_KEY line in ${out#*:} -- every CLI generate and embed answers 401" \
                 "put a QMD_OPENAI_API_KEY=... line (mode 0600) in ${out#*:}, then restart the qmd daemon" ;;
         no-curl) emit INFO C69-qmd-cli-key "curl not found -- qmd provider key not checked" ;;
-        code:200) emit OK C69-qmd-cli-key "the qmd provider key is present and OpenRouter accepts it" ;;
+        code:200)
+            cli="$(_c69_probe_cli)"
+            case "$cli" in
+                refused)
+                    emit WARN C69-qmd-cli-key "the bare qmd CLI, run with no QMD_OPENAI_API_KEY in its environment, answers 401 although the key file is valid -- a shell that does not export the key cannot embed or vsearch" \
+                        "this stays WARN until the installed qmd launcher loads the qmd provider key file; meanwhile bash scripts/lib/qmd-bounded.sh loads it, and so does a shell that exports QMD_OPENAI_API_KEY from that file" ;;
+                no-qmd) emit INFO C69-qmd-cli-key "the qmd key is accepted but qmd is not installed -- the bare CLI path was not checked" ;;
+                timeout) emit INFO C69-qmd-cli-key "the bare qmd CLI did not answer within its bound -- not a credential verdict" ;;
+                other:*) emit INFO C69-qmd-cli-key "the bare qmd CLI exited ${cli#other:} without a 401 -- not a credential verdict" ;;
+                *) emit OK C69-qmd-cli-key "the qmd provider key is present, OpenRouter accepts it, and the bare qmd CLI is not refused" ;;
+            esac ;;
         code:401|code:403)
             code="${out#code:}"
             emit FAIL C69-qmd-cli-key "OpenRouter answered HTTP $code for the qmd provider key -- every CLI generate and embed fails" \
@@ -5941,6 +6124,8 @@ run_check C92 check_c92_graph_key
 run_check C93 check_c93_graph_role
 run_check C94 check_c94_graph_config
 run_heavy C95 check_c95_barrier_off C95-barrier-off
+run_check C96 check_c96_jira_test_project
+run_check C97 check_c97_codex_mcp_literal_key
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"
