@@ -5145,7 +5145,7 @@ _c69_probe_key() {  # t13b-ok: reads the key file and asks the provider, starts 
 }
 
 _c69_probe_cli() {  # t13b-ok: one bounded read-only vsearch through the bare CLI, never a search path for an agent
-    local lib="${1%/*}/qmd-bounded.sh" qbin="${HIMMEL_DOCTOR_QMD_BIN:-qmd}" secs="${HIMMEL_DOCTOR_QMD_CLI_SECS:-60}" out="" rc=0
+    local lib="$REPO_ROOT/scripts/lib/qmd-bounded.sh" qbin="${HIMMEL_DOCTOR_QMD_BIN:-qmd}" secs="${HIMMEL_DOCTOR_QMD_CLI_SECS:-60}" out="" rc=0
     command -v "$qbin" >/dev/null 2>&1 || { echo "no-qmd"; return 0; }
     [ -f "$lib" ] || { echo "no-qmd"; return 0; }
     # shellcheck disable=SC1090
@@ -5189,7 +5189,7 @@ check_c69_qmd_cli_key() {  # t13b-ok: doctor row that reads the key file and ask
                 "put a QMD_OPENAI_API_KEY=... line (mode 0600) in ${out#*:}, then restart the qmd daemon" ;;
         no-curl) emit INFO C69-qmd-cli-key "curl not found -- qmd provider key not checked" ;;
         code:200)
-            cli="$(_c69_probe_cli "$lib")"
+            cli="$(_c69_probe_cli)"
             case "$cli" in
                 refused)
                     emit WARN C69-qmd-cli-key "the bare qmd CLI answers 401 (no credential sent) although the key file is valid -- every shell qmd embed and vsearch fails" \
