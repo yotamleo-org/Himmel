@@ -60,6 +60,7 @@ bash $A/$MOG --go $GO"
 
 deny "inside an if condition" "if bash $MOG --go $GO; then :; fi"
 deny "negated with !" "! bash $MOG --go $GO"
+deny "+n re-enables execution after -n" "bash -n +n $MOG --go $GO && echo done"
 
 run_hook "$(payload "cd $WT && bash $A/$MOG --jira-transition --go $GO")"
 case "$err" in

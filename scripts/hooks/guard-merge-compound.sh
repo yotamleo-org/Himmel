@@ -27,7 +27,7 @@ RUN_ARGS=""
 ARGS_SAFE=1
 
 eval_segment() {
-    local i=0 w base
+    local i=0 w base noexec
     [ "$WN" -gt 0 ] || return 0
     while [ "$i" -lt "$WN" ]; do
         w=${W[i]}
@@ -46,14 +46,18 @@ eval_segment() {
     case "$base" in
         bash | sh | zsh | dash | ksh | source | .)
             i=$((i + 1))
+            noexec=0
             while [ "$i" -lt "$WN" ]; do
                 case "${W[i]}" in
-                    --*) i=$((i + 1)) ;;
-                    -*n*) return 0 ;;
-                    -*) i=$((i + 1)) ;;
+                    --*) ;;
+                    -*n*) noexec=1 ;;
+                    +*n*) noexec=0 ;;
+                    -* | +*) ;;
                     *) break ;;
                 esac
+                i=$((i + 1))
             done
+            [ "$noexec" = 0 ] || return 0
             [ "$i" -lt "$WN" ] || return 0
             base=${W[i]##*/} ;;
     esac
