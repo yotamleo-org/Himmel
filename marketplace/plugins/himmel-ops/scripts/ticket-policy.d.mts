@@ -16,6 +16,7 @@ export declare function normalizeMarkdown(md: string | undefined): Block[];
 export declare function normalizeAdf(doc: unknown): Block[];
 export declare function normalizeBody(input: BodyInput): Block[];
 export declare function validateTicketBody(input: BodyInput, context?: BodyContext): Validation;
+export declare function sectionTexts(md: string, names: readonly string[]): Record<string, string>;
 export declare function shortName(d: Diagnostic): string;
 export declare function labelsMismatch(given: readonly string[] | undefined, draftLine: readonly string[] | undefined, issueType?: string): Diagnostic | undefined;
 export declare function draftLabels(md: string): string[] | undefined;

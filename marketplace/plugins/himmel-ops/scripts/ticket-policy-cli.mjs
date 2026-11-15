@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
-import { draftLabels, labelsMismatch, shortName, validateTicketBody } from './ticket-policy.mjs';
+import { draftLabels, labelsMismatch, sectionTexts, shortName, validateTicketBody } from './ticket-policy.mjs';
 
 function fail(msg) {
   process.stderr.write(`ticket-policy-cli: ${msg}\n`);
@@ -12,15 +12,19 @@ const opt = {};
 for (let i = 0; i < args.length; i += 1) {
   const a = args[i];
   if (a === '--json') opt.json = true;
-  else if (['--type', '--draft', '--labels'].includes(a) && i + 1 < args.length) opt[a.slice(2)] = args[++i];
+  else if (['--type', '--draft', '--labels', '--sections'].includes(a) && i + 1 < args.length) opt[a.slice(2)] = args[++i];
   else fail(`unknown or incomplete argument '${a}'`);
 }
-if (!opt.type || !opt.draft) fail('usage: ticket-policy-cli.mjs --type T --draft FILE [--labels a,b] [--json]');
+if (!opt.draft || (!opt.type && opt.sections === undefined)) fail('usage: ticket-policy-cli.mjs --type T --draft FILE [--labels a,b] [--json] | --sections DoD,Proof --draft FILE');
 let md;
 try {
   md = readFileSync(opt.draft, 'utf8');
 } catch (e) {
   fail(`cannot read draft '${opt.draft}': ${e.message}`);
+}
+if (opt.sections !== undefined) {
+  process.stdout.write(JSON.stringify(sectionTexts(md, opt.sections.split(',').map((s) => s.trim()).filter(Boolean))) + '\n');
+  process.exit(0);
 }
 const given = opt.labels === undefined ? undefined : opt.labels.split(',').map((l) => l.trim()).filter(Boolean);
 const fromDraft = draftLabels(md);

@@ -182,6 +182,14 @@ function sectionsOf(blocks) {
   return found;
 }
 
+/** The text of each named section of a markdown body (lines joined by \n); a missing section is "". */
+export function sectionTexts(md, names) {
+  const found = sectionsOf(normalizeMarkdown(md));
+  const out = {};
+  for (const n of names) out[n] = (found.get(n) ?? []).map((b) => b.text).join('\n');
+  return out;
+}
+
 const realContent = (b) => (b.kind === 'list' || b.kind === 'code' || (b.kind === 'prose' && !b.bold)) && !isPlaceholder(b.text);
 
 function declared(blocks, name) {
