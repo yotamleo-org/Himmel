@@ -1,16 +1,6 @@
 #!/usr/bin/env bash
-# Smoke suite for scripts/hooks/guard-merge-compound.sh: a Bash command that runs
-# merge-on-green.sh in any spelling other than the two the allow rules match
-# (`bash <anchor>/scripts/handover/merge-on-green.sh ...` and
-# `bash scripts/handover/merge-on-green.sh ...`, alone) is denied with exit 2 and the
-# allowed spelling on stderr, before it reaches the auto-mode classifier.
-# Covers: the 2026-11-12 denied input (cd <worktree> && bash <anchor>/...), `;`, `|`
-# and `&&` compounds, an env prefix, the "$HIMMEL_REPO/..." spelling of the
-# 2026-11-07 rows, a worktree path; the two allowed spellings, mentions of the
-# script that do not run it, an unrelated `cd x && ls`; fail-open on bad input.
-#
-# HIMMEL_REPO points at a throwaway git repo, so the anchor is a path this suite
-# owns. bash 3.2-safe.
+# Smoke suite for scripts/hooks/guard-merge-compound.sh. HIMMEL_REPO points at a
+# throwaway git repo, so the anchor is a path this suite owns. bash 3.2-safe.
 set -uo pipefail
 
 HOOKS="$(cd "$(dirname "$0")" && pwd)"
@@ -33,14 +23,12 @@ bad() { fail=$((fail+1)); printf '  FAIL %s\n' "$1"; }
 
 payload() { jq -cn --arg c "$1" '{tool_name:"Bash",tool_input:{command:$c}}'; }
 
-# run_hook <json> [ENV=val ...]: sets rc, err.
 run_hook() {
     local json="$1"; shift
     err=$(env HIMMEL_REPO="$A" "$@" bash "$HOOK" <<< "$json" 2>&1 >/dev/null)
     rc=$?
 }
 
-# deny <label> <command>: exit 2 and stderr names the one allowed spelling.
 deny() {
     run_hook "$(payload "$2")"
     if [ "$rc" != 2 ]; then bad "$1 - expected rc 2, got $rc ($err)"; return; fi
@@ -50,7 +38,6 @@ deny() {
     esac
 }
 
-# allow <label> <command> [ENV=val ...]: exit 0 with no output at all.
 allow() {
     local label="$1" cmd="$2"; shift 2
     run_hook "$(payload "$cmd")" "$@"

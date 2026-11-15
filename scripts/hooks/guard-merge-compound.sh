@@ -1,25 +1,12 @@
 #!/usr/bin/env bash
 # PreToolUse Bash guard: merge-on-green.sh runs only as one bare command.
 #
-# The merge allow rules match command TEXT that starts with
-#     bash <anchor>/scripts/handover/merge-on-green.sh
-#     bash scripts/handover/merge-on-green.sh
-# where <anchor> is the primary checkout. Any other spelling that runs the script
-# (`cd <worktree> && bash ...`, a `;` or `|` compound, an env prefix, the
-# "$HIMMEL_REPO/..." spelling, a worktree's copy) matches no rule, so the auto-mode
-# classifier judges the merge itself and can deny a GO-backed merge (a cd compound
-# on 2026-11-12 11:07Z; the "$HIMMEL_REPO" rows of 2026-11-07). merge-on-green.sh --go
-# resolves the PR worktree from the GO file, so the bare command works from any cwd.
-#
-# This hook denies (exit 2, message on stderr) a command that runs merge-on-green.sh
-# in any spelling but those two, alone, and prints the allowed line. It never emits
-# an allow decision, so it can only narrow what the permission layer does. A command
-# that only names the script (cat, grep, sed, bash -n, a commit message, a heredoc
-# body) is not a run and passes. It is a workflow nudge, so it fails OPEN (exit 0, a
-# stderr note) when it cannot evaluate: no jq, unparseable input, no resolvable anchor.
-#
-# Known misses, left on purpose: a run hidden inside a quoted string (`bash -c "..."`,
-# `"$(...)"`) or behind a shell function or alias. The scan is flat.
+# The merge allow rules match only command text that starts with
+# `bash <anchor>/scripts/handover/merge-on-green.sh` or
+# `bash scripts/handover/merge-on-green.sh`; any other spelling that runs the script
+# reaches the auto-mode classifier, which can deny a GO-backed merge. This hook
+# denies (exit 2) such a spelling and prints the allowed line. It never allows, and
+# fails OPEN (exit 0, a stderr note) when it cannot evaluate.
 #
 # bash 3.2-safe.
 
@@ -35,12 +22,10 @@ cmd=$(printf '%s' "$payload" | jq -r '.tool_input.command // empty' 2>/dev/null)
 case "$cmd" in *merge-on-green.sh*) ;; *) exit 0 ;; esac
 export LC_ALL=C
 
-# --- detection: does any simple command in $cmd run merge-on-green.sh? ---------
 RUN=0
 RUN_ARGS=""
 ARGS_SAFE=1
 
-# eval_segment: inspect the words W[0..WN-1] of one simple command.
 eval_segment() {
     local i=0 w base
     [ "$WN" -gt 0 ] || return 0
@@ -145,9 +130,14 @@ scan_line() {
     done
 }
 
-# Line by line, so each ${L:j:1} copies one line, not the whole command. A line
-# that cannot start or continue a run (fresh segment, no quote open, nothing that
-# names the script, opens a heredoc or quotes) is skipped unscanned.
+line_cannot_hold_run() {
+    if [ -n "$q" ] || [ "$cont" != 0 ] || [ "$WN" != 0 ] || [ "$inword" != 0 ]; then return 1; fi
+    case "$L" in
+        *merge-on-green* | *'<<'* | *"'"* | *'"'* | *"\\") return 1 ;;
+    esac
+    return 0
+}
+
 q=""; hd=""; hd_strip=0; in_body=0; cont=0
 while IFS= read -r L || [ -n "$L" ]; do
     if [ "$in_body" = 1 ]; then
@@ -158,12 +148,7 @@ while IFS= read -r L || [ -n "$L" ]; do
         if [ "$B" = "$hd" ]; then in_body=0; hd=""; hd_strip=0; fi
         continue
     fi
-    if [ -z "$q" ] && [ "$cont" = 0 ] && [ "$WN" = 0 ] && [ "$inword" = 0 ]; then
-        case "$L" in
-            *merge-on-green* | *'<<'* | *"'"* | *'"'* | *"\\") ;;
-            *) continue ;;
-        esac
-    fi
+    line_cannot_hold_run && continue
     scan_line
     if [ -n "$q" ]; then
         cur="$cur"$'\n'
@@ -176,7 +161,6 @@ end_segment
 
 [ "$RUN" = 1 ] || exit 0
 
-# --- is $cmd exactly one of the two allowed spellings? -----------------------
 c=$cmd
 while :; do case "$c" in [' '$'\t'$'\n'$'\r']*) c=${c#?} ;; *) break ;; esac; done
 while :; do case "$c" in *[' '$'\t'$'\n'$'\r']) c=${c%?} ;; *) break ;; esac; done
