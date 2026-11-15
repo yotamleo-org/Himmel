@@ -169,6 +169,64 @@ export function assertAuthenticated(res: { status: number; headers?: Headers }):
   );
 }
 
+// Every Jira request has a deadline, from the process environment only (not the dotenv or config keys).
+export const DEFAULT_REQUEST_DEADLINE_MS = 30_000;
+export function requestDeadlineMs(): number {
+  const n = Number(process.env.JIRA_REQUEST_TIMEOUT_MS);
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_REQUEST_DEADLINE_MS;
+}
+
+// A read is retried on a busy Jira, a write never: a repeated comment or issue is worse than a failure.
+export const READ_RETRIES = 3;
+export const RETRY_AFTER_CAP_MS = 10_000;
+export const RETRY_TOTAL_CAP_MS = 20_000;
+export const RETRY_BACKOFF_MS = 200;
+const BUSY_STATUSES = new Set([429, 502, 503, 504]);
+
+function retryAfterMs(res: { headers?: Headers }): number | undefined {
+  const raw = res.headers?.get('retry-after')?.trim();
+  if (!raw) return undefined;
+  if (/^\d+(\.\d+)?$/.test(raw)) return Number(raw) * 1000;
+  const at = Date.parse(raw);
+  return Number.isNaN(at) ? undefined : Math.max(0, at - Date.now());
+}
+
+/**
+ * The one fetch every Jira request goes through: a deadline on the request and the body read, and for a
+ * read (`retry`) up to READ_RETRIES more attempts on 429/502/503/504 within the Retry-After caps. A
+ * Retry-After over a cap returns the busy response at once. A timeout is never retried, and a write that
+ * times out says it may have been applied. The caller still checks the response it gets back.
+ */
+async function fetchWithDeadline(
+  what: string,
+  url: string,
+  init: RequestInit,
+  retry: boolean,
+  bytes = false,
+): Promise<{ res: Response; body: string | Buffer }> {
+  const ms = requestDeadlineMs();
+  let waited = 0;
+  for (let attempt = 0; ; attempt++) {
+    let res: Response;
+    let body: string | Buffer;
+    try {
+      res = await fetch(url, { ...init, signal: AbortSignal.timeout(ms) });
+      body = bytes ? Buffer.from(await res.arrayBuffer()) : await res.text();
+    } catch (err) {
+      if ((err as { name?: string })?.name !== 'TimeoutError') throw err;
+      throw new Error(
+        `Jira request timed out after ${ms} ms: ${what}` +
+          (retry ? '' : '. The request may have been applied: check Jira before repeating it.'),
+      );
+    }
+    if (!retry || attempt >= READ_RETRIES || !BUSY_STATUSES.has(res.status)) return { res, body };
+    const wait = retryAfterMs(res) ?? RETRY_BACKOFF_MS * 2 ** attempt;
+    if (wait > RETRY_AFTER_CAP_MS || waited + wait > RETRY_TOTAL_CAP_MS) return { res, body };
+    waited += wait;
+    await new Promise((ok) => setTimeout(ok, wait));
+  }
+}
+
 // The version-write hook's reads carry their own deadline: the write's fetch has none, so a hung read
 // must not hang a real write.
 export const HOOK_DEADLINE_MS = 5000;
@@ -235,7 +293,7 @@ export async function requestAt<T>(
   await liveTestGuard(apiBase, method, path, body, base, hookGetter(auth));
   if (!isJiraRead(apiBase, method, path)) refuseTestWrite(`${method} ${apiBase}${path}`, url);
   const record = await beginVersionWrite(apiBase, method, path, body, auth, writer);
-  const res = await fetch(url, {
+  const { res, body: text } = await fetchWithDeadline(`${method} ${apiBase}${path}`, url, {
     method,
     headers: {
       Authorization: auth,
@@ -243,13 +301,9 @@ export async function requestAt<T>(
       Accept: 'application/json',
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  }, isJiraRead(apiBase, method, path)) as { res: Response; body: string };
   assertAuthenticated(res);
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`HTTP ${res.status}: ${text}`);
-  }
-  const text = await res.text();
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${text}`);
   const parsed = (text.trim() ? JSON.parse(text) : {}) as T;
   if (record) await record(parsed);
   return parsed;
@@ -280,7 +334,7 @@ export async function uploadMultipart(
   const fd = new FormData();
   fd.append(field, new Blob([data]), basename(filePath));
 
-  const res = await fetch(url, {
+  const { res, body: text } = await fetchWithDeadline(`POST ${url}`, url, {
     method: 'POST',
     headers: {
       Authorization: auth,
@@ -288,13 +342,9 @@ export async function uploadMultipart(
       // intentionally NO Content-Type. Fetch must set multipart boundary
     },
     body: fd,
-  });
+  }, false) as { res: Response; body: string };
   assertAuthenticated(res);
-  if (!res.ok) {
-    const text = (await res.text()).slice(0, 500);
-    throw new Error(`HTTP ${res.status}: ${text}`);
-  }
-  const text = await res.text();
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${text.slice(0, 500)}`);
   return text.trim() ? JSON.parse(text) : {};
 }
 
@@ -307,13 +357,10 @@ export function uploadAttachment(issueKey: string, filePath: string): Promise<un
 }
 
 export async function downloadTo(fullUrl: string, outPath: string, auth: string = authHeader()): Promise<number> {
-  const res = await fetch(fullUrl, { headers: { Authorization: auth } });
+  const { res, body } = await fetchWithDeadline(`GET ${fullUrl}`, fullUrl, { headers: { Authorization: auth } }, true, true);
+  const buf = body as Buffer;
   assertAuthenticated(res);
-  if (!res.ok) {
-    const text = (await res.text()).slice(0, 500);
-    throw new Error(`HTTP ${res.status}: ${text}`);
-  }
-  const buf = Buffer.from(await res.arrayBuffer());
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${buf.toString('utf8', 0, 500)}`);
   writeFileSync(outPath, buf);
   return buf.length;
 }

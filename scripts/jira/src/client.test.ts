@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
-import { uploadAttachment, uploadMultipart, downloadTo, normalizeEnv, baseUrl, loadEnvFile, request, requestAt, agileRequest, confluenceV2 } from './client.js';
+import { uploadAttachment, uploadMultipart, downloadTo, normalizeEnv, baseUrl, loadEnvFile, request, requestAt, agileRequest, confluenceV2, requestDeadlineMs } from './client.js';
 import { registerMove } from './commands/move.js';
 import { readVersionWrites } from './release/version-writes.js';
 import { sameJiraBase, stationJiraBaseUrl } from './env-file.js';
@@ -1269,6 +1269,245 @@ describe('a 200 that carries x-seraph-loginreason: AUTHENTICATED_FAILED', () => 
       const r = await cli('list', '--jql', 'project=HTEST');
       expect(r.code).toBe(0);
       expect(r.stderr).toBe('');
+    });
+  });
+});
+
+describe('every Jira request has a deadline and a read is retried on a busy Jira', () => {
+  type Step = 'hang' | 'stall-body' | { status: number; headers?: Record<string, string>; body?: string };
+  let server: Server;
+  let base: string;
+  let script: Step[];
+  let hits: Array<{ method: string; url: string }>;
+  let dir: string;
+
+  beforeEach(async () => {
+    vi.unstubAllGlobals();
+    script = [{ status: 200, body: '{"ok":true}' }];
+    hits = [];
+    dir = mkdtempSync(join(tmpdir(), 'jira-deadline-'));
+    server = createServer((req, res) => {
+      hits.push({ method: req.method ?? '', url: req.url ?? '' });
+      req.resume();
+      const step = script[Math.min(hits.length - 1, script.length - 1)];
+      if (step === 'hang') return;
+      if (step === 'stall-body') {
+        res.writeHead(200);
+        res.write('{"ok"');
+        return;
+      }
+      res.writeHead(step.status, step.headers);
+      res.end(step.body ?? '{}');
+    });
+    await new Promise<void>((ok) => server.listen(0, '127.0.0.1', ok));
+    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    vi.stubEnv('JIRA_BASE_URL', base);
+    vi.stubEnv('JIRA_EMAIL', 'u@example.com');
+    vi.stubEnv('JIRA_API_TOKEN', 'secret');
+    vi.stubEnv('JIRA_REQUEST_TIMEOUT_MS', '300');
+  });
+
+  afterEach(async () => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    server.closeAllConnections();
+    await new Promise<void>((ok) => server.close(() => ok()));
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const timed = async <T>(run: () => Promise<T>) => {
+    const t0 = Date.now();
+    const settled = await run().then((value) => ({ value, error: undefined as unknown }), (error: unknown) => ({ value: undefined, error }));
+    return { ...settled, ms: Date.now() - t0 };
+  };
+  const failure = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+  describe('the deadline', () => {
+    it('a read that hangs rejects within the deadline with a timeout message, after one request', async () => {
+      script = ['hang'];
+      const r = await timed(() => request('GET', '/issue/HTEST-1'));
+      expect(failure(r.error)).toMatch(/timed out after 300 ?ms/i);
+      expect(failure(r.error)).toContain('GET /rest/api/3/issue/HTEST-1');
+      expect(failure(r.error)).not.toMatch(/may have been applied/);
+      expect(r.ms).toBeLessThan(2000);
+      expect(hits).toHaveLength(1);
+    }, 5000);
+
+    it.each([
+      ['a comment POST', 'POST', '/issue/HTEST-1/comment'],
+      ['an edit PUT', 'PUT', '/issue/HTEST-1'],
+      ['a DELETE', 'DELETE', '/issue/HTEST-1/comment/10000'],
+    ])('%s that hangs says the request may have been applied and is sent once', async (_n, method, path) => {
+      script = ['hang'];
+      const r = await timed(() => request(method, path, method === 'DELETE' ? undefined : { body: 'x' }));
+      expect(failure(r.error)).toMatch(/timed out after 300 ?ms/i);
+      expect(failure(r.error)).toMatch(/request may have been applied/);
+      expect(r.ms).toBeLessThan(2000);
+      expect(hits).toHaveLength(1);
+    }, 5000);
+
+    it('the body read is inside the deadline', async () => {
+      script = ['stall-body'];
+      const r = await timed(() => request('GET', '/issue/HTEST-1'));
+      expect(failure(r.error)).toMatch(/timed out after 300 ?ms/i);
+      expect(r.ms).toBeLessThan(2000);
+    }, 5000);
+
+    it('uploadMultipart carries the deadline and says the upload may have been applied', async () => {
+      script = ['hang'];
+      const file = join(dir, 'a.txt');
+      writeFileSync(file, 'x');
+      const r = await timed(() => uploadMultipart(`${base}/rest/api/3/issue/HTEST-1/attachments`, file));
+      expect(failure(r.error)).toMatch(/timed out after 300 ?ms/i);
+      expect(failure(r.error)).toMatch(/request may have been applied/);
+      expect(r.ms).toBeLessThan(2000);
+      expect(hits).toHaveLength(1);
+    }, 5000);
+
+    it('downloadTo carries the deadline and writes no file', async () => {
+      script = ['hang'];
+      const out = join(dir, 'out.bin');
+      const r = await timed(() => downloadTo(`${base}/secure/attachment/1/a.bin`, out));
+      expect(failure(r.error)).toMatch(/timed out after 300 ?ms/i);
+      expect(r.ms).toBeLessThan(2000);
+      expect(existsSync(out)).toBe(false);
+    }, 5000);
+
+    it('the deadline value comes from JIRA_REQUEST_TIMEOUT_MS; an invalid or non-positive value falls back to the default', () => {
+      vi.stubEnv('JIRA_REQUEST_TIMEOUT_MS', '1234');
+      expect(requestDeadlineMs()).toBe(1234);
+      vi.stubEnv('JIRA_REQUEST_TIMEOUT_MS', '');
+      const dflt = requestDeadlineMs();
+      expect(dflt).toBeGreaterThanOrEqual(10_000);
+      expect(dflt).toBeLessThanOrEqual(120_000);
+      for (const bad of ['abc', '0', '-5', 'NaN', 'Infinity', '1e999']) {
+        vi.stubEnv('JIRA_REQUEST_TIMEOUT_MS', bad);
+        expect(requestDeadlineMs()).toBe(dflt);
+      }
+    });
+  });
+
+  describe('a read is retried on a busy Jira', () => {
+    it('429 with Retry-After: 1 then 200 succeeds after one retry', async () => {
+      script = [{ status: 429, headers: { 'Retry-After': '1' } }, { status: 200, body: '{"ok":true}' }];
+      const r = await timed(() => request('GET', '/issue/HTEST-1'));
+      expect(r.value).toEqual({ ok: true });
+      expect(hits).toHaveLength(2);
+      expect(r.ms).toBeGreaterThanOrEqual(900);
+    }, 8000);
+
+    it.each([502, 503, 504])('%i then 200 succeeds after one retry', async (status) => {
+      script = [{ status }, { status: 200, body: '{"ok":true}' }];
+      expect(await request('GET', '/issue/HTEST-1')).toEqual({ ok: true });
+      expect(hits).toHaveLength(2);
+    }, 8000);
+
+    it('a Retry-After that is an HTTP date already past retries at once', async () => {
+      script = [{ status: 429, headers: { 'Retry-After': new Date(Date.now() - 60_000).toUTCString() } }, { status: 200, body: '{"ok":true}' }];
+      const r = await timed(() => request('GET', '/issue/HTEST-1'));
+      expect(r.value).toEqual({ ok: true });
+      expect(hits).toHaveLength(2);
+      expect(r.ms).toBeLessThan(900);
+    }, 8000);
+
+    it('a 503 that never clears fails after the bounded number of attempts with the HTTP message', async () => {
+      script = [{ status: 503, body: 'down' }];
+      const r = await timed(() => request('GET', '/issue/HTEST-1'));
+      expect(failure(r.error)).toBe('HTTP 503: down');
+      expect(hits).toHaveLength(4);
+      expect(r.ms).toBeLessThan(6000);
+    }, 10000);
+
+    it('a Retry-After above the cap fails at once with the HTTP 429 message and one request', async () => {
+      script = [{ status: 429, headers: { 'Retry-After': '3600' }, body: 'slow down' }];
+      const r = await timed(() => request('GET', '/issue/HTEST-1'));
+      expect(failure(r.error)).toBe('HTTP 429: slow down');
+      expect(hits).toHaveLength(1);
+      expect(r.ms).toBeLessThan(900);
+    }, 5000);
+
+    it('a retried read repeats the same method and path', async () => {
+      script = [{ status: 503 }, { status: 200, body: '{"ok":true}' }];
+      await request('GET', '/issue/HTEST-1?fields=summary');
+      expect(hits).toEqual([
+        { method: 'GET', url: '/rest/api/3/issue/HTEST-1?fields=summary' },
+        { method: 'GET', url: '/rest/api/3/issue/HTEST-1?fields=summary' },
+      ]);
+    }, 8000);
+
+    it('the approximate-count POST is a read and is retried', async () => {
+      script = [{ status: 503 }, { status: 200, body: '{"count":3}' }];
+      expect(await request('POST', '/search/approximate-count', { jql: 'project=HTEST' })).toEqual({ count: 3 });
+      expect(hits).toHaveLength(2);
+    }, 8000);
+
+    it('downloadTo retries a 503 then writes the file', async () => {
+      script = [{ status: 503 }, { status: 200, body: 'bytes' }];
+      const out = join(dir, 'out.bin');
+      expect(await downloadTo(`${base}/secure/attachment/1/a.bin`, out)).toBe(5);
+      expect(hits).toHaveLength(2);
+      expect(readFileSync(out, 'utf8')).toBe('bytes');
+    }, 8000);
+  });
+
+  describe('a write is never retried', () => {
+    it.each([
+      ['a comment POST gets 503', 'POST', '/issue/HTEST-1/comment', 503, {}],
+      ['a comment POST gets 429 with Retry-After: 1', 'POST', '/issue/HTEST-1/comment', 429, { 'Retry-After': '1' }],
+      ['a create POST gets 502', 'POST', '/issue', 502, {}],
+      ['an edit PUT gets 503', 'PUT', '/issue/HTEST-1', 503, {}],
+      ['a DELETE gets 504', 'DELETE', '/issue/HTEST-1/comment/10000', 504, {}],
+      ['a transition POST gets 503', 'POST', '/issue/HTEST-1/transitions', 503, {}],
+      ['an agile rank PUT gets 503', 'PUT', '/issue/rank', 503, {}],
+    ])('%s: one attempt, then the error', async (_n, method, path, status, headers) => {
+      script = [{ status, headers, body: 'busy' }, { status: 200, body: '{"ok":true}' }];
+      const r = await timed(() => (path === '/issue/rank'
+        ? requestAt('/rest/agile/1.0', method, path, { issues: ['HTEST-1'] })
+        : request(method, path, method === 'DELETE' ? undefined : { x: 1 })));
+      expect(failure(r.error)).toBe(`HTTP ${status}: busy`);
+      expect(hits).toHaveLength(1);
+      expect(r.ms).toBeLessThan(900);
+    }, 5000);
+
+    it('uploadMultipart that gets 503 is attempted once', async () => {
+      script = [{ status: 503, body: 'busy' }, { status: 200, body: '{}' }];
+      const file = join(dir, 'a.txt');
+      writeFileSync(file, 'x');
+      await expect(uploadMultipart(`${base}/rest/api/3/issue/HTEST-1/attachments`, file)).rejects.toThrow('HTTP 503: busy');
+      expect(hits).toHaveLength(1);
+    }, 5000);
+
+    it('a write whose connection is refused is not retried', async () => {
+      const probe = createServer();
+      await new Promise<void>((ok) => probe.listen(0, '127.0.0.1', ok));
+      const dead = `http://127.0.0.1:${(probe.address() as AddressInfo).port}`;
+      await new Promise<void>((ok) => probe.close(() => ok()));
+      vi.stubEnv('JIRA_BASE_URL', dead);
+      const real = globalThis.fetch;
+      const spy = vi.fn(real);
+      vi.stubGlobal('fetch', spy);
+      await expect(request('POST', '/issue/HTEST-1/comment', { body: 'x' })).rejects.toThrow();
+      expect(spy).toHaveBeenCalledTimes(1);
+    }, 5000);
+  });
+
+  describe('control: a response that is not busy is attempted once and behaves as before', () => {
+    it('a 200 returns the parsed body', async () => {
+      script = [{ status: 200, body: '{"key":"HTEST-1"}' }];
+      expect(await request('GET', '/issue/HTEST-1')).toEqual({ key: 'HTEST-1' });
+      expect(hits).toHaveLength(1);
+    });
+
+    it.each([[404, 'HTTP 404: gone'], [401, 'HTTP 401: nope'], [400, 'HTTP 400: bad'], [403, 'HTTP 403: no']])('%i is not retried', async (status, message) => {
+      script = [{ status, body: message.replace(/^HTTP \d+: /, '') }, { status: 200, body: '{"ok":true}' }];
+      await expect(request('GET', '/issue/HTEST-1')).rejects.toThrow(message);
+      expect(hits).toHaveLength(1);
+    });
+
+    it('an empty 200 body is still {}', async () => {
+      script = [{ status: 200, body: '' }];
+      expect(await request('GET', '/issue/HTEST-1')).toEqual({});
+      expect(hits).toHaveLength(1);
     });
   });
 });
