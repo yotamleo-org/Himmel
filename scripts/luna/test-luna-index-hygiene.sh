@@ -42,11 +42,7 @@ make_vault() {
 }
 
 REAL_CORPUS="$REPO/scripts/qmd/qmd-collection-corpus.json"
-python3 -I -c 'import json, sys
-d = json.load(open(sys.argv[1]))
-d["collections"]["luna-archive"] = d["collections"]["luna"]
-json.dump(d, open(sys.argv[2], "w"))' "$REAL_CORPUS" "$W/corpus-mapped.json" || exit 1
-export LUNA_HYGIENE_CORPUS="$W/corpus-mapped.json"
+unset LUNA_HYGIENE_CORPUS
 
 indexed() {  # indexed <cfg-dir> : the collection's file list as the real qmd sees it
   QMD_CONFIG_DIR="$1" XDG_CACHE_HOME="$1/cache" qmd ls luna 2>/dev/null | sed 's|.*qmd://luna/||' | sort | tr '\n' ' '
@@ -243,19 +239,15 @@ cp "$G/index.yml" "$G/index.orig"
 out="$(gated_query "$G")"; rc=$?
 check "control: the scratch remote-model config passes the egress gate before the hygiene step" "0|stub-reached" "$rc|$(grep -q '^STUB-QMD$' <<<"$out" && echo stub-reached || echo refused)"
 
-herr="$(env -u LUNA_HYGIENE_CORPUS bash "$SUT" --vault "$V" --qmd-config "$G/index.yml" --apply 2>&1 >/dev/null)"; hrc=$?
+bash "$SUT" --vault "$V" --qmd-config "$G/index.yml" --apply >/dev/null 2>&1; hrc=$?
+check "--apply on the shipped corpus exits 0" 0 "$hrc"
+check "and registers luna-archive" 0 "$(grep -q '^  luna-archive:$' "$G/index.yml" && echo 0 || echo 1)"
 out="$(gated_query "$G")"; rc=$?
 check "after --apply the bounded qmd query still exits 0 (the gate's refusal is rc 10)" "0|stub-reached" "$rc|$(grep -q '^STUB-QMD$' <<<"$out" && echo stub-reached || echo refused)"
-unmapped="$(registered_map "$G/index.yml" "$REAL_CORPUS" | awk '/UNMAPPED$/{printf "%s ", $1}')"
-verdict=ok
-if [ -n "$unmapped" ]; then
-  verdict="unmapped=${unmapped}rc=$hrc"
-  if [ "$hrc" -ne 0 ]; then verdict=ok; for n in $unmapped; do grep -q -- "$n" <<<"$herr" || verdict="rc=$hrc but the message does not name $n"; done; fi
-fi
-check "every registered collection is mapped in the corpus file, or the step exits nonzero naming the unmapped one" ok "$verdict"
 echo "detection: the registered names after the step on the shipped corpus, beside their corpus entry"
 registered_map "$G/index.yml" "$REAL_CORPUS" | sed 's/^/  /'
 check "detection: each registered name has a corpus entry" 0 "$(registered_map "$G/index.yml" "$REAL_CORPUS" | grep -c UNMAPPED)"
+check "luna-archive maps to luna-personal only (the archive trees hold no Clippings)" "luna-archive -> luna-personal" "$(registered_map "$G/index.yml" "$REAL_CORPUS" | grep '^luna-archive ->')"
 
 python3 -I -c 'import json, sys
 d = json.load(open(sys.argv[1]))
@@ -272,6 +264,8 @@ registered_map "$G3" "$W/corpus-unmapped.json" | sed 's/^/  /'
 check "detection: the refused apply registered nothing unmapped" 0 "$(registered_map "$G3" "$W/corpus-unmapped.json" | grep -c UNMAPPED)"
 LUNA_HYGIENE_CORPUS="$W/corpus-unmapped.json" bash "$SUT" --vault "$V" --qmd-config "$G3" >/dev/null 2>&1; drc=$?
 check "the dry run reports the same refusal (exit 5) and writes nothing" "5|0" "$drc|$(cmp -s "$G3" "$W/g3.orig" && echo 0 || echo 1)"
+LUNA_HYGIENE_CORPUS="$W/corpus-unmapped.json" bash "$SUT" --vault "$V" --qmd-config "$G/index.yml" --apply >/dev/null 2>&1
+check "a config that already holds luna-archive is not a registration: exit 0 even on the unmapped corpus" 0 "$?"
 
 V="$W/g2"; make_vault "$V"; CFG="$W/g2.yml"; write_cfg "$CFG" "$V"
 bash "$SUT" --vault "$V" --qmd-config "$CFG" --apply >/dev/null 2>&1; crc=$?
@@ -280,8 +274,8 @@ check "control: with the same block as before" \
   "    path: $V|    pattern: \"{handovers/**/archive/**/*.md,sessions/_archive/**/*.md}\"" \
   "$(awk '/^  luna-archive:/{f=1;next} f&&/^  [^ ]|^[^ ]/{f=0} f{print}' "$CFG" | paste -sd'|' -)"
 echo "detection: the registered names of the control config, beside their corpus entry"
-registered_map "$CFG" "$LUNA_HYGIENE_CORPUS" | sed 's/^/  /'
-check "detection: the control's registered names all have a corpus entry" 0 "$(registered_map "$CFG" "$LUNA_HYGIENE_CORPUS" | grep -c UNMAPPED)"
+registered_map "$CFG" "$REAL_CORPUS" | sed 's/^/  /'
+check "detection: the control's registered names all have a corpus entry" 0 "$(registered_map "$CFG" "$REAL_CORPUS" | grep -c UNMAPPED)"
 
 echo "pass=$PASS fail=$FAIL skip=$SKIP"
 [ "$FAIL" -eq 0 ]
