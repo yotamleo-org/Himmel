@@ -223,8 +223,6 @@ export function sendApprovalAlert(a: ApprovalAlert): number {
   }
 }
 
-// One alert line per High, Highest or security (label `security`) key a run ruled BACKLOG (an INTAKE) or KEEP (a REVERSION):
-// the chief reads it on the console that ran rm-run. The reason is the ruling's own, which the skill makes name the missing condition.
 export async function backlogAlerts(ctx: Ctx, release: string, lines: string[]): Promise<string[]> {
   const alerts: string[] = [];
   for (const l of lines) {
