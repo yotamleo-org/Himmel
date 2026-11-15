@@ -112,7 +112,7 @@ while :; do
             row=""; in_reg=0; text=""
             if [[ "$f" =~ ^[A-Z][A-Z0-9_]*$ ]]; then
                 row=$(printf '%s\n' "$TIER_ROWS" | awk -F'\t' -v n="$f" '$1 == n { print; exit }')
-                printf '%s\n' "$REG_NAMES" | grep -qxF -- "$f" && in_reg=1
+                grep -qxF -- "$f" <<<"$REG_NAMES" && in_reg=1
                 text=$(jq -r --arg n "$f" '[.flags[] | select(.name == $n) | .bypasses][0] // empty' <<<"$REG_JSON")
             fi
             tier=$(printf '%s' "$row" | cut -f2); src=$(printf '%s' "$row" | cut -f3)

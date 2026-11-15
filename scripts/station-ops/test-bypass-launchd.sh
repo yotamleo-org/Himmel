@@ -77,7 +77,7 @@ setup_repo() { setup "$1"; R="$D/repo"; mk_repo "$R"; DAEMON="$R/$DAEMON_REL"; }
 run_repo() {
     env -u CLAUDECODE BYPASSD_TEST_DIR="$D" BYPASSD_SEND="$tmp/send" BYPASSD_LAUNCHER="$tmp/launcher" BYPASSD_POLL=0.1 \
         BRIDGE_ROOT="$D/bridge" TELEGRAM_ACCESS_PATH="$D/access.json" XDG_RUNTIME_DIR="$D/run" \
-        timeout 5 bash "$DAEMON" --bucket "$B" --until "$UNTIL" 2>&1
+        timeout 5 bash "$DAEMON" --bucket "$B" --until "$UNTIL" 2>&1 # gnu-ok: the daemon is Linux-only and this suite skips without flock
 }
 start_line() { grep -m1 'start pid=' "$Q/daemon.log" 2>/dev/null; }
 launch_env_after_go() {
@@ -100,7 +100,7 @@ tier_problems() {
         [ -z "$extra" ] || out+=" $n: more than four columns"
         [ "$w" != "-" ] || [ "$t" = grant ] || out+=" $n: only a grant row has why -"
         case "$s" in
-            registry) printf '%s\n' "$reg" | grep -qxF "$n" || out+=" $n: source registry but not in the registry" ;;
+            registry) grep -qxF -- "$n" <<<"$reg" || out+=" $n: source registry but not in the registry" ;;
             eval) [ "$n" = HIMMEL_BILLED_OK ] || out+=" $n: source eval" ;;
             *) [ -f "$REPO_ROOT/${s%%:*}" ] || out+=" $n: source path ${s%%:*} does not exist"
                case "$t" in grant|decision) out+=" $n: a $t row needs source registry or eval" ;; esac ;;
