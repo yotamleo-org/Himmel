@@ -1567,6 +1567,9 @@ def operator_owed(handover_dir, chief_doc, version, opn, mir):
             if m and int(m.group(2)) in opn:
                 (items if OPERATOR_CLASS_RE.search(m.group(6)) else chief_owes).append(('drift', int(m.group(2)), 'close %s or name a worker (%s, owed: %s)' % (m.group(1), m.group(5), m.group(6)),
                               'CLOSE-OR-DISPATCH: no event since %s (%s h)' % (m.group(3), m.group(4)), 'close the ticket, or name a worker for the rest'))
+    held, holds_unread = pool_hold_items(chief_doc, opn) if chief_doc else ([], [])
+    items += held
+    held_keys = {n for _, n, _, _, _ in held if n}
     live = md_section(chief_doc, 'Live state') if chief_doc else None
     if live is not None:
         readable = True
@@ -1578,10 +1581,47 @@ def operator_owed(handover_dir, chief_doc, version, opn, mir):
                     n = num(k.group(0)) if k else None
                     if n and 'HIMMEL-%d' % n in mir and bucket(mir['HIMMEL-%d' % n]) in ('done', 'wont'):
                         continue
+                    if n in held_keys and l.startswith('pool-disposition:'):
+                        continue
                     mine = OPERATOR_CLASS_RE.search(s)
                     (items if mine else chief_owes).append(('chief doc', n, clip(opn[n]['title'], 100) if n in opn else clip(s.strip(), 140), clip(s.strip(), 160),
                                   'the operator acts on what the line names' if mine else 'the chief acts on what the line names'))
-    return items, readable, unread, chief_owes
+    return items, readable, unread, chief_owes, holds_unread
+
+
+POOL_HOLD_ACT = "record the operator's words (O- record) or a near wake=, or dispatch it"
+
+
+def pool_hold_items(chief_doc, opn):
+    """(items, unread): the Blocked-on-you rows of the tick's pool-holds-<doc stem>.json (tick.sh --pool-holds), one per key:
+    every give-up line counted unhandled, unchecked or invalid; every line held on the operator's words, with the words;
+    a line held on a pr: or done: wake for 7 days or more. A date: wake fires past its date, so it needs no row."""
+    stem = os.path.basename(chief_doc)[:-3] if chief_doc.endswith('.md') else os.path.basename(chief_doc)
+    path = os.path.join(os.environ.get('TICK_STATE_DIR') or os.path.join(os.path.expanduser('~'), '.himmel', 'state'), 'pool-holds-%s.json' % stem)
+    try:
+        rows = json.load(open(path, encoding='utf-8')).get('rows') or []
+    except (OSError, ValueError, AttributeError):
+        return [], [os.path.basename(path)]
+    out, seen = [], set()
+    for r in rows:
+        if not isinstance(r, dict) or not KEY_RE.fullmatch(str(r.get('key'))) or r.get('key') in seen:
+            continue
+        key, verb, cls, wake, days = r['key'], r.get('verb'), r.get('class'), str(r.get('wake') or ''), r.get('age_days')
+        if cls == 'invalid':
+            ctx, act = '%s: %s' % (verb, r.get('reason')), POOL_HOLD_ACT
+        elif cls in ('no-authority', 'unchecked'):
+            ctx = '%s since %s chief generations, with no operator words and no wake' % (verb, r.get('age_gen') or 1)
+            ctx, act = (ctx if cls == 'no-authority' else '%s (unchecked: %s)' % (ctx, r.get('reason'))), POOL_HOLD_ACT
+        elif cls == 'authority':
+            ctx, act = '%s on the operator\'s words: "%s"' % (verb, r.get('words')), 'none, unless the words do not say this'
+        elif cls == 'wake' and isinstance(days, int) and days >= 7 and re.search(r'(?:^|,)(?:pr[:-]|done:)', wake):
+            ctx, act = '%s on wake=%s for %d days' % (verb, wake, days), "re-decide: dispatch it, or record the operator's words"
+        else:
+            continue
+        seen.add(key)
+        n = num(key)
+        out.append(('pool hold', n, clip(opn[n]['title'], 100) if n in opn else key, clip(ctx, 200), act))
+    return out, []
 
 
 def source_notes(chains, chains_mtime, prio_mtime, ndt):
@@ -1778,12 +1818,13 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None, ch
     chainhtml = ''.join('<div class="chain"><h3>%s</h3><ol>\n%s</ol></div>' % (esc(ch['name']), ''.join(step(st) for st in ch['steps']))
                         for ch in chains)
     wait = [k for k in sorted(opn, key=order.get) if set(OPERATOR_LABELS) & set(opn[k].get('labels', []))]
-    owed, owed_read, owed_unread, chief_owes = operator_owed(bucket_dir, chief_doc, version, opn, mir)
+    owed, owed_read, owed_unread, chief_owes, holds_unread = operator_owed(bucket_dir, chief_doc, version, opn, mir)
     nwait = len(wait) + len(owed)
-    waithtml = '<section data-section="waiting" data-count="%d"><h2 class="sh">Waiting on you <span class="n">%d</span>%s%s</h2>%s</section>' % (
+    waithtml = '<section data-section="waiting" data-count="%d"><h2 class="sh">Waiting on you <span class="n">%d</span>%s%s%s</h2>%s</section>' % (
         nwait, nwait, '' if owed_read else ' <span class="n">no operator-owed source read</span>',
         ' <span class="n">%d critic file%s unread, skipped: %s</span>' % (
             len(owed_unread), '' if len(owed_unread) == 1 else 's', esc(', '.join(owed_unread))) if owed_unread else '',
+        ' <span class="n">pool holds unread: %s</span>' % esc(', '.join(holds_unread)) if holds_unread else '',
         '<ul>%s</ul>' % (''.join('<li>%s %s <span class="own">Jira %s · %s</span></li>' % (
             key_html(k), esc(clip(opn[k]['title'], 100)), esc(jcol[k]), esc(', '.join(sorted(set(OPERATOR_LABELS) & set(opn[k]['labels']))))) for k in wait)
             + ''.join('<li class="owed">%s%s <span class="own">%s · %s · action: %s</span></li>' % (

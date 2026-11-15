@@ -158,12 +158,14 @@ export async function refreshDrift(env: Env, cwd: string, timeoutMs = DRIFT_REFR
 //   3. the newest *HANDOFF.md of the bucket, its `## Open operator items` lines.
 // A source that cannot be read is named in `unread`; when none can be read the whole read is absent with the reasons, never an empty list.
 // ponytail: the newest chief doc by mtime stands for "the live chief" and its folder for the bucket, upgrade path: the live chiefs' docs by queue lock as Shift reads them.
-export type OwedItem = { source: "unsigned spec" | "operator-critical finding" | "chief doc" | "handoff" | "owed undelivered" | "unclosed worker"; key: string | null; title: string; ctx: string; act: string; label?: string; since?: number };
+//   4. the tick's pool-holds-<chief doc stem>.json (tick.sh --pool-holds): its give-up lines, one row per key, which replace the doc's own
+//      pool-disposition: line of that key; a missing file is named in `unread` and never makes the whole read absent.
+export type OwedItem = { source: "unsigned spec" | "operator-critical finding" | "chief doc" | "handoff" | "owed undelivered" | "unclosed worker" | "pool hold"; key: string | null; title: string; ctx: string; act: string; label?: string; since?: number };
 export type Owed = { state: "ok"; items: OwedItem[]; unread: string[]; skipped?: string[] } | Absent;
 const OWED_SOURCES = 3; // unsigned specs, handoff items, chief doc lines
 type RoundKey = { spec?: unknown; critical_open?: { id: string; class: string; kind: string; round: number; verdict_path: string }[]; error?: string };
 type RoundStatus = { cap: number; classes: string[]; keys: Record<string, RoundKey> };
-const ROUTE = resolve(import.meta.dir, "../telegram/chief-route.ts"), ROUND_LEDGER = "round ledger";
+const ROUTE = resolve(import.meta.dir, "../telegram/chief-route.ts"), ROUND_LEDGER = "round ledger", POOL_HOLDS = "pool holds";
 function roundStatusAll(bucket: string, env: Env): RoundStatus | undefined {
   try {
     const s = JSON.parse(execFileSync(process.execPath, [ROUTE, "round-status", "--all", "--specs", join(bucket, "specs"), "--json"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: childEnv(env), timeout: TIMEOUT_MS }));
@@ -235,7 +237,37 @@ function handoffItems(bucket: string): OwedItem[] | undefined {
   return sec?.map((l) => l.trim()).filter((l) => l && !/^[-*\s]*none\.?$/i.test(l))
     .map((l) => ({ source: "handoff" as const, key: null, title: clip(l.replace(/^[-*]\s+/, ""), 140), ctx: best!.f, act: "answer the open item" }));
 }
-function chiefDocItems(doc: string, open: Map<string, string>): OwedItem[] | undefined {
+const POOL_HOLD_ACT = "record the operator's words (O- record) or a near wake=, or dispatch it";
+type HoldRow = { key?: unknown; verb?: unknown; class?: unknown; reason?: unknown; age_gen?: unknown; age_days?: unknown; words?: unknown; wake?: unknown };
+// One row per key: every give-up line counted unhandled, unchecked or invalid; every line held on the operator's words, with the words;
+// a line held on a pr: or done: wake for 7 days or more. A date: wake fires past its date, so it needs no row.
+function poolHoldItems(doc: string, open: Map<string, string>, env: Env): OwedItem[] | undefined {
+  const file = join(env.TICK_STATE_DIR ?? join(env.HOME ?? "", ".himmel", "state"), `pool-holds-${basename(doc, ".md")}.json`);
+  let rows: HoldRow[];
+  try { const got = JSON.parse(readText(file)); rows = Array.isArray(got?.rows) ? got.rows : []; } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw e;
+  }
+  const items: OwedItem[] = [], seen = new Set<string>();
+  for (const r of rows) {
+    const key = typeof r.key === "string" && /^[A-Z][A-Z0-9]*-\d+$/.test(r.key) ? r.key : undefined;
+    if (!key || seen.has(key)) continue;
+    const verb = String(r.verb), wake = typeof r.wake === "string" ? r.wake : "", days = typeof r.age_days === "number" ? r.age_days : -1;
+    let ctx: string, act: string;
+    if (r.class === "invalid") { ctx = `${verb}: ${String(r.reason)}`; act = POOL_HOLD_ACT; }
+    else if (r.class === "no-authority" || r.class === "unchecked") {
+      ctx = `${verb} since ${typeof r.age_gen === "number" && r.age_gen > 0 ? r.age_gen : 1} chief generations, with no operator words and no wake`;
+      if (r.class === "unchecked") ctx += ` (unchecked: ${String(r.reason)})`;
+      act = POOL_HOLD_ACT;
+    } else if (r.class === "authority") { ctx = `${verb} on the operator's words: "${String(r.words)}"`; act = "none, unless the words do not say this"; }
+    else if (r.class === "wake" && days >= 7 && /(?:^|,)(?:pr[:-]|done:)/.test(wake)) { ctx = `${verb} on wake=${wake} for ${days} days`; act = "re-decide: dispatch it, or record the operator's words"; }
+    else continue;
+    seen.add(key);
+    items.push({ source: "pool hold", key, title: open.get(key) ?? key, ctx: clip(ctx, 200), act });
+  }
+  return items;
+}
+function chiefDocItems(doc: string, open: Map<string, string>, held: Set<string> = new Set()): OwedItem[] | undefined {
   const live = mdSection(readText(doc), "Live state");
   if (!live) return undefined;
   const items: OwedItem[] = [];
@@ -244,6 +276,7 @@ function chiefDocItems(doc: string, open: Map<string, string>): OwedItem[] | und
     const segs = l.startsWith("queue:") ? l.slice(6).split(" || ")[0].split(" | ") : l.startsWith("pool-disposition:") ? [l.slice(17)] : [];
     for (const s of segs.map((x) => x.trim()).filter((x) => OWED_RE.test(x))) {
       const key = s.match(/[A-Z][A-Z0-9]*-\d+/)?.[0];
+      if (key && held.has(key) && l.startsWith("pool-disposition:")) continue; // the holds row of that key stands for the line
       const known = !!key && open.has(key);
       items.push({ source: "chief doc", key: known ? key! : null, title: known ? open.get(key!)! : clip(s, 140), ctx: known ? clip(s, 160) : "from the chief doc's Live state", act: "the operator acts on what the line names" });
     }
@@ -328,11 +361,14 @@ export function readOwed(env: Env, read: typeof readRoadmap = readRoadmap): Owed
   }
   if (!doc) miss("chief doc lines", "no chief doc: none found under the handover root, and HIMMEL_CHIEF_DOC is not set");
   else tryRead("chief doc lines", () => {
-    const live = chiefDocItems(doc, open), more = [...undeliveredItems(doc, open), ...unclosedItems(doc, env)];
+    let held: OwedItem[] | undefined;
+    try { held = poolHoldItems(doc, open, env); } catch (e) { miss(POOL_HOLDS, (e as Error).message); held = []; }
+    if (held === undefined) miss(POOL_HOLDS, "no pool-holds file for the chief doc in the tick's state dir");
+    const live = chiefDocItems(doc, open, new Set((held ?? []).map((i) => i.key!))), more = [...undeliveredItems(doc, open), ...unclosedItems(doc, env)];
     if (live === undefined) miss("chief doc lines", "the chief doc has no Live state section");
-    return [...(live ?? []), ...more];
+    return [...(held ?? []), ...(live ?? []), ...more];
   }, "");
-  return unread.filter((u) => u !== ROUND_LEDGER).length >= OWED_SOURCES ? absent(why.join("; ")) : { state: "ok", items, unread, skipped };
+  return unread.filter((u) => u !== ROUND_LEDGER && u !== POOL_HOLDS).length >= OWED_SOURCES ? absent(why.join("; ")) : { state: "ok", items, unread, skipped };
 }
 
 // `asked`: the version tile picked on the page. A known one is the version the tab reads; an unknown one reads as the running version and the answer says so (fellBack).
