@@ -879,6 +879,32 @@ export async function roundState(specsRoot: string, key: string): Promise<RoundS
   return stateOf(key, await loadLedger(specsRoot, key));
 }
 
+// Every critic round file of `key` in the specs folders (`<stem>.critic-<kind>-r<n>.md`, and the older
+// `<stem>.critic-r<n>-<kind>.md`) that no ledger row accounts for: a round that ran without `critic-seal.sh`.
+// A file is accounted for when a round row or the seed row names its path, or its round is within the seed's count.
+const CRITIC_FILE = /^(.+?)\.critic-(?:(spec|plan)-r(\d+)|r(\d+)-(spec|plan))\.md$/;
+export type UnsealedRound = { file: string; kind: Kind; round: number; command: string };
+export async function unsealedRounds(specsRoot: string, key: string): Promise<UnsealedRound[]> {
+  const rows = await loadLedger(specsRoot, key);
+  const real = (p: string) => realpath(p).catch(() => p);
+  const named = new Set<string>();
+  for (const r of rows) if (r.row === "round" && typeof r.verdict_path === "string") named.add(await real(r.verdict_path));
+  for (const kind of KINDS) for (const x of (seedOf(rows)?.latest?.[kind] as SeededReturn[] | undefined) ?? []) named.add(await real(x.verdict_path));
+  const out: UnsealedRound[] = [];
+  for (const folder of [...SIGNATURE_DIRS, key].map(d => join(specsRoot, d))) {
+    for (const name of await listDir(folder)) {
+      const m = CRITIC_FILE.exec(name);
+      if (!m || keyOf(join(folder, m[1])) !== key) continue;
+      const file = join(folder, name);
+      if (!await isFile(file)) continue;
+      const kind = (m[2] ?? m[5]) as Kind; const round = Number(m[3] ?? m[4]);
+      if (round <= (Number(seedOf(rows)?.[kind]) || 0) || named.has(await real(file))) continue;
+      out.push({ file, kind, round, command: `bash scripts/handover/chief-kit/critic-seal.sh ${file} <file the critic read> <sha256 the critic quoted>` });
+    }
+  }
+  return out;
+}
+
 // The read-only snapshot of one kind's round budget for `specPath`, from its ledger: `allowed` says whether round
 // `requestedRound` (the next one when omitted) may be sealed now. An unreadable ledger throws: unknown history is never an empty one.
 export type CriticBudget = { count: number; requestedRound: number; allowed: boolean; why: string | null; cap: number; rounds: { round: number; path: string }[] };
@@ -1663,8 +1689,9 @@ if (import.meta.main) {
         for (const key of [...keys].sort()) out[key] = await roundState(specs, key).catch((e: Error) => ({ key, error: e.message }));
         console.log(JSON.stringify({ cap: CRITIC_ROUND_CAP, classes: OPERATOR_CRITICAL_CLASSES, keys: out }));
       } else {
-        const s = await roundState(specs, a.key);
-        console.log(a.json ? JSON.stringify(s) : `${s.key} spec=${s.spec} plan=${s.plan} writer=${s.writer} next=${s.next} cap=${s.cap}: ${s.why}${s.invalid.length ? `; invalid: ${s.invalid.join(", ")}` : ""}`);
+        const s = await roundState(specs, a.key); const unsealed = await unsealedRounds(specs, a.key);
+        const head = `${s.key} spec=${s.spec} plan=${s.plan} writer=${s.writer} next=${s.next} cap=${s.cap}: ${s.why}${s.invalid.length ? `; invalid: ${s.invalid.join(", ")}` : ""}`;
+        console.log(a.json ? JSON.stringify({ ...s, unsealed }) : [head, ...unsealed.map(u => `unsealed: ${u.file}; seal it: ${u.command}`)].join("\n"));
       }
     } catch (e) { console.error(e instanceof Error ? e.message : e); process.exit(1); }
   } else if (verb === "round-seed" && args.length === 2 && args[0] === "--all") {
