@@ -474,7 +474,8 @@ failure line says so.
      more than the noise: the larger of the baseline rows' spread (max minus
      min) and 2 cases over the metric's case count (`defects`,
      `panel.clean_scored`). A loss is read only when the base and the head have
-     equal row counts; unequal counts are unmeasured.
+     equal row counts: on unequal counts a loss is unmeasured instead, while a
+     within-noise result stays no-loss.
    - **no-loss** / **keep** (pass): within noise; `keep` when every
      `--target-class` recall also beats the baseline maximum.
 

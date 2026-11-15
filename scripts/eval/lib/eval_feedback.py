@@ -543,7 +543,8 @@ def gate_verdict(rows, base_hash, head_hash, confighash, target_classes=()):
             without a positive count gives that metric no floor.
     no-loss head mean recall_gating >= baseline mean - noise, and head mean fp_rate <= baseline mean + noise.
     keep    no-loss, a target class named, and every target class's head mean recall > its baseline max.
-    Otherwise loss, read only on equal baseline and head row counts: unequal counts are unmeasured.
+    Otherwise loss, read only on equal baseline and head row counts: on unequal counts a loss is unmeasured
+    instead, while no-loss and keep stand.
     Computed at check time, never stored."""
     base, base_ids, base_bundles = gate_side(rows, base_hash, confighash)
     head = base if head_hash == base_hash else gate_side(rows, head_hash, confighash, base_ids, base_bundles)[0]
