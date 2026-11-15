@@ -135,8 +135,6 @@ const FU_CLASSES = ['polish', 'escape', 'hardening'];
 export const FU_WHY_CODES = ['unseen-failure', 'no-check', 'vacuous-check', 'no-recovery', 'silent-rot'];
 /**
  * Decisions 746, 762: a named override is a judge verdict id (two capitals, j, number, number) or a chief decision number.
- * ponytail: the id is an unverified audit label, only its shape is checked and nothing ties it to a real judge or chief
- * ruling, so a worker could invent one; upgrade path: look it up in the verdicts folder and the decision register.
  */
 const FU_OVERRIDE_SHAPE = /^(decision-[0-9]+|[A-Z]{2}-j[0-9]+-[0-9]+)$/;
 const POLISH_REFUSAL =
