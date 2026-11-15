@@ -142,15 +142,13 @@ row "cargo install" 2 "$(bash_payload 'cargo install ripgrep')"
 row "an installed tool run by its own name" 0 "$(bash_payload 'oxlint --version')"
 row "npm ls read" 0 "$(bash_payload 'npm ls --depth=0')"
 
-# sub_row <label> <expected rc> <payload-json> — marker unset: an in-process
-# subagent call, judged by the payload's agent_type alone.
 sub_row() {
-    local got
-    got=$(run "$3" 0)
-    if [ "$got" = "$2" ]; then
-        echo "ok   subagent: $1 (rc=$got)"; pass=$((pass + 1))
+    local label="$1" want="$2" payload="$3" got
+    got=$(run "$payload" 0)
+    if [ "$got" = "$want" ]; then
+        echo "ok   subagent: $label (rc=$got)"; pass=$((pass + 1))
     else
-        echo "FAIL subagent: $1 — expected rc=$2, got rc=$got"; fail=$((fail + 1))
+        echo "FAIL subagent: $label — expected rc=$want, got rc=$got"; fail=$((fail + 1))
     fi
 }
 agent_bash_payload() { jq -nc --arg a "$1" --arg c "$2" '{agent_type:$a, agent_id:"a1", tool_name:"Bash", tool_input:{command:$c}}'; }
