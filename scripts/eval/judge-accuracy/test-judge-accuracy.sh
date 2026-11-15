@@ -450,8 +450,6 @@ class Strict(datetime):
 j.datetime = Strict
 print(j.when("2026-10-16T11:00:00.000+0200").isoformat())' "$HERE" 2>&1)" "2026-10-16T11:00:00+02:00"
 
-# --- the default mirror follows the project resolver ---------------------------------------------------
-# A station whose project key lives only in himmel.conf: no JIRA_PROJECT_KEY, no HIMMEL_JIRA_MIRROR.
 RH="$TMP/rhome"
 mkdir -p "$RH/.himmel/state/jira-mirror/ZZTEST" "$RH/cache"
 printf 'JIRA_PROJECT_KEY=ZZTEST\n' >"$RH/.himmel/himmel.conf"

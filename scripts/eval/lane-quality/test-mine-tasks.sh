@@ -92,7 +92,6 @@ check "a hook change is not a candidate" '[ "$(jq -s "map(select(.ticket == \"HI
 check "a non-bug ticket is tagged proof-first" '[ "$(jq -s -r "map(select(.ticket == \"HIMMEL-9002\"))[0].source" "$TMP/cand.jsonl")" = proof-first ]'
 
 echo "1b. the default mirror follows the project resolver"
-# A station whose project key lives only in himmel.conf: no JIRA_PROJECT_KEY, no HIMMEL_JIRA_MIRROR.
 RH="$TMP/rhome"
 mkdir -p "$RH/.himmel/state/jira-mirror/ZZTEST" "$RH/cache"
 printf 'JIRA_PROJECT_KEY=ZZTEST\n' >"$RH/.himmel/himmel.conf"

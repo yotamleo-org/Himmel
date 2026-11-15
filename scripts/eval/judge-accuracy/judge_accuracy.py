@@ -70,9 +70,7 @@ QUEUE_ENV = "HIMMEL_JUDGE_ADJUDICATION"
 
 
 def default_mirror():
-    """The Jira mirror dir from scripts/lib/jira-project.sh (one bash subprocess, read once); the old
-    HIMMEL path when bash or the library is missing."""
-    old = os.path.expanduser("~/.himmel/state/jira-mirror/HIMMEL")  # env-literal-ok: the path when bash or the resolver is missing
+    old =os.path.expanduser("~/.himmel/state/jira-mirror/HIMMEL")  # env-literal-ok: the path when bash or the resolver is missing
     lib = os.path.join(HERE, "..", "..", "lib", "jira-project.sh")
     try:
         r = subprocess.run(["bash", "-c", '. "$1" && jira_mirror_dir', "judge_accuracy", lib],

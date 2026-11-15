@@ -343,9 +343,7 @@ def cmd_validate(a):
 
 
 def default_mirror():
-    """The Jira mirror dir from scripts/lib/jira-project.sh (one bash subprocess); the old HIMMEL path
-    when bash or the library is missing."""
-    old = os.path.expanduser("~/.himmel/state/jira-mirror/HIMMEL")  # env-literal-ok: the path when bash or the resolver is missing
+    old =os.path.expanduser("~/.himmel/state/jira-mirror/HIMMEL")  # env-literal-ok: the path when bash or the resolver is missing
     lib = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "lib", "jira-project.sh")
     try:
         r = subprocess.run(["bash", "-c", '. "$1" && jira_mirror_dir', "mine-tasks", lib],
