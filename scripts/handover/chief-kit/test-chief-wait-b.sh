@@ -34,6 +34,8 @@ STUB="$WORK/stub"
 mkdir -p "$STUB"
 cat > "$STUB/tick.sh" <<'EOF'
 #!/usr/bin/env bash
+# one byte per sample the waiter takes: wait_exit counts these, not seconds.
+printf x >> "$STUB/ticks"
 [ -f "$STUB/tick.rc" ] && exit "$(cat "$STUB/tick.rc")"
 # tick.sleep: a slow tick (seconds), as a real gh-bound tick can be.
 [ -f "$STUB/tick.sleep" ] && sleep "$(cat "$STUB/tick.sleep")"
@@ -103,15 +105,26 @@ wait_hb() {
     done
     return 1
 }
-# wait_exit <pid>: wait at most ~8 s for the waiter to exit; sets rc to its
-# exit code or "running". Not a $(...) helper: `wait` must run in the shell
-# that started the waiter.
+# wait_exit <pid> [samples]: wait until the waiter exits, or has taken <samples>
+# (default 4) more samples without exiting; sets rc to its exit code or
+# "running". A change needs two samples to confirm and the sample in flight when
+# the case changed state may have read the old one, so the fourth is the spare.
+# Counting samples, not seconds, keeps a quiet case cheap on a fast host and
+# long enough on a loaded one. A waiter that takes no sample at all in 8 s, or
+# one that stalls for 30 s, is reported running. Not a $(...) helper: `wait`
+# must run in the shell that started the waiter.
 wait_exit() {
+    local want="${2:-4}" base seen
+    base=$(wc -c < "$STUB/ticks" 2>/dev/null) || base=0
     n=0
-    while [ "$n" -lt 80 ]; do
+    while [ "$n" -lt 300 ]; do
         if ! kill -0 "$1" 2>/dev/null; then wait "$1"; rc=$?; return; fi
+        seen=$(( $(wc -c < "$STUB/ticks" 2>/dev/null || echo 0) - base ))
+        [ "$seen" -ge "$want" ] && break
+        [ "$n" -ge 80 ] && [ "$seen" -eq 0 ] && break
         sleep 0.1; n=$((n + 1))
     done
+    kill -0 "$1" 2>/dev/null || { wait "$1"; rc=$?; return; }
     rc=running
 }
 new_inbox() { mkdir -p "$WORK/$1/consoles"; : > "$WORK/$1/consoles/c.md"; printf '%s' "$WORK/$1/consoles/c.md"; }
@@ -120,6 +133,20 @@ start() { # <inbox> <outfile> [tick args...]
     bash "$WAIT" "$inbox" "$@" > "$out" 2>"$out.err" &
     WPID=$!
 }
+
+# --- (wx) a quiet window is counted in the waiter's samples, not seconds: a
+# waiter that does not wake is watched for four of its own samples (a change
+# needs two to confirm), so a case costs seconds, not a fixed 8 s. ------------
+reset_stub
+I="$(new_inbox wx)"
+start "$I" "$WORK/wx.out" --workers "N1.md"
+wait_hb "$I" || fail "(wx) no baseline heartbeat"
+wx0=$(wc -c < "$STUB/ticks")
+wait_exit "$WPID"
+wx1=$(wc -c < "$STUB/ticks")
+check "(wx) a waiter with nothing to wake for is still running" "running" "$rc"
+check "(wx) and the quiet window took at most 5 samples" "yes" "$([ $((wx1 - wx0)) -le 5 ] && echo yes || echo "no: $((wx1 - wx0))")"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
 # tracker_line is shared with the (w) block that stays in test-chief-wait.sh.
 tracker_line() { sed "s/ denials=none/ tracker=$1 denials=none/" "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"; }
