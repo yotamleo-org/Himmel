@@ -601,8 +601,8 @@ fi
 # A judge brief and a doc that has run are not held to it.
 if [ "$judge" -eq 0 ] && grep -Eq '^> \*\*Contract:\*\*' "$doc" && ! worker_doc_has_run "$doc"; then
     ship_line="$(grep -E '^> 4\. Ship:' "$doc")"
-    ct_hdr="$(grep -Eio '^> \*\*Completes ticket:\*\* *(yes|no)\b' "$doc" | awk '{print tolower($NF)}')"
-    ct_ship="$(grep -Eio 'completes-ticket: *(yes|no)\b' <<< "$ship_line" | awk '{print tolower($NF)}')"
+    ct_hdr="$(grep -Eio '^> \*\*Completes ticket:\*\* *(yes|no)\b' "$doc" | grep -Eio '(yes|no)$' | tr '[:upper:]' '[:lower:]')"
+    ct_ship="$(grep -Eio 'completes-ticket: *(yes|no)\b' <<< "$ship_line" | grep -Eio '(yes|no)$' | tr '[:upper:]' '[:lower:]')"
     ct_vals="$(printf '%s\n%s\n' "$ct_hdr" "$ct_ship" | grep -E '^(yes|no)$' | sort -u | tr '\n' ' ')"
     case "$ct_vals" in
         "no yes "*) fail "the brief states two completes-ticket answers (header: ${ct_hdr:-none}; Ship step: ${ct_ship:-none}): one value, in every place the brief states it" ;;

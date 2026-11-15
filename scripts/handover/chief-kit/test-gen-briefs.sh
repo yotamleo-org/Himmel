@@ -758,6 +758,10 @@ for dis in '{"desc":"fix it. Completes ticket: no","scope":"`scripts/x/` complet
     [ "$ct1_rc" = 1 ] && grep -q "N901" "$WORK/ct1w.err" && grep -qi "completes" "$WORK/ct1w.err" && pass "10195 disagreeing sources are refused naming the label and completes: $dis" || fail "10195 disagreement rc=$ct1_rc: $(cat "$WORK/ct1w.err") for $dis"
     [ -z "$ct1_out" ] && pass "10195 and no brief is written for the disagreement" || fail "10195 a brief was written for $dis"
 done
+for baddesc in 'fix it. Completes ticket: partial' 'fix it. Completes ticket: noo'; do
+    ct1_gen "$WORK/ct10195g" "{\"desc\":\"$baddesc\"}"
+    [ "$ct1_rc" = 1 ] && grep -q "N901" "$WORK/ct1w.err" && grep -qi "completes" "$WORK/ct1w.err" && pass "10195 a description ending '$baddesc' is refused, not read as yes" || fail "10195 bad description value rc=$ct1_rc: $(cat "$WORK/ct1w.err") for $baddesc"
+done
 ct1_gen "$WORK/ct10195f" '{"completes":"partial"}'
 [ "$ct1_rc" = 1 ] && grep -q "N901" "$WORK/ct1w.err" && grep -qi "completes" "$WORK/ct1w.err" && pass "10195 an explicit completes value other than yes or no is refused" || fail "10195 bad explicit value rc=$ct1_rc: $(cat "$WORK/ct1w.err")"
 

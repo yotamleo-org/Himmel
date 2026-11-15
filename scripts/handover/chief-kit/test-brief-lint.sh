@@ -990,6 +990,7 @@ mkct ct_hn_sn no "$SHIP_N"; expect_rc "13b header no with a no Ship step passes"
 mkct ct_hn_sy no "$SHIP_Y"; expect_rc "13c header no with a yes Ship step fails" 1 "$tmp/ct_hn_sy.md"
 mkct ct_hy_sn yes "$SHIP_N"; expect_rc "13d header yes with a no Ship step fails" 1 "$tmp/ct_hy_sn.md"
 mkct ct_hn_sny no "$SHIP_NY"; expect_rc "13e a no brief whose Ship step names --jira-transition fails" 1 "$tmp/ct_hn_sny.md"
+mkct ct_hy_snospace yes '> 4. Ship: completes-ticket:no (leave the ticket In Progress after the merge); merge bare.'; expect_rc "13j a no Ship step written with no space after the colon still disagrees with a yes header" 1 "$tmp/ct_hy_snospace.md"
 mkct ct_hn_only no none; expect_rc "13f a header with no Ship step passes" 0 "$tmp/ct_hn_only.md"
 mkct ct_none_sn none "$SHIP_N"; expect_rc "13g a Ship step with no header passes" 0 "$tmp/ct_none_sn.md"
 rc=0; err="$(bash "$LINT" "$tmp/ct_hn_sy.md" 2>&1 >/dev/null)" || rc=$?
