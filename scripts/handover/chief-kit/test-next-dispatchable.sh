@@ -456,7 +456,7 @@ lacks "no skipped line when nothing matched" "$pw0" "# skipped"
 
 # Fail closed: with the pattern file gone the script exits 2 rather than dispatching unfiltered.
 NF="$WORK/nopat"; mkdir -p "$NF/scripts/handover/chief-kit" "$NF/scripts/lib"
-for nf_lib in env_alias.py gh-quota.sh gh-graphql-budget.sh prim.sh timeout-bin.sh canon-path.sh; do
+for nf_lib in env_alias.py gh-quota.sh gh-graphql-budget.sh prim.sh timeout-bin.sh canon-path.sh pr_remainder.py; do
     cp "$(dirname "$SUT")/../../lib/$nf_lib" "$NF/scripts/lib/$nf_lib"
 done
 cp "$SUT" "$NF/scripts/handover/chief-kit/next-dispatchable.sh"
@@ -2028,7 +2028,12 @@ has "a deferred line naming two tickets stays a RESUME row (ready-check.sh accep
 lacks "and hands nothing off" "$pmd" "HANDED-OFF HIMMEL-133"
 
 # A reader answer the dispatcher does not recognise, or one of the wrong shape, reads as an unreadable body: never dispatched blind.
-printf 'import sys\nanswers = {"HIMMEL-140": "garbage", "HIMMEL-141": "remaining", "HIMMEL-142": "remaining\\ta\\tb", "HIMMEL-143": "handed-off\\tHIMMEL-9", "HIMMEL-144": "handed-off\\tHIMMEL-9\\ttext\\textra"}\nsys.stdout.write(answers[sys.argv[1]] + "\\n")\n' > "$WORK/odd-reader.py"
+cat > "$WORK/odd-reader.py" <<'EOF'
+import sys
+answers = {140: "garbage", 141: "remaining", 142: "remaining\ta\tb", 143: "handed-off\tHIMMEL-9", 144: "handed-off\tHIMMEL-9\ttext\textra"}
+units = "\tnowrite=0\tchief-owed=" if "--units" in sys.argv else ""
+sys.stdout.write(answers[int(sys.argv[-1].rsplit("-", 1)[1])] + units + "\n")
+EOF
 PME_STATE="$WORK/pme"; mkdir -p "$PME_STATE/workers"
 MPME="$WORK/mpme/HIMMEL"; mkdir -p "$MPME"
 M_SAVE="$M"; M="$MPME"
@@ -2467,6 +2472,71 @@ has "R5: pool-only lists the proof ticket as LOCAL in its disposition line" "$rp
 has "R5: and its no-path control the same" "$rpp" "# disposition HIMMEL-9853 listed LOCAL"
 rp="$rpp"
 has "R5: and column 0 is LOCAL for the proof row" "$(prow LOCAL 9851)" "files=-"
+
+MU="$WORK/m10199/HIMMEL"; mkdir -p "$MU" "$WORK/s10199/workers"; cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/m10199/HIMMEL.versions.tsv"
+M_SAVE="$M"; M="$MU"
+for n in 10301 10302 10303 10304 10305 10306 10307 10311 10313 10314 10315; do
+    mk "HIMMEL-$n" "In Progress" Medium '[]' '["v1.0.1"]' '[]' "U row $n" "Edit scripts/lib/p10199-$n.sh."
+done
+M="$M_SAVE"
+printf 'Remaining: S1 (N6265, held after N6235), S3 (chief-run).\n' > "$PR_BODY_DIR/10301"
+printf 'Remaining: S1 wires the flag\nRemaining: S3 (chief-run)\n' > "$PR_BODY_DIR/10302"
+cat > "$PR_BODY_DIR/10303" <<'EOF'
+## Ticket coverage
+
+- spec-r1-U1: done
+- spec-r1-U2: done
+- spec-r1-U3: done
+- spec-r1-U4: done
+- spec-r1-U5: done
+- plan-r1-U1: done
+- plan-r1-U2: done
+- plan-r1-U3: done
+- plan-r1-U4: done
+- The listing change in next-dispatchable.sh (S1): done
+- DoD: the pool listing shows the open tickets as PROOF rows (S3): owed → chief by 2026-11-28
+- DoD: one wave of proof workers closes at least half (S3, operator closes): owed → operator by 2026-11-28
+
+Remaining: S3 (chief-run, no code)
+EOF
+printf 'Remaining: only a clean live shift, no code.\n' > "$PR_BODY_DIR/10304"
+printf 'Remaining: S3 (chief-run, no code)\n\n## Ticket coverage\n\n- VM row 1, a worker merges a throwaway PR: owed → chief by 2026-11-20\n' > "$PR_BODY_DIR/10305"
+printf '## Ticket coverage\n\n- wire the flag: deferred → HIMMEL-10306 later\n\nRemaining: S3 (chief-run)\n' > "$PR_BODY_DIR/10306"
+printf 'Remaining: run bash scripts/lib/p10199-c.sh once on the station.\n' > "$PR_BODY_DIR/10307"
+printf 'Remaining: S3 (chief-run, no code)\n' > "$PR_BODY_DIR/10311"
+printf 'Remaining: edit scripts/lib/p10199-d.sh\n' > "$PR_BODY_DIR/10312"
+printf 'Remaining: S3 (chief-run, S4 verify the VM row), S5 (chief-run)\n' > "$PR_BODY_DIR/10313"
+printf 'Remaining: S3 (chief-run; S4 verify the VM row); S5 (chief-run)\n' > "$PR_BODY_DIR/10314"
+printf 'Remaining: S3 (chief-run); S4 wires the flag\n' > "$PR_BODY_DIR/10315"
+: > "$WORK/s10199/status-events.jsonl"
+for pair in 10301:10301 10302:10302 10303:10303 10304:10304 10305:10305 10306:10306 10307:10307 10311:10311 10311:10312 10313:10313 10314:10314 10315:10315; do
+    printf '{"ts":"t","event":"merge","key":"HIMMEL-%s","pr":"%s","contract":"no","result":"noop"}\n' "${pair%%:*}" "${pair##*:}" >> "$WORK/s10199/status-events.jsonl"
+done
+runu() { NEXT_DISPATCH_MIRROR="$MU" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify-p" bash "${U_SUT:-$SUT}" --top 20 --workers-dir "$WORK/s10199/workers" --workers-from "$WORK/fleet5.json"; }
+rp="$(runu 2>/dev/null)"
+for n in 10301 10302; do
+    has "U1/U2 ($n): a mixed code and chief-run remainder is a RESUME row" "$rp" "RESUME	HIMMEL-$n	"
+    has "U1/U2 ($n): and keeps the description's file" "$(prow RESUME "$n")" "files=scripts/lib/p10199-$n.sh"
+    [ "$(lastf "$(prow RESUME "$n")")" != proof ] && pass "U1/U2 ($n): and is not tagged proof" || fail "U1/U2 ($n): tagged proof: '$(prow RESUME "$n")'"
+done
+for n in 10303 10304 10305 10313 10314; do
+    [ "$(lastf "$(prow RESUME "$n")")" = proof ] && pass "U3/U4/U5/U13/U14 ($n): a remainder whose every slice writes nothing ends in proof" || fail "U3/U4/U5/U13/U14 ($n): last field of '$(prow RESUME "$n")'"
+done
+[ "$(lastf "$(row91 RESUME 9615)")" = proof ] && pass "U4: the PR 9625 remainder (a clean live shift, no code) ends in proof" || fail "U4: last field of '$(row91 RESUME 9615)'"
+for n in 10306 10315; do
+    has "U6/U14 ($n): a code slice beside a chief-run one keeps the description's file" "$(prow RESUME "$n")" "files=scripts/lib/p10199-$n.sh"
+    [ "$(lastf "$(prow RESUME "$n")")" != proof ] && pass "U6/U14 ($n): and is not tagged proof" || fail "U6/U14 ($n): tagged proof: '$(prow RESUME "$n")'"
+done
+has "U7: a pathless remainder that only runs a script keeps the description's write file" "$(prow RESUME 10307)" "files=scripts/lib/p10199-10307.sh"
+has "U11: a newer code remainder supersedes an older no-write one" "$(prow RESUME 10311)" "files=scripts/lib/p10199-d.sh"
+[ "$(lastf "$(prow RESUME 10311)")" != proof ] && pass "U11: and is not tagged proof" || fail "U11: tagged proof: '$(prow RESUME 10311)'"
+U12="$WORK/u12"; mkdir -p "$U12/scripts/handover/chief-kit" "$U12/scripts/lib"
+for u12_f in "$HERE"/*; do [ ! -f "$u12_f" ] || cp "$u12_f" "$U12/scripts/handover/chief-kit/"; done
+for u12_f in "$HERE"/../../lib/*; do [ ! -f "$u12_f" ] || cp "$u12_f" "$U12/scripts/lib/"; done
+rm -f "$U12/scripts/lib/pr_remainder.py"
+u12_err="$(U_SUT="$U12/scripts/handover/chief-kit/next-dispatchable.sh" runu 2>&1 >/dev/null)"; u12_rc=$?
+[ "$u12_rc" = 3 ] && pass "U12: a pr_remainder.py that cannot be loaded exits 3" || fail "U12: a pr_remainder.py that cannot be loaded exits 3 (rc $u12_rc)"
+has "U12: and says so on stderr" "$u12_err" "# next-dispatchable: pr_remainder.py unreadable ("
 printf '%s\n' "$P_PRS" > "$PRS_TSV"; printf '%s\n' "$P_MERGED" > "$MERGED_TSV"
 
 # A chain sibling's worker owns its ticket only while it can be alive: a fresh queue lock, or a doc armed within the hour.

@@ -10,12 +10,13 @@ workers write; `->` and the arrow are both read). A deferred line hands its work
 own grammar: the key comes right after the arrow and nothing but punctuation follows it. Any other deferred line stays
 remaining work on the ticket.
 
-CLI: `pr_remainder.py KEY[,KEY...]` with the PR body on stdin prints ONE answer line:
+CLI: `pr_remainder.py [--units] KEY[,KEY...]` with the PR body on stdin prints ONE answer line:
   none
   remaining<TAB>text
   handed-off<TAB>KEY, KEY<TAB>text
   owed<TAB>who<TAB>YYYY-MM-DD<TAB>text
 The own keys are the ticket's own: a deferred line naming one is not a hand-off. Exit 0 with the line; any other exit is no answer.
+With --units every kind carries two more fields, `nowrite=<0|1>` and `chief-owed=<text¦text>` (pr_remainder_units).
 """
 import datetime
 import re
@@ -30,10 +31,35 @@ HANDOFF_RE = re.compile(r'\bdeferred[ \t]*(?:→|->)[^A-Za-z0-9]*([A-Za-z][A-Za-
 LIST_RE = re.compile(r'^(?:[-*]|[0-9]+[.)])[ \t]')
 OWED_ANY_RE =re.compile(r'\bowed[ \t]*(?:→|->)', re.I)
 OWED_RE = re.compile(r'\bowed[ \t]*(?:→|->)[ \t]*(chief|operator)[ \t]+by[ \t]+(\d{4}-\d{2}-\d{2})[^A-Za-z0-9]*$', re.I)
+NO_WRITE_RE = re.compile(r'(?<![\w-])no (?:code(?! path)|repo(?:sitory)? (?:write|change|edit)s?)\b|(?<![\w-])chief-run\b|\bstate repo\b', re.I)
+SLICE_LABEL_RE = re.compile(r'[ \t]*S\d+[A-Za-z]?\b')
+
+
+def slices(line):
+    out, depth, start = [], 0, 0
+    for n, c in enumerate(line):
+        if c == '(':
+            depth += 1
+        elif c == ')':
+            depth = max(0, depth - 1)
+        elif c in ',;' and depth == 0 and SLICE_LABEL_RE.match(line, n + 1):
+            out.append(line[start:n])
+            start = n + 1
+    out.append(line[start:])
+    return [s.strip() for s in out if s.strip()]
 
 
 def pr_remainder(body, own_keys=()):
-    """Returns (kind, handed_keys, text):
+    a = pr_remainder_units(body, own_keys)
+    return (a['kind'], a['handed'], a['text'])
+
+
+def pr_remainder_units(body, own_keys=()):
+    """pr_remainder's answer as a dict ('kind', 'handed', 'text'), plus:
+      'nowrite'     at least one work unit, and every one matches NO_WRITE_RE; a work unit is a slice of a `Remaining:`
+                    line, a deferred line that stays on this ticket, or a malformed owed line
+      'chief_owed'  the text of every valid owed line whose who is chief, in body order
+    pr_remainder's (kind, handed_keys, text):
       ('none', [], '')                no remainder recorded in either form
       ('remaining', [], text)         the remainder stays on the ticket
       ('handed-off', [keys], text)    no Remaining: line, and every deferred line names one other ticket
@@ -42,6 +68,7 @@ def pr_remainder(body, own_keys=()):
     own = {k.upper() for k in own_keys}
     remaining = [m.strip() for m in REMAINING_RE.findall(body)]
     deferred, handed, whole = [], [], True
+    staying = []
     owed, owed_bad = [], []
     in_coverage = False
     owed_open = False
@@ -79,26 +106,43 @@ def pr_remainder(body, own_keys=()):
         key = m.group(1).upper() if m else None
         if key is None or key in own:
             whole = False
+            staying.append(deferred[-1])
         elif key not in handed:
             handed.append(key)
+    units = [s for r in remaining for s in slices(r)] + staying + owed_bad
+    extra = {'nowrite': bool(units) and all(NO_WRITE_RE.search(u) for u in units),
+             'chief_owed': [re.sub(r'[\t\r\n]+', ' ', t) for _, who, t in owed if who == 'chief']}
     if not remaining and not deferred and not owed and not owed_bad:
-        return ('none', [], '')
+        return dict(kind='none', handed=[], text='', **extra)
     if not remaining and not owed_bad and whole and owed:  # a deferred line that stays on this ticket is remaining work, and beats an owed step
         due, who, line = min(owed, key=lambda o: o[0])  # min keeps the first of equal dates
-        return ('owed', [who, due], re.sub(r'[\t\r\n]+', ' ', line))
+        return dict(kind='owed', handed=[who, due], text=re.sub(r'[\t\r\n]+', ' ', line), **extra)
     text = re.sub(r'[\t\r\n]+', ' ', '; '.join(p for p in (' '.join(remaining), '; '.join(deferred + owed_bad + [o[2] for o in owed])) if p))  # the answer line is tab-separated
     if not remaining and not owed_bad and whole:
-        return ('handed-off', handed, text)
-    return ('remaining', [], text)
+        return dict(kind='handed-off', handed=handed, text=text, **extra)
+    return dict(kind='remaining', handed=[], text=text, **extra)
+
+
+def live_answers(answers):
+    """The live answers of a ticket's partial PRs, given in merge order: a clear answer (any kind but none) supersedes every
+    older PR that records none, and a PR newer than it that records none is still a question. A newer hand-off or owed
+    step also supersedes an older `remaining` answer."""
+    clear = max((n for n, a in enumerate(answers) if a['kind'] != 'none'), default=-1)
+    handed = clear >= 0 and answers[clear]['kind'] in ('handed-off', 'owed')
+    return [a for n, a in enumerate(answers) if n >= clear or (a['kind'] != 'none' and not (handed and a['kind'] == 'remaining'))]
 
 
 def main(argv):
-    if len(argv) != 2:
-        print('usage: pr_remainder.py KEY[,KEY...]  (PR body on stdin)', file=sys.stderr)
+    units = argv[1:2] == ['--units']
+    if len(argv) != 2 + units:
+        print('usage: pr_remainder.py [--units] KEY[,KEY...]  (PR body on stdin)', file=sys.stderr)
         return 2
     body = sys.stdin.buffer.read().decode('utf-8', 'replace')
-    kind, handed, text = pr_remainder(body, [k for k in argv[1].split(',') if k])
+    a = pr_remainder_units(body, [k for k in argv[-1].split(',') if k])
+    kind, handed, text = a['kind'], a['handed'], a['text']
     out = kind if kind == 'none' else '\t'.join([kind] + ([', '.join(handed)] if kind == 'handed-off' else handed if kind == 'owed' else []) + [text])
+    if units:
+        out += '\tnowrite=%d\tchief-owed=%s' % (a['nowrite'], '¦'.join(a['chief_owed']))
     sys.stdout.buffer.write((out + '\n').encode('utf-8'))
     return 0
 
