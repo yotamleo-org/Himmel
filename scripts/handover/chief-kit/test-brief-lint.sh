@@ -970,15 +970,13 @@ rc=0; out="$(run_worker "$tmp/fm_good.md" --profile worker-impl)" || rc=$?
 rc=0; out="$(run_worker "$tmp/fm_good.md" --profile worker-impl --no-prior-art-check)" || rc=$?
 [ "$rc" -eq 0 ] && ok "12z a valid brief launches with --no-prior-art-check" || bad "12z valid brief with the flag (rc=$rc): $out"
 
-# A worker brief states one completes-ticket answer. The header line and the Ship step (Contract item 4)
-# must agree, and a no brief never names --jira-transition. A header with no Ship step, or a Ship step with no header, passes.
 # shellcheck disable=SC2016  # the backticks are literal brief text
 SHIP_Y='> 4. Ship: completes-ticket: yes; merge only on GO with `bash scripts/handover/merge-on-green.sh --jira-transition` (typed exactly so).'
 # shellcheck disable=SC2016  # the backticks are literal brief text
 SHIP_N='> 4. Ship: completes-ticket: no (leave the ticket In Progress after the merge); merge only on GO with `bash scripts/handover/merge-on-green.sh` (bare, without the Jira-transition flag).'
 # shellcheck disable=SC2016  # the backticks are literal brief text
 SHIP_NY='> 4. Ship: completes-ticket: no; merge only on GO with `bash scripts/handover/merge-on-green.sh --jira-transition` (typed exactly so).'
-mkct() { # name header-value-or-none ship-line-or-none
+mkct() {
     local n="$1" h="$2" s="$3" extra=()
     [ "$h" = none ] || extra+=("> **Completes ticket:** $h")
     extra+=('> **Contract:**')

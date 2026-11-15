@@ -199,9 +199,6 @@ DESC_COMPLETES_RE = re.compile(r'Completes ticket:\s*(\w*)\W*\Z', re.I)
 
 
 def completes_of(worker):
-    # The ONE completes-ticket answer of a worker: an explicit `completes` key, else the
-    # description's trailing "Completes ticket: yes|no" line, else the scope's LAST `completes-ticket:`
-    # value; None when none states it (every caller then keeps yes). Two sources that disagree are refused.
     found = {}
     if 'completes' in worker:
         v = worker['completes']
@@ -1325,15 +1322,11 @@ def sonnet_ceiling_profile(profile):
 
 
 def completes_line(worker):
-    # completes_of(worker) as the one line the merge script reads from the worker doc
-    # (--worker-doc / HIMMEL_WORKER_SESSION_DOC); yes when the worker states none.
     return '\n> **Completes ticket:** %s\n' % (completes_of(worker) or 'yes')
 
 
 def ship_completes(worker, lane='native'):
-    # The Ship step's completes-ticket clause and merge clause, from the same completes_of(worker)
-    # value completes_line() reads; a worker stating none keeps the yes wording. A claudex worker's
-    # auto-mode classifier refuses merge-path actions, so its merge clause stops at READY and
+    # A claudex worker's auto-mode classifier refuses merge-path actions, so its merge clause stops at READY and
     # the chief runs the merge; every other lane merges on GO itself.
     found = completes_of(worker)
     shapes = ('; a remaining ask that another ticket owns is a `- <ask>: deferred → KEY` coverage line; a step the chief or operator owes after the merge is '

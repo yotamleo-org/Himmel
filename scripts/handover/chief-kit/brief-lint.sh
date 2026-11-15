@@ -596,9 +596,6 @@ if [ -z "$(worker_description_field "$doc")" ] && ! worker_doc_has_run "$doc"; t
     fail "no front-matter 'description:' line (required: one plain-language line saying what this worker is doing and why, e.g. 'description: \"Add a description line to every worker brief\"'; put it between the leading '---' lines, the first of which must be the file's first line with no blank line or BOM before it; see docs/handover/worker-brief-template.md)"
 fi
 
-# A worker brief states one completes-ticket answer: the `> **Completes ticket:**` header and the Ship
-# step (Contract item 4) must agree, and a `no` brief never names --jira-transition, which would close the ticket.
-# A judge brief and a doc that has run are not held to it.
 if [ "$judge" -eq 0 ] && grep -Eq '^> \*\*Contract:\*\*' "$doc" && ! worker_doc_has_run "$doc"; then
     ship_line="$(grep -E '^> 4\. Ship:' "$doc")"
     ct_hdr="$(grep -Eio '^> \*\*Completes ticket:\*\* *(yes|no)\b' "$doc" | grep -Eio '(yes|no)$' | tr '[:upper:]' '[:lower:]')"

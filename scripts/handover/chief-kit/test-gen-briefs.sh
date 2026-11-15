@@ -727,10 +727,7 @@ python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["scope"]="c
 python3 "$SUT" "$WORK/ctb.json" --base 4ccb59d --chief BZ --bucket "$WORK/ctb-early" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ctb.err"; rc=$?
 [ "$rc" = 1 ] && pass "an earlier bad value is refused even when the last value is no" || fail "early bad value rc=$rc"
 
-# A brief states ONE completes-ticket answer, from an explicit completes key, else the
-# description's trailing "Completes ticket: yes|no" line, else the scope; two sources that disagree are
-# refused naming the worker label and the word completes.
-ct1_gen() { # <bucket> <json object of worker fields to override>; sets ct1_rc, ct1_out (the brief)
+ct1_gen() {
     python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0].update(json.loads(sys.argv[3])); json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/ct1w.json" "$2" || { fail "10195 fixture setup failed"; return 1; }
     rm -rf "$1"
     python3 "$SUT" "$WORK/ct1w.json" --base 4ccb59d --chief BZ --bucket "$1" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ct1w.err"; ct1_rc=$?
