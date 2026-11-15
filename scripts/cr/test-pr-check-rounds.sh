@@ -33,6 +33,7 @@ cp "$HERE/panel-first-pass.sh" "$fx/scripts/cr/panel-first-pass.sh"
 cp "$HERE/anchor-handoff.sh" "$fx/scripts/cr/anchor-handoff.sh"
 cp "$HERE/base-resolver.sh" "$fx/scripts/cr/base-resolver.sh"
 cp "$HERE/review-round.sh" "$fx/scripts/cr/review-round.sh"
+cp "$HERE/note-polish.sh" "$fx/scripts/cr/note-polish.sh"
 cp "$HERE/ledger-append.sh" "$fx/scripts/cr/ledger-append.sh"
 cp "$HERE/write-verdicts.sh" "$fx/scripts/cr/write-verdicts.sh"
 cp "$HERE/clear-review-marker.sh" "$fx/scripts/cr/clear-review-marker.sh"
@@ -49,6 +50,13 @@ cp "$HERE/../lib/go-gate.sh" "$fx/scripts/lib/go-gate.sh"
 # review-round reads GitHub through the second, read-only token. The
 # fixture carries the router and a fixture .env root; only that token is visible.
 cp "$HERE/../lib/gh-read.sh" "$fx/scripts/lib/gh-read.sh"
+# defer resolves the tracker, and its polish note finds the PR ticket through ticket-status.sh.
+for fx_lib in project-mode.sh ticket-status.sh required-checks.sh prim.sh status-marker.sh; do
+    cp "$HERE/../lib/$fx_lib" "$fx/scripts/lib/$fx_lib"
+done
+# The tracker comes from each row: no operator himmel.conf, TRACKER or project key leaks in.
+export HIMMEL_CONFIG_DIR="$tmp/config"
+unset JIRA_PROJECT_KEY TRACKER
 mkdir -p "$tmp/ghr-root"
 printf 'himmel_github_token_vm2=%s\n' ghp_ROUNDSREADTOKEN > "$tmp/ghr-root/.env"
 export GH_READ_ENV_ROOT="$tmp/ghr-root" HIMMEL_SECRETS_KEYRING=off
@@ -242,6 +250,10 @@ fs.appendFileSync(process.env.RECOVERY_JIRA_LOG, JSON.stringify(process.argv.sli
 if (process.argv[2] === 'comment') {
     fs.writeFileSync(process.env.RECOVERY_JIRA_LOG + '.comment', fs.readFileSync(process.argv[process.argv.indexOf('--comment-file') + 1]));
     process.exit(process.env.RECOVERY_JIRA_COMMENT_FAIL === '1' ? 1 : 0);
+}
+if (process.argv[2] === 'comments') {
+    if (process.env.RECOVERY_JIRA_COMMENTS) process.stdout.write(fs.readFileSync(process.env.RECOVERY_JIRA_COMMENTS));
+    process.exit(0);
 }
 fs.writeFileSync(process.env.RECOVERY_JIRA_LOG + '.body', fs.readFileSync(process.argv[process.argv.indexOf('--desc-file') + 1]));
 // a CLI build from before --fu-override (dist/ is rebuilt at station update) rejects the flag.
@@ -696,6 +708,166 @@ for rl1_v in agreed conflict unaddressed deferred; do
     assert_lacks "$(rl1_deferred_rows)" '"finding_id":"critic-1"' "9892 C2 verdict $rl1_v defers no Suggestion"
     assert_eq "$(rl1_marker)" kept "9892 C2 verdict $rl1_v keeps the marker"
 done
+
+# 9511: what the residual-filing stop let escape. A row sets JIRA_PROJECT_KEY=HIMMEL
+# unless it says otherwise; the one open PR's title names the PR ticket.
+i9_note_reason='Polish finding noted in the PR body: no ticket filed (decisions 746, 762).'
+i9_pr='GH_PR_JSON=[{"title":"fix: [HIMMEL-123] x"}]'
+i9_f() { printf '{"kind":"finding","branch":"@BR@","head":"@HEAD@","finding_id":"%s","severity":"%s","class":"reader-allowlist","file":"docs/guide/x.md","line":1,"text":"- [%s]: a 9511 finding [docs/guide/x.md:1]"%s}\n' "$1" "$2" "$1" "${3:+,$3}"; }
+i9_a() { printf '{"kind":"amend","branch":"@BR@","target_head":"@HEAD@","finding_id":"%s","artifact":"diff","perspective":"off","set":{%s}}\n' "$1" "$2"; }
+i9_calls() { { grep -c "^\[\"$1\"" "$2" || true; } | tr -d ' '; }
+i9_amends() { { printf '%s\n' "$1" | grep -c '"kind":"amend"' || true; } | tr -d ' '; }
+i9_run() { : > "$rl1_log"; rm -f "$rl1_log.comment"; rl1_run "$@"; }
+i9_delta() { # i9_delta <ledger rows> [defer args...]: the one delta round on the recovery fixture
+    printf '4\n' > "$recovery_git/cr-review-rounds/recovery.round"
+    printf '%s %s fix\n' "$recovery_head" "$recovery_head" > "$recovery_git/cr-review-rounds/recovery.delta"
+    printf '%s' "$1" | sed "s#@HEAD@#$recovery_head#g; s#@BR@#recovery#g" > "$recovery_git/cr-critic-scores.jsonl"
+    printf 'pending\n' > "$recovery_git/cr-pending/recovery"
+    : > "$recovery_log"
+    shift
+    i9_rc=0
+    i9_out="$(cd "$recovery_repo" && env JIRA_PROJECT_KEY=HIMMEL GH_PR_TITLE='fix: [HIMMEL-123] x' RECOVERY_JIRA_LOG="$recovery_log" \
+        bash "$fx/scripts/cr/review-round.sh" defer --branch recovery --head "$recovery_head" "$@" 2>&1 </dev/null)" || i9_rc=$?
+    i9_ledger="$(cat "$recovery_git/cr-critic-scores.jsonl")"
+}
+
+rl1_flags=()
+i9_gh_log="$tmp/9511-gh.log"
+: > "$i9_gh_log"
+i9_run feat/rl1 1 "$(i9_f critic-1 sug)"$'\n' JIRA_PROJECT_KEY=HIMMEL "$i9_pr" GH_CALL_LOG="$i9_gh_log"
+assert_eq "$rl1_rc" 0 "9511 I1 a noted polish row exits 0 ($rl1_out)"
+assert_eq "$(i9_calls comment "$rl1_log")" 1 "9511 I1 a noted polish row has a polish-noted comment on the PR ticket"
+assert_has "$(cat "$rl1_log")" '["comment","HIMMEL-123","--comment-file"' "9511 I1 the note goes on the PR title's ticket"
+assert_has "$(cat "$rl1_log.comment" 2>/dev/null)" "polish-noted: feat/rl1 $rl1_head" "9511 I1 the note's line 1 names the branch and head"
+assert_has "$(cat "$rl1_log.comment" 2>/dev/null)" '- critic-1 docs/guide/x.md:1 [sug, class default]: - [critic-1]: a 9511 finding' "9511 I1 the note names critic-1"
+assert_has "$(cat "$i9_gh_log")" 'read pr list --head feat/rl1 --state open --json title -q .[].title' "9511 I1 the note's PR lookup rides the read token"
+assert_has "$rl1_ledger" "$i9_note_reason" "9511 I1 the row is still noted in the ledger"
+
+printf 'JIRA_PROJECT_KEY=HIMMEL\n' > "$rl1_repo/.env"
+i9_run feat/rl1 1 "$(i9_f critic-1 sug)"$'\n' "$i9_pr"
+rm -f "$rl1_repo/.env"
+assert_eq "$rl1_rc" 0 "9511 I1 the key only in .env exits 0 ($rl1_out)"
+assert_has "$(cat "$rl1_log")" '["comment","HIMMEL-123","--comment-file"' "9511 I1 the key only in .env still posts the note"
+
+rl1_flags=(--fu-override decision-762)
+i9_run feat/rl1 2 "$(i9_f critic-8 imp)"$'\n'"$(i9_a critic-8 '"pre_existing":true')"$'\n'"$(i9_a critic-8 '"fu_class":"hardening","fu_why":"no-check"')"$'\n'"$(i9_f critic-1 sug)"$'\n' \
+    JIRA_PROJECT_KEY=HIMMEL "$i9_pr" RECOVERY_JIRA_COMMENT_FAIL=1
+assert_eq "$rl1_rc" 6 "9511 I1 a failed note in a mixed hardening and polish run exits 6 ($rl1_out)"
+assert_eq "$(i9_calls create "$rl1_log")" 0 "9511 I1 a failed note in a mixed hardening and polish run files nothing"
+assert_eq "$(i9_amends "$rl1_ledger")" 2 "9511 I1 a failed note in a mixed hardening and polish run amends nothing"
+assert_eq "$(rl1_marker)" kept "9511 I1 a failed note keeps the marker"
+
+rl1_flags=()
+i9_run feat/rl1 1 "$(i9_f critic-6 imp)"$'\n'"$(i9_a critic-6 '"severity":"sug"')"$'\n' JIRA_PROJECT_KEY=HIMMEL "$i9_pr"
+assert_eq "$rl1_rc" 4 "9511 I2 an Important amended to sug is not noted as polish ($rl1_out)"
+assert_has "$rl1_out" 'remain blocking at round 1: critic-6' "9511 I2 the downgraded Important is listed blocking"
+assert_eq "$(i9_amends "$rl1_ledger")" 1 "9511 I2 the downgraded Important gets no note amend"
+assert_eq "$(i9_calls comment "$rl1_log")" 0 "9511 I2 the downgraded Important gets no comment"
+
+rl1_flags=(--fu-override decision-762)
+i9_run feat/rl1 1 "$(i9_f critic-6 imp)"$'\n'"$(i9_a critic-6 '"fu_class":"hardening","fu_why":"no-check"')"$'\n' JIRA_PROJECT_KEY=HIMMEL "$i9_pr"
+assert_eq "$rl1_rc" 4 "9511 I2 an un-downgraded Important with --fu-override still blocks at round 1 ($rl1_out)"
+assert_has "$rl1_out" 'remain blocking at round 1: critic-6' "9511 I2 the un-downgraded Important is listed blocking"
+
+i9_delta "$(i9_f critic-1 imp '"fu_class":"polish"')"$'\n'
+assert_eq "$i9_rc" 4 "9511 I2 an un-downgraded delta Important classed polish is refused as at base ($i9_out)"
+assert_has "$i9_out" 'Important finding(s) in the delta round need an explicit fu_class amend' "9511 I2 the un-downgraded delta Important is unclassified"
+
+i9_delta "$(i9_f critic-1 imp '"fu_class":"polish"')"$'\n'"$(i9_a critic-1 '"severity":"sug"')"$'\n'
+assert_eq "$i9_rc" 4 "9511 I2 a delta Important amended to sug is routed as an Important ($i9_out)"
+assert_has "$i9_out" 'Important finding(s) in the delta round need an explicit fu_class amend before they can be deferred: critic-1' "9511 I2 the downgraded delta Important is unclassified"
+assert_lacks "$i9_ledger" "$i9_note_reason" "9511 I2 the downgraded delta Important is not noted"
+
+i9_run feat/rl1 1 "$(i9_f critic-7 crit)"$'\n'"$(i9_a critic-7 '"severity":"sug","fu_class":"hardening","fu_why":"no-check"')"$'\n' JIRA_PROJECT_KEY=HIMMEL "$i9_pr"
+assert_eq "$rl1_rc" 4 "9511 I2 a Critical amended to sug blocks ($rl1_out)"
+assert_has "$rl1_out" 'remain blocking at round 1: critic-7' "9511 I2 the downgraded Critical is listed blocking"
+assert_eq "$(i9_calls create "$rl1_log")" 0 "9511 I2 the downgraded Critical files nothing"
+
+i9_run feat/rl1 1 "$(i9_f critic-7 crit)"$'\n'"$(i9_a critic-7 '"verdict":"deferred","deferred_to":"ABC-456","reason":"tracked by hand"')"$'\n' JIRA_PROJECT_KEY=HIMMEL "$i9_pr"
+assert_eq "$rl1_rc" 0 "9511 I2 a hand-made tracked deferral of a Critical settles as at base ($rl1_out)"
+
+i9_run feat/rl1 1 "$(i9_f critic-6 imp)"$'\n'"$(i9_a critic-6 "\"severity\":\"sug\",\"verdict\":\"deferred\",\"fu_class\":\"polish\",\"reason\":\"$i9_note_reason\"")"$'\n' JIRA_PROJECT_KEY=HIMMEL "$i9_pr"
+assert_eq "$rl1_rc" 4 "9511 I2 a hand-written note on a downgraded Important is not settled by defer ($rl1_out)"
+assert_has "$rl1_out" 'remain blocking at round 1: critic-6' "9511 I2 the hand-noted downgraded Important is listed blocking"
+
+rl1_flags=()
+i9_run feat/rl1 1 "$(i9_f critic-1 sug '"fu_class":"escape"')"$'\n' JIRA_PROJECT_KEY=HIMMEL "$i9_pr"
+assert_eq "$rl1_rc" 4 "9511 I3 a non-delta escape Suggestion blocks ($rl1_out)"
+assert_has "$rl1_out" 'critic-1' "9511 I3 the escape Suggestion is named"
+assert_lacks "$rl1_ledger" "$i9_note_reason" "9511 I3 the escape Suggestion is not noted"
+
+i9_run feat/rl1 1 "$(i9_f critic-1 sug '"fu_class":"escape"')"$'\n'"$(i9_a critic-1 '"verdict":"agreed"')"$'\n' JIRA_PROJECT_KEY=HIMMEL "$i9_pr"
+assert_eq "$rl1_rc" 4 "9511 I3 an agreed escape Suggestion blocks ($rl1_out)"
+
+git -C "$rl1_repo" checkout -q feat/rl1
+i9_tip="$(git -C "$rl1_repo" rev-parse HEAD)"
+i9_base="$(git -C "$rl1_repo" rev-parse HEAD~1)"
+printf '1\n' > "$rl1_git/cr-review-rounds/feat/rl1.round"
+printf '%s\n%s\n' "$(i9_f critic-1 sug '"fingerprint":"fp-9511"')" "$(i9_a critic-1 '"verdict":"agreed"')" \
+    | sed "s#@HEAD@#$i9_base#g; s#@BR@#feat/rl1#g" > "$rl1_git/cr-critic-scores.jsonl"
+printf 'pending\n' > "$rl1_git/cr-pending/feat/rl1"
+: > "$rl1_log"
+i9_rc=0
+i9_out="$(cd "$rl1_repo" && env RECOVERY_JIRA_LOG="$rl1_log" JIRA_PROJECT_KEY=HIMMEL "$i9_pr" \
+    bash "$fx/scripts/cr/review-round.sh" defer --branch feat/rl1 --head "$i9_base" 2>&1 </dev/null)" || i9_rc=$?
+assert_eq "$i9_rc" 0 "9511 I3 an agreed polish Suggestion's defer exits as at base ($i9_out)"
+assert_eq "$(i9_amends "$(cat "$rl1_git/cr-critic-scores.jsonl")")" 1 "9511 I3 an agreed polish Suggestion stays unamended by defer"
+assert_eq "$(wc -c < "$rl1_log" | tr -d ' ')" 0 "9511 I3 an agreed polish Suggestion posts no note"
+i9_promote="$(cd "$rl1_repo" && bash "$fx/scripts/cr/review-round.sh" promote --check --branch feat/rl1 --head "$i9_tip" 2>&1 </dev/null)" || true
+assert_has "$i9_promote" "would-promote critic-1@" "9511 I3 an agreed polish Suggestion stays as at base for promote"
+
+i9_run feat/rl1 2 "$(i9_f critic-8 imp)"$'\n'"$(i9_a critic-8 '"pre_existing":true')"$'\n'"$(i9_a critic-8 '"fu_class":"polish"')"$'\n'"$(i9_a critic-8 '"severity":"sug"')"$'\n' JIRA_PROJECT_KEY=HIMMEL "$i9_pr"
+assert_eq "$rl1_rc" 6 "9511 I2 a downgraded pre-existing polish Important is refused at round 2 ($rl1_out)"
+assert_has "$rl1_out" 'classed polish cannot be noted without a ticket: critic-8' "9511 I2 the refusal is the polish_unnotable message"
+assert_eq "$(i9_calls comment "$rl1_log")" 0 "9511 I2 the refused pre-existing Important gets no note"
+assert_eq "$(i9_amends "$rl1_ledger")" 3 "9511 I2 the refused pre-existing Important gets no amend"
+
+i9_delta "$(i9_f critic-1 sug '"fu_class":"hardening","fu_why":"no-check"')"$'\n'
+assert_eq "$i9_rc" 6 "9511 I3 a delta-round hardening Suggestion without --fu-override exits 6 ($i9_out)"
+assert_has "$i9_out" '--fu-override <' "9511 I3 a delta-round hardening Suggestion names the override"
+i9_delta "$(i9_f critic-1 sug '"fu_class":"hardening","fu_why":"no-check"')"$'\n' --fu-override decision-762
+assert_has "$(cat "$recovery_log")" '"--fu-class","hardening"' "9511 I3 a delta-round hardening Suggestion takes the override road"
+rm -f "$recovery_git/cr-review-rounds/recovery.delta"
+
+i9_run feat/rl1 1 "$(i9_f critic-1 sug)"$'\n' TRACKER=local
+assert_eq "$rl1_rc" 0 "9511 I7 a local-tracker repo notes as at base ($rl1_out)"
+assert_eq "$(wc -c < "$rl1_log" | tr -d ' ')" 0 "9511 I7 a local-tracker repo makes no Jira call"
+assert_has "$rl1_ledger" "$i9_note_reason" "9511 I7 a local-tracker repo writes the note row"
+
+i9_run feat/rl1 1 "$(i9_f critic-1 sug '"fu_class":"hardening","fu_why":"no-check"')"$'\n' TRACKER=local
+assert_eq "$rl1_rc" 0 "9511 I7 a local-tracker hardening Suggestion is noted as at base ($rl1_out)"
+assert_has "$rl1_ledger" "$i9_note_reason" "9511 I7 a local-tracker hardening Suggestion writes the note row"
+assert_eq "$(wc -c < "$rl1_log" | tr -d ' ')" 0 "9511 I7 a local-tracker hardening Suggestion makes no Jira call"
+
+i9_run feat/rl1 1 "$(i9_f critic-1 sug)"$'\n' TRACKER=bogus
+assert_eq "$rl1_rc" 6 "9511 D4 a tracker resolver error exits 6 ($rl1_out)"
+assert_eq "$(i9_amends "$rl1_ledger")" 0 "9511 D4 a tracker resolver error amends nothing"
+
+rl1_flags=(--defer-to HIMMEL-456)
+i9_run feat/rl1 1 "$(i9_f critic-1 sug)"$'\n' JIRA_PROJECT_KEY=HIMMEL "$i9_pr"
+assert_eq "$rl1_rc" 0 "9511 D4 a --defer-to run exits 0 ($rl1_out)"
+assert_has "$rl1_ledger" '"deferred_to":"HIMMEL-456"' "9511 D4 a --defer-to run attaches the row to HIMMEL-456"
+assert_eq "$(i9_calls comment "$rl1_log")" 0 "9511 D4 a --defer-to run posts no polish note"
+
+rl1_flags=()
+i9_run feat/rl1 1 "$(i9_f critic-1 sug '"fu_class":"hardening","fu_why":"no-check"')"$'\n' JIRA_PROJECT_KEY=HIMMEL "$i9_pr"
+assert_eq "$rl1_rc" 6 "9511 I3 a non-delta hardening Suggestion without --fu-override exits 6 ($rl1_out)"
+assert_has "$rl1_out" '--fu-override <' "9511 I3 a non-delta hardening Suggestion names the override"
+rl1_flags=(--fu-override decision-762)
+i9_run feat/rl1 1 "$(i9_f critic-1 sug '"fu_class":"hardening","fu_why":"no-check"')"$'\n' JIRA_PROJECT_KEY=HIMMEL "$i9_pr"
+assert_has "$(cat "$rl1_log")" '"--fu-class","hardening"' "9511 I3 a non-delta hardening Suggestion takes the override road"
+
+rl1_flags=()
+i9_run feat/rl1 1 "$(i9_f critic-1 sug '"fu_class":"hardening","fu_why":"no-check"')"$'\n'"$(i9_a critic-1 '"verdict":"agreed"')"$'\n' JIRA_PROJECT_KEY=HIMMEL "$i9_pr"
+assert_eq "$rl1_rc" 6 "9511 I3 an agreed hardening Suggestion takes the override road ($rl1_out)"
+
+i9_run feat/rl1 1 "$(i9_f critic-1 sug)"$'\n'"$(i9_a critic-1 "\"verdict\":\"deferred\",\"fu_class\":\"polish\",\"reason\":\"$i9_note_reason\"")"$'\n' JIRA_PROJECT_KEY=HIMMEL "$i9_pr"
+assert_eq "$rl1_rc" 0 "9511 legacy noted row stays settled ($rl1_out)"
+assert_eq "$(wc -c < "$rl1_log" | tr -d ' ')" 0 "9511 legacy noted row posts nothing"
+rl1_flags=(--fu-override decision-762)
+# the hardening rows above filed a batch residual; later rows start with none.
+rm -f "$rl1_git/cr-review-rounds/feat/rl1.deferred-to"
+: > "$rl1_log"
 
 # I1 and I4: only the structured pre_existing field (an amend row
 # the tagger writes) lets defer defer an Important, at rounds 2 and 3, to the

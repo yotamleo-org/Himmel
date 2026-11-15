@@ -47,7 +47,15 @@
 # of unseen-failure|no-check|vacuous-check|no-recovery|silent-rot.
 # Decisions 746, 762: a polish Suggestion/nit files no ticket. With no
 # --defer-to, defer amends its row verdict=deferred, fu_class=polish with no
-# deferred_to (the finding is noted in the PR body; the marker still clears). A
+# deferred_to, and the marker still clears. The record of that note depends on
+# the tracker (project-mode.sh, after the .env is loaded): on a Jira repo it is a
+# polish-noted comment on the PR's own ticket, posted by note-polish.sh before
+# anything is commented, filed or amended (no PR ticket, or a failed comment,
+# exits 6 with nothing written; an unresolvable tracker exits 6 too); on a local
+# or none repo it is the note in the PR body. A Suggestion keeps its ledger class:
+# escape blocks (exit 4) and hardening takes the hardening road on a Jira repo.
+# A finding raised Critical or Important and amended lower is routed by the
+# severity it was raised with, so defer never notes it as polish (exit 4). A
 # hardening finding is filed only with --fu-override <judge verdict id|decision-N>;
 # without one defer exits 6 naming the flag. A pre-existing Important classed polish
 # cannot be noted: reclassify it or supply --defer-to <plain ticket>.
@@ -2258,7 +2266,27 @@ fi
 # and never in the delta round, where an Important is classified by an amend.
 pre_ok=0
 if [ "$delta_mode" -eq 0 ] && { [ "$round" -eq 2 ] || [ "$round" -eq 3 ]; }; then pre_ok=1; fi
-analysis="$(FULL_SHA="$full_head" LEDGER="$ledger" DELTA="$delta_mode" PRE_OK="$pre_ok" PRE_REASON="$pre_reason" CAP_REASON="$cap_reason" DEFER_REASON="$defer_reason" DELTA_REASON="$delta_reason" NOTE_REASON="$note_reason" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e '
+# The tracker decides where a noted polish finding is recorded: on a Jira repo a
+# polish-noted comment on the PR ticket (note-polish.sh), elsewhere the PR body.
+# The project key may live only in the checkout's .env, so it is loaded first, as
+# file-deferred-issues.sh does. An unresolvable tracker stops before any amend.
+# shellcheck source=scripts/lib/load-dotenv.sh
+# shellcheck disable=SC1091
+if ! . "$HIMMEL_ROOT/scripts/lib/load-dotenv.sh" 2>/dev/null \
+    || ! . "$HIMMEL_ROOT/scripts/lib/project-mode.sh" 2>/dev/null; then
+    echo "review-round: could not load the tracker resolver (scripts/lib/load-dotenv.sh, scripts/lib/project-mode.sh); marker remains pending" >&2
+    exit 6
+fi
+load_dotenv JIRA_PROJECT_KEY >/dev/null 2>&1 || true
+if ! defer_tracker="$(project_mode_tracker)"; then
+    echo "review-round: the tracker setting could not be resolved (see above); marker remains pending, nothing amended" >&2
+    exit 6
+fi
+tracker_jira=0
+if [ "$defer_tracker" = jira ]; then tracker_jira=1; fi
+explicit_defer=0
+if [[ $defer_to =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]; then explicit_defer=1; fi
+analysis="$(FULL_SHA="$full_head" LEDGER="$ledger" DELTA="$delta_mode" PRE_OK="$pre_ok" PRE_REASON="$pre_reason" CAP_REASON="$cap_reason" DEFER_REASON="$defer_reason" DELTA_REASON="$delta_reason" NOTE_REASON="$note_reason" TRACKER_JIRA="$tracker_jira" EXPLICIT_DEFER="$explicit_defer" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e '
 const fs = require("fs"), cp = require("child_process"), e = process.env;
 const lines = fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean);
 const SEP = String.fromCharCode(31), amends = new Map(), findings = new Map();
@@ -2285,28 +2313,62 @@ function resolvesToHead(value) {
   }
   return cache.get(h) === e.FULL_SHA;
 }
+// The severity each finding was first raised with, read before amends merge.
+const origSeverities = new Map();
 for (const line of lines) {
   let o;
   try { o = JSON.parse(line); } catch { continue; }
   if (o.kind !== "finding") continue;
+  const raisedAs = String(o.severity || "");
   const original = [o.head, o.finding_id, o.artifact || "diff", o.perspective || "off"].join(SEP);
   if (amends.has(original)) o = Object.assign({}, o, amends.get(original));
   if (!resolvesToHead(o.head)) continue;
   const key = [o.finding_id || "?", o.artifact || "diff", o.perspective || "off"].join(SEP);
+  if (!origSeverities.has(key)) origSeverities.set(key, raisedAs);
   findings.set(key, o);
 }
 const pending = [], capDeferred = [], blocking = [], unclassified = [];
 const CAP_REASONS = [e.CAP_REASON, e.DELTA_REASON];
-for (const o of findings.values()) {
+const RANK = {nit: 0, sug: 1, imp: 2, crit: 3};
+const rankOf = (s) => (s in RANK ? RANK[s] : -1);
+// A Suggestion or nit keeps the class its finding was given; only an unset (or
+// unknown) class defaults to polish. Hardening is filed only on a Jira repo; a
+// repo with no Jira cannot file it, so there it is noted as polish.
+function sugClass(fuClass) {
+  if (fuClass === "escape") return {fu_class: "escape", class_source: "ledger"};
+  if (fuClass === "hardening") return e.TRACKER_JIRA === "1" ? {fu_class: "hardening", class_source: "ledger"} : {fu_class: "polish", class_source: "default"};
+  return {fu_class: "polish", class_source: fuClass === "polish" ? "ledger" : "default"};
+}
+function pendingRow(o, id, severity, fuClass, classSource, extra) {
+  return Object.assign({
+    id,
+    artifact: o.artifact || "diff",
+    perspective: o.perspective || "off",
+    severity,
+    fu_class: fuClass,
+    fu_why: typeof o.fu_why === "string" ? o.fu_why.trim() : "",
+    class: typeof o.class === "string" ? o.class.trim() : "",
+    class_source: classSource,
+    file: typeof o.file === "string" ? o.file : "",
+    line: o.line === undefined || o.line === null ? "" : String(o.line),
+    text: typeof o.text === "string" ? o.text.replace(/\s+/g, " ").trim() : ""
+  }, extra || {});
+}
+for (const [key, o] of findings) {
   const id = String(o.finding_id || "?");
-  const severity = String(o.severity || "");
+  const origSeverity = origSeverities.get(key) || "";
+  let severity = String(o.severity || "");
+  // A finding downgraded from Critical or Important is routed by the severity
+  // it was raised with, so defer never notes it as polish or defers a Critical.
+  if ((origSeverity === "crit" || origSeverity === "imp") && rankOf(severity) < rankOf(origSeverity)) severity = origSeverity;
   const verdict = typeof o.verdict === "string" ? o.verdict.trim() : "";
   const ticket = typeof o.deferred_to === "string" ? o.deferred_to.trim() : "";
   const reason = typeof o.reason === "string" ? o.reason.trim() : "";
   const trackedDeferred = verdict === "deferred" && /^[A-Z][A-Z0-9]*-[0-9]+$/.test(ticket) && reason;
-  // a polish Suggestion/nit noted in the PR body carries no ticket.
+  // a polish Suggestion/nit noted with no ticket; one raised Critical or Important never counts.
   const notedPolish = verdict === "deferred" && !ticket && reason === e.NOTE_REASON &&
-    (severity === "sug" || severity === "nit") && String(o.fu_class || "").trim() === "polish";
+    (severity === "sug" || severity === "nit") && (origSeverity === "sug" || origSeverity === "nit") &&
+    String(o.fu_class || "").trim() === "polish";
   const resolved = verdict === "disproved" || trackedDeferred || notedPolish;
   const settled = resolved || verdict === "fixed";
   if (e.DELTA === "1") {
@@ -2317,16 +2379,10 @@ for (const o of findings.values()) {
     const fuClass = typeof o.fu_class === "string" ? o.fu_class.trim() : "";
     if ((severity === "crit" || fuClass === "escape") && !resolved) blocking.push(id);
     else if (!resolved && (!verdict || verdict === "agreed") && severity === "imp" && fuClass !== "hardening") unclassified.push(id);
-    else if (!resolved && (!verdict || verdict === "agreed")) pending.push({
-      id,
-      artifact: o.artifact || "diff",
-      perspective: o.perspective || "off",
-      severity,
-      fu_class: severity === "imp" ? fuClass : "polish",
-      fu_why: typeof o.fu_why === "string" ? o.fu_why.trim() : "",
-      class: typeof o.class === "string" ? o.class.trim() : "",
-      text: typeof o.text === "string" ? o.text.replace(/\s+/g, " ").trim() : ""
-    });
+    else if (!resolved && (!verdict || verdict === "agreed")) {
+      const c = severity === "imp" ? {fu_class: fuClass, class_source: "ledger"} : sugClass(fuClass);
+      pending.push(pendingRow(o, id, severity, c.fu_class, c.class_source));
+    }
     else if (trackedDeferred && CAP_REASONS.includes(reason)) capDeferred.push({id, ticket});
     else if (notedPolish) capDeferred.push({id, ticket: ""});
     else if (!settled) blocking.push(id);
@@ -2340,31 +2396,20 @@ for (const o of findings.values()) {
   // hardening or polish class from the adjudicator defers it.
   const preClass = typeof o.fu_class === "string" ? o.fu_class.trim() : "";
   if (preExisting && !resolved && (!verdict || verdict === "agreed")) {
-    if (preClass === "hardening" || preClass === "polish") pending.push({
-      id,
-      artifact: o.artifact || "diff",
-      perspective: o.perspective || "off",
-      severity,
-      fu_class: preClass,
-      fu_why: typeof o.fu_why === "string" ? o.fu_why.trim() : "",
-      reason: e.PRE_REASON,
-      class: typeof o.class === "string" ? o.class.trim() : "",
-      text: typeof o.text === "string" ? o.text.replace(/\s+/g, " ").trim() : ""
-    });
+    if (preClass === "hardening" || preClass === "polish") pending.push(pendingRow(o, id, severity, preClass, "ledger", {reason: e.PRE_REASON}));
     else if (preClass === "escape") blocking.push(id);
     else unclassified.push(id);
   }
   else if (preExisting && trackedDeferred && reason === e.PRE_REASON) capDeferred.push({id, ticket});
   else if ((severity === "crit" || severity === "imp") && !settled) blocking.push(id);
-  else if (!verdict && (severity === "sug" || severity === "nit")) pending.push({
-    id,
-    artifact: o.artifact || "diff",
-    perspective: o.perspective || "off",
-    severity,
-    fu_class: "polish",
-    class: typeof o.class === "string" ? o.class.trim() : "",
-    text: typeof o.text === "string" ? o.text.replace(/\s+/g, " ").trim() : ""
-  });
+  // An agreed Suggestion changes road only when its class is escape or
+  // hardening; an agreed polish or unclassed one is left for promote.
+  else if ((severity === "sug" || severity === "nit") &&
+           (!verdict || (verdict === "agreed" && (preClass === "escape" || preClass === "hardening")))) {
+    const c = sugClass(preClass);
+    if (c.fu_class === "escape") blocking.push(id);
+    else if (!verdict || c.fu_class === "hardening") pending.push(pendingRow(o, id, severity, c.fu_class, c.class_source));
+  }
   else if ((severity === "sug" || severity === "nit") && trackedDeferred &&
            reason === e.DEFER_REASON) {
     capDeferred.push({id, ticket});
@@ -2372,7 +2417,12 @@ for (const o of findings.values()) {
   else if (notedPolish) capDeferred.push({id, ticket: ""});
   else if (!verdict) blocking.push(id);
 }
-process.stdout.write(JSON.stringify({malformed, pending, capDeferred, blocking, unclassified}));
+// noted: the pending rows this run notes with no ticket. Every later step reads
+// this one set (the list file, the ticketed filter, the amend loop). With an
+// explicit --defer-to every row is attached to that ticket, so none is noted.
+for (const f of pending) f.noted = e.EXPLICIT_DEFER !== "1" && f.fu_class === "polish" && (f.severity === "sug" || f.severity === "nit");
+const noted = pending.filter((f) => f.noted);
+process.stdout.write(JSON.stringify({malformed, pending, noted, capDeferred, blocking, unclassified}));
 ' 2>/dev/null)"
 if [ -z "$analysis" ]; then
     echo "review-round: could not evaluate findings at $full_head" >&2
@@ -2404,7 +2454,7 @@ if [ -n "$unclassified" ]; then
     exit 4
 fi
 if [ -n "$blocking" ]; then
-    echo "review-round: Critical or Important finding(s) remain blocking at round $round: $blocking" >&2
+    echo "review-round: Critical, Important or escape-class finding(s) remain blocking at round $round: $blocking" >&2
     exit 4
 fi
 if [ "$pending_count" -eq 0 ] && [ "$cap_deferred_count" -eq 0 ]; then
@@ -2431,12 +2481,10 @@ fi
 # a hardening finding is filed only with a named --fu-override. Both are checked
 # here, once, before anything is commented, filed or amended, so a refused run
 # leaves nothing behind for a retry to repeat.
-explicit_defer=0
-if [[ $defer_to =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]; then explicit_defer=1; fi
 ticketed_analysis="$analysis"
 ticketed_count="$pending_count"
 if [ "$explicit_defer" -eq 0 ] && [ "$pending_count" -gt 0 ]; then
-    ticketed_analysis="$(printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s);a.pending=a.pending.filter(f=>!(f.fu_class==="polish"&&(f.severity==="sug"||f.severity==="nit")));process.stdout.write(JSON.stringify(a))})')" || exit 5
+    ticketed_analysis="$(printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s);a.pending=a.pending.filter(f=>!f.noted);process.stdout.write(JSON.stringify(a))})')" || exit 5
     ticketed_count="$(printf '%s' "$ticketed_analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(String(JSON.parse(s).pending.length)))')" || exit 5
     polish_unnotable="$(printf '%s' "$ticketed_analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).pending.filter(f=>f.fu_class==="polish").map(f=>f.id).join(" ")))')" || exit 5
     if [ -n "$polish_unnotable" ]; then
@@ -2477,6 +2525,28 @@ if [ "$pending_count" -gt 0 ]; then
         resolved_primary="$(cd "$himmel_common/.." 2>/dev/null && pwd)" || resolved_primary=""
         [ -n "$resolved_primary" ] && primary_root="$resolved_primary"
     fi
+fi
+# On a Jira repo the rows noted with no ticket get their record first: one
+# polish-noted comment on the PR's own ticket, before anything is commented,
+# filed or amended, so a failed note leaves nothing behind.
+if [ "$tracker_jira" -eq 1 ] && [ "$explicit_defer" -eq 0 ]; then
+    noted_list="$(mktemp -t cr-noted-list.XXXXXX)" || exit 5
+    if ! printf '%s' "$analysis" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{for(const f of JSON.parse(s).noted) process.stdout.write(JSON.stringify({id:f.id,file:f.file,line:f.line,severity:f.severity,class_source:f.class_source,text:f.text})+"\n")})' > "$noted_list"; then
+        rm -f "$noted_list"
+        exit 5
+    fi
+    if [ -s "$noted_list" ]; then
+        note_rc=0
+        JIRA_CMD="node $primary_root/scripts/jira/dist/index.js" bash "$SCRIPT_DIR/note-polish.sh" \
+            --branch "$branch" --head "$full_head" --list-file "$noted_list" || note_rc=$?
+        if [ "$note_rc" -ne 0 ]; then
+            rm -f "$noted_list"
+            echo "review-round: could not record the polish finding(s) noted with no ticket on the PR ticket; marker remains pending" >&2
+            echo "review-round: put the PR's ticket key in its title as [KEY-n] (or in the branch name), then rerun the same command" >&2
+            exit 6
+        fi
+    fi
+    rm -f "$noted_list"
 fi
 # A reused batch ticket gets this round's findings as a comment, before any
 # ledger row points at it, so a failed comment leaves nothing to undo.
@@ -2596,22 +2666,24 @@ while IFS= read -r finding_identity || [ -n "$finding_identity" ]; do
         amend_rc=5
         break
     fi
-    # a polish Suggestion/nit with no ticket named files nothing; the row is
-    # amended deferred with no deferred_to and gets no verdict line (it is not a ticket).
-    if [ "$explicit_defer" -eq 0 ] && [ "$fu_class" = "polish" ]; then
-        finding_severity="$(printf '%s' "$finding_identity" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).severity||""))' 2>/dev/null)" || finding_severity=""   # swallow-ok: an empty severity is not noted, it falls to the filing path, which the verb refuses for polish
-        if [ "$finding_severity" = "sug" ] || [ "$finding_severity" = "nit" ]; then
-            if ! bash "$SCRIPT_DIR/ledger-append.sh" amend \
-                --branch "$branch" --head "$full_head" --id "$finding_id" \
-                --artifact "$artifact" --perspective "$perspective" \
-                --set verdict=deferred --set fu_class=polish \
-                --set class=unattributed --set "reason=$note_reason" \
-                --reason "$amend_why"; then
-                amend_rc=5
-                break
-            fi
-            continue
+    # a noted row (the analysis's noted set) files nothing; the row is amended
+    # deferred with no deferred_to and gets no verdict line (it is not a ticket).
+    finding_noted="$(printf '%s' "$finding_identity" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>process.stdout.write(JSON.parse(s).noted?"1":"0"))')" || finding_noted=""
+    if [ "$finding_noted" != 0 ] && [ "$finding_noted" != 1 ]; then
+        amend_rc=5
+        break
+    fi
+    if [ "$finding_noted" = 1 ]; then
+        if ! bash "$SCRIPT_DIR/ledger-append.sh" amend \
+            --branch "$branch" --head "$full_head" --id "$finding_id" \
+            --artifact "$artifact" --perspective "$perspective" \
+            --set verdict=deferred --set fu_class=polish \
+            --set class=unattributed --set "reason=$note_reason" \
+            --reason "$amend_why"; then
+            amend_rc=5
+            break
         fi
+        continue
     fi
     fu_why=""
     fu_why_args=()

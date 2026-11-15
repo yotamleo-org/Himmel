@@ -234,6 +234,10 @@ cat >"$LBIN/gh" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$GLOG"
 case "$* " in
+    # GH_PR_JSON is the open-PR list: the caller's own -q filter runs on it, as gh would.
+    *"pr list"*)                 [ -n "${GH_PR_JSON:-}" ] || exit 0
+                                 q=""; while [ $# -gt 0 ]; do [ "$1" = -q ] && q="$2"; shift; done
+                                 printf '%s' "$GH_PR_JSON" | jq -r "$q" ;;
     *"repo view"*nameWithOwner*) echo "owner/repo" ;;
     *"issue list"*)              printf '' ;;
     *"issue create"*)            echo "https://github.com/owner/repo/issues/99" ;;
@@ -243,6 +247,7 @@ chmod +x "$LBIN/gh"
 
 JLOG="$TMP_ROOT/jira.log"
 JDESC="$TMP_ROOT/jira.desc"
+JCOMMENT="$TMP_ROOT/jira.comment"
 JSTUB="$TMP_ROOT/jira-stub.sh"
 cat >"$JSTUB" <<'STUB'
 #!/usr/bin/env bash
@@ -254,15 +259,21 @@ case "$1" in
             while [ $# -gt 0 ]; do [ "$1" = --desc-file ] && cp "$2" "$JDESC"; shift; done
             [ "${JIRA_CREATE_DUP:-}" = 1 ] && { echo "Duplicate TST-31"; exit 0; }
             echo "Created TST-7" ;;
+    comments) [ "${JIRA_COMMENTS_FAIL:-}" = 1 ] && { echo "jira: 500" >&2; exit 1; }
+              [ -z "${JCOMMENTS:-}" ] || printf '%s\n' "$JCOMMENTS" ;;
+    comment)  while [ $# -gt 0 ]; do [ "$1" = --comment-file ] && cp "$2" "$JCOMMENT"; shift; done
+              [ "${JIRA_COMMENT_FAIL:-}" = 1 ] && { echo "jira: comment refused" >&2; exit 1; }
+              exit 0 ;;
 esac
 STUB
 chmod +x "$JSTUB"
 
 run_mode() {  # run_mode <TRACKER> <FORGE> [args...] — gh+jira stubs, logs reset
     local t="$1" f="$2"; shift 2
-    : >"$GLOG"; : >"$JLOG"; rm -f "$JDESC"
+    : >"$GLOG"; : >"$JLOG"; rm -f "$JDESC" "$JCOMMENT"
     ( cd "$REPO" && PATH="$LBIN_UNIX:$PATH" TRACKER="$t" FORGE="$f" GH_CMD="$LBIN/gh" \
         JIRA_PROJECT_KEY="${JKEY-TST}" JIRA_CMD="$JSTUB" GLOG="$GLOG" JLOG="$JLOG" JDESC="$JDESC" \
+        JCOMMENT="$JCOMMENT" JCOMMENTS="${JCOMMENTS:-}" JIRA_COMMENT_FAIL="${JIRA_COMMENT_FAIL:-}" JIRA_COMMENTS_FAIL="${JIRA_COMMENTS_FAIL:-}" GH_PR_JSON="${GH_PR_JSON:-}" \
         JIRA_LIST_RESULT="${JIRA_LIST_RESULT:-}" JIRA_LIST_FAIL="${JIRA_LIST_FAIL:-}" JIRA_CREATE_FAIL="${JIRA_CREATE_FAIL:-}" JIRA_CREATE_DUP="${JIRA_CREATE_DUP:-}" \
         bash "$FDI" --pr 1 --input "$INPUT" --fu-class "${FDI_CLASS:-escape}" "$@" 2>&1 )
 }
@@ -336,11 +347,54 @@ assert_eq "polish → exit 0" "0" "$rc"
 assert_contains "polish says it is not filed" "$out" "polish is not filed"
 assert_contains "polish prints the findings" "$out" "docs/readme.md: LOW: missing example."
 assert_eq "polish creates nothing" "0" "$(grep -c '^create' "$JLOG" || true)"
-assert_eq "polish asks Jira nothing" "0" "$(wc -c <"$JLOG" | tr -d ' ')"
-assert_eq "polish never calls gh" "0" "$(wc -c <"$GLOG" | tr -d ' ')"
-out=$(cd "$REPO" && PATH="$LBIN_UNIX:$PATH" TRACKER=jira FORGE=github GH_CMD="$LBIN/gh" JIRA_PROJECT_KEY=TST JIRA_CMD="$JSTUB" GLOG="$GLOG" JLOG="$JLOG" JDESC="$JDESC" bash "$FDI" --pr 1 --input "$INPUT" 2>&1); rc=$?
+assert_eq "polish runs no dedupe lookup" "0" "$(grep -c '^list' "$JLOG" || true)"
+assert_eq "polish never calls gh issue create" "0" "$(grep -c 'issue create' "$GLOG" || true)"
+out=$(cd "$REPO" && PATH="$LBIN_UNIX:$PATH" TRACKER=jira FORGE=github GH_CMD="$LBIN/gh" JIRA_PROJECT_KEY=TST JIRA_CMD="$JSTUB" GLOG="$GLOG" JLOG="$JLOG" JDESC="$JDESC" JCOMMENT="$JCOMMENT" bash "$FDI" --pr 1 --input "$INPUT" 2>&1); rc=$?
 assert_contains "no --fu-class at all is polish and files nothing" "$out" "polish is not filed"
 assert_eq "no --fu-class creates nothing" "0" "$(grep -c '^create' "$JLOG" || true)"
+
+echo "TEST: 9511 I5 a polish batch on a Jira repo is recorded on the PR ticket"
+out=$(FDI_CLASS=polish run_mode jira github); rc=$?
+assert_eq "9511 I5 a polish batch → exit 0" "0" "$rc"
+assert_eq "9511 I5 a polish batch posts one polish-noted comment" "1" "$(grep -c '^comment TST-5 --comment-file' "$JLOG" || true)"
+note=$(cat "$JCOMMENT" 2>/dev/null || true)
+assert_contains "9511 I5 the note's line 1 names the branch, head and batch" "$(printf '%s\n' "$note" | head -n1)" "polish-noted: feat/tst-5-fixture $(git -C "$REPO" rev-parse HEAD) crbatch"
+assert_contains "9511 I5 the note lists batch-1 with its batch id" "$note" "- batch-1-"
+assert_contains "9511 I5 the note lists batch-2 with its file" "$note" "docs/readme.md [sug, class batch]: docs/readme.md: LOW: missing example."
+assert_eq "9511 I5 a polish batch creates nothing" "0" "$(grep -c '^create' "$JLOG" || true)"
+note_batch=$(printf '%s\n' "$note" | head -n1 | grep -o 'crbatch[0-9a-f]*' || true)
+
+echo "TEST: 9511 I5 a failed polish note exits 5 and files nothing"
+out=$(FDI_CLASS=polish JIRA_COMMENT_FAIL=1 run_mode jira github); rc=$?
+assert_eq "9511 I5 a failed polish note exits 5" "5" "$rc"
+assert_eq "9511 I5 a failed polish note files nothing" "0" "$(grep -c '^create' "$JLOG" || true)"
+
+echo "TEST: 9511 I5 a dry run makes no Jira call and prints would note"
+out=$(FDI_CLASS=polish run_mode jira github --dry-run); rc=$?
+assert_eq "9511 I5 a polish dry run → exit 0" "0" "$rc"
+assert_contains "9511 I5 a polish dry run prints would note" "$out" "would note 2 finding(s) on the PR ticket"
+assert_eq "9511 I5 a polish dry run makes no Jira call" "0" "$(wc -c <"$JLOG" | tr -d ' ')"
+
+echo "TEST: 9511 I5 a rerun on the same batch posts no second comment"
+out=$(FDI_CLASS=polish JCOMMENTS="polish-noted: feat/tst-5-fixture abc ${note_batch:-crbatch-missing}" run_mode jira github); rc=$?
+assert_eq "9511 I5 a rerun → exit 0" "0" "$rc"
+assert_contains "9511 I5 a rerun says already noted" "$out" "already noted"
+assert_eq "9511 I5 a rerun on the same batch posts no second comment" "0" "$(grep -c '^comment ' "$JLOG" || true)"
+
+echo "TEST: 9511 I5 a detached HEAD exits 5"
+git -C "$REPO" checkout -q --detach
+out=$(FDI_CLASS=polish run_mode jira github); rc=$?
+git -C "$REPO" checkout -q feat/tst-5-fixture
+assert_eq "9511 I5 a detached HEAD exits 5" "5" "$rc"
+assert_eq "9511 I5 a detached HEAD posts nothing" "0" "$(grep -c '^comment ' "$JLOG" || true)"
+
+echo "TEST: 9511 I5 a two-key branch with no open PR exits 5 and files nothing"
+git -C "$REPO" checkout -q -b feat/tst-5-tst-6
+out=$(FDI_CLASS=polish run_mode jira github); rc=$?
+git -C "$REPO" checkout -q feat/tst-5-fixture
+assert_eq "9511 I5 a two-key branch with no open PR exits 5" "5" "$rc"
+assert_eq "9511 I5 a two-key branch posts nothing" "0" "$(grep -c '^comment ' "$JLOG" || true)"
+assert_eq "9511 I5 a two-key branch files nothing" "0" "$(grep -c '^create' "$JLOG" || true)"
 
 echo "TEST: explicit --residual-of / --fu-class / --class override the defaults"
 out=$(run_mode jira github --residual-of TST-9 --fu-class hardening --fu-why no-check --fu-override decision-762 --class shell-quoting); rc=$?

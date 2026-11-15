@@ -54,6 +54,8 @@
 #     3 — ticket/issue creation failed for at least one finding
 #     4 — at least one dedupe check failed (fail-closed, nothing filed
 #         for that finding — operator should re-run after investigating)
+#     5 — tracker=jira, polish: the polish note could not be recorded on the
+#         PR ticket (note-polish.sh failed, or a detached HEAD); nothing filed
 set -euo pipefail
 
 PR_NUMBER=""
@@ -83,7 +85,7 @@ Optional:
                         ticket key in the branch name). The Jira ticket is filed by
                         `jira create --residual-of`, which picks version and depth.
   --fu-class <c>        Jira only: polish (default) | escape | hardening. Polish is not filed
-                        (decisions 746, 762): the batch is printed for the PR body instead.
+                        (decisions 746, 762): the batch is noted on the PR ticket instead.
   --fu-why <code>       Jira only: required with --fu-class hardening (and only then):
                         unseen-failure | no-check | vacuous-check | no-recovery | silent-rot.
   --fu-override <id>    Jira only: required with --fu-class hardening, a judge verdict id of the
@@ -392,10 +394,44 @@ if [ "$TRACKER_MODE" = jira ]; then
     }
     jira_title="[CR PR #${PR_NUMBER}] Deferred review findings (${batch_count})"
 
-    # Polish is not filed (decisions 746, 762): the verb would refuse it,
-    # so print the batch for the PR body and succeed, as the none path does.
+    # Polish is not filed (decisions 746, 762): the verb would refuse it. On a
+    # Jira repo its record is one polish-noted comment on the PR's own ticket
+    # (note-polish.sh, which skips a ticket that already holds this batch);
+    # a note that cannot be recorded exits 5 with nothing filed.
     if [ "$FU_CLASS" = polish ]; then
-        echo "file-deferred-issues: polish is not filed (decisions 746, 762) — nothing filed. Note these ${batch_count} finding(s) in the PR body, or file a plain ticket if someone will really work them (batch ${batch_short}):"
+        if [ "$DRY_RUN" -eq 1 ]; then
+            echo "file-deferred-issues: polish is not filed (decisions 746, 762) — would note ${batch_count} finding(s) on the PR ticket (batch ${batch_short}):"
+            printf '%s\n' "$batch_list"
+            echo "file-deferred-issues: summary — 0 filed, 0 duplicates, 0 dry-run, 0 failed, 0 dedupe-check-failed"
+            exit 0
+        fi
+        note_branch=$(git rev-parse --abbrev-ref HEAD) || note_branch=""
+        if [ -z "$note_branch" ] || [ "$note_branch" = HEAD ]; then
+            echo "ERR file-deferred-issues: a detached HEAD names no branch to find the PR ticket from; the polish note could not be recorded, nothing filed." >&2
+            exit 5
+        fi
+        note_list=$(mktemp -t fdi-polish.XXXXXX) || exit 1
+        if ! printf '%s\n' "$candidates" | BATCH="$batch_short" node -e '
+const lines = require("fs").readFileSync(0, "utf8").split("\n").filter(Boolean);
+lines.forEach((l, i) => {
+  const m = /^([^\s:]+)(?::([0-9]+))?:/.exec(l);
+  process.stdout.write(JSON.stringify({id: "batch-" + (i + 1) + "-" + process.env.BATCH, file: m ? m[1] : "", line: m && m[2] ? m[2] : "",
+    severity: "sug", class_source: "batch", text: l}) + "\n");
+});
+' >"$note_list"; then
+            rm -f "$note_list"
+            echo "ERR file-deferred-issues: could not build the polish note list; nothing filed." >&2
+            exit 5
+        fi
+        note_rc=0
+        bash "$(dirname "${BASH_SOURCE[0]}")/note-polish.sh" --branch "$note_branch" --head "$(git rev-parse HEAD)" \
+            --list-file "$note_list" || note_rc=$?
+        rm -f "$note_list"
+        if [ "$note_rc" -ne 0 ]; then
+            echo "ERR file-deferred-issues: the polish note could not be recorded on the PR ticket (put its key in the PR title as [KEY-n], or in the branch name); nothing filed." >&2
+            exit 5
+        fi
+        echo "file-deferred-issues: polish is not filed (decisions 746, 762) — nothing filed. These ${batch_count} finding(s) are noted on the PR ticket; file a plain ticket if someone will really work them (batch ${batch_short}):"
         printf '%s\n' "$batch_list"
         echo "file-deferred-issues: summary — 0 filed, 0 duplicates, 0 dry-run, 0 failed, 0 dedupe-check-failed"
         exit 0
