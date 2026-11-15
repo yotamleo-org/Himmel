@@ -14,7 +14,7 @@ when the PR never merged. A reader of the merge rows therefore reads this filter
 
 Every other line, parseable or not, passes through unchanged and in order. The GitHub read names the row's repo
 (--repo) when the row carries one, else resolves the PR in the current directory's repository; all reads of one
-run share a 45 s budget. MERGE_ROWS_GH replaces `gh` (the test seam).
+run share a 45 s budget and ride the read token through gh-read.sh. MERGE_ROWS_GH replaces that reader (the test seam).
 Usage: merge-rows-effective.py [<status-events.jsonl>]   (stdin when no file)
 """
 import json
@@ -37,6 +37,7 @@ def is_pre_merge(r):
 REPO_RE = re.compile(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$')
 BUDGET_SECS = float(os.environ.get('MERGE_ROWS_BUDGET_SECS') or 45)  # all GitHub reads of one run together; a row left unasked past it is not counted
 DEADLINE = time.monotonic() + BUDGET_SECS
+GH_READ = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'gh-read.sh')
 
 
 def merged_on_github(pr, head, repo, cache):
@@ -44,16 +45,19 @@ def merged_on_github(pr, head, repo, cache):
         return cache[(pr, head, repo)]
     ok = False
     left = DEADLINE - time.monotonic()
-    if left <= 0:
+    if left < 2:
         print('merge-rows-effective: warn: GitHub read budget spent; PR %s is not counted' % pr, file=sys.stderr)
         cache[(pr, head, repo)] = ok
         return ok
     try:
-        cmd = shlex.split(os.environ.get('MERGE_ROWS_GH') or 'gh') + [
+        cmd = shlex.split(os.environ.get('MERGE_ROWS_GH') or '') or [GH_READ if os.path.isfile(GH_READ) else 'gh']
+        cmd += [
             'pr', 'view', pr, '--json', 'state,headRefOid', '--jq', '"\\(.state) \\(.headRefOid)"']
         if REPO_RE.match(repo):
             cmd += ['--repo', repo]
-        out = subprocess.run(cmd, capture_output=True, text=True, timeout=min(20, left))
+        bound = min(20, left)
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=bound,
+                             env=dict(os.environ, GH_READ_TIMEOUT=str(max(1, int(bound) - 1))))
         if out.returncode == 0:
             parts = out.stdout.split()
             ok = len(parts) == 2 and parts[0] == 'MERGED' and (not head or parts[1] == head)
