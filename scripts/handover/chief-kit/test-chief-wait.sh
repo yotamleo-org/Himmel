@@ -1439,8 +1439,9 @@ kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 unset CHIEF_WAIT_CADENCE
 
 # --- (rv) the daily failure review wakes once per review day (decision 593) ---
-# review=<date>:<age>:<failures>:<new>:<new 5+>:<filed>[:CAPPED][:STALE]. It wakes on a filed key, a new class
-# with 5+ failures or the create cap; STALE wakes once per last-review date; a 1-count class never wakes.
+# review=<date>:<age>:<failures>:<new>:<new 5+>:<filed>[:STALE]. It wakes on a filed key or a new class
+# with 5+ failures; STALE wakes once per last-review date; a 1-count class never wakes. A CAPPED flag from an
+# older tick wakes nothing (the router has no create cap, decision 941).
 # RED control (chief-wait.sh before this change): no WAKE review line, the waiter keeps waiting.
 rv_tick() { # <review value>
     tick_line "N1:FRESH" "ok"
@@ -1461,7 +1462,7 @@ check "(rv2) the tick line follows" "1" "$(grep -c '^TICK ' "$WORK/rv1.out")"
 start "$I" "$WORK/rv3.out"
 wait_hb "$I" || fail "(rv3) no baseline heartbeat"
 check "(rv3) a re-armed waiter wakes nothing for the same review day" "running" "$(cd_alive)"
-rv_tick '2026-11-05:5h:100:2:1:HIMMEL-9256+HIMMEL-9257:CAPPED'
+rv_tick '2026-11-05:5h:100:2:1:HIMMEL-9256+HIMMEL-9257'
 check "(rv3) the same day with more reasons still wakes nothing" "running" "$(cd_alive)"
 rv_tick '2026-11-06:2h:80:0:0:HIMMEL-9300'
 wait_exit "$WPID"
@@ -1470,8 +1471,8 @@ reset_stub
 rv_tick '2026-11-06:2h:80:0:0:-:CAPPED'
 I="$(new_inbox rv5)"
 start "$I" "$WORK/rv5.out"
-wait_exit "$WPID"
-check "(rv5) the create cap wakes" "WAKE review 2026-11-06 create-cap-hit" "$(head -n1 "$WORK/rv5.out")"
+wait_hb "$I" || fail "(rv5) no baseline heartbeat"
+check "(rv5) a review that only carries the old CAPPED flag wakes nothing" "running" "$(cd_alive)"
 reset_stub
 rv_tick '2026-11-04:30h:100:0:0:-:STALE'
 I="$(new_inbox rv6)"
