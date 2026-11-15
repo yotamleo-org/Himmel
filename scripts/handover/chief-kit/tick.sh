@@ -553,6 +553,10 @@ It judges only a quota.tsv reading under 170 s old (the tick's own refresh) and 
 INTAKE=<n> is the count of next-dispatchable.sh's `# intake` line in that same snapshot:
 open versionless tickets the pool cannot list (operator-directed, a High+ Bug, scope- or proposed- the current
 version, or worker-held). Shown only when non-zero; hidden at 0 or with no fresh snapshot.
+INTAKE-AGE=<h>h follows it: the age of the oldest INTAKE clock the waiter keeps (line 1 of <root>/inbox/*.wait.intake,
+the epoch INTAKE was first seen), whole hours. It is a separate field, not INTAKE=<n>/<h>, because chief-wait.sh reads
+INTAKE= as a bare count and clears its clock on anything else. Hidden when INTAKE is 0 or no clock file is readable;
+the plain `intake:` line reads `<n> (oldest <h>h)`.
 chains=STALE:<n>/<m> counts the steps of the focus-chains.json beside --doc that the Jira mirror
 reads Done: n of its m steps (focus-refresh.sh regenerates the file from the chain registry, so a stale value
 means a hand-kept or unrefreshed file). Hidden when nothing is stale, there is no file, or no mirror.
@@ -3119,6 +3123,8 @@ fi
 # else ?. The chief's current pool-disposition lines are read on every tick.
 pool_summary=skip
 intake_summary=skip
+intake_age=""
+intake_age_first=0
 pool_parked_n=""
 pool_owed_n=""
 pool_free=""
@@ -3174,6 +3180,19 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
         # INTAKE=<n>: versionless operator work the pool cannot list, from the snapshot's `# intake` line
         intake_summary="$(sed -n 's/^# intake \([0-9][0-9]*\)[ :].*/\1/p' "$pd_base.rows" | head -n 1)"  # swallow-ok: no line reads 0
         [ -n "$intake_summary" ] || intake_summary=0
+        if [ "$intake_summary" -gt 0 ] && [ -n "$root" ]; then
+            ia_now="$(date +%s)"
+            for ia_file in "$root"/inbox/*.wait.intake; do
+                [ -f "$ia_file" ] && [ -r "$ia_file" ] || continue
+                ia_first="$(sed -n 1p "$ia_file")"
+                case "$ia_first" in ''|*[!0-9]*) continue ;; esac
+                [ "${#ia_first}" -le 18 ] || continue
+                [ "$((10#$ia_first))" -le "$ia_now" ] || continue
+                [ -n "$intake_age" ] && [ "$((10#$ia_first))" -ge "$intake_age_first" ] && continue
+                intake_age_first="$((10#$ia_first))"
+                intake_age="$(( (ia_now - intake_age_first) / 3600 ))h"
+            done
+        fi
     fi
 fi
 
@@ -4361,7 +4380,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'pool-closed: %s\n' "$pool_closed"
     printf 'prio: %s\n' "$prio_summary"
     [ -z "$prio_stale" ] || printf 'prio-stale: %s\n' "$prio_stale"
-    printf 'intake: %s\n' "$intake_summary"
+    printf 'intake: %s%s\n' "$intake_summary" "${intake_age:+ (oldest $intake_age)}"
     printf 'pool-stale: %s\n' "$pool_stale"
     printf 'pool-changed: %s\n' "$pool_changed"
     printf 'chains: %s\n' "$chains_summary"
@@ -4435,6 +4454,7 @@ else
     compact_field prio "$prio_summary"
     compact_field prio-stale "$prio_stale"
     compact_field INTAKE "$intake_summary"
+    compact_field INTAKE-AGE "$intake_age"
     compact_field pool-stale "$pool_stale"
     compact_field pool-changed "$pool_changed"
     compact_field pool-parked "$pool_parked_n"
