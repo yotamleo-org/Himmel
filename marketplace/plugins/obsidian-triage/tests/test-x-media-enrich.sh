@@ -1038,7 +1038,7 @@ echo "Test 18: probe selection (fxtwitter seam)"
 H2="$tmp/home2"; mkdir -p "$H2"   # NO cookie file: the subs path must not need one
 FXV="$tmp/fxt-video.json"; FXN="$tmp/fxt-novideo.json"
 echo '{"code":200,"tweet":{"media":{"videos":[{"type":"video","duration":40.4}]}}}' > "$FXV"
-echo '{"code":200,"tweet":{"media":{"photos":[{"type":"photo"}]}}}' > "$FXN"
+echo '{"code":200,"tweet":{"text":"plain words","media":{}}}' > "$FXN"
 PV="$tmp/vault-probe"; make_x_vault "$PV" 1801 ""
 export X_TEST_FXT_JSON="$FXV" X_TEST_FXT_COUNT="$tmp/fxt-v.count" X_TEST_YT_MODE=subs X_TEST_YT_DURATION=40 X_TEST_YT_LOG="$tmp/yt-v.log"
 HOME="$H2" run_tool "$PV" >"$tmp/probe.out" 2>"$tmp/probe.err"
@@ -1412,6 +1412,119 @@ assert "the long clip stays pending with a resumable download, not a timeout" ok
 n="$(find "$HOME/.luna/x-media/9882" -name '*.m4s' 2>/dev/null | wc -l | tr -d ' ')"
 [ "$n" -gt 0 ] && a=ok || a=none
 assert "its fetched segments are kept for the next run" ok "$a"
+
+echo "Test 28: HIMMEL-10104 - a photo-only post keeps its images (control: a true no-video post stays no-video)"
+export HIMMEL_X_MEDIA_PROBE_LOG="$tmp/probe-log.jsonl"; rm -f "$HIMMEL_X_MEDIA_PROBE_LOG"
+FXP="$tmp/fxt-photo.json"
+echo '{"code":200,"tweet":{"text":"SECRET-TWEET-TEXT","media":{"photos":[{"type":"photo"},{"type":"photo"}]}}}' > "$FXP"
+emit_gallery_dl 1.jpg 2.jpg
+PP="$tmp/vault-photo"; make_x_vault "$PP" 2801 ""
+X_TEST_FXT_JSON="$FXP" X_TEST_FXT_COUNT="$tmp/fxt-p.count" X_TEST_YT_MODE=none HOME="$H2" run_tool "$PP" >"$tmp/photo.out" 2>"$tmp/photo.err"
+assert "photo-only run exits 0" 0 "$?"
+c="$PP/Clippings/clip.md"
+grep -q '^media_probe_result: no-video$' "$c" && a=no-video || a=other
+assert "a photo-only post is NOT stamped no-video" other "$a"
+grep -q '^media_probe_result: photo$' "$c" && a=ok || a=no
+assert "a photo-only post is stamped media_probe_result: photo" ok "$a"
+grep -q '^media_enriched_at:' "$c" && a=ok || a=no
+assert "the photo-only post is enriched in the same run" ok "$a"
+grep -q 'slide-01' "$c" && a=ok || a=no
+assert "the photo-only post carries its slides" ok "$a"
+FXT="$tmp/fxt-true-none.json"
+echo '{"code":200,"tweet":{"text":"plain words","media":{}}}' > "$FXT"
+PT="$tmp/vault-true-none"; make_x_vault "$PT" 2802 ""
+X_TEST_FXT_JSON="$FXT" X_TEST_FXT_COUNT="$tmp/fxt-t.count" HOME="$H2" run_tool "$PT" >"$tmp/tn.out" 2>"$tmp/tn.err"
+grep -q '^media_probe_result: no-video$' "$PT/Clippings/clip.md" && a=ok || a=no
+assert "control: a post with no media is stamped no-video" ok "$a"
+grep -q '^media_enriched_at:' "$PT/Clippings/clip.md" && a=present || a=absent
+assert "control: a post with no media is not enriched" absent "$a"
+
+echo "Test 29: HIMMEL-10104 - --reprobe-no-video backfill (dry-run changes nothing; live re-stamps only the wrongly stamped)"
+cat > "$tmp/bin/fxt-by-id" <<'STUB'
+#!/usr/bin/env bash
+echo x >> "${X_TEST_FXT_COUNT:-/dev/null}"
+cat "$X_TEST_FXT_DIR/${1##*/}.json"
+STUB
+chmod +x "$tmp/bin/fxt-by-id"
+FXD="$tmp/fxt-dir"; mkdir -p "$FXD"
+cp "$FXP" "$FXD/2901.json"; cp "$FXT" "$FXD/2902.json"; cp "$FXT" "$FXD/2903.json"; cp "$FXP" "$FXD/2904.json"
+BF="$tmp/vault-backfill"; mkdir -p "$BF/Clippings"
+bf_clip() {
+  local name="$1" id="$2" stamp="$3"
+  cat > "$BF/Clippings/$name.md" <<EOF
+---
+title: "$name"
+source: "https://x.com/someuser/status/$id"
+type: tweet
+$stamp
+---
+# Tweet by @someuser
+
+Some tweet text.
+EOF
+}
+bf_clip wrong 2901 $'media_probe_at: 2026-11-01\nmedia_probe_result: no-video'
+bf_clip real 2902 $'media_probe_at: 2026-11-01\nmedia_probe_result: no-video'
+bf_clip fresh 2903 ''
+bf_clip video 2904 $'media_probe_at: 2026-11-01\nmedia_probe_result: video'
+snap() { (cd "$BF" && sha256sum Clippings/*.md | sha256sum | cut -d' ' -f1); }
+bf_before="$(snap)"
+: > "$tmp/fxt-bf.count"
+X_MEDIA_FXT_CMD="$tmp/bin/fxt-by-id" X_TEST_FXT_DIR="$FXD" X_TEST_FXT_COUNT="$tmp/fxt-bf.count" HOME="$H2" run_tool "$BF" --reprobe-no-video --dry-run >"$tmp/bf-dry.out" 2>"$tmp/bf-dry.err"
+assert "backfill dry-run exits 0" 0 "$?"
+grep -qF '2 clip(s) stamped no-video would be re-probed' "$tmp/bf-dry.out" && a=ok || a="$(cat "$tmp/bf-dry.out")"
+assert "backfill dry-run prints how many it would re-probe" ok "$a"
+assert "backfill dry-run changes no file" "$bf_before" "$(snap)"
+[ ! -s "$tmp/fxt-bf.count" ] && a=ok || a=no
+assert "backfill dry-run makes no fxtwitter call" ok "$a"
+X_MEDIA_FXT_CMD="$tmp/bin/fxt-by-id" X_TEST_FXT_DIR="$FXD" X_TEST_FXT_COUNT="$tmp/fxt-bf.count" HOME="$H2" run_tool "$BF" --reprobe-no-video --limit 0 >"$tmp/bf-live.out" 2>"$tmp/bf-live.err"
+assert "backfill live run exits 0" 0 "$?"
+grep -q '^media_probe_result: photo$' "$BF/Clippings/wrong.md" && a=ok || a=no
+assert "a wrongly stamped photo-only clip is re-stamped photo" ok "$a"
+grep -q '^media_probe_result: no-video$' "$BF/Clippings/real.md" && a=ok || a=no
+assert "a clip with really no media keeps its no-video stamp" ok "$a"
+grep -q '^media_probe_at: 2026-11-01$' "$BF/Clippings/real.md" && a=ok || a=no
+assert "a clip left as no-video is not rewritten" ok "$a"
+grep -q '^media_probe_at' "$BF/Clippings/fresh.md" && a=stamped || a=untouched
+assert "an unprobed clip is not touched by the backfill" untouched "$a"
+grep -q '^media_probe_result: video$' "$BF/Clippings/video.md" && a=ok || a=no
+assert "a clip stamped video is not touched by the backfill" ok "$a"
+[ "$(wc -l < "$tmp/fxt-bf.count" | tr -d ' ')" = 2 ] && a=ok || a=no
+assert "the live backfill re-probes exactly the two no-video clips" ok "$a"
+grep -qF '2 re-probed, 1 re-stamped as media, 1 left as no-video' "$tmp/bf-live.out" && a=ok || a="$(cat "$tmp/bf-live.out")"
+assert "the live backfill prints its before/after counts" ok "$a"
+X_MEDIA_FXT_CMD="$tmp/bin/fxt-by-id" X_TEST_FXT_DIR="$FXD" HOME="$H2" run_tool "$BF" --dry-run >"$tmp/bf-plan.out" 2>&1
+grep -q 'PLAN Clippings/wrong.md' "$tmp/bf-plan.out" && a=ok || a=no
+assert "the re-stamped clip is now planned for the normal media fetch" ok "$a"
+
+echo "Test 30: HIMMEL-10105 - every probe and every stamp or skip decision leaves one append-only log line"
+python3 -I - "$HIMMEL_X_MEDIA_PROBE_LOG" > "$tmp/log-check.out" 2>&1 <<'PY'
+import json, sys
+rows = [json.loads(l) for l in open(sys.argv[1], encoding="utf-8") if l.strip()]
+probes = [r for r in rows if r.get("event") == "probe"]
+decisions = [r for r in rows if r.get("event") == "decision"]
+p = [r for r in probes if r.get("clip") == "2801"]
+ok = bool(p) and p[0].get("result") == "photo" and p[0].get("videos") == 0 and p[0].get("photos") == 2
+ok = ok and "api.fxtwitter.com/someuser/status/2801" in p[0].get("url", "")
+print("probe-fields", "ok" if ok else f"bad {p}")
+d = [r for r in decisions if r.get("clip") == "2801"]
+print("stamp-decision", "ok" if d and d[0].get("action") == "stamp" and d[0].get("reason") else f"bad {d}")
+s = [r for r in decisions if r.get("clip") == "2902"]
+print("skip-decision", "ok" if s and s[-1].get("action") == "skip" and s[-1].get("reason") == "still-no-video" else f"bad {s}")
+print("ts", "ok" if all(r.get("ts") for r in rows) else "bad")
+PY
+for k in probe-fields stamp-decision skip-decision ts; do
+  grep -q "^$k ok$" "$tmp/log-check.out" && a=ok || a="$(grep "^$k" "$tmp/log-check.out")"
+  assert "probe log row: $k" ok "$a"
+done
+grep -qF 'SECRET-TWEET-TEXT' "$HIMMEL_X_MEDIA_PROBE_LOG" && a=leaked || a=absent
+assert "the probe log never carries tweet text" absent "$a"
+n1="$(wc -l < "$HIMMEL_X_MEDIA_PROBE_LOG" | tr -d ' ')"
+X_MEDIA_FXT_CMD="$tmp/bin/fxt-by-id" X_TEST_FXT_DIR="$FXD" HOME="$H2" run_tool "$BF" --reprobe-no-video --limit 0 >/dev/null 2>&1
+n2="$(wc -l < "$HIMMEL_X_MEDIA_PROBE_LOG" | tr -d ' ')"
+[ "$n2" -gt "$n1" ] && a=ok || a="$n1 -> $n2"
+assert "the log only appends (a second run adds lines)" ok "$a"
+unset HIMMEL_X_MEDIA_PROBE_LOG
 
 echo ""
 echo "x-media-enrich tests: $pass passed, $fail failed"
