@@ -568,14 +568,13 @@ inbox_fence() {
 }
 inbox_fence || exit 2
 tick_log="$inbox.wait.ticklog"
-# --tick-timeouts <inbox>: the 24 h count, read from the per-tick log; takes no lock, runs no tick.
 if [ "$tick_count_mode" = 1 ]; then
     now="$(date +%s)"
     [ -f "$tick_log" ] || tick_log=/dev/null
     awk -v since="$((now - 86400))" '
         { s = $1; sub(/^start=/, "", s); if (s + 0 < since) next; t++; if ($0 ~ / timedout=1$/) n++ }
         END { printf "ticks=%d tick-timeouts=%d window=24h\n", t, n }' "$tick_log"
-    exit 0
+    exit $?
 fi
 # page/ack record helpers. A missing lib fails open: no records, the
 # page still sends.
@@ -755,8 +754,6 @@ tick_stamp() {
     LC_ALL=C times > "$hb_file.times" 2>/dev/null  # C locale: a comma-decimal locale prints 0m0,5s, which awk reads as 0
     ts="$ts $(sed -n 2p "$hb_file.times" 2>/dev/null)"  # swallow-ok: an unreadable stamp logs a zero CPU, never fails the tick
 }
-# tick_log_add <rc> <stamp before> <stamp after>: one line in <inbox>.wait.ticklog for a tick just run:
-#   start=<epoch> wall=<s> cpu=<user+sys s> rc=<rc> timedout=<1 when rc is 124 or 137, else 0>
 tick_log_add() {
     local to=0
     case "$1" in 124|137) to=1 ;; esac
