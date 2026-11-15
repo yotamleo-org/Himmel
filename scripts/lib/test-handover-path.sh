@@ -440,7 +440,6 @@ EOF
     chmod +x "$sb/bin/find"
     printf '%s\n' "$sb"
 }
-# t9x_run <sandbox> <child TMPDIR> <bash -c script>
 t9x_run() {
     env -u _ARM_CACHE_DIR PATH="$1/bin:$PATH" TMPDIR="$2" HOME="$1/home" LIB="$LIB" P="${T9X_P:-}" \
         STUB_TMPDIR="$2" STUB_COUNT="$1/find-calls" STUB_REAL_FIND="$T9X_REAL_FIND" \
@@ -448,7 +447,6 @@ t9x_run() {
 }
 t9x_dirs() { "$T9X_REAL_FIND" "$1" -maxdepth 1 -name 'arm-resume-cache.*' -type d | wc -l | tr -d ' '; }
 t9x_calls() { wc -l < "$1/find-calls" | tr -d ' '; }
-# t9x_fresh <sandbox>: the stamp was written within the last minute (and is not future-dated)
 t9x_fresh() { grep -q . <<< "$("$T9X_REAL_FIND" "$1" -maxdepth 0 -mmin -1 ! -mmin -0 2>/dev/null)"; }
 T9X_STAMP_REL=home/.himmel/state/arm-resume-cache-gc.stamp
 # shellcheck disable=SC2016
@@ -459,19 +457,16 @@ T9X_LOOKUPS='for _i in 1 2 3 4 5; do x=$(_arm_identity_path "$P"); done'
 T9X_LOOKUPS_ECHO='for _i in 1 2 3 4 5; do _arm_identity_path "$P"; echo; done'
 T9X_STRICT='set -euo pipefail'
 
-# T9J (I1): 20 sourcing runs leave no cache directory.
 t9j_sb=$(t9x_sandbox)
 for _t9j_i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
     t9x_run "$t9j_sb" "$t9j_sb/tmp" "$T9X_SRC; handover_root >/dev/null 2>&1"
 done
 assert_eq "T9J 20 runs that only source the library leave 0 arm-resume-cache directories" "0" "$(t9x_dirs "$t9j_sb/tmp")"
 
-# T9K (I1): sourcing the library runs no /tmp search.
 t9k_sb=$(t9x_sandbox)
 t9x_run "$t9k_sb" "$t9k_sb/tmp" "$T9X_SRC; handover_root >/dev/null 2>&1"
 assert_eq "T9K sourcing the library runs 0 GC finds" "0" "$(t9x_calls "$t9k_sb")"
 
-# T9L (I2, I5): one mint per top-level process, none in a subshell, none without ensure.
 T9X_P="$TMP/layout-a/handovers/HIMMEL-1344-test/next-session-1.md"
 t9l_sb=$(t9x_sandbox)
 t9x_run "$t9l_sb" "$t9l_sb/tmp" "$T9X_SRC; _arm_cache_dir_ensure; $T9X_LOOKUPS"
@@ -492,10 +487,7 @@ t9x_run "$t9l_sb3" "$t9l_sb3/tmp" "$T9X_SRC; ( _arm_cache_dir_ensure )"
 assert_eq "T9L ensure inside a subshell mints 0 directories" "0" "$(t9x_dirs "$t9l_sb3/tmp")"
 T9X_P=""
 
-# T9M (I4, I8, I9): the GC sweep is rate-limited by a stamp that records the swept
-# TMPDIR, and ensure returns 0 whatever the state of HOME and the stamp. Each case
-# has its own sandbox, so no case meets a stamp another case wrote.
-t9x_touch_rel() { # <file> <GNU -d spec> <touch -t fallback>
+t9x_touch_rel() {
     touch -d "$2" "$1" 2>/dev/null || touch -t "$3" "$1" 2>/dev/null || true
 }
 t9m_sb=$(t9x_sandbox); mkdir -p "$t9m_sb/home/.himmel/state"; printf '%s\n' "$t9m_sb/tmp" > "$t9m_sb/$T9X_STAMP_REL"
@@ -547,7 +539,7 @@ ln -s "$t9m_sb/target" "$t9m_sb/$T9X_STAMP_REL"
 t9m_out=$(t9x_run "$t9m_sb" "$t9m_sb/tmp" "$T9X_STRICT; $T9X_SRC; _arm_cache_dir_ensure; echo reached"); t9m_rc=$?
 assert_eq "T9M ensure under set -euo pipefail with a symlinked stamp reaches the next line" "reached 0" "$t9m_out $t9m_rc"
 
-# T9N (I7): a directory the user does not own is not a usable cache directory.
+# T9N: a directory the user does not own is not a usable cache directory.
 # /tmp is writable but owned by root, so only the ownership test can reject it;
 # the row runs no lookup, so nothing is written to /tmp.
 if [ -O /tmp ]; then
