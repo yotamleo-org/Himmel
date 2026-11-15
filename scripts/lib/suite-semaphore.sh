@@ -10,7 +10,7 @@
 # The default is one fixed per-user path that does not read TMPDIR, so every
 # process of a user shares one N-slot budget whatever its TMPDIR.
 # HIMMEL_SUITE_SEMAPHORE_DIR is the test seam.
-# N =HIMMEL_SUITE_SLOTS (default 6). A slot is taken by an atomic `mkdir` and
+# N = HIMMEL_SUITE_SLOTS (default 6). A slot is taken by an atomic `mkdir` and
 # carries an `owner` file: pid, start-time identity (proc-tree.sh), label,
 # started epoch. Liveness is pid + identity, not a TTL alone -- unlike
 # shared-branch-lock.sh, which deliberately does no pid probing. A slot is
