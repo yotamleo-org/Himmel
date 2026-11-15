@@ -1627,11 +1627,9 @@ no_canary "N21 no value printed" "$out"
 mv "$FX/scripts/lib/himmel-secrets" "$FX/scripts/lib/himmel-secrets.real"
 cat > "$FX/scripts/lib/himmel-secrets" <<'STUB' || fail "fixture write of the silent-keyring wrapper failed"
 #!/usr/bin/env bash
-# same-value: the first call (the probe) is answered, a later one finds the keyring silent
+# same-value: the keyring is silent when the mover compares the held item with its value
 if [ "$1" = same-value ]; then
-    # read-sink-ok: a counter file this suite names itself (SV_COUNT is set on the apply line below)
-    n=$(cat "$SV_COUNT" 2>/dev/null || echo 0); n=$((n + 1)); echo "$n" > "$SV_COUNT"
-    [ "$n" -le 1 ] || { echo "himmel-secrets: the keyring did not answer" >&2; exit 2; }
+    echo "himmel-secrets: the keyring did not answer" >&2; exit 2
 fi
 exec bash "${BASH_SOURCE[0]}.real" "$@"
 STUB
@@ -1640,13 +1638,30 @@ fixture_env
 fxput "$TMP/st/.env" "GGS_MQTT_PASS='%s\n'\n" "$(canary mq)"
 cp -p "$TMP/st/.env" "$TMP/st.orig"
 kitem GGS_MQTT_PASS "$(canary newer)"
-rm -f "$TMP/sv.count"
-APPLY_ARGS="-y --keys GGS_MQTT_PASS" apply_tty y "SV_COUNT=$TMP/sv.count $SYSPATH"
+APPLY_ARGS="-y --keys GGS_MQTT_PASS" apply_tty y "$SYSPATH"
 mv "$FX/scripts/lib/himmel-secrets.real" "$FX/scripts/lib/himmel-secrets"
 lacks "N22 a silent keyring is not called held" "held GGS_MQTT_PASS" "$out"
 has "N22 the report says the keyring did not answer" "failed GGS_MQTT_PASS (the keyring did not answer)" "$out"
 if [ "$rc" != 0 ]; then pass "N22 the run fails (exit $rc)"; else fail "N22 the run exited 0"; fi
 if cmp -s "$TMP/st/.env" "$TMP/st.orig"; then pass "N22 the entry stays"; else fail "N22 the entry left .env"; fi
+# N22b: the mover stores a named entry through put-if-absent, with no existence check of its own before it and never a plain put.
+mv "$FX/scripts/lib/himmel-secrets" "$FX/scripts/lib/himmel-secrets.real"
+cat > "$FX/scripts/lib/himmel-secrets" <<'STUB' || fail "fixture write of the verb-logging wrapper failed"
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$VERB_LOG"
+exec bash "${BASH_SOURCE[0]}.real" "$@"
+STUB
+chmod +x "$FX/scripts/lib/himmel-secrets"
+fixture_9360
+rm -f "$TMP/verbs.log"
+APPLY_ARGS="-y --keys GGS_MQTT_PASS" apply_tty y "VERB_LOG=$TMP/verbs.log $SYSPATH"
+mv "$FX/scripts/lib/himmel-secrets.real" "$FX/scripts/lib/himmel-secrets"
+n22b_log=$(grep GGS_MQTT_PASS "$TMP/verbs.log" 2>/dev/null)  # read-sink-ok: a log this suite names itself (VERB_LOG on the apply line above)
+has "N22b the entry is stored through put-if-absent" "put-if-absent --stdin GGS_MQTT_PASS" "$n22b_log"
+lacks "N22b no plain put is called" "put --stdin GGS_MQTT_PASS" "$(printf '%s\n' "$n22b_log" | grep '^put ')"
+case "$(printf '%s\n' "$n22b_log" | head -n 1)" in "put-if-absent "*) pass "N22b put-if-absent is the first call for the key" ;; *) fail "N22b the first call for the key was: $(printf '%s\n' "$n22b_log" | head -n 1)" ;; esac
+if [ "$rc" = 0 ] && grep -q 'CANARY-mq' "$KSTUB_STORE" 2>/dev/null; then pass "N22b the entry reached the keyring (exit $rc)"; else fail "N22b exit $rc, keyring lacks the entry: $out"; fi
+lacks "N22b the entry left .env" "GGS_MQTT_PASS" "$(cat "$TMP/st/.env")"
 # N23: the command that checks the --unowned list carries this run's --env, and the list is the one printed above it.
 fixture_9360
 out=$(bash "$SCRIPT" --dry-run --env "$TMP/st/.env" 2>&1)
