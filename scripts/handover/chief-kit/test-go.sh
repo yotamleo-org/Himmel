@@ -399,6 +399,21 @@ rc=0; out="$(READY_STUB_HEAD="$SHA14" HANDOVER_DIR="$ROOT14" bash "$SCRIPT" 82 "
 check    "4565: reviewed head -> exit 0" "$rc" "0"
 check    "4565: reviewed head -> the GO path" "$out" "$ROOT14/.locks/go/82.$SHA14"
 
+# 9671: the trailers count in any non-merge commit of the branch. The stub's file list is
+# scripts/x.sh, which needs both trailers (READY_STUB_COMMITS is the PR's commit list).
+ROOT14L="$tmp/root14-later"; ROOT14N="$tmp/root14-none"
+mkdir -p "$ROOT14L" "$ROOT14N"
+C14A=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; C14B=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+LATER14='[{"oid":"'"$C14A"'","messageHeadline":"docs(x): [HIMMEL-1] note (#1)","messageBody":"","parents":{"totalCount":1}},{"oid":"'"$C14B"'","messageHeadline":"fix(x): [HIMMEL-2] code (#1)","messageBody":"Platforms tested: linux\nSecurity reviewed: manual","parents":{"totalCount":1}}]'
+NONE14='[{"oid":"'"$C14A"'","messageHeadline":"docs(x): [HIMMEL-1] note (#1)","messageBody":"","parents":{"totalCount":1}},{"oid":"'"$C14B"'","messageHeadline":"fix(x): [HIMMEL-2] code (#1)","messageBody":"","parents":{"totalCount":1}}]'
+rc=0; out="$(READY_STUB_COMMITS="$LATER14" READY_STUB_HEAD="$SHA14" HANDOVER_DIR="$ROOT14L" bash "$SCRIPT" 82 "$SHA14" 2>&1)" || rc=$?
+check    "9671: trailers only on a later commit -> exit 0" "$rc" "0"
+check    "9671: later-commit trailers -> the GO path" "$out" "$ROOT14L/.locks/go/82.$SHA14"
+rc=0; out="$(READY_STUB_COMMITS="$NONE14" READY_STUB_HEAD="$SHA14" HANDOVER_DIR="$ROOT14N" bash "$SCRIPT" 82 "$SHA14" 2>&1)" || rc=$?
+check    "9671: no trailer in any commit -> exit 4" "$rc" "4"
+contains "9671: no trailer anywhere -> check 5 is the refusal" "$out" "[FAIL] 5."
+check    "9671: no trailer anywhere -> nothing written" "$(find "$ROOT14N" -type f | wc -l | tr -d ' ')" "0"
+
 # --- 15. --trust-reviewed <qid> needs that judge's GO verdict ---
 # The verdict file is <root>/<user>/<bucket>/verdicts/<qid>/*.md; the first
 # non-blank line under `## Verdict` parses only as **GO**/**NO-GO** for head

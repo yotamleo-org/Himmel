@@ -33,6 +33,7 @@ case "$*" in
     *"--json headRefOid,mergeStateStatus"*) printf '%s CLEAN\n' "${READY_STUB_HEAD:-}"; exit 0 ;;
     *"--json statusCheckRollup"*) printf '%s' '[{"name":"build","status":"COMPLETED","conclusion":"SUCCESS"}]'; exit 0 ;;
     *"--json commits"*)
+        [ -z "${READY_STUB_COMMITS:-}" ] || { printf '%s' "$READY_STUB_COMMITS" | jq -c '[.[] | {messageHeadline, messageBody}]'; exit 0; }
         printf '%s' '[{"messageHeadline":"fix(x): [HIMMEL-1] t (#1)","messageBody":"Platforms tested: linux\nSecurity reviewed: manual"}]'
         exit 0 ;;
     *"--json body"*) printf '%b' "${READY_STUB_BODY-$DEFAULT_BODY}"; exit 0 ;;
@@ -46,7 +47,11 @@ case "$*" in
                 commits:{nodes:[{commit:{oid:$h,messageHeadline:"fix(x): [HIMMEL-1] t (#1)",messageBody:"Platforms tested: linux\nSecurity reviewed: manual",parents:{totalCount:1}}}],pageInfo:{hasNextPage:false,endCursor:null}},
                 reviewThreads:{nodes:[],pageInfo:{hasNextPage:false,endCursor:null}},
                 statusCheckRollup:{contexts:{nodes:[{__typename:"CheckRun",name:"build",status:"COMPLETED",conclusion:"SUCCESS"}],pageInfo:{hasNextPage:false,endCursor:null}}}
-            }}}}'
+            }}}}' \
+            | jq -c --argjson c "${READY_STUB_COMMITS:-null}" '
+                # READY_STUB_COMMITS (optional): a JSON array of GraphQL commit objects (oid 40-hex,
+                # messageHeadline, messageBody, parents.totalCount) replaces the one-commit default list
+                if $c == null then . else .data.repository |= with_entries(.value.commits.nodes = [$c[] | {commit: .}]) end'
         exit $? ;;
     # ready-check row 15 (CodeRabbit rate-limit advisory): no statuses at the head, so it
     # prints nothing. Unanswered, a suite whose own gh stub sits in front of this one

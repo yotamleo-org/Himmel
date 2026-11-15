@@ -48,16 +48,14 @@
 #      claude-floor or codex-adv), or an evidence/judge-go/dependabot-go row for
 #      this PR branch (dependabot-go: scripts/cr/dependabot-go.sh, a signed judge
 #      GO at this head on a Dependabot manifest-only PR).
-#   5. The PR's first commit carries the attestation trailers the pre-push
-#      gates require, for the file classes that trip them: `Platforms
+#   5. Some non-merge commit of the PR carries the attestation trailers the
+#      pre-push gates require, for the file classes that trip them: `Platforms
 #      tested:` when the diff touches scripts/**, *.sh/.bash/.zsh/.ps1/.psm1/
 #      .psd1/.cmd/.bat or **/bin/*, `Security reviewed:` when the diff
-#      touches anything outside *.md/*.txt/docs/**/handovers/**. Reuses the
-#      PLATFORM_RE / ATTEST_RE from scripts/hooks/check-platforms-tested.sh
-#      and the TOKEN_RE from scripts/hooks/check-security-reviewed.sh
-#      VERBATIM (git grep -n 'Platforms tested' -- scripts) rather than
-#      re-deriving the token vocabulary or the file filters — those two
-#      files carry the history of why each regex looks the way it does.
+#      touches anything outside *.md/*.txt/docs/**/handovers/**. The rule is
+#      read by scripts/lib/attest-trailers.sh (pr-json), the one reader the
+#      pre-push hooks and CI commit-lint call too; this script keeps no copy of
+#      the token vocabulary or the file filters. A merge commit never attests.
 #   6. Every commit subject in the PR carries a ticket ID, using the same
 #      pattern scripts/hooks/check-commit-msg.sh derives (TICKET_ID_PATTERN,
 #      else "${JIRA_PROJECT_KEY}-[0-9]+", else a bare "#123" reference) —
@@ -700,6 +698,9 @@ fi
 # ── commits (shared by checks 5 and 6) ──────────────────────────────────────
 commits_json=$(printf '%s' "$snapshot" | jq -c '.[0].commits' 2>/dev/null)
 files_json=$("$GH" api --paginate "repos/$owner/$repo/pulls/$PR/files" --jq '.[].filename' 2>/dev/null) || files_json=""  # swallow-ok: a failed or partial read is an empty list, which checks 5, 9, 10 and 11 fail closed on
+# The one reader of the attestation-trailer rule and of "what is code" (items 5 and 13); from this
+# script's own checkout, never READY_CHECK_ANCHOR.
+ATTEST_HELPER="$(cd "$SELF_DIR/../../lib" && pwd)/attest-trailers.sh"
 
 if [ -z "$commits_json" ] || [ "$commits_json" = "null" ]; then
     echo "[FAIL] 5. cannot read PR commits (gh pr view --json commits failed)"
@@ -707,38 +708,47 @@ if [ -z "$commits_json" ] || [ "$commits_json" = "null" ]; then
     echo "[FAIL] 6. cannot read PR commits (gh pr view --json commits failed)"
     mark_fail
 else
-    # ── 5. first-commit attestation trailers ────────────────────────────────
-    # PLATFORM_RE / ATTEST_RE verbatim from scripts/hooks/check-platforms-tested.sh
-    PLATFORM_RE='(linux|windows|macos|ubuntu|debian|fedora|arch|mac|darwin|wsl|posix|gitbash|git-bash|powershell|pwsh)'
-    ATTEST_RE="^[[:space:]]*Platforms tested:[[:space:]]*${PLATFORM_RE}([^[:alnum:]]|$)"
-    # TOKEN_RE verbatim from scripts/hooks/check-security-reviewed.sh
-    TOKEN_RE='(manual|claude-code-security-review|pr-review-toolkit|ad-hoc)([[:space:]]|$|[.,;])'
-    SEC_RE="^[[:space:]]*Security reviewed:[[:space:]]*${TOKEN_RE}"
-
-    first_msg=$(printf '%s' "$commits_json" | jq -r '.[0].messageHeadline + "\n\n" + (.[0].messageBody // "")' 2>/dev/null)
-
+    # ── 5. attestation trailers on the branch ───────────────────────────────
+    # Every non-merge commit of the PR is read through scripts/lib/attest-trailers.sh,
+    # the one reader the pre-push hooks and CI commit-lint call too. The helper is
+    # found from this script's own checkout, never READY_CHECK_ANCHOR (a fixture
+    # anchor carries no helper). Exit 0 = attested where needed, 1 = a needed trailer
+    # is missing, anything else (2, or 126/127 for a missing helper) = cannot evaluate.
     if [ -z "$files_json" ]; then
         echo "[FAIL] 5. cannot read PR files (gh api .../pulls/$PR/files failed or returned nothing)"
         mark_fail
     else
-        # Markdown/text is never a script, even under scripts/
-        # (a docs-only README edit could otherwise never get a GO).
-        sensitive=$(printf '%s\n' "$files_json" | grep -Ev '\.(md|txt)$' | grep -E '(\.(sh|bash|zsh|ps1|psm1|psd1|cmd|bat)$|^scripts/|(^|/)bin/[^/]+$)' || true)
-        non_docs=$(printf '%s\n' "$files_json" | grep -Ev '\.(md|txt)$|^docs/|^handovers/' || true)
-
-        need_plat=0; [ -n "$sensitive" ] && need_plat=1
-        need_sec=0; [ -n "$non_docs" ] && need_sec=1
-
-        plat_ok=1; [ "$need_plat" -eq 1 ] && { echo "$first_msg" | grep -qiE "$ATTEST_RE" || plat_ok=0; }
-        sec_ok=1; [ "$need_sec" -eq 1 ] && { echo "$first_msg" | grep -qiE "$SEC_RE" || sec_ok=0; }
-
-        if [ "$plat_ok" -eq 1 ] && [ "$sec_ok" -eq 1 ]; then
-            echo "[PASS] 5. first commit: Platforms tested (needed=$need_plat), Security reviewed (needed=$need_sec) — attested where needed"
-        else
-            [ "$plat_ok" -eq 0 ] && echo "[FAIL] 5. first commit missing 'Platforms tested:' (diff touches scripts/shell files)"
-            [ "$sec_ok" -eq 0 ] && echo "[FAIL] 5. first commit missing 'Security reviewed:' (diff touches non-docs code)"
+        att_commits=$(mktemp "${TMPDIR:-/tmp}/ready-check-commits.XXXXXX" 2>/dev/null) || att_commits=""  # swallow-ok: an unusable temp file fails item 5 closed just below
+        att_files=$(mktemp "${TMPDIR:-/tmp}/ready-check-files.XXXXXX" 2>/dev/null) || att_files=""  # swallow-ok: an unusable temp file fails item 5 closed just below
+        if [ -z "$att_commits" ] || [ -z "$att_files" ]; then
+            echo "[FAIL] 5. cannot evaluate the trailers (mktemp failed)"
             mark_fail
+        else
+            printf '%s' "$commits_json" > "$att_commits"
+            printf '%s\n' "$files_json" > "$att_files"
+            att_rc=0
+            att_out=$(bash "$ATTEST_HELPER" pr-json "$att_commits" "$att_files" 2>/dev/null) || att_rc=$?  # swallow-ok: the exit code is mapped just below
+            case "$att_rc" in
+                0)
+                    need_plat=1; need_sec=1
+                    case "$att_out" in *"ATTEST platforms not-needed"*) need_plat=0 ;; esac
+                    case "$att_out" in *"ATTEST security not-needed"*) need_sec=0 ;; esac
+                    echo "[PASS] 5. branch: Platforms tested (needed=$need_plat), Security reviewed (needed=$need_sec) — attested where needed" ;;
+                1)
+                    case "$att_out" in *"ATTEST platforms needed missing"*)
+                        echo "[FAIL] 5. missing 'Platforms tested:' in every commit on the branch (diff touches scripts/shell files)" ;;
+                    esac
+                    case "$att_out" in *"ATTEST security needed missing"*)
+                        echo "[FAIL] 5. missing 'Security reviewed:' in every commit on the branch (diff touches non-docs code)" ;;
+                    esac
+                    mark_fail ;;
+                *)
+                    att_why=$(printf '%s\n' "$att_out" | sed -n 's/^ATTEST ERROR //p' | head -n 1)
+                    echo "[FAIL] 5. cannot evaluate the trailers (${att_why:-exit $att_rc})"
+                    mark_fail ;;
+            esac
         fi
+        rm -f "$att_commits" "$att_files"
     fi
 
     # ── 6. every commit subject carries a ticket ID ─────────────────────────
@@ -1723,12 +1733,18 @@ if [ "$ONLY7" -eq 0 ]; then
 # ── 13. a code PR names a RED-then-GREEN line ──
 # A PR that changes code shows the proof it was built test-first: one line of its body
 # with RED, then GREEN (e.g. `RED → GREEN: test-x.sh row 4`). Exempt: a doc-only PR
-# (the filter check 5 uses, so the two never disagree about what is code) and a
+# (the helper's `needs` names no `security`: the same filter check 5 uses via
+# scripts/lib/attest-trailers.sh, so the two never disagree about what is code) and a
 # Dependabot dependency-only PR (dep_pr_generated, as check 7).
+att13_rc=0
+[ -z "$files_json" ] || att13=$(printf '%s\n' "$files_json" | bash "$ATTEST_HELPER" needs 2>/dev/null) || att13_rc=$?  # swallow-ok: a non-zero exit is the cannot-classify FAIL just below
 if [ -z "$files_json" ]; then
     echo "[FAIL] 13. cannot read PR files — RED-then-GREEN line not checked"
     mark_fail
-elif [ -z "$(printf '%s\n' "$files_json" | grep -Ev '\.(md|txt)$|^docs/|^handovers/' || true)" ]; then  # swallow-ok: no non-doc line is grep rc 1, which is the doc-only answer
+elif [ "$att13_rc" -ne 0 ]; then
+    echo "[FAIL] 13. cannot classify the PR files (the trailer helper exited $att13_rc)"
+    mark_fail
+elif ! grep -qx security <<<"$att13"; then
     echo "[PASS] 13. RED-then-GREEN line: not needed (a doc-only PR)"
 elif [ -n "$(printf '%s\n' "$cov_body" | grep -E '(^|[^A-Za-z0-9])RED([^A-Za-z0-9].*[^A-Za-z0-9]|[^A-Za-z0-9])GREEN([^A-Za-z0-9]|$)' || true)" ]; then  # swallow-ok: no matching line is grep rc 1, which is the no-RED-line answer
     echo "[PASS] 13. the PR body names a RED-then-GREEN line"
