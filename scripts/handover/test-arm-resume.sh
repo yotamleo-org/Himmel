@@ -3545,8 +3545,8 @@ fi
 # must mint its own once at top level (_arm_cache_dir_ensure) or its identity
 # lookups lose the memo. A --dry-run arm with sandboxed TMPDIR and HOME and no
 # inherited _ARM_CACHE_DIR leaves exactly one cache dir, holding `identity`; with
-# $HOME/.himmel/state a regular file the stamp's mkdir fails, the arm still exits
-# 0 and still mints exactly one.
+# $HOME/.himmel/state a regular file the stamp is unusable, the arm still exits
+# 0 and still mints exactly one. Neither case creates the state directory.
 # ---------------------------------------------------------------------------
 if _sec_selected "9525" "HIMMEL-9525"; then
 for _c9525 in a b; do

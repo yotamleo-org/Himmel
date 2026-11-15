@@ -518,6 +518,10 @@ if grep -q . <<< "$("$T9X_REAL_FIND" "$t9m_sb/target" -maxdepth 0 -mmin +60)"; t
 t9m_sb=$(t9x_sandbox); mkdir -p "$t9m_sb/$T9X_STAMP_REL"
 t9x_run "$t9m_sb" "$t9m_sb/tmp" "$T9X_SRC; _arm_cache_dir_ensure"
 assert_eq "T9M a stamp that is a directory runs the GC find once" "1" "$(t9x_calls "$t9m_sb")"
+t9m_sb=$(t9x_sandbox)
+t9x_run "$t9m_sb" "$t9m_sb/tmp" "$T9X_SRC; _arm_cache_dir_ensure"
+assert_eq "T9M a home with no state directory runs the GC find once" "1" "$(t9x_calls "$t9m_sb")"
+assert_eq "T9M a home with no state directory is not written to" "absent" "$([ -e "$t9m_sb/home/.himmel" ] && echo present || echo absent)"
 if [ "$(id -u)" -eq 0 ]; then
     echo "SKIP T9M read-only state directory cases: running as root ignores the mode bits"
 else

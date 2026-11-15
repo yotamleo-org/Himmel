@@ -304,8 +304,9 @@ _arm_cache_dir_usable() {
 # per user and swept directory. The stamp lives under the user's own home, not
 # in world-writable /tmp: $HOME/.himmel/state/arm-resume-cache-gc.stamp, a
 # regular file holding the ${TMPDIR:-/tmp} of the last sweep; its mtime is the
-# time of that sweep. The stamp is usable iff HOME is set, the state dir exists
-# or can be made, and the stamp is missing or a regular, user-owned, non-symlink
+# time of that sweep. The stamp is usable iff HOME is set, the state dir already
+# exists (this function never creates it, so a home that has no state dir is not
+# written to), and the stamp is missing or a regular, user-owned, non-symlink
 # file; an unusable stamp gives an unthrottled sweep and is never written
 # through. A sweep is skipped only when the stamp records THIS directory and is
 # between 0 and 60 minutes old, so a sweep of one TMPDIR never suppresses the
@@ -319,7 +320,7 @@ _arm_cache_dir_gc_rate_limited() {
     [ -n "${HOME:-}" ] || { _arm_cache_dir_gc || true; return 0; }
     _st="${HOME:-}/.himmel/state"
     _stamp="$_st/arm-resume-cache-gc.stamp"
-    { [ -d "$_st" ] || mkdir -p "$_st" 2>/dev/null; } || { _arm_cache_dir_gc || true; return 0; }
+    [ -d "$_st" ] || { _arm_cache_dir_gc || true; return 0; }
     if [ -L "$_stamp" ] || { [ -e "$_stamp" ] && { [ ! -f "$_stamp" ] || [ ! -O "$_stamp" ]; }; }; then
         _arm_cache_dir_gc || true
         return 0
