@@ -53,14 +53,11 @@ F="$BUCKET/owed.jsonl"
 NOW="${OWE_NOW_EPOCH:-}"
 case "$NOW" in ''|*[!0-9]*) NOW="$(date +%s)" ;; esac
 
-# Hold the ledger's own lock (flock on the file, no lock file of its own) from the id read to the
-# append, so two writers never take the same id. A host without flock stops here, never writes unlocked.
 lock_ledger() {
     exec 9>>"$F" || exit 4
     flock 9 || exit 4  # prim-ok: the chief kit is Linux-only, and with_lock would leave a lock file in the state bucket
 }
 
-# A ledger jq cannot read stops here.
 ledger_ok() { [ ! -s "$F" ] || jq -e -s 'all(.[]; type == "object" and (.op == "add" or .op == "close"))' "$F" >/dev/null 2>&1; }
 
 case "$CMD" in

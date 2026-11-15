@@ -1932,27 +1932,20 @@ check_no_orphan_pr() {
     return 1
 }
 
-# Refuse a handover while a ticket row of the owed ledger (<doc dir>/owed.jsonl, owe.sh) has no key
-# after one shift: OWED_SHIFT_SECS, default 21600 (6 h, the queue lock's TTL, the longest a chief
-# shift is sized to run). Every such row is named with the owe.sh command that closes it. An
-# unreadable ledger never refuses (fail-open, no deadlock): it is said on stderr and the HANDOFF
-# says it too (owed_section). Args: the doc's directory.
 check_owed_ledger() {
-    local rows lim="${OWED_SHIFT_SECS:-21600}" named
-    case "$lim" in ''|*[!0-9]*) lim=21600 ;; esac
-    lim=$((10#$lim))
+    local default_shift_secs=21600 rows shift_secs named
+    shift_secs="${OWED_SHIFT_SECS:-$default_shift_secs}"
+    case "$shift_secs" in ''|*[!0-9]*) shift_secs=$default_shift_secs ;; esac
+    shift_secs=$((10#$shift_secs))
     rows="$(bash "$kit/owe.sh" list --bucket "$1" 2>/dev/null)" || { err "warning: the owed ledger $1/owed.jsonl is unreadable: handover not gated on it"; return 0; }  # swallow-ok: said on stderr, and an unreadable ledger never refuses
-    named="$(printf '%s\n' "$rows" | awk -F'\t' -v now="$(date +%s)" -v lim="$lim" '$2 == "ticket" && $4 == "" && now - $3 > lim { printf "  %s (chief %s, %d h): %s\n", $1, $5, (now - $3) / 3600, $6 }')"
+    named="$(printf '%s\n' "$rows" | awk -F'\t' -v now="$(date +%s)" -v lim="$shift_secs" '$2 == "ticket" && $4 == "" && now - $3 > lim { printf "  %s (chief %s, %d h): %s\n", $1, $5, (now - $3) / 3600, $6 }')"
     [ -n "$named" ] || return 0
-    err "refusing to hand over: a ticket you owe has no key after $(( lim / 3600 )) h:"
+    err "refusing to hand over: a ticket you owe has no key after $(( shift_secs / 3600 )) h:"
     printf '%s\n' "$named" >&2
     err "  file each ticket, then close its row, and retry: bash $kit/owe.sh close --bucket $1 --id <id> --key <KEY>"
     return 1
 }
 
-# The HANDOFF's "Owed" section: every open row of the owed ledger, one line each, so the
-# successor starts with the whole list. Nothing open writes nothing; an unreadable ledger
-# says so. Args: the doc's directory.
 owed_section() {
     local rows id kind epoch key chief text
     [ -s "$1/owed.jsonl" ] || return 0
@@ -2078,9 +2071,6 @@ queue_newest_segment() {
     printf '%s\n' "$1" | awk '{ if (match($0, / \|\| (\([A-Z][A-Z]?[ )]|prior [A-Z][A-Z]? queue:)/)) print substr($0, 1, RSTART - 1); else print }'
 }
 
-# The older segments of a `queue:` value tail (queue_newest_segment's remainder), one per line,
-# each with its leading ` || ` marker so that joining them again gives the tail byte for byte.
-# Arg: the tail, which starts at a marker.
 queue_older_segments() {
     printf '%s\n' "$1" | awk '{
         s = $0
@@ -2092,9 +2082,6 @@ queue_older_segments() {
     }'
 }
 
-# Succeeds when a queue segment records something owed, a hold or a ticket still to file: its
-# text holds `owed` or `to file` in any case, or `HOLD`. The fold keeps such a segment in the
-# live queue: line. Arg: one segment.
 queue_segment_owed() {
     local lc
     case "$1" in *HOLD*) return 0 ;; esac
@@ -2389,8 +2376,6 @@ seed_live_fields() {
     fi
     # queue: only the newest segment (queue_newest_segment names the markers of an earlier chief's);
     # the older ones are kept byte for byte in the dated history file and the line points at it.
-    # An older segment that names something owed, a hold or a ticket to file stays on the live
-    # line (queue_segment_owed): the fold never moves it out of sight.
     local queue newest seg moved kept
     queue="$(seeded_live_field "$live" queue)"
     newest="$(queue_newest_segment "$queue")"

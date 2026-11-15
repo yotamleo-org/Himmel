@@ -2543,8 +2543,7 @@ uw_skip="$(uw_chains)"
 [ "$uw_stale|$uw_ok|$uw_skip" = 'STALE:1/2|ok|skip' ] && pass '(9860) with only a wired pair the STALE, ok and skip values stay byte-identical' || fail "(9860) with only a wired pair chains read $uw_stale|$uw_ok|$uw_skip, not STALE:1/2|ok|skip"
 rm -rf "$W/uw-tmp" "$W/uw-mirror" "$W/uw-dir"
 
-# (10006) owed=<n>:<oldest-age> from the owed ledger beside --doc, and ACTION owed-stale= for a keyless ticket row past 4 hours
-export OWED_STALE_SECS=14400  # the default cases must not inherit an operator's override
+export OWED_STALE_SECS=14400
 ow_m="$W/ow-mirror/HIMMEL"; mkdir -p "$ow_m" "$W/ow-tmp" "$W/ow-dir"
 ow_doc="$W/ow-dir/ow-chief.md"
 printf '%s\n' '# OW — CHIEF' '' '## Live state' '' '## Results' > "$ow_doc"

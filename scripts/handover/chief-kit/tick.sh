@@ -3275,10 +3275,6 @@ if [ -f "$wto_probe" ]; then
     wtc_summary=$(sed -n 's|^CEILING \([0-9]*/[0-9]*\) .*|\1|p' <<<"$wto_out")
 fi
 
-# owed=<n>:<oldest-age>: the open rows of the owed ledger (<bucket>/owed.jsonl, owe.sh) and the age
-# of the oldest, <m>m under an hour, else <h>h. Hidden at 0, `?` when the ledger is unreadable. A ticket-kind
-# row with no key past OWED_STALE_SECS (default 14400, 4 hours) adds an ACTION owed-stale= line; closing
-# the row with a key ends it. Not in chief-wait's wake key.
 owed_summary=""
 owed_stale_n=0
 owed_stale_ids=""

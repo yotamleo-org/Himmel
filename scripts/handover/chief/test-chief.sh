@@ -3958,11 +3958,8 @@ CLAUDE_CONFIG_DIR="$cfg97" CLAUDE_CODE_SESSION_ID="0a1b2c3d-4e5f-4a6b-8c7d-00000
 check "97 a session with no judge child says none owed" "$(grep -c '^JUDGE-OWED: none$' "$root/tester/p97none/DEMO-nextleg-${today}B-chief.md")" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/p97none/DEMO-nextleg-${today}A-chief.md" "$(token_of "$out97n")" >/dev/null 2>&1
 
-# --- 10006: the owed ledger. The queue fold keeps an older segment that names something owed, a
-# hold or a ticket to file; next refuses while a ticket row has no key after one shift; the HANDOFF
-# lists every open row. owe.sh writes the fixture rows; OWE_NOW_EPOCH sets a row's age.
 owe="$fixture_repo/scripts/handover/chief-kit/owe.sh"
-export OWED_SHIFT_SECS=21600  # the default cases must not inherit an operator's override
+export OWED_SHIFT_SECS=21600
 ow_add() { OWE_NOW_EPOCH="$(( $(date +%s) - $2 ))" bash "$owe" add --bucket "$root/tester/$1" --chief ZZ --kind "$3" --text "$4" >/dev/null; }
 ow_handoff() { printf '%s' "$root/tester/$1/DEMO-nextleg-${today}B-chief-HANDOFF.md"; }
 ow_plain1=' || (XA 02:1xZ; MERGED 5001) 5051 echo foxtrot'
