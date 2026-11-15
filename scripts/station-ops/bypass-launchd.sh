@@ -17,7 +17,8 @@
 # scripts/station-ops/bypass-flag-tiers.tsv gives each a tier: grant, decision (needs decision=), floor (never granted;
 # launch it from your own shell) or none (not a switch). Both are read once at start from HEAD of this checkout with the
 # inherited git location variables unset; the daemon refuses to start (exit 2) when this script, the tier file or the
-# registry has uncommitted changes, so a new flag needs a commit, an update and a restart.
+# registry has uncommitted changes, so a new flag needs a commit, an update and a restart. Every git call in it ignores
+# refs/replace and a configured fsmonitor, so neither can change what is read or run.
 # A launch clears every name the registry or the tier file holds and every inherited *_OK or *_BYPASS* name, then sets only
 # the granted flags. The ask names each granted flag with its registry text.
 # The operator id is allowFrom[0] of the bridge access.json (TELEGRAM_ACCESS_PATH); the inbound journal is
@@ -54,14 +55,15 @@ LOG="$Q/daemon.log" # t13b-ok: the queue log file name the bucket and chief docs
 
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
 SELF_REL=scripts/station-ops/bypass-launchd.sh TIER_REL=scripts/station-ops/bypass-flag-tiers.tsv REG_REL=scripts/himmelctl/lib/bypass-flags.json
+gitd() { git --no-replace-objects -c core.fsmonitor=false -C "$REPO" "$@"; }
 for p in "$SELF_REL" "$TIER_REL" "$REG_REL"; do
-    git -C "$REPO" diff --quiet HEAD -- "$p" || die "$p has uncommitted changes in $REPO: commit or restore it, then start again"
+    gitd diff --quiet --no-ext-diff --no-textconv HEAD -- "$p" || die "$p has uncommitted changes in $REPO: commit or restore it, then start again"
 done
-HEAD_SHA=$(git -C "$REPO" rev-parse HEAD 2>/dev/null) || die "cannot read HEAD of $REPO"
-REG_JSON=$(git -C "$REPO" show "$HEAD_SHA:$REG_REL" 2>/dev/null) || die "cannot read $REG_REL at HEAD"
+HEAD_SHA=$(gitd rev-parse HEAD 2>/dev/null) || die "cannot read HEAD of $REPO"
+REG_JSON=$(gitd show "$HEAD_SHA:$REG_REL" 2>/dev/null) || die "cannot read $REG_REL at HEAD"
 REG_NAMES=$(jq -r '.flags[].name' <<<"$REG_JSON" 2>/dev/null)
 [ -n "$REG_NAMES" ] || die "cannot read $REG_REL at HEAD: no flags"
-TIER_ROWS=$(git -C "$REPO" show "$HEAD_SHA:$TIER_REL" 2>/dev/null | grep -v -e '^#' -e '^$')
+TIER_ROWS=$(gitd show "$HEAD_SHA:$TIER_REL" 2>/dev/null | grep -v -e '^#' -e '^$')
 [ -n "$TIER_ROWS" ] || die "cannot read $TIER_REL at HEAD: no rows"
 while IFS=$'\t' read -r n t s _; do
     [[ "$n" =~ ^[A-Z][A-Z0-9_]*$ && "$t" =~ ^(grant|decision|floor|none)$ && -n "$s" ]] || die "cannot read $TIER_REL at HEAD: bad row for '$n'"
@@ -83,7 +85,7 @@ live() { [ ! -e "$Q/stop" ] && [ "$(date +%s)" -lt "$EXPIRES" ]; }
 
 exec 9>"$Q/.lock"
 flock -n 9 || { echo "bypass-launchd: already running"; exit 1; } # prim-ok: the lock is held on fd 9 for the whole run; Linux-only
-log "start pid=$$ until=$until head=${HEAD_SHA:0:12} registry=$(git -C "$REPO" rev-parse "$HEAD_SHA:$REG_REL" | cut -c1-12) tiers=$(git -C "$REPO" rev-parse "$HEAD_SHA:$TIER_REL" | cut -c1-12) grantable=$grantable"
+log "start pid=$$ until=$until head=${HEAD_SHA:0:12} registry=$(gitd rev-parse "$HEAD_SHA:$REG_REL" | cut -c1-12) tiers=$(gitd rev-parse "$HEAD_SHA:$TIER_REL" | cut -c1-12) grantable=$grantable"
 
 while :; do
     [ -e "$Q/stop" ] && { log "stop file"; exit 0; }
