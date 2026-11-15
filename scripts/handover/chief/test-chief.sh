@@ -3962,6 +3962,7 @@ HANDOVER_DIR="$root" bash "$QL" release "$root/tester/p97none/DEMO-nextleg-${tod
 # hold or a ticket to file; next refuses while a ticket row has no key after one shift; the HANDOFF
 # lists every open row. owe.sh writes the fixture rows; OWE_NOW_EPOCH sets a row's age.
 owe="$fixture_repo/scripts/handover/chief-kit/owe.sh"
+export OWED_SHIFT_SECS=21600  # the default cases must not inherit an operator's override
 ow_add() { OWE_NOW_EPOCH="$(( $(date +%s) - $2 ))" bash "$owe" add --bucket "$root/tester/$1" --chief ZZ --kind "$3" --text "$4" >/dev/null; }
 ow_handoff() { printf '%s' "$root/tester/$1/DEMO-nextleg-${today}B-chief-HANDOFF.md"; }
 ow_plain1=' || (XA 02:1xZ; MERGED 5001) 5051 echo foxtrot'

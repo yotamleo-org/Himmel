@@ -2544,6 +2544,7 @@ uw_skip="$(uw_chains)"
 rm -rf "$W/uw-tmp" "$W/uw-mirror" "$W/uw-dir"
 
 # (10006) owed=<n>:<oldest-age> from the owed ledger beside --doc, and ACTION owed-stale= for a keyless ticket row past 4 hours
+export OWED_STALE_SECS=14400  # the default cases must not inherit an operator's override
 ow_m="$W/ow-mirror/HIMMEL"; mkdir -p "$ow_m" "$W/ow-tmp" "$W/ow-dir"
 ow_doc="$W/ow-dir/ow-chief.md"
 printf '%s\n' '# OW — CHIEF' '' '## Live state' '' '## Results' > "$ow_doc"

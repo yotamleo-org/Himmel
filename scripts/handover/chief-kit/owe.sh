@@ -53,10 +53,9 @@ NOW="${OWE_NOW_EPOCH:-}"
 case "$NOW" in ''|*[!0-9]*) NOW="$(date +%s)" ;; esac
 
 # Hold the ledger's own lock (flock on the file, no lock file of its own) from the id read to the
-# append, so two writers never take the same id. A host without flock writes unlocked.
+# append, so two writers never take the same id. A host without flock stops here, never writes unlocked.
 lock_ledger() {
     exec 9>>"$F" || exit 4
-    command -v flock >/dev/null 2>&1 || return 0
     flock 9 || exit 4  # prim-ok: the chief kit is Linux-only, and with_lock would leave a lock file in the state bucket
 }
 
@@ -66,12 +65,12 @@ ledger_ok() { [ ! -s "$F" ] || jq -e -s 'all(.[]; type == "object" and (.op == "
 case "$CMD" in
     add)
         [ -n "$CHIEF" ] || { echo "owe: add needs --chief" >&2; exit 2; }
-        case "$CHIEF" in *$'\t'*|*$'\n'*) echo "owe: --chief must not hold a tab or newline" >&2; exit 2 ;; esac
+        case "$CHIEF" in *$'\t'*|*$'\n'*|*$'\037'*) echo "owe: --chief must not hold a tab, newline or unit separator" >&2; exit 2 ;; esac
         case "$KIND" in ticket|proof|ruling) ;; *) echo "owe: --kind must be ticket, proof or ruling" >&2; exit 2 ;; esac
         [ "$HAVE_TEXT" -eq 1 ] && [ -n "$TEXT" ] || { echo "owe: add needs a non-empty --text" >&2; exit 2; }
-        case "$TEXT" in *$'\n'*) echo "owe: --text must be one line" >&2; exit 2 ;; esac
+        case "$TEXT" in *$'\n'*|*$'\037'*) echo "owe: --text must be one line with no unit separator" >&2; exit 2 ;; esac
         if [ "$HAVE_KEY" -eq 1 ]; then
-            case "$KEY" in ''|*[[:space:]]*) echo "owe: --key must be one word" >&2; exit 2 ;; esac
+            case "$KEY" in ''|*[[:space:]]*|*$'\037'*) echo "owe: --key must be one word" >&2; exit 2 ;; esac
         fi
         lock_ledger
         ledger_ok || { echo "owe: $F is unreadable" >&2; exit 4; }
@@ -84,7 +83,7 @@ case "$CMD" in
         ;;
     close)
         [ -n "$ID" ] || usage
-        case "$KEY" in ''|*[[:space:]]*) echo "owe: close needs --key (a ticket key, sha or decision id), one word" >&2; exit 2 ;; esac
+        case "$KEY" in ''|*[[:space:]]*|*$'\037'*) echo "owe: close needs --key (a ticket key, sha or decision id), one word" >&2; exit 2 ;; esac
         [ ! -e "$F" ] || lock_ledger
         ledger_ok || { echo "owe: $F is unreadable" >&2; exit 4; }
         [ -s "$F" ] || { echo "owe: no open row '$ID'" >&2; exit 1; }

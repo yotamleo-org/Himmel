@@ -87,6 +87,19 @@ check "a tab in --chief exits 2" "$rc" "2"
 bash "$OWE" add --bucket "$B" --chief $'Z\nX' --kind ticket --text x >/dev/null 2>&1; rc=$?
 check "a newline in --chief exits 2" "$rc" "2"
 
+# the unit separator is the delimiter chief.sh parses the rows with
+bash "$OWE" add --bucket "$B" --chief $'Z\037X' --kind ticket --text x >/dev/null 2>&1; rc=$?
+check "a unit separator in --chief exits 2" "$rc" "2"
+bash "$OWE" add --bucket "$B" --chief Z --kind ticket --text $'a\037b' >/dev/null 2>&1; rc=$?
+check "a unit separator in --text exits 2" "$rc" "2"
+
+# no flock: the add stops, it never writes unlocked
+NF="$WORK/noflock-bin"; mkdir -p "$NF"; ln -s "$(command -v jq)" "$NF/jq"; ln -s "$(command -v date)" "$NF/date"
+NB="$WORK/noflock"; mkdir -p "$NB"
+PATH="$NF" "$(command -v bash)" "$OWE" add --bucket "$NB" --chief Z --kind ticket --text x >/dev/null 2>&1; rc=$?
+check "an add on a host with no flock exits 4" "$rc" "4"
+check "and writes no row" "$(wc -l < "$NB/owed.jsonl" | tr -d ' ')" "0"
+
 # concurrent adds each get their own id, so every one can be closed
 C="$WORK/concurrent"; mkdir -p "$C"
 for _n in 1 2 3 4 5 6 7 8; do bash "$OWE" add --bucket "$C" --chief Z --kind ticket --text "row $_n" >/dev/null & done
