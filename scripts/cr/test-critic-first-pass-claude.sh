@@ -65,7 +65,8 @@ cat > "$LAUNCH" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$@" > "$REC/argv"
 pwd > "$REC/cwd"
-printf '%s\n' "HIMMEL_API_TOOLS=${HIMMEL_API_TOOLS:-}" "HIMMEL_API_KIND=${HIMMEL_API_KIND:-}" \
+cat > "$REC/stdin"
+printf '%s\n' "HIMMEL_API_TOOLS_SET=${HIMMEL_API_TOOLS+yes}" "HIMMEL_API_TOOLS=${HIMMEL_API_TOOLS:-}" "HIMMEL_API_KIND=${HIMMEL_API_KIND:-}" \
     "HIMMEL_API_BRANCH=${HIMMEL_API_BRANCH:-}" "HIMMEL_API_HEAD=${HIMMEL_API_HEAD:-}" "HIMMEL_API_PR=${HIMMEL_API_PR:-}" > "$REC/env"
 if [ -n "${FAKE_REFUSE:-}" ]; then echo "claude-api: refused: $FAKE_REFUSE" >&2; exit "${FAKE_REFUSE_RC:-2}"; fi
 [ -z "${FAKE_FAIL:-}" ] || { echo "boom" >&2; exit 1; }
@@ -115,7 +116,11 @@ has "1 effort medium by default" "medium" "$REC/argv"
 has "1 explicit dontAsk permission mode" "dontAsk" "$REC/argv"
 has "1 json output" "json" "$REC/argv"
 hasnt "1 never bypassPermissions" "bypassPermissions" "$REC/argv"
-has "1 read-only tool grant" "HIMMEL_API_TOOLS=Read,Glob,Grep" "$REC/env"
+has "1 the tool variable is set, to nothing" "HIMMEL_API_TOOLS_SET=yes" "$REC/env"
+hasnt "1 no tool named in the launcher env" "HIMMEL_API_TOOLS=.+" "$REC/env"
+has "1 the prompt reaches the launcher on stdin" "<diff>" "$REC/stdin"
+has "1 the prompt on stdin opens with the critic marker" "[critic-first-pass]" "$REC/stdin"
+hasnt "1 the argv never tells the critic to read a file" "review-prompt" "$REC/argv"
 has "1 cost logged from the usage block" "cost_usd=0.1234" "$W/err"
 fresh_rec 1k
 CR_TARGET_BRANCH=feat/keyed CR_TARGET_HEAD=abc1234 CR_TARGET_PR=4242 run_cfp claude-api
@@ -150,7 +155,7 @@ has "4 finding present" "- [claude-1]: off-by-one in loop bound [foo.sh:3]" "$W/
 has "4 -p print mode" "-p" "$REC/argv"
 has "4 json output" "json" "$REC/argv"
 has "4 dontAsk" "dontAsk" "$REC/argv"
-has "4 read-only allowedTools" "Read,Glob,Grep" "$REC/argv"
+hasnt "4 no allowedTools grant" "allowedTools|Read,Glob,Grep" "$REC/argv"
 has "4 model" "claude-opus-5-5" "$REC/argv"
 hasnt "4 never bypassPermissions" "bypassPermissions" "$REC/argv"
 case "$(cat "$REC/cwd" 2>/dev/null)" in "$REPO"|"$REPO"/*) bad "4 cwd must not be the repo" ;; *) ok "4 cwd is a scratch dir outside the repo" ;; esac
@@ -211,7 +216,7 @@ has "9 launcher saw the call" "dontAsk" "$REC/argv"
 fresh_rec 10; bank 10
 run_cfp subscription
 check "9 provider 'subscription' routes to the native claude" 0 "$RC"
-has "9 claude saw the call" "Read,Glob,Grep" "$REC/argv"
+has "9 claude saw the call" "dontAsk" "$REC/argv"
 
 _test_native_auth_skip
 
@@ -325,28 +330,54 @@ reach_shape() {
     case "$cwd/" in "$REPO"/*) echo "cwd '$cwd' is inside the repo"; return;; esac
     case "$argv" in *--add-dir*) echo "--add-dir in argv"; return;; esac
     if [ "$3" = sub ]; then
-        grant="$(printf '%s\n' "$argv" | awk 'p { print; exit } $0 == "--allowedTools" { p = 1 }')"
+        case "$argv" in *--allowedTools*) echo "--allowedTools in argv"; return;; esac
+        grant="$(printf '%s\n' "$argv" | awk 'f { print "[" $0 "]"; exit } $0 == "--tools" { f = 1 }')"
+        [ "$grant" = "[]" ] || { echo "--tools value '$grant'"; return; }
     else
+        [ "$(sed -n 's/^HIMMEL_API_TOOLS_SET=//p' "$2/env")" = yes ] || { echo "HIMMEL_API_TOOLS not set"; return; }
         grant="$(sed -n 's/^HIMMEL_API_TOOLS=//p' "$2/env")"
+        [ -z "$grant" ] || { echo "grant '$grant'"; return; }
     fi
-    [ "$grant" = "Read,Glob,Grep" ] || { echo "grant '$grant'"; return; }
     echo ok
 }
+# the critic is offered no tool: no grant, a cwd that is a scratch dir, nothing widening the reach, the prompt on stdin
 fresh_rec 12a; unset FAKE_REFUSE FAKE_FAIL; run_cfp claude-api
-check "12a api route: scratch cwd, no --add-dir, grant exactly Read,Glob,Grep" ok "$(reach_shape 12a "$REC" api)"
+check "12a api route: scratch cwd, no --add-dir, HIMMEL_API_TOOLS set and empty" ok "$(reach_shape 12a "$REC" api)"
+has "12a api route: the critic still returns its findings" "- [claude-1]: off-by-one in loop bound [foo.sh:3]" "$W/out"
+has "12a api route: the prompt rides on stdin" "<diff>" "$REC/stdin"
 fresh_rec 12b; bank 10; run_cfp claude-subscription
-check "12b subscription route: scratch cwd, no --add-dir, grant exactly Read,Glob,Grep" ok "$(reach_shape 12b "$REC" sub)"
+check "12b subscription route: scratch cwd, no --add-dir, no --allowedTools, --tools empty" ok "$(reach_shape 12b "$REC" sub)"
+has "12b subscription route: the critic still returns its findings" "- [claude-1]: off-by-one in loop bound [foo.sh:3]" "$W/out"
+has "12b subscription route: the prompt rides on stdin" "<diff>" "$REC/stdin"
+mutate() { # mutate <row> <sed expr>: the copied script with one edit; a no-op edit is a vacuous control
+    sed "$2" "$TREE/scripts/cr/critic-first-pass.sh" > "$W/mutant.sh"
+    if cmp -s "$W/mutant.sh" "$TREE/scripts/cr/critic-first-pass.sh"; then bad "$1: the mutant is a no-op (vacuous control)"; else ok "$1: the mutant differs from the script"; fi
+    cp "$W/mutant.sh" "$TREE/scripts/cr/critic-first-pass.sh"
+}
 fresh_rec 12c; bank 10; mk_tree 12c
-sed 's|--allowedTools Read,Glob,Grep|--add-dir / --allowedTools Read,Glob,Grep|' "$TREE/scripts/cr/critic-first-pass.sh" > "$W/mutant.sh" && cp "$W/mutant.sh" "$TREE/scripts/cr/critic-first-pass.sh"
+mutate 12c 's|--tools ""|--add-dir / --tools ""|'
 run_cfp claude-subscription
 check "12c control: a call that widens the reach with --add-dir is told apart" "--add-dir in argv" "$(reach_shape 12c "$REC" sub)"
 unset CFP_RUN
 fresh_rec 12d; bank 10; mk_tree 12d
-sed 's|--allowedTools Read,Glob,Grep|--allowedTools Read,Glob,Grep,Bash|' "$TREE/scripts/cr/critic-first-pass.sh" > "$W/mutant.sh" && cp "$W/mutant.sh" "$TREE/scripts/cr/critic-first-pass.sh"
+mutate 12d 's|--tools ""|--tools "" --allowedTools Read,Glob,Grep|'
 run_cfp claude-subscription
-check "12d control: a wider tool grant is told apart" "grant 'Read,Glob,Grep,Bash'" "$(reach_shape 12d "$REC" sub)"
+check "12d mutant: restoring the Read,Glob,Grep grant on the subscription route fails 12b" "--allowedTools in argv" "$(reach_shape 12d "$REC" sub)"
 unset CFP_RUN
-ok "12e NOT-VERIFIED: the claude binary's refusal of an absolute Read outside the scratch cwd under dontAsk (a recorder cannot see it)"
+fresh_rec 12f; unset FAKE_REFUSE FAKE_FAIL; mk_tree 12f
+mutate 12f "s|HIMMEL_API_TOOLS='' |HIMMEL_API_TOOLS=Read,Glob,Grep |"
+run_cfp claude-api
+check "12f mutant: restoring the Read,Glob,Grep grant on the API route fails 12a" "grant 'Read,Glob,Grep'" "$(reach_shape 12f "$REC" api)"
+unset CFP_RUN
+fresh_rec 12g; unset FAKE_REFUSE FAKE_FAIL; mk_tree 12g
+mutate 12g "s|HIMMEL_API_TOOLS='' ||"
+run_cfp claude-api
+check "12g mutant: an unset HIMMEL_API_TOOLS on the API route (an inherited grant could ride in) fails 12a" "HIMMEL_API_TOOLS not set" "$(reach_shape 12g "$REC" api)"
+unset CFP_RUN
+# 12e: no read tool is offered on either route: no tool name anywhere in the recorded argv, and the API tool variable is empty
+hasnt "12e api route: no tool name in the recorded argv" "Read|Glob|Grep|Edit|Write|Bash|WebFetch|WebSearch" "$W/rec.12a/argv"
+hasnt "12e subscription route: no tool name in the recorded argv" "Read|Glob|Grep|Edit|Write|Bash|WebFetch|WebSearch" "$W/rec.12b/argv"
+ok "12e NOT-VERIFIED: the claude binary's own refusal of a tool call under --tools empty (a recorder sees what is offered, not what the binary does)"
 
 echo "pass=$PASS fail=$FAIL"
 [ "$FAIL" -eq 0 ]

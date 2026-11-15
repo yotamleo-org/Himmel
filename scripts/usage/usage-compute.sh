@@ -516,7 +516,7 @@ build_window() {
     fp=""
     if [ -z "$st" ] || [ "$(jq -r '.fp // ""' "$st")" = "" ]; then
       fp="$(grep -a -m1 '"type":"user"' "$f" | jq -r 'select(.type == "user") | (.message.content | if type == "string" then . else ([.[]? | select(.type == "text") | .text] | first // "") end) as $t
-        | if ($t | startswith("Read ./review-prompt.md")) then "critic" elif ($t | startswith("You are the release manager")) then "release-mgr" else "none" end' 2>/dev/null || true)"
+        | if ($t | startswith("[critic-first-pass]") or startswith("Read ./review-prompt.md")) then "critic" elif ($t | startswith("You are the release manager")) then "release-mgr" else "none" end' 2>/dev/null || true)"
     fi
     jq -nc --arg s "$stem" --arg p "$par" --arg a "$atype" --arg fp "$fp" '{session: $s, parent: (if $p == "" then null else $p end), agent_type: $a, fp: $fp}' > "$WORK/meta.json"
     AD=(--chunk "$WORK/chunk" --start-offset "$off" --end-offset "$((off + consumed))" --meta "$WORK/meta.json")
