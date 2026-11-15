@@ -60,13 +60,34 @@ test("4. show only problems hides healthy rows; header counts read n of N", asyn
 test("5. searching C45 opens Search & graph with the hit row; clearing restores the default", async ({ page }) => {
   await open(page);
   await page.locator("#q").fill("C45");
-  expect(await titles(page, "inventory")).toEqual(["Search & graph"]);
+  await expect.poll(() => titles(page, "inventory")).toEqual(["Search & graph"]);
   await expect(head(page, "Search & graph")).toHaveAttribute("aria-expanded", "true");
   await expect(page.locator("#inventory .row-head", { hasText: "doctor:C45-e2e-hit" })).toBeVisible();
   await page.locator("#q").fill("");
-  expect(await titles(page, "inventory")).toEqual(ALL);
+  await expect.poll(() => titles(page, "inventory")).toEqual(ALL);
   await expect(head(page, "Search & graph")).toHaveAttribute("aria-expanded", "false");
   await expect(head(page, "Guards & safety")).toHaveAttribute("aria-expanded", "true");
+});
+
+test("5b. a slow redraw after typing or clearing the search still ends on the right sections", async ({ page }) => {
+  await open(page);
+  await page.evaluate(() => {
+    let replay = false;
+    document.addEventListener("input", (e) => {
+      const t = e.target as HTMLInputElement;
+      if (replay || t.id !== "q") return;
+      e.stopImmediatePropagation();
+      const v = t.value;
+      setTimeout(() => { // a repaint may have replaced the input meanwhile: replay on the live one
+        const q = document.getElementById("q") as HTMLInputElement;
+        q.value = v; replay = true; q.dispatchEvent(new Event("input", { bubbles: true })); replay = false;
+      }, 400);
+    }, true);
+  });
+  await page.locator("#q").fill("C45");
+  await expect.poll(() => titles(page, "inventory")).toEqual(["Search & graph"]);
+  await page.locator("#q").fill("");
+  await expect.poll(() => titles(page, "inventory")).toEqual(ALL);
 });
 
 test("6. Tab to a header; Enter or Space toggles it; focus stays on that header", async ({ page }) => {

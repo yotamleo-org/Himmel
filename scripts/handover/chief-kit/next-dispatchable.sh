@@ -58,10 +58,11 @@
 # merge order: a clear remainder supersedes every older PR that records none; a PR newer than it that records none still asks.
 # A newer hand-off or owed PR also supersedes an older `remaining` PR.
 #
-# Scope: a ticket waits only on the files its next step writes. That is the latest `Remaining:` text when it names a path or says
-# it writes nothing (no code, no repo write, chief-run, state repo), else a `Writes:` or `Files:` line of the description, else the
-# description's paths, comments left out. A path a text only runs (`run`, `bash <path>`) holds nothing, unless a line naming it
-# edits it or reports it broken. A ticket with no path and no such statement prints `NEEDS-CHIEF-NOTE <KEY>: no readable scope` and
+# Scope: a ticket waits only on the files its next step writes. That is the latest `Remaining:` text when it names a write path or
+# the reader (`--units`) answers that it writes nothing: every slice of each `Remaining:` line (cut at a `, S<n>` or `; S<n>` label
+# outside parentheses), every deferred line kept on the ticket and every malformed owed line says so (no code, no repo write,
+# chief-run, state repo). Else a `Writes:` or `Files:` line of the description, else the description's paths, comments left out.
+# A path a text only runs (`run`, `bash <path>`) holds nothing, unless a line naming it edits it or reports it broken. A ticket with no path and no such statement prints `NEEDS-CHIEF-NOTE <KEY>: no readable scope` and
 # is not listed; those rows stop at --top, best ranked first, and --why prints them all. --why also prints `# scope <KEY> <source>: <paths> reads=<paths>`
 # and `(from <source>)` on an `# overlap` line. A ticket whose next step is stated to write nothing (a `Writes:` line with no path and
 # that statement, or a remainder with no path and that statement) lists with files=- and a trailing `proof` field, and --why adds ` nowrite` after its source.
@@ -162,9 +163,11 @@
 # NEXT_DISPATCH_CLASSIFY_CMD (replaces cloud-route.mjs; called with the keys),
 # NEXT_DISPATCH_JIRA_CMD (replaces the jira CLI for the live blocker read; called `get KEY`),
 # NEXT_DISPATCH_EXCLUDE_LABELS (comma list, replaces the default),
-# NEXT_DISPATCH_READER (replaces scripts/lib/pr_remainder.py, run as `python3 -I <file> <KEY>`).
+# NEXT_DISPATCH_READER (replaces scripts/lib/pr_remainder.py, run as `python3 -I <file> --units <KEY>`; NO_WRITE_RE and the
+# supersede rule are always loaded from the real scripts/lib/pr_remainder.py).
 #
-# Exit: 0 printed (possibly nothing); 2 usage; 3 the mirror directory is missing or unreadable.
+# Exit: 0 printed (possibly nothing); 2 usage; 3 the mirror directory is missing or unreadable, or scripts/lib/pr_remainder.py
+# cannot be loaded.
 # PLATFORM GUARD: the chief kit is Linux-only.
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -342,7 +345,14 @@ RUN_BEFORE_RE = re.compile(r"(?<![\w/.-])(?:(?:re-?)?run(?:s|ning)?(?:\s+(?:bash
 WRITTEN_RE = re.compile(r'(?<![\w/.-])(?:edit|fix|change|modify|modifies|patch|add|extend|write|rewrite|remove|delete|rename|update|replace|refactor|touch|teach|wire|move|port|implement)(?:e?s|ing|ed)?(?![\w/-])'
                         r'|(?<![\w/.-])(?:fail|crash|error|bug|regress|refus|deni|hang|stall)\w*|(?<![\w/.-])(?:wrong|broken)(?![\w/-])', re.I)
 # ponytail: prose can say `no code` of something else, only ever read on a text naming no path; upgrade path = a ticket field
-NO_WRITE_RE = re.compile(r'(?<![\w-])no (?:code(?! path)|repo(?:sitory)? (?:write|change|edit)s?)\b|(?<![\w-])chief-run\b|\bstate repo\b', re.I)
+try:
+    import importlib.util
+    _spec = importlib.util.spec_from_file_location('pr_remainder', os.path.join(repo, 'scripts', 'lib', 'pr_remainder.py'))
+    _reader = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_reader)
+    NO_WRITE_RE, live_answers = _reader.NO_WRITE_RE, _reader.live_answers
+except Exception as e:
+    print('# next-dispatchable: pr_remainder.py unreadable (%s)' % e, file=sys.stderr); sys.exit(3)
 
 def split_reads(text):
     # (paths it writes, paths it only runs)
@@ -1187,8 +1197,8 @@ except (OSError, subprocess.SubprocessError):
 
 # The remainder of a merged partial PR's body, read by the ONE reader every partial-merge site shares
 # (scripts/lib/pr_remainder.py): a `Remaining:` line, or the `deferred -> <KEY>` lines under `## Ticket coverage`.
-# Returns (kind, handed_keys, text), kind none | remaining | handed-off | owed (for owed the middle field is [who, date]). A body gh cannot read, or a reader that fails, is
-# recorded in unread_prs and returns kind none, so the ticket is never dispatched blind.
+# A body gh cannot read, or a reader that fails or answers without the two --units fields, is recorded in unread_prs and
+# returns kind none, so the ticket is never dispatched blind.
 remainder_cache = {}
 unread_prs = set()
 reader = os.environ.get('NEXT_DISPATCH_READER') or os.path.join(repo, 'scripts', 'lib', 'pr_remainder.py')  # NEXT_DISPATCH_READER: the test seam for the reader
@@ -1218,9 +1228,10 @@ def cached_remainder(pr, key):
     e = body_cache_load().get('%s:%s' % (pr, key))
     try:
         age = time.time() - float(e['at'])
-        kind, handed, text = e['ans']
-        if 0 <= age < body_ttl and kind in ('remaining', 'handed-off', 'owed') and isinstance(handed, list) and isinstance(text, str):
-            return (kind, [str(h) for h in handed], text)
+        kind, handed, text, nowrite, chief_owed = e['ans']
+        if 0 <= age < body_ttl and kind in ('remaining', 'handed-off', 'owed') and isinstance(handed, list) and isinstance(text, str) \
+                and isinstance(nowrite, bool) and isinstance(chief_owed, list):
+            return dict(kind=kind, handed=[str(h) for h in handed], text=text, nowrite=nowrite, chief_owed=[str(t) for t in chief_owed])
     except (KeyError, TypeError, ValueError):
         pass  # swallow-ok: an entry that cannot be read is no entry
     return None
@@ -1232,7 +1243,7 @@ def store_remainder(pr, key, ans):
         d = body_cache_load()
         now = time.time()
         d = {k: v for k, v in d.items() if isinstance(v, dict) and isinstance(v.get('at'), (int, float)) and 0 <= now - v['at'] < body_ttl}
-        d['%s:%s' % (pr, key)] = {'at': now, 'ans': [ans[0], list(ans[1]), ans[2]]}
+        d['%s:%s' % (pr, key)] = {'at': now, 'ans': [ans['kind'], list(ans['handed']), ans['text'], ans['nowrite'], list(ans['chief_owed'])]}
         os.makedirs(os.path.dirname(body_cache_path), exist_ok=True)
         tmp = '%s.%d' % (body_cache_path, os.getpid())
         with open(tmp, 'w', encoding='utf-8') as f:
@@ -1243,23 +1254,27 @@ def store_remainder(pr, key, ans):
 
 def remainder_of(pr, key):
     if (pr, key) not in remainder_cache:
-        ans = ('none', [], '')
+        ans = dict(kind='none', handed=[], text='', nowrite=False, chief_owed=[])
         hit = cached_remainder(pr, key)
         if hit is not None:
             remainder_cache[(pr, key)] = hit
             return hit
         try:
             body = ghrun([gh, 'pr', 'view', pr, '--repo', gh_repo, '--json', 'body', '--jq', '.body'], capture_output=True, timeout=gh_t(60), check=True).stdout.decode('utf-8', 'replace')
-            out = subprocess.run([sys.executable, '-I', reader, key], input=body.encode('utf-8'), capture_output=True, timeout=60, check=True).stdout.decode('utf-8', 'replace').rstrip('\n').split('\t')
-            if out[0] == 'remaining' and len(out) == 2:
-                ans = ('remaining', [], out[1])
-            elif out[0] == 'handed-off' and len(out) == 3:
-                ans = ('handed-off', out[1].split(', '), out[2])
-            elif out[0] == 'owed' and len(out) == 4:
-                ans = ('owed', [out[1], out[2]], out[3])
-            elif out[0] != 'none':
+            out = subprocess.run([sys.executable, '-I', reader, '--units', key], input=body.encode('utf-8'), capture_output=True, timeout=60, check=True).stdout.decode('utf-8', 'replace').rstrip('\n').split('\t')
+            out, nowrite, chief_owed = out[:-2], out[-2:-1], out[-1:]
+            if nowrite not in (['nowrite=0'], ['nowrite=1']) or not chief_owed or not chief_owed[0].startswith('chief-owed='):
                 raise subprocess.SubprocessError('unrecognised reader answer')
-            if ans[0] != 'none':
+            units = dict(nowrite=nowrite == ['nowrite=1'], chief_owed=[t for t in chief_owed[0][len('chief-owed='):].split('¦') if t])
+            if out[:1] == ['remaining'] and len(out) == 2:
+                ans = dict(kind='remaining', handed=[], text=out[1], **units)
+            elif out[:1] == ['handed-off'] and len(out) == 3:
+                ans = dict(kind='handed-off', handed=out[1].split(', '), text=out[2], **units)
+            elif out[:1] == ['owed'] and len(out) == 4:
+                ans = dict(kind='owed', handed=[out[1], out[2]], text=out[3], **units)
+            elif out != ['none']:
+                raise subprocess.SubprocessError('unrecognised reader answer')
+            if ans['kind'] != 'none':
                 store_remainder(pr, key, ans)
         except (OSError, subprocess.SubprocessError):
             unread_prs.add(pr)
@@ -1277,21 +1292,15 @@ def resume_eligible(i):
         return False
     return not (pool_only and (platform_dropped(i) or residual_out(i)))
 
-# A partly merged ticket's next step. PRs are in merge order: a clear remainder supersedes every older
-# PR that records none, and a PR newer than it that records none is still a question. The latest `remaining` is the scope when
-# it names a path or says it writes nothing; a remainder saying neither leaves the description's scope, so it frees nothing.
 for i in issues.values() if not pr_unknown else ():
     if partial_resume(i['key']) and i['key'] not in worker_keys and i['key'] not in pr_keys and resume_eligible(i):
-        parts = [(pr, remainder_of(pr, i['key'])) for pr in partials[i['key']]]
-        clear = max((n for n, (_, ans) in enumerate(parts) if ans[0] != 'none'), default=-1)
-        handed = clear >= 0 and parts[clear][1][0] in ('handed-off', 'owed')  # a newer hand-off or owed step also supersedes an older remainder
-        i['parts'] = [p for n, p in enumerate(parts) if n >= clear or (p[1][0] != 'none' and not (handed and p[1][0] == 'remaining'))]
-        latest = [(pr, ans[2]) for pr, ans in i['parts'] if ans[0] == 'remaining'][-1:]
+        i['parts'] = live_answers([dict(remainder_of(pr, i['key']), pr=pr) for pr in partials[i['key']]])
+        latest = [p for p in i['parts'] if p['kind'] == 'remaining'][-1:]
         if latest:
-            files, reads = split_reads(latest[0][1])
-            if files or reads or NO_WRITE_RE.search(latest[0][1]):
-                i.update(files=files, reads=reads, src='remainder of PR #%s' % latest[0][0], no_scope=False,
-                         nowrite=not files and bool(NO_WRITE_RE.search(latest[0][1])))
+            files, reads = split_reads(latest[0]['text'])
+            nowrite = not files and latest[0]['nowrite']
+            if files or nowrite:
+                i.update(files=files, reads=reads, src='remainder of PR #%s' % latest[0]['pr'], no_scope=False, nowrite=nowrite)
 
 holds_py = os.environ['ND_HOLDS']
 for label, doc, lines, wkeys in live_workers:
@@ -1440,17 +1449,17 @@ for i in issues.values():
     if any(blocker_state(b) for b in i['blocked_by']):
         continue
     parts = i.get('parts', [])
-    i['partial'] = [(pr, ans[2]) for pr, ans in parts]
-    if any(ans[0] == 'none' for _, ans in parts):  # a merged slice whose PR body names no remaining work: not dispatched blind
-        needs_note.append((i['key'], [pr for pr, ans in parts if ans[0] == 'none']))
+    i['partial'] = [(p['pr'], p['text']) for p in parts]
+    if any(p['kind'] == 'none' for p in parts):  # a merged slice whose PR body names no remaining work: not dispatched blind
+        needs_note.append((i['key'], [p['pr'] for p in parts if p['kind'] == 'none']))
         continue
-    owed_parts = [(pr, ans) for pr, ans in parts if ans[0] == 'owed']
-    if owed_parts and not any(ans[0] == 'remaining' for _, ans in parts):  # a dated step is owed to the chief or operator and nothing else stays on the ticket: nothing to dispatch (the owed PR with the earliest due date is named)
-        first_due = min(owed_parts, key=lambda p: p[1][1][1])  # the earliest due date; min keeps the older PR on a tie
-        owed_rows.append((i['key'], first_due[0], first_due[1][1][0], first_due[1][1][1]))
+    owed_parts = [p for p in parts if p['kind'] == 'owed']
+    if owed_parts and not any(p['kind'] == 'remaining' for p in parts):  # a dated step is owed to the chief or operator and nothing else stays on the ticket: nothing to dispatch (the owed PR with the earliest due date is named)
+        first_due = min(owed_parts, key=lambda p: p['handed'][1])  # the earliest due date; min keeps the older PR on a tie
+        owed_rows.append((i['key'], first_due['pr'], first_due['handed'][0], first_due['handed'][1]))
         continue
-    if parts and all(ans[0] == 'handed-off' for _, ans in parts):  # nothing left on this ticket: the chief closes it or keeps it as an umbrella
-        handed_off.append((i['key'], [k for _, ans in parts for k in ans[1]]))
+    if parts and all(p['kind'] == 'handed-off' for p in parts):  # nothing left on this ticket: the chief closes it or keeps it as an umbrella
+        handed_off.append((i['key'], [k for p in parts for k in p['handed']]))
         continue
     if i['no_scope'] and i['key'] not in briefs and not resume_only:  # a wrapped worker's brief carries its own Writes line; --resume-only counts orphans, dispatching nothing
         scope_questions.append(i['key'])
