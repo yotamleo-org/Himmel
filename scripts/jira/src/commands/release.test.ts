@@ -284,7 +284,7 @@ describe('jira release rm-run', () => {
     });
   });
 
-  const EXIT_PLAN_REPLY ='<function_calls>\n<invoke name="ExitPlanMode">\n<parameter name="plan">The rulings JSON array was already delivered.</parameter>\n</invoke>\n</function_calls>';
+  const EXIT_PLAN_REPLY = '<function_calls>\n<invoke name="ExitPlanMode">\n<parameter name="plan">The rulings JSON array was already delivered.</parameter>\n</invoke>\n</function_calls>';
 
   it('a reply that is an ExitPlanMode block rules nothing, returns the claim to open and names its shape', async () => {
     await oneRequest();
