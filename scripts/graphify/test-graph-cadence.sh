@@ -1428,7 +1428,7 @@ chmod 755 "$H5/.bun/bin/bun"
 mkdir -p "$H5/fixbin"; ln -sf "$(command -v jq)" "$H5/fixbin/jq"
 # "$BASH", not /usr/bin/bash: macOS keeps its bash at /bin/bash.
 env -i HOME="$H5" PATH="$H5/fixbin:/usr/bin:/bin" "$BASH" "$SCRIPT_DIR/../luna/cadence-alert.sh" fail graph-bunpath "the semantic update failed" "/dev/null" >/dev/null 2>&1
-assert_contains "the default alert sender reaches bun from ~/.bun/bin under a minimal PATH" "reply 4242" "$(cat "$H5/bun-called" 2>/dev/null)"
+assert_contains "the default alert sender reaches bun from ~/.bun/bin under a minimal PATH" "reply --kind cadence:graph-bunpath 4242" "$(cat "$H5/bun-called" 2>/dev/null)"
 if [ -e "$H5/.himmel/state/cadence-alert-send-failed" ]; then fail "a delivered alert leaves no send-failed marker"; else pass "a delivered alert leaves no send-failed marker"; fi
 # (c6) an unset HOME must not stop the alert from logging: the bun lookup is skipped, not fatal.
 H6="$TMP_ROOT/t9-nohome"; mkdir -p "$H6"
