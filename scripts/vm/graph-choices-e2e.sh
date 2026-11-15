@@ -43,9 +43,10 @@
 # --- pure helpers (unit-tested) ----------------------------------------------
 
 # gce_words <pass-log> <corpus> -- the result words the pass wrote for the corpus, in file order.
-# An ALERT line and a `-` line are not words.
+# An ALERT line is not a word; a `- <corpus> <word>: why` say line is (the pass prints no-route that way
+# while a next step remains).
 gce_words() {
-  sed -n "s/^graph-choices-pass: $2 \([a-z][a-z-]*\)\( .*\)\{0,1\}\$/\1/p" "$1" 2>/dev/null
+  sed -n "s/^graph-choices-pass: \(- \)\{0,1\}$2 \([a-z][a-z-]*\)\([: ].*\)\{0,1\}\$/\2/p" "$1" 2>/dev/null
 }
 
 # gce_word_before <pass-log> <corpus> <first> <second> -- rc 0 when both words appear and the first
@@ -158,7 +159,7 @@ prompt="$(cat)"
 h="$(printf '%s' "$prompt" | sha256sum | cut -c1-16)"
 kv="$(env | sed 's/=.*//' | grep -E '^(ANTHROPIC_|anthropic_|CLAUDE_CODE_USE_|claude_code_use_|LQ_API_)' | paste -sd, -)"
 echo "CALL $h keyvars=${kv:-none}" >> "${GCE_CALL_LOG:-/tmp/gce-claude-calls.log}"
-echo '{"type":"result","subtype":"success","is_error":false,"result":"{\"nodes\":[],\"edges\":[]}","total_cost_usd":0,"usage":{"input_tokens":1,"output_tokens":1}}'
+echo '{"type":"result","subtype":"success","is_error":false,"result":"{\"nodes\":[{\"id\":\"gce_readme\",\"label\":\"gce readme\",\"file_type\":\"document\",\"source_file\":\"README.md\",\"source_location\":\"L1\"}],\"edges\":[]}","total_cost_usd":0,"usage":{"input_tokens":1,"output_tokens":1}}'
 EOS
   chmod +x "$W/stubbin/claude"
   local CALLS="$W/claude-calls.log"
@@ -199,9 +200,9 @@ while True:
     if not r:
         if p.poll() is not None:
             break
-        if time.time() - last > 900:
+        if time.time() - last > 240:
             p.kill()
-            sys.stdout.write("\nanswer.py: no output for 900 s, killed the install\n")
+            sys.stdout.write("\nanswer.py: no output for 240 s, killed the install\n")
             sys.exit(124)
         continue
     chunk = os.read(fd, 65536)
@@ -212,7 +213,7 @@ while True:
     sys.stdout.write(text)
     sys.stdout.flush()
     pending += text
-    if pending.endswith("> ") or pending.endswith("[Y/n] "):
+    if pending.endswith("> ") or pending.endswith("[Y/n] ") or pending.endswith("skip): "):
         ans = ""
         for i, (needle, answers) in enumerate(rules):
             if needle in pending:
@@ -222,8 +223,12 @@ while True:
                 break
         try:
             p.stdin.write((ans + "\n").encode())
+            sys.stdout.write("[answer.py sent %r]\n" % ans)
+            sys.stdout.flush()
+            if pending.endswith("skip): "):
+                p.stdin.close()
         except BrokenPipeError:
-            pass
+            sys.stdout.write("[answer.py: broken pipe]\n")
         pending = ""
 try:
     p.stdin.close()
@@ -306,6 +311,11 @@ EOS
   }
   write_snapshot
   printf 'ANTHROPIC_API_KEY=sk-ant-dummy-not-a-real-key-0000\n' > "$SD/key-A.env"; chmod 600 "$SD/key-A.env"
+  # semantic-update.sh seeds its hook-free Claude profile from ~/.claude/.credentials.json before any step runs,
+  # so the guest (no login) needs a file there; a dummy, never a real token, and the guest is restored after the run
+  mkdir -p "$HOME/.claude"
+  printf '{"claudeAiOauth":{"accessToken":"sk-ant-oat01-dummy-not-a-real-token","refreshToken":"dummy","expiresAt":4102444800000}}\n' > "$HOME/.claude/.credentials.json"
+  chmod 600 "$HOME/.claude/.credentials.json"
   printf 'credit\n' > "$W/stub-mode"; : > "$W/stub-api.log"
   node "$W/stub-api.js" "$W/stub-mode" "$W/stub-api.log" "$W/stub-port" > "$W/stub-api.out" 2>&1 &
   STUB_PID=$!
@@ -337,9 +347,14 @@ EOS
   if [ "$(gce_cron_rows "$W/cron.step4")" -eq 1 ] && [ -x "$RUNNER_DIR/graph-choices.sh" ]; then pass "the job is armed: one cron row and the runner"
   else fail "the job is armed: one cron row and the runner"; tail_of "$W/install-route.log" 30; kill "$STUB_PID" 2>/dev/null; verdict; fi
 
+  # usage-preflight trusts a usage cache only when its .account equals the hash of ~/.claude.json's accountUuid:
+  # give the guest a dummy identity and stamp the fixture cache with its hash
+  jq '.oauthAccount = {"accountUuid": "00000000-0000-4000-8000-00000000gce0"}' "$HOME/.claude.json" > "$W/claude.json.new" \
+    && mv "$W/claude.json.new" "$HOME/.claude.json"
+  acct_hash="$(. "$TREE/scripts/lib/usage-cache-identity.sh"; current_account_hash)"
   fire() { # one fire of the rendered runner against the stub API and the fixture bank
     local now; now=$(date +%s)
-    printf '{"five_hour":{"utilization":10},"seven_day":{"utilization":20},"primaries_refreshed_at":%d}\n' "$now" > "$W/usage-cache.json"
+    printf '{"account":"%s","five_hour":{"utilization":10},"seven_day":{"utilization":20},"primaries_refreshed_at":%d}\n' "$acct_hash" "$now" > "$W/usage-cache.json"
     env HIMMEL_BATCH_BASE_URL="http://127.0.0.1:$PORT" CADENCE_USAGE_CACHE="$W/usage-cache.json" GCE_CALL_LOG="$CALLS" \
       PATH="$W/stubbin:$PATH" "$RUNNER_DIR/graph-choices.sh" > "$W/fire.out" 2>&1
   }
@@ -392,7 +407,7 @@ bash scripts/lib/usage-preflight.sh' 2>"$W/preflight.err" | tail -n 1)"
     PROCEED | SKIPPED-BANK | SKIPPED-FLEET | BANK-STALE | BANK-UNKNOWN) pass "the real usage-preflight printed a verdict ($pf)" ;;
     *) fail "the real usage-preflight printed a verdict (got '${pf:-nothing}')"; tail_of "$W/preflight.err" 8 ;;
   esac
-  [ "$pf" != BANK-UNKNOWN ] || note "no subscription login on this guest: the route would answer bank-refused"
+  [ "$pf" != BANK-UNKNOWN ] || note "no real subscription login or usage bank on this guest: the route would answer bank-refused"
 
   # --- step 6: disarm, then a plain uninstall --------------------------------------------------
   echo "==> 6. disarm, then a plain himmelctl uninstall"
@@ -434,6 +449,11 @@ bash scripts/lib/usage-preflight.sh' 2>"$W/preflight.err" | tail -n 1)"
         fail "the $scheme screenshot exists"
       fi
     done
+    # the UI is dark by default and light only under data-theme="light"; settings.e2e.ts switches with
+    # emulateMedia, which that stylesheet does not read, so the two shots can be the same bytes
+    if [ -s "$W/shots/configure-graph-choices-light.png" ] && cmp -s "$W/shots/configure-graph-choices-light.png" "$W/shots/configure-graph-choices-dark.png"; then
+      note "the light and dark screenshots are byte-identical: settings.e2e.ts emulateMedia does not switch the UI theme (data-theme)"
+    fi
   fi
 
   verdict

@@ -36,16 +36,16 @@ expect_eq() { # <label> <want> <got>
 # shellcheck source=graph-choices-e2e.sh
 . "$SCRIPT"
 
-# A pass log shaped as the real pass and the runner wrote it (graph-choices-pass.sh words).
+# A pass log copied from the real runner on the guest (graph-choices-pass.sh, the first fire: A answered
+# credit-exhausted, the subscription step ran), plus a real ALERT line from the second fire.
 cat > "$WORK/pass.log" <<'EOF'
-[fired 2026-11-14 04:40:00]
-graph-choices-pass: gce-repo no-route every account in the route is out of credit or room
-graph-choices-pass: gce-repo ALERT no-route every account in the route is out of credit or room
-graph-choices-pass: - something that is not a word line
+[fired 2026-11-15 02:03:04]
+graph-choices-pass: - gce-repo no-route: trying the next step
 graph-choices-pass: gce-repo extracted
+graph-choices-pass: gce-repo ALERT key-rejected A
 [exit rc=0]
 EOF
-expect_eq "words lists the result words in order, never an ALERT or a dash line" "no-route extracted" "$(gce_words "$WORK/pass.log" gce-repo | paste -sd' ' -)"
+expect_eq "words lists the result words in order, a no-route say line included, never an ALERT line" "no-route extracted" "$(gce_words "$WORK/pass.log" gce-repo | paste -sd' ' -)"
 if gce_word_before "$WORK/pass.log" gce-repo no-route extracted; then pass "no-route comes before extracted"; else fail_case "no-route comes before extracted"; fi
 if gce_word_before "$WORK/pass.log" gce-repo extracted no-route; then fail_case "RED control: extracted before no-route is refused"; else pass "RED control: extracted before no-route is refused"; fi
 if gce_word_before "$WORK/pass.log" gce-repo no-route key-rejected; then fail_case "a word that never appears is refused"; else pass "a word that never appears is refused"; fi
