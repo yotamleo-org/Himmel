@@ -240,7 +240,7 @@
 #                               justify the edge). Other WARN states wake nothing.
 #                               Each tick also starts one background refresh of a
 #                               DIRTY or FAILED page (none while one runs); no wake. A WARN
-#                               page starts none: the refresh just ran and a rerun cannot cure a loop.
+#                               page starts none.
 #   WAKE cadence <workflow> run=<id> <RED|SKIP|MISSED> <run url> cause: <why>   the tick's
 #                               cadence= field flags the last scheduled run of a workflow: RED (failure or
 #                               timed_out), SKIP (concluded skipped) or MISSED (no scheduled run inside 1.5
