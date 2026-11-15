@@ -172,39 +172,30 @@ _hp_ascii_lower() {
     done
 }
 
-# _arm_cache_dir -- one PRIVATE scratch dir per top-level process, backing
-# both caches below. Every call site of _arm_identity_path is
-# `x=$(_arm_identity_path ...)`; command substitution forks a SUBSHELL, so an
-# in-memory cache variable set inside it dies with it (a naive
-# module-level variable, the _py_armor_have_gnu_timeout pattern,
-# never actually caches anything here — verified: it measured ZERO
-# improvement). A FILE survives the subshell boundary.
+# _arm_cache_dir_ensure (below) gives a top-level process ONE PRIVATE scratch
+# dir backing the identity memo. Sourcing this library only defines functions:
+# it makes no directory and runs no search, so a hook that never memoizes costs
+# nothing. Every call site of _arm_identity_path is `x=$(_arm_identity_path
+# ...)`; command substitution forks a SUBSHELL, so an in-memory cache variable
+# set inside it dies with it. A FILE survives the subshell boundary.
 #
-# Created via `mktemp -d`: an earlier draft
-# derived the cache path from `$$` alone in the SHARED, world-writable temp
-# dir — predictable, so another local user could pre-plant a symlink at that
-# exact path and have this script's `>`/`>>` write through it onto any file
-# the invoking user can write. `mktemp -d` is atomic (O_EXCL) and mode 0700,
-# so no other user can occupy or peek into it first. It also closes CR round
-# 1 codex-3 (PID reuse): $$ can be recycled by an unrelated LATER process,
-# which would then silently inherit an EARLIER process's stale cache; a
-# `mktemp` name is not derived from the PID at all.
+# Created via `mktemp -d`: a path derived from `$$` alone in the SHARED,
+# world-writable temp dir is predictable, so another local user could pre-plant
+# a symlink at that exact path and have this script's `>`/`>>` write through it
+# onto any file the invoking user can write. `mktemp -d` is atomic (O_EXCL) and
+# mode 0700, so no other user can occupy or peek into it first, and its name is
+# not derived from the PID, so a recycled PID never inherits a stale cache.
 #
-# Computed ONCE and exported: subshells forked AFTER this line inherit the
-# exported value (bash propagates the environment INTO a fork, just not back
-# OUT of one), so every subshell this library's functions run in shares the
-# SAME directory without needing to derive it again.
+# Minted ONCE per process and exported: subshells and children forked AFTER the
+# mint inherit the exported value (bash propagates the environment INTO a fork,
+# just not back OUT of one), so every subshell shares the SAME directory.
 #
-# No EXIT trap here on purpose (a leaked dir
-# per process is real: arm-resume.sh fires from recurring scheduled tasks, so
-# it accumulates, unlike the single small file py-armor.sh's own harmless-leak
-# precedent covers). arm-resume.sh already owns an EXIT trap of its own (`trap
-# _arm_worker_stderr_cleanup EXIT`); a second bare `trap ... EXIT` from a
-# sourced library SILENTLY OVERWRITES whichever one runs last instead of
-# chaining, and this file is sourced by more than one caller (queue-lock.sh
-# too) so there is no single safe place to splice a chained trap without
-# risking exactly that collision. Self-cleaning instead: sweep this library's
-# own >1-day-old cache dirs before creating a new one.
+# No EXIT trap on purpose: a bare `trap ... EXIT` from a sourced library
+# SILENTLY OVERWRITES the caller's own EXIT trap (arm-resume.sh owns one) instead
+# of chaining, and this file is sourced by more than one caller. A hook killed
+# by its timeout gets SIGKILL and runs no trap either. Self-cleaning instead:
+# _arm_cache_dir_ensure sweeps this library's own >1-day-old cache dirs before
+# it creates a new one, at most once an hour per user and swept directory.
 #
 # OWNERSHIP is the primary guard: no
 # content-shape heuristic, however narrow, can be airtight against a
@@ -297,29 +288,69 @@ _arm_cache_dir_gc() {
     done <<< "$_aged"
 }
 # _arm_cache_dir_usable -- rc 0 iff $_ARM_CACHE_DIR is set AND still exists
-# AND is writable. This is EXISTENCE, not emptiness -- checked both here at
-# source time and again inside each cache consumer below, because the
-# variable being non-empty proves nothing: it is EXPORTED, so it is
-# inherited verbatim by every descendant process and by any long-lived shell
-# for as long as that shell lives, and neither of those re-derives it. A
-# reboot that wipes /tmp is the easy way to make the directory vanish while
-# the variable survives; the sharper, self-inflicted way needs no restart --
-# _arm_cache_dir_gc (below) deletes cache dirs older than 1440 minutes and
-# runs in every OTHER fresh top-level process, so a shell alive longer than
-# that keeps exporting a path some newer process has already GC'd out from
-# under it. Re-minting only at source time cannot fix that second case (a
-# shell that already sourced this file does not run the `if` below again),
-# so the two consumers re-check usability themselves at each call rather
-# than trusting the variable's mere non-emptiness.
+# AND is writable AND is owned by this user. The variable being non-empty proves
+# nothing: it is EXPORTED, so every descendant process and any long-lived shell
+# keeps it for as long as it lives, while the directory can vanish under it (a
+# reboot that wipes /tmp, or the GC above deleting a directory older than 1440
+# minutes). The consumers therefore re-check usability at each call rather than
+# trusting the variable. The ownership test (a builtin, no fork) means a
+# directory another user re-created at an inherited path is never read or
+# written: the lookup computes uncached.
 _arm_cache_dir_usable() {
-    [ -n "${_ARM_CACHE_DIR:-}" ] && [ -d "$_ARM_CACHE_DIR" ] && [ -w "$_ARM_CACHE_DIR" ]
+    [ -n "${_ARM_CACHE_DIR:-}" ] && [ -d "$_ARM_CACHE_DIR" ] && [ -w "$_ARM_CACHE_DIR" ] && [ -O "$_ARM_CACHE_DIR" ]
 }
-if ! _arm_cache_dir_usable; then
-    _arm_cache_dir_gc
-    # prim-ok: on the hook hot path, where sourcing prim.sh would add a process to every hook; the arm-resume-cache. prefix is reaped by _arm_cache_dir_gc above
+
+# _arm_cache_dir_gc_rate_limited -- run _arm_cache_dir_gc at most once an hour
+# per user and swept directory. The stamp lives under the user's own home, not
+# in world-writable /tmp: $HOME/.himmel/state/arm-resume-cache-gc.stamp, a
+# regular file holding the ${TMPDIR:-/tmp} of the last sweep; its mtime is the
+# time of that sweep. The stamp is usable iff HOME is set, the state dir already
+# exists (this function never creates it, so a home that has no state dir is not
+# written to), and the stamp is missing or a regular, user-owned, non-symlink
+# file; an unusable stamp gives an unthrottled sweep and is never written
+# through. A sweep is skipped only when the stamp records THIS directory and is
+# between 0 and 60 minutes old, so a sweep of one TMPDIR never suppresses the
+# sweep of another and a future-dated stamp (a clock that jumped back) is stale.
+# The stamp is claimed before the sweep, so a concurrent process skips. Returns
+# 0 on every path: it runs under the caller's `set -euo pipefail`, so `HOME` is
+# read as ${HOME:-} (an unset variable is fatal under -u even inside an `||`).
+_arm_cache_dir_gc_rate_limited() {
+    local _st _stamp _tmp _last=""
+    _tmp="${TMPDIR:-/tmp}"
+    [ -n "${HOME:-}" ] || { _arm_cache_dir_gc || true; return 0; }
+    _st="${HOME:-}/.himmel/state"
+    _stamp="$_st/arm-resume-cache-gc.stamp"
+    [ -d "$_st" ] || { _arm_cache_dir_gc || true; return 0; }
+    if [ -L "$_stamp" ] || { [ -e "$_stamp" ] && { [ ! -f "$_stamp" ] || [ ! -O "$_stamp" ]; }; }; then
+        _arm_cache_dir_gc || true
+        return 0
+    fi
+    if [ -e "$_stamp" ]; then
+        IFS= read -r _last 2>/dev/null <"$_stamp" || true
+        if [ "$_last" = "$_tmp" ] &&
+            [ -n "$(find "$_stamp" -maxdepth 0 -mmin -60 ! -mmin -0 2>/dev/null || true)" ]; then
+            return 0
+        fi
+    fi
+    printf '%s\n' "$_tmp" 2>/dev/null >"$_stamp" || true
+    _arm_cache_dir_gc || true
+    return 0
+}
+
+# _arm_cache_dir_ensure -- give this process (and the subshells and children it
+# starts afterwards) one private memo dir. Call it in the top-level shell BEFORE
+# any $(...) lookup; inside a subshell it does nothing, since a mint there would
+# die with the subshell and leak one dir per call. rc 0 always, so it is safe
+# under `set -euo pipefail`. An inherited usable directory is kept.
+_arm_cache_dir_ensure() {
+    _arm_cache_dir_usable && return 0
+    [ "${BASH_SUBSHELL:-0}" -eq 0 ] || return 0
+    _arm_cache_dir_gc_rate_limited || true
+    # prim-ok: on the hook hot path, where sourcing prim.sh would add a process to every hook; the arm-resume-cache. prefix is reaped by _arm_cache_dir_gc
     _ARM_CACHE_DIR=$(mktemp -d -t arm-resume-cache.XXXXXX 2>/dev/null) || _ARM_CACHE_DIR=""
     export _ARM_CACHE_DIR
-fi
+    return 0
+}
 
 # _arm_identity_path <path> -- the canonical handover identity first shipped
 # in arm-resume.sh for scheduler-row dedup. It lives in this

@@ -1315,10 +1315,10 @@ def ship_completes(scope, lane='native'):
               '`- <ask>: owed → chief|operator by YYYY-MM-DD`, at most 14 days out')
     if found and found[-1].lower() == 'no':
         ct = 'completes-ticket: no (leave the ticket In Progress after the merge)' + shapes
-        cmd = '`bash scripts/handover/merge-on-green.sh` (bare, without the Jira-transition flag, typed exactly so from your worktree root, then `--go <the GO file the chief\'s GO message names>`)'
+        cmd = '`bash scripts/handover/merge-on-green.sh` (bare, without the Jira-transition flag, typed exactly so as one bare command from the directory you are in, never after `cd` or joined with `&&`, then `--go <the GO file the chief\'s GO message names>`)'
     else:
         ct = 'completes-ticket: yes' + shapes
-        cmd = '`bash scripts/handover/merge-on-green.sh --jira-transition` (typed exactly so from your worktree root, then `--go <the GO file the chief\'s GO message names>`)'
+        cmd = '`bash scripts/handover/merge-on-green.sh --jira-transition` (typed exactly so as one bare command from the directory you are in, never after `cd` or joined with `&&`, then `--go <the GO file the chief\'s GO message names>`)'
     if lane == 'claudex':
         return ct, MERGE_AT_READY_LINE
     return ct, 'Merge only on GO with %s. After the merge (no message), `cd` out, WRAPPED, release the lock,' % cmd

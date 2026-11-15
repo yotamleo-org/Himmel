@@ -1,10 +1,11 @@
 # The go-code launch route for billed and bypass flags
 
-`scripts/station-ops/bypass-launchd.sh` launches a worker with an allowlisted
-`HIMMEL_*_OK` flag only after the operator replies with a one-time code on
-Telegram. With the operator away from the station, this is the only way a
-session can get `HIMMEL_BILLED_OK=1` (a paid eval) or
-`HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1` (a leg that edits `scripts/hooks/`).
+`scripts/station-ops/bypass-launchd.sh` launches a worker with the hook guard
+flags the operator approves, only after the operator replies with a one-time
+code on Telegram. With the operator away from the station, this is the only way
+a session can get `HIMMEL_BILLED_OK=1` (a paid eval),
+`HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1` (a leg that edits `scripts/hooks/`) or any
+other grantable guard flag, for example `DESTRUCTIVE_OK=1`.
 
 ## Why a session cannot set the flag itself
 
@@ -41,9 +42,11 @@ the flag in a worker's launch script. Both shapes are now refused. Instead:
    decision=<operator decision number>
    ```
 
-3. The daemon sends the operator an ask on Telegram. It names every flag, the
-   decision (`PAID RUN (decision N)`), the brief's description and sha, and a
-   one-time code.
+3. The daemon sends the operator an ask on Telegram. It names every granted
+   flag with its registry description (`DESTRUCTIVE_OK=1 (Lets destructive
+   shell commands (rm -rf and similar) through.)`), the decision (`PAID RUN
+   (decision N)` for the billed flag, `OPERATOR DECISION N` for the other
+   decision flags), the brief's description and sha, and a one-time code.
 4. The operator replies `go <code>` and the daemon launches the worker with
    `headed-arm-worker.sh`. A reply of `no <code>` launches nothing, and so do
    6 h with no reply.
@@ -54,12 +57,89 @@ the sweep without asking whether to spend. The go code authorises the flag for
 that one launch; it is not a decision about whether to run the eval. Only
 skipping the eval needs an operator decision, as a `gate-bypass.tsv` row.
 
+## How the flag list is built
+
+The list of hook flags is `scripts/himmelctl/lib/bypass-flags.json`, the
+registry the config UI also reads. A second file,
+`scripts/station-ops/bypass-flag-tiers.tsv`, gives every name a tier, and it
+decides what a go code may grant. A registry entry with no `grant` or `decision`
+row in the tier file cannot be granted, so a registry edit alone never widens a
+grant. Each row is `flag`, `tier`, `source` and `why`, tab separated.
+
+| Tier | What `flags=` does with it |
+|---|---|
+| `grant` | One go is enough. |
+| `decision` | The request needs `decision=<operator decision number>`; the ask says `OPERATOR DECISION <n>`, and for the billed flag `PAID RUN (decision <n>)`. |
+| `floor` | Refused before any ask: `flag X is floor: launch it from your own shell`. |
+| `none` | Refused before any ask: `flag X is not a switch`. |
+
+A name that is in neither list is refused `flag X is not in bypass-flags.json`,
+and a request names at most 5 flags (`more than 5 flags`).
+
+The daemon reads both files once, at start, from `HEAD` of the checkout it runs
+from, with the inherited `GIT_DIR` and the other git location variables unset.
+It refuses to start (exit 2) when the daemon script, the tier file or the
+registry has uncommitted changes, staged or not, and says which. To pick up a
+new flag: commit it, run `himmel-update` on the station, then replace the running
+instance. The `start` line of `daemon.log` carries `head=`, `registry=`,
+`tiers=` (the blob ids at `HEAD`) and `grantable=` (how many names a go can
+grant), so the operator can see what a running daemon holds.
+
+**Floor, never granted by a go code** (the operator launches these from their own
+shell): `EDIT_LIVE_SETTINGS_OK` (a live settings edit outlives the launch),
+`ENV_PREFIX_GUARD_OK` (one go would grant any seam variable unnamed),
+`BUS_STORE_GUARD_OK` (a worker could bind itself as its own chief),
+`SUBAGENT_RELEASE_OPERATOR_GUARD_DISABLE` (a subagent could write an
+operator-chain row), `MAIN_REF_TRANSACTION_OK` (a commit on local main),
+`DOCKER_PRIVESC_OK` (root-equivalent), `READ_SECRETS_OK`, `ROGUE_SCHEDULE_OK`
+(arms a scheduler entry whose launch outlives this one), `HOOKSPATH_OK` (a wrong
+`core.hooksPath` silently skips every git hook) and `EDIT_ON_MAIN_OK` (edits the
+primary checkout, which holds the daemon and the live hooks). Six more floor rows
+name switches outside the registry: `GH_ADMIN_MERGE_OK`,
+`GRAPHIFY_SALUS_LOCAL_OK` and the four offline-mode switches
+`SECURITY_REVIEW_NO_FETCH`, `PLATFORMS_TESTED_NO_FETCH`,
+`TEMPLATE_VERSION_NO_FETCH` and `DOC_GUARD_NO_FETCH`, which skip a push gate when
+no base ref resolves. They are not registered, so a request naming one is refused
+`not in bypass-flags.json`; the rows keep them stripped and floor if they are
+registered later.
+
+**Decision, needs `decision=`:** `CI_MERGE_GATE_OK`, `CR_MERGE_GATE_OK`,
+`SKIP_PR_MERGEABLE`, `PUSH_FOREIGN_REF_OK`, `SKIP_CR`, `SKIP_SECURITY_REVIEW`,
+`CODEX_EXEC_RAW_OK`, `WRITE_HOLD_OK`, `INFRADESTROYOK`, `FLEET_CAP_OK` and
+`HIMMEL_BILLED_OK` (source `eval`: read by the eval runner, not a hook).
+
+**None, refused as not a switch:** `HOOK_OK`, `INPLACE_OK`, `BWIMC_ENGINE`
+(registered, but an internal variable, an argument name and an engine picker),
+and `GLM_EXTERNAL_WRITES_OK`, `HIMMEL_CONSOLE_LEG`, `CLAUDE_CODE_CHILD_SESSION`
+(entries of the test-scrub lists with no reader, or markers a launcher sets).
+
+Every other registry name is `grant`. A completeness row in the suite fails when
+a registry name or a name of the two lists in `scripts/lib/override-env.sh` has
+no tier row.
+
+**The strip set.** Before the granted flags are set, the launch clears every
+name the registry holds, every name the tier file holds and every other
+inherited name ending in `_OK` or containing `_BYPASS`.
+
+## A guarded housekeeping command
+
+The daemon runs no command of its own; it launches a worker. To run one command
+that a hook guard blocks while the operator is away, the chief writes a tiny
+brief in the bucket, named `<TICKET>-<n>-N<n>-<slug>.md` with a real ticket
+key, whose only step is the literal command and "then wrap". Then it writes a
+request with `flags=DESTRUCTIVE_OK` (or the flag that guard reads) and
+`model=claude-haiku-5-5`. The ask shows the brief's description and sha, and the
+go launches that one session with the flag. The auto-mode classifier is separate
+from the hook, so it may still refuse an `rm -rf` with the flag set; when it
+does, the command waits for the operator.
+
 ## What the daemon guarantees
 
-- **Only an allowlisted flag, only on a go.** `flags=` may name only
-  `HIMMEL_HOOK_INTEGRITY_BYPASS_OK` and `HIMMEL_BILLED_OK`; any other flag
-  refuses the request. A billed request without a numeric `decision=` is
-  refused before any ask.
+- **Only a granted flag, only on a go.** `flags=` may name only a name the
+  registry holds with a `grant` or `decision` tier row (or the eval row); a
+  floor, `none`, unknown or sixth flag refuses the request before any ask. A
+  decision flag, the billed one included, without a numeric `decision=` is
+  refused the same way.
 - **Only the operator's reply counts.** The go must come from the operator's
   own chat (`from` and `chat_id` both equal `allowFrom[0]` of the bridge's
   `access.json`) and must not be forwarded.
@@ -67,8 +147,9 @@ skipping the eval needs an operator decision, as a `gate-bypass.tsv` row.
   launches only if the brief still has the sha the ask named. It appends
   `granted_at=`, `go=` and `sha=` to the request, which ends as `.done`, and
   writes `GRANT <brief> env=<flags> decision=<n> go=<code>` to `daemon.log`.
-- **Nothing inherited leaks through.** The launch clears every `*_OK` variable
-  in the daemon's environment, and any inherited effort, then sets only the
+- **Nothing inherited leaks through.** The launch clears the strip set above
+  (so `SKIP_FORCE_PUSH_GATE`, `IMPL_GUARD_DISABLE` and the `*_NO_FETCH` names
+  do not pass through either) and any inherited effort, then sets only the
   granted flags. A station opt-in such as `HIMMEL_DEEPSEEK_INFERENCE_OK`
   therefore does not reach a worker launched this way.
 - **Failures are reported.** A launcher that exits non-zero within the settle
@@ -88,8 +169,8 @@ setsid nohup bash <repo>/scripts/station-ops/bypass-launchd.sh --bucket <bucket>
 
 To replace a running instance, `touch <bucket>/bypass-queue/stop`, wait for
 `stop file` in `daemon.log`, remove the stop file, then start it again. bash
-holds the loop it parsed, so editing the script does not change a running
-instance.
+holds the loop it parsed, and the daemon holds the registry and tiers it read at
+start, so a new flag or tier reaches a running instance only after a restart.
 
 ## Limits
 
@@ -97,7 +178,20 @@ A process running as the operator's user can append a forged `go <code>` line
 to the bridge's `inbound.jsonl` if it can read the code from the bridge's
 outgoing queue. The per-request code, the own-chat check, the fixed launch
 shape, the flag and model allowlists and the 7-day bound limit the damage.
-They do not prevent it. The same user can also swap or edit the brief after
+They do not prevent it. With the full flag list, a forged go can grant any
+grant-tier flag, or a decision-tier flag with a made-up decision number; for
+`CODEX_EXEC_RAW_OK` that lets the launched session start raw `codex exec`,
+which runs under no Claude hook. What runs otherwise is still a Claude session
+under every other hook and the classifier. The daemon's check for uncommitted
+changes runs inside the script it checks, so it stops an accidental edit or a
+half-applied update, not a deliberate edit that removes the check; the floor
+rows for `EDIT_ON_MAIN_OK`, `MAIN_REF_TRANSACTION_OK` and `DOCKER_PRIVESC_OK`
+keep a go-launched worker out of the primary checkout. A switch no list holds
+and no `_OK` or `_BYPASS` pattern matches, a role marker such as
+`HIMMEL_RELEASE_MANAGER` and a path seam such as `HIMMEL_HOOK_INTEGRITY_DIR`
+still pass through from the daemon's environment. A direct command or a named
+station op on a go code, and a launch that runs only the approved brief, are
+tracked in the backlog ticket on the approved brief, not built here. The same user can also swap or edit the brief after
 the post-go sha check, before the launcher and the worker read it, so the
 worker runs instructions the operator never saw, with the granted flag; the
 fix is a launch from a root-held snapshot of the approved brief. Closing both

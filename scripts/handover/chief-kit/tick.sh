@@ -485,10 +485,10 @@ cadence=<name>:<state>:<age>:<run id>[:RED|:SKIP|:MISSED],... is the last SCHEDU
 with a schedule: trigger, from ci-cadence.sh (gh read at most once per CI_CADENCE_INTERVAL_SEC, default 1800, else the
 cache beside the other tick state). RED = failure or timed_out, SKIP = concluded skipped, MISSED = no scheduled run inside 1.5
 periods; a running run flags nothing. ? = gh unreadable. Always on the line; the waiter wakes once per flagged run id.
-review=<date>:<age>:<failures>:<new classes>:<new 5+>:<filed keys joined by +, or ->[:CAPPED][:STALE] is the
+review=<date>:<age>:<failures>:<new classes>:<new 5+>:<filed keys joined by +, or ->[:STALE] is the
 daily failure review (ci-cadence.sh review: a local read of the newest failure-review-<date>.md and its .json sidecar,
-HIMMEL_FAILURE_REVIEW_DIR). STALE = no review for 26 h; CAPPED = the router hit its daily create cap. Hidden when there is no
-review file. The waiter wakes once per review day on a filed key, a new class with 5+ failures or CAPPED, and once per
+HIMMEL_FAILURE_REVIEW_DIR). STALE = no review for 26 h. Hidden when there is no
+review file. The waiter wakes once per review day on a filed key or a new class with 5+ failures, and once per
 last-review date on STALE; never on a 1-count class.
 leaks=<n|?> counts the LEAK lines of one bounded `jira release leaks <active version>`
 read (TICK_LEAKS_PROBE gets the version and the mirror directory as its arguments; TICK_LEAKS_TIMEOUT, default 30 s): open tickets
@@ -514,7 +514,7 @@ matches proof|signature|critic round|owed|go code. The tick carries pool-parked=
 `# pool-dispatchable <KEY>` lines and chief-wait.sh's dispatchable= are unchanged.
 owed=<n>:<oldest-age> counts the open rows of the owed ledger beside --doc (owed.jsonl, owe.sh; <m>m under an hour, else <h>h),
 hidden at 0, `?` when unreadable. A ticket-kind row with no key past OWED_STALE_SECS (default 14400) adds
-`ACTION owed-stale=<n>:<ids>`; closing the row with a key ends it. Not in chief-wait.sh's wake key.
+`ACTION owed-stale=<n>:<ids>`; closing the row with a key ends it. chief-wait.sh wakes on that stale count (changed=owed).
 A key whose line the file reads changed (pool-changed=, same line-hash and sole-reason rules) is unresolved as
 class `changed`: `<target> merged <oldest sha since the anchor> since the line was written: re-read and stamp
 (<LL> <MM-DD> <HH:MM>Z)`, the bracket printed as written, never filled in.

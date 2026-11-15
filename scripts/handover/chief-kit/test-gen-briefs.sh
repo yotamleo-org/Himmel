@@ -616,6 +616,16 @@ has "the no Ship step names the relative merge spelling" "$ship_no" '`bash scrip
 has "the yes Ship step ends the merge with the --go GO file" "$ship_yes" 'then `--go <the GO file'
 # shellcheck disable=SC2016 # literal backticks in the expected brief text
 has "the no Ship step ends the merge with the --go GO file" "$ship_no" 'then `--go <the GO file'
+for any_dir_case in "yes:$ship_yes" "no:$ship_no"; do
+    any_dir_name="${any_dir_case%%:*}"; any_dir_ship="${any_dir_case#*:}"
+    # shellcheck disable=SC2016 # literal backticks in the expected brief text
+    has "the $any_dir_name Ship step types the merge as one bare command from the current directory" "$any_dir_ship" 'one bare command from the directory you are in, never after `cd` or joined with `&&`'
+    lacks "the $any_dir_name Ship step does not say worktree root" "$any_dir_ship" "worktree root"
+done
+tpl_file="$(dirname "$0")/../../../docs/handover/worker-brief-template.md"
+lacks "the brief template does not say the merge runs from the worktree root" "$(cat "$tpl_file")" "worktree root, followed by"
+# shellcheck disable=SC2016 # literal backticks in the expected template text
+has "the brief template says one bare command from any directory" "$(tr -d '\n>' < "$tpl_file" | tr -s ' ')" 'one bare command from the directory the worker is in, never after `cd` or joined with `&&`'
 # A claudex worker's classifier refuses merge-path actions, so its Ship step ends at READY: no
 # merge command anywhere in the brief, the chief is named as the merger, and the worker waits
 # for MERGED. A native worker of the same scope keeps the merge step (asserted above).
