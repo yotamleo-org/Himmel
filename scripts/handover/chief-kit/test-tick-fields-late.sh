@@ -233,6 +233,25 @@ sed -e 's/^statusCategory: "x"/statusCategory: "Done"/' -e 's/904/906/g' "$OW/HI
 sed -e 's/^body$/statusCategory: "Done"/' -e 's/904/907/g' "$OW/HIMMEL-904.md" > "$PDI/HIMMEL-907.md"  # open ticket whose description quotes a Done line
 rm -rf "$W/ic-state"
 contains 'a versionless operator-directed ticket shows as INTAKE=<n> beside pool=' "$(ic_tick)" ' INTAKE=1 '
+# (10078) the waiter's clock (<inbox>.wait.intake, line 1 = epoch INTAKE was first seen) gives the oldest INTAKE age.
+ia_now="$(date +%s)"; ia_clock="$W/handover/inbox/N61.md.wait.intake"
+rm -f "$ia_clock"
+not_contains 'INTAKE above 0 with no waiter clock file prints the count and no INTAKE-AGE' "$(ic_tick)" ' INTAKE-AGE='
+contains 'INTAKE above 0 with no waiter clock file still prints INTAKE=1' "$(ic_tick)" ' INTAKE=1 '
+printf '%s\n0\n' "$((ia_now - 7 * 3600 - 60))" > "$ia_clock"
+contains 'INTAKE above 0 with a clock 7 h old prints INTAKE-AGE=7h beside INTAKE=1' "$(ic_tick)" ' INTAKE=1 INTAKE-AGE=7h'
+contains 'the plain tick intake: line carries the oldest age' "$(ic_tick --verbose)" 'intake: 1 (oldest 7h)'
+printf '%s\n0\n' "$((ia_now - 3 * 3600 - 60))" > "$W/handover/inbox/N65.md.wait.intake"
+contains 'the oldest of several waiter clocks wins' "$(ic_tick)" ' INTAKE-AGE=7h'
+rm -f "$W/handover/inbox/N65.md.wait.intake"
+printf 'garbage\n0\n' > "$ia_clock"
+not_contains 'an unreadable clock line prints no INTAKE-AGE and no error' "$(ic_tick)" ' INTAKE-AGE='
+printf '%s\n0\n' "$((ia_now - 7 * 3600 - 60))" > "$ia_clock"
+rm -f "$PDI/HIMMEL-905.md"; rm -rf "$W/ic-state"
+not_contains 'INTAKE at 0 prints no INTAKE field and no age, whatever the clock file says' "$(ic_tick)" ' INTAKE'
+not_contains 'INTAKE at 0 prints no oldest age on the plain line' "$(ic_tick --verbose)" 'oldest'
+sed -e 's/^labels: \[\]/labels: ["operator-directed"]/' -e 's/904/905/g' "$OW/HIMMEL-904.md" > "$PDI/HIMMEL-905.md"
+rm -f "$ia_clock"; rm -rf "$W/ic-state"
 printf '[{"name":"c","steps":[{"key":"HIMMEL-901"},{"key":"HIMMEL-906"},{"key":"HIMMEL-904"},{"key":"HIMMEL-907"}]},{"drain":"x"}]\n' > "$W/ic-dir/focus-chains.json"
 contains 'a focus-chains.json that lists a Done step shows chains=STALE:<done>/<steps>; a Done line in a description is not a Done step' "$(ic_tick)" ' chains=STALE:1/4'
 printf '[{"name":"c","steps":[{"key":"HIMMEL-901"},{"key":"HIMMEL-904"},{"key":"HIMMEL-907"}]}]\n' > "$W/ic-dir/focus-chains.json"
