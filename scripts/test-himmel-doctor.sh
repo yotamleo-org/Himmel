@@ -8654,6 +8654,136 @@ out="$(cd "$c96_x" && env -u HIMMEL_DOCTOR_LIVE_TEST_PROBE -u HIMMEL_REPO -u HIM
 if grepq "$out" -F 'INFO C96-jira-test-project' && grepq "$out" -F 'scripts/jira/dist/index.js' && ! grepq "$out" -F 'WARN C96'; then pass "INFO when the CLI build is missing"; else fail "C96 no CLI build -> $(printf '%s' "$out" | head -4)"; fi
 rm -rf "$c96_t"
 
+c97_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c97.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
+mkdir -p "$c97_t/claude" "$c97_t/home" "$c97_t/codex"
+c97_dummy="FIXTURE-DUMMY-9f3a"
+c97_run() { CODEX_HOME="$c97_t/codex" CLAUDE_DIR="$c97_t/claude" HOME="$c97_t/home" bash "$DOC" --root "$REPO_ROOT" --no-color --only C97 "$@" 2>&1; }
+c97_cfg() { printf '%s\n' "$1" > "$c97_t/codex/config.toml" || fail "C97 fixture write failed"; }
+c97_base='[mcp_servers.obsidian-vault]
+command = "node"
+args = ["/x/server.js"]
+'
+echo "== C97: a literal OBSIDIAN_API_KEY in [mcp_servers.obsidian-vault.env] -> WARN naming server + variable, never the value =="
+c97_cfg "$c97_base
+[mcp_servers.obsidian-vault.env]
+OBSIDIAN_API_KEY = \"$c97_dummy\"
+OBSIDIAN_HOST = \"127.0.0.1\""
+out="$(c97_run)"
+if grepq "$out" -F 'WARN C97-codex-mcp-literal-key' && grepq "$out" -F 'obsidian-vault' && grepq "$out" -F 'OBSIDIAN_API_KEY' \
+   && grepq "$out" -F "$c97_t/codex/config.toml" && grepq "$out" -F 'scripts/mcp/secret-launch.mjs' && grepq "$out" -F 'mcp-secrets' \
+   && grepq "$out" -F 'does not edit' && ! grepq "$out" -F "$c97_dummy" && ! grepq "$out" -F 'OBSIDIAN_HOST'; then
+    pass "C97 WARN names the server and variable, carries the remedy, and never the value"
+else
+    fail "C97 literal key -> $(printf '%s' "$out" | head -5)"
+fi
+echo "== C97: the --json row carries scope shared and no value =="
+out="$(c97_run --json)"
+if [ "$(printf '%s\n' "$out" | grep '^{' | jq -r 'select(.id == "C97-codex-mcp-literal-key") | .scope' 2>/dev/null)" = shared ] && ! grepq "$out" -F "$c97_dummy"; then pass "C97 is a shared check"; else fail "C97 --json -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C97: the same file with the key line removed -> OK (control) =="
+c97_cfg "$c97_base
+[mcp_servers.obsidian-vault.env]
+OBSIDIAN_HOST = \"127.0.0.1\"
+OBSIDIAN_PORT = \"27124\""
+out="$(c97_run)"
+if grepq "$out" -F 'OK   C97-codex-mcp-literal-key' && ! grepq "$out" -E '(WARN|INFO) C97'; then pass "C97 OK without a secret-named variable (HOST/PORT are not secrets)"; else fail "C97 control -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C97: the inline form env = { SOME_TOKEN = \"...\" } -> WARN =="
+c97_cfg "[mcp_servers.x]
+command = \"node\"
+env = { SOME_TOKEN = \"$c97_dummy-inline\", PLAIN = \"1\" }"
+out="$(c97_run)"
+if grepq "$out" -F 'WARN C97-codex-mcp-literal-key' && grepq "$out" -F 'SOME_TOKEN' && grepq "$out" -F 'mcp_servers.x' && ! grepq "$out" -F "$c97_dummy" && ! grepq "$out" -F 'PLAIN'; then pass "C97 WARN for the inline env table"; else fail "C97 inline -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C97: header spellings (quoted segments, spaces, trailing comment) and a _SECRET name -> WARN =="
+c97_cfg "[ \"mcp_servers\" . 'my-srv' . \"env\" ]  # local
+MY_API_SECRET = \"$c97_dummy\""
+out="$(c97_run)"
+if grepq "$out" -F 'WARN C97-codex-mcp-literal-key' && grepq "$out" -F 'my-srv' && grepq "$out" -F 'MY_API_SECRET' && ! grepq "$out" -F "$c97_dummy"; then pass "C97 WARN for a quoted, spaced, commented header"; else fail "C97 header spelling -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C97: env_vars = [names] (no value) -> OK =="
+c97_cfg "$c97_base
+env_vars = [\"OBSIDIAN_API_KEY\"]"
+out="$(c97_run)"
+if grepq "$out" -F 'OK   C97-codex-mcp-literal-key' && ! grepq "$out" -E '(WARN|INFO) C97'; then pass "C97 OK for an env_vars name list"; else fail "C97 env_vars -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C97: an empty value and a commented-out line -> OK =="
+c97_cfg "$c97_base
+[mcp_servers.obsidian-vault.env]
+OBSIDIAN_API_KEY = \"\"
+OTHER_TOKEN = ''
+# OBSIDIAN_SECRET = \"$c97_dummy\""
+out="$(c97_run)"
+if grepq "$out" -F 'OK   C97-codex-mcp-literal-key' && ! grepq "$out" -E '(WARN|INFO) C97'; then pass "C97 OK for an empty value and a comment"; else fail "C97 empty/comment -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C97: an empty value followed by a TOML comment -> OK; a literal followed by a comment -> WARN =="
+c97_cfg "$c97_base
+[mcp_servers.obsidian-vault.env]
+OBSIDIAN_API_KEY = \"\" # unused
+OTHER_TOKEN = '' # unused
+EMPTY_KEY = \"\"\"\"\"\"
+EMPTY_TOKEN = '''''' # unused"
+out="$(c97_run)"
+if grepq "$out" -F 'OK   C97-codex-mcp-literal-key' && ! grepq "$out" -E '(WARN|INFO) C97'; then pass "C97 OK for an empty value with a trailing comment"; else fail "C97 empty+comment -> $(printf '%s' "$out" | head -4)"; fi
+c97_cfg "[mcp_servers.obsidian-vault.env]
+OBSIDIAN_API_KEY = \"$c97_dummy\" # local
+BARE_TOKEN = 12345 # local
+TRIPLE_SECRET = \"\"\"$c97_dummy\"\"\"
+LITERAL_KEY = '''$c97_dummy'''"
+out="$(c97_run)"
+if grepq "$out" -F 'WARN C97-codex-mcp-literal-key' && grepq "$out" -F 'OBSIDIAN_API_KEY' && grepq "$out" -F 'BARE_TOKEN' && grepq "$out" -F 'TRIPLE_SECRET' && grepq "$out" -F 'LITERAL_KEY' && ! grepq "$out" -F "$c97_dummy" && ! grepq "$out" -F '12345'; then pass "C97 WARN for a literal with a trailing comment"; else fail "C97 literal+comment -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C97: an escaped quote inside an inline basic-string value still commits the pair -> WARN =="
+c97_cfg '[mcp_servers.x]
+command = "node"
+env = { SOME_API_KEY = "FIXTURE-DUMMY-9f3a\"tail", PLAIN = "1" }'
+out="$(c97_run)"
+if grepq "$out" -F 'WARN C97-codex-mcp-literal-key' && grepq "$out" -F 'SOME_API_KEY' && ! grepq "$out" -F 'FIXTURE-DUMMY-9f3a'; then pass "C97 WARN for an escaped quote in an inline value"; else fail "C97 escaped quote -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C97: a CRLF config reads like an LF one -> WARN =="
+printf '[mcp_servers.a.env]\r\nA_API_KEY = "%s"\r\n' "$c97_dummy" > "$c97_t/codex/config.toml"
+out="$(c97_run)"
+if grepq "$out" -F 'WARN C97-codex-mcp-literal-key' && grepq "$out" -F 'A_API_KEY' && ! grepq "$out" -F "$c97_dummy"; then pass "C97 WARN for a CRLF config"; else fail "C97 CRLF -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C97: the scan itself fails -> INFO, never OK =="
+mkdir -p "$c97_t/badawk"
+printf '#!/bin/sh\nexit 2\n' > "$c97_t/badawk/awk"; chmod +x "$c97_t/badawk/awk"
+c97_cfg "[mcp_servers.a.env]
+A_API_KEY = \"$c97_dummy\""
+out="$(PATH="$c97_t/badawk:$PATH" c97_run)"
+if grepq "$out" -F 'INFO C97-codex-mcp-literal-key' && grepq "$out" -F 'scan failed' && ! grepq "$out" -E '(OK  |WARN) C97'; then pass "C97 INFO when the scan fails"; else fail "C97 scan failure -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C97: a secret-named key outside any mcp_servers env table -> OK =="
+c97_cfg "[projects.\"/x\"]
+trust_level = \"trusted\"
+SOME_API_KEY = \"$c97_dummy\"
+[mcp_servers.obsidian-vault.tools.search]
+approval_mode = \"approve\"
+TOOL_TOKEN = \"$c97_dummy\""
+out="$(c97_run)"
+if grepq "$out" -F 'OK   C97-codex-mcp-literal-key' && ! grepq "$out" -E '(WARN|INFO) C97'; then pass "C97 OK for a key outside an mcp_servers env table"; else fail "C97 outside -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C97: a disabled server (enabled = false) with a literal key -> still WARN =="
+c97_cfg "[mcp_servers.obsidian-vault]
+command = \"node\"
+enabled = false
+[mcp_servers.obsidian-vault.env]
+OBSIDIAN_API_KEY = \"$c97_dummy\""
+out="$(c97_run)"
+if grepq "$out" -F 'WARN C97-codex-mcp-literal-key' && grepq "$out" -F 'OBSIDIAN_API_KEY' && ! grepq "$out" -F "$c97_dummy"; then pass "C97 WARN for a disabled server (the key is still on disk)"; else fail "C97 disabled -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C97: two servers, two variables -> one WARN names each pair =="
+c97_cfg "[mcp_servers.a.env]
+A_API_KEY = \"$c97_dummy\"
+[mcp_servers.b.env]
+B_TOKEN = \"$c97_dummy\""
+out="$(c97_run)"
+if [ "$(printf '%s\n' "$out" | grep -c 'WARN C97-codex-mcp-literal-key')" -eq 1 ] && grepq "$out" -F '[mcp_servers.a] A_API_KEY, [mcp_servers.b] B_TOKEN' && ! grepq "$out" -F "$c97_dummy"; then pass "C97 names every offending pair"; else fail "C97 two servers -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C97: no Codex config at CODEX_HOME -> OK =="
+rm -f "$c97_t/codex/config.toml"
+out="$(c97_run)"
+if grepq "$out" -F 'OK   C97-codex-mcp-literal-key' && grepq "$out" -F 'no codex config'; then pass "C97 OK when there is no Codex config"; else fail "C97 no config -> $(printf '%s' "$out" | head -4)"; fi
+if [ "$(id -u 2>/dev/null || echo 0)" = "0" ]; then
+    echo "== C97: unreadable config -> SKIPPED (running as root: mode 000 is still readable) =="
+else
+    echo "== C97: an unreadable config -> INFO, never OK =="
+    c97_cfg "[mcp_servers.a.env]
+A_API_KEY = \"$c97_dummy\""
+    chmod 000 "$c97_t/codex/config.toml"
+    out="$(c97_run)"
+    if grepq "$out" -F 'INFO C97-codex-mcp-literal-key' && grepq "$out" -F 'not readable' && ! grepq "$out" -E '(OK  |WARN) C97'; then pass "C97 INFO for an unreadable config"; else fail "C97 unreadable -> $(printf '%s' "$out" | head -4)"; fi
+    chmod 600 "$c97_t/codex/config.toml"
+fi
+rm -rf "$c97_t"
+
 printed_keys() {
     awk '/^[[:space:]]*#/ { next }
     {
