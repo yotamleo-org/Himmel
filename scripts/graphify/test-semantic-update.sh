@@ -97,7 +97,9 @@ echo "EFFORT=\${CLAUDE_CODE_EFFORT_LEVEL-unset}" >> "$WS/env.log"
 # real key is content plus its own prompt, so it cannot see which mode wrote the entry, and neither does this one.
 if [ -n "\${GRAPHIFY_STUB_CALL_CLAUDE:-}" ] && [ "\$1" = extract ] && { [ -z "\${GRAPHIFY_STUB_CACHE_HIT:-}" ] || [ ! -e "\$2/graphify-out/cache/semantic/new.json" ]; }; then
   claude --help > "$WS/claude-help.out" 2>&1
-  for call_n in \$(seq "\${GRAPHIFY_STUB_CALL_N:-1}"); do
+  calls_n="\${GRAPHIFY_STUB_CALL_N:-1}"
+  [ -z "\${GRAPHIFY_STUB_PER_FILE:-}" ] || calls_n=\$(( \$(cd "\$2" && find . -name '*.md' -not -path './graphify-out/*' | wc -l) * GRAPHIFY_STUB_PER_FILE ))
+  for call_n in \$(seq "\$calls_n"); do
     p="\${GRAPHIFY_STUB_PROMPT:-extract this}"
     printf '%b' "\${p//@CALL@/\$call_n}" | claude -p --output-format json --no-session-persistence --model sonnet --json-schema '{}' >> "$WS/claude.out" 2>&1 \\
       || echo "claude-shim-rc=\$?" >> "$WS/calls.log"
@@ -1442,6 +1444,17 @@ C94="$WS/c94"; new_corpus "$C94"; batch_reset
 out=$(ACCT=A GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t94 --corpus-root "$C94" --corpus-class himmel-code --backend claude-api --max-run-usd 0.15); rc=$?
 [ "$rc" -eq 3 ] && [[ "$out" == *"over-cap"* ]] && [[ "$out" != *"submitting the batch failed"* ]] && [ ! -e "$C94/graphify-out/semantic-batch" ] && [ -z "$(batch_accounts)" ] \
   && pass "T94 a one-chunk batch over a 0.15 cap is refused as over-cap, nothing pending, the files stay for a re-sized run" || fail "T94 (rc=$rc): $out"
+echo "T94c: the recorded batch has more requests than planned: the client refuses (exit 7), the plan is halved and resubmitted in the same run"
+C94C="$WS/c94c"; new_corpus "$C94C"; for i in $(seq 1 9); do printf 'file %s\n' "$i" > "$C94C/f$i.md"; done; batch_reset
+out=$(ACCT=A GRAPHIFY_STUB_PER_FILE=1 GRAPHIFY_STUB_PROMPT='extract @CALL@' GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t94c --corpus-root "$C94C" --corpus-class himmel-code --backend claude-api --max-run-usd 1.00); rc=$?
+[ "$rc" -eq 0 ] && [ "$(grep -c '^submit' "$WS/batch.log")" -eq 1 ] && grep -q '^submit account=A prompts=6 ' "$WS/batch.log" && [ "$(grep -c '^over-budget' "$WS/batch.log")" -eq 1 ] \
+  && [[ "$out" == *"planning 6 files and trying again"* ]] && [ -f "$C94C/graphify-out/semantic-batch/batch.json" ] \
+  && pass "T94c 12 recorded requests refused at 1.00 USD, 6 files planned, one submit of 6 prompts, nothing stuck" || fail "T94c (rc=$rc) batch.log: $(cat "$WS/batch.log"): $out"
+echo "T94d: a plan halved down to one file that is still over the cap ends over-cap, nothing pending"
+C94D="$WS/c94d"; new_corpus "$C94D"; batch_reset
+out=$(ACCT=A GRAPHIFY_STUB_PER_FILE=8 GRAPHIFY_STUB_PROMPT='extract @CALL@' GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t94d --corpus-root "$C94D" --corpus-class himmel-code --backend claude-api --max-run-usd 1.00); rc=$?
+[ "$rc" -eq 3 ] && [[ "$out" == *"over-cap"* ]] && ! grep -q '^submit' "$WS/batch.log" && [ ! -e "$C94D/graphify-out/semantic-batch" ] \
+  && pass "T94d one file of 8 requests still over 1.00 USD: over-cap, rc 3, no submit, no pending dir" || fail "T94d (rc=$rc): $(cat "$WS/batch.log"): $out"
 echo "T94b: the planner sizes a batch with the client's own per-request bound, not the list price"
 C94B="$WS/c94b"; new_corpus "$C94B"; for i in $(seq 1 40); do printf 'file %s\n' "$i" > "$C94B/f$i.md"; done
 out=$(ACCT=A run_batch --name t94b --corpus-root "$C94B" --corpus-class himmel-code --backend claude-api --max-run-usd 0.60 --dry-run); rc=$?

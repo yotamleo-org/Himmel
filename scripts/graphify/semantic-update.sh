@@ -62,8 +62,10 @@
 # chunks are sized to fit it, spend past it is logged as a WARN and the calls go on; only the API refusing for lack
 # of credit stops a chunk, and the finished chunks still merge. A batch is held to it: its chunks are sized with
 # the batch client's per-request bound (`semantic-batch.mjs bound`: the prompt's bytes, framing and the output cap),
-# the same figure the client sums, and the client refuses a submit whose estimate is over the cap (exit 7), which
-# this script reports as over-cap (exit 3, nothing submitted, nothing pending). The run row carries the summed cost
+# the same figure the client sums, and the client refuses a submit whose estimate is over the cap (exit 7). The
+# plan counts chunks by ideal packing, while graphify slices a large markdown file into more requests, so on that
+# refusal the run halves the plan and records and submits again; a single file still over the cap is over-cap
+# (exit 3, nothing submitted, nothing pending). The run row carries the summed cost
 # (`cost_usd`), the backend and the cap, and for a batch the account that paid.
 #
 # GRAPHIFY_API_SYSTEM_PROMPT=1 (synchronous lane path only, default off) moves graphify's fixed instructions and
@@ -701,10 +703,11 @@ ADD
   if [ "$BACKEND" = "claude-api" ]; then CACHE_SUB="semantic-r1"; fi
   # The system-prompt opt-in changes the request but not graphify's key: its unproven answers stay apart as well.
   if [ "$BACKEND" = "claude-api" ] && [ "$BATCH_MODE" -eq 0 ] && [ "${GRAPHIFY_API_SYSTEM_PROMPT:-}" = 1 ]; then CACHE_SUB="semantic-r1-system"; fi
+  while :; do
   # A resumed batch extracts from the scratch frozen when it was submitted, so its chunk prompts hash identically.
   if [ "$RESUME" -eq 0 ]; then
     # No batch.json means nothing was submitted: whatever an interrupted run left here is garbage.
-    [ "$BATCH_MODE" -eq 0 ] || rm -rf "$PENDING"
+    [ "$BATCH_MODE" -eq 0 ] || rm -rf "$PENDING" "$WORK/prompts"
     mkdir -p "$SCRATCH/graphify-out/cache"
     python3 - "$PLAN" "$CORPUS_ROOT" "$SCRATCH" <<'PY'
 import json, os, shutil, sys
@@ -756,9 +759,15 @@ PY
     rm -rf "$SCRATCH"; mv "$PENDING/corpus.orig" "$SCRATCH"; cp "$PLAN" "$PENDING/plan.json"
     rc=0; batch_submit || rc=$?
     if [ "$rc" -eq 7 ]; then
-      rm -rf "$PENDING"
-      echo "semantic-update: over-cap: the batch estimate is over the run cap of $RUN_CAP USD (line above) -- nothing submitted, graph and manifest untouched; list large files in .graphify-corpus-ignore or raise --max-run-usd" >&2
-      RESULT_WORD=over-cap; exit 3
+      rm -rf "$PENDING" "$WORK/prompts"
+      if [ "$N_BATCH" -le 1 ]; then
+        echo "semantic-update: over-cap: the batch estimate is over the run cap of $RUN_CAP USD (line above) -- nothing submitted, graph and manifest untouched; list large files in .graphify-corpus-ignore or raise --max-run-usd" >&2
+        RESULT_WORD=over-cap; exit 3
+      fi
+      MAX_FILES=$(( N_BATCH / 2 ))
+      echo "semantic-update: the recorded batch of $N_BATCH files is over the run cap of $RUN_CAP USD (line above); planning $MAX_FILES files and trying again" >&2
+      plan_or_noop
+      continue
     fi
     if [ "$rc" -ne 0 ]; then
       rm -rf "$PENDING"
@@ -767,6 +776,8 @@ PY
     echo "semantic-update: batch $(batch_field batch_id) submitted ($(batch_field request_count) requests) -- graph untouched, the next run polls it" >&2
     batch_line submitted; RESULT_WORD=submitted; exit 0
   fi
+  break
+  done
   read -r TOKENS_IN TOKENS_OUT < <(sed -n 's/.*tokens: \([0-9,]*\) in \/ \([0-9,]*\) out.*/\1 \2/p' "$WORK/extract.log" | tr -d , | tail -1; echo)
   : "${TOKENS_IN:=0}" "${TOKENS_OUT:=0}"
 fi

@@ -274,9 +274,10 @@ In batch mode the run cap (`--max-run-usd`, default 15.00, or `GRAPHIFY_API_RUN_
 planning input. The batch is sized with the client's own per-request bound (`semantic-batch.mjs bound`: the prompt's
 bytes at the dearest input rate, a flat framing allowance, and `max_tokens` (32000) at the output rate, about 0.30 USD
 for a 15000-token chunk), and `semantic-batch.mjs submit` refuses with exit 7 when the batch's summed bound is over the
-cap, before any request is sent. `semantic-update.sh` reports that as `over-cap` (rc 3, nothing submitted, nothing
-pending), so a cap too small for even one file shows as a skip until the cap is raised or the file is listed in
-`.graphify-corpus-ignore`. The submit also needs a budget: with none it refuses (exit 2). The batch's `batch.json`
+cap, before any request is sent. The plan counts chunks by ideal packing, but graphify slices a large markdown file
+into more requests than planned, so on that refusal the run halves the plan and records and submits again, until a
+batch fits. A single file whose requests are still over the cap ends as `over-cap` (rc 3, nothing submitted, nothing
+pending), which shows as a skip until the cap is raised or the file is listed in `.graphify-corpus-ignore`. The submit also needs a budget: with none it refuses (exit 2). The batch's `batch.json`
 records the estimate, the budget and the paying account, and the run row in `semantic-runs.jsonl` carries `account`.
 
 `claude-api` extraction runs through the Message Batches API at half price (`GRAPHIFY_API_BATCH=0` keeps the
