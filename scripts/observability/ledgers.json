@@ -173,6 +173,19 @@
       "grandfathered": false
     },
     {
+      "id": "x-media-probe",
+      "default_path": "~/.himmel/state/x-media-probe.jsonl",
+      "override_env": "HIMMEL_X_MEDIA_PROBE_LOG",
+      "writer": "marketplace/plugins/obsidian-triage/tools/x-media-fetch.py",
+      "readers": ["marketplace/plugins/obsidian-triage/README.md"],
+      "format": "jsonl",
+      "rotation": "none",
+      "retention": "unbounded",
+      "schema_version": 1,
+      "envelope": ["v", "ts", "host", "source", "kind"],
+      "grandfathered": false
+    },
+    {
       "id": "eval-runs",
       "default_path": "~/.himmel/eval-runs.jsonl",
       "override_env": "HIMMEL_EVAL_RUNS_LEDGER",

@@ -55,6 +55,17 @@ rule and project scope are kept, every settings hook appears once, and a second
 install changes nothing. `--expect-red` duplicates a hook entry and passes only when
 the stage fails on that assertion. Run it on a disposable `himmel-ar-N` clone and
 restore `suite-ready-v4` + power off after.
+**Graph choices stage (opt-in).** `bash scripts/vm/graph-choices-e2e.sh <vm>` takes the
+vm-lock, restores `suite-ready-v4`, stages this tree on the clone and proves the adopter
+graph choices from install to uninstall: Enter at the first setup question stores nothing
+and starts no job, `himmel-update --only graph` pulls the published bytes, the daily pass
+fires once against a loopback stub API (route A then subscription: `no-route`, then
+`extracted`, then `key-rejected`, with the C92 doctor WARN), the real `usage-preflight`
+verdict is recorded, and a plain `himmelctl uninstall` leaves no cron row, runner or
+choices directory; the guest also runs `settings.e2e` and the host saves its light and
+dark screenshots to `./graph-choices-e2e-shots`. No real key and no paid call. `--expect-red`
+leaves the pass out of the staged tree and passes only when the first assertion fails. The
+VM is restored and powered off afterwards.
 **Adopted-features stage (opt-in).** `bash scripts/vm/adopted-features-e2e.sh <vm>`
 takes the vm-lock, restores `suite-ready-v4`, stages this tree on the clone, adopts
 himmel into thirteen scratch git projects and checks one feature per row from the
