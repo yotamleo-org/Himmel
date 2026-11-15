@@ -401,7 +401,7 @@ _qmd_wrapper_text() {
   printf 'FORK_BIN=%q\n' "$fork_bin"
   cat <<'WRAPPER'
 if [ -r "$LIB" ]; then
-  . "$LIB"
+  . "$LIB"  # read-sink-ok: LIB is the install-time absolute path baked above, never argv or env
   _qmd_egress_ok "$@" || exit $?
 else
   echo "qmd: $LIB is missing - running without the egress gate and the daemon key (re-run scripts/lib/qmd-bin.sh install)." >&2
