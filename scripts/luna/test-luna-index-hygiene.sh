@@ -259,16 +259,27 @@ if [ -n "$unmapped" ]; then
   if [ "$hrc" -ne 0 ]; then verdict=ok; for n in $unmapped; do grep -q -- "$n" <<<"$herr" || verdict="rc=$hrc but the message does not name $n"; done; fi
 fi
 check "every registered collection is mapped in the corpus file, or the step exits nonzero naming the unmapped one" ok "$verdict"
-check "the step refuses with exit 5" 5 "$hrc"
-check "and its message names luna-archive" 0 "$(grep -q 'luna-archive' <<<"$herr" && echo 0 || echo 1)"
-check "a refused apply leaves the qmd config as it was" 0 "$(cmp -s "$G/index.yml" "$G/index.orig" && echo 0 || echo 1)"
-check "and writes no .graphifyignore" 1 "$([ -e "$V/.graphifyignore" ] && echo 0 || echo 1)"
-echo "detection: the registered names after the refused apply, beside their corpus entry"
+echo "detection: the registered names after the step on the shipped corpus, beside their corpus entry"
 registered_map "$G/index.yml" "$REAL_CORPUS" | sed 's/^/  /'
 check "detection: each registered name has a corpus entry" 0 "$(registered_map "$G/index.yml" "$REAL_CORPUS" | grep -c UNMAPPED)"
 
-env -u LUNA_HYGIENE_CORPUS bash "$SUT" --vault "$V" --qmd-config "$G/index.yml" >/dev/null 2>&1; drc=$?
-check "the dry run reports the same refusal (exit 5) and writes nothing" "5|0" "$drc|$(cmp -s "$G/index.yml" "$G/index.orig" && echo 0 || echo 1)"
+# the refusal itself, against a corpus fixture that does not map luna-archive (so
+# these rows hold whether or not the shipped corpus maps it)
+python3 -I -c 'import json, sys
+d = json.load(open(sys.argv[1]))
+d["collections"].pop("luna-archive", None)
+json.dump(d, open(sys.argv[2], "w"))' "$REAL_CORPUS" "$W/corpus-unmapped.json" || exit 1
+V="$W/g3"; make_vault "$V"; G3="$W/g3.yml"; write_cfg "$G3" "$V"; cp "$G3" "$W/g3.orig"
+herr="$(LUNA_HYGIENE_CORPUS="$W/corpus-unmapped.json" bash "$SUT" --vault "$V" --qmd-config "$G3" --apply 2>&1 >/dev/null)"; hrc=$?
+check "an unmapped luna-archive: the step refuses with exit 5" 5 "$hrc"
+check "and its message names luna-archive" 0 "$(grep -q 'luna-archive' <<<"$herr" && echo 0 || echo 1)"
+check "a refused apply leaves the qmd config as it was" 0 "$(cmp -s "$G3" "$W/g3.orig" && echo 0 || echo 1)"
+check "and writes no .graphifyignore" 1 "$([ -e "$V/.graphifyignore" ] && echo 0 || echo 1)"
+echo "detection: the registered names after the refused apply, beside their corpus entry"
+registered_map "$G3" "$W/corpus-unmapped.json" | sed 's/^/  /'
+check "detection: the refused apply registered nothing unmapped" 0 "$(registered_map "$G3" "$W/corpus-unmapped.json" | grep -c UNMAPPED)"
+LUNA_HYGIENE_CORPUS="$W/corpus-unmapped.json" bash "$SUT" --vault "$V" --qmd-config "$G3" >/dev/null 2>&1; drc=$?
+check "the dry run reports the same refusal (exit 5) and writes nothing" "5|0" "$drc|$(cmp -s "$G3" "$W/g3.orig" && echo 0 || echo 1)"
 
 # negative control: a collection the corpus file maps still registers, rc 0, same block as before
 V="$W/g2"; make_vault "$V"; CFG="$W/g2.yml"; write_cfg "$CFG" "$V"
