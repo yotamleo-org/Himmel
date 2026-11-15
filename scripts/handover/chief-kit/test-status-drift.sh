@@ -2167,12 +2167,11 @@ drift
 check "9561 COD 12: control: the same partial merge 71 h old is the UNOWNED row" "$(dcount CLOSE-OR-DISPATCH)/$(dcount UNOWNED)" 0/1
 check "9561 COD 12: and it still names its partial PR" "$(drows UNOWNED | grep -c 'left by partial merge PR #4480')" 1
 
-# 10189 COD 13-15: a merge of a linked remainder key or of a child key is an event of the parent key
-mirror_card() { # <KEY> <parent or null> <relates key or -> - a mirror card
+mirror_card() {
     mkdir -p "$TICK_TRACKER_MIRROR_DIR"
     printf -- '---\nkey: "%s"\nparent: %s\nlinks:\n  blocks: []\n  relates: [%s]\n---\n' "$1" "$2" "${3:+\"relates to $3\"}" > "$TICK_TRACKER_MIRROR_DIR/$1.md"
 }
-other_merge() { local keep=$K; K=$1; lrow "$2" merge moved - '{"pr":"4481","contract":"no"}'; K=$keep; } # <KEY> <seconds before NOW>
+other_merge() { local keep=$K; K=$1; lrow "$2" merge moved - '{"pr":"4481","contract":"no"}'; K=$keep; }
 codfx 73; cod_comment $((100 * 3600)) 'x'
 mirror_card "$K" null HIMMEL-9990; other_merge HIMMEL-9990 3600
 drift

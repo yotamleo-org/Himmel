@@ -1400,12 +1400,10 @@ def live_worker_records(workers):
 
 
 OWED_RE = re.compile(r'operator[ -](?:sign-?off|runs?|words|signs?|decides?|on Telegram|only)|Telegram ask|operator-owed', re.I)
-# what only the operator can do: a spend grant, an account or terms change, a root or sudo step, a physical action, a public-policy call (decision 953)
 OPERATOR_CLASS_RE = re.compile(r'spend|\bgrants?\b|\bpaid\b|billing|payment|\baccount\b|\bterms\b|\broot\b|\bsudo\b|reinstall|\bphysical\b|hardware|public[ -]polic|policy call', re.I)
 
 
 def handoff_answered(handover_dir, handoff, line):
-    """True when a verbatim-decision file newer than the HANDOFF names the item's ticket key or repeats its quoted ask."""
     keys = set(re.findall(r'HIMMEL-\d+', line))
     asks = {q.lower() for q in re.findall(r'"([^"]{6,})"', line)}
     try:

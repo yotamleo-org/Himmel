@@ -342,14 +342,13 @@ cod_comment_epoch() {
         /^### / { n = split($0, a, " — "); if (n > 1 && a[n] ~ re) print a[n]; next }
         NF >= 2 && $2 ~ re { print $2 }' | jq -Rr "$VD_EP"'try ep catch empty' 2>/dev/null | sort -n | tail -n 1 # swallow-ok: an unreadable comment time is no event, and the merge row and the worker docs still decide
 }
-# cod_related_epoch <KEY>: the newest merge-row time of a key the ticket links to (its mirror card's links block) or of a child whose parent is the ticket
 cod_related_epoch() {
     local card=$MIRROR_DIR/$1.md rel r ts e best=0
     rel=$({
         # swallow-ok: a card with no readable links block names no linked key
         [ ! -r "$card" ] || awk '/^---$/ { if (++n == 2) exit; next } n == 1 && /^links:/ { on = 1; next } n == 1 && /^[^ ]/ { on = 0 } n == 1 && on' "$card" | grep -oE '[A-Za-z][A-Za-z0-9]*-[0-9]+'
         # swallow-ok: no child card names no child key
-        grep -rlF --include='*.md' "parent: \"$1\"" "$MIRROR_DIR" 2>/dev/null | sed 's#.*/##; s#\.md$##'
+        grep -rlxF --include='*.md' "parent: \"$1\"" "$MIRROR_DIR" 2>/dev/null | sed 's#.*/##; s#\.md$##'
     } | grep -vxF "$1" | sort -u)
     while IFS= read -r r; do
         [ -n "$r" ] || continue

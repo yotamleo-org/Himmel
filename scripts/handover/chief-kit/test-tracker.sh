@@ -1671,7 +1671,6 @@ rm -f "$cod/bucket/focus-drift.txt"
 codrender --owed-dir "$cod/bucket" >/dev/null
 not_contains '9561 control: with no such row nothing is asked' "$(grep -F -e 'data-section="waiting"' -e 'data-section="chief-owes"' "$codout" 2>/dev/null)" 'or name a worker'
 
-# a HANDOFF open item answered by a newer verbatim-decision file is dropped
 hb="$cod/hbucket"
 mkdir -p "$hb/specs/decisions"
 printf '%s\n' '# handoff' '## Open operator items' '' 'Asked on Telegram: "bypass 9980" and HIMMEL-8001 yes/no' '## Wrapped' 'none' > "$hb/HIMMEL-x-chief-HANDOFF.md"
@@ -1695,7 +1694,6 @@ touch -d '2026-11-15 10:00:00' "$hb/HIMMEL-x-chief-HANDOFF.md"
 codrender --owed-dir "$hb" >/dev/null
 contains '10189 control: a HANDOFF item no newer decision answers stays under Waiting on you' "$(grep -F 'data-section="waiting"' "$codout" 2>/dev/null)" 'an ask no decision repeats'
 
-# a Live-state operator-owed line needs an operator class to list under Waiting on you
 printf '%s\n' '# chief' '## Live state' 'queue: HIMMEL-21 operator-owed lines remain | HIMMEL-25 operator words: the sudo root reinstall' 'pool-disposition: HIMMEL-24 close decision 847 operator-owed: proof verdict' > "$cod/chief.md"
 codrender --owed-dir "$cod/bucket" --chief-doc "$cod/chief.md" >/dev/null
 codw="$(grep -F 'data-section="waiting"' "$codout" 2>/dev/null)"
