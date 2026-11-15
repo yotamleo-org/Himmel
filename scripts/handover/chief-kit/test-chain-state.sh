@@ -332,13 +332,14 @@ M0="$M"; M="$KH/.himmel/state/jira-mirror/CONFKEY"
 issue HIMMEL-1 "In Progress" labels='["chain-x"]'
 issue HIMMEL-2 "To Do" labels='["chain-x"]' bb='["HIMMEL-1"]'
 M="$M0"
-# kcs [VAR=value ...] [-- flags...]: chain-state under a clean env, no --mirror unless a flag gives one
+# kcs [VAR=value ...]: chain-state under a clean env, no --mirror; sets kcs_rc
 kcs() { env -i HOME="$KH" PATH="$PATH" HIMMEL_CONFIG_DIR="$KC" HIMMELCTL_CACHE_DIR="$KCACHE" "$@" \
-    node "$SUT" --json --registry "$tmp/registry.json" --version v1 --now "$NOW" > "$tmp/out" 2>"$tmp/err"; }
+    node "$SUT" --json --registry "$tmp/registry.json" --version v1 --now "$NOW" > "$tmp/out" 2>"$tmp/err"; kcs_rc=$?; }
 kcs
+check "default mirror: the himmel.conf run exits 0 with JSON" "$kcs_rc $(jq -e . "$tmp/out" >/dev/null 2>&1 && echo json || echo none)" "0 json"
 check "default mirror: a key only in himmel.conf reads jira-mirror/<that key>" "$(tk $K2 .state)" "waits on step 1"
 kcs JIRA_PROJECT_KEY=OTHER
-check "default mirror: the env key wins over himmel.conf" "$(tk $K2 .state | grep -c 'waits on step 1')" "0"
+check "default mirror: the env key wins over himmel.conf (no mirror there, exit 2)" "$kcs_rc $(tk $K2 .state | grep -c 'waits on step 1')" "2 0"
 kcs HIMMEL_JIRA_MIRROR="$KH/.himmel/state/jira-mirror/CONFKEY" JIRA_PROJECT_KEY=OTHER
 check "default mirror: HIMMEL_JIRA_MIRROR is read through the resolver" "$(tk $K2 .state)" "waits on step 1"
 env -i HOME="$KH" PATH="$PATH" HIMMEL_CONFIG_DIR="$KC" HIMMELCTL_CACHE_DIR="$KCACHE" \

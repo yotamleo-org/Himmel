@@ -257,13 +257,13 @@ mkdir -p "$KH/.himmel/state/jira-mirror/CONFKEY" "$KC" "$KCACHE"
 cp "$MIR"/HIMMEL-*.md "$KH/.himmel/state/jira-mirror/CONFKEY/"
 printf 'JIRA_PROJECT_KEY=CONFKEY\n' > "$KC/himmel.conf"
 : > "$KCACHE/.env"
-# krun [VAR=value ...] [-- flags...]: chain-render under a clean env, writing $W/key-out.json
+# krun [VAR=value ...]: chain-render under a clean env, writing $W/key-out.json; sets krun_rc
 krun() { rm -f "$W/key-out.json"; env -i HOME="$KH" PATH="$PATH" HIMMEL_CONFIG_DIR="$KC" HIMMELCTL_CACHE_DIR="$KCACHE" "$@" \
-    python3 -I "$SUT" --graph "$W/graph.json" --registry "$REG" --out "$W/key-out.json" >/dev/null 2>&1; }
+    python3 -I "$SUT" --graph "$W/graph.json" --registry "$REG" --out "$W/key-out.json" >/dev/null 2>&1; krun_rc=$?; }
 krun
 same 'a key only in himmel.conf reads jira-mirror/<that key> by default' "$(keys "$W/key-out.json" 2>/dev/null)" 'Rename the chain:9002[0] 9004[0] 9005[0] 9003[1]'
 krun JIRA_PROJECT_KEY=OTHER
-same 'the env key wins over himmel.conf (no mirror there, exit 2)' "$(test -f "$W/key-out.json" && echo written || echo none)" none
+same 'the env key wins over himmel.conf (no mirror there, exit 2)' "$krun_rc $(test -f "$W/key-out.json" && echo written || echo none)" '2 none'
 krun HIMMEL_JIRA_MIRROR="$KH/.himmel/state/jira-mirror/CONFKEY" JIRA_PROJECT_KEY=OTHER
 same 'HIMMEL_JIRA_MIRROR is read through the resolver' "$(keys "$W/key-out.json" 2>/dev/null)" 'Rename the chain:9002[0] 9004[0] 9005[0] 9003[1]'
 krun NEXT_DISPATCH_MIRROR="$MIR" JIRA_PROJECT_KEY=OTHER
