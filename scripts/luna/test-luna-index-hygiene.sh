@@ -41,9 +41,6 @@ make_vault() {
   echo "# n" > "$1/notes/n.md"
 }
 
-# The step registers luna-archive, which the shipped corpus file may not map yet
-# yet. The rows below that exercise registration run against a copy of
-# the shipped corpus that maps it; the guard rows run against the shipped file.
 REAL_CORPUS="$REPO/scripts/qmd/qmd-collection-corpus.json"
 python3 -I -c 'import json, sys
 d = json.load(open(sys.argv[1]))
@@ -223,10 +220,7 @@ check "a not-yet-existing root under a symlink into graphify-out exits 2" 2 "$?"
 check "and nothing is created through the symlink" 1 "$(nested_gi && echo 0 || echo 1)"
 check "and graphify-out still holds its files" 0 "$([ -f "$V/graphify-out/d/GRAPH_REPORT.md" ] && echo 0 || echo 1)"
 
-# --- a collection the corpus file does not map is never registered -----------
-# The egress gate treats an unmapped collection as unsafe and refuses every
-# bounded qmd call, so registering one disables note search for the whole fleet.
-registered_map() {  # registered_map <cfg> <corpus> : "name -> corpora|UNMAPPED" per registered collection
+registered_map() {
   awk '/^collections:/{f=1;next} /^[^ #]/{f=0} f&&/^  [^ ]/{n=$1; sub(/:$/,"",n); print n}' "$1" |
     python3 -I -c 'import json, sys
 m = json.load(open(sys.argv[1]))["collections"]
@@ -234,7 +228,7 @@ for n in sys.stdin:
     n = n.strip()
     print("%s -> %s" % (n, ",".join(m[n]) if n in m else "UNMAPPED"))' "$2"
 }
-gated_query() {  # gated_query <qmd-config-dir> : bounded `query -c luna x` through the real egress gate, qmd stubbed
+gated_query() {
   mkdir -p "$W/stub" "$W/glm" "$W/nobun" "$W/gcache"
   printf '#!/usr/bin/env bash\necho STUB-QMD\n' > "$W/stub/qmd"; chmod +x "$W/stub/qmd"
   env -u QMD_EMBED_MODEL -u QMD_RERANK_MODEL -u QMD_GENERATE_MODEL -u QMD_OPENAI_BASE_URL -u INDEX_PATH \
@@ -263,8 +257,6 @@ echo "detection: the registered names after the step on the shipped corpus, besi
 registered_map "$G/index.yml" "$REAL_CORPUS" | sed 's/^/  /'
 check "detection: each registered name has a corpus entry" 0 "$(registered_map "$G/index.yml" "$REAL_CORPUS" | grep -c UNMAPPED)"
 
-# the refusal itself, against a corpus fixture that does not map luna-archive (so
-# these rows hold whether or not the shipped corpus maps it)
 python3 -I -c 'import json, sys
 d = json.load(open(sys.argv[1]))
 d["collections"].pop("luna-archive", None)
@@ -281,7 +273,6 @@ check "detection: the refused apply registered nothing unmapped" 0 "$(registered
 LUNA_HYGIENE_CORPUS="$W/corpus-unmapped.json" bash "$SUT" --vault "$V" --qmd-config "$G3" >/dev/null 2>&1; drc=$?
 check "the dry run reports the same refusal (exit 5) and writes nothing" "5|0" "$drc|$(cmp -s "$G3" "$W/g3.orig" && echo 0 || echo 1)"
 
-# negative control: a collection the corpus file maps still registers, rc 0, same block as before
 V="$W/g2"; make_vault "$V"; CFG="$W/g2.yml"; write_cfg "$CFG" "$V"
 bash "$SUT" --vault "$V" --qmd-config "$CFG" --apply >/dev/null 2>&1; crc=$?
 check "control: a mapped luna-archive registers and the step exits 0" 0 "$crc"

@@ -65,16 +65,11 @@ CORPUS="${LUNA_HYGIENE_CORPUS:-$(dirname "$0")/../qmd/qmd-collection-corpus.json
 mode=$([ "$APPLY" -eq 1 ] && echo apply || echo dry-run)
 echo "luna-index-hygiene: $mode vault=$VAULT collection=$COLLECTION"
 
-# --- 0. the collection step 1b registers must be mapped in the egress corpus --
-# qmd-jina-gate.mjs denies a collection with no entry in the corpus file for every
-# remote model, so registering one makes every bounded qmd call refuse.
-# Same lookup as the gate (the name is a key of "collections"); nothing is written
-# before this passes, in a dry run too.
 python3 -I - "$CFG" "$CORPUS" "$ARCHIVE_COLLECTION" <<'PY'
 import json, sys
 cfg, corpus, name = sys.argv[1:4]
 if ("  %s:" % name) in open(cfg).read().split("\n"):
-    sys.exit(0)  # already registered: nothing to register
+    sys.exit(0)
 try:
     mapped = json.load(open(corpus))["collections"]
 except (OSError, ValueError, KeyError) as e:
