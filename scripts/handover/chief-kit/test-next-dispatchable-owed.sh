@@ -233,9 +233,7 @@ lacks "U9a: and lists no row from it" "$out_u9" "RESUME	HIMMEL-311"
 has "U9b: an owed answer without the fields leaves the PR unread" "$out_u9" "NEEDS-CHIEF-NOTE HIMMEL-312: merged PR #6019 body could not be read"
 lacks "U9b: and prints no OWED line from it" "$out_u9" "OWED HIMMEL-312"
 
-# Proof staging on OWED lines (rows S3, S5, S7): the real reader, so a coverage line reaches the listing as a chief-owed text.
-# The DoD and Proof texts are two real tickets' (the guest-credential proof and the helper-update proof), copied from the Jira mirror; the Ticket coverage section of PR 5368 is verbatim.
-mkd() { # <key> <title> <description>
+mkd() {
     printf -- '---\nkey: "%s"\ntype: "Task"\nstatus: "In Progress"\nstatusCategory: "x"\npriority: "Medium"\nlabels: []\nfixVersions: []\nparent: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# %s: %s\n\n## Description\n\n%s\n' "$1" "$1" "$2" "$3" > "$M/$1.md"
 }
 D9732='Edit scripts/lib/o21.sh.

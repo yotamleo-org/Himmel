@@ -42,7 +42,7 @@ chmod +x "$WORK/wt.sh"
 export WT_LOG="$WORK/wt.log" GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh"
 export GEN_BRIEFS_MIRROR="$WORK/mirror"; mkdir -p "$GEN_BRIEFS_MIRROR"  # the proof check reads this fixture mirror, never the real one
 export TICKET_STATUS_STATE_DIR="$WORK/state-empty"  # the partial-merge block reads status-events.jsonl here, never the real one
-mkdir -p "$WORK/state-empty"; : > "$WORK/state-empty/status-events.jsonl"  # an empty log: a proof worker reads the log, and a missing one is the need unknown
+mkdir -p "$WORK/state-empty"; : > "$WORK/state-empty/status-events.jsonl"
 printf '#!/usr/bin/env bash\nexit 1\n' > "$WORK/gh-down.sh"; chmod +x "$WORK/gh-down.sh"
 export GEN_BRIEFS_GH_CMD="$WORK/gh-down.sh"
 export GEN_BRIEFS_NO_WT_CHECK=1 # the older rows use a fixture --repo with no real worktrees; the bucket and worktree-guard rows unset it
@@ -2405,14 +2405,12 @@ PFPY
 o="$(python3 -I "$WORK/pf5.py" "$HERE/../../../docs/handover/worker-brief-template.md" "$PB" "$PB" 'post the verdict with jira comment' '' "$PF_KEYS" 2>&1)"; rc=$?
 [ "$rc" = 0 ] && pass "P5 the template's Proof leg Contract equals the rendered Contract" || fail "P5 parity rc=$rc: $o"
 
-# Proof staging (rows G1-G10): a kind proof worker whose keys need staging is refused until the entry carries "staged": true.
-# The DoD and Proof texts are a real ticket's (the guest-credential proof), copied verbatim from the Jira mirror.
 DOD_9556='- A grouping table of the denials, each group marked allowed or kept, with the reason.
 - In a VM session, a worker merges a throwaway trust-path PR on a valid go.sh GO file with no classifier refusal.
 - In a VM session, a kept-refused shape still refuses.
 - docs/setup/settings-template.json carries the change.'
 PROOF_9556='RED then GREEN on the DoD rows. A settings-template row in the existing settings suite fails on main at the base and passes at the head once docs/setup/settings-template.json carries the allowed shapes. The grouping table (each group marked allowed or kept, with its reason) is in the PR. The two VM rows are run on a test VM with the exact commands the PR lists: a worker merges a throwaway trust-path PR on a valid go.sh GO file with no classifier refusal, and one kept-refused shape still refuses.'
-gmk() { # <KEY> <dod> <proof> [last line]: a mirror ticket with the DoD and Proof sections given
+gmk() {
     printf -- '---\nkey: "%s"\nstatus: "In Progress"\ntype: "Task"\npriority: "Medium"\nlabels: []\n---\n# %s: t\n\n## Description\n\nWrites: none (chief-run proof, no code)\n\nDoD\n%s\n\nProof\n%s\n%s\n\n## Comments\n\nnone\n' "$1" "$1" "$2" "$3" "${4:-}" > "$CG/mirror/$1.md"
 }
 gmk HIMMEL-9811 "$DOD_9556" "$PROOF_9556"

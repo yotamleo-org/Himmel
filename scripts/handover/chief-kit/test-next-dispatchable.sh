@@ -2540,15 +2540,13 @@ u12_err="$(U_SUT="$U12/scripts/handover/chief-kit/next-dispatchable.sh" runu 2>&
 [ "$u12_rc" = 3 ] && pass "U12: a pr_remainder.py that cannot be loaded exits 3" || fail "U12: a pr_remainder.py that cannot be loaded exits 3 (rc $u12_rc)"
 has "U12: and says so on stderr" "$u12_err" "# next-dispatchable: pr_remainder.py unreadable ("
 
-# Proof staging: a proof row's last field names the operator steps its proof needs staged (rows S1-S14). DoD and Proof
-# texts below are a real ticket's (the guest-credential proof), copied verbatim from the Jira mirror.
 DOD_9556='- A grouping table of the denials, each group marked allowed or kept, with the reason.
 - In a VM session, a worker merges a throwaway trust-path PR on a valid go.sh GO file with no classifier refusal.
 - In a VM session, a kept-refused shape still refuses.
 - docs/setup/settings-template.json carries the change.'
 PROOF_9556='RED then GREEN on the DoD rows. A settings-template row in the existing settings suite fails on main at the base and passes at the head once docs/setup/settings-template.json carries the allowed shapes. The grouping table (each group marked allowed or kept, with its reason) is in the PR. The two VM rows are run on a test VM with the exact commands the PR lists: a worker merges a throwaway trust-path PR on a valid go.sh GO file with no classifier refusal, and one kept-refused shape still refuses.'
 MSG="$WORK/m10203/HIMMEL"; mkdir -p "$MSG" "$WORK/s10203/workers"; cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/m10203/HIMMEL.versions.tsv"
-mkps() { # <key> <status> <first description line> <dod> <proof> [extra last line]: a ticket with the DoD and Proof sections given
+mkps() {
     local m_save="$M"; M="$MSG"
     MK_BARE=1 mk "$1" "$2" Medium '[]' '["v1.0.1"]' '[]' "S row $1" "$(printf '%s\n\nDoD\n%s\n\nProof\n%s\n%s' "$3" "$4" "$5" "${6:-}")"
     M="$m_save"
@@ -2616,7 +2614,6 @@ _s = importlib.util.spec_from_file_location('proof_staging_real', os.environ['ST
 _m = importlib.util.module_from_spec(_s)
 _s.loader.exec_module(_m)
 def __getattr__(name):
-    # the listing fetches `needs` before it reads the mirror file a second time: remove the file at that fetch
     if name == 'needs':
         if os.path.exists(os.environ['STAGING_DEL']):
             os.remove(os.environ['STAGING_DEL'])

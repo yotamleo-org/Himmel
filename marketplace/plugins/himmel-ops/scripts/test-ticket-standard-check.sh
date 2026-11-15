@@ -434,7 +434,6 @@ mkdraft "$td/p5.md"; printf 'Labels: ci\n' >>"$td/p5.md"
 run Task "$td/p5.md" "$q" --sector X --labels ''; check "an explicitly empty --labels is the empty set: a mismatch, never the draft line's ci" "$rc" 1
 hasnt "an empty --labels does not ask for the draft line's Metric" "$out" "Metric"
 
-# ticket-policy-cli.mjs --sections <a,b> --draft <file> prints {name: text} (rows T1-T3), no --type needed
 pcli="$here/ticket-policy-cli.mjs"
 printf 'Impact\nx\nDoD\n- the DoD line\nProof\nthe proof line\nAgent detail\nthe detail line\n' >"$td/t1.md"
 out="$(node "$pcli" --sections DoD,Proof --draft "$td/t1.md" 2>&1)"; rc=$?

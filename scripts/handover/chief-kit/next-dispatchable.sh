@@ -528,7 +528,6 @@ for n in names:
         **scope_of(body),
     }
 
-# The one owner of a proof's staging needs, loaded after the mirror read: a module that cannot be loaded is an error, never an untagged row.
 try:
     _sspec = importlib.util.spec_from_file_location('proof_staging', os.environ['ND_STAGING'])
     proof_staging = importlib.util.module_from_spec(_sspec)
@@ -538,7 +537,6 @@ except Exception as e:
 _staged = {}
 
 def staging_of(i):
-    # the needs of a proof row or a chief-owed OWED line; the ticket's mirror file is read again, a failed read is the need `unknown`
     k = i['key']
     if k not in _staged:
         needs, txt, unread = proof_staging.needs, '', []

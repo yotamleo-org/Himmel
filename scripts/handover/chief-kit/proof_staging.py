@@ -9,13 +9,14 @@ description's `Staging:` line, the next-step texts of the ticket's live partial-
 caller could not read an input (each is the need ('unknown', 'chief', <reason>), so a refusal is never skipped by a
 failed read). `Staging: none` drops the needs found in the DoD and Proof text, and only those.
 """
-import importlib.util, json, os, re, subprocess, tempfile
+import collections, importlib.util, json, os, re, subprocess, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CLI = os.path.join(HERE, '..', '..', '..', 'marketplace', 'plugins', 'himmel-ops', 'scripts', 'ticket-policy-cli.mjs')
 READER = os.path.join(HERE, '..', '..', 'lib', 'pr_remainder.py')
 
-NEEDS = (  # name, who stages it, pattern, flags
+Need = collections.namedtuple('Need', 'name who pattern flags')
+NEEDS = tuple(Need(*row) for row in (
     ('guest-credential', 'operator', r"\b(?:guest|operator|real|live|claude|station)\s+(?:\w+\s+)?credentials?\b|\bcredentials?\s+on\s+(?:the|a)\s+(?:guest|vm|station)\b|\b(?:in|on)\s+a\s+(?:VM|guest)\s+session\b|\bauto-mode\s+claude\b", re.I),
     ('gh-token', 'operator', r'\b(?:gh|github|guest|personal access)[ -]token\b', re.I),
     ('gh-token', 'operator', r'\bPAT\b', 0),
@@ -25,7 +26,7 @@ NEEDS = (  # name, who stages it, pattern, flags
     ('throwaway-repo', 'operator', r'\bthrowaway\b[^.\n]{0,40}?\b(?:repo(?:sitory)?|PR|pull request)\b', re.I),
     ('operator-step', 'operator', r"\boperator(?:'s)?\s+(?:approv\w*|launch\w*|stag\w*|logs? in|login)\b", re.I),
     ('go-file', 'chief', r'\bGO file\b', 0),
-)
+))
 _COMPILED = tuple((n, w, re.compile(p, f)) for n, w, p, f in NEEDS)
 _ORDER = []
 for _n, _w, _p, _f in NEEDS:
@@ -50,7 +51,6 @@ def _scan(text, found):
 
 
 def _sections(description, cli):
-    """The DoD and Proof text of the description, or None when the ticket-policy CLI could not give it."""
     with tempfile.TemporaryDirectory() as d:
         draft = os.path.join(d, 'draft.md')
         with open(draft, 'w', encoding='utf-8') as f:
@@ -101,7 +101,7 @@ def needs(mirror_text, answers=(), unread=(), cli=None):
     for s in steps:
         _scan(s, found)
     free = [t for t in staging if t.lower() != 'none' and t not in _WHO]
-    if free:  # one entry per name: every free-text token is kept in its words
+    if free:
         matched = found.get('operator-step', ('operator', ''))[1]
         found['operator-step'] = ('operator', '; '.join(([matched] if matched else []) + free))
     out = [(n, found[n][0], found[n][1]) for n in _ORDER if n in found]

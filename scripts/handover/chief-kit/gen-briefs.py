@@ -154,7 +154,7 @@ from datetime import date as _date, datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from salus_marked import salus_marked, is_adapter  # noqa: E402
 import holds  # noqa: E402  the one parser of a Writes line, and the one grant-path rule
-import proof_staging  # noqa: E402  the one owner of a proof's staging needs
+import proof_staging  # noqa: E402
 
 
 REQUIRED = ['label', 'keys', 'slug', 'branch', 'title', 'desc', 'why', 'prior', 'scope', 'scope_short', 'commit']
@@ -476,7 +476,7 @@ def check_proof(worker):
         die('worker %s: fix the ticket first, then re-run (a worker without a named Proof cannot show RED then GREEN):\n%s' % (worker['label'], '\n\n'.join(refused)))
 
 
-_STAGING = {}  # worker label -> [(key, name, who, words)] for a kind proof worker with needs
+_STAGING = {}
 
 
 def staging_text(need):
@@ -485,8 +485,6 @@ def staging_text(need):
 
 
 def check_staging(worker, repo):
-    # A proof worker is read-only: a need only the operator or the chief can stage refuses it until the chief sets staged: true.
-    # An input this call could not read is the need `unknown`, so a refusal is never skipped by a failed read.
     found = []
     for key in worker['keys']:
         unread = []
@@ -1436,8 +1434,7 @@ def render_rm_brief(l, ctx):
 
 def partial_merge_prs(keys, unread=None):
     """The PR numbers of every merged contract=no (partial) merge row of these keys, oldest first.
-    The rows are written by merge-on-green.sh; the funnel's own rows carry no contract and never match.
-    A caller that passes `unread` gets a reason appended when the status log is missing or unreadable."""
+    The rows are written by merge-on-green.sh; the funnel's own rows carry no contract and never match."""
     state = os.environ.get('TICKET_STATUS_STATE_DIR') or os.path.join(os.environ.get('HOME') or '/tmp', '.himmel', 'state')
     prs, seen = [], set()
     try:
@@ -1510,7 +1507,6 @@ def pr_remaining(pr, repo, own_keys=()):
 
 
 def pr_units(pr, repo, own_keys=()):
-    """The reader's units answer for PR <pr>'s body (the dict pr_remainder_units returns), None when the body could not be read."""
     body = pr_body(pr, repo)
     if body is None:
         return None
