@@ -400,41 +400,21 @@ _qmd_wrapper_text() {
   printf 'LIB=%q\n' "$lib"
   printf 'FORK_BIN=%q\n' "$fork_bin"
   cat <<'WRAPPER'
-key_trace=0
-case "$-" in *x*) key_trace=1 ;; esac
-set +x
 if [ -r "$LIB" ]; then
   . "$LIB"
-  sess_key="${QMD_OPENAI_API_KEY:-}"
-  key_rc=0
-  qmd_daemon_key_load "${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}/index.yml" || key_rc=$?
-  set +x
-  if [ "$key_rc" -eq 11 ] && [ -n "$sess_key" ]; then
-    QMD_OPENAI_API_KEY="$sess_key"
-    export QMD_OPENAI_API_KEY
-    key_rc=0
-  fi
-  sess_key=""
-  if [ "$key_rc" -eq 10 ]; then
-    echo "qmd: $QMD_KEY_FILE_PATH holds the provider key but is readable by others - qmd not started (chmod 600 it)." >&2
-    exit 10
-  elif [ "$key_rc" -eq 11 ]; then
-    echo "qmd: an OpenRouter config but no provider key - qmd not started. Put a QMD_OPENAI_API_KEY=... line (mode 0600) in $QMD_KEY_FILE_PATH." >&2
-    exit 10
-  fi
+  _qmd_egress_ok "$@" || exit $?
 else
-  echo "qmd: key loader $LIB is missing - running without the daemon key (re-run scripts/lib/qmd-bin.sh install)." >&2
+  echo "qmd: $LIB is missing - running without the egress gate and the daemon key (re-run scripts/lib/qmd-bin.sh install)." >&2
 fi
-if [ "$key_trace" -eq 1 ]; then set -x; fi
 exec "$FORK_BIN" "$@"
 WRAPPER
 }
 
 _qmd_ensure_wrapper() {
-  local wrapper fork_bin lib tmp
+  local wrapper fork_bin lib tmp line2
   wrapper="$(_qmd_wrapper_path)"
   fork_bin="$(_qmd_fork_dir)/bin/qmd"
-  lib="$(cd -P -- "$_QMDBIN_LIB_DIR" 2>/dev/null && pwd -P)/qmd-daemon-env.sh" || return 1
+  lib="$(cd -P -- "$_QMDBIN_LIB_DIR" 2>/dev/null && pwd -P)/qmd-bin.sh" || return 1
 
   if [ -L "$wrapper" ]; then
     if ! [ "$wrapper" -ef "$fork_bin" ]; then
@@ -442,10 +422,13 @@ _qmd_ensure_wrapper() {
       return 1
     fi
   elif [ -e "$wrapper" ]; then
-    if ! grep -q 'himmel-qmd-wrapper' "$wrapper" 2>/dev/null; then
-      echo "  WARNING: $wrapper exists and is not himmel's - leaving it; bare qmd keeps sending no provider key." >&2
-      return 1
-    fi
+    { IFS= read -r _ && IFS= read -r line2; } <"$wrapper" 2>/dev/null || line2=""
+    case "$line2" in
+      '# himmel-qmd-wrapper: '*) ;;
+      *)
+        echo "  WARNING: $wrapper exists and is not himmel's - leaving it; bare qmd keeps sending no provider key." >&2
+        return 1 ;;
+    esac
   fi
   if ! mkdir -p -- "$(dirname -- "$wrapper")" 2>/dev/null; then
     echo "  WARNING: could not create $(dirname -- "$wrapper") - no qmd wrapper written." >&2

@@ -1507,8 +1507,9 @@ printf '#!/usr/bin/env bash\necho "FORK-QMD KEY=${QMD_OPENAI_API_KEY:+set} ARGS=
 WR_SENTINEL=sk-wrapper-sentinel-10088
 wr_home() {
   local h="$tmpdir/wr-$1"
-  mkdir -p "$h/.himmel/state" "$h/.local/bin"
+  mkdir -p "$h/.himmel/state" "$h/.local/bin" "$h/.config/qmd"
   printf 'QMD_OPENAI_API_KEY=%s\n' "$WR_SENTINEL" >"$h/.himmel/state/qmd-daemon.env"; chmod 600 "$h/.himmel/state/qmd-daemon.env"
+  printf 'collections:\n  himmel:\n    path: %s\nmodels:\n'"$OR_REMOTE" "$h" >"$h/.config/qmd/index.yml"
   printf '%s\n' "$h"
 }
 wr_ensure() {
@@ -1565,12 +1566,12 @@ assert "a group-readable key file: the refusal names the file" grep -q 'qmd-daem
 assert "a group-readable key file: the key never reaches the output" bash -c '! grep -q "$2" <<<"$1"' _ "$out" "$WR_SENTINEL"
 
 h="$(wr_home nokey)"; wr_ensure "$h" >/dev/null; rm -f "$h/.himmel/state/qmd-daemon.env"
+printf 'collections:\n  notes:\n    path: %s\nmodels:\n  embed: hf:x/y.gguf\n' "$h" >"$h/.config/qmd/index.yml"
 rc=0; out="$(wr_run "$h")" || rc=$?
 assert "no key file and no OpenRouter config: behaviour unchanged (rc 0)" test "$rc" -eq 0
 assert "no key file and no OpenRouter config: the fork qmd runs with no key" grep -q '^FORK-QMD KEY= ARGS=query x' <<<"$out"
 
 h="$(wr_home openrouter)"; wr_ensure "$h" >/dev/null; rm -f "$h/.himmel/state/qmd-daemon.env"
-mkdir -p "$h/.config/qmd"; printf 'models:\n  embed: openai:x\n  openai_base_url: https://openrouter.ai/api/v1\n' >"$h/.config/qmd/index.yml"
 rc=0; out="$(wr_run "$h")" || rc=$?
 assert "an OpenRouter config with no key anywhere: the wrapper refuses (rc 10)" test "$rc" -eq 10
 # shellcheck disable=SC2016  # $1 expands inside the spawned bash -c
@@ -1579,10 +1580,32 @@ out="$(wr_run "$h" QMD_OPENAI_API_KEY=session-key)" || true
 assert "an OpenRouter config, no key file, a session key: the session key still reaches the fork" grep -q '^FORK-QMD KEY=set' <<<"$out"
 
 h="$(wr_home nolib)"; wr_ensure "$h" >/dev/null
-sed 's#^LIB=.*#LIB=/nonexistent/qmd-daemon-env.sh#' "$h/.local/bin/qmd" >"$h/qmd.new" && cat "$h/qmd.new" >"$h/.local/bin/qmd"
+sed 's#^LIB=.*#LIB=/nonexistent/qmd-bin.sh#' "$h/.local/bin/qmd" >"$h/qmd.new" && cat "$h/qmd.new" >"$h/.local/bin/qmd"
 rc=0; out="$(wr_run "$h")" || rc=$?
-assert "a missing key loader: the wrapper warns and still runs the fork qmd" grep -q '^FORK-QMD' <<<"$out"
-assert "a missing key loader: the warning names the loader" grep -q 'nonexistent/qmd-daemon-env.sh' <<<"$out"
+assert "a missing library: the wrapper warns and still runs the fork qmd" grep -q '^FORK-QMD' <<<"$out"
+assert "a missing library: the warning names the library" grep -q 'nonexistent/qmd-bin.sh' <<<"$out"
+
+h="$(wr_home gate)"; wr_ensure "$h" >/dev/null
+printf 'collections:\n  salus:\n    path: %s\nmodels:\n'"$OR_REMOTE" "$h" >"$h/.config/qmd/index.yml"
+rc=0; out="$(wr_run "$h")" || rc=$?
+assert "a remote config holding salus: the bare wrapper refuses (rc 10)" test "$rc" -eq 10
+assert "a remote config holding salus: the refusal comes from the egress gate" refused_by_gate "$out" salus
+# shellcheck disable=SC2016  # $1 expands inside the spawned bash -c
+assert "a remote config holding salus: the fork qmd never ran" bash -c '! grep -q FORK-QMD <<<"$1"' _ "$out"
+# shellcheck disable=SC2016  # $1 expands inside the spawned bash -c
+assert "a remote config holding salus: the key never reaches the output" bash -c '! grep -q "$2" <<<"$1"' _ "$out" "$WR_SENTINEL"
+
+h="$(wr_home sesstrace)"; wr_ensure "$h" >/dev/null; rm -f "$h/.himmel/state/qmd-daemon.env"
+out="$(env -i HOME="$h" PATH="$PATH" QMD_OPENAI_API_KEY="$WR_SENTINEL" bash -x "$h/.local/bin/qmd" query x 2>&1)" || true
+assert "traced wrapper with only a session key: the fork still gets the key" grep -q 'FORK-QMD KEY=set' <<<"$out"
+# shellcheck disable=SC2016  # $1 expands inside the spawned bash -c
+assert "traced wrapper with only a session key: the key never reaches the trace" bash -c '! grep -q "$2" <<<"$1"' _ "$out" "$WR_SENTINEL"
+
+h="$(wr_home markerbody)"; printf '#!/bin/sh\necho mine\n# this file mentions himmel-qmd-wrapper in its body\n' >"$h/.local/bin/qmd"; chmod +x "$h/.local/bin/qmd"
+before="$(cksum <"$h/.local/bin/qmd")"
+rc=0; out="$(wr_ensure "$h")" || rc=$?
+assert "a user file that only mentions the marker in its body: refused (rc nonzero)" test "$rc" -ne 0
+assert "a user file that only mentions the marker in its body: left byte-identical" test "$(cksum <"$h/.local/bin/qmd")" = "$before"
 
 echo "[test-qmd-bin] has_qmd matches binary presence in this env"
 if has_qmd; then
