@@ -525,7 +525,7 @@ repos:
         # the gate certified every commit, including non-conventional ones,
         # for the whole life of the entry.
         language: system
-        entry: bash scripts/hooks/check-commit-msg.sh
+        entry: bash scripts/hooks/check-commit-msg.sh --attest-refuse
         always_run: true
         stages: [commit-msg]
 
