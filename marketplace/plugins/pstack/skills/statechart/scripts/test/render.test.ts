@@ -4,7 +4,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
-import { before, test } from "node:test";
+import { after, before, test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { fuzz, type Html, type Mermaid, type Render } from "./labels.ts";
 
@@ -18,16 +18,20 @@ const guide = fs.readFileSync(path.join(here, "../../references/render.md"), "ut
 const css = guide.match(/```css\n([\s\S]*?)```/);
 assert.ok(css, "references/render.md has no css block");
 const theme = css[1];
-const cache = path.join(
-  process.env.XDG_CACHE_HOME ?? path.join(os.homedir(), ".cache"),
-  "statechart",
-);
+const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "statechart-"));
+const cache = path.join(scratch, "cache");
+const home = path.join(scratch, "home");
+fs.mkdirSync(home);
+after(() => fs.rmSync(scratch, { recursive: true, force: true }));
 const install = (name: string, ...packages: string[]) => {
   const dir = path.join(cache, name);
   execFileSync(
     "npm",
     ["install", "--prefix", dir, "--no-audit", "--no-fund", "--save-exact", ...packages],
-    { stdio: ["ignore", "pipe", "pipe"] },
+    {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, HOME: home, USERPROFILE: home, XDG_CACHE_HOME: path.join(home, ".cache") },
+    },
   );
   return createRequire(path.join(dir, "package.json"));
 };
