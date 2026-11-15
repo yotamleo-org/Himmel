@@ -59,13 +59,18 @@ The chief writes the request and sends `REQ <id>`. Then:
    <O-id>`). That record's `verbatim` is the operator's own words, checked
    against the decision's verbatim file: admit on it when the words say this
    placement, under `--authority operator --ref <O-id>`; when they do not, rule
-   as you would without it. A request filed by a worker, by the close-time Done
+   as you would without it. Words that direct placement by priority or urgency
+   and name no version (decision 948: "high tickets into" the current release)
+   say this placement for an INTAKE of a High or Highest ticket into the
+   current release: admit it; the words say nothing for a Medium, Low or
+   unprioritised ticket. A request filed by a worker, by the close-time Done
    fold, by the version repair or by the blocker pull (evidence `rule:
    blocker-pull`, ruled under `O-<R>-blocker-pull`) is not gated and may cite no
    such record: rule it as before, never hold it for the missing record. A
    `BACKLOG` (or REVERSION `KEEP`) ruling on a request from the backlog into a
-   version wakes the chief, so its reason must name the fix: what record or fact
-   would let the key in. A record with no
+   version wakes the chief, so its reason names the missing condition and the fix:
+   what record or fact would let the key in. For a High, Highest or security
+   ticket `rm-run` prints that reason as an alert line on the chief's console. A record with no
    `words: 1` (the legacy form) is read as before.
    A REVERSION restoring a key to a version rules `MOVE` with `--op move
    --from backlog --to <v>`. Only for a key whose current ruling carries

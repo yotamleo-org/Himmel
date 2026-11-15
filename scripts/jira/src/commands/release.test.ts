@@ -255,7 +255,36 @@ describe('jira release rm-run', () => {
     for (const k of ['WORKER_SESSION_LANE', 'CADENCE_USAGE_LAUNCH', 'CADENCE_USAGE_CALLER_PID']) expect(pre?.env).not.toHaveProperty(k);
   });
 
-  const EXIT_PLAN_REPLY = '<function_calls>\n<invoke name="ExitPlanMode">\n<parameter name="plan">The rulings JSON array was already delivered.</parameter>\n</invoke>\n</function_calls>';
+  describe('the chief alert on a High or security request ruled BACKLOG', () => {
+    const rulesBacklog = async (priority: string, labels: string[] = []) => {
+      await run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '1', '--verbatim-file', join(root, 'verbatim.txt'));
+      await run('request', 'R1', '--verb', 'INTAKE', '--key', 'K-2', '--to', 'v1', '--why', 'found work');
+      vi.mocked(request).mockImplementation((async (m: string) => (m === 'GET'
+        ? { fields: { labels, priority: { name: priority }, status: { statusCategory: { name: 'To Do' } }, fixVersions: [] } }
+        : { id: '10001' })) as never);
+      const d = { req: 'Q-R1-0001', outcome: 'BACKLOG', op: 'none', from: null, to: null, sector: 's', ground: 'defer', reason: 'no blocker record names a version' };
+      judgeReply.out = JSON.stringify({ is_error: false, result: JSON.stringify([d]) });
+      out = [];
+      await run('rm-run', 'R1', '--mirror-root', join(root, 'no-mirror'));
+    };
+
+    it('prints an alert as the last line naming the key, the class and the reason for a High INTAKE ruled BACKLOG', async () => {
+      await rulesBacklog('High');
+      expect(out.at(-1)).toBe('RM-RUN R1 alert: K-2 High BACKLOG: no blocker record names a version');
+    });
+
+    it('names a security ticket by its label', async () => {
+      await rulesBacklog('Medium', ['security']);
+      expect(out.at(-1)).toBe('RM-RUN R1 alert: K-2 security BACKLOG: no blocker record names a version');
+    });
+
+    it('prints no alert for a Medium ticket ruled BACKLOG', async () => {
+      await rulesBacklog('Medium');
+      expect(out.some((l) => /alert:/.test(l))).toBe(false);
+    });
+  });
+
+  const EXIT_PLAN_REPLY ='<function_calls>\n<invoke name="ExitPlanMode">\n<parameter name="plan">The rulings JSON array was already delivered.</parameter>\n</invoke>\n</function_calls>';
 
   it('a reply that is an ExitPlanMode block rules nothing, returns the claim to open and names its shape', async () => {
     await oneRequest();
@@ -442,6 +471,30 @@ describe('jira release rm-run', () => {
     expect(prompt).not.toContain('(no sector, or');
     expect(prompt).toContain('No Sector field is configured');
     expect(prompt).toMatch(/"outcome":"HOLD"/);
+  });
+
+  describe('the priority-placement rule (decision 948)', () => {
+    const input = { release: 'R1', current: 'v1', versions: ['v1'], requests: [], records: [], operator: [], rulings: [], issues: [] };
+    const skill = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', 'marketplace', 'plugins', 'himmel-ops', 'skills', 'release-manager', 'SKILL.md'), 'utf8');
+
+    it('tells the judge words that direct placement by priority admit a High or Highest INTAKE into the current release', () => {
+      const prompt = judgePrompt(input, skill);
+      expect(prompt).toMatch(/direct placement by priority or urgency/);
+      expect(prompt).toMatch(/High or Highest/);
+      expect(prompt).toMatch(/current release/);
+    });
+
+    it('keeps the rule to INTAKE and to a High or Highest ticket, and names no quota', () => {
+      const prompt = judgePrompt(input, skill);
+      expect(prompt).toMatch(/INTAKE only/);
+      expect(prompt).toMatch(/not a Medium, Low or unprioritised ticket/);
+      expect(judgePrompt(input, 'skill')).not.toMatch(/\bquota\b|\bcap\b/i);
+    });
+
+    it('states the same rule in the skill words-record paragraph and requires a BACKLOG reason to name the missing condition', () => {
+      expect(skill).toMatch(/direct placement by priority or urgency/);
+      expect(skill).toMatch(/names the missing condition/);
+    });
   });
 
   it('tells the judge to take the sector from the issue snapshot first', () => {
