@@ -1470,9 +1470,6 @@ def _probe_log_path() -> Path:
 
 
 def log_probe_event(event: str, **fields) -> None:
-    """Append ONE JSON line to the probe log (never truncated, never rewritten).
-    Carries ids, the api URL, results and counts only - no tweet text. A log
-    that cannot be written is reported on stderr and never fails the run."""
     rec = {"v": 1, "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
            "event": event, **fields}
     try:
@@ -1490,7 +1487,6 @@ def _log_decision(x: dict, relpath: str, action: str, reason: str) -> None:
 
 
 def _probe_logged(x: dict, relpath: str):
-    """fxt_probe plus its one "probe" log line."""
     result, duration, counts = fxt_probe(x)
     log_probe_event("probe", clip=x["shortcode"], path=relpath, url=_fxt_url(x),
                     result=result, videos=counts[0], photos=counts[1])
@@ -1524,11 +1520,6 @@ def probe_clip(p: Path, x: dict, relpath: str) -> str:
 
 
 def reprobe_no_video(args) -> int:
-    """One-time backfill (--reprobe-no-video): probe again every X clip stamped
-    media_probe_result: no-video. A clip the probe now finds media on is
-    re-stamped (so the normal run fetches it); one with really no media, a
-    gone post or a probe error keeps its stamp untouched. --dry-run only counts
-    and calls nothing. --limit caps the clips probed (0 = all)."""
     todo = []
     for p in find_clips(args.vault, args.include_evidence, args.include_done):
         try:
