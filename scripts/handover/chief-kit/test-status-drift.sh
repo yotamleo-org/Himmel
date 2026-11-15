@@ -2160,9 +2160,11 @@ drift
 check "9561 COD 12: control: the same partial merge 71 h old is the UNOWNED row" "$(dcount CLOSE-OR-DISPATCH)/$(dcount UNOWNED)" 0/1
 check "9561 COD 12: and it still names its partial PR" "$(drows UNOWNED | grep -c 'left by partial merge PR #4480')" 1
 
-# a D6n park with no merge row takes its clock from the owner doc and the Jira comments
 H80=$((80 * 3600))
-nprfx() { d6fx; lrow $H80 wrapped noop D6n; lrow 60 sweep noop D6n; cod_doc "$1"; cod_comment "$2" 'x'; } # <doc age s> <comment age s>
+nprfx() {
+    local doc_age=$1 comment_age=$2
+    d6fx; lrow $H80 wrapped noop D6n; lrow 60 sweep noop D6n; cod_doc "$doc_age"; cod_comment "$comment_age" 'x'
+}
 nprfx $H80 $((100 * 3600))
 drift
 check "10000 COD 1: a no-PR D6n park with no event for 80 h is one CLOSE-OR-DISPATCH row" "$(dcount CLOSE-OR-DISPATCH)/$(dcount UNOWNED)" 1/0
