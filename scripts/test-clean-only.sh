@@ -690,6 +690,23 @@ else
 echo "  SKIP: 12g: no /proc on this platform, live-cwd holder cannot be detected"
 fi
 
+REAL_GIT=$(command -v git)
+SHIM_DIR="$TMP_ROOT_UNIX/bin-late"
+mkdir -p "$SHIM_DIR"
+cat > "$SHIM_DIR/git" <<SHIM
+#!/usr/bin/env bash
+case " \$* " in *" worktree remove "*) for a in "\$@"; do last=\$a; done; [ -d "\$last" ] && printf 'late\n' > "\$last/late.txt";; esac
+exec "$REAL_GIT" "\$@"
+SHIM
+chmod +x "$SHIM_DIR/git"
+git -C "$REPO" config status.showUntrackedFiles no
+WT_S_LATE=$(mk_wt wt-s-late none/s-late)
+backdate_wt "$WT_S_LATE"
+out=$(PATH="$SHIM_DIR:$PATH" run_clean "$CLEAN_GARDEN" prune --only "$WT_S_LATE")
+git -C "$REPO" config --unset status.showUntrackedFiles
+expect "12h: a file written just before the remove keeps the worktree under status.showUntrackedFiles=no" "$out" rc_nonzero "$out"
+expect "12h: the late file is still there" "$out" test -f "$WT_S_LATE/late.txt"
+
 # ── control: the plain (fleet-wide) run still prunes every merged sibling ────
 echo "CONTROL: plain --prune-only"
 out=$(run_clean "$CLEAN_GARDEN" prune --prune-only)

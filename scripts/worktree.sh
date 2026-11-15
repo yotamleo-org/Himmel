@@ -1586,12 +1586,18 @@ EOF
 }
 
 superseded_still_unchanged() {
-    local wt="$1" br="$2" br_tip="$3"
+    local wt="$1" br="$2" br_tip="$3" st
     [ "$(git -C "$wt" symbolic-ref -q HEAD 2>/dev/null)" = "refs/heads/$br" ] || return 1
     [ "$(git -C "$PRIMARY_WORKTREE" rev-parse -q --verify "refs/heads/$br^{commit}" 2>/dev/null)" = "$br_tip" ] || return 1
-    [ -z "$(git -C "$wt" status --porcelain 2>/dev/null)" ] || return 1
+    [ "$(wt_head_age_secs "$wt")" -ge "$SUPERSEDED_MIN_AGE_SECS" ] || return 1
+    st=$(git -C "$wt" status --porcelain --untracked-files=all 2>/dev/null) || return 1
+    [ -z "$st" ] || return 1
     superseded_ignored_ok "$wt" || return 1
-    ! worktree_held "$wt" 0 0
+    RESUME_HOLD_LOADED=0
+    FRESH_LOCK_DOCS_LOADED=0
+    FRESH_LOCK_DOCS_FAILED=0
+    ! worktree_held "$wt" 0 0 || return 1
+    ! branch_in_fresh_lock_doc "$br"
 }
 
 reclaim_superseded() {
@@ -1615,7 +1621,7 @@ reclaim_superseded() {
         return 1
     fi
     [ "$(classify_worktree "$wt")" = "clean" ] || return 1
-    [ -z "$(git -C "$wt" status --porcelain 2>/dev/null)" ] || return 1
+    [ -z "$(git -C "$wt" status --porcelain --untracked-files=all 2>/dev/null)" ] || return 1
     superseded_ignored_ok "$wt" || { log "  keep superseded $br (ignored files that may be user data): $wt"; return 1; }
     if [ "$DRY_RUN" -eq 1 ]; then
         echo "DRY clean-garden: would prune $br ($wt), superseded: tip already on main"
@@ -1626,7 +1632,7 @@ reclaim_superseded() {
         note_stuck "$wt" "superseded, and the worktree changed during the prune"
         SKIPPED=$((SKIPPED+1)); return 0
     fi
-    if git -C "$PRIMARY_WORKTREE" worktree remove "$wt" >/dev/null 2>&1; then
+    if git -C "$PRIMARY_WORKTREE" -c status.showUntrackedFiles=all worktree remove "$wt" >/dev/null 2>&1; then
         if git -C "$PRIMARY_WORKTREE" branch -d "$br" >/dev/null 2>&1; then
             echo "OK clean-garden: pruned superseded $br ($wt)"
             PRUNED=$((PRUNED+1))
