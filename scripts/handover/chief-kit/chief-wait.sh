@@ -892,10 +892,10 @@ drop_holds_left() {
     done | paste -sd, -
 }
 
-stale_owed_count() { # <raw tick output> <tick line> <saved key>
-    local n
-    n="$(printf '%s\n' "$1" | sed -n 's/^ACTION owed-stale=\([0-9][0-9]*\):.*/\1/p' | head -n 1)"
-    [ "$(field owed "$2")" != '?' ] || n="$(key_field owed "$3")"
+stale_owed_count() {
+    local raw="$1" line="$2" saved_key="$3" n
+    n="$(printf '%s\n' "$raw" | sed -n 's/^ACTION owed-stale=\([0-9][0-9]*\):.*/\1/p' | head -n 1)"
+    [ "$(field owed "$line")" != '?' ] || n="$(key_field owed "$saved_key")"
     case "$n" in ''|*[!0-9]*|0) ;; *) printf '%s' "$n" ;; esac
 }
 

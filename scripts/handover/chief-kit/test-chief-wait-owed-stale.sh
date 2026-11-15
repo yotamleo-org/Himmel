@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2016  # single-quoted stub bodies expand at run time
-# Linux-only: chief-wait.sh uses GNU timeout, so run-shell-tests.sh skips it off-Linux.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 WAIT="${CHIEF_WAIT:-$HERE/chief-wait.sh}"
@@ -8,7 +7,7 @@ WAIT="${CHIEF_WAIT:-$HERE/chief-wait.sh}"
 fails=0
 pass() { printf 'PASS: %s\n' "$1"; }
 fail() { printf 'FAIL: %s\n' "$1"; fails=$((fails + 1)); }
-check() { # <name> <expected> <actual>
+check() {
     if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (want '$2' got '$3')"; fi
 }
 
@@ -38,7 +37,7 @@ set_tick() {
     } > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"
 }
 
-wait_hb() { # <inbox>: block until the waiter has taken its baseline key, at most ~5 s
+wait_hb() {
     local n=0
     while [ "$n" -lt 50 ]; do
         grep -q 'key=[0-9a-f]' "$1.wait" 2>/dev/null && return 0
@@ -46,7 +45,7 @@ wait_hb() { # <inbox>: block until the waiter has taken its baseline key, at mos
     done
     return 1
 }
-wait_exit() { # <pid>: at most ~6 s; sets rc to the waiter's exit code or "running"
+wait_exit() {
     local n=0
     while [ "$n" -lt 60 ]; do
         if ! kill -0 "$1" 2>/dev/null; then wait "$1"; rc=$?; return; fi
@@ -55,7 +54,7 @@ wait_exit() { # <pid>: at most ~6 s; sets rc to the waiter's exit code or "runni
     rc=running
 }
 new_inbox() { mkdir -p "$WORK/$1/consoles"; : > "$WORK/$1/consoles/c.md"; printf '%s' "$WORK/$1/consoles/c.md"; }
-start() { # <inbox> <outfile>
+start() {
     bash "$WAIT" "$1" --workers "N1.md" > "$2" 2>"$2.err" &
     WPID=$!
 }
