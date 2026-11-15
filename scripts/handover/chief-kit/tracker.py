@@ -1512,9 +1512,9 @@ def operator_owed(handover_dir, chief_doc, version, opn, mir):
         except (OSError, UnicodeDecodeError):
             drift_rows = []
         for l in drift_rows:
-            m = re.match(r'CLOSE-OR-DISPATCH (HIMMEL-(\d+)) .*? no event since (\S+) \((\d+) h\); last PR #(\d+), owed: (.*) \| writer=', l)
+            m = re.match(r'CLOSE-OR-DISPATCH (HIMMEL-(\d+)) .*? no event since (\S+) \((\d+) h\); (last PR #\d+|no merged PR), owed: (.*) \| writer=', l)
             if m and int(m.group(2)) in opn:
-                items.append(('drift', int(m.group(2)), 'close %s or name a worker (last PR #%s, owed: %s)' % (m.group(1), m.group(5), m.group(6)),
+                items.append(('drift', int(m.group(2)), 'close %s or name a worker (%s, owed: %s)' % (m.group(1), m.group(5), m.group(6)),
                               'CLOSE-OR-DISPATCH: no event since %s (%s h)' % (m.group(3), m.group(4)), 'close the ticket, or name a worker for the rest'))
     live = md_section(chief_doc, 'Live state') if chief_doc else None
     if live is not None:
