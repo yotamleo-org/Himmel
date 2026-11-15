@@ -115,8 +115,11 @@ _ga_check_resume() {
 }
 
 _ga_check_ceilings() {
-    local root="$1" mirror="${GAP_AUDIT_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}" out
+    local root="$1" mirror="${GAP_AUDIT_MIRROR:-}" out
     local id file anchor ticket done_rows="" gone_rows="" stale_rows=""
+    if [ -z "$mirror" ]; then
+        . "$GAP_AUDIT_ROOT_DEFAULT/scripts/lib/jira-project.sh" && mirror="$(jira_mirror_dir)" || mirror=""
+    fi
     [ -f "$root/scripts/ledger/ceiling-lookup.sh" ] || return 0
     out="$(cd "$root" && bash "$root/scripts/ledger/ceiling-lookup.sh" --ids --all 2>/dev/null)" || { _ga_skip "ceilings (lookup failed)"; return 0; }
     case "$out" in

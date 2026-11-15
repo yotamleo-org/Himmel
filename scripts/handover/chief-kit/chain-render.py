@@ -32,7 +32,7 @@ step and does not hold its successors, so a closed ticket is never rendered as n
 and whatever waits on them comes after; they are never dropped.
 A ticket missing from the mirror stays a step (the tracker shows it unknown).
 
---mirror defaults to $NEXT_DISPATCH_MIRROR or ~/.himmel/state/jira-mirror/HIMMEL. Exit 0 rendered;
+--mirror defaults to $NEXT_DISPATCH_MIRROR, else the project resolver's mirror dir (~/.himmel/state/jira-mirror/<project key>). Exit 0 rendered;
 2 on an unreadable graph, mirror, bad arguments or a failed write (nothing is written).
 
 The file is written through tempfile.mkstemp in the --out directory and os.replace, never a fixed <out>.tmp, so a path
@@ -181,19 +181,33 @@ def render(graph, chains, mirror, state=None):
     return out
 
 
+def resolved_mirror():
+    lib = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib')
+    try:
+        r = subprocess.run(['bash', '-c', '. "$1/jira-project.sh" && jira_mirror_dir', 'chain-render', lib],
+                           capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as e:
+        print('chain-render: scripts/lib/jira-project.sh did not run (%s)' % e, file=sys.stderr)
+        sys.exit(2)
+    if r.returncode != 0 or not r.stdout.strip():
+        print('chain-render: scripts/lib/jira-project.sh resolved nothing (%s)' % (r.stderr.strip() or 'no output'), file=sys.stderr)
+        sys.exit(2)
+    return r.stdout.strip()
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--graph', required=True)
     ap.add_argument('--registry', required=True, metavar='FILE')
     ap.add_argument('--out', required=True)
-    ap.add_argument('--mirror', default=os.environ.get('NEXT_DISPATCH_MIRROR')
-                    or os.path.join(os.path.expanduser('~'), '.himmel', 'state', 'jira-mirror', 'HIMMEL'))
+    ap.add_argument('--mirror', default=os.environ.get('NEXT_DISPATCH_MIRROR'))
     ap.add_argument('--state')
     ap.add_argument('--version')
     ap.add_argument('--now')
     ap.add_argument('--drain', action='store_true')
     ap.add_argument('--dispositions', metavar='FILE')
     a = ap.parse_args()
+    a.mirror = a.mirror or resolved_mirror()
     if (a.drain and not a.version) or (a.dispositions and not a.drain):
         ap.error('--drain needs --version, and --dispositions needs --drain')
     state = None
