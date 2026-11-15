@@ -584,8 +584,6 @@ else
     fail "unwritable log changed the busy result or leaked an error (rc=$RC): $ERR"
 fi
 
-# --- 23: the default dir is machine-wide: it does not depend on TMPDIR. ---
-# Resolved through suite_sem_dir only, so the real shared dir is never taken.
 sem_dir_for() {
     # shellcheck disable=SC2016  # $1 expands in the child shell
     env -u HIMMEL_SUITE_SEMAPHORE_DIR "$@" \
@@ -604,7 +602,6 @@ case "$DIR_A" in
     *) pass "default semaphore dir is not under TMPDIR" ;;
 esac
 
-# negative control: HIMMEL_SUITE_SEMAPHORE_DIR still picks the dir.
 SEAM_DIR=$(sem_dir_for TMPDIR="$TMP_A" HIMMEL_SUITE_SEMAPHORE_DIR="$SCRATCH/seam")
 if [ "$SEAM_DIR" = "$SCRATCH/seam" ]; then
     pass "HIMMEL_SUITE_SEMAPHORE_DIR still picks the semaphore dir"
