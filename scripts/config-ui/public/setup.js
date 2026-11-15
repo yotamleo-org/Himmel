@@ -224,6 +224,7 @@ export const SETUP_CHECKS = [
   { id: "C78", reason: "shfmt is on PATH; without it the Bash guards deny commands that name a stash, ref-plumbing or graphify verb." },
   { id: "C81", reason: "No hook script is wired from more than one settings layer, so none runs twice per call." },
   { id: "C85", reason: "The queue lock self-heartbeat hook is wired for every tool and hooks are not disabled; without it a long worker's lock goes stale after one TTL." },
+  { id: "C96", reason: "A Jira test project is configured, so a live-test brief can be generated and its writes land there." },
 ];
 const SETUP_IDS = new Set(SETUP_CHECKS.map((c) => c.id));
 // A doctor row id is the check number, then an optional "-name": C74-env-keys is C74, and C44-skill-index is not C4.

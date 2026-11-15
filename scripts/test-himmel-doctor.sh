@@ -224,6 +224,7 @@ export HIMMEL_DOCTOR_VM_PROBE="$FAKEROOT/no-such-vm-probe"
 # Same for C59-codex-bank-cache: never read the operator's real
 # codex bank cache; an absent file is INFO, dedicated cases point at a fixture.
 export CODEX_USAGE_CACHE="$FAKEROOT/no-such-codex-bank.json"
+export HIMMEL_DOCTOR_LIVE_TEST_PROBE="$FAKEROOT/no-such-live-test-probe"
 
 # Same for C60/C61: never read the operator's real hermes checkout
 # or run the real codex CLI / npm registry; absent seams are an INFO skip,
@@ -8581,6 +8582,41 @@ else
     echo "  SKIP: C95 sleeping holds.py — no timeout binary"
 fi
 rm -rf "$c95_t"
+
+c96_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c96.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
+mkdir -p "$c96_t/home/.himmel" "$c96_t/claude"
+c96_fx="$REPO_ROOT/scripts/jira/src/fixtures"
+# shellcheck disable=SC2016  # the probe expands C96_JSON itself
+printf '#!/usr/bin/env bash\ncat "$C96_JSON"\n' > "$c96_t/probe"
+c96_run() { C96_JSON="$1" TRACKER="${C96_TRACKER:-jira}" JIRA_PROJECT_KEY=HIMMEL HIMMEL_DOCTOR_LIVE_TEST_PROBE="$c96_t/probe" \
+    CLAUDE_DIR="$c96_t/claude" HOME="$c96_t/home" HIMMEL_CONFIG_DIR="" bash "$DOC" --root "$REPO_ROOT" --no-color --only C96 "${@:2}" 2>&1; }
+echo "== C96-jira-test-project: Jira is the tracker and no JIRA_TEST_PROJECT -> WARN =="
+out="$(c96_run "$c96_fx/live-test-none.json")"
+if grepq "$out" -F 'WARN C96-jira-test-project' && grepq "$out" -F 'himmelctl config set jira.testProject'; then pass "WARN C96 when Jira is the tracker and no JIRA_TEST_PROJECT"; else fail "C96 none -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C96-jira-test-project: JIRA_TEST_PROJECT=HIMMEL is a work project -> WARN with the problem =="
+out="$(c96_run "$c96_fx/live-test-work.json")"
+if grepq "$out" -F 'WARN C96-jira-test-project' && grepq "$out" -F 'HIMMEL is a work project (JIRA_PROJECTS)' && grepq "$out" -F 'himmelctl config set jira.testProject'; then pass "WARN with the problem for JIRA_TEST_PROJECT=HIMMEL"; else fail "C96 work -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C96-jira-test-project: JIRA_TEST_PROJECT=HTEST -> OK =="
+out="$(c96_run "$c96_fx/live-test-ok.json")"
+if grepq "$out" -F 'OK   C96-jira-test-project' && grepq "$out" -F 'JIRA_TEST_PROJECT=HTEST' && ! grepq "$out" -E '(WARN|INFO) C96'; then pass "OK for HTEST"; else fail "C96 ok -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C96-jira-test-project: the tracker is not Jira -> INFO (negative control) =="
+out="$(C96_TRACKER=local c96_run "$c96_fx/live-test-none.json")"
+if grepq "$out" -F 'INFO C96-jira-test-project' && grepq "$out" -F 'the tracker is local' && ! grepq "$out" -F 'WARN C96'; then pass "INFO when the tracker is not jira"; else fail "C96 tracker local -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C96-jira-test-project: the probe prints no readable JSON -> INFO, not checked =="
+out="$(c96_run "$c96_t/no-such-file.json")"
+if grepq "$out" -F 'INFO C96-jira-test-project' && grepq "$out" -F 'not checked' && ! grepq "$out" -F 'WARN C96'; then pass "INFO when the live-test read fails"; else fail "C96 unreadable -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C96-jira-test-project: the --json row carries scope shared =="
+out="$(c96_run "$c96_fx/live-test-ok.json" --json)"
+if [ "$(printf '%s\n' "$out" | grep '^{' | jq -r 'select(.id == "C96-jira-test-project") | .scope' 2>/dev/null)" = shared ]; then pass "C96 is a shared check"; else fail "C96 --json scope -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C96-jira-test-project: no probe and no jira CLI build -> INFO =="
+c96_x="$c96_t/repo"
+mkdir -p "$c96_x/scripts/lib"
+cp "$REPO_ROOT/scripts/himmel-doctor.sh" "$c96_x/scripts/"
+cp -R "$REPO_ROOT/scripts/lib/." "$c96_x/scripts/lib/"
+out="$(cd "$c96_x" && env -u HIMMEL_DOCTOR_LIVE_TEST_PROBE -u HIMMEL_REPO -u HIMMEL_DOCTOR_ROOT TRACKER=jira JIRA_PROJECT_KEY=HIMMEL CLAUDE_DIR="$c96_t/claude" HOME="$c96_t/home" HIMMEL_CONFIG_DIR="" \
+    bash "$c96_x/scripts/himmel-doctor.sh" --root "$c96_x" --no-color --only C96 2>&1)"
+if grepq "$out" -F 'INFO C96-jira-test-project' && grepq "$out" -F 'scripts/jira/dist/index.js' && ! grepq "$out" -F 'WARN C96'; then pass "INFO when the CLI build is missing"; else fail "C96 no CLI build -> $(printf '%s' "$out" | head -4)"; fi
+rm -rf "$c96_t"
 
 printed_keys() {
     awk '/^[[:space:]]*#/ { next }
