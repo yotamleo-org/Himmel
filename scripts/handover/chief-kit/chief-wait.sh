@@ -342,6 +342,10 @@
 # conflict or no-ci token (a PR, a class): ci-slow and idle are report-only, an unchanged set
 # and a stall resolving do not wake; stall=? (a probe outage) keeps the saved set; absent
 # from an older tick line, never a failure),
+# owed= (tick.sh's `ACTION owed-stale=<n>:<ids>`: keyless ticket rows of the owed ledger past OWED_STALE_SECS) is in the
+# key as the stale COUNT only, never the age or the ids: it wakes once (`WAKE tick changed=owed`) when the count rises,
+# and a row closed with a key (the count falling or the field going absent) wakes nothing; open rows that are not
+# stale never wake; owed=? keeps the saved count; absent from the line is never a failure),
 # denials= (a new worker, a higher count or a higher class
 # (SHIP-STEP > PAUSE-RISK > REPEAT) is exactly the alert this exists to
 # surface; the same denial ageing out of tick.sh's 30-min window, moving it to
@@ -723,7 +727,7 @@ old_key_names() {
 
 # sample: sets tick_line and key (empty on a failed tick, with fail_step naming why).
 sample() {
-    local f v raw bank rc
+    local f v raw bank rc owed_n
     key=""; cap_val=""; fail_step=""
     # A tick that exits non-zero failed, whatever it printed first.
     raw="$(timeout -k 5 "$tick_timeout" bash "$tick_cmd" "$@" 2>/dev/null)" || {  # gnu-ok: Linux-only kit
@@ -796,6 +800,13 @@ sample() {
         fi
         key="$key$f=$v|"
     done
+    # owed= keeps the stale ticket-row count only, read from tick.sh's `ACTION owed-stale=<n>:<ids>`
+    # line (the tick's owed=<n>:<age> counts every open row and its age grows every tick). Absent when
+    # no keyless ticket row is past OWED_STALE_SECS, so a tick line without it is not a failed sample.
+    # owed=? (an unreadable ledger) keeps the saved count, so a blip is no change.
+    owed_n="$(printf '%s\n' "$raw" | sed -n 's/^ACTION owed-stale=\([0-9][0-9]*\):.*/\1/p' | head -n 1)"
+    [ "$(field owed "$tick_line")" != '?' ] || owed_n="$(key_field owed "$saved")"
+    case "$owed_n" in ''|*[!0-9]*|0) ;; *) key="${key}owed=$owed_n|" ;; esac
     key="${key}usage=$bank"
 }
 
@@ -886,6 +897,19 @@ drop_holds_left() {
     if [ -n "$joined" ]; then printf '%s\n' "$1"; return; fi
     printf '%s\n' "$1" | tr ',' '\n' | while read -r f; do
         [ "$f" = holds ] && continue
+        printf '%s\n' "$f"
+    done | paste -sd, -
+}
+
+# drop_owed_fall: <changed csv> <old key> <new key> — strips owed from a changed= list unless the
+# stale count rose: a row closed with a key (the count falling, or the field going absent) ends the
+# wake and is no new event.
+drop_owed_fall() {
+    local old new
+    old="$(key_field owed "$2")"; new="$(key_field owed "$3")"
+    if [ -n "$new" ] && [ "$new" -gt "${old:-0}" ] 2>/dev/null; then printf '%s\n' "$1"; return; fi
+    printf '%s\n' "$1" | tr ',' '\n' | while IFS= read -r f; do
+        [ "$f" = owed ] && continue
         printf '%s\n' "$f"
     done | paste -sd, -
 }
@@ -2708,6 +2732,7 @@ while :; do
                 real_changed="$(drop_board_ok "$(changed_fields "$saved" "$key")" "$key")"
                 real_changed="$(drop_denials_expiry "$real_changed" "$saved" "$key")"
                 real_changed="$(drop_holds_left "$real_changed" "$saved" "$key")"
+                real_changed="$(drop_owed_fall "$real_changed" "$saved" "$key")"
                 real_changed="$(drop_stall_resolved "$real_changed" "$saved" "$key")"
                 real_changed="$(drop_stall_resolved "$real_changed" "$saved" "$key" dispatch)"
                 if [ -z "$real_changed" ]; then
