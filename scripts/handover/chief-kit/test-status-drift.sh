@@ -2167,6 +2167,30 @@ drift
 check "9561 COD 12: control: the same partial merge 71 h old is the UNOWNED row" "$(dcount CLOSE-OR-DISPATCH)/$(dcount UNOWNED)" 0/1
 check "9561 COD 12: and it still names its partial PR" "$(drows UNOWNED | grep -c 'left by partial merge PR #4480')" 1
 
+# 10189 COD 13-15: a merge of a linked remainder key or of a child key is an event of the parent key
+mirror_card() { # <KEY> <parent or null> <relates key or -> - a mirror card
+    mkdir -p "$TICK_TRACKER_MIRROR_DIR"
+    printf -- '---\nkey: "%s"\nparent: %s\nlinks:\n  blocks: []\n  relates: [%s]\n---\n' "$1" "$2" "${3:+\"relates to $3\"}" > "$TICK_TRACKER_MIRROR_DIR/$1.md"
+}
+other_merge() { local keep=$K; K=$1; lrow "$2" merge moved - '{"pr":"4481","contract":"no"}'; K=$keep; } # <KEY> <seconds before NOW>
+codfx 73; cod_comment $((100 * 3600)) 'x'
+mirror_card "$K" null HIMMEL-9990; other_merge HIMMEL-9990 3600
+drift
+check "10189 COD 13: a recent merge of a key the parent links to is an event, so no CLOSE-OR-DISPATCH row" "$(dcount CLOSE-OR-DISPATCH)" 0
+codfx 73; cod_comment $((100 * 3600)) 'x'
+mirror_card "$K" null; mirror_card HIMMEL-9991 "\"$K\""; other_merge HIMMEL-9991 3600
+drift
+check "10189 COD 14: a recent merge of a child key is an event, so no CLOSE-OR-DISPATCH row" "$(dcount CLOSE-OR-DISPATCH)" 0
+codfx 73; cod_comment $((100 * 3600)) 'x'
+mirror_card "$K" null HIMMEL-9990; other_merge HIMMEL-9990 $((90 * 3600))
+drift
+check "10189 COD 15: control: a linked key's merge row over 72 h old is no event, the row stays" "$(dcount CLOSE-OR-DISPATCH)" 1
+codfx 73; cod_comment $((100 * 3600)) 'x'
+mirror_card "$K" null; other_merge HIMMEL-9990 3600
+drift
+check "10189 COD 15: control: a merge of an unrelated key is no event, the row stays" "$(dcount CLOSE-OR-DISPATCH)" 1
+rm -rf "$TICK_TRACKER_MIRROR_DIR"
+
 H80=$((80 * 3600))
 nprfx() {
     local doc_age=$1 comment_age=$2

@@ -1400,6 +1400,28 @@ def live_worker_records(workers):
 
 
 OWED_RE = re.compile(r'operator[ -](?:sign-?off|runs?|words|signs?|decides?|on Telegram|only)|Telegram ask|operator-owed', re.I)
+# what only the operator can do: a spend grant, an account or terms change, a root or sudo step, a physical action, a public-policy call (decision 953)
+OPERATOR_CLASS_RE = re.compile(r'spend|\bgrants?\b|\bpaid\b|billing|payment|\baccount\b|\bterms\b|\broot\b|\bsudo\b|reinstall|\bphysical\b|hardware|public[ -]polic|policy call', re.I)
+
+
+def handoff_answered(handover_dir, handoff, line):
+    """True when a verbatim-decision file newer than the HANDOFF names the item's ticket key or repeats its quoted ask."""
+    keys = set(re.findall(r'HIMMEL-\d+', line))
+    asks = {q.lower() for q in re.findall(r'"([^"]{6,})"', line)}
+    try:
+        since = os.path.getmtime(handoff)
+    except OSError:
+        return False
+    for f in glob.glob(os.path.join(handover_dir, 'specs', 'decisions', 'verbatim-decision-*.txt')):
+        try:
+            if os.path.getmtime(f) <= since:
+                continue
+            text = open(f, encoding='utf-8').read()
+        except (OSError, UnicodeDecodeError):
+            continue
+        if any(re.search(r'%s\b' % re.escape(k), text) for k in keys) or any(a in text.lower() for a in asks):
+            return True
+    return False
 
 
 def md_section(path, heading):
@@ -1505,7 +1527,7 @@ def operator_owed(handover_dir, chief_doc, version, opn, mir):
         if sec is not None:
             readable = True
             for l in sec:
-                if l.strip() and not re.fullmatch(r'[-*\s]*none\.?', l.strip(), re.I):
+                if l.strip() and not re.fullmatch(r'[-*\s]*none\.?', l.strip(), re.I) and not handoff_answered(handover_dir, hand[-1], l):
                     items.append(('handoff', None, clip(l.strip(), 140), os.path.basename(hand[-1]), 'answer the open item'))
         try:
             drift_rows = open(os.path.join(handover_dir, 'focus-drift.txt'), encoding='utf-8').read().splitlines()
@@ -1514,7 +1536,7 @@ def operator_owed(handover_dir, chief_doc, version, opn, mir):
         for l in drift_rows:
             m = re.match(r'CLOSE-OR-DISPATCH (HIMMEL-(\d+)) .*? no event since (\S+) \((\d+) h\); (last PR #\d+|no merged PR), owed: (.*) \| writer=', l)
             if m and int(m.group(2)) in opn:
-                items.append(('drift', int(m.group(2)), 'close %s or name a worker (%s, owed: %s)' % (m.group(1), m.group(5), m.group(6)),
+                (items if OPERATOR_CLASS_RE.search(m.group(6)) else chief_owes).append(('drift', int(m.group(2)), 'close %s or name a worker (%s, owed: %s)' % (m.group(1), m.group(5), m.group(6)),
                               'CLOSE-OR-DISPATCH: no event since %s (%s h)' % (m.group(3), m.group(4)), 'close the ticket, or name a worker for the rest'))
     live = md_section(chief_doc, 'Live state') if chief_doc else None
     if live is not None:
@@ -1527,8 +1549,9 @@ def operator_owed(handover_dir, chief_doc, version, opn, mir):
                     n = num(k.group(0)) if k else None
                     if n and 'HIMMEL-%d' % n in mir and bucket(mir['HIMMEL-%d' % n]) in ('done', 'wont'):
                         continue
-                    items.append(('chief doc', n, clip(opn[n]['title'], 100) if n in opn else clip(s.strip(), 140), clip(s.strip(), 160),
-                                  'the operator acts on what the line names'))
+                    mine = OPERATOR_CLASS_RE.search(s)
+                    (items if mine else chief_owes).append(('chief doc', n, clip(opn[n]['title'], 100) if n in opn else clip(s.strip(), 140), clip(s.strip(), 160),
+                                  'the operator acts on what the line names' if mine else 'the chief acts on what the line names'))
     return items, readable, unread, chief_owes
 
 
