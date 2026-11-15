@@ -456,7 +456,7 @@ lacks "no skipped line when nothing matched" "$pw0" "# skipped"
 
 # Fail closed: with the pattern file gone the script exits 2 rather than dispatching unfiltered.
 NF="$WORK/nopat"; mkdir -p "$NF/scripts/handover/chief-kit" "$NF/scripts/lib"
-for nf_lib in env_alias.py gh-quota.sh gh-graphql-budget.sh prim.sh timeout-bin.sh canon-path.sh; do
+for nf_lib in env_alias.py gh-quota.sh gh-graphql-budget.sh prim.sh timeout-bin.sh canon-path.sh pr_remainder.py; do
     cp "$(dirname "$SUT")/../../lib/$nf_lib" "$NF/scripts/lib/$nf_lib"
 done
 cp "$SUT" "$NF/scripts/handover/chief-kit/next-dispatchable.sh"
