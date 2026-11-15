@@ -549,6 +549,14 @@ read): an explicit pool-stale=0 is the all-clear the waiter needs to clear its m
 on the compact line. --pool-stale --doc <doc> prints its STALE-DISPOSITION lines, then these two fields. With GitHub out
 (scripts/lib/gh-quota.sh ghq_scan_gate, main GraphQL) nothing is read: pool-stale=? and residual-unversioned=skip.
 It judges only a quota.tsv reading under 170 s old (the tick's own refresh) and never probes itself.
+--pool-holds --doc <doc> [--state-file <f>] is the pool_holds step the tick runs before pool-stale=: it
+writes pool-holds-<doc stem>.json in TICK_STATE_DIR and nothing else. In a bucket that declares a release,
+a give-up line (question, close, hold, park, or a slice naming no key, PR or @sha) on a pool key or an
+asks_operator key counts as dispositioned only on `authority=O-<R>-<n>|decision-<n>` that a words
+record of release-state-<stem>.json names the key with, and is otherwise unresolved as no-authority,
+invalid or unchecked (no or an old or not-OK state file; a doc with no release: line). A missing holds
+file, or one over 30 min old, reads every give-up line unchecked. With no declared release the step
+prints pool-holds=off:no-ledger, which the tick shows, and the lines keep the rule above.
 
 INTAKE=<n> is the count of next-dispatchable.sh's `# intake` line in that same snapshot:
 open versionless tickets the pool cannot list (operator-directed, a High+ Bug, scope- or proposed- the current
@@ -607,6 +615,44 @@ on a wake-up budget and this reads every project's transcripts.
 USAGE
 }
 
+# A pool-disposition target: a ticket key, `PR <n>` or `@<sha>`. A slice line naming none of them
+# gives the key up, like a question, close, hold or park line.
+POOL_TARGET_RE='\b[A-Z]+-\d+\b|\bPRs?\s*#?\d+|(?<![\w-])@[0-9a-f]{7,40}\b'
+
+pool_holds_file() {
+    local stem="${1##*/}"
+    printf '%s/pool-holds-%s.json\n' "${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}" "${stem%.md}"
+}
+
+# holds_ledger <doc>: `off` when the doc's bucket declares no release (no release/*/release.json under
+# the declaration root the rm-queue= read uses), the doc says `release: none`, or it is another
+# project's console; else `on:<release>`, empty after the colon when the doc has no release: line.
+holds_ledger() {
+    local rel proj root="${HIMMEL_RELEASE_STATE_DIR:-}" anchor ho decl
+    rel="$(sed -n 's/^release:[[:space:]]*//p' "$1" 2>/dev/null | head -n 1 | sed 's/[[:space:]]*$//')"  # swallow-ok: an unreadable doc names no release
+    # shellcheck disable=SC2016  # single-quoted sed pattern; no expansion wanted
+    proj="$(sed -n 's/.*The project this console is FOR is \*\*`\([^`]*\)`\*\*.*/\1/p' "$1" 2>/dev/null | head -n 1)"  # swallow-ok: an unreadable doc names no project
+    if [ "$rel" = none ] || [[ "$proj" == /* ]]; then
+        echo off
+        return 0
+    fi
+    if [ -z "$root" ] && [ -n "${USER_SLUG:-}" ]; then
+        # shellcheck source=../../lib/git-clean.sh
+        anchor="$(cd "$HERE/../../.." && . "$HERE/../../lib/git-clean.sh" && git_env_scrub && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || anchor=""  # swallow-ok: no anchor leaves the default declaration root unavailable
+        anchor="${anchor%/.git}"
+        if [ -n "$anchor" ]; then
+            ho="$(cd "$anchor" && handover_root 2>/dev/null)" || ho=""  # swallow-ok: an unreadable primary root leaves declaration discovery unavailable
+            [ -z "$ho" ] || root="$ho/$USER_SLUG/${anchor##*/}/release"
+        fi
+    fi
+    if [ -n "$root" ]; then
+        for decl in "$root"/*/release.json; do
+            [ ! -f "$decl" ] || { printf 'on:%s\n' "$rel"; return 0; }
+        done
+    fi
+    echo off
+}
+
 pool_stale_file() {
     local doc="$1" mirror="$2"
     printf '%s/tick-pool-stale-%s.out\n' "${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}" \
@@ -629,14 +675,16 @@ pool_stale_serialized() {
 # One interpretation for both the tick and waiter; stdin is a complete
 # next-dispatchable.sh --dispositions snapshot, never a chief's claimed counts.
 pool_dispositions() {
-    local psf="" psm=""
+    local psf="" psm="" ledger="" holds=""
     if [ -n "$1" ]; then
         psm="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"
         psf="$(pool_stale_file "$1" "$psm")"
         psm="$(realpath -m "$psm")"  # prim-ok: the mirror need not exist, which canon_path refuses; gnu-ok: chief kit is Linux-only
+        ledger="$(holds_ledger "$1")"
+        holds="$(pool_holds_file "$1")"
     fi
-    python3 -I - "$1" "$psf" "$psm" 3<&0 <<'PY'
-import glob, hashlib, os, re, sys
+    python3 -I - "$1" "$psf" "$psm" "$ledger" "$holds" "$POOL_TARGET_RE" 3<&0 <<'PY'
+import glob, hashlib, json, os, re, sys, time
 rows = {}
 text = open(3).read()
 for line in text.splitlines():
@@ -672,8 +720,24 @@ def has_owner(target, key):
         return False
     return m[1] is None or (m[1] != key and m[1].split("-")[0] in projects)
 
-decisions, invalid, unowned = {}, {}, {}
+decisions, invalid, unowned, held = {}, {}, {}, {}
 closing = set()
+holds_on = bool(sys.argv[1]) and sys.argv[4].startswith("on:")
+target_re = re.compile(sys.argv[6])
+def gives_up(key, verb, rest):
+    rest = re.sub(r"(?<!\S)(?:authority|wake)=\S+", "", rest)
+    return verb != "slice" or not any(t for t in target_re.findall(rest) if t != key and (not re.fullmatch(r"[A-Z]+-\d+", t) or t.split("-")[0] == key.split("-")[0]))
+hrows, hwhy = {}, ""
+if holds_on:
+    try:
+        hage = time.time() - os.path.getmtime(sys.argv[5])
+        hrows = {r["key"]: r for r in json.load(open(sys.argv[5])).get("rows") or []}
+        if hage > 1800:
+            hrows, hwhy = {}, "the holds file is %d min old" % (hage // 60)
+    except FileNotFoundError:
+        hwhy = "no holds file"
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        hrows, hwhy = {}, "the holds file is unreadable"
 if sys.argv[1]:
     try:
         doc = open(sys.argv[1]).read().splitlines()
@@ -692,10 +756,21 @@ if sys.argv[1]:
         if not live or not line.startswith("pool-disposition:"):
             continue
         value = line.split(":", 1)[1].strip()
-        m = re.fullmatch(r"([A-Z]+-\d+) (slice|close|question) (\S.*)", value)
+        m = re.fullmatch(r"([A-Z]+-\d+) (slice|close|question|hold|park) (\S.*)", value)
         key = value.split()[0] if value else "?"
-        if not m or key not in rows or key in decisions or key in invalid or key in unowned:
+        hr = hrows.get(key)
+        if not m or key in decisions or key in invalid or key in unowned or key in held \
+                or (key not in rows and not (holds_on and gives_up(key, m[2], m[3]) and hr and hr.get("asks_operator") is True)):
             invalid[key] = "malformed, duplicate or unknown pool-disposition: " + value
+        elif holds_on and gives_up(key, m[2], m[3]):
+            if hwhy:
+                held[key] = ("unchecked", "%s: %s" % (hwhy, value))
+            elif not hr or hr.get("line") != hashlib.sha256(value.encode()).hexdigest()[:12]:
+                held[key] = ("unchecked", "the line changed since the holds run: " + value)
+            elif hr.get("class") in ("authority", "wake"):
+                decisions[key] = value
+            else:
+                held[key] = (str(hr.get("class")), "%s: %s" % (hr.get("reason"), value))
         elif not has_owner(m[3], key):
             unowned[key] = value
         else:
@@ -753,6 +828,8 @@ for key, reason in rows.items():
         unresolved.append(("stale", key, "its question decision names no end: the key carries a CLOSE-OR-DISPATCH drift row; close the ticket or name a worker"))
     elif owned or holder or blocker or key in decisions:
         disposed += 1
+    elif key in held:
+        unresolved.append((held[key][0], key, held[key][1]))
     elif key in unowned:
         unresolved.append(("unowned", key, "pool-disposition names no owner or observable end: " + unowned[key]))
     else:
@@ -763,6 +840,9 @@ for cls, key, reason in sorted(unresolved):
 for key, reason in sorted(invalid.items()):
     if key not in rows:
         print("# pool-unresolved invalid %s %s" % (key, reason))
+for key, (cls, reason) in sorted(held.items()):
+    if key not in rows:
+        print("# pool-unresolved %s %s %s" % (cls, key, reason))
 for key, reason in sorted(rows.items()):
     if key not in dispatchable:
         print("# pool-left-out %s %s" % (key, reason))
@@ -773,6 +853,111 @@ for key in sorted(dispatchable):
         print("# pool-parked " + key)
         if owed.search(decisions[key]):
             print("# pool-chief-owed " + key)
+PY
+}
+
+# The pool_holds step: one row per give-up pool-disposition: line of the doc's Live state, classed
+# authority (a words record of the doc's release names the key), no-authority, invalid or unchecked,
+# written to pool-holds-<doc stem>.json for pool_dispositions to count. It writes nothing else.
+pool_holds() { # <doc> <ledger> <release state file> <holds file>
+    python3 -I - "$@" "$POOL_TARGET_RE" <<'PY'
+import datetime, hashlib, json, os, re, sys, tempfile
+doc, ledger, state_file, out, target_re = sys.argv[1:6]
+target_re = re.compile(target_re)
+now = datetime.datetime.now(datetime.timezone.utc)
+if os.environ.get("TICK_NOW"):
+    try:
+        now = datetime.datetime.fromisoformat(os.environ["TICK_NOW"].replace("Z", "+00:00"))
+    except ValueError:
+        pass
+iso = lambda d: d.strftime("%Y-%m-%dT%H:%M:%SZ")
+try:
+    text = open(doc).read().splitlines()
+except OSError:
+    print("pool-holds=?")
+    sys.exit(0)
+
+def gives_up(key, verb, rest):
+    rest = re.sub(r"(?<!\S)(?:authority|wake)=\S+", "", rest)
+    return verb != "slice" or not any(t for t in target_re.findall(rest) if t != key and (not re.fullmatch(r"[A-Z]+-\d+", t) or t.split("-")[0] == key.split("-")[0]))
+
+lines, live = {}, False
+for line in text:
+    if line.startswith("## "):
+        live = line == "## Live state"
+    if live and line.startswith("pool-disposition:"):
+        value = line.split(":", 1)[1].strip()
+        m = re.fullmatch(r"([A-Z]+-\d+) (slice|close|question|hold|park) (\S.*)", value)
+        if m and m[1] not in lines and gives_up(m[1], m[2], m[3]):
+            lines[m[1]] = (m[2], m[3], value)
+
+release = ledger[3:] if ledger.startswith("on:") else None
+words = asks = None
+why = "" if release else "the doc has no release: line"
+if release:
+    try:
+        st = json.load(open(state_file))
+        age = (now - datetime.datetime.fromisoformat(str(st["ts"]).replace("Z", "+00:00"))).total_seconds()
+        if st.get("status") != "OK":
+            why = "the release state is %s" % st.get("status")
+        elif age > 1800:
+            why = "the release state file is %d min old" % (age // 60)
+        else:
+            words = [r for r in st.get("words_records") or [] if isinstance(r, dict)]
+            asks = {str(k) for k in st.get("asks_operator_keys") or []}
+    except FileNotFoundError:
+        why = "no release state file"
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        why = "the release state file is unreadable"
+
+rows = []
+for key, (verb, rest, value) in (lines.items() if ledger.startswith("on:") else []):
+    parts, said = [], None
+    for ref in re.findall(r"(?<!\S)authority=(\S+)", rest):
+        m = re.fullmatch(r"(O-[A-Za-z0-9._-]+-\d+)|decision-(\d+)", ref)
+        if not m:
+            parts.append(("invalid", "authority=%s is not an O- record id or decision-<n>" % ref))
+        elif words is None:
+            parts.append(("unchecked", "authority=%s unchecked: %s" % (ref, why)))
+        else:
+            hit = next((r for r in words if key in (r.get("keys") or []) and (r.get("id") == m[1] if m[1] else str(r.get("decision")) == m[2])), None)
+            if hit:
+                parts.append(("authority", ""))
+                said = hit.get("verbatim")
+            else:
+                parts.append(("invalid", "authority=%s names no record of the operator's words for %s" % (ref, key)))
+    kinds = [k for k, _ in parts]
+    first = lambda k: next(r for c, r in parts if c == k)
+    if "invalid" in kinds:
+        cls, reason = "invalid", first("invalid")
+    elif "authority" in kinds:
+        cls, reason = "authority", "on the operator's words"
+    elif "unchecked" in kinds:
+        cls, reason = "unchecked", first("unchecked")
+    else:
+        cls, reason = "no-authority", "no operator words and no wake"
+    if not release and cls != "invalid":
+        cls, reason = "unchecked", why
+    rows.append({"key": key, "verb": verb, "class": cls, "reason": reason, "first_seen": None, "age_gen": None,
+                 "age_days": None, "words": said, "fired": False, "outside": None, "wake": None,
+                 "line": hashlib.sha256(value.encode()).hexdigest()[:12],
+                 "asks_operator": None if asks is None else key in asks})
+
+mode = "on" if ledger.startswith("on:") else "off:no-ledger"
+body = {"ts": iso(now), "doc": os.path.abspath(doc), "mode": mode, "release": release, "rows": rows, "prs": {}}
+try:
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(out), prefix="." + os.path.basename(out) + ".")
+    with os.fdopen(fd, "w") as f:
+        f.write(json.dumps(body, indent=1, sort_keys=True) + "\n")
+    os.replace(tmp, out)
+except OSError:
+    print("pool-holds=?")
+    sys.exit(0)
+for r in rows:
+    print("# pool-hold %s %s %s" % (r["class"], r["key"], r["reason"]))
+unhandled = sum(r["class"] not in ("authority", "wake") for r in rows)
+print("pool-holds=" + (mode if mode != "on" else "%d/%d" % (unhandled, len(rows))))
 PY
 }
 
@@ -1131,6 +1316,8 @@ verbose=0
 burn=0
 pool_mode=0
 stale_mode=0
+holds_mode=0
+ph_state=""
 ps_prior=""
 emit_fp=0
 ready_mode=0
@@ -1149,9 +1336,11 @@ while [ "$#" -gt 0 ]; do
         --ready-mismatch) ready_mode=1; shift ;;
         --pool-dispositions) pool_mode=1; shift ;;
         --pool-stale) stale_mode=1; shift ;;
-        --doc|--token|--workers|--workers-from|--handover-dir|--repo|--ready-dir|--prior)
+        --pool-holds) holds_mode=1; shift ;;
+        --doc|--token|--workers|--workers-from|--handover-dir|--repo|--ready-dir|--prior|--state-file)
             [ "$#" -ge 2 ] || { usage >&2; exit 2; }
             case "$1" in
+                --state-file) ph_state="$2" ;;
                 --prior) ps_prior="$2" ;;
                 --doc) DOC="$2" ;;
                 --token) TOKEN="$2" ;;
@@ -1190,6 +1379,14 @@ if [ "$pool_mode" -eq 1 ]; then
     [ -z "$DOC" ] || DOC="$(resolve_doc "$DOC")"
     pool_dispositions "$DOC"
     exit $?
+fi
+
+if [ "$holds_mode" -eq 1 ]; then
+    [ -n "$DOC" ] || { usage >&2; exit 2; }
+    DOC="$(resolve_doc "$DOC")"
+    ph_stem="${DOC##*/}"
+    pool_holds "$DOC" "$(holds_ledger "$DOC")" "${ph_state:-${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/release-state-${ph_stem%.md}.json}" "$(pool_holds_file "$DOC")"
+    exit 0
 fi
 
 if [ "$stale_mode" -eq 1 ]; then
@@ -3104,6 +3301,14 @@ if [ "${DEPENDABOT_AUTOLAND:-off}" = on ] && [ -f "$REPO/scripts/cr/dependabot-g
     fi
 fi
 
+# pool-holds=off:no-ledger: the doc's bucket declares no release, so a well-formed pool-disposition:
+# line keeps counting as dispositioned. Otherwise hidden: the step's unhandled lines count in pool=.
+pool_holds_f=""
+if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
+    pool_holds_f="$(timeout -k 2 "$(tick_bound 40)" bash "$HERE/tick.sh" --pool-holds --doc "$console_doc" 2>/dev/null | sed -n 's/^pool-holds=//p')"  # gnu-ok: chief kit is Linux-only; swallow-ok: a failed step writes no holds file, which pool_dispositions reads as unchecked
+    case "$pool_holds_f" in off:*) ;; *) pool_holds_f="" ;; esac
+fi
+
 # pool-stale=<n>:<KEY>,... and residual-unversioned=<n>:<KEY>,...: the Jira mirror
 # plus one batched gh read, only when a disposition names a PR. skip = no doc or mirror.
 pool_stale=skip
@@ -4382,6 +4587,7 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$prio_stale" ] || printf 'prio-stale: %s\n' "$prio_stale"
     printf 'intake: %s%s\n' "$intake_summary" "${intake_age:+ (oldest $intake_age)}"
     printf 'pool-stale: %s\n' "$pool_stale"
+    [ -z "$pool_holds_f" ] || printf 'pool-holds: %s\n' "$pool_holds_f"
     printf 'pool-changed: %s\n' "$pool_changed"
     printf 'chains: %s\n' "$chains_summary"
     printf 'residual-unversioned: %s\n' "$residual_unversioned"
@@ -4456,6 +4662,7 @@ else
     compact_field INTAKE "$intake_summary"
     compact_field INTAKE-AGE "$intake_age"
     compact_field pool-stale "$pool_stale"
+    compact_field pool-holds "$pool_holds_f"
     compact_field pool-changed "$pool_changed"
     compact_field pool-parked "$pool_parked_n"
     compact_field chief-owed "$pool_owed_n"

@@ -1115,6 +1115,120 @@ wait "$s2_race_pid"
 same 'R22 the slower older tick exits 0' "$?" 0
 same 'R22 the later run clears the verdict and the slower older run does not put it back' "$(grep -c "$p141" "$(s2_file)")" 0
 
+# --- (9853) pool_holds: in a bucket that declares a release, a give-up line (question, close, hold, park, or a
+# slice naming no key, PR or @sha) counts as handled only on a words record naming its key or a valid unfired wake.
+PH="$W/ph"; mkdir -p "$PH/rel/v1.1.3" "$PH/state" "$PH/handover"
+printf '{}\n' > "$PH/rel/v1.1.3/release.json"
+PH_STEM=HIMMEL-nextleg-2026-11-15PH-roadmap-chief
+ph_doc="$PH/handover/$PH_STEM.md"
+ph_now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+ph_state() { # <words_records json> <asks_operator_keys json> [status] [ts]: the release-state file the tick writes
+    jq -n --argjson w "$1" --argjson a "$2" --arg s "${3:-OK}" --arg t "${4:-$(ph_now)}" \
+        '{ts: $t, status: $s, words_records: $w, asks_operator_keys: $a}' > "$PH/state/release-state-$PH_STEM.json"
+}
+ph_words='[{"id":"O-v1.1.3-0001","decision":"9","keys":["HIMMEL-46","HIMMEL-47","HIMMEL-48","HIMMEL-49","HIMMEL-50","HIMMEL-51","HIMMEL-53"],"op":"none","verbatim":"Approved one more round"}]'
+ph_mk() { printf '%s\n' '# chief' '' '## Live state' "$@" '' '## Results' > "$ph_doc"; }
+ph_env() { HIMMEL_RELEASE_STATE_DIR="$PH/rel" TICK_STATE_DIR="$PH/state" "$@"; }
+ph_holds() { ph_env bash "$SUT" --pool-holds --doc "$ph_doc" 2>/dev/null; }
+ph_pd() { ph_env bash "$SUT" --pool-dispositions --doc "$ph_doc" < "$PH/rows" 2>/dev/null; }
+ph_file="$PH/state/pool-holds-$PH_STEM.json"
+ph_class() { jq -r --arg k "HIMMEL-$1" '.rows[] | select(.key == $k) | .class' "$ph_file" 2>/dev/null; }
+ph_unres() { printf '%s\n' "$1" | grep "^# pool-unresolved [a-z-]* HIMMEL-$2 "; }  # <pool output> <key number>: the key's unresolved row, if any
+for n in 4 41 42 43 44 45 46 47 48 49 50 51 52 53 54 8 55; do printf '# disposition HIMMEL-%s listed LOCAL\n' "$n"; done > "$PH/rows"
+ph_mk 'release: v1.1.3' \
+    'pool-disposition: HIMMEL-4 question operator decision 268' \
+    'pool-disposition: HIMMEL-41 close the ticket is obsolete' \
+    'pool-disposition: HIMMEL-42 hold until the release' \
+    'pool-disposition: HIMMEL-43 park for now' \
+    'pool-disposition: HIMMEL-44 question ask the operator' \
+    'pool-disposition: HIMMEL-45 slice later' \
+    'pool-disposition: HIMMEL-46 close obsolete authority=O-v1.1.3-0001' \
+    'pool-disposition: HIMMEL-47 hold until the release authority=O-v1.1.3-0001' \
+    'pool-disposition: HIMMEL-48 park for now authority=O-v1.1.3-0001' \
+    'pool-disposition: HIMMEL-49 question one more round authority=O-v1.1.3-0001' \
+    'pool-disposition: HIMMEL-50 slice later authority=O-v1.1.3-0001' \
+    'pool-disposition: HIMMEL-51 question the operator said so authority=decision-9' \
+    'pool-disposition: HIMMEL-52 question operator decision 268 authority=decision-268' \
+    'pool-disposition: HIMMEL-53 question a legacy row authority=O-v1.1.3-0002' \
+    'pool-disposition: HIMMEL-54 slice HIMMEL-900' \
+    'pool-disposition: HIMMEL-8 slice HIMMEL-900' \
+    'pool-disposition: HIMMEL-77 park the operator asked for it' \
+    'pool-disposition: HIMMEL-78 park not asked'
+ph_state "$ph_words" '["HIMMEL-77"]'
+mkdir -p "$PH/decisions"; printf 'keep it, HIMMEL-52\n' > "$PH/decisions/verbatim-decision-268.txt"
+ph_out="$(ph_holds)"; ph_rc=$?
+same 'the pool-holds step exits 0' "$ph_rc" 0
+contains 'the pool-holds step names the unhandled lines' "$ph_out" 'pool-holds='
+ph_pdo="$(ph_pd)"
+contains 'a bare question line counts as unhandled' "$ph_pdo" '# pool-unresolved no-authority HIMMEL-4 '
+for n in 41 42 43 44 45; do
+    contains "every give-up verb needs a form: bare HIMMEL-$n is no-authority" "$ph_pdo" "# pool-unresolved no-authority HIMMEL-$n "
+done
+for n in 46 47 48 49 50; do
+    same "every give-up verb needs a form: HIMMEL-$n with a valid authority= is handled" "$(ph_unres "$ph_pdo" "$n")" ""
+done
+same 'a words O- record naming the key is handled, and the holds row carries the words' \
+    "$(jq -r '.rows[] | select(.key == "HIMMEL-49") | "\(.class)|\(.words)"' "$ph_file" 2>/dev/null)" 'authority|Approved one more round'
+same 'decision-<n> resolves through words_records only: decision-9 names the key' "$(ph_class 51)" authority
+same 'decision-<n> resolves through words_records only: a decision file on disk does not help' "$(ph_class 52)" invalid
+contains 'and the invalid line is unresolved with its reason' "$ph_pdo" '# pool-unresolved invalid HIMMEL-52 authority=decision-268 names no record of the operator'"'"'s words for HIMMEL-52'
+same 'a legacy O- row is not authority' "$(ph_class 53)" invalid
+same 'a slice naming a key keeps today'"'"'s rule' "$(ph_unres "$ph_pdo" 54)" ''
+contains 'a free-text slice needs a form' "$ph_pdo" '# pool-unresolved no-authority HIMMEL-45 '
+contains 'an off-pool operator key is checked' "$ph_pdo" '# pool-unresolved no-authority HIMMEL-77 '
+contains 'an off-pool key the operator did not ask for stays invalid as today' "$ph_pdo" '# pool-unresolved invalid HIMMEL-78 malformed, duplicate or unknown'
+same 'chief-wait'"'"'s call reads the same file (same classes)' \
+    "$(printf '%s\n' "$(cat "$PH/rows")" | ph_env env DOC='' bash "$SUT" --pool-dispositions --doc "$ph_doc" 2>/dev/null)" "$ph_pdo"
+ph_series="HIMMEL-4,HIMMEL-41"
+contains 'the no-doc call still prints pool-keys' \
+    "$(printf 'SERIES\tser-1\t%s\n' "$ph_series" | ph_env env DOC='' bash "$SUT" --pool-dispositions 2>/dev/null)" "# pool-keys 1 SERIES $ph_series"
+
+rm -f "$PH/state/release-state-$PH_STEM.json"; ph_holds > /dev/null
+same 'missing inputs: no state file reads an authority= line unchecked' "$(ph_class 49)" unchecked
+contains 'and names the missing input' "$(jq -r '.rows[] | select(.key == "HIMMEL-49") | .reason' "$ph_file")" 'no release state file'
+ph_state "$ph_words" '[]' OK "$(date -u -d '2 hours ago' +%Y-%m-%dT%H:%M:%SZ)"; ph_holds > /dev/null  # gnu-ok: chief kit is Linux-only
+same 'missing inputs: a state file older than the holds window reads unchecked' "$(ph_class 49)" unchecked
+ph_state "$ph_words" '[]' UNKNOWN; ph_holds > /dev/null
+same 'missing inputs: a state that is not OK reads unchecked' "$(ph_class 49)" unchecked
+printf '{"ts": ' > "$PH/state/release-state-$PH_STEM.json"
+ph_rc=0; ph_holds > /dev/null || ph_rc=$?
+same 'a corrupt state file never fails the step' "$ph_rc" 0
+same 'a corrupt state file reads an authority= line unchecked' "$(ph_class 49)" unchecked
+
+ph_state "$ph_words" '["HIMMEL-77"]'; ph_holds > /dev/null
+rm -f "$ph_file"
+ph_pdo="$(ph_pd)"
+contains 'a missing holds file reads every give-up line unchecked' "$ph_pdo" '# pool-unresolved unchecked HIMMEL-49 no holds file'
+contains 'and a bare one too, never an all-clear' "$ph_pdo" '# pool-unresolved unchecked HIMMEL-4 '
+same 'a slice naming a key is not a give-up line' "$(ph_unres "$ph_pdo" 54)" ''
+ph_holds > /dev/null; touch -d '31 minutes ago' "$ph_file"  # gnu-ok: chief kit is Linux-only
+contains 'an old holds file reads every give-up line unchecked' "$(ph_pd)" '# pool-unresolved unchecked HIMMEL-49 the holds file is 31 min old'
+ph_holds > /dev/null
+ph_mk 'pool-disposition: HIMMEL-49 question one more round authority=O-v1.1.3-0001' 'pool-disposition: HIMMEL-4 question operator decision 268 and more'
+contains 'a line changed since the holds run reads unchecked' "$(ph_pd)" '# pool-unresolved unchecked HIMMEL-4 the line changed since the holds run'
+ph_holds > /dev/null
+same 'a doc with no release line in a declaring bucket reads unchecked' "$(ph_class 49)" unchecked
+contains 'and says why' "$(jq -r '.rows[] | select(.key == "HIMMEL-49") | .reason' "$ph_file")" 'the doc has no release: line'
+ph_mk 'release: v1.1.3' 'pool-disposition: HIMMEL-4 question operator decision 268'
+ph_nl="$(TICK_STATE_DIR="$PH/state" bash "$SUT" --pool-holds --doc "$ph_doc" 2>/dev/null)"
+same 'a bucket with no declaration keeps today'"'"'s rule: the step says so' "$ph_nl" 'pool-holds=off:no-ledger'
+ph_nlo="$(TICK_STATE_DIR="$PH/state" bash "$SUT" --pool-dispositions --doc "$ph_doc" < "$PH/rows" 2>/dev/null)"
+same 'a bucket with no declaration keeps today'"'"'s rule: a bare question is dispositioned' "$(ph_unres "$ph_nlo" 4)" ''
+rm -f "$ph_file"
+same 'with no declaration a missing holds file changes nothing' "$(ph_unres "$(TICK_STATE_DIR="$PH/state" bash "$SUT" --pool-dispositions --doc "$ph_doc" < "$PH/rows" 2>/dev/null)" HIMMEL-4)" ''
+
+# The main tick runs the step itself: a corrupt state file and invalid lines never fail the tick (I8).
+PHM="$PH/mirror/HIMMEL"; mkdir -p "$PHM"
+printf '#!/usr/bin/env bash\nprintf "not json"\n' > "$PH/rmq-probe"; chmod +x "$PH/rmq-probe"
+ph_mk 'release: v1.1.3' 'pool-disposition: HIMMEL-49 question one more round authority=O-v1.1.3-0001' 'pool-disposition: HIMMEL-52 question x authority=the-boss'
+printf '{"ts": ' > "$PH/state/release-state-$PH_STEM.json"; rm -f "$ph_file"
+ph_rc=0
+ph_tick="$(ph_env env NEXT_DISPATCH_MIRROR="$PHM" TICK_RMQ_PROBE="$PH/rmq-probe" TOKEN='' bash "$SUT" --doc "$ph_doc" 2>/dev/null)" || ph_rc=$?
+same 'a corrupt state file never fails the tick (rc 0)' "$ph_rc" 0
+contains 'the tick still prints with invalid lines' "$ph_tick" 'TICK '
+same 'the tick ran the pool-holds step: the authority= line reads unchecked' "$(ph_class 49)" unchecked
+same 'and the invalid line is invalid' "$(ph_class 52)" invalid
+
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick-fields-late.sh'
     exit 0

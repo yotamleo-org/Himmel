@@ -54,6 +54,9 @@ printf '#!/usr/bin/env bash\nexit 2\n' > "$STUB/budget-off.sh"
 export CHIEF_WAIT_PAGE_CMD="$STUB/off.sh" CHIEF_WAIT_BUDGET="$STUB/budget-off.sh" CHIEF_WAIT_ORPHAN="$STUB/off.sh"
 export WAIT_SWEEP_CMD="$STUB/off.sh" WAIT_FOCUS_CMD="$STUB/off.sh"
 export HIMMEL_DENIAL_ACK_DIR="$WORK/acks"
+# tick.sh reads USER_SLUG from the station's .env: pin the release declaration root to an empty fixture
+# dir so no row reads the station's real release ledger (rows that need a declared release set their own)
+export HIMMEL_RELEASE_STATE_DIR="$WORK/no-release-declared"
 # the core gate always asks the jira CLI (scripts/jira/dist is untracked, absent in CI): a fixture stand-in calls every key NOT-CORE
 mkdir -p "$WORK/stub-jira"
 cat > "$WORK/stub-jira/index.js" <<'STUBEOF'
