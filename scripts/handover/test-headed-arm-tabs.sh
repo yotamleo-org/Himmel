@@ -154,8 +154,8 @@ pid_of() { cat "$1/pid.$2" 2>/dev/null; }
 # --- 1. control: the default (no HIMMEL_WORKER_SESSION_TABS) is unchanged - one --separate
 # window per launch, qdbus never touched.
 d1="$tmp/c1"; mk_env "$d1"
-arm "$d1" HIMMEL-1-N1-a HIMMEL_CONSOLE_NAME=CHIEF-A; rc1a=$?
-arm "$d1" HIMMEL-1-N2-b HIMMEL_CONSOLE_NAME=CHIEF-A; rc1b=$?
+arm "$d1" PROJ-1-N1-a HIMMEL_CONSOLE_NAME=CHIEF-A; rc1a=$?
+arm "$d1" PROJ-1-N2-b HIMMEL_CONSOLE_NAME=CHIEF-A; rc1b=$?
 check "1a default: first launch exit 0" "$rc1a" 0
 check "1b default: second launch exit 0" "$rc1b" 0
 check "1c default: one window per launch" "$(konsole_count "$d1")" 2
@@ -165,24 +165,24 @@ check "1e default: qdbus never called" "$([ -e "$d1/qdbus-record" ] && echo call
 # --- 2. tab mode: three launches under one chief land in ONE window.
 d2="$tmp/c2"; mk_env "$d2"
 export CLAUDE_CODE_CHILD_SESSION=1
-arm "$d2" HIMMEL-2-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A ONLY_A=1; rc2a=$?
-arm "$d2" HIMMEL-2-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A ONLY_B=1; rc2b=$?
-arm "$d2" HIMMEL-2-N3-c HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A; rc2c=$?
+arm "$d2" PROJ-2-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A ONLY_A=1; rc2a=$?
+arm "$d2" PROJ-2-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A ONLY_B=1; rc2b=$?
+arm "$d2" PROJ-2-N3-c HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A; rc2c=$?
 unset CLAUDE_CODE_CHILD_SESSION
 check "2a tabs: launch 1 exit 0" "$rc2a" 0
 check "2b tabs: launch 2 exit 0" "$rc2b" 0
 check "2c tabs: launch 3 exit 0" "$rc2c" 0
 check "2d tabs: three launches open exactly one window" "$(konsole_count "$d2")" 1
-w2a="$(window_of "$d2" HIMMEL-2-N1-a)"; w2b="$(window_of "$d2" HIMMEL-2-N2-b)"; w2c="$(window_of "$d2" HIMMEL-2-N3-c)"
+w2a="$(window_of "$d2" PROJ-2-N1-a)"; w2b="$(window_of "$d2" PROJ-2-N2-b)"; w2c="$(window_of "$d2" PROJ-2-N3-c)"
 check "2e tabs: launch 2 is tracked in launch 1's window" "${w2b:-none}" "${w2a:-unset}"
 check "2f tabs: launch 3 is tracked in launch 1's window" "${w2c:-none}" "${w2a:-unset}"
 qrec2="$(cat "$d2/qdbus-record" 2>/dev/null)"
 contains "2g tabs: tab 2 opened with newSession on the window's service" "$qrec2" "org.kde.konsole-${w2a:-x} /Windows/1 newSession"
-contains "2h tabs: tab 2 titled with its session name" "$qrec2" "/Sessions/2 setTabTitleFormat 0 HIMMEL-2-N2-b"
-contains "2i tabs: tab 3 titled with its session name" "$qrec2" "/Sessions/3 setTabTitleFormat 0 HIMMEL-2-N3-c"
-contains "2j tabs: the log names each tab's session" "$(cat "$d2/log")" "for HIMMEL-2-N3-c tab=/Sessions/3"
+contains "2h tabs: tab 2 titled with its session name" "$qrec2" "/Sessions/2 setTabTitleFormat 0 PROJ-2-N2-b"
+contains "2i tabs: tab 3 titled with its session name" "$qrec2" "/Sessions/3 setTabTitleFormat 0 PROJ-2-N3-c"
+contains "2j tabs: the log names each tab's session" "$(cat "$d2/log")" "for PROJ-2-N3-c tab=/Sessions/3"
 # The tab's env is its OWN launch's, not the window's (launch 1's).
-envb="$(cat "$d2/env.HIMMEL-2-N2-b" 2>/dev/null)"
+envb="$(cat "$d2/env.PROJ-2-N2-b" 2>/dev/null)"
 contains "2k tabs: tab carries its own launch env" "$envb" "ONLY_B=1"
 lacks "2l tabs: tab does not inherit the window's launch env" "$envb" "ONLY_A=1"
 lacks "2m tabs: tab clears CLAUDE_CODE_CHILD_SESSION" "$envb" "CLAUDE_CODE_CHILD_SESSION="
@@ -192,7 +192,7 @@ lacks "2p tabs: the tab script is gone once the launch is confirmed" "$(ls "$d2/
 
 # --- 3. closing ONE worker (close-wrapped-worker TERMs the claude pid) leaves the
 # window and the other tabs alive.
-pa="$(pid_of "$d2" HIMMEL-2-N1-a)"; pb="$(pid_of "$d2" HIMMEL-2-N2-b)"; pc="$(pid_of "$d2" HIMMEL-2-N3-c)"
+pa="$(pid_of "$d2" PROJ-2-N1-a)"; pb="$(pid_of "$d2" PROJ-2-N2-b)"; pc="$(pid_of "$d2" PROJ-2-N3-c)"
 signal TERM "$pb"
 n=0; while [ "$(alive "$pb")" = yes ] && [ "$n" -lt 40 ]; do sleep 0.05; n=$((n+1)); done
 check "3a close one: the TERMed worker is gone" "$(alive "${pb:-0}")" no
@@ -206,42 +206,42 @@ signal KILL "$pc"
 n=0; while [ "$(alive "$pc")" = yes ] && [ "$n" -lt 40 ]; do sleep 0.05; n=$((n+1)); done
 check "4a crash: the window survives a killed tab" "$(alive "${w2a:-0}")" yes
 check "4b crash: tab 1 survives a killed tab" "$(alive "${pa:-0}")" yes
-arm "$d2" HIMMEL-2-N4-d HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A; rc4=$?
+arm "$d2" PROJ-2-N4-d HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A; rc4=$?
 check "4c crash: the next launch exit 0" "$rc4" 0
 check "4d crash: the next launch is a tab, not a new window" "$(konsole_count "$d2")" 1
-check "4e crash: the next launch is tracked in the same window" "$(window_of "$d2" HIMMEL-2-N4-d)" "${w2a:-unset}"
+check "4e crash: the next launch is tracked in the same window" "$(window_of "$d2" PROJ-2-N4-d)" "${w2a:-unset}"
 
 # --- 5. a different chief gets its own window.
-arm "$d2" HIMMEL-2-N5-e HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-B; rc5=$?
+arm "$d2" PROJ-2-N5-e HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-B; rc5=$?
 check "5a other console: exit 0" "$rc5" 0
 check "5b other console: opens its own window" "$(konsole_count "$d2")" 2
 
 # --- 6. the recorded window is gone: the next launch opens a new window, and
 # the launch after that tabs into the new one.
 d6="$tmp/c6"; mk_env "$d6"
-arm "$d6" HIMMEL-6-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A
-w6a="$(window_of "$d6" HIMMEL-6-N1-a)"
-signal KILL "$w6a" "$(pid_of "$d6" HIMMEL-6-N1-a)"; sleep 0.2
-arm "$d6" HIMMEL-6-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A; rc6=$?
-arm "$d6" HIMMEL-6-N3-c HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A
-w6b="$(window_of "$d6" HIMMEL-6-N2-b)"
+arm "$d6" PROJ-6-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A
+w6a="$(window_of "$d6" PROJ-6-N1-a)"
+signal KILL "$w6a" "$(pid_of "$d6" PROJ-6-N1-a)"; sleep 0.2
+arm "$d6" PROJ-6-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A; rc6=$?
+arm "$d6" PROJ-6-N3-c HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A
+w6b="$(window_of "$d6" PROJ-6-N2-b)"
 check "6a dead window: launch exit 0" "$rc6" 0
 check "6b dead window: a new window is opened" "$(konsole_count "$d6")" 2
-check "6c dead window: the next launch tabs into the new window" "$(window_of "$d6" HIMMEL-6-N3-c)" "${w6b:-unset}"
+check "6c dead window: the next launch tabs into the new window" "$(window_of "$d6" PROJ-6-N3-c)" "${w6b:-unset}"
 
 # --- 7. newSession fails: the launch falls back to its own window, never lost.
 d7="$tmp/c7"; mk_env "$d7"
-arm "$d7" HIMMEL-7-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A
+arm "$d7" PROJ-7-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A
 : > "$d7/qdbus-fail"
-arm "$d7" HIMMEL-7-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A; rc7=$?
+arm "$d7" PROJ-7-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A; rc7=$?
 check "7a qdbus fails: launch exit 0" "$rc7" 0
 check "7b qdbus fails: falls back to a new window" "$(konsole_count "$d7")" 2
-contains "7c qdbus fails: the fallback is logged" "$(cat "$d7/log")" "WARN: tab launch for HIMMEL-7-N2-b failed"
+contains "7c qdbus fails: the fallback is logged" "$(cat "$d7/log")" "WARN: tab launch for PROJ-7-N2-b failed"
 
 # --- 8. a chief arm and a launch with no chief name never tab.
 d8="$tmp/c8"; mk_env "$d8"
-arm "$d8" HIMMEL-8-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A
-arm "$d8" HIMMEL-8-N2-b HIMMEL_WORKER_SESSION_TABS=1; rc8=$?
+arm "$d8" PROJ-8-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A
+arm "$d8" PROJ-8-N2-b HIMMEL_WORKER_SESSION_TABS=1; rc8=$?
 check "8a no chief name: exit 0" "$rc8" 0
 check "8b no chief name: own window" "$(konsole_count "$d8")" 2
 
@@ -250,14 +250,14 @@ d9="$tmp/c9"; mk_env "$d9"
 # headed-arm.sh skips the waker on Darwin and without setsid (stock macOS has
 # neither): pin the Linux branch and give it a pass-through setsid.
 mkdir -p "$d9/sbin"; printf '#!%s\nexec "$@"\n' "$(command -v bash)" > "$d9/sbin/setsid"; chmod 755 "$d9/sbin/setsid"
-arm "$d9" HIMMEL-9-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A HEADED_ARM_WAKER="$d9/waker" HEADED_ARM_UNAME=Linux PATH="$d9/sbin:$PATH"
-arm "$d9" HIMMEL-9-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A HEADED_ARM_WAKER="$d9/waker" HEADED_ARM_UNAME=Linux PATH="$d9/sbin:$PATH"
+arm "$d9" PROJ-9-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A HEADED_ARM_WAKER="$d9/waker" HEADED_ARM_UNAME=Linux PATH="$d9/sbin:$PATH"
+arm "$d9" PROJ-9-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A HEADED_ARM_WAKER="$d9/waker" HEADED_ARM_UNAME=Linux PATH="$d9/sbin:$PATH"
 n=0; while [ "$(wc -l < "$d9/waker-record" 2>/dev/null || echo 0)" -lt 2 ] && [ "$n" -lt 40 ]; do sleep 0.05; n=$((n+1)); done
-w9="$(window_of "$d9" HIMMEL-9-N1-a)"
+w9="$(window_of "$d9" PROJ-9-N1-a)"
 contains "9a waker: tab 2 gets its own session" "$(cat "$d9/waker-record" 2>/dev/null)" \
-  "--name HIMMEL-9-N2-b --service org.kde.konsole-$w9 --session /Sessions/2 --pid $(pid_of "$d9" HIMMEL-9-N2-b)"
+  "--name PROJ-9-N2-b --service org.kde.konsole-$w9 --session /Sessions/2 --pid $(pid_of "$d9" PROJ-9-N2-b)"
 contains "9b waker: the window's first tab keeps /Sessions/1, bound to its worker" "$(cat "$d9/waker-record" 2>/dev/null)" \
-  "--name HIMMEL-9-N1-a --service org.kde.konsole-$w9 --session /Sessions/1 --pid $(pid_of "$d9" HIMMEL-9-N1-a)"
+  "--name PROJ-9-N1-a --service org.kde.konsole-$w9 --session /Sessions/1 --pid $(pid_of "$d9" PROJ-9-N1-a)"
 
 # --- 10. a successor chief (no window record of its own) adopts its predecessor's
 # live konsole window: its first worker is a tab there, never a second window.
@@ -268,25 +268,25 @@ NL=HIMMEL-nextleg-2026-10-25
 HAVE_PROC=0; [ -r "/proc/$$/comm" ] && HAVE_PROC=1
 if [ "$HAVE_PROC" = 1 ]; then
 d10="$tmp/c10"; mk_env "$d10"
-arm "$d10" HIMMEL-10-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}FX-roadmap-chief
-arm "$d10" HIMMEL-10-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}FY-roadmap-chief; rc10=$?
-arm "$d10" HIMMEL-10-N3-c HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}FY-roadmap-chief
-w10a="$(window_of "$d10" HIMMEL-10-N1-a)"
+arm "$d10" PROJ-10-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}FX-roadmap-chief
+arm "$d10" PROJ-10-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}FY-roadmap-chief; rc10=$?
+arm "$d10" PROJ-10-N3-c HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}FY-roadmap-chief
+w10a="$(window_of "$d10" PROJ-10-N1-a)"
 check "10a successor: first worker exit 0" "$rc10" 0
 check "10b successor: no second window is opened" "$(konsole_count "$d10")" 1
-check "10c successor: its first worker is tracked in the predecessor's window" "$(window_of "$d10" HIMMEL-10-N2-b)" "${w10a:-unset}"
+check "10c successor: its first worker is tracked in the predecessor's window" "$(window_of "$d10" PROJ-10-N2-b)" "${w10a:-unset}"
 contains "10d successor: newSession on the predecessor's window" "$(cat "$d10/qdbus-record" 2>/dev/null)" "org.kde.konsole-${w10a:-x} /Windows/1 newSession"
 check "10e successor: the window is recorded as the successor's own" "$(cat "$d10/locks/tabs-${NL}FY-roadmap-chief.window" 2>/dev/null)" "${w10a:-unset}"
-check "10f successor: its next worker is tracked in the same window" "$(window_of "$d10" HIMMEL-10-N3-c)" "${w10a:-unset}"
+check "10f successor: its next worker is tracked in the same window" "$(window_of "$d10" PROJ-10-N3-c)" "${w10a:-unset}"
 else
   echo "  SKIP 10 successor adoption: no /proc/<pid>/comm on this host (konsole windows are Linux-only)"
 fi
 
 # --- 11. the predecessor's window is gone: the successor opens a window of its own.
 d11="$tmp/c11"; mk_env "$d11"
-arm "$d11" HIMMEL-11-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}FX-roadmap-chief
-signal KILL "$(window_of "$d11" HIMMEL-11-N1-a)" "$(pid_of "$d11" HIMMEL-11-N1-a)"; sleep 0.2
-arm "$d11" HIMMEL-11-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}FY-roadmap-chief; rc11=$?
+arm "$d11" PROJ-11-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}FX-roadmap-chief
+signal KILL "$(window_of "$d11" PROJ-11-N1-a)" "$(pid_of "$d11" PROJ-11-N1-a)"; sleep 0.2
+arm "$d11" PROJ-11-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}FY-roadmap-chief; rc11=$?
 check "11a dead predecessor window: exit 0" "$rc11" 0
 check "11b dead predecessor window: successor opens its own window" "$(konsole_count "$d11")" 2
 
@@ -294,7 +294,7 @@ check "11b dead predecessor window: successor opens its own window" "$(konsole_c
 d12="$tmp/c12"; mk_env "$d12"; mkdir -m 0700 "$d12/locks"
 sleep 60 & p12=$!; echo "$p12" >> "$d12/pids"
 printf '%s\n' "$p12" > "$d12/locks/tabs-${NL}FX-roadmap-chief.window"
-arm "$d12" HIMMEL-12-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}FY-roadmap-chief; rc12=$?
+arm "$d12" PROJ-12-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}FY-roadmap-chief; rc12=$?
 check "12a non-konsole predecessor pid: exit 0" "$rc12" 0
 check "12b non-konsole predecessor pid: successor opens its own window" "$(konsole_count "$d12")" 1
 check "12c non-konsole predecessor pid: qdbus never called" "$([ -e "$d12/qdbus-record" ] && echo called || echo none)" none
@@ -302,11 +302,11 @@ check "12c non-konsole predecessor pid: qdbus never called" "$([ -e "$d12/qdbus-
 # --- 13. the letter roll: AA's predecessor is Z, A has none.
 if [ "$HAVE_PROC" = 1 ]; then
 d13="$tmp/c13"; mk_env "$d13"
-arm "$d13" HIMMEL-13-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}Z-roadmap-chief
-arm "$d13" HIMMEL-13-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}AA-roadmap-chief
-arm "$d13" HIMMEL-13-N3-c HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}A-solo-chief
+arm "$d13" PROJ-13-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}Z-roadmap-chief
+arm "$d13" PROJ-13-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}AA-roadmap-chief
+arm "$d13" PROJ-13-N3-c HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${NL}A-solo-chief
 check "13a letter roll: AA adopts Z's window, A (another chain) opens its own" "$(konsole_count "$d13")" 2
-check "13b letter roll: AA is tracked in Z's window" "$(window_of "$d13" HIMMEL-13-N2-b)" "$(window_of "$d13" HIMMEL-13-N1-a)"
+check "13b letter roll: AA is tracked in Z's window" "$(window_of "$d13" PROJ-13-N2-b)" "$(window_of "$d13" PROJ-13-N1-a)"
 else
   echo "  SKIP 13 letter roll: no /proc/<pid>/comm on this host (konsole windows are Linux-only)"
 fi
@@ -322,56 +322,56 @@ record() { printf '%s\n' "$3" > "$1/locks/tabs-$2.window"; touch -d "@$4" "$1/lo
 
 # 14. the date changed: 10-28ID succeeds 10-27IC, which letter arithmetic misses.
 d14="$tmp/c14"; mk_env "$d14"
-arm "$d14" HIMMEL-14-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D27}IC-roadmap-chief
-arm "$d14" HIMMEL-14-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D28}ID-roadmap-chief; rc14=$?
-w14="$(window_of "$d14" HIMMEL-14-N1-a)"
+arm "$d14" PROJ-14-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D27}IC-roadmap-chief
+arm "$d14" PROJ-14-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D28}ID-roadmap-chief; rc14=$?
+w14="$(window_of "$d14" PROJ-14-N1-a)"
 check "14a date crossing: exit 0" "$rc14" 0
 check "14b date crossing: no second window" "$(konsole_count "$d14")" 1
-check "14c date crossing: tracked in the previous day's window" "$(window_of "$d14" HIMMEL-14-N2-b)" "${w14:-unset}"
+check "14c date crossing: tracked in the previous day's window" "$(window_of "$d14" PROJ-14-N2-b)" "${w14:-unset}"
 check "14d date crossing: recorded as the successor's own window" "$(cat "$d14/locks/tabs-${D28}ID-roadmap-chief.window" 2>/dev/null)" "${w14:-unset}"
 
 # 15. the direct predecessor never armed a worker: IC has no record, IB's window lives.
 d15="$tmp/c15"; mk_env "$d15"
-arm "$d15" HIMMEL-15-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D28}IB-roadmap-chief
-arm "$d15" HIMMEL-15-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D28}ID-roadmap-chief; rc15=$?
+arm "$d15" PROJ-15-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D28}IB-roadmap-chief
+arm "$d15" PROJ-15-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D28}ID-roadmap-chief; rc15=$?
 check "15a predecessor armed nothing: exit 0" "$rc15" 0
 check "15b predecessor armed nothing: no second window" "$(konsole_count "$d15")" 1
-check "15c predecessor armed nothing: tracked in IB's window" "$(window_of "$d15" HIMMEL-15-N2-b)" "$(window_of "$d15" HIMMEL-15-N1-a)"
+check "15c predecessor armed nothing: tracked in IB's window" "$(window_of "$d15" PROJ-15-N2-b)" "$(window_of "$d15" PROJ-15-N1-a)"
 
 # 16. the predecessor's window died while an older chief's lives.
 d16="$tmp/c16"; mk_env "$d16"; mkdir -m 0700 "$d16/locks"
-arm "$d16" HIMMEL-16-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D28}IB-roadmap-chief
+arm "$d16" PROJ-16-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D28}IB-roadmap-chief
 record "$d16" "${D28}IC-roadmap-chief" "$(dead_pid)" "$(date +%s)"
-arm "$d16" HIMMEL-16-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D28}ID-roadmap-chief; rc16=$?
+arm "$d16" PROJ-16-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D28}ID-roadmap-chief; rc16=$?
 check "16a dead predecessor window, older live: exit 0" "$rc16" 0
 check "16b dead predecessor window, older live: no second window" "$(konsole_count "$d16")" 1
-check "16c dead predecessor window, older live: tracked in the older window" "$(window_of "$d16" HIMMEL-16-N2-b)" "$(window_of "$d16" HIMMEL-16-N1-a)"
+check "16c dead predecessor window, older live: tracked in the older window" "$(window_of "$d16" PROJ-16-N2-b)" "$(window_of "$d16" PROJ-16-N1-a)"
 
 # 17. chief.sh next's exact predecessor name wins where the name arithmetic cannot reach.
 d17="$tmp/c17"; mk_env "$d17"
-arm "$d17" HIMMEL-17-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D27}IC-ops-chief
-arm "$d17" HIMMEL-17-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D28}ID-roadmap-chief HIMMEL_CHIEF_PREDECESSOR=${D27}IC-ops-chief; rc17=$?
+arm "$d17" PROJ-17-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D27}IC-ops-chief
+arm "$d17" PROJ-17-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D28}ID-roadmap-chief HIMMEL_CHIEF_PREDECESSOR=${D27}IC-ops-chief; rc17=$?
 check "17a named predecessor: exit 0" "$rc17" 0
 check "17b named predecessor: no second window" "$(konsole_count "$d17")" 1
-check "17c named predecessor: tracked in its window" "$(window_of "$d17" HIMMEL-17-N2-b)" "$(window_of "$d17" HIMMEL-17-N1-a)"
+check "17c named predecessor: tracked in its window" "$(window_of "$d17" PROJ-17-N2-b)" "$(window_of "$d17" PROJ-17-N1-a)"
 
 # 18. the walk stops after 30 records: 29 dead ones newer than the live one still
 # reach it, 30 do not.
 for dead in 29 30; do
   d18="$tmp/c18-$dead"; mk_env "$d18"; mkdir -m 0700 "$d18/locks"
-  arm "$d18" HIMMEL-18-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D27}AA-roadmap-chief
+  arm "$d18" PROJ-18-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D27}AA-roadmap-chief
   touch -d "@$(( $(date +%s) - 5000 ))" "$d18/locks/tabs-${D27}AA-roadmap-chief.window"
   dp="$(dead_pid)"; i=1; alpha=ABCDEFGHIJKLMNOPQRSTUVWXYZ
   while [ "$i" -le "$dead" ]; do record "$d18" "${D27}${alpha:i/26+1:1}${alpha:i%26:1}-roadmap-chief" "$dp" "$(( $(date +%s) - 4000 + i ))"; i=$((i + 1)); done
-  arm "$d18" HIMMEL-18-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D28}ZZ-roadmap-chief
+  arm "$d18" PROJ-18-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D28}ZZ-roadmap-chief
   want=1; [ "$dead" = 30 ] && want=2
   check "18 hop cap: $dead dead records ahead of the live one: windows opened" "$(konsole_count "$d18")" "$want"
 done
 
 # 19. another chain's live window is never adopted.
 d19="$tmp/c19"; mk_env "$d19"
-arm "$d19" HIMMEL-19-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D27}IC-ops-chief
-arm "$d19" HIMMEL-19-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D28}ID-roadmap-chief
+arm "$d19" PROJ-19-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D27}IC-ops-chief
+arm "$d19" PROJ-19-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=${D28}ID-roadmap-chief
 check "19 other chain: the successor opens its own window" "$(konsole_count "$d19")" 2
 else
   echo "  SKIP 14-19 chain walk: no /proc/<pid>/comm on this host (konsole windows are Linux-only)"

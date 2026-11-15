@@ -224,8 +224,8 @@ else
 fi
 html="$(cat "$board" 2>/dev/null)"
 # a healthy lookup warns of nothing (the failure cases are pinned below).
-lacks 'a healthy label lookup prints no stderr warning (HIMMEL-3369)' "$(cat "$W/stderr.log")" 'worker labels unavailable'
-lacks 'a healthy label lookup renders no unavailable banner (HIMMEL-3369)' "$html" 'labels-unavailable'
+lacks 'a healthy label lookup prints no stderr warning' "$(cat "$W/stderr.log")" 'worker labels unavailable'
+lacks 'a healthy label lookup renders no unavailable banner' "$html" 'labels-unavailable'
 
 # --- the freshness the next call compares against lives in board.json, so
 # a render with no --out writes no chief-board.html and --changed works without one.
@@ -282,12 +282,12 @@ lacks 'a <b> in a Results bullet is escaped' "$html" '<b>bold</b>'
 
 # --- phases: LIVE -> READY-TO-OPEN -> PR open -> READY -> MERGED -> WRAPPED
 contains 'no PR, no marker: LIVE' "$html" 'data-label="N1" data-phase="LIVE"'
-contains 'a no-PR worker card prints its description next to the label (HIMMEL-4749)' "$html" '<p class="ds">Add a login form</p>'
+contains 'a no-PR worker card prints its description next to the label' "$html" '<p class="ds">Add a login form</p>'
 contains 'an open PR the worker names: PR open' "$html" 'data-label="N2" data-phase="PR open"'
 contains 'READY tail + open PR: READY' "$html" 'data-label="N3" data-phase="READY"'
 contains 'the worker names a merged PR: MERGED (archive)' "$(cat "$B/chief-board-archive.html")" 'N4 HIMMEL-3348 MERGED'
-contains 'a FINDING bullet citing a merged PR keeps its phase and gets no PR (HIMMEL-3374)' "$html" '<b>N10</b> <span class="tk">HIMMEL-3377</span> <span class="ph">LIVE</span><p>'
-contains 'a LIVE bullet citing a merged PR gets no PR either (HIMMEL-3374)' "$html" '<b>N11</b> <span class="tk">HIMMEL-3378</span> <span class="ph">LIVE</span><p>'
+contains 'a FINDING bullet citing a merged PR keeps its phase and gets no PR' "$html" '<b>N10</b> <span class="tk">HIMMEL-3377</span> <span class="ph">LIVE</span><p>'
+contains 'a LIVE bullet citing a merged PR gets no PR either' "$html" '<b>N11</b> <span class="tk">HIMMEL-3378</span> <span class="ph">LIVE</span><p>'
 contains 'lock released + WRAPPED tail: WRAPPED (archive)' "$(cat "$B/chief-board-archive.html")" 'N5 HIMMEL-3300 WRAPPED'
 contains 'READY tail with no PR anywhere: READY-TO-OPEN' "$html" 'data-label="N6" data-phase="READY-TO-OPEN"'
 contains 'a CI-red PR is flagged on its worker' "$html" 'data-ci="failing"'
@@ -360,8 +360,8 @@ PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv-d.log" 
     GH_OPEN="$W/open.json" GH_MERGED="$W/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
     node "$SUT" --doc "$DOCD" --repo "$W/repo" --out "$W/d-board.html" >/dev/null 2>"$W/stderr.log"
 dpanel="$(sed -n '/Open operator decisions/,/<\/section>/p' "$W/d-board.html")"
-same 'a parenthetical ; keeps one decision whole: exactly two items (HIMMEL-3944)' "$(printf '%s\n' "$dpanel" | grep -c '<li>')" '2'
-contains 'the parenthetical decision renders whole (HIMMEL-3944)' "$dpanel" '<li>A (x; y)</li>'
+same 'a parenthetical ; keeps one decision whole: exactly two items' "$(printf '%s\n' "$dpanel" | grep -c '<li>')" '2'
+contains 'the parenthetical decision renders whole' "$dpanel" '<li>A (x; y)</li>'
 # a decisions: pointer lists the numbered entries of the bucket file it names.
 DOCF="$B/HIMMEL-nextleg-2026-09-21V-chief-f.md"
 mkdir -p "$B/specs/decisions"
@@ -374,9 +374,9 @@ PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv-f.log" 
     GH_OPEN="$W/open.json" GH_MERGED="$W/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
     node "$SUT" --doc "$DOCF" --repo "$W/repo" --out "$W/f-board.html" >/dev/null 2>"$W/stderr.log"
 fpanel="$(sed -n '/Open operator decisions/,/<\/section>/p' "$W/f-board.html")"
-same 'a decisions: pointer lists the file entries, not one pointer row (HIMMEL-6498)' "$(printf '%s\n' "$fpanel" | grep -c '<li>')" '2'
-contains 'a decisions: pointer renders each numbered file entry (HIMMEL-6498)' "$fpanel" '<li>(2) ship the board first (then the tracker)</li>'
-lacks 'a decisions: pointer does not render the path as a decision (HIMMEL-6498)' "$fpanel" 'chief-decisions-2026-09-21.md'
+same 'a decisions: pointer lists the file entries, not one pointer row' "$(printf '%s\n' "$fpanel" | grep -c '<li>')" '2'
+contains 'a decisions: pointer renders each numbered file entry' "$fpanel" '<li>(2) ship the board first (then the tracker)</li>'
+lacks 'a decisions: pointer does not render the path as a decision' "$fpanel" 'chief-decisions-2026-09-21.md'
 sed 's|^decisions: .*|decisions: specs/decisions/chief-decisions-2026-09-21.md; specs/decisions/chief-decisions-2026-09-20.md|' "$DOC" > "$DOCF"  # gnu-ok: console kit is Linux-only
 PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv-g.log" \
     BOARD_SESSIONS="$W/bin/sessions-empty.sh" \
@@ -467,7 +467,7 @@ lacks 'a short label lookup does not claim no workers' "$shorthtml" 'no worker s
 # own needs-the-chief state, derived from an independent process census -- never
 # from tick.sh's procs= (which only counts HELD workers). N5 is the fixture's one
 # WRAPPED worker (its doc stem is dated); worker_identity() derives its
-# undated session name HIMMEL-3300-N5-eps.
+# undated session name, the doc stem without its date.
 cat > "$W/bin/sessions-n5-alive.sh" <<'STUB'
 claude_sessions() { printf '999\tHIMMEL-3300-N5-eps\tsonnet\ton\n'; }
 STUB
@@ -773,15 +773,15 @@ mrun() {
         node "$SUT" --doc "$MDOC" --repo "$W/repo" --out "$M/board.html" "$@" 2>"$W/stderr.log"
 }
 mrun >/dev/null
-lacks 'no manifest: tick gets no --workers (the RESUME-doc scan stays the fallback, HIMMEL-3988)' "$(cat "$W/argv.log")" "$M/HIMMEL-9901"
+lacks 'no manifest: tick gets no --workers (the RESUME-doc scan stays the fallback)' "$(cat "$W/argv.log")" "$M/HIMMEL-9901"
 printf '{"schema":1,"workers":[{"doc":"%s","label":"N901","added":"2026-10-01T00:00:00Z"}]}\n' "$M/HIMMEL-9901-N901-x-RESUME.md" > "$MFLEET"
 mrun --changed >/dev/null
-contains 'manifest present: tick is armed with the manifest workers (HIMMEL-3988)' "$(cat "$W/argv.log")" "--workers $M/HIMMEL-9901-N901-x-RESUME.md"
-lacks 'manifest present: a RESUME doc it does not list is not armed (HIMMEL-3988)' "$(cat "$W/argv.log")" 'HIMMEL-9902'
+contains 'manifest present: tick is armed with the manifest workers' "$(cat "$W/argv.log")" "--workers $M/HIMMEL-9901-N901-x-RESUME.md"
+lacks 'manifest present: a RESUME doc it does not list is not armed' "$(cat "$W/argv.log")" 'HIMMEL-9902'
 contains 'manifest present: the listed worker is on the board' "$(cat "$M/board.html")" 'data-label="N901"'
 same 'manifest unchanged: --changed reports UNCHANGED' "$(mrun --changed)" "UNCHANGED $M/board.html"
 printf '{"schema":1,"workers":[{"doc":"%s","label":"N901"},{"doc":"%s","label":"N902"}]}\n' "$M/HIMMEL-9901-N901-x-RESUME.md" "$M/HIMMEL-9902-N902-x-RESUME.md" > "$MFLEET"
-same 'manifest gained a worker: --changed reports CHANGED (HIMMEL-3988)' "$(mrun --changed)" "CHANGED $M/board.html"
+same 'manifest gained a worker: --changed reports CHANGED' "$(mrun --changed)" "CHANGED $M/board.html"
 mrun --workers "$M/HIMMEL-9902-N902-x-RESUME.md" >/dev/null
 contains 'an explicit --workers wins over the manifest' "$(cat "$W/argv.log")" "--workers $M/HIMMEL-9902-N902-x-RESUME.md"
 lacks 'an explicit --workers wins over the manifest (manifest worker not armed)' "$(cat "$W/argv.log")" 'HIMMEL-9901'
@@ -882,7 +882,7 @@ QL_STUB_STARTED=2026-10-07T03:00:00Z mrun >/dev/null; rc=$?
 same 'failures panel: render succeeds, rc 0' "$rc" "0"
 fhtml="$(cat "$M/board.html")"
 fsnap="$(printf '%s\n' "$fhtml" | sed -n '/data-failures=/,/<\/section>/p')"
-same 'failures panel: snapshot (HIMMEL-4670)' "$fsnap" '<section class="wide" data-failures="2"><h2>Failure classes — this shift</h2><div class="tscroll"><table><tr><th>class</th><th>worker sessions</th><th>events</th><th>rate</th><th>recovered</th><th>route</th></tr>
+same 'failures panel: snapshot' "$fsnap" '<section class="wide" data-failures="2"><h2>Failure classes — this shift</h2><div class="tscroll"><table><tr><th>class</th><th>worker sessions</th><th>events</th><th>rate</th><th>recovered</th><th>route</th></tr>
 <tr data-class="denied/guard-a"><td>denied/guard-a</td><td>2</td><td>5</td><td>—</td><td>50 %</td><td>HIMMEL-4799 (filed 03:04)</td></tr>
 <tr data-class="suite/test-&lt;b&gt;x&lt;/b&gt;.sh"><td>suite/test-&lt;b&gt;x&lt;/b&gt;.sh</td><td>1</td><td>3</td><td>—</td><td>—</td><td>signal</td></tr>
 </table></div><p class="sub">memory inbox: 2 pending</p></section>'
@@ -890,13 +890,13 @@ same 'failures panel: snapshot (HIMMEL-4670)' "$fsnap" '<section class="wide" da
 # the ladder is a vertical label-left count-right list (no wrapping chip row).
 # RED control (pre-change board.mjs): no class="wide" on data-failures, no .tscroll
 # wrapper, and .ladder is a flex-wrap chip row.
-contains 'failures panel: spans the full grid row (HIMMEL-5374)' "$fhtml" '<section class="wide" data-failures="2">'
-contains 'failures panel: table scrolls inside its own wrapper (HIMMEL-5374)' "$fhtml" '<div class="tscroll"><table>'
-contains 'failures panel: wrapper scrolls horizontally, not the page (HIMMEL-5374)' "$fhtml" '.tscroll { overflow-x:auto; }'
-contains 'failures panel: class column never breaks mid-word (HIMMEL-5374)' "$fhtml" 'word-break:normal; overflow-wrap:normal;'
-contains 'failures panel: numeric columns right-aligned, nowrap (HIMMEL-5374)' "$fhtml" 'text-align:right; white-space:nowrap;'
-contains 'ladder: one row per phase, label left and count right (HIMMEL-5374)' "$fhtml" '.ladder li { display:flex; justify-content:space-between;'
-lacks 'ladder: no longer a wrapping chip row (HIMMEL-5374)' "$fhtml" '.ladder { display:flex; flex-wrap:wrap;'
+contains 'failures panel: spans the full grid row' "$fhtml" '<section class="wide" data-failures="2">'
+contains 'failures panel: table scrolls inside its own wrapper' "$fhtml" '<div class="tscroll"><table>'
+contains 'failures panel: wrapper scrolls horizontally, not the page' "$fhtml" '.tscroll { overflow-x:auto; }'
+contains 'failures panel: class column never breaks mid-word' "$fhtml" 'word-break:normal; overflow-wrap:normal;'
+contains 'failures panel: numeric columns right-aligned, nowrap' "$fhtml" 'text-align:right; white-space:nowrap;'
+contains 'ladder: one row per phase, label left and count right' "$fhtml" '.ladder li { display:flex; justify-content:space-between;'
+lacks 'ladder: no longer a wrapping chip row' "$fhtml" '.ladder { display:flex; flex-wrap:wrap;'
 cat > "$HIMMEL_EVAL_RUNS_LEDGER" <<'RATES'
 {"eval":"leg-trajectory","run_id":"s1","status":"ok","ts":"2026-10-07T03:01:00Z","lane":"claudex","model":"gpt-6.1-sol","meta":{"leg":"N1","tool_health":[{"agent":{"id":"main","model":"gpt-6.1-sol"},"tool":"Bash","calls":50,"failures":5,"errors":0,"denials":5,"classes":{"denied/guard-a":5}}]}}
 RATES
@@ -936,7 +936,7 @@ fknow=$(date +%s)
 fk() { printf '{"v":1,"ts":%s,"host":"h","source":"run-shell-tests","kind":"flake","suite":"%s","repo":"%s","case":"c","rc":1,"sha":"s","run":"1"}\n' "$1" "$2" "$3"; }
 rm -f "$SUITE_FLAKE_LEDGER"
 mrun >/dev/null
-contains 'flakes panel: no ledger reads the empty line (HIMMEL-5131)' "$(cat "$M/board.html")" '<section data-flakes="0"><h2>Suite flakes — last 7 days</h2><p class="none">no suite flakes in the last 7 days</p></section>'
+contains 'flakes panel: no ledger reads the empty line' "$(cat "$M/board.html")" '<section data-flakes="0"><h2>Suite flakes — last 7 days</h2><p class="none">no suite flakes in the last 7 days</p></section>'
 {
     fk $((fknow - 100)) test-x.sh board-test-repo
     fk $((fknow - 200)) test-x.sh board-test-repo
@@ -945,19 +945,19 @@ contains 'flakes panel: no ledger reads the empty line (HIMMEL-5131)' "$(cat "$M
     fk $((fknow - 20 * 86400)) test-old.sh board-test-repo
 } > "$SUITE_FLAKE_LEDGER"
 mrun >/dev/null; rc=$?
-same 'flakes panel: render succeeds, rc 0 (HIMMEL-5131)' "$rc" "0"
+same 'flakes panel: render succeeds, rc 0' "$rc" "0"
 same 'flakes panel: per-suite counts for this repo inside the window, escaped' "$(sed -n '/data-flakes=/,/<\/section>/p' "$M/board.html")" '<section data-flakes="2"><h2>Suite flakes — last 7 days</h2><table><tr><th>suite</th><th>flakes</th></tr>
 <tr data-suite="test-x.sh"><td>test-x.sh</td><td>2</td></tr>
 <tr data-suite="test-&lt;b&gt;.sh"><td>test-&lt;b&gt;.sh</td><td>1</td></tr>
 </table></section>'
 rm -f "$SUITE_FLAKE_LEDGER"; mkdir -p "$SUITE_FLAKE_LEDGER"
 mrun >/dev/null; rc=$?
-same 'flakes panel: unreadable ledger, rc 0 (HIMMEL-5131)' "$rc" "0"
-contains 'flakes panel: unreadable ledger reads unavailable (HIMMEL-5131)' "$(cat "$M/board.html")" 'suite flakes unavailable'
+same 'flakes panel: unreadable ledger, rc 0' "$rc" "0"
+contains 'flakes panel: unreadable ledger reads unavailable' "$(cat "$M/board.html")" 'suite flakes unavailable'
 rmdir "$SUITE_FLAKE_LEDGER"
 rm -f "$W/repo/scripts/observability/suite-flake-summary.sh"
 mrun >/dev/null
-lacks 'flakes panel: a checkout without the reader renders no panel (HIMMEL-5131)' "$(cat "$M/board.html")" 'data-flakes='
+lacks 'flakes panel: a checkout without the reader renders no panel' "$(cat "$M/board.html")" 'data-flakes='
 
 # --- the red-main panel reads the checkout's own self-review.sh. The stub records
 # its argv and prints self-review.sh's six lines; RED_STUB_RC fails it.
@@ -970,17 +970,17 @@ exit "${RED_STUB_RC:-0}"
 STUB
 export RED_STUB_ARGS="$W/red-stub.args"
 mrun --json "$W/red.json" >/dev/null; rc=$?
-same 'red-main panel: render succeeds, rc 0 (HIMMEL-6865)' "$rc" "0"
-same 'red-main panel: self-review.sh runs over the last 30 days of this checkout (HIMMEL-6865)' "$(cat "$RED_STUB_ARGS" 2>/dev/null)" "--repo $W/repo --since 30.days.ago"
-contains 'red-main panel: the count of red-main merges (HIMMEL-6865)' "$(cat "$M/board.html")" '<section data-red-main="3"><h2>Red main — last 30 days</h2><p>3 merges named a red main</p></section>'
-same 'red-main panel: the JSON model carries the count (HIMMEL-6865)' "$(node -e 'console.log(JSON.stringify(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).red_main))' "$W/red.json")" '{"days":30,"merges":3}'
+same 'red-main panel: render succeeds, rc 0' "$rc" "0"
+same 'red-main panel: self-review.sh runs over the last 30 days of this checkout' "$(cat "$RED_STUB_ARGS" 2>/dev/null)" "--repo $W/repo --since 30.days.ago"
+contains 'red-main panel: the count of red-main merges' "$(cat "$M/board.html")" '<section data-red-main="3"><h2>Red main — last 30 days</h2><p>3 merges named a red main</p></section>'
+same 'red-main panel: the JSON model carries the count' "$(node -e 'console.log(JSON.stringify(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).red_main))' "$W/red.json")" '{"days":30,"merges":3}'
 RED_STUB_RC=1 mrun --json "$W/red.json" >/dev/null; rc=$?
-same 'red-main panel: a failing self-review.sh, rc 0 (HIMMEL-6865)' "$rc" "0"
-contains 'red-main panel: a failing self-review.sh reads unavailable, not a count (HIMMEL-6865)' "$(cat "$M/board.html")" '<section data-red-main="?"><h2>Red main — last 30 days</h2><p class="none">red-main count unavailable</p></section>'
-same 'red-main panel: a failing self-review.sh gives a null count in the JSON (HIMMEL-6865)' "$(node -e 'console.log(JSON.stringify(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).red_main))' "$W/red.json")" '{"days":30,"merges":null}'
+same 'red-main panel: a failing self-review.sh, rc 0' "$rc" "0"
+contains 'red-main panel: a failing self-review.sh reads unavailable, not a count' "$(cat "$M/board.html")" '<section data-red-main="?"><h2>Red main — last 30 days</h2><p class="none">red-main count unavailable</p></section>'
+same 'red-main panel: a failing self-review.sh gives a null count in the JSON' "$(node -e 'console.log(JSON.stringify(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).red_main))' "$W/red.json")" '{"days":30,"merges":null}'
 rm -f "$W/repo/scripts/insights/self-review.sh"
 mrun >/dev/null
-lacks 'red-main panel: a checkout without self-review.sh renders no panel (HIMMEL-6865)' "$(cat "$M/board.html")" 'data-red-main='
+lacks 'red-main panel: a checkout without self-review.sh renders no panel' "$(cat "$M/board.html")" 'data-red-main='
 
 # --- a chief FOR another checkout shows that checkout's PRs, not himmel's.
 # chief.sh records the project on the doc's project line; every gh call must
@@ -1070,23 +1070,23 @@ cloud_html() {
     cat "$M/board.html"
 }
 html="$(cloud_html cloud-gh)"
-lacks 'cloud: no cloud-sessions.tsv renders no cloud panel (HIMMEL-5163)' "$html" 'Cloud sessions'
+lacks 'cloud: no cloud-sessions.tsv renders no cloud panel' "$html" 'Cloud sessions'
 printf '%s\t%s\t%s\t%s\n' \
     '2026-10-10T15:56:20' HIMMEL-5077 session_012yMgxSaSskpLb4qrfXBhk1 'claude --teleport session_012yMgxSaSskpLb4qrfXBhk1' \
     '2026-10-10T15:56:43' HIMMEL-4657 session_01BCqPMDHjUE9Z52yEy3J3Uf 'claude --teleport session_01BCqPMDHjUE9Z52yEy3J3Uf' \
     '2026-10-10T15:56:54' HIMMEL-4686 session_0173H75dC4x9nZ7JdeLqYoMc 'claude --teleport session_0173H75dC4x9nZ7JdeLqYoMc' \
     > "$M/cloud-sessions.tsv"
 html="$(cloud_html cloud-gh)"
-contains 'cloud: the panel is rendered (HIMMEL-5163)' "$html" '<h2>Cloud sessions</h2>'
-contains 'cloud: an open PR with CLOUD-DONE and no shepherd is unshepherded, PR named (HIMMEL-5163)' "$html" 'data-cloud-ticket="HIMMEL-5077" data-state="unshepherded" data-stall="yes"><b>HIMMEL-5077</b> unshepherded · PR #2314'
-contains 'cloud: a merged cloud PR reads merged, not a stall (HIMMEL-5163)' "$html" 'data-cloud-ticket="HIMMEL-4657" data-state="merged" data-stall="no"><b>HIMMEL-4657</b> merged · PR #2306'
-contains 'cloud: a session with no branch or PR reads no-branch (HIMMEL-5163)' "$html" 'data-cloud-ticket="HIMMEL-4686" data-state="no-branch" data-stall="yes"'
+contains 'cloud: the panel is rendered' "$html" '<h2>Cloud sessions</h2>'
+contains 'cloud: an open PR with CLOUD-DONE and no shepherd is unshepherded, PR named' "$html" 'data-cloud-ticket="HIMMEL-5077" data-state="unshepherded" data-stall="yes"><b>HIMMEL-5077</b> unshepherded · PR #2314'
+contains 'cloud: a merged cloud PR reads merged, not a stall' "$html" 'data-cloud-ticket="HIMMEL-4657" data-state="merged" data-stall="no"><b>HIMMEL-4657</b> merged · PR #2306'
+contains 'cloud: a session with no branch or PR reads no-branch' "$html" 'data-cloud-ticket="HIMMEL-4686" data-state="no-branch" data-stall="yes"'
 html="$(cloud_html cloud-gh-down)"
-contains 'cloud: an unreadable forge says so, never fatal (HIMMEL-5163)' "$html" 'data-cloud-panel="unavailable"'
+contains 'cloud: an unreadable forge says so, never fatal' "$html" 'data-cloud-panel="unavailable"'
 rm -f "$M/cloud-sessions.tsv"
 # a ticket is matched literally: 'HIMMEL.1' must not claim the branch 'himmelx1-foo' (RED control: the dot matched it, state 'branch')
 cstate="$(node --input-type=module -e "import { evaluate } from '$HERE/cloud-liveness.mjs'; const now = Date.parse('2026-10-10T16:30:00Z'); console.log(evaluate({ sessions: [{ ticket: 'HIMMEL.1', session: 's', launched: now - 600 * 60000 }], prs: [], heads: ['himmelx1-foo'], now })[0].state);")"
-contains 'cloud: a ticket is matched literally, never as a pattern (HIMMEL-7167)' "$cstate" 'no-branch'
+contains 'cloud: a ticket is matched literally, never as a pattern' "$cstate" 'no-branch'
 
 # --- the published board shows live work only; WRAPPED/MERGED workers and
 # merged PRs go to a local, never-published, grep-friendly archive beside it.
@@ -1120,14 +1120,14 @@ if [ "$lbytes" -lt 15000 ]; then pass "live page stays under 15 KB ($lbytes byte
 # keep their names and are pinned by the --json rows and the legs: fixture above.
 usage_txt="$(node "$SUT" --help 2>&1)"; rc=$?
 same 'the usage line exits 2 (a usage error)' "rc=$rc" 'rc=2'
-contains 'usage line names the <worker doc> placeholder (HIMMEL-8309)' "$usage_txt" '--workers "<worker doc> ..."'
-lacks 'usage line carries the old word nowhere (HIMMEL-8309)' "$usage_txt" 'leg'
-contains 'fleet counter reads workers live (HIMMEL-8309)' "$lhtml" '<small>/15 workers live</small>'
-lacks 'fleet counter never reads the old word live (HIMMEL-8309)' "$lhtml" 'legs live'
-contains 'archive heading reads Done workers (HIMMEL-8309)' "$ahtml" '<h2>Done workers</h2>'
-lacks 'archive heading never reads the old Done word (HIMMEL-8309)' "$ahtml" 'Done legs'
-contains 'live page counts done workers (HIMMEL-8309)' "$lhtml" ' done workers and the merged PRs are in '
-lacks 'live page never counts done old-word rows (HIMMEL-8309)' "$lhtml" 'done leg'
+contains 'usage line names the <worker doc> placeholder' "$usage_txt" '--workers "<worker doc> ..."'
+lacks 'usage line carries the old word nowhere' "$usage_txt" 'leg'
+contains 'fleet counter reads workers live' "$lhtml" '<small>/15 workers live</small>'
+lacks 'fleet counter never reads the old word live' "$lhtml" 'legs live'
+contains 'archive heading reads Done workers' "$ahtml" '<h2>Done workers</h2>'
+lacks 'archive heading never reads the old Done word' "$ahtml" 'Done legs'
+contains 'live page counts done workers' "$lhtml" ' done workers and the merged PRs are in '
+lacks 'live page never counts done old-word rows' "$lhtml" 'done leg'
 
 # --- a finished judge doc (last marker VERDICT or WRAPPED) goes to the archive like a
 # WRAPPED worker. Its label is the doc stem, which tick.sh's tails= never carries, so the
@@ -1163,13 +1163,13 @@ PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub-size" TICK_ARGV_LOG="$W/argv.lo
     node "$SUT" --doc "$S/chief-s.md" --repo "$W/repo" --out "$S/board.html" >/dev/null 2>"$W/stderr.log"
 shtml="$(cat "$S/board.html" 2>/dev/null)"
 sarch="$(cat "$S/board-archive.html" 2>/dev/null)"
-lacks 'judge: a VERDICT-tailed judge doc is not on the live page (HIMMEL-5955)' "$shtml" 'HIMMEL-7801-judge-j801'
-lacks 'judge: a WRAPPED-tailed judge doc is not on the live page (HIMMEL-5955)' "$shtml" 'HIMMEL-7802-judge-j802'
-contains 'judge: the VERDICT-tailed judge is in the archive (HIMMEL-5955)' "$sarch" 'HIMMEL-7801-judge-j801-2026-10-16-RESUME HIMMEL-7801 WRAPPED'
-contains 'judge: the WRAPPED-tailed judge is in the archive (HIMMEL-5955)' "$sarch" 'HIMMEL-7802-judge-j802-2026-10-16-RESUME HIMMEL-7802 WRAPPED'
+lacks 'judge: a VERDICT-tailed judge doc is not on the live page' "$shtml" 'HIMMEL-7801-judge-j801'
+lacks 'judge: a WRAPPED-tailed judge doc is not on the live page' "$shtml" 'HIMMEL-7802-judge-j802'
+contains 'judge: the VERDICT-tailed judge is in the archive' "$sarch" 'HIMMEL-7801-judge-j801-2026-10-16-RESUME HIMMEL-7801 WRAPPED'
+contains 'judge: the WRAPPED-tailed judge is in the archive' "$sarch" 'HIMMEL-7802-judge-j802-2026-10-16-RESUME HIMMEL-7802 WRAPPED'
 contains 'judge: a live worker of the same fleet stays on the page' "$shtml" 'data-label="N725"'
 sbytes="$(printf '%s' "$shtml" | wc -c)"
-if [ "$sbytes" -lt 15000 ]; then pass "25 live workers + 15 finished judges: live page under 15 KB ($sbytes bytes, HIMMEL-5955)"; else fail "25 live workers + 15 finished judges: live page is $sbytes bytes, want under 15000 (HIMMEL-5955)"; fi
+if [ "$sbytes" -lt 15000 ]; then pass "25 live workers + 15 finished judges: live page under 15 KB ($sbytes bytes)"; else fail "25 live workers + 15 finished judges: live page is $sbytes bytes, want under 15000"; fi
 
 # --- --json <path> writes the board model (schema himmel.board/1): a legend for every
 # colour key, one recommendation per report card, the milestone done/total per Jira
@@ -1200,9 +1200,9 @@ done
 BOARD_SESSIONS="$W/bin/sessions-n5-alive.sh" BOARD_CLOSE_CHECK="$W/bin/no-such-close-check.sh" run --out "$W/n5-json-board.html" --json "$W/n5-board.json" >/dev/null; rc=$?
 same '--json: the worker-wording render exits 0' "rc=$rc" 'rc=0'
 jtxt="$(cat "$W/n5-board.json" 2>/dev/null)"
-jcheck '--json: a BLOCKED worker need reads clear the BLOCKED worker, under the leg: key (HIMMEL-8309)' 'M.needs_you.some((n) => n.leg === "N7" && n.action === "clear the BLOCKED worker")'
-jcheck '--json: a still-open WRAPPED worker need reads close the worker window, under the leg: key (HIMMEL-8309)' 'M.needs_you.some((n) => n.leg === "N5" && n.action === "close the worker window")'
-jcheck '--json: the health line counts workers, never the pre-rename word (HIMMEL-8309)' '/workers? need you/.test(M.cards.health.recommendation) && !/\bleg/.test(M.cards.health.recommendation)'
+jcheck '--json: a BLOCKED worker need reads clear the BLOCKED worker, under the leg: key' 'M.needs_you.some((n) => n.leg === "N7" && n.action === "clear the BLOCKED worker")'
+jcheck '--json: a still-open WRAPPED worker need reads close the worker window, under the leg: key' 'M.needs_you.some((n) => n.leg === "N5" && n.action === "close the worker window")'
+jcheck '--json: the health line counts workers, never the pre-rename word' '/workers? need you/.test(M.cards.health.recommendation) && !/\bleg/.test(M.cards.health.recommendation)'
 
 # --- chief cost and the succession eval come from session transcripts: line 1 names
 # the session (custom-title = chief doc stem), assistant lines carry message.usage,
@@ -1227,7 +1227,7 @@ TZ=UTC BOARD_TRANSCRIPTS="$TX" PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub-
     GH_OPEN="$W/open.json" GH_MERGED="$W/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
     node "$SUT" --doc "$S/chief-s.md" --repo "$W/repo" --out "$S/board.html" --json "$S/board.json" >/dev/null 2>"$W/stderr.log"
 jtxt="$(cat "$S/board.json" 2>/dev/null)"
-jcheck '--json: console cost sums its own messages once each (HIMMEL-5955 5e)' 'M.trends.console_cost.eq === 108000 && M.trends.console_cost.messages === 3'
+jcheck '--json: console cost sums its own messages once each' 'M.trends.console_cost.eq === 108000 && M.trends.console_cost.messages === 3'
 jcheck '--json: console cost has an hourly trend' 'M.trends.console_cost.hourly.length === 2 && M.trends.console_cost.hourly[0].eq === 72000 && M.trends.console_cost.hourly[1].eq === 36000'
 jcheck '--json: console cost sits next to fleet spend' '"fleet_eq" in M.trends.console_cost'
 jcheck '--json: succession is a tool-eval row' 'M.trends.tools.length === 1 && M.trends.tools[0].tool === "chief-succession" && M.trends.tools[0].from === "chief-prev" && M.trends.tools[0].to === "chief-s"'
@@ -1449,48 +1449,48 @@ GOLDEN_OPERATOR_SHA='c25fbd3ecac7e846a3ffad252d6c722554de3baadec7f40fc3b22b8e1b5
 mkdir -p "$W/home"
 ( unset HANDOVER_DIR CR_TUNE_DIR; export HOME="$W/home"; run --out "$W/golden.html" >/dev/null )
 golden_sha="$(cat "$W/golden.html" "$W/golden-archive.html" | sed 's/rendered [0-9-]* [0-9:]*/rendered STAMP/' | sha256sum | cut -d' ' -f1)"
-same 'the operator board html + archive are byte-identical to the base render on the same fixture (HIMMEL-6879)' "$golden_sha" "$GOLDEN_OPERATOR_SHA"
+same 'the operator board html + archive are byte-identical to the base render on the same fixture' "$golden_sha" "$GOLDEN_OPERATOR_SHA"
 
 # --- the user shift board: --view user, a second renderer over the same reads
 op_before="$(sha256sum < "$board")"
 uout="$(run --view user --out "$W/user-board.html")"; rc=$?
-same 'the user view prints the path it wrote (HIMMEL-6879)' "$rc:$uout" "0:$W/user-board.html"
+same 'the user view prints the path it wrote' "$rc:$uout" "0:$W/user-board.html"
 uhtml="$(cat "$W/user-board.html" 2>/dev/null)"
-same 'the user view leaves the operator board file untouched (HIMMEL-6879)' "$(sha256sum < "$board")" "$op_before"
+same 'the user view leaves the operator board file untouched' "$(sha256sum < "$board")" "$op_before"
 ucount() { printf '%s\n' "$uhtml" | grep -o "data-section=\"$1\" data-count=\"[0-9]*\"" | grep -o '[0-9]*"$' | tr -d '"'; }
 section_of() { printf '%s\n' "$uhtml" | sed -n "/<section data-section=\"$1\"/,/<\/section>/{p;/<\/section>/q}"; }
 # N1 N2 N9 N10 N11 N18 N19 and N16 (in the Live state, no handover doc yet) build or sit in review;
 # N3 awaits GO, N7 is blocked, N12 has a FINDING and the Live state holds two open operator
 # decisions; PRs 1990 and 1995 merged.
-same 'running now counts the workers that need nobody (HIMMEL-6879)' "$(ucount running)" '8'
-contains 'a running worker without a ticket reads worker session (HIMMEL-6879)' "$(section_of running)" '<b>worker session</b>'
-lacks 'a question row drops the bullet time and marker (HIMMEL-6879)' "$(section_of waiting)" '12:00 BLOCKED'
-contains 'a question row keeps the question text (HIMMEL-6879)' "$(section_of waiting)" 'the push was refused'
-same 'waiting on you counts a GO, a question and the open decisions (HIMMEL-6879)' "$(ucount waiting)" '5'
-same 'shipped counts the merged PRs (HIMMEL-6879)' "$(ucount shipped)" '2'
-contains 'a READY worker is a GO row with its PR (HIMMEL-6879)' "$(section_of waiting)" 'GO · PR #2001'
-contains 'a waiting row names the ticket (HIMMEL-6879)' "$(section_of waiting)" 'HIMMEL-3332'
-contains 'an open operator decision is a waiting row (HIMMEL-6879)' "$(section_of waiting)" 'widen the fleet cap to 20?'
-contains 'a running row names the ticket (HIMMEL-6879)' "$(section_of running)" 'HIMMEL-3340'
-contains 'a running worker with no PR shows its description as the goal (HIMMEL-4749)' "$(section_of running)" 'Add a login form'
-contains 'a shipped row names the merged PR (HIMMEL-6879)' "$(section_of shipped)" 'PR #1995'
+same 'running now counts the workers that need nobody' "$(ucount running)" '8'
+contains 'a running worker without a ticket reads worker session' "$(section_of running)" '<b>worker session</b>'
+lacks 'a question row drops the bullet time and marker' "$(section_of waiting)" '12:00 BLOCKED'
+contains 'a question row keeps the question text' "$(section_of waiting)" 'the push was refused'
+same 'waiting on you counts a GO, a question and the open decisions' "$(ucount waiting)" '5'
+same 'shipped counts the merged PRs' "$(ucount shipped)" '2'
+contains 'a READY worker is a GO row with its PR' "$(section_of waiting)" 'GO · PR #2001'
+contains 'a waiting row names the ticket' "$(section_of waiting)" 'HIMMEL-3332'
+contains 'an open operator decision is a waiting row' "$(section_of waiting)" 'widen the fleet cap to 20?'
+contains 'a running row names the ticket' "$(section_of running)" 'HIMMEL-3340'
+contains 'a running worker with no PR shows its description as the goal' "$(section_of running)" 'Add a login form'
+contains 'a shipped row names the merged PR' "$(section_of shipped)" 'PR #1995'
 for hidden in 'Failure classes' 'Phase ladder' 'data-label=' 'data-phase=' 'data-need=' 'Fleet' 'lane' '>N3<' '>N12<' 'READY-TO-OPEN' 'deadbeefdeadbeef'; do
-    lacks "the user view leaves out '$hidden' (HIMMEL-6879)" "$uhtml" "$hidden"
+    lacks "the user view leaves out '$hidden'" "$uhtml" "$hidden"
 done
 for secret in aaaa1111 bbbb2222 cccc3333 pid111111 pid830420 'V-N1-' 'x8664' abcdef12 cafe0123 cafe1919 pid181818; do
-    lacks "no nonce/lock-token text in the user view: $secret (HIMMEL-6879)" "$uhtml" "$secret"
+    lacks "no nonce/lock-token text in the user view: $secret" "$uhtml" "$secret"
 done
-lacks 'a <script> in a worker bullet is escaped in the user view (HIMMEL-6879)' "$uhtml" '<script>alert(1)'
-contains 'the user view fits a phone width (HIMMEL-6879)' "$uhtml" 'name="viewport" content="width=device-width, initial-scale=1"'
-lacks 'the user view loads nothing from the network (HIMMEL-6879)' "$uhtml" 'http'
+lacks 'a <script> in a worker bullet is escaped in the user view' "$uhtml" '<script>alert(1)'
+contains 'the user view fits a phone width' "$uhtml" 'name="viewport" content="width=device-width, initial-scale=1"'
+lacks 'the user view loads nothing from the network' "$uhtml" 'http'
 run --view nope --out "$W/nope.html" >/dev/null 2>&1; rc=$?
-same 'an unknown --view is a usage error (HIMMEL-6879)' "rc=$rc" 'rc=2'
+same 'an unknown --view is a usage error' "rc=$rc" 'rc=2'
 run --view user --changed --out "$W/user-changed.html" >/dev/null 2>&1; rc=$?
-same '--changed with --view user is a usage error, not a bare path (HIMMEL-6879)' "rc=$rc" 'rc=2'
+same '--changed with --view user is a usage error, not a bare path' "rc=$rc" 'rc=2'
 run --view user --json "$W/user.json" --out "$W/user-json.html" >/dev/null 2>&1; rc=$?
-same '--json with --view user is a usage error, not a silent skip (HIMMEL-6879)' "rc=$rc" 'rc=2'
+same '--json with --view user is a usage error, not a silent skip' "rc=$rc" 'rc=2'
 # a READY-TO-OPEN worker (no PR yet) is in no section: not running, not the user's to answer.
-lacks 'a READY-TO-OPEN worker is in no user section (HIMMEL-6879)' "$uhtml" 'HIMMEL-3350'
+lacks 'a READY-TO-OPEN worker is in no user section' "$uhtml" 'HIMMEL-3350'
 # a parked worker is in no section either: N7 leaves waiting, running is unchanged.
 for park in PARKED-USAGE PARKED-BANK; do
     PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub-park" TICK_STUB_PARK="$park" TICK_ARGV_LOG="$W/argv-upark.log" \
@@ -1498,9 +1498,9 @@ for park in PARKED-USAGE PARKED-BANK; do
         GH_OPEN="$W/open.json" GH_MERGED="$W/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
         node "$SUT" --doc "$DOC" --repo "$W/repo" --view user --out "$W/user-park.html" >/dev/null 2>"$W/stderr.log"
     phtml="$(cat "$W/user-park.html" 2>/dev/null)"
-    lacks "a $park worker is in no user section (HIMMEL-6879)" "$phtml" 'HIMMEL-3351'
-    same "a $park worker leaves waiting on you at 4 (HIMMEL-6879)" "$(printf '%s\n' "$phtml" | grep -o 'data-section="waiting" data-count="[0-9]*"' | grep -o '[0-9]*"$' | tr -d '"')" '4'
-    same "a $park worker leaves running now at 8 (HIMMEL-6879)" "$(printf '%s\n' "$phtml" | grep -o 'data-section="running" data-count="[0-9]*"' | grep -o '[0-9]*"$' | tr -d '"')" '8'
+    lacks "a $park worker is in no user section" "$phtml" 'HIMMEL-3351'
+    same "a $park worker leaves waiting on you at 4" "$(printf '%s\n' "$phtml" | grep -o 'data-section="waiting" data-count="[0-9]*"' | grep -o '[0-9]*"$' | tr -d '"')" '4'
+    same "a $park worker leaves running now at 8" "$(printf '%s\n' "$phtml" | grep -o 'data-section="running" data-count="[0-9]*"' | grep -o '[0-9]*"$' | tr -d '"')" '8'
 done
 
 # --- the leaks the user view must strip: a COPY of the fixture whose user-read fields (a BLOCKED
@@ -1520,14 +1520,14 @@ PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv-leak.lo
     GH_OPEN="$W/leak/open.json" GH_MERGED="$W/leak/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
     node "$SUT" --doc "$LDOC" --repo "$W/repo" --view user --out "$W/user-leak.html" >/dev/null 2>"$W/stderr.log"
 lhtml="$(cat "$W/user-leak.html" 2>/dev/null)"
-contains 'the leak page still shows a BLOCKED question (HIMMEL-6879)' "$lhtml" 'clash, '
-contains 'the leak page still shows the decision (HIMMEL-6879)' "$lhtml" 'ask a worker about'
-contains 'the leak page still shows the open PR goal (HIMMEL-6879)' "$lhtml" 'slice S3 for a worker in'
-contains 'the leak page still shows the merged PR goal (HIMMEL-6879)' "$lhtml" 'harden a worker in'
-contains 'a worker label in a user-read field reads "a worker" (HIMMEL-6879)' "$lhtml" 'a worker and a worker clash'
-same 'no worker label survives in the user view (HIMMEL-6879)' "$(printf '%s\n' "$lhtml" | grep -cE '\bN[0-9]+\b')" '0'
+contains 'the leak page still shows a BLOCKED question' "$lhtml" 'clash, '
+contains 'the leak page still shows the decision' "$lhtml" 'ask a worker about'
+contains 'the leak page still shows the open PR goal' "$lhtml" 'slice S3 for a worker in'
+contains 'the leak page still shows the merged PR goal' "$lhtml" 'harden a worker in'
+contains 'a worker label in a user-read field reads "a worker"' "$lhtml" 'a worker and a worker clash'
+same 'no worker label survives in the user view' "$(printf '%s\n' "$lhtml" | grep -cE '\bN[0-9]+\b')" '0'
 for leak in ffff6666 aaaa1212 cccc3333 pid777777 pid121212 pid333333 x8664 "/home/$hu" 'V-N7-' 'V-N12-' 'V-N3-'; do
-    lacks "a planted $leak in a user-read field does not reach the user view (HIMMEL-6879)" "$lhtml" "$leak"
+    lacks "a planted $leak in a user-read field does not reach the user view" "$lhtml" "$leak"
 done
 
 # --- usage
