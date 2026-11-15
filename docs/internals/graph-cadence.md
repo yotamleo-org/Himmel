@@ -261,7 +261,7 @@ aliases, resolved by `scripts/lib/llm-backend.sh`. Any other value refuses (rc 1
 | rc | meaning | cadence result |
 |---|---|---|
 | 0 | ok, no change since the last pass (no-op), or on `claude-api` a batch submitted or still pending (graph untouched) | green; clears the `graph-semantic-<slug>` alert |
-| 3 | subscription usage budget at/over threshold, nothing touched (claude-cli only; the ollama path skips the usage budget check); or, on `claude-api` batch mode, the batch estimate is over the run cap (word `over-cap`, nothing submitted, nothing pending) | benign skip: green, no alert, an existing alert is left standing |
+| 3 | subscription usage budget at/over threshold, nothing touched (claude-cli only; the ollama path skips the usage budget check); or, on `claude-api` batch mode, the batch estimate is over the run cap (word `over-cap`, nothing submitted, nothing pending); or, on the `claude-api` synchronous path, a chunk was not sent because it would pass the run cap (word `over-cap`, the chunks sent before it merged, the refused files unstamped) | benign skip: green, no alert, an existing alert is left standing |
 | 4 | promote lock held by another graph refresh, nothing touched | benign skip: green, no alert, an existing alert is left standing |
 | 5 | one or more semantic chunks failed (the good chunks merged, the failed files stay unstamped) | alerts (`semantic-update-rc-5`), `action=failed`, rc 3 |
 | 1, 2, other | usage/IO, fence deny, batch submit failure, graphify or merge failure | alerts (`semantic-update-rc-<n>`), `action=failed`, rc 3 |
