@@ -105,6 +105,7 @@ rm -f "$TICKET_STATUS_STATE_DIR/status-events.jsonl"
 # ts_owed_chief_paths: an owed-to-chief coverage line, as the reader lists it, whose ask names a relative repo path
 opaths() { printf '## Ticket coverage\n- a: done\n- %s: owed → %s by 2026-11-22\n' "$1" "${2:-chief}" | ts_owed_chief_paths "$HERE/pr_remainder.py" K-1 | cut -f1; }
 check "10194 a bare file name is a repo path" "$(opaths 'the INTAKE age (tick.sh, held)')" 'tick.sh'
+check "10194 a dot-relative file is a repo path" "$(opaths 'run ./tick.sh and ../lib/x.py')" '../lib/x.py, ./tick.sh'
 check "10194 a relative directory is a repo path" "$(opaths 'part B under scripts/handover/chief-kit/')" 'scripts/handover/chief-kit/'
 check "10194 absolute and home paths are not" "$(opaths 'set /etc/himmel/x.json and ~/.codex/config.toml')" ''
 check "10194 versions, dates and and/or are not" "$(opaths 'v1.1.3 tag and node 26.13.1, and/or w/ the fix')" ''

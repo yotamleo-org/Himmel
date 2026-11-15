@@ -702,20 +702,20 @@ ts_owed_lines() {
 
 # ts_owed_chief_paths <reader> <KEY> — stdin: a PR body. Runs the reader (pr_remainder.py, the caller's anchor copy) with
 # --units and prints paths<TAB>text for each owed-to-chief line it lists (chief-owed=) that names a relative repo path:
-# a file with a code or doc extension (tick.sh, scripts/lib/x.py) or a directory of two or more parts ending in `/`
-# (scripts/lib/). An absolute or home path (/etc/x.json, ~/.codex/config.toml) is not a repo path. Such a line is code
+# a file with a code or doc extension (tick.sh, scripts/lib/x.py, ./x.sh) or a directory of two or more parts ending in
+# `/` (scripts/lib/), with or without a leading ./ or ../. An absolute or home path (/etc/x.json, ~/.codex/config.toml) is not a repo path. Such a line is code
 # written as chief work; it belongs on a `Remaining:` line, which gets a RESUME row.
 # rc 0 = one or more, 1 = none, 3 = the reader failed or gave no chief-owed field.
 ts_owed_chief_paths() {
     local ans owed text paths found=1
-    local re='(^|[[:space:]`'"'"'"(,;[])(([A-Za-z0-9_][A-Za-z0-9_.-]*/)*[A-Za-z0-9_][A-Za-z0-9_.-]*\.(sh|bash|py|mjs|cjs|js|ts|tsx|json|jsonl|tsv|yml|yaml|md|toml)|([A-Za-z0-9_][A-Za-z0-9_.-]*/){2,})([[:space:]`'"'"'"),;:.]|$)'
+    local re='(^|[[:space:]`'"'"'"(,;[])(\.\.?/)*(([A-Za-z0-9_][A-Za-z0-9_.-]*/)*[A-Za-z0-9_][A-Za-z0-9_.-]*\.(sh|bash|py|mjs|cjs|js|ts|tsx|json|jsonl|tsv|yml|yaml|md|toml)|([A-Za-z0-9_][A-Za-z0-9_.-]*/){2,})([[:space:]`'"'"'"),;:.]|$)'
     [ -f "$1" ] || return 3
     ans=$(tr -d '\r' | python3 -I "$1" --units "$2" 2>/dev/null) || return 3
     owed=${ans##*$'\t'}
     case "$owed" in chief-owed=*) owed=${owed#chief-owed=} ;; *) return 3 ;; esac
     while IFS= read -r text; do
         [ -n "$text" ] || continue
-        paths=$(printf '%s\n' "$text" | grep -oE "$re" | sed -E 's/^[^A-Za-z0-9_]//; s/[^A-Za-z0-9_/]$//' | sort -u | paste -sd, - | sed 's/,/, /g') || paths=""  # swallow-ok: no path in the line is the empty answer
+        paths=$(printf '%s\n' "$text" | grep -oE "$re" | sed -E 's/^[^A-Za-z0-9_./]//; s/[^A-Za-z0-9_/]$//' | sort -u | paste -sd, - | sed 's/,/, /g') || paths=""  # swallow-ok: no path in the line is the empty answer
         [ -n "$paths" ] || continue
         printf '%s\t%s\n' "$paths" "$text"
         found=0
