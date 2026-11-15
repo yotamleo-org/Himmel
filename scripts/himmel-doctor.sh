@@ -5156,7 +5156,7 @@ _c69_probe_cli() {  # t13b-ok: one bounded read-only vsearch through the bare CL
     . "$lib"  # t13b-ok: sources the group-deadline helper, starts nothing
     out="$( unset QMD_OPENAI_API_KEY; qmd_bounded "$secs" "$qbin" vsearch -n 1 himmel-doctor-probe 2>&1 )" || rc=$?
     if [ "$rc" -eq 124 ]; then echo "timeout"
-    elif printf '%s' "$out" | grep -qE 'answered 401|No cookie auth credentials'; then echo "refused"
+    elif grep -qE 'answered 401|No cookie auth credentials' <<< "$out"; then echo "refused"
     elif [ "$rc" -ne 0 ]; then echo "other:$rc"
     else echo "ok"; fi
 }
