@@ -24,7 +24,7 @@ usage() { echo "usage: outside-security-audit.sh --pr <pr-number> --head <40-hex
 PR=$2 H=$4
 [[ "$PR" =~ ^[1-9][0-9]{0,8}$ ]] && [[ "$H" =~ ^[0-9a-f]{40}$ ]] || usage
 CAP=196608
-LIFECYCLE='["preinstall","install","postinstall","prepare","prepack","postpack","prepublish","preprepare","postprepare"]'
+LIFECYCLE='["preinstall","install","postinstall","prepare","prepack","postpack","prepublish","preprepare","postprepare","dependencies"]'
 die() { local c=$1; shift; echo "outside-security-audit: $* - no audit row was written" >&2; exit "$c"; }
 anchor=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd) || exit 2
 oa_repo="${HIMMEL_REPO:-}"
@@ -153,6 +153,9 @@ audit_locked() {
         [[ "$path" =~ $h2_re ]] && hit H2 "$st $path"
         case "$nmode" in 120000|160000) hit H5 "$path gains mode $nmode" ;; esac
         case "$omode" in 120000|160000) [ "$st" = D ] || hit H5 "$path changes from mode $omode" ;; esac
+        # npm runs node-gyp rebuild on install for a package holding a binding.gyp, with no scripts entry;
+        # the letter case is open because a case-insensitive filesystem finds it either way.
+        case "$st:${path##*/}" in A:[Bb][Ii][Nn][Dd][Ii][Nn][Gg].[Gg][Yy][Pp]) hit H3 "$path is added, so npm install runs node-gyp rebuild" ;; esac
         case "${path##*/}:$nmode:$omode" in
             package.json:120000:*|package.json:160000:*|package.json:*:120000|package.json:*:160000|package-lock.json:120000:*|package-lock.json:160000:*) continue ;;
         esac
