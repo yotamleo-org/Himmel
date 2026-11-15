@@ -1577,14 +1577,18 @@ wt_head_age_secs() {
 # harness files and Python bytecode. Any other ignored path (a local .env)
 # may be user data and keeps the worktree.
 superseded_ignored_ok() {
-    local out u
+    local out u e
     out=$(git -C "$1" ls-files --others --ignored --exclude-standard --directory 2>/dev/null) || return 1
     while IFS= read -r u; do
         [ -n "$u" ] || continue
         case "$u" in
             .claude/logs/|.claude/settings.local.json|__pycache__/|*/__pycache__/) ;;
             # git collapses a wholly-ignored .claude/ into one entry: look inside.
-            .claude/) [ -z "$(find "$1/.claude" -mindepth 1 -maxdepth 1 ! -name logs ! -name settings.local.json 2>/dev/null)" ] || return 1 ;;
+            .claude/)
+                for e in "$1"/.claude/* "$1"/.claude/.[!.]*; do
+                    [ -e "$e" ] || continue
+                    case "${e##*/}" in logs|settings.local.json) ;; *) return 1 ;; esac
+                done ;;
             *) is_ignorable_ignored_stray "$u" || return 1 ;;
         esac
     done <<EOF
