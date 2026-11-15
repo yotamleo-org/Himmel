@@ -207,6 +207,24 @@ check "attest_found security: a near miss does not conform" "$rc" "1"
 rc=0; printf 'Platforms tested: linuxish\n' | attest_found platforms || rc=$?
 check "attest_found platforms: linuxish does not conform" "$rc" "1"
 
+# --- a failing grep is "cannot classify" (exit 2), never "needs nothing": a gate that reads an
+# error as an empty file class would pass a code diff with no attestation
+badbin="$tmp/badbin"
+mkdir -p "$badbin"
+printf '#!/bin/sh\nexit 2\n' > "$badbin/grep"
+chmod +x "$badbin/grep"
+rc=0; out="$(printf 'scripts/a.sh\n' | PATH="$badbin:$PATH" bash "$LIB" needs 2>&1)" || rc=$?
+check "needs with a failing grep: rc 2" "$rc" "2"
+R=$(new_repo badgrep)
+git -C "$R" checkout -q -b feat
+commit_file "$R" scripts/x.sh "fix(x): [HIMMEL-1] one"
+rc=0; out="$(cd "$R" && PATH="$badbin:$PATH" bash "$LIB" range main HEAD 2>&1)" || rc=$?
+check "range with a failing grep: rc 2" "$rc" "2"
+printf '%s' '[{"messageHeadline":"fix(x): [HIMMEL-1] one","messageBody":"","parents":{"totalCount":1}}]' > "$tmp/bg-commits.json"
+printf 'scripts/x.sh\n' > "$tmp/bg-files.txt"
+rc=0; out="$(PATH="$badbin:$PATH" bash "$LIB" pr-json "$tmp/bg-commits.json" "$tmp/bg-files.txt" 2>&1)" || rc=$?
+check "pr-json with a failing grep: rc 2" "$rc" "2"
+
 # --- T10 pin moved from the hook suite: the matcher lines hold no backslash (BSD grep reads \b as a literal b)
 for var in ATTEST_PLATFORMS_RE ATTEST_SECURITY_RE; do
     line=$(grep -F -e "${var}=" "$LIB" | head -n 1)

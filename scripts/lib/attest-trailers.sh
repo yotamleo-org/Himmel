@@ -37,21 +37,40 @@ ATTEST_SEC_TRAILER_RE='^[[:space:]]*Security reviewed:'
 # class on stdout. platforms = shell/script files (Markdown and text under
 # scripts/ are never scripts); security = anything outside docs.
 attest_files() {
-    local list
+    local list step
     list=$(cat)
     case "${1:-}" in
-        platforms) printf '%s\n' "$list" | grep -Ev '\.(md|txt)$' | grep -E '(\.(sh|bash|zsh|ps1|psm1|psd1|cmd|bat)$|^scripts/|(^|/)bin/[^/]+$)' || true ;;
-        security) printf '%s\n' "$list" | grep -Ev '\.(md|txt)$|^docs/|^handovers/' || true ;;
+        platforms)
+            step=$(printf '%s\n' "$list" | _attest_grep -Ev '\.(md|txt)$') || return 2
+            printf '%s\n' "$step" | _attest_grep -E '(\.(sh|bash|zsh|ps1|psm1|psd1|cmd|bat)$|^scripts/|(^|/)bin/[^/]+$)' ;;
+        security) printf '%s\n' "$list" | _attest_grep -Ev '\.(md|txt)$|^docs/|^handovers/' ;;
         *) return 2 ;;
     esac
 }
 
-# attest_needs: a file list on stdin, the needed kinds (one per line) on stdout.
+# _attest_grep <grep args...>: grep over stdin where rc 1 (no line matched) is an empty answer
+# and any other failure (an erroring or missing grep) is rc 2, so a broken classifier is never
+# read as "this diff needs nothing".
+_attest_grep() {
+    local out rc=0
+    out=$(grep "$@") || rc=$?
+    if [ "$rc" -gt 1 ]; then
+        return 2
+    fi
+    if [ -n "$out" ]; then
+        printf '%s\n' "$out"
+    fi
+    return 0
+}
+
+# attest_needs: a file list on stdin, the needed kinds (one per line) on stdout; rc 2 when the
+# list cannot be classified.
 attest_needs() {
-    local list k
+    local list k out
     list=$(cat)
     for k in platforms security; do
-        if [ -n "$(attest_files "$k" <<<"$list")" ]; then
+        out=$(attest_files "$k" <<<"$list") || return 2
+        if [ -n "$out" ]; then
             printf '%s\n' "$k"
         fi
     done
@@ -100,13 +119,16 @@ _attest_error() {
 
 # _attest_verdict <only> <files> <msgs>: print the ATTEST lines, rc 0 or 1.
 _attest_verdict() {
-    local only="$1" files="$2" msgs="$3" k needs missing="" line
+    local only="$1" files="$2" msgs="$3" k needs missing="" line is_needed nl
+    nl=$'\n'
     needs=$(attest_needs <<<"$files") || { _attest_error "cannot classify the changed files"; return 2; }
     for k in platforms security; do
         if [ -n "$only" ] && [ "$only" != "$k" ]; then
             continue
         fi
-        if ! grep -qx "$k" <<<"$needs"; then
+        # a case match, not grep -x: a failing grep must never read as "not needed"
+        case "${nl}${needs}${nl}" in *"${nl}${k}${nl}"*) is_needed=1 ;; *) is_needed=0 ;; esac
+        if [ "$is_needed" -eq 0 ]; then
             printf 'ATTEST %s not-needed\n' "$k"
         elif attest_found "$k" <<<"$msgs"; then
             line=$(attest_found_line "$k" <<<"$msgs")

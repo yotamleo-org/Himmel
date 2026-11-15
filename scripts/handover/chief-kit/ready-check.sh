@@ -1744,7 +1744,11 @@ if [ -z "$files_json" ]; then
 elif [ "$att13_rc" -ne 0 ]; then
     echo "[FAIL] 13. cannot classify the PR files (the trailer helper exited $att13_rc)"
     mark_fail
-elif ! grep -qx security <<<"$att13"; then
+elif case "
+$att13
+" in *"
+security
+"*) false ;; *) true ;; esac; then
     echo "[PASS] 13. RED-then-GREEN line: not needed (a doc-only PR)"
 elif [ -n "$(printf '%s\n' "$cov_body" | grep -E '(^|[^A-Za-z0-9])RED([^A-Za-z0-9].*[^A-Za-z0-9]|[^A-Za-z0-9])GREEN([^A-Za-z0-9]|$)' || true)" ]; then  # swallow-ok: no matching line is grep rc 1, which is the no-RED-line answer
     echo "[PASS] 13. the PR body names a RED-then-GREEN line"
