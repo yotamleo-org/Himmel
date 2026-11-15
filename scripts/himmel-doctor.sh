@@ -5170,7 +5170,8 @@ check_c69_qmd_cli_key() {  # t13b-ok: doctor row that reads the key file and ask
     local cfg="${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}/index.yml"
     local curl_bin="${HIMMEL_DOCTOR_QMD_CURL:-curl}"
     local url="${HIMMEL_DOCTOR_QMD_KEY_URL:-https://openrouter.ai/api/v1/auth/key}"
-    local lib="$REPO_ROOT/scripts/lib/qmd-daemon-env.sh" out="" code="" cli=""
+    local lib="$REPO_ROOT/scripts/lib/qmd-daemon-env.sh" out="" code=""
+    local cli=""
     case "${QMD_OPENAI_BASE_URL:-}" in
         *openrouter.ai*) ;;
         *) grep -qs '^[^#]*openrouter\.ai' "$cfg" || return 0 ;;
