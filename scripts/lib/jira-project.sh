@@ -7,6 +7,8 @@
 # Key: JIRA_PROJECT_KEY from the process env when non-empty, else the value load_dotenv finds
 # (himmel.conf, then .env), else HIMMEL. An exported empty value counts as unset, the same
 # rule load_dotenv uses. The lookup runs in a subshell, so nothing is exported into the caller.
+# A value that is not an upper-case project key (letter, then letters, digits, underscores) warns
+# on stderr without echoing it, and gives HIMMEL, so no mirror path is built from it.
 # Mirror dir: HIMMEL_JIRA_MIRROR when non-empty (the override the config UI reads for the
 # project JIRA_PROJECT_KEY names), else $HOME/.himmel/state/jira-mirror/<key>, the path the
 # jira CLI's defaultRoot builds. Both print one line, never a credential, and are safe under
@@ -22,7 +24,16 @@ jira_project_key() {
     if [ -z "$_jp_key" ]; then
         _jp_key=$(load_dotenv JIRA_PROJECT_KEY; printf '%s' "${JIRA_PROJECT_KEY:-}")
     fi
-    printf '%s\n' "${_jp_key:-HIMMEL}"
+    # A key is one upper-case letter then upper-case letters, digits or underscores. Anything else
+    # (a path, a space, a newline) is refused so a bad value can never build a mirror path.
+    local LC_ALL=C
+    case "$_jp_key" in
+        '') _jp_key=HIMMEL ;;
+        [!A-Z]*|*[!A-Z0-9_]*)
+            echo "jira-project: JIRA_PROJECT_KEY is not a valid project key; using HIMMEL" >&2
+            _jp_key=HIMMEL ;;
+    esac
+    printf '%s\n' "$_jp_key"
 }
 
 jira_mirror_dir() {

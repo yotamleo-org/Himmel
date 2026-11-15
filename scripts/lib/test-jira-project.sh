@@ -64,6 +64,25 @@ JIRA_PROJECT_KEY=DOTKEY
 '
 check "a secret in .env is never printed" DOTKEY "$(run jira_project_key)"
 
+echo "== an invalid key never reaches a path =="
+fixture '' ''
+check "a valid key with a digit and underscore is kept (control)" AB_1 "$(run jira_project_key JIRA_PROJECT_KEY=AB_1)"
+check "a path-shaped key falls back to HIMMEL" HIMMEL "$(run jira_project_key JIRA_PROJECT_KEY=../x)"
+check "a lowercase key falls back to HIMMEL" HIMMEL "$(run jira_project_key JIRA_PROJECT_KEY=himmel)"
+check "a key with a space falls back to HIMMEL" HIMMEL "$(run jira_project_key "JIRA_PROJECT_KEY=AB CD")"
+check "a key that starts with a digit falls back to HIMMEL" HIMMEL "$(run jira_project_key JIRA_PROJECT_KEY=1AB)"
+check "a key with a newline after a valid line falls back to HIMMEL" HIMMEL "$(run jira_project_key "JIRA_PROJECT_KEY=AB
+../x")"
+check "an invalid key never builds the mirror path" "$home/.himmel/state/jira-mirror/HIMMEL" "$(run jira_mirror_dir JIRA_PROJECT_KEY=../x)"
+fixture 'JIRA_PROJECT_KEY=../conf
+' ''
+check "an invalid himmel.conf key falls back to HIMMEL" HIMMEL "$(run jira_project_key)"
+# shellcheck disable=SC2016  # the child shell expands $1, not this one
+warn=$(cd "$work" && env -i HOME="$home" PATH="$PATH" HIMMEL_CONFIG_DIR="$conf" HIMMELCTL_CACHE_DIR="$cache" JIRA_PROJECT_KEY=../x \
+    bash -c 'set -u; . "$1"; jira_project_key >/dev/null' _ "$LIB" 2>&1 >/dev/null) # read-sink-ok: LIB is this suite's sibling resolver, derived from $0, never caller input
+case "$warn" in *"not a valid"*) pass "an invalid key warns on stderr" ;; *) fail "an invalid key warns on stderr: '$warn'" ;; esac
+case "$warn" in *"../x"*) fail "the warning leaks the bad value: '$warn'" ;; *) pass "the warning does not echo the value" ;; esac
+
 echo "== mirror dir =="
 fixture '' ''
 check "default is HOME/.himmel/state/jira-mirror/HIMMEL" "$home/.himmel/state/jira-mirror/HIMMEL" "$(run jira_mirror_dir)"
