@@ -137,7 +137,8 @@ audit_locked() {
         [ "$1" != "$zero" ] || { echo '{}'; return 0; }
         git cat-file blob "$1" 2>/dev/null | jq -cSse --argjson l "$LIFECYCLE" '
             if length == 1 and (.[0] | type) == "object" and ((.[0].scripts // {}) | type) == "object"
-            then (.[0].scripts // {}) | with_entries(.key as $k | select(any($l[]; . == $k)))
+            then ((.[0].scripts // {}) | with_entries(.key as $k | select(any($l[]; . == $k))))
+                + (.[0] | if has("gypfile") then {gypfile} else {} end)
             else error("not a package.json") end' 2>/dev/null
     }
     resolved() {

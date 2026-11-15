@@ -99,7 +99,7 @@ git init -q --bare -b main "$O"
     printf '{"name":"x","scripts":{"test":"echo t","postinstall":"echo a"}}\n' > package.json
     printf '{"lockfileVersion":3,"packages":{"":{"name":"x"},"node_modules/a":{"version":"1.0.0","resolved":"https://registry.npmjs.org/a/-/a-1.0.0.tgz"}}}\n' > package-lock.json
     echo doc > docs/a.md; echo lint > scripts/ci/lintme.sh; echo 'registry=https://registry.npmjs.org/' > pkg/.npmrc
-    echo '{"targets":[]}' > pkg/binding.gyp
+    echo '{"targets":[]}' > pkg/binding.gyp; printf '{"name":"p","gypfile":false}\n' > pkg/package.json
     git add -A && git commit -q -m base && git remote add origin "$O" && git push -q origin main
 ) || { echo "FAIL: fixture setup" >&2; exit 1; }
 git clone -q "$O" "$P"
@@ -269,6 +269,9 @@ h3gyp 'mkdir -p native && git mv docs/a.md native/binding.gyp' "T3.8 H3 a rename
 h3gyp "echo '{\"targets\":[{\"actions\":[{\"action\":[\"touch\",\"x\"]}]}]}' > pkg/binding.gyp" "T3.8 H3 a modified pre-existing binding.gyp"
 reset; newpr 'echo gyp >> f.txt'
 audit; expect_row "T3.8 an unchanged pre-existing binding.gyp is no hit" pass ""
+h3gyp "printf '{\"name\":\"p\"}\n' > pkg/package.json" "T3.8 H3 a package.json dropping gypfile false beside a binding.gyp"
+reset; newpr "printf '{\"name\":\"p2\",\"gypfile\":false}\n' > pkg/package.json"
+audit; expect_row "T3.8 a package.json beside a binding.gyp changing an unrelated key, gypfile kept, is no hit" pass ""
 reset; newpr "printf '{\"name\":' > package.json"
 audit; eq "$rc/$(last verdict)/$(last hard)" "0/fail/H3" "T3.15 H3 an unparsable package.json"
 
