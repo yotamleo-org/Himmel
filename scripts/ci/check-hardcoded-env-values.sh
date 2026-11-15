@@ -96,7 +96,8 @@ BEGIN {
     cls[k] = "jira-field-id"; re[k++] = "customfield_[0-9]+"
     # The Jira project key: a mirror path or a JQL clause naming one project reads that project
     # on every station. scripts/lib/jira-project.sh resolves the key and the mirror directory.
-    cls[k] = "jira-project-key"; re[k++] = "jira-mirror/HIMMEL|project[[:space:]]*=[[:space:]]*[\"\047]?HIMMEL([^A-Za-z0-9_]|$)"
+    # Matched on the lowercased line: JQL keywords and keys are case-insensitive.
+    cls[k] = "jira-project-key"; re[k++] = "jira-mirror/himmel([^a-z0-9_]|$)|project[[:space:]]*=[[:space:]]*[\"\047]?himmel([^a-z0-9_]|$)"
     nclass = k
 }
 # A file header only sits between its `diff --git` line and its first hunk; an
@@ -118,6 +119,7 @@ inhdr && /^\+\+\+ / {
     for (c = 0; c < nclass; c++) {
         if (tree && (cls[c] == "repo-slug" || cls[c] == "jira-project-key")) continue
         scan = body
+        if (cls[c] == "jira-project-key") scan = tolower(scan)
         if (cls[c] == "home-path") gsub(/\/home\/runner([^a-z0-9_-]|$)/, " ", scan)
         if (scan ~ re[c]) {
             printf "%s:%d: %s: %s\n", file, cur, cls[c], body

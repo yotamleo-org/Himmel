@@ -96,7 +96,10 @@ run_case "the mirror literal with a marker and a reason" 0 scripts/mirror-ok.sh 
 run_case "the JQL literal with a marker and a reason" 0 scripts/jql-ok.sh "$JQL_LINE # env-literal-ok: fixture query"
 run_case "the mirror literal in a comment-only line" 0 scripts/mirror-note.sh "# reads jira-mirror/HIMMEL today"
 run_case "the mirror literal in the resolver" 0 scripts/lib/jira-project.sh "$MIRROR_LINE"
+run_case "an upper-case PROJECT = HIMMEL JQL literal" 1 scripts/jql-upper.sh 'jql="PROJECT = HIMMEL"'
 run_case "another project key is not this literal" 0 scripts/jql-other.sh 'jql="project = HIMMELX"'
+# shellcheck disable=SC2016  # literal fixture text, nothing should expand
+run_case "another project's mirror path is not this literal" 0 scripts/mirror-other.sh 'MIRROR="$HOME/.himmel/state/jira-mirror/HIMMELX"'
 git -C "$repo" checkout -q -B case "$base"
 printf '%s\n' "$MIRROR_LINE" > "$repo/scripts/old-mirror.sh"
 git -C "$repo" add -A
