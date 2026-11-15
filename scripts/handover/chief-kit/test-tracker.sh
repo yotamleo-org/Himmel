@@ -1637,7 +1637,7 @@ codmk() { # <num> <status>
     printf '%s\n' '---' "key: \"HIMMEL-$1\"" 'updated: "2026-09-30T10:00:00.000+0000"' "statusCategory: \"$2\"" "status: \"$2\"" \
         'fixVersions: ["v1.1.3"]' 'labels: []' 'type: "Task"' '---' "# HIMMEL-$1: cod card $1" > "$cod/mirror/HIMMEL-$1.md"
 }
-codmk 21 "In Progress"; codmk 22 "In Progress"; codmk 23 "Done"
+codmk 21 "In Progress"; codmk 22 "In Progress"; codmk 23 "Done"; codmk 24 "In Progress"
 printf '[]\n' > "$cod/prs.json"
 codout="$cod/page.html"
 codrender() {
@@ -1649,13 +1649,15 @@ cat > "$cod/bucket/focus-drift.txt" <<'EOF'
 CLOSE-OR-DISPATCH HIMMEL-21 In Progress with no open PR, no live owner and no event since 2026-11-10T18:00:00Z (73 h); last PR #5155, owed: the timing row (DoD 1) | writer=jira | fix=x
 CLOSE-OR-DISPATCH HIMMEL-23 In Progress with no open PR, no live owner and no event since 2026-11-10T18:00:00Z (73 h); last PR #5156, owed: done already | writer=jira | fix=x
 CLOSE-OR-DISPATCH HIMMEL-99 In Progress with no open PR, no live owner and no event since 2026-11-10T18:00:00Z (73 h); last PR #5157, owed: another version | writer=jira | fix=x
+CLOSE-OR-DISPATCH HIMMEL-24 In Progress with no open PR, no live owner and no event since 2026-11-10T18:00:00Z (80 h); no merged PR, owed: the chief's decision on the remainder | writer=jira | fix=x
 UNOWNED HIMMEL-22 In Progress with no open PR and no live owner | writer=a | fix=b
-sdrift=4:33333333
+sdrift=5:33333333
 EOF
 codrender --owed-dir "$cod/bucket" >/dev/null
 codw="$(grep -F 'data-section="waiting"' "$codout" 2>/dev/null)"
 contains '9561 a CLOSE-OR-DISPATCH row lists its key under Waiting on you with the close-or-name-a-worker line' "$codw" 'close HIMMEL-21 or name a worker (last PR #5155, owed: the timing row (DoD 1))'
-contains '9561 that is the only ask counted' "$codw" 'data-count="1"'
+contains '10000 a no-PR row lists its key with no merged PR' "$codw" 'close HIMMEL-24 or name a worker (no merged PR, owed: the chief'
+contains '9561 those are the only asks counted' "$codw" 'data-count="2"'
 not_contains '9561 a Done ticket carrying the row is not listed' "$codw" 'HIMMEL-23'
 not_contains '9561 a ticket outside the version carrying the row is not listed' "$codw" 'HIMMEL-99'
 not_contains '9561 an UNOWNED row is not a close ask' "$codw" 'HIMMEL-22'

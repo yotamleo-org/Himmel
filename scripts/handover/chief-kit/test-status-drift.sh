@@ -2160,6 +2160,32 @@ drift
 check "9561 COD 12: control: the same partial merge 71 h old is the UNOWNED row" "$(dcount CLOSE-OR-DISPATCH)/$(dcount UNOWNED)" 0/1
 check "9561 COD 12: and it still names its partial PR" "$(drows UNOWNED | grep -c 'left by partial merge PR #4480')" 1
 
+H80=$((80 * 3600))
+nprfx() {
+    local doc_age=$1 comment_age=$2
+    d6fx; lrow $H80 wrapped noop D6n; lrow 60 sweep noop D6n; cod_doc "$doc_age"; cod_comment "$comment_age" 'x'
+}
+nprfx $H80 $((100 * 3600))
+drift
+check "10000 COD 1: a no-PR D6n park with no event for 80 h is one CLOSE-OR-DISPATCH row" "$(dcount CLOSE-OR-DISPATCH)/$(dcount UNOWNED)" 1/0
+contains "10000 COD 1: its clock is the owner doc" "$(drows CLOSE-OR-DISPATCH)" "no event since $(iso_at $H80) (80 h)"
+contains "10000 COD 1: it says no PR was merged" "$(drows CLOSE-OR-DISPATCH)" "(80 h); no merged PR, owed: the chief's decision on the remainder |"
+nprfx $((100 * 3600)) $H80
+drift
+contains "10000 COD 1b: a newer Jira comment is the clock" "$(drows CLOSE-OR-DISPATCH)" "no event since $(iso_at $H80) (80 h)"
+nprfx 3600 $((100 * 3600))
+drift
+check "10000 COD 2: control: a recent owner doc keeps it UNOWNED" "$(dcount CLOSE-OR-DISPATCH)/$(dcount UNOWNED)" 0/1
+nprfx $H80 3600
+drift
+check "10000 COD 3: control: a recent Jira comment keeps it UNOWNED" "$(dcount CLOSE-OR-DISPATCH)/$(dcount UNOWNED)" 0/1
+nprfx $((71 * 3600)) $((100 * 3600))
+drift
+check "10000 COD 4: control: an owner doc 71 h old keeps it UNOWNED" "$(dcount CLOSE-OR-DISPATCH)/$(dcount UNOWNED)" 0/1
+nprfx $H80 $((100 * 3600)); label; hand 400000 '{"owner":"chief","reason":"r"}'
+drift
+check "10000 COD 5: control: a held park never gets the row" "$(dcount CLOSE-OR-DISPATCH)" 0
+
 rca() { # <KEY> <PR> <merged ISO> <run ISO> <owed due YYYY-MM-DD or -> <want rows> - the RCA's tickets, run at the time named
     local keepk=$K keepnow=$NOW m
     K=$1; NOW=$(epoch_of "$4"); export TICKET_STATUS_NOW=$NOW
