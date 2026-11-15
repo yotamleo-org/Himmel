@@ -55,6 +55,7 @@ export function stubKeyring(dir: string) {
   const env: Record<string, string> = {
     PATH: `${bin}:${process.env.PATH}`,
     KSTUB_STORE: store,
+    HIMMEL_CONFIG_DIR: join(dir, "himmel-conf"),
     DBUS_SESSION_BUS_ADDRESS: `unix:path=${join(dir, "stub-bus")}`,
   };
   // the stored value of a user-scope key, null when absent.
