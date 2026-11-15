@@ -1035,8 +1035,9 @@ if [ "${#legacy_keys[@]}" -gt 0 ]; then
     fi
 fi
 # Named, unowned and several-line entries: the value is parsed here, stored through
-# `himmel-secrets put --stdin`, and read back from the keyring alone (same-value). An entry
-# whose store or read-back fails stays in .env whole; the others still move.
+# `himmel-secrets put-if-absent --stdin`, which checks and stores under the keyring's own
+# lock, and read back from the keyring alone (same-value). An entry whose store or
+# read-back fails stays in .env whole; the others still move.
 # An item the keyring already holds is never replaced: same value, the entry just leaves
 # the file; another value is `held`, as in import-env, and the entry stays (the keyring's
 # value may be the newer one, a rotated token for instance).
@@ -1049,21 +1050,22 @@ for key in ${own_keys[@]+"${own_keys[@]}"}; do
         # same-value compares line by line, so a value that repeats the item's line would pass as the same one
         own_err="a value with a newline inside it cannot be one keyring item"
     else
-        # same-value with nothing on stdin only asks whether the item exists: 0 yes, 1 no
-        probe_err=$(printf '' | bash "$hs" same-value "$key" 2>&1 >/dev/null); probe_rc=$?
-        if [ "$probe_rc" -eq 0 ]; then
-            # 0 the same value, 1 another value (held); anything else is a keyring that did not answer
-            printf '%s\n' "$own_val" | bash "$hs" same-value "$key" 2>/dev/null; cmp_rc=$?
-            case "$cmp_rc" in 0) own_state=same ;; 1) own_state=held ;; *) own_err="the keyring did not answer" ;; esac
-        elif [ "$probe_rc" -ne 1 ] || [ -n "$probe_err" ]; then
-            own_err="the keyring did not answer"
-        fi
-    fi
-    if [ -z "$own_err" ] && [ -z "$own_state" ]; then
-        if own_err=$(printf '%s' "$own_val" | bash "$hs" put --stdin "$key" 2>&1 >/dev/null); [ -n "$own_err" ]; then
-            own_err=$(printf '%s' "$own_err" | head -n 1)
-        elif ! printf '%s\n' "$own_val" | bash "$hs" same-value "$key" 2>/dev/null; then
-            own_err="the keyring does not hold that value after the store"
+        own_out=$(printf '%s' "$own_val" | bash "$hs" put-if-absent --stdin "$key" 2>&1); own_rc=$?
+        if [ "$own_rc" -ne 0 ]; then
+            own_err=$(printf '%s' "$own_out" | head -n 1)
+            [ -n "$own_err" ] || own_err="the keyring helper failed (exit $own_rc)"
+        else
+            case "$own_out" in
+                "kept $key "*)
+                    # 0 the same value, 1 another value (held); anything else is a keyring that did not answer
+                    printf '%s\n' "$own_val" | bash "$hs" same-value "$key" 2>/dev/null; cmp_rc=$?
+                    case "$cmp_rc" in 0) own_state=same ;; 1) own_state=held ;; *) own_err="the keyring did not answer" ;; esac ;;
+                "stored $key")
+                    if ! printf '%s\n' "$own_val" | bash "$hs" same-value "$key" 2>/dev/null; then
+                        own_err="the keyring does not hold that value after the store"
+                    fi ;;
+                *) own_err="the keyring helper gave an answer this move does not know" ;;
+            esac
         fi
     fi
     own_val=""

@@ -500,7 +500,7 @@ describe('pull', () => {
 // The real scripts/lib/himmel-secrets over a stub keyring (secret-tool and busctl first on PATH).
 // Dummy values only; the station keyring and the real .env are never reached.
 describe('google-health secrets through the resolver', () => {
-  const TOUCHED = ['PATH', 'KSTUB_STORE', 'KSTUB_LOG', 'KSTUB_LOCKED', 'KSTUB_FAIL_STORE', 'DBUS_SESSION_BUS_ADDRESS',
+  const TOUCHED = ['PATH', 'KSTUB_STORE', 'KSTUB_LOG', 'KSTUB_LOCKED', 'KSTUB_FAIL_STORE', 'HIMMEL_CONFIG_DIR', 'DBUS_SESSION_BUS_ADDRESS',
     'GOOGLE_HEALTH_CLIENT_ID', 'GOOGLE_HEALTH_CLIENT_SECRET', 'GOOGLE_HEALTH_REFRESH_TOKEN',
     'HIMMEL_SECRETS_KEYRING', 'CREDENTIALS_DIRECTORY'];
   const saved: Record<string, string | undefined> = {};
@@ -522,7 +522,7 @@ describe('google-health secrets through the resolver', () => {
       'exec "$(dirname "$0")/secret-tool.real" "$@"\n');
     chmodSync(join(bin, 'secret-tool'), 0o755);
     log = join(dir, 'keyring.log');
-    Object.assign(process.env, stub.env, { KSTUB_LOG: log });
+    Object.assign(process.env, stub.env, { KSTUB_LOG: log, HIMMEL_CONFIG_DIR: join(dir, 'himmel-conf') });
     // Suite guard: secret-tool and busctl must resolve to the stub, or the run aborts.
     for (const tool of ['secret-tool', 'busctl']) {
       const where = Bun.which(tool, { PATH: process.env.PATH }) ?? '';
