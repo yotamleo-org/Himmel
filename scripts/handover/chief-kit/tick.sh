@@ -3183,8 +3183,8 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
         if [ "$intake_summary" -gt 0 ] && [ -n "$root" ]; then
             ia_now="$(date +%s)"
             for ia_file in "$root"/inbox/*.wait.intake; do
-                [ -f "$ia_file" ] || continue
-                ia_first="$(sed -n 1p "$ia_file" 2>/dev/null)"  # swallow-ok: an unreadable clock reads empty and shows no age
+                [ -f "$ia_file" ] && [ -r "$ia_file" ] || continue
+                ia_first="$(sed -n 1p "$ia_file")"
                 case "$ia_first" in ''|*[!0-9]*) continue ;; esac
                 [ "$((10#$ia_first))" -le "$ia_now" ] || continue
                 [ -n "$intake_age" ] && [ "$((10#$ia_first))" -ge "$intake_age_first" ] && continue
