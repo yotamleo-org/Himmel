@@ -589,10 +589,10 @@ assert_eq "R17 a project-scope import is not held up by a user-scope one" "store
 kreset
 out=$(cd "$REPO" && printf 'fake-a' | "$HS" put-if-absent --stdin TEST_HS_R19 2>&1; echo "rc=$?")
 assert_eq "R19 put-if-absent stores an absent item" "stored TEST_HS_R19|rc=0" "$(printf '%s' "$out" | tr '\n' '|' | sed 's/|$//')"
-assert_eq "R19 the absent item holds the value" "service=himmel key=TEST_HS_R19 scope=user	fake-a" "$(cat "$KSTUB_STORE")"
+assert_eq "R19 the absent item holds the value" "service=himmel key=TEST_HS_R19 scope=user	fake-a" "$(cat "$KSTUB_STORE")"  # read-sink-ok: KSTUB_STORE is the suite's own stub file under its mktemp dir
 out=$(cd "$REPO" && printf 'fake-b' | "$HS" put-if-absent --stdin TEST_HS_R19 2>&1; echo "rc=$?")
 assert_eq "R19 put-if-absent keeps a present item and exits 0" "kept TEST_HS_R19 (the keyring already holds it; not replaced)|rc=0" "$(printf '%s' "$out" | tr '\n' '|' | sed 's/|$//')"
-assert_eq "R19 the kept item still holds the first value" "service=himmel key=TEST_HS_R19 scope=user	fake-a" "$(cat "$KSTUB_STORE")"
+assert_eq "R19 the kept item still holds the first value" "service=himmel key=TEST_HS_R19 scope=user	fake-a" "$(cat "$KSTUB_STORE")"  # read-sink-ok: KSTUB_STORE is the suite's own stub file under its mktemp dir
 out=$(cd "$REPO" && printf 'fake-p' | "$HS" put-if-absent --project --stdin TEST_HS_R19 2>&1; echo "rc=$?")
 assert_eq "R19 a user item does not make the project scope present" "stored TEST_HS_R19|rc=0" "$(printf '%s' "$out" | tr '\n' '|' | sed 's/|$//')"
 kreset
@@ -624,7 +624,7 @@ r19wait
 got=$(cd "$REPO" && printf 'fake-old' | env -u CLAUDECODE KBIN="$KBIN" PATH="$RBIN:$PATH" "$HS" put-if-absent --stdin TEST_HS_R19 2>&1; echo "rc=$?")
 wait "$r19_pid"
 assert_eq "R19 a put-if-absent that starts mid-write is refused" "1|rc=2" "$(printf '%s' "$got" | grep -c 'another import-env')|$(printf '%s' "$got" | grep rc=)"
-assert_eq "R19 the newer value survives the older writer" "service=himmel key=TEST_HS_R19 scope=user	fake-new" "$(cat "$KSTUB_STORE")"
+assert_eq "R19 the newer value survives the older writer" "service=himmel key=TEST_HS_R19 scope=user	fake-new" "$(cat "$KSTUB_STORE")"  # read-sink-ok: KSTUB_STORE is the suite's own stub file under its mktemp dir
 assert_eq "R19 the first writer finished whole" "stored TEST_HS_R19|rc=0" "$(tr '\n' '|' <"$TMP/r19.a" | sed 's/|$//')"
 kreset
 (cd "$REPO" && printf 'fake-old' | env -u CLAUDECODE KBIN="$KBIN" PATH="$RBIN:$PATH" RACE_SLEEP=2 "$HS" put-if-absent --stdin TEST_HS_R19 >"$TMP/r19.b" 2>&1; echo "rc=$?" >>"$TMP/r19.b") &
@@ -633,7 +633,7 @@ r19wait
 got=$(cd "$REPO" && printf 'fake-new' | env -u CLAUDECODE KBIN="$KBIN" PATH="$RBIN:$PATH" "$HS" put --stdin TEST_HS_R19 2>&1; echo "rc=$?")
 wait "$r19_pid"
 assert_eq "R19 a plain put between put-if-absent's check and store is refused" "1|rc=2" "$(printf '%s' "$got" | grep -c 'another import-env')|$(printf '%s' "$got" | grep rc=)"
-assert_eq "R19 the put-if-absent store is the one that landed" "service=himmel key=TEST_HS_R19 scope=user	fake-old" "$(cat "$KSTUB_STORE")"
+assert_eq "R19 the put-if-absent store is the one that landed" "service=himmel key=TEST_HS_R19 scope=user	fake-old" "$(cat "$KSTUB_STORE")"  # read-sink-ok: KSTUB_STORE is the suite's own stub file under its mktemp dir
 assert_eq "R19 the put-if-absent finished whole" "stored TEST_HS_R19|rc=0" "$(tr '\n' '|' <"$TMP/r19.b" | sed 's/|$//')"
 kreset
 (cd "$REPO" && env -u CLAUDECODE KSTUB_STORE_SLEEP=2 "$HS" import-env "$TMP/r17.env" >"$TMP/r19.c" 2>&1) &
