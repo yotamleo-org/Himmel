@@ -85,6 +85,15 @@ allow "a heredoc body naming the script is data" "cat <<'EOF'
 cd x && bash $A/$MOG --go $GO
 EOF"
 allow "bash -n is a syntax check, not a run" "bash -n $MOG"
+allow "a commit message heredoc in \$( ) quoting the compound is data" "git commit -m \"\$(cat <<'EOF'
+fix: refuse \"cd <wt> && bash $MOG --go f\" compounds
+EOF
+)\""
+allow "a gh pr create body heredoc in \$( ) quoting the compound is data" "gh pr create --title t --body \"\$(cat <<'EOF'
+Refuses \"cd <wt> && bash $A/$MOG --go $GO\" before the classifier.
+EOF
+)\""
+deny "a true compound beside those rows is still refused" "cd $WT && bash $MOG --go $GO"
 
 big=""
 line="echo a line that names $MOG as data, padding padding padding padding"
