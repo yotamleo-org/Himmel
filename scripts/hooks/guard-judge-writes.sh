@@ -32,11 +32,11 @@
 #   Package fetch, ALSO with the marker unset when the payload's agent_type is
 #     judge or judge-ro (bare or plugin-namespaced: an in-process judge
 #     subagent) — Bash only, and only this check: the word bunx, npx or uvx;
-#     "bun" with x, add, install, i or create; "npm" with install, i, in, ins,
-#     inst, isntall, add, ci, exec, x, init or create; "uv" with tool, or with
-#     run and a --with flag; "pip"/"pip3" with install or download; "cargo"
-#     with install.
-#   mcp__*— any MCP tool other than qmd (mcp__qmd__*, mcp__plugin_qmd_qmd__*).
+#     an "npm" or "bun" word whose subcommand (the next non-flag word) is off
+#     its read-only list in first_off_list's callers; "uv" with tool, or with
+#     run and a --with or -w flag; "pip"/"pip3" with install or download;
+#     "cargo" with install.
+#   mcp__* — any MCP tool other than qmd (mcp__qmd__*, mcp__plugin_qmd_qmd__*).
 #   Write|Edit|MultiEdit|NotebookEdit — the path is relative or has a ".."
 #     segment; or it cannot be resolved (readlink -f, then parent + missing
 #     leaf); or the RESOLVED path is outside every allowed place:
@@ -138,19 +138,39 @@ resolve() {
     printf '%s\n' "$r/$leaf"
 }
 
+# first_off_list <prog> <pattern>... — prints the first subcommand (the first
+# non-flag word after a <prog> word) that matches no <pattern>; prints nothing
+# when every <prog> word has an allowed subcommand or none.
+first_off_list() {
+    local prog=$1 t a want=0 ok
+    shift
+    for t in $words; do
+        if [ "$want" = 1 ]; then
+            case "$t" in -*) continue ;; esac
+            want=0
+            ok=0
+            for a in "$@"; do
+                # shellcheck disable=SC2254 # each allowed entry is a glob pattern
+                case "$t" in $a) ok=1 ;; esac
+            done
+            [ "$ok" = 1 ] || { printf '%s\n' "$t"; return 0; }
+        fi
+        if [ "$t" = "$prog" ] || [ "${t##*/}" = "$prog" ]; then want=1; fi
+    done
+    return 0
+}
+
 package_fetch() {
-    local t hint="run an installed tool by its own name, or report the check as not run"
+    local t sub hint="run an installed tool by its own name, or report the check as not run"
     has_word bunx npx uvx && deny "package-fetch" "bunx, npx or uvx: $hint"
-    if has_word bun && has_word x add install i create; then
-        deny "package-fetch" "bun x, bun install or bun create: $hint"
-    fi
-    if has_word npm && has_word install i in ins inst isntall add ci exec x init create; then
-        deny "package-fetch" "npm install, npm ci, npm exec or npm init: $hint"
-    fi
+    sub=$(first_off_list npm ls list ll la view v info show outdated run run-script test t help prefix root why explain)
+    [ -z "$sub" ] || deny "package-fetch" "npm $sub: only npm ls, view, outdated, run and test run in a judge; $hint"
+    sub=$(first_off_list bun run test build help '*/*' '*.ts' '*.tsx' '*.js' '*.mjs' '*.cjs')
+    [ -z "$sub" ] || deny "package-fetch" "bun $sub: only bun run, test, build and a script file run in a judge; $hint"
     has_word uv && has_word tool && deny "package-fetch" "uv tool: $hint"
     if has_word uv && has_word run; then
         for t in $words; do
-            case "$t" in --with*) deny "package-fetch" "uv run --with: $hint" ;; esac
+            case "$t" in --with* | -w*) deny "package-fetch" "uv run --with: $hint" ;; esac
         done
     fi
     has_word pip pip3 && has_word install download && deny "package-fetch" "pip install or pip download: $hint"

@@ -139,8 +139,22 @@ row "npm ci" 2 "$(bash_payload 'npm ci')"
 row "bun create" 2 "$(bash_payload 'bun create vite app')"
 row "pip download" 2 "$(bash_payload 'pip download requests')"
 row "cargo install" 2 "$(bash_payload 'cargo install ripgrep')"
+row "uv run -w" 2 "$(bash_payload 'uv run -w ruff ruff check .')"
+for v in insta instal isnt isnta isntal it cit sit ic install-clean innit ini cre exe; do
+    row "npm $v" 2 "$(bash_payload "npm $v left-pad")"
+done
+row "bun a" 2 "$(bash_payload 'bun a left-pad')"
+row "bun c" 2 "$(bash_payload 'bun c vite app')"
 row "an installed tool run by its own name" 0 "$(bash_payload 'oxlint --version')"
 row "npm ls read" 0 "$(bash_payload 'npm ls --depth=0')"
+row "npm view read" 0 "$(bash_payload 'npm view left-pad version')"
+row "npm run script" 0 "$(bash_payload 'npm run lint')"
+row "npm test" 0 "$(bash_payload 'npm test')"
+row "npm --version" 0 "$(bash_payload 'npm --version')"
+row "bun run script" 0 "$(bash_payload 'bun run lint')"
+row "bun test" 0 "$(bash_payload 'bun test scripts/x.test.ts')"
+row "bun runs a script file" 0 "$(bash_payload 'bun scripts/x.ts --flag')"
+row "uv run without --with" 0 "$(bash_payload 'uv run pytest -q')"
 
 sub_row() {
     local label="$1" want="$2" payload="$3" got
