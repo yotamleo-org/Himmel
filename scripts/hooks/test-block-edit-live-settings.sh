@@ -462,10 +462,10 @@ assert_rc "56 bash quoted dir-dest with no trailing slash denies" 2 \
 assert_rc "57 bash mention of settings.json from a non-git cwd with unresolved HOME denies (fail-closed)" 2 \
     "$(bash_rc_of "$SANDBOX" "echo pwned > .claude/settings.json" -u HOME)"
 
-# 58-74: spellings that used to walk past the hook.
+# 58-74: prefixes and spellings the hook must still see through.
 # Every DENY row below has a baseline sibling in rows 9/26/34/B-rows that
-# already denied, so the row proves the prefix/spelling is what
-# used to walk past the hook — not that the target was never guarded.
+# already denied, so the row proves the prefix/spelling is what the hook
+# must catch — not just that the target is guarded.
 NESTED_WT="$SANDBOX/primary/.claude/worktrees/feat+x"
 
 # 58-61: a cd/pushd earlier in the same command moves the real write target
@@ -513,20 +513,14 @@ assert_rc "69 nested worktree abs write to its own settings.json allows" 0 \
 # not surprises. A cd anywhere voids the worktree-relative exemption even
 # when the cd is harmless (70); a heredoc whose PROSE names settings.json is
 # a write (`>>`) whose target the hook does not parse (71, the chief's
-# FD-2). 72, FD-1's piped form, was a third accepted false deny until the
-# per-segment allowlist: a read piped into another read is a
-# chain of read-only segments, and allows.
+# FD-2). 72, FD-1's piped form, allows: a read piped into another read is
+# a chain of read-only segments.
 #
 # Row 71: a heredoc whose body only MENTIONS settings.json. The tokenizer's
-# word list alone cannot decide it: its heredoc model diverges from real
-# bash's on `<<` inside an arithmetic context and on a backslash-newline-
-# joined delimiter (so a real top-level write hides inside what the
-# tokenizer thinks is body text), and no denylist of heredoc CONSUMERS that
-# read the body as code can ever be complete (any stdin reader can turn a
-# body into a write). 28 shapes that write, truncate or redirect into a live
-# settings file would ALLOW if the word list were trusted to drop a
-# heredoc-body-only mention, where the raw-text scan denies all of them;
-# they are pinned as DENY rows below.
+# heredoc model diverges from real bash's (`<<` inside an arithmetic
+# context, a backslash-newline-joined delimiter) and no denylist of heredoc
+# CONSUMERS is complete, so 28 shapes that write into a live settings file
+# are pinned as DENY rows below.
 assert_rc "70 accepted false deny: harmless cd + worktree settings write denies" 2 \
     "$(bash_rc_of "$WT2" "cd . && echo x > .claude/settings.json")"
 # Reading a heredoc body as data needs shfmt; a host without it keeps the deny (6548i).
@@ -1162,9 +1156,9 @@ assert_rc "153 cp -r x/. into <nested-worktree>/../../ denies" 2 \
 
 # 154-158: the tar/unzip
 # mode check is scoped to the shell SEGMENT containing the verb (split on
-# `;`, `&`, `|`, `#`) — a chained or commented trailing token used to spoof
-# it via a coincidental ` -t`/` -c`/` -l`/` -v` elsewhere in the command, so these must still deny: each is a genuine
-# extraction into a live $HOME/.claude target.
+# `;`, `&`, `|`, `#`) — a chained or commented trailing token must not
+# spoof it via a coincidental ` -t`/` -c`/` -l`/` -v` elsewhere in the
+# command. Each row is a genuine extraction into a live $HOME/.claude target.
 assert_rc "154 tar -C \$HOME/.claude then a chained ls -t still denies" 2 \
     "$(bash_rc_of "$PRIMARY" "tar -xzf a.tgz -C \$HOME/.claude; ls -t" HOME="$FAKEHOME")"
 assert_rc "155 tar -C \$HOME/.claude then && bash -c true still denies" 2 \
@@ -1182,10 +1176,9 @@ assert_rc "158 unzip -d \$HOME/.claude with a trailing -x -v still denies" 2 \
 assert_rc "159 cat of a checkout.md file, then && git status (unrelated segment), allows" 0 \
     "$(bash_rc_of "$PRIMARY" "cat \$HOME/.claude/checkout.md && git status" HOME="$FAKEHOME")"
 
-# 160-171: the tar/unzip/checkout mode checks read ONE segment
-# (the first whose text matched the verb), so a later segment escaped them,
-# and a quote-stripped text scan read a flag inside a filename. Every segment
-# is now judged from quote-aware tokens. All must deny.
+# 160-171: the tar/unzip/checkout mode checks judge EVERY segment from
+# quote-aware tokens: a later segment must not escape them, and a flag
+# inside a filename must not be read as a flag. All must deny.
 assert_rc "160 tar -tf; then tar -xf -C ~/.claude (second segment) denies" 2 \
     "$(bash_rc_of "$PRIMARY" "tar -tf a.tar; tar -xf a.tar -C ~/.claude" HOME="$FAKEHOME")"
 assert_rc "161 unzip -l; then unzip -o -d ~/.claude (second segment) denies" 2 \
@@ -3471,9 +3464,8 @@ if command -v node >/dev/null 2>&1; then
     # 128 KiB single-argument cap that bash_rc_of's jq --arg hits.
     # shellcheck disable=SC2088 # literal ~ is payload text the hook must see
     # 679/6000 runs 3.2 s alone but 13.0 s beside one other suite under CPU
-    # pressure, so its budget is that loaded figure x2 = 26 s. The rest of this
-    # suite's timed rows peak at 1.8 s alone (680/3000), so the same ~4x load
-    # factor leaves them well inside the 12 s default.
+    # pressure, so its budget is that loaded figure x2 = 26 s; the other timed
+    # rows peak at 1.8 s alone and fit the 12 s default.
     for nw in 1500 3000 6000; do
         ob=$TIMING_BUDGET_MS
         [ "$nw" -lt 6000 ] || TIMING_BUDGET_MS=26000
