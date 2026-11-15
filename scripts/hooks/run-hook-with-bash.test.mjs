@@ -28,7 +28,7 @@ const norm = (value) => String(value).replace(/\\/g, '/');
 
 // A ~15 KB heredoc command timed out the chokepoint text guard's
 // 15 s window (257 logged denies, nothing ran). The window scales with payload.
-test('member window grows with payload size, is capped, and a pin disables scaling (HIMMEL-4935)', () => {
+test('member window grows with payload size, is capped, and a pin disables scaling', () => {
   const saved = process.env.RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS;
   delete process.env.RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS;
   try {
@@ -765,7 +765,7 @@ test('a must-run member over its budget DENIES the chain instead of being skippe
 // making the tail's shared-budget remainder land on the floor deterministically
 // (Math.max's floor, not a race) — this fixture never depends on the retry
 // wrapper the two timing-sensitive tests above need.
-test('a must-run member starved by the shared chain budget gets its own window and still decides (HIMMEL-3080)', () => {
+test('a must-run member starved by the shared chain budget gets its own window and still decides', () => {
   const dir = makeTmpDir('hook-bash-starve-');
   try {
     writeFileSync(join(dir, 'hog.sh'), `#!/usr/bin/env bash\n: > "$(dirname "$0")/ran-hog.sh"\nsleep 3\n`);
@@ -812,7 +812,7 @@ test('a must-run member starved by the shared chain budget gets its own window a
 // window, so it denies on a REAL timeout of its OWN window, not the shared
 // clamp — proving the consumer note reports upstream starvation that
 // happened regardless of the ultimate cause of this member's own denial.
-test('a starved-then-still-timed-out must-run member names the upstream budget consumer (HIMMEL-3080)', () => {
+test('a starved-then-still-timed-out must-run member names the upstream budget consumer', () => {
   const dir = makeTmpDir('hook-bash-starve-consumer-');
   try {
     writeFileSync(join(dir, 'hog.sh'), `#!/usr/bin/env bash\n: > "$(dirname "$0")/ran-hog.sh"\nsleep 3\n`);
@@ -859,7 +859,7 @@ test('a starved-then-still-timed-out must-run member names the upstream budget c
 // `timeout`/`killSignal`) stands in for that entry timeout: at base this
 // test's chain outruns it and gets killed with no decision emitted; the fix
 // must make the runner deny well inside it instead.
-test('a chain whose advisory members hang and eat the budget, then a hung must-run member, DENIES strictly before the entry timeout (HIMMEL-3080 F1)', () => {
+test('a chain whose advisory members hang and eat the budget, then a hung must-run member, DENIES strictly before the entry timeout (F1)', () => {
   const dir = makeTmpDir('hook-bash-entry-deadline-');
   try {
     const hangs = ['hog1.sh', 'hog2.sh', 'hog3.sh', 'hog4.sh'];
@@ -911,7 +911,7 @@ test('a chain whose advisory members hang and eat the budget, then a hung must-r
 // the new pre-spawn deadline-exhausted path once no safe window is left)
 // strictly before the entry timeout, even though nothing ever times out on
 // its own merits.
-test('a chain of many slow-but-deciding must-run members DENIES strictly before the entry timeout (HIMMEL-3080 F1)', () => {
+test('a chain of many slow-but-deciding must-run members DENIES strictly before the entry timeout (F1)', () => {
   const dir = makeTmpDir('hook-bash-entry-deadline-slow-');
   try {
     const names = [
@@ -971,7 +971,7 @@ test('a chain of many slow-but-deciding must-run members DENIES strictly before 
 // here runs LONGER (1.2s) than hog.sh's own budget spend (1.0s) but does so
 // inside its OWN entry-safe window, after the shared budget was already gone —
 // the old max-elapsed heuristic would wrongly blame it instead of hog.sh.
-test('a starved denial names the member that actually spent the shared budget, not a later must-run member that ran longer in its own window (HIMMEL-3080 F2)', () => {
+test('a starved denial names the member that actually spent the shared budget, not a later must-run member that ran longer in its own window (F2)', () => {
   const dir = makeTmpDir('hook-bash-consumer-attribution-');
   try {
     writeFileSync(join(dir, 'hog.sh'), `#!/usr/bin/env bash\n: > "$(dirname "$0")/ran-hog.sh"\nsleep 100\n`);
@@ -1021,7 +1021,7 @@ test('a starved denial names the member that actually spent the shared budget, n
 // entry deadline was left — every must-run member was denied pre-spawn as
 // "entry deadline exhausted", even a chain that would decide in a few ms. The
 // fixture here decides instantly; the fix must let it actually run.
-test('a must-run member with a sub-floor RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS still gets a real window (HIMMEL-3620 N1)', () => {
+test('a must-run member with a sub-floor RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS still gets a real window (N1)', () => {
   const dir = makeTmpDir('hook-bash-subfloor-member-');
   try {
     writeFileSync(
@@ -1063,7 +1063,7 @@ test('a must-run member with a sub-floor RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS still 
 // (~3s total), outrunning the outer harness stand-in for the real entry
 // timeout; the fix must shrink each member's bound as the entry deadline is
 // approached so the chain decides (with SKIPs) well inside it instead.
-test('advisory members are bounded by the entry deadline, not just the shared chain budget (HIMMEL-3620 N2)', () => {
+test('advisory members are bounded by the entry deadline, not just the shared chain budget (N2)', () => {
   const dir = makeTmpDir('hook-bash-advisory-entry-deadline-');
   try {
     const names = ['hang1.sh', 'hang2.sh', 'hang3.sh', 'hang4.sh', 'hang5.sh', 'hang6.sh'];
@@ -1539,7 +1539,7 @@ test('lifecycle concatenates every member body in chain order', () => {
 // buffer (64 KiB on Linux) makes the child-exits-before-write-finishes race
 // deterministic instead of load-dependent, reproducing CI's flaky drop
 // on demand.
-test('lifecycle keeps a member\'s stdout when writing its stdin EPIPEs (HIMMEL-3134)', () => {
+test('lifecycle keeps a member\'s stdout when writing its stdin EPIPEs', () => {
   withChain((dir) => {
     const bigInput = 'x'.repeat(200_000);
     const result = runLifecycle(dir, ['adv1.sh', 'adv2.sh', 'adv3.sh'], bigInput);
@@ -1866,7 +1866,7 @@ function assertDeny(res) {
   assert.match(res.stderr, /run-hook-with-bash: DENY /);
 }
 
-test('HIMMEL-8779: A — drifted watchdog bytes skip with a notice on every event, never run', () => {
+test('watchdog drift: A — drifted watchdog bytes skip with a notice on every event, never run', () => {
   const fx = watchdogFixture();
   try {
     const events = ['PreToolUse', 'PermissionRequest', 'UserPromptSubmit', 'PostToolUse', 'Stop', undefined];
@@ -1881,7 +1881,7 @@ test('HIMMEL-8779: A — drifted watchdog bytes skip with a notice on every even
   }
 });
 
-test('HIMMEL-8779: B — a pinned lib of the watchdog whose bytes changed skips, naming the lib', () => {
+test('watchdog drift: B — a pinned lib of the watchdog whose bytes changed skips, naming the lib', () => {
   const fx = watchdogFixture();
   try {
     fx.pin('s1');
@@ -1895,7 +1895,7 @@ test('HIMMEL-8779: B — a pinned lib of the watchdog whose bytes changed skips,
   }
 });
 
-test('HIMMEL-8779: B2 — an unverifiable (sourced-lib:) lib of the watchdog skips', () => {
+test('watchdog drift: B2 — an unverifiable (sourced-lib:) lib of the watchdog skips', () => {
   const fx = watchdogFixture({ extraUnpinnedLib: true });
   try {
     fx.pin('s1');
@@ -1908,7 +1908,7 @@ test('HIMMEL-8779: B2 — an unverifiable (sourced-lib:) lib of the watchdog ski
   }
 });
 
-test('HIMMEL-8779: C — another drifted member still denies, stderr unchanged', () => {
+test('watchdog drift: C — another drifted member still denies, stderr unchanged', () => {
   const fx = watchdogFixture();
   try {
     fx.pin('s1');
@@ -1922,7 +1922,7 @@ test('HIMMEL-8779: C — another drifted member still denies, stderr unchanged',
   }
 });
 
-test('HIMMEL-8779: D — a missing record still denies the watchdog', () => {
+test('watchdog drift: D — a missing record still denies the watchdog', () => {
   const fx = watchdogFixture();
   try {
     fx.pin('s1');
@@ -1935,7 +1935,7 @@ test('HIMMEL-8779: D — a missing record still denies the watchdog', () => {
   }
 });
 
-test('HIMMEL-8779: D2 — isPinDrift: record/path prefixes deny, null, free text and sourced-lib: are drift', () => {
+test('watchdog drift: D2 — isPinDrift: record/path prefixes deny, null, free text and sourced-lib: are drift', () => {
   assert.equal(typeof hookIntegrity.isPinDrift, 'function');
   for (const p of ['missing-record: x', 'publish-window: x', 'escapes-project: x', 'unwalkable: x']) {
     assert.equal(hookIntegrity.isPinDrift(p), false, p);
@@ -1945,7 +1945,7 @@ test('HIMMEL-8779: D2 — isPinDrift: record/path prefixes deny, null, free text
   }
 });
 
-test('HIMMEL-8779: D3 — every *_DENY prefix is classified in DENY_PREFIX_CLASS', () => {
+test('watchdog drift: D3 — every *_DENY prefix is classified in DENY_PREFIX_CLASS', () => {
   const text = readFileSync(join(HERE, 'hook-integrity.js'), 'utf8');
   const strict = [...text.matchAll(/const (\w+_DENY) = '([^']+)'/g)].map((m) => ({ name: m[1], value: m[2] }));
   const loose = [...text.matchAll(/\b\w+_DENY\s*=/g)];
@@ -1965,7 +1965,7 @@ test('HIMMEL-8779: D3 — every *_DENY prefix is classified in DENY_PREFIX_CLASS
   }
 });
 
-test('HIMMEL-8779: E(1) — a drifted look-alike filename keeps the deny', () => {
+test('watchdog drift: E(1) — a drifted look-alike filename keeps the deny', () => {
   const fx = watchdogFixture();
   try {
     fx.pin('s1');
@@ -1976,7 +1976,7 @@ test('HIMMEL-8779: E(1) — a drifted look-alike filename keeps the deny', () =>
   }
 });
 
-test('HIMMEL-8779: E(2) — a pinned guard swapped for a symlink to the drifted watchdog keeps the deny', () => {
+test('watchdog drift: E(2) — a pinned guard swapped for a symlink to the drifted watchdog keeps the deny', () => {
   const fs = require('node:fs');
   const fx = watchdogFixture();
   try {
@@ -1990,7 +1990,7 @@ test('HIMMEL-8779: E(2) — a pinned guard swapped for a symlink to the drifted 
   }
 });
 
-test('HIMMEL-8779: E(3) — the watchdog path swapped for a symlink to a drifted guard keeps the deny', () => {
+test('watchdog drift: E(3) — the watchdog path swapped for a symlink to a drifted guard keeps the deny', () => {
   const fs = require('node:fs');
   const fx = watchdogFixture();
   try {
@@ -2004,7 +2004,7 @@ test('HIMMEL-8779: E(3) — the watchdog path swapped for a symlink to a drifted
   }
 });
 
-test('HIMMEL-8779: F — the notice reaches stdout once per session', () => {
+test('watchdog drift: F — the notice reaches stdout once per session', () => {
   const fx = watchdogFixture();
   try {
     fx.pin('s1');
@@ -2017,7 +2017,7 @@ test('HIMMEL-8779: F — the notice reaches stdout once per session', () => {
   }
 });
 
-test('HIMMEL-8779: G — a chained drifted watchdog still denies the chain', () => {
+test('watchdog drift: G — a chained drifted watchdog still denies the chain', () => {
   const fx = watchdogFixture();
   try {
     fx.pin('s1');
@@ -2056,7 +2056,7 @@ function dotdotFixture() {
   return { fs, dir, outside, integrityDir, scriptRel, scriptPath, env, cleanup };
 }
 
-test('HIMMEL-3390: a `..` alias of a pinned, tampered hook is checked against the pin of its resolved path', () => {
+test('a `..` alias of a pinned, tampered hook is checked against the pin of its resolved path', () => {
   const fx = dotdotFixture();
   try {
     const alias = `${fx.dir}/scripts/../scripts/hooks/guard.sh`;
@@ -2073,7 +2073,7 @@ test('HIMMEL-3390: a `..` alias of a pinned, tampered hook is checked against th
   }
 });
 
-test('HIMMEL-3390: a `..` path that leaves the project is denied, and the bypass does not rescue it', () => {
+test('a `..` path that leaves the project is denied, and the bypass does not rescue it', () => {
   const fx = dotdotFixture();
   try {
     const escaping = `${fx.dir}/scripts/../../${fx.outside.split('/').pop()}/scripts/hooks/guard.sh`;
@@ -2090,7 +2090,7 @@ test('HIMMEL-3390: a `..` path that leaves the project is denied, and the bypass
   }
 });
 
-test('HIMMEL-3390: a symlinked in-project path resolves like its target; one that leaves the project is denied', () => {
+test('a symlinked in-project path resolves like its target; one that leaves the project is denied', () => {
   const fx = dotdotFixture();
   try {
     fx.fs.symlinkSync(join(fx.dir, 'scripts', 'hooks'), join(fx.dir, 'alias-hooks'));
@@ -2109,7 +2109,7 @@ test('HIMMEL-3390: a symlinked in-project path resolves like its target; one tha
   }
 });
 
-test('HIMMEL-3390: a pinned hook swapped for a symlink to an unpinned in-project file is still denied', () => {
+test('a pinned hook swapped for a symlink to an unpinned in-project file is still denied', () => {
   const fx = dotdotFixture();
   try {
     writeFileSync(join(fx.dir, 'scripts', 'hooks', 'other.sh'), 'echo unpinned sibling\n');
@@ -2126,7 +2126,7 @@ test('HIMMEL-3390: a pinned hook swapped for a symlink to an unpinned in-project
   }
 });
 
-test('HIMMEL-3390: the pin of a swapped leaf still binds when the hook is reached through a directory alias or a link chain', () => {
+test('the pin of a swapped leaf still binds when the hook is reached through a directory alias or a link chain', () => {
   const fx = dotdotFixture();
   try {
     const hooks = join(fx.dir, 'scripts', 'hooks');
@@ -2147,7 +2147,7 @@ test('HIMMEL-3390: the pin of a swapped leaf still binds when the hook is reache
   }
 });
 
-test('HIMMEL-3390: `link/..` follows the link (kernel order), not a lexical collapse', () => {
+test('`link/..` follows the link (kernel order), not a lexical collapse', () => {
   const fx = dotdotFixture();
   try {
     // <dir>/hop -> <outside>/deep, so <dir>/hop/../scripts/hooks/guard.sh executes
@@ -2165,7 +2165,7 @@ test('HIMMEL-3390: `link/..` follows the link (kernel order), not a lexical coll
   }
 });
 
-test('HIMMEL-3390: a foreign path with no `..` stays allowed, and a missing project-local hook is not mistaken for an escape', () => {
+test('a foreign path with no `..` stays allowed, and a missing project-local hook is not mistaken for an escape', () => {
   const fx = dotdotFixture();
   try {
     withEnv(fx.env, () => {
@@ -2190,7 +2190,7 @@ test('HIMMEL-3390: a foreign path with no `..` stays allowed, and a missing proj
 
 // The claimed identities come from a kernel-order walk, so every
 // directory link a path passes through is checked under its own pin.
-test('HIMMEL-3397: a pinned hooks directory replaced by a link is still checked when reached through an alias', () => {
+test('a pinned hooks directory replaced by a link is still checked when reached through an alias', () => {
   const fx = dotdotFixture();
   try {
     const hooks = join(fx.dir, 'scripts', 'hooks');
@@ -2212,7 +2212,7 @@ test('HIMMEL-3397: a pinned hooks directory replaced by a link is still checked 
   }
 });
 
-test('HIMMEL-3397: an internal `sub/..` below a swapped hooks directory still checks the hooks pin', () => {
+test('an internal `sub/..` below a swapped hooks directory still checks the hooks pin', () => {
   const fx = dotdotFixture();
   try {
     const hooks = join(fx.dir, 'scripts', 'hooks');
@@ -2231,7 +2231,7 @@ test('HIMMEL-3397: an internal `sub/..` below a swapped hooks directory still ch
   }
 });
 
-test('HIMMEL-3397: a backslash in a POSIX link target is a filename character, not a separator', { skip: process.platform === 'win32' }, () => {
+test('a backslash in a POSIX link target is a filename character, not a separator', { skip: process.platform === 'win32' }, () => {
   const fx = dotdotFixture();
   try {
     const hooks = join(fx.dir, 'scripts', 'hooks');
@@ -2250,7 +2250,7 @@ test('HIMMEL-3397: a backslash in a POSIX link target is a filename character, n
   }
 });
 
-test('HIMMEL-3397: the alias cap also holds when a queued link frame is restored', () => {
+test('the alias cap also holds when a queued link frame is restored', () => {
   const fx = dotdotFixture();
   try {
     // x1 -> x2 -> a1/../a6 queue two frames; each a<k> -> n<k> doubles the live aliases to 63.
@@ -2272,7 +2272,7 @@ test('HIMMEL-3397: the alias cap also holds when a queued link frame is restored
   }
 });
 
-test('HIMMEL-3397: `hop/..` after a directory link claims the target-side path, not the lexical collapse', () => {
+test('`hop/..` after a directory link claims the target-side path, not the lexical collapse', () => {
   const fx = dotdotFixture();
   try {
     // <dir>/scripts/hop -> <dir>/other/deep, so scripts/hop/../guard.sh runs other/guard.sh.
@@ -2322,7 +2322,7 @@ for (const [label, relative] of [['absolute', false], ['relative', true]]) {
   });
 }
 
-test('HIMMEL-3397: a pinned leaf swapped for a link with a non-UTF-8 target fails closed', { skip: process.platform === 'win32' }, () => {
+test('a pinned leaf swapped for a link with a non-UTF-8 target fails closed', { skip: process.platform === 'win32' }, () => {
   const fx = dotdotFixture();
   try {
     fx.fs.mkdirSync(join(fx.dir, 'u'));
@@ -2337,7 +2337,7 @@ test('HIMMEL-3397: a pinned leaf swapped for a link with a non-UTF-8 target fail
   }
 });
 
-test('HIMMEL-3397: an `X/..` spelling through a replaced X still claims the lexical pin', () => {
+test('an `X/..` spelling through a replaced X still claims the lexical pin', () => {
   const fx = dotdotFixture();
   try {
     const hooks = join(fx.dir, 'scripts', 'hooks');
@@ -2360,7 +2360,7 @@ test('HIMMEL-3397: an `X/..` spelling through a replaced X still claims the lexi
   }
 });
 
-test('HIMMEL-3397: a symlink loop fails closed; an unpinned, unrelated path stays allowed', () => {
+test('a symlink loop fails closed; an unpinned, unrelated path stays allowed', () => {
   const fx = dotdotFixture();
   try {
     fx.fs.symlinkSync(join(fx.dir, 'loop-b'), join(fx.dir, 'loop-a'));
@@ -2408,7 +2408,7 @@ function ancestorNonUtf8Fixture() {
   return { fs, base, leaf, scriptRel, scriptPath, env, cleanup };
 }
 
-test('HIMMEL-3448: a non-UTF-8 symlink ABOVE the project still verifies what is below it', { skip: process.platform === 'win32' }, () => {
+test('a non-UTF-8 symlink ABOVE the project still verifies what is below it', { skip: process.platform === 'win32' }, () => {
   const fx = ancestorNonUtf8Fixture();
   try {
     withEnv(fx.env, () => {
@@ -2466,7 +2466,7 @@ function nestedNonUtf8Fixture() {
 }
 
 test(
-  'HIMMEL-3448: a non-UTF-8 link AT/BELOW the project nested beneath an accepted ancestor non-UTF-8 link still fails closed',
+  'a non-UTF-8 link AT/BELOW the project nested beneath an accepted ancestor non-UTF-8 link still fails closed',
   { skip: process.platform === 'win32' },
   () => {
     const fx = nestedNonUtf8Fixture();
@@ -2523,7 +2523,7 @@ function linkEscapesProjectViaTargetFixture() {
 }
 
 test(
-  'HIMMEL-3448: an in-project non-UTF-8 link whose target escapes the project still fails closed',
+  'an in-project non-UTF-8 link whose target escapes the project still fails closed',
   { skip: process.platform === 'win32' },
   () => {
     const fx = linkEscapesProjectViaTargetFixture();
@@ -2570,7 +2570,7 @@ function projectRootIsNonUtf8LinkFixture() {
 }
 
 test(
-  'HIMMEL-3448: a non-UTF-8 link AT the project root itself still fails closed',
+  'a non-UTF-8 link AT the project root itself still fails closed',
   { skip: process.platform === 'win32' },
   () => {
     const fx = projectRootIsNonUtf8LinkFixture();

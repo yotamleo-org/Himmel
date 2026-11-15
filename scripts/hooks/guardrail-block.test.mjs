@@ -852,7 +852,7 @@ test('status --json: an install() run reports wrapperMatchesAnchor/scriptMatches
   }
 });
 
-test('status --json: same-basename wiring from a WRONG (non-anchor) checkout reports present=true but *MatchesAnchor=false, and forces complete=false (HIMMEL-1422 same-basename no-op)', () => {
+test('status --json: same-basename wiring from a WRONG (non-anchor) checkout reports present=true but *MatchesAnchor=false, and forces complete=false (same-basename no-op)', () => {
   const ctx = work();
   writeJson(ctx.settings, {});
   writeHookStubs(ctx);
@@ -896,7 +896,7 @@ test('status --json: same-basename wiring from a WRONG (non-anchor) checkout rep
   }
 });
 
-test('status --json: a ZERO-BYTE script file at the CORRECT (anchor-matching) path reports scriptResolves=false, not present-with-a-no-op (HIMMEL-1422 truncation floor)', () => {
+test('status --json: a ZERO-BYTE script file at the CORRECT (anchor-matching) path reports scriptResolves=false, not present-with-a-no-op (truncation floor)', () => {
   const ctx = work();
   writeJson(ctx.settings, {});
   writeHookStubs(ctx);
@@ -1198,7 +1198,7 @@ test('status --json: content integrity ignores a poisoned GIT_DIR pointing at a 
 // directly (git-subprocess-independent) by swapping process.env for a plain
 // object with exact-case keys — the real env is untouched.
 
-test('sanitizedGitEnv removes GIT_* overrides in every spelling and preserves GIT_TERMINAL_PROMPT in any spelling (HIMMEL-1427 r4, codex-adv-2)', () => {
+test('sanitizedGitEnv removes GIT_* overrides in every spelling and preserves GIT_TERMINAL_PROMPT in any spelling', () => {
   const orig = process.env;
   process.env = {
     PATH: '/usr/bin',
@@ -1239,7 +1239,7 @@ test('sanitizedGitEnv removes GIT_* overrides in every spelling and preserves GI
 // resolution and the packed-object reader, both with the git subprocess forced
 // off (withNoGitOnPath) so the fallback — not `git show` — does the work.
 
-test('status --json: a linked-worktree fixture resolves refs/objects from the common dir when git is forced off (HIMMEL-1427 r4, codex-adv-3)', () => {
+test('status --json: a linked-worktree fixture resolves refs/objects from the common dir when git is forced off', () => {
   const ctx = work();
   writeRealHookCopies(ctx);
   const names = ['guardrail-skip-in-himmel.js', ...GUARDS.map(([basename]) => basename)];
@@ -1259,7 +1259,7 @@ test('status --json: a linked-worktree fixture resolves refs/objects from the co
   }
 });
 
-test('status --json: a packed-object fixture (no loose objects) resolves via the pack reader when git is forced off (HIMMEL-1427 r4, codex-adv-3)', {
+test('status --json: a packed-object fixture (no loose objects) resolves via the pack reader when git is forced off', {
   skip: gitAvailable() ? false : 'building the packed fixture needs git (init/commit/repack)',
 }, () => {
   const ctx = work();
@@ -1311,7 +1311,7 @@ function buildIdx(entries, { total = entries.length, fanout = {}, truncateAt } =
   return buf;
 }
 
-test('findPackOffset: a truncated idx (tables shorter than the advertised total) returns null without throwing (HIMMEL-1427 r7)', () => {
+test('findPackOffset: a truncated idx (tables shorter than the advertised total) returns null without throwing', () => {
   // 1032-byte idx (header+fanout only) but fanout[255]=5 → table span
   // 1032 + 5*28 = 1172 > 1032. Pre-fix, Buffer.compare hit an out-of-range
   // offset and threw ERR_OUT_OF_RANGE, crashing status --json.
@@ -1320,12 +1320,12 @@ test('findPackOffset: a truncated idx (tables shorter than the advertised total)
   assert.equal(findPackOffset(idx, '0123456789abcdef0123456789abcdef01234567'), null);
 });
 
-test('findPackOffset: an absurd fanout total (0xffffffff) returns null without throwing (HIMMEL-1427 r7)', () => {
+test('findPackOffset: an absurd fanout total (0xffffffff) returns null without throwing', () => {
   const idx = buildIdx([], { total: 0xffffffff, truncateAt: 1032 });
   assert.equal(findPackOffset(idx, '0123456789abcdef0123456789abcdef01234567'), null);
 });
 
-test('findPackOffset: a non-monotonic fanout window (hi > total) returns null without throwing (HIMMEL-1427 r7)', () => {
+test('findPackOffset: a non-monotonic fanout window (hi > total) returns null without throwing', () => {
   // One real entry whose tables fit (total=1), but fanout[0]=2 → the searched
   // bucket window hi(2) exceeds total(1): a crafted out-of-range search window.
   const oid00 = '003456789abcdef0123456789abcdef012345678'; // leading 0x00 → bucket 0
@@ -1373,7 +1373,7 @@ function buildCycleRepo() {
   return { dir, commonDir, oid };
 }
 
-test('readObject: a REF_DELTA self-cycle degrades after a single pack read, not one per delta level (HIMMEL-1427 r7)', () => {
+test('readObject: a REF_DELTA self-cycle degrades after a single pack read, not one per delta level', () => {
   const { dir, commonDir, oid } = buildCycleRepo();
   process.on('exit', () => { try { rmSync(dir, { recursive: true, force: true }); } catch { /* best-effort tmp cleanup */ } });
 
@@ -1411,7 +1411,7 @@ test('readObject: a REF_DELTA self-cycle degrades after a single pack read, not 
 // applyDelta is a pure (base, delta) function — the cases below operate on
 // small synthetic buffers and assert the computed behavior, not a real 2GB read.
 
-test('applyDelta: a copy offset whose 4th byte is >= 0x80 is computed UNSIGNED (HIMMEL-1427 r8)', () => {
+test('applyDelta: a copy offset whose 4th byte is >= 0x80 is computed UNSIGNED', () => {
   // baseSize varint(256) = [0x80,0x02] MATCHES base.length so r9's declared-base
   // check passes and the copy path is reached. Then copy op 0x8F (bit7 copy +
   // all four offset bytes) | 0xFF 0xFF 0xFF 0xFF = offset 0xFFFFFFFF. As a
@@ -1431,7 +1431,7 @@ test('applyDelta: a copy offset whose 4th byte is >= 0x80 is computed UNSIGNED (
   assert.equal(applyDelta(base, delta), null);
 });
 
-test('applyDelta: a valid small copy still resolves (unsigned assembly does not break normal offsets) (HIMMEL-1427 r8)', () => {
+test('applyDelta: a valid small copy still resolves (unsigned assembly does not break normal offsets)', () => {
   // baseSize(4) | targetSize(2) | copy op 0x90 (copy with size-byte-0 only) |
   // size byte 0x02 → cpOff 0, cpSize 2 → base[0..2]. Guards against the
   // unsigned rewrite regressing the ordinary in-range copy path.
@@ -1440,7 +1440,7 @@ test('applyDelta: a valid small copy still resolves (unsigned assembly does not 
   assert.deepEqual(applyDelta(base, delta), Buffer.from([0x41, 0x42]));
 });
 
-test('applyDelta: a truncated header varint degrades instead of a silent empty result (HIMMEL-1427 r8)', () => {
+test('applyDelta: a truncated header varint degrades instead of a silent empty result', () => {
   // [0x80] — a base-size varint byte with the continuation bit set and nothing
   // after it. Pre-fix the reader walked off the end (`undefined & 0x80` =
   // NaN/falsy), fell through both headers to targetSize 0, and returned an
@@ -1451,7 +1451,7 @@ test('applyDelta: a truncated header varint degrades instead of a silent empty r
   assert.equal(applyDelta(base, Buffer.from([0x00, 0x80])), null); // truncated target-size varint (baseSize 0 matches the empty base)
 });
 
-test('applyDelta: a truncated copy command degrades instead of a silent short result (HIMMEL-1427 r8)', () => {
+test('applyDelta: a truncated copy command degrades instead of a silent short result', () => {
   // baseSize(2) | targetSize(2) | copy op 0x88 (copy with the 4th offset byte
   // selected) but no byte follows. Pre-fix the missing byte read as undefined
   // (cpOff |= 0), the copy defaulted to base[0..2], and length 2 === targetSize
@@ -1463,7 +1463,7 @@ test('applyDelta: a truncated copy command degrades instead of a silent short re
   assert.equal(applyDelta(base, delta), null);
 });
 
-test('applyDelta: an insert payload running past the delta end degrades instead of a silent short result (HIMMEL-1427 r8)', () => {
+test('applyDelta: an insert payload running past the delta end degrades instead of a silent short result', () => {
   // baseSize(0) | targetSize(2) | insert op 0x03 (insert 3 bytes) but only 2
   // bytes follow. Pre-fix Buffer.subarray clamped the read to the 2 available
   // bytes, p still advanced by 3, and length 2 === targetSize returned those 2
@@ -1486,7 +1486,7 @@ test('applyDelta: an insert payload running past the delta end degrades instead 
 // discarded) and bounds each copy range explicitly. The four cases below mirror
 // the r8 style: small synthetic buffers asserting the computed behavior.
 
-test('applyDelta: a copy range past the base end degrades instead of a clamped false-healthy result (HIMMEL-1427 r9)', () => {
+test('applyDelta: a copy range past the base end degrades instead of a clamped false-healthy result', () => {
   // Reviewer's exact repro. base "ABC" (len 3), delta:
   //   baseSize(3) | targetSize(1) | copy op 0x91 (0x80|0x10|0x01) | off 0x02 | size 0x02
   // → cpOff 2, cpSize 2 — 2 bytes from offset 2. base[2..4] runs one byte past
@@ -1498,7 +1498,7 @@ test('applyDelta: a copy range past the base end degrades instead of a clamped f
   assert.equal(applyDelta(base, delta), null);
 });
 
-test('applyDelta: a copy that starts in range but ends past the base end degrades (HIMMEL-1427 r9)', () => {
+test('applyDelta: a copy that starts in range but ends past the base end degrades', () => {
   // Partial-range overrun: the copy STARTS well inside the base (offset 4 of 8)
   // so a start-only bounds check would miss it; only the full cpOff+cpSize guard
   // catches that it ends past the end. base 8 bytes, copy op 0x91 | off 0x04 |
@@ -1508,7 +1508,7 @@ test('applyDelta: a copy that starts in range but ends past the base end degrade
   assert.equal(applyDelta(base, delta), null);
 });
 
-test('applyDelta: a declared base size that does not match the actual base degrades (HIMMEL-1427 r9)', () => {
+test('applyDelta: a declared base size that does not match the actual base degrades', () => {
   // base is 3 bytes but the delta header DECLARES baseSize 2. Pre-fix the
   // declared base size was parsed and discarded, so the delta would apply against
   // a mismatched base. Now the mismatch degrades to null before any op runs (the
@@ -1518,7 +1518,7 @@ test('applyDelta: a declared base size that does not match the actual base degra
   assert.equal(applyDelta(base, delta), null);
 });
 
-test('applyDelta: a copy whose range exactly reaches the base end still applies (HIMMEL-1427 r9)', () => {
+test('applyDelta: a copy whose range exactly reaches the base end still applies', () => {
   // Boundary of the r9 guard: cpOff+cpSize === base.length is IN range and must
   // still resolve (the check is `>`, not `>=`). Guards against an off-by-one
   // regression that would reject a valid tail-of-base copy. base "ABCD", copy op
@@ -1543,7 +1543,7 @@ test('applyDelta: a copy whose range exactly reaches the base end still applies 
 //       integrity comparison read false-healthy. readObject now recomputes the
 //       git object id at this single chokepoint and degrades on mismatch.
 
-test('applyDelta: a base-size varint that overflows 32 bits degrades instead of wrapping past the declared-size check (HIMMEL-1427 r10)', () => {
+test('applyDelta: a base-size varint that overflows 32 bits degrades instead of wrapping past the declared-size check', () => {
   // Reviewer's exact repro. The 5-byte base-size varint [0x81,0x80,0x80,0x80,0x10]
   // encodes 4_294_967_297 (2^32 + 1). Under the OLD bitwise accumulator
   // (`val |= (b&0x7f)<<shift`) JS coerced that to a signed Int32 and it WRAPPED to
@@ -1555,7 +1555,7 @@ test('applyDelta: a base-size varint that overflows 32 bits degrades instead of 
   assert.equal(applyDelta(base, delta), null);
 });
 
-test('applyDelta: a target-size varint that overflows 32 bits degrades instead of wrapping to a matching length (HIMMEL-1427 r10)', () => {
+test('applyDelta: a target-size varint that overflows 32 bits degrades instead of wrapping to a matching length', () => {
   // baseSize(1) matches the 1-byte base so the base check passes; the target-size
   // varint [0x81,0x80,0x80,0x80,0x10] then overflows. Pre-fix it WRAPPED to 1, and
   // the trailing insert of 'A' produced out.length 1 === targetSize 1 → a silently
@@ -1617,7 +1617,7 @@ function buildTwoBlobPack(swapOffsets) {
   return { dir, commonDir, oidA, oidB };
 }
 
-test('readObject: an idx that maps an oid to a DIFFERENT valid object degrades on OID mismatch (HIMMEL-1427 r10)', () => {
+test('readObject: an idx that maps an oid to a DIFFERENT valid object degrades on OID mismatch', () => {
   // The swapped idx serves oidA the bytes of blobB (and vice-versa). Both are
   // valid, well-formed git objects, so inflate and range checks pass — only the
   // recomputed id (sha1 of blobB's {type,body} == oidB) differs from the request
@@ -1629,7 +1629,7 @@ test('readObject: an idx that maps an oid to a DIFFERENT valid object degrades o
   assert.equal(readObject(commonDir, oidB), null, 'oidB mapped at blobA must degrade on OID mismatch');
 });
 
-test('readObject: a correct pack/idx pair still resolves (no false-degrade from the OID recompute) (HIMMEL-1427 r10)', () => {
+test('readObject: a correct pack/idx pair still resolves (no false-degrade from the OID recompute)', () => {
   // Boundary of the r10 check: a well-formed idx mapping each oid to its OWN
   // offset must still resolve — the recomputed id equals the request. Guards
   // against the verification rejecting honest data (wrong hash algo, or a
@@ -1669,7 +1669,7 @@ function dropOnExit(dir) {
   process.on('exit', () => { try { rmSync(dir, { recursive: true, force: true }); } catch { /* best-effort tmp cleanup */ } });
 }
 
-test('readHeadOid: accepts a 64-hex sha256 detached HEAD and still rejects non-hex (HIMMEL-1468)', () => {
+test('readHeadOid: accepts a 64-hex sha256 detached HEAD and still rejects non-hex', () => {
   const sha256 = buildHeadFixture({ head: `${HEAD_SHA256}\n` });
   dropOnExit(sha256.dir);
   assert.equal(readHeadOid(sha256.gitDir, sha256.gitDir), HEAD_SHA256, '64-hex sha256 detached HEAD must resolve');
@@ -1683,7 +1683,7 @@ test('readHeadOid: accepts a 64-hex sha256 detached HEAD and still rejects non-h
   assert.equal(readHeadOid(junk.gitDir, junk.gitDir), null, 'non-hex HEAD is rejected');
 });
 
-test('readHeadOid: follows ref: to a 64-hex sha256 loose ref and to packed-refs (HIMMEL-1468)', () => {
+test('readHeadOid: follows ref: to a 64-hex sha256 loose ref and to packed-refs', () => {
   const loose = buildHeadFixture({ head: 'ref: refs/heads/main\n', looseRef: ['refs/heads/main', HEAD_SHA256] });
   dropOnExit(loose.dir);
   assert.equal(readHeadOid(loose.gitDir, loose.gitDir), HEAD_SHA256, 'loose ref carrying a sha256 oid resolves');
@@ -1703,7 +1703,7 @@ test('readHeadOid: follows ref: to a 64-hex sha256 loose ref and to packed-refs 
 // the git subprocess forced off (withNoGitOnPath): loose objects (the default
 // after a commit) and a repacked pack (exercising the 32-byte idx search).
 
-test('status --json: a sha256 loose-object fixture VERIFIES via the manual fallback when git is forced off (HIMMEL-1472)', {
+test('status --json: a sha256 loose-object fixture VERIFIES via the manual fallback when git is forced off', {
   skip: sha256GitAvailable() ? false : 'building the sha256 fixture needs a sha256-capable git (git init --object-format=sha256)',
 }, () => {
   const ctx = work();
@@ -1724,7 +1724,7 @@ test('status --json: a sha256 loose-object fixture VERIFIES via the manual fallb
   }
 });
 
-test('status --json: a sha256 PACKED fixture (no loose objects) VERIFIES via the pack reader when git is forced off (HIMMEL-1472)', {
+test('status --json: a sha256 PACKED fixture (no loose objects) VERIFIES via the pack reader when git is forced off', {
   skip: sha256GitAvailable() ? false : 'building the sha256 fixture needs a sha256-capable git (git init --object-format=sha256)',
 }, () => {
   const ctx = work();
@@ -1806,7 +1806,7 @@ function refDeltaTargetOids(repo) {
   return oids;
 }
 
-test('readObject: a sha256 REF_DELTA target resolves via the 32-byte base oid when git is forced off (HIMMEL-1472)', {
+test('readObject: a sha256 REF_DELTA target resolves via the 32-byte base oid when git is forced off', {
   skip: sha256GitAvailable() ? false : 'building the sha256 fixture needs a sha256-capable git (git init --object-format=sha256)',
 }, () => {
   const ctx = work();
@@ -1917,7 +1917,7 @@ function buildMixedFormatRepo({ commitAlgo }) {
   return { dir, gitDir, commonDir, commitOid, treeOid, blobOid, commitAlgo, treeAlgo };
 }
 
-test('readObject: rejects an oid whose byte width disagrees with the pinned repo width (HIMMEL-1472 R3)', () => {
+test('readObject: rejects an oid whose byte width disagrees with the pinned repo width', () => {
   const dir = makeTmpDir('gblock-pin-');
   dropOnExit(dir);
   const commonDir = join(dir, '.git');
@@ -1935,7 +1935,7 @@ test('readObject: rejects an oid whose byte width disagrees with the pinned repo
   assert.equal(readObject(commonDir, oid256, 0, undefined, 20), null, 'a sha1 pin must reject a sha256 (64-hex) oid');
 });
 
-test('readHeadBlob: a sha1 commit naming a 64-hex (sha256) tree degrades as reference-unavailable (HIMMEL-1472 R3)', () => {
+test('readHeadBlob: a sha1 commit naming a 64-hex (sha256) tree degrades as reference-unavailable', () => {
   const fix = buildMixedFormatRepo({ commitAlgo: 'sha1' });
   dropOnExit(fix.dir);
   // Non-vacuity: the whole foreign sha256 subtree (tree + blob) is present and
@@ -1952,7 +1952,7 @@ test('readHeadBlob: a sha1 commit naming a 64-hex (sha256) tree degrades as refe
   assert.equal(out.reason, 'reference-unavailable', 'a sha1 commit naming a sha256 tree must degrade — git forbids the mixed format');
 });
 
-test('readHeadBlob: a sha256 commit naming a 40-hex (sha1) tree degrades — mirror case (HIMMEL-1472 R3)', () => {
+test('readHeadBlob: a sha256 commit naming a 40-hex (sha1) tree degrades — mirror case', () => {
   const fix = buildMixedFormatRepo({ commitAlgo: 'sha256' });
   dropOnExit(fix.dir);
   // Non-vacuity (mirror): the whole foreign sha1 subtree is present and readable
@@ -1970,7 +1970,7 @@ test('readHeadBlob: a sha256 commit naming a 40-hex (sha1) tree degrades — mir
 // A hand-built sha1 commit→tree→blob for path hello.txt still resolves, proving
 // the pin rejects only MIXED formats, not valid same-format lookups (guards
 // against an over-broad pin silently degrading every healthy install).
-test('readHeadBlob: a consistent single-format (sha1) repo still resolves — no false degrade from the pin (HIMMEL-1472 R3)', () => {
+test('readHeadBlob: a consistent single-format (sha1) repo still resolves — no false degrade from the pin', () => {
   const dir = makeTmpDir('gblock-single-');
   dropOnExit(dir);
   const gitDir = join(dir, '.git');
@@ -2027,7 +2027,7 @@ function buildConfigMismatchRepo({ algo, configFormat }) {
   return { dir, gitDir, commonDir, commitOid, treeOid, blobOid, algo };
 }
 
-test('readHeadBlob: a self-consistent sha256 chain in a DEFAULT (sha1) repo degrades — config width rejects the 64-hex HEAD (HIMMEL-1472 R4)', () => {
+test('readHeadBlob: a self-consistent sha256 chain in a DEFAULT (sha1) repo degrades — config width rejects the 64-hex HEAD', () => {
   // The R3 gap exactly: pinning width from the HEAD oid let a 64-hex HEAD pin
   // width 32 and traverse a fully self-consistent sha256 chain green, attesting
   // integrity where git rejects the repo (no extensions.objectFormat → sha1).
@@ -2047,7 +2047,7 @@ test('readHeadBlob: a self-consistent sha256 chain in a DEFAULT (sha1) repo degr
   assert.equal(out.reason, 'reference-unavailable', 'a 64-hex HEAD in a default (sha1) repo must degrade — config width 20 ≠ HEAD width 32');
 });
 
-test('readHeadBlob: a self-consistent sha1 chain in a CONFIGURED sha256 repo degrades — mirror case (HIMMEL-1472 R4)', () => {
+test('readHeadBlob: a self-consistent sha1 chain in a CONFIGURED sha256 repo degrades — mirror case', () => {
   // Mirror: a configured sha256 repo (objectFormat=sha256) whose HEAD carries a
   // 40-hex sha1 chain. R3 pinned width 20 from the HEAD and traversed the
   // self-consistent sha1 chain green; R4 reads config width 32, rejects the
@@ -2106,7 +2106,7 @@ function buildRepoFormatRepo({ algo, config }) {
   return { dir, gitDir, commonDir, commitOid, treeOid, blobOid, algo };
 }
 
-test('readHeadBlob: objectFormat=sha256 with repositoryformatversion 0 degrades — git refuses the v1-only extension (HIMMEL-1472 R5)', () => {
+test('readHeadBlob: objectFormat=sha256 with repositoryformatversion 0 degrades — git refuses the v1-only extension', () => {
   // A real configured sha256 repo is repositoryformatversion 1 + objectFormat
   // sha256 (git init --object-format=sha256); version 0 + an objectFormat
   // extension is malformed and git refuses it ("repo version is 0, but v1-only
@@ -2124,7 +2124,7 @@ test('readHeadBlob: objectFormat=sha256 with repositoryformatversion 0 degrades 
   assert.equal(out.reason, 'reference-unavailable', 'objectFormat=sha256 at repositoryformatversion 0 must degrade — git refuses the malformed config');
 });
 
-test('readHeadBlob: repositoryformatversion 1 with an unknown extension degrades — git refuses it outright (HIMMEL-1472 R5)', () => {
+test('readHeadBlob: repositoryformatversion 1 with an unknown extension degrades — git refuses it outright', () => {
   // At repositoryformatversion >= 1 git honors extensions but refuses any key it
   // does not recognize ("unknown repository extension found"). R4 read only
   // objectFormat and ignored every other key, so an unknown extension hid a
@@ -2141,7 +2141,7 @@ test('readHeadBlob: repositoryformatversion 1 with an unknown extension degrades
   assert.equal(out.reason, 'reference-unavailable', 'an unknown extension at repositoryformatversion 1 must degrade — git refuses the repo');
 });
 
-test('readHeadBlob: a valueless objectFormat degrades — git rejects the empty value (HIMMEL-1472 R5)', () => {
+test('readHeadBlob: a valueless objectFormat degrades — git rejects the empty value', () => {
   // objectFormat = (no value) parses to an empty string; like any unrecognized
   // value it degrades (R4's existing unrecognized-value path already covered it).
   // Pinned here against real git ("invalid value for 'extensions.objectformat'")
@@ -2160,7 +2160,7 @@ test('readHeadBlob: a valueless objectFormat degrades — git rejects the empty 
 // configured sha256 repo (repositoryformatversion 1 + objectFormat sha256, only
 // known extensions) still resolves — R5 degrades only configs git refuses, never
 // a healthy one (guards against an over-broad pin silently degrading installs).
-test('readHeadBlob: a configured sha256 repo (repositoryformatversion 1 + only known extensions) still resolves — no false degrade (HIMMEL-1472 R5)', () => {
+test('readHeadBlob: a configured sha256 repo (repositoryformatversion 1 + only known extensions) still resolves — no false degrade', () => {
   const cfg = '[core]\n\trepositoryformatversion = 1\n[extensions]\n\tobjectFormat = sha256\n';
   const fix = buildRepoFormatRepo({ algo: 'sha256', config: cfg });
   dropOnExit(fix.dir);
@@ -2185,7 +2185,7 @@ test('readHeadBlob: a configured sha256 repo (repositoryformatversion 1 + only k
 // fallback is proven to match git, not a guess. The chain is a consistent sha1
 // (or sha256 for the positive control) chain, so a degrade is config-driven.
 
-test('readHeadBlob: a BARE unknown extension degrades — git parses a valueless var as true, then refuses it (HIMMEL-1472 R6)', () => {
+test('readHeadBlob: a BARE unknown extension degrades — git parses a valueless var as true, then refuses it', () => {
   // git config grammar treats a valueless variable (no `=`) as boolean true, so
   // `[extensions]\nfrobnicate` is frobnicate=true — still an UNKNOWN extension,
   // which git refuses outright. R5 required `=` and dropped the line, attesting
@@ -2202,7 +2202,7 @@ test('readHeadBlob: a BARE unknown extension degrades — git parses a valueless
   assert.equal(out.reason, 'reference-unavailable', 'a bare unknown extension must degrade — git parses it as =true then refuses the unknown key');
 });
 
-test('readHeadBlob: refStorage=bogus degrades — git refuses an invalid refStorage value (HIMMEL-1472 R6)', () => {
+test('readHeadBlob: refStorage=bogus degrades — git refuses an invalid refStorage value', () => {
   // refStorage is a known KEY, so R5's key-set check passed it; but its VALUE is
   // constrained to {files, reftable}, and git refuses anything else ("invalid
   // value for 'extensions.refstorage'"). A sha1 chain keeps the objects valid so
@@ -2218,7 +2218,7 @@ test('readHeadBlob: refStorage=bogus degrades — git refuses an invalid refStor
   assert.equal(out.reason, 'reference-unavailable', 'refStorage=bogus must degrade — git refuses the invalid value');
 });
 
-test('readHeadBlob: a malformed [extensions] line degrades — git refuses a bad config line (HIMMEL-1472 R6)', () => {
+test('readHeadBlob: a malformed [extensions] line degrades — git refuses a bad config line', () => {
   // A line that is neither `key = value` nor a bare `key` (here a name with a
   // space) is one git's parser rejects ("bad config line"). R5 silently skipped
   // such lines; R6 degrades fail-closed. The line carries no extension key, so
@@ -2235,7 +2235,7 @@ test('readHeadBlob: a malformed [extensions] line degrades — git refuses a bad
   assert.equal(out.reason, 'reference-unavailable', 'a malformed [extensions] line must degrade — git refuses a bad config line');
 });
 
-test('readHeadBlob: a malformed line in a NON-relevant section degrades — git rejects the whole file (HIMMEL-1472 R6 panel)', () => {
+test('readHeadBlob: a malformed line in a NON-relevant section degrades — git rejects the whole file', () => {
   // git errors "bad config line" for a syntactically invalid line ANYWHERE in
   // the file, not only under [core]/[extensions]. R6 first flagged only the
   // relevant sections, so a syntax error in e.g. [user] attested healthy where
@@ -2257,7 +2257,7 @@ test('readHeadBlob: a malformed line in a NON-relevant section degrades — git 
 // linked worktree) — the validation must NOT degrade it. The sha256 chain is
 // hand-built, so this exercises the manual fallback (no sha256-capable git
 // needed), exactly like the R5 sha256 positive control.
-test('readHeadBlob: a bare worktreeConfig + objectFormat=sha256 (v1) still resolves — a bare known boolean is =true, which git accepts (HIMMEL-1472 R6)', () => {
+test('readHeadBlob: a bare worktreeConfig + objectFormat=sha256 (v1) still resolves — a bare known boolean is =true, which git accepts', () => {
   const cfg = '[core]\n\trepositoryformatversion = 1\n[extensions]\n\tworktreeConfig\n\tobjectFormat = sha256\n';
   const fix = buildRepoFormatRepo({ algo: 'sha256', config: cfg });
   dropOnExit(fix.dir);
@@ -2271,7 +2271,7 @@ test('readHeadBlob: a bare worktreeConfig + objectFormat=sha256 (v1) still resol
 // Value-validation coverage: git refuses a boolean extension set to a non-bool
 // literal, and treats refStorage's value case-sensitively (only lowercase
 // files/reftable). Both pin the new value table against real git.
-test('readHeadBlob: a non-bool worktreeConfig value degrades — git refuses it as a bad boolean (HIMMEL-1472 R6)', () => {
+test('readHeadBlob: a non-bool worktreeConfig value degrades — git refuses it as a bad boolean', () => {
   const cfg = '[core]\n\trepositoryformatversion = 1\n[extensions]\n\tworktreeConfig = notabool\n\tobjectFormat = sha1\n';
   const fix = buildRepoFormatRepo({ algo: 'sha1', config: cfg });
   dropOnExit(fix.dir);
@@ -2283,7 +2283,7 @@ test('readHeadBlob: a non-bool worktreeConfig value degrades — git refuses it 
   assert.equal(out.reason, 'reference-unavailable', 'worktreeConfig=notabool must degrade — git refuses a non-bool boolean value');
 });
 
-test('readHeadBlob: refStorage=Files (wrong case) degrades — git matches the value case-sensitively (HIMMEL-1472 R6)', () => {
+test('readHeadBlob: refStorage=Files (wrong case) degrades — git matches the value case-sensitively', () => {
   // git accepts only the lowercase tokens files/reftable; Files/FILES are refused
   // as invalid values. R6's value table matches case-sensitively to stay aligned
   // with git rather than over-accepting a config git rejects.
@@ -2313,7 +2313,7 @@ test('readHeadBlob: refStorage=Files (wrong case) degrades — git matches the v
 // chain is a consistent sha1 (or sha256 for the positive control) chain, so a
 // degrade is config-driven.
 
-test('readHeadBlob: a header with an unquoted second word [bad section] degrades — git rejects the bad header (HIMMEL-1472 R8)', () => {
+test('readHeadBlob: a header with an unquoted second word [bad section] degrades — git rejects the bad header', () => {
   // `[bad section]` is neither a bare `[name]` nor a subsection `[name "sub"]` (no
   // quotes around the second word), so git's parser rejects the whole file ("bad
   // config line 1"). R6/R7 silently scoped any space-containing header out
@@ -2330,7 +2330,7 @@ test('readHeadBlob: a header with an unquoted second word [bad section] degrades
   assert.equal(out.reason, 'reference-unavailable', 'an unquoted-space header must degrade — git rejects the bad header');
 });
 
-test('readHeadBlob: a valid subsection [core "sub"] is scoped out — the file still resolves (HIMMEL-1472 R8)', () => {
+test('readHeadBlob: a valid subsection [core "sub"] is scoped out — the file still resolves', () => {
   // `[core "sub"]` is a well-formed subsection header; git accepts it, and the bare
   // [core] scope git reads repositoryformatversion from is unaffected. R8 must NOT
   // over-degrade this healthy shape: the subsection is scoped out (section = null)
@@ -2344,7 +2344,7 @@ test('readHeadBlob: a valid subsection [core "sub"] is scoped out — the file s
   assert.deepEqual(out.body, Buffer.from('hello body\n'));
 });
 
-test('readHeadBlob: a subsection header with an escaped quote [a "b\\"c"] is accepted — file still resolves (HIMMEL-1472 R8)', () => {
+test('readHeadBlob: a subsection header with an escaped quote [a "b\\"c"] is accepted — file still resolves', () => {
   // git's subsection grammar allows \\ and \" escapes inside the quoted name, so
   // `[a "b\"c"]` is well-formed and git accepts it. R8's subsection regex honors
   // those escapes, so the header is scoped out (not flagged malformed) and the
@@ -2358,7 +2358,7 @@ test('readHeadBlob: a subsection header with an escaped quote [a "b\\"c"] is acc
   assert.deepEqual(out.body, Buffer.from('hello body\n'));
 });
 
-test('readHeadBlob: a key starting with a digit (9key) under [core] degrades — git rejects the variable name (HIMMEL-1472 R8)', () => {
+test('readHeadBlob: a key starting with a digit (9key) under [core] degrades — git rejects the variable name', () => {
   // git variable names must start with a letter (alnum + `-` after); `9key` is one
   // git's parser rejects ("bad config line"), refusing the whole file. The prior
   // key grammar `[A-Za-z0-9.-]+` accepted a leading digit and captured it, attesting
@@ -2375,7 +2375,7 @@ test('readHeadBlob: a key starting with a digit (9key) under [core] degrades —
   assert.equal(out.reason, 'reference-unavailable', 'a digit-leading key must degrade — git rejects the variable name');
 });
 
-test('readHeadBlob: keys git rejects (.key, key.sub) under a subsectioned scope degrade — git rejects the variable name (HIMMEL-1472 R8)', () => {
+test('readHeadBlob: keys git rejects (.key, key.sub) under a subsectioned scope degrade — git rejects the variable name', () => {
   // Under a subsectioned scope (section = null) a key line is still shape-checked:
   // git's variable-name grammar (alpha, then alnum + `-`) refuses a leading dot
   // (`.key`) and an embedded dot (`key.sub`) — both "bad config line". The prior
@@ -2407,7 +2407,7 @@ test('readHeadBlob: keys git rejects (.key, key.sub) under a subsectioned scope 
 // than git" finding must show a config THIS WHITELIST ACCEPTS while git REJECTS it
 // (fail-open); "git accepts but we degrade" is by-design fail-closed and out of scope.
 
-test('readHeadBlob: a valueless repositoryformatversion under [core] degrades — git rejects a valueless int key (HIMMEL-1472 R9)', () => {
+test('readHeadBlob: a valueless repositoryformatversion under [core] degrades — git rejects a valueless int key', () => {
   // A bare `repositoryformatversion` (no `=`) under [core] parsed as boolean true to
   // git, but git reads core.repositoryformatversion as an INTEGER — a valueless int key
   // is one git rejects. R8's bare-key branch only captured [extensions] keys, so under
@@ -2425,7 +2425,7 @@ test('readHeadBlob: a valueless repositoryformatversion under [core] degrades �
   assert.equal(out.reason, 'reference-unavailable', 'a valueless repositoryformatversion must degrade — git rejects the valueless int key');
 });
 
-test('readHeadBlob: an unclosed quote in an extension value (objectFormat = "sha256) degrades (HIMMEL-1472 R9)', () => {
+test('readHeadBlob: an unclosed quote in an extension value (objectFormat = "sha256) degrades', () => {
   // `objectFormat = "sha256` has an opening quote with no closing quote; R6/R8 captured
   // the value `(.*)`, stripped the leading quote, and attested while git rejects the
   // file ("bad config line"). R9's value whitelist refuses an unbalanced quote, so the
@@ -2441,7 +2441,7 @@ test('readHeadBlob: an unclosed quote in an extension value (objectFormat = "sha
   assert.equal(out.reason, 'reference-unavailable', 'an unclosed quote in a value must degrade — git rejects the bad config line');
 });
 
-test('readHeadBlob: trailing garbage after a closing quote (key = "a" x) degrades (HIMMEL-1472 R9)', () => {
+test('readHeadBlob: trailing garbage after a closing quote (key = "a" x) degrades', () => {
   // `somekey = "a" x` is a quoted value followed by trailing garbage; git parses the
   // quoted "a" then chokes on ` x` ("bad config line"). The prior `(.*)` value capture
   // accepted it and (for an unknown core key) attested healthy; R9's whitelist requires
@@ -2458,7 +2458,7 @@ test('readHeadBlob: trailing garbage after a closing quote (key = "a" x) degrade
   assert.equal(out.reason, 'reference-unavailable', 'trailing garbage after a quoted value must degrade — git rejects the bad config line');
 });
 
-test('readHeadBlob: a line-continuation backslash in an out-of-scope value (url = val\) degrades by construction (HIMMEL-1472 R9)', () => {
+test('readHeadBlob: a line-continuation backslash in an out-of-scope value (url = val\) degrades by construction', () => {
   // A trailing `\` is git's line-continuation char — git would read the NEXT line as
   // part of this value. R9 refuses ANY backslash in a value (escapes/continuations are
   // out of the whitelist), so this degrades where git would continue the line. That is
@@ -2474,7 +2474,7 @@ test('readHeadBlob: a line-continuation backslash in an out-of-scope value (url 
   assert.equal(out.reason, 'reference-unavailable', 'a backslash in a value must degrade by construction (fail-closed) — line continuations are outside the whitelist');
 });
 
-test('readHeadBlob: a clean quoted value (somekey = "quoted") resolves — the whitelist does not over-degrade (HIMMEL-1472 R9)', () => {
+test('readHeadBlob: a clean quoted value (somekey = "quoted") resolves — the whitelist does not over-degrade', () => {
   // Positive control for the value whitelist: a fully-quoted value with no escapes and
   // no embedded quote is well-formed, so an unknown [core] key carrying one must NOT
   // degrade. R9 refuses only shapes git's broad grammar could abuse; a plain quoted
@@ -2488,7 +2488,7 @@ test('readHeadBlob: a clean quoted value (somekey = "quoted") resolves — the w
   assert.deepEqual(out.body, Buffer.from('hello body\n'));
 });
 
-test('readHeadBlob: a plain default-shape config resolves unchanged at sha1/20 (HIMMEL-1472 R9)', () => {
+test('readHeadBlob: a plain default-shape config resolves unchanged at sha1/20', () => {
   // Positive control for the whole grammar tightening: a plain default-style config
   // (bare values, no quotes/escapes/comments) is entirely inside the R9 whitelist, so
   // the strict parser must still derive sha1 (width 20) and resolve. Guards against the
@@ -2518,7 +2518,7 @@ test('readHeadBlob: a plain default-shape config resolves unchanged at sha1/20 (
 // This REVERSES R8's "a subsection [extensions "x"] is scoped out, file resolves"
 // expectation; that test is superseded by the cases below.
 
-test('readHeadBlob: a subsection [extensions "x"] with a key degrades — git reads its keys as extensions.x.* and refuses them (HIMMEL-1472 R10)', () => {
+test('readHeadBlob: a subsection [extensions "x"] with a key degrades — git reads its keys as extensions.x.* and refuses them', () => {
   // `[extensions "x"]\n\tfoo = 1` at v1: git reads `foo` as extensions.x.foo, an
   // unknown extension it refuses; R8 scoped the subsection out and attested, R10 flags
   // the header malformed and degrades. A sha1 chain keeps the objects valid so the
@@ -2533,7 +2533,7 @@ test('readHeadBlob: a subsection [extensions "x"] with a key degrades — git re
   assert.equal(out.reason, 'reference-unavailable', 'a subsectioned [extensions "x"] must degrade — git refuses its keys as unknown extensions');
 });
 
-test('readHeadBlob: a subsection [EXTENSIONS "x"] (case variant) degrades — git section names are case-insensitive (HIMMEL-1472 R10)', () => {
+test('readHeadBlob: a subsection [EXTENSIONS "x"] (case variant) degrades — git section names are case-insensitive', () => {
   // git config section names are case-insensitive, so `[EXTENSIONS "x"]` is the same
   // section as `[extensions "x"]` and must degrade identically. R10 lowercases the
   // captured section name before the extensions check. A sha1 chain keeps the objects
@@ -2548,7 +2548,7 @@ test('readHeadBlob: a subsection [EXTENSIONS "x"] (case variant) degrades — gi
   assert.equal(out.reason, 'reference-unavailable', 'a case-variant [EXTENSIONS "x"] must degrade — git matches section names case-insensitively');
 });
 
-test('readHeadBlob: a subsection [remote "origin"] with a key still resolves — R10 degrades only the extensions section (HIMMEL-1472 R10)', () => {
+test('readHeadBlob: a subsection [remote "origin"] with a key still resolves — only the extensions section degrades', () => {
   // Positive control: R10 special-cases ONLY the extensions section name. A subsection
   // of any other section (here [remote "origin"]) is still scoped out and the otherwise-
   // default sha1 repo still resolves — R10 must not over-degrade a healthy config that
@@ -2574,7 +2574,7 @@ test('readHeadBlob: a subsection [remote "origin"] with a key still resolves —
 // Dotted `[core.x]` (and other dotted sections) is consistently IGNORED by both git's repo-
 // format validation and this parser, so the guard stays extensions-only.
 
-test('readHeadBlob: a dotted [extensions.x] header with a key degrades — git reads its keys as extensions.x.* and refuses them (HIMMEL-1472 R11)', () => {
+test('readHeadBlob: a dotted [extensions.x] header with a key degrades — git reads its keys as extensions.x.* and refuses them', () => {
   // `[extensions.x]\n\tfoo = 1` at v1: git reads `foo` as extensions.x.foo via the deprecated
   // [section.subsection] syntax, an unknown extension it refuses; the bare-header grammar
   // admitted the dot so R8 scoped it as "extensions.x" and attested, R11 flags the header
@@ -2589,7 +2589,7 @@ test('readHeadBlob: a dotted [extensions.x] header with a key degrades — git r
   assert.equal(out.reason, 'reference-unavailable', 'a dotted [extensions.x] header must degrade — git refuses its keys as unknown extensions');
 });
 
-test('readHeadBlob: a dotted [EXTENSIONS.X] header (case variant) degrades — git section names are case-insensitive (HIMMEL-1472 R11)', () => {
+test('readHeadBlob: a dotted [EXTENSIONS.X] header (case variant) degrades — git section names are case-insensitive', () => {
   // git config section names are case-insensitive, so `[EXTENSIONS.X]` is the same section as
   // `[extensions.x]` and must degrade identically. R11 lowercases the captured header name
   // before the extensions-prefix check. A sha1 chain keeps the objects valid so the degrade
@@ -2604,7 +2604,7 @@ test('readHeadBlob: a dotted [EXTENSIONS.X] header (case variant) degrades — g
   assert.equal(out.reason, 'reference-unavailable', 'a case-variant [EXTENSIONS.X] header must degrade — git matches section names case-insensitively');
 });
 
-test('readHeadBlob: a dotted [branch.master] header with a key still resolves — R11 degrades only the extensions section (HIMMEL-1472 R11)', () => {
+test('readHeadBlob: a dotted [branch.master] header with a key still resolves — only the extensions section degrades', () => {
   // Positive control: R11 special-cases ONLY dotted extensions headers. A dotted header of any
   // other section (here [branch.master]) is still scoped out and the otherwise-default sha1
   // repo still resolves — R11 must not over-degrade a healthy config that carries a normal
