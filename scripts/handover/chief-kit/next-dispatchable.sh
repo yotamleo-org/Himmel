@@ -63,7 +63,8 @@
 # description's paths, comments left out. A path a text only runs (`run`, `bash <path>`) holds nothing, unless a line naming it
 # edits it or reports it broken. A ticket with no path and no such statement prints `NEEDS-CHIEF-NOTE <KEY>: no readable scope` and
 # is not listed; those rows stop at --top, best ranked first, and --why prints them all. --why also prints `# scope <KEY> <source>: <paths> reads=<paths>`
-# and `(from <source>)` on an `# overlap` line.
+# and `(from <source>)` on an `# overlap` line. A ticket whose next step is stated to write nothing (a `Writes:` line with no path and
+# that statement, or a remainder with no path and that statement) lists with files=- and a trailing `proof` field, and --why adds ` nowrite` after its source.
 #
 # Overlaps (no file holds): a shared file never keeps a ticket off the list. A To Do or RESUME row that names a file
 # a live worker, the --held list, an open PR, a series ledger or an earlier listed row also names is listed all the same, and
@@ -139,10 +140,10 @@
 # --classify-only (the same gates as /cloud-route). CLOUD-OK prints CLOUD;
 # LOCAL-NATIVE prints LOCAL; HOOK-BYPASS prints LOCAL with `hook` (the worker needs
 # the hook-integrity bypass launch); BLOCKED is dropped. --no-classify prints
-# every survivor as LOCAL? (no Jira or gh read for the class).
+# every survivor as LOCAL? (no Jira or gh read for the class). A row that writes nothing ends in `proof` and never carries `hook`.
 #
 # Output, one line per ticket, tab-separated:
-#   <LOCAL|CLOUD> <KEY> <priority> <fixVersion|-> <title> files=<a,b|->  [hook]
+#   <LOCAL|CLOUD> <KEY> <priority> <fixVersion|-> <title> files=<a,b|->  [hook|proof]
 #
 # GitHub reads ride the read token through scripts/lib/gh-read.sh (main when none is configured), with no fallback to
 # main on a rate limit.
@@ -357,20 +358,26 @@ def split_reads(text):
     return [f for f in named if f not in reads], reads
 
 def scope_of(body):
-    # files, the source --why names, reads, and no_scope: nothing says what the ticket writes, not even that it writes nothing
+    # files, the source --why names, reads, no_scope: nothing says what the ticket writes, not even that it writes nothing,
+    # and nowrite: a `Writes:` line says it writes nothing and no `Writes:` line names a path (a `Files:` line's paths do not count)
     cut = body.find('\n## Comments')
     desc = body if cut < 0 else body[:cut]
-    explicit, kinds = [], set()
+    explicit, kinds, nowrite_line, writes_hit = [], set(), False, False
     for line in desc.splitlines():
         m = EXPLICIT_RE.match(line)
         hits = files_in(line) if m else []
         if hits:
             explicit += [f for f in hits if f not in explicit]
             kinds.add(m.group(1)[0].lower())
+            writes_hit = writes_hit or m.group(1)[0].lower() == 'w'
+        elif m and m.group(1)[0].lower() == 'w' and NO_WRITE_RE.search(line):
+            nowrite_line = True
+    if nowrite_line and not writes_hit:
+        return {'files': [], 'src': 'Writes: line', 'reads': [], 'no_scope': False, 'nowrite': True}
     if explicit:
-        return {'files': explicit, 'src': 'Writes: line' if 'w' in kinds else 'Files: line', 'reads': [], 'no_scope': False}
+        return {'files': explicit, 'src': 'Writes: line' if 'w' in kinds else 'Files: line', 'reads': [], 'no_scope': False, 'nowrite': False}
     files, reads = split_reads(desc)
-    return {'files': files, 'src': 'description', 'reads': reads, 'no_scope': not (files or reads or NO_WRITE_RE.search(desc))}
+    return {'files': files, 'src': 'description', 'reads': reads, 'no_scope': not (files or reads or NO_WRITE_RE.search(desc)), 'nowrite': False}
 
 MARKER_RE = re.compile(r'^- \d{1,2}:\d{2} (LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|PARKED-USAGE|RESUMED)\b')
 TITLE_KEY_RE = re.compile(r'([A-Z]+)-(\d+)((?:\s*\(?\s*(?:[/+,&]\s*)+\(?\s*\d+\b)*)')  # KEY-1 / 2, KEY-1 + 2, KEY-1 (+2, +3)
@@ -1284,7 +1291,8 @@ for i in issues.values() if not pr_unknown else ():
         if latest:
             files, reads = split_reads(latest[0][1])
             if files or reads or NO_WRITE_RE.search(latest[0][1]):
-                i.update(files=files, reads=reads, src='remainder of PR #%s' % latest[0][0], no_scope=False)
+                i.update(files=files, reads=reads, src='remainder of PR #%s' % latest[0][0], no_scope=False,
+                         nowrite=not files and bool(NO_WRITE_RE.search(latest[0][1])))
 
 holds_py = os.environ['ND_HOLDS']
 for label, doc, lines, wkeys in live_workers:
@@ -1612,7 +1620,7 @@ def list_free(i, lane, c, row):
     if not stacked:
         print(row)
         return
-    series[i['key']] = {'keys': [i['key']], 'files': list(i['files']), 'hook': c == 'HOOK-BYPASS', 'row': row,
+    series[i['key']] = {'keys': [i['key']], 'files': list(i['files']), 'hook': c == 'HOOK-BYPASS' and not i.get('nowrite'), 'row': row,
                         'prio': i['prio'] or '-', 'ver': ','.join(i['ver']) or '-', 'lane': lane}
     series_of[i['key']] = i['key']
     out_buf.append(lambda h=i['key']: series_text(h))
@@ -1662,7 +1670,7 @@ def drop_summary():
                 print('# why %s listed %s tier %d' % (k, lane_of[k], tier_of(issues[k])))
         for k in sorted(lane_of, key=lambda k: int(k.split('-')[1])):
             if k in issues:
-                print('# scope %s %s: %s%s' % (k, issues[k]['src'], ','.join(issues[k]['files']) or '-', ' reads=' + ','.join(issues[k]['reads']) if issues[k]['reads'] else ''))
+                print('# scope %s %s%s: %s%s' % (k, issues[k]['src'], ' nowrite' if issues[k].get('nowrite') else '', ','.join(issues[k]['files']) or '-', ' reads=' + ','.join(issues[k]['reads']) if issues[k]['reads'] else ''))
     if first_ver is None:
         return
     listed = {i['key'] for i in emitted}
@@ -1730,7 +1738,8 @@ def emit_resume(rows):
         emitted.append(i)
         lane_of[i['key']] = 'RESUME'
         say('\t'.join(['RESUME', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-'), 'status=' + i['status'], 'last=' + (i['last'] or '-')] + (['brief=' + briefs[i['key']]] if i['status'] == 'To Do' and i['key'] in briefs else [])
-                       + ['partial=PR #%s merged, Remaining: %s' % (pr, text) for pr, text in i.get('partial', [])]))
+                       + ['partial=PR #%s merged, Remaining: %s' % (pr, text) for pr, text in i.get('partial', [])]
+                       + (['proof'] if i.get('nowrite') else [])))
         n += 1
 
 classified = os.environ.get('ND_CLASSIFY') == '1'
@@ -1815,7 +1824,7 @@ def emit_free(rows):
             if picked_hit(i) and stacked and join_series(i, lane, c):
                 continue
             say_overlaps(i)
-            list_free(i, lane, c, '\t'.join([lane, i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-')] + (['hook'] if c == 'HOOK-BYPASS' else [])))
+            list_free(i, lane, c, '\t'.join([lane, i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-')] + (['hook'] if c == 'HOOK-BYPASS' and not i.get('nowrite') else []) + (['proof'] if i.get('nowrite') else [])))
             n += 1
             if n >= top:
                 break

@@ -2408,6 +2408,68 @@ has "a newer hand-off supersedes an older missing remainder" "$r91" "HANDED-OFF 
 quiet91="$(run91)"
 lacks "without --why no scope line is printed" "$quiet91" "# scope "
 
+# A ticket whose next step is stated to write nothing lists with a trailing `proof` field.
+MP="$WORK/m9848/HIMMEL"; mkdir -p "$MP" "$WORK/s9848/workers"; cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/m9848/HIMMEL.versions.tsv"
+M_SAVE="$M"; M="$MP"
+NOWRITE='Writes: none (chief-run proof, no code)'
+mk HIMMEL-9851 "To Do" Medium '[]' '["v1.0.1"]' '[]' "R1 no-write line, a path in the Why" "Why: the wait in scripts/handover/chief-kit/tick.sh needs a live proof.
+$NOWRITE"
+mk HIMMEL-9852 "In Progress" Medium '[]' '["v1.0.1"]' '[]' "R2 remainder needs no code" "Edit scripts/lib/p9848-b.sh."
+mk HIMMEL-9853 "To Do" Medium '[]' '["v1.0.1"]' '[]' "R3 prose says no code, no path" "A live check on the station, no code is expected."
+mk HIMMEL-9854 "To Do" Medium '[]' '["v1.0.1"]' '[]' "R4 a pathed Writes line wins" "$NOWRITE
+Writes: scripts/lib/p9848-a.sh"
+mk HIMMEL-9855 "To Do" Medium '[]' '["v1.0.1"]' '[]' "R5 hook class, no-write line" "$NOWRITE"
+mk HIMMEL-9856 "To Do" Medium '[]' '["v1.0.1"]' '[]' "R6 a pathed Files line does not clear it" "$NOWRITE
+Files: scripts/lib/p9848-d.sh"
+mk HIMMEL-9857 "In Progress" Medium '[]' '["v1.0.1"]' '[]' "R7 a pathed remainder clears it" "$NOWRITE"
+mk HIMMEL-9858 "IN CI" Medium '[]' '[]' '[]' "R5 merged, no-write line" "$NOWRITE"
+M="$M_SAVE"
+printf 'Remaining: S7 (the chief-run station first run on live state, no code).\n' > "$PR_BODY_DIR/9852"
+printf 'Remaining: edit scripts/lib/p9848-c.sh for the last slice.\n' > "$PR_BODY_DIR/9857"
+: > "$WORK/s9848/status-events.jsonl"
+for n in 9852 9857; do
+    printf '{"ts":"t","event":"merge","key":"HIMMEL-%s","pr":"%s","contract":"no","result":"noop"}\n' "$n" "$n" >> "$WORK/s9848/status-events.jsonl"
+done
+cat > "$WORK/classify-p" <<'EOF'
+#!/usr/bin/env bash
+for k in "$@"; do
+    case "$k" in
+        HIMMEL-9855) printf '%s\tHOOK-BYPASS\tstub\n' "$k" ;;
+        *) printf '%s\tLOCAL-NATIVE\tstub\n' "$k" ;;
+    esac
+done
+EOF
+chmod +x "$WORK/classify-p"
+P_PRS="$(cat "$PRS_TSV")"; P_MERGED="$(cat "$MERGED_TSV")"
+: > "$PRS_TSV"
+printf '4358\tfix(x): [HIMMEL-9858] merged\tfix/himmel-9858-m\n' > "$MERGED_TSV"
+runp() { NEXT_DISPATCH_MIRROR="$MP" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify-p" bash "$SUT" --top 20 --workers-dir "$WORK/s9848/workers" --workers-from "$WORK/fleet5.json" "$@" 2>/dev/null; }
+rp="$(runp --why)"
+prow() { printf '%s\n' "$rp" | grep -E "^(# )?$1[[:space:]]HIMMEL-$2[[:space:]:]" || true; } # <row kind> <ticket number>
+lastf() { printf '%s\n' "$1" | awk -F'\t' '{print $NF}'; }
+[ "$(lastf "$(prow LOCAL 9851)")" = proof ] && pass "R1: a no-write Writes line lists the ticket with proof as its last field" || fail "R1: last field of '$(prow LOCAL 9851)'"
+has "R1: and column 0 is LOCAL with no file" "$(prow LOCAL 9851)" "files=-"
+has "R1: --why names the nowrite scope" "$rp" "# scope HIMMEL-9851 Writes: line nowrite: -"
+[ "$(lastf "$(prow RESUME 9852)")" = proof ] && pass "R2: a RESUME row whose remainder needs no code ends in proof" || fail "R2: last field of '$(prow RESUME 9852)'"
+has "R3: prose saying no code with no path still lists with no file" "$(prow LOCAL 9853)" "files=-"
+lacks "R3: and carries no proof field" "$(prow LOCAL 9853)" "proof"
+has "R4: a pathed Writes line wins" "$(prow LOCAL 9854)" "files=scripts/lib/p9848-a.sh"
+lacks "R4: and carries no proof field" "$(prow LOCAL 9854)" "proof"
+[ "$(lastf "$(prow LOCAL 9855)")" = proof ] && pass "R5: a HOOK-BYPASS ticket with a no-write line ends in proof" || fail "R5: last field of '$(prow LOCAL 9855)'"
+lacks "R5: and carries no hook field" "$(prow LOCAL 9855)" "	hook"
+has "R5: the merged ticket is MERGED-NOT-CLOSED" "$rp" "MERGED-NOT-CLOSED	HIMMEL-9858"
+lacks "R5: and carries no proof field" "$(prow MERGED-NOT-CLOSED 9858)" "proof"
+has "R6: a pathed Files line does not clear the tag (no file)" "$(prow LOCAL 9856)" "files=-"
+[ "$(lastf "$(prow LOCAL 9856)")" = proof ] && pass "R6: and the row ends in proof" || fail "R6: last field of '$(prow LOCAL 9856)'"
+has "R7: a pathed remainder names its file" "$(prow RESUME 9857)" "files=scripts/lib/p9848-c.sh"
+lacks "R7: and carries no proof field" "$(prow RESUME 9857)" "	proof"
+rpp="$(runp --dispositions --priority-pool-only)"
+has "R5: pool-only lists the proof ticket as LOCAL in its disposition line" "$rpp" "# disposition HIMMEL-9851 listed LOCAL"
+has "R5: and its no-path control the same" "$rpp" "# disposition HIMMEL-9853 listed LOCAL"
+rp="$rpp"
+has "R5: and column 0 is LOCAL for the proof row" "$(prow LOCAL 9851)" "files=-"
+printf '%s\n' "$P_PRS" > "$PRS_TSV"; printf '%s\n' "$P_MERGED" > "$MERGED_TSV"
+
 # A chain sibling's worker owns its ticket only while it can be alive: a fresh queue lock, or a doc armed within the hour.
 B91="$WORK/h91/yotamleo/himmel"; mkdir -p "$B91" "$WORK/h91/.locks/queue/held.lock" "$WORK/h91/.locks/queue/stale.lock" "$WORK/h91/.locks/queue/named.lock"
 M91S="$WORK/m91s/HIMMEL"; mkdir -p "$M91S" "$WORK/s91s/workers"; cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/m91s/HIMMEL.versions.tsv"
