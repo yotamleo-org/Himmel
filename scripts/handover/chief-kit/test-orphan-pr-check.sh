@@ -226,7 +226,7 @@ ttrun "$WORK/root" GH_STUB_MAINFAIL=rate
 check "two-token: a spent main token still gives a verdict, not unavailable" "1:UNMAPPED 109 fix/himmel-999-quota" "$rc:$out"
 check "two-token: the list read logs tok=read" "1" "$(printf '%s\n' "$ttlog" | grep -c '^tok=read argv=pr list ')"
 check "two-token: no list read logs tok=main" "0" "$(printf '%s\n' "$ttlog" | grep -c '^tok=main argv=pr list ')"
-check "two-token: the read token value never reaches the stub log" "0" "$(printf '%s\n' "$ttlog" | grep -c "$READTOK")"
+check "two-token: the read token value never reaches the stub log or the scan's output" "0" "$(printf '%s\n' "$ttlog" "$out" "$(cat "$WORK/err")" | grep -c "$READTOK")"
 ttrun "$WORK/root" GH_STUB_READFAIL=rate
 check "no-fallback: a rate-limited read token with main healthy reports unavailable, exit 3" "3:" "$rc:$out"
 check "no-fallback: says unavailable on stderr" "1" "$(grep -c 'orphan-pr-check: unavailable' "$WORK/err")"

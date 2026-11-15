@@ -2245,7 +2245,7 @@ check "8691 S6 sweep: the pr checks read logs tok=read" "$(ttany '^tok=read argv
 check "8691 S6 sweep: the check-runs read logs tok=read" "$(ttany '^tok=read argv=api repos/\{owner\}/\{repo\}/commits/ccc333/check-runs')" yes
 check "8691 S6 sweep: the head read logs tok=read" "$(ttany '^tok=read argv=pr view 11 --json headRefOid')" yes
 check "8691 S6 sweep: no snapshot read logs tok=main" "$(ttn "$MAINREADS")" 0
-check "8691 S6 sweep: the read token value never reaches the stub log" "$(ttn "$READTOK")" 0
+check "8691 S6 sweep: the read token value never reaches the stub log or the sweep's output" "$(ttn "$READTOK")/$(grep -c "$READTOK" "$tmp/sout" || true)" "0/0"
 
 overflow_fx
 ttx "$tmp/root" GH_STUB_MAINFAIL=rate GH_STUB_MAINFAIL_BUCKET=graphql bash "$SWEEP" >"$tmp/sout" 2>&1

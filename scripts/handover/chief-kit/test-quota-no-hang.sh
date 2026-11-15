@@ -643,6 +643,11 @@ drive_scans() {
     EXTRA_ENV="$(printf '%s\n' "TICKET_STATUS_STATE_DIR=$cdir/ts" "WORKER_SESSION_JIRA_CLI=$cdir/jira" "STUB_NEXT_GH=$cdir/finalgh")"
     run_mode status-sweep.sh "$m" 12 0 bash "$sweep" --repo o/r
     read_token_rows status-sweep.sh "$m" 'status-sweep: unknown'
+    if [ "$ROW_RC" = 0 ] && grep -q 'status-sweep: keys=' <<< "$ROW_OUT"; then
+        emit "PASS status-sweep.sh $m read-token-list exit rc=0 with the sweep summary"
+    else
+        emit "FAIL status-sweep.sh $m read-token-list exit rc=$ROW_RC without the sweep summary"
+    fi
     setup_caller_dir scans-focus
     printf '#!/usr/bin/env bash\nexit 0\n' > "$cdir/jira"; chmod +x "$cdir/jira"
     mkdir -p "$cdir/doc" "$cdir/mirror"

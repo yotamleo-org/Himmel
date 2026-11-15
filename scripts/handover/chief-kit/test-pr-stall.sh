@@ -185,11 +185,11 @@ ttrun() {
 }
 ttrun "$WORK/root"
 check "two-token: a healthy run exits 0" "0" "$rc"
-has "two-token: the runs read logs tok=read" '^tok=read argv=run list ' "$ttlog"
+check "two-token: exactly one runs read, on the read token, and none on main" "$(printf '%s\n' "$ttlog" | grep -c '^tok=read argv=run list ')/$(printf '%s\n' "$ttlog" | grep -c '^tok=main argv=run list ')" "1/0"
 has "two-token: the PR list logs tok=main" '^tok=main argv=pr list ' "$ttlog"
 has "two-token: the per-PR read logs tok=main" '^tok=main argv=pr view ' "$ttlog"
 hasnt "two-token: no PR read rides the read token" '^tok=read argv=pr ' "$ttlog"
-hasnt "two-token: the read token value never reaches the stub log" "$READTOK" "$ttlog"
+hasnt "two-token: the read token value never reaches the stub log or the scan's output" "$READTOK" "$ttlog$out$err"
 ttrun "$WORK/root" GH_STUB_MAINFAIL=rate
 check "two-token: a spent main token stays STALL-UNKNOWN, exit 3" "3:STALL-UNKNOWN gh failed" "$rc:$out"
 has "two-token: the spent-main list read is tried on main" '^tok=main argv=pr list ' "$ttlog"
