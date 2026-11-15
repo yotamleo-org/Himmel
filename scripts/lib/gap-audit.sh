@@ -29,11 +29,10 @@ GAP_AUDIT_SKIPPED=""
 
 _ga_skip() { GAP_AUDIT_SKIPPED="${GAP_AUDIT_SKIPPED}${GAP_AUDIT_SKIPPED:+, }$1"; }
 
-# _ga_project_key <root> — fill JIRA_PROJECT_KEY the way the jira CLI does: the live env, then himmel.conf, then <root>/.env.
 _ga_project_key() {
     [ -z "${JIRA_PROJECT_KEY:-}" ] || return 0
     . "$GAP_AUDIT_ROOT_DEFAULT/scripts/lib/load-dotenv.sh" 2>/dev/null || return 0
-    load_dotenv --root "$1" JIRA_PROJECT_KEY 2>/dev/null || true  # swallow-ok: an unreadable config leaves the key unset and the checks report it as not configured
+    load_dotenv --root "$1" JIRA_PROJECT_KEY
 }
 
 _ga_add() { # _ga_add <area> <message> [remedy]
