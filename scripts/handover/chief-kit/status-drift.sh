@@ -51,6 +51,10 @@
 #                     due date, else UNOWNED and overdue; so is the remainder a partial merge left for a RESUME
 #                     worker (rule D5c, remainder=remaining), from its park start for TICKET_STATUS_AWAIT_TTL_RESUME
 #                     (default 6h). The newest of the hold row, the owed merge row and the park start decides
+#   HOLD-STALE        a ticket-hold.sh hold whose newest hold row names `on=<KEY>` and that ticket is Done in the
+#                     local Jira mirror: the wait is over. It replaces the key's AWAITING (or overdue UNOWNED) row, so
+#                     sdrift counts it; the fix is the release command, never run here. A hold with no `on`, an `on`
+#                     ticket still open, or one the mirror lacks or cannot read reads as before
 #   HELD-STALE        a held or parked worker's lock is STALE and not proven dead: an owner, so not drift
 #                     (no wait mark, but `sdrift` n and drift-summary.mjs skip it)
 #   HELD-IN-WORK     labelled held, with a live owner or an open PR
@@ -286,6 +290,18 @@ has_label() {
     # swallow-ok: an unreadable ticket is not labelled, so its rows stay
     jq -e --arg l "$2" '(.fields.labels // []) | index($l)' >/dev/null 2>&1 <<<"$(ts_jira get "$1" --json 2>/dev/null)"
 }
+hold_on() {
+    # swallow-ok: unreadable rows name no on ticket, so the hold reads as before
+    jq -Rrs --arg k "$1" '[split("\n")[] | fromjson? | select(type == "object" and .key == $k and (.event == "hold" or .event == "hold-release") and .result == "moved")]
+        | last // empty | select(.event == "hold") | (.on // "") | select(type == "string" and test("^[A-Z][A-Z0-9]*-[0-9]+$"))' <<<"${mergeout:-}" 2>/dev/null
+}
+mirror_done() {
+    local st
+    [ -r "$MIRROR_DIR/$1.md" ] || return 1
+    # swallow-ok: an unreadable file is not Done, so the hold reads as before
+    st=$(awk -F'"' '/^---$/ { if (++n == 2) exit; next } n == 1 && /^status: "/ { print $2; exit }' "$MIRROR_DIR/$1.md" 2>/dev/null)
+    [ "$st" = Done ]
+}
 # ticket_comments <KEY>: the comment text, from the mirror when its file has a Comments section
 ticket_comments() {
     local f=$MIRROR_DIR/$1.md
@@ -477,7 +493,14 @@ while IFS= read -r key; do
                     owed) wwriter=merge-on-green.sh wfix="$owho acts on $key, or hold it: bash scripts/handover/chief-kit/ticket-hold.sh $key --owner <who> --until <date> --reason <why>" wwho=$owho whint="" ;;
                     *) wwriter=$FUNNEL wfix=$chieffix wwho="the chief" whint=$hhint ;;
                 esac
-                if [ "$NOW" -lt "$(_ts_epoch_of_iso "$odue")" ]; then
+                hstale=""
+                if [ "$osrc" = hold ]; then
+                    hstale=$(hold_on "$key")
+                    [ -z "$hstale" ] || mirror_done "$hstale" || hstale=""
+                fi
+                if [ -n "$hstale" ]; then
+                    add HOLD-STALE "$key" "on $hstale (Done)" ticket-hold.sh "bash scripts/handover/chief-kit/ticket-hold.sh $key --release"
+                elif [ "$NOW" -lt "$(_ts_epoch_of_iso "$odue")" ]; then
                     add AWAITING "$key" "$owho since=$osince due=$odue what=$owhat source=$osrc" "$wwriter" "$wfix" "$owho"
                 else
                     case "$osrc" in

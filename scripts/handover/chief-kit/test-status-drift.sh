@@ -1158,6 +1158,51 @@ hnow 0
 driftenv TICKET_STATUS_AWAIT_TTL_OPERATOR=2h
 contains "9561 S2 6: TTL_OPERATOR=2h makes an operator hold due in 2 h" "$(drows AWAITING)" "due=$(iso_e $(($(epoch_of "$(hts)") + 7200))) "
 
+OB=HIMMEL-9002
+onmirror() { mkdir -p "$tmp/mirror"; printf -- '---\nkey: "%s"\ntype: "Task"\nstatus: "%s"\n---\n' "$OB" "$1" > "$tmp/mirror/$OB.md"; }
+d6fx
+hold "$K" --reason "after $OB" --owner operator --until "$(tomorrow)" --on "$OB"
+check "10224 1: the hold row records the on ticket" "$(rowq 'select(.event == "hold") | .on')" "$OB"
+onmirror Done
+hnow 0
+drift
+check "10224 1: a hold on a Done ticket is one HOLD-STALE row" "$(dcount HOLD-STALE)" 1
+contains "10224 1: it names the key, the blocker and Done" "$(drows HOLD-STALE)" "HOLD-STALE $K on $OB (Done)"
+contains "10224 1: its fix is the release command" "$(drows HOLD-STALE)" "fix=bash scripts/handover/chief-kit/ticket-hold.sh $K --release"
+contains "10224 1: its writer is ticket-hold.sh" "$(drows HOLD-STALE)" "writer=ticket-hold.sh"
+check "10224 1: the key is no AWAITING and no UNOWNED row" "$(dcount AWAITING)/$(dcount UNOWNED)" 0/0
+contains "10224 1: and sdrift counts the row" "$(dlast)" "sdrift=1:"
+hold "$K" --release --owner operator
+hnow 0
+drift
+check "10224 1: after the release no HOLD-STALE row remains" "$(dcount HOLD-STALE)" 0
+d6fx
+hold "$K" --reason r --owner operator --until "$(tomorrow)" --on "$OB"
+onmirror "In Progress"
+hnow 0
+drift
+check "10224 2: control: an on ticket still open is a wait row and no HOLD-STALE" "$(dcount HOLD-STALE)/$(dcount AWAITING)" 0/1
+contains "10224 2: and sdrift stays 0" "$(dlast)" "sdrift=0:"
+d6fx
+hold "$K" --reason r --owner operator --until "$(tomorrow)"
+onmirror Done
+hnow 0
+drift
+check "10224 3: control: a hold with no on is a wait row and no HOLD-STALE" "$(dcount HOLD-STALE)/$(dcount AWAITING)" 0/1
+d6fx
+hold "$K" --reason r --owner operator --until "$(tomorrow)" --on "$OB"
+rm -f "$tmp/mirror/$OB.md"
+hnow 0
+drift
+check "10224 4: control: an on ticket with no mirror file is a wait row and no HOLD-STALE" "$(dcount HOLD-STALE)/$(dcount AWAITING)" 0/1
+d6fx
+hold "$K" --reason r --owner operator --until "$(tomorrow)" --on "$OB"
+mkdir -p "$tmp/mirror"; printf -- '---\nkey: "%s"\n---\n' "$OB" > "$tmp/mirror/$OB.md"
+hnow 0
+drift
+check "10224 5: control: an unreadable on mirror file is a wait row and no HOLD-STALE" "$(dcount HOLD-STALE)/$(dcount AWAITING)" 0/1
+rm -rf "$tmp/mirror"
+
 d6fx
 hold "$K" --reason r --owner operator --until "$(tomorrow)"
 for _ in $(seq 600); do printf '{"ts":"2026-10-21T10:00:00Z","event":"derive","key":"HIMMEL-90001","result":"noop","pr":"1"}\n' >> "$LOG"; done

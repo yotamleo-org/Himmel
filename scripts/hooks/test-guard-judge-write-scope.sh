@@ -384,6 +384,10 @@ else
     bad "P11: write-verdict.sh did not mark the judge dir .verdict-written"
 fi
 
+echo "=== N1: the P11 evidence text is refused outside a judge dir and taken directly in one"
+fence_denies N1-evidence-text-outside-judge-dir "$(wpayload judge-ro aj1 Write "$WT/evidence.md" "$P11_BODY")"
+chain_allows N1-b-evidence-text-in-judge-dir "$(wpayload judge-ro aj1 Write "$JD/evidence-n1.md" "$P11_BODY")"
+
 echo "=== F1: a symlinked root is refused by the fence (Write) and by write-verdict.sh (read)"
 mkdir -m 700 "$T/realroot" "$T/realroot/j9120"
 printf -- '- 1\n' > "$T/realroot/j9120/.holder"

@@ -10,7 +10,7 @@ import { stubKeyring } from "../config-ui/tests/keyring-stub";
 import { main } from "./create-monitoring-key";
 
 describe("create-monitoring-key secrets", () => {
-  const TOUCHED = ["PATH", "KSTUB_STORE", "KSTUB_LOG", "KSTUB_LOCKED", "KSTUB_FAIL_SK", "DBUS_SESSION_BUS_ADDRESS",
+  const TOUCHED = ["PATH", "KSTUB_STORE", "KSTUB_LOG", "KSTUB_LOCKED", "KSTUB_FAIL_SK", "HIMMEL_CONFIG_DIR", "DBUS_SESSION_BUS_ADDRESS",
     "ALIBABA_QUOTA_AK", "ALIBABA_QUOTA_SK", "HIMMEL_SECRETS_KEYRING", "CREDENTIALS_DIRECTORY"];
   const saved: Record<string, string | undefined> = {};
   let dir: string;
@@ -32,7 +32,7 @@ describe("create-monitoring-key secrets", () => {
       'exec "$(dirname "$0")/secret-tool.real" "$@"\n');
     chmodSync(join(bin, "secret-tool"), 0o755);
     log = join(dir, "keyring.log");
-    Object.assign(process.env, stub.env, { KSTUB_LOG: log });
+    Object.assign(process.env, stub.env, { KSTUB_LOG: log, HIMMEL_CONFIG_DIR: join(dir, "himmel-conf") });
     // Suite guard: the resolver must find the stub, never a real secret-tool or busctl.
     for (const tool of ["secret-tool", "busctl"]) {
       const where = Bun.which(tool, { PATH: process.env.PATH }) ?? "";

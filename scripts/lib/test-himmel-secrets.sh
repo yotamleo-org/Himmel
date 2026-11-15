@@ -586,6 +586,68 @@ got=$(cd "$REPO2" && env -u CLAUDECODE "$HS" import-env --project "$TMP/r17.env"
 wait "$r17_pid"
 assert_eq "R17 a project-scope import is not held up by a user-scope one" "stored JIRA_API_TOKEN|imported 1 key(s) into the keyring|rc=0" "$(printf '%s' "$got" | tr '\n' '|' | sed 's/|$//')"
 
+kreset
+out=$(cd "$REPO" && printf 'fake-a' | "$HS" put-if-absent --stdin TEST_HS_R19 2>&1; echo "rc=$?")
+assert_eq "R19 put-if-absent stores an absent item" "stored TEST_HS_R19|rc=0" "$(printf '%s' "$out" | tr '\n' '|' | sed 's/|$//')"
+assert_eq "R19 the absent item holds the value" "service=himmel key=TEST_HS_R19 scope=user	fake-a" "$(cat "$KSTUB_STORE")"  # read-sink-ok: KSTUB_STORE is the suite's own stub file under its mktemp dir
+out=$(cd "$REPO" && printf 'fake-b' | "$HS" put-if-absent --stdin TEST_HS_R19 2>&1; echo "rc=$?")
+assert_eq "R19 put-if-absent keeps a present item and exits 0" "kept TEST_HS_R19 (the keyring already holds it; not replaced)|rc=0" "$(printf '%s' "$out" | tr '\n' '|' | sed 's/|$//')"
+assert_eq "R19 the kept item still holds the first value" "service=himmel key=TEST_HS_R19 scope=user	fake-a" "$(cat "$KSTUB_STORE")"  # read-sink-ok: KSTUB_STORE is the suite's own stub file under its mktemp dir
+out=$(cd "$REPO" && printf 'fake-p' | "$HS" put-if-absent --project --stdin TEST_HS_R19 2>&1; echo "rc=$?")
+assert_eq "R19 a user item does not make the project scope present" "stored TEST_HS_R19|rc=0" "$(printf '%s' "$out" | tr '\n' '|' | sed 's/|$//')"
+kreset
+got=$(cd "$REPO" && export KSTUB_SEARCH_FAIL=1 && printf 'fake-a' | "$HS" put-if-absent --stdin TEST_HS_R19 >/dev/null 2>&1; echo "rc=$?")
+assert_eq "R19 a keyring that does not answer is a refusal" "rc=2" "$got"
+assert_eq "R19 a keyring that does not answer gets no store" "0" "$(grep -c '^secret-tool store' "$KSTUB_LOG")"
+got=$(cd "$REPO" && export KSTUB_LOCKED=true && printf 'fake-a' | "$HS" put-if-absent --stdin TEST_HS_R19 >/dev/null 2>&1; echo "rc=$?")
+assert_eq "R19 a locked keyring refuses put-if-absent" "rc=2" "$got"
+got=$(cd "$REPO" && printf 'x' | "$HS" put-if-absent TEST_HS_R19 extra 2>&1; echo "rc=$?")
+assert_eq "R19 put-if-absent takes one name" "1|rc=2" "$(printf '%s' "$got" | grep -c 'usage: himmel-secrets put-if-absent')|$(printf '%s' "$got" | grep rc=)"
+RBIN="$TMP/race-bin"
+mkdir -p "$RBIN"
+cat >"$RBIN/secret-tool" <<'WRAP'
+#!/usr/bin/env bash
+if [ "$1" = store ]; then
+    sleep "${RACE_SLEEP:-0}"
+    a=("$@"); q=""; i=3
+    while [ "$i" -lt "${#a[@]}" ]; do q="$q ${a[$i]}=${a[$((i + 1))]}"; i=$((i + 2)); done
+    grep -vF "${q# }	" "$KSTUB_STORE" >"$KSTUB_STORE.new"; cat "$KSTUB_STORE.new" >"$KSTUB_STORE"; rm -f "$KSTUB_STORE.new"
+fi
+exec "$KBIN/secret-tool" "$@"
+WRAP
+chmod +x "$RBIN/secret-tool"
+r19wait() { local _w=0; while [ "$_w" -lt 100 ] && [ ! -L "$LOCKLINK" ]; do sleep 0.1; _w=$((_w + 1)); done; }
+kreset
+(cd "$REPO" && printf 'fake-new' | env -u CLAUDECODE KBIN="$KBIN" PATH="$RBIN:$PATH" RACE_SLEEP=2 "$HS" put --stdin TEST_HS_R19 >"$TMP/r19.a" 2>&1; echo "rc=$?" >>"$TMP/r19.a") &
+r19_pid=$!
+r19wait
+got=$(cd "$REPO" && printf 'fake-old' | env -u CLAUDECODE KBIN="$KBIN" PATH="$RBIN:$PATH" "$HS" put-if-absent --stdin TEST_HS_R19 2>&1; echo "rc=$?")
+wait "$r19_pid"
+assert_eq "R19 a put-if-absent that starts mid-write is refused" "1|rc=2" "$(printf '%s' "$got" | grep -c 'another import-env')|$(printf '%s' "$got" | grep rc=)"
+assert_eq "R19 the newer value survives the older writer" "service=himmel key=TEST_HS_R19 scope=user	fake-new" "$(cat "$KSTUB_STORE")"  # read-sink-ok: KSTUB_STORE is the suite's own stub file under its mktemp dir
+assert_eq "R19 the first writer finished whole" "stored TEST_HS_R19|rc=0" "$(tr '\n' '|' <"$TMP/r19.a" | sed 's/|$//')"
+kreset
+(cd "$REPO" && printf 'fake-old' | env -u CLAUDECODE KBIN="$KBIN" PATH="$RBIN:$PATH" RACE_SLEEP=2 "$HS" put-if-absent --stdin TEST_HS_R19 >"$TMP/r19.b" 2>&1; echo "rc=$?" >>"$TMP/r19.b") &
+r19_pid=$!
+r19wait
+got=$(cd "$REPO" && printf 'fake-new' | env -u CLAUDECODE KBIN="$KBIN" PATH="$RBIN:$PATH" "$HS" put --stdin TEST_HS_R19 2>&1; echo "rc=$?")
+wait "$r19_pid"
+assert_eq "R19 a plain put between put-if-absent's check and store is refused" "1|rc=2" "$(printf '%s' "$got" | grep -c 'another import-env')|$(printf '%s' "$got" | grep rc=)"
+assert_eq "R19 the put-if-absent store is the one that landed" "service=himmel key=TEST_HS_R19 scope=user	fake-old" "$(cat "$KSTUB_STORE")"  # read-sink-ok: KSTUB_STORE is the suite's own stub file under its mktemp dir
+assert_eq "R19 the put-if-absent finished whole" "stored TEST_HS_R19|rc=0" "$(tr '\n' '|' <"$TMP/r19.b" | sed 's/|$//')"
+kreset
+(cd "$REPO" && env -u CLAUDECODE KSTUB_STORE_SLEEP=2 "$HS" import-env "$TMP/r17.env" >"$TMP/r19.c" 2>&1) &
+r19_pid=$!
+r19wait
+got=$(cd "$REPO2" && printf 'fake-put' | env -u CLAUDECODE "$HS" put --stdin JIRA_API_TOKEN 2>&1; echo "rc=$?")
+wait "$r19_pid"
+assert_eq "R19 a plain put during an import is refused with the busy message" "1|rc=2" "$(printf '%s' "$got" | grep -c 'another import-env')|$(printf '%s' "$got" | grep rc=)"
+assert_eq "R19 the refused put stored nothing" "0" "$(grep -c 'fake-put' "$KSTUB_STORE")"
+assert_eq "R19 the import finished whole" "1" "$(grep -c '^imported 1 key(s)' "$TMP/r19.c")"
+assert_eq "R19 no lock is left once the verbs end" "0" "$(find "$HIMMEL_CONFIG_DIR" -name 'import-env.*' 2>/dev/null | grep -c .)"
+got=$(cd "$REPO" && printf 'fake-q' | env -u CLAUDECODE "$HS" put --stdin TEST_HS_R19 2>&1; echo "rc=$?")
+assert_eq "R19 a plain put runs once no lock is held" "stored TEST_HS_R19|rc=0" "$(printf '%s' "$got" | tr '\n' '|' | sed 's/|$//')"
+
 # R18: sourcing the stub drops a knob the parent shell exported.
 got=$( (export KSTUB_DROP_STORE=1 KSTUB_LOCKED=true; TMP="$TMP/stubchk"; mkdir -p "$TMP"; . "$(dirname "$HS")/fixtures/keyring-stub.sh"; printf '[%s|%s]' "${KSTUB_DROP_STORE:-}" "$KSTUB_LOCKED") )
 assert_eq "R18 the stub clears inherited knobs on source" "[|false]" "$got"

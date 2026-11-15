@@ -157,7 +157,7 @@ d_stores() {
   kreset
   mkdir -p "$TMP/d/home" "$TMP/d/himmel"
   # A node that fails to run prints "node-failed" instead of a count, which matches no D row.
-  KR_DIR="$TMP/d" KR_ENV="$1" node - <<'NODE' >/dev/null 2>&1 || { echo node-failed; return; }
+  HIMMEL_CONFIG_DIR="$TMP/d/conf" KR_DIR="$TMP/d" KR_ENV="$1" node - <<'NODE' >/dev/null 2>&1 || { echo node-failed; return; }
 const store = require(process.env.KR_ROOT + '/scripts/himmelctl/lib/secret-store.js');
 const d = process.env.KR_DIR;
 store.write('JIRA_API_TOKEN', 'e2e-canary-d', { home: d + '/home', himmelRoot: d + '/himmel', projectRoot: d + '/himmel', env: JSON.parse(process.env.KR_ENV), gitCheckIgnore: () => true });
@@ -180,7 +180,7 @@ want "$(d_stores '{"NODE_ENV":"test"}')" 0 "D3 under NODE_ENV=test with no stub 
 if [ "$(uname -s)" = Linux ]; then
   kreset
   rc=0
-  printf 'value' | env HIMMEL_REAL_STATE_ASSUME_STATION=1 HIMMEL_REAL_STATE_EXTRA_TOOL_DIRS="$KBIN" \
+  printf 'value' | env HIMMEL_CONFIG_DIR="$TMP/conf" HIMMEL_REAL_STATE_ASSUME_STATION=1 HIMMEL_REAL_STATE_EXTRA_TOOL_DIRS="$KBIN" \
     bash "$root/scripts/lib/himmel-secrets" put --stdin K8752 >"$TMP/f.out" 2>&1 || rc=$?
   want "$(stores)" 0 "F1 a bare test shell's himmel-secrets put records zero stores"
   if [ "$rc" = 77 ]; then pass "F2 the put is refused, exit 77"; else fail "F2 the put is refused (got rc $rc, want 77)"; fi

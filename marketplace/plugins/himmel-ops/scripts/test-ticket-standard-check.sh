@@ -434,4 +434,22 @@ mkdraft "$td/p5.md"; printf 'Labels: ci\n' >>"$td/p5.md"
 run Task "$td/p5.md" "$q" --sector X --labels ''; check "an explicitly empty --labels is the empty set: a mismatch, never the draft line's ci" "$rc" 1
 hasnt "an empty --labels does not ask for the draft line's Metric" "$out" "Metric"
 
+pcli="$here/ticket-policy-cli.mjs"
+printf 'Impact\nx\nDoD\n- the DoD line\nProof\nthe proof line\nAgent detail\nthe detail line\n' >"$td/t1.md"
+out="$(node "$pcli" --sections DoD,Proof --draft "$td/t1.md" 2>&1)"; rc=$?
+check "T1 --sections without --type exits 0 on plain headings" "$rc" 0
+has "T1 plain headings: the DoD text" "$out" '"DoD":"the DoD line'
+has "T1 plain headings: the Proof text" "$out" '"Proof":"the proof line'
+hasnt "T1 plain headings: no next-section text" "$out" "the detail line"
+printf '## Impact\nx\n## DoD\n- the DoD line\n## Proof\nthe proof line\n## Agent detail\nthe detail line\n' >"$td/t2.md"
+out="$(node "$pcli" --sections DoD,Proof --draft "$td/t2.md" 2>&1)"; rc=$?
+check "T2 --sections exits 0 on ## headings" "$rc" 0
+has "T2 ## headings: the DoD text" "$out" '"DoD":"the DoD line'
+has "T2 ## headings: the Proof text" "$out" '"Proof":"the proof line'
+hasnt "T2 ## headings: no next-section text" "$out" "the detail line"
+printf '## Impact\nx\n## DoD\n- the DoD line\n## Agent detail\nthe detail line\n' >"$td/t3.md"
+out="$(node "$pcli" --sections DoD,Proof --draft "$td/t3.md" 2>&1)"; rc=$?
+check "T3 a draft with no Proof section exits 0" "$rc" 0
+has "T3 a missing section is the empty string" "$out" '"Proof":""'
+
 [ "$fails" -eq 0 ] && { echo "PASS"; exit 0; } || { echo "FAILED: $fails"; exit 1; }

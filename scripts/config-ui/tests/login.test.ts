@@ -204,7 +204,7 @@ test("the login hash is stored in the keyring, never the password, and no login 
   const dir = mkdtempSync(join(tmpdir(), "ui-login-vault-"));
   cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
   const k = stubKeyring(dir), f = join(dir, "state", "ui-login"), pw = secret();
-  writeLogin(f, USER, pw, { env: k.env });
+  writeLogin(f, USER, pw, { env: { ...k.env, HIMMEL_CONFIG_DIR: join(dir, "conf") } });
   const item = k.get(KEY);
   expect(item).not.toBeNull();
   expect(item).not.toContain(pw);
@@ -322,7 +322,7 @@ test("setting the login keeps a pre-keyring file when the keyring does not hold 
   cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
   const k = stubKeyring(dir), f = join(dir, "ui-login"), line = loginLine(USER, secret());
   writeLegacy(f, line);
-  expect(() => writeLogin(f, USER, secret(), { env: { ...k.env, KSTUB_STORE_NOOP: "1" } })).toThrow(/did not return/);
+  expect(() => writeLogin(f, USER, secret(), { env: { ...k.env, KSTUB_STORE_NOOP: "1", HIMMEL_CONFIG_DIR: join(dir, "conf") } })).toThrow(/did not return/);
   expect(readFileSync(f, "utf8").trim()).toBe(line);
 });
 
@@ -331,7 +331,7 @@ test("setting the login says so when the old login file cannot be removed, since
   cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
   const k = stubKeyring(dir), f = join(dir, "ui-login");
   mkdirSync(f);
-  expect(() => writeLogin(f, USER, secret(), { env: k.env })).toThrow(/could not be removed/);
+  expect(() => writeLogin(f, USER, secret(), { env: { ...k.env, HIMMEL_CONFIG_DIR: join(dir, "conf") } })).toThrow(/could not be removed/);
 });
 
 test("a secret-tool that exits 1 with nothing printed on an empty search still means no login", () => {
