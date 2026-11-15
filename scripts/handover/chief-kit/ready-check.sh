@@ -2148,9 +2148,12 @@ check_partial_remainder() {
             # shellcheck source=/dev/null
             . "$anchor/scripts/lib/ticket-status.sh" 2>/dev/null  # swallow-ok: declare -F on the next line decides, rc 70 is unreadable
             declare -F ts_owed_chief_paths >/dev/null || exit 70
-            printf '%s' "${cov_body:-}" | ts_owed_chief_paths
+            printf '%s' "${cov_body:-}" | ts_owed_chief_paths "$reader" "$key"
         ) || rc=$?
-        if [ "$rc" -eq 0 ]; then
+        if [ "$rc" -eq 3 ]; then
+            echo "[FAIL] 17. cannot read the owed lines of partial merge $key: the anchor's scripts/lib/pr_remainder.py --units gave no chief-owed answer ($reader), so the merge refuses it (exit 26)"
+            mark_fail
+        elif [ "$rc" -eq 0 ]; then
             echo "[FAIL] 17. $key is a partial merge whose \`owed → chief\` line names a repo path ($(printf '%s\n' "$op" | cut -f1 | paste -sd ';' - | sed 's/;/; /g')): that is code, not a chief step, and the merge refuses it (exit 26). Write that work as a \`Remaining: <ask> (<paths>)\` line so it gets a RESUME row, and drop it from the owed lines (gh pr edit $PR --body-file <file>)"
             mark_fail
         elif [ "$rc" -eq 70 ]; then

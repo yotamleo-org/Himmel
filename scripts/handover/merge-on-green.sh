@@ -2045,8 +2045,17 @@ if [ -n "$partial_key" ]; then
             exit 26
         fi
         # An `owed → chief` line that names a repo path is code written as a chief step: it would park the ticket with no
-        # RESUME row, so it is refused until the work is written as a `Remaining:` line.
-        if declare -F ts_owed_chief_paths >/dev/null && partial_paths=$(printf '%s' "${partial_body//$'\r'/}" | ts_owed_chief_paths); then
+        # RESUME row, so it is refused until the work is written as a `Remaining:` line. The anchor's reader lists the lines.
+        partial_paths_rc=1
+        if declare -F ts_owed_chief_paths >/dev/null; then
+            partial_paths_rc=0
+            partial_paths=$(printf '%s' "$partial_body" | ts_owed_chief_paths "$himmel_repo/scripts/lib/pr_remainder.py" "$partial_key") || partial_paths_rc=$?
+        fi
+        if [ "$partial_paths_rc" -eq 3 ]; then
+            echo "merge-on-green: cannot read the owed lines of partial merge $partial_key (the anchor's scripts/lib/pr_remainder.py --units gave no chief-owed answer) — refusing. Re-run." >&2
+            audit "REFUSED reason=partial-remainder-unreadable repo=$nwo pr=#$pr_num key=$partial_key"
+            exit 26
+        elif [ "$partial_paths_rc" -eq 0 ]; then
             partial_paths=$(printf '%s\n' "$partial_paths" | cut -f1 | paste -sd ';' - | sed 's/;/; /g')
             echo "merge-on-green: PR #$pr_num is a partial merge of $partial_key whose \`owed → chief\` line names a repo path ($partial_paths): that is code, not a chief step — refusing. Write that work as a \`Remaining: <ask> (<paths>)\` line, so the dispatcher offers a RESUME worker, and drop it from the owed lines (gh pr edit $pr_num --body-file <file>)." >&2
             audit "REFUSED reason=partial-owed-names-path repo=$nwo pr=#$pr_num key=$partial_key"

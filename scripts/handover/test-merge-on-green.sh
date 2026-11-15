@@ -4376,6 +4376,12 @@ else
         run_mog 26 "8673: a reader that exits non-zero refuses even with an answer"
     assert_audit_has "8673: a failing reader is audited as unreadable" "REFUSED reason=partial-remainder-unreadable"
     assert_gh_lacks "8673: a failing reader merged nothing" "pr merge"
+    # the owed-path check reads the anchor reader's --units answer: one that never gives a chief-owed field refuses
+    printf 'import sys\nprint("remaining\\tslice 2")\n' > "$mog_rdr/no-units.py"
+    MOG_ANCHOR_READER="$mog_rdr/no-units.py" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY="Remaining: slice 2" \
+        run_mog 26 "10194: an anchor reader with no --units answer refuses"
+    assert_err_has "10194: the refusal names the --units read" "--units gave no chief-owed answer"
+    assert_gh_lacks "10194: the no-units refusal merged nothing" "pr merge"
     rm -rf "$mog_rdr"
 fi
 # a body read where gh exits 3 (the old reader-absent code) is a refused read, never a skipped check

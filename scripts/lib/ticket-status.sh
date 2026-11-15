@@ -680,11 +680,10 @@ _ts_remainder_owner() {
     return 1
 }
 
-# _ts_d5d <KEY> <merged PR> [repo] [owed who] [owed due] — rc 0 when the merged PR's remainder names its owner, in
-# TS_D5D_OWNER. The owed pair comes from the merge row (merge-on-green writes it), so a snapshot derive answers it too.
 # ts_owed_lines — stdin: a PR body. Prints who<TAB>due<TAB>ask<TAB>text for each `<ask>: owed -> chief|operator by YYYY-MM-DD`
-# list line under `## Ticket coverage` before the next heading, the place pr_remainder.py reads an owed line from
-# (`→` or `->`); text is the line without its list mark, ask the text before the owed clause. The date is as written.
+# list line under `## Ticket coverage` before the next heading (`→` or `->`); text is the line without its list mark, ask the
+# text before the owed clause, the date as written. Only the owed ledger writer reads it, after the merge: every merge
+# decision reads pr_remainder.py, which names no operator line.
 ts_owed_lines() {
     awk '{ sub(/\r$/, "") }
         /^#/ { cov = (tolower($0) ~ /^##[ \t]+ticket coverage[ \t]*$/); next }
@@ -701,23 +700,31 @@ ts_owed_lines() {
         }'
 }
 
-# ts_owed_chief_paths — stdin: a PR body. Prints paths<TAB>text for each owed-to-chief line (ts_owed_lines) whose ask names
-# a relative repo path: a file with a code or doc extension (tick.sh, scripts/lib/x.py) or a directory of two or more
-# parts ending in `/` (scripts/lib/). An absolute or home path (/etc/x.json, ~/.codex/config.toml) is not a repo path.
-# Such a line is code written as chief work; it belongs on a `Remaining:` line, which gets a RESUME row. rc 0 = one or more.
+# ts_owed_chief_paths <reader> <KEY> — stdin: a PR body. Runs the reader (pr_remainder.py, the caller's anchor copy) with
+# --units and prints paths<TAB>text for each owed-to-chief line it lists (chief-owed=) that names a relative repo path:
+# a file with a code or doc extension (tick.sh, scripts/lib/x.py) or a directory of two or more parts ending in `/`
+# (scripts/lib/). An absolute or home path (/etc/x.json, ~/.codex/config.toml) is not a repo path. Such a line is code
+# written as chief work; it belongs on a `Remaining:` line, which gets a RESUME row.
+# rc 0 = one or more, 1 = none, 3 = the reader failed or gave no chief-owed field.
 ts_owed_chief_paths() {
-    local who due text ask paths found=1
+    local ans owed text paths found=1
     local re='(^|[[:space:]`'"'"'"(,;[])(([A-Za-z0-9_][A-Za-z0-9_.-]*/)*[A-Za-z0-9_][A-Za-z0-9_.-]*\.(sh|bash|py|mjs|cjs|js|ts|tsx|json|jsonl|tsv|yml|yaml|md|toml)|([A-Za-z0-9_][A-Za-z0-9_.-]*/){2,})([[:space:]`'"'"'"),;:.]|$)'
-    while IFS=$'\t' read -r who due ask text; do
-        [ "$who" = chief ] || continue
-        paths=$(printf '%s\n' "$ask" | grep -oE "$re" | sed -E 's/^[^A-Za-z0-9_]//; s/[^A-Za-z0-9_/]$//' | sort -u | paste -sd, - | sed 's/,/, /g') || paths=""  # swallow-ok: no path in the ask is the empty answer
+    [ -f "$1" ] || return 3
+    ans=$(tr -d '\r' | python3 -I "$1" --units "$2" 2>/dev/null) || return 3
+    owed=${ans##*$'\t'}
+    case "$owed" in chief-owed=*) owed=${owed#chief-owed=} ;; *) return 3 ;; esac
+    while IFS= read -r text; do
+        [ -n "$text" ] || continue
+        paths=$(printf '%s\n' "$text" | grep -oE "$re" | sed -E 's/^[^A-Za-z0-9_]//; s/[^A-Za-z0-9_/]$//' | sort -u | paste -sd, - | sed 's/,/, /g') || paths=""  # swallow-ok: no path in the line is the empty answer
         [ -n "$paths" ] || continue
         printf '%s\t%s\n' "$paths" "$text"
         found=0
-    done <<<"$(ts_owed_lines)"
+    done <<<"${owed//¦/$'\n'}"
     return "$found"
 }
 
+# _ts_d5d <KEY> <merged PR> [repo] [owed who] [owed due] — rc 0 when the merged PR's remainder names its owner, in
+# TS_D5D_OWNER. The owed pair comes from the merge row (merge-on-green writes it), so a snapshot derive answers it too.
 _ts_d5d() {
     local key=$1 mpr=$2 repo=${3:-} owho=${4:-} odue=${5:-} log body ans kind rest owner
     TS_D5D_OWNER=""
