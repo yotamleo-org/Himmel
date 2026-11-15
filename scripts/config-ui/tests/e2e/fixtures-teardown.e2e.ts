@@ -31,17 +31,18 @@ async function run(kind: string) {
   mkdirSync(join(dir, "home"));
   writeFileSync(join(dir, "home", "seed"), "x");
   const child = spawnServer(["-e", STUBS[kind], join(dir, "home")], process.env);
-  const grandchild = await new Promise<number | undefined>((ok, fail) => {
-    child.stdout!.on("data", (d) => { const m = /ready(?: (\d+))?/.exec(String(d)); if (m) ok(m[1] ? Number(m[1]) : undefined); });
-    child.once("exit", () => fail(new Error("stub exited before ready")));
-    setTimeout(() => fail(new Error("stub not ready in 10 s")), 10_000).unref();
-  });
-  const t0 = Date.now();
   try {
+    const grandchild = await new Promise<number | undefined>((ok, fail) => {
+      child.stdout!.on("data", (d) => { const m = /ready(?: (\d+))?/.exec(String(d)); if (m) ok(m[1] ? Number(m[1]) : undefined); });
+      child.once("exit", () => fail(new Error("stub exited before ready")));
+      setTimeout(() => fail(new Error("stub not ready in 10 s")), 10_000).unref();
+    });
+    const t0 = Date.now();
     await stopChild(child, dir, GRACE_MS);
     return { gone: !existsSync(dir), exited: exited(child), grandchildAlive: grandchild !== undefined && alive(grandchild), ms: Date.now() - t0 };
   } finally {
-    if (grandchild !== undefined && alive(grandchild)) process.kill(grandchild, "SIGKILL"); // never leak the stub past a failing run
+    // never leak a stub past a failing run: the whole group, grandchild included
+    try { process.kill(-child.pid!, "SIGKILL"); } catch { /* the group is already gone */ }
   }
 }
 

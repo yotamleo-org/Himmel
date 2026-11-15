@@ -127,7 +127,7 @@ export const spawnServer = (args: string[], env: NodeJS.ProcessEnv): ChildProces
 export async function stopChild(child: ChildProcess, dir: string, graceMs = 5_000): Promise<void> {
   const signal = (sig: NodeJS.Signals) => { try { process.kill(-child.pid!, sig); } catch { child.kill(sig); } };
   const exit = new Promise<void>((r) => {
-    if (child.exitCode !== null || child.signalCode !== null) return r();
+    if (child.exitCode !== null || child.signalCode !== null || child.pid === undefined) return r(); // no pid: the spawn failed and no exit event will come
     child.once("exit", () => r());
   });
   signal("SIGTERM");
