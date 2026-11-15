@@ -1,7 +1,7 @@
 # Fixture root for suites whose fixtures must sit outside every temp path.
 # SOURCED, not a suite (no test- prefix). The FIXTURE RULE
 # (test-block-write-into-main-checkout.sh) roots fixtures under the real home
-# because is_temp_or_devnull exempts */tmp/* and */temp/* paths. $HOME is not
+# because is_temp_or_devnull exempts the real temp roots. $HOME is not
 # always that home: home-canary.sh points it at a mktemp -d sandbox, and every
 # DENY row then allows for the wrong reason. So a temp-shaped $HOME falls back
 # to the account's passwd home, which no HOME override changes.
@@ -9,9 +9,10 @@
 # shellcheck shell=bash
 # sourced-lib
 
+# Same roots as is_temp_or_devnull, matched case-insensitively as it is.
 _fixture_root_temp_shaped() {
-    case "$1/" in
-        /|/tmp/*|*/tmp/*|*/temp/*|*[Aa]pp[Dd]ata/[Ll]ocal/[Tt]emp/*) return 0 ;;
+    case "$(printf '%s/' "$1" | tr '[:upper:]' '[:lower:]')" in
+        /|/tmp/*|/var/tmp/*|/private/tmp/*|/private/var/tmp/*|/var/folders/*|/private/var/folders/*|*appdata/local/temp/*) return 0 ;;
         *) return 1 ;;
     esac
 }

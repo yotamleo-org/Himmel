@@ -127,6 +127,35 @@ assert_eq "RED 9922: no *_OK in the daemon's own environment reaches a launch, o
     "HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1" "$(cat "$D/launch.env" 2>/dev/null)"
 stop
 
+echo "== inner whitespace in a reply collapses to one space =="
+for variant in two-spaces tab padded; do
+    setup "ws-$variant"
+    start
+    CODE=$(ask_code r)
+    case "$variant" in
+        two-spaces) reply "$OPERATOR" "$OPERATOR" "go  $CODE" ;;
+        tab) reply "$OPERATOR" "$OPERATOR" "go\\t$CODE" ;;
+        padded) reply "$OPERATOR" "$OPERATOR" "  Go $CODE  " ;;
+    esac
+    wait_for "$Q/daemon.log" "LAUNCHED HIMMEL-1-N1-sweep-pr1"
+    tag="RED 10085"; [ "$variant" = padded ] && tag="control 10085"
+    assert_eq "$tag: a go code typed with $variant launches" "r.req.done" "$(cd "$Q" && ls r.req.* 2>/dev/null)"
+    stop
+done
+setup ws-negative
+start
+CODE=$(ask_code r)
+reply "$OPERATOR" "$OPERATOR" "go ${CODE}X"
+reply "$OPERATOR" "$OPERATOR" "go$CODE"
+sleep 1
+assert_eq "a wrong code or a code with no separator launches nothing" "no-launch r.req.pending" \
+    "$([ -e "$D/launch.env" ] && echo launched || echo no-launch) $(cd "$Q" && ls r.req.*)"
+reply "$OPERATOR" "$OPERATOR" "no  $CODE"
+wait_for "$Q/daemon.log" "no HIMMEL-1-N1-sweep-pr1"
+assert_eq "RED 10085: a no code typed with two spaces refuses like no CODE" "no-launch r.req.no" \
+    "$([ -e "$D/launch.env" ] && echo launched || echo no-launch) $(cd "$Q" && ls r.req.*)"
+stop
+
 echo "== a brief edited after the ask is refused after the go =="
 setup changed
 start
