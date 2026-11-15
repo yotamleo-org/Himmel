@@ -1328,6 +1328,20 @@ mk_ph 90 "To Do" "To Do" '[]'
 ph_mk 'release: v1.1.3' 'pool-disposition: HIMMEL-76 hold after it wake=done:HIMMEL-90'
 ph_wake --open-prs "$PH/open-prs.tsv" > /dev/null
 same 'done: never matches a longer key in a head branch' "$(ph_class 76)" invalid
+ph_state "$ph_words" '[]'
+: > "$PH/state/flag-present"
+ph_mk 'release: v1.1.3' \
+    'pool-disposition: HIMMEL-79 question not in the record authority=O-v1.1.3-0001' \
+    'pool-disposition: HIMMEL-83 question not in the record authority=decision-9' \
+    'pool-disposition: HIMMEL-56 hold on the merge wake=pr:3905' \
+    'pool-disposition: HIMMEL-57 hold on the close wake=pr:3906' \
+    "pool-disposition: HIMMEL-58 hold for a file wake=file:$PH/state/flag-present"
+PH_GH_STATES=3905:MERGED,3906:CLOSED ph_wake --open-prs "$PH/open-prs.tsv" > /dev/null
+same 'a real O- record that does not name the key is not authority' "$(ph_class 79)" invalid
+same 'a real decision-<n> record that does not name the key is not authority' "$(ph_class 83)" invalid
+same 'a wake on a merged PR fired and holds nothing' "$(ph_class 56)|$(ph_field 56 fired)" 'no-authority|true'
+same 'a wake on a closed PR fired and holds nothing' "$(ph_class 57)|$(ph_field 57 fired)" 'no-authority|true'
+same 'a file: wake on a file that exists fired and holds nothing' "$(ph_class 58)|$(ph_field 58 fired)" 'no-authority|true'
 rm -f "$PH/state/pool-lines.tsv"; mkdir "$PH/state/pool-lines.tsv"
 ph_rc=0
 ph_env env NEXT_DISPATCH_MIRROR="$PHM" TICK_GH_CMD="$PH/gh-fail" TOKEN='' bash "$SUT" --doc "$ph_doc" > /dev/null 2>&1 || ph_rc=$?
