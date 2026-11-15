@@ -327,10 +327,16 @@ pinned to it, and a panel without a pin option is refused before a round is spen
 so item 16b never passes on a review of a tree the panel did not pin. A diff over the 204800
 bytes the critics read, counted as they count it, is refused before a round starts, and so is an
 over-cap diff from the rtk retry (that round stays counted), so a full-scope row never covers text
-nobody read. **Status: built but refused today.** `critic-panel.sh` has no pin option yet,
-so `panel-first-pass.sh --pr` exits 7 and no review row is written for any PR; the pin option,
-the approve verb that writes the approval row and the hook rows that protect the two files
-ship separately.
+nobody read. Each of the four `--pr` entries (`pr-check-outside.sh`, `pr-check-context.sh`,
+`panel-first-pass.sh` and `outside-security-audit.sh`) runs only as the copy in the primary
+checkout that the call's HIMMEL_REPO names, refusing a branch copy, a linked worktree or an unset
+HIMMEL_REPO, and refuses a PR head name that collides with a local branch (compared without case)
+before it writes anything keyed on that name, the audit through its `pr-check-outside.sh
+--fetch-only` call. **Status: runs on main, not yet proved on a real PR.** `critic-panel.sh
+--pin-ref` (PR 5234) pins the panel to the fetched ref, so `panel-first-pass.sh --pr` writes its
+review row; the Telegram approve reply writes the approval row, and hook rows protect both
+files. Steps 2 to 2.8 read the fetched ref (`scripts/cr/pr-check-ref/20-step2-lanes.md`); no step
+file from step 3 on describes the route. A live run on a real outside PR is still owed.
 
 **19. suite evidence.** A suite CI runs is run once, in CI: pr-check
 step 3.6 records it `SUITE <p> = CI` (`scripts/cr/pr-check-ref/33-step3-impacted.md`),
