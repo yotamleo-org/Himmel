@@ -9,6 +9,7 @@
 # root (GH_READ_ENV_ROOT) and a scratch HOME stand in for the real ones.
 #
 # PLATFORM GUARD: The chief kit is Linux-only.
+# selector: tree-scan
 # shellcheck disable=SC2015,SC2016  # `[ cond ] && pass || fail`: pass() cannot fail; single-quoted stub bodies expand at run time
 set -uo pipefail
 
