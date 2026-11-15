@@ -427,6 +427,7 @@ out["nb_missing"] = nb("shared-credentials", dict(c2, noise_baseline=None))
 json.dump(dict(base, key_fingerprint="0" * 64), open(w + "/bl-fp.json", "w")); out["nb_fp"] = nb("shared-credentials", dict(c2, noise_baseline=w + "/bl-fp.json"))
 json.dump(dict(base, window_s=300), open(w + "/bl-win.json", "w")); out["nb_window"] = nb("shared-credentials", dict(c2, noise_baseline=w + "/bl-win.json"))
 out["nb_noisy"] = nb("shared-credentials", dict(c2, expected_duration_s=600000))
+json.dump(dict(base, rate=0.0002), open(w + "/bl-rate.json", "w")); out["nb_inconsistent"] = nb("shared-credentials", dict(c2, noise_baseline=w + "/bl-rate.json"))
 open(w + "/bl-bad.json", "w").write("{not json"); out["nb_malformed"] = nb("shared-credentials", dict(c2, noise_baseline=w + "/bl-bad.json"))
 out["nb_legacy_with"] = nb("eval-only-reachable", c2)
 out["nb_legacy_without"] = nb("eval-only-reachable", dict(c2, noise_baseline=None))
@@ -447,6 +448,7 @@ has "noise binding: shared-credentials without a baseline refuses" "needs a nois
 has "noise binding: a baseline taken on another key refuses" "another key" "$(f "$NZ" nb_fp)"
 has "noise binding: a baseline window out of range refuses" "window" "$(f "$NZ" nb_window)"
 has "noise binding: a fleet too noisy for the stated duration refuses" "too noisy" "$(f "$NZ" nb_noisy)"
+has "noise binding: a rate that does not match the meters over the window refuses" "inconsistent" "$(f "$NZ" nb_inconsistent)"
 has "noise binding: a malformed baseline refuses" "unreadable" "$(f "$NZ" nb_malformed)"
 has "noise binding: a baseline under a legacy stance refuses (a file never switches the allowance on)" "legacy stance" "$(f "$NZ" nb_legacy_with)"
 eq "noise binding: a legacy stance without a baseline needs none" '[]' "$(f "$NZ" nb_legacy_without)"
@@ -491,6 +493,8 @@ R=$(sc fleet-noise); eq "R8: steady fleet noise on the shared key is absorbed an
 R=$(sc fleet-noise-legacy); eq "R8: the same fleet noise without a baseline (legacy stance) still stops as r19 does" '["HARD_STOP", "overrun"]' "$(f "$R" stop)"
 R=$(sc noise-stale); eq "R8: a baseline older than 2 hours refuses before any booking or launch" '"noise" 0 0' "$(f "$R" refused) $(f "$R" launches) $(f "$R" events)"
 R=$(sc noise-other-baseline); eq "R8: a restart with a different baseline refuses" '"noise"' "$(f "$R" refused)"
+R=$(sc noise-future); eq "R8: a baseline that ends after the run's start refuses before any booking" '"noise" 0' "$(f "$R" refused) $(f "$R" events)"
+R=$(sc noise-late-baseline); eq "R8: a baseline added to a run that started without one refuses" '"noise"' "$(f "$R" refused)"
 
 cat > "$W/runner.py" <<'EOF'
 import importlib.util, os, sys, time

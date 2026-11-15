@@ -48,6 +48,7 @@ NOISE_CAP_R8, NOISE_CAP_R5 = 0.50, 0.05
 NOISE_FACTOR, NOISE_FLOOR = 3.0, 0.001
 BASELINE_WINDOW = (600, 1800)
 BASELINE_MAX_AGE = 7200
+BASELINE_READ_SLACK = 60
 BASELINE_KEYS = ("start_meter", "end_meter", "start_ts", "end_ts", "window_s", "key_fingerprint", "rate")
 
 
@@ -77,6 +78,9 @@ def baseline_problems(b, cap, now=None):
         bad.append("the noise baseline window %s s is outside %d to %d s" % (b["window_s"], BASELINE_WINDOW[0], BASELINE_WINDOW[1]))
     if b["rate"] < 0 or b["end_meter"] < b["start_meter"]:
         bad.append("the noise baseline has a negative delta")
+    elif (abs(b["rate"] * b["window_s"] - (b["end_meter"] - b["start_meter"])) > 1e-9
+          or not 0 <= (b["end_ts"] - b["start_ts"]) - b["window_s"] <= BASELINE_READ_SLACK):
+        bad.append("the noise baseline is inconsistent: its rate or timestamps do not describe its window")
     dur = b.get("expected_duration_s")
     if not _num(dur) or dur <= 0:
         bad.append("no expected run duration is stated")
@@ -84,6 +88,8 @@ def baseline_problems(b, cap, now=None):
         bad.append("the fleet is too noisy for this run: 3 x rate x %ss exceeds the $%.2f noise cap; lower it and take a new baseline" % (dur, cap))
     if now is not None and now - b["end_ts"] > BASELINE_MAX_AGE:
         bad.append("the noise baseline ended more than 2 hours before the run's start")
+    if now is not None and b["end_ts"] > now:
+        bad.append("the noise baseline ends after the run's start")
     return bad
 
 

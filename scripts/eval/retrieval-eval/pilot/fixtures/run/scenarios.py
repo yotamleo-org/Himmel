@@ -242,8 +242,17 @@ def run(name, work):
         out = summary(p, fin, p.run())
         out.update(absorbed_positive=p.ledger.noise_absorbed > 0, first_event_is_baseline=p.ledger.events[0]["ev"] == "noise_baseline")
         return out
-    if name == "noise-stale":
-        p, _ = build(work, noise=noise_baseline(age=7201.0))
+    if name == "noise-late-baseline":
+        crash = crash_once("answer", 2)
+        p, _ = build(work, rule=crash)
+        try:
+            p.run()
+        except RP.Crash:
+            pass
+        p2, _ = build(work, rule=crash, noise=noise_baseline())
+        return {"refused": p2.run().get("refused")}
+    if name in ("noise-stale", "noise-future"):
+        p, _ = build(work, noise=noise_baseline(age=7201.0 if name == "noise-stale" else -100.0))
         rep = p.run()
         return {"refused": rep.get("refused"), "launches": rep["launches"], "events": len(p.ledger.events)}
     if name == "g0":

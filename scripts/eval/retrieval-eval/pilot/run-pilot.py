@@ -160,6 +160,8 @@ class Pilot:
             return "the run started with a noise baseline" if ev else None
         if ev:
             return None if ev["sha256"] == self.noise["sha256"] else "a different noise baseline than the run started with"
+        if self.ledger.events:
+            return "the run already has events without a noise baseline"
         bad = L.baseline_problems(self.noise, L.NOISE_CAP_R8, now=self.clock.now())
         if bad:
             return bad[0]
