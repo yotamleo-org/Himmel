@@ -240,7 +240,9 @@ secret, only role names and account letters:
   marks the letter and moves on, as above; anything else stops. `--rows` adds each candidate's own verdict to a
   refusal, and only this walk passes it, so the refusal lines of the auto pass and the lane are unchanged. Under the
   flag an estimate still over `--max-run-usd` after sizing refuses the submit (`over-cap`) instead of sending the
-  one-file floor. `--result-file F` writes one word on every exit, and a second line `rejected <letters>` when a key
+  one-file floor. Without the flag the one-file floor still reaches the batch client, which refuses a batch whose
+  estimate is over the cap (`semantic-batch.mjs submit`, exit 7, mapped to `over-cap` too): the cap is a ceiling for a
+  batch, and `semantic-batch.mjs bound` gives the planner the same per-request figure the client sums. `--result-file F` writes one word on every exit, and a second line `rejected <letters>` when a key
   was rejected; the script header lists the words. With neither flag the pass runs as before.
 - **An exhausted marker clears on its own.** `api-credit-state.mjs exhausted` writes `exhausted_at` for the account.
   Auto skips a marked account for `EXHAUSTED_TTL` (3600 seconds), or sooner when the operator snapshot holds a reading

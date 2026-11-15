@@ -183,7 +183,13 @@ for c in "graphql:pr view 12 --json state" "core:pr diff 12" "core:run view 5 --
     check "B1 '$args' spends $want" "$want" "$(ghq_bucket_of $args)"
 done
 check "B2 router callers ride read,main" "read,main read,main" "$(ghq_routes ready-check) $(ghq_routes scripts/check-ci.sh)"
-check "B2b cr-disposition rides main" "main" "$(ghq_routes cr-disposition)"
+check "B2b T11: cr-disposition, the dispatcher and ticket-status ride read,main" "read,main read,main read,main read,main" \
+    "$(ghq_routes cr-disposition) $(ghq_routes scripts/handover/chief-kit/cr-disposition.sh) $(ghq_routes next-dispatchable) $(ghq_routes ticket-status)"
+check "B2c a scan the table does not name rides main" "main" "$(ghq_routes pr-stall)"
+check "B3 T11: the dispatcher's scan gate reads the read token's row" "read" "$(ghq_scan_token next-dispatchable 2>/dev/null)"
+check "B3b T11: so does ticket-status's" "read" "$(ghq_scan_token ticket-status 2>/dev/null)"
+check "B3c RED control: with no read token configured the gate reads main's, as today" "main" "$(GH_READ_ENV_ROOT="$W/emptyroot" ghq_scan_token next-dispatchable 2>/dev/null)"
+check "B3d a main-only scan reads main's row with a read token present" "main" "$(ghq_scan_token pr-stall 2>/dev/null)"
 
 fresh mark
 GHQ_REPO=o/r ghq_mark_blocked branch-docs/x unknown check-ci graphql rate-limit

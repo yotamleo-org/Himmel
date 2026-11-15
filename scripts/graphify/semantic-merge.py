@@ -602,6 +602,8 @@ def cmd_merge(a):
     }
     if a.batch_id:
         run["batch_id"], run["batch_requests"] = a.batch_id, a.batch_requests
+    if a.account:
+        run["account"] = a.account
     with open(os.path.join(a.out, RUNS), "a", encoding="utf-8") as f:
         f.write(json.dumps(run) + "\n")
     print("merge: " + json.dumps(run))
@@ -640,6 +642,7 @@ def main():
     m.add_argument("--cap-usd", type=float, default=0.0)
     m.add_argument("--batch-id", default="")
     m.add_argument("--batch-requests", type=int, default=0)
+    m.add_argument("--account", default="")
     m.add_argument("--evict-cache", action="append", default=[])
     f = sub.add_parser("failrow")
     f.add_argument("--name", required=True)

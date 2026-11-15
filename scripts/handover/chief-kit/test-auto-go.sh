@@ -833,8 +833,10 @@ check    "8691 main REST core spent: the title read logs tok=read" "$(ttseen '^t
 check    "8691 main REST core spent: the file listing read logs tok=read" "$(ttseen '^tok=read argv=api repos/o/r/pulls/77/files')" "yes"
 check    "8691 main REST core spent: the commit list read logs tok=read" "$(ttseen '^tok=read argv=api repos/o/r/pulls/77/commits')" "yes"
 ttrun "$tmp/ttroot" GH_STUB_MAINFAIL=rate
-check    "8691 main spent in every bucket: the escalation is check 6 (cr-disposition), not a read of this gate" "$(printf '%s' "$OUT" | grep -c 'ESCALATE auto-go 6 cr-disposition.sh')" "1"
-check    "8691 main spent in every bucket: no read rides the main token but cr-disposition's branch read" "$(tt_main_reads_besides_the_crd_branch_read)" "0"
+check    "8691 main spent in every bucket, read token alive: exit 0" "$RC" "0"
+check    "8691 main spent in every bucket, read token alive: exactly WOULD-GO <pr> <head>" "$OUT" "WOULD-GO 77 $SHA"
+check    "8691 main spent in every bucket: cr-disposition's branch read logs tok=read" "$(ttseen '^tok=read argv=pr view 77 --json headRefName -q .headRefName')" "yes"
+check    "8691 main spent in every bucket: no read rides the main token" "$(grep -c '^tok=main ' "$TTLOG")" "0"
 ttrun "$tmp/emptyroot"
 check    "8691 control, no read token: exit 0" "$RC" "0"
 check    "8691 control, no read token: exactly WOULD-GO <pr> <head>" "$OUT" "WOULD-GO 77 $SHA"

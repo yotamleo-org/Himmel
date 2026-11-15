@@ -136,7 +136,8 @@
 #                               whose newest marker bullet is `READY <pr> <head40> GREEN`. Before
 #                               waking, the waiter runs `timeout -k 5 <READY_CHECK_DEADLINE + 15>
 #                               ready-check.sh <pr> <head>` (165 s by default, so ready-check's own
-#                               deadline speaks first), one CI read (`gh pr checks` under
+#                               deadline speaks first), one CI read (`gh pr checks` on the read
+#                               token through scripts/lib/gh-read.sh, main when none is set, under
 #                               CHIEF_WAIT_READY_CI_TIMEOUT, default 30; a failed read is PENDING, a
 #                               rate-limit refusal PAUSED) and `timeout -k 5 <CHIEF_WAIT_DISPOSITION_TIMEOUT,
 #                               default 90> cr-disposition.sh check <pr> <head> --trust-path
@@ -1230,7 +1231,7 @@ log="$(ts_state_dir)/status-events.jsonl"
 [ -e "$log" ] || exit 0
 [ -r "$log" ] || exit 70
 warn="$3/warn"
-ts_merge_rows() { python3 -I "$_TS_LIB_DIR/merge-rows-effective.py" "$@" 2>>"$warn" || echo "merge-rows-effective: warn: the read failed" >> "$warn"; }
+ts_merge_rows() { GH_READ_NO_MAIN_FALLBACK=1 python3 -I "$_TS_LIB_DIR/merge-rows-effective.py" "$@" 2>>"$warn" || echo "merge-rows-effective: warn: the read failed" >> "$warn"; }
 jq() { command jq "$@" || echo "merge-rows-effective: warn: the park rows could not be read" >> "$warn"; }
 printf "%s\n" "$2" > "$3/keys"
 grep -F -f "$3/keys" "$log" > "$3/rows"; found=$?
@@ -2211,7 +2212,7 @@ ready_ci() {
         return
     fi
     nwo="$(gate_nwo)"
-    b="$(cd "$GATE_DIR" && timeout -k 5 "$3" gh pr checks "$1" ${nwo:+-R "$nwo"} --json bucket -q '.[].bucket' </dev/null 2>"$err" 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
+    b="$(cd "$GATE_DIR" && timeout -k 5 "$3" bash "$REPO/scripts/lib/gh-read.sh" pr checks "$1" ${nwo:+-R "$nwo"} --json bucket -q '.[].bucket' </dev/null 2>"$err" 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
     # a refusal exits 1 like a failed check, so its stderr decides (stdout is check names)
     if [ -z "$b" ] && [ "$rc" -ne 0 ] && ghq_is_rate_limited "$(cat "$err")"; then
         rm -f "$err"; printf 'PAUSED\n'; return
