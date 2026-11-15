@@ -3312,3 +3312,104 @@ test("a config-audit broadcast in an old inbox is never moved, only the operator
   await routeText(r, `/chief ${HX} after`);
   expect(inboxText(r, HZ)).toMatch(/^\[config-audit\] settings\.json lost keys\n- 00:02 \[telegram from=1 chat=1\] raced\n- \d\d:\d\d \[telegram from=1 chat=1\] after\n$/);
 });
+
+const US_KEY = "HIMMEL-9731"; const US_OTHER = "HIMMEL-9732";
+const unsealedLines = (out: string) => out.split("\n").filter((l) => l.startsWith("unsealed: "));
+const sealCmd = "bash scripts/handover/chief-kit/critic-seal.sh";
+
+test("U1: a key with three critic files and no seal rows is flagged with all three files, in every name shape, and the exit code stays 0", async () => {
+  const t = specsTree(); expect((await routeCli("round-seed", "--all", t.specs)).code).toBe(0); const a = join(t.dir, `${US_KEY}-a.md`); writeFileSync(a, front(US_KEY, "# A\n"));
+  const files = [`${a}.critic-spec-r1.md`, `${a}.critic-plan-r1.md`, `${a}.critic-r2-spec.md`];
+  for (const f of files) writeFileSync(f, ret("SPEC FINDINGS 1", "- **f1** (major) a gap"));
+  const s = await routeCli("round-status", US_KEY, "--specs", t.specs);
+  expect(s.code).toBe(0);
+  const lines = unsealedLines(s.out);
+  expect(lines).toHaveLength(3);
+  for (const f of files) expect(lines.some((l) => l.includes(f) && l.includes(sealCmd))).toBe(true);
+  expect(s.out.split("\n")[0]).toContain(`${US_KEY} spec=0 plan=0`);
+  const j = JSON.parse((await routeCli("round-status", US_KEY, "--specs", t.specs, "--json")).out);
+  expect(j.unsealed.map((u: { file: string }) => u.file).sort()).toEqual([...files].sort());
+}, S1B);
+
+test("U2: a sealed round is not flagged", async () => {
+  const t = specsTree(); expect((await routeCli("round-seed", "--all", t.specs)).code).toBe(0);
+  const a = join(t.dir, `${US_KEY}-a.md`); writeFileSync(a, front(US_KEY, "# A\n"));
+  expect((await sealOn(`${a}.critic-spec-r1.md`, [a], "SPEC CLEAN")).err).toBe("");
+  const s = await routeCli("round-status", US_KEY, "--specs", t.specs);
+  expect(s.code).toBe(0);
+  expect(s.out).toContain(`${US_KEY} spec=1`);
+  expect(unsealedLines(s.out)).toEqual([]);
+  expect(JSON.parse((await routeCli("round-status", US_KEY, "--specs", t.specs, "--json")).out).unsealed).toEqual([]);
+}, S1B);
+
+test("U3: a mixed set flags only the unsealed round", async () => {
+  const t = specsTree(); expect((await routeCli("round-seed", "--all", t.specs)).code).toBe(0);
+  const a = join(t.dir, `${US_KEY}-a.md`); writeFileSync(a, front(US_KEY, "# A\n"));
+  expect((await sealOn(`${a}.critic-spec-r1.md`, [a], "SPEC CLEAN")).err).toBe("");
+  const loose = `${a}.critic-spec-r2.md`; writeFileSync(loose, ret("SPEC CLEAN"));
+  const s = await routeCli("round-status", US_KEY, "--specs", t.specs);
+  const lines = unsealedLines(s.out);
+  expect(lines).toHaveLength(1);
+  expect(lines[0]).toContain(loose);
+  expect(lines[0]).not.toContain("critic-spec-r1.md");
+}, S1B);
+
+test("U4: a verdict file for another key is not flagged", async () => {
+  const t = specsTree(); expect((await routeCli("round-seed", "--all", t.specs)).code).toBe(0);
+  const a = join(t.dir, `${US_KEY}-a.md`); writeFileSync(a, front(US_KEY, "# A\n"));
+  const o = join(t.dir, `${US_OTHER}-o.md`); writeFileSync(o, front(US_OTHER, "# O\n"));
+  writeFileSync(`${o}.critic-spec-r1.md`, ret("SPEC CLEAN"));
+  writeFileSync(`${a}.critic-spec-r1.md`, ret("SPEC CLEAN"));
+  const s = await routeCli("round-status", US_KEY, "--specs", t.specs);
+  const lines = unsealedLines(s.out);
+  expect(lines).toHaveLength(1);
+  expect(lines[0]).toContain(`${US_KEY}-a.md.critic-spec-r1.md`);
+  expect(s.out).not.toContain(US_OTHER);
+}, S1B);
+
+test("U5: the seal command single-quotes a verdict path that holds a space or a quote", async () => {
+  const t = specsTree(); expect((await routeCli("round-seed", "--all", t.specs)).code).toBe(0);
+  const a = join(t.dir, `${US_KEY}-a b's.md`); writeFileSync(a, front(US_KEY, "# A\n"));
+  const f = `${a}.critic-spec-r1.md`; writeFileSync(f, ret("SPEC CLEAN"));
+  const lines = unsealedLines((await routeCli("round-status", US_KEY, "--specs", t.specs)).out);
+  expect(lines).toHaveLength(1);
+  expect(lines[0]).toContain(`${sealCmd} '${f.replace(/'/g, "'\\''")}' <file the critic read>`);
+}, S1B);
+
+const resetOn = async (t: { specs: string }, d: number) => {
+  decide(t.specs, d, `${CAP_KEY} operator: start this ticket over from scratch\n`);
+  return verb(true, "round-reset", CAP_KEY, "--decision", String(d), "--quote", "start this ticket over from scratch", "--specs", t.specs);
+};
+
+test("U6: after a round-reset the old seed no longer accounts for a round file, and a round of the new epoch does", async () => {
+  const t = await seededTree([]);
+  expect(unsealedLines((await routeCli("round-status", CAP_KEY, "--specs", t.specs)).out)).toEqual([]);
+  expect((await resetOn(t, 907)).err).toBe("");
+  expect(unsealedLines((await routeCli("round-status", CAP_KEY, "--specs", t.specs)).out)).toHaveLength(6);
+  const fresh = `${t.a}.critic-spec-r9.md`;
+  expect((await sealOn(fresh, [t.a], "SPEC CLEAN")).err).toBe("");
+  const lines = unsealedLines((await routeCli("round-status", CAP_KEY, "--specs", t.specs)).out);
+  expect(lines).toHaveLength(6);
+  expect(lines.some((l) => l.includes(fresh))).toBe(false);
+}, S1B);
+
+test("U7: after a round-reset a path named only by a row of the old epoch is flagged again", async () => {
+  const t = await roundTree([], []);
+  expect(unsealedLines((await routeCli("round-status", CAP_KEY, "--specs", t.specs)).out)).toEqual([]);
+  expect((await resetOn(t, 908)).err).toBe("");
+  expect(unsealedLines((await routeCli("round-status", CAP_KEY, "--specs", t.specs)).out)).toHaveLength(6);
+}, S1B);
+
+test("U8: a folder that cannot be read is reported on its own line and leaves the exit code and the other files alone", async () => {
+  const t = specsTree(); expect((await routeCli("round-seed", "--all", t.specs)).code).toBe(0);
+  const a = join(t.dir, `${US_KEY}-a.md`); writeFileSync(a, front(US_KEY, "# A\n"));
+  const f = `${a}.critic-spec-r1.md`; writeFileSync(f, ret("SPEC CLEAN"));
+  const loop = join(t.specs, "plan"); symlinkSync("plan", loop);
+  const s = await routeCli("round-status", US_KEY, "--specs", t.specs);
+  expect(s.code).toBe(0);
+  expect(unsealedLines(s.out)).toHaveLength(1);
+  expect(s.out.split("\n").filter((l) => l.startsWith("unsealed-unread: ")).some((l) => l.includes(loop))).toBe(true);
+  const j = JSON.parse((await routeCli("round-status", US_KEY, "--specs", t.specs, "--json")).out);
+  expect(j.unsealed).toHaveLength(1);
+  expect(j.unread).toHaveLength(1);
+}, S1B);
