@@ -41,6 +41,16 @@ make_vault() {
   echo "# n" > "$1/notes/n.md"
 }
 
+# The step registers luna-archive, which the shipped corpus file may not map yet
+# yet. The rows below that exercise registration run against a copy of
+# the shipped corpus that maps it; the guard rows run against the shipped file.
+REAL_CORPUS="$REPO/scripts/qmd/qmd-collection-corpus.json"
+python3 -I -c 'import json, sys
+d = json.load(open(sys.argv[1]))
+d["collections"]["luna-archive"] = d["collections"]["luna"]
+json.dump(d, open(sys.argv[2], "w"))' "$REAL_CORPUS" "$W/corpus-mapped.json" || exit 1
+export LUNA_HYGIENE_CORPUS="$W/corpus-mapped.json"
+
 indexed() {  # indexed <cfg-dir> : the collection's file list as the real qmd sees it
   QMD_CONFIG_DIR="$1" XDG_CACHE_HOME="$1/cache" qmd ls luna 2>/dev/null | sed 's|.*qmd://luna/||' | sort | tr '\n' ' '
 }
@@ -212,6 +222,64 @@ bash "$SUT" --vault "$V" --qmd-config "$CFG" --offload-root "$W/link13/new" --ap
 check "a not-yet-existing root under a symlink into graphify-out exits 2" 2 "$?"
 check "and nothing is created through the symlink" 1 "$(nested_gi && echo 0 || echo 1)"
 check "and graphify-out still holds its files" 0 "$([ -f "$V/graphify-out/d/GRAPH_REPORT.md" ] && echo 0 || echo 1)"
+
+# --- a collection the corpus file does not map is never registered -----------
+# The egress gate treats an unmapped collection as unsafe and refuses every
+# bounded qmd call, so registering one disables note search for the whole fleet.
+registered_map() {  # registered_map <cfg> <corpus> : "name -> corpora|UNMAPPED" per registered collection
+  awk '/^collections:/{f=1;next} /^[^ #]/{f=0} f&&/^  [^ ]/{n=$1; sub(/:$/,"",n); print n}' "$1" |
+    python3 -I -c 'import json, sys
+m = json.load(open(sys.argv[1]))["collections"]
+for n in sys.stdin:
+    n = n.strip()
+    print("%s -> %s" % (n, ",".join(m[n]) if n in m else "UNMAPPED"))' "$2"
+}
+gated_query() {  # gated_query <qmd-config-dir> : bounded `query -c luna x` through the real egress gate, qmd stubbed
+  mkdir -p "$W/stub" "$W/glm" "$W/nobun" "$W/gcache"
+  printf '#!/usr/bin/env bash\necho STUB-QMD\n' > "$W/stub/qmd"; chmod +x "$W/stub/qmd"
+  env -u QMD_EMBED_MODEL -u QMD_RERANK_MODEL -u QMD_GENERATE_MODEL -u QMD_OPENAI_BASE_URL -u INDEX_PATH \
+    QMD_CONFIG_DIR="$1" XDG_CACHE_HOME="$W/gcache" BUN_INSTALL="$W/nobun" CLAUDE_GLM_CONFIG_DIR="$W/glm" \
+    QMD_OPENAI_API_KEY=k QMD_VOCAB_EXPAND=0 PATH="$W/stub:$PATH" \
+    bash "$REPO/scripts/lib/qmd-bounded.sh" query -c luna x 2>&1
+}
+
+V="$W/g1"; make_vault "$V"; G="$W/g1c"; mkdir -p "$G"; write_cfg "$G/index.yml" "$V"
+sed 's|^  embed: .*|  embed: openai:qwen/qwen3-embedding-8b\n  openai_base_url: https://openrouter.ai/api/v1|' "$G/index.yml" > "$G/n.yml" && mv "$G/n.yml" "$G/index.yml"
+cp "$G/index.yml" "$G/index.orig"
+out="$(gated_query "$G")"; rc=$?
+check "control: the scratch remote-model config passes the egress gate before the hygiene step" "0|stub-reached" "$rc|$(printf '%s' "$out" | grep -q '^STUB-QMD$' && echo stub-reached || echo refused)"
+
+herr="$(env -u LUNA_HYGIENE_CORPUS bash "$SUT" --vault "$V" --qmd-config "$G/index.yml" --apply 2>&1 >/dev/null)"; hrc=$?
+out="$(gated_query "$G")"; rc=$?
+check "after --apply the bounded qmd query still exits 0 (the gate's refusal is rc 10)" "0|stub-reached" "$rc|$(printf '%s' "$out" | grep -q '^STUB-QMD$' && echo stub-reached || echo refused)"
+unmapped="$(registered_map "$G/index.yml" "$REAL_CORPUS" | awk '/UNMAPPED$/{printf "%s ", $1}')"
+verdict=ok
+if [ -n "$unmapped" ]; then
+  verdict="unmapped=${unmapped}rc=$hrc"
+  if [ "$hrc" -ne 0 ]; then verdict=ok; for n in $unmapped; do printf '%s' "$herr" | grep -q -- "$n" || verdict="rc=$hrc but the message does not name $n"; done; fi
+fi
+check "every registered collection is mapped in the corpus file, or the step exits nonzero naming the unmapped one" ok "$verdict"
+check "the step refuses with exit 5" 5 "$hrc"
+check "and its message names luna-archive" 0 "$(printf '%s' "$herr" | grep -q 'luna-archive' && echo 0 || echo 1)"
+check "a refused apply leaves the qmd config as it was" 0 "$(cmp -s "$G/index.yml" "$G/index.orig" && echo 0 || echo 1)"
+check "and writes no .graphifyignore" 1 "$([ -e "$V/.graphifyignore" ] && echo 0 || echo 1)"
+echo "detection: the registered names after the refused apply, beside their corpus entry"
+registered_map "$G/index.yml" "$REAL_CORPUS" | sed 's/^/  /'
+check "detection: each registered name has a corpus entry" 0 "$(registered_map "$G/index.yml" "$REAL_CORPUS" | grep -c UNMAPPED)"
+
+env -u LUNA_HYGIENE_CORPUS bash "$SUT" --vault "$V" --qmd-config "$G/index.yml" >/dev/null 2>&1; drc=$?
+check "the dry run reports the same refusal (exit 5) and writes nothing" "5|0" "$drc|$(cmp -s "$G/index.yml" "$G/index.orig" && echo 0 || echo 1)"
+
+# negative control: a collection the corpus file maps still registers, rc 0, same block as before
+V="$W/g2"; make_vault "$V"; CFG="$W/g2.yml"; write_cfg "$CFG" "$V"
+bash "$SUT" --vault "$V" --qmd-config "$CFG" --apply >/dev/null 2>&1; crc=$?
+check "control: a mapped luna-archive registers and the step exits 0" 0 "$crc"
+check "control: with the same block as before" \
+  "    path: $V|    pattern: \"{handovers/**/archive/**/*.md,sessions/_archive/**/*.md}\"" \
+  "$(awk '/^  luna-archive:/{f=1;next} f&&/^  [^ ]|^[^ ]/{f=0} f{print}' "$CFG" | paste -sd'|' -)"
+echo "detection: the registered names of the control config, beside their corpus entry"
+registered_map "$CFG" "$LUNA_HYGIENE_CORPUS" | sed 's/^/  /'
+check "detection: the control's registered names all have a corpus entry" 0 "$(registered_map "$CFG" "$LUNA_HYGIENE_CORPUS" | grep -c UNMAPPED)"
 
 echo "pass=$PASS fail=$FAIL skip=$SKIP"
 [ "$FAIL" -eq 0 ]
