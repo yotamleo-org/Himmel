@@ -21,6 +21,10 @@
 #      holds a bullet (a resume) passes without one. headed-arm-worker.sh refuses a
 #      fresh template-shaped launch with no description, --no-prior-art-check
 #      or not, and still resumes a doc that has run.
+#   14. a worker brief (a Contract line, not --judge, fresh or resumed) whose resume_cwd is inside a primary checkout
+#      (its .git a directory, no .single-writer) is refused, exit 3 in two lines, with and without --core-only; a
+#      classifier crash refuses too; worktrees, plain directories and .single-writer repos pass; the lint agrees with
+#      the guard's main_checkout_verdict on a tracked file at the directory's top.
 set -u
 export UNGUARDED_LAUNCH_OK=1  # HIMMEL-9026: scratch fixtures; guard rows drop it
 unset CLAUDE_GLM_CONFIG_DIR  # the classifier reads it for its claude-glm lists: an inherited one would redirect every row
@@ -40,8 +44,14 @@ mk_raw() { # name lines...
     local f="$tmp/$1.md"; shift
     printf '%s\n' "$@" > "$f"
 }
+mk_wt() { # dir: a linked worktree, on branch wt, of a scratch base repo <dir>.base holding one committed file `tracked`
+    git init -q "$1.base" && printf 'x\n' > "$1.base/tracked" && git -C "$1.base" add tracked \
+        && git -C "$1.base" -c user.name=t -c user.email=t@example.com -c core.hooksPath=/dev/null -c commit.gpgsign=false commit -q -m base \
+        && git -C "$1.base" worktree add -q -b wt "$1" >/dev/null 2>&1
+}
+tmp_in_repo=0; git -C "$tmp" rev-parse --git-dir >/dev/null 2>&1 && tmp_in_repo=1
 # A template brief opens with front matter carrying its description and the absolute directory its worker starts in.
-CW_HIM="$tmp/cwd-himmel"; git init -q "$CW_HIM"; mkdir -p "$CW_HIM/scripts/handover/chief-kit"; : > "$CW_HIM/scripts/handover/chief-kit/headed-arm-worker.sh"
+CW_HIM="$tmp/cwd-himmel"; mk_wt "$CW_HIM" || exit 1; mkdir -p "$CW_HIM/scripts/handover/chief-kit"; : > "$CW_HIM/scripts/handover/chief-kit/headed-arm-worker.sh"
 mk() { # name lines...
     local n="$1"; shift
     mk_raw "$n" '---' 'description: Check the lint on a test brief' "resume_cwd: $CW_HIM" '---' "$@"
@@ -611,8 +621,8 @@ NOGRAPH_LINE='> Before you design, run `bash /x/scripts/lib/qmd-bounded.sh query
 # shellcheck disable=SC2016  # literal backticks again
 ADAPTER_LINE='> Before you design, run `bash /x/scripts/lib/qmd-bounded.sh query -c luna "lint"` (specs, audits and decisions; this repo has no Jira mirror, so no ticket search), and cite what each returned. This leg has no graph lookup (an adopter repo has no himmel graph). Your Results carry a `graph-qmd: <what the notes search returned and whether used>` bullet saying so.'
 # The three "no ..." phrases count only where true, judged from resume_cwd and the Writes line.
-CW_ADP="$tmp/cwd-adapter"; git init -q "$CW_ADP"
-CW_SAL="$tmp/cwd-salus"; git init -q "$CW_SAL"; : > "$CW_SAL/.salus"
+CW_ADP="$tmp/cwd-adapter"; mk_wt "$CW_ADP" || exit 1
+CW_SAL="$tmp/cwd-salus"; mk_wt "$CW_SAL" || exit 1; : > "$CW_SAL/.salus"
 mkc() { # name cwd lines...
     local n="$1" cw="$2"; shift 2
     mk_raw "$n" '---' 'description: Check the lint on a test brief' "resume_cwd: $cw" '---' "$@"
@@ -791,8 +801,12 @@ expect_rc "10p a resume_cwd line outside the front matter is not read" 1 "$tmp/s
 expect_rc "10q a doc that has run is not made to fail for a missing resume_cwd" 0 "$tmp/s_nocwd_ran.md"
 expect_rc "10r a double-quoted resume_cwd with trailing spaces is read as the launcher reads it" 0 "$tmp/s_quotedcwd.md"
 expect_rc "10s a single-quoted resume_cwd is read as the launcher reads it" 0 "$tmp/s_squotedcwd.md"
-rc=0; HOME="$H_T" bash "$LINT" "$tmp/s_tildecwd.md" >/dev/null 2>&1 || rc=$?
-[ "$rc" = 0 ] && ok "10t a ~/ resume_cwd is expanded against HOME" || bad "10t tilde resume_cwd rc=$rc"
+if [ "$tmp_in_repo" -eq 1 ]; then
+    printf 'SKIP 10t (the suite tmp %s is inside a git repo, so ~/proj is not a directory in no repo)\n' "$tmp"
+else
+    rc=0; HOME="$H_T" bash "$LINT" "$tmp/s_tildecwd.md" >/dev/null 2>&1 || rc=$?
+    [ "$rc" = 0 ] && ok "10t a ~/ resume_cwd is expanded against HOME" || bad "10t tilde resume_cwd rc=$rc"
+fi
 
 # A linked worktree outside a marked primary, a repo that holds a listed root, GIT_* in the env, a failing git.
 GP="$tmp/primary-marked"; git init -q "$GP"; : > "$GP/.salus"
@@ -818,10 +832,12 @@ rc=0; env HOME="$H_NONE" python3 -I "$tmp/walk-mut/salus_marked.py" salus "$MP/a
 rc=0; env HOME="$H_NONE" python3 -I "$tmp/walk-mut/salus_marked.py" salus "$GB/sub" || rc=$?
 [ "$rc" = 10 ] && ok "10v9 a walk that stops at the directory misses the .git one level up (10v2 goes RED)" || bad "10v9 walk mutant on .git rc=$rc (want 10)"
 GR="$tmp/repo-with-root"; git init -q "$GR"; mkdir -p "$GR/src" "$GR/vault"
+git -C "$GR" -c user.name=t -c user.email=t@example.com -c core.hooksPath=/dev/null -c commit.gpgsign=false commit -q --allow-empty -m init
+git -C "$GR" worktree add -q "$tmp/gr-wt" -b gr-wt; mkdir -p "$tmp/gr-wt/src"
 H_R="$tmp/home-holds-root"; mkdir -p "$H_R/.config/claude-codex"; printf '%s\n' "$GR/vault" > "$H_R/.config/claude-codex/phi-roots"
 sal_rc "10w a repo that holds a listed root is marked from a directory beside the root" 0 "$H_R" "$GR/src"
-mkc s_holds_dir "$GR/src" '# brief' "$VAGUE" "$DIR_LINE" '' '> **Contract:** y' "$RES"
-mkc s_holds_words "$GR/src" '# brief' "$VAGUE" "$SALUS_LINE" '' '> **Contract:** y' "$RES"
+mkc s_holds_dir "$tmp/gr-wt/src" '# brief' "$VAGUE" "$DIR_LINE" '' '> **Contract:** y' "$RES"
+mkc s_holds_words "$tmp/gr-wt/src" '# brief' "$VAGUE" "$SALUS_LINE" '' '> **Contract:** y' "$RES"
 rc=0; HOME="$H_R" bash "$LINT" "$tmp/s_holds_dir.md" >/dev/null 2>&1 || rc=$?
 [ "$rc" = 3 ] && ok "10w2 the lint refuses the directive there" || bad "10w2 lint on a repo holding a listed root rc=$rc"
 rc=0; HOME="$H_R" bash "$LINT" "$tmp/s_holds_words.md" >/dev/null 2>&1 || rc=$?
@@ -1003,6 +1019,104 @@ case "$err" in *completes*) ok "13h the refusal names completes" ;; *) bad "13h 
 mkct ct_hy_sn_judge yes "$SHIP_N"
 rc=0; bash "$LINT" --judge "$tmp/ct_hy_sn_judge.md" >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 0 ] && ok "13i a judge brief is not held to the completes rule" || bad "13i judge brief rc=$rc"
+
+# 14. A worker brief whose resume_cwd is inside a primary checkout is refused (exit 3, which no flag clears).
+mk_prim() { # dir: a primary checkout on main holding one committed file `tracked`
+    git init -q -b main "$1" && printf 'x\n' > "$1/tracked" && git -C "$1" add tracked \
+        && git -C "$1" -c user.name=t -c user.email=t@example.com -c core.hooksPath=/dev/null -c commit.gpgsign=false commit -q -m base
+}
+CW_PRIM="$tmp/cwd-primary"; mk_prim "$CW_PRIM" || exit 1
+mkdir -p "$CW_PRIM/scripts/handover/chief-kit"; : > "$CW_PRIM/scripts/handover/chief-kit/headed-arm-worker.sh"
+CW_PRIM_P="$(cd -P "$CW_PRIM" && pwd -P)"
+CW_APRIM="$tmp/cwd-adopted-primary"; git init -q "$CW_APRIM"
+CW_SW="$tmp/cwd-single-writer"; mk_prim "$CW_SW" || exit 1; : > "$CW_SW/.single-writer"
+mkdir -p "$tmp/plain"; printf 'x\n' > "$tmp/plain/tracked"
+PRIM_L1="resume_cwd '$CW_PRIM' is inside the primary checkout $CW_PRIM_P (its .git is a directory and it has no .single-writer file)"
+lint_run() { # args...: run the lint; its stderr lands in err, its rc in lint_rc
+    lint_rc=0; err="$(bash "$LINT" "$@" 2>&1 >/dev/null)" || lint_rc=$?
+}
+mkc p_prim "$CW_PRIM" '# brief' "$VAGUE" "$DIR_LINE" '' '> **Contract:** y' "$RES"
+lint_run "$tmp/p_prim.md"
+{ [ "$lint_rc" -eq 3 ] && [ "$(wc -l <<< "$err")" -eq 2 ] && grep -Fq "$PRIM_L1" <<< "$(sed -n 1p <<< "$err")" \
+    && [ "$(sed -n 2p <<< "$err" | cut -c1-33)" = 'fix: give every worker a worktree' ] && grep -Fq 'worktree.sh new <type>/<slug> --no-prune' <<< "$(sed -n 2p <<< "$err")"; } \
+    && ok "14a a worker brief whose resume_cwd is a primary checkout is refused, exit 3, in two lines" || bad "14a primary resume_cwd (rc=$lint_rc): $err"
+lint_run --core-only "$tmp/p_prim.md"
+{ [ "$lint_rc" -eq 3 ] && grep -Fq "$PRIM_L1" <<< "$err"; } && ok "14b --core-only does not clear it" || bad "14b --core-only on a primary resume_cwd (rc=$lint_rc): $err"
+rc=0; out="$(run_worker "$tmp/p_prim.md" --profile worker-impl --no-prior-art-check)" || rc=$?
+{ [ "$rc" -eq 2 ] && grep -Fq 'primary checkout' <<< "$out" && ! grep -Fq 'no-prior-art-check' <<< "$out"; } \
+    && ok "14c the launcher with --no-prior-art-check refuses it and names no flag" || bad "14c launcher on a primary resume_cwd (rc=$rc): $out"
+mkc p_prim_sub "$CW_PRIM/scripts" '# brief' "$VAGUE" "$DIR_LINE" '' '> **Contract:** y' "$RES"
+lint_run "$tmp/p_prim_sub.md"
+{ [ "$lint_rc" -eq 3 ] && grep -Fq "is inside the primary checkout $CW_PRIM_P (" <<< "$err"; } && ok "14d a subdirectory of a primary checkout is refused, naming the root" || bad "14d primary subdirectory (rc=$lint_rc): $err"
+ln -s "$CW_PRIM" "$tmp/prim-link"
+mkc p_prim_link "$tmp/prim-link" '# brief' "$VAGUE" "$DIR_LINE" '' '> **Contract:** y' "$RES"
+lint_run "$tmp/p_prim_link.md"
+{ [ "$lint_rc" -eq 3 ] && grep -Fq "is inside the primary checkout $CW_PRIM_P (" <<< "$err"; } && ok "14e a symlink to a primary checkout is refused, naming the real root" || bad "14e symlinked primary (rc=$lint_rc): $err"
+mkc p_prim_rel "." '# brief' "$VAGUE" "$DIR_LINE" '' '> **Contract:** y' "$RES"
+rc=0; (cd "$CW_PRIM" && bash "$LINT" --core-only "$tmp/p_prim_rel.md") >/dev/null 2>&1 || rc=$?
+[ "$rc" = 3 ] && ok "14f a relative resume_cwd that resolves into a primary checkout is refused under --core-only" || bad "14f relative primary resume_cwd rc=$rc"
+mkc p_prim_ran "$CW_PRIM" '# brief' "$VAGUE" "$DIR_LINE" '' '> **Contract:** y' "$RES" '- 10:00 LIVE — started'
+expect_rc "14g a resumed worker doc in a primary checkout is refused too" 3 "$tmp/p_prim_ran.md"
+mkc p_aprim "$CW_APRIM" '# brief' "$VAGUE" "$ADAPTER_LINE" '' '> **Contract:** y' "$RES"
+expect_rc "14h an adopted repo's primary checkout is refused" 3 "$tmp/p_aprim.md"
+i_skip=""; s_root="$(cd -P "$tmp" && pwd -P)/"; h_root="$(cd -P "$HOME" 2>/dev/null && pwd -P)"
+case "$s_root" in */claude-"$(id -u)"/*/*/scratchpad/*|"$h_root"/.himmel/scratch/*) i_skip="the suite tmp $tmp sits where the guard exempts a scratch clone" ;; esac
+[ "$tmp_in_repo" -eq 1 ] && i_skip="the suite tmp $tmp is inside a git repo"
+if [ -n "$i_skip" ]; then
+    printf 'SKIP 14i (%s)\n' "$i_skip"
+else
+    i_bad=""; n=0
+    for D in "$CW_PRIM" "$CW_HIM" "$tmp/plain" "$CW_SW"; do
+        n=$((n + 1)); mkc "p_agree$n" "$D" '# brief' "$VAGUE" "$DIR_LINE" '' '> **Contract:** y' "$RES"
+        l_rc=0; bash "$LINT" "$tmp/p_agree$n.md" >/dev/null 2>&1 || l_rc=$?
+        g_rc=0; (unset EDIT_ON_MAIN_OK; . "$HERE/../../guardrails/lib.sh"; main_checkout_verdict "$(cd -P "$D" && pwd -P)/tracked" >/dev/null) || g_rc=$?
+        g_deny=0; { [ "$g_rc" -eq 1 ] || [ "$g_rc" -eq 2 ]; } && g_deny=1
+        l_deny=0; [ "$l_rc" -eq 3 ] && l_deny=1
+        [ "$g_deny" -eq "$l_deny" ] || i_bad="$i_bad $D(lint=$l_rc guard=$g_rc)"
+    done
+    [ -z "$i_bad" ] && ok "14i the lint refuses exactly where main_checkout_verdict refuses a write to the tracked file" || bad "14i lint and guard disagree:$i_bad"
+fi
+mkdir -p "$CW_PRIM/.claude/worktrees/fix+gone"
+mkc p_gone "$CW_PRIM/.claude/worktrees/fix+gone" '# brief' "$VAGUE" "$DIR_LINE" '' '> **Contract:** y' "$RES"
+lint_run "$tmp/p_gone.md"
+{ [ "$lint_rc" -eq 3 ] && grep -Fq "is inside the primary checkout $CW_PRIM_P (" <<< "$err"; } && ok "14j a leftover worktree directory that is no longer a worktree is refused as the primary" || bad "14j leftover worktree directory (rc=$lint_rc): $err"
+if [ "$(id -u)" -eq 0 ]; then
+    printf 'SKIP 14k (root ignores the directory mode)\n'
+elif [ "$tmp_in_repo" -eq 1 ]; then
+    printf 'SKIP 14k (the suite tmp %s is inside a git repo, so the salus refusal fires first)\n' "$tmp"
+else
+    NX="$tmp/noexec"; mkdir -p "$NX"
+    mkc p_noexec "$NX" '# brief' "$VAGUE" "$DIR_LINE" '' '> **Contract:** y' "$RES"
+    chmod a-x "$NX"; lint_run "$tmp/p_noexec.md"; chmod u+x "$NX"
+    { [ "$lint_rc" -eq 3 ] && grep -Fq 'salus_marked.py primary exited 1' <<< "$err"; } && ok "14k a resume_cwd without search permission cannot be classified and is refused" || bad "14k no-search directory (rc=$lint_rc): $err"
+fi
+{ [ -f "$CW_HIM/.git" ] && bash "$LINT" "$tmp/filled.md" >/dev/null 2>&1; } && ok "14N1 the 2a brief passes with its resume_cwd a linked worktree" || bad "14N1 the 2a brief on a linked worktree"
+CW_SALP="$tmp/cwd-salus-primary"; git init -q "$CW_SALP"; : > "$CW_SALP/.salus"
+mkc p_salp "$CW_SALP" '# brief' "$VAGUE" "$DIR_LINE" '' '> **Contract:** y' "$RES"
+lint_run "$tmp/p_salp.md"
+{ [ "$lint_rc" -eq 3 ] && grep -Fq 'is salus-marked' <<< "$err" && ! grep -Fq 'primary checkout' <<< "$err"; } && ok "14N2 a salus-marked primary that names a search gets the salus refusal, not the primary one" || bad "14N2 salus primary (rc=$lint_rc): $err"
+if [ "$tmp_in_repo" -eq 1 ]; then
+    printf 'SKIP 14N3 (the suite tmp %s is inside a git repo)\n' "$tmp"
+else
+    mkc p_plain "$tmp/plain" '# brief' "$VAGUE" "$DIR_LINE" '' '> **Contract:** y' "$RES"
+    expect_rc "14N3 a plain directory in no repo passes" 0 "$tmp/p_plain.md"
+fi
+mkc p_unmade "$CW_PRIM/.claude/worktrees/fix+x" '# brief' "$VAGUE" "$DIR_LINE" '' '> **Contract:** y' "$RES"
+expect_rc "14N4 a worktree path not made yet under a primary passes (the launcher's shape check owns it)" 0 "$tmp/p_unmade.md"
+mkc p_sw "$CW_SW" '# brief' "$VAGUE" "$DIR_LINE" '' '> **Contract:** y' "$RES"
+expect_rc "14N5 a primary holding a .single-writer file passes" 0 "$tmp/p_sw.md"
+rc=0; bash "$LINT" --judge "$tmp/p_prim.md" >/dev/null 2>&1 || rc=$?
+[ "$rc" = 0 ] && ok "14N6a a judge brief is not held to it" || bad "14N6a --judge on a primary resume_cwd rc=$rc"
+mkc p_prim_nc "$CW_PRIM" '# brief' "$VAGUE" "$DIR_LINE" '' '> **Why:** x'
+expect_rc "14N6b a doc with no Contract line (the lane canary) is not held to it" 0 "$tmp/p_prim_nc.md"
+{ [ -f "$CW_ADP/.git" ] && bash "$LINT" "$tmp/s_adapter.md" >/dev/null 2>&1; } && ok "14N7 the 9t adopter brief passes with its resume_cwd a linked worktree" || bad "14N7 the 9t adopter brief on a linked worktree"
+git init -q --separate-git-dir "$tmp/sep.git" "$tmp/sepwt"
+mkc p_sep "$tmp/sepwt" '# brief' "$VAGUE" "$ADAPTER_LINE" '' '> **Contract:** y' "$RES"
+expect_rc "14N8 a separate-git-dir checkout (its .git a file) passes" 0 "$tmp/p_sep.md"
+FAKEBIN_P="$tmp/fakebin-primary"; mkdir -p "$FAKEBIN_P"
+printf '#!/bin/sh\ncase "$*" in *"salus_marked.py primary"*) exit 7 ;; esac\nexec %s "$@"\n' "$REAL_PY" > "$FAKEBIN_P/python3"; chmod +x "$FAKEBIN_P/python3"
+lint_rc=0; err="$(PATH="$FAKEBIN_P:$PATH" bash "$LINT" "$tmp/p_prim.md" 2>&1 >/dev/null)" || lint_rc=$?
+{ [ "$lint_rc" -eq 3 ] && grep -Fq 'salus_marked.py primary exited 7' <<< "$err"; } && ok "14N9 a primary classifier that crashes is refused, naming it" || bad "14N9 crashing primary classifier (rc=$lint_rc): $err"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

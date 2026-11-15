@@ -22,7 +22,8 @@
 # --judge skips it: a judge brief writes nothing, so no spec stands behind it.
 #
 # Exit 0 pass, 1 fail (reason on stderr), 2 usage, 3 refusal no flag clears: the core gate, the bucket rule, a salus-marked
-# brief that names a search, a resume_cwd the classifier cannot answer for, or front matter that does not parse as YAML.
+# brief that names a search, a resume_cwd the classifier cannot answer for, front matter that does not parse as YAML, or a
+# worker brief whose resume_cwd is in a primary checkout.
 set -u
 
 core_only=0
@@ -520,6 +521,28 @@ if [ -n "$(worker_description_field "$doc")" ] && ! worker_doc_has_run "$doc"; t
         printf '%s\n' "$fm_out" >&2
         exit 3
     fi
+fi
+
+# A worker brief (a `> **Contract:**` line, not --judge, fresh or resumed) names a worktree as its resume_cwd, never a
+# primary checkout, where the single-writer guard refuses the worker's writes. salus_marked.py primary answers by stat
+# alone, with the guard's own test (the nearest .git is a directory and there is no .single-writer file), and prints the
+# root. Like the two refusals above it runs before the --core-only exit and exits 3, so no flag clears it; a classifier
+# that answers neither yes nor no refuses too. The refusal is two lines, the problem and the fix, for the launcher's tail.
+if [ "$judge" -eq 0 ] && [ -n "$cwd" ] && grep -Eq '^> \*\*Contract:\*\*' "$doc"; then
+    rc=0; prim_root="$(python3 -I "$(dirname "$0")/salus_marked.py" primary "$cwd" 2>/dev/null)" || rc=$?  # swallow-ok: rc is kept and any answer but 0 or 10 refuses below
+    case "$rc" in
+        0)
+            new_wt="$(cd "$(dirname "$0")/../.." && pwd)/_new-worktree.sh"
+            printf '%s\n' "brief-lint: $doc: resume_cwd '$cwd' is inside the primary checkout $prim_root (its .git is a directory and it has no .single-writer file): a worker brief's resume_cwd names a worktree, never a primary checkout" >&2
+            printf '%s\n' "fix: give every worker a worktree, a leg that writes no repo file included: from $prim_root run bash scripts/worktree.sh new <type>/<slug> --no-prune (in a repo without that script: bash $new_wt <type>/<slug> --no-install), then set resume_cwd to the worktree's absolute path" >&2
+            exit 3
+            ;;
+        10) ;;
+        *)
+            echo "brief-lint: $doc: cannot classify resume_cwd '$cwd' (salus_marked.py primary exited $rc): refusing rather than reading it as not a primary checkout" >&2
+            exit 3
+            ;;
+    esac
 fi
 
 if [ "$core_only" -eq 1 ]; then
