@@ -42,6 +42,7 @@ chmod +x "$WORK/wt.sh"
 export WT_LOG="$WORK/wt.log" GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh"
 export GEN_BRIEFS_MIRROR="$WORK/mirror"; mkdir -p "$GEN_BRIEFS_MIRROR"  # the proof check reads this fixture mirror, never the real one
 export TICKET_STATUS_STATE_DIR="$WORK/state-empty"  # the partial-merge block reads status-events.jsonl here, never the real one
+mkdir -p "$WORK/state-empty"; : > "$WORK/state-empty/status-events.jsonl"  # an empty log: a proof worker reads the log, and a missing one is the need unknown
 printf '#!/usr/bin/env bash\nexit 1\n' > "$WORK/gh-down.sh"; chmod +x "$WORK/gh-down.sh"
 export GEN_BRIEFS_GH_CMD="$WORK/gh-down.sh"
 export GEN_BRIEFS_NO_WT_CHECK=1 # the older rows use a fixture --repo with no real worktrees; the bucket and worktree-guard rows unset it
@@ -813,7 +814,7 @@ for ok in 'Close WRAPPED chief windows' 'Stop worker windows piling up' 'Spread 
     [ "$rc" = 0 ] && pl_complete && pass "'$ok' is chief wording, not the OS" || fail "'$ok' refused rc=$rc: $(cat "$WORK/pl.err")"
 done
 # Fail closed: with the pattern file gone the script exits 2 rather than briefing unfiltered.
-NF="$WORK/nopat"; mkdir -p "$NF"; cp "$SUT" "$NF/gen-briefs.py"; cp "$HERE/salus_marked.py" "$HERE/holds.py" "$NF/"
+NF="$WORK/nopat"; mkdir -p "$NF"; cp "$SUT" "$NF/gen-briefs.py"; cp "$HERE/salus_marked.py" "$HERE/holds.py" "$HERE/proof_staging.py" "$NF/"
 python3 "$NF/gen-briefs.py" "$WORK/workers.json" --base 4ccb59d --chief BZ --bucket "$NF/out" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && pass "a missing pattern file exits 2" || fail "missing pattern file rc=$rc"
 pl_gen title 'Remove runtime Windows compatibility'; rc=$?
@@ -884,7 +885,7 @@ rc=0; (unset GEN_BRIEFS_NO_WT_CHECK; python3 "$SUT" "$WORK/workers.json" --base 
 # adopter worktree as WORKER_SESSION_REPO (headed-arm.sh starts the session in that dir) ---
 KIT="$WORK/kit"; mkdir -p "$KIT/scripts/handover/chief-kit"
 mkdir -p "$KIT/scripts/ci"
-cp "$SUT" "$HERE/salus_marked.py" "$HERE/holds.py" "$HERE/platform-dropped.re" "$HERE/size-override.sh" "$KIT/scripts/handover/chief-kit/"
+cp "$SUT" "$HERE/salus_marked.py" "$HERE/holds.py" "$HERE/proof_staging.py" "$HERE/platform-dropped.re" "$HERE/size-override.sh" "$KIT/scripts/handover/chief-kit/"
 cp "$HERE/../../ci/ci-trust-paths.txt" "$HERE/../../ci/pr-size-bands.tsv" "$KIT/scripts/ci/"
 mkdir -p "$KIT/scripts/lib"; cp "$HERE/../../lib/flags.py" "$HERE/../../lib/flags.tsv" "$HERE/../../lib/go-gate.sh" "$HERE/../../lib/handover-path.sh" "$KIT/scripts/lib/"
 cp "$HERE/brief-lint.sh" "$KIT/scripts/handover/chief-kit/"; cp -R "$HERE/../../lib/." "$KIT/scripts/lib/"
@@ -1641,7 +1642,7 @@ srbad nograntkey 'del w[0]["series_grant"]' "decision"
 srbad compact 'w[0]["context_guard"] = "compact"' "compact mode"
 srbad fifth 'w += [dict(w[2], label="N93%d" % i, keys=["HIMMEL-930%d" % i], slug="sr-x%d" % i, branch="feat/himmel-930%d-sr-x%d" % (i, i)) for i in (4, 5)]; w[0]["series"] = ["N932", "N933", "N934", "N935"]' "at most 4"
 srbad unknown 'w[0]["series"] = ["N932", "N999"]' "N999"
-srbad proofmember 'w[2]["kind"] = "proof"' "series names 'N933'"
+srbad proofmember 'w[2]["kind"] = "proof"; w[2]["staged"] = True' "series names 'N933'"
 srbad dupkey 'w[2]["keys"] = ["HIMMEL-9302"]' "more than once"
 
 # a manifest outside the bucket would hide the ledger from next-dispatchable.sh, which reads series/ beside the manifest
@@ -2251,7 +2252,7 @@ has "S8b control: GEN_BRIEFS_GH_CMD set still wins and answers" "$s8o" "REM='S5 
 [ ! -s "$S8LOG" ] && pass "S8b control: GEN_BRIEFS_GH_CMD set leaves the two-token stub uncalled" || fail "S8b control: the stub was called: $(cat "$S8LOG")"
 [ "$(cat "$WORK/s8quiet" 2>/dev/null)" = 1 ] && pass "S8b control: GEN_BRIEFS_GH_CMD set runs its gh child with GH_READ_QUIET=1" || fail "S8b control: GH_READ_QUIET not set: $(cat "$WORK/s8quiet" 2>/dev/null)"
 mkdir -p "$WORK/s8 sp/scripts/handover/chief-kit" "$WORK/s8 sp/scripts/lib"
-cp "$HERE/gen-briefs.py" "$HERE/salus_marked.py" "$HERE/holds.py" "$HERE/platform-dropped.re" "$WORK/s8 sp/scripts/handover/chief-kit/"
+cp "$HERE/gen-briefs.py" "$HERE/salus_marked.py" "$HERE/holds.py" "$HERE/proof_staging.py" "$HERE/platform-dropped.re" "$WORK/s8 sp/scripts/handover/chief-kit/"
 cp "$HERE/../../lib/gh-read.sh" "$HERE/../../lib/timeout-bin.sh" "$HERE/../../lib/load-dotenv.sh" "$HERE/../../lib/env_alias.py" "$HERE/../../lib/pr_remainder.py" "$WORK/s8 sp/scripts/lib/"
 : > "$S8LOG"
 s8o="$("${S8ENV[@]}" GH_STUB_MAINFAIL=rate python3 -I "$WORK/s8reads.py" "$WORK/s8 sp/scripts/handover/chief-kit" "$REPO" 2>&1)"
@@ -2403,6 +2404,89 @@ if '\n'.join(out) != text:
 PFPY
 o="$(python3 -I "$WORK/pf5.py" "$HERE/../../../docs/handover/worker-brief-template.md" "$PB" "$PB" 'post the verdict with jira comment' '' "$PF_KEYS" 2>&1)"; rc=$?
 [ "$rc" = 0 ] && pass "P5 the template's Proof leg Contract equals the rendered Contract" || fail "P5 parity rc=$rc: $o"
+
+# Proof staging (rows G1-G10): a kind proof worker whose keys need staging is refused until the entry carries "staged": true.
+# The DoD and Proof texts are a real ticket's (the guest-credential proof), copied verbatim from the Jira mirror.
+DOD_9556='- A grouping table of the denials, each group marked allowed or kept, with the reason.
+- In a VM session, a worker merges a throwaway trust-path PR on a valid go.sh GO file with no classifier refusal.
+- In a VM session, a kept-refused shape still refuses.
+- docs/setup/settings-template.json carries the change.'
+PROOF_9556='RED then GREEN on the DoD rows. A settings-template row in the existing settings suite fails on main at the base and passes at the head once docs/setup/settings-template.json carries the allowed shapes. The grouping table (each group marked allowed or kept, with its reason) is in the PR. The two VM rows are run on a test VM with the exact commands the PR lists: a worker merges a throwaway trust-path PR on a valid go.sh GO file with no classifier refusal, and one kept-refused shape still refuses.'
+gmk() { # <KEY> <dod> <proof> [last line]: a mirror ticket with the DoD and Proof sections given
+    printf -- '---\nkey: "%s"\nstatus: "In Progress"\ntype: "Task"\npriority: "Medium"\nlabels: []\n---\n# %s: t\n\n## Description\n\nWrites: none (chief-run proof, no code)\n\nDoD\n%s\n\nProof\n%s\n%s\n\n## Comments\n\nnone\n' "$1" "$1" "$2" "$3" "${4:-}" > "$CG/mirror/$1.md"
+}
+gmk HIMMEL-9811 "$DOD_9556" "$PROOF_9556"
+gmk HIMMEL-9812 "$DOD_9556" "$PROOF_9556" "Staging: none"
+gmk HIMMEL-9813 "- the row is green" "A RED row that fails before the change."
+gmk HIMMEL-9814 "- the row is green" "A RED row that fails before the change."
+gmk HIMMEL-9815 "$DOD_9556" "$PROOF_9556" "Staging: none"
+gmk HIMMEL-9816 "- the row is green" "A RED row that fails before the change."
+mkdir -p "$WORK/g-state" "$WORK/g-state-empty"
+for pair in 9813:7001 9815:7002 9816:7003; do
+    printf '{"ts":"t","event":"merge","key":"HIMMEL-%s","pr":"%s","head":"h%s","contract":"no","result":"noop"}\n' "${pair%%:*}" "${pair##*:}" "${pair##*:}" >> "$WORK/g-state/status-events.jsonl"
+done
+cat > "$WORK/g-gh.sh" <<'EOF'
+#!/usr/bin/env bash
+case "$3" in
+    7001) printf '## Ticket coverage\n\n- a throwaway PR run: owed \xe2\x86\x92 chief by 2026-11-25\n' ;;
+    7002) printf 'Remaining: S3 (chief-run, no code)\n\n## Ticket coverage\n\n- a throwaway PR run: owed \xe2\x86\x92 chief by 2026-11-25\n' ;;
+    *) exit 1 ;;
+esac
+EOF
+chmod +x "$WORK/g-gh.sh"
+gnone() { [ -z "$(cg_brief "$1")" ]; }
+
+pfmk g1 "w['keys']=['HIMMEL-9811']"
+o="$(cgrun g1)"; rc=$?
+[ "$rc" = 1 ] && pass "G1 a proof worker whose key needs staging is refused without staged" || fail "G1 rc=$rc: $o"
+has "G1 the refusal names guest-credential" "$o" "guest-credential"
+has "G1 and throwaway-repo" "$o" "throwaway-repo"
+has "G1 and go-file" "$o" "go-file"
+gnone g1 && pass "G1 no brief is written" || fail "G1 a brief was written"
+pfmk g2 "w['keys']=['HIMMEL-9811']; w['staged']=True"
+o="$(cgrun g2)"; rc=$?
+[ "$rc" = 0 ] && pass "G2 the same worker with staged: true generates" || fail "G2 rc=$rc: $o"
+G2T="$(cat "$(cg_brief g2)" 2>/dev/null)"
+has "G2 the brief carries the Staging needed before launch block" "$G2T" "> **Staging needed before launch:**"
+has "G2 naming guest-credential" "$G2T" "HIMMEL-9811 guest-credential (operator,"
+has "G2 and throwaway-repo" "$G2T" "HIMMEL-9811 throwaway-repo (operator,"
+has "G2 and go-file" "$G2T" 'HIMMEL-9811 go-file (chief, "GO file")'
+pfmk g3a "w['keys']=['HIMMEL-9814']; del w['kind']; w['staged']=True; w['commit']='docs(x): [HIMMEL-9814] f'; w['live_test']={'none':'x'}"
+o="$(cgrun g3a)"; rc=$?
+[ "$rc" = 1 ] && has "G3 staged without kind proof is refused" "$o" "staged applies to kind proof only" || fail "G3a rc=$rc: $o"
+pfmk g3b "w['keys']=['HIMMEL-9814']; w['staged']='yes'"
+o="$(cgrun g3b)"; rc=$?
+[ "$rc" = 1 ] && has "G3 a non-boolean staged is refused naming its type" "$o" "staged must be the JSON boolean true or false, not a str" || fail "G3b rc=$rc: $o"
+pfmk g4 "w['keys']=['HIMMEL-9812']"
+o="$(cgrun g4)"; rc=$?
+[ "$rc" = 0 ] && pass "G4 Staging: none and no staged: the brief is written" || fail "G4 rc=$rc: $o"
+lacks "G4 and carries no staging block" "$(cat "$(cg_brief g4)" 2>/dev/null)" "Staging needed before launch"
+pfmk g5 "w['keys']=['HIMMEL-9813']"
+o="$(TICKET_STATUS_STATE_DIR="$WORK/g-state" GEN_BRIEFS_GH_CMD="$WORK/g-gh.sh" cgrun g5)"; rc=$?
+[ "$rc" = 1 ] && pass "G5 a need only in a chief-owed text refuses an unstaged proof worker" || fail "G5 rc=$rc: $o"
+has "G5 and names throwaway-repo" "$o" "HIMMEL-9813 throwaway-repo"
+pfmk g6 "w['keys']=['HIMMEL-9899']"
+o="$(cgrun g6)"; rc=$?
+[ "$rc" = 1 ] && has "G6 a key absent from the mirror is refused as unknown" "$o" "unknown (mirror file absent)" || fail "G6 rc=$rc: $o"
+pfmk g7 "w['keys']=['HIMMEL-9814']"
+o="$(TICKET_STATUS_STATE_DIR="$WORK/pm-state-bad" cgrun g7)"; rc=$?
+[ "$rc" = 1 ] && has "G7 an unreadable status log is refused as unknown" "$o" "unknown (status log unreadable)" || fail "G7 rc=$rc: $o"
+o="$(TICKET_STATUS_STATE_DIR="$WORK/g-state-empty" cgrun g7)"; rc=$?
+[ "$rc" = 1 ] && has "G7b a missing status log is refused as unknown for a proof worker" "$o" "unknown (status log missing)" || fail "G7b rc=$rc: $o"
+cg_workers g7n HIMMEL-9814 scripts/x/a.sh ''
+o="$(TICKET_STATUS_STATE_DIR="$WORK/g-state-empty" cgrun g7n)"; rc=$?
+[ "$rc" = 0 ] && pass "G7b the same missing log does not refuse a non-proof worker" || fail "G7b non-proof rc=$rc: $o"
+pfmk g8 "w['keys']=['HIMMEL-9816']"
+o="$(TICKET_STATUS_STATE_DIR="$WORK/g-state" GEN_BRIEFS_GH_CMD="$WORK/g-gh.sh" cgrun g8)"; rc=$?
+[ "$rc" = 1 ] && has "G8 an unread PR body is refused as unknown" "$o" "unknown (PR #7003 body unread)" || fail "G8 rc=$rc: $o"
+pfmk g9 "w['keys']=['HIMMEL-9814']; w['staged']=True"
+o="$(cgrun g9)"; rc=$?
+[ "$rc" = 0 ] && pass "G9 staged: true on a key with no need writes the brief" || fail "G9 rc=$rc: $o"
+has "G9 and warns" "$o" "staged: true but no staging need found"
+pfmk g10 "w['keys']=['HIMMEL-9815']"
+o="$(TICKET_STATUS_STATE_DIR="$WORK/g-state" GEN_BRIEFS_GH_CMD="$WORK/g-gh.sh" cgrun g10)"; rc=$?
+G10_NEEDS="$(cat "$HERE/fixtures/proof-staging-expected.txt")"
+[ "$rc" = 1 ] && has "G10 the refusal names exactly the needs next-dispatchable lists for the same inputs (shared expected list)" "$o" "needs staging before a proof leg: HIMMEL-9815 $G10_NEEDS (operator, \"throwaway PR\"); stage each" || fail "G10 rc=$rc: $o"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

@@ -233,4 +233,64 @@ lacks "U9a: and lists no row from it" "$out_u9" "RESUME	HIMMEL-311"
 has "U9b: an owed answer without the fields leaves the PR unread" "$out_u9" "NEEDS-CHIEF-NOTE HIMMEL-312: merged PR #6019 body could not be read"
 lacks "U9b: and prints no OWED line from it" "$out_u9" "OWED HIMMEL-312"
 
+# Proof staging on OWED lines (rows S3, S5, S7): the real reader, so a coverage line reaches the listing as a chief-owed text.
+# The DoD and Proof texts are two real tickets' (the guest-credential proof and the helper-update proof), copied from the Jira mirror; the Ticket coverage section of PR 5368 is verbatim.
+mkd() { # <key> <title> <description>
+    printf -- '---\nkey: "%s"\ntype: "Task"\nstatus: "In Progress"\nstatusCategory: "x"\npriority: "Medium"\nlabels: []\nfixVersions: []\nparent: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# %s: %s\n\n## Description\n\n%s\n' "$1" "$1" "$2" "$3" > "$M/$1.md"
+}
+D9732='Edit scripts/lib/o21.sh.
+
+DoD
+- With a stale installed helper, an operator go code from Telegram re-installs it; stale_files then reports nothing.
+- With no go code, or a checkout not matching a verified commit, the op refuses and the installed files are unchanged.
+
+Proof
+VM e2e: install an old helper, pull a newer checkout, approve over the test bot; before stale_files lists files, after it lists none. Negative controls: no go code; a locally modified checkout.'
+D9556='Edit scripts/lib/o22.sh.
+
+DoD
+- A grouping table of the denials, each group marked allowed or kept, with the reason.
+- In a VM session, a worker merges a throwaway trust-path PR on a valid go.sh GO file with no classifier refusal.
+- In a VM session, a kept-refused shape still refuses.
+- docs/setup/settings-template.json carries the change.
+
+Proof
+RED then GREEN on the DoD rows. The two VM rows are run on a test VM with the exact commands the PR lists: a worker merges a throwaway trust-path PR on a valid go.sh GO file with no classifier refusal, and one kept-refused shape still refuses.'
+DPLAIN='Edit scripts/lib/o23.sh.
+
+DoD
+- the row is green
+
+Proof
+- a RED row that fails before the change'
+mkd HIMMEL-321 "owed lines with a read-secrets staging line" "$D9732
+Staging: none, read-secrets"
+mkd HIMMEL-322 "every owed line is the operator's" "$D9556"
+mkd HIMMEL-323 "earliest owed is the operator's, a later one the chief's" "$DPLAIN"
+cat > "$PR_BODY_DIR/6101" <<'EOF'
+## Ticket coverage
+
+- DoD 1, an operator go code from Telegram re-installs a stale helper and `stale_files` then reports nothing: done
+- DoD 2, no go code or a checkout not matching a verified commit refuses and leaves the installed files unchanged: done
+- Plan 3, document it next to the installer in the afk-sudo doc: done
+- S3 VM e2e proof (negative controls N1 and N2 plus the positive run; it sets `helper_update.repo`, `helper_update.checkout` and `helper_update.enabled` in the VM's `/etc/himmel/afk-sudo.json` before it runs): owed → chief by 2026-11-28
+- One-time station step after S3 passes (`sudoedit /etc/himmel/afk-sudo.json`, set `helper_update.repo` to the himmel repo's owner/name, `helper_update.checkout` to the station checkout's absolute path, `helper_update.enabled` to true; the op reaches the station with the next `sudo bash scripts/lib/afk-sudo/install.sh --user <login>`): owed → operator by 2026-11-28
+- Operator notice for a superseded verdict (needs `afk_sudo.py`, outside this PR's Writes): owed → chief by 2026-11-28
+
+completes-ticket: no (the ticket stays In Progress for S3).
+EOF
+printf '## Ticket coverage\n\n- VM row 1, a worker runs the check: owed → operator by 2026-11-20\n' > "$PR_BODY_DIR/6102"
+printf '## Ticket coverage\n\n- a plain step: owed → operator by 2026-11-18\n' > "$PR_BODY_DIR/6103"
+printf '## Ticket coverage\n\n- a throwaway PR run: owed → chief by 2026-11-25\n' > "$PR_BODY_DIR/6104"
+for pair in 321:6101 322:6102 323:6103 323:6104; do
+    printf '{"ts":"t","event":"merge","key":"HIMMEL-%s","pr":"%s","contract":"no","result":"noop"}\n' "${pair%%:*}" "${pair##*:}" >> "$STATE/status-events.jsonl"
+done
+out_st="$(READER_OVERRIDE="$REAL_READER" run)"
+orow() { printf '%s\n' "$out_st" | grep "^OWED HIMMEL-$1:" || true; }
+[ "$(orow 321 | awk '{print $NF}')" = "proof-staging=read-secrets" ] && pass "S3: an owed line whose ticket has Staging: none, read-secrets ends in proof-staging=read-secrets" || fail "S3: the OWED line is '$(orow 321)'"
+has "S3: and it names the chief's owed step" "$(orow 321)" "owes chief by 2026-11-28 proof-staging=read-secrets"
+lacks "S5: an owed line with only operator-owed steps carries no staging field" "$(orow 322)" "proof-staging"
+has "S5: and is still an OWED line" "$out_st" "OWED HIMMEL-322: merged PR #6102 owes operator by 2026-11-20"
+has "S7: a later chief-owed throwaway PR line tags the OWED line whose earliest part is the operator's" "$(orow 323)" "owes operator by 2026-11-18 proof-staging=throwaway-repo"
+
 if [ "$fails" -eq 0 ]; then echo "next-dispatchable-owed: all rows passed"; else echo "next-dispatchable-owed: $fails row(s) failed"; exit 1; fi

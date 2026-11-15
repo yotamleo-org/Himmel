@@ -142,9 +142,13 @@
 # LOCAL-NATIVE prints LOCAL; HOOK-BYPASS prints LOCAL with `hook` (the worker needs
 # the hook-integrity bypass launch); BLOCKED is dropped. --no-classify prints
 # every survivor as LOCAL? (no Jira or gh read for the class). A row that writes nothing ends in `proof` and never carries `hook`.
+# When its proof needs a step only the operator or the chief can stage (scripts/handover/chief-kit/proof_staging.py: a credential,
+# a token, a read-secrets relaunch, a bypass launch, a go code, a throwaway repo, a GO file) the last field is `proof-staging=<needs>`
+# instead of `proof`, and an `OWED` line with a chief-owed step ends ` proof-staging=<needs>`; --why prints
+# `# staging <KEY> <need> (<who>): "<words>"`. An input it cannot read is the need `unknown`.
 #
 # Output, one line per ticket, tab-separated:
-#   <LOCAL|CLOUD> <KEY> <priority> <fixVersion|-> <title> files=<a,b|->  [hook|proof]
+#   <LOCAL|CLOUD> <KEY> <priority> <fixVersion|-> <title> files=<a,b|->  [hook|proof|proof-staging=<needs>]
 #
 # GitHub reads ride the read token through scripts/lib/gh-read.sh (main when none is configured), with no fallback to
 # main on a rate limit.
@@ -212,6 +216,7 @@ if . "$REPO/scripts/lib/flags.sh" 2>/dev/null && himmel_flag stacked_series 2>/d
 export ND_STACKED="$stacked"
 export ND_GIT_DIR="${NEXT_DISPATCH_GIT_DIR:-$REPO}" ND_MAIN_REF="${NEXT_DISPATCH_MAIN_REF:-origin/main}"
 export ND_TOP="$top" ND_MIRROR="$mirror" ND_WORKERS_FROM="$workers_from" ND_HELD="$held" ND_CLASSIFY="$classify" ND_REPO="$REPO" ND_RESUME_ONLY="$resume_only" ND_OWNERS="$owners" ND_DOC="$doc" ND_POOL_ONLY="$pool_only" ND_WORKERS="$workers" ND_WHY="$why" ND_DISPO="$dispo" ND_LEDGER="$ledger" ND_HOLDS="${ND_HOLDS:-$HERE/holds.py}"
+export ND_STAGING="${ND_STAGING:-$HERE/proof_staging.py}" ND_TICKET_POLICY_CLI="${ND_TICKET_POLICY_CLI:-$REPO/marketplace/plugins/himmel-ops/scripts/ticket-policy-cli.mjs}"
 
 # shellcheck source=scripts/lib/gh-quota.sh
 . "$REPO/scripts/lib/gh-quota.sh"
@@ -522,6 +527,35 @@ for n in names:
         'last': last_owed(body),
         **scope_of(body),
     }
+
+# The one owner of a proof's staging needs, loaded after the mirror read: a module that cannot be loaded is an error, never an untagged row.
+try:
+    _sspec = importlib.util.spec_from_file_location('proof_staging', os.environ['ND_STAGING'])
+    proof_staging = importlib.util.module_from_spec(_sspec)
+    _sspec.loader.exec_module(proof_staging)
+except Exception as e:
+    print('# next-dispatchable: proof_staging.py unreadable (%s)' % e, file=sys.stderr); sys.exit(3)
+_staged = {}
+
+def staging_of(i):
+    # the needs of a proof row or a chief-owed OWED line; the ticket's mirror file is read again, a failed read is the need `unknown`
+    k = i['key']
+    if k not in _staged:
+        needs, txt, unread = proof_staging.needs, '', []
+        try:
+            txt = open(os.path.join(mirror, k + '.md'), encoding='utf-8', errors='replace').read()
+        except OSError:
+            unread.append('mirror file absent')
+        _staged[k] = needs(txt, i.get('parts', ()), unread, os.environ['ND_TICKET_POLICY_CLI'])
+    return _staged[k]
+
+def proof_field(i):
+    n = staging_of(i)
+    return 'proof-staging=' + ','.join(x[0] for x in n) if n else 'proof'
+
+def staging_why(i):
+    for name, who, words in staging_of(i):
+        print('# staging %s %s (%s): "%s"' % (i['key'], name, who, words))
 
 # unreleased versions in natural order
 vorder = {}
@@ -1548,7 +1582,11 @@ if len(scope_questions) > len(scope_shown):
 for k, keys in handed_off:
     print('HANDED-OFF %s: remainder on %s' % (k, ', '.join(dict.fromkeys(keys))))
 for k, pr, who, due in owed_rows:
-    print('OWED %s: merged PR #%s owes %s by %s' % (k, pr, who, due))
+    chief_owed = any(a['chief_owed'] for a in issues[k].get('parts', []))
+    named = staging_of(issues[k]) if chief_owed else []
+    print('OWED %s: merged PR #%s owes %s by %s%s' % (k, pr, who, due, (' proof-staging=' + ','.join(x[0] for x in named)) if named else ''))
+    if named and os.environ.get('ND_WHY') == '1':
+        staging_why(issues[k])
 for sid, wdoc in series_orphans:
     print('SERIES-ORPHAN %s %s' % (sid, wdoc))
 
@@ -1679,6 +1717,8 @@ def drop_summary():
         for k in sorted(lane_of, key=lambda k: int(k.split('-')[1])):
             if k in issues:
                 print('# scope %s %s%s: %s%s' % (k, issues[k]['src'], ' nowrite' if issues[k].get('nowrite') else '', ','.join(issues[k]['files']) or '-', ' reads=' + ','.join(issues[k]['reads']) if issues[k]['reads'] else ''))
+                if issues[k].get('nowrite'):
+                    staging_why(issues[k])
     if first_ver is None:
         return
     listed = {i['key'] for i in emitted}
@@ -1747,7 +1787,7 @@ def emit_resume(rows):
         lane_of[i['key']] = 'RESUME'
         say('\t'.join(['RESUME', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-'), 'status=' + i['status'], 'last=' + (i['last'] or '-')] + (['brief=' + briefs[i['key']]] if i['status'] == 'To Do' and i['key'] in briefs else [])
                        + ['partial=PR #%s merged, Remaining: %s' % (pr, text) for pr, text in i.get('partial', [])]
-                       + (['proof'] if i.get('nowrite') else [])))
+                       + ([proof_field(i)] if i.get('nowrite') else [])))
         n += 1
 
 classified = os.environ.get('ND_CLASSIFY') == '1'
@@ -1832,7 +1872,7 @@ def emit_free(rows):
             if picked_hit(i) and stacked and join_series(i, lane, c):
                 continue
             say_overlaps(i)
-            list_free(i, lane, c, '\t'.join([lane, i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-')] + (['hook'] if c == 'HOOK-BYPASS' and not i.get('nowrite') else []) + (['proof'] if i.get('nowrite') else [])))
+            list_free(i, lane, c, '\t'.join([lane, i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-')] + (['hook'] if c == 'HOOK-BYPASS' and not i.get('nowrite') else []) + ([proof_field(i)] if i.get('nowrite') else [])))
             n += 1
             if n >= top:
                 break

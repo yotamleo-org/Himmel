@@ -117,6 +117,10 @@ commit, plus writes. `writes` must name at least one absolute `.md` path directl
 realpath) and nothing else; any other token is refused naming it, before a worktree or a round-status call. A worker with `grants`, `inherited`,
 `series` or `hook`, or a scope stating `completes-ticket: yes`, is refused. live_test defaults to {"none": "proof leg: one verdict comment on
 its own key"}. Model, profile and lane follow the ordinary rules.
+A proof worker whose keys need operator or chief staging (scripts/handover/chief-kit/proof_staging.py: a credential, a token, a
+read-secrets relaunch, a bypass launch, a go code, a throwaway repo, a GO file; an input it cannot read is the need `unknown`) is refused
+until the entry carries `"staged": true`, then its brief carries a `Staging needed before launch` block. `staged` is refused on any
+other kind and on any value but true or false.
 
 Worktrees: `scripts/worktree.sh new <branch> --no-prune` from --repo
 (GEN_BRIEFS_WORKTREE_CMD replaces it, called as `$CMD <branch>`, tests;
@@ -150,6 +154,7 @@ from datetime import date as _date, datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from salus_marked import salus_marked, is_adapter  # noqa: E402
 import holds  # noqa: E402  the one parser of a Writes line, and the one grant-path rule
+import proof_staging  # noqa: E402  the one owner of a proof's staging needs
 
 
 REQUIRED = ['label', 'keys', 'slug', 'branch', 'title', 'desc', 'why', 'prior', 'scope', 'scope_short', 'commit']
@@ -423,8 +428,7 @@ def proof_missing(key):
         txt = open(os.path.join(mirror_dir(key), key + '.md'), encoding='utf-8', errors='replace').read()
     except OSError:
         return None
-    m = re.search(r'^## Description\n(.*?)(?=^## |\Z)', txt, re.M | re.S)
-    body = m.group(1).strip() if m else ''
+    body = proof_staging.description_of(txt)
     with tempfile.TemporaryDirectory() as d:
         draft = os.path.join(d, 'draft.md')
         with open(draft, 'w', encoding='utf-8') as f:
@@ -472,7 +476,50 @@ def check_proof(worker):
         die('worker %s: fix the ticket first, then re-run (a worker without a named Proof cannot show RED then GREEN):\n%s' % (worker['label'], '\n\n'.join(refused)))
 
 
+_STAGING = {}  # worker label -> [(key, name, who, words)] for a kind proof worker with needs
+
+
+def staging_text(need):
+    key, name, who, words = need
+    return '%s unknown (%s)' % (key, words) if name == 'unknown' else '%s %s (%s, "%s")' % (key, name, who, words)
+
+
+def check_staging(worker, repo):
+    # A proof worker is read-only: a need only the operator or the chief can stage refuses it until the chief sets staged: true.
+    # An input this call could not read is the need `unknown`, so a refusal is never skipped by a failed read.
+    found = []
+    for key in worker['keys']:
+        unread = []
+        path = os.path.join(mirror_dir(key), key + '.md')
+        if not os.path.isfile(path):
+            refresh_mirror_once_per_root(key)
+        try:
+            txt = open(path, encoding='utf-8', errors='replace').read()
+        except OSError:
+            txt = ''
+            unread.append('mirror file absent')
+        answers = []
+        for pr in partial_merge_prs([key], unread):
+            a = pr_units(pr, repo, [key])
+            if a is None:
+                unread.append('PR #%s body unread' % pr)
+            else:
+                answers.append(a)
+        found += [(key,) + n for n in proof_staging.needs(txt, answers, unread, os.environ.get('GEN_BRIEFS_TICKET_POLICY_CLI'))]
+    if found and worker.get('staged') is not True:
+        die('worker %s: %s needs staging before a proof leg: %s; stage each, then set "staged": true'
+            % (worker['label'], ', '.join(worker['keys']), '; '.join(staging_text(n) for n in found)))
+    if not found and worker.get('staged') is True:
+        print('gen-briefs: warn: worker %s: staged: true but no staging need found' % worker['label'], file=sys.stderr)
+    if found:
+        _STAGING[worker['label']] = found
+
+
 def validate(worker, i, repo):
+    if 'staged' in worker and worker.get('kind') != 'proof':
+        die('worker %s: staged applies to kind proof only' % worker.get('label', '?'))
+    if 'staged' in worker and not isinstance(worker['staged'], bool):
+        die('worker %s: staged must be the JSON boolean true or false, not a %s' % (worker.get('label', '?'), type(worker['staged']).__name__))
     if worker.get('kind') == 'rm':
         return validate_rm(worker, i)
     proof = worker.get('kind') == 'proof'
@@ -570,6 +617,8 @@ def validate(worker, i, repo):
     if 'inherited' in worker:
         validate_inherited(worker)
     check_proof(worker)
+    if proof:
+        check_staging(worker, repo)
 
 
 def validate_inherited(worker):
@@ -1385,9 +1434,10 @@ def render_rm_brief(l, ctx):
     return out + '\n'
 
 
-def partial_merge_prs(keys):
+def partial_merge_prs(keys, unread=None):
     """The PR numbers of every merged contract=no (partial) merge row of these keys, oldest first.
-    The rows are written by merge-on-green.sh; the funnel's own rows carry no contract and never match."""
+    The rows are written by merge-on-green.sh; the funnel's own rows carry no contract and never match.
+    A caller that passes `unread` gets a reason appended when the status log is missing or unreadable."""
     state = os.environ.get('TICKET_STATUS_STATE_DIR') or os.path.join(os.environ.get('HOME') or '/tmp', '.himmel', 'state')
     prs, seen = [], set()
     try:
@@ -1413,9 +1463,12 @@ def partial_merge_prs(keys):
                 seen.add(pr)
                 prs.append(pr)
     except FileNotFoundError:
-        pass
+        if unread is not None:
+            unread.append('status log missing')
     except OSError as e:
         print('gen-briefs: warn: %s is unreadable (%s): the brief cannot name merged partial PRs' % (os.path.join(state, 'status-events.jsonl'), e.strerror or e), file=sys.stderr)
+        if unread is not None:
+            unread.append('status log unreadable')
     return prs
 
 
@@ -1433,21 +1486,37 @@ def quiet_gh_env():
     return child
 
 
-def pr_remaining(pr, repo, own_keys=()):
-    """The remainder text of PR <pr>'s body (see pr_remainder; a `Remaining:` line or the deferred coverage lines): '' when the
-    body records none, None when the body could not be read. GEN_BRIEFS_GH_CMD replaces `gh` (the test seam), called as
+def pr_body(pr, repo):
+    """PR <pr>'s body, None when it could not be read. GEN_BRIEFS_GH_CMD replaces `gh` (the test seam), called as
     `$CMD pr view <pr> --json body -q .body`."""
     try:
         r = subprocess.run(gh_read_argv() + ['pr', 'view', pr, '--json', 'body', '-q', '.body'], cwd=repo, capture_output=True, text=True, timeout=30,
                            env=quiet_gh_env())
     except (OSError, subprocess.SubprocessError):
         return None
-    if r.returncode != 0:
+    return r.stdout if r.returncode == 0 else None
+
+
+def pr_remaining(pr, repo, own_keys=()):
+    """The remainder text of PR <pr>'s body (see pr_remainder; a `Remaining:` line or the deferred coverage lines): '' when the
+    body records none, None when the body could not be read."""
+    body = pr_body(pr, repo)
+    if body is None:
         return None
     # the ONE reader, scripts/lib/pr_remainder.py: merge-on-green.sh and next-dispatchable.sh run the same file
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib'))
     from pr_remainder import pr_remainder
-    return pr_remainder(r.stdout, own_keys)[2]
+    return pr_remainder(body, own_keys)[2]
+
+
+def pr_units(pr, repo, own_keys=()):
+    """The reader's units answer for PR <pr>'s body (the dict pr_remainder_units returns), None when the body could not be read."""
+    body = pr_body(pr, repo)
+    if body is None:
+        return None
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib'))
+    from pr_remainder import pr_remainder_units
+    return pr_remainder_units(body, own_keys)
 
 
 def partial_merge_block(keys, repo):
@@ -1582,6 +1651,10 @@ template_version: 3
     if l.get('kind') == 'proof':
         vals = dict(doc=kw['doc'], keys=', '.join(keys), extra=kw['extra'], envline=kw['envline'])
         kw['proofline'] = '\n> **Proof leg:** %s\n' % vals['keys']
+        if l['label'] in _STAGING:
+            kw['proofline'] += ('\n> **Staging needed before launch:** the chief set staged: true for: %s\n'
+                                '> Before step 2, check each is in place (a credential or token on the guest, a GO file at its path, a launch with the named flag). '
+                                'One that is not is a FINDING to the chief; do not work around it.\n') % '; '.join(staging_text(n) for n in _STAGING[l['label']])
         kw['ctline'] = '\n> **Completes ticket:** no\n'
         contract = re.sub(r'\{(doc|keys|extra|envline)\}', lambda g: vals[g.group(1)], PROOF_CONTRACT) + '\n'
         scope = PROOF_SCOPE.format(writes=kw['scope_line'], others=others, also=also) + '\n'
