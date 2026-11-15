@@ -51,7 +51,6 @@ mk_wt() { # dir: a linked worktree, on branch wt, of a scratch base repo <dir>.b
 }
 tmp_in_repo=0; git -C "$tmp" rev-parse --git-dir >/dev/null 2>&1 && tmp_in_repo=1
 # A template brief opens with front matter carrying its description and the absolute directory its worker starts in.
-# A worker's resume_cwd is a worktree, never a primary checkout, so the brief fixtures are linked worktrees.
 CW_HIM="$tmp/cwd-himmel"; mk_wt "$CW_HIM" || exit 1; mkdir -p "$CW_HIM/scripts/handover/chief-kit"; : > "$CW_HIM/scripts/handover/chief-kit/headed-arm-worker.sh"
 mk() { # name lines...
     local n="$1"; shift
@@ -837,7 +836,6 @@ git -C "$GR" -c user.name=t -c user.email=t@example.com -c core.hooksPath=/dev/n
 git -C "$GR" worktree add -q "$tmp/gr-wt" -b gr-wt; mkdir -p "$tmp/gr-wt/src"
 H_R="$tmp/home-holds-root"; mkdir -p "$H_R/.config/claude-codex"; printf '%s\n' "$GR/vault" > "$H_R/.config/claude-codex/phi-roots"
 sal_rc "10w a repo that holds a listed root is marked from a directory beside the root" 0 "$H_R" "$GR/src"
-# the briefs name a linked worktree of that repo, so their exit 3 has the salus refusal as its one cause
 mkc s_holds_dir "$tmp/gr-wt/src" '# brief' "$VAGUE" "$DIR_LINE" '' '> **Contract:** y' "$RES"
 mkc s_holds_words "$tmp/gr-wt/src" '# brief' "$VAGUE" "$SALUS_LINE" '' '> **Contract:** y' "$RES"
 rc=0; HOME="$H_R" bash "$LINT" "$tmp/s_holds_dir.md" >/dev/null 2>&1 || rc=$?
@@ -1061,8 +1059,6 @@ mkc p_prim_ran "$CW_PRIM" '# brief' "$VAGUE" "$DIR_LINE" '' '> **Contract:** y' 
 expect_rc "14g a resumed worker doc in a primary checkout is refused too" 3 "$tmp/p_prim_ran.md"
 mkc p_aprim "$CW_APRIM" '# brief' "$VAGUE" "$ADAPTER_LINE" '' '> **Contract:** y' "$RES"
 expect_rc "14h an adopted repo's primary checkout is refused" 3 "$tmp/p_aprim.md"
-# 14i: the lint refuses a directory exactly when the guard refuses a write to the tracked file at its top. The guard exempts
-# a scratch clone by where it sits, so the row skips when the suite's tmp sits in that layout, or in any git repo.
 i_skip=""; s_root="$(cd -P "$tmp" && pwd -P)/"; h_root="$(cd -P "$HOME" 2>/dev/null && pwd -P)"
 case "$s_root" in */claude-"$(id -u)"/*/*/scratchpad/*|"$h_root"/.himmel/scratch/*) i_skip="the suite tmp $tmp sits where the guard exempts a scratch clone" ;; esac
 [ "$tmp_in_repo" -eq 1 ] && i_skip="the suite tmp $tmp is inside a git repo"
@@ -1094,7 +1090,6 @@ else
     chmod a-x "$NX"; lint_run "$tmp/p_noexec.md"; chmod u+x "$NX"
     { [ "$lint_rc" -eq 3 ] && grep -Fq 'salus_marked.py primary exited 1' <<< "$err"; } && ok "14k a resume_cwd without search permission cannot be classified and is refused" || bad "14k no-search directory (rc=$lint_rc): $err"
 fi
-# negative controls
 { [ -f "$CW_HIM/.git" ] && bash "$LINT" "$tmp/filled.md" >/dev/null 2>&1; } && ok "14N1 the 2a brief passes with its resume_cwd a linked worktree" || bad "14N1 the 2a brief on a linked worktree"
 CW_SALP="$tmp/cwd-salus-primary"; git init -q "$CW_SALP"; : > "$CW_SALP/.salus"
 mkc p_salp "$CW_SALP" '# brief' "$VAGUE" "$DIR_LINE" '' '> **Contract:** y' "$RES"

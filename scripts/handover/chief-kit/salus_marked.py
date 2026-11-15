@@ -105,16 +105,16 @@ def primary_root(path):
     # lacks search permission; the CLI then crashes and the caller refuses.
     d = os.path.realpath(path)
     if not os.path.isdir(d):
-        return None  # not made yet: a missing worktree path is refused by headed-arm-worker.sh's worktree-shape check
+        return None
     for top in _chain(d):
         try:
-            st = os.stat(os.path.join(top, '.git'))  # follows a symlinked .git, as [ -e ] and [ -d ] do
+            st = os.stat(os.path.join(top, '.git'))
         except (FileNotFoundError, NotADirectoryError):
             continue
         if not stat.S_ISDIR(st.st_mode):
-            return None  # a .git file: a linked worktree, a submodule or a separate git dir
+            return None
         if os.path.isfile(os.path.join(top, '.single-writer')):
-            return None  # an opted-in single-writer repo: the guard allows its writes
+            return None
         return top
     return None
 
