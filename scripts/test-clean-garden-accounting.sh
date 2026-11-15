@@ -1214,6 +1214,41 @@ case "$(uname -s)" in
 esac
 clear_checkpoints
 
+# RUN S — a fleet-wide prune takes a clean worktree whose branch
+# has no PR and whose tip is already on main, but only once it is aged; every
+# other class stays. Age = newest mtime of the gitdir's HEAD and logs/HEAD.
+echo "RUN S: superseded worktrees"
+s_mk() {
+    local name="$1" branch="$2"
+    git -C "$REPO" worktree add -q "$TMP_ROOT/$name" -b "$branch" refs/remotes/origin/main >/dev/null 2>&1
+    printf '%s\n' "$TMP_ROOT/$name"
+}
+s_backdate() {
+    local gd
+    gd=$(git -C "$1" rev-parse --absolute-git-dir) || return 1
+    touch -t 202001010000 "$gd/HEAD" "$gd/logs/HEAD"
+}
+WT_S_AGED=$(s_mk wt-s-aged none/s-aged);       s_backdate "$WT_S_AGED"
+WT_S_FRESH=$(s_mk wt-s-fresh none/s-fresh)
+WT_S_DIRTY=$(s_mk wt-s-dirty none/s-dirty);    s_backdate "$WT_S_DIRTY"
+printf 'changed\n' >> "$WT_S_DIRTY/README"
+WT_S_CLOSED=$(s_mk wt-s-closed chore/s-closed); s_backdate "$WT_S_CLOSED"
+# shellcheck disable=SC2031  # GH_ROWS_ORIGIN is only read in run_clean's subshell
+printf 'owner/repo\tchore/s-closed\tclosed\t%s\n' "$(git -C "$WT_S_CLOSED" rev-parse HEAD)" >> "$GH_ROWS_ORIGIN"
+WT_S_AHEAD=$(s_mk wt-s-ahead none/s-ahead)
+printf 'x\n' > "$WT_S_AHEAD/x.txt"; git -C "$WT_S_AHEAD" add x.txt; git -C "$WT_S_AHEAD" commit -q -m "ahead"
+s_backdate "$WT_S_AHEAD"
+s_out=$(run_clean)
+if [ ! -d "$WT_S_AGED" ] && ! git -C "$REPO" rev-parse --verify -q refs/heads/none/s-aged >/dev/null; then
+    pass "S1: aged superseded worktree and its branch are pruned"
+else
+    fail "S1: aged superseded worktree was kept" "$s_out"
+fi
+if [ -d "$WT_S_FRESH" ]; then pass "S2: a fresh worktree (ahead=0, no PR) is never pruned"; else fail "S2: fresh worktree was pruned" "$s_out"; fi
+if [ -d "$WT_S_DIRTY" ]; then pass "S3: aged but dirty worktree is kept"; else fail "S3: dirty worktree was pruned" "$s_out"; fi
+if [ -d "$WT_S_CLOSED" ]; then pass "S4: a closed-PR branch at ahead=0 is kept"; else fail "S4: closed-PR worktree was pruned" "$s_out"; fi
+if [ -d "$WT_S_AHEAD" ]; then pass "S5: aged worktree with commits off main is kept"; else fail "S5: ahead worktree was pruned" "$s_out"; fi
+
 echo
 echo "===================================="
 echo "test summary: $PASS passed, $FAIL failed"
