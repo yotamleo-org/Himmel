@@ -7,8 +7,9 @@
 #   one simple command (inside substitutions, subshells, nested `bash -c` and
 #   `eval` bodies too):
 #
-#     prog     the program after unwrapping command/builtin/exec/nohup/env,
-#              basename only; null for a redirect-only statement
+#     prog     the program after unwrapping command/builtin/exec/nohup/env and
+#              the zsh precommand words noglob/nocorrect/-, basename only (an
+#              =cmd word reads as cmd); null for a redirect-only statement
 #     argv     [arg] from the program word on; arg is {t:"lit", v, g, raw}
 #              (one per word bash makes: brace expansion splits a word, g = an
 #              unquoted glob char survived) or {t:"dyn"|"amb", raw}
@@ -27,6 +28,9 @@
 #              stdin, …), else null
 #     body     the literal `bash -c`/`eval` body, re-parsed into the
 #              positions that follow it
+#     stdin    true when it is a shell reading its script from stdin, directly
+#              or as the inner command of a runner (nice sh, timeout 5 sh); a
+#              shell given -c or a script file is false; every position has it
 #     pipe     {id, stage, n}: the innermost pipeline it runs in, its stage
 #              (0-based) of n, else null. A brace group, subshell, loop or
 #              `bash -c` body takes its element's stage; a $(…) or backtick
@@ -34,7 +38,8 @@
 #
 #   S0 is the starting cwd set (default [[]]); TAGS the starting `in`.
 #   rc 2 = shfmt or jq missing (the message says so; the caller fails closed),
-#   rc 3 = shfmt could not parse the command, rc 4 = the model failed, rc 5 =
+#   rc 3 = shfmt could not parse the command, rc 4 = the model failed (the main
+#   call or any jq step after it: a body is never dropped with rc 0), rc 5 =
 #   the model ran past its bound: BASH_AST_TIMEOUT_S (1-13) when set, else
 #   10 s plus 1 s per KiB of command past 4 KiB, at most 40 s, which stays 5 s
 #   inside the hook runner's member window; BASH_AST_MAX_S caps either (a
