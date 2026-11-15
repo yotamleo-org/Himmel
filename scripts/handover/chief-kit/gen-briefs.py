@@ -46,9 +46,10 @@ design|unverified-finding|tier-return|operator-ruling, reason is non-blank singl
 text; the brief gets that line, and nothing is written for a worker without it), lane (the manifest
 lane the printed add line passes as --lane; default native, the lane of the
 launchers written here; a lane other than native or claudex may not name a path under the
-handover root, that worker cannot read it). A scope stating `completes-ticket: yes|no` also gets
-the brief line `> **Completes ticket:** yes|no` (the LAST value in the scope; yes when it
-states neither), which the merge script reads through --worker-doc to bind the merge (HIMMEL-5843).
+handover root, that worker cannot read it). A worker's completes-ticket answer is one value: an explicit `completes` key (yes|no), else the
+description's trailing `Completes ticket: yes|no` line, else the LAST `completes-ticket: yes|no` in the scope
+(yes when none states it); sources that disagree are refused naming the label. It becomes
+the brief line `> **Completes ticket:** yes|no`, which the merge script reads through --worker-doc to bind the merge.
 The Ship step follows that value; any other value after `completes-ticket:` (partial, a typo)
 is refused, since it would otherwise fall through to the closing merge (HIMMEL-6091).
 Every worker the core gate sees also gets `> **Leg kind:** design|build` after the Tier line: design
@@ -194,6 +195,29 @@ READS_HANDOVER_ROOT = ('native', 'claudex')
 EFFORTS = ('low', 'medium', 'high', 'xhigh')
 COMPLETES_RE = re.compile(r'completes-ticket:\s*(yes|no)\b', re.I)
 COMPLETES_ANY_RE = re.compile(r'completes-ticket:\s*([^\s,.;)]*)', re.I)
+DESC_COMPLETES_RE = re.compile(r'Completes ticket:\s*(yes|no)\W*\Z', re.I)
+
+
+def completes_of(worker):
+    # The ONE completes-ticket answer of a worker: an explicit `completes` key, else the
+    # description's trailing "Completes ticket: yes|no" line, else the scope's LAST `completes-ticket:`
+    # value; None when none states it (every caller then keeps yes). Two sources that disagree are refused.
+    found = {}
+    if 'completes' in worker:
+        v = worker['completes']
+        if not isinstance(v, str) or v.lower() not in ('yes', 'no'):
+            die('worker %s: completes %r must be yes or no' % (worker.get('label', '?'), v))
+        found['the completes key'] = v.lower()
+    m = DESC_COMPLETES_RE.search(str(worker.get('desc', '')).rstrip())
+    if m:
+        found['the description'] = m.group(1).lower()
+    scoped = COMPLETES_RE.findall(str(worker.get('scope', '')))
+    if scoped:
+        found['the scope'] = scoped[-1].lower()
+    if len(set(found.values())) > 1:
+        die('worker %s: completes disagrees (%s); a brief states one completes-ticket answer, so make them agree' % (
+            worker.get('label', '?'), ', '.join('%s says %s' % kv for kv in found.items())))
+    return next(iter(found.values()), None)
 REMOVAL_RE = re.compile(r'\b(?:remov(?:e|es|ed|ing|al)|drop(?:s|ped|ping)?|delet(?:e|es|ed|ing)|retir(?:e|es|ed|ing)|sweep(?:s|ing)?|clean(?:s|ed|ing)?)\b', re.I)
 
 
@@ -466,8 +490,7 @@ def validate(worker, i, repo):
         for k in ('grants', 'inherited', 'series', 'hook'):
             if k in worker:
                 die('worker %s: kind proof refuses %s (a proof leg opens no PR and writes no repo file)' % (worker['label'], k))
-        stated = COMPLETES_RE.findall(worker['scope'])
-        if stated and stated[-1].lower() == 'yes':
+        if completes_of(worker) == 'yes':
             die('worker %s: a proof brief never completes its ticket; the operator closes it (decision 847)' % worker['label'])
         worker.setdefault('commit', PROOF_COMMIT)
         worker.setdefault('live_test', {'none': PROOF_LIVE_TEST})
@@ -527,6 +550,7 @@ def validate(worker, i, repo):
     for v in COMPLETES_ANY_RE.findall(worker['scope']):
         if v.lower() not in ('yes', 'no'):
             die('worker %s: scope states completes-ticket: %s; the value must be yes or no' % (worker['label'], v))
+    completes_of(worker)
     removal = worker.get('platform_removal')
     if removal is not None and not isinstance(removal, bool):
         die('worker %s: platform_removal must be the JSON boolean true or false, not %r' % (worker['label'], removal))
@@ -1224,7 +1248,7 @@ def plan_series(workers):
             die('worker %s: a series names ticket %s more than once; every item is one ticket' % (label, ', '.join(dup)))
         if len(items) > SERIES_MAX:
             die('worker %s: a series holds at most %d items; its tickets make %d' % (label, SERIES_MAX, len(items)))
-        values = {(COMPLETES_RE.findall(m['scope']) or ['yes'])[-1].lower() for m in members}
+        values = {completes_of(m) or 'yes' for m in members}
         if len(values) > 1:
             die('worker %s: the series mixes completes-ticket values (%s); a series carries one, so run the ticket whose value differs outside it' % (label, ', '.join(sorted(values))))
         for m in members:
@@ -1298,22 +1322,21 @@ def sonnet_ceiling_profile(profile):
     return isinstance(spec, dict) and spec.get('sonnetAutocompact') is not None
 
 
-def completes_line(scope):
-    # The LAST completes-ticket value in the scope, as the one line the merge script
-    # reads from the worker doc (--worker-doc / HIMMEL_WORKER_SESSION_DOC); yes when the scope states neither.
-    found = COMPLETES_RE.findall(scope)
-    return '\n> **Completes ticket:** %s\n' % (found[-1].lower() if found else 'yes')
+def completes_line(worker):
+    # completes_of(worker) as the one line the merge script reads from the worker doc
+    # (--worker-doc / HIMMEL_WORKER_SESSION_DOC); yes when the worker states none.
+    return '\n> **Completes ticket:** %s\n' % (completes_of(worker) or 'yes')
 
 
-def ship_completes(scope, lane='native'):
-    # The Ship step's completes-ticket clause and merge clause, from the same LAST value
-    # completes_line() reads; a scope stating neither keeps the yes wording. A claudex worker's
+def ship_completes(worker, lane='native'):
+    # The Ship step's completes-ticket clause and merge clause, from the same completes_of(worker)
+    # value completes_line() reads; a worker stating none keeps the yes wording. A claudex worker's
     # auto-mode classifier refuses merge-path actions, so its merge clause stops at READY and
     # the chief runs the merge; every other lane merges on GO itself.
-    found = COMPLETES_RE.findall(scope)
+    found = completes_of(worker)
     shapes = ('; a remaining ask that another ticket owns is a `- <ask>: deferred → KEY` coverage line; a step the chief or operator owes after the merge is '
               '`- <ask>: owed → chief|operator by YYYY-MM-DD`, at most 14 days out')
-    if found and found[-1].lower() == 'no':
+    if found == 'no':
         ct = 'completes-ticket: no (leave the ticket In Progress after the merge)' + shapes
         cmd = '`bash scripts/handover/merge-on-green.sh` (bare, without the Jira-transition flag, typed exactly so as one bare command from the directory you are in, never after `cd` or joined with `&&`, then `--go <the GO file the chief\'s GO message names>`)'
     else:
@@ -1555,8 +1578,8 @@ template_version: 3
                      if l.get('tier') and tier_gate(l['model']) else ''),
            legline=('\n> **Leg kind:** %s\n' % l['leg_kind']) if l.get('leg_kind') else '',
            liveline=('\n%s\n' % l['live_line']) if l.get('live_line') else '',
-           shipct=ship_completes(l['scope'], l.get('lane', 'native'))[0], shipmerge=ship_completes(l['scope'], l.get('lane', 'native'))[1],
-           ctline=completes_line(l['scope']), seriesline=series_lines(l), coreline=l.get('core_lines', ''), grants=grants_block(l), partialblock=partial_merge_block(keys, ctx['repo']),
+           shipct=ship_completes(l, l.get('lane', 'native'))[0], shipmerge=ship_completes(l, l.get('lane', 'native'))[1],
+           ctline=completes_line(l), seriesline=series_lines(l), coreline=l.get('core_lines', ''), grants=grants_block(l), partialblock=partial_merge_block(keys, ctx['repo']),
            inhblock=(INHERITED_BLOCK.format(pr=l['inherited']['pr'], authors=', '.join(l['inherited']['authors']), mode=l['inherited']['mode']) + '\n') if l.get('inherited') else '',
            vmline=(VM_LINE + '\n') if VM_RE.search(' '.join(str(l.get(k, '')) for k in ('title', 'desc', 'why', 'prior', 'scope', 'extra'))) else '',
            uiline=(UI_LINE + '\n') if l['profile'] == UI_PROFILE else '',

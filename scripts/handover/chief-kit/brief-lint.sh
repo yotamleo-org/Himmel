@@ -596,6 +596,22 @@ if [ -z "$(worker_description_field "$doc")" ] && ! worker_doc_has_run "$doc"; t
     fail "no front-matter 'description:' line (required: one plain-language line saying what this worker is doing and why, e.g. 'description: \"Add a description line to every worker brief\"'; put it between the leading '---' lines, the first of which must be the file's first line with no blank line or BOM before it; see docs/handover/worker-brief-template.md)"
 fi
 
+# A worker brief states one completes-ticket answer: the `> **Completes ticket:**` header and the Ship
+# step (Contract item 4) must agree, and a `no` brief never names --jira-transition, which would close the ticket.
+# A judge brief and a doc that has run are not held to it.
+if [ "$judge" -eq 0 ] && grep -Eq '^> \*\*Contract:\*\*' "$doc" && ! worker_doc_has_run "$doc"; then
+    ship_line="$(grep -E '^> 4\. Ship:' "$doc")"
+    ct_hdr="$(grep -Eio '^> \*\*Completes ticket:\*\* *(yes|no)\b' "$doc" | awk '{print tolower($NF)}')"
+    ct_ship="$(grep -Eio 'completes-ticket: *(yes|no)\b' <<< "$ship_line" | awk '{print tolower($NF)}')"
+    ct_vals="$(printf '%s\n%s\n' "$ct_hdr" "$ct_ship" | grep -E '^(yes|no)$' | sort -u | tr '\n' ' ')"
+    case "$ct_vals" in
+        "no yes "*) fail "the brief states two completes-ticket answers (header: ${ct_hdr:-none}; Ship step: ${ct_ship:-none}): one value, in every place the brief states it" ;;
+    esac
+    if [ "$ct_vals" = "no " ] && [[ "$ship_line" == *--jira-transition* ]]; then
+        fail "the brief says completes-ticket: no but its Ship step names --jira-transition, which closes the ticket: a no brief merges bare"
+    fi
+fi
+
 # A worker brief (one with a `> **Contract:**` line) tells its worker to search the notes (both collections) and the
 # graph before it designs, with the query and symbol named, and to report what each returned. A cited ticket key or
 # #PR does not stand in for it: naming the query is what moved use in the audit, a bare mention moved little. A judge

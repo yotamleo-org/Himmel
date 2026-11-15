@@ -727,6 +727,40 @@ python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["scope"]="c
 python3 "$SUT" "$WORK/ctb.json" --base 4ccb59d --chief BZ --bucket "$WORK/ctb-early" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ctb.err"; rc=$?
 [ "$rc" = 1 ] && pass "an earlier bad value is refused even when the last value is no" || fail "early bad value rc=$rc"
 
+# A brief states ONE completes-ticket answer, from an explicit completes key, else the
+# description's trailing "Completes ticket: yes|no" line, else the scope; two sources that disagree are
+# refused naming the worker label and the word completes.
+ct1_gen() { # <bucket> <json object of worker fields to override>; sets ct1_rc, ct1_out (the brief)
+    python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0].update(json.loads(sys.argv[3])); json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/workers.json" "$WORK/ct1w.json" "$2" || { fail "10195 fixture setup failed"; return 1; }
+    rm -rf "$1"
+    python3 "$SUT" "$WORK/ct1w.json" --base 4ccb59d --chief BZ --bucket "$1" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ct1w.err"; ct1_rc=$?
+    ct1_out="$(cat "$1"/*-N901-plain-fix-*.md 2>/dev/null)"
+}
+ct1_gen "$WORK/ct10195a" '{"desc":"fix the plain thing. Completes ticket: no"}'
+[ "$ct1_rc" = 0 ] && pass "10195 a description ending Completes ticket: no is accepted" || fail "10195 desc no rc=$ct1_rc: $(cat "$WORK/ct1w.err")"
+has "10195 a description ending Completes ticket: no writes the no header" "$ct1_out" "> **Completes ticket:** no"
+lacks "10195 a description ending Completes ticket: no leaves no yes header" "$ct1_out" "> **Completes ticket:** yes"
+lacks "10195 a description ending Completes ticket: no states no completes-ticket: yes" "$ct1_out" "completes-ticket: yes"
+lacks "10195 a description ending Completes ticket: no has no --jira-transition anywhere" "$ct1_out" "--jira-transition"
+ct1_gen "$WORK/ct10195b" '{"completes":"no"}'
+has "10195 an explicit completes key no writes the no header" "$ct1_out" "> **Completes ticket:** no"
+lacks "10195 an explicit completes key no has no --jira-transition anywhere" "$ct1_out" "--jira-transition"
+ct1_gen "$WORK/ct10195c" '{"completes":"yes","desc":"fix the plain thing. Completes ticket: yes"}'
+[ "$ct1_rc" = 0 ] && has "10195 an explicit key and a description that agree keep the yes header" "$ct1_out" "> **Completes ticket:** yes" || fail "10195 agreeing sources rc=$ct1_rc: $(cat "$WORK/ct1w.err")"
+# shellcheck disable=SC2016  # the backticks are literal characters in the value under test
+ct1_gen "$WORK/ct10195d" '{"completes":"no","scope":"`scripts/x/` completes-ticket: no"}'
+[ "$ct1_rc" = 0 ] && has "10195 an explicit key and a scope that agree write the no header" "$ct1_out" "> **Completes ticket:** no" || fail "10195 agreeing key and scope rc=$ct1_rc: $(cat "$WORK/ct1w.err")"
+# shellcheck disable=SC2016  # the backticks are literal characters in the value under test
+for dis in '{"desc":"fix it. Completes ticket: no","scope":"`scripts/x/` completes-ticket: yes"}' \
+           '{"completes":"no","desc":"fix it. Completes ticket: yes"}' \
+           '{"completes":"yes","scope":"`scripts/x/` completes-ticket: no"}'; do
+    ct1_gen "$WORK/ct10195e" "$dis"
+    [ "$ct1_rc" = 1 ] && grep -q "N901" "$WORK/ct1w.err" && grep -qi "completes" "$WORK/ct1w.err" && pass "10195 disagreeing sources are refused naming the label and completes: $dis" || fail "10195 disagreement rc=$ct1_rc: $(cat "$WORK/ct1w.err") for $dis"
+    [ -z "$ct1_out" ] && pass "10195 and no brief is written for the disagreement" || fail "10195 a brief was written for $dis"
+done
+ct1_gen "$WORK/ct10195f" '{"completes":"partial"}'
+[ "$ct1_rc" = 1 ] && grep -q "N901" "$WORK/ct1w.err" && grep -qi "completes" "$WORK/ct1w.err" && pass "10195 an explicit completes value other than yes or no is refused" || fail "10195 bad explicit value rc=$ct1_rc: $(cat "$WORK/ct1w.err")"
+
 # Windows and WSL are dropped: a worker whose title, desc, why or scope names them is refused (rc 1,
 # nothing written) unless it sets platform_removal AND its title says it removes something.
 # pl_gen <title> <field> <value> [platform_removal]: one worker with <field> set to <value>.

@@ -970,5 +970,33 @@ rc=0; out="$(run_worker "$tmp/fm_good.md" --profile worker-impl)" || rc=$?
 rc=0; out="$(run_worker "$tmp/fm_good.md" --profile worker-impl --no-prior-art-check)" || rc=$?
 [ "$rc" -eq 0 ] && ok "12z a valid brief launches with --no-prior-art-check" || bad "12z valid brief with the flag (rc=$rc): $out"
 
+# A worker brief states one completes-ticket answer. The header line and the Ship step (Contract item 4)
+# must agree, and a no brief never names --jira-transition. A header with no Ship step, or a Ship step with no header, passes.
+# shellcheck disable=SC2016  # the backticks are literal brief text
+SHIP_Y='> 4. Ship: completes-ticket: yes; merge only on GO with `bash scripts/handover/merge-on-green.sh --jira-transition` (typed exactly so).'
+# shellcheck disable=SC2016  # the backticks are literal brief text
+SHIP_N='> 4. Ship: completes-ticket: no (leave the ticket In Progress after the merge); merge only on GO with `bash scripts/handover/merge-on-green.sh` (bare, without the Jira-transition flag).'
+# shellcheck disable=SC2016  # the backticks are literal brief text
+SHIP_NY='> 4. Ship: completes-ticket: no; merge only on GO with `bash scripts/handover/merge-on-green.sh --jira-transition` (typed exactly so).'
+mkct() { # name header-value-or-none ship-line-or-none
+    local n="$1" h="$2" s="$3" extra=()
+    [ "$h" = none ] || extra+=("> **Completes ticket:** $h")
+    extra+=('> **Contract:**')
+    [ "$s" = none ] || extra+=("$s")
+    mk "$n" '# brief' '> **Prior art:** none found (qmd -c jira-himmel "ct")' "$DIR_LINE" '' "${extra[@]}"
+}
+mkct ct_hy_sy yes "$SHIP_Y"; expect_rc "13a header yes with a yes Ship step passes" 0 "$tmp/ct_hy_sy.md"
+mkct ct_hn_sn no "$SHIP_N"; expect_rc "13b header no with a no Ship step passes" 0 "$tmp/ct_hn_sn.md"
+mkct ct_hn_sy no "$SHIP_Y"; expect_rc "13c header no with a yes Ship step fails" 1 "$tmp/ct_hn_sy.md"
+mkct ct_hy_sn yes "$SHIP_N"; expect_rc "13d header yes with a no Ship step fails" 1 "$tmp/ct_hy_sn.md"
+mkct ct_hn_sny no "$SHIP_NY"; expect_rc "13e a no brief whose Ship step names --jira-transition fails" 1 "$tmp/ct_hn_sny.md"
+mkct ct_hn_only no none; expect_rc "13f a header with no Ship step passes" 0 "$tmp/ct_hn_only.md"
+mkct ct_none_sn none "$SHIP_N"; expect_rc "13g a Ship step with no header passes" 0 "$tmp/ct_none_sn.md"
+rc=0; err="$(bash "$LINT" "$tmp/ct_hn_sy.md" 2>&1 >/dev/null)" || rc=$?
+case "$err" in *completes*) ok "13h the refusal names completes" ;; *) bad "13h the refusal does not name completes: $err" ;; esac
+mkct ct_hy_sn_judge yes "$SHIP_N"
+rc=0; bash "$LINT" --judge "$tmp/ct_hy_sn_judge.md" >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 0 ] && ok "13i a judge brief is not held to the completes rule" || bad "13i judge brief rc=$rc"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
