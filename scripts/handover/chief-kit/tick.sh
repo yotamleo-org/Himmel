@@ -874,10 +874,10 @@ PY
 # authority (a words record of the doc's release names the key), wake (a valid wake that has not
 # fired), no-authority, invalid or unchecked, written to pool-holds-<doc stem>.json with the state of
 # every PR a pool-disposition line cites, for pool_dispositions and pool_stale. It writes nothing else.
-pool_holds() { # <doc> <ledger> <release state file> <holds file> <open-PR tsv|""> <manifest|""> <repo> <gh> <noread> <handover root> <mirror|"">
+pool_holds() { # <doc> <ledger> <release state file> <holds file> <open-PR tsv|""> <manifest|""> <repo> <gh> <noread> <handover root> <mirror|""> <seed list|"">
     python3 -I - "$@" "$POOL_TARGET_RE" <<'PY'
-import datetime, hashlib, json, os, re, subprocess, sys, tempfile
-doc, ledger, state_file, out, open_tsv, manifest, repo, gh, noread, hroot, mirror, target_re = sys.argv[1:13]
+import datetime, fcntl, hashlib, json, os, re, subprocess, sys, tempfile
+doc, ledger, state_file, out, open_tsv, manifest, repo, gh, noread, hroot, mirror, seed, target_re = sys.argv[1:14]
 target_re = re.compile(target_re)
 state_dir = os.path.dirname(out)
 now = datetime.datetime.now(datetime.timezone.utc)
@@ -887,11 +887,6 @@ if os.environ.get("TICK_NOW"):
     except ValueError:
         pass
 iso = lambda d: d.strftime("%Y-%m-%dT%H:%M:%SZ")
-try:
-    text = open(doc).read().splitlines()
-except OSError:
-    print("pool-holds=?")
-    sys.exit(0)
 
 def gives_up(key, verb, rest):
     rest = re.sub(r"(?<!\S)(?:authority|wake)=\S+", "", rest)
@@ -905,17 +900,108 @@ def wake_pr(e):
     m = re.fullmatch(r"pr:(\d+)|pr-(\d+)-merge", e)
     return int(m[1] or m[2]) if m else None
 
-lines, cited, live = {}, set(), False
-for line in text:
-    if line.startswith("## "):
-        live = line == "## Live state"
-    if live and line.startswith("pool-disposition:"):
-        value = line.split(":", 1)[1].strip()
-        m = re.fullmatch(r"([A-Z]+-\d+) (slice|close|question|hold|park) (\S.*)", value)
+def parse(text):
+    lines, cited, live = {}, set(), False
+    for line in text:
+        if line.startswith("## "):
+            live = line == "## Live state"
+        if live and line.startswith("pool-disposition:"):
+            value = line.split(":", 1)[1].strip()
+            m = re.fullmatch(r"([A-Z]+-\d+) (slice|close|question|hold|park) (\S.*)", value)
+            if m:
+                cited |= text_prs(m[3]) | {n for n in map(wake_pr, wake_events(m[3])) if n is not None}
+            if m and m[1] not in lines and gives_up(m[1], m[2], m[3]):
+                lines[m[1]] = (m[2], m[3], value)
+    return lines, cited
+
+# Lineage age. pool-lines.tsv (shared by every chief doc, under flock) holds `<iso ts>\t<stem>\t<KEY verb>,...`,
+# one row each time a stem's set of give-up lines changes; stems unseen for 14 days are pruned. A line's
+# age_gen counts the stems of its lineage (the stem after HIMMEL-nextleg-<date><gen>-), in order of first
+# appearance, that carried it without a gap up to this stem; another lineage never resets it.
+lines_file = os.path.join(state_dir, "pool-lines.tsv")
+def lineage(stem):
+    m = re.match(r"HIMMEL-nextleg-\d{4}-\d{2}-\d{2}[A-Z]+-(.+)$", stem)
+    return m[1] if m else stem
+def stem_of(path):
+    b = os.path.basename(path)
+    return b[:-3] if b.endswith(".md") else b
+def record(adds):
+    os.makedirs(state_dir, exist_ok=True)
+    with open(lines_file + ".lock", "a") as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        try:
+            got = [r.split("\t") for r in open(lines_file).read().splitlines()]
+        except FileNotFoundError:
+            got = []
+        rows = [(r[0], r[1], frozenset(x for x in r[2].split(",") if x)) for r in got if len(r) == 3]
+        changed = False
+        for ts, stem, items in adds:
+            if next((g for _, s, g in reversed(rows) if s == stem), None) != items:
+                rows.append((ts, stem, items))
+                changed = True
+        newest = {}
+        for t, s, _ in rows:
+            newest[s] = max(newest.get(s, t), t)
+        cut = iso(now - datetime.timedelta(days=14))
+        kept = [r for r in rows if newest[r[1]] >= cut]
+        if changed or len(kept) != len(rows):
+            fd, tmp = tempfile.mkstemp(dir=state_dir, prefix=".pool-lines.tsv.")
+            with os.fdopen(fd, "w") as f:
+                f.write("".join("%s\t%s\t%s\n" % (t, s, ",".join(sorted(g))) for t, s, g in kept))
+            os.replace(tmp, lines_file)
+        return kept
+def age_of(rows, stem, item):
+    lin, order, latest, first = lineage(stem), [], {}, {}
+    for t, s, g in rows:
+        if lineage(s) != lin:
+            continue
+        if s not in latest:
+            order.append(s)
+        latest[s] = g
+        if item in g and s not in first:
+            first[s] = t
+    n, since = 0, None
+    for s in (order[order.index(stem)::-1] if stem in order else []):
+        if item not in latest[s]:
+            break
+        n, since = n + 1, first.get(s)
+    return n, since
+
+if seed:
+    adds = []
+    try:
+        listed = open(seed).read().splitlines()
+    except OSError:
+        print("pool-lines=?")
+        sys.exit(0)
+    for path in listed:
+        m = re.search(r"(\d{4}-\d{2}-\d{2})", os.path.basename(path))
+        try:
+            got, _ = parse(open(path).read().splitlines())
+        except OSError:
+            continue
         if m:
-            cited |= text_prs(m[3]) | {n for n in map(wake_pr, wake_events(m[3])) if n is not None}
-        if m and m[1] not in lines and gives_up(m[1], m[2], m[3]):
-            lines[m[1]] = (m[2], m[3], value)
+            adds.append((m[1] + "T00:00:00Z", stem_of(path), frozenset("%s %s" % (k, v[0]) for k, v in got.items())))
+    try:
+        record(adds)
+    except OSError:
+        print("pool-lines=?")
+        sys.exit(0)
+    print("pool-lines=seeded:%d" % len(adds))
+    sys.exit(0)
+
+try:
+    text = open(doc).read().splitlines()
+except OSError:
+    print("pool-holds=?")
+    sys.exit(0)
+lines, cited = parse(text)
+stem = stem_of(doc)
+try:
+    aged = record([(iso(now), stem, frozenset("%s %s" % (k, v[0]) for k, v in lines.items()))])
+except OSError:
+    print("pool-holds=?")
+    sys.exit(0)
 
 # the exact read pool_stale used: one GraphQL query per 100 numbers naming exactly the cited PRs, never a
 # second read on the main token; a failed read leaves every PR unread (None), a number GitHub cannot
@@ -1097,8 +1183,12 @@ for key, (verb, rest, value) in (lines.items() if ledger.startswith("on:") else 
     outside = None
     if watched is not None and open_prs is not None:
         outside = any(n in open_prs and open_prs[n][1] and n not in watched for n in waits)
-    rows.append({"key": key, "verb": verb, "class": cls, "reason": reason, "first_seen": None, "age_gen": None,
-                 "age_days": None, "words": said, "fired": fired, "outside": outside, "wake": ",".join(events) or None,
+    age_gen, first_seen = age_of(aged, stem, "%s %s" % (key, verb))
+    age_days = None
+    if first_seen:
+        age_days = int((now - datetime.datetime.fromisoformat(first_seen.replace("Z", "+00:00"))).total_seconds() // 86400)
+    rows.append({"key": key, "verb": verb, "class": cls, "reason": reason, "first_seen": first_seen, "age_gen": age_gen,
+                 "age_days": age_days, "words": said, "fired": fired, "outside": outside, "wake": ",".join(events) or None,
                  "line": hashlib.sha256(value.encode()).hexdigest()[:12],
                  "asks_operator": None if asks is None else key in asks})
 
@@ -1474,6 +1564,7 @@ holds_mode=0
 ph_state=""
 ph_prs=""
 ph_mirror=""
+ph_seed=""
 ps_prior=""
 emit_fp=0
 ready_mode=0
@@ -1493,9 +1584,10 @@ while [ "$#" -gt 0 ]; do
         --pool-dispositions) pool_mode=1; shift ;;
         --pool-stale) stale_mode=1; shift ;;
         --pool-holds) holds_mode=1; shift ;;
-        --doc|--token|--workers|--workers-from|--handover-dir|--repo|--ready-dir|--prior|--state-file|--open-prs|--mirror)
+        --doc|--token|--workers|--workers-from|--handover-dir|--repo|--ready-dir|--prior|--state-file|--open-prs|--mirror|--seed-age)
             [ "$#" -ge 2 ] || { usage >&2; exit 2; }
             case "$1" in
+                --seed-age) ph_seed="$2" ;;
                 --state-file) ph_state="$2" ;;
                 --mirror) ph_mirror="$2" ;;
                 --open-prs) ph_prs="$2" ;;
@@ -1540,6 +1632,10 @@ if [ "$pool_mode" -eq 1 ]; then
 fi
 
 if [ "$holds_mode" -eq 1 ]; then
+    if [ -n "$ph_seed" ]; then
+        pool_holds "" off "" "${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/pool-holds-.json" "" "" "" "" 1 "" "" "$ph_seed"
+        exit 0
+    fi
     [ -n "$DOC" ] || { usage >&2; exit 2; }
     DOC="$(resolve_doc "$DOC")"
     ph_stem="${DOC##*/}"
@@ -1557,7 +1653,7 @@ if [ "$holds_mode" -eq 1 ]; then
         fi
     fi
     pool_holds "$DOC" "$(holds_ledger "$DOC")" "${ph_state:-${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/release-state-${ph_stem%.md}.json}" \
-        "$(pool_holds_file "$DOC")" "$ph_prs" "$WORKERS_FROM" "$REPO" "${TICK_GH_CMD:-$GH_READ_BIN}" "$ph_noread" "$root" "${ph_mirror:-${NEXT_DISPATCH_MIRROR:-}}"
+        "$(pool_holds_file "$DOC")" "$ph_prs" "$WORKERS_FROM" "$REPO" "${TICK_GH_CMD:-$GH_READ_BIN}" "$ph_noread" "$root" "${ph_mirror:-${NEXT_DISPATCH_MIRROR:-}}" ""
     exit 0
 fi
 

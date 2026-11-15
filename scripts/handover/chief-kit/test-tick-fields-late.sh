@@ -1331,6 +1331,75 @@ same 'a failing gh never fails the tick (rc 0)' "$ph_rc" 0
 contains 'and the tick still prints' "$ph_tick" 'TICK '
 same 'and the PR-dependent line reads unchecked' "$(ph_class 71)" unchecked
 
+# --- (9853) lineage age: pool-lines.tsv counts the consecutive chief generations of one lineage that carried a line.
+PA="$PH/age"; mkdir -p "$PA/docs"
+pa_line='pool-disposition: HIMMEL-80 park for now'
+pa_doc() { # <stem> [line...]: a chief doc of that stem with a release line and the given lines
+    local s="$1"; shift
+    printf '%s\n' '# chief' '' 'release: v1.1.3' '' '## Live state' "$@" 'pool-disposition: HIMMEL-81 park the other one' '' '## Results' > "$PA/docs/$s.md"
+    printf '%s' "$PA/docs/$s.md"
+}
+pa_run() { # <state dir> <TICK_NOW> <stem> [line...]: one pool-holds run on that doc
+    local st="$1" now="$2" s="$3"; shift 3
+    HIMMEL_RELEASE_STATE_DIR="$PH/rel" TICK_STATE_DIR="$st" TICK_NOW="$now" bash "$SUT" --pool-holds --doc "$(pa_doc "$s" "$@")" > /dev/null 2>&1
+}
+pa_age() { jq -r --arg f "$3" '.rows[] | select(.key == "HIMMEL-80") | .[$f] | tostring' "$1/pool-holds-$2.json" 2>/dev/null; }  # <state dir> <stem> <field>
+pa_n=HIMMEL-nextleg-2026-11-0
+st="$PA/s-seed"; mkdir -p "$st"
+for s in 1SA 2SB 3SC; do pa_doc "${pa_n}${s}-roadmap-chief" "$pa_line" > /dev/null; done
+printf '%s\n' "$PA/docs/${pa_n}1SA-roadmap-chief.md" "$PA/docs/${pa_n}2SB-roadmap-chief.md" "$PA/docs/${pa_n}3SC-roadmap-chief.md" > "$PA/seed.list"
+TICK_STATE_DIR="$st" TICK_NOW=2026-11-05T12:00:00Z bash "$SUT" --pool-holds --seed-age "$PA/seed.list" > /dev/null 2>&1
+same 'the seed mode appends one row per doc and writes no holds file' "$(wc -l < "$st/pool-lines.tsv" | tr -d ' '):$(find "$st" -name 'pool-holds-*.json' | wc -l | tr -d ' ')" '3:0'
+same 'a seeded row is stamped with the doc'"'"'s filename date' "$(head -n 1 "$st/pool-lines.tsv" | cut -f1)" '2026-11-01T00:00:00Z'
+pa_run "$st" 2026-11-05T12:00:00Z "${pa_n}3SC-roadmap-chief" "$pa_line"
+same 'seeding three stems in order gives age_gen 3' "$(pa_age "$st" "${pa_n}3SC-roadmap-chief" age_gen)" 3
+same 'and age_days follows the filename dates' "$(pa_age "$st" "${pa_n}3SC-roadmap-chief" age_days)" 4
+same 'and first_seen is the first stem'"'"'s date' "$(pa_age "$st" "${pa_n}3SC-roadmap-chief" first_seen)" '2026-11-01T00:00:00Z'
+st="$PA/s-seq"; mkdir -p "$st"
+pa_run "$st" 2026-11-05T10:00:00Z "${pa_n}1AA-roadmap-chief" "$pa_line"
+same 'a first generation is age_gen 1' "$(pa_age "$st" "${pa_n}1AA-roadmap-chief" age_gen)" 1
+pa_run "$st" 2026-11-05T11:00:00Z "${pa_n}1AB-roadmap-chief" "$pa_line"
+same 'the next stem of the lineage with the same line gives age_gen 2' "$(pa_age "$st" "${pa_n}1AB-roadmap-chief" age_gen)" 2
+pa_run "$st" 2026-11-05T11:30:00Z "${pa_n}1AB-roadmap-chief" "$pa_line"
+same 'the same stem again stays at 2' "$(pa_age "$st" "${pa_n}1AB-roadmap-chief" age_gen)" 2
+same 'an unchanged line set appends no row' "$(grep -c "${pa_n}1AB" "$st/pool-lines.tsv")" 1
+pa_run "$st" 2026-11-05T12:00:00Z "${pa_n}1ZZ-chief"
+pa_run "$st" 2026-11-05T12:30:00Z "${pa_n}1AC-roadmap-chief" "$pa_line"
+same 'a stem of another lineage without the line never resets' "$(pa_age "$st" "${pa_n}1AC-roadmap-chief" age_gen)" 3
+pa_run "$st" 2026-11-05T13:00:00Z "${pa_n}1AD-roadmap-chief"
+pa_run "$st" 2026-11-05T14:00:00Z "${pa_n}1AE-roadmap-chief" "$pa_line"
+same 'a stem of the lineage without the line resets the age to 1' "$(pa_age "$st" "${pa_n}1AE-roadmap-chief" age_gen)" 1
+st="$PA/s-days"; mkdir -p "$st"
+pa_doc HIMMEL-nextleg-2026-10-28CA-roadmap-chief "$pa_line" > /dev/null
+pa_doc HIMMEL-nextleg-2026-10-01OLD-roadmap-chief "$pa_line" > /dev/null
+printf '%s\n' "$PA/docs/HIMMEL-nextleg-2026-10-01OLD-roadmap-chief.md" "$PA/docs/HIMMEL-nextleg-2026-10-28CA-roadmap-chief.md" > "$PA/seed2.list"
+TICK_STATE_DIR="$st" TICK_NOW=2026-11-05T00:00:00Z bash "$SUT" --pool-holds --seed-age "$PA/seed2.list" > /dev/null 2>&1
+pa_run "$st" 2026-11-05T00:00:00Z HIMMEL-nextleg-2026-11-05CB-roadmap-chief "$pa_line"
+same 'age_days from a seeded first-seen 8 days back is 8' "$(pa_age "$st" HIMMEL-nextleg-2026-11-05CB-roadmap-chief age_days)" 8
+same 'a stem unseen for 14 days is pruned' "$(grep -c 'OLD-roadmap-chief' "$st/pool-lines.tsv")" 0
+
+# The golden holds file the board and the tracker read (roadmap.test.ts, test-tracker.sh): the producer's
+# output for a fixed fixture, with ts from TICK_NOW and first_seen from a seeded age file.
+GD="$PA/golden"; mkdir -p "$GD/state" "$GD/docs"
+gd_l1='pool-disposition: HIMMEL-1 question one more round authority=O-v1.1.3-0001'
+gd_l2='pool-disposition: HIMMEL-2 park for now'
+gd_l3='pool-disposition: HIMMEL-3 hold on the merge wake=pr:4999'
+gd_l4='pool-disposition: HIMMEL-4 hold on the other merge wake=pr:4998'
+gd_l5='pool-disposition: HIMMEL-5 park until then wake=date:2026-11-18'
+gd_doc() { printf '%s\n' '# chief' '' 'release: v1.1.3' '' '## Live state' "${@:2}" '' '## Results' > "$GD/docs/HIMMEL-nextleg-$1-roadmap-chief.md"; }
+gd_doc 2026-11-08GA "$gd_l2" "$gd_l3"
+gd_doc 2026-11-09GB "$gd_l2" "$gd_l3" "$gd_l4"
+gd_doc 2026-11-15GD "$gd_l1" "$gd_l2" "$gd_l3" "$gd_l4" "$gd_l5"
+printf '%s\n' "$GD/docs/HIMMEL-nextleg-2026-11-08GA-roadmap-chief.md" "$GD/docs/HIMMEL-nextleg-2026-11-09GB-roadmap-chief.md" > "$GD/seed.list"
+TICK_STATE_DIR="$GD/state" TICK_NOW=2026-11-15T12:00:00Z bash "$SUT" --pool-holds --seed-age "$GD/seed.list" > /dev/null 2>&1
+jq -n '{ts: "2026-11-15T12:00:00Z", status: "OK", words_records: [{id: "O-v1.1.3-0001", decision: "9", keys: ["HIMMEL-1"], op: "none", verbatim: "Approved one more round"}], asks_operator_keys: []}' \
+    > "$GD/state/release-state-HIMMEL-nextleg-2026-11-15GD-roadmap-chief.json"
+printf '4999\tfeat/a\tfalse\tme\tfalse\n4998\tfeat/b\tfalse\tme\tfalse\n' > "$GD/open.tsv"
+HIMMEL_RELEASE_STATE_DIR="$PH/rel" TICK_STATE_DIR="$GD/state" TICK_NOW=2026-11-15T12:00:00Z NEXT_DISPATCH_MIRROR="$PHM" TICK_GH_CMD="$PH/gh" PH_GH_LOG="$PH/gh.log" \
+    PH_GH_STATES=4999:OPEN,4998:OPEN bash "$SUT" --pool-holds --doc "$GD/docs/HIMMEL-nextleg-2026-11-15GD-roadmap-chief.md" --open-prs "$GD/open.tsv" > /dev/null 2>&1
+same 'golden holds file: the producer output equals fixtures/pool-holds-golden.json' \
+    "$(jq -S 'del(.doc)' "$GD/state/pool-holds-HIMMEL-nextleg-2026-11-15GD-roadmap-chief.json" 2>/dev/null)" "$(jq -S 'del(.doc)' "$HERE/fixtures/pool-holds-golden.json" 2>/dev/null)"
+
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick-fields-late.sh'
     exit 0
