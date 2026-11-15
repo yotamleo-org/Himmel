@@ -6,11 +6,7 @@
 # counts every suite on the machine, whatever tree or runner it came from.
 #
 # Model: N slot directories, slot-1..slot-N, under
-#   ${HIMMEL_SUITE_SEMAPHORE_DIR:-${TMPDIR:-/tmp}/himmel-suite-semaphore.d}
-# ponytail: (HIMMEL-1838) the TMPDIR-keyed default shards the "machine-wide" budget across
-# any two processes with different TMPDIR values (e.g. two login sessions) --
-# each gets its own N-slot budget instead of sharing one. Upgrade path tracked
-# as the round-3 TMPDIR sharding axis.
+#   ${HIMMEL_SUITE_SEMAPHORE_DIR:-/tmp/himmel-suite-semaphore-<uid>.d}
 # N = HIMMEL_SUITE_SLOTS (default 6). A slot is taken by an atomic `mkdir` and
 # carries an `owner` file: pid, start-time identity (proc-tree.sh), label,
 # started epoch. Liveness is pid + identity, not a TTL alone -- unlike
@@ -56,7 +52,7 @@ SUITE_SEM_SLOT=''
 SUITE_SEM_OWNER_PID=''
 
 suite_sem_dir() {
-    printf '%s\n' "${HIMMEL_SUITE_SEMAPHORE_DIR:-${TMPDIR:-/tmp}/himmel-suite-semaphore.d}"
+    printf '%s\n' "${HIMMEL_SUITE_SEMAPHORE_DIR:-/tmp/himmel-suite-semaphore-$(id -u).d}"
 }
 
 # _suite_sem_uint <value> <default> -- print value when a positive integer.
