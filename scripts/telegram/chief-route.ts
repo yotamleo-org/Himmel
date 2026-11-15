@@ -1487,8 +1487,6 @@ export function resolveKind(table: ClassTable | null, kind: string | undefined):
 const TELEGRAM_PART_LIMIT = 3000;
 const PART_BREAKS = [/\n[ \t]*\n/g, /\n/g, /[.!?]["')\]]*[ \t]+/g, /\s+/g];
 
-// Where the first part of s ends: after the last paragraph, line, sentence or word break that fits, never inside a
-// backtick span or a command line if a break outside one fits; a word longer than the budget is the only cut inside a word.
 function partEnd(s: string, budget: number): number {
   const head = s.slice(0, budget);
   const spans = protectedRanges(s);
