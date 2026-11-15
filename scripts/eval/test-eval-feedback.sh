@@ -845,9 +845,6 @@ has "apply-review: prints the receipt" "$out" "applied review-panel codex.class.
 eq "apply-review: one applied record appended" "$(field "$AC" 1 status)" "applied"
 eq "apply-review: the fixture repo's HEAD is unchanged" "$(gitc6 rev-parse HEAD)" "$MERGE6"
 
-# --- gate_verdict noise: zero baseline spread is not zero noise ------------------------------------
-# Counts out of 47 seeded defects and 47 clean cases, copied from the PR 5427 sweeps (base1 base2 at the base
-# cbs_hash, head1-3 at the head): gating hits and clean cases flagged.
 GVPY="$TMP/gv.py"
 cat >"$GVPY" <<'EOF'
 import sys
