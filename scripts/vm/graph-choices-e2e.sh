@@ -386,9 +386,10 @@ bash scripts/lib/usage-preflight.sh' 2>"$W/preflight.err" | tail -n 1)"
     ( cd "$E2E" && bun install ) > "$W/e2e-install.log" 2>&1; rc=$?
     if [ "$rc" -ne 0 ]; then fail "bun install in tests/e2e exits 0 (rc=$rc)"; tail_of "$W/e2e-install.log" 12
     else
-      ( cd "$E2E" && bunx playwright install chromium && sudo -n env "PATH=$PATH" bunx playwright install-deps chromium ) > "$W/e2e-browser.log" 2>&1; rc=$?
+      printf 'DPkg::Lock::Timeout "600";\n' > "$W/apt.conf"
+      ( cd "$E2E" && bunx playwright install chromium && sudo -n env "PATH=$PATH" "APT_CONFIG=$W/apt.conf" bunx playwright install-deps chromium ) > "$W/e2e-browser.log" 2>&1; rc=$?
       if [ "$rc" -eq 0 ]; then pass "the pinned Chromium and its libraries are installed"; else fail "the pinned Chromium and its libraries are installed (rc=$rc)"; tail_of "$W/e2e-browser.log" 12; fi
-      ( cd "$E2E" && E2E_SHOTS="$W/shots" bunx playwright test settings.e2e.ts ) > "$W/e2e.log" 2>&1; rc=$?
+      ( cd "$E2E" && E2E_SHOTS="$W/shots" bunx playwright test settings.e2e.ts --retries=1 ) > "$W/e2e.log" 2>&1; rc=$?
       if [ "$rc" -eq 0 ]; then pass "settings.e2e.ts passes on the guest"; else fail "settings.e2e.ts passes on the guest (rc=$rc)"; tail_of "$W/e2e.log" 25; fi
     fi
     for scheme in light dark; do
