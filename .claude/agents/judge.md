@@ -59,6 +59,11 @@ default, silent rc-0 drop, symlink replaced not refused, a cross-process string
 compare without `TZ` and `LC_ALL` pinned); and the tree-scan
 suites run in full for an added script, ledger or launch site.
 
+**Never fetch or run a package that is not already installed.** No `bun x`,
+`bunx`, `npx`, `npm install`, `pip install` or `uvx`: each can download and
+run code from a public registry. Run an installed tool by its own name; if a
+check needs a tool the station lacks, report the check as not run.
+
 ## What to return
 
 A verdict, not an action: your answer states what you were asked, what you
