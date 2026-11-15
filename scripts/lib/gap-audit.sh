@@ -10,7 +10,7 @@
 #   graphify     semantic manifest missing or older than 14 days (the graph publisher
 #                only: graph-choices.js role; other stations pull this graph)
 #   tickets      in-work tickets with no session/PR (next-dispatchable.sh
-#                --resume-only); skipped when absent or Jira unset
+#                --resume-only); skipped when absent or no Jira project key is set (env, himmel.conf or .env)
 #   ceilings     open ceilings ledger rows (ceiling-lookup.sh --ids --all: ids,
 #                files and anchors, never row text) whose ticket is Done in the
 #                Jira mirror, whose file is gone or whose anchor no longer
@@ -28,6 +28,13 @@ GAP_AUDIT_FINDINGS=""
 GAP_AUDIT_SKIPPED=""
 
 _ga_skip() { GAP_AUDIT_SKIPPED="${GAP_AUDIT_SKIPPED}${GAP_AUDIT_SKIPPED:+, }$1"; }
+
+# _ga_project_key <root> — fill JIRA_PROJECT_KEY the way the jira CLI does: the live env, then himmel.conf, then <root>/.env.
+_ga_project_key() {
+    [ -z "${JIRA_PROJECT_KEY:-}" ] || return 0
+    . "$GAP_AUDIT_ROOT_DEFAULT/scripts/lib/load-dotenv.sh" 2>/dev/null || return 0
+    load_dotenv --root "$1" JIRA_PROJECT_KEY 2>/dev/null || true  # swallow-ok: an unreadable config leaves the key unset and the checks report it as not configured
+}
 
 _ga_add() { # _ga_add <area> <message> [remedy]
     GAP_AUDIT_FINDINGS="${GAP_AUDIT_FINDINGS}      · $1: $2${3:+
@@ -115,7 +122,7 @@ _ga_check_resume() {
 }
 
 _ga_check_ceilings() {
-    local root="$1" mirror="${GAP_AUDIT_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}" out
+    local root="$1" mirror="${GAP_AUDIT_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/${JIRA_PROJECT_KEY:-HIMMEL}}" out
     local id file anchor ticket done_rows="" gone_rows="" stale_rows=""
     [ -f "$root/scripts/ledger/ceiling-lookup.sh" ] || return 0
     out="$(cd "$root" && bash "$root/scripts/ledger/ceiling-lookup.sh" --ids --all 2>/dev/null)" || { _ga_skip "ceilings (lookup failed)"; return 0; }
@@ -148,6 +155,7 @@ gap_audit_offer() {
     GAP_AUDIT_FINDINGS=""; GAP_AUDIT_SKIPPED=""
     echo ""
     echo "==> gap audit"
+    _ga_project_key "$root"
     _ga_check_doctor "$root" || true
     _ga_check_qmd || true
     _ga_check_semantic "$root" "$now" || true

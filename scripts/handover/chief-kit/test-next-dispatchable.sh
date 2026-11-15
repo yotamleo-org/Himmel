@@ -280,6 +280,13 @@ lacks "an In Progress ticket with an unresolved blocker is not listed" "$ro" "HI
 rl="$(NEXT_DISPATCH_MIRROR="$M5" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --resume-only --workers-from "$WORK/no-such-fleet.json" 2>/dev/null)"
 has "an unreadable manifest is reported on the RESUME read" "$rl" "live workers unknown"
 lacks "an unreadable manifest lists no RESUME row" "$rl" "RESUME	"
+mkdir -p "$HOME/.himmel/state/jira-mirror/PROJKEY"
+cp "$M5"/*.md "$HOME/.himmel/state/jira-mirror/PROJKEY/"
+printf 'JIRA_PROJECT_KEY=PROJKEY\n' > "$HOME/.himmel/himmel.conf"
+rk="$(env -u NEXT_DISPATCH_MIRROR -u HIMMEL_CONFIG_DIR JIRA_PROJECT_KEY= NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --resume-only 2>&1)"
+lacks "the default mirror follows the project key in himmel.conf" "$rk" "mirror missing"
+has "the default mirror for a himmel.conf project key lists its RESUME rows" "$rk" "RESUME	"
+rm -rf "$HOME/.himmel/himmel.conf" "$HOME/.himmel/state/jira-mirror/PROJKEY"
 
 # A live worker whose files are unknown (no Writes line, or a doc that cannot be read) still owns its own key by
 # its doc name; only its files are unknown. It never hides the RESUME rows of the tickets nobody owns.

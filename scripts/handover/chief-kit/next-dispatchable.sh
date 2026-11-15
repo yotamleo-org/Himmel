@@ -169,7 +169,8 @@ set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
 
-top=8; top_set=0; mirror="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"
+if [ -z "${NEXT_DISPATCH_MIRROR:-}" ] && [ -z "${JIRA_PROJECT_KEY:-}" ] && . "$REPO/scripts/lib/load-dotenv.sh" 2>/dev/null; then load_dotenv JIRA_PROJECT_KEY 2>/dev/null || true; fi  # swallow-ok: the default mirror follows the configured project key; none configured keeps the HIMMEL default
+top=8; top_set=0; mirror="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/${JIRA_PROJECT_KEY:-HIMMEL}}"
 workers_from="${WORKERS_FROM:-}"; held=""; classify=1; resume_only=0; owners=""; doc=""; pool_only=0; why=0; dispo=0
 workers="${TICKET_STATUS_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/workers"
 while [ "$#" -gt 0 ]; do
