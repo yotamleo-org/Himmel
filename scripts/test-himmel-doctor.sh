@@ -8658,7 +8658,7 @@ c97_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c97.XXXXXX")" || { echo "mktem
 mkdir -p "$c97_t/claude" "$c97_t/home" "$c97_t/codex"
 c97_dummy="FIXTURE-DUMMY-9f3a"
 c97_run() { CODEX_HOME="$c97_t/codex" CLAUDE_DIR="$c97_t/claude" HOME="$c97_t/home" bash "$DOC" --root "$REPO_ROOT" --no-color --only C97 "$@" 2>&1; }
-c97_cfg() { printf '%s\n' "$1" > "$c97_t/codex/config.toml"; }
+c97_cfg() { printf '%s\n' "$1" > "$c97_t/codex/config.toml" || fail "C97 fixture write failed"; }
 c97_base='[mcp_servers.obsidian-vault]
 command = "node"
 args = ["/x/server.js"]
@@ -8726,6 +8726,16 @@ TRIPLE_SECRET = \"\"\"$c97_dummy\"\"\"
 LITERAL_KEY = '''$c97_dummy'''"
 out="$(c97_run)"
 if grepq "$out" -F 'WARN C97-codex-mcp-literal-key' && grepq "$out" -F 'OBSIDIAN_API_KEY' && grepq "$out" -F 'BARE_TOKEN' && grepq "$out" -F 'TRIPLE_SECRET' && grepq "$out" -F 'LITERAL_KEY' && ! grepq "$out" -F "$c97_dummy" && ! grepq "$out" -F '12345'; then pass "C97 WARN for a literal with a trailing comment"; else fail "C97 literal+comment -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C97: an escaped quote inside an inline basic-string value still commits the pair -> WARN =="
+c97_cfg '[mcp_servers.x]
+command = "node"
+env = { SOME_API_KEY = "FIXTURE-DUMMY-9f3a\"tail", PLAIN = "1" }'
+out="$(c97_run)"
+if grepq "$out" -F 'WARN C97-codex-mcp-literal-key' && grepq "$out" -F 'SOME_API_KEY' && ! grepq "$out" -F 'FIXTURE-DUMMY-9f3a'; then pass "C97 WARN for an escaped quote in an inline value"; else fail "C97 escaped quote -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C97: a CRLF config reads like an LF one -> WARN =="
+printf '[mcp_servers.a.env]\r\nA_API_KEY = "%s"\r\n' "$c97_dummy" > "$c97_t/codex/config.toml"
+out="$(c97_run)"
+if grepq "$out" -F 'WARN C97-codex-mcp-literal-key' && grepq "$out" -F 'A_API_KEY' && ! grepq "$out" -F "$c97_dummy"; then pass "C97 WARN for a CRLF config"; else fail "C97 CRLF -> $(printf '%s' "$out" | head -4)"; fi
 echo "== C97: the scan itself fails -> INFO, never OK =="
 mkdir -p "$c97_t/badawk"
 printf '#!/bin/sh\nexit 2\n' > "$c97_t/badawk/awk"; chmod +x "$c97_t/badawk/awk"
@@ -8756,7 +8766,7 @@ A_API_KEY = \"$c97_dummy\"
 [mcp_servers.b.env]
 B_TOKEN = \"$c97_dummy\""
 out="$(c97_run)"
-if grepq "$out" -F 'WARN C97-codex-mcp-literal-key' && grepq "$out" -F 'A_API_KEY' && grepq "$out" -F 'B_TOKEN' && ! grepq "$out" -F "$c97_dummy"; then pass "C97 names every offending pair"; else fail "C97 two servers -> $(printf '%s' "$out" | head -4)"; fi
+if [ "$(printf '%s\n' "$out" | grep -c 'WARN C97-codex-mcp-literal-key')" -eq 1 ] && grepq "$out" -F '[mcp_servers.a] A_API_KEY, [mcp_servers.b] B_TOKEN' && ! grepq "$out" -F "$c97_dummy"; then pass "C97 names every offending pair"; else fail "C97 two servers -> $(printf '%s' "$out" | head -4)"; fi
 echo "== C97: no Codex config at CODEX_HOME -> OK =="
 rm -f "$c97_t/codex/config.toml"
 out="$(c97_run)"

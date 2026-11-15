@@ -2536,7 +2536,12 @@ check_c97_codex_mcp_literal_key() {
             n = length(s)
             for (i = 1; i <= n; i++) {
                 c = substr(s, i, 1)
-                if (q != "") { if (c == q) q = ""; if (st == "key") key = key c; else val = val c; continue }
+                if (q != "") {
+                    if (q == "\"" && c == "\\") { c = c substr(s, i + 1, 1); i++ }
+                    else if (c == q) q = ""
+                    if (st == "key") key = key c; else val = val c
+                    continue
+                }
                 if (c == "\"" || c == "\047") { q = c; if (st == "key") key = key c; else val = val c; continue }
                 if (st == "key") {
                     if (c == "=") { st = "val"; val = "" }
@@ -2549,6 +2554,7 @@ check_c97_codex_mcp_literal_key() {
                 } else val = val c
             }
         }
+        { sub(/\r$/, "") }
         /^[ \t]*\[\[/ { mode = ""; next }
         /^[ \t]*\[/ {
             h = $0; sub(/^[ \t]*\[/, "", h); sub(/\][ \t]*(#.*)?$/, "", h)
