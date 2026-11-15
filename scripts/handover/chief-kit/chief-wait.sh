@@ -1398,12 +1398,6 @@ except Exception:
     printf 'WAKE rm-lease-stale %s %sm\ntakeover: JIRA_PROJECT_KEY=%s node %s release operator takeover %s --epoch %s --doc <absolute successor run doc>, then rm-run %s --doc <the same doc>\n' \
         "$epoch" "$age" "$pk" "$cli" "$rel" "$epoch" "$rel"
 }
-# intake_wake: <INTAKE=<n> value, empty when 0 or unread> — the file <inbox>.wait.intake holds the epoch INTAKE first
-# went above 0 (line 1) and the epoch of the last wake (line 2); INTAKE back at 0 removes it. At capacity=UNDERFILLED
-# with INTAKE above 0 for CHIEF_WAIT_INTAKE_ARM_HOURS (default 6) it prints ONE `WAKE rm-intake` that names the rm-run
-# command (the chief runs it; the waiter never launches a worker). No second wake inside CHIEF_WAIT_INTAKE_REWAKE_MIN
-# (default 360) and none while the release manager lease is held or unreadable. The lease read samples at most every
-# CHIEF_WAIT_INTAKE_SAMPLE_MIN (default 5) and uses the same CHIEF_WAIT_RMLEASE reader as rmlease_wake.
 intake_file="$inbox.wait.intake"
 intake_at_file="$inbox.wait.intake.at"
 intake_wake() {

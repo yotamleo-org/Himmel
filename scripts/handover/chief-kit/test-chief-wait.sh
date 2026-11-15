@@ -1440,8 +1440,7 @@ unset CHIEF_WAIT_CADENCE
 
 # --- (rv) the daily failure review wakes once per review day (decision 593) ---
 # review=<date>:<age>:<failures>:<new>:<new 5+>:<filed>[:STALE]. It wakes on a filed key or a new class
-# with 5+ failures; STALE wakes once per last-review date; a 1-count class never wakes. A CAPPED flag from an
-# older tick wakes nothing (the router has no create cap, decision 941).
+# with 5+ failures; STALE wakes once per last-review date; a 1-count class never wakes.
 # RED control (chief-wait.sh before this change): no WAKE review line, the waiter keeps waiting.
 rv_tick() { # <review value>
     tick_line "N1:FRESH" "ok"
