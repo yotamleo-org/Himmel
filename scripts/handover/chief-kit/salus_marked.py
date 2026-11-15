@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-# salus_marked.py: is a directory salus-marked (PHI), and is it an adopted repo? One classifier for gen-briefs.py (import) and brief-lint.sh (CLI).
+# salus_marked.py: is a directory salus-marked (PHI), is it an adopted repo, or is it inside a primary checkout? One classifier for gen-briefs.py (import) and brief-lint.sh (CLI).
 # Marked = a .salus or .salus-profile marker on the directory or an ancestor, or the directory inside (or holding) a phi-roots / egress-denylist
 # entry: the check scripts/claude-codex runs (its own lists and claude-glm's), and the salus cell of scripts/guardrails/egress-matrix.json. The same
 # test runs on the directory and on the primary checkout of its repo (a linked worktree can sit outside a marked primary). Anything that cannot be
 # read or run fails closed (marked): a list that exists but is unreadable, a git that fails on a directory holding .git, any exception.
-# CLI: python3 salus_marked.py salus|adapter <dir>   exit 0 = yes, 10 = no; any other code is a crash and the caller refuses.
+# CLI: python3 salus_marked.py salus|adapter|primary <dir>   exit 0 = yes, 10 = no; any other code is a crash and the caller refuses.
+# primary prints the checkout root on stdout when the answer is yes.
 # git-env-ok: _primary drops every GIT_* name from the environment it hands git
 import os
 import pathlib
+import stat
 import subprocess
 import sys
 
@@ -96,8 +98,34 @@ def is_adapter(repo):
     return os.path.exists(os.path.join(repo, '.git')) and not os.path.exists(os.path.join(repo, 'scripts', 'handover', 'chief-kit', 'headed-arm-worker.sh'))
 
 
+def primary_root(path):
+    # The primary checkout path is in, or None. Mirrors the guard: the nearest ancestor holding a .git entry
+    # (lib.sh _repo_root_for_path_set, [ -e ]) is a primary when that .git is a directory ([ -d ], main_checkout_verdict_set)
+    # and has no .single-writer file ([ -f ]). Only stat calls. os.stat raises when a directory on the chain
+    # lacks search permission; the CLI then crashes and the caller refuses.
+    d = os.path.realpath(path)
+    if not os.path.isdir(d):
+        return None  # not made yet: a missing worktree path is refused by headed-arm-worker.sh's worktree-shape check
+    for top in _chain(d):
+        try:
+            st = os.stat(os.path.join(top, '.git'))  # follows a symlinked .git, as [ -e ] and [ -d ] do
+        except (FileNotFoundError, NotADirectoryError):
+            continue
+        if not stat.S_ISDIR(st.st_mode):
+            return None  # a .git file: a linked worktree, a submodule or a separate git dir
+        if os.path.isfile(os.path.join(top, '.single-writer')):
+            return None  # an opted-in single-writer repo: the guard allows its writes
+        return top
+    return None
+
+
 if __name__ == '__main__':
-    if len(sys.argv) != 3 or sys.argv[1] not in ('salus', 'adapter'):
+    if len(sys.argv) != 3 or sys.argv[1] not in ('salus', 'adapter', 'primary'):
         sys.exit(2)
+    if sys.argv[1] == 'primary':
+        root = primary_root(sys.argv[2])
+        if root is not None:
+            print(root)
+        sys.exit(YES if root is not None else NO)
     fn = salus_marked if sys.argv[1] == 'salus' else is_adapter
     sys.exit(YES if fn(sys.argv[2]) else NO)
