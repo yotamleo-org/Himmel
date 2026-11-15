@@ -1798,7 +1798,7 @@ plant_old_backup() {
 plant_old_backup
 apply_tty y "PATH=$TMP/mvstub:\$PATH "
 left=$(leftovers)
-if [ -z "$left" ]; then pass "T10059 a TERM mid-replace leaves no .migrate.<pid> copy"; else fail "T10059 a TERM mid-replace left: $left"; fi
+if [ "$rc" != 0 ] && [ -z "$left" ]; then pass "T10059 a TERM mid-replace ends the run and leaves no .migrate.<pid> copy"; else fail "T10059 a TERM mid-replace: rc=$rc left=$left"; fi
 no_canary "T10059 the interrupted run prints no value" "$out"
 fixture_env
 fxput "$TMP/st/.env.migrate.$$" 'X=%s\n' "$(canary leftover)"
@@ -1806,6 +1806,12 @@ apply_tty y
 has "T10059 a leftover copy is named by path" "$TMP/st/.env.migrate.$$" "$out"
 no_canary "T10059 the leftover report prints no value" "$out"
 if [ -e "$TMP/st/.env.migrate.$$" ]; then pass "T10059 the leftover is left for the operator"; else fail "T10059 the leftover was removed"; fi
+fixture_env
+mkdir -p "$HOME/.config/secrets"
+fxput "$HOME/.config/secrets/himmel.env.migrate.$$" 'X=%s\n' "$(canary storeleft)"
+apply_tty y
+has "T10059 a legacy-store leftover is named by path" "$HOME/.config/secrets/himmel.env.migrate.$$" "$out"
+no_canary "T10059 the store leftover report prints no value" "$out"
 plant_old_backup 640
 apply_tty y
 oldb="$HOME/.himmel/env-backups/env.20260101T000000Z.1"

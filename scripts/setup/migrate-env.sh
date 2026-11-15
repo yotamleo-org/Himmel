@@ -748,7 +748,7 @@ fi
 echo "backup: the apply first copies .env (mode 600) to $bdir/env.<UTC time>.<pid>"
 [ "$dry" -eq 0 ] || { echo "dry run: nothing written."; exit 0; }
 poldir=$(_himmel_policy_dir) || { echo "migrate-env: cannot read this account's home from its passwd entry; nothing written." >&2; exit 1; }
-for f in ${envfile:+"$envfile".migrate.[0-9]*} "$confdir"/*.migrate.[0-9]* "$poldir"/*.migrate.[0-9]* "$bdir"/*.migrate.[0-9]*; do
+for f in ${envfile:+"$envfile".migrate.[0-9]*} "$confdir"/*.migrate.[0-9]* "$poldir"/*.migrate.[0-9]* "$bdir"/*.migrate.[0-9]* "${store%/*}"/*.migrate.[0-9]*; do
     [ -f "$f" ] && echo "migrate-env: WARN a copy an earlier interrupted run left, which can hold secrets: $f; check it, then delete it."
 done
 # -y at a terminal outside an agent session is the operator's own prompt: the consent is not read, so the printed command is true.
