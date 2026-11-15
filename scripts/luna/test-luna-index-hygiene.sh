@@ -247,20 +247,20 @@ V="$W/g1"; make_vault "$V"; G="$W/g1c"; mkdir -p "$G"; write_cfg "$G/index.yml" 
 sed 's|^  embed: .*|  embed: openai:qwen/qwen3-embedding-8b\n  openai_base_url: https://openrouter.ai/api/v1|' "$G/index.yml" > "$G/n.yml" && mv "$G/n.yml" "$G/index.yml"
 cp "$G/index.yml" "$G/index.orig"
 out="$(gated_query "$G")"; rc=$?
-check "control: the scratch remote-model config passes the egress gate before the hygiene step" "0|stub-reached" "$rc|$(printf '%s' "$out" | grep -q '^STUB-QMD$' && echo stub-reached || echo refused)"
+check "control: the scratch remote-model config passes the egress gate before the hygiene step" "0|stub-reached" "$rc|$(grep -q '^STUB-QMD$' <<<"$out" && echo stub-reached || echo refused)"
 
 herr="$(env -u LUNA_HYGIENE_CORPUS bash "$SUT" --vault "$V" --qmd-config "$G/index.yml" --apply 2>&1 >/dev/null)"; hrc=$?
 out="$(gated_query "$G")"; rc=$?
-check "after --apply the bounded qmd query still exits 0 (the gate's refusal is rc 10)" "0|stub-reached" "$rc|$(printf '%s' "$out" | grep -q '^STUB-QMD$' && echo stub-reached || echo refused)"
+check "after --apply the bounded qmd query still exits 0 (the gate's refusal is rc 10)" "0|stub-reached" "$rc|$(grep -q '^STUB-QMD$' <<<"$out" && echo stub-reached || echo refused)"
 unmapped="$(registered_map "$G/index.yml" "$REAL_CORPUS" | awk '/UNMAPPED$/{printf "%s ", $1}')"
 verdict=ok
 if [ -n "$unmapped" ]; then
   verdict="unmapped=${unmapped}rc=$hrc"
-  if [ "$hrc" -ne 0 ]; then verdict=ok; for n in $unmapped; do printf '%s' "$herr" | grep -q -- "$n" || verdict="rc=$hrc but the message does not name $n"; done; fi
+  if [ "$hrc" -ne 0 ]; then verdict=ok; for n in $unmapped; do grep -q -- "$n" <<<"$herr" || verdict="rc=$hrc but the message does not name $n"; done; fi
 fi
 check "every registered collection is mapped in the corpus file, or the step exits nonzero naming the unmapped one" ok "$verdict"
 check "the step refuses with exit 5" 5 "$hrc"
-check "and its message names luna-archive" 0 "$(printf '%s' "$herr" | grep -q 'luna-archive' && echo 0 || echo 1)"
+check "and its message names luna-archive" 0 "$(grep -q 'luna-archive' <<<"$herr" && echo 0 || echo 1)"
 check "a refused apply leaves the qmd config as it was" 0 "$(cmp -s "$G/index.yml" "$G/index.orig" && echo 0 || echo 1)"
 check "and writes no .graphifyignore" 1 "$([ -e "$V/.graphifyignore" ] && echo 0 || echo 1)"
 echo "detection: the registered names after the refused apply, beside their corpus entry"
