@@ -362,7 +362,7 @@ def resolve(contents, closure_walkers=CLOSURE_WALKERS):
             if 'scripts/cr/pr-check-context.sh' in files:
                 dependencies.add('scripts/cr/pr-check-context.sh')
             pinned = re.search(r'^NOT_RUN="(.*?)"', contents[suite], re.M | re.S)
-            not_run = set(pinned[1].splitlines()) if pinned else set()
+            not_run = {re.sub(r' x[0-9]+$', '', line) for line in pinned[1].splitlines()} if pinned else set()
             pinned = re.search(r'^DIST_PRIMARY="(.*?)"', contents[suite], re.M | re.S)
             dist_primary = {line.split('::', 1)[0] for line in pinned[1].splitlines()} if pinned else set()
             result['closure_pins'] += sorted(not_run | {parent + ' -> scripts/jira/dist/* (primary)' for parent in dist_primary})
