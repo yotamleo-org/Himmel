@@ -1744,6 +1744,120 @@ else
     if [ "$rc" -eq 0 ] && [ "$l_got" = "$l_want" ]; then pass "L1 a 900-suite range is read in ${l_wall}s inside the ${l_bound} s bound, with exactly the 900 suite names"; else fail "L1 large range: rc=$rc suites=$(grep -c . <<< "$out") wall=${l_wall}s (rc 124 = over the ${l_bound} s bound; first line: $(head -n 1 <<< "$out"))"; fi
 fi
 
+TI_MANIFEST="$REPO_ROOT/scripts/ci/tree-invariant-suites.txt"
+TV="$(fixture_mktemp_dir)" || exit 1
+trap 'rm -rf "$FX" "$SHIM" "$SHIM2" "$SHD" "$BIG" "$SHIM3" "$SHIM4" "${SM:-}" "$CX" "$CY" "$CJ" "$CL" "$TV"' EXIT
+(
+    fixture_enter_git_init_dir "$TV" || exit 1
+    git init -q
+    git config user.email t@e
+    git config user.name t
+)
+tv_mk() { mkdir -p "$TV/$(dirname "$1")"; printf '%s\n' "${2:-# $1}" > "$TV/$1"; }
+TI_EC=scripts/observability/test-exit-codes.sh
+TI_MC=scripts/handover/chief-kit/test-model-check-report.sh
+TI_PS=scripts/lanes/tests/pstack-plugin.test.mjs
+tv_mk "$TI_EC" '# fixture: names no scanned file'
+tv_mk "$TI_MC" '# fixture: names no scanned file'
+tv_mk "$TI_PS" '// fixture: names no scanned file'
+tv_mk scripts/test-unrelated.sh '# fixture'
+tv_mk scripts/cr/file-deferred-issues.sh
+tv_mk scripts/observability/exit-codes.json '{}'
+tv_mk marketplace/plugins/pstack/skills/statechart/scripts/test/render.test.ts
+tv_mk marketplace/plugins/pstack/skills/statechart/scripts/new-file.ts
+tv_mk scripts/unrelated/foo.sh
+tv_mk docs/notes.md
+mkdir -p "$TV/scripts/ci"
+[ ! -f "$TI_MANIFEST" ] || cp "$TI_MANIFEST" "$TV/scripts/ci/tree-invariant-suites.txt"
+git -C "$TV" add -A
+git -C "$TV" commit -q -m "chore: base"
+tv_change() {
+    printf '# changed\n' >> "$TV/$1" || return 1
+    git -C "$TV" add -A || return 1
+    git -C "$TV" commit -q -m "fix: change $1" || return 1
+    tv_range="$(git -C "$TV" rev-parse HEAD~1)..$(git -C "$TV" rev-parse HEAD)"
+}
+tv_is() { ( cd "$TV" && bash "$IS" "$@" 2>/dev/null ); }
+
+tv_change scripts/cr/file-deferred-issues.sh
+out="$(tv_is "$tv_range")"
+if grepq "$out" -Fx "$TI_EC" && ! grepq "$out" -Fx "$TI_MC" && ! grepq "$out" -Fx "$TI_PS"; then pass "TI1 a registered script changed selects test-exit-codes.sh and neither statechart suite"; else fail "TI1 registered script: $out"; fi
+tv_change scripts/observability/exit-codes.json
+out="$(tv_is "$tv_range")"
+if grepq "$out" -Fx "$TI_EC"; then pass "TI2 a change to the registry itself selects test-exit-codes.sh"; else fail "TI2 registry: $out"; fi
+tv_change marketplace/plugins/pstack/skills/statechart/scripts/test/render.test.ts
+out="$(tv_is "$tv_range")"
+if grepq "$out" -Fx "$TI_MC" && grepq "$out" -Fx "$TI_PS" && ! grepq "$out" -Fx "$TI_EC"; then pass "TI3 a file in the vendored statechart tree selects the model-check and pstack suites, not test-exit-codes.sh"; else fail "TI3 statechart tree: $out"; fi
+tv_change marketplace/plugins/pstack/skills/statechart/scripts/new-file.ts
+out="$(tv_is "$tv_range" --shell)"
+if grepq "$out" -Fx "$TI_MC" && ! grepq "$out" -F 'pstack-plugin.test.mjs'; then pass "TI3b --shell keeps the manifest's shell suite and drops its mjs suite"; else fail "TI3b --shell: $out"; fi
+printf '%s\n' scripts/cr/file-deferred-issues.sh marketplace/plugins/pstack/skills/statechart/scripts/new-file.ts scripts/unrelated/foo.sh > "$TV/ti-paths.txt"
+out="$( cd "$TV" && bash "$IS" --paths-file "$TV/ti-paths.txt" "$tv_range" 2>/dev/null )"
+if grepq "$out" -Fx "scripts/cr/file-deferred-issues.sh	$TI_EC" && grepq "$out" -Fx "marketplace/plugins/pstack/skills/statechart/scripts/new-file.ts	$TI_MC" && ! grepq "$out" -F "scripts/unrelated/foo.sh	scripts/"; then pass "TI4 --paths-file selects each path's manifest suite and nothing for an unrelated path"; else fail "TI4 --paths-file: $out"; fi
+tv_change scripts/unrelated/foo.sh
+out="$(tv_is "$tv_range")"
+if ! grepq "$out" -Fx "$TI_EC" && ! grepq "$out" -Fx "$TI_MC" && ! grepq "$out" -Fx "$TI_PS"; then pass "TI5 negative control: a change outside every declared tree selects none of the three"; else fail "TI5 negative control: $out"; fi
+tv_change docs/notes.md
+out="$(tv_is "$tv_range")"
+if ! grepq "$out" -Fx "$TI_EC" && ! grepq "$out" -Fx "$TI_MC"; then pass "TI6 a path outside the manifest's regexes adds no suite"; else fail "TI6 outside path: $out"; fi
+ti_re() { awk -F '\t' -v s="$1" '$1 == s { print $2 }' "$TI_MANIFEST" 2>/dev/null; }
+ti_ec_re="$(ti_re "$TI_EC")"
+ti_miss=""
+ti_n=0
+if [ -n "$ti_ec_re" ]; then
+    for k in $(git -C "$REPO_ROOT" grep -h -E '^    "[^"]+": \{' HEAD -- scripts/observability/exit-codes.json | sed -E 's/^ *"([^"]+)".*/\1/'); do
+        ti_n=$((ti_n + 1))
+        grepq "$k" -E "$ti_ec_re" || ti_miss="$ti_miss $k"
+    done
+fi
+if [ -n "$ti_ec_re" ] && [ "$ti_n" -gt 0 ] && [ -z "$ti_miss" ]; then pass "TI7 every script the exit-code registry names ($ti_n) matches the manifest's regex for test-exit-codes.sh"; else fail "TI7 registry keys outside the manifest regex (checked $ti_n):${ti_miss:- (no regex or no keys)}"; fi
+ti_mc_re="$(ti_re "$TI_MC")"
+ti_miss=""
+ti_n=0
+if [ -n "$ti_mc_re" ]; then
+    for k in $(git -C "$REPO_ROOT" grep -l -e '' HEAD -- marketplace/plugins/pstack/skills/statechart/scripts | sed 's/^HEAD://'); do
+        ti_n=$((ti_n + 1))
+        grepq "$k" -E "$ti_mc_re" || ti_miss="$ti_miss $k"
+    done
+fi
+if [ -n "$ti_mc_re" ] && [ "$ti_n" -gt 0 ] && [ -z "$ti_miss" ]; then pass "TI8 every vendored statechart file ($ti_n) matches the manifest's regex for test-model-check-report.sh"; else fail "TI8 vendored files outside the manifest regex (checked $ti_n):${ti_miss:- (no regex or no files)}"; fi
+git -C "$TV" rm -q -f scripts/ci/tree-invariant-suites.txt
+git -C "$TV" commit -q -m "chore: drop the manifest"
+tv_change scripts/cr/file-deferred-issues.sh
+out="$(tv_is "$tv_range")"
+if grepq "$out" -Fx "$TI_EC"; then pass "TI9a a head that deleted the manifest still selects through the selector's own checkout"; else fail "TI9a head without manifest: $out"; fi
+TC="$(fixture_mktemp_dir)" || exit 1
+trap 'rm -rf "$FX" "$SHIM" "$SHIM2" "$SHD" "$BIG" "$SHIM3" "$SHIM4" "${SM:-}" "$CX" "$CY" "$CJ" "$CL" "$TV" "$TC"' EXIT
+mkdir -p "$TC/scripts/cr" "$TC/scripts/lib"
+cp "$REPO_ROOT/scripts/cr/impacted-suites.sh" "$REPO_ROOT/scripts/cr/anchor-handoff.sh" "$TC/scripts/cr/"
+cp "$REPO_ROOT/scripts/lib/review-default-base.sh" "$TC/scripts/lib/"
+out="$( cd "$TV" && bash "$TC/scripts/cr/impacted-suites.sh" "$tv_range" 2>&1 )"; rc=$?
+if [ "$rc" -eq 0 ] && ! grepq "$out" -F "$TI_EC" && ! grepq "$out" -i 'error\|impacted-suites:'; then pass "TI9b a manifest missing at the head and beside the selector selects nothing extra, prints no error and exits 0"; else fail "TI9b missing manifest: rc=$rc out=$out"; fi
+mkdir -p "$TV/scripts/ci"
+[ ! -f "$TI_MANIFEST" ] || cp "$TI_MANIFEST" "$TV/scripts/ci/tree-invariant-suites.txt"
+git -C "$TV" add -A
+git -C "$TV" commit -q -m "chore: restore the manifest"
+tv_change scripts/cr/file-deferred-issues.sh
+out="$( cd "$TV" && bash "$TC/scripts/cr/impacted-suites.sh" "$tv_range" 2>/dev/null )"; rc=$?
+if [ "$rc" -eq 0 ] && grepq "$out" -Fx "$TI_EC"; then pass "TI9c a row only the head carries selects its suite when no manifest sits beside the selector"; else fail "TI9c head-only rows: rc=$rc out=$out"; fi
+printf '%s\t%s\n' scripts/test-unrelated.sh '^(unclosed' >> "$TV/scripts/ci/tree-invariant-suites.txt"
+mkdir -p "$TC/scripts/ci"
+cp "$TV/scripts/ci/tree-invariant-suites.txt" "$TC/scripts/ci/tree-invariant-suites.txt"
+git -C "$TV" add -A
+git -C "$TV" commit -q -m "chore: add a malformed row"
+tv_change scripts/cr/file-deferred-issues.sh
+out="$( cd "$TV" && bash "$TC/scripts/cr/impacted-suites.sh" "$tv_range" 2>/dev/null )"; rc=$?
+err="$( cd "$TV" && bash "$TC/scripts/cr/impacted-suites.sh" "$tv_range" 2>&1 >/dev/null )"; rc_err=$?
+if [ "$rc" -eq 0 ] && [ "$rc_err" -eq 0 ] && grepq "$out" -Fx "$TI_EC" && ! grepq "$out" -Fx scripts/test-unrelated.sh && [ "$(grep -c -i 'malformed' <<< "$err")" -eq 1 ]; then pass "TI12 a malformed regex row prints one stderr warning, selects nothing, and leaves the other rows working"; else fail "TI12 malformed row: out=$out err=$err"; fi
+if git -C "$REPO_ROOT" cat-file -e '247549974^{commit}' 2>/dev/null && git -C "$REPO_ROOT" cat-file -e '608952484^{commit}' 2>/dev/null; then
+    out="$( cd "$REPO_ROOT" && bash "$IS" 247549974~1..247549974 2>/dev/null )"
+    if grepq "$out" -Fx "$TI_EC"; then pass "TI10 the 247549974 range lists test-exit-codes.sh"; else fail "TI10 247549974: $out"; fi
+    out="$( cd "$REPO_ROOT" && bash "$IS" 608952484~1..608952484 2>/dev/null )"
+    if grepq "$out" -Fx "$TI_MC"; then pass "TI11 the 608952484 range lists test-model-check-report.sh"; else fail "TI11 608952484: $out"; fi
+else
+    pass "TI10 SKIP: 247549974 / 608952484 are not reachable in this clone"
+fi
+
 echo
 if [ "$failures" -eq 0 ]; then echo "OK: all cases passed"; exit 0; fi
 echo "FAIL: $failures case(s) failed"

@@ -1,0 +1,11 @@
+# tree-invariant-suites.txt — suites that scan a whole tree.
+#
+# One row per suite: the suite path, a TAB, then one anchored extended regex
+# (grep -E) matched against every path a range changes, the new name and, for a
+# rename, the old one. A suite whose regex matches any changed path joins the
+# impacted-suites.sh selection. Blank lines and # comments are ignored.
+
+scripts/observability/test-exit-codes.sh	^(scripts/observability/exit-codes\.json|scripts/(quiet-run|check-ci)\.sh|scripts/handover/(merge-on-green|queue-lock)\.sh|scripts/handover/chief-kit/(ready-check|go)\.sh|scripts/cr/file-deferred-issues\.sh|scripts/ci/tmp-sweep\.sh|scripts/guardrails/guard-gh\.sh|scripts/hooks/(check-hookspath|check-platforms-tested|check-security-reviewed)\.sh)$
+scripts/handover/chief-kit/test-model-check-report.sh	^marketplace/plugins/pstack/skills/statechart/scripts/
+scripts/cr/test-impacted-suites.sh	^(scripts/observability/exit-codes\.json|marketplace/plugins/pstack/skills/statechart/scripts/)
+scripts/lanes/tests/pstack-plugin.test.mjs	^marketplace/plugins/pstack/(skills/|docs/|LICENSE$|vendor-hashes\.json$)
