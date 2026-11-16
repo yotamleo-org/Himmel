@@ -38,7 +38,7 @@ printf '%s\n' '#!/usr/bin/env bash' 'true' > "$FLEET_PS_STUB"
 chmod +x "$FLEET_PS_STUB"
 export FLEET_PS_CMD="$FLEET_PS_STUB"
 export FLEET_CAP_OK=1
-export UNGUARDED_LAUNCH_OK=1  # HIMMEL-9026: scratch fixtures; guard rows drop it
+export UNGUARDED_LAUNCH_OK=1
 HANDOVER_DIR="$TMP/statedocs/handovers"
 mkdir -p "$HANDOVER_DIR"
 export HANDOVER_DIR
@@ -162,7 +162,7 @@ check "real arm against the stubbed scheduler succeeds (rc=$rc)" $?
 case "$out" in *"dry-run complete"*) rc_dry=1 ;; *) rc_dry=0 ;; esac
 check "the arm was a real one, not a dry-run" "$rc_dry"
 if [ ! -f "$MARKER" ]; then ran=0; else ran=1; fi
-check "real arm did NOT run the usage-cache producer refresh (HIMMEL-3846)" "$ran"
+check "real arm did NOT run the usage-cache producer refresh" "$ran"
 
 # --- --time auto / smart (live cache) READ the cache by mtime, so the refresh stays ---
 # (adversarial review of PR 1437: skipping it there left an old cache stale and

@@ -333,7 +333,7 @@ STUB_NUM=42 run_merge 0 --jira-transition
 wait "$race_pid"
 assert_eq "8 Done stands after the race" "$(state_status)" "Done"
 else
-    echo "  SKIP: 8 Done stands after the race (no flock: merge-on-green.sh takes no shared status lock without it, HIMMEL-7569)"
+    echo "  SKIP: 8 Done stands after the race (no flock: merge-on-green.sh takes no shared status lock without it)"
 fi
 
 echo "test-merge-on-green-jira-end-state: PASS=$PASS FAIL=$FAIL"

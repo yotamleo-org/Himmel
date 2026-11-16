@@ -490,7 +490,7 @@ if STUB_CI_BLOCK=1 \
     run_case "handover/x-slug" 6 "CI-gate block exits 6 before check"; then
     assert_log_lacks "pr merge" "CI-gate block does not attempt merge"
     assert_err_has    "CI gate" "CI-gate block reports CI gate on stderr"
-    assert_alerts 1 "CI-gate block: exactly one operator DM (HIMMEL-3381)"
+    assert_alerts 1 "CI-gate block: exactly one operator DM"
 fi
 
 # --- the merge is BOUND to the vetted head SHA ---
