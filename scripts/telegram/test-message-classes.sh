@@ -20,6 +20,7 @@ import json, os, re, subprocess, sys, tempfile
 
 CONTROL = ["merge-blocked", "token-in-output", "hold-ask-operator", "hold-ask-stuck", "denial-stuck", "config-audit",
            "monitor-chat-down", "chief-reply", "recover-failed", "cadence:security-audit", "cadence:snyk-scan"]
+PIN_PENDING = ["merge-blocked", "token-in-output", "config-audit", "recover-failed"]
 METHOD3 = ["vault-stall", "vm-maintain-cadence", "graph-channel-publish", "librarian"]
 FAMILY = re.compile(r"^cadence:[a-z0-9]+-[a-z0-9]+-")
 CALL = re.compile(r"(?:cadence-alert\.sh|\$ALERT|\$alert)[\"']?\s+fail\s+(\S+)")
@@ -82,6 +83,10 @@ if want("pins"):
                 err("pins", "%s: sender %s not found" % (r["kind"], r["sender"]))
             elif r["pin"] not in code_text(p):
                 err("pins", "%s: pin %r is not in %s as code" % (r["kind"], r["pin"], r["sender"]))
+    for k in CONTROL:
+        r = by.get(k, [None])[0]
+        if r is not None and k != "chief-reply" and k not in PIN_PENDING and "pin" not in r:
+            err("pins", "%s: control row has no pin" % k)
 
 if want("cadence-silent"):
     for r in rows:
@@ -240,6 +245,14 @@ sed 's/fail snyk-scan/fail snyk-renamed/g' "$REPO/scripts/security/snyk-scan-cad
 lint_dirty "a sender copy with the pinned call renamed fails the lint" "cadence:snyk-scan: pin" --table "$TABLE" --only pins --overlay "$T/ov1"
 printf '#!/usr/bin/env bash\n# fail snyk-scan is only a comment here\necho snyk-scan\n' > "$T/ov2/scripts/security/snyk-scan-cadence.sh"
 lint_dirty "a sender whose only snyk-scan is a comment fails the lint" "cadence:snyk-scan: pin" --table "$TABLE" --only pins --overlay "$T/ov2"
+
+lint_clean "every control row but chief-reply is pinned, bar the four senders still to pass a kind (R4.8)" --table "$TABLE" --only pins
+mut "$T/stuck-nopin.json" '[r.pop("pin") for r in t["kinds"] if r["kind"]=="hold-ask-stuck"]'
+lint_dirty "a table copy with the hold-ask-stuck pin removed fails the lint" "hold-ask-stuck: control row has no pin" --table "$T/stuck-nopin.json" --only pins
+mut "$T/snyk-nopin.json" '[r.pop("pin") for r in t["kinds"] if r["kind"]=="cadence:snyk-scan"]'
+lint_dirty "a control row outside the pending list with no pin fails the lint" "cadence:snyk-scan: control row has no pin" --table "$T/snyk-nopin.json" --only pins
+mut "$T/op-nopin.json" '[r.pop("pin") for r in t["kinds"] if r["kind"]=="hold-ask-operator"]'
+lint_dirty "a table copy with the hold-ask-operator pin removed fails the lint" "hold-ask-operator: control row has no pin" --table "$T/op-nopin.json" --only pins
 
 lint_clean "no cadence row is silent" --table "$TABLE" --only cadence-silent
 mut "$T/vault-silent.json" '[r.update({"class":"silent"}) for r in t["kinds"] if r["kind"]=="cadence:vault-stall"]'

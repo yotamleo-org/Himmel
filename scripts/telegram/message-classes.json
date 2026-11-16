@@ -23,18 +23,21 @@
       "kind": "hold-ask-operator",
       "class": "escalate",
       "sender": "scripts/handover/chief-kit/chief-wait.sh",
+      "pin": "*) kind=hold-ask-operator ;;",
       "sample": "A worker on a ticket needs a settings or CI file: .github/workflows/ci.yml. Blocks: that worker. Do: in a real terminal, run: bash scripts/handover/chief-kit/go.sh grant the-ticket"
     },
     {
       "kind": "hold-ask-stuck",
       "class": "escalate",
       "sender": "scripts/handover/chief-kit/chief-wait.sh",
+      "pin": "\"$end\" hold-ask-stuck",
       "sample": "A file ask waited 30 min: a worker wants scripts/cr/critic-panel.sh, held by another ticket. Blocks: that worker. Do: in a real terminal, run: bash scripts/handover/chief-kit/go.sh grant the-ticket"
     },
     {
       "kind": "denial-stuck",
       "class": "escalate",
       "sender": "scripts/handover/chief-kit/chief-wait.sh",
+      "pin": "\"$end\" denial-stuck",
       "sample": "A worker N4992b has been parked 30 min by a classifier denial (PAUSE-RISK). Blocks: its ticket. Do: open the session in Remote Control, or run ack-denial.sh with the label"
     },
     {
@@ -58,13 +61,13 @@
     },
     {
       "kind": "hold-ask-chief",
-      "class": "escalate",
+      "class": "silent",
       "sender": "scripts/handover/chief-kit/chief-wait.sh",
       "sample": "A worker wants scripts/cr/critic-panel.sh, held by another ticket. Blocks: that worker. Do: in a real terminal, run: bash scripts/handover/chief-kit/go.sh grant the-ticket"
     },
     {
       "kind": "denial-page",
-      "class": "escalate",
+      "class": "monitor",
       "sender": "scripts/handover/chief-kit/chief-wait.sh",
       "sample": "Session 81843b5d of the himmel chief has 3 classifier denials (PAUSE-RISK). Blocks: that session. Do: open it in Remote Control and answer the prompt"
     },

@@ -653,12 +653,12 @@ test("R1.2 an unknown kind, a malformed kind, an unknown cadence worker and an u
 test("R1.4 replay 11-07: the operator gets the 4 controls, the spool the 4 monitor lines, the 5 silent lines nothing", async () => {
   const replay = readFileSync(join(FIX, "replay-11-07.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as { time: string; kind?: string; expect: string; text: string });
   expect(replay).toHaveLength(13);
-  const after = JSON.parse(readFileSync(TABLE, "utf8"));
-  for (const row of after.kinds) { if (row.kind === "hold-ask-chief") row.class = "silent"; if (row.kind === "denial-page") row.class = "monitor"; }
-  const dir = mkdtempSync(join(tmpdir(), "chief-route-table-")); const afterS4 = join(dir, "after-s4.json"); writeFileSync(afterS4, JSON.stringify(after));
+  const real = JSON.parse(readFileSync(TABLE, "utf8"));
+  expect(real.kinds.find((k: { kind: string }) => k.kind === "hold-ask-chief").class).toBe("silent");
+  expect(real.kinds.find((k: { kind: string }) => k.kind === "denial-page").class).toBe("monitor");
   const r = root();
   for (const l of replay) {
-    const x = await route([...(l.kind ? ["--kind", l.kind] : []), "operator", l.text], { r, table: afterS4 });
+    const x = await route([...(l.kind ? ["--kind", l.kind] : []), "operator", l.text], { r });
     expect(x.code).toBe(0);
     expect(x.out.trim()).toBe(l.expect);
   }
@@ -668,8 +668,11 @@ test("R1.4 replay 11-07: the operator gets the 4 controls, the spool the 4 monit
   expect(spool(r).map((m) => m.kind)).toEqual(["cadence:vault-stall", "cadence:vm-maintain-login-himmel-claudex", "cache-health", "denial-page"]);
   for (const t of [...queued, ...spool(r).map((m) => m.text)]) plainWords(t);
   expect(routeLog(r)).toHaveLength(13);
+  const before = JSON.parse(JSON.stringify(real));
+  for (const row of before.kinds) { if (row.kind === "hold-ask-chief" || row.kind === "denial-page") row.class = "escalate"; }
+  const dir = mkdtempSync(join(tmpdir(), "chief-route-table-")); const s1Table = join(dir, "s1.json"); writeFileSync(s1Table, JSON.stringify(before));
   const s1 = root();
-  for (const l of replay) await route([...(l.kind ? ["--kind", l.kind] : []), "operator", l.text], { r: s1 });
+  for (const l of replay) await route([...(l.kind ? ["--kind", l.kind] : []), "operator", l.text], { r: s1, table: s1Table });
   expect(operatorOutbox(s1)).toHaveLength(6);
   expect(spool(s1)).toHaveLength(3);
 });
