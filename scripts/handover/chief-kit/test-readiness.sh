@@ -286,5 +286,23 @@ ap v1 FIXT-103 a --evidence x >"$W/o" 2>"$W/e"; rc=$?
 check "R12: a key outside the version exits 2" "$rc" "2"
 contains "R12: and the message names the mirror's lastSync" "$(cat "$W/e")" "2026-11-16T08:00:00.000Z"
 
+# ---------------------------------------------------------------- R13 an I/O error on the record is exit 4
+fresh
+ln -s /dev/full "$REC"
+ap v1 FIXT-101 a --evidence x >"$W/o" 2>"$W/e"; rc=$?
+check "R13: a write error (ENOSPC) exits 4" "$rc" "4"
+lacks "R13: with no traceback" "$(cat "$W/e")" "Traceback"
+rm -f "$REC"
+
+# ---------------------------------------------------------------- R14 a calendar-invalid ts is an invalid row
+fresh
+ap v1 FIXT-101 a --evidence x >/dev/null 2>&1
+sed -i 's/2027-01-15T08:00:00Z/2027-99-15T08:00:00Z/' "$REC" # gnu-ok: the chief kit is Linux-only
+rd v1 >"$W/o" 2>"$W/e"; rc=$?
+check "R14: read of a row with month 99 exits 4" "$rc" "4"
+lacks "R14: with no traceback" "$(cat "$W/e")" "Traceback"
+ap v1 FIXT-101 a --evidence y >/dev/null 2>&1; rc=$?
+check "R14: append after it exits 4" "$rc" "4"
+
 printf '%s failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

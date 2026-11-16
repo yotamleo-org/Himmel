@@ -142,6 +142,10 @@ def valid_row(r):
     s = lambda v: isinstance(v, str)
     if not (s(r["ts"]) and re.fullmatch(TS_RE, r["ts"])):
         return False
+    try:
+        time.strptime(r["ts"], "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError:
+        return False
     if not (s(r["key"]) and re.fullmatch(KEY_RE, r["key"])):
         return False
     if r["decision"] not in ("a", "b", "c", "d"):
@@ -285,29 +289,32 @@ def cmd_append(args):
         fcntl.flock(fd, fcntl.LOCK_EX)
     except OSError as e:
         die(4, "cannot lock %s (%s)" % (path, e))
-    size = os.fstat(fd).st_size
-    data = b""
-    while len(data) < size:
-        chunk = os.pread(fd, size - len(data), len(data))
-        if not chunk:
-            break
-        data += chunk
-    _, final = split_record(data, path)
-    lead = b""
-    if final:
-        if parse_row(final) is not None:
-            lead = b"\n"
-            sys.stderr.write("readiness: completed an unterminated final row\n")
-        else:
-            os.ftruncate(fd, len(data) - len(final))
-            sys.stderr.write("readiness: dropped a torn final line (%d bytes)\n" % len(final))
-    row = {"ts": iso(now_epoch()), "key": key, "decision": decision, "blocker": blocker,
-           "evidence": ev, "stamp": t["stamp"], "by": by}
-    line = json.dumps(row, ensure_ascii=True, separators=(",", ":"))
-    payload = (lead + line.encode("ascii") + b"\n")
-    if os.write(fd, payload) != len(payload):
-        die(4, "short write to " + path)
-    os.close(fd)
+    try:
+        size = os.fstat(fd).st_size
+        data = b""
+        while len(data) < size:
+            chunk = os.pread(fd, size - len(data), len(data))
+            if not chunk:
+                break
+            data += chunk
+        _, final = split_record(data, path)
+        lead = b""
+        if final:
+            if parse_row(final) is not None:
+                lead = b"\n"
+                sys.stderr.write("readiness: completed an unterminated final row\n")
+            else:
+                os.ftruncate(fd, len(data) - len(final))
+                sys.stderr.write("readiness: dropped a torn final line (%d bytes)\n" % len(final))
+        row = {"ts": iso(now_epoch()), "key": key, "decision": decision, "blocker": blocker,
+               "evidence": ev, "stamp": t["stamp"], "by": by}
+        line = json.dumps(row, ensure_ascii=True, separators=(",", ":"))
+        payload = (lead + line.encode("ascii") + b"\n")
+        if os.write(fd, payload) != len(payload):
+            die(4, "short write to " + path)
+        os.close(fd)
+    except OSError as e:
+        die(4, "cannot write %s (%s)" % (path, e))
     sys.stdout.write(line + "\n")
 
 
