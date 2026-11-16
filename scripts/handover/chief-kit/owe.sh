@@ -102,7 +102,7 @@ case "$CMD" in
         # Structured observations are data; their consumers still validate evidence.
         printf '%s' "$METADATA" | jq -e -s --arg kind "$KIND" '
               length == 1 and (.[0] | type == "object" and all(to_entries[];
-                . as $e | if (["evidence_path","source_doc","source_label","next_action","wake","capability","source_id"] | index($e.key)) then ($e.value | type == "string")
+                . as $e | if (["evidence_path","source_doc","source_label","next_action","wake","capability","source_id","actual_status"] | index($e.key)) then ($e.value | type == "string")
                 elif $e.key == "event" then (["step-due","step-due-invalid","readiness-d24h","operator-digest"] | index($e.value)) != null
                 elif $e.key == "due" then ($e.value | type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$"))
                 elif (["issues","proof_rows"] | index($e.key)) then ($e.value | type == "array" and all(.[]; type == "string"))
@@ -118,7 +118,7 @@ case "$CMD" in
                     and .omitted <= .total)))
                 elif $e.key == "actor" then ($e.value == "chief" or ($kind != "proof" and (["operator","proof","worker"] | index($e.value)) != null))
                 elif $e.key == "action" then ($e.value == "validate-proof" and $kind == "proof") or
-                    ((["next-step","version-reconciliation"] | index($e.value)) != null and $kind == "step") or ($e.value == "notify" and $kind == "ruling")
+                    ((["next-step","version-reconciliation","requirements-reconciliation"] | index($e.value)) != null and $kind == "step") or ($e.value == "notify" and $kind == "ruling")
                 elif $e.key == "validation" then $e.value == "pending"
                 elif $e.key == "recommendation" then (["CLOSE","KEEP","unknown"] | index($e.value)) != null
                 elif $e.key == "binding" then (["matched","unknown","mismatch"] | index($e.value)) != null

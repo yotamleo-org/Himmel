@@ -847,10 +847,11 @@ if sys.argv[1]:
             elif dec == "d":
                 new_ruled[key] = r
                 in_progress = r["cat"] == "In Progress"
+                held_l.append("# readiness-held d %s blocker=%s age=%s%s" % (key, r["blocker"] or "-", age_text(age), " why=in-progress" if in_progress else ""))
+                # only a d row the chief-sign count includes is an owed chief act, so only it has a reminder clock
                 if not in_progress:
                     sign_ages.append(age)
-                held_l.append("# readiness-held d %s blocker=%s age=%s%s" % (key, r["blocker"] or "-", age_text(age), " why=in-progress" if in_progress else ""))
-                held_l.append("# readiness-clock " + json.dumps(dict(version=ver[1], key=key, stamp=r['stamp'], since=r['since'], age_s=age)))
+                    held_l.append("# readiness-clock " + json.dumps(dict(version=ver[1], key=key, stamp=r['stamp'], since=r['since'], age_s=age)))
         sign = "%d" % len(sign_ages) + (":" + age_text(max(sign_ages)) if sign_ages else "")
         readiness_lines = ["# readiness %s blocked=%d chief-sign=%s rows-stale=%d" % (ver[1], blocked, sign, rows_stale)] + stale_l + held_l
         ruled = new_ruled

@@ -39,12 +39,12 @@ class ChiefDecision(unittest.TestCase):
     def setUp(self):
         records.ProofRecord.setUp(self)
         stamp = self.module().requirements(self.mirror / 'HIMMEL-9848.md')
-        self.evidence.write_text(self.evidence.read_text() + 'requirements-sha256 HIMMEL-9848=' + stamp + '\n')
+        self.write(stamp=stamp)  # the producer's frozen original lives in the brief, not in the worker's artifact
         self.run_record()
         self.decision = self.b / 'decision.json'
         self.decision.write_text(json.dumps({'identity': self.rows()[0]['identity'], 'verdict': 'CLOSE',
-            'coverage': [{'obligation': 'DoD and Proof', 'evidence': 'PASS yes'}],
-            'controls': [{'obligation': 'accepted control', 'evidence': 'PASS yes'}],
+            'coverage': [{'obligation': 'keep two spaces', 'evidence': 'PASS yes'}],
+            'controls': [{'obligation': 'Run the positive control.', 'evidence': 'PASS yes'}],
             'ancestry': 'main=' + 'a'*40 + ' includes the candidate; station is not applicable',
             'rationale': 'Chief reviewed each actual requirement and three empty reads.'}))
 
@@ -85,12 +85,15 @@ class ChiefDecision(unittest.TestCase):
 
     def test_stale_requirements_evidence_or_identity_cannot_close(self):
         original = self.evidence.read_text()
-        for which in ('description', 'artifact', 'identity'):
+        # Done plus changed requirements is not a refusal to lose: it keeps the validation open and persists an owned reconciliation
+        # (test_done_then_changed_requirements_...); a ticket that is not actually Done still refuses with nothing written.
+        r = self.decide('--settle', status='To Do', description=self.requirements.replace('two spaces', 'different obligation'))
+        self.assertNotEqual(r.returncode, 0, r.stdout)
+        self.assertEqual(len(self.rows()), 1)
+        for which in ('artifact', 'identity'):
             with self.subTest(which=which):
                 extra = {}
-                if which == 'description':
-                    extra['description'] = self.requirements.replace('two spaces', 'different obligation')
-                elif which == 'artifact':
+                if which == 'artifact':
                     self.evidence.write_text(original + 'changed evidence\n')
                 else:
                     self.change_decision(identity='f'*64)
@@ -183,6 +186,104 @@ class ChiefDecision(unittest.TestCase):
             self.assertNotEqual(response.returncode, 0)
             self.assertFalse(any(r['op'] == 'close' for r in self.rows()))
             self.evidence.write_text(self.evidence.read_text().replace('| ' + result + ' |', '| MET |'))
+
+    UNMET_FORMS = ['| NOT MET — no RED |', '| NOT MET |', '| FAIL |', '| FAILED (timeout) |', '| ERRORS |', '| ERROR: boom |', '| SKIPPED (no vm) |', '| OWED |']
+
+    def pending_with(self, evidence):
+        self.evidence.write_text(evidence)
+        self.run_record()
+        new = self.rows()[-1]
+        self.change_decision(identity=new['identity'])
+        return new
+
+    def check(self, row):
+        data = {'key': 'HIMMEL-9848', 'description': self.requirements + '\n', 'status': 'Done', 'category': 'done'}
+        return subprocess.run(['python3', str(HERE / 'proof-validate.py'), '--bucket', str(self.b), '--check', row['id'],
+            '--decision', str(self.decision), '--current-stdin'], input=json.dumps(data), capture_output=True, text=True)
+
+    def test_every_qualified_unmet_or_error_format_blocks_the_mechanical_close_check(self):
+        good = self.evidence.read_text()
+        stamp = self.module().requirements(self.mirror / 'HIMMEL-9848.md')
+        self.write(stamp=stamp)
+        for form in self.UNMET_FORMS:
+            with self.subTest(form=form):
+                row = self.pending_with(good.replace('| MET |', form))
+                self.assertEqual(row['binding'], 'matched')
+                r = self.check(row)
+                self.assertNotEqual(r.returncode, 0, r.stdout)
+                self.assertIn('unmet/skipped/error proof row', r.stderr)
+        for item in ('- NOT MET: control two', '* ERROR control two timed out', '1. FAIL: control two', '+ SKIPPED control two'):
+            with self.subTest(item=item):
+                row = self.pending_with(good + item + '\n')
+                r = self.check(row)
+                self.assertNotEqual(r.returncode, 0, r.stdout)
+                self.assertIn('unmet/skipped/error proof row', r.stderr)
+
+    def test_prose_that_mentions_a_word_is_not_an_unmet_row_and_unknown_coverage_stays_with_the_chief(self):
+        good = self.evidence.read_text()
+        row = self.pending_with(good + 'The run reported no errors, skipped nothing and nothing failed; every control is OWED nothing.\n| control two | MET | main=' + 'a'*40 + ' | PASS yes |\n')
+        r = self.check(row)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(json.loads(r.stdout)['semantic_coverage'], 'chief-owned')
+
+    def test_a_citation_must_name_a_current_requirement_and_quote_the_evidence(self):
+        for field, obligation in (('coverage', 'an obligation nobody wrote'), ('controls', 'a control invented in the decision')):
+            with self.subTest(field=field):
+                saved = json.loads(self.decision.read_text())[field]
+                self.change_decision(**{field: [{'obligation': obligation, 'evidence': 'PASS yes'}]})
+                r = self.decide('--check')
+                self.assertNotEqual(r.returncode, 0, r.stdout)
+                self.assertIn('names no current DoD/Proof requirement', r.stderr)
+                self.change_decision(**{field: saved})
+        # whitespace and case are folded; a real requirement quoted any way passes
+        self.change_decision(coverage=[{'obligation': 'KEEP  two\nSPACES', 'evidence': 'PASS yes'}])
+        self.assertEqual(self.decide('--check').returncode, 0)
+
+    def changed(self):
+        return self.requirements.replace('two spaces', 'three spaces')
+
+    def reconciliations(self):
+        return [r for r in self.rows() if r.get('action') == 'requirements-reconciliation']
+
+    def test_done_then_changed_requirements_persists_one_owned_idempotent_reconciliation(self):
+        old = self.rows()[0]['requirements_digest']
+        new = self.module().requirement_text('## Description\n' + self.changed() + '\n')
+        for _ in range(3):  # a replay, and a replay after a lost response, read the same facts and add nothing
+            r = self.decide('--settle', description=self.changed() + '\n')
+            self.assertEqual(r.returncode, 0, r.stderr)
+            body = json.loads(r.stdout)
+            self.assertFalse(body['closed'])
+            self.assertEqual(body['reconciliation'], self.reconciliations()[0]['id'])
+        rec = self.reconciliations()
+        self.assertEqual(len(rec), 1)
+        self.assertEqual((rec[0]['kind'], rec[0]['actor'], rec[0]['actual_status']), ('step', 'chief', 'Done'))
+        self.assertEqual((rec[0]['original_requirements_digest'], rec[0]['requirements_digest']), (old, new))
+        self.assertEqual(rec[0]['source_id'], 'o1')
+        self.assertIn('Done', rec[0]['text'])
+        self.assertIn('decide whether to reopen', rec[0]['text'])
+        self.assertFalse(any(r['op'] == 'close' for r in self.rows()), 'the validation stays unresolved')
+        # the original requirements, read again, still settle the same validation normally
+        self.assertEqual(self.decide('--settle').returncode, 0)
+        self.assertEqual(len([r for r in self.rows() if r['op'] == 'close' and r['ref'] == 'o1']), 1)
+
+    def test_changed_requirements_without_an_actual_done_status_or_in_check_mode_write_nothing(self):
+        for kwargs in (dict(status='To Do', description=self.changed() + '\n'),):
+            r = self.decide('--settle', **kwargs)
+            self.assertNotEqual(r.returncode, 0)
+        r = self.decide('--check', description=self.changed() + '\n')
+        self.assertNotEqual(r.returncode, 0)
+        dry = subprocess.run(['python3', str(HERE / 'proof-validate.py'), '--bucket', str(self.b), '--settle', 'o1', '--decision', str(self.decision),
+                              '--current-stdin', '--dry-run'], input=json.dumps({'key': 'HIMMEL-9848', 'description': self.changed() + '\n', 'status': 'Done', 'category': 'done'}),
+                             text=True, capture_output=True)
+        self.assertNotEqual(dry.returncode, 0)
+        self.assertEqual(self.reconciliations(), [])
+        self.assertEqual(len(self.rows()), 1)
+
+    def test_a_replay_names_the_open_reconciliation_instead_of_silently_failing(self):
+        self.assertEqual(self.decide('--settle', description=self.changed() + '\n').returncode, 0)
+        r = self.decide('--check', description=self.changed() + '\n')
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('requirements-reconciliation ' + self.reconciliations()[0]['id'], r.stderr)
 
     def test_done_with_version_pending_keeps_owned_reconciliation(self):
         r = self.decide('--settle', unstamped='frozen version requires placement')

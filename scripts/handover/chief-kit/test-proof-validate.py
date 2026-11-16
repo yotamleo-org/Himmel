@@ -31,9 +31,12 @@ class ProofRecord(unittest.TestCase):
             (self.mirror / (key + '.md')).write_text('## Description\n' + self.requirements + '\n## Comments\nnoise\n')
         self.write()
 
-    def write(self, evidence=None, keys='HIMMEL-9848', tail=''):
+    def write(self, evidence=None, keys='HIMMEL-9848', tail='', stamp=None, results_extra=''):
+        # `stamp` is the producer's frozen original requirement line: it lives in the generated brief above `## Results`,
+        # where gen-briefs writes it. Anything under Results or in the artifact is worker-written.
         self.evidence.write_text(evidence or '| row | Result | Sha | Evidence |\n|---|---|---|---|\n| control | MET | main=' + 'a'*40 + ' | PASS yes |\nVERDICT CLOSE\n')
-        self.doc.write_text('# proof worker\n> **Live test:** none — proof leg\n## Results\n- 10:00 WRAPPED — proof ' + keys + ' verdict=CLOSE evidence=' + str(self.evidence) + tail + '\n')
+        frozen = '' if stamp is None else 'requirements-sha256 HIMMEL-9848=' + stamp + '\n'
+        self.doc.write_text('# proof worker\n> **Live test:** none — proof leg\n' + frozen + '## Results\n- 10:00 WRAPPED — proof ' + keys + ' verdict=CLOSE evidence=' + str(self.evidence) + tail + '\n' + results_extra)
 
     def run_record(self, *args, ok=True, env=None):
         r = subprocess.run(['python3', str(HERE / 'proof-validate.py'), '--bucket', str(self.b), '--doc', str(self.doc), '--mirror', str(self.mirror), *args], capture_output=True, text=True, env={**os.environ, **(env or {})}, timeout=3)
@@ -158,7 +161,7 @@ class ProofRecord(unittest.TestCase):
         p.write_bytes(p.read_bytes().replace(b'\n', b'\r\n'))
         self.run_record()
         self.assertEqual(len(self.rows()), 1)
-        self.evidence.write_text('requirements-sha256 HIMMEL-9848=' + 'f'*64 + '\nVERDICT CLOSE\n')
+        self.write('VERDICT CLOSE\n', stamp='f'*64)
         self.run_record()
         self.assertEqual(self.rows()[-1]['binding'], 'mismatch')
         self.assertIn('requirements-changed', self.rows()[-1]['issues'])
@@ -231,13 +234,55 @@ class ProofRecord(unittest.TestCase):
     def test_sha_bases_and_explicit_binding(self):
         self.run_record()
         digest = self.rows()[0]['requirements_digest']
-        self.write('requirements-sha256 HIMMEL-9848=' + digest + '\nrequired-sha main=' + 'c'*40 + '\n| row | MET | station=' + 'b'*40 + ' | PASS |\n| main | MET | main=' + 'a'*40 + ' | PASS |\nVERDICT CLOSE\n')
+        self.write('required-sha main=' + 'c'*40 + '\n| row | MET | station=' + 'b'*40 + ' | PASS |\n| main | MET | main=' + 'a'*40 + ' | PASS |\nVERDICT CLOSE\n', stamp=digest)
         self.run_record()
         row = self.rows()[-1]
         self.assertEqual(row['binding'], 'matched')
         self.assertEqual(row['required_shas'], [{'basis': 'main', 'sha': 'c'*40}])
         self.assertIn('candidate-ancestry-unvalidated', row['issues'])
         self.assertEqual({x['basis'] for x in row['executed_shas']}, {'main', 'station'})
+
+    def current_digest(self):
+        return self.module().requirements(self.mirror / 'HIMMEL-9848.md')
+
+    def test_original_stamp_is_read_from_the_producer_brief_not_from_the_worker(self):
+        current = self.current_digest()
+        claim = 'requirements-sha256 HIMMEL-9848=' + current + '\n'
+        cases = {
+            'no frozen original, the worker adds the current hash to its artifact': dict(evidence=claim + 'VERDICT CLOSE\n'),
+            'no frozen original, the worker adds the current hash under Results': dict(results_extra=claim),
+            'the brief could not freeze one (unknown), the worker adds the current hash': dict(evidence=claim + 'VERDICT CLOSE\n', results_extra='requirements-binding HIMMEL-9848=unknown; reconcile before CLOSE\n'),
+        }
+        for name, kwargs in cases.items():
+            with self.subTest(name):
+                (self.b / 'owed.jsonl').unlink(missing_ok=True)
+                self.write(**kwargs)
+                self.run_record()
+                row = self.rows()[-1]
+                self.assertEqual(row['binding'], 'unknown')
+                self.assertNotIn('original_requirements_digest', row)
+                self.assertIn('requirements-stamp-untrusted', row['issues'])
+                self.assertIn('requirements-unbound', row['issues'])
+
+    def test_a_frozen_original_decides_and_a_conflicting_worker_claim_blocks(self):
+        current = self.current_digest()
+        for name, stamp, evidence, binding, issue in [
+            ('matching frozen original', current, None, 'matched', None),
+            ('frozen original, requirements since changed', 'f' * 64, None, 'mismatch', 'requirements-changed'),
+            ('frozen original and an agreeing worker line', current, 'requirements-sha256 HIMMEL-9848=' + current + '\nVERDICT CLOSE\n', 'matched', None),
+            ('frozen original and a worker line that disagrees', current, 'requirements-sha256 HIMMEL-9848=' + 'e' * 64 + '\nVERDICT CLOSE\n', 'unknown', 'requirements-stamp-conflict'),
+        ]:
+            with self.subTest(name):
+                (self.b / 'owed.jsonl').unlink(missing_ok=True)
+                self.write(evidence, stamp=stamp)
+                self.run_record()
+                row = self.rows()[-1]
+                self.assertEqual(row['binding'], binding)
+                if issue:
+                    self.assertIn(issue, row['issues'])
+                if binding == 'matched':
+                    self.assertEqual(row['original_requirements_digest'], current)
+                    self.assertNotIn('requirements-stamp-untrusted', row['issues'])
 
     def test_fifo_evidence_returns_prompt_reconciliation(self):
         self.evidence.unlink()

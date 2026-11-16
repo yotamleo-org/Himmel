@@ -54,6 +54,35 @@ class Remainders(unittest.TestCase):
                 self.assertEqual(bool(answer.get('chief_invalid')), invalid)
         self.assertEqual(pr_remainder_units('## Ticket coverage\n- x: owed -> nobody by 2026-11-20\n')['kind'], 'remaining')
 
+    MARKS = ['-', '*', '+', '1.', '1)', '12.']
+
+    def test_every_list_marker_is_stripped_once_before_the_closed_chief_vocabulary(self):
+        for mark in self.MARKS:
+            with self.subTest(mark=mark, kind='valid sign-spec chief act'):
+                answer = pr_remainder_units('## Ticket coverage\n' + mark + ' sign the spec: owed -> chief by 2026-11-20\n')
+                self.assertEqual(answer['chief_invalid'], [])
+                self.assertEqual(answer['chief_owed'], ['sign the spec: owed -> chief by 2026-11-20'])
+                self.assertEqual(answer['owed_lines'][0]['ask'], 'sign the spec')
+                self.assertEqual(answer['owed_lines'][0]['text'], 'sign the spec: owed -> chief by 2026-11-20')
+            with self.subTest(mark=mark, kind='executable proof wrongly owed to chief'):
+                answer = pr_remainder_units('## Ticket coverage\n' + mark + ' run the live proof on the station: owed -> chief by 2026-11-20\n')
+                self.assertEqual(answer['chief_invalid'], ['run the live proof on the station: owed -> chief by 2026-11-20'])
+            with self.subTest(mark=mark, kind='proof owner keeps its row'):
+                answer = pr_remainder_units('## Ticket coverage\n' + mark + ' run the live proof: owed -> proof by 2026-11-20\n')
+                self.assertEqual((answer['kind'], answer['handed']), ('owed', ['proof', '2026-11-20']))
+                self.assertTrue(answer['nowrite'])
+        # a marker is stripped once: a number that belongs to the text stays
+        answer = pr_remainder_units('## Ticket coverage\n- 2. sign the spec: owed -> chief by 2026-11-20\n')
+        self.assertEqual(answer['chief_invalid'], ['2. sign the spec: owed -> chief by 2026-11-20'])
+
+    def test_shared_status_reader_strips_the_same_markers(self):
+        for mark in self.MARKS:
+            with self.subTest(mark=mark):
+                body = '## Ticket coverage\n' + mark + ' sign the spec: owed -> chief by 2026-11-20\n'
+                r = subprocess.run(['bash', '-c', '. "$1/ticket-status.sh"; ts_owed_lines', '_', str(HERE)],
+                                   input=body, text=True, capture_output=True, check=True)
+                self.assertEqual(r.stdout.splitlines(), ['chief\t2026-11-20\tsign the spec\tsign the spec: owed -> chief by 2026-11-20'])
+
     def test_shared_status_reader_keeps_owner_date_and_legacy_clauses(self):
         body = '## Ticket coverage\n- run proof: owed -> proof by 2026-11-20\n- rotate token: owed -> operator by 2026-11-21\n'
         r = subprocess.run(['bash', '-c', '. "$1/ticket-status.sh"; ts_owed_lines', '_', str(HERE)],

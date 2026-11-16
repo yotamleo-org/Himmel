@@ -77,8 +77,9 @@ and Proof sections. Requirement identity hashes compact UTF-8 JSON pairs in DoD,
 Proof order, retaining body lines, indentation, fences and blank lines; only CRLF
 becomes LF. Comments are excluded. It uses the local project mirror (test seam:
 `PROOF_MIRROR_DIR`), never refreshes it, and cannot certify live requirement freshness.
-An optional exact `requirements-sha256 <KEY>=<full hash>` line in the artifact or
-brief records the original binding; absent/unreadable binding stays unknown. Matching
+An optional exact `requirements-sha256 <KEY>=<full hash>` line in the generated brief
+above `## Results` records the original binding; absent/unreadable binding, or a stamp
+only the worker wrote (artifact or Results), stays unknown. Matching
 stamps mean matching observed bytes, not semantic validation. Optional `required-sha
 main=<sha>` or `required-sha station=<sha>` records a candidate basis; main and station
 may differ. `next-action: <text>` and `wake: <text>` are carried when supplied.
@@ -101,7 +102,9 @@ Pending validation never activates a replacement. The recorder binds exact open
 proof-step IDs in `owed_refs`; later steps, including those in the same clock second,
 are excluded. Those `actor=proof` steps are discharged only after the chief's
 outcome; chief/operator exceptions and later steps remain owned. A confirmed Done
-with unstamped version preserves a chief `action=version-reconciliation` step.
+with unstamped version preserves a chief `action=version-reconciliation` step; a confirmed Done
+whose DoD/Proof changed before settlement preserves a chief `action=requirements-reconciliation`
+step (`actual_status`, old and new digests) and leaves the validation open.
 
 Partial merge `owed → proof by YYYY-MM-DD` steps preserve the actual proof actor
 and due date, list as executable proof rows, and leave the ticket To Do. Chief

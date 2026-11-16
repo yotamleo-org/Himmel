@@ -51,14 +51,18 @@ export interface TransitionResult {
 export async function transitionIssue(
   key: string,
   status: string,
-  options: { version: boolean },
+  options: { version: boolean; recover?: boolean },
   req: typeof request = request,
 ): Promise<TransitionResult> {
-  const before = status.toLowerCase() === 'done'
+  // `recover` is set only by `jira transition --proof`: the chief's decision settles after the status is actually where it asked,
+  // so a ticket already there (a lost response, a restart, a KEEP on a To Do ticket) is not transitioned again. Every other caller
+  // keeps the original behavior: a status the transitions list lacks is TransitionNotFound and a POST error is the error.
+  const before = options.recover
     ? await req<{ fields?: { status?: { name?: string } } }>('GET', `/issue/${key}?fields=status`)
     : undefined;
+  const already = before?.fields?.status?.name?.toLowerCase() === status.toLowerCase();
   const { transitions } = await req<{ transitions: JiraTransition[] }>('GET', `/issue/${key}/transitions`);
-  const match = findTransition(transitions, status) ?? (before?.fields?.status?.name?.toLowerCase() === 'done' ? { id: '', name: 'Done' } : undefined);
+  const match = findTransition(transitions, status) ?? (already ? { id: '', name: before?.fields?.status?.name ?? status } : undefined);
   if (!match) throw new TransitionNotFound(status, transitions.map((t) => t.name));
   // ponytail: only the `Done` status stamps; Closed / wont do / wont fix never do, and
   // another Done-category status would need statusCategory from the transition payload.
@@ -89,12 +93,16 @@ export async function transitionIssue(
       }
     }
   }
-  // Read first on recovery; a confirmed Done is never transitioned twice.
-  if (before?.fields?.status?.name?.toLowerCase() !== 'done') {
+  // Read first on recovery; a status already confirmed is never transitioned twice.
+  let lost: Error | undefined;
+  if (!already) {
     try {
       await req('POST', `/issue/${key}/transitions`, { transition: { id: match.id } });
-    } catch {
-      // A lost response is ambiguous. Only the same readback below can confirm it.
+    } catch (e) {
+      // Only a transport failure is ambiguous (the POST may have landed); the readback below decides. A server answer
+      // (HTTP 4xx/5xx, a refused token) is definite and surfaces unchanged.
+      if (!options.recover || !isAmbiguous(e)) throw e;
+      lost = e as Error;
     }
   }
   const target = (match as TargetedTransition).to?.name ?? match.name;
@@ -107,17 +115,24 @@ export async function transitionIssue(
     category = f?.status?.statusCategory?.key;
     labels = Array.isArray(f?.labels) ? f.labels : [];
   } catch (e) {
-    throw new Error(`Transition ${key}: the POST was sent but the status read-back failed (${(e as Error).message}); the outcome is unconfirmed.`);
+    throw new Error(`Transition ${key}: the POST was sent but the status read-back failed (${(e as Error).message}); the outcome is unconfirmed.${lost ? ` The POST itself failed first: ${lost.message}.` : ''}`);
   }
   if (actual?.toLowerCase() !== target.toLowerCase()) {
     throw new Error(
       `Transition ${key}: status was not changed — requested '${target}' but the issue ` +
-        `still reads '${actual || 'none'}' after the POST.`,
+        `still reads '${actual || 'none'}' after the POST.${lost ? ` The POST failed: ${lost.message}.` : ''}`,
     );
   }
   writeJiraBreadcrumb(key);
   const phaseLeft = category === 'done' ? await clearPhase(key, labels, req) : undefined;
   return { name: match.name, unstamped, phaseLeft };
+}
+
+// A POST that got no answer: a deadline, a dropped connection. An HTTP status, a refused token or a refused write is an answer.
+function isAmbiguous(e: unknown): boolean {
+  const message = (e as Error)?.message ?? '';
+  if (/^HTTP \d{3}\b|did not accept the API token|refused, nothing was posted/.test(message)) return false;
+  return /timed out after|fetch failed|terminated|socket|ECONNRESET|EPIPE|other side closed|network/i.test(`${message} ${(e as { cause?: { message?: string } })?.cause?.message ?? ''}`);
 }
 
 type Placement = { write: true; note: string } | { write: false; why: string };
@@ -224,7 +239,7 @@ export function registerTransition(program: Command): void {
         const output = execFileSync('python3', [fileURLToPath(new URL('../../../handover/chief-kit/proof-validate.py', import.meta.url)),
           '--bucket', options.proofBucket!, mode, options.proof!, '--decision', options.proofDecision!, '--current-stdin'],
           { input: JSON.stringify({ key, mirror, status: issue.fields.status?.name, category: issue.fields.status?.statusCategory?.key, unstamped }), encoding: 'utf8', timeout: 20_000 });
-        return JSON.parse(output) as { closed?: boolean; verdict?: string };
+        return JSON.parse(output) as { closed?: boolean; verdict?: string; reconciliation?: string | null };
       };
       if (options.proof) {
         const checked = await proof('--check');
@@ -233,7 +248,7 @@ export function registerTransition(program: Command): void {
       }
       let result: TransitionResult;
       try {
-        result = await transitionIssue(key, status, options);
+        result = await transitionIssue(key, status, { version: options.version, recover: Boolean(options.proof) });
       } catch (e) {
         if (!(e instanceof TransitionNotFound)) throw e;
         console.error(`Transition "${e.status}" not found. Available:`);
@@ -241,7 +256,13 @@ export function registerTransition(program: Command): void {
         process.exit(1);
       }
       console.log(`${key} → ${result.name}`);
-      if (options.proof) await proof('--settle', result.unstamped);
+      if (options.proof) {
+        const settled = await proof('--settle', result.unstamped);
+        if (settled.reconciliation !== undefined) {
+          console.error(`FAIL ${key} is Done but its DoD/Proof changed after the evidence was bound; validation ${options.proof} stays pending and requirements-reconciliation ${settled.reconciliation} is the chief's owned next action`);
+          process.exitCode = 3;
+        }
+      }
       const browse = browseLine(key);
       if (browse) console.log(browse);
       if (result.unstamped) {

@@ -21,6 +21,13 @@ sys.path.insert(0, str(HERE.parent.parent / 'lib'))
 from status_marker import parse as status_marker_parse
 
 KEY = r'[A-Z][A-Z0-9]+-\d+'
+# The tokens an artifact uses for a proof row that did not pass. The recorder lists any line carrying one; CLOSE additionally
+# refuses a table cell or a list item that STARTS with one (qualified forms included: `NOT MET — no RED`, `SKIPPED (no vm)`,
+# `ERRORS`, `FAIL`, `- NOT MET: ...`). Prose that merely mentions a word is not a row; whether the evidence covers every
+# obligation stays the chief's explicit judgement.
+UNMET = r'(?:NOT\s+MET|OWED|SKIP\w*|ERRORS?|FAIL\w*)'
+UNMET_CELL = re.compile(r'\|\s*' + UNMET + r'\b[^|]*\|', re.I)
+UNMET_ITEM = re.compile(r'^\s*(?:[-*+]|\d+[.)])\s+(?:\*\*)?' + UNMET + r'\b', re.I)
 SECTIONS = {'Impact', 'What', 'Why', 'Plan', 'DoD', 'Proof', 'Agent detail'}
 MAX_FILE_BYTES = 8 * 1024 * 1024
 
@@ -64,6 +71,17 @@ def requirements(path):
 
 
 def requirement_text(text):
+    found = requirement_sections(text)
+    return digest([[n, ''.join(found[n])] for n in ('DoD', 'Proof')])
+
+
+def requirement_body(text):
+    """The DoD and Proof text the digest covers, for checking that a citation names a real requirement."""
+    found = requirement_sections(text)
+    return ''.join(''.join(found[n]) for n in ('DoD', 'Proof'))
+
+
+def requirement_sections(text):
     text = text.replace('\r\n', '\n')
     match = re.search(r'^## Description\n', text, re.M)
     if not match:
@@ -95,7 +113,7 @@ def requirement_text(text):
             found[current].append(line)
     if fence or any(not ''.join(found.get(n, [])).strip() for n in ('DoD', 'Proof')):
         raise ValueError('missing/malformed requirement sections')
-    return digest([[n, ''.join(found[n])] for n in ('DoD', 'Proof')])
+    return found
 
 
 def decision(opt):
@@ -133,7 +151,25 @@ def decision(opt):
             raise
         current_digest = None
     if current_digest != row.get('requirements_digest'):
-        raise ValueError('requirements changed; record new pending validation')
+        actual_done = current.get('status') == 'Done' and current.get('category') == 'done'
+        existing = next((r for r in rows if r.get('action') == 'requirements-reconciliation' and r.get('source_id') == row['id'] and not r['closed']), None)
+        if close and opt.settle and not opt.dry_run and actual_done and current_digest is not None:
+            # The ticket really is Done but its DoD/Proof moved after the evidence was bound. Keep the validation unresolved and
+            # leave the chief an owned, idempotent step that names both identities; never reopen, close or mutate Jira here.
+            metadata = dict(actor='chief', capability='requirement reconciliation', action='requirements-reconciliation', source_id=row['id'],
+                            due=datetime.datetime.now(datetime.timezone.utc).date().isoformat(), wake='requirements reconciled',
+                            actual_status=current.get('status', ''), original_requirements_digest=row['requirements_digest'], requirements_digest=current_digest)
+            text = ('Reconcile requirements: %s is Done but its DoD/Proof changed after validation %s (validated %s, now %s); decide whether to reopen, '
+                    'accept the new text or file a follow-up, then record a new pending validation' % (row['key'], row['id'], row['requirements_digest'][:12], current_digest[:12]))
+            owe(['add', '--bucket', opt.bucket, '--chief', row['chief'], '--kind', 'step', '--key', row['key'], '--text', text,
+                 '--identity', digest([row['identity'], row['requirements_digest'], current_digest, 'requirements-reconciliation']), '--metadata-stdin'],
+                json.dumps(metadata))
+            made = next((r for r in json.loads(owe(['list', '--bucket', opt.bucket, '--all', '--json'])) if r.get('action') == 'requirements-reconciliation'
+                         and r.get('source_id') == row['id'] and r.get('requirements_digest') == current_digest), None)
+            print(json.dumps({'id': row['id'], 'closed': False, 'reconciliation': made['id'] if made else None, 'status': current.get('status')}))
+            return
+        raise ValueError('requirements changed; record new pending validation' +
+                         (' (requirements-reconciliation %s already owns it)' % existing['id'] if existing else ''))
     artifacts = row.get('evidence_records') or [{'path': row['evidence_path'], 'sha256': row.get('evidence_hash')}]
     evidence = []
     for artifact in artifacts:
@@ -157,13 +193,17 @@ def decision(opt):
             raise ValueError('unbound/unresolved proof; KEEP/reconciliation required')
         if any(v['omitted'] or v['truncated_chars'] for v in row.get('observation_counts', {}).values()):
             raise ValueError('truncated observations require reconciliation')
-        if any(re.search(r'\|\s*(?:NOT MET|OWED|SKIP\w*|ERROR)\s*\|', line, re.I) for text in evidence for line in text.splitlines()):
+        if any(UNMET_CELL.search(line) or UNMET_ITEM.search(line) for text in evidence for line in text.splitlines()):
             raise ValueError('unmet/skipped/error proof row')
+        current_requirements = ' '.join(requirement_body(current['mirror'] if 'mirror' in current else '## Description\n' + current['description']).lower().split())
         for field in ('coverage', 'controls'):
             citations = verdict.get(field)
             if not isinstance(citations, list) or not citations:
                 raise ValueError('explicit obligation/control evidence required')
             for citation in citations:
+                if (isinstance(citation, dict) and isinstance(citation.get('obligation'), str) and citation['obligation'].strip()
+                        and ' '.join(citation['obligation'].lower().split()) not in current_requirements):
+                    raise ValueError('decision citation names no current DoD/Proof requirement')
                 if not isinstance(citation, dict) or not citation.get('obligation') or not isinstance(citation.get('evidence'), str) or not citation['evidence'].strip() or not any(citation['evidence'] in text for text in evidence):
                     raise ValueError('decision citation is not in recorded evidence')
         if not isinstance(verdict.get('ancestry'), str) or not verdict['ancestry'].strip():
@@ -319,11 +359,20 @@ def record(opt):
                 meta['requirements_digest'] = requirements(mirror / (key + '.md'))
             except (OSError, UnicodeError, ValueError, MemoryError):
                 issues.append('requirements-unreadable')
-            stamps = re.findall(r'^requirements-sha256 ' + re.escape(key) + r'=([0-9a-f]{64})\s*$', artifact + '\n' + source, re.M)
-            if stamps and len(set(stamps)) == 1:
-                meta['original_requirements_digest'] = stamps[0]
+            # The original requirement identity is the producer's: the generated brief freezes it above `## Results`. A line in
+            # the worker's artifact or under its Results is a claim, never the original, so it can only agree or conflict.
+            stamp_re = r'^requirements-sha256 ' + re.escape(key) + r'=([0-9a-f]{64})\s*$'
+            brief = re.split(r'^## (?:Results|Chief Rulings|Console Rulings)\b', source, maxsplit=1, flags=re.M)[0]
+            frozen = re.findall(stamp_re, brief, re.M)
+            claimed = re.findall(stamp_re, artifact + '\n' + source[len(brief):], re.M)
+            if len(set(frozen)) == 1 and not set(claimed) - set(frozen):
+                meta['original_requirements_digest'] = frozen[0]
                 if meta.get('requirements_digest'):
-                    meta['binding'] = 'matched' if stamps[0] == meta['requirements_digest'] else 'mismatch'
+                    meta['binding'] = 'matched' if frozen[0] == meta['requirements_digest'] else 'mismatch'
+            elif frozen:
+                issues.append('requirements-stamp-conflict')
+            elif claimed:
+                issues.append('requirements-stamp-untrusted')
             if meta['binding'] != 'matched':
                 issues.append('requirements-unbound' if meta['binding'] == 'unknown' else 'requirements-changed')
             verdicts = re.findall(r'^VERDICT (CLOSE|KEEP)\b', artifact, re.M)
@@ -334,7 +383,7 @@ def record(opt):
             if not verdicts:
                 issues.append('recommendation-unreadable')
             meta['proof_rows'] = [line for line in artifact.splitlines() if
-                                  re.search(r'\b(?:MET|OWED|NOT MET|SKIP\w*|ERRORS?)\b', line, re.I)]
+                                  re.search(r'\b(?:MET|OWED|NOT MET|SKIP\w*|ERRORS?|FAIL\w*)\b', line, re.I)]
             if not meta['proof_rows']:
                 issues.append('proof-rows-unreadable')
             for line in artifact.splitlines():

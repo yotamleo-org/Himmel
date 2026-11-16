@@ -1292,7 +1292,8 @@ for i in issues.values() if not pr_unknown else ():
         latest = [p for p in i['parts'] if p['kind'] == 'remaining'][-1:]
         proof_parts = [p for p in i['parts'] if p['kind'] == 'owed' and p['handed'][0] == 'proof']
         if proof_parts and not latest:
-            i.update(files=[], reads=[], src='remainder of PR #%s' % proof_parts[-1]['pr'], no_scope=False, nowrite=True)
+            i.update(files=[], reads=[], src='remainder of PR #%s' % proof_parts[-1]['pr'], no_scope=False, nowrite=True,
+                     proof_only=True, proof_due=proof_parts[-1]['handed'][1])
         if latest:
             files, reads = split_reads(latest[0]['text'])
             nowrite = not files and latest[0]['nowrite']
@@ -1312,6 +1313,13 @@ if owed_bucket and os.path.lexists(os.path.join(owed_bucket, 'owed.jsonl')):
         actions = json.loads(result.stdout)
         closed = {r['id']: r for r in actions if r['closed'] and r.get('action') == 'validate-proof'}
         latest_validation = {r.get('key'): r['id'] for r in actions if r.get('action') == 'validate-proof'}
+        # The proof step stays open until the chief's outcome, so while the newest validation of a key is open the original
+        # proof-owned scope is the chief's to settle: no second paid run. A code scope of the same ticket is a different unit.
+        open_validation = {r['id'] for r in actions if not r['closed'] and r.get('action') == 'validate-proof'}
+        for key, vid in latest_validation.items():
+            i = issues.get(key)
+            if vid in open_validation and i and i.get('proof_only') and key not in worker_keys and key not in pr_keys:
+                i['owed_wait'] = {'id': vid, 'actor': 'chief', 'due': i.get('proof_due', '')}
         replacements = {}
         for action in actions:
             parent = closed.get(action.get('source_id'))

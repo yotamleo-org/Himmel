@@ -308,8 +308,16 @@ owe="$HERE/owe.sh"
 KEEP_KEY="HIMMEL-$((300 + 24))" OPERATOR_KEY="HIMMEL-$((300 + 25))"
 validation="$(bash "$owe" add --bucket "$WORK" --chief old-chief --kind proof --key "$KEEP_KEY" --text validate --metadata '{"actor":"chief","action":"validate-proof"}')"
 bash "$owe" add --bucket "$WORK" --chief old-chief --kind step --key "$KEEP_KEY" --text 'Fix scripts/lib/keep-next.py' --metadata "{\"actor\":\"worker\",\"action\":\"next-step\",\"source_id\":\"$validation\",\"capability\":\"code worker\",\"due\":\"2026-11-20\",\"wake\":\"worker free\"}" >/dev/null
+mk HIMMEL-326 "To Do" "code remainder beside a pending validation" "Writes: scripts/lib/x-code.py."
+printf '## Ticket coverage\n\nRemaining: S1 fix code (scripts/lib/x-code.py)\n' > "$PR_BODY_DIR/6107"
+printf '{"ts":"t","event":"merge","key":"HIMMEL-326","pr":"6107","contract":"no","result":"noop"}\n' >> "$STATE/status-events.jsonl"
+CODE_KEY="HIMMEL-$((300 + 26))"
+bash "$owe" add --bucket "$WORK" --chief old-chief --kind proof --key "$CODE_KEY" --text validate --metadata '{"actor":"chief","action":"validate-proof"}' >/dev/null
 out_pending="$(READER_OVERRIDE="$REAL_READER" run)"
 lacks "a next step does not bypass pending chief validation" "$(printf '%s\n' "$out_pending" | grep $'^RESUME\tHIMMEL-324')" 'keep-next.py'
+lacks "a pending validation hides the original proof row: no duplicate paid proof run" "$out_pending" $'RESUME\tHIMMEL-324'
+has "the pending validation names the chief as the owner of that ticket" "$out_pending" "OWED HIMMEL-324: owed action $validation owes chief by 2026-11-20"
+has "an unrelated code scope on another ticket stays eligible beside its pending validation" "$out_pending" $'RESUME\tHIMMEL-326'
 bash "$owe" close --bucket "$WORK" --id "$validation" --key KEEP >/dev/null
 out_keep="$(READER_OVERRIDE="$REAL_READER" run)"
 has "settled KEEP routes code to an executable worker" "$(printf '%s\n' "$out_keep" | grep $'^RESUME\tHIMMEL-324')" 'files=scripts/lib/keep-next.py'

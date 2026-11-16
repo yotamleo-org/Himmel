@@ -36,8 +36,8 @@ class Gates(unittest.TestCase):
         gh.write_text('#!/bin/sh\nprintf "%s" "$TEST_BODY"\n')
         gh.chmod(0o700)
 
-    def gate(self, which, ask, owner):
-        body = '## Ticket coverage\n- ' + ask + ': owed -> ' + owner + ' by 2026-11-20\n'
+    def gate(self, which, ask, owner, mark='-'):
+        body = '## Ticket coverage\n' + mark + ' ' + ask + ': owed -> ' + owner + ' by 2026-11-20\n'
         if which == 'merge':
             text = source('scripts/handover/merge-on-green.sh')
             start = text.index('_pr_remainder_answer() {')
@@ -68,6 +68,16 @@ class Gates(unittest.TestCase):
         for which in ('merge', 'ready'):
             r = self.gate(which, 'sign the spec', 'chief')
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_every_list_marker_passes_a_valid_chief_act_and_refuses_chief_routed_proof(self):
+        for mark in ('-', '*', '+', '1.', '1)', '12.'):
+            for which in ('merge', 'ready'):
+                with self.subTest(mark=mark, gate=which):
+                    ok = self.gate(which, 'sign the spec', 'chief', mark)
+                    self.assertEqual(ok.returncode, 0, ok.stdout + ok.stderr)
+                    refused = self.gate(which, 'run the live proof on the station', 'chief', mark)
+                    self.assertEqual(refused.returncode, 26 if which == 'merge' else 1, refused.stdout + refused.stderr)
+                    self.assertIn('owed → proof', refused.stderr if which == 'merge' else refused.stdout)
 
     def test_merge_preserves_executable_proof_owner(self):
         r = self.gate('merge', 'run the live proof', 'proof')

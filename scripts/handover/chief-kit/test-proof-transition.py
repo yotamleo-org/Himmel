@@ -15,7 +15,7 @@ decisions = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(decisions)
 
 
-class TransitionFlow(unittest.TestCase):
+class LoopbackFlow(unittest.TestCase):
     write = decisions.ChiefDecision.write
     module = decisions.ChiefDecision.module
     run_record = decisions.ChiefDecision.run_record
@@ -28,14 +28,18 @@ class TransitionFlow(unittest.TestCase):
         self.requirements = 'DoD\n- control stays accepted\nProof\nRun the positive control.'
         mirror = self.mirror / 'HIMMEL-9848.md'
         mirror.write_text('## Description\n\n' + self.requirements + '\n\n## Comments\n')
-        self.write()
-        self.evidence.write_text(self.evidence.read_text() + 'requirements-sha256 HIMMEL-9848=' + self.module().requirements(mirror) + '\n')
+        self.write(stamp=self.module().requirements(mirror))
         self.run_record()
-        self.change_decision(identity=self.rows()[0]['identity'])
+        self.change_decision(identity=self.rows()[0]['identity'],
+                             coverage=[{'obligation': 'control stays accepted', 'evidence': 'PASS yes'}],
+                             controls=[{'obligation': 'Run the positive control.', 'evidence': 'PASS yes'}])
         self.status = 'To Do'
         self.posts = 0
         self.deny = False
-        self.lost = False
+        self.lost = False  # the POST is applied, then the connection drops
+        self.drop = False  # the connection drops and the POST is not applied
+        self.after_post = None  # a concurrent edit that lands between the CLI's pre-read and its post-read
+        self.TRANSITIONS = {'To Do': [('31', 'Done')], 'In Progress': [('11', 'To Do'), ('31', 'Done')], 'Done': []}
         self.requests = []
         owner = self
 
@@ -48,7 +52,7 @@ class TransitionFlow(unittest.TestCase):
                 if self.path == '/rest/api/3/project/HIMMEL/versions':
                     body = [{'id': '1', 'name': 'v1', 'released': False, 'description': 'frozen: 2026-11-16\nfrozen-keys: HIMMEL-1'}]
                 elif self.path == '/rest/api/3/issue/HIMMEL-9848/transitions':
-                    body = {'transitions': [] if owner.status == 'Done' else [{'id': '31', 'name': 'Done', 'to': {'name': 'Done'}}]}
+                    body = {'transitions': [{'id': i, 'name': n, 'to': {'name': n}} for i, n in owner.TRANSITIONS.get(owner.status, [])]}
                 elif self.path.startswith('/rest/api/3/issue/HIMMEL-9848?fields='):
                     body = {'key': 'HIMMEL-9848', 'fields': {'description': {'type': 'doc', 'version': 1,
                         'content': [{'type': 'paragraph', 'content': [{'type': 'text', 'text': owner.requirements}]}]},
@@ -60,14 +64,20 @@ class TransitionFlow(unittest.TestCase):
             def do_POST(self):
                 data = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
                 owner.requests.append(dict(method='POST', path=self.path, body=data))
-                if self.path != '/rest/api/3/issue/HIMMEL-9848/transitions' or data != {'transition': {'id': '31'}}:
+                target = {'31': 'Done', '11': 'To Do'}.get(data.get('transition', {}).get('id'))
+                if self.path != '/rest/api/3/issue/HIMMEL-9848/transitions' or target is None or target not in [n for _, n in owner.TRANSITIONS.get(owner.status, [])]:
                     self.send_error(500, 'unexpected fixture POST'); return
                 owner.posts += 1
-                if not owner.deny:
-                    owner.status = 'Done'
-                if owner.lost:
+                if not owner.deny and not owner.drop:
+                    owner.status = target
+                    if owner.after_post:
+                        owner.after_post()
+                if owner.lost or owner.drop:
                     self.connection.close(); return
-                self.send_response(403 if owner.deny else 204); self.end_headers()
+                if owner.deny:
+                    self.send_response(403); self.end_headers()
+                    self.wfile.write(json.dumps({'errorMessages': ['workflow validator refused the transition']}).encode()); return
+                self.send_response(204); self.end_headers()
 
         self.server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
@@ -77,14 +87,16 @@ class TransitionFlow(unittest.TestCase):
     def tearDown(self):
         decisions.save_fixture(self, 'jira-cli-loopback')
 
-    def cli(self, stamp=False):
+    def cli(self, stamp=False, status='Done', proof=True):
         env = {**os.environ, 'HOME': str(self.b), 'HIMMEL_CONFIG_DIR': str(self.b),
                'JIRA_BASE_URL': 'http://127.0.0.1:' + str(self.server.server_port), 'JIRA_EMAIL': 'fixture@example.invalid',
                'JIRA_API_TOKEN': 'fixture-only', 'JIRA_PROJECT_KEY': 'HIMMEL', 'HIMMEL_ADMISSIONS_LEDGER': str(self.b / 'admissions.jsonl')}
-        return subprocess.run(['node', str(HERE.parents[1] / 'jira/dist/index.js'), 'transition', 'HIMMEL-9848', 'Done',
-            *([] if stamp else ['--no-version']), '--proof', 'o1', '--proof-bucket', str(self.b), '--proof-decision', str(self.decision)],
+        return subprocess.run(['node', str(HERE.parents[1] / 'jira/dist/index.js'), 'transition', 'HIMMEL-9848', status,
+            *([] if stamp else ['--no-version']),
+            *(['--proof', 'o1', '--proof-bucket', str(self.b), '--proof-decision', str(self.decision)] if proof else [])],
             env=env, text=True, capture_output=True, timeout=15)
 
+class TransitionFlow(LoopbackFlow):
     def test_actual_cli_lost_response_restart_discharge_once(self):
         self.lost = True
         result = self.cli()
@@ -113,6 +125,22 @@ class TransitionFlow(unittest.TestCase):
         self.assertEqual(self.posts, 1)
         self.assertEqual(len(self.rows()), 1)
 
+    def test_actual_cli_requirements_changed_between_pre_and_post_read_keeps_done_and_an_owned_reconciliation(self):
+        self.after_post = lambda: setattr(self, 'requirements', self.requirements + '\nA new obligation.')
+        result = self.cli()
+        self.assertEqual(result.returncode, 3, result.stderr)
+        self.assertEqual(self.status, 'Done')
+        recs = [r for r in self.rows() if r.get('action') == 'requirements-reconciliation']
+        self.assertEqual((len(recs), recs[0]['actor'], recs[0]['actual_status']), (1, 'chief', 'Done'))
+        self.assertFalse(any(r['op'] == 'close' for r in self.rows()))
+        posts = self.posts
+        again = self.cli()  # a replay reads the real Done status: no POST, no new action, no close
+        self.assertNotEqual(again.returncode, 0)
+        self.assertIn('requirements-reconciliation ' + recs[0]['id'], again.stderr)
+        self.assertEqual(self.posts, posts)
+        self.assertEqual(len([r for r in self.rows() if r.get('action') == 'requirements-reconciliation']), 1)
+        self.assertFalse(any(r['op'] == 'close' for r in self.rows()))
+
     def test_actual_cli_exit3_retains_done_and_owned_version_debt(self):
         (self.b / 'admissions.jsonl').write_text(json.dumps(dict(ts='t', version='v1', key='HIMMEL-9848', kind='deferral', actor='fixture')) + '\n')
         result = self.cli(stamp=True)
@@ -121,6 +149,95 @@ class TransitionFlow(unittest.TestCase):
         self.assertEqual(self.rows()[1]['action'], 'version-reconciliation')
         self.assertEqual(self.rows()[-1]['outcome']['status'], 'Done')
         self.assertTrue(self.rows()[-1]['outcome']['version_pending'])
+
+
+class KeepFlow(LoopbackFlow):
+    """A chief KEEP lands the ticket in To Do through the same CLI: from To Do, from In Progress and after a lost response."""
+
+    NEXT = {'actor': 'proof', 'capability': 'read-only proof worker', 'text': 'Run the missing positive control', 'due': '2026-11-20', 'wake': 'after station update'}
+
+    def setUp(self):
+        super().setUp()
+        self.change_decision(verdict='KEEP', next=self.NEXT)
+
+    def keep(self):
+        return self.cli(status='To Do')
+
+    def closes(self):
+        return [r for r in self.rows() if r['op'] == 'close']
+
+    def test_keep_on_a_ticket_already_to_do_settles_without_a_transition(self):
+        self.status = 'To Do'
+        result = self.keep()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.posts, 0)
+        self.assertEqual(len(self.closes()), 1)
+        self.assertEqual(len([r for r in self.rows() if r['op'] == 'add']), 2)  # the validation and the next step it wrote
+        again = self.keep()
+        self.assertEqual(again.returncode, 0, again.stderr)
+        self.assertEqual((len(self.closes()), self.posts), (1, 0))
+
+    def test_keep_from_in_progress_transitions_once_then_settles(self):
+        self.status = 'In Progress'
+        result = self.keep()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.status, self.posts, len(self.closes())), ('To Do', 1, 1))
+
+    def test_keep_after_a_lost_response_and_restart_discharges_once(self):
+        self.status = 'In Progress'
+        self.lost = True
+        result = self.keep()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.status, 'To Do')
+        again = self.keep()
+        self.assertEqual(again.returncode, 0, again.stderr)
+        self.assertEqual((self.posts, len(self.closes())), (1, 1))
+
+    def test_keep_whose_post_never_applied_reports_the_transport_error_and_stays_pending(self):
+        self.status = 'In Progress'
+        self.drop = True
+        result = self.keep()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertRegex(result.stderr, r'(?i)fetch failed|terminated|socket|closed')
+        self.assertEqual((self.closes(), self.status), ([], 'In Progress'))
+
+    def test_keep_with_an_explicit_http_rejection_keeps_the_server_detail(self):
+        self.status = 'In Progress'
+        self.deny = True
+        result = self.keep()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('HTTP 403', result.stderr)
+        self.assertIn('workflow validator refused', result.stderr)
+        self.assertEqual(self.closes(), [])
+
+
+class OrdinaryCallers(LoopbackFlow):
+    """Without --proof the shared transition keeps its original semantics."""
+
+    def test_ordinary_http_rejection_keeps_the_server_detail(self):
+        self.deny = True
+        result = self.cli(proof=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('HTTP 403', result.stderr)
+        self.assertIn('workflow validator refused', result.stderr)
+
+    def test_ordinary_already_done_is_still_transition_not_found(self):
+        self.status = 'Done'
+        result = self.cli(proof=False)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('Transition "Done" not found', result.stderr)
+        self.assertEqual(self.posts, 0)
+
+    def test_ordinary_lost_response_is_an_error_not_a_recovery(self):
+        self.drop = True
+        result = self.cli(proof=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.posts, 1)
+
+    def test_ordinary_transition_to_a_listed_status_still_works(self):
+        result = self.cli(proof=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.status, self.posts), ('Done', 1))
 
 
 if __name__ == '__main__':

@@ -28,7 +28,8 @@ COVERAGE_HEAD_RE = re.compile(r'^#{2}[ \t]+ticket coverage[ \t]*$', re.I)
 DEFERRED_RE = re.compile(r'\bdeferred[ \t]*(?:→|->)', re.I)
 # ready-check.sh check 7: the key follows the arrow and ends the line, up to punctuation
 HANDOFF_RE = re.compile(r'\bdeferred[ \t]*(?:→|->)[^A-Za-z0-9]*([A-Za-z][A-Za-z0-9]*-[0-9]+)[^A-Za-z0-9]*$', re.I)
-LIST_RE = re.compile(r'^(?:[-*]|[0-9]+[.)])[ \t]')
+LIST_RE = re.compile(r'^(?:[-*+]|[0-9]+[.)])[ \t]')
+MARK_RE = re.compile(r'^(?:[-*+]|[0-9]+[.)])[ \t]+')  # the same marker grammar as LIST_RE, stripped once
 OWED_ANY_RE =re.compile(r'\bowed[ \t]*(?:→|->)', re.I)
 OWED_RE = re.compile(r'\bowed[ \t]*(?:→|->)[ \t]*(chief|operator|proof)[ \t]+by[ \t]+(\d{4}-\d{2}-\d{2})[^A-Za-z0-9]*$', re.I)
 CHIEF_ONLY_RE = re.compile(r'^(?:sign (?:the |a )?(?:spec|GO|release)|(?:chief )?signature|release operator step|station step (?:a |the )?worker is refused)[ .:;-]*$', re.I)
@@ -88,7 +89,7 @@ def pr_remainder_units(body, own_keys=()):
         if not in_coverage:
             continue
         if not DEFERRED_RE.search(line) and OWED_ANY_RE.search(line):
-            text = re.sub(r'^[-*+][ \t]+', '', line)
+            text = MARK_RE.sub('', line, count=1)
             m = OWED_RE.search(line)
             try:
                 if not (owed_open and LIST_RE.match(line)):
@@ -102,7 +103,7 @@ def pr_remainder_units(body, own_keys=()):
             continue
         if not DEFERRED_RE.search(line):
             continue
-        deferred.append(re.sub(r'^[-*+][ \t]+', '', line))
+        deferred.append(MARK_RE.sub('', line, count=1))
         m = HANDOFF_RE.search(line)
         key = m.group(1).upper() if m else None
         if key is None or key in own:
