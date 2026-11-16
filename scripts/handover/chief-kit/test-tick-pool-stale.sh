@@ -69,6 +69,17 @@ esac
 EOF
 chmod +x "$WORK/gh"
 export PS_GH_LOG="$WORK/gh.log" PS_GH_FAIL="$WORK/gh.fail" PS_GH_REPO_NULL="$WORK/gh.reponull" NEXT_DISPATCH_MIRROR="$M" TICK_GH_CMD="$WORK/gh" HIMMEL_QUOTA_DIR="$WORK/quota"
+mkdir -p "$WORK/state" "$WORK/no-release-declared"
+export TICK_STATE_DIR="$WORK/state" HIMMEL_RELEASE_STATE_DIR="$WORK/no-release-declared" PS_REAL_SUT="$SUT"
+cat > "$WORK/tick-chain.sh" <<'EOF'
+#!/usr/bin/env bash
+doc="" repo="" prev=""
+for a in "$@"; do case "$prev" in --doc) doc="$a" ;; --repo) repo="$a" ;; esac; prev="$a"; done
+case " $* " in *" --pool-stale "*) [ -z "$doc" ] || bash "$PS_REAL_SUT" --pool-holds --doc "$doc" ${repo:+--repo "$repo"} > /dev/null ;; esac
+exec bash "$PS_REAL_SUT" "$@"
+EOF
+chmod +x "$WORK/tick-chain.sh"
+SUT="$WORK/tick-chain.sh"
 
 doc() { # <name> <disposition line>...: a chief doc whose Live state holds those lines
     local f="$WORK/$1.md"; shift
@@ -417,7 +428,7 @@ for f in "$real_scripts"/*; do [ "${f##*/}" = handover ] || ln -s "$f" "$sk/${f#
 for f in "$real_scripts"/handover/*; do [ "${f##*/}" = chief-kit ] || ln -s "$f" "$sk/handover/${f##*/}"; done
 for f in "$HERE"/*; do ln -s "$f" "$sk/handover/chief-kit/${f##*/}"; done
 rm "$sk/handover/chief-kit/next-dispatchable.sh" "$sk/handover/chief-kit/tick.sh"
-ln -s "$SUT" "$sk/handover/chief-kit/tick.sh"
+ln -s "$PS_REAL_SUT" "$sk/handover/chief-kit/tick.sh"
 cat > "$sk/handover/chief-kit/next-dispatchable.sh" <<'EOF'
 #!/usr/bin/env bash
 case " $* " in *" --dispositions "*)
@@ -482,6 +493,47 @@ pl_tick > /dev/null
 check 'a changed input inside the floor still launches nothing' 15 "$(pl_n)"
 pl_nice_want=$(( $(nice) + 10 )); [ "$pl_nice_want" -le 19 ] || pl_nice_want=19
 check 'every launched snapshot runs at nice +10' "$pl_nice_want" "$(sort -u "$pl_nice")"
+
+write_holds() {
+    local stem="${1##*/}"
+    printf '{"ts":"x","mode":"on","rows":%s,"prs":%s}\n' "$2" "$3" > "$TICK_STATE_DIR/pool-holds-${stem%.md}.json"
+}
+real_field() { TOKEN='' bash "$PS_REAL_SUT" --pool-stale --doc "$2" 2>/dev/null | sed -n "s/^$1=//p"; }
+hk=HIMMEL
+d="$(doc hs-slice "$pd $hk-160 slice PR 3905 lands first")"
+write_holds "$d" '[]' '{"3905":"MERGED"}'
+check 'a slice naming a merged PR is still stale (from the holds file prs map)' '1:HIMMEL-160' "$(real_field pool-stale "$d")"
+: > "$PS_GH_LOG"; real_field pool-stale "$d" > /dev/null
+check 'pool_stale makes no gh call of its own' 0 "$(wc -l < "$PS_GH_LOG" | tr -d ' ')"
+d="$(doc hs-none "$pd $hk-161 slice $hk-901 then the rest" "$pd $hk-162 close PR 5001" "$pd $hk-163 park soon wake=date:2099-01-01")"
+rm -f "$TICK_STATE_DIR/pool-holds-hs-none.json"
+hn="$(TOKEN='' bash "$PS_REAL_SUT" --pool-stale --doc "$d" 2>/dev/null)"
+check 'no holds file: key targets still judged, PR targets and wake= lines ?' '1:HIMMEL-161,?' "$(printf '%s\n' "$hn" | sed -n 's/^pool-stale=//p')"
+check 'no holds file: residual-unversioned= still printed' 1 "$(printf '%s\n' "$hn" | grep -c '^residual-unversioned=[0-9]')"
+write_holds "$d" '[]' '{"5001":"MERGED"}'; touch -d '31 minutes ago' "$TICK_STATE_DIR/pool-holds-hs-none.json"  # gnu-ok: chief kit is Linux-only
+check 'an old holds file reads its PR targets ?' '1:HIMMEL-161,?' "$(real_field pool-stale "$d")"
+d="$(doc hs-unread "$pd $hk-164 hold on the merge wake=pr:4999")"
+write_holds "$d" '[]' 'null'
+check 'a holds file whose PR read failed reads a wake line ?, never an all-clear' '?' "$(real_field pool-stale "$d")"
+
+hp="$WORK/hp"; mkdir -p "$hp/rel/v1.1.3" "$hp/state"; printf '{}\n' > "$hp/rel/v1.1.3/release.json"
+d="$hp/HIMMEL-nextleg-2026-11-15HP-roadmap-chief.md"
+printf '# chief\n\nrelease: v1.1.3\n\n## Live state\n%s\n%s\n\n## Results\n' \
+    "$pd HIMMEL-9190 hold waits on PR 5002 upstream wake=pr:5002" \
+    "$pd HIMMEL-9191 hold until then authority=O-v1.1.3-0001 wake=date:$(date -u -d yesterday +%Y-%m-%d)" > "$d"  # gnu-ok: chief kit is Linux-only
+jq -n --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{ts: $t, status: "OK", words_records: [{id: "O-v1.1.3-0001", decision: "9", keys: ["HIMMEL-9191"], op: "none", verbatim: "keep it held"}], asks_operator_keys: []}' \
+    > "$hp/state/release-state-HIMMEL-nextleg-2026-11-15HP-roadmap-chief.json"
+printf '{"schema":1,"workers":[]}\n' > "$hp/manifest.json"
+hp_run() {
+    printf '5002\tfork/fix\tfalse\tbob\t%s\n' "$1" > "$hp/open.tsv"
+    TICK_STATE_DIR="$hp/state" HIMMEL_RELEASE_STATE_DIR="$hp/rel" bash "$PS_REAL_SUT" --pool-holds --doc "$d" --open-prs "$hp/open.tsv" --workers-from "$hp/manifest.json" > /dev/null 2>&1
+    TICK_STATE_DIR="$hp/state" HIMMEL_RELEASE_STATE_DIR="$hp/rel" TOKEN='' bash "$PS_REAL_SUT" --pool-stale --doc "$d" 2>/dev/null
+}
+hpo="$(hp_run true)"
+check 'the outside PR and the fired date flag stale through the producer' '2:HIMMEL-9190,HIMMEL-9191' "$(printf '%s\n' "$hpo" | sed -n 's/^pool-stale=//p')"
+check 'the outside line names its cause' 1 "$(printf '%s\n' "$hpo" | grep -c "^STALE-DISPOSITION $hk-9190 line=[0-9a-f]* PR#5002=OPEN outside-PR=unwatched\$")"
+check 'the fired line names its wake' 1 "$(printf '%s\n' "$hpo" | grep -c "^STALE-DISPOSITION $hk-9191 line=[0-9a-f]* wake=date:[0-9-]*=fired\$")"
+check 'an open same-repo PR is not stale (I6)' '1:HIMMEL-9191' "$(hp_run false | sed -n 's/^pool-stale=//p')"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

@@ -910,15 +910,17 @@ case "$*" in *"api graphql"*"p77:issueOrPullRequest(number:77)"*) printf '{"data
 STUB
 chmod +x "$W/ps-gh"
 ps_run() {
-    local d="$W/ps-$1"
+    local d="$W/ps-$1" rc
     rm -rf "$d"; seed_floor "$d" "$1"; : > "$W/ps-gh.log"
     HIMMEL_QUOTA_DIR="$d" TICK_GH_CMD="$W/ps-gh" PS_GH_LOG="$W/ps-gh.log" NEXT_DISPATCH_MIRROR="$PW" \
-        bash "$SUT" --pool-stale --doc "$PS_DOC" --repo "$W/pw-main" 2>/dev/null
+        bash "$SUT" --pool-holds --doc "$PS_DOC" --repo "$W/pw-main" > /dev/null 2>&1
+    rc=$?
+    NEXT_DISPATCH_MIRROR="$PW" bash "$SUT" --pool-stale --doc "$PS_DOC" --repo "$W/pw-main" 2>/dev/null
+    return "$rc"
 }
 ps_out="$(ps_run 100)"; ps_rc=$?
-same 'a paused GitHub reads pool-stale=? and residual-unversioned=skip, exit 0' "$ps_rc:$ps_out" '0:pool-stale=?
-residual-unversioned=skip'
-same 'a paused GitHub makes no pool-stale gh call' "$(wc -l < "$W/ps-gh.log" | tr -d ' ')" '0'
+same 'a paused GitHub skips the pool-holds PR read: exit 0 and pool-stale=?' "$ps_rc:$(printf '%s\n' "$ps_out" | sed -n 's/^pool-stale=//p')" '0:?'
+same 'a paused GitHub makes no pool-holds gh call' "$(wc -l < "$W/ps-gh.log" | tr -d ' ')" '0'
 same 'RED control: a healthy budget judges the merged PR stale' "$(ps_run 4000 | sed -n 's/^pool-stale=//p')" '1:HIMMEL-952'
 st_tick() {
     local d="$W/st-$1"

@@ -941,6 +941,7 @@ printf '%s\n' '# disposition HIMMEL-141 listed LOCAL' '# disposition HIMMEL-142 
     '# disposition HIMMEL-144 in-flight owned by worker N1' > "$S2/rows"
 s2_produce() {
     local doc="$1" out sf; shift
+    s2 env "$@" bash "$SUT" --pool-holds --doc "$doc" > /dev/null 2>&1
     out="$(s2 env "$@" bash "$SUT" --pool-stale --doc "$doc" --prior "$S2ST/none.out" 2>/dev/null)"
     sf="$(printf '%s\n' "$out" | sed -n 's/^# stale-file=//p')"
     [ -n "$sf" ] || return 1
@@ -1057,6 +1058,7 @@ c15a="$(g15 2026-11-09T12:00:00Z "$sub15a")"
 c15b="$(g15 2026-11-09T15:00:00Z "$sub15b")"
 s3_produce() {
     local out sf
+    s2 bash "$SUT" --pool-holds --doc "$1" --repo "$2" > /dev/null 2>&1
     out="$(s2 bash "$SUT" --pool-stale --doc "$1" --repo "$2" --prior "$3" 2>/dev/null)"
     sf="$(printf '%s\n' "$out" | sed -n 's/^# stale-file=//p')"
     [ -n "$sf" ] || return 1
@@ -1114,6 +1116,318 @@ same 'R22 the later tick exits 0' "$?" 0
 wait "$s2_race_pid"
 same 'R22 the slower older tick exits 0' "$?" 0
 same 'R22 the later run clears the verdict and the slower older run does not put it back' "$(grep -c "$p141" "$(s2_file)")" 0
+
+PH="$W/ph"; mkdir -p "$PH/rel/v1.1.3" "$PH/state" "$PH/handover"
+printf '{}\n' > "$PH/rel/v1.1.3/release.json"
+PH_STEM=HIMMEL-nextleg-2026-11-15PH-roadmap-chief
+ph_doc="$PH/handover/$PH_STEM.md"
+ph_now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+ph_state() {
+    jq -n --argjson w "$1" --argjson a "$2" --arg s "${3:-OK}" --arg t "${4:-$(ph_now)}" \
+        '{ts: $t, status: $s, words_records: $w, asks_operator_keys: $a}' > "$PH/state/release-state-$PH_STEM.json"
+}
+ph_words='[{"id":"O-v1.1.3-0001","decision":"9","keys":["HIMMEL-46","HIMMEL-47","HIMMEL-48","HIMMEL-49","HIMMEL-50","HIMMEL-51","HIMMEL-53"],"op":"none","verbatim":"Approved one more round"}]'
+ph_mk() { printf '%s\n' '# chief' '' '## Live state' "$@" '' '## Results' > "$ph_doc"; }
+ph_env() { HIMMEL_RELEASE_STATE_DIR="$PH/rel" TICK_STATE_DIR="$PH/state" "$@"; }
+ph_holds() { ph_env bash "$SUT" --pool-holds --doc "$ph_doc" 2>/dev/null; }
+ph_pd() { ph_env bash "$SUT" --pool-dispositions --doc "$ph_doc" < "$PH/rows" 2>/dev/null; }
+ph_file="$PH/state/pool-holds-$PH_STEM.json"
+ph_class() { jq -r --arg k "HIMMEL-$1" '.rows[] | select(.key == $k) | .class' "$ph_file" 2>/dev/null; }
+ph_unres() { printf '%s\n' "$1" | grep "^# pool-unresolved [a-z-]* HIMMEL-$2 "; }
+for n in 4 41 42 43 44 45 46 47 48 49 50 51 52 53 54 8 55; do printf '# disposition HIMMEL-%s listed LOCAL\n' "$n"; done > "$PH/rows"
+ph_mk 'release: v1.1.3' \
+    'pool-disposition: HIMMEL-4 question operator decision 268' \
+    'pool-disposition: HIMMEL-41 close the ticket is obsolete' \
+    'pool-disposition: HIMMEL-42 hold until the release' \
+    'pool-disposition: HIMMEL-43 park for now' \
+    'pool-disposition: HIMMEL-44 question ask the operator' \
+    'pool-disposition: HIMMEL-45 slice later' \
+    'pool-disposition: HIMMEL-46 close obsolete authority=O-v1.1.3-0001' \
+    'pool-disposition: HIMMEL-47 hold until the release authority=O-v1.1.3-0001' \
+    'pool-disposition: HIMMEL-48 park for now authority=O-v1.1.3-0001' \
+    'pool-disposition: HIMMEL-49 question one more round authority=O-v1.1.3-0001' \
+    'pool-disposition: HIMMEL-50 slice later authority=O-v1.1.3-0001' \
+    'pool-disposition: HIMMEL-51 question the operator said so authority=decision-9' \
+    'pool-disposition: HIMMEL-52 question operator decision 268 authority=decision-268' \
+    'pool-disposition: HIMMEL-53 question a legacy row authority=O-v1.1.3-0002' \
+    'pool-disposition: HIMMEL-54 slice HIMMEL-900' \
+    'pool-disposition: HIMMEL-8 slice HIMMEL-900' \
+    'pool-disposition: HIMMEL-77 park the operator asked for it' \
+    'pool-disposition: HIMMEL-78 park not asked'
+ph_state "$ph_words" '["HIMMEL-77"]'
+mkdir -p "$PH/decisions"; printf 'keep it, HIMMEL-52\n' > "$PH/decisions/verbatim-decision-268.txt"
+ph_out="$(ph_holds)"; ph_rc=$?
+same 'the pool-holds step exits 0' "$ph_rc" 0
+contains 'the pool-holds step names the unhandled lines' "$ph_out" 'pool-holds='
+ph_pdo="$(ph_pd)"
+contains 'a bare question line counts as unhandled' "$ph_pdo" '# pool-unresolved no-authority HIMMEL-4 '
+for n in 41 42 43 44 45; do
+    contains "every give-up verb needs a form: bare HIMMEL-$n is no-authority" "$ph_pdo" "# pool-unresolved no-authority HIMMEL-$n "
+done
+for n in 46 47 48 49 50; do
+    same "every give-up verb needs a form: HIMMEL-$n with a valid authority= is handled" "$(ph_unres "$ph_pdo" "$n")" ""
+done
+same 'a words O- record naming the key is handled, and the holds row carries the words' \
+    "$(jq -r '.rows[] | select(.key == "HIMMEL-49") | "\(.class)|\(.words)"' "$ph_file" 2>/dev/null)" 'authority|Approved one more round'
+same 'decision-<n> resolves through words_records only: decision-9 names the key' "$(ph_class 51)" authority
+same 'decision-<n> resolves through words_records only: a decision file on disk does not help' "$(ph_class 52)" invalid
+contains 'and the invalid line is unresolved with its reason' "$ph_pdo" '# pool-unresolved invalid HIMMEL-52 authority=decision-268 names no record of the operator'"'"'s words for HIMMEL-52'
+same 'a legacy O- row is not authority' "$(ph_class 53)" invalid
+same 'a slice naming a key keeps today'"'"'s rule' "$(ph_unres "$ph_pdo" 54)" ''
+contains 'a free-text slice needs a form' "$ph_pdo" '# pool-unresolved no-authority HIMMEL-45 '
+contains 'an off-pool operator key is checked' "$ph_pdo" '# pool-unresolved no-authority HIMMEL-77 '
+contains 'an off-pool key the operator did not ask for stays invalid as today' "$ph_pdo" '# pool-unresolved invalid HIMMEL-78 malformed, duplicate or unknown'
+same 'chief-wait'"'"'s call reads the same file (same classes)' \
+    "$(printf '%s\n' "$(cat "$PH/rows")" | ph_env env DOC='' bash "$SUT" --pool-dispositions --doc "$ph_doc" 2>/dev/null)" "$ph_pdo"
+ph_series="HIMMEL-4,HIMMEL-41"
+contains 'the no-doc call still prints pool-keys' \
+    "$(printf 'SERIES\tser-1\t%s\n' "$ph_series" | ph_env env DOC='' bash "$SUT" --pool-dispositions 2>/dev/null)" "# pool-keys 1 SERIES $ph_series"
+
+rm -f "$PH/state/release-state-$PH_STEM.json"; ph_holds > /dev/null
+same 'missing inputs: no state file reads an authority= line unchecked' "$(ph_class 49)" unchecked
+contains 'and names the missing input' "$(jq -r '.rows[] | select(.key == "HIMMEL-49") | .reason' "$ph_file")" 'no release state file'
+ph_state "$ph_words" '[]' OK "$(date -u -d '2 hours ago' +%Y-%m-%dT%H:%M:%SZ)"; ph_holds > /dev/null  # gnu-ok: chief kit is Linux-only
+same 'missing inputs: a state file older than the holds window reads unchecked' "$(ph_class 49)" unchecked
+ph_state "$ph_words" '[]' UNKNOWN; ph_holds > /dev/null
+same 'missing inputs: a state that is not OK reads unchecked' "$(ph_class 49)" unchecked
+printf '{"ts": ' > "$PH/state/release-state-$PH_STEM.json"
+ph_rc=0; ph_holds > /dev/null || ph_rc=$?
+same 'a corrupt state file never fails the step' "$ph_rc" 0
+same 'a corrupt state file reads an authority= line unchecked' "$(ph_class 49)" unchecked
+
+ph_state "$ph_words" '["HIMMEL-77"]'; ph_holds > /dev/null
+rm -f "$ph_file"
+ph_pdo="$(ph_pd)"
+contains 'a missing holds file reads every give-up line unchecked' "$ph_pdo" '# pool-unresolved unchecked HIMMEL-49 no holds file'
+contains 'and a bare one too, never an all-clear' "$ph_pdo" '# pool-unresolved unchecked HIMMEL-4 '
+same 'a slice naming a key is not a give-up line' "$(ph_unres "$ph_pdo" 54)" ''
+ph_holds > /dev/null; touch -d '31 minutes ago' "$ph_file"  # gnu-ok: chief kit is Linux-only
+contains 'an old holds file reads every give-up line unchecked' "$(ph_pd)" '# pool-unresolved unchecked HIMMEL-49 the holds file is 31 min old'
+ph_holds > /dev/null
+ph_mk 'release: v1.1.3' 'pool-disposition: HIMMEL-49 question one more round authority=O-v1.1.3-0001' 'pool-disposition: HIMMEL-4 question operator decision 268 and more'
+contains 'a line changed since the holds run reads unchecked' "$(ph_pd)" '# pool-unresolved unchecked HIMMEL-4 the line changed since the holds run'
+ph_mk 'release: v1.1.4' 'pool-disposition: HIMMEL-49 question one more round authority=O-v1.1.3-0001' 'pool-disposition: HIMMEL-4 question operator decision 268 and more'
+contains 'a holds file written for another release reads unchecked' "$(ph_pd)" '# pool-unresolved unchecked HIMMEL-49 the holds file was written for release v1.1.3'
+jq '.release = "v1.1.2"' "$PH/state/release-state-$PH_STEM.json" > "$PH/state/rs.tmp" && mv "$PH/state/rs.tmp" "$PH/state/release-state-$PH_STEM.json"
+ph_mk 'release: v1.1.3' 'pool-disposition: HIMMEL-49 question one more round authority=O-v1.1.3-0001'
+ph_holds > /dev/null
+same 'a release state of another release reads authority unchecked' "$(ph_class 49)" unchecked
+ph_mk 'pool-disposition: HIMMEL-49 question one more round authority=O-v1.1.3-0001' 'pool-disposition: HIMMEL-4 question operator decision 268 and more'
+ph_holds > /dev/null
+same 'a doc with no release line in a declaring bucket reads unchecked' "$(ph_class 49)" unchecked
+contains 'and says why' "$(jq -r '.rows[] | select(.key == "HIMMEL-49") | .reason' "$ph_file")" 'the doc has no release: line'
+ph_mk 'release: v1.1.3' 'pool-disposition: HIMMEL-4 question operator decision 268'
+ph_nl="$(TICK_STATE_DIR="$PH/state" bash "$SUT" --pool-holds --doc "$ph_doc" 2>/dev/null)"
+same 'a bucket with no declaration keeps today'"'"'s rule: the step says so' "$ph_nl" 'pool-holds=off:no-ledger'
+ph_nlo="$(TICK_STATE_DIR="$PH/state" bash "$SUT" --pool-dispositions --doc "$ph_doc" < "$PH/rows" 2>/dev/null)"
+same 'a bucket with no declaration keeps today'"'"'s rule: a bare question is dispositioned' "$(ph_unres "$ph_nlo" 4)" ''
+rm -f "$ph_file"
+same 'with no declaration a missing holds file changes nothing' "$(ph_unres "$(TICK_STATE_DIR="$PH/state" bash "$SUT" --pool-dispositions --doc "$ph_doc" < "$PH/rows" 2>/dev/null)" 4)" ''
+
+PHM="$PH/mirror/HIMMEL"; mkdir -p "$PHM"
+printf '#!/usr/bin/env bash\nprintf "not json"\n' > "$PH/rmq-probe"; chmod +x "$PH/rmq-probe"
+ph_mk 'release: v1.1.3' 'pool-disposition: HIMMEL-49 question one more round authority=O-v1.1.3-0001' 'pool-disposition: HIMMEL-52 question x authority=the-boss'
+printf '{"ts": ' > "$PH/state/release-state-$PH_STEM.json"; rm -f "$ph_file"
+ph_rc=0
+ph_tick="$(ph_env env NEXT_DISPATCH_MIRROR="$PHM" TICK_RMQ_PROBE="$PH/rmq-probe" TOKEN='' bash "$SUT" --doc "$ph_doc" 2>/dev/null)" || ph_rc=$?
+same 'a corrupt state file never fails the tick (rc 0)' "$ph_rc" 0
+contains 'the tick still prints with invalid lines' "$ph_tick" 'TICK '
+same 'the tick ran the pool-holds step: the authority= line reads unchecked' "$(ph_class 49)" unchecked
+same 'and the invalid line is invalid' "$(ph_class 52)" invalid
+
+ph_field() { jq -r --arg k "HIMMEL-$1" --arg f "$2" '.rows[] | select(.key == $k) | .[$f] | tostring' "$ph_file" 2>/dev/null; }
+mk_ph() {
+    printf -- '---\nkey: "HIMMEL-%s"\ntype: "Task"\nstatus: "%s"\nstatusCategory: "%s"\npriority: "Medium"\nlabels: []\nfixVersions: %s\nparent: null\n---\n\n# HIMMEL-%s: t\n' \
+        "$1" "$2" "$3" "$4" "$1" > "$PHM/HIMMEL-$1.md"
+}
+mk_ph 901 "To Do" "To Do" '[]'
+mk_ph 902 Done Done '[]'
+mk_ph 903 "To Do" "To Do" '["v1.1.3"]'
+mk_ph 904 "To Do" "To Do" '[]'
+printf 'v1.1.3\tfalse\t\n' > "$PH/mirror/HIMMEL.versions.tsv"
+printf '4999\tfeat/other\tfalse\tme\tfalse\n5001\tfeat/himmel-904-x\tfalse\tme\tfalse\n4761\tupstream/fix\tfalse\tbob\ttrue\n' > "$PH/open-prs.tsv"
+cat > "$PH/gh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$PH_GH_LOG"
+[ -z "${PH_GH_FAIL:-}" ] || exit 1
+case "$*" in *"api graphql"*) ;; *) exit 1 ;; esac
+out=""
+for n in $(printf '%s\n' "$*" | grep -o 'issueOrPullRequest(number:[0-9]*)' | grep -o '[0-9][0-9]*'); do
+    s="$(printf '%s\n' "${PH_GH_STATES:-}" | tr ',' '\n' | sed -n "s/^$n://p")"
+    if [ -n "$s" ]; then out="$out${out:+,}\"p$n\":{\"__typename\":\"PullRequest\",\"state\":\"$s\"}"; else out="$out${out:+,}\"p$n\":null"; fi
+done
+printf '{"data":{"repository":{%s}}}\n' "$out"
+STUB
+chmod +x "$PH/gh"
+ph_day() { date -u -d "$1" +%Y-%m-%d; }  # gnu-ok: chief kit is Linux-only
+ph_wake() { ph_env env NEXT_DISPATCH_MIRROR="$PHM" TICK_GH_CMD="$PH/gh" PH_GH_LOG="$PH/gh.log" PH_GH_STATES="${PH_GH_STATES:-4999:OPEN,5001:OPEN,4761:OPEN,3905:MERGED}" \
+    bash "$SUT" --pool-holds --doc "$ph_doc" --repo "$PH" "$@" 2>/dev/null; }
+ph_state "$ph_words" '[]'
+ph_mk 'release: v1.1.3' \
+    "pool-disposition: HIMMEL-60 park until then wake=date:$(ph_day '+3 days')" \
+    "pool-disposition: HIMMEL-61 park until then wake=date:$(ph_day yesterday)" \
+    "pool-disposition: HIMMEL-62 park until then wake=date:$(ph_day '+30 days')" \
+    'pool-disposition: HIMMEL-63 hold after it wake=done:HIMMEL-901' \
+    'pool-disposition: HIMMEL-64 hold after it wake=done:HIMMEL-904' \
+    'pool-disposition: HIMMEL-65 hold after it wake=done:HIMMEL-902' \
+    'pool-disposition: HIMMEL-66 hold after it wake=done:HIMMEL-903' \
+    'pool-disposition: HIMMEL-67 hold for a file wake=file:relative/x' \
+    'pool-disposition: HIMMEL-68 hold for a file wake=file:/etc/x' \
+    "pool-disposition: HIMMEL-69 hold for a file wake=file:$PH/state/../x" \
+    "pool-disposition: HIMMEL-70 hold for a file wake=file:$PH/state/flag-not-yet" \
+    'pool-disposition: HIMMEL-71 hold on the merge wake=pr-4999-merge' \
+    'pool-disposition: HIMMEL-72 hold on the merge wake=pr:777' \
+    "pool-disposition: HIMMEL-46 close obsolete authority=O-v1.1.3-0001 wake=date:$(ph_day '+30 days')" \
+    "pool-disposition: HIMMEL-73 park for now authority=bogus wake=date:$(ph_day '+3 days')" \
+    'pool-disposition: HIMMEL-74 hold waits on PR 4761 wake=pr:4761' \
+    'pool-disposition: HIMMEL-75 park soon wake=sometime'
+: > "$PH/gh.log"
+ph_wake --open-prs "$PH/open-prs.tsv" > /dev/null
+same 'a valid unfired dated wake is handled' "$(ph_class 60)" wake
+same 'a fired wake does not hold' "$(ph_class 61)|$(ph_field 61 fired)" 'no-authority|true'
+same 'a wake more than 7 days out is a park' "$(ph_class 62)" invalid
+contains 'and says so' "$(ph_field 62 reason)" 'more than 7 days'
+same 'done: on a backlog To Do key with no PR and no worker is invalid' "$(ph_class 63)" invalid
+same 'done: on a key an open PR'"'"'s head branch names is handled' "$(ph_class 64)" wake
+same 'done: on a Done key is fired, never invalid' "$(ph_class 65)|$(ph_field 65 fired)" 'no-authority|true'
+same 'done: on a key in the current version is handled' "$(ph_class 66)" wake
+same 'file: with a relative path is invalid' "$(ph_class 67)" invalid
+same 'file: outside the handover root and the state dir is invalid' "$(ph_class 68)" invalid
+same 'file: with a .. segment is invalid' "$(ph_class 69)" invalid
+same 'file: under the state dir that does not exist yet is handled' "$(ph_class 70)" wake
+same 'wake=pr-<n>-merge on an open PR is handled' "$(ph_class 71)" wake
+same 'wake=pr:<n> GitHub cannot resolve on a successful read is invalid' "$(ph_class 72)|$(ph_field 72 reason)" 'invalid|PR 777 not found'
+same 'an invalid part wins: a valid authority beside an invalid wake' "$(ph_class 46)" invalid
+same 'an invalid part wins: an invalid authority beside a valid wake' "$(ph_class 73)" invalid
+same 'an unknown wake form is invalid' "$(ph_class 75)" invalid
+same 'the PR read names exactly the cited PRs in one call' "$(grep -c 'api graphql' "$PH/gh.log")" 1
+same 'the holds file carries the PR state map' "$(jq -r '.prs | to_entries | map("\(.key)=\(.value)") | join(",")' "$ph_file")" '4761=OPEN,4999=OPEN'
+same 'outside from the real read: a cross-repository PR with no manifest reads null' "$(ph_field 74 outside)" null
+printf '{"schema":1,"workers":[]}\n' > "$PH/manifest.json"
+ph_wake --open-prs "$PH/open-prs.tsv" --workers-from "$PH/manifest.json" > /dev/null
+same 'outside from the real read: a cross-repository PR with no watch row is outside' "$(ph_field 74 outside)" true
+printf '{"schema":1,"workers":[],"watch":[{"pr":4761,"repo":""}]}\n' > "$PH/manifest.json"
+ph_wake --open-prs "$PH/open-prs.tsv" --workers-from "$PH/manifest.json" > /dev/null
+same 'outside from the real read: a watch row makes it a live wake' "$(ph_field 74 outside)" false
+ph_wake --open-prs "$PH/open-prs.tsv" --workers 'HIMMEL-901-N1-x-2026-11-15.md' > /dev/null
+same 'done: on a key a --workers worker holds is handled' "$(ph_class 63)" wake
+printf '{"schema":1,"workers":[{"doc":"HIMMEL-901-N1-x-2026-11-15.md"}]}\n' > "$PH/manifest.json"
+ph_wake --open-prs "$PH/open-prs.tsv" --workers-from "$PH/manifest.json" > /dev/null
+same 'done: on a key a worker holds is handled' "$(ph_class 63)" wake
+ph_rc=0; PH_GH_FAIL=1 ph_wake --open-prs "$PH/open-prs.tsv" > /dev/null || ph_rc=$?
+same 'a failed PR read never fails the step' "$ph_rc" 0
+same 'a failed PR read is unchecked, neither invalid nor fired' "$(ph_class 71)|$(ph_field 71 fired)" 'unchecked|false'
+same 'and a not-found PR is unchecked too' "$(ph_class 72)" unchecked
+ph_wake > /dev/null
+same 'an unread open-PR list leaves done: worked test unchecked' "$(ph_class 63)" unchecked
+same 'but done: in the current version still holds' "$(ph_class 66)" wake
+ph_mk 'release: v1.1.3' "pool-disposition: HIMMEL-60 park until then wake=date:$(ph_day '+3 days')" 'pool-disposition: HIMMEL-63 hold after it wake=done:HIMMEL-903'
+: > "$PH/gh.log"
+ph_wake --open-prs "$PH/open-prs.tsv" > /dev/null
+same 'no PR target, no gh call' "$(wc -l < "$PH/gh.log" | tr -d ' ')" 0
+ph_mk 'release: v1.1.3' 'pool-disposition: HIMMEL-71 hold on the merge wake=pr-4999-merge'
+printf '#!/usr/bin/env bash\nexit 1\n' > "$PH/gh-fail"; chmod +x "$PH/gh-fail"
+ph_state "$ph_words" '[]'; rm -f "$ph_file"
+ph_rc=0
+ph_tick="$(ph_env env NEXT_DISPATCH_MIRROR="$PHM" TICK_GH_CMD="$PH/gh-fail" GH_READ_BIN="$PH/gh-fail" TOKEN='' bash "$SUT" --doc "$ph_doc" 2>/dev/null)" || ph_rc=$?
+same 'a failing gh never fails the tick (rc 0)' "$ph_rc" 0
+contains 'and the tick still prints' "$ph_tick" 'TICK '
+same 'and the PR-dependent line reads unchecked' "$(ph_class 71)" unchecked
+mk_ph 90 "To Do" "To Do" '[]'
+ph_mk 'release: v1.1.3' 'pool-disposition: HIMMEL-76 hold after it wake=done:HIMMEL-90'
+ph_wake --open-prs "$PH/open-prs.tsv" > /dev/null
+same 'done: never matches a longer key in a head branch' "$(ph_class 76)" invalid
+ph_state "$ph_words" '[]'
+: > "$PH/state/flag-present"
+ph_mk 'release: v1.1.3' \
+    'pool-disposition: HIMMEL-79 question not in the record authority=O-v1.1.3-0001' \
+    'pool-disposition: HIMMEL-83 question not in the record authority=decision-9' \
+    'pool-disposition: HIMMEL-56 hold on the merge wake=pr:3905' \
+    'pool-disposition: HIMMEL-57 hold on the close wake=pr:3906' \
+    "pool-disposition: HIMMEL-58 hold for a file wake=file:$PH/state/flag-present"
+PH_GH_STATES=3905:MERGED,3906:CLOSED ph_wake --open-prs "$PH/open-prs.tsv" > /dev/null
+same 'a real O- record that does not name the key is not authority' "$(ph_class 79)" invalid
+same 'a real decision-<n> record that does not name the key is not authority' "$(ph_class 83)" invalid
+same 'a wake on a merged PR fired and holds nothing' "$(ph_class 56)|$(ph_field 56 fired)" 'no-authority|true'
+same 'a wake on a closed PR fired and holds nothing' "$(ph_class 57)|$(ph_field 57 fired)" 'no-authority|true'
+same 'a file: wake on a file that exists fired and holds nothing' "$(ph_class 58)|$(ph_field 58 fired)" 'no-authority|true'
+rm -f "$PH/state/pool-lines.tsv"; mkdir "$PH/state/pool-lines.tsv"
+ph_rc=0
+ph_env env NEXT_DISPATCH_MIRROR="$PHM" TICK_GH_CMD="$PH/gh-fail" TOKEN='' bash "$SUT" --doc "$ph_doc" > /dev/null 2>&1 || ph_rc=$?
+same 'a failed pool-holds step still leaves the tick at rc 0' "$ph_rc" 0
+same 'and removes the previous holds file, so the lines read unchecked' "$([ -e "$ph_file" ] && echo kept || echo gone)" gone
+rmdir "$PH/state/pool-lines.tsv"
+
+PA="$PH/age"; mkdir -p "$PA/docs"
+pa_line='pool-disposition: HIMMEL-80 park for now'
+pa_doc() {
+    local s="$1"; shift
+    printf '%s\n' '# chief' '' 'release: v1.1.3' '' '## Live state' "$@" 'pool-disposition: HIMMEL-81 park the other one' '' '## Results' > "$PA/docs/$s.md"
+    printf '%s' "$PA/docs/$s.md"
+}
+pa_run() {
+    local st="$1" now="$2" s="$3"; shift 3
+    HIMMEL_RELEASE_STATE_DIR="$PH/rel" TICK_STATE_DIR="$st" TICK_NOW="$now" bash "$SUT" --pool-holds --doc "$(pa_doc "$s" "$@")" > /dev/null 2>&1
+}
+pa_age() { jq -r --arg f "$3" '.rows[] | select(.key == "HIMMEL-80") | .[$f] | tostring' "$1/pool-holds-$2.json" 2>/dev/null; }
+pa_n=HIMMEL-nextleg-2026-11-0
+st="$PA/s-seed"; mkdir -p "$st"
+for s in 1SA 2SB 3SC; do pa_doc "${pa_n}${s}-roadmap-chief" "$pa_line" > /dev/null; done
+printf '%s\n' "$PA/docs/${pa_n}1SA-roadmap-chief.md" "$PA/docs/${pa_n}2SB-roadmap-chief.md" "$PA/docs/${pa_n}3SC-roadmap-chief.md" > "$PA/seed.list"
+TICK_STATE_DIR="$st" TICK_NOW=2026-11-05T12:00:00Z bash "$SUT" --pool-holds --seed-age "$PA/seed.list" > /dev/null 2>&1
+same 'the seed mode appends one row per doc and writes no holds file' "$(wc -l < "$st/pool-lines.tsv" | tr -d ' '):$(find "$st" -name 'pool-holds-*.json' | wc -l | tr -d ' ')" '3:0'
+same 'a seeded row is stamped with the doc'"'"'s filename date' "$(head -n 1 "$st/pool-lines.tsv" | cut -f1)" '2026-11-01T00:00:00Z'
+pa_run "$st" 2026-11-05T12:00:00Z "${pa_n}3SC-roadmap-chief" "$pa_line"
+same 'seeding three stems in order gives age_gen 3' "$(pa_age "$st" "${pa_n}3SC-roadmap-chief" age_gen)" 3
+same 'and age_days follows the filename dates' "$(pa_age "$st" "${pa_n}3SC-roadmap-chief" age_days)" 4
+same 'and first_seen is the first stem'"'"'s date' "$(pa_age "$st" "${pa_n}3SC-roadmap-chief" first_seen)" '2026-11-01T00:00:00Z'
+st="$PA/s-seq"; mkdir -p "$st"
+pa_run "$st" 2026-11-05T10:00:00Z "${pa_n}1AA-roadmap-chief" "$pa_line"
+same 'a first generation is age_gen 1' "$(pa_age "$st" "${pa_n}1AA-roadmap-chief" age_gen)" 1
+pa_run "$st" 2026-11-05T11:00:00Z "${pa_n}1AB-roadmap-chief" "$pa_line"
+same 'the next stem of the lineage with the same line gives age_gen 2' "$(pa_age "$st" "${pa_n}1AB-roadmap-chief" age_gen)" 2
+pa_run "$st" 2026-11-05T11:30:00Z "${pa_n}1AB-roadmap-chief" "$pa_line"
+same 'the same stem again stays at 2' "$(pa_age "$st" "${pa_n}1AB-roadmap-chief" age_gen)" 2
+same 'an unchanged line set appends no row' "$(grep -c "${pa_n}1AB" "$st/pool-lines.tsv")" 1
+pa_run "$st" 2026-11-05T12:00:00Z "${pa_n}1ZZ-chief"
+pa_run "$st" 2026-11-05T12:30:00Z "${pa_n}1AC-roadmap-chief" "$pa_line"
+same 'a stem of another lineage without the line never resets' "$(pa_age "$st" "${pa_n}1AC-roadmap-chief" age_gen)" 3
+pa_run "$st" 2026-11-05T13:00:00Z "${pa_n}1AD-roadmap-chief"
+pa_run "$st" 2026-11-05T14:00:00Z "${pa_n}1AE-roadmap-chief" "$pa_line"
+same 'a stem of the lineage without the line resets the age to 1' "$(pa_age "$st" "${pa_n}1AE-roadmap-chief" age_gen)" 1
+st="$PA/s-days"; mkdir -p "$st"
+pa_doc HIMMEL-nextleg-2026-10-28CA-roadmap-chief "$pa_line" > /dev/null
+pa_doc HIMMEL-nextleg-2026-10-01OLD-roadmap-chief "$pa_line" > /dev/null
+printf '%s\n' "$PA/docs/HIMMEL-nextleg-2026-10-01OLD-roadmap-chief.md" "$PA/docs/HIMMEL-nextleg-2026-10-28CA-roadmap-chief.md" > "$PA/seed2.list"
+TICK_STATE_DIR="$st" TICK_NOW=2026-11-05T00:00:00Z bash "$SUT" --pool-holds --seed-age "$PA/seed2.list" > /dev/null 2>&1
+pa_run "$st" 2026-11-05T00:00:00Z HIMMEL-nextleg-2026-11-05CB-roadmap-chief "$pa_line"
+same 'age_days from a seeded first-seen 8 days back is 8' "$(pa_age "$st" HIMMEL-nextleg-2026-11-05CB-roadmap-chief age_days)" 8
+same 'a stem unseen for 14 days is pruned' "$(grep -c 'OLD-roadmap-chief' "$st/pool-lines.tsv")" 0
+st="$PA/s-long"; mkdir -p "$st"
+pa_run "$st" 2026-11-01T00:00:00Z "${pa_n}1LA-roadmap-chief" "$pa_line"
+pa_run "$st" 2026-11-10T00:00:00Z "${pa_n}1LA-roadmap-chief" "$pa_line"
+pa_run "$st" 2026-11-20T00:00:00Z "${pa_n}1LB-roadmap-chief" "$pa_line"
+same 'a stem seen unchanged for over 14 days is never pruned while it is read' "$(pa_age "$st" "${pa_n}1LB-roadmap-chief" age_gen)" 2
+
+GD="$PA/golden"; mkdir -p "$GD/state" "$GD/docs"
+gd_l1='pool-disposition: HIMMEL-1 question one more round authority=O-v1.1.3-0001'
+gd_l2='pool-disposition: HIMMEL-2 park operator words: hold it'
+gd_l3='pool-disposition: HIMMEL-3 hold on the merge wake=pr:4999'
+gd_l4='pool-disposition: HIMMEL-4 hold on the other merge wake=pr:4998'
+gd_l5='pool-disposition: HIMMEL-5 park until then wake=date:2026-11-18'
+gd_doc() { printf '%s\n' '# chief' '' 'release: v1.1.3' '' '## Live state' "${@:2}" '' '## Results' > "$GD/docs/HIMMEL-nextleg-$1-roadmap-chief.md"; }
+gd_doc 2026-11-08GA "$gd_l2" "$gd_l3"
+gd_doc 2026-11-09GB "$gd_l2" "$gd_l3" "$gd_l4"
+gd_doc 2026-11-15GD "$gd_l1" "$gd_l2" "$gd_l3" "$gd_l4" "$gd_l5"
+printf '%s\n' "$GD/docs/HIMMEL-nextleg-2026-11-08GA-roadmap-chief.md" "$GD/docs/HIMMEL-nextleg-2026-11-09GB-roadmap-chief.md" > "$GD/seed.list"
+TICK_STATE_DIR="$GD/state" TICK_NOW=2026-11-15T12:00:00Z bash "$SUT" --pool-holds --seed-age "$GD/seed.list" > /dev/null 2>&1
+jq -n '{ts: "2026-11-15T12:00:00Z", status: "OK", words_records: [{id: "O-v1.1.3-0001", decision: "9", keys: ["HIMMEL-1"], op: "none", verbatim: "Approved one more round"}], asks_operator_keys: []}' \
+    > "$GD/state/release-state-HIMMEL-nextleg-2026-11-15GD-roadmap-chief.json"
+printf '4999\tfeat/a\tfalse\tme\tfalse\n4998\tfeat/b\tfalse\tme\tfalse\n' > "$GD/open.tsv"
+HIMMEL_RELEASE_STATE_DIR="$PH/rel" TICK_STATE_DIR="$GD/state" TICK_NOW=2026-11-15T12:00:00Z NEXT_DISPATCH_MIRROR="$PHM" TICK_GH_CMD="$PH/gh" PH_GH_LOG="$PH/gh.log" \
+    PH_GH_STATES=4999:OPEN,4998:OPEN bash "$SUT" --pool-holds --doc "$GD/docs/HIMMEL-nextleg-2026-11-15GD-roadmap-chief.md" --open-prs "$GD/open.tsv" > /dev/null 2>&1
+same 'golden holds file: the producer output equals fixtures/pool-holds-golden.json' \
+    "$(jq -S 'del(.doc)' "$GD/state/pool-holds-HIMMEL-nextleg-2026-11-15GD-roadmap-chief.json" 2>/dev/null)" "$(jq -S 'del(.doc)' "$HERE/fixtures/pool-holds-golden.json" 2>/dev/null)"
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick-fields-late.sh'

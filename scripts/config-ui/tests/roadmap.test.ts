@@ -3,7 +3,7 @@
 // worker -> Jira sync plan the chief kit writes, and the librarian's ready-to-approve lists. Read-only throughout.
 import { test, expect, afterEach } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { legSync, readRoadmap, SYNC_LABEL } from "../roadmap";
@@ -1683,6 +1683,8 @@ test("readOwed: reads the unsigned specs, the newest chief doc's lines naming th
   writeFileSync(join(bucket, "HIMMEL-nextleg-2026-11-08VE-roadmap-chief.md"),
     "# VE\n\n## Live state\n\nworkers: x\nqueue: HIMMEL-5 merge waits for operator sign-off | HIMMEL-9 runs by itself || was: HIMMEL-7 waited for operator sign-off\npool-disposition: HIMMEL-4 parked until the operator words arrive\n\n## Current direction\n");
   writeFileSync(join(bucket, "HIMMEL-nextleg-2026-11-08VE-roadmap-chief-HANDOFF.md"), "# h\n\n## Open operator items\n\n- 9271: run the apply at the station\n- none\n\n## Next\n");
+  mkdirSync(join(s.d, ".himmel", "state"), { recursive: true });
+  writeFileSync(join(s.d, ".himmel", "state", "pool-holds-HIMMEL-nextleg-2026-11-08VE-roadmap-chief.json"), JSON.stringify({ mode: "on", rows: [], prs: {} }));
   const env = { PATH: process.env.PATH, HOME: s.d, HIMMEL_JIRA_MIRROR: s.mirror, HANDOVER_DIR: join(s.d, "ho"), JIRA_PROJECT_KEY: "HIMMEL" };
   const o = readOwed(env);
   if (o.state !== "ok") throw new Error(o.reason);
@@ -1717,6 +1719,50 @@ test("readOwed: reads the unsigned specs, the newest chief doc's lines naming th
   // no handover root and no chief doc: nothing is readable, so the answer is absent with the reasons
   const none = readOwed({ ...env, HANDOVER_DIR: join(s.d, "no-ho") });
   expect(none.state).toBe("absent");
+});
+
+test("readOwed: the tick's pool-holds file adds the Blocked-on-you rows of the give-up lines, one per key; a missing file is named in unread", async () => {
+  const { readOwed } = await import("../board");
+  const s = station();
+  const bucket = join(s.d, "ho", "u", "himmel"), state = join(s.d, "tick-state"), stem = "HIMMEL-nextleg-2026-11-15GD-roadmap-chief";
+  mkdirSync(join(bucket, "specs", "designs"), { recursive: true }); mkdirSync(state, { recursive: true });
+  seedSpecs(join(bucket, "specs"));
+  copyFileSync(resolve(import.meta.dir, "../../handover/chief-kit/fixtures/pool-holds-golden.json"), join(state, `pool-holds-${stem}.json`));
+  const gdDoc = (one: string) => writeFileSync(join(bucket, `${stem}.md`), `# GD\n\n## Live state\n\n${[`${K(1)} ${one}`, `${K(2)} park operator words: hold it`,
+    `${K(3)} hold on the merge wake=pr:4999`, `${K(4)} hold on the other merge wake=pr:4998`, `${K(5)} park until then wake=date:2026-11-18`,
+    `${K(6)} question operator words: still asked`].map((l) => `pool-disposition: ${l}\n`).join("")}\n## Next\n`);
+  gdDoc("question one more round authority=O-v1.1.3-0001");
+  const env = { PATH: process.env.PATH, HOME: s.d, HIMMEL_JIRA_MIRROR: s.mirror, HANDOVER_DIR: join(s.d, "ho"), JIRA_PROJECT_KEY: "HIMMEL", TICK_STATE_DIR: state };
+  const o = readOwed(env);
+  if (o.state !== "ok") throw new Error(o.reason);
+  const held = o.items.filter((i) => i.source === "pool hold");
+  const of = (n: number) => held.find((i) => i.key === K(n));
+  expect(of(2)!.ctx).toBe("park since 3 chief generations, with no operator words and no wake");
+  expect(of(2)!.act).toBe("record the operator's words (O- record) or a near wake=, or dispatch it");
+  expect(of(1)!.ctx).toBe('question on the operator\'s words: "Approved one more round"');
+  expect(of(1)!.act).toBe("none, unless the words do not say this");
+  expect(of(3)!.ctx).toBe("hold on wake=pr:4999 for 7 days");
+  expect(of(3)!.act).toBe("re-decide: dispatch it, or record the operator's words");
+  expect(of(4)).toBeUndefined();
+  expect(of(5)).toBeUndefined();
+  const chief = o.items.filter((i) => i.source === "chief doc");
+  expect(chief.map((i) => i.key ?? i.title)).toEqual([`${K(6)} question operator words: still asked`]);
+  expect(o.unread).toEqual(["handoff items"]);
+  gdDoc("question one more round, reworded authority=O-v1.1.3-0001");
+  const moved = readOwed(env);
+  expect(moved.state === "ok" && moved.items.find((i) => i.source === "pool hold" && i.key === K(1))!.ctx).toBe("question (unchecked: the line changed since the holds run)");
+  gdDoc("question one more round authority=O-v1.1.3-0001");
+  const old = (Date.now() - 31 * 60 * 1000) / 1000;
+  utimesSync(join(state, `pool-holds-${stem}.json`), old, old);
+  const aged = readOwed(env);
+  expect(aged.state === "ok" && aged.unread).toEqual(["handoff items", "pool holds"]);
+  writeFileSync(join(state, `pool-holds-${stem}.json`), JSON.stringify({ rows: {} }));
+  const bad = readOwed(env);
+  expect(bad.state === "ok" && bad.unread).toEqual(["handoff items", "pool holds"]);
+  rmSync(join(state, `pool-holds-${stem}.json`));
+  const gone = readOwed(env);
+  expect(gone.state === "ok" && gone.unread).toEqual(["handoff items", "pool holds"]);
+  expect(gone.state === "ok" && gone.items.filter((i) => i.source === "chief doc").map((i) => i.key ?? i.title)).toEqual([K(2), `${K(6)} question operator words: still asked`]);
 });
 
 test("readOwed: the round, the classes and the open operator-critical findings come from the round ledger; a ledger that cannot be read skips the specs", async () => {
