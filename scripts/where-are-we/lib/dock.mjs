@@ -7,6 +7,7 @@
 import { fold, isTerminal } from './fold.mjs';
 import { query } from './query.mjs';
 import { render, renderItem } from './render.mjs';
+import { diagnostic } from './health.mjs';
 
 const HOUR_MS = 3600 * 1000;
 
@@ -31,11 +32,13 @@ export function renderDock(records, scope, nowMs, markerMtimeMs) {
   const body = (r.item && !isTerminal(r.item))
     ? renderItem(r.item, r.locks)
     : render(state);
-  const sources = Object.entries(state.sources ?? {}).map(([source, health]) =>
-    `- ${source}: ${health.errors.length ? 'stale / unknown' : 'observed'}; last success ${health.observed_at ?? 'never'}${health.errors.length ? `; ${health.errors.join('; ')}` : ''}`);
-  const failed = Object.entries(state.sources ?? {}).filter(([, h]) => h.errors.length).map(([s]) => s).sort();
+  const entries = Object.entries(state.sources ?? {});
+  const sources = entries.slice(0, 8).map(([source, health]) =>
+    `- ${source.slice(0, 32)}: ${health.errors.length ? 'stale / unknown' : 'observed'}; last success ${String(health.observed_at ?? 'never').slice(0, 40)}${health.errors.length ? `; errors=${health.error_count}; ${health.errors.slice(0, 8).map(diagnostic).join('; ')}` : ''}`);
+  const failed = entries.filter(([, h]) => h.errors.length).map(([s]) => s.slice(0, 32)).sort().slice(0, 8);
   const freshness = freshnessLine(markerMtimeMs, nowMs);
   const header = failed.length ? freshness.slice(0, -1) + ` · stale sources: ${failed.join(', ')}_` : freshness;
-  return header + '\n\n' +
+  const text = header + '\n\n' +
     (sources.length ? sources.join('\n') + '\n\n' : '') + body;
+  return text.length <= 16000 ? text : text.slice(0, 15920) + '\n\n[context truncated; read the ledger for remaining evidence]';
 }

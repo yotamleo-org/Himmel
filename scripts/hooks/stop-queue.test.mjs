@@ -2019,7 +2019,7 @@ test('a real end-side hook still runs to completion under the allowlist base', a
     process.env.HIMMEL_REPO = REPO;
     process.env.WHERE_ARE_WE_STATE_DIR = state;
     process.env.HIMMEL_WHERE_ARE_WE = '1';
-    process.env.HIMMEL_WHERE_ARE_WE_COLLECT_CMD = `touch '${sentinel.split(sep).join('/')}'`;
+    process.env.HIMMEL_WHERE_ARE_WE_COLLECT_CMD = `touch '${sentinel.split(sep).join('/')}' '${join(state, '.refreshed-at').split(sep).join('/')}'`;
     enqueue(dir, {
       name: 'where-are-we-on-end',
       argv: ['bash', join(HERE, 'refresh-where-are-we-on-end.sh'), '__himmel_detached'],

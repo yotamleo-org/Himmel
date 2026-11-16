@@ -175,9 +175,7 @@ if [ -f "$_wa_flag" ] && [ "$(cat "$_wa_flag" 2>/dev/null)" = 1 ]; then
         && [ "$_wa_retry" = 1 ]; then
         touch "$_wa_attempt" 2>/dev/null || true
         if [ -n "${HIMMEL_WHERE_ARE_WE_COLLECT_CMD:-}" ]; then
-            # Positional arguments expand in the detached bash, after collection.
-            # shellcheck disable=SC2016
-            ( nohup bash -c 'if bash -c "$1"; then touch "$2"; fi' _ "$HIMMEL_WHERE_ARE_WE_COLLECT_CMD" "$_wa_marker" >/dev/null 2>&1 & ) || true
+            ( nohup bash -c "$HIMMEL_WHERE_ARE_WE_COLLECT_CMD" >/dev/null 2>&1 & ) || true
         else
             ( nohup "$_wa_node" "$_wa_root/scripts/where-are-we/collect.mjs" --ledger "$_wa_ledger" --marker "$_wa_marker" >/dev/null 2>&1 & ) || true
         fi

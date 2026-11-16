@@ -28,6 +28,7 @@ fail() { echo "FAIL $1"; FAILED=$((FAILED + 1)); }
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
+export HIMMEL_STOP_QUEUE_DIR="$TMP/stop-queue"
 
 # --- Hermetic HIMMEL_REPO: scripts/ only, deliberately NO .env --------------
 # WHY: the hook sources scripts/lib/load-dotenv.sh, which treats
@@ -69,13 +70,13 @@ else
 fi
 
 # --- Case 2: ON → refresh runs DETACHED + marker stamped on success ----------
-# The hook returns immediately (non-blocking); the detached child runs the
-# refresh then stamps the marker. Poll for both.
+# The hook returns immediately; the stub collector owns its completion marker.
+# Poll for both work and its marker.
 state2="$TMP/s2"; mkdir -p "$state2"
 sentinel2="$TMP/sentinel2"
 HIMMEL_REPO="$HERMETIC_ROOT" WHERE_ARE_WE_STATE_DIR="$state2" \
     HIMMEL_WHERE_ARE_WE=1 \
-    HIMMEL_WHERE_ARE_WE_COLLECT_CMD="touch '$sentinel2'" \
+    HIMMEL_WHERE_ARE_WE_COLLECT_CMD="touch '$sentinel2' '$state2/.refreshed-at'" \
     bash "$HOOK" </dev/null >/dev/null 2>&1; rc2=$?
 i=0; while { [ ! -e "$sentinel2" ] || [ ! -e "$state2/.refreshed-at" ]; } && [ "$i" -lt 30 ]; do sleep 0.1; i=$((i + 1)); done
 if [ "$rc2" = 0 ] && [ -e "$sentinel2" ] && [ -e "$state2/.refreshed-at" ]; then
@@ -142,7 +143,7 @@ if [ -n "$_TIMEOUT_BIN" ]; then
     "$_TIMEOUT_BIN" 20 env HIMMEL_REPO="$HERMETIC_ROOT" WHERE_ARE_WE_STATE_DIR="$state5" \
         HIMMEL_WHERE_ARE_WE=1 \
         HIMMEL_WHERE_ARE_WE_TEST_DELAY=12 \
-        HIMMEL_WHERE_ARE_WE_COLLECT_CMD="touch '$sentinel5'" \
+        HIMMEL_WHERE_ARE_WE_COLLECT_CMD="touch '$sentinel5' '$state5/.refreshed-at'" \
         bash "$HOOK" </dev/null >/dev/null 2>&1; rc5=$?
     _elapsed=$(( $(date +%s) - _t0 ))
     # Wait out the 12s preamble delay, then confirm the child completed.

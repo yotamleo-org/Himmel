@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync, statSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, statSync, mkdirSync, unlinkSync, existsSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import * as collector from '../collect.mjs';
 import { jiraRecords } from '../lib/collect.mjs';
@@ -143,7 +143,8 @@ test('failed and missing PR batches keep unknown obligations while other batches
   assert.equal(state.items['#51'].status, 'open');
   assert.equal(state.awaiting_operator.length, 26);
   assert.equal(state.sources.pr.observed_at, undefined);
-  assert.match(state.sources.pr.errors.join(' '), /discovery unavailable.*batch interrupted.*missing PR #51/);
+  assert.match(state.sources.pr.errors.join(' '), /discovery unavailable.*batch interrupted.*26 identities unresolved/);
+  assert.equal(state.sources.pr.error_count, 28);
   assert.throws(() => statSync(marker), /ENOENT/);
 });
 
@@ -194,10 +195,11 @@ test('reader exception preserves other sources and prevents successful freshness
 test('persistence failure leaves successful marker untouched', () => {
   const { dir, ledger, marker } = fixture();
   writeFileSync(marker, 'last good');
+  utimesSync(marker, new Date(OLD), new Date(OLD));
   const before = statSync(marker).mtimeMs;
   const directoryLedger = join(dir, 'not-a-file');
   assert.throws(() => collector.main(['--ledger', directoryLedger, '--marker', marker, '--now', NOW], { readers: {
-    ...quietReaders, readJira: () => { mkdirSync(directoryLedger); return []; },
+    ...quietReaders, readJira: () => { if (existsSync(directoryLedger)) unlinkSync(directoryLedger); mkdirSync(directoryLedger); return []; },
   } }), /EISDIR/);
   assert.equal(statSync(marker).mtimeMs, before);
   assert.equal(readFileSync(marker, 'utf8'), 'last good');

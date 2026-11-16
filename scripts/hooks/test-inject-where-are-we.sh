@@ -270,7 +270,7 @@ state3="$TMP/s3"; seed_ledger "$state3"
 sentinel="$TMP/sentinel3"
 HIMMEL_REPO="$HERMETIC_ROOT" WHERE_ARE_WE_STATE_DIR="$state3" \
     HIMMEL_WHERE_ARE_WE=1 \
-    HIMMEL_WHERE_ARE_WE_COLLECT_CMD="sleep 3; touch '$sentinel'" \
+    HIMMEL_WHERE_ARE_WE_COLLECT_CMD="sleep 3; touch '$sentinel' '$state3/.refreshed-at'" \
     bash "$HOOK" </dev/null >/dev/null 2>&1; rc3=$?
 if [ "$rc3" = 0 ] && [ ! -e "$sentinel" ] && [ ! -e "$state3/.refreshed-at" ]; then
     pass "stale -> hook returned before refresh finished without claiming success"

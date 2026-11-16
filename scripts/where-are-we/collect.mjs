@@ -1,7 +1,8 @@
 // scripts/where-are-we/collect.mjs
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { writeFileSync, utimesSync } from 'node:fs';
+import { writeFileSync, utimesSync, statSync, renameSync, unlinkSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { isMain } from '../lib/is-main.mjs';
 import { jiraRecords, prRecords, gitRecords } from './lib/collect.mjs';
@@ -11,6 +12,8 @@ import { readRecords } from './lib/ledger.mjs';
 import { fold, inFlight } from './lib/fold.mjs';
 import { UsageError } from './lib/errors.mjs';
 import { validateRecord } from './lib/schema.mjs';
+import { Diagnostics, diagnostic } from './lib/health.mjs';
+import { collectionLock, createBudget } from './lib/runtime.mjs';
 
 // Well-formed Jira ticket key, e.g. PROJ-567. Used to filter the
 // active-key set passed into the by-key status query (no JQL injection) and to
@@ -47,33 +50,43 @@ export function jiraQueries(activeKeys = []) {
 
 // Use the installed Jira client's credential loading, deadline and read guard.
 // list's TSV drops statusCategory, so read status JSON through that same client.
-function readJiraPage(request) {
-  const common = execFileSync('git', ['-C', _repoRoot, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' }).trim();
+function readJiraPage(request, budget) {
+  const common = budget.run('git', ['-C', _repoRoot, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' }).trim();
   const client = pathToFileURL(join(dirname(common), 'scripts', 'jira', 'dist', 'client.js')).href;
   const code = `const { request, projectKey } = await import(process.argv[1]);
     const q = JSON.parse(process.argv[2]);
     const params = new URLSearchParams({ jql: q.jql ?? ('project=' + projectKey() + ' AND status="In Progress" ORDER BY key'), fields: 'status', maxResults: String(q.limit) });
     if (q.nextPageToken) params.set('nextPageToken', q.nextPageToken);
-    console.log(JSON.stringify(await request('GET', '/search/jql?' + params)));`;
-  return JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', code, client, JSON.stringify(request)], { encoding: 'utf8', timeout: 150000 }));
+    try { console.log(JSON.stringify({ data: await request('GET', '/search/jql?' + params) })); }
+    catch (error) {
+      const message = String(error.message), httpStatus = Number(message.match(/^HTTP (\\d{3}):/)?.[1]) || undefined;
+      const identityFailure = [400,404].includes(httpStatus) && /(?:value|issue|key).{0,100}(?:not exist|not found|cannot be viewed|invalid)/i.test(message);
+      console.log(JSON.stringify({ error: { httpStatus, identityFailure, code: error.code } }));
+    }`;
+  const result = JSON.parse(budget.run(process.execPath, ['--input-type=module', '-e', code, client, JSON.stringify(request)], { encoding: 'utf8' }));
+  if (result.error) throw Object.assign(new Error('Jira read failed'), result.error);
+  return result.data;
 }
 
-export function readJira(activeKeys = [], { readPage = readJiraPage } = {}) {
+export function readJira(activeKeys = [], options = {}) {
+  const budget = options.budget ?? createBudget(options);
+  const readPage = options.readPage ?? ((request) => readJiraPage(request, budget));
   const rows = [];
-  const errors = [];
-  for (const args of jiraQueries(activeKeys)) {
+  const diagnostics = new Diagnostics();
+  const query = (args, keys) => {
     let nextPageToken;
     const seen = new Set();
     try {
       for (let pageNumber = 0; ; pageNumber++) {
         if (pageNumber >= MAX_JIRA_PAGES) throw new Error('Jira page budget exhausted');
+        budget.take();
         const jql = args.includes('--jql') ? args[args.indexOf('--jql') + 1] : undefined;
         const page = readPage({ jql, limit: JIRA_PAGE, nextPageToken });
         if (!Array.isArray(page.issues)) throw new Error('invalid Jira page');
         for (const issue of page.issues) {
           const status = issue.fields?.status;
           if (!TICKET_KEY_RE.test(issue.key) || !status?.name) {
-            errors.push(`invalid Jira observation: ${issue.key ?? 'missing key'}`);
+            diagnostics.add(`invalid Jira observation: ${issue.key ?? 'missing key'}`);
             continue;
           }
           rows.push({ key: issue.key, status: status.name, statusCategory: status.statusCategory?.key ?? status.statusCategory?.name });
@@ -87,14 +100,18 @@ export function readJira(activeKeys = [], { readPage = readJiraPage } = {}) {
         seen.add(nextPageToken);
       }
     } catch (err) {
-      errors.push(err.message);
+      if (!nextPageToken && keys?.length > 1 && err.identityFailure === true && [400, 404].includes(err.httpStatus)) {
+        const middle = Math.ceil(keys.length / 2);
+        for (const half of [keys.slice(0, middle), keys.slice(middle)]) query(['list', '--jql', `key in (${half.join(',')})`], half);
+      } else diagnostics.add(err);
     }
-  }
-  return { rows, errors };
+  };
+  for (const args of jiraQueries(activeKeys)) query(args, args.includes('--jql') ? args[args.indexOf('--jql') + 1].match(/[A-Z][A-Z0-9]+-\d+/g) : undefined);
+  return { rows, errors: diagnostics.errors, error_count: diagnostics.error_count };
 }
 
-function discoverPRs() {
-  return JSON.parse(execFileSync('gh', ['pr', 'list', '--state', 'all', '--limit', '100', '--json', 'number,state,headRefName,title,mergeable,mergeStateStatus,statusCheckRollup'], { encoding: 'utf8', timeout: 60000 }));
+function discoverPRs(budget) {
+  return JSON.parse(budget.run('gh', ['pr', 'list', '--state', 'all', '--limit', '100', '--json', 'number,state,headRefName,title,mergeable,mergeStateStatus,statusCheckRollup'], { encoding: 'utf8' }));
 }
 
 export function readPRBatch(numbers, run = execFileSync) {
@@ -108,42 +125,55 @@ export function readPRBatch(numbers, run = execFileSync) {
   const query = `query($owner:String!,$name:String!) { repository(owner:$owner,name:$name) {
     ${numbers.map((n) => `p${n}: pullRequest(number:${n}) { ${fields} }`).join('\n')}
   } }`;
-  const response = JSON.parse(run('gh', ['api', 'graphql', '-f', `query=${query}`, '-f', `owner=${owner}`, '-f', `name=${name}`], { encoding: 'utf8', timeout: 60000 }));
+  let response;
+  try {
+    response = JSON.parse(run('gh', ['api', 'graphql', '-f', `query=${query}`, '-f', `owner=${owner}`, '-f', `name=${name}`], { encoding: 'utf8', timeout: 60000 }));
+  } catch (error) {
+    if (error.status !== 1 || !error.stdout) throw error;
+    try { response = JSON.parse(String(error.stdout)); } catch { throw error; }
+    if (!response.data?.repository || !Array.isArray(response.errors) || !response.errors.length) throw error;
+  }
   const rows = [];
-  const errors = (response.errors ?? []).map((e) => e.message);
+  const diagnostics = new Diagnostics();
+  for (const error of response.errors ?? []) diagnostics.add(error.message);
   for (const n of numbers) {
     const pr = response.data?.repository?.[`p${n}`];
-    if (!pr) { errors.push(`missing PR #${n}`); continue; }
+    if (!pr) { diagnostics.add(`missing PR #${n}`); continue; }
     const contexts = pr.commits?.nodes?.[0]?.commit?.statusCheckRollup?.contexts;
     if (contexts?.pageInfo?.hasNextPage) {
-      errors.push(`PR #${n}: incomplete check rollup`);
+      diagnostics.add(`PR #${n}: incomplete check rollup`);
       delete pr.mergeable; // preserve the last obligation when checks are unknown
     } else {
       pr.statusCheckRollup = contexts?.nodes ?? [];
     }
     rows.push(pr);
   }
-  return { rows, errors };
+  return { rows, errors: diagnostics.errors, error_count: diagnostics.error_count };
 }
 
-export function readPRs(activeNumbers = [], { discover = discoverPRs, readBatch = readPRBatch } = {}) {
+export function readPRs(activeNumbers = [], options = {}) {
+  const budget = options.budget ?? createBudget(options);
+  const discover = options.discover ?? (() => discoverPRs(budget));
+  const readBatch = options.readBatch ?? ((numbers) => readPRBatch(numbers, (command, args, opts) => { budget.take(); return budget.run(command, args, opts); }));
   const rows = [];
-  const errors = [];
-  try { rows.push(...discover()); } catch (err) { errors.push(err.message); }
+  const diagnostics = new Diagnostics();
+  try { budget.take(); rows.push(...discover()); } catch (err) { diagnostics.add(err); }
   const found = new Set(rows.map((pr) => pr.number));
   const missing = [...new Set(activeNumbers)].filter((n) => Number.isSafeInteger(n) && n > 0 && !found.has(n));
   for (const batch of chunks(missing, PR_BATCH)) {
     try {
+      budget.take();
       const result = readBatch(batch);
       rows.push(...(Array.isArray(result) ? result : result.rows));
-      errors.push(...(result.errors ?? []));
-    } catch (err) { errors.push(err.message); }
+      diagnostics.merge(result);
+    } catch (err) { diagnostics.add(err); }
   }
-  return { rows, errors };
+  return { rows, errors: diagnostics.errors, error_count: diagnostics.error_count };
 }
 
-function readWorktrees() {
-  return execFileSync('git', ['worktree', 'list', '--porcelain'], { encoding: 'utf8', timeout: 10000 });
+function readWorktrees(budget = createBudget()) {
+  budget.take();
+  return budget.run('git', ['worktree', 'list', '--porcelain'], { encoding: 'utf8' });
 }
 
 // ---------------------------------------------------------------------------
@@ -153,20 +183,21 @@ function readWorktrees() {
 function collectPass(now, readers, activeKeys = [], activePRs = []) {
   const health = {};
   const read = (source, fn, fallback) => {
+    health[source] = new Diagnostics();
     try {
       const value = fn();
       const result = Array.isArray(value) || typeof value === 'string' ? { rows: value, errors: [] } : value;
-      health[source] = [...result.errors];
+      health[source].merge(result);
       return result.rows;
     } catch (err) {
-      health[source] = [err.message];
+      health[source].add(err);
       return fallback;
     }
   };
   const prList = read('pr', () => readers.readPRs(activePRs), [])
     .filter((pr) => {
       if (Number.isSafeInteger(pr?.number) && ['OPEN', 'CLOSED', 'MERGED'].includes(pr.state?.toUpperCase())) return true;
-      health.pr.push(`invalid PR observation: ${pr?.number ?? 'missing number'}`);
+      health.pr.add(`invalid PR observation: ${pr?.number ?? 'missing number'}`);
       return false;
     });
   const git = gitRecords(read('git', () => readers.readWorktrees(), ''), now);
@@ -182,20 +213,27 @@ function collectPass(now, readers, activeKeys = [], activePRs = []) {
   const allKeys = [...new Set([...activeKeys, ...prKeys, ...git.map((r) => r.key)])];
   const jiraRows = read('jira', () => readers.readJira(allKeys), []).filter((row) => {
     if (typeof row?.status === 'string' && row.status.trim()) return true;
-    health.jira.push(`invalid Jira observation: ${row?.key ?? 'missing key'}`);
+    health.jira.add(`invalid Jira observation: ${row?.key ?? 'missing key'}`);
     return false;
   });
   const jira = jiraRecords(jiraRows, now);
   const prs = prRecords(prList, now);
   const observedKeys = new Set(jiraRows.map((row) => row.key));
   const observedPRs = new Set(prList.map((pr) => pr.number));
-  for (const key of allKeys) if (!observedKeys.has(key)) health.jira.push(`missing ticket ${key}`);
-  for (const n of activePRs) if (!observedPRs.has(n)) health.pr.push(`missing PR #${n}`);
+  const missingKeys = allKeys.filter((key) => !observedKeys.has(key));
+  const missingPRs = activePRs.filter((n) => !observedPRs.has(n));
+  if (missingKeys.length) health.jira.add(`missing ticket ${missingKeys.slice(0, 4).join(', ')}; ${missingKeys.length} identities unresolved`, missingKeys.length);
+  if (missingPRs.length) health.pr.add(`missing PR #${missingPRs.slice(0, 4).join(', #')}; ${missingPRs.length} identities unresolved`, missingPRs.length);
   return { records: [...jira, ...prs, ...git], health };
 }
 
-export function collectAll(now, readers = { readJira, readPRs, readWorktrees }, activeKeys = []) {
-  return collectPass(now, readers, activeKeys).records;
+export function collectAll(now, readers, activeKeys = []) {
+  const budget = createBudget();
+  return collectPass(now, readers ?? liveReaders(budget), activeKeys).records;
+}
+
+function liveReaders(budget) {
+  return { readJira: (keys) => readJira(keys, { budget }), readPRs: (numbers) => readPRs(numbers, { budget }), readWorktrees: () => readWorktrees(budget) };
 }
 
 // ---------------------------------------------------------------------------
@@ -212,35 +250,61 @@ function parseArgs(argv) {
   return a;
 }
 
-export function main(argv, { readers } = {}) {
+export function main(argv, { readers, strict = false, ...limits } = {}) {
   const a = parseArgs(argv);
   if (!a.ledger) throw new UsageError('--ledger <path> is required');
+  const lock = collectionLock(a.ledger);
+  try {
+    const budget = createBudget({ ...limits, lockFd: lock.fd });
+    return collectLocked(a, { readers, strict, budget });
+  } finally { lock.release(); }
+}
+
+function collectLocked(a, { readers, strict, budget }) {
   const now = a.now ?? new Date().toISOString();
-  const effectiveReaders = readers ?? { readJira, readPRs, readWorktrees };
+  const effectiveReaders = readers ?? liveReaders(budget);
 
   // An unreadable ledger cannot establish the identities needing reconciliation.
   // Refuse the refresh rather than silently certifying an empty active set.
-  const active = inFlight(fold(readRecords(a.ledger)));
+  const prior = readRecords(a.ledger);
+  if (prior.some((record) => !record || !validateRecord(record).ok)) throw new Error('ledger contains invalid records; repair before refreshing');
+  const active = inFlight(fold(prior));
   const activeKeys = active.filter((it) => it.kind === 'ticket' && TICKET_KEY_RE.test(it.key)).map((it) => it.key);
   const activePRs = active.filter((it) => it.kind === 'pr' && /^#\d+$/.test(it.key)).map((it) => Number(it.key.slice(1)));
+  appendRecords(a.ledger, ['jira', 'pr', 'git'].map((source) => ({
+    ts: now, source, kind: 'collection', key: `@collect:${source}`, errors: ['refresh started; result pending or interrupted'], error_count: 1,
+  })), { timeoutMs: 1000 });
   const { records, health } = collectPass(now, effectiveReaders, activeKeys, activePRs);
+  try { budget.remaining(); } catch (error) { for (const h of Object.values(health)) h.add(error); }
   for (const record of records) {
     const validation = validateRecord(record);
-    if (!validation.ok) health[record.source].push(validation.error);
+    if (!validation.ok) health[record.source].add(validation.error);
   }
-  const evidence = Object.entries(health).map(([source, errors]) => ({
-    ts: now, source, key: `@collect:${source}`, kind: 'collection', errors,
-    ...(!errors.length ? { observed_at: now } : {}),
+  const evidence = Object.entries(health).map(([source, health]) => ({
+    ts: now, source, key: `@collect:${source}`, kind: 'collection', errors: health.errors, error_count: health.error_count,
+    ...(!health.error_count ? { observed_at: now } : {}),
   }));
-  const r = appendRecords(a.ledger, [...records, ...evidence]);
+  const r = appendRecords(a.ledger, [...records, ...evidence], { timeoutMs: 1000 });
   const summary = `appended=${r.appended - evidence.length} dropped=${r.dropped}`;
   if (r.dropped > 0) {
-    console.error('[where-are-we] dropped records:', r.dropReasons);
+    console.error(`[where-are-we] dropped ${r.dropped} records: ${diagnostic(r.dropReasons[0]?.error)}`);
   }
-  if (a.marker && !r.dropped && Object.values(health).every((errors) => !errors.length)) {
-    writeFileSync(a.marker, now + '\n');
-    const time = new Date(now);
-    utimesSync(a.marker, time, time);
+  if (a.marker && !r.dropped && Object.values(health).every((h) => !h.error_count)) {
+    const completed = a.now ?? new Date().toISOString();
+    let previous = 0;
+    try { previous = statSync(a.marker).mtimeMs; } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    if (Date.parse(completed) >= previous) {
+      const tmp = `${a.marker}.tmp-${randomUUID()}`;
+      try {
+        writeFileSync(tmp, completed + '\n', { flag: 'wx', mode: 0o600 });
+        const time = new Date(completed);
+        utimesSync(tmp, time, time);
+        renameSync(tmp, a.marker);
+      } finally { try { unlinkSync(tmp); } catch (error) { if (error.code !== 'ENOENT') throw error; } }
+    }
+  }
+  if (strict && (r.dropped || Object.values(health).some((h) => h.error_count))) {
+    throw new Error('collection incomplete; evidence persisted, freshness unchanged');
   }
   return summary;
 }
@@ -249,12 +313,25 @@ export function main(argv, { readers } = {}) {
 // CLI entry
 // ---------------------------------------------------------------------------
 
+export function runCLI(argv, { deadlineMs = 180000 } = {}) {
+  const ms = Math.max(1, Math.min(180000, deadlineMs));
+  const code = `const {main} = await import(process.argv[1]);
+    const {diagnostic} = await import(new URL('./lib/health.mjs', process.argv[1]));
+    try { console.log(main(JSON.parse(process.argv[2]), {strict:true,deadlineMs:Number(process.argv[3])})); }
+    catch(error) { console.error(diagnostic(error)); process.exitCode=1; }`;
+  // This outer watchdog also bounds local parsing/persistence and a stuck
+  // append lock. An interrupted pass retains its pre-read pending evidence.
+  const result = spawnSync('timeout', ['-k', '0.2', `${ms / 1000}s`, process.execPath, '--input-type=module', '-e', code, import.meta.url, JSON.stringify(argv), String(ms)], {
+    encoding: 'utf8', timeout: ms + 1000, maxBuffer: 1024 * 1024,
+  });
+  if (result.status === 124 || result.status === 137) result.stderr = 'collector deadline exhausted; freshness unknown, refresh may be incomplete\n';
+  if (result.error) result.stderr = diagnostic(result.error) + '\n';
+  return { status: result.status === 0 ? 0 : 1, stdout: result.stdout ?? '', stderr: (result.stderr ?? '').slice(0, 1600) };
+}
+
 if (isMain(import.meta.url)) {
-  try {
-    console.log(main(process.argv.slice(2)));
-  } catch (e) {
-    // Clean message for UsageError, full stack otherwise (rationale: lib/errors.mjs).
-    console.error(e instanceof UsageError ? e.message : (e.stack || String(e)));
-    process.exit(1);
-  }
+  const result = runCLI(process.argv.slice(2));
+  process.stdout.write(result.stdout);
+  process.stderr.write(result.stderr);
+  process.exitCode = result.status;
 }

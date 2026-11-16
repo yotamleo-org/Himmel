@@ -34,7 +34,9 @@ export function fold(records) {
     if (!validateRecord(r).ok) continue;        // skip malformed (validateRecord wired in here)
     if (r.kind === 'collection') {
       const previous = sources[r.source] ?? {};
-      sources[r.source] = { ...previous, attempted_at: r.ts, errors: r.errors ?? [],
+      const errors = r.errors ?? [];
+      const count = Number.isSafeInteger(r.error_count) && r.error_count >= errors.length ? r.error_count : errors.length;
+      sources[r.source] = { ...previous, attempted_at: r.ts, errors: errors.length || !count ? errors : ['source reported unresolved errors'], error_count: count,
         ...(r.observed_at ? { observed_at: r.observed_at } : {}) };
       continue;
     }
