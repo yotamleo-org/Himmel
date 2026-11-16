@@ -426,10 +426,6 @@ check "(hask) a repeat of the same ask (a re-armed waiter) records nothing" "1" 
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 rm -f "$STUB/pages"
 
-# --- S3a remainder + S4: each ask or denial page carries its route kind, and a chief-first ask or denial
-# that stays pending 30 minutes pages again (hold-ask-stuck, denial-stuck). The page stub records `kind|text` in
-# $STUB/pagek. Clocks: HIMMEL_TEST_FIXTURE=1 CHIEF_WAIT_NOW=<epoch> reads the stuck checks' "now"; page times are
-# seeded into the records the waiter writes (<inbox>.wait.holdasks, <ack dir>/<key>.page).
 cat > "$STUB/pagek.sh" <<'EOF'
 #!/usr/bin/env bash
 printf '%s|%s\n' "${2-}" "$1" >> "$STUB/pagek"
@@ -438,8 +434,6 @@ EOF
 chmod +x "$STUB/pagek.sh"
 pk_kinds() { cut -d'|' -f1 "$STUB/pagek" 2>/dev/null | paste -sd, -; }
 pk_n() { if [ -f "$STUB/pagek" ]; then grep -c . "$STUB/pagek" || true; else echo 0; fi; }
-# stuck_run <case> <extra args...>: starts the waiter on a fresh inbox with the kind stub as its sender and lets it
-# take a few samples; sets I. Env assignments before the call reach the waiter.
 stuck_run() {
     local c="$1"; shift
     rm -f "$STUB/pagek"
@@ -462,7 +456,6 @@ hask_home() { # <name> <key> <path> <holder>: a holds register home with one pen
 }
 hask_tick() { reset_stub; sed -i 's/ denials=none/ hreg=0\/0\/1 denials=none/' "$STUB/tick.line"; }  # gnu-ok: Linux-only kit
 
-# kind of each HOLD-ASK page (R3.2): the route of the path, hold-ask-operator for anything else
 H_CHIEF="$(hask_home chief PROJ-9942 scripts/check-ci.sh PROJ-9941)"
 H_OPER="$(hask_home oper PROJ-9942 .github/workflows/ci.yml PROJ-9941)"
 hask_tick; I_SEED=""
@@ -471,7 +464,6 @@ check "(R3.2) a trust-path ask pages as hold-ask-chief" "hold-ask-chief" "$(pk_k
 hask_tick
 HOME="$H_OPER" CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh" stuck_run k2 --workers "N1.md"
 check "(R3.2) a CI-workflow ask still pages as hold-ask-operator (escalates)" "hold-ask-operator" "$(pk_kinds)"
-# a holds.py asks that prints 4 fields, or a field 5 that is no kind: the page falls back to hold-ask-operator
 PY_REAL_PATH="$PATH"; PY4_PATH="$WORK/py4:$PATH"
 mkdir -p "$WORK/py4"
 cat > "$WORK/py4/python3" <<'EOF'
@@ -487,17 +479,13 @@ hask_tick
 HOME="$H_CHIEF" REAL_PATH="$PY_REAL_PATH" PATH="$PY4_PATH" ASKS_STUB='PROJ-9942\tscripts/check-ci.sh\tPROJ-9941\tgrant-cmd\tchief' CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh" stuck_run k4 --workers "N1.md"
 check "(R3.2) an unknown field 5 pages as hold-ask-operator" "hold-ask-operator" "$(pk_kinds)"
 
-# R4.1: a hold-ask-chief still pending after 31 minutes pages hold-ask-stuck once; a granted one pages nothing.
-# The first page is real (the record carries the real page time); the stuck check reads the fixture clock.
 NOW_R="$(date +%s)"
 hask_tick
 HOME="$H_CHIEF" HIMMEL_TEST_FIXTURE=1 CHIEF_WAIT_NOW=$((NOW_R + 31 * 60)) CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh" stuck_run s1 --workers "N1.md"
 check "(R4.1) an ask pending 31 minutes pages hold-ask-chief then hold-ask-stuck, once each" "hold-ask-chief,hold-ask-stuck" "$(pk_kinds)"
 check "(R4.1) the stuck page carries the paste-ready grant command" "1" "$(grep '^hold-ask-stuck|' "$STUB/pagek" | grep -cF -- "python3 -I $HA_PRIMARY/scripts/handover/chief-kit/holds.py grant --key PROJ-9942 --repo $HA_PRIMARY scripts/check-ci.sh")"
-# a re-armed waiter does not page the same stuck ask again
 HOME="$H_CHIEF" HIMMEL_TEST_FIXTURE=1 CHIEF_WAIT_NOW=$((NOW_R + 40 * 60)) CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh" I_SEED="$I" stuck_run s1b --workers "N1.md"
 check "(R4.1) a re-armed waiter pages nothing more for the same ask" "" "$(pk_kinds)"
-# granted at minute 20: the ask is gone from holds.py asks, so nothing pages at minute 31
 H_GR="$(hask_home granted PROJ-9942 scripts/check-ci.sh PROJ-9941)"
 : > "$H_GR/.himmel/state/holds/${HA_ESC}/scripts%2Fcheck-ci.sh.grant.PROJ-9942"
 hask_tick
@@ -505,8 +493,6 @@ I_SEED="$(new_inbox s2)"; printf 'PROJ-9942\tscripts/check-ci.sh\t%s\n' "$NOW_R"
 HOME="$H_GR" HIMMEL_TEST_FIXTURE=1 CHIEF_WAIT_NOW=$((NOW_R + 31 * 60)) CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh" stuck_run s2 --workers "N1.md"
 check "(R4.1) an ask granted before the 30 minutes pages nothing" "0" "$(pk_n)"
 
-# R4.3: the 03:54 ask (PROJ-9012 held by PROJ-8992): ungranted at 04:24 one hold-ask-stuck, granted at 04:10 none
-# (the path is scripts/check-ci.sh: critic-panel.sh is no trust path today, so holds.py asks never lists it)
 H_T="$(hask_home t0354 PROJ-9012 scripts/check-ci.sh PROJ-8992)"
 hask_tick
 I_SEED="$(new_inbox s3)"; printf 'PROJ-9012\tscripts/check-ci.sh\t%s\n' "$NOW_R" > "$I_SEED.wait.holdasks"
@@ -520,11 +506,8 @@ I_SEED="$(new_inbox s3g)"; printf 'PROJ-9012\tscripts/check-ci.sh\t%s\n' "$NOW_R
 HOME="$H_T2" HIMMEL_TEST_FIXTURE=1 CHIEF_WAIT_NOW=$((NOW_R + 30 * 60)) CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh" stuck_run s3g --workers "N1.md"
 check "(R4.3) the same ask granted at 04:10 pages none" "0" "$(pk_n)"
 
-# R4.4: the stuck page text follows spec section 3.3
 check "(R4.4) the hold-ask-stuck text" "hold-ask-stuck|A file ask waited 30 min: PROJ-9012 wants scripts/check-ci.sh, held by PROJ-8992. Blocks: that worker. Do: in a real terminal, run: python3 -I $HA_PRIMARY/scripts/handover/chief-kit/holds.py grant --key PROJ-9012 --repo $HA_PRIMARY scripts/check-ci.sh" "$(grep '^hold-ask-stuck|' "$WORK/s3.pagek" 2>/dev/null || true)"
 
-# R4.6: CHIEF_WAIT_NOW without HIMMEL_TEST_FIXTURE=1 is ignored. The ask was paged 31 minutes ago and the value names that
-# page time, so an honoured value would read the ask as 0 minutes old and page nothing.
 T31=$(( $(date +%s) - 31 * 60 ))
 hask_tick
 I_SEED="$(new_inbox s6)"; printf 'PROJ-9942\tscripts/check-ci.sh\t%s\n' "$T31" > "$I_SEED.wait.holdasks"
@@ -536,9 +519,6 @@ HOME="$H_CHIEF" HIMMEL_TEST_FIXTURE=1 CHIEF_WAIT_NOW="$T31" CHIEF_WAIT_PAGE_CMD=
 check "(R4.6) control: with HIMMEL_TEST_FIXTURE=1 the same value is honoured and the ask pages nothing" "0" "$(pk_n)"
 unset I_SEED
 
-# R4.2: a classifier denial still unacked at minute 31 with no write to its doc pages denial-stuck once. den_case
-# <case> <label> <doc mtime offset from the page, seconds, or none> <ack offset or none> <now offset>: the page record is
-# seeded at B (the real clock), the manifest names label N1 with a worker doc, other labels resolve to no doc.
 den_case() {
     local c="$1" label="$2" dm="$3" ak="$4" noff="$5" poff="${6:-0}" B P dir key
     B="$(date +%s)"; P=$((B + poff)); dir="$WORK/den-$c"; mkdir -p "$dir/acks" "$dir/w"
@@ -1164,7 +1144,6 @@ denials_rise p5f none 'N2:1:SHIP-STEP'
 check "(p5f) a worker without Remote Control keeps the plain page" "DENIAL-PAGE N2 SHIP-STEP x1 - a classifier denial parked this worker. Review it, then: ack-denial.sh N2" "$(head -n1 "$STUB/pages" 2>/dev/null)"
 unset CHIEF_WAIT_PROC
 
-# the DENIAL-PAGE of a rise carries denial-page (R3.2)
 rm -f "$STUB/pagek"; SAVE_PAGE_CMD="$CHIEF_WAIT_PAGE_CMD"; export CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh"
 denials_rise k5 none 'N1:1:SHIP-STEP'
 export CHIEF_WAIT_PAGE_CMD="$SAVE_PAGE_CMD"

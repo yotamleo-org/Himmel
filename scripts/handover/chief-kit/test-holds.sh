@@ -1140,7 +1140,6 @@ same "9186 summary: one live worker with no rows, one stale row, one pending tru
 run env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" asks --repo "$R10"
 KIT_P="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)"; KIT_P="${KIT_P%/.git}"  # the checkout holds.py runs from, not the repo --repo names (R10 has no kit)
 same "9186 asks names the key, the path, the full paste-ready grant command located from the running kit, and the kind (R3.3)" "$OUT" "$(printf 'PROJ-9626\tscripts/check-ci.sh\tPROJ-9625\tpython3 -I %s/scripts/handover/chief-kit/holds.py grant --key PROJ-9626 --repo %s scripts/check-ci.sh\thold-ask-chief' "$KIT_P" "$R10")"
-# R3.3: a settings or CI path is the operator's route: field 5 is hold-ask-operator
 R11="$W/repo-r33-operator"; mkdir -p "$R11/scripts/lib"; git -C "$R11" init -q -b main
 : > "$R11/scripts/lib/rename-aliases.tsv"
 put_row .github/workflows/ci.yml PROJ-9625 holder "$(mkdoc PROJ-9625-case.md)" brief "" "$R11"

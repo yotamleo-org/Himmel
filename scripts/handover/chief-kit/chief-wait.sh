@@ -367,12 +367,6 @@
 # 45 s, plus a 2 s kill grace), the most hung senders can delay the WAKE block;
 # a worker past the budget still gets its page record, just no message. It pages what THIS
 # waiter saw rise: a denial that lands while no waiter runs is not paged.
-# STUCK pages (the backstop that lets the chief-first pages go quiet): the DENIAL-PAGE and a hold-ask-chief HOLD-ASK carry
-# the route kinds denial-page and hold-ask-chief (monitor and silent, so the operator's phone stays quiet); a hold-ask-chief
-# still pending 30 minutes after its page pages hold-ask-stuck once, and a denial still unacked 30 minutes after its page,
-# with no write to the worker's doc since (an unresolvable label counts as no write), pages denial-stuck once. Both
-# escalate. A hold-ask-operator ask (settings or CI path) keeps escalating at once. CHIEF_WAIT_NOW=<epoch> replaces the
-# clock of the two stuck checks only, and only under HIMMEL_TEST_FIXTURE=1.
 # closable=<n> (tick.sh: finished windows still open past
 # TICK_CLOSABLE_MIN minutes) wakes when it appears or changes; absent means none.
 # deadwin=<label>:closed|held (tick.sh: a worker window whose session died) wakes
@@ -1079,20 +1073,12 @@ page_denials() {
     done
 }
 
-# stuck_now — the clock of the stuck checks below. CHIEF_WAIT_NOW (an epoch) replaces it only under
-# HIMMEL_TEST_FIXTURE=1, so a stray value in a station shell never moves it.
 stuck_secs=1800
 stuck_now() {
     case "${CHIEF_WAIT_NOW:-}" in ''|*[!0-9]*) ;; *) [ "${HIMMEL_TEST_FIXTURE:-}" = 1 ] && { printf '%s' "$CHIEF_WAIT_NOW"; return 0; } ;; esac
     date +%s
 }
 
-# page_hold_asks — page each pending trust-path HOLD-ASK once (holds.py asks: key, path, holder, paste-ready grant
-# command, kind). The record line `<key> <path> <page time>` is written FIRST, so an ask is never paged twice even when
-# the send fails; both steps fail open. The page goes out with the ask's route kind: hold-ask-chief (quiet, the chief
-# grants it) for exactly that word, hold-ask-operator (escalates) for every other field 5 or none. A hold-ask-chief
-# ask still pending stuck_secs after its page pages hold-ask-stuck ONCE (the backstop that lets hold-ask-chief go quiet).
-# A record from before the page time was kept reads as paged at epoch 0, so such an ask pages stuck at once.
 holdask_file="$inbox.wait.holdasks"
 holdstuck_file="$inbox.wait.holdstuck"
 page_hold_asks() {
@@ -1103,29 +1089,36 @@ page_hold_asks() {
     while IFS=$'\t' read -r key path holder cmd kind; do
         [ -n "$cmd" ] || continue
         case "$kind" in hold-ask-chief) ;; *) kind=hold-ask-operator ;; esac
-        ptime="$(awk -F'\t' -v k="$key" -v p="$path" '$1 == k && $2 == p { print ($3 ~ /^[0-9]+$/ ? $3 : 0); exit }' "$holdask_file" 2>/dev/null)"  # swallow-ok: no record reads empty and the ask pages as new
+        ptime=""
+        [ ! -f "$holdask_file" ] || ptime="$(awk -F'\t' -v k="$key" -v p="$path" '$1 == k && $2 == p { print ($3 ~ /^[0-9]+$/ ? $3 : 0); exit }' "$holdask_file")"
         if [ -z "$ptime" ]; then
-            printf '%s\t%s\t%s\n' "$key" "$path" "$(date +%s)" >> "$holdask_file" 2>/dev/null || true  # swallow-ok: no record means a repeat page, never a lost one
+            printf '%s\t%s\t%s\n' "$key" "$path" "$(date +%s)" >> "$holdask_file"
             page_send "HOLD-ASK $key wants $path (held by $holder). Paste in a real terminal, not a Claude window, and type the path back: $cmd" "$end" "$kind"
             continue
         fi
         [ "$kind" = hold-ask-chief ] || continue
         [ $(( now - ptime )) -ge "$stuck_secs" ] || continue
         ! grep -qxF -- "$key"$'\t'"$path" "$holdstuck_file" 2>/dev/null || continue
-        printf '%s\t%s\n' "$key" "$path" >> "$holdstuck_file" 2>/dev/null || true  # swallow-ok: no record means a repeat page, never a lost one
+        printf '%s\t%s\n' "$key" "$path" >> "$holdstuck_file"
         page_send "A file ask waited 30 min: $key wants $path, held by $holder. Blocks: that worker. Do: in a real terminal, run: $cmd" "$end" hold-ask-stuck
     done <<< "$asks"
     return 0
 }
 
-# page_denials_stuck — page a classifier denial (a DENIAL-PAGE record of denial-ack-lib.sh) that is still unacked
-# stuck_secs after its page while the denied worker's doc has had no write since the page: denial-stuck, ONCE per page
-# record. The doc comes from worker_doc_of; a label it cannot resolve (the `<dir>#<sid8>` shape) counts as no write,
-# so such a denial pages unless the chief acked it (the fail-safe direction). Fails open; the stuck marker is written first.
 denialstuck_file="$inbox.wait.denialstuck"
+doc_written_since() {
+    local m
+    m="$(stat -c %Y "$1")" || return 1  # gnu-ok: Linux-only kit
+    [ "$m" -gt "$2" ]
+}
+ticket_of_doc() {
+    local t
+    t="$(basename "${1:-x}" | grep -oE '^[A-Z][A-Z0-9]*-[0-9]+')" || t="its ticket"
+    printf '%s' "$t"
+}
 page_denials_stuck() {
-    local d pg key label pts now end ldoc m ticket rc_name act
-    declare -F denial_ack_dir >/dev/null || return 0  # the ack library did not load: nothing to read
+    local d pg key label pts now end ldoc ticket rc_name act
+    declare -F denial_ack_dir >/dev/null || return 0
     d="$(denial_ack_dir)"
     [ -d "$d" ] || return 0
     now="$(stuck_now)"
@@ -1133,17 +1126,16 @@ page_denials_stuck() {
     for pg in "$d"/*.page; do
         [ -r "$pg" ] || continue
         key="$(basename "$pg" .page)"
-        denial_unacked "$key" >/dev/null || continue  # swallow-ok: rc 1 = acked, or no SHIP-STEP/PAUSE-RISK page record
+        denial_unacked "$key" >/dev/null || continue
         pts="$(denial_field "$pg" ts)"
         [ $(( now - pts )) -ge "$stuck_secs" ] || continue
         ! grep -qxF -- "$key"$'\t'"$pts" "$denialstuck_file" 2>/dev/null || continue
         label="$(denial_field "$pg" leg | tr -cd 'A-Za-z0-9._#+-')"
         [ -n "$label" ] || label="$key"
         ldoc="$(worker_doc_of "$label")"
-        if [ -n "$ldoc" ] && m="$(stat -c %Y "$ldoc" 2>/dev/null)" && [ "$m" -gt "$pts" ]; then continue; fi  # gnu-ok: Linux-only kit; swallow-ok: an unreadable doc counts as no write
-        printf '%s\t%s\n' "$key" "$pts" >> "$denialstuck_file" 2>/dev/null || true  # swallow-ok: no record means a repeat page, never a lost one
-        ticket="$(basename "${ldoc:-x}" | grep -oE '^[A-Z][A-Z0-9]*-[0-9]+')" || ticket=""  # swallow-ok: no ticket in the doc name reads "its ticket"
-        [ -n "$ticket" ] || ticket="its ticket"
+        if [ -n "$ldoc" ] && doc_written_since "$ldoc" "$pts"; then continue; fi
+        printf '%s\t%s\n' "$key" "$pts" >> "$denialstuck_file"
+        ticket="$(ticket_of_doc "$ldoc")"
         rc_name="$(rc_session_for "$label")"
         act="run ack-denial.sh $label"
         [ -z "$rc_name" ] || act="open the Remote Control session $rc_name in the Claude app, or run ack-denial.sh $label"
