@@ -104,6 +104,7 @@ appdirs="$tmp/apps"; mkdir -p "$appdirs/iTerm.app" "$appdirs/Terminal.app"
 # otherwise take the AppleScript path below and open a real tab; section 9
 # sets this explicitly.
 unset ITERM_SESSION_ID
+unset HEADED_ARM_TMUX_SESSION
 
 run_shim() { # run_shim <bindir> -- <args...>  (stdout+stderr merged, rc echoed last)
     local bindir="$1"; shift; [ "$1" = "--" ] && shift
@@ -342,6 +343,48 @@ CLAUDE_CODE_CHILD_SESSION=1 CLAUDE_PID=4242 CLAUDECODE=1 CLAUDE_CODE_SESSION_ID=
     run_shim "$b17" -- --separate --workdir "$wd" -e true >/dev/null
 check "10b osascript was called" "$(grep -c seen "$tmp/env17.log" 2>/dev/null)" "1"
 not_contains "10b osascript gets no claude session marker" "$(cat "$tmp/env17.log" 2>/dev/null)" "CLAUDE"
+
+mk_tmux_stub() {
+    mkdir -p "$1"
+    cat > "$1/tmux" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$2"
+case "\$1" in
+    has-session) [ -z "\${TMUX_STUB_NO_SESSION:-}" ]; exit \$? ;;
+    new-window)  env -i /bin/sh -c "\${!#}" >/dev/null 2>&1 & exit 0 ;;
+esac
+STUB
+    chmod +x "$1/tmux"
+}
+b18="$tmp/b18"; mk_open_stub "$b18" "$tmp/open18.log"; mk_tmux_stub "$b18" "$tmp/tmux18.log"
+marker18="$tmp/ran18"; rm -f "$marker18"
+out="$(HEADED_ARM_TMUX_SESSION=chief run_shim "$b18" -- --separate --workdir "$wd" -p "tabtitle=probe" -e touch "$marker18")"; rc=$?
+check "11a tmux setting: exit 0" "$rc" "0"
+check "11a tmux setting: the command ran" "$([ -e "$marker18" ] && echo ran)" "ran"
+check "11b tmux setting: exactly one new-window call" "$(grep -c '^new-window ' "$tmp/tmux18.log" 2>/dev/null)" "1"
+contains "11b tmux setting: new-window targets the named session with the tab title" "$(cat "$tmp/tmux18.log" 2>/dev/null)" "new-window -t =chief: -n probe /bin/sh "
+contains "11b tmux setting: the session was checked first" "$(sed -n 1p "$tmp/tmux18.log" 2>/dev/null)" "has-session -t =chief"
+check "11c tmux setting: open is not called" "$([ -e "$tmp/open18.log" ] && echo called)" ""
+
+b19="$tmp/b19"; mk_open_stub "$b19" "$tmp/open19.log"; mk_tmux_stub "$b19" "$tmp/tmux19.log"
+marker19="$tmp/ran19"; rm -f "$marker19"
+out="$(TMUX_STUB_NO_SESSION=1 HEADED_ARM_TMUX_SESSION=ghost run_shim "$b19" -- --separate --workdir "$wd" -p "tabtitle=probe" -e touch "$marker19")"; rc=$?
+check "11d missing session: exit 3, nothing launched" "$rc" "3"
+contains "11d missing session: names the session" "$out" "tmux session 'ghost' does not exist"
+check "11d missing session: no new-window call" "$(grep -c '^new-window ' "$tmp/tmux19.log" 2>/dev/null)" "0"
+check "11d missing session: no silent iTerm fallback" "$([ -e "$tmp/open19.log" ] && echo called)" ""
+check "11d missing session: the command did not run" "$([ -e "$marker19" ] && echo ran)" ""
+
+b20="$tmp/b20"; mk_open_stub "$b20" "$tmp/open20.log"; mk_tmux_stub "$b20" "$tmp/tmux20.log"
+out="$(TERM_PROGRAM=iTerm.app run_shim "$b20" -- --separate --workdir "$wd" -p "tabtitle=probe" -e true)"; rc=$?
+check "11e no setting: exit 0" "$rc" "0"
+contains "11e no setting: open -a iTerm as before" "$(cat "$tmp/open20.log" 2>/dev/null)" "-a iTerm"
+check "11e no setting: tmux is never called" "$([ -e "$tmp/tmux20.log" ] && echo called)" ""
+out="$(HEADED_ARM_TMUX_SESSION='' TERM_PROGRAM=iTerm.app run_shim "$b20" -- --separate --workdir "$wd" -e true)"; rc=$?
+check "11f empty setting: exit 0" "$rc" "0"
+check "11f empty setting: tmux is never called" "$([ -e "$tmp/tmux20.log" ] && echo called)" ""
+
+check "11g Linux path unchanged: headed-arm.sh does not read the setting" "$(grep -c 'HEADED_ARM_TMUX_SESSION' "$HERE/headed-arm.sh")" "0"
 
 echo
 [ "$fails" -eq 0 ] && { echo "All konsole-macos.sh cases passed."; exit 0; }

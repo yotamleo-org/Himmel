@@ -389,6 +389,62 @@ _qmd_ensure_global_link() {
   return 0
 }
 
+_qmd_wrapper_path() {
+  printf '%s\n' "$HOME/.local/bin/qmd"
+}
+
+_qmd_wrapper_text() {
+  local lib="$1" fork_bin="$2"
+  printf '#!/usr/bin/env bash\n'
+  printf '# himmel-qmd-wrapper: v1 -- written by himmel scripts/lib/qmd-bin.sh qmd_install\n'
+  printf 'LIB=%q\n' "$lib"
+  printf 'FORK_BIN=%q\n' "$fork_bin"
+  cat <<'WRAPPER'
+if [ -r "$LIB" ]; then
+  . "$LIB"  # read-sink-ok: LIB is the install-time absolute path baked above, never argv or env
+  _qmd_egress_ok "$@" || exit $?
+else
+  echo "qmd: $LIB is missing - running without the egress gate and the provider key (re-run scripts/lib/qmd-bin.sh install)." >&2
+fi
+exec "$FORK_BIN" "$@"
+WRAPPER
+}
+
+_qmd_ensure_wrapper() {
+  local wrapper fork_bin lib tmp line2
+  wrapper="$(_qmd_wrapper_path)"
+  fork_bin="$(_qmd_fork_dir)/bin/qmd"
+  lib="$(cd -P -- "$_QMDBIN_LIB_DIR" 2>/dev/null && pwd -P)/qmd-bin.sh" || return 1
+
+  if [ -L "$wrapper" ]; then
+    if ! [ "$wrapper" -ef "$fork_bin" ]; then
+      echo "  WARNING: $wrapper is a symlink to something other than the qmd fork launcher - leaving it; bare qmd keeps sending no provider key." >&2
+      return 1
+    fi
+  elif [ -e "$wrapper" ]; then
+    { IFS= read -r _ && IFS= read -r line2; } <"$wrapper" 2>/dev/null || line2=""
+    case "$line2" in
+      '# himmel-qmd-wrapper: '*) ;;
+      *)
+        echo "  WARNING: $wrapper exists and is not himmel's - leaving it; bare qmd keeps sending no provider key." >&2
+        return 1 ;;
+    esac
+  fi
+  if ! mkdir -p -- "$(dirname -- "$wrapper")" 2>/dev/null; then
+    echo "  WARNING: could not create $(dirname -- "$wrapper") - no qmd wrapper written." >&2
+    return 1
+  fi
+  tmp="$wrapper.tmp.$$"
+  if ! _qmd_wrapper_text "$lib" "$fork_bin" >"$tmp" 2>/dev/null \
+     || ! chmod +x -- "$tmp" \
+     || ! mv -f -- "$tmp" "$wrapper"; then
+    rm -f -- "$tmp"
+    echo "  WARNING: could not write the qmd wrapper at $wrapper." >&2
+    return 1
+  fi
+  return 0
+}
+
 # True when the fork is already the SERVED install: the bun-global
 # @tobilu/qmd path resolves to the fork clone AND the clone's HEAD is the
 # pinned commit AND the build-success stamp records that exact pin AND the
@@ -450,6 +506,7 @@ qmd_install() {
 
   if qmd_fork_served; then
     echo "  qmd fork already installed and served ($(qmd_cmd --version 2>/dev/null)) - skipping."
+    _qmd_ensure_wrapper || true
     return 0
   fi
 
@@ -632,6 +689,7 @@ qmd_install() {
         --row qmd-fork --writer qmd-bin.sh --field preexisted=false
     fi
     echo "  qmd fork installed and verified ($(qmd_cmd --version 2>/dev/null))."
+    _qmd_ensure_wrapper || true
     return 0
   fi
   echo "  WARNING: qmd fork installed but --version still fails." >&2

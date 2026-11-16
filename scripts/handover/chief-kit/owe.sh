@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # scripts/handover/chief-kit/owe.sh - the owed ledger: what a chief owes after a shift
-# (a ticket to file, a proof to run, a ruling to ask for), kept in <bucket>/owed.jsonl so
+# (a ticket to file, a proof to run, a ruling to ask for, a step a partial merge left owed), kept in <bucket>/owed.jsonl so
 # the tick can age it, the HANDOFF carries it and the queue fold never moves it.
 #
 # Usage:
-#   owe.sh add   --bucket <dir> --chief <name> --kind ticket|proof|ruling --text <one line> [--key <KEY>]
+#   owe.sh add   --bucket <dir> --chief <name> --kind ticket|proof|ruling|step --text <one line> [--key <KEY>]
 #   owe.sh close --bucket <dir> --id <oN> --key <ticket key | sha | decision id>
 #   owe.sh list  --bucket <dir> [--all]
 #
@@ -24,7 +24,7 @@
 set -u
 
 usage() {
-    echo "usage: owe.sh add --bucket <dir> --chief <name> --kind ticket|proof|ruling --text <text> [--key <KEY>]" >&2
+    echo "usage: owe.sh add --bucket <dir> --chief <name> --kind ticket|proof|ruling|step --text <text> [--key <KEY>]" >&2
     echo "       owe.sh close --bucket <dir> --id <oN> --key <key|sha|decision id>" >&2
     echo "       owe.sh list --bucket <dir> [--all]" >&2
     exit 2
@@ -64,7 +64,7 @@ case "$CMD" in
     add)
         [ -n "$CHIEF" ] || { echo "owe: add needs --chief" >&2; exit 2; }
         case "$CHIEF" in *$'\t'*|*$'\n'*|*$'\037'*) echo "owe: --chief must not hold a tab, newline or unit separator" >&2; exit 2 ;; esac
-        case "$KIND" in ticket|proof|ruling) ;; *) echo "owe: --kind must be ticket, proof or ruling" >&2; exit 2 ;; esac
+        case "$KIND" in ticket|proof|ruling|step) ;; *) echo "owe: --kind must be ticket, proof, ruling or step" >&2; exit 2 ;; esac
         [ "$HAVE_TEXT" -eq 1 ] && [ -n "$TEXT" ] || { echo "owe: add needs a non-empty --text" >&2; exit 2; }
         case "$TEXT" in *$'\n'*|*$'\037'*) echo "owe: --text must be one line with no unit separator" >&2; exit 2 ;; esac
         if [ "$HAVE_KEY" -eq 1 ]; then

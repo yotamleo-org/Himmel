@@ -11,7 +11,7 @@ and appends one `judge-accuracy` row to the eval-runs ledger (scripts/eval/lib/e
 Inputs. --verdicts is the bucket's verdicts/ tree (verdicts/<qid>/<name>.md, write-verdict.sh's format).
 --prs is `gh pr list --state all --json number,state,mergedAt,headRefOid,mergeCommit`; --main-runs is
 `gh run list --branch main --json databaseId,headSha,conclusion,createdAt`; --mirror is the Jira mirror
-(default ~/.himmel/state/jira-mirror/HIMMEL). The window is the verdicts written in [until - days, until).
+(default: the project resolver's, ~/.himmel/state/jira-mirror/<JIRA_PROJECT_KEY>). The window is the verdicts written in [until - days, until).
 
 Join.
   escape     a PR merged at the head of a GO record in the window written before the merge, and either a Bug
@@ -67,7 +67,27 @@ from wilson import wilson  # noqa: E402
 EVAL_ID = "judge-accuracy"
 SOURCE = "scripts/eval/judge-accuracy/judge_accuracy.py"
 QUEUE_ENV = "HIMMEL_JUDGE_ADJUDICATION"
-MIRROR = os.path.expanduser("~/.himmel/state/jira-mirror/HIMMEL")
+
+
+def default_mirror():
+    lib = os.path.join(HERE, "..", "..", "lib", "jira-project.sh")
+    try:
+        r = subprocess.run(["bash", "-c", '. "$1" && jira_mirror_dir', "judge_accuracy", lib],
+                           capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as e:
+        cause = type(e).__name__
+    else:
+        out = r.stdout.strip()
+        if r.returncode == 0 and out:
+            if r.stderr:
+                sys.stderr.write(r.stderr)
+            return out
+        cause = "exit %d" % r.returncode if r.returncode else "no output"
+    print("judge-accuracy: project resolver failed (%s): no default Jira mirror" % cause, file=sys.stderr)
+    return None
+
+
+MIRROR = default_mirror()
 DAYS = 28
 RULINGS = ("S", "P", "N")
 VERDICT = re.compile(r"^\*\*(GO|NO-GO)\*\* for head `([0-9a-f]+)`", re.M)
@@ -147,6 +167,8 @@ def load_verdicts(root):
 def load_bugs(mirror):
     """Bug tickets of the mirror: key, labels, created, caused-by target and the PRs the text cites."""
     bugs = []
+    if mirror is None:
+        raise ValueError("no Jira mirror: project resolver failed")
     if not os.path.isdir(mirror):
         raise ValueError("no Jira mirror: %s" % mirror)
     for f in sorted(os.listdir(mirror)):
@@ -589,7 +611,7 @@ def cmd_run(a):
         raise ValueError("--class needs --ledger P or --no-ledger: a filtered run is not a row of the real ledger's series")
     ledger = class_filter(a.cls, a.bug_origin_dir)
     # a class filter reads the ledger, so a project with no Jira mirror still works; the unfiltered numbers need the mirror
-    bugs = ledger_bugs(ledger) if ledger is not None and not os.path.isdir(a.mirror) else load_bugs(a.mirror)
+    bugs = ledger_bugs(ledger) if ledger is not None and (a.mirror is None or not os.path.isdir(a.mirror)) else load_bugs(a.mirror)
     if ledger is not None:
         # a bug counts when its fix row has the class; a failed main run has no fix row, so no class
         classes = ledger_classes(ledger)

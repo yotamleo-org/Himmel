@@ -58,6 +58,7 @@ in place: delete `~/.local/bin/himmel` yourself.
 | What | Path | Where | Owner | Uninstall | Row |
 |---|---|---|---|---|---|
 | The qmd search tool and an index of your himmel download | `~/.himmel/qmd-fork` | user | himmel | Kept; `--purge-state` removes what this install created | `qmd-fork` |
+| The `qmd` command on your PATH, a small wrapper that hands qmd its search key | `~/.local/bin/qmd` | user | himmel | Not removed yet: uninstall leaves it in place | `qmd-wrapper` |
 
 qmd's search models (about 2 GB) live in qmd's own cache and are listed under
 [Never touched](#never-touched).

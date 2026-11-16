@@ -16,7 +16,7 @@ The shares are over the rulable outcomes, fixed_later + still_open + disproved.
   deferred-outcome.py [--cr-ledger P] [--mirror DIR] [--until TS] [--record] [--ledger P]
 
 Without --record the eval-runs row is printed, not appended. CR ledger: $CR_LEDGER, else the git common
-dir's cr-critic-scores.jsonl; mirror: ~/.himmel/state/jira-mirror/HIMMEL; ledger: $HIMMEL_EVAL_RUNS_LEDGER,
+dir's cr-critic-scores.jsonl; mirror: ~/.himmel/state/jira-mirror/<JIRA_PROJECT_KEY>; ledger: $HIMMEL_EVAL_RUNS_LEDGER,
 else ~/.himmel/eval-runs.jsonl. Exit 0 done; 2 refused input. Stdlib only; no network, no model call.
 """
 import argparse
@@ -115,6 +115,9 @@ def main(argv=None):
     ap.add_argument("--record", action="store_true")
     ap.add_argument("--ledger")
     a = ap.parse_args(argv)
+    if a.mirror is None:
+        print("deferred-outcome: refused: no Jira mirror: project resolver failed", file=sys.stderr)
+        return 2
     if not os.path.isdir(a.mirror):
         print("deferred-outcome: refused: no Jira mirror: %s" % a.mirror, file=sys.stderr)
         return 2

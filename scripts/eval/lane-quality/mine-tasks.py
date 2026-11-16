@@ -342,23 +342,40 @@ def cmd_validate(a):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def default_mirror():
+    lib = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "lib", "jira-project.sh")
+    try:
+        r = subprocess.run(["bash", "-c", '. "$1" && jira_mirror_dir', "mine-tasks", lib],
+                           capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as e:
+        cause = type(e).__name__
+    else:
+        out = r.stdout.strip()
+        if r.returncode == 0 and out:
+            if r.stderr:
+                sys.stderr.write(r.stderr)
+            return out
+        cause = "exit %d" % r.returncode if r.returncode else "no output"
+    print("mine-tasks: project resolver failed (%s): no default Jira mirror" % cause, file=sys.stderr)
+    return None
+
+
 def main(argv):
     p = argparse.ArgumentParser(prog="mine-tasks.py", description=__doc__.split("\n\n")[0])
     sub = p.add_subparsers(dest="cmd", required=True)
-    mirror = os.path.expanduser("~/.himmel/state/jira-mirror/HIMMEL")
 
     c = sub.add_parser("candidates", help="list merged changes that could be tasks (JSON lines)")
     c.add_argument("--repo", default=".", help="source repository (default: .)")
     c.add_argument("--rev", default="HEAD", help="branch or commit whose first-parent history is read (default: HEAD)")
     c.add_argument("--since", help="only commits after this git date, e.g. 30.days")
     c.add_argument("--limit", type=int, default=0, help="stop after this many candidates (default: no limit)")
-    c.add_argument("--mirror", default=mirror, help="Jira mirror directory of <KEY>.md files (default: %(default)s)")
+    c.add_argument("--mirror", help="Jira mirror directory of <KEY>.md files (default: the project resolver's)")
     c.add_argument("--max-files", type=int, default=6, help="most files a change may touch (default: 6)")
     c.add_argument("--max-lines", type=int, default=400, help="most changed lines (default: 400)")
 
     e = sub.add_parser("emit", help="write task directories for chosen merge commits")
     e.add_argument("--repo", default=".", help="source repository (default: .)")
-    e.add_argument("--mirror", default=mirror, help="Jira mirror directory (default: %(default)s)")
+    e.add_argument("--mirror", help="Jira mirror directory (default: the project resolver's)")
     e.add_argument("--tasks-dir", required=True, help="directory the task directories are written under")
     e.add_argument("--sha", action="append", required=True, help="a merge commit to emit (repeatable)")
     e.add_argument("--set", default="capability", choices=["capability", "regression"], help="task set (default: capability)")
@@ -377,6 +394,11 @@ def main(argv):
     t.add_argument("--timeout", type=int, default=120, help="seconds per test file (default: 120)")
 
     a = p.parse_args(argv)
+    if a.cmd in ("candidates", "emit") and a.mirror is None:
+        a.mirror = default_mirror()
+        if a.mirror is None:
+            print("mine-tasks: no Jira mirror: project resolver failed", file=sys.stderr)
+            return 2
     return {"candidates": cmd_candidates, "emit": cmd_emit, "validate": cmd_validate, "accept": cmd_accept}[a.cmd](a)
 
 
