@@ -622,7 +622,7 @@ sites are changed here.
 | Session injection hooks | Initiative: `HIMMEL_INITIATIVE`, `HIMMEL_AFK`, `HIMMEL_INITIATIVE_AFK`; freshness: `HIMMEL_DOC_FRESHNESS`; position: `HIMMEL_WHERE_ARE_WE`, `HIMMEL_WHERE_ARE_WE_STALE_HOURS`; worktree nudge: `HIMMEL_WORKTREE_NUDGE` |
 | Bank preflight | `HIMMEL_FLEET_CAP` (default 4): gate policy, set by hand in `~/.himmel/config.json` `.policy.HIMMEL_FLEET_CAP`. An exported or launcher-line value is ignored; a legacy `.env` line still applies, with a `DEPRECATED` notice. The config UI shows it read-only |
 | Updater | `HIMMEL_UPDATE_AUTOSTASH`, `LUNA_VAULT_PATH` |
-| Telegram bridge (`poller.ts`, dedicated bridge file) | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_AUTO_ACTIONS` (only actions allow a process-env override) |
+| Telegram bridge (`poller.ts`, dedicated bridge file) | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_AUTO_ACTIONS`, `TELEGRAM_MONITOR_BOT_TOKEN`, `TELEGRAM_MONITOR_CHAT_ID` (only actions allow a process-env override) |
 | Telegram session-status / luna-sync-alert (dedicated bridge file) | `TELEGRAM_BOT_TOKEN`; notification shell hooks separately load repo `TELEGRAM_GROUP_CHAT_ID` |
 | Jira-nudge hook | `HIMMEL_JIRA_NUDGE`, `HIMMEL_INITIATIVE`, `HIMMEL_INITIATIVE_AFK`, `HIMMEL_AFK`, `JIRA_PROJECT_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
 | Upstream watcher | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
@@ -898,6 +898,8 @@ change; token and access config live *outside* the repo):
 |---|---|---|---|
 | `TELEGRAM_BOT_TOKEN` | — | `~/.claude/channels/telegram/.env` (path override `TELEGRAM_ENV`) | bot auth. A *separate* copy in the repo `.env` feeds only the opt-in jira-nudge / session-status relays |
 | `access.json` (`TELEGRAM_ACCESS_PATH`) | — | `~/.claude/channels/telegram/access.json` | the allowlist: `allowFrom` (DM senders), `groups` (chat-id keys), per-group `allowFrom`/`vault`, `defaultVault`. Fails closed |
+| `TELEGRAM_MONITOR_BOT_TOKEN` | unset | bridge .env only | token of a second bot that posts monitor-class lines to the monitoring group. It must differ from `TELEGRAM_BOT_TOKEN` (the same token is refused). Unset or refused: monitor lines stay on the station in `<bridge root>/monitor/outbox.jsonl`, and escalations still reach the operator. The poller logs `monitoring: ok`, `unset` or `refused <reason>` at start. See [message classes](internals/telegram-bridge.md#message-classes) |
+| `TELEGRAM_MONITOR_CHAT_ID` | unset | bridge .env only | the monitoring group's chat id (a group or supergroup, negative; a channel or private chat is refused). Needs `TELEGRAM_MONITOR_BOT_TOKEN` too |
 | `TELEGRAM_AUTO_ACTIONS` | OFF | bridge .env *or* process env (process wins) | enables privileged bridge ops one by one, e.g. `/arm` (`arm-resume`), `/restart` (`restart`), `/mergepub` (`merge-public`) and the break-glass ops; the full op list is in the [bridge guide](telegram-bridge.md#slash-chief-requests-and-emergency-lockdown) and [`scripts/telegram/README.md`](../scripts/telegram/README.md#break-glass-ops). The whole-value aliases `1`/`all`/`on`/`yes`/`true` enable only `arm-resume` + `restart`; every other op, `merge-public` included, must be named explicitly. An unrecognized token parses to nothing (the poller warns at startup, naming the dropped tokens) |
 | `TELEGRAM_CLAUDE_MODEL` | `claude-opus-5-5` | own .env | model pin for bounded bridge runs (never inherits your default) |
 | `TELEGRAM_MAX_CONCURRENT_RUNS` / `TELEGRAM_RETRY_MS` / `TELEGRAM_MAX_RETRIES` / `RUN_TIMEOUT_MS` | 2 / 15min / 3 / 30min | own .env | run concurrency/retry/deadline |
