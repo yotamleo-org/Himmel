@@ -33,7 +33,22 @@ cp "$m" "$successor"
 run control set "$successor" --mode active --expect-gen 1
 check 'copied successor reads same active anchor' ok:active "$(mode "$m")"
 check 'reference contains no mutable control copies' '["anchor","family"]' "$(jq -c '.control | keys' "$successor")"
-check 'environment cannot raise approved activation cap' refused "$(HIMMEL_FLEET_CAP=999999999 refuse control set "$m" --mode active --target 2147483647 --expect-gen 2)"
+# Resolve the persisted cap through the writer's policy loader and primary root.
+persisted_cap=$(
+    # shellcheck source=scripts/lib/load-dotenv.sh
+    . "$HERE/load-dotenv.sh" || exit 1
+    policy_root=$(cd "$HERE/../.." && pwd) || exit 1
+    policy_root=$(_load_dotenv_primary_for "$policy_root") || exit 1
+    load_policy --root "$policy_root" HIMMEL_FLEET_CAP || exit 1
+    printf '%s\n' "${HIMMEL_FLEET_CAP:-4}"
+) || exit 1
+case "$persisted_cap" in ''|*[!0-9]*) echo 'FAIL - persisted activation cap is not an integer' >&2; exit 1 ;; esac
+if above_cap=$(jq -ne --arg cap "$persisted_cap" '$cap | tonumber | select(. < 2147483647) | . + 1'); then
+    printf '# persisted activation cap=%s requested/injected target=%s\n' "$persisted_cap" "$above_cap"
+    check 'environment cannot raise approved activation cap' refused "$(HIMMEL_FLEET_CAP="$above_cap" refuse control set "$m" --mode active --target "$above_cap" --expect-gen 2)"
+else
+    echo "SKIP - persisted activation cap $persisted_cap is at/above target maximum 2147483647; cap+1 is unexercisable"
+fi
 check 'stale writer refuses' refused "$(refuse control set "$m" --mode paused --expect-gen 1)"
 run control set "$m" --mode shadow --expect-gen 2 > "$tmp/race1" 2>&1 & p1=$!
 run control set "$successor" --mode paused --expect-gen 2 > "$tmp/race2" 2>&1 & p2=$!
