@@ -168,3 +168,5 @@ Read on demand from `chief-template.md` `## Live state`. Moved verbatim from the
 > ruling: read its verbatim file before you act on it.
 
 A `pool-disposition:` row tagged `proof` goes to a `kind: proof` worker: `chief-sections/proof-rows.md`.
+
+A per-version ruling outlives its chief in the readiness record. Write it with `scripts/handover/chief-kit/readiness.sh append <version> <KEY> a|b|c|d --evidence <text> [--blocker <KEY or decision>]` and read it with `readiness.sh read <version>`; rows land in `release/<version>/readiness.jsonl`. The tick does not read the record yet.
