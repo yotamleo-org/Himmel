@@ -763,11 +763,17 @@ not_contains "slotage= is not in chief-wait's wake key" "$cw_keys" 'slotage'
 # /tmp/himmel-suite-semaphore-<uid>.d, whatever TMPDIR the tick runs under. A stub `id` names a fake
 # uid so the fixture never touches the station uid's real default dir. A tick that read
 # $TICK_TMPDIR/himmel-suite-semaphore.d instead would show slotage= for the old dir only.
-sd_uid=987654
-sd_default="/tmp/himmel-suite-semaphore-$sd_uid.d"
+sd_uid=''
+sd_default=''
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    sd_uid=$((900000 + RANDOM))
+    # mkdir is the atomic claim: a concurrent run or a left-over dir under the same fake uid is never reused or removed
+    if mkdir "/tmp/himmel-suite-semaphore-$sd_uid.d" 2>/dev/null; then sd_default="/tmp/himmel-suite-semaphore-$sd_uid.d"; break; fi
+done
 sd_old="$W/sd-tmp/himmel-suite-semaphore.d"
-mkdir -p "$W/sd-bin" "$sd_default/slot-1" "$sd_old/slot-1"
+if [ -z "$sd_default" ]; then fail 'no unclaimed fake-uid semaphore dir under /tmp after 10 tries'; exit 1; fi
 trap 'rm -rf "$W" "$sd_default"' EXIT
+mkdir -p "$W/sd-bin" "$sd_default/slot-1" "$sd_old/slot-1"
 # shellcheck disable=SC2016  # the stub's own $1 and $@ expand when it runs, not here
 printf '#!/bin/sh\nif [ "${1-}" = "-u" ]; then echo %s; else exec /usr/bin/id "$@"; fi\n' "$sd_uid" > "$W/sd-bin/id"
 chmod +x "$W/sd-bin/id"
