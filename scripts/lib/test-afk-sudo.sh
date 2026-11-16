@@ -501,6 +501,9 @@ cat > "$FAKE/curl" <<'FAKECURL'
 #!/bin/sh
 printf '%s\n' "$@" > "$CURL_ARGS"
 cat > "$CURL_STDIN"
+# CURL_HTTP_ERR: Telegram answers 400; only curl's --fail turns that into a non-zero exit.
+for a in "$@"; do [ -n "${CURL_HTTP_ERR:-}" ] && [ "$a" = -fsS ] && exit 22; done
+exit 0
 FAKECURL
 chmod +x "$FAKE/sudo" "$FAKE/curl"
 printf 'TELEGRAM_BOT_TOKEN=123:SECRETTOKEN\n' > "$tmp/bridge.env"
@@ -515,6 +518,35 @@ assert_contains "the Approve button's callback data names the request" "afk:appr
 assert_contains "the Deny button's callback data names the request" "afk:deny:abcdefgh" "$args"
 assert_absent "the bot token never appears in curl's argv" "SECRETTOKEN" "$args"
 assert_contains "the token reaches curl on stdin" "SECRETTOKEN" "$(cat "$tmp/curl.stdin" 2>/dev/null)"
+assert_contains "the sudo card names the asking session" "session s" "$args"
+
+echo "== a grant ask gets its Approve card in the chief's bridge chat =="
+: > "$tmp/curl.args"
+card() {
+    PATH="$FAKE:$PATH" TELEGRAM_ENV="${CARD_ENV:-$tmp/bridge.env}" CURL_ARGS="$tmp/curl.args" CURL_STDIN="$tmp/curl.stdin" \
+        HIMMEL_CONSOLE_NAME="${CARD_CHIEF-AO-roadmap-chief}" bash "$REPO_ROOT/scripts/lib/afk-sudo-request" "$@" 2>&1
+}
+card_out=$(card --card abcdefgh --operator 4242 --session S1); card_rc=$?
+args=$(cat "$tmp/curl.args" 2>/dev/null)
+assert_eq "--card exits 0 once the card is sent" 0 "$card_rc"
+assert_contains "the grant card goes to the operator's bridge chat" "chat_id=4242" "$args"
+assert_contains "the grant card names the request" "text=AFK grant abcdefgh: read the notice-bot message, then approve" "$args"
+assert_contains "the grant card names the asking session" "session S1" "$args"
+assert_contains "the grant card names the asking worker's chief" "chief AO-roadmap-chief" "$args"
+assert_contains "the grant card carries the Approve button" "afk:approve:abcdefgh" "$args"
+assert_contains "the grant card carries the Deny button" "afk:deny:abcdefgh" "$args"
+assert_absent "the bot token never appears in the card's curl argv" "SECRETTOKEN" "$args"
+: > "$tmp/curl.args"
+card_out=$(card --card 'abc"defg' --operator 4242 --session S1); card_rc=$?
+assert_eq "a malformed id is refused as usage" 2 "$card_rc"
+assert_eq "a malformed id sends nothing" "" "$(cat "$tmp/curl.args")"
+card_out=$(CARD_ENV="$tmp/no-such.env" card --card abcdefgh --operator 4242 --session S1); card_rc=$?
+assert_eq "no bridge token: --card exits 5" 5 "$card_rc"
+assert_contains "no bridge token: --card says the card was not sent" "card for abcdefgh not sent" "$card_out"
+card_out=$(CURL_HTTP_ERR=1 card --card abcdefgh --operator 4242 --session S1); card_rc=$?
+assert_eq "Telegram refuses the card (HTTP 400): --card exits 5" 5 "$card_rc"
+card_out=$(CURL_HTTP_ERR=1 card --notify 'one line' --operator 4242); card_rc=$?
+assert_eq "Telegram refuses the line (HTTP 400): --notify exits 5" 5 "$card_rc"
 
 echo "== slice 1a: a spent step stays spent for the next request (HIMMEL-8078 part 2) =="
 for how in deny unknown-id expire; do
@@ -1600,6 +1632,7 @@ ghook() {
     jq -n --arg c "$3" --arg s "${GS:-S1}" --arg d "${GC:-$GW}" \
         '{hook_event_name:"x",tool_name:"Bash",tool_input:{command:$c},session_id:$s,cwd:$d,reason:"[Code from External] fetches a package"}' > "$tmp/gpay.json"
     PATH="$tmp/fakesudo:$PATH" AFK_GRANT_DIR="$R/var/lib/himmel/afk-grants" AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$((T0 + $1)) \
+        HIMMEL_CONSOLE_NAME=chief-A TELEGRAM_ENV="$tmp/no-bridge.env" AFK_SUDO_CONFIG="$tmp/no-config.json" \
         bash "$REPO_ROOT/scripts/hooks/$2" < "$tmp/gpay.json" 2>&1
 }
 pending_id() { python3 -I -c 'import json, sys; print(((json.load(open(sys.argv[1] + "/var/lib/himmel/afk-sudo/state.json")).get("slots") or [{}])[-1]).get("id", ""))' "$R" 2>/dev/null; }

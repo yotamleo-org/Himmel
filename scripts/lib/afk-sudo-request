@@ -3,6 +3,17 @@
 # command.
 #
 #   afk-sudo-request --session S --ticket T -- ARGV...
+#   afk-sudo-request --card ID --operator OP --session S
+#   afk-sudo-request --notify TEXT --operator OP
+#   afk-sudo-request --watch ID --expires EPOCH --operator OP --session S
+#
+# --card sends only the bridge card (the id, the asking session and its chief,
+# Approve / Deny) for a grant request root already filed, so a grant ask lands in
+# the operator's bridge chat beside the chief's messages, not only in the
+# notice-bot chat. --notify sends one plain line to that chat. --watch polls a
+# grant request until it ends and posts one line if it expired; it gives up at
+# EPOCH plus a margin. approval-grant-request.sh calls all three; exit 0 sent (or
+# watched to the end), 5 not sent.
 #
 # Asks the root helper (sudo -n, the one NOPASSWD rule install.sh writes) to
 # open a request. Root sends the request's facts and a nonce through its own
@@ -18,17 +29,81 @@ set -uo pipefail
 
 HELPER=/usr/local/libexec/himmel/afk-sudo
 
-usage() { echo "usage: afk-sudo-request --session S --ticket T -- ARGV..." >&2; exit 2; }
+usage() { echo "usage: afk-sudo-request --session S --ticket T -- ARGV... | --card ID --operator OP --session S | --notify TEXT --operator OP | --watch ID --expires EPOCH --operator OP --session S" >&2; exit 2; }
 
-session="" ticket=""
+label() { printf '%s' "$1" | tr -cd 'A-Za-z0-9._-' | cut -c1-80; }
+
+telegram_bridge_bot_token() {
+    sed -n 's/^TELEGRAM_BOT_TOKEN[[:space:]]*=[[:space:]]*//p' "${TELEGRAM_ENV:-$HOME/.claude/channels/telegram/.env}" 2>/dev/null \
+        | tr -d '"'"'"' \r' | grep -m1 .
+}
+
+bridge_send() {
+    local op=$1 text=$2 token
+    shift 2
+    token=$(telegram_bridge_bot_token)
+    [ -n "$token" ] && printf 'url = "https://api.telegram.org/bot%s/sendMessage"\n' "$token" \
+        | curl -fsS -m 10 -o /dev/null -K - \
+            --data-urlencode "chat_id=${op}" \
+            --data-urlencode "text=${text}" "$@"
+}
+
+send_card() {
+    local kind=$1 id=$2 op=$3 who chief text
+    local markup=()
+    who=$(label "$session")
+    chief=$(label "${HIMMEL_CONSOLE_NAME:-}")
+    text="AFK $kind $id: read the notice-bot message, then approve · session ${who:-unknown} · chief ${chief:-none}"
+    if [[ $id =~ ^[a-z2-7]{8}$ ]]; then
+        markup=(--data-urlencode "reply_markup={\"inline_keyboard\":[[{\"text\":\"✅ Approve\",\"callback_data\":\"afk:approve:${id}\"},{\"text\":\"❌ Deny\",\"callback_data\":\"afk:deny:${id}\"}]]}")
+    fi
+    bridge_send "$op" "$text" ${markup[@]+"${markup[@]}"}
+}
+
+session="" ticket="" card="" operator="" notify="" watch="" expires=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --session) [ $# -ge 2 ] || usage; session=$2; shift 2 ;;
         --ticket) [ $# -ge 2 ] || usage; ticket=$2; shift 2 ;;
+        --card) [ $# -ge 2 ] || usage; card=$2; shift 2 ;;
+        --operator) [ $# -ge 2 ] || usage; operator=$2; shift 2 ;;
+        --notify) [ $# -ge 2 ] || usage; notify=$2; shift 2 ;;
+        --watch) [ $# -ge 2 ] || usage; watch=$2; shift 2 ;;
+        --expires) [ $# -ge 2 ] || usage; expires=$2; shift 2 ;;
         --) shift; break ;;
         *) usage ;;
     esac
 done
+if [ -n "$notify" ]; then
+    [[ $operator =~ ^-?[0-9]{1,20}$ ]] && [ $# -eq 0 ] || usage
+    bridge_send "$operator" "$(printf '%s' "$notify" | tr -d '\000-\037' | cut -c1-400)" || exit 5
+    exit 0
+fi
+if [ -n "$watch" ]; then
+    [[ $watch =~ ^[a-z2-7]{8}$ && $operator =~ ^-?[0-9]{1,20}$ && $expires =~ ^[0-9]{1,12}$ ]] && [ -n "$session" ] && [ $# -eq 0 ] || usage
+    [ -n "$(telegram_bridge_bot_token)" ] || exit 5
+    chief=$(label "${HIMMEL_CONSOLE_NAME:-}")
+    deadline=$((expires + ${AFK_SUDO_WATCH_MARGIN_S:-130}))
+    while [ "$(date +%s)" -lt "$deadline" ]; do
+        st=$(sudo -n "$HELPER" status "$watch" 2>/dev/null | sed -n 's/^result=\([^ ]*\).*/\1/p') || st=query-failed
+        case "${st:-query-failed}" in
+            pending | query-failed) sleep "${AFK_SUDO_POLL_S:-3}" ;;
+            expired)
+                bridge_send "$operator" "grant $watch from session $(label "$session") (chief ${chief:-none}) expired, nothing ran" || exit 5
+                exit 0 ;;
+            *) exit 0 ;;
+        esac
+    done
+    exit 0
+fi
+if [ -n "$card" ]; then
+    [[ $card =~ ^[a-z2-7]{8}$ && $operator =~ ^-?[0-9]{1,20}$ ]] && [ -n "$session" ] && [ $# -eq 0 ] || usage
+    if ! send_card grant "$card" "$operator"; then
+        echo "afk-sudo-request: the bridge card for $card not sent" >&2
+        exit 5
+    fi
+    exit 0
+fi
 [ -n "$session" ] && [ -n "$ticket" ] && [ $# -gt 0 ] || usage
 
 field() { printf '%s\n' "$2" | sed -n "s/^result=[^ ]* \\(.* \\)\\{0,1\\}$1=\\([^ ]*\\).*/\\2/p" | head -1; }
@@ -40,26 +115,7 @@ fi
 id=$(field id "$out")
 operator=$(field operator "$out")
 expires=$(field expires "$out")
-# The id only: the facts and the nonce come from root's notice bot, which no session can drive.
-text="AFK sudo $id: read the notice-bot message, then approve"
-
-# Approve / Deny buttons: a tap on Approve only makes the bridge ask
-# for the code, so the TOTP check stays the helper's. The id is the helper's own
-# 8-char base32, checked before it goes into the callback data.
-markup=()
-if [[ $id =~ ^[a-z2-7]{8}$ ]]; then
-    markup=(--data-urlencode "reply_markup={\"inline_keyboard\":[[{\"text\":\"✅ Approve\",\"callback_data\":\"afk:approve:${id}\"},{\"text\":\"❌ Deny\",\"callback_data\":\"afk:deny:${id}\"}]]}")
-fi
-
-# The bridge's own bot (the one the operator replies to), read the way
-# session-status.ts reads it; the repo .env / keyring token is a different bot.
-# The URL carrying the token goes to curl on stdin, never argv.
-bridge_env=${TELEGRAM_ENV:-$HOME/.claude/channels/telegram/.env}
-token=$(sed -n 's/^TELEGRAM_BOT_TOKEN[[:space:]]*=[[:space:]]*//p' "$bridge_env" 2>/dev/null | tr -d '"'"'"' \r' | grep -m1 .)
-if [ -z "$token" ] || ! printf 'url = "https://api.telegram.org/bot%s/sendMessage"\n' "$token" \
-        | curl -sS -m 10 -o /dev/null -K - \
-            --data-urlencode "chat_id=${operator}" \
-            --data-urlencode "text=${text}" ${markup[@]+"${markup[@]}"}; then
+if ! send_card sudo "$id" "$operator"; then
     echo "afk-sudo-request: the Telegram notice failed; request $id stays pending until it expires" >&2
 fi
 

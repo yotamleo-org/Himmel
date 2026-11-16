@@ -82,7 +82,15 @@ the ledger, the requester's output or the attached document. The token and every
 parameter reach curl on stdin (`-K -`).
 
 The bridge bot sends only the id and the Approve / Deny buttons: `afk-sudo-request` and
-`afk-run` no longer forward any request text. An Approve tap asks for the nonce and the
+`afk-run` no longer forward any request text. The notice bot is a different bot, so its
+messages sit in a different Telegram chat from the bridge chat where the chief's messages
+and the Approve prompts are, even though both use `operator_id` as the chat id. An ask
+whose only message comes from the notice bot cannot be approved from the chief's chat. `afk-sudo-request --card ID --operator OP --session S` sends that bridge card
+for a request root has already filed: `AFK grant <id>: read the notice-bot message, then
+approve · session <S> · chief <HIMMEL_CONSOLE_NAME or none>` with the buttons. It exits 0
+once the card is sent, 5 when there is no bridge token or the send fails, and 2 for an id
+that is not 8 base32 characters. The sudo kind's card carries the same session and chief
+words. An Approve tap asks for the nonce and the
 code; a typed or replied `NONCE CODE` pair is held like a bare code, never forwarded to a
 session (a session can call the helper's `approve` itself).
 
@@ -314,6 +322,24 @@ approval, and the worker's retry passes the classifier for that one call.
    and exits 0 on every path. It files only a reason with a bracketed classifier category
    (`[Unauthorized Persistence]`): a no-verdict denial, "Classifier unavailable" or a
    credential, secret, token or exfiltration category files nothing.
+   The hook then tells the operator's bridge chat, the chat the chief's messages and
+   Approve prompts are in (chat id = the helper's `operator_id`), through
+   `scripts/lib/afk-sudo-request`, every send detached so nothing delays the hook:
+   - `result=pending`: the card (`--card`: id, session, chief, Approve / Deny), and one
+     detached waiter (`--watch`) that polls `afk-sudo status <id>` and posts
+     `grant <id> from session <S> (chief <C>) expired, nothing ran` if the request
+     expires. The waiter gives up at the expiry plus 130 s.
+   - any other result (busy, rate-limited, `notice-failed`, `no-notice-bot`, a floor
+     refusal): one line, `AFK grant from session <S> (chief <C>) refused: <result>,
+     nothing ran`.
+   - no chief: with `HIMMEL_CONSOLE_NAME` unset, a session whose own console inbox
+     `~/.claude/handover/bridge/consoles/<its -n name>.md` exists is a chief and routes
+     its own ask. Any other session files nothing; it gets one line naming it and the
+     denied tool only when `afk-sudo mode` reports `enabled=true` and
+     `grant_enabled=true`.
+   - grants off (`grant-disabled`, `disabled`, or a `mode` that does not report both
+     flags true): it sends nothing in any branch; `afk-denied-to-request.sh` owns that
+     refusal.
 2. Root refuses a secret read or another never-remote shape before any notice is sent.
    Otherwise it binds every file the command names (sha256 and dev/inode, as in the run
    kind), freezes the record and sends the operator the full command, the cwd, the bound
