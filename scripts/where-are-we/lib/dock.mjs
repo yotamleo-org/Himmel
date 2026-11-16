@@ -4,7 +4,7 @@
 // (fold/query/render/renderItem) — adds no new relevance rule beyond the one
 // display-routing rule: a terminal (done/merged) ticket-branch shows the global
 // digest, not the item card.
-import { fold, TERMINAL } from './fold.mjs';
+import { fold, isTerminal } from './fold.mjs';
 import { query } from './query.mjs';
 import { render, renderItem } from './render.mjs';
 
@@ -28,8 +28,14 @@ export function freshnessLine(markerMtimeMs, nowMs) {
 export function renderDock(records, scope, nowMs, markerMtimeMs) {
   const state = fold(records);
   const r = query(state, scope);
-  const body = (r.item && !TERMINAL.has(r.item.status))
+  const body = (r.item && !isTerminal(r.item))
     ? renderItem(r.item, r.locks)
     : render(state);
-  return freshnessLine(markerMtimeMs, nowMs) + '\n\n' + body;
+  const sources = Object.entries(state.sources ?? {}).map(([source, health]) =>
+    `- ${source}: ${health.errors.length ? 'stale / unknown' : 'observed'}; last success ${health.observed_at ?? 'never'}${health.errors.length ? `; ${health.errors.join('; ')}` : ''}`);
+  const failed = Object.entries(state.sources ?? {}).filter(([, h]) => h.errors.length).map(([s]) => s).sort();
+  const freshness = freshnessLine(markerMtimeMs, nowMs);
+  const header = failed.length ? freshness.slice(0, -1) + ` · stale sources: ${failed.join(', ')}_` : freshness;
+  return header + '\n\n' +
+    (sources.length ? sources.join('\n') + '\n\n' : '') + body;
 }

@@ -264,27 +264,50 @@ fi
 # --- Case 3: ON + stale (no marker) → detached refresh, non-blocking --------
 # ORDERING assertion (not a timing budget): the stub sleeps then touches a
 # sentinel; right after the hook returns the sentinel must NOT exist (hook did
-# not wait), and the marker must now exist (touched). After a wait the sentinel
-# must appear (the detached child really ran).
+# not wait), and success freshness must still be absent. After a wait both the
+# sentinel and success marker must appear.
 state3="$TMP/s3"; seed_ledger "$state3"
 sentinel="$TMP/sentinel3"
 HIMMEL_REPO="$HERMETIC_ROOT" WHERE_ARE_WE_STATE_DIR="$state3" \
     HIMMEL_WHERE_ARE_WE=1 \
     HIMMEL_WHERE_ARE_WE_COLLECT_CMD="sleep 3; touch '$sentinel'" \
     bash "$HOOK" </dev/null >/dev/null 2>&1; rc3=$?
-if [ "$rc3" = 0 ] && [ ! -e "$sentinel" ] && [ -e "$state3/.refreshed-at" ]; then
-    pass "stale -> hook returned before refresh finished (non-blocking) + marker touched"
+if [ "$rc3" = 0 ] && [ ! -e "$sentinel" ] && [ ! -e "$state3/.refreshed-at" ]; then
+    pass "stale -> hook returned before refresh finished without claiming success"
 else
     sv=no; [ -e "$sentinel" ] && sv=yes
     mv=no; [ -e "$state3/.refreshed-at" ] && mv=yes
-    fail "stale -> expected non-blocking + marker, rc=$rc3 sentinel=$sv marker=$mv"
+    fail "stale -> expected non-blocking + no success marker, rc=$rc3 sentinel=$sv marker=$mv"
 fi
 sleep 4
-if [ -e "$sentinel" ]; then
-    pass "detached refresh actually ran (sentinel appeared)"
+if [ -e "$sentinel" ] && [ -e "$state3/.refreshed-at" ]; then
+    pass "detached refresh finished and then marked success"
 else
     fail "detached refresh never ran (no sentinel after wait)"
 fi
+
+# A separate attempt timestamp must debounce an in-progress or failed refresh.
+for failure in failed interrupted; do
+    failed_state="$TMP/$failure"; seed_ledger "$failed_state"
+    failed_count="$failed_state/attempts"
+    if [ "$failure" = failed ]; then failed_cmd="exit 1"; else failed_cmd='kill -TERM $$'; fi
+    HIMMEL_REPO="$HERMETIC_ROOT" WHERE_ARE_WE_STATE_DIR="$failed_state" \
+        HIMMEL_WHERE_ARE_WE=1 \
+        HIMMEL_WHERE_ARE_WE_COLLECT_CMD="echo attempt >> '$failed_count'; $failed_cmd" \
+        bash "$HOOK" </dev/null >/dev/null 2>&1
+    sleep 1
+    HIMMEL_REPO="$HERMETIC_ROOT" WHERE_ARE_WE_STATE_DIR="$failed_state" \
+        HIMMEL_WHERE_ARE_WE=1 \
+        HIMMEL_WHERE_ARE_WE_COLLECT_CMD="echo duplicate >> '$failed_count'" \
+        bash "$HOOK" </dev/null >/dev/null 2>&1
+    sleep 1
+    if [ ! -e "$failed_state/.refreshed-at" ] && [ -f "$failed_count" ] \
+        && [ "$(wc -l < "$failed_count" | tr -d ' ')" = 1 ]; then
+        pass "$failure refresh -> remains stale and repeated session is debounced"
+    else
+        fail "$failure refresh -> false freshness or duplicate refresh"
+    fi
+done
 
 # --- Case 4: ON but broken node path → still exit 0 (fail-open) -------------
 state4="$TMP/s4"; seed_ledger "$state4"

@@ -87,6 +87,7 @@ if { [ -r "$(dirname "${BASH_SOURCE[0]}")/../lib/prim.sh" ] && . "$(dirname "${B
 _wa_dir="${WHERE_ARE_WE_STATE_DIR:-$_wa_root/.where-are-we}"
 _wa_ledger="$_wa_dir/ledger.jsonl"
 _wa_marker="$_wa_dir/.refreshed-at"
+_wa_attempt="$_wa_dir/.refresh-started-at"
 _wa_flag="$_wa_dir/.stale-flag"
 mkdir -p "$_wa_dir" 2>/dev/null || exit 0
 
@@ -166,13 +167,20 @@ if [ -n "$_wa_out" ]; then
     fi
 fi
 
-# --- Refresh asynchronously when stale (debounced) --------------------------
+# --- Refresh asynchronously when stale (separate attempt debounce) ----------
 if [ -f "$_wa_flag" ] && [ "$(cat "$_wa_flag" 2>/dev/null)" = 1 ]; then
-    touch "$_wa_marker" 2>/dev/null || true
-    if [ -n "${HIMMEL_WHERE_ARE_WE_COLLECT_CMD:-}" ]; then
-        ( nohup bash -c "$HIMMEL_WHERE_ARE_WE_COLLECT_CMD" >/dev/null 2>&1 & ) || true
-    else
-        ( nohup "$_wa_node" "$_wa_root/scripts/where-are-we/collect.mjs" --ledger "$_wa_ledger" >/dev/null 2>&1 & ) || true
+    # An interrupted refresh may leave its attempt behind. Retry after a minute;
+    # an attempt timestamp never claims the ledger was successfully refreshed.
+    if _wa_retry="$("$_wa_node" -e 'const fs=require("fs"); try { process.stdout.write(Date.now()-fs.statSync(process.argv[1]).mtimeMs >= 60000 ? "1" : "0"); } catch (err) { if (err.code !== "ENOENT") throw err; process.stdout.write("1"); }' "$_wa_attempt")" \
+        && [ "$_wa_retry" = 1 ]; then
+        touch "$_wa_attempt" 2>/dev/null || true
+        if [ -n "${HIMMEL_WHERE_ARE_WE_COLLECT_CMD:-}" ]; then
+            # Positional arguments expand in the detached bash, after collection.
+            # shellcheck disable=SC2016
+            ( nohup bash -c 'if bash -c "$1"; then touch "$2"; fi' _ "$HIMMEL_WHERE_ARE_WE_COLLECT_CMD" "$_wa_marker" >/dev/null 2>&1 & ) || true
+        else
+            ( nohup "$_wa_node" "$_wa_root/scripts/where-are-we/collect.mjs" --ledger "$_wa_ledger" --marker "$_wa_marker" >/dev/null 2>&1 & ) || true
+        fi
     fi
 fi
 rm -f "$_wa_flag" 2>/dev/null || true
