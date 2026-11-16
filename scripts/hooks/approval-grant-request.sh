@@ -21,7 +21,7 @@
 # call at all, and the helper refuses every request while grant.enabled is false.
 #
 # This is an OBSERVABILITY-STYLE TAP, same contract as log-classifier-denial.sh on the same
-# event: it never blocks, delays or asks on a tool call (every bridge send runs detached),
+# event: it never blocks, delays or asks on a tool call,
 # prints nothing, and exits 0 on every path. The helper caps requests (one pending at a time, max_per_hour).
 #
 # Test seam: AFK_GRANT_DIR names the marker directory.

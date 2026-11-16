@@ -85,7 +85,7 @@ if [ -n "$watch" ]; then
     chief=$(label "${HIMMEL_CONSOLE_NAME:-}")
     deadline=$((expires + ${AFK_SUDO_WATCH_MARGIN_S:-130}))
     while [ "$(date +%s)" -lt "$deadline" ]; do
-        st=$(sudo -n "$HELPER" status "$watch" 2>/dev/null | sed -n 's/^result=\([^ ]*\).*/\1/p')
+        st=$(sudo -n "$HELPER" status "$watch" 2>/dev/null | sed -n 's/^result=\([^ ]*\).*/\1/p') || st=query-failed
         case "${st:-query-failed}" in
             pending | query-failed) sleep "${AFK_SUDO_POLL_S:-3}" ;;
             expired)

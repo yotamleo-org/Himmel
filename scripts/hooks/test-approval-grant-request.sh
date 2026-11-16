@@ -18,7 +18,7 @@ mkdir -p "$TMP/bin" "$TMP/marks" "$TMP/bridge/consoles"
 cat > "$TMP/bin/sudo" <<STUB
 #!/bin/sh
 case " \$* " in
-    *" status "*) printf '%s\n' "\$*" >> "$TMP/status.argv"; cat "$TMP/status"; exit 0 ;;
+    *" status "*) printf '%s\n' "\$*" >> "$TMP/status.argv"; cat "$TMP/status"; exit \$(cat "$TMP/status.rc" 2>/dev/null || echo 0) ;;
     *" mode "*) cat "$TMP/mode"; exit 0 ;;
 esac
 printf '%s\n' "\$*" >> "$TMP/argv"
@@ -190,7 +190,14 @@ if [ "$c1" -ge 1 ]; then echo "PASS the waiter polls the request status"; else e
 check "the waiter stops at expiry plus its margin" "$c1" "$c2"
 lacks "a waiter that hits its cap posts nothing" "expired, nothing ran" "$(cat "$TMP/curl")"
 
-touch "$TMP/slow"; MARGIN=130; pending
+MARGIN=130; pending
+printf 'result=error OSError\n' > "$TMP/status"; printf '5' > "$TMP/status.rc"
+run Bash "$CMD"
+quiet "a status query the helper cannot answer"
+printf 'result=expired\n' > "$TMP/status"; rm -f "$TMP/status.rc"
+if wait_sent "grant abcdefgh from session S1 (chief chief-A) expired, nothing ran"; then echo "PASS a status query the helper cannot answer does not end the waiter"; else echo "FAIL a status query the helper cannot answer does not end the waiter"; FAILED=1; fi
+
+touch "$TMP/slow"; printf 'result=approved\n' > "$TMP/status"
 t0=$(date +%s)
 run Bash "$CMD"
 t1=$(date +%s)
