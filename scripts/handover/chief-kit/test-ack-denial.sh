@@ -96,7 +96,6 @@ else
 fi
 chmod 700 "$HIMMEL_DENIAL_ACK_DIR"
 
-# --- (i) the stuck-page claim and cutover files are ignored by the readers --
 mkpage feat+worker-i 1 SHIP-STEP "$(( $(date +%s) - 5 ))"
 : > "$HIMMEL_DENIAL_ACK_DIR/feat+worker-i.$(( $(date +%s) - 5 )).stuck"
 printf '%s\n' "$(date +%s)" > "$HIMMEL_DENIAL_ACK_DIR/.stuck-cutover"
