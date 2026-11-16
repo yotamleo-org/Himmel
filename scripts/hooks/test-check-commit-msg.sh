@@ -9,14 +9,10 @@ SCRIPT="$HOOKS/check-commit-msg.sh"
 # shellcheck disable=SC1091
 . "$HOOKS/../lib/fixture-tempdir.sh"
 R=$(fixture_mktemp_dir) || exit 1
-# The hook re-reads ticket keys from ~/.himmel/himmel.conf (and the himmelctl
-# cache .env) AFTER the `env -u` in every runner below, so a station whose
-# config sets JIRA_PROJECT_KEY / TICKET_ID_REQUIRED / TRACKER turned the
-# default-posture rows red. Point both readers at an empty dir for every
-# fixture row; the rows that prove THIS repo's real posture unset them.
 CFG=$(fixture_mktemp_dir) || exit 1
 trap 'rm -rf "$R" "$CFG"' EXIT
-export HIMMEL_CONFIG_DIR="$CFG" HIMMELCTL_CACHE_DIR="$CFG"
+isolate_station_config() { export HIMMEL_CONFIG_DIR="$CFG" HIMMELCTL_CACHE_DIR="$CFG"; }
+isolate_station_config
 git -C "$R" init -q
 git -C "$R" config user.email t@t
 git -C "$R" config user.name t
@@ -160,10 +156,6 @@ expect_rc "primary .env supplies strict mode and Jira key" 0 "docs: ENVKEY-9 upd
 expect_rc "live env overrides the primary .env" 0 "docs: no ticket needed" TICKET_ID_REQUIRED=0
 rm -f "$R/.env"
 
-# Control for the HIMMEL_CONFIG_DIR redirect above: the fixture rows are only
-# station-independent if the hook reads config from THAT dir. A himmel.conf
-# placed there is honored (accepts CONFKEY-N, rejects HIMMEL-N); with it gone the
-# default #N posture is back.
 printf 'TICKET_ID_REQUIRED=1\nJIRA_PROJECT_KEY=CONFKEY\n' > "$CFG/himmel.conf"
 expect_rc "redirected himmel.conf is the config the hook reads (accepts its key)" 0 "docs: CONFKEY-9 update docs"
 expect_rc "redirected himmel.conf is the config the hook reads (rejects another key)" 1 "docs: HIMMEL-9 update docs"
