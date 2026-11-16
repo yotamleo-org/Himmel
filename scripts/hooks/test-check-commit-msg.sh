@@ -407,7 +407,7 @@ expect_mode_rc "a TAB in TICKET_ID_REQUIRED fails closed, never shifts the patte
 # Fail CLOSED when the resolver is not installed beside the hook (an adopter
 # payload without the resolver): never a silent env-only fallback.
 NOLIB=$(fixture_mktemp_dir) || exit 1
-trap 'rm -rf "$R" "$G" "$NOLIB"' EXIT
+trap 'rm -rf "$R" "$G" "$NOLIB" "$CFG"' EXIT
 mkdir -p "$NOLIB/hooks"
 cp "$SCRIPT" "$NOLIB/hooks/check-commit-msg.sh"
 printf 'chore: [#12] wire the thing\n' > "$MSG"
