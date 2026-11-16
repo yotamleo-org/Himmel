@@ -780,6 +780,7 @@ sample() {
         tick_state=fail; return
     fi
     tick_line="$(printf '%s\n' "$raw" | grep '^TICK ' | head -n 1)"
+    owed_notifications="$(printf '%s\n' "$raw" | sed -n 's/^ACTION owed-notify=//p' | head -n 1)"
     if [ -z "$tick_line" ]; then fail_step=no-tick-line; tick_state=fail; return; fi
     # A failed or garbled bank read is a failed sample, not a verdict.
     bank="$(bank_word)" || { fail_step=usage-read; tick_state=fail; return; }
@@ -2757,6 +2758,14 @@ while :; do
             if owed_new="$(owed_wake)"; then
                 printf 'WAKE owed-undelivered %s\n%s\n' "$owed_new" "$tick_line"
                 exit_reason='wake-owed-undelivered'; exit 0
+            fi
+            if [ -n "$owed_notifications" ] && [ -n "$console_doc" ]; then
+                printf 'WAKE owed-actions %s\n%s\n' "$owed_notifications" "$tick_line"
+                for owed_notification in ${owed_notifications//,/ }; do
+                    bash "$HERE/owe.sh" close --bucket "${console_doc%/*}" --id "$owed_notification" --key wake-delivered || \
+                        echo "WARN: owed notification $owed_notification acknowledgement failed; it remains pending" >&2
+                done
+                exit_reason='wake-owed-actions'; exit 0
             fi
             if rmlease_new="$(rmlease_wake)"; then
                 printf '%s\n%s\n' "$rmlease_new" "$tick_line"

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Record a proof handoff through owe.sh; never validate/transition a ticket.
+"""Record/check a proof handoff through owe.sh; never transition a ticket.
 
 The producer contract permits free-form Markdown tables and prose. Observations
 below are deliberately conservative: raw artifact hashes and rows, never coverage
-inferred from MET counts. All chief decisions remain pending.
+inferred from MET counts. The existing Jira CLI supplies explicit chief outcomes.
 """
 import argparse
+import datetime
 import hashlib
 import json
 import os
@@ -59,7 +60,11 @@ def read_text(path):
 
 
 def requirements(path):
-    text = read_text(path)
+    return requirement_text(read_text(path))
+
+
+def requirement_text(text):
+    text = text.replace('\r\n', '\n')
     match = re.search(r'^## Description\n', text, re.M)
     if not match:
         raise ValueError('no description')
@@ -91,6 +96,108 @@ def requirements(path):
     if fence or any(not ''.join(found.get(n, [])).strip() for n in ('DoD', 'Proof')):
         raise ValueError('missing/malformed requirement sections')
     return digest([[n, ''.join(found[n])] for n in ('DoD', 'Proof')])
+
+
+def decision(opt):
+    """Check immutable inputs, not semantic coverage or permission.
+
+    The authorized Jira CLI supplies its fresh description/status read. A chief's
+    coverage judgement remains explicit data; this helper has no Jira write path.
+    """
+    rows = json.loads(owe(['list', '--bucket', opt.bucket, '--all', '--json']))
+    row = next((r for r in rows if r['id'] == (opt.check or opt.settle)), None)
+    if not row or row.get('action') != 'validate-proof':
+        raise ValueError('not a proof-validation action')
+    raw = regular_bytes(opt.decision)
+    verdict = json.loads(raw)
+    if verdict.get('identity') != row.get('identity') or verdict.get('verdict') not in ('CLOSE', 'KEEP'):
+        raise ValueError('decision identity/verdict mismatch')
+    close = verdict['verdict'] == 'CLOSE'
+    decision_hash = hashlib.sha256(raw).hexdigest()
+    # Closed actions are immutable. A retry never reopens them or appends another
+    # next action, including after the evidence was subsequently retired.
+    if row['closed']:
+        print(json.dumps({'id': row['id'], 'closed': True}))
+        return
+    if not opt.current_stdin:
+        raise ValueError('fresh current description/status input required')
+    current = json.loads(sys.stdin.buffer.read(MAX_FILE_BYTES + 1))
+    if current.get('key') != row['key']:
+        raise ValueError('current ticket identity mismatch')
+    if not isinstance(current.get('mirror', current.get('description')), str):
+        raise ValueError('current description unreadable')
+    try:
+        current_digest = requirement_text(current['mirror'] if 'mirror' in current else '## Description\n' + current['description'])
+    except ValueError:
+        if close or row.get('requirements_digest'):
+            raise
+        current_digest = None
+    if current_digest != row.get('requirements_digest'):
+        raise ValueError('requirements changed; record new pending validation')
+    artifacts = row.get('evidence_records') or [{'path': row['evidence_path'], 'sha256': row.get('evidence_hash')}]
+    evidence = []
+    for artifact in artifacts:
+        try:
+            data = regular_bytes(artifact['path'])
+        except (OSError, ValueError):
+            if close or artifact.get('sha256'):
+                raise
+            # KEEP may route a known unreadable input to reconciliation. A
+            # formerly hashed input that vanished instead requires a new record.
+            continue
+        if hashlib.sha256(data).hexdigest() != artifact.get('sha256'):
+            raise ValueError('evidence changed/unbound; record new pending validation')
+        evidence.append(data.decode('utf-8', errors='strict' if close else 'replace'))
+    rationale = verdict.get('rationale')
+    if not isinstance(rationale, str) or not rationale.strip():
+        raise ValueError('explicit chief rationale required')
+    if close:
+        unresolved = set(row.get('issues', [])) - {'positive-controls-unvalidated', 'candidate-ancestry-unvalidated', 'coverage-unvalidated'}
+        if row.get('binding') != 'matched' or row.get('recommendation') != 'CLOSE' or unresolved:
+            raise ValueError('unbound/unresolved proof; KEEP/reconciliation required')
+        if any(v['omitted'] or v['truncated_chars'] for v in row.get('observation_counts', {}).values()):
+            raise ValueError('truncated observations require reconciliation')
+        if any(re.search(r'\|\s*(?:NOT MET|OWED|SKIP\w*|ERROR)\s*\|', line, re.I) for text in evidence for line in text.splitlines()):
+            raise ValueError('unmet/skipped/error proof row')
+        for field in ('coverage', 'controls'):
+            citations = verdict.get(field)
+            if not isinstance(citations, list) or not citations:
+                raise ValueError('explicit obligation/control evidence required')
+            for citation in citations:
+                if not isinstance(citation, dict) or not citation.get('obligation') or not isinstance(citation.get('evidence'), str) or not citation['evidence'].strip() or not any(citation['evidence'] in text for text in evidence):
+                    raise ValueError('decision citation is not in recorded evidence')
+        if not isinstance(verdict.get('ancestry'), str) or not verdict['ancestry'].strip():
+            raise ValueError('explicit main/station/candidate ancestry judgement required')
+    else:
+        nxt = verdict.get('next', {})
+        datetime.date.fromisoformat(nxt.get('due', ''))
+        if nxt.get('actor') not in ('proof', 'worker', 'chief', 'operator') or any(not isinstance(nxt.get(f), str) or not nxt[f].strip() or '\n' in nxt[f] for f in ('text', 'capability', 'wake')):
+            raise ValueError('KEEP needs exact action, capable actor, due and wake')
+    if opt.check:
+        print(json.dumps({'id': row['id'], 'identity': row['identity'], 'decision_hash': decision_hash,
+                          'requirements_digest': current_digest, 'verdict': verdict['verdict'], 'semantic_coverage': 'chief-owned'}))
+        return
+    if close and (current.get('status') != 'Done' or current.get('category') != 'done'):
+        raise ValueError('Done readback unconfirmed; validation remains pending')
+    if not close or current.get('unstamped'):
+        nxt = verdict['next'] if not close else dict(actor='chief', capability='version placement',
+              text='Reconcile version placement: ' + str(current['unstamped']), due=datetime.datetime.now(datetime.timezone.utc).date().isoformat(), wake='version placement confirmed')
+        metadata = {k: nxt[k] for k in ('actor', 'capability', 'due', 'wake')}
+        metadata['source_id'] = row['id']
+        metadata['action'] = 'next-step' if not close else 'version-reconciliation'
+        owe(['add', '--bucket', opt.bucket, '--chief', row['chief'], '--kind', 'step', '--key', row['key'],
+             '--text', nxt['text'], '--identity', digest([row['identity'], decision_hash, metadata['action']]),
+             '--metadata-stdin'], json.dumps(metadata))
+    outcome = dict(identity=row['identity'], decision_hash=decision_hash, verdict=verdict['verdict'],
+                   status=current.get('status', ''), version_pending=bool(current.get('unstamped')), rationale=rationale,
+                   decision_json=raw.decode('utf-8'))
+    # Discharge only proof steps this handoff could cover, never later/new work
+    # or a real chief/operator exception. Persist the replacement first on KEEP.
+    for old in rows:
+        if old['id'] in row.get('owed_refs', []) and not old['closed'] and old.get('key') == row['key'] and old['kind'] == 'step' and old.get('actor') == 'proof':
+            owe(['close', '--bucket', opt.bucket, '--id', old['id'], '--key', row['key']])
+    owe(['close', '--bucket', opt.bucket, '--id', row['id'], '--key', row['key'], '--metadata-stdin'], json.dumps({'outcome': outcome}))
+    print(json.dumps({'id': row['id'], 'closed': True, 'outcome': outcome}))
 
 
 def owe(args, metadata=None):
@@ -183,6 +290,7 @@ def record(opt):
         # Generated proof briefs bind Writes to bucket specs/audits files.
         paths = re.findall(r'[^\s`<>]*specs/audits/[^\s`<>]+\.md', source)
         paths = list(dict.fromkeys(paths))
+    prior = json.loads(owe(['list', '--bucket', opt.bucket, '--all', '--json'])) if not opt.dry_run else []
     for key in keys:
         unbound = [p for p in paths if not any(k in Path(p).name for k in keys)]
         attributed = [p for p in paths if key in Path(p).name]
@@ -194,7 +302,8 @@ def record(opt):
                 issues.append('artifact-attribution-unvalidated')
             meta = {'actor': 'chief', 'action': 'validate-proof', 'validation': 'pending',
                     'source_doc': str(Path(doc).resolve()) if doc else '', 'source_label': origin,
-                    'evidence_path': path, 'binding': 'unknown', 'issues': issues}
+                    'evidence_path': path, 'binding': 'unknown', 'issues': issues,
+                    'owed_refs': [r['id'] for r in prior if not r['closed'] and r.get('key') == key and r['kind'] == 'step' and r.get('actor') == 'proof']}
             artifact = ''
             try:
                 raw = regular_bytes(path) if path else None
@@ -284,9 +393,19 @@ def main():
     parser.add_argument('--message-stdin', action='store_true')
     parser.add_argument('--mirror')
     parser.add_argument('--dry-run', action='store_true')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--check', metavar='OWED_ID')
+    mode.add_argument('--settle', metavar='OWED_ID')
+    parser.add_argument('--decision')
+    parser.add_argument('--current-stdin', action='store_true')
     opt = parser.parse_args()
+    if (opt.check or opt.settle) and (not opt.decision or not opt.current_stdin or opt.dry_run or opt.doc or opt.message_stdin):
+        parser.error('decision modes require --decision and --current-stdin; do not combine with recorder/dry-run arguments')
     try:
-        record(opt)
+        if opt.check or opt.settle:
+            decision(opt)
+        else:
+            record(opt)
     except (OSError, ValueError, RuntimeError, MemoryError, UnicodeError) as exc:
         print('proof-handoff: ' + str(exc), file=sys.stderr)
         return 1

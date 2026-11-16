@@ -693,19 +693,7 @@ _ts_remainder_owner() {
 # list line under `## Ticket coverage` before the next heading (`→` or `->`); text is the line without its list mark, ask the
 # text before the owed clause, the date as written.
 ts_owed_lines() {
-    awk '{ sub(/\r$/, "") }
-        /^#/ { cov = (tolower($0) ~ /^##[ \t]+ticket coverage[ \t]*$/); next }
-        cov && /^([-*]|[0-9]+[.)])[ \t]/ {
-            l = tolower($0)
-            if (l ~ /deferred[ \t]*(→|->)/) next
-            if (!match(l, /owed[ \t]*(→|->)[ \t]*(chief|operator)[ \t]+by[ \t]+[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9][^a-z0-9]*$/)) next
-            s = substr(l, RSTART)
-            who = (s ~ /^owed[ \t]*(→|->)[ \t]*chief/) ? "chief" : "operator"
-            match(s, /[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/)
-            a = substr($0, 1, length($0) - length(s)); sub(/^([-*]|[0-9]+[.)])[ \t]+/, "", a); sub(/[ \t:]+$/, "", a); gsub(/\t/, " ", a)
-            t = $0; sub(/^([-*]|[0-9]+[.)])[ \t]+/, "", t); gsub(/\t/, " ", t)
-            print who "\t" substr(s, RSTART, RLENGTH) "\t" a "\t" t
-        }'
+    python3 -I "$_TS_LIB_DIR/pr_remainder.py" --owed-lines
 }
 
 # ts_owed_chief_paths <reader> <KEY> — stdin: a PR body. Runs the reader (pr_remainder.py, the caller's anchor copy) with
@@ -730,6 +718,17 @@ ts_owed_chief_paths() {
     return "$found"
 }
 
+# The broader chief-only policy preserves the path reader's established API.
+ts_owed_chief_steps() {
+    local body paths invalid rc=0
+    body=$(cat) || return 3
+    paths=$(printf '%s' "$body" | ts_owed_chief_paths "$1" "$2") || rc=$?
+    case "$rc" in 0) printf '%s\n' "$paths"; return 0 ;; 3) return 3 ;; esac
+    invalid=$(printf '%s' "$body" | python3 -I "$1" --chief-invalid "$2" 2>/dev/null) || return 3
+    [ -n "$invalid" ] || return 1
+    printf '%s\n' "$invalid"
+}
+
 # _ts_d5d <KEY> <merged PR> [repo] [owed who] [owed due] — rc 0 when the merged PR's remainder names its owner, in
 # TS_D5D_OWNER.
 _ts_d5d() {
@@ -742,7 +741,7 @@ _ts_d5d() {
         if [ -n "$owner" ]; then TS_D5D_OWNER=$owner TS_MERGED_PR=$mpr; return 0; fi
     fi
     case "$owho" in
-        chief|operator) if _ts_date_ok "$odue"; then TS_D5D_OWNER="$owho by $odue" TS_MERGED_PR=$mpr; return 0; fi ;;
+        chief|operator|proof) if _ts_date_ok "$odue"; then TS_D5D_OWNER="$owho by $odue" TS_MERGED_PR=$mpr; return 0; fi ;;
     esac
     [ -z "${TS_SNAPSHOT_DIR:-}" ] || return 1
     body=$(_ts_gh pr view "$mpr" ${repo:+--repo "$repo"} --json body -q .body 2>/dev/null) || return 1
@@ -753,7 +752,7 @@ _ts_d5d() {
         remaining) rest=$(grep -iE '^[[:space:]]*remaining:' <<<"$body") || return 1; owner=$(_ts_remainder_owner "$key" "$rest") || return 1 ;;
         owed)
             rest=${ans#*$'\t'}; owho=${rest%%$'\t'*}; rest=${rest#*$'\t'}; odue=${rest%%$'\t'*}
-            case "$owho" in chief|operator) _ts_date_ok "$odue" || return 1; owner="$owho by $odue" ;; *) return 1 ;; esac ;;
+            case "$owho" in chief|operator|proof) _ts_date_ok "$odue" || return 1; owner="$owho by $odue" ;; *) return 1 ;; esac ;;
         *) return 1 ;;
     esac
     [ -n "$owner" ] || return 1

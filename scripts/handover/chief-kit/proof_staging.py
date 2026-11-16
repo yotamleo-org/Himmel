@@ -95,6 +95,8 @@ def needs(mirror_text, answers=(), unread=(), cli=None):
         steps.append(latest[-1]['text'])
     for a in live:
         steps.extend(a.get('chief_owed') or [])
+        if a.get('kind') == 'owed' and a.get('handed', [])[:1] == ['proof']:
+            steps.append(a['text'])
     for s in steps:
         _scan(s, found)
     free = [t for t in staging if t.lower() != 'none' and t not in _WHO]

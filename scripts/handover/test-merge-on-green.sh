@@ -4484,7 +4484,14 @@ STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "10194 control: an owed-to-operator line naming a repo path merges"
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     STUB_PR_BODY=$'## Ticket coverage\n- a: done\n- set enabled in /etc/himmel/afk-sudo.json and ~/.codex/config.toml on the VM: owed '"$s4_arrow"' chief by '"$s4_d2"$'\n' \
-    run_mog 0 "10194 control: an owed-to-chief line naming only absolute or home paths merges"
+    run_mog 26 "10220: absolute paths alone do not make a step chief-only"
+assert_err_has "10220: the refusal gives proof routing advice" "owed → proof"
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    STUB_PR_BODY=$'## Ticket coverage\n- run the live proof on the station: owed -> chief by '"$s4_d2"$'\n' \
+    run_mog 26 "10220: an executable station proof is not chief-only"
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    STUB_PR_BODY=$'## Ticket coverage\n- sign the spec: owed -> chief by '"$s4_d2"$'\n' \
+    run_mog 0 "10220: a chief signature remains allowed"
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY=$'Remaining: the INTAKE age in tick.sh\n' \
     run_mog 0 "10194 control: a Remaining: line naming a repo path merges"
 s10194_dir=$(mktemp -d "${TMPDIR:-/tmp}/mog-10194.XXXXXX")
@@ -4493,22 +4500,22 @@ if [ -z "$s10194_dir" ] || [ ! -d "$s10194_dir" ]; then
 else
     printf '# chief\n\n## Results\n' > "$s10194_dir/chief.md"
     HIMMEL_CONSOLE_DOC="$s10194_dir/chief.md" HIMMEL_CONSOLE_NAME=AJ-chief STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
-        STUB_PR_BODY=$'## Ticket coverage\n- a: done\n- the live proof: owed '"$s4_arrow"' chief by '"$s4_d2"$'\n- rotate the key: owed -> operator by '"$s4_d3"$'\n' \
+        STUB_PR_BODY=$'## Ticket coverage\n- a: done\n- the live proof: owed '"$s4_arrow"' proof by '"$s4_d2"$'\n- rotate the key: owed -> operator by '"$s4_d3"$'\n' \
         run_mog 0 "10194: a partial merge with two owed lines merges"
     if jq -e -s --arg k "$(printf '%s-%s' HIMMEL 374)" 'length == 2 and all(.op == "add" and .kind == "step" and .key == $k and .chief == "AJ-chief")' "$s10194_dir/owed.jsonl" >/dev/null 2>&1; then pass
     else fail "10194: two open step rows keyed to the ticket, chief from HIMMEL_CONSOLE_NAME (ledger: $(cat "$s10194_dir/owed.jsonl" 2>/dev/null))"; fi
-    if jq -e -s 'any(.text | test("PR #[0-9]+: the live proof: owed → chief by '"$s4_d2"'$")) and any(.text | test("rotate the key: owed -> operator by '"$s4_d3"'$"))' "$s10194_dir/owed.jsonl" >/dev/null 2>&1; then pass
+    if jq -e -s 'any(.actor == "proof" and .due == "'"$s4_d2"'" and (.text | test("PR #[0-9]+: the live proof: owed → proof by '"$s4_d2"'$"))) and any(.actor == "operator" and (.text | test("rotate the key: owed -> operator by '"$s4_d3"'$")))' "$s10194_dir/owed.jsonl" >/dev/null 2>&1; then pass
     else fail "10194: each row's text names the PR, the ask, who and the due date (ledger: $(cat "$s10194_dir/owed.jsonl" 2>/dev/null))"; fi
     rm -f "$s10194_dir/owed.jsonl"
     HIMMEL_CONSOLE_DOC="$s10194_dir/chief.md" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" STUB_PR_BODY=$'Remaining: slice 2\n' \
         run_mog 0 "10194 control: a Remaining: merge"
     if [ -e "$s10194_dir/owed.jsonl" ]; then fail "10194 control: a Remaining: merge writes no owe row ($(cat "$s10194_dir/owed.jsonl"))"; else pass; fi
     HIMMEL_CONSOLE_DOC="$s10194_dir/chief.md" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
-        STUB_PR_BODY=$'## Ticket coverage\n- a: done\n- the live proof: owed '"$s4_arrow"' chief by '"$s4_d2"$'\n' \
+        STUB_PR_BODY=$'## Ticket coverage\n- a: done\n- the live proof: owed '"$s4_arrow"' proof by '"$s4_d2"$'\n' \
         run_mog 0 "10194 control: a completing merge with an owed line" -- --jira-transition
     if [ -e "$s10194_dir/owed.jsonl" ]; then fail "10194 control: a completing merge writes no owe row ($(cat "$s10194_dir/owed.jsonl"))"; else pass; fi
     HIMMEL_CONSOLE_DOC="$s10194_dir/chief.md" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
-        STUB_PR_BODY=$'## Ticket coverage\n- a: done\n- the live proof: owed '"$s4_arrow"' chief by '"$s4_d2"$'\n' \
+        STUB_PR_BODY=$'## Ticket coverage\n- a: done\n- the live proof: owed '"$s4_arrow"' proof by '"$s4_d2"$'\n' \
         run_mog 0 "10194: with no HIMMEL_CONSOLE_NAME"
     if jq -e -s 'length == 1 and .[0].chief == "chief"' "$s10194_dir/owed.jsonl" >/dev/null 2>&1; then pass
     else fail "10194: with no HIMMEL_CONSOLE_NAME the chief is the chief doc's stem (ledger: $(cat "$s10194_dir/owed.jsonl" 2>/dev/null))"; fi

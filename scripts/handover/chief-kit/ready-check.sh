@@ -72,7 +72,7 @@
 #
 #   7. Ticket coverage: the PR body carries a `## Ticket coverage`
 #      section, one list line per ask, each `done`, `deferred → HIMMEL-<n>` or
-#      `owed → chief|operator by YYYY-MM-DD` (`->` accepted; an owed line is
+#      `owed → chief|operator|proof by YYYY-MM-DD` (`->` accepted; an owed line is
 #      read by the anchor's scripts/lib/pr_remainder.py alone and must fall
 #      from today to today + 14 days, UTC, the clock TICKET_STATUS_NOW when
 #      set). FAIL on a missing/empty section, an unmarked line, a
@@ -925,7 +925,7 @@ cov_shape_help() {
     echo "       accepted shape, one line per ask, marker LAST with nothing after it (no trailing prose, parentheses or links):"
     echo "         - <ask>: done"
     echo "         - <ask>: deferred → HIMMEL-<n>"
-    echo "         - <ask>: owed → chief|operator by YYYY-MM-DD   (a step owed after the merge; the date is today to 14 days out, UTC)"
+    echo "         - <ask>: owed → chief|operator|proof by YYYY-MM-DD   (proof is executable; chief needs a chief-only act; date today to 14 days out, UTC)"
     echo "       (-> is accepted for →; a trailing . or bold is fine). Put any explanation BEFORE the marker."
 }
 
@@ -1037,7 +1037,7 @@ else
                 cov_bad="$cov_bad; cannot read the owed line (the anchor's scripts/lib/pr_remainder.py is missing or gave no answer): $cov_oline"
                 cov_shape=1
             elif [ "${cov_oans%%$'\t'*}" != owed ]; then
-                cov_bad="$cov_bad; owed line is not accepted (who chief or operator, then by YYYY-MM-DD, a real date): $cov_oline"
+                cov_bad="$cov_bad; owed line is not accepted (who chief, operator or proof, then by YYYY-MM-DD, a real date): $cov_oline"
                 cov_shape=1
             else
                 cov_window_check "$(printf '%s' "$cov_oans" | cut -f3)" "$cov_oline"
@@ -2146,14 +2146,14 @@ check_partial_remainder() {
         op=$(
             # shellcheck source=/dev/null
             . "$anchor/scripts/lib/ticket-status.sh" 2>/dev/null  # swallow-ok: declare -F on the next line decides, rc 70 is unreadable
-            declare -F ts_owed_chief_paths >/dev/null || exit 70
-            printf '%s' "${cov_body:-}" | ts_owed_chief_paths "$reader" "$key"
+            declare -F ts_owed_chief_steps >/dev/null || exit 70
+            printf '%s' "${cov_body:-}" | ts_owed_chief_steps "$reader" "$key"
         ) || rc=$?
         if [ "$rc" -eq 3 ]; then
             echo "[FAIL] 17. cannot read the owed lines of partial merge $key: the anchor's scripts/lib/pr_remainder.py --units gave no chief-owed answer ($reader), so the merge refuses it (exit 26)"
             mark_fail
         elif [ "$rc" -eq 0 ]; then
-            echo "[FAIL] 17. $key is a partial merge whose \`owed → chief\` line names a repo path ($(printf '%s\n' "$op" | cut -f1 | paste -sd ';' - | sed 's/;/; /g')): that is code, not a chief step, and the merge refuses it (exit 26). Write that work as a \`Remaining: <ask> (<paths>)\` line so it gets a RESUME row, and drop it from the owed lines (gh pr edit $PR --body-file <file>)"
+            echo "[FAIL] 17. $key has an invalid \`owed → chief\` step ($(printf '%s\n' "$op" | paste -sd ';' -)): only a signature, release operator step or explicitly refused station step may owe chief. Use owed → proof for executable proof, or \`Remaining: <ask> (<paths>)\` for code (gh pr edit $PR --body-file <file>)"
             mark_fail
         elif [ "$rc" -eq 70 ]; then
             echo "[WARN] 17. partial merge $key records what remains (${ans%%$'\t'*}); its owed lines were not checked for repo paths: the anchor's scripts/lib/ticket-status.sh has no ts_owed_chief_paths"

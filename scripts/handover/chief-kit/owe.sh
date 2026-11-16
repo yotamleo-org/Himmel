@@ -54,7 +54,7 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 if [ "$METADATA_STDIN" -eq 1 ]; then
-    [ "$CMD" = add ] && [ "$HAVE_METADATA" -eq 0 ] || usage
+    { [ "$CMD" = add ] || [ "$CMD" = close ]; } && [ "$HAVE_METADATA" -eq 0 ] || usage
     if ! METADATA=$(python3 -c 'import json,sys
 raw=sys.stdin.buffer.read(1048577)
 if len(raw)>1048576: raise ValueError("metadata exceeds 1 MiB")
@@ -100,10 +100,13 @@ case "$CMD" in
         fi
         # Additive fields only: never let metadata replace ledger authority/keys.
         # Structured observations are data; their consumers still validate evidence.
-        printf '%s' "$METADATA" | jq -e -s '
+        printf '%s' "$METADATA" | jq -e -s --arg kind "$KIND" '
               length == 1 and (.[0] | type == "object" and all(to_entries[];
-                . as $e | if (["evidence_path","source_doc","source_label","next_action","wake"] | index($e.key)) then ($e.value | type == "string")
+                . as $e | if (["evidence_path","source_doc","source_label","next_action","wake","capability","source_id"] | index($e.key)) then ($e.value | type == "string")
+                elif $e.key == "event" then (["step-due","step-due-invalid","readiness-d24h","operator-digest"] | index($e.value)) != null
+                elif $e.key == "due" then ($e.value | type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$"))
                 elif (["issues","proof_rows"] | index($e.key)) then ($e.value | type == "array" and all(.[]; type == "string"))
+                elif $e.key == "owed_refs" then ($e.value | type == "array" and all(.[]; type == "string" and test("^o[1-9][0-9]*$")))
                 elif $e.key == "evidence_records" then ($e.value | type == "array" and all(.[];
                   type == "object" and (keys - ["path","sha256"] | length) == 0 and (.path | type == "string")
                   and (if has("sha256") then (.sha256 | type == "string" and test("^[0-9a-f]{64}$")) else true end)))
@@ -113,8 +116,9 @@ case "$CMD" in
                   and (.value | type == "object" and (keys | sort) == ["omitted","total","truncated_chars"]
                     and all(.[]; type == "number" and . >= 0 and . <= 9007199254740990 and floor == .)
                     and .omitted <= .total)))
-                elif $e.key == "actor" then $e.value == "chief"
-                elif $e.key == "action" then $e.value == "validate-proof"
+                elif $e.key == "actor" then ($e.value == "chief" or ($kind != "proof" and (["operator","proof","worker"] | index($e.value)) != null))
+                elif $e.key == "action" then ($e.value == "validate-proof" and $kind == "proof") or
+                    ((["next-step","version-reconciliation"] | index($e.value)) != null and $kind == "step") or ($e.value == "notify" and $kind == "ruling")
                 elif $e.key == "validation" then $e.value == "pending"
                 elif $e.key == "recommendation" then (["CLOSE","KEEP","unknown"] | index($e.value)) != null
                 elif $e.key == "binding" then (["matched","unknown","mismatch"] | index($e.value)) != null
@@ -136,6 +140,14 @@ case "$CMD" in
         printf 'o%s\n' "$n"
         ;;
     close)
+        printf '%s' "$METADATA" | jq -e '
+            type == "object" and (keys - ["outcome"] | length) == 0 and
+            (if has("outcome") then .outcome | type == "object" and
+              (keys | sort) == ["decision_hash","decision_json","identity","rationale","status","verdict","version_pending"] and
+              (.identity | test("^[0-9a-f]{64}$")) and (.decision_hash | test("^[0-9a-f]{64}$")) and
+              (.verdict == "CLOSE" or .verdict == "KEEP") and (.status | type == "string") and
+              (.rationale | type == "string") and (.decision_json | type == "string") and (.version_pending | type == "boolean") else true end)
+        ' >/dev/null 2>&1 || { echo 'owe: refused close metadata' >&2; exit 2; }
         [ -n "$ID" ] || usage
         case "$KEY" in ''|*[[:space:]]*|*$'\037'*) echo "owe: close needs --key (a ticket key, sha or decision id), one word" >&2; exit 2 ;; esac
         [ ! -e "$F" ] || lock_ledger
@@ -143,8 +155,8 @@ case "$CMD" in
         [ -s "$F" ] || { echo "owe: no open row '$ID'" >&2; exit 1; }
         open="$(jq -s --arg id "$ID" '([.[] | select(.op == "close") | .ref]) as $c | [.[] | select(.op == "add" and .id == $id and ($c | index($id) | not))] | length' "$F")"
         [ "$open" = 1 ] || { echo "owe: no open row '$ID'" >&2; exit 1; }
-        row="$(jq -cn --arg ref "$ID" --argjson e "$NOW" --arg chief "${CHIEF:-}" --arg key "$KEY" \
-            '{op: "close", ref: $ref, ts: ($e | todate), epoch: $e, chief: $chief, key: $key}')" || exit 4
+        row="$(printf '%s' "$METADATA" | jq -c --arg ref "$ID" --argjson e "$NOW" --arg chief "${CHIEF:-}" --arg key "$KEY" \
+            '{op: "close", ref: $ref, ts: ($e | todate), epoch: $e, chief: $chief, key: $key} + .')" || exit 4
         printf '%s\n' "$row" >> "$F" || exit 4
         persist
         ;;
@@ -157,8 +169,9 @@ case "$CMD" in
         ledger_ok || { echo "owe: $F is unreadable" >&2; exit 4; }
         if [ "$JSON" -eq 1 ]; then
             jq -s --argjson all "$ALL" '
-                ([.[] | select(.op == "close") | .ref]) as $closed
-                | [.[] | select(.op == "add") | .id as $id | . + {closed: ($closed | index($id) != null)}
+                (reduce (.[] | select(.op == "close")) as $c ({}; .[$c.ref] = $c)) as $closed
+                | [.[] | select(.op == "add") | .id as $id | . + {closed: ($closed | has($id))}
+                   + (if $closed[$id].outcome then {outcome: $closed[$id].outcome} else {} end)
                    | select($all == 1 or (.closed | not))]' "$F"
             exit $?
         fi

@@ -276,6 +276,18 @@ rd_ap "$RREL" HIMMEL-8002 d --evidence fresh
 out="$(pd "$RREL" "$RDOC" "$W/pool25.rows")"
 same 'T7: a fresh d row on an In Progress ticket is not counted and is listed why=in-progress' "$(printf '%s\n' "$out" | grep '^# readiness ')/$(printf '%s\n' "$out" | grep '^# readiness-held d ')" '# readiness v1 blocked=1 chief-sign=0 rows-stale=0/# readiness-held d HIMMEL-8002 blocker=- age=2h why=in-progress'
 
+reset_mirror
+rd_record
+RDN=$((E0 + 23 * 3600))
+clock23="$(pd "$RREL" "$RDOC" "$W/pool25.rows")"
+RDN=$((E0 + 25 * 3600))
+clock25="$(pd "$RREL" "$RDOC" "$W/pool25.rows")"
+same '10011 reminders do not change dispatchability' "$(printf '%s\n' "$clock23" | grep '^# pool-counts ')" "$(printf '%s\n' "$clock25" | grep '^# pool-counts ')"
+clock_input="$(printf '%s\n' "$clock25" | sed -n 's/^# readiness-clock //p' | jq -s .)"
+same '10011 readiness supplies accepted since/stamp and elapsed age' "$(printf '%s' "$clock_input" | jq -r '.[0] | [.key,.age_s] | @tsv')" $'HIMMEL-8002\t90000'
+clock_events="$(printf '%s' "$clock_input" | python3 "$HERE/owed-events.py" --bucket "$RDW" --now "$RDN")"
+same '10011 d produces a chief reminder and one operator digest input' "$(printf '%s' "$clock_events" | jq -r '[(.reminders|length),(.operator_digest|length)] | @tsv')" $'1\t1'
+
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick-parked.sh'
     exit 0

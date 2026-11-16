@@ -291,4 +291,37 @@ lacks "S5: an owed line with only operator-owed steps carries no staging field" 
 has "S5: and is still an OWED line" "$out_st" "OWED HIMMEL-322: merged PR #6102 owes operator by 2026-11-20"
 has "S7: a later chief-owed throwaway PR line tags the OWED line whose earliest part is the operator's" "$(orow 323)" "owes operator by 2026-11-18 proof-staging=throwaway-repo"
 
+mk HIMMEL-324 "To Do" "owed proof is executable" "Writes: none. No repo writes."
+printf '## Ticket coverage\n- run the positive control: owed → proof by 2026-11-20\n' > "$PR_BODY_DIR/6105"
+printf '{"ts":"t","event":"merge","key":"HIMMEL-324","pr":"6105","contract":"no","result":"noop"}\n' >> "$STATE/status-events.jsonl"
+out_proof="$(READER_OVERRIDE="$REAL_READER" run)"
+has "proof-owned remainder is startable" "$out_proof" $'RESUME\tHIMMEL-324'
+has "proof-owned remainder has no repo writes" "$(printf '%s\n' "$out_proof" | grep $'^RESUME\tHIMMEL-324')" 'files=-'
+[ "$(printf '%s\n' "$out_proof" | grep $'^RESUME\tHIMMEL-324' | awk -F'\t' '{print $NF}')" = proof ] && pass "proof capability is executable" || fail "missing executable proof capability"
+lacks "proof-owned remainder is not parked OWED" "$out_proof" 'OWED HIMMEL-324:'
+mk HIMMEL-325 "To Do" "proof still needs operator staging" "Writes: none. No repo writes."
+printf '## Ticket coverage\n- run the throwaway PR check: owed → proof by 2026-11-20\n' > "$PR_BODY_DIR/6106"
+printf '{"ts":"t","event":"merge","key":"HIMMEL-325","pr":"6106","contract":"no","result":"noop"}\n' >> "$STATE/status-events.jsonl"
+out_staged="$(READER_OVERRIDE="$REAL_READER" run)"
+has "proof owner retains operator-only staging" "$(printf '%s\n' "$out_staged" | grep $'^RESUME\tHIMMEL-325')" 'proof-staging=throwaway-repo'
+owe="$HERE/owe.sh"
+KEEP_KEY="HIMMEL-$((300 + 24))" OPERATOR_KEY="HIMMEL-$((300 + 25))"
+validation="$(bash "$owe" add --bucket "$WORK" --chief old-chief --kind proof --key "$KEEP_KEY" --text validate --metadata '{"actor":"chief","action":"validate-proof"}')"
+bash "$owe" add --bucket "$WORK" --chief old-chief --kind step --key "$KEEP_KEY" --text 'Fix scripts/lib/keep-next.py' --metadata "{\"actor\":\"worker\",\"action\":\"next-step\",\"source_id\":\"$validation\",\"capability\":\"code worker\",\"due\":\"2026-11-20\",\"wake\":\"worker free\"}" >/dev/null
+out_pending="$(READER_OVERRIDE="$REAL_READER" run)"
+lacks "a next step does not bypass pending chief validation" "$(printf '%s\n' "$out_pending" | grep $'^RESUME\tHIMMEL-324')" 'keep-next.py'
+bash "$owe" close --bucket "$WORK" --id "$validation" --key KEEP >/dev/null
+out_keep="$(READER_OVERRIDE="$REAL_READER" run)"
+has "settled KEEP routes code to an executable worker" "$(printf '%s\n' "$out_keep" | grep $'^RESUME\tHIMMEL-324')" 'files=scripts/lib/keep-next.py'
+[ "$(printf '%s\n' "$out_keep" | grep $'^RESUME\tHIMMEL-324' | awk -F'\t' '{print $NF}')" != proof ] && pass "KEEP code is not sent to a proof worker" || fail "KEEP code misrouted to proof"
+bash "$owe" add --bucket "$WORK" --chief successor --kind proof --key "$KEEP_KEY" --text 'requirements changed; validate again' --metadata '{"actor":"chief","action":"validate-proof"}' >/dev/null
+out_changed="$(READER_OVERRIDE="$REAL_READER" run)"
+lacks "new pending requirements do not inherit a stale KEEP code scope" "$(printf '%s\n' "$out_changed" | grep $'^RESUME\tHIMMEL-324')" 'keep-next.py'
+operator_validation="$(bash "$owe" add --bucket "$WORK" --chief chief --kind proof --key "$OPERATOR_KEY" --text validate --metadata '{"actor":"chief","action":"validate-proof"}')"
+bash "$owe" add --bucket "$WORK" --chief chief --kind step --key "$OPERATOR_KEY" --text 'Operator stages throwaway repo credentials' --metadata "{\"actor\":\"operator\",\"action\":\"next-step\",\"source_id\":\"$operator_validation\",\"due\":\"2026-11-20\",\"wake\":\"operator stages credentials\",\"capability\":\"operator staging\"}" >/dev/null
+bash "$owe" close --bucket "$WORK" --id "$operator_validation" --key KEEP >/dev/null
+out_operator="$(READER_OVERRIDE="$REAL_READER" run)"
+has "a real operator-only KEEP remains explicitly operator-owned" "$out_operator" 'owes operator by 2026-11-20'
+lacks "a proof worker cannot consume an operator-only KEEP action" "$out_operator" $'RESUME\tHIMMEL-325'
+
 if [ "$fails" -eq 0 ]; then echo "next-dispatchable-owed: all rows passed"; else echo "next-dispatchable-owed: $fails row(s) failed"; exit 1; fi

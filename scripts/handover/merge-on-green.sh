@@ -2046,17 +2046,17 @@ if [ -n "$partial_key" ]; then
             exit 26
         fi
         partial_paths_rc=1
-        if declare -F ts_owed_chief_paths >/dev/null; then
+        if declare -F ts_owed_chief_steps >/dev/null; then
             partial_paths_rc=0
-            partial_paths=$(printf '%s' "$partial_body" | ts_owed_chief_paths "$himmel_repo/scripts/lib/pr_remainder.py" "$partial_key") || partial_paths_rc=$?
+            partial_paths=$(printf '%s' "$partial_body" | ts_owed_chief_steps "$himmel_repo/scripts/lib/pr_remainder.py" "$partial_key") || partial_paths_rc=$?
         fi
         if [ "$partial_paths_rc" -eq 3 ]; then
             echo "merge-on-green: cannot read the owed lines of partial merge $partial_key (the anchor's scripts/lib/pr_remainder.py --units gave no chief-owed answer) — refusing. Re-run." >&2
             audit "REFUSED reason=partial-remainder-unreadable repo=$nwo pr=#$pr_num key=$partial_key"
             exit 26
         elif [ "$partial_paths_rc" -eq 0 ]; then
-            partial_paths=$(printf '%s\n' "$partial_paths" | cut -f1 | paste -sd ';' - | sed 's/;/; /g')
-            echo "merge-on-green: PR #$pr_num is a partial merge of $partial_key whose \`owed → chief\` line names a repo path ($partial_paths): that is code, not a chief step — refusing. Write that work as a \`Remaining: <ask> (<paths>)\` line, so the dispatcher offers a RESUME worker, and drop it from the owed lines (gh pr edit $pr_num --body-file <file>)." >&2
+            partial_paths=$(printf '%s\n' "$partial_paths" | paste -sd ';' -)
+            echo "merge-on-green: PR #$pr_num has an invalid \`owed → chief\` step ($partial_paths) — refusing. Only a signature, release operator step or explicitly refused station step may owe chief. Use owed → proof for executable proof, or \`Remaining: <ask> (<paths>)\` for code (gh pr edit $pr_num --body-file <file>)." >&2
             audit "REFUSED reason=partial-owed-names-path repo=$nwo pr=#$pr_num key=$partial_key"
             exit 26
         fi
@@ -3038,19 +3038,24 @@ _merge_pre_row() {
 }
 
 _merge_owe_rows() {
-    local bucket chief owe who text n=0 total=0
+    local bucket chief owe who due text metadata identity n=0 total=0
     case "${HIMMEL_CONSOLE_DOC:-}" in /*) [ -f "$HIMMEL_CONSOLE_DOC" ] || return 0 ;; *) return 0 ;; esac
     declare -F ts_owed_lines >/dev/null || return 0
     bucket=${HIMMEL_CONSOLE_DOC%/*}
     chief=${HIMMEL_CONSOLE_NAME:-}
     if [ -z "$chief" ]; then chief=${HIMMEL_CONSOLE_DOC##*/}; chief=${chief%.md}; fi
     owe="$himmel_repo/scripts/handover/chief-kit/owe.sh"
-    while IFS=$'\t' read -r who _ _ text; do
+    while IFS=$'\t' read -r who due _ text; do
         [ -n "$who" ] || continue
         total=$((total + 1))
-        bash "$owe" add --bucket "$bucket" --chief "$chief" --kind step --key "$1" --text "$1 PR #$2: $text" >/dev/null 2>&1 && n=$((n + 1))
+        metadata=$(jq -cn --arg actor "$who" --arg due "$due" --arg wake "complete the accepted PR #$2 remainder" \
+            '{actor:$actor,due:$due,wake:$wake,action:"next-step",capability:(if $actor == "proof" then "read-only proof worker" else $actor end)}') || return 1
+        identity=$(printf '%s\n' "$1" "$2" "$who" "$due" "$text" | sha256sum | cut -d' ' -f1) || return 1
+        bash "$owe" add --bucket "$bucket" --chief "$chief" --kind step --key "$1" --text "$1 PR #$2: $text" \
+            --identity "$identity" --metadata "$metadata" >/dev/null 2>&1 && n=$((n + 1))
     done <<<"$(printf '%s' "${partial_body//$'\r'/}" | ts_owed_lines)"
     [ "$total" -eq 0 ] || echo "merge-on-green: owed ledger: $n of $total owed line(s) of $1 recorded in $bucket/owed.jsonl" >&2
+    [ "$n" -eq "$total" ]
 }
 
 # jira_auto_transition_on_merge <nwo> <pr> <sha> — the merge's Jira step, then

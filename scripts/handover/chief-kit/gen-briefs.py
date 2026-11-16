@@ -149,7 +149,7 @@ removed, no launcher is written for it, and the run exits 1 with lint's reason.
 
 Exit: 0 ok; 1 a worker is invalid, a worktree failed or brief-lint refused a brief (nothing kept for it); 2 usage.
 """
-import argparse, contextlib, fcntl, hashlib, json, os, re, secrets, shlex, subprocess, sys, tempfile
+import argparse, contextlib, fcntl, hashlib, importlib.util, json, os, re, secrets, shlex, subprocess, sys, tempfile
 from datetime import date as _date, datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from salus_marked import salus_marked, is_adapter  # noqa: E402
@@ -253,7 +253,7 @@ PROOF_CONTRACT = '\n'.join([
     ">    - a RED that cannot be reproduced without an old checkout is cited from the PR or ticket that recorded it, or written `RED NOT REPRODUCED` with why;",
     ">    - the last line is `VERDICT CLOSE` only when every row is MET; any OWED or NOT MET row makes it `VERDICT KEEP <the smallest next slice, with a Writes line>`.",
     "> 4. Post one comment per key ({keys}) with `jira comment <KEY> --comment-file <file>`. Its first line is `PROOF VERDICT <CLOSE|KEEP> evidence=<path>`, then the KEEP slice's Writes line when it is KEEP. No transition, edit, label, link or fixVersion.",
-    "> 5. Paste three reads into the evidence file and the WRAPPED bullet, each of which must print nothing: `git -C <worktree> status --porcelain`, `git -C <worktree> log --oneline origin/main..HEAD`, `gh pr list --head <branch> --state all`. A read that prints anything is a FINDING to the chief, and the verdict is void. Then append `WRAPPED — proof {keys} verdict=<CLOSE|KEEP> evidence=<path>`, release the lock, and run `bash scripts/handover/wrap-subtree-check.sh --queue-doc {doc}`. There is no GO: the chief checks the verdict and rules, and the close is the operator's (decision 847).",
+    "> 5. Paste three reads into the evidence file and the WRAPPED bullet, each of which must print nothing: `git -C <worktree> status --porcelain`, `git -C <worktree> log --oneline origin/main..HEAD`, `gh pr list --head <branch> --state all`. A read that prints anything is a FINDING to the chief, and the verdict is void. Then append `WRAPPED — proof {keys} verdict=<CLOSE|KEEP> evidence=<path>`, release the lock, and run `bash scripts/handover/wrap-subtree-check.sh --queue-doc {doc}`. There is no GO: CLOSE is a recommendation; the chief validates every actual DoD/Proof obligation, positive control, current requirement and applicable main/station/candidate ancestry before closing fully proven work through the existing Jira transition/readback. Errors, skips, missing evidence or semantic uncertainty remain KEEP/reconciliation; this worker has no transition authority.",
 ])
 PROOF_SCOPE = ("> **Scope / do not:** your Writes: {writes}. No repo edit, commit, push, PR or merge; a write outside Writes is a FINDING to the chief, never a claim. "
                "Other live workers and their files: {others}{also}. No settings, CI workflows, SKIP_CR, --no-verify, bisect or old-commit checkout; READ ONLY `scripts/hooks/lib/` "
@@ -534,7 +534,7 @@ def validate(worker, i, repo):
             if k in worker:
                 die('worker %s: kind proof refuses %s (a proof leg opens no PR and writes no repo file)' % (worker['label'], k))
         if completes_of(worker) == 'yes':
-            die('worker %s: a proof brief never completes its ticket; the operator closes it (decision 847)' % worker['label'])
+            die('worker %s: a proof brief never completes its ticket; the chief validates and closes fully proven work' % worker['label'])
         worker.setdefault('commit', PROOF_COMMIT)
         worker.setdefault('live_test', {'none': PROOF_LIVE_TEST})
     if resume and not worker.get('prior'):
@@ -1376,7 +1376,7 @@ def ship_completes(worker, lane='native'):
     # the chief runs the merge; every other lane merges on GO itself.
     found = completes_of(worker)
     shapes = ('; a remaining ask that another ticket owns is a `- <ask>: deferred → KEY` coverage line; a step the chief or operator owes after the merge is '
-              '`- <ask>: owed → chief|operator by YYYY-MM-DD`, at most 14 days out')
+              '`- <ask>: owed → chief|operator|proof by YYYY-MM-DD`, at most 14 days out; executable read-only work owes proof, only a signature/release operator step/refused station step owes chief')
     if found == 'no':
         ct = 'completes-ticket: no (leave the ticket In Progress after the merge)' + shapes
         cmd = '`bash scripts/handover/merge-on-green.sh` (bare, without the Jira-transition flag, typed exactly so as one bare command from the directory you are in, never after `cd` or joined with `&&`, then `--go <the GO file the chief\'s GO message names>`)'
@@ -1515,6 +1515,21 @@ def pr_units(pr, repo, own_keys=()):
     return pr_remainder_units(body, own_keys)
 
 
+def proof_bindings(keys):
+    # Reuse the recorder's exact requirements grammar; never infer a binding
+    # from comments or a permissive second parser.
+    spec = importlib.util.spec_from_file_location('proof_validate', os.path.join(os.path.dirname(__file__), 'proof-validate.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    lines = []
+    for key in keys:
+        try:
+            lines.append('requirements-sha256 %s=%s' % (key, module.requirements(os.path.join(mirror_dir(key), key + '.md'))))
+        except (OSError, UnicodeError, ValueError):
+            lines.append('requirements-binding %s=unknown; reconcile before CLOSE' % key)
+    return '\n'.join(lines) + '\n'
+
+
 def partial_merge_block(keys, repo):
     """The brief's `Already merged` block: every merged contract=no PR of the ticket and its remainder text, so a worker
     never redoes merged work. A PR whose body records no remainder is flagged for a chief note. No such PR, no block."""
@@ -1646,7 +1661,7 @@ template_version: 3
            abline=('\n> **Context:** ab-%s — operator-ruling: HIMMEL-5193\n' % l['ab_arm']) if l.get('ab_arm') else '')
     if l.get('kind') == 'proof':
         vals = dict(doc=kw['doc'], keys=', '.join(keys), extra=kw['extra'], envline=kw['envline'])
-        kw['proofline'] = '\n> **Proof leg:** %s\n' % vals['keys']
+        kw['proofline'] = '\n> **Proof leg:** %s\n%s' % (vals['keys'], proof_bindings(keys))
         if l['label'] in _STAGING:
             kw['proofline'] += ('\n> **Staging needed before launch:** the chief set staged: true for: %s\n'
                                 '> Before step 2, check each is in place (a credential or token on the guest, a GO file at its path, a launch with the named flag). '

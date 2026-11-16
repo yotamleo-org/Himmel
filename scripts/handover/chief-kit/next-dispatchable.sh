@@ -52,8 +52,8 @@
 # `deferred -> <KEY>` lines under `## Ticket coverage` (scripts/lib/pr_remainder.py, the one reader merge-on-green.sh and
 # the brief generator share). A remainder kept on the ticket is a RESUME row (`partial=PR #n merged, Remaining: <text>`); one
 # handed wholly to other tickets prints `HANDED-OFF <KEY>: remainder on <keys>` (the chief closes the ticket or keeps it as an
-# umbrella by hand); a step owed to the chief or operator by a date (`owed -> chief|operator by YYYY-MM-DD`) prints
-# `OWED <KEY>: merged PR #n owes <who> by <date>` (no RESUME row, no chief note: the owner and the date are named); a body with
+# umbrella by hand); a chief/operator step (`owed -> chief|operator|proof by YYYY-MM-DD`) prints
+# `OWED <KEY>: merged PR #n owes <who> by <date>`; proof instead lists as an executable proof RESUME row. A body with
 # neither form prints `NEEDS-CHIEF-NOTE` naming the PR and the line that clears it. PRs read in
 # merge order: a clear remainder supersedes every older PR that records none; a PR newer than it that records none still asks.
 # A newer hand-off or owed PR also supersedes an older `remaining` PR.
@@ -217,6 +217,7 @@ export ND_STACKED="$stacked"
 export ND_GIT_DIR="${NEXT_DISPATCH_GIT_DIR:-$REPO}" ND_MAIN_REF="${NEXT_DISPATCH_MAIN_REF:-origin/main}"
 export ND_TOP="$top" ND_MIRROR="$mirror" ND_WORKERS_FROM="$workers_from" ND_HELD="$held" ND_CLASSIFY="$classify" ND_REPO="$REPO" ND_RESUME_ONLY="$resume_only" ND_OWNERS="$owners" ND_DOC="$doc" ND_POOL_ONLY="$pool_only" ND_WORKERS="$workers" ND_WHY="$why" ND_DISPO="$dispo" ND_LEDGER="$ledger" ND_HOLDS="${ND_HOLDS:-$HERE/holds.py}"
 export ND_STAGING="${ND_STAGING:-$HERE/proof_staging.py}" ND_TICKET_POLICY_CLI="${ND_TICKET_POLICY_CLI:-$REPO/marketplace/plugins/himmel-ops/scripts/ticket-policy-cli.mjs}"
+export ND_OWE="$HERE/owe.sh"
 
 # shellcheck source=scripts/lib/gh-quota.sh
 . "$REPO/scripts/lib/gh-quota.sh"
@@ -545,7 +546,10 @@ def staging_of(i):
             txt = open(os.path.join(mirror, k + '.md'), encoding='utf-8', errors='replace').read()
         except OSError:
             unread.append('mirror file absent')
-        _staged[k] = needs(txt, i.get('parts', ()), unread, os.environ['ND_TICKET_POLICY_CLI'])
+        answers = i.get('parts', ())
+        if i.get('owed_next'):
+            answers = [dict(kind='remaining', text='; '.join(r['text'] for r in i['owed_next']), nowrite=i.get('nowrite', False))]
+        _staged[k] = needs(txt, answers, unread, os.environ['ND_TICKET_POLICY_CLI'])
     return _staged[k]
 
 def proof_field(i):
@@ -1286,6 +1290,9 @@ for i in issues.values() if not pr_unknown else ():
     if partial_resume(i['key']) and i['key'] not in worker_keys and i['key'] not in pr_keys and resume_eligible(i):
         i['parts'] = live_answers([dict(remainder_of(pr, i['key']), pr=pr) for pr in partials[i['key']]])
         latest = [p for p in i['parts'] if p['kind'] == 'remaining'][-1:]
+        proof_parts = [p for p in i['parts'] if p['kind'] == 'owed' and p['handed'][0] == 'proof']
+        if proof_parts and not latest:
+            i.update(files=[], reads=[], src='remainder of PR #%s' % proof_parts[-1]['pr'], no_scope=False, nowrite=True)
         if latest:
             files, reads = split_reads(latest[0]['text'])
             nowrite = not files and latest[0]['nowrite']
@@ -1293,6 +1300,40 @@ for i in issues.values() if not pr_unknown else ():
                 i.update(files=files, reads=reads, src='remainder of PR #%s' % latest[0]['pr'], no_scope=False, nowrite=nowrite)
 
 holds_py = os.environ['ND_HOLDS']
+# A KEEP replacement becomes executable only after its validation action closed.
+# Read the existing ledger once; metadata supplies routing, never permission.
+owed_bucket = os.path.dirname(os.environ.get('ND_DOC') or os.environ.get('ND_WORKERS_FROM') or '')
+if owed_bucket and os.path.lexists(os.path.join(owed_bucket, 'owed.jsonl')):
+    try:
+        result = subprocess.run(['bash', os.environ['ND_OWE'], 'list', '--bucket', owed_bucket, '--all', '--json'],
+                                capture_output=True, text=True, timeout=10)
+        if result.returncode:
+            raise ValueError('owed reader refused')
+        actions = json.loads(result.stdout)
+        closed = {r['id']: r for r in actions if r['closed'] and r.get('action') == 'validate-proof'}
+        latest_validation = {r.get('key'): r['id'] for r in actions if r.get('action') == 'validate-proof'}
+        replacements = {}
+        for action in actions:
+            parent = closed.get(action.get('source_id'))
+            if not action['closed'] and action.get('action') == 'next-step' and action.get('actor') in ('proof', 'worker', 'chief', 'operator') and parent and parent.get('key') == action.get('key') and latest_validation.get(action.get('key')) == parent['id']:
+                replacements.setdefault(action['key'], []).append(action)
+        for key, steps in replacements.items():
+            i = issues.get(key)
+            if not i or key in worker_keys or key in pr_keys:
+                continue
+            runnable = [s for s in steps if s['actor'] in ('proof', 'worker')]
+            if not runnable:
+                i['owed_wait'] = min(steps, key=lambda s: s.get('due', ''))
+                continue
+            steps = runnable
+            code = [s for s in steps if s['actor'] == 'worker']
+            files, reads = split_reads('; '.join(s['text'] for s in code)) if code else ([], [])
+            i.update(files=files, reads=reads, src='owed next step ' + ','.join(s['id'] for s in steps),
+                     no_scope=bool(code) and not files, nowrite=not code, owed_next=steps)
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as exc:
+        print('# next-dispatchable: owed next-step state unreadable: ' + str(exc), file=sys.stderr)
+        sys.exit(3)
+
 for label, doc, lines, wkeys in live_workers:
     try:
         r = subprocess.run([sys.executable, '-I', holds_py, 'parse', doc, '--repo', repo], capture_output=True, text=True, timeout=30)
@@ -1424,6 +1465,10 @@ handed_off = []  # (key, tickets) of in-work tickets whose every partial PR hand
 owed_rows = []  # (key, pr, who, date) of in-work tickets whose newest clear partial PR records a step owed to the chief or operator by a date
 resume = []
 for i in issues.values():
+    if i.get('owed_wait'):
+        step = i['owed_wait']
+        owed_rows.append((i['key'], 'owed:' + step['id'], step['actor'], step['due']))
+        continue
     if not resume_eligible(i):
         continue
     if i['status'] == 'IN CI' and merged_unknown:  # an unread merged-PR set could hide the ticket's merge
@@ -1438,13 +1483,13 @@ for i in issues.values():
         continue
     if any(blocker_state(b) for b in i['blocked_by']):
         continue
-    parts = i.get('parts', [])
+    parts = [] if i.get('owed_next') else i.get('parts', [])
     i['partial'] = [(p['pr'], p['text']) for p in parts]
     if any(p['kind'] == 'none' for p in parts):  # a merged slice whose PR body names no remaining work: not dispatched blind
         needs_note.append((i['key'], [p['pr'] for p in parts if p['kind'] == 'none']))
         continue
     owed_parts = [p for p in parts if p['kind'] == 'owed']
-    if owed_parts and not any(p['kind'] == 'remaining' for p in parts):  # a dated step is owed to the chief or operator and nothing else stays on the ticket: nothing to dispatch (the owed PR with the earliest due date is named)
+    if owed_parts and not any(p['kind'] == 'remaining' or (p['kind'] == 'owed' and p['handed'][0] == 'proof') for p in parts):
         first_due = min(owed_parts, key=lambda p: p['handed'][1])  # the earliest due date; min keeps the older PR on a tie
         owed_rows.append((i['key'], first_due['pr'], first_due['handed'][0], first_due['handed'][1]))
         continue
@@ -1472,6 +1517,9 @@ def stackable_on(i):
 stackable_rows = []
 free = []
 for i in cands:
+    if i.get('owed_wait'):
+        drop(i, 'owned next step: ' + i['owed_wait']['actor'])
+        continue
     if i['key'] in worker_keys or i['key'] in pr_keys:  # a live worker or an open PR already owns the ticket
         drop(i, 'owned by ' + owner.get(i['key'], 'a live worker'))
         continue
@@ -1540,7 +1588,8 @@ for k, keys in handed_off:
 for k, pr, who, due in owed_rows:
     chief_owed = any(a['chief_owed'] for a in issues[k].get('parts', []))
     named = staging_of(issues[k]) if chief_owed else []
-    print('OWED %s: merged PR #%s owes %s by %s%s' % (k, pr, who, due, (' proof-staging=' + ','.join(x[0] for x in named)) if named else ''))
+    source = 'owed action ' + pr[5:] if isinstance(pr, str) and pr.startswith('owed:') else 'merged PR #%s' % pr
+    print('OWED %s: %s owes %s by %s%s' % (k, source, who, due, (' proof-staging=' + ','.join(x[0] for x in named)) if named else ''))
     if named and os.environ.get('ND_WHY') == '1':
         staging_why(issues[k])
 for sid, wdoc in series_orphans:

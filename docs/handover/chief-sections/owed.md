@@ -85,3 +85,44 @@ may differ. `next-action: <text>` and `wake: <text>` are carried when supplied.
 Missing/unreadable artifacts keep stable reconciliation identities from the originating
 doc (label when unavailable), ticket, path and recommendation, without inventing an
 evidence hash. Changed real evidence or requirement identity creates separate review work.
+
+Chief decisions use the normal Jira `transition` with `--proof <id>`,
+`--proof-bucket <dir>` and `--proof-decision <JSON file>`; see
+[proof rows](proof-rows.md). The existing close row and `list --all --json` carry `outcome` with the
+bound `identity`, `decision_hash`, `verdict`, actual `status`, `version_pending`
+and chief `rationale`, plus exact data-only `decision_json` bytes for later review.
+This records a decision, never grants permission. The CLI
+reads live requirements before and after the transition; the proof helper checks
+hashes and quoted citations but leaves semantic coverage to the chief. KEEP
+first appends an idempotent next step with `actor`, `capability`, `due` and `wake`.
+The dispatcher reads settled KEEP `source_id` references to the newest validation,
+routes code to workers and read-only actions to proof, and retains operator staging.
+Pending validation never activates a replacement. The recorder binds exact open
+proof-step IDs in `owed_refs`; later steps, including those in the same clock second,
+are excluded. Those `actor=proof` steps are discharged only after the chief's
+outcome; chief/operator exceptions and later steps remain owned. A confirmed Done
+with unstamped version preserves a chief `action=version-reconciliation` step.
+
+Partial merge `owed → proof by YYYY-MM-DD` steps preserve the actual proof actor
+and due date, list as executable proof rows, and leave the ticket To Do. Chief
+steps use the closed list `sign the spec`, `sign the GO`, `sign the release`,
+`signature`, `chief signature`, `release operator step`, or `station step a worker
+is refused`. Code remains `Remaining:` work. Operator staging stays operator-owned.
+
+Tick projects keyed step dates and readiness reminders into the same owed ledger.
+A step expires after its accepted UTC by-date; missing/invalid evidence emits
+`ACTION owed-invalid=<source ids>` and never means Done. Keyless ticket filing debt
+keeps its existing four-hour clock. A live readiness decision `d` emits
+`# readiness-clock <JSON {version,key,stamp,since,age_s}>`; each elapsed 24-hour
+interval creates a distinct chief reminder, with one operator digest item per
+unchanged ruling. These reminders have no dispatch or hold effect.
+
+Notification rows are `kind=ruling`, `action=notify`, with `actor`, `event`
+(`step-due`, `step-due-invalid`, `readiness-d24h`, `operator-digest`), `source_id`,
+`capability` and `wake`; their normal identity prevents reopening after acknowledgement.
+Tick emits `ACTION owed-notify=<chief notification ids>`, `ACTION readiness-d24h=<ids>`
+and one `ACTION operator-digest=<ids>` input. The waiter prints `WAKE owed-actions`
+then acknowledges chief delivery through `owe.sh close --key wake-delivered`.
+The operator delivery service closes digest ids only after delivery; this unit
+does not send messages. Pending/acknowledged state survives chief succession in
+`owed.jsonl`; no parallel queue or attempt history is introduced.

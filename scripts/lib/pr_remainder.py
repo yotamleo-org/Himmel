@@ -30,7 +30,8 @@ DEFERRED_RE = re.compile(r'\bdeferred[ \t]*(?:→|->)', re.I)
 HANDOFF_RE = re.compile(r'\bdeferred[ \t]*(?:→|->)[^A-Za-z0-9]*([A-Za-z][A-Za-z0-9]*-[0-9]+)[^A-Za-z0-9]*$', re.I)
 LIST_RE = re.compile(r'^(?:[-*]|[0-9]+[.)])[ \t]')
 OWED_ANY_RE =re.compile(r'\bowed[ \t]*(?:→|->)', re.I)
-OWED_RE = re.compile(r'\bowed[ \t]*(?:→|->)[ \t]*(chief|operator)[ \t]+by[ \t]+(\d{4}-\d{2}-\d{2})[^A-Za-z0-9]*$', re.I)
+OWED_RE = re.compile(r'\bowed[ \t]*(?:→|->)[ \t]*(chief|operator|proof)[ \t]+by[ \t]+(\d{4}-\d{2}-\d{2})[^A-Za-z0-9]*$', re.I)
+CHIEF_ONLY_RE = re.compile(r'^(?:sign (?:the |a )?(?:spec|GO|release)|(?:chief )?signature|release operator step|station step (?:a |the )?worker is refused)[ .:;-]*$', re.I)
 NO_WRITE_RE = re.compile(r'(?<![\w-])no (?:code(?! path)|repo(?:sitory)? (?:write|change|edit)s?)\b|(?<![\w-])chief-run\b|\bstate repo\b', re.I)
 SLICE_LABEL_RE = re.compile(r'[ \t]*S\d+[A-Za-z]?\b')
 
@@ -110,8 +111,13 @@ def pr_remainder_units(body, own_keys=()):
         elif key not in handed:
             handed.append(key)
     units = [s for r in remaining for s in slices(r)] + staying + owed_bad
-    extra = {'nowrite': bool(units) and all(NO_WRITE_RE.search(u) for u in units),
-             'chief_owed': [re.sub(r'[\t\r\n]+', ' ', t) for _, who, t in owed if who == 'chief']}
+    chief = [re.sub(r'[\t\r\n]+', ' ', t) for _, who, t in owed if who == 'chief']
+    extra = {'nowrite': (bool(units) and all(NO_WRITE_RE.search(u) for u in units)) or
+                        (not units and bool(owed) and all(who == 'proof' for _, who, _ in owed)),
+             'chief_owed': chief,
+             'chief_invalid': [t for t in chief if not CHIEF_ONLY_RE.search(OWED_RE.sub('', t))],
+             'owed_lines': [{'who': who, 'due': due, 'text': text,
+                             'ask': OWED_RE.sub('', text).rstrip(' \t:')} for due, who, text in owed]}
     if not remaining and not deferred and not owed and not owed_bad:
         return dict(kind='none', handed=[], text='', **extra)
     if not remaining and not owed_bad and whole and owed:  # a deferred line that stays on this ticket is remaining work, and beats an owed step
@@ -133,6 +139,15 @@ def live_answers(answers):
 
 
 def main(argv):
+    if argv[1:2] in (['--owed-lines'], ['--chief-invalid']):
+        a = pr_remainder_units(sys.stdin.buffer.read().decode('utf-8', 'replace'), argv[2:])
+        if argv[1] == '--chief-invalid':
+            for text in a['chief_invalid']:
+                print('chief-only step required; use owed → proof or Remaining: for code\t' + text)
+        else:
+            for line in a['owed_lines']:
+                print('\t'.join(line[f] for f in ('who', 'due', 'ask', 'text')))
+        return 0
     units = argv[1:2] == ['--units']
     if len(argv) != 2 + units:
         print('usage: pr_remainder.py [--units] KEY[,KEY...]  (PR body on stdin)', file=sys.stderr)

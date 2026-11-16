@@ -9,6 +9,9 @@ import { earliestUnreleased, fetchVersions, projectFromKey, setFixVersion } from
 import { admits } from '../release/admits.js';
 import { fileCloseIntake, mergedPrOf, requestLine } from '../release/close-placement.js';
 import { isPhaseLabel, phaseSwap } from '../phase.js';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { renderIssue, type MirrorIssue } from './mirror.js';
 
 // Jira's transitions list names the status each one lands on; the shared
 // JiraTransition type does not declare it.
@@ -51,8 +54,11 @@ export async function transitionIssue(
   options: { version: boolean },
   req: typeof request = request,
 ): Promise<TransitionResult> {
+  const before = status.toLowerCase() === 'done'
+    ? await req<{ fields?: { status?: { name?: string } } }>('GET', `/issue/${key}?fields=status`)
+    : undefined;
   const { transitions } = await req<{ transitions: JiraTransition[] }>('GET', `/issue/${key}/transitions`);
-  const match = findTransition(transitions, status);
+  const match = findTransition(transitions, status) ?? (before?.fields?.status?.name?.toLowerCase() === 'done' ? { id: '', name: 'Done' } : undefined);
   if (!match) throw new TransitionNotFound(status, transitions.map((t) => t.name));
   // ponytail: only the `Done` status stamps; Closed / wont do / wont fix never do, and
   // another Done-category status would need statusCategory from the transition payload.
@@ -83,7 +89,14 @@ export async function transitionIssue(
       }
     }
   }
-  await req('POST', `/issue/${key}/transitions`, { transition: { id: match.id } });
+  // Read first on recovery; a confirmed Done is never transitioned twice.
+  if (before?.fields?.status?.name?.toLowerCase() !== 'done') {
+    try {
+      await req('POST', `/issue/${key}/transitions`, { transition: { id: match.id } });
+    } catch {
+      // A lost response is ambiguous. Only the same readback below can confirm it.
+    }
+  }
   const target = (match as TargetedTransition).to?.name ?? match.name;
   let actual: string | undefined;
   let category: string | undefined;
@@ -197,7 +210,27 @@ export function registerTransition(program: Command): void {
     .command('transition <key> <status>')
     .description('Transition a Jira issue to a new status')
     .option('--no-version', 'Do not stamp the current fixVersion on a versionless Done close')
-    .action(async (key: string, status: string, options: { version: boolean }) => {
+    .option('--proof <id>', 'Bind a chief proof decision to an existing owed validation action')
+    .option('--proof-bucket <path>', 'Existing owed bucket for --proof')
+    .option('--proof-decision <path>', 'Explicit chief evidence decision JSON; grants no permission')
+    .action(async (key: string, status: string, options: { version: boolean; proof?: string; proofBucket?: string; proofDecision?: string }) => {
+      const proofArgs = [options.proof, options.proofBucket, options.proofDecision];
+      if (proofArgs.some(Boolean) && !proofArgs.every(Boolean)) throw new Error('--proof, --proof-bucket and --proof-decision are required together');
+      const proof = async (mode: '--check' | '--settle', unstamped?: string) => {
+        const issue = await request<MirrorIssue & { fields: { status?: { name?: string; statusCategory?: { key?: string } } } }>(
+          'GET', `/issue/${key}?fields=description,status`);
+        if (issue.fields.description === undefined) throw new Error('proof: current requirements unreadable');
+        const mirror = renderIssue(issue, []);
+        const output = execFileSync('python3', [fileURLToPath(new URL('../../../handover/chief-kit/proof-validate.py', import.meta.url)),
+          '--bucket', options.proofBucket!, mode, options.proof!, '--decision', options.proofDecision!, '--current-stdin'],
+          { input: JSON.stringify({ key, mirror, status: issue.fields.status?.name, category: issue.fields.status?.statusCategory?.key, unstamped }), encoding: 'utf8', timeout: 20_000 });
+        return JSON.parse(output) as { closed?: boolean; verdict?: string };
+      };
+      if (options.proof) {
+        const checked = await proof('--check');
+        if (checked.closed) { console.log(`${key} proof action ${options.proof} already discharged`); return; }
+        if (status.toLowerCase() !== (checked.verdict === 'CLOSE' ? 'done' : 'to do')) throw new Error('proof decision requires Done for CLOSE or To Do for KEEP');
+      }
       let result: TransitionResult;
       try {
         result = await transitionIssue(key, status, options);
@@ -208,6 +241,7 @@ export function registerTransition(program: Command): void {
         process.exit(1);
       }
       console.log(`${key} → ${result.name}`);
+      if (options.proof) await proof('--settle', result.unstamped);
       const browse = browseLine(key);
       if (browse) console.log(browse);
       if (result.unstamped) {

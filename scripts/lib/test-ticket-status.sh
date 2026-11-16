@@ -139,6 +139,8 @@ check "10194 an owed-to-chief partial leaves In Progress: D5d To Do" "$TS_RULE/$
 check "10194 the owner names who and the due date" "$TS_D5D_OWNER" 'chief by 2026-11-22'
 owed_merge operator 2026-11-29
 check "10194 an owed-to-operator partial: D5d with the operator named" "$TS_RULE/$TS_D5D_OWNER" 'D5d/operator by 2026-11-29'
+owed_merge proof 2026-11-29
+check "10220 an executable proof partial is To Do with the actual proof owner" "$TS_RULE/$TS_DERIVED/$TS_D5D_OWNER" 'D5d/To Do/proof by 2026-11-29'
 owed_merge chief not-a-date
 check "10194 an owed row with no valid due date stays D5c" "$TS_RULE/$TS_DERIVED" 'D5c/In Progress'
 owed_merge 'chief;x' 2026-11-22

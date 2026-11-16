@@ -607,7 +607,7 @@ has "a scope stating neither keeps the yes Ship step" "$ship_none" "merge-on-gre
 for shape_case in "yes:$ship_yes" "no:$ship_no"; do
     shape_name="${shape_case%%:*}"; shape_ship="${shape_case#*:}"
     has "the $shape_name Ship step names the deferred shape" "$shape_ship" '`- <ask>: deferred → KEY` coverage line'
-    has "the $shape_name Ship step names the owed shape" "$shape_ship" '`- <ask>: owed → chief|operator by YYYY-MM-DD`, at most 14 days out'
+    has "the $shape_name Ship step names the owed shape" "$shape_ship" '`- <ask>: owed → chief|operator|proof by YYYY-MM-DD`, at most 14 days out'
 done
 # shellcheck disable=SC2016 # literal backticks in the expected brief text
 has "the yes Ship step names the relative merge spelling" "$ship_yes" '`bash scripts/handover/merge-on-green.sh --jira-transition`'
@@ -2287,6 +2287,7 @@ o="$(cgrun p1)"; rc=$?
 PB="$(cg_brief p1)"
 [ "$rc" = 0 ] && [ -f "$PB" ] && pass "P1 a kind proof entry with bucket-only Writes generates (rc 0)" || fail "P1 proof entry rc=$rc: $o"
 PBT="$(cat "$PB" 2>/dev/null)"
+if printf '%s\n' "$PBT" | grep -qE '^requirements-sha256 HIMMEL-1=[0-9a-f]{64}$'; then pass "P1 generated proof freezes original requirement identity"; else fail "P1 generated proof has no original requirement binding"; fi
 has "P1 the brief carries the Proof leg line" "$PBT" "> **Proof leg:** HIMMEL-1"
 has "P1 the brief carries Completes ticket: no" "$PBT" "> **Completes ticket:** no"
 has "P1 the brief carries the literal Contract header" "$PBT" "> **Contract:**"
@@ -2369,7 +2370,7 @@ pf_key p3series "w['series']=['N942']" series
 pf_key p3hook "w['hook']=True" hook
 pfmk p3yes "w['scope']='read only. completes-ticket: yes'"
 o="$(cgrun p3yes)"; rc=$?
-[ "$rc" = 1 ] && has "P3 a completes-ticket: yes scope is refused with the operator-closes text" "$o" "worker N941: a proof brief never completes its ticket; the operator closes it (decision 847)" || fail "P3 completes yes rc=$rc: $o"
+[ "$rc" = 1 ] && has "P3 a completes-ticket: yes scope is refused with the chief-validates text" "$o" "worker N941: a proof brief never completes its ticket; the chief validates and closes fully proven work" || fail "P3 completes yes rc=$rc: $o"
 
 pfmk p4proof "w['keys']=['HIMMEL-9801']"
 pfmk p4plain "w['keys']=['HIMMEL-9801']; del w['kind']; w['commit']='docs(x): [HIMMEL-9801] f'; w['live_test']={'none':'x'}"

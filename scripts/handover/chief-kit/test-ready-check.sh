@@ -1264,7 +1264,7 @@ o7 "9561 S4a 7c: 2026-02-30 fails under the BSD date shim" 1 "x: owed $o_ar chie
 o7 "9561 S4a 7c: yesterday fails" 1 "x: owed $o_ar chief by $(o_day -1)"
 o7 "9561 S4a 7c: 15 days out fails" 1 "x: owed $o_ar chief by $(o_day 15)"
 o7 "9561 S4a 7c: 15 days out fails under the BSD date shim" 1 "x: owed $o_ar chief by $(o_day 15)" "$o_bsdpath"
-contains "9561 S4a 7c: a failing owed line prints the owed shape" "$out" "owed → chief|operator by YYYY-MM-DD"
+contains "9561 S4a 7c: a failing owed line prints the owed shape" "$out" "owed → chief|operator|proof by YYYY-MM-DD"
 # item 7 never reads TICKET_STATUS_AWAIT_MAX: the window is a fixed 14 days
 TICKET_STATUS_AWAIT_MAX=7d o7 "9561 S4a 7c: AWAIT_MAX=7d does not shrink the window (10 days out passes)" 0 "x: owed $o_ar chief by $(o_day 10)"
 TICKET_STATUS_AWAIT_MAX=30d o7 "9561 S4a 7c: AWAIT_MAX=30d does not widen the window (15 days out fails)" 1 "x: owed $o_ar chief by $(o_day 15)"
@@ -4128,7 +4128,13 @@ contains "10194 17n: item 17's line names the path" "$R17_LINE" "tick.sh"
 contains "10194 17n: item 17's line names the Remaining: line" "$R17_LINE" "Remaining:"
 R17_OUT="$(STUB_BODY='## Ticket coverage\n- ask one: done\n- set enabled in /etc/himmel/afk-sudo.json: owed \xe2\x86\x92 chief by '"$(o_day 2)"'\n- run scripts/lib/afk-sudo/install.sh: owed \xe2\x86\x92 operator by '"$(o_day 2)"'\n' run || true)"
 R17_LINE="$(printf '%s\n' "$R17_OUT" | grep '\] 17\.' || true)"
-contains "10194 17o control: an absolute path on a chief line and a repo path on an operator line pass item 17" "$R17_LINE" "[PASS] 17."
+contains "10194 17o: a station step without an explicit worker refusal is not chief-only" "$R17_LINE" "[FAIL] 17."
+R17_OUT="$(STUB_BODY='## Ticket coverage\n- ask one: done\n- run the live proof on the station: owed -> chief by '"$(o_day 2)"'\n' run || true)"
+contains "10220 live proof is refused with proof-owner advice" "$R17_OUT" 'owed → proof'
+R17_OUT="$(STUB_BODY='## Ticket coverage\n- ask one: done\n- sign the spec: owed -> chief by '"$(o_day 2)"'\n' run || true)"
+contains "10220 chief-only signature is accepted" "$R17_OUT" '[PASS] 17.'
+R17_OUT="$(STUB_BODY='## Ticket coverage\n- ask one: done\n- run the live proof: owed -> proof by '"$(o_day 2)"'\n' run || true)"
+contains "10220 executable proof is accepted" "$R17_OUT" '[PASS] 17.'
 R17_OUT="$(STUB_BODY="$R17_HANDED"'\nRemaining: x\n' run || true)"
 contains "17k a Remaining: line beside a deferred line passes item 17" "$R17_OUT" "[PASS] 17."
 RUN_FLAGS="--contract yes --require-contract"

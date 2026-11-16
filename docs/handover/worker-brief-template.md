@@ -352,7 +352,7 @@ A ticket whose next step writes nothing (a proof the chief would otherwise run b
 a worker entry with `"kind": "proof"` in `gen-briefs.py`. The generated brief is the fenced brief above with four blocks replaced,
 and every other block (front matter, head lines, Why, Prior art, the Writes line and note, RETASK) unchanged:
 
-- a `> **Proof leg:** <keys>` line and `> **Completes ticket:** no` (the operator closes a proved ticket, decision 847);
+- a `> **Proof leg:** <keys>` line and `> **Completes ticket:** no` (the chief validates and closes fully proven work);
 - no `> **Leg kind:**` line, so a proof LIVE never sets a phase label; with no `live_test` key it carries
   `> **Live test:** none — proof leg: one verdict comment on its own key`;
 - the Contract below, in place of the PR Contract (no PR, no GO, no merge);
@@ -361,7 +361,7 @@ and every other block (front matter, head lines, Why, Prior art, the Writes line
 Writes must name at least one absolute `.md` path directly in a `specs/audits/` directory under the handover root, and nothing else:
 `gen-briefs.py` refuses any other token before it writes a file. A proof leg refuses `grants`, `inherited`, `series` and `hook`, and a
 scope that states `completes-ticket: yes`. Nothing in code stops a repo edit before a PR would open; the barriers are that refusal,
-the brief's text and the three empty reads of step 5, so the chief asks the operator for a close only on evidence that carries them.
+the brief's text and the three empty reads of step 5. The chief validates their evidence before any close; proof workers never receive transition authority.
 
 `gen-briefs.py` keeps its own copy of the Contract (`PROOF_CONTRACT`); a row of `test-gen-briefs.sh` fills this section's slots
 (`{doc}` the brief path, `{keys}` the ticket keys, `{extra}` the entry's `extra`, `{envline}` the CI/infra line) and holds the two byte-equal.
@@ -380,7 +380,7 @@ Edit both together.
 >    - a RED that cannot be reproduced without an old checkout is cited from the PR or ticket that recorded it, or written `RED NOT REPRODUCED` with why;
 >    - the last line is `VERDICT CLOSE` only when every row is MET; any OWED or NOT MET row makes it `VERDICT KEEP <the smallest next slice, with a Writes line>`.
 > 4. Post one comment per key ({keys}) with `jira comment <KEY> --comment-file <file>`. Its first line is `PROOF VERDICT <CLOSE|KEEP> evidence=<path>`, then the KEEP slice's Writes line when it is KEEP. No transition, edit, label, link or fixVersion.
-> 5. Paste three reads into the evidence file and the WRAPPED bullet, each of which must print nothing: `git -C <worktree> status --porcelain`, `git -C <worktree> log --oneline origin/main..HEAD`, `gh pr list --head <branch> --state all`. A read that prints anything is a FINDING to the chief, and the verdict is void. Then append `WRAPPED — proof {keys} verdict=<CLOSE|KEEP> evidence=<path>`, release the lock, and run `bash scripts/handover/wrap-subtree-check.sh --queue-doc {doc}`. There is no GO: the chief checks the verdict and rules, and the close is the operator's (decision 847).
+> 5. Paste three reads into the evidence file and the WRAPPED bullet, each of which must print nothing: `git -C <worktree> status --porcelain`, `git -C <worktree> log --oneline origin/main..HEAD`, `gh pr list --head <branch> --state all`. A read that prints anything is a FINDING to the chief, and the verdict is void. Then append `WRAPPED — proof {keys} verdict=<CLOSE|KEEP> evidence=<path>`, release the lock, and run `bash scripts/handover/wrap-subtree-check.sh --queue-doc {doc}`. There is no GO: CLOSE is a recommendation; the chief validates every actual DoD/Proof obligation, positive control, current requirement and applicable main/station/candidate ancestry before closing fully proven work through the existing Jira transition/readback. Errors, skips, missing evidence or semantic uncertainty remain KEEP/reconciliation; this worker has no transition authority.
 <!-- proof-contract-end -->
 
 ---

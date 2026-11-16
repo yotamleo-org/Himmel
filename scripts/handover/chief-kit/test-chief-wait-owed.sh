@@ -77,5 +77,15 @@ reset
 printf '%s\n' '- 10:00 OWED sig-9615 sign it' '- 10:01 DELIVERED sig-9615 msg=559garbage chat=1' >> "$chief"
 if CHIEF_WAIT_OWED_SEC=0 run_waiter "$WORK/o11.out" 60; then pass 'a receipt whose message id is not a whole number does not clear the item'; else fail 'msg=559garbage cleared sig-9615'; fi
 
+reset
+notification="$(bash "$HERE/owe.sh" add --bucket "$WORK" --chief old-chief --kind ruling --text 'due step wake' --metadata '{"actor":"chief","action":"notify","event":"step-due"}')"
+printf 'ACTION owed-notify=%s\n' "$notification" >> "$STUB/tick.line"
+if run_waiter "$WORK/notification.out" 60; then pass 'a persisted keyed due event wakes the waiter'; else fail 'keyed due event did not wake'; fi
+contains 'the wake names the durable event' "$(cat "$WORK/notification.out")" "WAKE owed-actions $notification"
+contains 'wake acknowledgement persists in the existing ledger' "$(bash "$HERE/owe.sh" list --bucket "$WORK" --all --json)" '"closed": true'
+sed -i '/^ACTION owed-notify=/d' "$STUB/tick.line" # gnu-ok: the chief waiter is Linux-only
+reset
+if run_waiter "$WORK/restart.out" 30; then fail 'acknowledged event woke after restart'; else pass 'acknowledged event stays quiet after restart'; fi
+
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
 echo "$fails failed"; exit 1

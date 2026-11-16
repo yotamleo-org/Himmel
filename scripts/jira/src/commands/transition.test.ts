@@ -17,7 +17,7 @@ vi.mock('node:child_process', async (orig) => {
   return { ...actual, execFileSync };
 });
 
-import { findTransition, registerTransition } from './transition.js';
+import { findTransition, registerTransition, transitionIssue } from './transition.js';
 import { request } from '../client.js';
 import type { JiraTransition } from '../types.js';
 
@@ -93,6 +93,30 @@ async function run(...args: string[]) {
 }
 
 const puts = () => mockRequest.mock.calls.filter((c) => c[0] === 'PUT');
+
+describe('confirmed Done recovery', () => {
+  it('reads Done after a lost POST response, then retries without another mutation', async () => {
+    let done = false;
+    let posts = 0;
+    const req = vi.fn(async (method: string, path: string) => {
+      if (path.endsWith('/transitions') && method === 'GET') return { transitions: LIVE };
+      if (method === 'POST') { done = true; posts++; throw new Error('response lost'); }
+      return { fields: { status: { name: done ? 'Done' : 'To Do', statusCategory: { key: done ? 'done' : 'new' } }, labels: [] } };
+    }) as typeof request;
+    expect((await transitionIssue('HIMMEL-1', 'Done', { version: false }, req)).name).toBe('Done');
+    expect((await transitionIssue('HIMMEL-1', 'Done', { version: false }, req)).name).toBe('Done');
+    expect(posts).toBe(1);
+  });
+
+  it('a denied transition and failed readback never confirms Done', async () => {
+    const req = vi.fn(async (method: string, path: string) => {
+      if (path.endsWith('/transitions') && method === 'GET') return { transitions: LIVE };
+      if (method === 'POST') throw new Error('denied');
+      return { fields: { status: { name: 'To Do' }, labels: [] } };
+    }) as typeof request;
+    await expect(transitionIssue('HIMMEL-1', 'Done', { version: false }, req)).rejects.toThrow(/not changed/);
+  });
+});
 
 describe('transition to Done stamps the current fixVersion', () => {
   beforeEach(() => {

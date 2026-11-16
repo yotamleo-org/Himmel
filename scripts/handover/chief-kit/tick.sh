@@ -848,6 +848,7 @@ if sys.argv[1]:
                 if not in_progress:
                     sign_ages.append(age)
                 held_l.append("# readiness-held d %s blocker=%s age=%s%s" % (key, r["blocker"] or "-", age_text(age), " why=in-progress" if in_progress else ""))
+                held_l.append("# readiness-clock " + json.dumps(dict(version=ver[1], key=key, stamp=r['stamp'], since=r['since'], age_s=age)))
         sign = "%d" % len(sign_ages) + (":" + age_text(max(sign_ages)) if sign_ages else "")
         readiness_lines = ["# readiness %s blocked=%d chief-sign=%s rows-stale=%d" % (ver[1], blocked, sign, rows_stale)] + stale_l + held_l
         ruled = new_ruled
@@ -3831,6 +3832,7 @@ fi
 owed_summary=""
 owed_stale_n=0
 owed_stale_ids=""
+owed_event_actions=""
 if [ -n "$console_doc" ] && [ -s "${console_doc%/*}/owed.jsonl" ]; then
     if owed_rows="$(bash "$HERE/owe.sh" list --bucket "${console_doc%/*}" 2>/dev/null)"; then  # swallow-ok: the else branch prints owed=?
         owed_stale_secs="${OWED_STALE_SECS:-14400}"
@@ -3845,6 +3847,26 @@ if [ -n "$console_doc" ] && [ -s "${console_doc%/*}/owed.jsonl" ]; then
         [ -n "$owed_stale_n" ] || owed_stale_n=0
     else
         owed_summary='?'
+    fi
+fi
+
+# Both clocks use the existing owed identity/ack contract. A reminder grants no
+# hold and is independent of the pool's dispatchability calculation above.
+if [ -n "$console_doc" ] && { [ -s "${console_doc%/*}/owed.jsonl" ] || [[ "${pd_summary:-}" == *'# readiness-clock '* ]]; }; then
+    tick_now_s
+    if owed_events=$(printf '%s\n' "${pd_summary:-}" | sed -n 's/^# readiness-clock //p' | jq -s . | \
+        python3 -I "$HERE/owed-events.py" --bucket "${console_doc%/*}" --now "$tick_now" --stale-seconds "${owed_stale_secs:-14400}"); then
+        owed_summary=$(printf '%s' "$owed_events" | jq -r '.summary')
+        owed_stale_n=$(printf '%s' "$owed_events" | jq '.stale_ids | length')
+        owed_stale_ids=$(printf '%s' "$owed_events" | jq -r '.stale_ids | join(",")')
+        owed_event_actions=$(printf '%s' "$owed_events" | jq -r '
+            (if (.pending | length) > 0 then "ACTION owed-notify=" + (.pending | join(",")) else empty end),
+            (if (.invalid_ids | length) > 0 then "ACTION owed-invalid=" + (.invalid_ids | join(",")) else empty end),
+            (if (.reminders | length) > 0 then "ACTION readiness-d24h=" + (.reminders | join(",")) else empty end),
+            (if (.operator_digest | length) > 0 then "ACTION operator-digest=" + (.operator_digest | join(",")) else empty end)')
+    else
+        owed_summary='?'
+        owed_event_actions='ACTION owed-events=unknown: reconcile unreadable owed/readiness inputs'
     fi
 fi
 
@@ -5075,6 +5097,7 @@ else
         printf 'ACTION owed-stale=%s:%s: a ticket you owe has no key after %sh: file it, then bash %q close --bucket %q --id <id> --key <KEY> (chief-sections/owed.md)\n' \
             "$owed_stale_n" "$owed_stale_ids" "$((owed_stale_secs / 3600))" "$HERE/owe.sh" "${console_doc%/*}"
     fi
+    [ -z "$owed_event_actions" ] || printf '%s\n' "$owed_event_actions"
     decisions_file="${console_doc%/*}/specs/decisions/chief-decisions-$(date +%F).md"
     if [ "$handoff_bytes" -gt "$handoff_budget" ]; then
         printf 'ACTION handoff-over-budget=%s/%s: trim %q: move superseded rulings verbatim to %q, then tighten the Live state (chief-sections/live-state.md)\n' "$handoff_bytes" "$handoff_budget" "$handoff_file" "$decisions_file"
