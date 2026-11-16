@@ -50,8 +50,10 @@
 # driven over SSH. The session must exist (exit 3, never an iTerm fallback).
 #
 # Exit codes: 0 the launched command exited 0; its own rc when it exited
-# nonzero; 2 usage / bad argv; 3 nothing launched (`open` itself failed, or
-# the scratch dir for the launch body could not be created); 5 a malformed
+# nonzero; 2 usage / bad argv; 3 nothing launched (`open` itself failed, the
+# scratch dir for the launch body could not be created, or with
+# HEADED_ARM_TMUX_SESSION the named tmux session does not exist or its
+# `tmux new-window` failed); 5 a malformed
 # KONSOLE_MACOS_STARTUP_TICKS (refused before launching);
 # 4 the launched command never reported a pid within the startup budget (the
 # scratch body is removed on the way out, so a window that opens AFTER the
