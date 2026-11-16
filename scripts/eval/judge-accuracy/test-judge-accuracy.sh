@@ -454,7 +454,7 @@ RH="$TMP/rhome"
 mkdir -p "$RH/.himmel/state/jira-mirror/ZZTEST" "$RH/cache"
 printf 'JIRA_PROJECT_KEY=ZZTEST\n' >"$RH/.himmel/himmel.conf"
 : >"$RH/cache/.env"
-cp "$TMP/mirror/HIMMEL-9005.md" "$RH/.himmel/state/jira-mirror/ZZTEST/HIMMEL-9005.md"
+cp "$TMP/mirror/HIMMEL-9005.md" "$RH/.himmel/state/jira-mirror/ZZTEST/HIMMEL-9005.md" || { echo "test-judge-accuracy: the ZZTEST fixture copy failed" >&2; exit 1; }
 jar() { env -i HOME="$RH" PATH="$PATH" HIMMELCTL_CACHE_DIR="$RH/cache" "$@" python3 -I "$JA" run --verdicts "$TMP/v" --prs "$TMP/prs.json" \
   --queue "$TMP/q-resolver.jsonl" --no-ledger; }
 rc=0; err="$(jar 2>&1 >/dev/null)" || rc=$?
@@ -462,6 +462,9 @@ eq "default mirror: a himmel.conf-only key reads that project's mirror" "$rc" "0
 case "$err" in *"no Jira mirror"*) fail "default mirror: the run still looked for a mirror that is not there: $err";; *) pass "default mirror: no missing-mirror refusal";; esac
 rc=0; err="$(jar HIMMEL_JIRA_MIRROR="$TMP/mirror" 2>&1 >/dev/null)" || rc=$?
 eq "default mirror: HIMMEL_JIRA_MIRROR names the mirror" "$rc" "0"
+rc=0; err="$(jar HIMMEL_JIRA_MIRROR="$TMP/override-missing" 2>&1 >/dev/null)" || rc=$?
+eq "default mirror: a missing HIMMEL_JIRA_MIRROR is the mirror used, not the project's" "$rc" "2"
+has "default mirror: the refusal names the override path" "$err" "no Jira mirror: $TMP/override-missing"
 rc=0; err="$(env -i HOME="$RH" PATH="$PATH" HIMMELCTL_CACHE_DIR="$RH/cache" python3 -I "$JA" run --verdicts "$TMP/v" --prs "$TMP/prs.json" \
   --mirror "$TMP/nope" --queue "$TMP/q-resolver.jsonl" --no-ledger 2>&1 >/dev/null)" || rc=$?
 eq "default mirror: an explicit --mirror still wins over the resolver" "$rc" "2"
@@ -470,7 +473,9 @@ eq "default mirror: MIRROR stays a module-level string, the resolved path" "$(en
   python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import judge_accuracy as j; print(type(j.MIRROR).__name__, j.MIRROR)' "$HERE")" \
   "str $RH/.himmel/state/jira-mirror/ZZTEST"
 mkdir -p "$RH/.himmel/state/jira-mirror/HIMMEL" "$TMP/failbin"
-cp "$TMP/mirror/HIMMEL-9005.md" "$RH/.himmel/state/jira-mirror/HIMMEL/HIMMEL-9005.md"
+cp "$TMP/mirror/HIMMEL-9005.md" "$RH/.himmel/state/jira-mirror/HIMMEL/HIMMEL-9005.md" || { echo "test-judge-accuracy: the HIMMEL fixture copy failed" >&2; exit 1; }
+rc=0; err="$(jar JIRA_PROJECT_KEY=zztest 2>&1 >/dev/null)" || rc=$?
+has "default mirror: a resolver warning is forwarded when resolution succeeds" "$err" "not a valid project key"
 printf '#!/bin/sh\nexit 1\n' >"$TMP/failbin/bash"; chmod +x "$TMP/failbin/bash"
 rc=0; err="$(jar PATH="$TMP/failbin:$PATH" 2>&1 >/dev/null)" || rc=$?
 eq "failed resolver: no --mirror is refused, never read from the HIMMEL mirror" "$rc" "2"

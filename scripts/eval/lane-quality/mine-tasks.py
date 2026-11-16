@@ -352,6 +352,8 @@ def default_mirror():
     else:
         out = r.stdout.strip()
         if r.returncode == 0 and out:
+            if r.stderr:
+                sys.stderr.write(r.stderr)
             return out
         cause = "exit %d" % r.returncode if r.returncode else "no output"
     print("mine-tasks: project resolver failed (%s): no default Jira mirror" % cause, file=sys.stderr)
