@@ -138,6 +138,19 @@ BADMIRROR=$(run --mirror "$TMP/mirror" 2>/dev/null); RC=$?
 check "(b) an unreadable Jira mirror still exits 0" "$RC" "0"
 check "(b) an unreadable Jira mirror is n/a with its reason" \
     "$(printf '%s\n' "$BADMIRROR" | grep '^- Jira mirror:')" "- Jira mirror: n/a (unreadable: $TMP/mirror)"
+# the project resolver fails (judge_accuracy runs it as `bash -c ... judge_accuracy <lib>`, so a BASH_ENV file
+# that exits for that $0 makes it exit 3); with no --mirror the default mirror is None
+# shellcheck disable=SC2016
+printf '%s\n' '[ "$0" = judge_accuracy ] && exit 3' > "$TMP/resolver-fails.sh"
+NOKEY=$(BASH_ENV="$TMP/resolver-fails.sh" "$FLEET" --manifest "$FX/FT-roadmap-chief.fleet.json" --prs "$FX/prs.json" \
+    --cr-ledger "$FX/cr-ledger.jsonl" --verdicts "$FX/verdicts" --denials "$FX/denials.jsonl" --tz UTC 2>/dev/null); RC=$?
+check "(b) a failed project resolver with no --mirror still exits 0" "$RC" "0"
+check "(b) a failed project resolver with no --mirror is n/a with its reason" \
+    "$(printf '%s\n' "$NOKEY" | grep '^- Jira mirror:')" "- Jira mirror: n/a (no project key)"
+KEYMIRROR=$(BASH_ENV="$TMP/resolver-fails.sh" run 2>/dev/null); RC=$?
+check "(b) a failed project resolver with --mirror still exits 0" "$RC" "0"
+check "(b) a failed project resolver with --mirror still reads that mirror" \
+    "$(printf '%s\n' "$KEYMIRROR" | grep '^- Jira mirror:')" "- Jira mirror: $FX/mirror"
 sed 's#^resume_cwd: .*#resume_cwd: /fixture/himmel#' "$FX/HIMMEL-9004-N9004-native-in-flight-2026-10-25.md" \
     > "$TMP/HIMMEL-9005-N9005-primary-checkout-2026-10-25.md"
 printf '%s\n' '{"ts":"2026-10-25T16:30:00Z","session_title":"himmel","cwd":"/fixture/himmel","tool":"Bash"}' > "$TMP/shared-denials.jsonl"
