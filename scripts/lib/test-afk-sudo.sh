@@ -501,6 +501,9 @@ cat > "$FAKE/curl" <<'FAKECURL'
 #!/bin/sh
 printf '%s\n' "$@" > "$CURL_ARGS"
 cat > "$CURL_STDIN"
+# CURL_HTTP_ERR: Telegram answers 400; only curl's --fail turns that into a non-zero exit.
+for a in "$@"; do [ -n "${CURL_HTTP_ERR:-}" ] && [ "$a" = -fsS ] && exit 22; done
+exit 0
 FAKECURL
 chmod +x "$FAKE/sudo" "$FAKE/curl"
 printf 'TELEGRAM_BOT_TOKEN=123:SECRETTOKEN\n' > "$tmp/bridge.env"
@@ -540,6 +543,10 @@ assert_eq "a malformed id sends nothing" "" "$(cat "$tmp/curl.args")"
 card_out=$(CARD_ENV="$tmp/no-such.env" card --card abcdefgh --operator 4242 --session S1); card_rc=$?
 assert_eq "no bridge token: --card exits 5" 5 "$card_rc"
 assert_contains "no bridge token: --card says the card was not sent" "card for abcdefgh not sent" "$card_out"
+card_out=$(CURL_HTTP_ERR=1 card --card abcdefgh --operator 4242 --session S1); card_rc=$?
+assert_eq "Telegram refuses the card (HTTP 400): --card exits 5" 5 "$card_rc"
+card_out=$(CURL_HTTP_ERR=1 card --notify 'one line' --operator 4242); card_rc=$?
+assert_eq "Telegram refuses the line (HTTP 400): --notify exits 5" 5 "$card_rc"
 
 echo "== slice 1a: a spent step stays spent for the next request (HIMMEL-8078 part 2) =="
 for how in deny unknown-id expire; do

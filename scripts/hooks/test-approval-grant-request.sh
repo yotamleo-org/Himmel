@@ -152,6 +152,12 @@ quiet "a grant that will expire"
 if wait_sent "grant abcdefgh from session S1 (chief chief-A) expired, nothing ran"; then echo "PASS the waiter posts the expiry line"; else echo "FAIL the waiter posts the expiry line"; echo "  got: $(cat "$TMP/curl")"; FAILED=1; fi
 has "the expiry line goes to the operator chat" "chat_id=4242" "$(grep -F 'expired, nothing ran' "$TMP/curl")"
 
+: > "$TMP/status"
+run Bash "$CMD"
+quiet "a status query that fails first"
+printf 'result=expired\n' > "$TMP/status"
+if wait_sent "grant abcdefgh from session S1 (chief chief-A) expired, nothing ran"; then echo "PASS a failed status query does not end the waiter"; else echo "FAIL a failed status query does not end the waiter"; FAILED=1; fi
+
 printf 'result=pending\n' > "$TMP/status"; : > "$TMP/status.argv"
 pending 0; MARGIN=1
 run Bash "$CMD"

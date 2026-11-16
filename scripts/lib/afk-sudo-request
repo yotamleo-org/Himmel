@@ -48,7 +48,7 @@ bridge_send() {
     shift 2
     token=$(bridge_token)
     [ -n "$token" ] && printf 'url = "https://api.telegram.org/bot%s/sendMessage"\n' "$token" \
-        | curl -sS -m 10 -o /dev/null -K - \
+        | curl -fsS -m 10 -o /dev/null -K - \
             --data-urlencode "chat_id=${op}" \
             --data-urlencode "text=${text}" "$@"
 }
@@ -97,7 +97,8 @@ if [ -n "$watch" ]; then
     while [ "$(date +%s)" -lt "$deadline" ]; do
         st=$(sudo -n "$HELPER" status "$watch" 2>/dev/null | sed -n 's/^result=\([^ ]*\).*/\1/p')
         case "$st" in
-            pending) sleep "${AFK_SUDO_POLL_S:-3}" ;;
+            # An empty status is a failed query, not an end: keep polling to the deadline.
+            pending | '') sleep "${AFK_SUDO_POLL_S:-3}" ;;
             expired)
                 bridge_send "$operator" "grant $watch from session $(label "$session") (chief ${chief:-none}) expired, nothing ran" || exit 5
                 exit 0 ;;
