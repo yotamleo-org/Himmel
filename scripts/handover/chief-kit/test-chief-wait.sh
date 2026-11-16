@@ -445,7 +445,7 @@ stuck_run() {
     sleep 1.5
     kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 }
-hask_home() { # <name> <key> <path> <holder>: a holds register home with one pending deny; prints the home
+hask_home() {
     local h="$WORK/home-$1" esc d
     esc="${HA_PRIMARY//%/%25}"; esc="${esc//\//%2F}"
     d="$h/.himmel/state/holds/$esc"; mkdir -p "$d"
