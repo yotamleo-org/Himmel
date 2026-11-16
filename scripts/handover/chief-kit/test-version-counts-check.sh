@@ -134,6 +134,23 @@ STUB_FAIL=1 run_vc
 check "jira failure: exit 2" "$RC" "2"
 if grep -q 'VERDICT' <<< "$OUT"; then bad "jira failure: no verdict" "$OUT"; else ok "jira failure: no verdict"; fi
 
+new_case jiragarbage
+mirror_issue HIMMEL-1 "To Do" '[]' '["v1.1.4"]'
+printf 'jira: unexpected response\n' > "$LIVE_DIR/v1.1.4.tsv"
+run_vc
+check "unparseable jira output: exit 2" "$RC" "2"
+if grep -q 'VERDICT' <<< "$OUT"; then bad "unparseable jira output: no verdict" "$OUT"; else ok "unparseable jira output: no verdict"; fi
+
+new_case nostatus
+printf -- '---\nkey: "HIMMEL-1"\nfixVersions: ["v1.1.4"]\n---\n' > "$M/HIMMEL-1.md"
+run_vc
+check "mirror file without status: exit 2" "$RC" "2"
+
+new_case nofixversions
+printf -- '---\nkey: "HIMMEL-1"\nstatus: "To Do"\n---\n' > "$M/HIMMEL-1.md"
+run_vc
+check "mirror file without fixVersions: exit 2" "$RC" "2"
+
 new_case nomirror
 rm -rf "$M"
 run_vc

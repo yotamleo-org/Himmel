@@ -71,7 +71,9 @@ for name in os.listdir(d):
             return json.loads(m.group(1))
         except ValueError:
             return m.group(1)
-    if gone.match(str(val("status") or "")):
+    if val("status") is None or val("fixVersions") is None:
+        sys.exit(1)
+    if gone.match(str(val("status"))):
         continue
     isres = any(res.search(str(x)) for x in val("labels") or [])
     for v in val("fixVersions") or []:
@@ -92,8 +94,12 @@ gone = re.compile(r"^(done|resolved|closed|wont do|won\x27t do)$", re.I)
 res = re.compile(r"(^|-)residual(-|$)")
 o = r = 0
 for line in sys.stdin:
+    if not line.strip():
+        continue
     f = line.rstrip("\n").split("\t")
-    if len(f) < 3 or not re.match(r"^[A-Z][A-Z0-9_]*-[0-9]+$", f[0]) or gone.match(f[2]):
+    if len(f) < 3 or not re.match(r"^[A-Z][A-Z0-9_]*-[0-9]+$", f[0]):
+        sys.exit(1)
+    if gone.match(f[2]):
         continue
     o += 1
     if len(f) >= 5 and any(res.search(x) for x in f[-1].split(",")):
