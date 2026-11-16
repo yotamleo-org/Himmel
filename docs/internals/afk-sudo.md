@@ -82,7 +82,15 @@ the ledger, the requester's output or the attached document. The token and every
 parameter reach curl on stdin (`-K -`).
 
 The bridge bot sends only the id and the Approve / Deny buttons: `afk-sudo-request` and
-`afk-run` no longer forward any request text. An Approve tap asks for the nonce and the
+`afk-run` no longer forward any request text. The notice bot is a different bot, so its
+messages sit in a different Telegram chat from the bridge chat where the chief's messages
+and the Approve prompts are, even though both use `operator_id` as the chat id. An ask
+whose only message comes from the notice bot cannot be approved from the chief's chat. `afk-sudo-request --card ID --operator OP --session S` sends that bridge card
+for a request root has already filed: `AFK grant <id>: read the notice-bot message, then
+approve · session <S> · chief <HIMMEL_CONSOLE_NAME or none>` with the buttons. It exits 0
+once the card is sent, 5 when there is no bridge token or the send fails, and 2 for an id
+that is not 8 base32 characters. The sudo kind's card carries the same session and chief
+words. An Approve tap asks for the nonce and the
 code; a typed or replied `NONCE CODE` pair is held like a bare code, never forwarded to a
 session (a session can call the helper's `approve` itself).
 

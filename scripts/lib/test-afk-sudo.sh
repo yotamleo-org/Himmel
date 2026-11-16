@@ -515,6 +515,31 @@ assert_contains "the Approve button's callback data names the request" "afk:appr
 assert_contains "the Deny button's callback data names the request" "afk:deny:abcdefgh" "$args"
 assert_absent "the bot token never appears in curl's argv" "SECRETTOKEN" "$args"
 assert_contains "the token reaches curl on stdin" "SECRETTOKEN" "$(cat "$tmp/curl.stdin" 2>/dev/null)"
+assert_contains "the sudo card names the asking session" "session s" "$args"
+
+echo "== a grant ask gets its Approve card in the chief's bridge chat =="
+: > "$tmp/curl.args"
+card() {
+    PATH="$FAKE:$PATH" TELEGRAM_ENV="${CARD_ENV:-$tmp/bridge.env}" CURL_ARGS="$tmp/curl.args" CURL_STDIN="$tmp/curl.stdin" \
+        HIMMEL_CONSOLE_NAME="${CARD_CHIEF-AO-roadmap-chief}" bash "$REPO_ROOT/scripts/lib/afk-sudo-request" "$@" 2>&1
+}
+card_out=$(card --card abcdefgh --operator 4242 --session S1); card_rc=$?
+args=$(cat "$tmp/curl.args" 2>/dev/null)
+assert_eq "--card exits 0 once the card is sent" 0 "$card_rc"
+assert_contains "the grant card goes to the operator's bridge chat" "chat_id=4242" "$args"
+assert_contains "the grant card names the request" "text=AFK grant abcdefgh: read the notice-bot message, then approve" "$args"
+assert_contains "the grant card names the asking session" "session S1" "$args"
+assert_contains "the grant card names the asking worker's chief" "chief AO-roadmap-chief" "$args"
+assert_contains "the grant card carries the Approve button" "afk:approve:abcdefgh" "$args"
+assert_contains "the grant card carries the Deny button" "afk:deny:abcdefgh" "$args"
+assert_absent "the bot token never appears in the card's curl argv" "SECRETTOKEN" "$args"
+: > "$tmp/curl.args"
+card_out=$(card --card 'abc"defg' --operator 4242 --session S1); card_rc=$?
+assert_eq "a malformed id is refused as usage" 2 "$card_rc"
+assert_eq "a malformed id sends nothing" "" "$(cat "$tmp/curl.args")"
+card_out=$(CARD_ENV="$tmp/no-such.env" card --card abcdefgh --operator 4242 --session S1); card_rc=$?
+assert_eq "no bridge token: --card exits 5" 5 "$card_rc"
+assert_contains "no bridge token: --card says the card was not sent" "card for abcdefgh not sent" "$card_out"
 
 echo "== slice 1a: a spent step stays spent for the next request (HIMMEL-8078 part 2) =="
 for how in deny unknown-id expire; do
