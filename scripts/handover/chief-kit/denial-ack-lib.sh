@@ -100,3 +100,25 @@ denial_unacked() {
     fi
     printf '%s %s' "$class" "${count:-?}"
 }
+
+denial_stuck_claim() {
+    local f
+    f="$(denial_ack_dir)/$1.$2.stuck"
+    [ ! -e "$f" ] || return 1
+    ( set -C; : > "$f" ) 2>/dev/null || [ ! -e "$f" ]
+}
+
+denial_stuck_cutover() {
+    local f t=""
+    f="$(denial_ack_dir)/.stuck-cutover"
+    [ ! -r "$f" ] || t="$(sed -n 1p "$f")"
+    case "$t" in
+        ''|*[!0-9]*)
+            rm -f "$f"
+            date +%s | atomic_write "$f.$$" 2>/dev/null
+            ln "$f.$$" "$f" 2>/dev/null
+            rm -f "$f.$$"
+            ;;
+    esac
+    [ ! -r "$f" ] || sed -n 1p "$f"
+}

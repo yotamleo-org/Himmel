@@ -342,7 +342,7 @@
 # moved value wakes once (`WAKE tick changed=hreg`), an unchanged one does not; hreg=? keeps the saved value; absent
 # (0/0/0, no register, an older tick) is never a failure and its going away wakes nothing. Every sample that reads a
 # non-zero third count also pages each pending ask ONCE: `HOLD-ASK <key> wants <path> ... <paste-ready grant command>`
-# through the same sender as DENIAL-PAGE; the record `<inbox>.wait.holdasks` (`<key>\t<path>`) is written BEFORE the send.
+# through the same sender as DENIAL-PAGE.
 # stall= (tick.sh: `<pr>:<class>,...` from pr-stall.sh) wakes ONCE per new
 # conflict or no-ci token (a PR, a class): ci-slow and idle are report-only, an unchanged set
 # and a stall resolving do not wake; stall=? (a probe outage) keeps the saved set; absent
@@ -1058,34 +1058,92 @@ page_send() {  # <text> <deadline epoch> [route kind]: the timeout is what is le
 # fails; both steps fail open. The page text is the worker label, count and class
 # only: this file never reads the denial log, only tick.sh's denials= field.
 page_denials() {
-    local worker cls n end rc_name
+    local worker cls n end rc_name kind
     end=$(( $(date +%s) + page_timeout ))  # one budget for the whole batch, not one per worker
     denial_pages "$1" "$2" | while read -r worker cls n; do
-        denial_page_write "$worker" "$n" "$cls" || true
+        kind=denial-page
+        denial_page_write "$worker" "$n" "$cls" || kind=""
         # A native worker launched with Remote Control is answered from the
         # Claude app; name its session. No such session found (claudex, unprofiled): the plain text.
         rc_name="$(rc_session_for "$worker")"
         if [ -n "$rc_name" ]; then
-            page_send "DENIAL-PAGE $worker $cls x$n - a classifier denial parked this worker. Open the Remote Control session $rc_name in the Claude app and answer there, or review it and: ack-denial.sh $worker" "$end"
+            page_send "DENIAL-PAGE $worker $cls x$n - a classifier denial parked this worker. Open the Remote Control session $rc_name in the Claude app and answer there, or review it and: ack-denial.sh $worker" "$end" $kind
         else
-            page_send "DENIAL-PAGE $worker $cls x$n - a classifier denial parked this worker. Review it, then: ack-denial.sh $worker" "$end"
+            page_send "DENIAL-PAGE $worker $cls x$n - a classifier denial parked this worker. Review it, then: ack-denial.sh $worker" "$end" $kind
         fi
     done
 }
 
-# page_hold_asks — page each pending trust-path HOLD-ASK once (holds.py asks: key, path, holder, paste-ready grant
-# command). The record line is written FIRST, so an ask is never paged twice even when the send fails; both steps fail open.
+stuck_secs=1800
+stuck_bound_secs=86400
+stuck_now() {
+    case "${CHIEF_WAIT_NOW:-}" in ''|*[!0-9]*) ;; *) [ "${HIMMEL_TEST_FIXTURE:-}" = 1 ] && { printf '%s' "$CHIEF_WAIT_NOW"; return 0; } ;; esac
+    date +%s
+}
+
 holdask_file="$inbox.wait.holdasks"
+holdstuck_file="$inbox.wait.holdstuck"
 page_hold_asks() {
-    local asks key path holder cmd end
+    local asks key path holder cmd kind end now ptime
     asks="$(timeout -k 2 20 python3 -I "$HERE/holds.py" asks --repo "$REPO" 2>/dev/null </dev/null 9>&-)" || return 0  # gnu-ok: Linux-only kit; swallow-ok: an unreadable register pages nothing this sample, the next one asks again
     end=$(( $(date +%s) + page_timeout ))
-    while IFS=$'\t' read -r key path holder cmd; do
+    now="$(stuck_now)"
+    while IFS=$'\t' read -r key path holder cmd kind; do
         [ -n "$cmd" ] || continue
-        ! grep -qxF -- "$key"$'\t'"$path" "$holdask_file" 2>/dev/null || continue
-        printf '%s\t%s\n' "$key" "$path" >> "$holdask_file" 2>/dev/null || true  # swallow-ok: no record means a repeat page, never a lost one
-        page_send "HOLD-ASK $key wants $path (held by $holder). Paste in a real terminal, not a Claude window, and type the path back: $cmd" "$end"
+        case "$kind" in hold-ask-chief) ;; *) kind=hold-ask-operator ;; esac
+        ptime=""
+        [ ! -f "$holdask_file" ] || ptime="$(awk -F'\t' -v k="$key" -v p="$path" '$1 == k && $2 == p { print ($3 ~ /^[0-9]+$/ ? $3 : 0); exit }' "$holdask_file")"
+        if [ -z "$ptime" ]; then
+            printf '%s\t%s\t%s\n' "$key" "$path" "$(date +%s)" >> "$holdask_file"
+            page_send "HOLD-ASK $key wants $path (held by $holder). Paste in a real terminal, not a Claude window, and type the path back: $cmd" "$end" "$kind"
+            continue
+        fi
+        [ "$kind" = hold-ask-chief ] || continue
+        [ $(( now - ptime )) -ge "$stuck_secs" ] || continue
+        ! grep -qxF -- "$key"$'\t'"$path" "$holdstuck_file" 2>/dev/null || continue
+        printf '%s\t%s\n' "$key" "$path" >> "$holdstuck_file"
+        page_send "A file ask waited 30 min: $key wants $path, held by $holder. Blocks: that worker. Do: in a real terminal, run: $cmd" "$end" hold-ask-stuck
     done <<< "$asks"
+    return 0
+}
+
+doc_written_since() {
+    local m
+    m="$(stat -c %Y "$1")" || return 1  # gnu-ok: Linux-only kit
+    [ "$m" -gt "$2" ]
+}
+ticket_of_doc() {
+    local t
+    t="$(basename "${1:-x}" | grep -oE '^[A-Z][A-Z0-9]*-[0-9]+')" || t="its ticket"
+    printf '%s' "$t"
+}
+page_denials_stuck() {
+    local d pg key label pts now end ldoc ticket rc_name act cutover
+    declare -F denial_stuck_claim >/dev/null || return 0
+    d="$(denial_ack_dir)"
+    [ -d "$d" ] || return 0
+    cutover="$(denial_stuck_cutover)"
+    now="$(stuck_now)"
+    for pg in "$d"/*.page; do
+        [ -r "$pg" ] || continue
+        key="$(basename "$pg" .page)"
+        denial_unacked "$key" >/dev/null || continue
+        pts="$(denial_field "$pg" ts)"
+        [ -z "$cutover" ] || [ "$pts" -gt "$cutover" ] || continue
+        [ $(( now - pts )) -ge "$stuck_secs" ] || continue
+        label="$(denial_field "$pg" leg | tr -cd 'A-Za-z0-9._#+-')"
+        [ -n "$label" ] || label="$key"
+        ldoc="$(worker_doc_of "$label")"
+        if [ -z "$ldoc" ] && [ $(( now - pts )) -gt "$stuck_bound_secs" ]; then continue; fi
+        if [ -n "$ldoc" ] && doc_written_since "$ldoc" "$pts"; then continue; fi
+        ticket="$(ticket_of_doc "$ldoc")"
+        rc_name="$(rc_session_for "$label")"
+        act="run ack-denial.sh $label"
+        [ -z "$rc_name" ] || act="open the Remote Control session $rc_name in the Claude app, or run ack-denial.sh $label"
+        denial_stuck_claim "$key" "$pts" || continue
+        end=$(( $(date +%s) + page_timeout ))
+        page_send "Worker $label on $ticket has been parked 30 min by a classifier denial ($(denial_field "$pg" class)). Blocks: $ticket. Do: $act" "$end" denial-stuck
+    done
     return 0
 }
 
@@ -2614,6 +2672,7 @@ while :; do
             fi
             r0_refold=""
             case "$(field hreg "$tick_line")" in ''|'?'|*/*/0) ;; *) page_hold_asks ;; esac
+            page_denials_stuck
             # a capped waker on a doc quiet past the bound: wake the chief, alert the operator
             if silent_out="$(silent_wake)"; then
                 printf '%s\n%s\n' "$silent_out" "$tick_line"
