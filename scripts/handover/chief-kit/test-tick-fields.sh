@@ -295,9 +295,6 @@ contains 'a failed leak read reads leaks=? (HIMMEL-7153)' "$lk_err" ' leaks=?'
 not_contains 'a failed leak read prints no ACTION line (HIMMEL-7153)' "$lk_err" 'ACTION leaks'
 lk_skip="$(NEXT_DISPATCH_MIRROR="$W/no-such-mirror" TICK_LEAKS_PROBE="$W/lk-probe-3.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 not_contains 'no mirror hides leaks (HIMMEL-7153)' "$lk_skip" 'leaks='
-# --- residual-cap=<version>:<n>[,...]: unreleased versions past 15 open residual slots, counted from the
-# mirror as board.mjs counts them; absent at 15 or fewer. open=<version>:<n>[,...]: every open ticket per
-# unreleased version from the same read, whatever its labels.
 cp_dir="$W/cp"; cp_m="$cp_dir/HIMMEL"; mkdir -p "$cp_m"
 printf 'v1.0.0\ttrue\t2026-01-01\tfalse\nv1.1.3\tfalse\t\tfalse\nv1.1.4\tfalse\t\tfalse\nv1.1.5\tfalse\t\tfalse\n' > "$cp_dir/HIMMEL.versions.tsv"
 cp_n=0

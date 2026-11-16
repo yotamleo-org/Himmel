@@ -3254,14 +3254,6 @@ if [ -n "$leaks_version" ]; then
     fi
 fi
 
-# residual-cap=<version>:<n>[,<version>:<n>]: each unreleased version holding more than 15 open
-# residual tickets (labelled residual, not Done/Resolved/Closed/Wont Do/Wont Fix, by fixVersion), counted from the
-# Jira mirror the way board.mjs counts its CR_SOFT_CAP slots. ABSENT at 15 or fewer, with no mirror or on a failed
-# read; `?` when the tick's deadline cut the read (timeout status 124 or 137).
-# open=<version>:<n>[,<version>:<n>]: from the SAME read, every open ticket per unreleased version, labelled or
-# not, under the same open rule (the `gone` pattern below, one definition for both fields). Every unreleased
-# version with at least one open ticket, in version order; ABSENT with no mirror, on a failed read or with no
-# open ticket; `?` when the deadline cut the read.
 cap_summary=""
 open_summary=""
 if [ -d "$nd_mirror" ] && command -v python3 >/dev/null 2>&1; then
