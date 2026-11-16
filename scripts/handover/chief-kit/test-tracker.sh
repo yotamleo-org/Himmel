@@ -1503,10 +1503,12 @@ gd_doc() {
 gd_doc 'question one more round authority=O-v1.1.3-0001'
 v9611render --owed-dir "$bk" --chief-doc "$bk/$gd_stem.md"
 wgd="$(grep -F 'data-section="waiting"' "$v9611out")"
-contains 'a no-authority hold is shown with its generation age' "$wgd" 'park since 3 chief generations, with no operator words and no wake'
-contains 'and its action' "$wgd" 'action: record the operator&#x27;s words (O- record) or a near wake=, or dispatch it'
+cgd="$(grep -F 'data-section="chief-owes"' "$v9611out")"
+contains 'a no-authority hold is chief-visible with its generation age' "$cgd" 'park since 3 chief generations, with no operator words and no wake'
+not_contains 'a no-authority hold is not operator work' "$wgd" 'park since 3 chief generations'
+contains 'and its action' "$cgd" 'action: record the operator&#x27;s words (O- record) or a near wake=, or dispatch it'
 contains 'an authority row of verb question shows the cited words (I9)' "$wgd" 'question on the operator&#x27;s words: &quot;Approved one more round&quot;'
-contains 'a pr: wake held for 7 days asks to re-decide' "$wgd" 'hold on wake=pr:4999 for 7 days'
+contains 'a pr: wake held for 7 days asks the chief to re-decide' "$cgd" 'hold on wake=pr:4999 for 7 days'
 not_contains 'a pr: wake held for 6 days is not shown' "$wgd" 'wake=pr:4998'
 not_contains 'a date: wake is never shown' "$wgd" 'wake=date:'
 equals 'the holds row replaces the chief doc line of the same key' "$(grep -F -e 'data-section="waiting"' -e 'data-section="chief-owes"' "$v9611out" | grep -o 'hold it' | wc -l | tr -d ' ')" 0
@@ -1514,7 +1516,7 @@ contains 'a pool-disposition line naming the operator and absent from the file i
 not_contains 'a read holds file is not named as unread' "$wgd" 'pool holds unread'
 gd_doc 'question one more round, reworded authority=O-v1.1.3-0001'
 v9611render --owed-dir "$bk" --chief-doc "$bk/$gd_stem.md"
-contains 'a holds row whose doc line changed since the holds run reads unchecked' "$(grep -F 'data-section="waiting"' "$v9611out")" 'question (unchecked: the line changed since the holds run)'
+contains 'a holds row whose doc line changed stays visible for reconciliation' "$(grep -F 'data-section="reconciliation"' "$v9611out")" 'question (unchecked: the line changed since the holds run)'
 printf '{"rows":1}\n' > "$TICK_STATE_DIR/pool-holds-$gd_stem.json"
 gd_doc 'question one more round authority=O-v1.1.3-0001'
 v9611render --owed-dir "$bk" --chief-doc "$bk/$gd_stem.md"
@@ -1819,6 +1821,46 @@ contains 'the version page opens dark with readable text and a light choice stil
 else
     printf 'skip - node not available: dark default contrast rows\n'
 fi
+
+# Shared fixtures exercise the actual readers without live sources.
+if python3 -B - "$HERE" "$W" <<'PYTEST'
+import importlib.util, json, os, pathlib, sys
+here, scratch = map(pathlib.Path, sys.argv[1:])
+spec = importlib.util.spec_from_file_location('tracker', here / 'tracker.py')
+t = importlib.util.module_from_spec(spec); spec.loader.exec_module(t)
+f = json.loads((here / 'fixtures/t1-views.json').read_text())
+for r in f['statuses']:
+    got = t.bucket({'sn': r['status'], 'cat': r['category'], 'res': ''})
+    assert got == r['bucket'], (r, got)
+assert t.bucket({'sn': 'Done', 'cat': 'Done', 'res': 'Duplicate'}) == 'wont'
+b = scratch / 't1-views'; d = b / 'specs/designs'; d.mkdir(parents=True)
+for r in f['specs']:
+    (d / (r['key'] + '-fixture.md')).write_text('# spec\n' + r['marker'])
+    (d / (r['key'] + '-fixture.md.critic-spec-r1.md')).write_text('SPEC CLEAN\n')
+t.round_status_all = lambda _: {'cap': 3, 'classes': ['spend-grant', 'account-or-terms', 'public-policy', 'reverses-ruling'], 'keys': {r['key']: {'spec': 1} for r in f['specs']}}
+(b / 'chief-HANDOFF.md').write_text('## Open operator items\n- <placeholder>\n')
+lines = [r['key'] + ' hold fixture' for r in f['holds']]
+doc = b / 'chief.md'
+doc.write_text('## Live state\nqueue: ' + ' | '.join(r['key'] + ' ' + r['text'] for r in f['queue']) + '\n' + '\n'.join('pool-disposition: ' + l for l in lines))
+state = pathlib.Path(os.environ['TICK_STATE_DIR']); state.mkdir(exist_ok=True)
+(state / 'pool-holds-chief.json').write_text(json.dumps({'rows': [dict(r, verb='hold', line=t.hashlib.sha256(l.encode()).hexdigest()[:12]) for r, l in zip(f['holds'], lines)]}))
+opn = {int(r['key'][7:]): {'title': r['key']} for r in f['specs']}
+items, read, unread, chief, holds_unread = t.operator_owed(str(b), str(doc), 'v1.1.2', opn, {})
+for source, rows in [('unsigned spec', f['specs']), ('chief doc', f['queue']), ('pool hold', f['holds'])]:
+    got = {('HIMMEL-%d' % row[1]): getattr(row, 'actor', actor) for group, actor in [(items, 'operator'), (chief, 'chief')] for row in group if row[0] == source}
+    assert got == {r['key']: r['actor'] for r in rows}, (source, got)
+assert not any(r[0] == 'handoff' for r in items + chief), 'untouched placeholder became an obligation'
+(d / 'HIMMEL-7-fixture.md').write_bytes(b'\xff')
+items, _, unread, chief, _ = t.operator_owed(str(b), str(doc), 'v1.1.2', opn, {})
+assert next(r for r in chief if r[0] == 'unsigned spec' and r[1] == 7).actor == 'unknown'
+assert 'HIMMEL-7-fixture.md' in unread
+from types import SimpleNamespace
+t.subprocess.run = lambda *a, **kw: SimpleNamespace(returncode=0, stdout="HIMMEL-1\tTask\tTo Do\tt\nHIMMEL-2\tTask\tWon’t Fix\tt\nHIMMEL-3\tTask\tResolved\tt\n")
+parity = t.jira_parity([{'k': 1, 'b': 'todo', 's': 'To Do', 'v': 0}, {'k': 3, 'b': 'done', 's': 'Resolved', 'v': 0}], [{'n': 'v1.1.3'}], 0)
+assert ' ok 1/0/0/1' in parity, parity
+print('PASS shared T1 ownership and status fixtures')
+PYTEST
+then pass 'T1 shared responsibility and status parity'; else fail 'T1 shared responsibility and status parity'; fi
 
 printf '%s\n' "$fails failure(s)"
 [ "$fails" -eq 0 ]

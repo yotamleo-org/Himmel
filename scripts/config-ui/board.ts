@@ -161,9 +161,10 @@ export async function refreshDrift(env: Env, cwd: string, timeoutMs = DRIFT_REFR
 // ponytail: the newest chief doc by mtime stands for "the live chief" and its folder for the bucket, upgrade path: the live chiefs' docs by queue lock as Shift reads them.
 //   4. the tick's pool-holds-<chief doc stem>.json (tick.sh --pool-holds): its give-up lines, one row per key, which replace the doc's own
 //      pool-disposition: line of that key; a missing file is named in `unread` and never makes the whole read absent.
-export type OwedItem = { source: "unsigned spec" | "operator-critical finding" | "chief doc" | "handoff" | "owed undelivered" | "unclosed worker" | "pool hold"; key: string | null; title: string; ctx: string; act: string; label?: string; since?: number };
+export type OwedActor = "chief" | "operator" | "worker" | "external" | "unknown";
+export type OwedItem = { actor: OwedActor; source: "unsigned spec" | "operator-critical finding" | "chief doc" | "handoff" | "owed undelivered" | "unclosed worker" | "pool hold"; key: string | null; title: string; ctx: string; act: string; label?: string; since?: number };
 export type Owed = { state: "ok"; items: OwedItem[]; unread: string[]; skipped?: string[] } | Absent;
-const OWED_SOURCES = 3; // unsigned specs, handoff items, chief doc lines
+const OWED_SOURCES = ["unsigned specs", "handoff items", "chief doc lines"];
 type RoundKey = { spec?: unknown; critical_open?: { id: string; class: string; kind: string; round: number; verdict_path: string }[]; error?: string };
 type RoundStatus = { cap: number; classes: string[]; keys: Record<string, RoundKey> };
 const ROUTE = resolve(import.meta.dir, "../telegram/chief-route.ts"), ROUND_LEDGER = "round ledger", POOL_HOLDS = "pool holds";
@@ -174,6 +175,7 @@ function roundStatusAll(bucket: string, env: Env): RoundStatus | undefined {
   } catch { return undefined; }
 }
 const OWED_RE = /operator[ -](?:sign-?off|runs?|words|signs?|decides?|on Telegram|only)|Telegram ask|operator-owed/i;
+const OPERATOR_CLASS_RE = /\bspend|\bgrants?\b|\bpaid\b|billing|payment|\baccounts?\b|\bterms\b|\btos\b|\broot\b|\bsudo(?:ers)?\b|reinstall|admin install|\boauth\b|api credit|\bphysical(?:ly)?\b|hardware|public[ -]polic|policy call/i;
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 // The lines under `## <heading>` up to the next `## `; undefined when the file has no such section.
 function mdSection(text: string, heading: string): string[] | undefined {
@@ -208,6 +210,7 @@ function specItems(bucket: string, version: string, open: Map<string, string>, s
   }
   const status = roundStatusAll(bucket, env), items: OwedItem[] = [];
   if (!status) unread.push(ROUND_LEDGER);
+  const critical = status ? new RegExp(`^OPERATOR-CRITICAL:[ \\t]*(${status.classes.map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\b`, "m") : undefined;
   for (const [spec, { f }] of [...latest].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))) {
     const key = spec.match(/[A-Z][A-Z0-9]*-\d+/)?.[0];
     const st = status && key ? status.keys[key] : undefined;
@@ -217,15 +220,36 @@ function specItems(bucket: string, version: string, open: Map<string, string>, s
     try { last = utf8(join(dir, f)).split("\n").map((x) => x.trim()).filter(Boolean).pop(); } catch { /* named below */ }
     if (last === undefined) { skipped.push(f); continue; } // an empty, unreadable or non-UTF-8 critic file skips that one spec, and says so
     if (!key || !open.has(key) || signed.has(specId(join(dir, spec))) || !(last === "SPEC CLEAN" || n >= status.cap)) continue;
-    items.push({ source: "unsigned spec", key, title: open.get(key)!, act: "sign the spec, or rule on its findings",
+    let actor: OwedActor = "chief";
+    for (const path of [join(dir, spec.endsWith(".md") ? spec : `${spec}.md`), join(dir, f)]) {
+      try { if (critical?.test(utf8(path))) actor = "operator"; } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== "ENOENT") { skipped.push(basename(path)); if (actor !== "operator") actor = "unknown"; }
+      }
+    }
+    items.push({ actor, source: "unsigned spec", key, title: open.get(key)!, act: actor === "unknown" ? "reconcile the unread spec evidence" : "sign the spec, or rule on its findings",
       ctx: `${spec}: latest critic round ${n} reads ${/^SPEC (?:CLEAN|FINDINGS \d+)$/.test(last) ? last : "no verdict line"}, no spec row in operator.jsonl` });
   }
   for (const [key, st] of Object.entries(status?.keys ?? {}).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))) {
     if (!open.has(key) || !Array.isArray(st.critical_open) || !st.critical_open.length) continue;
-    items.push({ source: "operator-critical finding", key, title: open.get(key)!, act: "rule on each finding; the chief records the ruling with chief-route.ts round-critical",
+    items.push({ actor: "operator", source: "operator-critical finding", key, title: open.get(key)!, act: "rule on each finding; the chief records the ruling with chief-route.ts round-critical",
       ctx: st.critical_open.map((c) => `${c.id} (${c.class}) in ${c.kind} round ${c.round}, ${basename(String(c.verdict_path))}`).join("; ") });
   }
   return items;
+}
+function handoffAnswered(bucket: string, handoff: string, line: string): boolean {
+  const keys = [...line.matchAll(/HIMMEL-\d+/g)].map((m) => m[0]);
+  const asks = [...line.matchAll(/"([^"]{6,})"/g)].map((m) => m[1].toLowerCase().split(/\s+/).join(" "));
+  if (!keys.length && !asks.length) return false;
+  const dir = join(bucket, "specs", "decisions");
+  let files: string[];
+  try { files = readdirSync(dir); } catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return false; throw e; }
+  for (const f of files.filter((f) => /^verbatim-decision-.*\.txt$/.test(f))) {
+    const path = join(dir, f);
+    if (statSync(path).mtimeMs <= statSync(handoff).mtimeMs) continue;
+    const text = utf8(path), flat = text.toLowerCase().split(/\s+/).join(" ");
+    if (keys.every((k) => new RegExp(`${k}\\b`).test(text)) && asks.every((a) => flat.includes(a))) return true;
+  }
+  return false;
 }
 function handoffItems(bucket: string): OwedItem[] | undefined {
   let best: { f: string; t: number } | undefined;
@@ -235,8 +259,12 @@ function handoffItems(bucket: string): OwedItem[] | undefined {
     if (!best || t > best.t) best = { f, t };
   }
   const sec = best ? mdSection(readText(join(bucket, best.f)), "Open operator items") : undefined;
-  return sec?.map((l) => l.trim()).filter((l) => l && !/^[-*\s]*none\.?$/i.test(l))
-    .map((l) => ({ source: "handoff" as const, key: null, title: clip(l.replace(/^[-*]\s+/, ""), 140), ctx: best!.f, act: "answer the open item" }));
+  return sec?.map((l) => l.trim()).filter((l) => l && !/^[-*\s]*(?:none\.?|<placeholder>)$/i.test(l))
+    .map((l): OwedItem => {
+      const answered = handoffAnswered(bucket, join(bucket, best!.f), l);
+      return { actor: answered ? "chief" : "operator", source: "handoff", key: null, title: clip(l.replace(/^[-*]\s+/, ""), 140), ctx: best!.f,
+        act: answered ? "the chief records the operator answer" : "answer the open item" };
+    });
 }
 const POOL_HOLD_ACT = "record the operator's words (O- record) or a near wake=, or dispatch it", HOLDS_TTL_MS = 30 * 60 * 1000;
 type HoldRow = { key?: unknown; line?: unknown; verb?: unknown; class?: unknown; reason?: unknown; age_gen?: unknown; age_days?: unknown; words?: unknown; wake?: unknown };
@@ -263,7 +291,7 @@ function poolHoldItems(doc: string, open: Map<string, string>, env: Env): OwedIt
     const key = typeof r.key === "string" && /^[A-Z][A-Z0-9]*-\d+$/.test(r.key) ? r.key : undefined;
     if (!key || seen.has(key) || !lines.has(key)) continue;
     const verb = String(r.verb), wake = typeof r.wake === "string" ? r.wake : "", days = typeof r.age_days === "number" ? r.age_days : -1;
-    let ctx: string, act: string;
+    let ctx: string, act: string, actor: OwedActor = "chief";
     if (lines.get(key) !== r.line) { ctx = `${verb} (unchecked: the line changed since the holds run)`; act = POOL_HOLD_ACT; }
     else if (r.class === "invalid") { ctx = `${verb}: ${String(r.reason)}`; act = POOL_HOLD_ACT; }
     else if (r.class === "no-authority" || r.class === "unchecked") {
@@ -272,9 +300,12 @@ function poolHoldItems(doc: string, open: Map<string, string>, env: Env): OwedIt
       act = POOL_HOLD_ACT;
     } else if (r.class === "authority") { ctx = `${verb} on the operator's words: "${String(r.words)}"`; act = "none, unless the words do not say this"; }
     else if (r.class === "wake" && days >= 7 && /(?:^|,)(?:pr[:-]|done:)/.test(wake)) { ctx = `${verb} on wake=${wake} for ${days} days`; act = "re-decide: dispatch it, or record the operator's words"; }
-    else continue;
+    else if (r.class === "wake") continue;
+    else { ctx = `${verb} (unchecked: unknown hold class ${String(r.class)})`; act = "reconcile the hold evidence"; }
+    if (lines.get(key) !== r.line || r.class === "invalid" || r.class === "unchecked" || !["no-authority", "authority", "wake"].includes(String(r.class))) actor = "unknown";
+    else if (r.class === "authority") actor = typeof r.words === "string" && r.words.trim() ? "operator" : "unknown";
     seen.add(key);
-    items.push({ source: "pool hold", key, title: open.get(key) ?? key, ctx: clip(ctx, 200), act });
+    items.push({ actor, source: "pool hold", key, title: open.get(key) ?? key, ctx: clip(ctx, 200), act });
   }
   return items;
 }
@@ -289,7 +320,8 @@ function chiefDocItems(doc: string, open: Map<string, string>, held: Set<string>
       const key = s.match(/[A-Z][A-Z0-9]*-\d+/)?.[0];
       if (key && held.has(key) && l.startsWith("pool-disposition:")) continue;
       const known = !!key && open.has(key);
-      items.push({ source: "chief doc", key: known ? key! : null, title: known ? open.get(key!)! : clip(s, 140), ctx: known ? clip(s, 160) : "from the chief doc's Live state", act: "the operator acts on what the line names" });
+      const actor = OPERATOR_CLASS_RE.test(s) ? "operator" : "chief";
+      items.push({ actor, source: "chief doc", key: known ? key! : null, title: known ? open.get(key!)! : clip(s, 140), ctx: clip(s, 160), act: `the ${actor} acts on what the line names` });
     }
   }
   return items;
@@ -303,7 +335,7 @@ function undeliveredItems(doc: string, open: Map<string, string>): OwedItem[] {
     seen.add(m[1]);
     if (lines.some((x) => new RegExp(`^- (?:\\d{1,2}:\\d{2} )?DELIVERED ${m[1].replace(/[.]/g, "\\.")} msg=\\d+ chat=-?\\d+(?: .*)?$`).test(x))) continue;
     const key = /^[A-Z][A-Z0-9]*-\d+$/.test(m[1]) && open.has(m[1]) ? m[1] : null;
-    items.push({ source: "owed undelivered", key, title: key ? open.get(key)! : clip(`${m[1]}: ${m[2] ?? ""}`.replace(/: $/, ""), 140),
+    items.push({ actor: "chief", source: "owed undelivered", key, title: key ? open.get(key)! : clip(`${m[1]}: ${m[2] ?? ""}`.replace(/: $/, ""), 140),
       ctx: `${key ? `${clip(m[2] ?? m[1], 120)}: ` : ""}OWED ${m[1]} has no DELIVERED receipt in ${basename(doc)}`, act: `the chief sends it with chief-route.ts reply --owed ${m[1]}` });
   }
   return items;
@@ -324,7 +356,7 @@ function unclosedItems(doc: string, env: Env): OwedItem[] {
     if (!label || !/^\d+$/.test(first ?? "") || !heldOverATick(wrote, Number(first))) continue;
     const disp = new RegExp(`^- (?:\\d{1,2}:\\d{2} )?(?:\\*\\*)?DISPOSITION ${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} (?:closed(?:[^A-Za-z]|$)|parked [^ \\n]|given-up [^ \\n])`, "gm");
     if ((text.match(disp)?.length ?? 0) > (/^\d+$/.test(base ?? "") ? Number(base) : 0)) continue;
-    items.push({ source: "unclosed worker", key: null, label, since: Number(first), title: `${label} is finished and its window is still open`,
+    items.push({ actor: "chief", source: "unclosed worker", key: null, label, since: Number(first), title: `${label} is finished and its window is still open`,
       ctx: `the tick has held it open since it was first seen, and ${basename(doc)} has no DISPOSITION bullet for it`,
       act: `the chief closes it, or records DISPOSITION ${label} closed, parked <wake> or given-up <reason>` });
   }
@@ -359,8 +391,20 @@ export function readOwed(env: Env, read: typeof readRoadmap = readRoadmap): Owed
   try {
     const r = read({ mirrorDir: mirror, projects: [{ key: proj, dir: mirror }], workers: { state: "absent" } });
     running = r.versions[r.cur]?.n.replace(new RegExp(` \\(${proj}\\)$`), "");
-    for (const t of r.tickets) if (t.v === r.cur && (t.b === "todo" || t.b === "prog" || t.b === "rev" || t.b === "ci")) open.set(t.id ?? `${proj}-${t.k}`, t.t);
-  } catch (e) { why.push(`the open tickets could not be read: ${(e as Error).message}`); }
+    const terminal = /^(done|resolved|closed|in public|won['’]?t do|won['’]?t fix)$/i;
+    for (const t of r.tickets) {
+      if (t.v !== r.cur || !["todo", "prog", "rev", "ci"].includes(t.b)) continue;
+      const key = t.id ?? `${proj}-${t.k}`;
+      if (terminal.test(t.s.trim())) continue;
+      let head = "";
+      try { head = readText(join(mirror, `${key}.md`)).split("\n---")[0]; } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+      }
+      const category = head.match(/^statusCategory: (.*)$/m)?.[1];
+      if (category !== undefined && terminal.test(String(JSON.parse(category)).trim())) continue;
+      open.set(key, t.t);
+    }
+  } catch (e) { miss("open tickets", (e as Error).message); }
   const tryRead = (what: string, f: () => OwedItem[] | undefined, none: string) => {
     try { const got = f(); if (got) items.push(...got); else miss(what, none); } catch (e) { miss(what, (e as Error).message); }
   };
@@ -379,7 +423,7 @@ export function readOwed(env: Env, read: typeof readRoadmap = readRoadmap): Owed
     if (live === undefined) miss("chief doc lines", "the chief doc has no Live state section");
     return [...(held ?? []), ...(live ?? []), ...more];
   }, "");
-  return unread.filter((u) => u !== ROUND_LEDGER && u !== POOL_HOLDS).length >= OWED_SOURCES ? absent(why.join("; ")) : { state: "ok", items, unread, skipped };
+  return OWED_SOURCES.every((u) => unread.includes(u)) ? absent(why.join("; ")) : { state: "ok", items, unread, skipped };
 }
 
 // `asked`: the version tile picked on the page. A known one is the version the tab reads; an unknown one reads as the running version and the answer says so (fellBack).

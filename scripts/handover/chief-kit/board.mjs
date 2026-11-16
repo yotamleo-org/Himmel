@@ -391,9 +391,9 @@ const primaryRoot = () => {
 const JIRA_CLI = process.env.BOARD_JIRA || (versionsDeclared.length || releaseDeclared ?join(primaryRoot(), 'scripts', 'jira', 'dist', 'index.js') : '');
 // the workers' Jira ladder, in the order a Release panel shows it.
 const WORKER_SESSION_STATUSES = ['To Do', 'In Progress', 'In Review', 'IN CI', 'Done'];
-const DONE_STATUS = /^(done|resolved)$/i;
+const DONE_STATUS = /^(done|resolved|in public)$/i;
 // Closed and won't do are out of every count, as the tracker has it.
-const OUT_STATUS = /^(closed|wont do|won't do|wont fix|won't fix)$/i;
+const OUT_STATUS = /^(closed|won['’]?t do|won['’]?t fix)$/i;
 const releaseOf = (version) => {
     const a = ['list', '--jql', `project = HIMMEL AND fixVersion = "${version}"`, '--labels', '--limit', '1000'];
     let out;

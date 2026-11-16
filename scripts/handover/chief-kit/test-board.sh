@@ -1711,6 +1711,18 @@ same 'S8a control: the board'"'"'s PR child has GH_READ_QUIET=1 and no no-fallba
 same 'S8a control: the cloud child has GH_READ_QUIET=1 and GH_READ_NO_MAIN_FALLBACK=1' "$(sort -u "$CENVLOG")" '1|1'
 rm -f "$M/cloud-sessions.tsv"
 
+# Feed the shared terminal fixtures through the real board mirror projection.
+python3 - "$HERE/fixtures/t1-views.json" "$CL/parity/HIMMEL" <<'PYTEST'
+import json, pathlib, sys
+f, mirror = sys.argv[1:]; d = pathlib.Path(mirror); d.mkdir(parents=True)
+for i, r in enumerate(json.loads(pathlib.Path(f).read_text())['statuses'], 1):
+    fields = {'key': 'HIMMEL-%d' % i, 'status': r['status'], 'statusCategory': r['category'], 'labels': ['residual'], 'fixVersions': ['v1.1.3'], 'created': '2020-01-01T00:00:00Z', 'resolved': '2020-01-02T00:00:00Z'}
+    (d / (fields['key'] + '.md')).write_text('---\n' + ''.join(k + ': ' + json.dumps(v) + '\n' for k, v in fields.items()) + '---\n')
+PYTEST
+CL_MIRROR="$CL/parity/HIMMEL" crrun >/dev/null
+jtxt="$(cat "$CL/board.json")"
+jcheck 'T1 shared status parity: only four nonterminal residuals occupy slots' 'M.trends.cr_loop.versions.find((v) => v.version === "v1.1.3").slots === 4'
+
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-board.sh'
     exit 0
