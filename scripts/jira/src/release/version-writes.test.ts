@@ -85,6 +85,7 @@ const READ_ONLY = [
   'scripts/handover/chief-kit/stuck-scan.sh',
   'scripts/handover/chief-kit/tick.sh',
   'scripts/handover/chief-kit/tracker.py',
+  'scripts/handover/chief-kit/version-counts-check.sh',
   'scripts/handover/chief-kit/version-status-audit.sh',
   'scripts/handover/chief-kit/worker-jira-status.sh',
   'scripts/hooks/block-jira-compound-write.sh',
