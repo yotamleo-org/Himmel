@@ -3934,7 +3934,9 @@ slot_cap="${HIMMEL_SUITE_SLOT_CAP:-1200}"
 case "$slot_cap" in ''|*[!0-9]*) slot_cap=1200 ;; esac
 [ "$((10#$slot_cap))" -gt 0 ] || slot_cap=1200
 slot_now="$(date +%s)"
-for slot_dir in "${HIMMEL_SUITE_SEMAPHORE_DIR:-$suite_tmp/himmel-suite-semaphore.d}"/slot-*; do
+# shellcheck source=../../lib/suite-semaphore.sh
+. "$HERE/../../lib/suite-semaphore.sh"
+for slot_dir in "$(suite_sem_dir)"/slot-*; do
     # one read of the owner record, so a slot released and retaken mid-parse cannot mix two holders
     slot_rec="$(cat "$slot_dir/owner" 2>/dev/null)" || continue  # swallow-ok: a slot released mid-read has no holder to report
     slot_pid="$(printf '%s\n' "$slot_rec" | sed -n 's/^pid=\([0-9][0-9]*\)$/\1/p' | head -n 1)"
