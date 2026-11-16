@@ -475,7 +475,6 @@ reset "In Progress"; owned WRAPPED 0
 printf '# worker\n\n## Results (newest at the bottom)\n- 10:00 WRAPPED — x\n\n> **Completes ticket:** no\n' > "$DOC"
 fn "$K" --event wrapped --doc "$DOC"
 check "D6n guard: a flag line below ## Results is not the brief's flag" "$(moved)" "transition $K To Do"
-# 9323: a --doc path that is option-shaped is a file; the doc sits in the funnel's cwd and is a completes-no wrapped brief
 reset "In Progress"
 mkdir -p "$tmp/hard"
 printf '> **Completes ticket:** no\n\n## Results (newest at the bottom)\n- 10:00 WRAPPED — x\n' > "$tmp/hard/-f"
@@ -907,7 +906,6 @@ if [ -n "$_TIMEOUT_BIN" ]; then
     check "phase c: a build LIVE on phase:last-step makes no edit" "$(edits)" 0
     brief_live '["phase:waiting"]' build
     check "phase c: a build LIVE on the retired phase:waiting sets build" "$(lastedit)" "edit $K --phase build"
-    # 9323: a --doc path named -- is a file, so its Leg kind line is read, not stdin
     reset "In Progress"; owned; labels '[]'; mkdir -p "$tmp/hard"; mkbrief "$tmp/hard/--" build LIVE
     ( cd "$tmp/hard" && bash "$SUT" "$K" --event live --doc -- >"$tmp/out" 2>&1 </dev/null )
     check "phase c: a build LIVE whose --doc path is -- still sets build" "$(lastedit)" "edit $K --phase build"

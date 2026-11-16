@@ -77,8 +77,6 @@ brief no
 check "completes no with Jira In Review: To Do" "$TS_RULE/$TS_DERIVED" 'D6/To Do'
 printf 'HIMMEL-9001\tTask\tIn Progress\n' > "$TS_SNAPSHOT_DIR/jira.tsv"
 
-# 9323: the owner's doc is unreadable (its lock was seen held, then gone for two sweeps, so the owner counts as wrapped);
-# the verdict reads the brief the record's resume_brief names, and keeps D6 when there is none.
 printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/lock-free.sh"
 chmod +x "$tmp/lock-free.sh"
 rbrief() { # <flag-line> <resume_brief: path|-> - the brief file (flag line above ## Results), then the derive
@@ -97,7 +95,6 @@ check "9323 unreadable owner doc, the resume_brief says completes yes: D6 (contr
 rbrief no "$tmp/missing-brief.md"
 check "9323 unreadable owner doc, the resume_brief names an unreadable file: D6 (control)" "$TS_RULE/$TS_DERIVED" 'D6/To Do'
 
-# 9323: a marker line read with text after the marker word; the marker leads the bullet and the next character is not a word character.
 tm() { printf -- '%s\n' "$@" > "$tmp/tm.md"; ts_marker_newest "$tmp/tm.md"; }
 check "9323 a clean WRAPPED line is WRAPPED (control)" "$(tm '- 10:00 LIVE — x' '- 10:10 WRAPPED')" WRAPPED
 check "9323 WRAPPED with trailing text is WRAPPED" "$(tm '- 10:00 LIVE — x' '- 10:10 WRAPPED all done, PR 12 merged')" WRAPPED
@@ -108,8 +105,6 @@ check "9323 a marker word later in the line is no marker" "$(tm '- 10:00 LIVE �
 printf -- '- 10:00 LIVE — x\n- 10:10 HALTED: out of budget\n' > "$tmp/tm.md"
 check "9323 HALTED with trailing text reads as a wrapped owner (lock held)" "$(ts_worker_state "$tmp/tm.md")" wrapped
 
-# 9323: a doc, brief or record path that is option-shaped (-f, --) is a file, never an option. The files sit in the cwd
-# of a subshell run with stdin closed, so a path read as an option or as no file reads nothing and the row sees it.
 hd="$tmp/hard"
 mkdir -p "$hd/-state/workers"
 for f in -f -- plain; do
