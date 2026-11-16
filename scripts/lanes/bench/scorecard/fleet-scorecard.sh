@@ -864,12 +864,15 @@ def main():
                 ctx["denials_bad"] += 1
     mirror = a.mirror or judge_accuracy.MIRROR
     mirror_why = "absent"
-    try:
-        ctx["bugs"] = judge_accuracy.load_bugs(mirror)
-    except ValueError:
+    if mirror is None:
         ctx["bugs"] = None
-    except OSError:
-        ctx["bugs"], mirror_why = None, "unreadable"
+    else:
+        try:
+            ctx["bugs"] = judge_accuracy.load_bugs(mirror)
+        except ValueError:
+            ctx["bugs"] = None
+        except OSError:
+            ctx["bugs"], mirror_why = None, "unreadable"
 
     scored = [(wk,) + score(wk, ctx) for wk in workers]
     lanes = {}
@@ -906,7 +909,8 @@ def main():
            "- denials: %s%s" % (ctx["denials_path"] if ctx["denials"] is not None else na("absent: " + ctx["denials_path"]),
                                 " (%d unreadable row%s)" % (ctx["denials_bad"], "" if ctx["denials_bad"] == 1 else "s")
                                 if ctx["denials_bad"] else ""),
-           "- Jira mirror: %s" % (mirror if ctx["bugs"] is not None else na(mirror_why + ": " + mirror)), ""]
+           "- Jira mirror: %s" % (mirror if ctx["bugs"] is not None else
+                                  na("no project key") if mirror is None else na(mirror_why + ": " + mirror)), ""]
     report = "\n".join(out)
     if a.out:
         try:
