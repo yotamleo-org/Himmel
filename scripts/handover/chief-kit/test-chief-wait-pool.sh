@@ -468,11 +468,50 @@ w1_wait w1-record
 w1_n() { grep -c "^# pool-unresolved $2 HIMMEL-$3 " "$WORK/$1.out"; }
 check '(W1) the unresolved key with no ruling is still named' 1 "$(w1_n w1-record listed 8005)"
 check '(W1) a live c row removes its key from pool-unresolved' 0 "$(w1_n w1-record '.*' 8001)"
-check '(W1) the waiter prints no # readiness line in slice 2' 0 "$(grep -c '^# readiness' "$WORK/w1-record.out")"
 rm -f "$W1/rel/v1/readiness.jsonl"
 w1_wait w1-norecord
 check '(W1) with the record file removed the key is named again' 1 "$(w1_n w1-norecord listed 8001)"
 rm -f "$STUB/dispositions"
+
+# --- (W2, W3) slice 3: the wake block lists the readiness-held rows; the record adds no wake ---
+printf -- '---\nkey: "HIMMEL-8002"\ntype: "Task"\nstatus: "To Do"\nstatusCategory: "To Do"\npriority: "High"\nlabels: ["standalone"]\nfixVersions: ["v1"]\nparent: null\ncreated: "x"\nupdated: "x"\nresolution: null\nresolved: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# HIMMEL-8002: fixture\n\n## Description\n\nbody\n\n## Comments\n\n_(none)_\n' > "$W1/mirror/HIMMEL/HIMMEL-8002.md"
+HK=HIMMEL
+w2_record() {
+    READINESS_NOW_EPOCH=1800000000 HIMMEL_RELEASE_STATE_DIR="$W1/rel" bash "$HERE/readiness.sh" append v1 HIMMEL-8001 c --evidence x --blocker HIMMEL-8102 --by fixture --mirror "$W1/mirror/HIMMEL" > /dev/null 2>&1
+    READINESS_NOW_EPOCH=1800000000 HIMMEL_RELEASE_STATE_DIR="$W1/rel" bash "$HERE/readiness.sh" append v1 HIMMEL-8002 d --evidence x --by fixture --mirror "$W1/mirror/HIMMEL" > /dev/null 2>&1
+}
+w2_wait() { # <inbox name> <seconds> [doc]
+    NEXT_DISPATCH_MIRROR="$W1/mirror/HIMMEL" HIMMEL_RELEASE_STATE_DIR="$W1/rel" READINESS_NOW_EPOCH=1800007200 timeout "$2" bash "$WAIT" "$(new_inbox "$1")" --doc "${3:-$W1/chief.md}" --workers N1.md > "$WORK/$1.out" 2> /dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
+}
+printf '# chief\n\n## Live state\npool-disposition: HIMMEL-9001 question operator decision 268\n\n## Results\n' > "$W1/chief-u.md"
+w2_record
+printf 'LOCAL\tHIMMEL-9001\tMedium\tv1\tfirst\tfiles=a.sh\n' > "$STUB/pool.rows"
+# the underfilled form: both ruled keys leave the unresolved set, the pool still lists a row
+printf '# dropped from v1: 3 of 3 To Do (listed 3)\n# disposition HIMMEL-8001 listed LOCAL\n# disposition HIMMEL-8002 listed LOCAL\n# disposition HIMMEL-9001 listed LOCAL\n' > "$STUB/dispositions"
+w2_wait w2-under 8 "$W1/chief-u.md"
+check '(W2) the underfilled wake carries the block heading' 1 "$(grep -c '^# readiness rows in v1' "$WORK/w2-under.out")"
+check '(W2) the c row is listed with its blocker and age' 1 "$(grep -c "^# readiness-held c $HK-8001 blocker=$HK-8102 age=2h\$" "$WORK/w2-under.out")"
+check '(W2) the d row is listed with no blocker' 1 "$(grep -c "^# readiness-held d $HK-8002 blocker=- age=2h\$" "$WORK/w2-under.out")"
+check '(W2) it is the underfilled wake' 1 "$(grep -c '^WAKE underfilled ' "$WORK/w2-under.out")"
+# the pool-unresolved form: an unruled key keeps the wake pool-unresolved, and the block is printed there too
+printf '# dropped from v1: 3 of 3 To Do (listed 3)\n# disposition HIMMEL-8001 listed LOCAL\n# disposition HIMMEL-8002 listed LOCAL\n# disposition HIMMEL-8005 listed LOCAL\n' > "$STUB/dispositions"
+w2_wait w2-unres 8
+check '(W2) the pool-unresolved wake carries the block heading' 1 "$(grep -c '^# readiness rows in v1' "$WORK/w2-unres.out")"
+check '(W2) the pool-unresolved wake lists the c and d rows' 2 "$(grep -c "^# readiness-held [cd] $HK-800[12] " "$WORK/w2-unres.out")"
+check '(W2) it is the pool-unresolved wake' 1 "$(grep -c '^WAKE pool-unresolved ' "$WORK/w2-unres.out")"
+# W3 (control): the record adds no wake. The same pool sampled twice wakes once, with the record and without it
+printf '# dropped from v1: 3 of 3 To Do (listed 3)\n# disposition HIMMEL-8001 listed LOCAL\n# disposition HIMMEL-8002 listed LOCAL\n# disposition HIMMEL-9001 listed LOCAL\n' > "$STUB/dispositions"
+I="$(new_inbox w3-record)"
+w3_arm() { NEXT_DISPATCH_MIRROR="$W1/mirror/HIMMEL" HIMMEL_RELEASE_STATE_DIR="$W1/rel" READINESS_NOW_EPOCH=1800007200 timeout "$2" bash "$WAIT" "$I" --doc "$W1/chief-u.md" --workers N1.md > "$WORK/$1.out" 2> /dev/null; rc=$?; }  # gnu-ok: Linux-only kit; pipefail-ok: none set
+w3_arm w3-first 8
+check '(W3) the first sample with the record wakes once' "0:1" "$rc:$(grep -c '^WAKE ' "$WORK/w3-first.out")"
+w3_arm w3-second 5
+check '(W3) the same pool sampled again with the record does not wake (rc 124)' "124:0" "$rc:$(grep -c '^WAKE ' "$WORK/w3-second.out")"
+rm -f "$W1/rel/v1/readiness.jsonl"
+I="$(new_inbox w3-norecord)"
+w3_arm w3-norec 8
+check '(W3) without the record the same pool wakes once as well, with no held line' "0:1:0" "$rc:$(grep -c '^WAKE ' "$WORK/w3-norec.out"):$(grep -c '^# readiness' "$WORK/w3-norec.out")"
+rm -f "$STUB/dispositions" "$STUB/pool.rows"
 
 # --- (rp-real) the waiter's pool output is the hand run's, drop summary included -----------
 M="$WORK/mirror/HIMMEL"; mkdir -p "$M"

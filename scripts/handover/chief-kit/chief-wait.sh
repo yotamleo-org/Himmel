@@ -303,8 +303,9 @@
 # vmismatch= (tick.sh: RESET rows of the version-status audit) wakes while it is a positive
 # count and on any change of that count; 0, ? and an absent field are left out of the key.
 # wt-ceiling= (the live/cap alarm) is in the key whole: reaching the ceiling
-# wakes once, while an unchanged alarm stays silent; absent is not a failure. cap= (`<version>:<n>`, past 15 open residuals) likewise,
-# and cap=? (the tick's deadline cut the read) keeps the saved value.
+# wakes once, while an unchanged alarm stays silent; absent is not a failure. residual-cap= (`<version>:<n>`, past 15 open residuals)
+# and open= (`<version>:<n>`, every open ticket of an unreleased version) likewise, and a `?` (the tick's deadline cut the read) keeps the saved
+# value; a key saved under the old cap= name reads as residual-cap=.
 # unowned-prs= is NOT in the action key (its minutes grow every tick): a
 # non-empty list is queued on first sight (`unowned-prs <list>`, look-only: see below; with
 # HOUSEKEEPING_DIGEST_SECS=0 it is `WAKE unowned-prs <list>`), again when
@@ -744,7 +745,7 @@ field() { # <name> <tick line>
 # old_key_names: a key saved under the old field names (legs=, legset=, bank=) reads
 # as the same key under the new ones, so a restart over it is no change.
 old_key_names() {
-    printf '%s\n' "$1" | sed -E 's/(^|\|)legs=/\1workers=/; s/(^|\|)legset=/\1workerset=/; s/(^|\|)bank=/\1usage=/'
+    printf '%s\n' "$1" | sed -E 's/(^|\|)legs=/\1workers=/; s/(^|\|)legset=/\1workerset=/; s/(^|\|)bank=/\1usage=/; s/(^|\|)cap=/\1residual-cap=/'
 }
 
 # tick_stamp: `<epoch.nanos> <children user> <children sys>`; the `times` builtin's second line is
@@ -784,7 +785,7 @@ sample() {
     bank="$(bank_word)" || { fail_step=usage-read; tick_state=fail; return; }
     tick_state=ok
     cap_val="$(field capacity "$tick_line")"
-    for f in workers livestate prs tails acts holds hreg workerset board tracker vault cloud orphans-wip wt-ceiling vmismatch cap vmrun parked stall dispatch denials closable deadwin; do
+    for f in workers livestate prs tails acts holds hreg workerset board tracker vault cloud orphans-wip wt-ceiling vmismatch residual-cap open vmrun parked stall dispatch denials closable deadwin; do
         v="$(field "$f" "$tick_line")"
         # An older tick.sh prints legs= and legset=; field() matches whole tokens, so max_workers= is never workers=.
         if [ -z "$v" ]; then
@@ -796,7 +797,7 @@ sample() {
         # tracker= is newer than the other fields; a tick line
         # without it (an older kit) just has no tracker key, not a failed sample.
         # vault= is newer still, the same way.
-        if { [ "$f" = tracker ] || [ "$f" = acts ] || [ "$f" = holds ] || [ "$f" = hreg ] || [ "$f" = vault ] || [ "$f" = cloud ] || [ "$f" = orphans-wip ] || [ "$f" = wt-ceiling ] || [ "$f" = vmismatch ] || [ "$f" = cap ] || [ "$f" = vmrun ] || [ "$f" = parked ] || [ "$f" = stall ] || [ "$f" = closable ] || [ "$f" = deadwin ] || [ "$f" = dispatch ]; } && [ -z "$v" ]; then continue; fi
+        if { [ "$f" = tracker ] || [ "$f" = acts ] || [ "$f" = holds ] || [ "$f" = hreg ] || [ "$f" = vault ] || [ "$f" = cloud ] || [ "$f" = orphans-wip ] || [ "$f" = wt-ceiling ] || [ "$f" = vmismatch ] || [ "$f" = residual-cap ] || [ "$f" = open ] || [ "$f" = vmrun ] || [ "$f" = parked ] || [ "$f" = stall ] || [ "$f" = closable ] || [ "$f" = deadwin ] || [ "$f" = dispatch ]; } && [ -z "$v" ]; then continue; fi
         # A field missing from a malformed/partial tick line is a failed
         # sample, never a key with an empty value baked in.
         if [ -z "$v" ]; then fail_step="missing-field:$f"; tick_state=fail; key=""; return; fi
@@ -814,8 +815,8 @@ sample() {
             [ "$v" != '?' ] || v="$(key_field hreg "$saved")"
             [ -n "$v" ] || continue
         fi
-        if [ "$f" = cap ]; then
-            [ "$v" != '?' ] || v="$(key_field cap "$saved")"
+        if [ "$f" = residual-cap ] || [ "$f" = open ]; then
+            [ "$v" != '?' ] || v="$(key_field "$f" "$saved")"
             [ -n "$v" ] || continue
         fi
         # parked= keeps the worker names only: the age grows every tick and must not re-wake.
@@ -1262,7 +1263,7 @@ underfill_wake() {
     printf '%s\n' "$blk"
 }
 underfill_block() { # prints the WAKE block for the pool pool_probe just read; fail-open on the dispatchable list
-    local back="" back_keys="" back_dispatch="" back_summary="" extra="" count="" dkeys="" intake_ver="" wake=underfilled short="" listed="" back_failed="" tail="" declared="" left=""
+    local back="" back_keys="" back_dispatch="" back_summary="" extra="" count="" dkeys="" intake_ver="" wake=underfilled short="" listed="" back_failed="" tail="" declared="" left="" ready_held="" ready_ver=""
     if [ -n "$pool_unresolved" ]; then wake=pool-unresolved
     else
         case "$pool_counts" in
@@ -1308,6 +1309,11 @@ underfill_block() { # prints the WAKE block for the pool pool_probe just read; f
     fi
     [ -z "$pool_out" ] || printf '%s\n' "$pool_out" | pool_view
     [ -z "$pool_unresolved" ] || printf '%s\n' "$pool_unresolved"
+    ready_held="$(printf '%s\n' "$pool_summary" | sed -n '/^# readiness-held /p')"
+    if [ -n "$ready_held" ]; then  # no sum or wake key reads these lines: the record adds no wake
+        ready_ver="$(printf '%s\n' "$pool_summary" | sed -n 's/^# readiness \([^ ][^ ]*\) blocked=.*/\1/p' | head -n 1)"
+        printf '# readiness rows in %s (c blocked on, d chief-only; release/%s/readiness.jsonl):\n%s\n' "${ready_ver:-$declared}" "${ready_ver:-$declared}" "$ready_held"
+    fi
     intake_ver="$(printf '%s\n' "$pool_out" | sed -n 's/^# intake [0-9][0-9]* for \([^:]*\):.*/\1/p' | head -n 1)"  # the line's candidates already printed with the pool; this names the way to file them
     [ "$intake_ver" != "no open version" ] || intake_ver=""  # an older dispatcher's line for no open version: nothing to file into
     [ -z "$intake_ver" ] || printf '%s\n' "# INTAKE: versionless operator work is not in the pool; file each key above with \`jira release request <release> --verb INTAKE --key <KEY> --to $(printf '%q' "$intake_ver") --why <why>\`, then run the rm-run once for the batch"
