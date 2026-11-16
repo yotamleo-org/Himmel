@@ -92,10 +92,23 @@ def caller(pid):
 
 
 def live(owner):
+    return process_state(owner) == 'live'
+
+
+def process_state(owner):
+    """Absence is proof only for an exact local host/boot/start identity."""
     try:
-        return identity(owner['pid']) == owner
+        local = identity(os.getpid())
+        if any(owner[key] != local[key] for key in ('host', 'boot')):
+            return 'unknown'
+        try:
+            found = identity(owner['pid'])
+            state = Path('/proc', str(owner['pid']), 'stat').read_text().rsplit(')', 1)[1].split()[0]
+        except FileNotFoundError:
+            return 'dead'
+        return 'dead' if found != owner or state in ('Z', 'X') else 'live'
     except (OSError, KeyError, ValueError):
-        return False
+        return 'unknown'
 
 
 def authorized(record, pid):
@@ -105,25 +118,49 @@ def authorized(record, pid):
         raise Refused('attempt process identity conflict')
 
 
+def slots_root():
+    # Reuse the registered policy fixture seam; ordinary launch environment
+    # cannot relocate the census or manufacture a resource admission proof.
+    if os.environ.get('HIMMEL_POLICY_FOLLOWS_HOME') == '1':
+        return Path(os.environ.get('HIMMEL_FLEET_SLOTS', str(Path(os.environ.get('XDG_RUNTIME_DIR', '/tmp')) / ('himmel-fleet-' + str(os.getuid()))))).absolute()
+    runtime = Path('/run/user', str(os.getuid()))
+    if not runtime.is_dir() or runtime.stat().st_uid != os.getuid():
+        runtime = Path('/tmp')
+    return runtime / ('himmel-fleet-' + str(os.getuid()))
+
+
 def has_reservation(record, pid):
     authorized(record, pid)
-    allowed = (record['owner'], caller(pid))
-    slots = Path(os.environ.get('HIMMEL_FLEET_SLOTS', str(Path(os.environ.get('XDG_RUNTIME_DIR', '/tmp')) / ('himmel-fleet-' + str(os.getuid())))))
+    proof = record.get('reservation', {})
+    path = Path(proof.get('path', '/'))
+    if path.parent != slots_root() or path.is_symlink():
+        return False
+    expected = {'attempt_id': record['attempt_id'], 'owner': proof.get('owner')}
+    if proof.get('owner') not in (record['owner'], caller(pid)):
+        return False
+    return ((path / 'managed.json').is_file() and read(path / 'managed.json') == expected
+            and (path / 'name').read_text().rstrip('\n') == record['name'])
+
+
+def release_reservation(record):
+    slots = slots_root()
+    allowed = [record['owner'], record.get('committer'), (record.get('reservation') or {}).get('owner')]
     if slots.exists():
         for slot in slots.iterdir():
             path = slot / 'managed.json'
-            if path.is_file():
+            if not slot.is_symlink() and path.is_file():
                 value = read(path)
-                if value.get('attempt_id') == record['attempt_id'] and value.get('owner') in allowed:
-                    return True
-    return False
+                if value == {'attempt_id': record['attempt_id'], 'owner': value.get('owner')} and value.get('owner') in allowed and value.get('owner') is not None:
+                    shutil.rmtree(slot)
 
 
 def resolve(doc, manifest=''):
-    """Physical bucket configuration is authoritative even without --fleet."""
+    """Worker registration/context is authoritative; bucket proximity is not."""
+    intent = (os.environ.get('FLEET_LAUNCH_WORKER_INTENT') == '1'
+              or os.environ.get('HIMMEL_CONSOLE_LEG') == '1'
+              or bool(os.environ.get('WORKER_SESSION_PROFILE')))
     if not doc:
-        configured_bucket = any((parent / 'fleet-control.json').exists() for parent in [Path.cwd(), *list(Path.cwd().parents)[:3]])
-        if manifest or configured_bucket or os.environ.get('HIMMEL_CONSOLE_LEG') == '1' or os.environ.get('WORKER_SESSION_PROFILE'):
+        if manifest or intent or os.environ.get('FLEET_LAUNCH_ATTEMPT'):
             raise Refused('managed launch missing doc locator')
         return None
     original = Path(doc).absolute()
@@ -131,32 +168,29 @@ def resolve(doc, manifest=''):
         raise Refused('aliased managed doc locator')
     doc = str(Path(doc).resolve())
     bucket = Path(doc).parent
-    paths = sorted(bucket.glob('*.fleet.json'))
-    managed = (bucket / 'fleet-control.json').exists()
+    intent = intent and (bucket / 'fleet-control.json').exists()
+    paths = list(bucket.glob('*.fleet.json'))
     candidates = []
     for path in paths:
         data = read(path)
         rows = data.get('workers', data.get('legs', []))
         if any(row.get('doc') == doc for row in rows):
-            managed = True
             candidates.append(path)
     if manifest:
         path = Path(manifest).absolute()
         if path.parent.resolve() != bucket or path.is_symlink():
             raise Refused('conflicting manifest locator')
-        managed = True
-        candidates.insert(0, path)
-    if not managed:
-        try:
-            managed = bool(re.search(r'^> \*\*Chief:\*\*', Path(doc).read_text(), re.M))
-        except FileNotFoundError:
-            pass
-    if not managed:
+        candidates = [path, *[p for p in candidates if p != path]]
+    try:
+        intent = intent or bool(re.search(r'^> \*\*(?:Chief|Leg kind|Proof leg):\*\*|^# .* — worker [A-Za-z0-9]+ ', Path(doc).read_text(), re.M))
+    except FileNotFoundError:
+        pass
+    if not candidates and not intent:
         return None
     if not candidates:
-        candidates = paths
-    if not candidates:
-        raise Refused('managed bucket has no worker manifest reference')
+        raise Refused('managed worker has no manifest reference')
+    if not manifest and len(candidates) != 1:
+        raise Refused('worker has multiple manifest references; explicit locator required')
     chosen = candidates[0]
     expected = {'family': read(bucket / 'fleet-control.json')['family'], 'anchor': str(bucket / 'fleet-control.json')}
     for path in candidates:
@@ -203,7 +237,8 @@ def receipt(record, outcome):
     row = dict(v=2, kind='launch-attempt', source='fleet-runtime', ts=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
                attempt_id=record['attempt_id'], name=record['name'], doc=record['doc'],
                family=record['family'], owner=record['owner'], session=record.get('session'), outcome=outcome,
-               cause=record.get('cause', 'runtime'), phase='runtime')
+               cause=record.get('cause', 'runtime'), phase='runtime',
+               committer=record.get('committer'), reservation=record.get('reservation'), manifest=record.get('manifest'))
     with path.open('a') as stream:
         stream.write(json.dumps(row) + '\n')
         stream.flush()
@@ -219,7 +254,8 @@ def owned_rows(manifest):
     if anchor.exists():
         control = read(anchor)
         if read(manifest).get('control') != {'family': control['family'], 'anchor': str(anchor)}:
-            raise Refused('owner family mismatch')
+            print('fleet-runtime: unverified sibling family reference; preserving legacy ownership: ' + str(manifest), file=sys.stderr)
+            return [dict(row, ownership='unverified') for row in rows]
         for record in control.get('attempts', {}).values():
             matching = [row for row in rows if row['doc'] == record['doc']]
             if matching:
@@ -295,13 +331,14 @@ def worker_keys(doc):
     return sorted(set(keys))
 
 
-def session_evidence(record, deadline):
+def session_scan(record, deadline):
     local = identity(os.getpid())
     if any(record['owner'][key] != local[key] for key in ('host', 'boot')):
-        return None
+        return None, False
+    absent = True
     for path in Path('/proc').iterdir():
         if time.monotonic() >= deadline:
-            return None
+            return None, False
         if not path.name.isdigit():
             continue
         try:
@@ -310,15 +347,75 @@ def session_evidence(record, deadline):
             args = (path / 'cmdline').read_bytes().split(b'\0')
             if not any(a == b'-n' and i + 1 < len(args) and args[i + 1].decode() == record['name'] for i, a in enumerate(args)):
                 continue
+            if path.joinpath('stat').read_text().rsplit(')', 1)[1].split()[0] in ('Z', 'X'):
+                continue
+            absent = False
             env = dict(pair.split(b'=', 1) for pair in (path / 'environ').read_bytes().split(b'\0') if b'=' in pair)
             if env.get(b'WORKER_SESSION_DOC') != record['doc'].encode() or env.get(b'WORKER_SESSION_ATTEMPT_ID') != record['attempt_id'].encode():
                 continue
             found = identity(int(path.name))
             if int(found['start']) >= record['began_ticks']:
-                return found
+                return found, False
         except (OSError, ValueError, UnicodeError):
-            continue  # a disappearing or unreadable candidate proves no session
-    return None
+            if path.exists():
+                absent = False  # unreadable candidates cannot prove absence
+    return None, absent
+
+
+def session_evidence(record, deadline):
+    return session_scan(record, deadline)[0]
+
+
+def session_ended(record, deadline):
+    if record.get('session') and process_state(record['session']) != 'dead':
+        return False
+    return session_scan(record, deadline)[1]
+
+
+def same_receipt(record, row):
+    return bool(record.get('attempt_id')) and all(row.get(key) == record.get(key) for key in ('attempt_id', 'name', 'doc', 'family', 'owner'))
+
+
+def reconcile(attempts, rows, history, deadline):
+    """Run under manifest→anchor locks, before admission as well as ack."""
+    settled = set()
+    for aid, record in list(attempts.items()):
+        if time.monotonic() >= deadline:
+            break
+        row = history.get(aid, {})
+        terminal = ''
+        if same_receipt(record, row) and row.get('outcome') in ('refused', 'complete'):
+            if row['outcome'] == 'refused' or session_ended(record, deadline):
+                terminal = row['outcome']
+        elif same_receipt(record, row) and row.get('outcome') == 'launched':
+            record['phase'] = 'launched'
+        if not terminal and record['phase'] == 'pending' and not record.get('handoff_started') and process_state(record['owner']) == 'dead':
+            record['cause'] = 'launcher-lost-precommit'
+            terminal = 'refused'
+        elif not terminal and not live(record['owner']) and record['phase'] != 'launched':
+            record['phase'] = 'unknown'
+        if not terminal and record.get('phase') == 'unknown':
+            session = session_evidence(record, min(deadline, time.monotonic() + 1))
+            if session:
+                record['session'], record['phase'] = session, 'launched'
+                receipt(record, 'launched')
+        if not terminal and record.get('phase') == 'launched' and marker(record['doc']) != record.get('initial_marker') and session_ended(record, deadline) and time.monotonic() < deadline and worker_state(record['doc'], max(.01, deadline - time.monotonic())) == 'wrapped':
+            terminal = 'complete'
+        if terminal:
+            receipt(record, terminal)
+            release_reservation(record)
+            del attempts[aid]
+            settled.add(aid)
+        # A copied manifest can retain an old attempt after another manifest
+        # settled it. Its typed terminal receipt also removes that projection.
+    rows[:] = [row for row in rows if row.get('attempt', {}).get('attempt_id') not in settled and not (row.get('registration') == 'pending'
+        and row.get('attempt', {}).get('attempt_id') not in attempts
+        and same_receipt(row.get('attempt', {}), history.get(row.get('attempt', {}).get('attempt_id'), {}))
+        and history[row['attempt']['attempt_id']].get('outcome') in ('refused', 'complete'))]
+    for row in rows:
+        aid = row.get('attempt', {}).get('attempt_id')
+        if aid in attempts:
+            row['attempt'] = attempts[aid].copy()
 
 
 def run(args):
@@ -337,35 +434,31 @@ def run(args):
     if args.op == 'owners':
         return owned_rows(args.manifest)
     if args.op == 'release':
-        owner = caller(args.pid)
+        caller(args.pid)
         terminal = receipts({args.attempt_id}).get(args.attempt_id, {})
         if terminal.get('outcome') not in ('refused', 'complete'):
             raise Refused('reservation has no definite terminal receipt')
-        slots = Path(os.environ.get('HIMMEL_FLEET_SLOTS', str(Path(os.environ.get('XDG_RUNTIME_DIR', '/tmp')) / ('himmel-fleet-' + str(os.getuid())))))
-        if slots.exists():
-            for slot in slots.iterdir():
-                slot_marker = slot / 'managed.json'
-                if slot_marker.is_file():
-                    value = read(slot_marker)
-                    if value == {'attempt_id': args.attempt_id, 'owner': owner}:
-                        shutil.rmtree(slot)
+        manifest = resolve(terminal['doc'], args.manifest or terminal.get('manifest', ''))
+        if manifest is None:
+            raise Refused('terminal reservation has no family reference')
+        with lock(manifest), lock(manifest.parent / 'fleet-control.json'):
+            control = read(manifest.parent / 'fleet-control.json')
+            current = control.get('attempts', {}).get(args.attempt_id)
+            if current and (not same_receipt(current, terminal) or terminal['outcome'] == 'complete' and not session_ended(current, time.monotonic() + 1)):
+                raise Refused('terminal reservation still has possible session')
+            release_reservation(terminal)
         return {'released': args.attempt_id}
     if args.op == 'stamp':
         argv = Path('/proc', str(os.getppid()), 'cmdline').read_bytes().split(b'\0')
         if len(argv) < 2 or Path(os.fsdecode(argv[1])).resolve() != LIB / 'usage-preflight.sh':
             raise Refused('only the real resource preflight stamps admission')
-        owner = caller(args.pid)
-        publish(Path(args.slot) / 'managed.json', {'attempt_id': args.attempt_id, 'owner': owner})
-        return {'stamped': args.attempt_id}
     manifest = Path(args.manifest).absolute() if args.op in ('ack', 'reconcile') and args.manifest else resolve(args.doc, args.manifest)
     if manifest is None:
-        return {'managed': False}
+        return {'managed': False, 'administrative': bool(args.doc and (Path(args.doc).resolve().parent / 'fleet-control.json').exists())}
     anchor = manifest.parent / 'fleet-control.json'
-    if args.op in ('resolve', 'check'):
+    if args.op == 'resolve':
         value = snapshot(manifest)
-        if args.op == 'check' and value['mode'] != 'active':
-            raise Refused('fleet-paused')
-        return dict(value, managed=True, manifest=str(manifest))
+        return dict(value, managed=True, manifest=str(manifest), slots=str(slots_root()))
     with lock(manifest), lock(anchor):
         value = snapshot(manifest)
         control = read(anchor)
@@ -377,38 +470,27 @@ def run(args):
         if args.op in ('ack', 'reconcile'):
             for source in {manifest, *manifest.parent.glob('*.fleet.json')}:
                 peer = read(source)
-                if peer.get('control') == data.get('control'):
-                    peer_rows.extend(peer.get('workers', peer.get('legs', [])))
+                for row in peer.get('workers', peer.get('legs', [])):
+                    peer_rows.append(dict(row, ownership='unverified') if peer.get('control') != data.get('control') else row)
         history = receipts(set(attempts) | {args.attempt_id} | {row.get('attempt', {}).get('attempt_id') for row in peer_rows})
-        if args.op in ('ack', 'reconcile'):
+        if args.op in ('ack', 'reconcile', 'begin', 'check', 'commit'):
             deadline = time.monotonic() + 5
-            for aid, record in list(attempts.items()):
-                row = history.get(aid, {})
-                if row.get('name') == record['name'] and row.get('outcome') in ('refused', 'complete'):
-                    del attempts[aid]
-                    rows[:] = [w for w in rows if not (w.get('doc') == record['doc'] and w.get('attempt', {}).get('attempt_id') == aid)]
-                elif row.get('name') == record['name'] and row.get('outcome') == 'launched':
-                    record['phase'] = 'launched'
-                elif not live(record['owner']) and record['phase'] != 'launched':
-                    record['phase'] = 'unknown'
-                if record.get('phase') == 'unknown' and time.monotonic() < deadline:
-                    session = session_evidence(record, min(deadline, time.monotonic() + 1))
-                    if session:
-                        record['session'], record['phase'] = session, 'launched'
-                        receipt(record, 'launched')
-                if record.get('phase') == 'launched' and marker(record['doc']) != record.get('initial_marker') and time.monotonic() < deadline and worker_state(record['doc'], max(.01, deadline - time.monotonic())) == 'wrapped':
-                    receipt(record, 'complete')
-                    attempts.pop(aid, None)
+            reconcile(attempts, rows, history, deadline)
             publish(anchor, control)
             publish(manifest, data)
+        if args.op == 'check':
+            if value['mode'] != 'active':
+                raise Refused('fleet-paused')
+            return dict(value, managed=True, manifest=str(manifest), slots=str(slots_root()))
+        if args.op in ('ack', 'reconcile'):
             inflight = [r for r in attempts.values() if r['phase'] in ('pending', 'committed')]
             unknown = [r for r in attempts.values() if r['phase'] == 'unknown']
             legacy = {}
             current_docs = {record['doc'] for record in attempts.values()}
             for row in peer_rows:
-                if row['doc'] in current_docs or (row.get('registration') == 'pending' and not row.get('attempt')):
+                if row['doc'] in current_docs or (row.get('ownership') != 'unverified' and row.get('registration') == 'pending' and not row.get('attempt')):
                     continue
-                if row.get('registration') == 'pending' and history.get(row.get('attempt', {}).get('attempt_id'), {}).get('outcome') in ('refused', 'complete'):
+                if row.get('ownership') != 'unverified' and row.get('registration') == 'pending' and history.get(row.get('attempt', {}).get('attempt_id'), {}).get('outcome') in ('refused', 'complete'):
                     continue
                 if time.monotonic() >= deadline or worker_state(row['doc'], max(.01, deadline - time.monotonic())) != 'wrapped':
                     legacy[row['doc']] = dict(doc=row['doc'], label=row.get('label'),
@@ -445,6 +527,7 @@ def run(args):
             if len(matches) != 1 or matches[0].get('attempt') or matches[0].get('registration') != 'pending':
                 raise Refused('worker must have exactly one pending registration')
             record = dict(attempt_id=args.attempt_id, phase='pending', doc=doc, name=args.name, keys=keys,
+                          manifest=str(manifest),
                           family=value['family'], control_generation=value['generation'], owner=caller(args.pid),
                           began_ticks=int(float(Path('/proc/uptime').read_text().split()[0]) * os.sysconf('SC_CLK_TCK')),
                           initial_marker=marker(doc),
@@ -463,6 +546,19 @@ def run(args):
         if record['doc'] != doc or record['name'] != args.name:
             raise Refused('attempt locator conflict')
         authorized(record, args.pid)
+        if args.op == 'stamp':
+            owner = caller(args.pid)
+            slot = Path(args.slot).absolute()
+            if record['phase'] != 'pending' or slot.parent != slots_root() or slot.is_symlink() or (slot / 'name').read_text().rstrip('\n') != args.name:
+                raise Refused('reservation worker or root conflict')
+            if value['mode'] != 'active' or value['generation'] != record['control_generation']:
+                raise Refused('fleet-paused or reservation generation changed')
+            if (slots_root() / '.admit/pid').read_text().strip() != str(os.getppid()):
+                raise Refused('reservation admission lock is not held by preflight')
+            publish(slot / 'managed.json', {'attempt_id': args.attempt_id, 'owner': owner})
+            record['reservation'] = {'path': str(slot), 'owner': owner}
+            publish(anchor, control)
+            return {'stamped': args.attempt_id}
         if args.op == 'handoff':
             if record['phase'] != 'pending' or value['mode'] != 'active' or value['generation'] != record['control_generation']:
                 raise Refused('fleet-paused or handoff conflict')
@@ -487,6 +583,8 @@ def run(args):
             args.op = 'outcome'
             args.phase = 'refused' if record['phase'] == 'pending' and not record.get('handoff_started') else 'unknown'
         if args.op == 'outcome':
+            if args.phase == 'complete' and not session_ended(record, time.monotonic() + 1):
+                raise Refused('complete outcome still has possible session')
             if args.phase == 'launched' and record['phase'] == 'pending':
                 raise Refused('launched receipt has no spawn commitment')
             if args.phase == 'refused' and record['phase'] != 'pending':
@@ -496,10 +594,15 @@ def run(args):
             outcome = {'unknown': 'indeterminate', 'launched': 'launched', 'refused': 'refused', 'complete': 'complete'}[args.phase]
             receipt(record, outcome)
             if args.phase in ('refused', 'complete'):
+                release_reservation(record)
                 del attempts[args.attempt_id]
                 rows[:] = [w for w in rows if not (w.get('doc') == doc and w.get('attempt', {}).get('attempt_id') == args.attempt_id)]
             else:
                 record['phase'] = args.phase
+                if args.phase == 'launched':
+                    session = session_evidence(record, time.monotonic() + 1)
+                    if session:
+                        record['session'] = session
                 for row in rows:
                     if row.get('attempt', {}).get('attempt_id') == args.attempt_id:
                         row['attempt'] = record.copy()
@@ -527,6 +630,7 @@ def main():
         if args.op == 'run':
             if not command:
                 raise Refused('missing supervised command')
+            os.environ['FLEET_LAUNCH_WORKER_INTENT'] = '1'
             args.op = 'begin'
             args.pid = os.getpid()
             args.attempt_id = str(uuid.uuid4())
@@ -553,8 +657,9 @@ def main():
                 args.op = 'release'
                 run(args)
                 raise
-            proc = subprocess.Popen(command, env=dict(os.environ, WORKER_SESSION_DOC=args.doc,
-                                                     WORKER_SESSION_ATTEMPT_ID=args.attempt_id))
+            child_env = {key: value for key, value in os.environ.items() if not key.startswith('FLEET_LAUNCH_')}
+            child_env.update(WORKER_SESSION_DOC=args.doc, WORKER_SESSION_ATTEMPT_ID=args.attempt_id)
+            proc = subprocess.Popen(command, env=child_env)
             rc = proc.wait()
             args.op, args.phase = 'outcome', 'complete'
             run(args)

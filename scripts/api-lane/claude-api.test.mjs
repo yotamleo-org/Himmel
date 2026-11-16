@@ -34,6 +34,7 @@ if [ -n "$FB" ]; then env > "$STUB_ENV.fb.full"; printf '%s\\n' "$@" > "$STUB_EN
   echo "use_bedrock=\${CLAUDE_CODE_USE_BEDROCK:-}"; echo "auth_token=\${ANTHROPIC_AUTH_TOKEN:-}"
   echo "lq_api=$(env | grep -c '^LQ_API_')"
   echo "key_tail=\${ANTHROPIC_API_KEY: -4}"; echo "lane_on=\${HIMMEL_API_LANE:-}"; echo "scrub=\${CLAUDE_CODE_SUBPROCESS_ENV_SCRUB:-}"; echo "cache_ttl=\${CLAUDE_CODE_PROMPT_CACHE_TTL:-}"
+  echo "launch_markers=$(env | grep -c '^FLEET_LAUNCH_')"
   echo "session_markers=$(env | grep -E '^(CLAUDECODE|AI_AGENT|CLAUDE_PID|CLAUDE_EFFORT|CLAUDE_JOB_DIR|CLAUDE_CODE_[A-Z0-9_]*)=' | grep -vc '^CLAUDE_CODE_\\(SUBPROCESS_ENV_SCRUB\\|PROMPT_CACHE_TTL\\)=')"
   echo "org_keys=$(env | grep -c '^ANTHROPIC_ORG_[AB]_KEY=')"
   echo "stub_pid=$$"; echo "ppid=$PPID"; echo "resv_pid=$(cat "$HIMMEL_FLEET_SLOTS/claude-api:\${HIMMEL_API_JOB_ID:-}/pid" 2>/dev/null)"
@@ -92,7 +93,7 @@ function fixture() {
     HIMMEL_API_CREDIT_STATE: state, HIMMEL_API_LANE: 'on', HIMMEL_API_ACCOUNT: 'A',
     HIMMEL_API_KEY_ID: 'key-a', ANTHROPIC_API_KEY: DUMMY, HIMMEL_API_CLAUDE_BIN: paths.stub,
     HIMMEL_API_JOB_ID: 'job-1', STUB_LOG: paths.log, STUB_ENV: paths.env, STUB_OUT: ok,
-    HIMMEL_FLEET_CAP: '4', HIMMEL_FLEET_SLOTS: join(dir, 'slots'), FLEET_PS_CMD: paths.ps, FLEET_PROC: dir,
+    HIMMEL_FLEET_CAP: '4', HIMMEL_POLICY_FOLLOWS_HOME: '1', HIMMEL_FLEET_SLOTS: join(dir, 'slots'), FLEET_PS_CMD: paths.ps, FLEET_PROC: dir,
     CADENCE_USAGE_LEDGER: join(dir, 'bank-ledger'), CADENCE_USAGE_SKIP_REFRESH: '1',
     CADENCE_USAGE_CACHE: join(dir, 'native-cache.json'),
     HIMMEL_API_FALLBACK: 'off', HIMMEL_API_ALERT_CMD: paths.alert, HIMMEL_API_ALERT_DIR: join(dir, 'alerts') };
@@ -152,6 +153,7 @@ test('managed funded API commits exact ownership and releases it on a terminal c
   assert.equal(JSON.parse(r.stdout).result, 'hi');
   assert.equal(f.called(), true);
   const control = JSON.parse(readFileSync(join(f.dir, 'fleet-control.json')));
+  assert.match(readFileSync(f.paths.env, 'utf8'), /launch_markers=0/);
   assert.deepEqual(control.attempts, {});
   assert.equal(readdirSync(f.env.HIMMEL_FLEET_SLOTS).filter(n => !n.startsWith('.')).length, 0);
   const receipts = readFileSync(join(f.dir, '.himmel/launch-refusals.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);

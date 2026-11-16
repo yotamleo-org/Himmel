@@ -1121,7 +1121,7 @@ fi
 # secret-named vars are never copied into the file.
 _hl_worker_var() {
     case "$1" in
-        HIMMEL_*|WORKER_SESSION_*|CHIEF_*|CONSOLE_*|HANDOVER_*|IMPL_*|*_OK|CR_*|ARM*|JIRA_PROJECT_KEY) return 0 ;;
+        FLEET_LAUNCH_*|HIMMEL_*|WORKER_SESSION_*|CHIEF_*|CONSOLE_*|HANDOVER_*|IMPL_*|*_OK|CR_*|ARM*|JIRA_PROJECT_KEY) return 0 ;;
     esac
     return 1
 }
@@ -1188,6 +1188,7 @@ headless_launch() {
     [ -f "$settings" ] || headless_fail 2 "headless: settings file $settings is missing - it must exist before the launch"
     for name in $(compgen -e); do
         _hl_worker_var "$name" || continue
+        case "$name" in FLEET_LAUNCH_*) _hl_set "$name" ""; continue ;; esac
         _hl_secret_var "$name" && continue
         [ "$name" = HIMMEL_HOOK_INTEGRITY_BYPASS_OK ] && continue
         _hl_set "$name" "${!name}"
@@ -1244,7 +1245,7 @@ headless_launch() {
     local lrc=0
     fleet_launch_commit || headless_fail 10 'fleet-paused: final commitment refused'
     # shellcheck disable=SC2086  # deliberately word-split env tokens, the same shape as the konsole branches.
-    env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR $ROLE_ENV_UNSET \
+    env -u FLEET_LAUNCH_ATTEMPT -u FLEET_LAUNCH_DOC -u FLEET_LAUNCH_NAME -u FLEET_LAUNCH_MANIFEST -u FLEET_LAUNCH_WORKER_INTENT -u FLEET_LAUNCH_LANE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR $ROLE_ENV_UNSET \
         CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} $LAUNCHER_ENV ${LAUNCHER_ENV_LINES[@]+"${LAUNCHER_ENV_LINES[@]}"} \
         "${LAUNCH_ARGV[@]}" < /dev/null >> "$LOG" 2>&1 || lrc=$?
     [ "$lrc" -eq 0 ] || headless_fail 1 "headless: the background launch for $NAME exited $lrc - see $LOG for its output"
@@ -1812,13 +1813,13 @@ if [ "$RECORDER" = "1" ]; then
     # launch stdout/stderr (spawn errors before script even starts) into the
     # same file. -a is load-bearing: without it, `script -f` TRUNCATES $LOG on
     # open, discarding whatever the outer >> already wrote there.
-    TERM_ARGV=(env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR $ROLE_ENV_UNSET
+    TERM_ARGV=(env -u FLEET_LAUNCH_ATTEMPT -u FLEET_LAUNCH_DOC -u FLEET_LAUNCH_NAME -u FLEET_LAUNCH_MANIFEST -u FLEET_LAUNCH_WORKER_INTENT -u FLEET_LAUNCH_LANE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR $ROLE_ENV_UNSET
         CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} SHELL="$BASH_BIN" $LAUNCHER_ENV ${LAUNCHER_ENV_LINES[@]+"${LAUNCHER_ENV_LINES[@]}"} PATH="$DEDUPED_PATH"
         script -q -a -f "$LOG" -c "$LAUNCH_CMD")
 else
     # shellcheck disable=SC2206  # LAUNCHER_ENV and ROLE_ENV_UNSET
     # word-split, same contract as the recorder branch above.
-    TERM_ARGV=(env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR $ROLE_ENV_UNSET
+    TERM_ARGV=(env -u FLEET_LAUNCH_ATTEMPT -u FLEET_LAUNCH_DOC -u FLEET_LAUNCH_NAME -u FLEET_LAUNCH_MANIFEST -u FLEET_LAUNCH_WORKER_INTENT -u FLEET_LAUNCH_LANE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR $ROLE_ENV_UNSET
         CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} $LAUNCHER_ENV ${LAUNCHER_ENV_LINES[@]+"${LAUNCHER_ENV_LINES[@]}"} PATH="$DEDUPED_PATH"
         "${LAUNCH_ARGV[@]}")
 fi

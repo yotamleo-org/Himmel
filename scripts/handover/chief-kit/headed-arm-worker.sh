@@ -837,7 +837,7 @@ _launch_attempt_start
 if [ "$DRY_RUN" -ne 1 ]; then
     # shellcheck source=scripts/lib/fleet-launch.sh
     . "$_csg_dir/../../lib/fleet-launch.sh" || exit 10
-    if ! fleet_launch_prepare "$DOC" "$NAME" "$FLEET_MANIFEST" "$_LAUNCH_ATTEMPT_ID" "$LANE"; then
+    if ! FLEET_LAUNCH_WORKER_INTENT=1 fleet_launch_prepare "$DOC" "$NAME" "$FLEET_MANIFEST" "$_LAUNCH_ATTEMPT_ID" "$LANE"; then
         _launch_refusal_note fleet-paused
         exit 10
     fi

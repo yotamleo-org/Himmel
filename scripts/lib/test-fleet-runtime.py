@@ -22,7 +22,8 @@ class Runtime(unittest.TestCase):
         self.bucket = Path(self.tmp.name)
         if os.environ.get('FLEET_RUNTIME_EVIDENCE'):
             self.addCleanup(self.save_evidence)
-        self.env = dict(os.environ, HOME=str(self.bucket), HIMMEL_FLEET_SLOTS=str(self.bucket / 'slots'))
+        self.env = dict(os.environ, HOME=str(self.bucket), HIMMEL_FLEET_SLOTS=str(self.bucket / 'slots'),
+                        HIMMEL_POLICY_FOLLOWS_HOME='1')
         self.doc = self.bucket / 'TEST-1-N1-worker.md'
         self.doc.write_text('---\ndescription: fixture brief\n---\n> **Prior art:** none found (offline fixture)\n\n# worker\n')
         self.m = self.bucket / 'chief.fleet.json'
@@ -47,7 +48,7 @@ class Runtime(unittest.TestCase):
     def save_evidence(self):
         dest = Path(os.environ['FLEET_RUNTIME_EVIDENCE']) / 'state' / self.id().split('.')[-1]
         dest.mkdir(parents=True, exist_ok=True)
-        for path in [*self.bucket.glob('*.json'), self.bucket / 'entrypoints.jsonl',
+        for path in [*self.bucket.glob('*.json'), *self.bucket.glob('*.md'), self.bucket / 'entrypoints.jsonl',
                      self.bucket / '.himmel/launch-refusals.jsonl']:
             if path.is_file():
                 shutil.copy2(path, dest / path.name)
@@ -502,6 +503,334 @@ exit 1''')
             self.assertNotIn('CASE-' + str(number), p.stdout)
             self.assertIn('CASE-' + str(number + 100), p.stdout)
         self.assertNotIn('CASE-206', p.stdout)
+        main = self.bucket / 'HIMMEL-nextleg-2026-11-16A-chief.fleet.json'
+        data = json.loads(self.m.read_text())
+        data['workers'] = []
+        main.write_text(json.dumps(data))
+        live_doc = self.bucket / 'CASE-100-N1-owner.md'
+        live_doc.write_text('# live sibling owner\n- 10:00 LIVE running\n')
+        self.real_worker('sibling', live_doc)
+        unknown_doc = self.bucket / 'CASE-201-N2-missing.md'
+        sibling = self.bucket / 'HIMMEL-nextleg-2026-11-16B-chief.fleet.json'
+        for reference in (None, {'family':'foreign'}, 'malformed'):
+            data = {'schema':1, 'workers':[{'doc':str(live_doc), 'label':'N1'},
+                                          {'doc':str(unknown_doc), 'label':'N2'}]}
+            if reference is not None:
+                data['control'] = reference
+            sibling.write_text(json.dumps(data))
+            p = self.entry('scripts/handover/chief-kit/next-dispatchable.sh',
+                           ('--no-classify', '--top', '20', '--workers-from', main), env)
+            self.assertEqual(p.returncode, 0, p.stderr)
+            self.assertNotIn('CASE-100', p.stdout)
+            self.assertNotIn('CASE-201', p.stdout)
+            self.assertIn('unverified', p.stderr)
+
+    def real_census_env(self):
+        env = self.launch_env()
+        env.pop('FLEET_PS_CMD', None)
+        env.pop('FLEET_PROC', None)
+        return env
+
+    def real_worker(self, aid='one', doc=None):
+        doc = doc or self.doc
+        ready = self.bucket / ('ready-' + aid)
+        code = ('import ctypes,os,time; from pathlib import Path; '
+                'ctypes.CDLL(None).prctl(15,b"claude",0,0,0); '
+                'Path(os.environ["READY"]).touch(); time.sleep(60)')
+        env = dict(self.env, WORKER_SESSION_DOC=str(doc), WORKER_SESSION_ATTEMPT_ID=aid, READY=str(ready))
+        p = subprocess.Popen(['claude', '-c', code, '-n', doc.stem], executable=sys.executable,
+                             env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.addCleanup(lambda: p.poll() is None and (p.terminate(), p.wait(timeout=5)))
+        self.wait_file(ready, p)
+        return p
+
+    def test_completed_launch_releases_target_one_with_real_census(self):
+        self.call('control', 'set', self.m, '--mode', 'active', '--target', '1', '--expect-gen', '1')
+        env = self.real_census_env()
+        # Real /proc and ps drive launch confirmation and resource admission.
+        # Only the terminal/provider binaries are offline fixtures.
+        launcher = self.bucket / 'offline-claude'
+        launcher.write_text('#!' + sys.executable + '\nimport ctypes,json,os,time\nfrom pathlib import Path\n'
+            'ctypes.CDLL(None).prctl(15,b"claude",0,0,0)\n'
+            'b=Path(os.environ["HOME"])\n'
+            '(b/"worker-env.json").write_text(json.dumps({k:v for k,v in os.environ.items() if k.startswith("FLEET_LAUNCH_") or k in ("WORKER_SESSION_DOC","WORKER_SESSION_ATTEMPT_ID")}))\n'
+            '(b/"worker-pid").write_text(str(os.getpid()))\n'
+            'while not (b/"end-worker").exists(): time.sleep(.02)\n'
+            'with Path(os.environ["WORKER_SESSION_DOC"]).open("a") as f: f.write("- 12:00 WRAPPED ended\\n")\n')
+        launcher.chmod(0o755)
+        konsole = self.stub('real-konsole', 'while [ "$1" != -e ]; do shift; done\nshift\nexec "$@"')
+        env.update(KONSOLE_CMD=konsole, HEADED_ARM_LAUNCHER=str(launcher), HEADED_ARM_REPO=str(ROOT),
+                   HEADED_ARM_LOCK_DIR=str(self.bucket / 'locks'), KONSOLE_HOLD_LAUNCH='0')
+        for number in range(3):
+            doc = self.bucket / ('HIMMEL-' + str(900 + number) + '-N1-worker.md')
+            doc.write_text('# offline worker\n')
+            self.call('add', self.m, doc, '--lane', 'native', '--pending')
+            p = self.entry('scripts/handover/headed-arm.sh',
+                           (doc.stem, doc, self.bucket / 'sig', '1', self.bucket / 'log'), env)
+            self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+            worker_pid = int((self.bucket / 'worker-pid').read_text())
+            self.addCleanup(lambda pid=worker_pid: subprocess.run(['kill', str(pid)], capture_output=True))
+            record = next(iter(json.loads((self.bucket / 'fleet-control.json').read_text())['attempts'].values()))
+            self.assertEqual(record['phase'], 'launched')
+            doc.write_text(doc.read_text() + '- 11:59 WRAPPED still alive\n')
+            self.call('control', 'ack', self.m)
+            self.assertTrue((self.bucket / 'slots' / doc.stem / 'managed.json').exists())
+            self.assertIn(record['attempt_id'], json.loads((self.bucket / 'fleet-control.json').read_text())['attempts'])
+            (self.bucket / 'end-worker').touch()
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                stat = Path('/proc', str(worker_pid), 'stat')
+                if not stat.exists() or stat.read_text().rsplit(')', 1)[1].split()[0] == 'Z':
+                    break
+                time.sleep(.02)
+            else:
+                self.fail('offline worker did not end')
+            if number == 0:
+                self.call('control', 'ack', self.m)
+                self.assertFalse((self.bucket / 'slots' / doc.stem).exists())
+            # Later iterations depend on automatic cleanup before admission.
+            (self.bucket / 'end-worker').unlink()
+        self.call('control', 'ack', self.m)
+        self.assertEqual(json.loads((self.bucket / 'fleet-control.json').read_text())['attempts'], {})
+        child_env = json.loads((self.bucket / 'worker-env.json').read_text())
+        self.assertNotIn('FLEET_LAUNCH_ATTEMPT', child_env)
+        self.assertTrue(child_env['WORKER_SESSION_ATTEMPT_ID'])
+
+    def test_proven_precommit_death_releases_but_handoff_and_commit_stay_unknown(self):
+        self.active()
+        for boundary in ('pending', 'handoff', 'committed'):
+            code = ('import os,subprocess,sys,time\nfrom pathlib import Path\n'
+                    'w,d,m,a=sys.argv[1:]\n'
+                    'base=["bash",w,"runtime"]\n'
+                    'opts=["--doc",d,"--manifest",m,"--name",Path(d).stem,"--attempt-id",a,"--pid",str(os.getpid())]\n'
+                    'subprocess.run(base+["begin"]+opts,check=True)\n'
+                    'e=dict(os.environ,FLEET_LAUNCH_DOC=d,FLEET_LAUNCH_MANIFEST=m,FLEET_LAUNCH_ATTEMPT=a,CADENCE_USAGE_WORKER=Path(d).stem,CADENCE_USAGE_CALLER_PID=str(os.getpid()))\n'
+                    'subprocess.run(["bash",str(Path(w).parents[2]/"lib/usage-preflight.sh")],env=e,check=True)\n'
+                    'if a!="pending": subprocess.run(base+[{"handoff":"handoff","committed":"commit"}[a]]+opts,check=True)\n'
+                    'Path(os.environ["HOME"],"kill-"+a).touch()\n'
+                    'time.sleep(60)\n')
+            doc = self.bucket / ('HIMMEL-' + str(910 + len(boundary)) + '-' + boundary + '.md')
+            doc.write_text('# worker\n')
+            self.call('add', self.m, doc, '--lane', 'native', '--pending')
+            p = subprocess.Popen([sys.executable, '-c', code, str(WRITER), str(doc), str(self.m), boundary],
+                                 env=self.real_census_env(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            self.addCleanup(lambda p=p: p.poll() is None and (p.kill(), p.wait(timeout=5)))
+            self.wait_file(self.bucket / ('kill-' + boundary), p)
+            p.kill()
+            p.communicate(timeout=5)
+            if boundary == 'pending':
+                ack_process = subprocess.Popen(['bash', str(WRITER), 'control', 'ack', str(self.m)],
+                    env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                commands = []
+                for aid in ('retry', 'rival'):
+                    commands.append(subprocess.Popen(['bash', str(WRITER), 'runtime', 'begin', '--doc', str(doc),
+                        '--manifest', str(self.m), '--name', doc.stem, '--attempt-id', aid, '--pid', str(os.getpid())],
+                        env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True))
+                outcomes = [p.communicate(timeout=10) for p in commands]
+                self.assertEqual(sorted(p.returncode for p in commands), [0, 10], str(outcomes))
+                ack_process.communicate(timeout=10)
+                self.assertEqual(ack_process.returncode, 0)
+                winner = ('retry', 'rival')[next(i for i, p in enumerate(commands) if p.returncode == 0)]
+            ack = json.loads(self.call('control', 'ack', self.m).stdout)
+            if boundary == 'pending':
+                self.assertEqual(ack['unknown'], [])
+                self.assertFalse((self.bucket / 'slots' / doc.stem).exists())
+                history = [json.loads(line) for line in (self.bucket / '.himmel/launch-refusals.jsonl').read_text().splitlines()]
+                self.assertEqual([r for r in history if r['attempt_id'] == boundary][-1]['cause'], 'launcher-lost-precommit')
+                self.rt('outcome', aid=winner, doc=doc, extra=('--phase', 'refused'))
+            else:
+                self.assertIn(boundary, [r['attempt_id'] for r in ack['unknown']])
+                self.assertTrue((self.bucket / 'slots' / doc.stem).exists())
+
+    def test_chief_and_notes_in_bucket_are_administrative_but_worker_intent_refuses(self):
+        env = self.real_census_env()
+        for name in ('chief-handover.md', 'notes.md'):
+            doc = self.bucket / name
+            doc.write_text('# administrative document\n')
+            result = json.loads(self.call('runtime', 'check', '--doc', doc).stdout)
+            self.assertFalse(result['managed'])
+            e = dict(env, FLEET_LAUNCH_DOC=str(doc), CADENCE_USAGE_WORKER=doc.stem)
+            e.pop('FLEET_LAUNCH_MANIFEST')
+            p = self.entry('scripts/lib/usage-preflight.sh', env=e)
+            self.assertNotEqual(p.stdout.strip(), 'SKIPPED-FLEET', p.stderr)
+            self.assertFalse((self.bucket / 'slots' / doc.stem).exists())
+        generated = self.bucket / 'unregistered.md'
+        generated.write_text('# worker\n> **Leg kind:** build\n')
+        self.call('runtime', 'check', '--doc', generated, ok=False)
+        self.call('runtime', 'check', '--doc', generated, '--manifest', self.m, ok=False)
+        self.call('runtime', 'check', '--doc', self.doc, ok=False)
+        self.call('runtime', 'check', ok=False, env=dict(self.env, HIMMEL_CONSOLE_LEG='1'))
+        loose = self.bucket / 'unregistered-loose'
+        loose.mkdir()
+        worker = loose / 'worker.md'
+        worker.write_text('> **Proof leg:** HIMMEL-992\n')
+        self.call('runtime', 'check', '--doc', worker, ok=False)
+        self.active()
+        self.call('runtime', 'resolve', '--doc', generated, ok=False)
+        self.call('runtime', 'resolve', '--doc', generated, '--manifest', self.m)
+        self.rt('begin', aid='explicit', doc=generated)
+        self.rt('outcome', aid='explicit', doc=generated, extra=('--phase', 'refused'))
+
+    def test_unbound_and_conflicting_sibling_keep_live_and_unknown_ownership(self):
+        for reference in (None, {'family':'wrong'}, 'malformed'):
+            sibling = self.bucket / 'old.fleet.json'
+            data = {'workers':[{'doc':str(self.doc), 'label':'N1'}]}
+            if reference is not None:
+                data['control'] = reference
+            sibling.write_text(json.dumps(data))
+            owners = json.loads(self.call('runtime', 'owners', '--manifest', sibling).stdout)
+            self.assertEqual([r['doc'] for r in owners], [str(self.doc)])
+            self.assertNotIn('attempt', owners[0])
+
+    def test_pause_ack_retains_unverified_sibling(self):
+        live_doc = self.bucket / 'HIMMEL-994-N2-live.md'
+        live_doc.write_text('# live worker\n')
+        self.real_worker('unbound-live', live_doc)
+        sibling = self.bucket / 'unbound.fleet.json'
+        sibling.write_text(json.dumps({'workers':[{'doc':str(live_doc), 'label':'N2'}]}))
+        ack = json.loads(self.call('control', 'ack', self.m).stdout)
+        self.assertFalse(ack['quiescent'])
+        self.assertEqual(ack['legacy_unknown'][0]['doc'], str(live_doc))
+
+    def test_inherited_attempt_cannot_stamp_another_name(self):
+        self.active()
+        env = self.real_census_env()
+        self.rt('begin')
+        for doc, name in ((self.doc, 'unrelated-arm'), (self.bucket / 'notes.md', 'unrelated-notes')):
+            if not doc.exists():
+                doc.write_text('# notes\n')
+            e = dict(env, FLEET_LAUNCH_DOC=str(doc), FLEET_LAUNCH_ATTEMPT='one', CADENCE_USAGE_WORKER=name)
+            e.pop('FLEET_LAUNCH_MANIFEST')
+            self.entry('scripts/lib/usage-preflight.sh', env=e)
+            self.assertFalse((self.bucket / 'slots' / name / 'managed.json').exists())
+        self.rt('commit')
+
+    def test_unknown_precommit_identity_and_expired_slot_stay_protected(self):
+        self.active()
+        self.rt('begin')
+        env = dict(self.real_census_env(), FLEET_LAUNCH_ATTEMPT='one')
+        self.entry('scripts/lib/usage-preflight.sh', env=env)
+        anchor = self.bucket / 'fleet-control.json'
+        data = json.loads(anchor.read_text())
+        data['attempts']['one']['owner']['host'] = 'unverifiable-host'
+        anchor.write_text(json.dumps(data))
+        slot = self.bucket / 'slots' / self.doc.stem
+        (slot / 'expires').write_text('0\n')
+        self.doc.write_text(self.doc.read_text() + '- 12:00 WRAPPED uncertain\n')
+        ack = json.loads(self.call('control', 'ack', self.m).stdout)
+        self.assertEqual([r['attempt_id'] for r in ack['unknown']], ['one'])
+        self.assertTrue((slot / 'managed.json').exists())
+        self.rt('begin', aid='replacement', ok=False)
+
+    def test_forged_slot_root_and_marker_do_not_prove_admission(self):
+        self.active()
+        record = json.loads(self.rt('begin').stdout)
+        forged = self.bucket / 'forged'
+        slot = forged / self.doc.stem
+        slot.mkdir(parents=True)
+        (slot / 'managed.json').write_text(json.dumps({'attempt_id':'one', 'owner':record['owner']}))
+        (slot / 'name').write_text(self.doc.stem + '\n')
+        env = dict(self.env, HIMMEL_FLEET_SLOTS=str(forged), FLEET_CONTROL_HELD='true', FLEET_CAP_OK='1')
+        env.pop('HIMMEL_POLICY_FOLLOWS_HOME', None)
+        self.call('runtime', 'commit', '--doc', self.doc, '--manifest', self.m, '--name', self.doc.stem,
+                  '--attempt-id', 'one', '--pid', os.getpid(), ok=False, env=env)
+        # An authorized fixture root still needs the anchor's admission binding.
+        self.env['HIMMEL_FLEET_SLOTS'] = str(forged)
+        self.call('runtime', 'commit', '--doc', self.doc, '--manifest', self.m, '--name', self.doc.stem,
+                  '--attempt-id', 'one', '--pid', os.getpid(), ok=False)
+
+    def test_real_census_target_hard_cap_and_failure_controls(self):
+        self.call('control', 'set', self.m, '--mode', 'active', '--target', '1', '--expect-gen', '1')
+        self.rt('begin')
+        env = dict(self.real_census_env(), FLEET_LAUNCH_ATTEMPT='one', FLEET_CONTROL_HELD='true',
+                   FLEET_CONTROL_GENERATION='2', WORKER_SESSION_ROLE='chief', HIMMEL_FLEET_CAP='999')
+        workers = []
+        for number in range(4):
+            doc = self.bucket / ('HIMMEL-' + str(950 + number) + '-N1-census.md')
+            doc.write_text('# real census fixture\n')
+            workers.append(self.real_worker('census-' + str(number), doc))
+            if number == 0:
+                p = self.entry('scripts/lib/usage-preflight.sh', env=env)
+                self.assertEqual(p.stdout.strip(), 'SKIPPED-FLEET', p.stderr)
+                self.assertIn('total=1/1', p.stderr)
+        # A corrupt/manual target above the activation ceiling still cannot
+        # weaken the independent resource cap.
+        anchor = self.bucket / 'fleet-control.json'
+        data = json.loads(anchor.read_text())
+        data['target'] = 20
+        anchor.write_text(json.dumps(data))
+        p = self.entry('scripts/lib/usage-preflight.sh', env=env)
+        self.assertEqual(p.stdout.strip(), 'SKIPPED-FLEET', p.stderr)
+        self.assertIn('total=4/4', p.stderr)
+        self.assertFalse((self.bucket / 'slots' / self.doc.stem).exists())
+        for p in workers:
+            p.terminate()
+            p.wait(timeout=5)
+        env['FLEET_PS_CMD'] = self.stub('broken-ps', 'exit 1')
+        self.assertEqual(self.entry('scripts/lib/usage-preflight.sh', env=env).stdout.strip(), 'SKIPPED-FLEET')
+
+    def test_exact_release_preserves_replacement_marker(self):
+        self.active()
+        record = json.loads(self.rt('begin').stdout)
+        self.rt('commit')
+        self.rt('outcome', extra=('--phase', 'unknown'))
+        slot = self.bucket / 'slots' / self.doc.stem
+        replacement = {'attempt_id':'replacement', 'owner':dict(record['owner'], start='0')}
+        (slot / 'managed.json').write_text(json.dumps(replacement))
+        self.rt('outcome', extra=('--phase', 'complete'))
+        self.call('runtime', 'release', '--attempt-id', 'one', '--pid', os.getpid())
+        self.assertEqual(json.loads((slot / 'managed.json').read_text()), replacement)
+        replacement['attempt_id'] = 'one'
+        (slot / 'managed.json').write_text(json.dumps(replacement))
+        self.call('runtime', 'release', '--attempt-id', 'one', '--pid', os.getpid())
+        self.assertEqual(json.loads((slot / 'managed.json').read_text()), replacement)
+
+    def test_actual_chief_launch_while_workers_paused_is_quiescent(self):
+        doc = self.bucket / 'chief-handover.md'
+        doc.write_text('# chief recovery\n')
+        env = self.headed_env()
+        env.pop('FLEET_LAUNCH_MANIFEST')
+        env.pop('FLEET_LAUNCH_DOC')
+        p = self.entry('scripts/handover/headed-arm.sh',
+                       (self.doc.stem, doc, self.bucket / 'sig', '1', self.bucket / 'log'), env)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertTrue((self.bucket / 'spawned').exists())
+        ack = json.loads(self.call('control', 'ack', self.m).stdout)
+        self.assertTrue(ack['quiescent'], ack)
+        self.assertEqual(json.loads((self.bucket / 'fleet-control.json').read_text()).get('attempts'), {})
+
+    def test_commit_itself_reconciles_terminal_attempt(self):
+        self.active()
+        self.rt('begin')
+        self.rt('commit')
+        self.rt('outcome', extra=('--phase', 'launched'))
+        doc = self.bucket / 'HIMMEL-980-N2-next.md'
+        doc.write_text('# next worker\n')
+        self.call('add', self.m, doc, '--lane', 'native', '--pending')
+        self.rt('begin', aid='two', doc=doc)
+        env = dict(self.real_census_env(), FLEET_LAUNCH_DOC=str(doc), CADENCE_USAGE_WORKER=doc.stem,
+                   FLEET_LAUNCH_ATTEMPT='two')
+        p = self.entry('scripts/lib/usage-preflight.sh', env=env)
+        self.assertIn(p.stdout.strip(), ('PROCEED', 'BANK-STALE', 'BANK-UNKNOWN'), p.stderr)
+        self.doc.write_text(self.doc.read_text() + '- 12:00 WRAPPED ended\n')
+        self.call('runtime', 'commit', '--doc', doc, '--manifest', self.m, '--name', doc.stem,
+                  '--attempt-id', 'two', '--pid', os.getpid())
+        self.assertEqual(list(json.loads((self.bucket / 'fleet-control.json').read_text())['attempts']), ['two'])
+        self.assertFalse((self.bucket / 'slots' / self.doc.stem).exists())
+
+    def test_active_scheduled_worker_repeats_with_explicit_manifest(self):
+        self.call('control', 'set', self.m, '--mode', 'active', '--target', '1', '--expect-gen', '1')
+        env = self.real_census_env()
+        command = ['python3', '-I', str(ROOT / 'scripts/lib/fleet_runtime.py'), 'run', '--doc', str(self.doc),
+                   '--name', self.doc.stem, '--manifest', str(self.m), '--', 'bash', '-c',
+                   'test -z "${FLEET_LAUNCH_ATTEMPT:-}" && test -n "$WORKER_SESSION_ATTEMPT_ID" && touch "$HOME/scheduled-ended"']
+        for _ in range(2):
+            p = subprocess.run(command, env=env, capture_output=True, text=True, timeout=15)
+            self.record(command, p)
+            self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+            self.assertTrue((self.bucket / 'scheduled-ended').exists())
+            self.assertEqual(json.loads((self.bucket / 'fleet-control.json').read_text())['attempts'], {})
+            self.assertFalse((self.bucket / 'slots' / self.doc.stem).exists())
 
 
 if __name__ == '__main__':

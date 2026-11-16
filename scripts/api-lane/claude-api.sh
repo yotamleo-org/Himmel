@@ -452,6 +452,9 @@ JOB_ID="${HIMMEL_API_JOB_ID:-api-$(date +%s)-$$}"
 case "$JOB_ID" in ""|*[!A-Za-z0-9._:-]*) refuse "job id has characters outside [A-Za-z0-9._:-]" ;; esac
 JOB_SAFE="$JOB_ID"
 WORKER_SESSION_NAME="claude-api:$JOB_ID"   # never the inherited CADENCE_USAGE_WORKER: it could escape the api cap
+if [ "${FLEET_LAUNCH_MANAGED:-false}" = true ]; then
+  WORKER_SESSION_NAME="$FLEET_LAUNCH_NAME"
+fi
 # the reservation is owned by THIS shell, which waits on claude below, so it
 # lives exactly as long as the call and the cap bounds real concurrency. (The default
 # owner, bank-preflight's own $$ in a command substitution, dies at once.)
@@ -566,6 +569,7 @@ CADENCE_USAGE_LANE=api fleet_launch_commit || { NO_FB=1; exit 10; }
 # The key is a prefix assignment, so it reaches env (and claude) through the environment, never an argv.
 # one-shot API-credit launch; bank gate, reservation and explicit --permission-mode above
 ANTHROPIC_API_KEY="$KEY" env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_PROFILE -u ANTHROPIC_FEDERATION_RULE_ID \
+  -u FLEET_LAUNCH_ATTEMPT -u FLEET_LAUNCH_DOC -u FLEET_LAUNCH_NAME -u FLEET_LAUNCH_MANIFEST -u FLEET_LAUNCH_WORKER_INTENT -u FLEET_LAUNCH_LANE \
   -u ANTHROPIC_ORGANIZATION_ID -u ANTHROPIC_AUTH_TOKEN -u HIMMEL_API_LANE -u HIMMEL_API_KEY_ID \
   -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u ANTHROPIC_ORG_C_KEY -u HIMMEL_DOTENV_FILE -u HIMMEL_API_SNAPSHOT_OPTIONAL \
   -u LQ_API_KEY -u LQ_API_ACCOUNT -u LQ_API_KEY_ID -u LQ_API_LANE -u HIMMEL_API_KIND -u HIMMEL_API_CACHE_TTL \

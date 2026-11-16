@@ -107,6 +107,9 @@ if [ "$LAUNCH_INTENT" = 1 ]; then
     echo 'bank-preflight: fleet-paused (managed control unavailable or paused)' >&2
     emit SKIPPED-FLEET
   fi
+  if [ "$(printf '%s\n' "$_managed_scope" | jq -r .administrative)" = true ]; then
+    LAUNCH_INTENT=''
+  fi
 fi
 
 # fleet-size cap. Concurrency, not bank exhaustion, burned the
@@ -770,6 +773,9 @@ fi
 # handover root — reservations must not survive a reboot or leak into
 # anything git-tracked.
 SLOTS="${HIMMEL_FLEET_SLOTS:-${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-$(id -u)}"
+if [ -n "${_managed_target:-}" ]; then
+  SLOTS=$(printf '%s\n' "$_managed_scope" | jq -er .slots) || emit SKIPPED-FLEET
+fi
 mkdir -p "$SLOTS" 2>/dev/null
 
 fleet_reserved=0
@@ -1066,8 +1072,9 @@ elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$WORKER" ] && [ "$WORKER" != unknown ] 
         # only WIDENS what consumes the reservation, so a failed write falls
         # back to today's dir-name match rather than refusing the launch.
         printf '%s\n' "$WORKER" > "$dir/name" 2>/dev/null || true
-        if [ -n "${FLEET_LAUNCH_ATTEMPT:-}" ]; then
+        if [ -n "${FLEET_LAUNCH_ATTEMPT:-}" ] && [ -n "${_managed_target:-}" ]; then
           if ! python3 -I "$PREFLIGHT_LIB/fleet_runtime.py" stamp --slot "$dir" \
+              --doc "${FLEET_LAUNCH_DOC:-${WORKER_SESSION_DOC:-}}" --manifest "${FLEET_LAUNCH_MANIFEST:-}" --name "$WORKER" \
               --attempt-id "$FLEET_LAUNCH_ATTEMPT" --pid "${CADENCE_USAGE_CALLER_PID:-$$}" >/dev/null; then
             rm -rf "$dir"
             return 3

@@ -1305,7 +1305,7 @@ if [ "$DRY_RUN" -eq 0 ]; then
             smart) [ -n "${RESUME_SLOT_CACHE:-}" ] || _arm_skip_refresh="" ;;
             auto) _arm_skip_refresh="" ;;
         esac
-        _arm_fleet_token="$(FLEET_LAUNCH_DOC="$HANDOVER_PATH" CADENCE_USAGE_WORKER="$_arm_fleet_worker" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_CALLER_PID="$$" CADENCE_USAGE_SKIP_REFRESH="${_arm_skip_refresh:-${CADENCE_USAGE_SKIP_REFRESH:-}}" bash "$_ARM_BANK_PREFLIGHT" </dev/null)"
+        _arm_fleet_token="$(FLEET_LAUNCH_ATTEMPT='' FLEET_LAUNCH_MANIFEST='' FLEET_LAUNCH_DOC="$HANDOVER_PATH" CADENCE_USAGE_WORKER="$_arm_fleet_worker" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_CALLER_PID="$$" CADENCE_USAGE_SKIP_REFRESH="${_arm_skip_refresh:-${CADENCE_USAGE_SKIP_REFRESH:-}}" bash "$_ARM_BANK_PREFLIGHT" </dev/null)"
         if [ "$_arm_fleet_token" = SKIPPED-FLEET ]; then
             echo "ERR arm-resume: fleet-size cap reached or managed control refused (bank-preflight: SKIPPED-FLEET) — refusing to arm another worker; see the cause above." >&2
             exit 22
@@ -1316,6 +1316,10 @@ if [ "$DRY_RUN" -eq 0 ]; then
         # was never created is a safe no-op, so track it unconditionally
         # rather than trying to distinguish the two from the token alone.
         _ARM_FLEET_SLOTS="${HIMMEL_FLEET_SLOTS:-${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-$(id -u)}"
+        _arm_fleet_scope=$(FLEET_LAUNCH_ATTEMPT='' FLEET_LAUNCH_MANIFEST='' python3 -I "$SCRIPT_DIR/../lib/fleet_runtime.py" resolve --doc "$HANDOVER_PATH") || exit 22
+        if [ "$(printf '%s\n' "$_arm_fleet_scope" | jq -r .managed)" = true ]; then
+            _ARM_FLEET_SLOTS=$(printf '%s\n' "$_arm_fleet_scope" | jq -er .slots) || exit 22
+        fi
         _ARM_FLEET_RESERVED_LEG="$_arm_fleet_worker"
     fi
     _arm_phase_done "fleet-preflight"
@@ -4478,13 +4482,14 @@ fi
 # top-level armed session can self-exit with SIGTERM once its successor is
 # armed (documented in afk-mode.md).
 _arm_runtime_body() {
-    local scope q_runtime q_runtime_doc q_runtime_name
+    local scope q_runtime q_runtime_doc q_runtime_name q_runtime_manifest
     scope=$(python3 -I "$SCRIPT_DIR/../lib/fleet_runtime.py" resolve --doc "$HANDOVER_PATH") || scope='{"managed":true}'
     if [ "$(printf '%s\n' "$scope" | jq -r .managed)" != true ]; then printf '%s' "$1"; return 0; fi
     q_runtime=$(printf '%q' "$SCRIPT_DIR/../lib/fleet_runtime.py")
     q_runtime_doc=$(printf '%q' "$HANDOVER_PATH")
     q_runtime_name=$(printf '%q' "${SESSION_NAME:-$TASK_NAME}")
-    printf 'python3 -I %s run --doc %s --name %s -- bash -c %s' "$q_runtime" "$q_runtime_doc" "$q_runtime_name" "$(printf '%q' "$1")"
+    q_runtime_manifest=$(printf '%q' "$(printf '%s\n' "$scope" | jq -r '.manifest // ""')")
+    printf 'python3 -I %s run --doc %s --name %s --manifest %s -- bash -c %s' "$q_runtime" "$q_runtime_doc" "$q_runtime_name" "$q_runtime_manifest" "$(printf '%q' "$1")"
 }
 
 _crontab_schedule() {

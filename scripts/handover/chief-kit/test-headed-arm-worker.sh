@@ -185,6 +185,7 @@ export HIMMEL_CONFIG_DIR="$tmp/pinned-himmel-config"
 # the single-writer register lives under $HOME/.himmel/state/holds; pinned, so no launch here can seed the real one.
 REAL_HOME="$HOME"
 export HOME="$tmp/pinned-home"
+export HIMMEL_POLICY_FOLLOWS_HOME=1
 mkdir -p "$HOME"
 # the re-dispatch refusal reads page/ack records from this dir;
 # pinned so no ambient ~/.himmel/state record can refuse (or pass) a case here.
