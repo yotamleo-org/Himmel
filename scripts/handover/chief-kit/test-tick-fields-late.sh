@@ -759,15 +759,10 @@ contains 'HIMMEL_SUITE_SLOT_CAP lowers the cap' "$(HIMMEL_SUITE_SLOT_CAP=30 sa_t
 not_contains 'a raised cap lists nothing' "$(HIMMEL_SUITE_SLOT_CAP=99999 sa_tick)" 'slotage='
 not_contains 'no semaphore dir leaves slotage= off the line' "$(HIMMEL_SUITE_SEMAPHORE_DIR="$W/no-sem5788" bash "$SUT" 2>/dev/null)" 'slotage='
 not_contains "slotage= is not in chief-wait's wake key" "$cw_keys" 'slotage'
-# With no HIMMEL_SUITE_SEMAPHORE_DIR the slot dir is the semaphore's default
-# /tmp/himmel-suite-semaphore-<uid>.d, whatever TMPDIR the tick runs under. A stub `id` names a fake
-# uid so the fixture never touches the station uid's real default dir. A tick that read
-# $TICK_TMPDIR/himmel-suite-semaphore.d instead would show slotage= for the old dir only.
 sd_uid=''
 sd_default=''
 for _ in 1 2 3 4 5 6 7 8 9 10; do
     sd_uid=$((900000 + RANDOM))
-    # mkdir is the atomic claim: a concurrent run or a left-over dir under the same fake uid is never reused or removed
     if mkdir "/tmp/himmel-suite-semaphore-$sd_uid.d" 2>/dev/null; then sd_default="/tmp/himmel-suite-semaphore-$sd_uid.d"; break; fi
 done
 sd_old="$W/sd-tmp/himmel-suite-semaphore.d"
