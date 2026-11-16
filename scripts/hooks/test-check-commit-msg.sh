@@ -9,7 +9,10 @@ SCRIPT="$HOOKS/check-commit-msg.sh"
 # shellcheck disable=SC1091
 . "$HOOKS/../lib/fixture-tempdir.sh"
 R=$(fixture_mktemp_dir) || exit 1
-trap 'rm -rf "$R"' EXIT
+CFG=$(fixture_mktemp_dir) || exit 1
+trap 'rm -rf "$R" "$CFG"' EXIT
+isolate_station_config() { export HIMMEL_CONFIG_DIR="$CFG" HIMMELCTL_CACHE_DIR="$CFG"; }
+isolate_station_config
 git -C "$R" init -q
 git -C "$R" config user.email t@t
 git -C "$R" config user.name t
@@ -152,6 +155,12 @@ printf 'TICKET_ID_REQUIRED=1\nJIRA_PROJECT_KEY=ENVKEY\n' > "$R/.env"
 expect_rc "primary .env supplies strict mode and Jira key" 0 "docs: ENVKEY-9 update docs"
 expect_rc "live env overrides the primary .env" 0 "docs: no ticket needed" TICKET_ID_REQUIRED=0
 rm -f "$R/.env"
+
+printf 'TICKET_ID_REQUIRED=1\nJIRA_PROJECT_KEY=CONFKEY\n' > "$CFG/himmel.conf"
+expect_rc "redirected himmel.conf is the config the hook reads (accepts its key)" 0 "docs: CONFKEY-9 update docs"
+expect_rc "redirected himmel.conf is the config the hook reads (rejects another key)" 1 "docs: HIMMEL-9 update docs"
+rm -f "$CFG/himmel.conf"
+expect_rc "without a himmel.conf the default #N posture applies" 0 "docs: [#9] update docs"
 
 # WARN-only negative-existence claim linter. Never blocks — rc
 # must match what the case would get without the linter.
@@ -305,6 +314,7 @@ fi
 # PRIMARY checkout, so pinning --root to this worktree would find no .env and
 # skip in exactly the setup every worker runs from.
 PRIMARY_POSTURE=$(
+  unset HIMMEL_CONFIG_DIR HIMMELCTL_CACHE_DIR
   cd "$HOOKS" || exit 0
   # shellcheck disable=SC1091
   . "$HOOKS/../lib/load-dotenv.sh" 2>/dev/null &&
@@ -329,7 +339,7 @@ if [ "$PRIMARY_JIRA_DRIVEN" -eq 1 ]; then
   expect_repo_rc() {
     local name="$1" want="$2" rc=0
     printf '%s\n' "$3" > "$MSG"
-    ( cd "$HOOKS" && bash "$SCRIPT" "$MSG" ) >/dev/null 2>&1 || rc=$?
+    ( cd "$HOOKS" && env -u HIMMEL_CONFIG_DIR -u HIMMELCTL_CACHE_DIR bash "$SCRIPT" "$MSG" ) >/dev/null 2>&1 || rc=$?
     if [ "$rc" -eq "$want" ]; then
       printf '  PASS  %s\n' "$name"
     else
@@ -349,7 +359,7 @@ fi
 # G is a repo with a github.com origin; the Jira credentials are stripped so the
 # jira verdict is proven to come from JIRA_PROJECT_KEY alone.
 G=$(fixture_mktemp_dir) || exit 1
-trap 'rm -rf "$R" "$G"' EXIT
+trap 'rm -rf "$R" "$G" "$CFG"' EXIT
 git -C "$G" init -q
 git -C "$G" remote add origin https://github.com/o/r
 expect_mode_rc() {
@@ -397,7 +407,7 @@ expect_mode_rc "a TAB in TICKET_ID_REQUIRED fails closed, never shifts the patte
 # Fail CLOSED when the resolver is not installed beside the hook (an adopter
 # payload without the resolver): never a silent env-only fallback.
 NOLIB=$(fixture_mktemp_dir) || exit 1
-trap 'rm -rf "$R" "$G" "$NOLIB"' EXIT
+trap 'rm -rf "$R" "$G" "$NOLIB" "$CFG"' EXIT
 mkdir -p "$NOLIB/hooks"
 cp "$SCRIPT" "$NOLIB/hooks/check-commit-msg.sh"
 printf 'chore: [#12] wire the thing\n' > "$MSG"
