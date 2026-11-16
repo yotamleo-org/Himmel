@@ -59,6 +59,12 @@ For Jira ops in this repo, use the local CLI at
 | Resolution  | `... resolution HIMMEL-N` (re-runs the current status's self-transition so the workflow post-function sets or clears the resolution — resolution is not on the edit screen) | (none) |
 | Release     | `... release state <R> [--json]` (exit 3 when not OK) / `... release request <R> --verb INTAKE\|REVERSION\|DISCHARGE --key K --to <v\|backlog> --why ...` (refuses a placeholder why, an INTAKE for a closed key outside the release unless `--evidence '{"pr":N}'` names its merged PR, and a REVERSION/DISCHARGE from a version the mirror does not hold the key in) / `... release withdraw <R> --req Q --reason ... [--by O-id]` (retires a pending request; `--by` names the operator decision row covering its key; an operator decision also withdraws the pending requests it contradicts) / `... release claim <R>` / `... release rule <R> --req Q --outcome O --op <kind> [--sector S] --ground G --reason-file F [--supersedes ids] [--authority operator --ref O-id]` / `... release apply <R> <R-id>` (fixVersions write, readback, receipt comment; idempotent) / `... release lease acquire\|release <R>` / `... release operator declare\|freeze\|decision\|takeover <R> ...` (refused inside a spawned worker, the release manager or a Telegram bridge session, or any process they started: the fence reads its markers from each ancestor's start-up env and refuses until the poller has written `host-ns`; see `operatorFence` in `enforcement.md`). Signed, hash-chained state under `$HANDOVER_DIR/<user>/<repo>/release/<R>/`; the release manager's verbs: `himmel-ops:release-manager` | MCP tool `release` (`sub` = state, request, claim, rule, apply, lease-acquire, lease-release; the operator verbs are CLI-only) |
 
+**Mirror count check.** `JIRA_PROJECT_KEY=HIMMEL bash scripts/handover/chief-kit/version-counts-check.sh [<version>...]`
+prints, per unreleased version, the open count from `jira list --jql` beside the same count read from
+the mirror, and a `residual-regex` pair (a label matching `(^|-)residual(-|$)`, the board and tick rule)
+shown beside it, never as a version size. Run it before quoting a per-version size. The verdict is on
+open only: exit 0 SAME, 1 DIFF, 2 bad input or an unreadable source. It is read-only.
+
 **CLI-only routing.** `block-backend-tier.sh` denies every Atlassian MCP
 method whose name says Jira, or that its verb map names, reads included, and
 an `execute*` wrapper around one. The denial message depends on the verb:
