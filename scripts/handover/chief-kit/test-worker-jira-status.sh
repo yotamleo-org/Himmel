@@ -907,6 +907,10 @@ if [ -n "$_TIMEOUT_BIN" ]; then
     check "phase c: a build LIVE on phase:last-step makes no edit" "$(edits)" 0
     brief_live '["phase:waiting"]' build
     check "phase c: a build LIVE on the retired phase:waiting sets build" "$(lastedit)" "edit $K --phase build"
+    # 9323: a --doc path named -- is a file, so its Leg kind line is read, not stdin
+    reset "In Progress"; owned; labels '[]'; mkdir -p "$tmp/hard"; mkbrief "$tmp/hard/--" build LIVE
+    ( cd "$tmp/hard" && bash "$SUT" "$K" --event live --doc -- >"$tmp/out" 2>&1 </dev/null )
+    check "phase c: a build LIVE whose --doc path is -- still sets build" "$(lastedit)" "edit $K --phase build"
     d_case() {
         reset "In Progress"; owned; labels '[]'; mergerow "$1" "$2" "$3"
         fn "$K" --event merge --pr "${5:-7}"

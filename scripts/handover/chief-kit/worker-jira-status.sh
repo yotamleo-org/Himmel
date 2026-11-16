@@ -248,7 +248,7 @@ phase_step() {
     if [ "$EVENT" = phase-label ] && [ -n "$HP" ]; then
         anchor=chief
     elif [ "$ev" = live ] && [ -n "$DOC" ] && [ -f "$DOC" ]; then
-        kind=$(sed -nE '/^## Results/q; s/^> \*\*Leg kind:\*\* (design|build)[[:space:]]*$/\1/p' "$DOC" | head -n 1)
+        kind=$(sed -nE '/^## Results/q; s/^> \*\*Leg kind:\*\* (design|build)[[:space:]]*$/\1/p' < "$DOC" | head -n 1)
         [ -z "$kind" ] || anchor="$kind-leg"
     fi
     if [ -z "$anchor" ] && [ "$ev" = merge ] && [ -n "$PR" ]; then
