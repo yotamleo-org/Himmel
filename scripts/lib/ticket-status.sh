@@ -332,7 +332,7 @@ ts_marker_newest() {
         elif [[ "$line" =~ $succession_re ]]; then
             newest=SUCCESSION
         fi
-    done < <(grep '^-' 2>/dev/null < "$1") # read-sink-ok: $1 is the caller's worker-doc path (record or --doc), read exactly as main's grep read it, bullet lines only, only a marker word comes out
+    done < <(grep '^-' 2>/dev/null < "$1") # read-sink-ok: $1 is a worker handover doc path (the worker record, --doc, or status-drift's <key>-N*.md scan under --docs-dir or the handover root), read exactly as main's grep read it, bullet lines only, only a marker word comes out
     printf '%s\n' "$newest"
 }
 
