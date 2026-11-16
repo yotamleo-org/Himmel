@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# scripts/handover/chief-kit/test-version-counts-check.sh - suite: version-counts-check.sh,
-# the read-only side-by-side of live Jira and Jira-mirror per-version open and residual counts.
-# The jira CLI is a stub behind VERSION_COUNTS_JIRA; the mirror is a fixture dir. No network.
-#
 # Platform guard: Linux/macOS bash 3.2+, python3.
 set -uo pipefail
 
@@ -24,7 +20,6 @@ if [ ! -f "$VC" ]; then
     exit 1
 fi
 
-# Stub jira CLI: `list ... --jql <jql>` prints $LIVE_DIR/<version>.tsv for the fixVersion named in the jql.
 mkdir -p "$W/bin"
 cat > "$W/bin/jira-stub" <<'STUB'
 #!/usr/bin/env bash
@@ -46,19 +41,16 @@ new_case() {
     mkdir -p "$M" "$LIVE_DIR"
     printf 'v1.0.0\ttrue\t2026-09-01\tfalse\nv1.1.4\tfalse\n' > "$CASE/HIMMEL.versions.tsv"
 }
-# mirror_issue <key> <status> <labels-json> <fixVersions-json>
 mirror_issue() {
     printf -- '---\nkey: "%s"\nstatus: "%s"\nstatusCategory: "To Do"\nlabels: %s\nfixVersions: %s\nupdated: "2026-11-16T09:00:00.000+0100"\n---\n\n# %s\n' \
         "$1" "$2" "$3" "$4" "$1" > "$M/$1.md"
 }
-# live_row <version> <key> <status> <labels-csv>
 live_row() { printf '%s\tTask\t%s\ttitle\t%s\n' "$2" "$3" "$4" >> "$LIVE_DIR/$1.tsv"; }
 run_vc() {
     OUT="$(JIRA_PROJECT_KEY=HIMMEL VERSION_COUNTS_MIRROR="$M" VERSION_COUNTS_JIRA="$W/bin/jira-stub" LIVE_DIR="$LIVE_DIR" bash "$VC" "$@" 2>"$CASE/err")"
     RC=$?
 }
 
-# 1. SAME: a residual variant label counts, a non-residual label does not.
 new_case same
 mirror_issue HIMMEL-1 "To Do" '["residual"]' '["v1.1.4"]'
 mirror_issue HIMMEL-2 "In Progress" '["residual-depth-1"]' '["v1.1.4"]'
@@ -71,7 +63,6 @@ check "SAME: exit 0" "$RC" "0"
 contains "SAME: v1.1.4 line shows live and mirror open and residual" "$OUT" "v1.1.4 open live=3 mirror=3 residual-regex live=2 mirror=2 SAME"
 contains "SAME: final verdict" "$OUT" "VERDICT SAME"
 
-# 2. DIFF open: the mirror still holds a ticket live Jira closed.
 new_case stale
 mirror_issue HIMMEL-1 "To Do" '[]' '["v1.1.4"]'
 mirror_issue HIMMEL-2 "To Do" '[]' '["v1.1.4"]'
@@ -81,7 +72,6 @@ check "DIFF open: exit 1" "$RC" "1"
 contains "DIFF open: counts printed side by side" "$OUT" "v1.1.4 open live=1 mirror=2 residual-regex live=0 mirror=0 DIFF"
 contains "DIFF open: final verdict" "$OUT" "VERDICT DIFF"
 
-# 3. Residual differing with open equal is shown but never moves the verdict (open is the version size).
 new_case residual
 mirror_issue HIMMEL-1 "To Do" '["residual"]' '["v1.1.4"]'
 live_row v1.1.4 HIMMEL-1 "To Do" backlog
@@ -89,7 +79,6 @@ run_vc
 check "residual-only difference: exit 0" "$RC" "0"
 contains "residual-only difference: both residual columns shown, verdict SAME" "$OUT" "v1.1.4 open live=1 mirror=1 residual-regex live=0 mirror=1 SAME"
 
-# 4. Closed statuses are not open on either side, both Wont Do spellings included.
 new_case closed
 mirror_issue HIMMEL-1 "To Do" '[]' '["v1.1.4"]'
 mirror_issue HIMMEL-2 "Wont Do" '["residual"]' '["v1.1.4"]'
@@ -104,7 +93,6 @@ run_vc
 check "closed statuses: exit 0" "$RC" "0"
 contains "closed statuses: one open ticket per side" "$OUT" "v1.1.4 open live=1 mirror=1 residual-regex live=0 mirror=0 SAME"
 
-# 5. A ticket under two fixVersions counts in each; a released version is skipped.
 new_case multi
 printf 'v1.0.0\ttrue\t2026-09-01\tfalse\nv1.1.4\tfalse\nv1.1.5\tfalse\n' > "$CASE/HIMMEL.versions.tsv"
 mirror_issue HIMMEL-1 "To Do" '[]' '["v1.1.4","v1.1.5","v1.0.0"]'
@@ -116,18 +104,15 @@ contains "two fixVersions: v1.1.4" "$OUT" "v1.1.4 open live=1"
 contains "two fixVersions: v1.1.5" "$OUT" "v1.1.5 open live=1"
 if grep -q 'v1.0.0' <<< "$OUT"; then bad "released version is not listed" "$OUT"; else ok "released version is not listed"; fi
 
-# 6. Version arguments restrict the listing and the jira calls.
 rm -f "$LIVE_DIR/calls.log"
 run_vc v1.1.5
 check "version arg: exit 0" "$RC" "0"
 if grep -q 'v1.1.4' <<< "$OUT"; then bad "version arg: only v1.1.5 listed" "$OUT"; else ok "version arg: only v1.1.5 listed"; fi
 check "version arg: one jira call" "$(wc -l < "$LIVE_DIR/calls.log" | tr -d ' ')" "1"
 
-# 7. The live read carries the closed-status exclusion and the labels flag.
 contains "jira call names --labels" "$(cat "$LIVE_DIR/calls.log")" "--labels"
 contains "jira call excludes closed statuses" "$(cat "$LIVE_DIR/calls.log")" "status NOT IN"
 
-# 8. Bad input and unreadable sources exit 2, with no verdict line.
 new_case jirafail
 mirror_issue HIMMEL-1 "To Do" '[]' '["v1.1.4"]'
 STUB_FAIL=1 run_vc
