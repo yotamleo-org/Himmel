@@ -376,7 +376,6 @@ sed -i 's/ cap=v1.1.3:17//' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 wait_exit "$WPID"
 check "(cap) a cap that goes away keeps waiting" "running" "$rc"
 if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
-# cap=? (the tick's deadline cut the read) keeps the saved value, so it is no wake; a moved count after it still wakes.
 reset_stub
 sed -i 's/ denials=none/ cap=v1.1.3:16 denials=none/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 I="$(new_inbox cap-cut)"

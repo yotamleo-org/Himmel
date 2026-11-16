@@ -814,7 +814,6 @@ sample() {
             [ "$v" != '?' ] || v="$(key_field hreg "$saved")"
             [ -n "$v" ] || continue
         fi
-        # cap= stays in the key whole; cap=? (a read the tick's deadline cut) keeps the saved value, so a cut is no change.
         if [ "$f" = cap ]; then
             [ "$v" != '?' ] || v="$(key_field cap "$saved")"
             [ -n "$v" ] || continue

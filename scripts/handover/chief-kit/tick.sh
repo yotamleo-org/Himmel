@@ -4194,7 +4194,6 @@ fi
 crfirst_tail=""
 crfirst_alerts=""
 if [ -n "$crfirst_rows" ] && [ -z "${pr_read_failed:-}" ] && [ "$pr_repo" = "$REPO" ] && [ -f "$HERE/../../lib/cr-first-release.sh" ]; then
-    # A sweep reached late would get tick_bound's 1 s and be killed every tick: it keeps its own floor.
     cf_floor="${TICK_CRFIRST_FLOOR_SEC:-20}"
     case "$cf_floor" in ''|*[!0-9]*) cf_floor=20 ;; esac
     cf_bound="$(tick_bound 120)"
