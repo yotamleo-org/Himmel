@@ -2614,21 +2614,25 @@ STUB
     cut_exit() { [ "$(cat "$W/cut/rc")" = 0 ] && pass "(8843) $1 exits 0" || fail "(8843) $1 exits $(cat "$W/cut/rc")"; }
     cut_healthy="$(cut_tick | sed 's/cheap-pending:[0-9]*s/cheap-pending:Ns/')"
     cut_exit 'a healthy tick'
-    case "$cut_healthy" in *' cap=v1.1.3:16 rm-queue=1,10m crfirst=#3101:cheap-pending:Ns') pass '(8843) a healthy tick ends in the three fields exactly as at the base sha' ;; *) fail "(8843) a healthy tick changed its cap, rm-queue or crfirst fields: $cut_healthy" ;; esac
+    case "$cut_healthy" in *' residual-cap=v1.1.3:16 open=v1.1.3:16 rm-queue=1,10m crfirst=#3101:cheap-pending:Ns') pass '(8843) a healthy tick ends in the residual-cap, open, rm-queue and crfirst fields' ;; *) fail "(8843) a healthy tick changed its residual-cap, open, rm-queue or crfirst fields: $cut_healthy" ;; esac
     cut_verbose="$(cut_tick --verbose)"
     cut_exit 'a healthy verbose tick'
-    contains '(8843) a healthy verbose tick prints the cap line' "$cut_verbose" 'cap: v1.1.3:16'
+    contains '(8843) a healthy verbose tick prints the residual-cap line' "$cut_verbose" 'residual-cap: v1.1.3:16'
+    contains '(10260) a healthy verbose tick prints the open line' "$cut_verbose" 'open: v1.1.3:16'
     contains '(8843) a healthy verbose tick prints the release-queue line' "$cut_verbose" 'rm-queue: 1,10m'
     contains '(8843) a healthy verbose tick prints the held CI-release head' "$cut_verbose" 'crfirst: #3101:cheap-pending:'
-    contains '(8843) a healthy tick prints the cap count' "$cut_healthy" ' cap=v1.1.3:16'
+    contains '(8843) a healthy tick prints the residual-cap count' "$cut_healthy" ' residual-cap=v1.1.3:16'
+    contains '(10260) a healthy tick prints the open count' "$cut_healthy" ' open=v1.1.3:16'
     contains '(8843) a healthy tick prints the release queue' "$cut_healthy" ' rm-queue=1,10m'
     contains '(8843) a healthy tick prints the held CI-release head' "$cut_healthy" ' crfirst=#3101:cheap-pending:Ns'
     cut_cap="$(CUT_PY_SLEEP=5 TICK_DEADLINE_SEC=1 cut_tick)"
     cut_exit 'a tick whose cap read the deadline cuts'
-    contains '(8843) a cap read the deadline cuts prints cap=?' "$cut_cap" ' cap=?'
+    contains '(8843) a cap read the deadline cuts prints residual-cap=?' "$cut_cap" ' residual-cap=?'
+    contains '(10260) a read the deadline cuts prints open=?' "$cut_cap" ' open=?'
     cut_cap="$(CUT_PY_FAIL=1 cut_tick)"
     cut_exit 'a tick whose cap read fails'
-    not_contains '(8843) a failed cap read still leaves cap= off' "$cut_cap" ' cap='
+    not_contains '(8843) a failed cap read still leaves residual-cap= off' "$cut_cap" ' residual-cap='
+    not_contains '(10260) a failed read leaves open= off' "$cut_cap" ' open='
     cut_rmq="$(CUT_RMQ=sleep TICK_DEADLINE_SEC=1 cut_tick)"
     cut_exit 'a tick whose release-queue read the deadline cuts'
     contains '(8843) a release-queue read the deadline cuts prints rm-queue=?' "$cut_rmq" ' rm-queue=?'

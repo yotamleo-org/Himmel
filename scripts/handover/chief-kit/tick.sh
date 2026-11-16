@@ -198,11 +198,15 @@ no HIMMEL_CONSOLE_LEG / HIMMEL_RELEASE_MANAGER=1 and no live repair.lock owner, 
 release repair <R> --apply --repo <slug>`, no sooner than TICK_RMRUN_MIN_SECS after repair-run.log was last written.
 Seam: TICK_REPAIR_PROBE. Never in chief-wait's action key; no alert, no wake.
 
-cap=<version>:<n>[,<version>:<n>] follows vmismatch= and is ABSENT unless an unreleased version
-holds more than 15 open residual tickets (labelled residual, not Done or Closed, by fixVersion; the count board.mjs
-shows against its soft cap), read from the Jira mirror. In chief-wait's action key whole: a version crossing the
-cap, or its count moving, wakes once; an unchanged value does not. cap=? means the tick's deadline cut the
-read (unknown, not an all-clear): chief-wait keeps the saved cap value on it, no wake.
+residual-cap=<version>:<n>[,<version>:<n>] follows vmismatch= and is ABSENT unless an unreleased version
+holds more than 15 open residual tickets (labelled residual, open by the rule below, by fixVersion; the count
+board.mjs shows against its soft cap), read from the Jira mirror. It counts residual tickets only, never a version's
+size: open= is the size. residual-cap=? means the tick's deadline cut the read (unknown, not an all-clear).
+open=<version>:<n>[,<version>:<n>] follows residual-cap= and, from the same mirror read, names every unreleased
+version holding at least one open ticket, labelled residual or not, in version order. ABSENT with no mirror,
+on a failed read or when no unreleased version has an open ticket; open=? means the deadline cut the read.
+One open rule counts both fields: a ticket is NOT open when its status or statusCategory is Done, Resolved,
+Closed, Wont Do, Won't Do, Wont Fix or Won't Fix. A ticket on several fixVersions counts in each.
 
 slotage=<worker>:<range>:<n>suites:<age>m[,...] sits just before tmp= and is ABSENT unless a
 live holder has kept a shared suite slot past HIMMEL_SUITE_SLOT_CAP seconds (default 1200); a part the
@@ -3250,15 +3254,11 @@ if [ -n "$leaks_version" ]; then
     fi
 fi
 
-# cap=<version>:<n>[,<version>:<n>]: each unreleased version holding more than 15 open
-# residual tickets (labelled residual, not Done/Resolved/Closed/Won't, by fixVersion), counted from the Jira
-# mirror the way board.mjs counts its CR_SOFT_CAP slots. ABSENT at 15 or fewer, with no mirror or on a failed
-# read; `?` when the tick's deadline cut the read (timeout status 124 or 137). In chief-wait's wake key whole:
-# a version crossing the cap or its count moving wakes once; cap=? keeps the saved value there, no wake.
 cap_summary=""
+open_summary=""
 if [ -d "$nd_mirror" ] && command -v python3 >/dev/null 2>&1; then
     cap_rc=0
-    cap_summary="$(CAP_MIRROR="$nd_mirror" timeout -k 2 "$(tick_bound 30)" python3 -I -c '
+    cap_out="$(CAP_MIRROR="$nd_mirror" timeout -k 2 "$(tick_bound 30)" python3 -I -c '
 import json, os, re
 d = os.environ["CAP_MIRROR"]
 released = set()
@@ -3271,6 +3271,7 @@ except OSError:
     raise SystemExit
 gone = re.compile(r"^(done|resolved|closed|wont do|won\x27t do|wont fix|won\x27t fix)$", re.I)
 slots = {}
+opened = {}
 for name in os.listdir(d):
     if not name.endswith(".md"):
         continue
@@ -3286,18 +3287,24 @@ for name in os.listdir(d):
             return json.loads(m.group(1))
         except ValueError:
             return m.group(1)
-    labels = val("labels") or []
-    if not any(re.search(r"(^|-)residual(-|$)", str(x)) for x in labels):
-        continue
     if gone.match(str(val("status") or "")) or gone.match(str(val("statusCategory") or "")):
         continue
+    labels = val("labels") or []
+    res = any(re.search(r"(^|-)residual(-|$)", str(x)) for x in labels)
     for v in val("fixVersions") or []:
-        slots[v] = slots.get(v, 0) + 1
-over = [(v, n) for v, n in slots.items() if n > 15 and v not in released]
-over.sort(key=lambda p: [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", p[0])])
-print(",".join(re.sub(r"\s", "_", v) + ":" + str(n) for v, n in over))
+        opened[v] = opened.get(v, 0) + 1
+        if res:
+            slots[v] = slots.get(v, 0) + 1
+def fmt(rows):
+    rows.sort(key=lambda p: [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", p[0])])
+    return ",".join(re.sub(r"\s", "_", v) + ":" + str(n) for v, n in rows)
+print(fmt([(v, n) for v, n in slots.items() if n > 15 and v not in released]))
+print(fmt([(v, n) for v, n in opened.items() if v not in released]))
 ' 2>/dev/null)" || cap_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in cap_rc and read below
-    case "$cap_rc" in 0) ;; 124 | 137) cap_summary='?' ;; *) cap_summary="" ;; esac
+    case "$cap_rc" in
+        0) cap_summary="$(printf '%s\n' "$cap_out" | sed -n 1p)"; open_summary="$(printf '%s\n' "$cap_out" | sed -n 2p)" ;;
+        124 | 137) cap_summary='?'; open_summary='?' ;;
+    esac
 fi
 
 # rm-queue=<n>,<oldest age>m[,run]: open placement requests of the chief doc's `release:` release,
@@ -4893,7 +4900,8 @@ if [ "$verbose" -eq 1 ]; then
     printf 'vm runner: %s\n' "$vmrun_summary"
     printf 'versionless-done: %s\n' "$vdone_summary"
     printf 'version mismatch: %s\n' "$vmismatch_summary"
-    [ -z "$cap_summary" ] || printf 'cap: %s\n' "$cap_summary"
+    [ -z "$cap_summary" ] || printf 'residual-cap: %s\n' "$cap_summary"
+    [ -z "$open_summary" ] || printf 'open: %s\n' "$open_summary"
     printf 'version leaks: %s\n' "$leaks_summary"
     printf 'rm-queue: %s\n' "$rm_queue"
     [ -z "$rm_refused" ] || printf 'rm-refused: %s\n' "$rm_refused"
@@ -5019,7 +5027,8 @@ else
     compact_field vmrun "$vmrun_summary"
     compact_field versionless-done "$vdone_summary"
     compact_field vmismatch "$vmismatch_summary"
-    compact_field cap "$cap_summary"
+    compact_field residual-cap "$cap_summary"
+    compact_field open "$open_summary"
     compact_field leaks "$leaks_summary"
     compact_field rm-queue "$rm_queue"
     compact_field rm-refused "$rm_refused"
