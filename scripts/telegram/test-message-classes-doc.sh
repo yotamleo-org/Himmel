@@ -14,7 +14,7 @@ fail() { FAILN=$((FAILN + 1)); echo "not ok - $1"; [ -n "${2:-}" ] && printf '%s
 cat > "$T/lint.py" <<'PY'
 import re, sys
 
-SPAN = re.compile(r'`([^`]*chief-route\.ts"?\s+reply\s[^`]*)`')
+SPAN = re.compile(r'`((?:[^`]*chief-route\.ts"?\s+)?reply\s+--[^`]*|[^`]*chief-route\.ts"?\s+reply\s[^`]*)`')
 FLAGS = {"--chief", "--satellite", "--kind", "--owed", "--doc"}
 errs = []
 for path in sys.argv[1:]:
@@ -23,7 +23,7 @@ for path in sys.argv[1:]:
     if not spans:
         errs.append("%s: no chief-route.ts reply command found" % path)
     for span in spans:
-        words = re.split(r'chief-route\.ts"?\s+reply\s+', span, maxsplit=1)[1].split()
+        words = re.split(r'(?:chief-route\.ts"?\s+|^)reply\s+', span, maxsplit=1)[1].split()
         kind = None
         while len(words) >= 2 and words[0] in FLAGS:
             if words[0] == "--kind":
@@ -41,19 +41,30 @@ real=()
 for d in $DOCS; do real+=("$REPO/$d"); done
 
 if out="$(lint "${real[@]}")"; then
-    pass "every chief-route.ts reply command in the four chief docs passes --kind chief-reply before the chat id"
+    pass "every chief-route.ts reply command and bare reply --flag form in the four chief docs passes --kind chief-reply before the chat id"
 else
-    fail "every chief-route.ts reply command in the four chief docs passes --kind chief-reply before the chat id" "$out"
+    fail "every chief-route.ts reply command and bare reply --flag form in the four chief docs passes --kind chief-reply before the chat id" "$out"
 fi
 
-mkdir -p "$T/copy"
-for d in $DOCS; do cp "$REPO/$d" "$T/copy/$(basename "$d")"; done
-sed '0,/ --kind chief-reply /s// /' "$REPO/docs/handover/chief-sections/voice-lines.md" > "$T/copy/voice-lines.md"
-out="$(lint "$T/copy/"*.md)"; rc=$?
-if [ "$rc" -ne 0 ] && grep -q 'voice-lines.md: .*voice asked' <<< "$out"; then
-    pass "a doc copy with one reply command's --kind chief-reply stripped fails the lint naming that command"
+sites=0
+for d in $DOCS; do
+    while IFS=: read -r n _; do
+        sites=$((sites + 1))
+        mkdir -p "$T/copy"
+        for c in $DOCS; do cp "$REPO/$c" "$T/copy/$(basename "$c")"; done
+        sed "${n}s/ --kind chief-reply / /" "$REPO/$d" > "$T/copy/$(basename "$d")"
+        out="$(lint "$T/copy/"*.md)"; rc=$?
+        if [ "$rc" -ne 0 ] && grep -q "$(basename "$d"): " <<< "$out"; then
+            pass "removing the --kind chief-reply at $d:$n fails the lint naming that doc"
+        else
+            fail "removing the --kind chief-reply at $d:$n fails the lint naming that doc" "rc=$rc out=$out"
+        fi
+    done < <(grep -n -- ' --kind chief-reply ' "$REPO/$d")
+done
+if [ "$sites" -eq 6 ]; then
+    pass "the four chief docs carry six --kind chief-reply commands, each removed once above"
 else
-    fail "a doc copy with one reply command's --kind chief-reply stripped fails the lint naming that command" "rc=$rc out=$out"
+    fail "the four chief docs carry six --kind chief-reply commands, each removed once above" "found $sites"
 fi
 
 # shellcheck disable=SC2016
