@@ -23,5 +23,8 @@ scripts/observability/test-exit-codes.sh	^(scripts/observability/exit-codes\.jso
 # Hashes the vendored statechart compiler tree against the wrapper's pin.
 scripts/handover/chief-kit/test-model-check-report.sh	^marketplace/plugins/pstack/skills/statechart/scripts/
 
+# Checks the two rows above against the real registry and the real vendored tree.
+scripts/cr/test-impacted-suites.sh	^(scripts/observability/exit-codes\.json|marketplace/plugins/pstack/skills/statechart/scripts/)
+
 # Walks every vendored pstack file against vendor-hashes.json.
 scripts/lanes/tests/pstack-plugin.test.mjs	^marketplace/plugins/pstack/(skills/|docs/|LICENSE$|vendor-hashes\.json$)

@@ -1817,7 +1817,7 @@ if [ -n "$ti_ec_re" ] && [ -z "$ti_miss" ]; then pass "TI7 every script the exit
 ti_mc_re="$(ti_re "$TI_MC")"
 ti_miss=""
 if [ -n "$ti_mc_re" ]; then
-    for k in $(git -C "$REPO_ROOT" ls-files marketplace/plugins/pstack/skills/statechart/scripts); do
+    for k in $(git -C "$REPO_ROOT" grep -l -e '' HEAD -- marketplace/plugins/pstack/skills/statechart/scripts | sed 's/^HEAD://'); do
         grepq "$k" -E "$ti_mc_re" || ti_miss="$ti_miss $k"
     done
 fi
