@@ -609,7 +609,7 @@ def refusal(path, fields, key):
     route = grant_route(path, path, trust)
     if route == 'chief':
         return ('%s: this is a trust path, your chief sees it on its tick (hreg=) and can stamp a grant with --chief-doc, and '
-                'the operator is paged with the grant command. %s' % (head, GRANT_EXITS))
+                'the operator is paged if the ask is still pending after 30 minutes. %s' % (head, GRANT_EXITS))
     if route == 'operator':
         return ('%s: this is a settings or CI-workflow path, your chief sees it on its tick (hreg=), and only the operator '
                 'grants it, paged with the command for a real terminal. %s' % (head, GRANT_EXITS))
@@ -1531,7 +1531,8 @@ def pending_asks(repo):
 
 
 def op_asks(a):
-    """TSV key path holder command, one per pending trust-path ask: the command is the paste-ready grant."""
+    """TSV key path holder command kind, one per pending trust-path ask: the command is the paste-ready grant; the kind is
+    hold-ask-chief for the route chief and hold-ask-operator for every other route."""
     repo = primary_of(a.repo)
     kit = os.path.abspath(os.path.join(HERE, '..', '..', '..'))  # the checkout this holds.py runs from, whatever --repo names
     try:
@@ -1539,9 +1540,11 @@ def op_asks(a):
     except RepoFault:
         pass  # swallow-ok: no git identity for the kit checkout; its own path is the best command there is
     script = os.path.join(kit, 'scripts', 'handover', 'chief-kit', 'holds.py')
+    trust = load_trust() or []
     for key, path, holder in pending_asks(repo):
+        kind = 'hold-ask-chief' if grant_route(path, canon(path, repo), trust) == 'chief' else 'hold-ask-operator'
         print('\t'.join([key, path, holder, 'python3 -I %s grant --key %s --repo %s %s'
-                         % (shlex.quote(script), key, shlex.quote(repo), shlex.quote(path))]))
+                         % (shlex.quote(script), key, shlex.quote(repo), shlex.quote(path)), kind]))
     return 0
 
 

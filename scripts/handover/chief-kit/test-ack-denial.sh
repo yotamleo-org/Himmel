@@ -96,6 +96,15 @@ else
 fi
 chmod 700 "$HIMMEL_DENIAL_ACK_DIR"
 
+mkpage feat+worker-i 1 SHIP-STEP "$(( $(date +%s) - 5 ))"
+: > "$HIMMEL_DENIAL_ACK_DIR/feat+worker-i.$(( $(date +%s) - 5 )).stuck"
+printf '%s\n' "$(date +%s)" > "$HIMMEL_DENIAL_ACK_DIR/.stuck-cutover"
+out="$(bash "$ACK" feat+worker-i 2>&1)"; rc=$?
+check "(i) an ack next to a stuck claim and a cutover file exits 0" "0" "$rc"
+check "(i) and writes its ack file" "yes" "$([ -f "$HIMMEL_DENIAL_ACK_DIR/feat+worker-i.ack" ] && echo yes)"
+check "(i) the claim and cutover files are left as they were" "yes" "$(set -- "$HIMMEL_DENIAL_ACK_DIR"/feat+worker-i.*.stuck; [ -e "$1" ] && [ -s "$HIMMEL_DENIAL_ACK_DIR/.stuck-cutover" ] && echo yes)"
+check "(i) the unacked reader names no denial once acked" "none" "$(. "$HERE/denial-ack-lib.sh"; denial_unacked feat+worker-i || echo none)"
+
 echo "----"
 if [ "$fails" -eq 0 ]; then echo "PASS - test-ack-denial.sh"; exit 0; fi
 echo "FAIL - test-ack-denial.sh ($fails failure(s))"; exit 1
