@@ -144,13 +144,18 @@ release is declared (`jira release state <R>` prints a status other than
   `rm-queue=`, each elided when empty, none in the wake key, none a message.
   `held=<n>:<sig8>` is the count of keys the repair cannot place on its own and
   the first 8 hex of the held signature, which moves only when the held set moves.
-  `unfiled=<n>` counts signed operator records no request carries yet. Both read
-  `release/<R>/repair-held.json`. `repair=off:<why>` shows while the repair cannot
+  `unfiled=<n>` counts signed operator records no request carries yet. All three
+  read `release/<R>/repair-state.json`, the one record the jira CLI writes
+  (`jira release repair-state <R> --json` prints it, with `operator_command` set
+  while the state is `off:unreviewed`); the tick reads it and writes no repair file.
+  `repair-held.json` and the other repair files stay as written copies for now.
+  `repair=off:<why>` shows while the repair cannot
   run: `mirror-unknown` or `bad-input` (a stop), `error` (a run that reported an
   error, retried on the `TICK_RMRUN_MIN_SECS` gap), `lost` (a launched run
   left no end record: it failed to start or died mid-run; the tick retries it on a
   backoff from `TICK_RMRUN_MIN_SECS`, capped at 6 h, and `repair-run.log` holds its
-  stderr), or `unreviewed` (no `repair-reviewed` marker,
+  stderr; a launcher that never starts the CLI leaves no record and is retried at the
+  gap), or `unreviewed` (no review marker in the record,
   so the first `jira release repair <R> --apply --repo <owner/name>` is yours, after
   a dry run). That first apply is the station's first repair run. Run the same
   command without `--apply` first: the dry run writes nothing, prints the lanes and

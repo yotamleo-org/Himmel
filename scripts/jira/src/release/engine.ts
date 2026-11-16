@@ -1039,6 +1039,9 @@ export function request(ctx: Ctx, o: Omit<RequestRow, 'req' | 'ts' | 'state'>): 
     const dup = [...latest.values()].find((r) => (pending(r) || pullAgain(r)) && r.key === o.key && r.verb === o.verb
       && r.from_v === o.from_v && r.to_v === o.to_v);
     if (dup) return dup;
+    // An ask the RM already refused, repeated word for word with nothing new, files nothing: the refusal and its remedy stand.
+    const same = unchangedRefusal(l, o);
+    if (same) return same;
     const req = seq(`Q-${ctx.release}`, latest.keys());
     return appendChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k, { ...o, req, ts: ts(ctx), state: 'open' });
   });
@@ -1544,10 +1547,40 @@ export interface StateOut extends ReleaseState {
   words_records: WordsRecord[];
   /** Open mirror keys labelled operator-directed or of priority High or Highest. */
   asks_operator_keys: string[];
+  /** Rulings whose newest phase is intent or applied: the Jira write, the admissions row or the receipt may still be owed. A normal rm-run replays each. */
+  unfinished_rulings: UnfinishedRuling[];
+  /** Required-remainder children (request evidence `remainder: true`) of an open current-version parent that are open outside the version. A read of existing evidence: it admits nothing. */
+  remainder_conflicts: RemainderConflict[];
 }
 
+export interface UnfinishedRuling { ruling: string; req: string; key: string; phase: 'intent' | 'applied'; op: string; owner: 'release-manager'; next: string }
+
 /** asks_operator is null when the mirror cannot say: it is unreadable, or does not hold the key. */
-export interface RefusedAsk { key: string; ruling: string; req: string; reason: string; asks_operator: boolean | null }
+export interface RefusedAsk { key: string; ruling: string; req: string; reason: string; ground: string; remedy: string; asks_operator: boolean | null }
+
+/** A current-version parent whose recorded remainder sits outside the version: the contradiction, who owns it and the next command. */
+export interface RemainderConflict {
+  parent: string; child: string; req: string; ruling: string | null;
+  phase: 'open' | 'claimed' | 'held' | 'refused' | 'ruled'; owner: 'chief' | 'release-manager'; next: string;
+}
+
+// The exact next command for a refused ask: operator words for an operator-asked (or unknown) key; changed facts or an ack otherwise.
+function remedyOf(release: string, q: RequestRow, ruling: string, asksOperator: boolean | null): string {
+  const base = `jira release request ${release} --verb ${q.verb} --key ${q.key} --from ${vName(q.from_v)} --to ${vName(q.to_v)}`;
+  if (asksOperator !== false) return `${base} --why "<why>" --decision <n> --words "<the operator's exact words>"`;
+  return `new facts: ${base} --why "<what changed>" --evidence '{"<changed requirement>":"<value>"}'; or if the refusal is right: jira release ack ${release} --ruling ${ruling} --reason "<why>"`;
+}
+
+const canon = (v: unknown): string => JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x)
+  ? Object.fromEntries(Object.entries(x as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : x));
+
+// The open refused ask this request repeats unchanged: same key, verb, versions, why and evidence, with no ack, newer operator row, newer different ask or Done since.
+function unchangedRefusal(l: Loaded, o: Omit<RequestRow, 'req' | 'ts' | 'state'>): RequestRow | undefined {
+  const a = refusedAsks(l, null).find((x) => x.key === o.key);
+  const first = a ? l.requests.verified.find((x) => x.req === a.req) : undefined;
+  if (!first || first.verb !== o.verb || first.from_v !== o.from_v || first.to_v !== o.to_v || first.why !== o.why || canon(first.evidence ?? {}) !== canon(o.evidence ?? {})) return undefined;
+  return latestRequests(l.requests).get(first.req);
+}
 export interface WordsRecord { id: string; decision: string | null; keys: string[]; op: string | null; verbatim: string }
 
 const factsOf = (i: IssueSnap | undefined): TicketFacts | null =>
@@ -1578,7 +1611,8 @@ function refusedAsks(l: Loaded, issues: Map<string, IssueSnap> | null): RefusedA
     if (acked.has(r.id) || askedAgain || (named.get(key) ?? -Infinity) > since) continue;
     const issue = issues?.get(key);
     if (issue && terminalOf(issue) !== null) continue;
-    out.push({ key, ruling: r.id, req: r.req, reason: r.reason, asks_operator: issue ? asksOperator(factsOf(issue)) : null });
+    const asks = issue ? asksOperator(factsOf(issue)) : null;
+    out.push({ key, ruling: r.id, req: r.req, reason: r.reason, ground: r.ground, remedy: remedyOf(l.decl.release, q, r.id, asks), asks_operator: asks });
   }
   return out.sort((a, b) => a.key.localeCompare(b.key, 'en', { numeric: true }));
 }
@@ -1622,7 +1656,7 @@ export function state(ctx: Ctx): StateOut {
   const l = load(ctx);
   const empty = {
     admissions_today: {}, lease: null, requests: { open: [], claimed: [], oldest_open: null }, heads: { rulings: '', operator: '', events: '', requests: '', mirror: null },
-    refused_asks: [], words_records: [], asks_operator_keys: [],
+    refused_asks: [], words_records: [], asks_operator_keys: [], unfinished_rulings: [], remainder_conflicts: [],
   };
   if ('unknown' in l) return { ...unknownState(ctx.release, l.unknown), ...empty };
   const mirror = readMirror(ctx.mirrorRoot);
@@ -1654,7 +1688,46 @@ export function state(ctx: Ctx): StateOut {
     refused_asks: refusedAsks(l, mirror.issues),
     words_records: wordsRecords(l),
     asks_operator_keys: asksOperatorKeys(mirror.issues),
+    unfinished_rulings: unfinishedOf(l.rulings, ctx.release),
+    remainder_conflicts: remainderConflicts(l, mirror.issues, ctx.release),
   };
+}
+
+// A required remainder is recorded as request evidence `{follow_up_of: <parent>, remainder: true}` (create --follow-up-of --remainder,
+// or request --required-by). The newest such request per child decides; a parent that is done or outside the current version, or a
+// child that is closed or already in it, is no contradiction.
+function remainderConflicts(l: Loaded, issues: Map<string, IssueSnap> | null, release: string): RemainderConflict[] {
+  if (!issues) return [];
+  const current = l.decl.current;
+  const rulingOf = new Map<string, RulingRow>();
+  for (const r of l.rulings.verified) rulingOf.set(r.req, r);
+  const refused = new Map(refusedAsks(l, issues).map((a) => [a.key, a]));
+  const out = new Map<string, RemainderConflict>();
+  for (const q of [...latestOrEmpty(l.requests).values()].sort((a, b) => a.ts.localeCompare(b.ts))) {
+    const ev = (q.evidence ?? {}) as { follow_up_of?: unknown; remainder?: unknown };
+    if (q.verb !== 'INTAKE' || q.to_v !== current || ev.remainder !== true || typeof ev.follow_up_of !== 'string' || q.state.startsWith('withdrawn:')) continue;
+    const parent = issues.get(ev.follow_up_of);
+    const child = issues.get(q.key);
+    if (!parent || !child || terminalOf(parent) !== null || !parent.fixVersions.includes(current) || terminalOf(child) !== null || child.fixVersions.includes(current)) continue;
+    const ruling = rulingOf.get(q.req);
+    const phase: RemainderConflict['phase'] = q.state === 'open' ? 'open' : q.state.startsWith('claimed:') ? 'claimed' : q.state === 'held' ? 'held'
+      : refused.has(q.key) || q.state.startsWith('refused:') ? 'refused' : 'ruled';
+    const chief = phase === 'refused' || phase === 'held';
+    out.set(`${ev.follow_up_of} ${q.key}`, {
+      parent: ev.follow_up_of, child: q.key, req: q.req, ruling: ruling?.id ?? null, phase, owner: chief ? 'chief' : 'release-manager',
+      next: chief ? (refused.get(q.key)?.remedy ?? remedyOf(release, q, ruling?.id ?? '<ruling>', null)) : `jira release rm-run ${release}`,
+    });
+  }
+  return [...out.values()].sort((a, b) => a.child.localeCompare(b.child, 'en', { numeric: true }));
+}
+
+function unfinishedOf(rulings: Chain<RulingRow>, release: string): UnfinishedRuling[] {
+  const last = new Map<string, RulingRow>();
+  for (const r of rulings.verified) last.set(r.id, r);
+  return [...last.values()].filter((r) => r.phase === 'intent' || r.phase === 'applied').map((r) => ({
+    ruling: r.id, req: r.req, key: r.key, phase: r.phase as 'intent' | 'applied', op: `${r.op.kind} ${vName(r.op.from_v)}→${vName(r.op.to_v)}`,
+    owner: 'release-manager' as const, next: `jira release rm-run ${release}`,
+  }));
 }
 
 function latestOrEmpty(requests: Chain<RequestRow>): Map<string, RequestRow> {

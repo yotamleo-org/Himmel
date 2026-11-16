@@ -17,6 +17,7 @@ import { defaultRoot } from './mirror.js';
 import { sectorField, sectorOf } from './sector.js';
 import { fetchVersions, setFixVersion } from './versions.js';
 import { chiefOverrideOf } from './intake-gate.js';
+import { repairStateOf } from '../release/repair-state.js';
 import { readAdmissions, underTmp } from './admissions-ledger.js';
 import { parseFrozen } from './version-freeze.js';
 import {
@@ -204,11 +205,20 @@ export function renderState(s: StateOut, budgets: Record<string, number> = {}): 
   if (today.length) out.push(`operator admissions today: ${today.join(', ')}`);
   out.push(`leaks: unauthorized ${s.leaks.unauthorized.join(', ') || 'none'}; ruled-in non-member ${s.leaks.ruled_in_non_member.join(', ') || 'none'}`);
   out.push(`requests: open ${s.requests.open.join(', ') || 'none'}; claimed ${s.requests.claimed.join(', ') || 'none'}`);
+  for (const c of s.remainder_conflicts ?? []) out.push(`remainder: ${c.parent} cannot close without ${c.child} (${c.phase} ${c.req}); ${c.owner}: ${c.next}`);
+  for (const u of s.unfinished_rulings ?? []) out.push(`unfinished: ${u.ruling} ${u.phase} ${u.key} ${u.op}; ${u.owner} runs \`${u.next}\``);
   for (const i of s.integrity) out.push(`integrity: ${i}`);
   return out.join('\n');
 }
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
+
+// The owner/name of this checkout's origin remote, or null: the slug the repair's gh lookups name.
+function originSlug(): string | null {
+  const r = spawnSync('git', ['-C', repoRoot, 'remote', 'get-url', 'origin'], { encoding: 'utf8', timeout: 10_000 });
+  const slug = r.status === 0 ? r.stdout.trim().replace(/(\.git)?\/?$/, '').replace(/^.*[:/]([^:/]+\/[^:/]+)$/, '$1') : '';
+  return /^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*$/.test(slug) ? slug : null;
+}
 
 export function sendApprovalAlert(a: ApprovalAlert): number {
   const dir = mkdtempSync(join(tmpdir(), 'version-approval-'));
@@ -744,6 +754,16 @@ export function registerRelease(program: Command): void {
       else if (report.status === 'error') process.exitCode = 2;
     });
 
+  rel.command('repair-state <release>')
+    .description('Print the version repair\'s one state record (off|idle|running|held|lost, reason, signature, held keys, the operator command); a crashed run reads lost')
+    .option('--json', 'Print the record as JSON')
+    .option('--repo <owner/name>', 'The GitHub repo the operator command names (default: this checkout\'s origin)')
+    .action((release: string, o: { json?: boolean; repo?: string }) => {
+      const got = repairStateOf(ctxFor(release), { repo: o.repo ?? originSlug() });
+      if (o.json) console.log(JSON.stringify(got));
+      else console.log(`repair-state ${release}: ${got.state}${got.reason ? ` (${got.reason})` : ''}; held ${got.held_keys.length}, unfiled ${got.unfiled}${got.operator_command ? `; run: ${got.operator_command}` : ''}`);
+    });
+
   rel.command('request <release>')
     .description('Queue a placement request for the release manager (the chief writes these)')
     .requiredOption('--verb <verb>', 'INTAKE | REVERSION | DISCHARGE')
@@ -754,15 +774,26 @@ export function registerRelease(program: Command): void {
     .option('--evidence <json>', 'Evidence object as JSON', '{}')
     .option('--decision <n>', 'The operator decision whose words place an operator-directed or High ticket (its specs/decisions verbatim file)')
     .option('--words <text>', 'The operator\'s exact words in that file; with --decision, recorded as an O- record the request cites')
+    .option('--required-by <key>', 'The open current-version ticket that cannot close without this one: records the remainder in the evidence (follow_up_of, remainder)')
     .option('--mirror-root <dir>', 'Jira mirror directory (default: the JIRA_PROJECT_KEY mirror)')
-    .action(async (release: string, o: { verb: string; key: string; from: string; to: string; why: string; evidence: string; decision?: string; words?: string; mirrorRoot?: string }) => {
+    .action(async (release: string, o: { verb: string; key: string; from: string; to: string; why: string; evidence: string; decision?: string; words?: string; requiredBy?: string; mirrorRoot?: string }) => {
       if (!['INTAKE', 'REVERSION', 'DISCHARGE'].includes(o.verb)) throw new Error('release request: --verb is INTAKE, REVERSION or DISCHARGE');
       const evidence: unknown = JSON.parse(o.evidence);
       if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) throw new Error('release request: --evidence is a JSON object');
+      if (o.requiredBy !== undefined) {
+        const have = (evidence as Record<string, unknown>)['follow_up_of'];
+        if (!/^[A-Z][A-Z0-9]*-\d+$/.test(o.requiredBy) || o.requiredBy === o.key) throw new RequestRefused(`release request: --required-by names another ticket key, not "${o.requiredBy}"`);
+        if (have !== undefined && have !== o.requiredBy) throw new RequestRefused(`release request: --evidence follow_up_of ${String(have)} contradicts --required-by ${o.requiredBy}`);
+        Object.assign(evidence, { follow_up_of: o.requiredBy, remainder: true });
+      }
       const ctx = ctxFor(release, o.mirrorRoot);
-      const approval = o.verb === 'INTAKE' ? outOfVersionApproval(process.env, o.key, new Date()) : null;
+      // New operator words are authority for a placement; they are checked before an old work approval can answer for them.
+      if (o.decision !== undefined && o.words === undefined) throw new RequestRefused('release request: --decision needs --words "<the operator\'s exact words>"');
+      if (o.words !== undefined && o.decision === undefined) throw new RequestRefused('release request: --words needs --decision <n>, the decision whose file holds them');
+      const approval = o.verb === 'INTAKE' && o.decision === undefined ? outOfVersionApproval(process.env, o.key, new Date()) : null;
       if (approval) {
         console.log(`REQ approved:${approval.id}`);
+        console.error(`release request: ${o.key} holds out-of-version approval ${approval.id}: work permission only, no placement was queued; to place it in ${o.to === 'backlog' ? 'a version' : o.to} add --decision <n> --words "<the operator's exact words>"`);
         try {
           await clearProposedLabels(ctx.jira, o.key);
         } catch (e) {
@@ -771,8 +802,6 @@ export function registerRelease(program: Command): void {
         return;
       }
       const row = { verb: o.verb as Verb, key: o.key, from_v: ver(o.from), to_v: ver(o.to), why: o.why };
-      if (o.decision !== undefined && o.words === undefined) throw new RequestRefused('release request: --decision needs --words "<the operator\'s exact words>"');
-      if (o.words !== undefined && o.decision === undefined) throw new RequestRefused('release request: --words needs --decision <n>, the decision whose file holds them');
       const scoped = isGated({ ...row, origin: 'cli', ticket: null, env: ctx.env });
       const ticket = scoped && o.decision === undefined ? await ticketFacts(ctx, o.key) : null;
       refuseRequest(ctx, { ...row, evidence: evidence as Record<string, unknown>, origin: 'cli', ticket, decision: o.decision });
@@ -785,6 +814,9 @@ export function registerRelease(program: Command): void {
       }
       const r = releaseRequest(ctx, { ...row, evidence: evidence as Record<string, unknown>, from: 'console' });
       console.log(`REQ ${r.req}`);
+      if (r.state !== 'open' && !r.state.startsWith('claimed:')) {
+        console.error(`release request: ${r.req} is already ${r.state} and nothing in this ask is new, so none was queued; \`jira release state ${release} --json\` lists its refused_asks remedy (new facts or evidence, the operator's words, or an ack)`);
+      }
     });
 
   rel.command('pull <release>')

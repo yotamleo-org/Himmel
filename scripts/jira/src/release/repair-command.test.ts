@@ -3,9 +3,11 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
-import { declare, leaseAcquire, operatorDecision, request, rmRun, type Ctx, type Judge, type JiraPort } from './engine.js';
+import { declare, leaseAcquire, operatorDecision, request, rmRun, state as engineState, type Ctx, type Judge, type JiraPort } from './engine.js';
+import { runSignature } from './repair-state.js';
 import { appendChain, loadKey, readChain } from './ledger.js';
 import { passingPr, repairRun, RequestRefused, type RepairReport, type RepairRunOptions } from './repair-run.js';
 import { refuseRequest, registerRelease, repairGetter } from '../commands/release.js';
@@ -491,7 +493,7 @@ describe('test-version-repair apply', () => {
     const before = treeOf();
     const r = await applyRun({ get: liveGetter(issues, { 'K-2': '200' }), gh: ghWith(GOOD_PR) });
     expect(r.status).toBe('ok');
-    const allowed = ['requests.jsonl', 'events.jsonl', 'repair-held.json', 'repair-pr-cache.json', 'repair-reviewed'].map((n) => `release/R1/${n}`);
+    const allowed = ['requests.jsonl', 'events.jsonl', 'repair-held.json', 'repair-pr-cache.json', 'repair-reviewed', 'repair-state.json', 'repair-launch', 'repair-signature'].map((n) => `release/R1/${n}`);
     expect(changedSince(before)).toEqual([...allowed].sort());
   });
 
@@ -1012,5 +1014,122 @@ describe('test-version-repair apply through the release manager', () => {
     await applyRun({ get }, rmCtx(port));
     expect(heldJson().classes).toEqual([]);
     expect(requestStates().some((s) => /:ruled:/.test(s))).toBe(true);
+  });
+});
+
+// --- 10231: the one CLI-owned repair-state record --------------------------------------------------
+
+describe('10231 repair-state.json is the one record the CLI writes', () => {
+  const recPath = () => join(releaseDir(), 'repair-state.json');
+  const rec = (): Record<string, unknown> => JSON.parse(readFileSync(recPath(), 'utf8'));
+  const cli = async (...args: string[]): Promise<string[]> => {
+    vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', join(root, 'release'));
+    vi.stubEnv('HIMMEL_RELEASE_KEY_DIR', join(root, 'keys'));
+    const lines: string[] = [];
+    const spy = vi.spyOn(console, 'log').mockImplementation((s: unknown) => { lines.push(String(s)); });
+    try {
+      const program = new Command().exitOverride();
+      registerRelease(program);
+      await program.parseAsync(['release', ...args], { from: 'user' });
+    } finally {
+      spy.mockRestore();
+    }
+    return lines;
+  };
+  const deadPid = (): number => spawnSync('true').pid as number;
+  const T0 = Math.floor(new Date('2026-11-02T10:00:00.000Z').getTime() / 1000);
+  const running = (over: Record<string, unknown>) => JSON.stringify({
+    release: 'R1', state: 'running', reason: null, reviewed_at: '2026-11-01T00:00:00.000Z', signature: 'a'.repeat(64), held_signature: '', held_keys: [], unfiled: 0,
+    launched: 1_700_000_000, pid: 1, lost_count: 0, operator_command: null, last_exit: null, ts: '2026-11-01T00:00:00.000Z', ...over,
+  });
+
+  it('a release with no review marker reads off:unreviewed with the exact command, through the new verb', async () => {
+    setup();
+    const [line] = await cli('repair-state', 'R1', '--repo', 'o/r', '--json');
+    expect(JSON.parse(line!)).toMatchObject({
+      release: 'R1', state: 'off', reason: 'unreviewed', reviewed_at: null, signature: '', held_keys: [], unfiled: 0, lost_count: 0,
+      operator_command: 'jira release repair R1 --apply --repo o/r', last_exit: null,
+    });
+    expect(rec()).toMatchObject({ state: 'off', reason: 'unreviewed' });
+  });
+
+  it('a clean apply publishes idle or held with its signature, held keys and compatibility copies', async () => {
+    const issues = filing();
+    const mid: Array<Record<string, unknown>> = [];
+    const live = liveGetter(issues, { 'K-2': '200' });
+    const r = await applyRun({ get: (async (p: string) => { if (existsSync(recPath())) mid.push(rec()); return live(p); }) as Getter });
+    expect(r.status).toBe('ok');
+    expect(mid[0]).toMatchObject({ state: 'running', pid: process.pid, launched: T0, lost_count: 0 });
+    const held = heldJson();
+    expect(rec()).toMatchObject({
+      state: held.held > 0 ? 'held' : 'idle', reason: null, held_signature: held.held_signature, held_keys: held.classes.flatMap((c) => c.keys).sort(),
+      unfiled: held.unfiled, last_exit: 0, pid: null, operator_command: null, reviewed_at: '2026-11-02T10:00:00.000Z',
+    });
+    expect(rec()['signature']).toMatch(/^[0-9a-f]{64}$/);
+    expect(readFileSync(join(releaseDir(), 'repair-signature'), 'utf8').trim()).toBe(rec()['signature']);
+    expect(readFileSync(join(releaseDir(), 'repair-launch'), 'utf8').trim()).toBe(`${T0} 0`);
+    expect(readdirSync(releaseDir()).filter((n) => n.includes('.tmp-'))).toEqual([]);
+  });
+
+  it('a stop is off with its reason and exit 3, an error is off:error with the signature cleared and exit 2; held fields survive both', async () => {
+    const issues = filing();
+    expect((await applyRun({ get: liveGetter(issues, { 'K-2': '200' }) })).status).toBe('ok');
+    const keep = { held_keys: rec()['held_keys'], held_signature: rec()['held_signature'], unfiled: rec()['unfiled'] };
+    expect((await applyRun({}, ctx({}, null))).status).toBe('stopped');
+    expect(rec()).toMatchObject({ state: 'off', reason: 'mirror-unknown', last_exit: 3, ...keep });
+    mkdirSync(join(root, 'journal-is-a-dir'));
+    expect((await applyRun({ journal: join(root, 'journal-is-a-dir') })).status).toBe('error');
+    expect(rec()).toMatchObject({ state: 'off', reason: 'error', last_exit: 2, signature: '', ...keep });
+    expect(existsSync(join(releaseDir(), 'repair-signature'))).toBe(false);
+  });
+
+  it('a crashed run reads lost (persisted); the next run counts it and a clean end resets the count', async () => {
+    const issues = filing();
+    mkdirSync(releaseDir(), { recursive: true });
+    writeFileSync(recPath(), running({ pid: deadPid(), lost_count: 1 }));
+    expect(JSON.parse((await cli('repair-state', 'R1', '--repo', 'o/r', '--json'))[0]!)).toMatchObject({ state: 'lost', reason: 'lost', lost_count: 1, launched: 1_700_000_000 });
+    expect(rec()).toMatchObject({ state: 'lost' });
+    const mid: Array<Record<string, unknown>> = [];
+    const live = liveGetter(issues, { 'K-2': '200' });
+    expect((await applyRun({ get: (async (p: string) => { mid.push(rec()); return live(p); }) as Getter })).status).toBe('ok');
+    expect(mid[0]).toMatchObject({ state: 'running', lost_count: 2 });
+    expect(rec()).toMatchObject({ lost_count: 0, last_exit: 0 });
+  });
+
+  it('a running record whose owner is alive stays running', async () => {
+    setup();
+    mkdirSync(releaseDir(), { recursive: true });
+    writeFileSync(recPath(), running({ launched: Math.floor(Date.now() / 1000), pid: process.pid }));
+    expect(JSON.parse((await cli('repair-state', 'R1', '--json'))[0]!).state).toBe('running');
+  });
+
+  it('the run signature the CLI records is byte-for-byte the one the tick computes from the same state and journal', async () => {
+    const issues = filing();
+    writeFileSync(journalFile(), '{"key":"K-9"}\n');
+    const tick = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'handover', 'chief-kit', 'tick.sh'), 'utf8');
+    const program = /rp_sig="\$\(printf '%s' "\$rm_json" \| python3 -I -c '\n([\s\S]*?)\n' "\$\{HIMMEL_VERSION_WRITES/.exec(tick)?.[1];
+    expect(program).toBeDefined();
+    for (const journal of [journalFile(), join(root, 'no-journal.jsonl')]) {
+      const s = JSON.stringify(engineState(ctx({}, join(root, 'mirror'))));
+      const theirs = spawnSync('python3', ['-I', '-c', program!, journal], { input: s, encoding: 'utf8' }).stdout.trim();
+      expect(theirs).toMatch(/^[0-9a-f]{64}$/);
+      expect(runSignature(ctx({}, join(root, 'mirror')), journal)).toBe(theirs);
+    }
+    expect(issues.length).toBeGreaterThan(0);
+  });
+
+  it('existing artifacts migrate into the record while the compatibility copies stay in place', async () => {
+    setup();
+    mkdirSync(releaseDir(), { recursive: true });
+    const sig = 'c'.repeat(64);
+    writeFileSync(join(releaseDir(), 'repair-held.json'), JSON.stringify({ release: 'R1', held: 2, unfiled: 1, held_signature: sig, classes: [{ class: 'hand', question: 'q', keys: ['K-9', 'K-4'], commands: [] }] }));
+    writeFileSync(join(releaseDir(), 'repair-reviewed'), '2026-11-01T00:00:00Z\n');
+    writeFileSync(join(releaseDir(), 'repair-status'), 'mirror-unknown\nx\n');
+    writeFileSync(join(releaseDir(), 'repair-signature'), `${'d'.repeat(64)}\n`);
+    writeFileSync(join(releaseDir(), 'repair-launch'), '1700000000 2\n');
+    const got = JSON.parse((await cli('repair-state', 'R1', '--json'))[0]!);
+    expect(got).toMatchObject({ state: 'off', reason: 'mirror-unknown', reviewed_at: '2026-11-01T00:00:00Z', signature: 'd'.repeat(64), held_signature: sig, held_keys: ['K-4', 'K-9'], unfiled: 1, launched: 1_700_000_000, lost_count: 2 });
+    expect(existsSync(join(releaseDir(), 'repair-held.json'))).toBe(true);
+    expect(existsSync(join(releaseDir(), 'repair-status'))).toBe(true);
   });
 });

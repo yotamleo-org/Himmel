@@ -24,7 +24,7 @@ chain (decision 100), and names its ground.
   `chain:<name>`, `receipt`, `defer:<why>`, `resequence:<why>` (a move within
   the release), `resolved:<resolution>` (a DISCHARGE). A ground explains the
   ruling; it never authorizes a placement by itself.
-- **Follow-ups**: a follow-up enters current only if it blocks a bucket ticket (its why names it, or `--remainder`) or is critical, a regression or a broken flow; otherwise BACKLOG.
+- **Follow-ups**: a follow-up enters current only if it blocks a bucket ticket (its why names it, or `--remainder`) or is critical, a regression or a broken flow; otherwise BACKLOG. A required remainder is typed evidence on the request (`remainder: true` with `follow_up_of: <parent>`, filed by `create --follow-up-of --remainder` or `request --required-by <parent>`); optional hardening carries no flag. `state --json` lists every such child of an open current parent that is still outside the version under `remainder_conflicts` with its owner and next command; the list admits nothing, so a conflict is ruled like any request (no O- record, no placement).
 - **Class** is derived by the engine from the target version: `current` (the
   active version), `next` (a later version of the release), `backlog`.
 - **Sector** (`--sector`) is required. A ticket with no sector: ask the chief
@@ -91,6 +91,14 @@ intent, a missing supersedes, an uncovered authority. Report a refusal you
 cannot resolve to the chief as a `FINDING`. The `rm-run` judge reports a request it
 cannot rule (no sector, missing input) as `{"req","outcome":"HOLD","reason"}`: no
 ruling is written and the request stays claimed for the next batch.
+
+Verify the outcome, not the printed line. A returned approval is not a placement: `REQ approved:<O-id>` on an INTAKE
+is a 14-day out-of-version work permission and queues nothing; only `REQ Q-…` (new operator words with `--decision`
+and `--words`) is a queued placement. A ruling is finished when `state --json` lists it under no `unfinished_rulings`
+(intent or applied means the Jira write, the admissions row or the receipt is still owed; `rm-run` replays it). A
+BACKLOG or KEEP refusal of a backlog-to-version ask is not fulfilled intent: it appears in `refused_asks` with its
+ground and exact `remedy`, and the same ask repeated word for word queues nothing until its evidence, the operator's
+words or an `ack` changes.
 
 ## STATUS
 

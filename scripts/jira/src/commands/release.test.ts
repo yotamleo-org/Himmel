@@ -632,6 +632,13 @@ describe('jira release state admissions budget', () => {
     expect(renderState(stateOut(6), { v1: 5 })).toContain('operator admissions today: v1 6 of 5 OVER BUDGET');
   });
 
+  it('8731 prints each unfinished ruling with its owner and next action, and nothing when none is owed', () => {
+    const base = JSON.parse(JSON.stringify({ ...(stateOut(0) as object) })) as Record<string, unknown>;
+    const u = { ruling: 'R-R1-0003', req: 'Q-R1-0003', key: 'K-2', phase: 'applied', op: 'add backlog→v1', owner: 'release-manager', next: 'jira release rm-run R1' };
+    expect(renderState({ ...base, unfinished_rulings: [u] } as never)).toContain('unfinished: R-R1-0003 applied K-2 add backlog→v1; release-manager runs `jira release rm-run R1`');
+    expect(renderState({ ...base, unfinished_rulings: [] } as never)).not.toContain('unfinished:');
+  });
+
   it('reads admission-budget:N from the version description into the JSON state', async () => {
     const vf = join(root, 'verbatim.txt');
     await run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '106', '--verbatim-file', vf);
@@ -1411,6 +1418,111 @@ describe('a request for operator work carries the operator\'s words', () => {
     expect(out.at(-1)).toBe('REQ Q-v1.1.3-0001');
     const req = JSON.parse(readFileSync(requestsFile(), 'utf8').trim().split('\n').at(-1) ?? '{}');
     expect(req.evidence).toEqual({ operator: id });
+  });
+
+  // 9818: a live out-of-version approval is work permission; it never stands in for a placement the operator's new words ask for.
+  describe('9818 an out-of-version approval and an explicit placement', () => {
+    const approve = (key: string, ageDays = 1) => appendChain(join(root, 'state', 'v1.1.3', 'operator.jsonl'), loadKey(join(root, 'keys', 'v1.1.3.key')), {
+      id: `O-v1.1.3-ov-${key}`, kind: 'out-of-version', decision: '518', keys: [key], ts: new Date(Date.now() - ageDays * 86_400_000).toISOString(),
+    });
+    const quiet = () => {
+      vi.mocked(request).mockReset();
+      vi.mocked(request).mockImplementation((async () => ({ fields: { labels: [] } })) as never);
+    };
+    const queued = () => (existsSync(requestsFile()) ? readFileSync(requestsFile(), 'utf8').trim().split('\n').map((l) => JSON.parse(l) as Record<string, unknown>) : []);
+
+    it('RED: a 14-day approval plus new words queues the request carrying them, never REQ approved', async () => {
+      await declared();
+      decisionFile();
+      approve('HIMMEL-1');
+      quiet();
+      await ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'), '--decision', '9', '--words', WORDS);
+      expect(out.join('\n')).not.toMatch(/approved/);
+      const id = /^OPERATOR (O-v1\.1\.3-\d{4}) /.exec(out.at(-2) ?? '')?.[1];
+      expect(id).toBeDefined();
+      expect(out.at(-1)).toBe('REQ Q-v1.1.3-0001');
+      expect(queued()).toMatchObject([{ key: 'HIMMEL-1', verb: 'INTAKE', to_v: 'v1.1.3', evidence: { operator: id } }]);
+    });
+
+    it('approval alone keeps its meaning (REQ approved, no row) and says on stderr that it is not a placement', async () => {
+      await declared();
+      approve('HIMMEL-1');
+      quiet();
+      const err = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      out = [];
+      await ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'));
+      expect(out).toEqual(['REQ approved:O-v1.1.3-ov-HIMMEL-1']);
+      expect(queued()).toEqual([]);
+      expect(err.mock.calls.flat().join('\n')).toMatch(/work permission only.*no placement was queued.*--decision <n> --words/s);
+    });
+
+    it('malformed new authority still refuses with an approval live: --decision without --words, and a gloss', async () => {
+      await declared();
+      decisionFile();
+      approve('HIMMEL-1');
+      quiet();
+      out = [];
+      expect(await refusal(ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'), '--decision', '9'))).toMatch(/--decision needs --words/);
+      expect(await refusal(ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'), '--words', WORDS))).toMatch(/--words needs --decision/);
+      expect(await refusal(ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'), '--decision', '9', '--words', 'stop and park'))).toMatch(/not the operator's/);
+      expect(queued()).toEqual([]);
+      expect(out).toEqual([]);
+    });
+
+    it('an approval for another key or an expired one does not change the explicit path or the ordinary path', async () => {
+      await declared();
+      decisionFile();
+      approve('HIMMEL-2');
+      approve('HIMMEL-3', 15);
+      quiet();
+      await ask(gateMirror(operatorDirected, { key: 'HIMMEL-3' }), ...intake('HIMMEL-3'));
+      expect(out.at(-1)).toBe('REQ Q-v1.1.3-0001');
+      await ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'), '--decision', '9', '--words', WORDS);
+      expect(out.at(-1)).toBe('REQ Q-v1.1.3-0002');
+    });
+  });
+
+  describe('required parent remainder at intake', () => {
+    const queuedRows = () => readFileSync(requestsFile(), 'utf8').trim().split('\n').map((l) => JSON.parse(l) as { evidence: Record<string, unknown>; state: string });
+
+    it('--required-by records the typed remainder evidence on the queued request', async () => {
+      await declared();
+      await ask(gateMirror({ key: 'HIMMEL-9914' }), ...intake('HIMMEL-9914'), '--required-by', 'HIMMEL-9953');
+      expect(queuedRows()[0].evidence).toEqual({ follow_up_of: 'HIMMEL-9953', remainder: true });
+    });
+
+    it('--required-by is refused for itself, a non-key, or evidence naming another parent', async () => {
+      await declared();
+      const m = gateMirror({ key: 'HIMMEL-9914' });
+      expect(await refusal(ask(m, ...intake('HIMMEL-9914'), '--required-by', 'HIMMEL-9914'))).toMatch(/names another ticket key/);
+      expect(await refusal(ask(m, ...intake('HIMMEL-9914'), '--required-by', 'nine'))).toMatch(/names another ticket key/);
+      expect(await refusal(ask(m, ...intake('HIMMEL-9914'), '--required-by', 'HIMMEL-9953', '--evidence', '{"follow_up_of":"HIMMEL-1"}'))).toMatch(/contradicts --required-by/);
+      expect(existsSync(requestsFile())).toBe(false);
+    });
+
+    it('an unchanged ask after the refusal says so on stderr and queues nothing; new evidence queues', async () => {
+      await declared();
+      const m = gateMirror({ key: 'HIMMEL-9914' });
+      await ask(m, ...intake('HIMMEL-9914'));
+      // The RM refuses it: the request is ruled with a BACKLOG outcome.
+      const k = loadKey(join(root, 'keys', 'v1.1.3.key'));
+      const path = requestsFile();
+      const first = readChain<Record<string, unknown>>(path, k).verified[0];
+      const { prev: _p, mac: _m, ...rest } = first as Record<string, unknown>;
+      appendChain(path, k, { ...rest, state: 'ruled:R-v1.1.3-0001' } as never);
+      appendChain(join(root, 'state', 'v1.1.3', 'rulings.jsonl'), k, {
+        id: 'R-v1.1.3-0001', epoch: 1, req: 'Q-v1.1.3-0001', ts: new Date().toISOString(), verb: 'INTAKE', key: 'HIMMEL-9914', op: { kind: 'none', from_v: null, to_v: null },
+        outcome: 'BACKLOG', class: 'backlog', sector: 'x', ground: 'defer', reason: 'no operator record', supersedes: [], authority: { kind: 'rm', ref: null }, phase: 'receipted',
+      } as never);
+      const err = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      out = [];
+      await ask(m, ...intake('HIMMEL-9914'));
+      expect(out).toEqual(['REQ Q-v1.1.3-0001']);
+      expect(err.mock.calls.flat().join('\n')).toMatch(/already ruled:R-v1.1.3-0001 and nothing in this ask is new/);
+      expect(queuedRows()).toHaveLength(2);
+      await ask(m, ...intake('HIMMEL-9914'), '--required-by', 'HIMMEL-9953');
+      expect(out.at(-1)).toBe('REQ Q-v1.1.3-0002');
+    });
   });
 
   it('request --decision with no --words is refused', async () => {
