@@ -99,5 +99,47 @@ check "a row added concurrently can be closed" "$rc" "0"
 
 check "an empty bucket lists nothing" "$(mkdir -p "$WORK/empty" && bash "$OWE" list --bucket "$WORK/empty"; echo "rc=$?")" "rc=0"
 
+# Durable typed proof actions share the existing writer and lock.
+I="$WORK/identity"; mkdir -p "$I"
+identity=$(printf proof | sha256sum | cut -d' ' -f1)
+meta='{"actor":"chief","action":"validate-proof","validation":"pending","recommendation":"CLOSE"}'
+for _n in 1 2 3 4 5 6 7 8; do
+    bash "$OWE" add --bucket "$I" --chief Z --kind proof --key HIMMEL-9848 --text validate --identity "$identity" --metadata "$meta" > "$WORK/id.$_n" 2>&1 &
+done
+wait
+check "9848 concurrent identical adds create one action" "$(wc -l < "$I/owed.jsonl" 2>/dev/null | tr -d ' ')" 1
+check "9848 all responses return same id" "$(sort -u "$WORK"/id.*)" o1
+bash "$OWE" close --bucket "$I" --id o1 --key HIMMEL-9848 >/dev/null 2>&1
+OWE_NOW_EPOCH=1800000900 bash "$OWE" add --bucket "$I" --chief successor --kind proof --key HIMMEL-9848 --text replay --identity "$identity" --metadata "$meta" >/dev/null 2>&1
+check "9848 replay never reopens closed action" "$(bash "$OWE" list --bucket "$I")" ""
+check "9848 replay appends nothing" "$(wc -l < "$I/owed.jsonl" | tr -d ' ')" 2
+out=$(bash "$OWE" list --bucket "$I" --all --json 2>/dev/null)
+check "9848 JSON retains actor and closure" "$(printf '%s' "$out" | jq -r '.[0] | [.actor,.action,.closed] | @tsv' 2>/dev/null)" $'chief\tvalidate-proof\ttrue'
+bash "$OWE" add --bucket "$I" --chief Z --kind proof --text no --metadata '{"unknown":1}' >/dev/null 2>&1
+check "9848 unknown metadata field refuses" "$?" 2
+for meta in '{"op":"close"}' '{"actor":"operator"}' '{"validation":"passed"}' '{"issues":"hidden"}'; do
+    bash "$OWE" add --bucket "$I" --chief Z --kind proof --text no --metadata "$meta" >/dev/null 2>&1
+    check "9848 reserved or malformed metadata refuses: $meta" "$?" 2
+done
+bash "$OWE" add --bucket "$I" --chief Z --kind proof --text no --identity 0123456789ab >/dev/null 2>&1
+check "9848 truncated identity refuses" "$?" 2
+check "9848 legacy list stays six columns" "$(bash "$OWE" list --bucket "$I" --all | awk -F '\t' '{print NF}')" 6
+
+# Simulate a sync failure after a successful append: no success response, and
+# the next writer must sync/reuse the existing action rather than append again.
+S="$WORK/sync-fail"; mkdir -p "$S/bin" "$S/bucket"
+printf '#!/bin/sh\nexit 1\n' > "$S/bin/python3"; chmod +x "$S/bin/python3"
+out=$(PATH="$S/bin:$PATH" bash "$OWE" add --bucket "$S/bucket" --chief Z --kind proof --text pending --identity "$identity" 2>/dev/null); rc=$?
+check "9848 fsync failure returns persistence error" "$rc" 4
+check "9848 fsync failure acknowledges no id" "$out" ""
+out=$(bash "$OWE" add --bucket "$S/bucket" --chief successor --kind proof --text replay --identity "$identity")
+check "9848 retry after sync failure returns existing id" "$out" o1
+check "9848 retry after sync failure appends nothing" "$(wc -l < "$S/bucket/owed.jsonl" | tr -d ' ')" 1
+
+L="$WORK/bad-ledger"; mkdir -p "$L"
+ln -s "$L/absent" "$L/owed.jsonl"
+bash "$OWE" list --bucket "$L" --json >/dev/null 2>&1
+check "9848 dangling ledger is unreadable, not empty" "$?" 4
+
 [ "$fails" -eq 0 ] || { echo "$fails check(s) failed"; exit 1; }
 echo "test-owe: all checks passed"

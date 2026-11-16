@@ -720,4 +720,31 @@ check "19 the audit row: outcome escalate for the suffixed worker" "$(printf '%s
 check "19 no GO file is written" "$(find "$W/root19" -iname '*go*' -not -name 'auto-go.jsonl' -type f 2>/dev/null | wc -l | tr -d ' ')" "0"
 unset HIMMEL_FLAG_AUTO_GO HIMMEL_FLAGS_TSV HIMMEL_CONFIG_DIR AUTO_GO_ANCHOR GH_CMD JIRA_CMD LE_HEAD19
 
+# The actual event route must persist before even a stub close.
+PKEY=HIMMEL-9848
+PDOC="$W/$PKEY-N42-proof.md"
+printf '# proof\n## Results\n- 10:00 WRAPPED — proof %s verdict=CLOSE evidence=%s\n' "$PKEY" "$W/absent.md" > "$PDOC"
+printf '#!/bin/bash\nprintf "%%s\\n" "%s"\n' "$PDOC" > "$W/proof-list"
+cat > "$W/proof-close" <<'EOF'
+#!/usr/bin/env bash
+jq -e 'select(.action == "validate-proof" and .validation == "pending")' "$PROOF_TEST_BUCKET/owed.jsonl" >/dev/null || exit 77
+echo close-after-proof >> "$LE_CALLS"
+EOF
+chmod +x "$W/proof-list" "$W/proof-close"
+export PROOF_TEST_BUCKET="$W" PROOF_MIRROR_DIR="$W/no-mirror"
+LE_LIST="$W/proof-list" LE_CLOSE="$W/proof-close" run "WRAPPED — proof $PKEY verdict=CLOSE evidence=$W/absent.md N42"
+check "9848 proof event rc" "$rc" 0
+contains "9848 close observes persisted pending obligation" "$calls" close-after-proof
+before_proof="$(cat "$W/owed.jsonl" 2>/dev/null)"
+LE_LIST="$W/proof-list" LE_CLOSE="$W/proof-close" run "WRAPPED — proof $PKEY verdict=CLOSE evidence=$W/absent.md N42"
+check "9848 event replay appends nothing" "$(cat "$W/owed.jsonl" 2>/dev/null)" "$before_proof"
+PROOF_OWE_BIN=/bin/false LE_LIST="$W/proof-list" LE_CLOSE="$W/proof-close" run "WRAPPED — proof $PKEY verdict=CLOSE evidence=$W/absent.md N42"
+check "9848 writer failure event escalates" "$rc" 10
+check "9848 writer failure never invokes close" "$calls" ""
+printf '#!/bin/bash\nexit 0\n' > "$W/proof-list"
+LE_LIST="$W/proof-list" LE_CLOSE="$W/proof-close" run "WRAPPED — proof $PKEY verdict=CLOSE evidence=$W/absent.md N42"
+check "9848 vanished manifest replay succeeds" "$rc" 0
+check "9848 vanished manifest replay retains one obligation" "$(wc -l < "$W/owed.jsonl" 2>/dev/null | tr -d ' ')" 1
+unset PROOF_TEST_BUCKET PROOF_MIRROR_DIR
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

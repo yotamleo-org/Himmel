@@ -23,3 +23,38 @@ at a handover; the ledger is carried by the tick, the HANDOFF and the queue fold
   every open row: the successor starts with all of them.
 - **The fold never moves it.** An older `queue:` segment that contains `owed`, `HOLD` or
   `to file` stays on the live `queue:` line; only plain segments go to the chief-history file.
+
+Wrapped proof workers record a `kind: proof`, `action: validate-proof`, `actor: chief`
+obligation before worker-event cleanup or direct/sweep close. A writer failure refuses
+cleanup (direct close exit 9); `--check` and recorder `--dry-run` write nothing. The
+shared `proof-validate.py --bucket <dir> --doc <worker doc>` only records observations.
+`CLOSE` and `KEEP` are worker recommendations; `validation: pending` never authorizes
+a Jira transition or discharges the action. Coverage, positive controls and candidate
+ancestry remain chief work, even when every observed row says MET.
+
+`owe.sh add` accepts `--identity <64 lowercase hex sha256>` and `--metadata <JSON>`.
+The existing flock serializes lookup/append; file and directory fsync precede the
+response. An identical identity returns its original id, even after closure. Existing
+six-column `list` output stays unchanged; `list --json [--all]` returns an array with
+additive metadata and a `closed` boolean. Allowed metadata fields are `actor`, `action`,
+`validation`, `source_doc`, `source_label`, `evidence_path`, `evidence_hash`,
+`requirements_digest`, `original_requirements_digest`, `binding`, `recommendation`,
+`issues`, `proof_rows`, `executed_shas`, `required_shas`, `next_action`, `wake`, and
+`evidence_records` (multiple artifact paths with their full sha256 when readable).
+Each proof result records one action per covered ticket, including multiple artifacts;
+conflicting artifact recommendations remain unknown with explicit reconciliation.
+Unknown fields or invalid types refuse. None of these fields grants authority.
+
+The recorder hashes actual artifact bytes and each key's mirrored Description DoD
+and Proof sections. Requirement identity hashes compact UTF-8 JSON pairs in DoD,
+Proof order, retaining body lines, indentation, fences and blank lines; only CRLF
+becomes LF. Comments are excluded. It uses the local project mirror (test seam:
+`PROOF_MIRROR_DIR`), never refreshes it, and cannot certify live requirement freshness.
+An optional exact `requirements-sha256 <KEY>=<full hash>` line in the artifact or
+brief records the original binding; absent/unreadable binding stays unknown. Matching
+stamps mean matching observed bytes, not semantic validation. Optional `required-sha
+main=<sha>` or `required-sha station=<sha>` records a candidate basis; main and station
+may differ. `next-action: <text>` and `wake: <text>` are carried when supplied.
+Missing/unreadable artifacts keep stable reconciliation identities from the originating
+doc (label when unavailable), ticket, path and recommendation, without inventing an
+evidence hash. Changed real evidence or requirement identity creates separate review work.

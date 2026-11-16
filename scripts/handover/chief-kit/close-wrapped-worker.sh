@@ -128,6 +128,7 @@
 #      the clone's remote branches cannot be refreshed (a failed or timed-out
 #      bounded git fetch --prune of each remote; CLOSE_WRAPPED_WORKER_FETCH_TIMEOUT,
 #      default 30s; a value that is not a positive integer is refused too)
+#   9  refused - proof handoff could not be persisted; no TERM or retirement
 #
 # Platform guard: Linux bash 3.2+ (depends on /proc via claude-sessions.sh;
 # konsole workers are Linux/KDE-only, same guard as
@@ -449,6 +450,18 @@ if [ "$last_marker" != "WRAPPED" ] && [ "$PREDECESSOR" -eq 0 ]; then
     fi
     echo "close-wrapped-worker: refusing - the doc's last Results marker-bullet is '${last_marker:-<none>}', not WRAPPED" >&2
     exit 4
+fi
+
+# Proof evidence debt survives both TERM and CLOSED-ALREADY manifest retirement.
+# --check reads the contract without writing, and predecessor chiefs are outside
+# the proof-worker contract. One shared recorder owns normal-event and sweep data.
+if [ "$CHIEF_MODE" -eq 0 ]; then
+    proof_args=(--bucket "$(dirname "${FLEET_MANIFEST:-$DOC}")" --doc "$tail_doc" --label "$(worker_label "$tail_doc")")
+    [ "$CHECK_MODE" -eq 0 ] || proof_args+=(--dry-run)
+    if ! python3 "$HERE/proof-validate.py" "${proof_args[@]}"; then
+        echo "close-wrapped-worker: refusing - proof-handoff persistence failed" >&2
+        exit 9
+    fi
 fi
 
 # git-env-ok: every git call below goes through sc_git, which runs under env -u GIT_DIR/GIT_WORK_TREE/GIT_COMMON_DIR/GIT_INDEX_FILE
