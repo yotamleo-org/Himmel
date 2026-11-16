@@ -100,10 +100,12 @@ file, so a line is never lost across a re-start).
   has read it. A response with no live chief, or an ambiguous one, queues nothing;
   delivery never creates a chief inbox.
 - **Reply:** the chief answers through the same outbox as every other bridge
-  reply (`bun scripts/telegram/chief-route.ts reply <chat_id> <text>`); the
-  running poller sends it. On Linux the CLI resolves the calling session name
+  reply (`bun scripts/telegram/chief-route.ts reply --kind chief-reply <chat_id> <text>`); the
+  running poller sends it. `--kind chief-reply` gives the reply its class in
+  the [message classes](internals/telegram-bridge.md#message-classes) table
+  (escalate, so it reaches you). On Linux the CLI resolves the calling session name
   automatically when its inbox exists. For an explicit identity (including
-  other platforms), use `reply --chief <session-name> <chat_id> <text>`.
+  other platforms), use `reply --chief <session-name> --kind chief-reply <chat_id> <text>`.
 - **Authority:** the line carries your authority (a ruling, a halt or new
   work), as if typed in the chief's terminal. It never changes the chief's
   permissions or settings and never bypasses `merge-on-green.sh`'s own GO
