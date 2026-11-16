@@ -759,6 +759,29 @@ contains 'HIMMEL_SUITE_SLOT_CAP lowers the cap' "$(HIMMEL_SUITE_SLOT_CAP=30 sa_t
 not_contains 'a raised cap lists nothing' "$(HIMMEL_SUITE_SLOT_CAP=99999 sa_tick)" 'slotage='
 not_contains 'no semaphore dir leaves slotage= off the line' "$(HIMMEL_SUITE_SEMAPHORE_DIR="$W/no-sem5788" bash "$SUT" 2>/dev/null)" 'slotage='
 not_contains "slotage= is not in chief-wait's wake key" "$cw_keys" 'slotage'
+sd_uid=''
+sd_default=''
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    sd_uid=$((900000 + RANDOM))
+    if mkdir "/tmp/himmel-suite-semaphore-$sd_uid.d" 2>/dev/null; then sd_default="/tmp/himmel-suite-semaphore-$sd_uid.d"; break; fi
+done
+sd_old="$W/sd-tmp/himmel-suite-semaphore.d"
+if [ -z "$sd_default" ]; then fail 'no unclaimed fake-uid semaphore dir under /tmp after 10 tries'; exit 1; fi
+trap 'rm -rf "$W" "$sd_default"' EXIT
+mkdir -p "$W/sd-bin" "$sd_default/slot-1" "$sd_old/slot-1"
+# shellcheck disable=SC2016  # the stub's own $1 and $@ expand when it runs, not here
+printf '#!/bin/sh\nif [ "${1-}" = "-u" ]; then echo %s; else exec /usr/bin/id "$@"; fi\n' "$sd_uid" > "$W/sd-bin/id"
+chmod +x "$W/sd-bin/id"
+printf 'pid=%s\nidentity=%s\nlabel=run-shell-tests\nstarted=%s\ndetail=%s\n' "$$" "$sa_id" "$((sa_now - 1500))" 'worker=N10209 range=ddd..eee suites=4' > "$sd_default/slot-1/owner"
+printf 'pid=%s\nidentity=%s\nlabel=run-shell-tests\nstarted=%s\ndetail=%s\n' "$$" "$sa_id" "$((sa_now - 1500))" 'worker=NOLDDIR range=old..old suites=1' > "$sd_old/slot-1/owner"
+sd_out="$(env -u HIMMEL_SUITE_SEMAPHORE_DIR PATH="$W/sd-bin:$PATH" TICK_TMPDIR="$W/sd-tmp" bash "$SUT" 2>/dev/null)"
+contains 'a slot past the cap in the default dir shows in slotage= whatever TMPDIR the tick runs under' "$sd_out" ' slotage=N10209:ddd..eee:4suites:25m'
+not_contains 'the old TMPDIR-keyed dir is no longer read by default' "$sd_out" 'NOLDDIR'
+sd_seam="$(HIMMEL_SUITE_SEMAPHORE_DIR="$sa_dir" PATH="$W/sd-bin:$PATH" TICK_TMPDIR="$W/sd-tmp" bash "$SUT" 2>/dev/null)"
+contains 'HIMMEL_SUITE_SEMAPHORE_DIR set still picks that dir' "$sd_seam" ' slotage=N3912:aaa1111..bbb2222:3suites:25m'
+not_contains 'HIMMEL_SUITE_SEMAPHORE_DIR set ignores the default dir' "$sd_seam" 'N10209'
+not_contains 'HIMMEL_SUITE_SEMAPHORE_DIR set ignores the old TMPDIR-keyed dir' "$sd_seam" 'NOLDDIR'
+rm -rf "$sd_default"
 rm -rf "$sa_dir"
 
 # --- cadence=<name>:<state>:<age>:<run id>[:RED|:SKIP|:MISSED],...: the last SCHEDULED
