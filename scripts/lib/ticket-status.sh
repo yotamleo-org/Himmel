@@ -17,6 +17,9 @@
 #     TS_J_STATUS  the Jira status the derive saw; TS_HEADS the "<pr>:<head>" list
 #     TS_PR_STATE  "<pr>\t<head>\t<class>\t<red latch>" per open PR
 #     TS_WORKER_STATE  live | idle | IDLE-HELD | parked | wrapped | unknown | none
+#                  wrapped: the doc's newest marker is WRAPPED or HALTED (HALTED is an end marker like
+#                  WRAPPED, and the marker may carry text after it), or its lock was seen held and then
+#                  found gone on two sweeps
 #     TS_OWNER_DOC the doc of another recorded worker that holds its lock while the
 #                  recorded owner has ended; "" otherwise
 #   status_event <k=v>...           one JSON row in status-events.jsonl
@@ -307,7 +310,7 @@ ts_record_read() {
     p=$(ts_record_path "$1")
     TS_REC='{}'
     [ -e "$p" ] || return 0
-    TS_REC=$(jq -ce 'if type == "object" then . else error("not an object") end' "$p" 2>/dev/null) || { TS_REC='{}'; return 1; }
+    TS_REC=$(jq -ce 'if type == "object" then . else error("not an object") end' 2>/dev/null < "$p") || { TS_REC='{}'; return 1; }
 }
 
 ts_record_write() {
@@ -329,7 +332,7 @@ ts_marker_newest() {
         elif [[ "$line" =~ $succession_re ]]; then
             newest=SUCCESSION
         fi
-    done < <(grep '^-' "$1" 2>/dev/null)
+    done < <(grep '^-' 2>/dev/null < "$1") # read-sink-ok: $1 is a worker handover doc path (the worker record, --doc, or status-drift's <key>-N*.md scan under --docs-dir or the handover root), read exactly as main's grep read it, bullet lines only, only a marker word comes out
     printf '%s\n' "$newest"
 }
 
@@ -758,7 +761,7 @@ _ts_brief_completes_no() {
     local brief=$1 flag
     [ -r "$brief" ] || brief=$(jq -r '.resume_brief // ""' <<<"$TS_REC")
     [ -n "$brief" ] && [ -r "$brief" ] || return 1
-    flag=$(sed -nE '/^## Results/q; s/^> \*\*Completes ticket:\*\* (yes|no)[[:space:]]*$/\1/p' "$brief" | sort | head -n 1)
+    flag=$(sed -nE '/^## Results/q; s/^> \*\*Completes ticket:\*\* (yes|no)[[:space:]]*$/\1/p' < "$brief" | sort | head -n 1)
     [ "$flag" = no ]
 }
 

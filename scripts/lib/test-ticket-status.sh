@@ -77,6 +77,50 @@ brief no
 check "completes no with Jira In Review: To Do" "$TS_RULE/$TS_DERIVED" 'D6/To Do'
 printf 'HIMMEL-9001\tTask\tIn Progress\n' > "$TS_SNAPSHOT_DIR/jira.tsv"
 
+printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/lock-free.sh"
+chmod +x "$tmp/lock-free.sh"
+rbrief() { # <flag-line> <resume_brief: path|-> - the brief file (flag line above ## Results), then the derive
+    { printf '> **Completes ticket:** %s\n\n## Results (newest at the bottom)\n- 10:00 WRAPPED — ended\n' "$1"; } > "$tmp/rb.md"
+    jq -nc --arg doc "$tmp/gone.md" --arg rb "$2" \
+        '{doc:$doc,docs:[$doc],lock_seen:true,lock_gone_sweeps:1,prs:{}} | if $rb != "-" then .resume_brief = $rb else . end' \
+        > "$TICKET_STATUS_STATE_DIR/workers/HIMMEL-9001.json"
+    TICKET_STATUS_QUEUE_LOCK="$tmp/lock-free.sh" ts_derive HIMMEL-9001
+}
+rbrief no "$tmp/rb.md"
+check "9323 unreadable owner doc: the resume_brief says completes no, so D6n and In Progress" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'wrapped/D6n/In Progress'
+rbrief no -
+check "9323 unreadable owner doc, no resume_brief: D6 (control)" "$TS_WORKER_STATE/$TS_RULE/$TS_DERIVED" 'wrapped/D6/To Do'
+rbrief yes "$tmp/rb.md"
+check "9323 unreadable owner doc, the resume_brief says completes yes: D6 (control)" "$TS_RULE/$TS_DERIVED" 'D6/To Do'
+rbrief no "$tmp/missing-brief.md"
+check "9323 unreadable owner doc, the resume_brief names an unreadable file: D6 (control)" "$TS_RULE/$TS_DERIVED" 'D6/To Do'
+
+tm() { printf -- '%s\n' "$@" > "$tmp/tm.md"; ts_marker_newest "$tmp/tm.md"; }
+check "9323 a clean WRAPPED line is WRAPPED (control)" "$(tm '- 10:00 LIVE — x' '- 10:10 WRAPPED')" WRAPPED
+check "9323 WRAPPED with trailing text is WRAPPED" "$(tm '- 10:00 LIVE — x' '- 10:10 WRAPPED all done, PR 12 merged')" WRAPPED
+check "9323 HALTED with trailing text is HALTED" "$(tm '- 10:00 LIVE — x' '- 10:10 HALTED: out of budget')" HALTED
+check "9323 a bold marker with trailing text is read" "$(tm '- 10:00 LIVE — x' '- 10:10 **HALTED** — out of budget')" HALTED
+check "9323 a marker word glued to more letters is no marker" "$(tm '- 10:00 LIVE — x' '- 10:10 WRAPPEDX done')" LIVE
+check "9323 a marker word later in the line is no marker" "$(tm '- 10:00 LIVE — x' '- 10:10 note: WRAPPED')" LIVE
+printf -- '- 10:00 LIVE — x\n- 10:10 HALTED: out of budget\n' > "$tmp/tm.md"
+check "9323 HALTED with trailing text reads as a wrapped owner (lock held)" "$(ts_worker_state "$tmp/tm.md")" wrapped
+
+hd="$tmp/hard"
+mkdir -p "$hd/-state/workers"
+for f in -f -- plain; do
+    printf '> **Completes ticket:** no\n\n## Results (newest at the bottom)\n- 10:10 WRAPPED — ended\n' > "$hd/$f"
+done
+rk=HIMMEL-9001
+printf '{"doc":"in-the-record"}\n' > "$hd/-state/workers/$rk.json"
+check "9323 a plain relative doc path is read (control)" "$(cd "$hd" && ts_marker_newest plain </dev/null)" WRAPPED
+check "9323 a doc path -f is read as a file" "$(cd "$hd" && ts_marker_newest -f </dev/null)" WRAPPED
+check "9323 a doc path -- is read as a file" "$(cd "$hd" && ts_marker_newest -- </dev/null)" WRAPPED
+check "9323 a plain relative brief is read (control)" "$(cd "$hd" && _ts_brief_completes_no plain </dev/null; echo $?)" 0
+check "9323 a brief path -f is read as a file" "$(cd "$hd" && _ts_brief_completes_no -f </dev/null; echo $?)" 0
+check "9323 a brief path -- is read as a file" "$(cd "$hd" && _ts_brief_completes_no -- </dev/null; echo $?)" 0
+check "9323 a record under a state dir named -state is read" \
+    "$(cd "$hd" && TICKET_STATUS_STATE_DIR=-state ts_record_read "$rk" </dev/null && jq -r '.doc' <<<"$TS_REC")" in-the-record
+
 for jstatus in "To Do" "In Progress"; do
     printf 'HIMMEL-9001\tTask\t%s\n' "$jstatus" > "$TS_SNAPSHOT_DIR/jira.tsv"
     jq -nc '{prs:{"7":{head:"abc",ci:"green",red_latch:false,open:false}}}' > "$TICKET_STATUS_STATE_DIR/workers/HIMMEL-9001.json"
