@@ -58,13 +58,9 @@ case "$(printf '%s' "$category" | tr '[:upper:]' '[:lower:]')" in
     *credential* | *exfiltrat* | *secret* | *token*) exit 0 ;;
 esac
 
-detached() {
-    if command -v setsid >/dev/null 2>&1; then
-        setsid nohup "$@" </dev/null >/dev/null 2>&1 &
-    else
-        nohup "$@" </dev/null >/dev/null 2>&1 &
-    fi
-}
+detach_lib="$HERE/../lib/detach.sh"
+# shellcheck source=scripts/lib/detach.sh
+{ [ -r "$detach_lib" ] && . "$detach_lib"; } 2>/dev/null || exit 0
 grants_on() {
     local mode
     mode=" $(sudo -n "$HELPER" mode 2>/dev/null) "  # swallow-ok: no answer reads as grants off, so nothing is sent
@@ -74,7 +70,7 @@ grants_on() {
 notify() {
     local op
     op=$(jq -r '.operator_id // empty' "$CONFIG" 2>/dev/null | grep -E '^-?[0-9]{1,20}$' | head -1)  # swallow-ok: no readable operator id means no send
-    [ -n "$op" ] && detached bash "$REQ" --notify "$1" --operator "$op"
+    [ -n "$op" ] && detach_run bash "$REQ" --notify "$1" --operator "$op"
 }
 
 sname=''
@@ -102,8 +98,8 @@ field() { printf '%s\n' "$reply" | sed -n "s/^result=pending.* $1=\([^ ]*\).*/\1
 case "$result" in
     pending)
         id=$(field id) expires=$(field expires) op=$(field operator)
-        detached bash "$REQ" --card "$id" --operator "$op" --session "$who"
-        detached bash "$REQ" --watch "$id" --expires "$expires" --operator "$op" --session "$who"
+        detach_run bash "$REQ" --card "$id" --operator "$op" --session "$who"
+        detach_run bash "$REQ" --watch "$id" --expires "$expires" --operator "$op" --session "$who"
         ;;
     grant-disabled | disabled) ;;
     *) notify "AFK grant from session $who (chief $chief) refused: ${result:-no reply from the helper}, nothing ran" ;;
