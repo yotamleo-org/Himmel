@@ -33,6 +33,9 @@ a Jira transition or discharges the action. Coverage, positive controls and cand
 ancestry remain chief work, even when every observed row says MET.
 
 `owe.sh add` accepts `--identity <64 lowercase hex sha256>` and `--metadata <JSON>`.
+Alternatively, `--metadata-stdin` reads one JSON value of at most 1 MiB (including
+its compact ASCII encoding); it is mutually exclusive with `--metadata`. Metadata
+passes to jq through stdin, so a large observation never occupies one OS argument.
 The existing flock serializes lookup/append; file and directory fsync precede the
 response. An identical identity returns its original id, even after closure. Existing
 six-column `list` output stays unchanged; `list --json [--all]` returns an array with
@@ -40,10 +43,34 @@ additive metadata and a `closed` boolean. Allowed metadata fields are `actor`, `
 `validation`, `source_doc`, `source_label`, `evidence_path`, `evidence_hash`,
 `requirements_digest`, `original_requirements_digest`, `binding`, `recommendation`,
 `issues`, `proof_rows`, `executed_shas`, `required_shas`, `next_action`, `wake`, and
-`evidence_records` (multiple artifact paths with their full sha256 when readable).
+`evidence_records` (multiple artifact paths with their full sha256 when readable),
+and `observation_counts` (per observation field: nonnegative integer `total`,
+`omitted`, `truncated_chars`, with omitted no greater than total).
 Each proof result records one action per covered ticket, including multiple artifacts;
 conflicting artifact recommendations remain unknown with explicit reconciliation.
 Unknown fields or invalid types refuse. None of these fields grants authority.
+
+The recorder recognizes the explicit `> **Proof leg:**` header or an actual
+WRAPPED proof-key tail, including the event's optional worker/ticket prefix.
+Ordinary prose mentioning a proof leg does not create debt. If a covered key has
+neither an attributed nor an unbound artifact candidate, all declared paths are
+retained with `artifact-attribution-unvalidated`; chief attribution remains pending.
+
+Proof inputs are opened nonblocking and without following a final symlink. The
+descriptor must be a regular file no larger than 8 MiB; bounded reads and matching
+descriptor/path identity, size and modification/change times must establish one
+complete snapshot before hashing. Refused, changed, unreadable or oversize evidence
+records stable reconciliation debt without an evidence hash. The same text-input
+bound applies to the source brief and mirrored requirements. A real writer failure
+still prevents cleanup.
+
+Artifact paths and full accepted hashes are retained. Observation previews retain
+at most 64 proof rows, 32 issues, 64 executed and 64 required SHA entries; row/issue
+strings retain at most 512 characters, and next-action/wake text 1024 characters.
+`observation_counts` exposes the original item count and omitted item count, plus
+characters removed from retained strings. For scalar text these counts are in
+characters. These previews are observations, not semantic coverage; the chief
+reads the full hashed artifact. Reconciliation flags precede malformed-row previews.
 
 The recorder hashes actual artifact bytes and each key's mirrored Description DoD
 and Proof sections. Requirement identity hashes compact UTF-8 JSON pairs in DoD,

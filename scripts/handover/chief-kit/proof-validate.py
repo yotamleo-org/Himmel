@@ -11,12 +11,42 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 import subprocess
 import sys
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent.parent / 'lib'))
+from status_marker import parse as status_marker_parse
+
 KEY = r'[A-Z][A-Z0-9]+-\d+'
 SECTIONS = {'Impact', 'What', 'Why', 'Plan', 'DoD', 'Proof', 'Agent detail'}
+MAX_FILE_BYTES = 8 * 1024 * 1024
+
+
+def regular_bytes(path):
+    fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        before = os.fstat(fd)
+        if not stat.S_ISREG(before.st_mode) or before.st_size > MAX_FILE_BYTES:
+            raise ValueError('nonregular or oversize proof input')
+        chunks = []
+        size = 0
+        while size <= MAX_FILE_BYTES:
+            chunk = os.read(fd, min(65536, MAX_FILE_BYTES + 1 - size))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            size += len(chunk)
+        after = os.fstat(fd)
+        named = os.stat(path, follow_symlinks=False)
+        def fingerprint(value):
+            return (value.st_dev, value.st_ino, value.st_mode, value.st_size, value.st_mtime_ns, value.st_ctime_ns)
+        if size != before.st_size or size > MAX_FILE_BYTES or fingerprint(before) != fingerprint(after) or fingerprint(after) != fingerprint(named):
+            raise ValueError('proof input changed during read')
+        return b''.join(chunks)
+    finally:
+        os.close(fd)
 
 
 def digest(value):
@@ -25,7 +55,7 @@ def digest(value):
 
 def read_text(path):
     # Only line endings are canonicalized for requirements; no whitespace folding.
-    return Path(path).read_bytes().decode('utf-8').replace('\r\n', '\n')
+    return regular_bytes(path).decode('utf-8').replace('\r\n', '\n')
 
 
 def requirements(path):
@@ -63,9 +93,9 @@ def requirements(path):
     return digest([[n, ''.join(found[n])] for n in ('DoD', 'Proof')])
 
 
-def owe(args):
+def owe(args, metadata=None):
     command = ['bash', os.environ.get('PROOF_OWE_BIN', str(HERE / 'owe.sh')), *args]
-    result = subprocess.run(command, text=True, capture_output=True)
+    result = subprocess.run(command, input=metadata, text=True, capture_output=True)
     if result.returncode:
         raise RuntimeError('owed writer/read failed: ' + result.stderr.strip())
     return result.stdout.strip()
@@ -74,6 +104,27 @@ def owe(args):
 def shas(text):
     return [{'basis': basis, 'sha': sha} for basis, sha in sorted(set(
         re.findall(r'\b(main|station)=([0-9a-f]{7,40})(?![0-9a-f])', text)))]
+
+
+def bounded_observations(meta):
+    counts = {}
+    for field, limit in [('proof_rows', 64), ('issues', 32), ('executed_shas', 64), ('required_shas', 64)]:
+        values = meta.get(field, [])
+        if field == 'issues':
+            values = sorted(values, key=lambda value: value.startswith('malformed-row:'))
+        kept = values[:limit]
+        chars = 0
+        if field in ('proof_rows', 'issues'):
+            chars = sum(max(0, len(value) - 512) for value in kept)
+            kept = [value[:512] for value in kept]
+        counts[field] = dict(total=len(values), omitted=len(values) - len(kept), truncated_chars=chars)
+        meta[field] = kept
+    for field in ('next_action', 'wake'):
+        if field in meta:
+            size = len(meta[field])
+            meta[field] = meta[field][:1024]
+            counts[field] = dict(total=size, omitted=max(0, size - 1024), truncated_chars=max(0, size - 1024))
+    meta['observation_counts'] = counts
 
 
 def record(opt):
@@ -102,11 +153,14 @@ def record(opt):
             in_results = bool(re.match(r'^## (?:Results|Chief Rulings|Console Rulings)\b', line))
         elif in_results:
             result_lines.append(line)
-    wrapped = re.findall(r'^- .*\bWRAPPED\b.*', '\n'.join(result_lines), re.M)
-    tail = wrapped[-1] if wrapped else ''
+    if not any(line.startswith('## Results') for line in source.splitlines()):
+        result_lines = source.splitlines()
+    markers = [line for line in result_lines if status_marker_parse(line)]
+    tail = markers[-1] if markers else ''
     header = re.findall(r'^> \*\*Proof leg:\*\* (.+)$', source, re.M)
-    proof = bool(re.search(r'\bWRAPPED\b[^\n]*\bproof\s+' + KEY, tail + '\n' + message, re.I)
-                 or header or re.search(r'proof leg|Leg kind:\*\* proof', source))
+    proof = bool(re.search(r'^(?:- (?:\d{1,2}:\d{2}[ \t]+)?)?(?:(?:N\d+[a-z]*|' + KEY + r')[ \t]+)*(?:\*\*)?WRAPPED\b[^\n]*\bproof\s+' + KEY,
+                           tail + '\n' + message, re.I | re.M)
+                 or header)
     if not proof:
         return
     origin = opt.label
@@ -131,27 +185,30 @@ def record(opt):
         paths = list(dict.fromkeys(paths))
     for key in keys:
         unbound = [p for p in paths if not any(k in Path(p).name for k in keys)]
-        candidates = [p for p in paths if key in Path(p).name] or unbound or ['']
+        attributed = [p for p in paths if key in Path(p).name]
+        candidates = attributed or unbound or paths or ['']
         observations = []
         for path in candidates:
             issues = ['positive-controls-unvalidated', 'candidate-ancestry-unvalidated', 'coverage-unvalidated']
+            if paths and not attributed and not unbound:
+                issues.append('artifact-attribution-unvalidated')
             meta = {'actor': 'chief', 'action': 'validate-proof', 'validation': 'pending',
                     'source_doc': str(Path(doc).resolve()) if doc else '', 'source_label': origin,
                     'evidence_path': path, 'binding': 'unknown', 'issues': issues}
             artifact = ''
             try:
-                raw = Path(path).read_bytes() if path else None
+                raw = regular_bytes(path) if path else None
                 if raw is None:
                     raise ValueError('missing evidence path')
-                meta['evidence_hash'] = hashlib.sha256(raw).hexdigest()
                 artifact = raw.decode('utf-8')
-            except (OSError, UnicodeError, ValueError):
+                meta['evidence_hash'] = hashlib.sha256(raw).hexdigest()
+            except (OSError, UnicodeError, ValueError, MemoryError):
                 issues.append('evidence-unreadable')
             mirror = Path(opt.mirror or os.environ.get('PROOF_MIRROR_DIR') or
                           Path.home() / '.himmel/state/jira-mirror' / key.split('-')[0])
             try:
                 meta['requirements_digest'] = requirements(mirror / (key + '.md'))
-            except (OSError, UnicodeError, ValueError):
+            except (OSError, UnicodeError, ValueError, MemoryError):
                 issues.append('requirements-unreadable')
             stamps = re.findall(r'^requirements-sha256 ' + re.escape(key) + r'=([0-9a-f]{64})\s*$', artifact + '\n' + source, re.M)
             if stamps and len(set(stamps)) == 1:
@@ -211,10 +268,11 @@ def record(opt):
                 values = list(dict.fromkeys(m[field] for _, m in observations if field in m))
                 if values:
                     meta[field] = '\n'.join(values)
+        bounded_observations(meta)
         if not opt.dry_run:
             action = owe(['add', '--bucket', opt.bucket, '--chief', 'chief', '--kind', 'proof',
                           '--key', key, '--text', 'Validate proof ' + key + ': recommendation=' + meta['recommendation'] + '; pending chief validation/reconciliation',
-                          '--identity', identity, '--metadata', json.dumps(meta)])
+                          '--identity', identity, '--metadata-stdin'], metadata=json.dumps(meta))
             print('PROOF-RECORDED ' + key + ' ' + action)
 
 
@@ -229,7 +287,7 @@ def main():
     opt = parser.parse_args()
     try:
         record(opt)
-    except (OSError, ValueError, RuntimeError) as exc:
+    except (OSError, ValueError, RuntimeError, MemoryError, UnicodeError) as exc:
         print('proof-handoff: ' + str(exc), file=sys.stderr)
         return 1
     return 0

@@ -141,5 +141,31 @@ ln -s "$L/absent" "$L/owed.jsonl"
 bash "$OWE" list --bucket "$L" --json >/dev/null 2>&1
 check "9848 dangling ledger is unreadable, not empty" "$?" 4
 
+M="$WORK/metadata-stdin"; mkdir -p "$M"
+python3 - "$M/large.json" <<'PY'
+import json,sys
+with open(sys.argv[1], 'w') as stream:
+    json.dump({'proof_rows': ['x' * 200000]}, stream)
+PY
+out=$(bash "$OWE" add --bucket "$M" --chief Z --kind proof --text observations --metadata-stdin < "$M/large.json" 2>/dev/null); rc=$?
+check "metadata stdin avoids the per-argument byte limit" "$rc|$out" "0|o1"
+check "metadata stdin retains every supplied observation byte" "$(jq -r '.proof_rows[0] | length' "$M/owed.jsonl" 2>/dev/null)" 200000
+for meta in '{"op":"close"}' '{"actor":"operator"}' '{"validation":"passed"}' '{"observation_counts":{"issues":{"total":1,"omitted":2,"truncated_chars":0}}}' '{"observation_counts":{"unknown":{"total":1,"omitted":0,"truncated_chars":0}}}'; do
+    printf '%s' "$meta" | bash "$OWE" add --bucket "$M" --chief Z --kind proof --text invalid --metadata-stdin >/dev/null 2>&1
+    check "stdin retains reserved-key and count-shape protection: $meta" "$?" 2
+done
+printf '{}' | bash "$OWE" add --bucket "$M" --chief Z --kind proof --text invalid --metadata '{}' --metadata-stdin >/dev/null 2>&1
+check "metadata arguments and stdin are mutually exclusive" "$?" 2
+python3 - "$M/oversize.json" <<'PY'
+import json,sys
+with open(sys.argv[1], 'w') as stream:
+    json.dump({'proof_rows': ['x' * 1048576]}, stream)
+PY
+bash "$OWE" add --bucket "$M" --chief Z --kind proof --text oversize --metadata-stdin < "$M/oversize.json" >/dev/null 2>&1
+check "stdin metadata has a fixed byte bound" "$?" 2
+bash "$OWE" add --bucket "$M" --chief Z --kind proof --text multivalue --metadata '{}{}' >/dev/null 2>&1
+check "legacy metadata still refuses multiple top-level values" "$?" 2
+check "refused metadata never appends an action" "$(wc -l < "$M/owed.jsonl" 2>/dev/null | tr -d ' ')" 1
+
 [ "$fails" -eq 0 ] || { echo "$fails check(s) failed"; exit 1; }
 echo "test-owe: all checks passed"

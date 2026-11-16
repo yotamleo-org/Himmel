@@ -7,7 +7,8 @@
 #   owe.sh add   --bucket <dir> --chief <name> --kind ticket|proof|ruling|step --text <one line> [--key <KEY>]
 #   owe.sh close --bucket <dir> --id <oN> --key <ticket key | sha | decision id>
 #   owe.sh list  --bucket <dir> [--all] [--json]
-# add also accepts --identity <full sha256> and --metadata <allowlisted JSON>.
+# add also accepts --identity <full sha256> and --metadata <allowlisted JSON>,
+# or --metadata-stdin (one JSON value, at most 1 MiB, mutually exclusive).
 # Replays return the original id, including closed actions; no row is reopened.
 #
 # <bucket>/owed.jsonl is append-only, one JSON object per line:
@@ -26,7 +27,7 @@
 set -u
 
 usage() {
-    echo "usage: owe.sh add --bucket <dir> --chief <name> --kind ticket|proof|ruling|step --text <text> [--key <KEY>] [--identity <sha256>] [--metadata <JSON>]" >&2
+    echo "usage: owe.sh add --bucket <dir> --chief <name> --kind ticket|proof|ruling|step --text <text> [--key <KEY>] [--identity <sha256>] [--metadata <JSON> | --metadata-stdin]" >&2
     echo "       owe.sh close --bucket <dir> --id <oN> --key <key|sha|decision id>" >&2
     echo "       owe.sh list --bucket <dir> [--all] [--json]" >&2
     exit 2
@@ -35,7 +36,7 @@ usage() {
 [ "$#" -ge 1 ] || usage
 CMD="$1"; shift
 BUCKET=""; CHIEF=""; KIND=""; TEXT=""; KEY=""; ID=""; ALL=0; HAVE_TEXT=0; HAVE_KEY=0
-IDENTITY=""; METADATA='{}'; JSON=0
+IDENTITY=""; METADATA='{}'; JSON=0; METADATA_STDIN=0; HAVE_METADATA=0
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --bucket) [ "$#" -ge 2 ] || usage; BUCKET="$2"; shift 2 ;;
@@ -47,10 +48,23 @@ while [ "$#" -gt 0 ]; do
         --all) ALL=1; shift ;;
         --json) JSON=1; shift ;;
         --identity) [ "$#" -ge 2 ] || usage; IDENTITY="$2"; shift 2 ;;
-        --metadata) [ "$#" -ge 2 ] || usage; METADATA="$2"; shift 2 ;;
+        --metadata) [ "$#" -ge 2 ] || usage; METADATA="$2"; HAVE_METADATA=1; shift 2 ;;
+        --metadata-stdin) [ "$METADATA_STDIN" -eq 0 ] || usage; METADATA_STDIN=1; shift ;;
         *) usage ;;
     esac
 done
+if [ "$METADATA_STDIN" -eq 1 ]; then
+    [ "$CMD" = add ] && [ "$HAVE_METADATA" -eq 0 ] || usage
+    if ! METADATA=$(python3 -c 'import json,sys
+raw=sys.stdin.buffer.read(1048577)
+if len(raw)>1048576: raise ValueError("metadata exceeds 1 MiB")
+value=json.dumps(json.loads(raw), ensure_ascii=True, separators=(",",":"))
+if len(value.encode())>1048576: raise ValueError("encoded metadata exceeds 1 MiB")
+print(value)'); then
+        echo 'owe: invalid or oversize metadata stdin' >&2
+        exit 2
+    fi
+fi
 
 [ -n "$BUCKET" ] || usage
 [ -d "$BUCKET" ] || { echo "owe: bucket directory '$BUCKET' does not exist" >&2; exit 3; }
@@ -86,21 +100,26 @@ case "$CMD" in
         fi
         # Additive fields only: never let metadata replace ledger authority/keys.
         # Structured observations are data; their consumers still validate evidence.
-        printf '%s' "$METADATA" | jq -e '
-              type == "object" and all(to_entries[];
+        printf '%s' "$METADATA" | jq -e -s '
+              length == 1 and (.[0] | type == "object" and all(to_entries[];
                 . as $e | if (["evidence_path","source_doc","source_label","next_action","wake"] | index($e.key)) then ($e.value | type == "string")
                 elif (["issues","proof_rows"] | index($e.key)) then ($e.value | type == "array" and all(.[]; type == "string"))
                 elif $e.key == "evidence_records" then ($e.value | type == "array" and all(.[];
                   type == "object" and (keys - ["path","sha256"] | length) == 0 and (.path | type == "string")
                   and (if has("sha256") then (.sha256 | type == "string" and test("^[0-9a-f]{64}$")) else true end)))
                 elif (["executed_shas","required_shas"] | index($e.key)) then ($e.value | type == "array" and all(.[]; type == "object" and (keys | sort) == ["basis","sha"] and (.basis == "main" or .basis == "station") and (.sha | type == "string" and test("^[0-9a-f]{7,40}$"))))
+                elif $e.key == "observation_counts" then ($e.value | type == "object" and all(to_entries[];
+                  (.key as $k | ["issues","proof_rows","executed_shas","required_shas","next_action","wake"] | index($k)) != null
+                  and (.value | type == "object" and (keys | sort) == ["omitted","total","truncated_chars"]
+                    and all(.[]; type == "number" and . >= 0 and . <= 9007199254740990 and floor == .)
+                    and .omitted <= .total)))
                 elif $e.key == "actor" then $e.value == "chief"
                 elif $e.key == "action" then $e.value == "validate-proof"
                 elif $e.key == "validation" then $e.value == "pending"
                 elif $e.key == "recommendation" then (["CLOSE","KEEP","unknown"] | index($e.value)) != null
                 elif $e.key == "binding" then (["matched","unknown","mismatch"] | index($e.value)) != null
                 elif (["evidence_hash","requirements_digest","original_requirements_digest"] | index($e.key)) then ($e.value | type == "string" and test("^[0-9a-f]{64}$"))
-                else false end)' >/dev/null 2>&1 || { echo "owe: refused metadata field or value" >&2; exit 2; }
+                else false end))' >/dev/null 2>&1 || { echo "owe: refused metadata field or value" >&2; exit 2; }
         lock_ledger
         ledger_ok || { echo "owe: $F is unreadable" >&2; exit 4; }
         if [ -n "$IDENTITY" ]; then
@@ -110,8 +129,8 @@ case "$CMD" in
         fi
         n=1
         [ ! -s "$F" ] || n=$(( $(jq -s '[.[] | select(.op == "add")] | length' "$F") + 1 ))
-        row="$(jq -cn --arg id "o$n" --argjson e "$NOW" --arg chief "$CHIEF" --arg kind "$KIND" --arg text "$TEXT" --arg key "$KEY" --arg identity "$IDENTITY" --argjson metadata "$METADATA" \
-            '{op: "add", id: $id, ts: ($e | todate), epoch: $e, chief: $chief, kind: $kind, text: $text} + (if $key == "" then {} else {key: $key} end) + (if $identity == "" then {} else {identity: $identity} end) + $metadata')" || exit 4
+        row="$(printf '%s' "$METADATA" | jq -c --arg id "o$n" --argjson e "$NOW" --arg chief "$CHIEF" --arg kind "$KIND" --arg text "$TEXT" --arg key "$KEY" --arg identity "$IDENTITY" \
+            '{op: "add", id: $id, ts: ($e | todate), epoch: $e, chief: $chief, kind: $kind, text: $text} + (if $key == "" then {} else {key: $key} end) + (if $identity == "" then {} else {identity: $identity} end) + .')" || exit 4
         printf '%s\n' "$row" >> "$F" || exit 4
         persist
         printf 'o%s\n' "$n"

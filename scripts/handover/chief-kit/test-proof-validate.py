@@ -2,12 +2,17 @@
 """Record-only proof handoff, entirely scratch/offline."""
 import concurrent.futures
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
 import subprocess
+import stat
+from types import SimpleNamespace
+import time
 import tempfile
 import unittest
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 
@@ -31,13 +36,23 @@ class ProofRecord(unittest.TestCase):
         self.doc.write_text('# proof worker\n> **Live test:** none — proof leg\n## Results\n- 10:00 WRAPPED — proof ' + keys + ' verdict=CLOSE evidence=' + str(self.evidence) + tail + '\n')
 
     def run_record(self, *args, ok=True, env=None):
-        r = subprocess.run(['python3', str(HERE / 'proof-validate.py'), '--bucket', str(self.b), '--doc', str(self.doc), '--mirror', str(self.mirror), *args], capture_output=True, text=True, env={**os.environ, **(env or {})})
+        r = subprocess.run(['python3', str(HERE / 'proof-validate.py'), '--bucket', str(self.b), '--doc', str(self.doc), '--mirror', str(self.mirror), *args], capture_output=True, text=True, env={**os.environ, **(env or {})}, timeout=3)
         if ok:
             self.assertEqual(r.returncode, 0, r.stderr)
         return r
 
     def rows(self):
         return [json.loads(x) for x in (self.b / 'owed.jsonl').read_text().splitlines()]
+
+    def module(self):
+        spec = importlib.util.spec_from_file_location('proof_validate', HERE / 'proof-validate.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def options(self):
+        return SimpleNamespace(bucket=str(self.b), doc=str(self.doc), mirror=str(self.mirror),
+                               label='', message_stdin=False, dry_run=False)
 
     def test_close_is_pending_never_authority(self):
         self.run_record()
@@ -202,6 +217,169 @@ class ProofRecord(unittest.TestCase):
         self.assertEqual(row['required_shas'], [{'basis': 'main', 'sha': 'c'*40}])
         self.assertIn('candidate-ancestry-unvalidated', row['issues'])
         self.assertEqual({x['basis'] for x in row['executed_shas']}, {'main', 'station'})
+
+    def test_fifo_evidence_returns_prompt_reconciliation(self):
+        self.evidence.unlink()
+        os.mkfifo(self.evidence)
+        started = time.monotonic()
+        self.run_record()
+        self.assertLess(time.monotonic() - started, 2)
+        self.assertNotIn('evidence_hash', self.rows()[0])
+        self.assertIn('evidence-unreadable', self.rows()[0]['issues'])
+        self.run_record()
+        self.assertEqual(len(self.rows()), 1)
+
+    def test_symlink_and_oversize_are_not_hashed(self):
+        target = self.b / 'target'
+        target.write_text('VERDICT CLOSE\n')
+        self.evidence.unlink()
+        self.evidence.symlink_to(target)
+        self.run_record()
+        self.assertNotIn('evidence_hash', self.rows()[0])
+        self.evidence.unlink()
+        with self.evidence.open('wb') as stream:
+            stream.truncate(8 * 1024 * 1024 + 1)
+        self.run_record()
+        self.assertNotIn('evidence_hash', self.rows()[-1])
+        self.assertIn('evidence-unreadable', self.rows()[-1]['issues'])
+
+    def test_shared_primary_named_artifact_keeps_secondary_hash(self):
+        primary, secondary = 'HIMMEL-' + '9975', 'HIMMEL-' + '9800'
+        for key in (primary, secondary):
+            (self.mirror / (key + '.md')).write_text('## Description\n' + self.requirements)
+        artifact = self.b / (primary + '-proof.md')
+        self.evidence.rename(artifact)
+        self.doc.write_text('# proof\n## Results\n- 10:00 WRAPPED — proof ' + primary + ', ' + secondary +
+                            ' verdict=CLOSE evidence=' + str(artifact) + '\n')
+        self.run_record()
+        rows = self.rows()
+        self.assertEqual({r['key'] for r in rows}, {primary, secondary})
+        expected = hashlib.sha256(artifact.read_bytes()).hexdigest()
+        for row in rows:
+            self.assertEqual(row['evidence_path'], str(artifact))
+            self.assertEqual(row['evidence_hash'], expected)
+            self.assertEqual(row['validation'], 'pending')
+        self.assertIn('artifact-attribution-unvalidated', next(r for r in rows if r['key'] == secondary)['issues'])
+
+    def test_large_artifact_bounds_observations_without_argv_failure(self):
+        self.evidence.write_text(('| row | MET | ' + 'x' * 120 + ' |\n') * 3000 +
+                                 ('| malformed ' + 'Ω' * 2000 + '\n') * 100 + 'VERDICT KEEP\n')
+        expected = hashlib.sha256(self.evidence.read_bytes()).hexdigest()
+        self.run_record()
+        row = self.rows()[0]
+        self.assertEqual(row['evidence_hash'], expected)
+        self.assertEqual(row['recommendation'], 'KEEP')
+        self.assertLessEqual(len(row['proof_rows']), 64)
+        self.assertLessEqual(len(row['issues']), 32)
+        self.assertLessEqual(max(map(len, row['proof_rows'])), 512)
+        self.assertGreater(row['observation_counts']['proof_rows']['omitted'], 0)
+        self.assertGreater(row['observation_counts']['issues']['omitted'], 0)
+        self.run_record()
+        self.assertEqual(len(self.rows()), 1)
+
+    def test_nonproof_prose_and_loose_leg_kind_do_not_create_debt(self):
+        for text in ('A proof leg could check this next.', '> **Leg kind:** proof'):
+            self.doc.write_text('# ordinary worker\n' + text + '\n## Results\n- 10:00 WRAPPED implementation done\n')
+            self.run_record()
+            self.assertFalse((self.b / 'owed.jsonl').exists())
+
+    def test_device_shaped_descriptor_is_rejected_before_read(self):
+        module = self.module()
+        with mock.patch.object(module.os, 'fstat', return_value=SimpleNamespace(st_mode=stat.S_IFCHR, st_size=0)), \
+                mock.patch.object(module.os, 'read', side_effect=AssertionError('device read attempted')) as read:
+            with self.assertRaises(ValueError):
+                module.regular_bytes(self.evidence)
+        read.assert_not_called()
+
+    def test_changed_or_replaced_file_has_no_accepted_hash(self):
+        for replacement in (False, True):
+            with self.subTest(replacement=replacement):
+                self.write()
+                ledger = self.b / 'owed.jsonl'
+                ledger.unlink(missing_ok=True)
+                module = self.module()
+                original_read = os.read
+                evidence_inode = self.evidence.stat().st_ino
+                changed = False
+                def changing_read(fd, amount):
+                    nonlocal changed
+                    chunk = original_read(fd, amount)
+                    if not changed and os.fstat(fd).st_ino == evidence_inode:
+                        changed = True
+                        if replacement:
+                            self.evidence.rename(self.b / 'old-artifact')
+                            self.evidence.write_bytes(chunk)
+                        else:
+                            with self.evidence.open('ab') as stream:
+                                stream.write(b'changed')
+                    return chunk
+                with mock.patch.object(module.os, 'read', side_effect=changing_read):
+                    module.record(self.options())
+                self.assertTrue(changed)
+                self.assertNotIn('evidence_hash', self.rows()[0])
+                self.assertIn('evidence-unreadable', self.rows()[0]['issues'])
+
+    def test_artifact_allocation_or_io_error_preserves_reconciliation(self):
+        module = self.module()
+        original = module.regular_bytes
+        for failure in (MemoryError, OSError):
+            (self.b / 'owed.jsonl').unlink(missing_ok=True)
+            def failed_read(path):
+                if str(path) == str(self.evidence):
+                    raise failure('fixture read failure')
+                return original(path)
+            with mock.patch.object(module, 'regular_bytes', side_effect=failed_read):
+                module.record(self.options())
+            self.assertNotIn('evidence_hash', self.rows()[0])
+            self.assertIn('evidence-unreadable', self.rows()[0]['issues'])
+
+    def test_exact_size_boundary_is_accepted_then_oversize_reconciles(self):
+        raw = b'#' * (8 * 1024 * 1024 - 14) + b'\nVERDICT KEEP\n'
+        self.evidence.write_bytes(raw)
+        self.run_record()
+        self.assertEqual(self.rows()[0]['evidence_hash'], hashlib.sha256(raw).hexdigest())
+        with self.evidence.open('ab') as stream:
+            stream.write(b'overflow')
+        self.run_record()
+        self.assertNotIn('evidence_hash', self.rows()[-1])
+
+    def test_text_and_sha_observations_expose_exact_omission_counts(self):
+        self.write(''.join('| row | MET | main=' + format(n, '040x') + ' |\nrequired-sha main=' + format(n, '040x') + '\n' for n in range(70)) +
+                   'next-action: ' + 'x' * 5000 + '\nwake: ' + 'y' * 5000 + '\nVERDICT KEEP\n')
+        self.run_record()
+        row = self.rows()[0]
+        for field in ('executed_shas', 'required_shas'):
+            self.assertEqual(len(row[field]), 64)
+            self.assertEqual(row['observation_counts'][field]['total'], 70)
+            self.assertEqual(row['observation_counts'][field]['omitted'], 6)
+        for field in ('next_action', 'wake'):
+            self.assertEqual(len(row[field]), 1024)
+            self.assertEqual(row['observation_counts'][field]['omitted'], 3976)
+
+    def test_message_requires_a_real_wrapped_proof_key_tail(self):
+        self.doc.write_text('# ordinary worker\n## Results\n- 10:00 WRAPPED implementation done\n')
+        result = subprocess.run(['python3', str(HERE / 'proof-validate.py'), '--bucket', str(self.b), '--doc', str(self.doc),
+                                 '--mirror', str(self.mirror), '--message-stdin'],
+                                input='Discussed WRAPPED proof HIMMEL-9848 as an example.', capture_output=True, text=True, timeout=3)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.b / 'owed.jsonl').exists())
+        result = subprocess.run(['python3', str(HERE / 'proof-validate.py'), '--bucket', str(self.b), '--doc', str(self.doc),
+                                 '--mirror', str(self.mirror), '--message-stdin'],
+                                input='N42 HIMMEL-9848 WRAPPED — proof HIMMEL-9848 verdict=KEEP evidence=' + str(self.evidence), capture_output=True, text=True, timeout=3)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.rows()[0]['recommendation'], 'CLOSE')
+
+    def test_shared_status_shapes_and_legacy_proof_tail_remain_positive(self):
+        for heading, marker in [('## Results\n', '- WRAPPED'), ('## Results\n', '- 10:00 **WRAPPED**'), ('', '- 10:00 WRAPPED')]:
+            (self.b / 'owed.jsonl').unlink(missing_ok=True)
+            self.doc.write_text('# worker\n' + heading + marker + ' — proof HIMMEL-9848 verdict=CLOSE evidence=' + str(self.evidence) + '\n')
+            self.run_record()
+            self.assertEqual(self.rows()[0]['evidence_hash'], hashlib.sha256(self.evidence.read_bytes()).hexdigest())
+
+    def test_old_wrapped_proof_is_not_the_current_tail(self):
+        self.doc.write_text(self.doc.read_text() + '- 11:00 LIVE ordinary implementation\n')
+        self.run_record()
+        self.assertFalse((self.b / 'owed.jsonl').exists())
 
 
 if __name__ == '__main__':
