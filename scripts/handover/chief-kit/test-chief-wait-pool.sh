@@ -463,8 +463,7 @@ READINESS_NOW_EPOCH=1800000000 HIMMEL_RELEASE_STATE_DIR="$W1/rel" bash "$HERE/re
 printf '# chief\n\n## Live state\n\n## Results\n' > "$W1/chief.md"
 printf '# dropped from v1: 2 of 2 To Do (listed 2)\n# disposition HIMMEL-8001 listed LOCAL\n# disposition HIMMEL-8005 listed LOCAL\n' > "$STUB/dispositions"
 w1_wait() {
-    timeout 8 env NEXT_DISPATCH_MIRROR="$W1/mirror/HIMMEL" HIMMEL_RELEASE_STATE_DIR="$W1/rel" READINESS_NOW_EPOCH=1800007200 \
-        bash "$WAIT" "$(new_inbox "$1")" --doc "$W1/chief.md" --workers N1.md > "$WORK/$1.out" 2> /dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
+    NEXT_DISPATCH_MIRROR="$W1/mirror/HIMMEL" HIMMEL_RELEASE_STATE_DIR="$W1/rel" READINESS_NOW_EPOCH=1800007200 timeout 8 bash "$WAIT" "$(new_inbox "$1")" --doc "$W1/chief.md" --workers N1.md > "$WORK/$1.out" 2> /dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
 }
 w1_wait w1-record
 w1_n() { grep -c "^# pool-unresolved $2 HIMMEL-$3 " "$WORK/$1.out"; }
