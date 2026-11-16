@@ -24,7 +24,7 @@ chain (decision 100), and names its ground.
   `chain:<name>`, `receipt`, `defer:<why>`, `resequence:<why>` (a move within
   the release), `resolved:<resolution>` (a DISCHARGE). A ground explains the
   ruling; it never authorizes a placement by itself.
-- **Follow-ups**: a follow-up enters current only if it blocks a bucket ticket (its why names it, or `--remainder`) or is critical, a regression or a broken flow; otherwise BACKLOG. A required remainder is typed evidence on the request (`remainder: true` with `follow_up_of: <parent>`, filed by `create --follow-up-of --remainder` or `request --required-by <parent>`); optional hardening carries no flag. `state --json` lists every such child of an open current parent that is still outside the version under `remainder_conflicts` with its owner and next command; the list admits nothing, so a conflict is ruled like any request (no O- record, no placement).
+- **Follow-ups**: a follow-up enters current only if it blocks a bucket ticket (its why names it, or `--remainder`) or is critical, a regression or a broken flow; otherwise BACKLOG. A required remainder is typed evidence on the request (`remainder: true` with `follow_up_of: <parent>`, filed by `create --follow-up-of --remainder` or `request --required-by <parent>`); optional hardening carries no flag. The relation is the child's newest live INTAKE-to-current request (a later request that drops it or names another parent replaces it; `request --required-by` on an open request updates that request's evidence once). `state --json` lists every such child of an open current parent that is still outside the version under `remainder_conflicts` with its owner and next command (`unknown` names what the mirror cannot say); the list admits nothing, so a conflict is ruled like any request: a gated placement (operator-directed, High or Highest) needs the operator's words and an ordinary ungated one is ruled on its merits. A refusal's ack ends the notice, not the contradiction: the child stays the chief's, with a refile remedy, never `rm-run`.
 - **Class** is derived by the engine from the target version: `current` (the
   active version), `next` (a later version of the release), `backlog`.
 - **Sector** (`--sector`) is required. A ticket with no sector: ask the chief
@@ -92,10 +92,14 @@ cannot resolve to the chief as a `FINDING`. The `rm-run` judge reports a request
 cannot rule (no sector, missing input) as `{"req","outcome":"HOLD","reason"}`: no
 ruling is written and the request stays claimed for the next batch.
 
-Verify the outcome, not the printed line. A returned approval is not a placement: `REQ approved:<O-id>` on an INTAKE
-is a 14-day out-of-version work permission and queues nothing; only `REQ Q-…` (new operator words with `--decision`
-and `--words`) is a queued placement. A ruling is finished when `state --json` lists it under no `unfinished_rulings`
-(intent or applied means the Jira write, the admissions row or the receipt is still owed; `rm-run` replays it). A
+Verify the outcome, not the printed line. An out-of-version approval is a 14-day work permission only: it files no
+placement and answers for none, so `request` queues, or refuses, an INTAKE with or without it (`REQ Q-…` is the queued
+placement; a gated key still needs `--decision` and `--words`, an ordinary one needs neither). A ruling is finished when
+`state --json` lists it under no `unfinished_rulings` (intent or applied means the Jira write, the admissions row or the
+receipt is still owed). `status: replay` means `rm-run` finishes it; `status: blocked` is a cross-version move the mirror
+shows in neither version with no journalled proof the removal was this ruling's own write: `rm-run` writes nothing for it
+and `observed` and `next` name the chief's two repairs (`jira fix-version`), after which `rm-run` writes the row and
+receipt once. Never read a blocked move as an `rm-run` job. A
 BACKLOG or KEEP refusal of a backlog-to-version ask is not fulfilled intent: it appears in `refused_asks` with its
 ground and exact `remedy`, and the same ask repeated word for word queues nothing until its evidence, the operator's
 words or an `ack` changes.

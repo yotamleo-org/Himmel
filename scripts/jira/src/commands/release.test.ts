@@ -1114,7 +1114,7 @@ describe('jira release bucket-check', () => {
     expect(out[0]).toBe('FAILED HIMMEL-5 the live read of HIMMEL-5 failed: fetch failed');
   });
 
-  it('an INTAKE on an approved key answers REQ approved:<id> and writes no row; a REVERSION on it still files', async () => {
+  it('an approved key is queued like any other: an INTAKE, an INTAKE on an expired approval and a REVERSION each file their own request', async () => {
     await declared();
     const mir = projectMirror({ key: 'HIMMEL-7', fixVersions: ['v1.1.10'] });
     approve('HIMMEL-7', '901', 1);
@@ -1122,45 +1122,25 @@ describe('jira release bucket-check', () => {
     vi.mocked(request).mockImplementation((async () => ({ fields: { labels: [] } })) as never);
     out = [];
     await run('request', 'R1', '--mirror-root', mir, '--verb', 'INTAKE', '--key', 'HIMMEL-7', '--from', 'v1.1.10', '--to', 'v1.1.9', '--why', 'worked under the chief: fold it in');
-    expect(out).toEqual(['REQ approved:O-R1-ov-901']);
-    expect(existsSync(join(root, 'state', 'R1', 'requests.jsonl'))).toBe(false);
+    expect(out).toEqual(['REQ Q-R1-0001']);
+    expect(existsSync(join(root, 'state', 'R1', 'requests.jsonl'))).toBe(true);
     approve('HIMMEL-8', '902', 15);
     await run('request', 'R1', '--mirror-root', mir, '--verb', 'INTAKE', '--key', 'HIMMEL-8', '--to', 'v1.1.9', '--why', 'worked under the chief: fold it in');
-    expect(out.at(-1)).toBe('REQ Q-R1-0001');
-    await run('request', 'R1', '--mirror-root', mir, '--verb', 'REVERSION', '--key', 'HIMMEL-7', '--from', 'v1.1.10', '--to', 'backlog', '--why', 'moves out of the version');
     expect(out.at(-1)).toBe('REQ Q-R1-0002');
+    await run('request', 'R1', '--mirror-root', mir, '--verb', 'REVERSION', '--key', 'HIMMEL-7', '--from', 'v1.1.10', '--to', 'backlog', '--why', 'moves out of the version');
+    expect(out.at(-1)).toBe('REQ Q-R1-0003');
   });
 
-  it('the approved INTAKE clears a proposed-* label on the key, since its proposal ends there', async () => {
-    await declared();
-    const mir = projectMirror({ key: 'HIMMEL-7', fixVersions: ['v1.1.10'] });
-    approve('HIMMEL-7', '901', 1);
-    let labels = ['core', 'proposed-v1.1.9'];
-    vi.mocked(request).mockReset();
-    vi.mocked(request).mockImplementation((async (method: string) => {
-      if (method === 'PUT') labels = labels.filter((l) => !l.startsWith('proposed-'));
-      return { fields: { labels } };
-    }) as never);
-    out = [];
-    await run('request', 'R1', '--mirror-root', mir, '--verb', 'INTAKE', '--key', 'HIMMEL-7', '--to', 'v1.1.9', '--why', 'worked under the chief: fold it in');
-    expect(out).toEqual(['REQ approved:O-R1-ov-901']);
-    expect(vi.mocked(request).mock.calls.find((c) => c[0] === 'PUT')).toEqual(['PUT', '/issue/HIMMEL-7', { update: { labels: [{ remove: 'proposed-v1.1.9' }] } }]);
-    expect(labels).toEqual(['core']);
-  });
-
-  it('a failed label clear on an approved INTAKE warns and keeps the REQ line and exit 0, which the folds read', async () => {
+  it('an approved INTAKE touches no label: the proposal ends with its ruling, never with a request', async () => {
     await declared();
     const mir = projectMirror({ key: 'HIMMEL-7', fixVersions: ['v1.1.10'] });
     approve('HIMMEL-7', '901', 1);
     vi.mocked(request).mockReset();
-    vi.mocked(request).mockImplementation((async () => { throw new Error('HTTP 503'); }) as never);
-    const err = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.mocked(request).mockImplementation((async () => ({ fields: { labels: ['core', 'proposed-v1.1.9'] } })) as never);
     out = [];
-    process.exitCode = undefined;
     await run('request', 'R1', '--mirror-root', mir, '--verb', 'INTAKE', '--key', 'HIMMEL-7', '--to', 'v1.1.9', '--why', 'worked under the chief: fold it in');
-    expect(out).toEqual(['REQ approved:O-R1-ov-901']);
-    expect(process.exitCode ?? 0).toBe(0);
-    expect(err).toHaveBeenCalledWith('release request: WARN HTTP 503');
+    expect(out).toEqual(['REQ Q-R1-0001']);
+    expect(vi.mocked(request).mock.calls.find((c) => c[0] === 'PUT')).toBeUndefined();
   });
 });
 
@@ -1444,16 +1424,37 @@ describe('a request for operator work carries the operator\'s words', () => {
       expect(queued()).toMatchObject([{ key: 'HIMMEL-1', verb: 'INTAKE', to_v: 'v1.1.3', evidence: { operator: id } }]);
     });
 
-    it('approval alone keeps its meaning (REQ approved, no row) and says on stderr that it is not a placement', async () => {
+    it('RED: an approval on an ordinary ungated key still files the INTAKE through normal placement; the approval is only work permission', async () => {
+      await declared();
+      approve('HIMMEL-4');
+      quiet();
+      out = [];
+      await ask(gateMirror({ key: 'HIMMEL-4' }), ...intake('HIMMEL-4'));
+      expect(out).toEqual(['REQ Q-v1.1.3-0001']);
+      expect(queued()).toMatchObject([{ key: 'HIMMEL-4', verb: 'INTAKE', to_v: 'v1.1.3', state: 'open' }]);
+      expect(vi.mocked(request).mock.calls.find((c) => c[0] === 'PUT')).toBeUndefined();
+    });
+
+    it('RED: an approval never stands in for the gate: a gated key with no words is refused, queues nothing and prints no REQ', async () => {
       await declared();
       approve('HIMMEL-1');
       quiet();
-      const err = vi.spyOn(console, 'error').mockImplementation(() => undefined);
       out = [];
-      await ask(gateMirror(operatorDirected), ...intake('HIMMEL-1'));
-      expect(out).toEqual(['REQ approved:O-v1.1.3-ov-HIMMEL-1']);
+      const msg = await refusal(ask(gateMirror(operatorDirected), ...intake('HIMMEL-1')));
+      expect(msg).toContain('needs a record of the operator\'s words');
+      expect(out).toEqual([]);
       expect(queued()).toEqual([]);
-      expect(err.mock.calls.flat().join('\n')).toMatch(/work permission only.*no placement was queued.*--decision <n> --words/s);
+      expect(vi.mocked(request).mock.calls.find((c) => c[0] === 'PUT')).toBeUndefined();
+    });
+
+    it('an approved key repeating its ask returns the same open request (the normal dedupe), never a second Q', async () => {
+      await declared();
+      approve('HIMMEL-4');
+      quiet();
+      await ask(gateMirror({ key: 'HIMMEL-4' }), ...intake('HIMMEL-4'));
+      await ask(gateMirror({ key: 'HIMMEL-4' }), ...intake('HIMMEL-4'));
+      expect(out.slice(-2)).toEqual(['REQ Q-v1.1.3-0001', 'REQ Q-v1.1.3-0001']);
+      expect(queued()).toHaveLength(1);
     });
 
     it('malformed new authority still refuses with an approval live: --decision without --words, and a gloss', async () => {
@@ -1489,6 +1490,20 @@ describe('a request for operator work carries the operator\'s words', () => {
       await declared();
       await ask(gateMirror({ key: 'HIMMEL-9914' }), ...intake('HIMMEL-9914'), '--required-by', 'HIMMEL-9953');
       expect(queuedRows()[0].evidence).toEqual({ follow_up_of: 'HIMMEL-9953', remainder: true });
+    });
+
+    it('--required-by on a request already open returns that request carrying the relation (a signed update, not the old empty-evidence row)', async () => {
+      await declared();
+      const m = gateMirror({ key: 'HIMMEL-9914' });
+      await ask(m, ...intake('HIMMEL-9914'));
+      expect(queuedRows()[0].evidence).toEqual({});
+      await ask(m, ...intake('HIMMEL-9914'), '--required-by', 'HIMMEL-9953');
+      expect(out.slice(-2)).toEqual(['REQ Q-v1.1.3-0001', 'REQ Q-v1.1.3-0001']);
+      expect(queuedRows().at(-1)?.evidence).toEqual({ follow_up_of: 'HIMMEL-9953', remainder: true });
+      expect(queuedRows().at(-1)?.state).toBe('open');
+      const n = queuedRows().length;
+      await ask(m, ...intake('HIMMEL-9914'), '--required-by', 'HIMMEL-9953');
+      expect(queuedRows()).toHaveLength(n);
     });
 
     it('--required-by is refused for itself, a non-key, or evidence naming another parent', async () => {

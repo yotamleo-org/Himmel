@@ -17,11 +17,11 @@ import { defaultRoot } from './mirror.js';
 import { sectorField, sectorOf } from './sector.js';
 import { fetchVersions, setFixVersion } from './versions.js';
 import { chiefOverrideOf } from './intake-gate.js';
-import { repairStateOf } from '../release/repair-state.js';
+import { attemptLaunch, repairStateOf } from '../release/repair-state.js';
 import { readAdmissions, underTmp } from './admissions-ledger.js';
 import { parseFrozen } from './version-freeze.js';
 import {
-  ack, apply, bucketCheck, claim, clearProposedLabels, coreBypass, coreSnapshot, declare, decisionWords, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, outOfVersion, outOfVersionApproval, OUT_OF_VERSION_MS, PLACEHOLDER, PULL_MAX, pull, readMirror, readMirrorFilesUnverified, readOperatorRecords, reopen, request as releaseRequest, requestWithWords, rmRun, rmRunSummary, rule, signSpec, specCheck, specReview, standing, state, takeover, withdraw,
+  ack, apply, bucketCheck, claim, clearProposedLabels, coreBypass, coreSnapshot, declare, decisionWords, fold, freeze, JudgeReplyError, leaseAcquire, leaseRelease, operatorDecision, outOfVersion, OUT_OF_VERSION_MS, PLACEHOLDER, PULL_MAX, pull, readMirror, readMirrorFilesUnverified, readOperatorRecords, reopen, request as releaseRequest, requestWithWords, rmRun, rmRunSummary, rule, signSpec, specCheck, specReview, standing, state, takeover, withdraw,
   type ApprovalAlert, type Ctx, type Decision, type FoldItem, type JiraPort, type Judge, type JudgeInput, type RunRecord, type StateOut,
 } from '../release/engine.js';
 import { admissionBudget, commentLeaks, leakDiff, leakLine } from '../release/leaks.js';
@@ -755,13 +755,18 @@ export function registerRelease(program: Command): void {
     });
 
   rel.command('repair-state <release>')
-    .description('Print the version repair\'s one state record (off|idle|running|held|lost, reason, signature, held keys, the operator command); a crashed run reads lost')
+    .description('Print the version repair\'s one state record (off|idle|running|held|lost, reason, signature, held keys, the operator command, the launch-attempt clock); a crashed run reads lost')
     .option('--json', 'Print the record as JSON')
     .option('--repo <owner/name>', 'The GitHub repo the operator command names (default: this checkout\'s origin)')
-    .action((release: string, o: { json?: boolean; repo?: string }) => {
-      const got = repairStateOf(ctxFor(release), { repo: o.repo ?? originSlug() });
+    .option('--attempt', 'Record a launch attempt before the detached repair start (the tick\'s one prepare step); exits 3 while a run is alive, 2 under a worker fence')
+    .action((release: string, o: { json?: boolean; repo?: string; attempt?: boolean }) => {
+      const repo = o.repo ?? originSlug();
+      const out = o.attempt ? attemptLaunch(ctxFor(release), { repo }) : { ok: true as const, record: repairStateOf(ctxFor(release), { repo }) };
+      const got = out.record;
+      const tail = o.attempt ? `; attempt ${out.ok ? 'recorded' : `refused (${out.why})`}, ${got.attempts} so far` : '';
       if (o.json) console.log(JSON.stringify(got));
-      else console.log(`repair-state ${release}: ${got.state}${got.reason ? ` (${got.reason})` : ''}; held ${got.held_keys.length}, unfiled ${got.unfiled}${got.operator_command ? `; run: ${got.operator_command}` : ''}`);
+      else console.log(`repair-state ${release}: ${got.state}${got.reason ? ` (${got.reason})` : ''}; held ${got.held_keys.length}, unfiled ${got.unfiled}${got.operator_command ? `; run: ${got.operator_command}` : ''}${tail}`);
+      if (!out.ok) process.exitCode = out.why === 'busy' ? 3 : 2;
     });
 
   rel.command('request <release>')
@@ -787,20 +792,10 @@ export function registerRelease(program: Command): void {
         Object.assign(evidence, { follow_up_of: o.requiredBy, remainder: true });
       }
       const ctx = ctxFor(release, o.mirrorRoot);
-      // New operator words are authority for a placement; they are checked before an old work approval can answer for them.
+      // An out-of-version approval is work permission only (the repair's work check reads it); it files no placement and is no authority for one.
+      // A placement is queued, or refused, by the same checks with or without it.
       if (o.decision !== undefined && o.words === undefined) throw new RequestRefused('release request: --decision needs --words "<the operator\'s exact words>"');
       if (o.words !== undefined && o.decision === undefined) throw new RequestRefused('release request: --words needs --decision <n>, the decision whose file holds them');
-      const approval = o.verb === 'INTAKE' && o.decision === undefined ? outOfVersionApproval(process.env, o.key, new Date()) : null;
-      if (approval) {
-        console.log(`REQ approved:${approval.id}`);
-        console.error(`release request: ${o.key} holds out-of-version approval ${approval.id}: work permission only, no placement was queued; to place it in ${o.to === 'backlog' ? 'a version' : o.to} add --decision <n> --words "<the operator's exact words>"`);
-        try {
-          await clearProposedLabels(ctx.jira, o.key);
-        } catch (e) {
-          console.error(`release request: WARN ${(e as Error).message}`);
-        }
-        return;
-      }
       const row = { verb: o.verb as Verb, key: o.key, from_v: ver(o.from), to_v: ver(o.to), why: o.why };
       const scoped = isGated({ ...row, origin: 'cli', ticket: null, env: ctx.env });
       const ticket = scoped && o.decision === undefined ? await ticketFacts(ctx, o.key) : null;

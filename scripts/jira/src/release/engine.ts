@@ -5,7 +5,7 @@ import { hostname } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { releaseKeyPath, releaseRoot } from './paths.js';
-import type { Getter } from './version-writes.js';
+import { journalPath, readVersionWrites, type Getter, type VersionWriteRow } from './version-writes.js';
 import {
   appendChain, contentSha, loadKey, mintKey, readChain, readSigned, withLock, withLockAsync, writeSigned, type Chain,
 } from './ledger.js';
@@ -1038,13 +1038,31 @@ export function request(ctx: Ctx, o: Omit<RequestRow, 'req' | 'ts' | 'state'>): 
     const pullAgain = (r: RequestRow) => isPullRequest(r) && isPullRequest(o as RequestRow);
     const dup = [...latest.values()].find((r) => (pending(r) || pullAgain(r)) && r.key === o.key && r.verb === o.verb
       && r.from_v === o.from_v && r.to_v === o.to_v);
-    if (dup) return dup;
+    // A pending ask that lacks the required-parent relation this ask carries takes it by a signed row of the same request
+    // (same state, so a claim and its epoch stand): returning the older request would drop the relation the chief just stated.
+    if (dup) return pending(dup) ? withRelation(ctx, l.k, dup, o) : dup;
     // An ask the RM already refused, repeated word for word with nothing new, files nothing: the refusal and its remedy stand.
     const same = unchangedRefusal(l, o);
     if (same) return same;
     const req = seq(`Q-${ctx.release}`, latest.keys());
     return appendChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k, { ...o, req, ts: ts(ctx), state: 'open' });
   });
+}
+
+const RELATION = ['follow_up_of', 'remainder'] as const;
+const relationOf = (r: { evidence?: unknown }): string => canon(Object.fromEntries(RELATION.flatMap((k) => {
+  const v = ((r.evidence ?? {}) as Record<string, unknown>)[k];
+  return v === undefined ? [] : [[k, v]];
+})));
+
+function withRelation(ctx: Ctx, k: Buffer, dup: RequestRow, o: Omit<RequestRow, 'req' | 'ts' | 'state'>): RequestRow {
+  const want = relationOf(o);
+  if (want === '{}' || want === relationOf(dup)) return dup;
+  const { prev: _p, mac: _m, ...rest } = dup;
+  const evidence = { ...((dup.evidence ?? {}) as Record<string, unknown>) };
+  for (const key of RELATION) delete evidence[key];
+  Object.assign(evidence, JSON.parse(want));
+  return appendChain<RequestRow>(f(ctx, 'requests.jsonl'), k, { ...rest, evidence });
 }
 
 export function recordRequestDecision(ctx: Ctx, o: { decision: string; words: string; key: string; verb: Verb; from_v: string | null; to_v: string | null }): OperatorRow {
@@ -1420,6 +1438,44 @@ function untouched(op: Op, cur: string[]): boolean {
   return op.kind !== 'move' || ((op.from_v === null || has(op.from_v)) && !has(op.to_v));
 }
 
+const sameSet = (a: string[], b: string[]): boolean => [...a].sort().join('\n') === [...b].sort().join('\n');
+
+// The journalled RM removal of this move's source that produced exactly the set the key shows now, written after the intent.
+function boundRemoval(env: Record<string, string | undefined>, r: RulingRow, cur: string[]): VersionWriteRow | null {
+  const from = r.op.from_v;
+  const to = r.op.to_v;
+  if (r.op.kind !== 'move' || !from || !to) return null;
+  try {
+    const path = journalPath(env);
+    if (!path) return null;
+    return readVersionWrites(path).filter((w) => w.key === r.key && w.mechanism === 'rm-apply' && w.from.includes(from) && !w.to.includes(from)
+      && !w.to.includes(to) && w.ts >= r.ts && sameSet(w.to, cur)).sort((a, b) => a.ts.localeCompare(b.ts)).at(-1) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Attribution: the source removal is this ruling's own write, and nobody has changed the key's Fix Versions since.
+async function ownedRemoval(ctx: Ctx, r: RulingRow, cur: string[]): Promise<boolean> {
+  const row = boundRemoval(ctx.env, r, cur);
+  if (!row || typeof ctx.jira.newestFixVersionEntry !== 'function') return false;
+  try {
+    return (await ctx.jira.newestFixVersionEntry(r.key)).id === row.entry;
+  } catch {
+    return false;
+  }
+}
+
+const observedOf = (r: RulingRow, cur: string[], source: 'Jira' | 'mirror'): string =>
+  `${r.key} is in ${cur.length ? cur.join(', ') : 'no version'} (${source}); the ${r.op.kind} wants ${vName(r.op.from_v)} -> ${vName(r.op.to_v)}`;
+
+// The chief's two safe ends for a move that sits in neither state, each followed by the replay that writes the row and receipt once.
+function repairOf(release: string, r: RulingRow, live: boolean): string {
+  const finish = `jira fix-version ${r.key} --add ${vName(r.op.to_v)}`;
+  const restore = `jira fix-version ${r.key} --add ${vName(r.op.from_v)}`;
+  return `${live ? '' : 'run `jira mirror` and read this again; if it still holds, '}the chief completes it with \`${finish}\` (add --gate <reason> when ${vName(r.op.to_v)} is frozen) or restores the source with \`${restore}\`, then \`jira release rm-run ${release}\` replays the row and receipt once`;
+}
+
 function phaseRow(ctx: Ctx, r: RulingRow, phase: RulingRow['phase'], extra: Partial<RulingRow>): Omit<RulingRow, 'prev' | 'mac'> {
   const { prev: _p, mac: _m, ...rest } = r;
   return { ...rest, ...extra, phase, ts: ts(ctx) };
@@ -1452,11 +1508,20 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
     if (last.phase === 'intent' && last.epoch !== lease.epoch) {
       // An older epoch's intent: resolve by readback, never by re-writing Jira.
       const cur = await ctx.jira.fixVersions(last.key);
-      if (!landed(last.op, cur)) {
-        if (!untouched(last.op, cur)) {
+      if (!landed(last.op, cur) && !untouched(last.op, cur)) {
+        // The key sits in neither end state. Only a journalled RM removal that is still the key's newest Fix Version entry proves it
+        // is this ruling's own interrupted write; then the one write left is the destination add. Anything else is a hand fix.
+        if (!(await ownedRemoval(ctx, last, cur))) {
           event('mismatch');
-          throw new Error(`release apply: ${id} is partly applied in Jira; ${last.key} needs a hand fix before it is re-ruled`);
+          throw new Error(`release apply: ${id} is partly applied in Jira and nothing proves the removal was this ruling's own, so nothing was written: ${observedOf(last, cur, 'Jira')}; ${repairOf(ctx.release, last, true)}`);
         }
+        await ctx.jira.setFixVersion(last.key, 'add', last.op.to_v as string);
+        if (!landed(last.op, await ctx.jira.fixVersions(last.key))) {
+          event('mismatch');
+          throw new Error(`release apply: ${id} readback does not match ${last.op.kind} ${vName(last.op.from_v)}→${vName(last.op.to_v)}`);
+        }
+        last = appendChain<RulingRow>(rulingsPath, l.k, phaseRow(ctx, last, 'applied', { epoch: lease.epoch, readback: 'ok' }));
+      } else if (!landed(last.op, cur)) {
         const req = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k)).get(last.req);
         appendChain<RulingRow>(rulingsPath, l.k, phaseRow(ctx, last, 'void', { epoch: lease.epoch }));
         if (req && isRepair(req)) {
@@ -1468,8 +1533,9 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
           appendChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k, { ...rest, ts: ts(ctx), state: 'open' });
         }
         return { phase: 'void', line: `VOID ${id} (epoch ${last.epoch} intent never reached Jira; ${last.req} reopened)` };
+      } else {
+        last = appendChain<RulingRow>(rulingsPath, l.k, phaseRow(ctx, last, 'applied', { epoch: lease.epoch, readback: 'ok' }));
       }
-      last = appendChain<RulingRow>(rulingsPath, l.k, phaseRow(ctx, last, 'applied', { epoch: lease.epoch, readback: 'ok' }));
     } else if (last.phase === 'intent') {
       const { op, key: k } = last;
       if ((last.verb === 'INTAKE' && last.outcome === 'ADMIT') || (last.verb === 'REVERSION' && op.kind === 'add')
@@ -1553,7 +1619,13 @@ export interface StateOut extends ReleaseState {
   remainder_conflicts: RemainderConflict[];
 }
 
-export interface UnfinishedRuling { ruling: string; req: string; key: string; phase: 'intent' | 'applied'; op: string; owner: 'release-manager'; next: string }
+export interface UnfinishedRuling {
+  ruling: string; req: string; key: string; phase: 'intent' | 'applied'; op: string;
+  /** replay: a normal rm-run finishes it. blocked: a move the key's mirror shows in neither end state with no journalled proof it is this ruling's own; the chief repairs it by hand. */
+  status: 'replay' | 'blocked'; owner: 'release-manager' | 'chief'; next: string;
+  /** What the mirror shows of a blocked move; null otherwise. */
+  observed: string | null;
+}
 
 /** asks_operator is null when the mirror cannot say: it is unreadable, or does not hold the key. */
 export interface RefusedAsk { key: string; ruling: string; req: string; reason: string; ground: string; remedy: string; asks_operator: boolean | null }
@@ -1562,6 +1634,8 @@ export interface RefusedAsk { key: string; ruling: string; req: string; reason: 
 export interface RemainderConflict {
   parent: string; child: string; req: string; ruling: string | null;
   phase: 'open' | 'claimed' | 'held' | 'refused' | 'ruled'; owner: 'chief' | 'release-manager'; next: string;
+  /** What the mirror cannot say (the parent's or the child's state, or anything when it is unreadable); null when both are read. */
+  unknown: 'parent' | 'child' | 'mirror' | null;
 }
 
 // The exact next command for a refused ask: operator words for an operator-asked (or unknown) key; changed facts or an ack otherwise.
@@ -1578,8 +1652,9 @@ const canon = (v: unknown): string => JSON.stringify(v, (_k, x) => (x && typeof 
 function unchangedRefusal(l: Loaded, o: Omit<RequestRow, 'req' | 'ts' | 'state'>): RequestRow | undefined {
   const a = refusedAsks(l, null).find((x) => x.key === o.key);
   const first = a ? l.requests.verified.find((x) => x.req === a.req) : undefined;
-  if (!first || first.verb !== o.verb || first.from_v !== o.from_v || first.to_v !== o.to_v || first.why !== o.why || canon(first.evidence ?? {}) !== canon(o.evidence ?? {})) return undefined;
-  return latestRequests(l.requests).get(first.req);
+  const now = first ? latestRequests(l.requests).get(first.req) : undefined;
+  if (!first || !now || first.verb !== o.verb || first.from_v !== o.from_v || first.to_v !== o.to_v || first.why !== o.why || canon(now.evidence ?? {}) !== canon(o.evidence ?? {})) return undefined;
+  return now;
 }
 export interface WordsRecord { id: string; decision: string | null; keys: string[]; op: string | null; verbatim: string }
 
@@ -1688,46 +1763,76 @@ export function state(ctx: Ctx): StateOut {
     refused_asks: refusedAsks(l, mirror.issues),
     words_records: wordsRecords(l),
     asks_operator_keys: asksOperatorKeys(mirror.issues),
-    unfinished_rulings: unfinishedOf(l.rulings, ctx.release),
+    unfinished_rulings: unfinishedOf(l.rulings, l.events.verified, ctx, mirror.issues, lease),
     remainder_conflicts: remainderConflicts(l, mirror.issues, ctx.release),
   };
 }
 
 // A required remainder is recorded as request evidence `{follow_up_of: <parent>, remainder: true}` (create --follow-up-of --remainder,
-// or request --required-by). The newest such request per child decides; a parent that is done or outside the current version, or a
-// child that is closed or already in it, is no contradiction.
+// or request --required-by). The relation is the child's NEWEST live INTAKE-to-current request: a later request that drops the flag or
+// names another parent replaces it before anything is filtered, and a withdrawn request states none. A parent that is done or outside
+// the current version, or a child that is closed or already in it, is no contradiction; what the mirror cannot say stays listed as unknown.
+// The refusal ack ends a notice, not the contradiction: a child with no request or ruling left to process is the chief's.
 function remainderConflicts(l: Loaded, issues: Map<string, IssueSnap> | null, release: string): RemainderConflict[] {
-  if (!issues) return [];
   const current = l.decl.current;
   const rulingOf = new Map<string, RulingRow>();
   for (const r of l.rulings.verified) rulingOf.set(r.req, r);
-  const refused = new Map(refusedAsks(l, issues).map((a) => [a.key, a]));
-  const out = new Map<string, RemainderConflict>();
+  const newest = new Map<string, RequestRow>();
   for (const q of [...latestOrEmpty(l.requests).values()].sort((a, b) => a.ts.localeCompare(b.ts))) {
-    const ev = (q.evidence ?? {}) as { follow_up_of?: unknown; remainder?: unknown };
-    if (q.verb !== 'INTAKE' || q.to_v !== current || ev.remainder !== true || typeof ev.follow_up_of !== 'string' || q.state.startsWith('withdrawn:')) continue;
-    const parent = issues.get(ev.follow_up_of);
-    const child = issues.get(q.key);
-    if (!parent || !child || terminalOf(parent) !== null || !parent.fixVersions.includes(current) || terminalOf(child) !== null || child.fixVersions.includes(current)) continue;
-    const ruling = rulingOf.get(q.req);
-    const phase: RemainderConflict['phase'] = q.state === 'open' ? 'open' : q.state.startsWith('claimed:') ? 'claimed' : q.state === 'held' ? 'held'
-      : refused.has(q.key) || q.state.startsWith('refused:') ? 'refused' : 'ruled';
-    const chief = phase === 'refused' || phase === 'held';
-    out.set(`${ev.follow_up_of} ${q.key}`, {
-      parent: ev.follow_up_of, child: q.key, req: q.req, ruling: ruling?.id ?? null, phase, owner: chief ? 'chief' : 'release-manager',
-      next: chief ? (refused.get(q.key)?.remedy ?? remedyOf(release, q, ruling?.id ?? '<ruling>', null)) : `jira release rm-run ${release}`,
-    });
+    if (q.verb === 'INTAKE' && q.to_v === current && !q.state.startsWith('withdrawn:')) newest.set(q.key, q);
   }
-  return [...out.values()].sort((a, b) => a.child.localeCompare(b.child, 'en', { numeric: true }));
+  const out: RemainderConflict[] = [];
+  for (const q of newest.values()) {
+    const ev = (q.evidence ?? {}) as { follow_up_of?: unknown; remainder?: unknown };
+    if (ev.remainder !== true || typeof ev.follow_up_of !== 'string') continue;
+    const parentKey = ev.follow_up_of;
+    const parent = issues?.get(parentKey);
+    const child = issues?.get(q.key);
+    if (issues && parent && (terminalOf(parent) !== null || !parent.fixVersions.includes(current))) continue;
+    if (issues && child && (terminalOf(child) !== null || child.fixVersions.includes(current))) continue;
+    const ruling = rulingOf.get(q.req) ?? null;
+    const base = { parent: parentKey, child: q.key, req: q.req, ruling: ruling?.id ?? null };
+    const remedy = conflictRemedy(release, q, parentKey, child ? asksOperator(factsOf(child)) : null);
+    const unknown = !issues ? 'mirror' : !parent ? 'parent' : !child ? 'child' : null;
+    const rm = (phase: 'open' | 'claimed' | 'ruled'): RemainderConflict => ({ ...base, phase, owner: 'release-manager', next: 'jira release rm-run ' + release, unknown });
+    const chief = (phase: RemainderConflict['phase'], next: string): RemainderConflict => ({ ...base, phase, owner: 'chief', next, unknown });
+    const unread = unknown === null ? '' : (unknown === 'mirror' ? 'both tickets' : unknown === 'parent' ? parentKey : q.key);
+    const refresh = 'the Jira mirror cannot say ' + unread + ': run `jira mirror`, then read `jira release state ' + release + ' --json` again';
+    const closed = q.state === 'held' ? 'held' : q.state.startsWith('ruled:') && ruling?.outcome === 'ADMIT' ? 'ruled' : 'refused';
+    if (q.state === 'open') out.push(rm('open'));
+    else if (q.state.startsWith('claimed:')) out.push(rm('claimed'));
+    else if (q.state.startsWith('ruled:') && ruling && (ruling.phase === 'intent' || ruling.phase === 'applied')) out.push(rm('ruled'));
+    else if (unknown !== null) out.push(chief(closed, refresh));
+    else if (q.state.startsWith('ruled:') && ruling?.outcome === 'ADMIT') {
+      out.push(chief('ruled', 'the ruling admitted ' + q.key + ' but the mirror still shows it outside ' + current + ': run `jira mirror`; if it still sits outside, ' + remedy));
+    } else out.push(chief(q.state === 'held' ? 'held' : 'refused', remedy));
+  }
+  return out.sort((a, b) => a.child.localeCompare(b.child, 'en', { numeric: true }));
 }
 
-function unfinishedOf(rulings: Chain<RulingRow>, release: string): UnfinishedRuling[] {
+// The next command for a required child that stays outside: new facts or the operator's words, keeping the relation, or the ask without it.
+// The refusal ack is not offered: it ends the notice and leaves the requirement unmet.
+function conflictRemedy(release: string, q: RequestRow, parent: string, asksOperator: boolean | null): string {
+  const base = `jira release request ${release} --verb ${q.verb} --key ${q.key} --from ${vName(q.from_v)} --to ${vName(q.to_v)} --required-by ${parent}`;
+  if (asksOperator !== false) return `${base} --why "<why>" --decision <n> --words "<the operator's exact words>"`;
+  return `new facts: ${base} --why "<what changed>" --evidence '{"<changed requirement>":"<value>"}'; or, if ${parent} can close without ${q.key}, file the ask again without --required-by`;
+}
+
+function unfinishedOf(rulings: Chain<RulingRow>, events: EventRow[], ctx: Ctx, issues: Map<string, IssueSnap> | null, lease: Lease | null): UnfinishedRuling[] {
   const last = new Map<string, RulingRow>();
   for (const r of rulings.verified) last.set(r.id, r);
-  return [...last.values()].filter((r) => r.phase === 'intent' || r.phase === 'applied').map((r) => ({
-    ruling: r.id, req: r.req, key: r.key, phase: r.phase as 'intent' | 'applied', op: `${r.op.kind} ${vName(r.op.from_v)}→${vName(r.op.to_v)}`,
-    owner: 'release-manager' as const, next: `jira release rm-run ${release}`,
-  }));
+  return [...last.values()].filter((r) => r.phase === 'intent' || r.phase === 'applied').map((r) => {
+    const base = { ruling: r.id, req: r.req, key: r.key, phase: r.phase as 'intent' | 'applied', op: `${r.op.kind} ${vName(r.op.from_v)}→${vName(r.op.to_v)}` };
+    const replay: UnfinishedRuling = { ...base, status: 'replay', owner: 'release-manager', next: `jira release rm-run ${ctx.release}`, observed: null };
+    const snap = issues?.get(r.key);
+    // The writing run still holds its lease: it is between its two writes, not interrupted.
+    if (r.phase !== 'intent' || !snap || (lease && !lease.released && lease.epoch === r.epoch)) return replay;
+    if (landed(r.op, snap.fixVersions) || untouched(r.op, snap.fixVersions)) return replay;
+    // A replay that already refused this ruling left a `ruled` mismatch event: the journal binding it has was checked live and failed.
+    const refused = events.some((e) => e.kind === 'ruled' && e.ruling === r.id && e.readback === 'mismatch');
+    if (!refused && boundRemoval(ctx.env, r, snap.fixVersions)) return replay;
+    return { ...base, status: 'blocked', owner: 'chief', next: repairOf(ctx.release, r, false), observed: observedOf(r, snap.fixVersions, 'mirror') };
+  });
 }
 
 function latestOrEmpty(requests: Chain<RequestRow>): Map<string, RequestRow> {

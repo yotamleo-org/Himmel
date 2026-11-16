@@ -292,7 +292,7 @@ describe('release engine', () => {
       const s = state(ctx());
       expect(s.requests.open).toEqual([]);
       expect(s.unfinished_rulings).toEqual([{
-        ruling: r.id, req: q.req, key: 'K-2', phase: 'applied', op: 'add backlog→v1', owner: 'release-manager', next: 'jira release rm-run R1',
+        ruling: r.id, req: q.req, key: 'K-2', phase: 'applied', op: 'add backlog→v1', status: 'replay', owner: 'release-manager', next: 'jira release rm-run R1', observed: null,
       }]);
       chmodSync(ledger(), 0o644);
       const lines = await rmRun(ctx(), noJudge);
@@ -352,6 +352,131 @@ describe('release engine', () => {
       claim(ctx(rmEnv));
       const r = admit(q.req);
       expect(state(ctx()).unfinished_rulings).toMatchObject([{ ruling: r.id, phase: 'intent', op: 'add backlog→v1' }]);
+    });
+  });
+
+  // B (8731): the cross-version move writes the source removal and then the destination add; a crash between them leaves the key in neither.
+  describe('8731 B: a move interrupted after the source removal', () => {
+    const ledger = () => process.env.HIMMEL_ADMISSIONS_LEDGER!;
+    const rows = () => (existsSync(ledger()) ? readFileSync(ledger(), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []);
+    const noJudge: Judge = async () => { throw new Error('no request is claimed, so the judge is never asked'); };
+    const journalFile = () => join(root, 'version-writes.jsonl');
+    const withJournal = (c: Ctx): Ctx => ({ ...c, env: { ...c.env, HIMMEL_VERSION_WRITES: journalFile() } });
+    const journal = (row: Record<string, unknown>) => writeFileSync(journalFile(), `${JSON.stringify(row)}\n`, { flag: 'a' });
+    const rmWrite = (extra: Record<string, unknown> = {}) => ({ ts: '2026-10-21T10:00:01.000Z', key: 'K-2', from: ['v1'], to: [], mechanism: 'rm-apply', entry: '5001', ...extra });
+
+    async function interrupted(opts: { release?: boolean } = {}) {
+      await setup();
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-2', fixVersions: ['v1'] }]);
+      jira.fv.set('K-2', ['v1']);
+      const q = request(ctx(), { verb: 'REVERSION', key: 'K-2', from_v: 'v1', to_v: 'v2', why: 'w', evidence: {}, from: 'console' });
+      claim(ctx(rmEnv));
+      const r = admit(q.req, { outcome: 'MOVE', op: { kind: 'move', from_v: 'v1', to_v: 'v2' } });
+      const write = jira.setFixVersion.bind(jira);
+      jira.setFixVersion = async (k, op, v) => {
+        if (op === 'add') throw new Error('crash before the destination add');
+        await write(k, op, v);
+      };
+      await expect(apply(ctx(rmEnv), r.id)).rejects.toThrow('crash before the destination add');
+      jira.setFixVersion = write;
+      if (opts.release !== false) leaseRelease(ctx(rmEnv));
+      expect(jira.fv.get('K-2')).toEqual([]);
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-2', fixVersions: [] }]);
+      return { q, r };
+    }
+
+    it('RED: with no proof the removal was this ruling\'s own, state is BLOCKED with the observed state, the owner and a concrete repair, and rm-run writes nothing', async () => {
+      const { r } = await interrupted();
+      const [u] = state(ctx()).unfinished_rulings;
+      expect(u).toMatchObject({ ruling: r.id, key: 'K-2', phase: 'intent', status: 'blocked', owner: 'chief' });
+      expect(u.observed).toBe('K-2 is in no version (mirror); the move wants v1 -> v2');
+      expect(u.next).toContain('jira fix-version K-2 --add v2');
+      expect(u.next).toContain('jira fix-version K-2 --add v1');
+      expect(u.next).toContain('jira release rm-run R1');
+      const writes = jira.writes;
+      const lines = await rmRun(withJournal(ctx()), noJudge);
+      expect(lines.join('\n')).toMatch(new RegExp(`PENDING ${r.id}: .*partly applied.*K-2 is in no version.*jira fix-version K-2 --add v2`));
+      expect(jira.writes).toBe(writes);
+      expect(jira.fv.get('K-2')).toEqual([]);
+      expect(rows().filter((x) => x.key === 'K-2')).toEqual([]);
+      // The same state reads the same on the next run: a recorded failure, never a rollback and never an endless rm-run.
+      expect(state(ctx()).unfinished_rulings[0]).toMatchObject({ status: 'blocked', owner: 'chief' });
+    });
+
+    it('RED: when the journal binds the removal to this ruling and it is still the newest entry, the new epoch finishes the add once', async () => {
+      const { r } = await interrupted();
+      jira.entries.set('K-2', '5001');
+      journal(rmWrite());
+      expect(state(withJournal(ctx())).unfinished_rulings).toMatchObject([{ ruling: r.id, status: 'replay', owner: 'release-manager', next: 'jira release rm-run R1' }]);
+      const epoch = state(ctx()).lease?.epoch ?? 0;
+      const lines = await rmRun(withJournal(ctx()), noJudge);
+      expect(lines.join('\n')).toContain(`RULING ${r.id}`);
+      expect(state(ctx()).lease?.epoch).toBeGreaterThan(epoch);
+      expect(jira.fv.get('K-2')).toEqual(['v2']);
+      expect(rows().filter((x) => x.key === 'K-2').map((x) => [x.kind, x.version, x.ruling])).toEqual([['rm-admit', 'v2', r.id], ['rm-remove', 'v1', r.id]]);
+      expect(jira.posted).toBe(1);
+      expect(state(ctx()).unfinished_rulings).toEqual([]);
+      expect(await rmRun(withJournal(ctx()), noJudge)).toEqual(['RM-RUN R1: nothing pending']);
+      expect(rows().filter((x) => x.key === 'K-2')).toHaveLength(2);
+      expect(jira.posted).toBe(1);
+    });
+
+    it.each([
+      ['a later Fix Version entry by someone else (known only live: state reads replay until a run refuses it)', () => { jira.entries.set('K-2', '5002'); journal(rmWrite()); }, 'replay'],
+      ['a journal row from before the ruling', () => { jira.entries.set('K-2', '5001'); journal(rmWrite({ ts: '2026-10-21T09:00:00.000Z' })); }],
+      ['a hand write in the journal, not the RM\'s', () => { jira.entries.set('K-2', '5001'); journal(rmWrite({ mechanism: 'hand' })); }],
+      ['a journal row for another key', () => { jira.entries.set('K-2', '5001'); journal(rmWrite({ key: 'K-9' })); }],
+      ['a journal row whose resulting set is not the one Jira shows', () => { jira.entries.set('K-2', '5001'); journal(rmWrite({ to: ['v3'] })); }],
+      ['no journal at all (a lost response never reached the hook)', () => { jira.entries.set('K-2', '5001'); }],
+    ] as Array<[string, () => void, ('replay' | undefined)?]>)('conflicting or missing evidence stays BLOCKED and writes nothing: %s', async (_name, evidence, before) => {
+      const { r } = await interrupted();
+      evidence();
+      expect(state(withJournal(ctx())).unfinished_rulings[0]).toMatchObject({ ruling: r.id, status: before ?? 'blocked' });
+      const writes = jira.writes;
+      const lines = await rmRun(withJournal(ctx()), noJudge);
+      expect(lines.join('\n')).toMatch(/PENDING .*partly applied/);
+      // The refusal is recorded (a mismatch event), so the next read is blocked and names the chief, never rm-run alone.
+      expect(state(withJournal(ctx())).unfinished_rulings[0]).toMatchObject({ ruling: r.id, status: 'blocked', owner: 'chief' });
+      expect(jira.writes).toBe(writes);
+      expect(jira.fv.get('K-2')).toEqual([]);
+      expect(rows().filter((x) => x.key === 'K-2')).toEqual([]);
+      expect(jira.posted).toBe(0);
+    });
+
+    it('external membership in the destination or a third version is never completed over: Jira shows a set the ruling did not write', async () => {
+      const { r } = await interrupted();
+      jira.entries.set('K-2', '5001');
+      journal(rmWrite());
+      jira.fv.set('K-2', ['v3']);
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-2', fixVersions: ['v3'] }]);
+      expect(state(withJournal(ctx())).unfinished_rulings[0]).toMatchObject({ ruling: r.id, status: 'blocked', observed: 'K-2 is in v3 (mirror); the move wants v1 -> v2' });
+      const writes = jira.writes;
+      await rmRun(withJournal(ctx()), noJudge);
+      expect(jira.writes).toBe(writes);
+      expect(jira.fv.get('K-2')).toEqual(['v3']);
+    });
+
+    it('while the writing run still holds its lease the gap is in flight, not blocked', async () => {
+      const { r } = await interrupted({ release: false });
+      expect(state(ctx()).unfinished_rulings).toMatchObject([{ ruling: r.id, status: 'replay', owner: 'release-manager' }]);
+    });
+
+    it('characterization (a disproven assumption): the SAME epoch\'s replay already completes the add, each write guarded by the version it names', async () => {
+      const { r } = await interrupted({ release: false });
+      expect((await apply(ctx(rmEnv), r.id)).phase).toBe('receipted');
+      expect(jira.fv.get('K-2')).toEqual(['v2']);
+      expect(rows().filter((x) => x.key === 'K-2').map((x) => x.kind)).toEqual(['rm-admit', 'rm-remove']);
+    });
+
+    it('a hand repair the blocked next command names ends it: the replay finds the move landed and writes the row and receipt once', async () => {
+      const { r } = await interrupted();
+      await jira.setFixVersion('K-2', 'add', 'v2');
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-2', fixVersions: ['v2'] }]);
+      expect(state(ctx()).unfinished_rulings).toMatchObject([{ ruling: r.id, status: 'replay', owner: 'release-manager' }]);
+      await rmRun(ctx(), noJudge);
+      expect(rows().filter((x) => x.key === 'K-2').map((x) => [x.kind, x.version])).toEqual([['rm-admit', 'v2'], ['rm-remove', 'v1']]);
+      expect(jira.posted).toBe(1);
+      expect(state(ctx()).unfinished_rulings).toEqual([]);
     });
   });
 
@@ -3399,9 +3524,10 @@ describe('a ruled-away operator ask wakes the chief', () => {
       const writes = jira.writes;
       const s = state(ctx());
       expect(s.remainder_conflicts).toEqual([{
-        parent: 'P-1', child: 'C-1', req: q.req, ruling: r.id, phase: 'refused', owner: 'chief',
-        next: s.refused_asks.find((a) => a.key === 'C-1')?.remedy,
+        parent: 'P-1', child: 'C-1', req: q.req, ruling: r.id, phase: 'refused', owner: 'chief', unknown: null,
+        next: `new facts: jira release request R1 --verb INTAKE --key C-1 --from backlog --to v1 --required-by P-1 --why "<what changed>" --evidence '{"<changed requirement>":"<value>"}'; or, if P-1 can close without C-1, file the ask again without --required-by`,
       }]);
+      expect(s.refused_asks.map((a) => a.key)).toEqual(['C-1']);
       expect(jira.writes).toBe(writes);
       expect(s.requests.open).toEqual([]);
     });
@@ -3422,7 +3548,149 @@ describe('a ruled-away operator ask wakes the chief', () => {
       await setup();
       mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [] }]);
       const q = request(at(), { verb: 'INTAKE', key: 'C-1', from_v: null, to_v: 'v1', why: 'w', evidence: REQ_EVIDENCE, from: 'console' });
-      expect(state(ctx()).remainder_conflicts).toEqual([{ parent: 'P-1', child: 'C-1', req: q.req, ruling: null, phase: 'open', owner: 'release-manager', next: 'jira release rm-run R1' }]);
+      expect(state(ctx()).remainder_conflicts).toEqual([{ parent: 'P-1', child: 'C-1', req: q.req, ruling: null, phase: 'open', owner: 'release-manager', next: 'jira release rm-run R1', unknown: null }]);
+    });
+
+    // The effective relation is the child's newest live INTAKE evidence, never an older request's.
+    const conflictsOf = () => state(ctx()).remainder_conflicts.map((c) => `${c.parent}>${c.child}:${c.phase}`);
+
+    it('A2: --required-by on an already-open request updates its evidence by a signed append of the same request, once', async () => {
+      await setup();
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [] }]);
+      const first = request(at(), { verb: 'INTAKE', key: 'C-1', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
+      expect(conflictsOf()).toEqual([]);
+      const rel = { follow_up_of: 'P-1', remainder: true };
+      const second = request(at(), { verb: 'INTAKE', key: 'C-1', from_v: null, to_v: 'v1', why: 'w', evidence: rel, from: 'console' });
+      expect(second.req).toBe(first.req);
+      expect(second.evidence).toEqual(rel);
+      expect(conflictsOf()).toEqual(['P-1>C-1:open']);
+      const rows = () => readChain<RequestRow>(join(ctx().dir, 'requests.jsonl'), loadKey(ctx().keyPath)).verified.length;
+      const n = rows();
+      expect(request(at(), { verb: 'INTAKE', key: 'C-1', from_v: null, to_v: 'v1', why: 'w', evidence: rel, from: 'console' }).req).toBe(first.req);
+      expect(rows()).toBe(n);
+    });
+
+    it('A2: a claimed request keeps its claim and epoch when the relation is added or the parent changes', async () => {
+      await setup();
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'P-2', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [] }]);
+      const q = request(at(), { verb: 'INTAKE', key: 'C-1', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
+      const [claimed] = claim(at(rmEnv));
+      const got = request(at(), { verb: 'INTAKE', key: 'C-1', from_v: null, to_v: 'v1', why: 'w', evidence: { follow_up_of: 'P-1', remainder: true }, from: 'console' });
+      expect(got.req).toBe(q.req);
+      expect(got.state).toBe(claimed.state);
+      expect(conflictsOf()).toEqual(['P-1>C-1:claimed']);
+      request(at(), { verb: 'INTAKE', key: 'C-1', from_v: null, to_v: 'v1', why: 'w', evidence: { follow_up_of: 'P-2', remainder: true }, from: 'console' });
+      expect(conflictsOf()).toEqual(['P-2>C-1:claimed']);
+    });
+
+    it('A3: a later request that drops the relation, or names another parent, leaves no obsolete conflict', async () => {
+      await setup();
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'P-2', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [] }]);
+      await refuseWith('C-1', REQ_EVIDENCE);
+      expect(conflictsOf()).toEqual(['P-1>C-1:refused']);
+      const q2 = request(at(), { verb: 'INTAKE', key: 'C-1', from_v: null, to_v: 'v1', why: 'the remainder moved to P-2', evidence: { follow_up_of: 'P-2', remainder: true }, from: 'console' });
+      expect(conflictsOf()).toEqual(['P-2>C-1:open']);
+      claim(at(rmEnv));
+      const r2 = rule(at(rmEnv), { req: q2.req, outcome: 'BACKLOG', op: { kind: 'none', from_v: null, to_v: null }, sector: 'Planning & tracking', ground: 'defer', reason: 'still no record', supersedes: [], authority: { kind: 'rm', ref: null } });
+      expect(conflictsOf()).toEqual(['P-2>C-1:ruled']);
+      await apply(at(rmEnv), r2.id);
+      expect(conflictsOf()).toEqual(['P-2>C-1:refused']);
+      // The chief files the ask again with the relation removed (optional hardening): nothing is required of the parent any more.
+      request(at(), { verb: 'INTAKE', key: 'C-1', from_v: null, to_v: 'v1', why: 'optional hardening only', evidence: {}, from: 'console' });
+      expect(conflictsOf()).toEqual([]);
+    });
+
+    it('A3: a withdrawn newest request does not erase the relation of the one before it; Done and terminal parents still end it', async () => {
+      await setup();
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [] }]);
+      await refuseWith('C-1', REQ_EVIDENCE);
+      const q2 = request(at(), { verb: 'INTAKE', key: 'C-1', from_v: null, to_v: 'v1', why: 'a plain re-ask', evidence: {}, from: 'console' });
+      expect(conflictsOf()).toEqual([]);
+      withdraw(at(), { req: q2.req, reason: 'filed by mistake' });
+      expect(conflictsOf()).toEqual(['P-1>C-1:refused']);
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'], status: 'Done', category: 'Done' }, { key: 'C-1', fixVersions: [] }]);
+      expect(conflictsOf()).toEqual([]);
+    });
+
+    it('A4: an ack of the refusal ends the notice, not the contradiction: the child stays chief-owned with a refile remedy, never rm-run', async () => {
+      await setup();
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [] }]);
+      const { r } = await refuseWith('C-1', REQ_EVIDENCE);
+      ack(at(), { ruling: r.id, reason: 'the refusal is right for now' });
+      const s = state(ctx());
+      expect(s.refused_asks).toEqual([]);
+      expect(s.requests.open).toEqual([]);
+      const [c] = s.remainder_conflicts;
+      expect(c).toMatchObject({ parent: 'P-1', child: 'C-1', phase: 'refused', owner: 'chief', ruling: r.id });
+      expect(c.next).not.toContain('rm-run');
+      expect(c.next).toContain('jira release request R1 --verb INTAKE --key C-1 --from backlog --to v1 --required-by P-1 --why "<what changed>"');
+    });
+
+    it('A4: a refused move from another version (not a backlog ask) is chief-owned too, and a receipted ADMIT whose child the mirror still shows outside is chief-owned with a mirror remedy', async () => {
+      await setup();
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'C-2', fixVersions: ['v2'] }, { key: 'C-3', fixVersions: [] }]);
+      const q = request(at(), { verb: 'INTAKE', key: 'C-2', from_v: 'v2', to_v: 'v1', why: 'w', evidence: REQ_EVIDENCE, from: 'console' });
+      claim(at(rmEnv));
+      const r2 = rule(at(rmEnv), { req: q.req, outcome: 'BACKLOG', op: { kind: 'none', from_v: null, to_v: null }, sector: 'Planning & tracking', ground: 'defer', reason: 'no record', supersedes: [], authority: { kind: 'rm', ref: null } });
+      await apply(at(rmEnv), r2.id);
+      const q3 = request(at(), { verb: 'INTAKE', key: 'C-3', from_v: null, to_v: 'v1', why: 'w', evidence: REQ_EVIDENCE, from: 'console' });
+      claim(at(rmEnv));
+      const r3 = admit(q3.req, {});
+      await apply(at(rmEnv), r3.id);
+      const byChild = Object.fromEntries(state(ctx()).remainder_conflicts.map((c) => [c.child, c]));
+      expect(byChild['C-2']).toMatchObject({ phase: 'refused', owner: 'chief' });
+      expect(byChild['C-2'].next).not.toContain('rm-run');
+      expect(byChild['C-3']).toMatchObject({ phase: 'ruled', owner: 'chief' });
+      expect(byChild['C-3'].next).toContain('jira mirror');
+      expect(byChild['C-3'].next).not.toContain('rm-run');
+    });
+
+    // Offline seed from the recorded relations of the 2026-11-16 RM placement audit (9953 required by 9914, 9932 by 9915). The raw ledger and
+    // mirror of that day are not retained, so the membership snapshot is the audit's stated one, not a replay of the live ledgers.
+    it('seed 9953>9914 and 9932>9915: requests filed without the relation take it once, surface as conflicts, and clear only when the children are placed', async () => {
+      await setup();
+      mirror([
+        { key: 'K-1', fixVersions: ['v1'] }, { key: 'HIMMEL-9914', fixVersions: ['v1'] }, { key: 'HIMMEL-9915', fixVersions: ['v1'] },
+        { key: 'HIMMEL-9953', fixVersions: [] }, { key: 'HIMMEL-9932', fixVersions: [] },
+      ]);
+      const ask = (key: string, evidence: Record<string, unknown>) => request(at(), { verb: 'INTAKE', key, from_v: null, to_v: 'v1', why: 'required remainder of the parent', evidence, from: 'console' });
+      const q53 = ask('HIMMEL-9953', {});
+      const q32 = ask('HIMMEL-9932', {});
+      expect(conflictsOf()).toEqual([]);
+      expect(ask('HIMMEL-9953', { follow_up_of: 'HIMMEL-9914', remainder: true }).req).toBe(q53.req);
+      expect(ask('HIMMEL-9932', { follow_up_of: 'HIMMEL-9915', remainder: true }).req).toBe(q32.req);
+      expect(conflictsOf()).toEqual(['HIMMEL-9915>HIMMEL-9932:open', 'HIMMEL-9914>HIMMEL-9953:open']);
+      claim(at(rmEnv));
+      const r = rule(at(rmEnv), { req: q53.req, outcome: 'ADMIT', op: { kind: 'add', from_v: null, to_v: 'v1' }, sector: 'Planning & tracking', ground: 'required remainder', reason: 'parent 9914 cannot close without it', supersedes: [], authority: { kind: 'rm', ref: null } });
+      await apply(at(rmEnv), r.id);
+      mirror([
+        { key: 'K-1', fixVersions: ['v1'] }, { key: 'HIMMEL-9914', fixVersions: ['v1'] }, { key: 'HIMMEL-9915', fixVersions: ['v1'] },
+        { key: 'HIMMEL-9953', fixVersions: ['v1'] }, { key: 'HIMMEL-9932', fixVersions: [] },
+      ]);
+      expect(conflictsOf()).toEqual(['HIMMEL-9915>HIMMEL-9932:claimed']);
+    });
+
+    it('A4 negative: a child that really is in the version, or closed, is no conflict whatever its history says', async () => {
+      await setup();
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [] }]);
+      const { r } = await refuseWith('C-1', REQ_EVIDENCE);
+      ack(at(), { ruling: r.id, reason: 'fine' });
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: ['v1'] }]);
+      expect(conflictsOf()).toEqual([]);
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [], status: 'Done', category: 'Done' }]);
+      expect(conflictsOf()).toEqual([]);
+    });
+
+    it('unknowns stay visible: a parent or child the mirror does not hold is listed as unknown with the mirror remedy, and an unreadable mirror too', async () => {
+      await setup();
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [] }]);
+      await refuseWith('C-1', REQ_EVIDENCE);
+      const [c] = state(ctx()).remainder_conflicts;
+      expect(c).toMatchObject({ parent: 'P-1', child: 'C-1', unknown: 'parent', owner: 'chief', phase: 'refused' });
+      expect(c.next).toContain('jira mirror');
+      expect(c.next).not.toContain('rm-run');
+      rmSync(join(root, 'mirror'), { recursive: true, force: true });
+      expect(state(ctx()).remainder_conflicts).toMatchObject([{ parent: 'P-1', child: 'C-1', unknown: 'mirror', owner: 'chief' }]);
     });
   });
 
