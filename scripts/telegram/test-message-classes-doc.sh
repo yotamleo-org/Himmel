@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# The docs side of the Telegram message classes: every chief reply command a chief copies from the docs
-# passes --kind chief-reply among its leading flags (the router reads flags only before the chat id), and
-# docs/configuration.md documents the two monitoring env keys the poller reads from the bridge env file.
-# The doc table's kinds and classes are checked by test-message-classes.sh, not here.
 set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -60,7 +56,7 @@ else
     fail "a doc copy with one reply command's --kind chief-reply stripped fails the lint naming that command" "rc=$rc out=$out"
 fi
 
-# shellcheck disable=SC2016  # literal doc text: the backticks must NOT expand
+# shellcheck disable=SC2016
 printf 'reply with `bun scripts/telegram/chief-route.ts reply <chat_id> --kind chief-reply "<text>"`\n' > "$T/late-kind.md"
 if ! lint "$T/late-kind.md" > /dev/null; then
     pass "a --kind after the chat id fails the lint (the router reads flags only before it)"
