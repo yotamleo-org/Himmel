@@ -1124,7 +1124,6 @@ page_denials_stuck() {
     [ -d "$d" ] || return 0
     cutover="$(denial_stuck_cutover)"
     now="$(stuck_now)"
-    end=$(( $(date +%s) + page_timeout ))
     for pg in "$d"/*.page; do
         [ -r "$pg" ] || continue
         key="$(basename "$pg" .page)"
@@ -1137,11 +1136,12 @@ page_denials_stuck() {
         ldoc="$(worker_doc_of "$label")"
         if [ -z "$ldoc" ] && [ $(( now - pts )) -gt "$stuck_bound_secs" ]; then continue; fi
         if [ -n "$ldoc" ] && doc_written_since "$ldoc" "$pts"; then continue; fi
-        denial_stuck_claim "$key" "$pts" || continue
         ticket="$(ticket_of_doc "$ldoc")"
         rc_name="$(rc_session_for "$label")"
         act="run ack-denial.sh $label"
         [ -z "$rc_name" ] || act="open the Remote Control session $rc_name in the Claude app, or run ack-denial.sh $label"
+        denial_stuck_claim "$key" "$pts" || continue
+        end=$(( $(date +%s) + page_timeout ))
         page_send "Worker $label on $ticket has been parked 30 min by a classifier denial ($(denial_field "$pg" class)). Blocks: $ticket. Do: $act" "$end" denial-stuck
     done
     return 0

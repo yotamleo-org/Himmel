@@ -526,6 +526,7 @@ den_case() {
     printf 'leg=%s\ncount=1\nclass=PAUSE-RISK\nts=%s\n' "$label" "$P" > "$dir/acks/$key.page"
     [ "$ak" = none ] || printf 'leg=%s\ncount=1\nclass=PAUSE-RISK\nts=%s\n' "$label" $((P + ak)) > "$dir/acks/$key.ack"
     if [ "${DEN_CUTOVER:-seed}" = seed ]; then printf '%s\n' $((B - 172800)) > "$dir/acks/.stuck-cutover"; fi
+    if [ "${DEN_CUTOVER:-seed}" = empty ]; then : > "$dir/acks/.stuck-cutover"; fi
     printf '# chief\n\n## Results\n' > "$dir/chief.md"
     printf '# worker\n\n## Results\n' > "$dir/w/PROJ-9503-N1-a.md"
     if [ "$dm" = none ]; then touch -d "@$((P - 3600))" "$dir/w/PROJ-9503-N1-a.md"; else touch -d "@$((P + dm))" "$dir/w/PROJ-9503-N1-a.md"; fi  # gnu-ok: Linux-only kit
@@ -559,6 +560,8 @@ check "(R4.2) control: the same unresolved worker at 31 minutes pages denial-stu
 DEN_CUTOVER=none den_case dn9 N1 none none 1860
 check "(R4.2) a page record that exists before the first stuck scan never pages" "0" "$(pk_n)"
 check "(R4.2) the first scan records its cutover beside the page records" "yes" "$([ -s "$WORK/den-dn9/acks/.stuck-cutover" ] && echo yes)"
+DEN_CUTOVER=empty den_case dn11 N1 none none 1860
+check "(R4.2) an interrupted writer's empty cutover file is repaired, so a record from before it still does not page" "0:yes" "$(pk_n):$(grep -qE '^[0-9]+$' "$WORK/den-dn11/acks/.stuck-cutover" && echo yes)"
 den_case dn10 N1 none none 1860
 check "(R4.2) the first waiter pages the denial once" "denial-stuck" "$(pk_kinds)"
 I_SEED="$(new_inbox dn10b)" HIMMEL_DENIAL_ACK_DIR="$WORK/den-dn10/acks" CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh" HIMMEL_TEST_FIXTURE=1 CHIEF_WAIT_NOW="$DEN_NOW" stuck_run dn10b --doc "$WORK/den-dn10/chief.md" --workers-from "$WORK/den-dn10/chief.fleet.json"

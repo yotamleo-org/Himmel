@@ -109,8 +109,16 @@ denial_stuck_claim() {
 }
 
 denial_stuck_cutover() {
-    local f
+    local f t=""
     f="$(denial_ack_dir)/.stuck-cutover"
-    [ -s "$f" ] || ( set -C; date +%s > "$f" ) 2>/dev/null
-    sed -n 1p "$f"
+    [ ! -r "$f" ] || t="$(sed -n 1p "$f")"
+    case "$t" in
+        ''|*[!0-9]*)
+            rm -f "$f"
+            date +%s | atomic_write "$f.$$" 2>/dev/null
+            ln "$f.$$" "$f" 2>/dev/null
+            rm -f "$f.$$"
+            ;;
+    esac
+    [ ! -r "$f" ] || sed -n 1p "$f"
 }
