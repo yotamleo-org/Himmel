@@ -869,17 +869,12 @@ EOF
 }
 scan_roots > "$work/scan-roots" || io_fail "writing the scan-roots map"
 
-# The tree-invariant manifest: one `suite<TAB>regex` row per whole-tree suite.
-# Rows are the union of the head snapshot's manifest and the manifest in the
-# checkout this script runs from, so a PR cannot narrow its own selection by
-# deleting a row, and a replay of an old range still reads the current rows. A
-# manifest missing or unreadable in both leaves the list empty — nothing extra is
-# selected and nothing is printed.
-: > "$work/tree-invariants" || io_fail "creating the tree-invariant list"
-{
+tree_invariant_rows_head_and_checkout() {
     git show "${head_sha}:scripts/ci/tree-invariant-suites.txt" 2>/dev/null
     cat -- "$is_dir/../ci/tree-invariant-suites.txt" 2>/dev/null
-} | grep -E -v '^[[:space:]]*(#|$)' > "$work/tree-invariants" || true
+}
+: > "$work/tree-invariants" || io_fail "creating the tree-invariant list"
+tree_invariant_rows_head_and_checkout | grep -E -v '^[[:space:]]*(#|$)' > "$work/tree-invariants" || true
 
 cg_rc=0
 git show "${head_sha}:scripts/cr/pr-check-context.sh" > "$work/ctx" 2>/dev/null || cg_rc=$?
@@ -1449,9 +1444,6 @@ while IFS= read -r f; do
     done < "$work/scan-roots"
 done < "$work/changed"
 
-# tree-invariant manifest — scripts/ci/tree-invariant-suites.txt names a suite
-# and the anchored regex of changed paths that select it. A row with no TAB, or a
-# regex grep rejects (rc 2), selects nothing.
 while IFS= read -r f; do
     [ -n "$f" ] || continue
     while IFS="$(printf '\t')" read -r ti_suite ti_re; do

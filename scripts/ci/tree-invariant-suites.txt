@@ -1,30 +1,11 @@
 # tree-invariant-suites.txt — suites that scan a whole tree.
 #
 # One row per suite: the suite path, a TAB, then one anchored extended regex
-# (grep -E) matched against every path a range changes, both the new name and,
-# for a rename, the old one. A suite whose regex matches ANY changed path is
-# added to the impacted-suites.sh selection, in every listing mode. These suites
-# read a registry or a directory and never name the files in it, so the textual
-# match alone skips them when a file inside the tree changes (the 2026-11-16
-# main breaks, #5478 and #5473).
-#
-# scripts/cr/impacted-suites.sh reads the rows at the HEAD SNAPSHOT of the range
-# AND the rows of this file in the checkout it runs from, and takes their union:
-# a PR cannot narrow its own selection by deleting a row, and a replay of an old
-# range still sees the current rows. A file missing or unreadable in both, a row
-# with no TAB, or a regex grep rejects, selects nothing extra and prints no error. Blank lines and # comments
-# are ignored. Anchor every regex; list only a suite that really scans a tree,
-# never a guess, and keep the regex in step with the tree: test-impacted-suites.sh
-# checks both rows below against the real registry and the real vendored tree.
+# (grep -E) matched against every path a range changes, the new name and, for a
+# rename, the old one. A suite whose regex matches any changed path joins the
+# impacted-suites.sh selection. Blank lines and # comments are ignored.
 
-# Lints every script the exit-code registry names against its header rows.
 scripts/observability/test-exit-codes.sh	^(scripts/observability/exit-codes\.json|scripts/(quiet-run|check-ci)\.sh|scripts/handover/(merge-on-green|queue-lock)\.sh|scripts/handover/chief-kit/(ready-check|go)\.sh|scripts/cr/file-deferred-issues\.sh|scripts/ci/tmp-sweep\.sh|scripts/guardrails/guard-gh\.sh|scripts/hooks/(check-hookspath|check-platforms-tested|check-security-reviewed)\.sh)$
-
-# Hashes the vendored statechart compiler tree against the wrapper's pin.
 scripts/handover/chief-kit/test-model-check-report.sh	^marketplace/plugins/pstack/skills/statechart/scripts/
-
-# Checks the two rows above against the real registry and the real vendored tree.
 scripts/cr/test-impacted-suites.sh	^(scripts/observability/exit-codes\.json|marketplace/plugins/pstack/skills/statechart/scripts/)
-
-# Walks every vendored pstack file against vendor-hashes.json.
 scripts/lanes/tests/pstack-plugin.test.mjs	^marketplace/plugins/pstack/(skills/|docs/|LICENSE$|vendor-hashes\.json$)

@@ -1744,9 +1744,6 @@ else
     if [ "$rc" -eq 0 ] && [ "$l_got" = "$l_want" ]; then pass "L1 a 900-suite range is read in ${l_wall}s inside the ${l_bound} s bound, with exactly the 900 suite names"; else fail "L1 large range: rc=$rc suites=$(grep -c . <<< "$out") wall=${l_wall}s (rc 124 = over the ${l_bound} s bound; first line: $(head -n 1 <<< "$out"))"; fi
 fi
 
-# --- TI. tree-invariant manifest: a change anywhere in the tree a whole-tree
-# suite scans selects that suite. The real manifest is copied into
-# a scratch repo, so the rows read the regexes CI reads.
 TI_MANIFEST="$REPO_ROOT/scripts/ci/tree-invariant-suites.txt"
 TV="$(fixture_mktemp_dir)" || exit 1
 trap 'rm -rf "$FX" "$SHIM" "$SHIM2" "$SHD" "$BIG" "$SHIM3" "$SHIM4" "${SM:-}" "$CX" "$CY" "$CJ" "$CL" "$TV"' EXIT
@@ -1803,8 +1800,6 @@ if ! grepq "$out" -Fx "$TI_EC" && ! grepq "$out" -Fx "$TI_MC" && ! grepq "$out" 
 tv_change docs/notes.md
 out="$(tv_is "$tv_range")"
 if ! grepq "$out" -Fx "$TI_EC" && ! grepq "$out" -Fx "$TI_MC"; then pass "TI6 a path outside the manifest's regexes adds no suite"; else fail "TI6 outside path: $out"; fi
-# The manifest names every registered script and every vendored statechart file,
-# so a new registry key or a new vendored file cannot slip past its regex.
 ti_re() { awk -F '\t' -v s="$1" '$1 == s { print $2 }' "$TI_MANIFEST" 2>/dev/null; }
 ti_ec_re="$(ti_re "$TI_EC")"
 ti_miss=""
@@ -1826,15 +1821,11 @@ if [ -n "$ti_mc_re" ]; then
     done
 fi
 if [ -n "$ti_mc_re" ] && [ "$ti_n" -gt 0 ] && [ -z "$ti_miss" ]; then pass "TI8 every vendored statechart file ($ti_n) matches the manifest's regex for test-model-check-report.sh"; else fail "TI8 vendored files outside the manifest regex (checked $ti_n):${ti_miss:- (no regex or no files)}"; fi
-# The rows are the union of the head's manifest and the selector's own checkout's:
-# a head that deleted the manifest does not narrow its own selection.
 git -C "$TV" rm -q -f scripts/ci/tree-invariant-suites.txt
 git -C "$TV" commit -q -m "chore: drop the manifest"
 tv_change scripts/cr/file-deferred-issues.sh
 out="$(tv_is "$tv_range")"
 if grepq "$out" -Fx "$TI_EC"; then pass "TI9a a head that deleted the manifest still selects through the selector's own checkout"; else fail "TI9a head without manifest: $out"; fi
-# A scratch copy of the selector with no manifest beside it, run against a head with
-# none: nothing extra, no error, rc 0.
 TC="$(fixture_mktemp_dir)" || exit 1
 trap 'rm -rf "$FX" "$SHIM" "$SHIM2" "$SHD" "$BIG" "$SHIM3" "$SHIM4" "${SM:-}" "$CX" "$CY" "$CJ" "$CL" "$TV" "$TC"' EXIT
 mkdir -p "$TC/scripts/cr" "$TC/scripts/lib"
@@ -1842,7 +1833,6 @@ cp "$REPO_ROOT/scripts/cr/impacted-suites.sh" "$REPO_ROOT/scripts/cr/anchor-hand
 cp "$REPO_ROOT/scripts/lib/review-default-base.sh" "$TC/scripts/lib/"
 out="$( cd "$TV" && bash "$TC/scripts/cr/impacted-suites.sh" "$tv_range" 2>&1 )"; rc=$?
 if [ "$rc" -eq 0 ] && ! grepq "$out" -F "$TI_EC" && ! grepq "$out" -i 'error\|impacted-suites:'; then pass "TI9b a manifest missing at the head and beside the selector selects nothing extra, prints no error and exits 0"; else fail "TI9b missing manifest: rc=$rc out=$out"; fi
-# The DoD ranges, when the two breaking commits are reachable (a shallow CI clone may lack them).
 if git -C "$REPO_ROOT" cat-file -e '247549974^{commit}' 2>/dev/null && git -C "$REPO_ROOT" cat-file -e '608952484^{commit}' 2>/dev/null; then
     out="$( cd "$REPO_ROOT" && bash "$IS" 247549974~1..247549974 2>/dev/null )"
     if grepq "$out" -Fx "$TI_EC"; then pass "TI10 the 247549974 range lists test-exit-codes.sh"; else fail "TI10 247549974: $out"; fi
