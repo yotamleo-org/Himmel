@@ -81,9 +81,13 @@ if [ -z "${IMPSEL_BASE_TOOLS:-}" ]; then
   # An archive FILE, not a pipe: bsdtar stops reading at the end-of-archive
   # marker, the writer then dies of SIGPIPE, and pipefail reads that as a failed
   # extraction.
-  if ! git archive --format=tar -o "$tools/base.tar" "$base_sha" -- \
-         scripts/ci/impacted-selection.sh scripts/ci/ci-trust-paths.txt \
-         scripts/cr/impacted-suites.sh scripts/cr/anchor-handoff.sh \
+  archive_paths=(scripts/ci/impacted-selection.sh scripts/ci/ci-trust-paths.txt
+                 scripts/cr/impacted-suites.sh scripts/cr/anchor-handoff.sh)
+  # A base that predates the manifest has no such path, and git archive refuses a missing one.
+  if git cat-file -e "${base_sha}:scripts/ci/tree-invariant-suites.txt" 2>/dev/null; then
+    archive_paths+=(scripts/ci/tree-invariant-suites.txt)
+  fi
+  if ! git archive --format=tar -o "$tools/base.tar" "$base_sha" -- "${archive_paths[@]}" \
      || ! tar -x -C "$tools" -f "$tools/base.tar"; then
     rm -f "$tools/base.tar"
     verdict_full "base-extract-failed" "$base_sha" "$selector_blob"
