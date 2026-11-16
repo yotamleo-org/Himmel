@@ -67,7 +67,7 @@ export HIMMEL_FLOW_RUNS_LEDGER="$TMP/flow-runs.jsonl"
 # hop can still read the work-dir before DRY_RUN is known, so keep the
 # opt-out for parity with the sibling suite.
 export ARM_TEMP_CWD_OK=1
-export UNGUARDED_LAUNCH_OK=1  # HIMMEL-9026: scratch fixtures; guard rows drop it
+export UNGUARDED_LAUNCH_OK=1  # scratch fixtures; guard rows drop it
 # Dotenv-read shield: defeats a FILE read (not just an env
 # var) so an operator .env carrying ARMAUTOMERGE=1 can't leak an unexpected
 # assertion-breaking prefix into the emitted command.
@@ -318,7 +318,7 @@ HO_E1=$(make_handover "arm-context-chief.md")
 out=$(run_arm --time "$(future_time)" --handover "$HO_E1" --dry-run 2>&1)
 rc=$?
 assert_rc "e1: chief handover, no --context, exits 0" 0 "$rc"
-assert_contains "e1: guard line defaults chief to 1m (HIMMEL-3884)" 'context=1m (default)' "$out"
+assert_contains "e1: guard line defaults chief to 1m" 'context=1m (default)' "$out"
 assert_contains_either "e1: relaunch command carries --autocompact auto" '--autocompact auto' '--autocompact "auto"' "$out"
 assert_contains "e1: unpinned chief preserves operator model default" 'model unset (operator default)' "$out"
 

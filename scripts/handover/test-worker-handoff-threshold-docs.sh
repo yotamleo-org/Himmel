@@ -49,9 +49,9 @@ done
 
 # The backticks in these needles are literal Markdown.
 # shellcheck disable=SC2016
-has   "preface states the ceiling-derived threshold (HIMMEL-4710)" "$PREFACE" '**Context past 75 % of your `--autocompact` ceiling'
-has   "preface says the guard is off by default (HIMMEL-4710)" "$PREFACE" 'off by default'
-has   "preface links the guard reference (HIMMEL-4710)" "$PREFACE" 'docs/internals/worker-context-guard.md'
+has   "preface states the ceiling-derived threshold" "$PREFACE" '**Context past 75 % of your `--autocompact` ceiling'
+has   "preface says the guard is off by default" "$PREFACE" 'off by default'
+has   "preface links the guard reference" "$PREFACE" 'docs/internals/worker-context-guard.md'
 lacks "preface drops the 65 % rule"         "$PREFACE" '65 ?%'
 lacks "preface no longer calls compact the default" "$PREFACE" 'compact` \(the default\)'
 has   "preface describes the compact mode"   "$PREFACE" 'CHECKPOINT <full sha of HEAD> pushed'
@@ -59,7 +59,7 @@ has   "preface describes the compact mode"   "$PREFACE" 'CHECKPOINT <full sha of
 has   "preface describes the handoff mode"   "$PREFACE" '**`handoff`:**'
 has   "preface names the autocompact backstop" "$PREFACE" 'autocompact'
 lacks "preface carries no 60 % hand-off"     "$PREFACE" '60 ?%'
-has   "brief template states the ceiling-derived threshold (HIMMEL-4710)" "$BRIEF" '75 % of the worker'"'"'s'
+has   "brief template states the ceiling-derived threshold" "$BRIEF" '75 % of the worker'"'"'s'
 # shellcheck disable=SC2016
 has   "brief template names how to turn it on" "$BRIEF"  '`--context-guard compact|handoff`'
 has   "brief template says the guard is off by default" "$BRIEF" 'off by default'
@@ -67,10 +67,10 @@ lacks "brief template drops the 65 % rule"  "$BRIEF"   '65 ?%'
 lacks "brief template drops the 75 % fill rule" "$BRIEF" '75 ?% fill'
 lacks "brief template carries no 60 % fill"  "$BRIEF"   '60 ?% fill'
 # shellcheck disable=SC2016
-has  "calibration states the 75 % ceiling rule (HIMMEL-4710)" "$CALIB" 'Worker checkpoint or handover is at 75% of the worker'"'"'s `--autocompact` ceiling'
+has  "calibration states the 75 % ceiling rule" "$CALIB" 'Worker checkpoint or handover is at 75% of the worker'"'"'s `--autocompact` ceiling'
 lacks "calibration drops the 75 % worker rule"  "$CALIB"   'Worker handover is at 75% context fill'
-has   "preface names close-wrapped-worker.sh as the session end (HIMMEL-2414)" "$PREFACE" "the chief's \`close-wrapped-worker.sh\` ends the session"
-lacks "preface does not tell a worker to exit its own session (HIMMEL-2414)" "$PREFACE" 'closable-window banner, and \*\*exit\*\*'
+has   "preface names close-wrapped-worker.sh as the session end" "$PREFACE" "the chief's \`close-wrapped-worker.sh\` ends the session"
+lacks "preface does not tell a worker to exit its own session" "$PREFACE" 'closable-window banner, and \*\*exit\*\*'
 lacks "calibration drops the 45 % worker rule"  "$CALIB"   'Worker handover is whichever limit arrives first: 45%'
 # The one reference: every fact a worker or a chief
 # needs, in one place.

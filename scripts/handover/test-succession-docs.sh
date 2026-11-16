@@ -101,7 +101,7 @@ contains 'succession is genuine when the outgoing chief relays it directly' "$su
 contains 'or when the incoming message quotes BOTH tokens' "$succ" 'quotes **both**'
 contains 'the security argument (replay) is preserved in the wording' "$succ" 'replay'
 contains 'the old token is the proof: only the worker and the outgoing chief held it' "$succ" 'only the worker and the outgoing chief'
-contains 'the chain explanation says the named-sender check no longer binds (HIMMEL-3257)' "$succ" 'no longer binds'
+contains 'the chain explanation says the named-sender check no longer binds' "$succ" 'no longer binds'
 contains 'the chain explanation names the residual: a token reader can name a replacement' "$succ" 'can name a replacement'
 overclaim="$(printf '%s\n' "$succ" | tr '\n' ' ' | grep -iF -- 'cannot produce it')"
 if [ -n "$overclaim" ]; then
@@ -344,8 +344,8 @@ mons="$(section "$CHIEF" '^## Monitors')"
 contains 'ACTION ZERO step 11 creates the inbox before the bridge will write' "$(flat "$step11")" 'consoles/{{SESSION_NAME}}.md'
 # the inbox is read by the step-10 event waiter, not a 30-min
 # Monitor re-arm loop (every expiry cost a full-context turn).
-absent 'ACTION ZERO step 11 no longer re-arms a Monitor on expiry (HIMMEL-3509)' "$(flat "$step11")" 're-armed on every expiry notice'
-contains 'ACTION ZERO step 11 reads the inbox through the step-10 waiter (HIMMEL-3509)' "$(flat "$step11")" 'The waiter reads it through'
+absent 'ACTION ZERO step 11 no longer re-arms a Monitor on expiry' "$(flat "$step11")" 're-armed on every expiry notice'
+contains 'ACTION ZERO step 11 reads the inbox through the step-10 waiter' "$(flat "$step11")" 'The waiter reads it through'
 contains 'ACTION ZERO step 11 tells the chief how to reply' "$step11" 'chief-route.ts'
 contains 'ACTION ZERO step 11: no permission/settings change' "$(flat "$step11")" 'never changes permissions or settings'
 contains 'ACTION ZERO step 11: GO verification is never skipped' "$(flat "$step11")" 'GO verification'
@@ -385,8 +385,8 @@ fi
 absent '## Monitors telegram row no longer arms a bare tail -n0 -F (loses lines across a re-arm)' "$mons" 'tail -n0 -F'
 absent 'ACTION ZERO step 11 no longer arms a bare tail -n0 -F' "$step11" 'tail -n0 -F'
 contains 'ACTION ZERO step 11 points the monitor at the cursor-keeping follower' "$(flat "$step11")" 'inbox-follow.sh'
-absent '## Monitors telegram row no longer re-arms on expiry (HIMMEL-3509)' "$(flat "$mons")" 're-arm on every expiry notice'
-contains '## Monitors telegram row runs inside the step-10 waiter (HIMMEL-3509)' "$(flat "$mons")" 'Runs inside the step-10 waiter.'
+absent '## Monitors telegram row no longer re-arms on expiry' "$(flat "$mons")" 're-arm on every expiry notice'
+contains '## Monitors telegram row runs inside the step-10 waiter' "$(flat "$mons")" 'Runs inside the step-10 waiter.'
 absent 'chief template no longer says Four monitors' "$(cat "$CHIEF")" 'Four, and no more'
 
 # --- wake-once wiring: the chief docs run the waiter's --succession ----
