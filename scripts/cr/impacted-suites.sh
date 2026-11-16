@@ -1457,7 +1457,7 @@ while IFS= read -r f; do
     while IFS="$(printf '\t')" read -r ti_suite ti_re; do
         [ -n "$ti_suite" ] && [ -n "$ti_re" ] || continue
         ti_rc=0
-        printf '%s\n' "$f" | grep -Eq -- "$ti_re" 2>/dev/null || ti_rc=$?
+        grep -Eq -- "$ti_re" <<< "$f" 2>/dev/null || ti_rc=$?
         if [ "$ti_rc" -eq 0 ] && grep -Fxq -- "$ti_suite" "$suites"; then
             printf '%s\n' "$ti_suite" >> "$found" || io_fail "recording a tree-invariant suite"
         fi
