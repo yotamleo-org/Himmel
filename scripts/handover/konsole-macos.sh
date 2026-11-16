@@ -266,11 +266,8 @@ unset CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDECODE CLAUDE_CODE_SESSION_ID \
     CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN CLAUDE_JOB_DIR
 _launched=0
 if [ -n "${HEADED_ARM_TMUX_SESSION:-}" ]; then
-    # Opt-in: a Mac run over SSH has no iTerm to reach, so the body runs in a
-    # new window of this tmux session. `=` is tmux's exact session match (a bare
-    # name would prefix-match another session); the trailing `:` makes the
-    # target a session, not a window. A missing session fails loudly - falling
-    # back to iTerm here would open the leg where nobody is looking.
+    # `=` is tmux's exact session match (a bare name would prefix-match another
+    # session); the trailing `:` makes the target a session, not a window.
     if ! tmux has-session -t "=$HEADED_ARM_TMUX_SESSION" 2>/dev/null; then
         echo "konsole-macos: tmux session '$HEADED_ARM_TMUX_SESSION' does not exist (HEADED_ARM_TMUX_SESSION) - no session was launched" >&2
         exit 3

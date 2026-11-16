@@ -104,7 +104,6 @@ appdirs="$tmp/apps"; mkdir -p "$appdirs/iTerm.app" "$appdirs/Terminal.app"
 # otherwise take the AppleScript path below and open a real tab; section 9
 # sets this explicitly.
 unset ITERM_SESSION_ID
-# The tmux opt-in is read from the caller's environment; section 11 sets it per case.
 unset HEADED_ARM_TMUX_SESSION
 
 run_shim() { # run_shim <bindir> -- <args...>  (stdout+stderr merged, rc echoed last)
@@ -346,9 +345,6 @@ check "10b osascript was called" "$(grep -c seen "$tmp/env17.log" 2>/dev/null)" 
 not_contains "10b osascript gets no claude session marker" "$(cat "$tmp/env17.log" 2>/dev/null)" "CLAUDE"
 
 # --- 11. HEADED_ARM_TMUX_SESSION: open in a new window of a named tmux session
-# The setting is opt-in. When it names a session the body runs in a new window
-# of that session instead of iTerm; a missing session fails loudly (never a
-# silent iTerm fallback); without the setting the iTerm path is untouched.
 mk_tmux_stub() { # mk_tmux_stub <bindir> <argv-log> - has-session honours TMUX_STUB_NO_SESSION; new-window runs its command like tmux's `sh -c`
     mkdir -p "$1"
     cat > "$1/tmux" <<STUB
@@ -380,19 +376,15 @@ check "11d missing session: no new-window call" "$(grep -c '^new-window ' "$tmp/
 check "11d missing session: no silent iTerm fallback" "$([ -e "$tmp/open19.log" ] && echo called)" ""
 check "11d missing session: the command did not run" "$([ -e "$marker19" ] && echo ran)" ""
 
-# RED control: without the setting the iTerm path is what it was.
 b20="$tmp/b20"; mk_open_stub "$b20" "$tmp/open20.log"; mk_tmux_stub "$b20" "$tmp/tmux20.log"
 out="$(TERM_PROGRAM=iTerm.app run_shim "$b20" -- --separate --workdir "$wd" -p "tabtitle=probe" -e true)"; rc=$?
 check "11e no setting: exit 0" "$rc" "0"
 contains "11e no setting: open -a iTerm as before" "$(cat "$tmp/open20.log" 2>/dev/null)" "-a iTerm"
 check "11e no setting: tmux is never called" "$([ -e "$tmp/tmux20.log" ] && echo called)" ""
-# An empty setting is no setting.
 out="$(HEADED_ARM_TMUX_SESSION='' TERM_PROGRAM=iTerm.app run_shim "$b20" -- --separate --workdir "$wd" -e true)"; rc=$?
 check "11f empty setting: exit 0" "$rc" "0"
 check "11f empty setting: tmux is never called" "$([ -e "$tmp/tmux20.log" ] && echo called)" ""
 
-# Linux keeps konsole: headed-arm.sh never reads the setting, so only the
-# macOS shim can act on it.
 check "11g Linux path unchanged: headed-arm.sh does not read the setting" "$(grep -c 'HEADED_ARM_TMUX_SESSION' "$HERE/headed-arm.sh")" "0"
 
 echo
