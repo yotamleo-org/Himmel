@@ -17,14 +17,28 @@
 # (`[Unauthorized Persistence]`), the same rule as afk-denied-to-request.sh. A no-verdict
 # denial, "Classifier unavailable" and a credential or exfiltration category file nothing.
 #
+# Where the ask shows up: everything below goes only to the operator's bridge chat (the chat
+# the chief's messages and Approve prompts are in), through scripts/lib/afk-sudo-request:
+#   - a pending request: its card (id, session, chief, Approve / Deny), and ONE detached
+#     waiter that posts `grant <id> from session <S> (chief <C>) expired, nothing ran` if
+#     it expires; the waiter gives up at the expiry plus a margin.
+#   - any other helper result but grant-disabled: one refusal line naming the session and
+#     the result (with grants off, afk-denied-to-request.sh owns the refusal).
+#   - no chief: with HIMMEL_CONSOLE_NAME unset, a session whose own console inbox exists
+#     (<bridge>/consoles/<its -n name>.md) is a chief and routes its own ask; any other
+#     session files nothing and gets one refusal line naming it and the denied tool.
+# The chat id is the helper's operator id: from its pending line, else from its
+# world-readable config.
+#
 # Off unless the station opted in: no marker directory (helper not installed) means no sudo
 # call at all, and the helper refuses every request while grant.enabled is false.
 #
 # This is an OBSERVABILITY-STYLE TAP, same contract as log-classifier-denial.sh on the same
-# event: it never blocks, delays or asks on a tool call, prints nothing, and exits 0 on every
-# path. The helper caps requests (one pending at a time, max_per_hour).
+# event: it never blocks, delays or asks on a tool call (every bridge send runs detached),
+# prints nothing, and exits 0 on every path. The helper caps requests (one pending at a time, max_per_hour).
 #
-# Test seam: AFK_GRANT_DIR names the marker directory.
+# Test seams: AFK_GRANT_DIR names the marker directory, BRIDGE_ROOT the bridge directory,
+# AFK_SUDO_CONFIG the helper's config.
 #
 # bash 3.2-compatible.
 set -uo pipefail
@@ -32,6 +46,10 @@ trap 'exit 0' EXIT
 
 HELPER=/usr/local/libexec/himmel/afk-sudo
 MARKS="${AFK_GRANT_DIR:-/var/lib/himmel/afk-grants}"
+HERE="$(cd "$(dirname "$0")" && pwd)" || exit 0
+REQ="$HERE/../lib/afk-sudo-request"
+CONSOLES="${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/consoles"
+CONFIG="${AFK_SUDO_CONFIG:-/etc/himmel/afk-sudo.json}"
 
 [ -d "$MARKS" ] || exit 0
 command -v jq >/dev/null 2>&1 || exit 0
@@ -54,6 +72,50 @@ case "$(printf '%s' "$category" | tr '[:upper:]' '[:lower:]')" in
     *credential* | *exfiltrat* | *secret* | *token*) exit 0 ;;
 esac
 
-jq -j '.tool_input.command' <<<"$input" 2>/dev/null |
-    sudo -n "$HELPER" grant-request --session="$session" --cwd="$cwd" --why="$reason" >/dev/null 2>&1
+# detached CMD...: run CMD in its own session, output discarded, so no send delays the hook.
+detached() {
+    if command -v setsid >/dev/null 2>&1; then
+        setsid nohup "$@" </dev/null >/dev/null 2>&1 &
+    else
+        nohup "$@" </dev/null >/dev/null 2>&1 &
+    fi
+}
+# notify TEXT: one line to the operator's bridge chat, the operator id read from the config.
+notify() {
+    local op
+    op=$(jq -r '.operator_id // empty' "$CONFIG" 2>/dev/null | grep -E '^-?[0-9]{1,20}$' | head -1)  # swallow-ok: no readable operator id means no send
+    [ -n "$op" ] && detached bash "$REQ" --notify "$1" --operator "$op"
+}
+
+sname=''
+lib="$HERE/../lib/session-name.sh"
+# shellcheck source=scripts/lib/session-name.sh
+if { [ -r "$lib" ] && . "$lib"; } 2>/dev/null; then
+    sname=$(current_session_name 2>/dev/null) || sname=''  # swallow-ok: an unresolvable name is not a chief
+fi
+who=${sname:-$session}
+chief=${HIMMEL_CONSOLE_NAME:-}
+if [ -z "$chief" ]; then
+    if [ -n "$sname" ] && [ -f "$CONSOLES/$sname.md" ]; then
+        chief=$sname
+    else
+        notify "AFK grant from session $who refused: no chief to route the ask; the denied Bash call [$category] was not filed"
+        exit 0
+    fi
+fi
+export HIMMEL_CONSOLE_NAME="$chief"
+
+reply=$(jq -j '.tool_input.command' <<<"$input" 2>/dev/null |
+    sudo -n "$HELPER" grant-request --session="$session" --cwd="$cwd" --why="$reason" 2>/dev/null)
+result=$(printf '%s\n' "$reply" | sed -n 's/^result=\([a-z0-9:-]*\).*/\1/p' | head -1)
+field() { printf '%s\n' "$reply" | sed -n "s/^result=pending.* $1=\([^ ]*\).*/\1/p" | head -1; }
+case "$result" in
+    pending)
+        id=$(field id) expires=$(field expires) op=$(field operator)
+        detached bash "$REQ" --card "$id" --operator "$op" --session "$who"
+        detached bash "$REQ" --watch "$id" --expires "$expires" --operator "$op" --session "$who"
+        ;;
+    grant-disabled) ;;
+    *) notify "AFK grant from session $who (chief $chief) refused: ${result:-no reply from the helper}, nothing ran" ;;
+esac
 exit 0

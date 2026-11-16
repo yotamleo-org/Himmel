@@ -322,6 +322,21 @@ approval, and the worker's retry passes the classifier for that one call.
    and exits 0 on every path. It files only a reason with a bracketed classifier category
    (`[Unauthorized Persistence]`): a no-verdict denial, "Classifier unavailable" or a
    credential, secret, token or exfiltration category files nothing.
+   The hook then tells the operator's bridge chat, the chat the chief's messages and
+   Approve prompts are in (chat id = the helper's `operator_id`), through
+   `scripts/lib/afk-sudo-request`, every send detached so nothing delays the hook:
+   - `result=pending`: the card (`--card`: id, session, chief, Approve / Deny), and one
+     detached waiter (`--watch`) that polls `afk-sudo status <id>` and posts
+     `grant <id> from session <S> (chief <C>) expired, nothing ran` if the request
+     expires. The waiter gives up at the expiry plus 130 s.
+   - any other result (busy, rate-limited, `notice-failed`, `no-notice-bot`, a floor
+     refusal): one line, `AFK grant from session <S> (chief <C>) refused: <result>,
+     nothing ran`. With grants off (`grant-disabled`) it sends nothing;
+     `afk-denied-to-request.sh` owns that refusal.
+   - no chief: with `HIMMEL_CONSOLE_NAME` unset, a session whose own console inbox
+     `~/.claude/handover/bridge/consoles/<its -n name>.md` exists is a chief and routes
+     its own ask. Any other session files nothing and gets one line naming it and the
+     denied tool.
 2. Root refuses a secret read or another never-remote shape before any notice is sent.
    Otherwise it binds every file the command names (sha256 and dev/inode, as in the run
    kind), freezes the record and sends the operator the full command, the cwd, the bound

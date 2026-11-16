@@ -1625,6 +1625,7 @@ ghook() {
     jq -n --arg c "$3" --arg s "${GS:-S1}" --arg d "${GC:-$GW}" \
         '{hook_event_name:"x",tool_name:"Bash",tool_input:{command:$c},session_id:$s,cwd:$d,reason:"[Code from External] fetches a package"}' > "$tmp/gpay.json"
     PATH="$tmp/fakesudo:$PATH" AFK_GRANT_DIR="$R/var/lib/himmel/afk-grants" AFK_SUDO_ROOT="$R" AFK_SUDO_NOW=$((T0 + $1)) \
+        HIMMEL_CONSOLE_NAME=chief-A TELEGRAM_ENV="$tmp/no-bridge.env" AFK_SUDO_CONFIG="$tmp/no-config.json" \
         bash "$REPO_ROOT/scripts/hooks/$2" < "$tmp/gpay.json" 2>&1
 }
 pending_id() { python3 -I -c 'import json, sys; print(((json.load(open(sys.argv[1] + "/var/lib/himmel/afk-sudo/state.json")).get("slots") or [{}])[-1]).get("id", ""))' "$R" 2>/dev/null; }
