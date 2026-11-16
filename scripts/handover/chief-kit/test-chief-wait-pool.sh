@@ -454,6 +454,26 @@ check '(tf) a failing tick with a dispositioned pool stays quiet' 124 "$rc"
 rm -f "$STUB/tick.fail"
 rm -f "$STUB/dispositions"
 
+W1="$WORK/w1"; mkdir -p "$W1/mirror/HIMMEL" "$W1/rel/v1"
+for k in HIMMEL-8001 HIMMEL-8102; do
+    printf -- '---\nkey: "%s"\ntype: "Task"\nstatus: "To Do"\nstatusCategory: "To Do"\npriority: "High"\nlabels: ["standalone"]\nfixVersions: ["v1"]\nparent: null\ncreated: "x"\nupdated: "x"\nresolution: null\nresolved: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# %s: fixture\n\n## Description\n\nbody\n\n## Comments\n\n_(none)_\n' "$k" "$k" > "$W1/mirror/HIMMEL/$k.md"
+done
+READINESS_NOW_EPOCH=1800000000 HIMMEL_RELEASE_STATE_DIR="$W1/rel" bash "$HERE/readiness.sh" append v1 HIMMEL-8001 c --evidence x --blocker HIMMEL-8102 --by fixture --mirror "$W1/mirror/HIMMEL" > /dev/null 2>&1
+printf '# chief\n\n## Live state\n\n## Results\n' > "$W1/chief.md"
+printf '# dropped from v1: 2 of 2 To Do (listed 2)\n# disposition HIMMEL-8001 listed LOCAL\n# disposition HIMMEL-8005 listed LOCAL\n' > "$STUB/dispositions"
+w1_wait() {
+    NEXT_DISPATCH_MIRROR="$W1/mirror/HIMMEL" HIMMEL_RELEASE_STATE_DIR="$W1/rel" READINESS_NOW_EPOCH=1800007200 timeout 8 bash "$WAIT" "$(new_inbox "$1")" --doc "$W1/chief.md" --workers N1.md > "$WORK/$1.out" 2> /dev/null  # gnu-ok: Linux-only kit; pipefail-ok: none set
+}
+w1_wait w1-record
+w1_n() { grep -c "^# pool-unresolved $2 HIMMEL-$3 " "$WORK/$1.out"; }
+check '(W1) the unresolved key with no ruling is still named' 1 "$(w1_n w1-record listed 8005)"
+check '(W1) a live c row removes its key from pool-unresolved' 0 "$(w1_n w1-record '.*' 8001)"
+check '(W1) the waiter prints no # readiness line in slice 2' 0 "$(grep -c '^# readiness' "$WORK/w1-record.out")"
+rm -f "$W1/rel/v1/readiness.jsonl"
+w1_wait w1-norecord
+check '(W1) with the record file removed the key is named again' 1 "$(w1_n w1-norecord listed 8001)"
+rm -f "$STUB/dispositions"
+
 # --- (rp-real) the waiter's pool output is the hand run's, drop summary included -----------
 M="$WORK/mirror/HIMMEL"; mkdir -p "$M"
 mk() { # <key> <labels json> <title> <body>

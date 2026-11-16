@@ -515,6 +515,15 @@ Parked rows stay listed: --pool-dispositions prints `# pool-parked <KEY>` for a 
 line (stale, changed, invalid, unowned and unknown-key lines park nothing), and `# pool-chief-owed <KEY>` when that line
 matches proof|signature|critic round|owed|go code. The tick carries pool-parked=<n> and chief-owed=<m> (hidden at 0); the
 `# pool-dispatchable <KEY>` lines and chief-wait.sh's dispatchable= are unchanged.
+With --doc it also reads the per-version readiness record (readiness.sh read, release/<v>/readiness.jsonl, <v> from the snapshot's
+`# dropped from <v>:` line) and prints `# readiness <v> blocked=<n> chief-sign=<n>[:<age>] rows-stale=<n>`, `# readiness-stale <KEY> <why>`
+per stale row and `# readiness-held c|d <KEY> blocker=<blocker|-> age=<age>[ why=in-progress]` per live c or d row (sorted by key; <age> is
+<m>m under an hour, else <h>h). No version line, a missing version directory, a timeout or a failed read prints `# readiness ?` and applies no ruling.
+A live c or d row is a ruling: its key leaves `# pool-unresolved` and counts disposed, except an invalid line and a held key, which stay, and a
+CLOSE-OR-DISPATCH key whose row names a decision number, which stays stale. blocked= counts live c rows. chief-sign= counts live d rows
+whose ticket is not In Progress, with the oldest one's age (a d row on an In Progress ticket is listed why=in-progress and not counted: the ticket is In Progress).
+rows-stale= counts stale rows whose stamp changed or whose c blocker closed; a row whose ticket file is gone prints no-ticket and is not counted.
+The tick carries blocked=<n> chief-sign=<n>[:<age>] rows-stale=<n> after chief-owed=, printed at 0 whenever the record was read, `?` when it was not.
 owed=<n>:<oldest-age> counts the open rows of the owed ledger beside --doc (owed.jsonl, owe.sh; <m>m under an hour, else <h>h),
 hidden at 0, `?` when unreadable. A ticket-kind row with no key past OWED_STALE_SECS (default 14400) adds
 `ACTION owed-stale=<n>:<ids>`; closing the row with a key ends it. chief-wait.sh wakes on that stale count (changed=owed).
@@ -703,8 +712,8 @@ pool_dispositions() {
         ledger="$(holds_ledger "$1")"
         holds="$(pool_holds_file "$1")"
     fi
-    python3 -I - "$1" "$psf" "$psm" "$ledger" "$holds" "$POOL_TARGET_RE" 3<&0 <<'PY'
-import glob, hashlib, json, os, re, sys, time
+    python3 -I - "$1" "$psf" "$psm" "$ledger" "$holds" "$POOL_TARGET_RE" "$HERE/readiness.sh" "$(tick_bound 20)" 3<&0 <<'PY'
+import glob, hashlib, json, os, re, subprocess, sys, time
 rows = {}
 text = open(3).read()
 for line in text.splitlines():
@@ -765,6 +774,7 @@ if sys.argv[1]:
     try:
         doc = open(sys.argv[1]).read().splitlines()
     except OSError:
+        print("# readiness ?")
         print("# pool-counts ?")
         sys.exit(0)
     try:
@@ -799,8 +809,45 @@ if sys.argv[1]:
         else:
             decisions[key] = value
 if not rows and not re.search(r"^# dropped from .+: 0 of 0 To Do", text, re.M):
+    if sys.argv[1]:
+        print("# readiness ?")
     print("# pool-counts ?")
     sys.exit(0)
+
+ruled, readiness_lines = {}, ["# readiness ?"]
+if sys.argv[1]:
+    def age_text(seconds):
+        return "%dm" % (seconds // 60) if seconds < 3600 else "%dh" % (seconds // 3600)
+    ver = re.search(r"^# dropped from (\S+):", text, re.M)
+    try:
+        if not ver:
+            raise ValueError("no version line")
+        p = subprocess.run(["timeout", "-k", "2", sys.argv[8], "bash", sys.argv[7], "read", ver[1], "--mirror", sys.argv[3]],
+                           stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, universal_newlines=True)
+        if p.returncode != 0:
+            raise ValueError("read failed")
+        recs = sorted((json.loads(l) for l in p.stdout.splitlines() if l.strip()), key=lambda r: r["key"])
+        blocked, rows_stale, sign_ages, stale_l, held_l, new_ruled = 0, 0, [], [], [], {}
+        for r in recs:
+            key, dec, age = r["key"], r["decision"], int(r["age_s"])
+            if r["state"] == "stale":
+                stale_l.append("# readiness-stale %s %s" % (key, r["why"]))
+                rows_stale += r["why"] in ("stamp", "blocker-done")
+            elif dec == "c":
+                blocked += 1
+                new_ruled[key] = r
+                held_l.append("# readiness-held c %s blocker=%s age=%s" % (key, r["blocker"], age_text(age)))
+            elif dec == "d":
+                new_ruled[key] = r
+                in_progress = r["cat"] == "In Progress"
+                if not in_progress:
+                    sign_ages.append(age)
+                held_l.append("# readiness-held d %s blocker=%s age=%s%s" % (key, r["blocker"] or "-", age_text(age), " why=in-progress" if in_progress else ""))
+        sign = "%d" % len(sign_ages) + (":" + age_text(max(sign_ages)) if sign_ages else "")
+        readiness_lines = ["# readiness %s blocked=%d chief-sign=%s rows-stale=%d" % (ver[1], blocked, sign, rows_stale)] + stale_l + held_l
+        ruled = new_ruled
+    except (ValueError, KeyError, TypeError, OSError):
+        pass
 
 stale_file, stale_mirror = sys.argv[2], sys.argv[3]
 maxmerges = int(os.environ.get("TICK_POOL_MAX_MERGES") or 30)
@@ -857,6 +904,20 @@ for key, reason in rows.items():
         unresolved.append(("unowned", key, "pool-disposition names no owner or observable end: " + unowned[key]))
     else:
         unresolved.append((reason.split()[0], key, reason))
+unres_keys = {k for _, k, _ in unresolved}
+if ruled:
+    kept = []
+    for cls, key, reason in unresolved:
+        r = ruled.get(key)
+        if r is None or cls == "invalid" or key in held:
+            kept.append((cls, key, reason))
+        elif key in closing and re.fullmatch(r"[0-9]+", r["blocker"] or ""):
+            kept.append(("stale", key, "its readiness row names decision %s, which has no observable end: the key carries a CLOSE-OR-DISPATCH drift row; close the ticket or name a worker" % r["blocker"]))
+        else:
+            disposed += 1
+    unresolved = kept
+if sys.argv[1]:
+    print("\n".join(readiness_lines))
 print("# pool-counts %d/%d/%d/%d" % (len(rows), inflight, disposed, len(unresolved)))
 for cls, key, reason in sorted(unresolved):
     print("# pool-unresolved %s %s %s" % (cls, key, reason))
@@ -869,7 +930,6 @@ for key, (cls, reason) in sorted(held.items()):
 for key, reason in sorted(rows.items()):
     if key not in dispatchable:
         print("# pool-left-out %s %s" % (key, reason))
-unres_keys = {k for _, k, _ in unresolved}
 owed = re.compile(r"\b(?:proof|signature|critic round|owed|go code)\b", re.I)
 for key in sorted(dispatchable):
     if key in decisions and key not in unres_keys and key not in invalid:
@@ -3584,6 +3644,9 @@ intake_age=""
 intake_age_first=0
 pool_parked_n=""
 pool_owed_n=""
+pool_blocked=""
+pool_chiefsign=""
+pool_rowsstale=""
 pool_free=""
 if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
     pool_summary='?'
@@ -3625,8 +3688,14 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
         pd_summary="$(pool_dispositions "$console_doc" < "$pd_base.rows")"
         pool_summary="$(printf '%s\n' "$pd_summary" | sed -n 's/^# pool-counts //p')"
         [ -n "$pool_summary" ] || pool_summary='?'
+        pool_blocked='?'; pool_chiefsign='?'; pool_rowsstale='?'
         case "$pool_summary" in
             [0-9]*/*)
+                pd_rd_line="$(printf '%s\n' "$pd_summary" | sed -n 's/^# readiness [^ ][^ ]* \(blocked=[0-9][0-9]* chief-sign=[0-9][0-9]*\(:[0-9][0-9]*[mh]\)\{0,1\} rows-stale=[0-9][0-9]*\)$/\1/p' | head -n 1)"  # swallow-ok: no readiness line reads ?
+                if [ -n "$pd_rd_line" ]; then
+                    read -r pool_blocked pool_chiefsign pool_rowsstale <<< "$pd_rd_line"
+                    pool_blocked="${pool_blocked#blocked=}"; pool_chiefsign="${pool_chiefsign#chief-sign=}"; pool_rowsstale="${pool_rowsstale#rows-stale=}"
+                fi
                 pool_parked_n="$(printf '%s\n' "$pd_summary" | grep -c '^# pool-parked ' || true)"  # swallow-ok: grep -c prints 0 and exits 1 on no match
                 pool_owed_n="$(printf '%s\n' "$pd_summary" | grep -c '^# pool-chief-owed ' || true)"  # swallow-ok: grep -c prints 0 and exits 1 on no match
                 pool_free=$(( $(printf '%s\n' "$pd_summary" | grep -c '^# pool-dispatchable ' || true) - pool_parked_n ))  # swallow-ok: grep -c prints 0 and exits 1 on no match
@@ -4931,6 +5000,9 @@ else
     compact_field pool-changed "$pool_changed"
     compact_field pool-parked "$pool_parked_n"
     compact_field chief-owed "$pool_owed_n"
+    compact_field blocked "$pool_blocked"
+    compact_field chief-sign "$pool_chiefsign"
+    compact_field rows-stale "$pool_rowsstale"
     compact_field supply "$supply"
     compact_field owed "$owed_summary"
     compact_field chains "$chains_summary"

@@ -897,9 +897,9 @@ pw_tick() { # <graphql remaining in the seeded quota.tsv>: orphans-wip= of one t
 same 'a resume scan the dispatcher paused on quota reads orphans-wip=?, not 0' "$(pw_tick 100)" '?'
 same 'RED control: a healthy resume scan still counts the orphan' "$(pw_tick 4000)" '1:HIMMEL-951'
 pd_pause_out="$(printf '# quota-pause QUOTA-PAUSE github graphql token=main remaining=0 floor=500 reset=unknown caller=next-dispatchable nothing-was-judged\n' | bash "$SUT" --pool-dispositions 2>/dev/null)"
-same '--pool-dispositions reads a paused snapshot as pool unknown' "$pd_pause_out" '# pool-counts ?'
+same '--pool-dispositions reads a paused snapshot as pool unknown' "$(printf '%s\n' "$pd_pause_out" | grep '^# pool-counts')" '# pool-counts ?'
 pd_stall_out="$(printf '# gh-stall GH-STALL github read timed out after 400s token=main caller=next-dispatchable nothing-was-judged\n' | bash "$SUT" --pool-dispositions 2>/dev/null)"
-same '--pool-dispositions reads a stalled snapshot as pool unknown' "$pd_stall_out" '# pool-counts ?'
+same '--pool-dispositions reads a stalled snapshot as pool unknown' "$(printf '%s\n' "$pd_stall_out" | grep '^# pool-counts')" '# pool-counts ?'
 
 PS_DOC="$W/ps-doc/HIMMEL-nextleg-2026-11-11A-chief.md"; mkdir -p "${PS_DOC%/*}"
 printf '# chief\n\n## Live state\n\npool-disposition: HIMMEL-952 slice blocked on PR 77\n\n## Results\n' > "$PS_DOC"
