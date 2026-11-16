@@ -456,7 +456,7 @@ lacks "no skipped line when nothing matched" "$pw0" "# skipped"
 
 # Fail closed: with the pattern file gone the script exits 2 rather than dispatching unfiltered.
 NF="$WORK/nopat"; mkdir -p "$NF/scripts/handover/chief-kit" "$NF/scripts/lib"
-for nf_lib in env_alias.py gh-quota.sh gh-graphql-budget.sh prim.sh timeout-bin.sh canon-path.sh pr_remainder.py; do
+for nf_lib in env_alias.py fleet_runtime.py gh-quota.sh gh-graphql-budget.sh prim.sh timeout-bin.sh canon-path.sh pr_remainder.py; do
     cp "$(dirname "$SUT")/../../lib/$nf_lib" "$NF/scripts/lib/$nf_lib"
 done
 cp "$SUT" "$NF/scripts/handover/chief-kit/next-dispatchable.sh"
@@ -1618,7 +1618,7 @@ has "(8436) a worker of a different chain does not hold its ticket here" "$b8o" 
 # a stale worker doc of the other chief (no write for a day) holds nothing
 ago "$W53" 48
 b8s="$(run8 "$C8/HIMMEL-nextleg-2026-10-31MB-roadmap-chief.fleet.json" --top 20 --resume-only)"
-has "(8436) a worker doc untouched for over a day no longer holds its ticket" "$b8s" "RESUME${TAB}HIMMEL-53${TAB}"
+lacks "(8436) inactivity alone cannot clear unknown sibling ownership" "$b8s" "RESUME${TAB}HIMMEL-53${TAB}"
 # malformed sibling manifests never break the read: a list, entries that are not objects, a null or numeric doc, a doc-less entry
 touch "$W53"
 printf '[]\n' > "$C8/HIMMEL-nextleg-2026-10-31MC-roadmap-chief.fleet.json"
@@ -2645,11 +2645,11 @@ printf '{"handover":"%s","heartbeat":"2026-01-01T00:00:00Z"}\n' "$B91/HIMMEL-963
 mkfleet "$B91/HIMMEL-nextleg-2026-11-06TA-roadmap-chief.fleet.json" "N965:$B91/N965-ops-2026-11-06.md" "N961:$B91/HIMMEL-9631-N961-case-2026-11-06.md" "N962:$B91/HIMMEL-9632-N962-case-2026-11-06.md" "N963:$B91/HIMMEL-9633-N963-case-2026-11-06.md" "N964:$B91/HIMMEL-9634-N964-case-2026-11-06.md"
 mkfleet "$B91/HIMMEL-nextleg-2026-11-07TB-roadmap-chief.fleet.json"
 s91="$(NEXT_DISPATCH_MIRROR="$M91S" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" bash "$SUT" --top 20 --dispositions --workers-dir "$WORK/s91s/workers" --workers-from "$B91/HIMMEL-nextleg-2026-11-07TB-roadmap-chief.fleet.json" 2>/dev/null)"
-has "a sibling worker with no lock and a doc hours old owns nothing" "$s91" "RESUME	HIMMEL-9631	"
-lacks "and is not called live" "$s91" "live worker N961"
+lacks "an old sibling with no affirmative terminal evidence stays protected" "$s91" "RESUME	HIMMEL-9631	"
+has "the unknown sibling remains a visible owner" "$s91" "live worker N961"
 lacks "a sibling worker with a fresh queue lock keeps its ticket" "$s91" "RESUME	HIMMEL-9632	"
 has "and is named as the owner" "$s91" "# disposition HIMMEL-9632 in-flight owned by live worker N962 of the chief on HIMMEL-nextleg-2026-11-06TA-roadmap-chief"
-has "a sibling worker whose lock heartbeat is past the TTL owns nothing" "$s91" "RESUME	HIMMEL-9633	"
+lacks "a stale heartbeat cannot retire a sibling worker" "$s91" "RESUME	HIMMEL-9633	"
 lacks "a fresh lock on a doc whose name carries no ticket keeps the ticket its title names" "$s91" "RESUME	HIMMEL-9635	"
 lacks "a sibling doc armed within the hour, its lock not yet taken, keeps its ticket" "$s91" "RESUME	HIMMEL-9634	"
 

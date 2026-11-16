@@ -1699,7 +1699,7 @@ def manifest_add_lines(l, ctx, doc):
         return []
     q = shlex.quote
     arm = (' --arm ' + q(l['ab_arm'])) if l.get('ab_arm') else ''
-    return ['bash %s add %s %s --lane %s%s || exit 1' % (
+    return ['bash %s add %s %s --lane %s%s --pending || exit 1' % (
         q(ctx['kit'] + '/scripts/handover/chief-kit/fleet-manifest.sh'), q(ctx['manifest']), q(doc), q(l.get('lane', 'native')), arm)]
 
 
@@ -1717,7 +1717,7 @@ def render_rm_launcher(l, ctx, doc):
         'mkdir -p "$W"',
         # The RM brief has no Prior art line, and headed-arm-worker.sh sets the RM env itself.
         'setsid nohup bash %s --profile release-manager --rm-release %s --no-prior-art-check --chief %s %s %s "$W/sig-%s" %s "$W/%s.log" %s > "$W/%s.launch.out" 2>&1 &' % (  # t13b-ok: prints the chief's launch line, nothing starts here
-            q(ctx['kit'] + '/scripts/handover/chief-kit/headed-arm-worker.sh'), q(l['release']), q(ctx['chief']), q(stem), q(doc), stem, q(ctx['deadline']), stem, q(l['model']), stem),
+            q(ctx['kit'] + '/scripts/handover/chief-kit/headed-arm-worker.sh') + (' --fleet ' + q(ctx['manifest']) if ctx.get('manifest') else ''), q(l['release']), q(ctx['chief']), q(stem), q(doc), stem, q(ctx['deadline']), stem, q(l['model']), stem),
         'sleep 12',
         'tail -n 2 "$W/%s.launch.out"' % stem,
         'touch "$W/sig-%s"' % stem,
@@ -1755,7 +1755,7 @@ def render_launcher(l, ctx, doc):
         'W=%s' % q(w),
         'mkdir -p "$W"',
         'setsid nohup bash %s%s --profile %s --chief %s %s %s "$W/sig-%s" %s "$W/%s.log"%s > "$W/%s.launch.out" 2>&1 &' % (  # t13b-ok: emitted launch line for one worker, bounded by its deadline
-            q(ctx['kit'] + '/scripts/handover/chief-kit/headed-arm-worker.sh'), lane_arg, q(l['profile']), q(ctx['chief']), q(stem), q(doc), stem, q(ctx['deadline']), stem, model_arg, stem),
+            q(ctx['kit'] + '/scripts/handover/chief-kit/headed-arm-worker.sh') + (' --fleet ' + q(ctx['manifest']) if ctx.get('manifest') else ''), lane_arg, q(l['profile']), q(ctx['chief']), q(stem), q(doc), stem, q(ctx['deadline']), stem, model_arg, stem),
         # stderr stays in launch.out: a launch refused for an overlapping write hold exits 2 and prints its holder line there
         'sleep 12',
         'tail -n 2 "$W/%s.launch.out"' % stem,
@@ -1927,7 +1927,7 @@ def main():
             # a missing --lane is stored `unknown` and relay-batch refuses it; the
             # launchers written above are native headed-arm-worker launches unless the worker says otherwise.
             arm = (' --arm ' + shlex.quote(l['ab_arm'])) if l.get('ab_arm') else ''
-            print('bash scripts/handover/chief-kit/fleet-manifest.sh add %s %s --lane %s%s' % (shlex.quote(a.manifest), shlex.quote(os.path.join(a.bucket, l['stem'] + '.md')), shlex.quote(l.get('lane', 'native')), arm))
+            print('bash scripts/handover/chief-kit/fleet-manifest.sh add %s %s --lane %s%s --pending' % (shlex.quote(a.manifest), shlex.quote(os.path.join(a.bucket, l['stem'] + '.md')), shlex.quote(l.get('lane', 'native')), arm))
         print('launch with: ' + '; '.join('bash %s/launch-%s.sh' % (a.bucket, l['label']) for l in workers))
 
 

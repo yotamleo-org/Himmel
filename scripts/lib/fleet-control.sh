@@ -9,8 +9,8 @@
 # A chief's .control = {family,anchor}; anchor is the physical manifest bucket's
 # fleet-control.json. Succession copies that reference, never mutable values.
 # Only fleet-manifest.sh writes either object. Atomic rename permits lock-free
-# snapshots here; a future final admission MUST serialize with anchor updates.
-# No PID/age-based liveness, pause acknowledgement or reconciliation is implied.
+# snapshots here; fleet_runtime.py serializes commitment with anchor updates.
+# This reader supplies no liveness, pause acknowledgement or reconciliation.
 
 # shellcheck source=scripts/lib/legacy-names.sh
 # shellcheck disable=SC1091

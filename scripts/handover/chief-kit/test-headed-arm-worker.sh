@@ -342,24 +342,33 @@ chmod 755 "$SKIPPED_BANK_PREFLIGHT"
 
 # deleting the post-handoff add must fail these manifest assertions.
 # The target is a fixture: never launch a real worker or edit a live manifest.
-fleet_doc="$tmp/PROJ-3748-N7-fleet.md"
-fleet_manifest="$tmp/fleet.json"
+mkdir -p "$tmp/fleet-fixture"
+fleet_doc="$tmp/fleet-fixture/PROJ-3748-N7-fleet.md"
+fleet_manifest="$tmp/fleet-fixture/fleet.json"
 fx_brief '# fleet fixture' > "$fleet_doc"
 fleet_target="$tmp/fleet-target.sh"
 cat > "$fleet_target" <<'FLEET_TARGET'
 #!/usr/bin/env bash
-[ ! -e "$FLEET_TEST_MANIFEST" ] || exit 9
+if [ "${FLEET_TEST_RC:-0}" = 0 ] && [ -n "${FLEET_LAUNCH_MANIFEST:-}" ]; then
+  . "$FLEET_TEST_LIB/fleet-launch.sh" || exit 10
+  fleet_launch_prepare "$2" "$1" "$FLEET_LAUNCH_MANIFEST" "$FLEET_LAUNCH_ATTEMPT" || exit 10
+  fleet_launch_commit || exit 10
+  printf 'launched\n' > "$HEADED_ARM_OUTCOME_FILE"
+fi
 exit "${FLEET_TEST_RC:-0}"
 FLEET_TARGET
 chmod +x "$fleet_target"
 fleet_launch() {
-  FLEET_TEST_MANIFEST="$fleet_manifest" HEADED_ARM_WORKER_TARGET="$fleet_target" \
+  FLEET_TEST_MANIFEST="$fleet_manifest" FLEET_TEST_LIB="$HERE/../../lib" CADENCE_USAGE_SKIP_REFRESH=1 CADENCE_USAGE_CACHE="$tmp/no-native-cache" HEADED_ARM_WORKER_TARGET="$fleet_target" \
     HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" bash "$SCRIPT" \
     --no-profile --fleet "$fleet_manifest" "$@" \
     PROJ-3748-N7-fleet "$fleet_doc" "$tmp/fleet-signal" "$PAST" "$tmp/fleet-log" claude-sonnet-5-5
 }
 # fleet-manifest.sh serialises the add under util-linux flock; the kit is Linux-only.
 if command -v flock >/dev/null 2>&1; then
+  bash "$HERE/fleet-manifest.sh" control init "$fleet_manifest" --target 4 >/dev/null || exit 1
+  bash "$HERE/fleet-manifest.sh" control set "$fleet_manifest" --mode active --expect-gen 1 >/dev/null || exit 1
+  bash "$HERE/fleet-manifest.sh" add "$fleet_manifest" "$fleet_doc" --lane native --pending >/dev/null || exit 1
   rc=0; out="$(fleet_launch 2>&1)" || rc=$?
   check 'fleet: successful handoff returns zero' 0 "$rc"
   check 'fleet: successful handoff adds exactly the worker doc' "$fleet_doc" "$(jq -r '.workers[].doc' "$fleet_manifest" 2>/dev/null)"
@@ -367,10 +376,15 @@ if command -v flock >/dev/null 2>&1; then
 else
   echo "SKIP - fleet: successful-handoff rows (fleet-manifest.sh needs util-linux flock, absent here)"
 fi
-rm -f "$fleet_manifest"
+rm -f "$fleet_manifest" "$tmp/fleet-fixture/fleet-control.json"
+if command -v flock >/dev/null 2>&1; then
+  bash "$HERE/fleet-manifest.sh" control init "$fleet_manifest" --target 4 >/dev/null || exit 1
+  bash "$HERE/fleet-manifest.sh" control set "$fleet_manifest" --mode active --expect-gen 1 >/dev/null || exit 1
+fi
 rc=0; out="$(FLEET_TEST_RC=7 fleet_launch 2>&1)" || rc=$?
 check 'fleet: failed target status is preserved' 7 "$rc"
-check 'fleet: failed target leaves manifest absent' no "$([ -e "$fleet_manifest" ] && echo yes || echo no)"
+check 'fleet: unconfirmed target retains exact unknown ownership' unknown "$(jq -r '.workers[0].attempt.phase' "$fleet_manifest")"
+rm -f "$fleet_manifest" "$tmp/fleet-fixture/fleet-control.json"
 rc=0; out="$(fleet_launch --dry-run 2>&1)" || rc=$?
 check 'fleet: dry run succeeds without adding' 0 "$rc"
 check 'fleet: dry run leaves manifest absent' no "$([ -e "$fleet_manifest" ] && echo yes || echo no)"
@@ -386,7 +400,7 @@ chmod 755 "$REC_PREFLIGHT"
 rc=0; out="$(CADENCE_USAGE_LANE=claudex CADENCE_USAGE_WORKER=stale-worker CADENCE_USAGE_LAUNCH='' \
   REC_PREFLIGHT_OUT="$tmp/rec-preflight.env" FLEET_TEST_MANIFEST="$fleet_manifest" \
   HEADED_ARM_WORKER_TARGET="$fleet_target" HEADED_ARM_WORKER_PREFLIGHT="$REC_PREFLIGHT" bash "$SCRIPT" \
-  --no-profile PROJ-3748-N7-fleet "$fleet_doc" "$tmp/fleet-signal" "$PAST" "$tmp/fleet-log" claude-sonnet-5-5 2>&1)" || rc=$?
+  --no-profile PROJ-3748-N7-fleet "$some_doc" "$tmp/fleet-signal" "$PAST" "$tmp/fleet-log" claude-sonnet-5-5 2>&1)" || rc=$?
 check 'usage names: launch with inherited CADENCE_USAGE_* exits 0' 0 "$rc"
 check 'usage names: the launch preflight sees this launch, not the inherited lane and worker' \
   "$(printf '%s\n' CADENCE_USAGE_LANE=native CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_WORKER=PROJ-3748-N7-fleet)" \
@@ -399,8 +413,8 @@ check 'fleet: admission refusal leaves manifest absent' no "$([ -e "$fleet_manif
 
 fleet_manifest="$tmp/no-such-directory/fleet.json"
 rc=0; out="$(fleet_launch 2>&1)" || rc=$?
-check 'fleet: update failure returns nonzero after handoff' 1 "$rc"
-contains 'fleet: update failure reports launch already handed off' "$out" 'launch handed off but fleet manifest update failed'
+check 'fleet: missing reference refuses before handoff' 10 "$rc"
+contains 'fleet: missing reference reports paused' "$out" 'fleet-paused'
 rc=0; out="$(bash "$SCRIPT" --fleet 2>&1)" || rc=$?
 check 'fleet: missing flag value refuses' 2 "$rc"
 
@@ -958,12 +972,23 @@ cat > "$ceiling_reg" <<'CEILING_EOF'
 CEILING_EOF
 d8profile="$tmp/c8profile"; mk_launch_stubs "$d8profile" "PROJ-4021-ceiling"; mkdir -p "$tmp/repo8profile"
 rc=0
-mkdir -p "$tmp/profile fleet"
-PLUGIN_PROFILES_REGISTRY="$ceiling_reg" WORKER_SESSION_CONTEXT='' RUN_WORKER_ARGS='--profile design' \
-  run_worker "$d8profile" "$tmp/repo8profile" "PROJ-4021-ceiling" "claude-sonnet-4-6" \
-  "$PROCEED_PREFLIGHT" "$tmp/profile fleet/manifest.json" >/dev/null 2>&1 || rc=$?
+mkdir -p "$tmp/profile-fleet"
+profile_manifest="$tmp/profile-fleet/profile manifest.json"
+profile_doc="$tmp/profile-fleet/worker.md"
+cp "$some_doc" "$profile_doc"
+printf '%s\n' '#!/bin/bash' 'exit 0' > "$tmp/profile-fleet/ps"
+chmod +x "$tmp/profile-fleet/ps"
 if command -v flock >/dev/null 2>&1; then
-  check 'fleet: real renderer preserves a spaced manifest path and profile ceiling' "$some_doc" "$(jq -r '.workers[].doc' "$tmp/profile fleet/manifest.json" 2>/dev/null)"
+  bash "$HERE/fleet-manifest.sh" control init "$profile_manifest" --target 4 >/dev/null || exit 1
+  bash "$HERE/fleet-manifest.sh" control set "$profile_manifest" --mode active --expect-gen 1 >/dev/null || exit 1
+fi
+out8profile="$(PLUGIN_PROFILES_REGISTRY="$ceiling_reg" WORKER_SESSION_CONTEXT='' RUN_WORKER_ARGS='--profile design' \
+  some_doc="$profile_doc" FLEET_PS_CMD="$tmp/profile-fleet/ps" CADENCE_USAGE_SKIP_REFRESH=1 \
+  run_worker "$d8profile" "$tmp/repo8profile" "PROJ-4021-ceiling" "claude-sonnet-4-6" \
+  "$PROCEED_PREFLIGHT" "$profile_manifest" 2>&1)" || rc=$?
+[ "$rc" -eq 0 ] || printf 'profile launch diagnostic: %s\n' "$out8profile"
+if command -v flock >/dev/null 2>&1; then
+  check 'fleet: real renderer preserves a spaced manifest path and profile ceiling' "$profile_doc" "$(jq -r '.workers[].doc' "$profile_manifest" 2>/dev/null)"
 else
   echo "SKIP - fleet: real renderer spaced-manifest row (fleet-manifest.sh needs util-linux flock, absent here)"
 fi
@@ -5829,7 +5854,7 @@ check "51o a refusal leaves a reservation another process owns" "$rc|$(slot51 "$
 # 51p: the --fleet hand-off releases on a refusal too
 n51q="PROJ-9618-N1-fleetrel"; doc51q="$tmp/$n51q.md"; fx_brief "# $n51q" > "$doc51q"
 rc=0; TGT51_RC=2 HEADED_ARM_WORKER_TARGET="$tgt51" HEADED_ARM_WORKER_PREFLIGHT="$RESV51" bash "$SCRIPT" --no-profile --fleet "$tmp/fleet51.json" "$n51q" "$doc51q" "$tmp/sig51" "$PAST" "$tmp/log51-$n51q" claude-sonnet-5-5 >/dev/null 2>&1 || rc=$?
-check "51p --fleet: a refused launch is released and keeps its status" "$rc|$(slot51 "$n51q")" "2|free"
+check "51p --fleet: an unbound managed launch refuses before reservation" "$rc|$(slot51 "$n51q")" "10|free"
 
 # 51q: the process headed-arm.sh runs as is the process HEADED_ARM_CONTEXT_PID names (headed-arm.sh compares it to its own $$)
 n51s="PROJ-9619-N1-pids"; doc51s="$tmp/$n51s.md"; fx_brief "# $n51s" > "$doc51s"
@@ -5935,10 +5960,10 @@ if command -v flock >/dev/null 2>&1; then
   }
   mkdir -p "$tmp/fleet9625-dir"
   b="$(lr_n)"; rc=0; out9625f="$(fleet9625 "$tmp/fleet9625-dir" worker-fleet-seven 2>&1)" || rc=$?
-  check "9625-skip --fleet manifest failure: the launch came up, the manifest add failed, exit 1" "$rc|$(printf '%s\n' "$out9625f" | grep -c 'fleet manifest update failed')" "1|1"
-  check "9696-postlaunch --fleet manifest failure: the launch came up, so one postlaunch-error row in the manifest phase, not a refusal" "$(( $(lr_n) - b ))|$(lr_last '[.outcome, .phase, .cause] | join(" ")')" "1|postlaunch-error manifest manifest"
+  check "9625-skip invalid --fleet reference refuses before handoff" "$rc|$(printf '%s\n' "$out9625f" | grep -c 'fleet-paused')" "10|1"
+  check "9696-postlaunch invalid reference has one definite refusal receipt" "$(( $(lr_n) - b ))|$(lr_last '[.outcome, .phase, .cause] | join(" ")')" "1|refused usage-preflight fleet-paused"
   b="$(lr_n)"; rc=0; FLEET_TEST_RC=3 fleet9625 "$tmp/fleet9625-dir" PROJ-3748-N8-fleet >/dev/null 2>&1 || rc=$?
-  lr_expect "--fleet control, child 3" headed-arm 3 "$rc" "$b"
+  lr_expect "--fleet missing control precedes child status" fleet-paused 10 "$rc" "$b"
 else
   echo "SKIP - 9625-skip --fleet manifest failure (fleet-manifest.sh needs util-linux flock, absent here)"
 fi

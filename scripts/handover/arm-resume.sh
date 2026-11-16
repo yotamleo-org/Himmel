@@ -1305,9 +1305,9 @@ if [ "$DRY_RUN" -eq 0 ]; then
             smart) [ -n "${RESUME_SLOT_CACHE:-}" ] || _arm_skip_refresh="" ;;
             auto) _arm_skip_refresh="" ;;
         esac
-        _arm_fleet_token="$(CADENCE_USAGE_WORKER="$_arm_fleet_worker" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_CALLER_PID="$$" CADENCE_USAGE_SKIP_REFRESH="${_arm_skip_refresh:-${CADENCE_USAGE_SKIP_REFRESH:-}}" bash "$_ARM_BANK_PREFLIGHT" </dev/null)"
+        _arm_fleet_token="$(FLEET_LAUNCH_DOC="$HANDOVER_PATH" CADENCE_USAGE_WORKER="$_arm_fleet_worker" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_CALLER_PID="$$" CADENCE_USAGE_SKIP_REFRESH="${_arm_skip_refresh:-${CADENCE_USAGE_SKIP_REFRESH:-}}" bash "$_ARM_BANK_PREFLIGHT" </dev/null)"
         if [ "$_arm_fleet_token" = SKIPPED-FLEET ]; then
-            echo "ERR arm-resume: fleet-size cap reached (bank-preflight: SKIPPED-FLEET) — refusing to arm another worker. Override with FLEET_CAP_OK=1 in the LAUNCHING shell." >&2
+            echo "ERR arm-resume: fleet-size cap reached or managed control refused (bank-preflight: SKIPPED-FLEET) — refusing to arm another worker; see the cause above." >&2
             exit 22
         fi
         # Not SKIPPED-FLEET: usage-preflight.sh either created a reservation
@@ -4477,6 +4477,16 @@ fi
 # The crontab and `at` bodies both export HIMMEL_ARMED_RELAUNCH=1 so a
 # top-level armed session can self-exit with SIGTERM once its successor is
 # armed (documented in afk-mode.md).
+_arm_runtime_body() {
+    local scope q_runtime q_runtime_doc q_runtime_name
+    scope=$(python3 -I "$SCRIPT_DIR/../lib/fleet_runtime.py" resolve --doc "$HANDOVER_PATH") || scope='{"managed":true}'
+    if [ "$(printf '%s\n' "$scope" | jq -r .managed)" != true ]; then printf '%s' "$1"; return 0; fi
+    q_runtime=$(printf '%q' "$SCRIPT_DIR/../lib/fleet_runtime.py")
+    q_runtime_doc=$(printf '%q' "$HANDOVER_PATH")
+    q_runtime_name=$(printf '%q' "${SESSION_NAME:-$TASK_NAME}")
+    printf 'python3 -I %s run --doc %s --name %s -- bash -c %s' "$q_runtime" "$q_runtime_doc" "$q_runtime_name" "$(printf '%q' "$1")"
+}
+
 _crontab_schedule() {
     # crontab fallback — crontab entries are RECURRING, so the
     # entry SELF-REMOVES as its first action: the RUNNER FILE (not the
@@ -4648,6 +4658,8 @@ fi"
         tail="{ unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID CLAUDE_JOB_DIR CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN UNGUARDED_LAUNCH_OK HIMMEL_LAUNCH_GUARD_WARNED; export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_ARMED_RELAUNCH=1; $q_curl -s -m 5 http://127.0.0.1:$HEADROOM_PROXY_PORT/livez >/dev/null 2>&1 || { $q_hb proxy --port $HEADROOM_PROXY_PORT >> $q_log 2>&1 & sleep 3; }; if $q_curl -s -m 5 http://127.0.0.1:$HEADROOM_PROXY_PORT/livez >/dev/null 2>&1; then echo \"\$(date) arm=$TASK_NAME mode=proxied\" >> $q_log; ANTHROPIC_BASE_URL=http://127.0.0.1:$HEADROOM_PROXY_PORT HEADROOM_OFFLINE=1 ${q_automerge}$q_claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact; else echo \"\$(date) arm=$TASK_NAME mode=bare-fallback\" >> $q_log; ${q_automerge}$q_claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact; fi; }"
     fi
     _arm_require_worker_autocompact_argv "$tail"
+    # Scheduled bodies re-enter persisted admission when fired, including after restart.
+    tail=$(_arm_runtime_body "$tail")
     local q_flow_lib q_task q_note
     q_flow_lib=$(printf '%q' "$SCRIPT_DIR/../lib/flow-run-ledger.sh")
     q_task=$(printf '%q' "$TASK_NAME")
@@ -5076,6 +5088,7 @@ else
 fi"
                 fi
                 _arm_require_worker_autocompact_argv "$launch_lines"
+                launch_lines=$(_arm_runtime_body "$launch_lines")
                 local q_flow_lib q_task q_note
                 q_flow_lib=$(printf '%q' "$SCRIPT_DIR/../lib/flow-run-ledger.sh")
                 q_task=$(printf '%q' "$TASK_NAME")

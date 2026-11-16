@@ -258,7 +258,7 @@ _lr_json() {
 _lr_phase() {
     case "$1" in
         brief-lint|denial-unacked|handover-root|unguarded-checkout) echo brief-validation ;;
-        bank-exhausted|fleet-cap|fleet-duplicate) echo usage-preflight ;;
+        bank-exhausted|fleet-cap|fleet-duplicate|fleet-paused) echo usage-preflight ;;
         bus-register|bus-name-too-long) echo bus-registration ;;
         headed-arm|dedup-indeterminate|konsole-up-claude-unseen|signal) echo handoff ;;
         manifest) echo manifest ;;
@@ -283,7 +283,7 @@ _lr_row() {  # <outcome> <rc or null>
 _launch_attempt_start() {
     [ "${DRY_RUN:-0}" != 1 ] && [ "$_LAUNCH_REFUSAL_SKIP" -ne 1 ] && [ -n "${HOME:-}" ] || return 0
     _LAUNCH_ATTEMPT_ID="$(date -u +%Y%m%dT%H%M%SZ 2>/dev/null)-$$-${RANDOM}${RANDOM}"  # swallow-ok: a failed date leaves the pid and random parts, still one id per attempt
-    _LAUNCH_REFUSAL_CAUSE='' _lr_row attempt-started null
+    _LAUNCH_REFUSAL_CAUSE=''
     return 0
 }
 # shellcheck disable=SC2329  # invoked by the EXIT trap
@@ -295,6 +295,25 @@ _launch_refusal_exit() {
     if [ -z "$outcome" ]; then
         [ "$rc" -ne 0 ] || [ -n "$_LAUNCH_ATTEMPT_ID" ] || return 0
         if [ "$rc" -ne 0 ]; then outcome=refused; else outcome=indeterminate; fi
+    fi
+    if [ "${FLEET_LAUNCH_MANAGED:-false}" = true ]; then
+        local settled
+        case "$outcome" in
+            launched) fleet_launch_outcome launched || outcome=indeterminate ;;
+            *)
+                if settled=$(fleet_launch_op finish); then
+                    case "$(printf '%s\n' "$settled" | jq -r .phase)" in
+                        refused)
+                            outcome=refused
+                            if [ "$(printf '%s\n' "$settled" | jq -r .cause)" = fleet-paused ]; then _launch_refusal_note fleet-paused; fi ;;
+                        *) outcome=indeterminate ;;
+                    esac
+                else outcome=indeterminate
+                fi ;;
+        esac
+        if [ "$outcome" = refused ]; then
+            fleet_launch_release || echo 'headed-arm-worker: reservation remains protected' >&2
+        fi
     fi
     _lr_row "$outcome" "$rc"
     return 0
@@ -815,6 +834,15 @@ fi
 
 NAME="$1"; DOC="$2"; SIGNAL="$3"; DEADLINE="$4"; LOG="$5"; MODEL="${6:-}"
 _launch_attempt_start
+if [ "$DRY_RUN" -ne 1 ]; then
+    # shellcheck source=scripts/lib/fleet-launch.sh
+    . "$_csg_dir/../../lib/fleet-launch.sh" || exit 10
+    if ! fleet_launch_prepare "$DOC" "$NAME" "$FLEET_MANIFEST" "$_LAUNCH_ATTEMPT_ID" "$LANE"; then
+        _launch_refusal_note fleet-paused
+        exit 10
+    fi
+fi
+if [ "$DRY_RUN" -ne 1 ]; then _lr_row attempt-started null; fi
 
 # role-to-profile rule: a `profile: <name>` line in the brief's first
 # 60 lines selects the worker's profile when neither --profile nor WORKER_SESSION_PROFILE did
@@ -1967,6 +1995,7 @@ if [ "$LANE" != "native" ]; then
     worker_env_drop_token CADENCE_USAGE_LANE
     worker_propagate_env WORKER_SESSION_LANE "$LANE"
     worker_propagate_env CADENCE_USAGE_LANE "$LANE_BANK_GATE"
+    worker_propagate_env WORKER_SESSION_DOC "$DOC"
 fi
 
 # claudex lane: see the --lane header comment above.
@@ -2787,6 +2816,7 @@ BANK_PREFLIGHT="${HEADED_ARM_WORKER_PREFLIGHT:-$HERE/../../lib/usage-preflight.s
 # so a reservation present under $NAME with another pid is a concurrent arm's still-pending slot and stays. Both keys
 # the reserver can have used (fleet-reservation-key.sh), as arm-resume.sh's release does.
 _release_fleet_reservation() {
+    if [ "${FLEET_LAUNCH_MANAGED:-false}" = true ]; then return 0; fi
     local _slots _k
     local -a _keys
     _slots="${HIMMEL_FLEET_SLOTS:-${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-$(id -u)}"
@@ -3131,6 +3161,9 @@ trap _ha_forward TERM HUP INT
 _LAUNCH_OUTCOME_FILE="$(mktemp "${TMPDIR:-/tmp}/headed-arm-outcome.XXXXXX" 2>/dev/null)" || _LAUNCH_OUTCOME_FILE=''  # swallow-ok: no temp file means no child word, read as indeterminate
 if [ -n "$_LAUNCH_OUTCOME_FILE" ]; then export HEADED_ARM_OUTCOME_FILE="$_LAUNCH_OUTCOME_FILE"; else unset HEADED_ARM_OUTCOME_FILE; fi
 # Keep headed-arm.sh's profile/context handoff paired to its own exec PID.
+if [ "${FLEET_LAUNCH_MANAGED:-false}" = true ]; then
+    fleet_launch_op handoff >/dev/null || { _launch_refusal_note fleet-paused; exit 10; }
+fi
 "${HA_SH[@]}" -c 'export HEADED_ARM_CONTEXT_PID="$$"; exec "$@"' bash \
     "${HA_RUN[@]}" "$NAME" "$DOC" "$SIGNAL" "$DEADLINE" "$LOG" "$MODEL" "$CONTEXT" <&0 &
 _ha_child=$!

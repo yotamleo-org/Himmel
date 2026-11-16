@@ -4,7 +4,7 @@
 # on every sample, so a dispatch or a wrap edits one file instead of the chief
 # restarting its waiter with a new 10-15 path --workers argv.
 #
-#   fleet-manifest.sh add    <manifest> <worker doc>... --lane <lane> [--lockless] [--arm 200k|400k]
+#   fleet-manifest.sh add    <manifest> <worker doc>... --lane <lane> [--pending] [--lockless] [--arm 200k|400k]
 #   fleet-manifest.sh remove <manifest> <worker doc | label>...
 #   fleet-manifest.sh list   <manifest>                      one doc per line
 #   fleet-manifest.sh watch  <manifest> add    <pr> [--repo <owner/name>] [--head <sha>] [--comments <n>] [--reviews <n>] [--state open|closed|merged]
@@ -34,11 +34,13 @@
 # Definite refused removes only the matched row, retaining .last_refused_attempt
 # ={doc,receipt} as one bounded pointer, not history. Replay after replacement
 # refuses. Existing launch-refusals.jsonl remains the history/evidence owner.
-# Future receipt reconciliation must verify exact identity before settling;
-# pause acknowledgement must account for pending/unknown and real host/boot/start
-# identity. These fields neither prove liveness nor acknowledge a pause. Settle
+# Runtime operations below verify exact attempt and host/boot/start identity;
+# `control ack` reports current in-flight/unknown/launched attempts separately.
+# Snapshot and bind metadata grant no spawn authority. Settle
 # remains safe bookkeeping if the anchor is missing; bind needs valid control,
-# but may register intent while paused. No admission/spawn is implemented here.
+# but may register intent while paused. Runtime commitment serializes with set
+# through these same manifest/anchor locks. --pending marks a new preregistration,
+# never a live owner or permission; unrecognized legacy ownership stays protected.
 #
 # Location: next to the chief doc, named after it —
 # <chief doc stem>.fleet.json.
@@ -80,6 +82,13 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ "${1:-}:${2:-}" = control:ack ] && [ "$#" -eq 3 ]; then
+    exec python3 -I "$HERE/../../lib/fleet_runtime.py" ack --manifest "$3"
+fi
+if [ "${1:-}" = runtime ]; then
+    shift
+    exec python3 -I "$HERE/../../lib/fleet_runtime.py" "$@"
+fi
 # shellcheck source=../../lib/prim.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/prim.sh" || exit 2
@@ -92,7 +101,7 @@ if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .
 
 usage() {
     cat <<'USAGE'
-usage: fleet-manifest.sh add    <manifest> <worker doc>... --lane <lane> [--lockless] [--arm 200k|400k]
+usage: fleet-manifest.sh add    <manifest> <worker doc>... --lane <lane> [--pending] [--lockless] [--arm 200k|400k]
        fleet-manifest.sh remove <manifest> <worker doc | label>...
        fleet-manifest.sh list   <manifest>
        fleet-manifest.sh watch  <manifest> add|set <pr> [--repo <owner/name>] [--head <sha>] [--comments <n>] [--reviews <n>] [--state open|closed|merged]
@@ -100,6 +109,7 @@ usage: fleet-manifest.sh add    <manifest> <worker doc>... --lane <lane> [--lock
        fleet-manifest.sh watch  <manifest> list
        fleet-manifest.sh control init <manifest> --target N
        fleet-manifest.sh control show <manifest>
+       fleet-manifest.sh control ack <manifest>
        fleet-manifest.sh control set <manifest> --mode paused|shadow|active [--target N] --expect-gen G
        fleet-manifest.sh attempt bind <manifest> <doc> --attempt-id A
        fleet-manifest.sh attempt settle <manifest> <doc> --attempt-id A --phase launched|refused|unknown
@@ -313,7 +323,7 @@ case "$verb" in
     *) usage >&2; exit 2 ;;
 esac
 
-lane=unknown; lockless=false; lane_given=false; arm=""
+lane=unknown; lockless=false; lane_given=false; arm=""; pending=false
 if [ "$verb" = add ]; then
     # --lane/--lockless may sit anywhere among the docs; the docs are re-collected
     # one per line so a doc with whitespace is refused below, not word-split.
@@ -327,6 +337,7 @@ if [ "$verb" = add ]; then
                 esac
                 lane="$2"; lane_given=true; shift 2 ;;
             --lockless) lockless=true; shift ;;
+            --pending) pending=true; shift ;;
             --arm)
                 [ "$#" -ge 2 ] || { usage >&2; exit 2; }
                 case "$2" in
@@ -410,8 +421,8 @@ for arg in "$@"; do
             echo "fleet-manifest: $arg is already listed with a different lane/lockless/arm; remove it first, then add it again: $arg" >&2
             exit 1
         fi
-        cur="$(printf '%s\n' "$cur" | jq --arg wk "$wk" --arg d "$arg" --arg l "$label" --arg t "$now" --arg ln "$lane" --argjson ll "$lockless" --arg ar "$arm" \
-            'if any(.[$wk][]; .doc == $d) then . else .[$wk] += [{doc: $d, label: $l, added: $t, lane: $ln} + (if $ll then {lockless: true} else {} end) + (if $ar != "" then {arm: $ar} else {} end)] end')" || exit 1
+        cur="$(printf '%s\n' "$cur" | jq --arg wk "$wk" --arg d "$arg" --arg l "$label" --arg t "$now" --arg ln "$lane" --argjson ll "$lockless" --arg ar "$arm" --argjson pending "$pending" \
+            'if any(.[$wk][]; .doc == $d) then . else .[$wk] += [{doc: $d, label: $l, added: $t, lane: $ln} + (if $ll then {lockless: true} else {} end) + (if $ar != "" then {arm: $ar} else {} end) + (if $pending then {registration:"pending"} else {} end)] end')" || exit 1
     else
         cur="$(printf '%s\n' "$cur" | jq --arg wk "$wk" --arg a "$arg" \
             '.[$wk] |= map(select(.doc != $a and .label != $a))')" || exit 1

@@ -89,6 +89,7 @@ fixture_profiles() {
   cp "$HERE/../lib/env-alias.mjs" "$HERE/../lib/is-main.mjs" "$1/lib/" || exit 1
   # Every lib headed-arm.sh sources by its own path: bash on macOS stops at a missing one.
   cp "$HERE/../lib/env-alias.sh" "$HERE/../lib/legacy-names.sh" "$HERE/../lib/dedupe-path.sh" "$1/lib/" || exit 1
+  cp "$HERE/../lib/fleet-launch.sh" "$HERE/../lib/fleet_runtime.py" "$1/lib/" || exit 1
   if [ -d "$1/bare" ]; then cp "$HERE/argv-has-n-name.sh" "$1/bare/" || exit 1; fi
   return 0
 }

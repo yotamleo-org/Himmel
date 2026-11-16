@@ -419,6 +419,12 @@ _ts_worker_state() {
     local marker out rc hb hb_epoch age=0 warn
     TS_LOCK_HELD="" TS_LOCK_DEAD=""
     [ -n "$1" ] || { TS_WORKER_STATE=unknown; return 0; }
+    local attempt_protected
+    attempt_protected=$(python3 -I "$_TS_LIB_DIR/fleet_runtime.py" disposition --doc "$1") || attempt_protected='"unknown"'
+    case "$attempt_protected" in
+        '"pending"'|'"committed"'|'"unknown"') TS_WORKER_STATE=unknown; return 0 ;;
+        '"refused"'|'"complete"') TS_WORKER_STATE=wrapped; return 0 ;;
+    esac
     marker=$(ts_marker_newest "$1")
     case "$marker" in WRAPPED|HALTED) TS_WORKER_STATE=wrapped; return 0 ;; esac
     if [ -n "${TICKET_STATUS_QUEUE_LOCK:-}" ]; then

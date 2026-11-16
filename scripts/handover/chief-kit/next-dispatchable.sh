@@ -83,8 +83,8 @@
 # Chain workers: with --workers-from naming a `<prefix>-nextleg-<date><letter>-<name>.fleet.json`,
 # the other manifests of that chain in the same directory (same prefix and name, any letter) also own their live
 # workers' tickets, so a worker the other chief armed after `chief.sh next` copied the manifest is not offered
-# again. Ownership of the ticket only: a doc that is missing, WRAPPED, or untouched for
-# NEXT_DISPATCH_SIBLING_MAX_AGE_MIN (default 1440) holds nothing, and an unreadable sibling never marks the fleet unknown. Where the
+# again. Ownership of the ticket only: affirmative shared terminal evidence clears it;
+# unknown or inactive-looking siblings remain protected. Where the
 # handover root has a queue-lock dir, a doc past its first hour also needs a lock on its ticket with a heartbeat inside QUEUE_LOCK_TTL_SECONDS.
 #
 # Wrapped tickets: a To Do ticket whose worker record (--workers-dir, default
@@ -273,6 +273,7 @@ top = int(os.environ['ND_TOP']); mirror = os.environ['ND_MIRROR']
 repo = os.environ['ND_REPO']
 sys.path.insert(0, os.path.join(repo, 'scripts', 'lib'))
 from env_alias import legacy_names_on
+from fleet_runtime import owned_rows, worker_state
 
 RATE_LIMIT_RE = re.compile(r'rate limit|RATE_LIMIT|abuse detection|secondary rate', re.I)
 rate_limited = []
@@ -829,14 +830,13 @@ def partial_resume(key):
 # 8 in parallel, every key read: no cap), through NEXT_DISPATCH_JIRA_CMD (`<cmd> get KEY` prints a tab line KEY, type, status, title) or the real
 # jira CLI of the primary checkout. The real read runs only where the classifier is real too; an unreadable key
 # is UNREADABLE (the candidate drops as blocker-unknown).
-DONE_STATES = ('Done', 'Closed')
+DONE_RE = re.compile(r"^(?:done|closed|resolved|in public|won['’]?t (?:do|fix))$", re.I)
 # Done = the Jira statusCategory is Done (catches 'wont do', 'wont fix', ...); the status names stay as a fallback
 def done_key(k):
     i = issues.get(k)
-    return bool(i) and (i['cat'] == 'Done' or i['status'] in DONE_STATES)
+    return bool(i) and (i['cat'].strip().lower() == 'done' or DONE_RE.fullmatch(i['status'].strip()))
 # ponytail: custom Done statuses hold until listed here, upgrade path: jira get returns statusCategory
 # a live read carries only the status name, so its Done-category names are listed here
-LIVE_DONE = DONE_STATES + ('wont do', 'wont fix', 'Resolved', 'In Public')
 jira_cmd = os.environ.get('NEXT_DISPATCH_JIRA_CMD')
 live_on = bool(jira_cmd) or (os.environ.get('ND_CLASSIFY') == '1' and not os.environ.get('NEXT_DISPATCH_CLASSIFY_CMD'))
 live_cache = {}
@@ -874,7 +874,7 @@ def blocker_state(b):
         live = live_cache[b]
         if live is None:
             return UNREADABLE
-        if live in LIVE_DONE:
+        if DONE_RE.fullmatch(live.strip()):
             return None
         return 'reopened live' if done_key(b) else '%s, live' % live
     if done_key(b):
@@ -1047,7 +1047,8 @@ if workers_from and not os.path.isfile(workers_from):
     workers_unknown = owners_unknown = True
 if workers_from and os.path.isfile(workers_from):
     try:
-        for worker in manifest_workers(json.load(open(workers_from))):
+        manifest_workers(json.load(open(workers_from)))  # validate legacy-array policy before shared ownership
+        for worker in owned_rows(workers_from):
             doc = worker.get('doc', '')
             if doc:
                 manifest_docs.add(os.path.realpath(doc))
@@ -1060,7 +1061,8 @@ if workers_from and os.path.isfile(workers_from):
                 note_unknown('live worker %s' % worker.get('label', '?'))
                 continue
             marks = [m.group(1) for m in (MARKER_RE.match(l) for l in lines) if m]
-            if marks and marks[-1] == 'WRAPPED':  # a wrapped worker holds no files and owns no ticket
+            state = worker_state(doc)
+            if state == 'wrapped':
                 continue
             for k in re.findall(r'[A-Z]+-\d+', os.path.basename(doc)) + owned_keys(doc, lines):
                 worker_keys.add(k); owner.setdefault(k, 'live worker %s' % worker.get('label', '?'))
@@ -1082,49 +1084,11 @@ if workers_from and os.path.isfile(workers_from):
         workers_unknown = owners_unknown = True
 # `chief.sh next` copies the manifest once, so a worker the other chief of this chain arms later is
 # in no manifest but its own. Read the chain's other manifests (same bucket, same prefix and chief name, any
-# letter) for ownership of a ticket only: a doc that is gone, WRAPPED, or untouched for a day holds nothing, and
+# letter) for ownership of a ticket only: shared terminal evidence releases it, and
 # an unreadable sibling never marks the fleet unknown (it is not this chief's fleet).
 chain_m = re.match(r'^(.+)-nextleg-\d{4}-\d{2}-\d{2}[A-Z]+-(.+)\.fleet\.json$', os.path.basename(workers_from)) if workers_from else None
-SIB_ARM_GRACE_S = 3600  # a worker takes its queue lock in its first minutes
-lock_keys_of = {}
-def fresh_lock_keys(start):
-    # the ticket keys of the docs whose queue lock has a heartbeat inside queue-lock.sh's TTL, or None when no lock dir sits above start
-    d = start
-    for _ in range(4):
-        if os.path.isdir(os.path.join(d, '.locks', 'queue')):
-            break
-        d = os.path.dirname(d)
-    else:
-        return None
-    q = os.path.join(d, '.locks', 'queue')
-    if q not in lock_keys_of:
-        try:
-            ttl = int(os.environ.get('QUEUE_LOCK_TTL_SECONDS') or 21600)
-        except ValueError:
-            ttl = 21600
-        keys = set()
-        for lock in os.listdir(q) if os.access(q, os.R_OK) else []:
-            if not lock.endswith('.lock'):
-                continue
-            named = lock
-            try:
-                o = json.load(open(os.path.join(q, lock, 'owner.json'), encoding='utf-8'))
-                named = os.path.basename(o.get('handover') or lock)
-                beat = datetime.datetime.strptime(o.get('heartbeat', ''), '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc).timestamp()
-                if time.time() - beat > ttl:
-                    continue
-            except (OSError, ValueError, TypeError, AttributeError):
-                pass  # swallow-ok: a lock that cannot be read may be live, and an unparsable heartbeat is fresh, as queue-lock.sh status reads it
-            keys.add(named)  # a doc whose name carries no ticket is matched by the name itself
-            keys.update(re.findall(r'[A-Z]+-\d+', named))
-        lock_keys_of[q] = keys
-    return lock_keys_of[q]
 if chain_m:
     sib_dir = os.path.dirname(os.path.abspath(workers_from))
-    try:
-        sib_age_s = int(os.environ.get('NEXT_DISPATCH_SIBLING_MAX_AGE_MIN', '1440')) * 60
-    except ValueError:
-        sib_age_s = 1440 * 60  # a non-integer window reads as the default, never a crash
     try:
         siblings = sorted(os.listdir(sib_dir))
     except OSError:
@@ -1135,25 +1099,19 @@ if chain_m:
             continue
         try:
             sib_manifest = json.load(open(os.path.join(sib_dir, sib)))
-            sib_workers = manifest_workers(sib_manifest) if isinstance(sib_manifest, dict) else []
+            sib_workers = owned_rows(os.path.join(sib_dir, sib)) if isinstance(sib_manifest, dict) else []
             for worker in sib_workers if isinstance(sib_workers, list) else []:
                 sdoc = worker.get('doc') if isinstance(worker, dict) else None
                 if not isinstance(sdoc, str) or not sdoc:
                     continue  # an entry that names no doc owns nothing
                 try:
-                    sage = time.time() - os.path.getmtime(sdoc)
-                    if sage > sib_age_s:
-                        continue
                     slines = open(sdoc, encoding='utf-8', errors='replace').read().splitlines()
                 except OSError:
-                    continue
+                    slines = []
                 smarks = [m.group(1) for m in (MARKER_RE.match(l) for l in slines) if m]
-                if smarks and smarks[-1] == 'WRAPPED':
+                if worker_state(sdoc) == 'wrapped':
                     continue
                 skeys = re.findall(r'[A-Z]+-\d+', os.path.basename(sdoc)) + owned_keys(sdoc, slines)
-                slocked = fresh_lock_keys(os.path.dirname(sdoc))
-                if slocked is not None and sage > SIB_ARM_GRACE_S and not slocked & set(skeys + [os.path.basename(sdoc)]):
-                    continue  # past the arming hour with no fresh lock on the ticket: that worker is gone
                 for k in skeys:
                     worker_keys.add(k); owner.setdefault(k, 'live worker %s of the chief on %s' % (worker.get('label', '?'), sib[:-len('.fleet.json')]))
         except (OSError, ValueError, TypeError, AttributeError):

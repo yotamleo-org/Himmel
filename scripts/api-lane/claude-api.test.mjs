@@ -108,6 +108,121 @@ function fixture() {
   return { dir, now, config, snapshot, paths, save, env, good, run, status, called, record };
 }
 
+function managedFixture(f, active = false) {
+  const doc = join(f.dir, 'TEST-1-N1-api.md');
+  const manifest = join(f.dir, 'chief.fleet.json');
+  writeFileSync(doc, '# API fixture\n');
+  const writer = join(HIMMEL_REPO, 'scripts/handover/chief-kit/fleet-manifest.sh');
+  for (const args of [['control', 'init', manifest, '--target', '2'],
+    ['add', manifest, doc, '--lane', 'native', '--pending'],
+    ...(active ? [['control', 'set', manifest, '--mode', 'active', '--expect-gen', '1']] : [])]) {
+    const r = spawnSync('bash', [writer, ...args], { env: f.env, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+  }
+  return { WORKER_SESSION_DOC: doc, FLEET_LAUNCH_MANIFEST: manifest, CADENCE_USAGE_WORKER: 'TEST-1-N1-api' };
+}
+
+function managedEvidence(f, name, extra = {}) {
+  if (!process.env.FLEET_RUNTIME_EVIDENCE) return;
+  mkdirSync(process.env.FLEET_RUNTIME_EVIDENCE, { recursive: true });
+  const receiptPath = join(f.dir, '.himmel/launch-refusals.jsonl');
+  writeFileSync(join(process.env.FLEET_RUNTIME_EVIDENCE, `${name}.json`), JSON.stringify({
+    control: JSON.parse(readFileSync(join(f.dir, 'fleet-control.json'))),
+    manifest: JSON.parse(readFileSync(join(f.dir, 'chief.fleet.json'))),
+    receipts: existsSync(receiptPath) ? readFileSync(receiptPath, 'utf8') : '', ...extra,
+  }, null, 2));
+}
+
+test('managed API pause precedes credit, fallback and cap overrides', () => {
+  const f = fixture();
+  const managed = managedFixture(f);
+  const r = f.run(f.good, { ...managed, FLEET_CAP_OK: '1', FLEET_CONTROL_HELD: 'true', HIMMEL_API_FALLBACK: 'on' });
+  assert.equal(r.status, 10, r.stderr);
+  assert.match(r.stderr, /fleet-paused/);
+  assert.equal(f.called(), false);
+  assert.equal(JSON.parse(readFileSync(managed.FLEET_LAUNCH_MANIFEST)).workers.length, 0);
+  managedEvidence(f, 'api-paused');
+});
+
+test('managed funded API commits exact ownership and releases it on a terminal call', () => {
+  const f = fixture();
+  const managed = managedFixture(f, true);
+  const r = f.run(f.good, managed);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(JSON.parse(r.stdout).result, 'hi');
+  assert.equal(f.called(), true);
+  const control = JSON.parse(readFileSync(join(f.dir, 'fleet-control.json')));
+  assert.deepEqual(control.attempts, {});
+  assert.equal(readdirSync(f.env.HIMMEL_FLEET_SLOTS).filter(n => !n.startsWith('.')).length, 0);
+  const receipts = readFileSync(join(f.dir, '.himmel/launch-refusals.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
+  assert.equal(new Set(receipts.map(r => r.attempt_id)).size, 1);
+  assert.equal(receipts.at(-1).outcome, 'complete');
+  assert.ok(receipts.at(-1).owner.boot);
+  assert.ok(receipts.at(-1).owner.start);
+  managedEvidence(f, 'api-complete');
+});
+
+test('managed API reservation racing pause in another chief refuses before the call', async () => {
+  const f = fixture();
+  const managed = managedFixture(f, true);
+  const successor = join(f.dir, 'successor.fleet.json');
+  writeFileSync(successor, readFileSync(managed.FLEET_LAUNCH_MANIFEST));
+  const hold = join(f.dir, 'hold');
+  const ready = join(f.dir, 'reserved');
+  const hook = join(f.dir, 'admission-hook');
+  writeFileSync(hold, '');
+  writeFileSync(hook, `#!/bin/bash\n[ "$1" = admission-complete ] || exit 0\ntouch '${ready}'\nfor i in {1..400}; do [ -e '${hold}' ] || exit 0; sleep .02; done\nexit 1\n`, { mode: 0o700 });
+  const child = spawn('bash', [LAUNCH, ...f.good], { env: { ...f.env, ...managed, FLEET_LAUNCH_MANIFEST: successor, FLEET_ADMIT_TEST_HOOK: hook }, stdio: 'ignore' });
+  const done = new Promise(r => child.on('close', r));
+  try {
+    const until = Date.now() + 6000;
+    while (!existsSync(ready) && Date.now() < until) await new Promise(r => setTimeout(r, 20));
+    assert.ok(existsSync(ready), 'API preflight reached its real reservation barrier');
+    const pause = spawnSync('bash', [join(HIMMEL_REPO, 'scripts/handover/chief-kit/fleet-manifest.sh'), 'control', 'set', managed.FLEET_LAUNCH_MANIFEST, '--mode', 'paused', '--expect-gen', '2'], { env: f.env, encoding: 'utf8' });
+    assert.equal(pause.status, 0, pause.stderr);
+    rmSync(hold);
+    assert.equal(await done, 10);
+    assert.equal(f.called(), false);
+    assert.equal(readdirSync(f.env.HIMMEL_FLEET_SLOTS).filter(n => !n.startsWith('.')).length, 0);
+    const owners = spawnSync('bash', [join(HIMMEL_REPO, 'scripts/handover/chief-kit/fleet-manifest.sh'), 'runtime', 'owners', '--manifest', managed.FLEET_LAUNCH_MANIFEST], { env: f.env, encoding: 'utf8' });
+    assert.equal(owners.status, 0, owners.stderr);
+    assert.deepEqual(JSON.parse(owners.stdout), []);
+    managedEvidence(f, 'api-reservation-paused', { successor: JSON.parse(readFileSync(successor)) });
+  } finally {
+    rmSync(hold, { force: true });
+    child.kill('SIGTERM');
+    await done;
+  }
+});
+
+test('managed API commitment is visible to pause until its terminal call is reaped', async () => {
+  const f = fixture();
+  const managed = managedFixture(f, true);
+  const hold = join(f.dir, 'call-hold');
+  writeFileSync(hold, '');
+  const child = spawn('bash', [LAUNCH, ...f.good], { env: { ...f.env, ...managed, STUB_HOLD: hold }, stdio: 'ignore' });
+  const done = new Promise(r => child.on('close', r));
+  const writer = join(HIMMEL_REPO, 'scripts/handover/chief-kit/fleet-manifest.sh');
+  try {
+    const until = Date.now() + 6000;
+    while (!f.called() && Date.now() < until) await new Promise(r => setTimeout(r, 20));
+    assert.ok(f.called(), 'stub call started only after commitment');
+    const pause = spawnSync('bash', [writer, 'control', 'set', managed.FLEET_LAUNCH_MANIFEST, '--mode', 'paused', '--expect-gen', '2'], { env: f.env, encoding: 'utf8' });
+    assert.equal(pause.status, 0, pause.stderr);
+    const ack = spawnSync('bash', [writer, 'control', 'ack', managed.FLEET_LAUNCH_MANIFEST], { env: f.env, encoding: 'utf8' });
+    assert.equal(ack.status, 0, ack.stderr);
+    assert.equal(JSON.parse(ack.stdout).quiescent, false);
+    assert.equal(JSON.parse(ack.stdout).in_flight.length, 1);
+    managedEvidence(f, 'api-in-flight-ack', { acknowledgement: JSON.parse(ack.stdout) });
+    rmSync(hold);
+    assert.equal(await done, 0);
+  } finally {
+    rmSync(hold, { force: true });
+    child.kill('SIGTERM');
+    await done;
+  }
+});
+
 test('funded API account proceeds while the native bank is exhausted; child sees an isolated env', () => {
   const f = fixture();
   const r = f.run(f.good, { CLAUDE_CODE_OAUTH_TOKEN: 'oauth-dummy', ANTHROPIC_BASE_URL: 'https://evil.example' });

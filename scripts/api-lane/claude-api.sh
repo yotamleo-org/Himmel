@@ -41,6 +41,17 @@ set -u
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CLAUDE_BIN="${HIMMEL_API_CLAUDE_BIN:-claude}"
 
+# Resolve managed API scope before any fallback or alert can start a call.
+# shellcheck source=scripts/lib/fleet-launch.sh
+. "$REPO/scripts/lib/fleet-launch.sh" || exit 10
+if ! fleet_launch_prepare "${FLEET_LAUNCH_DOC:-${WORKER_SESSION_DOC:-}}" \
+    "${FLEET_LAUNCH_NAME:-${CADENCE_USAGE_WORKER:-api-managed}}" "${FLEET_LAUNCH_MANIFEST:-}"; then
+  if [ "${FLEET_LAUNCH_MANAGED:-false}" = true ]; then
+    fleet_launch_op finish >/dev/null || echo 'claude-api: managed attempt remains protected' >&2
+  fi
+  exit 10
+fi
+
 # --- failure path state: set before any refusal can fire ---
 KEY="" STATE_DIR="" WORKER_SESSION_NAME="" OUT="" FB_OUT="" PROMPT_FILE="" NO_FB="" POLICY_REPO="" FAILING_OVER=0 STOPPED=0
 KIND_SAFE="${HIMMEL_API_KIND:-other}"
@@ -58,6 +69,7 @@ R_PR=""
 # Release the fleet-slot reservation at call end, only when its pid file names this shell.
 # shellcheck disable=SC2329 # invoked from the EXIT trap string below and before a fallback
 release_slot() {
+  [ "${FLEET_LAUNCH_MANAGED:-false}" != true ] || return 0
   [ -n "$WORKER_SESSION_NAME" ] || return 0
   # shellcheck source=scripts/lib/fleet-reservation-key.sh
   . "$REPO/scripts/lib/fleet-reservation-key.sh" 2>/dev/null || return 0
@@ -68,7 +80,19 @@ release_slot() {
   done
   return 0
 }
-trap 'rm -f "$OUT" "$FB_OUT" "$PROMPT_FILE" ${OUT:+"$OUT.timeout"}; release_slot' EXIT
+# shellcheck disable=SC2329  # invoked by EXIT
+api_runtime_exit() {
+  rm -f "$OUT" "$FB_OUT" "$PROMPT_FILE" ${OUT:+"$OUT.timeout"}
+  if [ "${FLEET_LAUNCH_MANAGED:-false}" = true ]; then
+    if [ "${_API_CALL_REAPED:-0}" = 1 ]; then
+      fleet_launch_outcome complete || echo 'claude-api: terminal receipt remains unknown' >&2
+    else fleet_launch_op finish >/dev/null || echo 'claude-api: managed attempt remains protected' >&2
+    fi
+    fleet_launch_release || echo 'claude-api: managed reservation remains protected' >&2
+  else release_slot
+  fi
+}
+trap api_runtime_exit EXIT
 
 # one line for the alert: the key (ours or any the caller holds) and anything key-shaped become [key], no control characters
 redact() {
@@ -197,6 +221,8 @@ run_fallback() {
 # the failure path: decide, alert once, then fall back (never returns when the fallback ran)
 fail_over() {
   local rc="$1" class="$2" reason="$3" decision token="" run=0
+  # A managed attempt never replays an ambiguous call on another lane.
+  [ "${FLEET_LAUNCH_MANAGED:-false}" != true ] || return 0
   [ "$FAILING_OVER" = 0 ] || return 0
   FAILING_OVER=1
   # a decision-525 policy refusal means a caller regressed: one quiet record for the doctor, no alert, no stamp, no
@@ -536,6 +562,7 @@ on_signal() {
 trap on_signal TERM INT HUP
 
 # --- launch: provider vars removed, endpoint pinned, only the key carried in ---
+CADENCE_USAGE_LANE=api fleet_launch_commit || { NO_FB=1; exit 10; }
 # The key is a prefix assignment, so it reaches env (and claude) through the environment, never an argv.
 # one-shot API-credit launch; bank gate, reservation and explicit --permission-mode above
 ANTHROPIC_API_KEY="$KEY" env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_PROFILE -u ANTHROPIC_FEDERATION_RULE_ID \
@@ -555,6 +582,7 @@ CALL_PID=$!
 WATCHDOG_PID=$!
 wait "$CALL_PID"
 RC=$?
+_API_CALL_REAPED=1
 kill "$WATCHDOG_PID" 2>/dev/null
 # a cancel kills the call first and this shell right after: a default TERM here would end it before the settle below
 # ponytail: a tree cancel that lands mid-settle can cut a node step, so the reservation goes unknown or to the sweep, upgrade path: the follow-up that forwards TERM to the subscription fallback and frees the slot before the preflight

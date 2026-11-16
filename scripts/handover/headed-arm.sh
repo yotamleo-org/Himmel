@@ -862,7 +862,29 @@ fi
 # Exit 0 means launched OR already running: the launcher's attempt record (headed-arm-worker.sh) cannot tell them
 # apart from the status, so the decision point writes its typed result to HEADED_ARM_OUTCOME_FILE when given.
 # Best-effort: a write that fails leaves the record indeterminate, never changes this exit.
-_ha_outcome() { [ -z "${HEADED_ARM_OUTCOME_FILE:-}" ] || printf '%s\n' "$1" > "$HEADED_ARM_OUTCOME_FILE" 2>/dev/null; return 0; }
+_ha_outcome() {
+    [ -z "${HEADED_ARM_OUTCOME_FILE:-}" ] || printf '%s\n' "$1" > "$HEADED_ARM_OUTCOME_FILE" 2>/dev/null
+    if [ "${FLEET_LAUNCH_MANAGED:-false}" = true ] && [ "$1" = launched ]; then
+        fleet_launch_outcome launched || echo 'headed-arm: managed receipt remains unknown' >&2
+        _HA_MANAGED_SETTLED=1
+    fi
+    return 0
+}
+# shellcheck source=scripts/lib/fleet-launch.sh
+. "$(dirname "$0")/../lib/fleet-launch.sh" || exit 10
+_HA_MANAGED_SETTLED=0
+# shellcheck disable=SC2329  # invoked by EXIT
+_ha_exit() {
+    if [ "${FLEET_LAUNCH_MANAGED:-false}" = true ] && [ "$_HA_MANAGED_SETTLED" != 1 ]; then
+        if fleet_launch_outcome refused 2>/dev/null; then
+            fleet_launch_release || echo 'headed-arm: owned reservation remains protected' >&2
+        else fleet_launch_finish || echo 'headed-arm: managed attempt remains protected' >&2
+        fi
+    fi
+    [ -z "${TICKET_LOCK:-}" ] || rm -rf "$TICKET_LOCK" 2>/dev/null
+}
+trap _ha_exit EXIT
+fleet_launch_prepare "$DOC" "$NAME" "${FLEET_LAUNCH_MANIFEST:-}" "${FLEET_LAUNCH_ATTEMPT:-}" || exit 10
 
 echo "$(date +%F_%T) armed: name=$NAME doc=$DOC signal=$SIGNAL deadline=$DEADLINE role=${ROLE:-unsplit}" >> "$LOG"
 # The header calls $DEADLINE a hard deadline, but a flat `sleep
@@ -1220,6 +1242,7 @@ headless_launch() {
     chmod 600 "$settings" 2>/dev/null || true
 
     local lrc=0
+    fleet_launch_commit || headless_fail 10 'fleet-paused: final commitment refused'
     # shellcheck disable=SC2086  # deliberately word-split env tokens, the same shape as the konsole branches.
     env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_JOB_DIR $ROLE_ENV_UNSET \
         CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_INITIATIVE="$INIT" ARMAUTOMERGE=1 ${CHIEF_ENV[@]+"${CHIEF_ENV[@]}"} $LAUNCHER_ENV ${LAUNCHER_ENV_LINES[@]+"${LAUNCHER_ENV_LINES[@]}"} \
@@ -1594,7 +1617,7 @@ if [ "$ALLOW_TICKET_DUP" != 1 ] && [ "$HEADLESS" != 1 ] && [[ "$NAME" =~ ^([A-Z]
     while :; do
         if claim_lock "$ticket_claim"; then
             TICKET_LOCK="$ticket_claim"
-            trap '[ -z "$TICKET_LOCK" ] || rm -rf "$TICKET_LOCK" 2>/dev/null' EXIT
+            trap _ha_exit EXIT
             printf '%s\n' "$NAME" > "$TICKET_LOCK/holder" 2>/dev/null  # swallow-ok: the holder name only decorates a refusal; an unreadable one is retried as same-lineage
             break
         fi
@@ -1941,6 +1964,7 @@ tab_launch() {
     TAB_SESSION="$sid"
 }
 
+fleet_launch_commit || { echo 'headed-arm: fleet-paused: final commitment refused' >&2; exit 10; }
 if ! tab_launch; then
     "$KONSOLE" --separate --workdir "$REPO" -p "tabtitle=$NAME" -e "${TERM_ARGV[@]}" >> "$LOG" 2>&1 &
     KPID=$!
