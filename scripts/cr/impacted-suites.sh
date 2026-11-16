@@ -29,6 +29,9 @@
 #       module imports (any depth) is listed too. A file that sets the
 #       fence-lifting HIMMEL_UNINSTALL_REAL_HOME variable also lists the
 #       path-scanning callers suite that never names it.
+#       A suite listed in scripts/ci/tree-invariant-suites.txt (the rows at
+#       <head> plus those beside this script) is listed too when any changed
+#       path matches its row's regex.
 #   impacted-suites.sh --paths-file <path> <base>..<head> [--shell]
 #       Query each newline-delimited path against the same head snapshot. Print
 #       TSV path/suite rows, or path plus an empty field when none are selected.
@@ -866,6 +869,18 @@ EOF
 }
 scan_roots > "$work/scan-roots" || io_fail "writing the scan-roots map"
 
+# The tree-invariant manifest: one `suite<TAB>regex` row per whole-tree suite.
+# Rows are the union of the head snapshot's manifest and the manifest in the
+# checkout this script runs from, so a PR cannot narrow its own selection by
+# deleting a row, and a replay of an old range still reads the current rows. A
+# manifest missing or unreadable in both leaves the list empty — nothing extra is
+# selected and nothing is printed.
+: > "$work/tree-invariants" || io_fail "creating the tree-invariant list"
+{
+    git show "${head_sha}:scripts/ci/tree-invariant-suites.txt" 2>/dev/null
+    cat -- "$is_dir/../ci/tree-invariant-suites.txt" 2>/dev/null
+} | grep -E -v '^[[:space:]]*(#|$)' > "$work/tree-invariants" || true
+
 cg_rc=0
 git show "${head_sha}:scripts/cr/pr-check-context.sh" > "$work/ctx" 2>/dev/null || cg_rc=$?
 : > "$work/guarded"
@@ -1432,6 +1447,21 @@ while IFS= read -r f; do
                    fi ;;
         esac
     done < "$work/scan-roots"
+done < "$work/changed"
+
+# tree-invariant manifest — scripts/ci/tree-invariant-suites.txt names a suite
+# and the anchored regex of changed paths that select it. A row with no TAB, or a
+# regex grep rejects (rc 2), selects nothing.
+while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    while IFS="$(printf '\t')" read -r ti_suite ti_re; do
+        [ -n "$ti_suite" ] && [ -n "$ti_re" ] || continue
+        ti_rc=0
+        printf '%s\n' "$f" | grep -Eq -- "$ti_re" 2>/dev/null || ti_rc=$?
+        if [ "$ti_rc" -eq 0 ] && grep -Fxq -- "$ti_suite" "$suites"; then
+            printf '%s\n' "$ti_suite" >> "$found" || io_fail "recording a tree-invariant suite"
+        fi
+    done < "$work/tree-invariants"
 done < "$work/changed"
 
 # The CR guarded closure: scripts/cr/test-cr-guarded-closure.sh
