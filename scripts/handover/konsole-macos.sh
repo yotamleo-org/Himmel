@@ -45,6 +45,10 @@
 # without paying it. ARM_TERMINAL_APP / ARM_APP_DIRS are the shared
 # macos-app-resolve.sh's own seams, reused here deliberately (see below).
 #
+# HEADED_ARM_TMUX_SESSION=<session> (opt-in; unset or empty = off): run the
+# body in a new window of that tmux session instead of iTerm, for a Mac
+# driven over SSH. The session must exist (exit 3, never an iTerm fallback).
+#
 # Exit codes: 0 the launched command exited 0; its own rc when it exited
 # nonzero; 2 usage / bad argv; 3 nothing launched (`open` itself failed, or
 # the scratch dir for the launch body could not be created); 5 a malformed
@@ -259,7 +263,22 @@ fi
 unset CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDECODE CLAUDE_CODE_SESSION_ID \
     CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN CLAUDE_JOB_DIR
 _launched=0
-if [ "$TERM_APP" = "iTerm" ] && [ -n "${ITERM_SESSION_ID:-}" ]; then
+if [ -n "${HEADED_ARM_TMUX_SESSION:-}" ]; then
+    # Opt-in: a Mac run over SSH has no iTerm to reach, so the body runs in a
+    # new window of this tmux session. `=` is tmux's exact session match (a bare
+    # name would prefix-match another session); the trailing `:` makes the
+    # target a session, not a window. A missing session fails loudly - falling
+    # back to iTerm here would open the leg where nobody is looking.
+    if ! tmux has-session -t "=$HEADED_ARM_TMUX_SESSION" 2>/dev/null; then
+        echo "konsole-macos: tmux session '$HEADED_ARM_TMUX_SESSION' does not exist (HEADED_ARM_TMUX_SESSION) - no session was launched" >&2
+        exit 3
+    fi
+    if ! tmux new-window -t "=$HEADED_ARM_TMUX_SESSION:" -n "${TABTITLE:-leg}" "/bin/sh $(printf '%q' "$CMDFILE")"; then
+        echo "konsole-macos: tmux new-window in session '$HEADED_ARM_TMUX_SESSION' failed - no session was launched" >&2
+        exit 3
+    fi
+    _launched=1
+elif [ "$TERM_APP" = "iTerm" ] && [ -n "${ITERM_SESSION_ID:-}" ]; then
     if osascript - "${ITERM_SESSION_ID#*:}" "$CMDFILE" >/dev/null <<'APPLESCRIPT'
 on run argv
 	set sid to item 1 of argv
