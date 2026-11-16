@@ -344,7 +344,7 @@ CLAUDE_CODE_CHILD_SESSION=1 CLAUDE_PID=4242 CLAUDECODE=1 CLAUDE_CODE_SESSION_ID=
 check "10b osascript was called" "$(grep -c seen "$tmp/env17.log" 2>/dev/null)" "1"
 not_contains "10b osascript gets no claude session marker" "$(cat "$tmp/env17.log" 2>/dev/null)" "CLAUDE"
 
-mk_tmux_stub() { # mk_tmux_stub <bindir> <argv-log>
+mk_tmux_stub() {
     mkdir -p "$1"
     cat > "$1/tmux" <<STUB
 #!/usr/bin/env bash
