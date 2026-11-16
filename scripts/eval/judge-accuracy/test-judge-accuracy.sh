@@ -450,5 +450,52 @@ class Strict(datetime):
 j.datetime = Strict
 print(j.when("2026-10-16T11:00:00.000+0200").isoformat())' "$HERE" 2>&1)" "2026-10-16T11:00:00+02:00"
 
+RH="$TMP/rhome"
+mkdir -p "$RH/.himmel/state/jira-mirror/ZZTEST" "$RH/cache"
+printf 'JIRA_PROJECT_KEY=ZZTEST\n' >"$RH/.himmel/himmel.conf"
+: >"$RH/cache/.env"
+cp "$TMP/mirror/HIMMEL-9005.md" "$RH/.himmel/state/jira-mirror/ZZTEST/HIMMEL-9005.md" || { echo "test-judge-accuracy: the ZZTEST fixture copy failed" >&2; exit 1; }
+jar() { env -i HOME="$RH" PATH="$PATH" HIMMELCTL_CACHE_DIR="$RH/cache" "$@" python3 -I "$JA" run --verdicts "$TMP/v" --prs "$TMP/prs.json" \
+  --queue "$TMP/q-resolver.jsonl" --no-ledger; }
+rc=0; err="$(jar 2>&1 >/dev/null)" || rc=$?
+eq "default mirror: a himmel.conf-only key reads that project's mirror" "$rc" "0"
+case "$err" in *"no Jira mirror"*) fail "default mirror: the run still looked for a mirror that is not there: $err";; *) pass "default mirror: no missing-mirror refusal";; esac
+rc=0; err="$(jar HIMMEL_JIRA_MIRROR="$TMP/mirror" 2>&1 >/dev/null)" || rc=$?
+eq "default mirror: HIMMEL_JIRA_MIRROR names the mirror" "$rc" "0"
+rc=0; err="$(jar HIMMEL_JIRA_MIRROR="$TMP/override-missing" 2>&1 >/dev/null)" || rc=$?
+eq "default mirror: a missing HIMMEL_JIRA_MIRROR is the mirror used, not the project's" "$rc" "2"
+has "default mirror: the refusal names the override path" "$err" "no Jira mirror: $TMP/override-missing"
+rc=0; err="$(env -i HOME="$RH" PATH="$PATH" HIMMELCTL_CACHE_DIR="$RH/cache" python3 -I "$JA" run --verdicts "$TMP/v" --prs "$TMP/prs.json" \
+  --mirror "$TMP/nope" --queue "$TMP/q-resolver.jsonl" --no-ledger 2>&1 >/dev/null)" || rc=$?
+eq "default mirror: an explicit --mirror still wins over the resolver" "$rc" "2"
+has "default mirror: the explicit --mirror is the one reported missing" "$err" "$TMP/nope"
+eq "default mirror: MIRROR stays a module-level string, the resolved path" "$(env -i HOME="$RH" PATH="$PATH" HIMMELCTL_CACHE_DIR="$RH/cache" \
+  python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import judge_accuracy as j; print(type(j.MIRROR).__name__, j.MIRROR)' "$HERE")" \
+  "str $RH/.himmel/state/jira-mirror/ZZTEST"
+mkdir -p "$RH/.himmel/state/jira-mirror/HIMMEL" "$TMP/failbin"
+cp "$TMP/mirror/HIMMEL-9005.md" "$RH/.himmel/state/jira-mirror/HIMMEL/HIMMEL-9005.md" || { echo "test-judge-accuracy: the HIMMEL fixture copy failed" >&2; exit 1; }
+rc=0; err="$(jar JIRA_PROJECT_KEY=zztest 2>&1 >/dev/null)" || rc=$?
+has "default mirror: a resolver warning is forwarded when resolution succeeds" "$err" "not a valid project key"
+printf '#!/bin/sh\nexit 1\n' >"$TMP/failbin/bash"; chmod +x "$TMP/failbin/bash"
+rc=0; err="$(jar PATH="$TMP/failbin:$PATH" 2>&1 >/dev/null)" || rc=$?
+eq "failed resolver: no --mirror is refused, never read from the HIMMEL mirror" "$rc" "2"
+has "failed resolver: the refusal names the resolver" "$err" "no Jira mirror: project resolver failed"
+has "failed resolver: one stderr line names the cause" "$err" "project resolver failed (exit 1)"
+rc=0; err="$(env -i HOME="$RH" PATH="$TMP/failbin:$PATH" HIMMELCTL_CACHE_DIR="$RH/cache" python3 -I "$JA" run --verdicts "$TMP/v" --prs "$TMP/prs.json" \
+  --mirror "$TMP/mirror" --queue "$TMP/q-resolver.jsonl" --no-ledger 2>&1 >/dev/null)" || rc=$?
+eq "failed resolver: an explicit --mirror still runs" "$rc" "0"
+printf '[]\n' >"$TMP/empty-prs.json"; : >"$TMP/empty-cr.jsonl"
+rc=0; err="$(env -i HOME="$RH" PATH="$TMP/failbin:$PATH" HIMMELCTL_CACHE_DIR="$RH/cache" python3 -I "$HERE/../review-panel/harvest.py" --prs "$TMP/empty-prs.json" 2>&1 >/dev/null)" || rc=$?
+eq "failed resolver: harvest treats a None mirror as no mirror and degrades" "$rc" "0"
+has "failed resolver: harvest says what it left out" "$err" "caused-by and deferred-escape left out"
+rc=0; err="$(env -i HOME="$RH" PATH="$TMP/failbin:$PATH" HIMMELCTL_CACHE_DIR="$RH/cache" python3 -I "$HERE/../escapes.py" --prs "$TMP/empty-prs.json" --cr-ledger "$TMP/empty-cr.jsonl" \
+  --bug-origin-dir "$TMP/ledb" --class test-gap 2>&1 >/dev/null)" || rc=$?
+eq "failed resolver: escapes with a class filter takes its bugs from the ledger, no TypeError" "$rc" "0"
+rc=0; err="$(env -i HOME="$RH" PATH="$TMP/failbin:$PATH" HIMMELCTL_CACHE_DIR="$RH/cache" python3 -I "$HERE/../escapes.py" --prs "$TMP/empty-prs.json" --cr-ledger "$TMP/empty-cr.jsonl" 2>&1 >/dev/null)" || rc=$?
+eq "failed resolver: escapes with no class filter and no --mirror is refused" "$rc" "2"
+has "failed resolver: escapes names the resolver" "$err" "no Jira mirror: project resolver failed"
+eq "failed resolver: MIRROR is a module-level None, never a raise at import" "$(env -i HOME="$RH" PATH="$TMP/failbin:$PATH" HIMMELCTL_CACHE_DIR="$RH/cache" \
+  python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import judge_accuracy as j; print(j.MIRROR)' "$HERE" 2>/dev/null)" "None"
+
 echo "judge-accuracy: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

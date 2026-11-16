@@ -1139,7 +1139,14 @@ OUT=$(printf '%s\n%s\n' "$L1" "$L2" | env HOLDS_MIRROR="$W/mirror9186" python3 -
 same "9186 summary: one live worker with no rows, one stale row, one pending trust-path ask" "$OUT" "1/1/1"
 run env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" asks --repo "$R10"
 KIT_P="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)"; KIT_P="${KIT_P%/.git}"  # the checkout holds.py runs from, not the repo --repo names (R10 has no kit)
-same "9186 asks names the key, the path and the full paste-ready grant command, located from the running kit" "$OUT" "$(printf 'PROJ-9626\tscripts/check-ci.sh\tPROJ-9625\tpython3 -I %s/scripts/handover/chief-kit/holds.py grant --key PROJ-9626 --repo %s scripts/check-ci.sh' "$KIT_P" "$R10")"
+same "9186 asks names the key, the path, the full paste-ready grant command located from the running kit, and the kind (R3.3)" "$OUT" "$(printf 'PROJ-9626\tscripts/check-ci.sh\tPROJ-9625\tpython3 -I %s/scripts/handover/chief-kit/holds.py grant --key PROJ-9626 --repo %s scripts/check-ci.sh\thold-ask-chief' "$KIT_P" "$R10")"
+R11="$W/repo-r33-operator"; mkdir -p "$R11/scripts/lib"; git -C "$R11" init -q -b main
+: > "$R11/scripts/lib/rename-aliases.tsv"
+put_row .github/workflows/ci.yml PROJ-9625 holder "$(mkdoc PROJ-9625-case.md)" brief "" "$R11"
+run hp claim --key PROJ-9626 --label asker --doc "$(mkdoc PROJ-9626-case.md)" --repo "$R11" .github/workflows/ci.yml
+run env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" asks --repo "$R11"
+same "R3.3 an ask on a CI workflow prints hold-ask-operator as field 5" "$(printf '%s' "$OUT" | cut -f5)" hold-ask-operator
+same "R3.3 ... in a five-field line" "$(printf '%s' "$OUT" | awk -F'\t' '{print NF}')" 5
 OUT=$(printf '%s\n' "$L1" | env HOLDS_MIRROR="$W/mirror9186" python3 -I "$SUT" summary --repo "$R10" --live-docs - --open-prs none 2>/dev/null)
 same "9186 summary: with no open PR the pr row is stale too (2), no other count moves" "$OUT" "1/2/1"
 : > "$(rowf scripts/check-ci.sh "$R10").grant.PROJ-9626"
@@ -1175,6 +1182,8 @@ same "8725 route chief: the claim is refused" "$RC" 1
 contains "9186 the refusal tells the worker the chief sees the deny on its tick and grants it" "$ERR" "hreg="
 contains "8725 route chief: the refusal names the chief's stamp" "$ERR" "can stamp a grant with --chief-doc"
 contains "8725 route chief: the refusal names waiting and the bypass launch" "$ERR" "Otherwise wait for its release, or the operator launches with WRITE_HOLD_OK=1"
+contains "R4.5 the trust-path refusal says the operator is paged if the ask is still pending after 30 minutes" "$ERR" "the operator is paged if the ask is still pending after 30 minutes"
+case "$ERR" in *"the operator is paged with the grant command"*) fail "R4.5 ... and no longer says the operator is paged now" ;; *) pass "R4.5 ... and no longer says the operator is paged now" ;; esac
 case "$ERR" in *HOLD-ASK*) fail "8725 route chief: the refusal sends no HOLD-ASK" ;; *) pass "8725 route chief: the refusal sends no HOLD-ASK" ;; esac
 same "8725 a CI workflow routes operator" "$(hp grant-route --repo "$R9" .github/workflows/x.yml)" operator
 refused_text .github/workflows/x.yml PROJ-9625
