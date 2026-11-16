@@ -136,6 +136,32 @@ printf -- '---\nkey: "HIMMEL-1"\nstatus: "To Do"\n---\n' > "$M/HIMMEL-1.md"
 run_vc
 check "mirror file without fixVersions: exit 2" "$RC" "2"
 
+new_case longfront
+labels_json="[$(seq -s, 1 400 | sed 's/\([0-9][0-9]*\)/"label-number-\1"/g')]"
+mirror_issue HIMMEL-1 "To Do" "$labels_json" '["v1.1.4"]'
+live_row v1.1.4 HIMMEL-1 "To Do" ""
+run_vc
+check "fixVersions past 3000 chars of frontmatter: exit 0" "$RC" "0"
+contains "fixVersions past 3000 chars of frontmatter: counted" "$OUT" "v1.1.4 open live=1 mirror=1"
+
+new_case badjson
+mirror_issue HIMMEL-1 "To Do" '[]' '["v1.1.4"'
+run_vc
+check "malformed fixVersions value: exit 2" "$RC" "2"
+
+new_case badlabels
+mirror_issue HIMMEL-1 "To Do" '"residual"' '["v1.1.4"]'
+live_row v1.1.4 HIMMEL-1 "To Do" ""
+run_vc
+check "labels that are not a list: exit 2" "$RC" "2"
+
+new_case limit
+mirror_issue HIMMEL-1 "To Do" '[]' '["v1.1.4"]'
+for n in $(seq 1 5000); do live_row v1.1.4 "HIMMEL-$n" "To Do" ""; done
+run_vc
+check "live list at the row limit: exit 2" "$RC" "2"
+if grep -q 'VERDICT' <<< "$OUT"; then bad "live list at the row limit: no verdict" "$OUT"; else ok "live list at the row limit: no verdict"; fi
+
 new_case nomirror
 rm -rf "$M"
 run_vc

@@ -62,7 +62,17 @@ open_n, res_n = {}, {}
 for name in os.listdir(d):
     if not name.endswith(".md"):
         continue
-    head = open(os.path.join(d, name), encoding="utf-8").read(3000).split("\n---")[0]
+    front = []
+    with open(os.path.join(d, name), encoding="utf-8") as fh:
+        if fh.readline().rstrip("\n") != "---":
+            sys.exit(1)
+        for line in fh:
+            if line.rstrip("\n") == "---":
+                break
+            front.append(line)
+        else:
+            sys.exit(1)
+    head = "".join(front)
     def val(k):
         m = re.search("^" + k + ": (.*)$", head, re.M)
         if not m:
@@ -70,13 +80,16 @@ for name in os.listdir(d):
         try:
             return json.loads(m.group(1))
         except ValueError:
-            return m.group(1)
-    if val("status") is None or val("fixVersions") is None:
+            sys.exit(1)
+    status, fixv, labels = val("status"), val("fixVersions"), val("labels")
+    if not isinstance(status, str) or not isinstance(fixv, list) or not isinstance(labels, list):
         sys.exit(1)
-    if gone.match(str(val("status"))):
+    if not all(isinstance(x, str) for x in fixv + labels):
+        sys.exit(1)
+    if gone.match(status):
         continue
-    isres = any(res.search(str(x)) for x in val("labels") or [])
-    for v in val("fixVersions") or []:
+    isres = any(res.search(x) for x in labels)
+    for v in fixv:
         open_n[v] = open_n.get(v, 0) + 1
         res_n[v] = res_n.get(v, 0) + (1 if isres else 0)
 for v in open_n:
@@ -88,6 +101,8 @@ for v in "${versions[@]}"; do
     case "$v" in *\"*|*$'\n'*|*$'\t'*) fail2 "bad version name: $v" ;; esac
     jql="project = $project AND fixVersion = \"$v\" AND status NOT IN (Done, Resolved, Closed, \"Wont Do\", \"Won't Do\") ORDER BY key ASC"
     live_out="$(JIRA_PROJECT_KEY="$project" "${jira_cmd[@]}" list --labels --limit 5000 --jql "$jql")" || fail2 "jira list failed for $v"
+    live_rows="$(printf '%s\n' "$live_out" | grep -c .)"
+    [ "$live_rows" -lt 5000 ] || fail2 "live list for $v reached the 5000 row limit, so its count may be truncated"
     live="$(printf '%s\n' "$live_out" | python3 -I -c '
 import re, sys
 gone = re.compile(r"^(done|resolved|closed|wont do|won\x27t do)$", re.I)
