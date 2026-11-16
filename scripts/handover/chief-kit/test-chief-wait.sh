@@ -554,20 +554,20 @@ den_case() {
     HIMMEL_DENIAL_ACK_DIR="$dir/acks" CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh" HIMMEL_TEST_FIXTURE="${DEN_FIXTURE:-1}" CHIEF_WAIT_NOW=$((P + noff)) stuck_run "$c" --doc "$dir/chief.md" --workers-from "$dir/chief.fleet.json"
     unset I_SEED
 }
-den_case d1 N1 none none 1860
+den_case dn1 N1 none none 1860
 check "(R4.2) a manifest denial unacked at minute 31 with no doc write pages denial-stuck once" "denial-stuck" "$(pk_kinds)"
 check "(R4.4) the denial-stuck text names the worker, the ticket, the class and the ack command" "denial-stuck|Worker N1 on PROJ-9503 has been parked 30 min by a classifier denial (PAUSE-RISK). Blocks: PROJ-9503. Do: run ack-denial.sh N1" "$(cat "$STUB/pagek" 2>/dev/null)"
-den_case d2 N1 600 none 1860
+den_case dn2 N1 600 none 1860
 check "(R4.2) the same denial with a doc write at minute 10 pages nothing" "0" "$(pk_n)"
-den_case d3 himmel#81843b5d none none 1860
+den_case dn3 himmel#81843b5d none none 1860
 check "(R4.2) the 04:41 label himmel#81843b5d (no manifest row) unacked at minute 31 pages exactly one denial-stuck" "denial-stuck" "$(pk_kinds)"
-den_case d4 himmel#81843b5d none 600 1860
+den_case dn4 himmel#81843b5d none 600 1860
 check "(R4.2) the same label acked at minute 10 pages nothing" "0" "$(pk_n)"
-den_case d5 N1 none none 600
+den_case dn5 N1 none none 600
 check "(R4.2) a denial 10 minutes old pages nothing" "0" "$(pk_n)"
-DEN_FIXTURE=0 den_case d6 N1 none none 0 -1860
+DEN_FIXTURE=0 den_case dn6 N1 none none 0 -1860
 check "(R4.6) a denial: CHIEF_WAIT_NOW without HIMMEL_TEST_FIXTURE=1 is ignored, the 31-minute denial pages denial-stuck" "denial-stuck" "$(pk_kinds)"
-den_case d6c N1 none none 0 -1860
+den_case dn6c N1 none none 0 -1860
 check "(R4.6) control: with HIMMEL_TEST_FIXTURE=1 the same value is honoured and nothing pages" "0" "$(pk_n)"
 
 # vmismatch= wakes only as a positive count; 0 and ? stay out of the key.
