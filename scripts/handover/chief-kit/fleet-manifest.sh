@@ -11,6 +11,34 @@
 #   fleet-manifest.sh watch  <manifest> set    <pr> [--repo <owner/name>] [same seen-values]   (an existing row only)
 #   fleet-manifest.sh watch  <manifest> remove <pr> [--repo <owner/name>]
 #   fleet-manifest.sh watch  <manifest> list                 pr<TAB>head<TAB>comments<TAB>reviews<TAB>repo<TAB>state, `-` for unset
+#   fleet-manifest.sh control init <manifest> --target N
+#   fleet-manifest.sh control show <manifest>
+#   fleet-manifest.sh control set <manifest> --mode paused|shadow|active [--target N] --expect-gen G
+#   fleet-manifest.sh attempt bind <manifest> <doc> --attempt-id A
+#   fleet-manifest.sh attempt settle <manifest> <doc> --attempt-id A --phase launched|refused|unknown
+#
+# Control init creates one paused generation-1 anchor in the manifest's physical
+# bucket and stores only .control={family,anchor}. A copied successor reference
+# keeps that anchor. Init never repairs/resets a broken bound anchor; conflicting
+# target/family/path refuses. Set uses the anchor lock and compare-generation;
+# active targets must fit the existing load_policy hard cap (no env override).
+# Locks are bounded and ordered manifest fd9 -> anchor fd8. No subprocess calls
+# this writer under those locks. Init writes anchor then reference: interruption
+# can leave a paused orphan anchor, which an unbound init can safely adopt.
+#
+# Worker .attempt={attempt_id,phase,control_generation,receipt:{v:2,
+# kind:"launch-attempt",attempt_id}} references existing typed launch receipts.
+# Bind requires exactly one registered doc with its matching worker label; no
+# legacy/unrecognized attempt is adopted. Pending -> unknown|launched|refused;
+# unknown -> launched|refused; launched is terminal. Same phase/id is idempotent.
+# Definite refused removes only the matched row, retaining .last_refused_attempt
+# ={doc,receipt} as one bounded pointer, not history. Replay after replacement
+# refuses. Existing launch-refusals.jsonl remains the history/evidence owner.
+# Future receipt reconciliation must verify exact identity before settling;
+# pause acknowledgement must account for pending/unknown and real host/boot/start
+# identity. These fields neither prove liveness nor acknowledge a pause. Settle
+# remains safe bookkeeping if the anchor is missing; bind needs valid control,
+# but may register intent while paused. No admission/spawn is implemented here.
 #
 # Location: next to the chief doc, named after it —
 # <chief doc stem>.fleet.json.
@@ -70,6 +98,11 @@ usage: fleet-manifest.sh add    <manifest> <worker doc>... --lane <lane> [--lock
        fleet-manifest.sh watch  <manifest> add|set <pr> [--repo <owner/name>] [--head <sha>] [--comments <n>] [--reviews <n>] [--state open|closed|merged]
        fleet-manifest.sh watch  <manifest> remove <pr> [--repo <owner/name>]
        fleet-manifest.sh watch  <manifest> list
+       fleet-manifest.sh control init <manifest> --target N
+       fleet-manifest.sh control show <manifest>
+       fleet-manifest.sh control set <manifest> --mode paused|shadow|active [--target N] --expect-gen G
+       fleet-manifest.sh attempt bind <manifest> <doc> --attempt-id A
+       fleet-manifest.sh attempt settle <manifest> <doc> --attempt-id A --phase launched|refused|unknown
 USAGE
 }
 
@@ -80,6 +113,147 @@ USAGE
 # otherwise pass per value and list/add would act on a multi-object file.
 VALID="$JQ_W"'length == 1 and (.[0] | type == "object" and .schema == 1 and (W | type == "array")
     and all(W[]; type == "object" and (.doc | type == "string" and test("^/[^[:space:]*?\\[]+$"))))'
+
+fleet_metadata() (
+    [ "$#" -ge 3 ] || { usage >&2; exit 2; }
+    local kind="$1" sub="$2" manifest="$3" doc="" target="" mode="" gen="" aid="" phase=""
+    local anchor cur control now family value label result cap root
+    shift 3
+    # shellcheck source=../../lib/fleet-control.sh
+    . "$HERE/../../lib/fleet-control.sh" || exit 1
+    if [ "$kind:$sub" = control:show ]; then
+        [ "$#" -eq 0 ] || { usage >&2; exit 2; }
+        fleet_control_show "$manifest"
+        exit $?
+    fi
+    manifest=$(fleet_control_path "$manifest") || exit 2
+    case "$kind:$sub" in
+        control:init|control:set) ;;
+        attempt:bind|attempt:settle)
+            [ "$#" -ge 1 ] || { usage >&2; exit 2; }
+            doc="$1"; shift
+            case "$doc" in /*) ;; *) exit 2 ;; esac
+            case "$doc" in *[[:space:]]*|*'*'*|*'?'*|*'['*) exit 2 ;; esac ;;
+        *) usage >&2; exit 2 ;;
+    esac
+    while [ "$#" -gt 0 ]; do
+        [ "$#" -ge 2 ] || { usage >&2; exit 2; }
+        case "$kind:$sub:$1" in
+            control:init:--target|control:set:--target) [ -z "$target" ] || exit 2; target="$2" ;;
+            control:set:--mode) [ -z "$mode" ] || exit 2; mode="$2" ;;
+            control:set:--expect-gen) [ -z "$gen" ] || exit 2; gen="$2" ;;
+            attempt:bind:--attempt-id|attempt:settle:--attempt-id) [ -z "$aid" ] || exit 2; aid="$2" ;;
+            attempt:settle:--phase) [ -z "$phase" ] || exit 2; phase="$2" ;;
+            *) usage >&2; exit 2 ;;
+        esac
+        [ -n "$2" ] || exit 2
+        shift 2
+    done
+    if [ "$kind:$sub" = control:init ] || [ -n "$target" ]; then
+        case "$target" in ''|0*|*[!0-9]*) echo 'fleet-manifest: target must be a positive integer' >&2; exit 2 ;; esac
+        [ "${#target}" -le 10 ] && [ "$target" -le 2147483647 ] || exit 2
+    fi
+    if [ "$kind:$sub" = control:set ]; then
+        case "$mode" in paused|shadow|active) ;; *) usage >&2; exit 2 ;; esac
+        case "$gen" in ''|0*|*[!0-9]*) echo 'fleet-manifest: expected generation required' >&2; exit 2 ;; esac
+        [ "${#gen}" -le 16 ] && [ "$gen" -lt 9007199254740990 ] || exit 2
+    fi
+    if [ "$kind" = attempt ]; then
+        [[ $aid =~ ^[0-9A-Za-z-]{1,80}$ ]] || { echo 'fleet-manifest: invalid attempt id' >&2; exit 2; }
+        if [ "$sub" = settle ]; then case "$phase" in launched|refused|unknown) ;; *) usage >&2; exit 2 ;; esac; fi
+    fi
+    [ ! -L "$manifest" ] && [ ! -L "$manifest.lock" ] || exit 1
+    # prim-ok: bounded lock on fd9, matching the public legacy writer.
+    exec 9>>"$manifest.lock" && flock -x -w 30 9 || exit 1
+    if [ -e "$manifest" ]; then
+        fleet_control_manifest_valid "$manifest" || { echo 'fleet-manifest: invalid manifest' >&2; exit 1; }
+        cur=$(jq 'if has("legs") then .workers = (.workers // .legs) | del(.legs) else . end' "$manifest") || exit 1
+    elif [ "$kind:$sub" = control:init ]; then cur='{"schema":1,"workers":[]}'
+    else echo 'fleet-manifest: missing manifest' >&2; exit 1
+    fi
+    now=$(date -u +%Y-%m-%dT%H:%M:%SZ) || exit 1
+    anchor="${manifest%/*}/fleet-control.json"
+    if [ "$kind" = control ] || [ "$sub" = bind ]; then
+        [ ! -L "$anchor" ] && [ ! -L "$anchor.lock" ] || exit 1
+        # prim-ok: distinct anchor lock, always after manifest; no reacquisition.
+        exec 8>>"$anchor.lock" && flock -x -w 30 8 || exit 1
+        if [ "$kind:$sub" = control:init ] && ! printf '%s\n' "$cur" | jq -e 'has("control")' >/dev/null; then
+            if [ -e "$anchor" ]; then
+                fleet_control_anchor_valid "$anchor" || { echo 'fleet-manifest: invalid anchor' >&2; exit 1; }
+                control=$(cat -- "$anchor") || exit 1
+                [ "$(printf '%s\n' "$control" | jq -r .target)" = "$target" ] || { echo 'fleet-manifest: conflicting target' >&2; exit 1; }
+                family=$(printf '%s\n' "$control" | jq -r .family) || exit 1
+            else
+                family=$(cat /proc/sys/kernel/random/uuid) || exit 1
+                control=$(jq -nc --arg f "$family" --arg t "$now" --argjson n "$target" \
+                    '{schema:1,family:$f,mode:"paused",generation:1,target:$n,updated:$t,reason:"initialized"}') || exit 1
+                printf '%s\n' "$control" | atomic_write "$anchor" || { echo 'fleet-manifest: cannot write anchor' >&2; exit 1; }
+            fi
+            cur=$(printf '%s\n' "$cur" | jq --arg f "$family" --arg a "$anchor" '.control = {family:$f,anchor:$a}') || exit 1
+        else
+            value=$(fleet_control_show "$manifest") || exit 1
+            [ "$(printf '%s\n' "$value" | jq -r .state)" = ok ] || { echo 'fleet-manifest: control not bound to valid anchor' >&2; exit 1; }
+            control=$(cat -- "$anchor") || exit 1
+            if [ "$kind:$sub" = control:init ]; then
+                [ "$(printf '%s\n' "$control" | jq -r .target)" = "$target" ] || { echo 'fleet-manifest: conflicting target' >&2; exit 1; }
+                exit 0
+            fi
+        fi
+    fi
+    if [ "$kind:$sub" = control:set ]; then
+        [ "$(printf '%s\n' "$control" | jq -r .generation)" = "$gen" ] || { echo 'fleet-manifest: stale control generation' >&2; exit 1; }
+        [ -n "$target" ] || target=$(printf '%s\n' "$control" | jq -r .target) || exit 1
+        if [ "$mode" = active ]; then
+            # Same trusted cap reader and conservative fallback as usage-preflight.
+            # shellcheck source=../../lib/load-dotenv.sh
+            . "$HERE/../../lib/load-dotenv.sh" || exit 1
+            root=$(cd "$HERE/../../.." && pwd) || exit 1
+            root=$(_load_dotenv_primary_for "$root") || exit 1
+            if load_policy --root "$root" HIMMEL_FLEET_CAP; then cap="${HIMMEL_FLEET_CAP:-4}"; else cap=4; fi
+            case "$cap" in ''|*[!0-9]*) cap=4 ;; esac
+            jq -ne --argjson n "$target" --arg c "$cap" '$n <= ($c | tonumber)' >/dev/null || { echo 'fleet-manifest: target exceeds approved hard cap' >&2; exit 1; }
+        fi
+        result=$(printf '%s\n' "$control" | jq --arg m "$mode" --argjson n "$target" --arg t "$now" \
+            '.mode=$m | .target=$n | .generation += 1 | .updated=$t | .reason="explicit control set"') || exit 1
+        printf '%s\n' "$result" | atomic_write "$anchor" || { echo 'fleet-manifest: cannot write anchor' >&2; exit 1; }
+        exit 0
+    elif [ "$kind" = attempt ]; then
+        label=$(worker_label "$doc") || exit 1
+        # The jq error branch refuses without publishing any output. Foreign
+        # attempt metadata remains protected; only this contract is mutable.
+        result=$(printf '%s\n' "$cur" | jq --arg d "$doc" --arg l "$label" --arg a "$aid" --arg sub "$sub" --arg p "$phase" --argjson c "${control:-null}" '
+            def refuse: error("attempt identity or transition conflict");
+            def valid_attempt:
+                type == "object" and (.attempt_id | type == "string" and test("^[0-9A-Za-z-]{1,80}$"))
+                and (.phase == "pending" or .phase == "unknown" or .phase == "launched")
+                and (.control_generation | type == "number" and . >= 1 and . <= 9007199254740990 and floor == .)
+                and .receipt.v == 2 and .receipt.kind == "launch-attempt" and .receipt.attempt_id == .attempt_id;
+            [.workers[] | select(.doc == $d)] as $rows
+            | if ($rows | length) == 0 then
+                if $sub == "settle" and $p == "refused" and .last_refused_attempt.doc == $d
+                    and .last_refused_attempt.receipt == {v:2,kind:"launch-attempt",attempt_id:$a} then . else refuse end
+              elif ($rows | length) != 1 or $rows[0].label != $l then refuse
+              else $rows[0] as $row
+                | if $sub == "bind" then
+                    if ($row | has("attempt_id") or has("phase")) then refuse
+                    elif ($row | has("attempt")) then
+                        if ($row.attempt | valid_attempt) and $row.attempt.attempt_id == $a and $row.attempt.phase == "pending" then . else refuse end
+                    elif any(.workers[]; .attempt.attempt_id == $a) or .last_refused_attempt.receipt.attempt_id == $a then refuse
+                    else .workers |= map(if .doc == $d then .attempt = {attempt_id:$a,phase:"pending",control_generation:$c.generation,receipt:{v:2,kind:"launch-attempt",attempt_id:$a}} else . end) end
+                  elif ($row.attempt | valid_attempt) and $row.attempt.attempt_id == $a then
+                    if $row.attempt.phase == "launched" and $p != "launched" then refuse
+                    elif $p == "refused" then
+                        .last_refused_attempt = {doc:$d,receipt:$row.attempt.receipt}
+                        | .workers |= map(select(.doc != $d))
+                    else .workers |= map(if .doc == $d then .attempt.phase=$p else . end) end
+                  else refuse end
+              end') || exit 1
+        cur="$result"
+    fi
+    printf '%s\n' "$cur" | atomic_write "$manifest" || { echo 'fleet-manifest: cannot write manifest' >&2; exit 1; }
+)
+
+case "${1:-}" in control|attempt) fleet_metadata "$@"; exit $? ;; esac
 
 [ "$#" -ge 2 ] || { usage >&2; exit 2; }
 verb="$1"; manifest="$2"; shift 2
