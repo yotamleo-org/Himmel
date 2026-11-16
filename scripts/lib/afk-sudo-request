@@ -31,37 +31,28 @@ HELPER=/usr/local/libexec/himmel/afk-sudo
 
 usage() { echo "usage: afk-sudo-request --session S --ticket T -- ARGV... | --card ID --operator OP --session S | --notify TEXT --operator OP | --watch ID --expires EPOCH --operator OP --session S" >&2; exit 2; }
 
-# A label for the card text: letters, digits and ._- only, at most 80 characters.
 label() { printf '%s' "$1" | tr -cd 'A-Za-z0-9._-' | cut -c1-80; }
 
-# The bridge's own bot token (the bot the operator replies to), read the way session-status.ts
-# reads it; the repo .env / keyring token is a different bot.
-bridge_token() {
+telegram_bridge_bot_token() {
     sed -n 's/^TELEGRAM_BOT_TOKEN[[:space:]]*=[[:space:]]*//p' "${TELEGRAM_ENV:-$HOME/.claude/channels/telegram/.env}" 2>/dev/null \
         | tr -d '"'"'"' \r' | grep -m1 .
 }
 
-# bridge_send OPERATOR TEXT [CURL ARGS...]: one message to the operator's bridge chat. The URL
-# carrying the token goes to curl on stdin, never argv. Returns non-zero when nothing was sent.
 bridge_send() {
     local op=$1 text=$2 token
     shift 2
-    token=$(bridge_token)
+    token=$(telegram_bridge_bot_token)
     [ -n "$token" ] && printf 'url = "https://api.telegram.org/bot%s/sendMessage"\n' "$token" \
         | curl -fsS -m 10 -o /dev/null -K - \
             --data-urlencode "chat_id=${op}" \
             --data-urlencode "text=${text}" "$@"
 }
 
-# send_card KIND ID OPERATOR: the id, the asking session and its chief, and the Approve / Deny
-# buttons. A tap on Approve only makes the bridge ask for the code, so the TOTP check stays the
-# helper's. The id is the helper's own 8-char base32, checked before it goes into the callback data.
 send_card() {
     local kind=$1 cid=$2 op=$3 who chief text
     local markup=()
     who=$(label "$session")
     chief=$(label "${HIMMEL_CONSOLE_NAME:-}")
-    # The id only: the facts and the nonce come from root's notice bot, which no session can drive.
     text="AFK $kind $cid: read the notice-bot message, then approve · session ${who:-unknown} · chief ${chief:-none}"
     if [[ $cid =~ ^[a-z2-7]{8}$ ]]; then
         markup=(--data-urlencode "reply_markup={\"inline_keyboard\":[[{\"text\":\"✅ Approve\",\"callback_data\":\"afk:approve:${cid}\"},{\"text\":\"❌ Deny\",\"callback_data\":\"afk:deny:${cid}\"}]]}")
@@ -90,15 +81,13 @@ if [ -n "$notify" ]; then
 fi
 if [ -n "$watch" ]; then
     [[ $watch =~ ^[a-z2-7]{8}$ && $operator =~ ^-?[0-9]{1,20}$ && $expires =~ ^[0-9]{1,12}$ ]] && [ -n "$session" ] && [ $# -eq 0 ] || usage
-    # Nothing to post through: no reason to wait.
-    [ -n "$(bridge_token)" ] || exit 5
+    [ -n "$(telegram_bridge_bot_token)" ] || exit 5
     chief=$(label "${HIMMEL_CONSOLE_NAME:-}")
     deadline=$((expires + ${AFK_SUDO_WATCH_MARGIN_S:-130}))
     while [ "$(date +%s)" -lt "$deadline" ]; do
         st=$(sudo -n "$HELPER" status "$watch" 2>/dev/null | sed -n 's/^result=\([^ ]*\).*/\1/p')
-        case "$st" in
-            # An empty status is a failed query, not an end: keep polling to the deadline.
-            pending | '') sleep "${AFK_SUDO_POLL_S:-3}" ;;
+        case "${st:-query-failed}" in
+            pending | query-failed) sleep "${AFK_SUDO_POLL_S:-3}" ;;
             expired)
                 bridge_send "$operator" "grant $watch from session $(label "$session") (chief ${chief:-none}) expired, nothing ran" || exit 5
                 exit 0 ;;
