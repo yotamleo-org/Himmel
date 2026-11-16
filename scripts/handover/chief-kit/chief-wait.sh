@@ -342,7 +342,7 @@
 # moved value wakes once (`WAKE tick changed=hreg`), an unchanged one does not; hreg=? keeps the saved value; absent
 # (0/0/0, no register, an older tick) is never a failure and its going away wakes nothing. Every sample that reads a
 # non-zero third count also pages each pending ask ONCE: `HOLD-ASK <key> wants <path> ... <paste-ready grant command>`
-# through the same sender as DENIAL-PAGE; the record `<inbox>.wait.holdasks` is written BEFORE the send.
+# through the same sender as DENIAL-PAGE.
 # stall= (tick.sh: `<pr>:<class>,...` from pr-stall.sh) wakes ONCE per new
 # conflict or no-ci token (a PR, a class): ci-slow and idle are report-only, an unchanged set
 # and a stall resolving do not wake; stall=? (a probe outage) keeps the saved set; absent
