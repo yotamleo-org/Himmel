@@ -65,6 +65,12 @@ detached() {
         nohup "$@" </dev/null >/dev/null 2>&1 &
     fi
 }
+grants_on() {
+    local mode
+    mode=" $(sudo -n "$HELPER" mode 2>/dev/null) "  # swallow-ok: no answer reads as grants off, so nothing is sent
+    case "$mode" in *" enabled=true "*) ;; *) return 1 ;; esac
+    case "$mode" in *" grant_enabled=true "*) return 0 ;; *) return 1 ;; esac
+}
 notify() {
     local op
     op=$(jq -r '.operator_id // empty' "$CONFIG" 2>/dev/null | grep -E '^-?[0-9]{1,20}$' | head -1)  # swallow-ok: no readable operator id means no send
@@ -83,7 +89,7 @@ if [ -z "$chief" ]; then
     if [ -n "$sname" ] && [ -f "$CONSOLES/$sname.md" ]; then
         chief=$sname
     else
-        notify "AFK grant from session $who refused: no chief to route the ask; the denied Bash call [$category] was not filed"
+        grants_on && notify "AFK grant from session $who refused: no chief to route the ask; the denied Bash call [$category] was not filed"
         exit 0
     fi
 fi
@@ -99,7 +105,7 @@ case "$result" in
         detached bash "$REQ" --card "$id" --operator "$op" --session "$who"
         detached bash "$REQ" --watch "$id" --expires "$expires" --operator "$op" --session "$who"
         ;;
-    grant-disabled) ;;
+    grant-disabled | disabled) ;;
     *) notify "AFK grant from session $who (chief $chief) refused: ${result:-no reply from the helper}, nothing ran" ;;
 esac
 exit 0

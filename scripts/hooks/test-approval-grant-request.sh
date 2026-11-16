@@ -19,6 +19,7 @@ cat > "$TMP/bin/sudo" <<STUB
 #!/bin/sh
 case " \$* " in
     *" status "*) printf '%s\n' "\$*" >> "$TMP/status.argv"; cat "$TMP/status"; exit 0 ;;
+    *" mode "*) cat "$TMP/mode"; exit 0 ;;
 esac
 printf '%s\n' "\$*" >> "$TMP/argv"
 cat > "$TMP/stdin"
@@ -40,6 +41,8 @@ CMD='npx --yes cowsay@1.6.0 N4198-probe'
 pending() { printf 'result=pending id=abcdefgh expires=%s operator=4242\n' "$(($(date +%s) + ${1:-600}))" > "$TMP/reply"; }
 pending
 printf 'result=approved\n' > "$TMP/status"
+grants() { printf 'result=mode mode=all enabled=%s run_enabled=true classifier_requests=true grant_enabled=%s\n' "$1" "$2" > "$TMP/mode"; }
+grants true true
 
 CHIEF_ENV=chief-A SESSION_N_NAME='' MARGIN=130
 settle_detached() { sleep 0.6; }
@@ -119,6 +122,11 @@ printf 'result=grant-disabled\n' > "$TMP/reply"
 run Bash "$CMD"
 check "grants off: no bridge send (afk-denied-to-request.sh owns that refusal)" "" "$SENT"
 quiet "grants off"
+
+printf 'result=disabled\n' > "$TMP/reply"
+run Bash "$CMD"
+check "a station locked down: no bridge send" "" "$SENT"
+quiet "a station locked down"
 rm -f "$TMP/rc"; pending
 
 CHIEF_ENV='' SESSION_N_NAME=boss-chief
@@ -140,6 +148,22 @@ run Bash "$CMD"
 check "no chief, no session name: nothing filed" "" "$CALLS"
 has "no chief, no session name: the refusal names the session id" "session S1 refused: no chief to route the ask" "$SENT"
 quiet "an unnamed session"
+
+grants true false
+run Bash "$CMD"
+check "no chief, grants off: nothing filed" "" "$CALLS"
+check "no chief, grants off: no bridge send (afk-denied-to-request.sh may still file it)" "" "$SENT"
+quiet "no chief, grants off"
+
+grants false true
+run Bash "$CMD"
+check "no chief, station locked down: no bridge send" "" "$SENT"
+quiet "no chief, station locked down"
+
+printf '' > "$TMP/mode"
+run Bash "$CMD"
+check "no chief, the helper does not answer mode: no bridge send" "" "$SENT"
+grants true true
 
 CHIEF_ENV=chief-A SESSION_N_NAME=''
 printf 'result=expired\n' > "$TMP/status"

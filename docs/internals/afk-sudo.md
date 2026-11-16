@@ -331,12 +331,15 @@ approval, and the worker's retry passes the classifier for that one call.
      expires. The waiter gives up at the expiry plus 130 s.
    - any other result (busy, rate-limited, `notice-failed`, `no-notice-bot`, a floor
      refusal): one line, `AFK grant from session <S> (chief <C>) refused: <result>,
-     nothing ran`. With grants off (`grant-disabled`) it sends nothing;
-     `afk-denied-to-request.sh` owns that refusal.
+     nothing ran`.
    - no chief: with `HIMMEL_CONSOLE_NAME` unset, a session whose own console inbox
      `~/.claude/handover/bridge/consoles/<its -n name>.md` exists is a chief and routes
-     its own ask. Any other session files nothing and gets one line naming it and the
-     denied tool.
+     its own ask. Any other session files nothing; it gets one line naming it and the
+     denied tool only when `afk-sudo mode` reports `enabled=true` and
+     `grant_enabled=true`.
+   - grants off (`grant-disabled`, `disabled`, or a `mode` that does not report both
+     flags true): it sends nothing in any branch; `afk-denied-to-request.sh` owns that
+     refusal.
 2. Root refuses a secret read or another never-remote shape before any notice is sent.
    Otherwise it binds every file the command names (sha256 and dev/inode, as in the run
    kind), freezes the record and sends the operator the full command, the cwd, the bound

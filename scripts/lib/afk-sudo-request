@@ -49,13 +49,13 @@ bridge_send() {
 }
 
 send_card() {
-    local kind=$1 cid=$2 op=$3 who chief text
+    local kind=$1 id=$2 op=$3 who chief text
     local markup=()
     who=$(label "$session")
     chief=$(label "${HIMMEL_CONSOLE_NAME:-}")
-    text="AFK $kind $cid: read the notice-bot message, then approve · session ${who:-unknown} · chief ${chief:-none}"
-    if [[ $cid =~ ^[a-z2-7]{8}$ ]]; then
-        markup=(--data-urlencode "reply_markup={\"inline_keyboard\":[[{\"text\":\"✅ Approve\",\"callback_data\":\"afk:approve:${cid}\"},{\"text\":\"❌ Deny\",\"callback_data\":\"afk:deny:${cid}\"}]]}")
+    text="AFK $kind $id: read the notice-bot message, then approve · session ${who:-unknown} · chief ${chief:-none}"
+    if [[ $id =~ ^[a-z2-7]{8}$ ]]; then
+        markup=(--data-urlencode "reply_markup={\"inline_keyboard\":[[{\"text\":\"✅ Approve\",\"callback_data\":\"afk:approve:${id}\"},{\"text\":\"❌ Deny\",\"callback_data\":\"afk:deny:${id}\"}]]}")
     fi
     bridge_send "$op" "$text" ${markup[@]+"${markup[@]}"}
 }
