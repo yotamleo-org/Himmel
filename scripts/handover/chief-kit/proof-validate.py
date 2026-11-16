@@ -200,8 +200,8 @@ def record(opt):
                 raw = regular_bytes(path) if path else None
                 if raw is None:
                     raise ValueError('missing evidence path')
-                artifact = raw.decode('utf-8')
                 meta['evidence_hash'] = hashlib.sha256(raw).hexdigest()
+                artifact = raw.decode('utf-8')
             except (OSError, UnicodeError, ValueError, MemoryError):
                 issues.append('evidence-unreadable')
             mirror = Path(opt.mirror or os.environ.get('PROOF_MIRROR_DIR') or

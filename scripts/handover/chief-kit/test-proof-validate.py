@@ -73,6 +73,27 @@ class ProofRecord(unittest.TestCase):
         self.run_record(env={'OWE_NOW_EPOCH': '1900000000'})
         self.assertEqual(len(self.rows()), 2)
 
+    def test_non_utf8_evidence_retains_hash_and_changed_identity(self):
+        first = b'\xff\xfeproof bytes'
+        self.evidence.write_bytes(first)
+        self.run_record()
+        row = self.rows()[0]
+        self.assertEqual(row.get('evidence_hash'), hashlib.sha256(first).hexdigest())
+        self.assertIn('evidence-unreadable', row['issues'])
+        self.assertEqual(row['validation'], 'pending')
+        self.run_record()
+        self.assertEqual(len(self.rows()), 1)
+
+        changed = b'\xff\xfechanged proof bytes'
+        self.evidence.write_bytes(changed)
+        self.run_record()
+        rows = self.rows()
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[1].get('evidence_hash'), hashlib.sha256(changed).hexdigest())
+        self.assertNotEqual(rows[0]['identity'], rows[1]['identity'])
+        self.assertIn('evidence-unreadable', rows[1]['issues'])
+        self.assertEqual(rows[1]['validation'], 'pending')
+
     def test_requirements_comment_and_whitespace_identity(self):
         self.run_record()
         p = self.mirror / 'HIMMEL-9848.md'
