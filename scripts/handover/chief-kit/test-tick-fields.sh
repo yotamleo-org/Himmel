@@ -314,29 +314,32 @@ cp_mk "Closed" '["residual"]' '["v1.1.4"]' 2
 cp_mk "To Do" '["backlog"]' '["v1.1.4"]' 4
 cp_mk "To Do" '["residual"]' '["v1.0.0"]' 20
 cp_rc() { printf '%s\n' "$1" | grep -o ' residual-cap=[^ ]*' || true; }  # swallow-ok: no field is a valid answer, the row asserts it
+cp_f() { printf '%s\n' "$1" | grep -o " $2=[^ ]*" || true; }  # swallow-ok: no field is a valid answer, the row asserts it
+cp_is() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (want '$3' got '$2')"; fi; }
 cp_over="$(cp_tick)"
-contains 'a version past 15 open residuals puts residual-cap=<version>:<n> on the line' "$cp_over" ' residual-cap=v1.1.3:16'
+cp_is 'a version past 15 open residuals puts residual-cap=<version>:<n> on the line' "$(cp_rc "$cp_over")" ' residual-cap=v1.1.3:16'
 not_contains 'a version at exactly 15 open residuals is not on the residual-cap field, nor Done, Closed, unlabelled or a released version' "$(cp_rc "$cp_over")" 'v1.1.4:'
 not_contains 'a released version past 15 is not on the residual-cap field' "$(cp_rc "$cp_over")" 'v1.0.0:'
 not_contains 'the old cap= name is gone from the line' "$cp_over" ' cap='
 cp_mk "To Do" '["residual"]' '["v1.1.5"]' 17
-contains 'two versions past 15 are both named, in version order' "$(cp_tick)" ' residual-cap=v1.1.3:16,v1.1.5:17'
+cp_is 'two versions past 15 are both named, in version order' "$(cp_f "$(cp_tick)" residual-cap)" ' residual-cap=v1.1.3:16,v1.1.5:17'
 cp_mk "Wont Fix" '["residual"]' '["v1.1.3"]' 2
 cp_mk "Won't Fix" '["backlog"]' '["v1.1.3"]'
 cp_mk "To Do" '["backlog"]' '["v1.1.3"]' 5
 cp_diff="$(cp_tick)"
-contains 'a Wont Fix residual does not move residual-cap=' "$cp_diff" ' residual-cap=v1.1.3:16,v1.1.5:17'
-contains "open= counts every open ticket per unreleased version, labels or not; Done, Closed, Wont Fix and Won't Fix excluded, a released version left out" "$cp_diff" ' open=v1.1.3:21,v1.1.4:19,v1.1.5:17'
+cp_is 'a Wont Fix residual does not move residual-cap=' "$(cp_f "$cp_diff" residual-cap)" ' residual-cap=v1.1.3:16,v1.1.5:17'
+cp_is "open= counts every open ticket per unreleased version, labels or not; Done, Closed, Wont Fix and Won't Fix excluded, a released version left out" "$(cp_f "$cp_diff" open)" ' open=v1.1.3:21,v1.1.4:19,v1.1.5:17'
 rm -f "$cp_m/HIMMEL-1.md"
 cp_fifteen="$(cp_tick)"
-contains 'the other over-run stays on the residual-cap field' "$cp_fifteen" ' residual-cap=v1.1.5:17'
+cp_is 'the other over-run stays on the residual-cap field' "$(cp_rc "$cp_fifteen")" ' residual-cap=v1.1.5:17'
 not_contains 'a version dropping to exactly 15 open residuals leaves the residual-cap field' "$(cp_rc "$cp_fifteen")" 'v1.1.3:'
-contains 'the open count follows the same drop' "$cp_fifteen" ' open=v1.1.3:20,v1.1.4:19,v1.1.5:17'
+cp_is 'the open count follows the same drop' "$(cp_f "$cp_fifteen" open)" ' open=v1.1.3:20,v1.1.4:19,v1.1.5:17'
 rm -f "$cp_m"/HIMMEL-6[1-9].md "$cp_m"/HIMMEL-7[0-7].md
 cp_none="$(cp_tick)"
 not_contains 'no version past 15 leaves residual-cap= off the line' "$cp_none" 'residual-cap='
-contains 'open= stays when no version is past the residual cap' "$cp_none" ' open=v1.1.3:20,v1.1.4:19'
+cp_is 'open= stays when no version is past the residual cap' "$(cp_f "$cp_none" open)" ' open=v1.1.3:20,v1.1.4:19'
 cp_skip="$(NEXT_DISPATCH_MIRROR="$W/no-such-mirror" TICK_LEAKS_PROBE="$W/lk-probe-0.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+if [ -n "$cp_skip" ]; then pass 'the tick prints its line when no mirror exists'; else fail 'the tick prints its line when no mirror exists'; fi
 not_contains 'no mirror leaves residual-cap= off the line' "$cp_skip" ' residual-cap='
 not_contains 'no mirror leaves open= off the line' "$cp_skip" ' open='
 # Both brief templates file every follow-up with `jira create --follow-up-of <KEY>`.
