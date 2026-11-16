@@ -146,7 +146,7 @@ text = sut.read_text()
 text = re.sub(r'^HERE=.*$', 'HERE=' + shlex.quote(str(sut.parent)), text, count=1, flags=re.M)
 text = re.sub(r'^REPO=.*$', 'REPO=' + shlex.quote(str(repo)), text, count=1, flags=re.M)
 text = text.replace('569c34baed9a2b1e56029556aa04d6e4b2b2ca3c7211f5ac4ab8049d1319eb13', tree_sha)
-text = text.replace('61e16ef034ab70f9ab7c35678db5d52cd82817b85d41007b267ea66a0b443587', vendor_sha)
+text = text.replace('b9b92cc42e188b446641e7c7a4aeb8fe33d4519b28def3d790a4699c94f71a5c', vendor_sha)
 wrapper = work / 'wrapper.sh'
 wrapper.write_text(text)
 (work / 'bucket').mkdir()
