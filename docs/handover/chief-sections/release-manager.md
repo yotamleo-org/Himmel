@@ -134,6 +134,8 @@ release is declared (`jira release state <R>` prints a status other than
   (`,run` on the field marks the launch; the log is `tick-rm-run.log` in the
   tick state dir). `rm-queue=off` means a declared release has no usable doc line,
   or the state read failed or returned non-OK; repair the wiring/read, not the lease.
+  `rm-queue=?` means the tick's deadline cut the state read: it says nothing about
+  the wiring, so retry on the next tick.
   Claimed requests append `,claimed=<n>`, including `0,0m,claimed=<n>` when no open
   requests remain. Claimed-only work never launches an RM: inspect the held ruling
   instead of re-billing it. An empty open-and-claimed queue, no declaration,
