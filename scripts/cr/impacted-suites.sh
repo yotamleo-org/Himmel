@@ -1458,17 +1458,13 @@ while IFS= read -r f; do
     done < "$work/scan-roots"
 done < "$work/changed"
 
-while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    printf '%s\n' "$f" > "$work/ti-path" || io_fail "writing a changed path for the tree-invariant rows"
-    while IFS="$(printf '\t')" read -r ti_suite ti_re; do
-        ti_rc=0
-        grep -Eq -- "$ti_re" "$work/ti-path" || ti_rc=$?
-        if [ "$ti_rc" -eq 0 ] && grep -Fxq -- "$ti_suite" "$suites"; then
-            printf '%s\n' "$ti_suite" >> "$found" || io_fail "recording a tree-invariant suite"
-        fi
-    done < "$work/tree-invariants"
-done < "$work/changed"
+while IFS="$(printf '\t')" read -r ti_suite ti_re; do
+    ti_rc=0
+    grep -Eq -- "$ti_re" "$work/changed" || ti_rc=$?
+    if [ "$ti_rc" -eq 0 ] && grep -Fxq -- "$ti_suite" "$suites"; then
+        printf '%s\n' "$ti_suite" >> "$found" || io_fail "recording a tree-invariant suite"
+    fi
+done < "$work/tree-invariants"
 
 # The CR guarded closure: scripts/cr/test-cr-guarded-closure.sh
 # DERIVES its file set by walking the runbook + scripts/cr call graph and never
