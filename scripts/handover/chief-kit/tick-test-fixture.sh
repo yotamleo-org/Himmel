@@ -230,6 +230,8 @@ export CADENCE_ALERT_SEND_FAILED_MARK="$W/cadence-alert-send-failed"
 export PS_FIXTURE="$W/ps-none.txt"
 export TICK_BANK_CACHE_FILE="$W/bank.json"
 export NEXT_DISPATCH_MIRROR="$W/no-default-mirror"
+# the readiness record and the release declarations live under this root; never the station's release root.
+export HIMMEL_RELEASE_STATE_DIR="$W/no-release-root"
 # ciq= keeps the last tick's waiting state under here; never the real ~/.himmel.
 export TICK_STATE_DIR="$W/state"
 # ciguard= runs this probe; the default is a missing one (ciguard=unknown), never a live fetch.
