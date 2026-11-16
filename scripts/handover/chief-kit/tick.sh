@@ -206,7 +206,8 @@ open=<version>:<n>[,<version>:<n>] follows residual-cap= and, from the same mirr
 version holding at least one open ticket, labelled residual or not, in version order. ABSENT with no mirror,
 on a failed read or when no unreleased version has an open ticket; open=? means the deadline cut the read.
 One open rule counts both fields: a ticket is NOT open when its status or statusCategory is Done, Resolved,
-Closed, Wont Do, Won't Do, Wont Fix or Won't Fix. A ticket on several fixVersions counts in each.
+Closed, In Public, Wont Do, Won't Do, Wont Fix or Won't Fix (straight or curly apostrophe).
+A ticket on several fixVersions counts in each.
 
 slotage=<worker>:<range>:<n>suites:<age>m[,...] sits just before tmp= and is ABSENT unless a
 live holder has kept a shared suite slot past HIMMEL_SUITE_SLOT_CAP seconds (default 1200); a part the
@@ -3269,7 +3270,7 @@ try:
             released.add(f[0])
 except OSError:
     raise SystemExit
-gone = re.compile(r"^(done|resolved|closed|wont do|won\x27t do|wont fix|won\x27t fix)$", re.I)
+gone = re.compile(r"^(done|resolved|closed|in public|won[\x27\u2019]?t do|won[\x27\u2019]?t fix)$", re.I)
 slots = {}
 opened = {}
 for name in os.listdir(d):
@@ -3287,7 +3288,7 @@ for name in os.listdir(d):
             return json.loads(m.group(1))
         except ValueError:
             return m.group(1)
-    if gone.match(str(val("status") or "")) or gone.match(str(val("statusCategory") or "")):
+    if gone.fullmatch(str(val("status") or "").strip()) or gone.fullmatch(str(val("statusCategory") or "").strip()):
         continue
     labels = val("labels") or []
     res = any(re.search(r"(^|-)residual(-|$)", str(x)) for x in labels)

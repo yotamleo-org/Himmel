@@ -342,6 +342,22 @@ cp_skip="$(NEXT_DISPATCH_MIRROR="$W/no-such-mirror" TICK_LEAKS_PROBE="$W/lk-prob
 if [ -n "$cp_skip" ]; then pass 'the tick prints its line when no mirror exists'; else fail 'the tick prints its line when no mirror exists'; fi
 not_contains 'no mirror leaves residual-cap= off the line' "$cp_skip" ' residual-cap='
 not_contains 'no mirror leaves open= off the line' "$cp_skip" ' open='
+# Shared status/category contract through the actual tick consumer. Repeat rows
+# so the four open fixture cases also exercise the residual soft-cap field.
+cp_parity="$W/cp-parity/HIMMEL"
+mkdir -p "$cp_parity"
+printf 'v1.1.3\tfalse\n' > "$W/cp-parity/HIMMEL.versions.tsv"
+python3 - "$HERE/fixtures/t1-views.json" "$cp_parity" <<'PYTEST'
+import json, pathlib, sys
+rows = json.loads(pathlib.Path(sys.argv[1]).read_text())['statuses']
+rows = rows * 4 + [{'status': s, 'category': 'To Do'} for s in ['Done later', 'Wont Fix pending', 'Done\nreopened']]
+for i, row in enumerate(rows, 1):
+    fields = {'key': 'HIMMEL-%d' % i, 'status': row['status'], 'statusCategory': row['category'], 'labels': ['residual'], 'fixVersions': ['v1.1.3']}
+    pathlib.Path(sys.argv[2], fields['key'] + '.md').write_text('---\n' + ''.join(k + ': ' + json.dumps(v) + '\n' for k, v in fields.items()) + '---\n')
+PYTEST
+cp_contract="$(NEXT_DISPATCH_MIRROR="$cp_parity" TICK_LEAKS_PROBE="$W/lk-probe-0.sh" TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
+cp_is 'shared terminal parity: unknown and whole-name negative controls stay open' "$(cp_f "$cp_contract" open)" ' open=v1.1.3:19'
+cp_is 'shared terminal parity: only the same open residuals occupy cap slots' "$(cp_f "$cp_contract" residual-cap)" ' residual-cap=v1.1.3:19'
 # Both brief templates file every follow-up with `jira create --follow-up-of <KEY>`.
 for cp_tpl in worker-brief-template chief-template; do
     if grep -q -- 'jira create --follow-up-of <KEY>' "$HERE/../../../docs/handover/$cp_tpl.md"; then pass "docs/handover/$cp_tpl.md names jira create --follow-up-of <KEY> (HIMMEL-6762)"; else fail "docs/handover/$cp_tpl.md names jira create --follow-up-of <KEY> (HIMMEL-6762)"; fi

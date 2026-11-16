@@ -309,7 +309,7 @@ function poolHoldItems(doc: string, open: Map<string, string>, env: Env): OwedIt
   }
   return items;
 }
-function chiefDocItems(doc: string, open: Map<string, string>, held: Set<string> = new Set()): OwedItem[] | undefined {
+function chiefDocItems(doc: string, open: Map<string, string>, terminal: Set<string>, unknown: Set<string>, unread: string[], held: Set<string> = new Set()): OwedItem[] | undefined {
   const live = mdSection(readText(doc), "Live state");
   if (!live) return undefined;
   const items: OwedItem[] = [];
@@ -318,10 +318,13 @@ function chiefDocItems(doc: string, open: Map<string, string>, held: Set<string>
     const segs = l.startsWith("queue:") ? l.slice(6).split(" || ")[0].split(" | ") : l.startsWith("pool-disposition:") ? [l.slice(17)] : [];
     for (const s of segs.map((x) => x.trim()).filter((x) => OWED_RE.test(x))) {
       const key = s.match(/[A-Z][A-Z0-9]*-\d+/)?.[0];
+      if (key && terminal.has(key)) continue;
       if (key && held.has(key) && l.startsWith("pool-disposition:")) continue;
       const known = !!key && open.has(key);
-      const actor = OPERATOR_CLASS_RE.test(s) ? "operator" : "chief";
-      items.push({ actor, source: "chief doc", key: known ? key! : null, title: known ? open.get(key!)! : clip(s, 140), ctx: clip(s, 160), act: `the ${actor} acts on what the line names` });
+      const actor = key && (!known || unknown.has(key)) ? "unknown" : OPERATOR_CLASS_RE.test(s) ? "operator" : "chief";
+      if (actor === "unknown" && key && !unknown.has(key)) unread.push(`chief doc ${key} status`);
+      items.push({ actor, source: "chief doc", key: key ?? null, title: known ? open.get(key!)! : clip(s, 140), ctx: clip(s, 160),
+        act: actor === "unknown" ? "reconcile the ticket status and responsible actor" : `the ${actor} acts on what the line names` });
     }
   }
   return items;
@@ -388,21 +391,34 @@ export function readOwed(env: Env, read: typeof readRoadmap = readRoadmap): Owed
   const miss = (what: string, reason: string) => { unread.push(what); why.push(`${what}: ${reason}`); };
   let running: string | undefined;
   const open = new Map<string, string>(); // the open tickets of the running version: id to title
+  const allOpen = new Map<string, string>();
+  const terminalKeys = new Set<string>(), unknownKeys = new Set<string>();
   try {
     const r = read({ mirrorDir: mirror, projects: [{ key: proj, dir: mirror }], workers: { state: "absent" } });
     running = r.versions[r.cur]?.n.replace(new RegExp(` \\(${proj}\\)$`), "");
     const terminal = /^(done|resolved|closed|in public|won['’]?t do|won['’]?t fix)$/i;
     for (const t of r.tickets) {
-      if (t.v !== r.cur || !["todo", "prog", "rev", "ci"].includes(t.b)) continue;
       const key = t.id ?? `${proj}-${t.k}`;
-      if (terminal.test(t.s.trim())) continue;
+      if (["done", "wont"].includes(t.b) || terminal.test(t.s.trim())) { terminalKeys.add(key); continue; }
+      if (!["todo", "prog", "rev", "ci"].includes(t.b)) continue;
       let head = "";
       try { head = readText(join(mirror, `${key}.md`)).split("\n---")[0]; } catch (e) {
-        if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+        unknownKeys.add(key); miss(`${key} status`, (e as Error).message);
       }
       const category = head.match(/^statusCategory: (.*)$/m)?.[1];
-      if (category !== undefined && terminal.test(String(JSON.parse(category)).trim())) continue;
-      open.set(key, t.t);
+      if (category !== undefined) {
+        let parsed: unknown;
+        try { parsed = JSON.parse(category); } catch {
+          parsed = category.trim();
+          if (!terminal.test(String(parsed)) && !/^(to do|in progress)$/i.test(String(parsed))) {
+            unknownKeys.add(key); miss(`${key} category`, "unrecognized raw category");
+          }
+        }
+        if (typeof parsed !== "string") { unknownKeys.add(key); miss(`${key} category`, "category is not text"); }
+        else if (terminal.test(parsed.trim())) { terminalKeys.add(key); continue; }
+      }
+      allOpen.set(key, t.t);
+      if (t.v === r.cur) open.set(key, t.t);
     }
   } catch (e) { miss("open tickets", (e as Error).message); }
   const tryRead = (what: string, f: () => OwedItem[] | undefined, none: string) => {
@@ -419,7 +435,7 @@ export function readOwed(env: Env, read: typeof readRoadmap = readRoadmap): Owed
     let held: OwedItem[] | undefined;
     try { held = poolHoldItems(doc, open, env); } catch (e) { miss(POOL_HOLDS, (e as Error).message); held = []; }
     if (held === undefined) miss(POOL_HOLDS, "no pool-holds file for the chief doc in the tick's state dir");
-    const live = chiefDocItems(doc, open, new Set((held ?? []).map((i) => i.key!))), more = [...undeliveredItems(doc, open), ...unclosedItems(doc, env)];
+    const live = chiefDocItems(doc, allOpen, terminalKeys, unknownKeys, unread, new Set((held ?? []).map((i) => i.key!))), more = [...undeliveredItems(doc, open), ...unclosedItems(doc, env)];
     if (live === undefined) miss("chief doc lines", "the chief doc has no Live state section");
     return [...(held ?? []), ...(live ?? []), ...more];
   }, "");

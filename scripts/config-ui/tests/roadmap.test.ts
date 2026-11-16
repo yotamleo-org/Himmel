@@ -1607,6 +1607,23 @@ const owedUi = { version: null, theme: null };
 const waitingSec = (html: string) => html.match(/<section id="rm-waiting"[\s\S]*?<\/section>/)?.[0] ?? "";
 const noChains = { state: "absent", reason: "no chain registry" };
 
+test("view parity: operator-labelled roadmap rows follow shared terminal buckets and preserve non-shipping resolutions", () => {
+  const s = station();
+  const rows = JSON.parse(readFileSync(resolve(import.meta.dir, "../../handover/chief-kit/fixtures/t1-views.json"), "utf8")).statuses;
+  for (const [i, row] of rows.entries()) writeFileSync(join(s.mirror, `HIMMEL-${101 + i}.md`), issue(101 + i, row.status, row.category, ["v1.1.2"], `status-${101 + i}`, ["operator-decision"]));
+  writeFileSync(join(s.mirror, "HIMMEL-121.md"), issue(121, "Done", "Done", ["v1.1.2"], "duplicate done", ["operator"], "", "Duplicate"));
+  writeFileSync(join(s.mirror, "HIMMEL-122.md"), issue(122, "Resolved", "To Do", ["v1.1.2"], "duplicate resolved", ["operator"], "", "Duplicate"));
+  writeFileSync(join(s.mirror, "HIMMEL-123.md"), issue(123, "Closed", "Done", ["v1.1.2"], "closed fixed", ["operator"], "", "Fixed"));
+  writeFileSync(join(s.mirror, "HIMMEL-124.md"), issue(124, "To Do", "To Do", ["v1.1.2"], "corrupt-cat", ["operator"]).replace('statusCategory: "To Do"', 'statusCategory: "Done'));
+  const r = read(s), tickets = byKey(r);
+  expect(rows.map((_: unknown, i: number) => tickets[101 + i].b)).toEqual(rows.map((row: any) => row.bucket));
+  expect([tickets[121].b, tickets[122].b, tickets[123].b]).toEqual(["wont", "wont", "wont"]);
+  expect(tickets[124].b).toBe("todo");
+  const waiting = waitingSec(renderBoard(r, owedUi, { chains: noChains }));
+  expect([...waiting.matchAll(/status-(\d+)/g)].map((m) => Number(m[1]))).toEqual([101, 115, 116, 117]);
+  expect(waiting).toContain("corrupt-cat");
+});
+
 test("T1 responsibility: board and tracker fixtures keep chief work out of the operator count", async () => {
   const { readOwed } = await import("../board");
   const fixture = JSON.parse(readFileSync(resolve(import.meta.dir, "../../handover/chief-kit/fixtures/t1-views.json"), "utf8"));
@@ -1764,7 +1781,7 @@ test("readOwed: reads the unsigned specs, the newest chief doc's lines naming th
   expect(o.items.find((i) => i.key === K(1))!.ctx).toContain("latest critic round 1 reads SPEC CLEAN");
   expect(o.items.find((i) => i.key === K(7))!.ctx).toContain("latest critic round 3 reads SPEC FINDINGS 1");
   const chief = o.items.filter((i) => i.source === "chief doc");
-  expect(chief.map((i) => i.key)).toEqual([K(5), null]); // 4 is Done in v1.1.1, so its title is the line itself; what follows " || " is history, so the old wait named there is no item
+  expect(chief.map((i) => i.key)).toEqual([K(5), K(4)]); // the previous version's open ticket keeps its identity; text after " || " is history
   expect(chief[0].title).toBe("Resumed work");
   expect(o.items.filter((i) => i.source === "handoff").map((i) => i.title)).toEqual(["9271: run the apply at the station"]);
   // no HANDOFF: that source is named, the others still read
@@ -1817,7 +1834,7 @@ test("readOwed: the tick's pool-holds file adds the Blocked-on-you rows of the g
   expect(of(4)).toBeUndefined();
   expect(of(5)).toBeUndefined();
   const chief = o.items.filter((i) => i.source === "chief doc");
-  expect(chief.map((i) => i.key ?? i.title)).toEqual([`${K(6)} question operator words: still asked`]);
+  expect(chief.map((i) => i.key)).toEqual([K(6)]);
   expect(o.unread).toEqual(["handoff items"]);
   gdDoc("question one more round, reworded authority=O-v1.1.3-0001");
   const moved = readOwed(env);
@@ -1833,7 +1850,7 @@ test("readOwed: the tick's pool-holds file adds the Blocked-on-you rows of the g
   rmSync(join(state, `pool-holds-${stem}.json`));
   const gone = readOwed(env);
   expect(gone.state === "ok" && gone.unread).toEqual(["handoff items", "pool holds"]);
-  expect(gone.state === "ok" && gone.items.filter((i) => i.source === "chief doc").map((i) => i.key ?? i.title)).toEqual([K(2), `${K(6)} question operator words: still asked`]);
+  expect(gone.state === "ok" && gone.items.filter((i) => i.source === "chief doc").map((i) => i.key)).toEqual([K(2), K(6)]);
 });
 
 test("readOwed: the round, the classes and the open operator-critical findings come from the round ledger; a ledger that cannot be read skips the specs", async () => {

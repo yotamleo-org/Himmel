@@ -23,9 +23,9 @@ const slugOf = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replac
 const STUCK = new Set(["BLOCKED", "FINDING", "HALTED", "PARKED-BANK", "PARKED-USAGE"]);
 const CLEARING = new Set(["LIVE", "RESUMED", "RESOLVED", "READY", "WRAPPED"]);
 const NOTED = new Set(["READY", "WRAPPED"]);
-// tracker.py BUCKETS: the status NAME decides, the category only a name not listed.
+// tracker.py BUCKETS: either terminal field closes a ticket; shipped and wont stay separate.
 const BUCKETS: Record<string, string> = { "to do": "todo", backlog: "todo", "in progress": "prog", "in review": "rev", ci: "ci", "in ci": "ci",
-  done: "done", closed: "wont", "in public": "done", "wont do": "wont", "wont fix": "wont" };
+  done: "done", resolved: "done", closed: "wont", "in public": "done", "wont do": "wont", "won't do": "wont", "wont fix": "wont", "won't fix": "wont" };
 const SHIPPED = new Set(["", "done", "fixed"]); // a Done ticket resolved any other way (Won't Do, Duplicate, ...) shipped nothing
 
 export type Bucket = "todo" | "prog" | "rev" | "ci" | "done" | "wont";
@@ -96,10 +96,11 @@ function readMirror(dir: string, project: string): M[] {
     const k = key.n;
     const body = parts.slice(2).join("---");
     const sn = json<unknown>(fm.status, "");
+    const category = json<unknown>(fm.statusCategory, fm.statusCategory ?? "");
     const res = json<unknown>(fm.resolution, "");
     const sector = json<unknown>(fm.sector, ""); // `sector: "Visibility"` or null; the line is absent when sectors are off
     const blockedBy = json<unknown>(/^\s+blocked_by:\s*(\[.*\])\s*$/m.exec(parts[1])?.[1], []); // the `links:` block's nested line, which the flat frontmatter read above skips
-    out.push({ k, p: project, blockedBy: Array.isArray(blockedBy) ? blockedBy.map(String) : [], sn: typeof sn === "string" ? sn : "", cat: unq(fm.statusCategory), res: typeof res === "string" ? res : "", fv: json<string[]>(fm.fixVersions, []).map(String), labels: json<string[]>(fm.labels, []).map(String),
+    out.push({ k, p: project, blockedBy: Array.isArray(blockedBy) ? blockedBy.map(String) : [], sn: typeof sn === "string" ? sn : "", cat: typeof category === "string" ? category.trim() : "", res: typeof res === "string" ? res : "", fv: json<string[]>(fm.fixVersions, []).map(String), labels: json<string[]>(fm.labels, []).map(String),
       sector: typeof sector === "string" ? sector.trim() : "", upd: unq(fm.updated), title: /^# [A-Z][A-Z0-9]*-\d+:\s*(.*)$/m.exec(body)?.[1] ?? "", body });
   }
   return out;
@@ -142,7 +143,9 @@ function localVersions(items: LocalItem[]): { n: string; rel: boolean; date: str
 }
 
 const bucketOf = (m: M): Bucket => {
-  const b = BUCKETS[m.sn.trim().toLowerCase()] ?? ({ Done: "done", "In Progress": "prog" } as Record<string, string>)[m.cat] ?? "todo";
+  const name = m.sn.trim().toLowerCase().replace(/’/g, "'"), category = m.cat.trim().toLowerCase().replace(/’/g, "'");
+  const states = [BUCKETS[name], BUCKETS[category]];
+  const b = states.includes("wont") ? "wont" : states.includes("done") ? "done" : BUCKETS[name] ?? (category === "in progress" ? "prog" : "todo");
   return (b === "done" && !SHIPPED.has(m.res.trim().toLowerCase()) ? "wont" : b) as Bucket;
 };
 const isOpen = (b: Bucket) => b !== "done" && b !== "wont";

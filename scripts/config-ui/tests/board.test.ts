@@ -9,10 +9,57 @@ import { join } from "node:path";
 import { startServer } from "../server";
 import { DRIFT_BUDGET_S, DRIFT_REFRESH_MS, readBoardExtras, readOwed, refreshDrift, runReader, TIMEOUT_MS } from "../board";
 import { renderBoard } from "../public/roadmap.js";
+import { readRoadmap } from "../roadmap";
 
 const TOKEN = "a".repeat(64);
 const cleanups: (() => void)[] = [];
 afterEach(() => { while (cleanups.length) cleanups.pop()!(); });
+
+function owedFixture(s: ReturnType<typeof scratch>, queue: string) {
+  const doc = join(s.d, "chief.md");
+  mkdirSync(join(s.d, "specs", "designs"), { recursive: true });
+  writeFileSync(join(s.d, "chief-HANDOFF.md"), "## Open operator items\n- none\n");
+  writeFileSync(s.mirror + ".versions.tsv", "v1.1.3\tfalse\n");
+  writeFileSync(doc, `## Live state\n${queue}\n`);
+  return { PATH: process.env.PATH, HOME: s.home, HIMMEL_JIRA_MIRROR: s.mirror, HIMMEL_CHIEF_DOC: doc, HIMMEL_BUCKET_DIR: s.d };
+}
+
+test("view parity: affirmative terminal chief-doc references disappear while open and unknown work retain identity", () => {
+  const s = scratch();
+  writeFileSync(join(s.mirror, "HIMMEL-3.md"), mirrorIssue(3, "Won't Fix", "To Do", [], "closed without shipping"));
+  writeFileSync(join(s.mirror, "HIMMEL-4.md"), mirrorIssue(4, "To Do", "To Do", [], "open in a released version").replace("v1.1.3", "v1.1.2"));
+  const env = owedFixture(s, "queue: HIMMEL-1 operator words: approve paid DONEQUEUE | HIMMEL-2 operator words: approve paid OPENQUEUE | HIMMEL-3 operator words: approve paid WONTQUEUE | HIMMEL-4 operator words: approve paid OLDOPEN | HIMMEL-99 operator words: approve paid UNKNOWNQUEUE\npool-disposition: HIMMEL-1 operator words: approve paid DONEPOOL");
+  writeFileSync(s.mirror + ".versions.tsv", "v1.1.2\ttrue\nv1.1.3\tfalse\n");
+  const o = readOwed(env);
+  if (o.state !== "ok") throw new Error(o.reason);
+  expect(o.items.filter((i) => i.source === "chief doc").map((i) => [i.key, i.actor])).toEqual([["HIMMEL-2", "operator"], ["HIMMEL-4", "operator"], ["HIMMEL-99", "unknown"]]);
+  const html = renderBoard(readRoadmap({ mirrorDir: s.mirror, workers: { state: "absent" } }), {}, { owed: o });
+  const waiting = html.match(/<section id="rm-waiting"[\s\S]*?<\/section>/)?.[0] ?? "";
+  expect(waiting).toContain("OPENQUEUE");
+  expect(waiting).toContain("OLDOPEN");
+  for (const text of ["DONEQUEUE", "WONTQUEUE", "DONEPOOL", "UNKNOWNQUEUE"]) expect(waiting).not.toContain(text);
+  expect(html.match(/<section id="rm-reconcile"[\s\S]*?<\/section>/)?.[0]).toContain("UNKNOWNQUEUE");
+  expect(o.unread.some((w) => w.includes("HIMMEL-99"))).toBe(true);
+});
+
+test("view parity: raw categories keep valid peers; malformed category remains reconciliation with a warning", () => {
+  const s = scratch();
+  writeFileSync(join(s.mirror, "HIMMEL-1.md"), mirrorIssue(1, "To Do", "To Do", [], "unread category").replace('statusCategory: "To Do"', 'statusCategory: "broken'));
+  writeFileSync(join(s.mirror, "HIMMEL-3.md"), mirrorIssue(3, "To Do", "To Do", [], "raw open").replace('statusCategory: "To Do"', "statusCategory: To Do"));
+  writeFileSync(join(s.mirror, "HIMMEL-4.md"), mirrorIssue(4, "Custom", "Done", [], "raw terminal").replace('statusCategory: "Done"', "statusCategory: Done"));
+  writeFileSync(join(s.mirror, "HIMMEL-5.md"), mirrorIssue(5, "To Do", "To Do", [], "malformed terminal-looking category").replace('statusCategory: "To Do"', 'statusCategory: "Done'));
+  const env = owedFixture(s, "queue: HIMMEL-1 operator words: approve paid BAD | HIMMEL-2 operator words: approve paid VALID | HIMMEL-3 operator words: approve paid RAW | HIMMEL-4 operator words: approve paid TERMINAL | HIMMEL-5 operator words: approve paid MALFORMED");
+  const o = readOwed(env);
+  if (o.state !== "ok") throw new Error(o.reason);
+  expect(o.items.filter((i) => i.source === "chief doc").map((i) => [i.key, i.actor])).toEqual([["HIMMEL-1", "unknown"], ["HIMMEL-2", "operator"], ["HIMMEL-3", "operator"], ["HIMMEL-5", "unknown"]]);
+  expect(o.unread.some((w) => w.includes("HIMMEL-1") && w.includes("category"))).toBe(true);
+  expect(o.unread).not.toContain("open tickets");
+  const missing = readOwed(env, (options) => {
+    const snapshot = readRoadmap(options); rmSync(join(s.mirror, "HIMMEL-2.md")); return snapshot;
+  });
+  expect(missing.state === "ok" && missing.items.find((i) => i.source === "chief doc" && i.key === "HIMMEL-2")?.actor).toBe("unknown");
+  expect(missing.state === "ok" && missing.items.find((i) => i.source === "chief doc" && i.key === "HIMMEL-3")?.actor).toBe("operator");
+});
 
 const mirrorIssue = (n: number, status: string, cat: string, blockedBy: string[], title: string) =>
   ["---", `key: "HIMMEL-${n}"`, `type: "Task"`, `status: ${JSON.stringify(status)}`, `statusCategory: ${JSON.stringify(cat)}`, `priority: "Medium"`,
