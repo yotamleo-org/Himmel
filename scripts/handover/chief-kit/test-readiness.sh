@@ -13,7 +13,9 @@ lacks() { case "$2" in *"$3"*) fail "$1 ('$3' in '$2')" ;; *) pass "$1" ;; esac;
 
 W="$(mktemp -d "${TMPDIR:-/tmp}/readiness-test.XXXXXX")" || { echo "mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$W"' EXIT
-M="$W/m"; REL="$W/rel"; REC="$REL/v1/readiness.jsonl"
+M="$W/m"
+REL="$W/rel"
+REC="$REL/v1/readiness.jsonl"
 mkdir -p "$M" "$REL/v1"
 E0=1800000000
 export READINESS_NOW_EPOCH=$E0
@@ -50,7 +52,7 @@ check "R1: blocker" "$(printf '%s' "$out" | jq -r .blocker)" "HIMMEL-8102"
 check "R1: state live" "$(printf '%s' "$out" | jq -r .state)" "live"
 check "R1: cat To Do" "$(printf '%s' "$out" | jq -r .cat)" "To Do"
 check "R1: why null" "$(printf '%s' "$out" | jq -r .why)" "null"
-check "R1: the record holds both rows" "$(wc -l < "$REC" | tr -d ' ')" "2"
+check "R1: the record holds both rows" "$(wc -l "$REC" | cut -d' ' -f1)" "2"
 check "R1: row key order" "$(sed -n 1p "$REC" | jq -c 'keys_unsorted')" '["ts","key","decision","blocker","evidence","stamp","by"]'
 check "R1: ts is UTC from READINESS_NOW_EPOCH" "$(sed -n 1p "$REC" | jq -r .ts)" "2027-01-15T08:00:00Z"
 check "R1: by is the given name" "$(sed -n 1p "$REC" | jq -r .by)" "fixture"
@@ -165,17 +167,17 @@ for i in $(seq 1 20); do
     bash "$RD" append v1 FIXT-101 a --evidence "n$i" --by fixture --mirror "$M" >/dev/null 2>&1 &
 done
 wait
-check "R7: twenty concurrent appends leave 20 lines" "$(wc -l < "$REC" | tr -d ' ')" "20"
+check "R7: twenty concurrent appends leave 20 lines" "$(wc -l "$REC" | cut -d' ' -f1)" "20"
 check "R7: every line is a valid row" "$(jq -c . "$REC" | wc -l | tr -d ' ')" "20"
 orig20="$(sed -n 20p "$REC")"
 truncate -s -1 "$REC"
-check "R7: stripping the final newline leaves 19 complete lines" "$(wc -l < "$REC" | tr -d ' ')" "19"
+check "R7: stripping the final newline leaves 19 complete lines" "$(wc -l "$REC" | cut -d' ' -f1)" "19"
 rd v1 >/dev/null 2>&1; rc=$?
 check "R7: read ignores the unterminated final row and exits 0" "$rc" "0"
 ap v1 FIXT-101 a --evidence next >"$W/o" 2>"$W/e"; rc=$?
 check "R7: append after a valid unterminated row exits 0" "$rc" "0"
 contains "R7: and says it completed the row" "$(cat "$W/e")" "completed an unterminated final row"
-check "R7: 21 complete lines" "$(wc -l < "$REC" | tr -d ' ')" "21"
+check "R7: 21 complete lines" "$(wc -l "$REC" | cut -d' ' -f1)" "21"
 check "R7: the 20th row is byte-identical to its original" "$(sed -n 20p "$REC")" "$orig20"
 printf '{"ts":"2027-01' >> "$REC"
 rd v1 >/dev/null 2>&1; rc=$?
@@ -183,7 +185,7 @@ check "R7: read ignores a half row and exits 0" "$rc" "0"
 ap v1 FIXT-101 a --evidence after-half >"$W/o" 2>"$W/e"; rc=$?
 check "R7: append after a half row exits 0" "$rc" "0"
 contains "R7: and says it dropped the torn line" "$(cat "$W/e")" "dropped a torn final line"
-check "R7: 22 complete lines" "$(wc -l < "$REC" | tr -d ' ')" "22"
+check "R7: 22 complete lines" "$(wc -l "$REC" | cut -d' ' -f1)" "22"
 printf 'junk\n' >> "$REC"
 before="$(sha "$REC")"
 rd v1 >"$W/o" 2>"$W/e"; rc=$?
