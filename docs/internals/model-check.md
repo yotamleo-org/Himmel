@@ -37,8 +37,9 @@ The chief supplies these paths in the launching shell:
   at `ff8f35c3bb172d03dec3fdf93eaa539a5685d3ad`, whose only later change is in
   `test/cli.test.ts`: a TLA2TOOLS sha helper, under which about 40 replay tests
   skip without the pinned jar, and a missing-Java test matched loosely on
-  ENOENT) instead requires
-  `61e16ef034ab70f9ab7c35678db5d52cd82817b85d41007b267ea66a0b443587`.
+  ENOENT), and a later change in `test/render.test.ts` (`608952484`,
+  the render test uses a temp cache dir and a temp HOME for npm), instead requires
+  `b9b92cc42e188b446641e7c7a4aeb8fe33d4519b28def3d790a4699c94f71a5c`.
   `test-model-check-report.sh` fails if the vendored tree in the checkout stops
   hashing to this pin.
   That variant changes `run.ts` to forbid automatic installation and includes
