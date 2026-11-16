@@ -313,8 +313,8 @@ cp_mk "Done" '["residual"]' '["v1.1.4"]' 3
 cp_mk "Closed" '["residual"]' '["v1.1.4"]' 2
 cp_mk "To Do" '["backlog"]' '["v1.1.4"]' 4
 cp_mk "To Do" '["residual"]' '["v1.0.0"]' 20
-cp_rc() { printf '%s\n' "$1" | grep -o ' residual-cap=[^ ]*' || true; }  # swallow-ok: no field is a valid answer, the row asserts it
-cp_f() { printf '%s\n' "$1" | grep -o " $2=[^ ]*" || true; }  # swallow-ok: no field is a valid answer, the row asserts it
+cp_f() { printf '%s\n' "$1" | awk -v k="$2=" '{ for (i = 1; i <= NF; i++) if (index($i, k) == 1) printf " %s", $i }'; }
+cp_rc() { cp_f "$1" residual-cap; }
 cp_is() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (want '$3' got '$2')"; fi; }
 cp_over="$(cp_tick)"
 cp_is 'a version past 15 open residuals puts residual-cap=<version>:<n> on the line' "$(cp_rc "$cp_over")" ' residual-cap=v1.1.3:16'
