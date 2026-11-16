@@ -85,16 +85,16 @@ real_jq=$(command -v jq)
 cat > "$tmp/read-bin/jq" <<'JQ'
 #!/usr/bin/env bash
 "$REAL_JQ" "$@"; rc=$?
-if [ "$rc" -eq 0 ] && [ "${!#}" = "$SWAP_MANIFEST" ]; then
+if [ "$rc" -eq 0 ] && { [ "${!#}" = "$SWAP_MANIFEST" ] || [ "${!#}" = - ]; }; then
     printf 'invalid replacement\n' > "$SWAP_MANIFEST"
 fi
 exit "$rc"
 JQ
 chmod +x "$tmp/read-bin/jq"
-# A valid snapshot can return ok, or the replacement can return paused; it
-# cannot return a successful empty/malformed JSON response.
+# A valid snapshot can return ok, or the malformed replacement can return
+# invalid/paused. It must not misclassify corruption as an unbound manifest.
 out=$(REAL_JQ="$real_jq" SWAP_MANIFEST="$m" PATH="$tmp/read-bin:$PATH" show "$m"); rc=$?
-check 'concurrent manifest replacement yields one classified JSON snapshot' '0 true' "$rc $(printf '%s\n' "$out" | jq -se 'length == 1 and (.[0] | .state == "ok" or .mode == "paused")')"
+check 'concurrent manifest replacement yields one classified JSON snapshot' '0 true' "$rc $(printf '%s\n' "$out" | jq -se 'length == 1 and (.[0] | .state == "ok" or (.state == "invalid" and .mode == "paused"))')"
 cp "$tmp/manifest.saved" "$m"
 # Fail at the existing atomic rename boundary after temp content exists.
 mkdir "$tmp/bin"
