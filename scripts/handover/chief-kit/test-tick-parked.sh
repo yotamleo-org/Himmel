@@ -117,12 +117,9 @@ contains 'a full fleet still counts the parked rows' "$tok" ' pool-parked=24 '
 nopool="$(NEXT_DISPATCH_MIRROR="$W/no-such-mirror" TICK_STATE_DIR="$TS" bash "$SUT" --doc "$PDOC" 2>/dev/null)"
 not_contains 'a tick with no readable pool prints no supply=' "$nopool" ' supply='
 
-# --- slice 2 of the readiness record: the tick reads the per-version record (rows T1-T7) ---
 K1=HIMMEL-8001 K2=HIMMEL-8002 K3=HIMMEL-8003
-# ucnt <output> <class regex> <number>: the # pool-unresolved lines of one key and class
 ucnt() { printf '%s\n' "$1" | grep -c "^# pool-unresolved $2 HIMMEL-$3 "; }
 uline() { printf '%s\n' "$1" | grep "^# pool-unresolved $2 HIMMEL-$3 "; }
-# The record is written with readiness.sh append at E0 and read at E0+7200, so a ruling is 2h old.
 E0=1800000000
 RDN=$((E0 + 7200))
 RD_SH="$HERE/readiness.sh"
@@ -131,7 +128,7 @@ RM="$RDW/mirror/HIMMEL"
 RS="$RDW/state"
 RREL="$RDW/rel"
 mkdir -p "$RM" "$RS"
-mk_tk() { # <key> <status> <category> <phase> <body>
+mk_tk() {
     printf -- '---\nkey: "%s"\ntype: "Task"\nstatus: "%s"\nstatusCategory: "%s"\npriority: "High"\nlabels: ["standalone","phase:%s"]\nfixVersions: ["v1"]\nparent: null\ncreated: "x"\nupdated: "x"\nresolution: null\nresolved: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# %s: fixture\n\n## Description\n\n%s\n\n## Comments\n\n_(none)_\n' \
         "$1" "$2" "$3" "$4" "$1" "$5" > "$RM/$1.md"
 }
@@ -141,21 +138,18 @@ reset_mirror() {
     for k in HIMMEL-8001 HIMMEL-8002 HIMMEL-8003 HIMMEL-8004 HIMMEL-8102; do mk_tk "$k" 'To Do' 'To Do' design "body of $k"; done
 }
 rd_ap() { READINESS_NOW_EPOCH=$E0 HIMMEL_RELEASE_STATE_DIR="$1" bash "$RD_SH" append v1 "${@:2}" --by fixture --mirror "$RM" > /dev/null 2>&1; }
-# the T1 record: 8001 c blocked on 8102, 8002 d, 8003 a
 rd_record() {
     rm -rf "$RREL"; mkdir -p "$RREL/v1"
     rd_ap "$RREL" HIMMEL-8001 c --evidence x --blocker HIMMEL-8102
     [ "${1:-}" = no-d ] || rd_ap "$RREL" HIMMEL-8002 d --evidence x
     rd_ap "$RREL" HIMMEL-8003 a --evidence x
 }
-# pd <release root> <doc> <snapshot>: --pool-dispositions with the doc ('' for none)
 pd() {
     local docarg=()
     [ -z "$2" ] || docarg=(--doc "$2")
     NEXT_DISPATCH_MIRROR="$RM" TICK_STATE_DIR="$RS" HIMMEL_RELEASE_STATE_DIR="$1" READINESS_NOW_EPOCH=$RDN DOC='' \
         bash "$SUT" --pool-dispositions "${docarg[@]}" < "$3" 2> /dev/null
 }
-# rtick <release root> <doc> <snapshot>: the tick line off a seeded pool snapshot
 rtick() {
     cp "$3" "$RS/tick-pool-$(printf '%s\n%s' "$(realpath -m "$2")" "$RM" | cksum | cut -d' ' -f1).rows"
     NEXT_DISPATCH_MIRROR="$RM" TICK_STATE_DIR="$RS" HIMMEL_RELEASE_STATE_DIR="$1" READINESS_NOW_EPOCH=$RDN TICK_POOL_WAIT=0 TICK_POOL_MIN_SECS=99999 \
@@ -226,7 +220,6 @@ same 'T4: the same snapshot with no --doc prints # pool-counts ? and no # readin
 out="$(pd "$RREL" '' "$W/pool25.rows")"
 same 'T4: --pool-dispositions on pool25.rows with no --doc (the waiter second pass) prints no # readiness line' "$(printf '%s\n' "$out" | grep -c '^# readiness')" 0
 
-# T5 has its own directory: its doc, drift file and release root belong to no other row
 T5="$W/rd5"; mkdir -p "$T5/a" "$T5/b"
 reset_mirror
 printf '%s\n' '# chief' '' '## Live state' \
@@ -252,7 +245,6 @@ same 'T5: an invalid document line stays invalid under a live d row' "$(ucnt "$o
 same 'T5: a stale document line under a live c row is removed from pool-unresolved' "$(ucnt "$o5" '[a-z]*' 8003)" 0
 same 'T5: and it gets no pool-parked line, parking reads the pre-override unresolved list' "$(count_line "$o5" pool-parked 8003)" 0
 same 'T5: the pool-counts move by the one removed key' "$(printf '%s\n' "$o5" | grep '^# pool-counts ')" '# pool-counts 25/0/1/24'
-# a held key: holds on (a release declaration and `release: v1`), a give-up line, no holds file
 printf '%s\n' '# chief' 'release: v1' '' '## Live state' \
     'pool-disposition: HIMMEL-8004 question decision 964 waiting on the operator ruling' \
     '' '## Results' > "$T5/b/chief.md"
@@ -265,7 +257,6 @@ same 'T5 control: the held key is unchecked with no holds file' "$(uline "$b0" u
 same 'T5: a live c row does not lift a hold, its pool-unresolved line is byte-identical' "$(uline "$b1" unchecked 8004)" "$(uline "$b0" unchecked 8004)"
 same 'T5: and pool-counts is unchanged by the row' "$(printf '%s\n' "$b1" | grep '^# pool-counts ')" "$(printf '%s\n' "$b0" | grep '^# pool-counts ')"
 
-# T6/T7: chief-sign= follows the mirror's In Progress
 reset_mirror
 rd_record
 mk_tk HIMMEL-8002 'In Progress' 'In Progress' build 'body of HIMMEL-8002'

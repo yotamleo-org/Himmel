@@ -454,7 +454,6 @@ check '(tf) a failing tick with a dispositioned pool stays quiet' 124 "$rc"
 rm -f "$STUB/tick.fail"
 rm -f "$STUB/dispositions"
 
-# --- (W1) a live readiness row removes a pool-unresolved key from the waiter's probe ---
 W1="$WORK/w1"; mkdir -p "$W1/mirror/HIMMEL" "$W1/rel/v1"
 for k in HIMMEL-8001 HIMMEL-8102; do
     printf -- '---\nkey: "%s"\ntype: "Task"\nstatus: "To Do"\nstatusCategory: "To Do"\npriority: "High"\nlabels: ["standalone"]\nfixVersions: ["v1"]\nparent: null\ncreated: "x"\nupdated: "x"\nresolution: null\nresolved: null\nlinks:\n  blocks: []\n  blocked_by: []\n  relates: []\n---\n\n# %s: fixture\n\n## Description\n\nbody\n\n## Comments\n\n_(none)_\n' "$k" "$k" > "$W1/mirror/HIMMEL/$k.md"

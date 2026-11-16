@@ -814,8 +814,6 @@ if not rows and not re.search(r"^# dropped from .+: 0 of 0 To Do", text, re.M):
     print("# pool-counts ?")
     sys.exit(0)
 
-# The readiness record: read only when a doc is given, for the version of the snapshot's dropped-from line.
-# A missing version line, a timeout or a failed read prints `# readiness ?` and applies no ruling.
 ruled, readiness_lines = {}, ["# readiness ?"]
 if sys.argv[1]:
     def age_text(seconds):
@@ -907,8 +905,6 @@ for key, reason in rows.items():
     else:
         unresolved.append((reason.split()[0], key, reason))
 unres_keys = {k for _, k, _ in unresolved}
-# A live c or d row is a ruling. An invalid line and a held key stay; a CLOSE-OR-DISPATCH key ruled on a
-# decision number stays stale; any other ruled key leaves the unresolved list and counts disposed.
 if ruled:
     kept = []
     for cls, key, reason in unresolved:
