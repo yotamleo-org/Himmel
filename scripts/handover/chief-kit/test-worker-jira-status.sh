@@ -475,6 +475,13 @@ reset "In Progress"; owned WRAPPED 0
 printf '# worker\n\n## Results (newest at the bottom)\n- 10:00 WRAPPED — x\n\n> **Completes ticket:** no\n' > "$DOC"
 fn "$K" --event wrapped --doc "$DOC"
 check "D6n guard: a flag line below ## Results is not the brief's flag" "$(moved)" "transition $K To Do"
+# 9323: a --doc path that is option-shaped is a file; the doc sits in the funnel's cwd and is a completes-no wrapped brief
+reset "In Progress"
+mkdir -p "$tmp/hard"
+printf '> **Completes ticket:** no\n\n## Results (newest at the bottom)\n- 10:00 WRAPPED — x\n' > "$tmp/hard/-f"
+( cd "$tmp/hard" && bash "$SUT" "$K" --event wrapped --doc -f >"$tmp/out" 2>&1 )
+check "9323 a --doc path -f is read as the doc: wrapped on a completes-no brief, rule D6n" "$(row rule)" D6n
+check "9323 a --doc path -f: no transition" "$(ntrans)" 0
 # --- D5c: a merged PR with no merge row keeps a wrapped ticket In Progress ---
 merged() { printf '%s\n' "$1" > "$FX/pr-merged.json"; } # the merged-PR list the stub gh returns
 reset "In Review"; owned WRAPPED 0
@@ -795,7 +802,7 @@ WORKER_SESSION_JIRA_STATUS=0 fn "$K" --event live
 # read-sink-ok: STUB_LOG is this suite's own mktemp stub log
 check "opt-out direct: no Jira call" "$(wc -c < "$STUB_LOG" | tr -d ' ')" 0
 check "opt-out direct: a disabled row" "$(row result)" disabled
-for bad in HIMMEL-123junk HIMMEL-x-1 "HIMMEL-1 2"; do
+for bad in HIMMEL-123junk HIMMEL-x-1 "HIMMEL-1 2" -f --; do
     reset "To Do"
     fn "$bad" --event live
     # read-sink-ok: STUB_LOG is this suite's own mktemp stub log
