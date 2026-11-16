@@ -1808,20 +1808,24 @@ if ! grepq "$out" -Fx "$TI_EC" && ! grepq "$out" -Fx "$TI_MC"; then pass "TI6 a 
 ti_re() { awk -F '\t' -v s="$1" '$1 == s { print $2 }' "$TI_MANIFEST" 2>/dev/null; }
 ti_ec_re="$(ti_re "$TI_EC")"
 ti_miss=""
+ti_n=0
 if [ -n "$ti_ec_re" ]; then
     for k in $(git -C "$REPO_ROOT" grep -h -E '^    "[^"]+": \{' HEAD -- scripts/observability/exit-codes.json | sed -E 's/^ *"([^"]+)".*/\1/'); do
+        ti_n=$((ti_n + 1))
         grepq "$k" -E "$ti_ec_re" || ti_miss="$ti_miss $k"
     done
 fi
-if [ -n "$ti_ec_re" ] && [ -z "$ti_miss" ]; then pass "TI7 every script the exit-code registry names matches the manifest's regex for test-exit-codes.sh"; else fail "TI7 registry keys outside the manifest regex:${ti_miss:- (no regex)}"; fi
+if [ -n "$ti_ec_re" ] && [ "$ti_n" -gt 0 ] && [ -z "$ti_miss" ]; then pass "TI7 every script the exit-code registry names ($ti_n) matches the manifest's regex for test-exit-codes.sh"; else fail "TI7 registry keys outside the manifest regex (checked $ti_n):${ti_miss:- (no regex or no keys)}"; fi
 ti_mc_re="$(ti_re "$TI_MC")"
 ti_miss=""
+ti_n=0
 if [ -n "$ti_mc_re" ]; then
     for k in $(git -C "$REPO_ROOT" grep -l -e '' HEAD -- marketplace/plugins/pstack/skills/statechart/scripts | sed 's/^HEAD://'); do
+        ti_n=$((ti_n + 1))
         grepq "$k" -E "$ti_mc_re" || ti_miss="$ti_miss $k"
     done
 fi
-if [ -n "$ti_mc_re" ] && [ -z "$ti_miss" ]; then pass "TI8 every vendored statechart file matches the manifest's regex for test-model-check-report.sh"; else fail "TI8 vendored files outside the manifest regex:${ti_miss:- (no regex)}"; fi
+if [ -n "$ti_mc_re" ] && [ "$ti_n" -gt 0 ] && [ -z "$ti_miss" ]; then pass "TI8 every vendored statechart file ($ti_n) matches the manifest's regex for test-model-check-report.sh"; else fail "TI8 vendored files outside the manifest regex (checked $ti_n):${ti_miss:- (no regex or no files)}"; fi
 # The rows are the union of the head's manifest and the selector's own checkout's:
 # a head that deleted the manifest does not narrow its own selection.
 git -C "$TV" rm -q -f scripts/ci/tree-invariant-suites.txt
