@@ -10,6 +10,7 @@ import { readRecords } from '../lib/ledger.mjs';
 import { fold, inFlight } from '../lib/fold.mjs';
 import { renderDock } from '../lib/dock.mjs';
 import { main as dock } from '../dock.mjs';
+import { DEFAULT_JOB_TIMEOUT_MS } from '../../hooks/stop-queue.mjs';
 
 const root = resolve(import.meta.dirname, '../../..');
 const waitFor = async (fn) => {
@@ -30,7 +31,7 @@ test('real Stop hook cannot certify a partial collector exit as successful fresh
     env: { ...process.env, HIMMEL_REPO: repo, WHERE_ARE_WE_STATE_DIR: state, HIMMEL_WHERE_ARE_WE: '1',
       HIMMEL_WHERE_ARE_WE_COLLECT_CMD: '', PATH: `${bin}:/usr/bin:/bin` }, encoding: 'utf8', timeout: 5000,
   });
-  assert.equal(result.status, 0); // advisory hook remains nonblocking/fail-open
+  assert.equal(result.status, 1); // queued child reports collection failure after evidence
   await waitFor(() => readFileSync(ledger, 'utf8').includes('@collect:jira'));
   await new Promise((ok) => setTimeout(ok, 150));
   assert.equal(existsSync(marker), false, 'partial/error evidence must not advance the success marker');
@@ -187,7 +188,7 @@ for (const hook of ['refresh-where-are-we-on-end.sh', 'inject-where-are-we.sh'])
         env: { ...process.env, HIMMEL_REPO: repo, HIMMEL_WHERE_ARE_WE: '1', WHERE_ARE_WE_STATE_DIR: state, WHERE_ARE_WE_BRANCH_OVERRIDE: 'main',
           HIMMEL_WHERE_ARE_WE_COLLECT_CMD: `${JSON.stringify(process.execPath)} ${JSON.stringify(script)}` }, input: '', encoding: 'utf8', timeout: 4000,
       });
-      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.status, hook.startsWith('refresh') && mode !== 'success' ? 1 : 0, result.stderr);
       await waitFor(() => existsSync(done));
       if (mode === 'success') assert.ok(statSync(marker).mtimeMs > 1000000);
       else {
@@ -239,4 +240,46 @@ test('GitHub partial GraphQL transport failure preserves valid peers and leaves 
   assert.deepEqual(result.rows.map((r) => r.number), [1]);
   assert.equal(result.rows[0].state, 'MERGED');
   assert.match(result.errors.join(' '), /missing PR #2/);
+});
+
+test('normal collector outer deadline stays below the actual Stop queue timeout', () => {
+  const dir = makeTmpDir('waw-default-deadline-'), bin = join(dir, 'bin'), recorded = join(dir, 'deadline');
+  mkdirSync(bin);
+  writeFileSync(join(bin, 'timeout'), `#!/bin/sh\nprintf '%s' "$3" > '${recorded}'\n`, { mode: 0o755 });
+  const saved = process.env.PATH;
+  try {
+    process.env.PATH = `${bin}:${saved}`;
+    runCLI(['--ledger', join(dir, 'ledger.jsonl')]);
+  } finally { process.env.PATH = saved; }
+  const ms = Number(readFileSync(recorded, 'utf8').replace(/s$/, '')) * 1000;
+  assert.ok(ms < DEFAULT_JOB_TIMEOUT_MS, `${ms}ms collector outer exceeds ${DEFAULT_JOB_TIMEOUT_MS}ms queue budget`);
+  assert.equal(ms, 90000);
+});
+
+for (const deadlineMs of [2400, 1200.5]) test(`earlier successful rows survive a hung later source before outer ${deadlineMs}ms`, () => {
+  const dir = makeTmpDir('waw-persist-headroom-'), bin = join(dir, 'bin'), ledger = join(dir, 'ledger.jsonl'), marker = join(dir, '.refreshed-at');
+  mkdirSync(bin);
+  writeFileSync(ledger, [
+    { ts: '2026-01-01T00:00:00Z', source: 'jira', kind: 'ticket', key: 'HIMMEL-1', status: 'in-progress' },
+    { ts: '2026-01-01T00:00:00Z', source: 'pr', kind: 'pr', key: '#7', status: 'open', awaiting_operator: ['merge'] },
+  ].map(JSON.stringify).join('\n') + '\n');
+  writeFileSync(marker, 'last good'); utimesSync(marker, 1000, 1000);
+  writeFileSync(join(bin, 'gh'), '#!/bin/sh\nprintf \'%s\\n\' \'[{"number":7,"state":"MERGED","headRefName":"feat/x"}]\'\n', { mode: 0o755 });
+  writeFileSync(join(bin, 'git'), '#!/bin/sh\ntrap "" TERM\nsleep 5\n', { mode: 0o755 });
+  const saved = process.env.PATH, began = Date.now();
+  let result;
+  try {
+    process.env.PATH = `${bin}:/usr/bin:/bin`;
+    result = runCLI(['--ledger', ledger, '--marker', marker], { deadlineMs });
+  } finally { process.env.PATH = saved; }
+  const state = fold(readRecords(ledger));
+  assert.equal(state.items['#7'].status, 'merged', 'outer watchdog discarded an earlier successful source');
+  assert.equal(state.items['HIMMEL-1'].status, 'in-progress');
+  assert.equal(state.awaiting_operator.length, 0);
+  assert.match(state.sources.git.errors.join(' '), /deadline|timed out/);
+  assert.doesNotMatch(state.sources.git.errors.join(' '), /pending or interrupted/);
+  assert.equal(statSync(marker).mtimeMs, 1000000);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /evidence persisted/);
+  assert.ok(Date.now() - began < deadlineMs, 'normal partial result should finish before its outer watchdog');
 });

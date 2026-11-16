@@ -253,7 +253,7 @@ function parseArgs(argv) {
 export function main(argv, { readers, strict = false, ...limits } = {}) {
   const a = parseArgs(argv);
   if (!a.ledger) throw new UsageError('--ledger <path> is required');
-  const lock = collectionLock(a.ledger);
+  const lock = collectionLock(a.ledger, limits.outerDeadlineAt);
   try {
     const budget = createBudget({ ...limits, lockFd: lock.fd });
     return collectLocked(a, { readers, strict, budget });
@@ -273,7 +273,7 @@ function collectLocked(a, { readers, strict, budget }) {
   const activePRs = active.filter((it) => it.kind === 'pr' && /^#\d+$/.test(it.key)).map((it) => Number(it.key.slice(1)));
   appendRecords(a.ledger, ['jira', 'pr', 'git'].map((source) => ({
     ts: now, source, kind: 'collection', key: `@collect:${source}`, errors: ['refresh started; result pending or interrupted'], error_count: 1,
-  })), { timeoutMs: 1000 });
+  })), { timeoutMs: budget.persistenceTimeout() });
   const { records, health } = collectPass(now, effectiveReaders, activeKeys, activePRs);
   try { budget.remaining(); } catch (error) { for (const h of Object.values(health)) h.add(error); }
   for (const record of records) {
@@ -284,7 +284,7 @@ function collectLocked(a, { readers, strict, budget }) {
     ts: now, source, key: `@collect:${source}`, kind: 'collection', errors: health.errors, error_count: health.error_count,
     ...(!health.error_count ? { observed_at: now } : {}),
   }));
-  const r = appendRecords(a.ledger, [...records, ...evidence], { timeoutMs: 1000 });
+  const r = appendRecords(a.ledger, [...records, ...evidence], { timeoutMs: budget.persistenceTimeout() });
   const summary = `appended=${r.appended - evidence.length} dropped=${r.dropped}`;
   if (r.dropped > 0) {
     console.error(`[where-are-we] dropped ${r.dropped} records: ${diagnostic(r.dropReasons[0]?.error)}`);
@@ -313,16 +313,18 @@ function collectLocked(a, { readers, strict, budget }) {
 // CLI entry
 // ---------------------------------------------------------------------------
 
-export function runCLI(argv, { deadlineMs = 180000 } = {}) {
-  const ms = Math.max(1, Math.min(180000, deadlineMs));
+export function runCLI(argv, { deadlineMs = 90000 } = {}) {
+  const ms = Math.max(1, Math.min(90000, deadlineMs));
+  const outerDeadlineAt = Date.now() + ms;
+  const deadlineAt = outerDeadlineAt - Math.min(15000, ms / 4);
   const code = `const {main} = await import(process.argv[1]);
     const {diagnostic} = await import(new URL('./lib/health.mjs', process.argv[1]));
-    try { console.log(main(JSON.parse(process.argv[2]), {strict:true,deadlineMs:Number(process.argv[3])})); }
+    try { console.log(main(JSON.parse(process.argv[2]), {strict:true,deadlineAt:Number(process.argv[3]),outerDeadlineAt:Number(process.argv[4])})); }
     catch(error) { console.error(diagnostic(error)); process.exitCode=1; }`;
   // This outer watchdog also bounds local parsing/persistence and a stuck
   // append lock. An interrupted pass retains its pre-read pending evidence.
-  const result = spawnSync('timeout', ['-k', '0.2', `${ms / 1000}s`, process.execPath, '--input-type=module', '-e', code, import.meta.url, JSON.stringify(argv), String(ms)], {
-    encoding: 'utf8', timeout: ms + 1000, maxBuffer: 1024 * 1024,
+  const result = spawnSync('timeout', ['-k', '0.2', `${ms / 1000}s`, process.execPath, '--input-type=module', '-e', code, import.meta.url, JSON.stringify(argv), String(deadlineAt), String(outerDeadlineAt)], {
+    encoding: 'utf8', timeout: Math.ceil(ms + 1000), maxBuffer: 1024 * 1024,
   });
   if (result.status === 124 || result.status === 137) result.stderr = 'collector deadline exhausted; freshness unknown, refresh may be incomplete\n';
   if (result.error) result.stderr = diagnostic(result.error) + '\n';

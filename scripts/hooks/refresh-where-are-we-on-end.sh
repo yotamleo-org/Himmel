@@ -34,7 +34,7 @@
 
 set -euo pipefail
 
-# Always exit clean; never block session teardown on our own bug.
+# Setup fails open; the queued child explicitly reports its collector result.
 trap 'exit 0' ERR
 
 # --- Full-body detach ------------------------------------------
@@ -102,10 +102,11 @@ mkdir -p "$_wa_dir" 2>/dev/null || exit 0
 
 # The queued child runs the collector to completion. Only the collector can
 # certify freshness; exit zero from an advisory wrapper is not that evidence.
+_wa_rc=0
 if [ -n "${HIMMEL_WHERE_ARE_WE_COLLECT_CMD:-}" ]; then
-    bash -c "$HIMMEL_WHERE_ARE_WE_COLLECT_CMD"
+    bash -c "$HIMMEL_WHERE_ARE_WE_COLLECT_CMD" || _wa_rc=$?
 else
-    "$_wa_node" "$_wa_root/scripts/where-are-we/collect.mjs" --ledger "$_wa_ledger" --marker "$_wa_marker"
+    "$_wa_node" "$_wa_root/scripts/where-are-we/collect.mjs" --ledger "$_wa_ledger" --marker "$_wa_marker" || _wa_rc=$?
 fi
 
-exit 0
+exit "$_wa_rc"
