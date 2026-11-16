@@ -873,8 +873,22 @@ tree_invariant_rows_head_and_checkout() {
     git show "${head_sha}:scripts/ci/tree-invariant-suites.txt" 2>/dev/null
     cat -- "$is_dir/../ci/tree-invariant-suites.txt" 2>/dev/null
 }
+: > "$work/tree-invariants.raw" || io_fail "creating the raw tree-invariant list"
+tree_invariant_rows_head_and_checkout | grep -E -v '^[[:space:]]*(#|$)' | sort -u > "$work/tree-invariants.raw" || true
 : > "$work/tree-invariants" || io_fail "creating the tree-invariant list"
-tree_invariant_rows_head_and_checkout | grep -E -v '^[[:space:]]*(#|$)' > "$work/tree-invariants" || true
+while IFS="$(printf '\t')" read -r ti_suite ti_re; do
+    [ -n "$ti_suite" ] || continue
+    ti_rc=2
+    if [ -n "$ti_re" ]; then
+        ti_rc=0
+        grep -Eq -- "$ti_re" /dev/null 2>/dev/null || ti_rc=$?
+    fi
+    if [ "$ti_rc" -gt 1 ]; then
+        echo "impacted-suites: ignoring a malformed tree-invariant row for ${ti_suite}" >&2
+        continue
+    fi
+    printf '%s\t%s\n' "$ti_suite" "$ti_re" >> "$work/tree-invariants" || io_fail "recording a tree-invariant row"
+done < "$work/tree-invariants.raw"
 
 cg_rc=0
 git show "${head_sha}:scripts/cr/pr-check-context.sh" > "$work/ctx" 2>/dev/null || cg_rc=$?
@@ -1446,10 +1460,10 @@ done < "$work/changed"
 
 while IFS= read -r f; do
     [ -n "$f" ] || continue
+    printf '%s\n' "$f" > "$work/ti-path" || io_fail "writing a changed path for the tree-invariant rows"
     while IFS="$(printf '\t')" read -r ti_suite ti_re; do
-        [ -n "$ti_suite" ] && [ -n "$ti_re" ] || continue
         ti_rc=0
-        grep -Eq -- "$ti_re" <<< "$f" 2>/dev/null || ti_rc=$?
+        grep -Eq -- "$ti_re" "$work/ti-path" || ti_rc=$?
         if [ "$ti_rc" -eq 0 ] && grep -Fxq -- "$ti_suite" "$suites"; then
             printf '%s\n' "$ti_suite" >> "$found" || io_fail "recording a tree-invariant suite"
         fi

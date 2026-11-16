@@ -595,4 +595,37 @@ if [ "$rc" -eq 0 ] && grepq "$out" -x 'mode impacted' \
 else fail "IS27: scripts edit: rc=$rc out: $out"; fi
 rm -rf "$DP"
 
+# --- IS28 -------------------------------------------------------
+TB="$(fixture_mktemp_dir)" || exit 1
+(
+  cd "$TB" && git init -q && git config user.email t@e && git config user.name t \
+    && mkdir -p scripts/ci scripts/cr scripts/tools/inv scripts/tools/new \
+    && cp "$SEL_SRC" scripts/ci/impacted-selection.sh \
+    && cp "$SRC_ROOT/scripts/cr/impacted-suites.sh" "$SRC_ROOT/scripts/cr/anchor-handoff.sh" scripts/cr/ \
+    && printf '# fixture trust list\n\n^scripts/ci/\n' > scripts/ci/ci-trust-paths.txt \
+    && printf 'scripts/test-inv.sh\t^scripts/tools/inv/\n' > scripts/ci/tree-invariant-suites.txt \
+    && printf '# tool\n' > scripts/tools/inv/x.sh && printf '# tool\n' > scripts/tools/new/y.sh \
+    && printf '#!/usr/bin/env bash\nexit 0\n' > scripts/test-inv.sh \
+    && printf '#!/usr/bin/env bash\nexit 0\n' > scripts/test-newrow.sh \
+    && git add -A && git commit -q -m base && git update-ref refs/remotes/origin/main HEAD \
+    && git checkout -q -b delrow && : > scripts/ci/tree-invariant-suites.txt && printf '# edit\n' >> scripts/tools/inv/x.sh \
+    && git commit -q -am "delete the row and touch its tree" \
+    && git checkout -q -b newrow refs/remotes/origin/main \
+    && printf 'scripts/test-inv.sh\t^scripts/tools/inv/\nscripts/test-newrow.sh\t^scripts/tools/new/\n' > scripts/ci/tree-invariant-suites.txt \
+    && printf '# edit\n' >> scripts/tools/new/y.sh && git commit -q -am "add a row and touch its tree"
+) || exit 1
+TB_BASE=$(git -C "$TB" rev-parse refs/remotes/origin/main)
+tsel() { (cd "$TB" && env SUITE_TIER_MODE=pr bash scripts/ci/impacted-selection.sh "$TB_BASE" "$1" 2>&1); }
+
+out=$(tsel delrow); rc=$?
+if [ "$rc" -eq 0 ] && grepq "$out" -x 'mode impacted' && grepq "$out" -x 'suite scripts/test-inv.sh'; then
+  pass "IS28: a PR that deletes a manifest row and touches that row's tree still selects the suite, through the base extraction"
+else fail "IS28: deleted row: rc=$rc out: $out"; fi
+
+out=$(tsel newrow); rc=$?
+if [ "$rc" -eq 0 ] && grepq "$out" -x 'mode impacted' && grepq "$out" -x 'suite scripts/test-newrow.sh'; then
+  pass "IS28: a row the PR adds selects its suite, through the head read"
+else fail "IS28: added row: rc=$rc out: $out"; fi
+rm -rf "$TB"
+
 rst_tally
