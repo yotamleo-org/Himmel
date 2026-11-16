@@ -59,7 +59,8 @@
         "1": { "class": "error", "meaning": "usage or input error" },
         "2": { "class": "error", "meaning": "required tool missing or environment unusable" },
         "3": { "class": "error", "meaning": "issue creation failed for at least one finding" },
-        "4": { "class": "error", "meaning": "a dedupe check failed (fail-closed, nothing filed)" }
+        "4": { "class": "error", "meaning": "a dedupe check failed (fail-closed, nothing filed)" },
+        "5": { "class": "error", "meaning": "tracker=jira polish: the polish note could not be recorded on the PR ticket (note-polish.sh failed, or a detached HEAD); nothing filed" }
       }
     },
     "scripts/ci/tmp-sweep.sh": {
