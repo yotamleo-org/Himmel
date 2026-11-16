@@ -125,10 +125,11 @@ def main(argv=None):
     try:
         prs = ja.load_json(a.prs, "--prs")
         bugs, marks = [], []
-        if os.path.isdir(a.mirror):
+        if a.mirror is not None and os.path.isdir(a.mirror):
             bugs, marks = ja.load_bugs(a.mirror), deferred_marks(a.mirror)
         else:
-            print("harvest: no Jira mirror at %s: caused-by and deferred-escape left out" % a.mirror, file=sys.stderr)
+            print("harvest: no Jira mirror at %s: caused-by and deferred-escape left out"
+                  % (a.mirror if a.mirror is not None else "(project resolver failed)"), file=sys.stderr)
         recs = ja.load_verdicts(a.verdicts)[0] if a.verdicts else []
     except ValueError as e:
         print("harvest: refused: %s" % e, file=sys.stderr)

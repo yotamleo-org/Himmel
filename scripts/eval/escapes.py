@@ -188,7 +188,7 @@ def main(argv=None):
         prs = judge_accuracy.load_json(a.prs, "--prs")
         ledger = judge_accuracy.class_filter(a.cls, a.bug_origin_dir)
         # a class filter reads the ledger, so a project with no Jira mirror still works; unfiltered numbers need the mirror
-        bugs = (judge_accuracy.ledger_bugs(ledger) if ledger is not None and not os.path.isdir(a.mirror)
+        bugs = (judge_accuracy.ledger_bugs(ledger) if ledger is not None and (a.mirror is None or not os.path.isdir(a.mirror))
                 else judge_accuracy.load_bugs(a.mirror))
         recs = judge_accuracy.load_verdicts(a.verdicts)[0] if a.verdicts else None
         classes = judge_accuracy.ledger_classes(ledger) if ledger is not None else None
