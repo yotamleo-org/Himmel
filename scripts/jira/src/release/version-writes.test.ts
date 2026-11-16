@@ -81,6 +81,7 @@ const READ_ONLY = [
   'scripts/handover/chief-kit/intake-backfill.sh',
   'scripts/handover/chief-kit/next-dispatchable.sh',
   'scripts/handover/chief-kit/priority-prune.sh',
+  'scripts/handover/chief-kit/readiness.sh',
   'scripts/handover/chief-kit/stuck-scan.sh',
   'scripts/handover/chief-kit/tick.sh',
   'scripts/handover/chief-kit/tracker.py',
