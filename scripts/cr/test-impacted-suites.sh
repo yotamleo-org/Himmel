@@ -1838,17 +1838,17 @@ mkdir -p "$TV/scripts/ci"
 git -C "$TV" add -A
 git -C "$TV" commit -q -m "chore: restore the manifest"
 tv_change scripts/cr/file-deferred-issues.sh
-out="$( cd "$TV" && bash "$TC/scripts/cr/impacted-suites.sh" "$tv_range" 2>/dev/null )"
-if grepq "$out" -Fx "$TI_EC"; then pass "TI9c a row only the head carries selects its suite when no manifest sits beside the selector"; else fail "TI9c head-only rows: $out"; fi
+out="$( cd "$TV" && bash "$TC/scripts/cr/impacted-suites.sh" "$tv_range" 2>/dev/null )"; rc=$?
+if [ "$rc" -eq 0 ] && grepq "$out" -Fx "$TI_EC"; then pass "TI9c a row only the head carries selects its suite when no manifest sits beside the selector"; else fail "TI9c head-only rows: rc=$rc out=$out"; fi
 printf '%s\t%s\n' scripts/test-unrelated.sh '^(unclosed' >> "$TV/scripts/ci/tree-invariant-suites.txt"
 mkdir -p "$TC/scripts/ci"
 cp "$TV/scripts/ci/tree-invariant-suites.txt" "$TC/scripts/ci/tree-invariant-suites.txt"
 git -C "$TV" add -A
 git -C "$TV" commit -q -m "chore: add a malformed row"
 tv_change scripts/cr/file-deferred-issues.sh
-out="$( cd "$TV" && bash "$TC/scripts/cr/impacted-suites.sh" "$tv_range" 2>/dev/null )"
-err="$( cd "$TV" && bash "$TC/scripts/cr/impacted-suites.sh" "$tv_range" 2>&1 >/dev/null )"
-if grepq "$out" -Fx "$TI_EC" && ! grepq "$out" -Fx scripts/test-unrelated.sh && [ "$(grep -c -i 'malformed' <<< "$err")" -eq 1 ]; then pass "TI12 a malformed regex row prints one stderr warning, selects nothing, and leaves the other rows working"; else fail "TI12 malformed row: out=$out err=$err"; fi
+out="$( cd "$TV" && bash "$TC/scripts/cr/impacted-suites.sh" "$tv_range" 2>/dev/null )"; rc=$?
+err="$( cd "$TV" && bash "$TC/scripts/cr/impacted-suites.sh" "$tv_range" 2>&1 >/dev/null )"; rc_err=$?
+if [ "$rc" -eq 0 ] && [ "$rc_err" -eq 0 ] && grepq "$out" -Fx "$TI_EC" && ! grepq "$out" -Fx scripts/test-unrelated.sh && [ "$(grep -c -i 'malformed' <<< "$err")" -eq 1 ]; then pass "TI12 a malformed regex row prints one stderr warning, selects nothing, and leaves the other rows working"; else fail "TI12 malformed row: out=$out err=$err"; fi
 if git -C "$REPO_ROOT" cat-file -e '247549974^{commit}' 2>/dev/null && git -C "$REPO_ROOT" cat-file -e '608952484^{commit}' 2>/dev/null; then
     out="$( cd "$REPO_ROOT" && bash "$IS" 247549974~1..247549974 2>/dev/null )"
     if grepq "$out" -Fx "$TI_EC"; then pass "TI10 the 247549974 range lists test-exit-codes.sh"; else fail "TI10 247549974: $out"; fi
