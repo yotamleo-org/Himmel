@@ -54,7 +54,7 @@ mkdir -p "$T/copy"
 for d in $DOCS; do cp "$REPO/$d" "$T/copy/$(basename "$d")"; done
 sed '0,/ --kind chief-reply /s// /' "$REPO/docs/handover/chief-sections/voice-lines.md" > "$T/copy/voice-lines.md"
 out="$(lint "$T/copy/"*.md)"; rc=$?
-if [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -q 'voice-lines.md: .*voice asked'; then
+if [ "$rc" -ne 0 ] && grep -q 'voice-lines.md: .*voice asked' <<< "$out"; then
     pass "a doc copy with one reply command's --kind chief-reply stripped fails the lint naming that command"
 else
     fail "a doc copy with one reply command's --kind chief-reply stripped fails the lint naming that command" "rc=$rc out=$out"
