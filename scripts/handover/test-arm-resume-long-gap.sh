@@ -65,7 +65,7 @@ export HIMMEL_FLOW_RUNS_LEDGER="$TMP/flow-runs.jsonl"
 # is ever created. Same declared opt-out as test-arm-resume.sh; missing it
 # cost 7 failures first caught by the public wave-2k CI.
 export ARM_TEMP_CWD_OK=1
-export UNGUARDED_LAUNCH_OK=1  # scratch fixtures; guard rows drop it
+export UNGUARDED_LAUNCH_OK=1
 
 # ---------------------------------------------------------------------------
 # Helpers
