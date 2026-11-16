@@ -104,6 +104,8 @@ appdirs="$tmp/apps"; mkdir -p "$appdirs/iTerm.app" "$appdirs/Terminal.app"
 # otherwise take the AppleScript path below and open a real tab; section 9
 # sets this explicitly.
 unset ITERM_SESSION_ID
+# The tmux opt-in is read from the caller's environment; section 11 sets it per case.
+unset HEADED_ARM_TMUX_SESSION
 
 run_shim() { # run_shim <bindir> -- <args...>  (stdout+stderr merged, rc echoed last)
     local bindir="$1"; shift; [ "$1" = "--" ] && shift
