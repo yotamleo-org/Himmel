@@ -107,9 +107,6 @@ if [ "$LAUNCH_INTENT" = 1 ]; then
     echo 'bank-preflight: fleet-paused (managed control unavailable or paused)' >&2
     emit SKIPPED-FLEET
   fi
-  if [ "$(printf '%s\n' "$_managed_scope" | jq -r .administrative)" = true ]; then
-    LAUNCH_INTENT=''
-  fi
 fi
 
 # fleet-size cap. Concurrency, not bank exhaustion, burned the

@@ -653,7 +653,7 @@ exit 1''')
             e.pop('FLEET_LAUNCH_MANIFEST')
             p = self.entry('scripts/lib/usage-preflight.sh', env=e)
             self.assertNotEqual(p.stdout.strip(), 'SKIPPED-FLEET', p.stderr)
-            self.assertFalse((self.bucket / 'slots' / doc.stem).exists())
+            self.assertFalse((self.bucket / 'slots' / doc.stem / 'managed.json').exists())
         generated = self.bucket / 'unregistered.md'
         generated.write_text('# worker\n> **Leg kind:** build\n')
         self.call('runtime', 'check', '--doc', generated, ok=False)
@@ -670,6 +670,35 @@ exit 1''')
         self.call('runtime', 'resolve', '--doc', generated, '--manifest', self.m)
         self.rt('begin', aid='explicit', doc=generated)
         self.rt('outcome', aid='explicit', doc=generated, extra=('--phase', 'refused'))
+
+    def test_administrative_docs_still_obey_native_hard_cap(self):
+        for number in range(4):
+            doc = self.bucket / ('HIMMEL-%d-N%d-worker.md' % (number + 10, number + 10))
+            doc.write_text('# offline worker\n')
+            self.real_worker(aid='cap-%d' % number, doc=doc)
+        for name in ('chief-handover.md', 'nonexistent-notes.md'):
+            doc = self.bucket / name
+            if name.startswith('chief'):
+                doc.write_text('# chief\n')
+            env = dict(self.real_census_env(), FLEET_LAUNCH_DOC=str(doc),
+                       CADENCE_USAGE_WORKER=doc.stem)
+            env.pop('FLEET_LAUNCH_MANIFEST')
+            env.pop('FLEET_CAP_OK')
+            result = self.entry('scripts/lib/usage-preflight.sh', env=env)
+            self.assertEqual(result.stdout.strip(), 'SKIPPED-FLEET', result.stderr)
+
+    def test_administrative_docs_still_obey_api_off(self):
+        for name in ('chief-handover.md', 'nonexistent-notes.md'):
+            doc = self.bucket / name
+            if name.startswith('chief'):
+                doc.write_text('# chief\n')
+            env = dict(self.launch_env(), FLEET_LAUNCH_DOC=str(doc),
+                       CADENCE_USAGE_WORKER=doc.stem, CADENCE_USAGE_LANE='api',
+                       HIMMEL_API_LANE='off')
+            env.pop('FLEET_LAUNCH_MANIFEST')
+            env.pop('FLEET_CAP_OK')
+            result = self.entry('scripts/lib/usage-preflight.sh', env=env)
+            self.assertEqual(result.stdout.strip(), 'SKIPPED-BANK', result.stderr)
 
     def test_unbound_and_conflicting_sibling_keep_live_and_unknown_ownership(self):
         for reference in (None, {'family':'wrong'}, 'malformed'):
