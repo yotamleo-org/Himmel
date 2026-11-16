@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/chief-kit/test-readiness.sh - readiness.sh append/read rows R1-R12 (plan slice 1).
-# Every row passes an explicit scratch --mirror and a scratch HIMMEL_RELEASE_STATE_DIR (R5 uses a fixture repo with
-# its own .env and HOME): no row reads the station's mirror, release root, .env or ~/.himmel.
+# scripts/handover/chief-kit/test-readiness.sh - readiness.sh append and read rows R1-R14
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 RD="${READINESS_SH:-$HERE/readiness.sh}"
@@ -22,12 +20,11 @@ export READINESS_NOW_EPOCH=$E0
 export HIMMEL_RELEASE_STATE_DIR="$REL"
 unset CLAUDE_PID SESSION_NAME_CMDLINE_FILE
 
-# the spec's section 5 fixture: ticket FIXT-101 (the stamp does not read the key); its blocker and relates values are the vector's
 T_STATUS="To Do"; T_CAT="To Do"; T_LABELS='["standalone","backlog","phase:design"]'; T_FIX='["v1"]'
 T_BLOCKS='[]'; T_BY='["HIMMEL-8102"]'; T_BODY=$'Impact\nfixture body'; T_UPD="2026-11-15T11:00:00.000+0100"; T_COMMENT='_(none)_'
 deft() { T_STATUS="To Do"; T_CAT="To Do"; T_LABELS='["standalone","backlog","phase:design"]'; T_FIX='["v1"]'
     T_BLOCKS='[]'; T_BY='["HIMMEL-8102"]'; T_BODY=$'Impact\nfixture body'; T_UPD="2026-11-15T11:00:00.000+0100"; T_COMMENT='_(none)_'; }
-writet() { # $1 = key; renders the T_ variables as a mirror file
+writet() {
     printf -- '---\nkey: "%s"\ntype: "Task"\nstatus: "%s"\nstatusCategory: "%s"\npriority: "High"\nlabels: %s\nfixVersions: %s\nparent: null\ncreated: "2026-11-15T10:00:00.000+0100"\nupdated: "%s"\nresolution: null\nresolved: null\nlinks:\n  blocks: %s\n  blocked_by: %s\n  relates: ["relates to HIMMEL-8103"]\n---\n\n# %s: fixture ticket\n\n## Description\n\n%s\n\n## Comments\n\n%s\n' \
         "$1" "$T_STATUS" "$T_CAT" "$T_LABELS" "$T_FIX" "$T_UPD" "$T_BLOCKS" "$T_BY" "$1" "$T_BODY" "$T_COMMENT" > "$M/$1.md"
 }
@@ -35,13 +32,11 @@ blocker_open() { printf -- '---\nkey: "HIMMEL-8102"\ntype: "Task"\nstatus: "To D
 blocker_done() { sed -i 's/^status: "To Do"/status: "Done"/; s/^statusCategory: "To Do"/statusCategory: "Done"/' "$M/HIMMEL-8102.md"; } # gnu-ok: the chief kit is Linux-only
 fresh() { deft; writet FIXT-101; writet FIXT-102; blocker_open; rm -rf "$REL"; mkdir -p "$REL/v1"; }
 
-# ap/rd run readiness.sh against the scratch mirror; ap carries --by fixture
 ap() { bash "$RD" append "$@" --by fixture --mirror "$M"; }
 rd() { bash "$RD" read "$1" --mirror "$M"; }
 sha() { sha256sum "$1" 2>/dev/null | cut -d' ' -f1; }
 tree() { find "$W" -type f -not -path "$W/fxrepo/*" -not -path "$W/home/*" -not -path "$W/o" -not -path "$W/e" | sort | xargs -r sha256sum | sha256sum | cut -d' ' -f1; }
 
-# ---------------------------------------------------------------- R1 latest row per key
 fresh
 ap v1 FIXT-101 a --evidence x >"$W/o" 2>"$W/e"; rc=$?
 check "R1: append a exits 0" "$rc" "0"
@@ -63,7 +58,6 @@ check "R1: an a row stores a null blocker" "$(sed -n 1p "$REC" | jq -r '.blocker
 ap v1 FIXT-102 b --evidence z >/dev/null 2>&1
 check "R1b: read prints one line per key, sorted by key" "$(rd v1 | jq -r .key | tr '\n' ' ')" "FIXT-101 FIXT-102 "
 
-# ---------------------------------------------------------------- R2 bad decision letter
 fresh
 ap v1 FIXT-101 a --evidence x >/dev/null 2>&1
 before="$(sha "$REC")"
@@ -71,7 +65,6 @@ ap v1 FIXT-101 e --evidence x >/dev/null 2>&1; rc=$?
 check "R2: a bad decision letter exits 2" "$rc" "2"
 check "R2: and the record is unchanged" "$(sha "$REC")" "$before"
 
-# ---------------------------------------------------------------- R3 blocker rules, fixVersions, usage
 fresh
 ap v1 FIXT-101 a --evidence x >/dev/null 2>&1
 before="$(sha "$REC")"
@@ -102,7 +95,6 @@ ap v1 FIXT-102 d --evidence y >/dev/null 2>&1; rc=$?
 check "R3: d without a blocker exits 0" "$rc" "0"
 check "R3: that d row stores a null blocker" "$(rd v1 | jq -r 'select(.key=="FIXT-102") | .blocker')" "null"
 
-# ---------------------------------------------------------------- R4 the stamp vector
 fresh
 ap v1 FIXT-101 a --evidence x >/dev/null 2>&1
 check "R4: the fixture's stamp is the spec vector" "$(sed -n 1p "$REC" | jq -r .stamp)" "s1:1d8ce3b2884a1209"
@@ -121,7 +113,6 @@ check "R4: the changed body stamps s1:96ebce484c63f8d3" "$(sed -n 2p "$REC" | jq
 deft; T_BLOCKS='["HIMMEL-8104"]'; writet FIXT-101
 check "R4: a blocks link is stale" "$(rd v1 | jq -r .state)" "stale"
 
-# ---------------------------------------------------------------- R5 the record path through the release root
 FXR="$W/fxrepo"; mkdir -p "$FXR/scripts/handover/chief-kit" "$W/home"
 git -C "$FXR" init -q -b main
 cp -R "$HERE/../../lib" "$FXR/scripts/lib"; cp "$RD" "$FXR/scripts/handover/chief-kit/readiness.sh"
@@ -144,7 +135,6 @@ check "R5c: USER_SLUG nowhere exits 3" "$rc" "3"
 contains "R5c: and stderr names USER_SLUG" "$(cat "$W/e")" "USER_SLUG"
 check "R5c: no file is written under the scratch tree" "$(tree)" "$snap"
 
-# ---------------------------------------------------------------- R6 staleness, omission, since
 fresh
 ap v1 FIXT-101 c --evidence y --blocker HIMMEL-8102 >/dev/null 2>&1
 blocker_done
@@ -170,7 +160,6 @@ check "R6: with the same since" "$(printf '%s' "$out" | jq -r .since)" "2027-01-
 ap v1 FIXT-101 a --evidence ruled >/dev/null 2>&1
 check "R6: a different decision starts a new run" "$(rd v1 | jq -r .since)" "2027-01-15T08:00:00Z"
 
-# ---------------------------------------------------------------- R7 concurrency and torn lines
 fresh
 for i in $(seq 1 20); do
     bash "$RD" append v1 FIXT-101 a --evidence "n$i" --by fixture --mirror "$M" >/dev/null 2>&1 &
@@ -205,7 +194,6 @@ check "R7: append exits 4 on a junk line" "$rc" "4"
 contains "R7: and names the line number" "$(cat "$W/e")" "line 23"
 check "R7: the record is unchanged by the refusal" "$(sha "$REC")" "$before"
 
-# ---------------------------------------------------------------- R8 evidence characters
 fresh
 before="$(sha "$REC")"
 for case_ in $'a\xe2\x80\xa8b' $'a\xe2\x80\xa9b' $'a\xc2\x85b' $'a\nb' $'a\tb'; do
@@ -220,7 +208,6 @@ check "R8: the record file is pure ASCII" "$(LC_ALL=C grep -c -P '[^\x00-\x7F]' 
 check "R8: the accent is stored as an escape" "$(grep -c 'u00e9' "$REC")" "1"
 check "R8: read returns it unchanged" "$(rd v1 | jq -r .evidence)" "$ev"
 
-# ---------------------------------------------------------------- R9 no ticket
 fresh
 rm -rf "$REL/vnone"
 ap vnone FIXT-999 a --evidence x >/dev/null 2>&1; rc=$?
@@ -236,7 +223,6 @@ check "R9: a deleted mirror file reads stale" "$(printf '%s' "$out" | jq -r .sta
 check "R9: with why no-ticket" "$(printf '%s' "$out" | jq -r .why)" "no-ticket"
 check "R9: and cat null" "$(printf '%s' "$out" | jq -r .cat)" "null"
 
-# ---------------------------------------------------------------- R10 traversal
 fresh
 snap="$(tree)"
 ap ../x FIXT-101 a --evidence x >/dev/null 2>&1; rc=$?
@@ -248,7 +234,6 @@ check "R10: read of ../x exits 2" "$rc" "2"
 check "R10: nothing is written" "$(tree)" "$snap"
 check "R10: and nothing outside the release root" "$([ -e "$W/x" ] && echo yes || echo no)" "no"
 
-# ---------------------------------------------------------------- R11 absent release dir
 fresh
 rm -rf "$REL/v1"
 rd v1 >/dev/null 2>&1; rc=$?
@@ -260,7 +245,6 @@ check "R11: and prints nothing" "$out" ""
 HIMMEL_RELEASE_STATE_DIR="$W/nope" bash "$RD" read v1 --mirror "$M" >/dev/null 2>&1; rc=$?
 check "R11: a missing release root exits 3" "$rc" "3"
 
-# ---------------------------------------------------------------- R12 argument checks, by, lastSync
 fresh
 before="$(sha "$REC")"
 ap v1 FIXT-101 c --evidence x --blocker FIXT-101 >/dev/null 2>&1; rc=$?
@@ -286,7 +270,6 @@ ap v1 FIXT-103 a --evidence x >"$W/o" 2>"$W/e"; rc=$?
 check "R12: a key outside the version exits 2" "$rc" "2"
 contains "R12: and the message names the mirror's lastSync" "$(cat "$W/e")" "2026-11-16T08:00:00.000Z"
 
-# ---------------------------------------------------------------- R13 an I/O error on the record is exit 4
 fresh
 ln -s /dev/full "$REC"
 ap v1 FIXT-101 a --evidence x >"$W/o" 2>"$W/e"; rc=$?
@@ -294,7 +277,6 @@ check "R13: a write error (ENOSPC) exits 4" "$rc" "4"
 lacks "R13: with no traceback" "$(cat "$W/e")" "Traceback"
 rm -f "$REC"
 
-# ---------------------------------------------------------------- R14 a calendar-invalid ts is an invalid row
 fresh
 ap v1 FIXT-101 a --evidence x >/dev/null 2>&1
 sed -i 's/2027-01-15T08:00:00Z/2027-99-15T08:00:00Z/' "$REC" # gnu-ok: the chief kit is Linux-only

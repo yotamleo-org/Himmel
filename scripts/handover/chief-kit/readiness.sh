@@ -18,7 +18,7 @@
 # The mirror is --mirror, else ${NEXT_DISPATCH_MIRROR:-$HOME/.himmel/state/jira-mirror/HIMMEL}.
 #
 # Exit codes: 0 done, 2 usage or a refused value, 3 no release root, no version directory on read, no mirror or
-# no ticket file, 4 the record is unreadable, invalid or cannot be locked.
+# no ticket file, 4 the record is unreadable, invalid, cannot be locked or cannot be written.
 #
 # Platform guard: bash and python3; the chief kit is Linux-only.
 set -u
@@ -43,7 +43,6 @@ RD_ROOT="" RD_ROOT_ERR=""
 if [ -n "${HIMMEL_RELEASE_STATE_DIR:-}" ]; then
     RD_ROOT="$HIMMEL_RELEASE_STATE_DIR"
 else
-    # the primary checkout is the dirname of the git common dir, as tick.sh and status-drift.sh resolve it
     RD_COMMON="$(git_clean -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || RD_COMMON="" # swallow-ok: no git leaves the checkout two levels above this kit as the primary
     if [ -n "$RD_COMMON" ]; then RD_PRIMARY="$(dirname "$RD_COMMON")"; else RD_PRIMARY="$(cd "$HERE/../../.." && pwd)"; fi
     load_dotenv --root "$(_load_dotenv_primary_for "$HERE/../../.." 2>/dev/null)" HANDOVER_DIR USER_SLUG 2>/dev/null || true # swallow-ok: an unreadable .env leaves USER_SLUG unset, which exits 3 below
@@ -170,7 +169,6 @@ def parse_row(raw):
 
 
 def split_record(data, path):
-    """-> (rows as (lineno, row), unterminated final segment as bytes); exit 4 on any other bad line"""
     segs = data.split(b"\n")
     final = segs.pop()
     rows = []
@@ -183,7 +181,6 @@ def split_record(data, path):
 
 
 def load_ticket(mirror, key):
-    """-> {cat, fix, stamp} from the mirror file, or None when it is missing or unparsable"""
     try:
         with open(os.path.join(mirror, key + ".md"), "rb") as f:
             t = f.read().decode("utf-8")
