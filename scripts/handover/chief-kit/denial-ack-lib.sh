@@ -100,3 +100,17 @@ denial_unacked() {
     fi
     printf '%s %s' "$class" "${count:-?}"
 }
+
+denial_stuck_claim() {
+    local f
+    f="$(denial_ack_dir)/$1.$2.stuck"
+    [ ! -e "$f" ] || return 1
+    ( set -C; : > "$f" ) 2>/dev/null || [ ! -e "$f" ]
+}
+
+denial_stuck_cutover() {
+    local f
+    f="$(denial_ack_dir)/.stuck-cutover"
+    [ -s "$f" ] || ( set -C; date +%s > "$f" ) 2>/dev/null
+    sed -n 1p "$f"
+}

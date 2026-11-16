@@ -525,13 +525,15 @@ den_case() {
     key="$(printf '%s' "$label" | tr -c 'A-Za-z0-9._#+-' '_')"
     printf 'leg=%s\ncount=1\nclass=PAUSE-RISK\nts=%s\n' "$label" "$P" > "$dir/acks/$key.page"
     [ "$ak" = none ] || printf 'leg=%s\ncount=1\nclass=PAUSE-RISK\nts=%s\n' "$label" $((P + ak)) > "$dir/acks/$key.ack"
+    if [ "${DEN_CUTOVER:-seed}" = seed ]; then printf '%s\n' $((B - 172800)) > "$dir/acks/.stuck-cutover"; fi
     printf '# chief\n\n## Results\n' > "$dir/chief.md"
     printf '# worker\n\n## Results\n' > "$dir/w/PROJ-9503-N1-a.md"
     if [ "$dm" = none ]; then touch -d "@$((P - 3600))" "$dir/w/PROJ-9503-N1-a.md"; else touch -d "@$((P + dm))" "$dir/w/PROJ-9503-N1-a.md"; fi  # gnu-ok: Linux-only kit
     printf '{"schema":1,"workers":[{"doc":"%s","label":"N1"}]}\n' "$dir/w/PROJ-9503-N1-a.md" > "$dir/chief.fleet.json"
     reset_stub
     I_SEED="$(new_inbox "$c")"
-    HIMMEL_DENIAL_ACK_DIR="$dir/acks" CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh" HIMMEL_TEST_FIXTURE="${DEN_FIXTURE:-1}" CHIEF_WAIT_NOW=$((P + noff)) stuck_run "$c" --doc "$dir/chief.md" --workers-from "$dir/chief.fleet.json"
+    DEN_NOW=$((P + noff))
+    HIMMEL_DENIAL_ACK_DIR="$dir/acks" CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh" HIMMEL_TEST_FIXTURE="${DEN_FIXTURE:-1}" CHIEF_WAIT_NOW="$DEN_NOW" stuck_run "$c" --doc "$dir/chief.md" --workers-from "$dir/chief.fleet.json"
     unset I_SEED
 }
 den_case dn1 N1 none none 1860
@@ -549,6 +551,18 @@ DEN_FIXTURE=0 den_case dn6 N1 none none 0 -1860
 check "(R4.6) a denial: CHIEF_WAIT_NOW without HIMMEL_TEST_FIXTURE=1 is ignored, the 31-minute denial pages denial-stuck" "denial-stuck" "$(pk_kinds)"
 den_case dn6c N1 none none 0 -1860
 check "(R4.6) control: with HIMMEL_TEST_FIXTURE=1 the same value is honoured and nothing pages" "0" "$(pk_n)"
+
+den_case dn7 N9 none none 108000
+check "(R4.2) a stale record (30 hours) whose worker is in no fleet manifest does not page" "0" "$(pk_n)"
+den_case dn8 N9 none none 1860
+check "(R4.2) control: the same unresolved worker at 31 minutes pages denial-stuck" "denial-stuck" "$(pk_kinds)"
+DEN_CUTOVER=none den_case dn9 N1 none none 1860
+check "(R4.2) a page record that exists before the first stuck scan never pages" "0" "$(pk_n)"
+check "(R4.2) the first scan records its cutover beside the page records" "yes" "$([ -s "$WORK/den-dn9/acks/.stuck-cutover" ] && echo yes)"
+den_case dn10 N1 none none 1860
+check "(R4.2) the first waiter pages the denial once" "denial-stuck" "$(pk_kinds)"
+I_SEED="$(new_inbox dn10b)" HIMMEL_DENIAL_ACK_DIR="$WORK/den-dn10/acks" CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh" HIMMEL_TEST_FIXTURE=1 CHIEF_WAIT_NOW="$DEN_NOW" stuck_run dn10b --doc "$WORK/den-dn10/chief.md" --workers-from "$WORK/den-dn10/chief.fleet.json"
+check "(R4.2) a second inbox on the same station does not page the same record again" "0" "$(pk_n)"
 
 # vmismatch= wakes only as a positive count; 0 and ? stay out of the key.
 reset_stub
@@ -1148,6 +1162,14 @@ rm -f "$STUB/pagek"; SAVE_PAGE_CMD="$CHIEF_WAIT_PAGE_CMD"; export CHIEF_WAIT_PAG
 denials_rise k5 none 'N1:1:SHIP-STEP'
 export CHIEF_WAIT_PAGE_CMD="$SAVE_PAGE_CMD"
 check "(R3.2) DENIAL-PAGE passes its kind denial-page" "denial-page" "$(pk_kinds)"
+if [ "$(id -u)" != 0 ]; then
+    mkdir -p "$WORK/ro" && chmod 555 "$WORK/ro"
+    rm -f "$STUB/pagek"; SAVE_ACK_DIR="$HIMMEL_DENIAL_ACK_DIR"; export HIMMEL_DENIAL_ACK_DIR="$WORK/ro/acks"; export CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh"
+    denials_rise k6 none 'N1:1:SHIP-STEP'
+    export CHIEF_WAIT_PAGE_CMD="$SAVE_PAGE_CMD"; export HIMMEL_DENIAL_ACK_DIR="$SAVE_ACK_DIR"
+    check "(R3.2) a denial whose page record cannot be written still pages, unclassified so it escalates" "1:" "$(pk_n):$(pk_kinds)"
+    chmod 755 "$WORK/ro"
+fi
 
 # A re-arm after the wake must not page the same rise again.
 denials_rise p5d none 'N1:1:SHIP-STEP'
