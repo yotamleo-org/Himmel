@@ -174,7 +174,8 @@ sdrift=0:* and stale=0:* are elided (partial and unknown never are); --verbose p
 Read from the state file, no gh or Jira call. Advisory: not in chief-wait's action key.
 
 rm-queue=<n>,<oldest age>m[,claimed=<n>][,run] follows leaks=. Empty open-and-claimed queues, no declaration,
-explicit none or unreadable docs elide it; off = unusable wiring or non-OK/read failure. An oldest open
+explicit none or unreadable docs elide it; off = unusable wiring or non-OK/read failure; ? = the tick's
+deadline cut the state read (unknown, read again next tick). An oldest open
 request past TICK_RMRUN_MIN minutes (default 30) with the lease free launches one detached `jira release
 rm-run <R>` (at most one per TICK_RMRUN_MIN_SECS, default 600) and appends `,run`; its output goes to
 $TICK_STATE_DIR/tick-rm-run.log. Env seams: TICK_RMQ_PROBE, TICK_RMRUN_PROBE, TICK_RMRUN_LAUNCHER,
@@ -200,7 +201,8 @@ Seam: TICK_REPAIR_PROBE. Never in chief-wait's action key; no alert, no wake.
 cap=<version>:<n>[,<version>:<n>] follows vmismatch= and is ABSENT unless an unreleased version
 holds more than 15 open residual tickets (labelled residual, not Done or Closed, by fixVersion; the count board.mjs
 shows against its soft cap), read from the Jira mirror. In chief-wait's action key whole: a version crossing the
-cap, or its count moving, wakes once; an unchanged value does not.
+cap, or its count moving, wakes once; an unchanged value does not. cap=? means the tick's deadline cut the
+read (unknown, not an all-clear): chief-wait keeps the saved cap value on it, no wake.
 
 slotage=<worker>:<range>:<n>suites:<age>m[,...] sits just before tmp= and is ABSENT unless a
 live holder has kept a shared suite slot past HIMMEL_SUITE_SLOT_CAP seconds (default 1200); a part the
@@ -401,8 +403,9 @@ crfirst=#<pr>:<reason>:<age>[,...] is the non-fork PR heads whose heavy-CI `ci:g
 label the reviewer gate has not released, with the hold reason, plus `#<pr>:manual-release` for
 a head labelled by hand. The tick calls scripts/lib/cr-first-release.sh once per unreleased head
 from the same `gh pr list` read as prs= (no second list); a head that passes is released right
-there. Absent when the CI_GO_GATE repository variable is off or unset, or nothing is held. A
-hard reviewer outage also prints one `ACTION cr-first ...` line per outage. Himmel's own repo
+there. Absent when the CI_GO_GATE repository variable is off or unset, or nothing is held; crfirst=?
+when the sweep outran its bound (the rest of TICK_DEADLINE_SEC, never under TICK_CRFIRST_FLOOR_SEC,
+default 20 s). A hard reviewer outage also prints one `ACTION cr-first ...` line per outage. Himmel's own repo
 only. chief-wait.sh does not wake on it.
 
 dispatch=<run>:<leg>:<elapsed>/<timeout>m:<jobs done>/<jobs>@<head7>[:late][:idle][:orphan][:stale-head]
@@ -3190,9 +3193,11 @@ fi
 # cap=<version>:<n>[,<version>:<n>]: each unreleased version holding more than 15 open
 # residual tickets (labelled residual, not Done/Resolved/Closed/Won't, by fixVersion), counted from the Jira
 # mirror the way board.mjs counts its CR_SOFT_CAP slots. ABSENT at 15 or fewer, with no mirror or on a failed
-# read. In chief-wait's wake key whole: a version crossing the cap or its count moving wakes once.
+# read; `?` when the tick's deadline cut the read (timeout status 124 or 137). In chief-wait's wake key whole:
+# a version crossing the cap or its count moving wakes once; cap=? keeps the saved value there, no wake.
 cap_summary=""
 if [ -d "$nd_mirror" ] && command -v python3 >/dev/null 2>&1; then
+    cap_rc=0
     cap_summary="$(CAP_MIRROR="$nd_mirror" timeout -k 2 "$(tick_bound 30)" python3 -I -c '
 import json, os, re
 d = os.environ["CAP_MIRROR"]
@@ -3231,7 +3236,8 @@ for name in os.listdir(d):
 over = [(v, n) for v, n in slots.items() if n > 15 and v not in released]
 over.sort(key=lambda p: [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", p[0])])
 print(",".join(re.sub(r"\s", "_", v) + ":" + str(n) for v, n in over))
-' 2>/dev/null)" || cap_summary=""  # gnu-ok: console kit is Linux-only; swallow-ok: a failed read leaves the field off
+' 2>/dev/null)" || cap_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in cap_rc and read below
+    case "$cap_rc" in 0) ;; 124 | 137) cap_summary='?' ;; *) cap_summary="" ;; esac
 fi
 
 # rm-queue=<n>,<oldest age>m[,run]: open placement requests of the chief doc's `release:` release,
@@ -3240,7 +3246,8 @@ fi
 # (default 600), the tick launches ONE detached `jira release rm-run <R>` (it runs a model call, far past this
 # tick's budget; its lines go to $TICK_STATE_DIR/tick-rm-run.log) and appends `,run`. rm-run takes the lease itself,
 # so a run in flight blocks a second one. 0 = nothing open, off = unusable wiring/state,
-# skip = no declaration or explicit release: none.
+# skip = no declaration or explicit release: none, ? = the tick's deadline cut the state read (exit 124 or
+# 137): unknown, not off; the next tick reads it again.
 # Not in chief-wait's wake key.
 rm_queue=skip
 rm_rel=""
@@ -3296,7 +3303,9 @@ print(n, age, "held" if ls and not ls.get("released") else "free", d.get("status
     fi
     [ "$rm_status" = OK ] || rm_n=""
     case "$rm_n" in
-        '' | *[!0-9]*) rm_queue=off ;;
+        '' | *[!0-9]*)
+            case "$rm_rc" in 124 | 137) rm_queue='?' ;; *) rm_queue=off ;; esac
+            ;;
         0)
             rm_queue=0
             [ "$rm_claimed" -eq 0 ] || rm_queue="0,0m,claimed=$rm_claimed"
@@ -4179,15 +4188,26 @@ fi
 # reviewer gate has not released yet, with the reason it holds, and `#<pr>:manual-release`
 # for a head labelled by hand. This is event point 5 of the CI release: the tick calls
 # cr_first_release for every unreleased head from the ONE `gh pr list` above (no second
-# list). ABSENT when the CI_GO_GATE variable is off/unset, or every head is released; it
+# list). ABSENT when the CI_GO_GATE variable is off/unset, or every head is released; `?` when the sweep
+# outran its bound (TICK_DEADLINE_SEC's rest, never under TICK_CRFIRST_FLOOR_SEC, default 20 s); it
 # wakes nothing. Himmel's own repo only. A CR-FIRST ALERT becomes an ACTION line below.
 crfirst_tail=""
 crfirst_alerts=""
 if [ -n "$crfirst_rows" ] && [ -z "${pr_read_failed:-}" ] && [ "$pr_repo" = "$REPO" ] && [ -f "$HERE/../../lib/cr-first-release.sh" ]; then
+    cf_floor="${TICK_CRFIRST_FLOOR_SEC:-20}"
+    case "$cf_floor" in ''|*[!0-9]*) cf_floor=20 ;; esac
+    cf_bound="$(tick_bound 120)"
+    [ "$cf_bound" -ge "$cf_floor" ] || cf_bound="$cf_floor"
+    cf_rc=0
     # shellcheck disable=SC2016
-    cf_out="$(cd "$pr_repo" 2>/dev/null && printf '%s' "$crfirst_rows" | timeout -k 2 "$(tick_bound 120)" bash -c '. "$1" || exit 0; HIMMEL_CONSOLE_DOC=$2; export HIMMEL_CONSOLE_DOC; cr_first_sweep "$(_cmg_local_nwo)"' _ "$HERE/../../lib/cr-first-release.sh" "$console_doc" 2>/dev/null)" || cf_out=""  # gnu-ok: console kit is Linux-only; swallow-ok: a failed sweep leaves the tick line without crfirst=
+    cf_out="$(cd "$pr_repo" 2>/dev/null && printf '%s' "$crfirst_rows" | timeout -k 2 "$cf_bound" bash -c '. "$1" || exit 0; HIMMEL_CONSOLE_DOC=$2; export HIMMEL_CONSOLE_DOC; cr_first_sweep "$(_cmg_local_nwo)"' _ "$HERE/../../lib/cr-first-release.sh" "$console_doc" 2>/dev/null)" || cf_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in cf_rc and read below
+    case "$cf_rc" in
+        0) ;;
+        124 | 137) cf_out="crfirst=?" ;;
+        *) cf_out="" ;;
+    esac
     cf_val="$(printf '%s\n' "$cf_out" | sed -n 's/^crfirst=//p' | head -n 1)"
-    case "$cf_val" in ""|*[!0-9A-Za-z:,._#-]*) ;; *) crfirst_tail=" crfirst=$cf_val" ;; esac
+    case "$cf_val" in "") ;; '?') crfirst_tail=" crfirst=?" ;; *[!0-9A-Za-z:,._#-]*) ;; *) crfirst_tail=" crfirst=$cf_val" ;; esac
     crfirst_alerts="$(printf '%s\n' "$cf_out" | sed -n 's/^ALERT //p')"
 fi
 # busedge=MISSING:<label>[,...]: a held worker (lock FRESH or STALE) none of whose

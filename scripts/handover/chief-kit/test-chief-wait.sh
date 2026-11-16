@@ -376,6 +376,18 @@ sed -i 's/ cap=v1.1.3:17//' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 wait_exit "$WPID"
 check "(cap) a cap that goes away keeps waiting" "running" "$rc"
 if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
+reset_stub
+sed -i 's/ denials=none/ cap=v1.1.3:16 denials=none/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+I="$(new_inbox cap-cut)"
+start "$I" "$WORK/cap-cut.out" --workers "N1.md"
+wait_hb "$I" || fail "(cap) no saved-cap heartbeat"
+sed -i 's/ cap=v1.1.3:16/ cap=?/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(cap) cap=? (a cut read) keeps the saved cap and wakes nothing" "running" "$rc"
+sed -i 's/ cap=?/ cap=v1.1.3:17/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
+wait_exit "$WPID"
+check "(cap) a moved cap after cap=? wakes as cap" "WAKE tick changed=cap usage=PROCEED" "$(head -n1 "$WORK/cap-cut.out")"
+if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
 # hreg=<live-no-rows>/<stale>/<asks> is in the key whole: a moved value wakes once, an unchanged one
 # stays silent, hreg=? keeps the saved value and its going away is no wake. RED control (chief-wait.sh before this change):
 # the waiter has no hreg key, so none of these wakes.

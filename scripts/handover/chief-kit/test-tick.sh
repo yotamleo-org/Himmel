@@ -2577,6 +2577,78 @@ printf '%s\n' 'not json' >> "$W/ow-dir/owed.jsonl"
 contains '(10006) an unreadable ledger prints owed=?' "$(ow_tick)" ' owed=?'
 rm -rf "$W/ow-tmp" "$W/ow-mirror" "$W/ow-dir"
 
+if [ -n "$_TIMEOUT_BIN" ]; then
+    cut_m="$W/cut/HIMMEL"; mkdir -p "$cut_m" "$W/cut-bin" "$W/cut/releases"
+    printf 'v1.1.3\tfalse\t\tfalse\n' > "$W/cut/HIMMEL.versions.tsv"
+    cut_i=0
+    while [ "$cut_i" -lt 16 ]; do
+        cut_i=$((cut_i + 1))
+        printf -- '---\nkey: "HIMMEL-%s"\ntype: "Task"\nstatus: "To Do"\nstatusCategory: "x"\npriority: "Medium"\nlabels: ["residual"]\nfixVersions: ["v1.1.3"]\nparent: null\n---\n\n# HIMMEL-%s: fixture\n' "$cut_i" "$cut_i" > "$cut_m/HIMMEL-$cut_i.md"
+    done
+    # shellcheck disable=SC2016  # the stub body is single-quoted on purpose: its variables expand when it runs
+    printf '#!/usr/bin/env bash\n[ -z "${CAP_MIRROR:-}" ] || [ -z "${CUT_PY_SLEEP:-}" ] || exec sleep "$CUT_PY_SLEEP"\n[ -z "${CAP_MIRROR:-}" ] || [ -z "${CUT_PY_FAIL:-}" ] || exit 1\nexec %s "$@"\n' "$(command -v python3)" > "$W/cut-bin/python3"
+    printf '#!/usr/bin/env bash\n[ "$*" = "R8843 --json" ] || exit 9\nsleep 5\n' > "$W/cut/rmq-sleep.sh"
+    printf '#!/usr/bin/env bash\nexit 1\n' > "$W/cut/rmq-fail.sh"
+    cat > "$W/cut/rmq-ok.sh" <<'STUB'
+#!/usr/bin/env bash
+[ "$*" = "R8843 --json" ] || exit 9
+printf '{"status":"OK","versions":[],"lease":{"released":true},"requests":{"open":["Q-1"],"claimed":[],"oldest_open":"%s"}}\n' "$(date -u -d '10 min ago' +%Y-%m-%dT%H:%M:%SZ)"
+STUB
+    cat > "$W/cut-bin/gh" <<STUB
+#!/usr/bin/env bash
+case "\$*" in
+    "variable get CI_GO_GATE"*) [ -z "\${CUT_CRF_SLEEP:-}" ] || sleep "\$CUT_CRF_SLEEP"; echo on ;;
+    "api repos/acme/repo/pulls/3101") echo '{"state":"open","head":{"sha":"deadbeef01","repo":{"full_name":"acme/repo","fork":false}},"base":{"repo":{"full_name":"acme/repo"}}}' ;;
+    "api repos/acme/repo/commits/deadbeef01") printf '{"commit":{"committer":{"date":"%s"}}}\n' "\$(date -u +%Y-%m-%dT%H:%M:%SZ)" ;;
+    "api --paginate repos/acme/repo/commits/deadbeef01/check-runs"*) echo '{"check_runs":[]}' ;;
+    "api --paginate repos/acme/repo/issues/3101/events"*) echo '[]' ;;
+    *) exec "$W/bin/gh" "\$@" ;;
+esac
+STUB
+    chmod +x "$W/cut-bin/python3" "$W/cut/rmq-sleep.sh" "$W/cut/rmq-fail.sh" "$W/cut/rmq-ok.sh" "$W/cut-bin/gh"
+    git -C "$W/repo" init -q 2>/dev/null
+    git -C "$W/repo" remote add origin https://github.com/acme/repo.git
+    printf '# chief\nrelease: R8843\n' > "$W/handover/cut-chief.md"
+    cut_rows="$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\\n' 3101 feat/himmel-8843-x false me false "$(iso_ago 1)" 0 deadbeef01 '')"
+    cut_tick() { PATH="$W/cut-bin:$PATH" NEXT_DISPATCH_MIRROR="$cut_m" HIMMEL_RELEASE_STATE_DIR="$W/cut/releases" STUB_PR_ROWS="$cut_rows" TICK_RMQ_PROBE="$W/cut/rmq-${CUT_RMQ:-ok}.sh" TOKEN='' bash "$SUT" --doc "$W/handover/cut-chief.md" "$@" 2>/dev/null; printf '%s\n' "$?" > "$W/cut/rc"; }
+    cut_exit() { [ "$(cat "$W/cut/rc")" = 0 ] && pass "(8843) $1 exits 0" || fail "(8843) $1 exits $(cat "$W/cut/rc")"; }
+    cut_healthy="$(cut_tick | sed 's/cheap-pending:[0-9]*s/cheap-pending:Ns/')"
+    cut_exit 'a healthy tick'
+    case "$cut_healthy" in *' cap=v1.1.3:16 rm-queue=1,10m crfirst=#3101:cheap-pending:Ns') pass '(8843) a healthy tick ends in the three fields exactly as at the base sha' ;; *) fail "(8843) a healthy tick changed its cap, rm-queue or crfirst fields: $cut_healthy" ;; esac
+    cut_verbose="$(cut_tick --verbose)"
+    cut_exit 'a healthy verbose tick'
+    contains '(8843) a healthy verbose tick prints the cap line' "$cut_verbose" 'cap: v1.1.3:16'
+    contains '(8843) a healthy verbose tick prints the release-queue line' "$cut_verbose" 'rm-queue: 1,10m'
+    contains '(8843) a healthy verbose tick prints the held CI-release head' "$cut_verbose" 'crfirst: #3101:cheap-pending:'
+    contains '(8843) a healthy tick prints the cap count' "$cut_healthy" ' cap=v1.1.3:16'
+    contains '(8843) a healthy tick prints the release queue' "$cut_healthy" ' rm-queue=1,10m'
+    contains '(8843) a healthy tick prints the held CI-release head' "$cut_healthy" ' crfirst=#3101:cheap-pending:Ns'
+    cut_cap="$(CUT_PY_SLEEP=5 TICK_DEADLINE_SEC=1 cut_tick)"
+    cut_exit 'a tick whose cap read the deadline cuts'
+    contains '(8843) a cap read the deadline cuts prints cap=?' "$cut_cap" ' cap=?'
+    cut_cap="$(CUT_PY_FAIL=1 cut_tick)"
+    cut_exit 'a tick whose cap read fails'
+    not_contains '(8843) a failed cap read still leaves cap= off' "$cut_cap" ' cap='
+    cut_rmq="$(CUT_RMQ=sleep TICK_DEADLINE_SEC=1 cut_tick)"
+    cut_exit 'a tick whose release-queue read the deadline cuts'
+    contains '(8843) a release-queue read the deadline cuts prints rm-queue=?' "$cut_rmq" ' rm-queue=?'
+    cut_rmq="$(CUT_RMQ=fail cut_tick)"
+    cut_exit 'a tick whose release-queue read fails'
+    contains '(8843) a failed release-queue read still reads rm-queue=off' "$cut_rmq" ' rm-queue=off'
+    cut_crf="$(CUT_CRF_SLEEP=1.5 TICK_CRFIRST_FLOOR_SEC=1 TICK_DEADLINE_SEC=2 cut_tick)"
+    cut_exit 'a tick whose CI-release sweep the bound cuts'
+    contains '(8843) a CI-release sweep the bound cuts prints crfirst=?' "$cut_crf" ' crfirst=?'
+    cut_crf="$(CUT_CRF_SLEEP=1.5 TICK_DEADLINE_SEC=2 cut_tick)"
+    cut_exit 'a tick whose sweep is reached with the deadline already past'
+    contains '(8843) a sweep reached with the deadline already past still finishes and prints its heads' "$cut_crf" ' crfirst=#3101:cheap-pending:'
+    cut_crf="$(STUB_PR_FAIL=1 cut_tick)"
+    cut_exit 'a tick whose pr read fails'
+    not_contains '(8843) a failed pr read leaves crfirst= off' "$cut_crf" 'crfirst='
+    rm -rf "$W/repo/.git" "$W/cut" "$W/cut-bin" "$W/handover/cut-chief.md"
+else
+    skip '(8843) cut-read rows: no timeout binary'
+fi
+
 help_out="$(bash "$SUT" --help 2>&1)"
 help_cites="$(printf '%s\n' "$help_out" | grep -oE 'HIMMEL-[0-9]+|decision [0-9]+' | sort -u | tr '\n' ' ')"
 if [ -n "$help_cites" ]; then

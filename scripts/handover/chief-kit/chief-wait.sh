@@ -303,7 +303,8 @@
 # vmismatch= (tick.sh: RESET rows of the version-status audit) wakes while it is a positive
 # count and on any change of that count; 0, ? and an absent field are left out of the key.
 # wt-ceiling= (the live/cap alarm) is in the key whole: reaching the ceiling
-# wakes once, while an unchanged alarm stays silent; absent is not a failure. cap= (`<version>:<n>`, past 15 open residuals) likewise.
+# wakes once, while an unchanged alarm stays silent; absent is not a failure. cap= (`<version>:<n>`, past 15 open residuals) likewise,
+# and cap=? (the tick's deadline cut the read) keeps the saved value.
 # unowned-prs= is NOT in the action key (its minutes grow every tick): a
 # non-empty list is queued on first sight (`unowned-prs <list>`, look-only: see below; with
 # HOUSEKEEPING_DIGEST_SECS=0 it is `WAKE unowned-prs <list>`), again when
@@ -811,6 +812,10 @@ sample() {
         # hreg= stays in the key whole; hreg=? (a failed read) keeps the saved value, so a blip is no change.
         if [ "$f" = hreg ]; then
             [ "$v" != '?' ] || v="$(key_field hreg "$saved")"
+            [ -n "$v" ] || continue
+        fi
+        if [ "$f" = cap ]; then
+            [ "$v" != '?' ] || v="$(key_field cap "$saved")"
             [ -n "$v" ] || continue
         fi
         # parked= keeps the worker names only: the age grows every tick and must not re-wake.
