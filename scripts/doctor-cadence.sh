@@ -182,7 +182,7 @@ holds_maintenance() { # <primary root>
         i=$(((start + k) % n))
         case "${state[i]}" in
             open) starved=$((starved + 1)) ;;
-            partial) served=$((served + 1)); partial=$((partial + 1)) ;;
+            partial|capped) served=$((served + 1)); partial=$((partial + 1)) ;;
             failed) served=$((served + 1)); failed=$((failed + 1)) ;;
             *) served=$((served + 1)) ;;
         esac

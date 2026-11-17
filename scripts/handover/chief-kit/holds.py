@@ -1490,11 +1490,12 @@ def gc_cursor_write(repo, pos, origin):
             f.write(json.dumps({'v': 2, 'dir': pos[0], 'name': pos[1], 'odir': origin[0], 'oname': origin[1]}) + '\n')
         os.replace(tmp, gc_state_path('gc-cursor', repo))
     except OSError as e:
-        sys.stderr.write('holds: cannot write the gc cursor: %s\n' % (e.strerror or e))
         try:
             os.unlink(tmp)
         except OSError:
             pass  # swallow-ok: the temp file was never made
+        return e.strerror or str(e)
+    return None
 
 
 def gc_judge_row(judge, key_state, d, n):
@@ -1525,6 +1526,15 @@ def gc_judge_row(judge, key_state, d, n):
 
 
 def gc_sweep(repo, deadline, listing):
+    cursor_warning = False
+
+    def persist_cursor(pos, origin):
+        nonlocal cursor_warning
+        error = gc_cursor_write(repo, pos, origin)
+        if error is not None and not cursor_warning:
+            sys.stderr.write('holds: cannot write the gc cursor: %s\n' % error)
+            cursor_warning = True
+
     judge = Judge(repo, deadline)
     dirs = {di: d for di, d, _names in listing}
     items = [(di, n) for di, _d, names in listing for n in names if not n.startswith(TMP_PREFIX) and not GRANT_RE.search(n)]
@@ -1540,13 +1550,13 @@ def gc_sweep(repo, deadline, listing):
         if time.time() >= deadline:
             complete = False
             break
-        gc_cursor_write(repo, item, origin)  # the place is kept before the row is judged: a death in it costs that row's turn, never the rows behind it
+        persist_cursor(item, origin)  # the place is kept before the row is judged: a death in it costs that row's turn, never the rows behind it
         judge.cut = False
         removed += gc_judge_row(judge, key_state, dirs[item[0]], item[1])
         if judge.cut:
             cut += 1
             if prev is not None:
-                gc_cursor_write(repo, prev, origin)  # the deadline cut a row that was not the first of this pass: it goes first next time
+                persist_cursor(prev, origin)  # the deadline cut a row that was not the first of this pass: it goes first next time
                 complete = False
                 break
         visited += 1
@@ -1554,7 +1564,7 @@ def gc_sweep(repo, deadline, listing):
     if complete:
         end = prev if prev is not None else (pos if pos != GC_NOPOS else None)
         if end is not None:
-            gc_cursor_write(repo, end, end)  # the cycle closed here: the next one starts behind it
+            persist_cursor(end, end)  # the cycle closed here: the next one starts behind it
     full = complete and len(todo) == len(items)
     for _di, d, names in listing:
         for n in names:
@@ -1581,7 +1591,10 @@ def op_gc(a):
     waits for the next cycle. The place is written before each row is judged, so a pass that dies loses that row's turn, not the rows behind it.
     A row whose judgment the deadline cut short is retried first next pass, unless it was the first row of its pass (it cannot be judged in a
     whole box: it counts as cut, stays, and the cycle goes on). One pass runs per repo at a time: another says busy and judges nothing.
-    The last line is `gc visited=<n> removed=<n> cut=<n> rows=<n> cycle=complete|partial`; only a partial cycle asks for another pass."""
+    The last line is `gc visited=<n> removed=<n> cut=<n> rows=<n> cycle=complete|partial`; only a partial cycle asks for another pass.
+    Grants on surviving rows stay when their owner's state is unknown. If an owner's last row was removed by a partial pass,
+    its grant on another row can remain indefinitely: no later scan can infer dead ownership from the absent row alone,
+    since a grant can legitimately precede the owner's first row. This is retained state, not a promise of later automatic removal."""
     repo = primary_of(a.repo)
     deadline = time.time() + BOX
     listing = []

@@ -555,6 +555,7 @@ check "passes repeat while the cycle is partial and stop at complete" 3 "$(gc_ca
 gc_reset; gc_reg "$P"
 GC_STUB_MODE=partial DOCTORCAD_HOLDS_GC_PASSES=4 run_cad_ok "a run with an endless register"
 check "the pass count per register is capped" 4 "$(gc_calls)"
+case "$(tail -n 1 "$STATE/holds-gc.log")" in *"run registers=1 served=1 starved=0 partial=1 failed=0 passes=4") pass "a pass-capped register remains partial in the run summary" ;; *) fail "a pass-capped register remains partial in the run summary ($(tail -n 1 "$STATE/holds-gc.log"))" ;; esac
 gc_reset; gc_reg "$P"
 GC_STUB_MODE=busy run_cad_ok "a run whose register is busy"
 check "a busy answer ends the register's passes at once" 1 "$(gc_calls)"

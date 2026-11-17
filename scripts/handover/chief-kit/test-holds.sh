@@ -1788,6 +1788,32 @@ else
     printf 'SKIP - 9885 gone: unsearchable parent (root searches any directory)\n'
 fi
 
+# A failed cursor write gives one diagnostic for the sweep, with unknown rows kept.
+cat > "$W/gcwritefail.py" <<'PY'
+import errno, importlib.util, sys
+spec = importlib.util.spec_from_file_location("holds", sys.argv[1])
+h = importlib.util.module_from_spec(spec); spec.loader.exec_module(h)
+replace = h.os.replace
+cursor = h.gc_state_path("gc-cursor", h.primary_of(sys.argv[2]))
+def fail_cursor(src, dst):
+    if dst == cursor:
+        raise OSError(errno.ENOSPC, "fixture cursor storage full")
+    return replace(src, dst)
+h.os.replace = fail_cursor
+sys.exit(h.main(["gc", "--repo", sys.argv[2]]))
+PY
+cat > "$W/bin/gh-gcwritefail" <<'STUB'
+#!/usr/bin/env bash
+exit 1
+STUB
+chmod +x "$W/bin/gh-gcwritefail"
+RW="$W/repo-cursor-write-failure"; mkdir -p "$RW"; git -C "$RW" init -q -b main
+for i in $(seq 1 30); do put_row "scripts/w$i.sh" "PROJ-97$i" lab "" pr "$((7500 + i))" "$RW"; done
+HOLDS_GH="$W/bin/gh-gcwritefail" run python3 -I "$W/gcwritefail.py" "$SUT" "$RW"
+same "gc cursor write failure keeps the sweep usable" "$RC" 0
+same "gc cursor write failure emits one diagnostic per sweep, not one per row" "$(printf '%s\n' "$ERR" | grep -c '^holds: cannot write the gc cursor:' || true)" 1
+same "gc cursor write failure preserves unknown claims at both ends of the sweep" "$(gone_or_row "$(rowf scripts/w1.sh "$RW")")/$(gone_or_row "$(rowf scripts/w30.sh "$RW")")" "row/row"
+
 # a crash residue of a cursor write is only a stray file in the holds root: gc and read ignore it
 : > "$REG/%00999.gc-cursor"
 HOLDS_GH="$GCKEYED" GC_GH_LOG="$GCLOG" run gcbox 10 "$RV"
