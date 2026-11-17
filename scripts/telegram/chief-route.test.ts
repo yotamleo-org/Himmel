@@ -1,7 +1,7 @@
 import { expect, test, spyOn } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, symlinkSync, unlinkSync, renameSync, statSync, cpSync, utimesSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, basename } from "node:path";
+import { join, basename, resolve } from "node:path";
 import { classify } from "./router";
 import { BASH_BIN, buildPrompt } from "./run";
 import { sendMessage } from "./telegram-api";
@@ -3631,7 +3631,7 @@ const editCappedReturn = async (f: { ledgerPath: string }, path: string, edit: (
 const treeBytes = (path: string): Record<string, string> => Object.fromEntries(readdirSync(path, { recursive: true, withFileTypes: true })
   .filter(e => e.isFile()).map(e => { const p = join(e.parentPath, e.name); return [p, sha(readFileSync(p, "utf8"))]; }));
 
-const finishCappedRounds = async (options: { externalReturn?: "spec" | "plan"; externalPlan?: boolean; ticketReturn?: "spec" | "plan" } = {}) => {
+const finishCappedRounds = async (options: { externalReturn?: "spec" | "plan"; externalPlan?: boolean; ticketReturn?: "spec" | "plan"; shortRead?: boolean } = {}) => {
   const f = await cappedFixture({ rounds: 2 });
   const oldPlan = f.plan;
   if (options.externalPlan) {
@@ -3643,10 +3643,11 @@ const finishCappedRounds = async (options: { externalReturn?: "spec" | "plan"; e
     const previous = f.args[arg];
     const next = join(options.externalReturn === kind ? root() : dirname(previous), basename(previous).replace("r2.md", "r3.md"));
     let text = readFileSync(previous, "utf8").replace(`Fixture: ${kind} round 2`, `Fixture: ${kind} round 3`)
-      .replace(/^((?:READ|CONTENT-SHA256) [0-9a-f]{64}) (.+)$/gm, (_line, prefix, rel) => {
-        const path = join(dirname(previous), rel);
+      .replace(/^((?:READ(?:-SHA256)?|CONTENT-SHA256) [0-9a-f]{64}) (.+)$/gm, (_line, prefix, rel) => {
+        const path = resolve(dirname(previous), rel);
         return `${prefix} ${path === oldPlan ? f.plan : path}`;
       });
+    if (options.shortRead) text = text.replace(/^READ-SHA256 /gm, "READ ");
     if (options.ticketReturn === kind) text = text.replace(/^Key:/m, "- Ticket:");
     writeFileSync(next, text);
     for (const match of text.matchAll(/^CONTENT-SHA256 [0-9a-f]{64} (.+)$/gm)) await sealRound(next, match[1]);
@@ -3698,6 +3699,23 @@ test("capped fold exact evidence", async () => {
   expect((await runCapped(controls.args)).carried).toHaveLength(10);
 });
 
+test("capped fold accepts real READ-SHA256 quotes and rejects malformed or duplicate quotes", async () => {
+  const standard = await finishCappedRounds();
+  expect(readFileSync(standard.args.specReturn, "utf8")).toContain(`READ-SHA256 ${sha(readFileSync(standard.spec, "utf8"))} ${standard.spec}`);
+  expect((await runCapped(standard.args)).carried).toHaveLength(1);
+  expect((await runCapped((await finishCappedRounds({ shortRead: true })).args)).carried).toHaveLength(1);
+  for (const fault of ["malformed", "conflicting", "duplicate"]) {
+    const f = await finishCappedRounds();
+    await editCappedReturn(f, f.args.specReturn, text => {
+      if (fault === "malformed") return text.replace("SPEC FINDINGS 1", "READ-SHA256 unknown file.md\nSPEC FINDINGS 1");
+      if (fault === "conflicting") return text.replace(/^READ-SHA256 [0-9a-f]{64}/m, `READ-SHA256 ${"0".repeat(64)}`);
+      const line = /^READ-SHA256 .+$/m.exec(text)![0];
+      return text.replace("SPEC FINDINGS 1", `${line.replace("READ-SHA256", "READ")}\nSPEC FINDINGS 1`);
+    });
+    await expect(runCapped(f.args)).rejects.toThrow();
+  }
+});
+
 test("capped fold rejects noneligible evidence", async () => {
   await runCapped((await cappedFixture()).args);
   const cases = [{ rounds: 2 }, { specFindings: "" }, { specFindings: "- **F1** (major) blocking" }, { specFindings: "- **F1** (unrated) unknown" },
@@ -3736,7 +3754,7 @@ test("capped fold rejects provenance drift", async () => {
     if (fault === "higher" || fault === "tied") copyFileSync(f.args.planReturn, fault === "higher" ? f.args.planReturn.replace("r3.md", "r4.md") : join(dirname(f.plan), basename(f.args.planReturn)));
     if (["quote", "reviewed", "plan-reviewed", "seal"].includes(fault)) {
       const p = fault === "plan-reviewed" ? f.args.planReturn : f.args.specReturn;
-      await editCappedReturn(f, p, text => text.replace(fault === "quote" ? /^READ .*\n/m : fault === "seal" ? /^CONTENT-SHA256 .*\n/m : /^Reviewed: .*\n/m, ""));
+      await editCappedReturn(f, p, text => text.replace(fault === "quote" ? /^READ(?:-SHA256)? .*\n/m : fault === "seal" ? /^CONTENT-SHA256 .*\n/m : /^Reviewed: .*\n/m, ""));
     }
     if (fault === "extra-seal") editLedger(f, rows => { rows.push({ ...rows.at(-1), read_path: f.spec, read_sha: "f".repeat(64) }); });
     if (fault === "snapshot") writeFileSync(join(dirname(f.ledgerPath), cappedKey, sha(readFileSync(f.spec, "utf8"))), "edited");

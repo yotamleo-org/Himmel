@@ -66,7 +66,7 @@ export async function buildRoundFixture(request: RoundFixtureRequest): Promise<R
     if (!new RegExp(`^${r.kind.toUpperCase()} (CLEAN|FINDINGS [0-9]+)$`).test(last ?? '')) throw new Error('fixture return needs a final verdict');
     const seals = await Promise.all(reads.map(async path => ({ path, sha: sha(await readFile(path)), rel: relative(dirname(verdict), path) })));
     const lines = [`Key: ${request.key}`, `Reviewed: spec ${sha(await readFile(spec))}`, `Fixture: ${r.kind} round ${r.round}`,
-      ...seals.map(s => `READ ${s.sha} ${s.rel}`), ...body, ...seals.map(s => `CONTENT-SHA256 ${s.sha} ${s.rel}`), last!, ''];
+      ...seals.map(s => `READ-SHA256 ${s.sha} ${s.path}`), ...body, ...seals.map(s => `CONTENT-SHA256 ${s.sha} ${s.rel}`), last!, ''];
     await write(verdict, lines.join('\n'));
     for (const read of reads) await sealRound(verdict, read);
     await ledgerVerify(verdict, { spec });

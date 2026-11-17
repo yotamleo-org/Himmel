@@ -1220,9 +1220,9 @@ export async function cappedFold(o: { key: string; spec: string; plan: string; s
     const findings = cappedFindings(text, kind, row.round, row);
     if (findings.length && (row.round < CRITIC_ROUND_CAP || !capRefusal(o.key, rows, kind, row.round + 1))) throw new Error("capped-fold: findings have not reached the refused round cap");
     const recorded = distinctFiles([sealedFileOf(row, false), ...rows.filter(r => r.row === "seal" && r.return_sha === sum).map(r => sealedFileOf(r, false))]);
-    const seals = sealsOf(text); const quotes = [...text.matchAll(/^READ ([0-9a-f]{64}) (\S.*)$/gm)];
+    const seals = sealsOf(text); const quotes = [...text.matchAll(/^READ(?:-SHA256)? ([0-9a-f]{64}) (\S.*)$/gm)];
     if (text.split("\n").filter(l => /^CONTENT-SHA256(?:\s|$)/.test(l)).length !== seals.length
-      || text.split("\n").filter(l => /^READ(?:\s|$)/.test(l)).length !== quotes.length) throw new Error("capped-fold: malformed seal or READ quote");
+      || text.split("\n").filter(l => /^READ(?:-SHA256)?(?:\s|$)/.test(l)).length !== quotes.length) throw new Error("capped-fold: malformed seal or READ quote");
     const quoted = new Map<string, string>();
     for (const quote of quotes) {
       const artifact = await reader.canonical(resolve(dirname(path), quote[2]));
