@@ -24,12 +24,39 @@ KEY = r'[A-Z][A-Z0-9]+-\d+'
 # The tokens an artifact uses for a proof row that did not pass. The recorder lists any line carrying one; CLOSE additionally
 # refuses a table cell or a list item that STARTS with one (qualified forms included: `NOT MET — no RED`, `SKIPPED (no vm)`,
 # `ERRORS`, `FAIL`, `- NOT MET: ...`). Prose that merely mentions a word is not a row; whether the evidence covers every
-# obligation stays the chief's explicit judgement.
+# obligation stays the chief's explicit judgement. A declared Expected column in a supported Markdown table is test input,
+# not an actual requirement status; other cells and unmet list items retain the same refusal rule.
 UNMET = r'(?:NOT\s+MET|OWED|SKIP\w*|ERRORS?|FAIL\w*)'
 UNMET_CELL = re.compile(r'\|\s*' + UNMET + r'\b[^|]*\|', re.I)
 UNMET_ITEM = re.compile(r'^\s*(?:[-*+]|\d+[.)])\s+(?:\*\*)?' + UNMET + r'\b', re.I)
 SECTIONS = {'Impact', 'What', 'Why', 'Plan', 'DoD', 'Proof', 'Agent detail'}
 MAX_FILE_BYTES = 8 * 1024 * 1024
+
+
+def has_unmet_rows(text):
+    lines = text.splitlines()
+    expected, width = set(), 0
+    separator = r'\s*\|(?:\s*:?-{3,}:?\s*\|)+\s*'
+    for index, line in enumerate(lines):
+        if UNMET_ITEM.search(line):
+            return True
+        if not line.strip().startswith('|'):
+            expected, width = set(), 0
+            continue
+        cells = re.split(r'(?<!\\)\|', line.strip())[1:-1]
+        if index + 1 < len(lines) and re.fullmatch(separator, lines[index + 1]):
+            expected = {i for i, cell in enumerate(cells) if cell.strip().lower() == 'expected'}
+            width = len(cells)
+            continue
+        if re.fullmatch(separator, line):
+            continue
+        if expected and len(cells) == width:
+            if any(re.match(r'\s*' + UNMET + r'\b', cell, re.I)
+                   for i, cell in enumerate(cells) if i not in expected):
+                return True
+        elif UNMET_CELL.search(line):
+            return True
+    return False
 
 
 def regular_bytes(path):
@@ -193,7 +220,7 @@ def decision(opt):
             raise ValueError('unbound/unresolved proof; KEEP/reconciliation required')
         if any(v['omitted'] or v['truncated_chars'] for v in row.get('observation_counts', {}).values()):
             raise ValueError('truncated observations require reconciliation')
-        if any(UNMET_CELL.search(line) or UNMET_ITEM.search(line) for text in evidence for line in text.splitlines()):
+        if any(has_unmet_rows(text) for text in evidence):
             raise ValueError('unmet/skipped/error proof row')
         current_requirements = ' '.join(requirement_body(current['mirror'] if 'mirror' in current else '## Description\n' + current['description']).lower().split())
         for field in ('coverage', 'controls'):

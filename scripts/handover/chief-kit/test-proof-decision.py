@@ -75,6 +75,26 @@ class ChiefDecision(unittest.TestCase):
         self.run_record()
         self.assertEqual(len(self.rows()), 2)
 
+    def test_expected_failure_column_is_not_an_unmet_status(self):
+        original = self.evidence.read_text()
+        header = '\n| Negative control | Expected | Observed | Requirement status |\n|---|---|---|---|\n'
+        for name, extra, allowed in (
+            ('expected refusal', header + '| malformed input is refused | FAIL (exit 26) | exit 26, refused as expected | MET |\n', True),
+            ('actual failure', header + '| malformed input | FAIL (exit 26) | unexpected exit | FAIL (unexpected exit 26) |\n', False),
+            ('separate unlabeled table', header + '| malformed input | FAIL | refused | MET |\n\n| actual result | FAIL |\n', False),
+            ('no table separator', '\n| Negative control | Expected | Requirement status |\n| input | FAIL | MET |\n', False),
+        ):
+            with self.subTest(name=name):
+                self.evidence.write_text(original + extra)
+                self.run_record()
+                action = self.rows()[-1]
+                self.change_decision(identity=action['identity'])
+                result = self.decide(action_id=action['id'])
+                if allowed:
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                else:
+                    self.assertNotEqual(result.returncode, 0)
+
     def test_dry_run_never_settles_an_action(self):
         result = subprocess.run(['python3', str(HERE / 'proof-validate.py'), '--bucket', str(self.b),
             '--settle', 'o1', '--decision', str(self.decision), '--current-stdin', '--dry-run'],
