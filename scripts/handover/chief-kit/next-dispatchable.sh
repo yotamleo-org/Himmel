@@ -9,6 +9,12 @@
 #                        [--held FILE] [--no-classify] [--doc CHIEF_DOC]
 #                        [--priority-pool-only] [--workers-dir DIR] [--why] [--dispositions]
 #
+# --why-ticket KEY [--body-file FILE] judges one ticket without GitHub or fleet
+# outside reads. It prints all GATE KEY name: detail lines (exit 1), READY KEY
+# (exit 0), or UNKNOWN KEY: reason (exit 3). Bad keys/combinations are usage (2).
+# --mirror, --doc, --workers-dir and --no-classify are accepted; listing flags
+# are refused. A body file replaces this key only, with optional mirror front matter.
+#
 # Source: the Jira mirror (`jira ... mirror`, one <KEY>.md per issue). A
 # candidate is a To Do issue that is not an Epic/Sub-task, has no contract=yes
 # merge row in status-events.jsonl (merged to Done, the mirror lags), carries none of
@@ -179,9 +185,17 @@ REPO="$(cd "$HERE/../../.." && pwd)"
 
 top=8; top_set=0; mirror="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"
 workers_from="${WORKERS_FROM:-}"; held=""; classify=1; resume_only=0; owners=""; doc=""; pool_only=0; why=0; dispo=0
+why_ticket=""; body_file=""; nd_list_flags=0
+nd_usage() {
+    echo 'usage: next-dispatchable.sh --why-ticket KEY [--body-file FILE] [--mirror DIR] [--doc CHIEF_DOC] [--workers-dir DIR] [--no-classify]; or listing flags --top --why --dispositions --priority-pool-only --resume-only --owners --workers-from --held' >&2
+    exit 2
+}
 workers="${TICKET_STATUS_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/workers"
 while [ "$#" -gt 0 ]; do
+    case "$1" in --top|--why|--dispositions|--priority-pool-only|--resume-only|--owners|--workers-from|--held) nd_list_flags=1 ;; esac
     case "$1" in
+        --why-ticket) [ "$#" -ge 2 ] && [ -n "$2" ] || nd_usage; why_ticket="$2"; shift 2 ;;
+        --body-file) [ "$#" -ge 2 ] && [ -n "$2" ] || nd_usage; body_file="$2"; shift 2 ;;
         --workers-dir) workers="${2:-}"; shift 2 || exit 2 ;;
         --resume-only) resume_only=1; classify=0; shift ;;
         --owners) owners="${2:-}"; shift 2 || exit 2 ;;
@@ -197,6 +211,12 @@ while [ "$#" -gt 0 ]; do
         *) echo "usage: next-dispatchable.sh [--top N] [--mirror DIR] [--workers-from MANIFEST] [--held FILE] [--no-classify] [--doc CHIEF_DOC] [--priority-pool-only] [--resume-only] [--owners \"KEY ...\"] [--workers-dir DIR] [--why] [--dispositions]" >&2; exit 2 ;;
     esac
 done
+if [ -n "$why_ticket" ]; then
+    [[ "$why_ticket" =~ ^[A-Z]+-[0-9]+$ ]] || nd_usage
+    [ "$nd_list_flags" = 0 ] || nd_usage
+elif [ -n "$body_file" ]; then nd_usage
+fi
+export ND_WHY_TICKET="$why_ticket" ND_BODY_FILE="$body_file"
 case "$top" in ''|*[!0-9]*|0*) echo "next-dispatchable: --top needs a positive number" >&2; exit 2 ;; esac
 # --why with no --top asks for the whole list, not the first 8 slots the worker-less RESUME rows fill; the
 # waiter counts dispatchable work against the free slots, and 50 is the fleet cap
@@ -229,6 +249,12 @@ if [ -n "${NEXT_DISPATCH_GH_CMD:-}" ] && [ -z "${HIMMEL_QUOTA_DIR:-}" ]; then
     export HIMMEL_QUOTA_DIR="$nd_qtmp"
     trap 'rm -rf "$nd_qtmp"' EXIT
 fi
+nd_pause() {
+    case "$1" in GH-STALL*) printf '# gh-stall %s\n' "$1" ;; *) printf '# quota-pause %s\n' "$1" ;; esac
+    exit 0
+}
+nd_tok=main
+if [ -z "$why_ticket" ]; then
 export GH_READ_NO_MAIN_FALLBACK=1
 if [ -z "${NEXT_DISPATCH_GH_CMD:-}" ] && [ -f "$REPO/scripts/lib/gh-read.sh" ]; then
     # shellcheck source=scripts/lib/gh-read.sh
@@ -237,10 +263,6 @@ if [ -z "${NEXT_DISPATCH_GH_CMD:-}" ] && [ -f "$REPO/scripts/lib/gh-read.sh" ]; 
     [ -n "$_GHR_TOK" ] || export GH_READ_QUIET=1
     export ND_GH_READ="$REPO/scripts/lib/gh-read.sh"
 fi
-nd_pause() {
-    case "$1" in GH-STALL*) printf '# gh-stall %s\n' "$1" ;; *) printf '# quota-pause %s\n' "$1" ;; esac
-    exit 0
-}
 nd_tok=main
 [ -z "${ND_GH_READ:-}" ] || nd_tok=$(ghq_scan_token next-dispatchable)
 for nd_bucket in graphql core; do
@@ -253,13 +275,22 @@ fi
 if [ "$nd_tok" = read ] && [ "$classify" = 1 ] && [ -z "${NEXT_DISPATCH_CLASSIFY_CMD:-}" ]; then
     nd_line=$(ghq_scan_gate main graphql next-dispatchable) || { [ $? -ne 75 ] || nd_pause "$nd_line"; }
 fi
+else
+    unset ND_GH_READ
+    export ND_WORKERS_FROM=""
+fi
 export ND_TOK="$nd_tok"
 nd_deadline="${NEXT_DISPATCH_DEADLINE:-400}"
 case "$nd_deadline" in ''|*[!0-9]*) nd_deadline=400 ;; esac
 nd_out=$(mktemp "${TMPDIR:-/tmp}/next-dispatch-out.XXXXXX") || exit 1
 nd_flags=$(mktemp "${TMPDIR:-/tmp}/next-dispatch-flags.XXXXXX") || { rm -f "$nd_out"; exit 1; }
 nd_pid=""
-trap 'rm -f "$nd_out" "$nd_flags"; [ -z "$nd_qtmp" ] || rm -rf "$nd_qtmp"' EXIT
+nd_pred_tmp=""
+if [ -n "$why_ticket" ]; then
+    nd_pred_tmp=$(tmpdir) || { printf 'UNKNOWN %s: temporary directory unavailable\n' "$why_ticket"; exit 3; }
+fi
+export ND_PRED_TMP="$nd_pred_tmp"
+trap 'rm -f "$nd_out" "$nd_flags"; [ -z "$nd_qtmp" ] || rm -rf "$nd_qtmp"; [ -z "$nd_pred_tmp" ] || rm -rf "$nd_pred_tmp"' EXIT
 # an outer kill reaches the run's own process group through timeout, which relays the signal
 trap '[ -z "$nd_pid" ] || kill -TERM "$nd_pid" 2>/dev/null; exit 143' TERM INT HUP
 _TIMEOUT_BIN=""
@@ -269,6 +300,23 @@ nd_left=$((nd_deadline - SECONDS))
 [ "$nd_left" -gt 0 ] || nd_left=1
 ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 "$nd_left"} python3 -I - > "$nd_out" <<'PY' &
 import datetime, json, os, re, subprocess, sys, tempfile, time
+
+why_key = os.environ.get('ND_WHY_TICKET', '')
+
+def unknown(reason):
+    print('UNKNOWN %s: %s' % (why_key, ' '.join(str(reason).split())))
+    sys.exit(3)
+
+def load_failure(reason, rc=3):
+    if why_key:
+        unknown(reason)
+    print('# next-dispatchable: ' + reason, file=sys.stderr)
+    sys.exit(rc)
+
+if why_key:
+    def predicate_error(typ, value, traceback):
+        unknown('internal error ' + typ.__name__)
+    sys.excepthook = predicate_error
 
 top = int(os.environ['ND_TOP']); mirror = os.environ['ND_MIRROR']
 repo = os.environ['ND_REPO']
@@ -359,7 +407,7 @@ try:
     _spec.loader.exec_module(_reader)
     NO_WRITE_RE, live_answers = _reader.NO_WRITE_RE, _reader.live_answers
 except Exception as e:
-    print('# next-dispatchable: pr_remainder.py unreadable (%s)' % e, file=sys.stderr); sys.exit(3)
+    load_failure('pr_remainder.py unreadable (%s)' % e)
 
 def split_reads(text):
     # (paths it writes, paths it only runs)
@@ -499,11 +547,28 @@ def last_owed(body):
             hit = line.strip()
     return hit[:160]
 
+def issue_from_match(m, txt):
+    fm, body = m.groups()
+    key = unq(fm_val(fm, 'key'))
+    t = re.search(r'^# [A-Z]+-\d+: (.*)$', body, re.M)
+    return {
+        'key': key, 'type': unq(fm_val(fm, 'type')), 'status': unq(fm_val(fm, 'status')), 'cat': unq(fm_val(fm, 'statusCategory')),
+        'prio': unq(fm_val(fm, 'priority')), 'parent': unq(fm_val(fm, 'parent')).replace('null', ''), 'labels': set(re.findall(r'"([^"]+)"', fm_val(fm, 'labels'))),
+        'ver': re.findall(r'"([^"]+)"', fm_val(fm, 'fixVersions')),
+        'blocked_by': re.findall(r'[A-Z]+-\d+', re.search(r'blocked_by: (.*)', fm).group(1)) if re.search(r'blocked_by: (.*)', fm) else [],
+        'title': t.group(1).strip() if t else '',
+        'last': last_owed(body),
+        'text': txt, 'description': (re.search(r'^## Description\n(.*?)(?=^## |\Z)', body, re.M | re.S).group(1) if re.search(r'^## Description\n(.*?)(?=^## |\Z)', body, re.M | re.S) else body.split('\n## Comments', 1)[0]),
+        'comments': body.split('\n## Comments', 1)[1] if '\n## Comments' in body else '',
+        'linked': re.findall(r'[A-Z]+-\d+', fm),
+        **scope_of(body),
+    }
+
 issues = {}
 try:
     names = sorted(n for n in os.listdir(mirror) if re.match(r'^[A-Z]+-\d+\.md$', n))
 except OSError as e:
-    print('# next-dispatchable: mirror missing or unreadable (%s)' % e, file=sys.stderr); sys.exit(3)  # an error, never an empty pool
+    load_failure('mirror missing or unreadable (%s)' % e)  # an error, never an empty pool
 try:
     mirror_age_min = int((time.time() - max([os.path.getmtime(os.path.join(mirror, n)) for n in names] or [os.path.getmtime(mirror)])) // 60)
 except OSError:
@@ -513,29 +578,40 @@ for n in names:
     try:
         txt = open(os.path.join(mirror, n), encoding='utf-8', errors='replace').read()
     except OSError as e:
-        print('# next-dispatchable: mirror missing or unreadable (%s)' % e, file=sys.stderr); sys.exit(3)  # a listed file that cannot be read is the same error
+        load_failure('mirror missing or unreadable (%s)' % e)  # a listed file that cannot be read is the same error
     m = re.match(r'^---\n(.*?)\n---\n(.*)$', txt, re.S)
-    if not m:
-        continue
-    fm, body = m.groups()
-    key = unq(fm_val(fm, 'key'))
-    t = re.search(r'^# [A-Z]+-\d+: (.*)$', body, re.M)
-    issues[key] = {
-        'key': key, 'type': unq(fm_val(fm, 'type')), 'status': unq(fm_val(fm, 'status')), 'cat': unq(fm_val(fm, 'statusCategory')),
-        'prio': unq(fm_val(fm, 'priority')), 'parent': unq(fm_val(fm, 'parent')).replace('null', ''), 'labels': set(re.findall(r'"([^"]+)"', fm_val(fm, 'labels'))),
-        'ver': re.findall(r'"([^"]+)"', fm_val(fm, 'fixVersions')),
-        'blocked_by': re.findall(r'[A-Z]+-\d+', re.search(r'blocked_by: (.*)', fm).group(1)) if re.search(r'blocked_by: (.*)', fm) else [],
-        'title': t.group(1).strip() if t else '',
-        'last': last_owed(body),
-        **scope_of(body),
-    }
+    if m:
+        issue = issue_from_match(m, txt)
+        issues[issue['key']] = issue
+
+if why_key and os.environ.get('ND_BODY_FILE'):
+    try:
+        txt = open(os.environ['ND_BODY_FILE'], encoding='utf-8', errors='replace').read()
+    except OSError as e:
+        unknown('body file unreadable (%s)' % e)
+    m = re.match(r'^---\n(.*?)\n---\n(.*)$', txt, re.S)
+    if txt.startswith('---\n') and not m:
+        unknown('malformed body file front matter')
+    fm, body = m.groups() if m else ('', '## Description\n' + txt)
+    body_key = unq(fm_val(fm, 'key'))
+    if body_key and body_key != why_key:
+        unknown('body file key %s differs' % body_key)
+    defaults = {'key': why_key, 'type': 'Task', 'status': 'To Do'}
+    fm += ''.join('\n%s: "%s"' % (k, v) for k, v in defaults.items() if not fm_val(fm, k))
+    txt = '---\n' + fm.strip() + '\n---\n' + body
+    issue = issue_from_match(re.match(r'^---\n(.*?)\n---\n(.*)$', txt, re.S), txt)
+    issues[why_key] = issue
+    body_mirror = os.path.join(os.environ['ND_PRED_TMP'], 'mirror')
+    os.mkdir(body_mirror)
+    with open(os.path.join(body_mirror, why_key + '.md'), 'w', encoding='utf-8') as f:
+        f.write(txt)
 
 try:
     _sspec = importlib.util.spec_from_file_location('proof_staging', os.environ['ND_STAGING'])
     proof_staging = importlib.util.module_from_spec(_sspec)
     _sspec.loader.exec_module(proof_staging)
 except Exception as e:
-    print('# next-dispatchable: proof_staging.py unreadable (%s)' % e, file=sys.stderr); sys.exit(3)
+    load_failure('proof_staging.py unreadable (%s)' % e)
 _staged = {}
 
 def staging_of(i):
@@ -671,7 +747,7 @@ def proof_missing(i):
     k = i['key']
     if k not in proof_cache:
         try:
-            txt = open(os.path.join(mirror, k + '.md'), encoding='utf-8', errors='replace').read()
+            txt = i['text']
             m = re.search(r'^## Description\n(.*?)(?=^## |\Z)', txt, re.M | re.S)
             with tempfile.TemporaryDirectory() as d:
                 draft = os.path.join(d, 'draft.md')
@@ -726,7 +802,7 @@ def load_platform_re():
                 return re.compile(line.strip(), re.I)
     except OSError:
         pass
-    print('next-dispatchable: cannot read the dropped-platform pattern from %s' % path, file=sys.stderr); sys.exit(2)
+    load_failure('cannot read the dropped-platform pattern from %s' % path, 2)
 
 platform_re = load_platform_re()
 # a removal ticket names the dropped platform only to take it out: the windows-removal label, or a title that opens with a
@@ -755,17 +831,34 @@ for name in names:
 done_pending = set()  # keys whose LATEST contract-bearing merge row is contract=yes
 partials = {}  # KEY -> PR numbers of its merged contract=no (partial) merges, oldest first
 status_unreadable = False
+hold_row = {}
+merge_fields = {}
+unconfirmed = set()
 
 
 def effective_rows(path):
     """The log's lines without a pre-merge row whose PR did not merge; an unreadable log raises OSError."""
     open(path).close()
+    env = None
+    if why_key:
+        sliced = os.path.join(os.environ['ND_PRED_TMP'], 'status-events.jsonl')
+        with open(path, encoding='utf-8') as source, open(sliced, 'w', encoding='utf-8') as target:
+            for line in source:
+                row = json.loads(line)
+                if not isinstance(row, dict):
+                    unknown('malformed status-events row')
+                if str(row.get('key', '')).upper() == why_key:
+                    target.write(line)
+        path = sliced
+        env = dict(os.environ, MERGE_ROWS_GH='false')
     try:  # the helper bounds its GitHub reads, not parsing a large log: a timeout reads as an unreadable log
-        r = subprocess.run([sys.executable, '-I', os.path.join(repo, 'scripts', 'lib', 'merge-rows-effective.py'), path], capture_output=True, text=True, timeout=120)
+        r = subprocess.run([sys.executable, '-I', os.path.join(repo, 'scripts', 'lib', 'merge-rows-effective.py'), path], capture_output=True, text=True, timeout=120, env=env)
     except subprocess.TimeoutExpired:
         raise OSError('merge-rows-effective timed out')
     if r.returncode != 0:
         raise OSError(r.stderr.strip() or 'merge-rows-effective failed')
+    if why_key:
+        unconfirmed.update(re.findall(r'warn: PR (\d+) unreadable on GitHub', r.stderr))
     return r.stdout.splitlines()
 
 
@@ -775,6 +868,11 @@ try:
             r = json.loads(line)
         except ValueError:
             continue
+        if why_key and isinstance(r, dict) and str(r.get('key', '')).upper() == why_key:
+            if r.get('event') in ('hold', 'hold-release') and r.get('result') == 'moved':
+                hold_row[why_key] = r
+            if r.get('event') == 'merge' and r.get('contract') == 'no':
+                merge_fields[(why_key, str(r.get('pr', '')))] = r
         if not (isinstance(r, dict) and r.get('event') == 'merge' and r.get('contract') in ('yes', 'no')):
             continue
         mkey = str(r.get('key', '')).upper()
@@ -843,6 +941,8 @@ def done_key(k):
 # a live read carries only the status name, so its Done-category names are listed here
 jira_cmd = os.environ.get('NEXT_DISPATCH_JIRA_CMD')
 live_on = bool(jira_cmd) or (os.environ.get('ND_CLASSIFY') == '1' and not os.environ.get('NEXT_DISPATCH_CLASSIFY_CMD'))
+if why_key and os.environ.get('ND_CLASSIFY') != '1':
+    live_on = False
 live_cache = {}
 
 def jira_argv(key):
@@ -899,10 +999,13 @@ def family_candidate(i):
                 and not re.match(r'\s*parked:', i['title'], re.I) and not residual_out(i) and not platform_dropped(i))
 
 # every hard blocker of a candidate is read live, whatever the mirror says; so is every blocker of an in-work ticket (RESUME rows)
-live_fetch([b for i in issues.values() if reaches_blocker_check(i) for b in i['blocked_by']]
-           + [b for i in issues.values() if i['status'] in ('To Do', 'In Progress', 'In Review', 'IN CI') and i['type'] not in ('Epic', 'Sub-task')
-              for b in i['blocked_by']]
-           + [b for i in issues.values() if family_candidate(i) for b in i['blocked_by']])  # a SERIES FAMILY member's blockers
+if why_key:
+    live_fetch(issues.get(why_key, {}).get('blocked_by', []))
+else:
+    live_fetch([b for i in issues.values() if reaches_blocker_check(i) for b in i['blocked_by']]
+               + [b for i in issues.values() if i['status'] in ('To Do', 'In Progress', 'In Review', 'IN CI') and i['type'] not in ('Epic', 'Sub-task')
+                  for b in i['blocked_by']]
+               + [b for i in issues.values() if family_candidate(i) for b in i['blocked_by']])  # a SERIES FAMILY member's blockers
 print('# source live_reads=%d' % len(live_cache))
 skipped_platform = []
 withheld_unreadable = []
@@ -1026,14 +1129,18 @@ def core_lines(out, keys, spec=False):
             got[t[1]] = line  # a line shorter than its verb needs is no answer: a truncated BYPASS must never read as a bypass
     return {k: got[k] for k in keys if k in got}
 
+core_problem = {}
+
 def core_spec_pass(cs):
     # the candidates that may still list (a DESIGN one is recorded in `design`); core-check takes ONE --paths per call, so
     # tickets naming the same files share a call (the calls run in parallel), then spec-check asks once for every CORE key
-    mdir = os.path.abspath(mirror)
+    mdir = body_mirror if why_key and os.environ.get('ND_BODY_FILE') else os.path.abspath(mirror)
     project = cs[0]['key'].split('-')[0]
     def fail(why):
         print('# WARN CORE-CHECK-FAILED %s' % ' '.join(why.split()))
         for i in cs:
+            if why_key:
+                core_problem[i['key']] = 'core check could not run: ' + ' '.join(why.split())
             drop(i, 'core-check failed (a gate that cannot run lists no To Do row)')
         return []
     groups = {}
@@ -1055,6 +1162,8 @@ def core_spec_pass(cs):
     for i in cs:
         verb = verdict[i['key']].split()[0]
         if verb == 'UNKNOWN':
+            if why_key:
+                core_problem[i['key']] = 'core status unknown (not in the mirror)'
             drop(i, 'core-unknown (not in the mirror: neither core nor a bypass can be proven)')
             continue
         keep.append(i)
@@ -1074,7 +1183,7 @@ def core_spec_pass(cs):
                 design[k] = got[k].split()[0]
     return keep
 
-if cands and os.environ.get('ND_RESUME_ONLY') != '1':  # --resume-only lists no To Do row
+if not why_key and cands and os.environ.get('ND_RESUME_ONLY') != '1':  # --resume-only lists no To Do row
     cands = core_spec_pass(cands)
 
 # held files: live workers, open PRs, --held
@@ -1317,6 +1426,67 @@ def apply_owed_scope(issues, actions, worker_keys, pr_keys):
         files, reads = split_reads('; '.join(s['text'] for s in code)) if code else ([], [])
         i.update(files=files, reads=reads, src='owed next step ' + ','.join(s['id'] for s in steps),
                  no_scope=bool(code) and not files, nowrite=not code, owed_next=steps)
+
+def gate_detail(tag, reason):
+    if tag == 'label':
+        return 'title parked:' if reason == 'label parked: title' else 'labels ' + reason[len('label '):]
+    if tag == 'blocker':
+        details = []
+        for part in reason.split('; '):
+            if part.startswith('blocker-unknown '):
+                details.extend(k + ' (unreadable)' for k in part[len('blocker-unknown '):].split(', '))
+            else:
+                details.append(part[len('blocker '):])
+        return ', '.join(details)
+    return reason
+
+def why_ticket(i):
+    key = i['key']
+    order = ('drop', 'held-label', 'open-blocker', 'blocker-no-version', 'stale-hold', 'prose-dependency', 'no-scope', 'no-proof', 'core-no-spec')
+    gates = {tag: [] for tag in order}
+    role = role_of(i)
+    if status_unreadable and role in ('To Do', 'RESUME') and not (role == 'To Do' and merged_on_main(key)):
+        unknown('status-events unreadable; merge context cannot be judged')
+    if role == 'IN CI':
+        gates['drop'].append('IN CI (whether a merged PR already closes it needs a GitHub read)')
+    elif role is None:
+        gates['drop'].append('status ' + i['status'])
+    else:
+        for tag, reason in refusals(i, role):
+            name = 'held-label' if tag == 'label' else 'open-blocker' if tag == 'blocker' else 'drop'
+            gates[name].append(gate_detail(tag, reason))
+        if role == 'RESUME':
+            blockers = [(b, blocker_state(b)) for b in i['blocked_by'] if blocker_state(b)]
+            if blockers:
+                gates['open-blocker'].append(', '.join('%s (%s)' % (b, 'unreadable' if st == UNREADABLE else st) for b, st in blockers))
+        for pr in sorted(unconfirmed, key=int):
+            gates['drop'].append('merge of PR #%s unconfirmed (pre-merge row; no GitHub read)' % pr)
+        if i['no_scope'] and key not in briefs:
+            gates['no-scope'].append('nothing says what it writes: no Remaining: text, no readiness: Writes line, no Writes:/Files: line, no path in the description')
+        if role == 'To Do':
+            missing = proof_missing(i)
+            if missing:
+                gates['no-proof'].append('missing ' + missing)
+            if key in core_problem:
+                gates['core-no-spec'].append(core_problem[key])
+            elif key in design:
+                gates['core-no-spec'].append(design[key])
+    lines = ['# scope %s %s: %s reads=%s' % (key, i['src'], ','.join(i['files']) or '-', ','.join(i['reads']) or '-')]
+    for tag in order:
+        if gates[tag]:
+            lines.append('GATE %s %s: %s' % (key, tag, ' '.join(', '.join(gates[tag]).split())))
+    refused = any(gates.values())
+    if not refused:
+        lines.append('READY ' + key)
+    return lines, int(refused)
+
+if why_key:
+    if why_key not in issues:
+        unknown('not in the mirror or the body file')
+    core_spec_pass([issues[why_key]])
+    lines, rc = why_ticket(issues[why_key])
+    print('\n'.join(lines))
+    sys.exit(rc)
 
 pr_unknown = False
 pr_keys = set()
@@ -1988,6 +2158,25 @@ PY
 nd_pid=$!
 wait "$nd_pid"; nd_rc=$?
 nd_pid=""
+if [ -n "$why_ticket" ]; then
+    if [ "$nd_rc" = 124 ] || [ "$nd_rc" = 137 ]; then
+        printf 'UNKNOWN %s: timed out after %ss\n' "$why_ticket" "$nd_deadline"
+        exit 3
+    fi
+    if ! awk -v key="$why_ticket" -v rc="$nd_rc" '
+        /^#/ { next }
+        $0 == "READY " key { ready++; next }
+        index($0, "GATE " key " ") == 1 && $0 ~ /^GATE [A-Z]+-[0-9]+ [a-z-]+: [^\t]+$/ { gate++; next }
+        index($0, "UNKNOWN " key ": ") == 1 { unknown++; next }
+        { bad++ }
+        END { exit !(!bad && ((rc == 0 && ready == 1 && !gate && !unknown) || (rc == 1 && gate && !ready && !unknown) || (rc == 3 && unknown == 1 && !ready && !gate))) }
+    ' "$nd_out"; then
+        printf 'UNKNOWN %s: unexpected exit %s\n' "$why_ticket" "$nd_rc"
+        exit 3
+    fi
+    cat "$nd_out"
+    exit "$nd_rc"
+fi
 IFS="$(printf '\t')" read -r nd_why nd_bucket nd_at nd_ftok < "$nd_flags" 2>/dev/null || nd_why=""
 case "$nd_why" in
     rate-limit) nd_pause "$(ghq_line "${nd_ftok:-main}" "$nd_bucket" next-dispatchable rate-limit "$nd_at")" ;;
