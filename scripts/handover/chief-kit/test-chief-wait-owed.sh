@@ -82,7 +82,9 @@ notification="$(bash "$HERE/owe.sh" add --bucket "$WORK" --chief old-chief --kin
 printf 'ACTION owed-notify=%s\n' "$notification" >> "$STUB/tick.line"
 if run_waiter "$WORK/notification.out" 60; then pass 'a persisted keyed due event wakes the waiter'; else fail 'keyed due event did not wake'; fi
 contains 'the wake names the durable event' "$(cat "$WORK/notification.out")" "WAKE owed-actions $notification"
-contains 'wake acknowledgement persists in the existing ledger' "$(bash "$HERE/owe.sh" list --bucket "$WORK" --all --json)" '"closed": true'
+contains 'printing a one-shot wake is not a delivery acknowledgement' "$(bash "$HERE/owe.sh" list --bucket "$WORK" --all --json)" '"closed": false'
+bash "$HERE/owe.sh" close --bucket "$WORK" --id "$notification" --key fixture-received
+contains 'explicit delivery acknowledgement persists in the existing ledger' "$(bash "$HERE/owe.sh" list --bucket "$WORK" --all --json)" '"closed": true'
 sed -i '/^ACTION owed-notify=/d' "$STUB/tick.line" # gnu-ok: the chief waiter is Linux-only
 reset
 if run_waiter "$WORK/restart.out" 30; then fail 'acknowledged event woke after restart'; else pass 'acknowledged event stays quiet after restart'; fi

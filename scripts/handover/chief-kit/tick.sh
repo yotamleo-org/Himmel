@@ -4229,6 +4229,16 @@ fi
 # alert-fail=<cadence>:<age>: cadence-alert.sh could not deliver a failure alert to
 # Telegram; the marker line is `<UTC iso-ts> <cadence> <reason>`. ABSENT when no marker
 # exists (the next delivered alert removes it). A file read only.
+mon_tail=""
+mon_state="${TICK_MONITOR_STATE:-${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/monitor/state}"
+if [ -e "$mon_state" ]; then
+    mon_line="$(head -n 1 "$mon_state" 2>/dev/null)" || mon_line=""  # swallow-ok: an unreadable monitor state prints mon-down=?, never recovery
+    if [[ "$mon_line" =~ ^down[[:space:]]+([0-9]+)([[:space:]]|$) ]]; then
+        mon_tail=" mon-down=${BASH_REMATCH[1]}"
+    elif [ "$mon_line" != ok ]; then
+        mon_tail=' mon-down=?'
+    fi
+fi
 alertfail_tail=""
 alertfail_mark="${CADENCE_ALERT_SEND_FAILED_MARK:-${HOME:-}/.himmel/state/cadence-alert-send-failed}"
 if [ -s "$alertfail_mark" ]; then
@@ -5014,6 +5024,7 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$doctor_tail" ] || printf 'doctor: %s\n' "${doctor_tail# doctor=}"
     [ -z "$crfirst_tail" ] || printf 'crfirst: %s\n' "${crfirst_tail# crfirst=}"
     [ -z "$station_tail" ] || printf 'station: %s\n' "${station_tail# station=}"
+    [ -z "$mon_tail" ] || printf 'mon-down: %s\n' "${mon_tail# mon-down=}"
     [ -z "$alertfail_tail" ] || printf 'alert-fail: %s\n' "${alertfail_tail# alert-fail=}"
     [ -z "$slotage_tail" ] || printf 'slot age: %s\n' "${slotage_tail# slotage=}"
     [ -z "$tmp_tail" ] || printf 'tmp: %s\n' "${tmp_tail# tmp=}"
@@ -5118,7 +5129,7 @@ else
     compact_field focus "$focus_summary"
     compact_field sdrift "$sdrift_summary"
     compact_field stale "$stale_summary"
-    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$unclosed_tail$holdout_tail$busedge_tail$wakerstate_tail$stall_tail$doctor_tail$crfirst_tail$station_tail$alertfail_tail$slotage_tail$tmp_tail$spare_tail"
+    printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$unclosed_tail$holdout_tail$busedge_tail$wakerstate_tail$stall_tail$doctor_tail$crfirst_tail$station_tail$mon_tail$alertfail_tail$slotage_tail$tmp_tail$spare_tail"
     if [ -n "$holdout_summary" ]; then
         printf 'ACTION holdout=%s: an idle worker holds on an outside event; have it WRAP with what it owes written down, then bash %q watch %q add <pr> --head <sha> --comments <n> --reviews <n> and close-wrapped-worker.sh --fleet %q <doc> (chief-wait wakes you as WAKE pr-watch)\n' \
             "$holdout_summary" "$HERE/fleet-manifest.sh" "${WORKERS_FROM:-<manifest>}" "${WORKERS_FROM:-<manifest>}"

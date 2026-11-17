@@ -74,15 +74,17 @@ Run these, in order, and write the result as the first bullet under
    not relayed. `WAKE succession complete` or `WAKE succession partial` is
    informational: write fresh nonces into `## Live state`, re-arm **without `--succession`**.
    Then close its window, re-ask judges: `chief-sections/successor-start.md`.
-10. **Start the event waiter now.** Run `chief-wait.sh` **once** with the
-    **Bash tool's `run_in_background: true` AND `timeout: 7200000`**; the harness
-    re-invokes you when it exits:
-    `bash scripts/handover/chief-kit/chief-wait.sh "{{INBOX}}" --doc "<this file>" --token <your token> --workers "<absolute worker docs>" [--succession {{SESSION_NAME}}]`
-    It exits on the first real event (`WAKE telegram | tick | underfilled |
-    tick-fail | worker-silent`), so an idle chief takes **zero** turns; a WAKE may add an
-    `absorbed since last wake:` wraps/merges line. **Re-start it in the
-    turn that handles each wake and on every dispatch and wrap** (`TaskStop` the
-    old one, absolute worker doc paths) or you go deaf. On `worker-silent` relaunch
+10. **Start the approved waiter mode now.** Stream activation remains paused
+    until the parent accepts the native Claude Monitor runtime proof, including
+    delivery and session-end behavior. Once approved, arm **Monitor** with
+    `timeout_ms: 1800000`:
+    `bash scripts/handover/chief-kit/chief-wait.sh "{{INBOX}}" --stream --since prev-arm --doc "<this file>" --token <your token> --workers-from "{{FLEET_MANIFEST}}" [--succession {{SESSION_NAME}}]`
+    `WAKE#<seq>` names the saved block in `out=`; service continues while you
+    handle it. Re-arm only on `REARM`, `STOPPED`, refusal or `waiter-error`,
+    using your last seen seq (or `prev-arm` when unsure). Dispatch/wrap reload
+    the manifest without re-arm. Until stream activation is accepted, retain
+    the one-shot Bash arm (`run_in_background: true`, `timeout: 7200000`)
+    and re-arm after each wake: see `chief-sections/waiter.md`. On `worker-silent` relaunch
     that worker from a RESUME doc or run its blocked step yourself, then tell the
     operator which. Record the task id in your first bullet (`cat "<inbox>.wait"` is the
     heartbeat); wake keys, states, fleet-manifest arming: `chief-sections/waiter.md`.

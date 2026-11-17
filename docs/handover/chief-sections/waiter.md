@@ -2,6 +2,54 @@
 
 Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step 7. Moved verbatim from the template.
 
+Stream mode (`--stream`) is implemented but production activation awaits the
+parent's native Claude Monitor proof. Once approved, arm the step-10 command
+with Monitor `timeout_ms: 1800000`, `--workers-from <manifest>` and
+`--since <last WAKE# seen>` (or `prev-arm` when unsure). The same supervisor
+services pending READY/cleanup through worker-event between full ticks and
+continues while the chief is busy. It reconciles existing READY at startup;
+replay never authorizes a second GO. Ambiguous exact-head GO delivery requires
+chief reconciliation before any resend.
+
+Read each `out=` block. `REPLAY seqs=a-b n=k index=<file>` lists retained wakes;
+`GAP` means the requested range was rotated away or the log reset: reconcile
+that range. `W` rows record wakes, `P` rows record printing, and `D`/`K` rows
+record an external delivery assertion and acknowledgment. Monitor offers no
+automatic delivery receipt. After actually receiving a block, acknowledge with
+`chief-wait.sh <inbox> --ack <seq> --receipt <delivery-reference>`. The live/next
+supervisor consumes that request; it closes only chief notification actions
+named by the block, never proof or source step decisions. Operator digest
+actions close only after the existing chief-route `--owed` sender records a
+Telegram `DELIVERED` receipt. Queue/drain success is insufficient; failures
+stay open and retry on a bounded cadence.
+
+Re-arm only on `REARM`, `STOPPED`, `STREAM-REFUSED` or `waiter-error`. A normal
+`WAKE#` needs no re-arm, including a succession or relay-on-live block whose
+legacy tail says to re-arm: the supervisor performs that relaunch and removes
+`--succession`. Never mix a bare waiter into stream mode; `child=busy` requires
+a stream arm to adopt the bounded child. `reason=repeat|rate` requires handling
+the repeating cause first. A mistaken second arm is refused.
+`waiter-error kind=hung` means the busy/orphan bound killed a stuck child;
+inspect its saved output and step before re-arming.
+
+To stop normally, touch `<inbox>.wait.stop`. The supervisor waits up to 60 s
+for a safe point, prints `STOPPED`, and removes the request. A busy child stays
+under its bounded watchdog until adoption or a safe stop. `TaskStop` is the
+hard stop: native Monitor may kill the whole tree within about 2 s, including
+a step in progress. Printed/partial blocks remain replayable; a kill between
+an action's marker and its print retains the existing loss window. Session-end,
+Remote-Control-only delivery and this adapter's runtime survival/receipt proof
+are still owed. Offline fixtures do not establish them.
+
+Per-field policy is `chief-wait.sh --rules` (`wake-rules.tsv`): station BEHIND
+entry and 60-minute reminders, CLI repair-off states with the persisted remedy,
+RM queue older than twice its launch gap, and `mon-down` once per down streak.
+Open-count/residual-cap and persistent underfill retain their existing semantics.
+The detailed one-shot behavior below remains the default without `--stream`.
+In one-shot mode a printed `WAKE owed-actions` also leaves its notification
+open: after receipt the chief acknowledges with `owe.sh close --bucket <bucket>
+--id <id> --key <delivery-reference>`.
+
 10. **Start the event waiter now** (it replaces the `tick` and
     `telegram` Monitor loops). Loops are pure code, never model turns: a
     `Monitor` arm is capped at 30 min, and every expiry woke this full-context

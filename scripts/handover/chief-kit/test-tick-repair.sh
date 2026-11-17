@@ -16,7 +16,6 @@ fi
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="$HERE/tick.sh"
 DOCPAGE="$HERE/../../../docs/handover/chief-sections/release-manager.md"
-CHIEFWAIT="$HERE/chief-wait.sh"
 W="$(mktemp -d "${TMPDIR:-/tmp}/tick-repair-test.XXXXXX")" || exit 1
 trap 'kill $(jobs -p) 2>/dev/null; rm -rf "$W"' EXIT
 fails=0
@@ -211,7 +210,7 @@ out2="$(tick)"
 check 'journal head alone leaves held sig unchanged' "$(field held "$out1")" "$(field held "$out2")"
 
 # --- the wake key: chief-wait.sh names no held/unfiled/repair field (a read, not a change)
-fields_line="$(grep -E '^[[:space:]]*for f in .*; do' "$CHIEFWAIT" | head -n 1)"
+fields_line="$(awk -F'\t' '$0 !~ /^#/ && $5 == "key" { print $1 }' "$HERE/wake-rules.tsv" | paste -sd' ' -)"
 case "$fields_line" in *workers*) ;; *) fields_line="" ;; esac
 res=absent
 case " $fields_line " in *" held "*|*" unfiled "*|*" repair "*) res=present ;; esac

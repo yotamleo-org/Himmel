@@ -3,6 +3,10 @@
 A chief is one long-running Claude session that keeps several tickets moving
 at once. You talk to the chief; the chief runs the workers.
 
+`WAKE mon` means the Telegram monitoring group is down (`mon-down=<since>`
+on the tick); inspect the bridge's `monitor/state` and monitoring bot/group
+wiring. It wakes once per down streak and clears only after recovery.
+
 ## What the chief does
 
 - It picks tickets from the queue and writes a brief for each one it starts.
