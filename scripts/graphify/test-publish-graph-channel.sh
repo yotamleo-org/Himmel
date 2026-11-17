@@ -54,7 +54,7 @@ git init --quiet --bare "$BARE"
 git init --quiet --initial-branch=main "$PRIMARY"
 mkdir -p "$PRIMARY/scripts"
 cp -R "$REPO_ROOT/scripts/hooks" "$REPO_ROOT/scripts/lib" "$REPO_ROOT/scripts/guardrails" "$REPO_ROOT/scripts/cr" \
-      "$REPO_ROOT/scripts/ci" "$REPO_ROOT/scripts/testing" "$PRIMARY/scripts/"
+      "$REPO_ROOT/scripts/ci" "$REPO_ROOT/scripts/testing" "$REPO_ROOT/scripts/lint" "$PRIMARY/scripts/"
 cat > "$PRIMARY/.pre-commit-config.yaml" <<'YAML'
 repos:
   - repo: local
