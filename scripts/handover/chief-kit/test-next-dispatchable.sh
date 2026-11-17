@@ -3057,6 +3057,77 @@ has "T11: with the real classifier on, main under the floor pauses the run altho
 t11run "$WORK/t11root" healthy NEXT_DISPATCH_CLASSIFY_CMD= CLOUD_ROUTE_GH_CMD="$T11B/cr-gh" T11_CR_LOG="$WORK/t11cr.log" CLOUD_ROUTE_JIRA_CMD=false
 has "T11 RED control: with main healthy the real classifier runs" "$(cat "$WORK/t11cr.log")" "main pr list"
 
+# Predicate fixtures are separate from the listing's historical fixtures and header defaults.
+P="$WORK/predicate"; mkdir -p "$P/mirror" "$P/state/workers" "$P/bucket" "$P/bin"
+M="$P/mirror"
+printf 'v1.0.1\tfalse\t\nv1.0.2\tfalse\t\nv1.0.0\ttrue\t2026-01-01\n' > "$P/mirror.versions.tsv"
+printf '# chief\n\n## Live state\npriority: HIMMEL-11001\n' > "$P/bucket/chief.md"
+cat > "$P/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$P_GH_LOG"
+case "$1 $2" in
+    'pr list') exit 0 ;;
+    'pr view') cat "$P_BODIES/$3" 2>/dev/null; exit $? ;;
+esac
+exit 1
+EOF
+chmod +x "$P/bin/gh"
+export P_GH_LOG="$P/gh.log" P_BODIES="$P/bodies"
+mkdir -p "$P_BODIES"; : > "$P_GH_LOG"
+P_CLI="$WORK/notcore-stub/index.js"
+p_reset() {
+    rm -f "$M"/*.md "$P/state/workers"/*.json "$P/bucket/owed.jsonl" "$P/bucket/owed.jsonl.lock" "$P/cache.json"
+    : > "$P/state/status-events.jsonl"
+    : > "$P_GH_LOG"
+    P_CLI="$WORK/notcore-stub/index.js"
+}
+p_mk() { mk "$1" "${2:-To Do}" Medium '[]' '["v1.0.1"]' '[]' 'predicate fixture' "${3:-Writes: scripts/lib/alpha.sh}"; }
+p_part() { # key pr kind actor
+    printf '{"event":"merge","result":"moved","key":"%s","pr":"%s","contract":"no","remainder":"%s","owed":"%s","owed_due":"2026-11-30"}\n' "$1" "$2" "$3" "${4:-}" >> "$P/state/status-events.jsonl"
+    case "$3" in
+        remaining) printf 'Remaining: edit scripts/lib/rem.sh\n' > "$P_BODIES/$2" ;;
+        owed) printf '## Ticket coverage\n- check: owed -> %s by 2026-11-30\n' "${4:-chief}" > "$P_BODIES/$2" ;;
+    esac
+}
+p_run() {
+    P_OUT="$(NEXT_DISPATCH_JIRA_CLI="$P_CLI" NEXT_DISPATCH_MIRROR="$M" NEXT_DISPATCH_BODY_CACHE="$P/cache.json" NEXT_DISPATCH_READER='' NEXT_DISPATCH_GH_CMD="$P/bin/gh" NEXT_DISPATCH_JIRA_CMD='' \
+        bash "$SUT" --no-classify --workers-dir "$P/state/workers" "$@" 2> "$P/stderr")"; P_RC=$?
+}
+p_list() { p_run --why --dispositions --top 100 --doc "$P/bucket/chief.md"; }
+p_owed() { bash "$HERE/owe.sh" "$@" --bucket "$P/bucket"; }
+p_validation() { p_owed add --chief fixture --kind proof --key "$1" --text validate --metadata '{"actor":"chief","action":"validate-proof"}'; }
+p_step() {
+    p_owed add --chief fixture --kind step --key "$1" --text "${4:-Fix scripts/lib/next.sh}" \
+        --metadata "{\"actor\":\"$3\",\"action\":\"next-step\",\"source_id\":\"$2\",\"due\":\"2026-11-30\",\"wake\":\"fixture\",\"capability\":\"fixture\"}" >/dev/null
+}
+p_reset
+p_mk HIMMEL-11001
+p_mk HIMMEL-11002 'To Do' 'No readable scope'
+printf '{"state":"wrapped","resume_brief":"fixture-brief.md"}\n' > "$P/state/workers/HIMMEL-11002.json"
+p_mk HIMMEL-11003; p_part HIMMEL-11003 7001 remaining
+p_mk HIMMEL-11004 'In Progress'; p_mk HIMMEL-11005 'In Review'
+p_mk HIMMEL-11006 'IN CI'; p_mk HIMMEL-11007 Done
+p_mk HIMMEL-11008; retype "$M/HIMMEL-11008.md" Epic; p_part HIMMEL-11008 7002 remaining
+p_mk HIMMEL-11009; p_part HIMMEL-11009 7003 owed proof
+p_mk HIMMEL-11010; p_mk HIMMEL-11011
+for pair in HIMMEL-11010:chief HIMMEL-11011:operator; do
+    pv="$(p_validation "${pair%%:*}")"; p_step "${pair%%:*}" "$pv" "${pair##*:}"
+    p_owed close --id "$pv" --key KEEP >/dev/null
+done
+p_list
+[ "$P_RC" = 0 ] && pass 'P21(a) listing exits successfully' || fail "P21(a) listing rc=$P_RC"
+has 'P21(a) ordinary To Do is executable' "$P_OUT" $'LOCAL?\tHIMMEL-11001'
+for pk in 11002 11003 11004 11005 11006 11009; do has "P21(a) role $pk is RESUME" "$P_OUT" "$(printf 'RESUME\tHIMMEL-%s' "$pk")"; done
+lacks 'P21(a) terminal is absent' "$P_OUT" $'RESUME\tHIMMEL-11007'
+has 'P21(a) Epic live partial retains type refusal' "$P_OUT" '# drop HIMMEL-11008 type Epic'
+has 'P21(a) proof-only scope writes nothing' "$(printf '%s\n' "$P_OUT" | grep $'^RESUME\tHIMMEL-11009')" 'files=-'
+for pk in 11010 11011; do has "P21(a) next-step owner $pk is OWED" "$P_OUT" "OWED HIMMEL-$pk:"; lacks "P21(a) next-step owner $pk is not executable" "$P_OUT" "$(printf 'LOCAL?\tHIMMEL-%s' "$pk")"; done
+P_PROOF_KEY="HIMMEL-$((11000 + 9))"
+pv="$(p_validation "$P_PROOF_KEY")"
+p_list
+lacks 'P21(a) pending validation suppresses proof-only executable membership' "$P_OUT" $'RESUME\tHIMMEL-11009'
+has 'P21(a) pending proof validation names chief' "$P_OUT" "OWED HIMMEL-11009: owed action $pv owes chief"
+
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.
 real_hits="$(grep -rlF "$WORK" "$REAL_HOME/.himmel/state/holds" 2>/dev/null | grep -c . || true)"

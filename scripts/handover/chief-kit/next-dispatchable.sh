@@ -906,38 +906,79 @@ live_fetch([b for i in issues.values() if reaches_blocker_check(i) for b in i['b
 print('# source live_reads=%d' % len(live_cache))
 skipped_platform = []
 withheld_unreadable = []
-cands = []
-for i in issues.values():
-    if i['status'] != 'To Do' or i['key'] in briefs or (partial_resume(i['key']) and i['type'] not in ('Epic', 'Sub-task')):
-        continue
+def role_of(i):
+    if i['status'] == 'To Do':
+        if i['key'] in briefs or (partial_resume(i['key']) and i['type'] not in ('Epic', 'Sub-task')):
+            return 'RESUME'
+        return 'To Do'
+    if i['status'] in ('In Progress', 'In Review'):
+        return 'RESUME'
+    return 'IN CI' if i['status'] == 'IN CI' else None
+
+def refusals(i, role, first=False):
+    out = []
+    def hit(tag, reason):
+        out.append((tag, reason))
+    if role == 'RESUME':
+        if i['type'] in ('Epic', 'Sub-task'):
+            hit('type', 'type ' + i['type'])
+            if first: return out
+        if i['key'] in done_pending:
+            hit('done-pending', 'done-pending (a contract=yes merge row; the mirror lags)')
+            if first: return out
+        labels = (i['labels'] & excl) | {l for l in i['labels'] if 'parked' in l}
+        if labels:
+            hit('label', 'label ' + ','.join(sorted(labels)))
+            if first: return out
+        if pool_only:
+            if i['key'] in prio_cloud:
+                hit('cloud', 'cloud-only on the priority line')
+                if first: return out
+            if platform_dropped(i):
+                hit('platform', 'platform (windows/wsl title)')
+                if first: return out
+            if residual_out(i):
+                hit('residual', 'residual-depth %d (no residual-must line, no admissions-ledger row)' % residual_depth(i))
+        return out
     if i['type'] in ('Epic', 'Sub-task'):
-        drop(i, 'type ' + i['type'])
-        continue
+        hit('type', 'type ' + i['type'])
+        if first: return out
     if i['key'] in done_pending:
-        drop(i, 'done-pending (a contract=yes merge row; the mirror lags)')
-        continue
+        hit('done-pending', 'done-pending (a contract=yes merge row; the mirror lags)')
+        if first: return out
     if i['labels'] & excl or re.match(r'\s*parked:', i['title'], re.I):
-        drop(i, 'label ' + (','.join(sorted(i['labels'] & excl)) or 'parked: title'))
-        continue
+        hit('label', 'label ' + (','.join(sorted(i['labels'] & excl)) or 'parked: title'))
+        if first: return out
     if platform_dropped(i):
-        skipped_platform.append(i['key'])
-        drop(i, 'platform (windows/wsl title)')
-        continue
+        hit('platform', 'platform (windows/wsl title)')
+        if first: return out
     open_b = [(b, blocker_state(b)) for b in i['blocked_by'] if blocker_state(b)]
     if open_b:
         known = ['%s (%s)' % bs for bs in open_b if bs[1] != UNREADABLE]
         unknown = [b for b, st in open_b if st == UNREADABLE]
-        drop(i, '; '.join(([('blocker ' + ', '.join(known))] if known else []) + ([('blocker-unknown ' + ', '.join(unknown))] if unknown else [])))
-        continue
+        hit('blocker', '; '.join(([('blocker ' + ', '.join(known))] if known else []) + ([('blocker-unknown ' + ', '.join(unknown))] if unknown else [])))
+        if first: return out
     if i['key'] in prio_cloud:
-        drop(i, 'cloud-only on the priority line')
-        continue
+        hit('cloud', 'cloud-only on the priority line')
+        if first: return out
     if residual_out(i):
-        drop(i, 'residual-depth %d (no residual-must line, no admissions-ledger row)' % residual_depth(i))
-        continue
+        hit('residual', 'residual-depth %d (no residual-must line, no admissions-ledger row)' % residual_depth(i))
+        if first: return out
     if status_unreadable and merged_on_main(i['key']):
-        withheld_unreadable.append(i['key'])
-        drop(i, 'status-events.jsonl unreadable and the key has a merge on main')
+        hit('status-unreadable', 'status-events.jsonl unreadable and the key has a merge on main')
+        if first: return out
+    return out
+
+cands = []
+for i in issues.values():
+    if role_of(i) != 'To Do':
+        continue
+    r = refusals(i, 'To Do', first=True)
+    if r:
+        tag, reason = r[0]
+        if tag == 'platform': skipped_platform.append(i['key'])
+        if tag == 'status-unreadable': withheld_unreadable.append(i['key'])
+        drop(i, reason)
         continue
     cands.append(i)
 if withheld_unreadable:
@@ -1140,55 +1181,6 @@ if cloud_tsv and os.path.isfile(cloud_tsv):
 hf = os.environ.get('ND_HELD', '')
 if hf and os.path.isfile(hf):
     held += [(l.strip(), 'held list', True) for l in open(hf) if l.strip()]
-pr_unknown = False
-pr_keys = set()
-pr_file_map = {}  # PR number -> its files
-pr_meta = {}  # PR number -> (title, head branch)
-outside_idle = {}
-now_s = float(os.environ.get('NEXT_DISPATCH_NOW') or time.time())
-gh = os.environ.get('NEXT_DISPATCH_GH_CMD') or os.environ.get('ND_GH_READ') or 'gh'
-gh_repo = 'yotamleo-org/Himmel'  # env-literal-ok: the canonical slug; --search does not follow a repo rename
-try:
-    nums = ghrun([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'open', '--limit', '200', '--json', 'number', '--jq', '.[].number'],
-                          capture_output=True, text=True, timeout=gh_t(60), check=True).stdout.split()
-    def pr_files(num):
-        # the paginated files API, not `gh pr diff`: that fails with HTTP 406 on a PR over 300 files. A rename holds both names.
-        try:
-            files = ghrun([gh, 'api', '--paginate', 'repos/%s/pulls/%s/files' % (gh_repo, num), '--jq', '.[] | .filename, (.previous_filename // empty)'],
-                                   capture_output=True, text=True, timeout=gh_t(120), check=True).stdout.splitlines()
-        except (OSError, subprocess.SubprocessError):
-            return None  # this PR's files are unknown; the rest are still read
-        return None if len(files) >= 3000 else files  # the API stops at 3000 files: a PR that long is cut short, so its files are unknown
-    pr_nums = [] if resume_only else nums
-    if pr_nums:
-        from concurrent.futures import ThreadPoolExecutor
-        with ThreadPoolExecutor(max_workers=min(8, len(pr_nums))) as pool:
-            for num, d in zip(pr_nums, pool.map(pr_files, pr_nums)):
-                if d is None:
-                    note_unknown('PR %s' % num)
-                    continue
-                held += [(f, 'open PR %s' % num, False) for f in d if f]  # a diff is files: compared exactly
-                pr_file_map[num] = [f for f in d if f]
-    # an open PR cites a ticket by its title or head branch (the commit/PR gate puts the key in both)
-    for line in ghrun([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'open', '--limit', '200', '--json', 'number,title,headRefName,isCrossRepository,updatedAt', '--jq', '.[] | [.number, .title, .headRefName, .isCrossRepository, .updatedAt] | @tsv'],
-                               capture_output=True, text=True, timeout=gh_t(60), check=True).stdout.splitlines():
-        cols = line.split('\t')
-        if len(cols) >= 3:
-            pr_meta[cols[0]] = (cols[1], cols[2])
-        idle = None
-        if len(cols) >= 5 and cols[3] == 'true':
-            try:
-                idle = int((now_s - datetime.datetime.fromisoformat(cols[4].replace('Z', '+00:00')).timestamp()) // 86400)
-            except ValueError:
-                idle = None
-        for k in re.findall(r'[A-Za-z]+-\d+', '\t'.join(cols[1:3]) if len(cols) >= 3 else line):
-            if idle is not None and idle >= OUTSIDE_OWN_DAYS:
-                outside_idle.setdefault(k.upper(), (cols[0], idle))
-            else:
-                pr_keys.add(k.upper()); owner.setdefault(k.upper(), 'open PR %s' % cols[0])
-except (OSError, subprocess.SubprocessError):
-    pr_unknown = True
-
 # The remainder of a merged partial PR's body, read by the ONE reader every partial-merge site shares
 # (scripts/lib/pr_remainder.py): a `Remaining:` line, or the `deferred -> <KEY>` lines under `## Ticket coverage`.
 # A body gh cannot read, or a reader that fails or answers without the two --units fields, is recorded in unread_prs and
@@ -1279,26 +1271,105 @@ def resume_eligible(i):
     # the gates an in-work ticket (or a wrapped To Do one) passes whoever holds its files
     if pool_only and (tier_of(i) > 4 or i['key'] in prio_cloud):
         return False
-    wrapped = i['status'] == 'To Do' and (i['key'] in briefs or partial_resume(i['key']))
-    if not (wrapped or i['status'] in ('In Progress', 'In Review', 'IN CI')) or i['type'] in ('Epic', 'Sub-task'):
+    if role_of(i) not in ('RESUME', 'IN CI'):
         return False
-    if i['key'] in done_pending or i['labels'] & excl or any('parked' in l for l in i['labels']):
-        return False
-    return not (pool_only and (platform_dropped(i) or residual_out(i)))
+    return not refusals(i, 'RESUME', first=True)
+
+
+def override_from_parts(i, parts):
+    i['parts'] = parts
+    latest = [p for p in i['parts'] if p['kind'] == 'remaining'][-1:]
+    proof_parts = [p for p in i['parts'] if p['kind'] == 'owed' and p['handed'][0] == 'proof']
+    if proof_parts and not latest:
+        i.update(files=[], reads=[], src='remainder of PR #%s' % proof_parts[-1]['pr'], no_scope=False, nowrite=True,
+                 proof_only=True, proof_due=proof_parts[-1]['handed'][1])
+    if latest:
+        files, reads = split_reads(latest[0]['text'])
+        nowrite = not files and latest[0]['nowrite']
+        if files or nowrite:
+            i.update(files=files, reads=reads, src='remainder of PR #%s' % latest[0]['pr'], no_scope=False, nowrite=nowrite)
+
+def apply_owed_scope(issues, actions, worker_keys, pr_keys):
+    closed = {r['id']: r for r in actions if r['closed'] and r.get('action') == 'validate-proof'}
+    latest_validation = {r.get('key'): r['id'] for r in actions if r.get('action') == 'validate-proof'}
+    # The proof step stays open until the chief's outcome, so while the newest validation of a key is open the original
+    # proof-owned scope is the chief's to settle: no second paid run. A code scope of the same ticket is a different unit.
+    open_validation = {r['id'] for r in actions if not r['closed'] and r.get('action') == 'validate-proof'}
+    for key, vid in latest_validation.items():
+        i = issues.get(key)
+        if vid in open_validation and i and i.get('proof_only') and key not in worker_keys and key not in pr_keys:
+            i['owed_wait'] = {'id': vid, 'actor': 'chief', 'due': i.get('proof_due', '')}
+    replacements = {}
+    for action in actions:
+        parent = closed.get(action.get('source_id'))
+        if not action['closed'] and action.get('action') == 'next-step' and action.get('actor') in ('proof', 'worker', 'chief', 'operator') and parent and parent.get('key') == action.get('key') and latest_validation.get(action.get('key')) == parent['id']:
+            replacements.setdefault(action['key'], []).append(action)
+    for key, steps in replacements.items():
+        i = issues.get(key)
+        if not i or key in worker_keys or key in pr_keys:
+            continue
+        runnable = [s for s in steps if s['actor'] in ('proof', 'worker')]
+        if not runnable:
+            i['owed_wait'] = min(steps, key=lambda s: s.get('due', ''))
+            continue
+        steps = runnable
+        code = [s for s in steps if s['actor'] == 'worker']
+        files, reads = split_reads('; '.join(s['text'] for s in code)) if code else ([], [])
+        i.update(files=files, reads=reads, src='owed next step ' + ','.join(s['id'] for s in steps),
+                 no_scope=bool(code) and not files, nowrite=not code, owed_next=steps)
+
+pr_unknown = False
+pr_keys = set()
+pr_file_map = {}  # PR number -> its files
+pr_meta = {}  # PR number -> (title, head branch)
+outside_idle = {}
+now_s = float(os.environ.get('NEXT_DISPATCH_NOW') or time.time())
+gh = os.environ.get('NEXT_DISPATCH_GH_CMD') or os.environ.get('ND_GH_READ') or 'gh'
+gh_repo = 'yotamleo-org/Himmel'  # env-literal-ok: the canonical slug; --search does not follow a repo rename
+try:
+    nums = ghrun([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'open', '--limit', '200', '--json', 'number', '--jq', '.[].number'],
+                          capture_output=True, text=True, timeout=gh_t(60), check=True).stdout.split()
+    def pr_files(num):
+        # the paginated files API, not `gh pr diff`: that fails with HTTP 406 on a PR over 300 files. A rename holds both names.
+        try:
+            files = ghrun([gh, 'api', '--paginate', 'repos/%s/pulls/%s/files' % (gh_repo, num), '--jq', '.[] | .filename, (.previous_filename // empty)'],
+                                   capture_output=True, text=True, timeout=gh_t(120), check=True).stdout.splitlines()
+        except (OSError, subprocess.SubprocessError):
+            return None  # this PR's files are unknown; the rest are still read
+        return None if len(files) >= 3000 else files  # the API stops at 3000 files: a PR that long is cut short, so its files are unknown
+    pr_nums = [] if resume_only else nums
+    if pr_nums:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=min(8, len(pr_nums))) as pool:
+            for num, d in zip(pr_nums, pool.map(pr_files, pr_nums)):
+                if d is None:
+                    note_unknown('PR %s' % num)
+                    continue
+                held += [(f, 'open PR %s' % num, False) for f in d if f]  # a diff is files: compared exactly
+                pr_file_map[num] = [f for f in d if f]
+    # an open PR cites a ticket by its title or head branch (the commit/PR gate puts the key in both)
+    for line in ghrun([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'open', '--limit', '200', '--json', 'number,title,headRefName,isCrossRepository,updatedAt', '--jq', '.[] | [.number, .title, .headRefName, .isCrossRepository, .updatedAt] | @tsv'],
+                               capture_output=True, text=True, timeout=gh_t(60), check=True).stdout.splitlines():
+        cols = line.split('\t')
+        if len(cols) >= 3:
+            pr_meta[cols[0]] = (cols[1], cols[2])
+        idle = None
+        if len(cols) >= 5 and cols[3] == 'true':
+            try:
+                idle = int((now_s - datetime.datetime.fromisoformat(cols[4].replace('Z', '+00:00')).timestamp()) // 86400)
+            except ValueError:
+                idle = None
+        for k in re.findall(r'[A-Za-z]+-\d+', '\t'.join(cols[1:3]) if len(cols) >= 3 else line):
+            if idle is not None and idle >= OUTSIDE_OWN_DAYS:
+                outside_idle.setdefault(k.upper(), (cols[0], idle))
+            else:
+                pr_keys.add(k.upper()); owner.setdefault(k.upper(), 'open PR %s' % cols[0])
+except (OSError, subprocess.SubprocessError):
+    pr_unknown = True
 
 for i in issues.values() if not pr_unknown else ():
     if partial_resume(i['key']) and i['key'] not in worker_keys and i['key'] not in pr_keys and resume_eligible(i):
-        i['parts'] = live_answers([dict(remainder_of(pr, i['key']), pr=pr) for pr in partials[i['key']]])
-        latest = [p for p in i['parts'] if p['kind'] == 'remaining'][-1:]
-        proof_parts = [p for p in i['parts'] if p['kind'] == 'owed' and p['handed'][0] == 'proof']
-        if proof_parts and not latest:
-            i.update(files=[], reads=[], src='remainder of PR #%s' % proof_parts[-1]['pr'], no_scope=False, nowrite=True,
-                     proof_only=True, proof_due=proof_parts[-1]['handed'][1])
-        if latest:
-            files, reads = split_reads(latest[0]['text'])
-            nowrite = not files and latest[0]['nowrite']
-            if files or nowrite:
-                i.update(files=files, reads=reads, src='remainder of PR #%s' % latest[0]['pr'], no_scope=False, nowrite=nowrite)
+        override_from_parts(i, live_answers([dict(remainder_of(pr, i['key']), pr=pr) for pr in partials[i['key']]]))
 
 holds_py = os.environ['ND_HOLDS']
 # A KEEP replacement becomes executable only after its validation action closed.
@@ -1311,33 +1382,7 @@ if owed_bucket and os.path.lexists(os.path.join(owed_bucket, 'owed.jsonl')):
         if result.returncode:
             raise ValueError('owed reader refused')
         actions = json.loads(result.stdout)
-        closed = {r['id']: r for r in actions if r['closed'] and r.get('action') == 'validate-proof'}
-        latest_validation = {r.get('key'): r['id'] for r in actions if r.get('action') == 'validate-proof'}
-        # The proof step stays open until the chief's outcome, so while the newest validation of a key is open the original
-        # proof-owned scope is the chief's to settle: no second paid run. A code scope of the same ticket is a different unit.
-        open_validation = {r['id'] for r in actions if not r['closed'] and r.get('action') == 'validate-proof'}
-        for key, vid in latest_validation.items():
-            i = issues.get(key)
-            if vid in open_validation and i and i.get('proof_only') and key not in worker_keys and key not in pr_keys:
-                i['owed_wait'] = {'id': vid, 'actor': 'chief', 'due': i.get('proof_due', '')}
-        replacements = {}
-        for action in actions:
-            parent = closed.get(action.get('source_id'))
-            if not action['closed'] and action.get('action') == 'next-step' and action.get('actor') in ('proof', 'worker', 'chief', 'operator') and parent and parent.get('key') == action.get('key') and latest_validation.get(action.get('key')) == parent['id']:
-                replacements.setdefault(action['key'], []).append(action)
-        for key, steps in replacements.items():
-            i = issues.get(key)
-            if not i or key in worker_keys or key in pr_keys:
-                continue
-            runnable = [s for s in steps if s['actor'] in ('proof', 'worker')]
-            if not runnable:
-                i['owed_wait'] = min(steps, key=lambda s: s.get('due', ''))
-                continue
-            steps = runnable
-            code = [s for s in steps if s['actor'] == 'worker']
-            files, reads = split_reads('; '.join(s['text'] for s in code)) if code else ([], [])
-            i.update(files=files, reads=reads, src='owed next step ' + ','.join(s['id'] for s in steps),
-                     no_scope=bool(code) and not files, nowrite=not code, owed_next=steps)
+        apply_owed_scope(issues, actions, worker_keys, pr_keys)
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as exc:
         print('# next-dispatchable: owed next-step state unreadable: ' + str(exc), file=sys.stderr)
         sys.exit(3)
