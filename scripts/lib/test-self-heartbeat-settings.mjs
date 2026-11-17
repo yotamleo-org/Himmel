@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync, symlinkSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readSelfHeartbeatEffectiveness } from './self-heartbeat-settings.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -45,6 +45,10 @@ test('no layer files present: ineffective, no native hook', () => {
 
 test('empty layers array: ineffective, not unknown', () => {
   assert.equal(readSelfHeartbeatEffectiveness({ layers: [] }).state, 'ineffective');
+});
+
+test('null API input is unknown rather than throwing', () => {
+  assert.equal(readSelfHeartbeatEffectiveness(null).state, 'unknown');
 });
 
 test('the C85 canonical wired entry in each layer counts (user, project, local, generated)', () => {
@@ -204,7 +208,7 @@ test('digest: a matching sha256 reads normally; a mismatch or an absent file wit
 });
 
 test('importing the module has no effects: no output, no stdin read', () => {
-  const url = new URL(`file://${SUT}`).href;
+  const url = pathToFileURL(SUT).href;
   const r = spawnSync(process.execPath, ['--input-type=module', '-e', `await import(${JSON.stringify(url)})`], {
     encoding: 'utf8',
     input: '',
@@ -241,4 +245,26 @@ test('CLI never echoes settings content or raw parse errors', () => {
   assert.equal(garbled.status, 3);
   assert.equal(garbled.stdout.includes(secret), false);
   assert.equal(JSON.parse(garbled.stdout).state, 'unknown');
+});
+
+test('CLI entry works through file and directory symlinks and a relative path', () => {
+  const d = dir();
+  const fileLink = join(d, 'reader.mjs');
+  const dirLink = join(d, 'linked-lib');
+  symlinkSync(SUT, fileLink);
+  symlinkSync(HERE, dirLink, 'dir');
+  const inputs = [
+    { input: { layers: [layer('project', wired())] }, state: 'effective', rc: 0 },
+    { input: { layers: [layer('project', undefined)] }, state: 'ineffective', rc: 1 },
+    { input: { layers: [layer('project', '{')] }, state: 'unknown', rc: 3 },
+  ];
+  for (const entry of [fileLink, join(dirLink, 'self-heartbeat-settings.mjs'), './reader.mjs']) {
+    for (const { input, state, rc } of inputs) {
+      const out = spawnSync(process.execPath, [entry], { cwd: d, encoding: 'utf8', input: JSON.stringify(input) });
+      assert.equal(out.status, rc, entry);
+      assert.equal(out.stderr, '', entry);
+      assert.equal(out.stdout.trim().split('\n').length, 1, entry);
+      assert.equal(JSON.parse(out.stdout).state, state, entry);
+    }
+  }
 });

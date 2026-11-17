@@ -26,8 +26,8 @@
 //   raw parse errors.
 
 import { createHash } from 'node:crypto';
-import { lstatSync, readFileSync, statSync } from 'node:fs';
-import { isAbsolute, resolve } from 'node:path';
+import { lstatSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ORDER = ['user', 'project', 'local', 'generated'];
@@ -114,7 +114,8 @@ function parseLayer(text) {
   return { disable, native };
 }
 
-export function readSelfHeartbeatEffectiveness({ layers } = {}) {
+export function readSelfHeartbeatEffectiveness(input = {}) {
+  const layers = isObj(input) ? input.layers : undefined;
   const provenance = { layers: [] };
   const result = (state, reason) => ({ state, reason, provenance });
   const docs = [];
@@ -193,6 +194,12 @@ async function main() {
   process.exitCode = EXIT[out.state];
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+let isMain = false;
+try {
+  isMain = !!process.argv[1] && realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]);
+} catch {
+  // An importer may have no filesystem entry point, such as node --eval.
+}
+if (isMain) {
   await main();
 }
