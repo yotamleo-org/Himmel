@@ -312,6 +312,25 @@ reset_runner_log
 rc=0; out=$(HIMMEL_API_LANE='' HIMMEL_API_ACCOUNT='' run_refresh himmel --vault "$VAULT" --backend claude-cli 2>&1) || rc=$?
 assert_rc "explicit claude-cli rc 0" 0 "$rc"
 assert_contains "explicit claude-cli reaches the runner" "--backend claude-cli" "$(cat "$RUNNER_LOG")"
+echo "TEST: HIMMEL_API_ACCOUNT=auto passes the preflight for himmel only"
+reset_runner_log
+rc=0; out=$(HIMMEL_API_ACCOUNT=auto run_refresh himmel --vault "$VAULT" 2>&1) || rc=$?
+assert_rc "himmel under auto rc 0" 0 "$rc"
+assert_not_contains "himmel under auto is not refused" "ERR graph-refresh: backend claude-api" "$out"
+assert_contains "himmel under auto reaches the runner" "--backend claude-api" "$(cat "$RUNNER_LOG")"
+reset_runner_log
+rc=0; out=$(HIMMEL_API_ACCOUNT=auto run_refresh luna --vault "$VAULT" 2>&1) || rc=$?
+assert_rc "luna under auto -> rc 2" 2 "$rc"
+assert_contains "luna under auto names the refusal" "ERR graph-refresh: backend claude-api" "$out"
+assert_eq "luna under auto never invokes the runner" "0" "$(wc -l < "$RUNNER_LOG" | tr -d ' ')"
+reset_runner_log
+rc=0; out=$(HIMMEL_API_ACCOUNT=auto run_refresh both --vault "$VAULT" 2>&1) || rc=$?
+assert_rc "both under auto -> rc 2" 2 "$rc"
+assert_eq "both under auto never invokes the runner" "0" "$(wc -l < "$RUNNER_LOG" | tr -d ' ')"
+reset_runner_log
+rc=0; out=$(HIMMEL_API_ACCOUNT=B run_refresh himmel --vault "$VAULT" 2>&1) || rc=$?
+assert_rc "himmel under a named account rc 0" 0 "$rc"
+assert_contains "himmel under a named account reaches the runner" "--backend claude-api" "$(cat "$RUNNER_LOG")"
 
 # ============================================================================
 # Test 5: serial both -> order luna then himmel, canonical arg sets, hint, status
