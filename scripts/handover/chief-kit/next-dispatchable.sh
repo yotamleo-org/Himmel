@@ -576,7 +576,7 @@ def issue_from_match(m, txt):
         'last': last_owed(body),
         'text': txt, 'description': (re.search(r'^## Description\n(.*?)(?=^## |\Z)', body, re.M | re.S).group(1) if re.search(r'^## Description\n(.*?)(?=^## |\Z)', body, re.M | re.S) else body.split('\n## Comments', 1)[0]),
         'comments': body.split('\n## Comments', 1)[1] if '\n## Comments' in body else '',
-        'linked': re.findall(r'[A-Z]+-\d+', fm),
+        'linked': [key for line in re.findall(r'^\s*(?:blocks|blocked_by): (.*)$', fm, re.M) for key in re.findall(r'[A-Z]+-\d+', line)],
         **scope_of(body),
     }
 
@@ -768,7 +768,7 @@ def proof_missing(i):
             with tempfile.TemporaryDirectory() as d:
                 draft = os.path.join(d, 'draft.md')
                 with open(draft, 'w', encoding='utf-8') as f:
-                    f.write(m.group(1) if m else '')
+                    f.write(i['description'] if why_key and os.environ.get('ND_BODY_FILE') else m.group(1) if m else '')
                 r = subprocess.run(['bash', proof_checker, '--type', 'Task', '--draft', draft], capture_output=True, text=True, timeout=30,
                                    env=dict(os.environ, TICKET_STANDARD_QUEUE_DIR=os.path.join(d, 'queue')))
             if r.returncode not in (0, 1):
@@ -1520,6 +1520,21 @@ def gate_detail(tag, reason):
         return ', '.join(details)
     return reason
 
+def prose_deps(i):
+    desc = i['description']
+    declared = set(i['linked']) | {i['key']}
+    for line in desc.splitlines():
+        if re.match(r'^\W*Edges\W{0,3}:', line, re.I):
+            declared.update(re.findall(r'HIMMEL-\d+', line, re.I))
+    found = {}
+    for pattern in (tracker._DEP_RE, label_dep_re):
+        for match in pattern.finditer(desc):
+            for key in re.findall(r'HIMMEL-\d+', match.group(1), re.I):
+                key = key.upper()
+                if key not in declared and not done_key(key):
+                    found.setdefault(key, ' '.join(match.group(0).split())[:60])
+    return [(key, quote) for key, quote in found.items()]
+
 def why_ticket(i):
     key = i['key']
     order = ('drop', 'held-label', 'open-blocker', 'blocker-no-version', 'stale-hold', 'prose-dependency', 'no-scope', 'no-proof', 'core-no-spec')
@@ -1541,6 +1556,16 @@ def why_ticket(i):
                 gates['open-blocker'].append(', '.join('%s (%s)' % (b, 'unreadable' if st == UNREADABLE else st) for b, st in blockers))
         for pr in sorted(unconfirmed, key=int):
             gates['drop'].append('merge of PR #%s unconfirmed (pre-merge row; no GitHub read)' % pr)
+        open_blockers = [b for b in i['blocked_by'] if blocker_state(b)]
+        unversioned = [b for b in open_blockers if b in issues and not any(v in vorder for v in issues[b]['ver'])]
+        if unversioned:
+            gates['blocker-no-version'].append(', '.join(b + ' (no fixVersion)' for b in unversioned))
+        hold = hold_row.get(key, {})
+        on = hold.get('on', '')
+        if 'held' in i['labels'] and hold.get('event') == 'hold' and isinstance(on, str) and re.fullmatch(r'[A-Z]+-\d+', on) and done_key(on):
+            gates['stale-hold'].append('held on %s (%s); release: bash scripts/handover/chief-kit/ticket-hold.sh %s --release' % (on, issues[on]['status'], key))
+        for dep, quote in prose_deps(i):
+            gates['prose-dependency'].append('%s%s ("%s")' % (dep, ' (not in mirror)' if dep not in issues else '', quote))
         gates['drop'].extend(i.get('remainder_problems', []))
         parts = [] if i.get('owed_next') else i.get('parts', [])
         if i.get('owed_wait'):
@@ -1577,6 +1602,13 @@ def why_ticket(i):
 if why_key:
     if why_key not in issues:
         unknown('not in the mirror or the body file')
+    try:
+        spec = importlib.util.spec_from_file_location('tracker', os.path.join(repo, 'scripts/handover/chief-kit/tracker.py'))
+        tracker = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tracker)
+        label_dep_re = re.compile(r'^\s*(?:[-*]\s+)?[*_]*(?:depends\s+on|blocked[\s-]*by)[*_]*\s*:?[*_]*\s*[A-Z]{1,3}\d*(?:[-.]\d+)+\s*\(\s*' + tracker._KEYS + r'\s*\)', re.I | re.M)
+    except Exception as e:
+        unknown('tracker.py unreadable (%s)' % e)
     issue = issues[why_key]
     if partial_resume(why_key):
         parts, issue['remainder_problems'] = predicate_remainder(issue)
@@ -2266,8 +2298,8 @@ if [ -n "$why_ticket" ]; then
     if ! awk -v key="$why_ticket" -v rc="$nd_rc" '
         /^#/ { next }
         $0 == "READY " key { ready++; next }
-        index($0, "GATE " key " ") == 1 && $0 ~ /^GATE [A-Z]+-[0-9]+ [a-z-]+: [^\t]+$/ { gate++; next }
-        index($0, "UNKNOWN " key ": ") == 1 { unknown++; next }
+        index($0, "GATE " key " ") == 1 && $0 ~ /^GATE [A-Z]+-[0-9]+ (drop|held-label|open-blocker|blocker-no-version|stale-hold|prose-dependency|no-scope|no-proof|core-no-spec): [^ \t][^\t]*$/ { gate++; next }
+        index($0, "UNKNOWN " key ": ") == 1 && $0 ~ /^UNKNOWN [A-Z]+-[0-9]+: [^ \t].*$/ { unknown++; next }
         { bad++ }
         END { exit !(!bad && ((rc == 0 && ready == 1 && !gate && !unknown) || (rc == 1 && gate && !ready && !unknown) || (rc == 3 && unknown == 1 && !ready && !gate))) }
     ' "$nd_out"; then

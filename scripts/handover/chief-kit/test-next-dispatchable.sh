@@ -3437,6 +3437,140 @@ p_run --why-ticket HIMMEL-11001 --doc "$P/bucket/chief.md"; p_verdict 'P20 resol
 printf '{not json}\n' > "$P/bucket/owed.jsonl"
 p_run --why-ticket HIMMEL-11001 --doc "$P/bucket/chief.md"; p_unknown 'P20 corrupt existing ledger'
 
+for variant in 'done' open released no-label bad-on unmoved; do
+    p_reset
+    labels='["held"]'; [ "$variant" != no-label ] || labels='[]'
+    mk HIMMEL-11001 'To Do' Medium "$labels" '[]' '[]' fixture 'Writes: scripts/lib/alpha.sh'
+    p_mk HIMMEL-11002 Done
+    [ "$variant" != open ] || p_mk HIMMEL-11002 'To Do'
+    on=HIMMEL-11002; [ "$variant" != bad-on ] || on=bad
+    result=moved; [ "$variant" != unmoved ] || result=refused
+    printf '{"event":"hold","result":"%s","key":"HIMMEL-11001","on":"%s"}\n' "$result" "$on" > "$P/state/status-events.jsonl"
+    [ "$variant" != released ] || printf '{"event":"hold-release","result":"moved","key":"HIMMEL-11001"}\n' >> "$P/state/status-events.jsonl"
+    p_run --why-ticket HIMMEL-11001
+    if [ "$variant" = 'done' ]; then has 'P5(a) stale hold' "$P_OUT" 'stale-hold: held on HIMMEL-11002 (Done); release:'; has 'P5(a) held label detail' "$P_OUT" 'held-label: labels held'; else lacks "P5 $variant negative" "$P_OUT" 'stale-hold:'; fi
+done
+for prose in "Depends on P4-02 (HIMMEL-$((8524)))." "- Depends on T-1.2 (HIMMEL-$((8524)))" "Depends on HIMMEL-$((8524)) and HIMMEL-$((1)) (the seam)." "BLOCKED-BY: HIMMEL-$((8524)). Now unblocked by HIMMEL-$((9))." "Depends on HIMMEL-$((8524)), HIMMEL-$((1)), and HIMMEL-$((2))." "Depends  on HIMMEL-$((8524))" "BLOCKED-BY:HIMMEL-$((8524))" "Blocked by: HIMMEL-$((8524))" "Links: relates to HIMMEL-$((9)), blocked by HIMMEL-$((8524))" "**Blocked by:** HIMMEL-$((8524))" "- Depends on P4-02 (HIMMEL-$((8524)), HIMMEL-$((1)))"; do
+    p_reset; p_mk HIMMEL-11001 'To Do' "$(printf 'Writes: scripts/lib/alpha.sh\n%s' "$prose")"; p_mk HIMMEL-8524
+    p_run --why-ticket HIMMEL-11001; p_verdict "P9/P9b $prose" 1
+    has "P9/P9b actual tracker superset $prose" "$P_OUT" 'prose-dependency: HIMMEL-8524'
+    lacks 'P9 no plan label as key' "$P_OUT" 'prose-dependency: P4-02'
+done
+for prose in "This does not depend on HIMMEL-$((8524))." "- after HIMMEL-$((8524))" "run it after HIMMEL-$((8524)) merges" "Blocked by: none (HIMMEL-$((8524)))" "Blocked by: nothing (HIMMEL-$((8524)))" "Blocked by: n/a (HIMMEL-$((8524)))"; do
+    p_reset; p_mk HIMMEL-11001 'To Do' "$(printf 'Writes: scripts/lib/alpha.sh\n%s' "$prose")"; p_mk HIMMEL-8524
+    p_run --why-ticket HIMMEL-11001; p_verdict "P9 negative $prose" 0; lacks 'P9 negative no advisory' "$P_OUT" 'prose-dependency:'
+done
+for variant in blocks blocked-by edges wrong-side 'done' self missing relates; do
+    p_reset; p_mk HIMMEL-11001 'To Do' $'Writes: scripts/lib/alpha.sh\nDepends on P4-02 (HIMMEL-8524).'; p_mk HIMMEL-8524
+    case "$variant" in
+        blocks) sed 's/blocks: \[\]/blocks: ["HIMMEL-8524"]/' "$M/HIMMEL-11001.md" > "$P/linked"; mv "$P/linked" "$M/HIMMEL-11001.md" ;;
+        blocked-by) sed 's/blocked_by: \[\]/blocked_by: ["HIMMEL-8524"]/' "$M/HIMMEL-11001.md" > "$P/linked"; mv "$P/linked" "$M/HIMMEL-11001.md" ;;
+        relates) sed 's/relates: \[\]/relates: ["HIMMEL-8524"]/' "$M/HIMMEL-11001.md" > "$P/linked"; mv "$P/linked" "$M/HIMMEL-11001.md" ;;
+        edges) printf 'Edges: HIMMEL-8524 blocks HIMMEL-11001 (soft)\n' >> "$M/HIMMEL-11001.md" ;;
+        wrong-side) printf 'Edges: HIMMEL-11001 blocks HIMMEL-8524 (soft)\n' >> "$M/HIMMEL-11001.md" ;;
+        done) p_mk HIMMEL-8524 Done ;;
+        self) p_mk HIMMEL-11001 'To Do' $'Writes: scripts/lib/alpha.sh\nDepends on HIMMEL-11001' ;;
+        missing) rm "$M/HIMMEL-8524.md" ;;
+    esac
+    p_run --why-ticket HIMMEL-11001
+    case "$variant" in missing|relates) has "P9 $variant still diagnosed" "$P_OUT" 'prose-dependency: HIMMEL-8524' ;; *) lacks "P9 $variant declared/done/self suppression (wrong-side A12 ceiling)" "$P_OUT" 'prose-dependency:' ;; esac
+    [ "$variant" != missing ] || has 'P9 missing target named' "$P_OUT" '(not in mirror)'
+done
+for variant in shared type backlog parent-later released later live-done; do
+    p_reset
+    parent='["v1.0.1"]'; blocker='[]'; labels='[]'
+    [ "$variant" != parent-later ] || parent='["v1.0.2"]'
+    [ "$variant" != released ] || blocker='["v1.0.0"]'
+    [ "$variant" != later ] || blocker='["v1.0.2"]'
+    [ "$variant" != backlog ] || labels='["backlog"]'
+    mk HIMMEL-11001 'To Do' Medium '[]' "$parent" '["HIMMEL-11002"]' fixture 'Writes: scripts/lib/alpha.sh'
+    mk HIMMEL-11002 'To Do' Medium "$labels" "$blocker" '[]' fixture 'Writes: scripts/lib/other.sh'
+    [ "$variant" != type ] || retype "$M/HIMMEL-11002.md" Epic
+    if [ "$variant" = live-done ]; then
+        # shellcheck disable=SC2016  # the generated fixture script expands its own positional argument
+        printf '#!/usr/bin/env bash\nprintf "%%s\\tTask\\tDone\\tfixture\\n" "$2"\n' > "$P/live-done"; chmod +x "$P/live-done"
+        P_JIRA="$P/live-done"; P_LIVE=1
+    fi
+    p_run --why-ticket HIMMEL-11001
+    case "$variant" in
+        live-done) p_verdict 'P13e-v live Done mirror open' 0; lacks 'P13e-v live Done no standalone diagnostic' "$P_OUT" 'blocker-no-version:' ;;
+        later) p_verdict 'P13c later unreleased blocker' 1; lacks 'P13c later unreleased no diagnostic' "$P_OUT" 'blocker-no-version:' ;;
+        *) p_verdict "P13/P13b/P13e-v $variant" 1; has "P13e-v diagnostic $variant" "$P_OUT" 'blocker-no-version: HIMMEL-11002 (no fixVersion)' ;;
+    esac
+    if [ "$variant" != live-done ]; then
+        printf '{"workers":[]}\n' > "$P/empty-fleet.json"
+        va="$(VSA_GH_CMD="$P/bin/gh" bash "$HERE/version-status-audit.sh" --mirror "$M" --workers-from "$P/empty-fleet.json" 2> "$P/audit-stderr")"
+        if [ "$variant" = shared ]; then has 'P13e-v shared actual audit positive' "$va" $'BLOCKER-NO-VERSION\tHIMMEL-11002'; else lacks "P13e-v named audit divergence/control $variant" "$va" $'BLOCKER-NO-VERSION\tHIMMEL-11002'; fi
+    fi
+done
+p_reset; p_mk HIMMEL-11001; p_tree tracker; rm "$PT/scripts/handover/chief-kit/tracker.py"
+p_run --why-ticket HIMMEL-11001; p_unknown P18; has 'P18 tracker load reason' "$P_OUT" 'tracker.py'
+mkdir -p "$P/drift-bin" "$P/drift-docs" "$P/emptyroot" "$P/snapshot"
+cat > "$P/drift-bin/gh" <<'EOF'
+#!/usr/bin/env bash
+case "$1 $2" in
+    'api rate_limit') printf '5000\t9999999999\t5000\n' ;;
+    'pr list') printf '[]\n' ;;
+    *) printf '[]\n' ;;
+esac
+EOF
+cat > "$P/drift-jira" <<'EOF'
+#!/usr/bin/env bash
+case "$1" in
+    list) printf 'HIMMEL-11001\tTask\t%s\tfixture\n' "$P_DRIFT_STATUS" ;;
+    get) printf '{"fields":{"status":{"name":"%s"},"issuetype":{"name":"Task"},"labels":["held"]}}\n' "$P_DRIFT_STATUS" ;;
+    versions) exit 0 ;;
+    comments) printf '[]\n' ;;
+    *) exit 1 ;;
+esac
+EOF
+chmod +x "$P/drift-bin/gh" "$P/drift-jira"
+printf '[]\n' > "$P/snapshot/prs.json"; : > "$P/snapshot/threads.tsv"
+export P_DRIFT_STATUS
+for variant in 'done' open todo closed; do
+    p_reset; P_DRIFT_STATUS='In Progress'; target=Done
+    [ "$variant" != todo ] || P_DRIFT_STATUS='To Do'
+    [ "$variant" != open ] || target='To Do'
+    [ "$variant" != closed ] || target=Closed
+    mk HIMMEL-11001 "$P_DRIFT_STATUS" Medium '["held"]' '[]' '[]' fixture 'Writes: scripts/lib/alpha.sh'; p_mk HIMMEL-11002 "$target"
+    python3 -I -c 'import datetime,json,sys; now=datetime.datetime.now(datetime.timezone.utc); row=dict(ts=now.strftime("%Y-%m-%dT%H:%M:%SZ"),event="hold",result="moved",key="HIMMEL-11001",owner="operator",until=(now+datetime.timedelta(days=1)).strftime("%Y-%m-%d"),on="HIMMEL-11002",reason="fixture"); open(sys.argv[1],"w").write(json.dumps(row)+"\n")' "$P/state/status-events.jsonl"
+    printf 'HIMMEL-11001\tTask\t%s\tfixture\n' "$P_DRIFT_STATUS" > "$P/snapshot/jira.tsv"
+    drift="$(PATH="$P/drift-bin:$PATH" GH_READ_ENV_ROOT="$P/emptyroot" TICKET_STATUS_STATE_DIR="$P/state" TICK_TRACKER_MIRROR_DIR="$M" WORKER_SESSION_JIRA_CLI="$P/drift-jira" HIMMEL_RELEASE_STATE_DIR="$P/release" bash "$HERE/status-drift.sh" --docs-dir "$P/drift-docs" --snapshot "$P/snapshot" 2> "$P/drift-stderr")"
+    p_run --why-ticket HIMMEL-11001
+    case "$variant" in
+        done) has 'P11 actual drift positive nonvacuous' "$drift" 'HOLD-STALE HIMMEL-11001 on HIMMEL-11002 (Done)'; has 'P11 one-way predicate parity' "$P_OUT" 'stale-hold:' ;;
+        open) lacks 'P11 actual drift open control' "$drift" 'HOLD-STALE '; lacks 'P11 predicate open control' "$P_OUT" 'stale-hold:' ;;
+        todo) lacks 'P11b actual drift ranks To Do zero (known divergence)' "$drift" 'HOLD-STALE '; has 'P11b predicate To Do stale hold' "$P_OUT" 'stale-hold:' ;;
+        closed) lacks 'P11c actual drift matches Done only (known divergence)' "$drift" 'HOLD-STALE '; has 'P11c predicate Done-category Closed' "$P_OUT" 'stale-hold:' ;;
+    esac
+done
+
+p_reset
+printf -- '---\nkey: HIMMEL-11001\n---\nWrites: scripts/lib/alpha.sh\n\nDoD\n- ready\n\nProof\n- control\n' > "$P/front-matter-draft"
+p_run --why-ticket HIMMEL-11001 --body-file "$P/front-matter-draft"; p_verdict 'P15(c) partial front matter with direct description' 0
+p_reset; p_mk HIMMEL-11001
+cat > "$P/python-bin/python3" <<'EOF'
+#!/usr/bin/env bash
+if [ "$*" = '-I -' ]; then cat >/dev/null; cat "$P_STUB_OUTPUT"; exit "$P_STUB_RC"; fi
+exec "$P_REAL_PY" "$@"
+EOF
+chmod +x "$P/python-bin/python3"; export P_STUB_OUTPUT="$P/stub-output"
+for variant in foreign-ready bad-gate mixed empty-unknown; do
+    P_PATH="$P/python-bin:$PATH"
+    case "$variant" in
+        foreign-ready) P_STUB_RC=0; printf 'READY HIMMEL-11002\n' > "$P_STUB_OUTPUT" ;;
+        bad-gate) P_STUB_RC=1; printf 'GATE HIMMEL-11001 invented: wrong grammar\n' > "$P_STUB_OUTPUT" ;;
+        mixed) P_STUB_RC=0; printf 'READY HIMMEL-11001\nGATE HIMMEL-11001 no-proof: missing\n' > "$P_STUB_OUTPUT" ;;
+        empty-unknown) P_STUB_RC=3; printf 'UNKNOWN HIMMEL-11001: \n' > "$P_STUB_OUTPUT" ;;
+    esac
+    p_run --why-ticket HIMMEL-11001; p_unknown "P8 malformed $variant"; has "P8 malformed $variant wrapper refusal" "$P_OUT" "unexpected exit $P_STUB_RC"
+done
+p_reset; p_mk HIMMEL-11001 'In Progress'; p_part HIMMEL-11001 7001 remaining; p_breadcrumb 7001 'edit scripts/lib/rem.sh'
+printf 'print("malformed reader answer")\n' > "$P/malformed-reader.py"; P_READER="$P/malformed-reader.py"
+p_run --why-ticket HIMMEL-11001; p_unknown 'P17 malformed reader'
+printf '' > "$P/empty-reader.py"; P_READER="$P/empty-reader.py"
+p_run --why-ticket HIMMEL-11001; p_unknown 'P17 empty reader'
+
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.
 real_hits="$(grep -rlF "$WORK" "$REAL_HOME/.himmel/state/holds" 2>/dev/null | grep -c . || true)"
