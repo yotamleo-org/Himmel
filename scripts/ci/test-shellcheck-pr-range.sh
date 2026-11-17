@@ -413,10 +413,62 @@ echo t
 '; commit_case sweep_E; : > "$T/stub.log"
 sweep; rc=$?
 [ "$rc" -eq 0 ] && ok "sweep_E: rc 0" || bad "sweep_E: want rc 0, got $rc"
-tr ' ' '\n' < "$T/stub.log" | grep -v '^$' | sort > "$T/shards.txt"
+tr ' ' '\n' < "$T/stub.log" | grep -v '^$' | sort -u > "$T/shards.txt"
 git ls-files | sort > "$T/tracked.txt"
 cmp -s "$T/shards.txt" "$T/tracked.txt" \
   && ok "sweep_E: union of shard file lists equals git ls-files" || bad "sweep_E: shards differ from git ls-files: $(diff "$T/shards.txt" "$T/tracked.txt" | head -4 | tr '\n' '|')"
+
+# closure_edge: a.sh assigns X and sources "$ROOT/lib/b.sh", which reads X (the shape of
+# scripts/lib/test-provenance-identity.sh). The `$VAR/` prefix must not hide the edge: with it
+# hidden, a.sh and b.sh can land in different bins and a.sh gets a false SC2034. Four bins forced.
+mkdir -p "$T/n4"
+printf '#!/bin/sh\necho 4\n' > "$T/n4/nproc"; chmod +x "$T/n4/nproc"
+sweep4() { STUB_LOG="$T/stub.log" PATH="$T/n4:$T/bin:$PATH" bash "$SPR" "$BASE" >"$T/sweep.out" 2>&1; }
+reset; w .shellcheckrc 'external-sources=true
+# touched
+'; w scripts/zzr/a.sh '#!/usr/bin/env bash
+X=1
+. "$ROOT/lib/b.sh"
+'; w scripts/zzr/lib/b.sh '#!/usr/bin/env bash
+echo "$X"
+'; commit_case closure_edge; : > "$T/stub.log"
+sweep4; rc=$?
+[ "$rc" -eq 0 ] && ok "closure_edge: rc 0" || bad "closure_edge: want rc 0, got $rc"
+grep -q 'parallel full sweep over [2-9]' "$T/sweep.out" && ok "closure_edge: the sweep ran with two or more bins" || bad "closure_edge: not a multi-bin sweep: $(head -3 "$T/sweep.out" | tr '\n' '|')"
+grep 'scripts/zzr/a\.sh' "$T/stub.log" | grep -q 'scripts/zzr/lib/b\.sh' \
+  && ok "closure_edge: a.sh is linted with the lib it sources through \$ROOT/" || bad "closure_edge: a.sh and b.sh split across bins: $(tr '\n' '|' < "$T/stub.log" | cut -c1-300)"
+
+# closure_shared: a lib in the closure of two roots lands in both bins (each root's bin carries its
+# own closure) and its finding is printed once. The two roots are padded so they outweigh every
+# other file and land in different bins.
+cat > "$T/bin/pre-commit" <<'STUB'
+#!/usr/bin/env bash
+if [ "$*" = "run shellcheck --all-files --show-diff-on-failure" ]; then echo "STUB serial"; exit 0; fi
+shift 3
+[ "${1:-}" = "--files" ] && shift
+printf '%s\n' "$*" >> "$STUB_LOG"
+case "$*" in *zzrlib/shared.sh*)
+  printf '\nIn scripts/zzr/zzrlib/shared.sh line 2:\nunused=1\n^----^ SC2034 (warning): unused appears unused.\n\nFor more information:\n  https://www.shellcheck.net/wiki/SC2034 -- unused appears unused...\n'
+  exit 1 ;;
+esac
+exit 0
+STUB
+chmod +x "$T/bin/pre-commit"
+pad() { { echo '#!/usr/bin/env bash'; i=0; while [ "$i" -lt 400 ]; do echo '# padding padding padding padding padding padding padding padding'; i=$((i + 1)); done; echo ". \"\$ROOT/zzrlib/shared.sh\""; } > "$1"; }
+reset; w .shellcheckrc 'external-sources=true
+# touched
+'; w scripts/zzr/zzrlib/shared.sh '#!/usr/bin/env bash
+unused=1
+'; mkdir -p scripts/zzr; pad scripts/zzr/c1.sh; pad scripts/zzr/c2.sh
+commit_case closure_shared; : > "$T/stub.log"
+sweep4; rc=$?
+[ "$rc" -ne 0 ] && ok "closure_shared: the shared lib's finding fails the sweep" || bad "closure_shared: want non-zero rc, got 0"
+[ "$(grep -c 'zzrlib/shared\.sh' "$T/stub.log")" -ge 2 ] \
+  && ok "closure_shared: the shared lib is an input of both roots' bins" || bad "closure_shared: lib not in two bins: $(tr '\n' '|' < "$T/stub.log" | cut -c1-300)"
+[ "$(grep -c '^In scripts/zzr/zzrlib/shared\.sh line 2:$' "$T/sweep.out")" -eq 1 ] \
+  && ok "closure_shared: the finding is printed once" || bad "closure_shared: finding not deduplicated: $(grep -c '^In scripts/zzr/zzrlib' "$T/sweep.out") copies"
+[ "$(grep -c 'wiki/SC2034' "$T/sweep.out")" -eq 1 ] \
+  && ok "closure_shared: the finding's wiki line is printed once" || bad "closure_shared: wiki line not deduplicated: $(grep -c 'wiki/SC2034' "$T/sweep.out") copies"
 # sweep_norc: a shard that dies before writing its rc is a failure, not a pass
 cat > "$T/bin/pre-commit" <<'STUB'
 #!/usr/bin/env bash

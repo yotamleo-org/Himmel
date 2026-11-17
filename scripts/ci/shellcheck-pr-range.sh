@@ -8,7 +8,7 @@
 # neighbours — files that source/`.` a changed (or deleted) file, and files a
 # changed file sources — through the SAME hook (its `types` and `exclude` still
 # apply to --files). "Changed" is the PR's own diff against its merge base, and the
-# selected set is sharded by source-graph component and linted in parallel
+# selected set is binned by forward source closure and linted in parallel
 # (sweep_all), with selection and lint timings printed.
 #
 # Fail-safe direction: when in doubt, lint everything (--all-files) if
@@ -24,11 +24,16 @@
 # `# shellcheck source=` directive edges count as source edges.
 #
 # Usage: shellcheck-pr-range.sh [--dry-run] <base-sha>
+#    or: shellcheck-pr-range.sh --sweep <list-file>
 #   --dry-run prints "ALL <reason>" or "FILES" + the file list, runs nothing.
+#   --sweep bins and lints exactly the newline-separated paths in <list-file>, with no selection
+#   (scripts/ci/shellcheck-sweep-parity.sh compares it with one serial run).
 set -u
 
 dry=0
+sweepfile=""
 if [ "${1:-}" = "--dry-run" ]; then dry=1; shift; fi
+if [ "${1:-}" = "--sweep" ]; then sweepfile="${2:?usage: shellcheck-pr-range.sh --sweep <list-file>}"; set -- sweep; fi
 base="${1:?usage: shellcheck-pr-range.sh [--dry-run] <base-sha>}"
 
 src_re='(^|[;&|{(![:space:]])(source|\.)[[:space:]]'
@@ -40,16 +45,22 @@ run_all() {
   sweep_all
 }
 
-# The full sweep, sharded by source-graph component and run in parallel. One serial
+# The full sweep, binned by forward source closure and run in parallel. One serial
 # `--all-files` is ~8 min unloaded and overran the lint job's cap on a loaded runner.
-# Lint verdicts depend on the input set (a lib's SC2034 needs ALL its consumers
-# beside it; a single-file or arbitrary shard goes falsely red), so a shard is a whole
-# connected component of the source/`.`/`# shellcheck source=` graph, edges resolved by
-# path suffix, else same directory, else basename. An over-merged component only costs
-# speed. Components are packed largest-first onto nproc bins, one `pre-commit --files`
-# per bin; the exit status is the first non-zero bin's. Anything unplannable -> serial.
-# `sweep_all <files>` shards just that newline-separated list (the PR's selected set, already
-# closed under its source neighbours); with no argument it shards the whole tree.
+# A file's lint verdict depends on the files it sources (an unused-variable or unreachable-
+# function finding needs the sourced file beside it) and never on the files that source it,
+# so a bin holds each of its root files together with that root's whole directed closure: every
+# file it sources, transitively, over the source/`.`/`# shellcheck source=` edges. A name is
+# resolved with a leading `$VAR/` or `${VAR}/` stripped (shellcheck does the same), then by path
+# suffix, else same directory, else basename. An over-wide edge only duplicates a file into one
+# more bin. Every file is the root of exactly one bin; a lib in the closure of roots in several
+# bins is an input of each of them. Roots are packed largest closure first onto the nproc bins,
+# each going where it adds the least load (bytes of files the bin does not hold yet), then one
+# `pre-commit --files` runs per bin. A file of a known non-shell type is a root with no edges and no
+# weight: it goes in its bin's fill list, behind the shell inputs. The findings of all bins are
+# printed once each; the exit status is non-zero if any bin fails. Anything unplannable -> serial.
+# `sweep_all <files>` bins just that newline-separated list (the PR's selected set, already
+# closed under its source neighbours); with no argument it bins the whole tree.
 subset=""
 serial_sweep() {
   if [ -n "$subset" ]; then
@@ -59,8 +70,10 @@ serial_sweep() {
   fi
   exec pre-commit run shellcheck --all-files --show-diff-on-failure
 }
+# the file types the hook never lints as shell: no weight, and no forward edges
+nonshell_re='\.(md|markdown|txt|rst|json|jsonc|yml|yaml|toml|xml|html|htm|css|svg|png|jpg|jpeg|gif|ico|pdf|lock|tsv|csv|js|mjs|cjs|jsx|ts|tsx|py|rb|sql|gql|graphql)$'
 sweep_all() {
-  local n sd i r rc=0 plan
+  local n sd i k r rc=0 plan
   [ $# -eq 0 ] || subset=$1
   t_lint=$SECONDS
   # macOS has no nproc; sysctl hw.ncpu is its CPU count
@@ -72,52 +85,118 @@ sweep_all() {
   case "$plan" in '"'* | *'
 "'*) rm -rf "$sd"; serial_sweep ;; esac
   printf '%s\n' "$plan" > "$sd/files" || { rm -rf "$sd"; serial_sweep; }
+  # byte sizes only weight the packing; without them every file weighs the same
+  printf '%s\n' "$plan" | tr '\n' '\0' | xargs -0 wc -c -- > "$sd/sizes" 2>/dev/null || : # swallow-ok: a missing size only flattens the weights
   git grep -n -I -E -e "$src_re" -e "$dir_re" -- . > "$sd/grep" 2>/dev/null || [ "$?" -eq 1 ] || { rm -rf "$sd"; serial_sweep; }
-  awk '
-    function find(x) { while (p[x] != x) { p[x] = p[p[x]]; x = p[x] } return x }
-    function join(a, b) { a = find(a); b = find(b); if (a != b) p[a] = b }
-    FNR == NR { n++; f[n] = $0; p[$0] = $0; k = split($0, q, "/"); byname[q[k]] = byname[q[k]] "\n" $0; next }
+  # stage 1: one line per file, "<closure weight> <root> <member> <weight> ...", the root first, weight -1 for a
+  # file of a non-shell type. Stage 2 packs the roots; it writes bin.K (the shell inputs, a root's lib
+  # before the roots), fill.K (non-shell roots) and roots.K (every root of the bin).
+  NSRE="$nonshell_re" awk '
+    BEGIN { nsre = ENVIRON["NSRE"] }
+    function edge(a, b) { if (a != b && !((a SUBSEP b) in ed)) { ed[a, b] = 1; adj[a] = adj[a] b "\n" } }
+    function wgt(x) { return ((x in wt) ? wt[x] : 0) + 1 }
+    FILENAME == ARGV[1] { n++; f[n] = $0; isf[$0] = 1; k = split($0, q, "/"); byname[q[k]] = byname[q[k]] "\n" $0; next }
+    FILENAME == ARGV[2] { s = $0; sub(/^[ \t]+/, "", s); v = s + 0; sub(/^[0-9]+ /, "", s); wt[s] = v; next }
     {
       i = index($0, ":"); file = substr($0, 1, i - 1); rest = substr($0, i + 1); sub(/^[0-9]+:/, "", rest)
-      if (!(file in p)) next
+      if (!(file in isf) || file ~ nsre) next
       if (rest ~ /^[[:space:]]*#/ && rest !~ /shellcheck[[:space:]]+source=/) next
       d = file; sub(/[^\/]*$/, "", d)
       while (match(rest, /[A-Za-z0-9_.\/+-]*[A-Za-z0-9_+-]\.(sh|bash)/)) {
-        nm = substr(rest, RSTART, RLENGTH); rest = substr(rest, RSTART + RLENGTH)
+        nm = substr(rest, RSTART, RLENGTH); pre = (RSTART > 1) ? substr(rest, RSTART - 1, 1) : ""
+        rest = substr(rest, RSTART + RLENGTH)
+        if (pre == "$") sub(/^[A-Za-z_][A-Za-z0-9_]*\//, "", nm)
         sub(/^(\.\.?\/)+/, "", nm); sub(/^\/+/, "", nm)
         k = split(nm, q, "/"); base = q[k]
-        if (k == 1 && ((d base) in p)) { join(file, d base); continue }
+        if (k == 1 && ((d base) in isf)) { edge(file, d base); continue }
         m = split(byname[base], c, "\n")
-        for (j = 1; j <= m; j++) if (c[j] != "" && (k == 1 || c[j] == nm || substr(c[j], length(c[j]) - length(nm)) == "/" nm)) join(file, c[j])
+        for (j = 1; j <= m; j++) if (c[j] != "" && (k == 1 || c[j] == nm || substr(c[j], length(c[j]) - length(nm)) == "/" nm)) edge(file, c[j])
       }
     }
     END {
-      for (i = 1; i <= n; i++) size[find(f[i])]++
-      for (i = 1; i <= n; i++) { r = find(f[i]); printf "%d\t%s\t%s\n", size[r], r, f[i] }
-    }' "$sd/files" "$sd/grep" | sort -t "$(printf '\t')" -k1,1nr -k2,2 | awk -F '\t' -v P="$n" -v sd="$sd" '
-    $2 != last { last = $2; b = 1; for (i = 2; i <= P; i++) if (load[i] < load[b]) b = i }
-    { load[b]++; print $3 >> (sd "/bin." b) }' || { rm -rf "$sd"; serial_sweep; }
+      for (i = 1; i <= n; i++) {
+        r = f[i]
+        if (r ~ nsre) { printf "-1\t%s\n", r; continue }
+        sp = 0; cnt = 0; stack[++sp] = r; vis[r] = i
+        while (sp > 0) {
+          x = stack[sp--]; mem[++cnt] = x
+          m = split(adj[x], t, "\n")
+          for (j = 1; j <= m; j++) if (t[j] != "" && vis[t[j]] != i) { vis[t[j]] = i; stack[++sp] = t[j] }
+        }
+        tot = 0; line = ""
+        for (j = 1; j <= cnt; j++) { tot += wgt(mem[j]); line = line "\t" mem[j] "\t" wgt(mem[j]) }
+        printf "%d\t%s%s\n", tot, r, line
+      }
+    }' "$sd/files" "$sd/sizes" "$sd/grep" | sort -t "$(printf '\t')" -k1,1nr -k2,2 | awk -F '\t' -v P="$n" -v sd="$sd" '
+    $1 < 0 { b = nf++ % P + 1; nfill[b]++; fill[b, nfill[b]] = $2; nroot[b]++; roots[b, nroot[b]] = $2; used[b] = 1; next }
+    {
+      best = 0
+      for (b = 1; b <= P; b++) {
+        add = 0
+        for (j = 3; j < NF; j += 2) if (!((b, $j) in inb)) add += $(j + 1)
+        if (best == 0 || load[b] + add < bl) { best = b; bl = load[b] + add }
+      }
+      b = best; used[b] = 1; load[b] = bl
+      for (j = 3; j < NF; j += 2) if (!((b, $j) in inb)) { inb[b, $j] = 1; nlib[b]++; lib[b, nlib[b]] = $j }
+      isroot[b, $2] = 1; nroot[b]++; roots[b, nroot[b]] = $2
+    }
+    END {
+      for (b = 1; b <= P; b++) {
+        if (!used[b]) continue
+        printf "" > (sd "/bin." b)
+        for (j = 1; j <= nlib[b]; j++) if (!((b, lib[b, j]) in isroot)) print lib[b, j] >> (sd "/bin." b)
+        for (j = 1; j <= nroot[b]; j++) {
+          print roots[b, j] > (sd "/roots." b)
+          if (!((b, roots[b, j]) in inb)) continue
+          print roots[b, j] >> (sd "/bin." b)
+        }
+        for (j = 1; j <= nfill[b]; j++) print fill[b, j] >> (sd "/fill." b)
+        close(sd "/bin." b); close(sd "/roots." b); close(sd "/fill." b)
+      }
+    }' || { rm -rf "$sd"; serial_sweep; }
   set -- "$sd"/bin.*
   [ -f "$1" ] || { rm -rf "$sd"; serial_sweep; }
-  # every tracked file must land in exactly one shard, else a pass would be vacuous
-  [ "$(cat "$sd"/bin.* | wc -l)" -eq "$(wc -l < "$sd/files")" ] || { rm -rf "$sd"; serial_sweep; }
-  echo "shellcheck-pr-range: parallel full sweep over $# shards" >&2
-  # xargs splits past ~128 KB of arguments, which would cut a component across runs
+  # every selected file must be the root of exactly one bin, and sit in that bin, else a pass would be vacuous
+  sort "$sd/files" > "$sd/files.s"
+  cat "$sd"/roots.* | sort > "$sd/rootsall.s"
+  cmp -s "$sd/files.s" "$sd/rootsall.s" || { rm -rf "$sd"; serial_sweep; }
+  for i in "$sd"/bin.*; do
+    k=${i##*/bin.}
+    { cat "$i"; [ ! -f "$sd/fill.$k" ] || cat "$sd/fill.$k"; } | sort -u > "$sd/held.s"
+    sort "$sd/roots.$k" > "$sd/root.s"
+    [ -z "$(comm -13 "$sd/held.s" "$sd/root.s")" ] || { rm -rf "$sd"; serial_sweep; }
+  done
+  echo "shellcheck-pr-range: parallel full sweep over $# bins ($(cat "$sd"/bin.* | wc -l | tr -d ' ') shell inputs for $(wc -l < "$sd/files" | tr -d ' ') files)" >&2
+  # xargs splits past ~128 KB of arguments, which would cut a bin across runs; the fill list
+  # comes last, so only non-shell files can fall in a later run
   for i in "$sd"/bin.*; do
     [ "$(wc -c < "$i")" -le 100000 ] || { rm -rf "$sd"; serial_sweep; }
   done
   for i in "$sd"/bin.*; do
-    ( set -o pipefail; tr '\n' '\0' < "$i" | xargs -0 pre-commit run shellcheck --show-diff-on-failure --files > "$i.out" 2>&1; echo $? > "$i.rc" ) &
+    k=${i##*/bin.}
+    ( set -o pipefail; { cat "$i"; [ ! -f "$sd/fill.$k" ] || cat "$sd/fill.$k"; } | tr '\n' '\0' | xargs -0 pre-commit run shellcheck --show-diff-on-failure --files > "$i.out" 2>&1; echo $? > "$i.rc" ) &
   done
   wait
   # iterate the bins, not their outputs: a bin with no rc (its subshell died) is a failure
+  set --
   for i in "$sd"/bin.[0-9]*; do
     case "$i" in *.out | *.rc) continue ;; esac
-    cat "$i.out" 2>/dev/null || [ "$rc" -ne 0 ] || rc=1 # swallow-ok: a missing output means the bin never ran
+    if [ -f "$i.out" ]; then set -- "$@" "$i.out"; elif [ "$rc" -eq 0 ]; then rc=1; fi
     r=$(cat "$i.rc" 2>/dev/null) || r=1 # swallow-ok: a missing rc is a failed bin
     case "$r" in '' | *[!0-9]*) r=1 ;; esac
     [ "$rc" -ne 0 ] || rc=$r
   done
+  # a lib in several bins is linted in each, so the same finding can print more than once: print each once
+  [ $# -eq 0 ] || awk '
+    function flush() { if (blk != "") { sub(/\n+$/, "", blk); if (!(blk in seen)) { seen[blk] = 1; print blk; print "" } } blk = "" }
+    FNR == 1 { flush(); mode = 0 }
+    /^shellcheck\.\.\.+(Passed|Failed|Skipped)/ { flush(); mode = 0; print; next }
+    /^In .* line [0-9]+:$/ { flush(); mode = 1; blk = $0; next }
+    /^For more information:$/ { flush(); mode = 2; pend = 1; next }
+    mode == 1 { blk = blk "\n" $0; next }
+    mode == 2 { if ($0 ~ /^  https?:/) { if (!($0 in url)) { url[$0] = 1; if (pend) { print "For more information:"; pend = 0 } print } next } if ($0 == "") next; mode = 0 }
+    { print }
+    END { flush() }' "$@" || rc=1 # swallow-ok: a failed dedup is an unclean sweep, never a quiet pass
   rm -rf "$sd"
   echo "shellcheck-pr-range: lint took $((SECONDS - t_lint))s" >&2
   exit "$rc"
@@ -126,6 +205,7 @@ sweep_all() {
 # -z + quotePath=false: a non-ASCII path must reach the lint verbatim; a NUL count that
 # disagrees with the line count means a newline in a name -> uncertain.
 git() { command git -c core.quotePath=false "$@"; }
+[ -z "$sweepfile" ] || sweep_all "$(cat "$sweepfile")"
 dz=$(mktemp "${TMPDIR:-/tmp}/shellcheck-pr-range.XXXXXX") || run_all "mktemp failed"
 trap 'rm -f "$dz"' EXIT
 # The PR's OWN diff against its merge base (three-dot), so commits merged forward from main are
