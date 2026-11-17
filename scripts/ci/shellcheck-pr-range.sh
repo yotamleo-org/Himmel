@@ -70,7 +70,7 @@ serial_sweep() {
   fi
   exec pre-commit run shellcheck --all-files --show-diff-on-failure
 }
-nonshell_re='\.(md|markdown|txt|rst|json|jsonc|yml|yaml|toml|xml|html|htm|css|svg|png|jpg|jpeg|gif|ico|pdf|lock|tsv|csv|js|mjs|cjs|jsx|ts|tsx|py|rb|sql|gql|graphql)$'
+nonshell_re='\.(md|markdown|txt|rst|json|yml|yaml|toml|xml|html|htm|css|svg|png|jpg|jpeg|gif|ico|pdf|tsv|csv|js|mjs|cjs|jsx|ts|tsx|py|rb|sql|graphql)$'
 sweep_all() {
   local n sd i k r rc=0 plan
   [ $# -eq 0 ] || subset=$1

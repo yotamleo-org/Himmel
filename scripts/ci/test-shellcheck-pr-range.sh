@@ -438,6 +438,20 @@ grep -q 'parallel full sweep over [2-9]' "$T/sweep.out" && ok "closure_edge: the
 grep 'scripts/zzr/a\.sh' "$T/stub.log" | grep -q 'scripts/zzr/lib/b\.sh' \
   && ok "closure_edge: a.sh is linted with the lib it sources through \$ROOT/" || bad "closure_edge: a.sh and b.sh split across bins: $(tr '\n' '|' < "$T/stub.log" | cut -c1-300)"
 
+# closure_shebang_ext: an executable file with an extension the hook's file typing does not know is typed by its shebang, so it keeps its source edges.
+reset; w .shellcheckrc 'external-sources=true
+# touched
+'; w scripts/zzl/run.lock '#!/usr/bin/env bash
+X=1
+. "$ROOT/lib/c.sh"
+'; chmod +x scripts/zzl/run.lock; w scripts/zzl/lib/c.sh '#!/usr/bin/env bash
+echo "$X"
+'; commit_case closure_shebang_ext; : > "$T/stub.log"
+sweep4; rc=$?
+[ "$rc" -eq 0 ] && ok "closure_shebang_ext: rc 0" || bad "closure_shebang_ext: want rc 0, got $rc"
+grep 'scripts/zzl/run\.lock' "$T/stub.log" | grep -q 'scripts/zzl/lib/c\.sh' \
+  && ok "closure_shebang_ext: run.lock is linted with the lib it sources" || bad "closure_shebang_ext: run.lock and c.sh split across bins: $(tr '\n' '|' < "$T/stub.log" | cut -c1-300)"
+
 # closure_shared: a lib in the closure of two roots lands in both bins (each root's bin carries its
 # own closure) and its finding is printed once. The two roots are padded so they outweigh every
 # other file and land in different bins.
