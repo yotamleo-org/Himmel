@@ -1911,7 +1911,7 @@ gd_repo t11g
 FAKE_SEM11G="$TMP_ROOT/t11g-semantic-fake.sh"
 cat > "$FAKE_SEM11G" <<'FAKESEM11G'
 #!/usr/bin/env bash
-while [ $# -gt 0 ]; do [ "$1" = --corpus-root ] && root="$2"; shift; done
+while [ $# -gt 0 ]; do case "$1" in --corpus-root) root="$2" ;; esac; shift; done
 printf '{"version":1,"files":{"README.md":"x"}}' > "$root/graphify-out/semantic-manifest.json"
 FAKESEM11G
 chmod +x "$FAKE_SEM11G"
