@@ -1770,8 +1770,8 @@ printf '#!/usr/bin/env bash\nexit 0\n' > "$FAKE_GITLEAKS"; chmod +x "$FAKE_GITLE
 gd_repo() {
     local tag="$1" i
     GD_REPO="$TMP_ROOT/$tag-primary"; GD_BARE="$TMP_ROOT/$tag-origin.git"
-    GD_HOME="$TMP_ROOT/$tag-home"; GD_LEDGER="$TMP_ROOT/$tag-ledger"; GD_ALERTS="$TMP_ROOT/$tag-alerts.log"
-    mkdir -p "$GD_HOME" "$GD_LEDGER"; : > "$GD_ALERTS"
+    GD_HOME="$TMP_ROOT/$tag-home"; GD_LEDGER="$TMP_ROOT/$tag-ledger"; gd_alerts="$TMP_ROOT/$tag-alerts.log"
+    mkdir -p "$GD_HOME" "$GD_LEDGER"; : > "$gd_alerts"
     git init -q --bare "$GD_BARE" >/dev/null 2>&1
     git init -q --initial-branch=main "$GD_REPO" 2>/dev/null || git init -q "$GD_REPO"
     git -C "$GD_REPO" config user.email t@test.com
@@ -1809,7 +1809,7 @@ gd_tip_bac() { git -C "$GD_BARE" show graph-data:built_at_commit 2>/dev/null | h
 gd_run() {
     rc=0
     out=$(HOME="$GD_HOME" GRAPH_CADENCE_HIMMEL_ROOT="$GD_REPO" GRAPH_CADENCE_LEDGER_ROOT="$GD_LEDGER" \
-          GRAPH_CADENCE_ALERT="$FAKE_ALERT" FAKE_ALERT_LOG="$GD_ALERTS" GRAPH_CHANNEL_ALERT="$FAKE_ALERT" \
+          GRAPH_CADENCE_ALERT="$FAKE_ALERT" FAKE_ALERT_LOG="$gd_alerts" GRAPH_CHANNEL_ALERT="$FAKE_ALERT" \
           GRAPH_CHANNEL_GITLEAKS="$FAKE_GITLEAKS" GRAPH_CADENCE_PAUSE_MARKER="${GD_MARKER:-$GD_HOME/semantic.paused}" \
           run_gc --threshold 10 2>&1) || rc=$?
     GD_LAST_ACTION=$(tail -n1 "$GD_LEDGER/.graph-cadence/ledger.jsonl" 2>/dev/null | sed -n 's/.*"action":"\([^"]*\)".*/\1/p') || GD_LAST_ACTION=""
@@ -1830,8 +1830,8 @@ assert_eq "paused publish ledger action" "published-channel" "$GD_LAST_ACTION"
 assert_contains "paused publish says it makes no model call" "is newer than graph-data and carries a semantic layer -- publishing it to graph-data with no model call" "$out"
 assert_eq "paused publish ran no rebuild" "" "$(cat "$AST_REC_LOG")"
 assert_eq "paused publish left no promote lock" "no" "$([ -e "$GD_REPO/graphify-out/.promote.lock" ] && echo yes || echo no)"
-assert_not_contains "a published graph-data raises no lag alert" "fail graph-data-$GD_SLUG" "$(cat "$GD_ALERTS")"
-assert_contains "a published graph-data clears its lag alert" "clear graph-data-$GD_SLUG" "$(cat "$GD_ALERTS")"
+assert_not_contains "a published graph-data raises no lag alert" "fail graph-data-$GD_SLUG" "$(cat "$gd_alerts")"
+assert_contains "a published graph-data clears its lag alert" "clear graph-data-$GD_SLUG" "$(cat "$gd_alerts")"
 LEDGER_LINE11A=$(tail -n1 "$GD_LEDGER/.graph-cadence/ledger.jsonl")
 assert_contains "paused publish ledger names the published build commit" "\"graph_head\":\"$GD_HEAD\"" "$LEDGER_LINE11A"
 assert_contains "paused publish ledger records no error" '"error":null' "$LEDGER_LINE11A"
@@ -1874,14 +1874,14 @@ gd_tip "$GD_C1" $((3 * 86400))
 GD_MARKER="$GD_HOME/semantic.paused"; : > "$GD_MARKER"
 gd_run
 assert_eq "lag alert run rc=0 (an alert never fails the run)" "0" "$rc"
-assert_contains "a lagging graph-data raises its alert" "fail graph-data-$GD_SLUG " "$(cat "$GD_ALERTS")"
-assert_contains "the lag alert names the pause marker" "the semantic step is paused ($GD_MARKER exists" "$(cat "$GD_ALERTS")"
-assert_contains "the lag alert names the missing semantic layer" "the live graph carries no semantic layer" "$(cat "$GD_ALERTS")"
+assert_contains "a lagging graph-data raises its alert" "fail graph-data-$GD_SLUG " "$(cat "$gd_alerts")"
+assert_contains "the lag alert names the pause marker" "the semantic step is paused ($GD_MARKER exists" "$(cat "$gd_alerts")"
+assert_contains "the lag alert names the missing semantic layer" "the live graph carries no semantic layer" "$(cat "$gd_alerts")"
 gd_tip "$GD_HEAD" 3600
-: > "$GD_ALERTS"
+: > "$gd_alerts"
 gd_run
-assert_contains "a caught-up graph-data clears the alert" "clear graph-data-$GD_SLUG" "$(cat "$GD_ALERTS")"
-assert_not_contains "a caught-up graph-data raises no alert" "fail graph-data-$GD_SLUG" "$(cat "$GD_ALERTS")"
+assert_contains "a caught-up graph-data clears the alert" "clear graph-data-$GD_SLUG" "$(cat "$gd_alerts")"
+assert_not_contains "a caught-up graph-data raises no alert" "fail graph-data-$GD_SLUG" "$(cat "$gd_alerts")"
 GD_MARKER=""
 
 echo "TEST: a file the semantic shrink guard held in two runs in a row alerts, and the alert clears once it is not held"
@@ -1898,13 +1898,13 @@ json.dump({"version": 1, "files": {}, "stuck": {"x.md": {"hash": "h", "attempts"
 HELDPY
 gd_run
 assert_eq "held alert run rc=0" "0" "$rc"
-assert_contains "a held file raises the held alert with its counts" "fail graph-semantic-$GD_SLUG-held " "$(cat "$GD_ALERTS")"
-assert_contains "the held alert names the file and the counts" "x.md new 12 vs old 25" "$(cat "$GD_ALERTS")"
+assert_contains "a held file raises the held alert with its counts" "fail graph-semantic-$GD_SLUG-held " "$(cat "$gd_alerts")"
+assert_contains "the held alert names the file and the counts" "x.md new 12 vs old 25" "$(cat "$gd_alerts")"
 python3 -c 'import json,sys;p=sys.argv[1];m=json.load(open(p));m["stuck"]={};json.dump(m,open(p,"w"))' "$GD_REPO/graphify-out/semantic-manifest.json"
-: > "$GD_ALERTS"
+: > "$gd_alerts"
 gd_run
-assert_contains "a file no longer held clears the held alert" "clear graph-semantic-$GD_SLUG-held" "$(cat "$GD_ALERTS")"
-assert_not_contains "a file no longer held raises no alert" "fail graph-semantic-$GD_SLUG-held" "$(cat "$GD_ALERTS")"
+assert_contains "a file no longer held clears the held alert" "clear graph-semantic-$GD_SLUG-held" "$(cat "$gd_alerts")"
+assert_not_contains "a file no longer held raises no alert" "fail graph-semantic-$GD_SLUG-held" "$(cat "$gd_alerts")"
 
 echo
 echo "===================================="
