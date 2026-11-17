@@ -8548,8 +8548,8 @@ c95_reset() { rm -rf "${c95_t:?}/home" "${c95_t:?}/claude" "$c95_repo/.single-wr
 c95_row() { printf '%b' "$2" > "$c95_holds/$c95_esc/$1"; }
 c95_live() { c95_row 'scripts%2Fa.sh' 'HIMMEL-8725\tN1\t\tclaim\t\n'; }
 c95_make_register_unreadable() { rmdir "$c95_holds/$c95_esc"; : > "$c95_holds/$c95_esc"; }
-c95_run() { env CLAUDE_DIR="$c95_t/claude" HOME="$c95_t/home" bash "$DOC" --only C95 --no-color 2>&1; }
-c95_run_bounded() { env CLAUDE_DIR="$c95_t/claude" HOME="$c95_t/home" "${_TIMEOUT_BIN:-timeout}" -k 2 20 bash "$DOC" --only C95 --no-color 2>&1 < /dev/null; }
+c95_run() { env CLAUDE_DIR="$c95_t/claude" HOME="$c95_t/home" bash "$DOC" --root "$REPO_ROOT" --only C95 --no-color 2>&1; }
+c95_run_bounded() { env CLAUDE_DIR="$c95_t/claude" HOME="$c95_t/home" "${_TIMEOUT_BIN:-timeout}" -k 2 20 bash "$DOC" --root "$REPO_ROOT" --only C95 --no-color 2>&1 < /dev/null; }
 echo "== C95: a .single-writer marker at the primary plus a live worker row -> WARN naming the repo and the marker age =="
 c95_reset; c95_live; : > "$c95_repo/.single-writer"
 out="$(c95_run)"
@@ -8606,7 +8606,7 @@ fi
 echo "== C95: a holds.py that never returns -> WARN 'cannot read ... exit 124' inside the HIMMEL_DOCTOR_HOLDS_T bound =="
 if [ -n "${_TIMEOUT_BIN:-}" ]; then
     c95_reset; mkdir -p "$c95_t/slow/scripts/handover/chief-kit"; ln -s "$REPO_ROOT/scripts/lib" "$c95_t/slow/scripts/lib"
-    printf 'import time\ntime.sleep(60)\n' > "$c95_t/slow/scripts/handover/chief-kit/holds.py"
+    printf 'import os, sys, time\nif sys.argv[1] == "repo-gone":\n    sys.exit(1 if os.path.lexists(sys.argv[sys.argv.index("--repo") + 1]) else 0)\ntime.sleep(60)\n' > "$c95_t/slow/scripts/handover/chief-kit/holds.py"
     SECONDS=0
     out="$(env CLAUDE_DIR="$c95_t/claude" HOME="$c95_t/home" HIMMEL_DOCTOR_HOLDS_T=2 "$_TIMEOUT_BIN" -k 2 40 bash "$DOC" --root "$c95_t/slow" --only C95 --no-color 2>&1 < /dev/null)"
     if grepq "$out" -E "WARN C95-barrier-off.*holds read TIMED OUT after [0-9]+s for $c95_repo.*UNKNOWN.*not a barrier-off finding" && ! grepq "$out" 'single-writer barrier is OFF' && [ "$SECONDS" -lt 15 ]; then pass "C95 holds.py that sleeps -> its own TIMED OUT line, not barrier-off, in ${SECONDS}s"; else fail "C95 sleeping holds.py (${SECONDS}s) -> $(printf '%s' "$out" | head -4)"; fi
@@ -8628,6 +8628,8 @@ if [ -n "${_TIMEOUT_BIN:-}" ]; then
     cat > "$c95_mf/scripts/handover/chief-kit/holds.py" <<'PY'
 import os, sys, time
 repo = sys.argv[sys.argv.index('--repo') + 1]
+if sys.argv[1] == 'repo-gone':
+    sys.exit(1)
 open(os.environ['C95_STUB_LOG'], 'a').write(repo + '\n')
 if repo.endswith('zz-sleepy'):
     time.sleep(60)
@@ -8642,6 +8644,22 @@ PY
 else
     echo "  SKIP: C95 sleeping holds.py — no timeout binary"
 fi
+echo "== C95: whether a repo is gone is holds.py's answer (repo-gone), the question the cadence asks too =="
+c95_sp="$c95_t/sp"
+rm -rf "${c95_t:?}/home" "$c95_t/claude"; mkdir -p "$c95_t/claude" "$c95_sp/scripts/handover/chief-kit" "$c95_t/aa-live" "$c95_t/zz-gone-by-verb"
+ln -s "$REPO_ROOT/scripts/lib" "$c95_sp/scripts/lib"
+mkdir -p "$c95_holds/$(c95_esc_of "$c95_t/aa-live")" "$c95_holds/$(c95_esc_of "$c95_t/bb-missing")" "$c95_holds/$(c95_esc_of "$c95_t/zz-gone-by-verb")"
+cat > "$c95_sp/scripts/handover/chief-kit/holds.py" <<'PY'
+import os, sys
+repo = sys.argv[sys.argv.index('--repo') + 1]
+if sys.argv[1] == 'repo-gone':
+    sys.exit(0 if os.path.basename(repo) == 'zz-gone-by-verb' else 1)
+open(os.environ['C95_STUB_LOG'], 'a').write(repo + '\n')
+PY
+: > "$c95_t/sp-read.log"
+out="$(env CLAUDE_DIR="$c95_t/claude" HOME="$c95_t/home" C95_STUB_LOG="$c95_t/sp-read.log" bash "$DOC" --root "$c95_sp" --only C95 --no-color 2>&1 < /dev/null)"
+if [ "$(cat "$c95_t/sp-read.log")" = "$c95_t/aa-live
+$c95_t/bb-missing" ] && grepq "$out" -E 'OK   C95-barrier-off.*1 register of a removed repo not read'; then pass "C95 skips the repo holds.py calls gone (though it exists) and reads the one it does not (though it is missing)"; else fail "C95 repo-gone verb -> log [$(tr '\n' ' ' < "$c95_t/sp-read.log")] $(printf '%s' "$out" | head -3)"; fi
 echo "== C95: a register of a removed repo is skipped, and the OK line counts it =="
 c95_reset; mkdir -p "$c95_holds/$(c95_esc_of "$c95_t/gone-repo")"; printf 'not a row\n' > "$c95_holds/$(c95_esc_of "$c95_t/gone-repo")/scripts%2Fb.sh"
 out="$(c95_run)"

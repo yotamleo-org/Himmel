@@ -4217,13 +4217,11 @@ check_c94_graph_config() {
         "${fix:-run node scripts/himmelctl/lib/graph-choices.js check}${rest:+; $rest}"
 }
 
-# a register whose repo path is gone: the nearest existing ancestor is searchable, so the missing entry is a real ENOENT.
-# A path behind a directory this user cannot search is unknown, not gone.
-c95_repo_gone() {
-    local p="$1"
-    { [ -e "$p" ] || [ -L "$p" ]; } && return 1
-    while [ "$p" != / ] && [ "$p" != . ] && [ ! -e "$p" ] && [ ! -L "$p" ]; do p="$(dirname "$p")"; done
-    [ -d "$p" ] && [ -x "$p" ]
+# a register whose repo path is gone is skipped. Whether it is gone is holds.py's answer (repo-gone: a real ENOENT and nothing
+# else), the same question the doctor cadence asks before it prunes a register; no answer, a slow one or an older holds.py without
+# the verb reads the register as before.
+c95_repo_gone() { # <holds.py> <repo>
+    ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 1 10} python3 -I "$1" repo-gone --repo "$2" </dev/null >/dev/null 2>&1
 }
 
 # ponytail: a marker repo with only dead rows, or rows holds.py cannot judge (state unknown), does not warn; a worker whose
@@ -4266,7 +4264,7 @@ check_c95_barrier_off() {
     for name in "${regs[@]}"; do
         [ -e "$name" ] || [ -L "$name" ] || continue
         repo="$(printf '%s' "${name##*/}" | sed -e 's/%2F/\//g' -e 's/%25/%/g')"
-        if c95_repo_gone "$repo"; then gone=$((gone + 1)); continue; fi
+        if c95_repo_gone "$py" "$repo"; then gone=$((gone + 1)); continue; fi
         left=$(( ${HIMMEL_DOCTOR_HOLDS_T:-33} - (SECONDS - started) ))
         if [ -n "$_TIMEOUT_BIN" ] && [ "$left" -lt 1 ]; then
             warned=1
