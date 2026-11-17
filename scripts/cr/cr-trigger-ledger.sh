@@ -18,7 +18,8 @@
 #
 # A ledger line: {pr, head, ts, reviewers:[{slug, mode, state, verdict,
 # findings, latency_s, cost_usd}], cheap_settled_at}. cost_usd is null: the
-# critic ledger carries no cost field.
+# critic ledger carries no cost field. cheap_settled_at is null when the cheap
+# run had not settled at release.
 #
 # Paths (env, default under the git common dir so every worktree shares them):
 #   CR_FIRST_LEDGER   <common>/cr-first-release-ledger.jsonl

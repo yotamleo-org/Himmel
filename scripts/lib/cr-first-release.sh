@@ -4,8 +4,8 @@
 # With the repository variable CI_GO_GATE=on, a pull request's heavy CI waits
 # for the `ci:go` label; this releases it at the moment the reviewer gate
 # passes at the PR head, from the events that change the answer (a verdict
-# written, a thread resolved, a CodeRabbit read, the cheap run settling, the
-# chief tick) — no timer, no background process.
+# written, a thread resolved, a CodeRabbit read, a cheap run going red or
+# settling, the chief tick) — no timer, no background process.
 #
 #   cr_first_release <pr> <head> [<owner/name>]
 #     Quiet (no output, rc 0): switch off or unset, fork PR, PR closed or head
@@ -28,19 +28,27 @@
 #     check-ci / ready-check / tick callers read it before anything else.
 #
 # The release is `scripts/lib/review-merge-gate.sh` cr_reviewer_gate with
-# --release: the cheap run must be green first (ci-quick reported, no cheap
-# job red), then every hard reviewer must pass at the head and a CodeRabbit
-# review still in progress holds. The per-head ledger it writes is
+# --release: no cheap job may be red (the latest check-run of each cheap name
+# decides), then every hard reviewer must pass at the head and a CodeRabbit
+# review still in progress holds. A cheap run still in flight does not hold:
+# the heavy run re-runs every cheap job at the head, so the reviewers are the
+# only wait and the two runs overlap. The per-head ledger it writes is
 # scripts/cr/cr-trigger-ledger.sh — NOT the CodeRabbit trigger ledger in
-# scripts/lib/coderabbit-trigger-ledger.sh.
+# scripts/lib/coderabbit-trigger-ledger.sh. Its cheap_settled_at is the last
+# cheap completion when the cheap run had settled at release, null when not.
 #
 # A CodeRabbit status stuck in `pending` is probed once it is older than
 # CR_FIRST_STUCK_AFTER_S (1800): a rate-limit reply, a CodeRabbit error
 # comment, a status-page incident, or no CodeRabbit activity for
 # CR_FIRST_PROGRESS_S (600) releases loudly, but only when that in-progress
 # review is the one thing holding; a probe that cannot read holds.
-# A manual `ci:go` while the cheap run is still going cancels that run
-# (OQ3): label by hand only after the cheap side settled.
+# A `ci:go` while the cheap run is still going cancels that run (OQ3): both
+# sit in one concurrency group per PR, so the cheap check-runs end `cancelled`
+# and the heavy run's check-runs of the same names follow. The release is
+# designed to overlap this way. A released head reads quiet before any cheap
+# check is classified, and a head not yet released reads the latest check-run
+# per name, so the cancelled rows never read as cheap-red once the heavy run's
+# same-named rows exist.
 #
 # Env: CR_FIRST_HEAVY_RE / CR_FIRST_CHEAP_RE (check-run name regexes),
 # CR_FIRST_STATUS_URL (statuspage JSON), CR_FIRST_NOW (epoch seam for tests),
@@ -226,7 +234,7 @@ _crf_release_locked() {
     fi
     reviewers=$(_crf_reviewers_json "$state" "$head")
     jq -nc --argjson pr "$pr" --arg head "$head" --arg ts "$(_crf_iso_now)" --argjson rv "$reviewers" --arg cs "$settled" \
-        '{pr: $pr, head: $head, ts: $ts, reviewers: $rv, cheap_settled_at: $cs}' \
+        '{pr: $pr, head: $head, ts: $ts, reviewers: $rv, cheap_settled_at: (if $cs == "" then null else $cs end)}' \
         | bash "$_CRF_LEDGER_CLI" append 2>/dev/null \
         || echo "CR-FIRST ERROR label added but the release ledger line was not written (PR #$pr head $head)"
     echo "CR-FIRST RELEASE $reason"
@@ -297,18 +305,24 @@ cr_first_release() {
         return 0
     fi
 
+    # The latest check-run of each cheap name decides: the REST list returns every run ever
+    # created for the sha, and a go run that cancels the in-flight cheap run leaves its
+    # cancelled rows beside its own same-named rows, which carry a higher id. A cheap run
+    # still in flight is no hold (the go run re-runs every cheap job at the head); a latest
+    # row that failed, timed out or was cancelled is. The settle time is the
+    # last cheap completion once ci-quick succeeded and no cheap row is still running, empty
+    # otherwise (the ledger line then carries null).
     cheap=$(printf '%s' "$checks" | jq -r --arg re "${CR_FIRST_CHEAP_RE:-^(ci-quick|secret-scan|bwk-awk-mktemp-gate|unchecked-mktemp-range|leak-classes|git-env-scrub|commit-lint|plugin-version-bump|lint)\$}" '
-        [.check_runs[] | select(.name | test($re))] as $c
+        ([.check_runs[] | select(.name | test($re))] | group_by(.name) | map(max_by(.id // 0))) as $c
         | (if any($c[]; .status == "completed" and ((.conclusion // "") | IN("failure", "cancelled", "timed_out", "action_required", "startup_failure"))) then "red"
            elif (any($c[]; .name == "ci-quick" and .status == "completed" and .conclusion == "success") | not) or any($c[]; .status != "completed") then "pending"
-           else "green" end),
-          ([$c[] | .completed_at // empty] | max // "")' 2>/dev/null) \
+           else "green" end) as $s
+        | $s, (if $s == "green" then ([$c[] | .completed_at // empty] | max // "") else "" end)' 2>/dev/null) \
         || { echo "CR-FIRST HOLD degraded (cannot classify check-runs at $head) $age"; return 3; }
     { IFS= read -r cstate; IFS= read -r csettled; } <<<"$cheap"
     case "$cstate" in
         red) echo "CR-FIRST HOLD cheap-red $age"; return 1 ;;
-        pending) echo "CR-FIRST HOLD cheap-pending $age"; return 1 ;;
-        green) ;;
+        pending|green) ;;
         *) echo "CR-FIRST HOLD degraded (cannot classify check-runs at $head) $age"; return 3 ;;
     esac
 

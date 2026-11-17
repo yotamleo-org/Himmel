@@ -22,6 +22,16 @@ on:
   # `unlabeled` is deliberately NOT in `types`: the release's label-remove step must
   # not start a run.
   #
+  # Overlap with the cheap run. The release (scripts/lib/cr-first-release.sh) fires as soon
+  # as the reviewers pass at the head; it does not wait for the cheap run to finish green,
+  # because the go run re-runs every cheap job. A go run that starts while the cheap run is
+  # in flight cancels it (same group ci-pr-<N>): the cheap check-runs end `cancelled` and the
+  # go run's check-runs of the same names follow. Every reader judges the latest check-run of
+  # a name, so those cancelled rows are superseded and never read as red: the release (latest
+  # check-run id per name), scripts/check-ci.sh (latest id per name and app) and ready-check.sh
+  # (latest run per name and workflow). A cheap run that is already red still holds the release.
+  # Which checks are required is unchanged.
+  #
   # Create-time label: gh pr create --label ci:go adds the label after the PR exists, so
   # the opened run starts first and the labeled go run, the newer run in the group
   # ci-pr-<N>, cancels it; the go run runs every cheap job too, so nothing is lost. If
