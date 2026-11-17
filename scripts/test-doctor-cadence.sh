@@ -577,6 +577,19 @@ case "$(tail -n 1 "$STATE/holds-gc.log")" in *"run registers=3 served=2 starved=
 : > "$GC_LOG"
 GC_STUB_MODE=partial GC_STUB_SLEEP=2.5 DOCTORCAD_HOLDS_GC_BUDGET=4 run_cad_ok "the next run after a starved register"
 check "the register the last run starved is served first by the next" "gc $W/hr-live2" "$(grep '^gc ' "$GC_LOG" | head -n 1)"
+if [ "${DOCTORCAD_TEST_GREP_ERROR:-0}" = 0 ]; then
+    # the extra passes rotate too: a run that spends its budget in a second round leaves the next run to start where it stopped
+    gc_reset; gc_reg "$W/hr-live" "$W/hr-live2" "$P"
+    GC_STUB_MODE=partial GC_STUB_SLEEP=2 DOCTORCAD_HOLDS_GC_BUDGET=8 run_cad_ok "a run with a budget for four passes over three registers"
+    check "four passes over three registers: one each, then the primary again" "gc $P
+gc $W/hr-live
+gc $W/hr-live2
+gc $P
+doctor" "$(cat "$GC_LOG")"
+    : > "$GC_LOG"
+    GC_STUB_MODE=partial GC_STUB_SLEEP=2 DOCTORCAD_HOLDS_GC_BUDGET=8 run_cad_ok "the next run with the same budget"
+    check "the next run starts at the register the budget stopped at, so the extra pass is not always the primary's" "gc $W/hr-live" "$(grep '^gc ' "$GC_LOG" | head -n 1)"
+fi
 gc_reset; gc_reg "$W/hr-live" "$P"
 GC_STUB_MODE=partial DOCTORCAD_HOLDS_GC_BUDGET=0 run_cad_ok "a run whose budget is smaller than one pass"
 check "a budget below one pass still runs one pass, so progress never stops" "gc $P

@@ -122,7 +122,8 @@ $(grep -A1 -E "^WARN +$id:" "$log" | head -2)"
 # Before the doctor reads the holds registers, prune them: holds.py gc stops at its own 10 s box and the next pass
 # resumes where it left off, so a register bigger than one box is swept over several passes. Passes go round the
 # registers whose repo still exists (one each before any gets a second), so no register waits behind another. A
-# register the budget left without a pass is written to holds-gc.next and goes first on the next run. Passes per
+# register the budget stopped at is written to holds-gc.next and goes first on the next run, so the extra passes
+# rotate as well as the first ones. Passes per
 # register stop at a complete cycle (or a busy answer, or a failure) and are capped; the whole step has one time
 # budget (DOCTORCAD_HOLDS_GC_BUDGET) that never stops the first pass of a run, so it ends within the budget plus one
 # pass (30 s). Whether a repo is gone is holds.py's answer (repo-gone), the same one the doctor's C95 uses; only a
@@ -134,7 +135,7 @@ holds_gc_note() { printf '%s %s\n' "$(date +%FT%T)" "$*" >> "$STATE_DIR/holds-gc
 holds_maintenance() { # <primary root>
     local root="$1" py="$1/scripts/handover/chief-kit/holds.py" holds="${HOME:-}/.himmel/state/holds"
     local nextf="$STATE_DIR/holds-gc.next" passes="${DOCTORCAD_HOLDS_GC_PASSES:-12}" budget="${DOCTORCAD_HOLDS_GC_BUDGET:-120}"
-    local reg repo i k n end out rc tmo want start=0 total=0 served=0 starved=0 partial=0 failed=0 progress first_starved=""
+    local reg repo i k n end out rc tmo want start=0 total=0 served=0 starved=0 partial=0 failed=0 progress stop_at=""
     local -a repos=() count=() state=()
     [[ "$passes" =~ ^[0-9]+$ ]] || passes=12
     [[ "$budget" =~ ^[0-9]+$ ]] || budget=120
@@ -165,7 +166,7 @@ holds_maintenance() { # <primary root>
             i=$(((start + k) % n))
             case "${state[i]}" in open|partial) ;; *) continue ;; esac
             if [ "${count[i]}" -ge "$passes" ]; then state[i]=capped; continue; fi
-            if [ "$total" -gt 0 ] && [ "$SECONDS" -ge "$end" ]; then break 2; fi
+            if [ "$total" -gt 0 ] && [ "$SECONDS" -ge "$end" ]; then stop_at="${repos[i]}"; break 2; fi
             out="$(${tmo:+"$tmo" -k 2 30} python3 -I "$py" gc --repo "${repos[i]}" </dev/null 2>&1)"; rc=$?
             count[i]=$((count[i] + 1)); total=$((total + 1))
             if [ "$rc" -ne 0 ]; then
@@ -180,13 +181,13 @@ holds_maintenance() { # <primary root>
     for ((k = 0; k < n; k++)); do
         i=$(((start + k) % n))
         case "${state[i]}" in
-            open) starved=$((starved + 1)); [ -n "$first_starved" ] || first_starved="${repos[i]}" ;;
+            open) starved=$((starved + 1)) ;;
             partial) served=$((served + 1)); partial=$((partial + 1)) ;;
             failed) served=$((served + 1)); failed=$((failed + 1)) ;;
             *) served=$((served + 1)) ;;
         esac
     done
-    if [ -n "$first_starved" ]; then printf '%s\n' "$first_starved" > "$nextf"; else rm -f "$nextf"; fi
+    if [ -n "$stop_at" ]; then printf '%s\n' "$stop_at" > "$nextf"; else rm -f "$nextf"; fi
     holds_gc_note "run registers=$n served=$served starved=$starved partial=$partial failed=$failed passes=$total"
     return 0
 }
