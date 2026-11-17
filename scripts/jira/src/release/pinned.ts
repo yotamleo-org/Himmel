@@ -37,6 +37,12 @@ export function pinnedSha(path: string): Pinned {
   return 'bytes' in read ? { bytes: read.bytes, sha256: read.sha256 } : read;
 }
 
+export function returnSha(text: string): string {
+  const lines = text.split('\n').filter(l => !l.startsWith('CONTENT-SHA256 ')).map(l => l.trimEnd());
+  while (lines.length && lines.at(-1) === '') lines.pop();
+  return createHash('sha256').update(Buffer.from(lines.length ? `${lines.join('\n')}\n` : '')).digest('hex');
+}
+
 // Read entries incrementally so an untrusted directory cannot allocate an unbounded list.
 export function boundedDirectoryNames(path: string): string[] {
   let dir;

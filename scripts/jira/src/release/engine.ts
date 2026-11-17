@@ -5,7 +5,8 @@ import { hostname } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { releaseKeyPath, releaseRoot } from './paths.js';
-import { pinnedSha, reviewedSpecHashes } from './pinned.js';
+import { pinnedSha, pinnedRead, boundedDirectoryNames, selectDecisionNames, reviewedSpecHashes, returnSha,
+  validateCappedFoldProof, type CappedFoldProof, type FilePin } from './pinned.js';
 export { pinnedSha, type Pinned } from './pinned.js';
 import type { Getter } from './version-writes.js';
 import {
@@ -546,6 +547,82 @@ function checkRoundResiduals(specText: string, names: string[], residuals: numbe
   }
 }
 
+interface CappedInputs {
+  keys: string[]; spec: FilePin; plan?: FilePin; files: VerdictFile[]; residuals: number;
+}
+
+// Source and dist have the same depth. Lint continues to use the primary checkout above.
+function cappedVerifier(): string {
+  return fileURLToPath(new URL('../../../telegram/chief-route.ts', import.meta.url));
+}
+
+function canonical(path: string): boolean {
+  try { return realpathSync(path) === path; } catch { return false; }
+}
+
+function checkCappedPins(proof: CappedFoldProof): void {
+  for (const pin of proof.pins) {
+    if (pin.role === 'decision-selection') {
+      if (!canonical(pin.directory) || JSON.stringify(selectDecisionNames(boundedDirectoryNames(pin.directory), pin.decision)) !== JSON.stringify(pin.names)) {
+        throw new Error(`capped evidence selection changed: ${pin.directory}`);
+      }
+    } else {
+      const got = pinnedRead(pin.path);
+      if (!canonical(pin.path) || !('bytes' in got) || got.sha256 !== pin.sha256
+        || (pin.role === 'decision' && got.mtime_ms !== pin.mtime_ms)) throw new Error(`capped evidence changed or unreadable: ${pin.path}`);
+    }
+  }
+}
+
+function bindCappedProof(proof: CappedFoldProof, input: CappedInputs): void {
+  if (proof.key !== input.keys[0] || proof.spec.path !== input.spec.path || proof.spec.sha256 !== input.spec.sha256
+    || proof.plan.path !== input.plan?.path || proof.plan.sha256 !== input.plan.sha256
+    || proof.carried.length !== input.residuals) throw new Error('capped proof input binding disagrees');
+  for (const r of proof.returns) {
+    const file = input.files.find(f => f.kind.toLowerCase() === r.kind);
+    if (!file || file.path !== r.path || file.sha256 !== r.sha256 || file.residuals !== r.residuals
+      || returnSha(file.text) !== r.return_sha) throw new Error(`capped proof ${r.kind} return binding disagrees`);
+    const reviewed = reviewedSpecHashes(file.text);
+    if (reviewed.length !== 1 || reviewed[0] !== input.spec.sha256) throw new Error(`capped ${r.kind} Reviewed binding disagrees`);
+  }
+}
+
+function cappedFallback(check: () => void, input: CappedInputs): CappedFoldProof | undefined {
+  let refusal: unknown;
+  try { check(); return undefined; } catch (e) { refusal = e; }
+  try {
+    if (input.keys.length !== 1 || !input.plan || input.plan.path === input.spec.path
+      || input.files.length !== 2) throw new Error('capped carry requires one key, an explicit distinct plan and paired SPEC/PLAN returns');
+    const args = [cappedVerifier(), 'capped-fold', '--key', input.keys[0], '--spec', input.spec.path, '--plan', input.plan.path,
+      '--spec-return', input.files.find(f => f.kind === 'SPEC')!.path, '--plan-return', input.files.find(f => f.kind === 'PLAN')!.path];
+    const output = execFileSync('bun', args, { encoding: 'utf8', timeout: 30000, maxBuffer: 4 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
+    const proof = validateCappedFoldProof(JSON.parse(output));
+    bindCappedProof(proof, input);
+    checkCappedPins(proof);
+    return proof;
+  } catch (e) {
+    const detail = e as { stderr?: string | Buffer; message?: string };
+    const reason = String(detail.stderr || detail.message || e).trim().slice(0, 500);
+    throw new Error(`${refusal instanceof Error ? refusal.message : refusal}; capped verifier unavailable/refused: ${reason}`);
+  }
+}
+
+// The caller holds the real release locks. Evidence is external to that lock, so readback can still be stale.
+function appendSpec(ctx: Ctx, k: Buffer, row: Omit<OperatorRow, 'id' | 'ts'>): OperatorRow {
+  if (!row.capped_carry) return appendOperator(ctx, k, row);
+  checkCappedPins(row.capped_carry);
+  const persisted = appendOperator(ctx, k, row);
+  try {
+    const chain = readChain<OperatorRow>(f(ctx, 'operator.jsonl'), k);
+    const verified = chain.verified.find(r => r.id === persisted.id);
+    if (chain.bad.length || !verified || contentSha(verified) !== contentSha(persisted)) throw new Error('signed row did not verify on readback');
+    checkCappedPins(row.capped_carry);
+    return verified;
+  } catch (e) {
+    throw new Error(`persisted-but-stale ${persisted.id}: ${e instanceof Error ? e.message : e}; inspect this record before retrying`);
+  }
+}
+
 export function signSpec(ctx: Ctx, o: {
   keys: string[]; spec: string; verdicts: string[]; decision: string; verbatim: string; supersedes?: string; plan?: string;
 }): OperatorRow {
@@ -556,12 +633,14 @@ export function signSpec(ctx: Ctx, o: {
   // The plan carries the invariants' acceptance tests; with no --plan the spec stands in for it.
   const plan = o.plan ? resolve(o.plan) : spec;
   if (!existsSync(plan)) throw new Error(`release operator spec: plan not found: ${plan}`);
-  const { verdicts, residuals } = readVerdicts(o.verdicts, 'release operator spec', { required: ['SPEC', 'PLAN'], allowed: [] },
+  const { verdicts, residuals, files } = readVerdicts(o.verdicts, 'release operator spec', { required: ['SPEC', 'PLAN'], allowed: [] },
     'release operator spec: give exactly two --verdict files, the spec critic\'s and the plan critic\'s');
   const bytes = readFileSync(spec);
   const specSha = createHash('sha256').update(bytes).digest('hex');
   const planSha = o.plan ? fileSha(plan) : null;
-  checkResiduals(bytes.toString('utf8'), residuals);
+  const capped = cappedFallback(() => checkResiduals(bytes.toString('utf8'), residuals), {
+    keys: [...new Set(o.keys)], spec: { path: spec, sha256: specSha }, plan: o.plan ? { path: plan, sha256: planSha! } : undefined, files, residuals,
+  });
   lintSpec(spec, plan);
   if (fileSha(spec) !== specSha || verdicts.some((v) => fileSha(v.path) !== v.sha256)
     || (o.plan && (!existsSync(plan) || fileSha(plan) !== planSha))) {
@@ -582,10 +661,10 @@ export function signSpec(ctx: Ctx, o: {
       const k = held.keys?.find((x) => o.keys.includes(x));
       throw new Error(`release operator spec: ${k} is already signed in ${held.id}; re-sign with --supersedes ${held.id}`);
     }
-    return appendOperator(ctx, l.k, {
+    return appendSpec(ctx, l.k, {
       kind: 'spec', decision: o.decision, keys: [...new Set(o.keys)], spec_path: spec, spec_sha256: specSha,
       plan_path: o.plan ? plan : null, plan_sha256: planSha, verdicts,
-      supersedes: o.supersedes ?? null, residuals, verbatim: o.verbatim,
+      supersedes: o.supersedes ?? null, residuals, verbatim: o.verbatim, ...(capped ? { capped_carry: capped } : {}),
     });
   });
 }
@@ -633,7 +712,9 @@ export function specReview(ctx: Ctx, o: { keys: string[]; spec: string; plan?: s
   if ((clean || specVerdict.residuals === 0) && reviewedSha !== specPin.sha256) {
     throw new Error(`${verb}: ${specVerdict.last} reviewed ${reviewedSha}, not the spec's bytes ${specPin.sha256}; run the spec critic on the final spec`);
   }
-  checkRoundResiduals(specText, files.map((x) => basename(x.path)), residuals, verb);
+  const capped = cappedFallback(() => checkRoundResiduals(specText, files.map((x) => basename(x.path)), residuals, verb), {
+    keys, spec: { path: spec, sha256: specPin.sha256 }, plan: { path: plan, sha256: planPin.sha256 }, files, residuals,
+  });
   lintSpec(spec, plan, verb);
   const same = (p: string, sha256: string) => {
     const got = pinnedSha(p);
@@ -650,10 +731,10 @@ export function specReview(ctx: Ctx, o: { keys: string[]; spec: string; plan?: s
         throw new Error(`${verb}: ${o.supersedes} is no live spec-review record in a declared release`);
       }
     }
-    return appendOperator(ctx, l.k, {
+    return appendSpec(ctx, l.k, {
       kind: 'spec-review', decision: null, keys, spec_path: spec, spec_sha256: specPin.sha256,
       plan_path: plan, plan_sha256: planPin.sha256, ...(clean ? {} : { reviewed_sha256: reviewedSha }), verdicts,
-      supersedes: o.supersedes ?? null, residuals,
+      supersedes: o.supersedes ?? null, residuals, ...(capped ? { capped_carry: capped } : {}),
     });
   });
 }

@@ -1,4 +1,4 @@
-import { selectDecisionNames, pinnedRead, boundedDirectoryNames, reviewedSpecHashes, validateCappedFoldProof, PINNED_READ_VERSION,
+import { selectDecisionNames, pinnedRead, boundedDirectoryNames, reviewedSpecHashes, validateCappedFoldProof, PINNED_READ_VERSION, returnSha,
   type CappedFoldProof, type EvidencePin, type EvidenceFilePin, type ReturnPin } from "../jira/src/release/pinned.ts";
 import { join, dirname, basename, resolve, isAbsolute } from "node:path";
 import { randomUUID, createHash } from "node:crypto";
@@ -629,11 +629,7 @@ const KEY_FOLDER = /^[A-Z][A-Z0-9]+-[0-9]+$/;
 const ledgerDir = (specs: string) => join(specs, "ledgers", "spec-rounds");
 const specsRootOf = (p: string) => { const parts = p.split("/"); const i = parts.lastIndexOf("specs"); return i < 0 ? null : parts.slice(0, i + 1).join("/"); };
 
-export function returnSha(text: string): string {
-  const lines = text.split("\n").filter(l => !l.startsWith("CONTENT-SHA256 ")).map(l => l.trimEnd());
-  while (lines.length && lines.at(-1) === "") lines.pop();
-  return sha256(Buffer.from(lines.length ? `${lines.join("\n")}\n` : ""));
-}
+export { returnSha } from "../jira/src/release/pinned.ts";
 
 export function keyOf(specPath: string): string | null {
   const parts = specPath.split("/");
