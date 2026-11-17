@@ -15,7 +15,7 @@
 # Environment:
 #   PARITY_OPTS  extra shellcheck flags for both runs; default "--enable=all --severity=style".
 #                Set it to an empty string for the hook's own flags.
-# Exit codes: 0 -- identical; 1 -- missing or extra findings, or a run never ran the hook; 2 -- a setup step or the serial shellcheck run failed.
+# Exit codes: 0 -- identical; 1 -- missing or extra findings, a run that never ran the hook, or a setup step that failed; 2 -- the serial shellcheck run failed or prim.sh did not load.
 set -u
 
 root=$(git rev-parse --show-toplevel) || exit 1
@@ -53,12 +53,12 @@ findings() { grep -E '^[^ ]+:[0-9]+:[0-9]+: (error|warning|note): ' "$1" | sort 
 
 echo "parity: $(shellcheck --version | grep '^version')" >&2
 t=$SECONDS
-# shellcheck disable=SC2086 # the flags are a word list
-tr '\n' '\0' < "$T/shell.list" | xargs -0 -s 1500000 shellcheck $opts --format=gcc > "$T/serial.out" 2>&1
+# shellcheck disable=SC2016,SC2086 # the flags are a word list; the sh -c script expands its own args
+tr '\n' '\0' < "$T/shell.list" | xargs -0 -s 1500000 sh -c 'shellcheck "$@"; r=$?; [ "$r" -le 1 ] || exit 255' parity-shellcheck $opts --format=gcc > "$T/serial.out" 2>&1
 serial_rc=$?
 echo "parity: serial run took $((SECONDS - t))s" >&2
-# The linter exits 1 for findings; any other non-zero (xargs 123 wraps it) is a run that failed
-case "$serial_rc" in 0 | 1 | 123) ;; *) echo "parity: the serial shellcheck run failed (rc $serial_rc); head of its output:" >&2; head -5 "$T/serial.out" >&2; exit 2 ;; esac
+# The linter exits 1 for findings (xargs reports 123); any higher exit is mapped to 255, which xargs reports as 124
+case "$serial_rc" in 0 | 123) ;; *) echo "parity: the serial shellcheck run failed (rc $serial_rc); head of its output:" >&2; head -5 "$T/serial.out" >&2; exit 2 ;; esac
 grep -q 'shellcheck: ' "$T/serial.out" && { echo "parity: the serial shellcheck run reported an error:" >&2; grep 'shellcheck: ' "$T/serial.out" | head -5 >&2; exit 2; }
 t=$SECONDS
 SHELLCHECK_OPTS="$opts --format=gcc" bash "$root/scripts/ci/shellcheck-pr-range.sh" --sweep "$T/list" > "$T/sweep.out" 2> "$T/sweep.err"
