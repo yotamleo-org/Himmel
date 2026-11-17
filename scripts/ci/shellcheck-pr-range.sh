@@ -56,8 +56,9 @@ run_all() {
 # more bin. Every file is the root of exactly one bin; a lib in the closure of roots in several
 # bins is an input of each of them. Roots are packed largest closure first onto the nproc bins,
 # each going where it adds the least load (bytes of files the bin does not hold yet), then one
-# `pre-commit --files` runs per bin. A file of a known non-shell type is a root with no edges and no
-# weight: it goes in its bin's fill list, behind the shell inputs. The findings of all bins are
+# `pre-commit --files` runs per bin. A file identify does not type shell (the library the hook's
+# `types: [shell]` uses) is a root with no edges and no weight: it goes in its bin's fill list, behind
+# the shell inputs. The findings of all bins are
 # printed once each; the exit status is non-zero if any bin fails. Anything unplannable -> serial.
 # `sweep_all <files>` bins just that newline-separated list (the PR's selected set, already
 # closed under its source neighbours); with no argument it bins the whole tree.
@@ -70,7 +71,48 @@ serial_sweep() {
   fi
   exec pre-commit run shellcheck --all-files --show-diff-on-failure
 }
-nonshell_re='\.(md|markdown|txt|rst|json|yml|yaml|toml|xml|html|htm|css|svg|png|jpg|jpeg|gif|ico|pdf|tsv|csv|js|mjs|cjs|jsx|ts|tsx|py|rb|sql|graphql)$'
+# The planned files the hook types shell, one path per line on stdout. Asking identify (the library
+# pre-commit types files with) rather than matching a name keeps the two in step: it types an
+# executable dotfile by its shebang and a PKGBUILD.md by its PKGBUILD part. The interpreter is
+# $SHELLCHECK_RANGE_PY when set, else pre-commit's own, else python3: the first that can import
+# identify. A failure returns non-zero, and the caller then treats every file as shell.
+shell_typed() {
+  local py pc sb a b cands=""
+  local prog='import os, sys
+try:
+    from identify import identify
+except Exception:
+    sys.exit(3)
+out = sys.stdout.buffer
+for raw in sys.stdin.buffer.read().split(b"\n"):
+    if not raw:
+        continue
+    try:
+        shell = "shell" in identify.tags_from_path(os.fsdecode(raw))
+    except Exception:
+        shell = True
+    if shell:
+        out.write(raw + b"\n")'
+  if [ -n "${SHELLCHECK_RANGE_PY+x}" ]; then
+    cands=$SHELLCHECK_RANGE_PY
+  else
+    if pc=$(command -v pre-commit) && sb=$(head -n 1 "$pc" 2> /dev/null); then
+      sb=${sb#\#!}
+      read -r a b <<< "$sb"
+      case "${a##*/}" in env) a=$(command -v "$b") || a="" ;; esac # swallow-ok: no resolvable interpreter, the next candidate is tried
+      cands=$a
+    fi
+    cands="$cands
+python3"
+  fi
+  while IFS= read -r py; do
+    [ -n "$py" ] || continue
+    "$py" -I -c "$prog" < "$1" 2> /dev/null && return 0
+  done <<EOF
+$cands
+EOF
+  return 1
+}
 sweep_all() {
   local n sd i k r rc=0 plan
   [ $# -eq 0 ] || subset=$1
@@ -85,19 +127,22 @@ sweep_all() {
 "'*) rm -rf "$sd"; serial_sweep ;; esac
   printf '%s\n' "$plan" > "$sd/files" || { rm -rf "$sd"; serial_sweep; }
   printf '%s\n' "$plan" | tr '\n' '\0' | xargs -0 wc -c -- > "$sd/sizes" 2>/dev/null || : # swallow-ok: a missing size only flattens the weights
+  # no classification, or an empty one, means every file is shell: it keeps its edges and weight, which can
+  # only widen a bin (and the size guard below then falls back to the serial sweep)
+  { shell_typed "$sd/files" > "$sd/shell" && [ -s "$sd/shell" ]; } || cp "$sd/files" "$sd/shell" || { rm -rf "$sd"; serial_sweep; }
   git grep -n -I -E -e "$src_re" -e "$dir_re" -- . > "$sd/grep" 2>/dev/null || [ "$?" -eq 1 ] || { rm -rf "$sd"; serial_sweep; }
   # stage 1: one line per file, "<closure weight> <root> <member> <weight> ...", the root first, weight -1 for a
-  # file of a non-shell type. Stage 2 packs the roots; it writes bin.K (the shell inputs, a root's lib
+  # file identify does not type shell. Stage 2 packs the roots; it writes bin.K (the shell inputs, a root's lib
   # before the roots), fill.K (non-shell roots) and roots.K (every root of the bin).
-  NSRE="$nonshell_re" awk '
-    BEGIN { nsre = ENVIRON["NSRE"] }
+  awk '
     function edge(a, b) { if (a != b && !((a SUBSEP b) in ed)) { ed[a, b] = 1; adj[a] = adj[a] b "\n" } }
     function wgt(x) { return ((x in wt) ? wt[x] : 0) + 1 }
     FILENAME == ARGV[1] { n++; f[n] = $0; isf[$0] = 1; k = split($0, q, "/"); byname[q[k]] = byname[q[k]] "\n" $0; next }
-    FILENAME == ARGV[2] { s = $0; sub(/^[ \t]+/, "", s); v = s + 0; sub(/^[0-9]+ /, "", s); wt[s] = v; next }
+    FILENAME == ARGV[2] { sh[$0] = 1; next }
+    FILENAME == ARGV[3] { s = $0; sub(/^[ \t]+/, "", s); v = s + 0; sub(/^[0-9]+ /, "", s); wt[s] = v; next }
     {
       i = index($0, ":"); file = substr($0, 1, i - 1); rest = substr($0, i + 1); sub(/^[0-9]+:/, "", rest)
-      if (!(file in isf) || file ~ nsre) next
+      if (!(file in isf) || !(file in sh)) next
       if (rest ~ /^[[:space:]]*#/ && rest !~ /shellcheck[[:space:]]+source=/) next
       d = file; sub(/[^\/]*$/, "", d)
       while (match(rest, /[A-Za-z0-9_.\/+-]*[A-Za-z0-9_+-]\.(sh|bash)/)) {
@@ -114,7 +159,7 @@ sweep_all() {
     END {
       for (i = 1; i <= n; i++) {
         r = f[i]
-        if (r ~ nsre) { printf "-1\t%s\n", r; continue }
+        if (!(r in sh)) { printf "-1\t%s\n", r; continue }
         sp = 0; cnt = 0; stack[++sp] = r; vis[r] = i
         while (sp > 0) {
           x = stack[sp--]; mem[++cnt] = x
@@ -125,7 +170,7 @@ sweep_all() {
         for (j = 1; j <= cnt; j++) { tot += wgt(mem[j]); line = line "\t" mem[j] "\t" wgt(mem[j]) }
         printf "%d\t%s%s\n", tot, r, line
       }
-    }' "$sd/files" "$sd/sizes" "$sd/grep" | sort -t "$(printf '\t')" -k1,1nr -k2,2 | awk -F '\t' -v P="$n" -v sd="$sd" '
+    }' "$sd/files" "$sd/shell" "$sd/sizes" "$sd/grep" | sort -t "$(printf '\t')" -k1,1nr -k2,2 | awk -F '\t' -v P="$n" -v sd="$sd" '
     $1 < 0 { b = nf++ % P + 1; nfill[b]++; fill[b, nfill[b]] = $2; nroot[b]++; roots[b, nroot[b]] = $2; used[b] = 1; next }
     {
       best = 0

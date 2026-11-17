@@ -374,6 +374,18 @@ case "$*" in *bad*) exit 1 ;; esac
 exit 0
 STUB
 chmod +x "$T/bin/pre-commit"
+# The sweep types files with identify, and pre-commit is stubbed below: hand it the interpreter the real
+# pre-commit runs on (or any python3 that has identify). Neither found leaves the seam unset, and the sweep
+# then treats every file as shell.
+real_py() {
+  local pc sb a b
+  pc=$(command -v pre-commit) || return 1
+  sb=$(head -n 1 "$pc"); sb=${sb#\#!}
+  read -r a b <<< "$sb"
+  case "${a##*/}" in env) a=$(command -v "$b") ;; esac
+  [ -n "$a" ] && "$a" -I -c 'import identify' 2>/dev/null && printf '%s\n' "$a"
+}
+if py=$(real_py) || { py=$(command -v python3) && "$py" -I -c 'import identify' 2>/dev/null; }; then export SHELLCHECK_RANGE_PY="$py"; fi
 sweep() { STUB_LOG="$T/stub.log" PATH="$T/bin:$PATH" bash "$SPR" "$BASE" >"$T/sweep.out" 2>&1; }
 reset; w .shellcheckrc 'external-sources=true
 # touched
@@ -451,6 +463,46 @@ sweep4; rc=$?
 [ "$rc" -eq 0 ] && ok "closure_shebang_ext: rc 0" || bad "closure_shebang_ext: want rc 0, got $rc"
 grep 'scripts/zzl/run\.lock' "$T/stub.log" | grep -q 'scripts/zzl/lib/c\.sh' \
   && ok "closure_shebang_ext: run.lock is linted with the lib it sources" || bad "closure_shebang_ext: run.lock and c.sh split across bins: $(tr '\n' '|' < "$T/stub.log" | cut -c1-300)"
+
+# closure_dotfile_ext: identify gives a dotfile named only by an extension no type, so an executable one is
+# typed by its shebang, linted by the hook, and must keep its source edges.
+reset; w .shellcheckrc 'external-sources=true
+# touched
+'; w scripts/zzd/.json '#!/usr/bin/env bash
+X=1
+. "$ROOT/lib/d.sh"
+'; chmod +x scripts/zzd/.json; w scripts/zzd/lib/d.sh '#!/usr/bin/env bash
+echo "$X"
+'; commit_case closure_dotfile_ext; : > "$T/stub.log"
+sweep4; rc=$?
+[ "$rc" -eq 0 ] && ok "closure_dotfile_ext: rc 0" || bad "closure_dotfile_ext: want rc 0, got $rc"
+grep 'scripts/zzd/\.json' "$T/stub.log" | grep -q 'scripts/zzd/lib/d\.sh' \
+  && ok "closure_dotfile_ext: the dotfile is linted with the lib it sources" || bad "closure_dotfile_ext: .json and d.sh split across bins: $(tr '\n' '|' < "$T/stub.log" | cut -c1-300)"
+
+# closure_namepart: identify types a name with a PKGBUILD part shell whatever its extension, with no shebang
+# and no exec bit
+reset; w .shellcheckrc 'external-sources=true
+# touched
+'; w scripts/zzp/PKGBUILD.md 'X=1
+. "$ROOT/lib/p.sh"
+'; w scripts/zzp/lib/p.sh '#!/usr/bin/env bash
+echo "$X"
+'; commit_case closure_namepart; : > "$T/stub.log"
+sweep4; rc=$?
+[ "$rc" -eq 0 ] && ok "closure_namepart: rc 0" || bad "closure_namepart: want rc 0, got $rc"
+grep 'scripts/zzp/PKGBUILD\.md' "$T/stub.log" | grep -q 'scripts/zzp/lib/p\.sh' \
+  && ok "closure_namepart: the PKGBUILD.md is linted with the lib it sources" || bad "closure_namepart: PKGBUILD.md and p.sh split across bins: $(tr '\n' '|' < "$T/stub.log" | cut -c1-300)"
+
+# classify_failsafe: with no interpreter that can type files, every file is treated as shell (edges for all),
+# so the sweep still lints each file with the lib it sources and exits as a normal run does
+: > "$T/stub.log"; SHELLCHECK_RANGE_PY=/nonexistent/python sweep4; rc=$?
+[ "$rc" -eq 0 ] && ok "classify_failsafe: rc 0" || bad "classify_failsafe: want rc 0, got $rc"
+grep 'scripts/zzp/PKGBUILD\.md' "$T/stub.log" | grep -q 'scripts/zzp/lib/p\.sh' \
+  && ok "classify_failsafe: the PKGBUILD.md keeps its lib without a classifier" || bad "classify_failsafe: PKGBUILD.md and p.sh split across bins: $(tr '\n' '|' < "$T/stub.log" | cut -c1-300)"
+tr ' ' '\n' < "$T/stub.log" | grep -v '^$' | sort -u > "$T/shards.txt"
+git ls-files | sort > "$T/tracked.txt"
+cmp -s "$T/shards.txt" "$T/tracked.txt" \
+  && ok "classify_failsafe: every tracked file is linted" || bad "classify_failsafe: shards differ from git ls-files: $(diff "$T/shards.txt" "$T/tracked.txt" | head -4 | tr '\n' '|')"
 
 # closure_shared: a lib in the closure of two roots lands in both bins (each root's bin carries its
 # own closure) and its finding is printed once. The two roots are padded so they outweigh every
