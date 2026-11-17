@@ -3416,3 +3416,180 @@ test("U8: a folder that cannot be read is reported on its own line and leaves th
   expect(j.unsealed).toHaveLength(1);
   expect(j.unread).toHaveLength(1);
 }, S1B);
+
+
+test("shared pinnedSha legacy shape and same-fd mtime", async () => {
+  const shared = await import("../jira/src/release/pinned.ts");
+  const file = join(root(), "read.txt"); writeFileSync(file, "hello");
+  utimesSync(file, 1234, 1234);
+  expect(shared.pinnedSha(file)).toEqual({ bytes: Buffer.from("hello"), sha256: "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824" });
+  expect(shared.pinnedSha(file + ".missing")).toEqual({ missing: true });
+  expect(shared.pinnedSha(dirname(file))).toEqual({ unreadable: true });
+  expect(typeof shared.pinnedRead).toBe("function");
+  const pinned = shared.pinnedRead(file);
+  expect(pinned).toMatchObject({ mtime_ms: 1234000, bytes: Buffer.from("hello") });
+  // Metadata must come from the fd that supplied the bytes, even when its path is rebound.
+  const fs = await import("node:fs");
+  const original = fs.readSync; let rebound = false;
+  const spy = spyOn(fs, "readSync").mockImplementation((...args: any[]) => {
+    if (!rebound) { rebound = true; renameSync(file, file + ".old"); writeFileSync(file, "replacement"); }
+    return (original as any)(...args);
+  });
+  try { expect(shared.pinnedRead(file + ".old")).toEqual({ missing: true });
+    expect(shared.pinnedRead(file)).toMatchObject({ mtime_ms: 1234000, bytes: Buffer.from("hello") });
+  } finally { spy.mockRestore(); }
+});
+
+test("shared bounded decision selector limits enumeration and ignores md", async () => {
+  const shared = await import("../jira/src/release/pinned.ts");
+  expect(typeof shared.boundedDirectoryNames).toBe("function");
+  expect(typeof shared.selectDecisionNames).toBe("function");
+  const dir = root();
+  for (const n of ["verbatim-decision-12-z.txt", "verbatim-decision-12-a.md", "verbatim-decision-123-a.txt", "verbatim-decision-12-a.txt"]) writeFileSync(join(dir, n), "x");
+  expect(shared.selectDecisionNames(shared.boundedDirectoryNames(dir), "12")).toEqual(["verbatim-decision-12-a.txt", "verbatim-decision-12-z.txt"]);
+  expect(shared.boundedDirectoryNames(dir + ".missing")).toEqual([]);
+  for (let i = 4; i <= 4096; i++) writeFileSync(join(dir, `entry-${i}`), "x");
+  expect(() => shared.boundedDirectoryNames(dir)).toThrow("directory entry limit");
+  expect(() => shared.selectDecisionNames([], "12x")).toThrow("'12x' is not a decision number");
+});
+
+test("shared quoteRule selector preserves legacy refusals", async () => {
+  const t = await roundTree(["- **C1** (minor; operator-critical: spend-grant) a spend"], []);
+  const check = async (decision: string, quote = SPEND) => {
+    const res = await verb(true, "round-critical", CAP_KEY, "--finding", "C1", "--decision", decision, "--quote", quote, "--no-round", "--specs", t.specs);
+    if (res.code !== 0) throw new Error(res.err);
+  };
+  await expect(check("bad")).rejects.toThrow("'bad' is not a decision number");
+  mkdirSync(join(t.specs, "decisions"), { recursive: true });
+  writeFileSync(join(t.specs, "decisions", "verbatim-decision-901-ignored.md"), `${CAP_KEY} ${SPEND}`);
+  await expect(check("901")).rejects.toThrow("0 files match specs/decisions/verbatim-decision-901-*.txt, expected exactly one");
+  const file = decide(t.specs, 901, `${CAP_KEY} ${SPEND}`);
+  const second = join(t.specs, "decisions", "verbatim-decision-901-second.txt"); writeFileSync(second, "x");
+  await expect(check("901")).rejects.toThrow("2 files match specs/decisions/verbatim-decision-901-*.txt, expected exactly one");
+  unlinkSync(second);
+  writeFileSync(file, SPEND);
+  await expect(check("901")).rejects.toThrow(`decision 901 does not name ${CAP_KEY}`);
+  writeFileSync(file, `${CAP_KEY} ${SPEND}`);
+  await expect(check("901", "short")).rejects.toThrow("does not hold the quote");
+  utimesSync(file, 1, 1);
+  await expect(check("901")).rejects.toThrow(`decision 901 is not newer than the latest round of ${CAP_KEY}`);
+  decide(t.specs, 901, `${CAP_KEY} ${SPEND}`);
+  await check("901");
+  await expect(check("901")).rejects.toThrow(`decision 901 was already used for ${CAP_KEY}`);
+});
+
+const fixtureSpecText = "---\ntickets: HIMMEL-10205\n---\n# HIMMEL-10205 fixture\n\nEstimate record: estimate.json\n\n## Alternatives considered\n\n- None better.\n\n## Definition of done\n\n- Fixture verifies.\n\n## Invariants\n\nnone\n";
+const fixturePlanText = "# HIMMEL-10205 plan\n\n- Task 1: build the fixture.\n";
+const fixtureRequest = (scratchRoot: string) => ({
+  scratchRoot, key: "HIMMEL-10205", specText: fixtureSpecText, planText: fixturePlanText,
+  returns: [1, 2, 3].flatMap(round => (["spec", "plan"] as const).map(kind => ({
+    kind, round, text: `- **F1** (${kind === "spec" ? "minor" : "medium"}) residual from ${kind} round ${round}\n${kind.toUpperCase()} FINDINGS 1\n`,
+    reads: ["spec", "plan", { path: "specs/designs/estimate.json", text: '{"median_seq":1,"sigma":0.1,"dod":{"passed":true}}\n' }],
+  }))),
+});
+
+test("shared real round fixture seeds before returns and creates accepted seals and snapshots", async () => {
+  const helper = await import("./capped-fold.fixture.ts").catch(() => null);
+  expect(typeof helper?.buildRoundFixture).toBe("function");
+  const scratch = root(); const f = await helper!.buildRoundFixture(fixtureRequest(scratch));
+  for (const p of [f.specsRoot, f.spec, f.plan, f.ledgerPath, ...f.verdicts]) expect(p.startsWith(scratch + "/")).toBe(true);
+  const { ledgerVerify, roundState } = await import("./chief-route");
+  expect(await roundState(f.specsRoot, "HIMMEL-10205")).toMatchObject({ epoch: 0, spec: 3, plan: 3, next: "none", invalid: [] });
+  for (const kind of ["spec", "plan"]) {
+    const verdict = f.verdicts.find(p => p.endsWith(`critic-${kind}-r3.md`))!;
+    expect(await ledgerVerify(verdict, { spec: f.spec })).toEqual({ key: "HIMMEL-10205", kind, round: 3, mode: "full" });
+    const text = readFileSync(verdict, "utf8");
+    expect(text).toContain(`Reviewed: spec ${sha(fixtureSpecText)}`);
+    expect(text.match(/^CONTENT-SHA256 /gm)).toHaveLength(3);
+  }
+  const ledger = readFileSync(f.ledgerPath, "utf8").trim().split("\n").map(l => JSON.parse(l));
+  expect(ledger.filter(r => r.row === "round")).toHaveLength(6);
+  expect(ledger.filter(r => r.row === "seal")).toHaveLength(12);
+  expect(ledger.some(r => r.row === "seed")).toBe(false);
+  for (const row of ledger) expect(sha(readFileSync(join(dirname(f.ledgerPath), "HIMMEL-10205", row.read_sha), "utf8"))).toBe(row.read_sha);
+  expect(JSON.parse(readFileSync(join(dirname(f.ledgerPath), "manifest.json"), "utf8")).keys).toEqual({});
+  await expect(helper!.buildRoundFixture(fixtureRequest(scratch))).rejects.toThrow("already holds");
+  for (const bad of ["relative", join(scratch, "missing")]) await expect(helper!.buildRoundFixture(fixtureRequest(bad))).rejects.toThrow("scratch root");
+});
+
+test("shared capped proof validator rejects finite schema mutations and preserves scoped identities", async () => {
+  const shared = await import("../jira/src/release/pinned.ts");
+  expect(typeof shared.validateCappedFoldProof).toBe("function");
+  const { buildRoundFixture } = await import("./capped-fold.fixture.ts");
+  const f = await buildRoundFixture(fixtureRequest(root()));
+  const { returnSha } = await import("./chief-route");
+  const filePin = (path: string) => ({ path, sha256: sha(readFileSync(path, "utf8")) });
+  // Schema-only candidate assembled from real paths and bytes; never signer authority.
+  const returns = (["spec", "plan"] as const).map(kind => {
+    const path = f.verdicts.find(p => p.endsWith(`critic-${kind}-r3.md`))!;
+    return { ...filePin(path), kind, round: 3, return_sha: returnSha(readFileSync(path, "utf8")), residuals: 1 };
+  });
+  const decision = join(f.specsRoot, "decisions", "verbatim-decision-901-fixture.txt");
+  mkdirSync(dirname(decision)); writeFileSync(decision, "fixture decision");
+  const good = {
+    schema: 1, reader_version: 1, mode: "capped-carry", key: "HIMMEL-10205", epoch: 0,
+    spec: filePin(f.spec), plan: filePin(f.plan), returns,
+    pins: [
+      { ...filePin(f.ledgerPath), role: "ledger" },
+      { ...filePin(join(dirname(f.ledgerPath), "manifest.json")), role: "manifest" },
+      ...returns.map(r => ({ path: r.path, sha256: r.sha256, role: "return" })),
+      ...[f.spec, f.plan].map(path => ({ ...filePin(path), role: "artifact" })),
+      { ...filePin(join(dirname(f.ledgerPath), "HIMMEL-10205", sha(fixtureSpecText))), role: "snapshot" },
+      { ...filePin(decision), role: "decision", mtime_ms: statSync(decision).mtimeMs },
+      { role: "decision-selection", directory: dirname(decision), decision: "901", names: [basename(decision)] },
+    ],
+    carried: returns.map(r => ({ key: "HIMMEL-10205", epoch: 0, kind: r.kind, round: r.round, return_path: r.path, return_sha: r.return_sha, finding_id: "F1", severity: r.kind === "spec" ? "minor" : "medium", status: "open-carried" })),
+  };
+  expect(shared.validateCappedFoldProof(good)).toEqual(good);
+  const separateDecision = structuredClone(good);
+  const separateName = "verbatim-decision-902-fixture.txt";
+  separateDecision.pins.push({ ...separateDecision.pins[7], path: join(dirname(decision), separateName) });
+  separateDecision.pins.push({ ...separateDecision.pins[8], decision: "902", names: [separateName] });
+  expect(shared.validateCappedFoldProof(separateDecision)).toEqual(separateDecision);
+  const reject = (mutate: (p: any) => void) => {
+    const bad = structuredClone(good); mutate(bad);
+    expect(() => shared.validateCappedFoldProof(bad)).toThrow("invalid capped-fold proof");
+  };
+  for (const field of Object.keys(good)) reject(p => { delete p[field]; });
+  for (const field of Object.keys(good.returns[0])) reject(p => { delete p.returns[0][field]; });
+  for (const field of Object.keys(good.carried[0])) reject(p => { delete p.carried[0][field]; });
+  for (const index of [0, 7, 8]) for (const field of Object.keys(good.pins[index])) reject(p => { delete p.pins[index][field]; });
+  for (const mutate of [
+    (p: any) => { p.extra = true; }, (p: any) => { p.spec.extra = true; },
+    (p: any) => { p.schema = 2; }, (p: any) => { p.reader_version = 2; }, (p: any) => { p.mode = "clean"; },
+    (p: any) => { p.returns.reverse(); }, (p: any) => { p.returns[0].kind = "plan"; },
+    (p: any) => { p.returns[0].sha256 = "A".repeat(64); }, (p: any) => { p.returns[0].round = 0; },
+    (p: any) => { p.returns[0].residuals = -1; }, (p: any) => { p.carried[0].round = 2; },
+    (p: any) => { p.carried[0].key = "HIMMEL-1"; }, (p: any) => { p.carried[0].epoch = 1; },
+    (p: any) => { p.carried[0].return_sha = "0".repeat(64); }, (p: any) => { p.carried[0].return_path = f.plan; },
+    (p: any) => { p.carried[0].severity = "major"; }, (p: any) => { p.carried[0].status = "closed"; },
+    (p: any) => { p.carried.push(p.carried[0]); }, (p: any) => { p.carried.pop(); },
+    (p: any) => { p.pins[0].role = "unknown"; }, (p: any) => { p.pins[0].mtime_ms = 1; },
+    (p: any) => { p.pins[7].mtime_ms = Infinity; }, (p: any) => { p.pins[8].decision = "901x"; },
+    (p: any) => { p.pins[8].names = ["verbatim-decision-901-x.md"]; },
+    (p: any) => { p.pins[8].names = ["verbatim-decision-901-z.txt", "verbatim-decision-901-a.txt"]; },
+    (p: any) => { p.pins.pop(); }, (p: any) => { p.pins.splice(7, 1); },
+    (p: any) => { p.pins.push(p.pins[8]); }, (p: any) => { p.pins.push(p.pins[0]); },
+    (p: any) => {
+      const name = "verbatim-decision-901-second.txt";
+      p.pins.push({ ...p.pins[7], path: join(dirname(decision), name) });
+      p.pins.push({ ...p.pins[8], names: [name] });
+    },
+    (p: any) => { p.pins[0].role = "artifact"; },
+    (p: any) => { p.pins.push({ ...p.pins[0], role: "snapshot" }); },
+    (p: any) => { p.returns[0].extra = true; }, (p: any) => { p.carried[0].extra = true; },
+    (p: any) => { p.pins[0].extra = true; }, (p: any) => { p.pins[8].extra = true; },
+  ]) reject(mutate);
+  for (const epoch of [-1, 1.1, Infinity, NaN, Number.MAX_SAFE_INTEGER + 1]) reject(p => { p.epoch = epoch; });
+  for (const path of ["relative", "/tmp/../tmp/file", "/tmp//file", "/tmp/file/", "/tmp/\0file"]) reject(p => { p.spec.path = path; });
+  expect(shared.PINNED_READ_VERSION).toBe(1);
+});
+
+test("shared fixture refuses escaping ancestors before creating directories", async () => {
+  const { buildRoundFixture } = await import("./capped-fold.fixture.ts");
+  const scratch = root(); const outside = root();
+  symlinkSync(outside, join(scratch, "specs"));
+  await expect(buildRoundFixture(fixtureRequest(scratch))).rejects.toThrow("inside the scratch root");
+  expect(existsSync(join(outside, "designs"))).toBe(false);
+  expect(existsSync(join(outside, "plans"))).toBe(false);
+});

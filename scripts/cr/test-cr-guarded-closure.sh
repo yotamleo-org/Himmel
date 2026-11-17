@@ -264,6 +264,8 @@ printf 'const { f } = await import("./dyn");\n' > "$fx/scripts/telegram/importer
 got="$(ROOT="$fx" edges scripts/lib/runner.sh | tr '\n' ' ')"
 check "$got" "scripts/telegram/r1.ts scripts/telegram/r2.ts scripts/telegram/r3.ts scripts/telegram/r4.ts scripts/telegram/r5.ts scripts/telegram/r6.ts " "edges() sees bun/tsx/deno/python/pwsh runners and a direct .ts call"
 check "$(ROOT="$fx" edges scripts/telegram/importer.ts)" "scripts/telegram/dyn.ts" "edges() sees a dynamic import()"
+check "$(edges scripts/telegram/chief-route.ts | grep -cxF scripts/jira/src/release/pinned.ts)" "1" "chief-route directly imports pinned.ts once"
+check "$(edges scripts/jira/src/release/pinned.ts)" "" "pinned.ts has no project dependencies"
 # A reached file edges() cannot read yields no edges, which would truncate the
 # closure silently - unreadable() must name it.
 : > "$fx/scripts/lib/locked.sh"; chmod 000 "$fx/scripts/lib/locked.sh"
@@ -325,7 +327,8 @@ printf '%s\n' "$reached" | grep -v '^scripts/cr/' | sed 's/^/  /'
 # chief-route.ts and poller.ts are reached only through merge-block-alert.sh's
 # bare `bun` call and a dynamic import (second chief review of #1148).
 for known in scripts/check-ci.sh scripts/handover/resolve-active-item.sh scripts/lib/handover-path.sh scripts/lib/load-dotenv.sh scripts/guardrails/lib.sh \
-    scripts/telegram/chief-route.ts scripts/telegram/bus.ts scripts/telegram/chief-heartbeat-watch.ts scripts/telegram/poller.ts; do
+    scripts/telegram/chief-route.ts scripts/telegram/bus.ts scripts/telegram/chief-heartbeat-watch.ts scripts/telegram/poller.ts \
+    scripts/jira/src/release/pinned.ts; do
   check "$(printf '%s\n' "$reached" | grep -cxF "$known")" "1" "closure reaches $known"
 done
 
@@ -333,6 +336,12 @@ check "$(printf '%s\n' "$reached" | unreadable)" "" "every reached file was read
 
 escaped="$(printf '%s\n' "$reached" | outside "$cr_guarded")"
 check "$escaped" "" "every file reached on the no path lies inside cr_guarded"
+
+# Removing only the shared reader must expose it, even though its caller is guarded.
+without_pinned="$(printf '%s\n' "$cr_guarded" | tr ' ' '\n' | grep -vxF scripts/jira/src/release/pinned.ts)"
+red="$(printf '%s\n' "$reached" | outside "$without_pinned")"
+check "$(grep -cxF scripts/jira/src/release/pinned.ts <<< "$red")" "1" "RED pinned guard omission"
+if grep -qxF scripts/jira/src/release/pinned.ts <<< "$red"; then echo "RED pinned guard omission confirmed: scripts/jira/src/release/pinned.ts is unguarded"; fi
 
 # RED control: the set without scripts/lib/load-dotenv.sh must fail this suite's own assertion,
 # naming a scripts/lib/ file - proving the check depends on the set.

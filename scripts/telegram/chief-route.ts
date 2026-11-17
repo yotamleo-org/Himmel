@@ -1,3 +1,4 @@
+import { selectDecisionNames } from "../jira/src/release/pinned.ts";
 import { join, dirname, basename, resolve, isAbsolute } from "node:path";
 import { randomUUID, createHash } from "node:crypto";
 import { hostname, homedir } from "node:os";
@@ -675,8 +676,14 @@ function wellFormed(r: Record<string, unknown>): boolean {
   return isText(r.row);
 }
 
-async function readLedger(specs: string, key: string): Promise<LedgerRow[] | null> {
-  const text = await readFile(join(ledgerDir(specs), `${key}.jsonl`), "utf8").catch((e: NodeJS.ErrnoException) => {
+type RoundReader = {
+  read(path: string): Promise<{ bytes: Buffer; mtime_ms: number }>;
+  names(directory: string): Promise<string[]>;
+};
+const readBytes = (path: string, reader?: RoundReader): Promise<Buffer> => reader ? reader.read(path).then(r => r.bytes) : readFile(path);
+
+async function readLedger(specs: string, key: string, reader?: RoundReader): Promise<LedgerRow[] | null> {
+  const text = await readBytes(join(ledgerDir(specs), `${key}.jsonl`), reader).then(b => b.toString("utf8")).catch((e: NodeJS.ErrnoException) => {
     if (e.code === "ENOENT") return null;
     throw new Error(`${key} ledger cannot be read (${e.message}); restore it from the state repo history`);
   });
@@ -691,8 +698,8 @@ async function readLedger(specs: string, key: string): Promise<LedgerRow[] | nul
 }
 
 const manifestFile = (specs: string) => join(ledgerDir(specs), "manifest.json");
-async function readManifest(specs: string): Promise<{ keys: Record<string, unknown> }> {
-  const text = await readFile(manifestFile(specs), "utf8").catch((e: NodeJS.ErrnoException) => {
+async function readManifest(specs: string, reader?: RoundReader): Promise<{ keys: Record<string, unknown> }> {
+  const text = await readBytes(manifestFile(specs), reader).then(b => b.toString("utf8")).catch((e: NodeJS.ErrnoException) => {
     if (e.code === "ENOENT") throw new Error(`no round manifest under ${specs}; run round-seed --all once`);
     throw new Error(`${manifestFile(specs)}: cannot read the round manifest (${e.message}); restore it from the state repo history`);
   });
@@ -702,16 +709,16 @@ async function readManifest(specs: string): Promise<{ keys: Record<string, unkno
   return m as { keys: Record<string, unknown> };
 }
 
-async function loadLedger(specs: string, key: string): Promise<Rows> {
-  const manifest = await readManifest(specs);
-  const rows = await readLedger(specs, key) ?? [];
+async function loadLedger(specs: string, key: string, reader?: RoundReader): Promise<Rows> {
+  const manifest = await readManifest(specs, reader);
+  const rows = await readLedger(specs, key, reader) ?? [];
   const snapshots = await stat(join(ledgerDir(specs), key)).then(() => true, (e: NodeJS.ErrnoException) => {
     if (e.code === "ENOENT") return false;
     throw new Error(`${key}: cannot read its snapshot folder (${e.message}); restore it from the state repo history`);
   });
   const seeded = rows.some(r => r.row === "seed");
   if ((Object.hasOwn(manifest.keys, key) && !seeded) || (snapshots && !seeded && !rows.some(r => r.row === "round"))) throw new Error(`${key} is in the round manifest but has no ledger; restore it from the state repo history`);
-  return Object.assign(rows, { checked: await checkRecords(specs, key, rows) });
+  return Object.assign(rows, { checked: await checkRecords(specs, key, rows, reader) });
 }
 
 // One writer at a time per ticket: flock(2) on a persistent lock file beside the ledger, released when the file closes.
@@ -808,19 +815,22 @@ function findingOf(rows: Rows, id: string): { f: Finding; return_sha: string; ve
 }
 
 const normText = (s: string) => s.replace(/\s+/g, " ").trim();
-async function quoteRule(specs: string, key: string, d: string, quote: string, used: boolean, sinceTs: number): Promise<{ error: string } | { path: string; sha: string }> {
-  if (!/^[0-9]+$/.test(d)) return { error: `'${d}' is not a decision number` };
-  const names = (await listDir(join(specs, "decisions"))).filter(n => new RegExp(`^verbatim-decision-${d}-.*\\.txt$`).test(n));
+async function quoteRule(specs: string, key: string, d: string, quote: string, used: boolean, sinceTs: number, reader?: RoundReader): Promise<{ error: string } | { path: string; sha: string }> {
+  try { selectDecisionNames([], d); } catch (e) { return { error: (e as Error).message }; }
+  const directory = join(specs, "decisions");
+  const names = selectDecisionNames(await (reader ? reader.names(directory) : listDir(directory)), d);
   if (names.length !== 1) return { error: `${names.length} files match specs/decisions/verbatim-decision-${d}-*.txt, expected exactly one` };
-  const path = join(specs, "decisions", names[0]); const bytes = await readFile(path); const text = normText(bytes.toString("utf8"));
+  const path = join(directory, names[0]);
+  const pinned = reader ? await reader.read(path) : undefined;
+  const bytes = pinned?.bytes ?? await readFile(path); const text = normText(bytes.toString("utf8"));
   if (!new RegExp(`(?<![A-Za-z0-9])${key}(?![A-Za-z0-9])`).test(text)) return { error: `decision ${d} does not name ${key}` };
   if (used) return { error: `decision ${d} was already used for ${key}` };
   if (normText(quote).length < 20 || !text.includes(normText(quote))) return { error: `decision ${d} does not hold the quote (20 characters or more, whitespace-normalised)` };
-  if ((await stat(path)).mtimeMs <= sinceTs) return { error: `decision ${d} is not newer than the latest round of ${key}` };
+  if ((pinned?.mtime_ms ?? (await stat(path)).mtimeMs) <= sinceTs) return { error: `decision ${d} is not newer than the latest round of ${key}` };
   return { path, sha: sha256(bytes) };
 }
 
-async function checkRecords(specs: string, key: string, rows: LedgerRow[]): Promise<Checked> {
+async function checkRecords(specs: string, key: string, rows: LedgerRow[], reader?: RoundReader): Promise<Checked> {
   let epoch = 0; let roundTs = 0; let sawReset = false; let sawOverride = false;
   const blocking: Record<Kind, string[]> = { spec: [], plan: [] }; const maxRound: Record<Kind, number> = { spec: 0, plan: 0 }; const classOf = new Map<string, string>();
   const usedCritical = new Set<string>(); const usedReset = new Set<string>(); const ruled = new Set<string>();
@@ -831,12 +841,12 @@ async function checkRecords(specs: string, key: string, rows: LedgerRow[]): Prom
     if (r.row === "seed") for (const k of KINDS) take(k, Number(r[k]) || 0, (r.latest?.[k] as Returned[] | undefined) ?? []);
     else if (r.row === "round" && (Number(r.epoch) || 0) === epoch) { roundTs = Number(r.ts) || 0; take(r.critic as Kind, Number(r.round) || 0, [r]); }
     else if (r.row === "reset") {
-      const d = String(r.decision); const q = sawReset ? null : await quoteRule(specs, key, d, String(r.quote), usedReset.has(d), roundTs);
+      const d = String(r.decision); const q = sawReset ? null : await quoteRule(specs, key, d, String(r.quote), usedReset.has(d), roundTs, reader);
       sawReset = true; usedReset.add(d);
       if (q && !("error" in q) && q.path === r.decision_path && q.sha === r.decision_sha) { epoch++; blocking.spec = []; blocking.plan = []; maxRound.spec = 0; maxRound.plan = 0; classOf.clear(); ruled.clear(); }
       else invalid.push(label(r));
     } else if (r.row === "critical") {
-      const d = String(r.decision); const q = await quoteRule(specs, key, d, String(r.quote), usedCritical.has(d), roundTs); usedCritical.add(d);
+      const d = String(r.decision); const q = await quoteRule(specs, key, d, String(r.quote), usedCritical.has(d), roundTs, reader); usedCritical.add(d);
       if (!("error" in q) && q.path === r.decision_path && q.sha === r.decision_sha && classOf.get(findingKey(r.id, r.return_sha)) === r.class && !ruled.has(findingKey(r.id, r.return_sha)) && (r.epoch === undefined || Number(r.epoch) === epoch) && [0, Math.max(maxRound.spec, maxRound.plan) + 1].includes(Number(r.opens))) { criticals.push({ row: r, epoch }); ruled.add(findingKey(r.id, r.return_sha)); }
       else invalid.push(label(r));
     } else if (r.row === "override") {
