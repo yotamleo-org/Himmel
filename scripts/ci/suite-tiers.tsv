@@ -316,6 +316,7 @@ scripts/eval/qmd-quality/test-qmd-quality-cadence.sh	local	behaviour suite, 0 ca
 scripts/eval/qmd-quality/test-qmd-quality.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/retrieval-eval/test-answer-ab.sh	local	behaviour suite, new eval with no catches yet
 scripts/eval/retrieval-eval/test-retrieval-eval.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/eval/review-panel/test-review-panel-b.sh	pr	trust-path
 scripts/eval/review-panel/test-review-panel.sh	pr	trust-path
 scripts/eval/sandbox-poc/test-probe.sh	pr	guard
 scripts/eval/scrape-bench/test-scrape-bench.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -442,6 +443,11 @@ scripts/handover/chief-kit/test-orphan-pr-check.sh	local	behaviour suite for the
 scripts/handover/chief-kit/test-parked-on-prompt.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-pr-stall.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-priority-prune.sh	local	behaviour suite, new in HIMMEL-6602
+scripts/handover/chief-kit/test-ready-check-b.sh	pr	trust-path
+scripts/handover/chief-kit/test-ready-check-c.sh	pr	trust-path
+scripts/handover/chief-kit/test-ready-check-d.sh	pr	trust-path
+scripts/handover/chief-kit/test-ready-check-e.sh	pr	trust-path
+scripts/handover/chief-kit/test-ready-check-f.sh	pr	trust-path
 scripts/handover/chief-kit/test-ready-check.sh	pr	trust-path
 scripts/handover/chief-kit/test-ready-go.sh	pr	trust-path
 scripts/handover/chief-kit/test-relay-batch.sh	local	behaviour suite, 0 catches in the 400-PR audit window

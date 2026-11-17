@@ -3,63 +3,10 @@
 # recall eval: fixture/key integrity, the seed-leak lint, the
 # finding parser + matcher on canned critic outputs, the eval-runs row, and
 # run.sh driven by a stub panel. No model call, no codex, no live ledger.
+# shellcheck disable=SC2034,SC2153,SC2154  # state and helpers are shared through the sourced lib
 set -u
-export HIMMEL_BILLED_OK=1   # stub panel only; run.sh refuses a bare run
-
-HERE="$(cd "$(dirname "$0")" && pwd)"
-SCORE="$HERE/score.py"
-RUN="$HERE/run.sh"
-FIX="$HERE/fixtures"
-KEY="$HERE/key/seeds.json"
-TMP="$(mktemp -d "${TMPDIR:-/tmp}/review-panel-test.XXXXXX")" || { echo "test-review-panel: mktemp -d failed" >&2; exit 1; }
-trap 'rm -rf "$TMP"' EXIT
-# Never the live ledger, whatever a case forgets to pass.
-export HIMMEL_EVAL_RUNS_LEDGER="$TMP/never.jsonl"
-
-PASS=0; FAIL=0
-# The integrity, split and sweep rows below drive the 24 synthetic case-* cases through a temp copy of the
-# fixtures and the key; the shipped real-* corpus (RL3) has its own rows at the end, since each real case's lint
-# applies its diff to its base commit.
-FIX_ALL="$FIX"; KEY_ALL="$KEY"
-pass() { PASS=$((PASS + 1)); echo "PASS $1"; }
-fail() { FAIL=$((FAIL + 1)); echo "FAIL $1"; }
-eq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1: expected '$3', got '$2'"; fi; }
-has() { case "$2" in *"$3"*) pass "$1";; *) fail "$1: '$3' not in '$2'";; esac; }
-
-command -v python3 >/dev/null 2>&1 || { echo "SKIP test-review-panel: python3 not on PATH"; exit 0; }
-mkdir -p "$TMP/syn/fixtures"; cp "$FIX_ALL"/case-*.patch "$TMP/syn/fixtures/"
-python3 -c 'import json,sys; k=json.load(open(sys.argv[1])); k["cases"]={c: v for c, v in k["cases"].items() if c.startswith("case-")}; json.dump(k, open(sys.argv[2], "w"))' "$KEY_ALL" "$TMP/syn/seeds.json"
-FIX="$TMP/syn/fixtures"; KEY="$TMP/syn/seeds.json"
-
-# metric <scores.json> <name> - one metric from score.py --json output.
-metric() { python3 -c 'import json,sys; v=json.load(open(sys.argv[1]))["metrics"].get(sys.argv[2]); print("null" if v is None else (round(v,4) if isinstance(v,float) else v))' "$1" "$2"; }
-jget() { python3 -c 'import json,sys
-v=json.load(open(sys.argv[1]))
-for k in sys.argv[2].split("/"): v=v.get(k) if isinstance(v,dict) else None
-print(json.dumps(v) if isinstance(v,(dict,list,bool)) or v is None else v)' "$1" "$2"; }
-# case_of <pair> <kind> - the opaque case id the key gives that twin.
-case_of() { python3 -c 'import json,sys; k=json.load(open(sys.argv[1]))["cases"]; print([c for c,v in sorted(k.items()) if v["pair"]==sys.argv[2] and v["kind"]==sys.argv[3]][0])' "$KEY" "$1" "$2"; }
-seed_line() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["cases"][sys.argv[2]]["defects"][0]["line"])' "$KEY" "$1"; }
-seed_file() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["cases"][sys.argv[2]]["defects"][0]["file"])' "$KEY" "$1"; }
-
-# review <out-file> <critic> <severity:file:line:text>... - a canned merged panel block.
-review() {
-  local out="$1" critic="$2"; shift 2
-  python3 - "$out" "$critic" "$@" <<'PY'
-import sys
-out, critic, items = sys.argv[1], sys.argv[2], sys.argv[3:]
-secs = {"crit": [], "imp": [], "sug": []}
-for n, it in enumerate(items, 1):
-    sev, f, line, text = it.split(":", 3)
-    secs[sev].append("- [%s-%d]: %s [%s:%s]" % (critic, n, text, f, line))
-with open(out, "w") as fh:
-    fh.write("# Critic Panel Review (1/1 critics responded)\n\n")
-    for head, k in (("Critical Issues", "crit"), ("Important Issues", "imp"), ("Suggestions", "sug")):
-        fh.write("## %s (%d found)\n" % (head, len(secs[k])))
-        fh.write("".join(l + "\n" for l in secs[k]))
-        fh.write("\n")
-PY
-}
+# shellcheck source=test_review_panel_lib.sh
+. "$(cd "$(dirname "$0")" && pwd)/test_review_panel_lib.sh"
 
 # --- fixture + key integrity ------------------------------------------------------
 eq "fixtures: 24 frozen diffs" "$(find "$FIX" -name 'case-*.patch' | wc -l | tr -d ' ')" "24"
@@ -503,7 +450,7 @@ EOF
 mkdir -p "$TMP/stublog"
 STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
   CRITIC_FIRST_PASS="$TMP/no-such-first-pass" CRITIC_INVOKE="$TMP/no-such-invoke" CRITIC_TIMEOUT_SECS=99 \
-  bash "$RUN" --out "$TMP/run1" --ledger "$TMP/run-ledger.jsonl" --critics codex --tiers paid --model "$CODEX_MODEL" >"$TMP/run1.txt" 2>&1; rc=$?
+  bash "$RUN" --out "$TMP/run1" --fixtures "$FIX" --key "$KEY" --ledger "$TMP/run-ledger.jsonl" --critics codex --tiers paid --model "$CODEX_MODEL" >"$TMP/run1.txt" 2>&1; rc=$?
 eq "inherited_invoke_seams_removed: the panel never sees an inherited first-pass or invoke seam" "$(cat "$TMP/stublog/seams" 2>/dev/null)" "unset|unset"
 mget() { python3 -c 'import json,sys
 v=json.load(open(sys.argv[1]))
@@ -528,13 +475,13 @@ eq "run: the roster row is the swept tree's critics.json row" "$(codexrow "$cj")
 # A sweep that would reach a claude-api critic with no opt-in refuses before any case.
 : > "$TMP/stublog/tiers"
 STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
-  bash "$RUN" --out "$TMP/run-nopt" --no-ledger >"$TMP/run-nopt.txt" 2>&1; rc=$?
+  bash "$RUN" --out "$TMP/run-nopt" --fixtures "$FIX" --key "$KEY" --no-ledger >"$TMP/run-nopt.txt" 2>&1; rc=$?
 eq "run: a default sweep (claude-api in the tier) refuses" "$rc" "2"
 has "run: the refusal names the claude critic and the flag" "$(cat "$TMP/run-nopt.txt")" "--allow-claude-api"
 eq "run: no panel call on a refused claude sweep" "$(cat "$TMP/stublog/tiers")" ""
 # Control: with the opt-in both critics run.
 STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
-  bash "$RUN" --out "$TMP/run-opt" --no-ledger --allow-claude-api --only case-01 >/dev/null 2>&1; rc=$?
+  bash "$RUN" --out "$TMP/run-opt" --fixtures "$FIX" --key "$KEY" --no-ledger --allow-claude-api --only case-01 >/dev/null 2>&1; rc=$?
 eq "run: --allow-claude-api lets the sweep run" "$rc" "0"
 eq "run: --allow-claude-api hands the panel codex and claude" "$(slugs "$TMP/run-opt/critics.run.json")" "codex,claude"
 eq "run: one ledger row" "$(grep -c . "$TMP/run-ledger.jsonl" 2>/dev/null)" "1"
@@ -545,7 +492,7 @@ eq "run: an empty review scores recall 0" "$(python3 -c 'import json,sys; print(
 eq "run: a sweep through a stub panel is stamped unclean" "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["clean"])' "$TMP/run1/swept.json" 2>&1)" "False"
 : > "$TMP/stublog/tiers"
 STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
-  bash "$RUN" --out "$TMP/run-badmodel" --no-ledger --critics codex --model gpt-6-astra >/dev/null 2>&1; rc=$?
+  bash "$RUN" --out "$TMP/run-badmodel" --fixtures "$FIX" --key "$KEY" --no-ledger --critics codex --model gpt-6-astra >/dev/null 2>&1; rc=$?
 eq "model_label_conflict: run.sh refuses a --model the roster does not run, before any panel call" "$rc:$(cat "$TMP/stublog/tiers")" "2:"
 # run.sh refuses before any panel call when the lint fails.
 mkdir -p "$TMP/badfix"; cp "$FIX"/case-*.patch "$TMP/badfix/"; printf '+# injected defect\n' >> "$TMP/badfix/case-05.patch"
@@ -556,7 +503,7 @@ eq "run: a failing lint refuses the sweep" "$rc" "2"
 eq "run: no panel call on a refused sweep" "$(cat "$TMP/stublog/tiers")" ""
 : > "$TMP/stublog/tiers"
 STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$HERE/.scratch-probe" \
-  bash "$RUN" --out "$TMP/run3" --no-ledger --critics codex >/dev/null 2>&1; rc=$?
+  bash "$RUN" --out "$TMP/run3" --fixtures "$FIX" --key "$KEY" --no-ledger --critics codex >/dev/null 2>&1; rc=$?
 rmdir "$HERE/.scratch-probe" 2>/dev/null
 eq "run: a scratch inside a checkout refuses the sweep" "$rc" "2"
 eq "run: no panel call from a scratch inside a checkout" "$(cat "$TMP/stublog/tiers")" ""
@@ -564,7 +511,7 @@ timeout 10 bash "$RUN" --out >/dev/null 2>&1; rc=$?
 eq "run: an option missing its value is a usage error, not a hang" "$rc" "2"
 : > "$TMP/stublog/tiers"
 STUB_LOG_DIR="$TMP/stublog" REVIEW_PANEL_CMD="$TMP/stub-panel.sh" REVIEW_PANEL_SCRATCH="$TMP/scratch" \
-  bash "$RUN" --out "$TMP/run4" --no-ledger --critics codex --only "case-01,case-99" >/dev/null 2>&1; rc=$?
+  bash "$RUN" --out "$TMP/run4" --fixtures "$FIX" --key "$KEY" --no-ledger --critics codex --only "case-01,case-99" >/dev/null 2>&1; rc=$?
 eq "run: an --only id the key lacks refuses the sweep" "$rc" "2"
 eq "run: no panel call for a mixed valid/unknown --only" "$(cat "$TMP/stublog/tiers")" ""
 # run.sh --delta: a delta case reaches the panel as diff = the fix delta, context = the round-1 diff then the delta.
@@ -1079,36 +1026,6 @@ eq "harvest: the revert (with its fixer) and the NO-GO are both listed" \
 has "harvest: the escaped PR's base is its merge's first parent" "$out" "\"base\": \"$SB\""
 has "harvest: the NO-GO head" "$out" '"head": "abc12"'
 
-# --- the shipped real-escape corpus -----------------------------------------------------------
-# Thirty review escapes frozen from merged history, each with a clean twin and an intent file.
-n_seeded=$(find "$FIX_ALL" -name 'real-*.patch' ! -name 'real-*-clean.patch' | wc -l | tr -d ' ')
-n_clean=$(find "$FIX_ALL" -name 'real-*-clean.patch' | wc -l | tr -d ' ')
-eq "real corpus: 30 escapes and 30 clean twins" "$n_seeded:$n_clean" "30:30"
-eq "real corpus: every case carries an intent file" "$(find "$FIX_ALL" -name 'real-*.intent.md' | wc -l | tr -d ' ')" "60"
-# --min-real counts case files, so 30 pairs are 60 real-* cases.
-out=$(python3 "$SCORE" lint --fixtures "$FIX_ALL" --key "$KEY_ALL" --min-real 60 2>&1); rc=$?
-eq "real corpus: lint --min-real 60 (30 pairs) passes on the shipped set" "$rc" "0"
-[ "$rc" = 0 ] || echo "$out"
-eq "real corpus: classes of the escapes, at least 4 cross-file and 4 spec-miss" \
-  "$(python3 -c 'import collections, json, sys
-n = collections.Counter(d["class"] for k, v in json.load(open(sys.argv[1]))["cases"].items() if k.startswith("real-") for d in v["defects"])
-print(" ".join("%s:%d" % kv for kv in sorted(n.items())))' "$KEY_ALL")" \
-  "cross-file:4 fail-open:5 logic:8 quoting:2 spec-miss:4 test-cannot-fail:5 toctou:2"
-eq "real corpus: an open and a sealed half of 15 pairs each" \
-  "$(python3 -c 'import collections, json, sys
-n = collections.Counter(v["split"] for k, v in json.load(open(sys.argv[1]))["cases"].items() if k.startswith("real-") and v["kind"] == "seeded")
-print(" ".join("%s:%d" % kv for kv in sorted(n.items())))' "$KEY_ALL")" "open:15 sealed:15"
-eq "real corpus: each class has an open and a sealed pair" \
-  "$(python3 -c 'import collections, json, sys
-h = collections.defaultdict(set)
-for k, v in json.load(open(sys.argv[1]))["cases"].items():
-    if k.startswith("real-") and v["kind"] == "seeded":
-        h[v["defects"][0]["class"]].add(v["split"])
-print(" ".join("%s:%s" % (c, "+".join(sorted(s))) for c, s in sorted(h.items())))' "$KEY_ALL")" \
-  "cross-file:open+sealed fail-open:open+sealed logic:open+sealed quoting:open+sealed spec-miss:open+sealed test-cannot-fail:open+sealed toctou:open+sealed"
-# real-007 is the LT-j4386-1 escape: a bus reader and its writers changed in one diff.
-eq "real corpus: real-007 changes the bus reader and the chief writers together" \
-  "$(grep -cE '^diff --git a/(marketplace/plugins/himmel-bus/lib/identity\.mjs|scripts/handover/chief/chief\.sh) ' "$FIX_ALL/real-007.patch")" "2"
 # I9: a real case's scratch repo holds the base tree and the case diff only - no key, no results
 # row, no review ledger - for every shipped case.
 canary_all=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["canary"])' "$KEY_ALL")

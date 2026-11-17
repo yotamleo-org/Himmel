@@ -99,7 +99,7 @@ scripts/eval/mcp-tasks-probe/test-probe.sh	10
 scripts/eval/qmd-quality/test-qmd-burst-proof.sh	10
 scripts/eval/relay-cost/test-relay-cost.sh	18
 scripts/eval/retrieval-eval/test-retrieval-eval.sh	12
-scripts/eval/review-panel/test-review-panel.sh	1295
+scripts/eval/review-panel/test-review-panel.sh	377
 scripts/eval/routing/test-score.sh	24
 scripts/eval/steering-cull/test-steering-cull.sh	16
 scripts/eval/test-eval-runs.sh	12

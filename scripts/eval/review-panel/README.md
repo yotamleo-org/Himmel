@@ -18,7 +18,7 @@ not measured here.
 | `key/seeds.json` | the answer key: per case its twin `pair`, `kind` (seeded / clean), `split` (open / sealed) and `defects` (`id`, `class`, `file`, new-file `line`), plus a `canary` string |
 | `score.py` | `lint` (fixture/key integrity + leak lint) and `score` (matcher, metrics, eval-runs row) |
 | `run.sh` | one sweep: lint, panel per fixture, score, one ledger row |
-| `test-review-panel.sh` | the suite: canned critic outputs and a stub panel, no model call |
+| `test-review-panel.sh`, `test-review-panel-b.sh`, `test_review_panel_lib.sh` | the suite in two parts and their shared setup: canned critic outputs and a stub panel, no model call |
 | `cbs.txt`, `results.jsonl` | the critic behaviour set and the sweep rows the merge gate reads |
 | `harvest.py` | candidate review escapes from merged-PR history |
 
