@@ -943,9 +943,8 @@ test('the accounts CLI tags a funded fresh account room and absent C and D not c
   assert.deepEqual(rows[3], { account: 'D', configured: false, cap_usd: null, tag: 'not configured', key: 'none' });
 });
 
-// The 5th character from the end is one no output carries, so a tail longer than 4 characters shows.
-const tailKey = (l) => `sk-ant-dummy-account-${l.toLowerCase()}-key-0000^${l}k4w`;
-const writeKey = (f, l, key = tailKey(l)) => writeFileSync(join(f.dir, `key-${l}.env`), `ANTHROPIC_API_KEY=${key}\n`, { mode: 0o600 });
+const keyWithUnprintedFifthFromEnd = (l) => `sk-ant-dummy-account-${l.toLowerCase()}-key-0000^${l}k4w`;
+const writeKey = (f, l, key = keyWithUnprintedFifthFromEnd(l)) => writeFileSync(join(f.dir, `key-${l}.env`), `ANTHROPIC_API_KEY=${key}\n`, { mode: 0o600 });
 
 test('the accounts CLI shows each configured key as its last 4 characters, and key: none with no readable key', () => {
   const f = fixture();
@@ -959,7 +958,7 @@ test('the accounts CLI shows each configured key as its last 4 characters, and k
   assert.equal(rows.find((x) => x.account === 'B').key, 'none');
   for (const text of [r.stdout, r.stderr]) {
     assert.ok(!text.includes('^'), 'the 5th character from the end of a key leaked');
-    for (const l of ['A', 'C', 'D']) assert.ok(!text.includes(tailKey(l).slice(0, -4)), `the head of key ${l} leaked`);
+    for (const l of ['A', 'C', 'D']) assert.ok(!text.includes(keyWithUnprintedFifthFromEnd(l).slice(0, -4)), `the head of key ${l} leaked`);
   }
 });
 

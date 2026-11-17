@@ -1481,22 +1481,20 @@ test('account C refuses a wrong key id and a key file that is not mode 600', () 
   assert.equal(g.called(), false);
 });
 
-// account D behaves like A, B and C. Its fixture key's 5th character from the end appears in no output line,
-// so a key tail longer than 4 characters shows.
-const KEY_D = 'sk-ant-dummy-account-d-key-0000^Dk4w';
+const KEY_D_FIFTH_FROM_END_NEVER_PRINTED = 'sk-ant-dummy-account-d-key-0000^Dk4w';
 function withD(f, mode = 0o600) {
   f.config.accounts.D = { organization_id: 'org-d', cycle_id: 'cycle-d', cap_usd: '50.00', key_id: 'key-d', reset_at: '2099-01-01T00:00:00Z' };
   f.snapshot.accounts.D = { ...f.snapshot.accounts.A, organization_id: 'org-d', cycle_id: 'cycle-d', grant_usd: '50.00', remaining_usd: '50.00' };
   f.save();
   const env = keyFiles(f, mode);
-  writeFileSync(join(f.dir, 'key-D.env'), `ANTHROPIC_API_KEY=${KEY_D}\n`, { mode });
+  writeFileSync(join(f.dir, 'key-D.env'), `ANTHROPIC_API_KEY=${KEY_D_FIFTH_FROM_END_NEVER_PRINTED}\n`, { mode });
   chmodSync(join(f.dir, 'key-D.env'), mode);
   return env;
 }
 const noKeyLeak = (texts) => {
   for (const text of texts) {
     assert.ok(!text.includes('^'), 'the 5th character from the end of the key leaked');
-    assert.ok(!text.includes(KEY_D.slice(0, -4)), 'the head of the key leaked');
+    assert.ok(!text.includes(KEY_D_FIFTH_FROM_END_NEVER_PRINTED.slice(0, -4)), 'the head of the key leaked');
   }
 };
 

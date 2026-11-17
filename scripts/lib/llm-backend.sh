@@ -36,7 +36,6 @@ LLM_API_ACCOUNT_CLASS="[${LLM_API_ACCOUNTS// /}]"
 _llm_l="${LLM_API_ACCOUNTS% *}"
 # shellcheck disable=SC2034
 LLM_API_ACCOUNTS_TEXT="${_llm_l// /, } or ${LLM_API_ACCOUNTS##* }"
-# The per-account Admin key names, and the `env` arguments that unset them.
 LLM_API_ORG_KEYS=""
 LLM_API_ORG_KEY_UNSET=()
 for _llm_l in $LLM_API_ACCOUNTS; do

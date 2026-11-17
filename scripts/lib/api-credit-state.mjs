@@ -19,7 +19,6 @@ const MAX_AGE = 600;
 // A config account may override it with reset_at for the next cycle.
 export const GRANT_RESET_AT = { A: '2026-11-01T00:00:00Z', B: '2026-11-01T00:00:00Z' };
 // C and D rank like A and B; their config rows carry their own reset_at (no default date).
-// The JS owner of the account set; scripts/lib/llm-backend.sh LLM_API_ACCOUNTS is the bash one (pinned equal).
 export const ACCOUNTS = ['A', 'B', 'C', 'D'];
 export const ACCOUNTS_TEXT = `${ACCOUNTS.slice(0, -1).join(', ')} or ${ACCOUNTS[ACCOUNTS.length - 1]}`;
 // Auto routing prefers a snapshot younger than this: the ledger cannot see spend billed outside it.

@@ -42,7 +42,7 @@ set -u
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CLAUDE_BIN="${HIMMEL_API_CLAUDE_BIN:-claude}"
 # shellcheck source=scripts/lib/llm-backend.sh
-. "$REPO/scripts/lib/llm-backend.sh"
+. "$REPO/scripts/lib/llm-backend.sh" || { echo "claude-api: cannot load scripts/lib/llm-backend.sh -- refusing" >&2; exit 2; }
 
 # --- failure path state: set before any refusal can fire ---
 KEY="" STATE_DIR="" WORKER_SESSION_NAME="" OUT="" FB_OUT="" PROMPT_FILE="" NO_FB="" POLICY_REPO="" FAILING_OVER=0 STOPPED=0

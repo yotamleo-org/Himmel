@@ -47,7 +47,6 @@ for a in A B C D E auto a "" ; do
 done
 check "account set equals ACCOUNTS of api-credit-state.mjs" "$mjs_accounts" "$bash_accounts"
 
-# the derived forms callers use all follow the one list
 check "the account list" "A B C D" "${LLM_API_ACCOUNTS:-}"
 check "the account letter class" "[ABCD]" "${LLM_API_ACCOUNT_CLASS:-}"
 check "the readable account list" "A, B, C or D" "${LLM_API_ACCOUNTS_TEXT:-}"
