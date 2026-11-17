@@ -36,7 +36,13 @@
 #     whose text anywhere contains `.himmel` and a config name (`config.json`,
 #     `config.j*`, `config.*`, `conf*`) denies, whatever the headers,
 #     whitespace or encoding (a patch that merely mentions the path in its
-#     content denies too). ADDITIONALLY a `*** Add File:` / `Update File:` /
+#     content denies too), with ONE exception: a canonical Add-File-only
+#     patch (exact Begin/End markers, a lone string `command` field, plain
+#     `[A-Za-z0-9_./-]` target headers whose case-folded text names no guarded
+#     file, every body line `+`-prefixed, a string absolute `.cwd` whenever a
+#     target is relative) may mention a guarded name in its `+` BODY, since a
+#     body line cannot name a target. Any other shape keeps the whole-patch
+#     rule. ADDITIONALLY a `*** Add File:` / `Update File:` /
 #     `Delete File:` / `Move to:` header path (relative ones joined with the
 #     payload `.cwd`) that resolves to the config via `readlink -m` denies
 #     (a symlinked directory that never names `.himmel`).
@@ -222,11 +228,13 @@ case "$tool" in
         # Whole-patch rule (codex trims Unicode White_Space, so a
         # header-parse match was a second NO-GO; stop mirroring its parser):
         # deny when the patch text ANYWHERE carries `.himmel` and a config
-        # name, whatever the headers, whitespace or encoding. Over-denies a
-        # patch that only mentions the path in its content, on purpose.
+        # name, whatever the headers, whitespace or encoding. The deny is
+        # issued after the header checks below, and only the canonical
+        # Add-File-only grammar proved there can lift it.
         lp=$(printf '%s' "$patch$input" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+        guarded_mention=0
         if names_guarded_file "$patch$input" || names_guarded_file "$lp"; then
-            deny "apply_patch payload names a guarded config file (whole-patch rule; a patch that only mentions the path in its content is refused too)"
+            guarded_mention=1
         fi
         # Additional deny: a header path that RESOLVES to the config without
         # naming .himmel (a symlinked directory or alias).
@@ -271,7 +279,47 @@ case "$tool" in
         LC_ALL=C
         nhdr=0
         cand=()
+        # Canonical Add-File-only grammar (the one exception to the whole-patch
+        # rule): a single string `command` field with only LF control characters,
+        # a null or string `.cwd` without control characters, and no guarded name
+        # in any other payload field. The line scan below proves the rest in one
+        # forward pass, so an unknown form never earns the exception.
+        canonical_add=0 rel_seen=0 hdr_all="" add_state=begin
+        hdrs=()
+        if printf '%s' "$input" | jq -e '
+            (.tool_input | type == "object" and keys == ["command"]) and
+            (.tool_input.command | type == "string" and (explode | all(. >= 32 or . == 10))) and
+            (.cwd == null or (.cwd | type == "string" and (explode | all(. >= 32))))
+        ' >/dev/null 2>&1 && metadata=$(printf '%s' "$input" | jq -c 'del(.tool_input.command)' 2>/dev/null); then # swallow-ok: a failed metadata read leaves canonical_add=0, so guarded mentions deny
+            metadata_lc=$(printf '%s' "$metadata" | tr '[:upper:]' '[:lower:]')
+            if ! names_guarded_file "$metadata" && ! names_guarded_file "$metadata_lc"; then canonical_add=1; fi
+        fi
         while IFS= read -r ln; do
+            # Exact outer markers and exact Add File headers; a +-prefixed line is
+            # inert body, including any header-looking text after the +. The
+            # header path is kept for the case-folded name check after the scan.
+            case "$add_state" in
+                begin)
+                    if [ "$ln" = '*** Begin Patch' ]; then add_state=header; else canonical_add=0; fi ;;
+                header|body)
+                    case "$ln" in
+                        '*** Add File: '*)
+                            hdr_path="${ln#\*\*\* Add File: }"
+                            case "$hdr_path" in
+                                ''|*[!a-zA-Z0-9_./-]*) canonical_add=0 ;;
+                                /*) hdrs[${#hdrs[@]}]="$hdr_path" ;;
+                                *) rel_seen=1; hdrs[${#hdrs[@]}]="$pcwd/$hdr_path" ;;
+                            esac
+                            add_state=body ;;
+                        '*** End Patch')
+                            [ "$add_state" = body ] || canonical_add=0
+                            add_state=end ;;
+                        +*) [ "$add_state" = body ] || canonical_add=0 ;;
+                        *) canonical_add=0 ;;
+                    esac ;;
+                end) [ -z "$ln" ] || canonical_add=0 ;;
+                *) canonical_add=0 ;;
+            esac
             # A header, after trimming only OUTER whitespace, starts with
             # `*** <Verb>: `, so the untrimmed line contains it (sound pre-filter).
             case "$ln" in
@@ -331,6 +379,19 @@ EOF
             done <<EOF
 $resolved
 EOF
+        fi
+        if [ "$guarded_mention" = 1 ]; then
+            # The exception needs the whole grammar proved: closed by End Patch,
+            # a string absolute cwd for any relative target, and no header path
+            # (joined with the cwd) naming a guarded file in any letter case.
+            if [ "$canonical_add" = 1 ]; then
+                [ "$add_state" = end ] || canonical_add=0
+                if [ "$rel_seen" = 1 ]; then case "$pcwd" in /*) ;; *) canonical_add=0 ;; esac; fi
+                if [ "${#hdrs[@]}" -gt 0 ]; then hdr_all=$(printf '\n%s' "${hdrs[@]}"); fi
+                hdr_lc=$(printf '%s' "$hdr_all" | tr '[:upper:]' '[:lower:]')
+                if names_guarded_file "$hdr_all" || names_guarded_file "$hdr_lc"; then canonical_add=0; fi
+            fi
+            [ "$canonical_add" = 1 ] || deny "apply_patch payload names a guarded config file outside the canonical Add File grammar (whole-patch rule; a patch that only mentions the path in its content is refused unless it is a plain Add File report whose + body carries the mention)"
         fi
         exit 0
         ;;
