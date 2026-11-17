@@ -1735,7 +1735,6 @@ if [ -z "$_TIMEOUT_BIN" ]; then
     pass "L1 SKIP: no timeout binary to bound the read"
 else
     l_start=$SECONDS
-    # ~10 s on a quiet station, 30-31 s on a loaded CI shard: twice the loaded figure.
     l_bound=60
     [ "$(uname -s)" = Linux ] || l_bound=300
     out="$( cd "$CL" && "$_TIMEOUT_BIN" "$l_bound" bash "$IS" "$lrange" 2>/dev/null )"; rc=$?
