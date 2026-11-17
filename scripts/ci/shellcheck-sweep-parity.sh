@@ -62,6 +62,7 @@ case "$serial_rc" in 0) ;; *) echo "parity: the serial shellcheck run failed (rc
 grep -q 'shellcheck: ' "$T/serial.out" && { echo "parity: the serial shellcheck run reported an error:" >&2; grep 'shellcheck: ' "$T/serial.out" | head -5 >&2; exit 2; }
 t=$SECONDS
 SHELLCHECK_OPTS="$opts --format=gcc" bash "$root/scripts/ci/shellcheck-pr-range.sh" --sweep "$T/list" > "$T/sweep.out" 2> "$T/sweep.err"
+sweep_rc=$?
 echo "parity: sweep took $((SECONDS - t))s" >&2
 
 findings "$T/serial.out" > "$T/serial.f"
@@ -78,4 +79,9 @@ echo "parity: files=$(wc -l < "$T/list" | tr -d ' ') linted=$(wc -l < "$T/shell.
 grep -E 'parallel full sweep|ALL FILES' "$T/sweep.err" >&2
 # a sweep whose hook never ran would pass vacuously
 grep -Eq '^shellcheck\.\.\.+(Passed|Failed)' "$T/sweep.out" || { echo "parity: the sweep never ran the hook; head of its output:" >&2; head -5 "$T/sweep.out" >&2; exit 1; }
+if [ "$sweep" -eq 0 ] && [ "$sweep_rc" -ne 0 ]; then
+  echo "parity: the sweep exited $sweep_rc without reporting a finding; head of its output:" >&2
+  head -5 "$T/sweep.out" "$T/sweep.err" >&2
+  exit 1
+fi
 [ "$missing" -eq 0 ] && [ "$extra" -eq 0 ]

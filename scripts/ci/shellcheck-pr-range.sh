@@ -210,6 +210,13 @@ sweep_all() {
     [ -z "$(comm -13 "$sd/held.s" "$sd/root.s")" ] || { rm -rf "$sd"; serial_sweep; }
   done
   echo "shellcheck-pr-range: parallel full sweep over $# bins ($(cat "$sd"/bin.* | wc -l | tr -d ' ') shell inputs for $(wc -l < "$sd/files" | tr -d ' ') files)" >&2
+  # SHELLCHECK_RANGE_KEEP_PLAN=<dir> keeps the bin, fill and root lists for a test to read
+  if [ -n "${SHELLCHECK_RANGE_KEEP_PLAN:-}" ]; then
+    mkdir -p "$SHELLCHECK_RANGE_KEEP_PLAN" || exit 1
+    for i in "$sd"/bin.* "$sd"/fill.* "$sd"/roots.*; do
+      if [ -f "$i" ]; then cp "$i" "$SHELLCHECK_RANGE_KEEP_PLAN/" || exit 1; fi
+    done
+  fi
   # xargs splits past ~128 KB of arguments, which would cut a bin across runs; the fill list
   # comes last, so only non-shell files can fall in a later run
   for i in "$sd"/bin.*; do
@@ -248,7 +255,11 @@ sweep_all() {
 # -z + quotePath=false: a non-ASCII path must reach the lint verbatim; a NUL count that
 # disagrees with the line count means a newline in a name -> uncertain.
 git() { command git -c core.quotePath=false "$@"; }
-[ -z "$sweepfile" ] || sweep_all "$(cat "$sweepfile")"
+if [ -n "$sweepfile" ]; then
+  sweeplist=$(grep -v '^$' "$sweepfile" 2> /dev/null) || sweeplist="" # swallow-ok: an unreadable or blank list is refused just below
+  [ -n "$sweeplist" ] || { echo "shellcheck-pr-range: --sweep list $sweepfile is missing or empty" >&2; exit 2; }
+  sweep_all "$sweeplist"
+fi
 dz=$(mktemp "${TMPDIR:-/tmp}/shellcheck-pr-range.XXXXXX") || run_all "mktemp failed"
 trap 'rm -f "$dz"' EXIT
 # The PR's OWN diff against its merge base (three-dot), so commits merged forward from main are

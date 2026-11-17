@@ -385,7 +385,11 @@ real_py() {
   case "${a##*/}" in env) a=$(command -v "$b") ;; esac
   [ -n "$a" ] && "$a" -I -c 'import identify' 2>/dev/null && printf '%s\n' "$a"
 }
-if py=$(real_py) || { py=$(command -v python3) && "$py" -I -c 'import identify' 2>/dev/null; }; then export SHELLCHECK_RANGE_PY="$py"; fi
+if py=$(real_py) || { py=$(command -v python3) && "$py" -I -c 'import identify' 2>/dev/null; }; then
+  export SHELLCHECK_RANGE_PY="$py"
+else
+  bad "no interpreter can import identify; the classifier rows cannot run"
+fi
 sweep() { STUB_LOG="$T/stub.log" PATH="$T/bin:$PATH" bash "$SPR" "$BASE" >"$T/sweep.out" 2>&1; }
 reset; w .shellcheckrc 'external-sources=true
 # touched
@@ -395,6 +399,16 @@ sweep; rc=$?
 grep -q 'STUB shard' "$T/sweep.out" && ok "sweep_ok: shard output is preserved" || bad "sweep_ok: no shard output: $(head -3 "$T/sweep.out" | tr '\n' '|')"
 grep -E 'gh-ci-cache.sh' "$T/stub.log" | grep -q 'check-ci-watch.sh' \
   && ok "sweep_ok: a lib and its consumer share one shard" || bad "sweep_ok: lib and consumer split: $(tr '\n' '|' < "$T/stub.log")"
+# sweep_empty_list: an empty, blank-only or missing --sweep list is refused (rc 2), never widened to the whole tree
+: > "$T/empty.list"; printf '\n\n' > "$T/blank.list"
+for lst in "$T/empty.list" "$T/blank.list" "$T/nolist.txt"; do
+  : > "$T/stub.log"
+  STUB_LOG="$T/stub.log" PATH="$T/bin:$PATH" bash "$SPR" --sweep "$lst" > "$T/sweep.out" 2> "$T/sweep.err"; rc=$?
+  [ "$rc" -eq 2 ] && ok "sweep_empty_list: ${lst##*/} exits 2" || bad "sweep_empty_list: ${lst##*/} want rc 2, got $rc"
+  [ ! -s "$T/stub.log" ] && ok "sweep_empty_list: ${lst##*/} runs no pre-commit" || bad "sweep_empty_list: ${lst##*/} invoked pre-commit: $(head -c 200 "$T/stub.log")"
+  grep -q 'is missing or empty' "$T/sweep.err" && ok "sweep_empty_list: ${lst##*/} says why" || bad "sweep_empty_list: ${lst##*/} no refusal message: $(head -c 200 "$T/sweep.err")"
+done
+
 # sweep_nonproc: macOS has no nproc; the sweep takes the CPU count from sysctl and still shards
 if mkdir -p "$T/nonproc" \
   && printf '#!/bin/sh\nexit 127\n' > "$T/nonproc/nproc" \
@@ -493,10 +507,30 @@ sweep4; rc=$?
 grep 'scripts/zzp/PKGBUILD\.md' "$T/stub.log" | grep -q 'scripts/zzp/lib/p\.sh' \
   && ok "closure_namepart: the PKGBUILD.md is linted with the lib it sources" || bad "closure_namepart: PKGBUILD.md and p.sh split across bins: $(tr '\n' '|' < "$T/stub.log" | cut -c1-300)"
 
+# classify_nonshell: a markdown file that quotes a source line has no edges: the real classifier keeps it
+# out of every bin (a fill-list member), while its lib is still linted
+w scripts/zzn/notes.md 'notes
+. "$ROOT/lib/n.sh"
+'; w scripts/zzn/lib/n.sh '#!/usr/bin/env bash
+echo n
+'; commit_case classify_nonshell; : > "$T/stub.log"
+P="$T/plan.nonshell"
+SHELLCHECK_RANGE_KEEP_PLAN="$P" sweep4; rc=$?
+[ "$rc" -eq 0 ] && ok "classify_nonshell: rc 0" || bad "classify_nonshell: want rc 0, got $rc"
+cat "$P"/fill.* 2> /dev/null | grep -Fxq 'scripts/zzn/notes.md' \
+  && ok "classify_nonshell: notes.md is a fill-list member" || bad "classify_nonshell: notes.md is not in any fill list: $(find "$P" -type f 2>&1 | tr "\n" " ")"
+if cat "$P"/bin.* 2> /dev/null | grep -Fxq 'scripts/zzn/notes.md'; then bad "classify_nonshell: notes.md sits in a bin"; else ok "classify_nonshell: notes.md is in no bin"; fi
+cat "$P"/bin.* 2> /dev/null | grep -Fxq 'scripts/zzn/lib/n.sh' \
+  && ok "classify_nonshell: n.sh is still linted" || bad "classify_nonshell: n.sh is in no bin"
+
 # classify_failsafe: with no interpreter that can type files, every file is treated as shell (edges for all),
 # so the sweep still lints each file with the lib it sources and exits as a normal run does
-: > "$T/stub.log"; SHELLCHECK_RANGE_PY=/nonexistent/python sweep4; rc=$?
+: > "$T/stub.log"; P="$T/plan.failsafe"
+SHELLCHECK_RANGE_KEEP_PLAN="$P" SHELLCHECK_RANGE_PY=/nonexistent/python sweep4; rc=$?
 [ "$rc" -eq 0 ] && ok "classify_failsafe: rc 0" || bad "classify_failsafe: want rc 0, got $rc"
+cat "$P"/bin.* 2> /dev/null | grep -Fxq 'scripts/zzn/notes.md' \
+  && ok "classify_failsafe: notes.md is treated as shell and binned" || bad "classify_failsafe: notes.md is in no bin, the fallback did not run"
+if cat "$P"/fill.* 2> /dev/null | grep -Fxq 'scripts/zzn/notes.md'; then bad "classify_failsafe: notes.md is still a fill member"; else ok "classify_failsafe: notes.md is not a fill member"; fi
 grep 'scripts/zzp/PKGBUILD\.md' "$T/stub.log" | grep -q 'scripts/zzp/lib/p\.sh' \
   && ok "classify_failsafe: the PKGBUILD.md keeps its lib without a classifier" || bad "classify_failsafe: PKGBUILD.md and p.sh split across bins: $(tr '\n' '|' < "$T/stub.log" | cut -c1-300)"
 tr ' ' '\n' < "$T/stub.log" | grep -v '^$' | sort -u > "$T/shards.txt"
