@@ -250,21 +250,58 @@ eq "$(deletes)/$(posts)" 0/0 "RL2 no pair at the new head"
 
 # ── the cheap side (R2 / RL11 / R3) ──────────────────────────────────────────
 reset; checks pending; run RL11-cheap-pending
-has "$TMP/out-RL11-cheap-pending" '^CR-FIRST HOLD cheap-pending ' "RL11 ci-quick pending: HOLD cheap-pending"
-eq "$(deletes)/$(posts)" 0/0 "RL11 ci-quick pending: no label"
-hasnt "$S/calls.log" 'statuses|graphql' "RL11 ci-quick pending: the reviewer gate is not read yet"
-checks success; run RL11-cheap-green
+has "$TMP/out-RL11-cheap-pending" '^CR-FIRST RELEASE ' "RL11 ci-quick pending, reviewers passed: RELEASE"
+eq "$(deletes)/$(posts)" 1/1 "RL11 ci-quick pending: one pair"
+eq "$(ledger_lines)" 1 "RL11 ci-quick pending: one ledger line"
+jq -e '.cheap_settled_at == null' "$CR_FIRST_LEDGER" >/dev/null 2>&1 \
+  && ok "RL11 ci-quick pending: the ledger line carries cheap_settled_at null (the cheap run had not settled)" \
+  || { bad "RL11 ci-quick pending: cheap_settled_at null"; sed 's/^/  ledger: /' "$CR_FIRST_LEDGER" 2>/dev/null; }
+p1 RL11-pending
+reset; checks pending; led; run RL11-pending-reviewer-hold
+has "$TMP/out-RL11-pending-reviewer-hold" '^CR-FIRST HOLD codex not-yet-run ' "RL11 ci-quick pending + codex not-yet-run: the reviewer hold stands"
+eq "$(deletes)/$(posts)" 0/0 "RL11 ci-quick pending + reviewer hold: no label"
+reset; checks pending; threads "$(thread false a/one.sh 10)"; run RL11-pending-thread
+has "$TMP/out-RL11-pending-thread" '^CR-FIRST HOLD 1 unresolved CodeRabbit thread' "RL11 ci-quick pending + unresolved thread: the thread hold stands"
+eq "$(deletes)/$(posts)" 0/0 "RL11 ci-quick pending + unresolved thread: no label"
+reset; checks pending '[{"name":"lint","status":"completed","conclusion":"failure","completed_at":"2026-10-23T10:03:00Z"}]'; run RL11-pending-red
+has "$TMP/out-RL11-pending-red" '^CR-FIRST HOLD cheap-red ' "RL11 ci-quick pending + a failed cheap job: HOLD cheap-red"
+eq "$(deletes)/$(posts)" 0/0 "RL11 ci-quick pending + a failed cheap job: no label"
+reset; checks success; run RL11-cheap-green
 has "$TMP/out-RL11-cheap-green" '^CR-FIRST RELEASE ' "RL11 ci-quick green: release"
 eq "$(deletes)/$(posts)" 1/1 "RL11 ci-quick green: one pair"
+jq -e '.cheap_settled_at == "2026-10-23T10:09:00Z"' "$CR_FIRST_LEDGER" >/dev/null 2>&1 \
+  && ok "RL11 ci-quick green: cheap_settled_at is the last cheap completion" || bad "RL11 ci-quick green: cheap_settled_at"
 reset; checks none; run R2-cheap-not-reported
-has "$TMP/out-R2-cheap-not-reported" '^CR-FIRST HOLD cheap-pending ' "R2 ci-quick not reported yet: HOLD cheap-pending"
+has "$TMP/out-R2-cheap-not-reported" '^CR-FIRST RELEASE ' "R2 ci-quick not reported yet, reviewers passed: RELEASE"
+eq "$(deletes)/$(posts)" 1/1 "R2 ci-quick not reported yet: one pair"
 reset; checks skipped; run R2-cheap-skipped
-has "$TMP/out-R2-cheap-skipped" '^CR-FIRST HOLD cheap-pending ' "R2 ci-quick skipped is not a pass: HOLD cheap-pending"
-eq "$(deletes)/$(posts)" 0/0 "R2 ci-quick skipped: no label"
+has "$TMP/out-R2-cheap-skipped" '^CR-FIRST RELEASE ' "R2 ci-quick skipped, reviewers passed: RELEASE"
+eq "$(deletes)/$(posts)" 1/1 "R2 ci-quick skipped: one pair"
 reset; checks failure; run R3-cheap-red
 has "$TMP/out-R3-cheap-red" '^CR-FIRST HOLD cheap-red ' "R3 cheap side red: HOLD cheap-red"
 eq "$(deletes)/$(posts)" 0/0 "R3 cheap side red: no label"
 eq "$(grep -c '^CR-FIRST HOLD' "$TMP/out-R3-cheap-red")" 1 "R3 cheap side red: no hold line beyond cheap-red"
+
+# ── a go run that cancels the cheap run (same concurrency group, same check names) ──
+CHEAP_CANCELLED='{"id":101,"name":"lint","status":"completed","conclusion":"cancelled","started_at":"2026-10-23T10:01:00Z","completed_at":"2026-10-23T10:05:00Z"},{"id":102,"name":"secret-scan","status":"completed","conclusion":"cancelled","started_at":"2026-10-23T10:01:00Z","completed_at":"2026-10-23T10:05:00Z"}'
+GO_GREEN='{"id":201,"name":"lint","status":"completed","conclusion":"success","started_at":"2026-10-23T10:06:00Z","completed_at":"2026-10-23T10:08:00Z"},{"id":202,"name":"secret-scan","status":"completed","conclusion":"success","started_at":"2026-10-23T10:06:00Z","completed_at":"2026-10-23T10:07:00Z"}'
+reset; checks success "[$CHEAP_CANCELLED,$GO_GREEN]"; run cancelled-then-green
+has "$TMP/out-cancelled-then-green" '^CR-FIRST RELEASE ' "cancelled cheap check-runs then the go run's green ones of the same names: reads green, RELEASE"
+hasnt "$TMP/out-cancelled-then-green" 'cheap-red' "cancelled then green: no cheap-red line"
+eq "$(deletes)/$(posts)" 1/1 "cancelled then green: one pair"
+reset; checks success "[$GO_GREEN,$CHEAP_CANCELLED]"; run green-listed-before-cancelled
+has "$TMP/out-green-listed-before-cancelled" '^CR-FIRST RELEASE ' "the green run listed before the older cancelled one still reads green (id decides, not position)"
+eq "$(deletes)/$(posts)" 1/1 "green listed before cancelled: one pair"
+reset; checks success '[{"id":301,"name":"lint","status":"completed","conclusion":"success","completed_at":"2026-10-23T10:03:00Z"},{"id":302,"name":"lint","status":"completed","conclusion":"cancelled","completed_at":"2026-10-23T10:05:00Z"}]'; run green-then-cancelled
+has "$TMP/out-green-then-cancelled" '^CR-FIRST HOLD cheap-red ' "control: a green run then a cancelled one of the same name is cheap-red"
+eq "$(deletes)/$(posts)" 0/0 "control: green then cancelled: no label"
+reset; checks success '[{"id":401,"name":"lint","status":"completed","conclusion":"cancelled","completed_at":"2026-10-23T10:05:00Z"},{"id":402,"name":"secret-scan","status":"completed","conclusion":"success","completed_at":"2026-10-23T10:06:00Z"}]'; run cancelled-alone
+has "$TMP/out-cancelled-alone" '^CR-FIRST HOLD cheap-red ' "control: a cancelled cheap check with no later run of its name is cheap-red"
+eq "$(deletes)/$(posts)" 0/0 "control: cancelled alone: no label"
+reset; jq -c '. + [{event:"labeled",label:{name:"ci:go"},created_at:"2026-10-23T10:05:00Z"}]' "$S/events.json" > "$S/e.tmp" && mv "$S/e.tmp" "$S/events.json"
+printf '{"pr":42,"head":"%s","reviewers":[]}\n' "$HEAD1" | bash "$SCRIPT_DIR/../cr/cr-trigger-ledger.sh" append
+checks cancelled "[$CHEAP_CANCELLED]"; run released-then-cheap-cancelled
+eq "$(wc -c < "$TMP/out-released-then-cheap-cancelled" | tr -d ' ')/$(deletes)/$(posts)" 0/0/0 "released head whose cheap run the go run cancelled: quiet, no hold, no second pair"
 
 # ── the reviewer gate at release (R-3595a-d, R1, R4-R8, RL1, RL3, RL6) ───────
 # The real PR 3222 "Review in progress" status is the newest once the two later
@@ -439,8 +476,8 @@ unset CR_FIRST_STUCK_AFTER_S
 reset; CR_FIRST_READONLY=1 run readonly-pass
 has "$TMP/out-readonly-pass" '^CR-FIRST PENDING-RELEASE ' "read-only: a passing gate says it would release"
 eq "$(deletes)/$(posts)/$(ledger_lines)" 0/0/0 "read-only: no label write, no ledger line"
-reset; checks pending; CR_FIRST_READONLY=1 run readonly-hold
-has "$TMP/out-readonly-hold" '^CR-FIRST HOLD cheap-pending ' "read-only: a hold still prints"
+reset; checks failure; CR_FIRST_READONLY=1 run readonly-hold
+has "$TMP/out-readonly-hold" '^CR-FIRST HOLD cheap-red ' "read-only: a hold still prints"
 # a hard lane that is down raises no alert in read-only mode: the once-per-outage
 # key stays for the tick sweep and the chief doc is not written.
 RO_CHIEF="$TMP/ro-chief.md"; printf '# chief\n\n## Results (newest at the bottom)\n' > "$RO_CHIEF"
@@ -453,8 +490,8 @@ eq "$(grep -c 'CR-FIRST ALERT' "$RO_CHIEF")/$([ -s "$CR_FIRST_ALERTS" ] && echo 
 sweep() { printf '%b' "$1" | cr_first_sweep o/r >"$TMP/out-sweep" 2>/dev/null; }
 reset; echo off > "$S/var"; sweep "42\t$HEAD1\t\n"
 eq "$(wc -c < "$TMP/out-sweep" | tr -d ' ')/$(grep -c 'pulls\|check-runs' "$S/calls.log")" 0/0 "sweep switch off: no output and no PR read"
-reset; checks pending; sweep "42\t$HEAD1\t\n"
-has "$TMP/out-sweep" '^crfirst=#42:cheap-pending:[0-9]+[smhd]$' "sweep: a held head is listed with reason and age"
+reset; checks failure; sweep "42\t$HEAD1\t\n"
+has "$TMP/out-sweep" '^crfirst=#42:cheap-red:[0-9]+[smhd]$' "sweep: a held head is listed with reason and age"
 reset; printf '{"pr":42,"head":"%s","reviewers":[]}\n' "$HEAD1" | bash "$SCRIPT_DIR/../cr/cr-trigger-ledger.sh" append; sweep "42\t$HEAD1\tci:go,bug\n"
 eq "$(grep -c 'pulls\|check-runs' "$S/calls.log")" 0 "sweep: a head this station released (ci:go + ledger line) is not read"
 # a label that survived a push belongs to an older head: the new head still needs its own pair.
