@@ -9,8 +9,8 @@
 # Platform guard: POSIX bash 3.2+.
 # shellcheck disable=SC2015,SC2034,SC2153,SC2154  # A && B || C is intentional in check()/contains(), as in test-go.sh; stub state and helpers are shared through the sourced lib
 set -uo pipefail
-# shellcheck source=testlib-ready-check.sh
-. "$(cd "$(dirname "$0")" && pwd)/testlib-ready-check.sh"
+# shellcheck source=tests/testlib-ready-check.sh
+. "$(cd "$(dirname "$0")" && pwd)/tests/testlib-ready-check.sh"
 
 # --- usage -------------------------------------------------------------
 for args in "" "77" "77 $SHA extra" "x1 $SHA" "077 $SHA" "77 ${SHA%?}" "77 ${SHA}0" \

@@ -42,6 +42,6 @@ K6	^docs/handover/chief-sections/live-state\.md$	specs/plan/[A-Z]+-3882	tick.sh 
 K6	^scripts/lib/flags\.tsv$	^[a-z_]+[[:space:]](on|off)[[:space:]]	check-flags.sh reads the ticket and blocker columns of each flag row
 K6	^scripts/ci/live-write-exempt\.txt$	^[^#[:space:]][^[:space:]]*[[:space:]]+HIMMEL-[0-9]+[[:space:]]	run-shell-tests.sh and live-witness.sh refuse an exempt line without its ticket key
 K6	^scripts/handover/chief-kit/test-ready-check-b\.sh$	jira links failed for [A-Z]+-100\)	ready-check prints the ticket its failed links lookup names, and the row asserts it
-K6	^scripts/handover/chief-kit/(test-ready-check-b|testlib-ready-check)\.sh$	trivial-descendant of reviewed head %s \([A-Z]+-5856\)	ready-check reads the ledger detail the fixture writes, ticket key included
+K6	^scripts/handover/chief-kit/(test-ready-check-b|tests/testlib-ready-check)\.sh$	trivial-descendant of reviewed head %s \([A-Z]+-5856\)	ready-check reads the ledger detail the fixture writes, ticket key included
 K6	^scripts/handover/chief-kit/test-ready-check-e\.sh$	maintainer takeover \([A-Z]+-9019\)	ready-check prints the takeover ticket the row asserts
 K7	^scripts/lint/ticket-ref-allow\.tsv$		this list names the key pattern itself

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # scripts/handover/chief-kit/test-ready-check-c.sh - ready-check.sh suite, part c: checks 10 and 10b (workflow and macos-cadence dispatch runs), check 11 (unwired scripts).
-# Setup, stubs and helpers are shared in testlib-ready-check.sh. `gh` is a PATH stub; `jq` and `git` are real.
+# Setup, stubs and helpers are shared in tests/testlib-ready-check.sh. `gh` is a PATH stub; `jq` and `git` are real.
 # shellcheck disable=SC2015,SC2034,SC2153,SC2154  # A && B || C is intentional in check()/contains(), as in test-go.sh; stub state and helpers are shared through the sourced lib
 set -uo pipefail
-# shellcheck source=testlib-ready-check.sh
-. "$(cd "$(dirname "$0")" && pwd)/testlib-ready-check.sh"
+# shellcheck source=tests/testlib-ready-check.sh
+. "$(cd "$(dirname "$0")" && pwd)/tests/testlib-ready-check.sh"
 
 # --- 10. a PR that changes a GitHub Actions workflow needs a
 # completed, successful workflow_dispatch run AT ITS HEAD. ci.yml has no push
