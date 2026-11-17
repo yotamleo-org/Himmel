@@ -11,7 +11,6 @@ export type RoundFixtureRequest = {
 export type RoundFixture = { specsRoot: string; spec: string; plan: string; verdicts: string[]; ledgerPath: string };
 const sha = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 
-// Test-only: exercise the production seed/seal protocol with caller-owned scratch files.
 export async function buildRoundFixture(request: RoundFixtureRequest): Promise<RoundFixture> {
   if (!isAbsolute(request.scratchRoot) || !await stat(request.scratchRoot).then(s => s.isDirectory(), () => false)) throw new Error('fixture scratch root must be an existing absolute directory');
   const scratch = await realpath(request.scratchRoot);
@@ -37,7 +36,6 @@ export async function buildRoundFixture(request: RoundFixtureRequest): Promise<R
     if (!parent.startsWith(scratch + '/')) throw new Error('fixture read must be inside the scratch root');
     await writeFile(path, text, { flag: 'wx' });
   };
-  // Refuse a reused fixture through the real seeder, before changing its documents.
   if (await stat(join(specsRoot, 'ledgers', 'spec-rounds', 'manifest.json')).then(() => true, () => false)) await roundSeed(specsRoot);
   await write(spec, request.specText); await write(plan, request.planText);
   const extras = new Map<string, string>();

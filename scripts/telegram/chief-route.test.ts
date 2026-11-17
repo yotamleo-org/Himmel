@@ -3455,7 +3455,6 @@ test("shared pinnedSha legacy shape and same-fd mtime", async () => {
   expect(typeof shared.pinnedRead).toBe("function");
   const pinned = shared.pinnedRead(file);
   expect(pinned).toMatchObject({ mtime_ms: 1234000, bytes: Buffer.from("hello") });
-  // Metadata must come from the fd that supplied the bytes, even when its path is rebound.
   const fs = await import("node:fs");
   const original = fs.readSync; let rebound = false;
   const spy = spyOn(fs, "readSync").mockImplementation((...args: any[]) => {
@@ -3541,12 +3540,11 @@ test("shared real round fixture seeds before returns and creates accepted seals 
 
 test("shared capped proof validator rejects finite schema mutations and preserves scoped identities", async () => {
   const shared = await import("../jira/src/release/pinned.ts");
-  expect(typeof shared.validateCappedFoldProof).toBe("function");
+  expect(typeof shared.validateCappedFoldProofShape).toBe("function");
   const { buildRoundFixture } = await import("./testlib-capped-fold.ts");
   const f = await buildRoundFixture(fixtureRequest(root()));
   const { returnSha } = await import("./chief-route");
   const filePin = (path: string) => ({ path, sha256: sha(readFileSync(path, "utf8")) });
-  // Schema-only candidate assembled from real paths and bytes; never signer authority.
   const returns = (["spec", "plan"] as const).map(kind => {
     const path = f.verdicts.find(p => p.endsWith(`critic-${kind}-r3.md`))!;
     return { ...filePin(path), kind, round: 3, return_sha: returnSha(readFileSync(path, "utf8")), residuals: 1 };
@@ -3567,15 +3565,15 @@ test("shared capped proof validator rejects finite schema mutations and preserve
     ],
     carried: returns.map(r => ({ key: "HIMMEL-10205", epoch: 0, kind: r.kind, round: r.round, return_path: r.path, return_sha: r.return_sha, finding_id: "F1", severity: r.kind === "spec" ? "minor" : "medium", status: "open-carried" })),
   };
-  expect(shared.validateCappedFoldProof(good)).toEqual(good);
+  expect(shared.validateCappedFoldProofShape(good)).toEqual(good);
   const separateDecision = structuredClone(good);
   const separateName = "verbatim-decision-902-fixture.txt";
   separateDecision.pins.push({ ...separateDecision.pins[7], path: join(dirname(decision), separateName) });
   separateDecision.pins.push({ ...separateDecision.pins[8], decision: "902", names: [separateName] });
-  expect(shared.validateCappedFoldProof(separateDecision)).toEqual(separateDecision);
+  expect(shared.validateCappedFoldProofShape(separateDecision)).toEqual(separateDecision);
   const reject = (mutate: (p: any) => void) => {
     const bad = structuredClone(good); mutate(bad);
-    expect(() => shared.validateCappedFoldProof(bad)).toThrow("invalid capped-fold proof");
+    expect(() => shared.validateCappedFoldProofShape(bad)).toThrow("invalid capped-fold proof");
   };
   for (const field of Object.keys(good)) reject(p => { delete p[field]; });
   for (const field of Object.keys(good.returns[0])) reject(p => { delete p.returns[0][field]; });
@@ -3769,7 +3767,7 @@ test("capped fold exact evidence", async () => {
     returns: [{ kind: "spec", round: 3, residuals: 1 }, { kind: "plan", round: 3, residuals: 0 }],
     carried: [{ key: cappedKey, epoch: 0, kind: "spec", round: 3, finding_id: "F1", severity: "minor", status: "open-carried" }] });
   expect(p.carried).toHaveLength(1);
-  const shared = await import("../jira/src/release/pinned.ts"); expect(shared.validateCappedFoldProof(p)).toEqual(p);
+  const shared = await import("../jira/src/release/pinned.ts"); expect(shared.validateCappedFoldProofShape(p)).toEqual(p);
   expect(p.pins.filter((x: any) => x.role === "artifact")).toHaveLength(4);
   expect(p.pins.filter((x: any) => x.role === "snapshot")).toHaveLength(4);
   for (const pin of p.pins) if ("path" in pin) expect(sha(readFileSync(pin.path, "utf8"))).toBe(pin.sha256);
@@ -3911,12 +3909,12 @@ test("capped fold CLI fixed five valued flags", async () => {
 
 test("capped proof shared shape validation", async () => {
   const p = await runCapped((await cappedFixture()).args);
-  const { validateCappedFoldProof } = await import("../jira/src/release/pinned.ts");
-  expect(validateCappedFoldProof(p)).toEqual(p);
+  const { validateCappedFoldProofShape } = await import("../jira/src/release/pinned.ts");
+  expect(validateCappedFoldProofShape(p)).toEqual(p);
   for (const mutate of [(x:any) => { x.extra = true; }, (x:any) => { delete x.epoch; }, (x:any) => { x.reader_version = 2; },
     (x:any) => { x.pins[0].role = "other"; }, (x:any) => { x.returns.reverse(); }, (x:any) => { x.returns[0].residuals = -1; },
     (x:any) => { x.spec.sha256 = "A".repeat(64); }, (x:any) => { x.plan.path = "relative"; }]) {
-    const bad = structuredClone(p); mutate(bad); expect(() => validateCappedFoldProof(bad)).toThrow("invalid capped-fold proof");
+    const bad = structuredClone(p); mutate(bad); expect(() => validateCappedFoldProofShape(bad)).toThrow("invalid capped-fold proof");
   }
 });
 

@@ -43,7 +43,6 @@ export function returnSha(text: string): string {
   return createHash('sha256').update(Buffer.from(lines.length ? `${lines.join('\n')}\n` : '')).digest('hex');
 }
 
-// Read entries incrementally so an untrusted directory cannot allocate an unbounded list.
 export function boundedDirectoryNames(path: string): string[] {
   let dir;
   try { dir = opendirSync(path); }
@@ -148,8 +147,7 @@ function boundedArray(value: unknown): asserts value is unknown[] {
   proofAssert(Array.isArray(value) && value.length <= 4096);
 }
 
-// Shape validation is lexical and pure. Consumers must separately verify canonical locations and bytes.
-export function validateCappedFoldProof(value: unknown): CappedFoldProof {
+export function validateCappedFoldProofShape(value: unknown): CappedFoldProof {
   const p = fields(value, ['schema', 'reader_version', 'mode', 'key', 'epoch', 'spec', 'plan', 'returns', 'pins', 'carried']);
   proofAssert(p.schema === 1 && p.reader_version === PINNED_READ_VERSION && p.mode === 'capped-carry');
   proofAssert(typeof p.key === 'string' && /^[A-Z][A-Z0-9]*-[0-9]+$/.test(p.key) && count(p.epoch));

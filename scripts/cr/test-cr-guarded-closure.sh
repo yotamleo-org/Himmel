@@ -337,7 +337,6 @@ check "$(printf '%s\n' "$reached" | unreadable)" "" "every reached file was read
 escaped="$(printf '%s\n' "$reached" | outside "$cr_guarded")"
 check "$escaped" "" "every file reached on the no path lies inside cr_guarded"
 
-# Removing only the shared reader must expose it, even though its caller is guarded.
 without_pinned="$(printf '%s\n' "$cr_guarded" | tr ' ' '\n' | grep -vxF scripts/jira/src/release/pinned.ts)"
 red="$(printf '%s\n' "$reached" | outside "$without_pinned")"
 check "$(grep -cxF scripts/jira/src/release/pinned.ts <<< "$red")" "1" "RED pinned guard omission"

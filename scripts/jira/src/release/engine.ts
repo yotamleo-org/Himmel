@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { releaseKeyPath, releaseRoot } from './paths.js';
 import { pinnedSha, pinnedRead, boundedDirectoryNames, selectDecisionNames, reviewedSpecHashes, returnSha,
   canonicalDirectoryNames, returnDirectories, checkLatestReturns,
-  validateCappedFoldProof, type CappedFoldProof, type FilePin } from './pinned.js';
+  validateCappedFoldProofShape, type CappedFoldProof, type FilePin } from './pinned.js';
 export { pinnedSha, type Pinned } from './pinned.js';
 import type { Getter } from './version-writes.js';
 import {
@@ -552,7 +552,6 @@ interface CappedInputs {
   keys: string[]; spec: FilePin; plan?: FilePin; files: VerdictFile[]; residuals: number;
 }
 
-// Source and dist have the same depth. Lint continues to use the primary checkout above.
 function cappedVerifier(): string {
   return fileURLToPath(new URL('../../../telegram/chief-route.ts', import.meta.url));
 }
@@ -600,7 +599,7 @@ function cappedFallback(check: () => void, input: CappedInputs): CappedFoldProof
     const args = [cappedVerifier(), 'capped-fold', '--key', input.keys[0], '--spec', input.spec.path, '--plan', input.plan.path,
       '--spec-return', input.files.find(f => f.kind === 'SPEC')!.path, '--plan-return', input.files.find(f => f.kind === 'PLAN')!.path];
     const output = execFileSync('bun', args, { encoding: 'utf8', timeout: 30000, maxBuffer: 4 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
-    const proof = validateCappedFoldProof(JSON.parse(output));
+    const proof = validateCappedFoldProofShape(JSON.parse(output));
     bindCappedProof(proof, input);
     checkCappedPins(proof);
     return proof;
@@ -611,7 +610,6 @@ function cappedFallback(check: () => void, input: CappedInputs): CappedFoldProof
   }
 }
 
-// The caller holds the real release locks. Evidence is external to that lock, so readback can still be stale.
 function appendSpec(ctx: Ctx, k: Buffer, row: Omit<OperatorRow, 'id' | 'ts'>): OperatorRow {
   if (!row.capped_carry) return appendOperator(ctx, k, row);
   checkCappedPins(row.capped_carry);
@@ -759,7 +757,7 @@ function staleReason(r: ReleaseRecord): string | null {
   }
   if (Object.hasOwn(r, 'capped_carry')) {
     try {
-      const proof = validateCappedFoldProof(r.capped_carry);
+      const proof = validateCappedFoldProofShape(r.capped_carry);
       if (r.keys?.length !== 1 || !r.plan_path || r.plan_path === r.spec_path) throw new Error('capped proof record binding disagrees');
       const { files } = readVerdicts((r.verdicts ?? []).map(v => v.path), 'capped proof', { required: ['SPEC', 'PLAN'], allowed: [] }, 'capped proof needs paired returns');
       bindCappedProof(proof, { keys: r.keys, spec: { path: r.spec_path ?? '', sha256: r.spec_sha256 ?? '' },

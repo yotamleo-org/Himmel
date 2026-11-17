@@ -1,4 +1,4 @@
-import { selectDecisionNames, pinnedRead, boundedDirectoryNames, reviewedSpecHashes, validateCappedFoldProof, PINNED_READ_VERSION, returnSha,
+import { selectDecisionNames, pinnedRead, boundedDirectoryNames, reviewedSpecHashes, validateCappedFoldProofShape, PINNED_READ_VERSION, returnSha,
   SIGNATURE_DIRS, KEY_FOLDER, CRITIC_FILE, CRITIC_NAME, specsRootOf, keyOf, canonicalDirectoryNames, returnDirectories, checkLatestReturns,
   type CappedFoldProof, type EvidencePin, type EvidenceFilePin, type ReturnPin } from "../jira/src/release/pinned.ts";
 import { join, dirname, basename, resolve, isAbsolute } from "node:path";
@@ -1089,7 +1089,6 @@ function cappedReader(specs: string, key: string) {
     if (!selections.some(s => s.decision === number)) selections.push({ role: "decision-selection", directory, decision: number, names: selected });
   };
   const recheck = async () => {
-    // Read every pinned file before checking aliases/selections, including a file whose name was rebound.
     for (const [path, pin] of pins) {
       const got = pinnedRead(path);
       if (!("bytes" in got) || got.sha256 !== pin.sha256 || (pin.role === "decision" && got.mtime_ms !== pin.mtime_ms)) fail(path);
@@ -1221,7 +1220,7 @@ export async function cappedFold(o: { key: string; spec: string; plan: string; s
   }
   if (!carried.length) throw new Error("capped-fold: requires at least one carried finding");
   const tuple = returns as [ReturnPin, ReturnPin]; await cappedLatest(spec, plan, reader, tuple);
-  const proof = validateCappedFoldProof({ schema: 1, reader_version: PINNED_READ_VERSION, mode: "capped-carry", key: o.key, epoch: rows.checked.epoch,
+  const proof = validateCappedFoldProofShape({ schema: 1, reader_version: PINNED_READ_VERSION, mode: "capped-carry", key: o.key, epoch: rows.checked.epoch,
     spec: { path: spec, sha256: specRead.sha256 }, plan: { path: plan, sha256: planRead.sha256 }, returns: tuple, pins: reader.pins(), carried });
   await reader.recheck();
   return proof;
