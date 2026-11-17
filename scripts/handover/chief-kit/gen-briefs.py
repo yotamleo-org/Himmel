@@ -1177,7 +1177,7 @@ SIGNATURE_DIRS = ('design', 'designs', 'spec', 'plan', 'plans')
 KEY_FOLDER_RE = re.compile(r'^[A-Z][A-Z0-9]+-[0-9]+$')
 LEAD_KEY_RE = re.compile(r'^([A-Z][A-Z0-9]+-[0-9]+)(?=[-.])')
 INNER_KEY_RE = re.compile(r'(?<![A-Z0-9])([A-Z][A-Z0-9]+-[0-9]+)(?=[-.])')
-FOLD_INSTRUCTION = 'each id is a `## Ticket coverage` line: `- <id>: done` or `- <id>: deferred → HIMMEL-<n>`'
+FOLD_INSTRUCTION = 'each kind-scoped id is a `## Ticket coverage` line: `- <kind>:<id>: done` or `- <kind>:<id>: deferred → HIMMEL-<n>` (for example `spec:F1` and `plan:F1` are separate)'
 
 
 def spec_key(path):
@@ -1243,7 +1243,14 @@ def writer_round_gate(l, ctx):
             die('worker %s: chief-route.ts round-status %s printed no JSON: %s' % (label, key, out.strip()[:300]))
         nxt = s.get('next') if isinstance(s, dict) else None
         if nxt == 'none':
-            die('worker %s: %s has had its writer rounds; sign it under 848, send the page to the operator, or record round-override' % (label, key))
+            why = str(s.get('why', ''))
+            if s.get('critical_open'):
+                hint = 'the operator rules on open operator-critical findings first (round-critical)'
+            elif 'needs a round-override or round-critical record' in why:
+                hint = 'round-override requires an open blocking finding; otherwise hold for the owner'
+            else:
+                hint = 'for eligible capped nonblocking findings, use normal signing with --spec <canonical spec>, --plan <distinct canonical plan> and both actual latest paired --verdict returns; verified carry is automatic only if accepted; keep frozen bytes unchanged, with no reset or fabricated CLEAN; otherwise stop for the owner'
+            die('worker %s: %s has had its writer rounds; %s; %s' % (label, key, why, hint))
         if nxt == 'closure':
             m = re.search(r'\b(?:spec|plan) round (\d+): closure\b', str(s.get('why', '')))
             if not m:

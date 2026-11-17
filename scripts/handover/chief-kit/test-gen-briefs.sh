@@ -1864,12 +1864,12 @@ cgo="$(cgrun on9421)"; rc=$?
 WS="$WORK/handovers/yotamleo/himmel/specs"; mkdir -p "$WS/designs" "$WS/ledgers/spec-rounds"
 NOLEDGER_KEY="HIMMEL-9432" EMPTY_KEY="HIMMEL-9439"
 # shellcheck disable=SC2016  # the instruction line's backticks are literal product text
-INSTR='each id is a `## Ticket coverage` line: `- <id>: done` or `- <id>: deferred → HIMMEL-<n>`'
+INSTR='each kind-scoped id is a `## Ticket coverage` line: `- <kind>:<id>: done` or `- <kind>:<id>: deferred → HIMMEL-<n>` (for example `spec:F1` and `plan:F1` are separate)'
 cg_signed_at() {
     printf '%s O-R1-%s\n' "$2" "$1" > "$CG_STUB_SIGNED/$1"
 }
 cg_mirror HIMMEL-9431 Task Medium '[]'; cg_signed_at HIMMEL-9431 "$WS/designs/HIMMEL-9431-fold.md"
-printf -- '- m-a (minor) spec r3 %s\n- c1 (minor; out-of-closure) spec r4 %s\n' "$WS/designs/HIMMEL-9431-fold.md.critic-spec-r3.md" "$WS/designs/HIMMEL-9431-fold.md.critic-spec-r4.md" > "$ROUTE_STUB/HIMMEL-9431-fold.md.fold"
+printf -- '- m-a (minor) spec r3 %s\n- c1 (minor; out-of-closure) spec r4 %s\n- F1 (minor) spec r3 %s\n- F1 (medium) plan r3 %s\n' "$WS/designs/HIMMEL-9431-fold.md.critic-spec-r3.md" "$WS/designs/HIMMEL-9431-fold.md.critic-spec-r4.md" "$WS/designs/HIMMEL-9431-fold.md.critic-spec-r3.md" "$WS/designs/HIMMEL-9431-fold.md.critic-plan-r3.md" > "$ROUTE_STUB/HIMMEL-9431-fold.md.fold"
 cg_workers r13 HIMMEL-9431 "$CORE_WRITES" ''
 : > "$ROUTE_LOG"; cgo="$(cgrun r13)"; rc=$?
 B13="$(cat "$(cg_brief r13)" 2>/dev/null)"
@@ -1877,6 +1877,8 @@ B13="$(cat "$(cg_brief r13)" 2>/dev/null)"
 has "R13: the brief carries the Folded critic findings heading" "$B13" "## Folded critic findings"
 has "R13: the brief carries the first fold-list line" "$B13" "- m-a (minor) spec r3 $WS/designs/HIMMEL-9431-fold.md.critic-spec-r3.md"
 has "R13: the brief carries the second fold-list line" "$B13" "- c1 (minor; out-of-closure) spec r4 $WS/designs/HIMMEL-9431-fold.md.critic-spec-r4.md"
+has "folded kind collisions reach brief: complete SPEC F1 provenance" "$B13" "- F1 (minor) spec r3 $WS/designs/HIMMEL-9431-fold.md.critic-spec-r3.md"
+has "folded kind collisions reach brief: complete PLAN F1 provenance" "$B13" "- F1 (medium) plan r3 $WS/designs/HIMMEL-9431-fold.md.critic-plan-r3.md"
 has "R13: the block ends with the Ticket coverage instruction line" "$B13" "$INSTR"
 has "R13: the stand-in saw fold-list --spec <the SPEC ok path>" "$(cat "$ROUTE_LOG")" "fold-list --spec $WS/designs/HIMMEL-9431-fold.md"
 BRIEF_LINT_MIRROR="$CG/mirror" bash "$HERE/brief-lint.sh" "$(cg_brief r13)" 2>"$CG/lint13.err"; rc=$?
@@ -1906,14 +1908,25 @@ cgo="$(cgrun r13fail)"; rc=$?
 [ "$rc" = 1 ] && has "R13: a failing fold-list refuses the brief naming its error" "$cgo" "HIMMEL-9438 ledger line 3 does not parse" || fail "R13 fold-list failure rc=$rc: $cgo"
 [ -z "$(cg_brief r13fail)" ] && pass "R13: a failing fold-list writes no brief" || fail "R13: a brief was written though fold-list failed"
 
-T13='HIMMEL-9434 has had its writer rounds; sign it under 848, send the page to the operator, or record round-override'
+T13='HIMMEL-9434 has had its writer rounds'
 cg_mirror HIMMEL-9434 Task Medium '[]'
 printf '{"key":"HIMMEL-9434","spec":3,"plan":3,"writer":3,"next":"none","why":"spec round 4: HIMMEL-9434 spec round 4 needs a blocking finding in round 3 of either kind; plan round 4: HIMMEL-9434 plan round 4 needs a blocking finding in round 3 of either kind"}\n' > "$ROUTE_STUB/HIMMEL-9434.json"
 cg_workers r14 HIMMEL-9434 "$WS/designs/HIMMEL-9434-x.md" ''
 : > "$ROUTE_LOG"; cgo="$(cgrun r14)"; rc=$?
 [ "$rc" = 1 ] && has "R14: a writer leg at next=none is refused with T13" "$cgo" "$T13" || fail "R14 rc=$rc: $cgo"
+for hint in 'normal signing' '--spec' 'canonical spec' '--plan' 'distinct canonical plan' 'both actual latest paired' '--verdict' 'verified carry' 'frozen bytes unchanged'; do
+    has "exhausted writer verified carry hint: $hint" "$cgo" "$hint"
+done
 [ -z "$(cg_brief r14)" ] && [ ! -e "$CG/b-r14/launch-N941.sh" ] && pass "R14: the refused writer leg gets no brief and no launcher" || fail "R14: a brief was written for a key with no rounds left"
 has "R14: round-status is asked for the key over the path's specs root" "$(cat "$ROUTE_LOG")" "round-status HIMMEL-9434 --specs $WS --json"
+printf '{"key":"HIMMEL-9434","spec":4,"plan":4,"writer":4,"next":"none","why":"spec round 5: HIMMEL-9434 writer round 5 needs a round-override or round-critical record"}\n' > "$ROUTE_STUB/HIMMEL-9434.json"
+cgo="$(cgrun r14)"; rc=$?
+[ "$rc" = 1 ] && has "exhausted blocking writer keeps its actual authority route" "$cgo" "needs a round-override or round-critical record" || fail "R14 blocking rc=$rc: $cgo"
+lacks "exhausted blocking writer does not suggest verified carry" "$cgo" "verified carry"
+printf '{"key":"HIMMEL-9434","spec":3,"plan":3,"writer":3,"next":"none","why":"no round opens","critical_open":[{"id":"O1","class":"spend-grant"}]}\n' > "$ROUTE_STUB/HIMMEL-9434.json"
+cgo="$(cgrun r14)"; rc=$?
+[ "$rc" = 1 ] && has "exhausted critical writer needs the operator ruling" "$cgo" "operator rules on open operator-critical findings first (round-critical)" || fail "R14 critical rc=$rc: $cgo"
+lacks "exhausted critical writer does not suggest verified carry" "$cgo" "verified carry"
 cg_mirror HIMMEL-9435 Task Medium '[]'
 cg_workers r14full HIMMEL-9435 "$WS/designs/HIMMEL-9435-x.md" ''
 cgo="$(cgrun r14full)"; rc=$?

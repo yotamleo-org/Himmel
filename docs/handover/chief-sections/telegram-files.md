@@ -71,6 +71,25 @@ bun scripts/telegram/chief-route.ts send-file <chat_id> <path> ["<caption>"]
   goes with no hand seal, and a spec it wrote no page for (a build `core-check` answers `NOT-CORE`) goes as its `.md`.
   The hand command stays for any other page and for a return in flight when this landed. Reports, logs and audits under no such path send
   as before. Plain `send-file` has no read-only form: a signature-class file goes through the check or does not send.
+- **Signing frozen nonblocking findings.** Sending a capped `FINDINGS` page does
+  not itself authorize signing. The normal `release operator spec` and
+  `release operator spec-review` commands automatically try verified carry only
+  after their existing residual-disposition check fails. Give one key, canonical
+  `--spec`, explicit distinct canonical `--plan` and both actual latest paired
+  SPEC/PLAN `--verdict` returns. Findings-bearing kinds must be at their refused
+  cap, with required genuine artifact seals, only minor/medium residuals and no blocking/critical tags; unresolved
+  historical operator-critical findings still need the operator's ruling. Keep
+  frozen bytes unchanged, even with zero inline dispositions. Refused/missing/
+  incompatible verification stays refused; partial semantic review coverage
+  still needs its owner. Existing approvals, permission fences and lints apply;
+  `spec-review` remains a review record, not a signature.
+  The five-flag `capped-fold --key --spec --plan --spec-return --plan-return`
+  diagnostic takes a value for each flag and prints read-only JSON, with no
+  authority or coverage repair. Use current Bun (`.bun-version`) and compatible
+  Jira source/built dist and verifier dependencies in the recording checkout;
+  retain that checkout while signatures depend on it. File, ledger, manifest,
+  decision-mtime or decision filename selection drift can stale them. Build briefs
+  retain full provenance and require separate coverage for `spec:F1` and `plan:F1`.
 - **The operator asked to see a page that has not passed: the by-request form.** Run
   `bun scripts/telegram/chief-route.ts send-file --by-request "<the operator's request, in words>" <chat_id> <path> ["<caption>"]`.
   It skips the critic check and sends the `.md` or `.html` page marked **NOT PASSED. Not for signature.** at the top of the page,

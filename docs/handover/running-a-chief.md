@@ -327,6 +327,29 @@ effort guidance, including the chief's own wake-up budget, is in
   test from it, and the signed row records its path. A spec with I<n> invariant
   lines is refused without `--plan` (or with the spec as the plan). Editing the spec afterwards voids the
   signature until you re-sign with `--supersedes O-<id>`.
+- **Frozen nonblocking findings.** Existing `CLEAN` and inline-disposition paths
+  stay available. If the residual-disposition check fails, both `release operator
+  spec` and `release operator spec-review` automatically try verified capped
+  carry. Supply one key, canonical `--spec <file>`, an explicit distinct canonical
+  `--plan <file>` and both actual latest paired SPEC/PLAN `--verdict` returns at
+  their canonical paths. `spec` keeps its usual approval/decision and verbatim
+  evidence; `spec-review` remains a review record, not a signature.
+  Each findings-bearing kind must have reached its refused cap; only minor/medium
+  residuals with required genuine artifact seals and no blocking/critical tags qualify. Open historical
+  operator-critical findings still need their operator ruling. Under-cap findings
+  use remaining normal rounds; missing, incompatible or refused verification stays
+  refused. Hold partial semantic review coverage for its owner: provenance checks
+  do not prove the review was adequate. Keep frozen bytes unchanged, including when
+  there are zero inline dispositions; do not reset rounds or fabricate `CLEAN`.
+  The existing permission fences, lints and approvals still apply.
+  `bun scripts/telegram/chief-route.ts capped-fold --key <KEY> --spec <spec> --plan
+  <plan> --spec-return <latest SPEC return> --plan-return <latest PLAN return>` is
+  a read-only diagnostic whose JSON grants no authority or coverage repair. The
+  recording checkout needs current Bun (`.bun-version`), compatible Jira source
+  and built dist, and verifier dependencies. Retain it while signatures depend on
+  it: file, ledger, manifest, decision-mtime or decision filename selection drift can
+  stale the record. The build brief carries residuals with full provenance; Ticket
+  coverage treats `spec:F1` and `plan:F1` separately.
 - **The two checks.** `jira release spec-check <KEY…>` prints `SPEC ok`,
   `SPEC-STALE` (the file changed since signing) or `NO-SPEC` per key. `jira
   release core-check --paths <p,…> --key <K…> [--change-class rename|bulk]

@@ -3054,6 +3054,21 @@ test("R4, R5, R8, R9: round 5 needs a record (T5); the override names only an op
   expect(rowsOf(t.specs, "override").length).toBe(1);
 }, S1B);
 
+test("round override nonblocking hint preserves refusal and names the normal verified carry inputs", async () => {
+  const t = await roundTree(["- **F1** (minor) spec note"], ["- **F1** (medium) plan note"]);
+  const refused = await verb(true, "round-override", CAP_KEY, "--findings", "F1", "--why", "carry the notes", "--chief", "chief-x", "--specs", t.specs);
+  expect(refused.code).not.toBe(0);
+  expect(refused.err).toContain("not an open blocking finding");
+  for (const input of ["normal signing", "--spec", "canonical spec", "--plan", "distinct canonical plan", "both actual latest paired", "--verdict", "verified carry", "frozen bytes unchanged"]) expect(refused.err).toContain(input);
+  expect(rowsOf(t.specs, "override")).toEqual([]);
+
+  const criticalTree = await roundTree(["- **O1** (minor; operator-critical: spend-grant) needs a ruling"], []);
+  const held = await verb(true, "round-override", CAP_KEY, "--findings", "O1", "--why", "carry it", "--chief", "chief-x", "--specs", criticalTree.specs);
+  expect(held.code).not.toBe(0);
+  expect(held.err).toContain("operator rules on them first (round-critical)");
+  expect(held.err).not.toContain("verified carry");
+}, S1B);
+
 test("R5b: a round whose findings carry no format line holds synthetic ids the override can name", async () => {
   const t = await roundTree(MAJOR, []);
   expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", "prose, no finding line")).err).toBe("");
@@ -3125,6 +3140,18 @@ test("R13-fold, R13b-fold: fold-list keeps round 3's minors after a closure roun
   expect((await sealOn(`${y}.critic-spec-r1.md`, [y], "SPEC FINDINGS 1", "- **m-z** (minor) elsewhere")).err).toBe("");
   expect((await fold(t.a)).out.trim().split("\n")).toEqual([`- m-a (minor) spec r3 ${r3}`, `- m-b (medium) spec r3 ${r3}`, `- c1 (minor; out-of-closure) spec r4 ${r4}`]);
   expect((await fold(y)).out.trim().split("\n")).toEqual([`- m-z (minor) spec r1 ${y}.critic-spec-r1.md`]);
+}, S1B);
+
+test("fold-list kind scoped collisions preserve first-added provenance within each kind", async () => {
+  const t = await roundTree(["- **F1** (minor) original spec note", "- **M1** (major) close this"], ["- **F1** (medium) plan note"]);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 2", "- **F1** (medium) repeated note", "- **F2** (minor) later note")).err).toBe("");
+  const folded = await verb(false, "fold-list", "--spec", t.a, "--specs", t.specs);
+  expect(folded.code).toBe(0);
+  expect(folded.out.trim().split("\n")).toEqual([
+    `- F1 (minor) spec r3 ${t.a}.critic-spec-r3.md`,
+    `- F2 (minor; out-of-closure) spec r4 ${t.a}.critic-spec-r4.md`,
+    `- F1 (medium) plan r3 ${t.a}.critic-plan-r3.md`,
+  ]);
 }, S1B);
 
 test("R19-status, R20: an open operator-critical finding is listed by round-status, refuses --sign (T18) and is named in the send-file lead; round-critical --no-round closes it and opens no round", async () => {

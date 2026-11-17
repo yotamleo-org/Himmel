@@ -1297,7 +1297,12 @@ export async function roundOverride(specs: string, key: string, o: { findings: s
     const open = openBlocking(rows);
     const named = o.findings.map(id => {
       const f = open.find(x => x.id === id);
-      if (!f) throw new Error(`round-override: ${id} is not an open blocking finding of ${key}'s latest round`);
+      if (!f) {
+        const critical = criticalOpenOf(rows);
+        const hint = critical.length ? `; ${key} has open operator-critical findings: ${critical.map(c => `${c.id} (${c.class})`).join(", ")}; the operator rules on them first (round-critical)`
+          : !open.length ? "; for eligible capped nonblocking findings, use normal signing with --spec <canonical spec>, --plan <distinct canonical plan> and both actual latest paired --verdict returns; verified carry is automatic only if accepted; keep frozen bytes unchanged, with no reset or fabricated CLEAN; otherwise stop for the owner" : "";
+        throw new Error(`round-override: ${id} is not an open blocking finding of ${key}'s latest round${hint}`);
+      }
       return { id, severity: f.severity, critic: f.kind, return_sha: f.return_sha };
     });
     const writer = writerRound(rows);
@@ -1365,8 +1370,9 @@ export async function foldList(specArg: string, specsArg?: string): Promise<stri
   const rows = await loadLedger(specs, key);
   const out: string[] = []; const seen = new Set<string>();
   const add = (f: { id: string; severity: string; tag?: string }, kind: Kind, round: number, path: string) => {
-    if (seen.has(f.id)) return;
-    seen.add(f.id); out.push(`- ${f.id} (${f.severity}${f.tag ? `; ${f.tag}` : ""}) ${kind} r${round} ${path}`);
+    const key = `${kind}:${f.id}`;
+    if (seen.has(key)) return;
+    seen.add(key); out.push(`- ${f.id} (${f.severity}${f.tag ? `; ${f.tag}` : ""}) ${kind} r${round} ${path}`);
   };
   const tagOf = (f: Finding) => [f.class === "out-of-closure" ? "out-of-closure" : "", f.reopens ? `reopens ${f.reopens}` : "", f.regression ? "regression" : "", f.critical ? `operator-critical: ${f.critical}` : ""].filter(Boolean).join("; ");
   for (const kind of KINDS) {
