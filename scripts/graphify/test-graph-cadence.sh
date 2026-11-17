@@ -1758,6 +1758,164 @@ assert_contains "unresolvable build commit still records published-channel" '"ac
 assert_contains "unresolvable build commit records null merges_behind" '"merges_behind":null,' "$LEDGER_LINE10B"
 assert_contains "unresolvable build commit records null lag_s" '"lag_s":null,' "$LEDGER_LINE10B"
 
+# =============================================================================
+# Test 11: the live graph publishes to graph-data with no model call, and the
+# cadence watches the branch and the semantic shrink guard.
+# Fixture: a retired repo (origin/main tracks no graph), a primary graphify-out
+# holding a built graph, a recording alert, and the REAL publish-graph-channel.sh
+# (gitleaks faked to exit 0). The run never passes --semantic.
+# =============================================================================
+FAKE_ALERT="$TMP_ROOT/t11-alert-fake.sh"
+cat > "$FAKE_ALERT" <<'FAKEALERT'
+#!/usr/bin/env bash
+echo "$*" >> "$FAKE_ALERT_LOG"
+FAKEALERT
+chmod +x "$FAKE_ALERT"
+FAKE_GITLEAKS="$TMP_ROOT/t11-gitleaks-fake.sh"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$FAKE_GITLEAKS"; chmod +x "$FAKE_GITLEAKS"
+
+# gd_repo <tag> -- a retired primary with 3 commits (GD_C1 the oldest, GD_HEAD the tip) and a bare origin.
+gd_repo() {
+    local tag="$1" i
+    GD_REPO="$TMP_ROOT/$tag-primary"; GD_BARE="$TMP_ROOT/$tag-origin.git"
+    GD_HOME="$TMP_ROOT/$tag-home"; GD_LEDGER="$TMP_ROOT/$tag-ledger"; GD_ALERTS="$TMP_ROOT/$tag-alerts.log"
+    mkdir -p "$GD_HOME" "$GD_LEDGER"; : > "$GD_ALERTS"
+    git init -q --bare "$GD_BARE" >/dev/null 2>&1
+    git init -q --initial-branch=main "$GD_REPO" 2>/dev/null || git init -q "$GD_REPO"
+    git -C "$GD_REPO" config user.email t@test.com
+    git -C "$GD_REPO" config user.name test
+    for i in 1 2 3; do
+        echo "line$i" >> "$GD_REPO/README.md"
+        git -C "$GD_REPO" add -A
+        git -C "$GD_REPO" commit -q -m "chore: commit $i"
+        [ "$i" -ne 1 ] || GD_C1=$(git -C "$GD_REPO" rev-parse HEAD)
+    done
+    GD_HEAD=$(git -C "$GD_REPO" rev-parse HEAD)
+    git -C "$GD_REPO" remote add origin "$GD_BARE"
+    git -C "$GD_REPO" push -q origin main
+    GD_SLUG=$(corpus_slug_of "$GD_REPO")
+}
+# gd_live <built-at-commit> [nosemantic] -- the primary's graphify-out.
+gd_live() {
+    local out="$GD_REPO/graphify-out"
+    mkdir -p "$out"
+    printf '{"nodes":[],"built_at_commit":"%s"}' "$1" > "$out/graph.json"
+    echo "# GRAPH_REPORT" > "$out/GRAPH_REPORT.md"
+    echo '{}' > "$out/manifest.json"
+    rm -f "$out/semantic-manifest.json"
+    [ "${2:-}" = nosemantic ] || printf '{"version":1,"files":{"a.md":"%064d"}}' 0 > "$out/semantic-manifest.json"
+}
+# gd_tip <built-at-commit> <age-seconds> -- one orphan graph-data commit on the bare, fetched into the primary.
+gd_tip() {
+    local blob tree when commit
+    blob=$(printf '%s\n' "$1" | git -C "$GD_REPO" hash-object -w --stdin)
+    tree=$(printf '100644 blob %s\tbuilt_at_commit\n' "$blob" | git -C "$GD_REPO" mktree)
+    when=$(( $(date +%s) - $2 ))
+    commit=$(GIT_AUTHOR_DATE="$when +0000" GIT_COMMITTER_DATE="$when +0000" git -C "$GD_REPO" commit-tree "$tree" -m "graph-data built at $1")
+    git -C "$GD_REPO" push -q -f origin "$commit:refs/heads/graph-data"
+    git -C "$GD_REPO" fetch -q origin
+}
+gd_tip_bac() { git -C "$GD_BARE" show graph-data:built_at_commit 2>/dev/null | head -n 1; }
+gd_run() {
+    rc=0
+    out=$(HOME="$GD_HOME" GRAPH_CADENCE_HIMMEL_ROOT="$GD_REPO" GRAPH_CADENCE_LEDGER_ROOT="$GD_LEDGER" \
+          GRAPH_CADENCE_ALERT="$FAKE_ALERT" FAKE_ALERT_LOG="$GD_ALERTS" GRAPH_CHANNEL_ALERT="$FAKE_ALERT" \
+          GRAPH_CHANNEL_GITLEAKS="$FAKE_GITLEAKS" GRAPH_CADENCE_PAUSE_MARKER="${GD_MARKER:-$GD_HOME/semantic.paused}" \
+          run_gc --threshold 10 2>&1) || rc=$?
+    GD_LAST_ACTION=$(tail -n1 "$GD_LEDGER/.graph-cadence/ledger.jsonl" 2>/dev/null | sed -n 's/.*"action":"\([^"]*\)".*/\1/p') || GD_LAST_ACTION=""
+}
+
+echo "TEST: a paused cadence publishes the live graph (newer than graph-data, with a semantic layer) with no model call"
+gd_repo t11a
+gd_live "$GD_HEAD"
+gd_tip "$GD_C1" $((3 * 86400))
+GD_TIP_BEFORE=$(git -C "$GD_BARE" rev-parse refs/heads/graph-data)
+: > "$GD_HOME/semantic.paused"
+: > "$AST_REC_LOG"
+GRAPH_CADENCE_AST_UPDATE="$AST_REC" AST_REC_LOG="$AST_REC_LOG" gd_run
+assert_eq "paused publish rc=0" "0" "$rc"
+assert_eq "the graph-data tip moved" "1" "$([ "$(git -C "$GD_BARE" rev-parse refs/heads/graph-data)" != "$GD_TIP_BEFORE" ] && echo 1 || echo 0)"
+assert_eq "the graph-data tip's built_at_commit is the live graph's commit" "$GD_HEAD" "$(gd_tip_bac)"
+assert_eq "paused publish ledger action" "published-channel" "$GD_LAST_ACTION"
+assert_contains "paused publish says it makes no model call" "is newer than graph-data and carries a semantic layer -- publishing it to graph-data with no model call" "$out"
+assert_eq "paused publish ran no rebuild" "" "$(cat "$AST_REC_LOG")"
+assert_eq "paused publish left no promote lock" "no" "$([ -e "$GD_REPO/graphify-out/.promote.lock" ] && echo yes || echo no)"
+assert_not_contains "a published graph-data raises no lag alert" "fail graph-data-$GD_SLUG" "$(cat "$GD_ALERTS")"
+assert_contains "a published graph-data clears its lag alert" "clear graph-data-$GD_SLUG" "$(cat "$GD_ALERTS")"
+LEDGER_LINE11A=$(tail -n1 "$GD_LEDGER/.graph-cadence/ledger.jsonl")
+assert_contains "paused publish ledger names the published build commit" "\"graph_head\":\"$GD_HEAD\"" "$LEDGER_LINE11A"
+assert_contains "paused publish ledger records no error" '"error":null' "$LEDGER_LINE11A"
+
+echo "TEST: no publish when graph-data is current, and none for a live graph with no semantic layer"
+gd_repo t11b
+gd_live "$GD_HEAD"
+gd_tip "$GD_HEAD" 3600
+GD_TIP_BEFORE=$(git -C "$GD_BARE" rev-parse refs/heads/graph-data)
+gd_run
+assert_eq "current graph-data rc=0" "0" "$rc"
+assert_eq "current graph-data: the tip did not move" "$GD_TIP_BEFORE" "$(git -C "$GD_BARE" rev-parse refs/heads/graph-data)"
+assert_eq "current graph-data: action skipped" "skipped" "$GD_LAST_ACTION"
+gd_repo t11c
+gd_live "$GD_HEAD" nosemantic
+gd_tip "$GD_C1" 3600
+GD_TIP_BEFORE=$(git -C "$GD_BARE" rev-parse refs/heads/graph-data)
+gd_run
+assert_eq "no semantic layer rc=0" "0" "$rc"
+assert_eq "no semantic layer: the tip did not move" "$GD_TIP_BEFORE" "$(git -C "$GD_BARE" rev-parse refs/heads/graph-data)"
+assert_eq "no semantic layer: action skipped" "skipped" "$GD_LAST_ACTION"
+assert_not_contains "no semantic layer: nothing is published" "publishing it to graph-data" "$out"
+
+echo "TEST: a promote lock another refresh still holds blocks the live publish: a warning, no push, the next fire retries"
+gd_repo t11f
+gd_live "$GD_HEAD"
+gd_tip "$GD_C1" 3600
+GD_TIP_BEFORE=$(git -C "$GD_BARE" rev-parse refs/heads/graph-data)
+mkdir "$GD_REPO/graphify-out/.promote.lock"
+GRAPH_CADENCE_PROMOTE_LOCK_WAIT=0 gd_run
+assert_eq "a held promote lock keeps rc=0" "0" "$rc"
+assert_contains "a held promote lock warns that nothing was published" "WARN the live graph was NOT published to graph-data" "$out"
+assert_eq "a held promote lock: the tip did not move" "$GD_TIP_BEFORE" "$(git -C "$GD_BARE" rev-parse refs/heads/graph-data)"
+assert_eq "a held promote lock is left in place" "yes" "$([ -d "$GD_REPO/graphify-out/.promote.lock" ] && echo yes || echo no)"
+
+echo "TEST: a graph-data tip past the bound alerts with its cause, and the alert clears when it catches up"
+gd_repo t11d
+gd_live "$GD_HEAD" nosemantic
+gd_tip "$GD_C1" $((3 * 86400))
+GD_MARKER="$GD_HOME/semantic.paused"; : > "$GD_MARKER"
+gd_run
+assert_eq "lag alert run rc=0 (an alert never fails the run)" "0" "$rc"
+assert_contains "a lagging graph-data raises its alert" "fail graph-data-$GD_SLUG " "$(cat "$GD_ALERTS")"
+assert_contains "the lag alert names the pause marker" "the semantic step is paused ($GD_MARKER exists" "$(cat "$GD_ALERTS")"
+assert_contains "the lag alert names the missing semantic layer" "the live graph carries no semantic layer" "$(cat "$GD_ALERTS")"
+gd_tip "$GD_HEAD" 3600
+: > "$GD_ALERTS"
+gd_run
+assert_contains "a caught-up graph-data clears the alert" "clear graph-data-$GD_SLUG" "$(cat "$GD_ALERTS")"
+assert_not_contains "a caught-up graph-data raises no alert" "fail graph-data-$GD_SLUG" "$(cat "$GD_ALERTS")"
+GD_MARKER=""
+
+echo "TEST: a file the semantic shrink guard held in two runs in a row alerts, and the alert clears once it is not held"
+gd_repo t11e
+mkdir -p "$GD_REPO/graphify-out"
+python3 - "$GD_REPO/graphify-out" <<'HELDPY'
+import json, os, sys
+out = sys.argv[1]
+row = json.dumps({"ts": "2026-11-17T00:00:00Z", "name": "t", "batch": 1, "refused_files": ["x.md"], "failed_files": []}) + "\n"
+open(os.path.join(out, "semantic-runs.jsonl"), "w").write(row + row)
+json.dump({"version": 1, "files": {}, "stuck": {"x.md": {"hash": "h", "attempts": 1,
+    "reason": "shrink guard: new 12 vs old 25 semantic nodes", "new_nodes": 12, "old_nodes": 25}}},
+    open(os.path.join(out, "semantic-manifest.json"), "w"))
+HELDPY
+gd_run
+assert_eq "held alert run rc=0" "0" "$rc"
+assert_contains "a held file raises the held alert with its counts" "fail graph-semantic-$GD_SLUG-held " "$(cat "$GD_ALERTS")"
+assert_contains "the held alert names the file and the counts" "x.md new 12 vs old 25" "$(cat "$GD_ALERTS")"
+python3 -c 'import json,sys;p=sys.argv[1];m=json.load(open(p));m["stuck"]={};json.dump(m,open(p,"w"))' "$GD_REPO/graphify-out/semantic-manifest.json"
+: > "$GD_ALERTS"
+gd_run
+assert_contains "a file no longer held clears the held alert" "clear graph-semantic-$GD_SLUG-held" "$(cat "$GD_ALERTS")"
+assert_not_contains "a file no longer held raises no alert" "fail graph-semantic-$GD_SLUG-held" "$(cat "$GD_ALERTS")"
+
 echo
 echo "===================================="
 echo "test summary: $PASS passed, $FAIL failed"

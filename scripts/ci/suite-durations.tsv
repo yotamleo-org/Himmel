@@ -393,6 +393,7 @@ scripts/graphify/test-ast-update.sh	19
 scripts/graphify/test-check-graph-freshness.sh	5
 scripts/graphify/test-detect-duplicate-notes.sh	0
 scripts/graphify/test-graph-cadence.sh	66
+scripts/graphify/test-graph-data-status.sh	1
 scripts/graphify/test-graph-out-root.sh	0
 scripts/graphify/test-graph-prune-deleted.sh	8
 scripts/graphify/test-graph-publish.sh	1
