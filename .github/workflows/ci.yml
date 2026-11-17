@@ -1495,6 +1495,10 @@ jobs:
       - name: JS suite report dir
         if: ${{ matrix.pkg != 'himmel-bus' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
         run: mkdir -p "$RUNNER_TEMP/js-suite-report"
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: ${{ matrix.pkg == 'jira' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
+        with:
+          bun-version-file: .bun-version
       - if: ${{ matrix.pkg != 'himmel-bus' && !(needs.plan.result == 'success' && needs.plan.outputs.run_node_suites == 'false') }}
         run: bash "$GITHUB_WORKSPACE/scripts/ci/live-witness.sh" run --label node-suites/${{ matrix.pkg }} -- npm test -- --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/js-suite-report/vitest.json"
         working-directory: ${{ matrix.dir || format('scripts/{0}', matrix.pkg) }}

@@ -275,7 +275,8 @@ stands with `bun <himmel>/scripts/telegram/chief-route.ts round-status <KEY> --s
   without the marker line, or one that reads a file round 3 did not seal.
 - **Minors and mediums never buy a round.** The ledger keeps every finding, and
   the build brief gets the ones no later round answered, through `fold-list`, as
-  `## Folded critic findings`. After a minors-only round 3, sign the spec: do not
+  `## Folded critic findings`. Coverage is kind-scoped: `spec:F1` and `plan:F1`
+  are separate. After a minors-only round 3, use the signing route below: do not
   ask for round 4.
 - **The override.** Past round 4, the chief may record one
   `round-override <KEY> --findings <id,...> --why "<line>" --chief <session> --specs <bucket>/specs` per
@@ -358,9 +359,10 @@ Its last line is the verdict: `SPEC CLEAN`, or `SPEC FINDINGS <count>`. If the
 critic did not end with that line, append it yourself (`<count>` = the findings
 in the return). Never edit the critic's text. `jira release operator spec`
 signs the spec with the last round's file and hashes it. It refuses a last line
-in any other form. A `FINDINGS` file signs only when the spec's
-`## Critic rounds` section gives each residual a
-`- R<n>: fixed|ASSUMPTION|ceiling|deferred → HIMMEL-<n>` line.
+in any other form. The normal `FINDINGS` path requires the spec's
+`## Critic rounds` section to give each residual a
+`- R<n>: fixed|ASSUMPTION|ceiling|deferred → HIMMEL-<n>` line. If that check fails
+on frozen capped artifacts, the frozen nonblocking carry route below may apply.
 
 **Seal each return to the bytes the critic read.** Straight after saving a return,
 before any fix and whatever its verdict, run one command per file under review,
@@ -387,8 +389,8 @@ A refused seal names its cause, and each has one next step:
   again and type it once more.
 - `last line`: append the verdict line as above, then type it once more.
 - `already seals`: that file is done; go on to the next.
-- `needs a blocking finding in round 3`: round 3 left only minors; sign the spec
-  under 848 and let the build carry them.
+- `needs a blocking finding in round 3`: round 3 left no blockers; use the
+  frozen nonblocking carry route below if eligible.
 - `is a closure check`: the return lacks the pack's marker line, or read a file
   round 3 did not seal; dispatch the critic again with `closure-pack`.
 - `needs a round-override or round-critical record`: stop; see At the cap.
@@ -400,10 +402,49 @@ round of the spec critic and of the plan critic, which sealed it too. Write a
 round's dispositions in the fix the next round reads. An agreed panel finding on a
 `CLEAN` return is a fix like any other, and the next round reads it.
 
+**Frozen nonblocking carry.** Existing `CLEAN` and inline-disposition signing
+continue to work. When the normal residual-disposition check fails, the existing
+`jira release operator spec` and `jira release operator spec-review` commands
+automatically try the real `capped-fold` verifier. Use one ticket, an explicit
+canonical `--spec <spec>` and distinct canonical `--plan <plan>`, and exactly two
+`--verdict` inputs: the actual latest paired SPEC and PLAN returns at their
+canonical paths. The `spec` command keeps its normal operator approval/decision
+and verbatim evidence; `spec-review` remains a review record, not a signature.
+Lint requirements remain. No new signing flag is needed, and zero inline
+dispositions can qualify without editing the frozen artifacts. Use the existing
+recorded approval and its verbatim evidence; the carry route adds neither a new
+approval request nor a waiver. For a noncritical spec already approved under an
+applicable standing decision, the normal signing call is:
+
+```bash
+node <himmel>/scripts/jira/dist/index.js release operator spec <release> --keys <KEY> --spec <canonical-spec> --plan <canonical-plan> --verdict <latest-spec-return> --verdict <latest-plan-return> --decision <approved-decision> --verbatim-file <operator-words-file>
+```
+
+Each findings-bearing kind must have reached its refused cap; an under-cap
+findings return cannot qualify even if the other kind is capped. The paired
+returns must carry the required genuine artifact seals, with only minor/medium
+residuals, no blocking or critical tags in those returns, and no unresolved
+historical operator-critical finding.
+Verification checks provenance, not whether the critic reviewed the subject
+adequately: partial semantic coverage is still a reason to hold. A refused,
+missing or incompatible verifier remains refused. Keep frozen bytes and history
+unchanged; do not add dispositions, reset rounds or invent `CLEAN` to make it pass.
+Use remaining normal rounds when available; otherwise hold for the actual owner
+or operator's existing authority route, including `round-critical` for criticals.
+
+For read-only diagnosis, run
+`bun <himmel>/scripts/telegram/chief-route.ts capped-fold --key <KEY> --spec <canonical spec> --plan <distinct canonical plan> --spec-return <actual latest SPEC return> --plan-return <actual latest PLAN return>`.
+Its JSON grants no signing authority and repairs no coverage. The signing
+checkout needs current Bun (the repo's `.bun-version`) and compatible Jira
+source/built dist plus verifier dependencies. Retain that recording checkout
+while signatures depend on it: file bytes, ledger, manifest, decision mtime or
+decision filename selection drift can stale them. Carry each residual into the build
+brief and give each kind-scoped id its own Ticket coverage disposition.
+
 **At the cap.** Once a critic has had round 3, whatever its verdict, the files it
 read change only to answer an open blocking finding, and only the files round 3
 sealed: round 4 checks exactly that diff. When round 3 of either kind left no
-blocking finding, they are not edited at all: sign the spec under 848, and the
+blocking finding, they are not edited at all: use the signing route above, and the
 minors go to the build. Stages 3 and 4 still run on a frozen spec, because
 send-file refuses a page with no plan critic file, or one neither `PLAN CLEAN` nor
 at its own round 3 in the ledger. The plan alone may still be fixed while its

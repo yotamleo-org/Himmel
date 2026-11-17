@@ -1,10 +1,14 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { releaseKeyPath, releaseRoot } from './paths.js';
+import { pinnedSha, pinnedRead, boundedDirectoryNames, selectDecisionNames, reviewedSpecHashes, returnSha,
+  canonicalDirectoryNames, returnDirectories, checkLatestReturns,
+  validateCappedFoldProofShape, type CappedFoldProof, type FilePin } from './pinned.js';
+export { pinnedSha, type Pinned } from './pinned.js';
 import { journalPath, readVersionWrites, type Getter, type VersionWriteRow } from './version-writes.js';
 import {
   appendChain, contentSha, loadKey, mintKey, readChain, readSigned, withLock, withLockAsync, writeSigned, type Chain,
@@ -440,34 +444,6 @@ export function readOperatorRecords(kind: OperatorKind | OperatorKind[], env: Re
 
 const fileSha = (p: string) => createHash('sha256').update(readFileSync(p)).digest('hex');
 
-const PINNED_MAX = 16 * 1024 * 1024;
-export type Pinned = { bytes: Buffer; sha256: string } | { missing: true } | { unreadable: true };
-
-// A pinned file is read once from one non-blocking fd: a FIFO, a device, a directory or a file over 16 MiB
-// is unreadable, so a planted path never blocks the reader nor costs it more than 16 MiB.
-export function pinnedSha(path: string): Pinned {
-  let fd: number;
-  try {
-    fd = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK);
-  } catch (e) {
-    return (e as NodeJS.ErrnoException).code === 'ENOENT' ? { missing: true } : { unreadable: true };
-  }
-  try {
-    const st = fstatSync(fd);
-    if (!st.isFile() || st.size > PINNED_MAX) return { unreadable: true };
-    const buf = Buffer.alloc(st.size + 1);
-    let n = 0;
-    for (let r = 1; r > 0 && n < buf.length; n += r) r = readSync(fd, buf, n, buf.length - n, null);
-    if (n > st.size) return { unreadable: true };
-    const bytes = buf.subarray(0, n);
-    return { bytes, sha256: createHash('sha256').update(bytes).digest('hex') };
-  } catch {
-    return { unreadable: true };
-  } finally {
-    closeSync(fd);
-  }
-}
-
 function pinRead(path: string, role: string, verb: string): { bytes: Buffer; sha256: string } {
   const got = pinnedSha(path);
   if ('missing' in got) throw new Error(`${verb}: ${role} not found: ${path}`);
@@ -615,6 +591,83 @@ function checkRoundResiduals(specText: string, names: string[], residuals: numbe
   }
 }
 
+interface CappedInputs {
+  keys: string[]; spec: FilePin; plan?: FilePin; files: VerdictFile[]; residuals: number;
+}
+
+function cappedVerifier(): string {
+  return fileURLToPath(new URL('../../../telegram/chief-route.ts', import.meta.url));
+}
+
+function canonical(path: string): boolean {
+  try { return realpathSync(path) === path; } catch { return false; }
+}
+
+function checkCappedPins(proof: CappedFoldProof): void {
+  for (const directory of returnDirectories(proof.key, proof.spec.path, proof.plan.path, proof.returns)) {
+    checkLatestReturns(directory, canonicalDirectoryNames(directory).names, proof.key, proof.returns);
+  }
+  for (const pin of proof.pins) {
+    if (pin.role === 'decision-selection') {
+      if (!canonical(pin.directory) || JSON.stringify(selectDecisionNames(boundedDirectoryNames(pin.directory), pin.decision)) !== JSON.stringify(pin.names)) {
+        throw new Error(`capped evidence selection changed: ${pin.directory}`);
+      }
+    } else {
+      const got = pinnedRead(pin.path);
+      if (!canonical(pin.path) || !('bytes' in got) || got.sha256 !== pin.sha256
+        || (pin.role === 'decision' && got.mtime_ms !== pin.mtime_ms)) throw new Error(`capped evidence changed or unreadable: ${pin.path}`);
+    }
+  }
+}
+
+function bindCappedProof(proof: CappedFoldProof, input: CappedInputs): void {
+  if (proof.key !== input.keys[0] || proof.spec.path !== input.spec.path || proof.spec.sha256 !== input.spec.sha256
+    || proof.plan.path !== input.plan?.path || proof.plan.sha256 !== input.plan.sha256
+    || proof.carried.length !== input.residuals) throw new Error('capped proof input binding disagrees');
+  for (const r of proof.returns) {
+    const file = input.files.find(f => f.kind.toLowerCase() === r.kind);
+    if (!file || file.path !== r.path || file.sha256 !== r.sha256 || file.residuals !== r.residuals
+      || returnSha(file.text) !== r.return_sha) throw new Error(`capped proof ${r.kind} return binding disagrees`);
+    const reviewed = reviewedSpecHashes(file.text);
+    if (reviewed.length !== 1 || reviewed[0] !== input.spec.sha256) throw new Error(`capped ${r.kind} Reviewed binding disagrees`);
+  }
+}
+
+function cappedFallback(check: () => void, input: CappedInputs): CappedFoldProof | undefined {
+  let refusal: unknown;
+  try { check(); return undefined; } catch (e) { refusal = e; }
+  try {
+    if (input.keys.length !== 1 || !input.plan || input.plan.path === input.spec.path
+      || input.files.length !== 2) throw new Error('capped carry requires one key, an explicit distinct plan and paired SPEC/PLAN returns');
+    const args = [cappedVerifier(), 'capped-fold', '--key', input.keys[0], '--spec', input.spec.path, '--plan', input.plan.path,
+      '--spec-return', input.files.find(f => f.kind === 'SPEC')!.path, '--plan-return', input.files.find(f => f.kind === 'PLAN')!.path];
+    const output = execFileSync('bun', args, { encoding: 'utf8', timeout: 30000, maxBuffer: 4 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
+    const proof = validateCappedFoldProofShape(JSON.parse(output));
+    bindCappedProof(proof, input);
+    checkCappedPins(proof);
+    return proof;
+  } catch (e) {
+    const detail = e as { stderr?: string | Buffer; message?: string };
+    const reason = String(detail.stderr || detail.message || e).trim().slice(0, 500);
+    throw new Error(`${refusal instanceof Error ? refusal.message : refusal}; capped verifier unavailable/refused: ${reason}`);
+  }
+}
+
+function appendSpec(ctx: Ctx, k: Buffer, row: Omit<OperatorRow, 'id' | 'ts'>): OperatorRow {
+  if (!row.capped_carry) return appendOperator(ctx, k, row);
+  checkCappedPins(row.capped_carry);
+  const persisted = appendOperator(ctx, k, row);
+  try {
+    const chain = readChain<OperatorRow>(f(ctx, 'operator.jsonl'), k);
+    const verified = chain.verified.find(r => r.id === persisted.id);
+    if (chain.bad.length || !verified || contentSha(verified) !== contentSha(persisted)) throw new Error('signed row did not verify on readback');
+    checkCappedPins(row.capped_carry);
+    return verified;
+  } catch (e) {
+    throw new Error(`persisted-but-stale ${persisted.id}: ${e instanceof Error ? e.message : e}; inspect this record before retrying`);
+  }
+}
+
 export function signSpec(ctx: Ctx, o: {
   keys: string[]; spec: string; verdicts: string[]; decision: string; verbatim: string; supersedes?: string; plan?: string; sourceRoot?: string;
 }): OperatorRow {
@@ -625,12 +678,14 @@ export function signSpec(ctx: Ctx, o: {
   // The plan carries the invariants' acceptance tests; with no --plan the spec stands in for it.
   const plan = o.plan ? resolve(o.plan) : spec;
   if (!existsSync(plan)) throw new Error(`release operator spec: plan not found: ${plan}`);
-  const { verdicts, residuals } = readVerdicts(o.verdicts, 'release operator spec', { required: ['SPEC', 'PLAN'], allowed: [] },
+  const { verdicts, residuals, files } = readVerdicts(o.verdicts, 'release operator spec', { required: ['SPEC', 'PLAN'], allowed: [] },
     'release operator spec: give exactly two --verdict files, the spec critic\'s and the plan critic\'s');
   const bytes = readFileSync(spec);
   const specSha = createHash('sha256').update(bytes).digest('hex');
   const planSha = o.plan ? fileSha(plan) : null;
-  checkResiduals(bytes.toString('utf8'), residuals);
+  const capped = cappedFallback(() => checkResiduals(bytes.toString('utf8'), residuals), {
+    keys: [...new Set(o.keys)], spec: { path: spec, sha256: specSha }, plan: o.plan ? { path: plan, sha256: planSha! } : undefined, files, residuals,
+  });
   const source = o.sourceRoot === undefined ? undefined : sourceIdentity(o.sourceRoot);
   const checkSource = () => {
     if (!source) return;
@@ -665,16 +720,15 @@ export function signSpec(ctx: Ctx, o: {
     }
     checkInputs();
     checkSource();
-    return appendOperator(ctx, l.k, {
+    return appendSpec(ctx, l.k, {
       kind: 'spec', decision: o.decision, keys: [...new Set(o.keys)], spec_path: spec, spec_sha256: specSha,
       plan_path: o.plan ? plan : null, plan_sha256: planSha, verdicts,
       ...(source ? { source_root: source.root, source_head: source.head } : {}),
-      supersedes: o.supersedes ?? null, residuals, verbatim: o.verbatim,
+      supersedes: o.supersedes ?? null, residuals, verbatim: o.verbatim, ...(capped ? { capped_carry: capped } : {}),
     });
   });
 }
 
-const REVIEWED = /^Reviewed: spec ([0-9a-f]{64})\b/gm;
 const KEY_LINE = /^Keys?:\s*(.+)$/gm;
 const KEY_IN = /[A-Z][A-Z0-9]*-\d+(?!\d)/g;
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -694,9 +748,9 @@ export function specReview(ctx: Ctx, o: { keys: string[]; spec: string; plan?: s
   const { verdicts, residuals, files } = readVerdicts(o.verdicts, verb, { required: ['SPEC'], allowed: ['PLAN'] },
     `${verb}: give exactly one SPEC verdict and at most one PLAN verdict`);
   const specVerdict = files.find((x) => x.kind === 'SPEC') as VerdictFile;
-  const reviewed = [...specVerdict.text.matchAll(REVIEWED)];
+  const reviewed = reviewedSpecHashes(specVerdict.text);
   if (reviewed.length !== 1) throw new Error(`${verb}: ${specVerdict.path} needs exactly one 'Reviewed: spec <sha256>' line`);
-  const reviewedSha = reviewed[0][1];
+  const reviewedSha = reviewed[0];
   for (const x of files) {
     const lines = [...x.text.matchAll(KEY_LINE)];
     const named = lines.length === 1 ? [...new Set(lines[0][1].match(KEY_IN) ?? [])] : [];
@@ -718,7 +772,9 @@ export function specReview(ctx: Ctx, o: { keys: string[]; spec: string; plan?: s
   if ((clean || specVerdict.residuals === 0) && reviewedSha !== specPin.sha256) {
     throw new Error(`${verb}: ${specVerdict.last} reviewed ${reviewedSha}, not the spec's bytes ${specPin.sha256}; run the spec critic on the final spec`);
   }
-  checkRoundResiduals(specText, files.map((x) => basename(x.path)), residuals, verb);
+  const capped = cappedFallback(() => checkRoundResiduals(specText, files.map((x) => basename(x.path)), residuals, verb), {
+    keys, spec: { path: spec, sha256: specPin.sha256 }, plan: { path: plan, sha256: planPin.sha256 }, files, residuals,
+  });
   lintSpec(spec, plan, verb);
   const same = (p: string, sha256: string) => {
     const got = pinnedSha(p);
@@ -735,10 +791,10 @@ export function specReview(ctx: Ctx, o: { keys: string[]; spec: string; plan?: s
         throw new Error(`${verb}: ${o.supersedes} is no live spec-review record in a declared release`);
       }
     }
-    return appendOperator(ctx, l.k, {
+    return appendSpec(ctx, l.k, {
       kind: 'spec-review', decision: null, keys, spec_path: spec, spec_sha256: specPin.sha256,
       plan_path: plan, plan_sha256: planPin.sha256, ...(clean ? {} : { reviewed_sha256: reviewedSha }), verdicts,
-      supersedes: o.supersedes ?? null, residuals,
+      supersedes: o.supersedes ?? null, residuals, ...(capped ? { capped_carry: capped } : {}),
     });
   });
 }
@@ -756,6 +812,18 @@ function staleReason(r: ReleaseRecord): string | null {
     if ('missing' in got) return `${p.path} is missing (${r.id})`;
     if ('unreadable' in got) return `${p.path} is unreadable (${r.id})`;
     if (got.sha256 !== p.sha256) return `${p.role} ${p.path} changed since ${r.id}`;
+  }
+  if (Object.hasOwn(r, 'capped_carry')) {
+    try {
+      const proof = validateCappedFoldProofShape(r.capped_carry);
+      if (r.keys?.length !== 1 || !r.plan_path || r.plan_path === r.spec_path) throw new Error('capped proof record binding disagrees');
+      const { files } = readVerdicts((r.verdicts ?? []).map(v => v.path), 'capped proof', { required: ['SPEC', 'PLAN'], allowed: [] }, 'capped proof needs paired returns');
+      bindCappedProof(proof, { keys: r.keys, spec: { path: r.spec_path ?? '', sha256: r.spec_sha256 ?? '' },
+        plan: { path: r.plan_path, sha256: r.plan_sha256 ?? '' }, files, residuals: r.residuals ?? -1 });
+      checkCappedPins(proof);
+    } catch (e) {
+      return `capped proof stale since ${r.id}: ${e instanceof Error ? e.message : e}`;
+    }
   }
   return null;
 }

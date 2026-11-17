@@ -1,7 +1,7 @@
 import { expect, test, spyOn } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, symlinkSync, unlinkSync, renameSync, statSync, cpSync, utimesSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, symlinkSync, unlinkSync, renameSync, statSync, cpSync, utimesSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, basename } from "node:path";
+import { join, basename, resolve } from "node:path";
 import { classify } from "./router";
 import { BASH_BIN, buildPrompt } from "./run";
 import { sendMessage } from "./telegram-api";
@@ -3126,6 +3126,21 @@ test("R4, R5, R8, R9: round 5 needs a record (T5); the override names only an op
   expect(rowsOf(t.specs, "override").length).toBe(1);
 }, S1B);
 
+test("round override nonblocking hint preserves refusal and names the normal verified carry inputs", async () => {
+  const t = await roundTree(["- **F1** (minor) spec note"], ["- **F1** (medium) plan note"]);
+  const refused = await verb(true, "round-override", CAP_KEY, "--findings", "F1", "--why", "carry the notes", "--chief", "chief-x", "--specs", t.specs);
+  expect(refused.code).not.toBe(0);
+  expect(refused.err).toContain("not an open blocking finding");
+  for (const input of ["normal signing", "--spec", "canonical spec", "--plan", "distinct canonical plan", "both actual latest paired", "--verdict", "verified carry", "frozen bytes unchanged"]) expect(refused.err).toContain(input);
+  expect(rowsOf(t.specs, "override")).toEqual([]);
+
+  const criticalTree = await roundTree(["- **O1** (minor; operator-critical: spend-grant) needs a ruling"], []);
+  const held = await verb(true, "round-override", CAP_KEY, "--findings", "O1", "--why", "carry it", "--chief", "chief-x", "--specs", criticalTree.specs);
+  expect(held.code).not.toBe(0);
+  expect(held.err).toContain("operator rules on them first (round-critical)");
+  expect(held.err).not.toContain("verified carry");
+}, S1B);
+
 test("R5b: a round whose findings carry no format line holds synthetic ids the override can name", async () => {
   const t = await roundTree(MAJOR, []);
   expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 1", "prose, no finding line")).err).toBe("");
@@ -3197,6 +3212,18 @@ test("R13-fold, R13b-fold: fold-list keeps round 3's minors after a closure roun
   expect((await sealOn(`${y}.critic-spec-r1.md`, [y], "SPEC FINDINGS 1", "- **m-z** (minor) elsewhere")).err).toBe("");
   expect((await fold(t.a)).out.trim().split("\n")).toEqual([`- m-a (minor) spec r3 ${r3}`, `- m-b (medium) spec r3 ${r3}`, `- c1 (minor; out-of-closure) spec r4 ${r4}`]);
   expect((await fold(y)).out.trim().split("\n")).toEqual([`- m-z (minor) spec r1 ${y}.critic-spec-r1.md`]);
+}, S1B);
+
+test("fold-list kind scoped collisions preserve first-added provenance within each kind", async () => {
+  const t = await roundTree(["- **F1** (minor) original spec note", "- **M1** (major) close this"], ["- **F1** (medium) plan note"]);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 2", "- **F1** (medium) repeated note", "- **F2** (minor) later note")).err).toBe("");
+  const folded = await verb(false, "fold-list", "--spec", t.a, "--specs", t.specs);
+  expect(folded.code).toBe(0);
+  expect(folded.out.trim().split("\n")).toEqual([
+    `- F1 (minor) spec r3 ${t.a}.critic-spec-r3.md`,
+    `- F2 (minor; out-of-closure) spec r4 ${t.a}.critic-spec-r4.md`,
+    `- F1 (medium) plan r3 ${t.a}.critic-plan-r3.md`,
+  ]);
 }, S1B);
 
 test("R19-status, R20: an open operator-critical finding is listed by round-status, refuses --sign (T18) and is named in the send-file lead; round-critical --no-round closes it and opens no round", async () => {
@@ -3488,3 +3515,533 @@ test("U8: a folder that cannot be read is reported on its own line and leaves th
   expect(j.unsealed).toHaveLength(1);
   expect(j.unread).toHaveLength(1);
 }, S1B);
+
+
+test("shared pinnedSha legacy shape and same-fd mtime", async () => {
+  const shared = await import("../jira/src/release/pinned.ts");
+  const file = join(root(), "read.txt"); writeFileSync(file, "hello");
+  utimesSync(file, 1234, 1234);
+  expect(shared.pinnedSha(file)).toEqual({ bytes: Buffer.from("hello"), sha256: "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824" });
+  expect(shared.pinnedSha(file + ".missing")).toEqual({ missing: true });
+  expect(shared.pinnedSha(dirname(file))).toEqual({ unreadable: true });
+  expect(typeof shared.pinnedRead).toBe("function");
+  const pinned = shared.pinnedRead(file);
+  expect(pinned).toMatchObject({ mtime_ms: 1234000, bytes: Buffer.from("hello") });
+  const fs = await import("node:fs");
+  const original = fs.readSync; let rebound = false;
+  const spy = spyOn(fs, "readSync").mockImplementation((...args: any[]) => {
+    if (!rebound) { rebound = true; renameSync(file, file + ".old"); writeFileSync(file, "replacement"); }
+    return (original as any)(...args);
+  });
+  try { expect(shared.pinnedRead(file + ".old")).toEqual({ missing: true });
+    expect(shared.pinnedRead(file)).toMatchObject({ mtime_ms: 1234000, bytes: Buffer.from("hello") });
+  } finally { spy.mockRestore(); }
+});
+
+test("shared bounded decision selector limits enumeration and ignores md", async () => {
+  const shared = await import("../jira/src/release/pinned.ts");
+  expect(typeof shared.boundedDirectoryNames).toBe("function");
+  expect(typeof shared.selectDecisionNames).toBe("function");
+  const dir = root();
+  for (const n of ["verbatim-decision-12-z.txt", "verbatim-decision-12-a.md", "verbatim-decision-123-a.txt", "verbatim-decision-12-a.txt"]) writeFileSync(join(dir, n), "x");
+  expect(shared.selectDecisionNames(shared.boundedDirectoryNames(dir), "12")).toEqual(["verbatim-decision-12-a.txt", "verbatim-decision-12-z.txt"]);
+  expect(shared.boundedDirectoryNames(dir + ".missing")).toEqual([]);
+  for (let i = 4; i <= 4096; i++) writeFileSync(join(dir, `entry-${i}`), "x");
+  expect(() => shared.boundedDirectoryNames(dir)).toThrow("directory entry limit");
+  expect(() => shared.selectDecisionNames([], "12x")).toThrow("'12x' is not a decision number");
+});
+
+test("shared quoteRule selector preserves legacy refusals", async () => {
+  const t = await roundTree(["- **C1** (minor; operator-critical: spend-grant) a spend"], []);
+  const check = async (decision: string, quote = SPEND) => {
+    const res = await verb(true, "round-critical", CAP_KEY, "--finding", "C1", "--decision", decision, "--quote", quote, "--no-round", "--specs", t.specs);
+    if (res.code !== 0) throw new Error(res.err);
+  };
+  await expect(check("bad")).rejects.toThrow("'bad' is not a decision number");
+  mkdirSync(join(t.specs, "decisions"), { recursive: true });
+  writeFileSync(join(t.specs, "decisions", "verbatim-decision-901-ignored.md"), `${CAP_KEY} ${SPEND}`);
+  await expect(check("901")).rejects.toThrow("0 files match specs/decisions/verbatim-decision-901-*.txt, expected exactly one");
+  const file = decide(t.specs, 901, `${CAP_KEY} ${SPEND}`);
+  const second = join(t.specs, "decisions", "verbatim-decision-901-second.txt"); writeFileSync(second, "x");
+  await expect(check("901")).rejects.toThrow("2 files match specs/decisions/verbatim-decision-901-*.txt, expected exactly one");
+  unlinkSync(second);
+  writeFileSync(file, SPEND);
+  await expect(check("901")).rejects.toThrow(`decision 901 does not name ${CAP_KEY}`);
+  writeFileSync(file, `${CAP_KEY} ${SPEND}`);
+  await expect(check("901", "short")).rejects.toThrow("does not hold the quote");
+  utimesSync(file, 1, 1);
+  await expect(check("901")).rejects.toThrow(`decision 901 is not newer than the latest round of ${CAP_KEY}`);
+  decide(t.specs, 901, `${CAP_KEY} ${SPEND}`);
+  await check("901");
+  await expect(check("901")).rejects.toThrow(`decision 901 was already used for ${CAP_KEY}`);
+});
+
+const fixtureSpecText = "---\ntickets: HIMMEL-10205\n---\n# HIMMEL-10205 fixture\n\nEstimate record: estimate.json\n\n## Alternatives considered\n\n- None better.\n\n## Definition of done\n\n- Fixture verifies.\n\n## Invariants\n\nnone\n";
+const fixturePlanText = "# HIMMEL-10205 plan\n\n- Task 1: build the fixture.\n";
+const fixtureRequest = (scratchRoot: string) => ({
+  scratchRoot, key: "HIMMEL-10205", specText: fixtureSpecText, planText: fixturePlanText,
+  returns: [1, 2, 3].flatMap(round => (["spec", "plan"] as const).map(kind => ({
+    kind, round, text: `- **F1** (${kind === "spec" ? "minor" : "medium"}) residual from ${kind} round ${round}\n${kind.toUpperCase()} FINDINGS 1\n`,
+    reads: ["spec", "plan", { path: "specs/designs/estimate.json", text: '{"median_seq":1,"sigma":0.1,"dod":{"passed":true}}\n' }],
+  }))),
+});
+
+test("shared real round fixture seeds before returns and creates accepted seals and snapshots", async () => {
+  const helper = await import("./testlib-capped-fold.ts").catch(() => null);
+  expect(typeof helper?.buildRoundFixture).toBe("function");
+  const scratch = root(); const f = await helper!.buildRoundFixture(fixtureRequest(scratch));
+  for (const p of [f.specsRoot, f.spec, f.plan, f.ledgerPath, ...f.verdicts]) expect(p.startsWith(scratch + "/")).toBe(true);
+  const { ledgerVerify, roundState } = await import("./chief-route");
+  expect(await roundState(f.specsRoot, "HIMMEL-10205")).toMatchObject({ epoch: 0, spec: 3, plan: 3, next: "none", invalid: [] });
+  for (const kind of ["spec", "plan"]) {
+    const verdict = f.verdicts.find(p => p.endsWith(`critic-${kind}-r3.md`))!;
+    expect(await ledgerVerify(verdict, { spec: f.spec })).toEqual({ key: "HIMMEL-10205", kind, round: 3, mode: "full" });
+    const text = readFileSync(verdict, "utf8");
+    expect(text).toContain(`Reviewed: spec ${sha(fixtureSpecText)}`);
+    expect(text.match(/^CONTENT-SHA256 /gm)).toHaveLength(3);
+  }
+  const ledger = readFileSync(f.ledgerPath, "utf8").trim().split("\n").map(l => JSON.parse(l));
+  expect(ledger.filter(r => r.row === "round")).toHaveLength(6);
+  expect(ledger.filter(r => r.row === "seal")).toHaveLength(12);
+  expect(ledger.some(r => r.row === "seed")).toBe(false);
+  for (const row of ledger) expect(sha(readFileSync(join(dirname(f.ledgerPath), "HIMMEL-10205", row.read_sha), "utf8"))).toBe(row.read_sha);
+  expect(JSON.parse(readFileSync(join(dirname(f.ledgerPath), "manifest.json"), "utf8")).keys).toEqual({});
+  await expect(helper!.buildRoundFixture(fixtureRequest(scratch))).rejects.toThrow("already holds");
+  for (const bad of ["relative", join(scratch, "missing")]) await expect(helper!.buildRoundFixture(fixtureRequest(bad))).rejects.toThrow("scratch root");
+});
+
+test("shared capped proof validator rejects finite schema mutations and preserves scoped identities", async () => {
+  const shared = await import("../jira/src/release/pinned.ts");
+  expect(typeof shared.validateCappedFoldProofShape).toBe("function");
+  const { buildRoundFixture } = await import("./testlib-capped-fold.ts");
+  const f = await buildRoundFixture(fixtureRequest(root()));
+  const { returnSha } = await import("./chief-route");
+  const filePin = (path: string) => ({ path, sha256: sha(readFileSync(path, "utf8")) });
+  const returns = (["spec", "plan"] as const).map(kind => {
+    const path = f.verdicts.find(p => p.endsWith(`critic-${kind}-r3.md`))!;
+    return { ...filePin(path), kind, round: 3, return_sha: returnSha(readFileSync(path, "utf8")), residuals: 1 };
+  });
+  const decision = join(f.specsRoot, "decisions", "verbatim-decision-901-fixture.txt");
+  mkdirSync(dirname(decision)); writeFileSync(decision, "fixture decision");
+  const good = {
+    schema: 1, reader_version: 1, mode: "capped-carry", key: "HIMMEL-10205", epoch: 0,
+    spec: filePin(f.spec), plan: filePin(f.plan), returns,
+    pins: [
+      { ...filePin(f.ledgerPath), role: "ledger" },
+      { ...filePin(join(dirname(f.ledgerPath), "manifest.json")), role: "manifest" },
+      ...returns.map(r => ({ path: r.path, sha256: r.sha256, role: "return" })),
+      ...[f.spec, f.plan].map(path => ({ ...filePin(path), role: "artifact" })),
+      { ...filePin(join(dirname(f.ledgerPath), "HIMMEL-10205", sha(fixtureSpecText))), role: "snapshot" },
+      { ...filePin(decision), role: "decision", mtime_ms: statSync(decision).mtimeMs },
+      { role: "decision-selection", directory: dirname(decision), decision: "901", names: [basename(decision)] },
+    ],
+    carried: returns.map(r => ({ key: "HIMMEL-10205", epoch: 0, kind: r.kind, round: r.round, return_path: r.path, return_sha: r.return_sha, finding_id: "F1", severity: r.kind === "spec" ? "minor" : "medium", status: "open-carried" })),
+  };
+  expect(shared.validateCappedFoldProofShape(good)).toEqual(good);
+  const separateDecision = structuredClone(good);
+  const separateName = "verbatim-decision-902-fixture.txt";
+  separateDecision.pins.push({ ...separateDecision.pins[7], path: join(dirname(decision), separateName) });
+  separateDecision.pins.push({ ...separateDecision.pins[8], decision: "902", names: [separateName] });
+  expect(shared.validateCappedFoldProofShape(separateDecision)).toEqual(separateDecision);
+  const reject = (mutate: (p: any) => void) => {
+    const bad = structuredClone(good); mutate(bad);
+    expect(() => shared.validateCappedFoldProofShape(bad)).toThrow("invalid capped-fold proof");
+  };
+  for (const field of Object.keys(good)) reject(p => { delete p[field]; });
+  for (const field of Object.keys(good.returns[0])) reject(p => { delete p.returns[0][field]; });
+  for (const field of Object.keys(good.carried[0])) reject(p => { delete p.carried[0][field]; });
+  for (const index of [0, 7, 8]) for (const field of Object.keys(good.pins[index])) reject(p => { delete p.pins[index][field]; });
+  for (const mutate of [
+    (p: any) => { p.extra = true; }, (p: any) => { p.spec.extra = true; },
+    (p: any) => { p.schema = 2; }, (p: any) => { p.reader_version = 2; }, (p: any) => { p.mode = "clean"; },
+    (p: any) => { p.returns.reverse(); }, (p: any) => { p.returns[0].kind = "plan"; },
+    (p: any) => { p.returns[0].sha256 = "A".repeat(64); }, (p: any) => { p.returns[0].round = 0; },
+    (p: any) => { p.returns[0].residuals = -1; }, (p: any) => { p.carried[0].round = 2; },
+    (p: any) => { p.carried[0].key = "HIMMEL-1"; }, (p: any) => { p.carried[0].epoch = 1; },
+    (p: any) => { p.carried[0].return_sha = "0".repeat(64); }, (p: any) => { p.carried[0].return_path = f.plan; },
+    (p: any) => { p.carried[0].severity = "major"; }, (p: any) => { p.carried[0].status = "closed"; },
+    (p: any) => { p.carried.push(p.carried[0]); }, (p: any) => { p.carried.pop(); },
+    (p: any) => { p.pins[0].role = "unknown"; }, (p: any) => { p.pins[0].mtime_ms = 1; },
+    (p: any) => { p.pins[7].mtime_ms = Infinity; }, (p: any) => { p.pins[8].decision = "901x"; },
+    (p: any) => { p.pins[8].names = ["verbatim-decision-901-x.md"]; },
+    (p: any) => { p.pins[8].names = ["verbatim-decision-901-z.txt", "verbatim-decision-901-a.txt"]; },
+    (p: any) => { p.pins.pop(); }, (p: any) => { p.pins.splice(7, 1); },
+    (p: any) => { p.pins.push(p.pins[8]); }, (p: any) => { p.pins.push(p.pins[0]); },
+    (p: any) => {
+      const name = "verbatim-decision-901-second.txt";
+      p.pins.push({ ...p.pins[7], path: join(dirname(decision), name) });
+      p.pins.push({ ...p.pins[8], names: [name] });
+    },
+    (p: any) => { p.pins[0].role = "artifact"; },
+    (p: any) => { p.pins.push({ ...p.pins[0], role: "snapshot" }); },
+    (p: any) => { p.returns[0].extra = true; }, (p: any) => { p.carried[0].extra = true; },
+    (p: any) => { p.pins[0].extra = true; }, (p: any) => { p.pins[8].extra = true; },
+  ]) reject(mutate);
+  for (const epoch of [-1, 1.1, Infinity, NaN, Number.MAX_SAFE_INTEGER + 1]) reject(p => { p.epoch = epoch; });
+  for (const path of ["relative", "/tmp/../tmp/file", "/tmp//file", "/tmp/file/", "/tmp/\0file"]) reject(p => { p.spec.path = path; });
+  expect(shared.PINNED_READ_VERSION).toBe(1);
+});
+
+test("shared fixture refuses escaping ancestors before creating directories", async () => {
+  const { buildRoundFixture } = await import("./testlib-capped-fold.ts");
+  const scratch = root(); const outside = root();
+  symlinkSync(outside, join(scratch, "specs"));
+  await expect(buildRoundFixture(fixtureRequest(scratch))).rejects.toThrow("inside the scratch root");
+  expect(existsSync(join(outside, "designs"))).toBe(false);
+  expect(existsSync(join(outside, "plans"))).toBe(false);
+});
+
+const cappedKey = "HIMMEL-10205";
+const cappedFixture = async (options: { specFindings?: string; planFindings?: string; rounds?: number; historical?: string; status?: boolean; specText?: string; planText?: string; pageName?: string } = {}) => {
+  const { buildRoundFixture } = await import("./testlib-capped-fold.ts");
+  const r = root();
+  const specText = options.specText ?? fixtureSpecText.replace("# HIMMEL", "Key: HIMMEL-10205\n\n# HIMMEL") + "\nReference: HIMMEL-8626 remains a body reference.\n";
+  const planText = options.planText ?? `---\ntickets: ${cappedKey}\n---\nKey: ${cappedKey}\n${fixturePlanText}`;
+  const returns = [1, 2, 3].slice(0, options.rounds ?? 3).flatMap(round => (["spec", "plan"] as const).map(kind => {
+    const findings = round === 1 && options.historical ? options.historical : kind === "spec" ? options.specFindings ?? "- **F1** (minor) carry this wording fix" : options.planFindings ?? "";
+    const count = findings.split("\n").filter(l => l.startsWith("- **")).length;
+    const status = options.status ? Array.from({ length: 8 }, (_, i) => `- **P${i + 8}:** status prose\n`).join("") : "";
+    return { kind, round, text: `${status}${findings}\n${kind.toUpperCase()} ${count ? `FINDINGS ${count}` : "CLEAN"}\n`,
+      reads: ["spec", ...(kind === "plan" ? ["plan"] : []), { path: `specs/designs/${options.pageName ?? "page.html"}`, text: "<h1>Review page</h1>\n" },
+        { path: "specs/designs/estimate.json", text: '{"median_seq":1,"sigma":0.1,"dod":{"passed":true}}\n' }] };
+  }));
+  const f = await buildRoundFixture({ scratchRoot: r, key: cappedKey, specText, planText, returns });
+  return { ...f, r, args: { key: cappedKey, spec: f.spec, plan: f.plan,
+    specReturn: f.verdicts.filter(p => p.includes("critic-spec-")).at(-1)!, planReturn: f.verdicts.filter(p => p.includes("critic-plan-")).at(-1)! } };
+};
+const runCapped = async (args: { key: string; spec: string; plan: string; specReturn: string; planReturn: string }) => {
+  const module = await import("./chief-route");
+  expect(typeof (module as any).cappedFold).toBe("function");
+  return (module as any).cappedFold(args);
+};
+const editLedger = (f: { ledgerPath: string }, edit: (rows: any[]) => void) => {
+  const rows = readFileSync(f.ledgerPath, "utf8").trim().split("\n").map(l => JSON.parse(l));
+  edit(rows); writeFileSync(f.ledgerPath, rows.map(r => JSON.stringify(r)).join("\n") + "\n");
+};
+const editCappedReturn = async (f: { ledgerPath: string }, path: string, edit: (text: string) => string) => {
+  const { returnSha } = await import("./chief-route"); const before = readFileSync(path, "utf8"); const after = edit(before);
+  editLedger(f, rows => rows.filter(row => row.return_sha === returnSha(before)).forEach(row => {
+    row.return_sha = returnSha(after); if (row.row === "round") row.verdict = after.trim().split("\n").at(-1);
+  }));
+  writeFileSync(path, after);
+};
+const treeBytes = (path: string): Record<string, string> => Object.fromEntries(readdirSync(path, { recursive: true, withFileTypes: true })
+  .filter(e => e.isFile()).map(e => { const p = join(e.parentPath, e.name); return [p, sha(readFileSync(p, "utf8"))]; }));
+
+const finishCappedRounds = async (options: { externalReturn?: "spec" | "plan"; externalPlan?: boolean; ticketReturn?: "spec" | "plan"; shortRead?: boolean } = {}) => {
+  const f = await cappedFixture({ rounds: 2 });
+  const oldPlan = f.plan;
+  if (options.externalPlan) {
+    f.plan = join(root(), basename(oldPlan)); copyFileSync(oldPlan, f.plan); f.args.plan = f.plan;
+  }
+  const { sealRound } = await import("./chief-route");
+  for (const kind of ["spec", "plan"] as const) {
+    const arg = kind === "spec" ? "specReturn" : "planReturn";
+    const previous = f.args[arg];
+    const next = join(options.externalReturn === kind ? root() : dirname(previous), basename(previous).replace("r2.md", "r3.md"));
+    let text = readFileSync(previous, "utf8").replace(`Fixture: ${kind} round 2`, `Fixture: ${kind} round 3`)
+      .replace(/^((?:READ(?:-SHA256)?|CONTENT-SHA256) [0-9a-f]{64}) (.+)$/gm, (_line, prefix, rel) => {
+        const path = resolve(dirname(previous), rel);
+        return `${prefix} ${path === oldPlan ? f.plan : path}`;
+      });
+    if (options.shortRead) text = text.replace(/^READ-SHA256 /gm, "READ ");
+    if (options.ticketReturn === kind) text = text.replace(/^Key:/m, "- Ticket:");
+    writeFileSync(next, text);
+    for (const match of text.matchAll(/^CONTENT-SHA256 [0-9a-f]{64} (.+)$/gm)) await sealRound(next, match[1]);
+    f.args[arg] = next;
+  }
+  return f;
+};
+
+test("capped fold discovers newer returns in every supplied directory", async () => {
+  for (const location of ["spec", "plan", "plan-document"] as const) {
+    const f = await finishCappedRounds(location === "plan-document" ? { externalPlan: true } : { externalReturn: location });
+    expect((await runCapped(f.args)).returns.map((r: any) => r.round)).toEqual([3, 3]);
+    const current = location === "spec" ? f.args.specReturn : f.args.planReturn;
+    const directory = dirname(location === "plan-document" ? f.plan : current);
+    copyFileSync(current, join(directory, basename(current).replace("r3.md", "r4.md")));
+    await expect(runCapped(f.args)).rejects.toThrow("unaccounted latest return");
+  }
+});
+
+test("capped fold return selection preserves older and other-key eligibility", async () => {
+  const f = await cappedFixture();
+  expect((await runCapped(f.args)).returns.map((r: any) => r.round)).toEqual([3, 3]);
+  const directory = join(f.specsRoot, "design");
+  writeFileSync(directory, "optional non-directory lookup");
+  expect((await runCapped(f.args)).returns).toHaveLength(2);
+  unlinkSync(directory); mkdirSync(directory);
+  for (const name of ["HIMMEL-10205-other.md.critic-spec-r2.md", "HIMMEL-10205-other.md.critic-r2-plan.md", "HIMMEL-10205-other.md.critic-r2a.md",
+    "HIMMEL-99999-other.md.critic-spec-r99.md", "irrelevant.txt"]) copyFileSync(f.args.specReturn, join(directory, name));
+  expect((await runCapped(f.args)).returns.map((r: any) => r.round)).toEqual([3, 3]);
+});
+
+test("capped fold return selection refuses tied names in every supported grammar", async () => {
+  for (const filename of ["HIMMEL-10205-other.md.critic-spec-r3.md", "HIMMEL-10205-other.md.critic-r3-plan.md", "HIMMEL-10205-other.md.critic-r3a.md"]) {
+    const f = await cappedFixture();
+    await runCapped(f.args);
+    copyFileSync(f.args.specReturn, join(dirname(f.spec), filename));
+    await expect(runCapped(f.args)).rejects.toThrow("unaccounted latest return");
+  }
+});
+
+test("capped fold return selection refuses aliased unreadable and unbounded directories", async () => {
+  for (const fault of ["alias", "unreadable", "overflow"]) {
+    const f = await cappedFixture(); await runCapped(f.args);
+    const directory = join(f.specsRoot, "design");
+    if (fault === "alias") { const target = join(f.r, "target"); mkdirSync(target); symlinkSync(target, directory); }
+    else mkdirSync(directory);
+    if (fault === "unreadable") chmodSync(directory, 0);
+    if (fault === "overflow") for (let i = 0; i < 4097; i++) writeFileSync(join(directory, `irrelevant-${i}`), "");
+    try { await expect(runCapped(f.args)).rejects.toThrow(); }
+    finally { if (fault === "unreadable") chmodSync(directory, 0o700); }
+  }
+});
+
+test("capped fold return selection rechecks cached directory observations before success", async () => {
+  for (const round of [3, 4]) {
+    const f = await cappedFixture();
+    const directory = join(f.specsRoot, "design"); mkdirSync(directory);
+    const before = treeBytes(f.r);
+    const shared = await import("../jira/src/release/pinned.ts");
+    const actual = shared.pinnedRead;
+    let reads = 0;
+    const spy = spyOn(shared, "pinnedRead").mockImplementation(path => {
+      const got = actual(path);
+      if (path === f.spec && ++reads === 2) copyFileSync(f.args.specReturn, join(directory, basename(f.args.specReturn).replace("r3.md", `r${round}a.md`)));
+      return got;
+    });
+    try { await expect(runCapped(f.args)).rejects.toThrow("evidence changed or is unreadable"); }
+    finally { spy.mockRestore(); }
+    expect(reads).toBe(2);
+    for (const [path, hash] of Object.entries(before)) expect(sha(readFileSync(path, "utf8"))).toBe(hash);
+  }
+});
+
+test("capped fold requires Key declarations in real sealed returns", async () => {
+  expect((await runCapped((await finishCappedRounds()).args)).returns).toHaveLength(2);
+  const documents = await cappedFixture({
+    specText: fixtureSpecText.replace("# HIMMEL", `- Ticket: ${cappedKey}\n\n# HIMMEL`),
+    planText: `---\ntickets: ${cappedKey}\n---\n- Tickets: ${cappedKey}\n${fixturePlanText}`,
+  });
+  expect((await runCapped(documents.args)).returns).toHaveLength(2);
+  for (const kind of ["spec", "plan"] as const) {
+    const f = await finishCappedRounds({ ticketReturn: kind });
+    const path = kind === "spec" ? f.args.specReturn : f.args.planReturn;
+    expect([...readFileSync(path, "utf8").matchAll(/^Keys?:\s*(.+)$/gm)]).toHaveLength(0);
+    await expect(runCapped(f.args)).rejects.toThrow("header must declare");
+  }
+});
+
+test("capped fold exact evidence", async () => {
+  const f = await cappedFixture(); const before = treeBytes(f.r); const p = await runCapped(f.args);
+  expect(p).toMatchObject({ schema: 1, reader_version: 1, mode: "capped-carry", key: cappedKey, epoch: 0,
+    returns: [{ kind: "spec", round: 3, residuals: 1 }, { kind: "plan", round: 3, residuals: 0 }],
+    carried: [{ key: cappedKey, epoch: 0, kind: "spec", round: 3, finding_id: "F1", severity: "minor", status: "open-carried" }] });
+  expect(p.carried).toHaveLength(1);
+  const shared = await import("../jira/src/release/pinned.ts"); expect(shared.validateCappedFoldProofShape(p)).toEqual(p);
+  expect(p.pins.filter((x: any) => x.role === "artifact")).toHaveLength(4);
+  expect(p.pins.filter((x: any) => x.role === "snapshot")).toHaveLength(4);
+  for (const pin of p.pins) if ("path" in pin) expect(sha(readFileSync(pin.path, "utf8"))).toBe(pin.sha256);
+  expect(treeBytes(f.r)).toEqual(before);
+  const both = await cappedFixture({ planFindings: "- **F1** (medium) independent PLAN finding" });
+  expect((await runCapped(both.args)).carried.map((c: any) => [c.kind, c.finding_id])).toEqual([["spec", "F1"], ["plan", "F1"]]);
+  const controls = await cappedFixture({ status: true, specFindings: Array.from({ length: 10 }, (_, i) => `- **F${i}** (minor) true heading`).join("\n") });
+  expect((await runCapped(controls.args)).carried).toHaveLength(10);
+});
+
+test("capped fold accepts real READ-SHA256 quotes and rejects malformed or duplicate quotes", async () => {
+  const standard = await finishCappedRounds();
+  expect(readFileSync(standard.args.specReturn, "utf8")).toContain(`READ-SHA256 ${sha(readFileSync(standard.spec, "utf8"))} ${standard.spec}`);
+  expect((await runCapped(standard.args)).carried).toHaveLength(1);
+  expect((await runCapped((await finishCappedRounds({ shortRead: true })).args)).carried).toHaveLength(1);
+  for (const fault of ["malformed", "conflicting", "duplicate"]) {
+    const f = await finishCappedRounds();
+    await editCappedReturn(f, f.args.specReturn, text => {
+      if (fault === "malformed") return text.replace("SPEC FINDINGS 1", "READ-SHA256 unknown file.md\nSPEC FINDINGS 1");
+      if (fault === "conflicting") return text.replace(/^READ-SHA256 [0-9a-f]{64}/m, `READ-SHA256 ${"0".repeat(64)}`);
+      const line = /^READ-SHA256 .+$/m.exec(text)![0];
+      return text.replace("SPEC FINDINGS 1", `${line.replace("READ-SHA256", "READ")}\nSPEC FINDINGS 1`);
+    });
+    await expect(runCapped(f.args)).rejects.toThrow();
+  }
+});
+
+test("capped fold rejects noneligible evidence", async () => {
+  await runCapped((await cappedFixture()).args);
+  const cases = [{ rounds: 2 }, { specFindings: "" }, { specFindings: "- **F1** (major) blocking" }, { specFindings: "- **F1** (unrated) unknown" },
+    { specFindings: "- **F1** (minor) first\n- **F1** (medium) duplicate" },
+    ...["unknown", "operator-critical: spend-grant", "operator-critical: imaginary", "reopens F0", "regression", ""].map(tag => ({ specFindings: `- **F1** (minor; ${tag}) blocked tag` })),
+    { specFindings: "- **F1** (minor) valid\n  - **Bad** (unknown) malformed candidate" },
+    { historical: "- **C1** (minor; operator-critical: spend-grant) historically open" }];
+  for (const options of cases) { const f = await cappedFixture(options); await expect(runCapped(f.args)).rejects.toThrow(); }
+  for (const corrupt of ["count", "ledger-count", "ledger-tag", "unrated", "closure"]) {
+    const f = await cappedFixture();
+    const { returnSha } = await import("./chief-route");
+    editLedger(f, rows => {
+      const row = rows.find(r => r.row === "round" && r.critic === "spec" && r.round === 3);
+      if (corrupt === "ledger-count") row.findings = [];
+      if (corrupt === "ledger-tag") row.findings[0].critical_refused = "other";
+      if (corrupt === "unrated") row.unrated_ids = ["spec-r3-U1"];
+      if (corrupt === "closure") row.findings[0].class = "regression";
+      if (corrupt === "count") {
+        const text = readFileSync(f.args.specReturn, "utf8").replace("SPEC FINDINGS 1", "SPEC FINDINGS 2");
+        const old = row.return_sha; row.return_sha = returnSha(text); row.verdict = "SPEC FINDINGS 2";
+        rows.filter(r => r.return_sha === old).forEach(r => { r.return_sha = row.return_sha; }); writeFileSync(f.args.specReturn, text);
+      }
+    });
+    await expect(runCapped(f.args)).rejects.toThrow();
+  }
+});
+
+test("capped fold rejects provenance drift", async () => {
+  await runCapped((await cappedFixture()).args);
+  for (const fault of ["key", "epoch", "old", "copy", "higher", "tied", "quote", "reviewed", "plan-reviewed", "seal", "extra-seal", "snapshot", "spec", "plan", "page", "estimate", "ledger", "manifest", "seed", "header", "frontmatter"]) {
+    const f = await cappedFixture();
+    if (fault === "key") editLedger(f, rows => { rows[0].key = "HIMMEL-99"; });
+    if (fault === "epoch") editLedger(f, rows => { rows.find(r => r.row === "round" && r.round === 3).epoch = 7; });
+    if (fault === "old") f.args.specReturn = f.verdicts[0];
+    if (fault === "copy") { const p = join(f.r, basename(f.args.specReturn)); copyFileSync(f.args.specReturn, p); f.args.specReturn = p; }
+    if (fault === "higher" || fault === "tied") copyFileSync(f.args.planReturn, fault === "higher" ? f.args.planReturn.replace("r3.md", "r4.md") : join(dirname(f.plan), basename(f.args.planReturn)));
+    if (["quote", "reviewed", "plan-reviewed", "seal"].includes(fault)) {
+      const p = fault === "plan-reviewed" ? f.args.planReturn : f.args.specReturn;
+      await editCappedReturn(f, p, text => text.replace(fault === "quote" ? /^READ(?:-SHA256)? .*\n/m : fault === "seal" ? /^CONTENT-SHA256 .*\n/m : /^Reviewed: .*\n/m, ""));
+    }
+    if (fault === "extra-seal") editLedger(f, rows => { rows.push({ ...rows.at(-1), read_path: f.spec, read_sha: "f".repeat(64) }); });
+    if (fault === "snapshot") writeFileSync(join(dirname(f.ledgerPath), cappedKey, sha(readFileSync(f.spec, "utf8"))), "edited");
+    const p = ({ spec: f.spec, plan: f.plan, page: join(dirname(f.spec), "page.html"), estimate: join(dirname(f.spec), "estimate.json"), ledger: f.ledgerPath, manifest: join(dirname(f.ledgerPath), "manifest.json") } as Record<string,string>)[fault];
+    if (p) appendFileSync(p, "changed");
+    if (fault === "seed") editLedger(f, rows => { rows.splice(0, rows.length, { row: "seed", key: cappedKey, spec: 3, plan: 3, latest: { spec: [], plan: [] } }); });
+    if (fault === "header") writeFileSync(f.spec, readFileSync(f.spec, "utf8").replace(`Key: ${cappedKey}`, "Key: HIMMEL-99"));
+    if (fault === "frontmatter") writeFileSync(f.plan, readFileSync(f.plan, "utf8").replace(`tickets: ${cappedKey}`, `tickets: [${cappedKey}, HIMMEL-99]`));
+    await expect(runCapped(f.args)).rejects.toThrow();
+  }
+});
+
+test("capped fold recording checkout bound", async () => {
+  const f = await cappedFixture(); await runCapped(f.args);
+  const dest = join(root(), "copy"); cpSync(f.r, dest, { recursive: true });
+  const args = Object.fromEntries(Object.entries(f.args).map(([k,v]) => [k, k === "key" ? v : v.replace(f.r, dest)])) as typeof f.args;
+  await expect(runCapped(args)).rejects.toThrow(); rmSync(f.r, { recursive: true }); await expect(runCapped(args)).rejects.toThrow();
+});
+
+test("capped fold bounded evidence", async () => {
+  for (const role of ["return", "spec", "plan", "page", "estimate", "ledger", "manifest", "snapshot", "decision"]) for (const type of ["fifo", "directory", "oversized", "missing"]) {
+    const f = role === "decision" ? await resetCappedFixture() : await cappedFixture();
+    const path = ({ return: f.args.specReturn, spec: f.spec, plan: f.plan, page: join(dirname(f.spec), "page.html"), estimate: join(dirname(f.spec), "estimate.json"), ledger: f.ledgerPath, manifest: join(dirname(f.ledgerPath), "manifest.json"), snapshot: join(dirname(f.ledgerPath), cappedKey, sha(readFileSync(f.spec,"utf8"))), decision: join(f.specsRoot, "decisions", "verbatim-decision-990-fixture.txt") } as Record<string,string>)[role];
+    unlinkSync(path);
+    if (type === "directory") mkdirSync(path);
+    else if (type === "oversized") { writeFileSync(path, ""); truncateSync(path, 16 * 1024 * 1024 + 1); }
+    else if (type === "fifo") expect(Bun.spawnSync(["mkfifo", path]).exitCode).toBe(0);
+    const flags = ["--key", cappedKey, "--spec", f.spec, "--plan", f.plan, "--spec-return", f.args.specReturn, "--plan-return", f.args.planReturn];
+    const result = Bun.spawnSync(["bun", join(import.meta.dir, "chief-route.ts"), "capped-fold", ...flags], { timeout: 3000, stdout: "pipe", stderr: "pipe" });
+    expect(result.exitCode).not.toBe(0); expect(result.signalCode ?? null).toBeNull(); expect(result.stderr.toString()).toContain("capped-fold");
+  }
+}, 120_000);
+
+const resetCappedFixture = async () => {
+  const f = await cappedFixture(); const decision = join(f.specsRoot, "decisions", "verbatim-decision-990-fixture.txt"); mkdirSync(dirname(decision));
+  const quote = "start this ticket over from scratch"; writeFileSync(decision, `${cappedKey} ${quote}\n`); utimesSync(decision, new Date(), new Date(Date.now() + 2000));
+  const { roundReset, sealRound } = await import("./chief-route"); const prior = process.env.HIMMEL_CONSOLE; process.env.HIMMEL_CONSOLE = "1";
+  try { await roundReset(f.specsRoot, cappedKey, { decision: "990", quote }); }
+  finally { if (prior === undefined) delete process.env.HIMMEL_CONSOLE; else process.env.HIMMEL_CONSOLE = prior; }
+  for (const p of f.verdicts) {
+    writeFileSync(p, readFileSync(p, "utf8").replace("Fixture:", "New epoch Fixture:"));
+    for (const m of readFileSync(p, "utf8").matchAll(/^CONTENT-SHA256 [0-9a-f]{64} (.+)$/gm)) await sealRound(p, join(dirname(p), m[1]));
+  }
+  return { ...f, decision };
+};
+for (const fault of ["selection", "mtime", "alias", "directory-alias"] as const) test(`capped fold ${fault === "selection" ? "decision selection pins" : fault === "mtime" ? "decision mtime pins" : "alias rebinding"}${fault === "directory-alias" ? " directory" : ""}`, async () => {
+  const shared = await import("../jira/src/release/pinned.ts"); const control = await resetCappedFixture(); const proof = await runCapped(control.args);
+  expect(proof.epoch).toBe(1);
+  expect(proof.pins).toContainEqual({ role: "decision-selection", directory: dirname(control.decision), decision: "990", names: [basename(control.decision)] });
+  expect(proof.pins.find((p:any) => p.role === "decision").mtime_ms).toBe(statSync(control.decision).mtimeMs);
+  const f = await resetCappedFixture(); const realRead = shared.pinnedRead; let calls = 0;
+  const spy = spyOn(shared, "pinnedRead").mockImplementation(path => {
+    const result = realRead(path);
+    if (path === f.decision && ++calls === 1) {
+      if (fault === "selection") copyFileSync(path, join(dirname(path), "verbatim-decision-990-second.txt"));
+      if (fault === "mtime") { const st = statSync(path); utimesSync(path, st.atime, new Date(st.mtimeMs + 5000)); }
+      if (fault === "alias") { const next = join(f.r, "same-decision.txt"); renameSync(path, next); symlinkSync(next, path); }
+      if (fault === "directory-alias") { const next = join(f.r, "same-decisions"); renameSync(dirname(path), next); symlinkSync(next, dirname(path)); }
+    }
+    return result;
+  });
+  try { await expect(runCapped(f.args)).rejects.toThrow(); expect(calls).toBeGreaterThanOrEqual(2); }
+  finally { spy.mockRestore(); }
+});
+
+test("capped fold CLI fixed five valued flags", async () => {
+  const f = await cappedFixture(); const flags = ["--key", cappedKey, "--spec", f.spec, "--plan", f.plan, "--spec-return", f.args.specReturn, "--plan-return", f.args.planReturn];
+  const ok = await routeCli("capped-fold", ...flags); expect(ok.code).toBe(0); expect(JSON.parse(ok.out).mode).toBe("capped-carry");
+  for (const args of [flags.slice(2), [...flags, "--key", cappedKey], [...flags, "--unknown", "x"], [...flags, "x"], flags.slice(0,-1), [...flags.slice(0,3), "--plan", ...flags.slice(4)]]) {
+    const bad = await routeCli("capped-fold", ...args); expect(bad.code).not.toBe(0); expect(bad.err).toContain("capped-fold");
+  }
+});
+
+test("capped proof shared shape validation", async () => {
+  const p = await runCapped((await cappedFixture()).args);
+  const { validateCappedFoldProofShape } = await import("../jira/src/release/pinned.ts");
+  expect(validateCappedFoldProofShape(p)).toEqual(p);
+  for (const mutate of [(x:any) => { x.extra = true; }, (x:any) => { delete x.epoch; }, (x:any) => { x.reader_version = 2; },
+    (x:any) => { x.pins[0].role = "other"; }, (x:any) => { x.returns.reverse(); }, (x:any) => { x.returns[0].residuals = -1; },
+    (x:any) => { x.spec.sha256 = "A".repeat(64); }, (x:any) => { x.plan.path = "relative"; }]) {
+    const bad = structuredClone(p); mutate(bad); expect(() => validateCappedFoldProofShape(bad)).toThrow("invalid capped-fold proof");
+  }
+});
+
+test("capped fold strict declarations and complete seal grammar", async () => {
+  for (const fault of ["bracket", "missing-key", "unknown-key", "duplicate-key"]) {
+    const text = `---\ntickets: ${fault === "bracket" ? "[" : ""}${cappedKey}\n---\nKey: ${fault === "unknown-key" ? "HIMMEL-99" : cappedKey}\n${fault === "duplicate-key" ? `Key: ${cappedKey}\n` : ""}## Body\n`;
+    const f = await cappedFixture({ specText: fault === "missing-key" ? text.replace(`Key: ${cappedKey}\n`, "") : text });
+    await expect(runCapped(f.args)).rejects.toThrow();
+  }
+  for (const fault of ["extra-read", "bad-read", "bad-seal", "huge-count", "body-key"]) {
+    const f = await cappedFixture();
+    await editCappedReturn(f, f.args.specReturn, text => fault === "body-key" ? text.replace("SPEC FINDINGS 1", "## Body\nKey: HIMMEL-99\nSPEC FINDINGS 1") : fault === "huge-count" ? text.replace("SPEC FINDINGS 1", "SPEC FINDINGS 999999999")
+      : text.replace("SPEC FINDINGS 1", `${fault === "extra-read" ? `READ ${"a".repeat(64)} alien.md` : fault === "bad-read" ? "READ unknown spec.md" : "CONTENT-SHA256 unknown spec.md"}\nSPEC FINDINGS 1`));
+    await expect(runCapped(f.args)).rejects.toThrow();
+  }
+});
+
+test("capped fold refuses higher ticket returns in every supported folder/name", async () => {
+  for (const filename of [`${cappedKey}-other.md.critic-spec-r4.md`, `${cappedKey}-fixture.md.critic-r4-spec.md`, `${cappedKey}-fixture.md.critic-r4.md`]) {
+    const f = await cappedFixture(); copyFileSync(f.args.specReturn, join(dirname(f.spec), filename));
+    await expect(runCapped(f.args)).rejects.toThrow();
+  }
+  const f = await cappedFixture(); const dir = join(f.specsRoot, "design"); mkdirSync(dir);
+  copyFileSync(f.args.specReturn, join(dir, basename(f.args.specReturn).replace("r3", "r4")));
+  await expect(runCapped(f.args)).rejects.toThrow();
+});
+
+test("capped fold refuses initially aliased evidence locations", async () => {
+  for (const role of ["spec", "plan", "return", "ledger", "manifest", "snapshot", "page", "decision", "decision-directory"]) {
+    const f = role.startsWith("decision") ? await resetCappedFixture() : await cappedFixture();
+    await runCapped(f.args);
+    const paths: Record<string,string> = { spec: f.spec, plan: f.plan, return: f.args.specReturn, ledger: f.ledgerPath,
+      manifest: join(dirname(f.ledgerPath), "manifest.json"), snapshot: join(dirname(f.ledgerPath), cappedKey, sha(readFileSync(f.spec, "utf8"))),
+      page: join(dirname(f.spec), "page.html"), decision: join(f.specsRoot, "decisions", "verbatim-decision-990-fixture.txt"), "decision-directory": join(f.specsRoot, "decisions") };
+    const path = paths[role]; const target = join(f.r, "aliased-location"); renameSync(path, target); symlinkSync(target, path);
+    await expect(runCapped(f.args)).rejects.toThrow();
+  }
+  const f = await cappedFixture(); const alias = join(f.r, "spec-alias.md"); symlinkSync(f.spec, alias);
+  await expect(runCapped({ ...f.args, spec: alias })).rejects.toThrow();
+});
+
+test("capped fold refuses invalid ledger metadata outside the latest row", async () => {
+  for (const fault of ["seal-epoch", "mode", "late-seed", "full-closure-class"]) {
+    const f = await cappedFixture(); await runCapped(f.args);
+    editLedger(f, rows => {
+      if (fault === "seal-epoch") rows.find(row => row.row === "seal").epoch = 8;
+      if (fault === "mode") rows.find(row => row.row === "round").mode = "invented";
+      if (fault === "late-seed") rows.push({ key: cappedKey, row: "seed", spec: 0, plan: 0, latest: { spec: [], plan: [] } });
+      if (fault === "full-closure-class") rows.find(row => row.row === "round" && row.round === 3 && row.critic === "spec").findings[0].class = "out-of-closure";
+    });
+    await expect(runCapped(f.args)).rejects.toThrow();
+  }
+});
+
+test("capped fold pins evidence roles by use instead of filename resemblance", async () => {
+  const f = await cappedFixture({ pageName: "memo.critic-spec-r1.md" }); const proof = await runCapped(f.args);
+  expect(proof.pins.find((pin:any) => pin.path === join(dirname(f.spec), "memo.critic-spec-r1.md")).role).toBe("artifact");
+});
