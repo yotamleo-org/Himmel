@@ -182,7 +182,7 @@ fi
 # A himmel session keeps the paste-ready fetcher command and writes one row.
 if [ -f "$HIMMEL_ROOT/scripts/web/fetch-url.sh" ]; then
     record "$HIMMEL_ROOT/marketplace"
-    run_case "$(wf 'https://x.com/a/status/1')" "$HIMMEL_ROOT"
+    run_case "$(wf 'https://x.com/a/status/1')" "$TMP/repo"
     assert_eq "himmel: plugin hook denies" 2 "$RC"
     assert_contains "himmel: deny names the fetcher with the quoted url" \
         "fetch-url.sh' 'https://x.com/a/status/1'" "$ERR"
@@ -254,6 +254,41 @@ if [ -f "$HIMMEL_ROOT/scripts/web/fetch-url.sh" ]; then
             CLAUDE_PLUGIN_ROOT="${2:-$CACHE_DIR}" CLAUDE_CONFIG_DIR="$CFG" CLAUDE_PROJECT_DIR="$TMP/repo" \
             WEBFETCH_WALLED_LOG="$LOG" HIMMEL_WEBFETCH_WALLED_OK=0 sh -c "$plugin_cmd" >/dev/null 2>&1
     }
+
+    rm -rf "$LOG" "$TMP/.claims"
+    run_case "$(wft toolu_once1)" "$HIMMEL_ROOT"
+    assert_eq "himmel checkout: the plugin lane allows quietly" 0 "$RC"
+    assert_eq "himmel checkout: the plugin lane prints nothing" "" "$OUT$ERR"
+    assert_eq "himmel checkout: the plugin lane writes no row" 0 "$(rows)"
+    printf '%s' "$(wft toolu_once1)" | env -u WALLED_TOOLING_DIR CLAUDE_PROJECT_DIR="$HIMMEL_ROOT" \
+        WEBFETCH_WALLED_LOG="$LOG" HIMMEL_WEBFETCH_WALLED_OK=0 bash "$SHIM" >/dev/null 2>&1
+    assert_eq "himmel checkout: the shim still denies x.com" 2 "$?"
+    assert_eq "himmel checkout: the shim writes the one row" 1 "$(rows)"
+
+    # shellcheck disable=SC2016  # the settings carry a literal $CLAUDE_PROJECT_DIR
+    for wiring in none other-matcher bare-name; do
+        nw="$TMP/nowire-$wiring"
+        put "$nw/scripts/hooks/redirect-webfetch-walled-hosts.sh" '#!/bin/sh\nexit 0\n'
+        put "$nw/marketplace/plugins/himmel-ops/hooks/redirect-webfetch-walled-hosts.sh" '#!/bin/sh\nexit 0\n'
+        case "$wiring" in
+            other-matcher) put "$nw/.claude/settings.json" '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"bash \\"$CLAUDE_PROJECT_DIR/scripts/hooks/redirect-webfetch-walled-hosts.sh\\""}]}]}}\n' ;;
+            bare-name) put "$nw/.claude/settings.json" '{"hooks":{"PreToolUse":[{"matcher":"WebFetch","hooks":[{"type":"command","command":"echo redirect-webfetch-walled-hosts.sh"}]}]}}\n' ;;
+        esac
+        run_case "$(wf 'https://x.com/a/status/1')" "$nw"
+        assert_eq "himmel-shaped, $wiring: the plugin lane still denies" 2 "$RC"
+    done
+    # shellcheck disable=SC2016  # the settings carry a literal $CLAUDE_PROJECT_DIR
+    put "$TMP/nowire-bare-name/.claude/settings.json" '{"hooks":{"PreToolUse":[{"matcher":"Read|WebFetch","hooks":[{"type":"command","command":"bash \\"$CLAUDE_PROJECT_DIR/scripts/hooks/redirect-webfetch-walled-hosts.sh\\""}]}]}}\n'
+    run_case "$(wf 'https://x.com/a/status/1')" "$TMP/nowire-bare-name"
+    assert_eq "himmel-shaped, shim wired on Read|WebFetch: the plugin lane is quiet" 0 "$RC"
+    # shellcheck disable=SC2016  # the settings carry a literal ${CLAUDE_PROJECT_DIR}
+    put "$TMP/nowire-bare-name/.claude/settings.json" '{"hooks":{"PreToolUse":[{"matcher":"WebFetch","hooks":[{"type":"command","command":"bash \\"${CLAUDE_PROJECT_DIR}/scripts/hooks/redirect-webfetch-walled-hosts.sh\\""}]}]}}\n'
+    run_case "$(wf 'https://x.com/a/status/1')" "$TMP/nowire-bare-name"
+    assert_eq "himmel-shaped, shim wired as \${CLAUDE_PROJECT_DIR}: the plugin lane is quiet" 0 "$RC"
+    # shellcheck disable=SC2016  # the settings carry a literal $CLAUDE_PROJECT_DIR
+    put "$TMP/nowire-bare-name/.claude/settings.json" '{"hooks":{"PreToolUse":[{"matcher":"WebFetch","hooks":[{"type":"command","command":"bash \\"$CLAUDE_PROJECT_DIR/scripts/hooks/other-hook.sh\\""}]}]}}\n'
+    run_case "$(wf 'https://x.com/a/status/1')" "$TMP/nowire-bare-name"
+    assert_eq "himmel-shaped, another script on WebFetch: the plugin lane still denies" 2 "$RC"
 
     # Plugin disabled: only the project shim fires, and its deny still leaves a row.
     rm -rf "$LOG" "$TMP/.claims"
