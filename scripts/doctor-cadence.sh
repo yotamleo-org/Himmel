@@ -5,7 +5,9 @@
 # WHY: himmel-doctor flagged the missing pre-commit/commit-msg hooks (C16) for
 # nine days and nobody saw it, because nothing ran the doctor on a
 # schedule. This is the visibility half; repair is `himmel-update`'s drift pass.
-# Nothing here fixes anything.
+# The one thing a run does besides look: it prunes the holds registers with
+# `holds.py gc` before the doctor reads them (holds_maintenance below; the pass
+# is logged in holds-gc.log and `status` shows its last line). Nothing else here fixes anything.
 #
 #   doctor-cadence.sh run                  one pass (what cron fires)
 #   doctor-cadence.sh arm [--time HH:MM] [--force] [--dry-run]
@@ -34,6 +36,7 @@
 # upgrade path: have the poller's outbox flush keep an entry its send refused.
 #
 # Seams (tests): HIMMEL_DOCTOR_STATE_DIR, DOCTORCAD_CRONTAB, DOCTORCAD_RUNNER_DIR.
+# Bounds: DOCTORCAD_HOLDS_GC_PASSES (gc passes per register, 12), DOCTORCAD_HOLDS_GC_BUDGET (seconds for all registers, 120).
 # Platform: cron (Linux/macOS). Windows development is parked.
 set -uo pipefail
 
@@ -115,6 +118,45 @@ $(grep -A1 -E "^WARN +$id:" "$log" | head -2)"
     done <<< "$keys"
 }
 
+# Before the doctor reads the holds registers, prune them: holds.py gc stops at its own 10 s box and the next pass
+# resumes after the last row it judged, so a register bigger than one box is swept over several passes. The
+# primary's register goes first; a register whose repo directory no longer exists is left alone. Passes per
+# register stop at a complete cycle (or a busy answer, or a failure) and are capped; the whole step has one
+# time budget, so it ends within DOCTORCAD_HOLDS_GC_BUDGET plus one pass (30 s). The run lock held by cmd_run is
+# what keeps two scheduled runs from overlapping; holds.py's own per-repo lock covers a manual gc. The step is
+# best-effort: a failure is logged in holds-gc.log and never fails the run.
+holds_maintenance() { # <primary root>
+    local root="$1" py="$1/scripts/handover/chief-kit/holds.py" holds="${HOME:-}/.himmel/state/holds"
+    local log="$STATE_DIR/holds-gc.log" passes="${DOCTORCAD_HOLDS_GC_PASSES:-12}" budget="${DOCTORCAD_HOLDS_GC_BUDGET:-120}"
+    local first reg repo n end out tmo rc
+    local -a regs=()
+    [[ "$passes" =~ ^[0-9]+$ ]] || passes=12
+    [[ "$budget" =~ ^[0-9]+$ ]] || budget=120
+    [ -f "$py" ] && [ -d "$holds" ] && command -v python3 >/dev/null 2>&1 || return 0
+    tmo="$(command -v timeout || command -v gtimeout || true)"
+    first="$holds/$(printf '%s' "$root" | sed -e 's/%/%25/g' -e 's/\//%2F/g')"
+    [ -d "$first" ] && regs+=("$first")
+    for reg in "$holds"/%2F*; do [ -d "$reg" ] && [ "$reg" != "$first" ] && regs+=("$reg"); done
+    : > "$log" || return 0
+    end=$((SECONDS + budget))
+    for reg in ${regs[@]+"${regs[@]}"}; do
+        repo="$(printf '%s' "${reg##*/}" | sed -e 's/%2F/\//g' -e 's/%25/%/g')"
+        [ -d "$repo" ] || continue
+        n=0
+        while [ "$n" -lt "$passes" ] && [ "$SECONDS" -lt "$end" ]; do
+            n=$((n + 1))
+            out="$(${tmo:+"$tmo" -k 2 30} python3 -I "$py" gc --repo "$repo" </dev/null 2>&1)"; rc=$?
+            if [ "$rc" -ne 0 ]; then
+                printf '%s gc %s: failed (rc %s): %s\n' "$(date +%FT%T)" "$repo" "$rc" "$out" >> "$log"
+                break
+            fi
+            printf '%s gc %s: %s\n' "$(date +%FT%T)" "$repo" "$out" >> "$log"
+            case "$out" in *"cycle=partial"*) ;; *) break ;; esac
+        done
+    done
+    return 0
+}
+
 # cmd_run is a plain pass; cmd_arm/cmd_status/cmd_disarm are the contract
 # test-wizard-cadence-registry.sh lints every registry row for.
 cmd_run() (
@@ -138,6 +180,7 @@ cmd_run() (
     fi
     [ "$lock_rc" -eq 1 ] && return 0
     [ "$lock_rc" -eq 0 ] || { echo "doctor-cadence: cannot acquire the run lock" >&2; return 2; }
+    holds_maintenance "$root"
     out="$STATE_DIR/last-run.log"
     (cd "$root" && bash "$root/scripts/himmel-doctor.sh" --no-color </dev/null) > "$out" 2>&1
     if ! grep -q '^Summary: ' "$out"; then
@@ -300,6 +343,9 @@ cmd_status() {
         esac
         echo "  last run   $(cat "$STATE_DIR/counts") ($stamp)"
     fi
+    if [ -s "$STATE_DIR/holds-gc.log" ]; then
+        echo "  holds gc   $(tail -n 1 "$STATE_DIR/holds-gc.log" | cut -c1-200) ($STATE_DIR/holds-gc.log)"  # read-sink-ok: the cadence's own log under STATE_DIR
+    else echo "  holds gc   no pass recorded"; fi
     return 0
 }
 

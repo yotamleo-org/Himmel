@@ -24,6 +24,8 @@ export HEADED_ARM_UNAME=Linux
 export UNGUARDED_LAUNCH_OK=1  # scratch fixtures are not a guarded folder
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/headed-arm-tabs-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 export HIMMELCTL_CACHE_DIR="$tmp/pinned-himmelctl-cache"
+REAL_HOME="$HOME"
+HOLDS_FAKE="$tmp/holds-home"
 # shellcheck source=../lib/host-caps.sh
 . "$HERE/../lib/host-caps.sh"
 if ! host_modes_stick; then
@@ -41,6 +43,18 @@ cleanup() {
   rm -rf "$tmp"
 }
 trap cleanup EXIT
+
+# headed-arm.sh seeds a worker launch's Writes rows through $HEADED_ARM_HOLDS_PY (HIMMEL_HOLD_KEY/_DOC set, which a suite run by a
+# worker inherits). That seam runs the real holds.py under a dedicated HOME, so no arm below writes the real register; the launch's
+# own HOME is not touched and no env is copied.
+mkdir -p "$HOLDS_FAKE"
+cat > "$tmp/holds-wrap.py" <<PY
+import os, runpy, sys
+os.environ['HOME'] = '$HOLDS_FAKE'
+sys.argv[0] = '$HERE/chief-kit/holds.py'
+runpy.run_path(sys.argv[0], run_name='__main__')
+PY
+export HEADED_ARM_HOLDS_PY="$tmp/holds-wrap.py"
 
 fails=0
 check()    { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
@@ -376,5 +390,15 @@ check "19 other chain: the successor opens its own window" "$(konsole_count "$d1
 else
   echo "  SKIP 14-19 chain walk: no /proc/<pid>/comm on this host (konsole windows are Linux-only)"
 fi
+
+# --- 20. a worker launch seeds its Writes rows into the dedicated holds root, never the real register.
+# A suite run by a worker inherits that worker's HIMMEL_HOLD_KEY and _DOC, so every arm above may seed too; row 20 makes it certain.
+d20="$tmp/c20"; mk_env "$d20"
+hdoc20="$tmp/hold-doc-20.md"; printf '> **Writes:** scripts/tabs-leak-probe.sh\n' > "$hdoc20"
+arm "$d20" PROJ-20-N1-a HIMMEL_HOLD_KEY=PROJ-9885 HIMMEL_HOLD_DOC="$hdoc20" HIMMEL_HOLD_LABEL=N1; rc20=$?
+check "20a a seeded launch exits 0" "$rc20" 0
+check "20b the seed's row is in the dedicated holds root" "$(find "$HOLDS_FAKE/.himmel/state/holds" -type f -name '*tabs-leak-probe*' 2>/dev/null | grep -c . || true)" 1
+check "20c no row or register of this suite reached the real holds register" "$(grep -rlF "$tmp" "$REAL_HOME/.himmel/state/holds" 2>/dev/null | grep -c . || true)" 0
+check "20d no register directory named for this suite reached the real holds register" "$(find "$REAL_HOME/.himmel/state/holds" -maxdepth 1 -name "*$(basename "$tmp")*" 2>/dev/null | grep -c . || true)" 0
 
 [ "$fails" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$fails FAILED"; exit 1; }

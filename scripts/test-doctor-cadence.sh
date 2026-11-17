@@ -43,6 +43,7 @@ if [ -n "${STUB_GATE:-}" ]; then
     while [ ! -f "$STUB_GATE" ] && [ "$i" -lt 100 ]; do sleep 0.05; i=$((i + 1)); done
     [ -f "$STUB_GATE" ] || exit 1
 fi
+[ -z "${GC_STUB_LOG:-}" ] || echo doctor >> "$GC_STUB_LOG"
 cat "$STUB_OUT"
 SH
 git -C "$P" add -A
@@ -510,6 +511,112 @@ check "concurrent arms both exit 0" "0 0" "$r1 $r2"
 check "concurrent arms keep the doctor entry" 1 "$(grep -c '# HIMMEL-Doctor' "$FAKE_CRON")"
 check "concurrent arms keep the morning-report entry" 1 "$(grep -c '# HIMMEL-MorningReport' "$FAKE_CRON")"
 check "concurrent arms keep the unrelated job" 1 "$(grep -c 'keepme' "$FAKE_CRON")"
+
+# 12. a run prunes the holds registers (bounded gc, no overlap) before the doctor reads them.
+HOLDS_PY="$P/scripts/handover/chief-kit/holds.py"; mkdir -p "$(dirname "$HOLDS_PY")"
+cat > "$HOLDS_PY" <<'PY'
+import os, sys, time
+repo = sys.argv[sys.argv.index('--repo') + 1]
+log = os.environ['GC_STUB_LOG']
+open(log, 'a').write('gc %s\n' % repo)
+n = sum(1 for l in open(log) if l.rstrip('\n') == 'gc %s' % repo)
+time.sleep(float(os.environ.get('GC_STUB_SLEEP', '0')))
+mode = os.environ.get('GC_STUB_MODE', 'complete')
+if mode == 'fail':
+    sys.exit(1)
+if mode == 'busy':
+    print('gc busy: another pass holds this register')
+elif mode == 'partial' or (mode == 'partial2' and n < 3):
+    print('gc visited=1 removed=0 rows=9 cycle=partial')
+else:
+    print('gc visited=1 removed=0 rows=9 cycle=complete')
+PY
+HREG="$HOME/.himmel/state/holds"
+esc_w() { local s="${1//%/%25}"; printf '%s' "${s//\//%2F}"; }
+GC_LOG="$W/gc.log"; export GC_STUB_LOG="$GC_LOG"
+gc_reset() { rm -rf "$HREG" "$STATE"; : > "$GC_LOG"; mkdir -p "$HREG"; }
+gc_reg() { local r; for r in "$@"; do mkdir -p "$r" "$HREG/$(esc_w "$r")"; done; }
+gc_calls() { grep -c '^gc ' "$GC_LOG" || true; }
+doctor_out "" ""
+
+gc_reset; gc_reg "$W/hr-live" "$W/hr-live2" "$P"; mkdir -p "$HREG/$(esc_w "$W/hr-gone")"
+run_cad_ok "a run with registers"
+check "gc runs on each register of an existing repo, the primary's first, then the doctor" "gc $P
+gc $W/hr-live
+gc $W/hr-live2
+doctor" "$(cat "$GC_LOG")"
+[ -s "$STATE/holds-gc.log" ] && pass "the pass leaves a run log in the state dir" || fail "the pass leaves a run log in the state dir"
+
+gc_reset; gc_reg "$P"
+GC_STUB_MODE=partial2 run_cad_ok "a run with a register needing 3 passes"
+check "passes repeat while the cycle is partial and stop at complete" 3 "$(gc_calls)"
+gc_reset; gc_reg "$P"
+GC_STUB_MODE=partial DOCTORCAD_HOLDS_GC_PASSES=4 run_cad_ok "a run with an endless register"
+check "the pass count per register is capped" 4 "$(gc_calls)"
+gc_reset; gc_reg "$P"
+GC_STUB_MODE=busy run_cad_ok "a run whose register is busy"
+check "a busy answer ends the register's passes at once" 1 "$(gc_calls)"
+gc_reset; gc_reg "$W/hr-live" "$P"
+GC_STUB_MODE=partial GC_STUB_SLEEP=2.5 DOCTORCAD_HOLDS_GC_BUDGET=2 run_cad_ok "a run whose passes outlast the budget"
+check "the whole maintenance is bounded: no pass starts past the budget, and the primary is the one that ran" "gc $P
+doctor" "$(cat "$GC_LOG")"
+gc_reset; gc_reg "$P"
+GC_STUB_MODE=fail run_cad_ok "a run whose gc fails"
+check "a failing gc never fails the run: the doctor still ran" "gc $P
+doctor" "$(cat "$GC_LOG")"
+gc_reset
+run_cad_ok "a run with no holds register"
+check "no register: no gc call, the doctor still ran" "doctor" "$(cat "$GC_LOG")"
+
+# no overlap: a second run while one is inside the doctor returns at once and runs no gc
+gc_reset; gc_reg "$P"; : > "$STUB_WHERE"; rm -f "$W/ovl.release"
+STUB_GATE="$W/ovl.release" run_cad &
+OVL=$!
+n=0; while [ ! -s "$STUB_WHERE" ] && [ "$n" -lt 100 ]; do sleep 0.05; n=$((n + 1)); done
+run_cad
+check "a run that finds the lock held runs no second gc" 1 "$(gc_calls)"
+touch "$W/ovl.release"; wait "$OVL"; check "the run that held the lock exits 0" 0 "$?"
+
+# a missing holds.py is not an error (an older primary checkout)
+gc_reset; gc_reg "$P"; mv "$HOLDS_PY" "$HOLDS_PY.off"
+run_cad_ok "a run whose primary has no holds.py"
+check "no holds.py: no gc call, the doctor still ran" "doctor" "$(cat "$GC_LOG")"
+mv "$HOLDS_PY.off" "$HOLDS_PY"
+
+# status names the last gc pass, so an installed schedule can be seen to have used it
+gc_reset; gc_reg "$P"
+run_cad_ok "a run for the status line"
+st="$(bash "$P/scripts/doctor-cadence.sh" status 2>&1)"
+case "$st" in *"holds gc"*"gc $P"*) pass "status names the last holds gc pass" ;; *) fail "status names the last holds gc pass ($st)" ;; esac
+rm -f "$STATE/holds-gc.log"
+st="$(bash "$P/scripts/doctor-cadence.sh" status 2>&1)"
+case "$st" in *"holds gc"*"no pass recorded"*) pass "status says so when no pass is recorded" ;; *) fail "status says so when no pass is recorded ($st)" ;; esac
+
+# eventual progress with the REAL holds.py (its BOX shrunk by a shim): one pass per run still prunes a register bigger than a box
+if [ "${DOCTORCAD_TEST_GREP_ERROR:-0}" = 0 ]; then
+    cat > "$HOLDS_PY" <<'PY'
+import importlib.util, os, sys
+spec = importlib.util.spec_from_file_location('holds_real', os.environ['REAL_HOLDS'])
+h = importlib.util.module_from_spec(spec); spec.loader.exec_module(h)
+h.BOX = 1.0
+sys.exit(h.main(sys.argv[1:]))
+PY
+    export REAL_HOLDS="$DIR/handover/chief-kit/holds.py"
+    # shellcheck disable=SC2016  # the stub's $3 stays literal
+    printf '#!/usr/bin/env bash\nsleep 0.4\ncase "$3" in 7*) echo OPEN ;; *) echo MERGED ;; esac\n' > "$W/gh-prog"; chmod +x "$W/gh-prog"
+    gc_reset; HPROG="$W/hr-prog"; gc_reg "$HPROG"; git -C "$HPROG" init -q
+    for i in 1 2 3 4 5 6; do printf 'PROJ-970%s\tlab\t\tpr\t700%s\n' "$i" "$i" > "$HREG/$(esc_w "$HPROG")/scripts%2Fa$i.sh"; done
+    for i in 1 2; do printf 'PROJ-979%s\tlab\t\tpr\t800%s\n' "$i" "$i" > "$HREG/$(esc_w "$HPROG")/scripts%2Fz$i.sh"; done
+    find "$HREG/$(esc_w "$HPROG")" -type f -exec touch -d '2 hours ago' {} +
+    runs=0
+    while [ "$runs" -lt 8 ] && [ -e "$HREG/$(esc_w "$HPROG")/scripts%2Fz2.sh" ]; do
+        HOLDS_GH="$W/gh-prog" DOCTORCAD_HOLDS_GC_PASSES=1 run_cad; runs=$((runs + 1))
+    done
+    check "one boxed pass per run prunes the dead rows behind a slow alive prefix within 8 runs" none "$([ -e "$HREG/$(esc_w "$HPROG")/scripts%2Fz2.sh" ] && echo row || echo none)"
+    check "... and more than one run was needed (the register was bigger than a box)" yes "$([ "$runs" -gt 1 ] && echo yes || echo no)"
+    check "... and the alive rows are all still there" 6 "$(find "$HREG/$(esc_w "$HPROG")" -type f -name 'scripts%2Fa*' | grep -c . || true)"
+fi
+unset GC_STUB_LOG
 
 if [ "${DOCTORCAD_TEST_GREP_ERROR:-0}" = 0 ]; then
     REAL_GREP="$(command -v grep)"

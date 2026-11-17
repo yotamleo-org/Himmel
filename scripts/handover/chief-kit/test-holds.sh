@@ -1559,6 +1559,99 @@ run asw "$GW" $K2 "$gcdoc_b" beta "${TTW[@]}" HOLDS_QUEUE_LOCK="$QL" GH_STUB_DEL
 same "S7 no helper beside holds.py: the base read falls back to gh on main and the push passes" "$RC" 0
 same "S7 no helper: the base read logs tok=main" "$(ttlog '^tok=main argv=pr view --json baseRefName')" 1
 
+# ---- a gc pass resumes where the last one stopped, so a slow alive prefix cannot starve a later dead row
+# Each pass is a fresh process (a restart) with the BOX shrunk, so a register bigger than one box takes several passes.
+GCSLOW="$W/bin/gh-gcslow"
+# shellcheck disable=SC2016  # the stub's $3 and ${GC_GH_SLEEP} stay literal
+printf '#!/usr/bin/env bash\nsleep "${GC_GH_SLEEP:-0}"\ncase "$3" in 7*) echo OPEN ;; *) echo MERGED ;; esac\n' > "$GCSLOW"
+chmod +x "$GCSLOW"
+# shellcheck disable=SC2329  # run through `run gcbox`
+gcbox() { # <BOX seconds> <repo>: one gc pass in a new process
+    python3 -I -c 'import importlib.util, sys
+spec = importlib.util.spec_from_file_location("holds", sys.argv[1]); h = importlib.util.module_from_spec(spec); spec.loader.exec_module(h)
+h.BOX = float(sys.argv[2]); sys.exit(h.main(["gc", "--repo", sys.argv[3]]))' "$SUT" "$1" "$2"
+}
+gone_or_row() { if [ -e "$1" ]; then echo row; else echo none; fi; }
+GCCUR() { printf '%s/gc-cursor.%s' "$REG" "$(esc "$1")"; }
+GCLOCK() { printf '%s/gc-lock.%s' "$REG" "$(esc "$1")"; }
+
+RG="$W/repo-gc"; mkdir -p "$RG"; git -C "$RG" init -q -b main
+for i in 1 2 3 4 5 6; do put_row "scripts/a$i.sh" "PROJ-970$i" lab "" pr "700$i" "$RG"; done
+put_row scripts/z1.sh PROJ-9791 lab "" pr 8001 "$RG"
+put_row scripts/z2.sh PROJ-9792 lab "" pr 8002 "$RG"
+for _ in 1 2 3 4 5 6 7 8; do HOLDS_GH="$GCSLOW" GC_GH_SLEEP=0.4 run gcbox 1.0 "$RG"; done
+same "9885 gc: a restarted boxed pass reaches the dead rows behind a slow alive prefix" \
+    "$(gone_or_row "$(rowf scripts/z1.sh "$RG")")/$(gone_or_row "$(rowf scripts/z2.sh "$RG")")" none/none
+same "9885 gc: ... and every alive row of the prefix is still there" \
+    "$(for i in 1 2 3 4 5 6; do gone_or_row "$(rowf "scripts/a$i.sh" "$RG")"; done | sort -u | tr '\n' ' ')" "row "
+contains "9885 gc: a pass says whether it covered the whole register" "$OUT" "cycle="
+same "9885 gc: the last pass of a swept register exits 0" "$RC" 0
+
+# a dead row added behind the cursor is reached on the next sweep; a corrupt or foreign cursor costs progress, never a crash or a removal
+put_row scripts/z3.sh PROJ-9793 lab "" pr 8003 "$RG"
+printf 'not json at all' > "$(GCCUR "$RG")"
+HOLDS_GH="$GCSLOW" run gcbox 10 "$RG"
+same "9885 gc: a corrupt cursor is read as no progress: exit 0 and the dead row goes" "$RC/$(gone_or_row "$(rowf scripts/z3.sh "$RG")")" "0/none"
+same "9885 gc: ... and the corrupt cursor is rewritten as one JSON object" "$(python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["v"], isinstance(d["dir"], int), isinstance(d["name"], str))' "$(GCCUR "$RG")" 2>&1)" "1 True True"
+put_row scripts/z4.sh PROJ-9794 lab "" pr 8004 "$RG"
+printf '{"v":9,"dir":0,"name":"scripts%%2Fz9.sh"}\n' > "$(GCCUR "$RG")"
+HOLDS_GH="$GCSLOW" run gcbox 10 "$RG"
+same "9885 gc: a cursor of a format it does not know is ignored, not obeyed" "$RC/$(gone_or_row "$(rowf scripts/z4.sh "$RG")")" "0/none"
+put_row scripts/z5.sh PROJ-9795 lab "" pr 8005 "$RG"
+printf '{"v":1,"dir":1,"name":"zzzz"}\n' > "$(GCCUR "$RG")"
+HOLDS_GH="$GCSLOW" run gcbox 10 "$RG"
+same "9885 gc: a cursor past the last row wraps to the first" "$RC/$(gone_or_row "$(rowf scripts/z5.sh "$RG")")" "0/none"
+put_row scripts/z6.sh PROJ-9796 lab "" pr 8006 "$RG"
+printf '{"v":1,"dir":0,"name":"scripts%%2Fa3-gone.sh"}\n' > "$(GCCUR "$RG")"
+HOLDS_GH="$GCSLOW" run gcbox 10 "$RG"
+same "9885 gc: a cursor naming a row that is gone resumes at the next name" "$RC/$(gone_or_row "$(rowf scripts/z6.sh "$RG")")" "0/none"
+
+# one gc pass at a time per repo: a second one exits 0 at once, judges nothing and moves nothing
+put_row scripts/z7.sh PROJ-9797 lab "" pr 8007 "$RG"
+python3 -I -c 'import fcntl, os, sys, time
+fd = os.open(sys.argv[1], os.O_RDWR | os.O_CREAT, 0o644); fcntl.flock(fd, fcntl.LOCK_EX); print("held", flush=True); time.sleep(float(sys.argv[2]))' "$(GCLOCK "$RG")" 4 > "$W/gcheld" &
+GCHOLD=$!
+n=0; while [ ! -s "$W/gcheld" ] && [ "$n" -lt 100 ]; do sleep 0.05; n=$((n + 1)); done
+t0=$(date +%s)
+HOLDS_GH="$GCSLOW" run gcbox 10 "$RG"
+t1=$(date +%s)
+same "9885 gc: a second pass while one is running exits 0 inside 3 s" "$RC/$([ "$((t1 - t0))" -lt 3 ] && echo fast || echo slow)" "0/fast"
+contains "9885 gc: ... and says it was busy, not that the cycle completed" "$OUT" "busy"
+not_contains "9885 gc: ... without claiming a swept cycle" "$OUT" "cycle=complete"
+same "9885 gc: ... and removes nothing while the other pass holds the register" "$(gone_or_row "$(rowf scripts/z7.sh "$RG")")" row
+wait "$GCHOLD"
+HOLDS_GH="$GCSLOW" run gcbox 10 "$RG"
+same "9885 gc: once the other pass is done the next one removes the row" "$RC/$(gone_or_row "$(rowf scripts/z7.sh "$RG")")" "0/none"
+
+# the _abs directory is part of the same sweep: a slow main directory cannot starve a dead bucket-file row
+RH="$W/repo-gc-abs"; mkdir -p "$RH"; git -C "$RH" init -q -b main
+rm -rf "$REG/_abs"; mkdir -p "$REG/_abs"
+for i in 1 2 3 4 5 6; do put_row "scripts/h$i.sh" "PROJ-971$i" lab "" pr "700$i" "$RH"; done
+ABSROW="$REG/_abs/$(esc /abs/bucket/h-dead.md)"
+printf 'PROJ-9719\tlab\t\tpr\t8009\n' > "$ABSROW"; touch -d '2 hours ago' "$ABSROW"
+for _ in 1 2 3 4 5 6 7 8; do HOLDS_GH="$GCSLOW" GC_GH_SLEEP=0.4 run gcbox 1.0 "$RH"; done
+same "9885 gc: a dead _abs row is reached behind a slow main directory" "$(gone_or_row "$ABSROW")" none
+
+# a row is never removed for its age or for a judge that timed out or faulted
+RU="$W/repo-gc-keep"; mkdir -p "$RU"; git -C "$RU" init -q -b main
+put_row scripts/u1.sh PROJ-9731 lab "" pr 7031 "$RU"; touch -d '30 days ago' "$(rowf scripts/u1.sh "$RU")"
+put_row scripts/u2.sh PROJ-9732 lab "$(mkdoc PROJ-9732-case.md)" brief "" "$RU"; touch -d '30 days ago' "$(rowf scripts/u2.sh "$RU")"
+printf '#!/usr/bin/env bash\nexit 2\n' > "$W/bin/ql-fault9885"; chmod +x "$W/bin/ql-fault9885"
+for _ in 1 2 3; do HOLDS_QUEUE_LOCK="$W/bin/ql-fault9885" HOLDS_GH="$GCSLOW" run gcbox 10 "$RU"; done
+same "9885 gc: a 30-day-old alive row (its PR is open) survives full sweeps" "$(gone_or_row "$(rowf scripts/u1.sh "$RU")")" row
+same "9885 gc: a 30-day-old row whose lock answer faults is unknown and survives full sweeps" "$(gone_or_row "$(rowf scripts/u2.sh "$RU")")" row
+for _ in 1 2 3; do HOLDS_GH="$GCSLOW" GC_GH_SLEEP=3 run gcbox 1.0 "$RU"; done
+same "9885 gc: ... and so does a row whose gh call outlasts the box" "$(gone_or_row "$(rowf scripts/u1.sh "$RU")")" row
+
+# the cursor and the lock sit in the holds root beside sync-denied, never among a register's rows: no verb sees them as a row
+GCNAMES="$(find "$REG" -maxdepth 1 -type f \( -name 'gc-cursor.*' -o -name 'gc-lock.*' \) -printf '%f\n' | sed 's/%2F.*//' | sort -u | tr '\n' ' ')"
+same "9885 gc: its state is two files per repo in the holds root, named like sync-denied" "$GCNAMES" "gc-cursor. gc-lock. "
+same "9885 gc: ... and no register directory holds a file the pass added" "$(find "$REG" -mindepth 2 -type f \( -name 'gc-*' -o -name '%00gc-*' \) | grep -c . || true)" 0
+READ_BEFORE="$(HOLDS_GH="$GCSLOW" python3 -I "$SUT" read --repo "$RG"; python3 -I "$SUT" summary --repo "$RG")"
+rm -f "$(GCCUR "$RG")" "$(GCLOCK "$RG")"
+READ_AFTER="$(HOLDS_GH="$GCSLOW" python3 -I "$SUT" read --repo "$RG"; python3 -I "$SUT" summary --repo "$RG")"
+same "9885 gc: read and summary answer the same with or without its cursor and lock files" "$READ_BEFORE" "$READ_AFTER"
+
 # ---- the real register was never touched
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $W, a path unique to this run: none may appear in the real register.

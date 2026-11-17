@@ -7,6 +7,8 @@ A row is one tab-separated line: key, label, doc, source (brief | claim | pr), p
 by writing a temp file and link(2)-ing it, so a row is never seen half written and one contender wins.
 A grant is a sibling, <escaped path>.grant.<KEY>. The sentinel <holds>/OFF folds the barrier for the fleet.
 Denies, takeovers, grants and faults append one line to <holds>/events.log.
+A gc pass keeps its place in <holds>/gc-cursor.<escaped repo> and holds <holds>/gc-lock.<escaped repo> while it runs;
+both sit in the holds root beside sync-denied.<escaped repo>, never among a register's rows.
 
 The barrier is a coordination guard, not a security fence: it refuses only on a positive answer (a readable
 row, another key, that key alive, no grant). Every other outcome passes and leaves a record.
@@ -15,6 +17,7 @@ Exit codes: 0 ok, 1 refused (the holder on stderr), 2 usage, a crash or any fail
 (seed and repoint also: a claim fault, or the launch deadline passed).
 """
 import argparse
+import bisect
 import calendar
 import fcntl
 import json
@@ -1345,7 +1348,7 @@ def op_read(a):
     return 0
 
 
-BOX = 10  # seconds a sync-prs or gc run may take; past it the run stops with exit 0, the rest waits for the next wake
+BOX = 10  # seconds a sync-prs or gc run may take; past it the run stops with exit 0, and the next gc pass resumes after the last row this one judged
 
 
 def op_sync_prs(a):
@@ -1426,49 +1429,94 @@ def remove_dead(d, n, fields, mtime):
         dir_unlock(lock)
 
 
-def op_gc(a):
-    """Remove the rows whose holder is dead, with their grant siblings; a dead key's grants go too. A brief or pr row of a key
-    the Jira mirror reads Done goes too, whatever its lock says. Rows inside the arm grace are not judged. A fault or a row it cannot read keeps the row. Stops at the BOX with exit 0."""
-    repo = primary_of(a.repo)
-    deadline = time.time() + BOX
-    judge = Judge(repo, deadline)
-    key_state = {}
-    removed = 0
-    for d in (slug_dir(repo), slug_dir(repo, '_abs')):
+def gc_state_path(kind, repo):
+    return os.path.join(holds_root(), '%s.%s' % (kind, escape(repo)))
+
+
+def gc_lock(repo):
+    """The pass's own non-blocking flock in the holds root, as an fd; None when another pass holds it. OSError when the file cannot be made."""
+    fd = os.open(gc_state_path('gc-lock', repo), os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return fd
+    except BlockingIOError:
+        os.close(fd)
+        return None
+    except OSError:
+        os.close(fd)
+        raise
+
+
+def gc_cursor_read(repo):
+    """(dir index, name) of the last row the previous pass judged; (-1, '') when there is none or it cannot be trusted, so a pass starts at the first row."""
+    try:
+        with open(gc_state_path('gc-cursor', repo), encoding='utf-8') as f:
+            c = json.loads(f.read())
+        if c['v'] == 1 and type(c['dir']) is int and c['dir'] >= 0 and isinstance(c['name'], str):
+            return c['dir'], c['name']
+    except (OSError, ValueError, KeyError, TypeError):
+        pass  # swallow-ok: no cursor, or one this reader does not know, costs progress only: the pass starts at the first row
+    return -1, ''
+
+
+def gc_cursor_write(repo, di, name):
+    tmp = os.path.join(holds_root(), '%s%d.gc-cursor' % (TMP_PREFIX, os.getpid()))
+    try:
+        with open(tmp, 'w', encoding='utf-8') as f:
+            f.write(json.dumps({'v': 1, 'dir': di, 'name': name}) + '\n')
+        os.replace(tmp, gc_state_path('gc-cursor', repo))
+    except OSError as e:
+        sys.stderr.write('holds: cannot write the gc cursor: %s\n' % (e.strerror or e))
         try:
-            names = sorted(os.listdir(d))
-        except FileNotFoundError:
+            os.unlink(tmp)
+        except OSError:
+            pass  # swallow-ok: the temp file was never made
+
+
+def gc_sweep(repo, deadline, listing):
+    judge = Judge(repo, deadline)
+    dirs = {di: d for di, d, _names in listing}
+    items = [(di, n) for di, _d, names in listing for n in names if not n.startswith(TMP_PREFIX) and not GRANT_RE.search(n)]
+    start = bisect.bisect_right(items, gc_cursor_read(repo))
+    if start >= len(items):
+        start = 0
+    key_state = {}
+    removed = visited = 0
+    last = None
+    complete = True
+    for item in items[start:] + items[:start]:
+        if time.time() >= deadline:
+            complete = False
+            break
+        di, n = item
+        d = dirs[di]
+        last = item
+        visited += 1
+        full = os.path.join(d, n)
+        st, f = read_row(full)
+        if st != 'ok':
             continue
-        except OSError as e:
-            sys.stderr.write('holds: cannot read %s: %s\n' % (d, e.strerror or e))
-            return 3
-        for n in names:
-            if n.startswith(TMP_PREFIX) or GRANT_RE.search(n):
-                continue
-            if time.time() >= deadline:
-                return 0
-            full = os.path.join(d, n)
-            st, f = read_row(full)
-            if st != 'ok':
-                continue
-            try:
-                mt = os.path.getmtime(full)
-            except OSError:
-                continue
-            if f[3] in ('brief', 'pr') and mt < time.time() - GRACE and mirror_done(f[0]):
-                # a Done key holds nothing, whatever its worker's lock or RESUME doc still says
-                key_state[f[0]] = 'dead'
-                if remove_dead(d, n, f, mt):
-                    removed += 1
-                    log_event('gc', unescape(n), f[0], 'key Done')
-                continue
-            state = judge.row_state(f, mt)
-            rank = {'alive': 0, 'unknown': 1, 'dead': 2}
-            if f[0] not in key_state or rank[state] < rank[key_state[f[0]]]:
-                key_state[f[0]] = state
-            if state == 'dead' and remove_dead(d, n, f, mt):
+        try:
+            mt = os.path.getmtime(full)
+        except OSError:
+            continue
+        if f[3] in ('brief', 'pr') and mt < time.time() - GRACE and mirror_done(f[0]):
+            # a Done key holds nothing, whatever its worker's lock or RESUME doc still says
+            key_state[f[0]] = 'dead'
+            if remove_dead(d, n, f, mt):
                 removed += 1
-                log_event('gc', unescape(n), f[0], '')
+                log_event('gc', unescape(n), f[0], 'key Done')
+            continue
+        state = judge.row_state(f, mt)
+        rank = {'alive': 0, 'unknown': 1, 'dead': 2}
+        if f[0] not in key_state or rank[state] < rank[key_state[f[0]]]:
+            key_state[f[0]] = state
+        if state == 'dead' and remove_dead(d, n, f, mt):
+            removed += 1
+            log_event('gc', unescape(n), f[0], '')
+    if last is not None:
+        gc_cursor_write(repo, *last)
+    for _di, d, names in listing:
         for n in names:
             m = GRANT_RE.search(n)
             if not m or time.time() >= deadline:
@@ -1479,7 +1527,42 @@ def op_gc(a):
                     os.unlink(os.path.join(d, n))
                 except OSError:
                     pass  # swallow-ok: already removed
+    print('gc visited=%d removed=%d rows=%d cycle=%s' % (visited, removed, len(items), 'complete' if complete else 'partial'))
     return 0
+
+
+def op_gc(a):
+    """Remove the rows whose holder is dead, with their grant siblings; a dead key's grants go too. A brief or pr row of a key
+    the Jira mirror reads Done goes too, whatever its lock says. Rows inside the arm grace are not judged. A fault or a row it cannot read keeps the row.
+    A pass stops at the BOX with exit 0 and the next one resumes after the last row this one judged, the main directory and _abs as one
+    sequence, so a slow or live prefix cannot starve a later dead row. One pass runs per repo at a time: another says busy and judges nothing.
+    The last line is `gc visited=<n> removed=<n> rows=<n> cycle=complete|partial`; only a partial cycle asks for another pass."""
+    repo = primary_of(a.repo)
+    deadline = time.time() + BOX
+    listing = []
+    for di, d in enumerate((slug_dir(repo), slug_dir(repo, '_abs'))):
+        try:
+            listing.append((di, d, sorted(os.listdir(d))))
+        except FileNotFoundError:
+            continue
+        except OSError as e:
+            sys.stderr.write('holds: cannot read %s: %s\n' % (d, e.strerror or e))
+            return 3
+    if not listing:
+        return 0
+    try:
+        lock = gc_lock(repo)
+    except OSError as e:
+        fault('gc lock: %s' % (e.strerror or e))
+        sys.stderr.write('holds: cannot take the gc lock: %s\n' % (e.strerror or e))
+        return 2
+    if lock is None:
+        print('gc busy: another pass holds this register')
+        return 0
+    try:
+        return gc_sweep(repo, deadline, listing)
+    finally:
+        os.close(lock)
 
 
 ASK_AGE = 24 * 3600      # a deny older than this is not an ask the chief still owes

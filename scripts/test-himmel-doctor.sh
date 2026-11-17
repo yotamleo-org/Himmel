@@ -8543,6 +8543,7 @@ git init -q "$c95_t/repo"
 c95_repo="$(cd "$c95_t/repo" && pwd -P)"
 c95_esc="${c95_repo//%/%25}"; c95_esc="${c95_esc//\//%2F}"
 c95_holds="$c95_t/home/.himmel/state/holds"
+c95_esc_of() { local s="${1//%/%25}"; printf '%s' "${s//\//%2F}"; }
 c95_reset() { rm -rf "${c95_t:?}/home" "${c95_t:?}/claude" "$c95_repo/.single-writer"; mkdir -p "$c95_holds/$c95_esc" "$c95_t/claude"; }
 c95_row() { printf '%b' "$2" > "$c95_holds/$c95_esc/$1"; }
 c95_live() { c95_row 'scripts%2Fa.sh' 'HIMMEL-8725\tN1\t\tclaim\t\n'; }
@@ -8608,14 +8609,57 @@ if [ -n "${_TIMEOUT_BIN:-}" ]; then
     printf 'import time\ntime.sleep(60)\n' > "$c95_t/slow/scripts/handover/chief-kit/holds.py"
     SECONDS=0
     out="$(env CLAUDE_DIR="$c95_t/claude" HOME="$c95_t/home" HIMMEL_DOCTOR_HOLDS_T=2 "$_TIMEOUT_BIN" -k 2 40 bash "$DOC" --root "$c95_t/slow" --only C95 --no-color 2>&1 < /dev/null)"
-    if grepq "$out" -E "WARN C95-barrier-off.*cannot read.*$c95_repo.*exit 124" && [ "$SECONDS" -lt 15 ]; then pass "C95 holds.py that sleeps -> WARN exit 124 in ${SECONDS}s"; else fail "C95 sleeping holds.py (${SECONDS}s) -> $(printf '%s' "$out" | head -4)"; fi
+    if grepq "$out" -E "WARN C95-barrier-off.*holds read TIMED OUT after [0-9]+s for $c95_repo.*UNKNOWN.*not a barrier-off finding" && ! grepq "$out" 'single-writer barrier is OFF' && [ "$SECONDS" -lt 15 ]; then pass "C95 holds.py that sleeps -> its own TIMED OUT line, not barrier-off, in ${SECONDS}s"; else fail "C95 sleeping holds.py (${SECONDS}s) -> $(printf '%s' "$out" | head -4)"; fi
     echo "== C95: the bound covers every register together, so a second repo cannot extend it =="
-    mkdir -p "$c95_holds/%2Ftmp%2Fc95-second-repo"
+    mkdir -p "$c95_t/second-repo" "$c95_holds/$(c95_esc_of "$c95_t/second-repo")"
     SECONDS=0
     out="$(env CLAUDE_DIR="$c95_t/claude" HOME="$c95_t/home" HIMMEL_DOCTOR_HOLDS_T=3 "$_TIMEOUT_BIN" -k 2 40 bash "$DOC" --root "$c95_t/slow" --only C95 --no-color 2>&1 < /dev/null)"
-    if [ "$(printf '%s\n' "$out" | grep -c 'WARN C95-barrier-off')" -eq 2 ] && grepq "$out" -E 'WARN C95-barrier-off.*exit 124' && grepq "$out" -E 'WARN C95-barrier-off.*budget.*c95-second-repo|WARN C95-barrier-off.*budget.*'"$c95_repo" && [ "$SECONDS" -lt 12 ]; then pass "C95 two registers share one bound (${SECONDS}s)"; else fail "C95 two registers (${SECONDS}s) -> $(printf '%s' "$out" | head -5)"; fi
+    if [ "$(printf '%s\n' "$out" | grep -c 'WARN C95-barrier-off')" -eq 2 ] && grepq "$out" -E "WARN C95-barrier-off.*TIMED OUT.*$c95_repo" && grepq "$out" -E "WARN C95-barrier-off.*holds read NOT ATTEMPTED for $c95_t/second-repo.*budget.*UNKNOWN.*not a barrier-off finding" && ! grepq "$out" 'single-writer barrier is OFF' && ! grepq "$out" 'raise HIMMEL_DOCTOR_HOLDS_T' && [ "$SECONDS" -lt 12 ]; then pass "C95 two registers share one bound (${SECONDS}s)"; else fail "C95 two registers (${SECONDS}s) -> $(printf '%s' "$out" | head -5)"; fi
+    echo "== C95: a register whose repo is gone is skipped, so it cannot spend the budget of a live repo =="
+    rm -rf "${c95_t:?}/second-repo" "${c95_holds:?}/$(c95_esc_of "$c95_t/second-repo")"
+    mkdir -p "$c95_holds/$(c95_esc_of "$c95_t/aa-gone-repo")"
+    SECONDS=0
+    out="$(env CLAUDE_DIR="$c95_t/claude" HOME="$c95_t/home" HIMMEL_DOCTOR_HOLDS_T=3 "$_TIMEOUT_BIN" -k 2 40 bash "$DOC" --root "$c95_t/slow" --only C95 --no-color 2>&1 < /dev/null)"
+    if grepq "$out" -E "WARN C95-barrier-off.*TIMED OUT after [0-9]+s for $c95_repo" && ! grepq "$out" 'aa-gone-repo' && ! grepq "$out" 'NOT ATTEMPTED' && [ "$SECONDS" -lt 10 ]; then pass "C95 gone repo spends no budget: the live repo is read with all of it (${SECONDS}s)"; else fail "C95 gone repo first (${SECONDS}s) -> $(printf '%s' "$out" | head -5)"; fi
+    echo "== C95: the main checkout is read first, a timeout is its own line, a true barrier-off still shows =="
+    c95_mf="$c95_t/mf"
+    mkdir -p "$c95_mf/scripts/handover/chief-kit" "$c95_t/aa-other" "$c95_t/zz-sleepy" "$c95_holds/$(c95_esc_of "$c95_mf")" "$c95_holds/$(c95_esc_of "$c95_t/aa-other")" "$c95_holds/$(c95_esc_of "$c95_t/zz-sleepy")"
+    ln -s "$REPO_ROOT/scripts/lib" "$c95_mf/scripts/lib"
+    cat > "$c95_mf/scripts/handover/chief-kit/holds.py" <<'PY'
+import os, sys, time
+repo = sys.argv[sys.argv.index('--repo') + 1]
+open(os.environ['C95_STUB_LOG'], 'a').write(repo + '\n')
+if repo.endswith('zz-sleepy'):
+    time.sleep(60)
+print('scripts/a.sh\tHIMMEL-1\tN1\tclaim\t\talive')
+PY
+    : > "$c95_mf/.single-writer"; : > "$c95_t/mf-read.log"
+    SECONDS=0
+    out="$(env CLAUDE_DIR="$c95_t/claude" HOME="$c95_t/home" HIMMEL_DOCTOR_HOLDS_T=4 C95_STUB_LOG="$c95_t/mf-read.log" "$_TIMEOUT_BIN" -k 2 40 bash "$DOC" --root "$c95_mf" --only C95 --no-color 2>&1 < /dev/null)"
+    if [ "$(head -n 1 "$c95_t/mf-read.log")" = "$c95_mf" ]; then pass "C95 reads the main checkout's register first, whatever the name order"; else fail "C95 read order -> $(tr '\n' ' ' < "$c95_t/mf-read.log")"; fi
+    if grepq "$out" -E "WARN C95-barrier-off.*single-writer barrier is OFF for $c95_mf.*1 live worker row"; then pass "C95 still reports a true barrier-off with a live row beside a timed-out repo"; else fail "C95 barrier-off control -> $(printf '%s' "$out" | head -5)"; fi
+    if grepq "$out" -E "WARN C95-barrier-off.*TIMED OUT after [0-9]+s for $c95_t/zz-sleepy.*UNKNOWN" && ! grepq "$out" -E "barrier is OFF for $c95_t/zz-sleepy" && ! grepq "$out" -E "barrier is OFF for $c95_t/aa-other"; then pass "C95 the timed-out repo gets its own line and is never called barrier-off"; else fail "C95 timeout vs barrier-off -> $(printf '%s' "$out" | head -5)"; fi
 else
     echo "  SKIP: C95 sleeping holds.py — no timeout binary"
+fi
+echo "== C95: a register of a removed repo is skipped, and the OK line counts it =="
+c95_reset; mkdir -p "$c95_holds/$(c95_esc_of "$c95_t/gone-repo")"; printf 'not a row\n' > "$c95_holds/$(c95_esc_of "$c95_t/gone-repo")/scripts%2Fb.sh"
+out="$(c95_run)"
+if grepq "$out" -E 'OK   C95-barrier-off.*1 register of a removed repo not read' && ! grepq "$out" 'WARN C95' && ! grepq "$out" 'gone-repo'; then pass "C95 removed repo's corrupt register is skipped and counted"; else fail "C95 removed repo -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C95: a repo that exists is never called gone, even a live one with a corrupt register (control) =="
+c95_reset; c95_row 'scripts%2Fb.sh' 'not a row\n'
+out="$(c95_run)"
+if grepq "$out" -E "WARN C95-barrier-off.*$c95_repo.*unparseable" && ! grepq "$out" 'removed repo'; then pass "C95 live repo with a corrupt register still WARNs and is not counted as removed"; else fail "C95 live corrupt control -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C95: a repo path behind a directory this user cannot search is unknown, not gone =="
+if [ "$(id -u)" -eq 0 ]; then
+    echo "  SKIP: C95 unsearchable parent — root searches any directory"
+else
+    c95_reset; mkdir -p "$c95_t/locked/under-repo"; mkdir -p "$c95_holds/$(c95_esc_of "$c95_t/locked/under-repo")"
+    printf 'not a row\n' > "$c95_holds/$(c95_esc_of "$c95_t/locked/under-repo")/scripts%2Fb.sh"; chmod 000 "$c95_t/locked"
+    out="$(c95_run)"
+    chmod 700 "$c95_t/locked"
+    if grepq "$out" -E "WARN C95-barrier-off.*$c95_t/locked/under-repo.*unparseable" && ! grepq "$out" 'removed repo'; then pass "C95 unsearchable parent -> still read, not skipped as gone"; else fail "C95 unsearchable parent -> $(printf '%s' "$out" | head -4)"; fi
+    rm -rf "$c95_t/locked"
 fi
 rm -rf "$c95_t"
 
