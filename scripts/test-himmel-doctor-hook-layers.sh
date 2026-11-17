@@ -4,7 +4,6 @@
 #   1. doctor C81-hook-layers WARNs when one hook script is wired from two layers
 #      (user settings, project settings, an enabled plugin) and stays OK for a skip-aware
 #      user entry (guardrail-skip-in-himmel.js) or a skip-aware plugin entry.
-#      A himmel-ops hook script marked to go quiet when the project wires it is not a duplicate.
 #   2. himmelctl still wires the trio at user scope when the user layer has no trio, even if
 #      the project layer wires it; the probe reads a self-skipping user entry as present.
 #   3. the himmel-guard plugin command exits 0 without running when the project layer wires

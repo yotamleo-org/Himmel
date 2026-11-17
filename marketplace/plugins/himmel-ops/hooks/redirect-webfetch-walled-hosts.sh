@@ -47,10 +47,6 @@ set -uo pipefail
 [ "${HIMMEL_WEBFETCH_WALLED_OK:-0}" = "1" ] && exit 0
 command -v jq >/dev/null 2>&1 || exit 0
 
-# Run as the plugin lane (not sourced by the shim) inside a himmel checkout whose
-# project settings wire the shim on WebFetch: the shim runs this same rule, so
-# this lane exits quiet and the rule runs once per call. Doctor C81 reads the
-# marker line below and stops counting the pair as a double run.
 # c81: quiet when the project settings wire this hook
 if [ "${BASH_SOURCE[0]}" = "$0" ] && [ -n "${CLAUDE_PROJECT_DIR:-}" ] \
     && [ -f "$CLAUDE_PROJECT_DIR/scripts/hooks/redirect-webfetch-walled-hosts.sh" ] \

@@ -5682,7 +5682,7 @@ check_c80_status_drift() {
 # per matching call: two bash startups, two log rows. FAIL names each script, its
 # event and the layers carrying it. A user entry run through guardrail-skip-in-himmel.js and a
 # plugin entry that reads the project's .claude/settings.json skip themselves when the project
-# layer covers the script, so neither counts. A plugin row whose hook script carries the line `# c81: quiet when the project settings wire this hook` is dropped when the project layer wires the same script on the same event, since that script exits quiet there. The plugin layer reads the newest cached
+# layer covers the script, so neither counts. The plugin layer reads the newest cached
 # hooks/hooks.json of each enabled plugin, else the repo's marketplace copy.
 # ponytail: the newest cache dir by name stands in for the pinned version, upgrade by reading
 # installed_plugins.json.
@@ -5695,7 +5695,7 @@ check_c81_hook_layers() {
             | select((contains("guardrail-skip-in-himmel") or contains("CLAUDE_PROJECT_DIR/.claude/settings.json")) | not)
             | [scan("hooks/[A-Za-z0-9_-]+\\.sh") | ltrimstr("hooks/")] | unique[] | [$layer, $ev, .] | @tsv' "$2" 2>/dev/null
     }
-    _c81_drop_quiet() { # <plugin hooks dir>: drop a plugin row the project layer already runs, for a script that goes quiet then
+    _c81_drop_quiet() { # <plugin hooks dir>
         local l e s
         while IFS=$'\t' read -r l e s; do
             [ -n "$s" ] || continue

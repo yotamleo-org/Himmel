@@ -255,8 +255,6 @@ if [ -f "$HIMMEL_ROOT/scripts/web/fetch-url.sh" ]; then
             WEBFETCH_WALLED_LOG="$LOG" HIMMEL_WEBFETCH_WALLED_OK=0 sh -c "$plugin_cmd" >/dev/null 2>&1
     }
 
-    # Inside a himmel checkout whose project settings wire the shim on WebFetch, the
-    # plugin lane is quiet and the shim alone denies, so the rule runs once per call.
     rm -rf "$LOG" "$TMP/.claims"
     run_case "$(wft toolu_once1)" "$HIMMEL_ROOT"
     assert_eq "himmel checkout: the plugin lane allows quietly" 0 "$RC"
@@ -267,8 +265,6 @@ if [ -f "$HIMMEL_ROOT/scripts/web/fetch-url.sh" ]; then
     assert_eq "himmel checkout: the shim still denies x.com" 2 "$?"
     assert_eq "himmel checkout: the shim writes the one row" 1 "$(rows)"
 
-    # A himmel-shaped checkout keeps the plugin lane when its settings do not wire
-    # the shim on WebFetch: no settings, the shim on another matcher, a bare name.
     # shellcheck disable=SC2016  # the settings carry a literal $CLAUDE_PROJECT_DIR
     for wiring in none other-matcher bare-name; do
         nw="$TMP/nowire-$wiring"
@@ -281,8 +277,6 @@ if [ -f "$HIMMEL_ROOT/scripts/web/fetch-url.sh" ]; then
         run_case "$(wf 'https://x.com/a/status/1')" "$nw"
         assert_eq "himmel-shaped, $wiring: the plugin lane still denies" 2 "$RC"
     done
-    # The same checkout with the shim wired on WebFetch: quiet (a positive control
-    # for the fixture shape above).
     # shellcheck disable=SC2016  # the settings carry a literal $CLAUDE_PROJECT_DIR
     put "$TMP/nowire-bare-name/.claude/settings.json" '{"hooks":{"PreToolUse":[{"matcher":"Read|WebFetch","hooks":[{"type":"command","command":"bash \\"$CLAUDE_PROJECT_DIR/scripts/hooks/redirect-webfetch-walled-hosts.sh\\""}]}]}}\n'
     run_case "$(wf 'https://x.com/a/status/1')" "$TMP/nowire-bare-name"
