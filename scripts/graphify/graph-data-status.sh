@@ -101,7 +101,7 @@ if [ "$NEWER" -eq 0 ]; then
     exit 0
 fi
 
-if [ "$AGE_S" -le $((MAX_AGE_DAYS * 86400)) ]; then
+if [ "$AGE_S" -le $((10#$MAX_AGE_DAYS * 86400)) ]; then
     echo "graph-data: NEWER live graph built at $LIVE7 is newer than the graph-data tip (built at $TIP7, $AGE old); semantic layer: $SEM"
     exit 4
 fi

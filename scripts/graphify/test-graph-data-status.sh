@@ -134,5 +134,10 @@ echo "S13: a missing --repo is a usage error"
 out="$(bash "$SCRIPT" --out "$L" 2>&1)"; rc=$?
 is S13 2 "*usage:*"
 
+echo "S14: a leading-zero --max-age-days is decimal, so 08 is 8 days and a 2h tip is within it -> NEWER, rc 4"
+push_tip "$C1" $((2 * H))
+run --out "$L" --max-age-days 08
+is "S14 08 reads as decimal" 4 "graph-data: NEWER*"
+
 echo
 if [ "$FAILS" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$FAILS FAILED"; exit 1; fi
