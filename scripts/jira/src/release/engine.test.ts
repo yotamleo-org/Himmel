@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { chmodSync, closeSync as closeFd, existsSync, mkdtempSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, truncateSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, closeSync as closeFd, existsSync, mkdtempSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, truncateSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
@@ -14,9 +14,30 @@ import { Command } from 'commander';
 
 // A hook that runs after a minerva script returns, to edit the spec mid-sign.
 const afterMinerva = vi.hoisted(() => ({ fn: null as null | (() => void) }));
+// Relocate only the module's anchor lookup into a disposable primary. Every Git identity/registration
+// query still executes Git, and both validator files are copied byte-for-byte from the real primary.
+const sourceFixture = vi.hoisted(() => ({ primary: null as string | null }));
+const signingLock = vi.hoisted(() => ({ fn: null as null | (() => void) }));
+vi.mock('node:fs', async (orig) => {
+  const m = await orig<typeof import('node:fs')>();
+  return { ...m, openSync: ((...a: Parameters<typeof m.openSync>) => {
+    const fd = m.openSync(...a);
+    if (String(a[0]).endsWith('/release/R1/.lock')) {
+      const fn = signingLock.fn;
+      signingLock.fn = null;
+      fn?.();
+    }
+    return fd;
+  }) as typeof m.openSync };
+});
 vi.mock('node:child_process', async (orig) => {
   const m = await orig<typeof import('node:child_process')>();
   const execFileSync = ((...a: Parameters<typeof m.execFileSync>) => {
+    const args = a[1] as string[] | undefined;
+    if (sourceFixture.primary && a[0] === 'git' && args?.[0] === '-C'
+      && args[1] === dirname(fileURLToPath(import.meta.url)) && args.at(-1) === '--git-common-dir') {
+      return m.execFileSync('git', ['-C', sourceFixture.primary, ...args.slice(2)], a[2]);
+    }
     const r = m.execFileSync(...a);
     if (String((a[1] as string[] | undefined)?.[0] ?? '').endsWith('minerva-trace-lint.sh')) afterMinerva.fn?.();
     return r;
@@ -2217,6 +2238,140 @@ describe('signed minerva specs', () => {
     writeFileSync(plan, 'plan\n\n- Task 1: I1 — Test: `scripts/test-feed.sh` feeds a fact from two real sources.\n');
     return { spec: p, plan };
   }
+
+  describe('explicit source-root normal signing', () => {
+    let primary: string;
+    let linked: string;
+    const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-C', cwd,
+      '-c', 'user.name=test', '-c', 'user.email=test@example.invalid', '-c', 'commit.gpgsign=false',
+      '-c', 'core.hooksPath=/dev/null', ...args], { encoding: 'utf8' }).trim();
+    beforeEach(() => {
+      const common = git(dirname(fileURLToPath(import.meta.url)), 'rev-parse', '--path-format=absolute', '--git-common-dir');
+      primary = join(root, 'primary');
+      linked = join(root, 'linked');
+      mkdirSync(primary);
+      git(primary, 'init', '-q');
+      git(primary, 'commit', '-q', '--allow-empty', '-m', 'fixture');
+      const scripts = 'marketplace/plugins/himmel-ops/scripts';
+      mkdirSync(join(primary, scripts), { recursive: true });
+      for (const name of ['minerva-spec-gate.sh', 'minerva-trace-lint.sh']) {
+        copyFileSync(join(dirname(common), scripts, name), join(primary, scripts, name));
+      }
+      git(primary, 'worktree', 'add', '-q', '--detach', linked);
+      mkdirSync(join(linked, 'branch-only'));
+      writeFileSync(join(linked, 'branch-only', 'source.ts'), 'export const source = true;\n');
+      git(linked, 'add', '.');
+      git(linked, 'commit', '-q', '-m', 'branch-only source');
+      sourceFixture.primary = primary;
+      declared();
+      for (const [k, v] of Object.entries(specEnv())) vi.stubEnv(k, v);
+      vi.stubEnv('HIMMEL_CONSOLE_LEG', '');
+      vi.stubEnv('HIMMEL_RELEASE_MANAGER', '');
+      writeFileSync(join(root, 'verbatim.txt'), 'fixture approval');
+    });
+    afterEach(() => { sourceFixture.primary = null; afterMinerva.fn = null; signingLock.fn = null; });
+
+    async function normalSign(sourceRoot?: string, citation = 'branch-only/source.ts') {
+      const { spec: p, plan } = bucketSpec(citation);
+      await cli('operator', 'spec', 'R1', '--keys', 'K-1', '--spec', p, '--plan', plan,
+        '--verdict', verdict(p, 'spec', 'SPEC CLEAN'), '--verdict', verdict(p, 'plan', 'PLAN CLEAN'),
+        '--decision', '387', '--verbatim-file', join(root, 'verbatim.txt'),
+        ...(sourceRoot === undefined ? [] : ['--source-root', sourceRoot]));
+      return readOperatorRecords('spec', specEnv())[0];
+    }
+
+    it('signs branch-only citations in a live same-repo linked root with canonical root/head provenance', async () => {
+      const alias = join(root, 'alias');
+      symlinkSync(linked, alias);
+      // Untrusted worktree validators cannot replace the unchanged primary validators.
+      const scripts = join(linked, 'marketplace/plugins/himmel-ops/scripts');
+      mkdirSync(scripts, { recursive: true });
+      writeFileSync(join(scripts, 'minerva-spec-gate.sh'), 'exit 99\n');
+      writeFileSync(join(scripts, 'minerva-trace-lint.sh'), 'exit 99\n');
+      const row = await normalSign(alias);
+      expect(row).toMatchObject({ source_root: realpathSync(linked), source_head: git(linked, 'rev-parse', 'HEAD') });
+      expect(check(['K-1'])).toEqual([expect.stringMatching(/^SPEC ok K-1 /)]);
+      // Provenance is historical; later HEAD changes do not confer or revoke spec authority.
+      git(linked, 'commit', '-q', '--allow-empty', '-m', 'later source');
+      expect(check(['K-1'])).toEqual([expect.stringMatching(/^SPEC ok K-1 /)]);
+    });
+
+    it('keeps default primary citation behavior and old records without provenance', async () => {
+      await expect(normalSign()).rejects.toThrow(/cites branch-only\/source.ts, which does not exist/);
+      expect(readOperatorRecords('spec', specEnv())).toEqual([]);
+      const row = await normalSign(undefined, 'marketplace/plugins/himmel-ops/scripts/minerva-trace-lint.sh');
+      expect(row).not.toHaveProperty('source_root');
+      expect(row).not.toHaveProperty('source_head');
+      expect(check(['K-1'])).toEqual([expect.stringMatching(/^SPEC ok K-1 /)]);
+    });
+
+    it('accepts explicit primary and preserves the state repository as alternate citation root', async () => {
+      const stateRepo = join(root, 'bucket');
+      mkdirSync(stateRepo);
+      git(stateRepo, 'init', '-q');
+      mkdirSync(join(stateRepo, 'notes'));
+      writeFileSync(join(stateRepo, 'notes', 'state.md'), 'state');
+      const row = await normalSign(primary, 'notes/state.md');
+      expect(row).toMatchObject({ source_root: realpathSync(primary), source_head: git(primary, 'rev-parse', 'HEAD') });
+    });
+
+    it.each(['missing', 'foreign', 'unregistered', 'subdir'])('refuses %s roots before appending any spec record', async (kind) => {
+      let candidate = join(root, kind);
+      if (kind === 'foreign') {
+        mkdirSync(candidate);
+        git(candidate, 'init', '-q');
+        git(candidate, 'commit', '-q', '--allow-empty', '-m', 'foreign');
+      } else if (kind === 'unregistered') {
+        mkdirSync(candidate);
+        copyFileSync(join(linked, '.git'), join(candidate, '.git'));
+      } else if (kind === 'subdir') candidate = join(linked, 'branch-only');
+      await expect(normalSign(candidate, 'marketplace/plugins/himmel-ops/scripts/minerva-trace-lint.sh')).rejects.toThrow(/source.root/i);
+      expect(readOperatorRecords('spec', specEnv())).toEqual([]);
+    });
+
+    it.each(['HEAD', 'symlink', 'directory', 'registration'])('refuses a %s swap during validation before appending', async (kind) => {
+      const alias = join(root, 'alias');
+      symlinkSync(linked, alias);
+      afterMinerva.fn = () => {
+        if (kind === 'HEAD') git(linked, 'commit', '-q', '--allow-empty', '-m', 'changed');
+        if (kind === 'symlink') { unlinkSync(alias); symlinkSync(primary, alias); }
+        if (kind === 'directory') {
+          renameSync(linked, `${linked}-old`);
+          mkdirSync(linked);
+          copyFileSync(join(`${linked}-old`, '.git'), join(linked, '.git'));
+        }
+        if (kind === 'registration') rmSync(git(linked, 'rev-parse', '--absolute-git-dir'), { recursive: true });
+      };
+      await expect(normalSign(alias)).rejects.toThrow(/source.root/i);
+      expect(readOperatorRecords('spec', specEnv())).toEqual([]);
+    });
+
+    it.each(['spec', 'plan', 'verdict'])('keeps the %s hash-race refusal with an explicit root', async (kind) => {
+      afterMinerva.fn = () => {
+        const p = join(root, 'bucket/designs/K-1-bucket-2026-11-02.md');
+        const target = kind === 'spec' ? p : kind === 'plan'
+          ? join(root, 'bucket/plans/K-1-bucket-plan-2026-11-02.md') : `${p}.critic-spec-r1.md`;
+        writeFileSync(target, `${readFileSync(target, 'utf8')}\nchanged\n`);
+      };
+      await expect(normalSign(linked)).rejects.toThrow(/changed while it was checked/);
+      expect(readOperatorRecords('spec', specEnv())).toEqual([]);
+    });
+
+    it.each(['source', 'document'])('rechecks %s after acquiring the append lock', async (kind) => {
+      signingLock.fn = () => {
+        if (kind === 'source') git(linked, 'commit', '-q', '--allow-empty', '-m', 'changed before append');
+        else writeFileSync(join(root, 'bucket/designs/K-1-bucket-2026-11-02.md'), 'changed before append');
+      };
+      await expect(normalSign(linked)).rejects.toThrow(/changed while it was checked/);
+      expect(readOperatorRecords('spec', specEnv())).toEqual([]);
+    });
+
+    it('keeps normal operator fencing with an explicit root', async () => {
+      vi.stubEnv('HIMMEL_CONSOLE_LEG', '1');
+      await expect(normalSign(linked)).rejects.toThrow(/chief-spawned worker/);
+      expect(readOperatorRecords('spec', specEnv())).toEqual([]);
+    });
+  });
 
   it('signs a bucket spec with invariants: the lint reads its paths from the checkout and its invariants from the plan', () => {
     declared();

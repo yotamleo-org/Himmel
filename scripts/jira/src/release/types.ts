@@ -86,6 +86,9 @@ export interface OperatorRow {
   spec_sha256?: string;
   plan_path?: string | null;
   plan_sha256?: string | null;
+  // kind spec, explicit --source-root only: historical validation provenance, not code authority.
+  source_root?: string;
+  source_head?: string;
   // kind 'spec-review' over a FINDINGS verdict: the spec bytes the critic reviewed, before the fold.
   reviewed_sha256?: string;
   verdicts?: Array<{ path: string; sha256: string }>;

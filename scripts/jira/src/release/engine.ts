@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { closeSync, constants, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, realpathSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -482,6 +482,49 @@ function checkoutRoot(): string {
   return dirname(common);
 }
 
+// Explicit roots bind a physical checkout, its registered Git identity and the validated HEAD.
+// The validator scripts themselves always come from checkoutRoot().
+function sourceIdentity(raw: string): { root: string; head: string; identity: string } {
+  const verb = 'release operator spec: source-root';
+  try {
+    const root = realpathSync(raw);
+    const stamp = (path: string) => {
+      const st = lstatSync(path, { bigint: true });
+      return `${st.dev}:${st.ino}`;
+    };
+    const before = [stamp(root), stamp(join(root, '.git'))];
+    if (!statSync(root).isDirectory()) throw new Error('not a directory');
+    const git = (...args: string[]) => execFileSync('git', ['-C', root, ...args], {
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
+    const common = realpathSync(git('rev-parse', '--path-format=absolute', '--git-common-dir'));
+    const primary = realpathSync(checkoutRoot());
+    const primaryCommon = realpathSync(execFileSync('git', ['-C', primary, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' }).trim());
+    if (common !== primaryCommon || realpathSync(git('rev-parse', '--show-toplevel')) !== root) {
+      throw new Error('must be a root of the same repository as primary');
+    }
+    const gitDir = realpathSync(git('rev-parse', '--absolute-git-dir'));
+    const head = git('rev-parse', '--verify', 'HEAD^{commit}');
+    const registered = git('worktree', 'list', '--porcelain', '-z').split('\0\0').some((record) => {
+      const fields = record.split('\0');
+      if (!fields[0].startsWith('worktree ') || fields.some((v) => v === 'bare' || v.startsWith('prunable'))) return false;
+      try { return realpathSync(fields[0].slice(9)) === root && fields.includes(`HEAD ${head}`); } catch { return false; }
+    });
+    if (!registered) throw new Error('not a registered live worktree');
+    if (root === primary ? gitDir !== common
+      : dirname(gitDir) !== realpathSync(join(common, 'worktrees'))
+        || realpathSync(readFileSync(join(gitDir, 'gitdir'), 'utf8').trim()) !== realpathSync(join(root, '.git'))) {
+      throw new Error('worktree Git identity does not match its registration');
+    }
+    const identity = JSON.stringify([root, common, gitDir, ...before, stamp(common), stamp(gitDir)]);
+    if (realpathSync(raw) !== root || before[0] !== stamp(root) || before[1] !== stamp(join(root, '.git'))
+      || git('rev-parse', '--verify', 'HEAD^{commit}') !== head) throw new Error('identity or HEAD changed while it was checked');
+    return { root, head, identity };
+  } catch (e) {
+    throw new Error(`${verb} ${raw} refused: ${(e as Error).message}`);
+  }
+}
+
 const minervaScript = (name: string): string => join(checkoutRoot(), 'marketplace', 'plugins', 'himmel-ops', 'scripts', name);
 
 function runMinerva(name: string, args: string[], cwd: string, verb = 'release operator spec'): void {
@@ -496,13 +539,13 @@ function runMinerva(name: string, args: string[], cwd: string, verb = 'release o
 // The spec gate on the spec, then the trace lint on the spec and plan. The lint resolves cited paths against its
 // cwd's repo, so it runs from the checkout, whichever repo holds the spec; the spec's own repo (the state repo) is
 // the second place a cited path may exist.
-function lintSpec(spec: string, plan: string, verb?: string): void {
+function lintSpec(spec: string, plan: string, verb?: string, sourceRoot = checkoutRoot()): void {
   runMinerva('minerva-spec-gate.sh', [spec], dirname(spec), verb);
   let own: string[] = [];
   try {
     own = [execFileSync('git', ['-C', dirname(spec), 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()];
   } catch { /* a spec outside any repo has no second root */ }
-  runMinerva('minerva-trace-lint.sh', [spec, plan, ...own], checkoutRoot(), verb);
+  runMinerva('minerva-trace-lint.sh', [spec, plan, ...own], sourceRoot, verb);
 }
 
 const VERDICT = /^(SPEC|PLAN) (CLEAN|FINDINGS (\d+))$/;
@@ -573,7 +616,7 @@ function checkRoundResiduals(specText: string, names: string[], residuals: numbe
 }
 
 export function signSpec(ctx: Ctx, o: {
-  keys: string[]; spec: string; verdicts: string[]; decision: string; verbatim: string; supersedes?: string; plan?: string;
+  keys: string[]; spec: string; verdicts: string[]; decision: string; verbatim: string; supersedes?: string; plan?: string; sourceRoot?: string;
 }): OperatorRow {
   operatorFence(ctx);
   if (!o.keys.length) throw new Error('release operator spec: --keys names the keys the spec covers');
@@ -588,11 +631,23 @@ export function signSpec(ctx: Ctx, o: {
   const specSha = createHash('sha256').update(bytes).digest('hex');
   const planSha = o.plan ? fileSha(plan) : null;
   checkResiduals(bytes.toString('utf8'), residuals);
-  lintSpec(spec, plan);
-  if (fileSha(spec) !== specSha || verdicts.some((v) => fileSha(v.path) !== v.sha256)
-    || (o.plan && (!existsSync(plan) || fileSha(plan) !== planSha))) {
-    throw new Error('release operator spec: the spec, plan or a verdict file changed while it was checked; sign again');
-  }
+  const source = o.sourceRoot === undefined ? undefined : sourceIdentity(o.sourceRoot);
+  const checkSource = () => {
+    if (!source) return;
+    const current = sourceIdentity(o.sourceRoot as string);
+    if (current.identity !== source.identity || current.head !== source.head) {
+      throw new Error('release operator spec: source-root identity or HEAD changed while it was checked; sign again');
+    }
+  };
+  lintSpec(spec, plan, undefined, source?.root);
+  checkSource();
+  const checkInputs = () => {
+    if (fileSha(spec) !== specSha || verdicts.some((v) => fileSha(v.path) !== v.sha256)
+      || (o.plan && (!existsSync(plan) || fileSha(plan) !== planSha))) {
+      throw new Error('release operator spec: the spec, plan or a verdict file changed while it was checked; sign again');
+    }
+  };
+  checkInputs();
   return lockedAcross(ctx, (l) => {
     const records = readOperatorRecords('spec', ctx.env);
     if (o.supersedes) {
@@ -608,9 +663,12 @@ export function signSpec(ctx: Ctx, o: {
       const k = held.keys?.find((x) => o.keys.includes(x));
       throw new Error(`release operator spec: ${k} is already signed in ${held.id}; re-sign with --supersedes ${held.id}`);
     }
+    checkInputs();
+    checkSource();
     return appendOperator(ctx, l.k, {
       kind: 'spec', decision: o.decision, keys: [...new Set(o.keys)], spec_path: spec, spec_sha256: specSha,
       plan_path: o.plan ? plan : null, plan_sha256: planSha, verdicts,
+      ...(source ? { source_root: source.root, source_head: source.head } : {}),
       supersedes: o.supersedes ?? null, residuals, verbatim: o.verbatim,
     });
   });
