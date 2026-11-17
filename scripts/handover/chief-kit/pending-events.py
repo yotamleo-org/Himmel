@@ -9,6 +9,11 @@ import sys
 import time
 
 
+def checksum(line):
+    return subprocess.run(['cksum'], input=line + '\n', text=True,
+                          capture_output=True, check=True).stdout.split()[0]
+
+
 def candidates(fleet, inbox, last):
     data = json.loads(Path(fleet).read_text())
     cursors = {}
@@ -44,21 +49,42 @@ def candidates(fleet, inbox, last):
         # shifts and atomic editors. Older snapshots migrate without replay.
         old_events = previous.get('ready', ready_events)
         handled_ready = [digest for n, digest in old_events if n <= cursor]
-        replaced = handled_ready != [digest for _, digest in ready_events[:len(handled_ready)]]
+        last_handled = next((n for n, digest in reversed(ready_events)
+                             if handled_ready and digest == handled_ready[-1]), None)
+        replaced = bool(handled_ready) and last_handled is None
         first = label not in cursors or replaced
-        if label in cursors:
-            cursor = 0 if replaced or not handled_ready else ready_events[len(handled_ready) - 1][0]
+        if label in cursors and not replaced:
+            # An empty sample cannot erase a legacy cursor before its first
+            # usable snapshot. Prose and older READY edits do not move identity.
+            if cursor and not old_events and not ready_events:
+                current[label] = previous
+                continue
+            cursor = last_handled or 0
             cursors[label] = cursor
         current[label] = dict(ready=ready_events)
         cleanup = [(n, marker) for n, marker in matches if marker != 'READY']
         if cleanup:
             n, marker = cleanup[-1]
-            checksum = subprocess.run(['cksum'], input=lines[n - 1] + '\n',
-                                      text=True, capture_output=True, check=True).stdout.split()[0]
-            if f'{label} {marker} {checksum}' in handled:
+            if f'{label} {marker} {checksum(lines[n - 1])}' in handled:
                 continue
             events.append((label, marker, n))
         else:
+            if replaced:
+                # A truncate/write sample is only a proposal. Keep the last
+                # acknowledged snapshot/cursor until a stable candidate relays.
+                current[label] = dict(previous, unread=False, replacement=ready_events)
+                if previous.get('replacement') != ready_events:
+                    current[label]['replacement_known'] = bool(
+                        ready_events and ready_events[-1][1] in handled_ready)
+                    continue
+                if not ready_events or previous.get('replacement_known'):
+                    continue
+                n = ready_events[-1][0]
+                if f'{label} READY {checksum(lines[n - 1])}' in handled:
+                    current[label] = dict(ready=ready_events)
+                    cursors[label] = n
+                    continue
+                cursor = 0
             pending = [(n, marker) for n, marker in matches if n > cursor]
             if pending:
                 n, marker = pending[-1] if first else pending[0]

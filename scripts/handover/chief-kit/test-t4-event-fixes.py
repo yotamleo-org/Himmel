@@ -83,7 +83,76 @@ class Collector(stream_tests.StreamFixture):
         replacement = self.root / 'new.md'
         replacement.write_text('- READY #201 a\n- READY #202 b\n- READY #203 c\n- READY #204 d\n- READY #205 e\n')
         replacement.replace(self.root / 'N1.md')
+        self.assertEqual(self.collect().stdout, '')
         self.assertEqual(self.collect().stdout.strip(), 'N1 READY 5')
+        self.assertEqual(self.path('ready').read_text(), 'N1\t4\n')
+        # A candidate is not an acknowledgement: a refused relay must retry.
+        self.assertEqual(self.collect().stdout.strip(), 'N1 READY 5')
+
+    def test_torn_document_keeps_handled_ready_history(self):
+        full = ''.join(f'- READY #{n} head-{n}\n' for n in range(1, 6))
+        for temporary in ('', ''.join(full.splitlines(keepends=True)[:2])):
+            with self.subTest(temporary=temporary):
+                self.workers([full.encode()])
+                self.collect()
+                self.path('ready').write_text('N1\t5\n')
+                self.assertEqual(self.collect().stdout, '')
+                observed = json.loads(self.path('ready-docs').read_text())['N1']['ready']
+                (self.root / 'N1.md').write_text(temporary)
+                for _ in range(2):
+                    self.assertEqual(self.collect().stdout, '')
+                    self.assertEqual(self.path('ready').read_text(), 'N1\t5\n')
+                    self.assertEqual(json.loads(self.path('ready-docs').read_text())['N1']['ready'], observed)
+                (self.root / 'N1.md').write_text(full)
+                for _ in range(3):
+                    self.assertEqual(self.collect().stdout, '')
+
+    def test_editing_older_ready_does_not_relay_handled_latest(self):
+        self.workers([b'- READY #1 old\n- READY #2 latest\n'])
+        self.collect()
+        self.path('ready').write_text('N1\t2\n')
+        self.assertEqual(self.collect().stdout, '')
+        (self.root / 'N1.md').write_text('- READY #1 edited old\n- READY #2 latest\n')
+        self.assertEqual(self.collect().stdout, '')
+        (self.root / 'N1.md').write_text('- READY #2 latest\n')
+        self.assertEqual(self.collect().stdout, '')
+        with (self.root / 'N1.md').open('a') as output:
+            output.write('- READY #3 new\n')
+        self.assertEqual(self.collect().stdout.strip(), 'N1 READY 2')
+
+    def test_stable_replacement_waits_for_actual_relay_receipt(self):
+        self.workers([b'- READY #1 old\n'])
+        self.collect()
+        self.path('ready').write_text('N1\t1\n')
+        self.assertEqual(self.collect().stdout, '')
+        replacement = '- READY #2 new\n'
+        (self.root / 'N1.md').write_text(replacement)
+        self.assertEqual(self.collect().stdout, '')
+        for _ in range(2):
+            self.assertEqual(self.collect().stdout.strip(), 'N1 READY 1')
+            self.assertEqual(self.path('ready').read_text(), 'N1\t1\n')
+        received = subprocess.run(['cksum'], input=replacement, capture_output=True,
+                                  text=True, check=True).stdout.split()[0]
+        self.path('r0').write_text(f'N1 READY {received}\n')
+        self.assertEqual(self.collect().stdout, '')
+        self.assertEqual(self.collect().stdout, '')
+        with (self.root / 'N1.md').open('a') as output:
+            output.write('- READY #3 later\n')
+        self.assertEqual(self.collect().stdout.strip(), 'N1 READY 2')
+
+    def test_escalation_heads_block_when_a_peer_document_is_unreadable(self):
+        self.workers([b'- LIVE unread\n', b'- READY #101 a\n'])
+        (self.root / 'N1.md').unlink()
+        self.env['CHIEF_WAIT_WORKER_EVENT'] = self.script('event', 'cat >/dev/null\necho "ESCALATE actual-failure"\nexit 10\n')
+        proc, output = self.start()
+        self.until(lambda: 'worker-event' in output.read_text())
+        self.stop(proc)
+        wakes = [line for line in output.read_text().splitlines() if line.startswith('WAKE#')]
+        self.assertTrue(wakes, output.read_text())
+        self.assertIn('worker-event', wakes[0])
+        self.assertNotIn('waiter-error', wakes[0])
+        self.assertIn('worker-doc-unread', ''.join(p.read_text() for p in
+                      self.inbox.parent.glob(self.inbox.name + '.wait.wake-*')))
 
     def test_collector_failure_wakes_once_then_resets_after_recovery(self):
         self.path('ready').write_text('malformed cursor\n')

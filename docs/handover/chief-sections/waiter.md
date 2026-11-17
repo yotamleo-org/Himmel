@@ -39,7 +39,9 @@ fault recurs within five minutes, the arm ends with
 `STOPPED reason=supervisor-repeat`. Unwritable supervisor fault state ends
 with `STOPPED reason=supervisor-state-unwritable`. Reconcile the named state
 before manually arming again; neither terminal outcome requests an automatic
-re-arm. A malformed wake row is refused for reconciliation, never discarded.
+re-arm. A malformed wake row stays for reconciliation: its first supervisor fault
+emits REARM; a repeat within five minutes emits STOPPED reason=supervisor-repeat.
+Repair the persisted state before re-arming after that stop; no row is discarded.
 
 Owed operator sends reuse a stable outbox identity for the chief, document,
 owed key and part number; conflicting content under that key is refused.

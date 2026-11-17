@@ -1982,12 +1982,12 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
         # a READY past its cursor comes after any WRAPPED or MERGED worker
         if ready_pick; then cands="${cands:+$cands$'\n'}$ready_label READY"; fi
     fi
-    local r0_warned=""
+    local r0_warned="" r0_warning_lines=""
     r0_attempted=""
     while read -r label marker event_line; do
         [ -n "$label" ] || continue
         if [ "$label" = WARN ]; then
-            printf 'WAKE waiter-error worker-doc-unread worker=%s reconcile=%s diagnostic=%s\n' "$marker" "$event_line" "$inbox.wait.pending-diagnostic"
+            r0_warning_lines+="$(printf 'WAKE waiter-error worker-doc-unread worker=%s reconcile=%s diagnostic=%s' "$marker" "$event_line" "$inbox.wait.pending-diagnostic")"$'\n'
             r0_warned=1
             continue
         fi
@@ -2031,6 +2031,7 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
         fi
         printf '%s\n' "$out" > "$outf" 2>/dev/null
         if [ "$marker" = READY ] && [ -n "$ready_off" ] && dry_run_ready_answer "$rc" "$out"; then
+            printf '%s\n' "$sum" >> "$r0_file"
             ready_advance "$label" "$ready_line"
             break
         fi
@@ -2060,11 +2061,12 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
         printf '%s\n' "$sum" >> "$r0_file"
         [ "$marker" != READY ] || ready_advance "$label" "$ready_line"
         printf 'WAKE worker-event %s rc=%s out=%s\n' "$(printf '%s\n' "$out" | grep -m 1 '[^[:space:]]')" "$rc" "$outf"
+        printf '%s' "$r0_warning_lines"
         return 0
     done <<EOF
 $cands
 EOF
-    [ -z "$r0_warned" ] || return 0
+    if [ -n "$r0_warned" ]; then printf '%s' "$r0_warning_lines"; return 0; fi
     return 1
 }
 
