@@ -819,8 +819,6 @@ _sem_promote_lock_acquire() {
     return 0
 }
 
-# The build commit graph-data carries after a channel publish: from the pushed line, or
-# from the unchanged line when the tip already held this graph and nothing was pushed.
 _published_build_commit() {
     printf '%s\n' "$1" | sed -En 's/^publish-graph-channel: (published graph-data|graph-data unchanged at) .* \(built at ([0-9a-fA-F]{7,40})\)$/\2/p' | tail -n 1
 }

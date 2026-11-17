@@ -153,7 +153,6 @@ check_eq "a changed graph.json rc 0" 0 "$PUB_RC"
 if [ "$(tip)" != "$SAME_TIP" ]; then ok "a changed graph.json with the same built_at_commit moves the tip"; else bad "tip did not move for a changed graph.json: $PUB_OUT"; fi
 check_has "a changed graph.json is published" "publish-graph-channel: published graph-data $(tip) (built at $SEED_SHA)" "$PUB_OUT"
 
-# A checkout that never held the tip: the publisher fetches it to compare.
 OTHER="$TMP/other"
 git init --quiet "$OTHER"
 OTHER_TIP="$(tip)"

@@ -1927,7 +1927,6 @@ assert_eq "an unchanged --semantic fire rc=0" "0" "$rc"
 assert_eq "an unchanged --semantic fire leaves the graph-data tip where it was" "$GD_TIP_BEFORE" "$(git -C "$GD_BARE" rev-parse refs/heads/graph-data)"
 assert_contains "an unchanged --semantic fire says graph-data is unchanged" "publish-graph-channel: graph-data unchanged at $GD_TIP_BEFORE" "$out"
 LEDGER_LINE11G=$(tail -n1 "$GD_LEDGER/.graph-cadence/ledger.jsonl")
-# C33 (himmel-doctor.sh) accepts skipped|refreshed|published|published-channel|merged with a readable ts.
 assert_eq "an unchanged --semantic fire records published-channel" "published-channel" "$GD_LAST_ACTION"
 assert_contains "an unchanged --semantic fire names the published build commit" "\"graph_head\":\"$GD_HEAD\"" "$LEDGER_LINE11G"
 assert_contains "an unchanged --semantic fire records no error" '"error":null' "$LEDGER_LINE11G"
