@@ -137,7 +137,7 @@ function secretForms(s) {
 export function redact(text, creds) {
   const forms = new Set();
   for (const s of [creds.api_token, creds.email, `${creds.email}:${creds.api_token}`]) {
-    for (const f of secretForms(s)) if (f.length >= 4) forms.add(f);
+    for (const f of secretForms(s)) if (f.length > 0) forms.add(f);
   }
   let out = String(text);
   for (const f of [...forms].sort((a, b) => b.length - a.length)) out = out.split(f).join('[redacted]');
@@ -157,7 +157,7 @@ export const jiraArgv = Object.freeze({
   label: (key, present) => ['edit', assertKey(key), present ? '--add-labels' : '--remove-labels', READINESS_LABEL],
 });
 
-const ENV_ALLOW = ['PATH', 'HOME', 'TMPDIR', 'LANG', 'LC_ALL', 'TZ', 'NODE_ENV', 'HIMMEL_CONFIG_DIR', 'JIRA_REQUEST_TIMEOUT_MS'];
+const ENV_ALLOW = ['PATH', 'HOME', 'TMPDIR', 'LANG', 'LC_ALL', 'TZ', 'JIRA_REQUEST_TIMEOUT_MS'];
 
 // The child's whole environment: a finite allowlist from the host, then the private credentials. Ambient
 // JIRA_* (and every other secret in the host environment) never passes.
@@ -202,7 +202,15 @@ function typedIssue(raw, key, creds) {
     description_sha256: createHash('sha256').update(JSON.stringify(f.description ?? null)).digest('hex'),
   };
   issue.issue_sha256 = createHash('sha256').update(JSON.stringify([issue.key, issue.summary, issue.status, issue.type, issue.labels, issue.fixVersions, issue.description_sha256])).digest('hex');
-  return JSON.parse(redact(JSON.stringify(issue), creds));
+  const redactValues = (value) => {
+    if (typeof value === 'string') return redact(value, creds);
+    if (Array.isArray(value)) return value.map(redactValues);
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, redactValues(v)]));
+    return value;
+  };
+  const clean = redactValues(issue);
+  if (clean.key !== issue.key || clean.description_sha256 !== issue.description_sha256 || clean.issue_sha256 !== issue.issue_sha256) return null;
+  return clean;
 }
 
 // The real minimal Jira port. `config` is the startup `port` object; `deps.env`/`deps.cwd` are host-chosen.
@@ -222,10 +230,10 @@ export async function createJiraPort(config, deps = {}) {
     const ms = Number.isFinite(deadline) ? Math.floor(deadline - Date.now()) : 0;
     return ms > 0 ? Math.min(ms, 60_000) : 0;
   };
-  const fail = (code, message) => ({ outcome: 'error', code, message: redact(String(message).slice(0, MESSAGE_MAX), creds) });
+  const fail = (code, message) => ({ outcome: 'error', code, message: redact(String(message), creds).slice(0, MESSAGE_MAX) });
   const cliError = (r) => {
     const text = (r.stderr.trim() || r.stdout.trim() || `the Jira CLI exited ${r.code}`);
-    return redact(text, creds).slice(0, MESSAGE_MAX);
+    return redact(text, creds).slice(-MESSAGE_MAX);
   };
 
   async function read(kind, key, deadline) {
@@ -253,7 +261,7 @@ export async function createJiraPort(config, deps = {}) {
       const r = await runCli({ cli, argv, env, cwd, timeoutMs });
       // A killed write may or may not have landed: only a later readback can say.
       if (r.timedOut) return { outcome: 'ambiguous', code: 'timeout', message: `the label write on ${key} did not finish before the deadline; read it back before repeating it` };
-      if (r.code !== 0) return { outcome: 'error', code: 'cli-failed', message: cliError(r) };
+      if (r.code !== 0) return { outcome: 'ambiguous', code: 'cli-failed', message: cliError(r) };
       return { outcome: 'ok', key, label: READINESS_LABEL, present: Boolean(present) };
     },
     findMarker: unsupported,

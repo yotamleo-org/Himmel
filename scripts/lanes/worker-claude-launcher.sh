@@ -160,8 +160,11 @@ const strs = (v) => Array.isArray(v) && v.every((x) => typeof x === "string");
 const p = s && s.permissions;
 if (!p || !strs(p.allow) || p.allow.length !== grants.length || !grants.every((g) => p.allow.includes(g))) why("the settings must allow exactly mcp__readiness__inspect and mcp__readiness__act");
 if (!strs(p.deny) || !deny.every((d) => p.deny.includes(d))) why("the settings must deny every native tool");
+if (Object.keys(p).some((key) => !["allow", "deny"].includes(key)) || Object.hasOwn(s, "hooks")) why("the settings contain a permission or hook override");
 const sv = m && m.mcpServers;
 if (!sv || typeof sv !== "object" || Array.isArray(sv) || Object.keys(sv).join(",") !== "readiness") why("the MCP config must name exactly the readiness server");
+const server = sv.readiness;
+if (!server || typeof server !== "object" || Array.isArray(server) || typeof server.command !== "string" || !server.command || (server.args !== undefined && !strs(server.args))) why("the readiness MCP server entry is malformed");
 ' "$WORKER_SESSION_PROFILE_SETTINGS" "$WORKER_SESSION_PROFILE_MCP_CONFIG" 2>&1)" || _ready_refuse "$_ready_why"
     # The caller's argv: no availability, settings, session or run-mode override, and at most one auto mode.
     _expect_mode_value=0
@@ -179,6 +182,7 @@ if (!sv || typeof sv !== "object" || Array.isArray(sv) || Object.keys(sv).join("
             --tools|--tools=*|--allowedTools|--allowedTools=*|--allowed-tools|--allowed-tools=*|--disallowedTools|--disallowedTools=*|--disallowed-tools|--disallowed-tools=*) _ready_refuse "the caller's argv names $_a (a tool-availability override)" ;;
             --settings|--settings=*|--setting-sources|--setting-sources=*|--mcp-config|--mcp-config=*|--strict-mcp-config|--session-id|--session-id=*|--plugin-dir|--plugin-dir=*|--agents|--agents=*) _ready_refuse "the caller's argv names $_a (a settings, MCP, session or capability override)" ;;
             -p|--print|--bg|--background) _ready_refuse "the caller's argv names $_a: only the headed interactive launch is supported" ;;
+            --resume|--resume=*|-r|-r?*|--continue|-c|--fork-session|--agent|--agent=*|--remote-control|--remote-control=*) _ready_refuse "the caller's argv names $_a: only a fresh readiness session is supported" ;;
         esac
     done
     [ "$_expect_mode_value" = 0 ] || _ready_refuse "--permission-mode has no value"

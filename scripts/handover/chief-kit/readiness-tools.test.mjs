@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import {
   chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync,
-  statSync, symlinkSync, writeFileSync, appendFileSync,
+  statSync, symlinkSync, writeFileSync, appendFileSync, copyFileSync, readFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
@@ -31,7 +31,8 @@ const primaryCheckout = () => {
   const common = execFileSync('git', ['-C', HERE, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8', env }).trim();
   return dirname(common);
 };
-const PRIMARY_CLI = process.env.READINESS_PRIMARY_CLI || join(primaryCheckout(), 'scripts', 'jira', 'dist', 'index.js');
+const ORIGINAL_CLI = process.env.READINESS_PRIMARY_CLI || join(primaryCheckout(), 'scripts', 'jira', 'dist', 'index.js');
+let PRIMARY_CLI;
 
 const TOKEN = 'fake-c0s-token-7f3a91c2d4e85b60';
 const EMAIL = 'c0s-fake-user@example.invalid';
@@ -73,7 +74,7 @@ class JiraFixture {
   }
 
   #issue() {
-    return { key: 'HIMMEL-1', fields: { summary: 'a fixture ticket', status: { name: 'Open' }, issuetype: { name: 'Task' }, labels: [...this.labels], description: null } };
+    return { key: 'HIMMEL-1', fields: { summary: this.summary ?? 'a fixture ticket', status: { name: 'Open' }, issuetype: { name: 'Task' }, labels: [...this.labels], description: null } };
   }
 
   #handle(req, res) {
@@ -125,13 +126,46 @@ function writeCred(path, obj, mode = 0o600) {
 const goodCreds = (baseUrl) => ({ base_url: baseUrl, project: PROJECT, email: EMAIL, api_token: TOKEN });
 after(() => { for (const r of roots) rmSync(r, { recursive: true, force: true }); });
 
+// Byte-copy the actual compiled CLI and its relative module closure into an owned repo, so its
+// ordinary (non-test) startup can read only fixture config. Package links contain code, not config.
+const cliHome = scratch();
+const realRepo = primaryCheckout();
+const cliRepo = join(cliHome.root, 'cli-repo');
+mkdirSync(cliRepo);
+writeFileSync(join(cliRepo, 'package.json'), '{"type":"module"}\n');
+execFileSync('git', ['init', '-q', cliRepo], { env: { PATH: process.env.PATH, HOME: cliHome.root, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' } });
+const copied = new Set();
+function copyModule(source) {
+  if (copied.has(source)) return;
+  copied.add(source);
+  const rel = relative(realRepo, source);
+  assert.ok(!rel.startsWith('..'), `CLI dependency escaped its repository: ${rel}`);
+  const target = join(cliRepo, rel);
+  mkdirSync(dirname(target), { recursive: true });
+  copyFileSync(source, target);
+  if (!/\.[cm]?js$/.test(source)) return;
+  const text = readFileSync(source, 'utf8');
+  for (const match of text.matchAll(/(?:from\s*|import\s*\(?\s*)['"](\.{1,2}\/[^'"]+)['"]/g)) {
+    copyModule(fileURLToPath(new URL(match[1], pathToFileURL(source))));
+  }
+}
+copyModule(ORIGINAL_CLI);
+PRIMARY_CLI = join(cliRepo, relative(realRepo, ORIGINAL_CLI));
+for (const rel of ['node_modules', 'scripts/jira/node_modules']) {
+  if (!existsSync(join(realRepo, rel))) continue;
+  const target = join(cliRepo, rel);
+  mkdirSync(dirname(target), { recursive: true });
+  symlinkSync(join(realRepo, rel), target, 'dir');
+}
+writeFileSync(join(cliRepo, '.env'), 'JIRA_PROJECT_KEY=FIXTURE\n');
+
 describe('C0 credentials and port', () => {
   let fx;
   before(async () => { fx = new JiraFixture(); await fx.listen(); });
   after(async () => { await fx.close(); });
 
   const baseEnv = (root) => ({
-    PATH: process.env.PATH, HOME: root, TMPDIR: root, NODE_ENV: 'test',
+    PATH: process.env.PATH, HOME: root, TMPDIR: root, NODE_ENV: 'test', HIMMEL_CONFIG_DIR: '/not-a-real-config',
     // Ambient decoys: the port must take its destination and credentials from the private file only.
     JIRA_BASE_URL: 'http://127.0.0.1:9', JIRA_API_TOKEN: 'ambient-decoy-token', JIRA_EMAIL: 'decoy@example.invalid', JIRA_PROJECT_KEY: 'DECOY',
   });
@@ -139,11 +173,11 @@ describe('C0 credentials and port', () => {
     const { createJiraPort } = await load();
     const s = scratch();
     writeCred(s.cred, goodCreds(fx.baseUrl));
-    const port = await createJiraPort({ credentials_path: s.cred, primary_cli: PRIMARY_CLI }, { env: baseEnv(s.root), cwd: s.attempt, ...extra });
+    const port = await createJiraPort({ credentials_path: s.cred, primary_cli: PRIMARY_CLI }, { env: baseEnv(s.root), cwd: cliRepo, ...extra });
     return { port, ...s };
   }
   const soon = (ms = 20000) => Date.now() + ms;
-  const reset = () => { fx.labels = ['a']; fx.mode = 'ok'; fx.requests.length = 0; fx.reflected = false; };
+  const reset = () => { fx.labels = ['a']; fx.mode = 'ok'; fx.requests.length = 0; fx.reflected = false; fx.summary = undefined; fx.expectedAuth = `Basic ${Buffer.from(`${EMAIL}:${TOKEN}`).toString('base64')}`; };
 
   describe('private channel', () => {
     test('a mode 0600 file in a mode 0700 directory yields exactly the four fields', async () => {
@@ -277,14 +311,14 @@ describe('C0 credentials and port', () => {
     test('the child environment is the credentials plus a finite allowlist; ambient JIRA_* and secrets never pass', async () => {
       const { buildChildEnv } = await load();
       const env = buildChildEnv(goodCreds('http://127.0.0.1:5'), {
-        PATH: '/usr/bin', HOME: '/h', NODE_ENV: 'test', JIRA_BASE_URL: 'http://evil', JIRA_API_TOKEN: 'decoy', ANTHROPIC_API_KEY: 'x', GITHUB_TOKEN: 'y', CLAUDE_CODE_OAUTH_TOKEN: 'z', AWS_SECRET_ACCESS_KEY: 'w',
+        PATH: '/usr/bin', HOME: '/h', NODE_ENV: 'test', HIMMEL_CONFIG_DIR: '/decoy', JIRA_BASE_URL: 'http://evil', JIRA_API_TOKEN: 'decoy', ANTHROPIC_API_KEY: 'x', GITHUB_TOKEN: 'y', CLAUDE_CODE_OAUTH_TOKEN: 'z', AWS_SECRET_ACCESS_KEY: 'w',
       });
       assert.equal(env.JIRA_BASE_URL, 'http://127.0.0.1:5');
       assert.equal(env.JIRA_API_TOKEN, TOKEN);
       assert.equal(env.JIRA_EMAIL, EMAIL);
       assert.equal(env.JIRA_PROJECT_KEY, PROJECT);
       assert.equal(env.PATH, '/usr/bin');
-      for (const k of ['ANTHROPIC_API_KEY', 'GITHUB_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN', 'AWS_SECRET_ACCESS_KEY']) assert.equal(env[k], undefined, k);
+      for (const k of ['ANTHROPIC_API_KEY', 'GITHUB_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN', 'AWS_SECRET_ACCESS_KEY', 'NODE_ENV', 'HIMMEL_CONFIG_DIR']) assert.equal(env[k], undefined, k);
     });
 
     test('redact removes the raw, base64, url-encoded and hex forms of the credential and the Basic header', async () => {
@@ -294,6 +328,11 @@ describe('C0 credentials and port', () => {
       assert.deepEqual(leaks(out), []);
       assert.match(out, /\[redacted\]/);
       assert.equal(redact('nothing secret here', goodCreds('http://127.0.0.1:5')), 'nothing secret here');
+    });
+
+    test('accepted short tokens are redacted too', async () => {
+      const { redact } = await load();
+      assert.equal(redact('token=abc', { ...goodCreds('http://127.0.0.1:5'), api_token: 'abc' }), 'token=[redacted]');
     });
   });
 
@@ -363,24 +402,24 @@ describe('C0 credentials and port', () => {
       assert.ok(fx.reflected, 'the fixture reflected the credentials');
       assert.ok(leaks(raw).length > 0, 'control: unredacted CLI output carries the credential, so the redaction below is doing real work');
       reset(); fx.mode = 'reflect';
-      for (const call of [
-        () => port.readIssue('HIMMEL-1', soon()),
-        () => port.readback('HIMMEL-1', soon()),
-        () => port.addReadinessLabel('HIMMEL-1', true, soon()),
+      for (const [expected, call] of [
+        ['error', () => port.readIssue('HIMMEL-1', soon())],
+        ['error', () => port.readback('HIMMEL-1', soon())],
+        ['ambiguous', () => port.addReadinessLabel('HIMMEL-1', true, soon())],
       ]) {
         const r = await call();
-        assert.equal(r.outcome, 'error');
+        assert.equal(r.outcome, expected);
         assert.deepEqual(leaks(r), [], 'no credential form in the typed result');
         assert.match(r.message, /\[redacted\]/);
       }
     });
 
-    test('a failed write is an error with no effect; a write whose answer is lost is ambiguous and readback tells the truth', async () => {
+    test('a nonzero write exit is ambiguous, even when the fixture knows it did not land', async () => {
       reset();
       const { port } = await mkPort();
       fx.mode = 'put-500-no-apply';
       const failed = await port.addReadinessLabel('HIMMEL-1', true, soon());
-      assert.equal(failed.outcome, 'error');
+      assert.equal(failed.outcome, 'ambiguous');
       assert.deepEqual(fx.labels, ['a']);
       reset(); fx.mode = 'hold-put';
       const lost = await port.addReadinessLabel('HIMMEL-1', true, Date.now() + 2500);
@@ -389,6 +428,46 @@ describe('C0 credentials and port', () => {
       fx.mode = 'ok';
       const rb = await port.readback('HIMMEL-1', soon());
       assert.deepEqual(rb.issue.labels, ['a', LABEL], 'readback is how an ambiguous write is resolved');
+    });
+
+    test('the CLI request timeout after an applied write remains ambiguous', async () => {
+      reset();
+      const s = scratch();
+      const { port } = await mkPort({ env: { ...baseEnv(s.root), JIRA_REQUEST_TIMEOUT_MS: '700' } });
+      fx.mode = 'hold-put';
+      const result = await port.addReadinessLabel('HIMMEL-1', true, soon());
+      assert.deepEqual(fx.labels, ['a', LABEL]);
+      assert.equal(result.outcome, 'ambiguous');
+      assert.match(result.message, /may have been applied/);
+    });
+
+    test('redaction cannot corrupt a typed JSON response', async () => {
+      reset();
+      const token = '\":\"Op';
+      const s = scratch();
+      writeCred(s.cred, { ...goodCreds(fx.baseUrl), api_token: token });
+      fx.expectedAuth = `Basic ${Buffer.from(`${EMAIL}:${token}`).toString('base64')}`;
+      fx.summary = `prefix ${token} suffix`;
+      const { createJiraPort } = await load();
+      const port = await createJiraPort({ credentials_path: s.cred, primary_cli: PRIMARY_CLI }, { env: baseEnv(s.root), cwd: cliRepo });
+      const result = await port.readIssue('HIMMEL-1', soon());
+      assert.equal(result.outcome, 'ok');
+      assert.equal(result.issue.key, 'HIMMEL-1');
+      assert.equal(result.issue.summary, 'prefix [redacted] suffix');
+    });
+
+    test('a credential collision with issue identity refuses instead of returning a changed key', async () => {
+      reset();
+      const token = PROJECT;
+      const s = scratch();
+      writeCred(s.cred, { ...goodCreds(fx.baseUrl), api_token: token });
+      fx.expectedAuth = `Basic ${Buffer.from(`${EMAIL}:${token}`).toString('base64')}`;
+      const { createJiraPort } = await load();
+      const port = await createJiraPort({ credentials_path: s.cred, primary_cli: PRIMARY_CLI }, { env: baseEnv(s.root), cwd: cliRepo });
+      const result = await port.readIssue('HIMMEL-1', soon());
+      assert.equal(result.outcome, 'error');
+      assert.equal(result.code, 'unreadable');
+      assert.equal(result.message.includes(token), false);
     });
 
     test('an expired deadline makes no request', async () => {

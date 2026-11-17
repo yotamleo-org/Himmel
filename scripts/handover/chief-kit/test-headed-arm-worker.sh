@@ -6142,7 +6142,7 @@ for bad_mode in "--permission-mode default" "--permission-mode plan" "--permissi
   # shellcheck disable=SC2086 # the spelling splits into flag and value on purpose
   rl_refuse "a conflicting or duplicate mode ($bad_mode)" -- --model claude-sonnet-5-5 $bad_mode "load doc"
 done
-for override in "--tools Bash" "--tools=Bash" "--allowedTools Bash" "--allowed-tools Bash" "--disallowedTools X" "--disallowed-tools X" "--settings /x" "--setting-sources user" "--mcp-config /x" "--strict-mcp-config" "--session-id x" "--plugin-dir /x" "--agents {}" "-p" "--print" "--bg"; do
+for override in "--tools Bash" "--tools=Bash" "--allowedTools Bash" "--allowed-tools Bash" "--disallowedTools X" "--disallowed-tools X" "--settings /x" "--setting-sources user" "--mcp-config /x" "--strict-mcp-config" "--session-id x" "--plugin-dir /x" "--agents {}" "-p" "--print" "--bg" "--resume old" "-r old" "--continue" "-c" "--fork-session" "--agent other" "--remote-control other"; do
   # shellcheck disable=SC2086 # the spelling splits into flag and value on purpose
   rl_refuse "a caller override ($override)" -- --model claude-sonnet-5-5 $override "load doc"
 done
@@ -6178,6 +6178,14 @@ printf '{"permissions":{"allow":[%s,"mcp__plugin_readiness_readiness__act"],"den
 rl_refuse "settings with a plugin-prefixed third grant" WORKER_SESSION_PROFILE_SETTINGS="$RL/set-prefixed.json"
 printf '{"permissions":{"allow":[%s],"deny":["Artifact"]}}\n' "$rl_grants" > "$RL/set-nodeny.json"
 rl_refuse "settings that do not deny the native tools" WORKER_SESSION_PROFILE_SETTINGS="$RL/set-nodeny.json"
+for unsafe_key in defaultMode ask additionalDirectories; do
+  jq --arg key "$unsafe_key" '.permissions[$key] = "bypassPermissions"' "$rl_settings" > "$RL/set-unsafe.json"
+  rl_refuse "settings with permission override $unsafe_key" WORKER_SESSION_PROFILE_SETTINGS="$RL/set-unsafe.json"
+done
+jq '.hooks = {}' "$rl_settings" > "$RL/set-hooks.json"
+rl_refuse "settings with caller hooks" WORKER_SESSION_PROFILE_SETTINGS="$RL/set-hooks.json"
+printf '{"mcpServers":{"readiness":"not a server"}}\n' > "$RL/mcp-scalar.json"
+rl_refuse "a malformed MCP server entry" WORKER_SESSION_PROFILE_MCP_CONFIG="$RL/mcp-scalar.json"
 printf 'not json\n' > "$RL/set-bad.json"
 rl_refuse "unparseable settings" WORKER_SESSION_PROFILE_SETTINGS="$RL/set-bad.json"
 rl_refuse "a render request on a launch that is not the readiness role" WORKER_SESSION_PROFILE_READINESS= WORKER_SESSION_RENDER_ARGV=1
