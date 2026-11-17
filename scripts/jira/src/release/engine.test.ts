@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { chmodSync, closeSync as closeFd, existsSync, mkdtempSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, truncateSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { chmodSync, closeSync as closeFd, cpSync, existsSync, mkdtempSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, truncateSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
@@ -2210,16 +2210,19 @@ describe('signed minerva specs', () => {
   });
   const candidateRoot = fileURLToPath(new URL('../../../../', import.meta.url));
   const expectedVerifier = join(candidateRoot, 'scripts/telegram/chief-route.ts');
-  const realBun = execFileSync('which', ['bun'], { encoding: 'utf8' }).trim();
+  const bunLookup = spawnSync('which', ['bun'], { encoding: 'utf8' });
+  const realBun = bunLookup.status === 0 ? bunLookup.stdout.trim() : '';
   type CappedFixture = { spec: string; plan: string; verdicts: string[]; ledgerPath: string; specsRoot: string };
   function cappedFixture(cleanKind?: 'spec' | 'plan', invalidLint = false): CappedFixture {
+    if (!realBun) throw new Error('capped fixture requires Bun on PATH; install the pinned .bun-version');
     const scratchRoot = mkdtempSync(join(root, 'capped-'));
     const specText = '---\ntickets: HIMMEL-10205\n---\n# HIMMEL-10205 fixture\n\nKey: HIMMEL-10205\n\nEstimate record: estimate.json\n\n## Alternatives considered\n\n- None better.\n\n## Definition of done\n\n- Fixture verifies.\n\n## Invariants\n\nnone\n';
     const request = { scratchRoot, key: 'HIMMEL-10205', specText: invalidLint ? specText.replace('Estimate record: estimate.json', '') : specText,
       planText: '---\ntickets: HIMMEL-10205\n---\n# HIMMEL-10205 plan\n\n- Ticket: HIMMEL-10205\n\n- Task 1: build the fixture.\n',
       returns: [1, 2, 3].flatMap(round => (['spec', 'plan'] as const).map(kind => ({ kind, round,
         text: kind === cleanKind ? `${kind.toUpperCase()} CLEAN\n` : `- **F1** (${kind === 'spec' ? 'minor' : 'medium'}) residual\n${kind.toUpperCase()} FINDINGS 1\n`,
-        reads: ['spec', 'plan', { path: 'specs/designs/estimate.json', text: '{"median_seq":1,"sigma":0.1,"dod":{"passed":true}}\n' }],
+        reads: ['spec', 'plan', { path: 'specs/designs/estimate.json', text: '{"median_seq":1,"sigma":0.1,"dod":{"passed":true}}\n' },
+          { path: 'specs/designs/page.html', text: '<p>fixture</p>\n' }],
       }))),
     };
     const f = JSON.parse(execFileSync(realBun, [join(candidateRoot, 'scripts/telegram/capped-fold.fixture.ts')], {
@@ -2236,6 +2239,153 @@ describe('signed minerva specs', () => {
     const p = join(dir, e.name);
     return e.isDirectory() ? Object.entries(fixtureHashes(p)) : [[p, sha(p)]];
   }));
+
+  const cappedCheck = (api: 'spec' | 'spec-review', keys = ['HIMMEL-10205'], issues?: Map<string, IssueSnap>) =>
+    specCheck(specEnv(), keys, null, { kinds: [api], ...(issues ? { issues } : {}) });
+
+  function resetFixture(f: CappedFixture, reseal = true): CappedFixture & { decision: string } {
+    const runner = join(dirname(f.specsRoot), 'reset-fixture.ts');
+    writeFileSync(runner, `
+import { mkdirSync, readFileSync, readdirSync, utimesSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { roundReset, sealRound } from ${JSON.stringify(expectedVerifier)};
+const f = ${JSON.stringify(f)};
+const decision = join(f.specsRoot, 'decisions', 'verbatim-decision-990-fixture.txt');
+mkdirSync(dirname(decision));
+const quote = 'start this ticket over from scratch';
+writeFileSync(decision, 'HIMMEL-10205 '+quote+'\\n');
+const seconds = Math.floor(Date.now()/1000)+2.123456;
+utimesSync(decision, seconds, seconds);
+process.env.HIMMEL_CONSOLE='1';
+await roundReset(f.specsRoot, 'HIMMEL-10205', { decision:'990', quote });
+for (const name of ${reseal} ? readdirSync(dirname(f.spec)).filter(n => /critic-(spec|plan)-r[123]\\.md$/.test(n)).sort() : []) {
+  const p=join(dirname(f.spec), name);
+  writeFileSync(p, readFileSync(p,'utf8').replace('Fixture:', 'New epoch Fixture:'));
+  for (const m of readFileSync(p,'utf8').matchAll(/^CONTENT-SHA256 [0-9a-f]{64} (.+)$/gm)) await sealRound(p, join(dirname(p),m[1]));
+}
+`);
+    execFileSync(realBun, [runner], { timeout: 15000, stdio: ['ignore', 'pipe', 'pipe'] });
+    return { ...f, decision: join(f.specsRoot, 'decisions', 'verbatim-decision-990-fixture.txt') };
+  }
+  const decisionFixture = () => resetFixture(cappedFixture());
+
+  function evidencePath(f: CappedFixture, role: string): string {
+    const paths: Record<string, string> = { spec: f.spec, plan: f.plan, page: join(dirname(f.spec), 'page.html'),
+      estimate: join(dirname(f.spec), 'estimate.json'), return: f.verdicts[0], ledger: f.ledgerPath,
+      manifest: join(dirname(f.ledgerPath), 'manifest.json'), snapshot: join(dirname(f.ledgerPath), 'HIMMEL-10205', sha(f.spec)),
+      decision: join(f.specsRoot, 'decisions', 'verbatim-decision-990-fixture.txt') };
+    return paths[role];
+  }
+
+  it('capped fixture requires bun', () => {
+    const bin = join(root, 'ordinary-tools');
+    mkdirSync(bin);
+    for (const name of ['which', 'git', 'bash', 'dirname', 'cat', 'sed', 'awk', 'rg', 'head', 'tr', 'grep', 'sort', 'tail', 'wc', 'date']) {
+      const found = spawnSync('which', [name], { encoding: 'utf8' });
+      if (found.status === 0) symlinkSync(found.stdout.trim(), join(bin, name));
+    }
+    symlinkSync(process.execPath, join(bin, 'node'));
+    const result = spawnSync(process.execPath, [join(candidateRoot, 'scripts/jira/node_modules/vitest/vitest.mjs'), 'run',
+      'src/release/engine.test.ts', '-t', '^signed minerva specs > capped carry signs frozen findings:'], {
+      cwd: join(candidateRoot, 'scripts/jira'), env: { ...process.env, PATH: bin }, timeout: 15000, encoding: 'utf8',
+    });
+    expect(result.signal).toBeNull();
+    expect(result.status).not.toBe(0);
+    expect(`${result.stdout}${result.stderr}`).toContain('capped fixture requires Bun on PATH');
+    expect(`${result.stdout}${result.stderr}`).toMatch(/2 failed/);
+  }, 20000);
+
+  it.each((['spec', 'spec-review'] as const).flatMap(api =>
+    ['spec', 'plan', 'page', 'estimate', 'snapshot', 'return', 'ledger', 'manifest'].map(role => [api, role] as const)))('capped carry extra pins stale: %s %s', (api, role) => {
+    declared();
+    const f = cappedFixture();
+    const row = cappedSign(api, f);
+    expect(cappedCheck(api).lines).toEqual([`SPEC ok HIMMEL-10205 ${f.spec} ${row.id}`]);
+    const path = evidencePath(f, role);
+    writeFileSync(path, `${readFileSync(path, 'utf8')}\n`);
+    expect(cappedCheck(api).lines, role).toEqual([`SPEC-STALE HIMMEL-10205 ${f.spec} ${row.id}`]);
+  });
+
+  it.each(['spec', 'spec-review'] as const)('capped carry later ledger append stale: %s', api => {
+    declared();
+    const f = cappedFixture();
+    const row = cappedSign(api, f);
+    const paths = [f.spec, f.plan, ...f.verdicts];
+    const hashes = paths.map(sha);
+    const ledgerBefore = readFileSync(f.ledgerPath, 'utf8');
+    expect(cappedCheck(api).ok).toBe(true);
+    resetFixture(f, false);
+    expect(readFileSync(f.ledgerPath, 'utf8').startsWith(ledgerBefore)).toBe(true);
+    expect(JSON.parse(readFileSync(f.ledgerPath, 'utf8').trim().split('\n').at(-1)!)).toMatchObject({ row: 'reset', epoch: 1 });
+    expect(paths.map(sha)).toEqual(hashes);
+    expect(cappedCheck(api).lines).toEqual([`SPEC-STALE HIMMEL-10205 ${f.spec} ${row.id}`]);
+  });
+
+  it.each((['spec', 'spec-review'] as const).flatMap(api =>
+    ['bytes', 'selection', 'mtime', 'file-alias', 'directory-alias'].map(fault => [api, fault] as const)))('capped carry decision selection/mtime/alias stale: %s %s', (api, fault) => {
+    declared();
+    const f = decisionFixture();
+    const row = cappedSign(api, f);
+    const proof = row.capped_carry!;
+    expect(proof.epoch).toBe(1);
+    const mtime = statSync(f.decision).mtimeMs;
+    expect(mtime % 1).not.toBe(0);
+    expect(proof.pins.find(p => p.role === 'decision')).toMatchObject({ path: f.decision, mtime_ms: mtime });
+    expect(cappedCheck(api).lines).toEqual([`SPEC ok HIMMEL-10205 ${f.spec} ${row.id}`]);
+    const bytes = readFileSync(f.decision);
+    if (fault === 'bytes') writeFileSync(f.decision, `${bytes.toString()}changed\n`);
+    if (fault === 'selection') writeFileSync(join(dirname(f.decision), 'verbatim-decision-990-second.txt'), bytes);
+    if (fault === 'mtime') { utimesSync(f.decision, mtime / 1000 + 10, mtime / 1000 + 10); expect(readFileSync(f.decision)).toEqual(bytes); }
+    if (fault === 'file-alias') { const moved = join(dirname(f.specsRoot), 'same-decision'); renameSync(f.decision, moved); symlinkSync(moved, f.decision); }
+    if (fault === 'directory-alias') { const moved = join(dirname(f.specsRoot), 'same-decisions'); renameSync(dirname(f.decision), moved); symlinkSync(moved, dirname(f.decision)); }
+    expect(cappedCheck(api).lines).toEqual([`SPEC-STALE HIMMEL-10205 ${f.spec} ${row.id}`]);
+  });
+
+  it.each(['spec', 'spec-review'] as const)('capped carry recording checkout removed: %s', api => {
+    declared();
+    const f = cappedFixture();
+    const row = cappedSign(api, f);
+    expect(cappedCheck(api).ok).toBe(true);
+    const elsewhere = join(root, 'retained-copy');
+    cpSync(f.specsRoot, elsewhere, { recursive: true });
+    expect(sha(join(elsewhere, 'designs', basename(f.spec)))).toBe(sha(f.spec));
+    rmSync(dirname(f.specsRoot), { recursive: true });
+    expect(cappedCheck(api).lines).toEqual([`SPEC-STALE HIMMEL-10205 ${f.spec} ${row.id}`]);
+  });
+
+  it.each((['spec', 'spec-review'] as const).flatMap(api =>
+    ['null', 'unknown-field', 'schema', 'reader-version', 'missing-pin', 'key', 'proof-key', 'spec', 'plan', 'returns', 'count'].map(fault => [api, fault] as const)))('capped carry persisted malformed or unbound proof stale: %s %s', (api, fault) => {
+    declared();
+    const f = cappedFixture();
+    const row = cappedSign(api, f);
+    expect(cappedCheck(api).ok).toBe(true);
+    const proof = JSON.parse(JSON.stringify(row.capped_carry));
+    const copy = { ...row, id: 'O-R1-9000', supersedes: row.id, capped_carry: proof };
+    if (fault === 'null') copy.capped_carry = null;
+    if (fault === 'unknown-field') proof.unknown = true;
+    if (fault === 'schema') proof.schema = 2;
+    if (fault === 'reader-version') proof.reader_version = 2;
+    if (fault === 'missing-pin') proof.pins = proof.pins.filter((p: { role: string }) => p.role !== 'ledger');
+    if (fault === 'key') copy.keys = ['HIMMEL-10205', 'HIMMEL-8888'];
+    if (fault === 'proof-key') { proof.key = 'HIMMEL-8888'; for (const c of proof.carried) c.key = proof.key; }
+    if (fault === 'spec') { copy.spec_path = join(root, 'same-spec.md'); cpSync(f.spec, copy.spec_path); }
+    if (fault === 'plan') { copy.plan_path = join(root, 'same-plan.md'); cpSync(f.plan, copy.plan_path); }
+    if (fault === 'returns') { const path = join(root, 'same-return.md'); cpSync(f.verdicts[0], path); copy.verdicts = [{ path, sha256: sha(path) }, row.verdicts![1]]; }
+    if (fault === 'count') copy.residuals = 0;
+    appendChain(join(sctx().dir, 'operator.jsonl'), loadKey(sctx().keyPath), copy);
+    expect(readOperatorRecords(api, specEnv()).at(-1)?.id).toBe(copy.id);
+    expect(cappedCheck(api).lines).toEqual([`SPEC-STALE HIMMEL-10205 ${copy.spec_path} ${copy.id}`]);
+  });
+
+  it.each(['spec', 'spec-review'] as const)('capped carry parent proof remains fresh for an inheriting child: %s', api => {
+    declared();
+    const f = cappedFixture();
+    const row = cappedSign(api, f);
+    const issues = new Map([['HIMMEL-8888', { type: 'Sub-task', parent: 'HIMMEL-10205' } as IssueSnap]]);
+    expect(cappedCheck(api, ['HIMMEL-8888'], issues).lines).toEqual([`SPEC ok HIMMEL-8888 ${f.spec} ${row.id}`]);
+    writeFileSync(f.ledgerPath, `${readFileSync(f.ledgerPath, 'utf8')}\n`);
+    expect(cappedCheck(api, ['HIMMEL-8888'], issues).lines).toEqual([`SPEC-STALE HIMMEL-8888 ${f.spec} ${row.id}`]);
+  });
 
   it.each(['spec', 'spec-review'] as const)('capped carry signs frozen findings: %s', api => {
     declared();
@@ -2496,37 +2646,47 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{const r=actual(...a); if(
     expect(cappedCalls).toEqual([]);
   });
 
-  it.each(['spec', 'spec-review'] as const)('capped carry rechecks complete pins inside locks before append: %s', api => {
+  it.each((['spec', 'spec-review'] as const).flatMap(api =>
+    ['spec', 'plan', 'page', 'estimate', 'return', 'ledger', 'manifest', 'snapshot', 'decision', 'selection', 'mtime'].map(role => [api, role] as const)))('capped carry preappend drift: %s %s', (api, role) => {
     declared();
-    const f = cappedFixture();
-    const actual = pinned.pinnedRead;
-    let changedUnderLocks = false;
-    const spy = vi.spyOn(pinned, 'pinnedRead').mockImplementation(path => {
-      if (!changedUnderLocks && existsSync(join(sctx().dir, '.lock')) && existsSync(join(root, 'release', '.lock'))) {
-        changedUnderLocks = true;
-        writeFileSync(f.ledgerPath, `${readFileSync(f.ledgerPath, 'utf8')}\n`);
-      }
-      return actual(path);
+    const f = ['decision', 'selection', 'mtime'].includes(role) ? decisionFixture() : cappedFixture();
+    const actual = ledger.withLock;
+    let changedUnderLocks = 0;
+    cappedCalls.length = 0;
+    const spy = vi.spyOn(ledger, 'withLock').mockImplementation((dir, fn, ...rest) => {
+      return actual(dir, () => {
+        if (dir === sctx().dir && !changedUnderLocks) {
+          expect(cappedCalls).toHaveLength(1);
+          expect(existsSync(join(sctx().dir, '.lock')) && existsSync(join(root, 'release', '.lock'))).toBe(true);
+          changedUnderLocks++;
+          const path = evidencePath(f, ['selection', 'mtime'].includes(role) ? 'decision' : role);
+          if (role === 'selection') writeFileSync(join(dirname(path), 'verbatim-decision-990-second.txt'), readFileSync(path));
+          else if (role === 'mtime') { const seconds = statSync(path).mtimeMs / 1000 + 10; utimesSync(path, seconds, seconds); }
+          else writeFileSync(path, `${readFileSync(path, 'utf8')}\n`);
+        }
+        return fn();
+      }, ...rest);
     });
     try {
-      expect(() => cappedSign(api, f)).toThrow(/capped evidence changed/);
-      expect(changedUnderLocks).toBe(true);
+      expect(() => cappedSign(api, f)).toThrow(/capped evidence (changed|selection changed)/);
+      expect(changedUnderLocks).toBe(1);
       noCappedRows();
     } finally { spy.mockRestore(); }
   });
 
-  it.each(['spec', 'spec-review'] as const)('capped carry reports exact persisted row on postappend drift: %s', api => {
+  it.each(['spec', 'spec-review'] as const)('capped carry persisted stale on postappend drift: %s', api => {
     declared();
     const f = cappedFixture();
-    const actual = pinned.pinnedRead;
+    const actual = ledger.appendChain;
     const authorityPath = join(sctx().dir, 'operator.jsonl');
     let changedAfterPersistence = false;
-    const spy = vi.spyOn(pinned, 'pinnedRead').mockImplementation(path => {
-      if (!changedAfterPersistence && readFileSync(authorityPath, 'utf8').includes('"capped_carry"')) {
+    const spy = vi.spyOn(ledger, 'appendChain').mockImplementation((path, key, fields) => {
+      const persisted = actual(path, key, fields);
+      if (!changedAfterPersistence && path === authorityPath && (fields as OperatorRow).kind === api) {
         changedAfterPersistence = true;
         writeFileSync(f.ledgerPath, `${readFileSync(f.ledgerPath, 'utf8')}\n`);
       }
-      return actual(path);
+      return persisted;
     });
     let error = '';
     try { cappedSign(api, f); } catch (e) { error = (e as Error).message; }
@@ -2537,23 +2697,25 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{const r=actual(...a); if(
     expect(error).toMatch(new RegExp(`persisted-but-stale ${rows[0].id}:.*inspect this record before retrying`));
   });
 
-  it('capped carry reports exact persisted row when verified readback fails', () => {
+  it.each(['spec', 'spec-review'] as const)('capped carry reports exact persisted row when verified readback fails: %s', api => {
     declared();
     const f = cappedFixture();
-    const actual = ledger.readChain;
+    const actual = ledger.appendChain;
+    const path = join(sctx().dir, 'operator.jsonl');
+    const saved = `${path}.saved`;
     let refusedReadback = false;
-    const spy = vi.spyOn(ledger, 'readChain').mockImplementation((...args) => {
-      const chain = actual(...args);
-      if (!refusedReadback && String(args[0]).endsWith('operator.jsonl') && chain.verified.some(r => (r as OperatorRow).capped_carry)) {
+    const spy = vi.spyOn(ledger, 'appendChain').mockImplementation((target, key, fields) => {
+      const persisted = actual(target, key, fields);
+      if (!refusedReadback && target === path && (fields as OperatorRow).kind === api) {
         refusedReadback = true;
-        return { ...chain, verified: [], bad: ['rejecting readback control'] };
+        renameSync(path, saved);
       }
-      return chain;
+      return persisted;
     });
     let error = '';
-    try { cappedSign('spec', f); } catch (e) { error = (e as Error).message; }
-    finally { spy.mockRestore(); }
-    const rows = readOperatorRecords('spec', specEnv());
+    try { cappedSign(api, f); } catch (e) { error = (e as Error).message; }
+    finally { spy.mockRestore(); if (existsSync(saved)) renameSync(saved, path); }
+    const rows = readOperatorRecords(api, specEnv());
     expect(rows).toHaveLength(1);
     expect(refusedReadback).toBe(true);
     expect(error).toBe(`persisted-but-stale ${rows[0].id}: signed row did not verify on readback; inspect this record before retrying`);
@@ -2564,6 +2726,25 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{const r=actual(...a); if(
     const r = spawnSync(process.execPath, [CHILD, JSON.stringify({ env: specEnv(), ...input }), mode], { timeout: 5000, encoding: 'utf8' });
     return { status: r.status, signal: r.signal, out: r.stdout ? JSON.parse(r.stdout) as Record<string, unknown> : null };
   };
+
+  it.each((['spec', 'spec-review'] as const).flatMap(api =>
+    ['spec', 'plan', 'page', 'estimate', 'return', 'ledger', 'manifest', 'snapshot', 'decision'].flatMap(role =>
+      ['fifo', 'directory', 'oversized', 'missing', 'device'].map(fault => [api, role, fault] as const))))('capped carry stale unreadable pin: %s %s %s', (api, role, fault) => {
+    declared();
+    const f = role === 'decision' ? decisionFixture() : cappedFixture();
+    const row = cappedSign(api, f);
+    expect(cappedCheck(api).ok).toBe(true);
+    const path = evidencePath(f, role);
+    unlinkSync(path);
+    if (fault === 'fifo') execFileSync('mkfifo', [path]);
+    if (fault === 'directory') mkdirSync(path);
+    if (fault === 'oversized') { writeFileSync(path, ''); truncateSync(path, 16 * 1024 * 1024 + 1); }
+    if (fault === 'device') symlinkSync('/dev/null', path);
+    const out = child('check', { keys: ['HIMMEL-10205'], kinds: [api] });
+    expect(out.signal).toBeNull();
+    expect(out.status).toBe(0);
+    expect(out.out?.lines).toEqual([`SPEC-STALE HIMMEL-10205 ${f.spec} ${row.id}`]);
+  });
   function signedPair(): { p: string; id: string; good: string; goodId: string } {
     declared();
     const p = spec();

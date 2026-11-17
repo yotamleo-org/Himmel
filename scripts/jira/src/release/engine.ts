@@ -753,6 +753,18 @@ function staleReason(r: ReleaseRecord): string | null {
     if ('unreadable' in got) return `${p.path} is unreadable (${r.id})`;
     if (got.sha256 !== p.sha256) return `${p.role} ${p.path} changed since ${r.id}`;
   }
+  if (Object.hasOwn(r, 'capped_carry')) {
+    try {
+      const proof = validateCappedFoldProof(r.capped_carry);
+      if (r.keys?.length !== 1 || !r.plan_path || r.plan_path === r.spec_path) throw new Error('capped proof record binding disagrees');
+      const { files } = readVerdicts((r.verdicts ?? []).map(v => v.path), 'capped proof', { required: ['SPEC', 'PLAN'], allowed: [] }, 'capped proof needs paired returns');
+      bindCappedProof(proof, { keys: r.keys, spec: { path: r.spec_path ?? '', sha256: r.spec_sha256 ?? '' },
+        plan: { path: r.plan_path, sha256: r.plan_sha256 ?? '' }, files, residuals: r.residuals ?? -1 });
+      checkCappedPins(proof);
+    } catch (e) {
+      return `capped proof stale since ${r.id}: ${e instanceof Error ? e.message : e}`;
+    }
+  }
   return null;
 }
 
