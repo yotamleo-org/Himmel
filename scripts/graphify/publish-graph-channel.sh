@@ -14,13 +14,18 @@
 #   3. scans those exact staged bytes: gitleaks (the repo's .gitleaks.toml) and
 #      a host-path regex (home dirs, user-profile dirs, scratch dirs). Any hit
 #      blocks the publish. No gitleaks, or a gitleaks error, blocks it too;
-#   4. builds ONE orphan commit (no parent) of those four files and pushes it to
+#   4. builds the git tree of those four files and compares it with the tree of
+#      the graph-data tip (fetched when this checkout does not hold it). The same
+#      tree prints "graph-data unchanged at <tip> (built at <bac>)" and pushes
+#      nothing: a semantic merge can change graph.json under the same
+#      built_at_commit, so the bytes decide, not the build commit;
+#   5. otherwise builds ONE orphan commit (no parent) of that tree and pushes it to
 #      refs/heads/graph-data with --force-with-lease on the tip it just read,
 #      under BRANCH_NAME_OK=1 (the pre-push branch-name hook refuses
 #      'graph-data' as a new branch). A refused push names its reason.
 # Every failure raises a cadence alert (scripts/luna/cadence-alert.sh, worker
 # graph-channel-publish) naming the file and the rule, never the matched text;
-# a clean publish clears it. No model call, no semantic pass.
+# a clean publish or an unchanged graph clears it. No model call, no semantic pass.
 #
 # Usage:
 #   publish-graph-channel.sh --src <graphify-out dir> --repo <git checkout>
@@ -30,9 +35,9 @@
 # Seams: GRAPH_CHANNEL_REMOTE, GRAPH_CHANNEL_GITLEAKS (default gitleaks),
 #   GRAPH_CHANNEL_ALERT (default scripts/luna/cadence-alert.sh).
 #
-# Exit: 0 published; 1 usage; 2 not publishable (missing file, no semantic
-#   layer, bad built_at_commit); 3 the scan found a hit; 4 the scan could not
-#   run; 5 git or the push failed.
+# Exit: 0 published, or graph-data already holds this graph; 1 usage; 2 not
+#   publishable (missing file, no semantic layer, bad built_at_commit); 3 the
+#   scan found a hit; 4 the scan could not run; 5 git or the push failed.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -129,11 +134,22 @@ for f in GRAPH_REPORT.md built_at_commit graph.json manifest.json; do
 "
 done
 tree="$(printf '%s' "$tree_in" | "${G[@]}" mktree)" || refuse 5 "git mktree failed"
+ls_out="$("${G[@]}" ls-remote "$REMOTE" "$BRANCH_REF" 2>/dev/null)" || refuse 5 "git ls-remote $REMOTE failed"
+old="${ls_out%%[[:space:]]*}"
+# The same four files as the tip: nothing to push. A tip this checkout does not hold
+# is fetched to read its tree; a tip it still cannot read is pushed over.
+if [ -n "$old" ]; then
+    "${G[@]}" cat-file -e "$old^{commit}" 2>/dev/null \
+        || "${G[@]}" fetch --quiet --no-tags --no-write-fetch-head "$REMOTE" "$BRANCH_REF" >/dev/null 2>&1
+    if [ "$("${G[@]}" rev-parse --verify --quiet "$old^{tree}" 2>/dev/null)" = "$tree" ]; then
+        bash "$ALERT" clear "$WORKER" >/dev/null 2>&1 || true
+        echo "publish-graph-channel: graph-data unchanged at $old (built at $BAC)"
+        exit 0
+    fi
+fi
 commit="$(GIT_AUTHOR_NAME="${GIT_AUTHOR_NAME:-himmel graph publisher}" GIT_AUTHOR_EMAIL="${GIT_AUTHOR_EMAIL:-graph-publisher@himmel.invalid}" \
     GIT_COMMITTER_NAME="${GIT_COMMITTER_NAME:-himmel graph publisher}" GIT_COMMITTER_EMAIL="${GIT_COMMITTER_EMAIL:-graph-publisher@himmel.invalid}" \
     "${G[@]}" commit-tree "$tree" -m "chore(graphify): graph-data built at $BAC")" || refuse 5 "git commit-tree failed"
-ls_out="$("${G[@]}" ls-remote "$REMOTE" "$BRANCH_REF" 2>/dev/null)" || refuse 5 "git ls-remote $REMOTE failed"
-old="${ls_out%%[[:space:]]*}"
 # The three prefixes below reach the pre-push chain for THIS one push of the literal
 # graph-data ref, and nowhere else (no export): the pushed commit is a parentless data
 # commit that carries no code, and this script has already scanned its exact bytes.
