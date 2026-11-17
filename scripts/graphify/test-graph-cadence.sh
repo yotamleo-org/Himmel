@@ -1758,13 +1758,6 @@ assert_contains "unresolvable build commit still records published-channel" '"ac
 assert_contains "unresolvable build commit records null merges_behind" '"merges_behind":null,' "$LEDGER_LINE10B"
 assert_contains "unresolvable build commit records null lag_s" '"lag_s":null,' "$LEDGER_LINE10B"
 
-# =============================================================================
-# Test 11: the live graph publishes to graph-data with no model call, and the
-# cadence watches the branch and the semantic shrink guard.
-# Fixture: a retired repo (origin/main tracks no graph), a primary graphify-out
-# holding a built graph, a recording alert, and the REAL publish-graph-channel.sh
-# (gitleaks faked to exit 0). The run never passes --semantic.
-# =============================================================================
 FAKE_ALERT="$TMP_ROOT/t11-alert-fake.sh"
 cat > "$FAKE_ALERT" <<'FAKEALERT'
 #!/usr/bin/env bash
@@ -1774,7 +1767,6 @@ chmod +x "$FAKE_ALERT"
 FAKE_GITLEAKS="$TMP_ROOT/t11-gitleaks-fake.sh"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$FAKE_GITLEAKS"; chmod +x "$FAKE_GITLEAKS"
 
-# gd_repo <tag> -- a retired primary with 3 commits (GD_C1 the oldest, GD_HEAD the tip) and a bare origin.
 gd_repo() {
     local tag="$1" i
     GD_REPO="$TMP_ROOT/$tag-primary"; GD_BARE="$TMP_ROOT/$tag-origin.git"
@@ -1795,7 +1787,6 @@ gd_repo() {
     git -C "$GD_REPO" push -q origin main
     GD_SLUG=$(corpus_slug_of "$GD_REPO")
 }
-# gd_live <built-at-commit> [nosemantic] -- the primary's graphify-out.
 gd_live() {
     local out="$GD_REPO/graphify-out"
     mkdir -p "$out"
@@ -1805,7 +1796,6 @@ gd_live() {
     rm -f "$out/semantic-manifest.json"
     [ "${2:-}" = nosemantic ] || printf '{"version":1,"files":{"a.md":"%064d"}}' 0 > "$out/semantic-manifest.json"
 }
-# gd_tip <built-at-commit> <age-seconds> -- one orphan graph-data commit on the bare, fetched into the primary.
 gd_tip() {
     local blob tree when commit
     blob=$(printf '%s\n' "$1" | git -C "$GD_REPO" hash-object -w --stdin)

@@ -162,11 +162,6 @@ corpus=$(basename "$repo_root")
 
 # --- 1. repo tracks the graph at all -----------------------------------------
 # graphify-out/ is REMOVED from the git tree entirely and gitignored outright
-# -- this repo's derived graph does not publish as a PR. That is the permanent
-# steady state: the graph publishes to the graph-data branch, and graph-cadence.sh
-# does that (with no model call when the live graph is newer than the branch and
-# carries a semantic layer). So the command runs the cadence and returns its exit
-# code; --dry-run only prints it.
 if ! git ls-files --error-unmatch "$GRAPH_PATH" >/dev/null 2>&1; then
     CADENCE_CMD="${GRAPH_PUBLISH_CADENCE:-$HERE/graph-cadence.sh}"
     echo "graph-publish: graphify-out/ is not tracked; the graph publishes to the graph-data branch -- running graph-cadence.sh (no model call unless --semantic)"

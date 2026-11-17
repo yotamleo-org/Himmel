@@ -456,7 +456,6 @@ if [ -z "${HOME:-}" ] || [ ! -d "$HOME" ]; then
 fi
 export HOME
 
-# The operator's semantic pause marker: read only here (existence), never created or removed.
 PAUSE_MARKER="${GRAPH_CADENCE_PAUSE_MARKER:-${GRAPHMAP_BAT_DIR:-$HOME/.claude/graphmap-cadence}/semantic.paused}"
 
 # --- corpus slug + dedicated worktree ---------------------------------------
@@ -595,16 +594,11 @@ BATCH_COST=""
 # PLUS the standard flow-run-ledger end row every sibling cadence writes.
 # Reuses flow-run-ledger.sh's own JSON-escaping helpers (_fr_json_str /
 # _fr_json_null_str / _fr_json_int) rather than a fifth hand-rolled escaper.
-# _graph_watch -- called first by _write_ledger, on the retired path only (no tracked graph on
-# origin/main): raises or clears the two alerts that name a graph-data branch left behind and a
-# semantic shrink guard that held a file twice in a row. It reads local refs and files and sends
-# alerts; nothing here changes the run's rc, ACTION or ledger row, and every error is swallowed.
 _graph_watch() {
     [ "${PUBLISH_POSSIBLE:-1}" = 0 ] || return 0
     local data_worker="graph-data-${CORPUS_SLUG:-repo}" held_worker="graph-semantic-${CORPUS_SLUG:-repo}-held"
     local log="${_run_log:-$LOG_FILE}" line="" rc=0 reason cause held="" n
     if [ "$ACTION" = "published-channel" ]; then
-        # the remote-tracking ref is stale right after our own push
         bash "$CADENCE_ALERT" clear "$data_worker" >/dev/null 2>&1
     else
         line=$(bash "$SCRIPT_DIR/graph-data-status.sh" --repo "$HIMMEL_ROOT" --out "$HIMMEL_ROOT/graphify-out" \
@@ -784,29 +778,19 @@ else
     echo "graph-cadence: origin/main does not track graphify-out/graph.json (retired from the git tree) -- there is no PR to open or merge; the graph publishes to the graph-data branch instead"
 fi
 
-# The promote lock on the PRIMARY graphify-out: the same $OUT/.promote.lock ast-update.sh
-# takes. Taken by the semantic promote (step 6, --semantic) and by the snapshot of the live
-# graph below. Released by the EXIT trap too, so a killed run never leaves the hourly AST
-# pass skipping behind it.
 SEM_PROMOTE_LOCK="$HIMMEL_ROOT/graphify-out/.promote.lock"
 SEM_PROMOTE_LOCK_HELD=0
 SEM_PROMOTE_LOCK_TOKEN=""  # gitleaks:allow
 SEM_PROMOTE_WAIT_S=0
-# 1 once this run promoted a semantic graph: step 6a then publishes it.
 SEM_PROMOTED=0
 _sem_promote_lock_release() {
     local cur=""
     [ "$SEM_PROMOTE_LOCK_HELD" -eq 1 ] || return 0
     SEM_PROMOTE_LOCK_HELD=0
     cur=$(cat "$SEM_PROMOTE_LOCK/owner" 2>/dev/null) || cur=""
-    # Never remove a lock another refresh took over.
     [ "$cur" = "$SEM_PROMOTE_LOCK_TOKEN" ] && rm -rf "$SEM_PROMOTE_LOCK" 2>/dev/null
     return 0
 }
-# _sem_promote_lock_acquire <what> -- take the promote lock, waiting up to
-# GRAPH_CADENCE_PROMOTE_LOCK_WAIT seconds (default 300) for another refresh to release it.
-# rc 0: held and stamped. rc 1: still held by another refresh at the deadline (the wait is
-# left in SEM_PROMOTE_WAIT_S). A fault creating or stamping the lock fails the run, naming <what>.
 _sem_promote_lock_acquire() {
     local what="$1" wait_s="${GRAPH_CADENCE_PROMOTE_LOCK_WAIT:-300}" waited=0 gone=0
     case "$wait_s" in ''|*[!0-9]*) wait_s=300 ;; esac
@@ -814,7 +798,6 @@ _sem_promote_lock_acquire() {
     # prim-ok: the lock must be the mkdir directory ast-update.sh and semantic-update.sh take; with_lock's flock record would not exclude them
     until mkdir "$SEM_PROMOTE_LOCK" 2>/dev/null; do
         if [ ! -d "$SEM_PROMOTE_LOCK" ]; then
-            # the holder released between our mkdir and this check: contention, retry; a few misses in a row is a filesystem fault
             gone=$((gone + 1))
             [ "$gone" -lt 3 ] || _fail "$what: could not create the promote lock $SEM_PROMOTE_LOCK (not held by another refresh)"
             continue
@@ -839,12 +822,6 @@ _published_build_commit() {
     printf '%s\n' "$1" | sed -n 's/^publish-graph-channel: published graph-data .* (built at \([0-9a-fA-F]\{7,40\}\))$/\1/p' | tail -n 1
 }
 
-# _publish_live_if_newer -- publish the primary's live graph to the graph-data branch with no
-# model call, when graph-data-status.sh says the branch is behind it (NEWER or LAG) and the live
-# graph carries a semantic layer. The four files are snapshotted under the promote lock, so the
-# hourly AST pass cannot rewrite them mid-copy, and published from the snapshot.
-# rc 0: published (ACTION, GRAPH_HEAD and MERGES_BEHIND set, the caller writes the ledger).
-# rc 1: nothing published. A publish that fails fails the run.
 _publish_live_if_newer() {
     local live_out="$HIMMEL_ROOT/graphify-out" line="" st_rc=0 live snap f ch_rc=0 ch_out
     line=$(bash "$SCRIPT_DIR/graph-data-status.sh" --repo "$HIMMEL_ROOT" --out "$live_out" --remote "$CHANNEL_REMOTE" 2>/dev/null) || st_rc=$?
@@ -888,16 +865,10 @@ _publish_live_if_newer() {
 # (PUBLISH_POSSIBLE=1) and --semantic are unchanged. action=skipped is a
 # known-good value to himmel-doctor C33.
 #
-# Before it skips, a live graph in the primary graphify-out that is newer than the
-# graph-data branch and carries a semantic layer is published to that branch
-# (_publish_live_if_newer): no model call, so a paused semantic step cannot leave
-# the branch behind a graph that is already built. That fire ends action=published-channel.
-#
 # An UNREADABLE graph.json object (corrupt or partial clone) is not the retired
 # steady state: it keeps falling through to the worktree steps, which fail closed
 # (rc 3, a C33 WARN) instead of hiding a broken clone behind a quiet skip.
 if [ "$PUBLISH_POSSIBLE" -eq 0 ] && [ "$SEMANTIC" -eq 0 ] && [ "$GRAPH_JSON_OBJECT_UNREADABLE" -eq 0 ]; then
-    # The run-wide EXIT trap is installed later; until then a killed run must still drop the promote lock.
     trap _sem_promote_lock_release EXIT
     if _publish_live_if_newer; then
         _write_ledger
@@ -1346,9 +1317,6 @@ fi
 # not ACTION="skipped" -- real work happened this run. A run that promoted a
 # semantic graph publishes it to the graph-data branch instead:
 # publish-graph-channel.sh scans the exact bytes and alerts on its own failures.
-# A run whose semantic step was a benign skip promoted nothing, but a live graph in the
-# primary graphify-out that is newer than graph-data and carries a semantic layer still
-# publishes (_publish_live_if_newer, no model call).
 if [ "$PUBLISH_POSSIBLE" -eq 0 ]; then
     if [ "$SEM_PROMOTED" -eq 0 ] && _publish_live_if_newer; then
         _write_ledger

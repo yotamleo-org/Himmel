@@ -48,7 +48,6 @@ case "$MAX_AGE_DAYS" in ''|*[!0-9]*) echo "graph-data-status: --max-age-days mus
 g() { git -C "$REPO" "$@"; }
 resolves() { [ -n "$1" ] && g cat-file -e "$1^{commit}" 2>/dev/null; }
 
-# fmt_age <seconds> -> "3d 4h" or "5h"
 fmt_age() {
     local s="$1" d h
     [ "$s" -ge 0 ] 2>/dev/null || s=0

@@ -1,14 +1,5 @@
 #!/usr/bin/env bash
-# test-graph-data-status.sh -- graph-data-status.sh over a temp git repo and a
-# local bare remote. The graph-data tips are orphan commits built with
-# hash-object/mktree/commit-tree and backdated through GIT_COMMITTER_DATE, the
-# same shape publish-graph-channel.sh writes. The remote is pointed at a path
-# that does not exist after the first fetch: the script must read local refs only.
-#
-# Rows: no live graph; no tip yet; tip built at the live commit; live newer within
-# and past the bound; the age formats; the pause-marker cause; the no-semantic
-# cause; both causes joined; a live graph that is not a descendant of the tip; a
-# tip whose commit this checkout does not know.
+# test-graph-data-status.sh -- graph-data-status.sh over a temp git repo and a local bare remote.
 
 set -uo pipefail
 
@@ -38,7 +29,6 @@ SIDE="$(gw rev-parse HEAD)"
 gw checkout -q main
 gw remote add origin "$BARE"
 
-# push_tip <built_at_commit> <age-seconds>: one orphan commit on the bare's graph-data, then fetch.
 push_tip() {
     local blob tree commit when
     blob="$(printf '%s\n' "$1" | gw hash-object -w --stdin)"
@@ -49,7 +39,6 @@ push_tip() {
     gw fetch -q "$BARE" "+refs/heads/graph-data:refs/remotes/origin/graph-data"
 }
 
-# live <name> <built_at_commit> [semantic]: a graphify-out dir; prints its path.
 live() {
     local d="$TMP/live-$1"
     mkdir -p "$d"
@@ -59,7 +48,6 @@ live() {
 }
 
 run() { out="$(bash "$SCRIPT" --repo "$WORK" "$@" 2>&1)"; rc=$?; }
-# is <name> <want-rc> <glob>: the last run's rc and its one output line
 is() {
     # shellcheck disable=SC2053  # $3 is a glob on purpose
     if [ "$rc" -eq "$2" ] && [[ "$out" == $3 ]]; then pass "$1"; else fail "$1 (rc=$rc): $out"; fi

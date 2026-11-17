@@ -7715,7 +7715,6 @@ c70_rows "x.md" "x.md" "x.md"
 mkdir -p "$c70_t/adopter-home"
 out="$(env HOME="$c70_t/adopter-home" HIMMEL_CONFIG_DIR= CLAUDE_DIR="$c70_t/adopter-home/claude" HIMMEL_DOCTOR_GRAPH_OUT="$c70_out" HIMMEL_DOCTOR_GRAPH_CHECK= bash "$DOC" --no-color --only C70 2>&1)"
 if grepq "$out" -F 'OK   C70-graph-semantic' && grepq "$out" -F 'comes from us' && ! grepq "$out" -F 'refresh-graph-map.sh' && ! grepq "$out" 'WARN C70'; then pass "C70 an adopter with an old, stuck semantic-runs.jsonl -> OK naming the pull"; else fail "C70 adopter -> $(printf '%s' "$out" | head -3)"; fi
-# the graph-data row: the publisher asks graph-data-status.sh (seam HIMMEL_DOCTOR_GRAPH_DATA_STATUS) and prints its line
 printf '#!/bin/sh\necho "graph-data: LAG the graph-data tip (built at abc1234) is 3d 4h old (bound 2d) while the live graph is built at def5678 (semantic layer: yes); cause: the cadence has not published it (read the cadence log)"\nexit 1\n' > "$c70_t/gds-lag.sh"
 out="$(c70_run HIMMEL_DOCTOR_GRAPH_DATA_STATUS="$c70_t/gds-lag.sh")"
 if grepq "$out" -F 'WARN C70-graph-data' && grepq "$out" -F 'graph-data: LAG the graph-data tip (built at abc1234) is 3d 4h old' && grepq "$out" -F 'bash scripts/graphify/graph-cadence.sh'; then pass "C70 a lagging graph-data tip -> WARN with the status line and the cadence remedy"; else fail "C70 graph-data LAG -> $(printf '%s' "$out" | head -4)"; fi
@@ -7730,7 +7729,6 @@ out="$(c70_run HIMMEL_DOCTOR_GRAPH_DATA_STATUS="$c70_t/gds-unknown.sh")"
 if grepq "$out" -F 'INFO C70-graph-data' && grepq "$out" -F 'no live graph at /nowhere'; then pass "C70 an unjudgeable graph-data status -> INFO"; else fail "C70 graph-data UNKNOWN -> $(printf '%s' "$out" | head -4)"; fi
 out="$(env HOME="$c70_t/adopter-home" HIMMEL_CONFIG_DIR= CLAUDE_DIR="$c70_t/adopter-home/claude" HIMMEL_DOCTOR_GRAPH_OUT="$c70_out" HIMMEL_DOCTOR_GRAPH_CHECK= HIMMEL_DOCTOR_GRAPH_DATA_STATUS="$c70_t/gds-lag.sh" bash "$DOC" --no-color --only C70 2>&1)"
 if ! grepq "$out" -F 'C70-graph-data'; then pass "C70 an adopter gets no graph-data row"; else fail "C70 adopter graph-data -> $(printf '%s' "$out" | head -4)"; fi
-# the real freshness check names the file the shrink guard is holding
 python3 - "$c70_out/semantic-manifest.json" "$c70_corpus/real.md" <<'PY'
 import json, os, sys, time
 json.dump({"version": 1, "files": {}, "stuck": {"real.md": {"hash": "h", "attempts": 1,

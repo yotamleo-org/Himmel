@@ -5206,11 +5206,6 @@ check_c70_graph_semantic() {
     fi
 }
 
-# C70-graph-data (publisher stations): is the graph-data branch behind the live graph?
-# graph-data-status.sh is the one definition (graph-cadence.sh's lag alert asks it too); it
-# reads local refs only. A tip older than its bound while the live graph is newer is WARN
-# naming the cause; a current tip, or a newer live graph inside the bound, is OK; a status
-# that cannot be judged is INFO. Seam: HIMMEL_DOCTOR_GRAPH_DATA_STATUS (the status script).
 graph_data_station_verdict() {
     local out="${HIMMEL_DOCTOR_GRAPH_OUT:-$REPO_ROOT/graphify-out}"
     local status="${HIMMEL_DOCTOR_GRAPH_DATA_STATUS:-$SELF_DIR/graphify/graph-data-status.sh}"

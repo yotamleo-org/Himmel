@@ -366,7 +366,6 @@ out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
 [ "$rc" -eq 3 ] && [[ "$out" == *"oldest content unstamped 7.5d (bound 7d)"* ]] \
   && pass "T11f2 a content file unstamped 7.5 days -> rc=3, not floored under the bound" || fail "T11f2 (rc=$rc): $out"
 
-# --- T11f3: the oldest unstamped file and a shrink-guard hold on it are named ---
 python3 -c 'import hashlib,json,sys
 h=lambda p: hashlib.sha256(open(p,"rb").read()).hexdigest()
 json.dump({"version":1,"files":{"real.md":h(sys.argv[2])},"stuck":{"notes/sub.md":{"hash":h(sys.argv[3]),"attempts":1,"reason":"shrink guard: new 12 vs old 25 semantic nodes","new_nodes":12,"old_nodes":25}}},open(sys.argv[1],"w"))' \

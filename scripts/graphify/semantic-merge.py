@@ -266,7 +266,6 @@ def count_semantic(nodes, rel):
 
 
 def norm_text(s):
-    # Lowercase, every run of non [0-9a-z] collapsed to one space, stripped.
     return re.sub(r"[^0-9a-z]+", " ", str(s or "").lower()).strip()
 
 
@@ -275,9 +274,6 @@ def node_text(n):
 
 
 def covered(old, new_for_file):
-    # An old node survives a re-extraction when its label is empty, appears as a
-    # whole-word run inside some new node's label or rationale text, or sits at
-    # a source_location a new node also has.
     lab = norm_text(old.get("label")) or norm_text(old.get("norm_label")) or norm_text(old.get("id"))
     if not lab:
         return True
@@ -291,10 +287,6 @@ def covered(old, new_for_file):
 
 
 def shrinks(old_nodes, new_nodes, rel):
-    # The shrink guard: a file lost too much when its new extraction holds under
-    # SHRINK_RATIO of its old semantic nodes AND at least one old node is not
-    # covered by the new ones (a consolidation that keeps every label is not a
-    # loss). A single old node cannot shrink.
     old = count_semantic(old_nodes, rel)
     if old < 2 or count_semantic(new_nodes, rel) >= old * SHRINK_RATIO:
         return False
@@ -530,14 +522,7 @@ def cmd_merge(a):
     # SHRINK_RATIO of its old semantic nodes is refused like a failed chunk --
     # old items kept, file unstamped, retried next run. A model that returns a
     # thin subset must not silently erase real facts (pr-check doc 25 to 1).
-    # A shrink only counts when an old node's label is missing from the new
-    # extraction (see shrinks); a consolidation that keeps every label passes.
     # ponytail: nodes between 50 and 100 percent of the old count still replace the file's items, add a per-node union if semantic-runs.jsonl shows losses there. A file omitted every run is retried up to MAX_ATTEMPTS, then backed off until its content changes.
-    #
-    # A file refused once on unchanged content and extracted thin again is not a
-    # model fluke: the file really is that thin (a page cut down to a pointer),
-    # so the second extraction is accepted. No third paid call pins the stale
-    # nodes.
     m = load_manifest(a.out)
     files, stuck = m.get("files", {}), m.get("stuck", {})
 
@@ -663,9 +648,6 @@ def cmd_merge(a):
 
 
 def cmd_held(a):
-    # Files refused by the shrink guard in both of the last two merge runs that
-    # are still stuck on it: one "<file> new N vs old M" line each. Names and
-    # counts only.
     rows = []
     try:
         with open(os.path.join(a.out, RUNS), encoding="utf-8") as f:
