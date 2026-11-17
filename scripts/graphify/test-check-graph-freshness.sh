@@ -366,6 +366,20 @@ out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
 [ "$rc" -eq 3 ] && [[ "$out" == *"oldest content unstamped 7.5d (bound 7d)"* ]] \
   && pass "T11f2 a content file unstamped 7.5 days -> rc=3, not floored under the bound" || fail "T11f2 (rc=$rc): $out"
 
+python3 -c 'import hashlib,json,sys
+h=lambda p: hashlib.sha256(open(p,"rb").read()).hexdigest()
+json.dump({"version":1,"files":{"real.md":h(sys.argv[2])},"stuck":{"notes/sub.md":{"hash":h(sys.argv[3]),"attempts":1,"reason":"shrink guard: new 12 vs old 25 semantic nodes","new_nodes":12,"old_nodes":25}}},open(sys.argv[1],"w"))' \
+  "$OUT/semantic-manifest.json" "$CORPUS/real.md" "$CORPUS/notes/sub.md"
+backdate_days "$CORPUS/notes/sub.md" 8
+out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
+[ "$rc" -eq 3 ] && [[ "$out" == *"oldest content unstamped 8."*"d (bound 7d): notes/sub.md"* ]] \
+  && [[ "$out" == *"notes/sub.md held by the shrink guard (new 12 vs old 25 semantic nodes)"* ]] \
+  && pass "T11f3 SEMANTIC-STALE names the oldest file and its shrink-guard hold with the counts" || fail "T11f3 (rc=$rc): $out"
+python3 -c 'import json,sys;p=sys.argv[1];m=json.load(open(p));m["stuck"]["notes/sub.md"]["reason"]="not extracted: x";json.dump(m,open(p,"w"))' "$OUT/semantic-manifest.json"
+out=$( bash "$SCRIPT" --out "$OUT" --max-age-days 7 2>&1 ); rc=$?
+[ "$rc" -eq 3 ] && [[ "$out" == *": notes/sub.md"* ]] && [[ "$out" != *"held by the shrink guard"* ]] \
+  && pass "T11f3 a file stuck for another reason is named but not reported as held" || fail "T11f3 other reason (rc=$rc): $out"
+
 # --- T11j: 11 refusals on template/vendored paths are not counted -> OK ---
 new_sem_fixture t11j
 semantic_row_at "$OUT" "$(ts_hours_ago 2)" "" "$(csv_files templates/r 11)"

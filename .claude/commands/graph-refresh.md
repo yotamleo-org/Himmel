@@ -11,6 +11,13 @@ luna-vs-himmel corpus-root asymmetry (luna extracts the vault, himmel extracts
 the repo, BOTH publish their curated MOC into the vault's `60-Maps/`), and the
 fixed `claude-cli` backend.
 
+This is the **full-corpus** path: it extracts every file of the corpus, capped per
+run by its chunk and spend cap, so a large corpus can stop partway and a later run
+continues. `semantic-update.sh` (the cadence's `--semantic` step) is the
+**change-gated** path: it extracts only the files whose content hash changed since
+the last stamp. Use `/graph-refresh` to rebuild from scratch, and let the cadence
+keep a built graph current.
+
 This is the on-demand path the cadence is the scheduled path for. It owns NO
 safety itself — the runner (`refresh-graph-map.sh`) owns the fence (scratchpad
 copy, never a live vault), the per-out-dir promote lock, the
@@ -44,9 +51,9 @@ log path.
 After the refresh runs, the command prints `graphmap-cadence.sh status` so
 cadence drift is visible alongside the ad-hoc refresh (advisory — a cadence
 query failure never fails this command). On a successful **himmel** run it
-prints a next-step hint to run `/graph-publish` to ship the
-refreshed tracked `graphify-out/` — it does NOT auto-run it (that commit + push
-+ PR stays an explicit operator action).
+prints a next-step hint to run `/graph-publish`, which publishes the live graph to
+the graph-data branch (graph-cadence.sh does it on its own fires too, with no model
+call, when the live graph is newer than the branch) — it does NOT auto-run it.
 
 **Recovering an orphaned extraction.** When an extraction finished
 but its promote never ran (the runner was killed mid-flight), re-promote it

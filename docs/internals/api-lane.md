@@ -250,6 +250,9 @@ secret, only role names and account letters:
   while no other has room still serves, the one marked longest ago first, so a pick is never refused for the marker
   alone. Covered by the rows T93 and T93b of `scripts/graphify/test-semantic-update.sh`, which run the real pick over a
   marker older than an hour with a valid reading taken before the marker, and by `api-credit-state.test.mjs`.
+  After a rotated key the operator clears the mark at once instead of waiting out the TTL:
+  `HIMMEL_API_ACCOUNT=<L> node scripts/lib/api-credit-state.mjs clear-exhausted` removes `exhausted_at` and prints
+  `cleared` (or prints `none` and writes nothing when the account had no mark).
 - **Nothing chosen on the API backend makes no API call.** With `GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api` and the lane
   off (`HIMMEL_API_LANE` unset) the cadence refuses the whole fire (exit 1) before any call; a direct call of
   `semantic-update.sh` refuses with exit 2 and says no API semantic call is made. Either way graphify makes no API semantic call. The

@@ -2600,7 +2600,7 @@ case "\$*" in
     "variable get CI_GO_GATE"*) [ -z "\${CUT_CRF_SLEEP:-}" ] || sleep "\$CUT_CRF_SLEEP"; echo on ;;
     "api repos/acme/repo/pulls/3101") echo '{"state":"open","head":{"sha":"deadbeef01","repo":{"full_name":"acme/repo","fork":false}},"base":{"repo":{"full_name":"acme/repo"}}}' ;;
     "api repos/acme/repo/commits/deadbeef01") printf '{"commit":{"committer":{"date":"%s"}}}\n' "\$(date -u +%Y-%m-%dT%H:%M:%SZ)" ;;
-    "api --paginate repos/acme/repo/commits/deadbeef01/check-runs"*) echo '{"check_runs":[]}' ;;
+    "api --paginate repos/acme/repo/commits/deadbeef01/check-runs"*) echo '{"check_runs":[{"id":1,"name":"lint","status":"completed","conclusion":"failure","completed_at":"2026-10-23T10:03:00Z"}]}' ;;
     "api --paginate repos/acme/repo/issues/3101/events"*) echo '[]' ;;
     *) exec "$W/bin/gh" "\$@" ;;
 esac
@@ -2612,19 +2612,19 @@ STUB
     cut_rows="$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\\n' 3101 feat/himmel-8843-x false me false "$(iso_ago 1)" 0 deadbeef01 '')"
     cut_tick() { PATH="$W/cut-bin:$PATH" NEXT_DISPATCH_MIRROR="$cut_m" HIMMEL_RELEASE_STATE_DIR="$W/cut/releases" STUB_PR_ROWS="$cut_rows" TICK_RMQ_PROBE="$W/cut/rmq-${CUT_RMQ:-ok}.sh" TOKEN='' bash "$SUT" --doc "$W/handover/cut-chief.md" "$@" 2>/dev/null; printf '%s\n' "$?" > "$W/cut/rc"; }
     cut_exit() { [ "$(cat "$W/cut/rc")" = 0 ] && pass "(8843) $1 exits 0" || fail "(8843) $1 exits $(cat "$W/cut/rc")"; }
-    cut_healthy="$(cut_tick | sed 's/cheap-pending:[0-9]*s/cheap-pending:Ns/')"
+    cut_healthy="$(cut_tick | sed 's/cheap-red:[0-9]*s/cheap-red:Ns/')"
     cut_exit 'a healthy tick'
-    case "$cut_healthy" in *' residual-cap=v1.1.3:16 open=v1.1.3:16 rm-queue=1,10m crfirst=#3101:cheap-pending:Ns') pass '(8843) a healthy tick ends in the residual-cap, open, rm-queue and crfirst fields' ;; *) fail "(8843) a healthy tick changed its residual-cap, open, rm-queue or crfirst fields: $cut_healthy" ;; esac
+    case "$cut_healthy" in *' residual-cap=v1.1.3:16 open=v1.1.3:16 rm-queue=1,10m crfirst=#3101:cheap-red:Ns') pass '(8843) a healthy tick ends in the residual-cap, open, rm-queue and crfirst fields' ;; *) fail "(8843) a healthy tick changed its residual-cap, open, rm-queue or crfirst fields: $cut_healthy" ;; esac
     cut_verbose="$(cut_tick --verbose)"
     cut_exit 'a healthy verbose tick'
     contains '(8843) a healthy verbose tick prints the residual-cap line' "$cut_verbose" 'residual-cap: v1.1.3:16'
     contains '(10260) a healthy verbose tick prints the open line' "$cut_verbose" 'open: v1.1.3:16'
     contains '(8843) a healthy verbose tick prints the release-queue line' "$cut_verbose" 'rm-queue: 1,10m'
-    contains '(8843) a healthy verbose tick prints the held CI-release head' "$cut_verbose" 'crfirst: #3101:cheap-pending:'
+    contains '(8843) a healthy verbose tick prints the held CI-release head' "$cut_verbose" 'crfirst: #3101:cheap-red:'
     contains '(8843) a healthy tick prints the residual-cap count' "$cut_healthy" ' residual-cap=v1.1.3:16'
     contains '(10260) a healthy tick prints the open count' "$cut_healthy" ' open=v1.1.3:16'
     contains '(8843) a healthy tick prints the release queue' "$cut_healthy" ' rm-queue=1,10m'
-    contains '(8843) a healthy tick prints the held CI-release head' "$cut_healthy" ' crfirst=#3101:cheap-pending:Ns'
+    contains '(8843) a healthy tick prints the held CI-release head' "$cut_healthy" ' crfirst=#3101:cheap-red:Ns'
     cut_cap="$(CUT_PY_SLEEP=5 TICK_DEADLINE_SEC=1 cut_tick)"
     cut_exit 'a tick whose cap read the deadline cuts'
     contains '(8843) a cap read the deadline cuts prints residual-cap=?' "$cut_cap" ' residual-cap=?'
@@ -2644,7 +2644,7 @@ STUB
     contains '(8843) a CI-release sweep the bound cuts prints crfirst=?' "$cut_crf" ' crfirst=?'
     cut_crf="$(CUT_CRF_SLEEP=1.5 TICK_DEADLINE_SEC=2 cut_tick)"
     cut_exit 'a tick whose sweep is reached with the deadline already past'
-    contains '(8843) a sweep reached with the deadline already past still finishes and prints its heads' "$cut_crf" ' crfirst=#3101:cheap-pending:'
+    contains '(8843) a sweep reached with the deadline already past still finishes and prints its heads' "$cut_crf" ' crfirst=#3101:cheap-red:'
     cut_crf="$(STUB_PR_FAIL=1 cut_tick)"
     cut_exit 'a tick whose pr read fails'
     not_contains '(8843) a failed pr read leaves crfirst= off' "$cut_crf" 'crfirst='
