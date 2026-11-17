@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # scripts/handover/chief-kit/test-ready-check-d.sh - ready-check.sh suite, part d: the own-checkout and plugin-bump checks (8, 9), check 12, Dependabot PRs, checks 13 to 15.
-# Setup, stubs and helpers are shared in test_ready_check_lib.sh. `gh` is a PATH stub; `jq` and `git` are real.
+# Setup, stubs and helpers are shared in testlib-ready-check.sh. `gh` is a PATH stub; `jq` and `git` are real.
 # shellcheck disable=SC2015,SC2034,SC2153,SC2154  # A && B || C is intentional in check()/contains(), as in test-go.sh; stub state and helpers are shared through the sourced lib
 set -uo pipefail
-# shellcheck source=test_ready_check_lib.sh
-. "$(cd "$(dirname "$0")" && pwd)/test_ready_check_lib.sh"
+# shellcheck source=testlib-ready-check.sh
+. "$(cd "$(dirname "$0")" && pwd)/testlib-ready-check.sh"
 
 # --- 8. TICKET_ID_PATTERN / JIRA_PROJECT_KEY must resolve from
 # ready-check.sh's OWN checkout, never the caller's CWD repo. Fixture mirrors
