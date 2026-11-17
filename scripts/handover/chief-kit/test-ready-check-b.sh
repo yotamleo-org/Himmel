@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/chief-kit/test-ready-check-b.sh - ready-check.sh suite, part b: the disposition, carry, chain and terminal deferral rows of check 7.
-# Setup, stubs and helpers are shared in tests/testlib-ready-check.sh. `gh` is a PATH stub; `jq` and `git` are real.
-# shellcheck disable=SC2015,SC2034,SC2153,SC2154  # A && B || C is intentional in check()/contains(), as in test-go.sh; stub state and helpers are shared through the sourced lib
+# shellcheck disable=SC2015,SC2034,SC2153,SC2154
 set -uo pipefail
 # shellcheck source=tests/testlib-ready-check.sh
 . "$(cd "$(dirname "$0")" && pwd)/tests/testlib-ready-check.sh"

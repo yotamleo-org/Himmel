@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# scripts/eval/review-panel/test-review-panel-b.sh - the shipped real-escape corpus: lint --min-real.
-# Setup and helpers are shared in test_review_panel_lib.sh. No model call, no codex, no live ledger.
 # shellcheck disable=SC2034,SC2153,SC2154  # state and helpers are shared through the sourced lib
 set -u
 # shellcheck source=test_review_panel_lib.sh

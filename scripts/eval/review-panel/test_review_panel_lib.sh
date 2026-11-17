@@ -1,5 +1,4 @@
 # shellcheck shell=bash
-# Shared setup for scripts/eval/review-panel/test-review-panel{,-b}.sh: sourced by each part, never run.
 # shellcheck disable=SC2034,SC2153,SC2154  # state and helpers are shared through the sourced lib
 export HIMMEL_BILLED_OK=1   # stub panel only; run.sh refuses a bare run
 

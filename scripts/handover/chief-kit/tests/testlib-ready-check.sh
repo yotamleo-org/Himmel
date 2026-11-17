@@ -1,7 +1,6 @@
 # shellcheck shell=bash
-# Shared setup for scripts/handover/chief-kit/test-ready-check{,-b,-c,-d,-e,-f}.sh: sourced by each part, never run.
 # sourced-lib: only ever sourced by the test-ready-check parts; the parts run in the environment their caller gives them
-# shellcheck disable=SC2015,SC2034,SC2153,SC2154  # A && B || C is intentional in check()/contains(), as in test-go.sh; stub state and helpers are shared through the sourced lib
+# shellcheck disable=SC2015,SC2034,SC2153,SC2154
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT="$HERE/ready-check.sh"

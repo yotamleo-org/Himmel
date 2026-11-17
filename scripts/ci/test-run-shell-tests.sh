@@ -1203,7 +1203,6 @@ else
   # test-ready-check.sh: 802s alone, killed at 1206s under CI load against the 600s default (loaded figure x2).
   check_timeout_2267 "scripts/handover/chief-kit/test-ready-check.sh" "2700"
   check_timeout_2267 "/repo/scripts/handover/chief-kit/test-ready-check.sh" "2700"
-  # Its parts b to f share the arm; a part letter outside that range keeps the default.
   check_timeout_2267 "scripts/handover/chief-kit/test-ready-check-b.sh" "2700"
   check_timeout_2267 "/repo/scripts/handover/chief-kit/test-ready-check-f.sh" "2700"
   check_timeout_2267 "scripts/handover/chief-kit/test-ready-check-g.sh" "600"
