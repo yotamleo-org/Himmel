@@ -15,7 +15,7 @@
 # Environment:
 #   PARITY_OPTS  extra shellcheck flags for both runs; default "--enable=all --severity=style".
 #                Set it to an empty string for the hook's own flags.
-# Exit codes: 0 -- identical; 1 -- missing or extra findings, or a run never ran the hook.
+# Exit codes: 0 -- identical; 1 -- missing or extra findings, or a run never ran the hook; 2 -- a setup step or the serial shellcheck run failed.
 set -u
 
 root=$(git rev-parse --show-toplevel) || exit 1
@@ -55,7 +55,11 @@ echo "parity: $(shellcheck --version | grep '^version')" >&2
 t=$SECONDS
 # shellcheck disable=SC2086 # the flags are a word list
 tr '\n' '\0' < "$T/shell.list" | xargs -0 -s 1500000 shellcheck $opts --format=gcc > "$T/serial.out" 2>&1
+serial_rc=$?
 echo "parity: serial run took $((SECONDS - t))s" >&2
+# The linter exits 1 for findings; any other non-zero (xargs 123 wraps it) is a run that failed
+case "$serial_rc" in 0 | 1 | 123) ;; *) echo "parity: the serial shellcheck run failed (rc $serial_rc); head of its output:" >&2; head -5 "$T/serial.out" >&2; exit 2 ;; esac
+grep -q 'shellcheck: ' "$T/serial.out" && { echo "parity: the serial shellcheck run reported an error:" >&2; grep 'shellcheck: ' "$T/serial.out" | head -5 >&2; exit 2; }
 t=$SECONDS
 SHELLCHECK_OPTS="$opts --format=gcc" bash "$root/scripts/ci/shellcheck-pr-range.sh" --sweep "$T/list" > "$T/sweep.out" 2> "$T/sweep.err"
 echo "parity: sweep took $((SECONDS - t))s" >&2
