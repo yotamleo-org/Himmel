@@ -14,7 +14,7 @@
 # Rows:
 #   the first publish and a second publish land on graph-data through the whole chain
 #   the same graph again is not pushed (also from a checkout that must fetch the tip
-#     to compare), and a changed graph.json with the same built_at_commit is
+#     to compare), and a changed graph.json with the same built_at_commit is published
 #   the controls: another branch name, a ref that is not the worktree HEAD, a parentless
 #     commit on another ref, and a mixed push naming graph-data are all still refused
 #   a refusal from the chain is named in the output and in the alert, once, and the

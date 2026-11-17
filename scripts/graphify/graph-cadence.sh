@@ -153,8 +153,8 @@
 #   published-channel -- origin/main does not track the graph, and
 #                publish-graph-channel.sh pushed the graph to the graph-data
 #                branch, or found the branch tip already holding the same files
-#                and pushed nothing: either --semantic ran clean and promoted, or the live
-#                graph in the primary graphify-out was newer than the branch and
+#                and pushed nothing: either --semantic ran clean and promoted, or
+#                the live graph in the primary graphify-out was newer than the branch and
 #                carried a semantic layer (no model call; step 4a). A blocked or
 #                failed channel publish is `failed`; its error names the file
 #                and the rule, never the matched text. The row's graph_head,
