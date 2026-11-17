@@ -6044,6 +6044,160 @@ check "9564-a a BYPASS-NEEDS-SPEC brief is refused at launch (exit 2)" "$rc" "2"
 contains "9564-b ... the refusal is relayed as 'refusing launch:'" "$needs_out" "refusing launch:"
 contains "9564-c ... and names the missing record" "$needs_out" "no spec-review record"
 
+# --- 17r. The readiness launcher (C0s cycle 1): worker-claude-launcher.sh is the ONE owner of the
+# final claude argv for the readiness role. Its real exec and its validation-only render (an env
+# switch that prints the same array NUL-terminated and execs nothing) come from one construction, so
+# every case below drives the REAL shim against a recording stub: the stub is the seam, the shim and
+# the profile wrapper are not stubbed. headed-arm-worker.sh is NOT wired to this yet (cycle 2); this
+# proves only the argv owner. Each case runs under `env -i`, so no ambient role marker leaks in.
+RL="$tmp/rl"; mkdir -p "$RL/home/.claude" "$RL/bin" "$RL/other"
+rl_stub="$RL/bin/claude"
+# shellcheck disable=SC2016 # literal $@ and $0 belong to the stub script, not this one
+printf '%s\n' '#!/usr/bin/env bash' 'printf "[%s]" "$@" >> "$(dirname "$0")/argv-record"; echo >> "$(dirname "$0")/argv-record"' > "$rl_stub"
+chmod 755 "$rl_stub"
+rl_rec="$RL/bin/argv-record"
+rl_settings="$RL/settings.json"
+rl_grants='"mcp__readiness__inspect","mcp__readiness__act"'
+rl_deny='"Agent","Artifact","Bash","Edit","Glob","Grep","NotebookEdit","Read","WebFetch","WebSearch","Write"'
+printf '{"enabledPlugins":{},"permissions":{"allow":[%s],"deny":[%s]}}\n' "$rl_grants" "$rl_deny" > "$rl_settings"
+rl_mcp="$RL/mcp.json"
+printf '{"mcpServers":{"readiness":{"command":"node","args":["%s/readiness-tools.mjs"]}}}\n' "$HERE" > "$rl_mcp"
+rl_sid="11111111-2222-4333-8444-555555555555"
+rl_caller_default=(--model claude-sonnet-5-5 --autocompact 200000 -n PROJ-9999-readiness "load doc and continue")
+rl_tail_default='[--model][claude-sonnet-5-5][--autocompact][200000][-n][PROJ-9999-readiness][load doc and continue]'
+# rl_run [ENV=val ...] [-- caller argv ...]: later ENV=val wins; an empty value reads as unset.
+rl_run() {
+  local envs=() caller=()
+  while [ $# -gt 0 ] && [ "$1" != -- ]; do envs+=("$1"); shift; done
+  if [ "${1:-}" = -- ]; then shift; caller=("$@"); else caller=("${rl_caller_default[@]}"); fi
+  env -i PATH="$PATH" HOME="$RL/home" WORKER_SESSION_CLAUDE_BIN="$rl_stub" WORKER_SESSION_PROFILE_READINESS=1 \
+    WORKER_SESSION_PROFILE_SETTINGS="$rl_settings" WORKER_SESSION_PROFILE_MCP_CONFIG="$rl_mcp" WORKER_SESSION_ID="$rl_sid" \
+    ${envs[@]+"${envs[@]}"} bash "$SHIM" ${caller[@]+"${caller[@]}"}
+}
+rl_decode() { local el; while IFS= read -r -d '' el; do printf '[%s]' "$el"; done; printf '\n'; }
+rl_pre="[--settings][$rl_settings][--mcp-config][$rl_mcp][--strict-mcp-config][--tools][][--permission-mode][auto][--allowedTools][mcp__readiness__inspect][mcp__readiness__act][--session-id][$rl_sid]"
+
+# the exec path: exactly the signed hard-boundary argv, then the caller's argv untouched and in order
+rm -f "$rl_rec"; rc=0
+rl_run >/dev/null 2>&1 || rc=$?
+check "readiness exec: exit 0" "$rc" "0"
+check "readiness exec: empty --tools, strict immutable MCP config, exactly the two grants, one explicit auto mode, then the caller argv in order" \
+  "$(cat "$rl_rec" 2>/dev/null || true)" "$rl_pre$rl_tail_default"
+
+# the render path: the SAME array, NUL-terminated (the empty --tools value survives), and nothing executed
+rm -f "$rl_rec"; rc=0
+rl_run WORKER_SESSION_RENDER_ARGV=1 > "$RL/render.out" 2>/dev/null || rc=$?
+check "readiness render: exit 0" "$rc" "0"
+check "readiness render: the stub was never executed" "$(cat "$rl_rec" 2>/dev/null || true)" ""
+check "readiness render: the array is binary + the exact exec argv (one construction)" \
+  "$(rl_decode < "$RL/render.out")" "[$rl_stub]$rl_pre$rl_tail_default"
+check "readiness render: every element is NUL-terminated, the empty --tools value included (one NUL per element)" \
+  "$(tr -dc '\0' < "$RL/render.out" | wc -c | tr -d ' ')" "$(( $(grep -o '\]\[' <<< "[$rl_stub]$rl_pre$rl_tail_default" | wc -l) + 1 ))"
+
+# a caller that already carries exactly one auto mode keeps it in place; none is added
+for mode_args in "--permission-mode auto" "--permission-mode=auto"; do
+  rm -f "$rl_rec"; rc=0
+  # shellcheck disable=SC2086 # the mode spelling splits into its flag and value on purpose
+  rl_run -- --model claude-sonnet-5-5 $mode_args "load doc" >/dev/null 2>&1 || rc=$?
+  want_mode="[--permission-mode][auto]"; case "$mode_args" in *=*) want_mode="[--permission-mode=auto]" ;; esac
+  check "readiness '$mode_args': exit 0" "$rc" "0"
+  check "readiness '$mode_args': the caller's one auto mode is preserved in place, nothing else adds a mode" \
+    "$(cat "$rl_rec" 2>/dev/null || true)" "[--settings][$rl_settings][--mcp-config][$rl_mcp][--strict-mcp-config][--tools][][--allowedTools][mcp__readiness__inspect][mcp__readiness__act][--session-id][$rl_sid][--model][claude-sonnet-5-5]${want_mode}[load doc]"
+done
+
+# a bare positional prompt still never sits next to a variadic option's values: a flag always follows the grants
+rm -f "$rl_rec"; rl_run -- "load doc" >/dev/null 2>&1 || true
+check "readiness: a caller whose argv starts with a bare prompt keeps a flag between the grants and the prompt" \
+  "$(cat "$rl_rec" 2>/dev/null || true)" "${rl_pre}[load doc]"
+
+# the shipped profile, resolved by the REAL profile wrapper under a scratch HOME, drives the launcher unchanged
+rl_real="$(env HOME="$RL/home" CLAUDE_CONFIG_DIR="$RL/home/.claude" HIMMEL_PROFILE_SETTINGS_DIR="$RL/prof" bash "$HERE/../../lanes/profile-settings.sh" readiness 2>/dev/null || true)"
+rm -f "$rl_rec"; rc=0
+rl_run WORKER_SESSION_PROFILE_SETTINGS="$rl_real" >/dev/null 2>&1 || rc=$?
+check "readiness: the shipped profile's real resolved settings pass the launcher (exit 0)" "$rc" "0"
+check "readiness: ... and the argv names that resolved settings file" \
+  "$(cat "$rl_rec" 2>/dev/null || true)" "[--settings][$rl_real]${rl_pre#"[--settings][$rl_settings]"}$rl_tail_default"
+
+# existing behavior is untouched: without the marker the same inputs give the old prepend-only argv
+rm -f "$rl_rec"; rc=0
+rl_run WORKER_SESSION_PROFILE_READINESS= >/dev/null 2>&1 || rc=$?
+check "readiness off: exit 0" "$rc" "0"
+check "readiness off: prepend-only, no --tools, no --permission-mode, no --allowedTools (old contract)" \
+  "$(cat "$rl_rec" 2>/dev/null || true)" "[--settings][$rl_settings][--mcp-config][$rl_mcp][--strict-mcp-config][--session-id][$rl_sid]$rl_tail_default"
+rm -f "$rl_rec"
+env -i PATH="$PATH" WORKER_SESSION_CLAUDE_BIN="$rl_stub" bash "$SHIM" --model claude-sonnet-5-5 "load doc" >/dev/null 2>&1 || true
+check "readiness off: no profile at all is still a byte-identical pass-through" "$(cat "$rl_rec" 2>/dev/null || true)" "[--model][claude-sonnet-5-5][load doc]"
+
+# every refusal is exit 2, executes nothing and renders nothing
+rl_refuse() { # rl_refuse <label> [ENV=val ...] [-- caller argv ...]
+  local label="$1" rrc=0; shift
+  rm -f "$rl_rec"; rl_run "$@" >/dev/null 2>&1 || rrc=$?
+  check "readiness refuses $label (exec: exit 2)" "$rrc" "2"
+  check "readiness refuses $label (exec: nothing ran)" "$(cat "$rl_rec" 2>/dev/null || true)" ""
+  rrc=0; rl_run WORKER_SESSION_RENDER_ARGV=1 "$@" > "$RL/refused.out" 2>/dev/null || rrc=$?
+  check "readiness refuses $label (render: exit 2)" "$rrc" "2"
+  check "readiness refuses $label (render: no argv emitted)" "$(wc -c < "$RL/refused.out" | tr -d ' ')" "0"
+}
+for bad_mode in "--permission-mode default" "--permission-mode plan" "--permission-mode bypassPermissions" "--permission-mode acceptEdits" "--permission-mode" "--permission-mode=default" "--permission-mode auto --permission-mode auto" "--permission-mode=auto --permission-mode auto" "--dangerously-skip-permissions" "--allow-dangerously-skip-permissions"; do
+  # shellcheck disable=SC2086 # the spelling splits into flag and value on purpose
+  rl_refuse "a conflicting or duplicate mode ($bad_mode)" -- --model claude-sonnet-5-5 $bad_mode "load doc"
+done
+for override in "--tools Bash" "--tools=Bash" "--allowedTools Bash" "--allowed-tools Bash" "--disallowedTools X" "--disallowed-tools X" "--settings /x" "--setting-sources user" "--mcp-config /x" "--strict-mcp-config" "--session-id x" "--plugin-dir /x" "--agents {}" "-p" "--print" "--bg"; do
+  # shellcheck disable=SC2086 # the spelling splits into flag and value on purpose
+  rl_refuse "a caller override ($override)" -- --model claude-sonnet-5-5 $override "load doc"
+done
+rl_refuse "lane claudex" WORKER_SESSION_LANE=claudex
+rl_refuse "lane openrouter" WORKER_SESSION_LANE=openrouter
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$RL/other/claude-codex"; chmod 755 "$RL/other/claude-codex"
+rl_refuse "a lane launcher binary (claude-codex)" WORKER_SESSION_CLAUDE_BIN="$RL/other/claude-codex"
+rl_refuse "a missing binary" WORKER_SESSION_CLAUDE_BIN="$RL/other/no-such-claude"
+rl_refuse "a relative binary" WORKER_SESSION_CLAUDE_BIN=bin/claude
+for marker in HIMMEL_CONSOLE_JUDGE=1 HIMMEL_CONSOLE_RELAY=1 HIMMEL_RELEASE_MANAGER=1 CHIEF_CONTEXT=1m WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=1 WORKER_SESSION_REMOTE_CONTROL=name; do
+  rl_refuse "a mixed role (${marker%%=*})" "$marker"
+done
+rl_refuse "a marker that is not exactly 1 (yes)" WORKER_SESSION_PROFILE_READINESS=yes
+rl_refuse "a marker that is not exactly 1 (0)" WORKER_SESSION_PROFILE_READINESS=0
+rl_refuse "no settings file" WORKER_SESSION_PROFILE_SETTINGS=
+rl_refuse "a missing settings file" WORKER_SESSION_PROFILE_SETTINGS="$RL/no-such-settings.json"
+rl_refuse "no MCP config" WORKER_SESSION_PROFILE_MCP_CONFIG=
+rl_refuse "a missing MCP config" WORKER_SESSION_PROFILE_MCP_CONFIG="$RL/no-such-mcp.json"
+rl_refuse "no session id" WORKER_SESSION_ID=
+printf '{"mcpServers":{"readiness":{"command":"node"},"qmd":{"command":"node"}}}\n' > "$RL/mcp-two.json"
+rl_refuse "an MCP config with a second server" WORKER_SESSION_PROFILE_MCP_CONFIG="$RL/mcp-two.json"
+printf '{"mcpServers":{"other":{"command":"node"}}}\n' > "$RL/mcp-other.json"
+rl_refuse "an MCP config that is not the readiness adapter" WORKER_SESSION_PROFILE_MCP_CONFIG="$RL/mcp-other.json"
+printf '{"mcpServers":{}}\n' > "$RL/mcp-empty.json"
+rl_refuse "an empty MCP config (the profile's static one)" WORKER_SESSION_PROFILE_MCP_CONFIG="$RL/mcp-empty.json"
+printf 'not json\n' > "$RL/mcp-bad.json"
+rl_refuse "an unparseable MCP config" WORKER_SESSION_PROFILE_MCP_CONFIG="$RL/mcp-bad.json"
+printf '{"permissions":{"allow":[%s,"Bash(bash scripts/x.sh:*)"],"deny":[%s]}}\n' "$rl_grants" "$rl_deny" > "$RL/set-extra.json"
+rl_refuse "settings with an extra allow rule (a gate rule)" WORKER_SESSION_PROFILE_SETTINGS="$RL/set-extra.json"
+printf '{"permissions":{"allow":["mcp__readiness__inspect"],"deny":[%s]}}\n' "$rl_deny" > "$RL/set-one.json"
+rl_refuse "settings granting only one of the two tools" WORKER_SESSION_PROFILE_SETTINGS="$RL/set-one.json"
+printf '{"permissions":{"allow":[%s,"mcp__plugin_readiness_readiness__act"],"deny":[%s]}}\n' "$rl_grants" "$rl_deny" > "$RL/set-prefixed.json"
+rl_refuse "settings with a plugin-prefixed third grant" WORKER_SESSION_PROFILE_SETTINGS="$RL/set-prefixed.json"
+printf '{"permissions":{"allow":[%s],"deny":["Artifact"]}}\n' "$rl_grants" > "$RL/set-nodeny.json"
+rl_refuse "settings that do not deny the native tools" WORKER_SESSION_PROFILE_SETTINGS="$RL/set-nodeny.json"
+printf 'not json\n' > "$RL/set-bad.json"
+rl_refuse "unparseable settings" WORKER_SESSION_PROFILE_SETTINGS="$RL/set-bad.json"
+rl_refuse "a render request on a launch that is not the readiness role" WORKER_SESSION_PROFILE_READINESS= WORKER_SESSION_RENDER_ARGV=1
+rl_refuse "a render switch that is not exactly 1" WORKER_SESSION_RENDER_ARGV=2
+
+# the render never executes a native binary: with no seam and a PATH claude, render does not run it, exec does
+rm -f "$rl_rec"; rc=0
+env -i PATH="$RL/bin:$PATH" HOME="$RL/home" WORKER_SESSION_PROFILE_READINESS=1 WORKER_SESSION_RENDER_ARGV=1 \
+  WORKER_SESSION_PROFILE_SETTINGS="$rl_settings" WORKER_SESSION_PROFILE_MCP_CONFIG="$rl_mcp" WORKER_SESSION_ID="$rl_sid" \
+  bash "$SHIM" "${rl_caller_default[@]}" > "$RL/render-path.out" 2>/dev/null || rc=$?
+check "readiness render with a PATH claude: exit 0" "$rc" "0"
+check "readiness render with a PATH claude: the native binary is never executed" "$(cat "$rl_rec" 2>/dev/null || true)" ""
+check "readiness render with a PATH claude: the binary element is the bare name, the rest is the same argv" \
+  "$(rl_decode < "$RL/render-path.out")" "[claude]$rl_pre$rl_tail_default"
+rm -f "$rl_rec"
+env -i PATH="$RL/bin:$PATH" HOME="$RL/home" WORKER_SESSION_PROFILE_READINESS=1 \
+  WORKER_SESSION_PROFILE_SETTINGS="$rl_settings" WORKER_SESSION_PROFILE_MCP_CONFIG="$rl_mcp" WORKER_SESSION_ID="$rl_sid" \
+  bash "$SHIM" "${rl_caller_default[@]}" >/dev/null 2>&1 || true
+check "readiness exec with a PATH claude: the same array reaches the binary" "$(cat "$rl_rec" 2>/dev/null || true)" "$rl_pre$rl_tail_default"
+
 echo "---"
 if [ "$fails" -eq 0 ]; then
   echo "PASS - test-headed-arm-worker.sh"

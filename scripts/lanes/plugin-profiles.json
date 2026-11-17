@@ -599,6 +599,16 @@
       "contextMode": "standard",
       "autocompact": 200000
     },
+    "readiness": {
+      "_comment": "the readiness role: floor plugins only and exactly two MCP tool grants, mcp__readiness__inspect and mcp__readiness__act, with every native tool denied. The registry holds NO server definition: the strict MCP config is generated per launch attempt (it binds a private adapter configuration) and worker-claude-launcher.sh refuses a launch whose config is not exactly that one server. mcpServers is therefore the empty list (a strict, empty fallback). Never composed (non-additive), never widened (no gateAllow, chiefAllow, vmLaunch, enable, denyTools or overlay); plugin-profiles.mjs validateReadinessSpec enforces each.",
+      "readiness": true,
+      "enable": [],
+      "drop": ["lean-skills@himmel"],
+      "mcpServers": [],
+      "contextBudget": 35000,
+      "contextMode": "standard",
+      "autocompact": 200000
+    },
     "chief": {
       "_comment": "a chief session (chief.sh new/next arm, and a resume of a chief doc). Floor (handover, himmel-ops, qmd) only. gateAllow stays false: the worker-shaped gateAllow rules are for workers, and a chief runs under the operator's own permission config. Not a worker profile, so it is not in plugin-profiles.mjs WORKER_SESSION_PROFILES.",
       "_comment_lean": "(operator ruling 10-31 LE): the chief launches lean. lean-skills is dropped (0 chief invocations in 231 sessions) and i-have-adhd is in no base, so the chief takes himmel's own 1 KB docs/handover/chief-adhd-brief.md, which headed-arm.sh and chief.sh append with --append-system-prompt-file. denyTools removes the schemas a chief never calls; Artifact is opt-in, and the board stays local. AskUserQuestion and Cron* stay: the chief never calls AskUserQuestion (chief-template.md), and it waits on Cron. Design: the chief lean-profile design spec (specs/design, 2026-10-31).",

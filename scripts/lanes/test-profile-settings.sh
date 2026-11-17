@@ -72,5 +72,50 @@ PLUGIN_PROFILES_REGISTRY="$TMP/registry-c.json" bash "$PS" chief >/dev/null 2>&1
 O=$(PLUGIN_PROFILES_REGISTRY="$TMP/registry-c.json" bash "$PS" chief --mcp-config 2>/dev/null); rc=$?
 [ "$rc" = 2 ] && [ -z "$O" ] && ok "T9 undefined mcp server: --mcp-config fails closed (rc=2, no path)" || bad "T9 mcp rc=$rc out=[$O]"
 
+# T10-T13: the readiness role (C0s cycle 1). A scratch HOME and CLAUDE_CONFIG_DIR keep the resolver
+# off the operator's real plugin universe and settings; nothing here launches a model.
+RH="$TMP/readiness-home"; mkdir -p "$RH/.claude"
+rprof() { HOME="$RH" CLAUDE_CONFIG_DIR="$RH/.claude" bash "$PS" "$@"; }
+R=$(rprof readiness); rc=$?
+[ "$rc" = 0 ] && ok "T10 readiness resolves rc=0" || bad "T10 rc=$rc out=[$R]"
+case "$R" in */readiness.json) ok "T10 basename is readiness.json" ;; *) bad "T10 basename: $R" ;; esac
+if python3 - "$R" <<'E'
+import json, sys
+d = json.load(open(sys.argv[1]))
+p = d["permissions"]
+assert p["allow"] == ["mcp__readiness__inspect", "mcp__readiness__act"], p["allow"]
+assert sorted(p["deny"]) == sorted(["Agent", "Artifact", "Bash", "Edit", "Glob", "Grep", "NotebookEdit", "Read", "WebFetch", "WebSearch", "Write"]), p["deny"]
+assert not any(k in d for k in ("autoMode", "disableWorkflows")), list(d)
+on = sorted(k for k, v in d["enabledPlugins"].items() if v)
+assert on == ["handover@himmel", "himmel-ops@himmel", "qmd@himmel"], on
+E
+then ok "T10 settings: exactly the two grants, every native tool denied, floor plugins only"
+else bad "T10 settings content wrong: $R"; fi
+RM=$(rprof readiness --mcp-config); rc=$?
+[ "$rc" = 0 ] && ok "T11 readiness --mcp-config rc=0" || bad "T11 rc=$rc out=[$RM]"
+case "$RM" in */readiness.mcp.json) ok "T11 basename is readiness.mcp.json" ;; *) bad "T11 basename: $RM" ;; esac
+[ "$(tr -d ' \n' < "$RM" 2>/dev/null)" = '{"mcpServers":{}}' ] && ok "T11 static config holds NO server (the adapter config is launcher-generated)" || bad "T11 config: $(cat "$RM" 2>/dev/null)"
+python3 - "$HERE/plugin-profiles.json" "$TMP/registry-d.json" <<'E'
+import json, sys
+d = json.load(open(sys.argv[1]))
+if "readiness" in d["profiles"]: d["profiles"]["readiness"]["gateAllow"] = True
+json.dump(d, open(sys.argv[2], "w"))
+E
+E12=$(PLUGIN_PROFILES_REGISTRY="$TMP/registry-d.json" rprof readiness 2>&1 >/dev/null); rc=$?
+case "$E12" in *'registry invalid'*readiness*gateAllow*) [ "$rc" = 2 ] && ok "T12 readiness widened with gateAllow fails closed (rc=2, names the registry error)" || bad "T12 rc=$rc" ;; *) bad "T12 wrong refusal reason (rc=$rc): $E12" ;; esac
+python3 - "$HERE/plugin-profiles.json" "$TMP/registry-e.json" <<'E'
+import json, sys
+d = json.load(open(sys.argv[1]))
+if "readiness" in d["profiles"]: d["profiles"]["readiness"]["mcpServers"] = ["qmd"]
+json.dump(d, open(sys.argv[2], "w"))
+E
+E12=$(PLUGIN_PROFILES_REGISTRY="$TMP/registry-e.json" rprof readiness --mcp-config 2>&1 >/dev/null); rc=$?
+case "$E12" in *'registry invalid'*readiness*mcpServers*) [ "$rc" = 2 ] && ok "T12 readiness with a named MCP server fails closed (rc=2, names the registry error)" || bad "T12 mcp rc=$rc" ;; *) bad "T12 mcp wrong refusal reason (rc=$rc): $E12" ;; esac
+# profile-settings.sh takes a single profile name; a list reaches only the resolver CLI itself.
+for list in readiness,worker-impl worker-impl,readiness; do
+    E13=$(cd "$RH" && HOME="$RH" CLAUDE_CONFIG_DIR="$RH/.claude" node "$HERE/plugin-profiles.mjs" "$list" 2>&1 >/dev/null); rc=$?
+    case "$E13" in *'cannot be composed'*) [ "$rc" = 2 ] && ok "T13 $list refuses to compose (rc=2)" || bad "T13 $list rc=$rc" ;; *) bad "T13 $list wrong refusal reason (rc=$rc): $E13" ;; esac
+done
+
 if [ "$FAILED" -gt 0 ]; then echo "---"; echo "FAIL $FAILED case(s)"; exit 1; fi
 echo "---"; echo "ALL PASS"
