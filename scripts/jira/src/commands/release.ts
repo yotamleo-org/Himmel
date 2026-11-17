@@ -206,7 +206,9 @@ export function renderState(s: StateOut, budgets: Record<string, number> = {}): 
   out.push(`leaks: unauthorized ${s.leaks.unauthorized.join(', ') || 'none'}; ruled-in non-member ${s.leaks.ruled_in_non_member.join(', ') || 'none'}`);
   out.push(`requests: open ${s.requests.open.join(', ') || 'none'}; claimed ${s.requests.claimed.join(', ') || 'none'}`);
   for (const c of s.remainder_conflicts ?? []) out.push(`remainder: ${c.parent} cannot close without ${c.child} (${c.phase} ${c.req}); ${c.owner}: ${c.next}`);
-  for (const u of s.unfinished_rulings ?? []) out.push(`unfinished: ${u.ruling} ${u.phase} ${u.key} ${u.op}; ${u.owner} runs \`${u.next}\``);
+  for (const u of s.unfinished_rulings ?? []) out.push(u.status === 'blocked'
+    ? `unfinished: ${u.ruling} ${u.phase} ${u.key} ${u.op}; blocked: ${u.observed ?? 'membership unknown'}; ${u.owner}: ${u.next}`
+    : `unfinished: ${u.ruling} ${u.phase} ${u.key} ${u.op}; ${u.owner} runs \`${u.next}\``);
   for (const i of s.integrity) out.push(`integrity: ${i}`);
   return out.join('\n');
 }

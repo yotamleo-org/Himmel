@@ -69,6 +69,23 @@ release is declared (`jira release state <R>` prints a status other than
   "<why the refusal is right>"`; the ack is refused for an operator-asked key, for a
   key the mirror does not hold, and inside a worker you spawned. With the mirror
   unreadable a refused ask's `asks_operator` reads `null`, and the tick skips the field.
+- **Explicit changes and blocked recovery.**
+
+  A pending request keeps its known required-parent relation when a repeat omits
+  `--required-by`; forgetting the flag does not withdraw a requirement. To record
+  an explicit removal, repeat the request with `--evidence '{"remainder":false}'`
+  after deciding the parent can finish independently. To change the parent, use
+  `--required-by <new-parent>`. These append the changed evidence through the
+  normal request writer; they do not admit the child or close the parent.
+
+  An unfinished move marked `blocked` belongs to the chief. Read its observed
+  membership and actual finish/restore remedy before running another batch;
+  `rm-run` alone cannot resolve conflicting membership. A read-only release
+  directory or unavailable repair-state lock is an explicit read/attempt failure,
+  not a successful scheduled repair. Keep the last verified record and use the
+  normal lock/storage recovery path; do not invent a launch timestamp or claim
+  an unpersisted state is authoritative.
+
 - **The batch reads only disk.** Anything the RM must weigh goes in the
   request's `--why` or in an operator `O-` record; nothing said in a message
   reaches it.

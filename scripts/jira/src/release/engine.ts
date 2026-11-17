@@ -1470,10 +1470,12 @@ const observedOf = (r: RulingRow, cur: string[], source: 'Jira' | 'mirror'): str
   `${r.key} is in ${cur.length ? cur.join(', ') : 'no version'} (${source}); the ${r.op.kind} wants ${vName(r.op.from_v)} -> ${vName(r.op.to_v)}`;
 
 // The chief's two safe ends for a move that sits in neither state, each followed by the replay that writes the row and receipt once.
-function repairOf(release: string, r: RulingRow, live: boolean): string {
-  const finish = `jira fix-version ${r.key} --add ${vName(r.op.to_v)}`;
-  const restore = `jira fix-version ${r.key} --add ${vName(r.op.from_v)}`;
-  return `${live ? '' : 'run `jira mirror` and read this again; if it still holds, '}the chief completes it with \`${finish}\` (add --gate <reason> when ${vName(r.op.to_v)} is frozen) or restores the source with \`${restore}\`, then \`jira release rm-run ${release}\` replays the row and receipt once`;
+function repairOf(release: string, r: RulingRow, live: boolean, cur: string[]): string {
+  const both = r.op.from_v !== null && r.op.to_v !== null && cur.includes(r.op.from_v) && cur.includes(r.op.to_v);
+  const finish = `jira fix-version ${r.key} ${both ? '--remove ' + r.op.from_v : '--add ' + vName(r.op.to_v)}`;
+  const restore = `jira fix-version ${r.key} ${both ? '--remove ' + r.op.to_v : '--add ' + vName(r.op.from_v)}`;
+  const gate = both ? '' : ` (add --gate <reason> when ${vName(r.op.to_v)} is frozen)`;
+  return `${live ? '' : 'run `jira mirror` and read this again; if it still holds, '}the chief completes it with \`${finish}\`${gate} or restores the source with \`${restore}\`, then \`jira release rm-run ${release}\` replays the row and receipt once`;
 }
 
 function phaseRow(ctx: Ctx, r: RulingRow, phase: RulingRow['phase'], extra: Partial<RulingRow>): Omit<RulingRow, 'prev' | 'mac'> {
@@ -1513,8 +1515,9 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
         // is this ruling's own interrupted write; then the one write left is the destination add. Anything else is a hand fix.
         if (!(await ownedRemoval(ctx, last, cur))) {
           event('mismatch');
-          throw new Error(`release apply: ${id} is partly applied in Jira and nothing proves the removal was this ruling's own, so nothing was written: ${observedOf(last, cur, 'Jira')}; ${repairOf(ctx.release, last, true)}`);
+          throw new Error(`release apply: ${id} is partly applied in Jira and nothing proves the removal was this ruling's own, so nothing was written: ${observedOf(last, cur, 'Jira')}; ${repairOf(ctx.release, last, true, cur)}`);
         }
+        assertAdmissionsWritable();
         await ctx.jira.setFixVersion(last.key, 'add', last.op.to_v as string);
         if (!landed(last.op, await ctx.jira.fixVersions(last.key))) {
           event('mismatch');
@@ -1753,6 +1756,7 @@ export function state(ctx: Ctx): StateOut {
     } else if (r.state.startsWith('claimed:')) claimed.push(r.req);
   }
   const { mac: _m, ...leaseOut } = lease ?? ({} as Lease);
+  const unfinished = unfinishedOf(l.rulings, l.events.verified, ctx, mirror.issues, lease);
   return {
     ...s,
     status: lease ? s.status : 'UNKNOWN',
@@ -1763,8 +1767,8 @@ export function state(ctx: Ctx): StateOut {
     refused_asks: refusedAsks(l, mirror.issues),
     words_records: wordsRecords(l),
     asks_operator_keys: asksOperatorKeys(mirror.issues),
-    unfinished_rulings: unfinishedOf(l.rulings, l.events.verified, ctx, mirror.issues, lease),
-    remainder_conflicts: remainderConflicts(l, mirror.issues, ctx.release),
+    unfinished_rulings: unfinished,
+    remainder_conflicts: remainderConflicts(l, mirror.issues, ctx.release, unfinished),
   };
 }
 
@@ -1773,8 +1777,9 @@ export function state(ctx: Ctx): StateOut {
 // names another parent replaces it before anything is filtered, and a withdrawn request states none. A parent that is done or outside
 // the current version, or a child that is closed or already in it, is no contradiction; what the mirror cannot say stays listed as unknown.
 // The refusal ack ends a notice, not the contradiction: a child with no request or ruling left to process is the chief's.
-function remainderConflicts(l: Loaded, issues: Map<string, IssueSnap> | null, release: string): RemainderConflict[] {
+function remainderConflicts(l: Loaded, issues: Map<string, IssueSnap> | null, release: string, unfinished: UnfinishedRuling[]): RemainderConflict[] {
   const current = l.decl.current;
+  const pending = new Map(unfinished.map((r) => [r.ruling, r]));
   const rulingOf = new Map<string, RulingRow>();
   for (const r of l.rulings.verified) rulingOf.set(r.req, r);
   const newest = new Map<string, RequestRow>();
@@ -1801,7 +1806,10 @@ function remainderConflicts(l: Loaded, issues: Map<string, IssueSnap> | null, re
     const closed = q.state === 'held' ? 'held' : q.state.startsWith('ruled:') && ruling?.outcome === 'ADMIT' ? 'ruled' : 'refused';
     if (q.state === 'open') out.push(rm('open'));
     else if (q.state.startsWith('claimed:')) out.push(rm('claimed'));
-    else if (q.state.startsWith('ruled:') && ruling && (ruling.phase === 'intent' || ruling.phase === 'applied')) out.push(rm('ruled'));
+    else if (q.state.startsWith('ruled:') && ruling && (ruling.phase === 'intent' || ruling.phase === 'applied')) {
+      const action = pending.get(ruling.id);
+      out.push(action?.status === 'blocked' ? chief('ruled', action.next) : rm('ruled'));
+    }
     else if (unknown !== null) out.push(chief(closed, refresh));
     else if (q.state.startsWith('ruled:') && ruling?.outcome === 'ADMIT') {
       out.push(chief('ruled', 'the ruling admitted ' + q.key + ' but the mirror still shows it outside ' + current + ': run `jira mirror`; if it still sits outside, ' + remedy));
@@ -1831,7 +1839,7 @@ function unfinishedOf(rulings: Chain<RulingRow>, events: EventRow[], ctx: Ctx, i
     // A replay that already refused this ruling left a `ruled` mismatch event: the journal binding it has was checked live and failed.
     const refused = events.some((e) => e.kind === 'ruled' && e.ruling === r.id && e.readback === 'mismatch');
     if (!refused && boundRemoval(ctx.env, r, snap.fixVersions)) return replay;
-    return { ...base, status: 'blocked', owner: 'chief', next: repairOf(ctx.release, r, false), observed: observedOf(r, snap.fixVersions, 'mirror') };
+    return { ...base, status: 'blocked', owner: 'chief', next: repairOf(ctx.release, r, false, snap.fixVersions), observed: observedOf(r, snap.fixVersions, 'mirror') };
   });
 }
 

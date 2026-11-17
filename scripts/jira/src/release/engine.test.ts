@@ -365,13 +365,16 @@ describe('release engine', () => {
     const journal = (row: Record<string, unknown>) => writeFileSync(journalFile(), `${JSON.stringify(row)}\n`, { flag: 'a' });
     const rmWrite = (extra: Record<string, unknown> = {}) => ({ ts: '2026-10-21T10:00:01.000Z', key: 'K-2', from: ['v1'], to: [], mechanism: 'rm-apply', entry: '5001', ...extra });
 
-    async function interrupted(opts: { release?: boolean } = {}) {
+    async function interrupted(opts: { release?: boolean; required?: boolean } = {}) {
       await setup();
-      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-2', fixVersions: ['v1'] }]);
-      jira.fv.set('K-2', ['v1']);
-      const q = request(ctx(), { verb: 'REVERSION', key: 'K-2', from_v: 'v1', to_v: 'v2', why: 'w', evidence: {}, from: 'console' });
+      const source = opts.required ? 'v2' : 'v1';
+      const destination = opts.required ? 'v1' : 'v2';
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-2', fixVersions: [source] }]);
+      jira.fv.set('K-2', [source]);
+      const q = request(ctx(), { verb: opts.required ? 'INTAKE' : 'REVERSION', key: 'K-2', from_v: source, to_v: destination,
+        why: 'w', evidence: opts.required ? { follow_up_of: 'K-1', remainder: true } : {}, from: 'console' });
       claim(ctx(rmEnv));
-      const r = admit(q.req, { outcome: 'MOVE', op: { kind: 'move', from_v: 'v1', to_v: 'v2' } });
+      const r = admit(q.req, { outcome: opts.required ? 'ADMIT' : 'MOVE', op: { kind: 'move', from_v: source, to_v: destination } });
       const write = jira.setFixVersion.bind(jira);
       jira.setFixVersion = async (k, op, v) => {
         if (op === 'add') throw new Error('crash before the destination add');
@@ -384,6 +387,41 @@ describe('release engine', () => {
       mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-2', fixVersions: [] }]);
       return { q, r };
     }
+
+    it('keeps required-parent and unfinished blocked-move actions consistent', async () => {
+      const { r } = await interrupted({ required: true });
+      const result = state(ctx());
+      const unfinished = result.unfinished_rulings[0];
+      expect(unfinished).toMatchObject({ ruling: r.id, status: 'blocked', owner: 'chief' });
+      expect(result.remainder_conflicts).toMatchObject([{ parent: 'K-1', child: 'K-2', ruling: r.id,
+        owner: 'chief', next: unfinished.next }]);
+    });
+
+    it('suggests removing the other membership when an interrupted move holds both versions', async () => {
+      const { r } = await interrupted();
+      jira.fv.set('K-2', ['v1', 'v2']);
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-2', fixVersions: ['v1', 'v2'] }]);
+      const unfinished = state(ctx()).unfinished_rulings[0];
+      expect(unfinished).toMatchObject({ ruling: r.id, status: 'blocked', owner: 'chief' });
+      expect(unfinished.next).toContain('jira fix-version K-2 --remove v1');
+      expect(unfinished.next).toContain('jira fix-version K-2 --remove v2');
+      expect(unfinished.next).not.toMatch(/--add v[12]/);
+    });
+
+    it('checks admissions writability before completing an attributable new-epoch move', async () => {
+      const { r } = await interrupted();
+      jira.entries.set('K-2', '5001');
+      journal(rmWrite());
+      chmodSync(ledger(), 0o444);
+      const writes = jira.writes;
+      const result = await rmRun(withJournal(ctx()), noJudge);
+      expect(result.join('\n')).toContain(`PENDING ${r.id}`);
+      expect(jira.writes).toBe(writes);
+      expect(jira.fv.get('K-2')).toEqual([]);
+      chmodSync(ledger(), 0o644);
+      await rmRun(withJournal(ctx()), noJudge);
+      expect(jira.fv.get('K-2')).toEqual(['v2']);
+    });
 
     it('RED: with no proof the removal was this ruling\'s own, state is BLOCKED with the observed state, the owner and a concrete repair, and rm-run writes nothing', async () => {
       const { r } = await interrupted();

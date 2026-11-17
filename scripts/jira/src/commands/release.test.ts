@@ -639,6 +639,15 @@ describe('jira release state admissions budget', () => {
     expect(renderState({ ...base, unfinished_rulings: [] } as never)).not.toContain('unfinished:');
   });
 
+  it('prints blocked membership and the chief remedy without pretending prose is a command', () => {
+    const blocked = { ruling: 'R-R1-0003', req: 'Q-R1-0003', key: 'K-2', phase: 'intent',
+      op: 'move v1→v2', status: 'blocked', owner: 'chief', observed: 'K-2 is in v1, v2',
+      next: 'choose finish or restore after checking live membership' };
+    const output = renderState({ ...stateOut(0), unfinished_rulings: [blocked] } as never);
+    expect(output).toContain('blocked: K-2 is in v1, v2; chief: choose finish or restore after checking live membership');
+    expect(output).not.toContain('chief runs `choose');
+  });
+
   it('reads admission-budget:N from the version description into the JSON state', async () => {
     const vf = join(root, 'verbatim.txt');
     await run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '106', '--verbatim-file', vf);
