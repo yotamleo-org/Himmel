@@ -36,6 +36,9 @@ SHA=$(git -C "$REPO" rev-parse HEAD)
 # ── gh PATH stub ─────────────────────────────────────────────────────────
 mkdir -p "$tmp/bin"
 GH_LOG="$tmp/gh.log"
+gh_log() { cat "$GH_LOG"; }
+ledger_cksum() { cksum < "$LEDGER"; }
+ledger_lines() { wc -l < "$LEDGER"; }
 export GH_PR_SNAPSHOT_CACHE_DIR="$tmp/snapshot-cache"
 cat > "$tmp/bin/gh" <<'STUB'
 #!/usr/bin/env bash

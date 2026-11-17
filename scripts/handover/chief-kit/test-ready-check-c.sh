@@ -667,7 +667,7 @@ rm -f "$RUNDIR/macos-cadence.yml.json" "$RUNDIR"/log-*.txt "$RUNDIR/ci.yml.json"
 wf_run "scripts/handover/chief-kit/ready-check.sh"
 check "non-workflow PR: exit 0" "$rc" "0"
 contains "non-workflow PR: check 10 not applicable" "$out" "[PASS] 10."
-notcontains "non-workflow PR: no run list issued" "$(cat "$GH_LOG")" "run list"
+notcontains "non-workflow PR: no run list issued" "$(gh_log)" "run list"
 
 wf_run ".github/workflows/new-thing.yml"
 check "workflow with no workflow_dispatch trigger: exit 1" "$rc" "1"

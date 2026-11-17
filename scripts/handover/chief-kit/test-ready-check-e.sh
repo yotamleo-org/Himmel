@@ -510,12 +510,12 @@ contains "18c: item 18 fails" "$R18_OUT" "[FAIL] 18."
 contains "18c: names the still-open finding gate 4c reports" "$R18_OUT" "still-open codex-1@"
 # control: the same shape with the Important ruled passes, and the check leaves the ledger as it was
 r18_ledger "disproved"
-R18_BEFORE=$(cksum < "$LEDGER"); R18_LINES=$(wc -l < "$LEDGER")
+R18_BEFORE=$(ledger_cksum); R18_LINES=$(ledger_lines)
 R18_RC=0; R18_OUT="$(run)" || R18_RC=$?
 check "18c2 with no recorded round head and the Important ruled: exit 0" "$R18_RC" "0"
 contains "18c2: item 18 passes" "$R18_OUT" "[PASS] 18."
-check "18c2 the check leaves the ledger byte-identical" "$(cksum < "$LEDGER")" "$R18_BEFORE"
-check "18c2 the check adds no ledger line" "$(wc -l < "$LEDGER")" "$R18_LINES"
+check "18c2 the check leaves the ledger byte-identical" "$(ledger_cksum)" "$R18_BEFORE"
+check "18c2 the check adds no ledger line" "$(ledger_lines)" "$R18_LINES"
 printf '%s\n' "$R18_A" > "$REPO/.git/cr-review-rounds/feat/himmel-100-thing.head"
 r18_ledger "disproved"
 printf 'not json\n' >> "$LEDGER"
@@ -526,9 +526,9 @@ r18_ledger "disproved"
 R18_RC=0; R18_OUT="$(STUB_PR_BRANCH="" run)" || R18_RC=$?
 contains "18e an unreadable head branch cannot be judged: item 18 fails" "$R18_OUT" "[FAIL] 18."
 r18_ledger ""
-R18_BEFORE=$(cksum < "$LEDGER")
+R18_BEFORE=$(ledger_cksum)
 run >/dev/null 2>&1 || true
-check "18f the check writes nothing to the ledger" "$(cksum < "$LEDGER")" "$R18_BEFORE"
+check "18f the check writes nothing to the ledger" "$(ledger_cksum)" "$R18_BEFORE"
 # the marker reads findings by head, not by branch: an unruled Important at the tip filed under ANOTHER branch still blocks
 rm -f "$REPO/.git/cr-review-rounds/feat/himmel-100-thing.head"
 printf '{"kind":"avail","ts":"2026-01-01T00:00:00Z","branch":"%s","head":"%s","model":"codex","status":"ok"}\n' "$R18_BRANCH" "$R18_B" > "$LEDGER"
