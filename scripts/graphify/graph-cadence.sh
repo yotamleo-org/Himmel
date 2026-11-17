@@ -897,6 +897,8 @@ _publish_live_if_newer() {
 # steady state: it keeps falling through to the worktree steps, which fail closed
 # (rc 3, a C33 WARN) instead of hiding a broken clone behind a quiet skip.
 if [ "$PUBLISH_POSSIBLE" -eq 0 ] && [ "$SEMANTIC" -eq 0 ] && [ "$GRAPH_JSON_OBJECT_UNREADABLE" -eq 0 ]; then
+    # The run-wide EXIT trap is installed later; until then a killed run must still drop the promote lock.
+    trap _sem_promote_lock_release EXIT
     if _publish_live_if_newer; then
         _write_ledger
         exit 0
