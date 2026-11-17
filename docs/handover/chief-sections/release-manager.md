@@ -59,8 +59,10 @@ release is declared (`jira release state <R>` prints a status other than
   ack ends one. The tick prints `rm-refused=<n>:<KEY>@<ruling>,...` (n counts all,
   the list names the operator-asked ones) and writes them to
   `rm-refused-<doc stem>.tsv` in its state dir; the waiter wakes you once per new
-  operator-asked pair (`WAKE rm-refused <KEY>@<ruling> — fix: <reason>`) and sends
-  the rest as one digest a day (`WAKE rm-refused-digest <n> new: ...`). Answer an
+  operator-asked pair (`WAKE rm-refused <KEY>@<ruling> — fix: <reason> — ground: <ground> — remedy: <the exact command>`)
+  and sends the rest as one digest a day (`WAKE rm-refused-digest <n> new: ... — remedy: <the first command>`). The tsv
+  rows carry the ground and remedy (bounded, control characters flattened); an older four-column row wakes as before.
+  A changed ruling is a new pair and wakes again; the same pair wakes once. Answer an
   operator-asked one by asking again with the operator's words (`--decision
   --words`), recording an `O-` record, or closing the ticket. A refusal you hold
   right on any other key ends with `jira release ack <R> --ruling <R-id> --reason
@@ -146,16 +148,26 @@ release is declared (`jira release state <R>` prints a status other than
   the first 8 hex of the held signature, which moves only when the held set moves.
   `unfiled=<n>` counts signed operator records no request carries yet. All three
   read `release/<R>/repair-state.json`, the one record the jira CLI writes
-  (`jira release repair-state <R> --json` prints it, with `operator_command` set
-  while the state is `off:unreviewed`); the tick reads it and writes no repair file.
+  (`jira release repair-state <R> --json` prints it; `operator_command` is stored in
+  the record itself while no review marker exists and the state is `off:unreviewed`,
+  `off:error` or `lost`: the first apply, the one permitted act); the tick reads it and writes no repair file. Every writer of the record (the read, `--attempt`, the run's
+  begin and end) takes the short `repair-state.lock.d` lock and re-reads under it, always
+  after `repair.lock` (the run's lifetime lock) and never the other way.
   `repair-held.json` and the other repair files stay as written copies for now.
   `repair=off:<why>` shows while the repair cannot
   run: `mirror-unknown` or `bad-input` (a stop), `error` (a run that reported an
   error, retried on the `TICK_RMRUN_MIN_SECS` gap), `lost` (a launched run
-  left no end record: it failed to start or died mid-run; the tick retries it on a
+  left no end record: it failed to start or died mid-run, or its owner cannot be bound
+  to its process: a pid counts as live only while it shows the recorded process
+  identity; the tick retries it on a
   backoff from `TICK_RMRUN_MIN_SECS`, capped at 6 h, and `repair-run.log` holds its
-  stderr; a launcher that never starts the CLI leaves no record and is retried at the
-  gap), or `unreviewed` (no review marker in the record,
+  stderr; it shows before any review too, but nothing launches without the marker),
+  `unavailable` (the tick wanted to launch and no launch attempt could be recorded:
+  the CLI is absent, refused it or a run is alive), `unread` (no record can be read
+  even through the CLI). Before each detached start the tick asks the CLI to record the
+  attempt (`repair-state <R> --attempt`); the record's attempt time and count time the
+  next try at the gap, doubling to 6 h, so a launcher that never starts the CLI is not
+  retried every tick. `unreviewed` (no review marker in the record,
   so the first `jira release repair <R> --apply --repo <owner/name>` is yours, after
   a dry run). That first apply is the station's first repair run. Run the same
   command without `--apply` first: the dry run writes nothing, prints the lanes and

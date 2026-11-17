@@ -216,8 +216,10 @@ mkdoc R1
 reset; cp "$GOLDEN" "$W/state.json"
 out="$(tick)"
 check 'rm-refused= counts every refused ask and lists the operator-asked one' '3:ABC-2@R-R1-0001' "$(field rm-refused "$out")"
-check 'the tsv holds one row per refused ask: key, ruling, reason, asks_operator' \
-    "$(printf 'ABC-2\tR-R1-0001\tname the operator'"'"'s words for ABC-2\t1\nABC-3\tR-R1-0002\tname the operator'"'"'s words for ABC-3\t0\nABC-4\tR-R1-0003\tname the operator'"'"'s words for ABC-4\t0')" \
+gold() { python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); a=[x for x in d["refused_asks"] if x["key"]==sys.argv[2]][0]; print(a[sys.argv[3]])' "$GOLDEN" "$1" "$2"; }
+tsv_row() { printf '%s\t%s\t%s\t%s\t%s\t%s' "$1" "$(gold "$1" ruling)" "$(gold "$1" reason)" "$2" "$(gold "$1" ground)" "$(gold "$1" remedy)"; }
+check 'the tsv holds one row per refused ask: key, ruling, reason, asks_operator, ground and the exact remedy' \
+    "$(tsv_row ABC-2 1; echo; tsv_row ABC-3 0; echo; tsv_row ABC-4 0)" \
     "$(cat "$W/state/rm-refused-chief.tsv" 2>/dev/null)"
 check 'release-state-<stem>.json carries status OK and the golden words_records and asks_operator_keys' 'OK|1|O-R1-0003|ABC-2' \
     "$(python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); print("%s|%d|%s|%s" % (d["status"], len(d["words_records"]), d["words_records"][0]["id"], ",".join(d["asks_operator_keys"])) + ("" if d.get("ts") else "|no-ts"))' "$W/state/release-state-chief.json" 2>/dev/null)"
@@ -230,13 +232,33 @@ printf '#!/usr/bin/env bash\ncat "%s/cw.line"\n' "$W" > "$W/cw-tick.sh"
 printf '#!/usr/bin/env bash\necho PROCEED\n' > "$W/cw-bank.sh"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$W/cw-off.sh"
 printf '#!/usr/bin/env bash\nexit 2\n' > "$W/cw-budget.sh"
-cw_out="$(CHIEF_WAIT_TICK="$W/cw-tick.sh" CHIEF_WAIT_USAGE="$W/cw-bank.sh" CHIEF_WAIT_INTERVAL=1 CHIEF_WAIT_POLL_SEC=0.2 CHIEF_WAIT_FAIL_WAKE=1000 \
+cw_wait() { # <timeout secs>: one chief-wait run against the tick line in cw.line
+    CHIEF_WAIT_TICK="$W/cw-tick.sh" CHIEF_WAIT_USAGE="$W/cw-bank.sh" CHIEF_WAIT_INTERVAL=1 CHIEF_WAIT_POLL_SEC=0.2 CHIEF_WAIT_FAIL_WAKE=1000 \
     CHIEF_WAIT_PAGE_CMD="$W/cw-off.sh" CHIEF_WAIT_BUDGET="$W/cw-budget.sh" CHIEF_WAIT_ORPHAN="$W/cw-off.sh" CHIEF_WAIT_DISPATCH="$W/cw-off.sh" \
     WAIT_SWEEP_CMD="$W/cw-off.sh" WAIT_FOCUS_CMD="$W/cw-off.sh" HIMMEL_DENIAL_ACK_DIR="$W/acks" \
-    timeout 20 bash "$HERE/chief-wait.sh" "$W/cw/consoles/c.md" --doc "$W/handover/chief.md" --workers N1.md 2>/dev/null)"  # gnu-ok: Linux-only kit
-check "the tick's real tsv feeds chief-wait: one operator wake naming key, ruling and fix, then the digest" \
-    "WAKE rm-refused ABC-2@R-R1-0001 — fix: name the operator's words for ABC-2|WAKE rm-refused-digest 2 new: ABC-3@R-R1-0002,ABC-4@R-R1-0003" \
+    timeout "${1:-20}" bash "$HERE/chief-wait.sh" "$W/cw/consoles/c.md" --doc "$W/handover/chief.md" --workers N1.md 2>/dev/null  # gnu-ok: Linux-only kit
+}
+cw_out="$(cw_wait 20)"
+check "the tick's real tsv feeds chief-wait: one operator wake naming key, ruling, cause and the exact remedy, then the digest with its remedy" \
+    "WAKE rm-refused ABC-2@R-R1-0001 — fix: $(gold ABC-2 reason) — ground: $(gold ABC-2 ground) — remedy: $(gold ABC-2 remedy)|WAKE rm-refused-digest 2 new: ABC-3@R-R1-0002,ABC-4@R-R1-0003 — remedy: $(gold ABC-3 remedy)" \
     "$(printf '%s\n' "$cw_out" | grep '^WAKE ' | paste -sd'|' -)"
+# one delivery: the same refusals do not wake again
+check 'the same pairs wake once: a second run on the unchanged tsv delivers nothing' '' "$(cw_wait 5 | grep '^WAKE ' || true)"
+# changed evidence is a new ruling and so a new pair: it wakes once, with its own remedy, and the old pairs stay quiet
+python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); a=d["refused_asks"][0]; a["ruling"]="R-R1-0004"; a["reason"]="the operator words changed"; a["remedy"]=a["remedy"].replace("--why \"<why>\"", "--why \"<why>\" --required-by P-1"); print(json.dumps(d))' "$GOLDEN" > "$W/state.json"
+out="$(tick)"
+printf 'TICK 03:00 hb=1m workers=N1:FRESH livestate=ok procs=2 models=x ceiling=ok atq=0 suites=0alive/0dead prs=#10 bank=5h8/wk15/codex=? fill=40 tails=N1:LIVE inbox=none tick=UNKNOWN fleet=3/15 capacity=ok gql=4000/04:00 orphans=none nonces=ok legset=ok board=ok denials=none or=skip fails=none rm-refused=%s\n' \
+    "$(field rm-refused "$out")" > "$W/cw.line"
+check 'a changed ruling re-notifies once with the new cause and remedy; the old and unchanged pairs stay quiet' \
+    "WAKE rm-refused ABC-2@R-R1-0004 — fix: the operator words changed — ground: $(gold ABC-2 ground) — remedy: $(gold ABC-2 remedy | sed 's/--why "<why>"/--why "<why>" --required-by P-1/')" \
+    "$(cw_wait 20 | grep '^WAKE ' | paste -sd'|' -)"
+# an older four-column row wakes as it always did, and control characters never reach the line
+printf 'ABC-9\tR-R1-0009\told row reason\t1\nABC-8\tR-R1-0008\tbad\033[31m reason\t1\t\033[2Jground\tremedy with\033[0m escapes\n' > "$W/state/rm-refused-chief.tsv"
+printf 'TICK 03:00 hb=1m workers=N1:FRESH livestate=ok procs=2 models=x ceiling=ok atq=0 suites=0alive/0dead prs=#10 bank=5h8/wk15/codex=? fill=40 tails=N1:LIVE inbox=none tick=UNKNOWN fleet=3/15 capacity=ok gql=4000/04:00 orphans=none nonces=ok legset=ok board=ok denials=none or=skip fails=none rm-refused=2:ABC-9@R-R1-0009,ABC-8@R-R1-0008\n' > "$W/cw.line"
+cw_old="$(cw_wait 20 | grep '^WAKE ' | paste -sd'|' -)"
+check 'an older four-column tsv row wakes in the old shape' 'WAKE rm-refused ABC-9@R-R1-0009 — fix: old row reason' "$(printf '%s' "$cw_old" | tr '|' '\n' | sed -n 1p)"
+check 'control characters in a row never reach the wake line' '0' "$(printf '%s' "$cw_old" | grep -c "$(printf '\033')" || true)"
+check 'a six-column row carries its ground and remedy with the escapes flattened' 'WAKE rm-refused ABC-8@R-R1-0008 — fix: bad [31m reason — ground: [2Jground — remedy: remedy with [0m escapes' "$(printf '%s' "$cw_old" | tr '|' '\n' | sed -n 2p | tr -d '\033')"
 
 state '[]' null null
 out="$(tick)"

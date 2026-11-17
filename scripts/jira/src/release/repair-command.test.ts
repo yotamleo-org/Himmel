@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createHash } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { appendFileSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import { declare, leaseAcquire, operatorDecision, request, rmRun, state as engineState, type Ctx, type Judge, type JiraPort } from './engine.js';
-import { runSignature } from './repair-state.js';
+import { processIdentity, runSignature } from './repair-state.js';
 import { appendChain, loadKey, readChain } from './ledger.js';
 import { passingPr, repairRun, RequestRefused, type RepairReport, type RepairRunOptions } from './repair-run.js';
 import { refuseRequest, registerRelease, repairGetter } from '../commands/release.js';
@@ -1099,7 +1099,7 @@ describe('10231 repair-state.json is the one record the CLI writes', () => {
   it('a running record whose owner is alive stays running', async () => {
     setup();
     mkdirSync(releaseDir(), { recursive: true });
-    writeFileSync(recPath(), running({ launched: Math.floor(Date.now() / 1000), pid: process.pid }));
+    writeFileSync(recPath(), running({ launched: Math.floor(Date.now() / 1000), pid: process.pid, pid_identity: processIdentity(process.pid) }));
     expect(JSON.parse((await cli('repair-state', 'R1', '--json'))[0]!).state).toBe('running');
   });
 
@@ -1132,4 +1132,192 @@ describe('10231 repair-state.json is the one record the CLI writes', () => {
     expect(existsSync(join(releaseDir(), 'repair-held.json'))).toBe(true);
     expect(existsSync(join(releaseDir(), 'repair-status'))).toBe(true);
   });
+});
+
+// --- T8 fix wave C: one serialized writer, a real retry clock, bound owners, the persisted operator command ------------------------
+
+describe('T8 C: one serialized repair-state writer and the retry clock', () => {
+  const recPath = () => join(releaseDir(), 'repair-state.json');
+  const rec = (): Record<string, unknown> => JSON.parse(readFileSync(recPath(), 'utf8'));
+  const CLI = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'dist', 'index.js');
+  const envOf = (): Record<string, string> => ({
+    ...(process.env as Record<string, string>), HIMMEL_RELEASE_STATE_DIR: join(root, 'release'), HIMMEL_RELEASE_KEY_DIR: join(root, 'keys'), JIRA_PROJECT_KEY: 'TESTKEY',
+  });
+  const cli = async (...args: string[]): Promise<{ lines: string[]; code: number }> => {
+    vi.stubEnv('HIMMEL_RELEASE_STATE_DIR', join(root, 'release'));
+    vi.stubEnv('HIMMEL_RELEASE_KEY_DIR', join(root, 'keys'));
+    const lines: string[] = [];
+    const spy = vi.spyOn(console, 'log').mockImplementation((s: unknown) => { lines.push(String(s)); });
+    process.exitCode = undefined;
+    try {
+      const program = new Command().exitOverride();
+      registerRelease(program);
+      await program.parseAsync(['release', ...args], { from: 'user' });
+    } finally {
+      spy.mockRestore();
+    }
+    const code = Number(process.exitCode ?? 0);
+    process.exitCode = undefined;
+    return { lines, code };
+  };
+  const state = async (...more: string[]): Promise<Record<string, unknown>> => JSON.parse((await cli('repair-state', 'R1', '--repo', 'o/r', '--json', ...more)).lines[0]!);
+  const deadPid = (): number => spawnSync('true').pid as number;
+  const now = (): number => Math.floor(Date.now() / 1000);
+  const record = (over: Record<string, unknown>): string => JSON.stringify({
+    release: 'R1', state: 'idle', reason: null, reviewed_at: '2026-11-01T00:00:00.000Z', signature: '', held_signature: '', held_keys: [], unfiled: 0,
+    launched: null, pid: null, pid_identity: null, attempted: null, attempts: 0, lost_count: 0, operator_command: null, last_exit: null, ts: '2026-11-01T00:00:00.000Z', ...over,
+  });
+  const put = (over: Record<string, unknown>) => { mkdirSync(releaseDir(), { recursive: true }); writeFileSync(recPath(), record(over)); };
+  const legacy = (files: Record<string, string | { text: string; mtime: number }>) => {
+    mkdirSync(releaseDir(), { recursive: true });
+    for (const [name, v] of Object.entries(files)) {
+      const text = typeof v === 'string' ? v : v.text;
+      writeFileSync(join(releaseDir(), name), text);
+      if (typeof v !== 'string') utimesSync(join(releaseDir(), name), v.mtime, v.mtime);
+    }
+  };
+
+  // 6: the CLI records the attempt before the detached start, so a start that never reaches the CLI still has a clock
+  it('6: --attempt records a bounded launch attempt and leaves the state; a live owner refuses it', async () => {
+    setup();
+    put({});
+    const a = await state('--attempt');
+    expect(a).toMatchObject({ state: 'idle', attempts: 1 });
+    expect(Math.abs((a['attempted'] as number) - now())).toBeLessThan(5);
+    expect(rec()).toMatchObject({ state: 'idle', attempts: 1, attempted: a['attempted'] });
+    expect(await state('--attempt')).toMatchObject({ attempts: 2 });
+    for (let i = 0; i < 80; i++) await state('--attempt');
+    expect(rec()['attempts']).toBe(64);
+    put({ state: 'running', launched: now(), pid: process.pid, pid_identity: processIdentity(process.pid), attempts: 3, attempted: now() - 5 });
+    const busy = await cli('repair-state', 'R1', '--repo', 'o/r', '--json', '--attempt');
+    expect(busy.code).toBe(3);
+    expect(rec()).toMatchObject({ state: 'running', attempts: 3 });
+  });
+
+  it('6: a run that starts clears the attempt count and binds its pid to the process identity; the attempt time stays', async () => {
+    const issues = filing();
+    put({ attempts: 4, attempted: now() - 100 });
+    const mid: Array<Record<string, unknown>> = [];
+    const live = liveGetter(issues, { 'K-2': '200' });
+    expect((await applyRun({ get: (async (p: string) => { mid.push(rec()); return live(p); }) as Getter })).status).toBe('ok');
+    expect(mid[0]).toMatchObject({ state: 'running', pid: process.pid, attempts: 0 });
+    expect(mid[0]!['pid_identity']).toBe(processIdentity(process.pid));
+    expect(mid[0]!['attempted']).toBeTypeOf('number');
+    expect(rec()).toMatchObject({ attempts: 0, pid: null, pid_identity: null });
+  });
+
+  // 7: migration keeps the old launch / end / owner meaning
+  describe('7 migration of the files an old tick and run left', () => {
+    const E = now() - 4000;
+    const sig = 'e'.repeat(64);
+    it('an old review marker and a matching signature never turn an unfinished launch into idle or held', async () => {
+      setup();
+      legacy({ 'repair-reviewed': { text: '2026-11-01T00:00:00Z\n', mtime: E - 500 }, 'repair-signature': `${sig}\n`, 'repair-launch': `${E} 1\n` });
+      expect(await state()).toMatchObject({ state: 'lost', reason: 'lost', launched: E, lost_count: 1, signature: sig, reviewed_at: '2026-11-01T00:00:00Z' });
+    });
+
+    it('a live old lock owner cannot be bound to its process, so it reads lost:unknown-owner, not running and not dead', async () => {
+      setup();
+      legacy({ 'repair-reviewed': { text: 'x\n', mtime: E - 500 }, 'repair-launch': `${E} 0\n`, 'repair.lock': `${process.pid}\n` });
+      expect(await state()).toMatchObject({ state: 'lost', reason: 'unknown-owner', pid: null });
+    });
+
+    it('an end artifact written at or after the launch ends it: a review marker is idle or held, an error status is off:error', async () => {
+      setup();
+      legacy({ 'repair-reviewed': { text: 'x\n', mtime: E + 100 }, 'repair-launch': `${E} 2\n` });
+      expect(await state()).toMatchObject({ state: 'idle', reason: null, launched: E });
+      rmSync(recPath());
+      legacy({ 'repair-status': { text: 'error\nboom\n', mtime: E + 100 }, 'repair-launch': `${E} 2\n` });
+      expect(await state()).toMatchObject({ state: 'off', reason: 'error', launched: E });
+    });
+
+    it('an unreadable launch stamp is conservative: lost, never idle', async () => {
+      setup();
+      legacy({ 'repair-reviewed': { text: 'x\n', mtime: E - 500 }, 'repair-launch': 'garbage\n' });
+      expect(await state()).toMatchObject({ state: 'lost', launched: null, lost_count: 0 });
+    });
+
+    it('no launch stamp keeps the earlier reading: a marker alone is idle, none is off:unreviewed', async () => {
+      setup();
+      legacy({ 'repair-reviewed': 'x\n' });
+      expect(await state()).toMatchObject({ state: 'idle' });
+      rmSync(recPath());
+      rmSync(join(releaseDir(), 'repair-reviewed'));
+      expect(await state()).toMatchObject({ state: 'off', reason: 'unreviewed' });
+    });
+  });
+
+  describe('7 a recorded pid binds the process identity, never the pid alone', () => {
+    it('running + alive + the same identity is running', async () => {
+      setup();
+      put({ state: 'running', launched: now(), pid: process.pid, pid_identity: processIdentity(process.pid) });
+      expect(await state()).toMatchObject({ state: 'running', reason: null });
+    });
+
+    it('running + alive pid + no identity is lost:unknown-owner (conservative), and a different identity is lost (a recycled pid)', async () => {
+      setup();
+      put({ state: 'running', launched: now(), pid: process.pid, pid_identity: null });
+      expect(await state()).toMatchObject({ state: 'lost', reason: 'unknown-owner' });
+      put({ state: 'running', launched: now(), pid: process.pid, pid_identity: 'posix:Thu Jan  1 00:00:00 1970 some other command' });
+      expect(await state()).toMatchObject({ state: 'lost', reason: 'lost' });
+      put({ state: 'running', launched: now(), pid: deadPid(), pid_identity: 'posix:whatever' });
+      expect(await state()).toMatchObject({ state: 'lost', reason: 'lost' });
+    });
+  });
+
+  // 8 + 10: a crash before the first review is a failure with the one permitted act, persisted in the record itself
+  it('8, 10: a first run that died before any review reads lost, keeps the review-needed command and stores it in the record', async () => {
+    setup();
+    put({ state: 'running', reviewed_at: null, launched: now() - 900, pid: deadPid(), pid_identity: 'posix:x' });
+    const got = await state();
+    expect(got).toMatchObject({ state: 'lost', reason: 'lost', reviewed_at: null, operator_command: 'jira release repair R1 --apply --repo o/r' });
+    expect(rec()['operator_command']).toBe('jira release repair R1 --apply --repo o/r');
+  });
+
+  it('10: off:unreviewed stores the real command on disk (not only in the CLI output); a later read with another repo does not rewrite it; a review clears it', async () => {
+    setup();
+    await state();
+    expect(rec()).toMatchObject({ state: 'off', reason: 'unreviewed', operator_command: 'jira release repair R1 --apply --repo o/r' });
+    await cli('repair-state', 'R1', '--repo', 'p/q', '--json');
+    expect(rec()['operator_command']).toBe('jira release repair R1 --apply --repo o/r');
+    put({ state: 'idle', reviewed_at: '2026-11-01T00:00:00.000Z', operator_command: 'jira release repair R1 --apply --repo o/r' });
+    await state();
+    expect(rec()['operator_command']).toBeNull();
+  });
+
+  // 9: read / derive / publish serialize with the writers and re-read under the lock
+  it('9: a read waits for the state lock and re-reads under it, so a stale migration cannot overwrite a newer running record', async () => {
+    setup();
+    mkdirSync(releaseDir(), { recursive: true });
+    const lockDir = join(releaseDir(), 'repair-state.lock.d');
+    mkdirSync(lockDir);
+    const fd = openSync(join(lockDir, '.lock'), 'wx');
+    const child = spawn(process.execPath, [CLI, 'release', 'repair-state', 'R1', '--repo', 'o/r', '--json'], { env: envOf(), stdio: ['ignore', 'pipe', 'pipe'] });
+    let out = '';
+    child.stdout.on('data', (d: Buffer) => { out += d.toString(); });
+    const closed = new Promise<void>((res) => { child.on('close', () => res()); });
+    await new Promise((r) => setTimeout(r, 700));
+    expect(out).toBe('');
+    expect(existsSync(recPath())).toBe(false);
+    // the holder is a writer publishing the newer state
+    writeFileSync(recPath(), record({ state: 'running', launched: now(), pid: process.pid, pid_identity: processIdentity(process.pid) }));
+    closeSync(fd);
+    unlinkSync(join(lockDir, '.lock'));
+    await closed;
+    expect(JSON.parse(out)).toMatchObject({ state: 'running' });
+    expect(rec()).toMatchObject({ state: 'running', pid: process.pid });
+  }, 20_000);
+
+  it('9: concurrent attempts and a concurrent read lose no update: N attempts count N', async () => {
+    setup();
+    put({});
+    const run1 = (...extra: string[]) => new Promise<number>((res) => {
+      const c = spawn(process.execPath, [CLI, 'release', 'repair-state', 'R1', '--repo', 'o/r', '--json', ...extra], { env: envOf(), stdio: 'ignore' });
+      c.on('close', (code) => res(code ?? -1));
+    });
+    const codes = await Promise.all([run1('--attempt'), run1(), run1('--attempt'), run1('--attempt'), run1(), run1('--attempt'), run1('--attempt')]);
+    expect(codes).toEqual([0, 0, 0, 0, 0, 0, 0]);
+    expect(rec()).toMatchObject({ state: 'idle', attempts: 5 });
+    expect(readdirSync(releaseDir()).filter((n) => n.includes('.tmp-'))).toEqual([]);
+  }, 30_000);
 });

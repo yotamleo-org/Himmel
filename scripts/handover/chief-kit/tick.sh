@@ -3424,11 +3424,12 @@ if [ -n "$rf_stem" ]; then
     if [ "${rm_status:-}" = OK ]; then
         # shellcheck disable=SC2016  # the python program is single-quoted on purpose
         rm_refused="$(printf '%s' "$rm_json" | python3 -I -c '
-import datetime, json, os, sys, tempfile
+import datetime, json, os, re, sys, tempfile
 d = json.load(sys.stdin)
 out, stem = sys.argv[1], sys.argv[2]
 asks = [a for a in d.get("refused_asks") or [] if isinstance(a, dict)]
-clean = lambda s: " ".join(str(s).split())
+# one line per field: tabs, newlines and every other control character flatten to a space
+clean = lambda s: " ".join(re.sub(r"[\x00-\x1f\x7f]", " ", str(s)).split())
 if (d.get("inputs") or {}).get("mirror") == "UNKNOWN":
     try:
         os.remove(os.path.join(out, "release-state-%s.json" % stem))
@@ -3442,7 +3443,8 @@ def put(name, text):
         f.write(text)
     os.replace(tmp, os.path.join(out, name))
 flag = lambda a: {True: "1", False: "0"}.get(a.get("asks_operator"), "?")
-put("rm-refused-%s.tsv" % stem, "".join("%s\t%s\t%s\t%s\n" % (clean(a.get("key")), clean(a.get("ruling")), clean(a.get("reason")), flag(a)) for a in asks))
+# key, ruling, reason, asks_operator, then the ground and the exact remedy (bounded); chief-wait reads these six columns and the four of an older tsv
+put("rm-refused-%s.tsv" % stem, "".join("%s\t%s\t%s\t%s\t%s\t%s\n" % (clean(a.get("key")), clean(a.get("ruling")), clean(a.get("reason"))[:400], flag(a), clean(a.get("ground", ""))[:80], clean(a.get("remedy", ""))[:600]) for a in asks))
 ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 put("release-state-%s.json" % stem, json.dumps({"ts": ts, "status": d.get("status"), "release": d.get("release"), "words_records": d.get("words_records") or [], "asks_operator_keys": d.get("asks_operator_keys") or []}) + "\n")
 if asks:
@@ -3465,16 +3467,22 @@ fi
 # and no sooner than TICK_RMRUN_MIN_SECS after the log was last written. The run records its own launch and signature; the
 # CLI clears the signature after an error or a capped run with progress. A run that died (state running, owner gone, or
 # state lost) relaunches even on an unchanged signature, on a doubling backoff from max(TICK_RMRUN_MIN_SECS, 60) capped at
-# 6 h, from the record's launched epoch and lost_count. A launcher that never starts the CLI leaves no record and retries
-# at the gap. The owner is live on proc_tree_process_alive rc 0 or 2 for a launch since boot. None of the three fields is
-# in chief-wait's key. Seams: TICK_REPAIR_PROBE (a script run in place of the CLI), TICK_REPAIR_STATE_PROBE (the read),
-# TICK_RMRUN_LAUNCHER.
+# 6 h, from the record's launched epoch and lost_count. Before each detached start the tick asks the CLI to record the attempt
+# (`release repair-state <R> --attempt`, the one prepare step; the CLI stamps the record, the tick stamps nothing): the record's
+# attempted epoch and attempts count time the next try on the same doubling backoff, so a launcher that never starts the CLI is
+# retried at the gap, then at twice the gap, and an old append-only log mtime never re-launches it every tick; the start is skipped
+# (repair=off:unavailable) when no attempt can be recorded, and repair=off:unread shows while no record can be read at all. The
+# owner of a running record is live only when its pid still shows the recorded process identity (proc_tree_process_identity; a pid
+# with no recorded identity, or one ps cannot read, is not live), checked before and apart from the review marker, so a first run
+# that died before any review reads off:lost (the record's operator_command names the review-needed first apply; no launch without
+# the marker). None of the fields is in chief-wait's key. Seams: TICK_REPAIR_PROBE (a script run in place of the CLI),
+# TICK_REPAIR_STATE_PROBE (the read and the attempt), TICK_RMRUN_LAUNCHER.
 held_summary="" unfiled_summary="" repair_summary=""
 . "$HERE/../../lib/proc-tree.sh"
 if [[ "$rm_rel" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] && [ -n "${rm_root:-}" ] && [ -d "$rm_root/$rm_rel" ]; then
     rp_dir="$rm_root/$rm_rel"
     rp_cli="${rm_anchor%/.git}/scripts/jira/dist/index.js"
-    rp_read() { # one line: state reason reviewed signature launched lost_count pid held sig8 unfiled ('-' for none); nothing when the record is unreadable
+    rp_read() { # one TAB-separated line: state reason reviewed signature launched lost_count pid held sig8 unfiled attempted attempts identity ('-' for none); nothing when the record is unreadable
         # shellcheck disable=SC2016  # the python program is single-quoted on purpose
         python3 -I -c '
 import json, re, sys
@@ -3487,8 +3495,12 @@ try:
     why = re.sub(r"[^a-z-]", "", d["reason"] or "") or "-"
     held_ok = isinstance(hs, str) and re.fullmatch(r"[0-9a-f]{64}", hs) is not None
     num = lambda v: str(v) if type(v) is int and v >= 0 else "-"
-    print(d["state"], why, 1 if d["reviewed_at"] else 0, sig or "-", num(d["launched"]), k, num(d["pid"]),
-          len(set(keys)) if held_ok else 0, hs[:8] if held_ok else "-", un if held_ok else 0)
+    ident = d.get("pid_identity")
+    ident = ident if isinstance(ident, str) and ident and not re.search(r"[\t\r\n]", ident) else "-"
+    att = d.get("attempts", 0)
+    att = att if type(att) is int and 0 <= att <= 64 else 0
+    print("\t".join(str(v) for v in (d["state"], why, 1 if d["reviewed_at"] else 0, sig or "-", num(d["launched"]), k, num(d["pid"]),
+          len(set(keys)) if held_ok else 0, hs[:8] if held_ok else "-", un if held_ok else 0, num(d.get("attempted")), att, ident)))
 except Exception:
     pass
 ' "$rp_dir/repair-state.json" 2>/dev/null
@@ -3502,13 +3514,15 @@ except Exception:
         fi
         rp_line="$(rp_read)" || rp_line=""  # swallow-ok: still unreadable shows no repair field
     fi
-    rp_state="" rp_reason="" rp_marker=0 rp_rsig="" rp_E="" rp_k=0 rp_pid="" rp_held="" rp_sig8="" rp_unf=""
+    rp_state="" rp_reason="" rp_marker=0 rp_rsig="" rp_E="" rp_k=0 rp_pid="" rp_held="" rp_sig8="" rp_unf="" rp_att="" rp_attn=0 rp_ident="" rp_unread=0
     if [ -n "$rp_line" ]; then
-        read -r rp_state rp_reason rp_marker rp_rsig rp_E rp_k rp_pid rp_held rp_sig8 rp_unf <<<"$rp_line"
+        IFS=$'\t' read -r rp_state rp_reason rp_marker rp_rsig rp_E rp_k rp_pid rp_held rp_sig8 rp_unf rp_att rp_attn rp_ident <<<"$rp_line"
         [ "$rp_reason" != - ] || rp_reason=""
         [ "$rp_rsig" != - ] || rp_rsig=""
         [ "$rp_E" != - ] || rp_E=""
         [ "$rp_pid" != - ] || rp_pid=""
+        [ "$rp_att" != - ] || rp_att=""
+        [ "$rp_ident" != - ] || rp_ident=""
         case "${rp_held:-}" in '' | *[!0-9]* | 0) ;; *) held_summary="$rp_held:$rp_sig8" ;; esac
         case "${rp_unf:-}" in '' | *[!0-9]* | 0) ;; *) unfiled_summary="$rp_unf" ;; esac
     fi
@@ -3516,10 +3530,22 @@ except Exception:
     case "$rp_state" in
         off) rp_why="${rp_reason:-error}" ;;
         lost) rp_why=lost ;;
+        '') rp_unread=1 ;;
     esac
-    # The owner and the lost-launch rule are reads of the record and the process table, so a fenced tick shows the field too.
-    rp_busy=0 rp_lost=0 rp_k2=0 rp_wait=0 rp_now=0 rp_gap=600
-    if [ "$rp_marker" = 1 ]; then
+    [ "$rp_unread" = 0 ] || rp_why=unread
+    # The owner and the lost-launch rule are reads of the record and the process table, so a fenced tick shows the field too, and they
+    # do not wait for the review marker: a first run that died before any review is a failure to show, not a quiet pre-review state.
+    rp_busy=0 rp_lost=0 rp_k2=0 rp_wait=0 rp_now=0 rp_gap=600 rp_att_ok=1
+    rp_owner() { # <pid> <recorded identity>: live only when the pid still shows that identity; dead when absent or another process; else unknown
+        local pid="$1" ident="$2" arc=0 cur=""
+        proc_tree_process_alive "$pid" || arc=$?
+        if [ "$arc" = 1 ]; then echo dead; return; fi
+        if [ -z "$ident" ]; then echo unknown; return; fi
+        cur="$(proc_tree_process_identity "$pid" 2>/dev/null)" || cur=""  # swallow-ok: an unreadable identity is unknown below
+        if [ -z "$cur" ]; then echo unknown; return; fi
+        if [ "$cur" = "$ident" ]; then echo live; else echo dead; fi
+    }
+    if [ -n "$rp_state" ]; then
         rp_now="$(date +%s)"
         rp_gap="${TICK_RMRUN_MIN_SECS:-600}"
         case "$rp_gap" in '' | *[!0-9]*) rp_gap=600 ;; esac
@@ -3527,13 +3553,12 @@ except Exception:
         rp_base=$rp_gap; [ "$rp_base" -ge 60 ] || rp_base=60
         rp_cap=21600; [ "$rp_cap" -ge "$rp_base" ] || rp_cap=$rp_base
         if [ "$rp_state" = running ]; then
-            # live(pid): proc_tree_process_alive rc 0 or 2 (an EPERM pid counts as live, as in takeLock), and a launch since boot
+            # live(pid): the recorded process identity, and a launch since boot
             rp_live=0
             case "$rp_pid" in
                 '' | *[!0-9]*) ;;
                 *)
-                    rp_rc=0; proc_tree_process_alive "$rp_pid" || rp_rc=$?
-                    if [ "$rp_rc" = 0 ] || [ "$rp_rc" = 2 ]; then
+                    if [ "$(rp_owner "$rp_pid" "$rp_ident")" = live ]; then
                         rp_live=1
                         rp_btime="$(awk '$1 == "btime" { print $2 }' /proc/stat 2>/dev/null)" || rp_btime=""  # swallow-ok: an unreadable btime passes the boot half
                         if [[ "$rp_btime" =~ ^[0-9]+$ ]] && [[ "$rp_E" =~ ^[0-9]+$ ]] && [ "$rp_E" -lt "$rp_btime" ]; then rp_live=0; fi
@@ -3549,6 +3574,14 @@ except Exception:
             rp_wait=$rp_base rp_i=1
             while [ "$rp_i" -lt "$rp_k2" ] && [ "$rp_wait" -lt "$rp_cap" ]; do rp_wait=$((rp_wait * 2)); rp_i=$((rp_i + 1)); done
             [ "$rp_wait" -le "$rp_cap" ] || rp_wait=$rp_cap
+        fi
+        # The attempt clock: attempts the CLI recorded since a run began double the wait from the gap, capped as the lost backoff is; an
+        # attempt time in the future (a bad clock) never stalls.
+        if [ "${rp_attn:-0}" -ge 1 ] && [[ "$rp_att" =~ ^[0-9]+$ ]] && [ "$rp_att" -le "$rp_now" ]; then
+            rp_aw=$rp_base rp_i=1
+            while [ "$rp_i" -lt "$rp_attn" ] && [ "$rp_aw" -lt "$rp_cap" ]; do rp_aw=$((rp_aw * 2)); rp_i=$((rp_i + 1)); done
+            [ "$rp_aw" -le "$rp_cap" ] || rp_aw=$rp_cap
+            [ $((rp_now - rp_att)) -ge "$rp_aw" ] || rp_att_ok=0
         fi
     fi
     if [ "$rp_marker" = 1 ] && [ "${rm_status:-}" = OK ]; then
@@ -3576,19 +3609,32 @@ except OSError:
 rows = ["leak=" + k for k in leaks] + ["operator=" + str(h["operator"]), "requests=" + str(h["requests"]), "journal=" + j, "mirror=" + str(h["mirror"])]
 print(hashlib.sha256("\n".join(rows).encode()).hexdigest())
 ' "${HIMMEL_VERSION_WRITES:-$rm_root/version-writes.jsonl}" 2>/dev/null)" || rp_sig=""  # swallow-ok: an unreadable state computes no signature, so nothing launches
-            if [ "$rp_busy" = 0 ] && [ -n "$rp_sig" ] && [ "$rp_log_age" -ge "$rp_gap" ] \
+            if [ "$rp_busy" = 0 ] && [ -n "$rp_sig" ] && [ "$rp_log_age" -ge "$rp_gap" ] && [ "$rp_att_ok" = 1 ] \
                 && { [ "$rp_sig" != "$rp_rsig" ] || [ "$rp_lost" = 1 ]; } \
                 && { [ "$rp_k2" = 0 ] || [ $((rp_now - rp_E)) -ge "$rp_wait" ]; }; then
                 read -r -a rp_launcher <<<"${TICK_RMRUN_LAUNCHER:-setsid nohup}"
                 rp_have=1; [ "${#rp_launcher[@]}" -gt 0 ] || rp_have=0
                 for rp_w in "${rp_launcher[@]}"; do command -v "$rp_w" >/dev/null 2>&1 || rp_have=0; done  # command -v with several operands passes if ANY exists
+                rp_prep=0
                 if [ "$rp_have" = 1 ] && { [ -n "${TICK_REPAIR_PROBE:-}" ] || { [ -n "$rm_anchor" ] && [ -f "$rp_cli" ]; }; }; then
-                    # The run writes its own launch stamp and signature (repair-state.json); the tick writes no repair file.
+                    # The CLI records the attempt (time and count) before the detached start, and the run writes its own launch stamp and
+                    # signature (repair-state.json); the tick writes no repair file. No recorded attempt, no start.
+                    if [ -n "${TICK_REPAIR_STATE_PROBE:-}" ]; then
+                        JIRA_PROJECT_KEY="$rm_pk" timeout -k 2 "$(tick_bound "${TICK_RMQ_TIMEOUT:-30}")" bash "$TICK_REPAIR_STATE_PROBE" release repair-state "$rm_rel" --attempt --repo "$rp_slug" --json >/dev/null 2>&1 && rp_prep=1
+                    elif [ -n "${TICK_REPAIR_PROBE:-}" ]; then
+                        :  # a stand-in repair with no state probe has no CLI to record the attempt: nothing starts
+                    elif JIRA_PROJECT_KEY="$rm_pk" timeout -k 2 "$(tick_bound "${TICK_RMQ_TIMEOUT:-30}")" node "$rp_cli" release repair-state "$rm_rel" --attempt --repo "$rp_slug" --json >/dev/null 2>&1; then  # swallow-ok: a refused attempt starts nothing and reads unavailable
+                        rp_prep=1
+                    fi
+                fi
+                if [ "$rp_prep" = 1 ]; then
                     if [ -n "${TICK_REPAIR_PROBE:-}" ]; then
                         ( JIRA_PROJECT_KEY="$rm_pk" "${rp_launcher[@]}" bash "$TICK_REPAIR_PROBE" release repair "$rm_rel" --apply --repo "$rp_slug" </dev/null >>"$rp_dir/repair-run.log" 2>&1 & )
                     else
                         ( JIRA_PROJECT_KEY="$rm_pk" "${rp_launcher[@]}" node "$rp_cli" release repair "$rm_rel" --apply --repo "$rp_slug" </dev/null >>"$rp_dir/repair-run.log" 2>&1 & )
                     fi
+                elif [ -z "$rp_why" ]; then
+                    rp_why=unavailable
                 fi
             fi
         fi

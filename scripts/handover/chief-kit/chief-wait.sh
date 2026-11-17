@@ -1645,13 +1645,15 @@ refused_wake() {
     stem="${stem%.md}"
     # shellcheck disable=SC2016  # the python program is single-quoted on purpose
     python3 -I -c '
-import os, sys
+import os, re, sys
 tsv, marker, today = sys.argv[1:4]
 try:
     rows = [l.rstrip("\n").split("\t") for l in open(tsv) if l.strip()]
 except OSError:
     sys.exit(1)
-rows = [r for r in rows if len(r) == 4]
+# a row is key, ruling, reason, asks_operator and, from a newer tick, ground and remedy; an older four-column row has neither
+rows = [r + ["", ""] if len(r) == 4 else r for r in rows if len(r) in (4, 6)]
+cl = lambda s: " ".join(re.sub(r"[\x00-\x1f\x7f]", " ", s).split())
 try:
     seen = set(l.strip() for l in open(marker))
 except OSError:
@@ -1662,11 +1664,15 @@ except OSError:
     day = ""
 pair = lambda r: "%s@%s" % (r[0], r[1])
 fresh = [r for r in rows if pair(r) not in seen]
-lines = ["WAKE rm-refused %s — fix: %s" % (pair(r), r[2][:200]) for r in fresh if r[3] == "1"]
+def extra(r):
+    g, m = cl(r[4])[:60], cl(r[5])[:500]
+    return (" — ground: " + g if g else "") + (" — remedy: " + m if m else "")
+lines = ["WAKE rm-refused %s — fix: %s%s" % (pair(r), cl(r[2])[:200], extra(r)) for r in fresh if r[3] == "1"]
 woke = [pair(r) for r in fresh if r[3] == "1"]
 other = [pair(r) for r in fresh if r[3] == "0"]
 if other and day != today:
-    lines.append("WAKE rm-refused-digest %d new: %s" % (len(other), ",".join(other[:20])))
+    first = next((cl(r[5])[:300] for r in fresh if r[3] == "0" and r[5]), "")
+    lines.append("WAKE rm-refused-digest %d new: %s%s" % (len(other), ",".join(other[:20]), " — remedy: " + first if first else ""))
     woke += other
     with open(marker + ".day", "w") as f:
         f.write(today + "\n")

@@ -88,16 +88,22 @@ mkdoc() { printf '# chief\nrelease: %s\n' "$1" > "$W/handover/chief.md"; }
 
 # The record the jira CLI writes (release/<R>/repair-state.json); the tick only reads it.
 # rec <state> <reason|-> <reviewed 0|1> <signature|-> <launched epoch|-> <lost_count> <pid|-> [held [unfiled]]
+ident_of() { ( . "$HERE/../../lib/proc-tree.sh"; proc_tree_process_identity "$1" ); }  # <pid>: the identity the tick compares
+json_str() { python3 -I -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1"; }
+# REC_IDENT (the owner identity), REC_ATT (attempted epoch) and REC_ATTN (attempts) shape the record rec writes; unset they are null, null and 0
 rec() {
     local st="$1" why="$2" rv="$3" sg="$4" la="$5" k="$6" pid="$7" held="${8:-0}" unf="${9:-0}" keys="" i
+    local idt="${REC_IDENT:--}" att="${REC_ATT:--}" atn="${REC_ATTN:-0}"
+    if [ "$idt" = - ]; then idt=null; else idt="$(json_str "$idt")"; fi
+    [ "$att" = - ] && att=null
     for ((i = 0; i < held; i++)); do keys="$keys${keys:+,}\"K-$i\""; done
     [ "$why" = - ] && why=null || why="\"$why\""
     [ "$rv" = 1 ] && rv='"2026-11-03T00:00:00Z"' || rv=null
     [ "$sg" = - ] && sg=''
     [ "$la" = - ] && la=null
     [ "$pid" = - ] && pid=null
-    printf '{"release":"R1","state":"%s","reason":%s,"reviewed_at":%s,"signature":"%s","held_signature":"%s","held_keys":[%s],"unfiled":%s,"launched":%s,"pid":%s,"lost_count":%s,"operator_command":null,"last_exit":null,"ts":"2026-11-03T00:00:00Z"}\n' \
-        "$st" "$why" "$rv" "$sg" "$SIG64" "$keys" "$unf" "$la" "$pid" "$k" > "$RDIR/repair-state.json"
+    printf '{"release":"R1","state":"%s","reason":%s,"reviewed_at":%s,"signature":"%s","held_signature":"%s","held_keys":[%s],"unfiled":%s,"launched":%s,"pid":%s,"pid_identity":%s,"attempted":%s,"attempts":%s,"lost_count":%s,"operator_command":null,"last_exit":null,"ts":"2026-11-03T00:00:00Z"}\n' \
+        "$st" "$why" "$rv" "$sg" "$SIG64" "$keys" "$unf" "$la" "$pid" "$idt" "$att" "$atn" "$k" > "$RDIR/repair-state.json"
 }
 heldrec() { rec off unreviewed 0 - - 0 - "$1" "$2"; }  # <held> <unfiled>
 reviewed() { rec idle - 1 - - 0 -; }
@@ -121,9 +127,20 @@ mode = sys.argv[1]
 if mode == "sig":
     print(sig())
     sys.exit(0)
+if mode == "attempt":
+    import time
+    try:
+        r = json.load(open(RDIR + "/repair-state.json"))
+    except OSError:
+        r = {"release": "R1", "state": "off", "reason": "unreviewed", "reviewed_at": None, "signature": "", "held_signature": "", "held_keys": [], "unfiled": 0,
+             "launched": None, "pid": None, "pid_identity": None, "lost_count": 0, "operator_command": None, "last_exit": None, "ts": "x"}
+    r["attempted"] = int(time.time())
+    r["attempts"] = min(64, int(r.get("attempts", 0)) + 1)
+    open(RDIR + "/repair-state.json", "w").write(json.dumps(r))
+    sys.exit(0)
 state, reason = {"clean": ("idle", None), "stop": ("off", "mirror-unknown"), "error": ("off", "error")}[mode]
 rec = {"release": "R1", "state": state, "reason": reason, "reviewed_at": "2026-11-03T00:00:00Z", "signature": "" if mode == "error" else sig(),
-       "held_signature": "a" * 64, "held_keys": [], "unfiled": 0, "launched": 1, "pid": None, "lost_count": 0, "operator_command": None,
+       "held_signature": "a" * 64, "held_keys": [], "unfiled": 0, "launched": 1, "pid": None, "pid_identity": None, "attempted": None, "attempts": 0, "lost_count": 0, "operator_command": None,
        "last_exit": 0 if mode == "clean" else 3, "ts": "2026-11-03T00:00:00Z"}
 open(RDIR + "/repair-state.json", "w").write(json.dumps(rec))
 PY
@@ -134,7 +151,13 @@ for mode in clean stop error; do
 done
 export TICK_REPAIR_PROBE="$W/clean-probe.sh"
 # the CLI's record read: a missing record is published as off:unreviewed with no review marker
-printf '#!/bin/sh\necho "$@" >> "%s/state-read"\n[ -e "%s/repair-state.json" ] || printf %%s '"'"'{"release":"R1","state":"off","reason":"unreviewed","reviewed_at":null,"signature":"","held_signature":"","held_keys":[],"unfiled":0,"launched":null,"pid":null,"lost_count":0,"operator_command":"jira release repair R1 --apply --repo acme/widgets","last_exit":null,"ts":"x"}'"'"' > "%s/repair-state.json"\n' "$W" "$RDIR" "$RDIR" > "$W/state-read-probe.sh"
+cat > "$W/state-read-probe.sh" <<'STUB'
+#!/bin/sh
+echo "$@" >> "$W/state-read"
+case " $* " in *" --attempt "*) [ -z "${ATTEMPT_FAIL:-}" ] || exit 1; python3 -I "$W/emu.py" attempt; exit $? ;; esac
+[ -e "$RDIR/repair-state.json" ] || printf %s '{"release":"R1","state":"off","reason":"unreviewed","reviewed_at":null,"signature":"","held_signature":"","held_keys":[],"unfiled":0,"launched":null,"pid":null,"pid_identity":null,"attempted":null,"attempts":0,"lost_count":0,"operator_command":"jira release repair R1 --apply --repo acme/widgets","last_exit":null,"ts":"x"}' > "$RDIR/repair-state.json"
+STUB
+export TICK_REPAIR_STATE_PROBE="$W/state-read-probe.sh"
 reset() {
     rm -f "$W/repair-ran" "$W/launch-tried" "$W/rmrun-ran" "$W/state-asked" "$W/state-read" "$W/journal.jsonl"
     rm -rf "$W/state" "$RDIR"; mkdir -p "$RDIR"
@@ -178,7 +201,8 @@ out="$(tick)"
 check 'no record prints neither held nor unfiled' '' "$(field held "$out")$(field unfiled "$out")"
 printf '{"state":"held"' > "$RDIR/repair-state.json"
 out="$(tick)"
-check 'a malformed record prints neither held nor unfiled and no repair field' '' "$(field held "$out")$(field unfiled "$out")$(field repair "$out")"
+check 'a malformed record prints neither held nor unfiled and the repair field reads off:unread' 'off:unread' "$(field repair "$out")"
+check 'a malformed record prints neither held nor unfiled' '' "$(field held "$out")$(field unfiled "$out")"
 
 reset; heldrec 3 2
 out1="$(tick)"
@@ -227,7 +251,6 @@ check 'the tick wrote none of the compatibility files' '000' "$(nofile repair-la
 reset; heldrec 1 0
 tick >/dev/null
 check 'an existing record is not re-asked of the CLI' '' "$(cat "$W/state-read" 2>/dev/null)"
-unset TICK_REPAIR_STATE_PROBE
 
 reset; reviewed
 tick >/dev/null; launched 1 >/dev/null
@@ -299,18 +322,54 @@ out="$(TICK_REPAIR_PROBE="$W/stop-probe.sh" tick)"
 check '3 stop: no relaunch after the gap on the same signature' 1 "$(none_launched)"
 check '3 stop: the field reads off:mirror-unknown' 'off:mirror-unknown' "$(field repair "$out")"
 
-# --- a launcher that never starts the CLI leaves no record: it is tried again at the gap, and the tick writes nothing
+# --- a launcher that never starts the CLI: the CLI records each attempt BEFORE the start, so the retry is timed and bounded
+age_attempt() { # <secs>: move the recorded attempt back (what the passing of time does to its clock)
+    python3 -I -c 'import json,sys; p=sys.argv[1]; r=json.load(open(p)); r["attempted"]-=int(sys.argv[2]); open(p,"w").write(json.dumps(r))' "$RDIR/repair-state.json" "$1"
+}
+attempts_now() { python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["attempts"])' "$RDIR/repair-state.json"; }
 export TICK_RMRUN_LAUNCHER="$W/bin/deadlaunch"
 reset; reviewed
 tick >/dev/null
 check '1a dead launcher: the first tick tries once' 1 "$(tried 1)"
+check '1a dead launcher: the CLI recorded the attempt before the start' 1 "$(attempts_now)"
 check '1a dead launcher: the tick wrote no stamp and no signature' '00' "$(nofile repair-launch)$(nofile repair-signature)"
 out="$(tick)"
-check '1b dead launcher: the log gap holds' 1 "$(none_tried 1)"
-check '1b dead launcher: no repair=off field (nothing is known to be lost)' '' "$(field repair "$out")"
+check '1b dead launcher: the next tick is inside the retry gap' 1 "$(none_tried 1)"
 age_log
 tick >/dev/null
-check '1c dead launcher: a second try after the gap' 2 "$(tried 2)"
+check '1b dead launcher: an aged LOG alone does not retry (an old append-only log mtime says nothing about the attempt)' 1 "$(none_tried 1)"
+check '1b dead launcher: no repair=off field (nothing is known to be lost)' '' "$(field repair "$out")"
+age_attempt 700
+tick >/dev/null
+check '1c dead launcher: a second try once the attempt itself is a gap old' 2 "$(tried 2)"
+check '1c dead launcher: the second attempt is recorded' 2 "$(attempts_now)"
+tick >/dev/null
+check '1d dead launcher: the very next tick after an aged retry does not try again' 2 "$(none_tried 2)"
+age_attempt 700
+tick >/dev/null
+check '1d dead launcher: one gap after the second attempt is still inside its doubled wait' 2 "$(none_tried 2)"
+age_attempt 600
+tick >/dev/null
+check '1e dead launcher: past the doubled wait it tries a third time' 3 "$(tried 3)"
+python3 -I -c 'import json,sys; p=sys.argv[1]; r=json.load(open(p)); r["attempts"]=40; r["attempted"]-=30000; open(p,"w").write(json.dumps(r))' "$RDIR/repair-state.json"
+tick >/dev/null
+check '1f dead launcher: the doubling is capped (a count of 40 waits no more than 6 h)' 4 "$(tried 4)"
+
+# the attempt cannot be recorded (the CLI is refused, busy, or absent): nothing starts and the field says why
+export TICK_RMRUN_LAUNCHER=env
+reset; reviewed
+out="$(ATTEMPT_FAIL=1 tick)"
+check '1g no attempt recorded: nothing starts' 0 "$(none_launched)"
+check '1g no attempt recorded: the field reads off:unavailable' 'off:unavailable' "$(field repair "$out")"
+reset; reviewed
+out="$(TICK_REPAIR_STATE_PROBE='' tick)"
+check '1h no CLI to record the attempt: nothing starts and the field reads off:unavailable' 'off:unavailable' "$(field repair "$out")"
+check '1h no CLI to record the attempt: no process' 0 "$(none_launched)"
+reset; reviewed; ATTEMPT_FAIL=1 tick >/dev/null
+out="$(tick)"
+check '1i the next tick with a working CLI launches once' 1 "$(launched 1)"
+check '1i and the field is quiet again' '' "$(field repair "$out")"
+export TICK_RMRUN_LAUNCHER="$W/bin/deadlaunch"  # the lost-launch rows below count launches with the dead launcher
 
 # a pid that is dead and reaped, so no zombie keeps /proc/<pid>
 deadpid() { sleep 60 & local p=$!; kill "$p"; wait "$p" 2>/dev/null; echo "$p"; }
@@ -339,7 +398,7 @@ check '5 cap: past the cap it launches' 1 "$(tried 1)"
 reset; age_log
 sleep 60 &
 holder=$!
-rec running - 1 "$SIG64" "$(date +%s)" 0 "$holder"
+REC_IDENT="$(ident_of "$holder")" rec running - 1 "$SIG64" "$(date +%s)" 0 "$holder"
 out="$(tick)"
 check '6 live owner: nothing launches' 0 "$(none_tried 0)"
 lost_field '6 live owner: no off:lost' '' "$out"
@@ -357,7 +416,7 @@ lost_field '7 mid-run kill: the field reads off:lost' 'off:lost' "$out"
 reset; age_log
 sleep 60 &
 holder=$!
-rec running - 1 "$SIG64" 1 0 "$holder"
+REC_IDENT="$(ident_of "$holder")" rec running - 1 "$SIG64" 1 0 "$holder"
 out="$(tick)"
 check '8 pre-boot launch: it launches' 1 "$(tried 1)"
 lost_field '8 pre-boot launch: the field reads off:lost' 'off:lost' "$out"
@@ -379,7 +438,7 @@ lost_field '12 precedence: lost shows off:lost' 'off:lost' "$out"
 for bad in garbage '{"state":"idle"}' '{"state":"nope","held_keys":[],"unfiled":0,"lost_count":0,"signature":"","held_signature":"","reason":null,"reviewed_at":"x","launched":null,"pid":null}'; do
     reset; printf '%s\n' "$bad" > "$RDIR/repair-state.json"
     out="$(tick)"
-    check "13 malformed record '${bad:0:24}': no repair field" '' "$(field repair "$out")"
+    check "13 malformed record '${bad:0:24}': the CLI is asked, cannot publish, and the field reads off:unread" 'off:unread' "$(field repair "$out")"
     check "13 malformed record '${bad:0:24}': nothing launches" 0 "$(none_tried 0)"
 done
 
@@ -405,7 +464,7 @@ lost_field '16 future launch time: the field reads off:lost' 'off:lost' "$out"
 if kill -0 1 2>/dev/null; then
     pass '18 EPERM pid: skipped (pid 1 is probe-able for this user)'
 else
-    reset; age_log; rec running - 1 "$SIG64" "$(( $(date +%s) - 1200 ))" 0 1
+    reset; age_log; REC_IDENT="$(ident_of 1)" rec running - 1 "$SIG64" "$(( $(date +%s) - 1200 ))" 0 1
     out="$(tick)"
     check '18 EPERM pid: nothing launches' 0 "$(none_tried 0)"
     lost_field '18 EPERM pid: no off:lost' '' "$out"
@@ -431,13 +490,49 @@ check 'fence variables skip the launch (negative control: unset, it launches)' 1
 
 reset; sleep 60 &
 holder=$!
-rec running - 1 - "$(( $(date +%s) - 1200 ))" 0 "$holder"
+REC_IDENT="$(ident_of "$holder")" rec running - 1 - "$(( $(date +%s) - 1200 ))" 0 "$holder"
 tick >/dev/null
 check 'second chief does not start a second run' 0 "$(none_launched)"
 check 'second chief does not start a second run (the tick left the record as it was)' 'running' "$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["state"])' "$RDIR/repair-state.json")"
 kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
 tick >/dev/null
 check 'a record whose owner is gone does not block the launch' 1 "$(launched 1)"
+
+# 7 the owner is bound to its process identity, never the pid alone
+reset; age_log
+sleep 60 &
+holder=$!
+rec running - 1 "$SIG64" "$(( $(date +%s) - 1200 ))" 0 "$holder"
+out="$(tick)"
+lost_field '7 identity: a live pid with no recorded identity is not a live owner' 'off:lost' "$out"
+check '7 identity: ... and it relaunches on the lost backoff' 1 "$(launched 1)"
+kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
+reset; age_log
+sleep 60 &
+holder=$!
+REC_IDENT='posix:Thu Jan  1 00:00:00 1970 not this process' rec running - 1 "$SIG64" "$(( $(date +%s) - 1200 ))" 0 "$holder"
+out="$(tick)"
+lost_field '7 identity: a live pid showing another identity (a recycled pid) is lost' 'off:lost' "$out"
+check '7 identity: ... and it relaunches' 1 "$(launched 1)"
+kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
+
+# 8 a first run that died before any review is shown and recovered by the review-needed act, not hidden behind the marker
+reset; age_log
+deadp="$(deadpid)"
+rec running - 0 "$SIG64" "$(( $(date +%s) - 1200 ))" 0 "$deadp"
+out="$(tick)"
+lost_field '8 first-run crash: the field reads off:lost although no review marker exists' 'off:lost' "$out"
+check '8 first-run crash: nothing launches without the review marker' 0 "$(none_launched)"
+reset; age_log
+sleep 60 &
+holder=$!
+REC_IDENT="$(ident_of "$holder")" rec running - 0 "$SIG64" "$(date +%s)" 0 "$holder"
+out="$(tick)"
+lost_field '8 control: a live first run is quiet' '' "$out"
+kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
+reset; rec off unreviewed 0 - - 0 -
+out="$(tick)"
+lost_field '8 control: an unreviewed idle record still reads off:unreviewed' 'off:unreviewed' "$out"
 
 # --- no release line
 reset; reviewed; heldrec 3 2
