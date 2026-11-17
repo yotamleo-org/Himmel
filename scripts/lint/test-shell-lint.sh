@@ -435,6 +435,26 @@ d="$(mktemp -d -t prefix.XXXXXX)"
 EOF
 OUT12b="$(bash "$LINT" "$MT_GOOD" 2>&1)"
 if grepq "$OUT12b" -F '[mktemp]'; then fail "mktemp false positive on templated form" "$OUT12b"; else pass "mktemp ignores templated form"; fi
+MT_PROBE="$TMP_ROOT/mt_probe.sh"
+cat > "$MT_PROBE" <<'EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+tool="$(command -v mktemp)"
+type mktemp; which mktemp
+EOF
+OUT12c="$(bash "$LINT" "$MT_PROBE" 2>&1)"
+if grepq "$OUT12c" -F '[mktemp]'; then fail "mktemp false positive on tool lookup" "$OUT12c"; else pass "mktemp ignores tool lookups"; fi
+MT_MIXED="$TMP_ROOT/mt_mixed.sh"
+cat > "$MT_MIXED" <<'EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+command -v mktemp; mktemp
+type mktemp && d="$(mktemp -d)"
+EOF
+OUT12d="$(bash "$LINT" "$MT_MIXED" 2>&1)"
+for mt_line in 3 4; do
+    if grepq "$OUT12d" -F "[mktemp] line $mt_line:"; then pass "mktemp retains real call after lookup on line $mt_line"; else fail "mktemp lookup hid real call on line $mt_line" "$OUT12d"; fi
+done
 
 # Case 13: [bash32] — declare -A is flagged.
 printf '\nCase 13: bash32 detection\n'
