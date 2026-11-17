@@ -3516,7 +3516,7 @@ const fixtureRequest = (scratchRoot: string) => ({
 });
 
 test("shared real round fixture seeds before returns and creates accepted seals and snapshots", async () => {
-  const helper = await import("./capped-fold.fixture.ts").catch(() => null);
+  const helper = await import("./testlib-capped-fold.ts").catch(() => null);
   expect(typeof helper?.buildRoundFixture).toBe("function");
   const scratch = root(); const f = await helper!.buildRoundFixture(fixtureRequest(scratch));
   for (const p of [f.specsRoot, f.spec, f.plan, f.ledgerPath, ...f.verdicts]) expect(p.startsWith(scratch + "/")).toBe(true);
@@ -3542,7 +3542,7 @@ test("shared real round fixture seeds before returns and creates accepted seals 
 test("shared capped proof validator rejects finite schema mutations and preserves scoped identities", async () => {
   const shared = await import("../jira/src/release/pinned.ts");
   expect(typeof shared.validateCappedFoldProof).toBe("function");
-  const { buildRoundFixture } = await import("./capped-fold.fixture.ts");
+  const { buildRoundFixture } = await import("./testlib-capped-fold.ts");
   const f = await buildRoundFixture(fixtureRequest(root()));
   const { returnSha } = await import("./chief-route");
   const filePin = (path: string) => ({ path, sha256: sha(readFileSync(path, "utf8")) });
@@ -3613,7 +3613,7 @@ test("shared capped proof validator rejects finite schema mutations and preserve
 });
 
 test("shared fixture refuses escaping ancestors before creating directories", async () => {
-  const { buildRoundFixture } = await import("./capped-fold.fixture.ts");
+  const { buildRoundFixture } = await import("./testlib-capped-fold.ts");
   const scratch = root(); const outside = root();
   symlinkSync(outside, join(scratch, "specs"));
   await expect(buildRoundFixture(fixtureRequest(scratch))).rejects.toThrow("inside the scratch root");
@@ -3623,7 +3623,7 @@ test("shared fixture refuses escaping ancestors before creating directories", as
 
 const cappedKey = "HIMMEL-10205";
 const cappedFixture = async (options: { specFindings?: string; planFindings?: string; rounds?: number; historical?: string; status?: boolean; specText?: string; planText?: string; pageName?: string } = {}) => {
-  const { buildRoundFixture } = await import("./capped-fold.fixture.ts");
+  const { buildRoundFixture } = await import("./testlib-capped-fold.ts");
   const r = root();
   const specText = options.specText ?? fixtureSpecText.replace("# HIMMEL", "Key: HIMMEL-10205\n\n# HIMMEL") + "\nReference: HIMMEL-8626 remains a body reference.\n";
   const planText = options.planText ?? `---\ntickets: ${cappedKey}\n---\nKey: ${cappedKey}\n${fixturePlanText}`;

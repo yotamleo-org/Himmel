@@ -2225,7 +2225,7 @@ describe('signed minerva specs', () => {
           { path: 'specs/designs/page.html', text: '<p>fixture</p>\n' }],
       }))),
     };
-    const f = JSON.parse(execFileSync(realBun, [join(candidateRoot, 'scripts/telegram/capped-fold.fixture.ts')], {
+    const f = JSON.parse(execFileSync(realBun, [join(candidateRoot, 'scripts/telegram/testlib-capped-fold.ts')], {
       input: JSON.stringify(request), encoding: 'utf8', timeout: 15000,
     })) as CappedFixture;
     f.verdicts = f.verdicts.slice(-2);
