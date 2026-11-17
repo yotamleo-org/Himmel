@@ -107,7 +107,7 @@ python3"
   fi
   while IFS= read -r py; do
     [ -n "$py" ] || continue
-    "$py" -I -c "$prog" < "$1" 2> /dev/null && return 0
+    "$py" -I -c "$prog" < "$1" 2> /dev/null && return 0 # read-sink-ok: $1 is the sweep's own plan list in its mktemp dir, never a caller path
   done <<EOF
 $cands
 EOF
