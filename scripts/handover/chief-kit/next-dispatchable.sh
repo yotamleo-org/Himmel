@@ -243,11 +243,18 @@ export ND_OWE="$HERE/owe.sh"
 . "$REPO/scripts/lib/gh-quota.sh"
 # shellcheck disable=SC2034  # read by the probes in gh-graphql-budget.sh
 GHQ_GH_CMD="${NEXT_DISPATCH_GH_CMD:-gh}"
-nd_qtmp=""
+nd_qtmp=""; nd_out=""; nd_flags=""; nd_pred_tmp=""; nd_pid=""
+nd_temp_failure() {
+    if [ -n "$why_ticket" ]; then
+        printf 'UNKNOWN %s: temporary storage unavailable\n' "$why_ticket"
+        exit 3
+    fi
+    exit 1
+}
+trap '[ -z "$nd_out" ] || rm -f "$nd_out"; [ -z "$nd_flags" ] || rm -f "$nd_flags"; [ -z "$nd_qtmp" ] || rm -rf "$nd_qtmp"; [ -z "$nd_pred_tmp" ] || rm -rf "$nd_pred_tmp"' EXIT
 if [ -n "${NEXT_DISPATCH_GH_CMD:-}" ] && [ -z "${HIMMEL_QUOTA_DIR:-}" ]; then
-    nd_qtmp=$(tmpdir) || exit 1
+    nd_qtmp=$(tmpdir) || nd_temp_failure
     export HIMMEL_QUOTA_DIR="$nd_qtmp"
-    trap 'rm -rf "$nd_qtmp"' EXIT
 fi
 nd_pause() {
     case "$1" in GH-STALL*) printf '# gh-stall %s\n' "$1" ;; *) printf '# quota-pause %s\n' "$1" ;; esac
@@ -282,15 +289,12 @@ fi
 export ND_TOK="$nd_tok"
 nd_deadline="${NEXT_DISPATCH_DEADLINE:-400}"
 case "$nd_deadline" in ''|*[!0-9]*) nd_deadline=400 ;; esac
-nd_out=$(mktemp "${TMPDIR:-/tmp}/next-dispatch-out.XXXXXX") || exit 1
-nd_flags=$(mktemp "${TMPDIR:-/tmp}/next-dispatch-flags.XXXXXX") || { rm -f "$nd_out"; exit 1; }
-nd_pid=""
-nd_pred_tmp=""
+nd_out=$(mktemp "${TMPDIR:-/tmp}/next-dispatch-out.XXXXXX") || nd_temp_failure
+nd_flags=$(mktemp "${TMPDIR:-/tmp}/next-dispatch-flags.XXXXXX") || nd_temp_failure
 if [ -n "$why_ticket" ]; then
-    nd_pred_tmp=$(tmpdir) || { printf 'UNKNOWN %s: temporary directory unavailable\n' "$why_ticket"; exit 3; }
+    nd_pred_tmp=$(tmpdir) || nd_temp_failure
 fi
 export ND_PRED_TMP="$nd_pred_tmp"
-trap 'rm -f "$nd_out" "$nd_flags"; [ -z "$nd_qtmp" ] || rm -rf "$nd_qtmp"; [ -z "$nd_pred_tmp" ] || rm -rf "$nd_pred_tmp"' EXIT
 # an outer kill reaches the run's own process group through timeout, which relays the signal
 trap '[ -z "$nd_pid" ] || kill -TERM "$nd_pid" 2>/dev/null; exit 143' TERM INT HUP
 _TIMEOUT_BIN=""
@@ -435,13 +439,14 @@ def scope_of(body):
             readiness.append((heading.partition(' — ')[2], lines))
     if readiness:
         stamp, lines = readiness[-1]
+        files, nowrite = [], False
         for line in lines:
             match = EXPLICIT_RE.match(line)
             if match and match.group(1)[0].lower() == 'w':
-                files = files_in(line)
-                nowrite = not files and bool(NO_WRITE_RE.search(line))
-                if files or nowrite:
-                    return dict(files=files, reads=[], no_scope=False, nowrite=nowrite, src='readiness comment ' + stamp)
+                files.extend(path for path in files_in(line) if path not in files)
+                nowrite = nowrite or bool(NO_WRITE_RE.search(line))
+        if files or nowrite:
+            return dict(files=files, reads=[], no_scope=False, nowrite=not files and nowrite, src='readiness comment ' + stamp)
     explicit, kinds, nowrite_line, writes_hit = [], set(), False, False
     for line in desc.splitlines():
         m = EXPLICIT_RE.match(line)
@@ -765,7 +770,7 @@ def proof_missing(i):
         try:
             txt = i['text']
             m = re.search(r'^## Description\n(.*?)(?=^## |\Z)', txt, re.M | re.S)
-            with tempfile.TemporaryDirectory() as d:
+            with tempfile.TemporaryDirectory(dir=os.environ.get('ND_PRED_TMP') or None) as d:
                 draft = os.path.join(d, 'draft.md')
                 with open(draft, 'w', encoding='utf-8') as f:
                     f.write(i['description'] if why_key and os.environ.get('ND_BODY_FILE') else m.group(1) if m else '')
@@ -860,9 +865,12 @@ def effective_rows(path):
         sliced = os.path.join(os.environ['ND_PRED_TMP'], 'status-events.jsonl')
         with open(path, encoding='utf-8') as source, open(sliced, 'w', encoding='utf-8') as target:
             for line in source:
-                row = json.loads(line)
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
                 if not isinstance(row, dict):
-                    unknown('malformed status-events row')
+                    continue
                 if str(row.get('key', '')).upper() == why_key:
                     target.write(line)
         path = sliced

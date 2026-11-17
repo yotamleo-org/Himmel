@@ -3571,6 +3571,72 @@ p_run --why-ticket HIMMEL-11001; p_unknown 'P17 malformed reader'
 printf '' > "$P/empty-reader.py"; P_READER="$P/empty-reader.py"
 p_run --why-ticket HIMMEL-11001; p_unknown 'P17 empty reader'
 
+# Resource failures retain the public UNKNOWN contract and leave no scratch.
+p_reset; p_mk HIMMEL-11001
+TMPDIR="$P/missing-temp-root" p_run --why-ticket HIMMEL-11001
+p_unknown 'review F1 unavailable TMPDIR'
+P_REAL_MKTEMP="$(command -v mktemp)"; export P_REAL_MKTEMP
+for P_TMP_PHASE in quota out flags predicate; do
+    p_reset; p_mk HIMMEL-11001
+    mkdir -p "$P/failing-temp-bin" "$P/temp-$P_TMP_PHASE"
+    export P_TMP_PHASE P_TMP_COUNT="$P/temp-count"
+    printf '0\n' > "$P_TMP_COUNT"
+    cat > "$P/failing-temp-bin/mktemp" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+    *next-dispatch-out*) [ "$P_TMP_PHASE" != out ] || exit 1 ;;
+    *next-dispatch-flags*) [ "$P_TMP_PHASE" != flags ] || exit 1 ;;
+esac
+if [ "$1" = -d ]; then
+    read -r n < "$P_TMP_COUNT"
+    n=$((n + 1)); printf '%s\n' "$n" > "$P_TMP_COUNT"
+    [ "$P_TMP_PHASE" != quota ] || exit 1
+    if [ "$P_TMP_PHASE" = predicate ] && [ "$n" -ge 2 ]; then exit 1; fi
+fi
+exec "$P_REAL_MKTEMP" "$@"
+EOF
+    chmod +x "$P/failing-temp-bin/mktemp"
+    P_PATH="$P/failing-temp-bin:$PATH"
+    TMPDIR="$P/temp-$P_TMP_PHASE" HIMMEL_QUOTA_DIR='' p_run --why-ticket HIMMEL-11001
+    p_unknown "review F1 $P_TMP_PHASE allocation"
+    if find "$P/temp-$P_TMP_PHASE" -mindepth 1 | grep -q .; then
+        fail "review F1 $P_TMP_PHASE leaked scratch"
+    else pass "review F1 $P_TMP_PHASE removed scratch"; fi
+done
+
+p_reset; p_mk HIMMEL-11001
+printf '\n{truncated\nnull\n[]\n{"event":"merge","stage":"pre-merge","result":"pending","key":"HIMMEL-11001","pr":"7119","head":"unconfirmed","contract":"no"}\n' > "$P/state/status-events.jsonl"
+p_run --why-ticket HIMMEL-11001; p_verdict 'review F2 valid rows survive non-records' 1
+has 'review F2 real target event remains a gate' "$P_OUT" 'merge of PR #7119 unconfirmed'
+
+for order in no-code-first path-first; do
+    p_reset; p_mk HIMMEL-11001 'To Do' 'No description scope'
+    if [ "$order" = no-code-first ]; then
+        p_comment $'readiness: scoped\nWrites: no code\nWrites: scripts/lib/alpha.sh'
+    else p_comment $'readiness: scoped\nWrites: scripts/lib/alpha.sh\nWrites: no code'; fi
+    p_run --why-ticket HIMMEL-11001; p_verdict "review F4 $order" 0
+    has "review F4 $order retains the written path" "$P_OUT" 'readiness comment 2026-11-17T00:00:00Z: scripts/lib/alpha.sh'
+done
+
+p_reset; p_mk HIMMEL-11001; p_tree proof-scratch
+export P_PROOF_DRAFT="$P/proof-draft-seen"
+cat > "$PT/marketplace/plugins/himmel-ops/scripts/ticket-standard-check.sh" <<'EOF'
+#!/usr/bin/env bash
+previous=''
+for argument in "$@"; do
+    [ "$previous" != --draft ] || printf '%s\n' "$argument" > "$P_PROOF_DRAFT"
+    previous="$argument"
+done
+sleep 20
+EOF
+mkdir -p "$P/proof-temp"; P_LIMIT=4
+TMPDIR="$P/proof-temp" p_run --why-ticket HIMMEL-11001
+p_unknown 'review F3 proof-check deadline'
+if [ -s "$P_PROOF_DRAFT" ]; then
+    read -r draft < "$P_PROOF_DRAFT"
+    [ ! -e "${draft%/*}" ] && pass 'review F3 proof draft removed on timeout' || fail 'review F3 leaked proof draft directory'
+else fail 'review F3 proof checker never reached'; fi
+
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.
 real_hits="$(grep -rlF "$WORK" "$REAL_HOME/.himmel/state/holds" 2>/dev/null | grep -c . || true)"
