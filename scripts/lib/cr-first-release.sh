@@ -42,13 +42,8 @@
 # comment, a status-page incident, or no CodeRabbit activity for
 # CR_FIRST_PROGRESS_S (600) releases loudly, but only when that in-progress
 # review is the one thing holding; a probe that cannot read holds.
-# A `ci:go` while the cheap run is still going cancels that run (OQ3): both
-# sit in one concurrency group per PR, so the cheap check-runs end `cancelled`
-# and the heavy run's check-runs of the same names follow. The release is
-# designed to overlap this way. A released head reads quiet before any cheap
-# check is classified, and a head not yet released reads the latest check-run
-# per name, so the cancelled rows never read as cheap-red once the heavy run's
-# same-named rows exist.
+# A `ci:go` while the cheap run is still going cancels that run (OQ3); the go
+# run's same-named check-runs then supersede the cancelled ones.
 #
 # Env: CR_FIRST_HEAVY_RE / CR_FIRST_CHEAP_RE (check-run name regexes),
 # CR_FIRST_STATUS_URL (statuspage JSON), CR_FIRST_NOW (epoch seam for tests),
@@ -305,13 +300,7 @@ cr_first_release() {
         return 0
     fi
 
-    # The latest check-run of each cheap name decides: the REST list returns every run ever
-    # created for the sha, and a go run that cancels the in-flight cheap run leaves its
-    # cancelled rows beside its own same-named rows, which carry a higher id. A cheap run
-    # still in flight is no hold (the go run re-runs every cheap job at the head); a latest
-    # row that failed, timed out or was cancelled is. The settle time is the
-    # last cheap completion once ci-quick succeeded and no cheap row is still running, empty
-    # otherwise (the ledger line then carries null).
+    # The REST list holds every check-run ever created for the sha: the highest id per name decides.
     cheap=$(printf '%s' "$checks" | jq -r --arg re "${CR_FIRST_CHEAP_RE:-^(ci-quick|secret-scan|bwk-awk-mktemp-gate|unchecked-mktemp-range|leak-classes|git-env-scrub|commit-lint|plugin-version-bump|lint)\$}" '
         ([.check_runs[] | select(.name | test($re))] | group_by(.name) | map(max_by(.id // 0))) as $c
         | (if any($c[]; .status == "completed" and ((.conclusion // "") | IN("failure", "cancelled", "timed_out", "action_required", "startup_failure"))) then "red"
