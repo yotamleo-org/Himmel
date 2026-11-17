@@ -27,18 +27,49 @@ llm_backend_resolve() {
     esac
 }
 
-# llm_backend_api_account_ok <acct> -> rc 0 for a named API account (A, B or C), rc 1 otherwise.
-# This is the bash owner of the account set; scripts/lib/api-credit-state.mjs ACCOUNTS is the
-# other, and test-llm-backend.sh pins the two equal. `auto` is not a named account.
+# The API account letters. This is the bash owner of the account set; scripts/lib/api-credit-state.mjs
+# ACCOUNTS is the other, and test-llm-backend.sh pins the two equal. Every form below derives from it.
+# shellcheck disable=SC2034  # read by the scripts that source this file
+LLM_API_ACCOUNTS="A B C D"
+# shellcheck disable=SC2034
+LLM_API_ACCOUNT_CLASS="[${LLM_API_ACCOUNTS// /}]"
+_llm_l="${LLM_API_ACCOUNTS% *}"
+# shellcheck disable=SC2034
+LLM_API_ACCOUNTS_TEXT="${_llm_l// /, } or ${LLM_API_ACCOUNTS##* }"
+# The per-account Admin key names, and the `env` arguments that unset them.
+LLM_API_ORG_KEYS=""
+LLM_API_ORG_KEY_UNSET=()
+for _llm_l in $LLM_API_ACCOUNTS; do
+    LLM_API_ORG_KEYS="${LLM_API_ORG_KEYS:+$LLM_API_ORG_KEYS }ANTHROPIC_ORG_${_llm_l}_KEY"
+    LLM_API_ORG_KEY_UNSET+=(-u "ANTHROPIC_ORG_${_llm_l}_KEY")
+done
+unset _llm_l
+
+# llm_backend_api_account_ok <acct> -> rc 0 for a named API account, rc 1 otherwise. `auto` is not one.
 llm_backend_api_account_ok() {
-    case "${1:-}" in
-        A|B|C) return 0 ;;
-        *) return 1 ;;
-    esac
+    case "${1:-}" in ""|*[!A-Z]*) return 1 ;; esac
+    case " $LLM_API_ACCOUNTS " in *" $1 "*) return 0 ;; esac
+    return 1
+}
+
+# llm_backend_api_account_list_ok <list> -> rc 0 for a comma-joined list of account letters (a graph walk).
+llm_backend_api_account_list_ok() {
+    local re="^${LLM_API_ACCOUNT_CLASS}(,${LLM_API_ACCOUNT_CLASS})*\$"
+    [[ "${1:-}" =~ $re ]]
+}
+
+# llm_backend_pick_account: stdin is an api-credit-state.mjs pick answer; prints its account letter, or nothing.
+llm_backend_pick_account() {
+    sed -n "s/.*\"account\":\"\\(${LLM_API_ACCOUNT_CLASS}\\)\".*/\\1/p"
+}
+
+# llm_backend_key_tail <key> -> "key ...<last 4 characters>", or "key: none" for an empty key. Never more of it.
+llm_backend_key_tail() {
+    if [ -n "${1:-}" ]; then printf 'key ...%s' "${1: -4}"; else printf 'key: none'; fi
 }
 
 # llm_backend_api_ready -> rc 0 when the API lane is on and HIMMEL_API_ACCOUNT names an
-# account (A, B or C). Never `auto`: operator decision 525 limits auto routing to the himmel
+# account. Never `auto`: operator decision 525 limits auto routing to the himmel
 # graph pass, which asks llm_backend_api_ready_graph instead.
 llm_backend_api_ready() {
     [ "${HIMMEL_API_LANE:-}" = "on" ] && llm_backend_api_account_ok "${HIMMEL_API_ACCOUNT:-}"

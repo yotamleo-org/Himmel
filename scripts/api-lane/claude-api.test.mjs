@@ -689,8 +689,8 @@ for (const [name, extra, pattern] of [
 test('lane is OFF without the opt-in and invalid accounts refuse', () => {
   const f = fixture();
   assert.match(f.run(f.good, { HIMMEL_API_LANE: '' }).stderr, /api lane is OFF/);
-  assert.match(f.run(f.good, { HIMMEL_API_ACCOUNT: 'D' }).stderr, /must be A, B or C/);
-  assert.match(f.run(f.good, { HIMMEL_API_ACCOUNT: '' }).stderr, /must be A, B or C/);
+  assert.match(f.run(f.good, { HIMMEL_API_ACCOUNT: 'E' }).stderr, /must be A, B, C or D/);
+  assert.match(f.run(f.good, { HIMMEL_API_ACCOUNT: '' }).stderr, /must be A, B, C or D/);
   assert.equal(f.called(), false);
 });
 
@@ -1431,7 +1431,7 @@ test('a decision-525 policy refusal sends no alert, writes no stamp, runs no fal
   const alertDir = f.env.HIMMEL_API_ALERT_DIR;
   assert.deepEqual(alerts(f), []);
   assert.deepEqual(readdirSync(alertDir), ['policy-refusals.jsonl']);
-  assert.match(r.stderr, /^claude-api: policy refusal: this call was not sent, and no alert or fallback follows\. Name an account \(A, B or C\) instead of auto$/m);
+  assert.match(r.stderr, /^claude-api: policy refusal: this call was not sent, and no alert or fallback follows\. Name an account \(A, B, C or D\) instead of auto$/m);
   const lines = readFileSync(join(alertDir, 'policy-refusals.jsonl'), 'utf8').trim().split('\n');
   assert.equal(lines.length, 1);
   const rec = JSON.parse(lines[0]);
@@ -1481,6 +1481,73 @@ test('account C refuses a wrong key id and a key file that is not mode 600', () 
   assert.equal(g.called(), false);
 });
 
+// account D behaves like A, B and C. Its fixture key's 5th character from the end appears in no output line,
+// so a key tail longer than 4 characters shows.
+const KEY_D = 'sk-ant-dummy-account-d-key-0000^Dk4w';
+function withD(f, mode = 0o600) {
+  f.config.accounts.D = { organization_id: 'org-d', cycle_id: 'cycle-d', cap_usd: '50.00', key_id: 'key-d', reset_at: '2099-01-01T00:00:00Z' };
+  f.snapshot.accounts.D = { ...f.snapshot.accounts.A, organization_id: 'org-d', cycle_id: 'cycle-d', grant_usd: '50.00', remaining_usd: '50.00' };
+  f.save();
+  const env = keyFiles(f, mode);
+  writeFileSync(join(f.dir, 'key-D.env'), `ANTHROPIC_API_KEY=${KEY_D}\n`, { mode });
+  chmodSync(join(f.dir, 'key-D.env'), mode);
+  return env;
+}
+const noKeyLeak = (texts) => {
+  for (const text of texts) {
+    assert.ok(!text.includes('^'), 'the 5th character from the end of the key leaked');
+    assert.ok(!text.includes(KEY_D.slice(0, -4)), 'the head of the key leaked');
+  }
+};
+
+test('HIMMEL_API_ACCOUNT=D runs one stubbed call on key-D.env and bills the ledger row to D', () => {
+  const f = fixture();
+  const r = launch(withD(f), { HIMMEL_API_ACCOUNT: 'D', HIMMEL_API_KIND: 'judge' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(readFileSync(f.paths.env, 'utf8'), /^key_tail=Dk4w$/m);
+  const row = JSON.parse(f.record().trim());
+  assert.equal(row.account, 'D');
+  assert.equal(row.key_id, 'key-d');
+  noKeyLeak([r.stdout, r.stderr, f.record()]);
+});
+
+test('auto ranks account D like A, B and C', () => {
+  const f = fixture();
+  const env = withD(f);
+  f.snapshot.accounts.D.expires_at = f.now + 60;
+  f.save();
+  const ok = launch(env, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify', HIMMEL_API_JOB_ID: 'job-d-auto-1' });
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.equal(JSON.parse(f.record().trim()).account, 'D');
+});
+
+test('a graph role map naming D walks D on auto', () => {
+  const f = fixture();
+  const env = withD(f);
+  writeFileSync(join(f.dir, 'roles.json'), JSON.stringify({ version: 1, roles: { graphify: ['D'] } }));
+  const ok = launch(env, { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: 'graphify', HIMMEL_API_JOB_ID: 'job-d-walk-1' });
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.equal(JSON.parse(f.record().trim()).account, 'D');
+});
+
+test('a refusal that names the key shows only its last 4 characters', () => {
+  const f = fixture();
+  const wrong = launch(withD(f), { HIMMEL_API_ACCOUNT: 'D', HIMMEL_API_KIND: 'graphify', HIMMEL_API_KEY_ID: 'key-a' });
+  assert.equal(wrong.status, 2);
+  assert.match(wrong.stderr, /key id does not match account D \(key \.\.\.Dk4w\)/);
+  noKeyLeak([wrong.stdout, wrong.stderr]);
+  assert.equal(f.called(), false);
+});
+
+test('a rejected key names the account and the key by its last 4 characters only', () => {
+  const f = fixture();
+  const bad = JSON.stringify({ type: 'result', is_error: true, result: 'Invalid API key · Fix external API key' });
+  const r = launch(withD(f), { HIMMEL_API_ACCOUNT: 'D', HIMMEL_API_JOB_ID: 'job-d-key-1', STUB_OUT: bad, STUB_RC: '1' });
+  assert.equal(r.status, 6, r.stderr);
+  assert.match(r.stderr, /account D API key rejected \(key \.\.\.Dk4w\)/);
+  noKeyLeak([r.stdout, r.stderr, f.record()]);
+});
+
 // --- the role map (roles.json beside config.json) widens or narrows auto routing ---
 const putRoles = (f, roles) => writeFileSync(join(f.dir, 'roles.json'), typeof roles === 'string' ? roles : JSON.stringify({ version: 1, roles }));
 const autoKind = (f, kind, extra = {}) => launch(keyFiles(f), { HIMMEL_API_ACCOUNT: 'auto', HIMMEL_API_KIND: kind, ...extra });
@@ -1502,7 +1569,7 @@ test('judge mapped to B picks B; with the map removed the same call is refused-p
   const g = fixture();
   const refused = autoKind(g, 'judge');
   assert.equal(refused.status, 2, refused.stderr);
-  assert.match(refused.stderr, /policy refusal: this call was not sent, and no alert or fallback follows\. Name an account \(A, B or C\) instead of auto/);
+  assert.match(refused.stderr, /policy refusal: this call was not sent, and no alert or fallback follows\. Name an account \(A, B, C or D\) instead of auto/);
   assert.equal(policyLines(g).length, 1);
   assert.equal(g.called(), false);
 });
@@ -1537,9 +1604,9 @@ test('a partial map narrows graphify by its live entry and ignores the broken ju
   assert.equal(j.status('A').verdict, 'PROCEED');
 });
 
-test('judge:[B,D] routes to B and says the entry was kept as [B]', () => {
+test('judge:[B,E] routes to B and says the entry was kept as [B]', () => {
   const f = fixture();
-  putRoles(f, { judge: ['B', 'D'] });
+  putRoles(f, { judge: ['B', 'E'] });
   const r = autoKind(f, 'judge');
   assert.equal(r.status, 0, r.stderr);
   assert.equal(usedKey(f), 'BBBB');
@@ -1673,7 +1740,7 @@ test('K4c: a judge invalid-key answer tags A and sends no graph-key alert', () =
 });
 
 test('K5 and K5b: a broken role map refuses an auto graphify call before any spawn, with no policy record, no fallback and no alert; C91 stays OK', () => {
-  for (const [map, cause] of [['{not json', 'invalid-role-map:not-json'], [JSON.stringify({ version: 1, roles: { graphify: ['D'] } }), 'empty-role:graphify']]) {
+  for (const [map, cause] of [['{not json', 'invalid-role-map:not-json'], [JSON.stringify({ version: 1, roles: { graphify: ['E'] } }), 'empty-role:graphify']]) {
     const f = fixture();
     const a = graphAlerts(f);
     putRoles(f, map);
@@ -1692,7 +1759,7 @@ test('K5 and K5b: a broken role map refuses an auto graphify call before any spa
     assert.match(doctor.stdout, /OK\s+C91-api-policy-refusals/, doctor.stdout);
   }
   const g = fixture();
-  putRoles(g, { graphify: ['B', 'D'] });
+  putRoles(g, { graphify: ['B', 'E'] });
   const p = autoKind(g, 'graphify');
   assert.equal(p.status, 0, p.stderr);
   assert.equal(usedKey(g), 'BBBB');

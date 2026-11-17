@@ -4098,6 +4098,8 @@ check_c90_effort_pin() {
 
 check_c91_api_policy_refusals() {
     command -v jq >/dev/null 2>&1 || { emit INFO C91-api-policy-refusals "jq not on PATH -- API lane policy refusal record not checked"; return 0; }
+    # shellcheck source=lib/llm-backend.sh
+    . "$SELF_DIR/lib/llm-backend.sh"
     local dir rec rows="" recent kind n repo
     dir="${HIMMEL_API_ALERT_DIR:-${HOME:-/tmp}/.himmel/state/api-lane-alerts}"
     rec="$dir/policy-refusals.jsonl"
@@ -4122,14 +4124,14 @@ check_c91_api_policy_refusals() {
     fi
     while IFS='|' read -r n kind repo; do
         emit WARN C91-api-policy-refusals "kind $kind: $n refused in the last 48 h by the API lane's auto-routing policy and not run (repo $repo)" \
-            "name HIMMEL_API_ACCOUNT=A, B or C in that caller; the record is policy-refusals.jsonl in the alert directory ($dir)"
+            "name HIMMEL_API_ACCOUNT=$LLM_API_ACCOUNTS_TEXT in that caller; the record is policy-refusals.jsonl in the alert directory ($dir)"
     done <<EOF
 $rows
 EOF
 }
 
 check_c92_graph_key() {
-    local out tags unknown role route runners pinned walk="" walk_rc=0 l gc="$SELF_DIR/himmelctl/lib/graph-choices.js"
+    local out tags unknown role route runners pinned walk="" walk_rc=0 l key gc="$SELF_DIR/himmelctl/lib/graph-choices.js"
     out="$(node "$SELF_DIR/lib/api-credit-state.mjs" accounts 2>/dev/null)" || out=""
     case "$out" in
         '['*) ;;
@@ -4140,8 +4142,10 @@ check_c92_graph_key() {
            fi
            return 0 ;;
     esac
-    tags="$(printf '%s' "$out" | tr '{' '\n' | sed -n 's/^"account":"\([ABC]\)",.*"tag":"key rejected".*/\1/p' | tr '\n' ' ')"
-    unknown="$(printf '%s' "$out" | tr '{' '\n' | sed -n 's/^"account":"\([ABC]\)",.*"tag":"unknown".*/\1/p' | tr '\n' ' ')"
+    # shellcheck source=lib/llm-backend.sh
+    . "$SELF_DIR/lib/llm-backend.sh"
+    tags="$(printf '%s' "$out" | tr '{' '\n' | sed -n "s/^\"account\":\"\\(${LLM_API_ACCOUNT_CLASS}\\)\",.*\"tag\":\"key rejected\".*/\\1/p" | tr '\n' ' ')"
+    unknown="$(printf '%s' "$out" | tr '{' '\n' | sed -n "s/^\"account\":\"\\(${LLM_API_ACCOUNT_CLASS}\\)\",.*\"tag\":\"unknown\".*/\\1/p" | tr '\n' ' ')"
     [ -z "${unknown// /}" ] || emit INFO C92-graph-key "account(s) ${unknown% }: the credit ledger cannot be read, so a rejected key there is not checked"
     if [ -z "${tags// /}" ]; then
         [ -n "${unknown// /}" ] || emit OK C92-graph-key "no API account carries a rejected key"
@@ -4165,8 +4169,10 @@ check_c92_graph_key() {
         [ "$walk_rc" -eq 0 ] || walk=""
     fi
     for l in $tags; do
+        key="$(printf '%s' "$out" | tr '{' '\n' | sed -n "s/^\"account\":\"$l\",.*\"key\":\"\\([^\"]*\\)\".*/\\1/p")"
+        case "$key" in ...?|...??|...???|...????) key="key $key" ;; *) key="key: none" ;; esac
         case ",$walk,$pinned" in
-            *",$l,"*) emit WARN "C92-graph-key-$l" "account $l's API key was rejected by the provider (tag: key rejected), and the graph walk reaches $l" \
+            *",$l,"*) emit WARN "C92-graph-key-$l" "account $l's API key ($key) was rejected by the provider (tag: key rejected), and the graph walk reaches $l" \
                 "rotate ~/.himmel/state/api-credit/key-$l.env, or remove $l from the route or the graphify role" ;;
             *) if [ "$walk_rc" -eq 3 ]; then
                    emit OK "C92-graph-key-$l" "account $l carries a rejected key, but the graph role map is broken, so the graph pass refuses and sends nothing (see C93)"
@@ -5818,11 +5824,13 @@ check_c88_graph_api_optin() {
     role="$(node "$gc" role 2>/dev/null)" || role=""
     state="$(node "$gc" check 2>/dev/null | awk '/^(role=|fix=|fix-line: |backup=|consent |restore |.* will also be rolled back$)/ { next } { printf "%s%s", (n++ ? "; " : ""), $0 }')" || state=""
     if [ -f "$envfile" ] && [ -r "$envfile" ]; then
-        keys="$(awk '{ sub(/\r$/, "") } /^[[:space:]]*#/ { next } {
+        # shellcheck source=lib/llm-backend.sh
+        . "$SELF_DIR/lib/llm-backend.sh"
+        keys="$(awk -v cls="$LLM_API_ACCOUNT_CLASS" '{ sub(/\r$/, "") } /^[[:space:]]*#/ { next } {
             i = index($0, "="); if (i == 0) next
             k = substr($0, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", k); sub(/^export[[:space:]]+/, "", k)
             v = substr($0, i + 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", v); gsub("\"", "", v); gsub("\047", "", v)
-            if (v != "" && !(k in seen) && (k == "ANTHROPIC_API_KEY" || k ~ /^ANTHROPIC_ORG_[ABC]_KEY$/)) { seen[k] = 1; printf "%s%s", (n++ ? ", " : ""), k }
+            if (v != "" && !(k in seen) && (k == "ANTHROPIC_API_KEY" || k ~ ("^ANTHROPIC_ORG_" cls "_KEY$"))) { seen[k] = 1; printf "%s%s", (n++ ? ", " : ""), k }
         }' "$envfile")"
     fi
     lanes="$(node "$gc" lane-runners 2>/dev/null | awk '{ printf "%s%s", (n++ ? ", " : ""), $1 }')" || lanes=""

@@ -1,7 +1,7 @@
 # The API lane: failure alert and subscription fallback
 
 `scripts/api-lane/claude-api.sh` runs one print-mode `claude` call billed to an
-API account (`HIMMEL_API_ACCOUNT=A|B|C|auto`; auto only for the himmel graph pass, or a kind the role map maps) instead of the subscription. It is
+API account (`HIMMEL_API_ACCOUNT=A|B|C|D|auto`; auto only for the himmel graph pass, or a kind the role map maps) instead of the subscription. It is
 OFF unless the launching shell sets `HIMMEL_API_LANE=on`. This page covers what
 happens when a call on it fails. The launcher's header lists the
 full argument and environment contract.
@@ -18,10 +18,10 @@ feature's own switch.
 | `jira release rm-run` (release manager) | the subscription | only in the himmel repo with `judge` mapped in `roles.json` (see [The role map](#the-role-map)); there the launcher's fallback is off, and a failed lane call, a policy refusal included, makes `rm-run` rule the batch once on the subscription itself; a timed-out call ends the run |
 | `scripts/cr/critic-first-pass.sh` (claude critic) | the registry row's provider | provider `claude-api`; with the lane off, the refusal alerts (one per hour) and the review runs on the subscription; a policy refusal (exit 2 with the launcher's `claude-api: policy refusal:` line) makes the critic print `claude critic BROKE` and exit 1, never a clean skip |
 | `scripts/graphify/graph-cadence.sh --semantic` | `claude-cli` when run bare; the armed `graph-publish-himmel` runner passes `claude-api` on auto | `GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api` |
-| `scripts/cleanup/steering-cull-cadence.sh` | `claude-cli` | `STEERING_CULL_BACKEND=claude-api`, or `arm --backend claude-api --api-account A\|B\|C` |
+| `scripts/cleanup/steering-cull-cadence.sh` | `claude-cli` | `STEERING_CULL_BACKEND=claude-api`, or `arm --backend claude-api --api-account A\|B\|C\|D` |
 
 Both cadences default to the subscription (`claude-cli`) because every API
-account (A, B and C) can run dry; the API lane is an explicit opt-in there.
+account (A, B, C and D) can run dry; the API lane is an explicit opt-in there.
 
 ## The failure path
 
@@ -140,23 +140,44 @@ A reader that sums API dollars skips every row with a `lane` other than `api` (t
 no `lane`): `shift-spend.mjs` does, so the native and `sub-fallback` rows are neither summed nor counted as unpriced.
 `scripts/usage/release-judge-reconcile.sh` is the read-only check that each release judge transcript has its row.
 
-## Account C and auto routing
+## Accounts C and D, and auto routing
 
-Account C is a third API org with a 200.00 USD cap. A, B and C are treated identically: the same refusals (key from
-the caller `ANTHROPIC_API_KEY` or a mode-600 `key-C.env` beside the ledger, `HIMMEL_API_KEY_ID` equal to the roster
-`key_id`, lane on, ledger spend estimate under the account's cap) and `pickAccount` ranks all three by grant expiry.
-The batch client (`semantic-batch.mjs`) takes C the same way. The lane never reads the keyring or `.env`.
+Account C is a third API org with a 200.00 USD cap. Account D is a fourth API org. A, B, C and D are treated
+identically: the same refusals (key from the caller `ANTHROPIC_API_KEY` or a mode-600 `key-<letter>.env` beside the
+ledger, `HIMMEL_API_KEY_ID` equal to the roster `key_id`, lane on, ledger spend estimate under the account's cap) and
+`pickAccount` ranks all four by grant expiry. The batch client (`semantic-batch.mjs`) takes C and D the same way. The
+lane never reads the keyring or `.env`. Any other letter (E and on) is refused everywhere.
+
+The account list has one owner per language: `ACCOUNTS` in `scripts/lib/api-credit-state.mjs`, and
+`LLM_API_ACCOUNTS` in `scripts/lib/llm-backend.sh` (with the forms callers need: the letter class, the readable
+list, the `-u ANTHROPIC_ORG_<L>_KEY` arguments, the walk check and the pick extract). `test-llm-backend.sh` pins the
+two equal. A new account is one letter in each.
+
+To add account D:
+
+1. Add a `D` row to the roster `~/.himmel/state/api-credit/config.json`, beside A, B and C:
+   `organization_id`, `cycle_id`, `cap_usd` and `key_id` (all non-secret), and `reset_at` (D has no default date).
+2. Write the key file `~/.himmel/state/api-credit/key-D.env` (beside the ledger) with one line,
+   `ANTHROPIC_API_KEY=<key>`, mode 600, owned by you.
+3. Optional: `ANTHROPIC_API_ORG_ID_D` in `~/.himmel/himmel.conf`, matching `_A`, `_B` and `_C`; and the Admin key
+   `ANTHROPIC_ORG_D_KEY` in `.env`, only for the automatic credit snapshot
+   (`node scripts/api-lane/grant-snapshot.mjs --pull D`).
+
+Wherever an output names an account's key, it shows only the key's last 4 characters, as `...<last4>`: the
+`api-credit-state.mjs accounts` listing (its `key` field), the config UI's account table, doctor C92 and the lane's
+key-id and key-rejected lines. An account with no readable key file shows `key: none`. Nothing prints more of a key.
 
 Auto routing is off for every call except the himmel semantic graph pass. `HIMMEL_API_ACCOUNT=auto` is accepted
 only with `HIMMEL_API_KIND=graphify` (or a kind the role map maps, see below) and a caller whose git common dir is the launcher's own checkout. For the
 graph pass, `semantic-update.sh` judges the corpus repo once, before any pick, in both the batch and the synchronous
 path (the shim runs the lane from a scratch directory, so it hands the judged repo over in
 `HIMMEL_API_AUTO_REPO_DIR`). Any other kind, or a graph pass over another repo (the luna graph map), exits 2 before
-any spawn or batch submit, with no subscription fallback. Naming the account (`HIMMEL_API_ACCOUNT=A`, `B` or `C`)
-works for every kind and every repo, judge, critic, bulk and cull included.
+any spawn or batch submit, with no subscription fallback. Naming the account (`HIMMEL_API_ACCOUNT=A`, `B`, `C` or
+`D`) works for every kind and every repo, judge, critic, bulk and cull included.
 
-Config name: `ANTHROPIC_API_ORG_ID_C`, matching `ANTHROPIC_API_ORG_ID_A` and `_B`. Every site that unsets the A and B keys before a subscription `claude -p` also unsets
-`ANTHROPIC_ORG_C_KEY`. The key file `key-C.env` is written by the operator, never by a script.
+Config names: `ANTHROPIC_API_ORG_ID_C` and `ANTHROPIC_API_ORG_ID_D`, matching `ANTHROPIC_API_ORG_ID_A` and `_B`.
+Every site that unsets the A and B keys before a subscription `claude -p` also unsets `ANTHROPIC_ORG_C_KEY` and
+`ANTHROPIC_ORG_D_KEY`. The key files `key-C.env` and `key-D.env` are written by the operator, never by a script.
 
 ### The role map
 
@@ -178,7 +199,7 @@ secret, only role names and account letters:
   For every kind but the graph walk a broken map only takes away widening; it never refuses what the default allows
   and never touches `config.json`. The graph walk refuses instead, see below.
 - **Dropped letters.** An unknown role (`unknown-role:<name>`) is ignored. An unknown letter in a list
-  (`unknown-account:<role>:<letter>`) is dropped and the entry stays live with the rest: `judge: ["B", "D"]` routes
+  (`unknown-account:<role>:<letter>`) is dropped and the entry stays live with the rest: `judge: ["B", "E"]` routes
   to B. An empty or non-array list (`empty-role:<role>`) is ignored. A duplicate letter is deduped silently. A known
   letter with no roster row is valid in the map and skipped at pick time; `api-roles.mjs check` warns
   `no-configured-account:<role>` when none of a role's letters is configured.
@@ -186,13 +207,13 @@ secret, only role names and account letters:
   graphify`, below) and passes the answer to `api-credit-state.mjs pick --usd N --only <letters>`. A role mapped to B
   is served by B or refused (`no account has room`), never by A. A named account never reads the map.
 - **The graph walk has one owner.** `node scripts/lib/api-roles.mjs walk graphify` prints the letters the station's
-  graph pass walks on auto, comma-joined: the map's live `graphify` letters, else every configured account, else A, B
-  and C when the roster cannot be read (the pick then refuses on the same roster). The batch walk and the shim count
+  graph pass walks on auto, comma-joined: the map's live `graphify` letters, else every configured account, else every
+  account letter (A, B, C and D) when the roster cannot be read (the pick then refuses on the same roster). The batch walk and the shim count
   in `semantic-update.sh`, the up-front check and shim count in `refresh-graph-map.sh`, the launcher's auto branch for
   `HIMMEL_API_KIND=graphify` and doctor C92 all read this answer; none of them reads the map's state itself. The
   station's walk is whatever `roles.json` says; no code pins a letter.
 - **A map that would widen the graph walk refuses it.** Two kinds of damage would put back every configured account:
-  an `invalid` map, and a `graphify` entry with no letter from A, B and C (`empty-role:graphify`). For these `walk
+  an `invalid` map, and a `graphify` entry with no letter from A, B, C and D (`empty-role:graphify`). For these `walk
   graphify` prints `refuse <cause>` and exits 3, and each auto graph path stops before any account call:
   `semantic-update.sh` prints `semantic-update: refusing the batch: graph role map broken (<cause>); fix or remove
   roles.json` and exits 2 (on the synchronous path once, before extraction, so no chunk is sent and no file earns a
@@ -259,9 +280,10 @@ secret, only role names and account letters:
   failure. With `judge` unmapped it never touches the launcher. Only the himmel project's mirror reaches this route.
 - **Tools.** `node scripts/lib/api-roles.mjs check` prints the map state, warnings and `ROLES`;
   `write` takes the full document on stdin, validates it, and writes atomically with mode 600 (an empty `roles`
-  removes the file); `node scripts/lib/api-credit-state.mjs accounts` prints each account's cap and a bank tag.
-- **In the config UI.** Configure, then Secrets, then Multi accounts lists accounts A, B and C with their bank tag and
-  roles, and edits the map through the same `write` command (`GET`/`POST /api/api-roles`). After a change to that
+  removes the file); `node scripts/lib/api-credit-state.mjs accounts` prints each account's cap, a bank tag and its
+  key as `...<last4>` (or `none`).
+- **In the config UI.** Configure, then Secrets, then Multi accounts lists accounts A, B, C and D with their bank tag,
+  key (last 4 characters) and roles, and edits the map through the same `write` command (`GET`/`POST /api/api-roles`). After a change to that
   section, run `bash scripts/vm/multi-accounts-e2e.sh <vm>` on a free test VM that holds this checkout: it starts the
   config UI once per role-map state on a throwaway HOME and asserts the route and what auto routing reads.
 
