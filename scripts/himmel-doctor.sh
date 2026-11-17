@@ -5700,7 +5700,7 @@ check_c81_hook_layers() {
         while IFS=$'\t' read -r l e s; do
             [ -n "$s" ] || continue
             if grep -qxF '# c81: quiet when the project settings wire this hook' "$1/$s" 2>/dev/null \
-                && printf '%s\n' "$rows" | grep -qxF "project"$'\t'"$e"$'\t'"$s"; then
+                && grep -qxF "project"$'\t'"$e"$'\t'"$s" <<<"$rows"; then
                 continue
             fi
             printf '%s\t%s\t%s\n' "$l" "$e" "$s"
