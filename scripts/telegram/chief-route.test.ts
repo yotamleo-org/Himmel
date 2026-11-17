@@ -3694,6 +3694,60 @@ test("capped fold discovers newer returns in every supplied directory", async ()
   }
 });
 
+test("capped fold return selection preserves older and other-key eligibility", async () => {
+  const f = await cappedFixture();
+  expect((await runCapped(f.args)).returns.map((r: any) => r.round)).toEqual([3, 3]);
+  const directory = join(f.specsRoot, "design");
+  writeFileSync(directory, "optional non-directory lookup");
+  expect((await runCapped(f.args)).returns).toHaveLength(2);
+  unlinkSync(directory); mkdirSync(directory);
+  for (const name of ["HIMMEL-10205-other.md.critic-spec-r2.md", "HIMMEL-10205-other.md.critic-r2-plan.md", "HIMMEL-10205-other.md.critic-r2a.md",
+    "HIMMEL-99999-other.md.critic-spec-r99.md", "irrelevant.txt"]) copyFileSync(f.args.specReturn, join(directory, name));
+  expect((await runCapped(f.args)).returns.map((r: any) => r.round)).toEqual([3, 3]);
+});
+
+test("capped fold return selection refuses tied names in every supported grammar", async () => {
+  for (const filename of ["HIMMEL-10205-other.md.critic-spec-r3.md", "HIMMEL-10205-other.md.critic-r3-plan.md", "HIMMEL-10205-other.md.critic-r3a.md"]) {
+    const f = await cappedFixture();
+    await runCapped(f.args);
+    copyFileSync(f.args.specReturn, join(dirname(f.spec), filename));
+    await expect(runCapped(f.args)).rejects.toThrow("unaccounted latest return");
+  }
+});
+
+test("capped fold return selection refuses aliased unreadable and unbounded directories", async () => {
+  for (const fault of ["alias", "unreadable", "overflow"]) {
+    const f = await cappedFixture(); await runCapped(f.args);
+    const directory = join(f.specsRoot, "design");
+    if (fault === "alias") { const target = join(f.r, "target"); mkdirSync(target); symlinkSync(target, directory); }
+    else mkdirSync(directory);
+    if (fault === "unreadable") chmodSync(directory, 0);
+    if (fault === "overflow") for (let i = 0; i < 4097; i++) writeFileSync(join(directory, `irrelevant-${i}`), "");
+    try { await expect(runCapped(f.args)).rejects.toThrow(); }
+    finally { if (fault === "unreadable") chmodSync(directory, 0o700); }
+  }
+});
+
+test("capped fold return selection rechecks cached directory observations before success", async () => {
+  for (const round of [3, 4]) {
+    const f = await cappedFixture();
+    const directory = join(f.specsRoot, "design"); mkdirSync(directory);
+    const before = treeBytes(f.r);
+    const shared = await import("../jira/src/release/pinned.ts");
+    const actual = shared.pinnedRead;
+    let reads = 0;
+    const spy = spyOn(shared, "pinnedRead").mockImplementation(path => {
+      const got = actual(path);
+      if (path === f.spec && ++reads === 2) copyFileSync(f.args.specReturn, join(directory, basename(f.args.specReturn).replace("r3.md", `r${round}a.md`)));
+      return got;
+    });
+    try { await expect(runCapped(f.args)).rejects.toThrow("evidence changed or is unreadable"); }
+    finally { spy.mockRestore(); }
+    expect(reads).toBe(2);
+    for (const [path, hash] of Object.entries(before)) expect(sha(readFileSync(path, "utf8"))).toBe(hash);
+  }
+});
+
 test("capped fold requires Key declarations in real sealed returns", async () => {
   expect((await runCapped((await finishCappedRounds()).args)).returns).toHaveLength(2);
   const documents = await cappedFixture({

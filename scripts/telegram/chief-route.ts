@@ -1,4 +1,5 @@
 import { selectDecisionNames, pinnedRead, boundedDirectoryNames, reviewedSpecHashes, validateCappedFoldProof, PINNED_READ_VERSION, returnSha,
+  SIGNATURE_DIRS, KEY_FOLDER, CRITIC_FILE, CRITIC_NAME, specsRootOf, keyOf, canonicalDirectoryNames, returnDirectories, checkLatestReturns,
   type CappedFoldProof, type EvidencePin, type EvidenceFilePin, type ReturnPin } from "../jira/src/release/pinned.ts";
 import { join, dirname, basename, resolve, isAbsolute } from "node:path";
 import { randomUUID, createHash } from "node:crypto";
@@ -541,7 +542,6 @@ const FINDINGS = { spec: /^SPEC FINDINGS \d+$/, plan: /^PLAN FINDINGS \d+$/ } as
 export const CRITIC_ROUND_CAP = 3;
 type Kind = "spec" | "plan";
 const verdictKind = (line: string): Kind | undefined => /^(SPEC|PLAN) (CLEAN|FINDINGS \d+)$/.exec(line)?.[1].toLowerCase() as Kind | undefined;
-const SIGNATURE_DIRS = new Set(["design", "designs", "spec", "plan", "plans"]);
 const sha256 = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
 const lastLine = (text: string) => text.split("\n").map(l => l.trim()).filter(Boolean).at(-1) ?? "";
 const sealsOf = (text: string) => [...text.matchAll(/^CONTENT-SHA256 ([0-9a-f]{64}) (\S.*)$/gm)].map(m => ({ sha: m[1], rel: m[2] }));
@@ -625,18 +625,9 @@ type SeededReturn = { return_sha: string; verdict_path: string; seals: { read_pa
 type LedgerRow = { row: string; [field: string]: any };
 
 const FINDING_LINE = /^[-*] \*\*([A-Za-z][\w.-]*)\*\* \(([^)]*)\)/;
-const KEY_FOLDER = /^[A-Z][A-Z0-9]+-[0-9]+$/;
 const ledgerDir = (specs: string) => join(specs, "ledgers", "spec-rounds");
-const specsRootOf = (p: string) => { const parts = p.split("/"); const i = parts.lastIndexOf("specs"); return i < 0 ? null : parts.slice(0, i + 1).join("/"); };
 
-export { returnSha } from "../jira/src/release/pinned.ts";
-
-export function keyOf(specPath: string): string | null {
-  const parts = specPath.split("/");
-  const folder = parts.at(-2);
-  if (folder && KEY_FOLDER.test(folder) && parts.at(-3) === "specs") return folder;
-  return /^([A-Z][A-Z0-9]+-[0-9]+)(?=[-.])/.exec(parts.at(-1) ?? "")?.[1] ?? null;
-}
+export { returnSha, keyOf } from "../jira/src/release/pinned.ts";
 
 export function parseFindings(returnText: string, kind: Kind, round: number): { findings: Finding[]; unrated_ids: string[] } {
   const findings: Finding[] = [];
@@ -886,7 +877,6 @@ export async function roundState(specsRoot: string, key: string): Promise<RoundS
   return stateOf(key, await loadLedger(specsRoot, key));
 }
 
-const CRITIC_FILE = /^(.+?)\.critic-(?:(spec|plan)-r(\d+)|r(\d+)-(spec|plan))\.md$/;
 export type UnsealedRound = { file: string; kind: Kind; round: number; command: string };
 export async function unsealedRounds(specsRoot: string, key: string): Promise<{ unsealed: UnsealedRound[]; unread: string[] }> {
   const rows = await loadLedger(specsRoot, key);
@@ -1090,14 +1080,7 @@ function cappedReader(specs: string, key: string) {
     return got;
   };
   const names = async (directory: string) => {
-    if (!directories.has(directory)) {
-      const canonical = await realpath(directory).catch((e: NodeJS.ErrnoException) => {
-        if (e.code === "ENOENT") return null;
-        throw e;
-      });
-      if (canonical !== null && canonical !== directory) throw new Error(`capped-fold: directory lookup must be canonical: ${directory}`);
-      directories.set(directory, { canonical, names: boundedDirectoryNames(directory) });
-    }
+    if (!directories.has(directory)) directories.set(directory, canonicalDirectoryNames(directory));
     return directories.get(directory)!.names;
   };
   const decision = async (number: string) => {
@@ -1158,17 +1141,8 @@ function cappedFindings(text: string, kind: Kind, round: number, row: LedgerRow)
 }
 
 async function cappedLatest(spec: string, plan: string, reader: RoundReader, expected: [ReturnPin, ReturnPin]): Promise<void> {
-  const specs = specsRootOf(spec)!; const key = keyOf(spec)!;
-  const folders = [dirname(spec), dirname(plan), ...expected.map(r => dirname(r.path)), ...[...SIGNATURE_DIRS, key].map(d => join(specs, d))];
-  for (const directory of new Set(folders)) for (const name of await reader.names(directory)) {
-    const normal = CRITIC_FILE.exec(name); const legacy = CRITIC_NAME.exec(name);
-    const stem = normal?.[1] ?? legacy?.[1];
-    if (!stem || keyOf(join(directory, stem)) !== key) continue;
-    const kind = (normal?.[2] ?? normal?.[5] ?? legacy?.[2]) as Kind | undefined;
-    const round = Number(normal?.[3] ?? normal?.[4] ?? legacy?.[3]);
-    const candidates = kind ? [expected[kind === "spec" ? 0 : 1]] : expected;
-    if (candidates.some(current => round >= current.round && join(directory, name) !== current.path)) throw new Error(`capped-fold: ambiguous or unaccounted latest return: ${join(directory, name)}`);
-  }
+  const key = keyOf(spec)!;
+  for (const directory of returnDirectories(key, spec, plan, expected)) checkLatestReturns(directory, await reader.names(directory), key, expected);
 }
 
 async function cappedLedgerEvidence(rows: Rows, key: string, reader: ReturnType<typeof cappedReader>): Promise<void> {
@@ -1390,7 +1364,6 @@ export async function foldList(specArg: string, specsArg?: string): Promise<stri
   return out;
 }
 
-const CRITIC_NAME = /^(.+?)\.critic-(?:(spec|plan)-)?r(\d+)[a-z]?\.md$/;
 type SeedResult = { keys: Record<string, { spec: number; plan: number }>; skipped: string[] };
 export async function roundSeed(rootArg: string): Promise<SeedResult> {
   const given = resolve(rootArg);

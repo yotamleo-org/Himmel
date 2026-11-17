@@ -6,6 +6,7 @@ import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { releaseKeyPath, releaseRoot } from './paths.js';
 import { pinnedSha, pinnedRead, boundedDirectoryNames, selectDecisionNames, reviewedSpecHashes, returnSha,
+  canonicalDirectoryNames, returnDirectories, checkLatestReturns,
   validateCappedFoldProof, type CappedFoldProof, type FilePin } from './pinned.js';
 export { pinnedSha, type Pinned } from './pinned.js';
 import type { Getter } from './version-writes.js';
@@ -561,6 +562,9 @@ function canonical(path: string): boolean {
 }
 
 function checkCappedPins(proof: CappedFoldProof): void {
+  for (const directory of returnDirectories(proof.key, proof.spec.path, proof.plan.path, proof.returns)) {
+    checkLatestReturns(directory, canonicalDirectoryNames(directory).names, proof.key, proof.returns);
+  }
   for (const pin of proof.pins) {
     if (pin.role === 'decision-selection') {
       if (!canonical(pin.directory) || JSON.stringify(selectDecisionNames(boundedDirectoryNames(pin.directory), pin.decision)) !== JSON.stringify(pin.names)) {

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { closeSync, constants, fstatSync, openSync, readSync, opendirSync } from 'node:fs';
-import { isAbsolute, normalize, basename, join } from 'node:path';
+import { closeSync, constants, fstatSync, openSync, readSync, opendirSync, realpathSync } from 'node:fs';
+import { isAbsolute, normalize, basename, dirname, join } from 'node:path';
 
 const PINNED_MAX = 16 * 1024 * 1024;
 export type Pinned = { bytes: Buffer; sha256: string } | { missing: true } | { unreadable: true };
@@ -65,6 +65,48 @@ export function selectDecisionNames(names: readonly string[], decision: string):
   if (!/^[0-9]+$/.test(decision)) throw new Error(`'${decision}' is not a decision number`);
   const pattern = new RegExp(`^verbatim-decision-${decision}-.*\\.txt$`);
   return names.filter(name => pattern.test(name)).sort();
+}
+
+export const SIGNATURE_DIRS = new Set(['design', 'designs', 'spec', 'plan', 'plans']);
+export const KEY_FOLDER = /^[A-Z][A-Z0-9]+-[0-9]+$/;
+export const CRITIC_FILE = /^(.+?)\.critic-(?:(spec|plan)-r(\d+)|r(\d+)-(spec|plan))\.md$/;
+export const CRITIC_NAME = /^(.+?)\.critic-(?:(spec|plan)-)?r(\d+)[a-z]?\.md$/;
+export const specsRootOf = (p: string) => { const parts = p.split('/'); const i = parts.lastIndexOf('specs'); return i < 0 ? null : parts.slice(0, i + 1).join('/'); };
+
+export function keyOf(specPath: string): string | null {
+  const parts = specPath.split('/');
+  const folder = parts.at(-2);
+  if (folder && KEY_FOLDER.test(folder) && parts.at(-3) === 'specs') return folder;
+  return /^([A-Z][A-Z0-9]+-[0-9]+)(?=[-.])/.exec(parts.at(-1) ?? '')?.[1] ?? null;
+}
+
+export function canonicalDirectoryNames(directory: string) {
+  let canonical: string | null;
+  try { canonical = realpathSync(directory); }
+  catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+    canonical = null;
+  }
+  if (canonical !== null && canonical !== directory) throw new Error(`capped-fold: directory lookup must be canonical: ${directory}`);
+  return { canonical, names: boundedDirectoryNames(directory) };
+}
+
+export function returnDirectories(key: string, spec: string, plan: string, expected: readonly ReturnPin[]): string[] {
+  const specs = specsRootOf(spec);
+  if (!specs) throw new Error('capped-fold: spec must be under a specs root');
+  return [...new Set([dirname(spec), dirname(plan), ...expected.map(r => dirname(r.path)), ...[...SIGNATURE_DIRS, key].map(d => join(specs, d))])];
+}
+
+export function checkLatestReturns(directory: string, names: readonly string[], key: string, expected: [ReturnPin, ReturnPin]): void {
+  for (const name of names) {
+    const normal = CRITIC_FILE.exec(name); const legacy = CRITIC_NAME.exec(name);
+    const stem = normal?.[1] ?? legacy?.[1];
+    if (!stem || keyOf(join(directory, stem)) !== key) continue;
+    const kind = (normal?.[2] ?? normal?.[5] ?? legacy?.[2]) as Kind | undefined;
+    const round = Number(normal?.[3] ?? normal?.[4] ?? legacy?.[3]);
+    const candidates = kind ? [expected[kind === 'spec' ? 0 : 1]] : expected;
+    if (candidates.some(current => round >= current.round && join(directory, name) !== current.path)) throw new Error(`capped-fold: ambiguous or unaccounted latest return: ${join(directory, name)}`);
+  }
 }
 
 export const PINNED_READ_VERSION = 1;

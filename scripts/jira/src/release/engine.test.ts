@@ -2213,13 +2213,13 @@ describe('signed minerva specs', () => {
   const bunLookup = spawnSync('which', ['bun'], { encoding: 'utf8' });
   const realBun = bunLookup.status === 0 ? bunLookup.stdout.trim() : '';
   type CappedFixture = { spec: string; plan: string; verdicts: string[]; ledgerPath: string; specsRoot: string };
-  function cappedFixture(cleanKind?: 'spec' | 'plan', invalidLint = false): CappedFixture {
+  function cappedFixture(cleanKind?: 'spec' | 'plan', invalidLint = false, rounds = 3): CappedFixture {
     if (!realBun) throw new Error('capped fixture requires Bun on PATH; install the pinned .bun-version');
     const scratchRoot = mkdtempSync(join(root, 'capped-'));
     const specText = '---\ntickets: HIMMEL-10205\n---\n# HIMMEL-10205 fixture\n\nKey: HIMMEL-10205\n\nEstimate record: estimate.json\n\n## Alternatives considered\n\n- None better.\n\n## Definition of done\n\n- Fixture verifies.\n\n## Invariants\n\nnone\n';
     const request = { scratchRoot, key: 'HIMMEL-10205', specText: invalidLint ? specText.replace('Estimate record: estimate.json', '') : specText,
       planText: '---\ntickets: HIMMEL-10205\n---\n# HIMMEL-10205 plan\n\n- Ticket: HIMMEL-10205\n\n- Task 1: build the fixture.\n',
-      returns: [1, 2, 3].flatMap(round => (['spec', 'plan'] as const).map(kind => ({ kind, round,
+      returns: [1, 2, 3].slice(0, rounds).flatMap(round => (['spec', 'plan'] as const).map(kind => ({ kind, round,
         text: kind === cleanKind ? `${kind.toUpperCase()} CLEAN\n` : `- **F1** (${kind === 'spec' ? 'minor' : 'medium'}) residual\n${kind.toUpperCase()} FINDINGS 1\n`,
         reads: ['spec', 'plan', { path: 'specs/designs/estimate.json', text: '{"median_seq":1,"sigma":0.1,"dod":{"passed":true}}\n' },
           { path: 'specs/designs/page.html', text: '<p>fixture</p>\n' }],
@@ -2242,6 +2242,152 @@ describe('signed minerva specs', () => {
 
   const cappedCheck = (api: 'spec' | 'spec-review', keys = ['HIMMEL-10205'], issues?: Map<string, IssueSnap>) =>
     specCheck(specEnv(), keys, null, { kinds: [api], ...(issues ? { issues } : {}) });
+
+  function externalCappedFixture(location: string): CappedFixture {
+    if (!['spec-return', 'plan-return', 'plan-document'].includes(location)) return cappedFixture();
+    const f = cappedFixture(undefined, false, 2);
+    const runner = join(dirname(f.specsRoot), 'external-fixture.ts');
+    writeFileSync(runner, `
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
+import { ledgerVerify, sealRound } from ${JSON.stringify(expectedVerifier)};
+const f = ${JSON.stringify(f)}, location = ${JSON.stringify(location)};
+const external = join(dirname(f.specsRoot), 'external'); mkdirSync(external);
+const oldPlan = f.plan;
+if (location === 'plan-document') { f.plan = join(external, basename(f.plan)); copyFileSync(oldPlan, f.plan); }
+for (const [i, kind] of ['spec', 'plan'].entries()) {
+  const previous = f.verdicts[i];
+  const next = join(location === kind+'-return' ? external : dirname(previous), basename(previous).replace('r2.md', 'r3.md'));
+  const text = readFileSync(previous, 'utf8').replace('Fixture: '+kind+' round 2', 'Fixture: '+kind+' round 3')
+    .replace(/^((?:READ(?:-SHA256)?|CONTENT-SHA256) [0-9a-f]{64}) (.+)$/gm, (_line, prefix, rel) => {
+      const path = resolve(dirname(previous), rel); return prefix+' '+(path === oldPlan ? f.plan : path);
+    });
+  writeFileSync(next, text);
+  for (const m of text.matchAll(/^CONTENT-SHA256 [0-9a-f]{64} (.+)$/gm)) await sealRound(next, m[1]);
+  await ledgerVerify(next, { spec: f.spec }); f.verdicts[i] = next;
+}
+console.log(JSON.stringify(f));
+`);
+    return JSON.parse(execFileSync(realBun, [runner], { encoding: 'utf8', timeout: 15000 })) as CappedFixture;
+  }
+
+  function returnDirectory(f: CappedFixture, location: string): string {
+    if (location === 'spec-return') return dirname(f.verdicts[0]);
+    if (location === 'plan-return') return dirname(f.verdicts[1]);
+    if (location === 'plan-document') return dirname(f.plan);
+    return join(f.specsRoot, location === 'key' ? 'HIMMEL-10205' : location);
+  }
+
+  function addUnaccountedReturn(f: CappedFixture, directory: string, round: number): void {
+    mkdirSync(directory, { recursive: true });
+    cpSync(f.verdicts[0], join(directory, basename(f.verdicts[0]).replace('r3.md', `r${round}a.md`)));
+  }
+
+  function unchangedProofFiles(proof: pinned.CappedFoldProof): void {
+    for (const pin of proof.pins) if (pin.role !== 'decision-selection') expect(sha(pin.path)).toBe(pin.sha256);
+  }
+
+  it.each(['spec', 'spec-review'] as const)('capped carry return selection irrelevant files remain fresh: %s', api => {
+    declared();
+    const f = cappedFixture();
+    const row = cappedSign(api, f);
+    expect(existsSync(join(f.specsRoot, 'design'))).toBe(false);
+    expect(cappedCheck(api).ok).toBe(true);
+    writeFileSync(join(f.specsRoot, 'design'), 'optional non-directory lookup');
+    expect(cappedCheck(api).ok).toBe(true);
+    unlinkSync(join(f.specsRoot, 'design'));
+    for (const directory of ['design', 'spec', 'plan', 'HIMMEL-10205']) {
+      const path = join(f.specsRoot, directory); mkdirSync(path);
+      for (const name of ['HIMMEL-10205-other.md.critic-spec-r2.md', 'HIMMEL-10205-other.md.critic-r1-plan.md', 'HIMMEL-10205-other.md.critic-r2a.md',
+        'unrelated.txt', ...(directory === 'HIMMEL-10205' ? [] : ['HIMMEL-99999-other.md.critic-plan-r99.md'])]) cpSync(f.verdicts[0], join(path, name));
+    }
+    unchangedProofFiles(row.capped_carry!);
+    expect(cappedCheck(api).lines).toEqual([`SPEC ok HIMMEL-10205 ${f.spec} ${row.id}`]);
+    const proof = JSON.parse(execFileSync(realBun, [expectedVerifier, 'capped-fold', '--key', 'HIMMEL-10205', '--spec', f.spec, '--plan', f.plan,
+      '--spec-return', f.verdicts[0], '--plan-return', f.verdicts[1]], { encoding: 'utf8', timeout: 15000 })) as pinned.CappedFoldProof;
+    expect(proof.returns.map(r => r.round)).toEqual([3, 3]);
+  });
+
+  it.each((['spec', 'spec-review'] as const).flatMap(api =>
+    ['alias', 'overflow', 'unreadable'].map(fault => [api, fault] as const)))('capped carry return selection directory stale: %s %s', (api, fault) => {
+    declared();
+    const f = cappedFixture();
+    const row = cappedSign(api, f);
+    expect(cappedCheck(api).ok).toBe(true);
+    const directory = join(f.specsRoot, 'design');
+    if (fault === 'alias') {
+      const elsewhere = join(dirname(f.specsRoot), 'alias-target'); mkdirSync(elsewhere); symlinkSync(elsewhere, directory);
+    }
+    if (fault === 'overflow') { mkdirSync(directory); for (let i = 0; i < 4097; i++) writeFileSync(join(directory, `irrelevant-${i}`), ''); }
+    if (fault === 'unreadable') { mkdirSync(directory); chmodSync(directory, 0); }
+    try {
+      unchangedProofFiles(row.capped_carry!);
+      expect(cappedCheck(api).lines).toEqual([`SPEC-STALE HIMMEL-10205 ${f.spec} ${row.id}`]);
+    } finally { if (fault === 'unreadable') chmodSync(directory, 0o700); }
+  });
+
+  it.each((['spec', 'spec-review'] as const).flatMap(api =>
+    ['spec-return', 'plan-return', 'plan-document', 'design', 'designs', 'spec', 'plan', 'plans', 'key'].flatMap(location =>
+      [3, 4].map(round => [api, location, round] as const))))('capped carry return selection later stale: %s %s r%s', (api, location, round) => {
+    declared();
+    const f = externalCappedFixture(location);
+    const row = cappedSign(api, f);
+    expect(readOperatorRecords(api, specEnv()).map(r => r.id)).toEqual([row.id]);
+    expect(cappedCheck(api).lines).toEqual([`SPEC ok HIMMEL-10205 ${f.spec} ${row.id}`]);
+    addUnaccountedReturn(f, returnDirectory(f, location), round);
+    unchangedProofFiles(row.capped_carry!);
+    expect(cappedCheck(api).lines).toEqual([`SPEC-STALE HIMMEL-10205 ${f.spec} ${row.id}`]);
+  });
+
+  it.each((['spec', 'spec-review'] as const).flatMap(api =>
+    [3, 4].map(round => [api, round] as const)))('capped carry return selection preappend: %s r%s', (api, round) => {
+    declared();
+    const f = cappedFixture();
+    const before = fixtureHashes(f.specsRoot);
+    const actual = ledger.withLock;
+    let changed = false;
+    cappedCalls.length = 0;
+    const spy = vi.spyOn(ledger, 'withLock').mockImplementation((dir, fn, ...rest) => actual(dir, () => {
+      if (dir === sctx().dir && !changed) {
+        expect(cappedCalls).toHaveLength(1);
+        expect(existsSync(join(sctx().dir, '.lock')) && existsSync(join(root, 'release', '.lock'))).toBe(true);
+        changed = true;
+        addUnaccountedReturn(f, join(f.specsRoot, 'spec'), round);
+        for (const [path, hash] of Object.entries(before)) expect(sha(path)).toBe(hash);
+      }
+      return fn();
+    }, ...rest));
+    try {
+      expect(() => cappedSign(api, f)).toThrow(/unaccounted latest return/);
+      expect(changed).toBe(true);
+      noCappedRows();
+    } finally { spy.mockRestore(); }
+  });
+
+  it.each((['spec', 'spec-review'] as const).flatMap(api =>
+    [3, 4].map(round => [api, round] as const)))('capped carry return selection persisted stale: %s r%s', (api, round) => {
+    declared();
+    const f = cappedFixture();
+    const actual = ledger.appendChain;
+    let changed = false;
+    const spy = vi.spyOn(ledger, 'appendChain').mockImplementation((path, key, fields) => {
+      const persisted = actual(path, key, fields);
+      if (!changed && path === join(sctx().dir, 'operator.jsonl') && (fields as OperatorRow).kind === api) {
+        changed = true;
+        addUnaccountedReturn(f, join(f.specsRoot, 'HIMMEL-10205'), round);
+      }
+      return persisted;
+    });
+    let error = '';
+    try { cappedSign(api, f); } catch (e) { error = (e as Error).message; }
+    finally { spy.mockRestore(); }
+    const rows = readOperatorRecords(api, specEnv());
+    expect(rows).toHaveLength(1);
+    expect(changed).toBe(true);
+    unchangedProofFiles(rows[0].capped_carry!);
+    expect(error).toBe(`persisted-but-stale ${rows[0].id}: capped-fold: ambiguous or unaccounted latest return: ${join(f.specsRoot, 'HIMMEL-10205', basename(f.verdicts[0]).replace('r3.md', `r${round}a.md`))}; inspect this record before retrying`);
+    expect(cappedCheck(api).lines).toEqual([`SPEC-STALE HIMMEL-10205 ${f.spec} ${rows[0].id}`]);
+  });
 
   function resetFixture(f: CappedFixture, reseal = true): CappedFixture & { decision: string } {
     const runner = join(dirname(f.specsRoot), 'reset-fixture.ts');
@@ -2442,6 +2588,10 @@ if(mode==='schema')p.schema=2;
 if(mode==='malformed') { process.stdout.write('not JSON'); process.exit(0); }
 if(mode==='nonzero') { process.stderr.write('rejecting verifier exit'); process.exit(7); }
 if(mode==='returned-drift') { const path=p.returns[1].path; fs.writeFileSync(path,fs.readFileSync(path,'utf8').replace(/Reviewed: spec [0-9a-f]{64}/,'Reviewed: spec '+h)); }
+if(mode.startsWith('latest-return-')) {
+  const path=p.returns[0].path; fs.copyFileSync(path,path.replace('r3.md','r'+mode.slice('latest-return-'.length)+'a.md'));
+  for(const pin of p.pins) if(pin.role!=='decision-selection' && createHash('sha256').update(fs.readFileSync(pin.path)).digest('hex')!==pin.sha256) throw Error('original pin changed');
+}
 if(mode==='timeout') Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,32000);
 process.stdout.write(JSON.stringify(p));
 if(mode==='output')process.stdout.write(' '.repeat(4*1024*1024+1));
@@ -2456,6 +2606,17 @@ if(mode==='output')process.stdout.write(' '.repeat(4*1024*1024+1));
     expect(readOperatorRecords('spec', specEnv())).toEqual([]);
     expect(readOperatorRecords('spec-review', specEnv())).toEqual([]);
   }
+
+  it.each((['spec', 'spec-review'] as const).flatMap(api =>
+    [3, 4].map(round => [api, round] as const)))('capped carry return selection initial consumption: %s r%s', (api, round) => {
+    declared();
+    const f = cappedFixture();
+    rejectingBun(`latest-return-${round}`, log => {
+      expect(() => cappedSign(api, f)).toThrow(/residual findings.*capped verifier unavailable\/refused:.*unaccounted latest return/);
+      expect(readFileSync(log, 'utf8').trim().split('\n')).toHaveLength(1);
+      noCappedRows();
+    });
+  });
 
   it.each(['key', 'spec-hash', 'plan-hash', 'return-full', 'return-normalized', 'count'])('capped carry rejects mismatched proof binding: %s', mode => {
     declared();
