@@ -21,6 +21,7 @@ set -u
 root=$(git rev-parse --show-toplevel) || exit 1
 cd "$root" || exit 1
 opts="${PARITY_OPTS---enable=all --severity=style}"
+read -r -a optv <<< "$opts"
 
 # shellcheck source=../lib/prim.sh
 . "$root/scripts/lib/prim.sh" || { echo "parity: cannot load scripts/lib/prim.sh" >&2; exit 2; }
@@ -28,7 +29,6 @@ T=$(tmpdir) || exit 1
 trap 'rm -rf "$T"' EXIT
 if [ -n "${1:-}" ]; then cp "$1" "$T/list" || exit 1; else git ls-files > "$T/list" || exit 1; fi
 
-# the shellcheck hook's own exclude, copied into a local hook that prints the files it is handed
 excl=$(awk '/- id: shellcheck$/ { f = 1; next } f && /^[[:space:]]*exclude:/ { sub(/^[[:space:]]*exclude:[[:space:]]*/, ""); print; exit }' .pre-commit-config.yaml)
 [ -n "$excl" ] || { echo "parity: no exclude found for the shellcheck hook" >&2; exit 1; }
 {
@@ -53,12 +53,12 @@ findings() { grep -E '^[^ ]+:[0-9]+:[0-9]+: (error|warning|note): ' "$1" | sort 
 
 echo "parity: $(shellcheck --version | grep '^version')" >&2
 t=$SECONDS
-# shellcheck disable=SC2016,SC2086 # the flags are a word list; the sh -c script expands its own args
-tr '\n' '\0' < "$T/shell.list" | xargs -0 -s 1500000 sh -c 'shellcheck "$@"; r=$?; [ "$r" -le 1 ] || exit 255' parity-shellcheck $opts --format=gcc > "$T/serial.out" 2>&1
+# shellcheck disable=SC2016 # the sh -c script expands its own args
+tr '\n' '\0' < "$T/shell.list" | xargs -0 -s 1500000 sh -c 'shellcheck "$@"; r=$?; [ "$r" -le 1 ] || exit 255' parity-shellcheck ${optv[@]+"${optv[@]}"} --format=gcc > "$T/serial.out" 2>&1
 serial_rc=$?
 echo "parity: serial run took $((SECONDS - t))s" >&2
-# The linter exits 1 for findings (xargs reports 123); any higher exit is mapped to 255, which xargs reports as 124
-case "$serial_rc" in 0 | 123) ;; *) echo "parity: the serial shellcheck run failed (rc $serial_rc); head of its output:" >&2; head -5 "$T/serial.out" >&2; exit 2 ;; esac
+# The wrapper turns the linter's findings exit 1 into 0 and any higher exit into 255, which xargs reports as 124
+case "$serial_rc" in 0) ;; *) echo "parity: the serial shellcheck run failed (rc $serial_rc); head of its output:" >&2; head -5 "$T/serial.out" >&2; exit 2 ;; esac
 grep -q 'shellcheck: ' "$T/serial.out" && { echo "parity: the serial shellcheck run reported an error:" >&2; grep 'shellcheck: ' "$T/serial.out" | head -5 >&2; exit 2; }
 t=$SECONDS
 SHELLCHECK_OPTS="$opts --format=gcc" bash "$root/scripts/ci/shellcheck-pr-range.sh" --sweep "$T/list" > "$T/sweep.out" 2> "$T/sweep.err"

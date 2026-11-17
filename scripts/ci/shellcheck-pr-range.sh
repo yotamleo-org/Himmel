@@ -70,7 +70,6 @@ serial_sweep() {
   fi
   exec pre-commit run shellcheck --all-files --show-diff-on-failure
 }
-# the file types the hook never lints as shell: no weight, and no forward edges
 nonshell_re='\.(md|markdown|txt|rst|json|jsonc|yml|yaml|toml|xml|html|htm|css|svg|png|jpg|jpeg|gif|ico|pdf|lock|tsv|csv|js|mjs|cjs|jsx|ts|tsx|py|rb|sql|gql|graphql)$'
 sweep_all() {
   local n sd i k r rc=0 plan
@@ -85,7 +84,6 @@ sweep_all() {
   case "$plan" in '"'* | *'
 "'*) rm -rf "$sd"; serial_sweep ;; esac
   printf '%s\n' "$plan" > "$sd/files" || { rm -rf "$sd"; serial_sweep; }
-  # byte sizes only weight the packing; without them every file weighs the same
   printf '%s\n' "$plan" | tr '\n' '\0' | xargs -0 wc -c -- > "$sd/sizes" 2>/dev/null || : # swallow-ok: a missing size only flattens the weights
   git grep -n -I -E -e "$src_re" -e "$dir_re" -- . > "$sd/grep" 2>/dev/null || [ "$?" -eq 1 ] || { rm -rf "$sd"; serial_sweep; }
   # stage 1: one line per file, "<closure weight> <root> <member> <weight> ...", the root first, weight -1 for a
