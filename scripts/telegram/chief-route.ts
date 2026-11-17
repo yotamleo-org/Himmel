@@ -1,4 +1,5 @@
-import { selectDecisionNames } from "../jira/src/release/pinned.ts";
+import { selectDecisionNames, pinnedRead, boundedDirectoryNames, reviewedSpecHashes, validateCappedFoldProof, PINNED_READ_VERSION,
+  type CappedFoldProof, type EvidencePin, type EvidenceFilePin, type ReturnPin } from "../jira/src/release/pinned.ts";
 import { join, dirname, basename, resolve, isAbsolute } from "node:path";
 import { randomUUID, createHash } from "node:crypto";
 import { hostname, homedir } from "node:os";
@@ -1060,6 +1061,201 @@ export async function ledgerVerify(file: string, opts: { spec?: string; sign?: b
   const abs = await realpath(file).catch(() => { throw new Error(`${file}: not found`); });
   return verifyReturn(abs, await readCritic(abs), opts);
 }
+
+function cappedReader(specs: string, key: string) {
+  const files = new Map<string, { bytes: Buffer; sha256: string; mtime_ms: number }>();
+  const aliases = new Map<string, string>();
+  const directories = new Map<string, { canonical: string | null; names: string[] }>();
+  const pins = new Map<string, EvidenceFilePin>();
+  const selections: Extract<EvidencePin, { role: "decision-selection" }>[] = [];
+  const fail = (path: string) => { throw new Error(`capped-fold: evidence changed or is unreadable: ${path}`); };
+  const canonical = async (path: string) => {
+    if (!isAbsolute(path)) throw new Error(`capped-fold: expected an absolute path: ${path}`);
+    const abs = await realpath(path);
+    if (path !== abs) throw new Error(`capped-fold: evidence lookup must be canonical: ${path}`);
+    if (aliases.has(path) && aliases.get(path) !== abs) fail(path);
+    aliases.set(path, abs); aliases.set(abs, abs);
+    return abs;
+  };
+  const roleOf = (path: string): EvidenceFilePin["role"] => path === manifestFile(specs) ? "manifest"
+    : path === join(ledgerDir(specs), `${key}.jsonl`) ? "ledger"
+    : dirname(path) === join(ledgerDir(specs), key) ? "snapshot"
+    : dirname(path) === join(specs, "decisions") ? "decision" : "artifact";
+  const read = async (path: string, role = roleOf(path)) => {
+    const abs = await canonical(path);
+    if (!files.has(abs)) {
+      const got = pinnedRead(abs);
+      if (!("bytes" in got)) return fail(abs);
+      files.set(abs, got);
+    }
+    const got = files.get(abs)!;
+    if (pins.has(abs) && pins.get(abs)!.role !== role) throw new Error(`capped-fold: conflicting evidence roles: ${abs}`);
+    pins.set(abs, { role, path: abs, sha256: got.sha256, ...(role === "decision" ? { mtime_ms: got.mtime_ms } : {}) });
+    return got;
+  };
+  const names = async (directory: string) => {
+    if (!directories.has(directory)) {
+      const canonical = await realpath(directory).catch((e: NodeJS.ErrnoException) => {
+        if (e.code === "ENOENT") return null;
+        throw e;
+      });
+      if (canonical !== null && canonical !== directory) throw new Error(`capped-fold: directory lookup must be canonical: ${directory}`);
+      directories.set(directory, { canonical, names: boundedDirectoryNames(directory) });
+    }
+    return directories.get(directory)!.names;
+  };
+  const decision = async (number: string) => {
+    const directory = join(specs, "decisions"); const selected = selectDecisionNames(await names(directory), number);
+    if (selected.length !== 1 || directories.get(directory)!.canonical !== directory) fail(directory);
+    if (!selections.some(s => s.decision === number)) selections.push({ role: "decision-selection", directory, decision: number, names: selected });
+  };
+  const recheck = async () => {
+    // Read every pinned file before checking aliases/selections, including a file whose name was rebound.
+    for (const [path, pin] of pins) {
+      const got = pinnedRead(path);
+      if (!("bytes" in got) || got.sha256 !== pin.sha256 || (pin.role === "decision" && got.mtime_ms !== pin.mtime_ms)) fail(path);
+    }
+    for (const [path, abs] of aliases) if (await realpath(path).catch(() => null) !== abs) fail(path);
+    for (const [directory, initial] of directories) {
+      if (await realpath(directory).catch(() => null) !== initial.canonical) fail(directory);
+      const now = boundedDirectoryNames(directory);
+      const selected = selections.filter(s => s.directory === directory);
+      if (selected.length) {
+        if (selected.some(s => JSON.stringify(selectDecisionNames(now, s.decision)) !== JSON.stringify(s.names))) fail(directory);
+      } else if (JSON.stringify(now) !== JSON.stringify(initial.names)) fail(directory);
+    }
+  };
+  return { read, names, canonical, decision, recheck, pins: () => [...pins.values(), ...selections] };
+}
+
+function cappedDeclaredKey(text: string, key: string, frontmatter: boolean): void {
+  const single = (lines: RegExpMatchArray[]) => lines.length === 1 && new RegExp(`^(?:${key}|\\[\\s*${key}\\s*\\])$`).test(lines[0][1].trim());
+  const head = frontmatter ? text.split(/^## /m)[0] : text;
+  const declaration = frontmatter ? /^(?:Keys?|- Tickets?):[ \t]*(.+)$/gm : /^Keys?:\s*(.+)$/gm;
+  if (!single([...head.matchAll(declaration)])) throw new Error(`capped-fold: header must declare only ${key}`);
+  if (frontmatter) {
+    const front = /^---\n([\s\S]*?)\n---(?:\n|$)/.exec(text)?.[1] ?? "";
+    if (!single([...front.matchAll(/^tickets:[ \t]*(.+)$/gm)])) throw new Error(`capped-fold: tickets must declare only ${key}`);
+  }
+}
+
+const cappedPathKeys = (path: string) => [KEY_FOLDER.test(basename(dirname(path))) ? basename(dirname(path)) : null,
+  /^([A-Z][A-Z0-9]+-[0-9]+)(?=[-.])/.exec(basename(path))?.[1]].filter((key): key is string => !!key);
+
+function cappedFindings(text: string, kind: Kind, round: number, row: LedgerRow): Finding[] {
+  const count = lastLine(text) === CLEAN[kind] ? 0 : Number(new RegExp(`^${kind.toUpperCase()} FINDINGS ([0-9]+)$`).exec(lastLine(text))?.[1]);
+  if (!Number.isSafeInteger(count) || count < 0 || count > 4096) throw new Error("capped-fold: invalid finding count");
+  const candidates = text.split("\n").filter(l => /^[ \t]*[-*][ \t]+\*\*[A-Za-z][\w.-]*\*\*[ \t]*\(/.test(l));
+  for (const line of candidates) {
+    const match = FINDING_LINE.exec(line);
+    if (!match || !/^(minor|medium)$/.test(match[2])) throw new Error(`capped-fold: ineligible finding heading: ${line}`);
+  }
+  const parsed = parseFindings(text, kind, round);
+  const findings = parsed.findings;
+  if (!Number.isSafeInteger(count) || count !== findings.length || count !== candidates.length || count !== row.findings.length
+    || parsed.unrated_ids.length || row.unrated_ids.length || new Set(findings.map(f => f.id)).size !== count) throw new Error("capped-fold: finding count/IDs do not agree");
+  const ordered = (fs: Finding[]) => JSON.stringify(fs.map(f => [f.id, f.severity]).sort((a, b) => a[0].localeCompare(b[0])));
+  const ledgerFindings = row.findings as Finding[];
+  if (ledgerFindings.some(f => Object.keys(f).some(k => !["id", "severity", "class"].includes(k)) || (f.class && (row.mode !== "closure" || f.class !== "out-of-closure")))
+    || ordered(findings) !== ordered(ledgerFindings.map(({ class: _class, ...f }) => f))) throw new Error("capped-fold: ledger findings do not agree or are blocking");
+  return findings;
+}
+
+async function cappedLatest(spec: string, plan: string, reader: RoundReader, expected: [ReturnPin, ReturnPin]): Promise<void> {
+  const specs = specsRootOf(spec)!; const key = keyOf(spec)!;
+  const folders = [dirname(spec), dirname(plan), ...expected.map(r => dirname(r.path)), ...[...SIGNATURE_DIRS, key].map(d => join(specs, d))];
+  for (const directory of new Set(folders)) for (const name of await reader.names(directory)) {
+    const normal = CRITIC_FILE.exec(name); const legacy = CRITIC_NAME.exec(name);
+    const stem = normal?.[1] ?? legacy?.[1];
+    if (!stem || keyOf(join(directory, stem)) !== key) continue;
+    const kind = (normal?.[2] ?? normal?.[5] ?? legacy?.[2]) as Kind | undefined;
+    const round = Number(normal?.[3] ?? normal?.[4] ?? legacy?.[3]);
+    const candidates = kind ? [expected[kind === "spec" ? 0 : 1]] : expected;
+    if (candidates.some(current => round >= current.round && join(directory, name) !== current.path)) throw new Error(`capped-fold: ambiguous or unaccounted latest return: ${join(directory, name)}`);
+  }
+}
+
+async function cappedLedgerEvidence(rows: Rows, key: string, reader: ReturnType<typeof cappedReader>): Promise<void> {
+  let epoch = 0; const rounds = { spec: 0, plan: 0 };
+  for (const [index, row] of rows.entries()) {
+    if (row.key !== key || !["seed", "round", "seal", "reset", "critical", "override"].includes(row.row)) throw new Error("capped-fold: invalid ledger key/record");
+    if (row.row !== "reset" && row.epoch !== undefined && row.epoch !== epoch) throw new Error("capped-fold: invalid ledger epoch");
+    if (row.row === "seed") {
+      if (index !== 0) throw new Error("capped-fold: seed must be the first ledger record");
+      rounds.spec = Number(row.spec); rounds.plan = Number(row.plan);
+    }
+    if (row.row === "reset") { epoch++; rounds.spec = rounds.plan = 0; if (row.epoch !== epoch) throw new Error("capped-fold: invalid reset epoch"); }
+    if (row.row === "round") {
+      if ((row.epoch ?? 0) !== epoch || row.round !== rounds[row.critic as Kind] + 1 || row.mode !== (row.round <= CRITIC_ROUND_CAP ? "full" : "closure")) throw new Error("capped-fold: invalid round epoch/order/mode");
+      rounds[row.critic as Kind] = row.round;
+    }
+    if (row.row === "reset" || row.row === "critical") await reader.decision(String(row.decision));
+  }
+}
+
+export async function cappedFold(o: { key: string; spec: string; plan: string; specReturn: string; planReturn: string }): Promise<CappedFoldProof> {
+  if (!KEY_FOLDER.test(o.key)) throw new Error("capped-fold: expected one ticket key");
+  for (const path of [o.spec, o.plan, o.specReturn, o.planReturn]) if (!isAbsolute(path)) throw new Error("capped-fold: paths must be absolute");
+  const spec = await realpath(o.spec); const specs = specsRootOf(spec);
+  if (!specs || !cappedPathKeys(spec).length || cappedPathKeys(spec).some(key => key !== o.key)) throw new Error("capped-fold: spec filename/folder key disagrees");
+  const reader = cappedReader(specs, o.key);
+  const specRead = await reader.read(o.spec); const plan = await reader.canonical(o.plan); const planRead = await reader.read(o.plan);
+  if (spec === plan || cappedPathKeys(plan).some(key => key !== o.key)) throw new Error("capped-fold: expected a distinct plan for this key");
+  cappedDeclaredKey(specRead.bytes.toString("utf8"), o.key, true); cappedDeclaredKey(planRead.bytes.toString("utf8"), o.key, true);
+  const rows = await loadLedger(specs, o.key, reader);
+  if (rows.checked.invalid.length) throw new Error(`capped-fold: invalid ledger records: ${rows.checked.invalid.join(", ")}`);
+  await cappedLedgerEvidence(rows, o.key, reader);
+  if (criticalOpenOf(rows).length) throw new Error("capped-fold: open historical operator-critical findings");
+  const returns: ReturnPin[] = []; const carried: CappedFoldProof["carried"] = [];
+  for (const kind of KINDS) {
+    const path = await reader.canonical(kind === "spec" ? o.specReturn : o.planReturn); const got = await reader.read(path, "return"); const text = got.bytes.toString("utf8");
+    if (cappedPathKeys(path).some(key => key !== o.key)) throw new Error("capped-fold: return filename/folder key disagrees");
+    cappedDeclaredKey(text, o.key, false);
+    const row = latestRow(rows, kind); const sum = returnSha(text);
+    if (!row || row.verdict_path !== path || row.return_sha !== sum || row.verdict !== lastLine(text)
+      || basename(path) !== `${basename(spec)}.critic-${kind}-r${row.round}.md`
+      || roundRows(rows, kind).filter(r => r.round === row.round).length !== 1) throw new Error(`capped-fold: not the actual latest real ${kind} round`);
+    const reviewed = reviewedSpecHashes(text);
+    if (reviewed.length !== 1 || reviewed[0] !== specRead.sha256) throw new Error(`capped-fold: ${kind} must review the current spec exactly once`);
+    const findings = cappedFindings(text, kind, row.round, row);
+    if (findings.length && (row.round < CRITIC_ROUND_CAP || !capRefusal(o.key, rows, kind, row.round + 1))) throw new Error("capped-fold: findings have not reached the refused round cap");
+    const recorded = distinctFiles([sealedFileOf(row, false), ...rows.filter(r => r.row === "seal" && r.return_sha === sum).map(r => sealedFileOf(r, false))]);
+    const seals = sealsOf(text); const quotes = [...text.matchAll(/^READ ([0-9a-f]{64}) (\S.*)$/gm)];
+    if (text.split("\n").filter(l => /^CONTENT-SHA256(?:\s|$)/.test(l)).length !== seals.length
+      || text.split("\n").filter(l => /^READ(?:\s|$)/.test(l)).length !== quotes.length) throw new Error("capped-fold: malformed seal or READ quote");
+    const quoted = new Map<string, string>();
+    for (const quote of quotes) {
+      const artifact = await reader.canonical(resolve(dirname(path), quote[2]));
+      if (quoted.has(artifact)) throw new Error("capped-fold: duplicate critic READ quotes");
+      quoted.set(artifact, quote[1]);
+    }
+    const declared = new Map<string, string>();
+    for (const seal of seals) {
+      const raw = resolve(dirname(path), seal.rel); const artifact = await reader.canonical(raw);
+      if (declared.has(artifact)) {
+        if (declared.get(artifact) !== seal.sha) throw new Error("capped-fold: conflicting seals");
+        continue;
+      }
+      declared.set(artifact, seal.sha);
+      const read = await reader.read(raw, "artifact");
+      if (read.sha256 !== seal.sha || !recorded.some(s => s.read_path === artifact && s.read_sha === seal.sha)) throw new Error(`capped-fold: seal provenance disagrees: ${artifact}`);
+      if (quoted.get(artifact) !== seal.sha) throw new Error(`capped-fold: missing/conflicting critic READ quote: ${artifact}`);
+      const snapshot = await reader.read(join(ledgerDir(specs), o.key, seal.sha));
+      if (snapshot.sha256 !== seal.sha) throw new Error("capped-fold: content-addressed snapshot changed");
+    }
+    if (recorded.length !== declared.size || quoted.size !== declared.size || recorded.some(s => declared.get(s.read_path) !== s.read_sha)
+      || declared.get(spec) !== specRead.sha256 || (kind === "plan" && declared.get(plan) !== planRead.sha256)) throw new Error("capped-fold: missing/extra ledger seals or review coverage");
+    returns.push({ kind, path, sha256: got.sha256, round: row.round, return_sha: sum, residuals: findings.length });
+    for (const finding of findings) carried.push({ key: o.key, epoch: rows.checked.epoch, kind, round: row.round, return_path: path, return_sha: sum,
+      finding_id: finding.id, severity: finding.severity as "minor" | "medium", status: "open-carried" });
+  }
+  if (!carried.length) throw new Error("capped-fold: requires at least one carried finding");
+  const tuple = returns as [ReturnPin, ReturnPin]; await cappedLatest(spec, plan, reader, tuple);
+  const proof = validateCappedFoldProof({ schema: 1, reader_version: PINNED_READ_VERSION, mode: "capped-carry", key: o.key, epoch: rows.checked.epoch,
+    spec: { path: spec, sha256: specRead.sha256 }, plan: { path: plan, sha256: planRead.sha256 }, returns: tuple, pins: reader.pins(), carried });
+  await reader.recheck();
+  return proof;
+}
 async function verifyReturn(abs: string, text: string, opts: { spec?: string; sign?: boolean }): Promise<LedgerVerdict> {
   const spec = opts.spec === undefined ? undefined : await realpath(opts.spec).catch(() => resolve(opts.spec!));
   const specKey = spec ? keyOf(spec) : null;
@@ -1661,7 +1857,15 @@ function roundStatusArgs(args: string[]): { key: string | null; specs: string; j
 if (import.meta.main) {
   const [verb, ...args] = process.argv.slice(2);
   const byRequest = verb === "send-file" && args[0] === "--by-request" && args.length >= 4 ? args.splice(0, 2)[1] : undefined;
-  if (verb === "register" && args.length === 3) {
+  if (verb === "capped-fold") {
+    try {
+      const flags = ["--key", "--spec", "--plan", "--spec-return", "--plan-return"];
+      const parsed = verbArgs(args, flags, [], 0);
+      if (!parsed || args.length !== 10 || flags.some(f => !parsed.opts[f] || parsed.opts[f].startsWith("--"))) throw new Error("capped-fold: requires exactly --key, --spec, --plan, --spec-return and --plan-return, each once");
+      console.log(JSON.stringify(await cappedFold({ key: parsed.opts["--key"], spec: parsed.opts["--spec"], plan: parsed.opts["--plan"],
+        specReturn: parsed.opts["--spec-return"], planReturn: parsed.opts["--plan-return"] })));
+    } catch (e) { console.error(`capped-fold: ${e instanceof Error ? e.message : e}`); process.exit(1); }
+  } else if (verb === "register" && args.length === 3) {
     await registerConsole(args[0], args[1], args[2]);
   } else if (verb === "announce" && args.length === 1) {
     await announceConsole(args[0]);
