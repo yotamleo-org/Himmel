@@ -24,22 +24,42 @@ Telegram `DELIVERED` receipt. Queue/drain success is insufficient; failures
 stay open and retry on a bounded cadence.
 
 Acknowledgement failures emit `waiter-error kind=ack-stuck` with the request
-path and next retry time. Requests persist across restart and retry after
+path and next retry time. This supervisor remains live: do not arm a second
+one for `ack-stuck`. Requests persist across restart and retry after
 30 seconds, doubling to at most 30 minutes; another queued acknowledgment
-can still proceed. Repair the named request/owed action rather than closing
-proof or source debt. An uncaught supervisor failure emits
-`waiter-error kind=supervisor` and `REARM`; the owned child retains its
-watchdog/adoption bounds.
+can still proceed. After repair, settlement takes at most the remaining
+30-minute backoff plus one service pass. To retry sooner, preserve a copy of
+the named `.json.retry` sidecar for diagnosis, then remove only that sidecar;
+the next pass retries the existing acknowledgment. Corrupt/unreadable retry
+state stays untouched and is named for explicit repair, with one warning per
+request streak. Never close proof or source debt to suppress a warning.
+An uncaught supervisor failure emits `waiter-error kind=supervisor` and
+`REARM`; the owned child retains its watchdog/adoption bounds. If the same
+fault recurs within five minutes, the arm ends with
+`STOPPED reason=supervisor-repeat`. Unwritable supervisor fault state ends
+with `STOPPED reason=supervisor-state-unwritable`. Reconcile the named state
+before manually arming again; neither terminal outcome requests an automatic
+re-arm. A malformed wake row is refused for reconciliation, never discarded.
 
 Owed operator sends reuse a stable outbox identity for the chief, document,
 owed key and part number; conflicting content under that key is refused.
-Only matching send receipts for every part
+The raw owed text binds its content hash; mirror titles cannot change the
+first enqueue's frozen parts. Only matching send receipts for every part
 permit `DELIVERED`; unrelated replies never count. Service passes enqueue or
 reconcile without waiting for the poller, with at most one send helper per
-pass (two-second helper timeout). Unreceipted rows back off while later owed
-rows are attempted. Ordinary replies retain their order behind pending debt.
+pass (two-second helper timeout). Receipt-only checks run each pass even
+during send backoff. Ordinary in-flight delivery gets a 30-second grace
+(`CHIEF_WAIT_OPERATOR_GRACE_SEC`); after that, pending debt wakes/reminds on
+the existing notification cadence. Enqueueing alone never discharges debt.
+Part i waits for part i-1's receipt. Failed/corrupt requests retain their
+state for reconciliation while unrelated owed and ordinary replies proceed.
+Ordinary replies preserve their own order, with local completion markers
+preventing repeats while an earlier owed row remains unreceipted.
 
-Re-arm only on `REARM`, `STOPPED`, `STREAM-REFUSED` or `waiter-error`. A normal
+`REARM` requests the next stream arm. `STOPPED` is terminal; resume manually
+only when intended and after resolving any named fault. `STREAM-REFUSED`
+needs its refusal resolved; `live-supervisor` means keep the existing arm.
+Inspect a `waiter-error` without arming again while its supervisor is live. A normal
 `WAKE#` needs no re-arm, including a succession or relay-on-live block whose
 legacy tail says to re-arm: the supervisor performs that relaunch and removes
 `--succession`. Never mix a bare waiter into stream mode; `child=busy` requires
@@ -47,6 +67,13 @@ a stream arm to adopt the bounded child. `reason=repeat|rate` requires handling
 the repeating cause first. A mistaken second arm is refused.
 `waiter-error kind=hung` means the busy/orphan bound killed a stuck child;
 inspect its saved output and step before re-arming.
+
+Worker documents with read failures emit one actionable
+`waiter-error worker-doc-unread` per unread streak, while healthy peers
+continue. Repair the named document; a successful read resets that warning.
+Handled READY identity follows the READY-event prefix, so atomic rewrites,
+retitles and other prose edits do not replay it. First observation and genuine
+READY replacement select the newest head; subsequent READY appends keep order.
 
 To stop normally, touch `<inbox>.wait.stop`. The supervisor waits up to 60 s
 for a safe point, prints `STOPPED`, and removes the request. A busy child stays

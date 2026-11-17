@@ -33,6 +33,7 @@ class StreamFixture(unittest.TestCase):
                         CHIEF_WAIT_STREAM_KILL_GRACE_SEC='0.2', HOUSEKEEPING_DIGEST_SECS='0',
                         CHIEF_WAIT_FAIL_WAKE='1000', WAIT_SWEEP_SEC='99999',
                         HIMMEL_FLAG_AUTO_GO='0', HIMMEL_FLAG_SILENT_GO='0',
+                        CHIEF_WAIT_OPERATOR_GRACE_SEC='.2',
                         HIMMEL_TEST_FIXTURE='1')
         self.script('usage', 'echo PROCEED\n')
         self.script('tick', 'echo call >> "$TEST_ROOT/ticks"\necho "TICK workers=0 livestate=0 prs=none tails=none acts=none workerset=0 board=ok tracker=ok denials=0 capacity=FULL"\n')

@@ -1982,9 +1982,15 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
         # a READY past its cursor comes after any WRAPPED or MERGED worker
         if ready_pick; then cands="${cands:+$cands$'\n'}$ready_label READY"; fi
     fi
+    local r0_warned=""
     r0_attempted=""
     while read -r label marker event_line; do
         [ -n "$label" ] || continue
+        if [ "$label" = WARN ]; then
+            printf 'WAKE waiter-error worker-doc-unread worker=%s reconcile=%s diagnostic=%s\n' "$marker" "$event_line" "$inbox.wait.pending-diagnostic"
+            r0_warned=1
+            continue
+        fi
         ldoc="$(jq -r --arg l "$label" "$JQ_W"'W[]? | select(.label == $l) | .doc' "$legs_from" 2>/dev/null | head -n 1)"
         [ -n "$ldoc" ] && [ -f "$ldoc" ] || continue
         if [ "$marker" = READY ]; then
@@ -2058,6 +2064,7 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
     done <<EOF
 $cands
 EOF
+    [ -z "$r0_warned" ] || return 0
     return 1
 }
 

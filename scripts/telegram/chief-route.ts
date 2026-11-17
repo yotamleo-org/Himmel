@@ -393,6 +393,11 @@ export async function rememberConsoleReply(root: string, chat: number, message: 
   if (!file || typeof name !== "string" || !consoleInboxPath(root, name)) return;
   await mkdir(dirname(file), { recursive: true });
   await atomicWrite(file, JSON.stringify({ name, ...(requestId ? { request_id: requestId, request_hash: requestHash } : {}) }));
+  if (requestId && /^[a-f0-9]{64}-[0-9]+$/.test(requestId)) {
+    const index = join(root, 'consoles', 'owed-receipts');
+    await mkdir(index, { recursive: true });
+    await atomicWrite(join(index, `${chat}_${requestId}.json`), JSON.stringify({ name, message, request_id: requestId, request_hash: requestHash }));
+  }
 }
 
 export async function consoleReplyTarget(root: string, chat: number, message: number): Promise<string | null> {
@@ -1540,7 +1545,12 @@ function splitParts(text: string, limit = TELEGRAM_PART_LIMIT): string[] {
   }
 }
 
-export async function routeReply(root: string, chatId: number, text: string, o: { kind?: string; consoleName?: string; dest: string; owedIdentity?: string }): Promise<{ cls: MsgClass; parts: number; requests: string[] }> {
+export async function routeReply(root: string, chatId: number, text: string, o: { kind?: string; consoleName?: string; dest: string; owedIdentity?: string; receiptOnly?: boolean }): Promise<{ cls: MsgClass; parts: number; requests: string[] }> {
+  if (o.receiptOnly && o.owedIdentity && o.consoleName) {
+    const base = sha256(Buffer.from(`${chatId}\0${o.consoleName}\0${o.owedIdentity}`));
+    const parts = await queueOwedRequest(root, chatId, o.consoleName, base, text, [], true);
+    return { cls: 'escalate', parts: parts.length, requests: parts.map((_, i) => `${base}-${i}`) };
+  }
   const { replyViaOutbox } = await import("./poller");
   const kind = o.kind !== undefined && KIND_RE.test(o.kind) ? o.kind : undefined;
   let cls: MsgClass = "escalate"; let logClass: string = "escalate"; let sent = text; let capState = "ok"; let keys = 0; let queued = 0;
@@ -1566,17 +1576,19 @@ export async function routeReply(root: string, chatId: number, text: string, o: 
   }
   const requests: string[] = [];
   if (cls === "escalate") {
-    const parts = splitParts(sent);
+    let parts = splitParts(sent);
+    if (o.owedIdentity && o.consoleName) {
+      const base = sha256(Buffer.from(`${chatId}\0${o.consoleName}\0${o.owedIdentity}`));
+      parts = await queueOwedRequest(root, chatId, o.consoleName, base, text, parts, o.receiptOnly ?? false);
+      requests.push(...parts.map((_, i) => `${base}-${i}`));
+    }
     if (parts.length > 1) capState = "split";
-    for (const [i, part] of parts.entries()) {
-      if (o.owedIdentity && o.consoleName) {
-        const id = sha256(Buffer.from(`${chatId}\0${o.consoleName}\0${o.owedIdentity}`)) + `-${i}`;
-        requests.push(id);
-        await queueOwedPart(root, chatId, o.consoleName, id, part, sha256(Buffer.from(sent)));
-      } else await replyViaOutbox(root, chatId, part, o.consoleName);
+    if (!(o.owedIdentity && o.consoleName)) {
+      for (const part of parts) await replyViaOutbox(root, chatId, part, o.consoleName);
     }
     queued = parts.length;
   }
+  if (o.receiptOnly) return { cls, parts: queued, requests };
   const dest = cls === "escalate" ? o.dest : cls === "monitor" ? "monitor" : "none";
   try {
     await mkdir(root, { recursive: true });
@@ -1585,21 +1597,44 @@ export async function routeReply(root: string, chatId: number, text: string, o: 
   return { cls, parts: queued, requests };
 }
 
-export async function owedSendReceipt(root: string, chat: number, name: string, requestId: string, requestHash?: string): Promise<number | null> {
+export type OwedReceipt = { name: string; message: number; request_id: string; request_hash?: string };
+export async function owedReceiptSnapshot(root: string, chat: number): Promise<Map<string, OwedReceipt>> {
+  const receipts = new Map<string, OwedReceipt>();
   for (const f of await readdir(join(root, "consoles", "replies")).catch(() => [] as string[])) {
     const m = /^(-?\d+)_(\d+)\.json$/.exec(f);
     if (!m || Number(m[1]) !== chat) continue;
-    const receipt = JSON.parse(await readFile(join(root, "consoles", "replies", f), "utf8"));
-    if (receipt.name === name && receipt.request_id === requestId && Number(m[2]) > 0) {
-      if (requestHash && receipt.request_hash !== requestHash) throw new Error("owed content changed; reconcile its original request");
-      return Number(m[2]);
+    try {
+      const receipt = JSON.parse(await readFile(join(root, "consoles", "replies", f), "utf8"));
+      if (typeof receipt?.name === 'string' && typeof receipt.request_id === 'string' && Number(m[2]) > 0) {
+        receipts.set(receipt.request_id, { ...receipt, message: Number(m[2]) });
+      }
+    } catch (e) { console.error(`[chief-route] unread receipt ${f}: ${e}`); }
+  }
+  return receipts;
+}
+
+export async function owedSendReceipt(root: string, chat: number, name: string, requestId: string, requestHash?: string, snapshot?: () => Promise<Map<string, OwedReceipt>>): Promise<number | null> {
+  if (!/^[a-f0-9]{64}-[0-9]+$/.test(requestId)) throw new Error('invalid owed request id');
+  const index = join(root, 'consoles', 'owed-receipts', `${chat}_${requestId}.json`);
+  let receipt: OwedReceipt | undefined;
+  try {
+    receipt = JSON.parse(await readFile(index, 'utf8'));
+    if (receipt?.request_id !== requestId || !Number.isSafeInteger(receipt.message) || receipt.message <= 0) {
+      throw new Error('invalid owed receipt index; reconcile ' + index);
     }
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+    receipt = (await (snapshot ? snapshot() : owedReceiptSnapshot(root, chat))).get(requestId);
+  }
+  if (receipt?.name === name) {
+    if (requestHash && receipt.request_hash !== requestHash) throw new Error("owed content changed; reconcile its original request");
+    return receipt.message;
   }
   return null;
 }
 
 let owedTurn: Promise<unknown> = Promise.resolve();
-function queueOwedPart(root: string, chat: number, name: string, requestId: string, text: string, requestHash: string): Promise<void> {
+function queueOwedRequest(root: string, chat: number, name: string, base: string, raw: string, proposed: string[], receiptOnly: boolean): Promise<string[]> {
   const run = owedTurn.then(async () => {
     const { replyViaOutbox } = await import("./poller");
     await mkdir(root, { recursive: true });
@@ -1608,14 +1643,34 @@ function queueOwedPart(root: string, chat: number, name: string, requestId: stri
     const lock = await open(join(root, "owed-outbox.lock"), "a");
     try {
       if (libc.symbols.flock(lock.fd, 2) !== 0) throw new Error("cannot lock owed outbox");
+      const plans = join(root, 'consoles', 'owed-requests');
+      const planPath = join(plans, base + '.json');
+      const requestHash = sha256(Buffer.from(raw));
+      let plan: { raw_hash: string; parts: string[] };
+      try { plan = JSON.parse(await readFile(planPath, 'utf8')); }
+      catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+        if (receiptOnly) return [];
+        plan = { raw_hash: requestHash, parts: proposed };
+        await mkdir(plans, { recursive: true });
+        await atomicWrite(planPath, JSON.stringify(plan));
+      }
+      if (plan.raw_hash !== requestHash) throw new Error('owed content changed; reconcile its original request');
+      if (!Array.isArray(plan.parts) || !plan.parts.length || !plan.parts.every(p => typeof p === 'string')) throw new Error('invalid owed parts plan; reconcile ' + planPath);
+      if (receiptOnly) return plan.parts;
       const file = join(root, "sessions", chat < 0 ? `group_${chat}` : "__chat__", "outbox.jsonl");
       const queued = (await readFile(file, "utf8").catch((e: NodeJS.ErrnoException) => { if (e.code === "ENOENT") return ""; throw e; })).split("\n")
-        .map(line => { try { return JSON.parse(line); } catch { return null; } }).find(row => row?.request_id === requestId);
-      if (queued && queued.request_hash !== requestHash) throw new Error("owed content changed; reconcile its original request");
-      // The poller persists the receipt before advancing/truncating the outbox.
-      if (!queued && await owedSendReceipt(root, chat, name, requestId, requestHash) === null) {
-        await replyViaOutbox(root, chat, text, name, undefined, undefined, requestId, requestHash);
+        .map(line => { try { return JSON.parse(line); } catch { return null; } });
+      let snapshot: Promise<Map<string, OwedReceipt>> | undefined;
+      for (const [i, text] of plan.parts.entries()) {
+        const requestId = `${base}-${i}`;
+        const row = queued.find(row => row?.request_id === requestId);
+        if (row && row.request_hash !== requestHash) throw new Error("owed content changed; reconcile its original request");
+        if (!row && await owedSendReceipt(root, chat, name, requestId, undefined, () => (snapshot ??= owedReceiptSnapshot(root, chat))) === null) {
+          await replyViaOutbox(root, chat, text, name, undefined, undefined, requestId, requestHash);
+        }
       }
+      return plan.parts;
     } finally { await lock.close(); libc.close(); }
   });
   owedTurn = run.catch(() => {});
@@ -1652,7 +1707,8 @@ export async function awaitSendReceipts(root: string, chat: number, name: string
 async function awaitOwedReceipts(root: string, chat: number, name: string, requests: string[], waitSec: number): Promise<number[]> {
   const deadline = Date.now() + waitSec * 1000;
   for (;;) {
-    const ids = (await Promise.all(requests.map(id => owedSendReceipt(root, chat, name, id)))).filter((id): id is number => id !== null);
+    let snapshot: Promise<Map<string, OwedReceipt>> | undefined;
+    const ids = (await Promise.all(requests.map(id => owedSendReceipt(root, chat, name, id, undefined, () => (snapshot ??= owedReceiptSnapshot(root, chat)))))).filter((id): id is number => id !== null);
     if (ids.length === requests.length || Date.now() >= deadline) return ids;
     await new Promise(r => setTimeout(r, 200));
   }
@@ -1757,19 +1813,19 @@ if (import.meta.main) {
     } catch (e) { console.error(e instanceof Error ? e.message : e); process.exit(1); }
   } else {
     const flags: { chief?: string; satellite?: string; kind?: string; owed?: string; doc?: string } = {};
-    if (verb === "reply") while (args.length >= 2 && (args[0] === "--chief" || args[0] === "--satellite" || args[0] === "--kind" || args[0] === "--owed" || args[0] === "--doc")) flags[args.shift()!.slice(2) as keyof typeof flags] = args.shift()!;
+    if (verb === "reply" || verb === "receipt") while (args.length >= 2 && (args[0] === "--chief" || args[0] === "--satellite" || args[0] === "--kind" || args[0] === "--owed" || args[0] === "--doc")) flags[args.shift()!.slice(2) as keyof typeof flags] = args.shift()!;
     const owedOk = (flags.owed === undefined && flags.doc === undefined) || (/^[A-Za-z0-9_.-]+$/.test(flags.owed ?? "") && isAbsolute(flags.doc ?? "") && await stat(flags.doc!).then(s => s.isFile(), () => false));
     const name = flags.chief ?? (verb === "reply" ? await currentConsoleName(defaultRoot()) : undefined);
     const satellite = flags.satellite;
     const [chat, ...rest] = args;
     const chatId = chat === "operator" ? (operatorChatId(await loadAccess()) ?? NaN) : Number(chat);
-    if (verb === "reply" && Number.isSafeInteger(chatId) && chatId !== 0 && rest.length && owedOk && (flags.owed === undefined || name) && (!name || consoleInboxPath(defaultRoot(), name)) && (satellite === undefined || SATELLITE_ID.test(satellite))) {
-      const { cls, parts, requests } = await routeReply(defaultRoot(), chatId, rest.join(" "), { kind: flags.kind, consoleName: name, dest: chat === "operator" ? "operator" : `chat:${chatId}`, owedIdentity: flags.owed === undefined ? undefined : `${flags.doc}\0${flags.owed}` });
+    if ((verb === "reply" || (verb === "receipt" && flags.owed !== undefined && satellite === undefined)) && Number.isSafeInteger(chatId) && chatId !== 0 && rest.length && owedOk && (flags.owed === undefined || name) && (!name || consoleInboxPath(defaultRoot(), name)) && (satellite === undefined || SATELLITE_ID.test(satellite))) {
+      const { cls, parts, requests } = await routeReply(defaultRoot(), chatId, rest.join(" "), { kind: flags.kind, consoleName: name, dest: chat === "operator" ? "operator" : `chat:${chatId}`, owedIdentity: flags.owed === undefined ? undefined : `${flags.doc}\0${flags.owed}`, receiptOnly: verb === 'receipt' });
       console.log(cls);
       if (flags.owed !== undefined) {
         if (cls !== "escalate") { console.error(`[chief-route] owed item ${flags.owed}: the text was class ${cls}, not sent to Telegram, so there is no receipt`); process.exit(1); }
         const ids = await awaitOwedReceipts(defaultRoot(), chatId, name!, requests, Math.max(0, Number(process.env.CHIEF_ROUTE_RECEIPT_WAIT_SEC ?? "30")));
-        if (ids.length < parts) { console.error(`[chief-route] owed item ${flags.owed}: queued, but ${ids.length} of ${parts} parts got a send receipt in time and the poller recorded no send receipt for the rest (poller down or Telegram refused); nothing marked delivered`); process.exit(1); }
+        if (!parts || ids.length < parts) { console.error(`[chief-route] owed item ${flags.owed}: pending; ${ids.length} of ${parts} frozen parts got a send receipt, no send receipt for the rest; nothing marked delivered`); process.exit(1); }
         const id = ids[ids.length - 1];
         await writeOwedReceipt(flags.doc!, flags.owed, id, chatId);
         console.log(`delivered msg=${id}`);

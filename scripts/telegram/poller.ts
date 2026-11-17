@@ -6,7 +6,7 @@ import { homedir, tmpdir } from "node:os";
 import { currentNs, hostNsFile } from "../jira/src/release/fence-ancestry";
 import { appendLine, appendOutboxLine, atomicWrite, bridgeRoot, ensureSession, readMeta, writeMeta, sessionDir, readNewLines, peekNewLines, commitCursorPos, repairCursorBeyondEof, truncateFullyConsumed, rotateConsumedLedger, type Meta, type OnCursorReset } from "./bus";
 import { classify, isTicketKey, type Route } from "./router";
-import { routeToConsole, routeFleetCommand, routeApprove, staleConsoleCommand, consoleReplyTarget, rememberConsoleReply, owedSendReceipt, makeChiefTap, type ConsoleRouteGate, type ConsoleReplyFn } from "./chief-route";
+import { routeToConsole, routeFleetCommand, routeApprove, staleConsoleCommand, consoleReplyTarget, rememberConsoleReply, owedSendReceipt, owedReceiptSnapshot, makeChiefTap, type OwedReceipt, type ConsoleRouteGate, type ConsoleReplyFn } from "./chief-route";
 import { dispatchAutoAction, describeEnabledOps, KNOWN_OPS, CONFIRM_OPS, BREAK_GLASS_OPS, appendAuditLine, type RunScriptFn, type AuditFields } from "./auto-action";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { getUpdates, getMe, sendMessage, sendDocument, sendChatAction, answerCallbackQuery, getFile, downloadFile, redactChatId } from "./telegram-api";
@@ -1080,6 +1080,41 @@ const untaggedPageRefusal = (path: string): string | null => PAGE_TYPE.test(path
   ? `⚠️ ${basename(path)} was not sent: a spec or plan page reaches the operator only through the chief's send-file, which checks its critics first. A bridge report goes as .txt, .pdf, .png, .csv or .json, or as plain text.`
   : null;
 
+type OwedOut = { console: string; request_id: string; text: string; request_hash?: string; reply_to_message_id?: number; markup?: object };
+async function sendOwedPart(root: string, chat: number, out: OwedOut, retryPath: string,
+  receipt: (name: string, id: string) => Promise<number | null>, receivedThisPass: Set<string>, send: SendFn): Promise<boolean> {
+  try {
+    let received = await receipt(out.console, out.request_id);
+    if (received === null) {
+      const part = Number(out.request_id.split('-')[1]);
+      const prior = out.request_id.replace(/-[0-9]+$/, `-${part - 1}`);
+      if (part > 0 && !receivedThisPass.has(prior) && await receipt(out.console, prior) === null) return false;
+      const retry = JSON.parse(await readFile(retryPath, "utf8").catch((e: NodeJS.ErrnoException) => { if (e.code === "ENOENT") return "{}"; throw e; }));
+      if (!retry || typeof retry !== 'object' || Array.isArray(retry) ||
+          !Number.isInteger(retry.attempts ?? 0) || (retry.attempts ?? 0) < 0 || (retry.attempts ?? 0) > 7 ||
+          !Number.isFinite(retry.next ?? 0) || (retry.next ?? 0) < 0) throw new Error('invalid retry state: ' + retryPath);
+      if (Date.now() >= (retry.next ?? 0)) {
+        const attempts = Math.min(7, (retry.attempts ?? 0) + 1);
+        await atomicWrite(retryPath, JSON.stringify({ attempts, next: Date.now() + Math.min(1800000, 30000 * 2 ** (attempts - 1)) }));
+        try {
+          const id = await send(chat, out.text, out.reply_to_message_id, out.markup);
+          if (typeof id === "number" && Number.isSafeInteger(id) && id > 0) {
+            await rememberConsoleReply(root, chat, id, out.console, out.request_id, out.request_hash);
+            received = id;
+          }
+        } catch (e) { logRedacted("[poller] owed send pending " + out.request_id + ": " + e); }
+      }
+    }
+    if (received === null) return false;
+    receivedThisPass.add(out.request_id);
+    await unlink(retryPath).catch((e: NodeJS.ErrnoException) => { if (e.code !== "ENOENT") throw e; });
+    return true;
+  } catch (e) {
+    logRedacted('[poller] owed request needs reconciliation ' + out.request_id + ': ' + e);
+    return false;
+  }
+}
+
 export async function flushOutboxes(root: string, send: SendFn, sendDoc?: SendDocFn): Promise<void> {
   let names: string[] = [];
   try { names = await readdir(join(root, "sessions")); } catch { return; }
@@ -1098,6 +1133,10 @@ export async function flushOutboxes(root: string, send: SendFn, sendDoc?: SendDo
       const complete = slice.slice(0, lastNl);
       let pos = start;
       let blocked = false;
+      let snapshot: Promise<Map<string, OwedReceipt>> | undefined;
+      const receipt = (name: string, id: string) => owedSendReceipt(root, meta.chat_id, name, id, undefined,
+        () => (snapshot ??= owedReceiptSnapshot(root, meta.chat_id)));
+      const receivedThisPass = new Set<string>();
       for (const ln of complete.split("\n")) {
         const bytes = Buffer.byteLength(ln + "\n", "utf8");
         if (ln.trim()) {
@@ -1105,30 +1144,23 @@ export async function flushOutboxes(root: string, send: SendFn, sendDoc?: SendDo
           try { out = JSON.parse(ln); } catch {}
           if (out?.console && typeof out.request_id === "string" && /^[a-f0-9]{64}-[0-9]+$/.test(out.request_id) && typeof out.text === "string") {
             const retryPath = file + ".retry-" + out.request_id;
-            let received = await owedSendReceipt(root, meta.chat_id, out.console, out.request_id);
-            if (received === null) {
-              const retry = JSON.parse(await readFile(retryPath, "utf8").catch((e: NodeJS.ErrnoException) => { if (e.code === "ENOENT") return "{}"; throw e; }));
-              if (Date.now() >= (retry.next ?? 0)) {
-                const attempts = Math.min(7, (retry.attempts ?? 0) + 1);
-                await atomicWrite(retryPath, JSON.stringify({ attempts, next: Date.now() + Math.min(1800000, 30000 * 2 ** (attempts - 1)) }));
-                try {
-                  const id = await send(meta.chat_id, out.text, out.reply_to_message_id, out.markup);
-                  if (typeof id === "number" && Number.isSafeInteger(id) && id > 0) {
-                    await rememberConsoleReply(root, meta.chat_id, id, out.console, out.request_id, out.request_hash);
-                    received = id;
-                  }
-                } catch (e) { logRedacted("[poller] owed send pending " + out.request_id + ": " + e); }
-              }
-            }
-            if (received === null) blocked = true;
-            else await unlink(retryPath).catch((e: NodeJS.ErrnoException) => { if (e.code !== "ENOENT") throw e; });
+            if (!await sendOwedPart(root, meta.chat_id, out as OwedOut, retryPath, receipt, receivedThisPass, send)) blocked = true;
             pos += bytes;
             if (!blocked) await atomicWrite(curFile, String(pos));
             continue;
           }
-          // Preserve ordinary send order behind an unreceipted owed row, while
-          // still visiting later keyed owed messages fairly in this pass.
-          if (blocked) { pos += bytes; continue; }
+          // Sparse completion markers let ordinary rows pass an owed failure
+          // without resending them on every pass through the retained prefix.
+          const sentPath = file + '.sent-' + pos;
+          const sentHash = createHash('sha256').update(ln).digest('hex');
+          const alreadySent = await readFile(sentPath, 'utf8').catch((e: NodeJS.ErrnoException) => { if (e.code === 'ENOENT') return ''; throw e; });
+          if (alreadySent && alreadySent !== sentHash) {
+            blocked = true;
+            logRedacted('[poller] outbox completion needs reconciliation ' + sentPath);
+            pos += bytes;
+            continue;
+          }
+          if (!alreadySent) {
           if (out && typeof out.document_path === "string") {
             if (typeof out.text === "string" && out.text) await send(meta.chat_id, out.text, out.reply_to_message_id, out.markup);
             const tagged = out.via === SEND_FILE_VIA && typeof out.sha256 === "string";
@@ -1143,9 +1175,12 @@ export async function flushOutboxes(root: string, send: SendFn, sendDoc?: SendDo
             const messageId = await send(meta.chat_id, out.text ?? "", out.reply_to_message_id, out.markup); // send BEFORE committing
             if (out.console && typeof messageId === "number") await rememberConsoleReply(root, meta.chat_id, messageId, out.console);
           }
+          if (blocked) await atomicWrite(sentPath, sentHash);
+          }
+          if (!blocked) await unlink(sentPath).catch((e: NodeJS.ErrnoException) => { if (e.code !== 'ENOENT') throw e; });
         }
         pos += bytes;
-        await atomicWrite(curFile, String(pos));                    // commit after this line
+        if (!blocked) await atomicWrite(curFile, String(pos));       // commit only the settled prefix
       }
     } catch (e) { logRedacted("[poller] flush failed for " + s + ": " + e); continue; }
   }

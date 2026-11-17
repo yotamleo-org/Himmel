@@ -26,20 +26,30 @@ def candidates(fleet, inbox, last):
     for worker in data.get('workers', data.get('legs', [])):
         label, doc = worker['label'], Path(worker['doc'])
         try:
-            info = doc.stat()
             lines = doc.read_text(errors='replace').splitlines()
         except OSError as exc:
             print(f'pending-events: worker={label} doc={doc}: {exc}', file=sys.stderr)
+            previous = observed.get(label, {})
+            current[label] = dict(previous, unread=True)
+            if not previous.get('unread'):
+                print('WARN', label, str(doc))
             continue
-        previous = observed.get(label)
-        def digest(count):
-            return hashlib.sha256('\n'.join(lines[:count]).encode()).hexdigest()
-        identity = [str(doc), info.st_dev, info.st_ino]
-        replaced = previous is not None and (previous['identity'] != identity or
-                   previous['count'] > len(lines) or previous['digest'] != digest(previous['count']))
-        current[label] = dict(identity=identity, count=len(lines), digest=digest(len(lines)))
         matches = [(n, m[1]) for n, line in enumerate(lines, 1)
                    if (m := re.match(r'^- (?:\d{1,2}:\d{2} )?(?:\*\*)?(READY|WRAPPED|MERGED)(?:[^A-Za-z]|$)', line))]
+        ready_events = [[n, hashlib.sha256(lines[n - 1].encode()).hexdigest()]
+                        for n, marker in matches if marker == 'READY']
+        previous = observed.get(label, {})
+        cursor = cursors.get(label, 0)
+        # Track the READY prefix already handled, independent of prose/line
+        # shifts and atomic editors. Older snapshots migrate without replay.
+        old_events = previous.get('ready', ready_events)
+        handled_ready = [digest for n, digest in old_events if n <= cursor]
+        replaced = handled_ready != [digest for _, digest in ready_events[:len(handled_ready)]]
+        first = label not in cursors or replaced
+        if label in cursors:
+            cursor = 0 if replaced or not handled_ready else ready_events[len(handled_ready) - 1][0]
+            cursors[label] = cursor
+        current[label] = dict(ready=ready_events)
         cleanup = [(n, marker) for n, marker in matches if marker != 'READY']
         if cleanup:
             n, marker = cleanup[-1]
@@ -49,8 +59,6 @@ def candidates(fleet, inbox, last):
                 continue
             events.append((label, marker, n))
         else:
-            first = label not in cursors or replaced or cursors[label] > len(lines)
-            cursor = 0 if first else cursors[label]
             pending = [(n, marker) for n, marker in matches if n > cursor]
             if pending:
                 n, marker = pending[-1] if first else pending[0]
@@ -58,6 +66,9 @@ def candidates(fleet, inbox, last):
     tmp = observed_path.with_suffix(observed_path.suffix + '.tmp')
     tmp.write_text(json.dumps(current))
     os.replace(tmp, observed_path)
+    tmp = ready.with_suffix(ready.suffix + '.tmp')
+    tmp.write_text(''.join(f'{label}\t{cursor}\n' for label, cursor in cursors.items()))
+    os.replace(tmp, ready)
     pivot = next((i + 1 for i, event in enumerate(events) if event[0] == last), 0)
     for label, marker, n in events[pivot:] + events[:pivot]:
         output = Path(inbox + '.wait.le-' + label)

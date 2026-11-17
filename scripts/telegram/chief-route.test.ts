@@ -632,7 +632,7 @@ test("owed outage retries reuse one queued identity, ignore unrelated receipts a
   await flushOutboxes(r, async () => ++id);
   const third = await owedReply(r, doc, false, args);
   expect(third.code).toBe(0);
-  expect(readFileSync(doc, "utf8")).toContain("DELIVERED sig-1 msg=7001 chat=1");
+  expect(readFileSync(doc, "utf8")).toContain("DELIVERED sig-1 msg=7002 chat=1");
   expect(readFileSync(outbox, "utf8").split("\n").filter(Boolean)).toHaveLength(2);
 });
 

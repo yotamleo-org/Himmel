@@ -42,24 +42,15 @@ def run(inbox, doc, chief):
         key = 't2-' + row['id']
         delivered = receipt(doc, key)
         attempt = Path(inbox + '.wait.operator-' + row['id'])
-        retry = json.loads(attempt.read_text() or '{}') if attempt.exists() else {}
-        # Older markers were empty files; their mtime still bounds the first retry.
-        next_try = retry.get('next', attempt.stat().st_mtime + float(os.getenv('CHIEF_WAIT_OPERATOR_RETRY_SEC', '60')) if attempt.exists() else 0)
-        if not delivered and not attempted and time.time() >= next_try:
-            attempted = True
-            count = min(6, retry.get('attempts', 0) + 1)
-            retry.update(attempts=count, next=time.time() + min(1800, float(os.getenv('CHIEF_WAIT_OPERATOR_RETRY_SEC', '60')) * 2 ** (count - 1)))
-            # The helper only enqueues/reconciles an identity. It never waits for
-            # the poller here; delayed receipts are checked on a later pass.
-            attempt.write_text(json.dumps(retry))
-            opts = ['--chief', chief, '--owed', key, '--doc', str(doc), 'operator', row['text']]
-            sender = os.getenv('CHIEF_WAIT_OWED_SEND')
+        opts = ['--chief', chief, '--owed', key, '--doc', str(doc), 'operator', row['text']]
+        sender = os.getenv('CHIEF_WAIT_OWED_SEND')
+        def helper(verb):
             if sender:
-                command = [sender, *opts]
-            elif os.getenv('HIMMEL_TEST_FIXTURE') == '1':
-                command = None
-            else:
-                command = ['bun', str(HERE / '../../telegram/chief-route.ts'), 'reply', *opts]
+                return [sender, *opts] if verb == 'reply' else None
+            if os.getenv('HIMMEL_TEST_FIXTURE') == '1':
+                return None
+            return ['bun', str(HERE / '../../telegram/chief-route.ts'), verb, *opts]
+        def invoke(command):
             if command:
                 try:
                     subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True,
@@ -67,15 +58,50 @@ def run(inbox, doc, chief):
                                    env=dict(os.environ, CHIEF_ROUTE_RECEIPT_WAIT_SEC='0'))
                 except (OSError, subprocess.TimeoutExpired):
                     pass
-                # Queueing/draining/exit zero is insufficient. The existing
-                # sender writes this only from the bridge's actual send receipt.
-                delivered = receipt(doc, key)
+        # Receipt reconciliation never enqueues, and is independent of the
+        # send-attempt bound (including the longest outage backoff).
+        if not delivered:
+            invoke(helper('receipt'))
+            delivered = receipt(doc, key)
         if delivered:
             closed = owe(bucket, 'close', '--id', row['id'], '--key', 'telegram-msg-' + delivered)
             if closed.returncode == 0:
                 attempt.unlink(missing_ok=True)
                 continue
-        notes.append(row['id'] + ' operator-delivery-pending ' + row['text'])
+        try:
+            retry = json.loads(attempt.read_text() or '{}') if attempt.exists() else {}
+            if (not isinstance(retry, dict) or type(retry.get('attempts', 0)) is not int or
+                    not 0 <= retry.get('attempts', 0) <= 6 or
+                    any(type(retry.get(k, 0)) not in (int, float) or not 0 <= retry.get(k, 0) < float('inf')
+                        for k in ('next', 'first'))):
+                raise ValueError('invalid operator retry state')
+        except (OSError, ValueError) as exc:
+            notes.append(row['id'] + ' operator-state-unread reconcile=' + str(attempt) + ' ' + str(exc))
+            continue
+        # Older markers were empty files; their mtime still bounds the first retry.
+        next_try = retry.get('next', attempt.stat().st_mtime + float(os.getenv('CHIEF_WAIT_OPERATOR_RETRY_SEC', '60')) if attempt.exists() else 0)
+        if not delivered and not attempted and time.time() >= next_try:
+            count = min(6, retry.get('attempts', 0) + 1)
+            retry.update(attempts=count, next=time.time() + min(1800, float(os.getenv('CHIEF_WAIT_OPERATOR_RETRY_SEC', '60')) * 2 ** (count - 1)))
+            retry.setdefault('first', attempt.stat().st_mtime if attempt.exists() else time.time())
+            # The helper only enqueues/reconciles an identity. It never waits for
+            # the poller here; delayed receipts are checked on a later pass.
+            try:
+                attempt.write_text(json.dumps(retry))
+            except OSError as exc:
+                notes.append(row['id'] + ' operator-state-unwritable reconcile=' + str(attempt) + ' ' + str(exc))
+                continue
+            attempted = True
+            invoke(helper('reply'))
+            delivered = receipt(doc, key)
+        if delivered:
+            closed = owe(bucket, 'close', '--id', row['id'], '--key', 'telegram-msg-' + delivered)
+            if closed.returncode == 0:
+                attempt.unlink(missing_ok=True)
+                continue
+        first = retry.get('first', attempt.stat().st_mtime if attempt.exists() else 0)
+        if time.time() - first >= float(os.getenv('CHIEF_WAIT_OPERATOR_GRACE_SEC', '30')):
+            notes.append(row['id'] + ' operator-delivery-pending ' + row['text'])
     stamp = Path(inbox + '.wait.owed-service')
     signature = '\n'.join(notes)
     if not signature:

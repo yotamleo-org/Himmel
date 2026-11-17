@@ -58,6 +58,15 @@ def load(path):
     return dict(item.split('=', 1) for item in read(path).split() if '=' in item)
 
 
+def wake_rows(path):
+    rows = [line.split('\t') for line in read(path).splitlines()]
+    for row in rows:
+        if row[0] == 'W' and (len(row) < 6 or not row[1].isdecimal() or
+                              not row[2].isdecimal() or not row[3].isdecimal() or not row[5]):
+            raise ValueError('malformed W row; reconcile ' + str(path))
+    return rows
+
+
 def child_alive(data, inbox):
     if not alive(data.get('child', 0), data.get('child_start', ''),
                  data.get('host', ''), data.get('boot', '')):
@@ -194,6 +203,7 @@ class Supervisor:
         self.arm = time.time_ns()
         self.owned = False
         self.dog = None
+        self.ack_faults = set()
         self.args_hash = hashlib.sha256(repr(self.args).encode()).hexdigest()[:16]
 
     def path(self, name):
@@ -266,6 +276,8 @@ class Supervisor:
         self.append('W', self.seq, int(time.time()), self.arm, 'waiter-error', block)
         self.publish()
         self.emit(f'WAKE#{self.seq} waiter-error {text} out={block}')
+        self.append('P', self.seq, int(time.time()), self.arm)
+        self.printed = self.seq
 
     def signal_stop(self, signum, frame):
         # Catchable standalone signals also leave an owned, bounded child.
@@ -295,7 +307,7 @@ class Supervisor:
         os.dup2(stderr.fileno(), 2)
         self.data = load(self.side)
         self.seq = int(self.data.get('seq', 0))
-        rows = [l.split('\t') for l in read(self.log).splitlines()]
+        rows = wake_rows(self.log)
         self.seq = max([self.seq, *[int(r[1]) for r in rows if r[0] == 'W']])
         previous = next((r for r in reversed(rows) if r[0] == 'A'), None)
         since = int(previous[5]) if since == 'prev-arm' and previous else (0 if since == 'prev-arm' else int(since))
@@ -328,7 +340,7 @@ class Supervisor:
         for part in sorted(orphan_blocks, key=lambda p: int(p.name.rsplit('-', 1)[-1])) + sorted(self.path('stream').parent.glob(Path(self.base).name + 'part-*')):
             if str(part) != live_part and str(part) not in known:
                 self.record(str(part), adopted=True, emit=False)
-        rows = [l.split('\t') for l in read(self.log).splitlines()]
+        rows = wake_rows(self.log)
         wakes = [r for r in rows if r[0] == 'W']
         keep = max(1, int(os.getenv('CHIEF_WAIT_STREAM_KEEP', '200')))
         retained = wakes[-keep:]
@@ -446,20 +458,29 @@ class Supervisor:
             time.sleep(.1)
 
     def acknowledge(self):
-        rows = [line.split('\t') for line in read(self.log).splitlines()]
+        rows = wake_rows(self.log)
         wakes = {r[1]: r[5] for r in rows if r[0] == 'W'}
         delivered = {r[1] for r in rows if r[0] == 'D'}
         known = {r[1] for r in rows if r[0] == 'K'}
         for request in sorted(self.path('stream').parent.glob(Path(self.base).name + 'ack-*.json')):
             retry_path = Path(str(request) + '.retry')
-            retry = json.loads(read(retry_path) or '{}')
-            if time.time() < retry.get('next', 0):
-                continue
-            attempts = min(retry.get('attempts', 0) + 1, 7)
-            retry.update(attempts=attempts, next=time.time() + min(1800, 30 * 2 ** (attempts - 1)))
-            # Persist the bound before invoking a helper, including crash/restart.
-            atomic(retry_path, json.dumps(retry))
+            diagnostic = Path(str(request) + '.error')
+            retry = {}
+            retry_valid = False
             try:
+                retry = json.loads(read(retry_path) or '{}')
+                if (not isinstance(retry, dict) or type(retry.get('attempts', 0)) is not int or
+                        not 0 <= retry.get('attempts', 0) <= 7 or
+                        type(retry.get('next', 0)) not in (int, float) or
+                        not 0 <= retry.get('next', 0) < float('inf')):
+                    raise ValueError('invalid retry state')
+                retry_valid = True
+                if time.time() < retry.get('next', 0):
+                    continue
+                attempts = min(retry.get('attempts', 0) + 1, 7)
+                retry.update(attempts=attempts, next=time.time() + min(1800, 30 * 2 ** (attempts - 1)))
+                # Persist the bound before invoking a helper, including crash/restart.
+                atomic(retry_path, json.dumps(retry))
                 ack = json.loads(request.read_text())
                 seq, receipt_id = str(ack['seq']), ack['receipt']
                 if not seq.isdecimal() or not isinstance(receipt_id, str) or not re.fullmatch(r'[A-Za-z0-9._:-]{1,200}', receipt_id):
@@ -497,11 +518,22 @@ class Supervisor:
                 self.append('K', seq, int(time.time()), receipt_id)
                 request.unlink()
                 retry_path.unlink(missing_ok=True)
+                diagnostic.unlink(missing_ok=True)
+                self.ack_faults.discard(str(request))
             except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as exc:
-                if not retry.get('reported'):
-                    retry['reported'] = True
-                    atomic(retry_path, json.dumps(retry))
-                    self.error(f'kind=ack-stuck request={request} retry-at={int(retry["next"])} reconcile={type(exc).__name__}:{exc}')
+                # Preserve corrupt bytes for reconciliation; even a diagnostic
+                # write failure is local to this ack, never the whole arm.
+                if str(request) not in self.ack_faults:
+                    self.ack_faults.add(str(request))
+                    try:
+                        reported = diagnostic.exists()
+                        if not reported:
+                            atomic(diagnostic, f'{type(exc).__name__}:{exc}\n')
+                    except OSError:
+                        reported = False
+                    if not reported:
+                        due = int(retry['next']) if retry_valid and 'next' in retry else 'repair-sidecar'
+                        self.error(f'kind=ack-stuck request={request} retry-at={due} reconcile={type(exc).__name__}:{exc}')
 
     def adopted_rc(self):
         hb = load(self.inbox + '.wait')
@@ -557,13 +589,21 @@ def main():
             return Supervisor.refuse(str(exc), 2)
         supervisor.reason = 'supervisor'
         try:
-            supervisor.error('kind=supervisor reconcile=' + type(exc).__name__)
+            fault_path = supervisor.path('supervisor-fault')
+            fault = hashlib.sha256(f'{type(exc).__name__}:{exc}'.encode()).hexdigest()
+            previous = load(fault_path)
+            repeated = previous.get('fault') == fault and time.time() - float(previous.get('epoch', 0)) < 300
+            atomic(fault_path, f'fault={fault} epoch={time.time()}\n')
+            supervisor.error('kind=supervisor reconcile=' + type(exc).__name__ + ':' + str(exc).replace('\n', ' ')[:200])
+            if repeated:
+                supervisor.stop_started = time.time()
+                supervisor.reason = 'supervisor-repeat'
             supervisor.finish(child_alive(supervisor.data, supervisor.inbox))
         except Exception as report_error:
-            # A failed state write must still give the consumer a re-arm signal.
+            # Without persisted fault state a retry cannot be bounded safely.
             # Existing watchdog ownership checks remain responsible for the child.
             supervisor.emit('WAKE waiter-error kind=supervisor state-unwritable=' + type(report_error).__name__)
-            supervisor.emit(f'REARM since={supervisor.printed} reason=supervisor')
+            supervisor.emit(f'STOPPED since={supervisor.printed} reason=supervisor-state-unwritable reconcile={supervisor.base}')
         return 1
 
 
