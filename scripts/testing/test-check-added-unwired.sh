@@ -153,7 +153,7 @@ rc=0; out=$(cd "$R" && bash scripts/testing/check-added-unwired.sh HEAD scripts/
   && ok "H5 a testlib- helper no suite sources is still UNWIRED" || no "H5 (rc=$rc): $out"
 
 R="$T/helper-norow"; mkhelperrepo "$R" scripts/x/testlib-foo.sh scripts/x/test-foo.sh
-awk -F'\t' '$1 != "test"' "$HERE/../lint/ticket-ref-allow.tsv" > "$R/scripts/lint/ticket-ref-allow.tsv"
+awk -F'\t' '$1 != "test"' "$HERE/../lint/ticket-ref-allow.tsv" > "$R/scripts/lint/ticket-ref-allow.tsv" || no "H6 setup: removing the test row failed"
 rc=0; out=$(cd "$R" && bash scripts/testing/check-added-unwired.sh HEAD scripts/x/testlib-foo.sh 2>&1) || rc=$?
 { [ "$rc" -eq 2 ] && grep -q 'no test row' <<<"$out"; } \
   && ok "H6 a rule list without the test row cannot evaluate (exit 2)" || no "H6 (rc=$rc): $out"

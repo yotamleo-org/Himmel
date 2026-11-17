@@ -186,7 +186,8 @@ BEGIN {
             keyre = f[3]; continue
         }
         if (f[1] == "test") {
-            if (testre != "") fatal("the rule list has more than one test row")
+            if (ntest++) fatal("the rule list has more than one test row")
+            if (f[2] == "") fatal("the rule list's test row has an empty path pattern")
             testre = f[2]; continue
         }
         if (f[1] !~ /^K[1-7]$/ || f[2] == "") fatal("malformed rule row: " line)
