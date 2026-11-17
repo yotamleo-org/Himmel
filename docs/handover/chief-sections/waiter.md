@@ -23,6 +23,22 @@ actions close only after the existing chief-route `--owed` sender records a
 Telegram `DELIVERED` receipt. Queue/drain success is insufficient; failures
 stay open and retry on a bounded cadence.
 
+Acknowledgement failures emit `waiter-error kind=ack-stuck` with the request
+path and next retry time. Requests persist across restart and retry after
+30 seconds, doubling to at most 30 minutes; another queued acknowledgment
+can still proceed. Repair the named request/owed action rather than closing
+proof or source debt. An uncaught supervisor failure emits
+`waiter-error kind=supervisor` and `REARM`; the owned child retains its
+watchdog/adoption bounds.
+
+Owed operator sends reuse a stable outbox identity for the chief, document,
+owed key and part number; conflicting content under that key is refused.
+Only matching send receipts for every part
+permit `DELIVERED`; unrelated replies never count. Service passes enqueue or
+reconcile without waiting for the poller, with at most one send helper per
+pass (two-second helper timeout). Unreceipted rows back off while later owed
+rows are attempted. Ordinary replies retain their order behind pending debt.
+
 Re-arm only on `REARM`, `STOPPED`, `STREAM-REFUSED` or `waiter-error`. A normal
 `WAKE#` needs no re-arm, including a succession or relay-on-live block whose
 legacy tail says to re-arm: the supervisor performs that relaunch and removes
@@ -49,6 +65,21 @@ The detailed one-shot behavior below remains the default without `--stream`.
 In one-shot mode a printed `WAKE owed-actions` also leaves its notification
 open: after receipt the chief acknowledges with `owe.sh close --bucket <bucket>
 --id <id> --key <delivery-reference>`.
+The persisted notification observation marker suppresses immediate re-arms;
+new notification ids wake immediately and pending debt reminds after 60 minutes
+(`CHIEF_WAIT_NOTIFY_REWAKE_MIN`). Stream notifications use the same reminder
+interval. Observation does not assert receipt or discharge any obligation.
+
+On startup or document replacement, the stream collector selects only the
+newest READY per worker; normal appended READY entries retain their order.
+Unreadable worker documents are diagnosed in `<inbox>.wait.pending-diagnostic`
+without stalling healthy workers. A manifest/cursor failure wakes once per
+continuous failure streak, resetting after a successful read.
+
+Printed replay advances the next `REARM since=` cursor. Replay indexes are
+arm-scoped: the current and preceding advertised indexes remain available;
+older indexes are pruned on a new arm. Read the current index before re-arming.
+Retained wake rows/blocks still govern replay and `GAP` reconciliation.
 
 10. **Start the event waiter now** (it replaces the `tick` and
     `telegram` Monitor loops). Loops are pure code, never model turns: a

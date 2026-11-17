@@ -599,6 +599,78 @@ test("reply --owed without a usable key and chief doc is refused and queues noth
   expect(existsSync(join(r, "sessions", "__chat__", "outbox.jsonl"))).toBe(false);
 });
 
+test("owed outage retries reuse one queued identity, ignore unrelated receipts and reconcile after restart", async () => {
+  const r = root(); heartbeat(r);
+  const doc = join(r, "chief.md"); writeFileSync(doc, "# chief\n");
+  const args = ["--owed", "sig-1", "--doc", doc];
+  const started = Date.now();
+  const first = await owedReply(r, doc, false, args, { waitSec: "0" });
+  expect(first.code).toBe(1);
+  expect(Date.now() - started).toBeLessThan(2000);
+  const outbox = join(r, "sessions", "__chat__", "outbox.jsonl");
+  const queued = readFileSync(outbox, "utf8");
+  expect(queued.trim().split("\n")).toHaveLength(1);
+  await replyViaOutbox(r, 1, "unrelated", NAME);
+  let id = 7000;
+  // Fail the owed row while the unrelated send remains a separate receipt.
+  await flushOutboxes(r, async (_chat, text) => {
+    if (text === "please sign") throw new Error("offline");
+    return ++id;
+  });
+  const { rememberConsoleReply } = await import("./chief-route");
+  await rememberConsoleReply(r, 1, 7999, NAME);
+  const second = await owedReply(r, doc, false, args);
+  expect(second.code).toBe(1);
+  expect(readFileSync(outbox, "utf8").split("\n").filter(Boolean)).toHaveLength(2);
+  expect(readFileSync(doc, "utf8")).not.toContain("DELIVERED");
+  // A new CLI process after an outage still checks the original request.
+  // Make the persisted poller backoff due, then deliver it and reconcile.
+  const { readdirSync } = await import("node:fs");
+  for (const f of readdirSync(join(r, "sessions", "__chat__"))) {
+    if (f.includes(".retry-")) writeFileSync(join(r, "sessions", "__chat__", f), '{"next":0,"attempts":1}');
+  }
+  await flushOutboxes(r, async () => ++id);
+  const third = await owedReply(r, doc, false, args);
+  expect(third.code).toBe(0);
+  expect(readFileSync(doc, "utf8")).toContain("DELIVERED sig-1 msg=7001 chat=1");
+  expect(readFileSync(outbox, "utf8").split("\n").filter(Boolean)).toHaveLength(2);
+});
+
+test("a permanently refused owed row permits a later owed row and receipts never cross identities", async () => {
+  const r = root(); heartbeat(r);
+  const doc = join(r, "chief.md"); writeFileSync(doc, "# chief\n");
+  for (const key of ["bad", "good"]) {
+    const queued = await owedReply(r, doc, false, ["--owed", key, "--doc", doc], { text: key });
+    expect(queued.code).toBe(1);
+  }
+  const attempts: string[] = [];
+  const send = async (_chat: number, text: string) => {
+    attempts.push(text);
+    if (text === "bad") throw new Error("permanent refusal");
+    return 8000;
+  };
+  await flushOutboxes(r, send);
+  await flushOutboxes(r, send);
+  expect(attempts).toEqual(["bad", "good"]);
+  const bad = await owedReply(r, doc, false, ["--owed", "bad", "--doc", doc], { text: "bad" });
+  const good = await owedReply(r, doc, false, ["--owed", "good", "--doc", doc], { text: "good" });
+  expect(bad.code).toBe(1);
+  expect(good.code).toBe(0);
+  expect(readFileSync(doc, "utf8")).toContain("DELIVERED good msg=8000 chat=1");
+  expect(readFileSync(doc, "utf8")).not.toContain("DELIVERED bad");
+});
+
+test("an owed key with changed content refuses a conflicting second message", async () => {
+  const r = root(); heartbeat(r);
+  const doc = join(r, "chief.md"); writeFileSync(doc, "# chief\n");
+  await owedReply(r, doc, false);
+  const conflict = await owedReply(r, doc, false, undefined, { text: "changed action" });
+  expect(conflict.code).toBe(1);
+  const outbox = join(r, "sessions", "__chat__", "outbox.jsonl");
+  expect(readFileSync(outbox, "utf8").trim().split("\n")).toHaveLength(1);
+  expect(conflict.err).toContain("owed content changed");
+});
+
 const TABLE = join(import.meta.dir, "message-classes.json");
 const FIX = join(import.meta.dir, "fixtures");
 const FIX_MIRROR = join(FIX, "jira-mirror", "HIMMEL");

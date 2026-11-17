@@ -29,6 +29,7 @@ def run(inbox, doc, chief):
         raise ValueError(result.stderr)
     rows = json.loads(result.stdout)
     notes, chief_ids = [], []
+    attempted = False
     for row in rows:
         if row.get('action') == 'validate-proof' and row.get('validation') == 'pending':
             notes.append(row['id'] + ' proof-validation-pending ' + row['text'])
@@ -41,8 +42,16 @@ def run(inbox, doc, chief):
         key = 't2-' + row['id']
         delivered = receipt(doc, key)
         attempt = Path(inbox + '.wait.operator-' + row['id'])
-        if not delivered and (not attempt.exists() or time.time() - attempt.stat().st_mtime >= float(os.getenv('CHIEF_WAIT_OPERATOR_RETRY_SEC', '60'))):
-            attempt.touch()
+        retry = json.loads(attempt.read_text() or '{}') if attempt.exists() else {}
+        # Older markers were empty files; their mtime still bounds the first retry.
+        next_try = retry.get('next', attempt.stat().st_mtime + float(os.getenv('CHIEF_WAIT_OPERATOR_RETRY_SEC', '60')) if attempt.exists() else 0)
+        if not delivered and not attempted and time.time() >= next_try:
+            attempted = True
+            count = min(6, retry.get('attempts', 0) + 1)
+            retry.update(attempts=count, next=time.time() + min(1800, float(os.getenv('CHIEF_WAIT_OPERATOR_RETRY_SEC', '60')) * 2 ** (count - 1)))
+            # The helper only enqueues/reconciles an identity. It never waits for
+            # the poller here; delayed receipts are checked on a later pass.
+            attempt.write_text(json.dumps(retry))
             opts = ['--chief', chief, '--owed', key, '--doc', str(doc), 'operator', row['text']]
             sender = os.getenv('CHIEF_WAIT_OWED_SEND')
             if sender:
@@ -54,7 +63,8 @@ def run(inbox, doc, chief):
             if command:
                 try:
                     subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True,
-                                   text=True, timeout=35)
+                                   text=True, timeout=2,
+                                   env=dict(os.environ, CHIEF_ROUTE_RECEIPT_WAIT_SEC='0'))
                 except (OSError, subprocess.TimeoutExpired):
                     pass
                 # Queueing/draining/exit zero is insufficient. The existing
@@ -66,15 +76,13 @@ def run(inbox, doc, chief):
                 attempt.unlink(missing_ok=True)
                 continue
         notes.append(row['id'] + ' operator-delivery-pending ' + row['text'])
-        # One bounded operator attempt per service pass; other lifecycle work
-        # and the inbox run before any retry or next digest item.
-        break
     stamp = Path(inbox + '.wait.owed-service')
     signature = '\n'.join(notes)
     if not signature:
         stamp.unlink(missing_ok=True)
         return False
-    if stamp.exists() and stamp.read_text() == signature:
+    if (stamp.exists() and stamp.read_text() == signature and
+            time.time() - stamp.stat().st_mtime < float(os.getenv('CHIEF_WAIT_NOTIFY_REWAKE_MIN', '60')) * 60):
         return False
     stamp.write_text(signature)
     print('WAKE owed-actions chief-notify=' + (','.join(chief_ids) or 'none'))

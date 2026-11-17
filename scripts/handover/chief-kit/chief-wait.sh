@@ -1413,6 +1413,16 @@ unclosed_wake() {
     printf '%s\n' "${fresh:-$1}"
 }
 owed_file="$inbox.wait.owed"
+notify_file="$inbox.wait.notify"
+notification_wake() {
+    if [ -z "$owed_notifications" ]; then
+        rm -f "$notify_file"
+        return 1
+    fi
+    # Observation is only the reminder clock. Debt stays in the owed ledger
+    # until a real receipt or an explicit chief acknowledgment closes it.
+    set_wake "$(printf '%s\n' "$owed_notifications" | tr ',' '\n')" "$notify_file" "${CHIEF_WAIT_NOTIFY_REWAKE_MIN:-60}"
+}
 owed_wake() {
     local now keys k st first woken new="" out=""
     [ -n "$console_doc" ] && [ -r "$console_doc" ] || return 1
@@ -1959,7 +1969,15 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
     if [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" = 1 ]; then
         # Read local pending markers, never an expensive tick, for the stream
         # service pass. The existing relay remains the only action route.
-        cands="$(python3 -I "$HERE/pending-events.py" "$legs_from" "$inbox" "$r0_retry")"
+        if ! cands="$(python3 -I "$HERE/pending-events.py" "$legs_from" "$inbox" "$r0_retry" 2> "$inbox.wait.pending-diagnostic")"; then
+            if [ ! -e "$inbox.wait.pending-error" ]; then
+                touch "$inbox.wait.pending-error"
+                printf 'WAKE waiter-error pending-events reconcile manifest/cursors diagnostic=%s\n' "$inbox.wait.pending-diagnostic"
+                return 0
+            fi
+            return 1
+        fi
+        rm -f "$inbox.wait.pending-error"
     else
         # a READY past its cursor comes after any WRAPPED or MERGED worker
         if ready_pick; then cands="${cands:+$cands$'\n'}$ready_label READY"; fi
@@ -2766,7 +2784,7 @@ while :; do
                 printf '%s\n%s\n' "$table_wake" "$tick_line"
                 exit_reason='wake-table'; exit 0
             fi
-            if [ -n "$owed_notifications" ] && [ -n "$console_doc" ] && [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" != 1 ]; then
+            if [ -n "$console_doc" ] && [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" != 1 ] && notification_wake; then
                 printf 'WAKE owed-actions %s\n%s\n' "$owed_notifications" "$tick_line"
                 # A printed wake is not a delivery receipt. Stream mode closes
                 # only these notification actions through its explicit ack route;

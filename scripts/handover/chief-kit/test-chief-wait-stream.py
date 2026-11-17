@@ -12,7 +12,7 @@ import unittest
 HERE = Path(__file__).resolve().parent
 
 
-class Stream(unittest.TestCase):
+class StreamFixture(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix='wait-stream-')
         self.root = Path(self.tmp.name)
@@ -113,6 +113,7 @@ class Stream(unittest.TestCase):
                         pass
         self.tmp.cleanup()
 
+class Stream(StreamFixture):
     def test_two_inbox_wakes_same_supervisor_and_safe_stop(self):
         p, out = self.start()
         self.armed()

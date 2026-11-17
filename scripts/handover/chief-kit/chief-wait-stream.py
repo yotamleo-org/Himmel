@@ -23,7 +23,7 @@ VALUE_OPTIONS = {'--doc', '--token', '--workers', '--workers-from', '--handover-
 def read(path):
     try:
         return Path(path).read_text()
-    except FileNotFoundError:
+    except (FileNotFoundError, ProcessLookupError):
         return ''
 
 
@@ -192,6 +192,9 @@ class Supervisor:
         self.last_sleep = ''
         self.started = time.time()
         self.arm = time.time_ns()
+        self.owned = False
+        self.dog = None
+        self.args_hash = hashlib.sha256(repr(self.args).encode()).hexdigest()[:16]
 
     def path(self, name):
         return Path(self.base + name)
@@ -204,7 +207,7 @@ class Supervisor:
 
     def publish(self):
         self.data.update(sup=os.getpid(), sup_start=identity(os.getpid()), host=HOST, boot=BOOT,
-                         dog=self.dog.pid, seq=self.seq, arm=self.arm, args=self.args_hash,
+                         dog=self.dog.pid if self.dog else 0, seq=self.seq, arm=self.arm, args=self.args_hash,
                          started=self.started)
         atomic(self.side, ' '.join(f'{k}={v}' for k, v in self.data.items()) + '\n')
 
@@ -287,6 +290,7 @@ class Supervisor:
             fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             return self.refuse('live-supervisor pid=' + load(self.side).get('sup', '?'), 3)
+        self.owned = True
         stderr = open(self.base + 'stream.log', 'a')
         os.dup2(stderr.fileno(), 2)
         self.data = load(self.side)
@@ -347,7 +351,14 @@ class Supervisor:
             index = str(self.path(f'replay-{self.arm}'))
             atomic(index, ''.join('\t'.join(r) + '\n' for r in replay))
             self.emit(f'REPLAY seqs={replay[0][1]}-{replay[-1][1]} n={len(replay)} index={index}')
+            self.printed = max(self.printed, int(replay[-1][1]))
             self.append('R', replay[0][1] + '-' + replay[-1][1], int(time.time()), self.arm)
+        # The current arm and its predecessor keep their advertised indexes.
+        # A new arm supersedes older indexes; retained W rows remain replayable.
+        indexes = sorted(self.path('stream').parent.glob(Path(self.base).name + 'replay-*'),
+                         key=lambda p: int(p.name.rsplit('-', 1)[-1]))
+        for obsolete in indexes[:-2]:
+            obsolete.unlink(missing_ok=True)
         self.append('A', self.arm, int(time.time()), since, os.getpid(), self.seq)
         hung = load(self.base + 'stream.hung')
         if hung:
@@ -439,42 +450,58 @@ class Supervisor:
         wakes = {r[1]: r[5] for r in rows if r[0] == 'W'}
         delivered = {r[1] for r in rows if r[0] == 'D'}
         known = {r[1] for r in rows if r[0] == 'K'}
-        for request in self.path('stream').parent.glob(Path(self.base).name + 'ack-*.json'):
-            ack = json.loads(request.read_text())
-            seq, receipt_id = str(ack['seq']), ack['receipt']
-            if seq in known:
+        for request in sorted(self.path('stream').parent.glob(Path(self.base).name + 'ack-*.json')):
+            retry_path = Path(str(request) + '.retry')
+            retry = json.loads(read(retry_path) or '{}')
+            if time.time() < retry.get('next', 0):
+                continue
+            attempts = min(retry.get('attempts', 0) + 1, 7)
+            retry.update(attempts=attempts, next=time.time() + min(1800, 30 * 2 ** (attempts - 1)))
+            # Persist the bound before invoking a helper, including crash/restart.
+            atomic(retry_path, json.dumps(retry))
+            try:
+                ack = json.loads(request.read_text())
+                seq, receipt_id = str(ack['seq']), ack['receipt']
+                if not seq.isdecimal() or not isinstance(receipt_id, str) or not re.fullmatch(r'[A-Za-z0-9._:-]{1,200}', receipt_id):
+                    raise ValueError('invalid acknowledgement')
+                if seq in known:
+                    request.unlink()
+                    retry_path.unlink(missing_ok=True)
+                    continue
+                if seq not in wakes:
+                    raise ValueError('wake no longer retained; reconcile owed ledger')
+                if seq not in delivered:
+                    self.append('D', seq, int(time.time()), receipt_id)
+                    delivered.add(seq)
+                text = read(wakes[seq])
+                ids = re.search(r'^WAKE owed-actions chief-notify=([^\n]+)', text, re.M)
+                bucket = re.search(r'^owed-bucket=(.+)$', text, re.M)
+                if ids and bucket:
+                    result = subprocess.run(['bash', str(HERE / 'owe.sh'), 'list', '--all', '--json',
+                                             '--bucket', bucket[1]], capture_output=True, text=True, timeout=10)
+                    if result.returncode:
+                        raise ValueError('owed list failed')
+                    actions = {row['id']: row for row in json.loads(result.stdout)}
+                    for item in ids[1].split(','):
+                        if item == 'none':
+                            continue
+                        action = actions.get(item, {})
+                        if not (action.get('actor') == 'chief' and action.get('action') == 'notify'):
+                            raise ValueError('missing/non-notify owed id=' + item)
+                        if action.get('closed'):
+                            continue
+                        result = subprocess.run(['bash', str(HERE / 'owe.sh'), 'close', '--bucket', bucket[1],
+                                                 '--id', item, '--key', receipt_id], capture_output=True, timeout=10)
+                        if result.returncode:
+                            raise ValueError('owed close failed id=' + item)
+                self.append('K', seq, int(time.time()), receipt_id)
                 request.unlink()
-                continue
-            if seq not in wakes:
-                continue
-            if seq not in delivered:
-                self.append('D', seq, int(time.time()), receipt_id)
-            text = read(wakes[seq])
-            ids = re.search(r'^WAKE owed-actions chief-notify=([^\n]+)', text, re.M)
-            bucket = re.search(r'^owed-bucket=(.+)$', text, re.M)
-            if ids and bucket:
-                result = subprocess.run(['bash', str(HERE / 'owe.sh'), 'list', '--all', '--json',
-                                         '--bucket', bucket[1]], capture_output=True, text=True, timeout=10)
-                if result.returncode:
-                    continue
-                actions = {row['id']: row for row in json.loads(result.stdout)}
-                failed = False
-                for item in ids[1].split(','):
-                    if item == 'none':
-                        continue
-                    action = actions.get(item, {})
-                    if action.get('closed'):
-                        continue
-                    if not (action.get('actor') == 'chief' and action.get('action') == 'notify'):
-                        failed = True
-                        continue
-                    result = subprocess.run(['bash', str(HERE / 'owe.sh'), 'close', '--bucket', bucket[1],
-                                             '--id', item, '--key', receipt_id], capture_output=True, timeout=10)
-                    failed |= result.returncode != 0
-                if failed:
-                    continue
-            self.append('K', seq, int(time.time()), receipt_id)
-            request.unlink()
+                retry_path.unlink(missing_ok=True)
+            except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as exc:
+                if not retry.get('reported'):
+                    retry['reported'] = True
+                    atomic(retry_path, json.dumps(retry))
+                    self.error(f'kind=ack-stuck request={request} retry-at={int(retry["next"])} reconcile={type(exc).__name__}:{exc}')
 
     def adopted_rc(self):
         hb = load(self.inbox + '.wait')
@@ -520,9 +547,24 @@ def main():
     if len(sys.argv) < 2:
         return 2
     try:
-        return Supervisor(sys.argv[1], sys.argv[2:]).run()
+        supervisor = Supervisor(sys.argv[1], sys.argv[2:])
     except ValueError as exc:
         return Supervisor.refuse(str(exc), 2)
+    try:
+        return supervisor.run()
+    except Exception as exc:
+        if not supervisor.owned and isinstance(exc, ValueError):
+            return Supervisor.refuse(str(exc), 2)
+        supervisor.reason = 'supervisor'
+        try:
+            supervisor.error('kind=supervisor reconcile=' + type(exc).__name__)
+            supervisor.finish(child_alive(supervisor.data, supervisor.inbox))
+        except Exception as report_error:
+            # A failed state write must still give the consumer a re-arm signal.
+            # Existing watchdog ownership checks remain responsible for the child.
+            supervisor.emit('WAKE waiter-error kind=supervisor state-unwritable=' + type(report_error).__name__)
+            supervisor.emit(f'REARM since={supervisor.printed} reason=supervisor')
+        return 1
 
 
 if __name__ == '__main__':
