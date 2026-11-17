@@ -390,7 +390,7 @@ seed_deferral HIMMEL-200
 STUB_LINKS_FAIL=1
 rc=0; out="$(run)" || rc=$?
 check "links: a failed links lookup fails: exit 1" "$rc" "1"
-contains "links: failed lookup: reads UNKNOWN" "$out" "HIMMEL""-200 UNKNOWN (jira links failed for HIMMEL""-100)"
+contains "links: failed lookup: reads UNKNOWN" "$out" "HIMMEL-200 UNKNOWN (jira links failed for HIMMEL-100)"
 notcontains "links: failed lookup: is not blamed on a raw create" "$out" "raw jira create"
 
 reset_stubs
@@ -410,7 +410,7 @@ chmod 600 "$LEDGER"
 chain_head() { printf '%040x' "$1"; }
 # seed_hop <head> <reviewed head>: the avail row of a tip cleared as a trivial descendant of <reviewed head>
 seed_hop() {
-    printf '{"kind":"avail","ts":"2026-01-01T00:00:02Z","branch":"%s","head":"%s","model":"claude","status":"ok","detail":"trivial-descendant of reviewed head %s (HIMMEL'-'5856)"}\n' "$SEED_BRANCH" "$1" "$2" >> "$LEDGER"
+    printf '{"kind":"avail","ts":"2026-01-01T00:00:02Z","branch":"%s","head":"%s","model":"claude","status":"ok","detail":"trivial-descendant of reviewed head %s (HIMMEL-5856)"}\n' "$SEED_BRANCH" "$1" "$2" >> "$LEDGER"
 }
 # seed_clean_at <head>: a critic's ok avail row at <head>, a full round that found nothing
 seed_clean_at() {

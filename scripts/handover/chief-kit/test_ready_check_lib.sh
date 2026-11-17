@@ -366,7 +366,7 @@ o_day() { python3 -I -c 'import sys, time; print(time.strftime("%Y-%m-%d", time.
 
 # seed_descendant <reviewed head> [branch]: the avail row clear-review-marker writes for a tip it cleared as a trivial descendant of a reviewed head
 seed_descendant() {
-    printf '{"kind":"avail","ts":"2026-01-01T00:00:02Z","branch":"%s","head":"%s","model":"claude","status":"ok","detail":"trivial-descendant of reviewed head %s (HIMMEL'-'5856)"}\n' "${2:-${SEED_BRANCH:-b}}" "$SHA" "$1" >> "$LEDGER"
+    printf '{"kind":"avail","ts":"2026-01-01T00:00:02Z","branch":"%s","head":"%s","model":"claude","status":"ok","detail":"trivial-descendant of reviewed head %s (HIMMEL-5856)"}\n' "${2:-${SEED_BRANCH:-b}}" "$SHA" "$1" >> "$LEDGER"
 }
 
 BO_COV='## Ticket coverage\n- ask one: done\n\n'
