@@ -1786,7 +1786,7 @@ out=$(run --name t80 --corpus-root "$C80" --corpus-class himmel-code --seed-mani
 n=$(python3 -c 'import json,sys;print(" ".join(sorted(json.load(open(sys.argv[1]))["files"])))' "$C80/graphify-out/semantic-manifest.json" 2>/dev/null)
 [ "$rc" -eq 0 ] && [ "$n" = "a.md archive/keep.md b.md sub/c.md" ] && pass "T80 archive/keep.md stays in the corpus" || fail "T80 (rc=$rc) '$n': $out"
 
-echo "T81: a thin extraction of unchanged content that the shrink guard refused MAX_ATTEMPTS times is accepted, not stuck forever"
+echo "T81: a thin extraction of unchanged content the shrink guard refused once is accepted on its second extraction: no paid third call"
 C79="$WS/c79"; new_corpus "$C79"
 python3 - "$C79/graphify-out/graph.json" <<'PY'
 import json, sys
@@ -1795,15 +1795,16 @@ for i in (2, 3, 4):
     g["nodes"].append({"id": "stale_a%d" % i, "label": "old", "file_type": "concept", "_origin": "semantic", "source_file": "a.md"})
 json.dump(g, open(sys.argv[1], "w"))
 PY
-for i in 1 2; do
-  out=$(run --name t79 --corpus-root "$C79" --corpus-class himmel-code); rc=$?
-  [ "$rc" -eq 0 ] && [[ "$(ids "$C79")" == *stale_a4* ]] && ! [[ "$(ids "$C79")" == *sem_a.md_alpha* ]] \
-    && pass "T81 attempt $i: shrink guard refuses, the old nodes stay" || fail "T81 attempt $i (rc=$rc): $(ids "$C79") :: $out"
-done
+out=$(run --name t79 --corpus-root "$C79" --corpus-class himmel-code); rc=$?
+[ "$rc" -eq 0 ] && [[ "$(ids "$C79")" == *stale_a4* ]] && ! [[ "$(ids "$C79")" == *sem_a.md_alpha* ]] \
+  && pass "T81 attempt 1: shrink guard refuses, the old nodes stay" || fail "T81 attempt 1 (rc=$rc): $(ids "$C79") :: $out"
+python3 -c 'import json,sys;r=json.load(open(sys.argv[1]))["stuck"]["a.md"];sys.exit(0 if (r["attempts"],r.get("new_nodes"),r.get("old_nodes"))==(1,1,4) else 1)' "$C79/graphify-out/semantic-manifest.json" \
+  && pass "T81 the stuck record carries the old and new node counts" || fail "T81 stuck record: $(cat "$C79/graphify-out/semantic-manifest.json")"
 out=$(run --name t79 --corpus-root "$C79" --corpus-class himmel-code); rc=$?
 got=$(ids "$C79")
 [ "$rc" -eq 0 ] && [[ "$got" == *sem_a.md_alpha* ]] && ! [[ "$got" == *stale_a4* ]] \
-  && pass "T81 attempt 3: the thin extraction replaces the old nodes" || fail "T81 attempt 3 (rc=$rc): $got :: $out"
+  && pass "T81 attempt 2: the thin extraction replaces the old nodes" || fail "T81 attempt 2 (rc=$rc): $got :: $out"
+[[ "$out" == *"shrink guard ACCEPTED a.md"* ]] && pass "T81 the acceptance is logged" || fail "T81 no ACCEPTED line: $out"
 python3 -c 'import json,sys;m=json.load(open(sys.argv[1]));sys.exit(0 if "a.md" in m["files"] and "a.md" not in m.get("stuck", {}) else 1)' "$C79/graphify-out/semantic-manifest.json" \
   && pass "T81 a.md is stamped and no longer stuck" || fail "T81 manifest: $(cat "$C79/graphify-out/semantic-manifest.json")"
 
@@ -1877,6 +1878,45 @@ n=$(python3 -c 'import json,sys;print(" ".join(sorted(json.load(open(sys.argv[1]
 printf 'real2\n' > "$C86/docs/real.md"; printf 'y\n' > "$C86/plugins/p/templates/t.md"
 out=$(python3 "$HERE/semantic-merge.py" status --root "$C86" --out "$C86/graphify-out" 2>&1)
 [ "$out" = "backed_off=0 unstamped=1 oldest_unstamped=0d" ] && pass "T86 an edited template is not unstamped, an edited content file is" || fail "T86 status: $out"
+
+
+echo "T87: a consolidated extraction (fewer nodes, every old label covered by the new ones) is accepted and stamped"
+C87="$WS/c87"; new_corpus "$C87"
+printf 'kp factor and parseKpAuto with daylight factor\n' > "$C87/a.md"
+python3 - "$C87/graphify-out/graph.json" <<'PY'
+import json, sys
+g = json.load(open(sys.argv[1]))
+g["nodes"] = [n for n in g["nodes"] if n["id"] != "stale_a"]
+g["links"] = []
+for i, lab in enumerate(["kp factor", "parseKpAuto", "Daylight-factor"]):
+    g["nodes"].append({"id": "old_a_%d" % i, "label": lab, "file_type": "concept", "_origin": "semantic", "source_file": "a.md"})
+json.dump(g, open(sys.argv[1], "w"))
+PY
+rm -f "$C87/b.md" "$C87/sub/c.md"
+out=$(run --name t87 --corpus-root "$C87" --corpus-class himmel-code); rc=$?
+got=$(ids "$C87")
+[ "$rc" -eq 0 ] && [[ "$got" == *sem_a.md_kp_factor* ]] && ! [[ "$got" == *old_a_0* ]] && [ "$(lastrun "$C87" shrink_refused)" = "0" ] \
+  && pass "T87 the consolidation replaced the old nodes, nothing refused" || fail "T87 (rc=$rc): $got :: $out"
+python3 -c 'import json,sys;m=json.load(open(sys.argv[1]));sys.exit(0 if "a.md" in m["files"] and "a.md" not in m.get("stuck", {}) else 1)' "$C87/graphify-out/semantic-manifest.json" \
+  && pass "T87 a.md is stamped" || fail "T87 manifest: $(cat "$C87/graphify-out/semantic-manifest.json")"
+
+echo "T88: held lists a file shrink-refused in each of the last two merge rows, with its counts; a stamped file lists nothing"
+C88="$WS/c88"; mkdir -p "$C88"
+python3 - "$C88" <<'PY'
+import json, os, sys
+out = sys.argv[1]
+row = lambda refused: json.dumps({"ts": "2026-11-17T00:00:00Z", "name": "t", "batch": 1, "refused_files": refused, "failed_files": []}) + "\n"
+open(os.path.join(out, "semantic-runs.jsonl"), "w").write(row(["a.md", "b.md"]) + json.dumps({"name": "ast-update"}) + "\n" + row(["a.md"]))
+json.dump({"version": 1, "files": {}, "stuck": {
+    "a.md": {"hash": "h", "attempts": 1, "reason": "shrink guard: new 12 vs old 25 semantic nodes", "new_nodes": 12, "old_nodes": 25},
+    "b.md": {"hash": "h", "attempts": 1, "reason": "shrink guard: new 1 vs old 3 semantic nodes"}}},
+    open(os.path.join(out, "semantic-manifest.json"), "w"))
+PY
+out=$(python3 "$HERE/semantic-merge.py" held --out "$C88" 2>&1); rc=$?
+[ "$rc" -eq 0 ] && [ "$out" = "a.md new 12 vs old 25" ] && pass "T88 only a.md, held in both of the last two runs, is listed with its counts" || fail "T88 (rc=$rc): $out"
+python3 -c 'import json,sys;p=sys.argv[1];m=json.load(open(p));m["stuck"]={};json.dump(m,open(p,"w"))' "$C88/semantic-manifest.json"
+out=$(python3 "$HERE/semantic-merge.py" held --out "$C88" 2>&1); rc=$?
+[ "$rc" -eq 0 ] && [ -z "$out" ] && pass "T88 a stamped file is no longer held" || fail "T88 stamped (rc=$rc): $out"
 
 echo
 [ "$FAILS" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }

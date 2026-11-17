@@ -265,7 +265,7 @@ export function creditState(command, options = {}, env = process.env) {
   try {
     const account = env.HIMMEL_API_ACCOUNT;
     if (!ACCOUNTS.includes(account)) refuse('account-required');
-    if (!['status', 'reserve', 'unknown', 'settle', 'exhausted', 'key-rejected', 'key-ok'].includes(command)) refuse('invalid-command');
+    if (!['status', 'reserve', 'unknown', 'settle', 'exhausted', 'key-rejected', 'key-ok', 'clear-exhausted'].includes(command)) refuse('invalid-command');
     const optional = env.HIMMEL_API_SNAPSHOT_OPTIONAL === '1';
     const configPath = configPathFor(env);
     const config = read(configPath);
@@ -362,6 +362,12 @@ export function creditState(command, options = {}, env = process.env) {
       delete a.key_rejected_at;
       save(statePath, state, lock, sentinels);
       return { verdict: 'PROCEED', account, key: 'cleared' };
+    }
+    if (command === 'clear-exhausted') {
+      if (!a || !own(a, 'exhausted_at')) return { verdict: 'PROCEED', account, exhausted: 'none' };
+      delete a.exhausted_at;
+      save(statePath, state, lock, sentinels);
+      return { verdict: 'PROCEED', account, exhausted: 'cleared' };
     }
     id(options.id);
     if (!a || !own(a.jobs, options.id)) refuse('missing-job');
@@ -689,6 +695,7 @@ function main() {
   }
   const result = creditState(command, options);
   if (command === 'key-ok' && result.key) { console.log(result.key); return; }
+  if (command === 'clear-exhausted' && result.exhausted) { console.log(result.exhausted); return; }
   if (process.env.HIMMEL_API_CREDIT_FORMAT === 'bank') {
     if (result.account && result.grant_usd) {
       console.error(`api:${result.account} grant-cycle=${result.cycle_id} grant=${result.grant_usd} spent-est=${result.spent_est_usd} reserved=${result.reserved_usd} available-est=${result.available_est_usd} expires=${new Date(result.expires_at * 1000).toISOString()} age=${result.age_seconds} source=${result.source}${result.snapshot_stale ? ' stale-snapshot (older than 24 h: auto routing goes on our own estimate and the credit answer from the API is the hard stop)' : ''}`);

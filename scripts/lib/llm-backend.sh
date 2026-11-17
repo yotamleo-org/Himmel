@@ -75,7 +75,7 @@ llm_backend_api_ready() {
 }
 
 # llm_backend_api_ready_graph -> as llm_backend_api_ready, but `auto` is accepted. Only the
-# himmel graph semantic pass (scripts/graphify/graph-cadence.sh) may call this.
+# himmel graph semantic pass may call this.
 llm_backend_api_ready_graph() {
     [ "${HIMMEL_API_LANE:-}" = "on" ] \
         && { llm_backend_api_account_ok "${HIMMEL_API_ACCOUNT:-}" || [ "${HIMMEL_API_ACCOUNT:-}" = "auto" ]; }

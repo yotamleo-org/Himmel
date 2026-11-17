@@ -1080,3 +1080,27 @@ test('K3: key-ok with no mark prints none and leaves the ledger bytes and mtime 
   assert.equal(keyVerb(g, 'key-ok').stdout, 'none\n');
   assert.equal(existsSync(g.paths.state), false);
 });
+
+test('K4: clear-exhausted removes the exhausted mark, prints cleared, and the tag returns to the credit tag', () => {
+  const f = fixture();
+  assert.equal(mark(f, 'A').status, 0);
+  assert.equal(tagOf(f, 'A').tag, 'marked exhausted');
+  const r = keyVerb(f, 'clear-exhausted');
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, 'cleared\n');
+  assert.equal(Object.hasOwn(ledger(f).accounts.A, 'exhausted_at'), false);
+  assert.equal(tagOf(f, 'A').tag, 'room');
+});
+
+test('K5: clear-exhausted with no mark prints none and leaves the ledger bytes unchanged', () => {
+  const f = fixture();
+  assert.equal(keyVerb(f, 'key-rejected').status, 0);
+  const before = readFileSync(f.paths.state);
+  const r = keyVerb(f, 'clear-exhausted');
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, 'none\n');
+  assert.deepEqual(readFileSync(f.paths.state), before);
+  const g = fixture();
+  assert.equal(keyVerb(g, 'clear-exhausted').stdout, 'none\n');
+  assert.equal(existsSync(g.paths.state), false);
+});

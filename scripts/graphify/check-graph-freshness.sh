@@ -34,7 +34,9 @@
 #               more than 10 content failures or 10 content refusals, or more
 #               than 50 content files are unstamped, or the oldest unstamped
 #               content file is older than 7d, or the unstamped counts cannot
-#               be read. Templates, fixtures, testdata, eval
+#               be read. The oldest-unstamped reason names that file and each
+#               over-bound unstamped content file the shrink guard is holding
+#               (its stuck record), with the new and old semantic node counts. Templates, fixtures, testdata, eval
 #               graders and vendored dirs (an ancestor holds VENDORED.md) are
 #               counted apart as non_content_* and never trip the bound. A
 #               stale graph still reports rc=1; the message prints either way.
@@ -265,7 +267,7 @@ SEMANTIC_RUNS="$OUT/semantic-runs.jsonl"
 if [ -f "$SEMANTIC_RUNS" ]; then
   SEM_OUT="$(python3 - "$SEMANTIC_RUNS" "$CORPUS_RESOLVED" "$OUT" "$HERE/semantic-merge.py" \
     "$SEM_MAX_AGE_H" "$SEM_MAX_FAILED" "$SEM_MAX_REFUSED" "$SEM_MAX_UNSTAMPED" "$SEM_MAX_OLDEST_D" <<'PYEOF'
-import calendar, importlib.util, json, os, sys, time
+import calendar, importlib.util, json, os, re, sys, time
 
 root, out = sys.argv[2], sys.argv[3]
 max_age_h, max_failed, max_refused, max_unstamped, max_oldest_d = (int(v) for v in sys.argv[5:10])
@@ -303,6 +305,7 @@ refused = len(last["refused_files"]) if "refused_files" in last else last.get("s
 nc_refused = sum(1 for f in last.get("refused_files") or [] if noncontent(f))
 status = ""
 unstamped_content, oldest_content_d = 0, 0.0
+oldest_content_rel, held = "", []
 changed, unstamped_err = None, ""
 if os.path.isfile(os.path.join(out, "semantic-manifest.json")):
     # the same counts `semantic-merge.py status` prints, plus the content-only ones the bounds judge
@@ -317,6 +320,16 @@ if changed is not None:
     content = [rel for rel in changed if not noncontent(rel)]
     unstamped_content = len(content)
     oldest_content_d = max((age_d[rel] for rel in content), default=0.0)
+    oldest_content_rel = max(content, key=lambda rel: age_d[rel], default="")
+    stuck_recs = sm.load_manifest(out).get("stuck", {})
+    for rel in sorted(content):
+        rec = stuck_recs.get(rel)
+        if age_d[rel] > max_oldest_d and isinstance(rec, dict) and str(rec.get("reason", "")).startswith("shrink guard"):
+            new, old = rec.get("new_nodes"), rec.get("old_nodes")
+            if not (isinstance(new, int) and isinstance(old, int)):
+                mt = re.search(r"new (\d+) vs old (\d+)", rec["reason"])
+                new, old = (int(mt.group(1)), int(mt.group(2))) if mt else (None, None)
+            held.append("%s held by the shrink guard%s" % (rel, "" if new is None else " (new %d vs old %d semantic nodes)" % (new, old)))
     status = " backed_off=%d unstamped=%d oldest_unstamped=%dd non_content_unstamped=%d" % (
         len(skipped), len(changed), max(age_d.values(), default=0), len(changed) - len(content))
 print("LINE last=%s failed=%s refused=%s%s non_content_failed=%d" % (last.get("ts", "?"), failed, refused, status, nc_failed))
@@ -343,7 +356,8 @@ if unstamped_err:
 if unstamped_content > max_unstamped:
     why.append("content unstamped=%d (bound %d)" % (unstamped_content, max_unstamped))
 if oldest_content_d > max_oldest_d:
-    why.append("oldest content unstamped %.1fd (bound %dd)" % (oldest_content_d, max_oldest_d))
+    why.append("oldest content unstamped %.1fd (bound %dd): %s%s" % (
+        oldest_content_d, max_oldest_d, oldest_content_rel, "".join("; " + h for h in held)))
 if why:
     print("SEMSTALE " + "; ".join(why))
 PYEOF

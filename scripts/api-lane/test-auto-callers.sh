@@ -86,7 +86,7 @@ run_checks() {
 
     grep_tree "$root" -e 'llm_backend_api_ready_graph' -- scripts docs "${EXCLUDES[@]}" \
         ':(exclude)scripts/lib/llm-backend.sh' ':(exclude)scripts/graphify/graph-cadence.sh' \
-        ':(exclude)scripts/graphify/refresh-graph-map.sh' | sed 's/^/check3 /' >>"$out"
+        ':(exclude)scripts/graphify/refresh-graph-map.sh' ':(exclude)scripts/graphify/graph-refresh.sh' | sed 's/^/check3 /' >>"$out"
 
     grep_tree "$root" -e 'rm-run' --and -e 'API lane' --and -e 'always' -- docs "${EXCLUDES[@]}" \
         | sed 's/^/check4 /' >>"$out"

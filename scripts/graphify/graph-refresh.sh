@@ -699,8 +699,9 @@ fi
 # --- real run: fire refresh-graph-map.sh per corpus, serially -----------------
 # shellcheck source=../lib/llm-backend.sh
 . "$HIMMEL_ROOT/scripts/lib/llm-backend.sh"
-if [ "$BACKEND" = "claude-api" ] && ! llm_backend_api_ready; then
-    echo "ERR graph-refresh: backend claude-api needs HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT in the launching environment -- refusing, no claude-cli fallback" >&2
+if [ "$BACKEND" = "claude-api" ] \
+    && ! { if [ "$CORPUS" = "himmel" ]; then llm_backend_api_ready_graph; else llm_backend_api_ready; fi; }; then
+    echo "ERR graph-refresh: backend claude-api needs HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT in the launching environment (auto only for the himmel corpus) -- refusing, no claude-cli fallback" >&2
     exit 2
 fi
 echo "graph-refresh: refreshing $CORPUS serially on backend $BACKEND (vault: $VAULT)" >&2

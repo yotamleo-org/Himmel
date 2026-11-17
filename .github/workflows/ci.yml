@@ -22,6 +22,9 @@ on:
   # `unlabeled` is deliberately NOT in `types`: the release's label-remove step must
   # not start a run.
   #
+  # The release does not wait for the cheap run's green: the go run re-runs every cheap job,
+  # and its same-named check-runs supersede the cheap run's cancelled ones for every reader.
+  #
   # Create-time label: gh pr create --label ci:go adds the label after the PR exists, so
   # the opened run starts first and the labeled go run, the newer run in the group
   # ci-pr-<N>, cancels it; the go run runs every cheap job too, so nothing is lost. If
