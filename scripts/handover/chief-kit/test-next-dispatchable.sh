@@ -3081,7 +3081,7 @@ p_reset() {
     : > "$P/state/status-events.jsonl"
     : > "$P_GH_LOG"
     P_CLI="$WORK/notcore-stub/index.js"
-    P_SUT="$SUT"; P_JIRA=""; P_LIMIT=400; P_PATH="$PATH"; P_LIVE=0; P_GH="$P/bin/gh"
+    P_SUT="$SUT"; P_JIRA=""; P_LIMIT=400; P_PATH="$PATH"; P_LIVE=0; P_GH="$P/bin/gh"; P_READER=""
 }
 p_mk() { mk "$1" "${2:-To Do}" Medium '[]' '["v1.0.1"]' '[]' 'predicate fixture' "${3:-Writes: scripts/lib/alpha.sh}"; }
 p_part() { # key pr kind actor
@@ -3094,7 +3094,7 @@ p_part() { # key pr kind actor
 p_run() {
     local offline=--no-classify
     [ "$P_LIVE" = 0 ] || offline=""
-    P_OUT="$(PATH="$P_PATH" NEXT_DISPATCH_DEADLINE="$P_LIMIT" NEXT_DISPATCH_JIRA_CLI="$P_CLI" NEXT_DISPATCH_MIRROR="$M" NEXT_DISPATCH_BODY_CACHE="$P/cache.json" NEXT_DISPATCH_READER='' NEXT_DISPATCH_GH_CMD="$P_GH" NEXT_DISPATCH_JIRA_CMD="$P_JIRA" \
+    P_OUT="$(PATH="$P_PATH" NEXT_DISPATCH_DEADLINE="$P_LIMIT" NEXT_DISPATCH_JIRA_CLI="$P_CLI" NEXT_DISPATCH_MIRROR="$M" NEXT_DISPATCH_BODY_CACHE="$P/cache.json" NEXT_DISPATCH_READER="$P_READER" NEXT_DISPATCH_GH_CMD="$P_GH" NEXT_DISPATCH_JIRA_CMD="$P_JIRA" \
         bash "$P_SUT" $offline --workers-dir "$P/state/workers" "$@" 2> "$P/stderr")"; P_RC=$?
 }
 p_list() { p_run --why --dispositions --top 100 --doc "$P/bucket/chief.md"; }
@@ -3297,7 +3297,10 @@ for role in ordinary wrapped partial progress review epic subtask; do
     p_mk HIMMEL-11001 "$status"
     case "$role" in
         wrapped) MK_BARE=1 p_mk HIMMEL-11001 'To Do' 'No readable scope'; printf '{"state":"wrapped","resume_brief":"fixture.md"}\n' > "$P/state/workers/HIMMEL-11001.json" ;;
-        partial|epic) p_part HIMMEL-11001 7001 remaining; [ "$role" != epic ] || retype "$M/HIMMEL-11001.md" Epic ;;
+        partial|epic)
+            p_part HIMMEL-11001 7001 remaining
+            printf '\n## Comments\n\n### chief — 2026-11-17T00:00:00Z\nPR #7001 (fixture/repo) merged @ abc as a partial merge; the ticket is not complete. Remaining: edit scripts/lib/rem.sh\n' >> "$M/HIMMEL-11001.md"
+            [ "$role" != epic ] || retype "$M/HIMMEL-11001.md" Epic ;;
         subtask) retype "$M/HIMMEL-11001.md" Sub-task ;;
     esac
     p_run --why-ticket HIMMEL-11001
@@ -3350,6 +3353,89 @@ p_reset
 mk HIMMEL-11001 'To Do' Medium '[]' '[]' '["HIMMEL-11002"]' fixture 'Writes: scripts/lib/alpha.sh'
 p_mk HIMMEL-11002 Done; P_JIRA="$P/live-jira"
 p_run --why-ticket HIMMEL-11001; p_verdict 'P13e no-classify uses mirror despite configured Jira reader' 0
+
+p_comment() { printf '\n## Comments\n\n### chief — 2026-11-17T00:00:00Z\n%s\n' "$1" >> "$M/HIMMEL-11001.md"; }
+p_breadcrumb() { p_comment "PR #$1 (yotamleo-org/Himmel) merged @ abc as a partial merge; the ticket is not complete. Remaining: $2"; }
+p_reset; p_mk HIMMEL-11001 'To Do' 'Scope needs a ruling'
+p_comment $'readiness: scoped by chief\nWrites: scripts/lib/rd.sh'
+p_run --why-ticket HIMMEL-11001; p_verdict P3 0; has 'P3 predicate readiness scope' "$P_OUT" 'readiness comment'; has 'P3 predicate path' "$P_OUT" 'scripts/lib/rd.sh'
+p_list; has 'P3 listing readiness scope' "$P_OUT" 'files=scripts/lib/rd.sh'
+for marker in $'Readiness ruling: scoped\nWrites: scripts/lib/rd.sh' $'ordinary note\nWrites: scripts/lib/rd.sh' 'readiness: scoped Writes: scripts/lib/rd.sh'; do
+    p_reset; p_mk HIMMEL-11001 'To Do' 'Scope needs a ruling'; p_comment "$marker"
+    p_run --why-ticket HIMMEL-11001; p_verdict "P4(a/b/d) predicate $marker" 1; has 'P4(a/b/d) predicate no scope' "$P_OUT" 'no-scope:'
+    p_list; has 'P4(a/b/d) listing guard' "$P_OUT" 'NEEDS-CHIEF-NOTE HIMMEL-11001'
+done
+p_reset; p_mk HIMMEL-11001 'To Do' 'Scope needs a ruling'
+p_comment $'readiness: old\nWrites: scripts/lib/old.sh'
+printf '\n### chief — 2026-11-17T01:00:00Z\nreadiness: new\nWrites: scripts/lib/new.sh\n' >> "$M/HIMMEL-11001.md"
+p_run --why-ticket HIMMEL-11001; p_verdict 'P4(c) predicate' 0; has 'P4(c) predicate newest' "$P_OUT" 'scripts/lib/new.sh'; lacks 'P4(c) predicate ignores older' "$P_OUT" 'scripts/lib/old.sh'
+p_list; has 'P4(c) listing newest' "$P_OUT" 'files=scripts/lib/new.sh'
+for mode in breadcrumb cache; do
+    p_reset; p_mk HIMMEL-11001 'In Progress' 'Writes: scripts/lib/desc.sh'; p_part HIMMEL-11001 7001 remaining
+    p_comment $'readiness: scoped\nWrites: scripts/lib/rd.sh'; p_breadcrumb 7001 'edit scripts/lib/rem.sh'
+    if [ "$mode" = cache ]; then p_list; has 'P7c listing remainder wins' "$P_OUT" 'files=scripts/lib/rem.sh'; fi
+    p_run --why-ticket HIMMEL-11001; p_verdict "P7/P7c $mode" 0
+    has "P7/P7c $mode source" "$P_OUT" '# scope HIMMEL-11001 remainder of PR #7001: scripts/lib/rem.sh'
+done
+for variant in owed missing not-recorded; do
+    p_reset; p_mk HIMMEL-11001 'In Progress'; p_part HIMMEL-11001 7002 remaining
+    case "$variant" in
+        owed) printf '{"event":"merge","result":"moved","key":"HIMMEL-11001","pr":"7002","contract":"no"}\n' > "$P/state/status-events.jsonl"; p_breadcrumb 7002 'the live check: owed → chief by 2026-11-30'; want='remainder kind of PR #7002 unknown without GitHub' ;;
+        missing) want='remainder of PR #7002 not yet in the mirror' ;;
+        not-recorded) printf '{"event":"merge","result":"moved","key":"HIMMEL-11001","pr":"7002","contract":"no"}\n' > "$P/state/status-events.jsonl"; p_breadcrumb 7002 'not recorded in the PR body, see PR #7002.'; want='remainder of PR #7002 not recorded (no GitHub read)' ;;
+    esac
+    p_run --why-ticket HIMMEL-11001; p_verdict "P7b $variant" 1; has "P7b $variant reason" "$P_OUT" "$want"
+done
+p_reset; p_mk HIMMEL-11001 'In Progress'; p_part HIMMEL-11001 7001 remaining; p_breadcrumb 7001 'edit scripts/lib/rem.sh'
+P_GH="$P/fail-gh"; P_PATH="$P/no-gh:$PATH"; : > "$P_PATH_GH_LOG"
+p_run --why-ticket HIMMEL-11001; p_verdict 'P17(a) real reader no gh' 0
+[ ! -s "$P_GH_LOG" ] && [ ! -s "$P_PATH_GH_LOG" ] && pass 'P17(a) both gh logs empty' || fail 'P17(a) reached GitHub'
+P_READER="$P/missing-reader.py"
+p_run --why-ticket HIMMEL-11001; p_unknown 'P17(b) missing reader'; has 'P17(b) reader reason' "$P_OUT" 'pr_remainder.py'
+P_READER=''; p_tree raising
+printf '\ndef live_answers(answers):\n    raise RuntimeError("fixture")\n' >> "$PT/scripts/lib/pr_remainder.py"
+p_run --why-ticket HIMMEL-11001; p_unknown 'P17(c) actual internal error'; has 'P17(c) framed RuntimeError' "$P_OUT" 'internal error RuntimeError'
+p_reset; p_mk HIMMEL-11001 'In Progress'; p_part HIMMEL-11001 7003 owed chief
+p_run --why-ticket HIMMEL-11001; p_verdict 'P19(h) owed chief' 1; has 'P19(h) named debt' "$P_OUT" 'drop: merged PR #7003 owes chief by 2026-11-30'
+p_reset; p_mk HIMMEL-11001 'In Progress'; p_part HIMMEL-11001 7004 remaining
+printf '## Ticket coverage\n- first: deferred -> HIMMEL-1\n- second: deferred -> HIMMEL-2\n' > "$P_BODIES/7004"
+p_list
+p_run --why-ticket HIMMEL-11001; p_verdict 'P19(i) handed-off cached' 1; has 'P19(i) hand-off owner' "$P_OUT" 'drop: remainder on HIMMEL-1, HIMMEL-2'
+P_KEY="HIMMEL-$((11000 + 1))"
+for actor in worker chief operator; do
+    p_reset; p_mk HIMMEL-11001 'In Progress' 'Writes: scripts/lib/desc.sh'; p_part HIMMEL-11001 7001 remaining
+    p_comment $'readiness: scoped\nWrites: scripts/lib/rd.sh'; p_breadcrumb 7001 'edit scripts/lib/rem.sh'
+    pv="$(p_validation "$P_KEY")"; p_owed close --id "$pv" --key KEEP >/dev/null; p_step "$P_KEY" "$pv" "$actor"
+    p_list
+    if [ "$actor" = worker ]; then has 'P20 listing KEEP worker scope wins' "$P_OUT" 'files=scripts/lib/next.sh'; else has "P20 listing $actor holds" "$P_OUT" "owes $actor by 2026-11-30"; lacks "P20 listing $actor not executable" "$P_OUT" $'RESUME\tHIMMEL-11001'; fi
+    p_run --why-ticket HIMMEL-11001 --doc "$P/bucket/chief.md"
+    if [ "$actor" = worker ]; then p_verdict 'P20 predicate KEEP worker' 0; has 'P20 predicate KEEP scope wins' "$P_OUT" 'owed next step'; has 'P20 predicate actual worker scope' "$P_OUT" 'scripts/lib/next.sh'; else p_verdict "P20/P21(c) predicate $actor holds" 1; has "P20 predicate $actor refusal" "$P_OUT" "drop: owned next step: $actor"; fi
+done
+for variant in proof pending discharged code older wrong; do
+    p_reset; p_mk HIMMEL-11001 'To Do'; p_part HIMMEL-11001 7001 owed proof
+    case "$variant" in
+        pending|discharged|code) pv="$(p_validation "$P_KEY")" ;;
+        older) pv="$(p_validation "$P_KEY")"; p_owed close --id "$pv" --key KEEP >/dev/null; p_step "$P_KEY" "$pv" worker; p_validation "$P_KEY" >/dev/null ;;
+        wrong) other="HIMMEL-$((11000 + 2))"; pv="$(p_validation "$other")"; p_owed close --id "$pv" --key KEEP >/dev/null; p_step "$P_KEY" "$pv" worker ;;
+    esac
+    case "$variant" in
+        discharged) p_owed close --id "$pv" --key MET >/dev/null ;;
+        code) p_part HIMMEL-11001 7002 remaining; p_breadcrumb 7002 'edit scripts/lib/rem.sh' ;;
+    esac
+    p_list
+    case "$variant" in pending|older) lacks "P20 listing $variant proof withheld" "$P_OUT" $'RESUME\tHIMMEL-11001'; has "P20 listing $variant names chief" "$P_OUT" 'owes chief' ;; *) has "P20 listing $variant executable" "$P_OUT" $'RESUME\tHIMMEL-11001' ;; esac
+    p_run --why-ticket HIMMEL-11001 --doc "$P/bucket/chief.md"
+    case "$variant" in
+        pending|older) p_verdict "P20/P21(c) predicate $variant" 1; has "P20 predicate $variant named owner" "$P_OUT" 'drop: owned next step: chief' ;;
+        *) p_verdict "P20/P21(c) predicate $variant" 0 ;;
+    esac
+    case "$variant" in code) has 'P20 unrelated code scope preserved' "$P_OUT" 'scripts/lib/rem.sh' ;; wrong|older) lacks "P20 $variant source never supplies scope" "$P_OUT" 'scripts/lib/next.sh' ;; esac
+done
+p_reset; p_mk HIMMEL-11001
+p_run --why-ticket HIMMEL-11001; p_verdict 'P20 no-doc legacy' 0; has 'P20 explicit missing context' "$P_OUT" '# owed-ledger not read (no --doc)'
+p_run --why-ticket HIMMEL-11001 --doc "$P/bucket/chief.md"; p_verdict 'P20 resolved missing ledger legacy' 0
+printf '{not json}\n' > "$P/bucket/owed.jsonl"
+p_run --why-ticket HIMMEL-11001 --doc "$P/bucket/chief.md"; p_unknown 'P20 corrupt existing ledger'
 
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.

@@ -426,6 +426,22 @@ def scope_of(body):
     # files, the source --why names, reads, and no_scope: nothing says what the ticket writes, not even that it writes nothing
     cut = body.find('\n## Comments')
     desc = body if cut < 0 else body[:cut]
+    comments = body[cut:] if cut >= 0 else ''
+    readiness = []
+    for comment in re.split(r'^### ', comments, flags=re.M)[1:]:
+        heading, _, text = comment.partition('\n')
+        lines = [line for line in text.splitlines() if line.strip()]
+        if lines and re.match(r'^readiness:', lines[0], re.I):
+            readiness.append((heading.partition(' — ')[2], lines))
+    if readiness:
+        stamp, lines = readiness[-1]
+        for line in lines:
+            match = EXPLICIT_RE.match(line)
+            if match and match.group(1)[0].lower() == 'w':
+                files = files_in(line)
+                nowrite = not files and bool(NO_WRITE_RE.search(line))
+                if files or nowrite:
+                    return dict(files=files, reads=[], no_scope=False, nowrite=nowrite, src='readiness comment ' + stamp)
     explicit, kinds, nowrite_line, writes_hit = [], set(), False, False
     for line in desc.splitlines():
         m = EXPLICIT_RE.match(line)
@@ -1427,6 +1443,70 @@ def apply_owed_scope(issues, actions, worker_keys, pr_keys):
         i.update(files=files, reads=reads, src='owed next step ' + ','.join(s['id'] for s in steps),
                  no_scope=bool(code) and not files, nowrite=not code, owed_next=steps)
 
+def read_owed_actions():
+    bucket = os.path.dirname(os.environ.get('ND_DOC') or os.environ.get('ND_WORKERS_FROM') or '')
+    if not bucket or not os.path.lexists(os.path.join(bucket, 'owed.jsonl')):
+        return []
+    result = subprocess.run(['bash', os.environ['ND_OWE'], 'list', '--bucket', bucket, '--all', '--json'],
+                            capture_output=True, text=True, timeout=10)
+    if result.returncode:
+        raise ValueError('owed reader refused')
+    actions = json.loads(result.stdout)
+    if not isinstance(actions, list):
+        raise ValueError('owed reader returned no action list')
+    return actions
+
+def predicate_remainder(i):
+    answers, problems = [], []
+    for pr in partials.get(i['key'], []):
+        answer = cached_remainder(pr, i['key'])
+        if answer is not None:
+            answers.append(dict(answer, pr=pr))
+            continue
+        row = merge_fields.get((i['key'], pr), {})
+        kind = row.get('remainder')
+        text = None
+        for comment in re.split(r'^### ', i['comments'], flags=re.M)[1:]:
+            marker = re.search(r'PR #%s \(.*?as a partial merge; the ticket is not complete\.\s*Remaining: (.*)' % re.escape(pr), comment, re.S)
+            if marker:
+                text = marker.group(1).strip()
+        if not kind:
+            if text is None:
+                problems.append('remainder of PR #%s not in the mirror' % pr)
+                continue
+            if text.startswith('not recorded in the PR body'):
+                problems.append('remainder of PR #%s not recorded (no GitHub read)' % pr)
+                continue
+            if _reader.OWED_ANY_RE.search(text) or _reader.DEFERRED_RE.search(text):
+                problems.append('remainder kind of PR #%s unknown without GitHub (owed or deferred text in the breadcrumb)' % pr)
+                continue
+            kind = 'remaining'
+        answer = dict(kind=kind, handed=[], text=text or '', nowrite=False, chief_owed=[], pr=pr)
+        if kind == 'remaining':
+            if text is None:
+                problems.append('remainder of PR #%s not yet in the mirror' % pr)
+                continue
+            try:
+                r = subprocess.run([sys.executable, '-I', reader, '--units', i['key']], input='Remaining: ' + text,
+                                   capture_output=True, text=True, timeout=60, check=True)
+                fields = r.stdout.rstrip('\n').split('\t')
+                sizes = {'remaining': 4, 'handed-off': 5, 'owed': 6, 'none': 3}
+                if not fields or len(fields) != sizes.get(fields[0]) or fields[-2] not in ('nowrite=0', 'nowrite=1') or not fields[-1].startswith('chief-owed='):
+                    raise ValueError('unrecognised --units answer')
+                answer.update(nowrite=fields[-2] == 'nowrite=1', chief_owed=[t for t in fields[-1][len('chief-owed='):].split('¦') if t])
+            except (OSError, ValueError, subprocess.SubprocessError) as e:
+                unknown('pr_remainder.py could not read PR #%s (%s)' % (pr, e))
+        elif kind == 'owed':
+            who, due = row.get('owed'), row.get('owed_due')
+            if who not in ('chief', 'operator', 'proof') or not isinstance(due, str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}', due):
+                problems.append('remainder kind of PR #%s unknown without GitHub (owed owner or date missing)' % pr)
+                continue
+            answer['handed'] = [who, due]
+        elif kind not in ('handed-off', 'none'):
+            unknown('malformed remainder kind of PR #%s' % pr)
+        answers.append(answer)
+    return live_answers(answers), problems
+
 def gate_detail(tag, reason):
     if tag == 'label':
         return 'title parked:' if reason == 'label parked: title' else 'labels ' + reason[len('label '):]
@@ -1461,6 +1541,20 @@ def why_ticket(i):
                 gates['open-blocker'].append(', '.join('%s (%s)' % (b, 'unreadable' if st == UNREADABLE else st) for b, st in blockers))
         for pr in sorted(unconfirmed, key=int):
             gates['drop'].append('merge of PR #%s unconfirmed (pre-merge row; no GitHub read)' % pr)
+        gates['drop'].extend(i.get('remainder_problems', []))
+        parts = [] if i.get('owed_next') else i.get('parts', [])
+        if i.get('owed_wait'):
+            gates['drop'].append('owned next step: ' + i['owed_wait']['actor'])
+        if role == 'RESUME':
+            owed = [p for p in parts if p['kind'] == 'owed']
+            if owed and not any(p['kind'] == 'remaining' or (p['kind'] == 'owed' and p['handed'][0] == 'proof') for p in parts):
+                first_due = min(owed, key=lambda p: p['handed'][1])
+                gates['drop'].append('merged PR #%s owes %s by %s' % (first_due['pr'], first_due['handed'][0], first_due['handed'][1]))
+            if parts and all(p['kind'] == 'handed-off' for p in parts):
+                gates['drop'].append('remainder on ' + ', '.join(k for p in parts for k in p['handed']))
+        for part in parts:
+            if part['kind'] == 'none':
+                gates['no-scope'].append('merged PR #%s records no remainder' % part['pr'])
         if i['no_scope'] and key not in briefs:
             gates['no-scope'].append('nothing says what it writes: no Remaining: text, no readiness: Writes line, no Writes:/Files: line, no path in the description')
         if role == 'To Do':
@@ -1483,7 +1577,17 @@ def why_ticket(i):
 if why_key:
     if why_key not in issues:
         unknown('not in the mirror or the body file')
-    core_spec_pass([issues[why_key]])
+    issue = issues[why_key]
+    if partial_resume(why_key):
+        parts, issue['remainder_problems'] = predicate_remainder(issue)
+        override_from_parts(issue, parts)
+    if not os.environ.get('ND_DOC'):
+        print('# owed-ledger not read (no --doc)')
+    try:
+        apply_owed_scope({why_key: issue}, read_owed_actions(), set(), set())
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as e:
+        unknown('owed next-step state unreadable: ' + str(e))
+    core_spec_pass([issue])
     lines, rc = why_ticket(issues[why_key])
     print('\n'.join(lines))
     sys.exit(rc)
@@ -1547,11 +1651,7 @@ holds_py = os.environ['ND_HOLDS']
 owed_bucket = os.path.dirname(os.environ.get('ND_DOC') or os.environ.get('ND_WORKERS_FROM') or '')
 if owed_bucket and os.path.lexists(os.path.join(owed_bucket, 'owed.jsonl')):
     try:
-        result = subprocess.run(['bash', os.environ['ND_OWE'], 'list', '--bucket', owed_bucket, '--all', '--json'],
-                                capture_output=True, text=True, timeout=10)
-        if result.returncode:
-            raise ValueError('owed reader refused')
-        actions = json.loads(result.stdout)
+        actions = read_owed_actions()
         apply_owed_scope(issues, actions, worker_keys, pr_keys)
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as exc:
         print('# next-dispatchable: owed next-step state unreadable: ' + str(exc), file=sys.stderr)
