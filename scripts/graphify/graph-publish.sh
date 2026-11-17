@@ -17,6 +17,10 @@
 # touch refresh-graph-map.sh (a wholly separate, standalone script by design).
 #
 # WHAT IT DOES (only when there is something newer to publish):
+#   0. A repo that does not track graphify-out/graph.json (the steady state:
+#      the graph publishes to the graph-data branch) runs graph-cadence.sh
+#      and returns its exit code; --dry-run prints that command and exits 0.
+#      Everything below is the tracked-graph path.
 #   1. Verifies this repo tracks graphify-out/graph.json,
 #      BOTH graphify-out/graph.json and graphify-out/GRAPH_REPORT.md exist on
 #      disk (refresh-graph-map.sh's promote
@@ -63,9 +67,8 @@
 #   1  usage error
 #   2  required tool missing (git or gh)
 #   3  refused: no local graphify-out/graph.json on disk
-#   4  refused: repo does not track graphify-out/graph.json (graphify-out/
-#      is retired from the git tree, gitignored outright —
-#      nothing to publish TO, permanently)
+#   4  (no longer returned: a repo that does not track graphify-out/graph.json
+#      runs graph-cadence.sh instead and exits with its code)
 #   5  refused: nothing newer to publish (local graph == shipped graph)
 #   6  refused: working tree has uncommitted changes outside
 #      graphify-out/{graph.json,GRAPH_REPORT.md}
@@ -90,6 +93,8 @@
 # Environment:
 #   GH_CMD                 Default `gh` (tests override with a fake).
 #   GRAPH_PUBLISH_BASE      Default base branch/ref. Default: main.
+#   GRAPH_PUBLISH_CADENCE   graph-cadence.sh path the untracked-graph path runs
+#                           (tests override it with a recorder).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -113,7 +118,9 @@ usage: graph-publish.sh [--dry-run] [--base <branch>] [--no-fetch] [--ticket <ID
 Publishes a freshly-refreshed graphify-out/graph.json (+ GRAPH_REPORT.md) by
 opening/refreshing a PR — the operator-invoked step a tracked
 graph needed and never got. Refuses cleanly when there is nothing newer than
-the shipped (committed) graph to publish.
+the shipped (committed) graph to publish. A repo that does not track
+graphify-out/graph.json publishes to the graph-data branch instead: this runs
+graph-cadence.sh (no model call unless --semantic is armed) and exits with its code.
 
 Optional:
   --dry-run       Report what would happen; makes no git/gh mutations. Implies
@@ -155,12 +162,14 @@ corpus=$(basename "$repo_root")
 
 # --- 1. repo tracks the graph at all -----------------------------------------
 # graphify-out/ is REMOVED from the git tree entirely and gitignored outright
-# -- this repo's derived graph does not publish at
-# all. That is the permanent steady state, not a gap that could
-# still be closed, so this refusal is expected to fire on every invocation.
 if ! git ls-files --error-unmatch "$GRAPH_PATH" >/dev/null 2>&1; then
-    echo "ERR graph-publish: this repo does not track $GRAPH_PATH (graphify-out/ retired from the git tree, gitignored outright) — nothing to publish to." >&2
-    exit 4
+    CADENCE_CMD="${GRAPH_PUBLISH_CADENCE:-$HERE/graph-cadence.sh}"
+    echo "graph-publish: graphify-out/ is not tracked; the graph publishes to the graph-data branch -- running graph-cadence.sh (no model call unless --semantic)"
+    if [ "$DRY_RUN" -eq 1 ]; then
+        echo "graph-publish: --dry-run: would run: bash $CADENCE_CMD"
+        exit 0
+    fi
+    exec bash "$CADENCE_CMD"
 fi
 
 # --- 2. a local graph exists on disk -----------------------------------------

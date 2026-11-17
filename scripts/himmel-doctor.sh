@@ -5193,6 +5193,7 @@ check_c70_graph_semantic() {
         return 0
     fi
     graph_semantic_station_verdict
+    graph_data_station_verdict
     # the semantic cadence merges into its own worktree graph, not the station graph
     slug="$(printf '%s' "$(basename "$REPO_ROOT")" | tr -c 'A-Za-z0-9._-' '-')"
     cadence_out="${HIMMEL_DOCTOR_CADENCE_OUT:-$HOME/.claude/graph-cadence/$slug/graphify-out}"
@@ -5203,6 +5204,20 @@ check_c70_graph_semantic() {
         emit WARN C70-graph-semantic "the cadence graph at $cadence_out last merged semantic at last=$cadence_last, but the station graph $out stops at last=$station_last: the cadence never promotes its graph to the station graph, so workers read a frozen semantic layer" \
             "nothing to run here: until the cadence promotes its graph, the station graph only gets structural (AST) refreshes"
     fi
+}
+
+graph_data_station_verdict() {
+    local out="${HIMMEL_DOCTOR_GRAPH_OUT:-$REPO_ROOT/graphify-out}"
+    local status="${HIMMEL_DOCTOR_GRAPH_DATA_STATUS:-$SELF_DIR/graphify/graph-data-status.sh}"
+    local line rc=0
+    line="$(bash "$status" --repo "$REPO_ROOT" --out "$out" --remote origin \
+        --pause-marker "${GRAPHMAP_BAT_DIR:-$HOME/.claude/graphmap-cadence}/semantic.paused" 2>/dev/null)" || rc=$?
+    line="${line%%$'\n'*}"
+    case "$rc" in
+        1) emit WARN C70-graph-data "$line" "bash scripts/graphify/graph-cadence.sh   # publishes the live graph to graph-data with no model call" ;;
+        0|4) emit OK C70-graph-data "$line" ;;
+        *) emit INFO C70-graph-data "${line:-graph-data status unavailable (exit $rc)}" ;;
+    esac
 }
 
 graph_semantic_station_verdict() {
