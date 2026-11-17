@@ -826,10 +826,10 @@ build_hermetic_bin "$GW/stubs-nog" jq python3 npm git; cp "$GW/stubs/crontab" "$
 ACME=$(cd "$GW/repos/acme" && pwd -P); MYPROJ=$(cd "$GW/repos/My Project" && pwd -P); PLAIN=$(cd "$GW/repos/plain" && pwd -P)
 GW_PATH="$GW/stubs:$PATH"
 GW_NO_GRAPHIFY_PATH="$GW/stubs-nog:$(scrub_path "$PATH" graphify)"
-GW_ROSTER_AC="$GW/roster-ac.json"; GW_ROSTER_A="$GW/roster-a.json"; GW_ROSTER_D="$GW/roster-d.json"; GW_ROSTER_BAD="$GW/roster-bad.json"
+GW_ROSTER_AC="$GW/roster-ac.json"; GW_ROSTER_A="$GW/roster-a.json"; GW_ROSTER_E="$GW/roster-e.json"; GW_ROSTER_BAD="$GW/roster-bad.json"
 printf '{"version":1,"ledger_path":"%s","accounts":{"A":{"organization_id":"org-a","cycle_id":"c","cap_usd":"1"},"C":{"organization_id":"org-c","cycle_id":"c","cap_usd":"1"}}}\n' "$GW/ledger.json" > "$GW_ROSTER_AC"
 printf '{"version":1,"ledger_path":"%s","accounts":{"A":{"organization_id":"org-a","cycle_id":"c","cap_usd":"1"}}}\n' "$GW/ledger.json" > "$GW_ROSTER_A"
-printf '{"version":1,"ledger_path":"%s","accounts":{"D":{"organization_id":"org-d","cycle_id":"c","cap_usd":"1"}}}\n' "$GW/ledger.json" > "$GW_ROSTER_D"
+printf '{"version":1,"ledger_path":"%s","accounts":{"E":{"organization_id":"org-e","cycle_id":"c","cap_usd":"1"}}}\n' "$GW/ledger.json" > "$GW_ROSTER_E"
 printf '{"version":1,"ledger_path":"%s","accounts":{"A":"x"}}\n' "$GW/ledger.json" > "$GW_ROSTER_BAD"
 gc_lib_w="$(winpath "$repo_root/scripts/himmelctl/lib/graph-choices.js")"
 NO_CHOICE_S=$("$node_bin" -e "process.stdout.write(require('$gc_lib_w').NO_CHOICE_SENTENCE)")
@@ -966,12 +966,12 @@ grepq "$out" -F "$ROSTER_UNREADABLE" || fail "W7: Q2 must print the unreadable-s
 grepq "$out" -F 'API accounts are added' || fail "W7: Q2 must say where API accounts are added (got: $out)"
 echo "ok: W7 no roster offers none and subscription with its fixed line and where accounts are added"
 
-for r in "$GW_ROSTER_D" "$GW_ROSTER_BAD"; do
+for r in "$GW_ROSTER_E" "$GW_ROSTER_BAD"; do
   out=$(gw_ask "$(gw_spec "$(gw_opts "$(gw_accounts "$r")" "$DEFAULT_ROUTE")" "$(jq -nc --arg r "$ACME" '[$r,""]')")")
   grepq "$out" -F 'Who pays first? none / subscription (Enter for subscription)' || fail "W7b(${r##*/}): Q2 must offer none and subscription alone (got: $out)"
   grepq "$out" -F "$ROSTER_INVALID" || fail "W7b(${r##*/}): Q2 must print the invalid-account-config line (got: $out)"
 done
-echo "ok: W7b a D row and a damaged row offer none and subscription with the invalid-account-config line"
+echo "ok: W7b an E row and a damaged row offer none and subscription with the invalid-account-config line"
 
 gw_home w8
 out=$(gw_ask "$(gw_spec "$(gw_opts "$(gw_accounts "$GW/no-roster.json")" "$DEFAULT_ROUTE")" "$(jq -nc --arg p "$PLAIN" --arg m "$MYPROJ" '[$p,$m,""]')")")
