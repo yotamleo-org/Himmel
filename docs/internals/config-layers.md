@@ -367,7 +367,7 @@ Non-secret Jira and service identifiers also belong in `himmel.conf`:
 `JIRA_EMAIL`, `JIRA_PROJECTS`, `JIRA_PROJECT_KEY`, `JIRA_CLOUD_ID`,
 `GCP_CI_PROJECT_ID`, `SNYK_ORG_ID`,
 `SNYK_ORG_SLUG`, `VERCEL_TEAM_ID`, `VERCEL_USER_ID`, `ANTHROPIC_API_ORG_ID_A`,
-`ANTHROPIC_API_ORG_ID_B`. Their meanings and defaults are unchanged;
+`ANTHROPIC_API_ORG_ID_B`, `ANTHROPIC_API_ORG_ID_C`, `ANTHROPIC_API_ORG_ID_D`. Their meanings and defaults are unchanged;
 `.env.example` documents them. The Jira CLI reads its identifiers through
 these same config layers; API tokens still come only from the process env
 or legacy `.env`, never from `himmel.conf` or its local override.

@@ -50,7 +50,7 @@ test('a clean judge:[B] map is valid and accounts judge prints B', () => {
 });
 
 test('a dropped letter keeps the entry live: partial, unknown-account error, kept-as line, duplicates silent', () => {
-  const f = fixture(doc({ judge: ['B', 'D', 'B'] }));
+  const f = fixture(doc({ judge: ['B', 'E', 'B'] }));
   const r = f.cli(['accounts', 'judge']);
   assert.equal(r.status, 0);
   assert.equal(r.stdout.trim(), 'B');
@@ -58,7 +58,7 @@ test('a dropped letter keeps the entry live: partial, unknown-account error, kep
   const m = JSON.parse(f.cli(['check']).stdout).roleMap;
   assert.equal(m.state, 'partial');
   assert.deepEqual(m.roles, { judge: ['B'] });
-  assert.deepEqual(m.errors, ['unknown-account:judge:D']);
+  assert.deepEqual(m.errors, ['unknown-account:judge:E']);
 });
 
 test('a misspelt role is ignored as unknown-role and judge is unaffected', () => {
@@ -165,9 +165,9 @@ test('write of an empty roles object removes the file', () => {
 test('write of an unknown account exits 3 naming it and leaves the file unchanged', () => {
   const f = fixture(doc({ graphify: ['A'] }));
   const before = readFileSync(f.roles);
-  const r = f.cli(['write'], JSON.stringify(doc({ judge: ['D'] })));
+  const r = f.cli(['write'], JSON.stringify(doc({ judge: ['E'] })));
   assert.equal(r.status, 3);
-  assert.match(r.stdout, /unknown-account:judge:D/);
+  assert.match(r.stdout, /unknown-account:judge:E/);
   assert.deepEqual(readFileSync(f.roles), before);
 });
 
@@ -234,7 +234,7 @@ test('check warns no-configured-account for a role whose only letter has no rost
 
 test('check reports accounts unreadable and no warnings for a missing, non-JSON or invalid config', () => {
   const f = fixture(doc({ graphify: ['C'] }));
-  for (const text of [undefined, '{not json', JSON.stringify({ version: 1, ledger_path: '/x', accounts: { D: {} } })]) {
+  for (const text of [undefined, '{not json', JSON.stringify({ version: 1, ledger_path: '/x', accounts: { E: {} } })]) {
     if (text !== undefined) writeFileSync(f.config, text);
     const out = JSON.parse(f.cli(['check']).stdout);
     assert.equal(out.accounts, 'unreadable');
@@ -256,12 +256,24 @@ test('R1: walk graphify prints the map letters, else the configured letters, els
   assert.equal(walk(g).stdout, 'A,C\n');
   const u = walk(fixture());
   assert.equal(u.status, 0, u.stderr);
-  assert.equal(u.stdout, 'A,B,C\n');
+  assert.equal(u.stdout, 'A,B,C,D\n');
+});
+
+test('walk graphify reaches D: a configured D is walked with no map, and a map naming D walks D', () => {
+  const f = fixture();
+  withAccounts(f, ['A', 'D']);
+  assert.equal(walk(f).stdout, 'A,D\n');
+  const g = fixture(doc({ graphify: ['D', 'B'] }));
+  withAccounts(g, ['B', 'D']);
+  const r = walk(g);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, 'D,B\n');
+  assert.equal(JSON.parse(g.cli(['check']).stdout).roleMap.state, 'valid');
 });
 
 test('R2: a map that would widen the walk refuses with exit 3 and names its state or error', () => {
   const cases = [['{not json', 'refuse invalid-role-map:not-json'], [JSON.stringify({ version: 2, roles: {} }), 'refuse invalid-role-map:version'],
-    [doc({ graphify: ['D'] }), 'refuse empty-role:graphify']];
+    [doc({ graphify: ['E'] }), 'refuse empty-role:graphify']];
   for (const [map, line] of cases) {
     const f = fixture(map);
     withAccounts(f, ['A', 'B', 'C']);
@@ -272,7 +284,7 @@ test('R2: a map that would widen the walk refuses with exit 3 and names its stat
 });
 
 test('R3: damage that does not widen walks as on main', () => {
-  const f = fixture(doc({ graphify: ['C', 'D'] }));
+  const f = fixture(doc({ graphify: ['C', 'E'] }));
   withAccounts(f, ['A', 'B', 'C']);
   const r = walk(f);
   assert.equal(r.status, 0, r.stderr);

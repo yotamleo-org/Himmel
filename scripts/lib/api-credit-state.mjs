@@ -18,8 +18,9 @@ const MAX_AGE = 600;
 // Operator decision 185: both grants reset on one date, whatever expiry a snapshot row carries.
 // A config account may override it with reset_at for the next cycle.
 export const GRANT_RESET_AT = { A: '2026-11-01T00:00:00Z', B: '2026-11-01T00:00:00Z' };
-// C ranks like A and B; its config row carries its own reset_at (no default date).
-export const ACCOUNTS = ['A', 'B', 'C'];
+// C and D rank like A and B; their config rows carry their own reset_at (no default date).
+export const ACCOUNTS = ['A', 'B', 'C', 'D'];
+export const ACCOUNTS_TEXT = `${ACCOUNTS.slice(0, -1).join(', ')} or ${ACCOUNTS[ACCOUNTS.length - 1]}`;
 // Auto routing prefers a snapshot younger than this: the ledger cannot see spend billed outside it.
 // An older operator snapshot still routes (flagged snapshot_stale) while its estimate has headroom.
 const ROUTE_MAX_AGE = 86400;
@@ -264,7 +265,7 @@ export function creditState(command, options = {}, env = process.env) {
   try {
     const account = env.HIMMEL_API_ACCOUNT;
     if (!ACCOUNTS.includes(account)) refuse('account-required');
-    if (!['status', 'reserve', 'unknown', 'settle', 'exhausted', 'key-rejected', 'key-ok'].includes(command)) refuse('invalid-command');
+    if (!['status', 'reserve', 'unknown', 'settle', 'exhausted', 'key-rejected', 'key-ok', 'clear-exhausted'].includes(command)) refuse('invalid-command');
     const optional = env.HIMMEL_API_SNAPSHOT_OPTIONAL === '1';
     const configPath = configPathFor(env);
     const config = read(configPath);
@@ -362,6 +363,12 @@ export function creditState(command, options = {}, env = process.env) {
       save(statePath, state, lock, sentinels);
       return { verdict: 'PROCEED', account, key: 'cleared' };
     }
+    if (command === 'clear-exhausted') {
+      if (!a || !own(a, 'exhausted_at')) return { verdict: 'PROCEED', account, exhausted: 'none' };
+      delete a.exhausted_at;
+      save(statePath, state, lock, sentinels);
+      return { verdict: 'PROCEED', account, exhausted: 'cleared' };
+    }
     id(options.id);
     if (!a || !own(a.jobs, options.id)) refuse('missing-job');
     const job = a.jobs[options.id];
@@ -452,13 +459,28 @@ export function configuredLetters(env = process.env) {
   return Object.keys(config.accounts);
 }
 
-// One row per account letter for the config UI: configured, cap and a bank tag (spec 5). Secret-free: no
-// organization, cycle or key id leaves this function. An unreadable roster is one object, not rows.
+// An account's key as `...<last 4 characters>`, read from <state dir>/key-<letter>.env; 'none' when there is no
+// readable key. Only the tail leaves this function.
+export function keyTail(stateDir, account) {
+  let text;
+  try { text = readFileSync(join(stateDir, `key-${account}.env`), 'utf8'); } catch { return 'none'; }
+  const line = text.split('\n').find((l) => l.startsWith('ANTHROPIC_API_KEY='));
+  const key = (line ?? '').slice('ANTHROPIC_API_KEY='.length).trim().replace(/^(["'])(.*)\1$/, '$2');
+  return key ? `...${key.slice(-4)}` : 'none';
+}
+
+// One row per account letter for the config UI: configured, cap, a bank tag (spec 5) and the key's last 4
+// characters. Secret-free: no organization, cycle or key id leaves this function. An unreadable roster is one
+// object, not rows.
 export function accountTags(env = process.env) {
   let config;
   try { config = read(configPathFor(env)); configs(config); } catch (e) {
     return { accounts: 'unreadable', reason: e.verdict ? e.message : 'state-io-failure' };
   }
+  const stateDir = dirname(config.ledger_path);
+  return accountRows(env, config).map((row) => ({ ...row, key: keyTail(stateDir, row.account) }));
+}
+function accountRows(env, config) {
   let snapshot = null;
   try { snapshot = read(env.HIMMEL_API_CREDIT_SNAPSHOT || join(stateRoot(), 'snapshot.json')); } catch { /* no reading */ }
   const now = Math.floor(Date.now() / 1000);
@@ -673,6 +695,7 @@ function main() {
   }
   const result = creditState(command, options);
   if (command === 'key-ok' && result.key) { console.log(result.key); return; }
+  if (command === 'clear-exhausted' && result.exhausted) { console.log(result.exhausted); return; }
   if (process.env.HIMMEL_API_CREDIT_FORMAT === 'bank') {
     if (result.account && result.grant_usd) {
       console.error(`api:${result.account} grant-cycle=${result.cycle_id} grant=${result.grant_usd} spent-est=${result.spent_est_usd} reserved=${result.reserved_usd} available-est=${result.available_est_usd} expires=${new Date(result.expires_at * 1000).toISOString()} age=${result.age_seconds} source=${result.source}${result.snapshot_stale ? ' stale-snapshot (older than 24 h: auto routing goes on our own estimate and the credit answer from the API is the hard stop)' : ''}`);

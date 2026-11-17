@@ -34,7 +34,7 @@ scripts/lib/llm-backend.sh
 docs/internals/api-lane.md
 Auto routing is off for every call except the himmel semantic graph pass. `HIMMEL_API_ACCOUNT=auto` is accepted
 docs/internals/api-lane.md
-API account (`HIMMEL_API_ACCOUNT=A|B|C|auto`; auto only for the himmel graph pass, or a kind the role map maps) instead of the subscription. It is
+API account (`HIMMEL_API_ACCOUNT=A|B|C|D|auto`; auto only for the himmel graph pass, or a kind the role map maps) instead of the subscription. It is
 docs/internals/graph-cadence.md
 When `HIMMEL_API_ACCOUNT=auto`, a credit-exhausted submit moves on to the next account of the pick list, each account
 scripts/handover/chief-kit/headed-arm-worker.sh
@@ -78,7 +78,7 @@ run_checks() {
     {
         grep_tree "$root" -e 'HIMMEL_API_ACCOUNT=auto' -e "HIMMEL_API_ACCOUNT ?? 'auto'" \
             -e 'HIMMEL_API_ACCOUNT auto' -e 'A|B|auto' -e 'A\|B\|auto' -- scripts docs "${EXCLUDES[@]}"
-        grep_tree "$root" -e 'A|B|C|auto' -e 'A\|B\|C\|auto' -- scripts docs "${EXCLUDES[@]}" "${DECIDERS[@]}"
+        grep_tree "$root" -e 'A|B|C|auto' -e 'A\|B\|C\|auto' -e 'C|D|auto' -e 'C\|D\|auto' -- scripts docs "${EXCLUDES[@]}" "${DECIDERS[@]}"
         grep_tree "$root" -e 'HIMMEL_API_ACCOUNT' --and '(' -e '"auto"' -e "'auto'" -e ':-auto' ')' \
             -- scripts docs "${EXCLUDES[@]}" "${DECIDERS[@]}"
     } | sort -t: -k1,1 -k2,2n >"$hits"
@@ -86,7 +86,7 @@ run_checks() {
 
     grep_tree "$root" -e 'llm_backend_api_ready_graph' -- scripts docs "${EXCLUDES[@]}" \
         ':(exclude)scripts/lib/llm-backend.sh' ':(exclude)scripts/graphify/graph-cadence.sh' \
-        ':(exclude)scripts/graphify/refresh-graph-map.sh' | sed 's/^/check3 /' >>"$out"
+        ':(exclude)scripts/graphify/refresh-graph-map.sh' ':(exclude)scripts/graphify/graph-refresh.sh' | sed 's/^/check3 /' >>"$out"
 
     grep_tree "$root" -e 'rm-run' --and -e 'API lane' --and -e 'always' -- docs "${EXCLUDES[@]}" \
         | sed 's/^/check4 /' >>"$out"
@@ -189,6 +189,10 @@ fresh; echo 'export HIMMEL_API_ACCOUNT=auto' >>"$T/scripts/luna/graphmap-cadence
 expect_hit "HIMMEL_API_ACCOUNT=auto in an allowed file fails" "check1-2 scripts/luna/graphmap-cadence.sh:"
 fresh; echo '# account A|B|C|auto' >>"$T/scripts/lib/llm-backend.sh"
 expect_hit "A|B|C|auto in llm-backend.sh fails" "check1-2 scripts/lib/llm-backend.sh:"
+fresh; echo '# account A|B|C|D|auto' >>"$T/scripts/lib/llm-backend.sh"
+expect_hit "A|B|C|D|auto in llm-backend.sh fails" "check1-2 scripts/lib/llm-backend.sh:"
+fresh; echo 'HIMMEL_API_ACCOUNT=A\|B\|C\|D\|auto' >>"$T/docs/internals/graph-cadence.md"
+expect_hit "the escaped A..D|auto form in a doc fails" "check1-2 docs/internals/graph-cadence.md:"
 fresh; mkdir -p "$T/scripts/new"; echo 'acct="${HIMMEL_API_ACCOUNT:-auto}"' >"$T/scripts/new/caller.sh"
 expect_hit ":-auto beside HIMMEL_API_ACCOUNT in a file off the allowlist fails" "check1-2 scripts/new/caller.sh:"
 

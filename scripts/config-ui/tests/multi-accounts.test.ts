@@ -1,4 +1,4 @@
-// The Multi accounts section of Configure -> Secrets lists accounts A, B and C with the roles the role map
+// The Multi accounts section of Configure -> Secrets lists accounts A, B, C and D with the roles the role map
 // (scripts/lib/api-roles.mjs) gives them, and an edit through the validated writer changes the map auto routing reads.
 // Hermetic: HOME, HIMMEL_API_CREDIT_CONFIG and HIMMEL_API_CREDIT_SNAPSHOT point at a temp dir; no real ~/.himmel is read.
 import { test, expect, afterEach } from "bun:test";
@@ -36,11 +36,11 @@ const setup = { secrets, account: { status: "not-set", create: "ui" }, commit: {
 const secretsTile = (apiRoles: unknown) => renderConfigure({ rows: [] }, { tile: "secrets", setup, state: { plans: {}, apiRoles }, msgs: {} }) as string;
 const text = (html: string) => html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
 
-test("the Secrets tile has a Multi accounts section with rows A, B and C and their roles from the role map", async () => {
+test("the Secrets tile has a Multi accounts section with rows A, B, C and D and their roles from the role map", async () => {
   const b = boot();
   writeFileSync(join(b.credit, "roles.json"), JSON.stringify({ version: 1, roles: { judge: ["B"], graphify: ["A"] } }));
   const data = await b.get();
-  expect(data.rows.map((r: any) => r.account)).toEqual(["A", "B", "C"]);
+  expect(data.rows.map((r: any) => r.account)).toEqual(["A", "B", "C", "D"]);
   const html = secretsTile({ data, error: null, draft: data.roleMap.roles });
   expect(html).toContain("<h3>Multi accounts</h3>");
   const rowOf = (l: string) => (html.match(new RegExp(`<tr[^>]*data-account-row="${l}"[\\s\\S]*?</tr>`)) || [""])[0];
@@ -48,6 +48,22 @@ test("the Secrets tile has a Multi accounts section with rows A, B and C and the
   expect(text(rowOf("B"))).toContain("judge");
   expect(text(rowOf("C"))).toContain("not configured");
   expect(html).not.toContain("org-A");
+});
+
+test("each account row names its key by the last 4 characters only, and an account with no key file says none", async () => {
+  const b = boot();
+  const key = "sk-ant-dummy-account-a-key-0000^Ak4w";
+  writeFileSync(join(b.credit, "key-A.env"), `ANTHROPIC_API_KEY=${key}\n`, { mode: 0o600 });
+  const data = await b.get();
+  const html = secretsTile({ data, error: null, draft: data.roleMap.roles });
+  const rowOf = (l: string) => text((html.match(new RegExp(`<tr[^>]*data-account-row="${l}"[\\s\\S]*?</tr>`)) || [""])[0]);
+  expect(rowOf("A")).toContain("...Ak4w");
+  expect(rowOf("B")).toContain("none");
+  expect(rowOf("D")).toContain("none");
+  for (const out of [html, JSON.stringify(data)]) {
+    expect(out).not.toContain("^");
+    expect(out).not.toContain(key.slice(0, -4));
+  }
 });
 
 test("an edit through POST /api/api-roles changes the map that auto routing reads", async () => {

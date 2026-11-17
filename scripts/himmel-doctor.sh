@@ -4098,6 +4098,8 @@ check_c90_effort_pin() {
 
 check_c91_api_policy_refusals() {
     command -v jq >/dev/null 2>&1 || { emit INFO C91-api-policy-refusals "jq not on PATH -- API lane policy refusal record not checked"; return 0; }
+    # shellcheck source=lib/llm-backend.sh
+    . "$SELF_DIR/lib/llm-backend.sh"
     local dir rec rows="" recent kind n repo
     dir="${HIMMEL_API_ALERT_DIR:-${HOME:-/tmp}/.himmel/state/api-lane-alerts}"
     rec="$dir/policy-refusals.jsonl"
@@ -4122,14 +4124,14 @@ check_c91_api_policy_refusals() {
     fi
     while IFS='|' read -r n kind repo; do
         emit WARN C91-api-policy-refusals "kind $kind: $n refused in the last 48 h by the API lane's auto-routing policy and not run (repo $repo)" \
-            "name HIMMEL_API_ACCOUNT=A, B or C in that caller; the record is policy-refusals.jsonl in the alert directory ($dir)"
+            "name HIMMEL_API_ACCOUNT=$LLM_API_ACCOUNTS_TEXT in that caller; the record is policy-refusals.jsonl in the alert directory ($dir)"
     done <<EOF
 $rows
 EOF
 }
 
 check_c92_graph_key() {
-    local out tags unknown role route runners pinned walk="" walk_rc=0 l gc="$SELF_DIR/himmelctl/lib/graph-choices.js"
+    local out tags unknown role route runners pinned walk="" walk_rc=0 l key gc="$SELF_DIR/himmelctl/lib/graph-choices.js"
     out="$(node "$SELF_DIR/lib/api-credit-state.mjs" accounts 2>/dev/null)" || out=""
     case "$out" in
         '['*) ;;
@@ -4140,8 +4142,10 @@ check_c92_graph_key() {
            fi
            return 0 ;;
     esac
-    tags="$(printf '%s' "$out" | tr '{' '\n' | sed -n 's/^"account":"\([ABC]\)",.*"tag":"key rejected".*/\1/p' | tr '\n' ' ')"
-    unknown="$(printf '%s' "$out" | tr '{' '\n' | sed -n 's/^"account":"\([ABC]\)",.*"tag":"unknown".*/\1/p' | tr '\n' ' ')"
+    # shellcheck source=lib/llm-backend.sh
+    . "$SELF_DIR/lib/llm-backend.sh"
+    tags="$(printf '%s' "$out" | tr '{' '\n' | sed -n "s/^\"account\":\"\\(${LLM_API_ACCOUNT_CLASS}\\)\",.*\"tag\":\"key rejected\".*/\\1/p" | tr '\n' ' ')"
+    unknown="$(printf '%s' "$out" | tr '{' '\n' | sed -n "s/^\"account\":\"\\(${LLM_API_ACCOUNT_CLASS}\\)\",.*\"tag\":\"unknown\".*/\\1/p" | tr '\n' ' ')"
     [ -z "${unknown// /}" ] || emit INFO C92-graph-key "account(s) ${unknown% }: the credit ledger cannot be read, so a rejected key there is not checked"
     if [ -z "${tags// /}" ]; then
         [ -n "${unknown// /}" ] || emit OK C92-graph-key "no API account carries a rejected key"
@@ -4165,8 +4169,10 @@ check_c92_graph_key() {
         [ "$walk_rc" -eq 0 ] || walk=""
     fi
     for l in $tags; do
+        key="$(printf '%s' "$out" | tr '{' '\n' | sed -n "s/^\"account\":\"$l\",.*\"key\":\"\\([^\"]*\\)\".*/\\1/p")"
+        case "$key" in ...?|...??|...???|...????) key="key $key" ;; *) key="key: none" ;; esac
         case ",$walk,$pinned" in
-            *",$l,"*) emit WARN "C92-graph-key-$l" "account $l's API key was rejected by the provider (tag: key rejected), and the graph walk reaches $l" \
+            *",$l,"*) emit WARN "C92-graph-key-$l" "account $l's API key ($key) was rejected by the provider (tag: key rejected), and the graph walk reaches $l" \
                 "rotate ~/.himmel/state/api-credit/key-$l.env, or remove $l from the route or the graphify role" ;;
             *) if [ "$walk_rc" -eq 3 ]; then
                    emit OK "C92-graph-key-$l" "account $l carries a rejected key, but the graph role map is broken, so the graph pass refuses and sends nothing (see C93)"
@@ -5214,6 +5220,7 @@ check_c70_graph_semantic() {
         return 0
     fi
     graph_semantic_station_verdict
+    graph_data_station_verdict
     # the semantic cadence merges into its own worktree graph, not the station graph
     slug="$(printf '%s' "$(basename "$REPO_ROOT")" | tr -c 'A-Za-z0-9._-' '-')"
     cadence_out="${HIMMEL_DOCTOR_CADENCE_OUT:-$HOME/.claude/graph-cadence/$slug/graphify-out}"
@@ -5224,6 +5231,20 @@ check_c70_graph_semantic() {
         emit WARN C70-graph-semantic "the cadence graph at $cadence_out last merged semantic at last=$cadence_last, but the station graph $out stops at last=$station_last: the cadence never promotes its graph to the station graph, so workers read a frozen semantic layer" \
             "nothing to run here: until the cadence promotes its graph, the station graph only gets structural (AST) refreshes"
     fi
+}
+
+graph_data_station_verdict() {
+    local out="${HIMMEL_DOCTOR_GRAPH_OUT:-$REPO_ROOT/graphify-out}"
+    local status="${HIMMEL_DOCTOR_GRAPH_DATA_STATUS:-$SELF_DIR/graphify/graph-data-status.sh}"
+    local line rc=0
+    line="$(bash "$status" --repo "$REPO_ROOT" --out "$out" --remote origin \
+        --pause-marker "${GRAPHMAP_BAT_DIR:-$HOME/.claude/graphmap-cadence}/semantic.paused" 2>/dev/null)" || rc=$?
+    line="${line%%$'\n'*}"
+    case "$rc" in
+        1) emit WARN C70-graph-data "$line" "bash scripts/graphify/graph-cadence.sh   # publishes the live graph to graph-data with no model call" ;;
+        0|4) emit OK C70-graph-data "$line" ;;
+        *) emit INFO C70-graph-data "${line:-graph-data status unavailable (exit $rc)}" ;;
+    esac
 }
 
 graph_semantic_station_verdict() {
@@ -5716,6 +5737,17 @@ check_c81_hook_layers() {
             | select((contains("guardrail-skip-in-himmel") or contains("CLAUDE_PROJECT_DIR/.claude/settings.json")) | not)
             | [scan("hooks/[A-Za-z0-9_-]+\\.sh") | ltrimstr("hooks/")] | unique[] | [$layer, $ev, .] | @tsv' "$2" 2>/dev/null
     }
+    _c81_drop_quiet() { # <plugin hooks dir>
+        local l e s
+        while IFS=$'\t' read -r l e s; do
+            [ -n "$s" ] || continue
+            if grep -qxF '# c81: quiet when the project settings wire this hook' "$1/$s" 2>/dev/null \
+                && grep -qxF "project"$'\t'"$e"$'\t'"$s" <<<"$rows"; then
+                continue
+            fi
+            printf '%s\t%s\t%s\n' "$l" "$e" "$s"
+        done
+    }
     rows="$(_c81_rows user "$SETTINGS"; _c81_rows project "$REPO_ROOT/.claude/settings.json")"
     if [ -r "$SETTINGS" ]; then
         for name in $(jq -r '(.enabledPlugins // {}) | to_entries[] | select(.value == true) | .key | split("@")[0]' "$SETTINGS" 2>/dev/null); do
@@ -5723,7 +5755,7 @@ check_c81_hook_layers() {
             for c in "$CLAUDE_DIR_R"/plugins/cache/*/"$name"/*/hooks/hooks.json; do [ -f "$c" ] && f="$c"; done
             [ -n "$f" ] || f="$REPO_ROOT/marketplace/plugins/$name/hooks/hooks.json"
             rows="$rows
-$(_c81_rows "plugin:$name" "$f")"
+$(_c81_rows "plugin:$name" "$f" | _c81_drop_quiet "${f%/hooks.json}")"
         done
     fi
     dups="$(printf '%s\n' "$rows" | awk -F'\t' 'NF == 3 { k = $2 "\t" $3; if (!((k SUBSEP $1) in seen)) { seen[k SUBSEP $1] = 1; n[k]++; l[k] = (k in l ? l[k] "+" : "") $1 } }
@@ -5839,11 +5871,13 @@ check_c88_graph_api_optin() {
     role="$(node "$gc" role 2>/dev/null)" || role=""
     state="$(node "$gc" check 2>/dev/null | awk '/^(role=|fix=|fix-line: |backup=|consent |restore |.* will also be rolled back$)/ { next } { printf "%s%s", (n++ ? "; " : ""), $0 }')" || state=""
     if [ -f "$envfile" ] && [ -r "$envfile" ]; then
-        keys="$(awk '{ sub(/\r$/, "") } /^[[:space:]]*#/ { next } {
+        # shellcheck source=lib/llm-backend.sh
+        . "$SELF_DIR/lib/llm-backend.sh"
+        keys="$(awk -v cls="$LLM_API_ACCOUNT_CLASS" '{ sub(/\r$/, "") } /^[[:space:]]*#/ { next } {
             i = index($0, "="); if (i == 0) next
             k = substr($0, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", k); sub(/^export[[:space:]]+/, "", k)
             v = substr($0, i + 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", v); gsub("\"", "", v); gsub("\047", "", v)
-            if (v != "" && !(k in seen) && (k == "ANTHROPIC_API_KEY" || k ~ /^ANTHROPIC_ORG_[ABC]_KEY$/)) { seen[k] = 1; printf "%s%s", (n++ ? ", " : ""), k }
+            if (v != "" && !(k in seen) && (k == "ANTHROPIC_API_KEY" || k ~ ("^ANTHROPIC_ORG_" cls "_KEY$"))) { seen[k] = 1; printf "%s%s", (n++ ? ", " : ""), k }
         }' "$envfile")"
     fi
     lanes="$(node "$gc" lane-runners 2>/dev/null | awk '{ printf "%s%s", (n++ ? ", " : ""), $1 }')" || lanes=""

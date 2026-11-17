@@ -7715,6 +7715,30 @@ c70_rows "x.md" "x.md" "x.md"
 mkdir -p "$c70_t/adopter-home"
 out="$(env HOME="$c70_t/adopter-home" HIMMEL_CONFIG_DIR= CLAUDE_DIR="$c70_t/adopter-home/claude" HIMMEL_DOCTOR_GRAPH_OUT="$c70_out" HIMMEL_DOCTOR_GRAPH_CHECK= bash "$DOC" --no-color --only C70 2>&1)"
 if grepq "$out" -F 'OK   C70-graph-semantic' && grepq "$out" -F 'comes from us' && ! grepq "$out" -F 'refresh-graph-map.sh' && ! grepq "$out" 'WARN C70'; then pass "C70 an adopter with an old, stuck semantic-runs.jsonl -> OK naming the pull"; else fail "C70 adopter -> $(printf '%s' "$out" | head -3)"; fi
+printf '#!/bin/sh\necho "graph-data: LAG the graph-data tip (built at abc1234) is 3d 4h old (bound 2d) while the live graph is built at def5678 (semantic layer: yes); cause: the cadence has not published it (read the cadence log)"\nexit 1\n' > "$c70_t/gds-lag.sh"
+out="$(c70_run HIMMEL_DOCTOR_GRAPH_DATA_STATUS="$c70_t/gds-lag.sh")"
+if grepq "$out" -F 'WARN C70-graph-data' && grepq "$out" -F 'graph-data: LAG the graph-data tip (built at abc1234) is 3d 4h old' && grepq "$out" -F 'bash scripts/graphify/graph-cadence.sh'; then pass "C70 a lagging graph-data tip -> WARN with the status line and the cadence remedy"; else fail "C70 graph-data LAG -> $(printf '%s' "$out" | head -4)"; fi
+printf '#!/bin/sh\necho "graph-data: OK tip built at abc1234, 5h old; live graph built at abc1234"\nexit 0\n' > "$c70_t/gds-ok.sh"
+out="$(c70_run HIMMEL_DOCTOR_GRAPH_DATA_STATUS="$c70_t/gds-ok.sh")"
+if grepq "$out" -F 'OK   C70-graph-data' && grepq "$out" -F 'graph-data: OK tip built at abc1234'; then pass "C70 a current graph-data tip -> OK with the line"; else fail "C70 graph-data OK -> $(printf '%s' "$out" | head -4)"; fi
+printf '#!/bin/sh\necho "graph-data: NEWER live graph built at def5678 is newer than the graph-data tip (built at abc1234, 2h old); semantic layer: yes"\nexit 4\n' > "$c70_t/gds-newer.sh"
+out="$(c70_run HIMMEL_DOCTOR_GRAPH_DATA_STATUS="$c70_t/gds-newer.sh")"
+if grepq "$out" -F 'OK   C70-graph-data' && ! grepq "$out" -F 'WARN C70-graph-data'; then pass "C70 a newer live graph inside the bound -> OK, not a WARN"; else fail "C70 graph-data NEWER -> $(printf '%s' "$out" | head -4)"; fi
+printf '#!/bin/sh\necho "graph-data: UNKNOWN no live graph at /nowhere"\nexit 2\n' > "$c70_t/gds-unknown.sh"
+out="$(c70_run HIMMEL_DOCTOR_GRAPH_DATA_STATUS="$c70_t/gds-unknown.sh")"
+if grepq "$out" -F 'INFO C70-graph-data' && grepq "$out" -F 'no live graph at /nowhere'; then pass "C70 an unjudgeable graph-data status -> INFO"; else fail "C70 graph-data UNKNOWN -> $(printf '%s' "$out" | head -4)"; fi
+out="$(env HOME="$c70_t/adopter-home" HIMMEL_CONFIG_DIR= CLAUDE_DIR="$c70_t/adopter-home/claude" HIMMEL_DOCTOR_GRAPH_OUT="$c70_out" HIMMEL_DOCTOR_GRAPH_CHECK= HIMMEL_DOCTOR_GRAPH_DATA_STATUS="$c70_t/gds-lag.sh" bash "$DOC" --no-color --only C70 2>&1)"
+if ! grepq "$out" -F 'C70-graph-data'; then pass "C70 an adopter gets no graph-data row"; else fail "C70 adopter graph-data -> $(printf '%s' "$out" | head -4)"; fi
+python3 - "$c70_out/semantic-manifest.json" "$c70_corpus/real.md" <<'PY'
+import json, os, sys, time
+json.dump({"version": 1, "files": {}, "stuck": {"real.md": {"hash": "h", "attempts": 1,
+    "reason": "shrink guard: new 12 vs old 25 semantic nodes", "new_nodes": 12, "old_nodes": 25}}}, open(sys.argv[1], "w"))
+t = time.time() - 8 * 86400
+os.utime(sys.argv[2], (t, t))
+PY
+c70_row_at "$(c70_ago 1)" ""
+out="$(c70_run)"
+if grepq "$out" -F 'WARN C70-graph-semantic' && grepq "$out" -F 'real.md held by the shrink guard (new 12 vs old 25 semantic nodes)'; then pass "C70 a SEMANTIC-STALE WARN names the file the shrink guard holds, with its counts"; else fail "C70 held by the shrink guard -> $(printf '%s' "$out" | head -4)"; fi
 rm -rf "$c70_t"
 
 echo "== C71: judge scratch cache size =="
@@ -8156,11 +8180,11 @@ c88_reset; printf '{}\n' > "$c88_t/home/.himmel/config.json"; mkdir -p "$c88_t/h
 printf '[fired 2026-11-08T04:40:00Z]\n2026-11-08T04:40:05Z acme ok\n2026-11-09T04:40:05Z acme bank-refused\n[exit rc=0]\n2026-11-10T04:40:05Z acme bank-refused\n2026-11-11T04:40:05Z acme bank-refused\n2026-11-11T04:40:06Z acme ALERT key-rejected the A key was rejected\n' > "$c88_t/home/.claude/graph-choices-cadence/graph-choices.log"
 out="$(c88_run)"
 if grepq "$out" -F 'pass: acme bank-refused' && grepq "$out" -F 'bank-refused in a row: 3' && grepq "$out" -F 'alert: acme key-rejected'; then pass "C88 pass log -> word, count and open alert"; else fail "C88 pass log -> $(printf '%s' "$out" | head -4)"; fi
-echo "== C88: a D-row roster prints invalid-account-config's line; no roster file prints unreadable-state's =="
+echo "== C88: an E-row roster prints invalid-account-config's line; no roster file prints unreadable-state's =="
 c88_reset; printf '{}\n' > "$c88_t/home/.himmel/config.json"
-printf '{"version":1,"ledger_path":"/tmp/c88-ledger.json","accounts":{"D":{"organization_id":"o","cycle_id":"c","cap_usd":"1"}}}\n' > "$c88_t/roster.json"
+printf '{"version":1,"ledger_path":"/tmp/c88-ledger.json","accounts":{"E":{"organization_id":"o","cycle_id":"c","cap_usd":"1"}}}\n' > "$c88_t/roster.json"
 out="$(c88_run)"
-if grepq "$out" -F 'a row in the API roster names a letter outside A, B, C'; then pass "C88 D-row roster -> invalid-account-config's line"; else fail "C88 D roster -> $(printf '%s' "$out" | head -4)"; fi
+if grepq "$out" -F 'a row in the API roster names a letter outside A, B, C, D'; then pass "C88 E-row roster -> invalid-account-config's line"; else fail "C88 E roster -> $(printf '%s' "$out" | head -4)"; fi
 rm -f "$c88_t/roster.json"
 out="$(c88_run)"
 if grepq "$out" -F 'no API account is set up here, or its roster cannot be read; none is offered'; then pass "C88 no roster file -> unreadable-state's line"; else fail "C88 no roster -> $(printf '%s' "$out" | head -4)"; fi
@@ -8388,7 +8412,7 @@ c92_reset() {
 }
 c92_tag() {
     local l rows=""
-    for l in "$@"; do rows="${rows:+$rows,}\"$l\":{\"organization_id\":\"org-$(echo "$l" | tr A-C a-c)\",\"cycle_id\":\"cycle-$(echo "$l" | tr A-C a-c)\",\"discrepancy\":false,\"jobs\":{},\"key_rejected_at\":1700000000}"; done
+    for l in "$@"; do rows="${rows:+$rows,}\"$l\":{\"organization_id\":\"org-$(echo "$l" | tr A-D a-d)\",\"cycle_id\":\"cycle-$(echo "$l" | tr A-D a-d)\",\"discrepancy\":false,\"jobs\":{},\"key_rejected_at\":1700000000}"; done
     printf '{"version":1,"accounts":{%s}}' "$rows" > "$c92_t/credit/ledger.json"
 }
 c92_roles() { printf '%s' "$1" > "$c92_t/credit/roles.json"; }
@@ -8406,10 +8430,23 @@ out="$(c92_run)"
 if grepq "$out" 'WARN C92-graph-key-A' && grepq "$out" -F "$c92_fix" && c92_secret_free "$out"; then pass "C92 a tagged letter in the walk -> WARN with the fix line"; else fail "C92 tagged in the walk -> $out"; fi
 if c92_mode000_probe; then
     chmod 600 "$c92_t/credit/key-A.env"; out_r="$(c92_run)"; chmod 000 "$c92_t/credit/key-A.env"
-    if [ "$out" = "$out_r" ]; then pass "C92 the same output with key-A.env at mode 000 and readable: no reader opens it"; else fail "C92 output differs by the key file's mode: 000 -> $out / 600 -> $out_r"; fi
+    if grepq "$out" -F "account A's API key (key: none)" && grepq "$out_r" -F "account A's API key (key ...-c92)" \
+        && c92_secret_free "$out_r" && ! grepq "$out_r" -F 'y-c92'; then pass "C92 an unreadable key file says key: none; a readable one shows its last 4 characters only"
+    else fail "C92 key tail: 000 -> $out / 600 -> $out_r"; fi
 else
     echo "  SKIP  C92 mode-000 row: this user can read a mode-000 file (root), so the row would pass vacuously"
 fi
+
+echo "== C92: D carries the key-rejected tag and the walk reaches D -> WARN C92-graph-key-D naming its key by the last 4 characters =="
+c92_dkey="sk-ant-planted-not-a-real-key-0000^Dk4w"
+c92_reset
+printf '{"version":1,"ledger_path":"%s","accounts":{"A":{"organization_id":"org-a","cycle_id":"cycle-a","cap_usd":"50.00"},"D":{"organization_id":"org-d","cycle_id":"cycle-d","cap_usd":"50.00"}}}' \
+    "$c92_t/credit/ledger.json" > "$c92_t/credit/config.json"
+printf 'ANTHROPIC_API_KEY=%s\n' "$c92_dkey" > "$c92_t/credit/key-D.env"; chmod 600 "$c92_t/credit/key-D.env"
+c92_tag D
+out="$(c92_run)"
+if grepq "$out" 'WARN C92-graph-key-D' && grepq "$out" -F "account D's API key (key ...Dk4w)" && grepq "$out" -F 'rotate ~/.himmel/state/api-credit/key-D.env' \
+    && ! grepq "$out" -F '^' && ! grepq "$out" -F "${c92_dkey%????}"; then pass "C92 a tagged D in the walk -> WARN with the last 4 characters of its key only"; else fail "C92 tagged D -> $out"; fi
 
 echo "== C92: A tagged, but the map walks C alone -> OK with a note; no tag -> OK =="
 c92_reset; c92_tag A; c92_roles '{"version":1,"roles":{"graphify":["C"]}}'
@@ -8469,9 +8506,9 @@ if [ "$ids1" = "C92-graph-key-A" ] && [ "$ids2" = "C92-graph-key-A,C92-graph-key
 echo "== C93: an invalid map, a partial map and a graphify entry with no configured letter WARN; absent and valid are OK =="
 c92_reset; c92_roles '{not json'; out="$(c92_run C93)"
 if grepq "$out" 'WARN C93-graph-role' && grepq "$out" -F 'the graph pass refuses'; then pass "C93 invalid map -> WARN, the pass refuses"; else fail "C93 invalid -> $out"; fi
-c92_reset; c92_roles '{"version":1,"roles":{"graphify":["D"]}}'; out="$(c92_run C93)"
+c92_reset; c92_roles '{"version":1,"roles":{"graphify":["E"]}}'; out="$(c92_run C93)"
 if grepq "$out" 'WARN C93-graph-role' && grepq "$out" -F 'the graph pass refuses'; then pass "C93 empty graphify entry -> WARN, the pass refuses"; else fail "C93 empty-role -> $out"; fi
-c92_reset; c92_roles '{"version":1,"roles":{"graphify":["C","D"]}}'; out="$(c92_run C93)"
+c92_reset; c92_roles '{"version":1,"roles":{"graphify":["C","E"]}}'; out="$(c92_run C93)"
 if grepq "$out" 'WARN C93-graph-role' && ! grepq "$out" -F 'the graph pass refuses'; then pass "C93 partial map -> WARN, the pass still runs"; else fail "C93 partial -> $out"; fi
 c92_reset; c92_roles '{"version":1,"roles":{"graphify":["B"]}}'
 printf '{"version":1,"ledger_path":"%s","accounts":{"A":{"organization_id":"org-a","cycle_id":"cycle-a","cap_usd":"50.00"}}}' "$c92_t/credit/ledger.json" > "$c92_t/credit/config.json"
@@ -8528,7 +8565,7 @@ case "$ids" in ""|*[!0-9A-Za-z_,?.-]*) ids_ok=0 ;; *) ids_ok=1 ;; esac
 if [ "$ids" = "C88-graph-api-optin,C94-graph-config" ] && [ "$ids_ok" = 1 ]; then pass "C94 sits beside a WARN C88: [$ids]"; else fail "C94 masking -> [$ids]"; fi
 
 echo "== C92 and C93 with C88 already WARN: both ids still reach doctor= =="
-c92_reset; c92_tag A; c92_roles '{"version":1,"roles":{"graphify":["A","D"]}}'; printf '{not json' > "$c92_t/home/.himmel/config.json"
+c92_reset; c92_tag A; c92_roles '{"version":1,"roles":{"graphify":["A","E"]}}'; printf '{not json' > "$c92_t/home/.himmel/config.json"
 c92_lane_runner; printf 'ANTHROPIC_ORG_A_KEY=dummy-not-a-real-key-c92\n' > "$c92_t/env"
 ids="$(c92_ids C88,C92,C93)"
 if [ "$ids" = "C88-graph-api-optin,C92-graph-key-A,C93-graph-role" ]; then pass "C92 and C93 sit beside a WARN C88: [$ids]"; else fail "C88 masking -> [$ids]"; fi

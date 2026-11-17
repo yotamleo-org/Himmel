@@ -26,6 +26,7 @@ for f in semantic-update.sh semantic-merge.py harden-graph.py harden-allowlist.j
 done
 ln -s "$REAL_REPO/scripts/guardrails" "$REPO/scripts/guardrails"
 cp "$REAL_REPO/scripts/lib/prim.sh" "$REPO/scripts/lib/prim.sh"
+cp "$REAL_REPO/scripts/lib/llm-backend.sh" "$REPO/scripts/lib/llm-backend.sh"
 cat > "$REPO/scripts/graphify/seed-claude-config.sh" <<'EOF'
 #!/usr/bin/env bash
 exit 0
@@ -1252,7 +1253,7 @@ out=$(GRAPHIFY_API_BATCH=0 GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t77 --co
   && ! grep -q '^graphify extract' "$WS/calls.log" \
   && pass "T77 exit 2, the pending batch and the graph are untouched, nothing extracted" || fail "T77 (rc=$rc): $out / $(cat "$WS/calls.log")"
 
-batch_accounts() { sed -n 's/^submit account=\([A-C]\) .*/\1/p' "$WS/batch.log" | tr '\n' ' '; }
+batch_accounts() { sed -n 's/^submit account=\([A-D]\) .*/\1/p' "$WS/batch.log" | tr '\n' ' '; }
 
 echo "T87: auto routing with A and B exhausted and C live submits on C: each account once, in order, every retry line names its account"
 C78="$REPO/c78"; new_corpus "$C78"; batch_reset
@@ -1352,7 +1353,7 @@ out=$(ACCT=auto GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t77a --corpus-root 
 [ "$rc" -eq 0 ] && [ "$(batch_accounts)" = "A " ] && pass "T77a one submit, on A" || fail "T77a (rc=$rc) accounts '$(batch_accounts)': $out"
 
 echo "O22: a role map that would widen the walk refuses the batch with the role-map line and no client call; other damage walks as on main"
-for o22 in '{not json|invalid-role-map:not-json' '{"version":2,"roles":{}}|invalid-role-map:version' '{"version":1,"roles":{"graphify":["D"]}}|empty-role:graphify'; do
+for o22 in '{not json|invalid-role-map:not-json' '{"version":2,"roles":{}}|invalid-role-map:version' '{"version":1,"roles":{"graphify":["E"]}}|empty-role:graphify'; do
   roles_fixture; roles_real_on; printf '%s' "${o22%|*}" > "$RC/roles.json"
   CO="$REPO/o22"; rm -rf "$CO"; new_corpus "$CO"; batch_reset
   out=$(ACCT=auto GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name o22 --corpus-root "$CO" --corpus-class himmel-code --backend claude-api); rc=$?
@@ -1360,10 +1361,10 @@ for o22 in '{not json|invalid-role-map:not-json' '{"version":2,"roles":{}}|inval
     && [ "$(printf '%s\n' "$out" | grep -cxF "semantic-update: refusing the batch: graph role map broken (${o22#*|}); fix or remove roles.json")" -eq 1 ] \
     && pass "O22 ${o22#*|}: rc 2, the role-map line once, no submit" || fail "O22 ${o22#*|} (rc=$rc) log '$(cat "$WS/batch.log")': $out"
 done
-roles_fixture; roles_real_on; printf '{"version":1,"roles":{"graphify":["C","D"]}}' > "$RC/roles.json"
+roles_fixture; roles_real_on; printf '{"version":1,"roles":{"graphify":["C","E"]}}' > "$RC/roles.json"
 CO="$REPO/o22p"; new_corpus "$CO"; batch_reset
 out=$(ACCT=auto GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name o22p --corpus-root "$CO" --corpus-class himmel-code --backend claude-api); rc=$?
-[ "$rc" -eq 0 ] && [ "$(batch_accounts)" = "C " ] && pass "O22 a partial map [C,D] walks C alone" || fail "O22 partial (rc=$rc) accounts '$(batch_accounts)': $out"
+[ "$rc" -eq 0 ] && [ "$(batch_accounts)" = "C " ] && pass "O22 a partial map [C,E] walks C alone" || fail "O22 partial (rc=$rc) accounts '$(batch_accounts)': $out"
 roles_fixture; roles_real_on; printf '{"version":1,"roles":{"graphify":["B"]}}' > "$RC/roles.json"
 python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); del d["accounts"]["B"]; json.dump(d, open(p,"w"))' "$RC/config.json"
 CO="$REPO/o22b"; new_corpus "$CO"; batch_reset
@@ -1380,6 +1381,15 @@ roles_fixture; roles_real_on; printf '{"version":1,"roles":{"graphify":["C"]}}' 
 C77C="$REPO/c77c"; new_corpus "$C77C"; batch_reset
 out=$(ACCT=auto GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t77c --corpus-root "$C77C" --corpus-class himmel-code --backend claude-api); rc=$?
 [ "$rc" -eq 0 ] && [ "$(batch_accounts)" = "C " ] && pass "T77c one submit, on C" || fail "T77c (rc=$rc) accounts '$(batch_accounts)': $out"
+
+echo "T77g: D configured and graphify mapped to B and D: the walk holding D is read, and the batch submits on D (A expires first, so an ignored map would pick A)"
+roles_fixture; roles_real_on; printf '{"version":1,"roles":{"graphify":["B","D"]}}' > "$RC/roles.json" || fail "T77g could not write roles.json"
+python3 -c 'import json,sys
+c=json.load(open(sys.argv[1])); c["accounts"]["D"]=dict(c["accounts"]["C"], organization_id="org-d", cycle_id="cycle-d"); json.dump(c, open(sys.argv[1],"w"))
+s=json.load(open(sys.argv[2])); d=dict(s["accounts"]["A"], organization_id="org-d", cycle_id="cycle-d"); a=s["accounts"]["A"]["expires_at"]; d["expires_at"]=a+60; s["accounts"]["D"]=d; s["accounts"]["B"]["expires_at"]=a+120; s["accounts"]["C"]["expires_at"]=a+180; json.dump(s, open(sys.argv[2],"w"))' "$RC/config.json" "$RC/snapshot.json"
+C77G="$REPO/c77g"; new_corpus "$C77G"; batch_reset
+out=$(ACCT=auto GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t77g --corpus-root "$C77G" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 0 ] && [ "$(batch_accounts)" = "D " ] && pass "T77g one submit, on D" || fail "T77g (rc=$rc) accounts '$(batch_accounts)': $out"
 
 echo "T77d: graphify mapped to C and C credit-exhausted: exactly one submit, on C, none on A or B, rc 5"
 roles_fixture; roles_real_on; printf '{"version":1,"roles":{"graphify":["C"]}}' > "$RC/roles.json"
@@ -1433,7 +1443,7 @@ roles_real_off
 
 # the exhausted marker clears on its own: a marker older than the TTL no longer counts when the reading is older than the marker
 # (so the reading cannot be what clears it), and a longer TTL would still skip A. The real pick, a temp config and snapshot.
-pick_acct() { node "$1" pick --usd 0.25 | sed -n 's/.*"account":"\([ABC]\)".*/\1/p'; }
+pick_acct() { node "$1" pick --usd 0.25 | sed -n 's/.*"account":"\([A-Z]\)".*/\1/p'; }
 mark_a() { # $1 = how many seconds ago A was marked; every reading is older than the mark
   roles_fixture; local now; now=$(date +%s)
   HIMMEL_API_ACCOUNT=A node "$REAL_REPO/scripts/lib/api-credit-state.mjs" exhausted >/dev/null
@@ -1776,7 +1786,7 @@ out=$(run --name t80 --corpus-root "$C80" --corpus-class himmel-code --seed-mani
 n=$(python3 -c 'import json,sys;print(" ".join(sorted(json.load(open(sys.argv[1]))["files"])))' "$C80/graphify-out/semantic-manifest.json" 2>/dev/null)
 [ "$rc" -eq 0 ] && [ "$n" = "a.md archive/keep.md b.md sub/c.md" ] && pass "T80 archive/keep.md stays in the corpus" || fail "T80 (rc=$rc) '$n': $out"
 
-echo "T81: a thin extraction of unchanged content that the shrink guard refused MAX_ATTEMPTS times is accepted, not stuck forever"
+echo "T81: a thin extraction of unchanged content the shrink guard refused once is accepted on its second extraction: no paid third call"
 C79="$WS/c79"; new_corpus "$C79"
 python3 - "$C79/graphify-out/graph.json" <<'PY'
 import json, sys
@@ -1785,15 +1795,16 @@ for i in (2, 3, 4):
     g["nodes"].append({"id": "stale_a%d" % i, "label": "old", "file_type": "concept", "_origin": "semantic", "source_file": "a.md"})
 json.dump(g, open(sys.argv[1], "w"))
 PY
-for i in 1 2; do
-  out=$(run --name t79 --corpus-root "$C79" --corpus-class himmel-code); rc=$?
-  [ "$rc" -eq 0 ] && [[ "$(ids "$C79")" == *stale_a4* ]] && ! [[ "$(ids "$C79")" == *sem_a.md_alpha* ]] \
-    && pass "T81 attempt $i: shrink guard refuses, the old nodes stay" || fail "T81 attempt $i (rc=$rc): $(ids "$C79") :: $out"
-done
+out=$(run --name t79 --corpus-root "$C79" --corpus-class himmel-code); rc=$?
+[ "$rc" -eq 0 ] && [[ "$(ids "$C79")" == *stale_a4* ]] && ! [[ "$(ids "$C79")" == *sem_a.md_alpha* ]] \
+  && pass "T81 attempt 1: shrink guard refuses, the old nodes stay" || fail "T81 attempt 1 (rc=$rc): $(ids "$C79") :: $out"
+python3 -c 'import json,sys;r=json.load(open(sys.argv[1]))["stuck"]["a.md"];sys.exit(0 if (r["attempts"],r.get("new_nodes"),r.get("old_nodes"))==(1,1,4) else 1)' "$C79/graphify-out/semantic-manifest.json" \
+  && pass "T81 the stuck record carries the old and new node counts" || fail "T81 stuck record: $(cat "$C79/graphify-out/semantic-manifest.json")"
 out=$(run --name t79 --corpus-root "$C79" --corpus-class himmel-code); rc=$?
 got=$(ids "$C79")
 [ "$rc" -eq 0 ] && [[ "$got" == *sem_a.md_alpha* ]] && ! [[ "$got" == *stale_a4* ]] \
-  && pass "T81 attempt 3: the thin extraction replaces the old nodes" || fail "T81 attempt 3 (rc=$rc): $got :: $out"
+  && pass "T81 attempt 2: the thin extraction replaces the old nodes" || fail "T81 attempt 2 (rc=$rc): $got :: $out"
+[[ "$out" == *"shrink guard ACCEPTED a.md"* ]] && pass "T81 the acceptance is logged" || fail "T81 no ACCEPTED line: $out"
 python3 -c 'import json,sys;m=json.load(open(sys.argv[1]));sys.exit(0 if "a.md" in m["files"] and "a.md" not in m.get("stuck", {}) else 1)' "$C79/graphify-out/semantic-manifest.json" \
   && pass "T81 a.md is stamped and no longer stuck" || fail "T81 manifest: $(cat "$C79/graphify-out/semantic-manifest.json")"
 
@@ -1867,6 +1878,45 @@ n=$(python3 -c 'import json,sys;print(" ".join(sorted(json.load(open(sys.argv[1]
 printf 'real2\n' > "$C86/docs/real.md"; printf 'y\n' > "$C86/plugins/p/templates/t.md"
 out=$(python3 "$HERE/semantic-merge.py" status --root "$C86" --out "$C86/graphify-out" 2>&1)
 [ "$out" = "backed_off=0 unstamped=1 oldest_unstamped=0d" ] && pass "T86 an edited template is not unstamped, an edited content file is" || fail "T86 status: $out"
+
+
+echo "T87: a consolidated extraction (fewer nodes, every old label covered by the new ones) is accepted and stamped"
+C87="$WS/c87"; new_corpus "$C87"
+printf 'kp factor and parseKpAuto with daylight factor\n' > "$C87/a.md"
+python3 - "$C87/graphify-out/graph.json" <<'PY'
+import json, sys
+g = json.load(open(sys.argv[1]))
+g["nodes"] = [n for n in g["nodes"] if n["id"] != "stale_a"]
+g["links"] = []
+for i, lab in enumerate(["kp factor", "parseKpAuto", "Daylight-factor"]):
+    g["nodes"].append({"id": "old_a_%d" % i, "label": lab, "file_type": "concept", "_origin": "semantic", "source_file": "a.md"})
+json.dump(g, open(sys.argv[1], "w"))
+PY
+rm -f "$C87/b.md" "$C87/sub/c.md"
+out=$(run --name t87 --corpus-root "$C87" --corpus-class himmel-code); rc=$?
+got=$(ids "$C87")
+[ "$rc" -eq 0 ] && [[ "$got" == *sem_a.md_kp_factor* ]] && ! [[ "$got" == *old_a_0* ]] && [ "$(lastrun "$C87" shrink_refused)" = "0" ] \
+  && pass "T87 the consolidation replaced the old nodes, nothing refused" || fail "T87 (rc=$rc): $got :: $out"
+python3 -c 'import json,sys;m=json.load(open(sys.argv[1]));sys.exit(0 if "a.md" in m["files"] and "a.md" not in m.get("stuck", {}) else 1)' "$C87/graphify-out/semantic-manifest.json" \
+  && pass "T87 a.md is stamped" || fail "T87 manifest: $(cat "$C87/graphify-out/semantic-manifest.json")"
+
+echo "T88: held lists a file shrink-refused in each of the last two merge rows, with its counts; a stamped file lists nothing"
+C88="$WS/c88"; mkdir -p "$C88"
+python3 - "$C88" <<'PY'
+import json, os, sys
+out = sys.argv[1]
+row = lambda refused: json.dumps({"ts": "2026-11-17T00:00:00Z", "name": "t", "batch": 1, "refused_files": refused, "failed_files": []}) + "\n"
+open(os.path.join(out, "semantic-runs.jsonl"), "w").write(row(["a.md", "b.md"]) + json.dumps({"name": "ast-update"}) + "\n" + row(["a.md"]))
+json.dump({"version": 1, "files": {}, "stuck": {
+    "a.md": {"hash": "h", "attempts": 1, "reason": "shrink guard: new 12 vs old 25 semantic nodes", "new_nodes": 12, "old_nodes": 25},
+    "b.md": {"hash": "h", "attempts": 1, "reason": "shrink guard: new 1 vs old 3 semantic nodes"}}},
+    open(os.path.join(out, "semantic-manifest.json"), "w"))
+PY
+out=$(python3 "$HERE/semantic-merge.py" held --out "$C88" 2>&1); rc=$?
+[ "$rc" -eq 0 ] && [ "$out" = "a.md new 12 vs old 25" ] && pass "T88 only a.md, held in both of the last two runs, is listed with its counts" || fail "T88 (rc=$rc): $out"
+python3 -c 'import json,sys;p=sys.argv[1];m=json.load(open(p));m["stuck"]={};json.dump(m,open(p,"w"))' "$C88/semantic-manifest.json"
+out=$(python3 "$HERE/semantic-merge.py" held --out "$C88" 2>&1); rc=$?
+[ "$rc" -eq 0 ] && [ -z "$out" ] && pass "T88 a stamped file is no longer held" || fail "T88 stamped (rc=$rc): $out"
 
 echo
 [ "$FAILS" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }

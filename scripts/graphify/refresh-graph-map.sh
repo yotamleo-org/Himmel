@@ -329,7 +329,7 @@ if [ "$BACKEND" = "claude-api" ] && [ "$DO_EXTRACT" -eq 1 ]; then
   if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
     _auto_repo="$(_git_common_dir "$CORPUS_ROOT")" || _auto_repo=""
     if ! _corpus_is_himmel; then
-      echo "ERR refresh-graph-map: --backend claude-api: auto routing is for the himmel graph only (corpus repo ${_auto_repo:-none}); name HIMMEL_API_ACCOUNT=A, B or C" >&2
+      echo "ERR refresh-graph-map: --backend claude-api: auto routing is for the himmel graph only (corpus repo ${_auto_repo:-none}); name HIMMEL_API_ACCOUNT=$LLM_API_ACCOUNTS_TEXT" >&2
       exit 2
     fi
     export HIMMEL_API_AUTO_REPO_DIR="$_auto_repo"
@@ -2428,6 +2428,8 @@ for p in sys.stdin.buffer.read().split(b"\0"):
   # budget bounds each chunk), upgrade path: one shared shim file both scripts install.
   if [ "$BACKEND" = "claude-api" ]; then
     GRAPHIFY_MAP_SHIM_ACCOUNTS=1
+    # shellcheck source=../lib/llm-backend.sh
+    . "$REPO_ROOT/scripts/lib/llm-backend.sh"
     if [ "${HIMMEL_API_ACCOUNT:-}" = auto ]; then
       _walk_rc=0
       _walk="$(node "$REPO_ROOT/scripts/lib/api-roles.mjs" walk graphify)" || _walk_rc=$?
@@ -2435,7 +2437,7 @@ for p in sys.stdin.buffer.read().split(b"\0"):
         echo "refresh-graph-map: refusing the semantic pass: graph role map broken (${_walk#refuse }); fix or remove roles.json" >&2
         exit 2
       fi
-      if [ "$_walk_rc" -ne 0 ] || ! [[ "$_walk" =~ ^[ABC](,[ABC])*$ ]]; then
+      if [ "$_walk_rc" -ne 0 ] || ! llm_backend_api_account_list_ok "$_walk"; then
         echo "refresh-graph-map: refusing the semantic pass: the graph walk cannot be read (api-roles.mjs walk graphify exit $_walk_rc)" >&2
         exit 2
       fi

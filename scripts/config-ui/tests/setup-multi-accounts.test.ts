@@ -11,10 +11,25 @@ const ROLES = ["graphify", "judge"];
 const row = (account: string, configured: boolean, tag: string, extra: Record<string, unknown> = {}) => ({ account, configured, cap_usd: configured ? "40.000000" : null, tag, organization_id: "org-LEAK", key_id: "key-LEAK", ...extra });
 const ROWS = [row("A", true, "room"), row("B", true, "stale reading"), row("C", false, "not configured")];
 const data = (state: string, roles: Record<string, string[]>, errors: string[] = [], over: Record<string, unknown> = {}) =>
-  ({ roleMap: { state, roles, errors }, warnings: [], ROLES, accounts: "ok", letters: ["A", "B", "C"], rows: ROWS, ...over });
+  ({ roleMap: { state, roles, errors }, warnings: [], ROLES, accounts: "ok", letters: ["A", "B", "C", "D"], rows: ROWS, ...over });
 const fixture = (d: any, over: Record<string, unknown> = {}) => ({ data: d, error: null, draft: apiRolesDraft(d), preview: false, msg: null, ...over });
 const tile = (apiRoles: unknown, id = "secrets") => renderConfigure({ rows: [] }, { tile: id, setup, state: { plans: {}, apiRoles }, msgs: {} }) as string;
 const text = (html: string) => html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
+
+test("the account table has a Key column: the last 4 characters, none, or a dash when the row is unknown", () => {
+  const rows = [row("A", true, "room", { key: "...Ak4w" }), row("B", true, "room", { key: "none" }), { account: "C", configured: null, cap_usd: null, tag: "unknown", reason: "timeout" }];
+  const html = tile(fixture(data("absent", {}, [], { rows })));
+  const rowOf = (l: string) => text((html.match(new RegExp(`<tr[^>]*data-account-row="${l}"[\\s\\S]*?</tr>`)) || [""])[0]);
+  expect(html).toContain("<th>Key</th>");
+  expect(rowOf("A")).toContain("...Ak4w");
+  expect(rowOf("B")).toContain("none");
+  expect(rowOf("C")).not.toContain("none");
+  expect(rowOf("C")).not.toContain("...");
+});
+
+test("the intro names every account letter the page was given", () => {
+  expect(text(tile(fixture(data("absent", {}))))).toContain("A run that names its account (A, B, C or D) is not affected");
+});
 
 test("absent: the empty-state card says the defaults apply and the accounts and editor still show", () => {
   const html = tile(fixture(data("absent", {})));
@@ -36,8 +51,8 @@ test("valid: roles sit on their account rows, an unconfigured mapped account say
 });
 
 test("partial: each error line shows and the other entries still apply", () => {
-  const html = tile(fixture(data("partial", { graphify: ["A"], judge: ["B"] }, ["unknown-account:judge:D", "unknown-role:jduge"])));
-  expect(html).toContain("unknown-account:judge:D");
+  const html = tile(fixture(data("partial", { graphify: ["A"], judge: ["B"] }, ["unknown-account:judge:E", "unknown-role:jduge"])));
+  expect(html).toContain("unknown-account:judge:E");
   expect(html).toContain("unknown-role:jduge");
   expect(text(html)).toContain("the other entries still apply");
   expect(html).toContain('class="card crit role-card"');

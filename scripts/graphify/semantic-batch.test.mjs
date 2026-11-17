@@ -89,6 +89,25 @@ function fixture() {
 }
 const reset = () => { seen.posts.length = 0; seen.gets.length = 0; seen.keys.clear(); stub.create = 'ok'; stub.status = 'in_progress'; stub.errored.clear(); stub.realLine = null; stub.usage = null; };
 
+test('--account D submits on key-D.env like A; E is refused before any request', async () => {
+  reset();
+  const f = fixture();
+  const config = JSON.parse(readFileSync(join(f.dir, 'config.json'), 'utf8'));
+  config.accounts.D = { organization_id: 'org-d', cycle_id: 'cycle-d', cap_usd: '50.00', key_id: 'key-d', reset_at: '2099-01-01T00:00:00Z' };
+  writeFileSync(join(f.dir, 'config.json'), JSON.stringify(config));
+  writeFileSync(join(f.dir, 'key-D.env'), `ANTHROPIC_API_KEY=${DUMMY}-d\n`, { mode: 0o600 });
+  const args = (account, dir) => ['submit', '--dir', dir, '--prompts', f.prompts, '--account', account, '--model', 'sonnet', '--effort', 'high', '--max-usd', '100'];
+  const d = await f.client(...args('D', f.batch));
+  assert.equal(d.code, 0, d.stderr);
+  assert.deepEqual([...seen.keys], [`${DUMMY}-d`]);
+  assert.equal(JSON.parse(readFileSync(join(f.batch, 'batch.json'), 'utf8')).account, 'D');
+  reset();
+  const e = await f.client(...args('E', join(f.dir, 'pending-e')));
+  assert.notEqual(e.code, 0);
+  assert.match(e.stderr, /--account must be A, B, C or D/);
+  assert.equal(seen.posts.length, 0);
+});
+
 test('submit, poll, results: one request per prompt at the batch rate, results keyed by prompt hash', async () => {
   reset();
   const f = fixture();

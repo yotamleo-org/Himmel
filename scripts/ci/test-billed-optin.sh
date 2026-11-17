@@ -263,6 +263,18 @@ account_refusal() { # <label> [VAR=value...] -- opted in, the account is missing
 }
 account_refusal "HIMMEL_API_ACCOUNT=auto" HIMMEL_API_ACCOUNT=auto
 account_refusal "no HIMMEL_API_ACCOUNT"
+account_refusal "HIMMEL_API_ACCOUNT=E" HIMMEL_API_ACCOUNT=E
+# a named account passes the account gate: case C is refused by the next check, which runs only after it
+account_accepted() { # <letter>
+  rm -f "$tmp/called"
+  (cd "$tmp" && env -i PATH="$stubs:/usr/bin:/bin" HOME="$tmp/home" TMPDIR="$tmp" HIMMEL_BILLED_OK=1 HIMMEL_API_ACCOUNT="$1" \
+    bash "$REPO_ROOT/scripts/eval/docs-review/run.sh" --out "$tmp/dr-acct" C) > "$tmp/out" 2>&1; rc=$?
+  if [ "$rc" -ne 2 ] || ! grep -qF -- "case C needs Edit" "$tmp/out"; then fail "docs-review run.sh with HIMMEL_API_ACCOUNT=$1 -> did not pass the account gate (rc $rc: $(head -1 "$tmp/out"))"; return; fi
+  if [ -e "$tmp/called" ]; then fail "docs-review run.sh with HIMMEL_API_ACCOUNT=$1 -> a model binary was invoked"; return; fi
+  pass "docs-review run.sh accepts HIMMEL_API_ACCOUNT=$1"
+}
+account_accepted A
+account_accepted D
 refuse scripts/codex/hook-smoke-demo.sh bash 2 "HIMMEL_BILLED_OK"
 refuse scripts/handover/chief-kit/smoke-consult-sandbox.sh bash 0 "HIMMEL_BILLED_OK"
 

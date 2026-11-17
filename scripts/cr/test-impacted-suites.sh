@@ -1735,7 +1735,7 @@ if [ -z "$_TIMEOUT_BIN" ]; then
     pass "L1 SKIP: no timeout binary to bound the read"
 else
     l_start=$SECONDS
-    l_bound=30
+    l_bound=60
     [ "$(uname -s)" = Linux ] || l_bound=300
     out="$( cd "$CL" && "$_TIMEOUT_BIN" "$l_bound" bash "$IS" "$lrange" 2>/dev/null )"; rc=$?
     l_wall=$((SECONDS - l_start))

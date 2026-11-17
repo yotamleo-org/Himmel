@@ -45,7 +45,12 @@ script.
    in this step's worktree would feed nothing. `--semantic` keeps the rebuild (the
    semantic step builds on it and promotes it into the primary), and an
    unreadable `graph.json` object (corrupt clone) still falls through and fails
-   closed (rc 3) rather than hiding behind the skip.
+   closed (rc 3) rather than hiding behind the skip. **Before** that skip, a live
+   graph in the primary's `graphify-out/` that is newer than the `graph-data`
+   branch and carries a semantic layer is published to `graph-data` with no
+   model call (`action=published-channel`; see
+   [Sharing the graph](#sharing-the-graph--the-graph-data-branch)), so a paused
+   semantic step never leaves the branch behind a graph that is already built.
 5. At/above threshold (a tracked graph only): `ast-update.sh` (the free, AST-only structural
    refresh), `graph-publish.sh` (open/refresh the publish PR), then
    `merge-on-green.sh` (`ARMAUTOMERGE=1`, the sanctioned auto-merge
@@ -192,7 +197,7 @@ Two ledgers, both written every run:
 
    `action` is one of `skipped | failed | refreshed | published | published-channel | merged` —
    `published-channel` means the run pushed its graph to the `graph-data`
-   branch (see [Sharing the graph](#sharing-the-graph--the-graph-data-branch)).
+   branch, or found the branch already holding that exact graph (see [Sharing the graph](#sharing-the-graph--the-graph-data-branch)).
    For the other actions,
    see `graph-cadence.sh`'s header for the full classification (in short:
    `published`, not `failed`, ONLY when `merge-on-green.sh` exits with a
@@ -334,13 +339,31 @@ explicit `GRAPHIFY_MAX_CONCURRENCY` wins, and an ollama-cloud model keeps 6.
 One station pays for the semantic pass. Every other station gets the result
 for free.
 
-**Publishing (the one station).** A `--semantic` run that promotes its graph
-then runs `scripts/graphify/publish-graph-channel.sh`. The script publishes
+**Publishing (the one station).** Two fires reach
+`scripts/graphify/publish-graph-channel.sh`: a graph-cadence.sh run with its
+semantic step that promotes its graph, and any fire (paused or not, with or
+without the semantic step) whose
+live graph in the primary's `graphify-out/` is newer than the `graph-data` tip
+and carries a semantic layer. The second publishes with no model call: the four
+files are copied under the promote lock, so the hourly AST pass cannot rewrite
+them mid-copy, and pushed from that copy. `graph-data-status.sh` is the one
+definition of "newer" (the tip's `built_at_commit` is an ancestor of the live
+graph's, read from local refs only); a lock still held after the wait
+(`GRAPH_CADENCE_PROMOTE_LOCK_WAIT`, default 300 s) skips the publish with a
+warning and the next fire retries. `/graph-publish` runs the same cadence by
+hand. The script publishes
 four files to the `graph-data` branch: `graph.json`, `GRAPH_REPORT.md`,
 `manifest.json`, and a one-line `built_at_commit`. Nothing else is
 published: no `graph.html`, no cache, no run log. The branch holds one commit
-with no parent, and each publish replaces it (`--force-with-lease`). The
-ledger row reads `action=published-channel`.
+with no parent, and each publish replaces it (`--force-with-lease`). An
+identical graph is not pushed again: when the four files are byte for byte the
+ones in the `graph-data` tip (the script compares the git trees, and fetches the
+tip first when this checkout does not hold it), the script prints
+`publish-graph-channel: graph-data unchanged at <tip> (built at <commit>)`,
+clears its alert and exits 0 with no push. The comparison is on the bytes, not
+on `built_at_commit`, because a semantic merge can change `graph.json` under the
+same build commit. Either way the ledger row reads `action=published-channel`
+with `graph_head` set to the build commit `graph-data` carries.
 
 The script refuses to publish when:
 
@@ -363,6 +386,24 @@ blocked too. A blocked push fails the run with `action=failed` and exit 3.
 `graph-channel-publish`. The alert and the ledger name the file and the
 rule, for example `file=graph.json rule=host-path`, and never the matched
 text. The next clean publish clears the alert.
+
+**The lag alert.** On every fire of the no-tracked-graph path the cadence
+asks `graph-data-status.sh` (himmel-doctor's `C70-graph-data` row asks the same
+script) whether the `graph-data` tip is behind the live graph. A tip older than
+`GRAPH_CADENCE_DATA_MAX_AGE_DAYS` (default 2) while the live graph is newer
+raises one alert on the worker `graph-data-<corpus-slug>`, whose cause names
+what the script can see: the operator's pause marker (`semantic.paused` in
+`${GRAPHMAP_BAT_DIR:-~/.claude/graphmap-cadence}`, which only the operator
+removes) and a live graph with no semantic layer. A tip that caught up clears
+it. The alert never changes the run's exit code or ledger row.
+
+**The held alert.** A file the semantic shrink guard refused in two merge runs
+in a row, and that is still stuck on it, raises one alert on
+`graph-semantic-<corpus-slug>-held`, naming the file and the new and old node
+counts (never matched text). The guard counts a file as shrunk only when its new
+extraction holds under half of the old nodes and at least one old label is
+missing from the new text; a second extraction of unchanged content that is
+refused once is accepted, so a file is never paid for a third time.
 
 **Fetching (every other station).** `himmel-update.sh` runs `sync_graph`
 after `sync_graphify`, and its status table shows a `graph` row. It fetches

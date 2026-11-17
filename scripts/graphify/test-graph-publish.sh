@@ -16,7 +16,9 @@
 #      dry-run and non-dry-run alike.
 #   3. Refuses (rc=3) when graphify-out/graph.json is tracked but missing
 #      from disk.
-#   4. Refuses (rc=4) when the repo never tracked graphify-out/graph.json.
+#   4. A repo that never tracked graphify-out/graph.json runs graph-cadence.sh (the
+#      graph publishes to the graph-data branch): --dry-run prints the command and
+#      runs nothing, a real run returns the cadence's rc.
 #   5. Refuses (rc=6) when the working tree has uncommitted changes outside
 #      graphify-out/{graph.json,GRAPH_REPORT.md}.
 #   6. Happy path: pushes a real commit to the local bare origin (content
@@ -225,7 +227,7 @@ assert_contains  "missing-graph message" "no local" "$out"
 
 # Test: refuses (rc=4) when the repo never tracked graphify-out/graph.json ---
 
-echo "TEST: refuses (rc=4) when the repo never tracked graphify-out/graph.json"
+echo "TEST: a repo that never tracked graphify-out/graph.json runs graph-cadence.sh (graph-data publish) instead of refusing"
 REPO="$TMP_ROOT/t4-repo"; BARE="$TMP_ROOT/t4-origin.git"
 git init -q --bare "$BARE" >/dev/null 2>&1
 git init -q --initial-branch=main "$REPO" 2>/dev/null || git init -q "$REPO"
@@ -239,10 +241,27 @@ git init -q --initial-branch=main "$REPO" 2>/dev/null || git init -q "$REPO"
     git remote add origin "$BARE"
     git push -q origin main
 )
+FAKE_CADENCE="$TMP_ROOT/t4-cadence-fake.sh"; CADENCE_LOG="$TMP_ROOT/t4-cadence.log"
+cat > "$FAKE_CADENCE" <<FAKECAD
+#!/usr/bin/env bash
+echo "cadence-call: \$*" >> "$CADENCE_LOG"
+exit "\${FAKE_CADENCE_RC:-0}"
+FAKECAD
+chmod +x "$FAKE_CADENCE"
+: > "$CADENCE_LOG"
 rc=0
-out=$(cd "$REPO" && FORGE=github GH_CMD="$FAKE_GH" bash "$PUBLISH" --dry-run --no-fetch 2>&1) || rc=$?
-assert_eq        "untracked-graph rc=4" "4" "$rc"
-assert_contains  "untracked-graph message" "does not track" "$out"
+out=$(cd "$REPO" && FORGE=github GH_CMD="$FAKE_GH" GRAPH_PUBLISH_CADENCE="$FAKE_CADENCE" bash "$PUBLISH" --dry-run --no-fetch 2>&1) || rc=$?
+assert_eq        "untracked-graph --dry-run rc=0" "0" "$rc"
+assert_contains  "untracked-graph message says the graph publishes to graph-data" "publishes to the graph-data branch" "$out"
+assert_contains  "untracked-graph --dry-run prints the command it would run" "bash $FAKE_CADENCE" "$out"
+assert_eq        "untracked-graph --dry-run runs nothing" "" "$(cat "$CADENCE_LOG")" # read-sink-ok: test-local scratch log under the suite temp dir
+rc=0
+out=$(cd "$REPO" && FORGE=github GH_CMD="$FAKE_GH" GRAPH_PUBLISH_CADENCE="$FAKE_CADENCE" bash "$PUBLISH" 2>&1) || rc=$?
+assert_eq        "untracked-graph rc=0 (the cadence's rc)" "0" "$rc"
+assert_eq        "untracked-graph runs graph-cadence once with no arguments" "cadence-call: " "$(cat "$CADENCE_LOG")" # read-sink-ok: test-local scratch log under the suite temp dir
+rc=0
+out=$(cd "$REPO" && FORGE=github GH_CMD="$FAKE_GH" GRAPH_PUBLISH_CADENCE="$FAKE_CADENCE" FAKE_CADENCE_RC=3 bash "$PUBLISH" 2>&1) || rc=$?
+assert_eq        "untracked-graph returns the cadence's non-zero rc" "3" "$rc"
 
 # Test: refuses (rc=10) when the refresh transaction marker is missing -------
 # A missing graphify-out/manifest.json means

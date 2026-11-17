@@ -36,6 +36,11 @@
 #      action=skipped, exit 0 right here -- no lock, no worktree, NO rebuild
 #      (the hourly HIMMEL-GraphMapAst-* ast-update.sh run is the
 #      one rebuild per cycle; a worktree rebuild here would feed nothing).
+#      Before that skip, a live graph in the primary graphify-out that is newer
+#      than the graph-data branch and carries a semantic layer is published to
+#      it with NO model call (action=published-channel): a paused semantic step
+#      cannot leave the branch behind a graph that is already built. The same
+#      publish runs after a --semantic step that was a benign skip.
 #   5. At/above threshold: run ast-update.sh (the free, AST-only structural
 #      refresh) against a DEDICATED worktree -- never the primary checkout.
 #   6. graph-publish.sh, invoked with cwd = that worktree, opens/refreshes
@@ -145,9 +150,12 @@
 #                here. Any OTHER non-zero merge-on-green.sh rc is `failed`,
 #                not `published`.
 #   merged    -- the full pipeline landed: refreshed, published, merged.
-#   published-channel -- origin/main does not track the graph, --semantic ran
-#                clean and promoted, and publish-graph-channel.sh pushed the
-#                graph to the graph-data branch. A blocked or
+#   published-channel -- origin/main does not track the graph, and
+#                publish-graph-channel.sh pushed the graph to the graph-data
+#                branch, or found the branch tip already holding the same files
+#                and pushed nothing: either --semantic ran clean and promoted, or
+#                the live graph in the primary graphify-out was newer than the branch and
+#                carried a semantic layer (no model call; step 4a). A blocked or
 #                failed channel publish is `failed`; its error names the file
 #                and the rule, never the matched text. The row's graph_head,
 #                merges_behind and lag_s say how far behind origin/main the
@@ -184,6 +192,14 @@
 # held at the deadline = benign skip, the next fire retries). It runs whether or
 # not origin/main tracks a graph, so the retired-path no-op never skips it.
 #
+# On the retired path (no tracked graph) every ledger write first runs _graph_watch,
+# which never changes the run's rc or row: it alerts on worker graph-data-<corpus-slug>
+# while the graph-data tip is older than GRAPH_CADENCE_DATA_MAX_AGE_DAYS and the live
+# graph is newer (graph-data-status.sh, the one definition himmel-doctor C70 shares), and
+# on worker graph-semantic-<corpus-slug>-held while the semantic shrink guard holds a file
+# in two merge runs in a row (semantic-merge.py held). Each alert clears when its condition
+# does.
+#
 # THRESHOLD DEFAULT = 15 commits behind. Justified against the measured
 # numbers: the shipped graph was 36 commits behind
 # origin/main when this was written, with the operator refreshing by hand at
@@ -206,6 +222,14 @@
 #   GRAPH_CADENCE_GRAPH_PUBLISH   override the graph-publish.sh path.
 #   GRAPH_CADENCE_MERGE_ON_GREEN  override the merge-on-green.sh path.
 #   GRAPH_CADENCE_SEMANTIC_UPDATE override the semantic-update.sh path.
+#   GRAPH_CADENCE_ALERT           override the cadence-alert.sh path.
+#   GRAPH_CADENCE_PAUSE_MARKER    override the semantic pause marker the lag alert
+#                                 names (default
+#                                 ${GRAPHMAP_BAT_DIR:-~/.claude/graphmap-cadence}/semantic.paused;
+#                                 read only, never created or removed here).
+#   GRAPH_CADENCE_DATA_MAX_AGE_DAYS  age of the graph-data tip past which, with a
+#                                 newer live graph, the graph-data alert fires
+#                                 (default 2).
 #   GRAPH_CADENCE_SEMANTIC_BACKEND semantic backend, claude-cli (default), claude-api
 #                                 (opt-in; needs HIMMEL_API_LANE=on and
 #                                 HIMMEL_API_ACCOUNT, else rc=1) or ollama;
@@ -408,7 +432,7 @@ if [ "$SEMANTIC" -eq 1 ] && [ "$SEMANTIC_BACKEND" = "claude-api" ] && ! llm_back
     echo "ERR graph-cadence: GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api needs HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT (A, B, C or auto) in the launching environment -- refusing, no claude-cli fallback" >&2
     exit 1
 fi
-CADENCE_ALERT="$REPO_ROOT/scripts/luna/cadence-alert.sh"
+CADENCE_ALERT="${GRAPH_CADENCE_ALERT:-$REPO_ROOT/scripts/luna/cadence-alert.sh}"
 for _f in "$AST_UPDATE" "$GRAPH_PUBLISH" "$MERGE_ON_GREEN"; do
     [ -f "$_f" ] || { echo "ERR graph-cadence: required script missing: $_f" >&2; exit 2; }
 done
@@ -432,6 +456,8 @@ if [ -z "${HOME:-}" ] || [ ! -d "$HOME" ]; then
     exit 2
 fi
 export HOME
+
+PAUSE_MARKER="${GRAPH_CADENCE_PAUSE_MARKER:-${GRAPHMAP_BAT_DIR:-$HOME/.claude/graphmap-cadence}/semantic.paused}"
 
 # --- corpus slug + dedicated worktree ---------------------------------------
 # See header: the worktree's BASENAME must equal this slug so graph-
@@ -569,7 +595,41 @@ BATCH_COST=""
 # PLUS the standard flow-run-ledger end row every sibling cadence writes.
 # Reuses flow-run-ledger.sh's own JSON-escaping helpers (_fr_json_str /
 # _fr_json_null_str / _fr_json_int) rather than a fifth hand-rolled escaper.
+_graph_watch() {
+    [ "${PUBLISH_POSSIBLE:-1}" = 0 ] || return 0
+    local data_worker="graph-data-${CORPUS_SLUG:-repo}" held_worker="graph-semantic-${CORPUS_SLUG:-repo}-held"
+    local log="${_run_log:-$LOG_FILE}" line="" rc=0 reason cause held="" n
+    if [ "$ACTION" = "published-channel" ]; then
+        bash "$CADENCE_ALERT" clear "$data_worker" >/dev/null 2>&1
+    else
+        line=$(bash "$SCRIPT_DIR/graph-data-status.sh" --repo "$HIMMEL_ROOT" --out "$HIMMEL_ROOT/graphify-out" \
+            --remote "$CHANNEL_REMOTE" --pause-marker "$PAUSE_MARKER" \
+            --max-age-days "${GRAPH_CADENCE_DATA_MAX_AGE_DAYS:-2}" 2>/dev/null) || rc=$?
+        case "$rc" in
+            1)
+                reason="${line#graph-data: LAG }"
+                cause="${reason#*; cause: }"
+                bash "$CADENCE_ALERT" fail "$data_worker" "$reason" "$log" "$cause" \
+                    "run bash scripts/graphify/graph-cadence.sh by hand: it publishes the live graph with no model call" >/dev/null 2>&1
+                ;;
+            0|4) bash "$CADENCE_ALERT" clear "$data_worker" >/dev/null 2>&1 ;;
+        esac
+    fi
+    held=$(python3 "$SCRIPT_DIR/semantic-merge.py" held --out "$HIMMEL_ROOT/graphify-out" 2>/dev/null) || held=""
+    if [ -n "$held" ]; then
+        n=$(printf '%s\n' "$held" | grep -c .)
+        bash "$CADENCE_ALERT" fail "$held_worker" \
+            "the semantic shrink guard held $n file(s) in two runs in a row: $(printf '%s\n' "$held" | awk 'NR>1{printf "; "} {printf "%s", $0}')" \
+            "$log" "each new extraction dropped labels the old nodes had" \
+            "nothing if the next run stamps it (a second extraction of unchanged content is accepted); if it stays held, read the file and its old nodes" >/dev/null 2>&1
+    else
+        bash "$CADENCE_ALERT" clear "$held_worker" >/dev/null 2>&1
+    fi
+    return 0
+}
+
 _write_ledger() {
+    _graph_watch
     local head_sha end_ts dur outcome
     head_sha=$(git -C "$HIMMEL_ROOT" rev-parse --verify --quiet origin/main 2>/dev/null || echo "")
     end_ts=$(date -u +%s)
@@ -716,8 +776,84 @@ if [ "$PUBLISH_POSSIBLE" -eq 1 ]; then
 elif [ "$GRAPH_JSON_OBJECT_UNREADABLE" -eq 1 ]; then
     : # already reported by the loud WARN above; nothing more to say here
 else
-    echo "graph-cadence: origin/main does not track graphify-out/graph.json (retired from the git tree) -- nothing to publish or merge"
+    echo "graph-cadence: origin/main does not track graphify-out/graph.json (retired from the git tree) -- there is no PR to open or merge; the graph publishes to the graph-data branch instead"
 fi
+
+SEM_PROMOTE_LOCK="$HIMMEL_ROOT/graphify-out/.promote.lock"
+SEM_PROMOTE_LOCK_HELD=0
+SEM_PROMOTE_LOCK_TOKEN=""  # gitleaks:allow
+SEM_PROMOTE_WAIT_S=0
+SEM_PROMOTED=0
+_sem_promote_lock_release() {
+    local cur=""
+    [ "$SEM_PROMOTE_LOCK_HELD" -eq 1 ] || return 0
+    SEM_PROMOTE_LOCK_HELD=0
+    cur=$(cat "$SEM_PROMOTE_LOCK/owner" 2>/dev/null) || cur=""
+    [ "$cur" = "$SEM_PROMOTE_LOCK_TOKEN" ] && rm -rf "$SEM_PROMOTE_LOCK" 2>/dev/null
+    return 0
+}
+_sem_promote_lock_acquire() {
+    local what="$1" wait_s="${GRAPH_CADENCE_PROMOTE_LOCK_WAIT:-300}" waited=0 gone=0
+    case "$wait_s" in ''|*[!0-9]*) wait_s=300 ;; esac
+    SEM_PROMOTE_WAIT_S="$wait_s"
+    # prim-ok: the lock must be the mkdir directory ast-update.sh and semantic-update.sh take; with_lock's flock record would not exclude them
+    until mkdir "$SEM_PROMOTE_LOCK" 2>/dev/null; do
+        if [ ! -d "$SEM_PROMOTE_LOCK" ]; then
+            gone=$((gone + 1))
+            [ "$gone" -lt 3 ] || _fail "$what: could not create the promote lock $SEM_PROMOTE_LOCK (not held by another refresh)"
+            continue
+        fi
+        if [ "$waited" -eq 0 ]; then
+            echo "graph-cadence: waiting for promote lock $SEM_PROMOTE_LOCK (held by another graph refresh), up to ${wait_s}s"
+        fi
+        [ "$waited" -lt "$wait_s" ] || return 1
+        sleep 1; waited=$((waited + 1))
+    done
+    SEM_PROMOTE_LOCK_TOKEN="$$-$RANDOM"
+    SEM_PROMOTE_LOCK_HELD=1
+    if ! { printf '%s\n' "$SEM_PROMOTE_LOCK_TOKEN" > "$SEM_PROMOTE_LOCK/owner" \
+           && date -u +%s > "$SEM_PROMOTE_LOCK/acquired"; } 2>/dev/null; then
+        _sem_promote_lock_release
+        _fail "$what: could not stamp the promote lock $SEM_PROMOTE_LOCK"
+    fi
+    return 0
+}
+
+_published_build_commit() {
+    printf '%s\n' "$1" | sed -En 's/^publish-graph-channel: (published graph-data|graph-data unchanged at) .* \(built at ([0-9a-fA-F]{7,40})\)$/\2/p' | tail -n 1
+}
+
+_publish_live_if_newer() {
+    local live_out="$HIMMEL_ROOT/graphify-out" line="" st_rc=0 live snap f ch_rc=0 ch_out
+    line=$(bash "$SCRIPT_DIR/graph-data-status.sh" --repo "$HIMMEL_ROOT" --out "$live_out" --remote "$CHANNEL_REMOTE" 2>/dev/null) || st_rc=$?
+    case "$st_rc" in 1|4) ;; *) return 1 ;; esac
+    case "$line" in *"semantic layer: yes"*) ;; *) return 1 ;; esac
+    live=$(bash "$SCRIPT_DIR/check-graph-freshness.sh" --out "$live_out" --print-built-at 2>/dev/null) || return 1
+    snap=$(tmpdir) || _fail "graph-data publish: could not create a snapshot dir"
+    if ! _sem_promote_lock_acquire "graph-data publish"; then
+        echo "graph-cadence: WARN the live graph was NOT published to graph-data -- promote lock $SEM_PROMOTE_LOCK still held after ${SEM_PROMOTE_WAIT_S}s; the next fire retries" >&2
+        rm -rf "$snap"
+        return 1
+    fi
+    for f in graph.json GRAPH_REPORT.md manifest.json semantic-manifest.json; do
+        [ -f "$live_out/$f" ] || continue
+        cp "$live_out/$f" "$snap/$f" || { _sem_promote_lock_release; rm -rf "$snap"; _fail "graph-data publish: could not snapshot $live_out/$f"; }
+    done
+    _sem_promote_lock_release
+    echo "graph-cadence: the live graph (built at ${live:0:7}) is newer than graph-data and carries a semantic layer -- publishing it to graph-data with no model call"
+    ch_out=$(bash "$CHANNEL_PUBLISH" --src "$snap" --repo "$HIMMEL_ROOT" --remote "$CHANNEL_REMOTE" --log "${_run_log:-$LOG_FILE}" 2>&1) || ch_rc=$?
+    rm -rf "$snap"
+    printf '%s\n' "$ch_out"
+    [ "$ch_rc" -eq 0 ] || _fail "graph-data publish failed (exit $ch_rc): $(printf '%s\n' "$ch_out" | grep '^publish-graph-channel: BLOCKED ' | tail -n 1)"
+    ACTION="published-channel"
+    GRAPH_HEAD=$(_published_build_commit "$ch_out")
+    if [ -n "$GRAPH_HEAD" ]; then
+        MERGES_BEHIND=$(git -C "$HIMMEL_ROOT" rev-list --count "${GRAPH_HEAD}..origin/main" 2>/dev/null) || MERGES_BEHIND=""
+        case "$MERGES_BEHIND" in '' | *[!0-9]*) MERGES_BEHIND="" ;; esac
+    fi
+    FINAL_RC=0
+    return 0
+}
 
 # --- 4a. nothing consumes a rebuild: skip it ----------------------------------
 # With no tracked graph to publish and no --semantic step, the worktree rebuild
@@ -734,6 +870,11 @@ fi
 # steady state: it keeps falling through to the worktree steps, which fail closed
 # (rc 3, a C33 WARN) instead of hiding a broken clone behind a quiet skip.
 if [ "$PUBLISH_POSSIBLE" -eq 0 ] && [ "$SEMANTIC" -eq 0 ] && [ "$GRAPH_JSON_OBJECT_UNREADABLE" -eq 0 ]; then
+    trap _sem_promote_lock_release EXIT
+    if _publish_live_if_newer; then
+        _write_ledger
+        exit 0
+    fi
     ACTION="skipped"
     FINAL_RC=0
     echo "graph-cadence: skipping the rebuild -- nothing consumes it (no tracked graph to publish, no --semantic step); the hourly AST cadence (ast-update.sh) already rebuilds the graph workers read"
@@ -798,23 +939,6 @@ if [ -n "${GRAPH_CADENCE_HIMMEL_ROOT:-}" ]; then
         *) PIPELINE_LOCK_HEARTBEAT_SECONDS="$GRAPH_CADENCE_LOCK_HEARTBEAT_SECONDS" ;;
     esac
 fi
-# The semantic promote's lock on the PRIMARY graphify-out (step 6, --semantic):
-# the same $OUT/.promote.lock ast-update.sh takes. Released by the EXIT trap too,
-# so a killed run never leaves the hourly AST pass skipping behind it.
-SEM_PROMOTE_LOCK="$HIMMEL_ROOT/graphify-out/.promote.lock"
-SEM_PROMOTE_LOCK_HELD=0
-SEM_PROMOTE_LOCK_TOKEN=""
-# 1 once this run promoted a semantic graph: step 6a then publishes it.
-SEM_PROMOTED=0
-_sem_promote_lock_release() {
-    local cur=""
-    [ "$SEM_PROMOTE_LOCK_HELD" -eq 1 ] || return 0
-    SEM_PROMOTE_LOCK_HELD=0
-    cur=$(cat "$SEM_PROMOTE_LOCK/owner" 2>/dev/null) || cur=""
-    # Never remove a lock another refresh took over.
-    [ "$cur" = "$SEM_PROMOTE_LOCK_TOKEN" ] && rm -rf "$SEM_PROMOTE_LOCK" 2>/dev/null
-    return 0
-}
 # shellcheck disable=SC2329,SC2317  # invoked only via `trap ... EXIT` below
 _pipeline_lock_release() {
     local cur=""
@@ -1073,37 +1197,15 @@ ACTION="refreshed"
 # retries. A promote that cannot be written fails the run. Runs before the
 # retired-path no-op below, so that no-op never skips it.
 _promote_semantic_to_primary() {
-    local src="$WORKTREE_DIR/graphify-out" dest="$HIMMEL_ROOT/graphify-out"
-    local wait_s="${GRAPH_CADENCE_PROMOTE_LOCK_WAIT:-300}" waited=0 gone=0 f
-    case "$wait_s" in ''|*[!0-9]*) wait_s=300 ;; esac
+    local src="$WORKTREE_DIR/graphify-out" dest="$HIMMEL_ROOT/graphify-out" f
     if [ ! -f "$src/graph.json" ]; then
         echo "graph-cadence: WARN semantic promote skipped -- $src/graph.json does not exist" >&2
         return 0
     fi
     mkdir -p "$dest" || _fail "semantic promote: could not create $dest"
-    # prim-ok: the lock must be the mkdir directory ast-update.sh and semantic-update.sh take; with_lock's flock record would not exclude them
-    until mkdir "$SEM_PROMOTE_LOCK" 2>/dev/null; do
-        if [ ! -d "$SEM_PROMOTE_LOCK" ]; then
-            # the holder released between our mkdir and this check: contention, retry; a few misses in a row is a filesystem fault
-            gone=$((gone + 1))
-            [ "$gone" -lt 3 ] || _fail "semantic promote: could not create the promote lock $SEM_PROMOTE_LOCK (not held by another refresh)"
-            continue
-        fi
-        if [ "$waited" -eq 0 ]; then
-            echo "graph-cadence: waiting for promote lock $SEM_PROMOTE_LOCK (held by another graph refresh), up to ${wait_s}s"
-        fi
-        if [ "$waited" -ge "$wait_s" ]; then
-            echo "graph-cadence: WARN semantic promote SKIPPED -- promote lock $SEM_PROMOTE_LOCK still held after ${wait_s}s; the primary graphify-out keeps its previous graph and the next fire retries" >&2
-            return 0
-        fi
-        sleep 1; waited=$((waited + 1))
-    done
-    SEM_PROMOTE_LOCK_TOKEN="$$-$RANDOM"
-    SEM_PROMOTE_LOCK_HELD=1
-    if ! { printf '%s\n' "$SEM_PROMOTE_LOCK_TOKEN" > "$SEM_PROMOTE_LOCK/owner" \
-           && date -u +%s > "$SEM_PROMOTE_LOCK/acquired"; } 2>/dev/null; then
-        _sem_promote_lock_release
-        _fail "semantic promote: could not stamp the promote lock $SEM_PROMOTE_LOCK"
+    if ! _sem_promote_lock_acquire "semantic promote"; then
+        echo "graph-cadence: WARN semantic promote SKIPPED -- promote lock $SEM_PROMOTE_LOCK still held after ${SEM_PROMOTE_WAIT_S}s; the primary graphify-out keeps its previous graph and the next fire retries" >&2
+        return 0
     fi
     for f in graph.json semantic-manifest.json semantic-runs.jsonl; do
         [ -f "$src/$f" ] || continue
@@ -1129,7 +1231,7 @@ if [ "$SEMANTIC" -eq 1 ]; then
     # claude -p bills an exported API key outside the API lane's accounting: only claude-api may carry the caller env
     # (semantic-update.sh refuses a caller key itself)
     _sem_env=()
-    [ "$SEMANTIC_BACKEND" = "claude-api" ] || _sem_env=(env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u ANTHROPIC_ORG_C_KEY -u LQ_API_KEY)
+    [ "$SEMANTIC_BACKEND" = "claude-api" ] || _sem_env=(env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN "${LLM_API_ORG_KEY_UNSET[@]}" -u LQ_API_KEY)
     _sem_result_file="${WORKTREE_DIR}.sem-result" _sem_claude_api_result_args=()
     rm -f "$_sem_result_file"
     [ "$SEMANTIC_BACKEND" != "claude-api" ] || _sem_claude_api_result_args=(--result-file "$_sem_result_file")
@@ -1207,10 +1309,6 @@ if [ "$SEMANTIC" -eq 1 ]; then
     esac
 fi
 
-_published_build_commit() {
-    printf '%s\n' "$1" | sed -n 's/^publish-graph-channel: published graph-data .* (built at \([0-9a-fA-F]\{7,40\}\))$/\1/p' | tail -n 1
-}
-
 # --- 6a. retired publish/merge tasks: clean no-op, not a skip ----------------
 # PUBLISH_POSSIBLE=0 (see step 2/PUBLISH_POSSIBLE above) means origin/main
 # does not track graphify-out/graph.json at all -- the permanent
@@ -1221,6 +1319,10 @@ _published_build_commit() {
 # semantic graph publishes it to the graph-data branch instead:
 # publish-graph-channel.sh scans the exact bytes and alerts on its own failures.
 if [ "$PUBLISH_POSSIBLE" -eq 0 ]; then
+    if [ "$SEM_PROMOTED" -eq 0 ] && _publish_live_if_newer; then
+        _write_ledger
+        exit 0
+    fi
     if [ "$SEM_PROMOTED" -eq 1 ]; then
         _ch_rc=0
         _ch_out=$(bash "$CHANNEL_PUBLISH" --src "$WORKTREE_DIR/graphify-out" --repo "$WORKTREE_DIR" \
@@ -1238,7 +1340,7 @@ if [ "$PUBLISH_POSSIBLE" -eq 0 ]; then
         exit 0
     fi
     FINAL_RC=0
-    echo "graph-cadence: local refresh complete; origin/main does not track graphify-out/graph.json, so publish/merge have nothing to do -- no-op"
+    echo "graph-cadence: local refresh complete; origin/main does not track graphify-out/graph.json, so publish/merge have nothing to do here (the graph publishes to the graph-data branch, and nothing newer was waiting) -- no-op"
     _write_ledger
     exit 0
 fi

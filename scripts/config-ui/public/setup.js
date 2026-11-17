@@ -310,9 +310,10 @@ function accountRows(d) {
       : map.state === "absent" && r.configured ? `<span class="det">graph pass (default)</span>` : "—";
     const tag = `<span class="st ${BANK_STYLE[r.tag] || "warn"}">${esc(r.tag)}${r.reason ? ` (${esc(r.reason)})` : ""}</span>`;
     const cap = r.cap_usd == null ? "—" : `$${esc(String(Number(r.cap_usd)))} cap`;
-    return `<tr data-account-row="${esc(r.account)}"><th scope="row">${esc(r.account)}</th><td>${r.configured == null ? "unknown" : r.configured ? "configured" : "not configured"}</td><td>${cap}</td><td>${tag}</td><td>${roles}</td></tr>`;
+    const key = typeof r.key === "string" ? `<code>${esc(r.key)}</code>` : "—";
+    return `<tr data-account-row="${esc(r.account)}"><th scope="row">${esc(r.account)}</th><td>${r.configured == null ? "unknown" : r.configured ? "configured" : "not configured"}</td><td>${cap}</td><td>${key}</td><td>${tag}</td><td>${roles}</td></tr>`;
   }).join("");
-  return `<div class="scroll"><table class="roles-table"><thead><tr><th>Account</th><th>Configured</th><th>Cap</th><th>Bank</th><th>Roles</th></tr></thead><tbody>${body}</tbody></table></div>`;
+  return `<div class="scroll"><table class="roles-table"><thead><tr><th>Account</th><th>Configured</th><th>Cap</th><th>Key</th><th>Bank</th><th>Roles</th></tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
 function roleEditor(d, ar) {
@@ -343,9 +344,10 @@ function multiAccounts({ state }) {
   if (!ar || (!ar.data && !ar.error)) return `${head}${loading("the role map")}`;
   if (!ar.data) return `${head}<div class="nodata" role="alert">${esc(ar.error)}</div>`;
   const d = ar.data, map = d.roleMap;
-  const intro = `<p class="sub">Which API account may serve each kind of run when a caller asks for <code>auto</code>. A run that names its account (A, B or C) is not affected. Roles never widen auto beyond the himmel repo.</p>`;
+  const ls = (d.letters || []).map(esc), named = ls.length > 1 ? `${ls.slice(0, -1).join(", ")} or ${ls[ls.length - 1]}` : ls.join("");
+  const intro = `<p class="sub">Which API account may serve each kind of run when a caller asks for <code>auto</code>. A run that names its account (${named}) is not affected. Roles never widen auto beyond the himmel repo.</p>`;
   let card = "";
-  if (map.state === "absent") card = `<div class="card role-card"><h3>No roles set: the defaults apply</h3><p class="sub">Only the himmel graph pass uses auto, on any configured account. The judge runs on the subscription. A run that names A, B or C is not affected. To let an account serve a role, use Edit roles.</p></div>`;
+  if (map.state === "absent") card = `<div class="card role-card"><h3>No roles set: the defaults apply</h3><p class="sub">Only the himmel graph pass uses auto, on any configured account. The judge runs on the subscription. A run that names ${named} is not affected. To let an account serve a role, use Edit roles.</p></div>`;
   else if (map.state === "partial" || map.state === "invalid") {
     const n = map.errors.length;
     card = `<div class="card crit role-card" role="alert"><h3>${map.state === "partial" ? `Role map: ${n} error${n === 1 ? "" : "s"}; the other entries still apply` : "Role map: the whole file is ignored, the defaults apply"}</h3>
