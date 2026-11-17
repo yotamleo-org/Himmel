@@ -2,8 +2,6 @@
 # Tests for check-added-unwired.sh's test-*.sh branch: a suite outside himmel's scan
 # roots counts as wired when a .github/workflows run step names its repo path (an
 # adopter repo runs its suites from CI, not from scripts/ci/run-shell-tests.sh).
-# The H rows: a test helper is any path the test row of scripts/lint/ticket-ref-allow.tsv
-# matches, the same row the ticket-key gate reads, so one helper passes both gates.
 #
 # Usage: bash scripts/testing/test-check-added-unwired.sh
 # shellcheck disable=SC2015  # ok/no never fail, so A && ok || no is a safe if/else here
@@ -120,8 +118,6 @@ rc=0; out=$(cd "$R" && bash scripts/testing/check-added-unwired.sh HEAD scripts/
 
 echo "== H test helpers: one definition with the ticket-key gate =="
 H=HIMMEL
-# mkhelperrepo <dir> <helper path> <suite path or empty> — both gates and the rule list on
-# main, then a branch adding the helper (a fixture key in it) and the suite that sources it
 mkhelperrepo() {
   local R="$1" helper="$2" suite="$3"
   mkdir -p "$R/scripts/testing" "$R/scripts/lint" "$R/${helper%/*}"

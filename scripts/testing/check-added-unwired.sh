@@ -81,7 +81,6 @@ ref="$1"; shift
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 top=$(git rev-parse --show-toplevel) || exit 2
 
-# the test-file path pattern the ticket-key gate reads too, so the two gates agree on a helper
 TEST_HELPER_RE=$(awk -F'\t' '$1 == "test" { print $2; exit }' "$HERE/../lint/ticket-ref-allow.tsv" 2>/dev/null)
 [ -n "$TEST_HELPER_RE" ] || { echo "check-added-unwired: no test row in $HERE/../lint/ticket-ref-allow.tsv, cannot evaluate" >&2; exit 2; }
 

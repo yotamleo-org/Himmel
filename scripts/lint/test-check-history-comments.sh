@@ -35,8 +35,6 @@
 #   41.   a symlink replaced by a regular file is judged
 #   42.   an added ponytail marker is refused in every file type and case; a fixture path
 #         and a deleted line pass; the exempt mode lists whole-file rows
-#   43.   the test row: a testlib- helper and a *-cases/ fixture carry data keys; a list
-#         without exactly one test row exits 2
 #
 # Exit: 0 all passed, 1 any failed. bash 3.2-safe.
 
