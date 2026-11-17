@@ -572,10 +572,6 @@ reset_stubs
 # READY_CHECK_DEADLINE (whole seconds, default 150, 0 = none): argv unchanged; a stalled gh
 # read ends in a named FAIL, never a hang, and the override reaches the wrapper.
 reset_stubs
-# This row proves the holder was alive when the run began, not that the run's lock
-# attempt met it; on a runner slow enough to spend 9 s before the snapshot read, the pass could
-# come without contention (the red on the old lib shows the timing holds); upgrade path is a seam
-# that makes the lib log a wait to a trace file this row asserts on.
 r1_shared="$tmp/lock-cache-r1"; mkdir -p "$r1_shared"
 r1_fails0=$fails
 env GH_PR_SNAPSHOT_CACHE_DIR="$r1_shared" GH_LOG="$tmp/holder.log" STUB_HEAD="$SHA" \
