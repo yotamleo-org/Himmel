@@ -1767,12 +1767,14 @@ chmod +x "$tmp/frbin/jira" "$tmp/frbin/sweep" "$tmp/frbin/tracker" "$tmp/frbin/d
 export FR_JIRA="$tmp/frbin/jira" FR_SWEEP="$tmp/frbin/sweep" FR_TRACKER="$tmp/frbin/tracker" FR_DRIFT="$tmp/frbin/drift" FR_KNOWN_SYNC="$tmp/frbin/ksync" FR_DRIFT_SUMMARY="$tmp/frbin/dsum"
 export TICK_TRACKER_MIRROR_DIR="$FR/mir/HIMMEL"
 export HANDOVER_DIR="$tmp/no-handover-root" # the chains stage reads <root>/<user>/himmel/chains.json; none here, so it is skipped (test-focus-refresh-chains.sh covers it)
+mkdir -p "$tmp/frconfig"
+printf 'HANDOVER_DIR=%s\n' "$HANDOVER_DIR" > "$tmp/frconfig/himmel.conf"
 fr_reset() { # fresh fixtures plus a chief doc with a focus-version line
     reset "To Do"
     rm -rf "$FR"; mkdir -p "$FR/doc" "$FR/mir"
     printf '# chief\n\n## Live state\ntracker: https://example.invalid/t\nfocus-version: v1.1.3\n' > "$FR/doc/chief.md"
 }
-fr() { bash "$FOCUS" --doc "$FR/doc/chief.md" "$@" >"$tmp/frout" 2>"$tmp/frerr"; echo $? >"$tmp/frrc"; }
+fr() { HIMMEL_CONFIG_DIR="$tmp/frconfig" bash "$FOCUS" --doc "$FR/doc/chief.md" "$@" >"$tmp/frout" 2>"$tmp/frerr"; echo $? >"$tmp/frrc"; }
 frrc() { cat "$tmp/frrc"; }
 frout() { cat "$tmp/frout"; }
 fst() { sed -n "s/^$1=//p" "$FR/doc/focus-state" | head -n 1; }
@@ -2031,7 +2033,7 @@ fr_reset; echo 2 > "$FX/sweep.moved"; echo mirror > "$FX/fr.fail"
 fr
 check "3c: a failed re-read after a move is FAILED:mirror" "$(frout)" "focus=FAILED:mirror"
 fr_reset
-( cd "$FR/doc" && bash "$FOCUS" --doc chief.md >"$tmp/frout" 2>"$tmp/frerr"; echo $? >"$tmp/frrc" )
+( cd "$FR/doc" && HIMMEL_CONFIG_DIR="$tmp/frconfig" bash "$FOCUS" --doc chief.md >"$tmp/frout" 2>"$tmp/frerr"; echo $? >"$tmp/frrc" )
 check "3c: a bare doc filename resolves beside the doc" "$(frout)" "focus=ok"
 check "3c: and the page lands beside the doc" "$(head -n 1 "$PAGE")" "render 1"
 fr_reset; touch "$FX/pr-list.fail"

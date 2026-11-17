@@ -1,8 +1,8 @@
 # {{LETTER}} — CHIEF — successor to {{PREDECESSOR}} (fill signal {{FILL_PERCENT}} %)
 
-> **{{LETTER}} PREFACE.** This document is the chief's operating contract; the
-> predecessor's learnings are in **{{PREDECESSOR_HANDOFF}}** and win where they
-> differ. Named sections are read **on demand** from
+> **{{LETTER}} PREFACE.** This is the chief's contract; the
+> predecessor's learnings in **{{PREDECESSOR_HANDOFF}}** win where they
+> differ. Read sections **on demand** from
 > `{{REPO}}/docs/handover/chief-sections/`. Session: **`{{SESSION_NAME}}`**.
 > Handover root: **`{{HANDOVER_ROOT}}`**; bucket **`{{BUCKET}}`** (at
 > `{{STATE_DIR}}`); you ship from and always run in
