@@ -374,6 +374,22 @@ case "$*" in *bad*) exit 1 ;; esac
 exit 0
 STUB
 chmod +x "$T/bin/pre-commit"
+# The sweep types files with identify, and pre-commit is stubbed below: hand it the interpreter the real
+# pre-commit runs on (or any python3 that has identify). Neither found leaves the seam unset, and the sweep
+# then treats every file as shell.
+real_py() {
+  local pc sb a b
+  pc=$(command -v pre-commit) || return 1
+  sb=$(head -n 1 "$pc"); sb=${sb#\#!}
+  read -r a b <<< "$sb"
+  case "${a##*/}" in env) a=$(command -v "$b") ;; esac
+  [ -n "$a" ] && "$a" -I -c 'import identify' 2>/dev/null && printf '%s\n' "$a"
+}
+if py=$(real_py) || { py=$(command -v python3) && "$py" -I -c 'import identify' 2>/dev/null; }; then
+  export SHELLCHECK_RANGE_PY="$py"
+else
+  bad "no interpreter can import identify; the classifier rows cannot run"
+fi
 sweep() { STUB_LOG="$T/stub.log" PATH="$T/bin:$PATH" bash "$SPR" "$BASE" >"$T/sweep.out" 2>&1; }
 reset; w .shellcheckrc 'external-sources=true
 # touched
@@ -383,6 +399,16 @@ sweep; rc=$?
 grep -q 'STUB shard' "$T/sweep.out" && ok "sweep_ok: shard output is preserved" || bad "sweep_ok: no shard output: $(head -3 "$T/sweep.out" | tr '\n' '|')"
 grep -E 'gh-ci-cache.sh' "$T/stub.log" | grep -q 'check-ci-watch.sh' \
   && ok "sweep_ok: a lib and its consumer share one shard" || bad "sweep_ok: lib and consumer split: $(tr '\n' '|' < "$T/stub.log")"
+# sweep_empty_list: an empty, blank-only or missing --sweep list is refused (rc 2), never widened to the whole tree
+: > "$T/empty.list"; printf '\n\n' > "$T/blank.list"
+for lst in "$T/empty.list" "$T/blank.list" "$T/nolist.txt"; do
+  : > "$T/stub.log"
+  STUB_LOG="$T/stub.log" PATH="$T/bin:$PATH" bash "$SPR" --sweep "$lst" > "$T/sweep.out" 2> "$T/sweep.err"; rc=$?
+  [ "$rc" -eq 2 ] && ok "sweep_empty_list: ${lst##*/} exits 2" || bad "sweep_empty_list: ${lst##*/} want rc 2, got $rc"
+  [ ! -s "$T/stub.log" ] && ok "sweep_empty_list: ${lst##*/} runs no pre-commit" || bad "sweep_empty_list: ${lst##*/} invoked pre-commit: $(head -c 200 "$T/stub.log")"
+  grep -q 'is missing or empty' "$T/sweep.err" && ok "sweep_empty_list: ${lst##*/} says why" || bad "sweep_empty_list: ${lst##*/} no refusal message: $(head -c 200 "$T/sweep.err")"
+done
+
 # sweep_nonproc: macOS has no nproc; the sweep takes the CPU count from sysctl and still shards
 if mkdir -p "$T/nonproc" \
   && printf '#!/bin/sh\nexit 127\n' > "$T/nonproc/nproc" \
@@ -413,10 +439,136 @@ echo t
 '; commit_case sweep_E; : > "$T/stub.log"
 sweep; rc=$?
 [ "$rc" -eq 0 ] && ok "sweep_E: rc 0" || bad "sweep_E: want rc 0, got $rc"
-tr ' ' '\n' < "$T/stub.log" | grep -v '^$' | sort > "$T/shards.txt"
+tr ' ' '\n' < "$T/stub.log" | grep -v '^$' | sort -u > "$T/shards.txt"
 git ls-files | sort > "$T/tracked.txt"
 cmp -s "$T/shards.txt" "$T/tracked.txt" \
   && ok "sweep_E: union of shard file lists equals git ls-files" || bad "sweep_E: shards differ from git ls-files: $(diff "$T/shards.txt" "$T/tracked.txt" | head -4 | tr '\n' '|')"
+
+# closure_edge: a.sh assigns X and sources "$ROOT/lib/b.sh", which reads X (the shape of
+# scripts/lib/test-provenance-identity.sh). The `$VAR/` prefix must not hide the edge: with it
+# hidden, a.sh and b.sh can land in different bins and a.sh gets a false SC2034. Four bins forced.
+mkdir -p "$T/n4"
+printf '#!/bin/sh\necho 4\n' > "$T/n4/nproc"; chmod +x "$T/n4/nproc"
+sweep4() { STUB_LOG="$T/stub.log" PATH="$T/n4:$T/bin:$PATH" bash "$SPR" "$BASE" >"$T/sweep.out" 2>&1; }
+reset; w .shellcheckrc 'external-sources=true
+# touched
+'; w scripts/zzr/a.sh '#!/usr/bin/env bash
+X=1
+. "$ROOT/lib/b.sh"
+'; w scripts/zzr/lib/b.sh '#!/usr/bin/env bash
+echo "$X"
+'; commit_case closure_edge; : > "$T/stub.log"
+sweep4; rc=$?
+[ "$rc" -eq 0 ] && ok "closure_edge: rc 0" || bad "closure_edge: want rc 0, got $rc"
+grep -q 'parallel full sweep over [2-9]' "$T/sweep.out" && ok "closure_edge: the sweep ran with two or more bins" || bad "closure_edge: not a multi-bin sweep: $(head -3 "$T/sweep.out" | tr '\n' '|')"
+grep 'scripts/zzr/a\.sh' "$T/stub.log" | grep -q 'scripts/zzr/lib/b\.sh' \
+  && ok "closure_edge: a.sh is linted with the lib it sources through \$ROOT/" || bad "closure_edge: a.sh and b.sh split across bins: $(tr '\n' '|' < "$T/stub.log" | cut -c1-300)"
+
+# closure_shebang_ext: an executable file with an extension the hook's file typing does not know is typed by its shebang, so it keeps its source edges.
+reset; w .shellcheckrc 'external-sources=true
+# touched
+'; w scripts/zzl/run.lock '#!/usr/bin/env bash
+X=1
+. "$ROOT/lib/c.sh"
+'; chmod +x scripts/zzl/run.lock; w scripts/zzl/lib/c.sh '#!/usr/bin/env bash
+echo "$X"
+'; commit_case closure_shebang_ext; : > "$T/stub.log"
+sweep4; rc=$?
+[ "$rc" -eq 0 ] && ok "closure_shebang_ext: rc 0" || bad "closure_shebang_ext: want rc 0, got $rc"
+grep 'scripts/zzl/run\.lock' "$T/stub.log" | grep -q 'scripts/zzl/lib/c\.sh' \
+  && ok "closure_shebang_ext: run.lock is linted with the lib it sources" || bad "closure_shebang_ext: run.lock and c.sh split across bins: $(tr '\n' '|' < "$T/stub.log" | cut -c1-300)"
+
+# closure_dotfile_ext: identify gives a dotfile named only by an extension no type, so an executable one is
+# typed by its shebang, linted by the hook, and must keep its source edges.
+reset; w .shellcheckrc 'external-sources=true
+# touched
+'; w scripts/zzd/.json '#!/usr/bin/env bash
+X=1
+. "$ROOT/lib/d.sh"
+'; chmod +x scripts/zzd/.json; w scripts/zzd/lib/d.sh '#!/usr/bin/env bash
+echo "$X"
+'; commit_case closure_dotfile_ext; : > "$T/stub.log"
+sweep4; rc=$?
+[ "$rc" -eq 0 ] && ok "closure_dotfile_ext: rc 0" || bad "closure_dotfile_ext: want rc 0, got $rc"
+grep 'scripts/zzd/\.json' "$T/stub.log" | grep -q 'scripts/zzd/lib/d\.sh' \
+  && ok "closure_dotfile_ext: the dotfile is linted with the lib it sources" || bad "closure_dotfile_ext: .json and d.sh split across bins: $(tr '\n' '|' < "$T/stub.log" | cut -c1-300)"
+
+# closure_namepart: identify types a name with a PKGBUILD part shell whatever its extension, with no shebang
+# and no exec bit
+reset; w .shellcheckrc 'external-sources=true
+# touched
+'; w scripts/zzp/PKGBUILD.md 'X=1
+. "$ROOT/lib/p.sh"
+'; w scripts/zzp/lib/p.sh '#!/usr/bin/env bash
+echo "$X"
+'; commit_case closure_namepart; : > "$T/stub.log"
+sweep4; rc=$?
+[ "$rc" -eq 0 ] && ok "closure_namepart: rc 0" || bad "closure_namepart: want rc 0, got $rc"
+grep 'scripts/zzp/PKGBUILD\.md' "$T/stub.log" | grep -q 'scripts/zzp/lib/p\.sh' \
+  && ok "closure_namepart: the PKGBUILD.md is linted with the lib it sources" || bad "closure_namepart: PKGBUILD.md and p.sh split across bins: $(tr '\n' '|' < "$T/stub.log" | cut -c1-300)"
+
+# classify_nonshell: a markdown file that quotes a source line has no edges: the real classifier keeps it
+# out of every bin (a fill-list member), while its lib is still linted
+w scripts/zzn/notes.md 'notes
+. "$ROOT/lib/n.sh"
+'; w scripts/zzn/lib/n.sh '#!/usr/bin/env bash
+echo n
+'; commit_case classify_nonshell; : > "$T/stub.log"
+P="$T/plan.nonshell"
+SHELLCHECK_RANGE_KEEP_PLAN="$P" sweep4; rc=$?
+[ "$rc" -eq 0 ] && ok "classify_nonshell: rc 0" || bad "classify_nonshell: want rc 0, got $rc"
+cat "$P"/fill.* 2> /dev/null | grep -Fxq 'scripts/zzn/notes.md' \
+  && ok "classify_nonshell: notes.md is a fill-list member" || bad "classify_nonshell: notes.md is not in any fill list: $(find "$P" -type f 2>&1 | tr "\n" " ")"
+if cat "$P"/bin.* 2> /dev/null | grep -Fxq 'scripts/zzn/notes.md'; then bad "classify_nonshell: notes.md sits in a bin"; else ok "classify_nonshell: notes.md is in no bin"; fi
+cat "$P"/bin.* 2> /dev/null | grep -Fxq 'scripts/zzn/lib/n.sh' \
+  && ok "classify_nonshell: n.sh is still linted" || bad "classify_nonshell: n.sh is in no bin"
+
+# classify_failsafe: with no interpreter that can type files, every file is treated as shell (edges for all),
+# so the sweep still lints each file with the lib it sources and exits as a normal run does
+: > "$T/stub.log"; P="$T/plan.failsafe"
+SHELLCHECK_RANGE_KEEP_PLAN="$P" SHELLCHECK_RANGE_PY=/nonexistent/python sweep4; rc=$?
+[ "$rc" -eq 0 ] && ok "classify_failsafe: rc 0" || bad "classify_failsafe: want rc 0, got $rc"
+cat "$P"/bin.* 2> /dev/null | grep -Fxq 'scripts/zzn/notes.md' \
+  && ok "classify_failsafe: notes.md is treated as shell and binned" || bad "classify_failsafe: notes.md is in no bin, the fallback did not run"
+if cat "$P"/fill.* 2> /dev/null | grep -Fxq 'scripts/zzn/notes.md'; then bad "classify_failsafe: notes.md is still a fill member"; else ok "classify_failsafe: notes.md is not a fill member"; fi
+grep 'scripts/zzp/PKGBUILD\.md' "$T/stub.log" | grep -q 'scripts/zzp/lib/p\.sh' \
+  && ok "classify_failsafe: the PKGBUILD.md keeps its lib without a classifier" || bad "classify_failsafe: PKGBUILD.md and p.sh split across bins: $(tr '\n' '|' < "$T/stub.log" | cut -c1-300)"
+tr ' ' '\n' < "$T/stub.log" | grep -v '^$' | sort -u > "$T/shards.txt"
+git ls-files | sort > "$T/tracked.txt"
+cmp -s "$T/shards.txt" "$T/tracked.txt" \
+  && ok "classify_failsafe: every tracked file is linted" || bad "classify_failsafe: shards differ from git ls-files: $(diff "$T/shards.txt" "$T/tracked.txt" | head -4 | tr '\n' '|')"
+
+# closure_shared: a lib in the closure of two roots lands in both bins (each root's bin carries its
+# own closure) and its finding is printed once. The two roots are padded so they outweigh every
+# other file and land in different bins.
+cat > "$T/bin/pre-commit" <<'STUB'
+#!/usr/bin/env bash
+if [ "$*" = "run shellcheck --all-files --show-diff-on-failure" ]; then echo "STUB serial"; exit 0; fi
+shift 3
+[ "${1:-}" = "--files" ] && shift
+printf '%s\n' "$*" >> "$STUB_LOG"
+case "$*" in *zzrlib/shared.sh*)
+  printf '\nIn scripts/zzr/zzrlib/shared.sh line 2:\nunused=1\n^----^ SC2034 (warning): unused appears unused.\n\nFor more information:\n  https://www.shellcheck.net/wiki/SC2034 -- unused appears unused...\n'
+  exit 1 ;;
+esac
+exit 0
+STUB
+chmod +x "$T/bin/pre-commit"
+pad() { { echo '#!/usr/bin/env bash'; i=0; while [ "$i" -lt 400 ]; do echo '# padding padding padding padding padding padding padding padding'; i=$((i + 1)); done; echo ". \"\$ROOT/zzrlib/shared.sh\""; } > "$1"; }
+reset; w .shellcheckrc 'external-sources=true
+# touched
+'; w scripts/zzr/zzrlib/shared.sh '#!/usr/bin/env bash
+unused=1
+'; mkdir -p scripts/zzr; pad scripts/zzr/c1.sh; pad scripts/zzr/c2.sh
+commit_case closure_shared; : > "$T/stub.log"
+sweep4; rc=$?
+[ "$rc" -ne 0 ] && ok "closure_shared: the shared lib's finding fails the sweep" || bad "closure_shared: want non-zero rc, got 0"
+[ "$(grep -c 'zzrlib/shared\.sh' "$T/stub.log")" -ge 2 ] \
+  && ok "closure_shared: the shared lib is an input of both roots' bins" || bad "closure_shared: lib not in two bins: $(tr '\n' '|' < "$T/stub.log" | cut -c1-300)"
+[ "$(grep -c '^In scripts/zzr/zzrlib/shared\.sh line 2:$' "$T/sweep.out")" -eq 1 ] \
+  && ok "closure_shared: the finding is printed once" || bad "closure_shared: finding not deduplicated: $(grep -c '^In scripts/zzr/zzrlib' "$T/sweep.out") copies"
+[ "$(grep -c 'wiki/SC2034' "$T/sweep.out")" -eq 1 ] \
+  && ok "closure_shared: the finding's wiki line is printed once" || bad "closure_shared: wiki line not deduplicated: $(grep -c 'wiki/SC2034' "$T/sweep.out") copies"
 # sweep_norc: a shard that dies before writing its rc is a failure, not a pass
 cat > "$T/bin/pre-commit" <<'STUB'
 #!/usr/bin/env bash

@@ -5193,6 +5193,7 @@ check_c70_graph_semantic() {
         return 0
     fi
     graph_semantic_station_verdict
+    graph_data_station_verdict
     # the semantic cadence merges into its own worktree graph, not the station graph
     slug="$(printf '%s' "$(basename "$REPO_ROOT")" | tr -c 'A-Za-z0-9._-' '-')"
     cadence_out="${HIMMEL_DOCTOR_CADENCE_OUT:-$HOME/.claude/graph-cadence/$slug/graphify-out}"
@@ -5203,6 +5204,20 @@ check_c70_graph_semantic() {
         emit WARN C70-graph-semantic "the cadence graph at $cadence_out last merged semantic at last=$cadence_last, but the station graph $out stops at last=$station_last: the cadence never promotes its graph to the station graph, so workers read a frozen semantic layer" \
             "nothing to run here: until the cadence promotes its graph, the station graph only gets structural (AST) refreshes"
     fi
+}
+
+graph_data_station_verdict() {
+    local out="${HIMMEL_DOCTOR_GRAPH_OUT:-$REPO_ROOT/graphify-out}"
+    local status="${HIMMEL_DOCTOR_GRAPH_DATA_STATUS:-$SELF_DIR/graphify/graph-data-status.sh}"
+    local line rc=0
+    line="$(bash "$status" --repo "$REPO_ROOT" --out "$out" --remote origin \
+        --pause-marker "${GRAPHMAP_BAT_DIR:-$HOME/.claude/graphmap-cadence}/semantic.paused" 2>/dev/null)" || rc=$?
+    line="${line%%$'\n'*}"
+    case "$rc" in
+        1) emit WARN C70-graph-data "$line" "bash scripts/graphify/graph-cadence.sh   # publishes the live graph to graph-data with no model call" ;;
+        0|4) emit OK C70-graph-data "$line" ;;
+        *) emit INFO C70-graph-data "${line:-graph-data status unavailable (exit $rc)}" ;;
+    esac
 }
 
 graph_semantic_station_verdict() {
@@ -5695,6 +5710,17 @@ check_c81_hook_layers() {
             | select((contains("guardrail-skip-in-himmel") or contains("CLAUDE_PROJECT_DIR/.claude/settings.json")) | not)
             | [scan("hooks/[A-Za-z0-9_-]+\\.sh") | ltrimstr("hooks/")] | unique[] | [$layer, $ev, .] | @tsv' "$2" 2>/dev/null
     }
+    _c81_drop_quiet() { # <plugin hooks dir>
+        local l e s
+        while IFS=$'\t' read -r l e s; do
+            [ -n "$s" ] || continue
+            if grep -qxF '# c81: quiet when the project settings wire this hook' "$1/$s" 2>/dev/null \
+                && grep -qxF "project"$'\t'"$e"$'\t'"$s" <<<"$rows"; then
+                continue
+            fi
+            printf '%s\t%s\t%s\n' "$l" "$e" "$s"
+        done
+    }
     rows="$(_c81_rows user "$SETTINGS"; _c81_rows project "$REPO_ROOT/.claude/settings.json")"
     if [ -r "$SETTINGS" ]; then
         for name in $(jq -r '(.enabledPlugins // {}) | to_entries[] | select(.value == true) | .key | split("@")[0]' "$SETTINGS" 2>/dev/null); do
@@ -5702,7 +5728,7 @@ check_c81_hook_layers() {
             for c in "$CLAUDE_DIR_R"/plugins/cache/*/"$name"/*/hooks/hooks.json; do [ -f "$c" ] && f="$c"; done
             [ -n "$f" ] || f="$REPO_ROOT/marketplace/plugins/$name/hooks/hooks.json"
             rows="$rows
-$(_c81_rows "plugin:$name" "$f")"
+$(_c81_rows "plugin:$name" "$f" | _c81_drop_quiet "${f%/hooks.json}")"
         done
     fi
     dups="$(printf '%s\n' "$rows" | awk -F'\t' 'NF == 3 { k = $2 "\t" $3; if (!((k SUBSEP $1) in seen)) { seen[k SUBSEP $1] = 1; n[k]++; l[k] = (k in l ? l[k] "+" : "") $1 } }

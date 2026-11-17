@@ -15,10 +15,15 @@
 #   untracked --root R --graph G   list G's source files R no longer tracks, one per line
 #   status --root R --out O        backed-off, unstamped and oldest-unstamped counts
 #   unstick --out O                drop every backed-off "stuck" record so the next plan retries it
+#   held --out O                   list "<file> new N vs old M" for each file the shrink guard refused in
+#                                  both of the last two merge runs and that is still stuck on it
 #
 # A batch file that fails or is shrink-refused gets a manifest "stuck" record
-# {hash, attempts, reason, since}. After MAX_ATTEMPTS on the same content it is
-# backed off: plan skips it until its content changes, so it is not re-billed.
+# {hash, attempts, reason, since}; a shrink refusal also carries new_nodes and
+# old_nodes. After MAX_ATTEMPTS failures on the same content a file is backed off:
+# plan skips it until its content changes, so it is not re-billed. A shrink
+# refusal is never retried a third time: the second extraction of unchanged
+# content is accepted (see the shrink guard in cmd_merge).
 #
 # Ownership rule for the merge: the AST pass (`graphify update`, hourly) owns
 # every `_origin: ast` node/edge; this step owns only `_origin: semantic` ones.
@@ -30,6 +35,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -259,11 +265,34 @@ def count_semantic(nodes, rel):
     return sum(1 for n in nodes if n.get("_origin", "semantic") == "semantic" and n.get("source_file") == rel)
 
 
+def norm_text(s):
+    return re.sub(r"[^0-9a-z]+", " ", str(s or "").lower()).strip()
+
+
+def node_text(n):
+    return norm_text(" ".join(str(n.get(k) or "") for k in ("label", "norm_label", "rationale")))
+
+
+def covered(old, new_for_file):
+    lab = norm_text(old.get("label")) or norm_text(old.get("norm_label")) or norm_text(old.get("id"))
+    if not lab:
+        return True
+    loc = old.get("source_location")
+    for n in new_for_file:
+        if " %s " % lab in " %s " % node_text(n):
+            return True
+        if loc and loc == n.get("source_location"):
+            return True
+    return False
+
+
 def shrinks(old_nodes, new_nodes, rel):
-    # The one shrink guard: the merge path and the AST-restore path (below) both
-    # decide "this file lost too much" here. A single old node cannot shrink.
     old = count_semantic(old_nodes, rel)
-    return old >= 2 and count_semantic(new_nodes, rel) < old * SHRINK_RATIO
+    if old < 2 or count_semantic(new_nodes, rel) >= old * SHRINK_RATIO:
+        return False
+    new_for_file = [n for n in new_nodes if n.get("_origin", "semantic") == "semantic" and n.get("source_file") == rel]
+    return any(not covered(n, new_for_file) for n in old_nodes
+               if n.get("_origin", "semantic") == "semantic" and n.get("source_file") == rel)
 
 
 def evict_cache(dirs, rels, scratch):
@@ -494,23 +523,26 @@ def cmd_merge(a):
     # old items kept, file unstamped, retried next run. A model that returns a
     # thin subset must not silently erase real facts (pr-check doc 25 to 1).
     # ponytail: nodes between 50 and 100 percent of the old count still replace the file's items, add a per-node union if semantic-runs.jsonl shows losses there. A file omitted every run is retried up to MAX_ATTEMPTS, then backed off until its content changes.
-    #
-    # A file refused on the same content MAX_ATTEMPTS times is not a model fluke:
-    # the file really is that thin (a page cut down to a pointer), so the last
-    # attempt is accepted instead of pinning the stale nodes forever.
     m = load_manifest(a.out)
     files, stuck = m.get("files", {}), m.get("stuck", {})
 
-    def last_attempt(f):
+    def second_extraction(f):
         rec = stuck.get(f)
         return (bool(rec) and rec.get("hash") == sha256(os.path.join(a.scratch, f))
-                and rec.get("reason", "").startswith("shrink guard") and rec.get("attempts", 0) >= MAX_ATTEMPTS - 1)
+                and rec.get("reason", "").startswith("shrink guard") and rec.get("attempts", 0) >= 1)
 
     produced = {n.get("source_file") for n in new_nodes}
-    refused = sorted(f for f in batch & produced if shrinks(g["nodes"], new_nodes, f) and not last_attempt(f))
+    shrunk = sorted(f for f in batch & produced if shrinks(g["nodes"], new_nodes, f))
+    accepted = [f for f in shrunk if second_extraction(f)]
+    refused = [f for f in shrunk if f not in accepted]
+    for f in accepted:
+        print("semantic-merge: shrink guard ACCEPTED %s on its second extraction of unchanged content (new %d vs old %d semantic nodes); no third paid call"
+              % (f, count_semantic(new_nodes, f), count_semantic(g["nodes"], f)), file=sys.stderr)
     reasons = {}
+    counts = {}
     for f in refused:
-        reasons[f] = "shrink guard: new %d vs old %d semantic nodes" % (count_semantic(new_nodes, f), count_semantic(g["nodes"], f))
+        counts[f] = (count_semantic(new_nodes, f), count_semantic(g["nodes"], f))
+        reasons[f] = "shrink guard: new %d vs old %d semantic nodes" % counts[f]
         print("semantic-merge: shrink guard REFUSED %s: new extraction has %d semantic nodes, old has %d; keeping the old ones, file stays unstamped"
               % (f, count_semantic(new_nodes, f), count_semantic(g["nodes"], f)), file=sys.stderr)
     produced -= set(refused)
@@ -577,6 +609,11 @@ def cmd_merge(a):
             rec = {"hash": digest, "attempts": 0, "since": ts}
         rec["attempts"] += 1
         rec["reason"] = reasons[rel]
+        if rel in counts:
+            rec["new_nodes"], rec["old_nodes"] = counts[rel]
+        else:
+            rec.pop("new_nodes", None)
+            rec.pop("old_nodes", None)
         stuck[rel] = rec
         if rec["attempts"] == MAX_ATTEMPTS:
             newly_backed_off.append(rel)
@@ -593,6 +630,7 @@ def cmd_merge(a):
         "name": a.name, "changed_total": plan["changed_total"], "batch": len(batch),
         "deleted": len(plan["deleted"]), "backlog": plan["backlog"], "failed": len(failed),
         "shrink_refused": len(refused), "failed_files": failed, "refused_files": refused,
+        "shrink_accepted_files": accepted,
         "backed_off": len(backed_off_files), "backed_off_files": backed_off_files,
         "nodes_added": nodes_added, "nodes_removed": nodes_removed,
         "edges_added": edges_added, "edges_removed": edges_removed,
@@ -607,6 +645,34 @@ def cmd_merge(a):
     with open(os.path.join(a.out, RUNS), "a", encoding="utf-8") as f:
         f.write(json.dumps(run) + "\n")
     print("merge: " + json.dumps(run))
+
+
+def cmd_held(a):
+    rows = []
+    try:
+        with open(os.path.join(a.out, RUNS), encoding="utf-8") as f:
+            for line in f:
+                try:
+                    r = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(r, dict) and "batch" in r:
+                    rows.append(r)
+        stuck = load_json(os.path.join(a.out, MANIFEST), {"version": 1, "files": {}}).get("stuck", {})
+    except (OSError, ValueError):
+        return
+    if len(rows) < 2:
+        return
+    held = set(rows[-1].get("refused_files") or []) & set(rows[-2].get("refused_files") or [])
+    for rel in sorted(held):
+        rec = stuck.get(rel)
+        if not isinstance(rec, dict) or not str(rec.get("reason", "")).startswith("shrink guard"):
+            continue
+        new, old = rec.get("new_nodes"), rec.get("old_nodes")
+        if not (isinstance(new, int) and isinstance(old, int)):
+            mt = re.search(r"new (\d+) vs old (\d+)", rec["reason"])
+            new, old = (int(mt.group(1)), int(mt.group(2))) if mt else (None, None)
+        print(rel if new is None else "%s new %d vs old %d" % (rel, new, old))
 
 
 def cmd_failrow(a):
@@ -665,11 +731,13 @@ def main():
     st.add_argument("--out", required=True)
     u = sub.add_parser("unstick")
     u.add_argument("--out", required=True)
+    h = sub.add_parser("held")
+    h.add_argument("--out", required=True)
     nf = sub.add_parser("noncontent-filter")
     nf.add_argument("--root", required=True)
     a = ap.parse_args()
     {"plan": cmd_plan, "seed": cmd_seed, "merge": cmd_merge, "failrow": cmd_failrow, "restore": cmd_restore,
-     "prune": cmd_prune, "untracked": cmd_untracked, "status": cmd_status, "unstick": cmd_unstick,
+     "prune": cmd_prune, "untracked": cmd_untracked, "status": cmd_status, "unstick": cmd_unstick, "held": cmd_held,
      "noncontent-filter": cmd_noncontent_filter}[a.cmd](a)
 
 
