@@ -2385,7 +2385,7 @@ describe('signed minerva specs', () => {
     expect(r.out).toEqual({ error: `release operator spec-review: spec ${f.spec} is unreadable` });
   });
 
-  it('spec-review refuses a Reviewed: line that is missing, doubled, of another word or of other bytes', () => {
+  it('shared Reviewed extractor preserves legacy specReview', () => {
     declared();
     const f = rspec();
     const s = sha(f.spec);
@@ -2399,6 +2399,14 @@ describe('signed minerva specs', () => {
     expect(() => review(sctx(), f, [critic(f.spec, 'SPEC FINDINGS 0', { reviewed: [`Reviewed: spec ${other}`] })]))
       .toThrow(new RegExp(`SPEC FINDINGS 0 reviewed ${other}, not the spec's bytes ${s}`));
     expect(readOperatorRecords('spec-review', specEnv())).toEqual([]);
+
+    const v = critic(f.spec, 'SPEC FINDINGS 1', { reviewed: [`Reviewed: spec ${other}`] });
+    writeFileSync(f.spec, `${readFileSync(f.spec, 'utf8')}\n## Critic rounds\n\n- Round 1: one finding, file ${basename(v)}\n  - R1: fixed in §1\n`);
+    const r = review(sctx(), f, [v]);
+    expect(r.reviewed_sha256).toBe(other);
+    expect(r.spec_sha256).toBe(sha(f.spec));
+    expect(r.spec_sha256).not.toBe(other);
+    expect(r.residuals).toBe(1);
   });
 
   it('spec-review refuses a Key: line that is missing, empty of keys, another key set or only in the body, and an unnamed spec', () => {

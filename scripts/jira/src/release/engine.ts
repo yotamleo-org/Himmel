@@ -1,10 +1,12 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { closeSync, constants, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { releaseKeyPath, releaseRoot } from './paths.js';
+import { pinnedSha, reviewedSpecHashes } from './pinned.js';
+export { pinnedSha, type Pinned } from './pinned.js';
 import type { Getter } from './version-writes.js';
 import {
   appendChain, contentSha, loadKey, mintKey, readChain, readSigned, withLock, withLockAsync, writeSigned, type Chain,
@@ -440,34 +442,6 @@ export function readOperatorRecords(kind: OperatorKind | OperatorKind[], env: Re
 
 const fileSha = (p: string) => createHash('sha256').update(readFileSync(p)).digest('hex');
 
-const PINNED_MAX = 16 * 1024 * 1024;
-export type Pinned = { bytes: Buffer; sha256: string } | { missing: true } | { unreadable: true };
-
-// A pinned file is read once from one non-blocking fd: a FIFO, a device, a directory or a file over 16 MiB
-// is unreadable, so a planted path never blocks the reader nor costs it more than 16 MiB.
-export function pinnedSha(path: string): Pinned {
-  let fd: number;
-  try {
-    fd = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK);
-  } catch (e) {
-    return (e as NodeJS.ErrnoException).code === 'ENOENT' ? { missing: true } : { unreadable: true };
-  }
-  try {
-    const st = fstatSync(fd);
-    if (!st.isFile() || st.size > PINNED_MAX) return { unreadable: true };
-    const buf = Buffer.alloc(st.size + 1);
-    let n = 0;
-    for (let r = 1; r > 0 && n < buf.length; n += r) r = readSync(fd, buf, n, buf.length - n, null);
-    if (n > st.size) return { unreadable: true };
-    const bytes = buf.subarray(0, n);
-    return { bytes, sha256: createHash('sha256').update(bytes).digest('hex') };
-  } catch {
-    return { unreadable: true };
-  } finally {
-    closeSync(fd);
-  }
-}
-
 function pinRead(path: string, role: string, verb: string): { bytes: Buffer; sha256: string } {
   const got = pinnedSha(path);
   if ('missing' in got) throw new Error(`${verb}: ${role} not found: ${path}`);
@@ -616,7 +590,6 @@ export function signSpec(ctx: Ctx, o: {
   });
 }
 
-const REVIEWED = /^Reviewed: spec ([0-9a-f]{64})\b/gm;
 const KEY_LINE = /^Keys?:\s*(.+)$/gm;
 const KEY_IN = /[A-Z][A-Z0-9]*-\d+(?!\d)/g;
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -636,9 +609,9 @@ export function specReview(ctx: Ctx, o: { keys: string[]; spec: string; plan?: s
   const { verdicts, residuals, files } = readVerdicts(o.verdicts, verb, { required: ['SPEC'], allowed: ['PLAN'] },
     `${verb}: give exactly one SPEC verdict and at most one PLAN verdict`);
   const specVerdict = files.find((x) => x.kind === 'SPEC') as VerdictFile;
-  const reviewed = [...specVerdict.text.matchAll(REVIEWED)];
+  const reviewed = reviewedSpecHashes(specVerdict.text);
   if (reviewed.length !== 1) throw new Error(`${verb}: ${specVerdict.path} needs exactly one 'Reviewed: spec <sha256>' line`);
-  const reviewedSha = reviewed[0][1];
+  const reviewedSha = reviewed[0];
   for (const x of files) {
     const lines = [...x.text.matchAll(KEY_LINE)];
     const named = lines.length === 1 ? [...new Set(lines[0][1].match(KEY_IN) ?? [])] : [];
