@@ -7,7 +7,7 @@
 # failing case per check (1..6).
 #
 # Platform guard: POSIX bash 3.2+.
-# shellcheck disable=SC2015,SC2034,SC2153,SC2154  # A && B || C is intentional in check()/contains(), as in test-go.sh; stub state and helpers are shared through the sourced lib
+# shellcheck disable=SC2015,SC2034,SC2153,SC2154
 set -uo pipefail
 # shellcheck source=tests/testlib-ready-check.sh
 . "$(cd "$(dirname "$0")" && pwd)/tests/testlib-ready-check.sh"
