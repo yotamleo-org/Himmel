@@ -53,7 +53,8 @@ if [ "${BASH_SOURCE[0]}" = "$0" ] && [ -n "${CLAUDE_PROJECT_DIR:-}" ] \
     && [ -r "$CLAUDE_PROJECT_DIR/marketplace/plugins/himmel-ops/hooks/redirect-webfetch-walled-hosts.sh" ] \
     && jq -e '[(.hooks.PreToolUse // [])[]? | select(((.matcher // "") | strings | split("|") | index("WebFetch")) != null)
         | (.hooks // [])[]? | (.command // "") | strings
-        | select(contains("$CLAUDE_PROJECT_DIR/scripts/hooks/redirect-webfetch-walled-hosts.sh"))] | length > 0' \
+        | select(contains("$CLAUDE_PROJECT_DIR/scripts/hooks/redirect-webfetch-walled-hosts.sh")
+            or contains("${CLAUDE_PROJECT_DIR}/scripts/hooks/redirect-webfetch-walled-hosts.sh"))] | length > 0' \
         "$CLAUDE_PROJECT_DIR/.claude/settings.json" >/dev/null 2>&1; then
     exit 0
 fi
