@@ -13,6 +13,8 @@
 #
 # Rows:
 #   the first publish and a second publish land on graph-data through the whole chain
+#   the same graph again is not pushed (also from a checkout that must fetch the tip
+#     to compare), and a changed graph.json with the same built_at_commit is
 #   the controls: another branch name, a ref that is not the worktree HEAD, a parentless
 #     commit on another ref, and a mixed push naming graph-data are all still refused
 #   a refusal from the chain is named in the output and in the alert, once, and the
@@ -133,6 +135,34 @@ BAD_PUSHES="$(awk '{ for (i = 1; i <= NF; i++) if ($i == "push") break; n = NF -
 check_eq "the push check read the logged pushes" 0 "$AWK_RC"
 check_eq "each publisher push names one remote and one refspec, the literal graph-data ref" "" "$BAD_PUSHES"
 
+echo "the same graph again is not pushed, a changed one is"
+SAME_TIP="$(tip)"
+: > "$TMP/alerts.log"
+# Another commit date: a re-push of the same tree would then be a new commit, as it is
+# live, never the same commit object made within the same second.
+GIT_AUTHOR_DATE="2026-01-01T00:00:00Z" GIT_COMMITTER_DATE="2026-01-01T00:00:00Z" run_publish
+check_eq "an unchanged publish rc 0" 0 "$PUB_RC"
+check_eq "an unchanged publish leaves the tip where it was" "$SAME_TIP" "$(tip)"
+check_has "an unchanged publish says so" "publish-graph-channel: graph-data unchanged at $SAME_TIP (built at $SEED_SHA)" "$PUB_OUT"
+check_lacks "an unchanged publish does not claim a publish" "published graph-data" "$PUB_OUT"
+check_eq "an unchanged publish runs no push" 2 "$(wc -l < "$TMP/pushes.log" | tr -d ' ')"
+check_has "an unchanged publish clears the alert" "clear graph-channel-publish" "$(alerts)"
+printf '{"nodes":[],"edges":[],"built_at_commit":"%s","rev":3}\n' "$SEED_SHA" > "$SRC/graph.json"
+run_publish
+check_eq "a changed graph.json rc 0" 0 "$PUB_RC"
+if [ "$(tip)" != "$SAME_TIP" ]; then ok "a changed graph.json with the same built_at_commit moves the tip"; else bad "tip did not move for a changed graph.json: $PUB_OUT"; fi
+check_has "a changed graph.json is published" "publish-graph-channel: published graph-data $(tip) (built at $SEED_SHA)" "$PUB_OUT"
+
+# A checkout that never held the tip: the publisher fetches it to compare.
+OTHER="$TMP/other"
+git init --quiet "$OTHER"
+OTHER_TIP="$(tip)"
+PUB_RC=0; PUB_OUT="$(GIT_AUTHOR_DATE="2026-01-01T00:00:00Z" GIT_COMMITTER_DATE="2026-01-01T00:00:00Z" \
+    bash "$PUBLISH" --src "$SRC" --repo "$OTHER" --remote "$BARE" 2>&1)" || PUB_RC=$?
+check_eq "an unchanged publish from a checkout without the tip rc 0" 0 "$PUB_RC"
+check_eq "an unchanged publish from a checkout without the tip leaves the tip where it was" "$OTHER_TIP" "$(tip)"
+check_has "an unchanged publish from a checkout without the tip says so" "graph-data unchanged at $OTHER_TIP" "$PUB_OUT"
+
 echo "controls: the flags the publisher sets reach nothing else"
 BAD_RC=0
 BAD_OUT="$(git -C "$WT" push origin HEAD:refs/heads/Bad_Name 2>&1)" || BAD_RC=$?
@@ -172,6 +202,7 @@ check_eq "graph-data did not move (other ref first)" "$GD_TIP" "$(tip)"
 if git -C "$BARE" rev-parse --verify --quiet refs/heads/feat/mixed >/dev/null; then bad "feat/mixed reached the remote (other ref first)"; else ok "feat/mixed is absent from the remote (other ref first)"; fi
 
 echo "a refusal from the chain is named once, with no guessed cause"
+printf '{"nodes":[],"edges":[],"built_at_commit":"%s","rev":4}\n' "$SEED_SHA" > "$SRC/graph.json"
 : > "$TMP/alerts.log"
 printf '#!/usr/bin/env bash\necho "ERROR: remote policy says no (marker-9437)" >&2\nexit 1\n' > "$SHIM"
 run_publish

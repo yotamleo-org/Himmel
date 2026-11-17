@@ -197,7 +197,7 @@ Two ledgers, both written every run:
 
    `action` is one of `skipped | failed | refreshed | published | published-channel | merged` —
    `published-channel` means the run pushed its graph to the `graph-data`
-   branch (see [Sharing the graph](#sharing-the-graph--the-graph-data-branch)).
+   branch, or found the branch already holding that exact graph (see [Sharing the graph](#sharing-the-graph--the-graph-data-branch)).
    For the other actions,
    see `graph-cadence.sh`'s header for the full classification (in short:
    `published`, not `failed`, ONLY when `merge-on-green.sh` exits with a
@@ -355,8 +355,15 @@ hand. The script publishes
 four files to the `graph-data` branch: `graph.json`, `GRAPH_REPORT.md`,
 `manifest.json`, and a one-line `built_at_commit`. Nothing else is
 published: no `graph.html`, no cache, no run log. The branch holds one commit
-with no parent, and each publish replaces it (`--force-with-lease`). The
-ledger row reads `action=published-channel`.
+with no parent, and each publish replaces it (`--force-with-lease`). An
+identical graph is not pushed again: when the four files are byte for byte the
+ones in the `graph-data` tip (the script compares the git trees, and fetches the
+tip first when this checkout does not hold it), the script prints
+`publish-graph-channel: graph-data unchanged at <tip> (built at <commit>)`,
+clears its alert and exits 0 with no push. The comparison is on the bytes, not
+on `built_at_commit`, because a semantic merge can change `graph.json` under the
+same build commit. Either way the ledger row reads `action=published-channel`
+with `graph_head` set to the build commit `graph-data` carries.
 
 The script refuses to publish when:
 

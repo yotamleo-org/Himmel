@@ -152,7 +152,8 @@
 #   merged    -- the full pipeline landed: refreshed, published, merged.
 #   published-channel -- origin/main does not track the graph, and
 #                publish-graph-channel.sh pushed the graph to the graph-data
-#                branch: either --semantic ran clean and promoted, or the live
+#                branch, or found the branch tip already holding the same files
+#                and pushed nothing: either --semantic ran clean and promoted, or the live
 #                graph in the primary graphify-out was newer than the branch and
 #                carried a semantic layer (no model call; step 4a). A blocked or
 #                failed channel publish is `failed`; its error names the file
@@ -818,8 +819,10 @@ _sem_promote_lock_acquire() {
     return 0
 }
 
+# The build commit graph-data carries after a channel publish: from the pushed line, or
+# from the unchanged line when the tip already held this graph and nothing was pushed.
 _published_build_commit() {
-    printf '%s\n' "$1" | sed -n 's/^publish-graph-channel: published graph-data .* (built at \([0-9a-fA-F]\{7,40\}\))$/\1/p' | tail -n 1
+    printf '%s\n' "$1" | sed -En 's/^publish-graph-channel: (published graph-data|graph-data unchanged at) .* \(built at ([0-9a-fA-F]{7,40})\)$/\2/p' | tail -n 1
 }
 
 _publish_live_if_newer() {
