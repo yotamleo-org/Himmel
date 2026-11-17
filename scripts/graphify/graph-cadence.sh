@@ -1231,7 +1231,7 @@ if [ "$SEMANTIC" -eq 1 ]; then
     # claude -p bills an exported API key outside the API lane's accounting: only claude-api may carry the caller env
     # (semantic-update.sh refuses a caller key itself)
     _sem_env=()
-    [ "$SEMANTIC_BACKEND" = "claude-api" ] || _sem_env=(env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u ANTHROPIC_ORG_C_KEY -u LQ_API_KEY)
+    [ "$SEMANTIC_BACKEND" = "claude-api" ] || _sem_env=(env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN "${LLM_API_ORG_KEY_UNSET[@]}" -u LQ_API_KEY)
     _sem_result_file="${WORKTREE_DIR}.sem-result" _sem_claude_api_result_args=()
     rm -f "$_sem_result_file"
     [ "$SEMANTIC_BACKEND" != "claude-api" ] || _sem_claude_api_result_args=(--result-file "$_sem_result_file")

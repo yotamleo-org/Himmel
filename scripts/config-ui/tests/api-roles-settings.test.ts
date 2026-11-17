@@ -49,7 +49,7 @@ test("GET with a partial file returns state partial and the unknown-role error",
   expect(j.roleMap.errors).toContain("unknown-role:jduge");
   expect(j.roleMap.roles).toEqual({ judge: ["B"] });
   expect(j.ROLES).toEqual(["graphify", "judge"]);
-  expect(j.rows.map((r: any) => r.account)).toEqual(["A", "B", "C"]);
+  expect(j.rows.map((r: any) => r.account)).toEqual(["A", "B", "C", "D"]);
   expect(JSON.stringify(j)).not.toContain("org-A");
 });
 
@@ -65,9 +65,9 @@ test("POST saves through the CLI writer with mode 600 and the saved map is read 
 
 test("POST of an unknown account is a 422 naming it, and the file is untouched", async () => {
   const b = boot();
-  const r = await b.post({ judge: ["D"] });
+  const r = await b.post({ judge: ["E"] });
   expect(r.status).toBe(422);
-  expect(r.j.errors).toContain("unknown-account:judge:D");
+  expect(r.j.errors).toContain("unknown-account:judge:E");
   expect(existsSync(b.rolesFile)).toBe(false);
 });
 
@@ -109,7 +109,7 @@ test("an accounts CLI that outlasts the bound makes every row unknown with reaso
   const creditCli = stub(b.dir, "slow-accounts.mjs", "await new Promise((r) => setTimeout(r, 30000));\n");
   const out = await readRoles(b.env, { creditCli, timeoutMs: 300 });
   expect(out.status).toBe(200);
-  expect(out.body.rows).toEqual(["A", "B", "C"].map((account) => ({ account, configured: null, cap_usd: null, tag: "unknown", reason: "timeout" })));
+  expect(out.body.rows).toEqual(["A", "B", "C", "D"].map((account) => ({ account, configured: null, cap_usd: null, tag: "unknown", reason: "timeout" })));
   expect(out.body.roleMap.state).toBe("absent");
 });
 

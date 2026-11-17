@@ -823,13 +823,42 @@ function withC(f) {
 
 // The operator's "BANK-UNKNOWN invalid-account-config" alert: the station config carried a C row before PR 4669 put C
 // in the account set, and one unknown row refuses the whole config (fail-closed, kept). With C known it is gone.
-test('one account row outside A, B and C refuses every pick with invalid-account-config; a C row does not', () => {
+test('one account row outside the account set (E) refuses every pick with invalid-account-config; C and D rows do not', () => {
   const f = fixture();
   withC(f);
+  withD(f);
   assert.equal(pickUsd(f, '0.01').verdict, 'PROCEED');
-  f.config.accounts.D = { organization_id: 'org-d', cycle_id: 'cycle-d', cap_usd: '1.00', reset_at: FAR_RESET };
+  f.config.accounts.E = { organization_id: 'org-e', cycle_id: 'cycle-e', cap_usd: '1.00', reset_at: FAR_RESET };
   f.save();
   assert.deepEqual(pickUsd(f, '0.01'), { verdict: 'BANK-UNKNOWN', reason: 'invalid-account-config' });
+});
+
+function withD(f) {
+  f.config.accounts.D = { organization_id: 'org-d', cycle_id: 'cycle-d', cap_usd: '50.00', reset_at: FAR_RESET };
+  f.snapshot.accounts.D = { ...f.snapshot.accounts.A, organization_id: 'org-d', cycle_id: 'cycle-d', grant_usd: '50.00', remaining_usd: '50.00', expires_at: f.now + 30 };
+  f.save();
+}
+
+test('account D reports its own cap by the explicit name; E is account-required', () => {
+  const f = fixture();
+  withD(f);
+  const run = (account) => spawnSync(process.execPath, [SUT, 'status', '--usd', '1'], { env: { ...f.env, HIMMEL_API_ACCOUNT: account }, encoding: 'utf8' });
+  const d = run('D');
+  assert.equal(d.status, 0, d.stderr);
+  assert.equal(JSON.parse(d.stdout).verdict, 'PROCEED');
+  assert.equal(JSON.parse(run('E').stdout).reason, 'account-required');
+});
+
+test('auto ranks D like A, B and C: a funded D that expires first wins, and --only B,D answers D', () => {
+  const f = fixture();
+  withC(f);
+  withD(f);
+  const pick = (...extra) => JSON.parse(spawnSync(process.execPath, [SUT, 'pick', '--usd', '0.01', ...extra], { env: f.env, encoding: 'utf8' }).stdout);
+  assert.equal(pick().account, 'D');
+  assert.equal(pick('--only', 'B,D').account, 'D');
+  f.snapshot.accounts.D.remaining_usd = '0';
+  f.save();
+  assert.equal(pick().account, 'C');
 });
 
 test('account C reports its own 200.00 cap by the explicit name', () => {
@@ -892,7 +921,7 @@ test('a fresh B short of the budget is refused for a role mapped to B, never ser
 
 test('pick --only with an unknown letter or a bare flag is invalid-arguments', () => {
   const f = fixture();
-  assert.deepEqual(pickOnly(f, '0.01', 'D'), { verdict: 'BANK-UNKNOWN', reason: 'invalid-arguments' });
+  assert.deepEqual(pickOnly(f, '0.01', 'E'), { verdict: 'BANK-UNKNOWN', reason: 'invalid-arguments' });
   const r = spawnSync(process.execPath, [SUT, 'pick', '--usd', '0.01', '--only'], { env: f.env, encoding: 'utf8' });
   assert.deepEqual(JSON.parse(r.stdout), { verdict: 'BANK-UNKNOWN', reason: 'invalid-arguments' });
 });
@@ -905,12 +934,41 @@ const accountsOut = (f) => {
 const tagOf = (f, account = 'A') => accountsOut(f).find((x) => x.account === account);
 const mark = (f, account = 'A') => spawnSync(process.execPath, [SUT, 'exhausted'], { env: { ...f.env, HIMMEL_API_ACCOUNT: account }, encoding: 'utf8' });
 
-test('the accounts CLI tags a funded fresh account room and an absent C not configured', () => {
+test('the accounts CLI tags a funded fresh account room and absent C and D not configured', () => {
   const f = fixture();
   const rows = accountsOut(f);
-  assert.deepEqual(rows.map((x) => x.account), ['A', 'B', 'C']);
-  assert.deepEqual(rows[0], { account: 'A', configured: true, cap_usd: '1.000000', tag: 'room' });
-  assert.deepEqual(rows[2], { account: 'C', configured: false, cap_usd: null, tag: 'not configured' });
+  assert.deepEqual(rows.map((x) => x.account), ['A', 'B', 'C', 'D']);
+  assert.deepEqual(rows[0], { account: 'A', configured: true, cap_usd: '1.000000', tag: 'room', key: 'none' });
+  assert.deepEqual(rows[2], { account: 'C', configured: false, cap_usd: null, tag: 'not configured', key: 'none' });
+  assert.deepEqual(rows[3], { account: 'D', configured: false, cap_usd: null, tag: 'not configured', key: 'none' });
+});
+
+const keyWithUnprintedFifthFromEnd = (l) => `sk-ant-dummy-account-${l.toLowerCase()}-key-0000^${l}k4w`;
+const writeKey = (f, l, key = keyWithUnprintedFifthFromEnd(l)) => writeFileSync(join(f.dir, `key-${l}.env`), `ANTHROPIC_API_KEY=${key}\n`, { mode: 0o600 });
+
+test('the accounts CLI shows each configured key as its last 4 characters, and key: none with no readable key', () => {
+  const f = fixture();
+  withC(f);
+  withD(f);
+  for (const l of ['A', 'C', 'D']) writeKey(f, l);
+  const r = spawnSync(process.execPath, [SUT, 'accounts'], { env: f.env, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  const rows = JSON.parse(r.stdout);
+  for (const l of ['A', 'C', 'D']) assert.equal(rows.find((x) => x.account === l).key, `...${l}k4w`, l);
+  assert.equal(rows.find((x) => x.account === 'B').key, 'none');
+  for (const text of [r.stdout, r.stderr]) {
+    assert.ok(!text.includes('^'), 'the 5th character from the end of a key leaked');
+    for (const l of ['A', 'C', 'D']) assert.ok(!text.includes(keyWithUnprintedFifthFromEnd(l).slice(0, -4)), `the head of key ${l} leaked`);
+  }
+});
+
+test('a key file with no ANTHROPIC_API_KEY line or an empty value shows key: none', () => {
+  const f = fixture();
+  writeFileSync(join(f.dir, 'key-A.env'), 'OTHER=1\n', { mode: 0o600 });
+  writeKey(f, 'B', '');
+  const rows = accountsOut(f);
+  assert.equal(rows.find((x) => x.account === 'A').key, 'none');
+  assert.equal(rows.find((x) => x.account === 'B').key, 'none');
 });
 
 test('the accounts CLI tags a reading older than 24 h stale reading and a missing row no reading', () => {
@@ -958,7 +1016,7 @@ test('the accounts CLI reports an unreadable account config with the reason the 
   const f = fixture();
   writeFileSync(f.paths.config, '{not json');
   assert.deepEqual(accountsOut(f), { accounts: 'unreadable', reason: 'unreadable-state' });
-  f.config.accounts.D = { organization_id: 'org-d', cycle_id: 'cycle-d', cap_usd: '1.00' };
+  f.config.accounts.E = { organization_id: 'org-e', cycle_id: 'cycle-e', cap_usd: '1.00' };
   f.save();
   assert.deepEqual(accountsOut(f), { accounts: 'unreadable', reason: 'invalid-account-config' });
 });

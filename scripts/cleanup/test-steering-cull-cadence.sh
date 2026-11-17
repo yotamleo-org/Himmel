@@ -43,7 +43,7 @@ printf '# rtk\n' > "$HOME/.claude/RTK.md"
 cat > "$W/claude.sh" <<'SH'
 #!/usr/bin/env bash
 { printf 'cwd=%s\n' "$PWD"; printf 'arg=%s\n' "$@"; } >> "$STUB_DIR/argv"
-printf 'key=%s auth=%s orga=%s orgb=%s orgc=%s lq=%s\n' "${ANTHROPIC_API_KEY:-unset}" "${ANTHROPIC_AUTH_TOKEN:-unset}" "${ANTHROPIC_ORG_A_KEY:-unset}" "${ANTHROPIC_ORG_B_KEY:-unset}" "${ANTHROPIC_ORG_C_KEY:-unset}" "${LQ_API_KEY:-unset}" >> "$STUB_DIR/cred"
+printf 'key=%s auth=%s orga=%s orgb=%s orgc=%s orgd=%s lq=%s\n' "${ANTHROPIC_API_KEY:-unset}" "${ANTHROPIC_AUTH_TOKEN:-unset}" "${ANTHROPIC_ORG_A_KEY:-unset}" "${ANTHROPIC_ORG_B_KEY:-unset}" "${ANTHROPIC_ORG_C_KEY:-unset}" "${ANTHROPIC_ORG_D_KEY:-unset}" "${LQ_API_KEY:-unset}" >> "$STUB_DIR/cred"
 cat "$STUB_DIR/claude.json"
 exit "$(cat "$STUB_DIR/claude.rc" 2>/dev/null || echo 0)"
 SH
@@ -212,9 +212,9 @@ printf 'slug=u__himmel__new-chief session=s host=h age=40s status=OK\n' > "$W/sw
 
 # no backend env at all: the default is claude-cli, so the run needs no API lane
 rm -f "$W/cred"
-env -u STEERING_CULL_BACKEND -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT ANTHROPIC_API_KEY=dummy-not-a-key ANTHROPIC_AUTH_TOKEN=dummy-not-a-token ANTHROPIC_ORG_A_KEY=dummy-not-a-key ANTHROPIC_ORG_B_KEY=dummy-not-a-key ANTHROPIC_ORG_C_KEY=dummy-not-a-key LQ_API_KEY=dummy-not-a-key bash "$CAD" run --repo "$P" --proposal-dir "$PROP" >"$W/run8d.out" 2>&1
+env -u STEERING_CULL_BACKEND -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT ANTHROPIC_API_KEY=dummy-not-a-key ANTHROPIC_AUTH_TOKEN=dummy-not-a-token ANTHROPIC_ORG_A_KEY=dummy-not-a-key ANTHROPIC_ORG_B_KEY=dummy-not-a-key ANTHROPIC_ORG_C_KEY=dummy-not-a-key ANTHROPIC_ORG_D_KEY=dummy-not-a-key LQ_API_KEY=dummy-not-a-key bash "$CAD" run --repo "$P" --proposal-dir "$PROP" >"$W/run8d.out" 2>&1
 check "default backend with the lane off exits 0" 0 $?
-[ "$(cat "$W/cred" 2>/dev/null)" = "key=unset auth=unset orga=unset orgb=unset orgc=unset lq=unset" ] && pass "the claude-cli launch drops an exported API key, auth token, all three org keys and LQ key" || fail "the claude-cli launch inherited an API credential: $(cat "$W/cred" 2>/dev/null)"
+[ "$(cat "$W/cred" 2>/dev/null)" = "key=unset auth=unset orga=unset orgb=unset orgc=unset orgd=unset lq=unset" ] && pass "the claude-cli launch drops an exported API key, auth token, all four org keys and LQ key" || fail "the claude-cli launch inherited an API credential: $(cat "$W/cred" 2>/dev/null)"
 hasnt "the default backend never refuses on the API lane" "HIMMEL_API_LANE=on" "$W/run8d.out"
 [ -e "$W/argv" ] && [ ! -e "$W/lane-argv" ] && pass "default backend runs the subscription claude, not the API lane" || fail "default backend did not run on the subscription"
 _argv_flat="$(tr '\n' ' ' < "$W/argv" 2>/dev/null)"
@@ -251,14 +251,27 @@ hasnt "lane argv never carries bypassPermissions" "bypassPermissions" "$W/lane-a
 hasnt "lane argv never carries --tools (the lane adds its own)" "arg=--tools" "$W/lane-argv"
 [ ! -e "$W/argv" ] && pass "api backend never runs the subscription claude" || fail "subscription claude ran on the api backend"
 has "api run still delivers to the chief" "[steering-cull]" "$INB_B"
+rm -f "$W/lane-argv"
+HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=D STEERING_CULL_BACKEND=api bash "$CAD" run --repo "$P" --proposal-dir "$PROP" >"$W/run8dd.out" 2>&1
+check "api backend on account D exits 0" 0 $?
+has "lane runs on account D" "acct=D" "$W/lane-argv"
+rm -f "$W/lane-argv"
+HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=E STEERING_CULL_BACKEND=api bash "$CAD" run --repo "$P" --proposal-dir "$PROP" >"$W/run8ee.out" 2>&1
+check "api backend on account E exits 1" 1 $?
+[ ! -e "$W/lane-argv" ] && pass "account E calls no model" || fail "the lane ran on account E"
 
 bash "$CAD" arm --force --chief test-chief --proposal-dir "$PROP" --backend claude-api >"$W/arm8a.out" 2>&1
 check "arm --backend claude-api without an account is refused" 1 $?
 bash "$CAD" arm --force --chief test-chief --proposal-dir "$PROP" --backend claude-api --api-account auto >"$W/arm8auto.out" 2>&1
 check "arm --backend claude-api --api-account auto is refused (decision 525)" 1 $?
-has "the auto refusal names the accepted accounts" "A|B|C" "$W/arm8auto.out"
+has "the auto refusal names the accepted accounts" "A, B, C or D" "$W/arm8auto.out"
 bash "$CAD" arm --force --chief test-chief --proposal-dir "$PROP" --backend claude-api --api-account C --dry-run >"$W/arm8c.out" 2>&1
 check "arm --backend claude-api --api-account C is accepted" 0 $?
+bash "$CAD" arm --force --chief test-chief --proposal-dir "$PROP" --backend claude-api --api-account D --dry-run >"$W/arm8dd.out" 2>&1
+check "arm --backend claude-api --api-account D is accepted" 0 $?
+bash "$CAD" arm --force --chief test-chief --proposal-dir "$PROP" --backend claude-api --api-account E --dry-run >"$W/arm8ee.out" 2>&1
+check "arm --backend claude-api --api-account E is refused" 1 $?
+has "the E refusal names the accepted accounts" "A, B, C or D" "$W/arm8ee.out"
 bash "$CAD" arm --force --chief test-chief --proposal-dir "$PROP" --backend claude-api --api-account B >"$W/arm8b.out" 2>&1
 check "arm --backend claude-api --api-account B exits 0" 0 $?
 has "runner bakes the backend" "STEERING_CULL_BACKEND=claude-api" "$W/runner/steering-cull-cadence.sh"

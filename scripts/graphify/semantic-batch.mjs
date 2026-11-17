@@ -4,7 +4,7 @@
 // API at 50 % of the list price. One batch per run, one request per chunk prompt; the batch id is persisted in
 // <dir>/batch.json so a later run resumes it and never resubmits.
 //
-//   submit  --dir D --prompts P --account A|B --model M --effort E [--max-tokens N] [--max-usd U]
+//   submit  --dir D --prompts P --account <letter> --model M --effort E [--max-tokens N] [--max-usd U]
 //           P holds one file per chunk prompt, named <sha256 of the prompt>.txt (the custom_id), and optionally a
 //           <sha256>.key sidecar with the shim's chunk-body key (kept in batch.json, written back by results as
 //           R/bodies.json for the replay shim). Refuses when
@@ -98,8 +98,8 @@ function baseUrl() {
 }
 
 async function accountKey(account) {
-  if (!['A', 'B', 'C'].includes(account)) refuse('--account must be A, B or C');
-  const { configuredAccount } = await import(pathToFileURL(join(HERE, '../lib/api-credit-state.mjs')).href);
+  const { ACCOUNTS, ACCOUNTS_TEXT, configuredAccount } = await import(pathToFileURL(join(HERE, '../lib/api-credit-state.mjs')).href);
+  if (!ACCOUNTS.includes(account)) refuse(`--account must be ${ACCOUNTS_TEXT}`);
   const row = configuredAccount({ ...process.env, HIMMEL_API_ACCOUNT: account });
   if (row.verdict) refuse(`roster: ${row.reason}`);
   const file = join(dirname(row.ledger_path), `key-${account}.env`);

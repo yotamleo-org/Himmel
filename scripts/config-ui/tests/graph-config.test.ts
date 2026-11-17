@@ -85,7 +85,7 @@ test("GET with no store answers the adopter, state default, the no-choice senten
   expect(r.j.primary).toBeNull();
   expect(r.j.fallbacks).toEqual([]);
   expect(r.j.worst_case.length).toBeGreaterThan(0);
-  expect(r.j.accounts).toEqual([{ account: "A", configured: true, tag: "no reading" }, { account: "B", configured: false, tag: "not configured" }, { account: "C", configured: true, tag: "no reading" }]);
+  expect(r.j.accounts).toEqual([{ account: "A", configured: true, tag: "no reading" }, { account: "B", configured: false, tag: "not configured" }, { account: "C", configured: true, tag: "no reading" }, { account: "D", configured: false, tag: "not configured" }]);
   expect(r.j.job).toBe("not armed");
   expect(r.text).not.toContain("sk-ant");
   expect(r.text).not.toContain("org-A");
