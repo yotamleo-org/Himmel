@@ -2,6 +2,8 @@
 # Tests for check-added-unwired.sh's test-*.sh branch: a suite outside himmel's scan
 # roots counts as wired when a .github/workflows run step names its repo path (an
 # adopter repo runs its suites from CI, not from scripts/ci/run-shell-tests.sh).
+# The H rows: a test helper is any path the test row of scripts/lint/ticket-ref-allow.tsv
+# matches, the same row the ticket-key gate reads, so one helper passes both gates.
 #
 # Usage: bash scripts/testing/test-check-added-unwired.sh
 # shellcheck disable=SC2015  # ok/no never fail, so A && ok || no is a safe if/else here
@@ -44,8 +46,9 @@ jobs:
 # (outside the scan roots, no scripts/ci/run-shell-tests.sh) and the workflow when given
 mkrepo() {
   local R="$1" wf="$2" sub="${3:-}"
-  mkdir -p "$R/scripts/testing" "$R/wyoming"
+  mkdir -p "$R/scripts/testing" "$R/scripts/lint" "$R/wyoming"
   cp "$CHECK" "$R/scripts/testing/check-added-unwired.sh"
+  cp "$HERE/../lint/ticket-ref-allow.tsv" "$R/scripts/lint/"
   git init -q -b main "$R" || exit 1
   git -C "$R" config user.email t@t || exit 1
   git -C "$R" config user.name t || exit 1
@@ -85,8 +88,9 @@ echo "== R runner classification =="
 # mkrunnerrepo <dir> <header> — a runner whose case header is <header>, then a branch adding scripts/foo/test-y.sh
 mkrunnerrepo() {
   local R="$1" hdr="$2"
-  mkdir -p "$R/scripts/testing" "$R/scripts/handover" "$R/scripts/ci"
+  mkdir -p "$R/scripts/testing" "$R/scripts/lint" "$R/scripts/handover" "$R/scripts/ci"
   cp "$CHECK" "$R/scripts/testing/check-added-unwired.sh"
+  cp "$HERE/../lint/ticket-ref-allow.tsv" "$R/scripts/lint/"
   cp "$HERE/../handover/suite-coverage.sh" "$R/scripts/handover/suite-coverage.sh"
   {
     echo 'SUITE_TIMEOUT=$(_suite_num SUITE_TIMEOUT "${SUITE_TIMEOUT:-600}" 600)'
@@ -113,6 +117,50 @@ R="$T/runner-bad"; mkrunnerrepo "$R" '    scripts/foo/test-y.sh)  # nightly only
 rc=0; out=$(cd "$R" && bash scripts/testing/check-added-unwired.sh HEAD scripts/foo/test-y.sh 2>&1) || rc=$?
 { [ "$rc" -eq 1 ] && grep -q 'UNWIRED scripts/foo/test-y.sh (suite)' <<<"$out" && grep -q 'rc=2: .*unrecognised line' <<<"$out"; } \
   && ok "R2 a helper error that says 'nightly only' is not read as wired, and its line is shown" || no "R2 (rc=$rc): $out"
+
+echo "== H test helpers: one definition with the ticket-key gate =="
+H=HIMMEL
+# mkhelperrepo <dir> <helper path> <suite path or empty> — both gates and the rule list on
+# main, then a branch adding the helper (a fixture key in it) and the suite that sources it
+mkhelperrepo() {
+  local R="$1" helper="$2" suite="$3"
+  mkdir -p "$R/scripts/testing" "$R/scripts/lint" "$R/${helper%/*}"
+  cp "$CHECK" "$R/scripts/testing/check-added-unwired.sh"
+  cp "$HERE/../lint/check-history-comments.sh" "$HERE/../lint/ticket-refs.awk" "$HERE/../lint/ticket-ref-allow.tsv" "$R/scripts/lint/"
+  git init -q -b main "$R" || exit 1
+  git -C "$R" config user.email t@t || exit 1
+  git -C "$R" config user.name t || exit 1
+  git -C "$R" add -A && git -C "$R" commit -q -m "chore: base" || exit 1
+  git -C "$R" checkout -q -b feat/x || exit 1
+  printf 'mk %s-1 Task "To Do"\n' "$H" > "$R/$helper" || exit 1
+  # shellcheck disable=SC2016 # the suite's own source line, expanded when it runs
+  [ -z "$suite" ] || printf '#!/usr/bin/env bash\n. "$(dirname "$0")/%s"\n' "${helper##*/}" > "$R/$suite" || exit 1
+  git -C "$R" add -A && git -C "$R" commit -q -m "feat: add helper" || exit 1
+}
+R="$T/helper-testlib"; mkhelperrepo "$R" scripts/x/testlib-foo.sh scripts/x/test-foo.sh
+rc=0; out=$(cd "$R" && bash scripts/testing/check-added-unwired.sh HEAD scripts/x/testlib-foo.sh 2>&1) || rc=$?
+{ [ "$rc" -eq 0 ] && grep -qx 'ADDED-UNWIRED OK' <<<"$out"; } \
+  && ok "H1 a testlib- helper a suite sources is wired" || no "H1 (rc=$rc): $out"
+rc=0; out=$(cd "$R" && bash scripts/lint/check-history-comments.sh --range main 2>&1) || rc=$?
+[ "$rc" -eq 0 ] && ok "H2 the same testlib- helper's fixture key passes the ticket-key gate" || no "H2 (rc=$rc): $out"
+
+R="$T/helper-underscore"; mkhelperrepo "$R" scripts/x/test_foo_lib.sh scripts/x/test-foo.sh
+rc=0; out=$(cd "$R" && bash scripts/testing/check-added-unwired.sh HEAD scripts/x/test_foo_lib.sh 2>&1) || rc=$?
+{ [ "$rc" -eq 0 ] && grep -qx 'ADDED-UNWIRED OK' <<<"$out"; } \
+  && ok "H3 a test_ helper (a test file to the ticket-key gate) a suite sources is wired" || no "H3 (rc=$rc): $out"
+rc=0; out=$(cd "$R" && bash scripts/lint/check-history-comments.sh --range main 2>&1) || rc=$?
+[ "$rc" -eq 0 ] && ok "H4 the same test_ helper's fixture key passes the ticket-key gate" || no "H4 (rc=$rc): $out"
+
+R="$T/helper-orphan"; mkhelperrepo "$R" scripts/x/testlib-bar.sh ""
+rc=0; out=$(cd "$R" && bash scripts/testing/check-added-unwired.sh HEAD scripts/x/testlib-bar.sh 2>&1) || rc=$?
+{ [ "$rc" -eq 1 ] && grep -q 'UNWIRED scripts/x/testlib-bar.sh (script)' <<<"$out"; } \
+  && ok "H5 a testlib- helper no suite sources is still UNWIRED" || no "H5 (rc=$rc): $out"
+
+R="$T/helper-norow"; mkhelperrepo "$R" scripts/x/testlib-foo.sh scripts/x/test-foo.sh
+awk -F'\t' '$1 != "test"' "$HERE/../lint/ticket-ref-allow.tsv" > "$R/scripts/lint/ticket-ref-allow.tsv"
+rc=0; out=$(cd "$R" && bash scripts/testing/check-added-unwired.sh HEAD scripts/x/testlib-foo.sh 2>&1) || rc=$?
+{ [ "$rc" -eq 2 ] && grep -q 'no test row' <<<"$out"; } \
+  && ok "H6 a rule list without the test row cannot evaluate (exit 2)" || no "H6 (rc=$rc): $out"
 
 echo
 echo "pass=$pass fail=$fail"

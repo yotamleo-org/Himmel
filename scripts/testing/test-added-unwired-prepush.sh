@@ -29,8 +29,9 @@ case "$ENTRY" in *"check-added-unwired.sh --branch-diff") ok "P3 the entry runs 
 
 # Fixture repo: main holds the runner the check reads; a branch adds a script.
 R="$T/repo"
-mkdir -p "$R/scripts/testing" "$R/scripts/ci" "$R/scripts/handover" "$R/scripts/tools"
+mkdir -p "$R/scripts/testing" "$R/scripts/lint" "$R/scripts/ci" "$R/scripts/handover" "$R/scripts/tools"
 cp "$CHECK" "$R/scripts/testing/check-added-unwired.sh"
+cp "$HERE/../lint/ticket-ref-allow.tsv" "$R/scripts/lint/"
 : > "$R/scripts/ci/run-shell-tests.sh"
 git init -q -b main "$R" || exit 1
 git -C "$R" config user.email t@t || exit 1

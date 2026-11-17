@@ -37,20 +37,20 @@
 #          A referencer that is itself an unwired added file does not count, nor does
 #          a .md/.txt/.rst/.adoc doc the same PR adds. A generic TS/JS stem (index, utils) is matched by
 #          directory/stem in an extensionless import, not the bare stem.
-#          A test helper (under a tests?/ or *-cases/ dir, or named testlib-*) is also
-#          wired by a suite that names it; an added suite still unwired does not count.
+#          A test helper (a path the test row of scripts/lint/ticket-ref-allow.tsv
+#          matches, the row the ticket-key gate reads) is also wired by a suite that
+#          names it; an added suite still unwired does not count.
 # Standalone by design (no reference needed): fixtures/testdata paths, ALLOW_PATH_RE.
 #
 # Usage: check-added-unwired.sh <ref> <added-file>...   (run inside the repo)
 #        check-added-unwired.sh --branch-diff           (pre-push: the pushed tip, $PRE_COMMIT_TO_REF
 #          else HEAD, vs its merge-base with $ADDED_UNWIRED_BASE, else origin/main, else
 #          main; the status-A files of that diff. No resolvable base or no added file: exit 0, nothing to judge.)
-# Exit: 0 clean, 1 unwired file(s), 2 usage / unreadable ref.
+# Exit: 0 clean, 1 unwired file(s), 2 usage / unreadable ref / no test row beside the script.
 # Platform guard: POSIX bash 3.2+, no mapfile.
 set -uo pipefail
 
 ALLOW_PATH_RE='(^|/)(fixtures|testdata|node_modules)/'
-TEST_HELPER_RE='(^|/)(tests?|[^/]*-cases)/|(^|/)testlib-[^/]*$'
 
 if [ "${1:-}" = "--branch-diff" ] && [ "$#" -eq 1 ]; then
   bd_tip="${PRE_COMMIT_TO_REF:-HEAD}"
@@ -80,6 +80,10 @@ fi
 ref="$1"; shift
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 top=$(git rev-parse --show-toplevel) || exit 2
+
+# the test-file path pattern the ticket-key gate reads too, so the two gates agree on a helper
+TEST_HELPER_RE=$(awk -F'\t' '$1 == "test" { print $2; exit }' "$HERE/../lint/ticket-ref-allow.tsv" 2>/dev/null)
+[ -n "$TEST_HELPER_RE" ] || { echo "check-added-unwired: no test row in $HERE/../lint/ticket-ref-allow.tsv, cannot evaluate" >&2; exit 2; }
 
 # prim-ok: the suite copies this script into fixture trees that carry no scripts/lib, so it cannot source prim.sh
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/added-unwired.XXXXXX") || exit 2

@@ -35,6 +35,8 @@
 #   41.   a symlink replaced by a regular file is judged
 #   42.   an added ponytail marker is refused in every file type and case; a fixture path
 #         and a deleted line pass; the exempt mode lists whole-file rows
+#   43.   the test row: a testlib- helper and a *-cases/ fixture carry data keys; a list
+#         without exactly one test row exits 2
 #
 # Exit: 0 all passed, 1 any failed. bash 3.2-safe.
 
@@ -574,6 +576,19 @@ OUT="$(printf '%s\n' scripts/a.sh scripts/fixtures/a.sh CHANGELOG.md docs/x.md s
 if [ "$RC" -eq 0 ] && [ "$OUT" = "$(printf 'scripts/fixtures/a.sh\nCHANGELOG.md\nscripts/cr/testdata/x.diff')" ]; then
     pass "exempt mode prints the paths under a whole-file row"
 else fail "exempt mode -> rc=$RC: $OUT"; fi
+
+echo "== 43. the test row: one test-path definition, shared with check-added-unwired.sh =="
+expect_allow "testlib- helper data" scripts/x/testlib-foo.sh "+mk ${H}-1"
+expect_allow "a *-cases/ fixture's data" scripts/guardrails/x-cases/a.sh "+mk ${H}-1"
+expect_block "a whole-line comment in a testlib- helper" scripts/x/testlib-foo.sh "+# ${H}-1 why"
+expect_block "a non-test helper's key" scripts/x/foo-lib.sh "+mk ${H}-1"
+mkdiff docs/x.md "+see ${H}-1"
+awk -F'\t' '$1 != "test"' "$LIST" > "$MR/scripts/lint/ticket-ref-allow.tsv"
+OUT="$(bash "$MRG" --diff "$T/d.diff" 2>&1)"; RC=$?
+if [ "$RC" -eq 2 ] && has "no test row"; then pass "a list without the test row exits 2"; else fail "no test row -> rc=$RC: $OUT"; fi
+{ cat "$LIST"; printf 'test\tdocs/\t\tsecond test row\n'; } > "$MR/scripts/lint/ticket-ref-allow.tsv"
+OUT="$(bash "$MRG" --diff "$T/d.diff" 2>&1)"; RC=$?
+if [ "$RC" -eq 2 ]; then pass "a second test row exits 2"; else fail "second test row -> rc=$RC: $OUT"; fi
 
 echo "== $PASS passed, $FAIL failed =="
 [ "$FAIL" -eq 0 ]
