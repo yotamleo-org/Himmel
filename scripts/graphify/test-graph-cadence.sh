@@ -1811,7 +1811,7 @@ gd_run() {
     out=$(HOME="$GD_HOME" GRAPH_CADENCE_HIMMEL_ROOT="$GD_REPO" GRAPH_CADENCE_LEDGER_ROOT="$GD_LEDGER" \
           GRAPH_CADENCE_ALERT="$FAKE_ALERT" FAKE_ALERT_LOG="$GD_ALERTS" GRAPH_CHANNEL_ALERT="$FAKE_ALERT" \
           GRAPH_CHANNEL_GITLEAKS="$FAKE_GITLEAKS" GRAPH_CADENCE_PAUSE_MARKER="${GD_MARKER:-$GD_HOME/semantic.paused}" \
-          run_gc --threshold 10 2>&1) || rc=$?
+          run_gc --threshold 10 "$@" 2>&1) || rc=$?
     GD_LAST_ACTION=$(tail -n1 "$GD_LEDGER/.graph-cadence/ledger.jsonl" 2>/dev/null | sed -n 's/.*"action":"\([^"]*\)".*/\1/p') || GD_LAST_ACTION=""
 }
 
@@ -1905,6 +1905,50 @@ python3 -c 'import json,sys;p=sys.argv[1];m=json.load(open(p));m["stuck"]={};jso
 gd_run
 assert_contains "a file no longer held clears the held alert" "clear graph-semantic-$GD_SLUG-held" "$(cat "$GD_ALERTS")" # read-sink-ok: test-local scratch log under the suite temp dir
 assert_not_contains "a file no longer held raises no alert" "fail graph-semantic-$GD_SLUG-held" "$(cat "$GD_ALERTS")" # read-sink-ok: test-local scratch log under the suite temp dir
+
+echo "TEST: a --semantic fire whose promoted graph equals the graph-data tip does not push, and records a row C33 accepts"
+gd_repo t11g
+FAKE_SEM11G="$TMP_ROOT/t11g-semantic-fake.sh"
+cat > "$FAKE_SEM11G" <<'FAKESEM11G'
+#!/usr/bin/env bash
+while [ $# -gt 0 ]; do case "$1" in --corpus-root) root="$2" ;; esac; shift; done
+printf '{"version":1,"files":{"README.md":"x"}}' > "$root/graphify-out/semantic-manifest.json"
+FAKESEM11G
+chmod +x "$FAKE_SEM11G"
+GRAPH_CADENCE_SEMANTIC_UPDATE="$FAKE_SEM11G" gd_run --semantic
+assert_eq "first --semantic fire rc=0" "0" "$rc"
+assert_eq "first --semantic fire publishes" "published-channel" "$GD_LAST_ACTION"
+GD_TIP_BEFORE=$(git -C "$GD_BARE" rev-parse --verify --quiet refs/heads/graph-data || echo none)
+assert_eq "first --semantic fire created graph-data" "1" "$([ "$GD_TIP_BEFORE" != none ] && echo 1 || echo 0)"
+# Another commit date, so a re-push would be a new commit rather than the same object.
+GIT_AUTHOR_DATE="2026-01-01T00:00:00Z" GIT_COMMITTER_DATE="2026-01-01T00:00:00Z" \
+    GRAPH_CADENCE_SEMANTIC_UPDATE="$FAKE_SEM11G" gd_run --semantic
+assert_eq "an unchanged --semantic fire rc=0" "0" "$rc"
+assert_eq "an unchanged --semantic fire leaves the graph-data tip where it was" "$GD_TIP_BEFORE" "$(git -C "$GD_BARE" rev-parse refs/heads/graph-data)"
+assert_contains "an unchanged --semantic fire says graph-data is unchanged" "publish-graph-channel: graph-data unchanged at $GD_TIP_BEFORE" "$out"
+LEDGER_LINE11G=$(tail -n1 "$GD_LEDGER/.graph-cadence/ledger.jsonl")
+assert_eq "an unchanged --semantic fire records published-channel" "published-channel" "$GD_LAST_ACTION"
+assert_contains "an unchanged --semantic fire names the published build commit" "\"graph_head\":\"$GD_HEAD\"" "$LEDGER_LINE11G"
+assert_contains "an unchanged --semantic fire records no error" '"error":null' "$LEDGER_LINE11G"
+assert_contains "an unchanged --semantic fire records a timestamp" '"ts":"' "$LEDGER_LINE11G"
+
+echo "TEST: a paused fire whose live graph equals the graph-data tip does not push, and records the build commit"
+gd_repo t11h
+gd_live "$GD_HEAD"
+: > "$GD_HOME/semantic.paused"
+# A channel remote the cadence's own fetch of origin does not refresh: with its
+# remote-tracking ref gone, the status reads graph-data as behind and the fire publishes again.
+git -C "$GD_REPO" remote add channel "$GD_BARE"
+GRAPH_CADENCE_CHANNEL_REMOTE=channel gd_run
+assert_eq "first paused fire publishes" "published-channel" "$GD_LAST_ACTION"
+GD_TIP_BEFORE=$(git -C "$GD_BARE" rev-parse refs/heads/graph-data)
+git -C "$GD_REPO" update-ref -d refs/remotes/channel/graph-data
+GIT_AUTHOR_DATE="2026-01-01T00:00:00Z" GIT_COMMITTER_DATE="2026-01-01T00:00:00Z" GRAPH_CADENCE_CHANNEL_REMOTE=channel gd_run
+assert_eq "an unchanged paused fire rc=0" "0" "$rc"
+assert_eq "an unchanged paused fire leaves the graph-data tip where it was" "$GD_TIP_BEFORE" "$(git -C "$GD_BARE" rev-parse refs/heads/graph-data)"
+assert_contains "an unchanged paused fire says graph-data is unchanged" "publish-graph-channel: graph-data unchanged at $GD_TIP_BEFORE" "$out"
+assert_eq "an unchanged paused fire records published-channel" "published-channel" "$GD_LAST_ACTION"
+assert_contains "an unchanged paused fire names the published build commit" "\"graph_head\":\"$GD_HEAD\"" "$(tail -n1 "$GD_LEDGER/.graph-cadence/ledger.jsonl")"
 
 echo
 echo "===================================="

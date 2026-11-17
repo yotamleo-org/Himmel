@@ -32,7 +32,7 @@
 # account key, roster, credit gate, reserve/settle ledger all stay in the lane;
 # this script never reads or handles a key). A scratch `claude` shim first on
 # PATH adapts graphify's call to the lane's flag allowlist. It needs
-# HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|C|auto in the launching shell,
+# HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=<letter>|auto in the launching shell,
 # refuses a caller ANTHROPIC_API_KEY, and fails closed (exit 2) otherwise,
 # before any call: it never switches itself to the claude-cli backend. Each
 # chunk call then follows the lane's own failure rule: a refusal or a failed
@@ -383,8 +383,11 @@ PY
 fi
 [ "$DRY" -eq 0 ] || { echo "semantic-update: --dry-run, stopping before the bank and the copy"; RESULT_WORD=no-op; exit 0; }
 if [ "$BACKEND" = "claude-api" ]; then
+  # shellcheck source=../lib/llm-backend.sh
+  . "$REPO_ROOT/scripts/lib/llm-backend.sh" \
+    || { echo "semantic-update: refusing claude-api: scripts/lib/llm-backend.sh is missing -- nothing copied" >&2; exit 2; }
   { [ "${HIMMEL_API_LANE:-}" = "on" ] && [ -n "${HIMMEL_API_ACCOUNT:-}" ]; } \
-    || { echo "semantic-update: refusing claude-api: the API lane is off (HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|C|auto are required) -- nothing copied, no claude-cli fallback; no API semantic call is made; the claude-cli backend (the subscription) is the other choice" >&2; exit 2; }
+    || { echo "semantic-update: refusing claude-api: the API lane is off (HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=$LLM_API_ACCOUNTS_TEXT or auto are required) -- nothing copied, no claude-cli fallback; no API semantic call is made; the claude-cli backend (the subscription) is the other choice" >&2; exit 2; }
   [ -z "${ANTHROPIC_API_KEY:-}" ] \
     || { echo "semantic-update: refusing claude-api: a caller ANTHROPIC_API_KEY is set; the lane reads its own per-account key file -- nothing copied" >&2; exit 2; }
   [ "$BATCH_MODE" -eq 1 ] || [ -f "$REPO_ROOT/scripts/api-lane/claude-api.sh" ] \
@@ -395,7 +398,7 @@ if [ "$BACKEND" = "claude-api" ]; then
     AUTO_REPO_DIR="$(git -C "$CORPUS_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || AUTO_REPO_DIR=""
     OWN_REPO_DIR="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || OWN_REPO_DIR=""
     { [ -n "$OWN_REPO_DIR" ] && [ "$AUTO_REPO_DIR" = "$OWN_REPO_DIR" ]; } \
-      || { echo "semantic-update: refusing claude-api: auto routing is for the himmel graph pass only (corpus repo ${AUTO_REPO_DIR:-none}); name HIMMEL_API_ACCOUNT=A, B or C -- nothing copied" >&2; exit 2; }
+      || { echo "semantic-update: refusing claude-api: auto routing is for the himmel graph pass only (corpus repo ${AUTO_REPO_DIR:-none}); name HIMMEL_API_ACCOUNT=$LLM_API_ACCOUNTS_TEXT -- nothing copied" >&2; exit 2; }
     export HIMMEL_API_AUTO_REPO_DIR="$AUTO_REPO_DIR"
   fi
 fi
@@ -417,7 +420,8 @@ BATCH_CLIENT="$HERE/semantic-batch.mjs"
 batch_field() { python3 -c 'import json,sys; v = json.load(open(sys.argv[1])).get(sys.argv[2]); print("" if v is None else v)' "$PENDING/batch.json" "$1"; }
 batch_line() { echo "semantic-update: BATCH id=$(batch_field batch_id) state=$1 requests=$(batch_field request_count) cost_usd=${2:--}"; }
 configured_accounts() {
-  node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" accounts 2>/dev/null | tr '{' '\n' | sed -n 's/^"account":"\([ABC]\)","configured":true.*/\1/p' | paste -sd, - || true
+  node "$REPO_ROOT/scripts/lib/api-credit-state.mjs" accounts 2>/dev/null | tr '{' '\n' \
+    | sed -n "s/^\"account\":\"\\(${LLM_API_ACCOUNT_CLASS}\\)\",\"configured\":true.*/\\1/p" | paste -sd, - || true
 }
 auto_accounts() {
   local r rc=0
@@ -425,7 +429,7 @@ auto_accounts() {
   if [ "$rc" -eq 3 ]; then
     echo "semantic-update: refusing the batch: graph role map broken (${r#refuse }); fix or remove roles.json" >&2; return 3
   fi
-  [[ "$r" =~ ^[ABC](,[ABC])*$ ]] || { echo "semantic-update: refusing the batch: the graph walk gave no account list (rc $rc)" >&2; return 3; }
+  llm_backend_api_account_list_ok "$r" || { echo "semantic-update: refusing the batch: the graph walk gave no account list (rc $rc)" >&2; return 3; }
   printf '%s' "$r"
 }
 # How many accounts the sync shim's breaker counts on auto: the auto accounts that have a roster row (a letter the role
@@ -513,7 +517,7 @@ batch_submit() {
            fi
            echo "semantic-update: refusing the batch: auto routing: no account has room ($pick)" >&2; return 2 ;;
       esac
-      acct="$(printf '%s' "$pick" | sed -n 's/.*"account":"\([ABC]\)".*/\1/p')"
+      acct="$(printf '%s' "$pick" | llm_backend_pick_account)"
       [ -n "$acct" ] || { echo "semantic-update: refusing the batch: auto routing returned no account" >&2; return 2; }
       [ -z "$tried" ] || echo "semantic-update: retrying the batch on account $acct (tried: $tried)" >&2
     fi

@@ -22,7 +22,7 @@ give the answer away. The pass bars are held out in `key/`.
 ## Running a case (opus high, one run per case)
 
 `HIMMEL_BILLED_OK=1 run.sh --out <dir> A B D E` runs each case once on the api lane
-(`scripts/api-lane/claude-api.sh`, account A, B or C named in `HIMMEL_API_ACCOUNT`,
+(`scripts/api-lane/claude-api.sh`, account A, B, C or D named in `HIMMEL_API_ACCOUNT`,
 which `run.sh` requires, `$6` cap per run, `$24` per
 batch). The reviewer gets Read, Glob and Grep only, over a `git archive` export
 of the head with every `CLAUDE.md`, `AGENTS.md`, `.claude/` and `.agents/`

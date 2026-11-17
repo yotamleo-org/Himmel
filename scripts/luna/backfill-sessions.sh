@@ -720,7 +720,7 @@ _find_transcript() { # <session_id>
 # claude-cli. A launcher (the test override or a `claude` binary) is needed either way.
 # The subscription path also needs a passing bank preflight, pinned to the native bank
 # as crystallize-note.sh pins it; `--no-preflight` (a dry run only counts) skips that
-# call, so a dry run never runs one per note. claude-api needs the lane on with a named account (A, B or C; never auto).
+# call, so a dry run never runs one per note. claude-api needs the lane on with a named account (never auto).
 _claude_available() { # [--no-preflight]
     local backend want pf
     [ -n "${CRYSTALLIZE_CLAUDE_BIN:-}" ] || command -v claude >/dev/null 2>&1 || return 1
@@ -743,12 +743,12 @@ _claude_available() { # [--no-preflight]
         claude-cli)
             [ "${1:-}" = "--no-preflight" ] && return 0
             if [ -n "${CRYSTALLIZE_PREFLIGHT_CMD:-}" ]; then
-                pf="$(env -u ANTHROPIC_API_KEY -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u ANTHROPIC_ORG_C_KEY -u LQ_API_KEY \
+                pf="$(env -u ANTHROPIC_API_KEY "${LLM_API_ORG_KEY_UNSET[@]}" -u LQ_API_KEY \
                     -u CADENCE_USAGE_LAUNCH -u CADENCE_USAGE_CALLER_PID -u WORKER_SESSION_LANE \
                     CADENCE_USAGE_LANE=native CADENCE_USAGE_WORKER="backfill:$$" \
                     "$CRYSTALLIZE_PREFLIGHT_CMD" </dev/null 2>/dev/null | tail -n 1)"
             else
-                pf="$(env -u ANTHROPIC_API_KEY -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u ANTHROPIC_ORG_C_KEY -u LQ_API_KEY \
+                pf="$(env -u ANTHROPIC_API_KEY "${LLM_API_ORG_KEY_UNSET[@]}" -u LQ_API_KEY \
                     -u CADENCE_USAGE_LAUNCH -u CADENCE_USAGE_CALLER_PID -u WORKER_SESSION_LANE \
                     CADENCE_USAGE_LANE=native CADENCE_USAGE_WORKER="backfill:$$" \
                     bash "$SCRIPT_DIR/../lib/usage-preflight.sh" </dev/null 2>/dev/null | tail -n 1)"

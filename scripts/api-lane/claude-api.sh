@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# billed-exempt: the API lane launcher, off unless HIMMEL_API_LANE=on; it sources llm-backend.sh for the account list only
 # one-shot API-key launcher.
 # Runs ONE print-mode call billed to the API credit of HIMMEL_API_ACCOUNT, with
 # auth isolation, a roster check, the API bank gate and a reserve/settle ledger entry.
@@ -8,7 +9,7 @@
 # Usage: claude-api.sh -p [prompt] --model M --permission-mode default|plan|acceptEdits|dontAsk|auto \
 #                      --max-budget-usd N [--output-format json] [--effort E]
 #                      [--append-system-prompt-file F]  (no other flags)
-# Env:   HIMMEL_API_LANE=on  HIMMEL_API_ACCOUNT=A|B|C|auto  [HIMMEL_API_KEY_ID=<roster id>]
+# Env:   HIMMEL_API_LANE=on  HIMMEL_API_ACCOUNT=<letter of LLM_API_ACCOUNTS>|auto  [HIMMEL_API_KEY_ID=<roster id>]
 #        ANTHROPIC_API_KEY, or else <state_dir>/key-<account>.env (mode 600); never printed, logged,
 #        exported or passed on a command line. auto = the earliest-expiring grant with room for the budget,
 #        allowed for HIMMEL_API_KIND=graphify, or a kind the role map maps, in the himmel repo.
@@ -40,6 +41,8 @@ set -u
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CLAUDE_BIN="${HIMMEL_API_CLAUDE_BIN:-claude}"
+# shellcheck source=scripts/lib/llm-backend.sh
+. "$REPO/scripts/lib/llm-backend.sh" || { echo "claude-api: cannot load scripts/lib/llm-backend.sh -- refusing" >&2; exit 2; }
 
 # --- failure path state: set before any refusal can fire ---
 KEY="" STATE_DIR="" WORKER_SESSION_NAME="" OUT="" FB_OUT="" PROMPT_FILE="" NO_FB="" POLICY_REPO="" FAILING_OVER=0 STOPPED=0
@@ -74,7 +77,7 @@ trap 'rm -f "$OUT" "$FB_OUT" "$PROMPT_FILE" ${OUT:+"$OUT.timeout"}; release_slot
 redact() {
   local s="$1" v
   [ -z "$KEY" ] || s="${s//"$KEY"/[key]}"
-  for v in ANTHROPIC_API_KEY ANTHROPIC_ORG_A_KEY ANTHROPIC_ORG_B_KEY ANTHROPIC_ORG_C_KEY LQ_API_KEY; do
+  for v in ANTHROPIC_API_KEY $LLM_API_ORG_KEYS LQ_API_KEY; do
     [ -z "${!v:-}" ] || s="${s//"${!v}"/[key]}"
   done
   s="$(printf '%s' "$s" | sed -E 's/sk-ant-[A-Za-z0-9_-]+/[key]/g' | tr '\000-\037' ' ')"
@@ -91,7 +94,8 @@ send_alert() {
     echo "claude-api: alert: one already sent for $KIND_SAFE $class within the hour" >&2
     return 0
   fi
-  case "${HIMMEL_API_ACCOUNT:-}" in A|B|C|auto) account="$HIMMEL_API_ACCOUNT" ;; *) account="?" ;; esac
+  account="?"
+  { llm_backend_api_account_ok "${HIMMEL_API_ACCOUNT:-}" || [ "${HIMMEL_API_ACCOUNT:-}" = auto ]; } && account="$HIMMEL_API_ACCOUNT"
   msg="kind $KIND_SAFE, account $account, $class (exit $rc): $(redact "$reason"); fallback: $(redact "$decision")"
   # the caller's repo names the message, so a salus caller gets the sender's content-free line
   repo_name="$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")"
@@ -126,7 +130,7 @@ graph_alert() {
 
 # the native bank decides the fallback: the subscription usage preflight, never the API gate
 sub_preflight() {
-  env -u ANTHROPIC_API_KEY -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u ANTHROPIC_ORG_C_KEY -u LQ_API_KEY \
+  env -u ANTHROPIC_API_KEY "${LLM_API_ORG_KEY_UNSET[@]}" -u LQ_API_KEY \
     -u CADENCE_USAGE_LAUNCH -u CADENCE_USAGE_CALLER_PID -u WORKER_SESSION_LANE \
     CADENCE_USAGE_LANE=native CADENCE_USAGE_WORKER="sub-fallback:$KIND_SAFE:${JOB_SAFE:-$$}" \
     bash "$REPO/scripts/lib/usage-preflight.sh" </dev/null | tail -n 1
@@ -146,7 +150,7 @@ record_fallback() {
   [ "$rc" -eq 0 ] || outcome=sub-fallback-failed
   sub_cost="$(node "$REPO/scripts/api-lane/outcome.mjs" "$FB_OUT" 2>/dev/null)"
   [[ "$BUDGET" =~ ^[0-9]+(\.[0-9]+)?$ ]] && budget="$BUDGET"
-  case "${HIMMEL_API_ACCOUNT:-}" in A|B|C|auto) account="$HIMMEL_API_ACCOUNT" ;; esac
+  { llm_backend_api_account_ok "${HIMMEL_API_ACCOUNT:-}" || [ "${HIMMEL_API_ACCOUNT:-}" = auto ]; } && account="$HIMMEL_API_ACCOUNT"
   dir="$(launch_dir)"
   mkdir -p "$dir" 2>/dev/null
   printf '{"ts":"%s","job_id":"%s","account":"%s","lane":"sub-fallback","model":"%s","budget_usd":"%s","outcome":"%s","cost_usd":"","sub_cost_usd":"%s","rc":%s,"api_rc":%s,"api_class":"%s","kind":"%s","input_tokens":null,"cache_creation_tokens":null,"cache_read_tokens":null,"branch":"%s","head":"%s","pr":%s}\n' \
@@ -208,7 +212,7 @@ fail_over() {
     { mkdir -p "$dir" && printf '{"ts":%s,"kind":"%s","repo":"%s","job_id":"%s","branch":"%s","head":"%s"}\n' \
       "$(date +%s)" "$KIND_SAFE" "$repo_json" "$JOB_SAFE" "$R_BRANCH" "$R_HEAD" >>"$dir/policy-refusals.jsonl"; } 2>/dev/null ||
       echo "claude-api: warning: policy refusal record not written" >&2
-    echo "claude-api: policy refusal: this call was not sent, and no alert or fallback follows. Name an account (A, B or C) instead of auto" >&2
+    echo "claude-api: policy refusal: this call was not sent, and no alert or fallback follows. Name an account ($LLM_API_ACCOUNTS_TEXT) instead of auto" >&2
     return 0
   fi
   [ "$class" != refused-role-map ] || return 0
@@ -333,7 +337,8 @@ case "${HIMMEL_API_JOB_ID:-x}" in *[!A-Za-z0-9._:-]*) BAD_REQ=1 ;; esac
 
 # --- lane opt-in and credentials (presence checks only) ---
 [ "${HIMMEL_API_LANE:-}" = "on" ] || refuse "api lane is OFF (set HIMMEL_API_LANE=on)"
-case "${HIMMEL_API_ACCOUNT:-}" in A|B|C|auto) ;; *) refuse "HIMMEL_API_ACCOUNT must be A, B or C (or auto)" ;; esac
+llm_backend_api_account_ok "${HIMMEL_API_ACCOUNT:-}" || [ "${HIMMEL_API_ACCOUNT:-}" = auto ] ||
+  refuse "HIMMEL_API_ACCOUNT must be $LLM_API_ACCOUNTS_TEXT (or auto)"
 [ "$HIMMEL_API_ACCOUNT" != auto ] || [ -z "${ANTHROPIC_API_KEY:-}" ] ||
   refuse "auto routing reads the per-account key files; a caller ANTHROPIC_API_KEY cannot follow the pick"
 
@@ -358,19 +363,19 @@ if [ "$HIMMEL_API_ACCOUNT" = auto ] && [ "$KIND" = graphify ]; then
     echo "claude-api: refused: graph role map broken (${ROLE_ACCTS#refuse }); fix or remove roles.json" >&2
     fail_over 2 refused-role-map "graph role map broken"; exit 2
   fi
-  if [ "$_walk_rc" -ne 0 ] || ! [[ "$ROLE_ACCTS" =~ ^[ABC](,[ABC])*$ ]]; then
+  if [ "$_walk_rc" -ne 0 ] || ! llm_backend_api_account_list_ok "$ROLE_ACCTS"; then
     echo "claude-api: refused: the graph walk cannot be read (api-roles.mjs walk graphify exit $_walk_rc)" >&2
     fail_over 2 refused-role-map "graph walk unreadable"; exit 2
   fi
 elif [ "$HIMMEL_API_ACCOUNT" = auto ]; then
   ROLE_ACCTS="$(node "$REPO/scripts/lib/api-roles.mjs" accounts "$KIND")" || ROLE_ACCTS=""
-  case "$ROLE_ACCTS" in *[!ABC,]*) ROLE_ACCTS="" ;; esac
+  llm_backend_api_account_list_ok "$ROLE_ACCTS" || ROLE_ACCTS=""
 fi
 if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
   _auto_here="${HIMMEL_API_AUTO_REPO_DIR:-$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)}"
   _auto_own="$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
   { [ "$KIND" = graphify ] || [ -n "$ROLE_ACCTS" ]; } && [ -n "$_auto_own" ] && [ "$_auto_here" = "$_auto_own" ] ||
-    { POLICY_REPO="${_auto_here:-none}"; refuse_policy "auto routing is for the himmel graph pass only (kind $KIND, repo ${_auto_here:-none}); name HIMMEL_API_ACCOUNT=A, B or C"; }
+    { POLICY_REPO="${_auto_here:-none}"; refuse_policy "auto routing is for the himmel graph pass only (kind $KIND, repo ${_auto_here:-none}); name HIMMEL_API_ACCOUNT=$LLM_API_ACCOUNTS_TEXT"; }
 fi
 CACHE_TTL="${HIMMEL_API_CACHE_TTL:-5m}"
 case "$CACHE_TTL" in 5m|1h) ;; *) refuse "HIMMEL_API_CACHE_TTL must be 5m or 1h" ;; esac
@@ -388,7 +393,7 @@ if [ "$HIMMEL_API_ACCOUNT" = auto ]; then
   case "$PICK" in *'"over_estimate":true'*)
     echo "claude-api: WARN: our own spend estimate has no room left on either account; the call goes on and the API's credit answer decides" >&2 ;;
   esac
-  HIMMEL_API_ACCOUNT="$(printf '%s' "$PICK" | sed -n 's/.*"account":"\([ABC]\)".*/\1/p')"
+  HIMMEL_API_ACCOUNT="$(printf '%s' "$PICK" | llm_backend_pick_account)"
   [ -n "$HIMMEL_API_ACCOUNT" ] || refuse "auto routing returned no account"
 fi
 
@@ -419,7 +424,7 @@ else
   [ -n "$KEY" ] || refuse "key file for account $HIMMEL_API_ACCOUNT has no ANTHROPIC_API_KEY line"
 fi
 [ -z "${HIMMEL_API_KEY_ID:-}" ] || [ "$HIMMEL_API_KEY_ID" = "$ROSTER_KEY" ] ||
-  refuse "key id does not match account $HIMMEL_API_ACCOUNT"
+  refuse "key id does not match account $HIMMEL_API_ACCOUNT ($(llm_backend_key_tail "$KEY"))"
 
 # --- API bank gate: the credit row decides; the native bank is never consulted ---
 JOB_ID="${HIMMEL_API_JOB_ID:-api-$(date +%s)-$$}"
@@ -430,7 +435,7 @@ WORKER_SESSION_NAME="claude-api:$JOB_ID"   # never the inherited CADENCE_USAGE_W
 # lives exactly as long as the call and the cap bounds real concurrency. (The default
 # owner, bank-preflight's own $$ in a command substitution, dies at once.)
 # The slot is released at exit by the EXIT trap above, and before a fallback runs.
-BANK_VERDICT="$(env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u ANTHROPIC_ORG_C_KEY \
+BANK_VERDICT="$(env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY "${LLM_API_ORG_KEY_UNSET[@]}" \
   CADENCE_USAGE_LANE=api CADENCE_USAGE_LAUNCH=1 WORKER_SESSION_LANE=api \
   CADENCE_USAGE_WORKER="$WORKER_SESSION_NAME" CADENCE_USAGE_CALLER_PID="$$" \
   bash "$REPO/scripts/lib/usage-preflight.sh")" || BANK_VERDICT=BANK-UNKNOWN
@@ -540,7 +545,7 @@ trap on_signal TERM INT HUP
 # one-shot API-credit launch; bank gate, reservation and explicit --permission-mode above
 ANTHROPIC_API_KEY="$KEY" env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_PROFILE -u ANTHROPIC_FEDERATION_RULE_ID \
   -u ANTHROPIC_ORGANIZATION_ID -u ANTHROPIC_AUTH_TOKEN -u HIMMEL_API_LANE -u HIMMEL_API_KEY_ID \
-  -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u ANTHROPIC_ORG_C_KEY -u HIMMEL_DOTENV_FILE -u HIMMEL_API_SNAPSHOT_OPTIONAL \
+  "${LLM_API_ORG_KEY_UNSET[@]}" -u HIMMEL_DOTENV_FILE -u HIMMEL_API_SNAPSHOT_OPTIONAL \
   -u LQ_API_KEY -u LQ_API_ACCOUNT -u LQ_API_KEY_ID -u LQ_API_LANE -u HIMMEL_API_KIND -u HIMMEL_API_CACHE_TTL \
   -u HIMMEL_API_BRANCH -u HIMMEL_API_HEAD -u HIMMEL_API_PR \
   -u HIMMEL_API_FALLBACK -u HIMMEL_API_ALERT_CMD -u HIMMEL_API_ALERT_DIR \
@@ -589,7 +594,7 @@ fi
 WHAT=""
 if [ -n "$REJECTED" ]; then
   OUTCOME="$REJECTED"; EXIT_RC=6
-  case "$REJECTED" in exhausted) WHAT="credit exhausted" ;; *) WHAT="API key rejected" ;; esac
+  case "$REJECTED" in exhausted) WHAT="credit exhausted" ;; *) WHAT="API key rejected ($(llm_backend_key_tail "$KEY"))" ;; esac
   if state exhausted >/dev/null 2>&1; then
     echo "claude-api: account $HIMMEL_API_ACCOUNT $WHAT; auto routing rotates to another account" >&2
   else

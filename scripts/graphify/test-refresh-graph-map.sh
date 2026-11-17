@@ -5181,6 +5181,13 @@ STUB
   out=$(walk_run); rc=$?
   [ "$(cat "$WALK/lane-calls" 2>/dev/null | wc -l)" -eq 1 ] \
     && pass "d16 one lane call, not three" || fail "d16 expected one lane call (got $(cat "$WALK/lane-calls" 2>/dev/null | wc -l), rc=$rc): $out"
+  echo "d17: a walk holding D is read: graphify mapped to C and D, A to D configured, each walked account gets one call"
+  printf '{"version":1,"ledger_path":"%s","accounts":{"A":{"organization_id":"org-a","cycle_id":"cycle-a","cap_usd":"50.00"},"B":{"organization_id":"org-b","cycle_id":"cycle-b","cap_usd":"50.00"},"C":{"organization_id":"org-c","cycle_id":"cycle-c","cap_usd":"50.00"},"D":{"organization_id":"org-d","cycle_id":"cycle-d","cap_usd":"50.00"}}}' \
+    "$WALK/ledger.json" > "$WALK/config.json"
+  printf '{"version":1,"roles":{"graphify":["C","D"]}}' > "$WALK/roles.json"
+  out=$(walk_run); rc=$?
+  [ "$(cat "$WALK/lane-calls" 2>/dev/null | wc -l)" -eq 2 ] && ! grep -q 'cannot be read' <<< "$out" \
+    && pass "d17 two lane calls, one per walked account" || fail "d17 expected two lane calls (got $(cat "$WALK/lane-calls" 2>/dev/null | wc -l), rc=$rc): $out"
   git -C "$HERE" worktree remove --force "$WS/walk-wt" >/dev/null 2>&1
 else
   skip "d15 and d16 need a git worktree of this checkout"

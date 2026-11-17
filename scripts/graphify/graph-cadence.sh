@@ -152,8 +152,9 @@
 #   merged    -- the full pipeline landed: refreshed, published, merged.
 #   published-channel -- origin/main does not track the graph, and
 #                publish-graph-channel.sh pushed the graph to the graph-data
-#                branch: either --semantic ran clean and promoted, or the live
-#                graph in the primary graphify-out was newer than the branch and
+#                branch, or found the branch tip already holding the same files
+#                and pushed nothing: either --semantic ran clean and promoted, or
+#                the live graph in the primary graphify-out was newer than the branch and
 #                carried a semantic layer (no model call; step 4a). A blocked or
 #                failed channel publish is `failed`; its error names the file
 #                and the rule, never the matched text. The row's graph_head,
@@ -819,7 +820,7 @@ _sem_promote_lock_acquire() {
 }
 
 _published_build_commit() {
-    printf '%s\n' "$1" | sed -n 's/^publish-graph-channel: published graph-data .* (built at \([0-9a-fA-F]\{7,40\}\))$/\1/p' | tail -n 1
+    printf '%s\n' "$1" | sed -En 's/^publish-graph-channel: (published graph-data|graph-data unchanged at) .* \(built at ([0-9a-fA-F]{7,40})\)$/\2/p' | tail -n 1
 }
 
 _publish_live_if_newer() {
@@ -1230,7 +1231,7 @@ if [ "$SEMANTIC" -eq 1 ]; then
     # claude -p bills an exported API key outside the API lane's accounting: only claude-api may carry the caller env
     # (semantic-update.sh refuses a caller key itself)
     _sem_env=()
-    [ "$SEMANTIC_BACKEND" = "claude-api" ] || _sem_env=(env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u ANTHROPIC_ORG_C_KEY -u LQ_API_KEY)
+    [ "$SEMANTIC_BACKEND" = "claude-api" ] || _sem_env=(env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN "${LLM_API_ORG_KEY_UNSET[@]}" -u LQ_API_KEY)
     _sem_result_file="${WORKTREE_DIR}.sem-result" _sem_claude_api_result_args=()
     rm -f "$_sem_result_file"
     [ "$SEMANTIC_BACKEND" != "claude-api" ] || _sem_claude_api_result_args=(--result-file "$_sem_result_file")
