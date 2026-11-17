@@ -1382,11 +1382,11 @@ C77C="$REPO/c77c"; new_corpus "$C77C"; batch_reset
 out=$(ACCT=auto GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t77c --corpus-root "$C77C" --corpus-class himmel-code --backend claude-api); rc=$?
 [ "$rc" -eq 0 ] && [ "$(batch_accounts)" = "C " ] && pass "T77c one submit, on C" || fail "T77c (rc=$rc) accounts '$(batch_accounts)': $out"
 
-echo "T77g: D configured and graphify mapped to B and D: the walk holding D is read, and the batch submits on D (it expires first)"
-roles_fixture; roles_real_on; printf '{"version":1,"roles":{"graphify":["B","D"]}}' > "$RC/roles.json"
+echo "T77g: D configured and graphify mapped to B and D: the walk holding D is read, and the batch submits on D (A expires first, so an ignored map would pick A)"
+roles_fixture; roles_real_on; printf '{"version":1,"roles":{"graphify":["B","D"]}}' > "$RC/roles.json" || fail "T77g could not write roles.json"
 python3 -c 'import json,sys
 c=json.load(open(sys.argv[1])); c["accounts"]["D"]=dict(c["accounts"]["C"], organization_id="org-d", cycle_id="cycle-d"); json.dump(c, open(sys.argv[1],"w"))
-s=json.load(open(sys.argv[2])); d=dict(s["accounts"]["A"], organization_id="org-d", cycle_id="cycle-d"); d["expires_at"]-=60; s["accounts"]["D"]=d; json.dump(s, open(sys.argv[2],"w"))' "$RC/config.json" "$RC/snapshot.json"
+s=json.load(open(sys.argv[2])); d=dict(s["accounts"]["A"], organization_id="org-d", cycle_id="cycle-d"); a=s["accounts"]["A"]["expires_at"]; d["expires_at"]=a+60; s["accounts"]["D"]=d; s["accounts"]["B"]["expires_at"]=a+120; s["accounts"]["C"]["expires_at"]=a+180; json.dump(s, open(sys.argv[2],"w"))' "$RC/config.json" "$RC/snapshot.json"
 C77G="$REPO/c77g"; new_corpus "$C77G"; batch_reset
 out=$(ACCT=auto GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t77g --corpus-root "$C77G" --corpus-class himmel-code --backend claude-api); rc=$?
 [ "$rc" -eq 0 ] && [ "$(batch_accounts)" = "D " ] && pass "T77g one submit, on D" || fail "T77g (rc=$rc) accounts '$(batch_accounts)': $out"

@@ -252,6 +252,7 @@ roster_row no-file MISSING "roster: no API account is set up here, or its roster
 roster_row not-json 'nope' "roster: no API account is set up here, or its roster cannot be read; none is offered"
 roster_row empty '{"version":1,"ledger_path":"/tmp/c23-ledger.json","accounts":{}}' "roster: the API roster lists no account"
 roster_row e-row '{"version":1,"ledger_path":"/tmp/c23-ledger.json","accounts":{"E":{"organization_id":"o","cycle_id":"c","cap_usd":"1"}}}' "roster: a row in the API roster names a letter outside A, B, C, D, or is damaged; the whole roster is refused, so no account runs"
+has "C23 e-row refuses the whole roster" "$(node "$repo_root/scripts/lib/api-credit-state.mjs" accounts)" '"accounts":"unreadable","reason":"invalid-account-config"'
 roster_row string-row '{"version":1,"ledger_path":"/tmp/c23-ledger.json","accounts":{"A":"x"}}' "roster: a row in the API roster names a letter outside A, B, C, D, or is damaged"
 roster_row identity '{"version":1,"ledger_path":"/tmp/c23-ledger.json","accounts":{"A":{"organization_id":"bad id sk-ant-c23","cycle_id":"c","cap_usd":"1"}}}' "roster: the API roster is refused (invalid-identity); no account runs"
 hasnt "C23 the any-other line names no value" "$(gc check)" "sk-ant"
