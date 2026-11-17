@@ -4,6 +4,7 @@
 #   1. doctor C81-hook-layers WARNs when one hook script is wired from two layers
 #      (user settings, project settings, an enabled plugin) and stays OK for a skip-aware
 #      user entry (guardrail-skip-in-himmel.js) or a skip-aware plugin entry.
+#      A himmel-ops hook script marked to go quiet when the project wires it is not a duplicate.
 #   2. himmelctl still wires the trio at user scope when the user layer has no trio, even if
 #      the project layer wires it; the probe reads a self-skipping user entry as present.
 #   3. the himmel-guard plugin command exits 0 without running when the project layer wires
@@ -81,6 +82,19 @@ user_settings '{}' ',"enabledPlugins":{"himmel-guard@himmel":false}'
 printf '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"bash \\"${CLAUDE_PLUGIN_ROOT}/hooks/block-destructive-commands.sh\\""}]}]}}\n' > "$PLUG/hooks.json"
 out="$(doctor)"
 has "C81 disabled plugin is not a layer -> OK" "$out" "OK   C81-hook-layers"
+echo "== C81: himmel-ops walled-host hook goes quiet when the project wires its shim -> OK; without the marker -> WARN =="
+jq '.hooks.PreToolUse += [{matcher:"WebFetch",hooks:[{type:"command",command:"bash \"$CLAUDE_PROJECT_DIR/scripts/hooks/redirect-webfetch-walled-hosts.sh\""}]}]' "$PROJ/.claude/settings.json" > "$WORK/proj-wf.json" && cp "$WORK/proj-wf.json" "$PROJ/.claude/settings.json"
+OPS="$WORK/claude/plugins/cache/himmel/himmel-ops/0.0.1/hooks"
+mkdir -p "$OPS"
+cp "$ROOT/marketplace/plugins/himmel-ops/hooks/hooks.json" "$ROOT/marketplace/plugins/himmel-ops/hooks/redirect-webfetch-walled-hosts.sh" "$OPS/"
+user_settings '{}' ',"enabledPlugins":{"himmel-ops@himmel":true}'
+out="$(doctor)"
+has "C81 quiet-marked himmel-ops walled-host hook -> OK" "$out" "OK   C81-hook-layers"
+printf '#!/bin/sh\nexit 0\n' > "$OPS/redirect-webfetch-walled-hosts.sh"
+out="$(doctor)"
+has "C81 walled-host hook without the marker -> WARN" "$out" "WARN C81-hook-layers"
+has "C81 names redirect-webfetch-walled-hosts.sh" "$out" "redirect-webfetch-walled-hosts.sh"
+user_settings '{}'
 echo "== C81: the WARN prints the guardrail-block-global remedy =="
 user_settings "$(jq -cn --arg c "$(raw_cmd block-edit-on-main.sh)" '{PreToolUse:[{matcher:"Edit",hooks:[{type:"command",command:$c}]}]}')"
 out="$(doctor)"

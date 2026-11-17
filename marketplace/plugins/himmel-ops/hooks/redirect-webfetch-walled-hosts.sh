@@ -16,8 +16,9 @@
 #    minus its last path part). The host list is the one line of that conf and
 #    the deny names the paste-ready, quoted `bash <fetcher> '<url>'`. An
 #    installed plugin sits in the plugin cache, not the checkout, so the checkout
-#    is found from that record. Files under the PROJECT ($CLAUDE_PROJECT_DIR) are
-#    never read: a guard a project file can reroute or empty is a hole. An empty
+#    is found from that record. Files under the PROJECT ($CLAUDE_PROJECT_DIR) never
+#    pick the mode or the host list: a guard a project file can reroute or empty
+#    is a hole. An empty
 #    conf line keeps the embedded list.
 #  - adopter: no such files. The host list is the embedded WALLED_HOSTS below
 #    (kept equal to the conf line by this plugin's suite) and the deny names no
@@ -45,6 +46,21 @@ set -uo pipefail
 
 [ "${HIMMEL_WEBFETCH_WALLED_OK:-0}" = "1" ] && exit 0
 command -v jq >/dev/null 2>&1 || exit 0
+
+# Run as the plugin lane (not sourced by the shim) inside a himmel checkout whose
+# project settings wire the shim on WebFetch: the shim runs this same rule, so
+# this lane exits quiet and the rule runs once per call. Doctor C81 reads the
+# marker line below and stops counting the pair as a double run.
+# c81: quiet when the project settings wire this hook
+if [ "${BASH_SOURCE[0]}" = "$0" ] && [ -n "${CLAUDE_PROJECT_DIR:-}" ] \
+    && [ -f "$CLAUDE_PROJECT_DIR/scripts/hooks/redirect-webfetch-walled-hosts.sh" ] \
+    && [ -r "$CLAUDE_PROJECT_DIR/marketplace/plugins/himmel-ops/hooks/redirect-webfetch-walled-hosts.sh" ] \
+    && jq -e '[(.hooks.PreToolUse // [])[]? | select(((.matcher // "") | strings | split("|") | index("WebFetch")) != null)
+        | (.hooks // [])[]? | (.command // "") | strings
+        | select(contains("$CLAUDE_PROJECT_DIR/scripts/hooks/redirect-webfetch-walled-hosts.sh"))] | length > 0' \
+        "$CLAUDE_PROJECT_DIR/.claude/settings.json" >/dev/null 2>&1; then
+    exit 0
+fi
 
 WALLED_HOSTS="x.com twitter.com mobile.twitter.com instagram.com reddit.com redd.it"
 
