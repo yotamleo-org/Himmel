@@ -241,24 +241,24 @@ git init -q --initial-branch=main "$REPO" 2>/dev/null || git init -q "$REPO"
     git remote add origin "$BARE"
     git push -q origin main
 )
-FAKE_CADENCE="$TMP_ROOT/t4-cadence-fake.sh"; cadence_log="$TMP_ROOT/t4-cadence.log"
+FAKE_CADENCE="$TMP_ROOT/t4-cadence-fake.sh"; CADENCE_LOG="$TMP_ROOT/t4-cadence.log"
 cat > "$FAKE_CADENCE" <<FAKECAD
 #!/usr/bin/env bash
-echo "cadence-call: \$*" >> "$cadence_log"
+echo "cadence-call: \$*" >> "$CADENCE_LOG"
 exit "\${FAKE_CADENCE_RC:-0}"
 FAKECAD
 chmod +x "$FAKE_CADENCE"
-: > "$cadence_log"
+: > "$CADENCE_LOG"
 rc=0
 out=$(cd "$REPO" && FORGE=github GH_CMD="$FAKE_GH" GRAPH_PUBLISH_CADENCE="$FAKE_CADENCE" bash "$PUBLISH" --dry-run --no-fetch 2>&1) || rc=$?
 assert_eq        "untracked-graph --dry-run rc=0" "0" "$rc"
 assert_contains  "untracked-graph message says the graph publishes to graph-data" "publishes to the graph-data branch" "$out"
 assert_contains  "untracked-graph --dry-run prints the command it would run" "bash $FAKE_CADENCE" "$out"
-assert_eq        "untracked-graph --dry-run runs nothing" "" "$(cat "$cadence_log")"
+assert_eq        "untracked-graph --dry-run runs nothing" "" "$(cat "$CADENCE_LOG")" # read-sink-ok: test-local scratch log under the suite temp dir
 rc=0
 out=$(cd "$REPO" && FORGE=github GH_CMD="$FAKE_GH" GRAPH_PUBLISH_CADENCE="$FAKE_CADENCE" bash "$PUBLISH" 2>&1) || rc=$?
 assert_eq        "untracked-graph rc=0 (the cadence's rc)" "0" "$rc"
-assert_eq        "untracked-graph runs graph-cadence once with no arguments" "cadence-call: " "$(cat "$cadence_log")"
+assert_eq        "untracked-graph runs graph-cadence once with no arguments" "cadence-call: " "$(cat "$CADENCE_LOG")" # read-sink-ok: test-local scratch log under the suite temp dir
 rc=0
 out=$(cd "$REPO" && FORGE=github GH_CMD="$FAKE_GH" GRAPH_PUBLISH_CADENCE="$FAKE_CADENCE" FAKE_CADENCE_RC=3 bash "$PUBLISH" 2>&1) || rc=$?
 assert_eq        "untracked-graph returns the cadence's non-zero rc" "3" "$rc"
