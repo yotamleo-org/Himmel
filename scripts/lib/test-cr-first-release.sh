@@ -262,6 +262,7 @@ has "$TMP/out-RL11-pending-reviewer-hold" '^CR-FIRST HOLD codex not-yet-run ' "R
 eq "$(deletes)/$(posts)" 0/0 "RL11 ci-quick pending + reviewer hold: no label"
 reset; checks pending; threads "$(thread false a/one.sh 10)"; run RL11-pending-thread
 has "$TMP/out-RL11-pending-thread" '^CR-FIRST HOLD 1 unresolved CodeRabbit thread' "RL11 ci-quick pending + unresolved thread: the thread hold stands"
+eq "$(deletes)/$(posts)" 0/0 "RL11 ci-quick pending + unresolved thread: no label"
 reset; checks pending '[{"name":"lint","status":"completed","conclusion":"failure","completed_at":"2026-10-23T10:03:00Z"}]'; run RL11-pending-red
 has "$TMP/out-RL11-pending-red" '^CR-FIRST HOLD cheap-red ' "RL11 ci-quick pending + a failed cheap job: HOLD cheap-red"
 eq "$(deletes)/$(posts)" 0/0 "RL11 ci-quick pending + a failed cheap job: no label"
@@ -272,8 +273,10 @@ jq -e '.cheap_settled_at == "2026-10-23T10:09:00Z"' "$CR_FIRST_LEDGER" >/dev/nul
   && ok "RL11 ci-quick green: cheap_settled_at is the last cheap completion" || bad "RL11 ci-quick green: cheap_settled_at"
 reset; checks none; run R2-cheap-not-reported
 has "$TMP/out-R2-cheap-not-reported" '^CR-FIRST RELEASE ' "R2 ci-quick not reported yet, reviewers passed: RELEASE"
+eq "$(deletes)/$(posts)" 1/1 "R2 ci-quick not reported yet: one pair"
 reset; checks skipped; run R2-cheap-skipped
 has "$TMP/out-R2-cheap-skipped" '^CR-FIRST RELEASE ' "R2 ci-quick skipped, reviewers passed: RELEASE"
+eq "$(deletes)/$(posts)" 1/1 "R2 ci-quick skipped: one pair"
 reset; checks failure; run R3-cheap-red
 has "$TMP/out-R3-cheap-red" '^CR-FIRST HOLD cheap-red ' "R3 cheap side red: HOLD cheap-red"
 eq "$(deletes)/$(posts)" 0/0 "R3 cheap side red: no label"
@@ -285,12 +288,16 @@ GO_GREEN='{"id":201,"name":"lint","status":"completed","conclusion":"success","s
 reset; checks success "[$CHEAP_CANCELLED,$GO_GREEN]"; run cancelled-then-green
 has "$TMP/out-cancelled-then-green" '^CR-FIRST RELEASE ' "cancelled cheap check-runs then the go run's green ones of the same names: reads green, RELEASE"
 hasnt "$TMP/out-cancelled-then-green" 'cheap-red' "cancelled then green: no cheap-red line"
+eq "$(deletes)/$(posts)" 1/1 "cancelled then green: one pair"
 reset; checks success "[$GO_GREEN,$CHEAP_CANCELLED]"; run green-listed-before-cancelled
 has "$TMP/out-green-listed-before-cancelled" '^CR-FIRST RELEASE ' "the green run listed before the older cancelled one still reads green (id decides, not position)"
+eq "$(deletes)/$(posts)" 1/1 "green listed before cancelled: one pair"
 reset; checks success '[{"id":301,"name":"lint","status":"completed","conclusion":"success","completed_at":"2026-10-23T10:03:00Z"},{"id":302,"name":"lint","status":"completed","conclusion":"cancelled","completed_at":"2026-10-23T10:05:00Z"}]'; run green-then-cancelled
 has "$TMP/out-green-then-cancelled" '^CR-FIRST HOLD cheap-red ' "control: a green run then a cancelled one of the same name is cheap-red"
+eq "$(deletes)/$(posts)" 0/0 "control: green then cancelled: no label"
 reset; checks success '[{"id":401,"name":"lint","status":"completed","conclusion":"cancelled","completed_at":"2026-10-23T10:05:00Z"},{"id":402,"name":"secret-scan","status":"completed","conclusion":"success","completed_at":"2026-10-23T10:06:00Z"}]'; run cancelled-alone
 has "$TMP/out-cancelled-alone" '^CR-FIRST HOLD cheap-red ' "control: a cancelled cheap check with no later run of its name is cheap-red"
+eq "$(deletes)/$(posts)" 0/0 "control: cancelled alone: no label"
 reset; jq -c '. + [{event:"labeled",label:{name:"ci:go"},created_at:"2026-10-23T10:05:00Z"}]' "$S/events.json" > "$S/e.tmp" && mv "$S/e.tmp" "$S/events.json"
 printf '{"pr":42,"head":"%s","reviewers":[]}\n' "$HEAD1" | bash "$SCRIPT_DIR/../cr/cr-trigger-ledger.sh" append
 checks cancelled "[$CHEAP_CANCELLED]"; run released-then-cheap-cancelled
