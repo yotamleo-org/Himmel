@@ -152,6 +152,10 @@ function copyModule(source) {
 }
 function ensureCliCopy() {
   if (PRIMARY_CLI) return;
+  // the one named prerequisite of the credential and port groups: the real built primary Jira CLI, which a clean checkout does not have
+  if (!existsSync(ORIGINAL_CLI)) {
+    throw new Error(`PREREQUISITE-ABSENT: the built primary Jira CLI is required at ${ORIGINAL_CLI} (owner: the primary checkout's scripts/jira build, npm ci && npm run build; READINESS_PRIMARY_CLI names another build). This suite has no stand-in CLI and no skip.`);
+  }
   const cliHome = scratch();
   realRepo = primaryCheckout();
   cliRepo = join(cliHome.root, 'cli-repo');
@@ -1439,6 +1443,46 @@ describe('C0 envelope', () => {
       assert.equal(w.owner(), 'successor-token-c0env1', 'finish never releases a successor');
       assert.equal(effects(w), before);
       assert.ok(!JSON.stringify([refused, fin]).includes('successor-token'), 'the successor token is not relayed');
+    });
+  });
+
+  // R2-6: once adoption is required before inspect, the lost-lease row can no longer read the copied labels back through the
+  // server. The copy port itself is the in-memory state and is read directly (not through the adoption gate), so a refused
+  // act's zero effect on the copy stays pinned by an oracle independent of the code under test; the adopted twin shows the
+  // same oracle does see a real change.
+  describe('R2-6: the refused act leaves the in-memory copy as it was (oracle independent of the adoption gate)', () => {
+    const setup = async () => {
+      const mod = await load();
+      const w = generatedWorld();
+      assert.equal(w.adopt().status, 0);
+      const startup = mod.loadStartup(w.startupPath);
+      const port = mod.createCopyPort(startup);
+      const deps = { env: { PATH: process.env.PATH, HOME: w.home } };
+      const act = (present) => mod.guardedLabel(startup, port, ENV_KEY, present, Date.now() + 20000, deps);
+      return { mod, w, port, act };
+    };
+
+    test('a lost lease: the removal is refused and the copy still holds the label it held before', async () => {
+      const { w, port, act } = await setup();
+      assert.deepEqual(await port.labelsNow(), []);
+      assert.equal((await act(true)).ok, true);
+      assert.deepEqual(await port.labelsNow(), [LABEL]);
+      assert.equal(w.drop(w.owner()).status, 0);
+      assert.equal(w.hold('successor-token-r26').status, 0);
+      const before = effects(w);
+      const refused = await act(false);
+      assert.equal(refused.code, 'not-adopted');
+      assert.deepEqual(await port.labelsNow(), [LABEL], 'the refused act did not remove the label from the copy');
+      assert.equal(effects(w), before);
+      assert.equal(w.owner(), 'successor-token-r26', 'the successor still holds the lease');
+    });
+
+    test('the adopted twin: the same removal takes effect, so the oracle does see a change', async () => {
+      const { port, act } = await setup();
+      assert.equal((await act(true)).ok, true);
+      assert.deepEqual(await port.labelsNow(), [LABEL]);
+      assert.equal((await act(false)).ok, true);
+      assert.deepEqual(await port.labelsNow(), []);
     });
   });
 
