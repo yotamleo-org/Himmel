@@ -445,14 +445,14 @@ autocommit_key_on() {
 autocommit_gates_open() { autocommit_key_on && ! vault_has_sync "$1"; }
 file_mtime() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null; }
 
-foreign_staged() { # <vault> <our paths, NUL> <paths we unstaged again, NUL>
-    local s p ours
+foreign_staged() {
+    local vault="$1" our_paths_file="$2" unstaged_paths_file="$3" s p ours
     while IFS= read -r -d '' s; do
         ours=0
-        while IFS= read -r -d '' p; do [ "$p" != "$s" ] || { ours=1; break; }; done <"$2"
-        [ "$ours" = 0 ] || while IFS= read -r -d '' p; do [ "$p" != "$s" ] || { ours=0; break; }; done <"$3"
+        while IFS= read -r -d '' p; do [ "$p" != "$s" ] || { ours=1; break; }; done <"$our_paths_file"
+        [ "$ours" = 0 ] || while IFS= read -r -d '' p; do [ "$p" != "$s" ] || { ours=0; break; }; done <"$unstaged_paths_file"
         [ "$ours" = 1 ] || return 0
-    done < <(git -C "$1" diff --cached --no-renames --name-only -z)
+    done < <(git -C "$vault" diff --cached --no-renames --name-only -z)
     return 1
 }
 commit_or_index_empty() {

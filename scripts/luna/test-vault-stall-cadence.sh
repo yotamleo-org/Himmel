@@ -781,7 +781,6 @@ run_ac() { LUNA_VAULT_AUTOCOMMIT=1 run_sut; }
 # A git shim that runs the real git, then acts once on `add` or `commit`:
 #   SHIM_BEFORE_COMMIT=1  run the real commit first, so ours finds nothing to commit
 #   SHIM_TOUCH=<path>     write that path after the add (a writer mid-run)
-#   SHIM_STAGE=<path>     stage that vault path after the add (another writer staging)
 #   SHIM_REMOTE_AFTER=add|commit   add a remote after that subcommand
 mkshim() {
     mkdir -p "$TMP/shim"

@@ -1061,7 +1061,6 @@ kill -0 "$old_pid" 2>/dev/null || fail "(z6) lock held: the server was stopped u
 rm -rf "$xdg/qmd/recycle.lock"; reap_new
 echo "ok (z6): a lock held by a live recycler -> no action within the bound, non-zero"
 
-# ---- (z7) a STALE lock is cleared, never taken over: non-zero, nothing signalled
 stale_case 0
 mkdir "$xdg/qmd/recycle.lock"
 echo $(( $(date +%s) - 300 )) > "$xdg/qmd/recycle.lock/at"
@@ -1074,7 +1073,6 @@ case "$out" in *"cleared a stale recycle lock"*) ;; *) fail "(z7) stale lock: no
 reap_new
 echo "ok (z7): a stale recycle lock is cleared and the run stops non-zero without signalling"
 
-# ---- (z7b) our exit trap leaves a lock another pid now owns ------------------
 stale_case 0
 run_stale QMD_MOCK_STEAL_LOCK=1
 [ -d "$xdg/qmd/recycle.lock" ] || fail "(z7b) foreign owner: our trap removed a lock another pid owns ($out)"
