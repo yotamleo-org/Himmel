@@ -3266,6 +3266,8 @@ _readiness_release() {
 }
 _readiness_refuse() { echo "headed-arm-worker: refusing the readiness role: $*" >&2; _readiness_cleanup; exit 2; }
 if [ "$READINESS" -eq 1 ]; then
+    # This role acquires and releases only its own lease, regardless of ambient overrides.
+    unset -v QUEUE_LOCK_FORCE_RELEASE QUEUE_LOCK_TAKEOVER QUEUE_LOCK_SESSION_SCOPE
     READINESS_QL="$(cd -P "$HERE/.." && pwd -P)/queue-lock.sh"
     READINESS_PORT="${WORKER_SESSION_READINESS_PORT:-copy}"
     READINESS_PRIMARY_CLI="${WORKER_SESSION_READINESS_PRIMARY_CLI:-}"

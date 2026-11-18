@@ -6417,6 +6417,23 @@ check "17s successor: the launcher cleanup never releases a successor's lock (it
   "$(rs_status):$(jq -r .session "$(rs_lockdir)/owner.json" 2>/dev/null || true)" "status: FRESH:successor-token-for-test"
 check "17s successor: the launcher's own attempt directory is still removed" "$(rs_attempts)" "0"
 
+rs_launch HEADED_ARM_WORKER_TARGET="$RS/successor-target.sh" QUEUE_LOCK_FORCE_RELEASE=1 QUEUE_LOCK_SESSION_SCOPE=foreign-launcher
+check "17s ambient force release never releases the successor's lock" \
+  "$(rs_status):$(jq -r .session "$(rs_lockdir)/owner.json" 2>/dev/null || true)" "status: FRESH:successor-token-for-test"
+check "17s ambient force release still removes only the launcher's attempt directory" "$(rs_attempts)" "0"
+
+rs_next=$((rs_n + 1))
+rs_held_doc="$RS/hdir/u/r/readiness-v1.$rs_next.0.md"
+fx_brief "# held readiness fixture" > "$rs_held_doc"
+mkdir -p "$RS/held-runtime"; chmod 700 "$RS/held-runtime"
+env HANDOVER_DIR="$RS/hdir" XDG_RUNTIME_DIR="$RS/held-runtime" QUEUE_LOCK_ON_BEHALF=1 \
+  bash "$RS_QL" acquire "$rs_held_doc" foreign-readiness-token >/dev/null 2>&1
+rs_launch QUEUE_LOCK_TAKEOVER=1 QUEUE_LOCK_FORCE_RELEASE=1
+check "17s ambient takeover refuses an already held lease" "$([ "$RS_RC" -ne 0 ] && echo yes || echo no)" "yes"
+check "17s ambient takeover never reaches konsole" "$([ -e "$RS_D/record" ] && echo launched || echo no)" "no"
+check "17s ambient takeover preserves the original holder" \
+  "$(rs_status):$(jq -r .session "$(rs_lockdir)/owner.json" 2>/dev/null || true)" "status: FRESH:foreign-readiness-token"
+
 echo "---"
 if [ "$fails" -eq 0 ]; then
   echo "PASS - test-headed-arm-worker.sh"
