@@ -4628,7 +4628,14 @@ test("B1 group reset in-place and none: the in-place earlier paths are all curre
   }
   expect(rows.filter(r => r.row === "reset")).toHaveLength(1); expect(f.decision).not.toBeNull(); expect(existsSync(f.decision)).toBe(true);
   expect(current.map(r => [r.critic, r.round]).sort()).toEqual([["plan", 1], ["plan", 2], ["plan", 3], ["spec", 1], ["spec", 2], ["spec", 3]]);
-  expect(await route.roundState(f.specsRoot, f.anchor)).toMatchObject({ epoch: 1, spec: 3, plan: 3, invalid: [] });
+  const state = await route.roundState(f.specsRoot, f.anchor);
+  expect(state).toMatchObject({ epoch: 1, spec: 3, plan: 3, next: "none", invalid: [], critical_open: [] });
+  for (const kind of ["spec", "plan"]) {
+    const latest = current.find(r => r.critic === kind && r.round === 3);
+    expect(latest.findings.length).toBeGreaterThan(0);
+    expect(latest.findings.every((finding: any) => ["medium", "minor"].includes(finding.severity))).toBe(true);
+    expect(latest.unrated_ids ?? []).toEqual([]);
+  }
   expect(f.spec.endsWith("-epoch1.md")).toBe(false);
   const lint = b1Lint(f); expect(lint.gate.out).toContain("minerva-spec-gate: ok"); expect(lint.trace.out).toContain("minerva-trace-lint: ok");
   const scratch2 = realpathSync(root()); const sel = b1Selector({ builder: "group", scratchRoot: scratch2, reset: "in-place" });
@@ -4790,6 +4797,14 @@ test("B1 generic options: declarations, specStem, quote shapes, real closure wit
       [full(1), full(2), full(3), ret("spec", 4, REG, { closure: true, rewrite: { spec: specOf("A changed control line for the console marker.") } })]);
     expect(process.env.HIMMEL_CONSOLE).toBe("0");
   } finally { if (before === undefined) delete process.env.HIMMEL_CONSOLE; else process.env.HIMMEL_CONSOLE = before; }
+  for (const prior of [undefined, "0"]) {
+    if (prior === undefined) delete process.env.HIMMEL_CONSOLE; else process.env.HIMMEL_CONSOLE = prior;
+    try {
+      await expect(run({ steps: [{ after: 2, step: "override", findings: ["not-open"], why: "failure control", chief: "fixture-chief" }] },
+        [full(1), full(2), full(3)])).rejects.toThrow("not an open blocking finding");
+      expect(process.env.HIMMEL_CONSOLE, "a throwing helper restores the prior console marker").toBe(prior);
+    } finally { if (before === undefined) delete process.env.HIMMEL_CONSOLE; else process.env.HIMMEL_CONSOLE = before; }
+  }
 }, S1B);
 
 test("G0a v1 control: the shipped --key path refuses the real-shaped group header, beside a control that the same argv accepts a declared single", async () => {

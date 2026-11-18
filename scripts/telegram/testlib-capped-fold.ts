@@ -173,9 +173,8 @@ export async function buildGroupFixture(scratchRoot: string, opts: GroupOptions 
   const decision = reset === 'none' ? null : join(await realpath(scratchRoot), 'specs', 'decisions', 'verbatim-decision-990-fixture.txt');
   if (reset === 'none') return { ...await buildRoundFixture({ ...base, returns: current }), keys, anchor, members: keys.slice(1), earlier: [], decision };
   if (reset === 'in-place') {
-    const run = fiveReturnRun(specOf(`${anchor} group fixture`));
-    // A second override is refused by the one-override rule, so the in-place epoch 0 holds the rounds the real ledger can seal again: spec rounds 1 to 3.
-    const returns = [...run.returns.slice(0, 3), ...current.filter(r => r.kind === 'plan')];
+    // Reuse nonblocking returns so the negative isolates path reuse without an independently admitted closure.
+    const returns = [...current.filter(r => r.kind === 'spec'), ...current.filter(r => r.kind === 'plan')];
     const f = await buildRoundFixture({ ...base, returns, steps: [{ after: 2, step: 'reset-in-place', decision: '990', quote: RESET_QUOTE }] });
     return { ...f, keys, anchor, members: keys.slice(1), earlier: [], decision };
   }
