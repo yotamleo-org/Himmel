@@ -296,8 +296,8 @@ DOTENV_KEYS = frozenset({
 })
 
 
-# The secret-class names among DOTENV_KEYS: asked of the keyring before .env.
-SECRET_KEYS = ("BITBUCKET_API_TOKEN", "FIRECRAWL_API_KEY")
+# The names among DOTENV_KEYS asked of the keyring before .env.
+SECRET_KEYS = ("BITBUCKET_EMAIL", "BITBUCKET_API_TOKEN", "FIRECRAWL_API_KEY")
 
 
 def load_repo_env(env: dict[str, str], repo_root: Path) -> dict[str, str]:
