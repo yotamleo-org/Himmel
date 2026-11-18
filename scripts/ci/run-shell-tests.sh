@@ -431,7 +431,7 @@ _suite_timeout_for() {
       # Linux. Same 1200s as test-uninstall.sh; SUITE_RUN_BUDGET stays the
       # runaway backstop.
       printf '1200' ;;
-    scripts/test-himmel-doctor.sh|*/scripts/test-himmel-doctor.sh)
+    scripts/test-himmel-doctor.sh|scripts/test-himmel-doctor-[bc].sh|*/scripts/test-himmel-doctor.sh|*/scripts/test-himmel-doctor-[bc].sh)
       # PR 4300 shard 3: every assertion passing, killed at 603s against
       # the 600s default (CAP EXCEEDED); 508s on the ledger. 603s is a
       # truncation floor, so 1200s is that x2 (the loaded-budget rule);

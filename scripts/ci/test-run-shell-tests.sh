@@ -1208,6 +1208,9 @@ else
   check_timeout_2267 "scripts/handover/chief-kit/test-ready-check-g.sh" "600"
   check_timeout_2267 "scripts/test-himmel-doctor.sh" "1200"
   check_timeout_2267 "/repo/scripts/test-himmel-doctor.sh" "1200"
+  check_timeout_2267 "scripts/test-himmel-doctor-b.sh" "1200"
+  check_timeout_2267 "/repo/scripts/test-himmel-doctor-c.sh" "1200"
+  check_timeout_2267 "scripts/test-himmel-doctor-d.sh" "600"
 
   # Per-hook namespace/runtime inspection measured 1407s alone
   # and 1434s with another suite (full replay, ~6x on CI). PR CI runs the fast

@@ -313,7 +313,7 @@ scripts/test-doctor-cadence.sh	13
 scripts/test-e2e-provenance-settings.sh	14
 scripts/test-e2e-symmetry-isolation.sh	17
 scripts/test-e2e-symmetry.sh	10
-scripts/test-himmel-doctor.sh	766
+scripts/test-himmel-doctor.sh	289
 scripts/test-himmel-update-axis-b.sh	14
 scripts/test-himmel-update-check.sh	19
 scripts/test-himmel-update-clis.sh	10

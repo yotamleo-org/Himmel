@@ -4,7 +4,7 @@
 # Usage: bash scripts/test-unlanded-work.sh
 set -uo pipefail
 
-# grepq <text> [grep-args...] — see scripts/test-himmel-doctor.sh header for
+# grepq <text> [grep-args...] — see scripts/tests/testlib-himmel-doctor.sh for
 # why this must be a here-string, not a pipeline, under `set -o pipefail`.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 

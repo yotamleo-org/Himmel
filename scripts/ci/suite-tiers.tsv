@@ -1120,6 +1120,8 @@ scripts/test-e2e-provenance-settings.sh	local	behaviour suite, 0 catches in the 
 scripts/test-e2e-symmetry-isolation.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-e2e-symmetry.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-handover-link.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/test-himmel-doctor-b.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/test-himmel-doctor-c.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-himmel-doctor.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-himmel-update-axis-b.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-himmel-update-chain.sh	local	behaviour suite, 0 catches in the 400-PR audit window

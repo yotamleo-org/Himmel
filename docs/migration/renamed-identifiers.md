@@ -537,7 +537,7 @@ Distinct matched strings (14): `CADENCE_BANK` (no ruled name), `CADENCE_BANK_` t
 | `scripts/luna/test-pipeline-cadence.sh` | test | 153, 154, 155 |
 | `scripts/statusline/test-usage-cache-contract.sh` | test | 19, 226, 236, 252, 304 |
 | `scripts/statusline/test-usage-cache-producer.sh` | test | 331, 332 |
-| `scripts/test-himmel-doctor.sh` | test | 4198, 4201, 4206 |
+| `scripts/test-himmel-doctor-b.sh` | test | 1051, 1054, 1059 |
 | `scripts/testing/test-claude-mock-turn.sh` | test | 215, 216 |
 
 ### N08 `BANK_LIFT_*` to `USAGE_LIFT_*`
@@ -557,7 +557,8 @@ Distinct matched strings (6): `BANK_LIFT_` to `USAGE_LIFT_` (live), `BANK_LIFT_B
 | `scripts/lib/test-bank-preflight.sh` | test | 30, 934, 936, 953, 954, 957, 962, 965, 972, 974, 976, 977, 980, 981 |
 | `scripts/lib/test-rename-aliases.sh` | test | 42, 112, 113, 114, 115, 116 |
 | `scripts/lib/usage-lift.sh` | code | 19, 29 |
-| `scripts/test-himmel-doctor.sh` | test | 75, 4206 |
+| `scripts/test-himmel-doctor-b.sh` | test | 1059 |
+| `scripts/tests/testlib-himmel-doctor.sh` | test | 74 |
 
 ### N09 `CODEX_BANK_*` to `CODEX_USAGE_*`
 
@@ -584,7 +585,8 @@ Distinct matched strings (10): `CODEX_BANK_` to `CODEX_USAGE_` (live), `CODEX_BA
 | `scripts/lib/test-rename-aliases.sh` | test | 43, 149, 150, 151, 152, 153, 154 |
 | `scripts/telegram/spawn-claudex.test.ts` | test | 1138, 1140, 1143, 1144 |
 | `scripts/telegram/spawn-claudex.ts` | code | 51, 448, 451, 462, 470, 480, 515 |
-| `scripts/test-himmel-doctor.sh` | test | 211, 6564, 6578, 6587, 6590 |
+| `scripts/test-himmel-doctor-c.sh` | test | 346, 360, 369, 372 |
+| `scripts/tests/testlib-himmel-doctor.sh` | test | 210 |
 
 ### N10 `CLAUDEX_BANK_*` to `CLAUDEX_USAGE_*`
 
@@ -872,7 +874,7 @@ Distinct matched strings (69): `-bank-preflight` (no ruled name), `bank-attribut
 | `scripts/telegram/run.ts` | code | 272 |
 | `scripts/telegram/spawn-claudex.ts` | code | 51 |
 | `scripts/test-adopt.sh` | test | 1330, 1362, 1364 |
-| `scripts/test-himmel-doctor.sh` | test | 4204, 4205, 4207 |
+| `scripts/test-himmel-doctor-b.sh` | test | 1057, 1058, 1060 |
 | `scripts/testing/documented-commands.tsv` | config | 9, 44, 71 |
 | `scripts/testing/test-claude-mock-turn.sh` | test | 176, 186, 210, 220, 222 |
 | `scripts/usage/test-usage.sh` | test | 67 |
