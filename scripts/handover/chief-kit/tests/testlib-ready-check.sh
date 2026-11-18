@@ -86,6 +86,7 @@ case "$args" in
         for kv in ${STUB_RUN_CONC:-}; do [ "${kv%%=*}" = "$id" ] && conc="${kv#*=}"; done
         jq -n --argjson id "$id" --arg h "${STUB_RUN_HEAD_SHA:-$STUB_HEAD}" --arg c "$conc" '{id:$id,head_sha:$h,status:"completed",conclusion:$c}' | jq -r "${args#*--jq }" ;;
     "run download "*)
+        [ -z "${STUB_DL_STARTED:-}" ] || : > "$STUB_DL_STARTED"
         [ -z "${STUB_DL_SLEEP:-}" ] || sleep "$STUB_DL_SLEEP"
         d="${args#* -D }"; d="${d%% *}"
         case "$args" in
@@ -329,7 +330,7 @@ run() {
         STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" STUB_TRUST_LIST_FAIL="${STUB_TRUST_LIST_FAIL:-}" \
         STUB_DEFAULT_BRANCH_FAIL="${STUB_DEFAULT_BRANCH_FAIL:-}" \
         STUB_GH_RL="${STUB_GH_RL:-}" HIMMEL_QUOTA_DIR="${RUN_QUOTA_DIR:-$tmp/quota}" \
-        STUB_MANIFEST_DIR="${STUB_MANIFEST_DIR:-}" STUB_DL_FAIL="${STUB_DL_FAIL:-}" STUB_DL_SLEEP="${STUB_DL_SLEEP:-}" \
+        STUB_MANIFEST_DIR="${STUB_MANIFEST_DIR:-}" STUB_DL_FAIL="${STUB_DL_FAIL:-}" STUB_DL_SLEEP="${STUB_DL_SLEEP:-}" STUB_DL_STARTED="${STUB_DL_STARTED:-}" \
         STUB_JS_MANIFEST_DIR="${STUB_JS_MANIFEST_DIR:-}" STUB_JS_DL_FAIL="${STUB_JS_DL_FAIL:-}" STUB_JOBS="${STUB_JOBS:-}" STUB_JOBS_FAIL="${STUB_JOBS_FAIL:-}" \
         STUB_RUN_SLEEP="${STUB_RUN_SLEEP:-}" STUB_RUN_HEAD_SHA="${STUB_RUN_HEAD_SHA:-}" STUB_RUN_CONC="${STUB_RUN_CONC:-}" \
         READY_CHECK_ITEM19_BOUND="${READY_CHECK_ITEM19_BOUND:-}" \
