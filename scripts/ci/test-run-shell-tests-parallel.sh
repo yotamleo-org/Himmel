@@ -587,9 +587,6 @@ else
   fail "P18: mktemp failed"
 fi
 
-# P19 — a shard's run-alone suites start before any parallel suite, so a drain
-# never waits behind a long one. The partition is the bin-pack's and is read
-# from a serial run of the same shard (SUITE_JOBS=1 keeps discovery order).
 echo "== P19: run-alone suites run first in a bin-packed shard and the shard's suite set is unchanged =="
 if sb=$(mk_sandbox); then
   for _n in a b d f; do mk_suite "$sb" "test-$_n.sh" 3; done
@@ -597,10 +594,8 @@ if sb=$(mk_sandbox); then
   mk_suite "$sb" test-e-alone.sh 1
   mk_suite "$sb" test-g-alone.sh 1
   : > "$sb/dur.tsv"
-  # Seconds spread so the greedy longest-first pack puts run-alone and parallel suites in both shards.
   for _r in a:90 c-alone:80 b:70 e-alone:60 d:50 g-alone:40 f:30; do printf '%s/scripts/test-%s.sh\t%s\n' "$sb" "${_r%%:*}" "${_r##*:}" >> "$sb/dur.tsv"; done
   printf '*/scripts/test-c-alone.sh  fixture\n*/scripts/test-e-alone.sh  fixture\n*/scripts/test-g-alone.sh  fixture\n' > "$sb/deny.txt"
-  # started_in_order <dir> — suite names in the order they started, one per line.
   started_in_order() { cut -d' ' -f1 "$1/peak.log"; }
   for _shard in 1 2; do
     : > "$sb/peak.log"
@@ -610,7 +605,6 @@ if sb=$(mk_sandbox); then
     out=$(env -u SUITE_TIER_MODE SUITE_JOBS=3 SUITE_PARALLEL_DENY="$sb/deny.txt" SUITE_DURATIONS="$sb/dur.tsv" bash "$RUNNER" --shard "$_shard/2" "$sb/scripts" 2>&1); rc=$?
     par_set=$(started_in_order "$sb" | sort | paste -sd' ' -)
     order=$(started_in_order "$sb" | paste -sd' ' -)
-    # Index of the last run-alone suite and of the first parallel one.
     last_alone=$(started_in_order "$sb" | awk '/-alone\.sh$/ { i = NR } END { print i + 0 }')
     first_par=$(started_in_order "$sb" | awk '!/-alone\.sh$/ { print NR; exit }')
     n_alone=$(started_in_order "$sb" | awk '/-alone\.sh$/ { n++ } END { print n + 0 }')

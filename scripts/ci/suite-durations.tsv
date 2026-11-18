@@ -43,10 +43,6 @@ scripts/security/test-security-audit-cadence.sh	6
 #   f1938a23a81e98e701a5d38f3412861301ea8f0d) and 43542480152 (head
 #   68e21adf5b2412cba0e3055e8889470fd7aa3b51), 1301 unique suites in those logs.
 #   Replay on those three runs: slowest/floor 1.348 before, 1.197 after.
-#   scripts/handover/chief-kit/test-chief-wait.sh is 600, not the 358 of that refresh:
-#   run 44210301721 (PR #5516, 2026-11-18) printed it as [QUARANTINE] (rc=1, 1186s), two
-#   attempts that each hit the 600 s cap. A quarantine suite that exceeds its cap is no
-#   longer retried, so one attempt, the cap, is its whole cost.
 # The quarantined suites (SKIP_LIST) have no measured row.
 #
 # Read by scripts/ci/run-shell-tests.sh to assign --shard <i>/<n> by a greedy

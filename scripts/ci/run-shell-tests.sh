@@ -3670,8 +3670,6 @@ _suite_no_retry() {
   [ -n "$_hdr" ]
 }
 
-# _suite_quarantined <suite-key> — 0 when the suite's tier row is quarantine, so
-# its result cannot fail the run.
 _suite_quarantined() {
   case "$tiers_quarantine_nl" in
     *"
@@ -4451,27 +4449,20 @@ _suite_parallel_denied() {
   done <<< "$parallel_deny"
   return 1
 }
-# Run-alone suites go first. A deny-listed suite drains every lane before it runs,
-# so one placed behind a long parallel suite idles the other lanes for that whole
-# suite (shard 3 of run 44210301721: 20.3 min against a 10.4 min model). Only the
-# order moves: a stable partition of the discovered list, so every shard's
-# assignment, every filter and every manifest row stay as they were. An unsharded
-# run and the round-robin fallback (which numbers suites by loop position) keep
-# discovery order.
+_suites_run_alone_first() {
+  local _s _alone="" _rest=""
+  while IFS= read -r _s; do
+    [ -n "$_s" ] || continue
+    if _suite_parallel_denied "${scan_resolved}/${_s#"${scan}"/}"; then
+      _alone+="$_s"$'\n'
+    else
+      _rest+="$_s"$'\n'
+    fi
+  done < "$suites_file"
+  printf '%s%s' "$_alone" "$_rest" > "$suites_file"
+}
 if [ "$suite_jobs" -gt 1 ] && [ "$list_only" -eq 0 ] && [ "$shard_total" -gt 0 ] && [ "$shard_binpack" -eq 1 ]; then
-  while IFS= read -r _pd_suite; do
-    [ -n "$_pd_suite" ] || continue
-    if _suite_parallel_denied "${scan_resolved}/${_pd_suite#"${scan}"/}"; then
-      printf '%s\n' "$_pd_suite"
-    fi
-  done < "$suites_file" > "$suites_raw"
-  while IFS= read -r _pd_suite; do
-    [ -n "$_pd_suite" ] || continue
-    if ! _suite_parallel_denied "${scan_resolved}/${_pd_suite#"${scan}"/}"; then
-      printf '%s\n' "$_pd_suite"
-    fi
-  done < "$suites_file" >> "$suites_raw"
-  cat "$suites_raw" > "$suites_file"
+  _suites_run_alone_first
 fi
 # Lane 0 reuses live_root; every other lane gets its own sentinel root.
 lane_root=() lane_pid=() lane_out=()
@@ -4662,8 +4653,7 @@ WITNESSMSGS
   fi
 
   # A cap overrun is retried too: on a loaded runner it is as likely slowness as
-  # a defect, and one rerun in the same job costs less than a red main. Except a
-  # quarantine suite's: its result cannot fail the run, so the rerun is pure cost.
+  # a defect, and one rerun in the same job costs less than a red main.
   if [ "$rc" -ne 0 ] && [ "$capped" -eq 1 ] && [ "$live_fail" -eq 0 ] && [ "$_attempt" -eq 1 ] && _suite_quarantined "$suite_key"; then
     printf '[NO-RETRY] %s is tier quarantine and exceeded its %ss cap; a rerun cannot change the run'\''s result\n' "$suite" "$suite_timeout"
     break

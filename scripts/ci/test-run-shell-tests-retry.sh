@@ -590,14 +590,6 @@ fi
 rm -rf "$sb34"
 fi
 
-# --------------------------------------------------------------------------
-# Case 35: a quarantine suite that overran its cap is not rerun.
-# Its result cannot fail the run, so the rerun is pure cost: real runs
-# 44203824652 and 44210301721 printed, for scripts/handover/chief-kit/test-chief-wait.sh,
-#   [QUARANTINE] scripts/handover/chief-kit/test-chief-wait.sh (rc=1, 1186s) — tier quarantine, not failing the run
-# i.e. two 600 s attempts. A non-quarantine overrun and a quarantine failure
-# that is not an overrun keep the one rerun.
-# --------------------------------------------------------------------------
 echo "== Case 35: a quarantine cap overrun runs once; other failures keep their rerun =="
 sb35=$(mktemp -d -t himmel-suite-quarcap.XXXXXX) || { fail "35: mktemp failed"; sb35=""; }
 [ -z "$sb35" ] || sb35_phys=$(cd "$sb35" && pwd -P) || { fail "35: cannot resolve the sandbox path $sb35"; sb35_phys=""; }
