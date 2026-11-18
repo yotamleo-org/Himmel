@@ -160,6 +160,30 @@ for variant in ',"owner_gone":false' ',"owner_gone":"true"' ',"owner_gone":1' ''
     check "8731 V3: a held lease with owner_gone absent or not literally true (${variant:-absent}) stays held: no launch" '0,0m,replay=1' "$(field rm-queue "$out")"
     check "8731 V3: and no rm-run ran (${variant:-absent})" '' "$([ -e "$W/rmrun-ran" ] && echo ran)"
 done
+# 8731 V4 (fix review F2): a replay that rm-run cannot finish stays in the state. What the tick PRINTS for it is the consumer contract:
+# the same field text on every tick, the open count and the oldest-open age stay 0 and 0m (a ruling has no age here), replay=<n> names
+# the count, and ,run marks only the ticks that launch (one per TICK_RMRUN_MIN_SECS). The waiter's rule reads a positive open count
+# first (wake-rules.py), so a lingering replay with an empty queue is not woken on today; that is the waiter's to change.
+reset; stateu '[]' null null "$U_REPLAY"
+out="$(tick)"
+check '8731 V4: a replay that keeps failing: the first tick launches and prints 0,0m,replay=1,run' '0,0m,replay=1,run' "$(field rm-queue "$out")"
+check '8731 V4: and that launch ran' '1' "$(ran)"
+rm -f "$W/rmrun-ran"
+printed=''
+for n in 1 2 3; do
+    printed="$printed $(field rm-queue "$(tick)")"
+done
+sleep 1
+check '8731 V4: the next ticks print the same field without ,run and launch nothing (no age ever appears)' ' 0,0m,replay=1 0,0m,replay=1 0,0m,replay=1' "$printed"
+check '8731 V4: no launch inside the interval' '' "$([ -e "$W/rmrun-ran" ] && echo ran)"
+touch -d '11 minutes ago' "$W"/state/tick-rm-run-*
+out="$(tick)"
+check '8731 V4: once the interval has passed the unchanged replay is retried: ,run again, the field otherwise unchanged' '0,0m,replay=1,run' "$(field rm-queue "$out")"
+check '8731 V4: the retry ran' '1' "$(ran)"
+# the waiter's rule reads the suffix after a positive open count and age: replay=<n> after them is tolerated (the producer side of that contract)
+wr() { printf 'TICK x rm-queue=%s\n' "$1" | python3 -I "$HERE/wake-rules.py" --inbox "$W/wr-inbox-$2" --doc "$W/handover/chief.md" --release-root "$W/releases"; }
+check '8731 V4: the waiter still wakes on an aged open request when replay=<n> and ,run follow it' 'WAKE rm-queue rm-queue=1,45m,replay=1,run' "$(wr '1,45m,replay=1,run' a)"
+
 reset; stateu '[]' null null "$U_BLOCKED"
 out="$(tick)"
 sleep 1
