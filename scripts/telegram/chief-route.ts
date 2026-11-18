@@ -1167,13 +1167,13 @@ function cappedDeclaredKey(text: string, key: string, frontmatter: boolean): voi
 const cappedPathKeys = (path: string) => [KEY_FOLDER.test(basename(dirname(path))) ? basename(dirname(path)) : null,
   /^([A-Z][A-Z0-9]+-[0-9]+)(?=[-.])/.exec(basename(path))?.[1]].filter((key): key is string => !!key);
 
-function cappedFindings(text: string, kind: Kind, round: number, row: LedgerRow): Finding[] {
+function cappedFindings(text: string, kind: Kind, round: number, row: LedgerRow, headingOk: (parenthetical: string) => boolean): Finding[] {
   const count = lastLine(text) === CLEAN[kind] ? 0 : Number(new RegExp(`^${kind.toUpperCase()} FINDINGS ([0-9]+)$`).exec(lastLine(text))?.[1]);
   if (!Number.isSafeInteger(count) || count < 0 || count > 4096) throw new Error("capped-fold: invalid finding count");
   const candidates = text.split("\n").filter(l => /^[ \t]*[-*][ \t]+\*\*[A-Za-z][\w.-]*\*\*[ \t]*\(/.test(l));
   for (const line of candidates) {
     const match = FINDING_LINE.exec(line);
-    if (!match || !/^(minor|medium)$/.test(match[2])) throw new Error(`capped-fold: ineligible finding heading: ${line}`);
+    if (!match || !headingOk(match[2])) throw new Error(`capped-fold: ineligible finding heading: ${line}`);
   }
   const parsed = parseFindings(text, kind, round);
   const findings = parsed.findings;
@@ -1209,6 +1209,87 @@ async function cappedLedgerEvidence(rows: Rows, key: string, reader: ReturnType<
   }
 }
 
+type CappedReader = ReturnType<typeof cappedReader>;
+type Carried = CappedFoldProof["carried"][number];
+// The four decisions the per-return evidence takes from its mode. Everything else in a return's check is shared and ordered once.
+// `expectedKey` and `kind` are existing CappedReturnInput fields the strict checks and their messages need, passed explicitly (no ambient context).
+type CappedPolicy = {
+  declaration(text: string, expectedKey: string): void;
+  reviewed(text: string, specSha: string, kind: Kind): void;
+  headingOk(parenthetical: string): boolean;
+  quotes(text: string): { sha: string; path: string }[];
+};
+// `path` is the return path as supplied: the evidence canonicalizes and reads it itself, in the order the verifier always did.
+type CappedReturnInput = { key: string; kind: Kind; path: string; spec: string; plan: string; specSha: string; planSha: string; rows: Rows; reader: CappedReader };
+
+const v1Policy: CappedPolicy = {
+  declaration: (text, expectedKey) => cappedDeclaredKey(text, expectedKey, false),
+  reviewed: (text, specSha, kind) => {
+    const reviewed = reviewedSpecHashes(text);
+    if (reviewed.length !== 1 || reviewed[0] !== specSha) throw new Error(`capped-fold: ${kind} must review the current spec exactly once`);
+  },
+  headingOk: parenthetical => /^(minor|medium)$/.test(parenthetical),
+  quotes: text => {
+    const quotes = [...text.matchAll(/^READ(?:-SHA256)? ([0-9a-f]{64}) (\S.*)$/gm)];
+    if (text.split("\n").filter(l => /^READ(?:-SHA256)?(?:\s|$)/.test(l)).length !== quotes.length) throw new Error("capped-fold: malformed seal or READ quote");
+    return quotes.map(quote => ({ sha: quote[1], path: quote[2] }));
+  },
+};
+
+async function cappedLedger(specs: string, key: string, reader: CappedReader): Promise<Rows> {
+  const rows = await loadLedger(specs, key, reader);
+  if (rows.checked.invalid.length) throw new Error(`capped-fold: invalid ledger records: ${rows.checked.invalid.join(", ")}`);
+  await cappedLedgerEvidence(rows, key, reader);
+  if (criticalOpenOf(rows).length) throw new Error("capped-fold: open historical operator-critical findings");
+  return rows;
+}
+
+function requireCarried(carried: readonly Carried[]): void {
+  if (!carried.length) throw new Error("capped-fold: requires at least one carried finding");
+}
+
+async function cappedReturnEvidence(input: CappedReturnInput, policy: CappedPolicy): Promise<{ pin: ReturnPin; carried: Carried[] }> {
+  const { key, kind, spec, plan, specSha, planSha, rows, reader } = input; const specs = specsRootOf(spec)!;
+  const path = await reader.canonical(input.path); const got = await reader.read(path, "return"); const text = got.bytes.toString("utf8");
+  if (cappedPathKeys(path).some(pathKey => pathKey !== key)) throw new Error("capped-fold: return filename/folder key disagrees");
+  policy.declaration(text, key);
+  const row = latestRow(rows, kind); const sum = returnSha(text);
+  if (!row || row.verdict_path !== path || row.return_sha !== sum || row.verdict !== lastLine(text)
+    || basename(path) !== `${basename(spec)}.critic-${kind}-r${row.round}.md`
+    || roundRows(rows, kind).filter(r => r.round === row.round).length !== 1) throw new Error(`capped-fold: not the actual latest real ${kind} round`);
+  policy.reviewed(text, specSha, kind);
+  const findings = cappedFindings(text, kind, row.round, row, policy.headingOk);
+  if (findings.length && (row.round < CRITIC_ROUND_CAP || !capRefusal(key, rows, kind, row.round + 1))) throw new Error("capped-fold: findings have not reached the refused round cap");
+  const recorded = distinctFiles([sealedFileOf(row, false), ...rows.filter(r => r.row === "seal" && r.return_sha === sum).map(r => sealedFileOf(r, false))]);
+  const seals = sealsOf(text); const quotes = policy.quotes(text);
+  if (text.split("\n").filter(l => /^CONTENT-SHA256(?:\s|$)/.test(l)).length !== seals.length) throw new Error("capped-fold: malformed seal or READ quote");
+  const quoted = new Map<string, string>();
+  for (const quote of quotes) {
+    const artifact = await reader.canonical(resolve(dirname(path), quote.path));
+    if (quoted.has(artifact)) throw new Error("capped-fold: duplicate critic READ quotes");
+    quoted.set(artifact, quote.sha);
+  }
+  const declared = new Map<string, string>();
+  for (const seal of seals) {
+    const raw = resolve(dirname(path), seal.rel); const artifact = await reader.canonical(raw);
+    if (declared.has(artifact)) {
+      if (declared.get(artifact) !== seal.sha) throw new Error("capped-fold: conflicting seals");
+      continue;
+    }
+    declared.set(artifact, seal.sha);
+    const read = await reader.read(raw, "artifact");
+    if (read.sha256 !== seal.sha || !recorded.some(s => s.read_path === artifact && s.read_sha === seal.sha)) throw new Error(`capped-fold: seal provenance disagrees: ${artifact}`);
+    if (quoted.get(artifact) !== seal.sha) throw new Error(`capped-fold: missing/conflicting critic READ quote: ${artifact}`);
+    const snapshot = await reader.read(join(ledgerDir(specs), key, seal.sha));
+    if (snapshot.sha256 !== seal.sha) throw new Error("capped-fold: content-addressed snapshot changed");
+  }
+  if (recorded.length !== declared.size || quoted.size !== declared.size || recorded.some(s => declared.get(s.read_path) !== s.read_sha)
+    || declared.get(spec) !== specSha || (kind === "plan" && declared.get(plan) !== planSha)) throw new Error("capped-fold: missing/extra ledger seals or review coverage");
+  return { pin: { kind, path, sha256: got.sha256, round: row.round, return_sha: sum, residuals: findings.length },
+    carried: findings.map(finding => ({ key, epoch: rows.checked.epoch, kind, round: row.round, return_path: path, return_sha: sum,
+      finding_id: finding.id, severity: finding.severity as "minor" | "medium", status: "open-carried" as const })) };
+}
+
 export async function cappedFold(o: { key: string; spec: string; plan: string; specReturn: string; planReturn: string }): Promise<CappedFoldProof> {
   if (!KEY_FOLDER.test(o.key)) throw new Error("capped-fold: expected one ticket key");
   for (const path of [o.spec, o.plan, o.specReturn, o.planReturn]) if (!isAbsolute(path)) throw new Error("capped-fold: paths must be absolute");
@@ -1218,54 +1299,13 @@ export async function cappedFold(o: { key: string; spec: string; plan: string; s
   const specRead = await reader.read(o.spec); const plan = await reader.canonical(o.plan); const planRead = await reader.read(o.plan);
   if (spec === plan || cappedPathKeys(plan).some(key => key !== o.key)) throw new Error("capped-fold: expected a distinct plan for this key");
   cappedDeclaredKey(specRead.bytes.toString("utf8"), o.key, true); cappedDeclaredKey(planRead.bytes.toString("utf8"), o.key, true);
-  const rows = await loadLedger(specs, o.key, reader);
-  if (rows.checked.invalid.length) throw new Error(`capped-fold: invalid ledger records: ${rows.checked.invalid.join(", ")}`);
-  await cappedLedgerEvidence(rows, o.key, reader);
-  if (criticalOpenOf(rows).length) throw new Error("capped-fold: open historical operator-critical findings");
-  const returns: ReturnPin[] = []; const carried: CappedFoldProof["carried"] = [];
+  const rows = await cappedLedger(specs, o.key, reader);
+  const returns: ReturnPin[] = []; const carried: Carried[] = [];
   for (const kind of KINDS) {
-    const path = await reader.canonical(kind === "spec" ? o.specReturn : o.planReturn); const got = await reader.read(path, "return"); const text = got.bytes.toString("utf8");
-    if (cappedPathKeys(path).some(key => key !== o.key)) throw new Error("capped-fold: return filename/folder key disagrees");
-    cappedDeclaredKey(text, o.key, false);
-    const row = latestRow(rows, kind); const sum = returnSha(text);
-    if (!row || row.verdict_path !== path || row.return_sha !== sum || row.verdict !== lastLine(text)
-      || basename(path) !== `${basename(spec)}.critic-${kind}-r${row.round}.md`
-      || roundRows(rows, kind).filter(r => r.round === row.round).length !== 1) throw new Error(`capped-fold: not the actual latest real ${kind} round`);
-    const reviewed = reviewedSpecHashes(text);
-    if (reviewed.length !== 1 || reviewed[0] !== specRead.sha256) throw new Error(`capped-fold: ${kind} must review the current spec exactly once`);
-    const findings = cappedFindings(text, kind, row.round, row);
-    if (findings.length && (row.round < CRITIC_ROUND_CAP || !capRefusal(o.key, rows, kind, row.round + 1))) throw new Error("capped-fold: findings have not reached the refused round cap");
-    const recorded = distinctFiles([sealedFileOf(row, false), ...rows.filter(r => r.row === "seal" && r.return_sha === sum).map(r => sealedFileOf(r, false))]);
-    const seals = sealsOf(text); const quotes = [...text.matchAll(/^READ(?:-SHA256)? ([0-9a-f]{64}) (\S.*)$/gm)];
-    if (text.split("\n").filter(l => /^CONTENT-SHA256(?:\s|$)/.test(l)).length !== seals.length
-      || text.split("\n").filter(l => /^READ(?:-SHA256)?(?:\s|$)/.test(l)).length !== quotes.length) throw new Error("capped-fold: malformed seal or READ quote");
-    const quoted = new Map<string, string>();
-    for (const quote of quotes) {
-      const artifact = await reader.canonical(resolve(dirname(path), quote[2]));
-      if (quoted.has(artifact)) throw new Error("capped-fold: duplicate critic READ quotes");
-      quoted.set(artifact, quote[1]);
-    }
-    const declared = new Map<string, string>();
-    for (const seal of seals) {
-      const raw = resolve(dirname(path), seal.rel); const artifact = await reader.canonical(raw);
-      if (declared.has(artifact)) {
-        if (declared.get(artifact) !== seal.sha) throw new Error("capped-fold: conflicting seals");
-        continue;
-      }
-      declared.set(artifact, seal.sha);
-      const read = await reader.read(raw, "artifact");
-      if (read.sha256 !== seal.sha || !recorded.some(s => s.read_path === artifact && s.read_sha === seal.sha)) throw new Error(`capped-fold: seal provenance disagrees: ${artifact}`);
-      if (quoted.get(artifact) !== seal.sha) throw new Error(`capped-fold: missing/conflicting critic READ quote: ${artifact}`);
-      const snapshot = await reader.read(join(ledgerDir(specs), o.key, seal.sha));
-      if (snapshot.sha256 !== seal.sha) throw new Error("capped-fold: content-addressed snapshot changed");
-    }
-    if (recorded.length !== declared.size || quoted.size !== declared.size || recorded.some(s => declared.get(s.read_path) !== s.read_sha)
-      || declared.get(spec) !== specRead.sha256 || (kind === "plan" && declared.get(plan) !== planRead.sha256)) throw new Error("capped-fold: missing/extra ledger seals or review coverage");
-    returns.push({ kind, path, sha256: got.sha256, round: row.round, return_sha: sum, residuals: findings.length });
-    for (const finding of findings) carried.push({ key: o.key, epoch: rows.checked.epoch, kind, round: row.round, return_path: path, return_sha: sum,
-      finding_id: finding.id, severity: finding.severity as "minor" | "medium", status: "open-carried" });
+    const evidence = await cappedReturnEvidence({ key: o.key, kind, path: kind === "spec" ? o.specReturn : o.planReturn, spec, plan, specSha: specRead.sha256, planSha: planRead.sha256, rows, reader }, v1Policy);
+    returns.push(evidence.pin); carried.push(...evidence.carried);
   }
-  if (!carried.length) throw new Error("capped-fold: requires at least one carried finding");
+  requireCarried(carried);
   const tuple = returns as [ReturnPin, ReturnPin]; await cappedLatest(spec, plan, reader, tuple);
   const proof = validateCappedFoldProofShape({ schema: 1, reader_version: PINNED_READ_VERSION, mode: "capped-carry", key: o.key, epoch: rows.checked.epoch,
     spec: { path: spec, sha256: specRead.sha256 }, plan: { path: plan, sha256: planRead.sha256 }, returns: tuple, pins: reader.pins(), carried });

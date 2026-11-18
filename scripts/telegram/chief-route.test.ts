@@ -5675,6 +5675,10 @@ const P2_FAULTS: Record<string, P2Fault> = {
   zero: { opts: { specFindings: "", planFindings: "" }, message: () => "capped-fold: requires at least one carried finding" },
   tie: { apply: f => copyFileSync(f.args.specReturn, join(dirname(f.spec), "HIMMEL-10205-other.md.critic-spec-r3.md")),
     message: f => `capped-fold: ambiguous or unaccounted latest return: ${join(dirname(f.spec), "HIMMEL-10205-other.md.critic-spec-r3.md")}` },
+  // the three steps of the ledger load, in shipped order: invalid records ("ledger"), then the epoch and key evidence, then an open historical critical finding
+  evkey: { apply: f => editLedger(f, rows => { rows[0].key = "HIMMEL-99"; }), message: () => "capped-fold: invalid ledger key/record" },
+  evepoch: { apply: f => editLedger(f, rows => { rows.find(r => r.row === "round" && r.round === 3).epoch = 7; }), message: () => "capped-fold: invalid ledger epoch" },
+  critopen: { opts: { historical: "- **C1** (minor; operator-critical: spend-grant) historically open" }, message: () => "capped-fold: open historical operator-critical findings" },
 };
 // [row, the two faults applied in this order, the fault whose step comes first in the shipped order of cappedFold]
 const P2_PAIRS: [string, [string, string], string][] = [
@@ -5688,11 +5692,20 @@ const p2Run = async (names: string[]) => {
   return f;
 };
 
-test("P2 single faults: each of the thirteen recipes alone gives its own shipped refusal, so every pair below holds two live faults", async () => {
+test("P2 single faults: each of the sixteen recipes alone gives its own shipped refusal, so every pair below holds two live faults", async () => {
   const c = p1Cases();
   const control = await cappedFixture(); await c.accepts("single/control", control, control.args, P1_ONE_CARRIED);
   for (const name of Object.keys(P2_FAULTS)) { const f = await p2Run([name]); c.refuses(`single/${name}`, f.args, P2_FAULTS[name].message(f)); }
-  expect(c.ids).toHaveLength(1 + 13); expect(c.bad).toEqual([]);
+  expect(c.ids).toHaveLength(1 + 16); expect(c.bad).toEqual([]);
+}, S1B);
+
+test("P2b the three ledger-load steps keep their shipped order: invalid records, then epoch and key evidence, then an open historical critical finding", async () => {
+  const c = p1Cases();
+  for (const [row, names, first] of [["O13", ["evkey", "ledger"], "ledger"], ["O14", ["critopen", "evepoch"], "evepoch"], ["O15", ["critopen", "ledger"], "ledger"]] as [string, string[], string][]) {
+    const f = await p2Run(names);
+    c.refuses(`${row}/${names.join("+")}`, f.args, P2_FAULTS[first].message(f));
+  }
+  expect(c.ids).toHaveLength(3); expect(c.bad).toEqual([]);
 }, S1B);
 
 test("P2 twelve two-fault pairs O1 to O12: the refusal is exactly the earlier step's shipped message, in the shipped order", async () => {
