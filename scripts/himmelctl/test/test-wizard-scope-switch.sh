@@ -33,6 +33,8 @@
 
 set -euo pipefail
 
+unset CLAUDE_CONFIG_DIR
+
 # grepq <text> [grep-args...]: a `grep -q` test against <text> with NO
 # pipeline. printf/echo-into-`grep -q` is a trap under this file's
 # `set -o pipefail`: grep -q exits the instant it matches, the producer
