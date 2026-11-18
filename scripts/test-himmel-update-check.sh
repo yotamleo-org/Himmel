@@ -114,6 +114,7 @@ make_repo_behind() {
     cp "$src_scripts/lib/load-dotenv.sh"       "$clone/scripts/lib/load-dotenv.sh"
     cp "$src_scripts/lib/resolve-bun.sh"        "$clone/scripts/lib/resolve-bun.sh"
     cp "$src_scripts/lib/claude-version.sh"        "$clone/scripts/lib/claude-version.sh"
+    cp "$src_scripts/lib/update-channel.sh"        "$clone/scripts/lib/update-channel.sh"
     CHECKOUT_DIR="$clone"
 }
 # --selftest-hermetic builds one behind=2 mock clone and replays --check on

@@ -41,6 +41,16 @@
 #     so this hook can no longer be killed mid-run by the harness timeout.
 #     First run on a fresh clone therefore sees pre-fetch refs and is silent.
 #
+# RELEASE CHANNEL: a station that follows a channel (stable|pre) is moved by
+# /himmel-update onto the newest channel TAG, never pulled along the branch, so a
+# branch-behind count is a nudge that can never clear. The channel is resolved
+# with the updater's own resolver (scripts/lib/update-channel.sh), and a channel
+# station is nudged only when HEAD is a strict ancestor of the newest channel tag.
+# Those tags are read ONLY from refs/himmel-update/tags, which a second detached
+# fetch fills: `git tag -l` would rank a stray local tag the updater never sees.
+# A channel the updater would refuse (malformed profile, jq missing) gets a
+# distinct warning instead of a nudge it could not honour.
+#
 # Env knobs (all optional):
 #   UPDATE_CHECK_DISABLE=1           kill switch
 #   UPDATE_CHECK_INTERVAL            seconds between checks (default 14400)
@@ -183,6 +193,35 @@ if [ -z "$ROOT" ]; then
 fi
 [ -d "$ROOT/.git" ] || exit 0
 
+# ─── release channel ────────────────────────────────────────────────────────
+# Resolved BEFORE the upstream check: on a channel the branch count is not what
+# /himmel-update acts on. Fails open to today's branch nudge if the shared
+# library is unreadable or the resolver fails in a way other than "refuse".
+CHAN=""; CHAN_ERR=""; CHAN_TAG=""
+chan_lib="$(dirname "${BASH_SOURCE[0]}")/../lib/update-channel.sh"
+# shellcheck source=scripts/lib/update-channel.sh disable=SC1091
+if { [ -r "$chan_lib" ] && . "$chan_lib"; } 2>/dev/null; then
+    chan_rc=0
+    CHAN=$(_resolve_update_channel 2>&1) || chan_rc=$?
+    if [ "$chan_rc" -eq 2 ]; then CHAN_ERR="$CHAN"; CHAN=""
+    elif [ "$chan_rc" -ne 0 ]; then CHAN=""
+    fi
+fi
+if [ -n "$CHAN" ]; then
+    # Local reads only. HEAD may be detached (that is where a channel update leaves it).
+    chan_names=$(git -C "$ROOT" for-each-ref --format='%(refname)' refs/himmel-update/tags 2>/dev/null | sed 's|^refs/himmel-update/tags/||') || chan_names=""  # swallow-ok: no private tags yet reads as no release; this hook fails open
+    CHAN_TAG=$(_channel_best_tag "$CHAN" "$chan_names") || CHAN_TAG=""
+    chan_behind=0
+    if [ -n "$CHAN_TAG" ]; then
+        tag_commit=$(git -C "$ROOT" rev-parse --verify --quiet "refs/himmel-update/tags/$CHAN_TAG^{commit}" 2>/dev/null) || tag_commit=""  # swallow-ok: an unresolvable tag reads as silent; this hook fails open
+        head_commit=$(git -C "$ROOT" rev-parse --verify --quiet 'HEAD^{commit}' 2>/dev/null) || head_commit=""  # swallow-ok: an unborn HEAD reads as silent; this hook fails open
+        if [ -n "$tag_commit" ] && [ -n "$head_commit" ] && [ "$tag_commit" != "$head_commit" ] \
+            && git -C "$ROOT" merge-base --is-ancestor "$head_commit" "$tag_commit" 2>/dev/null; then
+            chan_behind=1
+        fi
+    fi
+fi
+
 # ─── upstream branch + behind count, from the LOCAL refs ────────────────────
 # Read BEFORE the refresh below is spawned. Both commands are local — nothing
 # here touches the network — and taking the reading first is what makes this
@@ -235,9 +274,39 @@ if command -v detach_run >/dev/null 2>&1; then
     detach_run env GIT_TERMINAL_PROMPT=0 \
         git -C "$ROOT" -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=60 \
         fetch --quiet origin
+    # A channel station also refreshes the tags it ranks, into a private namespace
+    # only. An explicit refspec replaces the default ones, so the branch fetch above
+    # stays as it is.
+    if [ -n "$CHAN" ]; then
+        detach_run env GIT_TERMINAL_PROMPT=0 \
+            git -C "$ROOT" -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=60 \
+            fetch --quiet origin '+refs/tags/v*:refs/himmel-update/tags/v*'
+    fi
 fi
 
 # ─── verdict ─────────────────────────────────────────────────────────────────
+if [ -n "$CHAN_ERR" ]; then
+    # The updater refuses on this, so a pull nudge would promise what it cannot do.
+    chan_why=$(printf '%s\n' "$CHAN_ERR" | sed -n '1s/^update: //p' | tr -d '<>`' | cut -c1-200)
+    cat <<EOF
+<system-reminder>
+himmel update channel is unreadable (${chan_why:-unknown reason}); /himmel-update will refuse until it is fixed.
+(This check won't repeat for another ${INTERVAL}s.)
+</system-reminder>
+EOF
+    exit 0
+fi
+if [ -n "$CHAN" ]; then
+    if [ "$chan_behind" -eq 1 ]; then
+        cat <<EOF
+<system-reminder>
+himmel is behind the $CHAN release $CHAN_TAG. Run /himmel-update to switch to it.
+(This check won't repeat for another ${INTERVAL}s.)
+</system-reminder>
+EOF
+    fi
+    exit 0
+fi
 # No upstream, no readable count, or not behind → silent, exactly as before.
 [ -n "$behind" ] || exit 0
 # Validate: must be a non-negative integer.

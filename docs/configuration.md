@@ -402,7 +402,7 @@ per-hook behavior: [internals/enforcement.md](internals/enforcement.md).
 | `block-agent-native-egress` (plugin-shipped) | an `mcp__*agent-native*` call (hosted Builder.io MCP) from a salus session, or with a payload naming salus or a PHI root | HARD (fail-closed) | none (salus × builder-io is a hard matrix cell) |
 | `auto-arm-on-cap` / `auto-arm-on-subagent-cap` | usage cap approaching / subagent hit a cap | watchdog (fail-open; blocks once to force a handover, after arming a resume) | `AUTO_ARM_DISABLE=1` (+ `AUTO_ARM_SUBAGENT_DISABLE=1`) |
 | `auto-approve-safe-bash` | safe read-only Bash shapes | not a veto — only ever emits *allow* | comment out its stanza to disable |
-| `check-update-available` | SessionStart (throttled; a plain `git fetch` of your himmel clone's own remote — nothing else is contacted, no data sent — run DETACHED, so session start never waits on it) | warn-only | `UPDATE_CHECK_DISABLE=1` |
+| `check-update-available` | SessionStart (throttled; a plain `git fetch` of your himmel clone's own remote (on a release-channel station, a second one for its release tags) — nothing else is contacted, no data sent — run DETACHED, so session start never waits on it) | warn-only | `UPDATE_CHECK_DISABLE=1` |
 | `inject-initiative` | SessionStart | warn-only (opt-in; injects the drive-to-ship directive) | unset `HIMMEL_INITIATIVE` (default OFF) |
 
 ### 3.3 Merge & publish gates
