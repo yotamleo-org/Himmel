@@ -57,7 +57,27 @@ fi
 # diff base, with one line naming the missing input. One tab-separated row per operator-recorded bypass: pr,
 # head sha prefix (7-40 hex; a new row writes the full 40), decision id, reason. Honoured only for that PR
 # number (CHECK_CRITIC_EVAL_PR, else GITHUB_REF refs/pull/<n>/merge) at that head (this head, or the merge
-# ref's second parent). A malformed row fails closed.
+# ref's second parent), or at a later head: one the row's head is an ancestor of, with no critic behaviour path,
+# cbs.txt or known-findings file changed between them. A malformed row fails closed.
+
+# carries <row head> <candidate>: succeeds when the row's head resolves to a commit that is an ancestor of the
+# candidate and no critic behaviour path (expanded at both ends), cbs.txt or known-findings file differs between
+# them. Anything unresolved, unexpanded or unreadable is no carry.
+carries() {
+    local h0 files cb cc protected hit rc
+    h0="$(git -C "$repo" rev-parse --verify -q "$1^{commit}")" || return 1
+    git -C "$repo" merge-base --is-ancestor "$h0" "$2" || return 1
+    files="$(git -C "$repo" diff --name-only --no-renames "$h0" "$2")" || return 1
+    cb="$(python3 "$SCORE" cbs-paths "$h0" --repo "$repo")" || return 1
+    cc="$(python3 "$SCORE" cbs-paths "$2" --repo "$repo")" || return 1
+    [ -n "$cb" ] && [ -n "$cc" ] || return 1
+    protected="$(printf '%s\n%s\n%s\n' "$cb" "$cc" "$CARRY_BLOCKING" | grep -vx '')"
+    hit="$(grep -Fxf <(printf '%s\n' "$protected") <(printf '%s\n' "$files"))"; rc=$?
+    [ "$rc" -eq 1 ] && [ -z "$hit" ]
+}
+# Not in cbs.txt (a change would strand every baseline eval row), yet each moves what a critic reviews.
+CARRY_BLOCKING="$CBS_REL"$'\n'scripts/cr/known-findings.json$'\n'scripts/cr/known-findings.sh
+
 bypass_rev="$diff_base"; bypass_at="the diff base"; why=""
 if [ -z "${GITHUB_BASE_REF:-}" ]; then
     why="GITHUB_BASE_REF is unset"
@@ -85,7 +105,7 @@ if [ -n "$bypass_rows" ]; then
     fi
     tab=$'\t'
     row_re="^([0-9]+)${tab}([0-9a-f]{7,40})${tab}([^${tab}[:space:]]+)${tab}([^${tab}]*[^${tab}[:space:]][^${tab}]*)\$"
-    n=0; matched=""
+    n=0; matched=""; carried_to=""
     while IFS= read -r line || [ -n "$line" ]; do
         n=$((n + 1))
         case "$line" in ''|'#'*) continue ;; esac
@@ -94,12 +114,20 @@ if [ -n "$bypass_rows" ]; then
             exit 1
         fi
         [ -z "$matched" ] && [ -n "$pr" ] && [ "${BASH_REMATCH[1]}" = "$pr" ] || continue
+        row_head="${BASH_REMATCH[2]}"
+        row_desc="PR ${BASH_REMATCH[1]} at head $row_head: decision ${BASH_REMATCH[3]}: ${BASH_REMATCH[4]}"
         while IFS= read -r c; do
-            [ -n "$c" ] && [[ "$c" == "${BASH_REMATCH[2]}"* ]] && matched="PR ${BASH_REMATCH[1]} at head ${BASH_REMATCH[2]}: decision ${BASH_REMATCH[3]}: ${BASH_REMATCH[4]}"
+            [ -n "$c" ] || continue
+            if [[ "$c" == "$row_head"* ]]; then
+                matched="$row_desc"; carried_to=""
+            elif [ -z "$matched" ] && carries "$row_head" "$c"; then
+                matched="$row_desc"; carried_to="$c"
+            fi
         done <<< "$cands"
     done <<< "$bypass_rows"
     if [ -n "$matched" ]; then
         echo "check-critic-eval: !!! BYPASS honoured for $matched"
+        [ -z "$carried_to" ] || echo "check-critic-eval: !!! BYPASS carried to head $carried_to: no critic behaviour path, cbs.txt or known-findings file changed since the row's head"
         echo "check-critic-eval: !!! the eval gate was NOT consulted: this merge rests on the recorded operator bypass in $BYPASS_REL at $bypass_at"
         exit 0
     fi
