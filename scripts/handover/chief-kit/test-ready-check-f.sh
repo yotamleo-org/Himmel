@@ -123,11 +123,20 @@ echo "ok - 19 T8c and T8d killed-mid-read rows skipped: no GNU timeout on this h
 else
 # T8c: a ready-check killed while item 19 reads (the chief's `timeout` TERMs it) leaves no temp dir
 S17_TMP="$tmp/s17-term-tmp"; mkdir -p "$S17_TMP"
-printf '#!/usr/bin/env bash\nexec %q 3 bash %q "$@"\n' "$_TIMEOUT_BIN" "$SCRIPT" > "$tmp/s17-term-wrap.sh"
+S17_TO_PID="$tmp/s17-term-timeout.pid"
+printf '#!/usr/bin/env bash\necho $$ > %q\nexec %q 120 bash %q "$@"\n' "$S17_TO_PID" "$_TIMEOUT_BIN" "$SCRIPT" > "$tmp/s17-term-wrap.sh"
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_DL_SLEEP=20; STUB_DL_STARTED="$tmp/s17-term-started"
-rm -f "$STUB_DL_STARTED"
+rm -f "$STUB_DL_STARTED" "$S17_TO_PID"
+# The timeout's own expiry path (SIGALRM) fires the moment the stalled read starts, so the
+# kill never races the time the run needs to reach item 19; the 120 s is only a backstop.
+( for _ in $(seq 1 1000); do
+    [ -f "$STUB_DL_STARTED" ] && { kill -ALRM "$(cat "$S17_TO_PID")"; exit 0; }
+    sleep 0.1
+done ) &
+S17_WATCH=$!
 RUN_SCRIPT="$tmp/s17-term-wrap.sh" TMPDIR="$S17_TMP" s17_at "$S17_H1"
 unset RUN_SCRIPT
+wait "$S17_WATCH"
 check "19 T8c: the stalled item-19 read was started, so the kill had something to interrupt" "$([ -f "$STUB_DL_STARTED" ] && echo yes || echo no)" "yes"
 check "19 T8c: the outer timeout is what ended the run (exit 124)" "$rc" "124"
 unset STUB_DL_STARTED
