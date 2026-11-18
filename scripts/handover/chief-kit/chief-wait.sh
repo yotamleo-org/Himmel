@@ -1953,7 +1953,7 @@ ready_advance() { # <label> <line>: the cursor moves once the bullet was handed 
 }
 
 r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
-    local cands label marker ldoc bullet sum line stem out rc outf what pr wake_line pending_to pending_rc
+    local cands label marker ldoc bullet sum line stem out rc outf what pr wake_line pending_slow pending_to pending_rc
     r0_handled=""
     [ -n "$console_doc" ] && [ -n "$legs_from" ] || return 1
     # Prefer WRAPPED once per label, then start after the last retryable worker.
@@ -1977,12 +1977,23 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
         cands=""
         IFS= read -r -d '' cands < "$inbox.wait.pending-out" || true  # swallow-ok: read reports the missing NUL at end of file; the text is already in cands
         case "$pending_rc" in
-            0) rm -f "$inbox.wait.pending-error" ;;
+            0) rm -f "$inbox.wait.pending-error" "$inbox.wait.pending-timeouts" ;;
             124|137)
                 # A read that never returns is no answer: no events this pass, try again. The
                 # helper writes its cursors only after it has read every document, so nothing
                 # moved and no worker was read as having nothing pending.
                 printf 'pending-events: no answer within %ss; no events this pass, retrying\n' "$pending_to" >> "$inbox.wait.pending-diagnostic"
+                # The streak is counted in a file, so a re-arm over the same hang does not start it
+                # again: the third timeout in a row wakes the chief once, and only a pass that
+                # answers (above) ends the streak.
+                pending_slow="$(sed -n 1p "$inbox.wait.pending-timeouts" 2>/dev/null)"  # swallow-ok: no file or a torn count reads as no streak yet
+                case "$pending_slow" in ''|*[!0-9]*) pending_slow=0 ;; esac
+                pending_slow=$((10#$pending_slow + 1))
+                printf '%s\npending-events: no answer within %ss; %s passes in a row timed out\n' "$pending_slow" "$pending_to" "$pending_slow" > "$inbox.wait.pending-timeouts"
+                if [ "$pending_slow" -eq 3 ]; then
+                    printf 'WAKE waiter-error pending-events timed-out passes=%s limit=%ss diagnostic=%s\n' "$pending_slow" "$pending_to" "$inbox.wait.pending-timeouts"
+                    return 0
+                fi
                 return 1 ;;
             *)
                 if [ ! -e "$inbox.wait.pending-error" ]; then
