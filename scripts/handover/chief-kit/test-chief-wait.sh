@@ -523,7 +523,7 @@ check "(R4.4) the hold-ask-stuck text" "hold-ask-stuck|A file ask waited 30 min:
 T31=$(( $(date +%s) - 31 * 60 ))
 hask_tick
 I_SEED="$(new_inbox s6)"; printf 'PROJ-9942\tscripts/check-ci.sh\t%s\n' "$T31" > "$I_SEED.wait.holdasks"
-HOME="$H_CHIEF" CHIEF_WAIT_NOW="$T31" CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh" stuck_run s6 --workers "N1.md"
+HOME="$H_CHIEF" HIMMEL_TEST_FIXTURE=0 CHIEF_WAIT_NOW="$T31" CHIEF_WAIT_PAGE_CMD="$STUB/pagek.sh" stuck_run s6 --workers "N1.md"
 check "(R4.6) CHIEF_WAIT_NOW without HIMMEL_TEST_FIXTURE=1 is ignored: the 31-minute ask still pages hold-ask-stuck" "hold-ask-stuck" "$(pk_kinds)"
 hask_tick
 I_SEED="$(new_inbox s6c)"; printf 'PROJ-9942\tscripts/check-ci.sh\t%s\n' "$T31" > "$I_SEED.wait.holdasks"
