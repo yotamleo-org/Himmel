@@ -556,5 +556,40 @@ check 'the doc states the retry in the launch rule' 1 "$doc_rule"
 doc_rec=0; case "$doc_flat" in *'repair-state.json'*'the tick reads it and writes no repair file'*) doc_rec=1 ;; esac
 check 'the doc names the one record and says the tick writes no repair file' 1 "$doc_rec"
 
+# --- 10231 / 10229 (trace T8-267ec6b7 clause 7): the repair wake carries the REAL CLI's remedy through the real tick and the real waiter.
+# Every row above uses a stand-in for the CLI; here the record is what `jira release repair-state` itself produces, never a record the test authors.
+REALCLI="$HERE/../../jira/dist/index.js"
+real_cli() { JIRA_PROJECT_KEY=TESTKEY HIMMEL_RELEASE_STATE_DIR="$W/releases" HIMMEL_RELEASE_KEY_DIR="$W/keys" node "$REALCLI" "$@"; }
+if [ ! -f "$REALCLI" ]; then
+    printf 'ok - SKIPPED the real-CLI wake rows: the built jira CLI (scripts/jira/dist/index.js) is absent in this checkout\n'
+else
+    reset
+    real="$(real_cli release repair-state R1 --json --repo acme/widgets 2>/dev/null)"
+    want='jira release repair R1 --apply --repo acme/widgets'
+    check 'the real CLI prints a record whose operator command is the one review-and-apply command' "$want" "$(printf '%s' "$real" | python3 -I -c 'import json,sys; print(json.load(sys.stdin)["operator_command"])' 2>/dev/null)"
+    if [ -e "$RDIR/repair-state.json" ]; then
+        printf 'ok - the real CLI published the record itself\n'
+    else
+        # A CLI in other pid or user namespaces than the host (a sandbox) is fenced: it prints the record and cannot publish it, so its own
+        # printed bytes are stored where it publishes them on a station.
+        printf '%s\n' "$real" > "$RDIR/repair-state.json"
+        printf 'ok - the real CLI is fenced here and printed the record; its own output is stored as the record\n'
+    fi
+    export TICK_REPAIR_STATE_PROBE=''
+    out="$(tick)"
+    check 'the real tick reads the real CLI record: repair=off:unreviewed' 'off:unreviewed' "$(field repair "$out")"
+    check 'the real tick launches nothing for an unreviewed repair' 0 "$(none_launched)"
+    rm -rf "$W/inbox-real"
+    wake="$(printf '%s\n' "$out" | python3 -I "$HERE/wake-rules.py" --inbox "$W/inbox-real" --doc "$W/handover/chief.md" --release-root "$W/releases")"
+    check 'the waiter rule wakes once with the exact remedy the CLI printed (never the unavailable fallback)' "WAKE repair off:unreviewed remedy=$want" "$wake"
+    check 'the same tick line wakes only once' '' "$(printf '%s\n' "$out" | python3 -I "$HERE/wake-rules.py" --inbox "$W/inbox-real" --doc "$W/handover/chief.md" --release-root "$W/releases")"
+    rm -f "$RDIR/repair-state.json"
+    rm -rf "$W/inbox-real2"
+    out="$(tick)"
+    wake="$(printf '%s\n' "$out" | python3 -I "$HERE/wake-rules.py" --inbox "$W/inbox-real2" --doc "$W/handover/chief.md" --release-root "$W/releases")"
+    case "$wake" in *"remedy=$want"*) wk=real ;; *'unavailable; reconcile CLI-owned repair-state record'*) wk=unavailable ;; *) wk="other:$wake" ;; esac
+    check 'control: with no record the wake never invents a command (the unavailable remedy)' 'unavailable' "$wk"
+fi
+
 echo
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi
