@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Offline integration checks for the public fleet writer and launch gates."""
+import collections
 import json
 import os
 from pathlib import Path
@@ -9,6 +10,7 @@ import sys
 import shutil
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 WRITER = ROOT / 'scripts/handover/chief-kit/fleet-manifest.sh'
@@ -1059,6 +1061,151 @@ exit 1''')
         self.assertTrue((self.bucket / 'slots' / self.doc.stem / 'managed.json').is_file())
         self.rt('begin', aid='second', ok=False)
         self.stop(session)
+
+    # One run's worker states: the batch answers the one-doc question from one read of each directory.
+    def runtime_module(self):
+        sys.path.insert(0, str(ENTRYPOINTS / 'scripts/lib'))
+        try:
+            import fleet_runtime
+        finally:
+            sys.path.pop(0)
+        return fleet_runtime
+
+    def batch_env(self):
+        return mock.patch.dict(os.environ, dict(HOME=str(self.bucket), HIMMEL_POLICY_FOLLOWS_HOME='1',
+                                                TICKET_STATUS_QUEUE_LOCK=self.stub('queue-lock-free', 'echo free')))
+
+    def plain_doc(self, name, *lines):
+        path = self.bucket / name
+        path.write_text('# worker\n' + ''.join(line + '\n' for line in lines))
+        return path
+
+    def batch_scenario(self):
+        """Docs in every state disposition tells apart: an anchored bucket (real attempts and receipts, then attempts written
+        straight into the anchor) and a directory with no anchor."""
+        self.active()
+        docs = {'pending': self.doc}
+        self.rt('begin')
+        docs['refused'] = self.plain_doc('TEST-2-N1-refused.md')
+        self.call('add', self.m, docs['refused'], '--lane', 'native', '--pending')
+        self.rt('begin', aid='r', doc=docs['refused'])
+        self.rt('outcome', aid='r', doc=docs['refused'], extra=('--phase', 'refused'))
+        docs['complete'] = self.plain_doc('TEST-3-N1-complete.md')
+        self.call('add', self.m, docs['complete'], '--lane', 'native', '--pending')
+        self.rt('begin', aid='c', doc=docs['complete'])
+        self.rt('commit', aid='c', doc=docs['complete'])
+        self.rt('outcome', aid='c', doc=docs['complete'], extra=('--phase', 'launched'))
+        with docs['complete'].open('a') as stream:
+            stream.write('- 12:00 WRAPPED done\n')
+        self.rt('outcome', aid='c', doc=docs['complete'], extra=('--phase', 'complete'))
+        docs['reregistered'] = self.plain_doc('TEST-4-N1-reregistered.md')
+        self.call('add', self.m, docs['reregistered'], '--lane', 'native', '--pending')
+        self.rt('begin', aid='g', doc=docs['reregistered'])
+        self.rt('outcome', aid='g', doc=docs['reregistered'], extra=('--phase', 'refused'))
+        time.sleep(1.1)  # receipts and registrations are stamped to the second
+        self.call('add', self.m, docs['reregistered'], '--lane', 'native', '--pending')
+        docs['registered'] = self.plain_doc('TEST-5-N1-registered.md')
+        self.call('add', self.m, docs['registered'], '--lane', 'native', '--pending')
+        docs['legacy'] = self.plain_doc('TEST-6-N1-legacy.md')
+        self.call('add', self.m, docs['legacy'], '--lane', 'native')
+        docs['missing'] = self.bucket / 'TEST-7-N1-missing.md'
+        self.call('add', self.m, docs['missing'], '--lane', 'native')
+        docs['unlisted'] = self.plain_doc('TEST-8-N1-unlisted.md')
+        anchor = self.bucket / 'fleet-control.json'
+        data = json.loads(anchor.read_text())
+        for key, phase in (('committed', 'committed'), ('unknown', 'unknown'), ('launched', 'launched')):
+            docs[key] = self.plain_doc('TEST-9-N1-%s.md' % key)
+            data['attempts']['syn-' + key] = dict(attempt_id='syn-' + key, phase=phase, doc=str(docs[key]), name=docs[key].stem)
+        anchor.write_text(json.dumps(data))
+        loose = self.bucket / 'loose'
+        loose.mkdir()
+        docs['loose'], docs['loose-attempt'] = self.plain_doc('loose/TEST-10-N1-loose.md'), self.plain_doc('loose/TEST-11-N1-attempt.md')
+        (loose / 'a.fleet.json').write_text(json.dumps({'schema': 1, 'workers': [
+            {'doc': str(docs['loose']), 'label': 'N1'},
+            {'doc': str(docs['loose-attempt']), 'label': 'N2', 'attempt': {'attempt_id': 'x', 'phase': 'committed'}}]}))
+        return docs
+
+    def test_batch_answers_equal_the_one_doc_answer_in_every_state(self):
+        docs = self.batch_scenario()
+        runtime = self.runtime_module()
+        with self.batch_env():
+            batch = runtime.WorkerStates()
+            for name, doc in docs.items():
+                single = runtime.disposition(str(doc))
+                got = batch.batched(str(doc))
+                if name == 'unlisted':
+                    self.assertIsNone(got, 'a doc no manifest, attempt or receipt names is not answered by the batch')
+                    continue
+                self.assertEqual(got, single, name)
+                self.assertEqual(json.loads(self.call('runtime', 'disposition', '--doc', doc).stdout), single, name)
+            # the scenario really holds every state, so the equalities above compare different answers
+            self.assertEqual({name: batch.batched(str(doc)) for name, doc in docs.items()},
+                             {'pending': 'pending', 'refused': 'refused', 'complete': 'complete', 'reregistered': 'legacy',
+                              'registered': 'legacy', 'legacy': 'legacy', 'missing': 'legacy', 'unlisted': None, 'committed': 'committed',
+                              'unknown': 'unknown', 'launched': 'launched', 'loose': 'legacy', 'loose-attempt': 'unknown'})
+
+    def test_batch_reads_each_manifest_and_the_anchor_once_whatever_the_doc_count(self):
+        docs = self.batch_scenario()
+        runtime = self.runtime_module()
+        reads = collections.Counter()
+        real = runtime.read
+
+        def counting(path):
+            reads[str(path)] += 1
+            return real(path)
+        with self.batch_env(), mock.patch.object(runtime, 'read', counting):
+            batch = runtime.WorkerStates()
+            for _ in range(3):
+                for doc in docs.values():
+                    batch.batched(str(doc))
+        self.assertEqual(max(reads.values()), 1, dict(reads))
+        self.assertIn(str(self.m), reads)
+        self.assertIn(str(self.bucket / 'fleet-control.json'), reads)
+        self.assertIn(str(self.bucket / 'loose/a.fleet.json'), reads)
+
+    def test_batch_that_cannot_read_leaves_the_doc_to_the_one_doc_answer(self):
+        docs = self.batch_scenario()
+        runtime = self.runtime_module()
+        (self.bucket / 'broken.fleet.json').write_text('{not json')
+        history = self.bucket / '.himmel/launch-refusals.jsonl'
+        saved = history.read_text()
+        with self.batch_env():
+            batch = runtime.WorkerStates()
+            for name, doc in docs.items():
+                if name.startswith('loose'):
+                    self.assertIsNotNone(batch.batched(str(doc)), name + ': the unbroken directory is still batched')
+                else:
+                    self.assertIsNone(batch.batched(str(doc)), name + ': a manifest that cannot be read leaves every doc of its directory')
+            for name, doc in docs.items():
+                self.assertEqual(runtime.WorkerStates()(str(doc)), runtime.worker_state(str(doc)), name)
+            (self.bucket / 'broken.fleet.json').unlink()
+            history.write_text(saved + json.dumps(dict(v=2, kind='launch-attempt', doc=str(docs['refused']))) + '\n')
+            batch = runtime.WorkerStates()
+            self.assertIsNone(batch.batched(str(docs['refused'])), 'a receipt the history reader cannot place leaves the doc to the one-doc answer')
+            self.assertIsNone(batch.batched(str(docs['complete'])))
+            for name, doc in docs.items():
+                self.assertEqual(runtime.WorkerStates()(str(doc)), runtime.worker_state(str(doc)), name)
+
+    def test_worker_states_memoizes_by_doc_and_asks_the_canonical_function_once(self):
+        docs = self.batch_scenario()
+        runtime = self.runtime_module()
+        calls = []
+        real = runtime.worker_state
+
+        def counting(doc, *args, **kwargs):
+            calls.append((doc, kwargs.get('disposition') or (args[1] if len(args) > 1 else None)))
+            return real(doc, *args, **kwargs)
+        with self.batch_env(), mock.patch.object(runtime, 'worker_state', counting):
+            states = runtime.WorkerStates()
+            first = {name: states(str(doc)) for name, doc in docs.items()}
+            second = {name: states(str(doc)) for name, doc in docs.items()}
+        self.assertEqual(first, second)
+        self.assertEqual(len(calls), len(docs))
+        self.assertEqual(len({doc for doc, _ in calls}), len(docs))
+        self.assertEqual({Path(doc).name for doc, disposition in calls if disposition is None}, {'TEST-8-N1-unlisted.md'})
+        with self.batch_env():
+            for name, doc in docs.items():
+                self.assertEqual(first[name], runtime.worker_state(str(doc)), name)
 
 
 if __name__ == '__main__':

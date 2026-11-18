@@ -3637,6 +3637,194 @@ if [ -s "$P_PROOF_DRAFT" ]; then
     [ ! -e "${draft%/*}" ] && pass 'review F3 proof draft removed on timeout' || fail 'review F3 leaked proof draft directory'
 else fail 'review F3 proof checker never reached'; fi
 
+# The dispatcher's worker-state reads: the same output in every mode, one read of a directory's manifests per run,
+# one worker_state evaluation per unique doc. The tree below is a copy of the code under test whose fleet_runtime.py is
+# the real module's own source run under a counting wrapper: the answers are the real ones, only the calls are logged.
+U8="$WORK/u8"; mkdir -p "$U8"
+u8_root="$(cd "$(dirname "$SUT")/../../.." && pwd)"
+U8T="$U8/tree"; mkdir -p "$U8T/scripts/handover"
+cp -R "$u8_root/scripts/handover/chief-kit" "$U8T/scripts/handover/chief-kit"
+cp -R "$u8_root/scripts/lib" "$U8T/scripts/lib"
+mkdir -p "$U8T/marketplace/plugins/himmel-ops"
+cp -R "$u8_root/marketplace/plugins/himmel-ops/scripts" "$U8T/marketplace/plugins/himmel-ops/scripts"
+cat > "$U8T/scripts/lib/fleet_runtime.py" <<'PYEOF'
+"""Fixture stand-in for fleet_runtime.py: the real module's source, run as this file, with every worker_state call, every
+disposition subprocess and every open of a *.fleet.json file logged to $FR_COUNT_LOG. FR_NO_BATCH=1 turns the batch off."""
+import os, sys
+_source = open(os.environ['FR_REAL_SOURCE'], encoding='utf-8').read()
+_guard = "if __name__ == '__main__':"
+assert _source.count(_guard) == 1
+exec(compile(_source.replace(_guard, 'if False:'), __file__, 'exec'))
+_log = os.environ.get('FR_COUNT_LOG')
+
+
+def _note(*fields):
+    if _log:
+        with open(_log, 'a') as stream:
+            stream.write('\t'.join(str(f) for f in fields) + '\n')
+
+
+def _hook(event, args):
+    if event == 'open' and isinstance(args[0], (str, bytes, os.PathLike)) and os.fsdecode(args[0]).endswith('.fleet.json'):
+        frames, frame = [], sys._getframe(1)
+        while frame and len(frames) < 14:
+            frames.append(frame.f_code.co_name)
+            frame = frame.f_back
+        _note('open', os.fsdecode(args[0]), ','.join(frames))
+
+
+sys.addaudithook(_hook)
+_worker_state = worker_state
+
+
+def worker_state(doc, *args, **kwargs):
+    disposition = kwargs.get('disposition', args[1] if len(args) > 1 else None)
+    _note('worker_state', doc, 'single' if disposition is None else 'batch')
+    return _worker_state(doc, *args, **kwargs)
+
+
+if os.environ.get('FR_NO_BATCH') and 'WorkerStates' in globals():
+    WorkerStates.batched = lambda self, doc: None
+if __name__ == '__main__':
+    _note('main', *sys.argv[1:])
+    sys.exit(main())
+PYEOF
+cat > "$U8/lock.sh" <<'EOF'
+#!/usr/bin/env bash
+# queue-lock.sh status, by the doc's name: -live a fresh lock, -stale a held lock whose owner is gone, anything else free
+case "$2" in
+    *-live.md) printf '{\n  "heartbeat": "%s"\n}\nstatus: FRESH\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"; exit 11 ;;
+    *-stale.md) printf 'status: STALE-DEAD (owner pid gone)\n'; exit 12 ;;
+    *) echo free; exit 0 ;;
+esac
+EOF
+chmod +x "$U8/lock.sh"
+U8B="$U8/bucket"; U8H="$U8/home"; mkdir -p "$U8B" "$U8H/.himmel"
+python3 -I - "$U8B" "$U8H" <<'PYEOF'
+import json, os, sys
+bucket, home = sys.argv[1:3]
+anchor = os.path.join(bucket, 'fleet-control.json')
+
+
+def doc(name, *lines):
+    path = os.path.join(bucket, name)
+    with open(path, 'w') as stream:
+        stream.write('# worker\n' + ''.join(line + '\n' for line in lines))
+    return path
+
+
+D = dict(
+    wrapped=doc('HIMMEL-101-N1-wrapped.md', '- 10:00 WRAPPED - done'),
+    halted=doc('HIMMEL-102-N1-halted.md', '- 10:00 HALTED - stopped'),
+    live=doc('HIMMEL-103-N1-live.md', '- 10:00 LIVE - working'),
+    stale=doc('HIMMEL-104-N1-stale.md', '- 10:00 LIVE - working'),
+    unknown=doc('HIMMEL-105-N1-unknown.md'),
+    missing=os.path.join(bucket, 'HIMMEL-106-N1-missing.md'),
+    pending=doc('HIMMEL-107-N1-pending.md'),
+    committed=doc('HIMMEL-108-N1-committed.md'),
+    attempt_unknown=doc('HIMMEL-109-N1-attempt-unknown.md'),
+    refused=doc('HIMMEL-110-N1-refused.md'),
+    resumed=doc('HIMMEL-111-N1-resumed.md', '- 10:00 WRAPPED - done', '- 12:30 RESUMED - by hand'),
+    rereg=doc('HIMMEL-112-N1-rereg.md'),
+)
+control = {'family': 'fam', 'anchor': anchor}
+
+
+def rows(*names, pending=(), added='2026-11-18T08:00:00Z'):
+    out = [dict(doc=D[n], label='N%d' % (i + 1), added=added, lane='native') for i, n in enumerate(names)]
+    out += [dict(doc=D[n], label='P%d' % (i + 1), added=added, lane='native', registration='pending') for i, n in enumerate(pending)]
+    return out
+
+
+def manifest(name, workers):
+    with open(os.path.join(bucket, name), 'w') as stream:
+        json.dump({'schema': 1, 'workers': workers, 'control': control}, stream)
+
+
+chain = 'HIMMEL-nextleg-2026-11-%s-roadmap-chief.fleet.json'
+manifest(chain % '18A', rows('wrapped', 'live', 'unknown', 'missing'))
+manifest(chain % '17B', rows('wrapped', 'halted', 'stale', 'live', pending=('pending', 'committed', 'attempt_unknown', 'refused', 'resumed')))
+manifest(chain % '17A', rows('wrapped', 'halted', 'stale', 'unknown', 'live', 'missing'))
+manifest(chain % '16C', rows('wrapped', 'halted', 'live', 'stale', 'unknown', 'missing'))
+manifest(chain % '16A', rows('wrapped', 'halted', 'live', 'stale', 'unknown', 'missing', pending=('pending',)))
+manifest(chain % '15A', rows('wrapped', 'halted', 'live', 'stale', 'unknown', 'missing', pending=('rereg', 'refused')))
+manifest('HIMMEL-nextleg-2026-11-17A-other-chief.fleet.json', rows('wrapped', 'live'))
+attempts = {}
+for key, phase in (('pending', 'pending'), ('committed', 'committed'), ('attempt_unknown', 'unknown')):
+    attempts['a-' + key] = dict(attempt_id='a-' + key, phase=phase, doc=D[key], name=os.path.basename(D[key])[:-3])
+with open(anchor, 'w') as stream:
+    json.dump({'family': 'fam', 'mode': 'active', 'generation': 1, 'target': 4, 'attempts': attempts}, stream)
+
+
+def receipt(attempt, key, outcome, ts):
+    return dict(v=2, kind='launch-attempt', ts=ts, attempt_id=attempt, name=os.path.basename(D[key])[:-3], doc=D[key], family='fam', outcome=outcome)
+
+
+with open(os.path.join(home, '.himmel', 'launch-refusals.jsonl'), 'w') as stream:
+    for row in (receipt('r1', 'refused', 'refused', '2026-11-18T09:00:00Z'), receipt('r2', 'resumed', 'complete', '2026-11-18T09:00:00Z'),
+                receipt('r3', 'rereg', 'refused', '2026-11-18T07:00:00Z')):
+        stream.write(json.dumps(row) + '\n')
+PYEOF
+U8M="$U8/mirror/HIMMEL"; mkdir -p "$U8M"
+M_SAVE="$M"; M="$U8M"
+for n in 101 102 103 104 105 106 107 108 109 110 111 112 120; do
+    mk "HIMMEL-$n" "To Do" Medium '[]' '["v1.0.1"]' '[]' "u8 fixture $n" "Edit scripts/lib/u8-$n.sh only."
+done
+M="$M_SAVE"
+printf 'v1.0.1\tfalse\t\n' > "$U8/mirror/HIMMEL.versions.tsv"
+U8OWN="$U8B/HIMMEL-nextleg-2026-11-18A-roadmap-chief.fleet.json"
+u8_nd() { # <label> <env prefix var=value or ""> mode args...: the tree's dispatcher, the counting wrapper on; output in $U8/out.<label>, rc in $U8/rc.<label>
+    local label="$1" nobatch="$2"; shift 2
+    : > "$U8/count.$label"
+    env HOME="$U8H" TICKET_STATUS_QUEUE_LOCK="$U8/lock.sh" TICKET_STATUS_STATE_DIR="$U8/state" FR_REAL_SOURCE="$u8_root/scripts/lib/fleet_runtime.py" \
+        FR_COUNT_LOG="$U8/count.$label" ${nobatch:+FR_NO_BATCH=1} NEXT_DISPATCH_MIRROR="$U8M" NEXT_DISPATCH_GH_CMD="$WORK/gh" \
+        bash "$U8T/scripts/handover/chief-kit/next-dispatchable.sh" --no-classify --workers-from "$U8OWN" "$@" > "$U8/out.$label" 2> "$U8/err.$label"
+    printf '%s\n' "$?" > "$U8/rc.$label"
+}
+u8_modes=("list|--top 40" "resume|--resume-only --top 40" "why|--why --top 40" "dispositions|--dispositions --top 40")
+for mode in "${u8_modes[@]}"; do
+    name="${mode%%|*}"; args="${mode#*|}"
+    # shellcheck disable=SC2086  # the mode's arguments are word-split on purpose
+    u8_nd "$name" "" $args
+    # shellcheck disable=SC2086
+    u8_nd "$name.single" 1 $args
+    [ "$(cat "$U8/rc.$name")" = 0 ] && pass "(U8) $name: the dispatcher exits 0" || fail "(U8) $name: rc $(cat "$U8/rc.$name"): $(head -c 300 "$U8/err.$name")"
+    cmp -s "$U8/out.$name" "$U8/out.$name.single" && pass "(U8) $name: the batched read prints the same bytes as one read per doc" \
+        || fail "(U8) $name: the batched read differs from one read per doc: $(diff "$U8/out.$name" "$U8/out.$name.single" | head -5)"
+    [ -s "$U8/out.$name" ] && pass "(U8) $name: the dispatcher printed something" || fail "(U8) $name: the dispatcher printed nothing"
+    [ -z "${ND_U8_EVIDENCE:-}" ] || { mkdir -p "$ND_U8_EVIDENCE"; cp "$U8/out.$name" "$ND_U8_EVIDENCE/out.$name"; }
+done
+u8_list="$(cat "$U8/out.list")"
+for key in 101 102 110 120; do has "(U8) a ticket no live worker holds is offered: HIMMEL-$key" "$u8_list" "${TAB}HIMMEL-$key${TAB}"; done
+for key in 103 104 105 106 107 108 109 112; do lacks "(U8) a ticket a worker in doubt or alive holds is withheld: HIMMEL-$key" "$u8_list" "${TAB}HIMMEL-$key${TAB}"; done
+# the counts: the first mode's log is one run
+cl="$U8/count.list"
+u8_max_per_doc="$(awk -F'\t' '$1 == "worker_state" { c[$2]++ } END { m = 0; for (d in c) if (c[d] > m) m = c[d]; print m + 0 }' "$cl")"
+u8_docs="$(awk -F'\t' '$1 == "worker_state" { c[$2]++ } END { n = 0; for (d in c) n++; print n }' "$cl")"
+u8_single="$(awk -F'\t' '$1 == "worker_state" && $3 == "single" { n++ } END { print n + 0 }' "$cl")"
+u8_subproc="$(awk -F'\t' '$1 == "main" { n++ } END { print n + 0 }' "$cl")"
+u8_scan_max="$(awk -F'\t' '$1 == "open" && $3 ~ /read_directory/ { c[$2]++ } END { m = 0; for (p in c) if (c[p] > m) m = c[p]; print m + 0 }' "$cl")"
+u8_scan_paths="$(awk -F'\t' '$1 == "open" && $3 ~ /read_directory/ { c[$2] = 1 } END { n = 0; for (p in c) n++; print n }' "$cl")"
+u8_single_reads="$(awk -F'\t' '$1 == "open" && $3 ~ /(disposition|protected)/ { n++ } END { print n + 0 }' "$cl")"
+[ "$u8_docs" -ge 10 ] && pass "(U8) the run asked about the fixture's docs ($u8_docs unique)" || fail "(U8) the run asked about $u8_docs docs only"
+u8_eq() { [ "$2" = "$3" ] && pass "$1" || fail "$1 (want '$3', got '$2')"; }
+u8_eq "(U8) count: worker_state is evaluated once per unique doc, never twice" "$u8_max_per_doc" 1
+u8_eq "(U8) count: every evaluation took its disposition from the one batch read" "$u8_single" 0
+u8_eq "(U8) count: no disposition subprocess started" "$u8_subproc" 0
+u8_eq "(U8) count: no manifest was opened by the one-doc disposition" "$u8_single_reads" 0
+u8_eq "(U8) count: each manifest of the directory was read once by the batch" "$u8_scan_max" 1
+u8_eq "(U8) count: the batch read every manifest of the directory" "$u8_scan_paths" "$(find "$U8B" -maxdepth 1 -name '*.fleet.json' | grep -c .)"
+# fail closed: a manifest the batch cannot read leaves every doc of the directory to the one-doc read, which reports what it reports
+printf '{not json' > "$U8B/zz-broken.fleet.json"
+u8_nd broken ""  --top 40
+u8_nd broken.single 1 --top 40
+cmp -s "$U8/out.broken" "$U8/out.broken.single" && pass "(U8) a manifest the batch cannot read: the output is the one-doc output" \
+    || fail "(U8) a manifest the batch cannot read changed the output: $(diff "$U8/out.broken" "$U8/out.broken.single" | head -5)"
+u8_eq "(U8) a manifest the batch cannot read: no doc is answered from the batch" "$(awk -F'\t' '$1 == "worker_state" && $3 == "batch" { n++ } END { print n + 0 }' "$U8/count.broken")" 0
+u8_eq "(U8) a manifest the batch cannot read: each doc is still evaluated once" \
+    "$(awk -F'\t' '$1 == "worker_state" { c[$2]++ } END { m = 0; for (d in c) if (c[d] > m) m = c[d]; print m + 0 }' "$U8/count.broken")" 1
+rm -f "$U8B/zz-broken.fleet.json"
+
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.
 real_hits="$(grep -rlF "$WORK" "$REAL_HOME/.himmel/state/holds" 2>/dev/null | grep -c . || true)"
