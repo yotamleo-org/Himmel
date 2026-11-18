@@ -1028,6 +1028,35 @@ console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outSK2dn" | jq -e '.actual == "degraded" and (.detail | contains("not installed") and contains("source drift") and contains("claude plugin marketplace remove obsidian-skills"))' >/dev/null \
   || fail "settings-key verifyPluginSet: a not-installed plugin plus a marketplace drift must report both (got: $outSK2dn)"
+# Marketplaces merge per name across the same layers as enabledPlugins: a
+# wrong source in the USER settings still reads degraded when the project
+# settings enable a different plugin, and a project entry with the right
+# source wins over the user's wrong one.
+sk2_home_layers="$work/sk2-home-layers"; mkdir -p "$sk2_home_layers/.claude/plugins"
+printf '{"version":2,"plugins":{"foo@bar":[{"scope":"user","installPath":"%s"}],"other@x":[{"scope":"user","installPath":"%s"}]}}' "$sk2_foo_installpath_w" "$sk2_foo_installpath_w" > "$sk2_home_layers/.claude/plugins/installed_plugins.json"
+printf '{"enabledPlugins":{"foo@bar":true},"extraKnownMarketplaces":{"obsidian-skills":{"source":{"source":"github","repo":"someone-else/obsidian-skills"}}}}' > "$sk2_home_layers/.claude/settings.json"
+sk2_home_layers_w="$(winpath "$sk2_home_layers")"
+sk2_layer_proj="$work/sk2-layer-proj"; mkdir -p "$sk2_layer_proj/.claude"
+printf '{"enabledPlugins":{"other@x":true}}' > "$sk2_layer_proj/.claude/settings.json"
+sk2_layer_projfix="$work/sk2-layer-projfix"; mkdir -p "$sk2_layer_projfix/.claude"
+printf '{"enabledPlugins":{"other@x":true},"extraKnownMarketplaces":{"obsidian-skills":{"source":{"source":"url","url":"https://github.com/kepano/obsidian-skills.git"}}}}' > "$sk2_layer_projfix/.claude/settings.json"
+for sk2_lcase in proj projfix; do
+  outSK2l=$("$node_bin" -e "
+const { runProbe } = require('$probes_lib_w');
+const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
+const item = manifest.items.find((i) => i.id === 'claude-plugins-pluginSet');
+const env = Object.assign({}, process.env, { HOME: '$sk2_home_layers_w' });
+const ctx = { repoRoot: '$(winpath "$sk2_drift_repo")', targetPath: '$(winpath "$work/sk2-layer-$sk2_lcase")', scope: 'project', env };
+console.log(JSON.stringify(runProbe(item, ctx)));
+")
+  if [ "$sk2_lcase" = proj ]; then
+    echo "$outSK2l" | jq -e '.actual == "degraded" and (.detail | contains("obsidian-skills") and contains("source drift"))' >/dev/null \
+      || fail "settings-key verifyPluginSet: a wrong marketplace source in the user settings must read degraded when the project settings enable another plugin (got: $outSK2l)"
+  else
+    echo "$outSK2l" | jq -e '.actual == "present"' >/dev/null \
+      || fail "settings-key verifyPluginSet: a project marketplace entry with the right source must win over the user's wrong one (got: $outSK2l)"
+  fi
+done
 echo "ok: settings-key simple non-dotted key + verifyPluginSet (claude-plugins-pluginSet) — present/absent, mismatch + not-installed degrade, stale installPath + wrong-project scope degrade"
 
 # ── settings-key: verifyPluginSet path normalization, directory-only

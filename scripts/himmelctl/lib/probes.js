@@ -837,11 +837,14 @@ function probeSettingsKey(item, ctx) {
     }
     if (item.probe.verifyPluginSet) {
       const merged = {};
+      const mergedMarketplaces = {};
       for (let i = layers.length - 1; i >= 0; i--) {
         const v = valIn(layers[i], item.probe.key);
         if (v && typeof v === 'object') Object.assign(merged, v);
+        const m = layers[i].data && layers[i].data.extraKnownMarketplaces;
+        if (m && typeof m === 'object') Object.assign(mergedMarketplaces, m);
       }
-      const result = verifyPluginSet(merged, ctx, data);
+      const result = verifyPluginSet(merged, ctx, { extraKnownMarketplaces: mergedMarketplaces });
       if (result.problem) return { actual: 'degraded', detail: `${where}: ${result.problem}` };
       if (result.note) return { actual: 'present', detail: `${where} (${result.note})` };
     }
