@@ -1,0 +1,261 @@
+#!/usr/bin/env bash
+# readiness-session.sh - the readiness role's trusted, session-side lease owner (C0s cycle 2).
+#
+# The launcher (headed-arm-worker.sh --profile readiness) acquires the version's queue lease ON BEHALF of the session it
+# is about to start, registers nothing for itself, and leaves two private files in a mode-0700 attempt directory named
+# for the session id it minted: startup.json (the immutable session scope, doc, version, attempt id) and lease-token
+# (the token transport). This script is the only reader of that pair after the launch:
+#
+#   startup              SessionStart hook (hook JSON on stdin). Silent no-op for any session that has no attempt
+#                        directory. Otherwise: the ACTUAL startup session id (hook JSON session_id, and
+#                        CLAUDE_CODE_SESSION_ID when set) must equal the minted scope, and the payload's transcript_path
+#                        must be this session's own existing <session id>.jsonl; the transport is read through
+#                        a private-file check; the lease is adopted with QUEUE_LOCK_SESSION_SCOPE set explicitly to
+#                        that scope and that transcript is recorded as the lease's liveness marker (no ambient session
+#                        id or config directory is consulted); the same-scope token file, .doc sidecar, CURRENT holder
+#                        and liveness marker are verified; only
+#                        then the private AttemptConfirmation is published and the transport removed. Any failure
+#                        publishes nothing, so every act and finish refuses. Always exits 0 and prints nothing on
+#                        stdout (a hook must never block or inject text); a refusal is one reason code on stderr.
+#   verify <attempt-dir> exit 0 only if the confirmation is fresh and consistent with the startup config AND the
+#                        adopted registration still names the current holder. The adapter runs it before EVERY act,
+#                        finish included. Prints nothing; exit 1 = not adopted.
+#   finish <attempt-dir> verify, then release exactly the token this session adopted (a successor's lock refuses it),
+#                        then remove the attempt directory (the credential file included). Exit 0 only if released.
+#   cleanup              SessionEnd hook (hook JSON on stdin). Releases this session's own lease (the adopted token,
+#                        or the still-unadopted transport token) and removes its attempt directory; silent, exit 0.
+#
+# No token or credential is ever printed, logged or placed in an argument list of this script; queue-lock.sh is
+# SOURCED (not run), so the token only moves between shell variables and its own private files. Its own output is
+# discarded because adopt/acquire/release echo the token. queue-lock.sh itself is unchanged and is found through the
+# startup config the trusted launcher wrote, so this file is identical wherever its plugin copy is installed.
+#
+# Platform: bash 3.2+, Linux/macOS (stat -c with a stat -f fallback).
+set -u
+umask 077
+
+RS_WHY="" RS_HOOK_SID="" RS_HOOK_TR=""
+RS_SCOPE="" RS_DOC="" RS_VERSION="" RS_ATTEMPT_ID="" RS_QL="" RS_XDG="" RS_HDIR=""
+UUID_RE='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+TOKEN_RE='^[A-Za-z0-9._-]+$'
+
+_rs_stat() { stat -c "$1" -- "$3" 2>/dev/null || stat -f "$2" -- "$3" 2>/dev/null; }
+_rs_private_dir() {
+    [ -d "$1" ] && [ ! -L "$1" ] && [ "$(_rs_stat %u %u "$1")" = "$(id -u)" ] && [ "$(_rs_stat %a %Lp "$1")" = 700 ]
+}
+_rs_private_file() {
+    [ -f "$1" ] && [ ! -L "$1" ] && [ "$(_rs_stat %u %u "$1")" = "$(id -u)" ] && [ "$(_rs_stat %a %Lp "$1")" = 600 ] && [ "$(_rs_stat %h %l "$1")" = 1 ]
+}
+_rs_refuse() { echo "readiness-session: $*" >&2; }
+_rs_root() {
+    if [ -n "${XDG_RUNTIME_DIR:-}" ]; then printf '%s/himmel-readiness' "$XDG_RUNTIME_DIR"; else printf '/tmp/himmel-readiness-%s' "$(id -u)"; fi
+}
+# the session id and transcript path out of the hook JSON on stdin (a hook payload is small): RS_HOOK_SID, RS_HOOK_TR
+_rs_hook_read() {
+    local raw
+    RS_HOOK_SID="" RS_HOOK_TR=""
+    raw="$(head -c 65536)" || return 1
+    RS_HOOK_SID="$(printf '%s' "$raw" | jq -r 'select(type == "object") | .session_id // empty' 2>/dev/null)"  # swallow-ok: an unparsable payload reads as no session id and the hook is a no-op
+    RS_HOOK_TR="$(printf '%s' "$raw" | jq -r 'select(type == "object") | .transcript_path // empty | select(type == "string")' 2>/dev/null)"  # swallow-ok: an unparsable or non-string path reads empty and refuses at adoption
+}
+# a session's own transcript: an absolute path to a regular, non-symlink file named <session id>.jsonl
+_rs_transcript_ok() { # <path> <session id>
+    case "$1" in /*) ;; *) return 1 ;; esac
+    case "$1" in *$'\n'*) return 1 ;; esac
+    [ "${1##*/}" = "$2.jsonl" ] && [ -f "$1" ] && [ ! -L "$1" ]
+}
+
+# _rs_load <attempt-dir> [<expected session id>]: validate the private directory and its startup config and load it
+# into RS_*. The directory is named for the minted id and the file must say the same, so a copied or renamed
+# directory never binds another session.
+_rs_load() {
+    local dir="$1" want="${2:-}"
+    command -v jq >/dev/null 2>&1 || { RS_WHY=no-jq; return 1; }
+    case "$dir" in /*) ;; *) RS_WHY=attempt-path; return 1 ;; esac
+    _rs_private_dir "$dir" || { RS_WHY=attempt-dir; return 1; }
+    _rs_private_file "$dir/startup.json" || { RS_WHY=startup-file; return 1; }
+    jq -e 'type == "object" and .schema == "readiness-startup-v1" and .lane == "native"' "$dir/startup.json" >/dev/null 2>&1 || { RS_WHY=startup-schema; return 1; }
+    RS_SCOPE="$(jq -r '.session_scope // empty' "$dir/startup.json" 2>/dev/null)"  # swallow-ok: an unreadable field reads empty and every required field is refused when empty
+    RS_DOC="$(jq -r '.doc // empty' "$dir/startup.json" 2>/dev/null)"  # swallow-ok: an unreadable field reads empty and every required field is refused when empty
+    RS_VERSION="$(jq -r '.version // empty' "$dir/startup.json" 2>/dev/null)"  # swallow-ok: an unreadable field reads empty and every required field is refused when empty
+    RS_ATTEMPT_ID="$(jq -r '.attempt_id // empty' "$dir/startup.json" 2>/dev/null)"  # swallow-ok: an unreadable field reads empty and every required field is refused when empty
+    RS_QL="$(jq -r '.queue_lock // empty' "$dir/startup.json" 2>/dev/null)"  # swallow-ok: an unreadable field reads empty and every required field is refused when empty
+    # the launcher's own queue environment, so the hook and the adapter (whose MCP environment is minimal) resolve the
+    # same token directory and handover root the lease was acquired under
+    RS_XDG="$(jq -r '.runtime_dir // empty' "$dir/startup.json" 2>/dev/null)"  # swallow-ok: an unreadable field reads empty and every required field is refused when empty
+    RS_HDIR="$(jq -r '.handover_dir // empty' "$dir/startup.json" 2>/dev/null)"  # swallow-ok: an unreadable field reads empty and every required field is refused when empty
+    [[ "$RS_SCOPE" =~ $UUID_RE ]] || { RS_WHY=startup-scope; return 1; }
+    [ "${dir##*/}" = "$RS_SCOPE" ] || { RS_WHY=scope-dir-mismatch; return 1; }
+    [ -z "$want" ] || [ "$want" = "$RS_SCOPE" ] || { RS_WHY=scope-mismatch; return 1; }
+    case "$RS_DOC" in /*) { [ -f "$RS_DOC" ] && [ -r "$RS_DOC" ]; } || { RS_WHY=startup-doc; return 1; } ;; *) RS_WHY=startup-doc; return 1 ;; esac
+    [ -n "$RS_VERSION" ] && [ -n "$RS_ATTEMPT_ID" ] || { RS_WHY=startup-fields; return 1; }
+    case "$RS_QL" in /*/queue-lock.sh) [ -f "$RS_QL" ] || { RS_WHY=startup-queue-lock; return 1; } ;; *) RS_WHY=startup-queue-lock; return 1 ;; esac
+    case "$RS_XDG" in ''|/*) ;; *) RS_WHY=startup-env; return 1 ;; esac
+    case "$RS_HDIR" in ''|/*) ;; *) RS_WHY=startup-env; return 1 ;; esac
+    return 0
+}
+
+# the queue environment of the launch that acquired this lease, applied inside each queue-lock subshell
+_rs_queue_env() {
+    # no ambient session id: the queue helpers' own transcript lookup stays inert, so the liveness marker comes only from
+    # the SessionStart payload this script validated
+    unset QUEUE_LOCK_FORCE_RELEASE QUEUE_LOCK_TAKEOVER QUEUE_LOCK_ON_BEHALF CLAUDE_CODE_SESSION_ID
+    if [ -n "$RS_XDG" ]; then XDG_RUNTIME_DIR="$RS_XDG"; export XDG_RUNTIME_DIR; else unset XDG_RUNTIME_DIR; fi
+    if [ -n "$RS_HDIR" ]; then HANDOVER_DIR="$RS_HDIR"; export HANDOVER_DIR; else unset HANDOVER_DIR; fi
+    QUEUE_LOCK_SESSION_SCOPE="$RS_SCOPE"; export QUEUE_LOCK_SESSION_SCOPE
+}
+
+# the adopted registration: this scope's own token file and .doc sidecar name the doc and its lock, the lock's current
+# holder is that token, and the lock is fresh. Runs queue-lock.sh in a subshell with the scope set explicitly.
+_rs_registration_ok() {
+    (
+        _rs_queue_env
+        # shellcheck source=/dev/null
+        . "$RS_QL" >/dev/null 2>&1 || exit 1
+        _ql_enter "$RS_DOC" x >/dev/null 2>&1 || exit 1
+        lock="$_QL_LOCKDIR"; doc="$_QL_DOC"
+        tok="$(_ql_token_recall "$doc" 2>/dev/null)" || exit 1  # swallow-ok: the recall note names the token file; a failed recall exits 1
+        [ -n "$tok" ] || exit 1
+        _ql_owner_matches "$lock" "$tok" || exit 1
+        tf="$(_ql_token_file "$doc" "$tok")" || exit 1
+        sdir="$(_ql_sidecar_dir)" || exit 1
+        sc="$sdir/${tf##*/}.doc"
+        { [ -f "$sc" ] && [ -r "$sc" ]; } || exit 1
+        { IFS= read -r sc_doc; IFS= read -r sc_lock; } < "$sc"
+        [ "$sc_doc" = "$doc" ] && [ "$sc_lock" = "$lock" ] || exit 1
+        _ql_lock_is_fresh "$lock" || exit 1
+        # liveness: this host and this session's OWN existing transcript, so an idle-but-alive session outlives an old heartbeat
+        lv="$lock/liveness"
+        { [ -f "$lv" ] && [ -r "$lv" ] && [ ! -L "$lv" ]; } || exit 1
+        lv_host="$(sed -n 's/^host=//p' "$lv" | head -n 1)"
+        lv_tr="$(sed -n 's/^transcript=//p' "$lv" | head -n 1)"
+        { [ -n "$lv_host" ] && [ "$lv_host" = "$(_ql_hostname)" ]; } || exit 1
+        _rs_transcript_ok "$lv_tr" "$RS_SCOPE" || exit 1
+    ) >/dev/null 2>&1
+}
+
+# the private AttemptConfirmation must agree with the startup config on every field
+_rs_confirmation_ok() {
+    local dir="$1"
+    _rs_private_file "$dir/confirmation.json" || return 1
+    jq -e --arg sid "$RS_SCOPE" --arg doc "$RS_DOC" --arg ver "$RS_VERSION" --arg att "$RS_ATTEMPT_ID" \
+        'type == "object" and (keys | length) == 7 and .schema == "readiness-attempt-v1" and .attempt_id == $att and .doc == $doc
+         and .version == $ver and .session_scope == $sid and .startup_session_id == $sid and .adopted == true' \
+        "$dir/confirmation.json" >/dev/null 2>&1
+}
+
+# release <token or empty = the one this scope adopted>; a token that is not the holder's refuses, nothing is forced
+_rs_release() {
+    (
+        _rs_queue_env
+        # shellcheck source=/dev/null
+        . "$RS_QL" >/dev/null 2>&1 || exit 1
+        tok="${1:-}"
+        [ -n "$tok" ] || tok="$(_ql_token_recall "$RS_DOC" 2>/dev/null)" || exit 1  # swallow-ok: the recall note names the token file; a failed recall exits 1
+        [ -n "$tok" ] || exit 1
+        queue_lock_release "$RS_DOC" "$tok" >/dev/null 2>&1
+    ) >/dev/null 2>&1
+}
+
+# the attempt directory is removed only when it is exactly the directory this script validated
+_rs_remove_attempt() {
+    [ "${1##*/}" = "$RS_SCOPE" ] && [ -f "$1/startup.json" ] && rm -rf -- "$1"
+}
+
+_rs_transport_token() {
+    local f="$1/lease-token" tok
+    _rs_private_file "$f" || return 1
+    tok="$(head -c 256 "$f")" || return 1
+    tok="${tok%%$'\n'*}"
+    [[ "$tok" =~ $TOKEN_RE ]] || return 1
+    printf '%s' "$tok"
+}
+
+_rs_verify() { # <attempt-dir>
+    _rs_load "$1" "" || return 1
+    _rs_confirmation_ok "$1" || { RS_WHY=confirmation; return 1; }
+    [ ! -e "$1/lease-token" ] || { RS_WHY=transport-present; return 1; }
+    _rs_registration_ok || { RS_WHY=registration; return 1; }
+}
+
+cmd_startup() {
+    local sid dir tok
+    _rs_hook_read || exit 0
+    sid="$RS_HOOK_SID"
+    [[ "$sid" =~ $UUID_RE ]] || exit 0
+    dir="$(_rs_root)/$sid"
+    [ -e "$dir" ] || exit 0
+    if [ -n "${CLAUDE_CODE_SESSION_ID:-}" ] && [ "$CLAUDE_CODE_SESSION_ID" != "$sid" ]; then
+        _rs_refuse "session-id-mismatch"
+        exit 0
+    fi
+    _rs_load "$dir" "$sid" || { _rs_refuse "$RS_WHY"; exit 0; }
+    # a repeat of the hook (a resume or compaction) after a good adoption changes nothing
+    if _rs_verify "$dir"; then exit 0; fi
+    # the session's own transcript, from the payload, must exist before anything is adopted
+    _rs_transcript_ok "$RS_HOOK_TR" "$sid" || { _rs_refuse "no-transcript"; exit 0; }
+    tok="$(_rs_transport_token "$dir")" || { _rs_refuse "no-transport"; exit 0; }
+    if ! (
+        _rs_queue_env
+        # shellcheck source=/dev/null
+        . "$RS_QL" >/dev/null 2>&1 || exit 1
+        queue_lock_adopt "$RS_DOC" "$tok" >/dev/null 2>&1 || exit 1
+        # the liveness marker, written only while this token still holds the lock, names the payload's transcript
+        _ql_owner_matches "$_QL_LOCKDIR" "$tok" || exit 1
+        _ql_write_liveness "$_QL_LOCKDIR" "$RS_HOOK_TR"
+    ); then
+        _rs_refuse "adopt-refused"
+        exit 0
+    fi
+    _rs_registration_ok || { _rs_refuse "adopted-registration-unverified"; exit 0; }
+    if ! ( set -C; jq -cn --arg att "$RS_ATTEMPT_ID" --arg doc "$RS_DOC" --arg ver "$RS_VERSION" --arg sid "$sid" \
+        '{schema:"readiness-attempt-v1",attempt_id:$att,doc:$doc,version:$ver,session_scope:$sid,startup_session_id:$sid,adopted:true}' > "$dir/confirmation.json" ) 2>/dev/null; then
+        _rs_refuse "confirmation-not-published"
+        exit 0
+    fi
+    _rs_confirmation_ok "$dir" || { rm -f -- "$dir/confirmation.json"; _rs_refuse "confirmation-invalid"; exit 0; }
+    rm -f -- "$dir/lease-token"
+    exit 0
+}
+
+cmd_verify() {
+    [ "$#" -eq 1 ] || exit 2
+    _rs_verify "$1" || { _rs_refuse "not adopted ($RS_WHY)"; exit 1; }
+    exit 0
+}
+
+cmd_finish() {
+    [ "$#" -eq 1 ] || exit 2
+    _rs_verify "$1" || { _rs_refuse "not adopted ($RS_WHY)"; exit 1; }
+    _rs_release "" || { _rs_refuse "release refused (the lock is not this session's)"; exit 1; }
+    _rs_remove_attempt "$1"
+    exit 0
+}
+
+cmd_cleanup() {
+    local sid dir tok=""
+    _rs_hook_read || exit 0
+    sid="$RS_HOOK_SID"
+    [[ "$sid" =~ $UUID_RE ]] || exit 0
+    dir="$(_rs_root)/$sid"
+    [ -e "$dir" ] || exit 0
+    _rs_load "$dir" "$sid" || { _rs_refuse "$RS_WHY"; exit 0; }
+    if _rs_verify "$dir"; then
+        _rs_release "" || { _rs_refuse "release refused (the lock is not this session's)"; exit 0; }
+    else
+        tok="$(_rs_transport_token "$dir")" || tok=""
+        if [ -n "$tok" ]; then
+            _rs_release "$tok" || { _rs_refuse "release refused (the lock is not this session's)"; exit 0; }
+        fi
+    fi
+    _rs_remove_attempt "$dir"
+    exit 0
+}
+
+case "${1:-}" in
+    startup) shift; cmd_startup "$@" ;;
+    verify) shift; cmd_verify "$@" ;;
+    finish) shift; cmd_finish "$@" ;;
+    cleanup) shift; cmd_cleanup "$@" ;;
+    *) echo "usage: readiness-session.sh startup|cleanup (hook JSON on stdin) | verify|finish <attempt-dir>" >&2; exit 2 ;;
+esac

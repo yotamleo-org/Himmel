@@ -76,7 +76,10 @@
 #                           caller's bare prompt can never be read as one more value.
 #   WORKER_SESSION_RENDER_ARGV       exactly 1, readiness only -> print that final argv (binary first)
 #                           NUL-terminated on stdout, exec nothing, run no native binary. headed-arm-worker
-#                           calls it before acquiring the readiness lease (cycle 2; not wired yet).
+#                           calls it before acquiring the readiness lease (it prints nothing it must keep).
+#                           The --session-id above is bound to the trusted private startup config: the MCP server
+#                           must be `<readiness-tools.mjs> --startup-config <startup.json>`, and that private
+#                           mode-0600 file (in a mode-0700 directory) must hold WORKER_SESSION_ID as its session scope.
 # Seam: WORKER_SESSION_CLAUDE_BIN overrides the `claude` binary this execs (default:
 # `claude` from PATH). headed-arm-worker.sh sets it to scripts/claude-codex on
 # the claudex lane so all profile flags reach that backend;
@@ -166,7 +169,21 @@ if (!sv || typeof sv !== "object" || Array.isArray(sv) || Object.keys(sv).join("
 const server = sv.readiness;
 if (!server || typeof server !== "object" || Array.isArray(server) || typeof server.command !== "string" || !server.command || (server.args !== undefined && !strs(server.args))) why("the readiness MCP server entry is malformed");
 if (Object.keys(server).some((key) => !["command", "args"].includes(key))) why("the readiness MCP server entry contains an unknown key");
-' "$WORKER_SESSION_PROFILE_SETTINGS" "$WORKER_SESSION_PROFILE_MCP_CONFIG" 2>&1)" || _ready_refuse "$_ready_why"
+// The --session-id this launcher emits is bound to the trusted private startup config: the adapter is started against
+// exactly one private startup file, and that file must hold the minted id as its immutable session scope. The id is
+// never a caller argument and no other flag or environment value names it.
+const path = require("path");
+const a = server.args;
+if (!Array.isArray(a) || a.length !== 3 || a[1] !== "--startup-config" || !path.isAbsolute(a[0]) || path.basename(a[0]) !== "readiness-tools.mjs" || !path.isAbsolute(a[2]) || path.basename(a[2]) !== "startup.json") why("the readiness MCP server must be started as: <readiness-tools.mjs> --startup-config <startup.json>");
+let dst; let fst; let c;
+try { dst = fs.lstatSync(path.dirname(a[2])); fst = fs.lstatSync(a[2]); } catch (e) { why("the private startup config is missing"); }
+const uid = process.getuid();
+if (!dst.isDirectory() || dst.uid !== uid || (dst.mode & 0o777) !== 0o700) why("the private startup config directory must be a mode-0700 directory owned by the launching user");
+if (!fst.isFile() || fst.uid !== uid || (fst.mode & 0o777) !== 0o600 || fst.nlink !== 1) why("the private startup config must be a mode-0600 regular file owned by the launching user");
+try { c = JSON.parse(fs.readFileSync(a[2], "utf8")); } catch (e) { why("the private startup config is not valid JSON"); }
+if (!c || c.schema !== "readiness-startup-v1" || c.lane !== "native") why("the private startup config is not a native readiness startup config");
+if (c.session_scope !== process.argv[3]) why("the private startup config binds a different session id than the minted one");
+' "$WORKER_SESSION_PROFILE_SETTINGS" "$WORKER_SESSION_PROFILE_MCP_CONFIG" "$WORKER_SESSION_ID" 2>&1)" || _ready_refuse "$_ready_why"
     # The caller's argv: no availability, settings, session or run-mode override, and at most one auto mode.
     _expect_value=""
     for _a in "$@"; do

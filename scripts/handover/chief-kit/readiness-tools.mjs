@@ -17,11 +17,12 @@
 //     Authorization forms. A credential never appears in argv, an error, a result or enumerable state.
 //   * A refusal says WHICH rule failed, never what the file held.
 import {
-  closeSync, constants as FS, fstatSync, lstatSync, openSync, readSync, realpathSync, statSync,
+  closeSync, constants as FS, fstatSync, lstatSync, openSync, readFileSync, readSync, realpathSync, statSync, writeSync,
 } from 'node:fs';
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { basename, dirname, isAbsolute } from 'node:path';
+import { basename, dirname, isAbsolute, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export class ReadinessError extends Error {
   constructor(code, message) {
@@ -122,6 +123,51 @@ export async function readCredentials(path, opts = {}) {
   } finally {
     if (ffd >= 0) closeSync(ffd);
     if (dfd >= 0) closeSync(dfd);
+  }
+}
+
+// ---- host-only credential initialization ----------------------------------------------------------
+// The launcher resolves {base_url, project, email, api_token} through the primary checkout's OWN built Jira
+// client (its baseUrl / projectKey / authHeader configuration and secrets flow) and publishes ONLY the private
+// file: one exclusive, mode-0600 create inside the mode-0700 attempt directory. Nothing is printed, logged or
+// handed to a model channel, and an error says which rule failed, never what a value was.
+function assertPrivateDir(dir, uid) {
+  let st;
+  try { st = lstatSync(dir); } catch { throw new ReadinessError('missing', 'the private attempt directory is missing'); }
+  if (!st.isDirectory() || st.isSymbolicLink()) throw new ReadinessError('dir-symlink', 'the private attempt directory must be a plain directory');
+  if (st.uid !== uid) throw new ReadinessError('owner', 'the private attempt directory is not owned by the expected user');
+  if ((st.mode & 0o777) !== 0o700) throw new ReadinessError('dir-mode', 'the private attempt directory must be mode 0700');
+}
+
+export async function initCredentials(primaryCli, outPath, deps = {}) {
+  const uid = deps.uid ?? process.getuid();
+  if (typeof primaryCli !== 'string' || !isAbsolute(primaryCli) || primaryCli.includes('\0') || primaryCli.split('/').includes('..') || basename(primaryCli) !== 'index.js') {
+    throw new ReadinessError('bad-cli', 'primary_cli must be the absolute path of the primary Jira CLI (index.js)');
+  }
+  let cliStat;
+  try { cliStat = statSync(primaryCli); } catch { throw new ReadinessError('bad-cli', 'primary_cli does not exist'); }
+  if (!cliStat.isFile()) throw new ReadinessError('bad-cli', 'primary_cli is not a regular file');
+  if (typeof outPath !== 'string' || !isAbsolute(outPath) || outPath.includes('\0') || outPath.split('/').includes('..')) {
+    throw new ReadinessError('bad-path', 'the credential path must be an absolute path without traversal');
+  }
+  assertPrivateDir(dirname(outPath), uid);
+  const clientUrl = pathToFileURL(join(dirname(primaryCli), 'client.js')).href;
+  let client;
+  try { client = await (deps.importClient ?? ((url) => import(url)))(clientUrl); } catch { throw new ReadinessError('client-unavailable', 'the primary Jira client could not be loaded'); }
+  let base; let project; let auth;
+  try { base = client.baseUrl(); project = client.projectKey(); auth = client.authHeader(); } catch { throw new ReadinessError('client-config', 'the primary Jira client has no complete configuration'); }
+  const basic = /^Basic ([A-Za-z0-9+/]+={0,2})$/.exec(typeof auth === 'string' ? auth : '');
+  const pair = basic ? Buffer.from(basic[1], 'base64').toString('utf8') : '';
+  const at = pair.indexOf(':');
+  if (at < 1) throw new ReadinessError('client-config', 'the primary Jira client gave no usable Basic authorization');
+  const creds = validateCredentials({ base_url: base, project, email: pair.slice(0, at), api_token: pair.slice(at + 1) });
+  const body = JSON.stringify({ api_token: creds.api_token, base_url: creds.base_url, email: creds.email, project: creds.project }) + '\n';
+  let fd = -1;
+  try {
+    try { fd = openSync(outPath, FS.O_WRONLY | FS.O_CREAT | FS.O_EXCL | FS.O_NOFOLLOW, 0o600); } catch { throw new ReadinessError('exists', 'the credential file could not be created exclusively'); }
+    writeSync(fd, body);
+  } finally {
+    if (fd >= 0) closeSync(fd);
   }
 }
 
@@ -285,3 +331,107 @@ export async function selectPort(config, deps = {}) {
   if (port?.kind === 'jira') return createJiraPort(port, deps);
   throw new ReadinessError('bad-kind', 'port.kind must be copy or jira');
 }
+
+// ---- attempt ownership ------------------------------------------------------------------------------
+// The adapter never holds, receives or prints the lease token. Ownership is the trusted session script's to
+// judge (scripts/hooks/readiness-session.sh): before EVERY act, finish included, the adapter asks it whether this
+// attempt's private AttemptConfirmation is fresh and consistent with the startup config AND the adopted
+// registration still names the current holder. Anything but a clean yes is `not-adopted`, with a fixed reason: the
+// script's own output is never relayed. Nothing here widens what an act may do; it only gates the effect.
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const NOT_ADOPTED = Object.freeze({ ok: false, code: 'not-adopted', reason: 'this session has not adopted the readiness lease, or no longer holds it' });
+const SESSION_TOOL = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'hooks', 'readiness-session.sh');
+
+function privateFile(path, uid) {
+  let st;
+  try { st = lstatSync(path); } catch { return null; }
+  if (!st.isFile() || st.isSymbolicLink() || st.uid !== uid || (st.mode & 0o777) !== 0o600 || st.nlink !== 1) return null;
+  return st;
+}
+
+// The private startup config the trusted launcher wrote: mode 0600 in a mode-0700 directory named for the minted
+// session id, which the file must repeat as its immutable scope. Returns only what the adapter reads.
+export function loadStartup(path, opts = {}) {
+  const uid = opts.uid ?? process.getuid();
+  if (typeof path !== 'string' || !isAbsolute(path) || path.includes('\0') || path.split('/').includes('..') || basename(path) !== 'startup.json') {
+    throw new ReadinessError('bad-path', 'the startup config must be an absolute path to startup.json without traversal');
+  }
+  const dir = dirname(path);
+  assertPrivateDir(dir, uid);
+  const st = privateFile(path, uid);
+  if (!st || st.size < 2 || st.size > 8192) throw new ReadinessError('startup-file', 'the startup config must be a private mode-0600 regular file');
+  let cfg;
+  try { cfg = JSON.parse(readFileSync(path, 'utf8')); } catch { throw new ReadinessError('malformed', 'the startup config is not valid JSON'); }
+  if (cfg === null || typeof cfg !== 'object' || Array.isArray(cfg)) throw new ReadinessError('malformed', 'the startup config is not an object');
+  const str = (k) => (typeof cfg[k] === 'string' && cfg[k] !== '' ? cfg[k] : null);
+  if (cfg.schema !== 'readiness-startup-v1' || cfg.lane !== 'native') throw new ReadinessError('malformed', 'the startup config is not a native readiness startup config');
+  const scope = str('session_scope');
+  if (!scope || !UUID.test(scope) || basename(dir) !== scope) throw new ReadinessError('malformed', 'the startup config scope is not the minted id of its directory');
+  for (const k of ['doc', 'queue_lock']) if (!str(k) || !isAbsolute(cfg[k])) throw new ReadinessError('malformed', `the startup config ${k} must be an absolute path`);
+  if (basename(cfg.queue_lock) !== 'queue-lock.sh') throw new ReadinessError('malformed', 'the startup config queue_lock is not queue-lock.sh');
+  for (const k of ['version', 'attempt_id']) if (!str(k)) throw new ReadinessError('malformed', `the startup config ${k} is missing`);
+  if (cfg.port === null || typeof cfg.port !== 'object' || !['copy', 'jira'].includes(cfg.port.kind)) throw new ReadinessError('malformed', 'the startup config port.kind must be copy or jira');
+  return Object.freeze({
+    path, dir, session_scope: scope, doc: cfg.doc, version: cfg.version, attempt_id: cfg.attempt_id, port: Object.freeze({ ...cfg.port }),
+  });
+}
+
+function runSession(verb, startup, deps) {
+  const tool = deps.sessionTool ?? SESSION_TOOL;
+  // The child's whole environment is a finite host allowlist; its queue environment comes from the private startup config.
+  const env = { PATH: (deps.env ?? process.env).PATH ?? '/usr/bin:/bin', HOME: (deps.env ?? process.env).HOME ?? '' };
+  return new Promise((done) => {
+    execFile('bash', [tool, verb, startup.dir], { env, timeout: deps.timeoutMs ?? 8000, killSignal: 'SIGKILL', maxBuffer: 1 << 16, windowsHide: true }, (err) => {
+      done(err ? (typeof err.code === 'number' ? err.code : 255) : 0);
+    });
+  });
+}
+
+// ok only on a clean yes: the confirmation is fresh and the adopted registration still names the current holder.
+export async function checkAdopted(startup, deps = {}) {
+  return (await runSession('verify', startup, deps)) === 0 ? { ok: true } : { ...NOT_ADOPTED };
+}
+
+// The one place an act's effect is allowed: every act is verified afresh first, and a refusal runs nothing.
+export async function guardedAct(startup, effect, deps = {}) {
+  const adopted = await checkAdopted(startup, deps);
+  if (!adopted.ok) return adopted;
+  return effect();
+}
+
+// The readiness label act: a successful write needs a freshly valid adoption; the port is never touched otherwise.
+export async function guardedLabel(startup, port, key, present, deadline, deps = {}) {
+  return guardedAct(startup, async () => {
+    const r = await port.addReadinessLabel(key, present, deadline);
+    return r.outcome === 'ok' ? { ok: true, type: 'label', key, outcome: 'updated', evidence_id: null } : { ok: false, code: 'conflict', reason: 'the label write was not confirmed; read the ticket back before repeating it' };
+  }, deps);
+}
+
+// finish: verified afresh, then the session script releases exactly the token this session adopted (a successor's
+// lock refuses it) and removes the attempt directory. The model supplies no key, token or force parameter.
+export async function finishAttempt(startup, deps = {}) {
+  return (await runSession('finish', startup, deps)) === 0
+    ? { ok: true, type: 'finish', key: null, outcome: 'finished', evidence_id: null }
+    : { ...NOT_ADOPTED };
+}
+
+// ---- host CLI. Cycle 2 has only the launcher's private credential initialization; the STDIO server is a later cycle.
+async function main(argv) {
+  if (argv[0] === 'init-credentials' && argv.length === 3) {
+    try {
+      await initCredentials(argv[1], argv[2]);
+      return 0;
+    } catch (e) {
+      const why = e instanceof ReadinessError ? e.code + ': ' + e.message : 'failed';
+      process.stderr.write('readiness-tools: init-credentials: ' + why + '\n');
+      return 2;
+    }
+  }
+  process.stderr.write('usage: readiness-tools.mjs init-credentials <primary index.js> <credentials file>\n');
+  return 2;
+}
+
+const isMain = (() => {
+  try { return Boolean(process.argv[1]) && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; }
+})();
+if (isMain) main(process.argv.slice(2)).then((code) => process.exit(code));
