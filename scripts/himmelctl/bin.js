@@ -5549,7 +5549,7 @@ function checkUninstallCompleteness(unwireItems) {
       // reverse there (see the comment above), so probing it only ever
       // reads himmel's own tracked repo source. 'user' is never skipped.
       if (scope === 'project' && isHimmelOwnCheckout) continue;
-      const ctx = { repoRoot: root, targetPath: root, scope, env: process.env };
+      const ctx = { repoRoot: root, targetPath: root, scope, env: process.env, scopeFileOnly: true };
       try {
         const probe = probesLib.runProbe(item, ctx);
         if (probe.actual !== 'absent') residue.push(`${item.id} (${probe.actual}, ${scope})`);

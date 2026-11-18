@@ -23,9 +23,9 @@
 # Covers:
 #   a. status against target A reports A's red/green set; flipping the
 #      wiring on B's scope (adding statusLine.command to the user-scope
-#      $HOME/.claude/settings.json) does NOT change A's report, and the
-#      reverse (flipping A's targetPath-relative settings.json) does NOT
-#      change B's report either. Both directions re-probed live (not a
+#      $HOME/.claude/settings.json) is in effect for A too (a project probe
+#      reads the user settings), while the reverse (flipping A's
+#      targetPath-relative settings.json) does NOT change B's report. Both directions re-probed live (not a
 #      cached/stale read) at each step.
 #   b. --items subset scoping works per target (each target's run returns
 #      exactly the requested ids, scoped to THAT target's own state).
@@ -172,10 +172,12 @@ echo "ok: case a (baseline) — both A and B read red before either is flipped"
 printf '{"statusLine":{"command":"node \\"%s\\""},"hooks":{"PreToolUse":[]}}' "$statuslineStub_w" > "$homeDir/.claude/settings.json"
 sevA1=$(sevOf "$(runA wiring-statusline)")
 sevB1=$(sevOf "$(runB wiring-statusline)")
-[ "$sevA1" = "red" ] || fail "case a: flipping B's wiring must NOT change A's report (got A severity: $sevA1)"
+# a project target reads the user's settings as well, so the key B's scope now
+# carries is in effect for A too
+[ "$sevA1" = "green" ] || fail "case a: a key in the user settings is in effect for project target A (got A severity: $sevA1)"
 [ "$sevB1" = "green" ] || fail "case a: B's own report should read green after its wiring was flipped (got: $sevB1)"
 printf '%s' "$baselineSettings" > "$homeDir/.claude/settings.json"
-echo "ok: case a — toggling B's wiring does not bleed into A's report (A stayed red); B's own report updated correctly"
+echo "ok: case a — a key in B's (user) settings reads green for A as well, and B's own report updated correctly"
 
 # ── case (a): flip A, confirm B is unaffected (reverse direction), confirm
 # A updated ─────────────────────────────────────────────────────────────
