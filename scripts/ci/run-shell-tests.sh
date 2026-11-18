@@ -3670,6 +3670,17 @@ _suite_no_retry() {
   [ -n "$_hdr" ]
 }
 
+# _suite_quarantined <suite-key> — 0 when the suite's tier row is quarantine, so
+# its result cannot fail the run.
+_suite_quarantined() {
+  case "$tiers_quarantine_nl" in
+    *"
+${1#"$tier_repo_root"/}
+"*) return 0 ;;
+  esac
+  return 1
+}
+
 # _flake_json_str — one stdin line as the inside of a JSON string.
 _flake_json_str() {
   tr '\n\t' '  ' | tr -d '\000-\037' | sed 's/\\/\\\\/g; s/"/\\"/g'
@@ -4440,6 +4451,28 @@ _suite_parallel_denied() {
   done <<< "$parallel_deny"
   return 1
 }
+# Run-alone suites go first. A deny-listed suite drains every lane before it runs,
+# so one placed behind a long parallel suite idles the other lanes for that whole
+# suite (shard 3 of run 44210301721: 20.3 min against a 10.4 min model). Only the
+# order moves: a stable partition of the discovered list, so every shard's
+# assignment, every filter and every manifest row stay as they were. An unsharded
+# run and the round-robin fallback (which numbers suites by loop position) keep
+# discovery order.
+if [ "$suite_jobs" -gt 1 ] && [ "$list_only" -eq 0 ] && [ "$shard_total" -gt 0 ] && [ "$shard_binpack" -eq 1 ]; then
+  while IFS= read -r _pd_suite; do
+    [ -n "$_pd_suite" ] || continue
+    if _suite_parallel_denied "${scan_resolved}/${_pd_suite#"${scan}"/}"; then
+      printf '%s\n' "$_pd_suite"
+    fi
+  done < "$suites_file" > "$suites_raw"
+  while IFS= read -r _pd_suite; do
+    [ -n "$_pd_suite" ] || continue
+    if ! _suite_parallel_denied "${scan_resolved}/${_pd_suite#"${scan}"/}"; then
+      printf '%s\n' "$_pd_suite"
+    fi
+  done < "$suites_file" >> "$suites_raw"
+  cat "$suites_raw" > "$suites_file"
+fi
 # Lane 0 reuses live_root; every other lane gets its own sentinel root.
 lane_root=() lane_pid=() lane_out=()
 live_lane_roots=""
@@ -4629,7 +4662,12 @@ WITNESSMSGS
   fi
 
   # A cap overrun is retried too: on a loaded runner it is as likely slowness as
-  # a defect, and one rerun in the same job costs less than a red main.
+  # a defect, and one rerun in the same job costs less than a red main. Except a
+  # quarantine suite's: its result cannot fail the run, so the rerun is pure cost.
+  if [ "$rc" -ne 0 ] && [ "$capped" -eq 1 ] && [ "$live_fail" -eq 0 ] && [ "$_attempt" -eq 1 ] && _suite_quarantined "$suite_key"; then
+    printf '[NO-RETRY] %s is tier quarantine and exceeded its %ss cap; a rerun cannot change the run'\''s result\n' "$suite" "$suite_timeout"
+    break
+  fi
   if [ "$rc" -ne 0 ] && [ "$live_fail" -eq 0 ] && [ "$_attempt" -eq 1 ] && ! _suite_no_retry "$suite"; then
     if [ "$capped" -eq 1 ] && [ $(( SECONDS - run_start + suite_timeout )) -ge "$retry_budget" ]; then
       printf '[NO-RETRY] %s exceeded its %ss cap; a rerun cannot finish inside the run'\''s %ss budget (%ss left)\n' \
@@ -4677,12 +4715,8 @@ _suite_account() {
   manifest_add "ran $rc ${mf_rel:-}"
   suite_ledger_append "${suite_key#"$tier_repo_root"/}" "$rc" "$dur"
   _quar=0
-  if [ "$rc" -ne 0 ]; then
-    case "$tiers_quarantine_nl" in
-      *"
-${suite_key#"$tier_repo_root"/}
-"*) _quar=1 ;;
-    esac
+  if [ "$rc" -ne 0 ] && _suite_quarantined "$suite_key"; then
+    _quar=1
   fi
 
   if [ "$_quar" -eq 1 ]; then

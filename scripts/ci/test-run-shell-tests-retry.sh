@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # selector: tree-scan
-# scripts/ci/test-run-shell-tests-retry.sh -- Cases 26-34: stop-on-fail, leaked env, cap-overrun retry and keyring isolation.
+# scripts/ci/test-run-shell-tests-retry.sh -- Cases 26-35: stop-on-fail, leaked env, cap-overrun retry and keyring isolation.
 #
 # Split from scripts/ci/test-run-shell-tests.sh so no CI shard is bounded by one
 # runner self-test file: the sharder parallelises across FILES. Siblings: test-run-shell-tests.sh (Cases 1-25) and test-run-shell-tests-ledger-fresh.sh (Case 22-fresh).
@@ -590,5 +590,62 @@ fi
 rm -rf "$sb34"
 fi
 
+# --------------------------------------------------------------------------
+# Case 35: a quarantine suite that overran its cap is not rerun.
+# Its result cannot fail the run, so the rerun is pure cost: real runs
+# 44203824652 and 44210301721 printed, for scripts/handover/chief-kit/test-chief-wait.sh,
+#   [QUARANTINE] scripts/handover/chief-kit/test-chief-wait.sh (rc=1, 1186s) — tier quarantine, not failing the run
+# i.e. two 600 s attempts. A non-quarantine overrun and a quarantine failure
+# that is not an overrun keep the one rerun.
+# --------------------------------------------------------------------------
+echo "== Case 35: a quarantine cap overrun runs once; other failures keep their rerun =="
+sb35=$(mktemp -d -t himmel-suite-quarcap.XXXXXX) || { fail "35: mktemp failed"; sb35=""; }
+[ -z "$sb35" ] || sb35_phys=$(cd "$sb35" && pwd -P) || { fail "35: cannot resolve the sandbox path $sb35"; sb35_phys=""; }
+[ -z "$sb35" ] || sb35="$sb35_phys"
+if [ -n "$sb35" ]; then
+mkdir -p "$sb35/scripts" "$sb35/home"
+cat > "$sb35/scripts/test-quarcap35.sh" <<'SHEOF'
+#!/usr/bin/env bash
+echo run >> "$CAP35_DIR/quarcap.runs"
+sleep 30
+SHEOF
+cat > "$sb35/scripts/test-plaincap35.sh" <<'SHEOF'
+#!/usr/bin/env bash
+echo run >> "$CAP35_DIR/plaincap.runs"
+sleep 30
+SHEOF
+cat > "$sb35/scripts/test-quarfail35.sh" <<'SHEOF'
+#!/usr/bin/env bash
+echo run >> "$CAP35_DIR/quarfail.runs"
+exit 1
+SHEOF
+chmod +x "$sb35/scripts/test-quarcap35.sh" "$sb35/scripts/test-plaincap35.sh" "$sb35/scripts/test-quarfail35.sh"
+printf '# fixture tiers\n%s\tquarantine\tflakes\n%s\tquarantine\tflakes\n' \
+  "$sb35/scripts/test-quarcap35.sh" "$sb35/scripts/test-quarfail35.sh" > "$sb35/tiers.tsv"
+out35=$(HOME="$sb35/home" HIMMEL_SUITE_LEDGER="$sb35/suite-runs.jsonl" CAP35_DIR="$sb35" SUITE_TIERS_TSV="$sb35/tiers.tsv" SUITE_FLAKE_LEDGER="$sb35/flake-ledger.jsonl" SUITE_TIMEOUT=2 SUITE_TIER_MODE=all bash "$RUNNER" "$sb35/scripts" 2>&1); rc35=$?
+runs35() { wc -l < "$sb35/$1.runs" 2>/dev/null | tr -d ' '; }
+if [ "$(runs35 quarcap)" = 1 ] && grepq "$out35" '\[NO-RETRY\] [^ ]*test-quarcap35\.sh is tier quarantine' \
+   && grepq "$out35" '\[QUARANTINE\] [^ ]*test-quarcap35\.sh'; then
+  pass "35a: a quarantine suite that overran its cap runs once, is named [NO-RETRY] and still [QUARANTINE]d"
+else
+  fail "35a: quarcap runs=$(runs35 quarcap) (want 1, a [NO-RETRY] line and a [QUARANTINE] line) output: $out35"
+fi
+if [ "$(runs35 plaincap)" = 2 ] && grepq "$out35" '\[RETRY\] [^ ]*test-plaincap35\.sh exceeded its 2s cap'; then
+  pass "35b: a non-quarantine suite that overran its cap is still rerun once"
+else
+  fail "35b: plaincap runs=$(runs35 plaincap) (want 2 and a [RETRY] line) output: $out35"
+fi
+if [ "$(runs35 quarfail)" = 2 ] && grepq "$out35" -E '\[RETRY\] [^ ]*test-quarfail35\.sh failed \(rc=1\)'; then
+  pass "35c: a quarantine suite that fails without overrunning its cap keeps its rerun"
+else
+  fail "35c: quarfail runs=$(runs35 quarfail) (want 2 and a [RETRY] line) output: $out35"
+fi
+if [ "$rc35" -eq 1 ] && grepq "$out35" 'TIMED OUT: 2'; then
+  pass "35d: both overruns still count as TIMED OUT, and only the non-quarantine one fails the run (rc 1)"
+else
+  fail "35d: rc=$rc35 (want 1 and TIMED OUT: 2) output: $out35"
+fi
+rm -rf "$sb35"
+fi
 
 rst_tally
