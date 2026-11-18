@@ -8,7 +8,7 @@
   "impeccable": {
     "upstream_repo": "pbakaus/impeccable",
     "track": "release",
-    "synced_base": "skill-v4.8.2",
+    "synced_base": "skill-v4.9.1",
     "tag_prefix": "skill-v"
   },
   "ui-ux-pro-max": {
@@ -57,12 +57,12 @@
     "standalone": true,
     "upstream_repo": "mattpocock/skills",
     "track": "head",
-    "ref": "4ae2317ddb22b046e26455e4f9c9b3aaaf62212d"
+    "ref": "5863806dd4e15c63174bee4e7515a4256792ecfa"
   },
   "coderabbit": {
     "standalone": true,
     "upstream_repo": "coderabbitai/skills",
     "track": "head",
-    "ref": "ff41f14e326816d60672b89297697a1b8dabb2f8"
+    "ref": "45bd1ae2c471cd861b8b6903f7dcab7c57aa0e59"
   }
 }

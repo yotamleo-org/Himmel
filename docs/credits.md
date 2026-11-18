@@ -17,18 +17,18 @@ How used: installed from the pin, or vendored in-tree where the pin links a vend
 
 | Name | Source | Author | Licence | Pin / tracking |
 |---|---|---|---|---|
-| ai-image-prompts | https://github.com/youmind-openlab/ai-image-prompts-skill | youmind-openlab | MIT | 2fb602a2cb7114af193d754b60f6c62bb1b300fe |
+| ai-image-prompts | https://github.com/youmind-openlab/ai-image-prompts-skill | youmind-openlab | MIT | fa3d7e5f1db2b8fb0cff709d741437bbba1ab579 |
 | animejs-skills | https://github.com/BowTiedSwan/animejs-skills | BowTiedSwan | Unknown (not declared upstream) | cf2bed8d6654a6cfd02d3ff11b74ff3a7a7631e2 |
-| anthropic-design-skills | https://github.com/anthropics/skills | anthropics | Mixed: Apache-2.0 design skills; source-available docx/pdf/pptx/xlsx (per-skill LICENSE.txt) | 2c5958ecac7cee2b583967a2c4981d0f4a75c579 |
+| anthropic-design-skills | https://github.com/anthropics/skills | anthropics | Mixed: Apache-2.0 design skills; source-available docx/pdf/pptx/xlsx (per-skill LICENSE.txt) | 1780c5e5a552fd4d1c9d6a7b0cab26b0c2bef064 |
 | anydesign | https://github.com/uxKero/anydesign | uxKero | MIT | v0.6.0 |
-| builder-visual | https://github.com/BuilderIO/skills | BuilderIO | MIT | f4f10b8d513476c24bd995ceac5294bcdd6ee15c |
+| builder-visual | https://github.com/BuilderIO/skills | BuilderIO | MIT | 7a10d06f244a66f925503cd1f31789aa3de9a8e5 |
 | claude-obsidian | https://github.com/AgriciDaniel/claude-obsidian | AgriciDaniel | MIT | v3.0.1 |
 | design-dna | https://github.com/zanwei/design-dna | zanwei | MIT | 593e39bc9e3652734653bd75544a333d7d43615e |
 | design-md | https://github.com/NousResearch/hermes-agent | Nous Research | MIT | v2026.9.24 |
-| diagram-design | https://github.com/cathrynlavery/diagram-design | cathrynlavery | MIT | f2496acbde9f45ccb55c24d4f75210c8a1355df8 |
+| diagram-design | https://github.com/cathrynlavery/diagram-design | cathrynlavery | MIT | f6db0decea96de66b901331a0f79a8d4b147ebae |
 | domain-modeling | https://github.com/mattpocock/skills | Matt Pocock (upstream) / yotamleo (vendor) | MIT | [Vendoring pin](../marketplace/plugins/domain-modeling/VENDORED.md) |
-| emilkowalski-skills | https://github.com/emilkowalski/skills | Emil Kowalski | MIT | 4061b67b8d976a186aca118594f54b638c5f718a |
-| find-docs | https://github.com/upstash/context7 | Upstash | MIT | 681554c5d3a688c67879d02d4f01d79ffd15df13 |
+| emilkowalski-skills | https://github.com/emilkowalski/skills | Emil Kowalski | MIT | 64eb3deb9a5fbfa041faf783e0bc3fd635872e9c |
+| find-docs | https://github.com/upstash/context7 | Upstash | MIT | 4087030ad2dc16578130e2dab1e48ba735f8ea38 |
 | frontend-slides | https://github.com/zarazhangrui/frontend-slides | zarazhangrui | MIT | v2.1.0 |
 | graphify | https://github.com/Graphify-Labs/graphify | Graphify-Labs / yotamleo (wrapper) | Apache-2.0 | [Package pin](../scripts/lib/graphify-bin.sh) |
 | gsap-skills | https://github.com/greensock/gsap-skills | greensock | MIT | aed9cfd3277740755f6bfc1155c7aa645403b760 |
@@ -41,7 +41,7 @@ How used: installed from the pin, or vendored in-tree where the pin links a vend
 | himmel-ops | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/himmel-ops | yotamleo | MIT | In-tree |
 | humanizer | https://github.com/blader/humanizer | Siqi Chen (upstream) / yotamleo (vendor) | MIT | [Vendoring pin](../marketplace/plugins/humanizer/VENDORED.md) |
 | i-have-adhd | https://github.com/ayghri/i-have-adhd | Ayoub G. (upstream) / yotamleo (vendor) | MIT | [Vendoring pin](../marketplace/plugins/i-have-adhd/VENDORED.md) |
-| impeccable | https://github.com/pbakaus/impeccable | Paul Bakaus | Apache-2.0 | skill-v4.8.2 |
+| impeccable | https://github.com/pbakaus/impeccable | Paul Bakaus | Apache-2.0 | skill-v4.9.1 |
 | lean-skills | https://github.com/obra/superpowers , https://github.com/mattpocock/skills | Jesse Vincent / Matt Pocock (upstream) / yotamleo (vendor) | MIT | [Per-family pins](../marketplace/plugins/lean-skills/VENDORED.md) |
 | lottie-motion-design | https://github.com/lottiefiles/motion-design-skill | lottiefiles | MIT | f9a8a041b85185ee4881b3471d3415e939aac772 |
 | luna-correlate | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/luna-correlate | yotamleo | MIT | In-tree |
