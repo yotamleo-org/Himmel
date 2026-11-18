@@ -1,11 +1,14 @@
 # Rows: kind <TAB> path-regex <TAB> line-regex (empty = the whole file) <TAB> reason. `#` starts a comment line.
 # `key` is the one row that owns the ticket-key pattern for himmel repo text (word boundaries written out,
-# awk ERE has no \b). Every other row exempts the lines it matches from the key refusal and, when the
-# line-regex is empty, from every refusal of the gate.
+# awk ERE has no \b). `test` is the one row that owns the test-file path pattern (column 2): a suite, a
+# test helper or a test fixture. scripts/testing/check-added-unwired.sh reads the same row, so a file is a
+# test helper to both gates or to neither. Every other row exempts the lines it matches from the key
+# refusal and, when the line-regex is empty, from every refusal of the gate.
 # Kinds: K1 history record, K2 fixture, K3 mirror copy, K4 provenance or generated, K6 data value a program
 # reads, K7 this list. A test file key that is not a comment or a citation is test data and needs no row.
 # CI judges a pull request with the BASE copy of this list, so a new row lands in its own change first.
 key	-	(^|[^A-Za-z0-9])(HIMMEL|LUNA|SALUS)-[0-9]+([^0-9]|$)	the ticket key pattern, with word boundaries written out
+test	(^|/)(tests?|__tests__|[^/]*-cases)/|(^|/)(test[-_]|testlib-)[^/]*$|\.(test|spec)\.[^/]*$		a test file: a tests/, __tests__/ or *-cases/ path, a test-, test_ or testlib- name, a .test. or .spec. name
 K1	^CHANGELOG\.md$		generated from commit titles
 K1	^templates/luna-second-brain/CHANGELOG\.md$		generated from commit titles
 K1	^docs/release/		a dated release record whose subject is the ticket
