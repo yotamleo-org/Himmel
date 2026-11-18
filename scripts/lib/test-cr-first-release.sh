@@ -215,10 +215,10 @@ eq "$(ledger_lines)" 0 "RL8 manual ci:go: no ledger line (it is a manual release
 reset; checks success '[{"name":"bun-suites","status":"completed","conclusion":"success","completed_at":"2026-10-23T10:20:00Z","check_suite":{"id":7}}]'; runs pull_request 7; run released-by-heavy-job
 eq "$(deletes)/$(posts)" 0/0 "heavy job already ran at the head: no pair"
 # ...a SKIPPED heavy job is not a release.
-reset; checks success '[{"name":"bun-suites","status":"completed","conclusion":"skipped","completed_at":"2026-10-23T10:01:00Z"}]'; run heavy-skipped-not-released
+reset; checks success '[{"name":"bun-suites","status":"completed","conclusion":"skipped","completed_at":"2026-10-23T10:01:00Z","check_suite":{"id":7}}]'; runs pull_request 7; run heavy-skipped-not-released
 eq "$(deletes)/$(posts)" 1/1 "skipped heavy job is not a release: one pair"
 # ...a QUEUED heavy job (no conclusion yet) is not proof the head ran.
-reset; checks success '[{"name":"bun-suites","status":"queued","conclusion":null,"completed_at":null}]'; run heavy-queued-not-released
+reset; checks success '[{"name":"bun-suites","status":"queued","conclusion":null,"completed_at":null,"check_suite":{"id":7}}]'; runs pull_request 7; run heavy-queued-not-released
 eq "$(deletes)/$(posts)" 1/1 "queued heavy job is not a release: one pair"
 # ...an in-progress one is.
 reset; checks success '[{"name":"bun-suites","status":"in_progress","conclusion":null,"completed_at":null,"check_suite":{"id":7}}]'; runs pull_request 7; run heavy-running-released
@@ -247,7 +247,7 @@ eq "$(deletes)/$(posts)" 1/1 "a ci:go event before the head's first check starte
 # head 2's commit (01:34:25) and first check (01:35:44), so head 2 gets its own pair, once.
 reset; jq -nc --arg h "$HEAD1" --arg d 2026-10-25T01:34:25Z '{sha:$h,commit:{committer:{date:$d}}}' > "$S/commit.json"
 echo '[{"event":"labeled","label":{"name":"ci:go"},"created_at":"2026-10-25T01:31:55Z"}]' > "$S/events.json"
-checks success '[{"name":"bun-suites","status":"completed","conclusion":"skipped","started_at":"2026-10-25T01:35:44Z","completed_at":"2026-10-25T01:35:44Z"},{"name":"lint","status":"completed","conclusion":"success","started_at":"2026-10-25T01:35:46Z","completed_at":"2026-10-25T01:49:46Z"}]'
+checks success '[{"name":"bun-suites","status":"completed","conclusion":"skipped","started_at":"2026-10-25T01:35:44Z","completed_at":"2026-10-25T01:35:44Z","check_suite":{"id":7}},{"name":"lint","status":"completed","conclusion":"success","started_at":"2026-10-25T01:35:46Z","completed_at":"2026-10-25T01:49:46Z"}]'; runs pull_request 7
 CR_FIRST_NOW=$(iso_to_epoch 2026-10-25T01:50:00Z) run push-after-go-run
 has "$TMP/out-push-after-go-run" '^CR-FIRST RELEASE ' "push after a go run: head 2 is released although head 1 had a ci:go"
 eq "$(deletes)/$(posts)" 1/1 "push after a go run: exactly one remove + add pair at the new head"

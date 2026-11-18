@@ -10,7 +10,7 @@
 #   cr_first_release <pr> <head> [<owner/name>]
 #     Quiet (no output, rc 0): switch off or unset, fork PR, PR closed or head
 #       moved, head already released (a `ci:go` labeled event at or after the
-#       head commit, or a heavy job that actually ran at the head).
+#       head commit, or a heavy job of a pull_request run that actually ran at the head).
 #     CR-FIRST HOLD <reason> <age>        rc 1  (one line per reason)
 #     CR-FIRST HOLD degraded (<why>)      rc 3  (a read failed; never releases)
 #     CR-FIRST RELEASE <reason>           rc 0  (label removed then added; the remove
