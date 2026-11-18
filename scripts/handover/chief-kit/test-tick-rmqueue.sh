@@ -115,6 +115,52 @@ out="$(tick)"
 sleep 1
 check 'a released lease is free: the tick launches the rm-run' '1' "$(ran)"
 
+# 8731 U2 (review F2): a ruling interrupted after the Jira write leaves its request in ruled:<R>, not open, so an empty queue says nothing.
+# The state read lists it under unfinished_rulings: status replay = a normal rm-run finishes it; blocked = the chief repairs by hand.
+stateu() { # <open ids as a JSON list> <oldest open ts|null> <lease JSON> <unfinished_rulings JSON list>
+    printf '{"status":"OK","versions":["v1.1.3","v1.1.4"],"lease":%s,"requests":{"open":%s,"claimed":[],"oldest_open":%s},"unfinished_rulings":%s}\n' "$3" "$1" "$2" "$4" > "$W/state.json"
+}
+u_row() { printf '{"ruling":"R-R1-0007","req":"Q-R1-0007","key":"K-1","phase":"applied","op":"add backlog→v1.1.3","status":"%s","owner":"%s","next":"x","observed":null}' "$1" "$2"; }
+U_REPLAY="[$(u_row replay release-manager)]"
+U_BLOCKED="[$(u_row blocked chief)]"
+reset; stateu '[]' null null "$U_REPLAY"
+out="$(tick)"
+check '8731 U2: an interrupted ruling with an empty queue launches ONE rm-run' '1' "$(ran)"
+check '8731 U2: the field shows the empty queue, the ruling to replay and the launch' '0,0m,replay=1,run' "$(field rm-queue "$out")"
+check '8731 U2: the rm-run is the ordinary one for the chief doc release' 'release rm-run R1' "$(sed -n 1p "$W/rmrun-ran" | sed 's/^.*\(release rm-run R1\).*$/\1/')"
+rm -f "$W/rmrun-ran"
+for n in 2 3; do
+    out="$(tick)"
+    sleep 1
+    check "8731 U2: tick $n on the unchanged ruling inside the interval launches nothing" '' "$([ -e "$W/rmrun-ran" ] && echo ran)"
+    check "8731 U2: tick $n still shows the ruling" '0,0m,replay=1' "$(field rm-queue "$out")"
+done
+reset; stateu '[]' null null "$U_REPLAY"
+TICK_RMRUN_MIN_SECS=0 tick > /dev/null
+check '8731 U2: the interval is the existing TICK_RMRUN_MIN_SECS (0 lets the next tick launch again)' '1' "$(ran)"
+reset; stateu '[]' null '{"epoch":3,"owner_doc":null,"released":false}' "$U_REPLAY"
+out="$(tick)"
+sleep 1
+check '8731 U2: a held lease (the writing run is between its writes) shows the ruling and launches nothing' '0,0m,replay=1' "$(field rm-queue "$out")"
+check '8731 U2: and no rm-run ran' '' "$([ -e "$W/rmrun-ran" ] && echo ran)"
+reset; stateu '[]' null null "$U_BLOCKED"
+out="$(tick)"
+sleep 1
+check '8731 U2: a blocked move is the chief repair, never an rm-run job: no launch, field elided' '' "$(field rm-queue "$out")"
+check '8731 U2: and no rm-run ran' '' "$([ -e "$W/rmrun-ran" ] && echo ran)"
+reset; stateu '["Q-1"]' "\"$(ago 10)\"" null "$U_REPLAY"
+out="$(tick)"
+check '8731 U2: a young open request does not hold back the replay of an interrupted ruling' '1,10m,replay=1,run' "$(field rm-queue "$out")"
+check '8731 U2: one rm-run' '1' "$(ran)"
+reset; printf '{"status":"UNKNOWN","requests":{"open":[],"claimed":[]},"unfinished_rulings":%s}\n' "$U_REPLAY" > "$W/state.json"
+out="$(TICK_RMQ_EXIT=3 tick)"
+sleep 1
+check '8731 U2: a state that is not OK launches nothing for an unfinished ruling' '' "$([ -e "$W/rmrun-ran" ] && echo ran)"
+reset; stateu '[]' null null '[]'
+out="$(tick)"
+sleep 1
+check '8731 U2: control: an empty unfinished list and an empty queue still launch nothing' '' "$([ -e "$W/rmrun-ran" ] && echo ran)"
+
 reset; state '[]' null null
 out="$(tick)"
 sleep 1
