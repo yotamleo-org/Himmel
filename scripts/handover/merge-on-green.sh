@@ -690,10 +690,10 @@ gh_pr_view() {
 # Resolve the PR (state + url + number + head SHA) in ONE query, scoped to the
 # selector. The PR's OWN url yields its owner/repo — so the private-repo guard
 # below checks the PR's repo, NOT cwd: a public-repo PR URL selector must not
-# pass just because cwd happens to be private. Only stdout is parsed; stderr
-# goes to its own file and is read when the query fails, so "no pull requests
-# found" (a clean no-op) is distinguishable from a real auth/network failure
-# (must refuse, never a silent no-op), like check-ci.
+# pass just because cwd happens to be private. gh may print a notice on
+# stderr after a successful read, so only stdout is parsed; stderr is read
+# only when the query fails, where "no pull requests found" is a clean no-op
+# and anything else refuses.
 meta=""
 meta_rc=0
 meta_err=$(mktemp "${TMPDIR:-/tmp}/mog-pr-meta.XXXXXX") || {

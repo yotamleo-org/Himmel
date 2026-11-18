@@ -3015,9 +3015,7 @@ else
 fi
 assert_audit_has "11q: audit records the posted after-report" "after-report=posted"
 
-# 11q2. gh prints a multi-line hint on stderr after the PR read. The PR's fields come from
-# stdout alone, so the head branch stays the PR's own: the prune finds its worktree and the
-# after-report marker is written at its name.
+# 11q2. A gh stderr notice after the PR read leaves the head branch name intact.
 read -r P_REPO P_WT P_SHA <<< "$(mk_prune_fixture)"
 MOG_CWD="$P_REPO" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" STUB_NUM=77 STUB_GH_HINT=1 \
     run_mog 0 "11q2: a gh notice on stderr after the PR read -> merged, exit 0"
@@ -3034,7 +3032,7 @@ assert_audit_lacks "11q2: the marker write did not fail" "pending-unrecorded"
 assert_audit_lacks "11q2: no gh notice text in the audit" "hint:"
 
 # 11q3. A real PR-read failure is still caught when gh's stderr is only a notice (exit 1, no
-# "no pull requests found"): refused, never merged. The notice itself is shown to the operator.
+# "no pull requests found"): refused, never merged.
 STUB_STATE_FAIL=hint-only STUB_GH_HINT=1 run_mog 13 "11q3: gh exits 1 with only a hint on stderr -> exit 13, not a no-op"
 assert_audit_has "11q3: the failed read is a refusal" "REFUSED reason=pr-query-failed"
 assert_gh_lacks "11q3: no merge attempted" "pr merge"
