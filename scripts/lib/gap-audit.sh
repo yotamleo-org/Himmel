@@ -85,7 +85,13 @@ _ga_check_qmd() {
     if [ -f "$state" ]; then
         rc="$(sed -n 's/^rc=//p' "$state" | head -1)"
         ts="$(sed -n 's/^ts=//p' "$state" | head -1)"
-        [ "$rc" = 0 ] || _ga_add qmd "last qmd reindex failed (rc ${rc:-unknown}${ts:+, $ts}), no refresh stamp" "bash scripts/luna/qmd-reindex.sh"
+        if [ "$rc" != 0 ]; then
+            _ga_add qmd "last qmd reindex failed (rc ${rc:-unknown}${ts:+, $ts}), no refresh stamp" "bash scripts/luna/qmd-reindex.sh"
+        else
+            epoch="$(_ga_mtime "$state")"
+            [ -z "$epoch" ] || [ $((now - epoch)) -le $((3 * 86400)) ] \
+                || _ga_add qmd "no successful qmd reindex since ${ts:-an unreadable date}, no refresh stamp" "bash scripts/luna/qmd-reindex.sh"
+        fi
     else
         _ga_add qmd "last qmd reindex never ran: no refresh stamp and no reindex state" "bash scripts/luna/qmd-reindex.sh"
     fi
