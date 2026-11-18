@@ -1627,9 +1627,10 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
     const membership = ['add', 'remove', 'move'].includes(last.op.kind);
     const event = (readback: 'ok' | 'mismatch') => {
       if (!membership) return;
-      // The applied row lands before its event, so a retry re-creates a missing one.
+      // The applied row lands before its event, so a retry re-creates a missing one. A run that finds the same ruling refused again
+      // appends nothing: the recorded mismatch already says so, and the same row every run only grows the ledger.
       const eventsPath = f(ctx, 'events.jsonl');
-      if (readback === 'ok' && readChain<EventRow>(eventsPath, l.k).verified.some((e) => e.kind === 'ruled' && e.ruling === id && e.readback === 'ok')) return;
+      if (readChain<EventRow>(eventsPath, l.k).verified.some((e) => e.kind === 'ruled' && e.ruling === id && e.readback === readback)) return;
       appendChain<EventRow>(eventsPath, l.k, {
         ts: ts(ctx), kind: 'ruled', key: last.key, from: last.op.from_v, to: last.op.to_v, ruling: id, readback,
       });

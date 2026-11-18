@@ -466,6 +466,28 @@ describe('release engine', () => {
       expect(state(ctx()).unfinished_rulings[0]).toMatchObject({ status: 'blocked', owner: 'chief' });
     });
 
+    // 10231 U5 (review F3): each rm-run took a lease and appended another identical mismatch row for the same unchanged blocked move.
+    it('U5: repeated rm-runs on an unchanged blocked move record the mismatch once; the lease still advances and the later replay is not suppressed', async () => {
+      const { r } = await interrupted();
+      const events = () => readChain<EventRow>(join(ctx().dir, 'events.jsonl'), loadKey(ctx().keyPath)).verified.filter((e) => e.kind === 'ruled' && e.ruling === r.id);
+      const mismatches = () => events().filter((e) => e.readback === 'mismatch').length;
+      expect(await rmRun(withJournal(ctx()), noJudge)).toEqual(expect.arrayContaining([expect.stringContaining(`PENDING ${r.id}`)]));
+      expect(mismatches()).toBe(1);
+      const epoch = state(ctx()).lease?.epoch ?? 0;
+      const total = events().length;
+      for (let i = 0; i < 3; i += 1) expect(await rmRun(withJournal(ctx()), noJudge)).toEqual(expect.arrayContaining([expect.stringContaining(`PENDING ${r.id}`)]));
+      expect(mismatches()).toBe(1);
+      expect(events()).toHaveLength(total);
+      expect(state(ctx()).lease?.epoch).toBeGreaterThan(epoch);
+      expect(state(ctx()).unfinished_rulings[0]).toMatchObject({ ruling: r.id, status: 'blocked', owner: 'chief' });
+      // the chief's hand repair is a change: the replay then writes its own ok event once, whatever the earlier mismatch
+      await jira.setFixVersion('K-2', 'add', 'v2');
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-2', fixVersions: ['v2'] }]);
+      await rmRun(withJournal(ctx()), noJudge);
+      expect(events().filter((e) => e.readback === 'ok')).toHaveLength(1);
+      expect(mismatches()).toBe(1);
+    });
+
     it('RED: when the journal binds the removal to this ruling and it is still the newest entry, the new epoch finishes the add once', async () => {
       const { r } = await interrupted();
       jira.entries.set('K-2', '5001');
