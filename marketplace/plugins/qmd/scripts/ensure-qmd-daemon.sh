@@ -89,6 +89,7 @@ QMD_RECYCLE_COOLDOWN_MIN=$((10#$QMD_RECYCLE_COOLDOWN_MIN))
 QMD_DAEMON_OFF_FLAG="${QMD_DAEMON_OFF_FLAG:-$HOME/.himmel/state/qmd-daemon.off}"
 if [ "${QMD_DAEMON_DISABLED:-}" = "1" ] || [ -e "$QMD_DAEMON_OFF_FLAG" ]; then
   echo "ensure-qmd-daemon: INFO - qmd is OFF by operator choice; not launching. Turn it back on: bash \"$(dirname -- "${BASH_SOURCE[0]}")/qmd-daemon-switch.sh\" on (or remove $QMD_DAEMON_OFF_FLAG / unset QMD_DAEMON_DISABLED)"
+  [ "${1:-}" = "--recycle-if-stale" ] && exit 10  # t13b-ok: exit code only, starts nothing
   exit 0
 fi
 
@@ -106,7 +107,7 @@ probe_body() {
   local tok
   tok="$(bash "$(dirname "${BASH_SOURCE[0]}")/qmd-auth-headers.sh" --token-for "$QMD_MCP_URL" 2>/dev/null)"
   if [ -n "$tok" ]; then
-    printf 'header = "Authorization: Bearer %s"\n' "$tok" | "$QMD_CURL" -s -m "$PROBE_TIMEOUT" -X POST \
+    printf 'header = "Authorization: Bearer %s"\n' "$tok" | "$QMD_CURL" -s -m "$PROBE_TIMEOUT" --noproxy '*' -X POST \
       -K - \
       -H 'Content-Type: application/json' \
       -H 'Accept: application/json, text/event-stream' \

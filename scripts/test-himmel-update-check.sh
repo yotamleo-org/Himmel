@@ -1238,6 +1238,13 @@ assert_contains "32b: a failed recycle keeps the pending flag" "PENDING_AFTER=1"
 assert_contains "32b: a failed recycle prints the manual block" "qmd daemon restart REQUIRED" "$out"
 assert_contains "32b: …with the scoped stop command" "pkill -f 'qmd.*mcp.*--http'" "$out"
 
+stub_ensure 10
+# shellcheck disable=SC2016  # the snippet expands inside run_channel_lib
+out=$(run_channel_lib 'QMD_DAEMON_RESTART_PENDING=1; QMD_FORK_BUILD_STAMP=/fork/.himmel-build-ok; report_qmd_daemon_restart; echo "PENDING_AFTER=$QMD_DAEMON_RESTART_PENDING"' 2>&1)
+assert_contains "32e: an opted-out qmd keeps the pending flag" "PENDING_AFTER=1" "$out"
+assert_contains "32e: an opted-out qmd says the restart was skipped" "skipped" "$out"
+case "$out" in *"new build is serving"*|*"restart REQUIRED"*) assert_fail "32e: opt-out must not claim success or print the manual block, got: $out" ;; *) assert_pass "32e: opt-out prints no success line and no manual block" ;; esac
+
 stub_ensure 0
 out=$(run_channel_lib 'unset QMD_DAEMON_RESTART_PENDING; report_qmd_daemon_restart' 2>&1)
 assert_empty_out() { if [ -z "$2" ]; then assert_pass "$1"; else assert_fail "$1 — got: $2"; fi; }
@@ -1262,7 +1269,7 @@ want_code=0; last=""
 for a in "$@"; do [ "$a" = "-w" ] && want_code=1; last="$a"; done
 cfg=""
 case "$*" in *"-K -"*) cfg="$(cat)" ;; esac
-case "$last" in */health) ;; *) [ -z "${QSTUB_CFGLOG:-}" ] || printf '%s' "$cfg" > "$QSTUB_CFGLOG" ;; esac
+case "$last" in */health) ;; *) [ -z "${QSTUB_CFGLOG:-}" ] || printf '%s' "$cfg" > "$QSTUB_CFGLOG"; [ -z "${QSTUB_ARGVLOG:-}" ] || printf '%s\n' "$*" > "$QSTUB_ARGVLOG" ;; esac
 case "$last" in
   */health)
     if [ -n "${QSTUB_HEALTH:-}" ]; then printf '%s' "$QSTUB_HEALTH"; else printf '%s' '{"status":"ok","uptime":3}'; fi
@@ -1297,6 +1304,9 @@ if grep -q 'Bearer good-token' "$TMP/qmd-cfglog" 2>/dev/null; then
 else
     assert_fail "33g: control: a loopback QMD_MCP_URL gets the Authorization header"
 fi
+rm -f "$TMP/qmd-argvlog"
+qserving "export QSTUB_ARGVLOG=$TMP/qmd-argvlog QMD_MCP_URL=http://127.0.0.1:8181/mcp QMD_HTTP_AUTH_FILE=$TMP/qmd-token-good;" >/dev/null
+assert_contains "33h: the token-bearing probe never goes through a proxy" "noproxy [*] -K" "$(cat "$TMP/qmd-argvlog" 2>/dev/null)"
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo

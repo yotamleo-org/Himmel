@@ -1849,7 +1849,7 @@ qmd_daemon_serving() {
     command -v curl >/dev/null 2>&1 || return 1
     tok="$(bash "$hdrs" --token-for "$url" 2>/dev/null)"
     if [ -n "$tok" ]; then
-        body="$(printf 'header = "Authorization: Bearer %s"\n' "$tok" | curl -s -m 2 -K - -X POST \
+        body="$(printf 'header = "Authorization: Bearer %s"\n' "$tok" | curl -s -m 2 --noproxy '*' -K - -X POST \
             -H 'Content-Type: application/json' \
             -H 'Accept: application/json, text/event-stream' \
             -d "$payload" "$url" 2>/dev/null)" || return 1
@@ -1883,8 +1883,12 @@ report_qmd_daemon_restart() {
         echo ""
         echo "==> qmd daemon: restarting it onto the new build"  # t13b-ok: progress text only, starts nothing
         bash "$ensure" --recycle-if-stale "$QMD_FORK_BUILD_STAMP" || rc=$?
+        if [ "$rc" -eq 10 ]; then
+            echo "    qmd daemon restart skipped: qmd is turned off (QMD_DAEMON_DISABLED or the operator-off marker)."  # t13b-ok: progress text only, starts nothing
+            return 0
+        fi
         if [ "$rc" -eq 0 ]; then
-            QMD_DAEMON_RESTART_PENDING=0  # t13b-ok: clears the notice flag, starts nothing
+            QMD_DAEMON_RESTART_PENDING=0 # t13b-ok: clears the notice flag, starts nothing
             echo "    qmd daemon restarted: the new build is serving."  # t13b-ok: progress text only, starts nothing
             return 0
         fi

@@ -61,6 +61,7 @@ out="$(HOME="$home" MOCK_DIR="$work/mock" QMD_CURL="$mockbin/curl" QMD_HTTP_TOKE
 grep -q "Authorization: Bearer $SECRET" "$work/mock/stdin" || fail "(d) token not sent on curl stdin"
 grep -q "$SECRET" "$work/mock/argv"; [ $? -eq 1 ] || fail "(d) token leaked into curl argv (or argv capture unreadable)"
 case "$out" in *"$SECRET"*) fail "(d) token leaked into ensure output" ;; esac
+grep -q -e '--noproxy [*]' "$work/mock/argv" || fail "(d) token-bearing probe lacks --noproxy '*'"
 
 # (d2) a non-loopback URL gets no Authorization header at all
 rm -f "$work/mock/stdin" "$work/mock/argv"

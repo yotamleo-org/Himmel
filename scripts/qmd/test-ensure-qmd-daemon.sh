@@ -1168,4 +1168,11 @@ kill -0 "$old_pid" 2>/dev/null || fail "(z10) handed-off pid: SIGKILL went to a 
 reap_new
 echo "ok (z10): SIGTERM first, SIGKILL only while the pid still passes the identity check"
 
+stale_case 0
+run_stale QMD_DAEMON_DISABLED=1
+[ "$rc" -eq 10 ] || fail "(z11) opted out: expected rc 10, got $rc ($out)"
+kill -0 "$old_pid" 2>/dev/null || fail "(z11) opted out: the server was signalled"
+reap_new
+echo "ok (z11): an opted-out --recycle-if-stale exits 10 and recycles nothing"
+
 echo "PASS: all ensure-qmd-daemon cases"
