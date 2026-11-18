@@ -4247,7 +4247,7 @@ fi
 # suite.
 live_root=""
 # Globs matched against "/<suite path>"; SUITE_LIVE_HARD replaces the list.
-live_hard="${SUITE_LIVE_HARD-*/scripts/handover/test-arm-resume.sh */scripts/handover/test-arm-resume-cron.sh */scripts/handover/test-merge-on-green.sh */scripts/ci/test-run-shell-tests*.sh}"
+live_hard="${SUITE_LIVE_HARD-*/scripts/handover/test-arm-resume.sh */scripts/handover/test-arm-resume-cron.sh */scripts/handover/test-merge-on-green.sh */scripts/handover/test-merge-on-green-b.sh */scripts/ci/test-run-shell-tests*.sh}"
 _live_is_hard() {
   local _p _pats
   [ -n "$live_hard" ] || return 1

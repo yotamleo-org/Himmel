@@ -532,6 +532,7 @@ scripts/handover/test-librarian-cadence.sh	local	behaviour suite, new in HIMMEL-
 scripts/handover/test-librarian.sh	local	behaviour suite, new in HIMMEL-6915
 scripts/handover/test-merge-fork-pr.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-merge-forward-check.sh	pr	trust-path
+scripts/handover/test-merge-on-green-b.sh	pr	guard
 scripts/handover/test-merge-on-green-jira-end-state.sh	pr	guard
 scripts/handover/test-merge-on-green-static-recheck.sh	pr	guard
 scripts/handover/test-merge-on-green.sh	pr	guard

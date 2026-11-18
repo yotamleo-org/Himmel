@@ -557,8 +557,9 @@ scripts/handover/test-librarian-cadence.sh	2
 scripts/handover/test-librarian.sh	4
 scripts/handover/test-merge-fork-pr.sh	15
 scripts/handover/test-merge-forward-check.sh	12
+scripts/handover/test-merge-on-green-b.sh	208
 scripts/handover/test-merge-on-green-static-recheck.sh	31
-scripts/handover/test-merge-on-green.sh	261
+scripts/handover/test-merge-on-green.sh	210
 scripts/handover/test-move-renamed-dirs.sh	0
 scripts/handover/test-pr-merge.sh	20
 scripts/handover/test-pr-open.sh	1

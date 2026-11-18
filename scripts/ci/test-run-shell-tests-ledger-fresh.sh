@@ -177,7 +177,7 @@ scripts/handover/test-merge-fork-pr.sh	15
 scripts/handover/test-merge-forward-check.sh	12
 scripts/handover/test-merge-on-green-jira-end-state.sh	14
 scripts/handover/test-merge-on-green-static-recheck.sh	31
-scripts/handover/test-merge-on-green.sh	254
+scripts/handover/test-merge-on-green.sh	210
 scripts/handover/test-pr-merge.sh	20
 scripts/handover/test-queue-lock.sh	120
 scripts/handover/test-register-state.sh	11

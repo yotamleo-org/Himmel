@@ -78,6 +78,7 @@ scripts/handover/test-arm-resume-wrapper-coverage.sh
 scripts/handover/test-handover-root-dotenv.sh
 scripts/handover/test-worker-handoff-threshold-docs.sh
 scripts/handover/test-merge-forward-check.sh
+scripts/handover/test-merge-on-green-b.sh
 scripts/handover/test-merge-on-green.sh
 scripts/handover/test-pr-merge.sh
 scripts/handover/test-suite-coverage.sh
