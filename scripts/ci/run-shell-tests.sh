@@ -3670,6 +3670,15 @@ _suite_no_retry() {
   [ -n "$_hdr" ]
 }
 
+_suite_quarantined() {
+  case "$tiers_quarantine_nl" in
+    *"
+${1#"$tier_repo_root"/}
+"*) return 0 ;;
+  esac
+  return 1
+}
+
 # _flake_json_str — one stdin line as the inside of a JSON string.
 _flake_json_str() {
   tr '\n\t' '  ' | tr -d '\000-\037' | sed 's/\\/\\\\/g; s/"/\\"/g'
@@ -4440,6 +4449,21 @@ _suite_parallel_denied() {
   done <<< "$parallel_deny"
   return 1
 }
+_suites_run_alone_first() {
+  local _s _alone="" _rest=""
+  while IFS= read -r _s; do
+    [ -n "$_s" ] || continue
+    if _suite_parallel_denied "${scan_resolved}/${_s#"${scan}"/}"; then
+      _alone+="$_s"$'\n'
+    else
+      _rest+="$_s"$'\n'
+    fi
+  done < "$suites_file"
+  printf '%s%s' "$_alone" "$_rest" > "$suites_file"
+}
+if [ "$suite_jobs" -gt 1 ] && [ "$list_only" -eq 0 ] && [ "$shard_total" -gt 0 ] && [ "$shard_binpack" -eq 1 ]; then
+  _suites_run_alone_first
+fi
 # Lane 0 reuses live_root; every other lane gets its own sentinel root.
 lane_root=() lane_pid=() lane_out=()
 live_lane_roots=""
@@ -4630,6 +4654,10 @@ WITNESSMSGS
 
   # A cap overrun is retried too: on a loaded runner it is as likely slowness as
   # a defect, and one rerun in the same job costs less than a red main.
+  if [ "$rc" -ne 0 ] && [ "$capped" -eq 1 ] && [ "$live_fail" -eq 0 ] && [ "$_attempt" -eq 1 ] && _suite_quarantined "$suite_key"; then
+    printf '[NO-RETRY] %s is tier quarantine and exceeded its %ss cap; a rerun cannot change the run'\''s result\n' "$suite" "$suite_timeout"
+    break
+  fi
   if [ "$rc" -ne 0 ] && [ "$live_fail" -eq 0 ] && [ "$_attempt" -eq 1 ] && ! _suite_no_retry "$suite"; then
     if [ "$capped" -eq 1 ] && [ $(( SECONDS - run_start + suite_timeout )) -ge "$retry_budget" ]; then
       printf '[NO-RETRY] %s exceeded its %ss cap; a rerun cannot finish inside the run'\''s %ss budget (%ss left)\n' \
@@ -4677,12 +4705,8 @@ _suite_account() {
   manifest_add "ran $rc ${mf_rel:-}"
   suite_ledger_append "${suite_key#"$tier_repo_root"/}" "$rc" "$dur"
   _quar=0
-  if [ "$rc" -ne 0 ]; then
-    case "$tiers_quarantine_nl" in
-      *"
-${suite_key#"$tier_repo_root"/}
-"*) _quar=1 ;;
-    esac
+  if [ "$rc" -ne 0 ] && _suite_quarantined "$suite_key"; then
+    _quar=1
   fi
 
   if [ "$_quar" -eq 1 ]; then

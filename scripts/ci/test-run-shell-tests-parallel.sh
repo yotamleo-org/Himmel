@@ -587,4 +587,42 @@ else
   fail "P18: mktemp failed"
 fi
 
+echo "== P19: run-alone suites run first in a bin-packed shard and the shard's suite set is unchanged =="
+if sb=$(mk_sandbox); then
+  for _n in a b d f; do mk_suite "$sb" "test-$_n.sh" 3; done
+  mk_suite "$sb" test-c-alone.sh 1
+  mk_suite "$sb" test-e-alone.sh 1
+  mk_suite "$sb" test-g-alone.sh 1
+  : > "$sb/dur.tsv"
+  for _r in a:90 c-alone:80 b:70 e-alone:60 d:50 g-alone:40 f:30; do printf '%s/scripts/test-%s.sh\t%s\n' "$sb" "${_r%%:*}" "${_r##*:}" >> "$sb/dur.tsv"; done
+  printf '*/scripts/test-c-alone.sh  fixture\n*/scripts/test-e-alone.sh  fixture\n*/scripts/test-g-alone.sh  fixture\n' > "$sb/deny.txt"
+  started_in_order() { cut -d' ' -f1 "$1/peak.log"; }
+  for _shard in 1 2; do
+    : > "$sb/peak.log"
+    env -u SUITE_TIER_MODE SUITE_JOBS=1 SUITE_DURATIONS="$sb/dur.tsv" bash "$RUNNER" --shard "$_shard/2" "$sb/scripts" > /dev/null 2>&1
+    serial_set=$(started_in_order "$sb" | sort | paste -sd' ' -)
+    : > "$sb/peak.log"
+    out=$(env -u SUITE_TIER_MODE SUITE_JOBS=3 SUITE_PARALLEL_DENY="$sb/deny.txt" SUITE_DURATIONS="$sb/dur.tsv" bash "$RUNNER" --shard "$_shard/2" "$sb/scripts" 2>&1); rc=$?
+    par_set=$(started_in_order "$sb" | sort | paste -sd' ' -)
+    order=$(started_in_order "$sb" | paste -sd' ' -)
+    last_alone=$(started_in_order "$sb" | awk '/-alone\.sh$/ { i = NR } END { print i + 0 }')
+    first_par=$(started_in_order "$sb" | awk '!/-alone\.sh$/ { print NR; exit }')
+    n_alone=$(started_in_order "$sb" | awk '/-alone\.sh$/ { n++ } END { print n + 0 }')
+    if [ "$rc" -eq 0 ] && [ -n "$serial_set" ] && [ "$serial_set" = "$par_set" ] \
+       && [ "$last_alone" -lt "${first_par:-0}" ]; then
+      pass "P19: shard $_shard/2 ran the same suites as a serial run ($par_set), run-alone ones first ($order)"
+    else
+      fail "P19: shard $_shard/2 rc=$rc serial=[$serial_set] parallel=[$par_set] order=[$order]; out: $out"
+    fi
+    if [ "$n_alone" -ge 1 ] && [ "$first_par" != "" ]; then
+      pass "P19: shard $_shard/2 holds run-alone and parallel suites, so its order check is not vacuous"
+    else
+      fail "P19: shard $_shard/2 needs both kinds of suite for the order check; order=[$order]"
+    fi
+  done
+  rm -rf "$sb"
+else
+  fail "P19: mktemp failed"
+fi
+
 rst_tally

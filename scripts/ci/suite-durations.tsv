@@ -443,7 +443,7 @@ scripts/handover/chief-kit/test-chief-kit-e2e.sh	45
 scripts/handover/chief-kit/test-chief-wait-b.sh	534
 scripts/handover/chief-kit/test-chief-wait-pool.sh	173
 scripts/handover/chief-kit/test-chief-wait-r0.sh	202
-scripts/handover/chief-kit/test-chief-wait.sh	358
+scripts/handover/chief-kit/test-chief-wait.sh	600
 scripts/handover/chief-kit/test-cut-tag.sh	2
 scripts/handover/chief-kit/test-delta-class.sh	7
 scripts/handover/chief-kit/test-fleet-manifest.sh	2
