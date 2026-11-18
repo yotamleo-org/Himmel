@@ -952,5 +952,60 @@ before="$(head_sha)"; out="$(run_ac)"
 assert_eq "T60 control: a path staged before any attempt is never auto-committed" "$before" "$(head_sha)"
 assert_eq "T60 and stays staged" "theirs.md " "$(staged)"
 
+mkvault
+echo "a note" >"$V/note.md"; backdate "$V/note.md"
+cp "$V/.git/hooks/pre-commit" "$TMP/hook.keep"
+printf '#!/usr/bin/env bash\necho "refused by a hook" >&2\nexit 1\n' >"$V/.git/hooks/pre-commit"
+run_ac >/dev/null
+cp "$TMP/hook.keep" "$V/.git/hooks/pre-commit"
+git -C "$V" reset -q note.md; echo "someone else's edit" >"$V/note.md"; git -C "$V" add note.md
+before="$(head_sha)"; out="$(run_ac)"
+assert_eq "T61 the same path restaged with new content after the refusal: nothing is auto-committed" "$before" "$(head_sha)"
+assert_eq "T61 the restaged note stays staged" "note.md " "$(staged)"
+
+mkvault
+echo "a note" >"$V/note.md"; backdate "$V/note.md"
+cp "$V/.git/hooks/pre-commit" "$TMP/hook.keep"
+printf '#!/usr/bin/env bash\necho "refused by a hook" >&2\nexit 1\n' >"$V/.git/hooks/pre-commit"
+run_ac >/dev/null
+cp "$TMP/hook.keep" "$V/.git/hooks/pre-commit"
+git -C "$V" commit -q -m "by hand"
+echo "a later edit" >"$V/note.md"; git -C "$V" add note.md
+before="$(head_sha)"; out="$(run_ac)"
+assert_eq "T62 refusal, a hand commit, then a staged edit at the same path: nothing is auto-committed" "$before" "$(head_sha)"
+assert_eq "T62 the edit stays staged" "note.md " "$(staged)"
+
+mkvault
+echo "a note" >"$V/note.md"; backdate "$V/note.md"
+cp "$V/.git/hooks/pre-commit" "$TMP/hook.keep"
+printf '#!/usr/bin/env bash\necho "refused by a hook" >&2\nexit 1\n' >"$V/.git/hooks/pre-commit"
+run_ac >/dev/null
+cp "$TMP/hook.keep" "$V/.git/hooks/pre-commit"
+seed="$(head_sha)"
+git -C "$V" commit -q -m "by hand"
+out="$(run_ac)"
+assert_eq "T63 a run that finds the index empty clears the vault's record" "0" "$(find "$S" -maxdepth 1 -name "autocommit-owned*" | wc -l | tr -d ' ')"
+git -C "$V" reset -q --soft "$seed"
+out="$(run_ac)"
+assert_eq "T63 the identical entries restaged later are not auto-committed" "$seed" "$(head_sha)"
+assert_eq "T63 and stay staged" "note.md " "$(staged)"
+
+mkvault
+VA="$V"; SA="$S"
+echo "a note" >"$V/note.md"; backdate "$V/note.md"
+cp "$V/.git/hooks/pre-commit" "$TMP/hook.keep"
+printf '#!/usr/bin/env bash\necho "refused by a hook" >&2\nexit 1\n' >"$V/.git/hooks/pre-commit"
+run_ac >/dev/null
+mkvault
+S="$SA"
+echo "a note" >"$V/note.md"; git -C "$V" add note.md
+before="$(head_sha)"; out="$(run_ac)"
+assert_eq "T64 a record from vault A never authorises a commit in vault B" "$before" "$(head_sha)"
+assert_eq "T64 vault B keeps its staged note" "note.md " "$(staged)"
+V="$VA"
+cp "$TMP/hook.keep" "$V/.git/hooks/pre-commit"
+out="$(run_ac)"
+assert_eq "T64 control: vault A's own record still retries its own commit" "note.md " "$(head_files)"
+
 echo "----"
 if [ "$FAILED" -eq 0 ]; then echo "PASS: vault-stall-cadence ($0)"; else echo "FAIL: vault-stall-cadence — $FAILED failed ($0)" >&2; exit 1; fi

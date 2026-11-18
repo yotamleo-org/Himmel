@@ -460,10 +460,23 @@ commit_or_index_empty() {
         || git -C "$1" diff --cached --quiet
 }
 
+# One record per vault (STATE_DIR is shared by every --vault): the vault's real
+# path, then the staged entries (mode, old and new blob id, path) a hook refused.
+owned_file() {
+    printf '%s/autocommit-owned.%s' "$STATE_DIR" "$(printf '%s' "$1" | cksum | cut -d' ' -f1)"
+}
+staged_entries() {
+    printf '%s\n' "$1"
+    git -C "$1" diff --cached --raw --no-abbrev --no-renames -z | tr '\0' '\n' | paste -d' ' - - | LC_ALL=C sort
+}
+
 retry_refused_commit() {
-    local vault="$1" gitdir="$2" owned="$STATE_DIR/autocommit-owned"
-    [ -s "$owned" ] && [ ! -e "$gitdir/index.lock" ] || return 0
-    if ! autocommit_gates_open "$vault" || [ "$(git -C "$vault" diff --cached --name-only | sort)" != "$(cat "$owned")" ]; then
+    local vault="$1" gitdir="$2" owned
+    owned="$(owned_file "$vault")"
+    [ -s "$owned" ] || return 0
+    [ "$(head -n1 "$owned")" = "$vault" ] || return 0
+    [ ! -e "$gitdir/index.lock" ] || return 0
+    if ! autocommit_gates_open "$vault" || [ "$(staged_entries "$vault")" != "$(cat "$owned")" ]; then
         rm -f "$owned"; return 0
     fi
     if commit_or_index_empty "$vault"; then
@@ -509,12 +522,12 @@ autocommit_vault() {
                 git --literal-pathspecs -C "$vault" reset -q --pathspec-from-file="$paths" --pathspec-file-nul >/dev/null 2>&1
                 echo "vault-stall: another writer is staging in this vault; auto-commit skipped"
             elif commit_or_index_empty "$vault"; then
-                rm -f "$STATE_DIR/autocommit-owned"
+                rm -f "$(owned_file "$vault")"
                 echo "vault-stall: auto-committed the quiet notes (local, not pushed)"
                 autocommit_gates_open "$vault" \
                     || alert "vault auto-commit landed after a remote, sync plugin or opt-out appeared (hook-window race)" 0
             else
-                git -C "$vault" diff --cached --name-only | sort >"$STATE_DIR/autocommit-owned"
+                staged_entries "$vault" >"$(owned_file "$vault")"
                 echo "vault-stall: auto-commit refused by the vault's hooks; the stall handling below takes over"
             fi
         fi
@@ -555,7 +568,7 @@ cmd_run() {
     last="$(git -C "$vault" log -1 --format=%ct 2>/dev/null)"; last="${last:-0}"
     now="$(date +%s)"; age=$(((now - last) / 60))
     thr="${VAULT_STALL_MIN:-25}"; case "$thr" in '' | *[!0-9]*) thr=25 ;; esac
-    if [ "$staged" -gt 0 ] && [ "$dry" -eq 0 ]; then
+    if [ "$dry" -eq 0 ]; then
         retry_refused_commit "$vault" "$gitdir"
         staged="$(git -C "$vault" diff --cached --name-only | wc -l | tr -d ' ')"
         last="$(git -C "$vault" log -1 --format=%ct 2>/dev/null)"; last="${last:-0}"
