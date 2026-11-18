@@ -6991,3 +6991,369 @@ test("3e an earlier path that is a link or not spelled canonically is not histor
     }
   }
 }, S1B);
+
+// ---- the v2 assembly and the --keys verb form (rows D2, D3, D7, F4 to F8, N11, N12, L1, T1 to T4, the chief-route half of R1 and R2, and the v2 goals of G0a and G0b) ----
+const F3_USAGE_KEYS = "capped-fold: capped-fold: requires exactly --keys, --spec, --plan, --spec-return and --plan-return, each once\n";
+const F3_BOTH = "capped-fold: capped-fold: use exactly one of --key and --keys\n";
+const F3_LIST = "capped-fold: capped-fold: expected one or more distinct ticket keys\n";
+const f3Route = async (): Promise<any> => {
+  const route: any = await import("./chief-route");
+  for (const name of ["cappedFoldLedger", "cappedHeadDeclared", "foldList"]) expect(typeof route[name], `${name} is reachable by an in-process caller`).toBe("function");
+  return route;
+};
+const f3Key = (f: { spec: string }) => /(HIMMEL-\d+)/.exec(basename(f.spec))![1];
+const f3Keys = (f: any): string[] => f.keys ?? [f3Key(f)];
+const f3Args = (f: any, keys: string[]) => ({ keys, spec: f.spec, plan: f.plan, specReturn: b1Kind(f, "spec").at(-1)!, planReturn: b1Kind(f, "plan").at(-1)! });
+const f3Argv = (f: any, keys = f3Keys(f).join(",")) => ["--keys", keys, "--spec", f.spec, "--plan", f.plan, "--spec-return", b1Kind(f, "spec").at(-1)!, "--plan-return", b1Kind(f, "plan").at(-1)!];
+const f3Fold = async (f: any, keys = f3Keys(f)) => (await f3Route()).cappedFoldLedger(f3Args(f, keys));
+const f3Refusal = async (f: any, keys = f3Keys(f)) => c3Message(f3Fold(f, keys));
+const f3Group = async () => (await b1Lib()).buildGroupFixture(realpathSync(root()));
+const f3Known = async () => (await b1Lib()).buildKnownSingleFixture(realpathSync(root()), { variant: "refusedCap" });
+const f3Fresh = async () => (await b1Lib()).buildFreshSingleFixture(realpathSync(root()));
+// Every file under the specs root by relative path and sha256, every decision's mtime, and the anchor ledger's rows by kind.
+const f3Tree = (f: any) => {
+  const files: Record<string, string> = {}; const decisions: Record<string, number> = {};
+  for (const entry of readdirSync(f.specsRoot, { recursive: true, withFileTypes: true })) {
+    if (!entry.isFile()) continue; const path = join(entry.parentPath, entry.name); const rel = path.slice(f.specsRoot.length + 1);
+    files[rel] = sha(readFileSync(path, "utf8")); if (rel.startsWith("decisions/")) decisions[rel] = statSync(path).mtimeMs;
+  }
+  return { files, decisions, rows: b1Rows(f).map((r: any) => r.row) };
+};
+// The exact proof, computed from the fixture's own files: every path, hash and round is read back from disk or from the fixture, never stored.
+const f3Check = async (proof: any, f: any, o: { keys?: string[]; epoch: number; rounds: [number, number]; carried: [kind: string, id: string, severity: string][]; history?: string[] }) => {
+  const route: any = await import("./chief-route"); const shared = await t2Pinned(); const keys = [...(o.keys ?? f3Keys(f))].sort(); const anchor = route.keyOf(f.spec);
+  const file = (path: string) => ({ path, sha256: sha(readFileSync(path, "utf8")) });
+  const returns = (["spec", "plan"] as const).map((kind, i) => {
+    const path = b1Kind(f, kind).at(-1)!; const text = readFileSync(path, "utf8");
+    return { ...file(path), kind, round: o.rounds[i], return_sha: route.returnSha(text), residuals: o.carried.filter(c => c[0] === kind).length };
+  });
+  expect(proof).toMatchObject({ schema: 2, reader_version: 2, mode: "capped-carry-ledger", anchor, keys, epoch: o.epoch, spec: file(realpathSync(f.spec)), plan: file(realpathSync(f.plan)), returns });
+  expect(Object.keys(proof)).toEqual(["schema", "reader_version", "mode", "anchor", "keys", "epoch", "spec", "plan", "returns", "pins", "carried"]);
+  expect(proof.carried).toEqual(o.carried.map(([kind, id, severity]) => ({ key: anchor, epoch: o.epoch, kind, round: returns[kind === "spec" ? 0 : 1].round, return_path: returns[kind === "spec" ? 0 : 1].path,
+    return_sha: returns[kind === "spec" ? 0 : 1].return_sha, finding_id: id, severity, status: "open-carried" })));
+  for (const pin of proof.pins) if (pin.path) expect(pin.sha256, `${pin.role} ${pin.path}`).toBe(sha(readFileSync(pin.path, "utf8")));
+  const roles = (role: string) => proof.pins.filter((p: any) => p.role === role);
+  expect(roles("ledger").map((p: any) => p.path)).toEqual([f.ledgerPath]); expect(roles("manifest").map((p: any) => p.path)).toEqual([join(dirname(f.ledgerPath), "manifest.json")]);
+  expect(roles("return").map((p: any) => p.path).sort()).toEqual(returns.map(r => r.path).sort());
+  expect(roles("history").map((p: any) => p.path).sort(), "the history pins").toEqual([...(o.history ?? [])].sort());
+  expect(roles("member-absence"), "the member-absence pin").toEqual(keys.length > 1 ? [{ role: "member-absence", directory: shared.ledgerDirOf(f.specsRoot), keys: keys.filter(k => k !== anchor) }] : []);
+  expect(shared.validateCappedProofShape(proof)).toEqual(proof);
+};
+// A positive run through the real verb form: the proof is one JSON line, nothing is written under the specs root, no ledger row appears (R1, R2).
+const f3Cli = async (f: any, o: Parameters<typeof f3Check>[2], keys = f3Keys(f)) => {
+  const before = f3Tree(f); const run = p1Cli("--keys", ...f3Argv(f, keys.join(",")).slice(1));
+  expect(run.err).toBe(""); expect(run.code).toBe(0); expect(run.out.endsWith("\n") && run.out.trimEnd().split("\n").length).toBe(1);
+  const proof = JSON.parse(run.out); await f3Check(proof, f, { ...o, keys });
+  expect(f3Tree(f), "R1: the artifact tree, every decision's mtime and the ledger rows are unchanged").toEqual(before);
+  expect(proof.carried.every((c: any) => c.status === "open-carried"), "R2: every carried entry is open-carried").toBe(true);
+  expect(f3Tree(f).rows, "R2: no ledger row of any run").toEqual(before.rows);
+  return proof;
+};
+
+test("3f availability: the assembly and the head declaration are reachable in process", async () => {
+  const route = await f3Route(); expect(route.cappedFoldLedger.length).toBe(1); expect(route.cappedHeadDeclared.length).toBe(3);
+});
+
+test("D7 cappedHeadDeclared: the head and the plan header are optional, one equal line passes, two lines, a subset, a superset, one key of many or an empty line refuse", async () => {
+  const route = await f3Route(); const keys = ["HIMMEL-9801", "HIMMEL-9802", "HIMMEL-9803"]; const all = keys.join(", ");
+  const doc = (head: string, front = `tickets: ${all}`) => `---\n${front}\n---\n# Title\n${head}\n\n## Body\nKeys: HIMMEL-1\n- Tickets: HIMMEL-2\n`;
+  for (const ok of ["", `Keys: ${all}`, `Keys: [${[...keys].reverse().join(", ")}]`, `Key: ${all}`, `- Tickets: ${all}`, `- Ticket: ${all}`]) expect(() => route.cappedHeadDeclared(doc(ok), keys, true), ok).not.toThrow();
+  const header = `capped-fold: header must declare only ${all}`;
+  for (const [what, head] of [["two lines", `Keys: ${all}\nKeys: ${all}`], ["two spellings", `Keys: ${all}\n- Tickets: ${all}`], ["a subset", "Keys: HIMMEL-9801, HIMMEL-9802"],
+    ["a superset", `Keys: ${all}, HIMMEL-9899`], ["one key of many", "Keys: HIMMEL-9801"], ["a repeated key", `Keys: ${all}, HIMMEL-9801`], ["an empty line", "Keys:"], ["a wrong key", "- Tickets: HIMMEL-9801, HIMMEL-9802, HIMMEL-9899"]] as const) {
+    expect(() => route.cappedHeadDeclared(doc(head), keys, true), what).toThrow(header);
+  }
+  expect(() => route.cappedHeadDeclared(doc("", ""), keys, true), "a plan without a tickets line").not.toThrow();
+  expect(() => route.cappedHeadDeclared("# Plan\n\n- Task 1\n", keys, true), "a plan with no front matter at all").not.toThrow();
+  const tickets = `capped-fold: tickets must declare only ${all}`;
+  for (const [what, front] of [["a subset", "tickets: HIMMEL-9801, HIMMEL-9802"], ["a superset", `tickets: ${all}, HIMMEL-9899`], ["one key of many", "tickets: HIMMEL-9801"], ["two lines", `tickets: ${all}\ntickets: ${all}`], ["prose", "tickets: all of them"]] as const) {
+    expect(() => route.cappedHeadDeclared(doc("", front), keys, true), what).toThrow(tickets);
+  }
+  expect(() => route.cappedHeadDeclared(doc("", `tickets: [${all}]`), keys, true), "a flow list").not.toThrow();
+  expect(() => route.cappedHeadDeclared(doc("", `tickets: ${keys.map(k => `${k} (a note)`).join(", ")}`), keys, true), "annotated items").not.toThrow();
+  expect(() => route.cappedHeadDeclared(`Keys: ${all}\n`, keys, false), "without front matter the whole text is read, one equal line").not.toThrow();
+  expect(() => route.cappedHeadDeclared("Keys: HIMMEL-9801\n", keys, false), "without front matter, one key of many").toThrow(header);
+  expect(() => route.cappedHeadDeclared("# Return\n- Tickets: HIMMEL-9801\nSPEC CLEAN\n", keys, false), "without front matter only a Keys line counts").not.toThrow();
+  expect(() => route.cappedHeadDeclared(`---\ntickets: HIMMEL-9801\n---\nKeys: ${all}\n`, keys, false), "without front matter the front matter is not read").not.toThrow();
+});
+
+test("D2 requested keys: the exact set and a reordered set give the same proof; a missing, an extra, a duplicate, an empty and a malformed key refuse", async () => {
+  const f = await f3Group(); const keys = f.keys as string[]; const exact = await f3Fold(f, keys);
+  expect(await f3Fold(f, [...keys].reverse()), "reordered").toEqual(exact); expect(exact.keys).toEqual([...keys].sort());
+  const tickets = (list: string[]) => `capped-fold: tickets must declare only ${[...list].sort().join(", ")}`;
+  expect(await f3Refusal(f, keys.slice(0, 6)), "a missing key").toBe(tickets(keys.slice(0, 6)));
+  expect(await f3Refusal(f, [...keys, "HIMMEL-9899"]), "an extra key").toBe(tickets([...keys, "HIMMEL-9899"]));
+  const list = "capped-fold: expected one or more distinct ticket keys";
+  expect(await f3Refusal(f, [...keys, keys[0]]), "a duplicate key").toBe(list); expect(await f3Refusal(f, []), "no key").toBe(list);
+  for (const bad of ["", "himmel-9801", "HIMMEL", "HIMMEL-", "HIMMEL-9801 "]) expect(await f3Refusal(f, [...keys.slice(1), bad]), JSON.stringify(bad)).toBe(list);
+});
+
+test("D3 the anchor must be one of the keys, and the spec, the plan and the return filename keys must all equal it", async () => {
+  const f = await f3Group(); const keys = f.keys as string[]; const specs = f.specsRoot;
+  const spec = join(specs, "designs", "HIMMEL-9899-copy.md"); copyFileSync(f.spec, spec);
+  expect(await c3Message((await f3Route()).cappedFoldLedger({ ...f3Args(f, keys), spec })), "the spec's own key is not a requested key").toBe("capped-fold: the anchor HIMMEL-9899 is not one of the keys");
+  const nested = join(specs, "HIMMEL-9801"); mkdirSync(nested); const confused = join(nested, "HIMMEL-9802-confused.md"); copyFileSync(f.spec, confused);
+  expect(await c3Message((await f3Route()).cappedFoldLedger({ ...f3Args(f, keys), spec: confused })), "a spec whose folder and filename keys differ").toBe("capped-fold: spec filename/folder key disagrees");
+  const plan = join(specs, "plans", "HIMMEL-9899-plan.md"); copyFileSync(f.plan, plan);
+  expect(await c3Message((await f3Route()).cappedFoldLedger({ ...f3Args(f, keys), plan })), "a plan of another key").toBe("capped-fold: expected a distinct plan for this key");
+  expect(await c3Message((await f3Route()).cappedFoldLedger({ ...f3Args(f, keys), plan: f.spec })), "the spec given as the plan").toBe("capped-fold: expected a distinct plan for this key");
+  const specReturn = join(specs, "designs", "HIMMEL-9899-x.md.critic-spec-r3.md"); copyFileSync(b1Kind(f, "spec").at(-1)!, specReturn);
+  expect(await c3Message((await f3Route()).cappedFoldLedger({ ...f3Args(f, keys), specReturn })), "a return filename of another key").toBe("capped-fold: return filename/folder key disagrees");
+  expect(await c3Message((await f3Route()).cappedFoldLedger({ ...f3Args(f, keys), spec: "relative/spec.md" })), "a relative path").toBe("capped-fold: paths must be absolute");
+});
+
+test("G0a v2 goal: --keys over the real new-stem group fixture prints the exact proof, validated, with its five history pins and member-absence pin, and writes nothing", async () => {
+  const f = await f3Group();
+  const refused = p1Cli("--key", f.anchor, ...f3Argv(f).slice(2)); expect(refused.out).toBe(""); expect(refused.err, "the v1 control still refuses the group header").toBe(`capped-fold: capped-fold: header must declare only ${f.anchor}\n`);
+  const proof = await f3Cli(f, { epoch: 1, rounds: [3, 3], carried: [["spec", "F1", "medium"], ["plan", "P1", "minor"]], history: f.earlier });
+  expect(proof.keys).toHaveLength(7); expect(proof.pins.filter((p: any) => p.role === "history")).toHaveLength(5);
+  expect(JSON.stringify(await f3Fold(f)), "in process equals the verb").toBe(JSON.stringify(proof));
+}, S1B);
+
+test("G0b v2 goal and F4: --keys over the real known-single refusedCap fixture accepts a spec that is CLEAN in closure mode after a real major and a plan with minor findings", async () => {
+  const f = await f3Known(); const key = f3Key(f);
+  const refused = p1Cli("--key", key, ...f3Argv(f).slice(2)); expect(refused.err, "the v1 control still refuses the legacy header").toBe(`capped-fold: capped-fold: header must declare only ${key}\n`);
+  const proof = await f3Cli(f, { epoch: 0, rounds: [5, 4], carried: [["plan", "P4", "minor"], ["plan", "P5", "minor"]], history: [] });
+  expect(proof.keys).toEqual([key]); expect(proof.pins.some((p: any) => p.role === "member-absence"), "one key has no member pin").toBe(false);
+  expect(proof.returns.map((r: any) => r.residuals)).toEqual([0, 2]);
+  expect(b1Rows(f).filter((r: any) => r.row === "round" && r.critic === "spec").map((r: any) => [r.round, r.mode, r.findings.map((x: any) => x.severity)]).slice(2, 5),
+    "the spec had a real major, then closure rounds, the last CLEAN").toEqual([[3, "full", ["major"]], [4, "closure", ["major"]], [5, "closure", []]]);
+  const again = await f3Known(); const second = await f3Cli(again, { epoch: 0, rounds: [5, 4], carried: [["plan", "P4", "minor"], ["plan", "P5", "minor"]], history: [] });
+  expect(second.carried.map((c: any) => c.finding_id), "F4, a second positive run over the same shape: only the plan's minors are carried").toEqual(["P4", "P5"]);
+}, S1B);
+
+test("T1 a fresh single-key fixture with every redundant declaration omitted: --key refuses with the shipped words, --keys accepts with the exact proof", async () => {
+  const f = await f3Fresh(); const key = f3Key(f); const text = readFileSync(b1Kind(f, "spec").at(-1)!, "utf8");
+  expect(text).not.toMatch(/^Key:|^Reviewed:/m); expect(readFileSync(f.spec, "utf8")).not.toMatch(/^Keys?:|^- Tickets?:/m);
+  const refused = p1Cli("--key", key, ...f3Argv(f).slice(2)); expect(refused.code).toBe(1); expect(refused.out).toBe("");
+  expect(refused.err, "the shipped words").toBe(`capped-fold: capped-fold: header must declare only ${key}\n`);
+  const status = await b1Status(f, key); expect(status.next, "the ledger really refuses round 4").toBe("none");
+  await f3Cli(f, { epoch: 0, rounds: [3, 3], carried: [["spec", "F3", "minor"], ["plan", "P3", "minor"]], history: [] });
+}, S1B);
+
+test("F5 zero findings in both kinds is refused as a direct v2 proof: it needs one carried finding", async () => {
+  const f = await c3Build([1, 2, 3].flatMap(round => (["spec", "plan"] as const).map(kind => ({ kind, round }))));
+  expect(await f3Refusal(f, [cappedKey])).toBe("capped-fold: requires at least one carried finding");
+});
+
+test("F6 an open historical operator-critical finding is refused by the shared ledger check before any policy", async () => {
+  const f = await cappedFixture({ specFindings: "- **F1** (medium; operator-critical: spend-grant) the real ledger holds an open critical finding" });
+  expect(await f3Refusal(f, [cappedKey])).toBe("capped-fold: open historical operator-critical findings");
+});
+
+test("F7 blocking history in an earlier epoch and in earlier rounds, latest rows nonblocking: accepted, and no carried id is a history id", async () => {
+  for (const f of [await f3Group(), await f3Known()]) {
+    const proof = await f3Fold(f); const signed = new Set(proof.returns.map((r: any) => r.path));
+    const historyIds = b1Rows(f).filter((r: any) => r.row === "round" && !signed.has(r.verdict_path))
+      .flatMap((r: any) => r.findings.filter((x: any) => x.severity === "major" || x.regression || x.class === "regression").map((x: any) => x.id));
+    expect(historyIds.length, "the fixture holds blocking history").toBeGreaterThan(0);
+    for (const id of historyIds) expect(proof.carried.map((c: any) => c.finding_id), `history id ${id} is not carried`).not.toContain(id);
+    expect(proof.carried.every((c: any) => c.status === "open-carried" && (c.severity === "minor" || c.severity === "medium"))).toBe(true);
+  }
+}, S1B);
+
+test("F8 the verifier never reads the fold list: foldList is spied across a positive and three refusing runs and is never called, and the assembly's source does not name it", async () => {
+  const route = await f3Route(); const spy = spyOn(route, "foldList");
+  try {
+    await f3Fold(await f3Known());
+    expect(await f3Refusal(await cappedFixture({ specFindings: "- **F1** (major) a major in the latest row" }), [cappedKey])).toBe(c3Heading("- **F1** (major) a major in the latest row"));
+    expect(await f3Refusal(await cappedFixture({ specFindings: "- **F1** (medium; regression) a regression in the latest row" }), [cappedKey])).toBe(c3Heading("- **F1** (medium; regression) a regression in the latest row"));
+    const closure = await c3Build([{ kind: "spec", round: 1, findings: "- **F1** (minor) a" }, { kind: "spec", round: 2, findings: "- **F2** (minor) b" }, { kind: "spec", round: 3, findings: "- **M1** (major) c" },
+      { kind: "spec", round: 4, findings: "- **C1** (major) a closure major", closure: true }, { kind: "plan", round: 1 }, { kind: "plan", round: 2 }, { kind: "plan", round: 3 }]);
+    expect(await f3Refusal(closure, [cappedKey]), "a closure major in the latest row").toBe(c3Heading("- **C1** (major) a closure major"));
+    expect(spy, "never called").not.toHaveBeenCalled();
+    const known = await f3Known(); await route.foldList(known.spec, known.specsRoot).catch(() => []); expect(spy, "control: the spy sees an outside call").toHaveBeenCalledTimes(1);
+  } finally { spy.mockRestore(); }
+  const source = readFileSync(join(import.meta.dir, "chief-route.ts"), "utf8"); const start = source.indexOf("export async function cappedFoldLedger("); const body = source.slice(start, source.indexOf("\n}\n", start));
+  expect(start).toBeGreaterThan(-1); expect(body.length).toBeGreaterThan(500); expect(body).not.toContain("foldList");
+}, S1B);
+
+// A real file system change at a fixed point of the fold: the real validator is called through a spy that first applies the change, so the reader's
+// cached reads and listings are older than the disk when its final recheck runs.
+const f3Late = async (f: any, keys: string[], change: () => void) => {
+  const route = await f3Route(); const shared = await t2Pinned(); const real = shared.validateCappedLedgerProofShape; let calls = 0;
+  const spy = spyOn(shared, "validateCappedLedgerProofShape").mockImplementation((value: unknown) => { calls++; change(); return real(value); });
+  try { const message = await c3Message(route.cappedFoldLedger(f3Args(f, keys))); expect(calls, "the change landed before the proof was validated, once").toBe(1); return message; } finally { spy.mockRestore(); }
+};
+
+test("N11 a file that appears after the first listing and before the final recheck is refused: a return in a scanned folder, a member's ledger file, a plan folder file and a manifest entry", async () => {
+  const f = await f3Group(); const keys = f.keys as string[]; const shared = await t2Pinned(); const ledgerDir = shared.ledgerDirOf(f.specsRoot);
+  await expect(f3Fold(f, keys), "control: the same fold without a change").resolves.toBeDefined();
+  const specReturn = b1Kind(f, "spec").at(-1)!; const planReturn = b1Kind(f, "plan").at(-1)!; const lateSpec = specReturn.replace("r3.md", "r4.md");
+  expect(await f3Late(f, keys, () => copyFileSync(specReturn, lateSpec)), "a fresh return in the spec's folder").toBe(`capped-fold: evidence changed or is unreadable: ${dirname(specReturn)}`);
+  unlinkSync(lateSpec);
+  const lateFolder = join(f.specsRoot, "plans"); const lateReturn = join(lateFolder, basename(planReturn).replace("r3.md", "r4.md"));
+  expect(await f3Late(f, keys, () => copyFileSync(planReturn, lateReturn)), "a fresh return in plans/").toBe(`capped-fold: evidence changed or is unreadable: ${lateFolder}`);
+  unlinkSync(lateReturn);
+  const member = f.members[2]; const memberFile = join(ledgerDir, `${member}.jsonl`);
+  expect(await f3Late(f, keys, () => writeFileSync(memberFile, "")), "a member's ledger file after the member listing").toBe(`capped-fold: evidence changed or is unreadable: ${ledgerDir}`);
+  unlinkSync(memberFile);
+  const manifest = join(ledgerDir, "manifest.json"); const kept = readFileSync(manifest, "utf8");
+  expect(await f3Late(f, keys, () => writeFileSync(manifest, kept.replace('"keys":{}', `"keys":{"${member}":{"spec":1,"plan":1}}`))), "a member's manifest entry").toBe(`capped-fold: evidence changed or is unreadable: ${manifest}`);
+  writeFileSync(manifest, kept); await expect(f3Fold(f, keys), "control again: restored").resolves.toBeDefined();
+}, S1B);
+
+test("N12 a current return, the estimate, the plan, the spec or a snapshot edited in the middle of the run is refused by the final recheck", async () => {
+  const f = await f3Group(); const keys = f.keys as string[]; const dir = dirname(f.spec); const snapshots = join(dirname(f.ledgerPath), f.anchor);
+  const edits: [string, string][] = [["a current spec return", b1Kind(f, "spec").at(-1)!], ["a current plan return", b1Kind(f, "plan").at(-1)!], ["the estimate", join(dir, "estimate.json")], ["the plan", realpathSync(f.plan)],
+    ["the spec", realpathSync(f.spec)], ["the spec's snapshot", join(snapshots, sha(readFileSync(realpathSync(f.spec), "utf8")))]];
+  for (const [what, path] of edits) {
+    const kept = readFileSync(path, "utf8");
+    try { expect(await f3Late(f, keys, () => appendFileSync(path, "edited during the run")), what).toBe(`capped-fold: evidence changed or is unreadable: ${path}`); } finally { writeFileSync(path, kept); }
+  }
+}, S1B);
+
+test("L1 the v1 provenance-drift faults replayed on the group and on the known single through --keys: each refused with its own words", async () => {
+  const faults = ["key", "epoch", "old", "copy", "higher", "tied", "quote", "seal", "extra-seal", "snapshot", "spec", "plan", "estimate", "ledger", "manifest", "seed"] as const;
+  for (const make of [f3Group, f3Known]) {
+    const control = await make(); await expect(f3Fold(control), "control").resolves.toBeDefined();
+    for (const fault of faults) {
+      const f = await make(); const key = f3Key(f); const spec = realpathSync(f.spec); const plan = realpathSync(f.plan); const dir = dirname(spec);
+      const specReturn = b1Kind(f, "spec").at(-1)!; const planReturn = b1Kind(f, "plan").at(-1)!; const manifest = join(dirname(f.ledgerPath), "manifest.json"); let run = f3Args(f, f3Keys(f));
+      const latest = "capped-fold: not the actual latest real spec round"; const coverage = "capped-fold: missing/extra ledger seals or review coverage"; const provenance = (path: string) => `capped-fold: seal provenance disagrees: ${path}`;
+      const bump = (path: string) => path.replace(/r(\d)\.md$/, (_m, n) => `r${Number(n) + 1}.md`);
+      const want: Record<string, string> = { key: "capped-fold: invalid ledger key/record", epoch: "capped-fold: invalid ledger epoch", old: latest, copy: latest, seed: latest, higher: N3_UNACCOUNTED(bump(planReturn)),
+        tied: N3_UNACCOUNTED(join(f.specsRoot, "plans", basename(planReturn))), quote: `capped-fold: missing/conflicting critic READ quote: ${spec}`, seal: coverage, "extra-seal": coverage,
+        snapshot: "capped-fold: content-addressed snapshot changed", spec: provenance(spec), plan: provenance(plan), estimate: provenance(join(dir, "estimate.json")),
+        manifest: `${manifest}: the round manifest does not parse; restore it from the state repo history`, ledger: "" };
+      if (fault === "key") editLedger(f, rows => { rows[0].key = "HIMMEL-99"; });
+      if (fault === "epoch") editLedger(f, rows => { rows.filter((r: any) => r.row === "round").at(-1).epoch = 7; });
+      if (fault === "old") run = { ...run, specReturn: b1Kind(f, "spec")[0] };
+      if (fault === "copy") { const p = join(dirname(f.ledgerPath), `${basename(specReturn)}.copy`); copyFileSync(specReturn, p); run = { ...run, specReturn: p }; }
+      if (fault === "higher") copyFileSync(planReturn, bump(planReturn));
+      if (fault === "tied") copyFileSync(planReturn, join(f.specsRoot, "plans", basename(planReturn)));
+      if (fault === "quote") await editCappedReturn(f, specReturn, t => t.replace(/^READ(?:-SHA256)? .*\n/m, ""));
+      if (fault === "seal") await editCappedReturn(f, specReturn, t => t.replace(/^CONTENT-SHA256 .*\n/m, ""));
+      if (fault === "extra-seal") editLedger(f, rows => { rows.push({ ...rows.at(-1), read_path: spec, read_sha: "f".repeat(64) }); });
+      if (fault === "snapshot") writeFileSync(join(dirname(f.ledgerPath), key, sha(readFileSync(f.spec, "utf8"))), "edited");
+      if (fault === "spec") appendFileSync(f.spec, "\nchanged\n");
+      if (fault === "plan") appendFileSync(f.plan, "\nchanged\n");
+      if (fault === "estimate") appendFileSync(join(dir, "estimate.json"), " ");
+      if (fault === "ledger") { appendFileSync(f.ledgerPath, "not json\n"); want.ledger = `${key} ledger line ${readFileSync(f.ledgerPath, "utf8").split("\n").filter(Boolean).length} does not parse; restore it from the state repo history`; }
+      if (fault === "manifest") appendFileSync(manifest, "changed");
+      if (fault === "seed") editLedger(f, rows => { rows.splice(0, rows.length, { row: "seed", key, spec: 3, plan: 3, latest: { spec: [], plan: [] } }); });
+      expect(await c3Message((await f3Route()).cappedFoldLedger(run)), `${fault} on ${key}`).toBe(want[fault]);
+    }
+  }
+}, S1B);
+
+test("T2 the fresh single-key fixture with a Key naming another key, a wrong Reviewed, a missing or extra seal row, a forged ledger key or return hash, a missing or edited snapshot, a quote that differs from its seal or the spec edited after the seal: each refused", async () => {
+  type Case = { f: any; key: string; spec: string; specReturn: string; ledger: string };
+  const fixture = async (): Promise<Case> => { const f = await f3Fresh(); return { f, key: f3Key(f), spec: realpathSync(f.spec), specReturn: b1Kind(f, "spec").at(-1)!, ledger: f.ledgerPath }; };
+  const snapshotOf = (c: Case) => join(dirname(c.ledger), c.key, sha(readFileSync(c.spec, "utf8")));
+  const cases: [string, (c: Case) => Promise<void> | void, (c: Case) => string][] = [
+    ["a Key naming another key", c => editCappedReturn(c.f, c.specReturn, t => t.replace(/^Fixture:/m, "Key: HIMMEL-99\nFixture:")), () => C3_KEYS],
+    ["a wrong Reviewed", c => editCappedReturn(c.f, c.specReturn, t => t.replace(/^Fixture:/m, `Reviewed: spec ${"0".repeat(64)}\nFixture:`)), () => C3_REVIEWED],
+    ["a missing seal row", async c => { const { returnSha } = await import("./chief-route"); const sum = returnSha(readFileSync(c.specReturn, "utf8")); editLedger(c.f, rows => { rows.splice(rows.findIndex((r: any) => r.row === "seal" && r.return_sha === sum), 1); }); }, c => `capped-fold: seal provenance disagrees: ${join(dirname(c.spec), "estimate.json")}`],
+    ["an extra seal row", c => editLedger(c.f, rows => { rows.push({ ...rows.at(-1), read_path: c.spec, read_sha: "f".repeat(64) }); }), () => "capped-fold: missing/extra ledger seals or review coverage"],
+    ["a forged ledger key", c => editLedger(c.f, rows => { rows[0].key = "HIMMEL-99"; }), () => "capped-fold: invalid ledger key/record"],
+    ["a forged return hash", c => editLedger(c.f, rows => { rows.filter((r: any) => r.row === "round" && r.critic === "spec").at(-1).return_sha = "0".repeat(64); }), () => "capped-fold: not the actual latest real spec round"],
+    ["a missing snapshot", c => unlinkSync(snapshotOf(c)), c => `ENOENT: no such file or directory, realpath '${snapshotOf(c)}'`],
+    ["an edited snapshot", c => writeFileSync(snapshotOf(c), "edited"), () => "capped-fold: content-addressed snapshot changed"],
+    ["a quote that differs from its seal", c => editCappedReturn(c.f, c.specReturn, t => t.replace(/^(READ-SHA256 )([0-9a-f]{64})/m, (_l, v: string, h: string) => v + c3Flip(h))), c => `capped-fold: missing/conflicting critic READ quote: ${c.spec}`],
+    ["the spec edited after the seal", c => appendFileSync(c.spec, "\nedited after the seal\n"), c => `capped-fold: seal provenance disagrees: ${c.spec}`],
+  ];
+  await expect(f3Fold((await fixture()).f), "control").resolves.toBeDefined();
+  for (const [what, apply, message] of cases) { const c = await fixture(); await apply(c); expect(await f3Refusal(c.f), what).toBe(message(c)); }
+}, S1B);
+
+test("T3 direct --key on the T1 fixture and on a stored v1 proof stays strict and reads as before", async () => {
+  const shared = await t2Pinned(); const f = await f3Fresh(); const key = f3Key(f);
+  expect(p1Cli("--key", key, ...f3Argv(f).slice(2))).toEqual({ code: 1, signal: null, out: "", err: `capped-fold: capped-fold: header must declare only ${key}\n` });
+  const v1 = await cappedFixture(); const run = p1Fold(v1.args); expect(run.code).toBe(0); expect(run.err).toBe("");
+  const stored = JSON.parse(run.out); expect(stored.schema).toBe(1); expect(stored.mode).toBe("capped-carry");
+  expect(shared.validateCappedProofShape(stored), "the dispatcher reads the stored v1 proof").toEqual(stored); expect(shared.validateCappedFoldProofShape(stored)).toEqual(stored);
+  expect(p1Fold(v1.args), "a second run gives the same bytes").toEqual(run);
+  const v2 = p1Cli("--keys", cappedKey, "--spec", v1.spec, "--plan", v1.plan, "--spec-return", v1.args.specReturn, "--plan-return", v1.args.planReturn);
+  expect(v2.code, "the v1 fixture is also accepted by --keys, as schema 2").toBe(0); expect(JSON.parse(v2.out).schema).toBe(2);
+  expect(() => shared.validateCappedFoldProofShape(JSON.parse(v2.out)), "the v1 validator refuses a schema 2 proof").toThrow("invalid capped-fold proof");
+}, S1B);
+
+test("T4 the --keys argv: exactly one of --key and --keys, each flag once; both together, an empty, duplicate or trailing-comma item and a missing flag refuse; one key works; the --key grammar is unchanged", async () => {
+  const f = await f3Fresh(); const key = f3Key(f); const good = f3Argv(f); const want = (err: string) => ({ code: 1, signal: null, out: "", err });
+  const swap = (flag: string, value: string) => good.map((x, i) => good[i - 1] === flag ? value : x);
+  const shapes: [string, string[], string][] = [
+    ...["--keys", "--spec", "--plan", "--spec-return", "--plan-return"].map(flag => [`${flag} missing`, good.filter((x, i) => x !== flag && good[i - 1] !== flag), flag === "--keys" ? P3_USAGE : F3_USAGE_KEYS] as [string, string[], string]),
+    ["--keys repeated", [...good, "--keys", key], F3_USAGE_KEYS], ["an unknown flag after the five", [...good, "--unknown", "x"], F3_USAGE_KEYS], ["a trailing positional", [...good, "x"], F3_USAGE_KEYS],
+    ["a leading positional", ["x", ...good], F3_USAGE_KEYS], ["the last value missing", good.slice(0, -1), F3_USAGE_KEYS], ["the equals spelling is no --keys flag, so the shipped usage line", [`--keys=${key}`, ...good.slice(2)], P3_USAGE],
+    ["a value that starts with two dashes", swap("--keys", "--x"), F3_USAGE_KEYS], ["an empty --keys value", swap("--keys", ""), F3_USAGE_KEYS], ["an empty --spec value", swap("--spec", ""), F3_USAGE_KEYS],
+    ["a flag as the value of another", swap("--plan", "--spec-return"), F3_USAGE_KEYS], ["only the five flag names", ["--keys", "--spec", "--plan", "--spec-return", "--plan-return"], F3_USAGE_KEYS],
+    ["--key beside --keys", ["--key", key, ...good], F3_BOTH], ["--key with --keys at the end", ["--key", key, ...good.slice(2), "--keys", key], F3_BOTH], ["--key last", [...good, "--key", key], F3_BOTH],
+    ["an empty first item", swap("--keys", `,${key}`), F3_LIST], ["an empty middle item", swap("--keys", `${key},,HIMMEL-9822`), F3_LIST], ["a trailing comma", swap("--keys", `${key},`), F3_LIST],
+    ["a duplicate item", swap("--keys", `${key},${key}`), F3_LIST], ["a malformed item", swap("--keys", `${key},himmel-1`), F3_LIST], ["a space in the list", swap("--keys", `${key}, HIMMEL-9822`), F3_LIST],
+  ];
+  const bad: string[] = [];
+  for (const [name, argv, err] of shapes) { const run = p1Cli(...argv); if (JSON.stringify(run) !== JSON.stringify(want(err))) bad.push(`${name}: ${JSON.stringify(argv.slice(0, 4))}\n  got ${JSON.stringify(run)}`); }
+  expect(shapes).toHaveLength(25); expect(bad).toEqual([]);
+  const one = p1Cli(...good); expect(one.code, "one key works").toBe(0); expect(JSON.parse(one.out).keys).toEqual([key]);
+  const [specReturn, planReturn] = [b1Kind(f, "spec").at(-1)!, b1Kind(f, "plan").at(-1)!];
+  expect(JSON.parse(p1Cli("--plan-return", planReturn, "--spec-return", specReturn, "--plan", f.plan, "--spec", f.spec, "--keys", key).out), "the flags are accepted in any order with the same proof").toEqual(JSON.parse(one.out));
+  expect(p1Cli("--spec", f.spec, "--plan", f.plan, "--spec-return", specReturn, "--plan-return", planReturn), "neither flag: the shipped usage line, byte for byte").toEqual(want(P3_USAGE));
+  expect(p1Cli("--key", key, "--spec", f.spec), "--key with missing flags: the shipped usage line, byte for byte").toEqual(want(P3_USAGE));
+  const control = await cappedFixture(); const v1 = p1Fold(control.args); expect(v1.code).toBe(0); expect(JSON.parse(v1.out).mode, "--key still reaches v1 only").toBe("capped-carry");
+  await c3Edit(control, "spec", text => text.replace(/^Fixture:/m, "Key: HIMMEL-99\nFixture:"));
+  const refusal = p1Cli("--keys", cappedKey, "--spec", control.spec, "--plan", control.plan, "--spec-return", control.args.specReturn, "--plan-return", control.args.planReturn);
+  expect(refusal, "--keys never falls back to v1: a refusal carries the v2 words").toEqual(want(`capped-fold: ${C3_KEYS}\n`));
+  expect(p1Fold(control.args).err, "--key refuses the same bytes with its own words").toBe("capped-fold: capped-fold: header must declare only HIMMEL-10205\n");
+}, S1B);
+
+test("D7 through the fold: a spec head or a plan header that declares one key of many, a superset or two lines refuses before the ledger is read, and one equal line passes", async () => {
+  const spec = "---\ntickets: HIMMEL-10205\n---\n# HIMMEL-10205 fixture\n\nEstimate record: estimate.json\n\n## Alternatives considered\n\n- None better.\n\n## Definition of done\n\n- Fixture verifies.\n\n## Invariants\n\nnone\n";
+  const plan = "---\ntickets: HIMMEL-10205\n---\n# HIMMEL-10205 plan\n\n- Task 1: build the fixture.\n";
+  await expect(f3Fold(await cappedFixture({ specText: spec.replace("# HIMMEL", "Key: HIMMEL-10205\n\n# HIMMEL"), planText: plan }), [cappedKey]), "one equal head line").resolves.toBeDefined();
+  const header = `capped-fold: header must declare only ${cappedKey}`; const tickets = `capped-fold: tickets must declare only ${cappedKey}`;
+  const cases: [string, { specText?: string; planText?: string }, string][] = [
+    ["a spec head naming a superset", { specText: spec.replace("# HIMMEL", "Keys: HIMMEL-10205, HIMMEL-99\n\n# HIMMEL") }, header],
+    ["a spec head naming another key", { specText: spec.replace("# HIMMEL", "Key: HIMMEL-99\n\n# HIMMEL") }, header],
+    ["a spec head with two lines", { specText: spec.replace("# HIMMEL", "Key: HIMMEL-10205\n- Tickets: HIMMEL-10205\n\n# HIMMEL") }, header],
+    ["a plan header naming another key", { planText: plan.replace("# HIMMEL", "Key: HIMMEL-99\n# HIMMEL") }, header],
+    ["a plan front matter naming a superset", { planText: plan.replace("tickets: HIMMEL-10205", "tickets: [HIMMEL-10205, HIMMEL-99]") }, tickets],
+  ];
+  for (const [what, texts, message] of cases) {
+    const f = await cappedFixture({ specText: spec, planText: plan, ...texts }); expect(await f3Refusal(f, [cappedKey]), what).toBe(message);
+  }
+  const bare = await cappedFixture(); writeFileSync(bare.spec, readFileSync(bare.spec, "utf8").replace(/^---\n[\s\S]*?\n---\n/, ""));
+  expect(await f3Refusal(bare, [cappedKey]), "a spec with no front matter declares no tickets, so it is refused before the ledger is read").toBe(tickets);
+  const blank = await cappedFixture(); writeFileSync(blank.spec, readFileSync(blank.spec, "utf8").replace("tickets: HIMMEL-10205\n", ""));
+  expect(await f3Refusal(blank, [cappedKey]), "a front matter with no tickets line").toBe(tickets);
+}, S1B);
+
+test("3f the fold reads every part of the evidence: a member's ledger file, a fresh return, a Keys line naming the group, and the proven history each decide the result", async () => {
+  const shared = await t2Pinned(); const group = await f3Group(); const keys = group.keys as string[]; const baseline = await f3Fold(group, keys);
+  expect(baseline.pins.filter((p: any) => p.role === "history"), "the group needs its history to pass").toHaveLength(5);
+  const memberFile = join(shared.ledgerDirOf(group.specsRoot), `${group.members[4]}.jsonl`); writeFileSync(memberFile, "");
+  expect(await f3Refusal(group, keys), "a member's ledger file").toBe(`capped-fold: group member holds ledger state: ${group.members[4]}`); unlinkSync(memberFile);
+  const specReturn = b1Kind(group, "spec").at(-1)!; copyFileSync(specReturn, specReturn.replace("r3.md", "r4.md"));
+  expect(await f3Refusal(group, keys), "a fresh unsealed spec return one round above").toBe(N3_UNACCOUNTED(specReturn.replace("r3.md", "r4.md"))); unlinkSync(specReturn.replace("r3.md", "r4.md"));
+  const keyed = await f3Group(); const line = `Keys: ${keys.join(", ")}\n`;
+  for (const kind of ["spec", "plan"] as const) await c3Edit(keyed, kind, text => text.replace(/^Fixture:/m, `${line}Fixture:`));
+  const accepted = await f3Fold(keyed, keys); expect(accepted.keys, "every return names the whole group").toEqual([...keys].sort());
+  const wrong = await f3Group(); await c3Edit(wrong, "spec", text => text.replace(/^Fixture:/m, `Key: ${keys[0]}\nFixture:`));
+  expect(await f3Refusal(wrong, keys), "a return naming only the anchor").toBe(C3_KEYS);
+}, S1B);
+
+test("N12 a history file edited in the middle of the run is refused by the final recheck: each of the five earlier-epoch returns of the new-stem group", async () => {
+  const f = await f3Group(); const keys = f.keys as string[]; const baseline = await f3Fold(f, keys);
+  expect(f.earlier).toHaveLength(5);
+  expect(baseline.pins.filter((p: any) => p.role === "history").map((p: any) => p.path).sort(), "the edited paths are exactly the proven history").toEqual([...f.earlier].sort());
+  for (const path of f.earlier) {
+    const kept = readFileSync(path, "utf8");
+    try { expect(await f3Late(f, keys, () => appendFileSync(path, "edited during the run")), path).toBe(`capped-fold: evidence changed or is unreadable: ${path}`); } finally { writeFileSync(path, kept); }
+  }
+  await expect(f3Fold(f, keys), "control: the restored files are accepted again").resolves.toBeDefined();
+}, S1B);
+
+const f3Estimate = { path: "specs/designs/estimate.json", text: '{"median_seq":1,"sigma":0.1,"dod":{"passed":true}}\n' };
+test("3f anchor last: a group whose anchor sorts last among its keys, the shape of the real family, is folded for that anchor in any requested order", async () => {
+  const anchor = "HIMMEL-9899"; const keys = ["HIMMEL-9801", "HIMMEL-9802", "HIMMEL-9803", anchor];
+  expect([...keys].sort().at(-1), "the anchor sorts last, the other fixtures sort it first").toBe(anchor);
+  const specText = `---\ntickets: [${keys.join(", ")}]\n---\n# ${anchor} group\n\nEstimate record: estimate.json\n\nThe contract names every member.\n\n## Alternatives considered\n\n- None better.\n\n## Definition of done\n\n- Fixture verifies.\n\n## Invariants\n\nnone\n`;
+  const issue = (kind: "spec" | "plan", round: number, finding: string) => ({ kind, round, text: `${finding}\n${kind.toUpperCase()} FINDINGS 1\n`, reads: kind === "spec" ? ["spec", f3Estimate] : ["spec", "plan", f3Estimate] });
+  const f = await (await b1Lib()).buildRoundFixture({ scratchRoot: realpathSync(root()), key: anchor, specText, planText: `# ${anchor} plan\n\n- Task 1\n`, declarations: false,
+    returns: [1, 2, 3].flatMap(round => [issue("spec", round, "- **F1** (medium; Fact overlap) the group contract overlaps an owner"), issue("plan", round, "- **P1** (minor) a plan wording note")]) });
+  const proof = await f3Cli(f, { epoch: 0, rounds: [3, 3], carried: [["spec", "F1", "medium"], ["plan", "P1", "minor"]], history: [] }, keys);
+  expect(proof.anchor).toBe(anchor); expect(proof.carried.every((c: any) => c.key === anchor), "every carried finding belongs to the anchor").toBe(true);
+  expect(proof.pins.filter((p: any) => p.role === "member-absence").map((p: any) => p.keys), "the member-absence pin names the other three").toEqual([keys.slice(0, 3)]);
+  expect(JSON.stringify(await f3Fold(f, [...keys].reverse())), "the requested order does not matter").toBe(JSON.stringify(proof));
+  expect(await f3Refusal(f, ["HIMMEL-9801", "HIMMEL-9802", "HIMMEL-9898", anchor]), "a member swapped for another of the same count").toBe(`capped-fold: tickets must declare only HIMMEL-9801, HIMMEL-9802, HIMMEL-9898, ${anchor}`);
+}, S1B);

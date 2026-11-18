@@ -1,7 +1,7 @@
 import { selectDecisionNames, pinnedRead, boundedDirectoryNames, reviewedSpecHashes, optionalReturnAgreement, validateCappedFoldProofShape, PINNED_READ_VERSION, returnSha,
   SIGNATURE_DIRS, KEY_FOLDER, CRITIC_FILE, CRITIC_NAME, specsRootOf, keyOf, canonicalDirectoryNames, returnDirectories, checkLatestReturns,
-  ledgerDirOf, ledgerEntryNames, ledgerKeyOfFile, parseManifest, memberLedgerState,
-  type CappedFoldProof, type EvidencePin, type EvidenceFilePin, type HistoryPin, type MemberAbsencePin, type ReturnPin } from "../jira/src/release/pinned.ts";
+  ledgerDirOf, ledgerEntryNames, ledgerKeyOfFile, parseManifest, memberLedgerState, declaredTickets, validateCappedLedgerProofShape, LEDGER_READ_VERSION,
+  type CappedFoldProof, type CappedLedgerProof, type EvidencePin, type EvidenceFilePin, type HistoryPin, type MemberAbsencePin, type ReturnPin } from "../jira/src/release/pinned.ts";
 import { join, dirname, basename, resolve, isAbsolute } from "node:path";
 import { randomUUID, createHash } from "node:crypto";
 import { hostname, homedir } from "node:os";
@@ -1177,6 +1177,20 @@ function cappedDeclaredKey(text: string, key: string, frontmatter: boolean): voi
   }
 }
 
+// The v2 counterpart of cappedDeclaredKey for the spec head and the plan, where both declarations are optional: no line passes, one line naming exactly
+// the keys passes, and two lines, a subset, a superset, one key of many or an empty line refuse. With front matter the head is the text before the first
+// `## ` and the front matter's own tickets line is read too; without it the whole text is read for a Keys line.
+export function cappedHeadDeclared(text: string, keys: readonly string[], frontmatter: boolean): void {
+  const wanted = [...keys].sort().join(", ");
+  const head = frontmatter ? text.split(/^## /m)[0] : text;
+  const lines = [...head.matchAll(frontmatter ? /^(?:Keys?|- Tickets?):[ \t]*(.*)$/gm : /^Keys?:[ \t]*(.*)$/gm)];
+  const names = (value: string) => { try { optionalReturnAgreement(`Keys: ${value}`, { keys }); return true; } catch { return false; } };
+  if (lines.length > 1 || (lines.length === 1 && !names(lines[0][1]))) throw new Error(`capped-fold: header must declare only ${wanted}`);
+  if (!frontmatter || !/^tickets:/m.test(/^---\n([\s\S]*?)\n---(?:\n|$)/.exec(text)?.[1] ?? "")) return;
+  const declared = declaredTickets(text);
+  if (!declared || declared.length !== keys.length || !keys.every(key => declared.includes(key))) throw new Error(`capped-fold: tickets must declare only ${wanted}`);
+}
+
 const cappedPathKeys = (path: string) => [KEY_FOLDER.test(basename(dirname(path))) ? basename(dirname(path)) : null,
   /^([A-Z][A-Z0-9]+-[0-9]+)(?=[-.])/.exec(basename(path))?.[1]].filter((key): key is string => !!key);
 
@@ -1378,6 +1392,37 @@ export async function cappedFold(o: { key: string; spec: string; plan: string; s
   const tuple = returns as [ReturnPin, ReturnPin]; await cappedLatest(spec, plan, reader, tuple);
   const proof = validateCappedFoldProofShape({ schema: 1, reader_version: PINNED_READ_VERSION, mode: "capped-carry", key: o.key, epoch: rows.checked.epoch,
     spec: { path: spec, sha256: specRead.sha256 }, plan: { path: plan, sha256: planRead.sha256 }, returns: tuple, pins: reader.pins(), carried });
+  await reader.recheck();
+  return proof;
+}
+
+// The ledger-bound capped carry for one or more keys, read only. The steps run in a fixed order and the reader's recheck is the last: it re-reads every
+// pin and every listing the fold took (the return folders, the member listing, the manifest and the history files), so anything that changed in between refuses.
+export async function cappedFoldLedger(o: { keys: string[]; spec: string; plan: string; specReturn: string; planReturn: string }): Promise<CappedLedgerProof> {
+  const keys = [...o.keys].sort();
+  if (!keys.length || keys.some((key, i) => !KEY_FOLDER.test(key) || key === keys[i - 1])) throw new Error("capped-fold: expected one or more distinct ticket keys");
+  for (const path of [o.spec, o.plan, o.specReturn, o.planReturn]) if (!isAbsolute(path)) throw new Error("capped-fold: paths must be absolute");
+  const spec = await realpath(o.spec); const specs = specsRootOf(spec); const anchor = keyOf(spec);
+  if (!specs || !anchor || cappedPathKeys(spec).some(key => key !== anchor)) throw new Error("capped-fold: spec filename/folder key disagrees");
+  if (!keys.includes(anchor)) throw new Error(`capped-fold: the anchor ${anchor} is not one of the keys`);
+  const reader = cappedReader(specs, anchor);
+  const specRead = await reader.read(o.spec); const plan = await reader.canonical(o.plan); const planRead = await reader.read(o.plan);
+  if (spec === plan || cappedPathKeys(plan).some(key => key !== anchor)) throw new Error("capped-fold: expected a distinct plan for this key");
+  const specText = specRead.bytes.toString("utf8"); const planText = planRead.bytes.toString("utf8"); const declared = declaredTickets(specText);
+  if (!declared || declared.length !== keys.length || !keys.every(key => declared.includes(key))) throw new Error(`capped-fold: tickets must declare only ${keys.join(", ")}`);
+  cappedHeadDeclared(specText, keys, true); cappedHeadDeclared(planText, keys, true);
+  const rows = await cappedLedger(specs, anchor, reader);
+  const policy = v2Policy(keys); const returns: ReturnPin[] = []; const carried: Carried[] = [];
+  for (const kind of KINDS) {
+    const evidence = await cappedReturnEvidence({ key: anchor, kind, path: kind === "spec" ? o.specReturn : o.planReturn, spec, plan, specSha: specRead.sha256, planSha: planRead.sha256, rows, reader }, policy);
+    returns.push(evidence.pin); carried.push(...evidence.carried);
+  }
+  requireCarried(carried);
+  const members = await cappedMemberState(specs, anchor, keys, reader);
+  const history = await cappedHistory(rows, returns.map(pin => pin.path), reader);
+  const tuple = returns as [ReturnPin, ReturnPin]; await cappedLatest(spec, plan, reader, tuple, history.set);
+  const proof = validateCappedLedgerProofShape({ schema: 2, reader_version: LEDGER_READ_VERSION, mode: "capped-carry-ledger", anchor, keys, epoch: rows.checked.epoch,
+    spec: { path: spec, sha256: specRead.sha256 }, plan: { path: plan, sha256: planRead.sha256 }, returns: tuple, pins: [...reader.pins(), ...(members ? [members] : [])], carried });
   await reader.recheck();
   return proof;
 }
@@ -2147,7 +2192,16 @@ function roundStatusArgs(args: string[]): { key: string | null; specs: string; j
 if (import.meta.main) {
   const [verb, ...args] = process.argv.slice(2);
   const byRequest = verb === "send-file" && args[0] === "--by-request" && args.length >= 4 ? args.splice(0, 2)[1] : undefined;
-  if (verb === "capped-fold") {
+  if (verb === "capped-fold" && args.includes("--keys")) {
+    try {
+      if (args.includes("--key")) throw new Error("capped-fold: use exactly one of --key and --keys");
+      const flags = ["--keys", "--spec", "--plan", "--spec-return", "--plan-return"];
+      const parsed = verbArgs(args, flags, [], 0);
+      if (!parsed || args.length !== 10 || flags.some(f => !parsed.opts[f] || parsed.opts[f].startsWith("--"))) throw new Error("capped-fold: requires exactly --keys, --spec, --plan, --spec-return and --plan-return, each once");
+      console.log(JSON.stringify(await cappedFoldLedger({ keys: parsed.opts["--keys"].split(","), spec: parsed.opts["--spec"], plan: parsed.opts["--plan"],
+        specReturn: parsed.opts["--spec-return"], planReturn: parsed.opts["--plan-return"] })));
+    } catch (e) { console.error(`capped-fold: ${e instanceof Error ? e.message : e}`); process.exit(1); }
+  } else if (verb === "capped-fold") {
     try {
       const flags = ["--key", "--spec", "--plan", "--spec-return", "--plan-return"];
       const parsed = verbArgs(args, flags, [], 0);
