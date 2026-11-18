@@ -595,7 +595,7 @@ tag_origin() {
 }
 sync_private() { git -C "$CHECKOUT_DIR" fetch --quiet origin "$PRIV_FETCH" 2>/dev/null || true; }
 profile() { mkdir -p "$1"; printf '%s\n' "$2" > "$1/install-profile.json"; }
-run_chan() {   # run_chan <state-dir> <cache-dir> [ENV=val ...]
+run_chan() {
     local sd="$1" cd_="$2"; shift 2
     mkdir -p "$sd"
     env UPDATE_CHECK_STATE_DIR="$sd" HIMMELCTL_CACHE_DIR="$cd_" CLAUDE_PROJECT_DIR="$CHECKOUT_DIR" "$@" \

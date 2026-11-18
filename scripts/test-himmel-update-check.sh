@@ -1219,7 +1219,6 @@ make_repo_channel
 QSTUB="$CHECKOUT_DIR/marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh"
 QARGS="$TMP/qmd-ensure-args"
 mkdir -p "$(dirname "$QSTUB")"
-# stub_ensure <rc> — the repo copy of the ensure script, recording its argv
 stub_ensure() {
     rm -f "$QARGS"
     printf '#!/usr/bin/env bash\necho "$*" > "%s"\nexit %s\n' "$QARGS" "$1" > "$QSTUB"

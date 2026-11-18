@@ -777,10 +777,6 @@ assert_has "T42 a refusal with no message stays unclassified, with its exit code
 REAL_GIT="$(command -v git)"
 backdate() { local t; t="$(date -d "@$(($(date +%s) - 7200))" +%Y%m%d%H%M.%S 2>/dev/null || date -r "$(($(date +%s) - 7200))" +%Y%m%d%H%M.%S)"; touch -t "$t" "$@"; }
 run_ac() { LUNA_VAULT_AUTOCOMMIT=1 run_sut; }
-# A git shim that runs the real git, then acts once on `add` or `commit`:
-#   SHIM_BEFORE_COMMIT=1  run the real commit first, so ours finds nothing to commit
-#   SHIM_TOUCH=<path>     write that path after the add (a writer mid-run)
-#   SHIM_REMOTE_AFTER=add|commit   add a remote after that subcommand
 mkshim() {
     mkdir -p "$TMP/shim"
     cat >"$TMP/shim/git" <<EOF

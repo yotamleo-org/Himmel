@@ -613,11 +613,7 @@ console.log(JSON.stringify(runProbe(item, ctx)));
 done
 echo "ok: settings-key dot-path + verifyScript (wiring-statusline) — present/absent, missing script degrades"
 
-# Probe himmel-ops-plugin (enabledPlugins["himmel-ops@himmel"] === true) against
-# hand-built fixtures; every ctx.env is explicit, never the operator's.
 sl_root="$work/sl"; mkdir -p "$sl_root"
-# sl_fixture <name> <project-json|-> <local-json|-> <home-json|-> <cfgdir-json|->
-# builds $sl_root/<name>/{target,home,cfg} and writes only the files given.
 sl_fixture() {
   local d="$sl_root/$1"
   mkdir -p "$d/target/.claude" "$d/home/.claude" "$d/cfg"
@@ -626,7 +622,6 @@ sl_fixture() {
   [ "$4" = "-" ] || printf '%s' "$4" > "$d/home/.claude/settings.json"
   [ "$5" = "-" ] || printf '%s' "$5" > "$d/cfg/settings.json"
 }
-# sl_probe <name> <scope> <usecfg:0|1> [scopeFileOnly:0|1] [descriptor-json]
 sl_probe() {
   local d="$sl_root/$1" cfg=""
   [ "$3" = "1" ] && cfg="$(winpath "$d/cfg")"
@@ -643,7 +638,7 @@ console.log(JSON.stringify(runProbe(item, ctx)));
 }
 sl_on='{"enabledPlugins":{"himmel-ops@himmel":true}}'
 sl_off='{"enabledPlugins":{"himmel-ops@himmel":false}}'
-sl_expect() { # <label> <probe-output> <actual> [detail-substring]
+sl_expect() {
   echo "$2" | jq -e --arg a "$3" '.actual == $a' >/dev/null || fail "settings-key layering: $1: want $3 (got: $2)"
   if [ -n "${4:-}" ]; then
     echo "$2" | jq -e --arg s "$4" '.detail | contains($s)' >/dev/null || fail "settings-key layering: $1: detail should name $4 (got: $2)"

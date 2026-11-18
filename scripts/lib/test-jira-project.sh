@@ -94,7 +94,6 @@ check "HIMMEL_JIRA_MIRROR wins" "$tmp/elsewhere" "$(run jira_mirror_dir HIMMEL_J
 check "an empty HIMMEL_JIRA_MIRROR falls through" "$home/.himmel/state/jira-mirror/CONFKEY" "$(run jira_mirror_dir HIMMEL_JIRA_MIRROR=)"
 
 echo "== configured =="
-# configured [VAR=value ...]: yes when jira_project_configured succeeds, else no.
 configured() {
     # shellcheck disable=SC2016  # the child shell expands $1, not this one
     (cd "$work" && env -i HOME="$home" PATH="$PATH" HIMMEL_CONFIG_DIR="$conf" HIMMELCTL_CACHE_DIR="$cache" "$@" \

@@ -540,7 +540,7 @@ printf 'JIRA_PROJECT_KEY=CONFKEY\n' > "$rk/conf/himmel.conf"
 : > "$rk/cache/.env"
 printf -- '---\nkey: "CONFKEY-901"\nstatus: "Done"\nstatusCategory: "Done"\n---\n\n# CONFKEY-901: t\n' > "$rk/home/.himmel/state/jira-mirror/CONFKEY/CONFKEY-901.md"
 printf '# chief\n\n## Live state\npool-disposition: CONFKEY-101 slice CONFKEY-901 then the rest\n\n## Results\n' > "$rk/chief.md"
-rk_field() { # <env assignment>...: the pool-stale value of the CONFKEY doc under the himmel.conf-only project
+rk_field() {
     env -u NEXT_DISPATCH_MIRROR HOME="$rk/home" JIRA_PROJECT_KEY= HIMMEL_JIRA_MIRROR= HIMMEL_CONFIG_DIR="$rk/conf" HIMMELCTL_CACHE_DIR="$rk/cache" "$@" \
         TOKEN='' bash "$SUT" --pool-stale --doc "$rk/chief.md" 2>/dev/null | sed -n 's/^pool-stale=//p'
 }

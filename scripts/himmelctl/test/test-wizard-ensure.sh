@@ -1371,7 +1371,6 @@ printf '{"statusLine":{"command":"wired"}}\n' > "$1"
 exit 0
 SH
 zgit() { git -C "$1" -c core.hooksPath=/dev/null -c commit.gpgsign=false -c user.name=t -c user.email=t@example.invalid "${@:2}"; }
-# mkTargetZ <name> <tracked:0|1> -> a git repo with a settings file, committed or not
 mkTargetZ() {
   local t="$work/target-z-$1"
   mkdir -p "$t/.claude"
@@ -1385,7 +1384,6 @@ mkTargetZ() {
   write_cache "$c/install-profile.json" adopter project none "" inline "" lean
   : > "$work/log-z-$1.txt"
 }
-# runEnsureZ <name> [extra ensure args...] -> merged output, rc in $rcZ
 runEnsureZ() {
   local n="$1"; shift
   set +e

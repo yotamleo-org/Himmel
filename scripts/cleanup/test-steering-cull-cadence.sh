@@ -305,7 +305,6 @@ tok_block >"$W/tokblock.sh"
 # shellcheck disable=SC2016  # the child script's own expansion must stay literal
 printf '%s' 'printf %s "${CLAUDE_CODE_OAUTH_TOKEN-UNSET}"' >"$W/tokchild.sh"
 check "the emitted token block was found" 1 "$([ -s "$W/tokblock.sh" ] && echo 1 || echo 0)"
-# tok_run <HIMMEL_CLAUDE_TOKEN_FILE|-> <preset CLAUDE_CODE_OAUTH_TOKEN|-> -> what a child process sees after the block
 # shellcheck disable=SC2030,SC2031  # each run sets its own env inside a subshell on purpose
 tok_run() {
     ( unset CLAUDE_CODE_OAUTH_TOKEN HIMMEL_CLAUDE_TOKEN_FILE

@@ -925,8 +925,6 @@ fake_daemon="$work/fake-daemon.sh"
 bin2="$work/bin2"
 mkdir -p "$bin2"
 cp "$bin/timeout" "$bin2/timeout" 2>/dev/null || true
-# A ps that answers from env: QMD_MOCK_PS_ETIME / QMD_MOCK_PS_ARGS; a flip file
-# switches the argv to a foreign one (a pid that changed hands mid-recycle).
 cat > "$bin2/ps" <<'EOF'
 #!/usr/bin/env bash
 pid="${!#}"
@@ -936,8 +934,6 @@ args="${QMD_MOCK_PS_ARGS:-bun /x/dist/cli/qmd.js mcp --http --port 8181}"
 printf ' %s %s\n' "${QMD_MOCK_PS_ETIME:-10:00:00}" "$args"
 EOF
 chmod +x "$bin2/ps"
-# A qmd whose `mcp --http --daemon` really starts a fake server and writes the
-# pidfile, like the real one. QMD_MOCK_NOSTART=1 starts nothing (a failed restart).
 cat > "$bin2/qmd" <<'EOF'
 #!/usr/bin/env bash
 echo "$*" >> "$QMD_MOCK_STATE/qmd-argv.log"
@@ -958,7 +954,6 @@ touch_ago() { touch -t "$(epoch_fmt $(( $(date +%s) - $2 )))" "$1"; }
 stale_stamp="$work/build-stamp"
 stale_pf="$xdg/qmd/mcp.pid"
 
-# stale_case <daemon unwind secs> -> a live fake server, pidfile 5h old, stamp 1h old
 stale_case() {
   rm -f "$state/alive" "$state/qmd-argv.log" "$state/ps-flip" "$xdg/qmd/recycle.stamp" "$xdg/qmd/recycle.log"
   rm -rf "$xdg/qmd/recycle.lock"
@@ -968,7 +963,6 @@ stale_case() {
   touch_ago "$stale_pf" 18000
   touch_ago "$stale_stamp" 3600
 }
-# run_stale [ENV=val ...] -> rc/out; the script run with the stamp as its argument
 run_stale() {
   set +e
   out="$(env QMD_CURL="$mock_curl" QMD_MOCK_CURL_MODE=sentinel QMD_MOCK_STATE="$state" \
@@ -1108,8 +1102,6 @@ run_stale QMD_STALE_TERM_WAIT=2
 [ -f "$state/term-seen" ] || fail "(z10) stubborn: SIGTERM was never sent first"
 kill -0 "$old_pid" 2>/dev/null && fail "(z10) stubborn: a server that ignores SIGTERM survived"
 reap_new
-# the pid changes hands between SIGTERM and the kill (the server exits, a foreign
-# program takes the pid): no SIGKILL, and the restart still brings a server up
 rm -f "$state/term-seen" "$state/alive" "$state/ps-flip" "$state/qmd-argv.log"
 cat > "$work/handoff.sh" <<'EOF'
 #!/usr/bin/env bash

@@ -1718,7 +1718,7 @@ printf 'v9.9.9\ttrue\t2026-01-01\n' > "$RK/home/.himmel/state/jira-mirror/CONFKE
     printf -- '---\nkey: "CONFKEY-1"\ntype: "Task"\nstatus: "To Do"\nstatusCategory: "To Do"\nlabels: ["residual"]\nfixVersions: ["v9.9.9"]\n'
     printf 'created: "%s"\nupdated: "%s"\nresolution: null\n---\n\n# CONFKEY-1: t\n' "$(ago 1)" "$(ago 0)"
 } > "$RK/home/.himmel/state/jira-mirror/CONFKEY/CONFKEY-1.md"
-rkrun() { # rkrun <extra env assignment>...: a render under the himmel.conf-only project with BOARD_MIRROR unset
+rkrun() {
     env -u BOARD_MIRROR HOME="$RK/home" JIRA_PROJECT_KEY= HIMMEL_JIRA_MIRROR= HIMMEL_CONFIG_DIR="$RK/conf" HIMMELCTL_CACHE_DIR="$RK/cache" "$@" \
         PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv.log" \
         BOARD_SESSIONS="$W/bin/sessions-empty.sh" CR_LEDGER="$CL/ledger.jsonl" \
