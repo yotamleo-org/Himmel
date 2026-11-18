@@ -836,7 +836,12 @@ function probeSettingsKey(item, ctx) {
       if (problem) return { actual: 'degraded', detail: `${where}: ${problem}` };
     }
     if (item.probe.verifyPluginSet) {
-      const result = verifyPluginSet(getVal(item.probe.key), ctx, data);
+      const merged = {};
+      for (let i = layers.length - 1; i >= 0; i--) {
+        const v = valIn(layers[i], item.probe.key);
+        if (v && typeof v === 'object') Object.assign(merged, v);
+      }
+      const result = verifyPluginSet(merged, ctx, data);
       if (result.problem) return { actual: 'degraded', detail: `${where}: ${result.problem}` };
       if (result.note) return { actual: 'present', detail: `${where} (${result.note})` };
     }

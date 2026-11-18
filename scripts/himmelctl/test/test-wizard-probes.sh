@@ -911,6 +911,31 @@ const ctx = { repoRoot: '$(winpath "$sk2_repo")', targetPath: '$(winpath "$sk2_a
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outSK2a" | jq -e '.actual == "absent"' >/dev/null || fail "settings-key simple key absent (empty object): (got: $outSK2a)"
+sk2_home_layer="$work/sk2-home-layer"; mkdir -p "$sk2_home_layer/.claude/plugins"
+printf '{"version":2,"plugins":{"foo@bar":[{"scope":"user","installPath":"%s"}],"other@x":[{"scope":"user","installPath":"%s"}]}}' "$sk2_foo_installpath_w" "$sk2_foo_installpath_w" > "$sk2_home_layer/.claude/plugins/installed_plugins.json"
+printf '{"enabledPlugins":{"foo@bar":true}}' > "$sk2_home_layer/.claude/settings.json"
+sk2_home_layer_w="$(winpath "$sk2_home_layer")"
+sk2_other="$work/sk2-other"; mkdir -p "$sk2_other/.claude"
+printf '{"enabledPlugins":{"other@x":true}}' > "$sk2_other/.claude/settings.json"
+sk2_off="$work/sk2-off"; mkdir -p "$sk2_off/.claude"
+printf '{"enabledPlugins":{"foo@bar":false}}' > "$sk2_off/.claude/settings.json"
+sk2_layer_probe() {
+  "$node_bin" -e "
+const { runProbe } = require('$probes_lib_w');
+const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
+const item = manifest.items.find((i) => i.id === 'claude-plugins-pluginSet');
+const env = Object.assign({}, process.env, { HOME: '$sk2_home_layer_w' });
+const ctx = { repoRoot: '$(winpath "$sk2_repo")', targetPath: '$(winpath "$1")', scope: 'project', env };
+console.log(JSON.stringify(runProbe(item, ctx)));
+"
+}
+outSK2layer=$(sk2_layer_probe "$sk2_other")
+echo "$outSK2layer" | jq -e '.actual == "present"' >/dev/null \
+  || fail "settings-key verifyPluginSet: a project map naming one unrelated plugin must inherit the user layer's plugins (got: $outSK2layer)"
+outSK2layeroff=$(sk2_layer_probe "$sk2_off")
+echo "$outSK2layeroff" | jq -e '.actual == "degraded"' >/dev/null \
+  || fail "settings-key verifyPluginSet: a project false must beat the user layer's true (got: $outSK2layeroff)"
+echo "ok: settings-key verifyPluginSet — enabledPlugins merge per plugin id across layers; a higher false wins"
 # RED: enabledPlugins that does not match the recorded pluginSet must not read green.
 outSK2mismatch=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
