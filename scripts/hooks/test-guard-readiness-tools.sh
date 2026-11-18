@@ -45,6 +45,19 @@ TO=() TERM_TO=()
 if command -v timeout >/dev/null 2>&1; then TO=(timeout 15); TERM_TO=(timeout --preserve-status -s TERM 1); fi
 BLOCK_FIFO="$TMP/blocked-stdin"
 mkfifo "$BLOCK_FIFO" 2>/dev/null || TERM_TO=()
+prereq_missing=0
+if [ "${#TERM_TO[@]}" -eq 0 ]; then
+    echo "SKIP: blocked-input signal control requires timeout and mkfifo"
+    prereq_missing=1
+fi
+if [ "$(LC_ALL=C.UTF-8 "$BASH_ABS" -c 's="é"; printf "%s" "${#s}"' 2>/dev/null)" != 1 ]; then
+    echo "SKIP: byte-versus-character controls require a working C.UTF-8 locale"
+    prereq_missing=1
+fi
+if [ "$prereq_missing" -ne 0 ]; then
+    echo "UNAVAILABLE: required guard-test controls cannot run; no reduced pass is claimed"
+    exit 3
+fi
 
 pass=0 fail=0
 ok() { echo "ok   $*"; pass=$((pass + 1)); }
@@ -169,6 +182,8 @@ add pos-at-limit-multibyte pos allow - "exactly 262144 bytes of 2-byte character
 neg empty bad-envelope "empty stdin" in-empty
 neg ws-only bad-envelope "whitespace-only stdin" in-ws-only
 neg nonjson bad-envelope "a bare allowed name that is not JSON" in-nonjson
+{ printf '?'; pad 262143; } >"$PL/in-large-invalid"
+neg large-invalid bad-envelope "early JSON rejection with a full bounded input keeps stderr empty" in-large-invalid
 neg truncated bad-envelope "truncated JSON" in-truncated
 neg trailing-comma bad-envelope "trailing comma" in-trailing-comma
 neg single-quotes bad-envelope "single-quoted pseudo JSON" in-single-quotes
@@ -280,6 +295,7 @@ frc jq-rc1-allow-text guard-failure "jq prints the allow verdict but exits 1, al
 frc stdin-unreadable bad-envelope "stdin unreadable (a directory: read error, not EOF)" in-inspect normal noin
 [ "${#TERM_TO[@]}" -gt 0 ] && add fail-term-blocked fail deny guard-failure "SIGTERM while blocked reading stdin: still the deny JSON, exit 2" in-empty 1 normal blocked
 add fail-stdout-closed fail deny rcOnly "deny still exits 2 with stdout closed" in-bash 1 normal noout
+add fail-stdout-reader-gone fail deny rcOnly "deny still exits 2 after the stdout pipe reader exits" in-bash 1 normal noreader
 add fail-stdout-closed-allow fail allow rcOnly "an allowed call with stdout closed still exits 0" in-inspect 1 normal noout
 
 # generic context (marker not exactly 1): the existing protocol, silent exit 0 whatever the payload
@@ -336,6 +352,17 @@ exec_row() { # exec_row <index> <hook> -> GOT_RC, $OUT, $ERR
             ( cd "$CWD_DIR" && "${TERM_TO[@]}" env -i "${ev[@]}" "$BASH_ABS" "$hook" <"$BLOCK_FIFO" >"$OUT" 2>"$ERR" ); GOT_RC=$?
             exec 8>&- ;;
         noout) ( cd "$CWD_DIR" && "${TO[@]+"${TO[@]}"}" env -i "${ev[@]}" "$BASH_ABS" "$hook" <"$pl" >&- 2>"$ERR" ); GOT_RC=$? ;;
+        noreader)
+            # Wait until the only reader has exited before invoking the guard.
+            rm -f "$TMP/stdout-pipe"
+            mkfifo "$TMP/stdout-pipe"
+            ( exec 8<"$TMP/stdout-pipe" ) &
+            reader_pid=$!
+            exec 9>"$TMP/stdout-pipe"
+            wait "$reader_pid"
+            ( cd "$CWD_DIR" && "${TO[@]+"${TO[@]}"}" env -i "${ev[@]}" "$BASH_ABS" "$hook" <"$pl" >&9 2>"$ERR" ); GOT_RC=$?
+            exec 9>&-
+            rm -f "$TMP/stdout-pipe" ;;
     esac
 }
 
@@ -350,7 +377,7 @@ judge_row() { # judge_row <index> -> 0 matches the protocol, else 1 with WHY set
             ;;
         deny)
             [ "$GOT_RC" = 2 ] || { WHY="rc=$GOT_RC, want 2"; return 1; }
-            if [ "$io" != noout ]; then
+            if [ "$io" != noout ] && [ "$io" != noreader ]; then
                 "$JQ_ABS" -se --arg c "$rsn" 'length == 1 and (.[0] | keys == ["hookSpecificOutput"]) and (.[0].hookSpecificOutput
                     | (keys == ["hookEventName","permissionDecision","permissionDecisionReason"]) and .hookEventName == "PreToolUse"
                     and .permissionDecision == "deny" and (.permissionDecisionReason | type == "string"

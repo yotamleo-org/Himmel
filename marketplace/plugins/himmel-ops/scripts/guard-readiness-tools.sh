@@ -48,6 +48,7 @@ set -uo pipefail
 
 # Generic context: the existing protocol, silent and effect-free.
 [ "${HIMMEL_READINESS-}" = 1 ] || exit 0
+trap '' PIPE
 
 LC_ALL=C # bytes, not characters, for the size bound below
 MAX_BYTES=262144
@@ -74,7 +75,7 @@ elif [ "$read_rc" -eq 0 ]; then
 fi
 
 # jq compares the name itself, so no shell step (command substitution strips trailing newlines) can change it.
-verdict=$(printf '%s' "$input" | jq -esj '
+verdict=$(printf '%s' "$input" 2>/dev/null | jq -esj '
     if length == 1 and (.[0] | type) == "object" and (.[0].tool_name | type) == "string"
     then (if (.[0].tool_name | IN("mcp__readiness__inspect", "mcp__readiness__act")) then "allow" else "name" end)
     else empty end' 2>/dev/null) # swallow-ok: jq's status and verdict are classified right below
