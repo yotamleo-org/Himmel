@@ -387,6 +387,10 @@ _suite_timeout_for() {
       # idle box, 1206s killed at the 600s default under CI load (PR 4733, 1.63x). 2700s is the loaded figure
       # (802 x 1.63 = 1307) x2 (the loaded-budget rule).
       printf '2700' ;;
+    scripts/handover/chief-kit/test-chief-wait.sh|*/scripts/handover/chief-kit/test-chief-wait.sh)
+      printf '1200' ;;
+    scripts/handover/chief-kit/test-chief-wait-b.sh|*/scripts/handover/chief-kit/test-chief-wait-b.sh)
+      printf '1200' ;;
     scripts/eval/review-panel/test-review-panel.sh|*/scripts/eval/review-panel/test-review-panel.sh)
       # 60 real case repos: 291s local, killed at 2 x 600s on Linux CI (PR 4477
       # shard 12). 1800s is above 6x local (the loaded-budget rule).
