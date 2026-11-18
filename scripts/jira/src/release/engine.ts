@@ -653,6 +653,11 @@ function bindCappedLedgerProof(proof: CappedLedgerProof, input: CappedInputs): v
 
 const CAPPED_GUARD = 'capped carry requires one key, an explicit distinct plan and paired SPEC/PLAN returns';
 
+function cappedReason(e: unknown): string {
+  const detail = e as { stderr?: string | Buffer; message?: string };
+  return String(detail.stderr || detail.message || e).trim().slice(0, 500);
+}
+
 // One verifier spawn: the proof it printed, or the failure with its reason; `refused` is a non-zero exit of a verifier that ran.
 function spawnCappedFold(input: CappedInputs, flag: '--key' | '--keys', value: string): { output: string } | { reason: string; refused: boolean } {
   const args = [cappedVerifier(), 'capped-fold', flag, value, '--spec', input.spec.path, '--plan', input.plan!.path,
@@ -660,8 +665,8 @@ function spawnCappedFold(input: CappedInputs, flag: '--key' | '--keys', value: s
   try {
     return { output: execFileSync('bun', args, { encoding: 'utf8', timeout: 30000, maxBuffer: 4 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }) };
   } catch (e) {
-    const detail = e as { stderr?: string | Buffer; message?: string; status?: number | null; code?: string };
-    return { reason: String(detail.stderr || detail.message || e).trim().slice(0, 500), refused: typeof detail.status === 'number' && detail.status !== 0 && detail.code === undefined };
+    const detail = e as { status?: number | null; code?: string };
+    return { reason: cappedReason(e), refused: typeof detail.status === 'number' && detail.status !== 0 && detail.code === undefined };
   }
 }
 
@@ -669,10 +674,6 @@ function cappedFallback(check: () => void, input: CappedInputs, ledgerBound = fa
   let refusal: unknown;
   try { check(); return undefined; } catch (e) { refusal = e; }
   const refuse = (reason: string) => new Error(`${refusal instanceof Error ? refusal.message : refusal}; capped verifier unavailable/refused: ${reason}`);
-  const reasonOf = (e: unknown) => {
-    const detail = e as { stderr?: string | Buffer; message?: string };
-    return String(detail.stderr || detail.message || e).trim().slice(0, 500);
-  };
   if ((input.keys.length !== 1 && !ledgerBound) || !input.plan || input.plan.path === input.spec.path || input.files.length !== 2) throw refuse(CAPPED_GUARD);
   let first: string;
   if (input.keys.length === 1) {
@@ -683,7 +684,7 @@ function cappedFallback(check: () => void, input: CappedInputs, ledgerBound = fa
         bindCappedProof(proof, input);
         checkCappedPins(proof);
         return proof;
-      } catch (e) { throw refuse(reasonOf(e)); }
+      } catch (e) { throw refuse(cappedReason(e)); }
     }
     if (!ledgerBound || !ran.refused) throw refuse(ran.reason);
     first = ran.reason;
@@ -696,7 +697,7 @@ function cappedFallback(check: () => void, input: CappedInputs, ledgerBound = fa
     bindCappedLedgerProof(proof, input);
     checkCappedPins(proof);
     return proof;
-  } catch (e) { throw refuse(`${first}; v2: ${reasonOf(e)}`); }
+  } catch (e) { throw refuse(`${first}; v2: ${cappedReason(e)}`); }
 }
 
 function appendSpec(ctx: Ctx, k: Buffer, row: Omit<OperatorRow, 'id' | 'ts'>): OperatorRow {
