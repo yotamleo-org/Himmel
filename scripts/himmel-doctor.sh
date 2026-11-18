@@ -3752,9 +3752,14 @@ _doctor_env_file() {
 # value is ever printed. Seam: HIMMEL_DOCTOR_ENV_FILE (the .env to list).
 check_c74_config_split() {
     local dir conf pol envfile bad names key held miss="" cfg="" present="" envbad=""
+    # Two scripts on purpose: migrate-env.sh is the update's whole .env move and
+    # takes the .env path; migrate-env-config.sh moves only the himmel.conf keys
+    # and needs --vault/--profile, so the himmel.conf rows keep it.
     local migrate="bash $REPO_ROOT/scripts/setup/migrate-env-config.sh"
+    local menv
     dir="$(_himmel_config_dir)"; conf="$dir/himmel.conf"; pol="$dir/config.json"
     envfile="${HIMMEL_DOCTOR_ENV_FILE:-$(_doctor_env_file)}"
+    menv="bash $REPO_ROOT/scripts/setup/migrate-env.sh --env $envfile"
 
     if [ -L "$conf" ] && [ ! -e "$conf" ]; then
         emit WARN C74-himmel-conf "$conf is a link to a file that does not exist" \
@@ -3795,7 +3800,7 @@ check_c74_config_split() {
         done
         if [ -n "$cfg" ]; then
             emit WARN C74-env-keys ".env still holds behaviour keys that moved to himmel.conf: $cfg (they still work, with a DEPRECATED notice)" \
-                "run $migrate --dry-run, then without --dry-run; delete the moved lines from .env by hand"
+                "run $menv (it prints the plan and the apply command; unattended, the operator sets ENV_MIGRATION_CONSENT=\"1\" under .policy in ~/.himmel/config.json)"
         else
             emit OK C74-env-keys ".env holds no behaviour keys"
         fi
@@ -3819,7 +3824,7 @@ check_c74_config_split() {
                 "fix the .env permissions, then re-run the doctor"
         elif [ -n "$present" ]; then
             emit WARN C74-policy "$pol is missing but .env still carries gate keys: ${present# } (gates read them with a DEPRECATED notice)" \
-                "the operator moves them at their own prompt: $migrate --dry-run prints the command"
+                "the operator moves them at their own prompt: $menv -y"
         else
             emit INFO C74-policy "no $pol; every gate uses its safe default" \
                 "only needed once the operator sets a gate key (docs/internals/config-layers.md)"
@@ -3837,7 +3842,7 @@ $key="*) ;; *) miss="$miss $key" ;; esac
         done
         if [ -n "$miss" ]; then
             emit WARN C74-policy "$pol does not hold gate keys that .env still carries: ${miss# }" \
-                "the operator adds them under .policy at their own prompt: $migrate --dry-run prints the command"
+                "the operator moves them at their own prompt: $menv -y"
         elif [ -n "$envbad" ]; then
             emit INFO C74-policy "$pol is parseable; .env is unreadable so its gate keys were not compared" \
                 "fix the .env permissions, then re-run the doctor"
