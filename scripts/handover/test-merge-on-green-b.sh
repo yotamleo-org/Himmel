@@ -1057,8 +1057,9 @@ assert_alerts 1  "3485: exit 6 sends exactly one operator DM"
 # permanently unreachable from a fresh clone; a RED-control mutant must come
 # from a committed fixtures/red-control/ snapshot, never a live git-show of a
 # past ref.
-if cat "$SCRIPT_DIR/test-merge-on-green.sh" "$SCRIPT_DIR/test-merge-on-green-b.sh" | grep -vE '^[[:space:]]*#' \
-    | grep -Eq 'git[[:space:]]+(-C[[:space:]]+\S+[[:space:]]+)?show[[:space:]].*:scripts/'; then
+_mog_blob_hits=$(cat "$SCRIPT_DIR/test-merge-on-green.sh" "$SCRIPT_DIR/test-merge-on-green-b.sh" | grep -vE '^[[:space:]]*#' \
+    | grep -E 'git[[:space:]]+(-C[[:space:]]+\S+[[:space:]]+)?show[[:space:]].*:scripts/')
+if [ -n "$_mog_blob_hits" ]; then
     fail "lint: this file extracts a historical blob via git show <ref>:<path> — use a committed fixtures/red-control/ snapshot instead"
 else
     pass

@@ -1126,7 +1126,7 @@ assert_pinned_pr_view() {
 mk_prune_fixture() {
     # echoes: <repo> <worktree> <branch-tip-sha>
     local root branch="feat/mog-prune" repo wt
-    root=$(mktemp -d) || { echo "FAIL: mk_prune_fixture: mktemp -d produced no run sandbox" >&2; return 1; }
+    root=$(mktemp -d "${TMPDIR:-/tmp}/mog-prune.XXXXXX") || { echo "FAIL: mk_prune_fixture: mktemp -d produced no run sandbox" >&2; return 1; }
     repo="$root/repo"
     git init -q --initial-branch=main "$repo" 2>/dev/null || {
         git init -q "$repo"; git -C "$repo" symbolic-ref HEAD refs/heads/main || true
