@@ -278,10 +278,6 @@ cr_first_release() {
         || { echo "CR-FIRST HOLD degraded (cannot read check-runs at $head) $age"; return 3; }
     checks=$(printf '%s' "$checks_raw" | jq -s 'if all(.[]; type == "object") then {check_runs: [.[] | .check_runs[]?]} else error("bad") end' 2>/dev/null) \
         || { echo "CR-FIRST HOLD degraded (cannot parse check-runs at $head) $age"; return 3; }
-    # A heavy job of a pull_request run that really ran at this head is a release
-    # already (a run before ci:go gating, or a hand label picked up by CI). A
-    # workflow_dispatch verify run at the same commit is not: it never reports the
-    # required pull_request jobs.
     heavy_suites=$(printf '%s' "$checks" | jq -c --arg re "${CR_FIRST_HEAVY_RE:-^(bun-suites|node-suites|shell-unit-shard|shell-unit|lanes-and-trust-suites)}" \
         '[.check_runs[] | select(.name | test($re))
           | select(.status == "in_progress" or (.status == "completed" and (.conclusion // "") != "skipped"))
