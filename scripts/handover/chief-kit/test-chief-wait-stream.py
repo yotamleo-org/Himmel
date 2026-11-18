@@ -623,6 +623,23 @@ class StackedWorker(StreamFixture):
         self.assertEqual(self.audit(), [f'GO-SENT 1 {self.H[1]}', f'GO-SENT 9 {self.H[9]}'])
         self.assertEqual(len(self.seen('N1 READY #9')), 1)
 
+    def test_a_label_returning_with_a_longer_different_document_gets_its_unhandled_ready_relayed(self):
+        self.worker('N1', '- 09:00 LIVE start', self.ready('N1', 1))
+        self.fleet_of('N1')
+        p, _ = self.start()
+        self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
+        self.until(lambda: self.path('ready').exists() and self.path('ready').read_text() == 'N1\t4\n')
+        self.fleet_of()
+        self.until(lambda: 'N1' not in json.loads(self.path('ready-docs').read_text()))
+        # its READY sits on a line the old cursor already counted, and the document is not shorter
+        self.worker('N1', self.ready('N1', 9), '- 10:31 LIVE a', '- 10:32 LIVE b', '- 10:33 LIVE c')
+        self.fleet_of('N1')
+        self.until(lambda: self.seen(f'N1 READY #9 {self.H[9]}'), seconds=8)
+        time.sleep(.6)
+        self.stop(p)
+        self.assertEqual(self.audit(), [f'GO-SENT 1 {self.H[1]}', f'GO-SENT 9 {self.H[9]}'])
+        self.assertEqual(len(self.seen('N1 READY #9')), 1)
+
     def test_slow_cleanup_delays_only_itself_and_the_inbox_and_ready_follow_at_once(self):
         self.worker('N1', '- 10:00 WRAPPED no PR')
         self.worker('N2', self.ready('N2', 2))

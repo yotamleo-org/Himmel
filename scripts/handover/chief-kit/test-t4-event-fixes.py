@@ -271,6 +271,18 @@ class Collector(stream_tests.StreamFixture):
         for _ in range(3):
             self.assertEqual(self.collect().stdout.strip(), 'N1 READY 2')
 
+    def test_label_returning_with_a_longer_different_document_keeps_its_unhandled_ready(self):
+        self.workers([b'- 09:00 LIVE a\n- 10:00 READY #1 h1\n'])
+        self.assertEqual(self.collect().stdout.strip(), 'N1 READY 2')
+        self.path('ready').write_text('N1\t2\n')
+        self.assertEqual(self.collect().stdout, '')
+        self.fleet.write_text(json.dumps(dict(workers=[])))
+        self.assertEqual(self.collect().stdout, '')
+        (self.root / 'N1.md').write_text('- 10:31 READY #9 h9\n- 10:32 LIVE a\n- 10:33 LIVE b\n')
+        self.fleet.write_text(json.dumps(dict(workers=[dict(label='N1', doc=str(self.root / 'N1.md'))])))
+        for _ in range(3):
+            self.assertEqual(self.collect().stdout.strip(), 'N1 READY 1')
+
     def test_snapshotless_cursor_past_the_document_end_restarts_the_worker(self):
         self.workers([b'- 10:00 LIVE restarted\n- 10:01 READY #9 h9\n'])
         self.path('ready').write_text('N1\t40\n')
