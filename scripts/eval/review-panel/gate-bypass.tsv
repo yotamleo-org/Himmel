@@ -11,3 +11,4 @@
 5234	77366ccef5408d56617625f81412910f99b6d50a	decision-912	the critic panel pin, operator-approved with no paid sweep
 5234	f14f884961af07423d1c4c0db9eebf95cc0eee9b	decision-912	the critic panel pin, operator-approved with no paid sweep
 5292	c6241ccd5fcc442ced72fc3639baeabf52ead1e8	decision-917	the critic panel stdin fix, operator-approved with no paid sweep
+5537	59724ee66ae0725d79bc576a066310a6b14bba52	decision-992	the cleanup only drops a ticket key from two critic prompt lines, operator-approved with no paid sweep
