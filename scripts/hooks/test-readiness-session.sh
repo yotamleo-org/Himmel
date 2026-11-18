@@ -20,12 +20,18 @@
 #      registration, a changed holder, a reappeared transport or a tampered confirmation each refuse.
 #   d. finish / cleanup release exactly the adopted (or unadopted transport) token and never a successor's lock.
 #   e. no token or credential reaches any stdout/stderr; the plugin copy is byte-identical.
+#   g. the queue library is a static source (the hook-integrity walk resolves it in both layouts) bound to the startup config by
+#      equality, and the registered hook commands adopt and release through the real recorder and runner.
+#   h. the library is spelled from CLAUDE_PROJECT_DIR: the project layout and the plugin copy's own layout adopt, verify,
+#      finish and clean up; a missing, empty, relative, decoy or library-less project root refuses and nothing is sourced.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd -P)"
 HOOK="$HERE/readiness-session.sh"
 PLUGIN_COPY="$HERE/../../marketplace/plugins/himmel-ops/scripts/readiness-session.sh"
 QL="$(cd "$HERE/../handover" && pwd -P)/queue-lock.sh"
+REPO_ROOT="$(cd "$HERE/../.." && pwd -P)"
+PROJ="$REPO_ROOT"
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/readiness-session-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 tmp="$(cd "$tmp" && pwd -P)"
@@ -40,6 +46,18 @@ check() { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; f
 modeof() { stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"; }
 uuid() { cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen | tr 'A-F' 'a-f'; }
 qenv() { env -i PATH="$PATH" HOME="$FAKEHOME" XDG_RUNTIME_DIR="$XDG" HANDOVER_DIR="$HD" "$@"; }
+# The environment a session hook runs under: CLAUDE_PROJECT_DIR is the project root (Claude Code exports it to a hook; the
+# adapter exports its own checkout's root to the child it runs). PROJ_ENV overrides it for ONE call: __unset__ (not
+# exported at all), __empty__ (exported empty), or any other value verbatim.
+penv() {
+  case "${PROJ_ENV-}" in
+    '') env -i CLAUDE_PROJECT_DIR="$PROJ" "$@" ;;
+    __unset__) env -i "$@" ;;
+    __empty__) env -i CLAUDE_PROJECT_DIR= "$@" ;;
+    *) env -i CLAUDE_PROJECT_DIR="$PROJ_ENV" "$@" ;;
+  esac
+}
+henv() { penv PATH="$PATH" HOME="$FAKEHOME" XDG_RUNTIME_DIR="$XDG" HANDOVER_DIR="$HD" "$@"; }
 ql_status() { qenv bash "$QL" status "$1" 2>/dev/null | tail -n 1; }
 ql_owner() { jq -r .session "$(find "$HD/.locks/queue" -maxdepth 1 -name "*$(basename "$1" .md | tr -c 'A-Za-z0-9_\n-' '-')*.lock" | head -n 1)/owner.json" 2>/dev/null; }
 
@@ -65,12 +83,12 @@ hook() {
   tr="$FAKEHOME/.claude/projects/p/$sid.jsonl"
   if [ "${H_TR+set}" = set ]; then tr="$H_TR"; else mkdir -p "$FAKEHOME/.claude/projects/p"; : > "$tr"; fi
   payload="$(jq -cn --arg sid "$sid" --arg tr "$tr" '{session_id:$sid,hook_event_name:"SessionStart",source:"startup"} + (if $tr == "" then {} else {transcript_path:$tr} end)')"
-  printf '%s' "$payload" | qenv "$@" bash "$HOOK" "$verb" > "$tmp/out" 2> "$tmp/err"; H_RC=$?
+  printf '%s' "$payload" | henv "$@" bash "$HOOK" "$verb" > "$tmp/out" 2> "$tmp/err"; H_RC=$?
   H_OUT="$(cat "$tmp/out")"; H_ERR="$(cat "$tmp/err")"
 }
-# adapter <verb> <dir>: what the adapter runs (no hook JSON, an empty environment but PATH)
+# adapter <verb> <dir>: what the adapter runs (no hook JSON, an environment of PATH, HOME and the checkout's CLAUDE_PROJECT_DIR)
 adapter() {
-  env -i PATH="$PATH" HOME="$FAKEHOME" bash "$HOOK" "$@" > "$tmp/out" 2> "$tmp/err"; H_RC=$?
+  penv PATH="$PATH" HOME="$FAKEHOME" bash "$HOOK" "$@" > "$tmp/out" 2> "$tmp/err"; H_RC=$?
   H_OUT="$(cat "$tmp/out")"; H_ERR="$(cat "$tmp/err")"
 }
 # drop_registration <doc> <both|sidecar>: lose this doc's registration (and only its) from the scope token directory
@@ -141,7 +159,7 @@ hook startup "$A_SID" CLAUDE_CODE_SESSION_ID="$other"
 check "b. a CLAUDE_CODE_SESSION_ID that differs from the hook's: one reason code" "$H_ERR" "readiness-session: session-id-mismatch"
 refused "a CLAUDE_CODE_SESSION_ID that differs from the hook session id"
 for junk in '' 'not json' '{"session_id":"not-a-uuid"}' '{"session_id":["x"]}' '[]' '{"hook_event_name":"SessionStart"}'; do
-  printf '%s' "$junk" | qenv bash "$HOOK" startup > "$tmp/out" 2> "$tmp/err"; H_RC=$?; H_OUT="$(cat "$tmp/out")"; H_ERR="$(cat "$tmp/err")"
+  printf '%s' "$junk" | henv bash "$HOOK" startup > "$tmp/out" 2> "$tmp/err"; H_RC=$?; H_OUT="$(cat "$tmp/out")"; H_ERR="$(cat "$tmp/err")"
   check "b. hook payload '$junk' is a silent no-op" "$H_RC:$H_OUT:$H_ERR" "0::"
 done
 refused "junk hook payloads"
@@ -276,7 +294,7 @@ check "f. a transcript that is not named for this session: reason" "$H_ERR" "rea
 mk_attempt; before="$(scope_files)"; other_id="$(uuid)"; : > "$tmp/$other_id.jsonl"; H_TR="$tmp/$other_id.jsonl" hook startup "$A_SID"
 check "f. another session's transcript (a valid-looking uuid name): reason" "$H_ERR" "readiness-session: no-transcript"; not_adopted "another session's transcript" "$before"
 mk_attempt; before="$(scope_files)"
-printf '{"session_id":"%s","hook_event_name":"SessionStart","transcript_path":["x"]}' "$A_SID" | qenv bash "$HOOK" startup > "$tmp/out" 2> "$tmp/err"; H_RC=$?; H_OUT="$(cat "$tmp/out")"; H_ERR="$(cat "$tmp/err")"
+printf '{"session_id":"%s","hook_event_name":"SessionStart","transcript_path":["x"]}' "$A_SID" | henv bash "$HOOK" startup > "$tmp/out" 2> "$tmp/err"; H_RC=$?; H_OUT="$(cat "$tmp/out")"; H_ERR="$(cat "$tmp/err")"
 check "f. a non-string transcript_path: silent exit 0, one reason" "$H_RC:$H_OUT:$H_ERR" "0::readiness-session: no-transcript"; not_adopted "a non-string transcript_path" "$before"
 # after a good adoption the marker is part of every fresh check: verify refuses when it is gone, wrong or its transcript vanished
 f_good() { mk_attempt; hook startup "$A_SID"; check "f. setup: a good adoption" "$(confirmed)" "yes"; }
@@ -290,7 +308,6 @@ f_good; adapter verify "$A_DIR"; check "f. a good adoption still verifies after 
 
 # --- g. the queue library is a STATIC source bound to the startup config by equality, and the registered hook commands
 #        adopt and release through the REAL recorder and runner (cycle 5 review F1)
-REPO_ROOT="$(cd "$HERE/../.." && pwd -P)"
 PLUGIN_ROOT="$REPO_ROOT/marketplace/plugins/himmel-ops"
 HOOKS_JSON="$PLUGIN_ROOT/hooks/hooks.json"
 # the walk the runner makes: the files the script sources (transitively) and every source statement it could not resolve
@@ -315,6 +332,13 @@ mkdir -p "$tmp/wroot/scripts/hooks"
 # shellcheck disable=SC2016  # the sed program is literal text: the variable names are the file's own spelling
 sed 's/\. "\$RS_QL_LIB"/. "$RS_QL"/' "$HOOK" > "$tmp/wroot/scripts/hooks/readiness-session.sh"
 check "g. control: sourcing the startup-bound variable instead is unresolved in all three statements" "$(closure_of "$tmp/wroot" scripts/hooks/readiness-session.sh | jq -c '.unresolved | length' 2>/dev/null || echo broken)" "3"
+# the plugin copy is walked at its OWN location: its library resolves through CLAUDE_PROJECT_DIR to the same project file
+PCLO="$(closure_of "$REPO_ROOT" marketplace/plugins/himmel-ops/scripts/readiness-session.sh)"
+check "g. the plugin copy's whole sourced closure resolves statically too, to the same one handover library" "$(printf '%s' "$PCLO" | jq -c '[.unresolved, [.files[] | select(startswith("scripts/handover/"))]]' 2>/dev/null || echo "$PCLO")" '[[],["scripts/handover/queue-lock.sh"]]'
+# the control: a prefix the walk does not model (any variable other than the project root) leaves the library unresolved
+# shellcheck disable=SC2016  # the sed program is literal text: the variable names are the file's own spelling
+sed 's#\${CLAUDE_PROJECT_DIR:-}/scripts#${RS_PROJECT_ROOT:-}/scripts#' "$HOOK" > "$tmp/wroot/scripts/hooks/readiness-session.sh"
+check "g. control: a library prefix that is not the project root is unresolved in all three statements" "$(closure_of "$tmp/wroot" scripts/hooks/readiness-session.sh | jq -c '.unresolved | length' 2>/dev/null || echo broken)" "3"
 
 # a startup queue_lock that is not the sourced library never runs: the equality check refuses it before any source
 mkdir -p "$tmp/decoy"; printf 'touch "%s"\n' "$tmp/decoy-sourced" > "$tmp/decoy/queue-lock.sh"
@@ -367,7 +391,7 @@ if g_project; then
   check "g. ... the confirmation is published and the transport is gone" "$(confirmed):$([ -e "$A_DIR/lease-token" ] && echo present || echo gone)" "yes:gone"
   check "g. ... the lease is still held by the transported token and fresh" "$(ql_owner "$A_DOC"):$(ql_status "$A_DOC")" "$A_TOK:status: FRESH"
   no_leak "g. the registered startup command"
-  HOOK_REAL="$HOOK"; HOOK="$GP/scripts/hooks/readiness-session.sh"; adapter verify "$A_DIR"; HOOK="$HOOK_REAL"
+  HOOK_REAL="$HOOK"; HOOK="$GP/scripts/hooks/readiness-session.sh"; PROJ_ENV="$GP" adapter verify "$A_DIR"; HOOK="$HOOK_REAL"
   check "g. ... and the adapter's verify (from the same project) succeeds" "$H_RC:$H_OUT:$H_ERR" "0::"
   g_run "$END_CMD" "$A_SID" SessionEnd
   check "g. the registered cleanup command releases the adopted lease and removes the attempt through the real runner" "$H_RC:$(ql_status "$A_DOC"):$([ -e "$A_DIR" ] && echo present || echo gone)" "0:free:gone"
@@ -400,6 +424,58 @@ if g_project; then
 else
   check "g. setup: the refusal fixture could not be built" "unavailable" "available"
 fi
+
+# --- h. the queue library is bound to CLAUDE_PROJECT_DIR (cycle 5 recheck R2-1): the registered project layout AND the plugin
+#        copy's own layout adopt, verify, finish and clean up; a missing, empty, relative, wrong or decoy project directory
+#        refuses and the decoy library is never sourced
+with_hook() { local saved="$HOOK" rc; HOOK="$1"; shift; "$@"; rc=$?; HOOK="$saved"; return "$rc"; }
+mkdir -p "$tmp/dproj/scripts/handover" "$tmp/emptyproj"; printf 'touch "%s"\n' "$tmp/decoy-sourced" > "$tmp/dproj/scripts/handover/queue-lock.sh"
+ln -s "$REPO_ROOT" "$tmp/projlink"
+h_good() { mk_attempt; hook startup "$A_SID" CLAUDE_CODE_SESSION_ID="$A_SID"; check "h. setup: a good adoption" "$(confirmed)" "yes"; }
+for tool_label in project plugin; do
+  tool="$HOOK"; [ "$tool_label" = plugin ] && tool="$PLUGIN_COPY"
+  # the layout adopts, verifies, finishes and cleans up (the plugin copy has no ../handover sibling; the project root supplies the library)
+  mk_attempt; with_hook "$tool" hook startup "$A_SID" CLAUDE_CODE_SESSION_ID="$A_SID"
+  check "h. $tool_label layout: startup adopts: exit 0, silent, the confirmation published, the transport gone" "$H_RC:$H_OUT:$H_ERR:$(confirmed):$([ -e "$A_DIR/lease-token" ] && echo present || echo gone)" "0:::yes:gone"
+  no_leak "h. $tool_label layout startup"
+  check "h. $tool_label layout: the lock is still held by the transported token and fresh" "$(ql_owner "$A_DOC"):$(ql_status "$A_DOC")" "$A_TOK:status: FRESH"
+  with_hook "$tool" adapter verify "$A_DIR"
+  check "h. $tool_label layout: verify (run with the checkout's project root) succeeds" "$H_RC:$H_OUT:$H_ERR" "0::"
+  with_hook "$tool" adapter finish "$A_DIR"
+  check "h. $tool_label layout: finish releases exactly the adopted lease and removes the attempt" "$H_RC:$H_OUT:$H_ERR:$(ql_status "$A_DOC"):$([ -e "$A_DIR" ] && echo present || echo gone)" "0:::free:gone"
+  mk_attempt; with_hook "$tool" hook startup "$A_SID"; with_hook "$tool" hook cleanup "$A_SID"
+  check "h. $tool_label layout: cleanup of an adopted session releases its lease and removes its directory" "$H_RC:$H_OUT:$(ql_status "$A_DOC"):$([ -e "$A_DIR" ] && echo present || echo gone)" "0::free:gone"
+  mk_attempt; with_hook "$tool" hook cleanup "$A_SID"
+  check "h. $tool_label layout: cleanup of an unadopted session releases the transported token and removes the directory" "$H_RC:$(ql_status "$A_DOC"):$([ -e "$A_DIR" ] && echo present || echo gone)" "0:free:gone"
+  # a project root that is a symlink to the same checkout names the same physical directory: it adopts
+  mk_attempt; PROJ_ENV="$tmp/projlink" with_hook "$tool" hook startup "$A_SID"
+  check "h. $tool_label layout: a symlinked spelling of the same project root adopts (equal physical directory)" "$H_RC:$(confirmed)" "0:yes"
+  adapter finish "$A_DIR"
+  # a missing, empty, relative, decoy or library-less project root refuses before anything is sourced
+  for mode in __unset__ __empty__ relative decoy nolib; do
+    pe="$mode"; cwd="$tmp"
+    case "$mode" in relative) pe="."; cwd="$REPO_ROOT" ;; decoy) pe="$tmp/dproj" ;; nolib) pe="$tmp/emptyproj" ;; esac
+    mk_attempt; before="$(scope_files)"
+    back="$PWD"; cd "$cwd" || exit 1; PROJ_ENV="$pe" with_hook "$tool" hook startup "$A_SID"; cd "$back" || exit 1
+    check "h. $tool_label layout, $mode project root: startup refuses with the one reason code" "$H_RC:$H_OUT:$H_ERR" "0::readiness-session: startup-queue-lock"
+    check "h. $tool_label layout, $mode project root: nothing is adopted: no confirmation, the transport kept, the lease still the transported token's" "$(confirmed):$([ -e "$A_DIR/lease-token" ] && echo kept):$(ql_owner "$A_DOC")" "no:kept:$A_TOK"
+    check "h. $tool_label layout, $mode project root: nothing is registered and the decoy library is never sourced" "$(scope_files):$(decoy_untouched)" "$before:untouched"
+  done
+  # an adopted attempt: the same wrong spellings refuse verify and finish, the lease and the attempt stay, and the right root still verifies
+  for mode in __unset__ relative decoy; do
+    pe="$mode"; cwd="$tmp"
+    case "$mode" in relative) pe="."; cwd="$REPO_ROOT" ;; decoy) pe="$tmp/dproj" ;; esac
+    h_good; back="$PWD"; cd "$cwd" || exit 1
+    PROJ_ENV="$pe" with_hook "$tool" adapter verify "$A_DIR"; v_rc="$H_RC"; v_out="$H_OUT"
+    PROJ_ENV="$pe" with_hook "$tool" adapter finish "$A_DIR"; f_rc="$H_RC"
+    cd "$back" || exit 1
+    check "h. $tool_label layout, $mode project root on an adopted attempt: verify and finish refuse quietly, the decoy is never sourced" "$v_rc:$v_out:$f_rc:$(decoy_untouched)" "1::1:untouched"
+    check "h. $tool_label layout, $mode project root on an adopted attempt: the lease is kept and the attempt stays" "$(ql_owner "$A_DOC"):$([ -e "$A_DIR" ] && echo present || echo gone)" "$A_TOK:present"
+    with_hook "$tool" adapter verify "$A_DIR"
+    check "h. $tool_label layout: ... and the right project root still verifies the same attempt" "$H_RC" "0"
+    with_hook "$tool" adapter finish "$A_DIR"
+  done
+done
 
 # --- e. the plugin copy
 check "e. the himmel-ops plugin copy is byte-identical" "$(cmp -s "$HOOK" "$PLUGIN_COPY" && echo same || echo differs)" "same"

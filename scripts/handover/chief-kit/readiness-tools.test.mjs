@@ -23,6 +23,8 @@ import { inspect } from 'node:util';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const load = () => import(pathToFileURL(join(HERE, 'readiness-tools.mjs')).href);
+// the project root a session hook runs under (Claude Code exports it as CLAUDE_PROJECT_DIR; the adapter derives the same value)
+const PROJECT_ROOT = join(HERE, '..', '..', '..');
 
 // The real built primary CLI (dist/ is untracked, so a worktree has none of its own). Absent => the
 // tests fail loudly: there is no stand-in CLI, because a stand-in would not test the real port.
@@ -662,6 +664,7 @@ export function authHeader() { return 'Basic ' + Buffer.from('fixture@example.in
 describe('C0s2 adopted ownership', () => {
   const QL = join(HERE, '..', 'queue-lock.sh');
   const SESSION = join(HERE, '..', '..', 'hooks', 'readiness-session.sh');
+  const PLUGIN_SESSION = join(PROJECT_ROOT, 'marketplace', 'plugins', 'himmel-ops', 'scripts', 'readiness-session.sh');
   const TOKEN_SENTINEL_ENV = 'ambient-secret-must-not-reach-the-child';
   function world() {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'c0s2-own-')));
@@ -701,12 +704,13 @@ describe('C0s2 adopted ownership', () => {
         return { doc, sid, dir, startupPath, token };
       },
       // the SessionStart payload carries the session's own transcript (created here unless withTranscript is false)
-      start: (a, { withTranscript = true } = {}) => {
+      // projectDir is the CLAUDE_PROJECT_DIR the hook runs under: this checkout's root by default, null = not exported
+      start: (a, { withTranscript = true, tool = SESSION, projectDir = PROJECT_ROOT, cwd } = {}) => {
         const transcript = join(home, 'projects', 'p', `${a.sid}.jsonl`);
         if (withTranscript) { mkdirSync(join(home, 'projects', 'p'), { recursive: true }); writeFileSync(transcript, ''); }
-        return spawnSync('bash', [SESSION, 'startup'], {
+        return spawnSync('bash', [tool, 'startup'], {
           input: JSON.stringify({ session_id: a.sid, hook_event_name: 'SessionStart', source: 'startup', ...(withTranscript ? { transcript_path: transcript } : {}) }),
-          env: { ...env, CLAUDE_CODE_SESSION_ID: a.sid }, encoding: 'utf8',
+          env: { ...env, CLAUDE_CODE_SESSION_ID: a.sid, ...(projectDir === null ? {} : { CLAUDE_PROJECT_DIR: projectDir }) }, cwd, encoding: 'utf8',
         });
       },
     };
@@ -875,6 +879,67 @@ describe('C0s2 adopted ownership', () => {
     assert.ok(!JSON.stringify([ok, fin]).includes('stub-stdout'), 'child output was relayed');
   });
 
+  test('R2-1: the verify child gets exactly one CLAUDE_PROJECT_DIR, this checkout\'s root from the adapter\'s own location, whatever the caller, the ambient environment or the startup config say', async () => {
+    const { loadStartup, checkAdopted, finishAttempt } = await load();
+    const w = world();
+    const a = w.attempt();
+    const cur = JSON.parse(readFileSync(a.startupPath, 'utf8'));
+    writeFileSync(a.startupPath, JSON.stringify({ ...cur, project_dir: '/config/decoy', CLAUDE_PROJECT_DIR: '/config/decoy-too' }), { mode: 0o600 });
+    const startup = loadStartup(a.startupPath);
+    const log = join(w.root, 'child-env.log');
+    const stub = join(w.root, 'stub-env.sh');
+    writeFileSync(stub, `#!/usr/bin/env bash\nenv | sort > '${log}'\nexit 0\n`, { mode: 0o755 });
+    for (const env of [{ ...w.env, CLAUDE_PROJECT_DIR: '/ambient/decoy', CLAUDE_CODE_SESSION_ID: 'x' }, { PATH: w.env.PATH, HOME: w.env.HOME }]) {
+      for (const run of [(d) => checkAdopted(startup, d), (d) => finishAttempt(startup, d)]) {
+        rmSync(log, { force: true });
+        assert.equal((await run({ env, sessionTool: stub })).ok, true);
+        const lines = readFileSync(log, 'utf8').split('\n').filter((l) => l !== '');
+        assert.deepEqual(lines.filter((l) => /^CLAUDE_/.test(l)), [`CLAUDE_PROJECT_DIR=${realpathSync(PROJECT_ROOT)}`], 'exactly one project root, the checkout\'s own');
+        assert.deepEqual(lines.map((l) => l.split('=')[0]).filter((k) => !['PWD', 'SHLVL', '_', 'OLDPWD'].includes(k)).sort(), ['CLAUDE_PROJECT_DIR', 'HOME', 'PATH'], 'nothing else reaches the child');
+      }
+    }
+  });
+
+  test('R2-1: the session script binds its queue library to the project root: the checkout root adopts in the project layout and in the plugin layout; a missing, empty, relative or decoy root adopts nothing and the decoy library is never sourced', async () => {
+    const { loadStartup, checkAdopted, guardedLabel, finishAttempt } = await load();
+    const w = world();
+    const canary = join(w.root, 'decoy-sourced');
+    const decoy = join(w.root, 'decoy-project');
+    mkdirSync(join(decoy, 'scripts', 'handover'), { recursive: true });
+    writeFileSync(join(decoy, 'scripts', 'handover', 'queue-lock.sh'), `touch '${canary}'\n`);
+    for (const [label, opts] of [
+      ['project layout, missing root', { projectDir: null }],
+      ['project layout, empty root', { projectDir: '' }],
+      ['project layout, relative root that names the checkout from the cwd', { projectDir: '.', cwd: PROJECT_ROOT }],
+      ['project layout, decoy root', { projectDir: decoy }],
+      ['plugin layout, missing root', { tool: PLUGIN_SESSION, projectDir: null }],
+      ['plugin layout, decoy root', { tool: PLUGIN_SESSION, projectDir: decoy }],
+    ]) {
+      const a = w.attempt();
+      const r = w.start(a, opts);
+      assert.equal(r.status, 0, label);
+      assert.equal(r.stderr.trim(), 'readiness-session: startup-queue-lock', label);
+      assert.equal(existsSync(join(a.dir, 'confirmation.json')), false, `${label}: nothing is confirmed`);
+      assert.equal(existsSync(join(a.dir, 'lease-token')), true, `${label}: the transport is kept`);
+      assert.equal(w.owner(a.doc), a.token, `${label}: the lease is still the transported token's`);
+      assert.equal(existsSync(canary), false, `${label}: the decoy library was never sourced`);
+      assert.equal((await checkAdopted(loadStartup(a.startupPath), { env: w.env })).code, 'not-adopted', label);
+    }
+    for (const [label, tool] of [['project layout', SESSION], ['plugin layout', PLUGIN_SESSION]]) {
+      const a = w.attempt();
+      assert.equal(w.start(a, { tool }).stderr, '', `${label}: the checkout root adopts silently`);
+      const startup = loadStartup(a.startupPath);
+      const spy = spyPort();
+      assert.deepEqual(await checkAdopted(startup, { env: w.env, sessionTool: tool }), { ok: true }, label);
+      assert.equal((await guardedLabel(startup, spy.port, 'HIMMEL-1', true, SOON(), { env: w.env, sessionTool: tool })).ok, true, label);
+      assert.equal(spy.calls.length, 1, `${label}: the act reached the port once`);
+      assert.deepEqual(await finishAttempt(startup, { env: w.env, sessionTool: tool }), { ok: true, type: 'finish', key: null, outcome: 'finished', evidence_id: null }, label);
+      assert.equal(w.status(a.doc), 'free', `${label}: finish released exactly the adopted lease`);
+      assert.equal(existsSync(a.dir), false, `${label}: the attempt is removed`);
+    }
+    assert.equal(existsSync(canary), false);
+  });
+
   test('a session script that hangs, crashes or is absent is not-adopted', async () => {
     const { loadStartup, checkAdopted, finishAttempt } = await load();
     const w = world();
@@ -1007,7 +1072,7 @@ function generatedWorld({ catalog = true, port = 'copy', extraEnv = {}, allowRef
       writeFileSync(transcript, '');
       return spawnSync('bash', [SESSION_HOOK, 'startup'], {
         input: JSON.stringify({ session_id: sid, hook_event_name: 'SessionStart', source: 'startup', transcript_path: transcript }),
-        env: { ...qenv, CLAUDE_CODE_SESSION_ID: sid }, encoding: 'utf8',
+        env: { ...qenv, CLAUDE_CODE_SESSION_ID: sid, CLAUDE_PROJECT_DIR: PROJECT_ROOT }, encoding: 'utf8',
       });
     },
     // the server exactly as the GENERATED strict MCP config starts it

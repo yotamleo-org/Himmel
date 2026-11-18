@@ -341,6 +341,9 @@ export async function selectPort(config, deps = {}) {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const NOT_ADOPTED = Object.freeze({ ok: false, code: 'not-adopted', reason: 'this session has not adopted the readiness lease, or no longer holds it' });
 const SESSION_TOOL = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'hooks', 'readiness-session.sh');
+// The project root the session script binds its queue library to (CLAUDE_PROJECT_DIR): this checkout, derived from where this
+// code lives. It is never read from the model, the startup config or the environment.
+const SESSION_PROJECT_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 function privateFile(path, uid) {
   let st;
@@ -426,8 +429,9 @@ export function loadStartup(path, opts = {}) {
 
 function runSession(verb, startup, deps) {
   const tool = deps.sessionTool ?? SESSION_TOOL;
-  // The child's whole environment is a finite host allowlist; its queue environment comes from the private startup config.
-  const env = { PATH: (deps.env ?? process.env).PATH ?? '/usr/bin:/bin', HOME: (deps.env ?? process.env).HOME ?? '' };
+  // The child's whole environment is a finite host allowlist (exactly one CLAUDE_PROJECT_DIR, this checkout's root); its queue
+  // environment comes from the private startup config.
+  const env = { PATH: (deps.env ?? process.env).PATH ?? '/usr/bin:/bin', HOME: (deps.env ?? process.env).HOME ?? '', CLAUDE_PROJECT_DIR: SESSION_PROJECT_DIR };
   return new Promise((done) => {
     execFile('bash', [tool, verb, startup.dir], { env, timeout: deps.timeoutMs ?? 8000, killSignal: 'SIGKILL', maxBuffer: 1 << 16, windowsHide: true }, (err) => {
       done(err ? (typeof err.code === 'number' ? err.code : 255) : 0);

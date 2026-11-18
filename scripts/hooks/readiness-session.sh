@@ -28,10 +28,12 @@
 # No token or credential is ever printed, logged or placed in an argument list of this script; queue-lock.sh is
 # SOURCED (not run), so the token only moves between shell variables and its own private files. Its own output is
 # discarded because adopt/acquire/release echo the token. queue-lock.sh itself is unchanged. The library that is sourced
-# is the one beside the handover tooling in this checkout, spelled as a literal so the hook-integrity walk can resolve and
-# verify its bytes; the startup config the trusted launcher wrote names the same file (queue_lock) and is only checked
-# for EQUALITY with it, so the private config can refuse a session but can never choose what code runs. A copy of this
-# file outside a checkout has no such sibling and so refuses every verb (fail closed).
+# is the project's own scripts/handover/queue-lock.sh, spelled from CLAUDE_PROJECT_DIR (Claude Code exports the project
+# root to a hook; the adapter exports its own checkout's root to the child it runs) so the hook-integrity walk can resolve
+# and verify its bytes in every layout this file is installed in, the plugin copy included. The startup config the trusted
+# launcher wrote names the library it acquired the lease with (queue_lock) and is only checked for EQUALITY with it, so the
+# private config can refuse a session but can never choose what code runs. A project root that is missing, empty, relative
+# or another checkout than the launcher's refuses every verb (fail closed).
 #
 # Platform: bash 3.2+, Linux/macOS (stat -c with a stat -f fallback).
 set -u
@@ -39,7 +41,7 @@ umask 077
 
 RS_WHY="" RS_HOOK_SID="" RS_HOOK_TR=""
 RS_SCOPE="" RS_DOC="" RS_VERSION="" RS_ATTEMPT_ID="" RS_QL="" RS_XDG="" RS_HDIR=""
-RS_QL_LIB="$(dirname "$0")/../handover/queue-lock.sh"
+RS_QL_LIB="${CLAUDE_PROJECT_DIR:-}/scripts/handover/queue-lock.sh"
 UUID_RE='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
 TOKEN_RE='^[A-Za-z0-9._-]+$'
 
@@ -70,10 +72,11 @@ _rs_transcript_ok() { # <path> <session id>
 }
 
 # the startup-bound queue_lock must be exactly the library this script sources: the same physical directory and the same
-# name, both existing. Compared as resolved directories (cd -P), so neither a relative spelling nor a symlinked directory
-# can make two different files look equal.
+# name, both existing, under an absolute project root. Compared as resolved directories (cd -P), so neither a relative
+# spelling nor a symlinked directory can make two different files look equal.
 _rs_ql_bound() {
     local bound lib
+    case "${CLAUDE_PROJECT_DIR:-}" in /*) ;; *) return 1 ;; esac
     [ -f "$RS_QL_LIB" ] || return 1
     bound="$(cd -P "$(dirname "$RS_QL")" 2>/dev/null && pwd -P)" || return 1  # swallow-ok: a directory that cannot be entered fails this assignment and refuses
     lib="$(cd -P "$(dirname "$RS_QL_LIB")" 2>/dev/null && pwd -P)" || return 1  # swallow-ok: a directory that cannot be entered fails this assignment and refuses

@@ -27,6 +27,7 @@ fi
 SCRIPT="$HERE/headed-arm-worker.sh"
 HEADED_ARM="$HERE/../headed-arm.sh"
 HOOK="$HERE/../../hooks/readiness-session.sh"
+PROJ="$(cd "$HERE/../../.." && pwd -P)"   # the project root Claude Code exports to the session hook as CLAUDE_PROJECT_DIR
 QL="$(cd "$HERE/.." && pwd -P)/queue-lock.sh"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/readiness-worker-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 tmp="$(cd "$tmp" && pwd -P)"
@@ -96,7 +97,7 @@ session_start() { # session_start <id> [-]: the actual SessionStart: the hook JS
     local tr="$HOME/.claude/projects/p/$1.jsonl"
     if [ "${2-}" = - ]; then tr=""; else mkdir -p "$HOME/.claude/projects/p"; : > "$tr"; fi
     jq -cn --arg sid "$1" --arg tr "$tr" '{session_id:$sid,hook_event_name:"SessionStart",source:"startup"} + (if $tr == "" then {} else {transcript_path:$tr} end)' \
-        | CLAUDE_CODE_SESSION_ID="$1" bash "$HOOK" startup > "$tmp/hook.out" 2> "$tmp/hook.err"
+        | CLAUDE_CODE_SESSION_ID="$1" CLAUDE_PROJECT_DIR="$PROJ" bash "$HOOK" startup > "$tmp/hook.out" 2> "$tmp/hook.err"
     HOOK_RC=$?
 }
 DRIVER="$tmp/driver.mjs"
@@ -176,7 +177,7 @@ check "a failed hand-off: the wrapper returns its status, the lease is free and 
 
 # --- 7. the launcher never refuses a session that did not start: the unadopted lease is released by the SessionEnd cleanup
 launch 4
-printf '{"session_id":"%s","hook_event_name":"SessionEnd"}' "$SID" | bash "$HOOK" cleanup > "$tmp/hook.out" 2> "$tmp/hook.err"
+printf '{"session_id":"%s","hook_event_name":"SessionEnd"}' "$SID" | CLAUDE_PROJECT_DIR="$PROJ" bash "$HOOK" cleanup > "$tmp/hook.out" 2> "$tmp/hook.err"
 check "cleanup of a session that never adopted releases the transported token and removes the attempt" \
     "$(lock_status "$DOC"):$([ -e "$A" ] && echo present || echo gone)" "free:gone"
 
