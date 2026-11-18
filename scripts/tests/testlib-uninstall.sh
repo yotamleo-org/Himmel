@@ -179,8 +179,6 @@ mk_state() {
     printf 'x\n' > "$BRIDGE/sessions/S1/inbox.jsonl"
 }
 
-# u_suite_setup -- builds the fixture repo, the claude stub and the stub state files the
-# U cases drive; each part calls it once before its first U case.
 u_suite_setup() {
 U_REPO="$TMP/u-repo"
 mkdir -p "$U_REPO/.git/hooks" "$U_REPO/scripts/machine-setup" "$U_REPO/scripts/lib" "$U_REPO/docs/setup"

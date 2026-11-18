@@ -357,7 +357,7 @@ fi
 # page) must not carry them, and adding one here is a conscious edit.
 # worker-digest.ts (+ its ledger fixture) is a host-local reader: it maps reason_tag onto the closed category list and never emits it raw; test-worker-digest.sh is the egress test that checks the digest's output.
 # ponytail: a file-list pin is a coarse proxy (a reader can forward the fields
-# under another name); test-tick-b.sh pins the real tick-line output. Upgrade: an
+# under another name). Upgrade: an
 # egress test on the Telegram page when that slice lands. ---
 REPO_ROOT="$(cd "$(dirname "$HOOK")/../.." && pwd)"
 if git -C "$REPO_ROOT" rev-parse --git-dir >/dev/null 2>&1; then

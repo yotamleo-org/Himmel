@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034,SC2153,SC2154  # HBIN, U_BIN, calls and STUB_FAIL_IDS are set by the sourced testlib
-# Smoke test for scripts/uninstall.sh, part 1 of 2: the cases up to and including U4e.
 # State-touching invocations point TELEGRAM_CHANNEL_DIR + BRIDGE_ROOT at temp
 # dirs and pass --skip-tasks --skip-plugins --skip-hooks where destructive, so
 # the operator's real bridge, scheduled tasks, plugins, and git hooks are

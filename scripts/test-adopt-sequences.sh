@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034,SC2154  # SEQS is read and SEED set by the sourced testlib
-# test-adopt-sequences.sh — seeded install/uninstall SEQUENCE driver, part 1 of 2: the first eight sequences
 # The per-step suites (test-adopt.sh, test-uninstall*.sh) prove
 # each step alone; install-sequence bugs only show when steps are chained. This suite chains adopt / adopt --scope project /
 # uninstall / uninstall --purge-state / adopt-with-failure-at-step-k on a
@@ -25,9 +24,6 @@
 # Fixture HOME only: every sequence runs under its own mktemp HOME with a
 # hermetic PATH (only the fixture bin: no host tool such as qmd, node, pre-commit, at or crontab, so the result is the same on a workstation and a CI runner) and
 # a stateful pure-bash `claude` stub. Sequences run in parallel (<=8 at once).
-#
-# The verbs, the fixture, the stub and the options live in tests/testlib-adopt-sequences.sh,
-# shared with part 2 (test-adopt-sequences-b.sh).
 #
 # Usage: bash scripts/test-adopt-sequences.sh [--seed N] [--break-restore]
 #   --seed N         seed for the generated sequences (default 6626)

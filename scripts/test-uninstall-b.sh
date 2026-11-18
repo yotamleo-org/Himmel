@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2034,SC2153,SC2154  # HBIN, U_BIN, calls and STUB_FAIL_IDS are set by the sourced testlib
-# Smoke test for scripts/uninstall.sh, part 2 of 2: the U4f cases through the last case.
 # State-touching invocations point TELEGRAM_CHANNEL_DIR + BRIDGE_ROOT at temp
 # dirs and pass --skip-tasks --skip-plugins --skip-hooks where destructive, so
 # the operator's real bridge, scheduled tasks, plugins, and git hooks are
@@ -27,9 +26,7 @@ TMP=$(mktemp -d "${TMPDIR:-/tmp}/uninstall-suite.XXXXXX") || { echo "FAIL could 
 # shellcheck source=tests/testlib-uninstall.sh
 . "$(dirname "$CLI")/tests/testlib-uninstall.sh"
 
-# The real-home caller scan traces every HOME below to a mktemp in this file; u_fixture replaces it per case.
 U_HOME=$(mktemp -d "$TMP/u-home.XXXXXX") || exit 1
-# Same fixture repo and claude stub the first part builds before its U cases.
 u_suite_setup
 
 # U4f..U4l: the adopter's own hook that install displaced

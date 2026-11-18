@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2154  # SEED and the run state are set by the sourced testlib
-# test-adopt-sequences-b.sh — seeded install/uninstall SEQUENCE driver, part 2 of 2: the
-# uninstall-on-clean row, the two known-red rows, the strict-residue row and the three generated
-# sequences. The verbs, the fixture, the stub and the options live in tests/testlib-adopt-sequences.sh;
-# part 1 (test-adopt-sequences.sh) documents them and owns the --break-restore control row.
+# test-adopt-sequences-b.sh — seeded install/uninstall SEQUENCE driver, part 2 of 2; part 1 documents the verbs.
 # Usage: bash scripts/test-adopt-sequences-b.sh [--seed N] [--only ID] [--seq "A U ..."] [--keep DIR]
 # selector: names adopt.sh uninstall.sh himmel-doctor.sh bin.js settings-template.json
 set -u

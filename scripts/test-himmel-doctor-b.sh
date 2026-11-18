@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2154  # failures is set by the sourced testlib
-# Smoke test for scripts/himmel-doctor.sh, part 2 of 3 (hermetic — temp CLAUDE_DIR/HOME).
 # Usage: bash scripts/test-himmel-doctor-b.sh
 set -uo pipefail
 # shellcheck source=tests/testlib-himmel-doctor.sh
 . "$(cd "$(dirname "$0")" && pwd)/tests/testlib-himmel-doctor.sh"
 
 # ── C30: telegram-bridge liveness ───────────────────────────────
-# Reuses fake_systemctl (defined in the shared testlib, alongside C24's HimmelTelegramBridge
-# rows). check_c30 must never touch the REAL telegram-bridge.service -- every
+# check_c30 must never touch the REAL telegram-bridge.service -- every
 # case below points HIMMEL_DOCTOR_SYSTEMCTL at a fake binary or a nonexistent
 # path, never at the real "systemctl" on PATH.
 

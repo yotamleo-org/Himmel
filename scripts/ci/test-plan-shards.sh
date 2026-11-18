@@ -339,9 +339,6 @@ printf 'a\t500\nb\t800\nc\t300\nd\t200\ne\t100\n' > "$PS/grown.tsv"
 err=$(size_err "$PS/hand.list" "$PS/grown.tsv" 8); rc=$?
 if [ "$rc" -eq 0 ] && [ "$err" = "plan-shards.sh: predicted longest shard 800s at N=3 of 8" ]; then pass "PS25 a suite grown 2x is the longest shard alone, the rest moved off it"; else fail "PS25 grown: rc=$rc got [$err]"; fi
 
-# PS27: a run-alone suite holds all 4 lanes of its shard, so the plan charges it 4x its
-# seconds, as the runner's pack does. Costs 500 400 300 200 100 with a (500 s) run-alone:
-# a weighs 2000, alone on one shard, the rest (1000) on another: N=2 at 2000 s, not N=3 at 500 s.
 printf '*/a  fixed port\n' > "$PS/deny.txt"
 err=$({ SUITE_PARALLEL_DENY="$PS/deny.txt" STUB_LIST="$PS/hand.list" STUB_LIST_MODE=ok SUITE_DURATIONS="$PS/hand.tsv" bash "$PS/plan-shards.sh" 8 . >/dev/null; } 2>&1); rc=$?
 if [ "$rc" -eq 0 ] && [ "$err" = "plan-shards.sh: predicted longest shard 2000s at N=2 of 8" ]; then pass "PS27 a run-alone suite is charged 4x in the plan"; else fail "PS27 weighted: rc=$rc got [$err]"; fi

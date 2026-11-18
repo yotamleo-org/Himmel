@@ -33,10 +33,6 @@
 #       watchdog group and no per-suite temp root or attempt log.
 #  P18. The bash 3.2 polling fallback (SUITE_LANE_WAIT=poll) still reaps
 #       finished lanes and drains for a deny-listed suite.
-#  P19. A bin-packed shard runs its run-alone suites first and the same
-#       suites a serial run does.
-#  P20. A bin-packed shard starts each group, run-alone then parallel,
-#       longest-first by the duration ledger.
 #
 # Each fixture suite records how many fixture suites were running when it
 # started, so overlap is read from the suites themselves, not from timing.

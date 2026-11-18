@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# test-tick-b.sh — the second half of test-tick.sh: the lock-state rows from UNVERIFIED on, then
-# board=, closable=, denials=, ciq=, tracker=, plan-index=, spare=, acts=, the pool dispositions, the
-# owed ledger and the deadline-cut reads of the batched chief tick. Hermetic like test-tick.sh: no live
-# queue, process, scheduler, GitHub or bank. Every row is independent of the first half; the stubs
-# come from tick-test-fixture.sh.
+# test-tick-b.sh — the second half of test-tick.sh: the batched chief tick rows from the UNVERIFIED lock state on.
 #
 # PLATFORM GUARD: The chief kit is Linux-only
 # (pgrep, atq, /tmp suite locks, and claudex/konsole); this Bash 3.2 suite

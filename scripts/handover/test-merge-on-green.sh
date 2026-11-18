@@ -1120,9 +1120,6 @@ assert_pinned_pr_view() {
     else fail "$1 (no pinned 'pr view 77 --repo acme/private-repo --json $2' call found)"; fi
 }
 
-# Helpers both parts of this suite drive: the prune fixture, the CR-marker writer,
-# the fake-claude wrapper, the GO writer and the no-merge assertion, and the
-# chief-GO fixture they run against (mog_go_fixture sets GO_ROOT, GO_SHA, GO_OLD).
 mk_prune_fixture() {
     # echoes: <repo> <worktree> <branch-tip-sha>
     local root branch="feat/mog-prune" repo wt

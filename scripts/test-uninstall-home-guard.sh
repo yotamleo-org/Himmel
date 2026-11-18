@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The test-uninstall suite's own HOME-isolation preflight (the
+# The suite's own HOME-isolation preflight (the
 # real-home-under-$TMP check + the live-operator-marker check, run before the
 # hermetic PATH is built) must HARD-ABORT the suite when either check fails —
 # not just log a FAIL and fall through to the wet uninstall.sh rows below it.
@@ -16,7 +16,6 @@ LIB="$HERE/tests/testlib-uninstall.sh"
 PARTS=("$HERE/test-uninstall.sh" "$HERE/test-uninstall-b.sh")
 FAILED=0
 
-# The preflight lives in the shared lib every part sources before its first case.
 realhome_line=$(grep -n "operator's real .*HOME resolved under this suite" "$LIB" | head -1 | cut -d: -f1)
 preflight_line=$(grep -n 'suite HOME fixture carries no live-operator marker' "$LIB" | head -1 | cut -d: -f1)
 # shellcheck disable=SC2016 # literal $CLI text in the source file, not expansion
@@ -49,7 +48,6 @@ else
     fi
 fi
 
-# Every part must source that lib before its first uninstall.sh invocation.
 for part in "${PARTS[@]}"; do
     source_line=$(grep -n '^\. .*tests/testlib-uninstall\.sh' "$part" | head -1 | cut -d: -f1)
     # shellcheck disable=SC2016 # literal $CLI text in the source file, not expansion

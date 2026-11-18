@@ -1826,10 +1826,6 @@ fi
 rm -rf "$sb22i"
 fi
 
-# 22i-alone — a run-alone suite holds every lane of its shard, so the pack
-# charges it 4x its ledger seconds. s1 and s2 are run-alone at 100s each; the
-# unweighted pack puts both on the shard that s3 (150s) did not take, serial
-# for 200s. Weighted they cost 400 each and land on different shards.
 sb22a=$(mktemp -d "${TMPDIR:-/tmp}/rst-case22ia.XXXXXX") || { fail "22i-alone: mktemp failed"; sb22a=""; }
 if [ -n "$sb22a" ]; then
 mk_shard_sandbox "$sb22a" 4
@@ -1852,7 +1848,6 @@ if [ "$same22a" -eq 0 ] && [ "$cnt22a" -eq 4 ]; then
 else
   fail "22i-alone: run-alone suites share a shard or a suite is lost; shard1='$a22a' shard2='$b22a'"
 fi
-# A deny list the pack cannot read would weight some shards and not others.
 o22a=$(SUITE_PARALLEL_DENY="$sb22a/missing.txt" SUITE_DURATIONS="$led22a" bash "$RUNNER" --list --shard 1/2 "$sb22a" 2>&1); rc22a=$?
 if [ "$rc22a" -ne 0 ] && grepq "$o22a" -F 'parallel deny-list'; then
   pass "22i-alone: an unreadable deny-list refuses the shard"

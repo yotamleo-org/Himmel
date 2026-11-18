@@ -13,9 +13,7 @@
 # runner bin-packs with gives their cost. The same LPT pack is simulated for
 # every N in 1..n and the smallest N whose longest shard fits in
 # max(TARGET_S, longest shard at n) wins: a small selection takes few runners,
-# a large one keeps all n. A run-alone suite (parallel-deny.txt) holds all
-# LANES lanes of its shard, so it is charged LANES times its ledger seconds, as
-# the runner's pack charges it. LPT places the first N suites in N distinct shards,
+# a large one keeps all n. LPT places the first N suites in N distinct shards,
 # so every one of the N shards has work.
 #
 # FAIL-CLOSED: a --list that fails or lacks its summary footer, or a ledger

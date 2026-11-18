@@ -4030,8 +4030,6 @@ ${_key#"$tier_repo_root"/}
 # harvests out of a job log — so the spelling written and the spelling matched
 # cannot drift apart. $SUITE_DURATIONS overrides the committed ledger path.
 # --------------------------------------------------------------------------
-# Suites that must run alone (fixed ports, shared global state): one glob per
-# line, matched against "/<resolved suite path>" (suite_key), then a reason.
 parallel_deny_file="${SUITE_PARALLEL_DENY:-$REPO_ROOT/scripts/ci/parallel-deny.txt}"
 parallel_deny=""
 _parallel_deny_load() {
@@ -4099,9 +4097,7 @@ if [ "$shard_total" -gt 0 ]; then
       _shard_eligible_n=$((_shard_eligible_n + 1))
     done 4< "$suites_file"
 
-    # A run-alone suite holds every lane of its shard while it runs, so the
-    # pack charges it _shard_lanes times its ledger seconds. The count is a
-    # constant, not the local CPU count: every shard must compute one partition.
+    # A constant, not the local CPU count: every shard must compute one partition.
     _shard_lanes=4
     # Join -> sort -> pack, one pipeline, no rc checks. The median an absent
     # suite is given is computed INSIDE the join rather than by a probe of its
@@ -4464,8 +4460,6 @@ elif [ "${GITHUB_ACTIONS:-}" = true ] && [ "${HIMMEL_TEST_FIXTURE:-}" != 1 ] && 
 else
   suite_jobs=1
 fi
-# Unreadable list in a parallel run: fall back to serial rather than guess
-# which suites are safe.
 if [ "$suite_jobs" -gt 1 ] && [ "$list_only" -eq 0 ]; then
   if ! _parallel_deny_load; then
     printf 'WARN: parallel deny-list %s is unreadable — running suites one at a time\n' "$parallel_deny_file" >&2

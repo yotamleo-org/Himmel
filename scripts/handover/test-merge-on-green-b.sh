@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# Second part of test-merge-on-green.sh, split at a section boundary so each part
-# runs inside one CI shard: the best-effort Jira auto-transition rows through the
-# last row. The first part holds the harness (run_mog, the assert_* family, the
-# fixtures) and sources with MOG_LIB_ONLY=1 as a library; the setup the rows below
-# need is rebuilt here: the opt-in on, the verdict scope pinned, the chief-GO fixture.
+# Part 2 of test-merge-on-green.sh (the Jira auto-transition rows); it sources part 1 with MOG_LIB_ONLY=1 for the harness.
 # shellcheck disable=SC2034  # MOG_LIB_ONLY is read by the sourced harness
 set -uo pipefail
 MOG_LIB_ONLY=1
@@ -12,7 +8,6 @@ MOG_LIB_ONLY=1
 
 echo "== merge-on-green.sh tests (part 2) =="
 export ARMAUTOMERGE=1
-# Verdict lookups are scoped by USER_SLUG; a fixed value keeps these rows off the operator's.
 export USER_SLUG=u
 mog_go_fixture
 # --- best-effort Jira auto-transition on merge -------------------

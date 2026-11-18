@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2154  # failures is set by the sourced testlib
-# Smoke test for scripts/himmel-doctor.sh, part 3 of 3 (hermetic — temp CLAUDE_DIR/HOME).
 # Usage: bash scripts/test-himmel-doctor-c.sh
 set -uo pipefail
 # shellcheck source=tests/testlib-himmel-doctor.sh

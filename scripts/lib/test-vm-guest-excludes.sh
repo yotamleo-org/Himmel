@@ -512,8 +512,6 @@ if [ "$rc" -eq 0 ] && ! grep -q '^SCP .* -r ' "$WORK/stub.log" && grep -qE '^SSH
 else
   fail_case "T7f no-rsync fallback failed or still unfiltered (rc=$rc): $(grep -E '^(SCP|SSH .*tar)' "$WORK/stub.log")"
 fi
-# T7n BOTH staging paths carry the repo-root inputs the scripts/test-uninstall*.sh parts
-# read, not just scripts/ -- without them SC6 failed 80 assertions on a clean guest.
 # The tar listing is what the host's real tar piped to the (stub) guest; the rsync
 # check reads the sources it was handed. The secret excludes must stay in force on both.
 STAGE_NEED="scripts docs/setup/settings-template.json docs/setup/user-scope-claude-md-template.md marketplace/plugins/claude-hud/config/himmel-config.json"
@@ -532,9 +530,6 @@ tar_secret=$(grep -E '(^|/)(\.env|\.env\..*|[^/]*\.local\.json)$' <<< "$tar_list
 if [ "$rc" -eq 0 ] && [ -z "$tar_miss" ] && [ -z "$tar_secret" ]; then
   pass "T7n tar fallback stages every SC6 input too, and no secret-set file"
 else fail_case "T7n tar fallback missing:${tar_miss:- none} secrets=[$tar_secret] (rc=$rc)"; fi
-# T7o drift guard: every repo-root docs/ or marketplace/ path the test-uninstall parts
-# and their shared lib read via `../` is in the driver's STAGE_PATHS -- a new read there turns this red
-# instead of silently failing SC6 on the next guest run. (Vacuity floor: >=3 found.)
 u_reads=$(grep -ohE '\.\./(docs|marketplace)/[A-Za-z0-9._/-]+' "$REPO_ROOT/scripts/test-uninstall.sh" "$REPO_ROOT/scripts/test-uninstall-b.sh" "$REPO_ROOT/scripts/tests/testlib-uninstall.sh" | sed 's#^\.\./##' | sort -u)
 u_n=$(grep -c . <<< "$u_reads"); u_miss=""
 staged=$(sed -n '/^STAGE_PATHS=(/,/)$/p' "$REPO_ROOT/scripts/test-install-symmetry-vm.sh" | sed 's/^STAGE_PATHS=(//; s/)$//' | tr -s ' ' '\n')

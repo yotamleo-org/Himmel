@@ -3,10 +3,6 @@
 # tick: exact one-line output, verbose human output, stale fill, and a missing
 # worker document. No live queue, process, scheduler, GitHub, or bank operations.
 #
-# Split three ways, all sourcing tick-test-fixture.sh for the stubs: the rows from the lock
-# queue-lock (UNVERIFIED) section on live in test-tick-b.sh, and the rows from the fails= section
-# on live in test-tick-fields.sh.
-#
 # the primary-path scenarios below drive claude_sessions() via a
 # fake /proc root (CLAUDE_SESSIONS_PROC) with real NUL-separated
 # <pid>/cmdline files, not a flattened `pgrep -af` line. The "lossy fallback"

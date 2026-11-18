@@ -4,8 +4,7 @@
 # Usage: bash scripts/test-unlanded-work.sh
 set -uo pipefail
 
-# grepq <text> [grep-args...] — see scripts/tests/testlib-himmel-doctor.sh for
-# why this must be a here-string, not a pipeline, under `set -o pipefail`.
+# grepq <text> [grep-args...] — a here-string, not a pipeline: grep -q under pipefail SIGPIPEs the producer.
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"

@@ -65,11 +65,7 @@ if [ -z "$(vm_guest_rsync_excludes)" ] || [ -z "$(vm_guest_tar_excludes)" ]; the
 fi
 
 # The ONE list of repo-relative paths staged onto the guest; BOTH copy paths below
-# consume it, so they cannot drift apart (each spelled its own sources,
-# and neither carried the three non-scripts/ inputs the test-uninstall parts read
-# relative to the repo root -- SC6 then failed 80 assertions on a clean guest).
-# Extend it when a suite run below reads another repo-root path; the drift guard in
-# scripts/lib/test-vm-guest-excludes.sh (T7n/T7o) pins the test-uninstall parts' reads to it.
+# consume it, so they cannot drift apart.
 # Every entry still passes through the secret excludes above.
 STAGE_PATHS=(scripts
   docs/setup/settings-template.json

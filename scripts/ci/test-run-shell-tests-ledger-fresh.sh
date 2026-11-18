@@ -29,9 +29,6 @@ run_lines() { grep -F '[RUN ] ' <<< "$1" | sed 's/^\[RUN \] //'; }
 # that ran >= 10s, with its measured seconds.
 # The sandbox holds a stub for each, the runner packs them with the
 # committed ledger, and the measured seconds of each shard are summed.
-# A run-alone suite holds all 4 lanes of its shard, so a shard's measured load
-# counts it 4x, as the pack does. The slowest shard cannot beat the heaviest
-# single suite, so the bound is that floor plus 5%.
 echo "== Case 22-fresh (HIMMEL-4075): the committed ledger balances measured shard time =="
 sb22w=$(mktemp -d "${TMPDIR:-/tmp}/rst-case22w.XXXXXX") || { fail "22w: mktemp failed"; sb22w=""; }
 if [ -n "$sb22w" ]; then

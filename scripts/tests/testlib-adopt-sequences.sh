@@ -336,7 +336,6 @@ gen_seq() { # <n> -> "verbs"
   echo "${out}U"
 }
 
-# run_sequences: run every entry of SEQS (or the --only / --seq choice), print one line per sequence, return non-zero on any failure
 run_sequences() {
   [ -z "$ADHOC" ] || { SEQS=("adhoc||$ADHOC"); ONLY=adhoc; }
 
