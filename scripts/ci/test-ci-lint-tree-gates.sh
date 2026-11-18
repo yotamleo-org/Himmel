@@ -168,6 +168,9 @@ LINT_INFRA="$(step_block lint 'Name a shellcheck release-host outage')"
 case "$LINT_INFRA" in *"failure()"*"cache-hit"*) pass "outage line runs only on a failure with no cache hit" ;; *) fail "outage step missing or ungated: $LINT_INFRA" ;; esac
 case "$(step_run lint 'Name a shellcheck release-host outage')" in *'github.com/koalaman/shellcheck/releases/download/'*'infra:'*) pass "outage line names the word infra and the release URL" ;; *) fail "outage line lacks infra or the URL" ;; esac
 case "$(step_run lint 'Name a shellcheck release-host outage')" in *'curl -sSfIL '*) pass "outage probe follows the release redirect" ;; *) fail "outage probe does not follow redirects (-L)" ;; esac
+LINT_ALL="$(step_run lint 'shellcheck (all files)')"
+case "$LINT_ALL" in *'git ls-files'*'shellcheck-pr-range.sh --sweep'*) pass "non-PR shellcheck lints every tracked file through the parallel sweep" ;; *) fail "non-PR shellcheck step is not the sweep over git ls-files: $LINT_ALL" ;; esac
+case "$LINT_ALL" in *'--all-files'*) fail "non-PR shellcheck step runs one serial --all-files: $LINT_ALL" ;; *) pass "non-PR shellcheck step does not run one serial --all-files" ;; esac
 n_pins="$(grep -o 'actions/cache@[0-9a-f]\{40\}' "$CI_YML" | sort -u | wc -l | tr -d ' ')"
 if [ "$n_pins" -eq 1 ]; then pass "every actions/cache use is one sha pin"; else fail "actions/cache pins differ: $n_pins"; fi
 
