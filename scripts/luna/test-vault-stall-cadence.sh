@@ -822,6 +822,13 @@ run_ac >/dev/null
 assert_has "T44 after the opt-in commit, C3 reads OK" "OK   C3-luna" "$(doc_c3)"
 
 mkvault
+mv "$V" "$TMP/my vault"; V="$TMP/my vault"
+mkdir -p "$V/.git/info"; : >"$V/.single-writer"; echo .single-writer >>"$V/.git/info/exclude"
+echo "more" >>"$V/README.md"; backdate "$V/README.md"
+doc_c3_fix() { HOME="$TMP/home" LUNA_VAULT_PATH="$V" bash "$ROOT/scripts/himmel-doctor.sh" --root "$ROOT" --no-color --only C3 2>&1 | grep -A3 'C3-luna'; }
+assert_has "T44b the C3 arm command keeps a vault path with a space as one argument" "--vault $TMP/my\\ vault" "$(doc_c3_fix)"
+
+mkvault
 echo "a note" >"$V/note.md"; backdate "$V/note.md"; git -C "$V" remote add origin https://example.invalid/v.git
 before="$(head_sha)"; out="$(run_ac)"
 assert_eq "T45 a vault with a remote is untouched (no commit)" "$before" "$(head_sha)"
