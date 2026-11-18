@@ -2561,13 +2561,21 @@ man77B="${doc77B%.md}.fleet.json"
 man77C="${doc77C%.md}.fleet.json"
 chief next --bucket fleet77dst2 --doc "$doc77A" >/dev/null 2>&1
 check "77 no predecessor manifest: successor gets none (no-op)" "$([ -e "$man77C" ] && echo yes || echo no)" "no"
-check "77 no predecessor manifest: step 10 names the successor's own manifest path" \
-    "$(grep -Fc "$man77C" "$doc77C" 2>/dev/null)" "1"
+# step 10 names the manifest on exactly two lines: the --workers-from arm command and the "Your manifest:" line.
+# manifest_lines77 prints <--workers-from lines>/<Your manifest lines>/<every line naming the path>.
+manifest_lines77() {
+    printf '%s/%s/%s' \
+        "$(grep -Fc -- "--workers-from \"$1\"" "$2" 2>/dev/null)" \
+        "$(grep -Fc -- "**Your manifest:** \`$1\`" "$2" 2>/dev/null)" \
+        "$(grep -Fc -- "$1" "$2" 2>/dev/null)"
+}
+check "77 no predecessor manifest: step 10 names the successor's own manifest path (arm command and Your manifest line)" \
+    "$(manifest_lines77 "$man77C" "$doc77C")" "1/1/2"
 printf '{"schema":1,"workers":["/x/worker.md"]}\n' > "$man77A"
 chief next --bucket fleet77dst --doc "$doc77A" >/dev/null 2>&1
 check "77 manifest is copied to the successor's stem" "$(cat "$man77B" 2>/dev/null)" '{"schema":1,"workers":["/x/worker.md"]}'
 check "77 the predecessor's manifest is left in place (copy, not rename)" "$([ -f "$man77A" ] && echo yes)" "yes"
-check "77 successor step 10 names the carried manifest path" "$(grep -Fc "$man77B" "$doc77B" 2>/dev/null)" "1"
+check "77 successor step 10 names the carried manifest path (arm command and Your manifest line)" "$(manifest_lines77 "$man77B" "$doc77B")" "1/1/2"
 check "77 no unrendered {{FLEET_MANIFEST}} left in the successor doc" "$(grep -Fc '{{FLEET_MANIFEST' "$doc77B" 2>/dev/null)" "0"
 HANDOVER_DIR="$root" bash "$QL" release "$doc77A" "$token77" >/dev/null 2>&1
 
