@@ -1202,15 +1202,8 @@ jobs:
         with:
           path: ~/.cache/pre-commit
           key: pre-commit-${{ runner.os }}-${{ job.container.id && 'image' || 'host' }}-${{ hashFiles('.pre-commit-config.yaml') }}
-      # The hook is require_serial, so `--all-files` is one CPU-bound shellcheck
-      # over every tracked shell file, far the job's longest step. It cannot
-      # be sharded by count: shellcheck resolves `source` across the files of ONE
-      # invocation, so SC2034 verdicts depend on the input set (a 100-file shard went
-      # red on scripts/lib/check-ci-watch.sh while the serial run was green). So a PR
-      # lints the changed files plus their source-graph neighbours (all files when in
-      # doubt, see the script), and every other event lints every tracked file as the
-      # script's sweep: the files binned by source closure, one hook run per bin, in
-      # parallel.
+      # shellcheck resolves `source` across the files of ONE invocation, so its
+      # SC2034 verdicts depend on the input set: a split by file count changes them.
       - name: shellcheck (PR range)
         if: github.event_name == 'pull_request'
         # The narrowing decision comes from the BASE copy of the script, never the
