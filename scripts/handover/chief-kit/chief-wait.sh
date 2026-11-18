@@ -1953,7 +1953,7 @@ ready_advance() { # <label> <line>: the cursor moves once the bullet was handed 
 }
 
 r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
-    local cands label marker ldoc bullet sum line stem out rc outf what pr
+    local cands label marker ldoc bullet sum line stem out rc outf what pr wake_line
     r0_handled=""
     [ -n "$console_doc" ] && [ -n "$legs_from" ] || return 1
     # Prefer WRAPPED once per label, then start after the last retryable worker.
@@ -1996,6 +1996,8 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
         if [ "$marker" = READY ]; then
             if [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" = 1 ]; then
                 ready_line="$event_line"; ready_bullet="$(sed -n "${event_line}p" "$ldoc")"
+                # the document may have moved since the collector numbered it: only a READY is relayed
+                [[ $ready_bullet =~ $ready_re ]] || continue
                 ready_off=""; auto_go_on || ready_off=1
             fi
             bullet="$ready_bullet"
@@ -2058,10 +2060,14 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
                 printf '%s\n' "$label" | atomic_write "$inbox.wait.r0-next"
                 break ;;
         esac
+        # Print the wake before recording it: a kill between the two leaves the READY or
+        # bullet unrecorded, so it is relayed once more (idempotent) and woken again,
+        # never recorded and lost.
+        wake_line="$(printf 'WAKE worker-event %s rc=%s out=%s' "$(printf '%s\n' "$out" | grep -m 1 '[^[:space:]]')" "$rc" "$outf")"
+        printf '%s\n' "$wake_line"
+        printf '%s' "$r0_warning_lines"
         printf '%s\n' "$sum" >> "$r0_file"
         [ "$marker" != READY ] || ready_advance "$label" "$ready_line"
-        printf 'WAKE worker-event %s rc=%s out=%s\n' "$(printf '%s\n' "$out" | grep -m 1 '[^[:space:]]')" "$rc" "$outf"
-        printf '%s' "$r0_warning_lines"
         return 0
     done <<EOF
 $cands
