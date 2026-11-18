@@ -437,9 +437,6 @@ MV_TSV="$d/tiers-norow.tsv" MV_TIER="fast" expect "MV39: not pr mode, a no-row c
 manifest "$d" 1 1 "$d/sel.txt" 'ran 0 scripts/test-a.sh' "skip $cap38"
 MV_TSV="$d/tiers-norow.tsv" MV_TIER="pr" expect "MV39: pr, the same no-row suite no shard ran is refused" 1 "$d" 1 'phi-egress-guard-parity.*never ran'
 
-# --- MV40: pr mode skips a quarantine suite the impacted selection does not name -
-# The aggregator's `--list .` has no selection, so it lists the quarantine suite to
-# RUN while every shard skips it. A shard skip row meets that; a selected one must run.
 d=$(case_dir mv40); header impacted scripts/test-a.sh > "$d/sel.txt"
 disc "$d" RUN scripts/test-a.sh RUN scripts/test-q.sh
 printf '# fixture tiers\nscripts/test-a.sh\tpr\tx\nscripts/test-q.sh\tquarantine\tflakes\n' > "$d/tiers.tsv"

@@ -285,8 +285,6 @@ else
   fail "27j: rc=$rc27 (want 1, test-prfail.sh not [QUARANTINE]) output: $out27"
 fi
 
-# 27k: a quarantine suite the selection reaches runs, once even though it fails;
-# one it does not reach is skipped, in the plan, in the manifest and across shards.
 mk27 test-quarhit.sh quarhit '# drives scripts/lib/thing.sh' 1
 printf 'scripts/test-quarhit.sh\tquarantine\tflakes\n' >> "$sb27/scripts/ci/suite-tiers.tsv"
 git -C "$sb27" add scripts/test-quarhit.sh
@@ -587,7 +585,6 @@ sleep 3
 exit 1
 SHEOF
 chmod +x "$sb33/scripts/test-fail33.sh" "$sb33/flakedir/test-flake33.sh"
-# A quarantine suite is never retried, so the two-attempt sum is read off a suite with no tier row.
 out33=$(HOME="$sb33/home" HIMMEL_SUITE_LEDGER="$sb33/suite-runs.jsonl" SUM33_DIR="$sb33" SUITE_FLAKE_LEDGER="$sb33/flake-ledger.jsonl" SUITE_TIER_MODE=all bash "$RUNNER" "$sb33/scripts" 2>&1); rc33=$?
 dur33=$(printf '%s\n' "$out33" | sed -n 's/^\[FAIL\] .*test-fail33\.sh (rc=1, \([0-9][0-9]*\)s)$/\1/p')
 if [ "$rc33" -eq 1 ] && [ -n "$dur33" ] && [ "$dur33" -ge 6 ]; then
