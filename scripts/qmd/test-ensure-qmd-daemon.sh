@@ -104,8 +104,6 @@ safe="${safe#:}"
 #   sneaky   -> foreign serverInfo but a name:qmd pair OUTSIDE serverInfo
 #   dead     -> nothing, connection-refused rc
 #   sentinel -> qmd-shaped reply iff $QMD_MOCK_STATE/alive exists, else dead
-#   sentinel + QMD_MOCK_SENTINEL_AUTH=1 -> once $QMD_MOCK_STATE/alive exists the
-#               server answers as auth401 (MCP 401, /health 200)
 #   auth401  -> an authenticated daemon the probe holds no token for: the MCP
 #               route answers 401 with an empty body, /health answers
 #               $QMD_MOCK_HEALTH (default 200; 000 = connection refused)

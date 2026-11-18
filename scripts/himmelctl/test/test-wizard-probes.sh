@@ -1028,10 +1028,6 @@ console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outSK2dn" | jq -e '.actual == "degraded" and (.detail | contains("not installed") and contains("source drift") and contains("claude plugin marketplace remove obsidian-skills"))' >/dev/null \
   || fail "settings-key verifyPluginSet: a not-installed plugin plus a marketplace drift must report both (got: $outSK2dn)"
-# Marketplaces merge per name across the same layers as enabledPlugins: a
-# wrong source in the USER settings still reads degraded when the project
-# settings enable a different plugin, and a project entry with the right
-# source wins over the user's wrong one.
 sk2_home_layers="$work/sk2-home-layers"; mkdir -p "$sk2_home_layers/.claude/plugins"
 printf '{"version":2,"plugins":{"foo@bar":[{"scope":"user","installPath":"%s"}],"other@x":[{"scope":"user","installPath":"%s"}]}}' "$sk2_foo_installpath_w" "$sk2_foo_installpath_w" > "$sk2_home_layers/.claude/plugins/installed_plugins.json"
 printf '{"enabledPlugins":{"foo@bar":true},"extraKnownMarketplaces":{"obsidian-skills":{"source":{"source":"github","repo":"someone-else/obsidian-skills"}}}}' > "$sk2_home_layers/.claude/settings.json"

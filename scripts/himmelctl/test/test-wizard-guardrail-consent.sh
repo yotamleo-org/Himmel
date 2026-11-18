@@ -198,7 +198,6 @@ grepq "$out" -F 'install' || fail "case g: dry-run plan should show the install 
 echo "ok: case g — dry-run with recorded consent surfaces the actual plan step"
 
 
-# ── case h: the consented guardrail wire still honors the tracked-file refusal ─
 caseh_dir="$work/case-h"; write_cache "$caseh_dir/cache"; write_state "$caseh_dir/cache" yes
 homeH="$caseh_dir/home"; mkdir -p "$homeH/.claude"
 settingsH="$homeH/.claude/settings.json"

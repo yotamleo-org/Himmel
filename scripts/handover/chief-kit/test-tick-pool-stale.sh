@@ -212,8 +212,6 @@ check 'no mirror reports residual-unversioned=skip' 'skip' "$(NEXT_DISPATCH_MIRR
 
 mk 115 "To Do" "To Do" '[]' '["other", "residual-depth-1"]' '["relates to HIMMEL-110"]'
 check 'a label list with spaces after the commas still counts the residual' '1:HIMMEL-115' "$(field residual-unversioned "$d")"
-# project keys other than the focus project's: a digit in the key (APP2) and an underscore (ZZ_Q) both parse
-# as one key; the unrelated residual (relates only to a Done ticket) and the unlabeled one are never counted
 for pk in APP APP2 ZZ_Q; do
     sed "s/HIMMEL-/$pk-/g" "$M/HIMMEL-110.md" > "$M/$pk-110.md"; sed "s/HIMMEL-/$pk-/g" "$M/HIMMEL-115.md" > "$M/$pk-115.md"
 done

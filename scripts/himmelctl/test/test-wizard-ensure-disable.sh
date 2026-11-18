@@ -1895,7 +1895,6 @@ done
 echo "ok: case t (negative control) — the identical fixture WITHOUT overrides still trips the under-recorded guard and --prune is held back, proving the primary case discriminates"
 
 
-# ── case u: a user-level value must not make a project-scope unwire read as failed ─
 repoU="$work/repoU"; mkdir -p "$repoU/scripts/install" "$repoU/scripts/lib"
 cat > "$repoU/scripts/install/manifest.json" <<'JSON'
 {

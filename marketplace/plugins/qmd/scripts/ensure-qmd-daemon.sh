@@ -342,17 +342,12 @@ recycle_lock_stale() {
   esac
 }
 
-# Strict: true only when the MCP initialize itself is accepted. A 401 with a
-# healthy /health is "up but refusing this token" (alive_auth_required), which
-# the recycle verification must not report as the new build serving.
 answers_mcp() {
   local reply
   reply="$(probe_body)"
   [ -n "$reply" ] && is_qmd_shaped "$reply"
 }
 
-# One-line reason a recycle verification probe failed: a server that answers 401
-# is named as rejecting the token, anything else as silent.
 unserved_reason() {
   if alive_auth_required; then
     echo "$1: server is up but rejected the MCP token - not reporting it as serving" >&2
