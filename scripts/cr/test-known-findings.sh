@@ -602,6 +602,25 @@ AJ="$ajson" AB="$ODD" AH="$PRH" node -e 'const j=JSON.parse(process.env.AJ);cons
 ( cd "$repo" && CR_LEDGER="$AL3" bash "$SCRIPT" --diff "$base...HEAD" --area --branch >/dev/null 2>&1 ); check "area: --branch with no value exits 2" "$?" "2"
 bash "$SCRIPT" --list --branch "$PRB" >/dev/null 2>&1; check "area: --branch without --diff --area exits 2" "$?" "2"
 
+# base-history-gate: the class fires when the BASE list does not cover a key the branch adds,
+# even though the branch adds its own row (its own gate passes), and stays silent when main covers it.
+hrepo="$tmp/hrepo"; mkdir -p "$hrepo/scripts/lint" "$hrepo/scripts/foo"
+( cd "$hrepo" && git init -q -b main . && git config user.email t@t && git config user.name t && git config commit.gpgsign false ) || { echo "FAIL - hist fixture init"; exit 1; }
+for f in check-history-comments.sh ticket-refs.awk ticket-ref-allow.tsv; do cp "$HERE/../lint/$f" "$hrepo/scripts/lint/$f"; done
+printf '#!/usr/bin/env bash\necho base\n' > "$hrepo/scripts/foo/k.sh"
+( cd "$hrepo" && git add -A && git commit -qm base ) || { echo "FAIL - hist fixture base"; exit 1; }
+printf '#!/usr/bin/env bash\necho base\n# explains the key HIMMEL-123 here\n' > "$hrepo/scripts/foo/k.sh"
+printf 'K6\t^scripts/foo/k\\.sh$\tHIMMEL-123\tbranch-only row\n' >> "$hrepo/scripts/lint/ticket-ref-allow.tsv"
+( cd "$hrepo" && git add -A && git commit -qm feat ) || { echo "FAIL - hist fixture feat"; exit 1; }
+hout="$(cd "$hrepo" && bash "$SCRIPT" --diff "main~1...HEAD" --area 2>&1)"; hrc=$?
+contains "base-history-gate: the class fires on a key the base list does not cover" "$hout" "[base-history-gate-miss]"
+contains "base-history-gate: the hit cites file:line" "$hout" "scripts/foo/k.sh:3"
+check "base-history-gate: the hit is open (exit 3)" "$hrc" "3"
+( cd "$hrepo" && git checkout -q -b main2 main~1 && printf 'K6\t^scripts/foo/k\\.sh$\tHIMMEL-123\tmain row\n' >> scripts/lint/ticket-ref-allow.tsv && git add -A && git commit -qm main-row && git checkout -q -b feat2 && printf '#!/usr/bin/env bash\necho base\n# explains the key HIMMEL-123 here\n' > scripts/foo/k.sh && git add -A && git commit -qm feat2 ) || { echo "FAIL - hist fixture main2"; exit 1; }
+hout2="$(cd "$hrepo" && bash "$SCRIPT" --diff "main2...HEAD" --area 2>&1)"
+not_contains "base-history-gate: a row already on the base is no hit" "$hout2" "[base-history-gate-miss]"
+contains "base-history-gate: the control diff is still judged (another class fires)" "$hout2" "[test-coverage-gap]"
+
 # usage contract
 bash "$SCRIPT" >/dev/null 2>&1; check "no mode → exit 2" "$?" "2"
 # bare --diff defaults to <default-branch>...HEAD (the fixture HEAD IS its default branch → empty diff → clean)

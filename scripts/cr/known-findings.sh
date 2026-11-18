@@ -120,7 +120,7 @@ if [ "$MODE" = refresh ] && [ -n "$LEARNINGS" ] && [ ! -f "$LEARNINGS" ]; then
   echo "known-findings.sh: learnings export not found: $LEARNINGS" >&2; exit 2
 fi
 
-MODE="$MODE" KF="$KF" AREA="$AREA" BRANCH="$BRANCH" HEADSHA="$HEADSHA" JSON="$JSON" DIFF_FILE="$DIFF_FILE" RANGE="$RANGE" LEDGER="$LEDGER" PROMO_N="$PROMO_N" PROMO_M="$PROMO_M" LEARNINGS="$LEARNINGS" REPO_ROOT="$REPO_ROOT" node -e '
+SCRIPT_DIR="$SCRIPT_DIR" MODE="$MODE" KF="$KF" AREA="$AREA" BRANCH="$BRANCH" HEADSHA="$HEADSHA" JSON="$JSON" DIFF_FILE="$DIFF_FILE" RANGE="$RANGE" LEDGER="$LEDGER" PROMO_N="$PROMO_N" PROMO_M="$PROMO_M" LEARNINGS="$LEARNINGS" REPO_ROOT="$REPO_ROOT" node -e '
 const fs = require("fs"), path = require("path");
 const T0 = Date.now();
 const MODE = process.env.MODE, KF = process.env.KF, JSON_OUT = process.env.JSON === "1";
@@ -339,7 +339,7 @@ if (MODE === "prompt") {
 }
 
 if (MODE === "diff") {
-  const detectorTypes = new Set(["added-line-regex", "no-test-change", "removed-flag-in-docs", "md-fence-no-lang", "hook-header-no-fail-direction", "hook-no-bypass"]);
+  const detectorTypes = new Set(["added-line-regex", "no-test-change", "removed-flag-in-docs", "md-fence-no-lang", "hook-header-no-fail-direction", "hook-no-bypass", "base-history-gate"]);
   for (const c of classes) if (c.detector && !detectorTypes.has(c.detector.type)) {
     console.error(`known-findings.sh: unknown detector type ${c.detector.type} in class ${c.id}`);
     process.exit(2);
@@ -430,6 +430,17 @@ if (MODE === "diff") {
       for (const f of scoped) if (files[f].isNew && !isTestFile(f) && !files[f].added.slice(0, 40).some(a => /fail[- ]?(open|closed)/i.test(a.text))) where.push(f);
     } else if (d.type === "hook-no-bypass") {
       for (const f of scoped) if (files[f].isNew && !isTestFile(f) && !files[f].added.some(a => /_(OK|BYPASS)\b|_BYPASS_/.test(a.text))) where.push(f);
+    } else if (d.type === "base-history-gate") {
+      // CI judges the history-comment gate with the BASE ref copies of the gate and allow list; run that pairing here
+      // (base-history-gate.sh: left side of the range = the base, right side = the tip, default HEAD).
+      // Exit 1 = findings (path:line: ...); any other non-zero is "cannot evaluate" and says so, never a hit.
+      const m = /^(.*?)\.{2,3}(.*)$/.exec(process.env.RANGE || "");
+      const args = [path.join(process.env.SCRIPT_DIR, "base-history-gate.sh")];
+      if (m && m[1]) args.push("--base", m[1]);
+      if (m && m[2]) args.push("--tip", m[2]);
+      const r = require("child_process").spawnSync("bash", args, { cwd: ROOT, encoding: "utf8" });
+      if (r.status === 1) { for (const l of r.stdout.split("\n")) { const mm = /^([^\s:][^:]*:\d+):/.exec(l); if (mm) where.push(mm[1]); } }
+      else if (r.status !== 0) console.error(`known-findings.sh: base-history-gate could not evaluate (exit ${r.status}): ${(r.stderr || "").trim().split("\n")[0]}`);
     }
     if (where.length) hits.push({ id: c.id, kind: c.kind, title: c.title, canonical: c.canonical, coverage: c.coverage, where });
   }
