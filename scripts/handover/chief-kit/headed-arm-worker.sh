@@ -3402,6 +3402,7 @@ if [ "$READINESS" -eq 1 ]; then
     # (1) the private attempt directory and the startup config that binds the minted id
     _ready_private_dir "$READINESS_ROOT" || _readiness_refuse "the private attempt root $READINESS_ROOT is not this user's mode-0700 directory"
     ( umask 077 && mkdir -m 700 -- "$READINESS_ATTEMPT" ) 2>/dev/null || _readiness_refuse "cannot create the private attempt directory $READINESS_ATTEMPT"
+    READINESS_PRE_HANDOFF=1
     _ready_startup="$(jq -cn --arg sid "$READINESS_SID" --arg attempt "$(_ready_uuid)" --arg version "$READINESS_VERSION" --arg doc "$READINESS_DOC" \
         --arg model "$MODEL" --arg ql "$READINESS_QL" --arg xdg "${XDG_RUNTIME_DIR:-}" --arg hdir "${HANDOVER_DIR:-}" --argjson port "$READINESS_PORT_JSON" \
         '{schema:"readiness-startup-v1",attempt_id:$attempt,session_scope:$sid,version:$version,doc:$doc,lane:"native",model:$model,queue_lock:$ql,runtime_dir:$xdg,handover_dir:$hdir,port:$port}')" \
@@ -3430,19 +3431,18 @@ if [ "$READINESS" -eq 1 ]; then
             || _readiness_refuse "the private jira credentials could not be initialized (see above)"
     fi
     # (4) acquire ON BEHALF and hand the token over privately; nothing is registered for this launcher's own session
+    # Know the private owner token before acquire so a signal before stdout decoding can still release only our lease.
+    READINESS_TOKEN="$(_ready_uuid)"
+    [[ "$READINESS_TOKEN" =~ ^[a-f0-9-]{36}$ ]] || _readiness_refuse "cannot mint the private lease token"
     _ready_acq_rc=0
-    _ready_acq="$(QUEUE_LOCK_ON_BEHALF=1 bash "$READINESS_QL" acquire "$READINESS_DOC" 2>/dev/null)" || _ready_acq_rc=$?  # swallow-ok: stderr can name another holder's token; the exit status is what is acted on
+    _ready_acq="$(QUEUE_LOCK_ON_BEHALF=1 bash "$READINESS_QL" acquire "$READINESS_DOC" "$READINESS_TOKEN" 2>/dev/null)" || _ready_acq_rc=$?  # swallow-ok: stderr can name another holder's token; the exit status is what is acted on
     [ "$_ready_acq_rc" -eq 0 ] || _readiness_refuse "the queue lease could not be acquired (it is held, or the queue is unreadable)"
     unset -v _ready_acq_rc
     # shellcheck disable=SC2016  # the backticks around the token are literal text in acquire's output
-    READINESS_TOKEN="$(printf '%s\n' "$_ready_acq" | sed -n 's/^release-token: `\(.*\)`$/\1/p' | tail -n 1)"
+    _ready_issued_token="$(printf '%s\n' "$_ready_acq" | sed -n 's/^release-token: `\(.*\)`$/\1/p' | tail -n 1)"
     unset -v _ready_acq
-    if ! [[ "$READINESS_TOKEN" =~ ^[A-Za-z0-9._-]+$ ]]; then
-        READINESS_TOKEN=""
-        _readiness_refuse "the acquired lease token was not readable, so the lease cannot be released by this launcher: it will go stale on its own"
-    fi
-    # from here until the child starts, EVERY exit (the EXIT trap, which a fatal signal also runs) releases this token
-    READINESS_PRE_HANDOFF=1
+    [ "$_ready_issued_token" = "$READINESS_TOKEN" ] || _readiness_refuse "the queue did not confirm the private lease token"
+    unset -v _ready_issued_token
     if ! ( umask 077 && set -C && printf '%s\n' "$READINESS_TOKEN" > "$READINESS_ATTEMPT/lease-token" ) 2>/dev/null; then
         _readiness_release
         echo "headed-arm-worker: refusing the readiness role: the lease token transport could not be written" >&2

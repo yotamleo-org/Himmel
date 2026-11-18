@@ -6670,6 +6670,23 @@ printf '#!/usr/bin/env bash\nexit 0\n' > "$RS/inside-target.sh"; chmod 755 "$RS/
 rs_launch HEADED_ARM_WORKER_TARGET="$RS/inside-target.sh"
 check "17s exec pin: a target inside the fixture root is accepted" "$RS_RC" "0"
 
+# Inject TERM after acquire returns, before the wrapper can decode its stdout.
+cat > "$RS/capture-signal.sh" <<'CAPTURE_SIGNAL_EOF'
+_capture_signal_sent=0
+_capture_signal_fault() {
+  if [ "${READINESS:-0}" = 1 ] && [ -n "${_ready_acq:-}" ] && [ "${_ready_acq_rc:-1}" = 0 ] && [ "$_capture_signal_sent" = 0 ]; then
+    _capture_signal_sent=1
+    kill -TERM "$BASHPID"
+  fi
+}
+trap _capture_signal_fault DEBUG
+CAPTURE_SIGNAL_EOF
+rs_launch BASH_ENV="$RS/capture-signal.sh"
+check "17s signal at acquire response: the wrapper ends with 143" "$RS_RC" "143"
+check "17s signal at acquire response: the known owned lease is released" "$(rs_status)" "free"
+check "17s signal at acquire response: private attempt files are removed" "$(rs_attempts)" "0"
+check "17s signal at acquire response: no child reached konsole" "$([ -e "$RS_D/record" ] && echo launched || echo no)" "no"
+
 echo "---"
 if [ "$fails" -eq 0 ]; then
   echo "PASS - test-headed-arm-worker.sh"
