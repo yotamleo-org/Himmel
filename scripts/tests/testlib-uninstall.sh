@@ -53,7 +53,7 @@ trap 'rm -rf "$TMP"' EXIT
 # none of uninstall.sh's wet-run fence markers — a case that forgets its own
 # per-invocation HOME override lands here, not on the operator's profile.
 REAL_HOME="$HOME"
-unset HIMMEL_UNINSTALL_REAL_HOME
+unset HIMMEL_UNINSTALL_REAL_HOME HIMMEL_PROVENANCE_DIR
 SUITE_HOME="$TMP/suitehome"
 mkdir -p "$SUITE_HOME"
 export HOME="$SUITE_HOME"

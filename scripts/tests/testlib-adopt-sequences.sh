@@ -196,7 +196,7 @@ remaining() {
 row() { echo "$1 $2" >> "$X/rows"; }
 
 fixture_env() {
-  export HOME="$X/home" CLAUDE_CONFIG_DIR="$X/home/.claude" STUB_STATE="$X/state" STUB_TEMPLATE="$R/docs/setup/settings-template.json"
+  export HOME="$X/home" CLAUDE_CONFIG_DIR="$X/home/.claude" STUB_STATE="$X/state" STUB_TEMPLATE="$R/docs/setup/settings-template.json" HIMMELCTL_CACHE_DIR="$X/home/.claude/himmel"
   export PATH="$X/bin"
   unset HIMMEL_PROVENANCE_DIR STUB_FAIL_AT STUB_UNDECLARED
 }
