@@ -1226,13 +1226,13 @@ stub_ensure() {
     printf '#!/usr/bin/env bash\necho "$*" > "%s"\nexit %s\n' "$QARGS" "$1" > "$QSTUB"
 }
 stub_ensure 0
-out=$(run_channel_lib 'QMD_DAEMON_RESTART_PENDING=1; QMD_DAEMON_BUILD_STAMP=/fork/.himmel-build-ok; report_qmd_daemon_restart' 2>&1)
+out=$(run_channel_lib 'QMD_DAEMON_RESTART_PENDING=1; QMD_FORK_BUILD_STAMP=/fork/.himmel-build-ok; report_qmd_daemon_restart' 2>&1)
 assert_eq "32a: the repo ensure script gets --recycle-if-stale and the build stamp" "--recycle-if-stale /fork/.himmel-build-ok" "$(cat "$QARGS" 2>/dev/null)"
 assert_contains "32a: success: says the qmd server was restarted" "restarted" "$out"
 case "$out" in *"restart REQUIRED"*|*pkill*) assert_fail "32a: success must not print the manual block, got: $out" ;; *) assert_pass "26a: success prints no manual block" ;; esac
 
 stub_ensure 1
-out=$(run_channel_lib 'QMD_DAEMON_RESTART_PENDING=1; QMD_DAEMON_BUILD_STAMP=/fork/.himmel-build-ok; report_qmd_daemon_restart' 2>&1)
+out=$(run_channel_lib 'QMD_DAEMON_RESTART_PENDING=1; QMD_FORK_BUILD_STAMP=/fork/.himmel-build-ok; report_qmd_daemon_restart' 2>&1)
 assert_contains "32b: a failed recycle prints the manual block" "qmd daemon restart REQUIRED" "$out"
 assert_contains "32b: …with the scoped stop command" "pkill -f 'qmd.*mcp.*--http'" "$out"
 
@@ -1243,7 +1243,7 @@ assert_empty_out "32c: nothing pending: silent" "$out"
 if [ ! -f "$QARGS" ]; then assert_pass "32c: nothing pending: the ensure script is not run"; else assert_fail "32c: the ensure script ran with nothing pending"; fi
 
 rm -f "$QSTUB"
-out=$(run_channel_lib 'QMD_DAEMON_RESTART_PENDING=1; QMD_DAEMON_BUILD_STAMP=/fork/.himmel-build-ok; report_qmd_daemon_restart' 2>&1)
+out=$(run_channel_lib 'QMD_DAEMON_RESTART_PENDING=1; QMD_FORK_BUILD_STAMP=/fork/.himmel-build-ok; report_qmd_daemon_restart' 2>&1)
 assert_contains "32d: the repo ensure script missing: manual block" "qmd daemon restart REQUIRED" "$out"
 
 # ─── Summary ─────────────────────────────────────────────────────────────────

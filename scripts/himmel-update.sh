@@ -1830,7 +1830,7 @@ update_qmd_fork() {
         if qmd_daemon_serving; then
             DETAIL_qmd_fork="${DETAIL_qmd_fork:+$DETAIL_qmd_fork }(daemon restart pending)"
             QMD_DAEMON_RESTART_PENDING=1
-            QMD_DAEMON_BUILD_STAMP="$(_qmd_build_stamp)"
+            QMD_FORK_BUILD_STAMP="$(_qmd_build_stamp)"
         fi
         return 0
     fi
@@ -1869,13 +1869,13 @@ report_qmd_daemon_restart() {
     [ "${QMD_DAEMON_RESTART_PENDING:-0}" = "1" ] || return 0
     # Synchronous and bounded by the script itself (worst case about two minutes).
     # The repo copy, never the plugin cache's: the cache may still be the old build.
-    local ensure="$ROOT/marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh" rc=0
-    if [ -f "$ensure" ] && [ -n "${QMD_DAEMON_BUILD_STAMP:-}" ]; then
+    local ensure="$ROOT/marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh" rc=0  # t13b-ok: path of the existing repo script, starts nothing
+    if [ -f "$ensure" ] && [ -n "${QMD_FORK_BUILD_STAMP:-}" ]; then
         echo ""
         echo "==> qmd daemon: restarting it onto the new build"  # t13b-ok: progress text only, starts nothing
-        bash "$ensure" --recycle-if-stale "$QMD_DAEMON_BUILD_STAMP" || rc=$?
+        bash "$ensure" --recycle-if-stale "$QMD_FORK_BUILD_STAMP" || rc=$?
         if [ "$rc" -eq 0 ]; then
-            QMD_DAEMON_RESTART_PENDING=0
+            QMD_DAEMON_RESTART_PENDING=0  # t13b-ok: clears the notice flag, starts nothing
             echo "    qmd daemon restarted: the new build is serving."  # t13b-ok: progress text only, starts nothing
             return 0
         fi
