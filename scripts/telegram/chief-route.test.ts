@@ -6583,3 +6583,163 @@ test("F1 v2Policy.headingOk follows parseFindings exactly: the near-misses the l
     expect(heading(reserved), `${reserved}: headingOk agrees`).toBe(false);
   }
 }, S1B);
+
+// ---- member state at the in-process seam (rows M1 to M5) ----
+const M3D_PRESENT = (keys: string[]) => `capped-fold: group member holds ledger state: ${keys.join(", ")}`;
+const m3Route = async (): Promise<any> => {
+  const route: any = await import("./chief-route");
+  for (const name of ["cappedMemberState", "cappedReader", "cappedLedger"]) expect(typeof route[name], `${name} is reachable by an in-process caller`).toBe("function");
+  return route;
+};
+const m3Group = async () => {
+  const lib = await b1Lib(); const route = await m3Route(); const shared = await t2Pinned();
+  const f = await lib.buildGroupFixture(realpathSync(root()), { reset: "none" });
+  const reader = () => route.cappedReader(f.specsRoot, f.anchor);
+  return { f, route, shared, dir: shared.ledgerDirOf(f.specsRoot) as string, reader, names: (key: string) => shared.ledgerEntryNames(key) as { file: string; folder: string; lock: string },
+    state: (members: string[], r: any = reader()) => route.cappedMemberState(f.specsRoot, f.anchor, members, r) };
+};
+type M3Group = Awaited<ReturnType<typeof m3Group>>;
+// A member's own ledger file, snapshot folder and lock as the real writer leaves them. The writer runs in a root of its own: the group's
+// root already holds the anchor's ledger, and the writer refuses a second key there.
+const m3Writer = async (key: string) => {
+  const lib = await b1Lib(); const scratch = realpathSync(root());
+  await lib.buildRoundFixture({ scratchRoot: scratch, key, specText: `---\ntickets: ${key}\n---\n# ${key} member\n`, planText: "# member plan\n",
+    returns: [{ kind: "spec", round: 1, text: "SPEC CLEAN\n", reads: ["spec"] }] });
+  return join(scratch, "specs", "ledgers", "spec-rounds");
+};
+const m3Put = async (g: M3Group, key: string, what: "file" | "folder" | "lock") => {
+  const own = await m3Writer(key); const name = g.names(key)[what];
+  if (what === "folder") cpSync(join(own, name), join(g.dir, name), { recursive: true }); else copyFileSync(join(own, name), join(g.dir, name));
+  expect(existsSync(join(g.dir, name)), `${key} ${what} is in the group's ledger folder`).toBe(true);
+};
+const m3Manifest = (g: M3Group, edit: (manifest: any) => void) => {
+  const path = join(g.dir, "manifest.json"); const manifest = JSON.parse(readFileSync(path, "utf8")); edit(manifest); writeFileSync(path, `${JSON.stringify(manifest)}\n`);
+};
+const m3Pin = (g: M3Group, members: string[]) => ({ role: "member-absence", directory: g.shared.ledgerDirOf(g.f.specsRoot), keys: [...members].sort() });
+// A permission fault the sandbox user really feels; the mode is restored whatever happens so the scratch folder can be removed.
+const m3Unreadable = async (path: string, run: () => Promise<void>) => {
+  const mode = statSync(path).mode & 0o777; chmodSync(path, 0o000);
+  try {
+    expect(() => statSync(path).isDirectory() ? readdirSync(path) : readFileSync(path), "the permission fault is real for this user").toThrow();
+    await run();
+  } finally { chmodSync(path, mode); }
+};
+
+test("3d availability: cappedMemberState is reachable in process beside the reader and the ledger load", async () => {
+  const route = await m3Route();
+  expect(route.cappedMemberState.length, "specs, anchor, members and the reader").toBe(4);
+});
+
+test("3d member state: a group without member state returns the exact sorted pin for any input order, the anchor and strangers never count, and no member returns null", async () => {
+  const g = await m3Group(); const pin = m3Pin(g, g.f.members); const anchor = g.names(g.f.anchor);
+  expect(g.f.members).toHaveLength(6); expect(readdirSync(g.dir), "the anchor owns a ledger, a folder and a lock here").toEqual(expect.arrayContaining([anchor.file, anchor.folder, anchor.lock]));
+  expect(await g.state(g.f.members)).toEqual(pin);
+  expect(pin).toEqual({ role: "member-absence", directory: join(g.f.specsRoot, "ledgers", "spec-rounds"), keys: [...g.f.members].sort() });
+  expect(await g.state(g.f.keys), "the whole declared key set, the anchor included").toEqual(pin);
+  const k = g.f.keys;
+  for (const order of [[...k].reverse(), [k[3], k[0], k[6], k[1], k[5], k[2], k[4]], [k[6], k[5], k[4], k[3], k[2], k[1]]]) expect(await g.state(order), order.join()).toEqual(pin);
+  const given = [...k].reverse(); await g.state(given); expect(given, "the caller's array is not reordered").toEqual([...k].reverse());
+  expect(pin.keys).not.toContain(g.f.anchor);
+  m3Manifest(g, m => { m.keys[g.f.anchor] = { spec: 3, plan: 3 }; m.keys["HIMMEL-9999"] = { spec: 1, plan: 1 }; });
+  writeFileSync(join(g.dir, "HIMMEL-9999.jsonl"), ""); mkdirSync(join(g.dir, "HIMMEL-9999"));
+  expect(await g.state(g.f.keys), "the anchor's manifest entry and a stranger's ledger file, folder and manifest entry").toEqual(pin);
+  for (const none of [[], [g.f.anchor]]) {
+    const reader = g.reader(); expect(await g.state(none, reader), JSON.stringify(none)).toBeNull(); expect(reader.pins(), "no member: nothing is read").toEqual([]);
+  }
+}, S1B);
+
+test("M1 a non-anchor member with its own ledger file, made by the real writer, refuses and names that member", async () => {
+  for (const index of [0, 3, 5]) {
+    const g = await m3Group(); const member = g.f.members[index]; await m3Put(g, member, "file");
+    expect(await c3Message(g.state(g.f.members)), member).toBe(M3D_PRESENT([member]));
+    expect(await c3Message(g.state(g.f.keys)), `${member}, the anchor in the input`).toBe(M3D_PRESENT([member]));
+  }
+  const two = await m3Group(); const [first, last] = [two.f.members[0], two.f.members[5]];
+  await m3Put(two, last, "file"); await m3Put(two, first, "file");
+  expect(await c3Message(two.state([...two.f.members].reverse())), "two members, named in sorted order").toBe(M3D_PRESENT([first, last]));
+}, S1B);
+
+test("M2 a member snapshot folder only refuses, with no ledger file and no manifest entry for it", async () => {
+  for (const index of [0, 5]) {
+    const g = await m3Group(); const member = g.f.members[index]; await m3Put(g, member, "folder");
+    expect(readdirSync(g.dir), "the folder stands alone").not.toContain(g.names(member).file);
+    expect(Object.keys(JSON.parse(readFileSync(join(g.dir, "manifest.json"), "utf8")).keys), "no manifest entry").toEqual([]);
+    expect(await c3Message(g.state(g.f.members)), member).toBe(M3D_PRESENT([member]));
+  }
+}, S1B);
+
+test("M3 a member manifest entry only refuses, with no ledger file and no folder for it", async () => {
+  for (const index of [0, 2, 5]) {
+    const g = await m3Group(); const member = g.f.members[index]; m3Manifest(g, m => { m.keys[member] = { spec: 1, plan: 1 }; });
+    expect(readdirSync(g.dir), "the entry stands alone: no ledger file").not.toContain(g.names(member).file);
+    expect(readdirSync(g.dir), "the entry stands alone: no folder").not.toContain(g.names(member).folder);
+    expect(await c3Message(g.state(g.f.members)), member).toBe(M3D_PRESENT([member]));
+  }
+  const both = await m3Group(); m3Manifest(both, m => { m.keys[both.f.members[4]] = { spec: 1, plan: 1 }; m.keys[both.f.members[1]] = { spec: 1, plan: 1 }; });
+  expect(await c3Message(both.state(both.f.keys)), "two entries, sorted").toBe(M3D_PRESENT([both.f.members[1], both.f.members[4]]));
+}, S1B);
+
+test("M4 a malformed member ledger, a ledger that is a folder or a dangling link, and an unreadable ledger or folder refuse as present, never as absent", async () => {
+  const shapes: [string, (g: M3Group, key: string) => void][] = [
+    ["garbage bytes", (g, key) => writeFileSync(join(g.dir, g.names(key).file), "this is not a ledger\n{\n")],
+    ["an empty file", (g, key) => writeFileSync(join(g.dir, g.names(key).file), "")],
+    ["a folder in its place", (g, key) => mkdirSync(join(g.dir, g.names(key).file))],
+    ["a dangling link", (g, key) => symlinkSync(join(g.dir, "no-such-target"), join(g.dir, g.names(key).file))],
+    ["a plain file where the snapshot folder belongs", (g, key) => writeFileSync(join(g.dir, g.names(key).folder), "not a folder")],
+  ];
+  for (const [what, make] of shapes) {
+    const g = await m3Group(); const member = g.f.members[2]; make(g, member);
+    expect(await c3Message(g.state(g.f.members)), what).toBe(M3D_PRESENT([member]));
+  }
+  const file = await m3Group(); const owner = file.f.members[1]; await m3Put(file, owner, "file");
+  await m3Unreadable(join(file.dir, file.names(owner).file), async () => { expect(await c3Message(file.state(file.f.members)), "an unreadable member ledger file").toBe(M3D_PRESENT([owner])); });
+  const folder = await m3Group(); const holder = folder.f.members[4]; await m3Put(folder, holder, "folder");
+  await m3Unreadable(join(folder.dir, folder.names(holder).folder), async () => { expect(await c3Message(folder.state(folder.f.members)), "an unreadable member snapshot folder").toBe(M3D_PRESENT([holder])); });
+}, S1B);
+
+test("M4 a read fault of the ledger folder or the manifest refuses with its own words and is never read as absence", async () => {
+  const group = async () => m3Group();
+  const folder = await group();
+  await m3Unreadable(folder.dir, async () => {
+    const message = await c3Message(folder.state(folder.f.members));
+    expect(message, "an unreadable ledger folder: the reader's own refusal, naming the folder").toContain("EACCES"); expect(message).toContain(folder.dir);
+  });
+  const gone = await group(); rmSync(gone.dir, { recursive: true });
+  expect(await c3Message(gone.state(gone.f.members)), "a ledger folder that is gone").toBe(`no round manifest under ${gone.f.specsRoot}; run round-seed --all once`);
+  const missing = await group(); unlinkSync(join(missing.dir, "manifest.json"));
+  expect(await c3Message(missing.state(missing.f.members)), "a missing manifest").toBe(`no round manifest under ${missing.f.specsRoot}; run round-seed --all once`);
+  const unreadable = await group(); const manifest = join(unreadable.dir, "manifest.json");
+  await m3Unreadable(manifest, async () => { expect(await c3Message(unreadable.state(unreadable.f.members)), "an unreadable manifest").toContain(`${manifest}: cannot read the round manifest`); });
+  for (const text of ["not json at all", "[]", '{"keys":[]}', '{"keys":null}', '{"v":1}']) {
+    const bad = await group(); writeFileSync(join(bad.dir, "manifest.json"), `${text}\n`);
+    expect(await c3Message(bad.state(bad.f.members)), `a manifest of ${text}`).toBe(`${join(bad.dir, "manifest.json")}: the round manifest does not parse; restore it from the state repo history`);
+  }
+  const wide = await group(); for (let i = 0; i < 4097; i++) writeFileSync(join(wide.dir, `pad-${i}`), "");
+  expect(await c3Message(wide.state(wide.f.members)), "an over-bounded listing").toBe(`${wide.dir}: directory entry limit (4096) exceeded`);
+}, S1B);
+
+test("M5 a member lock file only is accepted, because a lock is not a ledger fact", async () => {
+  const g = await m3Group(); const pin = m3Pin(g, g.f.members);
+  await m3Put(g, g.f.members[0], "lock");
+  expect(readdirSync(g.dir)).toContain(g.names(g.f.members[0]).lock); expect(readdirSync(g.dir)).not.toContain(g.names(g.f.members[0]).file);
+  expect(await g.state(g.f.members), "one member lock").toEqual(pin);
+  for (const member of g.f.members.slice(1)) writeFileSync(join(g.dir, g.names(member).lock), "");
+  expect(readdirSync(g.dir).filter(n => n.endsWith(".jsonl.lock")), "every member holds a lock beside the anchor's and the seed's").toHaveLength(8);
+  expect(await g.state(g.f.keys), "a lock for every member").toEqual(pin);
+  await m3Put(g, g.f.members[3], "file");
+  expect(await c3Message(g.state(g.f.members)), "a lock does not hide a ledger file beside it").toBe(M3D_PRESENT([g.f.members[3]]));
+}, S1B);
+
+test("3d member state: the listing and the manifest are read through the reader, so a member that appears after the check fails the reader's recheck", async () => {
+  const g = await m3Group(); const reader = g.reader(); const pin = m3Pin(g, g.f.members);
+  await g.route.cappedLedger(g.f.specsRoot, g.f.anchor, reader);
+  expect(await g.state(g.f.members, reader)).toEqual(pin);
+  const manifest = join(g.dir, "manifest.json");
+  expect(reader.pins().filter((p: any) => p.role === "manifest"), "the anchor's load and the member check pin the manifest once").toEqual([{ role: "manifest", path: manifest, sha256: sha(readFileSync(manifest, "utf8")) }]);
+  await expect(reader.recheck()).resolves.toBeUndefined();
+  await m3Put(g, g.f.members[2], "file");
+  await expect(reader.recheck(), "a member ledger file created after the check").rejects.toThrow(`capped-fold: evidence changed or is unreadable: ${g.dir}`);
+  const second = await m3Group(); const again = second.reader(); await second.state(second.f.members, again);
+  m3Manifest(second, m => { m.keys[second.f.members[0]] = { spec: 1, plan: 1 }; });
+  await expect(again.recheck(), "a manifest entry written after the check").rejects.toThrow(`capped-fold: evidence changed or is unreadable: ${join(second.dir, "manifest.json")}`);
+}, S1B);
