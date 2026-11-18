@@ -4,6 +4,7 @@ import hashlib
 import os
 from pathlib import Path
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -12,6 +13,33 @@ import time
 def checksum(line):
     return subprocess.run(['cksum'], input=line + '\n', text=True,
                           capture_output=True, check=True).stdout.split()[0]
+
+
+def doc_bound():
+    try:
+        bound = float(os.getenv('CHIEF_WAIT_PENDING_DOC_TIMEOUT', '3'))
+    except ValueError:
+        bound = 0
+    return bound if bound > 0 else 3.0
+
+
+def read_lines(doc, bound):
+    """The document's lines, numbered as the relay's `sed -n Np` addresses them (newline only),
+    read within `bound` seconds. A read that blocks raises TimeoutError, an OSError the caller
+    already treats as an unreadable document."""
+    def expire(signum, frame):
+        raise TimeoutError(f'no answer within {bound:g}s')
+    handler = signal.signal(signal.SIGALRM, expire)
+    signal.setitimer(signal.ITIMER_REAL, bound)
+    try:
+        text = doc.read_bytes().decode(errors='replace')
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, handler)
+    lines = text.split('\n')
+    if lines[-1] == '':
+        lines.pop()
+    return lines
 
 
 def candidates(fleet, inbox, last):
@@ -28,10 +56,12 @@ def candidates(fleet, inbox, last):
     observed = json.loads(observed_path.read_text()) if observed_path.exists() else {}
     current = {}
     events = []
+    bound = doc_bound()
     for worker in data.get('workers', data.get('legs', [])):
         label, doc = worker['label'], Path(worker['doc'])
         try:
-            lines = doc.read_text(errors='replace').splitlines()
+            # a document already known unread gets a short look, so one blocked file costs a pass little
+            lines = read_lines(doc, min(bound, 0.5) if observed.get(label, {}).get('unread') else bound)
         except OSError as exc:
             print(f'pending-events: worker={label} doc={doc}: {exc}', file=sys.stderr)
             previous = observed.get(label, {})
