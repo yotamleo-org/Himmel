@@ -200,8 +200,8 @@ echo "ok: case g — dry-run with recorded consent surfaces the actual plan step
 
 # ── case h: the consented guardrail wire still honors the tracked-file refusal ─
 caseh_dir="$work/case-h"; write_cache "$caseh_dir/cache"; write_state "$caseh_dir/cache" yes
-settingsH="$caseh_dir/settings.json"
 homeH="$caseh_dir/home"; mkdir -p "$homeH/.claude"
+settingsH="$homeH/.claude/settings.json"
 printf '{}\n' > "$homeH/.claude/settings.json"
 git init -q "$homeH"
 git -C "$homeH" -c core.hooksPath=/dev/null -c commit.gpgsign=false -c user.name=t -c user.email=t@example.invalid add .claude/settings.json
@@ -213,7 +213,9 @@ out=$(HOME="$homeH" CLAUDE_USER_SETTINGS="$(winpath "$settingsH")" HIMMELCTL_CAC
 set -e
 [ "$rc" -eq 2 ] || fail "case h: a consented guardrail wire into a git-tracked user settings file must refuse, exit 2 (got rc=$rc): $out"
 grepq "$out" -F -- '--write-tracked' || fail "case h: the refusal should name --write-tracked (got: $out)"
-[ ! -f "$settingsH" ] || fail "case h: nothing may be written before the refusal"
+[ "$(cat "$settingsH")" = '{}' ] || fail "case h: the tracked settings file must keep its bytes after the refusal (got: $(cat "$settingsH"))"
+[ -z "$(git -C "$homeH" status --porcelain --untracked-files=no)" ] || fail "case h: the refusal must leave the tracked repo clean (got: $(git -C "$homeH" status --porcelain --untracked-files=no))"
+git -C "$homeH" diff --quiet || fail "case h: the refusal must leave no git diff in the tracked repo"
 echo "ok: case h — the consented guardrail wire is refused while the user settings file is git-tracked"
 
 set +e
