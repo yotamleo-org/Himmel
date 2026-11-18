@@ -16,6 +16,7 @@
 # Partial-delete residue detection is not asserted here: bash has no portable
 # way to hold an open handle that blocks rm.
 # Usage: bash scripts/test-uninstall-b.sh
+# selector: names uninstall-plugins.sh install-plugins.sh unwire-himmel-repo.sh unwire-luna-vault.sh unwire-handover-dir.sh
 set -uo pipefail
 
 CLI="$(cd "$(dirname "$0")" && pwd)/uninstall.sh"
