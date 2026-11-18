@@ -1160,6 +1160,7 @@ scripts/test-template-graphify-ignore.sh	4
 scripts/test-template-nostash-hooks.sh	69
 scripts/test-template-verdicts-shellcheck-exclude.sh	0
 scripts/test-tmp-reap.sh	50
+scripts/test-uninstall-b.sh	245
 scripts/test-uninstall-guard.sh	2
 scripts/test-uninstall-home-guard.sh	0
 scripts/test-uninstall-plugins.sh	15
@@ -1172,7 +1173,7 @@ scripts/test-uninstall-real-home-runtime.sh	195
 scripts/test-uninstall-routines.sh	108
 scripts/test-uninstall-standalone.sh	248
 scripts/test-uninstall-ux.sh	113
-scripts/test-uninstall.sh	563
+scripts/test-uninstall.sh	272
 scripts/test-unlanded-work.sh	8
 scripts/test-user-slug-resolve.sh	1
 scripts/test-vm-e2e-mode-guard.sh	1

@@ -1159,6 +1159,7 @@ scripts/test-template-graphify-ignore.sh	pr	guard
 scripts/test-template-nostash-hooks.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-template-verdicts-shellcheck-exclude.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-tmp-reap.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/test-uninstall-b.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-uninstall-guard.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-uninstall-home-guard.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-uninstall-plugins.sh	local	behaviour suite, 0 catches in the 400-PR audit window

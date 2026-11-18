@@ -66,10 +66,10 @@ fi
 
 # The ONE list of repo-relative paths staged onto the guest; BOTH copy paths below
 # consume it, so they cannot drift apart (each spelled its own sources,
-# and neither carried the three non-scripts/ inputs scripts/test-uninstall.sh reads
+# and neither carried the three non-scripts/ inputs the test-uninstall parts read
 # relative to the repo root -- SC6 then failed 80 assertions on a clean guest).
 # Extend it when a suite run below reads another repo-root path; the drift guard in
-# scripts/lib/test-vm-guest-excludes.sh (T7n/T7o) pins test-uninstall.sh's reads to it.
+# scripts/lib/test-vm-guest-excludes.sh (T7n/T7o) pins the test-uninstall parts' reads to it.
 # Every entry still passes through the secret excludes above.
 STAGE_PATHS=(scripts
   docs/setup/settings-template.json
@@ -139,6 +139,7 @@ fi
 run_suite "SC5/SC11 detect-hook-dup"  scripts/lib/test-detect-hook-dup.sh
 # SC6 (uninstall [6/6] + unwire helpers).
 run_suite "SC6 uninstall"             scripts/test-uninstall.sh
+run_suite "SC6 uninstall (part 2)"    scripts/test-uninstall-b.sh
 run_suite "SC6 unwire-pretooluse"     scripts/lib/test-unwire-pretooluse-hooks.sh
 run_suite "SC6 unwire-singlekey"      scripts/lib/test-unwire-singlekey.sh
 # SC7 (preflight ordering + ensure-tools branches).

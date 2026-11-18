@@ -336,7 +336,7 @@ scripts/test-uninstall-real-home-runtime.sh	199
 scripts/test-uninstall-routines.sh	107
 scripts/test-uninstall-standalone.sh	248
 scripts/test-uninstall-ux.sh	113
-scripts/test-uninstall.sh	567
+scripts/test-uninstall.sh	272
 scripts/test-worktree-orphans.sh	24
 scripts/test-worktree-verbs.sh	17
 scripts/testing/test-documented-commands.sh	115

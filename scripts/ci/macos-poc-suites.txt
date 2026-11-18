@@ -161,6 +161,7 @@ scripts/test-e2e-symmetry.sh
 scripts/test-himmel-update-chain.sh
 scripts/test-himmel-update-check.sh
 scripts/test-merge-public-on-green.sh
+scripts/test-uninstall-b.sh
 scripts/test-uninstall.sh
 scripts/test-uninstall-ux.sh
 scripts/test-vm-e2e-mode-guard.sh

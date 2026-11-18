@@ -1179,7 +1179,7 @@ Distinct matched strings (4): `headed-arm-leg-cwd.sh` to `headed-arm-worker-cwd.
 | `scripts/lint/swallowed-errors-baseline.txt` | config | 94 |
 | `scripts/telegram/break-glass.sh` | code | 380 |
 | `scripts/telegram/round-guard.ts` | code | 293 |
-| `scripts/test-uninstall.sh` | test | 1249, 1272, 1275 |
+| `scripts/test-uninstall.sh` | test | 1078, 1101, 1104 |
 | `scripts/testing/test-mock-consult-sandbox.sh` | test | 10, 52, 59, 80 |
 | `scripts/testing/unwired-hooks-allowlist.txt` | config | 33 |
 | `scripts/uninstall.sh` | code | 3732 |
@@ -1822,7 +1822,7 @@ Distinct matched strings (1): `console-kit` to `chief-kit`
 | `scripts/telegram/console-route.test.ts` | test | 410 |
 | `scripts/telegram/console-route.ts` | code | 86 |
 | `scripts/test-template-verdicts-shellcheck-exclude.sh` | test | 5 |
-| `scripts/test-uninstall.sh` | test | 1263, 1269, 1271, 1272, 1275 |
+| `scripts/test-uninstall.sh` | test | 1092, 1098, 1100, 1101, 1104 |
 | `scripts/testing/documented-commands.tsv` | config | 38, 39, 51, 60, 66, 67, 74, 75, 76, 77, 79 |
 | `scripts/testing/test-mock-consult-sandbox.sh` | test | 80 |
 | `scripts/vm/ci-runner/himmel-ci-runner@.service` | code | 3 |

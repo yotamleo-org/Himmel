@@ -395,7 +395,7 @@ scripts/luna/test-graphmap-cadence.sh|fixture root, not the repo tree
 scripts/luna/test-qmd-cadence.sh|fixture root, not the repo tree
 scripts/release/test-tarball-vs-clone.sh|fixture root, not the repo tree
 scripts/test-tmp-reap.sh|fixture root, not the repo tree
-scripts/test-uninstall.sh|fixture root, not the repo tree'
+scripts/test-uninstall-b.sh|fixture root, not the repo tree'
 
 # is15_suites <root>: the real walk list (every tracked suite under these trees).
 is15_suites() {

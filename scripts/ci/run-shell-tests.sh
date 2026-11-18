@@ -419,7 +419,7 @@ _suite_timeout_for() {
       # covers the worst observed loaded run (1992s, Task 0 under harness
       # load) with headroom.
       printf '2350' ;;
-    scripts/test-uninstall.sh|*/scripts/test-uninstall.sh)
+    scripts/test-uninstall.sh|scripts/test-uninstall-b.sh|*/scripts/test-uninstall.sh|*/scripts/test-uninstall-b.sh)
       # Os-verify run 36628311643 (macOS): every assertion passed
       # but the runner's watchdog killed it at 604s against the 600s default
       # (CAP EXCEEDED); it takes ~211s on Linux. 1200s is ~2x the macOS figure;
