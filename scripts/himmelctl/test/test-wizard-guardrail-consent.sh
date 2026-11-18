@@ -206,7 +206,7 @@ git init -q "$homeH"
 git -C "$homeH" -c core.hooksPath=/dev/null -c commit.gpgsign=false -c user.name=t -c user.email=t@example.invalid add .claude/settings.json
 git -C "$homeH" -c core.hooksPath=/dev/null -c commit.gpgsign=false -c user.name=t -c user.email=t@example.invalid commit -q -m seed
 set +e
-out=$(HOME="$homeH" CLAUDE_USER_SETTINGS="$(winpath "$settingsH")" HIMMELCTL_CACHE_DIR="$(winpath "$caseh_dir/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$caseh_dir/cache")-luna-config.json" \
+out=$(HOME="$homeH" USERPROFILE="$(winpath "$homeH")" CLAUDE_USER_SETTINGS="$(winpath "$settingsH")" HIMMELCTL_CACHE_DIR="$(winpath "$caseh_dir/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$caseh_dir/cache")-luna-config.json" \
       HIMMELCTL_INTERACTIVE=0 \
       "$node_bin" "$wizard" ensure --items guardrail-block-global --yes </dev/null 2>&1); rc=$?
 set -e
@@ -218,7 +218,7 @@ git -C "$homeH" diff --quiet || fail "case h: the refusal must leave no git diff
 echo "ok: case h — the consented guardrail wire is refused while the user settings file is git-tracked"
 
 set +e
-out=$(HOME="$homeH" CLAUDE_USER_SETTINGS="$(winpath "$settingsH")" HIMMELCTL_CACHE_DIR="$(winpath "$caseh_dir/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$caseh_dir/cache")-luna-config.json" \
+out=$(HOME="$homeH" USERPROFILE="$(winpath "$homeH")" CLAUDE_USER_SETTINGS="$(winpath "$settingsH")" HIMMELCTL_CACHE_DIR="$(winpath "$caseh_dir/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$caseh_dir/cache")-luna-config.json" \
       HIMMELCTL_INTERACTIVE=0 \
       "$node_bin" "$wizard" ensure --items guardrail-block-global --yes --write-tracked </dev/null 2>&1); rc=$?
 set -e
