@@ -781,6 +781,7 @@ run_ac() { LUNA_VAULT_AUTOCOMMIT=1 run_sut; }
 # A git shim that runs the real git, then acts once on `add` or `commit`:
 #   SHIM_BEFORE_COMMIT=1  run the real commit first, so ours finds nothing to commit
 #   SHIM_TOUCH=<path>     write that path after the add (a writer mid-run)
+#   SHIM_STAGE=<path>     stage that vault path after the add (another writer staging)
 #   SHIM_REMOTE_AFTER=add|commit   add a remote after that subcommand
 mkshim() {
     mkdir -p "$TMP/shim"
@@ -795,6 +796,7 @@ case " \$* " in
     *" add "*)
         "$REAL_GIT" "\$@"; rc=\$?
         [ -z "\${SHIM_TOUCH:-}" ] || touch "\$SHIM_TOUCH"
+        [ -z "\${SHIM_STAGE:-}" ] || "$REAL_GIT" -C "\$SHIM_VAULT" add -- "\$SHIM_STAGE"
         [ "\${SHIM_REMOTE_AFTER:-}" = add ] && "$REAL_GIT" -C "\$SHIM_VAULT" remote add origin https://example.invalid/v.git
         exit \$rc ;;
 esac
@@ -913,6 +915,14 @@ before="$(head_sha)"; out="$(run_ac)"; rc=$?
 assert_eq "T56 a hook-refused commit leaves HEAD alone" "$before" "$(head_sha)"
 assert_eq "T56 and exits 0 (falls through to the stall handling)" "0" "$rc"
 assert_has "T56 the existing stall handling alerts on the refusal" "refus" "$(sent)"
+
+mkvault
+echo "a note" >"$V/note.md"; backdate "$V/note.md"
+echo "theirs" >"$V/theirs.md"
+before="$(head_sha)"; out="$(SHIM_STAGE=theirs.md run_shim)"
+assert_eq "T57 a path another writer stages before the commit: no auto-commit" "$before" "$(head_sha)"
+assert_eq "T57 the other writer's path stays staged, ours is unstaged" "theirs.md " "$(staged)"
+assert_has "T57 says why it skipped" "another writer is staging" "$out"
 
 echo "----"
 if [ "$FAILED" -eq 0 ]; then echo "PASS: vault-stall-cadence ($0)"; else echo "FAIL: vault-stall-cadence — $FAILED failed ($0)" >&2; exit 1; fi

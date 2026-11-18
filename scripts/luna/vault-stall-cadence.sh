@@ -453,6 +453,21 @@ autocommit_key_on() {
 autocommit_gates_open() { autocommit_key_on && ! vault_has_sync "$1"; }
 file_mtime() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null; }
 
+foreign_staged() { # <vault> <our paths, NUL> <paths we unstaged again, NUL>
+    local s p ours
+    while IFS= read -r -d '' s; do
+        ours=0
+        while IFS= read -r -d '' p; do [ "$p" != "$s" ] || { ours=1; break; }; done <"$2"
+        [ "$ours" = 0 ] || while IFS= read -r -d '' p; do [ "$p" != "$s" ] || { ours=0; break; }; done <"$3"
+        [ "$ours" = 1 ] || return 0
+    done < <(git -C "$1" diff --cached --no-renames --name-only -z)
+    return 1
+}
+commit_or_index_empty() {
+    git -C "$1" commit -q -m "chore(vault): auto-commit quiet notes (local only, never pushed)" >/dev/null 2>&1 \
+        || git -C "$1" diff --cached --quiet
+}
+
 autocommit_vault() {
     local vault="$1" gitdir="$2" dry="$3" thr="$4" now="$5" last="$6"
     local paths mtimes p m n=0 changed
@@ -488,9 +503,10 @@ autocommit_vault() {
     fi
     if [ ! -e "$gitdir/index.lock" ] && autocommit_gates_open "$vault"; then
         if ! git -C "$vault" diff --cached --quiet; then
-            if git -C "$vault" commit -q -m "chore(vault): auto-commit quiet notes (local only, never pushed)" >/dev/null 2>&1 \
-                || git -C "$vault" diff --cached --quiet; then
-                # an empty index after a failed commit means another writer committed first: nothing to commit
+            if foreign_staged "$vault" "$paths" "$changed"; then
+                git --literal-pathspecs -C "$vault" reset -q --pathspec-from-file="$paths" --pathspec-file-nul >/dev/null 2>&1
+                echo "vault-stall: another writer is staging in this vault; auto-commit skipped"
+            elif commit_or_index_empty "$vault"; then
                 echo "vault-stall: auto-committed the quiet notes (local, not pushed)"
                 autocommit_gates_open "$vault" \
                     || alert "vault auto-commit landed after a remote, sync plugin or opt-out appeared (hook-window race)" 0
