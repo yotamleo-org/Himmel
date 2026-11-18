@@ -861,6 +861,205 @@ exit 1''')
             self.assertEqual(json.loads((self.bucket / 'fleet-control.json').read_text())['attempts'], {})
             self.assertFalse((self.bucket / 'slots' / self.doc.stem).exists())
 
+    # The shared ownership reading (_ts_worker_state) over this fixture's real state and receipt history.
+    def state(self, doc=None, env=None):
+        # the queue lock is a stub: with no handover root the real one cannot answer, which reads unknown
+        env = env or dict(self.env, TICKET_STATUS_QUEUE_LOCK=self.stub('queue-lock-free', 'echo free'))
+        p = subprocess.run(['bash', '-c', '. "$1/scripts/lib/ticket-status.sh"; ts_worker_state "$2"', 'fleet-runtime-test',
+                            str(ENTRYPOINTS), str(doc or self.doc)], env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        return p.stdout.strip()
+
+    def disp(self, doc=None):
+        return json.loads(self.call('runtime', 'disposition', '--doc', doc or self.doc).stdout)
+
+    def protected(self, doc=None):
+        return json.loads(self.call('runtime', 'protected', '--doc', doc or self.doc).stdout)
+
+    def lock_env(self, status, heartbeat_age=0):
+        # queue-lock.sh status stub: rc 11 = held, with a heartbeat the given number of seconds old
+        body = ('hb=$(date -u -d "-%d seconds" +%%Y-%%m-%%dT%%H:%%M:%%SZ)\n'
+                'printf \'{\\n  "heartbeat": "%%s"\\n}\\nstatus: %s\\n\' "$hb"\nexit 11') % (heartbeat_age, status)
+        return dict(self.env, TICKET_STATUS_QUEUE_LOCK=self.stub('queue-lock-stub', body))
+
+    def named_session(self, attempt_id='', name=None, comm=b'claude', doc=None):
+        code = 'import ctypes,time; ctypes.CDLL(None).prctl(15,%r,0,0,0); time.sleep(30)' % comm
+        env = dict(self.env, WORKER_SESSION_DOC=str(doc or self.doc))
+        if attempt_id:
+            env['WORKER_SESSION_ATTEMPT_ID'] = attempt_id
+        p = subprocess.Popen([comm.decode(), '-c', code, '-n', name or self.doc.stem], executable=sys.executable, env=env)
+        self.addCleanup(lambda: (p.terminate(), p.wait(timeout=5)) if p.poll() is None else None)
+        time.sleep(.2)
+        return p
+
+    def stop(self, process):
+        process.terminate()
+        process.wait(timeout=5)
+
+    def wrote(self, line):
+        with self.doc.open('a') as stream:
+            stream.write(line + '\n')
+
+    # No attempt phase may read as live, and none reads as free.
+    def test_pending_registration_and_attempt_never_read_live_and_stay_protected(self):
+        self.active()
+        self.assertEqual(self.state(), 'unknown')  # a pending registration with no attempt
+        self.rt('begin')
+        self.assertEqual(self.disp(), 'pending')
+        self.assertEqual(self.state(), 'unknown')
+        self.assertTrue(self.protected())
+        self.rt('begin', aid='second', ok=False)
+        self.assertEqual(self.state(), 'unknown')
+
+    def test_committed_attempt_without_an_observed_session_is_not_live_and_stays_protected(self):
+        self.active()
+        self.rt('begin')
+        self.rt('commit')
+        self.assertEqual(self.disp(), 'committed')
+        self.assertEqual(self.state(), 'unknown')
+        self.assertTrue(self.protected())
+        self.rt('begin', aid='second', ok=False)
+        self.assertEqual(self.state(), 'unknown')
+
+    def test_unknown_attempt_is_neither_live_nor_free_and_stays_protected(self):
+        self.active()
+        self.rt('begin')
+        self.rt('commit')
+        self.rt('outcome', extra=('--phase', 'unknown'))
+        self.assertEqual(self.disp(), 'unknown')
+        state = self.state()
+        self.assertEqual(state, 'unknown')
+        self.assertNotIn(state, ('live', 'wrapped'))
+        self.assertTrue(self.protected())
+        self.rt('begin', aid='second', ok=False)
+
+    def test_launched_attempt_with_no_marker_or_lock_is_unknown_not_live(self):
+        self.active()
+        self.rt('begin')
+        self.rt('commit')
+        self.rt('outcome', extra=('--phase', 'launched'))
+        self.assertEqual(self.disp(), 'launched')
+        self.assertEqual(self.state(), 'unknown')
+        self.rt('begin', aid='second', ok=False)
+
+    # A terminal receipt ends ownership only when nothing newer or stronger contradicts it.
+    def test_refused_receipt_does_not_hide_a_live_named_session(self):
+        self.active()
+        self.rt('begin')
+        self.rt('outcome', extra=('--phase', 'refused'))
+        self.assertEqual(self.state(), 'wrapped')  # control: the refusal alone ends it
+        session = self.named_session()
+        self.assertEqual(self.state(), 'unknown')
+        self.stop(session)
+        self.assertEqual(self.state(), 'wrapped')  # control: the receipt stands again once nothing contradicts it
+
+    def test_complete_receipt_does_not_hide_a_later_resume(self):
+        self.active()
+        self.rt('begin')
+        self.rt('commit')
+        self.rt('outcome', extra=('--phase', 'launched'))
+        self.wrote('- 12:00 WRAPPED done')
+        self.rt('outcome', extra=('--phase', 'complete'))
+        self.assertEqual(self.state(), 'wrapped')  # control
+        session = self.named_session()
+        self.assertEqual(self.state(), 'unknown')  # a live named session before any new marker is written
+        self.wrote('- 12:30 RESUMED operator resumed by hand')
+        self.assertEqual(self.state(), 'unknown')
+        self.stop(session)
+        self.assertEqual(self.state(), 'unknown')  # a marker later than the receipt stays an owner with no session and no lock
+
+    def test_terminal_receipt_does_not_override_a_held_lock(self):
+        self.active()
+        self.rt('begin')
+        self.rt('outcome', extra=('--phase', 'refused'))
+        self.assertEqual(self.state(env=self.lock_env('HELD')), 'unknown')
+        self.wrote('- 12:30 LIVE hand launched')
+        self.assertEqual(self.state(env=self.lock_env('HELD')), 'live')
+
+    def test_terminal_receipt_leaves_a_doc_with_a_live_class_marker_to_its_markers(self):
+        self.active()
+        self.wrote('- 11:00 LIVE worker started')
+        self.rt('begin')
+        self.rt('outcome', extra=('--phase', 'refused'))
+        self.assertEqual(self.state(), 'unknown')  # the refusal releases its own registration, not a worker that never wrapped
+        self.wrote('- 11:30 PARKED-USAGE usage limit')
+        self.assertEqual(self.state(), 'parked')
+
+    # A receipt belongs to the registration it settled, not to a later one for the same doc.
+    def test_stale_terminal_receipt_does_not_hide_a_reregistered_pending_row(self):
+        self.active()
+        self.rt('begin')
+        self.rt('outcome', extra=('--phase', 'refused'))
+        self.assertEqual(json.loads(self.call('runtime', 'owners', '--manifest', self.m).stdout), [])
+        self.assertEqual(self.disp(), 'refused')
+        time.sleep(1.1)  # receipts and registrations are stamped to the second
+        self.call('add', self.m, self.doc, '--lane', 'native', '--pending')
+        owners = json.loads(self.call('runtime', 'owners', '--manifest', self.m).stdout)
+        self.assertEqual([(row['doc'], row.get('registration')) for row in owners], [(str(self.doc), 'pending')])
+        self.assertEqual(self.disp(), 'legacy')
+        self.assertEqual(self.state(), 'unknown')
+        self.rt('begin', aid='two')
+        self.assertEqual(self.disp(), 'pending')
+
+    # An idle shell and a long-running test are allocated work, never dead and never reclaimed for inactivity.
+    def test_idle_shell_is_allocated_not_productive_and_never_claims_or_releases_a_slot(self):
+        self.active()
+        self.rt('begin')
+        self.rt('commit')
+        self.rt('outcome', extra=('--phase', 'unknown'))
+        slot = self.bucket / 'slots' / self.doc.stem / 'managed.json'
+        self.assertTrue(slot.is_file())
+        # a shell in the worker's terminal inherits the worker environment and can carry the same -n argument
+        shell = subprocess.Popen(['bash', '-c', 'sleep 30', 'x', '-n', self.doc.stem],
+                                 env=dict(self.env, WORKER_SESSION_DOC=str(self.doc), WORKER_SESSION_ATTEMPT_ID='one'))
+        self.addCleanup(lambda: (shell.terminate(), shell.wait(timeout=5)) if shell.poll() is None else None)
+        time.sleep(.2)
+        ack = json.loads(self.rt('ack').stdout)
+        self.assertEqual([r['attempt_id'] for r in ack['unknown']], ['one'])  # not promoted to launched
+        self.assertEqual(ack['launched'], [])
+        self.assertFalse(ack['quiescent'])
+        self.assertTrue(slot.is_file())  # not released
+        self.assertEqual(self.state(), 'unknown')
+        self.rt('begin', aid='second', ok=False)
+
+    def test_idle_session_is_allocated_not_productive_and_not_dead(self):
+        self.active()
+        self.rt('begin')
+        self.rt('commit')
+        self.rt('outcome', extra=('--phase', 'unknown'))
+        session = self.named_session(attempt_id='one')
+        for _ in range(2):
+            ack = json.loads(self.rt('ack').stdout)
+            self.assertEqual(ack['unknown'], [])
+            self.assertEqual([r['attempt_id'] for r in ack['launched']], ['one'])
+            self.assertFalse(ack['quiescent'])
+        self.assertTrue((self.bucket / 'slots' / self.doc.stem / 'managed.json').is_file())
+        self.assertEqual(self.state(), 'unknown')  # a session with no marker and no lock is never productive
+        self.assertNotEqual(self.state(env=self.lock_env('HELD')), 'wrapped')
+        self.rt('begin', aid='second', ok=False)
+        self.stop(session)
+
+    def test_long_running_test_with_no_recent_tool_calls_is_owned_never_reclaimed(self):
+        self.active()
+        self.rt('begin')
+        self.rt('commit')
+        self.rt('outcome', extra=('--phase', 'unknown'))
+        self.wrote('- 01:00 LIVE worker started; a long test is running')
+        session = self.named_session(attempt_id='one')
+        child = subprocess.Popen(['sleep', '30'])  # the long test, under the session
+        self.addCleanup(lambda: (child.terminate(), child.wait(timeout=5)) if child.poll() is None else None)
+        for _ in range(2):
+            ack = json.loads(self.rt('ack').stdout)
+            self.assertEqual([r['attempt_id'] for r in ack['launched']], ['one'])
+        self.assertTrue((self.bucket / 'slots' / self.doc.stem / 'managed.json').is_file())
+        self.assertEqual(self.state(env=self.lock_env('HELD')), 'live')  # a fresh lock is productive work
+        # no tool call for longer than the idle warning: still held work, never released and never wrapped
+        stale = self.state(env=dict(self.lock_env('HELD', heartbeat_age=7200), QUEUE_LOCK_IDLE_WARN_SECONDS='2700'))
+        self.assertEqual(stale, 'IDLE-HELD')
+        self.assertTrue((self.bucket / 'slots' / self.doc.stem / 'managed.json').is_file())
+        self.rt('begin', aid='second', ok=False)
+        self.stop(session)
+
 
 if __name__ == '__main__':
     unittest.main()
