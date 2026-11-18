@@ -4949,3 +4949,82 @@ describe('T8 U7: request, ruling, apply and readback converge once from every fa
     await converged(member);
   });
 });
+
+// 8674 / 9818 / 8731 (trace T8-de73eed2 clause 6): the 2026-11-16 correction audit as an offline seed. The fixture holds its ticket keys and
+// record numbers; the operator words are synthetic text in a scratch decision file. 20 actual members had no matching signed placement
+// while the mirror was fresh and the queue empty; one request per key with the operator's words, one normal RM run, then Jira = signed.
+describe('T8 U7: seed from the 2026-11-16 correction audit', () => {
+  type Seed = {
+    decision: string; mismatch_before_correction: string[]; later_version_move: string; recovery_keys: string[]; required_by: Record<string, string>;
+  };
+  const seed = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'correction-audit-2026-11-16.json'), 'utf8')) as Seed;
+  const WORDS = 'Correct the identified placement discrepancies into the release.';
+  const ledgerRows = () => (existsSync(process.env.HIMMEL_ADMISSIONS_LEDGER!)
+    ? readFileSync(process.env.HIMMEL_ADMISSIONS_LEDGER!, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as { kind: string; key: string; version: string })
+    : []);
+  const parents = Object.values(seed.required_by);
+  const originals = seed.mismatch_before_correction;
+  const plain = originals.filter((k) => k !== seed.later_version_move);
+  const refreshMirror = () => mirror([
+    ...parents.map((key) => ({ key, fixVersions: ['v1'] })),
+    ...[...originals, ...seed.recovery_keys].map((key) => ({ key, fixVersions: jira.fv.get(key) ?? [] })),
+  ]);
+  const byKey = (list: string[]) => [...list].sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+
+  it('the divergence is visible with a fresh mirror and an empty queue, and one normal path per key makes Jira equal the signed placement', async () => {
+    declare(ctx(), { project: 'HIMMEL', versions: ['v1', 'v2'], decision: '106', verbatim: 'R = v1 + v2', mode: 'observe' });
+    mkdirSync(join(root, 'specs', 'decisions'), { recursive: true });
+    writeFileSync(join(root, 'specs', 'decisions', `verbatim-decision-${seed.decision}-synthetic.txt`), `Synthetic words for this scratch fixture, not the operator's:\n\n"${WORDS}"\n`);
+    for (const k of originals) jira.fv.set(k, ['v1']);
+    // the later-version placement the audit names for 8474: signed in v2, while Jira shows it in v1
+    appendAdmission({ version: 'v2', key: seed.later_version_move, kind: 'rm-admit', reason: 'an earlier ruling', by: 'rm-0', ruling: 'R-R1-9000' });
+    // the current parents are already admitted members, as in the audit's 68 admitted open tickets
+    for (const parent of parents) appendAdmission({ version: 'v1', key: parent, kind: 'rm-admit', reason: 'an earlier ruling', by: 'rm-0', ruling: 'R-R1-9001' });
+    refreshMirror();
+
+    // 1. Before correction: 20 actual members with no matching effective placement; nothing queued, nothing stale.
+    const before = state(ctx());
+    expect(byKey(before.leaks.unauthorized)).toEqual(byKey(originals.map((k) => `${k}@v1`)));
+    expect(before.requests).toEqual({ open: [], claimed: [], oldest_open: null });
+    expect(before.inputs.mirror).not.toBe('UNKNOWN');
+    expect(before.unfinished_rulings).toEqual([]);
+
+    // 2. One request per key, each with its own words record; 9953 and 9932 carry their parents (never promoted to a placement).
+    const ask = (key: string, verb: 'INTAKE' | 'REVERSION', from_v: string | null) => requestWithWords(ctx(), {
+      verb, key, from_v, to_v: 'v1', why: 'the operator asked for this correction', from: 'console',
+      evidence: seed.required_by[key] === undefined ? {} : { follow_up_of: seed.required_by[key], remainder: true },
+    }, { decision: seed.decision, words: WORDS });
+    for (const k of [...plain, ...seed.recovery_keys]) ask(k, 'INTAKE', null);
+    ask(seed.later_version_move, 'REVERSION', 'v2');
+    const queued = state(ctx());
+    expect(queued.requests.open).toHaveLength(originals.length + seed.recovery_keys.length);
+    expect(queued.words_records).toHaveLength(originals.length + seed.recovery_keys.length);
+    expect(queued.words_records.every((w) => w.keys.length === 1 && w.verbatim === WORDS)).toBe(true);
+    expect(queued.remainder_conflicts.map((c) => `${c.parent}>${c.child}:${c.phase}:${c.owner}`).sort())
+      .toEqual(Object.entries(seed.required_by).map(([child, parent]) => `${parent}>${child}:open:release-manager`).sort());
+
+    // 3. One normal RM run under each key's own operator record.
+    const judge: Judge = async (input) => input.requests.map((q) => {
+      const ref = (q.evidence as { operator?: string } | null)?.operator ?? null;
+      return q.verb === 'REVERSION'
+        ? { req: q.req, outcome: 'MOVE', op: 'move' as const, from: q.from_v, to: q.to_v, sector: 'Ship loop', ground: 'operator record', reason: 'the superseding move', authority: 'operator' as const, ref }
+        : { req: q.req, outcome: 'ADMIT', op: 'add' as const, from: null, to: 'v1', sector: 'Ship loop', ground: 'operator record', reason: 'the correction', authority: 'operator' as const, ref };
+    });
+    await rmRun(ctx(), judge);
+
+    // 4. Verify both destinations: Jira, the admissions ledger and the signed state agree, and nothing is owed.
+    refreshMirror();
+    const after = state(ctx());
+    expect(after.leaks).toEqual({ unauthorized: [], ruled_in_non_member: [] });
+    expect(after.unfinished_rulings).toEqual([]);
+    expect(after.requests).toEqual({ open: [], claimed: [], oldest_open: null });
+    expect(after.remainder_conflicts).toEqual([]);
+    expect(after.refused_asks).toEqual([]);
+    for (const k of [...originals, ...seed.recovery_keys]) expect(jira.fv.get(k)).toEqual(['v1']);
+    expect(jira.writes).toBe(seed.recovery_keys.length);
+    const inV1 = byKey(ledgerRows().filter((r) => r.kind === 'rm-admit' && r.version === 'v1').map((r) => r.key));
+    expect(inV1).toEqual(byKey([...parents, ...originals, ...seed.recovery_keys]));
+    expect(ledgerRows().filter((r) => r.key === seed.later_version_move).map((r) => `${r.kind}@${r.version}`)).toEqual(['rm-admit@v2', 'rm-admit@v1', 'rm-remove@v2']);
+    expect(await rmRun(ctx(), judge)).toEqual(['RM-RUN R1: nothing pending']);
+  });
+});
