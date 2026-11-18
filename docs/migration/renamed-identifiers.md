@@ -1733,8 +1733,9 @@ Distinct matched strings (1): `console-kit` to `chief-kit`
 | `scripts/handover/test-handover-root-dotenv.sh` | test | 67, 94, 97 |
 | `scripts/handover/test-headed-arm.sh` | test | 37, 58, 2205, 2244 |
 | `scripts/handover/test-merge-fork-pr.sh` | test | 4, 17, 283, 284, 290 |
+| `scripts/handover/test-merge-on-green-b.sh` | test | 503, 504, 533 |
 | `scripts/handover/test-merge-on-green-jira-end-state.sh` | test | 123, 177 |
-| `scripts/handover/test-merge-on-green.sh` | test | 68, 258, 259, 265, 3029, 3050, 3051, 4679, 4680, 4709 |
+| `scripts/handover/test-merge-on-green.sh` | test | 68, 258, 259, 265, 3080, 3101, 3102 |
 | `scripts/handover/test-queue-lock.sh` | test | 26 |
 | `scripts/handover/wrap-subtree-check.sh` | code | 50 |
 | `scripts/himmel-doctor.sh` | code | 3769, 3775, 3787, 3792, 4241, 4443, 4458, 4459 |
@@ -2815,7 +2816,7 @@ Distinct matched strings (34): `block-leg-askuserquestion.sh` (no ruled name), `
 | `scripts/handover/test-leg-handoff-threshold-docs.sh` | test | 2 |
 | `scripts/handover/test-leg-resume-brief.sh` | test | 2, 19, 81, 115 |
 | `scripts/handover/test-leg-timeline.sh` | test | 2, 4, 25, 115, 415, 431 |
-| `scripts/handover/test-merge-on-green.sh` | test | 1569, 1596 |
+| `scripts/handover/test-merge-on-green.sh` | test | 1646, 1673 |
 | `scripts/handover/test-template-operator-gated-clause.sh` | test | 40 |
 | `scripts/hermes/parity-measure.py` | code | 37 |
 | `scripts/himmelctl/lib/bypass-flags.json` | config | 302, 456 |
@@ -2982,7 +2983,7 @@ Distinct matched strings (47): `console-2026-10-01.md` (no ruled name), `console
 | `scripts/handover/headed-arm.sh` | code | 529 |
 | `scripts/handover/test-arm-resume.sh` | test | 6088 |
 | `scripts/handover/test-handover-root-dotenv.sh` | test | 96, 109 |
-| `scripts/handover/test-merge-on-green.sh` | test | 3585, 3590 |
+| `scripts/handover/test-merge-on-green.sh` | test | 1166, 1171 |
 | `scripts/handover/test-succession-docs.sh` | test | 24, 254, 338 |
 | `scripts/himmelctl/lib/bypass-flags.json` | config | 55, 57, 87, 89 |
 | `scripts/hooks/block-worker-askuserquestion.sh` | code | 31 |
