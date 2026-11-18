@@ -168,7 +168,7 @@ if grepq "$out" 'WARN C3-luna' && grepq "$out" -F 'commit it' && ! grepq "$out" 
 rm -rf "$t"
 
 echo "== C3: the local-only remedy names the opt-in key and the real arm command =="
-t="$(mktemp -d)" || exit 1; c3_vault "$t"; echo dirty > "$v/note.md"
+t="$(mktemp -d "${TMPDIR:-/tmp}/doctor-c3.XXXXXX")" || exit 1; c3_vault "$t"; echo dirty > "$v/note.md"
 out="$(HIMMEL_DOCTOR_C3_NOW=$(( $(date +%s) + 7200 )) c3_run "$t")"
 if grepq "$out" 'WARN C3-luna' && grepq "$out" -F 'LUNA_VAULT_AUTOCOMMIT=1' && grepq "$out" -F "scripts/luna/vault-stall-cadence.sh arm --vault $v"; then pass "C3 local-only remedy -> key + arm command"; else fail "C3 local-only remedy -> $(printf '%s' "$out" | grep -A2 C3)"; fi
 rm -rf "$t"
