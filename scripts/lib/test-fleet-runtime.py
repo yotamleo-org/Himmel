@@ -4,6 +4,7 @@ import collections
 import json
 import os
 from pathlib import Path
+import socket
 import subprocess
 import time
 import sys
@@ -1210,6 +1211,277 @@ exit 1''')
         with self.batch_env():
             for name, doc in docs.items():
                 self.assertEqual(first[name], runtime.worker_state(str(doc)), name)
+
+    # The explicit settle verb: a committed or unknown attempt whose launcher is gone and which never showed a session.
+    def settle(self, aid='one', doc=None, ok=True, name=None, reason='the launcher is gone and nothing started', confirm=True):
+        target = doc or self.doc
+        argv = ['runtime', 'settle', '--doc', target, '--manifest', self.m, '--name', name or Path(target).stem,
+                '--attempt-id', aid, '--reason', reason]
+        if confirm:
+            argv.append('--confirm-no-session')
+        return self.call(*argv, ok=ok)
+
+    def refused_settle(self, text, **kwargs):
+        p = self.settle(ok=False, **kwargs)
+        self.assertIn('settle refused', p.stderr)
+        self.assertIn(text, p.stderr)
+        return p
+
+    def forge(self, aid='one', **fields):
+        """Change the recorded identity of the attempt's owner and committer, as a reused pid or another boot would."""
+        anchor = self.bucket / 'fleet-control.json'
+        data = json.loads(anchor.read_text())
+        for who in ('owner', 'committer'):
+            if data['attempts'][aid].get(who):
+                data['attempts'][aid][who].update(fields)
+        anchor.write_text(json.dumps(data))
+
+    def stuck(self, aid='one', doc=None):
+        self.rt('begin', aid=aid, doc=doc)
+        self.rt('commit', aid=aid, doc=doc)
+
+    def anchor_attempts(self):
+        return json.loads((self.bucket / 'fleet-control.json').read_text())['attempts']
+
+    def history_rows(self, aid):
+        path = self.bucket / '.himmel/launch-refusals.jsonl'
+        return [row for row in map(json.loads, path.read_text().splitlines()) if row.get('attempt_id') == aid]
+
+    def extra_doc(self, number):
+        doc = self.bucket / ('TEST-%d-N%d-worker.md' % (number, number))
+        doc.write_text('# worker\n')
+        self.call('add', self.m, doc, '--lane', 'native', '--pending')
+        return doc
+
+    def test_settle_frees_a_stuck_attempt_keeps_its_history_and_is_idempotent(self):
+        self.active()
+        self.stuck()
+        two = self.extra_doc(2)
+        self.stuck('two', two)
+        three = self.extra_doc(3)
+        self.rt('begin', aid='three', doc=three)
+        self.rt('commit', aid='three', doc=three, ok=False)  # the family target of 2 is full
+        self.forge(start='0')
+        ack = json.loads(self.rt('ack').stdout)
+        self.assertEqual([r['attempt_id'] for r in ack['unknown']], ['one'])
+        self.assertFalse(ack['quiescent'])
+        slot = self.bucket / 'slots' / self.doc.stem
+        self.assertTrue(slot.is_dir())
+        self.refused_settle('--confirm-no-session', confirm=False)
+        self.refused_settle('--reason', reason='   ')
+        self.assertIn('one', self.anchor_attempts())
+        self.assertTrue(slot.is_dir())
+        result = json.loads(self.settle().stdout)
+        self.assertEqual((result['phase'], result['cause']), ('refused', 'settled-no-session'))
+        self.assertNotIn('one', self.anchor_attempts())
+        self.assertFalse(slot.exists(), 'the attempt\'s own reservation is released')
+        self.assertEqual([w['doc'] for w in json.loads(self.m.read_text())['workers']], [str(two), str(three)])
+        self.assertTrue((self.bucket / 'slots' / two.stem).is_dir(), 'another attempt\'s reservation is untouched')
+        four = self.extra_doc(4)
+        self.rt('begin', aid='four', doc=four)
+        self.rt('commit', aid='four', doc=four)  # the target slot the attempt held is free
+        rows = self.history_rows('one')
+        self.assertEqual([row['outcome'] for row in rows], ['attempt-started', 'refused'], 'history keeps the earlier rows and adds one')
+        last = rows[-1]
+        self.assertEqual(last['cause'], 'settled-no-session')
+        self.assertEqual(last['reason'], 'the launcher is gone and nothing started')
+        self.assertEqual(last['evidence']['owner'], 'dead')
+        self.assertEqual(last['evidence']['committer'], 'dead')
+        self.assertEqual(last['evidence']['scan'], 'absent')
+        self.assertEqual(last['evidence']['phase'], 'unknown')
+        self.assertEqual(set(last['settled_by']), {'host', 'pid', 'uid'})
+        before = (self.bucket / '.himmel/launch-refusals.jsonl').read_text()
+        replay = json.loads(self.settle().stdout)
+        self.assertTrue(replay['replayed'])
+        self.assertEqual((self.bucket / '.himmel/launch-refusals.jsonl').read_text(), before)
+
+    def test_settle_takes_a_committed_attempt_before_any_ack_demoted_it(self):
+        self.active()
+        self.stuck()
+        self.forge(start='0')
+        self.assertEqual(self.anchor_attempts()['one']['phase'], 'committed')
+        self.assertEqual(json.loads(self.settle().stdout)['cause'], 'settled-no-session')
+        self.assertEqual(self.anchor_attempts(), {})
+
+    def test_settle_gives_the_same_answer_to_an_old_attempt_and_a_new_one(self):
+        self.active()
+        two = self.extra_doc(2)
+        self.stuck()
+        self.stuck('two', two)
+        anchor = self.bucket / 'fleet-control.json'
+        data = json.loads(anchor.read_text())
+        data['attempts']['one']['began_ticks'] = 0
+        data['attempts']['two']['began_ticks'] = 10 ** 13
+        anchor.write_text(json.dumps(data))
+        history = self.bucket / '.himmel/launch-refusals.jsonl'
+        history.write_text(history.read_text().replace('"attempt_id": "one"', '"ts": "1999-01-01T00:00:00Z", "attempt_id": "one"', 1))
+        for aid in ('one', 'two'):
+            self.forge(aid, start='0')
+        self.settle('one')
+        self.settle('two', doc=two)
+        self.assertEqual(self.anchor_attempts(), {})
+
+    def test_settle_needs_both_identities_proven_dead(self):
+        self.active()
+        self.stuck()
+        self.refused_settle('owner')  # both are this live test process
+        anchor = self.bucket / 'fleet-control.json'
+        data = json.loads(anchor.read_text())
+        data['attempts']['one']['owner']['start'] = '0'
+        anchor.write_text(json.dumps(data))
+        self.refused_settle('committer')  # the owner is gone, the committer is alive
+        data['attempts']['one']['committer']['start'] = '0'
+        anchor.write_text(json.dumps(data))
+        self.settle()
+
+    def test_settle_does_not_read_a_reused_pid_or_another_boot_as_more_than_the_existing_check_does(self):
+        self.active()
+        self.stuck()
+        self.forge(boot='another-boot')
+        self.refused_settle('not proven dead')  # a changed boot id is unknown, not dead
+        self.forge(boot=(Path('/proc/sys/kernel/random/boot_id').read_text().strip()), host='another-host')
+        self.refused_settle('not proven dead')  # a remote identity is unknown, not dead
+        self.forge(host=socket.gethostname(), start='0')
+        self.settle()  # the same host and boot with another start time: the existing check says dead
+
+    def test_settle_refuses_while_a_session_may_exist(self):
+        self.active()
+        self.stuck()
+        self.forge(start='0')
+        session = self.named_session(attempt_id='one')
+        self.refused_settle('session')
+        self.stop(session)
+        foreign = self.named_session(attempt_id='someone-else')  # a named process the scan cannot prove is not this attempt's
+        self.refused_settle('session')
+        self.stop(foreign)
+        self.assertIn('one', self.anchor_attempts())
+        self.settle()
+
+    def test_settle_refuses_attempts_that_are_not_committed_or_unknown(self):
+        self.active()
+        self.rt('begin')
+        self.forge(start='0')
+        self.refused_settle('phase')  # pending
+        self.rt('commit')
+        self.rt('outcome', extra=('--phase', 'launched'))
+        self.forge(start='0')
+        self.assertEqual(self.anchor_attempts()['one']['phase'], 'launched')
+        self.refused_settle('phase')  # launched
+
+    def test_settle_refuses_when_a_launched_or_terminal_receipt_exists(self):
+        for outcome in ('launched', 'refused', 'complete'):
+            self.setUp()
+            history = self.bucket / '.himmel/launch-refusals.jsonl'
+            self.active()
+            self.stuck()
+            self.forge(start='0')
+            row = dict(self.history_rows('one')[0], outcome=outcome)
+            with history.open('a') as stream:
+                stream.write(json.dumps(row) + '\n')
+            self.refused_settle('receipt')
+            self.assertIn('one', self.anchor_attempts(), outcome)
+
+    def test_settle_needs_the_exact_attempt_doc_and_name(self):
+        self.active()
+        self.stuck()
+        self.forge(start='0')
+        other = self.extra_doc(2)
+        self.refused_settle('unknown attempt', aid='nope')
+        self.refused_settle('locator', name='some-other-name')
+        self.refused_settle('locator', doc=other)
+        self.assertIn('one', self.anchor_attempts())
+        self.settle()
+
+    def test_a_second_attempt_after_a_settle_has_its_own_identity(self):
+        self.active()
+        self.stuck()
+        first = self.anchor_attempts()['one']
+        self.forge(start='0')
+        self.settle()
+        self.rt('begin', ok=False)  # the settled attempt id keeps its receipt history and is never reused
+        self.call('add', self.m, self.doc, '--lane', 'native', '--pending')
+        self.rt('begin', aid='two')
+        second = self.anchor_attempts()['two']
+        self.assertNotEqual(second['attempt_id'], first['attempt_id'])
+        self.assertNotIn('reservation', second)
+        self.assertNotIn('committer', second)
+        self.assertEqual(second['phase'], 'pending')
+        self.rt('commit', aid='two')
+        self.assertEqual(self.anchor_attempts()['two']['phase'], 'committed')
+
+    def test_a_settled_doc_that_shows_a_session_reads_as_owned(self):
+        self.active()
+        self.stuck()
+        self.forge(start='0')
+        self.settle()
+        self.assertEqual(self.state(), 'wrapped')  # nothing contradicts the receipt
+        session = self.named_session()
+        self.assertEqual(self.state(), 'unknown')  # a session that shows up later is not hidden by it
+        self.stop(session)
+
+    def test_ack_names_the_way_out_as_text_and_only_when_the_preconditions_hold(self):
+        self.active()
+        self.stuck()
+        ack = json.loads(self.rt('ack').stdout)  # the launcher is this live process
+        self.assertEqual(ack['unknown'], [])
+        self.forge(start='0')
+        hint = json.loads(self.rt('ack').stdout)['unknown'][0]['settle_hint']
+        self.assertTrue(hint['settleable'])
+        self.assertIn('fleet-manifest.sh runtime settle', hint['text'])
+        self.assertIn('--attempt-id one', hint['text'])
+        self.assertIn('--confirm-no-session', hint['text'])
+        session = self.named_session(attempt_id='someone-else')
+        hint = json.loads(self.rt('ack').stdout)['unknown'][0]['settle_hint']
+        self.assertFalse(hint['settleable'])
+        self.assertIn('session', hint['text'])
+        self.assertNotIn('fleet-manifest.sh runtime settle', hint['text'])
+        self.stop(session)
+
+    def test_settle_reads_no_age_and_nothing_calls_it(self):
+        import ast
+        import re
+        source = (ENTRYPOINTS / 'scripts/lib/fleet_runtime.py').read_text()
+        tree = ast.parse(source)
+        functions = {node.name: node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
+        forbidden = {'began_ticks', 'added', 'st_mtime', 'getmtime', 'strftime', 'gmtime', 'uptime', 'ts'}
+        for name in ('settle_blockers', 'settle_attempt'):
+            node = functions[name]
+            used = {n.id for n in ast.walk(node) if isinstance(n, ast.Name)} | {n.attr for n in ast.walk(node) if isinstance(n, ast.Attribute)}
+            used |= {n.value for n in ast.walk(node) if isinstance(n, ast.Constant) and isinstance(n.value, str)}
+            self.assertEqual(used & forbidden, set(), name + ' reads a time')
+            from_time = {n.attr for n in ast.walk(node) if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == 'time'}
+            self.assertLessEqual(from_time, {'monotonic'}, name + ' uses the clock for more than the scan deadline')
+        sites = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == 'settle_attempt']
+        self.assertEqual(len(sites), 1, 'one call site: the verb itself')
+        guards = [n for n in ast.walk(tree) if isinstance(n, ast.If) and "args.op == 'settle'" in ast.get_source_segment(source, n.test)
+                  and sites[0] in list(ast.walk(n))]
+        self.assertTrue(guards, 'the one call site is the settle verb\'s own branch (not ack, reconcile or any other op)')
+        pattern = re.compile(r'''(?:\bruntime|fleet_runtime\.py)["']?\s+["']?settle\b''')
+        allowed = {ENTRYPOINTS / 'scripts/lib/fleet_runtime.py', ENTRYPOINTS / 'scripts/lib/test-fleet-runtime.py'}
+        callers, hints = [], []
+        for top in ('scripts', 'marketplace', 'plugins'):
+            for base, dirs, files in os.walk(ENTRYPOINTS / top):
+                dirs[:] = [d for d in dirs if d not in ('node_modules', '.git', 'dist')]
+                for name in files:
+                    path = Path(base) / name
+                    if path in allowed or path.is_symlink() or path.stat().st_size > 4_000_000:
+                        continue
+                    try:
+                        text = path.read_text(errors='ignore')
+                    except OSError:
+                        continue
+                    if 'settle_hint' in text:
+                        hints.append(str(path))
+                    for number, line in enumerate(text.splitlines(), 1):
+                        if pattern.search(line) and not (path.name == 'fleet-manifest.sh' and line.lstrip().startswith('#')):
+                            callers.append('%s:%d' % (path, number))
+        self.assertEqual(callers, [], 'nothing calls the settle verb: it is typed by the chief or the operator')
+        self.assertEqual(hints, [], 'the hint is text for the chief: no code reads it')
+        header = (ENTRYPOINTS / 'scripts/handover/chief-kit/fleet-manifest.sh').read_text().split('\n', 120)[:120]
+        text = '\n'.join(header)
+        self.assertIn('runtime settle', text)
+        self.assertIn('attempt settle', text)
+        self.assertRegex(text, r'manifest row only')
 
 
 if __name__ == '__main__':
