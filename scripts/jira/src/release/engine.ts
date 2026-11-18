@@ -1211,7 +1211,9 @@ export function requestWithWords(ctx: Ctx, row: Omit<RequestRow, 'req' | 'ts' | 
   const withdrawn = dup && citedOperator(dup) === undefined
     ? withdraw(ctx, { req: dup.req, reason: `refiled citing the operator's words (${operator.id})`, by: operator.id })
     : null;
-  const evidence = { ...((row.evidence ?? {}) as Record<string, unknown>), operator: operator.id };
+  // The refiled ask keeps the required-parent relation of the request it replaces unless it states its own (an explicit remainder:false included).
+  const carried = withdrawn && dup && relationOf(row) === '{}' ? JSON.parse(relationOf(dup)) as Record<string, unknown> : {};
+  const evidence = { ...carried, ...((row.evidence ?? {}) as Record<string, unknown>), operator: operator.id };
   return { operator, withdrawn, request: request(ctx, { ...row, why: `${row.why} (operator words: ${operator.id})`, evidence }) };
 }
 
@@ -1768,8 +1770,15 @@ export interface RemainderConflict {
 }
 
 // The exact next command for a refused ask: operator words for an operator-asked (or unknown) key; changed facts or an ack otherwise.
-function remedyOf(release: string, q: RequestRow, ruling: string, asksOperator: boolean | null): string {
-  const base = `jira release request ${release} --verb ${q.verb} --key ${q.key} --from ${vName(q.from_v)} --to ${vName(q.to_v)}`;
+// The parent a request records as requiring it (follow_up_of with remainder: true), the same test the remainder conflicts apply.
+function requiredParent(q: RequestRow | undefined): string | null {
+  const ev = (q?.evidence ?? {}) as { follow_up_of?: unknown; remainder?: unknown };
+  return ev.remainder === true && typeof ev.follow_up_of === 'string' ? ev.follow_up_of : null;
+}
+
+// A refused ask that recorded a required parent keeps it in the command, as the conflict's remedy does.
+function remedyOf(release: string, q: RequestRow, ruling: string, asksOperator: boolean | null, parent: string | null): string {
+  const base = `jira release request ${release} --verb ${q.verb} --key ${q.key} --from ${vName(q.from_v)} --to ${vName(q.to_v)}${parent === null ? '' : ` --required-by ${parent}`}`;
   if (asksOperator !== false) return `${base} --why "<why>" --decision <n> --words "<the operator's exact words>"`;
   return `new facts: ${base} --why "<what changed>" --evidence '{"<changed requirement>":"<value>"}'; or if the refusal is right: jira release ack ${release} --ruling ${ruling} --reason "<why>"`;
 }
@@ -1793,6 +1802,8 @@ const factsOf = (i: IssueSnap | undefined): TicketFacts | null =>
 function refusedAsks(l: Loaded, issues: Map<string, IssueSnap> | null): RefusedAsk[] {
   const firstOf = new Map<string, RequestRow>();
   for (const q of l.requests.verified) if (!firstOf.has(q.req)) firstOf.set(q.req, q);
+  // The relation may have been added after the first row (a signed update of the same request), so the remedy reads the newest row.
+  const now = latestOrEmpty(l.requests);
   const ruledAt = new Map<string, string>();
   const latest = new Map<string, RulingRow>();
   for (const r of l.rulings.verified) {
@@ -1816,7 +1827,7 @@ function refusedAsks(l: Loaded, issues: Map<string, IssueSnap> | null): RefusedA
     const issue = issues?.get(key);
     if (issue && terminalOf(issue) !== null) continue;
     const asks = issue ? asksOperator(factsOf(issue)) : null;
-    out.push({ key, ruling: r.id, req: r.req, reason: r.reason, ground: r.ground, remedy: remedyOf(l.decl.release, q, r.id, asks), asks_operator: asks });
+    out.push({ key, ruling: r.id, req: r.req, reason: r.reason, ground: r.ground, remedy: remedyOf(l.decl.release, q, r.id, asks, requiredParent(now.get(r.req))), asks_operator: asks });
   }
   return out.sort((a, b) => a.key.localeCompare(b.key, 'en', { numeric: true }));
 }

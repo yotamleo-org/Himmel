@@ -1515,6 +1515,26 @@ describe('a request for operator work carries the operator\'s words', () => {
       expect(queuedRows()).toHaveLength(n);
     });
 
+    // 8674 U1 (review F1): the words path withdraws the pending duplicate and refiles it; the refiled request keeps the relation.
+    it('U1: --decision --words on a pending request that carries --required-by refiles it carrying the relation, and never invents one', async () => {
+      await declared();
+      decisionFile();
+      const m = gateMirror({ key: 'HIMMEL-9914' }, { key: 'HIMMEL-9915' });
+      await ask(m, ...intake('HIMMEL-9914'), '--required-by', 'HIMMEL-9953');
+      await ask(m, ...intake('HIMMEL-9914'), '--decision', '9', '--words', WORDS);
+      const id = /^OPERATOR (O-v1\.1\.3-\d{4}) /.exec(out.at(-3) ?? '')?.[1];
+      expect(id).toBeDefined();
+      expect(out.slice(-2)).toEqual(['WITHDRAWN Q-v1.1.3-0001 (withdrawn:' + id + ')', 'REQ Q-v1.1.3-0002']);
+      expect(queuedRows().at(-1)).toMatchObject({ state: 'open', evidence: { follow_up_of: 'HIMMEL-9953', remainder: true, operator: id } });
+      // an ask that never had the relation gets none through the words path
+      await ask(m, ...intake('HIMMEL-9915'));
+      await ask(m, ...intake('HIMMEL-9915'), '--decision', '9', '--words', WORDS);
+      const id2 = /^OPERATOR (O-v1\.1\.3-\d{4}) /.exec(out.at(-3) ?? '')?.[1];
+      expect(id2).toBeDefined();
+      expect(queuedRows().at(-1)).toMatchObject({ state: 'open', evidence: { operator: id2 } });
+      expect(Object.keys(queuedRows().at(-1)?.evidence ?? {})).toEqual(['operator']);
+    });
+
     it('--required-by is refused for itself, a non-key, or evidence naming another parent', async () => {
       await declared();
       const m = gateMirror({ key: 'HIMMEL-9914' });

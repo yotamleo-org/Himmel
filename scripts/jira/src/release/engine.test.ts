@@ -4627,6 +4627,107 @@ describe('a ruled-away operator ask wakes the chief', () => {
       expect(conflictsOf()).toEqual(['HIMMEL-9915>HIMMEL-9932:claimed']);
     });
 
+    // 8674 U1 (review F1): the words path withdraws the pending duplicate and refiles it; the refiled ask keeps the relation the withdrawn one held.
+    describe('U1: a words re-ask keeps the required-remainder relation', () => {
+      const REL = { follow_up_of: 'P-1', remainder: true };
+      const row = (evidence: Record<string, unknown>) => ({ verb: 'INTAKE' as const, key: 'C-1', from_v: null, to_v: 'v1', why: 'w', evidence, from: 'console' });
+      const words = (evidence: Record<string, unknown> = {}) => requestWithWords(at(), row(evidence), { decision: '9', words: WORDS });
+      const mirrorOf = (child: Record<string, unknown> = {}) => mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [], ...child }]);
+      const openRows = () => state(ctx()).requests.open;
+
+      it('a pending request that carries the relation is withdrawn and refiled carrying it, and the contradiction stays listed', async () => {
+        await setup();
+        decisionFile();
+        mirrorOf();
+        const first = request(at(), row(REL));
+        expect(conflictsOf()).toEqual(['P-1>C-1:open']);
+        const got = words();
+        expect(got.withdrawn?.req).toBe(first.req);
+        expect(got.request.evidence).toEqual({ ...REL, operator: got.operator.id });
+        expect(conflictsOf()).toEqual(['P-1>C-1:open']);
+        expect(openRows()).toEqual([got.request.req]);
+      });
+
+      it('the relation survives a second re-ask and a plain repeat', async () => {
+        await setup();
+        decisionFile();
+        mirrorOf();
+        request(at(), row(REL));
+        const first = words();
+        const second = words();
+        expect(second.request.req).toBe(first.request.req);
+        expect(second.request.evidence).toEqual({ ...REL, operator: first.operator.id });
+        expect(request(at(), row({})).req).toBe(first.request.req);
+        expect(conflictsOf()).toEqual(['P-1>C-1:open']);
+        expect(openRows()).toEqual([first.request.req]);
+      });
+
+      it('a relation is never invented for an ask that never had one', async () => {
+        await setup();
+        decisionFile();
+        mirrorOf();
+        request(at(), row({}));
+        const got = words();
+        expect(got.request.evidence).toEqual({ operator: got.operator.id });
+        expect(conflictsOf()).toEqual([]);
+        // and a first ask with words, no earlier request at all
+        const fresh = requestWithWords(at(), { ...row({}), key: 'C-2' }, { decision: '9', words: WORDS });
+        expect(fresh.request.evidence).toEqual({ operator: fresh.operator.id });
+      });
+
+      it('a relation the re-ask states wins, and an explicit remainder:false removes it', async () => {
+        await setup();
+        decisionFile();
+        mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'P-2', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [] }]);
+        request(at(), row(REL));
+        expect(words({ follow_up_of: 'P-2', remainder: true }).request.evidence).toMatchObject({ follow_up_of: 'P-2', remainder: true });
+        expect(conflictsOf()).toEqual(['P-2>C-1:open']);
+        // withdraw that one, file the first again with the relation, then remove it explicitly through the words path
+        withdraw(at(), { req: openRows()[0], reason: 'again' });
+        request(at(), row(REL));
+        expect(words({ remainder: false }).request.evidence).toMatchObject({ remainder: false });
+        expect(conflictsOf()).toEqual([]);
+      });
+    });
+
+    // 8674 U1: the refused-ask remedy prints the same --required-by form as the conflict for the same child.
+    describe('U1: the refused-ask remedy keeps --required-by', () => {
+      it('an operator-asked child: refused_asks[].remedy equals remainder_conflicts[].next and names --required-by', async () => {
+        await setup();
+        mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [], labels: ['operator-directed'] }]);
+        await refuseWith('C-1', REQ_EVIDENCE);
+        const s = state(ctx());
+        expect(s.refused_asks[0].remedy).toBe('jira release request R1 --verb INTAKE --key C-1 --from backlog --to v1 --required-by P-1 --why "<why>" --decision <n> --words "<the operator\'s exact words>"');
+        expect(s.refused_asks[0].remedy).toBe(s.remainder_conflicts[0].next);
+      });
+
+      it('an ordinary child keeps the ack branch and gains --required-by in the new-facts command', async () => {
+        await setup();
+        mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [] }]);
+        const { r } = await refuseWith('C-1', REQ_EVIDENCE);
+        expect(state(ctx()).refused_asks[0].remedy).toBe(`new facts: jira release request R1 --verb INTAKE --key C-1 --from backlog --to v1 --required-by P-1 --why "<what changed>" --evidence '{"<changed requirement>":"<value>"}'; or if the refusal is right: jira release ack R1 --ruling ${r.id} --reason "<why>"`);
+      });
+
+      it('the relation a later signed update gave the request counts, not only its first row', async () => {
+        await setup();
+        mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [], labels: ['operator-directed'] }]);
+        const q = request(at(), { verb: 'INTAKE', key: 'C-1', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
+        request(at(), { verb: 'INTAKE', key: 'C-1', from_v: null, to_v: 'v1', why: 'w', evidence: { follow_up_of: 'P-1', remainder: true }, from: 'console' });
+        claim(at(rmEnv));
+        const r = rule(at(rmEnv), { req: q.req, outcome: 'BACKLOG', op: { kind: 'none', from_v: null, to_v: null }, sector: 'Planning & tracking', ground: 'defer', reason: 'no record', supersedes: [], authority: { kind: 'rm', ref: null } });
+        await apply(at(rmEnv), r.id);
+        expect(state(ctx()).refused_asks[0].remedy).toContain('--to v1 --required-by P-1 --why "<why>" --decision <n>');
+      });
+
+      it('a refused ask that never had the relation prints none (a remainder:false or a plain ask)', async () => {
+        await setup();
+        mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [], labels: ['operator-directed'] }, { key: 'C-2', fixVersions: [], labels: ['operator-directed'] }]);
+        await refuseWith('C-1', { follow_up_of: 'P-1', remainder: false });
+        await refuseWith('C-2', {});
+        for (const a of state(ctx()).refused_asks) expect(a.remedy).not.toContain('--required-by');
+      });
+    });
+
     it('A4 negative: a child that really is in the version, or closed, is no conflict whatever its history says', async () => {
       await setup();
       mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [] }]);
