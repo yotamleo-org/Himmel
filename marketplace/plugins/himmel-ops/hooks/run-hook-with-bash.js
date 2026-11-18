@@ -1542,7 +1542,7 @@ function main() {
     process.exit(2);
   }
   // A session no recorder vouched for says so once, in a
-  // systemMessage. The child's stdout is captured only while the session is
+  // systemMessage. The child's stdout is captured while the session is
   // unvouched, so the hook's own JSON can carry it. The once-per-session flag is
   // taken only after the output is known to be deliverable (empty or a JSON
   // object); plain-text output is passed through untouched and leaves the flag
@@ -1572,7 +1572,7 @@ function main() {
     const parsed = out.trim() ? parseJsonObject(out) : {};
     // Only a clean exit 0 can carry a systemMessage; a deny (exit 2) or any
     // other failure ignores stdout, so it must not consume the flag.
-    const deliverable = parsed && result.status === 0;
+    const deliverable = integrity.unvouched === true && parsed && result.status === 0;
     const notice = deliverable ? takeUnvouchedNotice(sessionId, hookScript) : null;
     if (notice) process.stderr.write(`${notice}\n`);
     if (deliverable && notice) {

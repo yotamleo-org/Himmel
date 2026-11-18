@@ -3522,6 +3522,63 @@ test('readiness residuals: lone delivery passes the valid allow and relays the v
   assert.equal(deny.stdout, `${READINESS_DENY}\n`);
 });
 
+test('readiness residuals: a vouched lone allow stays silent without consuming the unvouched notice', () => {
+  const fs = require('node:fs');
+  const dir = makeTmpDir('hook-bash-readiness-vouched-');
+  const pins = join(dir, 'pins');
+  const rel = `scripts/hooks/${READINESS_GUARD}`;
+  const hookDir = join(dir, 'scripts', 'hooks');
+  const sid = 'readiness-vouched';
+  try {
+    fs.mkdirSync(hookDir, { recursive: true });
+    fs.mkdirSync(pins);
+    readinessMember(hookDir, READINESS_GUARD, READINESS_BODIES.allow);
+    writeFileSync(join(pins, `${sid}.json`), JSON.stringify({ session_id: sid, pins: { [rel]: gitBlobSha1(readFileSync(join(dir, rel))) } }));
+    writeFileSync(join(pins, `${sid}.recorder`), 'done');
+    const env = readinessEnv({ HIMMEL_READINESS: '1', CLAUDE_PROJECT_DIR: dir, HIMMEL_HOOK_INTEGRITY_DIR: pins, HIMMEL_HOOK_INTEGRITY_BYPASS_OK: '' });
+    const run = () => spawnSync(process.execPath, [LAUNCHER, ...READINESS_LONE_ARGS, join(dir, rel)], {
+      encoding: 'utf8', input: JSON.stringify({ session_id: sid, hook_event_name: 'PreToolUse', tool_name: 'mcp__readiness__inspect', tool_input: {} }), env,
+    });
+    const before = readdirSync(pins).sort();
+    const vouched = run();
+    assert.equal(vouched.status, 0, vouched.stderr);
+    assert.equal(vouched.stdout, '');
+    assert.equal(vouched.stderr, '');
+    assert.deepEqual(readdirSync(pins).sort(), before, 'capture alone must not create the notice flag');
+
+    rmSync(join(pins, `${sid}.json`));
+    writeFileSync(join(pins, `${sid}.recorder`), 'failed');
+    const unvouched = run();
+    assert.equal(unvouched.status, 0, unvouched.stderr);
+    assert.match(JSON.parse(unvouched.stdout).systemMessage, /ran UNVERIFIED/);
+    assert.equal(existsSync(join(pins, `${sid}.recorder-notified`)), true, 'a genuinely unvouched session still gets its notice');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('readiness residuals: whitespace stdout is a protocol fault in chain and lone delivery', () => {
+  const body = "printf '\\n'; exit 0";
+  const chain = readinessChainRun(body, { HIMMEL_READINESS: '1' });
+  assert.equal(chain.result.status, 2, chain.result.stderr);
+  assert.equal(chain.member.reason, 'PROTOCOL');
+  assert.equal(chain.laterRan, false);
+  const lone = readinessLoneRun(body, { HIMMEL_READINESS: '1' });
+  assert.equal(lone.status, 2, lone.stderr);
+  assert.match(lone.stderr, /output on exit 0/);
+});
+
+test('readiness residuals: stderr alone does not turn an allow into a protocol fault', () => {
+  const body = "printf 'fixture-warning\\n' >&2; exit 0";
+  const chain = readinessChainRun(body, { HIMMEL_READINESS: '1' });
+  assert.equal(chain.result.status, 0, chain.result.stderr);
+  assert.equal(chain.laterRan, true);
+  const lone = readinessLoneRun(body, { HIMMEL_READINESS: '1' });
+  assert.equal(lone.status, 0, lone.stderr);
+  assert.equal(lone.stdout, '');
+  assert.equal(lone.stderr, 'fixture-warning\n');
+});
+
 for (const [label, body, code] of [['rc1', READINESS_BODIES.rc1, 1], ['rc3', READINESS_BODIES.rc3, 3]]) {
   test(`readiness residuals: lone delivery denies a guard that exits ${code} in the readiness context only`, () => {
     const ready = readinessLoneRun(body, { HIMMEL_READINESS: '1' });
@@ -3563,6 +3620,7 @@ test('readiness residuals: lone delivery treats any marker value other than exac
 test('readiness residuals: lone delivery denies a guard killed by a signal', () => {
   const ready = readinessLoneRun(READINESS_BODIES.sigkill, { HIMMEL_READINESS: '1' });
   assert.equal(ready.status, 2, ready.stderr);
+  assert.match(ready.stderr, /DENY guard-readiness-tools\.sh \(signal SIGKILL\)/);
 });
 
 test('readiness residuals: lone delivery keeps the parsed condition for a missing guard', () => {
@@ -3618,10 +3676,13 @@ test('readiness residuals: the judge guards keep their own policy in a chain and
 });
 
 // The shipped guard through the runner: the fixtures above stand for exactly this protocol.
-test('readiness residuals: the real guard is allowed for its two tools and denied for others, in a chain and alone', () => {
+test('readiness residuals: the real guard is allowed for its two tools and denied for others, in a chain and alone', (t) => {
   const real = join(HERE, READINESS_GUARD);
   assert.ok(existsSync(real), 'the guard script ships next to the runner');
-  assert.ok((process.env.PATH || '').split(':').some((d) => existsSync(join(d, 'jq'))), 'the guard needs jq on PATH');
+  if (!(process.env.PATH || '').split(':').some((d) => existsSync(join(d, 'jq')))) {
+    t.skip('jq unavailable: real readiness guard fixture not run');
+    return;
+  }
   const call = (args, tool) => spawnSync(process.execPath, [LAUNCHER, ...args, real], {
     encoding: 'utf8',
     input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: {} }),
