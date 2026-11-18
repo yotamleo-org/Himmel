@@ -186,6 +186,16 @@
         "hooks": [
           {
             "type": "command",
+            "command": "command -p sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook-with-bash.js\" --optional --fail-closed-when \"HIMMEL_READINESS=1\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-readiness-tools.sh\"",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
             "command": "command -p sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook-with-bash.js\" \"${CLAUDE_PLUGIN_ROOT}/hooks/peer-taint-gate.sh\"",
             "timeout": 10
           }

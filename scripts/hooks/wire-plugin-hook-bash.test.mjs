@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -98,6 +98,11 @@ function unwire(text) {
       // INDEPENDENT restatement of the expected output instead of a circular
       // re-run of the generator it is meant to pin.
       commandHook.command = 'bash -c \'h="$CLAUDE_PROJECT_DIR/scripts/hooks/block-worker-write-fence.sh"; if [ -f "$h" ]; then exec bash "$h"; elif [ "${HIMMEL_WORKER:-0}" = "1" ]; then echo "block-worker-write-fence: hook script missing while HIMMEL_WORKER=1 (stale checkout?) - failing closed" >&2; exit 2; fi\'';
+    } else if (script === 'guard-readiness-tools.sh') {
+      // Fail-closed on the readiness role marker. Spelled out here, not derived from the wirer, so this stays an independent
+      // restatement of the expected output.
+      const hookName = script.replace(/\.sh$/, '');
+      commandHook.command = `bash -c 'h="$CLAUDE_PROJECT_DIR/scripts/hooks/${script}"; if [ -f "$h" ]; then exec bash "$h"; elif [ "\${HIMMEL_READINESS:-0}" = "1" ]; then echo "${hookName}: hook script missing while HIMMEL_READINESS=1 (stale checkout?) - failing closed" >&2; exit 2; fi'`;
     } else if (script === 'guard-chief-dispatch.sh' || script === 'guard-chief-foreground.sh') {
       const hookName = script.replace(/\.sh$/, '');
       commandHook.command = `bash -c 'h="$CLAUDE_PROJECT_DIR/scripts/hooks/${script}"; if [ -f "$h" ]; then exec bash "$h"; elif [ "\${HIMMEL_CONSOLE:-0}" = "1" ]; then echo "${hookName}: hook script missing while HIMMEL_CONSOLE=1 (stale checkout?) - failing closed" >&2; exit 2; fi'`;
@@ -267,4 +272,102 @@ test('redirect-webfetch-walled-hosts.sh is a plugin-sourced WebFetch entry, neve
   assert.equal(entries.length, 1);
   assert.equal(entries[0].matcher, 'WebFetch');
   assert.equal(entries[0].hooks[0].command, `${WIRED_PREFIX}"\${CLAUDE_PLUGIN_ROOT}/hooks/redirect-webfetch-walled-hosts.sh"`);
+});
+
+// ---- the readiness role's delivery (C0s cycle 5): the exact-tool guard through the normal plugin inventory -------------
+// Independent restatements of the expected output, not imported from the wirer. The SESSION script (readiness-session.sh) is
+// deliberately NOT registered here: its `. "$RS_QL"` source cannot pass the dispatched-closure walk (see the cycle RESULT).
+const REPO_ROOT = join(HERE, '..', '..');
+const PLUGIN_ROOT = join(REPO_ROOT, 'marketplace', 'plugins', 'himmel-ops');
+const GUARD = 'guard-readiness-tools.sh';
+const GUARD_COMMAND = `${WIRED_PREFIX}--optional --fail-closed-when "HIMMEL_READINESS=1" "$CLAUDE_PROJECT_DIR/scripts/hooks/${GUARD}"`;
+
+function groupsWith(event, script) {
+  return JSON.parse(readFileSync(PLUGIN_HOOKS, 'utf8')).hooks[event].filter((g) => g.hooks.some((h) => h.command.includes(`/${script}"`)));
+}
+
+test('the readiness guard is ONE PreToolUse entry: every tool matcher, project-delivered, fail-closed on exactly HIMMEL_READINESS=1, just before the last peer-taint group', () => {
+  const entries = groupsWith('PreToolUse', GUARD);
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].matcher, '*');
+  assert.equal(entries[0].hooks.length, 1);
+  assert.equal(entries[0].hooks[0].command, GUARD_COMMAND);
+  assert.equal(entries[0].hooks[0].timeout, 15);
+  const pre = JSON.parse(readFileSync(PLUGIN_HOOKS, 'utf8')).hooks.PreToolUse;
+  const index = pre.indexOf(pre.find((g) => g.hooks[0].command.includes(GUARD)));
+  assert.equal(pre[index + 1].hooks[0].command.includes('peer-taint-gate.sh'), true, 'the peer taint gate stays the last PreToolUse group');
+  assert.equal(index, pre.length - 2);
+  for (const event of Object.keys(JSON.parse(readFileSync(PLUGIN_HOOKS, 'utf8')).hooks)) {
+    if (event !== 'PreToolUse') assert.equal(groupsWith(event, GUARD).length, 0, `${event} must not register the guard`);
+  }
+});
+
+test('no project-lane double registration, no second copy location, and the plugin policy copy equals the source', () => {
+  const project = readFileSync(join(REPO_ROOT, '.claude', 'settings.json'), 'utf8');
+  const projectWirer = readFileSync(join(HERE, 'wire-hook-bash.mjs'), 'utf8');
+  assert.ok(!project.includes(GUARD), 'the guard is not in the project settings');
+  assert.ok(!projectWirer.includes(GUARD), 'the guard is not in the project wirer inventory');
+  assert.equal(existsSync(join(PLUGIN_ROOT, 'hooks', GUARD)), false, 'the guard has no new plugin hooks/ copy');
+  assert.equal(readFileSync(join(HERE, GUARD), 'utf8'), readFileSync(join(PLUGIN_ROOT, 'scripts', GUARD), 'utf8'), 'the plugin policy copy is byte-identical');
+  assert.equal(statSync(join(HERE, GUARD)).mode & 0o777, statSync(join(PLUGIN_ROOT, 'scripts', GUARD)).mode & 0o777, 'same mode');
+});
+
+// The registered command, run through the REAL runner with the REAL guard, exactly as Claude Code runs it (sh -c).
+function runGuard({ marker, project, payload }) {
+  const command = groupsWith('PreToolUse', GUARD)[0].hooks[0].command;
+  const env = { PATH: process.env.PATH, HOME: project, CLAUDE_PLUGIN_ROOT: PLUGIN_ROOT, CLAUDE_PROJECT_DIR: project };
+  if (marker !== undefined) env.HIMMEL_READINESS = marker;
+  return spawnSync('sh', ['-c', command], { env, input: payload, encoding: 'utf8', timeout: 30000 });
+}
+const toolCall = (tool_name) => JSON.stringify({ session_id: 's', hook_event_name: 'PreToolUse', tool_name, tool_input: {} });
+
+test('the registered guard command, through the real runner: marker 1 allows only the two readiness tools; any other marker value is the silent generic context', () => {
+  for (const tool of ['mcp__readiness__inspect', 'mcp__readiness__act']) {
+    const r = runGuard({ marker: '1', project: REPO_ROOT, payload: toolCall(tool) });
+    assert.equal(r.status, 0, `${tool}: ${r.stderr}`);
+    assert.equal(r.stdout, '');
+  }
+  for (const tool of ['Bash', 'Read', 'Write', 'Edit', 'mcp__readiness__finish', 'mcp__readiness__act ', 'mcp__other__inspect', 'Agent']) {
+    const r = runGuard({ marker: '1', project: REPO_ROOT, payload: toolCall(tool) });
+    assert.equal(r.status, 2, `${tool} must be denied`);
+    assert.match(r.stdout + r.stderr, /readiness tool-deny/);
+  }
+  for (const marker of [undefined, '', '0', 'yes', '01', '1 ', 'true']) {
+    const r = runGuard({ marker, project: REPO_ROOT, payload: toolCall('Bash') });
+    assert.equal(r.status, 0, `marker ${JSON.stringify(marker)} is the generic context`);
+    assert.equal(r.stdout, '');
+  }
+});
+
+test('the registered guard command fails CLOSED when its script is missing under the marker, and is silent without it', () => {
+  const empty = makeTmpDir('wire-readiness-empty-');
+  const closed = runGuard({ marker: '1', project: empty, payload: toolCall('mcp__readiness__inspect') });
+  assert.equal(closed.status, 2);
+  assert.match(closed.stderr, /failing closed/);
+  for (const marker of [undefined, '', '0', 'yes']) {
+    const open = runGuard({ marker, project: empty, payload: toolCall('Bash') });
+    assert.equal(open.status, 0, `marker ${JSON.stringify(marker)} with no script is a plain skip`);
+  }
+});
+
+test('the wirer refuses a guard entry that drops its marker flag, uses another marker or moves to the plugin hooks directory, without writing', () => {
+  const mutations = [
+    ['a guard without the fail-closed flag', (c) => c.replace(' --fail-closed-when "HIMMEL_READINESS=1"', '')],
+    ['a guard with another marker', (c) => c.replace('HIMMEL_READINESS=1', 'HIMMEL_WORKER=1')],
+    ['a guard registered from the plugin hooks directory', () => `${WIRED_PREFIX}"\${CLAUDE_PLUGIN_ROOT}/hooks/${GUARD}"`],
+  ];
+  for (const [label, change] of mutations) {
+    withFixture((fixture) => {
+      const doc = JSON.parse(readFileSync(fixture, 'utf8'));
+      const hook = Object.values(doc.hooks).flatMap((groups) => groups.flatMap((g) => g.hooks)).find((h) => h.command.includes(GUARD));
+      assert.ok(hook, label);
+      hook.command = change(hook.command);
+      writeFileSync(fixture, `${JSON.stringify(doc, null, 2)}\n`);
+      const before = readFileSync(fixture, 'utf8');
+      const result = invoke(fixture);
+      assert.equal(result.status, 1, label);
+      assert.match(result.stderr, /command inventory mismatch/, label);
+      assert.equal(readFileSync(fixture, 'utf8'), before, label);
+    }, { wired: true });
+  }
 });

@@ -1,11 +1,11 @@
-// readiness-tools.mjs -- the readiness role's host-side adapter library, cycle 1:
-//   * the host-private credential channel (a mode-0600 file in a mode-0700 attempt directory), and
-//   * the minimal REAL Jira port: readIssue / addReadinessLabel / readback, through the ordinary
-//     primary Jira CLI as a fixed-argv child process.
-//
-// What this file is NOT (yet): there is no MCP STDIO server, no `inspect`/`act` tool surface, no
-// guard and no launcher wiring here. Those are later cycles. Everything exported is a host function:
-// the model is never handed a port, a method, a URL, a header, an executable or a credential.
+// readiness-tools.mjs -- the readiness role's host-side adapter:
+//   * the host-private credential channel (a mode-0600 file in a mode-0700 attempt directory) and the minimal REAL
+//     Jira port (readIssue / addReadinessLabel / readback), through the ordinary primary Jira CLI as a fixed-argv child;
+//   * the attempt-ownership checks every act runs first (checkAdopted / guardedLabel / finishAttempt);
+//   * the thin C0 MCP STDIO envelope (`node readiness-tools.mjs --startup-config <startup.json>`): exactly two tools,
+//     inspect and act, over a finite host-admitted catalog and one copied issue. It is NOT the later readiness
+//     machinery: there are no collectors, requirement policy, ruling, route, follow-up or Jira writes here.
+// The model is never handed a port, a method, a URL, a header, an executable, a path or a credential.
 //
 // Boundary rules this file keeps:
 //   * The credentials come ONLY from the private file. The port's destination and Authorization are
@@ -349,6 +349,52 @@ function privateFile(path, uid) {
   return st;
 }
 
+// ---- the host-admitted catalog (thin C0) -------------------------------------------------------------------------
+// The trusted launcher copies a host-supplied {source_head, roots, catalog} document into the private startup config.
+// This adapter is the one validator: a positive allowlist of finite ids, each naming ONE pinned git blob (a tracked
+// regular file at the exact source commit, by object id) or ONE copied issue file (a plain name under the evidence
+// root). Nothing here is a path, URL or pattern the model can supply; the model only ever names an id.
+const HEX40 = /^[0-9a-f]{40}$/;
+const HEX64 = /^[0-9a-f]{64}$/;
+const ID_RE = /^[a-z][a-z0-9.-]{0,63}$/;
+const BLOB_PATH_RE = /^[A-Za-z0-9._][A-Za-z0-9._/-]{0,199}$/;
+const FILE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+const RESOURCE_MAX = 65536;
+const CATALOG_MAX_ENTRIES = 8;
+const sameKeys = (o, want) => { const k = Object.keys(o).sort(); return k.length === want.length && k.every((x, i) => x === want[i]); };
+const absClean = (p) => typeof p === 'string' && p.length <= 1024 && isAbsolute(p) && !p.includes('\0') && !p.split('/').includes('..') && !p.split('/').includes('.');
+const badCatalog = (why) => new ReadinessError('malformed', `the startup config catalog is invalid: ${why}`);
+
+function validateCatalog(cfg) {
+  const present = ['source_head', 'roots', 'catalog'].filter((k) => k in cfg);
+  if (present.length === 0) return null;
+  if (present.length !== 3) throw badCatalog('source_head, roots and catalog come together');
+  if (typeof cfg.source_head !== 'string' || !HEX40.test(cfg.source_head)) throw badCatalog('source_head is not a 40-hex commit');
+  const r = cfg.roots;
+  if (r === null || typeof r !== 'object' || Array.isArray(r) || !sameKeys(r, ['evidence', 'repo']) || !absClean(r.repo) || !absClean(r.evidence)) throw badCatalog('roots must be exactly {repo, evidence}, absolute paths');
+  if (!Array.isArray(cfg.catalog) || cfg.catalog.length > CATALOG_MAX_ENTRIES) throw badCatalog(`catalog must be a list of at most ${CATALOG_MAX_ENTRIES} entries`);
+  const ids = new Set();
+  let issues = 0;
+  const entries = cfg.catalog.map((e) => {
+    if (e === null || typeof e !== 'object' || Array.isArray(e) || typeof e.id !== 'string' || !ID_RE.test(e.id) || ids.has(e.id)) throw badCatalog('an entry has a missing, malformed or duplicate id');
+    ids.add(e.id);
+    const common = Number.isInteger(e.size) && e.size >= 0 && e.size <= RESOURCE_MAX && typeof e.sha256 === 'string' && HEX64.test(e.sha256)
+      && typeof e.purpose === 'string' && e.purpose.length >= 1 && e.purpose.length <= 200 && !/[\x00-\x1f\x7f]/.test(e.purpose);
+    if (e.kind === 'blob') {
+      const segs = typeof e.path === 'string' ? e.path.split('/') : [''];
+      if (!sameKeys(e, ['id', 'kind', 'mode', 'oid', 'path', 'purpose', 'sha256', 'size']) || !common || typeof e.oid !== 'string' || !HEX40.test(e.oid)
+        || !['100644', '100755'].includes(e.mode) || !BLOB_PATH_RE.test(e.path) || segs.some((x) => x === '' || x === '.' || x === '..')) throw badCatalog(`blob entry ${e.id} is malformed`);
+    } else if (e.kind === 'issue') {
+      if (!sameKeys(e, ['file', 'id', 'key', 'kind', 'purpose', 'sha256', 'size']) || !common || typeof e.key !== 'string' || !KEY_RE.test(e.key) || e.key.length > 40
+        || typeof e.file !== 'string' || !FILE_RE.test(e.file)) throw badCatalog(`issue entry ${e.id} is malformed`);
+      issues += 1;
+    } else throw badCatalog(`entry ${e.id} has an unknown kind`);
+    return Object.freeze({ ...e });
+  });
+  if (issues > 1) throw badCatalog('at most one copied issue is bound');
+  return { source_head: cfg.source_head, roots: Object.freeze({ repo: r.repo, evidence: r.evidence }), catalog: Object.freeze(entries) };
+}
+
 // The private startup config the trusted launcher wrote: mode 0600 in a mode-0700 directory named for the minted
 // session id, which the file must repeat as its immutable scope. Returns only what the adapter reads.
 export function loadStartup(path, opts = {}) {
@@ -359,7 +405,7 @@ export function loadStartup(path, opts = {}) {
   const dir = dirname(path);
   assertPrivateDir(dir, uid);
   const st = privateFile(path, uid);
-  if (!st || st.size < 2 || st.size > 8192) throw new ReadinessError('startup-file', 'the startup config must be a private mode-0600 regular file');
+  if (!st || st.size < 2 || st.size > 32768) throw new ReadinessError('startup-file', 'the startup config must be a private mode-0600 regular file');
   let cfg;
   try { cfg = JSON.parse(readFileSync(path, 'utf8')); } catch { throw new ReadinessError('malformed', 'the startup config is not valid JSON'); }
   if (cfg === null || typeof cfg !== 'object' || Array.isArray(cfg)) throw new ReadinessError('malformed', 'the startup config is not an object');
@@ -371,8 +417,9 @@ export function loadStartup(path, opts = {}) {
   if (basename(cfg.queue_lock) !== 'queue-lock.sh') throw new ReadinessError('malformed', 'the startup config queue_lock is not queue-lock.sh');
   for (const k of ['version', 'attempt_id']) if (!str(k)) throw new ReadinessError('malformed', `the startup config ${k} is missing`);
   if (cfg.port === null || typeof cfg.port !== 'object' || !['copy', 'jira'].includes(cfg.port.kind)) throw new ReadinessError('malformed', 'the startup config port.kind must be copy or jira');
+  const catalog = validateCatalog(cfg);
   return Object.freeze({
-    path, dir, session_scope: scope, doc: cfg.doc, version: cfg.version, attempt_id: cfg.attempt_id, port: Object.freeze({ ...cfg.port }),
+    path, dir, session_scope: scope, doc: cfg.doc, version: cfg.version, attempt_id: cfg.attempt_id, port: Object.freeze({ ...cfg.port }), ...(catalog ?? {}),
   });
 }
 
@@ -415,8 +462,287 @@ export async function finishAttempt(startup, deps = {}) {
     : { ...NOT_ADOPTED };
 }
 
-// ---- host CLI. Cycle 2 has only the launcher's private credential initialization; the STDIO server is a later cycle.
+
+// ---- catalog resources ------------------------------------------------------------------------------------------
+// A refusal says which rule failed with a FIXED sentence: it never echoes the request, a path, a config value or a
+// process's output.
+const REASONS = Object.freeze({
+  'bad-request': 'the request is malformed or carries a field this tool does not accept',
+  unadmitted: 'that id is not an admitted catalog resource',
+  'unsupported-action': 'that action is not supported by this envelope',
+  'not-in-scope': 'that key is not the bound copied issue',
+  'port-unavailable': 'this envelope serves only the copied issue; no other port is available',
+  changed: 'the admitted resource is missing, changed or is not the pinned bytes',
+  'too-large': 'the admitted resource exceeds the per-request size limit',
+  'not-text': 'the admitted resource is not UTF-8 text',
+});
+const refuse = (code) => ({ ok: false, code, reason: REASONS[code] });
+
+const GIT_TIMEOUT_MS = 10_000;
+// A fixed-argv git child over a verified object id: no ref, path or option comes from the model, and the child gets a
+// finite environment with no user or system git configuration.
+function runGit(repo, args, maxBuffer) {
+  return new Promise((done) => {
+    execFile('git', ['-C', repo, '--no-pager', ...args], { // git-env-ok: the child env below is a finite allowlist; no GIT_* name is inherited and the GIT_* it sets only isolate config
+      env: { PATH: process.env.PATH ?? '/usr/bin:/bin', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', LC_ALL: 'C' },
+      encoding: 'buffer', timeout: GIT_TIMEOUT_MS, killSignal: 'SIGKILL', maxBuffer, windowsHide: true,
+    }, (err, stdout) => done(err ? { ok: false, overflow: err.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' } : { ok: true, out: stdout }));
+  });
+}
+
+// The bytes must be exactly what the catalog said (size and SHA-256) and valid UTF-8 text.
+function checkBytes(entry, buf) {
+  if (buf.length !== entry.size || createHash('sha256').update(buf).digest('hex') !== entry.sha256) return refuse('changed');
+  let content;
+  try { content = new TextDecoder('utf-8', { fatal: true }).decode(buf); } catch { return refuse('not-text'); }
+  return { ok: true, content };
+}
+
+async function readBlob(startup, entry) {
+  const repo = startup.roots.repo;
+  // the object must be the tracked regular file at the pinned commit (not a symlink, submodule or other object)
+  const tree = await runGit(repo, ['ls-tree', '-z', startup.source_head, '--', entry.path], 4096);
+  if (!tree.ok) return refuse('changed');
+  const m = /^(\d{6}) (blob|tree|commit) ([0-9a-f]{40})\t([^\0]*)\0$/.exec(tree.out.toString('latin1'));
+  if (!m || m[1] !== entry.mode || m[2] !== 'blob' || m[3] !== entry.oid || m[4] !== entry.path) return refuse('changed');
+  const body = await runGit(repo, ['cat-file', 'blob', entry.oid], RESOURCE_MAX + 1);
+  if (!body.ok) return refuse(body.overflow ? 'too-large' : 'changed');
+  const got = checkBytes(entry, body.out);
+  return got.ok ? { ok: true, id: entry.id, kind: 'blob', path: entry.path, size: entry.size, sha256: entry.sha256, content: got.content } : got;
+}
+
+// The copied issue: a plain file name under the admitted evidence root, opened nofollow and checked on the open descriptor
+// (regular, single link, ours, the catalog's size and hash) and again against the path after the read.
+async function readIssueFile(startup, entry) {
+  const dir = startup.roots.evidence;
+  try {
+    const dst = lstatSync(dir);
+    if (!dst.isDirectory() || dst.isSymbolicLink() || realpathSync(dir) !== dir) return refuse('changed');
+  } catch { return refuse('changed'); }
+  const path = join(dir, entry.file);
+  let fd = -1;
+  try {
+    try { fd = openSync(path, FS.O_RDONLY | FS.O_NOFOLLOW | FS.O_NONBLOCK); } catch { return refuse('changed'); }
+    const st = fstatSync(fd);
+    if (!st.isFile() || st.nlink !== 1 || st.uid !== process.getuid() || st.size !== entry.size || st.size > RESOURCE_MAX) return refuse('changed');
+    const buf = Buffer.alloc(st.size);
+    let got = 0;
+    while (got < st.size) {
+      const n = readSync(fd, buf, got, st.size - got, null);
+      if (n === 0) break;
+      got += n;
+    }
+    let now;
+    try { now = lstatSync(path); } catch { return refuse('changed'); }
+    const again = fstatSync(fd);
+    if (got !== st.size || !now.isFile() || !sameIdentity(now, st) || again.size !== st.size || again.mtimeMs !== st.mtimeMs || again.ctimeMs !== st.ctimeMs) return refuse('changed');
+    const checked = checkBytes(entry, buf);
+    if (!checked.ok) return checked;
+    let doc;
+    try { doc = JSON.parse(checked.content); } catch { return refuse('changed'); }
+    if (doc === null || typeof doc !== 'object' || doc.key !== entry.key || !Array.isArray(doc.labels) || doc.labels.some((l) => typeof l !== 'string')) return refuse('changed');
+    return { ok: true, id: entry.id, kind: 'issue', key: entry.key, size: entry.size, sha256: entry.sha256, content: checked.content, labels: [...doc.labels] };
+  } finally {
+    if (fd >= 0) closeSync(fd);
+  }
+}
+
+// inspect: an exact catalog id, nothing else. Every read re-verifies the resource against the catalog's bytes.
+export async function readCatalogResource(startup, id) {
+  const entry = typeof id === 'string' && Array.isArray(startup?.catalog) ? startup.catalog.find((e) => e.id === id) : undefined;
+  if (!entry) return refuse('unadmitted');
+  return entry.kind === 'blob' ? readBlob(startup, entry) : readIssueFile(startup, entry);
+}
+
+// ---- the copy port (thin C0) ------------------------------------------------------------------------------------
+// The copied remote state is the admitted issue file's labels, held in memory: an act changes only this copy (never the
+// admitted file, never Jira). One issue is bound; any other key is not in the copy.
+export function createCopyPort(startup) {
+  const entry = startup.catalog?.find((e) => e.kind === 'issue');
+  let labels = null;
+  const load = async () => {
+    if (!entry) return null;
+    if (labels === null) {
+      const r = await readCatalogResource(startup, entry.id);
+      if (!r.ok) return null;
+      labels = [...r.labels];
+    }
+    return labels;
+  };
+  const view = async (kind, key) => {
+    if (!entry || key !== entry.key) return { outcome: 'error', code: 'not-in-catalog', message: 'that key is not in the copied state' };
+    const cur = await load();
+    if (cur === null) return { outcome: 'error', code: 'unreadable', message: 'the copied issue could not be read' };
+    return { outcome: 'ok', kind, issue: { key, labels: [...cur], issue_sha256: entry.sha256 } };
+  };
+  return Object.freeze({
+    kind: 'copy',
+    labelsNow: load,
+    readIssue: (key) => view('issue', key),
+    readback: (key) => view('readback', key),
+    async addReadinessLabel(key, present) {
+      if (!entry || key !== entry.key) return { outcome: 'error', code: 'not-in-catalog', message: 'that key is not in the copied state' };
+      const cur = await load();
+      if (cur === null) return { outcome: 'error', code: 'unreadable', message: 'the copied issue could not be read' };
+      const has = cur.includes(READINESS_LABEL);
+      if (present && !has) cur.push(READINESS_LABEL);
+      if (!present && has) labels = cur.filter((l) => l !== READINESS_LABEL);
+      return { outcome: 'ok', key, label: READINESS_LABEL, present: Boolean(present) };
+    },
+    findMarker: unsupported,
+    postComment: unsupported,
+    addBlocks: unsupported,
+    findFollowup: unsupported,
+    createBacklog: unsupported,
+  });
+}
+
+// ---- the MCP STDIO envelope --------------------------------------------------------------------------------------
+// Newline-delimited JSON-RPC 2.0 on stdin/stdout, one request at a time. Exactly two tools; stdout carries protocol
+// messages only (nothing is ever logged there) and a healthy session writes nothing to stderr.
+const MCP_VERSIONS = Object.freeze(['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05']);
+const SERVER_INFO = Object.freeze({ name: 'readiness', version: '0.1.0' });
+const LINE_MAX = 262144;
+const UNSUPPORTED_ACTS = new Set(['preparation-text', 'blocks', 'comment', 'backlog-followup', 'ruling', 'route']);
+const TOOLS = Object.freeze([
+  Object.freeze({
+    name: 'inspect',
+    description: 'Read one admitted catalog resource by its exact id.',
+    inputSchema: { type: 'object', properties: { id: { type: 'string', maxLength: 128 } }, required: ['id'], additionalProperties: false },
+  }),
+  Object.freeze({
+    name: 'act',
+    description: 'Perform one closed action: label (add or remove the readiness label on the bound copied issue) or finish (release this session\'s own lease and end).',
+    inputSchema: {
+      type: 'object',
+      properties: { type: { type: 'string', enum: ['label', 'finish'] }, key: { type: 'string', maxLength: 40 }, present: { type: 'boolean' } },
+      required: ['type'],
+      additionalProperties: false,
+    },
+  }),
+]);
+const validId = (id) => (typeof id === 'string' ? id.length <= 256 : Number.isSafeInteger(id));
+
+// serve: run until stdin ends; resolves 0 once every queued request has been answered and stdout is flushed.
+export function serve(startup, io = {}, deps = {}) {
+  const input = io.input ?? process.stdin;
+  const output = io.output ?? process.stdout;
+  // The copied issue is the only port this envelope serves. A jira-kind startup never reaches the credential file here.
+  const port = startup.port.kind === 'copy' ? createCopyPort(startup) : null;
+  const issueEntry = startup.catalog?.find((e) => e.kind === 'issue');
+  let initialized = false;
+  const send = (m) => { output.write(`${JSON.stringify({ jsonrpc: '2.0', ...m })}\n`); };
+  const fail = (id, code, message) => send({ id, error: { code, message } });
+  const toolResult = (id, data) => send({ id, result: { content: [{ type: 'text', text: JSON.stringify(data) }], isError: data.ok !== true } });
+
+  async function inspectTool(args) {
+    if (!sameKeys(args, ['id']) || typeof args.id !== 'string') return refuse('bad-request');
+    const r = await readCatalogResource(startup, args.id);
+    if (r.ok && r.kind === 'issue') {
+      const now = port ? await port.labelsNow() : null;
+      return { ...r, labels: now ?? r.labels };
+    }
+    return r;
+  }
+
+  async function actTool(args) {
+    if (typeof args.type !== 'string') return refuse('bad-request');
+    if (UNSUPPORTED_ACTS.has(args.type)) return refuse('unsupported-action');
+    if (args.type === 'finish') return sameKeys(args, ['type']) ? finishAttempt(startup, deps) : refuse('bad-request');
+    if (args.type !== 'label') return refuse('bad-request');
+    if (!sameKeys(args, ['key', 'present', 'type']) || typeof args.key !== 'string' || args.key.length > 40 || !KEY_RE.test(args.key) || typeof args.present !== 'boolean') return refuse('bad-request');
+    if (!issueEntry || issueEntry.key !== args.key) return refuse('not-in-scope');
+    if (!port) return refuse('port-unavailable');
+    return guardedLabel(startup, port, args.key, args.present, Date.now() + 20_000, deps);
+  }
+
+  async function callTool(id, params) {
+    if (params === null || typeof params !== 'object' || Array.isArray(params) || (params.name !== 'inspect' && params.name !== 'act')) return fail(id, -32602, 'unknown tool');
+    const args = params.arguments;
+    if (args === null || typeof args !== 'object' || Array.isArray(args)) return toolResult(id, refuse('bad-request'));
+    return toolResult(id, params.name === 'inspect' ? await inspectTool(args) : await actTool(args));
+  }
+
+  async function handle(msg) {
+    if (msg === null || typeof msg !== 'object' || Array.isArray(msg)) return fail(null, -32600, 'invalid request');
+    const hasId = Object.prototype.hasOwnProperty.call(msg, 'id');
+    if (hasId && !validId(msg.id)) return fail(null, -32600, 'invalid request');
+    const id = hasId ? msg.id : null;
+    if (msg.jsonrpc !== '2.0' || typeof msg.method !== 'string') return fail(id, -32600, 'invalid request');
+    // a message with no id is a notification: it gets no answer and has no effect, whatever it names
+    if (!hasId) return undefined;
+    try {
+      switch (msg.method) {
+        case 'initialize': {
+          const p = msg.params;
+          if (initialized) return fail(id, -32600, 'already initialized');
+          if (p === null || typeof p !== 'object' || Array.isArray(p) || typeof p.protocolVersion !== 'string') return fail(id, -32602, 'invalid params');
+          initialized = true;
+          return send({ id, result: { protocolVersion: MCP_VERSIONS.includes(p.protocolVersion) ? p.protocolVersion : MCP_VERSIONS[0], capabilities: { tools: {} }, serverInfo: SERVER_INFO } });
+        }
+        case 'ping': return send({ id, result: {} });
+        case 'tools/list':
+          if (!initialized) return fail(id, -32002, 'server not initialized');
+          return send({ id, result: { tools: TOOLS } });
+        case 'tools/call':
+          if (!initialized) return fail(id, -32002, 'server not initialized');
+          return await callTool(id, msg.params);
+        default: return fail(id, -32601, 'method not found');
+      }
+    } catch {
+      return fail(id, -32603, 'internal error');
+    }
+  }
+
+  async function handleLine(line) {
+    if (line.trim() === '') return undefined;
+    let msg;
+    try { msg = JSON.parse(line); } catch { return fail(null, -32700, 'parse error'); }
+    return handle(msg);
+  }
+
+  return new Promise((resolve) => {
+    let buf = '';
+    let discarding = false;
+    let chain = Promise.resolve();
+    const enqueue = (fn) => { chain = chain.then(fn).catch(() => fail(null, -32603, 'internal error')); };
+    input.setEncoding?.('utf8');
+    input.on('data', (chunk) => {
+      let text = String(chunk);
+      while (text.length > 0) {
+        const nl = text.indexOf('\n');
+        const piece = nl === -1 ? text : text.slice(0, nl);
+        if (!discarding) {
+          buf += piece;
+          // a line over the bound is refused once and its remainder discarded unread
+          if (buf.length > LINE_MAX) { buf = ''; discarding = true; enqueue(() => fail(null, -32600, 'request too large')); }
+        }
+        if (nl === -1) return;
+        if (!discarding) { const line = buf; enqueue(() => handleLine(line)); }
+        buf = '';
+        discarding = false;
+        text = text.slice(nl + 1);
+      }
+    });
+    input.on('end', () => { chain.then(() => output.write('', () => resolve(0))); });
+    input.on('error', () => { chain.then(() => resolve(1)); });
+  });
+}
+
+// ---- host CLI -------------------------------------------------------------------------------------------------
+//   readiness-tools.mjs --startup-config <absolute startup.json>   the MCP STDIO envelope (what the generated MCP config runs)
+//   readiness-tools.mjs init-credentials <primary index.js> <credentials file>   the launcher's private credential step
 async function main(argv) {
+  if (argv.length === 2 && argv[0] === '--startup-config') {
+    let startup;
+    try {
+      startup = loadStartup(argv[1]);
+    } catch (e) {
+      process.stderr.write(`readiness-tools: serve: ${e instanceof ReadinessError ? e.code : 'failed'}\n`);
+      return 2;
+    }
+    return serve(startup);
+  }
   if (argv[0] === 'init-credentials' && argv.length === 3) {
     try {
       await initCredentials(argv[1], argv[2]);
@@ -427,7 +753,7 @@ async function main(argv) {
       return 2;
     }
   }
-  process.stderr.write('usage: readiness-tools.mjs init-credentials <primary index.js> <credentials file>\n');
+  process.stderr.write('usage: readiness-tools.mjs --startup-config <startup.json> | init-credentials <primary index.js> <credentials file>\n');
   return 2;
 }
 

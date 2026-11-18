@@ -10,7 +10,8 @@
 #   headed-arm-worker.sh --profile readiness (mint, private startup config, real launcher render, C0p, on-behalf acquire)
 #   -> the generated MCP config names the startup file -> readiness-session.sh startup (the actual session id equals the
 #   minted scope; adopt; confirmation) -> the adapter's checkAdopted / guardedLabel / finishAttempt (a fresh ownership
-#   check before every act) -> finish releases exactly the adopted lease.
+#   check before every act) -> finish releases exactly the adopted lease. A last stage runs the adapter's own C0 envelope
+#   suite (readiness-tools.test.mjs), which speaks MCP to the adapter started exactly as each GENERATED config starts it.
 # It is NOT proof that Claude Code delivers the SessionStart hook or the PostToolUse self-heartbeat, that the native
 # binary honours the generated argv, or that the worker's own heartbeat (not the launcher's) advances the lease: those are
 # the parent-authorized VM run (C0v) and stay unproved here.
@@ -182,6 +183,19 @@ check "cleanup of a session that never adopted releases the transported token an
 # --- 8. the future VM run stays blocked here
 rc=0; bash "$0" --vm-capability > "$tmp/vm.out" 2> "$tmp/vm.err" || rc=$?
 check "--vm-capability is BLOCKED (exit 3) and runs nothing" "$rc:$(grep -c 'BLOCKED' "$tmp/vm.err")" "3:1"
+
+# --- 9. the adapter's MCP envelope, over the configuration this very launcher generates (and the registration of its suite)
+# readiness-tools.test.mjs runs the real launcher in its own contained fixture worlds, then spawns the adapter with exactly the
+# command and argv of each GENERATED strict MCP config and speaks MCP to it. Only the C0 envelope group runs here: it needs no
+# built primary CLI, so this chain is runnable wherever the launcher chain above is. Its summary must show real passes and no skip.
+rc=0
+env -i PATH="$PATH" HOME="$HOME" TMPDIR="$tmp" node --test --test-name-pattern 'C0 envelope' "$HERE/readiness-tools.test.mjs" > "$tmp/envelope.out" 2>&1 || rc=$?
+env_pass="$(sed -n 's/^ℹ pass \([0-9]*\)$/\1/p' "$tmp/envelope.out" | tail -n 1)"
+env_fail="$(sed -n 's/^ℹ fail \([0-9]*\)$/\1/p' "$tmp/envelope.out" | tail -n 1)"
+env_skip="$(sed -n 's/^ℹ skipped \([0-9]*\)$/\1/p' "$tmp/envelope.out" | tail -n 1)"
+[ "$rc" -eq 0 ] || tail -n 30 "$tmp/envelope.out"
+check "the C0 envelope suite exits 0 with no failure and no skip" "$rc:${env_fail:-?}:${env_skip:-?}" "0:0:0"
+check "the C0 envelope suite really ran its rows (not a vacuous pass)" "$([ "${env_pass:-0}" -ge 20 ] && echo ran || echo "only:${env_pass:-0}")" "ran"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then echo "PASS - test-readiness-worker.sh"; exit 0; fi

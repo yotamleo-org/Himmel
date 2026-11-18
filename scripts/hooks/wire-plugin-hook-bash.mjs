@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const EXPECTED_COUNTS = Object.freeze({
-  PreToolUse: 20,
+  PreToolUse: 21,
   SessionStart: 6,
   SessionEnd: 3,
   Notification: 1,
@@ -60,6 +60,11 @@ const EXPECTED_HOOKS = Object.freeze([
   // plugin-shipped so an adopter repo gets the walled-host WebFetch redirect
   // too; it names the himmel fetcher only when the checkout has one.
   { event: 'PreToolUse', script: 'redirect-webfetch-walled-hosts.sh', source: 'plugin' },
+  // the readiness role's exact-tool allow-list. HIMMEL_READINESS=1 is the role marker (set only by the trusted readiness
+  // launcher, headed-arm-worker.sh): with it a missing script fails CLOSED, without it this hook is absent or silent. It is
+  // the project-delivered copy (scripts/hooks/) behind the runner's lone `--optional --fail-closed-when HIMMEL_READINESS=1`
+  // protocol, never a second registration in the project inventory.
+  { event: 'PreToolUse', script: 'guard-readiness-tools.sh', failClosedWhen: 'HIMMEL_READINESS=1' },
   // plugin-shipped so the peer taint gate also runs in a peer desk, whose cwd is
   // an empty dir outside every checkout; the last PreToolUse group.
   { event: 'PreToolUse', script: 'peer-taint-gate.sh', source: 'plugin' },
