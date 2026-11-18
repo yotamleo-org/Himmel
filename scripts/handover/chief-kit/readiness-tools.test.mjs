@@ -16,7 +16,8 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
-import { execFile, execFileSync } from 'node:child_process';
+import { execFile, execFileSync, spawnSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { inspect } from 'node:util';
 
@@ -644,6 +645,222 @@ export function authHeader() { return 'Basic ' + Buffer.from('fixture@example.in
     const f = fakePrimary(goodClient());
     await initCredentials(f.cli, f.out, { importClient: async () => ({ baseUrl: () => 'http://127.0.0.1:7', projectKey: () => 'FIXT', authHeader: () => `Basic ${Buffer.from(`a@b.invalid:${SENTINEL}`).toString('base64')}` }) });
     assert.equal(JSON.parse(readFileSync(f.out, 'utf8')).base_url, 'http://127.0.0.1:7');
+  });
+});
+
+// C0s cycle 2: the adapter's ownership gate. Every act, finish included, is verified afresh against the REAL
+// readiness-session.sh and the REAL queue-lock.sh in a scratch handover root, runtime directory and HOME; the
+// attempt below is exactly what the launcher leaves (a private startup config plus the on-behalf lease's transport).
+// A recording stub stands in for the session script only where the child's argv and environment are the subject.
+describe('C0s2 adopted ownership', () => {
+  const QL = join(HERE, '..', 'queue-lock.sh');
+  const SESSION = join(HERE, '..', '..', 'hooks', 'readiness-session.sh');
+  const TOKEN_SENTINEL_ENV = 'ambient-secret-must-not-reach-the-child';
+  function world() {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'c0s2-own-')));
+    roots.push(root);
+    const xdg = join(root, 'xdg'); mkdirSync(xdg, { mode: 0o700 }); chmodSync(xdg, 0o700);
+    const hd = join(root, 'hd'); mkdirSync(join(hd, 'u', 'r'), { recursive: true });
+    const home = join(root, 'home'); mkdirSync(home);
+    const env = { PATH: process.env.PATH, HOME: home, XDG_RUNTIME_DIR: xdg, HANDOVER_DIR: hd };
+    let n = 0;
+    const ql = (verb, args, extra = {}) => spawnSync('bash', [QL, verb, ...args], { env: { ...env, ...extra }, encoding: 'utf8' });
+    const w = {
+      root, env, xdg, hd,
+      status: (doc) => ql('status', [doc]).stdout.trim().split('\n').pop(),
+      owner: (doc) => {
+        const m = /"session":"([^"]+)"/.exec(ql('status', [doc]).stdout);
+        return m ? m[1] : null;
+      },
+      hold: (doc, token) => ql('acquire', [doc, token]),
+      drop: (doc, token) => ql('release', [doc, token]),
+      attempt() {
+        n += 1;
+        const doc = join(hd, 'u', 'r', `readiness-v1.${n}.0.md`);
+        writeFileSync(doc, '---\ndescription: fixture\n---\n');
+        const sid = randomUUID();
+        const base = join(xdg, 'himmel-readiness');
+        mkdirSync(base, { recursive: true, mode: 0o700 }); chmodSync(base, 0o700);
+        const dir = join(base, sid); mkdirSync(dir, { mode: 0o700 }); chmodSync(dir, 0o700);
+        const startupPath = join(dir, 'startup.json');
+        writeFileSync(startupPath, JSON.stringify({
+          schema: 'readiness-startup-v1', attempt_id: `a-${sid}`, session_scope: sid, version: `v1.${n}.0`, doc, lane: 'native', model: 'fixture-model', queue_lock: QL, runtime_dir: xdg, handover_dir: hd, port: { kind: 'copy' },
+        }), { mode: 0o600 });
+        chmodSync(startupPath, 0o600);
+        const acquired = ql('acquire', [doc], { QUEUE_LOCK_ON_BEHALF: '1' });
+        const token = /release-token: `([^`]+)`/.exec(acquired.stdout)[1];
+        writeFileSync(join(dir, 'lease-token'), `${token}\n`, { mode: 0o600 });
+        chmodSync(join(dir, 'lease-token'), 0o600);
+        return { doc, sid, dir, startupPath, token };
+      },
+      start: (a) => spawnSync('bash', [SESSION, 'startup'], {
+        input: JSON.stringify({ session_id: a.sid, hook_event_name: 'SessionStart', source: 'startup' }),
+        env: { ...env, CLAUDE_CODE_SESSION_ID: a.sid }, encoding: 'utf8',
+      }),
+    };
+    return w;
+  }
+  const spyPort = () => {
+    const calls = [];
+    return { calls, port: { addReadinessLabel: async (...args) => { calls.push(args); return { outcome: 'ok' }; } } };
+  };
+  const SOON = () => Date.now() + 20000;
+  const noToken = (value, token) => assert.ok(!JSON.stringify(value).includes(token), 'the lease token reached a returned value');
+
+  test('loadStartup accepts the launcher-shaped private file and returns only what the adapter reads', async () => {
+    const { loadStartup } = await load();
+    const a = world().attempt();
+    const s = loadStartup(a.startupPath);
+    assert.deepEqual({ ...s, port: { ...s.port } }, { path: a.startupPath, dir: a.dir, session_scope: a.sid, doc: a.doc, version: 'v1.1.0', attempt_id: `a-${a.sid}`, port: { kind: 'copy' } });
+    assert.ok(Object.isFrozen(s));
+  });
+
+  test('loadStartup refuses every shape that is not the private, bound startup file', async () => {
+    const { loadStartup } = await load();
+    const w = world();
+    const cases = [
+      ['a directory that is not mode 0700', 'dir-mode', (a) => chmodSync(a.dir, 0o755)],
+      ['a file that is not mode 0600', 'startup-file', (a) => chmodSync(a.startupPath, 0o644)],
+      ['a symlinked file', 'startup-file', (a) => { const real = join(a.dir, 'real.json'); renameSync(a.startupPath, real); symlinkSync(real, a.startupPath); }],
+      ['a file with two links', 'startup-file', (a) => linkSync(a.startupPath, join(w.root, 'second-link'))],
+      ['invalid JSON', 'malformed', (a) => writeFileSync(a.startupPath, 'not json', { mode: 0o600 })],
+      ['another schema', 'malformed', (a) => rewrite(a, { schema: 'other' })],
+      ['another lane', 'malformed', (a) => rewrite(a, { lane: 'claudex' })],
+      ['a scope that is not the directory id', 'malformed', (a) => rewrite(a, { session_scope: randomUUID() })],
+      ['a scope that is not a uuid', 'malformed', (a) => rewrite(a, { session_scope: 'not-a-uuid' })],
+      ['a relative doc', 'malformed', (a) => rewrite(a, { doc: 'readiness-v1.md' })],
+      ['a queue lock that is not queue-lock.sh', 'malformed', (a) => rewrite(a, { queue_lock: '/bin/true' })],
+      ['a missing version', 'malformed', (a) => rewrite(a, { version: '' })],
+      ['a port kind that is neither copy nor jira', 'malformed', (a) => rewrite(a, { port: { kind: 'raw-http' } })],
+    ];
+    function rewrite(a, patch) {
+      const cur = JSON.parse(readFileSync(a.startupPath, 'utf8'));
+      writeFileSync(a.startupPath, JSON.stringify({ ...cur, ...patch }), { mode: 0o600 });
+    }
+    for (const [label, code, mutate] of cases) {
+      const a = w.attempt();
+      mutate(a);
+      assert.throws(() => loadStartup(a.startupPath), (e) => e.code === code, label);
+    }
+    assert.throws(() => loadStartup('relative/startup.json'), (e) => e.code === 'bad-path');
+    assert.throws(() => loadStartup(join(w.root, 'xdg', 'himmel-readiness', 'other.json')), (e) => e.code === 'bad-path');
+  });
+
+  test('before adoption every act and finish is refused with not-adopted, nothing runs, and the lease is untouched', async () => {
+    const { loadStartup, checkAdopted, guardedLabel, finishAttempt } = await load();
+    const w = world();
+    const a = w.attempt();
+    const startup = loadStartup(a.startupPath);
+    const spy = spyPort();
+    assert.deepEqual(await checkAdopted(startup, { env: w.env }), { ok: false, code: 'not-adopted', reason: 'this session has not adopted the readiness lease, or no longer holds it' });
+    const label = await guardedLabel(startup, spy.port, 'HIMMEL-1', true, SOON(), { env: w.env });
+    assert.equal(label.code, 'not-adopted');
+    assert.equal(spy.calls.length, 0, 'the port must not be touched before adoption');
+    const fin = await finishAttempt(startup, { env: w.env });
+    assert.equal(fin.code, 'not-adopted');
+    assert.equal(w.owner(a.doc), a.token, 'finish before adoption must not release the on-behalf lease');
+    assert.ok(existsSync(a.dir));
+    noToken([label, fin], a.token);
+  });
+
+  test('after the session start adopts, an act reaches the port exactly once and is verified afresh each time', async () => {
+    const { loadStartup, checkAdopted, guardedLabel } = await load();
+    const w = world();
+    const a = w.attempt();
+    assert.equal(w.start(a).status, 0);
+    const startup = loadStartup(a.startupPath);
+    assert.deepEqual(await checkAdopted(startup, { env: w.env }), { ok: true });
+    const spy = spyPort();
+    const first = await guardedLabel(startup, spy.port, 'HIMMEL-1', true, SOON(), { env: w.env });
+    assert.deepEqual(first, { ok: true, type: 'label', key: 'HIMMEL-1', outcome: 'updated', evidence_id: null });
+    assert.equal(spy.calls.length, 1);
+    assert.deepEqual(spy.calls[0].slice(0, 2), ['HIMMEL-1', true]);
+    // the next act is checked again: the lease is lost between the two, so the second one never reaches the port
+    w.drop(a.doc, a.token); w.hold(a.doc, 'successor-token-own1');
+    const second = await guardedLabel(startup, spy.port, 'HIMMEL-1', false, SOON(), { env: w.env });
+    assert.equal(second.code, 'not-adopted');
+    assert.equal(spy.calls.length, 1, 'a lost lease must stop the very next act before its effect');
+    noToken([first, second], a.token);
+  });
+
+  test('a port that does not confirm the write is a conflict, not a success', async () => {
+    const { loadStartup, guardedLabel } = await load();
+    const w = world();
+    const a = w.attempt();
+    w.start(a);
+    const r = await guardedLabel(loadStartup(a.startupPath), { addReadinessLabel: async () => ({ outcome: 'ambiguous', code: 'timeout' }) }, 'HIMMEL-1', true, SOON(), { env: w.env });
+    assert.equal(r.code, 'conflict');
+  });
+
+  test('finish releases exactly the adopted lease and removes the attempt; a repeated finish refuses', async () => {
+    const { loadStartup, finishAttempt } = await load();
+    const w = world();
+    const a = w.attempt();
+    w.start(a);
+    const startup = loadStartup(a.startupPath);
+    const done = await finishAttempt(startup, { env: w.env });
+    assert.deepEqual(done, { ok: true, type: 'finish', key: null, outcome: 'finished', evidence_id: null });
+    assert.equal(w.status(a.doc), 'free');
+    assert.equal(existsSync(a.dir), false);
+    assert.equal((await finishAttempt(startup, { env: w.env })).code, 'not-adopted');
+    noToken(done, a.token);
+  });
+
+  test('finish never releases a successor\'s lock', async () => {
+    const { loadStartup, finishAttempt } = await load();
+    const w = world();
+    const a = w.attempt();
+    w.start(a);
+    w.drop(a.doc, a.token); w.hold(a.doc, 'successor-token-own2');
+    const r = await finishAttempt(loadStartup(a.startupPath), { env: w.env });
+    assert.equal(r.code, 'not-adopted');
+    assert.equal(w.owner(a.doc), 'successor-token-own2');
+    assert.ok(existsSync(a.dir));
+  });
+
+  test('a session that started under another id adopts nothing: every act refuses and the on-behalf lease stays put', async () => {
+    const { loadStartup, guardedLabel } = await load();
+    const w = world();
+    const a = w.attempt();
+    const other = { ...a, sid: randomUUID() };
+    assert.equal(w.start(other).status, 0);
+    const spy = spyPort();
+    assert.equal((await guardedLabel(loadStartup(a.startupPath), spy.port, 'HIMMEL-1', true, SOON(), { env: w.env })).code, 'not-adopted');
+    assert.equal(spy.calls.length, 0);
+    assert.equal(w.owner(a.doc), a.token);
+  });
+
+  test('the verify child gets fixed argv and a finite environment, and its output is never relayed', async () => {
+    const { loadStartup, checkAdopted, finishAttempt } = await load();
+    const w = world();
+    const a = w.attempt();
+    const startup = loadStartup(a.startupPath);
+    const log = join(w.root, 'child.log');
+    const stub = join(w.root, 'stub-session.sh');
+    writeFileSync(stub, `#!/usr/bin/env bash\nprintf 'argv:%s|' "$@" >> '${log}'\nenv | sort >> '${log}'\necho "stub-stdout-${TOKEN}"; echo "stub-stderr-${TOKEN}" >&2\nexit 0\n`, { mode: 0o755 });
+    const ambient = { ...w.env, JIRA_API_TOKEN: TOKEN_SENTINEL_ENV, JIRA_EMAIL: EMAIL, ANTHROPIC_API_KEY: TOKEN_SENTINEL_ENV, WORKER_SESSION_ID: 'x' };
+    const ok = await checkAdopted(startup, { env: ambient, sessionTool: stub });
+    assert.deepEqual(ok, { ok: true });
+    const fin = await finishAttempt(startup, { env: ambient, sessionTool: stub });
+    assert.equal(fin.ok, true);
+    const text = readFileSync(log, 'utf8');
+    assert.match(text, new RegExp(`argv:verify\\|argv:${a.dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\|`));
+    assert.match(text, new RegExp(`argv:finish\\|argv:${a.dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\|`));
+    assert.ok(!text.includes(TOKEN_SENTINEL_ENV) && !text.includes(EMAIL), 'an ambient credential reached the session child');
+    assert.ok(!/^JIRA_|^ANTHROPIC_|^WORKER_SESSION/m.test(text), 'a secret-bearing variable reached the session child');
+    noToken([ok, fin], TOKEN);
+    assert.ok(!JSON.stringify([ok, fin]).includes('stub-stdout'), 'child output was relayed');
+  });
+
+  test('a session script that hangs, crashes or is absent is not-adopted', async () => {
+    const { loadStartup, checkAdopted, finishAttempt } = await load();
+    const w = world();
+    const startup = loadStartup(w.attempt().startupPath);
+    const hang = join(w.root, 'hang.sh'); writeFileSync(hang, '#!/usr/bin/env bash\nsleep 30\n', { mode: 0o755 });
+    const crash = join(w.root, 'crash.sh'); writeFileSync(crash, '#!/usr/bin/env bash\nkill -SEGV $$\n', { mode: 0o755 });
+    assert.equal((await checkAdopted(startup, { env: w.env, sessionTool: hang, timeoutMs: 300 })).code, 'not-adopted');
+    assert.equal((await checkAdopted(startup, { env: w.env, sessionTool: crash })).code, 'not-adopted');
+    assert.equal((await finishAttempt(startup, { env: w.env, sessionTool: join(w.root, 'absent.sh') })).code, 'not-adopted');
   });
 });
 
