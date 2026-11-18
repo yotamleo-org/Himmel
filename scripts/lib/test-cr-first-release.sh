@@ -236,6 +236,10 @@ eq "$(deletes)/$(posts)" 0/0 "a pull_request heavy job beside a dispatch one is 
 reset; checks success '[{"name":"bun-suites","status":"completed","conclusion":"success","completed_at":"2026-10-23T10:20:00Z","check_suite":{"id":7}}]'; : > "$S/runs-fail"; run heavy-runs-unreadable
 eq "$RC/$(deletes)/$(posts)" 3/0/0 "unreadable workflow runs with a heavy job: rc 3, no pair"
 has "$TMP/out-heavy-runs-unreadable" '^CR-FIRST HOLD degraded \(cannot read workflow runs at ' "unreadable workflow runs: degraded HOLD line"
+# ...and a workflow-run list that is not the API's shape holds degraded too.
+reset; checks success '[{"name":"bun-suites","status":"completed","conclusion":"success","completed_at":"2026-10-23T10:20:00Z","check_suite":{"id":7}}]'; echo '{"message":"oops"}' > "$S/runs.json"; run heavy-runs-malformed
+eq "$RC/$(deletes)/$(posts)" 3/0/0 "malformed workflow runs with a heavy job: rc 3, no pair"
+has "$TMP/out-heavy-runs-malformed" '^CR-FIRST HOLD degraded \(cannot parse workflow runs at ' "malformed workflow runs: degraded HOLD line"
 # ...and no heavy job at the head reads no workflow runs at all.
 reset; run no-heavy-no-runs-read
 hasnt "$S/calls.log" 'actions/runs' "no heavy job at the head: no workflow-run read"

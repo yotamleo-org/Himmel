@@ -247,7 +247,7 @@ cr_first_switch_on() {
 cr_first_release() {
     local pr="${1:-}" head="${2:-}" repo="${3:-}" sw pull pinfo pstate psha pfork commit cdate cepoch age
     local checks_raw checks events cheap cstate csettled out grc holds="" line mapped state_line n_hold=0
-    local only_cr=0 slug reason heavy_suites runs_raw
+    local only_cr=0 slug reason heavy_suites runs_raw runs_rc
     case "$pr" in ''|*[!0-9]*) echo "CR-FIRST ERROR usage: cr_first_release <pr> <head> [<owner/name>]"; return 2 ;; esac
     [ -n "$head" ] || { echo "CR-FIRST ERROR usage: cr_first_release <pr> <head> [<owner/name>]"; return 2; }
     command -v jq >/dev/null 2>&1 || return 0
@@ -289,11 +289,16 @@ cr_first_release() {
     if [ "$heavy_suites" != "[]" ]; then
         runs_raw=$(gh api --paginate "repos/$repo/actions/runs?head_sha=$head&event=pull_request&per_page=100" </dev/null 2>/dev/null) \
             || { echo "CR-FIRST HOLD degraded (cannot read workflow runs at $head) $age"; return 3; }
-        if printf '%s' "$runs_raw" | jq -se --argjson ids "$heavy_suites" \
-            '[.[] | .workflow_runs[]? | select(.event == "pull_request") | .check_suite_id] as $pr
-             | any($ids[]; . as $i | $pr | index($i) != null)' >/dev/null 2>&1; then
-            return 0
-        fi
+        runs_rc=0
+        printf '%s' "$runs_raw" | jq -se --argjson ids "$heavy_suites" \
+            'if all(.[]; type == "object" and (.workflow_runs | type == "array")) then . else error("bad") end
+             | [.[] | .workflow_runs[] | select(.event == "pull_request") | .check_suite_id] as $pr
+             | any($ids[]; . as $i | $pr | index($i) != null)' >/dev/null 2>&1 || runs_rc=$?
+        case "$runs_rc" in
+            0) return 0 ;;
+            1) ;;
+            *) echo "CR-FIRST HOLD degraded (cannot parse workflow runs at $head) $age"; return 3 ;;
+        esac
     fi
     # A `ci:go` event only belongs to this head if it is newer than the head's own
     # first check: the committer date alone misses an old commit pushed after a release.
