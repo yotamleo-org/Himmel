@@ -3,7 +3,7 @@
 # chief's progress board (<doc stem>.board.json, plus a page with --out). tick.sh and gh are stubbed (a
 # BOARD_TICK override and a PATH stub), so the suite reads no queue, process,
 # scheduler or GitHub state. The board<->tick freshness round trip (board.mjs
-# output read back by the REAL tick.sh) is pinned in test-tick.sh, where the tick
+# output read back by the REAL tick.sh) is pinned in test-tick-b.sh, where the tick
 # stubs already live.
 #
 # PLATFORM GUARD: The chief kit is Linux-only (tick.sh

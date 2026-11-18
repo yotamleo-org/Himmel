@@ -494,6 +494,7 @@ scripts/handover/chief-kit/test-station-sync.sh	4
 scripts/handover/chief-kit/test-status-drift.sh	97
 scripts/handover/chief-kit/test-model-check-report.sh	6
 scripts/handover/chief-kit/test-succession-tracker.sh	7
+scripts/handover/chief-kit/test-tick-b.sh	213
 scripts/handover/chief-kit/test-tick-deadwin.sh	10
 scripts/handover/chief-kit/test-tick-fields.sh	285
 scripts/handover/chief-kit/test-tick-holds.sh	8
@@ -501,7 +502,7 @@ scripts/handover/chief-kit/test-tick-nolive.sh	17
 scripts/handover/chief-kit/test-tick-pool-stale.sh	61
 scripts/handover/chief-kit/test-tick-rmqueue.sh	25
 scripts/handover/chief-kit/test-tick-vmspend.sh	7
-scripts/handover/chief-kit/test-tick.sh	265
+scripts/handover/chief-kit/test-tick.sh	229
 scripts/handover/chief-kit/test-tracker.sh	18
 scripts/handover/chief-kit/test-vault-status.sh	3
 scripts/handover/chief-kit/test-verdict-go.sh	1

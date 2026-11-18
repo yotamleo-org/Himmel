@@ -149,7 +149,7 @@ scripts/handover/chief-kit/test-tick-fields.sh	289
 scripts/handover/chief-kit/test-tick-nolive.sh	17
 scripts/handover/chief-kit/test-tick-repair.sh	89
 scripts/handover/chief-kit/test-tick-rmqueue.sh	25
-scripts/handover/chief-kit/test-tick.sh	264
+scripts/handover/chief-kit/test-tick.sh	229
 scripts/handover/chief-kit/test-tracker.sh	18
 scripts/handover/chief-kit/test-worker-doc-lock.sh	13
 scripts/handover/chief-kit/test-worker-event.sh	10
