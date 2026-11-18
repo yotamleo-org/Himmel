@@ -13,7 +13,9 @@
 # runner bin-packs with gives their cost. The same LPT pack is simulated for
 # every N in 1..n and the smallest N whose longest shard fits in
 # max(TARGET_S, longest shard at n) wins: a small selection takes few runners,
-# a large one keeps all n. LPT places the first N suites in N distinct shards,
+# a large one keeps all n. A run-alone suite (parallel-deny.txt) holds all
+# LANES lanes of its shard, so it is charged LANES times its ledger seconds, as
+# the runner's pack charges it. LPT places the first N suites in N distinct shards,
 # so every one of the N shards has work.
 #
 # FAIL-CLOSED: a --list that fails or lacks its summary footer, or a ledger
@@ -30,6 +32,7 @@ set -uo pipefail
 # The lint and leak-classes jobs take ~11-12 min on a PR, so a shard finishing
 # inside 10 min does not lengthen the run.
 TARGET_S=600
+LANES=4
 
 n="${1:-}"
 case "$n" in ''|*[!0-9]*|0*) echo "usage: plan-shards.sh <n> [<root>] [-- <runner args>] (n is CI_MAX_SHARDS: a positive integer)" >&2; exit 2 ;; esac
@@ -56,7 +59,23 @@ total=""
 if bash "$here/run-shell-tests.sh" --list "$@" "$root" > "$tmp/list" 2>/dev/null \
    && grep -q '^== Summary ==$' "$tmp/list"; then
   sed -n 's/^\[RUN \] //p' "$tmp/list" > "$tmp/suites"
-  total=$(LC_ALL=C awk -F'\t' -v n="$n" -v target="$TARGET_S" '
+  : > "$tmp/alone"
+  deny="${SUITE_PARALLEL_DENY:-$here/parallel-deny.txt}"
+  if [ -r "$deny" ]; then
+    globs=()
+    while read -r g _ || [ -n "$g" ]; do
+      case "$g" in ''|'#'*) continue ;; esac
+      globs+=("$g")
+    done < "$deny"
+    while IFS= read -r s; do
+      for g in ${globs[@]+"${globs[@]}"}; do
+        # shellcheck disable=SC2254  # the list entries are patterns
+        case "/$s" in $g) printf '%s\n' "$s" >> "$tmp/alone"; break ;; esac
+      done
+    done < "$tmp/suites"
+  fi
+  total=$(LC_ALL=C awk -F'\t' -v n="$n" -v target="$TARGET_S" -v lanes="$LANES" '
+    phase == 2 { alone[$0] = 1; next }
     phase == 1 {
       if ($1 !~ /^[[:space:]]*#/ && $1 != "" && $2 ~ /^[0-9]+$/) { dur[$1] = $2 + 0; vals[++nv] = $2 + 0 }
       next
@@ -66,7 +85,7 @@ if bash "$here/run-shell-tests.sh" --list "$@" "$root" > "$tmp/list" 2>/dev/null
       for (i = 2; i <= nv; i++) { v = vals[i]; j = i - 1; while (j >= 1 && vals[j] > v) { vals[j + 1] = vals[j]; j-- }; vals[j + 1] = v }
       med = (nv > 0) ? vals[int((nv + 1) / 2)] : 1
       if (med < 1) med = 1
-      for (i = 1; i <= m; i++) { d = (suite[i] in dur) ? dur[suite[i]] : med; c[i] = (d < 1) ? 1 : d }
+      for (i = 1; i <= m; i++) { d = (suite[i] in dur) ? dur[suite[i]] : med; c[i] = (d < 1) ? 1 : d; if (suite[i] in alone) c[i] *= lanes }
       for (i = 2; i <= m; i++) { v = c[i]; j = i - 1; while (j >= 1 && c[j] < v) { c[j + 1] = c[j]; j-- }; c[j + 1] = v }
       if (m == 0) { print 0; exit }
       if (nv == 0) exit
@@ -79,7 +98,7 @@ if bash "$here/run-shell-tests.sh" --list "$@" "$root" > "$tmp/list" 2>/dev/null
       limit = (span[n] > target) ? span[n] : target
       for (k = 1; k <= n; k++) if (span[k] <= limit) { r = (k < m) ? k : m; print r " " span[k]; exit }
     }
-  ' phase=1 "$ledger" phase=2 "$tmp/suites")
+  ' phase=1 "$ledger" phase=2 "$tmp/alone" phase=3 "$tmp/suites")
 fi
 
 case "$total" in

@@ -29,8 +29,9 @@ run_lines() { grep -F '[RUN ] ' <<< "$1" | sed 's/^\[RUN \] //'; }
 # that ran >= 10s, with its measured seconds.
 # The sandbox holds a stub for each, the runner packs them with the
 # committed ledger, and the measured seconds of each shard are summed.
-# The slowest shard cannot beat the heaviest single suite, so the bound is that
-# floor plus 5%.
+# A run-alone suite holds all 4 lanes of its shard, so a shard's measured load
+# counts it 4x, as the pack does. The slowest shard cannot beat the heaviest
+# single suite, so the bound is that floor plus 5%.
 echo "== Case 22-fresh (HIMMEL-4075): the committed ledger balances measured shard time =="
 sb22w=$(mktemp -d "${TMPDIR:-/tmp}/rst-case22w.XXXXXX") || { fail "22w: mktemp failed"; sb22w=""; }
 if [ -n "$sb22w" ]; then
@@ -380,6 +381,7 @@ nonlinux22w=$(awk '/^SKIP_LIST_NON_LINUX="$/{f=1; next} f && /^"$/{exit} f && /^
 # required tool the host lacks: on a real macOS runner flock is absent, so
 # test-worker-doc-lock.sh is a capability [SKIP] there (run 41010394001) and is
 # expected unplaced, which no Linux host would otherwise show.
+deny22w=$(awk '!/^[[:space:]]*(#|$)/ { print $1 }' "$RST_FIXTURE_DIR/parallel-deny.txt")
 for os22w in "" Darwin Darwin+notool Linux+notool; do
 # Both +notool passes inject a tool a Linux host has but a macOS host lacks. On a
 # real macOS runner flock is already absent, so its real and Darwin passes show
@@ -404,8 +406,12 @@ for _i in 1 2 3 4 5 6 7 8; do
   while IFS= read -r _p; do
     [ -n "$_p" ] || continue
     _s=$(awk -F'\t' -v k="${_p#"$sb22w"/stubs/}" '$1 == k { print $2 + 0; exit }' "$fix22w")
-    _t=$(( _t + ${_s:-0} ))
     [ -n "$_s" ] && n22w=$((n22w + 1))
+    while IFS= read -r _g; do
+      # shellcheck disable=SC2254  # the list entries are patterns
+      case "/${_p#"$sb22w"/stubs/}" in $_g) _s=$(( ${_s:-0} * 4 )); break ;; esac
+    done <<< "$deny22w"
+    _t=$(( _t + ${_s:-0} ))
     [ "${_s:-0}" -gt "$max22w" ] && max22w=${_s:-0}
   done <<< "$(run_lines "$_out")"
   tot22w=$((tot22w + _t))

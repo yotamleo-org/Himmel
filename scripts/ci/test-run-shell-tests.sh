@@ -1826,6 +1826,42 @@ fi
 rm -rf "$sb22i"
 fi
 
+# 22i-alone — a run-alone suite holds every lane of its shard, so the pack
+# charges it 4x its ledger seconds. s1 and s2 are run-alone at 100s each; the
+# unweighted pack puts both on the shard that s3 (150s) did not take, serial
+# for 200s. Weighted they cost 400 each and land on different shards.
+sb22a=$(mktemp -d "${TMPDIR:-/tmp}/rst-case22ia.XXXXXX") || { fail "22i-alone: mktemp failed"; sb22a=""; }
+if [ -n "$sb22a" ]; then
+mk_shard_sandbox "$sb22a" 4
+led22a="$sb22a/durations.tsv"
+{ printf '# suite\tseconds\n'
+  printf '%s/test-s1.sh\t100\n' "$sb22a"
+  printf '%s/test-s2.sh\t100\n' "$sb22a"
+  printf '%s/test-s3.sh\t150\n' "$sb22a"
+  printf '%s/test-s4.sh\t10\n'  "$sb22a"; } > "$led22a"
+deny22a="$sb22a/deny.txt"
+printf '# run alone\n*/test-s1.sh  fixed port\n*/test-s2.sh  tight budget\n' > "$deny22a"
+a22a=$(run_lines "$(SUITE_PARALLEL_DENY="$deny22a" SUITE_DURATIONS="$led22a" bash "$RUNNER" --list --shard 1/2 "$sb22a" 2>&1)")
+b22a=$(run_lines "$(SUITE_PARALLEL_DENY="$deny22a" SUITE_DURATIONS="$led22a" bash "$RUNNER" --list --shard 2/2 "$sb22a" 2>&1)")
+same22a=0
+if grepq "$a22a" -Fx "$sb22a/test-s1.sh" && grepq "$a22a" -Fx "$sb22a/test-s2.sh"; then same22a=1; fi
+if grepq "$b22a" -Fx "$sb22a/test-s1.sh" && grepq "$b22a" -Fx "$sb22a/test-s2.sh"; then same22a=1; fi
+cnt22a=$(printf '%s\n%s\n' "$a22a" "$b22a" | grep -c '/test-s')
+if [ "$same22a" -eq 0 ] && [ "$cnt22a" -eq 4 ]; then
+  pass "22i-alone: two run-alone suites land on different shards, every suite placed once"
+else
+  fail "22i-alone: run-alone suites share a shard or a suite is lost; shard1='$a22a' shard2='$b22a'"
+fi
+# A deny list the pack cannot read would weight some shards and not others.
+o22a=$(SUITE_PARALLEL_DENY="$sb22a/missing.txt" SUITE_DURATIONS="$led22a" bash "$RUNNER" --list --shard 1/2 "$sb22a" 2>&1); rc22a=$?
+if [ "$rc22a" -ne 0 ] && grepq "$o22a" -F 'parallel deny-list'; then
+  pass "22i-alone: an unreadable deny-list refuses the shard"
+else
+  fail "22i-alone: unreadable deny-list rc=$rc22a: $o22a"
+fi
+rm -rf "$sb22a"
+fi
+
 # 22j — a suite the ledger has never heard of is still assigned to EXACTLY one
 # shard. A lookup miss that dropped the suite would take it off the gate while
 # every shard reported green — the false-green class reached through

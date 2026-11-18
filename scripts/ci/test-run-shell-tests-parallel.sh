@@ -603,7 +603,7 @@ if sb=$(mk_sandbox); then
   started_in_order() { cut -d' ' -f1 "$1/peak.log"; }
   for _shard in 1 2; do
     : > "$sb/peak.log"
-    env -u SUITE_TIER_MODE SUITE_JOBS=1 SUITE_DURATIONS="$sb/dur.tsv" bash "$RUNNER" --shard "$_shard/2" "$sb/scripts" > /dev/null 2>&1
+    env -u SUITE_TIER_MODE SUITE_JOBS=1 SUITE_PARALLEL_DENY="$sb/deny.txt" SUITE_DURATIONS="$sb/dur.tsv" bash "$RUNNER" --shard "$_shard/2" "$sb/scripts" > /dev/null 2>&1
     serial_set=$(started_in_order "$sb" | sort | paste -sd' ' -)
     : > "$sb/peak.log"
     out=$(env -u SUITE_TIER_MODE SUITE_JOBS=3 SUITE_PARALLEL_DENY="$sb/deny.txt" SUITE_DURATIONS="$sb/dur.tsv" bash "$RUNNER" --shard "$_shard/2" "$sb/scripts" 2>&1); rc=$?
@@ -640,7 +640,7 @@ if sb=$(mk_sandbox); then
   ledger_order=$(awk -F'\t' '{ n = $1; sub(/.*\//, "", n); print n, $2 }' "$sb/dur.tsv" | sort -k2,2nr -k1,1 | cut -d' ' -f1)
   for _shard in 1 2; do
     : > "$sb/peak.log"
-    env -u SUITE_TIER_MODE SUITE_JOBS=1 SUITE_DURATIONS="$sb/dur.tsv" bash "$RUNNER" --shard "$_shard/2" "$sb/scripts" > /dev/null 2>&1
+    env -u SUITE_TIER_MODE SUITE_JOBS=1 SUITE_PARALLEL_DENY="$sb/deny.txt" SUITE_DURATIONS="$sb/dur.tsv" bash "$RUNNER" --shard "$_shard/2" "$sb/scripts" > /dev/null 2>&1
     serial_set=$(started_in_order "$sb" | sort | paste -sd' ' -)
     : > "$sb/peak.log"
     out=$(env -u SUITE_TIER_MODE SUITE_JOBS=3 SUITE_PARALLEL_DENY="$sb/deny.txt" SUITE_DURATIONS="$sb/dur.tsv" bash "$RUNNER" --shard "$_shard/2" "$sb/scripts" 2>&1); rc=$?

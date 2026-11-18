@@ -4030,6 +4030,29 @@ ${_key#"$tier_repo_root"/}
 # harvests out of a job log — so the spelling written and the spelling matched
 # cannot drift apart. $SUITE_DURATIONS overrides the committed ledger path.
 # --------------------------------------------------------------------------
+# Suites that must run alone (fixed ports, shared global state): one glob per
+# line, matched against "/<resolved suite path>" (suite_key), then a reason.
+parallel_deny_file="${SUITE_PARALLEL_DENY:-$REPO_ROOT/scripts/ci/parallel-deny.txt}"
+parallel_deny=""
+_parallel_deny_load() {
+  local _pd_glob _pd_reason
+  [ -r "$parallel_deny_file" ] || return 1
+  parallel_deny=""
+  while read -r _pd_glob _pd_reason || [ -n "$_pd_glob" ]; do
+    case "$_pd_glob" in ''|'#'*) continue ;; esac
+    parallel_deny="${parallel_deny}${_pd_glob}
+"
+  done < "$parallel_deny_file"
+}
+_suite_parallel_denied() {
+  local _p
+  while IFS= read -r _p; do
+    [ -n "$_p" ] || continue
+    # shellcheck disable=SC2254  # the list entries are patterns
+    case "/$1" in $_p) return 0 ;; esac
+  done <<< "$parallel_deny"
+  return 1
+}
 shard_assignment=""   # newline-delimited suite paths belonging to THIS shard
 shard_binpack=0       # 1 = bin-pack in force; 0 = the round-robin fallback
 _shard_nl=$'\n'
@@ -4058,6 +4081,11 @@ if [ "$shard_total" -gt 0 ]; then
     # only, which is what makes it the trustworthy side of check 2.
     _shard_eligible=""
     _shard_eligible_n=0
+    _shard_alone=""
+    if ! _parallel_deny_load; then
+      echo "ERROR: --shard: the parallel deny-list $parallel_deny_file is unreadable — refusing to report green. Weighting run-alone suites on some shards and not others would put two partitions in force." >&2
+      exit 1
+    fi
     while IFS= read -r _shard_suite <&4; do
       [ -n "$_shard_suite" ] || continue
       _shard_rel="${_shard_suite#"${scan}"/}"
@@ -4065,9 +4093,16 @@ if [ "$shard_total" -gt 0 ]; then
         continue
       fi
       _shard_eligible="${_shard_eligible}${_shard_suite}${_shard_nl}"
+      if _suite_parallel_denied "${scan_resolved}/${_shard_rel}"; then
+        _shard_alone="${_shard_alone}${_shard_suite}${_shard_nl}"
+      fi
       _shard_eligible_n=$((_shard_eligible_n + 1))
     done 4< "$suites_file"
 
+    # A run-alone suite holds every lane of its shard while it runs, so the
+    # pack charges it _shard_lanes times its ledger seconds. The count is a
+    # constant, not the local CPU count: every shard must compute one partition.
+    _shard_lanes=4
     # Join -> sort -> pack, one pipeline, no rc checks. The median an absent
     # suite is given is computed INSIDE the join rather than by a probe of its
     # own: a probe that died on one runner would hand that runner a different
@@ -4088,7 +4123,7 @@ if [ "$shard_total" -gt 0 ]; then
     fi
     _shard_bytes_file=$(mktemp "${TMPDIR:-/tmp}/rst-shard-bytes.XXXXXX")
     _shard_durations_file=$(mktemp "${TMPDIR:-/tmp}/rst-shard-durations.XXXXXX") || { echo "ERROR: --shard: cannot create the duration scratch file — refusing to report green." >&2; exit 1; }
-    _shard_plan=$(_SHARD_ELIGIBLE="$_shard_eligible" _SHARD_LEDGER="$_shard_ledger" \
+    _shard_plan=$(_SHARD_ELIGIBLE="$_shard_eligible" _SHARD_ALONE="$_shard_alone" _SHARD_LANES="$_shard_lanes" _SHARD_LEDGER="$_shard_ledger" \
       _SHARD_BYTES_FILE="$_shard_bytes_file" _SHARD_FINAL_NL="$_shard_ledger_final_nl" \
       LC_ALL=C awk '
           # LC_ALL=C: a UTF-8 locale makes length() count CHARACTERS, so a
@@ -4118,11 +4153,14 @@ if [ "$shard_total" -gt 0 ]; then
               printf "run-shell-tests.sh: --shard: duration ledger %s parsed 0 rows — partition degenerates to round-robin; refresh scripts/ci/suite-durations.tsv\n", \
                 ENVIRON["_SHARD_LEDGER"] > "/dev/stderr"
             }
+            na = split(ENVIRON["_SHARD_ALONE"], alone_rows, "\n")
+            for (i = 1; i <= na; i++) if (alone_rows[i] != "") alone[alone_rows[i]] = 1
             n = split(ENVIRON["_SHARD_ELIGIBLE"], rows, "\n")
             for (i = 1; i <= n; i++) {
               if (rows[i] == "") continue
               d = (rows[i] in dur) ? dur[rows[i]] : med
               if (d < 1) d = 1
+              if (rows[i] in alone) d *= ENVIRON["_SHARD_LANES"]
               printf "%012d\t%s\n", d, rows[i]
             }
             # Bytes actually READ, independent of whether every row parsed — a
@@ -4426,32 +4464,14 @@ elif [ "${GITHUB_ACTIONS:-}" = true ] && [ "${HIMMEL_TEST_FIXTURE:-}" != 1 ] && 
 else
   suite_jobs=1
 fi
-# Suites that must run alone (fixed ports, shared global state): one glob per
-# line, matched against "/<resolved suite path>" (suite_key), then a reason. Unreadable list in a
-# parallel run: fall back to serial rather than guess which suites are safe.
-parallel_deny_file="${SUITE_PARALLEL_DENY:-$REPO_ROOT/scripts/ci/parallel-deny.txt}"
-parallel_deny=""
+# Unreadable list in a parallel run: fall back to serial rather than guess
+# which suites are safe.
 if [ "$suite_jobs" -gt 1 ] && [ "$list_only" -eq 0 ]; then
-  if [ -r "$parallel_deny_file" ]; then
-    while read -r _pd_glob _pd_reason || [ -n "$_pd_glob" ]; do
-      case "$_pd_glob" in ''|'#'*) continue ;; esac
-      parallel_deny="${parallel_deny}${_pd_glob}
-"
-    done < "$parallel_deny_file"
-  else
+  if ! _parallel_deny_load; then
     printf 'WARN: parallel deny-list %s is unreadable — running suites one at a time\n' "$parallel_deny_file" >&2
     suite_jobs=1
   fi
 fi
-_suite_parallel_denied() {
-  local _p
-  while IFS= read -r _p; do
-    [ -n "$_p" ] || continue
-    # shellcheck disable=SC2254  # the list entries are patterns
-    case "/$1" in $_p) return 0 ;; esac
-  done <<< "$parallel_deny"
-  return 1
-}
 _suites_longest_first() {
   [ -n "$1" ] || return 0
   printf '%s' "$1" \
