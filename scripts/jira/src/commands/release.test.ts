@@ -1433,6 +1433,29 @@ describe('a request for operator work carries the operator\'s words', () => {
       expect(queued()).toMatchObject([{ key: 'HIMMEL-1', verb: 'INTAKE', to_v: 'v1.1.3', evidence: { operator: id } }]);
     });
 
+    // The live shape of the 2026-11-16 correction audit: the underfill investigation answered `REQ approved:O-v1.1.3-0518` instead of queuing its placement.
+    it('seed from the correction audit: HIMMEL-10208 with the old approval O-v1.1.3-0518 queues the new placement with its words and prints no approval', async () => {
+      const seed = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'release', 'fixtures', 'correction-audit-2026-11-16.json'), 'utf8')) as {
+        old_work_approval_case: { key: string; approval_record: string; returned: string };
+      };
+      const c = seed.old_work_approval_case;
+      await declared();
+      decisionFile();
+      appendChain(join(root, 'state', 'v1.1.3', 'operator.jsonl'), loadKey(join(root, 'keys', 'v1.1.3.key')), {
+        id: c.approval_record, kind: 'out-of-version', decision: '518', keys: [c.key], ts: new Date(Date.now() - 86_400_000).toISOString(),
+      });
+      quiet();
+      await ask(gateMirror({ key: c.key, labels: ['operator-directed', 'standalone'] }), ...intake(c.key), '--decision', '9', '--words', WORDS);
+      expect(out.join('\n')).not.toContain(c.returned);
+      expect(out.join('\n')).not.toMatch(/approved/);
+      const id = /^OPERATOR (O-v1\.1\.3-\d{4}) /.exec(out.at(-2) ?? '')?.[1];
+      expect(id).toBeDefined();
+      expect(out.at(-1)).toBe('REQ Q-v1.1.3-0001');
+      expect(queued()).toMatchObject([{ key: c.key, verb: 'INTAKE', to_v: 'v1.1.3', state: 'open', evidence: { operator: id } }]);
+      // the old record stays what it was: work permission, no placement
+      expect(operatorRows().find((o) => o.id === c.approval_record)).toMatchObject({ kind: 'out-of-version', keys: [c.key] });
+    });
+
     it('RED: an approval on an ordinary ungated key still files the INTAKE through normal placement; the approval is only work permission', async () => {
       await declared();
       approve('HIMMEL-4');
