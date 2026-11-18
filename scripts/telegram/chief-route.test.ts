@@ -5873,6 +5873,15 @@ test("W1 round-seed --all: the created layout, the seed and manifest rows, and t
       expect(Object.keys(wTree(d)).filter((n) => !n.includes("/")).sort(), name).toEqual([...new Set([...Object.keys(staged), ROUND_KEY, `${ROUND_KEY}.jsonl`, "manifest.json", "round-seed.jsonl.lock"])].sort());
     }
   }
+  // a seed that fails midway removes every file and snapshot folder it made, so the root can be seeded again
+  const f = specsTree(); const both = wSeedable(f.specs, [ROUND_KEY, "HIMMEL-9702"]); const fd = wDir(f.specs); mkdirSync(fd, { recursive: true });
+  const blocker = join(fd, both[1].key); writeFileSync(blocker, "in the way");
+  const failed = await routeCli("round-seed", "--all", f.specs);
+  expect(failed.code).toBe(1); expect(failed.out).toBe(""); expect(failed.err).not.toBe("");
+  expect(wTree(fd), "everything the failed seed made is gone").toEqual({ [both[1].key]: sha("in the way"), "round-seed.jsonl.lock": EMPTY_FILE });
+  unlinkSync(blocker);
+  expect((await routeCli("round-seed", "--all", f.specs)).code).toBe(0);
+  expect(readdirSync(fd).sort()).toEqual([...both.flatMap((m) => [m.key, `${m.key}.jsonl`]), "manifest.json", "round-seed.jsonl.lock"].sort());
 });
 const EMPTY_FILE = createHash("sha256").update("").digest("hex");
 
@@ -6048,7 +6057,9 @@ test("W6 snapshots: the sealed bytes at their literal path, and the role the cap
   expect(readdirSync(join(dir, CAP_KEY)).sort()).toEqual([sha(mdText), sha(htmlText), sha(planText)].sort());
   for (const s of [mdText, htmlText, planText]) expect(readFileSync(join(dir, CAP_KEY, sha(s)), "utf8")).toBe(s);
   const f = await cappedFixture(); const proof = await runCapped(f.args); const cdir = wDir(f.specsRoot);
-  const byRole = (role: string) => proof.pins.filter((pin: { role: string }) => pin.role === role);
+  expect(f.ledgerPath, "the fixture builder names the ledger file by the shared rule").toBe(join(cdir, `${cappedKey}.jsonl`));
+  expect(existsSync(f.ledgerPath)).toBe(true);
+  const byRole =(role: string) => proof.pins.filter((pin: { role: string }) => pin.role === role);
   expect(byRole("ledger").map((p: { path: string }) => p.path)).toEqual([join(cdir, `${cappedKey}.jsonl`)]);
   expect(byRole("manifest").map((p: { path: string }) => p.path)).toEqual([join(cdir, "manifest.json")]);
   const snapshots = byRole("snapshot"); expect(snapshots).toHaveLength(4);
@@ -6151,4 +6162,17 @@ test("X3 controls: the scanner reports any other construction, an old spelling o
   expect(x3Verdict(all.replace(keep[0], ""), keep), "a known line gone").toEqual({ unexpected: [], missing: [keep[0]] });
   const oldLib = "  if (await stat(join(specsRoot, 'ledgers', 'spec-rounds', 'manifest.json')).then(() => true, () => false)) await roundSeed(specsRoot);";
   expect(x3Verdict(oldLib, X3_LIB_KEEP), "the testlib's old spelling").toEqual({ unexpected: [oldLib], missing: [X3_LIB_KEEP[0]] });
+});
+test("X3 migration tripwire: every ledger-path construction in chief-route.ts and the capped-fold testlib is a shared name, but five known lines", () => {
+  const route = readFileSync(join(import.meta.dir, "chief-route.ts"), "utf8"); const lib = readFileSync(join(import.meta.dir, "testlib-capped-fold.ts"), "utf8");
+  expect(x3Verdict(route, X3_ROUTE_KEEP), "chief-route.ts").toEqual({ unexpected: [], missing: [] });
+  expect(x3Verdict(lib, X3_LIB_KEEP), "testlib-capped-fold.ts").toEqual({ unexpected: [], missing: [] });
+  for (const name of ["ledgerDirOf", "ledgerEntryNames", "ledgerKeyOfFile", "parseManifest"]) {
+    expect(x3Imports(route), `chief-route.ts imports ${name}`).toContain(name);
+    expect(route.split("\n").filter((line) => line.includes(`${name}(`) || line.includes(`(${name})`)).length, `chief-route.ts uses ${name}`).toBeGreaterThan(0);
+  }
+  for (const name of ["ledgerDirOf", "ledgerEntryNames"]) {
+    expect(x3Imports(lib), `testlib imports ${name}`).toContain(name);
+    expect(lib.includes(`${name}(`), `testlib uses ${name}`).toBe(true);
+  }
 });

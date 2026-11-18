@@ -1,5 +1,6 @@
 import { selectDecisionNames, pinnedRead, boundedDirectoryNames, reviewedSpecHashes, validateCappedFoldProofShape, PINNED_READ_VERSION, returnSha,
   SIGNATURE_DIRS, KEY_FOLDER, CRITIC_FILE, CRITIC_NAME, specsRootOf, keyOf, canonicalDirectoryNames, returnDirectories, checkLatestReturns,
+  ledgerDirOf, ledgerEntryNames, ledgerKeyOfFile, parseManifest,
   type CappedFoldProof, type EvidencePin, type EvidenceFilePin, type ReturnPin } from "../jira/src/release/pinned.ts";
 import { join, dirname, basename, resolve, isAbsolute } from "node:path";
 import { randomUUID, createHash } from "node:crypto";
@@ -630,7 +631,6 @@ type SeededReturn = { return_sha: string; verdict_path: string; seals: { read_pa
 type LedgerRow = { row: string; [field: string]: any };
 
 const FINDING_LINE = /^[-*] \*\*([A-Za-z][\w.-]*)\*\* \(([^)]*)\)/;
-const ledgerDir = (specs: string) => join(specs, "ledgers", "spec-rounds");
 
 export { returnSha, keyOf } from "../jira/src/release/pinned.ts";
 
@@ -676,7 +676,7 @@ type RoundReader = {
 const readBytes = (path: string, reader?: RoundReader): Promise<Buffer> => reader ? reader.read(path).then(r => r.bytes) : readFile(path);
 
 async function readLedger(specs: string, key: string, reader?: RoundReader): Promise<LedgerRow[] | null> {
-  const text = await readBytes(join(ledgerDir(specs), `${key}.jsonl`), reader).then(b => b.toString("utf8")).catch((e: NodeJS.ErrnoException) => {
+  const text = await readBytes(join(ledgerDirOf(specs), ledgerEntryNames(key).file), reader).then(b => b.toString("utf8")).catch((e: NodeJS.ErrnoException) => {
     if (e.code === "ENOENT") return null;
     throw new Error(`${key} ledger cannot be read (${e.message}); restore it from the state repo history`);
   });
@@ -690,22 +690,21 @@ async function readLedger(specs: string, key: string, reader?: RoundReader): Pro
   });
 }
 
-const manifestFile = (specs: string) => join(ledgerDir(specs), "manifest.json");
+const manifestFile = (specs: string) => join(ledgerDirOf(specs), "manifest.json");
 async function readManifest(specs: string, reader?: RoundReader): Promise<{ keys: Record<string, unknown> }> {
   const text = await readBytes(manifestFile(specs), reader).then(b => b.toString("utf8")).catch((e: NodeJS.ErrnoException) => {
     if (e.code === "ENOENT") throw new Error(`no round manifest under ${specs}; run round-seed --all once`);
     throw new Error(`${manifestFile(specs)}: cannot read the round manifest (${e.message}); restore it from the state repo history`);
   });
-  let m: { keys?: unknown } | null = null;
-  try { m = JSON.parse(text); } catch {}
-  if (!m || typeof m.keys !== "object" || m.keys === null || Array.isArray(m.keys)) throw new Error(`${manifestFile(specs)}: the round manifest does not parse; restore it from the state repo history`);
-  return m as { keys: Record<string, unknown> };
+  const m = parseManifest(text);
+  if (!m) throw new Error(`${manifestFile(specs)}: the round manifest does not parse; restore it from the state repo history`);
+  return m;
 }
 
 async function loadLedger(specs: string, key: string, reader?: RoundReader): Promise<Rows> {
   const manifest = await readManifest(specs, reader);
   const rows = await readLedger(specs, key, reader) ?? [];
-  const snapshots = await stat(join(ledgerDir(specs), key)).then(() => true, (e: NodeJS.ErrnoException) => {
+  const snapshots = await stat(join(ledgerDirOf(specs), ledgerEntryNames(key).folder)).then(() => true, (e: NodeJS.ErrnoException) => {
     if (e.code === "ENOENT") return false;
     throw new Error(`${key}: cannot read its snapshot folder (${e.message}); restore it from the state repo history`);
   });
@@ -724,10 +723,10 @@ function withLedgerLock<T>(specs: string, key: string, fn: () => Promise<T>): Pr
   return run;
 }
 async function flockedLedger<T>(specs: string, key: string, fn: () => Promise<T>): Promise<T> {
-  await mkdir(ledgerDir(specs), { recursive: true });
+  await mkdir(ledgerDirOf(specs), { recursive: true });
   const { dlopen } = await import("bun:ffi");
   const libc = dlopen(process.platform === "darwin" ? "libSystem.B.dylib" : "libc.so.6", { flock: { args: ["i32", "i32"], returns: "i32" } });
-  const lock = await open(join(ledgerDir(specs), `${key}.jsonl.lock`), "a");
+  const lock = await open(join(ledgerDirOf(specs), ledgerEntryNames(key).lock), "a");
   try {
     if (libc.symbols.flock(lock.fd, 2) !== 0) throw new Error(`${key}: cannot lock its round ledger`);
     return await fn();
@@ -743,7 +742,7 @@ async function createNew(path: string, data: string | Uint8Array, made: string[]
 }
 
 async function snapshotBytes(specs: string, key: string, bytes: Uint8Array, sum: string, made: string[] = []): Promise<void> {
-  const path = join(ledgerDir(specs), key, sum);
+  const path = join(ledgerDirOf(specs), ledgerEntryNames(key).folder, sum);
   await mkdir(dirname(path), { recursive: true });
   await createNew(path, bytes, made);
 }
@@ -999,7 +998,7 @@ export const closureMarker = (key: string, kind: Kind, r: number, returnSha: str
 async function snapshotsOf(specs: string, key: string, sealed: SealedFile[]): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   for (const s of sealed) {
-    const path = join(ledgerDir(specs), key, s.read_sha);
+    const path = join(ledgerDirOf(specs), ledgerEntryNames(key).folder, s.read_sha);
     const bytes = await readFile(path).catch((e: NodeJS.ErrnoException) => { if (e.code === "ENOENT") return null; throw e; });
     if (bytes === null) { if (s.seeded) continue; throw new Error(`snapshot ${s.read_sha} was edited`); }
     if (sha256(bytes) !== s.read_sha) throw new Error(`snapshot ${s.read_sha} was edited`);
@@ -1074,7 +1073,7 @@ export async function sealRound(verdict: string, readPath: string): Promise<void
   await withLedgerLock(t.specs, t.key, async () => {
     const rows = await loadLedger(t.specs, t.key);
     const admitted = await admit(t, rows);
-    const file = join(ledgerDir(t.specs), `${t.key}.jsonl`);
+    const file = join(ledgerDirOf(t.specs), ledgerEntryNames(t.key).file);
     if (admitted === null) {
       await snapshotBytes(t.specs, t.key, bytes, readSha);
       await appendFile(file, `${JSON.stringify({ v: 1, ts: Date.now(), key: t.key, row: "seal", return_sha: sum, read_path: t.page, read_sha: readSha })}\n`);
@@ -1111,8 +1110,8 @@ function cappedReader(specs: string, key: string) {
     return abs;
   };
   const roleOf = (path: string): EvidenceFilePin["role"] => path === manifestFile(specs) ? "manifest"
-    : path === join(ledgerDir(specs), `${key}.jsonl`) ? "ledger"
-    : dirname(path) === join(ledgerDir(specs), key) ? "snapshot"
+    : path === join(ledgerDirOf(specs), ledgerEntryNames(key).file) ? "ledger"
+    : dirname(path) === join(ledgerDirOf(specs), ledgerEntryNames(key).folder) ? "snapshot"
     : dirname(path) === join(specs, "decisions") ? "decision" : "artifact";
   const read = async (path: string, role = roleOf(path)) => {
     const abs = await canonical(path);
@@ -1280,7 +1279,7 @@ async function cappedReturnEvidence(input: CappedReturnInput, policy: CappedPoli
     const read = await reader.read(raw, "artifact");
     if (read.sha256 !== seal.sha || !recorded.some(s => s.read_path === artifact && s.read_sha === seal.sha)) throw new Error(`capped-fold: seal provenance disagrees: ${artifact}`);
     if (quoted.get(artifact) !== seal.sha) throw new Error(`capped-fold: missing/conflicting critic READ quote: ${artifact}`);
-    const snapshot = await reader.read(join(ledgerDir(specs), key, seal.sha));
+    const snapshot = await reader.read(join(ledgerDirOf(specs), ledgerEntryNames(key).folder, seal.sha));
     if (snapshot.sha256 !== seal.sha) throw new Error("capped-fold: content-addressed snapshot changed");
   }
   if (recorded.length !== declared.size || quoted.size !== declared.size || recorded.some(s => declared.get(s.read_path) !== s.read_sha)
@@ -1345,7 +1344,7 @@ async function verifyReturn(abs: string, text: string, opts: { spec?: string; si
   return { key, kind, round, mode };
 }
 
-const appendRow = (specs: string, key: string, row: Record<string, unknown>) => appendFile(join(ledgerDir(specs), `${key}.jsonl`), `${JSON.stringify({ v: 1, ts: Date.now(), key, ...row })}\n`);
+const appendRow = (specs: string, key: string, row: Record<string, unknown>) => appendFile(join(ledgerDirOf(specs), ledgerEntryNames(key).file), `${JSON.stringify({ v: 1, ts: Date.now(), key, ...row })}\n`);
 const needConsole = (verb: string) => { if (process.env.HIMMEL_CONSOLE !== "1") throw new Error(`${verb}: needs HIMMEL_CONSOLE=1, the chief's marker; a worker never writes a record`); };
 
 export async function roundOverride(specs: string, key: string, o: { findings: string[]; why: string; chief: string }): Promise<void> {
@@ -1427,7 +1426,7 @@ export async function roundExtension(specs: string, key: string, o: { findings: 
     const row = { v: 1, ts: Date.now(), key, row: "extension", epoch: c.epoch, round_opened: round, findings: open, returns: returnsOf(latest), why: o.why, chief: o.chief, decision: o.decision, quote: o.quote, decision_path: q.path, decision_sha: q.sha };
     const probe = await checkRecords(specs, key, [...rows, row]);
     if (probe.extensions.length !== c.extensions.length + 1) throw new Error(`round-extension: the record would not validate on read (${probe.invalid.at(-1) ?? "unknown"}); nothing was written`);
-    await appendFile(join(ledgerDir(specs), `${key}.jsonl`), `${JSON.stringify(row)}\n`);
+    await appendFile(join(ledgerDirOf(specs), ledgerEntryNames(key).file), `${JSON.stringify(row)}\n`);
     return `round-extension: ${key} epoch ${c.epoch}: ${where} opens as a closure check of ${[...new Set(open.map(f => f.id))].join(", ")} (decision ${o.decision})`;
   });
 }
@@ -1514,8 +1513,8 @@ export async function roundSeed(rootArg: string): Promise<SeedResult> {
   return withLedgerLock(specs, "round-seed", () => seedRoot(specs));
 }
 async function seedRoot(specs: string): Promise<SeedResult> {
-  const dir = ledgerDir(specs);
-  for (const n of await listDir(dir)) if (n === "manifest.json" || n.endsWith(".jsonl") || await stat(join(dir, n)).then(s => s.isDirectory(), () => false)) throw new Error(`round-seed: ${dir} already holds a ledger, snapshot or manifest`);
+  const dir = ledgerDirOf(specs);
+  for (const n of await listDir(dir)) if (join(dir, n) === manifestFile(specs) || ledgerKeyOfFile(n) !== null || await stat(join(dir, n)).then(s => s.isDirectory(), () => false)) throw new Error(`round-seed: ${dir} already holds a ledger, snapshot or manifest`);
   const folders = [...SIGNATURE_DIRS].map(d => join(specs, d));
   for (const n of await listDir(specs)) if (KEY_FOLDER.test(n) && await stat(join(specs, n)).then(s => s.isDirectory(), () => false)) folders.push(join(specs, n));
   const found = new Map<string, Record<Kind, { round: number; path: string; text: string }[]>>();
@@ -1560,11 +1559,11 @@ async function seedRoot(specs: string): Promise<SeedResult> {
   try {
     await mkdir(dir, { recursive: true });
     for (const s of snapshots) await snapshotBytes(specs, s.key, s.bytes, s.sum, made);
-    for (const [key, row] of seeds) await write(join(dir, `${key}.jsonl`), `${JSON.stringify(row)}\n`);
-    await write(join(dir, "manifest.json"), `${JSON.stringify({ v: 1, ts: Date.now(), keys })}\n`);
+    for (const [key, row] of seeds) await write(join(dir, ledgerEntryNames(key).file), `${JSON.stringify(row)}\n`);
+    await write(manifestFile(specs), `${JSON.stringify({ v: 1, ts: Date.now(), keys })}\n`);
   } catch (e) {
     for (const path of made.reverse()) await rm(path, { force: true });
-    for (const key of found.keys()) await rmdir(join(dir, key)).catch(() => {});
+    for (const key of found.keys()) await rmdir(join(dir, ledgerEntryNames(key).folder)).catch(() => {});
     throw e;
   }
   return { keys, skipped };
@@ -2122,7 +2121,7 @@ if (import.meta.main) {
       const specs = await realpath(a.specs);
       if (a.key === null) {
         const manifest = await readManifest(specs);
-        const keys = new Set([...Object.keys(manifest.keys), ...(await listDir(ledgerDir(specs))).filter(n => n.endsWith(".jsonl")).map(n => n.slice(0, -".jsonl".length))]);
+        const keys = new Set([...Object.keys(manifest.keys), ...(await listDir(ledgerDirOf(specs))).flatMap(n => { const key = ledgerKeyOfFile(n); return key !== null ? [key] : []; })]);
         const out: Record<string, RoundState | { key: string; error: string }> = {};
         for (const key of [...keys].sort()) out[key] = await roundState(specs, key).catch((e: Error) => ({ key, error: e.message }));
         console.log(JSON.stringify({ cap: CRITIC_ROUND_CAP, classes: OPERATOR_CRITICAL_CLASSES, keys: out }));
