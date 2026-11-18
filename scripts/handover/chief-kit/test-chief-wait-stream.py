@@ -32,7 +32,7 @@ class StreamFixture(unittest.TestCase):
                         CHIEF_WAIT_STREAM_ADOPT_SEC='2', CHIEF_WAIT_STREAM_REAP_MAX_SEC='3',
                         CHIEF_WAIT_STREAM_KILL_GRACE_SEC='0.2', HOUSEKEEPING_DIGEST_SECS='0',
                         CHIEF_WAIT_FAIL_WAKE='1000', WAIT_SWEEP_SEC='99999',
-                        HIMMEL_FLAG_AUTO_GO='0', HIMMEL_FLAG_SILENT_GO='0',
+                        HIMMEL_FLAG_AUTO_GO=os.environ.get('T4_STREAM_AUTO_GO', '0'), HIMMEL_FLAG_SILENT_GO='0',
                         CHIEF_WAIT_OPERATOR_GRACE_SEC='.2',
                         HIMMEL_TEST_FIXTURE='1')
         self.script('usage', 'echo PROCEED\n')
@@ -512,6 +512,242 @@ echo 'HANDLED close-wrapped'
         self.until(lambda: 'owed-actions-unread' in out.read_text(), seconds=2)
         self.assertEqual(ledger.read_text(), 'unread ledger\n')
         self.stop(p)
+
+
+# Worker-event stand-in that keeps auto-go's exact-head audit rule: the first READY of a
+# (pr, head) records one GO-SENT row, a replay of the same pair records none, and a
+# cleanup event never records a GO. TEST_ROOT/refuse-cleanup makes cleanup refuse with the
+# retryable `-failed rc=4`; TEST_ROOT/slow-N<k> makes that worker's event slow.
+GO_AUDIT_EVENT = r'''line=$(cat)
+echo "$(date +%s.%N) $line" >> "$TEST_ROOT/events"
+label=${line%% *}
+[ ! -e "$TEST_ROOT/slow-$label" ] || exec sleep "$(cat "$TEST_ROOT/slow-$label")"
+case "$line" in
+*\ READY\ *)
+    set -- $(printf '%s\n' "$line" | sed -nE 's/.* READY #?([0-9]+) ([0-9a-f]{40}).*/\1 \2/p')
+    [ -n "${2:-}" ] || { echo 'ESCALATE marker-READY'; exit 10; }
+    if ! grep -qx "GO-SENT $1 $2" "$TEST_ROOT/audit" 2>/dev/null; then echo "GO-SENT $1 $2" >> "$TEST_ROOT/audit"; fi
+    echo 'HANDLED auto-go'; exit 0;;
+*)
+    if [ -e "$TEST_ROOT/refuse-cleanup" ]; then echo 'ESCALATE wrap-merged-failed rc=4 worker still alive'; exit 10; fi
+    echo 'HANDLED wrap-merged'; exit 0;;
+esac
+'''
+
+
+class StackedWorker(StreamFixture):
+    """Stacked-series and returning-worker service rows, with auto_go ON (the production setting of the relay)."""
+    H = {n: str(n) * 40 for n in range(1, 10)}
+
+    def setUp(self):
+        super().setUp()
+        self.env.update(HIMMEL_FLAG_AUTO_GO='1', CHIEF_WAIT_SERVICE_RETRY_SEC='1',
+                        CHIEF_WAIT_STREAM_MAX_PER_MIN='100', CHIEF_WAIT_STREAM_REPEAT_SEC='0')
+        self.env['CHIEF_WAIT_WORKER_EVENT'] = self.script('event', GO_AUDIT_EVENT)
+
+    def worker(self, label, *lines):
+        doc = self.root / f'{label}.md'
+        doc.write_text(f'# {label}\n## Results\n' + ''.join(line + '\n' for line in lines))
+        return doc
+
+    def fleet_of(self, *labels):
+        self.fleet.write_text(json.dumps(dict(workers=[
+            dict(label=label, doc=str(self.root / f'{label}.md')) for label in labels])))
+
+    def add(self, label, line):
+        with (self.root / f'{label}.md').open('a') as f:
+            f.write(line + '\n')
+
+    def events(self):
+        path = self.root / 'events'
+        rows = [line.split(' ', 1) for line in path.read_text().splitlines()] if path.exists() else []
+        return [(float(t), text) for t, text in rows]
+
+    def seen(self, prefix):
+        return [t for t, text in self.events() if text.startswith(prefix)]
+
+    def audit(self):
+        path = self.root / 'audit'
+        return path.read_text().splitlines() if path.exists() else []
+
+    def ready(self, label, pr):
+        return f'- 10:{pr:02d} READY #{pr} {self.H[pr]}'
+
+    def test_a_stacked_ready_after_a_handled_merged_is_relayed_in_order(self):
+        self.worker('N1', self.ready('N1', 1))
+        self.fleet_of('N1')
+        p, _ = self.start()
+        self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
+        self.add('N1', '- 10:05 MERGED #1')
+        self.until(lambda: self.seen('N1 MERGED #1') and 'N1 MERGED' in self.path('r0').read_text())
+        self.add('N1', self.ready('N1', 2))
+        self.until(lambda: self.seen(f'N1 READY #2 {self.H[2]}'), seconds=8)
+        time.sleep(.6)
+        self.stop(p)
+        self.assertEqual([text for _, text in self.events()],
+                         [f'N1 READY #1 {self.H[1]}', 'N1 MERGED #1', f'N1 READY #2 {self.H[2]}'])
+        self.assertEqual(self.audit(), [f'GO-SENT 1 {self.H[1]}', f'GO-SENT 2 {self.H[2]}'])
+
+    def test_a_refused_cleanup_is_retried_on_the_backoff_and_never_hides_the_next_ready(self):
+        (self.root / 'refuse-cleanup').touch()
+        self.worker('N1', self.ready('N1', 1))
+        self.fleet_of('N1')
+        p, _ = self.start()
+        self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
+        self.add('N1', '- 10:05 MERGED #1')
+        self.until(lambda: len(self.seen('N1 MERGED #1')) >= 3, seconds=10)
+        stamps = self.seen('N1 MERGED #1')
+        # the existing retry window (CHIEF_WAIT_SERVICE_RETRY_SEC=1), never every 50 ms poll
+        self.assertTrue(all(b - a >= .8 for a, b in zip(stamps, stamps[1:])), stamps)
+        self.add('N1', self.ready('N1', 2))
+        self.until(lambda: self.seen(f'N1 READY #2 {self.H[2]}'), seconds=8)
+        settled = len(self.seen('N1 MERGED #1'))
+        time.sleep(2.2)
+        self.assertEqual(len(self.seen('N1 MERGED #1')), settled, 'a superseded MERGED is not retried')
+        self.stop(p)
+        self.assertEqual(self.audit(), [f'GO-SENT 1 {self.H[1]}', f'GO-SENT 2 {self.H[2]}'])
+
+    def test_a_label_returning_with_a_shorter_document_gets_its_unhandled_ready_relayed(self):
+        self.worker('N1', *[f'- 09:{n:02d} LIVE step {n}' for n in range(37)], self.ready('N1', 1))
+        self.fleet_of('N1')
+        p, _ = self.start()
+        self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
+        self.until(lambda: self.path('ready').exists() and self.path('ready').read_text() == 'N1\t40\n')
+        self.fleet_of()
+        self.until(lambda: 'N1' not in json.loads(self.path('ready-docs').read_text()))
+        self.worker('N1', '- 10:30 LIVE restarted', self.ready('N1', 9))
+        self.fleet_of('N1')
+        self.until(lambda: self.seen(f'N1 READY #9 {self.H[9]}'), seconds=8)
+        time.sleep(.6)
+        self.stop(p)
+        self.assertEqual(self.audit(), [f'GO-SENT 1 {self.H[1]}', f'GO-SENT 9 {self.H[9]}'])
+        self.assertEqual(len(self.seen('N1 READY #9')), 1)
+
+    def test_a_label_returning_with_a_longer_different_document_gets_its_unhandled_ready_relayed(self):
+        self.worker('N1', '- 09:00 LIVE start', self.ready('N1', 1))
+        self.fleet_of('N1')
+        p, _ = self.start()
+        self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
+        self.until(lambda: self.path('ready').exists() and self.path('ready').read_text() == 'N1\t4\n')
+        self.fleet_of()
+        self.until(lambda: 'N1' not in json.loads(self.path('ready-docs').read_text()))
+        # its READY sits on a line the old cursor already counted, and the document is not shorter
+        self.worker('N1', self.ready('N1', 9), '- 10:31 LIVE a', '- 10:32 LIVE b', '- 10:33 LIVE c')
+        self.fleet_of('N1')
+        self.until(lambda: self.seen(f'N1 READY #9 {self.H[9]}'), seconds=8)
+        time.sleep(.6)
+        self.stop(p)
+        self.assertEqual(self.audit(), [f'GO-SENT 1 {self.H[1]}', f'GO-SENT 9 {self.H[9]}'])
+        self.assertEqual(len(self.seen('N1 READY #9')), 1)
+
+    def test_a_torn_read_ending_at_a_handled_merged_never_relays_a_ready_twice(self):
+        self.worker('N1', self.ready('N1', 1))
+        self.fleet_of('N1')
+        p, _ = self.start()
+        self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
+        self.add('N1', '- 10:05 MERGED #1')
+        self.until(lambda: self.seen('N1 MERGED #1') and 'N1 MERGED' in self.path('r0').read_text())
+        self.add('N1', self.ready('N1', 2))
+        self.until(lambda: self.seen(f'N1 READY #2 {self.H[2]}'))
+        self.until(lambda: self.path('ready').read_text() == 'N1\t5\n')
+        # a read that shows only the first two bullets, then the whole document again
+        torn = self.worker('N1', self.ready('N1', 1), '- 10:05 MERGED #1')
+        time.sleep(.6)
+        self.worker('N1', self.ready('N1', 1), '- 10:05 MERGED #1', self.ready('N1', 2))
+        time.sleep(1.0)
+        self.stop(p)
+        self.assertEqual(len(self.seen('N1 READY #2')), 1)
+        self.assertEqual(self.audit(), [f'GO-SENT 1 {self.H[1]}', f'GO-SENT 2 {self.H[2]}'])
+        self.assertTrue(torn.exists())
+
+    def test_a_refused_cleanup_keeps_its_flat_retry_pace_until_a_newer_ready(self):
+        # Pins the pace as it is, not as it should be: one attempt per retry window, no growth, no cap.
+        (self.root / 'refuse-cleanup').touch()
+        self.worker('N1', self.ready('N1', 1))
+        self.fleet_of('N1')
+        p, _ = self.start()
+        self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
+        self.add('N1', '- 10:05 MERGED #1')
+        self.until(lambda: len(self.seen('N1 MERGED #1')) >= 5, seconds=14)
+        stamps = self.seen('N1 MERGED #1')[:5]
+        gaps = [b - a for a, b in zip(stamps, stamps[1:])]
+        self.stop(p)
+        self.assertTrue(all(.8 <= gap <= 2.0 for gap in gaps), gaps)
+
+    def test_slow_cleanup_delays_only_itself_and_the_inbox_and_ready_follow_at_once(self):
+        self.worker('N1', '- 10:00 WRAPPED no PR')
+        self.worker('N2', self.ready('N2', 2))
+        self.fleet_of('N1', 'N2')
+        (self.root / 'slow-N1').write_text('1.5')
+        self.env['CHIEF_WAIT_INTERVAL'] = '180'
+        p, out = self.start()
+        self.until(lambda: self.seen('N1 WRAPPED'))
+        started = self.seen('N1 WRAPPED')[0]
+        self.inbox.write_text('operator during the slow cleanup\n')
+        self.until(lambda: self.seen(f'N2 READY #2 {self.H[2]}') and 'WAKE#1 telegram' in out.read_text(), seconds=8)
+        gap = self.seen(f'N2 READY #2 {self.H[2]}')[0] - started
+        self.assertGreaterEqual(gap, 1.4, 'the service is serial: N2 waits for the cleanup it started behind')
+        self.assertLess(gap, 4.0, 'and is served right after it, not after another full tick')
+        self.stop(p)
+        self.assertEqual(len(self.seen('N1 WRAPPED')), 1)
+        self.assertEqual(self.audit(), [f'GO-SENT 2 {self.H[2]}'])
+
+    def test_cleanup_beyond_its_bound_is_killed_reported_once_and_does_not_starve_peers(self):
+        shim = self.root / 'shim'
+        shim.mkdir()
+        real = subprocess.run(['bash', '-c', 'command -v timeout'], capture_output=True, text=True).stdout.strip()
+        timeout = shim / 'timeout'
+        timeout.write_text('#!/usr/bin/env bash\n'
+                           'if [ "$#" -ge 5 ] && [ "$1" = -k ] && [ "$2" = 5 ] && [ "$3" = 240 ] && [ "$4" = bash ] '
+                           '&& [ "$5" = "$CHIEF_WAIT_WORKER_EVENT" ]; then shift 3; exec ' + real + ' -k 1 2 "$@"; fi\n'
+                           'exec ' + real + ' "$@"\n')
+        timeout.chmod(0o755)
+        self.env['PATH'] = str(shim) + ':' + self.env['PATH']
+        self.worker('N1', '- 10:00 WRAPPED no PR')
+        self.worker('N2', self.ready('N2', 2))
+        self.fleet_of('N1', 'N2')
+        (self.root / 'slow-N1').write_text('30')
+        p, out = self.start()
+        self.until(lambda: 'relay-timeout N1 rc=124' in out.read_text(), seconds=10)
+        self.until(lambda: self.seen(f'N2 READY #2 {self.H[2]}'), seconds=10)
+        time.sleep(.6)
+        self.stop(p)
+        self.assertEqual(out.read_text().count('relay-timeout N1'), 1)
+        self.assertEqual(len(self.seen('N1 WRAPPED')), 1, 'a bounded-out cleanup is reported, not rerun')
+        self.assertEqual(self.audit(), [f'GO-SENT 2 {self.H[2]}'])
+
+    def test_successor_chief_replays_each_worker_once_and_never_sends_a_second_go(self):
+        self.worker('N1', self.ready('N1', 1))
+        self.worker('N2', self.ready('N2', 2))
+        self.fleet_of('N1', 'N2')
+        p, _ = self.start()
+        self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}') and self.seen(f'N2 READY #2 {self.H[2]}'))
+        self.stop(p)
+        self.assertEqual(self.audit(), [f'GO-SENT 1 {self.H[1]}', f'GO-SENT 2 {self.H[2]}'])
+        self.add('N2', self.ready('N2', 3))
+        successor = self.root / 'consoles/chief-b.md'
+        successor.touch()
+        Path(str(successor) + '.announced').touch()
+        self.env['CHIEF_WAIT_TRACKER'] = self.script('tracker', 'echo "COMPLETE 2/2"\n')
+        output = self.root / 'out-successor'
+        with output.open('w') as out:
+            q = subprocess.Popen(['bash', str(HERE / 'chief-wait.sh'), str(successor), '--stream',
+                                  '--doc', str(self.doc), '--workers-from', str(self.fleet),
+                                  '--succession', 'chief-b'], env=self.env, stdout=out,
+                                 stderr=subprocess.STDOUT, start_new_session=True)
+        self.procs.append((q, output))
+        self.until(lambda: self.seen(f'N2 READY #3 {self.H[3]}') and 'WAKE#' in output.read_text(), seconds=10)
+        time.sleep(1.0)
+        q.terminate()
+        q.wait(timeout=6)
+        # the successor starts every worker over: one replay of the newest READY, nothing older,
+        # nothing twice, and the exact-head audit still shows one GO per head.
+        self.assertEqual(len(self.seen(f'N1 READY #1 {self.H[1]}')), 2)
+        self.assertEqual(len(self.seen(f'N2 READY #2 {self.H[2]}')), 1)
+        self.assertEqual(len(self.seen(f'N2 READY #3 {self.H[3]}')), 1)
+        self.assertEqual(self.audit(), [f'GO-SENT 1 {self.H[1]}', f'GO-SENT 2 {self.H[2]}',
+                                        f'GO-SENT 3 {self.H[3]}'])
+        self.assertEqual(output.read_text().count('succession complete'), 1)
 
 
 if __name__ == '__main__':

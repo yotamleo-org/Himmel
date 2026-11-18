@@ -4,6 +4,7 @@ import hashlib
 import os
 from pathlib import Path
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -12,6 +13,33 @@ import time
 def checksum(line):
     return subprocess.run(['cksum'], input=line + '\n', text=True,
                           capture_output=True, check=True).stdout.split()[0]
+
+
+def doc_bound():
+    try:
+        bound = float(os.getenv('CHIEF_WAIT_PENDING_DOC_TIMEOUT', '3'))
+    except ValueError:
+        bound = 0
+    return bound if bound > 0 else 3.0
+
+
+def read_lines(doc, bound):
+    """The document's lines, numbered as the relay's `sed -n Np` addresses them (newline only),
+    read within `bound` seconds. A read that blocks raises TimeoutError, an OSError the caller
+    already treats as an unreadable document."""
+    def expire(signum, frame):
+        raise TimeoutError(f'no answer within {bound:g}s')
+    handler = signal.signal(signal.SIGALRM, expire)
+    signal.setitimer(signal.ITIMER_REAL, bound)
+    try:
+        text = doc.read_bytes().decode(errors='replace')
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, handler)
+    lines = text.split('\n')
+    if lines[-1] == '':
+        lines.pop()
+    return lines
 
 
 def candidates(fleet, inbox, last):
@@ -28,10 +56,12 @@ def candidates(fleet, inbox, last):
     observed = json.loads(observed_path.read_text()) if observed_path.exists() else {}
     current = {}
     events = []
+    bound = doc_bound()
     for worker in data.get('workers', data.get('legs', [])):
         label, doc = worker['label'], Path(worker['doc'])
         try:
-            lines = doc.read_text(errors='replace').splitlines()
+            # a document already known unread gets a short look, so one blocked file costs a pass little
+            lines = read_lines(doc, min(bound, 0.5) if observed.get(label, {}).get('unread') else bound)
         except OSError as exc:
             print(f'pending-events: worker={label} doc={doc}: {exc}', file=sys.stderr)
             previous = observed.get(label, {})
@@ -44,6 +74,10 @@ def candidates(fleet, inbox, last):
         ready_events = [[n, hashlib.sha256(lines[n - 1].encode()).hexdigest()]
                         for n, marker in matches if marker == 'READY']
         previous = observed.get(label, {})
+        if label in cursors and 'ready' not in previous and cursors[label] > len(lines):
+            # No snapshot and a cursor past the end: this is not the document the cursor
+            # counted, so meet the worker as new instead of calling its READY handled.
+            del cursors[label]
         cursor = cursors.get(label, 0)
         # Track the READY prefix already handled, independent of prose/line
         # shifts and atomic editors. Older snapshots migrate without replay.
@@ -61,39 +95,46 @@ def candidates(fleet, inbox, last):
                 continue
             cursor = last_handled or 0
             cursors[label] = cursor
-        current[label] = dict(ready=ready_events)
+        # A sample that does not match the acknowledged snapshot is only a proposal: it never
+        # replaces that snapshot here, whatever bullet the sample ends on.
+        current[label] = dict(previous, unread=False) if replaced else dict(ready=ready_events)
         cleanup = [(n, marker) for n, marker in matches if marker != 'READY']
-        if cleanup:
+        # A WRAPPED/MERGED bullet is the worker's live cleanup only while no READY follows it
+        # (the newest marker, as tick.sh reads tails= and acts=). A later READY is the event;
+        # a READY before the newest cleanup bullet is moot: its PR is already done.
+        floor = cleanup[-1][0] if cleanup else 0
+        if cleanup and matches[-1][0] == floor:
             n, marker = cleanup[-1]
-            if f'{label} {marker} {checksum(lines[n - 1])}' in handled:
-                continue
-            events.append((label, marker, n))
-        else:
-            if replaced:
-                # A truncate/write sample is only a proposal. Keep the last
-                # acknowledged snapshot/cursor until a stable candidate relays.
-                current[label] = dict(previous, unread=False, replacement=ready_events)
-                if previous.get('replacement') != ready_events:
-                    current[label]['replacement_known'] = bool(
-                        ready_events and ready_events[-1][1] in handled_ready)
-                    continue
-                if not ready_events or previous.get('replacement_known'):
-                    continue
-                n = ready_events[-1][0]
-                if f'{label} READY {checksum(lines[n - 1])}' in handled:
-                    current[label] = dict(ready=ready_events)
-                    cursors[label] = n
-                    continue
-                cursor = 0
-            pending = [(n, marker) for n, marker in matches if n > cursor]
-            if pending:
-                n, marker = pending[-1] if first else pending[0]
+            if f'{label} {marker} {checksum(lines[n - 1])}' not in handled:
                 events.append((label, marker, n))
+            continue
+        if replaced:
+            # A truncate/write sample is only a proposal. Keep the last
+            # acknowledged snapshot/cursor until a stable candidate relays.
+            current[label] = dict(previous, unread=False, replacement=ready_events)
+            if previous.get('replacement') != ready_events:
+                current[label]['replacement_known'] = bool(
+                    ready_events and ready_events[-1][1] in handled_ready)
+                continue
+            if not ready_events or previous.get('replacement_known'):
+                continue
+            n = ready_events[-1][0]
+            if f'{label} READY {checksum(lines[n - 1])}' in handled:
+                current[label] = dict(ready=ready_events)
+                cursors[label] = n
+                continue
+            cursor = 0
+        pending = [(n, marker) for n, marker in matches if marker == 'READY' and n > max(cursor, floor)]
+        if pending:
+            n, marker = pending[-1] if first else pending[0]
+            events.append((label, marker, n))
     tmp = observed_path.with_suffix(observed_path.suffix + '.tmp')
     tmp.write_text(json.dumps(current))
     os.replace(tmp, observed_path)
     tmp = ready.with_suffix(ready.suffix + '.tmp')
-    tmp.write_text(''.join(f'{label}\t{cursor}\n' for label, cursor in cursors.items()))
+    # A label that left the manifest keeps no cursor: if it returns with another document,
+    # its READY is met as new rather than judged against a cursor that counted something else.
+    tmp.write_text(''.join(f'{label}\t{cursor}\n' for label, cursor in cursors.items() if label in current))
     os.replace(tmp, ready)
     pivot = next((i + 1 for i, event in enumerate(events) if event[0] == last), 0)
     for label, marker, n in events[pivot:] + events[:pivot]:

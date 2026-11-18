@@ -1,11 +1,14 @@
 """Offline regressions for collector isolation and persisted waiter recovery."""
 import importlib.util
 import contextlib
+import hashlib
 import io
 import json
 import os
 from pathlib import Path
+import signal
 import subprocess
+import time
 import unittest
 from unittest.mock import patch
 
@@ -180,6 +183,168 @@ class Collector(stream_tests.StreamFixture):
         events = (self.root / 'events').read_text()
         self.assertIn('N1 WRAPPED', events)
         self.assertIn('N3 READY', events)
+
+    # A worker's own cleanup bullet must not hide its READY.
+    def relayed(self, label, marker, line):
+        """Record what r0_relay records after a handled relay of one bullet."""
+        digest = subprocess.run(['cksum'], input=line + '\n', capture_output=True,
+                                text=True, check=True).stdout.split()[0]
+        with self.path('r0').open('a') as f:
+            f.write(f'{label} {marker} {digest}\n')
+
+    def append(self, name, *lines):
+        with (self.root / name).open('a') as f:
+            f.write(''.join(line + '\n' for line in lines))
+
+    def test_ready_after_a_handled_merged_is_still_offered(self):
+        self.workers([b'- 10:00 READY #1 h1\n'])
+        self.assertEqual(self.collect().stdout.strip(), 'N1 READY 1')
+        self.path('ready').write_text('N1\t1\n')
+        self.append('N1.md', '- 10:05 MERGED #1')
+        self.assertEqual(self.collect().stdout.strip(), 'N1 MERGED 2')
+        self.relayed('N1', 'MERGED', '- 10:05 MERGED #1')
+        self.assertEqual(self.collect().stdout, '')
+        self.append('N1.md', '- 10:10 READY #2 h2')
+        for _ in range(2):
+            self.assertEqual(self.collect().stdout.strip(), 'N1 READY 3')
+
+    def test_ready_behind_an_unhandled_merged_is_offered_not_the_stale_merged(self):
+        self.workers([b'- 10:00 READY #1 h1\n'])
+        self.collect()
+        self.path('ready').write_text('N1\t1\n')
+        self.append('N1.md', '- 10:05 MERGED #1')
+        self.assertEqual(self.collect().stdout.strip(), 'N1 MERGED 2')
+        self.append('N1.md', '- 10:10 READY #2 h2')
+        for _ in range(2):
+            self.assertEqual(self.collect().stdout.strip(), 'N1 READY 3')
+
+    def test_wrapped_is_live_only_while_it_is_the_newest_marker(self):
+        self.workers([b'- 10:00 READY #1 h1\n- 10:05 WRAPPED no PR\n'])
+        self.assertEqual(self.collect().stdout.strip(), 'N1 WRAPPED 2')
+        self.relayed('N1', 'WRAPPED', '- 10:05 WRAPPED no PR')
+        self.assertEqual(self.collect().stdout, '')
+        self.append('N1.md', '- 10:10 READY #2 h2')
+        self.assertEqual(self.collect().stdout.strip(), 'N1 READY 3')
+
+    def test_a_live_cleanup_is_still_the_only_event_for_its_worker(self):
+        self.workers([b'- 10:00 READY #1 h1\n'])
+        self.collect()
+        self.path('ready').write_text('N1\t1\n')
+        self.append('N1.md', '- 10:05 MERGED #1')
+        for _ in range(3):
+            self.assertEqual(self.collect().stdout.strip(), 'N1 MERGED 2')
+        self.relayed('N1', 'MERGED', '- 10:05 MERGED #1')
+        for _ in range(3):
+            self.assertEqual(self.collect().stdout, '')
+
+    def test_ready_before_a_handled_cleanup_is_moot_and_never_replayed(self):
+        self.workers([b'- 10:00 READY #1 h1\n'])
+        self.collect()
+        self.path('ready').write_text('N1\t1\n')
+        self.append('N1.md', '- 10:01 READY #2 h2', '- 10:02 MERGED #2')
+        self.assertEqual(self.collect().stdout.strip(), 'N1 MERGED 3')
+        self.relayed('N1', 'MERGED', '- 10:02 MERGED #2')
+        self.assertEqual(self.collect().stdout, '')
+        self.append('N1.md', '- 10:10 READY #3 h3')
+        self.assertEqual(self.collect().stdout.strip(), 'N1 READY 4')
+
+    def test_first_seen_ready_after_an_old_cleanup_is_the_event(self):
+        self.workers([b'- 10:00 READY #1 h1\n- 10:05 MERGED #1\n- 10:10 READY #2 h2\n'])
+        self.assertEqual(self.collect().stdout.strip(), 'N1 READY 3')
+
+    def test_peer_events_and_rotation_survive_a_stacked_worker(self):
+        self.workers([b'- 10:00 READY #1 h1\n- 10:05 MERGED #1\n- 10:10 READY #2 h2\n',
+                      b'- 10:00 WRAPPED no PR\n'])
+        self.assertEqual(self.collect().stdout.splitlines(), ['N1 READY 3', 'N2 WRAPPED 1'])
+
+    # A label that returns with a different doc must not have its READY marked handled.
+    def test_label_returning_with_a_shorter_document_keeps_its_unhandled_ready(self):
+        long = ''.join(f'- 09:{n:02d} LIVE step {n}\n' for n in range(39)) + '- 10:00 READY #1 h1\n'
+        self.workers([long.encode()])
+        self.assertEqual(self.collect().stdout.strip(), 'N1 READY 40')
+        self.path('ready').write_text('N1\t40\n')
+        self.assertEqual(self.collect().stdout, '')
+        self.fleet.write_text(json.dumps(dict(workers=[])))
+        self.assertEqual(self.collect().stdout, '')
+        (self.root / 'N1.md').write_text('- 10:30 LIVE restarted\n- 10:31 READY #9 h9\n')
+        self.fleet.write_text(json.dumps(dict(workers=[dict(label='N1', doc=str(self.root / 'N1.md'))])))
+        for _ in range(3):
+            self.assertEqual(self.collect().stdout.strip(), 'N1 READY 2')
+
+    def test_label_returning_with_a_longer_different_document_keeps_its_unhandled_ready(self):
+        self.workers([b'- 09:00 LIVE a\n- 10:00 READY #1 h1\n'])
+        self.assertEqual(self.collect().stdout.strip(), 'N1 READY 2')
+        self.path('ready').write_text('N1\t2\n')
+        self.assertEqual(self.collect().stdout, '')
+        self.fleet.write_text(json.dumps(dict(workers=[])))
+        self.assertEqual(self.collect().stdout, '')
+        (self.root / 'N1.md').write_text('- 10:31 READY #9 h9\n- 10:32 LIVE a\n- 10:33 LIVE b\n')
+        self.fleet.write_text(json.dumps(dict(workers=[dict(label='N1', doc=str(self.root / 'N1.md'))])))
+        for _ in range(3):
+            self.assertEqual(self.collect().stdout.strip(), 'N1 READY 1')
+
+    def test_snapshotless_cursor_past_the_document_end_restarts_the_worker(self):
+        self.workers([b'- 10:00 LIVE restarted\n- 10:01 READY #9 h9\n'])
+        self.path('ready').write_text('N1\t40\n')
+        for _ in range(3):
+            self.assertEqual(self.collect().stdout.strip(), 'N1 READY 2')
+
+    def test_retired_label_keeps_no_cursor(self):
+        self.workers([b'- 10:00 READY #1 h1\n', b'- 10:00 READY #2 h2\n'])
+        self.collect()
+        self.path('ready').write_text('N1\t1\nN2\t1\n')
+        self.assertEqual(self.collect().stdout, '')
+        self.fleet.write_text(json.dumps(dict(workers=[dict(label='N2', doc=str(self.root / 'N2.md'))])))
+        self.assertEqual(self.collect().stdout, '')
+        self.assertEqual(self.path('ready').read_text(), 'N2\t1\n')
+
+    def test_unchanged_document_keeps_its_handled_ready_across_passes(self):
+        self.workers([b'- 10:00 READY #1 h1\n'])
+        self.collect()
+        self.path('ready').write_text('N1\t1\n')
+        for _ in range(3):
+            self.assertEqual(self.collect().stdout, '')
+
+    # The relay addresses a line with `sed -n Np`, which splits on newline only.
+    def sed_line(self, name, number):
+        return subprocess.run(['sed', '-n', f'{number}p', str(self.root / name)], capture_output=True,
+                              text=True, errors='replace').stdout.rstrip('\n')
+
+    def test_lines_are_numbered_the_way_the_relay_addresses_them(self):
+        ready = f'- 10:00 READY #1 {"1" * 40}'
+        for name, separator in (('lone CR', '\r'), ('form feed', '\x0c'), ('U+2028', ' '),
+                                ('vertical tab', '\x0b'), ('NEL', '\x85'), ('file separator', '\x1c')):
+            with self.subTest(separator=name):
+                self.workers([f'# N1\n- 09:00 LIVE progress{separator}more\n{ready}\n- 10:01 LIVE after\n'.encode()])
+                for state in ('ready', 'ready-docs'):
+                    self.path(state).unlink(missing_ok=True)
+                event = self.collect().stdout.split()
+                self.assertEqual(event[:2], ['N1', 'READY'])
+                self.assertEqual(self.sed_line('N1.md', event[2]), ready)
+
+    def test_crlf_document_keeps_its_line_numbers(self):
+        ready = f'- 10:00 READY #1 {"1" * 40}'
+        self.workers([f'# N1\r\n- 09:00 LIVE a\r\n{ready}\r\n'.encode()])
+        self.assertEqual(self.collect().stdout.split(), ['N1', 'READY', '3'])
+
+    def test_a_torn_read_ending_at_a_handled_merged_does_not_offer_a_relayed_ready_again(self):
+        self.workers([b'- 10:00 READY #1 h1\n'])
+        self.assertEqual(self.collect().stdout.strip(), 'N1 READY 1')
+        self.path('ready').write_text('N1\t1\n')
+        self.append('N1.md', '- 10:05 MERGED #1')
+        self.assertEqual(self.collect().stdout.strip(), 'N1 MERGED 2')
+        self.relayed('N1', 'MERGED', '- 10:05 MERGED #1')
+        self.append('N1.md', '- 10:10 READY #2 h2')
+        self.assertEqual(self.collect().stdout.strip(), 'N1 READY 3')
+        self.path('ready').write_text('N1\t3\n')
+        full = (self.root / 'N1.md').read_text()
+        (self.root / 'N1.md').write_text('- 10:00 READY #1 h1\n- 10:05 MERGED #1\n')
+        for _ in range(2):
+            self.assertEqual(self.collect().stdout, '')
+        (self.root / 'N1.md').write_text(full)
+        for _ in range(3):
+            self.assertEqual(self.collect().stdout, '')
+        self.assertEqual(self.path('ready').read_text(), 'N1\t3\n')
 
 
 class Acknowledgements(stream_tests.StreamFixture):
@@ -588,6 +753,240 @@ echo queued
                         '--doc', str(self.doc), '--chief', 'chief'], env=self.env, capture_output=True, timeout=3)
         self.assertEqual((self.root / 'wait-mode').read_text().strip(), '0')
         self.assertNotIn('"op":"close"', ledger.read_text())
+
+class RelayWindows(stream_tests.StreamFixture):
+    """The service relay's re-read, kill windows and inherited descriptors.
+
+    The waiter runs directly with CHIEF_WAIT_STREAM_SERVICE=1, the way the supervisor starts
+    it. A PATH shim is the controlled seam: it kills the waiter at one named command, so a
+    "kill" lands in a window no timed kill can hit."""
+    H1 = '1' * 40
+
+    def setUp(self):
+        super().setUp()
+        self.shim = self.root / 'shim'
+        self.shim.mkdir()
+        self.real = {name: subprocess.run(['bash', '-c', f'command -v {name}'], capture_output=True,
+                                          text=True).stdout.strip() for name in ('grep', 'mv', 'awk', 'python3')}
+        self.env.update(HIMMEL_FLAG_AUTO_GO='1', CHIEF_WAIT_STREAM_SERVICE='1', T4_INBOX=str(self.inbox),
+                        PATH=str(self.shim) + ':' + self.env['PATH'], CHIEF_WAIT_STREAM_MAX_PER_MIN='100')
+        self.n1 = self.root / 'N1.md'
+        self.n1.write_text(f'# N1\n- 09:00 LIVE start\n- 10:00 READY #1 {self.H1}\n')
+        self.fleet.write_text(json.dumps(dict(workers=[dict(label='N1', doc=str(self.n1))])))
+
+    def shim_for(self, name, body):
+        path = self.shim / name
+        path.write_text('#!/usr/bin/env bash\n' + body)
+        path.chmod(0o755)
+
+    def kill_waiter(self):
+        return ('pid=$(sed -n \'s/.* pid=\\([0-9][0-9]*\\) .*/\\1/p\' "$T4_INBOX.wait" | head -n 1)\n'
+                'kill -KILL -- "-$pid"\nsleep 5\nexit 1\n')  # the whole service session, like a killed arm
+
+    def direct(self, name):
+        out = self.root / name
+        with out.open('w') as f:
+            p = subprocess.Popen(['bash', str(HERE / 'chief-wait.sh'), str(self.inbox), '--doc', str(self.doc),
+                                  '--workers-from', str(self.fleet)], env=self.env, stdout=f,
+                                 stderr=subprocess.STDOUT, start_new_session=True)
+        self.procs.append((p, out))
+        return p, out
+
+    def calls(self):
+        path = self.root / 'events'
+        return path.read_text().splitlines() if path.exists() else []
+
+    # (a) the line the relay re-reads must still be a READY
+    def test_relay_skips_a_line_that_stopped_being_a_ready_and_self_heals(self):
+        self.env['CHIEF_WAIT_WORKER_EVENT'] = self.script('event', r'''line=$(cat)
+echo "$line" >> "$TEST_ROOT/events"
+case "$line" in N1\ READY\ *) echo 'HANDLED auto-go N1'; exit 0;; esac
+echo 'ESCALATE marker-LIVE'; exit 10
+''')
+        self.shim_for('python3', 'out=$(' + self.real['python3'] + ' "$@"); rc=$?\n'
+                      'case "$*" in *pending-events.py*)\n'
+                      '  if [ -n "$out" ] && [ ! -e "$TEST_ROOT/inserted" ]; then\n'
+                      '    : > "$TEST_ROOT/inserted"; sed -i "1i - 09:59 LIVE inserted above the READY" "$TEST_ROOT/N1.md"\n'
+                      '  fi;; esac\n'
+                      '[ -z "$out" ] || printf "%s\\n" "$out"\nexit $rc\n')
+        p, out = self.direct('out')
+        self.until(lambda: any(' READY ' in c for c in self.calls()) or p.poll() is not None)
+        time.sleep(.5)
+        self.assertIsNone(p.poll(), out.read_text())
+        self.assertEqual(self.calls(), [f'N1 READY #1 {self.H1}'])
+        self.assertNotIn('WAKE worker-event', out.read_text())
+        self.until(lambda: self.path('ready').exists() and self.path('ready').read_text() == 'N1\t4\n')
+
+    # (b) a kill at any point leaves the wake printed or the READY still unhandled
+    def run_killed(self, at):
+        self.env['CHIEF_WAIT_WORKER_EVENT'] = self.script('event', r'''cat >> "$TEST_ROOT/events"
+echo 'ESCALATE auto-go 3 not-ready'; exit 10
+''')
+        body = self.kill_waiter()
+        if at == 'grep':
+            self.shim_for('grep', f'if [ "$T4_KILL_AT" = grep ] && [ "$1" = -m ] && [ -e "$T4_INBOX.wait.le-N1" ]; then\n{body}fi\nexec {self.real["grep"]} "$@"\n')
+        if at == 'mv':
+            self.shim_for('mv', f'if [ "$T4_KILL_AT" = mv ]; then case "${{@: -1}}" in *.wait.ready) {self.real["mv"]} "$@"\n{body};; esac; fi\nexec {self.real["mv"]} "$@"\n')
+        if at == 'awk':
+            self.shim_for('awk', f'if [ "$T4_KILL_AT" = awk ] && [ "$4" = \'$1 != l\' ]; then\n{body}fi\nexec {self.real["awk"]} "$@"\n')
+        self.env['T4_KILL_AT'] = at
+        first, first_out = self.direct('out1')
+        self.assertEqual(first.wait(timeout=10), -9, first_out.read_text())
+        self.env.pop('T4_KILL_AT')
+        second, second_out = self.direct('out2')
+        time.sleep(2.5)
+        second.terminate()
+        second.wait(timeout=6)
+        wakes = first_out.read_text().count('WAKE worker-event') + second_out.read_text().count('WAKE worker-event')
+        self.detail = f'first={first_out.read_text()!r} second={second_out.read_text()!r} calls={self.calls()}'
+        self.assertFalse((self.root / 'audit').exists(), 'no GO record on a refused READY')
+        return wakes, len(self.calls())
+
+    def test_kill_after_the_cursor_write_before_the_wake_never_loses_the_wake(self):
+        wakes, calls = self.run_killed('mv')
+        self.assertEqual((wakes, calls), (1, 1), self.detail)
+
+    def test_kill_before_the_wake_is_printed_replays_the_ready_once(self):
+        wakes, calls = self.run_killed('grep')
+        self.assertEqual((wakes, calls), (1, 2), self.detail)
+
+    def test_kill_after_the_wake_before_the_cursor_never_loses_it(self):
+        wakes, calls = self.run_killed('awk')
+        self.assertIn(wakes, (1, 2), self.detail)
+        self.assertIn(calls, (1, 2), self.detail)
+        self.assertEqual(wakes, calls, 'every relay that ran shows its wake: replayed at most once; ' + self.detail)
+
+    # U4: a helper that outlives the waiter must not keep its one-waiter lock
+    def test_helpers_do_not_inherit_the_waiters_lock_descriptor(self):
+        for name in ('python3',):
+            self.shim_for(name, 'case "$*" in *pending-events.py*|*wake-rules.py*)\n'
+                          '  for f in /proc/$$/fd/*; do t=$(readlink "$f"); case "$t" in *.wait.lock)\n'
+                          '    echo "$* holds $t" >> "$TEST_ROOT/fdlog";; esac; done;; esac\n'
+                          f'exec {self.real["python3"]} "$@"\n')
+        self.env['CHIEF_WAIT_WORKER_EVENT'] = self.script('event', 'cat >/dev/null\necho "HANDLED auto-go N1"\n')
+        self.env.update(CHIEF_WAIT_INTERVAL='1')
+        self.script('tick', 'echo "TICK workers=0 livestate=0 prs=none tails=none acts=none workerset=0 board=ok tracker=ok denials=0 capacity=FULL station=BEHIND:pending"\n')
+        p, out = self.direct('out')
+        self.until(lambda: 'WAKE station' in out.read_text() or p.poll() is not None, seconds=8)
+        p.wait(timeout=6)
+        log = (self.root / 'fdlog').read_text() if (self.root / 'fdlog').exists() else ''
+        self.assertEqual(log, '', 'a helper holding fd 9 would keep the lock past a killed waiter')
+
+    def helper_pids(self):
+        found = []
+        for entry in Path('/proc').iterdir():
+            if entry.name.isdigit():
+                try:
+                    cmd = (entry / 'cmdline').read_bytes()
+                except OSError:
+                    continue
+                if b'pending-events.py' in cmd and str(self.inbox).encode() in cmd:
+                    found.append(int(entry.name))
+        return found
+
+    def lock_holders(self):
+        lock = str(self.path('lock'))
+        found = []
+        for entry in Path('/proc').iterdir():
+            if entry.name.isdigit():
+                try:
+                    for fd in (entry / 'fd').iterdir():
+                        if os.readlink(fd) == lock:
+                            found.append((int(entry.name), fd.name,
+                                          (entry / 'cmdline').read_bytes().replace(b'\0', b' ')[:100].decode()))
+                except OSError:
+                    continue
+        return found
+
+    def hang_on_a_fifo(self):
+        (self.root / 'N1.md').unlink()
+        os.mkfifo(self.root / 'N1.md')
+
+    def test_a_blocked_helper_does_not_keep_a_killed_waiters_lock(self):
+        self.hang_on_a_fifo()
+        self.env['CHIEF_WAIT_PENDING_TIMEOUT'] = '30'
+        p, _ = self.direct('out')
+        try:
+            self.until(self.helper_pids)
+            os.kill(p.pid, signal.SIGKILL)
+            p.wait(timeout=5)
+            probe = subprocess.run(['flock', '-n', str(self.path('lock')), 'true'])
+            self.assertEqual(probe.returncode, 0, f'the one-waiter lock must die with the waiter: {self.lock_holders()}')
+        finally:
+            for pid in self.helper_pids():
+                os.kill(pid, signal.SIGKILL)
+
+    def test_a_hung_pending_pass_is_no_events_this_pass_and_the_waiter_retries(self):
+        self.hang_on_a_fifo()
+        self.env['CHIEF_WAIT_PENDING_TIMEOUT'] = '1'
+        self.env['CHIEF_WAIT_WORKER_EVENT'] = self.script('event', 'cat >> "$TEST_ROOT/events"\necho "HANDLED auto-go N1"\n')
+        # state that a wrong "nothing exists" answer would erase
+        digest = hashlib.sha256(f'- 10:00 READY #1 {self.H1}'.encode()).hexdigest()
+        self.path('ready').write_text('N1\t3\n')
+        self.path('ready-docs').write_text(json.dumps(dict(N1=dict(ready=[[3, digest]]))))
+        before =(self.path('ready').read_text(), self.path('ready-docs').read_text())
+        p, out = self.direct('out')
+        self.until(lambda: self.path('pending-diagnostic').exists() and
+                   'no events this pass' in self.path('pending-diagnostic').read_text(), seconds=8)
+        time.sleep(.2)  # the document is repaired before a third timeout in a row wakes the chief
+        self.assertIsNone(p.poll(), out.read_text())
+        self.assertNotIn('waiter-error', out.read_text())
+        self.assertFalse(self.path('pending-error').exists())
+        self.assertEqual((self.path('ready').read_text(), self.path('ready-docs').read_text()), before)
+        (self.root / 'N1.md').unlink()
+        (self.root / 'N1.md').write_text(f'# N1\n- 09:00 LIVE start\n- 10:00 READY #1 {self.H1}\n'
+                                         f'- 10:30 READY #2 {"2" * 40}\n')
+        self.until(lambda: any('READY #2' in c for c in self.calls()), seconds=8)
+        self.assertEqual([c for c in self.calls() if 'READY' in c], [f'N1 READY #2 {"2" * 40}'])
+
+    def test_repeated_pending_timeouts_wake_once_and_again_only_after_recovery(self):
+        self.hang_on_a_fifo()
+        self.env.update(CHIEF_WAIT_PENDING_TIMEOUT='1', CHIEF_WAIT_PENDING_DOC_TIMEOUT='30')
+        first, first_out = self.direct('out1')
+        self.assertEqual(first.wait(timeout=12), 0, first_out.read_text())  # three timeouts in a row wake the chief
+        wakes = [line for line in first_out.read_text().splitlines() if line.startswith('WAKE waiter-error pending-events')]
+        self.assertEqual(len(wakes), 1, first_out.read_text())
+        self.assertIn('passes=3', wakes[0])
+        self.assertEqual(self.path('pending-timeouts').read_text().splitlines()[0], '3')
+        second, second_out = self.direct('out2')  # re-armed over the same hang: quiet
+        time.sleep(4.5)
+        self.assertIsNone(second.poll(), second_out.read_text())
+        self.assertNotIn('WAKE', second_out.read_text())
+        (self.root / 'N1.md').unlink()  # a pass that answers ends the streak
+        (self.root / 'N1.md').write_text('# N1\n- 09:00 LIVE start\n')
+        self.until(lambda: not self.path('pending-timeouts').exists(), seconds=8)
+        (self.root / 'N1.md').unlink()  # and a new hang wakes again
+        os.mkfifo(self.root / 'N1.md')
+        self.assertEqual(second.wait(timeout=12), 0, second_out.read_text())
+        self.assertEqual(second_out.read_text().count('WAKE waiter-error pending-events'), 1)
+
+    def test_one_blocked_document_neither_stops_a_peers_events_nor_goes_unreported(self):
+        n2 = self.root / 'N2.md'
+        n2.write_text(f'# N2\n- 10:00 READY #2 {"2" * 40}\n')
+        self.fleet.write_text(json.dumps(dict(workers=[dict(label='N1', doc=str(self.n1)), dict(label='N2', doc=str(n2))])))
+        self.hang_on_a_fifo()
+        self.env.update(CHIEF_WAIT_PENDING_TIMEOUT='20', CHIEF_WAIT_PENDING_DOC_TIMEOUT='1')
+        self.env['CHIEF_WAIT_WORKER_EVENT'] = self.script('event', 'cat >> "$TEST_ROOT/events"\necho "HANDLED auto-go N2"\n')
+        p, out = self.direct('out')
+        self.until(lambda: any('READY #2' in c for c in self.calls()), seconds=8)
+        self.assertEqual(p.wait(timeout=8), 0, out.read_text())  # the unread warning is a wake, once
+        self.assertEqual(out.read_text().count('WAKE waiter-error worker-doc-unread worker=N1'), 1, out.read_text())
+        self.assertEqual([c for c in self.calls() if 'READY' in c], [f'N2 READY #2 {"2" * 40}'])
+        again, again_out = self.direct('out-rearmed')  # the streak persists across a re-arm: no second warning
+        time.sleep(3.0)
+        self.assertIsNone(again.poll(), again_out.read_text())
+        self.assertNotIn('WAKE', again_out.read_text())
+
+    def test_a_ready_after_a_lone_cr_is_relayed_not_stalled(self):
+        self.env['CHIEF_WAIT_WORKER_EVENT'] = self.script('event', 'cat >> "$TEST_ROOT/events"\necho "HANDLED auto-go N1"\n')
+        self.n1.write_bytes(f'# N1\n- 09:00 LIVE progress 10%\r100%\n- 10:00 READY #1 {self.H1}\n- 10:01 LIVE after\n'.encode())
+        p, out = self.direct('out')
+        self.until(lambda: self.path('ready').exists() and self.path('ready').read_text() == 'N1\t3\n')
+        p.terminate()
+        p.wait(timeout=6)
+        self.assertEqual(self.calls(), [f'N1 READY #1 {self.H1}'])
+        self.assertNotIn('WAKE', out.read_text())
+
 
 if __name__ == '__main__':
     unittest.main()

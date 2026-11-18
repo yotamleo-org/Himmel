@@ -962,8 +962,23 @@ not_contains 'a paused pr-stall makes no PR list call' "$(cat "$W/qstub.log")" '
 st_tick 4000 > /dev/null
 contains 'RED control: a healthy pr-stall reads its PR list' "$(cat "$W/qstub.log")" 'mergeStateStatus,statusCheckRollup'
 
-q_key_line="$(grep -n -E '^[[:space:]]+for f in workers livestate prs ' "$HERE/chief-wait.sh")"
+# The waiter's wake key is the key rows of the table that its loop selects. The loop line must be this
+# one exactly, so an edit anywhere in it (a condition inside the awk, a filter after it) leaves the list empty.
+IFS= read -r q_loop <<'LOOP'
+for f in $(awk -F'\t' '$0 !~ /^#/ && $5 == "key" && $1 != "usage" { print $1 }' "$HERE/wake-rules.tsv"); do
+LOOP
+# shellcheck disable=SC2016  # the text searched for is the loop's own, not an expansion
+q_have="$(grep -F -e 'for f in $(awk' "$HERE/chief-wait.sh" | sed -E 's/^[[:space:]]+//')"
+q_key_line=""
+if [ "$q_have" = "$q_loop" ]; then
+    # shellcheck disable=SC2016  # $4 is awk's field, not an expansion
+    q_prog="$(printf '%s' "$q_loop" | awk -F"'" '{ print $4 }')"
+    q_key_line=" $(awk -F'\t' "$q_prog" "$HERE/wake-rules.tsv" | tr '\n' ' ')"
+fi
 [ -n "$q_key_line" ] && pass "chief-wait's key field list is found" || fail "chief-wait's key field list moved"
+for q_field in workers livestate prs tails acts vmrun; do
+    contains "chief-wait's key field list holds $q_field" "$q_key_line" " $q_field "
+done
 not_contains "chief-wait's key field list gains no quota" "$q_key_line" 'quota'
 
 if [ "$fails" -eq 0 ]; then

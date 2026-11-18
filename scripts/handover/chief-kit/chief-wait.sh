@@ -696,7 +696,7 @@ table_wake_read() {
             [ -z "$hr" ] || root="$hr/$USER_SLUG/$(basename "${anchor%/.git}")/release"
         fi
     fi
-    printf '%s\n' "$tick_line" | python3 -I "$HERE/wake-rules.py" --inbox "$inbox" --doc "$console_doc" --release-root "$root"
+    printf '%s\n' "$tick_line" | python3 -I "$HERE/wake-rules.py" --inbox "$inbox" --doc "$console_doc" --release-root "$root" 9>&-
 }
 
 # old_key_names: a key saved under the old field names (legs=, legset=, bank=) reads
@@ -1953,7 +1953,7 @@ ready_advance() { # <label> <line>: the cursor moves once the bullet was handed 
 }
 
 r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
-    local cands label marker ldoc bullet sum line stem out rc outf what pr
+    local cands label marker ldoc bullet sum line stem out rc outf what pr wake_line pending_slow pending_to pending_rc
     r0_handled=""
     [ -n "$console_doc" ] && [ -n "$legs_from" ] || return 1
     # Prefer WRAPPED once per label, then start after the last retryable worker.
@@ -1969,15 +1969,40 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
     if [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" = 1 ]; then
         # Read local pending markers, never an expensive tick, for the stream
         # service pass. The existing relay remains the only action route.
-        if ! cands="$(python3 -I "$HERE/pending-events.py" "$legs_from" "$inbox" "$r0_retry" 2> "$inbox.wait.pending-diagnostic")"; then
-            if [ ! -e "$inbox.wait.pending-error" ]; then
-                touch "$inbox.wait.pending-error"
-                printf 'WAKE waiter-error pending-events reconcile manifest/cursors diagnostic=%s\n' "$inbox.wait.pending-diagnostic"
-                return 0
-            fi
-            return 1
-        fi
-        rm -f "$inbox.wait.pending-error"
+        pending_to="${CHIEF_WAIT_PENDING_TIMEOUT:-20}"
+        # Output goes to a file, not a command substitution: the substitution's forked shell would
+        # hold the one-waiter lock (fd 9) for as long as the helper runs.
+        timeout -k 2 "$pending_to" python3 -I "$HERE/pending-events.py" "$legs_from" "$inbox" "$r0_retry" \
+            > "$inbox.wait.pending-out" 2> "$inbox.wait.pending-diagnostic" 9>&-; pending_rc=$?  # gnu-ok: Linux-only kit
+        cands=""
+        IFS= read -r -d '' cands < "$inbox.wait.pending-out" || true  # swallow-ok: read reports the missing NUL at end of file; the text is already in cands
+        case "$pending_rc" in
+            0) rm -f "$inbox.wait.pending-error" "$inbox.wait.pending-timeouts" ;;
+            124|137)
+                # A read that never returns is no answer: no events this pass, try again. The
+                # helper writes its cursors only after it has read every document, so nothing
+                # moved and no worker was read as having nothing pending.
+                printf 'pending-events: no answer within %ss; no events this pass, retrying\n' "$pending_to" >> "$inbox.wait.pending-diagnostic"
+                # The streak is counted in a file, so a re-arm over the same hang does not start it
+                # again: the third timeout in a row wakes the chief once, and only a pass that
+                # answers (above) ends the streak.
+                pending_slow="$(sed -n 1p "$inbox.wait.pending-timeouts" 2>/dev/null)"  # swallow-ok: no file or a torn count reads as no streak yet
+                case "$pending_slow" in ''|*[!0-9]*) pending_slow=0 ;; esac
+                pending_slow=$((10#$pending_slow + 1))
+                printf '%s\npending-events: no answer within %ss; %s passes in a row timed out\n' "$pending_slow" "$pending_to" "$pending_slow" > "$inbox.wait.pending-timeouts"
+                if [ "$pending_slow" -eq 3 ]; then
+                    printf 'WAKE waiter-error pending-events timed-out passes=%s limit=%ss diagnostic=%s\n' "$pending_slow" "$pending_to" "$inbox.wait.pending-timeouts"
+                    return 0
+                fi
+                return 1 ;;
+            *)
+                if [ ! -e "$inbox.wait.pending-error" ]; then
+                    touch "$inbox.wait.pending-error"
+                    printf 'WAKE waiter-error pending-events reconcile manifest/cursors diagnostic=%s\n' "$inbox.wait.pending-diagnostic"
+                    return 0
+                fi
+                return 1 ;;
+        esac
     else
         # a READY past its cursor comes after any WRAPPED or MERGED worker
         if ready_pick; then cands="${cands:+$cands$'\n'}$ready_label READY"; fi
@@ -1996,6 +2021,8 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
         if [ "$marker" = READY ]; then
             if [ "${CHIEF_WAIT_STREAM_SERVICE:-0}" = 1 ]; then
                 ready_line="$event_line"; ready_bullet="$(sed -n "${event_line}p" "$ldoc")"
+                # the document may have moved since the collector numbered it: only a READY is relayed
+                [[ $ready_bullet =~ $ready_re ]] || continue
                 ready_off=""; auto_go_on || ready_off=1
             fi
             bullet="$ready_bullet"
@@ -2058,10 +2085,14 @@ r0_relay() { # prints the WAKE block and returns 0 only for a worker-event wake
                 printf '%s\n' "$label" | atomic_write "$inbox.wait.r0-next"
                 break ;;
         esac
+        # Print the wake before recording it: a kill between the two leaves the READY or
+        # bullet unrecorded, so it is relayed once more (idempotent) and woken again,
+        # never recorded and lost.
+        wake_line="$(printf 'WAKE worker-event %s rc=%s out=%s' "$(printf '%s\n' "$out" | grep -m 1 '[^[:space:]]')" "$rc" "$outf")"
+        printf '%s\n' "$wake_line"
+        printf '%s' "$r0_warning_lines"
         printf '%s\n' "$sum" >> "$r0_file"
         [ "$marker" != READY ] || ready_advance "$label" "$ready_line"
-        printf 'WAKE worker-event %s rc=%s out=%s\n' "$(printf '%s\n' "$out" | grep -m 1 '[^[:space:]]')" "$rc" "$outf"
-        printf '%s' "$r0_warning_lines"
         return 0
     done <<EOF
 $cands
