@@ -1337,8 +1337,9 @@ export async function cappedMemberState(specs: string, anchor: string, members: 
 
 // The earlier-epoch returns the ledger itself accounts for: the verdict_path of each earlier-epoch round row, and of a seed row's latest returns
 // when the epoch is above zero. A candidate is proven history when its bytes still hash (returnSha) to the digest the ledger recorded and neither a
-// current-epoch round row nor any path in `current` uses it. A drifted file, a lost row or a current path is simply not history, so the namespace
-// check treats it like any other unaccounted file. Only proven files are pinned, through the reader, with role history.
+// current-epoch round row nor any path in `current` uses it. A drifted file, a lost row, a current path or a path the reader would not take (a link,
+// a spelling that is not canonical) is simply not history, so the namespace check treats it like any other unaccounted file. Only proven files are
+// pinned, through the reader, with role history.
 export async function cappedHistory(rows: Rows, current: readonly string[], reader: CappedReader): Promise<{ set: ReadonlySet<string>; pins: HistoryPin[] }> {
   const epoch = rows.checked.epoch;
   const taken = new Set([...current, ...KINDS.flatMap(kind => roundRows(rows, kind).map(row => String(row.verdict_path)))]);
@@ -1348,7 +1349,7 @@ export async function cappedHistory(rows: Rows, current: readonly string[], read
   if (epoch > 0) for (const kind of KINDS) for (const seeded of (seedOf(rows)?.latest?.[kind] ?? []) as SeededReturn[]) record(seeded.verdict_path, seeded.return_sha);
   const pins: HistoryPin[] = [];
   for (const [path, digests] of recorded) {
-    if (taken.has(path)) continue;
+    if (taken.has(path) || await realpath(path).catch(() => null) !== path) continue;
     const peek = pinnedRead(path);
     if (!("bytes" in peek) || !digests.has(returnSha(peek.bytes.toString("utf8")))) continue;
     const got = await reader.read(path, "history");
