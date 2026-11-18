@@ -736,6 +736,9 @@ chan_repo 3
 tag_origin v0.1.0-pre.1 2
 tag_origin v0.2.0-pre.1 3
 sync_private
+assert_eq_hook "25o: setup: the private ref of the release about to be withdrawn resolves to origin's commit" \
+    "$(git -C "$BARE" rev-parse 'v0.2.0-pre.1^{commit}' 2>/dev/null || echo origin-tag-missing)" \
+    "$(git -C "$CHECKOUT_DIR" rev-parse 'refs/himmel-update/tags/v0.2.0-pre.1^{commit}' 2>/dev/null || echo private-ref-missing)"
 git -C "$BARE" tag -d v0.2.0-pre.1 >/dev/null
 profile "$TMP/c25o" '{"channel":"pre"}'
 out=$(run_chan "$TMP/s25o" "$TMP/c25o")
