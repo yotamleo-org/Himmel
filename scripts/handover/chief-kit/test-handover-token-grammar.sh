@@ -146,7 +146,8 @@ caught "secret after a fixture segment" "key = \"wq-fixture-$gen\""
 lowsec="q7xk2mz9""wp4t"
 caught "lowercase secret after a fixture segment" "secret = \"fixture-$lowsec\""
 caught "split secret after a fixture segment" "secret = \"fixture-a8k2m9x7q3wz-p4n7r2v8t5yb-k3j9w2q7z1xm\""
-duffel="duffel_""live_${gen}aB3dE5fG7hJ"
+# 41 body characters, so the rule's match takes in the trailing =0.
+duffel="duffel_""live_zx8ql2vn7pr4ty6wk9mb3""cf5hj1sd0gqab3de5fg7"
 caught "provider token shaped as a counter" "$duffel=0"
 caught "high-entropy counter value" "secret_count=$gen"
 
