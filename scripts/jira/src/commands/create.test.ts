@@ -29,6 +29,7 @@ import { request } from '../client.js';
 import { PLAIN_BLOCK_TEMPLATE } from '../plain-block.js';
 import { SECTORS, resetSectorCache } from './sector.js';
 import { releaseKeyPath } from '../release/paths.js';
+import { appendChain, loadKey } from '../release/ledger.js';
 
 // A body that satisfies the plain-block rule.
 const PLAIN = PLAIN_BLOCK_TEMPLATE.replace(/<[^>\n]*>/g, 'filled');
@@ -1214,6 +1215,56 @@ describe('HIMMEL-6924 residual rank slots', () => {
     await file('--fu-class', 'escape', '--priority', 'High');
     expect(putTo('HIMMEL-900')).toBe(false);
     displacedOnly('HIMMEL-901');
+  });
+
+  // 8674 U6 (review F5): a release manager ruling whose Jira write has landed but whose admissions row is not yet appended (the 8731 window:
+  // phase intent or applied) already rules the key; a newcomer must not displace the resident inside that window.
+  describe('U6: a ruling in intent or applied rules its key before the admissions row exists', () => {
+    const rulingsFile = () => join(baseRoot, 'state', 'R1', 'rulings.jsonl');
+    const ADD = { kind: 'add', from_v: null, to_v: 'v1.1.3' };
+    const ruling = (key: string, phases: string[], op?: { kind: string; from_v: string | null; to_v: string | null }) => {
+      for (const phase of phases) {
+        appendChain(rulingsFile(), loadKey(releaseKeyPath('R1')), {
+          id: 'R-R1-7001', epoch: 1, req: 'Q-R1-7001', ts: '2026-11-01T19:56:00Z', verb: 'INTAKE', key, op: op ?? ADD, outcome: 'ADMIT', class: 'planned', sector: 'Planning & tracking',
+          ground: 'g', reason: 'r', supersedes: [], authority: { kind: 'rm', ref: null }, phase,
+        });
+      }
+    };
+
+    it.each([['intent'], ['applied']])('RED: an RM ruling in phase %s keeps the resident in its version; the next candidate is displaced', async (phase) => {
+      ruling('HIMMEL-900', [phase]);
+      await file('--fu-class', 'escape', '--priority', 'High');
+      expect(putTo('HIMMEL-900')).toBe(false);
+      displacedOnly('HIMMEL-901');
+    });
+
+    it('RED: a move ruling into the version, interrupted before its row, keeps the resident too', async () => {
+      ruling('HIMMEL-900', ['intent', 'applied'], { kind: 'move', from_v: 'v1.1.2', to_v: 'v1.1.3' });
+      await file('--fu-class', 'escape', '--priority', 'High');
+      expect(putTo('HIMMEL-900')).toBe(false);
+      displacedOnly('HIMMEL-901');
+    });
+
+    it.each([
+      ['a void ruling', () => ruling('HIMMEL-900', ['intent', 'void'])],
+      ['a receipted ruling (the ledger, not the ruling, answers once it is receipted)', () => ruling('HIMMEL-900', ['intent', 'applied', 'receipted'])],
+      ['an unfinished ruling into another version', () => ruling('HIMMEL-900', ['applied'], { kind: 'add', from_v: null, to_v: 'v1.1.4' })],
+      ['an unfinished removal of the resident', () => ruling('HIMMEL-900', ['intent'], { kind: 'remove', from_v: 'v1.1.3', to_v: null })],
+      ['an unfinished ruling on another key', () => ruling('HIMMEL-123', ['applied'])],
+    ] as Array<[string, () => void]>)('control: %s does not rule the resident, so it is displaced as before', async (_name, write) => {
+      write();
+      await file('--fu-class', 'escape', '--priority', 'High');
+      expect(putTo('HIMMEL-900')).toBe(true);
+    });
+
+    it('RED: a rulings chain that does not verify leaves nobody displaced and steps the newcomer down', async () => {
+      ruling('HIMMEL-900', ['applied']);
+      writeFileSync(rulingsFile(), 'not json\n', { flag: 'a' });
+      await file('--fu-class', 'escape', '--priority', 'High');
+      expect(mockRequest.mock.calls.some((c) => c[0] === 'PUT' && c[1] !== '/issue/HIMMEL-77')).toBe(false);
+      expect(created().fixVersions).toEqual([{ name: 'v1.1.4' }]);
+      expect(stderrLines().join('\n')).toMatch(/the rulings on v1\.1\.3 cannot be read/);
+    });
   });
 
   it('8723 ii control: a keep record later replaced by a removal no longer rules the key', async () => {

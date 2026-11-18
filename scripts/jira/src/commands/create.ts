@@ -22,7 +22,8 @@ import { ctxFor, refuseRequest, refuseTestJiraPost } from './release.js';
 import { decisionWords, operatorFence, placementOf, readOperatorRecords, request as releaseRequest, requestWithWords } from '../release/engine.js';
 import type { TicketFacts } from '../release/operator-work.js';
 import { admits } from '../release/leaks.js';
-import { loadKey } from '../release/ledger.js';
+import { loadKey, readChain } from '../release/ledger.js';
+import type { RulingRow } from '../release/types.js';
 import { releaseKeyPath, releaseRoot } from '../release/paths.js';
 import { ancestorValue } from '../release/fence-ancestry.js';
 import { isTestProject } from '../live-test-guard.js';
@@ -266,24 +267,33 @@ function residualGateRank(i: RankedIssue, ledger: Admission[]): number {
 
 /**
  * Says whether a key's place in `version` is ruled: its latest ledger row admits it
- * (an rm-admit or an override, as the release leak diff reads it), or the latest signed
- * operator decision naming it puts it there. A ruled key is moved only by the release
- * manager. Undefined when the rulings cannot be read, so the caller displaces nobody.
+ * (an rm-admit or an override, as the release leak diff reads it), a release manager ruling
+ * still in intent or applied (its Jira write may have landed before its ledger row) puts it
+ * there, or the latest signed operator decision naming it puts it there. A ruled key is moved
+ * only by the release manager. Undefined when the rulings cannot be read, so the caller displaces nobody.
  */
 function rulingsOf(version: string): ((key: string) => boolean) | undefined {
   try {
     if (!admissionsLedgerExists()) throw new Error('the admissions ledger does not exist');
     const rows = readAdmissions(version);
-    // readOperatorRecords skips a declared release whose key cannot be loaded, so check every key first.
+    // readOperatorRecords skips a declared release whose key cannot be loaded, so check every key first; the same loop reads the
+    // rulings that are not yet receipted (a ruling's newest row is intent or applied), and a chain that does not verify is unknown.
     const root = releaseRoot();
+    const unfinished: RulingRow[] = [];
     for (const release of existsSync(root) ? readdirSync(root) : []) {
-      if (existsSync(join(root, release, 'release.json'))) loadKey(releaseKeyPath(release));
+      if (!existsSync(join(root, release, 'release.json'))) continue;
+      const chain = readChain<RulingRow>(join(root, release, 'rulings.jsonl'), loadKey(releaseKeyPath(release)));
+      if (chain.bad.length) throw new Error(`${release} rulings.jsonl does not verify (${chain.bad[0]})`);
+      const newest = new Map<string, RulingRow>();
+      for (const r of chain.verified) newest.set(r.id, r);
+      unfinished.push(...[...newest.values()].filter((r) => r.phase === 'intent' || r.phase === 'applied'));
     }
     const decisions = readOperatorRecords('decision')
       .filter((d) => d.keys !== undefined && placementOf(d) !== undefined)
       .sort((a, b) => a.ts.localeCompare(b.ts));
     return (key) => {
       if (admits(rows.filter((r) => r.key === key).pop())) return true;
+      if (unfinished.some((r) => r.key === key && placementOf({ op: r.op.kind, from_v: r.op.from_v, to_v: r.op.to_v }) === version)) return true;
       const latest = decisions.filter((d) => d.keys!.includes(key)).pop();
       return latest !== undefined && placementOf(latest) === version;
     };
