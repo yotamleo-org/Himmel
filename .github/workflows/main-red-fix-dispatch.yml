@@ -9,9 +9,6 @@ name: Main Red Fix Dispatch
 # public repos without an event-policy exception, and a pull_request run for a
 # merged fork PR gets a read-only token. A push run uses main's copy of this file
 # with this repo's token, for every merged PR, fork or not.
-#
-# Trust: nothing here checks out or runs code. The PR body reaches the shell only
-# as an API value read into a variable, never as script text.
 on:
   push:
     branches: [main]
