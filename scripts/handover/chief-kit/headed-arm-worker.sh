@@ -3466,6 +3466,10 @@ if [ "$READINESS" -eq 1 ]; then
         # swallow-ok: a jq failure fails this assignment, and the `||` below refuses the launch before anything is written
         READINESS_CATALOG_JSON="$(jq -c 'if type == "object" and (keys | sort) == ["catalog","roots","source_head"] then {source_head, roots, catalog} else error("not exactly source_head, roots and catalog") end' "$READINESS_CATALOG" 2>/dev/null)" \
             || _readiness_refuse "the host catalog must be a JSON object holding exactly source_head, roots and catalog"
+        # the adapter's own validator runs over these very bytes (the ones embedded below), host-only, before anything is
+        # created or acquired; it reads no credential and its diagnostics are fixed, so only the refusal itself is said here
+        printf '%s' "$READINESS_CATALOG_JSON" | node "$READINESS_ADAPTER" --check-catalog >/dev/null 2>&1 \
+            || _readiness_refuse "the host catalog contents are not a valid readiness catalog (the adapter's validator refused them)"
     fi
     # (1) the private attempt directory and the startup config that binds the minted id
     _ready_private_dir "$READINESS_ROOT" || _readiness_refuse "the private attempt root $READINESS_ROOT is not this user's mode-0700 directory"

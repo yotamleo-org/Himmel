@@ -288,6 +288,119 @@ f_good; : > "$tmp/elsewhere.jsonl"; printf 'host=%s\ntranscript=%s\n' "$(lv_host
 f_good; printf 'host=%s\ntranscript=%s\n' "$(lv_hostname)" "relative/$A_SID.jsonl" > "$(lockdir_of "$A_DOC")/liveness"; f_verify_refuses "a marker naming a relative transcript"
 f_good; adapter verify "$A_DIR"; check "f. a good adoption still verifies after all of the above" "$H_RC" "0"
 
+# --- g. the queue library is a STATIC source bound to the startup config by equality, and the registered hook commands
+#        adopt and release through the REAL recorder and runner (cycle 5 review F1)
+REPO_ROOT="$(cd "$HERE/../.." && pwd -P)"
+PLUGIN_ROOT="$REPO_ROOT/marketplace/plugins/himmel-ops"
+HOOKS_JSON="$PLUGIN_ROOT/hooks/hooks.json"
+# the walk the runner makes: the files the script sources (transitively) and every source statement it could not resolve
+closure_of() { # <root> <rel script> -> {"files":[...],"unresolved":[...]}
+  node -e '
+const m = require(process.argv[1]); const path = require("path");
+const root = process.argv[2]; const seen = new Set(); const queue = [process.argv[3]]; const bad = [];
+while (queue.length) {
+  const rel = queue.shift(); if (seen.has(rel)) continue; seen.add(rel);
+  const r = m.sourcedClosure(path.join(root, rel), root);
+  for (const u of r.unresolved) bad.push(rel + ": " + u);
+  for (const lib of r.libs) queue.push(path.relative(root, lib));
+}
+console.log(JSON.stringify({ files: [...seen].sort(), unresolved: bad }));
+' "$HERE/hook-integrity.js" "$1" "$2" 2>&1
+}
+CLO="$(closure_of "$REPO_ROOT" scripts/hooks/readiness-session.sh)"
+check "g. the session script's whole sourced closure resolves statically (no source statement the integrity walk cannot turn into a file)" "$(printf '%s' "$CLO" | jq -c '.unresolved' 2>/dev/null || echo "$CLO")" "[]"
+check "g. the one handover library it sources is the real queue-lock.sh" "$(printf '%s' "$CLO" | jq -c '[.files[] | select(startswith("scripts/handover/"))]' 2>/dev/null || echo "$CLO")" '["scripts/handover/queue-lock.sh"]'
+# the control: the old dynamic spelling is exactly what the walk refuses, so the two rows above discriminate
+mkdir -p "$tmp/wroot/scripts/hooks"
+# shellcheck disable=SC2016  # the sed program is literal text: the variable names are the file's own spelling
+sed 's/\. "\$RS_QL_LIB"/. "$RS_QL"/' "$HOOK" > "$tmp/wroot/scripts/hooks/readiness-session.sh"
+check "g. control: sourcing the startup-bound variable instead is unresolved in all three statements" "$(closure_of "$tmp/wroot" scripts/hooks/readiness-session.sh | jq -c '.unresolved | length' 2>/dev/null || echo broken)" "3"
+
+# a startup queue_lock that is not the sourced library never runs: the equality check refuses it before any source
+mkdir -p "$tmp/decoy"; printf 'touch "%s"\n' "$tmp/decoy-sourced" > "$tmp/decoy/queue-lock.sh"
+decoy_untouched() { [ -e "$tmp/decoy-sourced" ] && echo sourced || echo untouched; }
+mk_attempt; jq --arg q "$tmp/decoy/queue-lock.sh" '.queue_lock = $q' "$A_DIR/startup.json" > "$tmp/t.json" && cat "$tmp/t.json" > "$A_DIR/startup.json"
+hook startup "$A_SID"
+check "g. a startup queue_lock that is another file: reason" "$H_ERR" "readiness-session: startup-queue-lock"
+check "g. ... the decoy library is never sourced" "$(decoy_untouched)" "untouched"
+check "g. ... nothing is adopted: no confirmation, the transport and the lease untouched" "$(confirmed):$([ -e "$A_DIR/lease-token" ] && echo kept):$(ql_owner "$A_DOC")" "no:kept:$A_TOK"
+adapter verify "$A_DIR"
+check "g. ... verify refuses and the decoy is still never sourced" "$H_RC:$(decoy_untouched)" "1:untouched"
+good_attempt; jq --arg q "$tmp/decoy/queue-lock.sh" '.queue_lock = $q' "$A_DIR/startup.json" > "$tmp/t.json" && cat "$tmp/t.json" > "$A_DIR/startup.json"
+adapter verify "$A_DIR"
+check "g. an adopted attempt whose startup queue_lock was swapped for another file: verify refuses and the decoy is never sourced" "$H_RC:$(decoy_untouched)" "1:untouched"
+adapter finish "$A_DIR"
+check "g. ... finish refuses too, the lease is kept and the decoy is never sourced" "$H_RC:$(ql_owner "$A_DOC"):$(decoy_untouched)" "1:$A_TOK:untouched"
+
+# the registered commands, through the real recorder and runner, on a real project repository holding the real script
+START_CMD="$(jq -r '[.hooks.SessionStart[].hooks[].command | select(contains("scripts/hooks/readiness-session.sh") and endswith(" startup"))] | if length == 1 then .[0] else "" end' "$HOOKS_JSON")"
+END_CMD="$(jq -r '[.hooks.SessionEnd[].hooks[].command | select(contains("scripts/hooks/readiness-session.sh") and endswith(" cleanup"))] | if length == 1 then .[0] else "" end' "$HOOKS_JSON")"
+check "g. the normal plugin inventory registers exactly one startup (SessionStart) and one cleanup (SessionEnd) command, each with its verb" "$([ -n "$START_CMD" ] && [ -n "$END_CMD" ] && echo both || echo missing)" "both"
+GP="$tmp/gproj"; GREC="$tmp/grec"
+gg() { git -C "$GP" -c user.name=fixture -c user.email=fixture@example.invalid -c commit.gpgsign=false "$@"; }
+# g_project [sed-expression]: a fresh project repo (own origin, published anchor) holding the real script's sourced closure
+g_project() {
+  rm -rf "$GP" "$tmp/gorigin.git" "$GREC"; mkdir -p "$GP" "$GREC"
+  git init -q -b main "$GP" && git init -q --bare -b main "$tmp/gorigin.git" && gg remote add origin "$tmp/gorigin.git" || return 1
+  local rel
+  while IFS= read -r rel; do
+    mkdir -p "$GP/$(dirname "$rel")"; cp -p "$REPO_ROOT/$rel" "$GP/$rel"
+  done < <(printf '%s' "$CLO" | jq -r '.files[]')
+  [ -z "${1:-}" ] || sed -i.bak "$1" "$GP/scripts/hooks/readiness-session.sh" && rm -f "$GP/scripts/hooks/readiness-session.sh.bak"
+  gg add -A && gg commit -q -m fixture && gg push -q origin main:refs/heads/main && gg fetch -q origin
+}
+g_record() { printf '{"session_id":"%s","hook_event_name":"SessionStart"}' "$1" | env -i PATH="$PATH" HOME="$FAKEHOME" CLAUDE_PROJECT_DIR="$GP" HIMMEL_HOOK_INTEGRITY_DIR="$GREC" bash "$HERE/record-hook-integrity.sh" > /dev/null 2>&1; }
+g_run() { # <command> <session id> <event>: the registered command exactly as Claude Code runs it (sh -c), payload on stdin
+  local tr="$FAKEHOME/.claude/projects/p/$2.jsonl" payload
+  mkdir -p "$FAKEHOME/.claude/projects/p"; : > "$tr"
+  payload="$(jq -cn --arg sid "$2" --arg tr "$tr" --arg ev "$3" '{session_id:$sid,hook_event_name:$ev,source:"startup",transcript_path:$tr}')"
+  env -i PATH="$PATH" HOME="$FAKEHOME" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" CLAUDE_PROJECT_DIR="$GP" HIMMEL_HOOK_INTEGRITY_DIR="$GREC" XDG_RUNTIME_DIR="$XDG" HANDOVER_DIR="$HD" HIMMEL_READINESS=1 sh -c "$1" <<< "$payload" > "$tmp/out" 2> "$tmp/err"; H_RC=$?
+  H_OUT="$(cat "$tmp/out")"; H_ERR="$(cat "$tmp/err")"
+}
+# g_attempt: a launcher-shaped attempt whose startup queue_lock is THIS project's queue-lock.sh, recorded for its session id
+g_attempt() { QL_REAL="$QL"; QL="$GP/scripts/handover/queue-lock.sh"; mk_attempt; QL="$QL_REAL"; g_record "$A_SID"; }
+if g_project; then
+  g_attempt
+  check "g. setup: the real recorder wrote the session's record" "$([ -f "$GREC/$A_SID.json" ] && echo recorded || echo none)" "recorded"
+  g_run "$START_CMD" "$A_SID" SessionStart
+  check "g. the registered startup command adopts through the real runner: exit 0 and nothing on stdout" "$H_RC:$H_OUT" "0:"
+  check "g. ... the confirmation is published and the transport is gone" "$(confirmed):$([ -e "$A_DIR/lease-token" ] && echo present || echo gone)" "yes:gone"
+  check "g. ... the lease is still held by the transported token and fresh" "$(ql_owner "$A_DOC"):$(ql_status "$A_DOC")" "$A_TOK:status: FRESH"
+  no_leak "g. the registered startup command"
+  HOOK_REAL="$HOOK"; HOOK="$GP/scripts/hooks/readiness-session.sh"; adapter verify "$A_DIR"; HOOK="$HOOK_REAL"
+  check "g. ... and the adapter's verify (from the same project) succeeds" "$H_RC:$H_OUT:$H_ERR" "0::"
+  g_run "$END_CMD" "$A_SID" SessionEnd
+  check "g. the registered cleanup command releases the adopted lease and removes the attempt through the real runner" "$H_RC:$(ql_status "$A_DOC"):$([ -e "$A_DIR" ] && echo present || echo gone)" "0:free:gone"
+  # a generic session (no attempt directory): both registered commands are silent no-ops with no queue or runtime effect
+  before_tree="$(find "$XDG" "$HD" 2>/dev/null | sort | md5sum)"; generic="$(uuid)"
+  g_record "$generic"; g_run "$START_CMD" "$generic" SessionStart; gs="$H_RC:$H_OUT:$H_ERR"; g_run "$END_CMD" "$generic" SessionEnd
+  check "g. a generic session: startup and cleanup are silent exit-0 no-ops and touch neither the queue nor the runtime directory" "$gs:$H_RC:$H_OUT:$H_ERR:$([ "$before_tree" = "$(find "$XDG" "$HD" 2>/dev/null | sort | md5sum)" ] && echo unchanged || echo changed)" "0:::0:::unchanged"
+  # tamper: the sourced library edited after the session's pins were recorded is denied, nothing is adopted
+  g_attempt; printf '\n# tampered after the session pin\n' >> "$GP/scripts/handover/queue-lock.sh"
+  g_run "$START_CMD" "$A_SID" SessionStart
+  check "g. tamper: an edited queue-lock.sh is denied by the runner (exit 2) and names the library" "$H_RC:$(printf '%s' "$H_ERR" | grep -c 'queue-lock.sh')" "2:1"
+  check "g. ... and nothing is adopted: no confirmation, the transport and the lease untouched" "$(confirmed):$([ -e "$A_DIR/lease-token" ] && echo kept):$(ql_owner "$A_DOC")" "no:kept:$A_TOK"
+else
+  check "g. setup: the project fixture could not be built" "unavailable" "available"
+fi
+# unresolvable: the old dynamic spelling is denied by the real runner before the script runs
+# shellcheck disable=SC2016  # the sed program is literal text: the variable names are the file's own spelling
+if g_project 's/\. "\$RS_QL_LIB"/. "$RS_QL"/'; then
+  g_attempt; g_run "$START_CMD" "$A_SID" SessionStart
+  check "g. unresolvable: a script sourcing the startup-bound variable is denied by the runner (exit 2, unresolved source)" "$H_RC:$(printf '%s' "$H_ERR" | grep -c 'unresolved source statement')" "2:1"
+  check "g. ... and nothing is adopted: no confirmation, the transport and the lease untouched" "$(confirmed):$([ -e "$A_DIR/lease-token" ] && echo kept):$(ql_owner "$A_DOC")" "no:kept:$A_TOK"
+else
+  check "g. setup: the unresolvable-source fixture could not be built" "unavailable" "available"
+fi
+# refusal: through the real runner a startup config naming another queue-lock.sh is refused and that library is never sourced
+if g_project; then
+  g_attempt; jq --arg q "$tmp/decoy/queue-lock.sh" '.queue_lock = $q' "$A_DIR/startup.json" > "$tmp/t.json" && cat "$tmp/t.json" > "$A_DIR/startup.json"
+  g_run "$START_CMD" "$A_SID" SessionStart
+  check "g. refusal: a startup queue_lock naming another file adopts nothing through the real runner and the decoy is never sourced" "$H_RC:$(confirmed):$(ql_owner "$A_DOC"):$(decoy_untouched)" "0:no:$A_TOK:untouched"
+else
+  check "g. setup: the refusal fixture could not be built" "unavailable" "available"
+fi
+
 # --- e. the plugin copy
 check "e. the himmel-ops plugin copy is byte-identical" "$(cmp -s "$HOOK" "$PLUGIN_COPY" && echo same || echo differs)" "same"
 check "e. the plugin copy is executable like its source" "$([ -x "$PLUGIN_COPY" ] && echo yes || echo no)" "yes"

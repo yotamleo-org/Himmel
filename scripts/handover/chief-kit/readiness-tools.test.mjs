@@ -1117,6 +1117,8 @@ describe('C0 envelope', () => {
     owner: w.owner(),
   });
   const labelsOf = async (c) => (await c.inspect('issue.copied')).data.labels;
+  const adapterRun = (args, input) => spawnSync(process.execPath, [join(HERE, 'readiness-tools.mjs'), ...args], { env: { PATH: process.env.PATH, HOME: tmpdir() }, input, encoding: 'utf8', timeout: 20000 });
+  const catalogFields = (doc) => JSON.stringify(Object.fromEntries(['source_head', 'roots', 'catalog'].filter((k) => k in doc).map((k) => [k, doc[k]])));
 
   describe('harness positive control (a compliant server and the generated world)', () => {
     test('the harness completes initialize and tools/list against a compliant server, and says so when a server dies', async () => {
@@ -1190,7 +1192,7 @@ describe('C0 envelope', () => {
     test('inspect returns the one copied issue with its current labels', async () => {
       const r = await c.inspect('issue.copied');
       assert.equal(r.isError, false);
-      assert.deepEqual({ ...r.data }, { ok: true, id: 'issue.copied', kind: 'issue', key: ENV_KEY, size: Buffer.byteLength(ISSUE_TEXT), sha256: sha256(ISSUE_TEXT), content: ISSUE_TEXT, labels: [] });
+      assert.deepEqual({ ...r.data }, { ok: true, id: 'issue.copied', kind: 'issue', key: ENV_KEY, size: Buffer.byteLength(ISSUE_TEXT), sha256: sha256(ISSUE_TEXT), content: ISSUE_TEXT, labels: [], labels_source: 'copy' });
     });
 
     test('inspect refuses every id that is not exactly an admitted catalog id: no path, URL, wildcard, config or credential resource', async () => {
@@ -1367,7 +1369,6 @@ describe('C0 envelope', () => {
       const refused = await c.act({ type: 'label', key: ENV_KEY, present: false });
       assert.equal(refused.isError, true);
       assert.equal(refused.data.code, 'not-adopted');
-      assert.deepEqual(await labelsOf(c), [LABEL], 'the refused act did not remove the label');
       const fin = await c.act({ type: 'finish' });
       assert.equal(fin.data.code, 'not-adopted');
       assert.equal(w.owner(), 'successor-token-c0env1', 'finish never releases a successor');
@@ -1494,6 +1495,7 @@ describe('C0 envelope', () => {
     });
 
     test('the running server notices a changed resource on the very next inspect', async () => {
+      assert.equal(w.adopt().status, 0, 'inspect needs an adopted session');
       const c = open(w);
       await c.init();
       assert.equal((await c.inspect('issue.copied')).isError, false);
@@ -1549,9 +1551,15 @@ describe('C0 envelope', () => {
         'a lowercase issue key': v({ catalog: [blob, { ...issue, key: 'himmel-1' }] }),
         'two copied issues': v({ catalog: [blob, issue, { ...issue, id: 'issue.second' }] }),
       };
+      assert.equal(adapterRun(['--check-catalog'], catalogFields(good)).status, 0, 'the generated catalog passes the host pre-check too');
       for (const [label, doc] of Object.entries(cases)) {
         writeFileSync(w2.startupPath, JSON.stringify(doc), { mode: 0o600 });
         assert.throws(() => mod.loadStartup(w2.startupPath), (e) => e.code === 'malformed' && !e.message.includes(w2.rs), label);
+        // the host pre-check is the SAME validator over the same three fields: it refuses everything the server would
+        const viaCli = adapterRun(['--check-catalog'], catalogFields(doc));
+        assert.equal(viaCli.status, 2, `${label}: the host pre-check refuses it too`);
+        assert.equal(viaCli.stdout, '', label);
+        assert.equal(viaCli.stderr, 'readiness-tools: check-catalog: malformed\n', label);
       }
       // the same file with the catalog removed is a valid, empty envelope
       const bare = { ...good };
@@ -1559,6 +1567,7 @@ describe('C0 envelope', () => {
       writeFileSync(w2.startupPath, JSON.stringify(bare), { mode: 0o600 });
       const s = mod.loadStartup(w2.startupPath);
       assert.equal('catalog' in s, false);
+      assert.equal(adapterRun(['--check-catalog'], catalogFields(bare)).status, 2, 'a host catalog document must carry all three fields');
     });
   });
 
@@ -1621,6 +1630,138 @@ describe('C0 envelope', () => {
       assert.equal(readFileSync(credPath, 'utf8'), credBefore);
       const everything = `${c.lines.join('\n')}\n${c.stderr}`;
       for (const f of [...forms(w.CRED_SENTINEL), 'fixture@example.invalid', credPath, w.token]) assert.ok(!everything.includes(f), `private value reached the model channel: ${f.slice(0, 10)}`);
+    });
+  });
+
+  // ---- the independent review's obligations (cycle 5 F2, F3, F4, F6 and the git child environment) -------------------
+  describe('review obligations: copied-label freshness, fresh adoption for inspect, labelled copy state, host catalog pre-check', () => {
+    const issueFile = (w) => join(w.rs, 'evidence', 'issue-1.json');
+    const adoptedClient = async (w) => { assert.equal(w.adopt().status, 0); const c = open(w); await c.init(); return c; };
+
+    test('F2: every copied-label update re-verifies the admitted issue file: a changed, truncated, missing or swapped file refuses with the copy untouched, and a restored file updates again', async () => {
+      const w = generatedWorld();
+      const c = await adoptedClient(w);
+      assert.equal((await c.act({ type: 'label', key: ENV_KEY, present: true })).data.outcome, 'updated');
+      assert.deepEqual(await labelsOf(c), [LABEL]);
+      const real = join(w.rs, 'evidence', 'real.json');
+      const tampers = {
+        'the same size and other bytes': () => writeFileSync(issueFile(w), ISSUE_TEXT.replace('Open', 'Done')),
+        truncated: () => writeFileSync(issueFile(w), ISSUE_TEXT.slice(0, 20)),
+        missing: () => rmSync(issueFile(w)),
+        'a symlink to identical bytes': () => { writeFileSync(real, ISSUE_TEXT); rmSync(issueFile(w)); symlinkSync(real, issueFile(w)); },
+      };
+      for (const [label, tamper] of Object.entries(tampers)) {
+        tamper();
+        const before = effects(w);
+        const refused = await c.act({ type: 'label', key: ENV_KEY, present: false });
+        assert.equal(refused.isError, true, `${label}: the update must refuse`);
+        assert.equal(refused.data.code, 'conflict', label);
+        assert.equal(effects(w), before, `${label}: a refused update has no effect`);
+        rmSync(issueFile(w), { force: true });
+        rmSync(real, { force: true });
+        writeFileSync(issueFile(w), ISSUE_TEXT);
+        assert.deepEqual(await labelsOf(c), [LABEL], `${label}: the refused removal left the copy as it was`);
+      }
+      assert.equal((await c.act({ type: 'label', key: ENV_KEY, present: false })).data.outcome, 'updated', 'with the admitted file unchanged the update works again');
+      assert.deepEqual(await labelsOf(c), []);
+    });
+
+    test('F3: inspect needs a fresh adoption: before adoption, after a lost lease and after finish it refuses with zero effects; initialize and tools/list still answer; shape errors stay bad-request', async () => {
+      const w = generatedWorld();
+      const c = open(w);
+      await c.init();
+      assert.equal((await c.rpc('tools/list')).result.tools.length, 2, 'protocol negotiation needs no adoption');
+      const held = effects(w);
+      for (const id of ['blob.pinned', 'issue.copied', 'no-such-id']) {
+        const r = await c.inspect(id);
+        assert.equal(r.isError, true, id);
+        assert.equal(r.data.code, 'not-adopted', `${id}: before adoption`);
+      }
+      assert.equal((await c.call('inspect', {})).data.code, 'bad-request', 'a malformed request is a bad-request whether or not the session is adopted');
+      assert.equal(effects(w), held);
+      assert.equal(w.adopt().status, 0);
+      assert.equal((await c.inspect('blob.pinned')).isError, false, 'adopted: the very same server now reads');
+      assert.equal((await c.inspect('issue.copied')).isError, false);
+      assert.equal(w.drop(w.owner()).status, 0);
+      assert.equal(w.hold('successor-token-c0f3').status, 0);
+      const lost = effects(w);
+      for (const id of ['blob.pinned', 'issue.copied']) {
+        const r = await c.inspect(id);
+        assert.equal(r.data.code, 'not-adopted', `${id}: after the lease was lost`);
+        assert.ok(!JSON.stringify(r).includes('successor-token'), 'the successor token is not relayed');
+      }
+      assert.equal(effects(w), lost);
+      assert.equal(w.owner(), 'successor-token-c0f3');
+      const w2 = generatedWorld();
+      const c2 = await adoptedClient(w2);
+      assert.equal((await c2.inspect('blob.pinned')).isError, false);
+      assert.equal((await c2.act({ type: 'finish' })).data.outcome, 'finished');
+      for (const id of ['blob.pinned', 'issue.copied']) assert.equal((await c2.inspect(id)).data.code, 'not-adopted', `${id}: after finish`);
+    });
+
+    test('F4: an issue inspect labels the labels as the copy\'s current state while content, size and sha256 stay the admitted file\'s bytes, also after a label update', async () => {
+      const w = generatedWorld();
+      const c = await adoptedClient(w);
+      const tools = (await c.rpc('tools/list')).result.tools;
+      const desc = tools.find((t) => t.name === 'inspect').description;
+      assert.match(desc, /labels_source/);
+      assert.match(desc, /copy/);
+      assert.match(desc, /admitted file bytes/);
+      assert.equal((await c.inspect('issue.copied')).data.labels_source, 'copy');
+      assert.equal((await c.act({ type: 'label', key: ENV_KEY, present: true })).data.outcome, 'updated');
+      const after = (await c.inspect('issue.copied')).data;
+      assert.deepEqual(
+        { labels: after.labels, labels_source: after.labels_source, content: after.content, size: after.size, sha256: after.sha256 },
+        { labels: [LABEL], labels_source: 'copy', content: ISSUE_TEXT, size: Buffer.byteLength(ISSUE_TEXT), sha256: sha256(ISSUE_TEXT) },
+      );
+      assert.deepEqual(JSON.parse(after.content).labels, [], 'the admitted bytes still hold no label: the digest describes the file, not the copy');
+      const blob = (await c.inspect('blob.pinned')).data;
+      assert.equal('labels' in blob || 'labels_source' in blob, false, 'a blob has no copy state');
+    });
+
+    test('F6: the host pre-check reads exactly one catalog document on stdin with the one validator, fixed diagnostics, and takes no path, executable or credential', () => {
+      const w = generatedWorld();
+      const good = catalogFields(w.catalogDoc);
+      const ok = adapterRun(['--check-catalog'], good);
+      assert.deepEqual([ok.status, ok.stdout, ok.stderr], [0, '', '']);
+      const bad = [
+        ['not JSON', 'not json'], ['empty input', ''], ['an array', '[]'], ['a string', '"x"'], ['an empty object', '{}'],
+        ['a bad head', JSON.stringify({ ...w.catalogDoc, source_head: 'HEAD' })],
+        ['a document over 16 KiB', JSON.stringify({ ...w.catalogDoc, catalog: [], source_head: 'a'.repeat(17000) })],
+      ];
+      for (const [label, input] of bad) {
+        const r = adapterRun(['--check-catalog'], input);
+        assert.equal(r.status, 2, label);
+        assert.equal(r.stdout, '', label);
+        assert.match(r.stderr, /^readiness-tools: check-catalog: (malformed|failed)\n$/, label);
+        assert.ok(!r.stderr.includes(w.rs), label);
+      }
+      for (const args of [['--check-catalog', w.catalogPath], ['--check-catalog', '--startup-config', w.startupPath], ['--check-catalog=x']]) {
+        const r = adapterRun(args, good);
+        assert.equal(r.status, 2, JSON.stringify(args));
+        assert.equal(r.stdout, '', JSON.stringify(args));
+        assert.match(r.stderr, /usage: readiness-tools\.mjs/);
+      }
+      const credBefore = readdirSync(w.attempt).sort();
+      adapterRun(['--check-catalog'], good);
+      assert.deepEqual(readdirSync(w.attempt).sort(), credBefore, 'the pre-check touches no attempt file');
+    });
+
+    test('the fixed git child runs with GIT_NO_LAZY_FETCH=1 on both of its calls', async () => {
+      const mod = await load();
+      const w = generatedWorld();
+      const startup = mod.loadStartup(w.startupPath);
+      const bin = join(w.rs, 'gitbin');
+      const log = join(w.rs, 'git-env.log');
+      mkdirSync(bin);
+      const realGit = execFileSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim();
+      writeFileSync(join(bin, 'git'), `#!/bin/sh\nprintf '%s\\n' "\${GIT_NO_LAZY_FETCH-unset}" >> '${log}'\nexec '${realGit}' "$@"\n`, { mode: 0o755 });
+      const oldPath = process.env.PATH;
+      process.env.PATH = `${bin}:${oldPath}`;
+      let r;
+      try { r = await mod.readCatalogResource(startup, 'blob.pinned'); } finally { process.env.PATH = oldPath; }
+      assert.equal(r.ok, true);
+      assert.deepEqual(readFileSync(log, 'utf8').trim().split('\n'), ['1', '1'], 'ls-tree and cat-file both ran with lazy fetch disabled');
     });
   });
 });

@@ -6522,6 +6522,21 @@ for rs_cat_case in "a relative path|catalog-ok.json" "a missing file|$RS/catalog
   rs_launch WORKER_SESSION_READINESS_CATALOG="${rs_cat_case#*|}"
   rs_refused "the host catalog seam as ${rs_cat_case%%|*}"
 done
+# the catalog's CONTENTS are validated by the adapter's own validator before anything is created or acquired (cycle 5 review F6):
+# a document with exactly the three keys but invalid contents refuses before the attempt directory, the credentials and the lease
+jq -c '.source_head = "HEAD"' "$RS/catalog-ok.json" > "$RS/catalog-badhead.json"
+jq -c '.roots.repo = "relative/repo"' "$RS/catalog-ok.json" > "$RS/catalog-badroot.json"
+jq -c '.catalog[0].kind = "url"' "$RS/catalog-ok.json" > "$RS/catalog-badkind.json"
+jq -c '.catalog = [range(0; 9) as $i | .catalog[0] + {id: ("issue.n" + ($i | tostring))}]' "$RS/catalog-ok.json" > "$RS/catalog-nine.json"
+jq -c '.catalog[0].size = 70000' "$RS/catalog-ok.json" > "$RS/catalog-oversize.json"
+for rs_cat_case in "a head that is not a 40-hex commit|$RS/catalog-badhead.json" "a relative repo root|$RS/catalog-badroot.json" "an unknown entry kind|$RS/catalog-badkind.json" \
+  "nine entries (and several copied issues)|$RS/catalog-nine.json" "an entry larger than the per-request limit|$RS/catalog-oversize.json"; do
+  rs_launch WORKER_SESSION_READINESS_CATALOG="${rs_cat_case#*|}"
+  rs_refused "the host catalog with ${rs_cat_case%%|*} (valid keys, invalid contents)"
+done
+rs_launch WORKER_SESSION_READINESS_CATALOG="$RS/catalog-ok.json"
+check "17s catalog: the valid catalog still launches after the contents pre-check, with the same bytes embedded" \
+  "$RS_RC:$(jq -cS '[.source_head,.roots,.catalog]' "$RS_A/startup.json" 2>/dev/null || true)" "0:$(jq -cS '[.source_head,.roots,.catalog]' "$RS/catalog-ok.json")"
 rs_launch WORKER_SESSION_READINESS_FIXTURE= WORKER_SESSION_READINESS_CATALOG="$RS/catalog-ok.json"
 rs_refused "a catalog seam with no fixture root (the delivery gate still refuses first)"
 rs_msg "catalog seam: the delivery gate names its own reason, not the catalog" "its delivery is not registered"

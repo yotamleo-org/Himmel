@@ -10,8 +10,8 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const EXPECTED_COUNTS = Object.freeze({
   PreToolUse: 21,
-  SessionStart: 6,
-  SessionEnd: 3,
+  SessionStart: 7,
+  SessionEnd: 4,
   Notification: 1,
   PostToolUse: 1,
   PostToolUseFailure: 1,
@@ -88,9 +88,15 @@ const EXPECTED_HOOKS = Object.freeze([
   { event: 'SessionStart', script: 'record-primary-baseline.sh' },
   // a resumed or forked session whose transcript holds a verified peer fence starts tainted.
   { event: 'SessionStart', script: 'peer-taint-resume.sh', source: 'plugin' },
+  // the readiness role's trusted lease adoption: `startup` is the script's SessionStart verb. It is a silent no-op for any
+  // session with no readiness attempt directory, so it needs no marker to be safe; the marker only makes a missing script
+  // loud in the readiness role (an unadopted session refuses every act and finish).
+  { event: 'SessionStart', script: 'readiness-session.sh', args: ['startup'], failClosedWhen: 'HIMMEL_READINESS=1' },
   { event: 'SessionEnd', script: 'refresh-where-are-we-on-end.sh' },
   { event: 'SessionEnd', script: 'jira-nudge-on-end.sh' },
   { event: 'SessionEnd', script: 'telegram-session-end.sh' },
+  // the readiness role's own-lease release: `cleanup` is the script's SessionEnd verb (a silent no-op elsewhere).
+  { event: 'SessionEnd', script: 'readiness-session.sh', args: ['cleanup'], failClosedWhen: 'HIMMEL_READINESS=1' },
   { event: 'Notification', script: 'telegram-notification.sh' },
   // a tool result carrying a verified peer fence taints the session, success or failure.
   { event: 'PostToolUse', script: 'peer-taint-mark.sh', source: 'plugin' },
@@ -152,6 +158,12 @@ function hookEntries(pluginHooks) {
   return entries;
 }
 
+// Fixed argv words after the script path (the readiness session script's verb). They are frozen inventory constants,
+// never read from a hook file or any input.
+function argTail(expected) {
+  return (expected.args ?? []).map((word) => ` ${word}`).join('');
+}
+
 function unwiredCommand(expected) {
   if (expected.source === 'plugin') {
     return `bash "\${CLAUDE_PLUGIN_ROOT}/hooks/${expected.script}"`;
@@ -168,9 +180,9 @@ function unwiredCommand(expected) {
     const name = expected.failClosedWhen.slice(0, eq);
     const value = expected.failClosedWhen.slice(eq + 1);
     const hookName = expected.script.replace(/\.sh$/, '');
-    return `bash -c 'h="$CLAUDE_PROJECT_DIR/scripts/hooks/${expected.script}"; if [ -f "$h" ]; then exec bash "$h"; elif [ "\${${name}:-0}" = "${value}" ]; then echo "${hookName}: hook script missing while ${expected.failClosedWhen} (stale checkout?) - failing closed" >&2; exit 2; fi'`;
+    return `bash -c 'h="$CLAUDE_PROJECT_DIR/scripts/hooks/${expected.script}"; if [ -f "$h" ]; then exec bash "$h"${argTail(expected)}; elif [ "\${${name}:-0}" = "${value}" ]; then echo "${hookName}: hook script missing while ${expected.failClosedWhen} (stale checkout?) - failing closed" >&2; exit 2; fi'`;
   }
-  return `bash -c 'h="$CLAUDE_PROJECT_DIR/scripts/hooks/${expected.script}"; if [ -f "$h" ]; then exec bash "$h"; fi'`;
+  return `bash -c 'h="$CLAUDE_PROJECT_DIR/scripts/hooks/${expected.script}"; if [ -f "$h" ]; then exec bash "$h"${argTail(expected)}; fi'`;
 }
 
 // RUN via `command -p sh` (not sourced via `.`, not exec'd via a bare `node`).
@@ -240,7 +252,7 @@ function wiredCommand(expected) {
   const failClosed = expected.failClosedWhen
     ? ` --fail-closed-when "${expected.failClosedWhen}"`
     : '';
-  return `${launcher} --optional${failClosed} "$CLAUDE_PROJECT_DIR/scripts/hooks/${expected.script}"`;
+  return `${launcher} --optional${failClosed} "$CLAUDE_PROJECT_DIR/scripts/hooks/${expected.script}"${argTail(expected)}`;
 }
 
 // Legacy wired form: bare `node`, unresolvable if node is off PATH.
@@ -254,7 +266,7 @@ function legacyWiredCommand(expected) {
   const failClosed = expected.failClosedWhen
     ? ` --fail-closed-when "${expected.failClosedWhen}"`
     : '';
-  return `${launcher} --optional${failClosed} "$CLAUDE_PROJECT_DIR/scripts/hooks/${expected.script}"`;
+  return `${launcher} --optional${failClosed} "$CLAUDE_PROJECT_DIR/scripts/hooks/${expected.script}"${argTail(expected)}`;
 }
 
 // The two SUPERSEDED run-node.sh launcher tokens. Both are recognised (as
@@ -281,7 +293,7 @@ function legacyDotWiredCommand(expected, token = '.') {
   const failClosed = expected.failClosedWhen
     ? ` --fail-closed-when "${expected.failClosedWhen}"`
     : '';
-  return `${launcher} --optional${failClosed} "$CLAUDE_PROJECT_DIR/scripts/hooks/${expected.script}"`;
+  return `${launcher} --optional${failClosed} "$CLAUDE_PROJECT_DIR/scripts/hooks/${expected.script}"${argTail(expected)}`;
 }
 
 function scrubHookCommands(pluginHooks) {

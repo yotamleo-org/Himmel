@@ -256,6 +256,15 @@
             "timeout": 15
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -p sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook-with-bash.js\" --optional --fail-closed-when \"HIMMEL_READINESS=1\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/readiness-session.sh\" startup",
+            "timeout": 15
+          }
+        ]
       }
     ],
     "SessionEnd": [
@@ -283,6 +292,15 @@
             "type": "command",
             "command": "command -p sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook-with-bash.js\" --optional \"$CLAUDE_PROJECT_DIR/scripts/hooks/telegram-session-end.sh\"",
             "timeout": 3
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -p sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook-with-bash.js\" --optional --fail-closed-when \"HIMMEL_READINESS=1\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/readiness-session.sh\" cleanup",
+            "timeout": 10
           }
         ]
       }

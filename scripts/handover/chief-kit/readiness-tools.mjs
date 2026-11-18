@@ -361,6 +361,7 @@ const BLOB_PATH_RE = /^[A-Za-z0-9._][A-Za-z0-9._/-]{0,199}$/;
 const FILE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 const RESOURCE_MAX = 65536;
 const CATALOG_MAX_ENTRIES = 8;
+const CATALOG_DOC_MAX = 16384;
 const sameKeys = (o, want) => { const k = Object.keys(o).sort(); return k.length === want.length && k.every((x, i) => x === want[i]); };
 const absClean = (p) => typeof p === 'string' && p.length <= 1024 && isAbsolute(p) && !p.includes('\0') && !p.split('/').includes('..') && !p.split('/').includes('.');
 const badCatalog = (why) => new ReadinessError('malformed', `the startup config catalog is invalid: ${why}`);
@@ -484,7 +485,7 @@ const GIT_TIMEOUT_MS = 10_000;
 function runGit(repo, args, maxBuffer) {
   return new Promise((done) => {
     execFile('git', ['-C', repo, '--no-pager', ...args], { // git-env-ok: the child env below is a finite allowlist; no GIT_* name is inherited and the GIT_* it sets only isolate config
-      env: { PATH: process.env.PATH ?? '/usr/bin:/bin', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', LC_ALL: 'C' },
+      env: { PATH: process.env.PATH ?? '/usr/bin:/bin', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', GIT_NO_LAZY_FETCH: '1', LC_ALL: 'C' },
       encoding: 'buffer', timeout: GIT_TIMEOUT_MS, killSignal: 'SIGKILL', maxBuffer, windowsHide: true,
     }, (err, stdout) => done(err ? { ok: false, overflow: err.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' } : { ok: true, out: stdout }));
   });
@@ -582,6 +583,10 @@ export function createCopyPort(startup) {
     readback: (key) => view('readback', key),
     async addReadinessLabel(key, present) {
       if (!entry || key !== entry.key) return { outcome: 'error', code: 'not-in-catalog', message: 'that key is not in the copied state' };
+      // the admitted file is re-verified (size, hash, identity, no-follow) before EVERY update; a file that changed or
+      // cannot be read refuses and leaves the copy as it was
+      const fresh = await readCatalogResource(startup, entry.id);
+      if (!fresh.ok) return { outcome: 'error', code: 'unreadable', message: 'the copied issue could not be read' };
       const cur = await load();
       if (cur === null) return { outcome: 'error', code: 'unreadable', message: 'the copied issue could not be read' };
       const has = cur.includes(READINESS_LABEL);
@@ -604,10 +609,13 @@ const MCP_VERSIONS = Object.freeze(['2025-11-25', '2025-06-18', '2025-03-26', '2
 const SERVER_INFO = Object.freeze({ name: 'readiness', version: '0.1.0' });
 const LINE_MAX = 262144;
 const UNSUPPORTED_ACTS = new Set(['preparation-text', 'blocks', 'comment', 'backlog-followup', 'ruling', 'route']);
+// The closed act schema carries no version or input-digest field: the bound version and scope are enforced by the
+// adoption check, and the only effect is the in-memory copy. The full ActRequest version/input-digest contract is not
+// implemented here (a P1/C3 obligation), which is why this envelope authorizes no live ticket mutation.
 const TOOLS = Object.freeze([
   Object.freeze({
     name: 'inspect',
-    description: 'Read one admitted catalog resource by its exact id.',
+    description: 'Read one admitted catalog resource by its exact id. content, size and sha256 describe the admitted file bytes and never change; for the copied issue, labels is the copy\'s current state (labels_source "copy") and may differ from the labels inside content.',
     inputSchema: { type: 'object', properties: { id: { type: 'string', maxLength: 128 } }, required: ['id'], additionalProperties: false },
   }),
   Object.freeze({
@@ -637,10 +645,13 @@ export function serve(startup, io = {}, deps = {}) {
 
   async function inspectTool(args) {
     if (!sameKeys(args, ['id']) || typeof args.id !== 'string') return refuse('bad-request');
+    // an inspect needs the same fresh adoption as an act: before adoption, after finish and after a lost lease it reads nothing
+    if (!(await checkAdopted(startup, deps)).ok) return { ...NOT_ADOPTED };
     const r = await readCatalogResource(startup, args.id);
     if (r.ok && r.kind === 'issue') {
+      // content, size and sha256 are the admitted file's bytes; labels is the copy's current state (labels_source says so)
       const now = port ? await port.labelsNow() : null;
-      return { ...r, labels: now ?? r.labels };
+      return { ...r, labels: now ?? r.labels, labels_source: now === null ? 'admitted-file' : 'copy' };
     }
     return r;
   }
@@ -732,7 +743,21 @@ export function serve(startup, io = {}, deps = {}) {
 // ---- host CLI -------------------------------------------------------------------------------------------------
 //   readiness-tools.mjs --startup-config <absolute startup.json>   the MCP STDIO envelope (what the generated MCP config runs)
 //   readiness-tools.mjs init-credentials <primary index.js> <credentials file>   the launcher's private credential step
+//   readiness-tools.mjs --check-catalog                                           the launcher's pre-acquire check: ONE catalog
+//       document on stdin through the same validator the server runs; no file, path, credential or executable is read or named
 async function main(argv) {
+  if (argv.length === 1 && argv[0] === '--check-catalog') {
+    try {
+      const raw = readFileSync(0);
+      if (raw.length > CATALOG_DOC_MAX) throw badCatalog('the document is too large');
+      const doc = JSON.parse(raw.toString('utf8'));
+      if (doc === null || typeof doc !== 'object' || Array.isArray(doc) || validateCatalog(doc) === null) throw badCatalog('not a catalog document');
+      return 0;
+    } catch (e) {
+      process.stderr.write(`readiness-tools: check-catalog: ${e instanceof ReadinessError ? e.code : 'failed'}\n`);
+      return 2;
+    }
+  }
   if (argv.length === 2 && argv[0] === '--startup-config') {
     let startup;
     try {
@@ -753,7 +778,7 @@ async function main(argv) {
       return 2;
     }
   }
-  process.stderr.write('usage: readiness-tools.mjs --startup-config <startup.json> | init-credentials <primary index.js> <credentials file>\n');
+  process.stderr.write('usage: readiness-tools.mjs --startup-config <startup.json> | init-credentials <primary index.js> <credentials file> | --check-catalog (catalog document on stdin)\n');
   return 2;
 }
 

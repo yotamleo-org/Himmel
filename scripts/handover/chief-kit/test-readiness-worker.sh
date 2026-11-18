@@ -186,16 +186,28 @@ check "--vm-capability is BLOCKED (exit 3) and runs nothing" "$rc:$(grep -c 'BLO
 
 # --- 9. the adapter's MCP envelope, over the configuration this very launcher generates (and the registration of its suite)
 # readiness-tools.test.mjs runs the real launcher in its own contained fixture worlds, then spawns the adapter with exactly the
-# command and argv of each GENERATED strict MCP config and speaks MCP to it. Only the C0 envelope group runs here: it needs no
-# built primary CLI, so this chain is runnable wherever the launcher chain above is. Its summary must show real passes and no skip.
+# command and argv of each GENERATED strict MCP config and speaks MCP to it. The WHOLE file runs here, no name filter: the
+# C0 envelope group and the credential, port and adoption groups (those drive a private byte-copy of the built primary Jira CLI
+# against a loopback fixture with fake credentials, so they need the primary checkout's untracked build; without it the file
+# FAILS loudly in its own setup - there is no stand-in client and no skip). Its summary must show real passes and no skip.
 rc=0
-env -i PATH="$PATH" HOME="$HOME" TMPDIR="$tmp" node --test --test-name-pattern 'C0 envelope' "$HERE/readiness-tools.test.mjs" > "$tmp/envelope.out" 2>&1 || rc=$?
+env -i PATH="$PATH" HOME="$HOME" TMPDIR="$tmp" node --test "$HERE/readiness-tools.test.mjs" > "$tmp/envelope.out" 2>&1 || rc=$?
 env_pass="$(sed -n 's/^ℹ pass \([0-9]*\)$/\1/p' "$tmp/envelope.out" | tail -n 1)"
 env_fail="$(sed -n 's/^ℹ fail \([0-9]*\)$/\1/p' "$tmp/envelope.out" | tail -n 1)"
 env_skip="$(sed -n 's/^ℹ skipped \([0-9]*\)$/\1/p' "$tmp/envelope.out" | tail -n 1)"
 [ "$rc" -eq 0 ] || tail -n 30 "$tmp/envelope.out"
-check "the C0 envelope suite exits 0 with no failure and no skip" "$rc:${env_fail:-?}:${env_skip:-?}" "0:0:0"
-check "the C0 envelope suite really ran its rows (not a vacuous pass)" "$([ "${env_pass:-0}" -ge 20 ] && echo ran || echo "only:${env_pass:-0}")" "ran"
+check "the adapter suite exits 0 with no failure and no skip" "$rc:${env_fail:-?}:${env_skip:-?}" "0:0:0"
+check "the adapter suite really ran its rows (not a vacuous pass)" "$([ "${env_pass:-0}" -ge 20 ] && echo ran || echo "only:${env_pass:-0}")" "ran"
+# The registration runs the WHOLE adapter suite: every top-level group named in the file must report passed, and the passes
+# must be at least the file's own test count (loops only add rows), so the credential, port and adoption rows cannot go unrun.
+groups_missing=""
+while IFS= read -r grp; do
+    [ -n "$grp" ] || continue
+    grep -qF -- "✔ $grp (" "$tmp/envelope.out" || groups_missing="${groups_missing}[$grp]"
+done < <(sed -n "s/^describe('\([^']*\)'.*/\1/p" "$HERE/readiness-tools.test.mjs")
+check "every top-level group of the adapter suite ran and passed (the credential, port and adoption rows included)" "${groups_missing:-none}" "none"
+file_tests="$(grep -cE '^[[:space:]]*test\(' "$HERE/readiness-tools.test.mjs")"
+check "the adapter suite passed at least as many rows as the file declares" "$([ "${env_pass:-0}" -ge "$file_tests" ] && echo enough || echo "pass:${env_pass:-0} declared:$file_tests")" "enough"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then echo "PASS - test-readiness-worker.sh"; exit 0; fi
