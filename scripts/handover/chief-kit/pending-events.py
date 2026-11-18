@@ -44,6 +44,10 @@ def candidates(fleet, inbox, last):
         ready_events = [[n, hashlib.sha256(lines[n - 1].encode()).hexdigest()]
                         for n, marker in matches if marker == 'READY']
         previous = observed.get(label, {})
+        if label in cursors and 'ready' not in previous and cursors[label] > len(lines):
+            # No snapshot and a cursor past the end: this is not the document the cursor
+            # counted, so meet the worker as new instead of calling its READY handled.
+            del cursors[label]
         cursor = cursors.get(label, 0)
         # Track the READY prefix already handled, independent of prose/line
         # shifts and atomic editors. Older snapshots migrate without replay.
@@ -96,7 +100,9 @@ def candidates(fleet, inbox, last):
     tmp.write_text(json.dumps(current))
     os.replace(tmp, observed_path)
     tmp = ready.with_suffix(ready.suffix + '.tmp')
-    tmp.write_text(''.join(f'{label}\t{cursor}\n' for label, cursor in cursors.items()))
+    # A label that left the manifest keeps no cursor: if it returns with another document,
+    # its READY is met as new rather than judged against a cursor that counted something else.
+    tmp.write_text(''.join(f'{label}\t{cursor}\n' for label, cursor in cursors.items() if label in current))
     os.replace(tmp, ready)
     pivot = next((i + 1 for i, event in enumerate(events) if event[0] == last), 0)
     for label, marker, n in events[pivot:] + events[:pivot]:

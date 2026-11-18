@@ -406,6 +406,26 @@ wait_exit "$WPID"
 check "(r0s4) a READY written after the reset is relayed" "N1 READY 2567 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb GREEN" "$(cat "$STUB/le.stdin" 2>/dev/null)"
 stop_waiter
 
+# on: a label that leaves the manifest and returns with a shorter document starts over as a new worker does:
+# the one-shot relay never relays a READY it meets first, and relays the next one written
+reset_stub
+fleet r0s8
+printf 'ESCALATE auto-go 3 not-ready\n' > "$STUB/le.out"; echo 10 > "$STUB/le.rc"
+printf 'N1\t40\n' > "$I.wait.ready"
+printf '{"schema":1,"workers":[]}\n' > "$M"
+HIMMEL_FLAG_AUTO_GO=1 start "$I" "$WORK/r0s8.out" --doc "$D" --workers-from "$M"
+wait_hb "$I" || fail "(r0s8) no baseline heartbeat"
+sleep 1.5
+printf '# worker\n- 10:30 LIVE — restarted\n%s\n' "$READY_A" > "$L"
+printf '{"schema":1,"workers":[{"doc":"%s","label":"N1"}]}\n' "$L" > "$M.new" && mv "$M.new" "$M"
+sleep 2.5
+check "(r0s8) a returning label's stale cursor does not replay its READY" "" "$(cat "$STUB/le.calls" 2>/dev/null)"
+check "(r0s8) its cursor starts over at the document's last READY" "3" "$(awk -F'\t' '$1 == "N1" { c = $2 } END { print c }' "$I.wait.ready" 2>/dev/null)"
+printf -- '%s\n' "$READY_B" >> "$L"
+wait_exit "$WPID"
+check "(r0s8) a READY written after the restart is relayed" "N1 READY 2567 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb GREEN" "$(cat "$STUB/le.stdin" 2>/dev/null)"
+stop_waiter
+
 # on: a pending READY of N1 must not leave N2's cursor unset, or N2's later READY would count as history
 reset_stub
 fleet r0s5
