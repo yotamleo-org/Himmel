@@ -5,21 +5,23 @@ name: Main Red Fix Dispatch
 # fleet waits on it. A merged PR that carries the `fixes-main-red` label, or a
 # `Fixes-main-red:` line in its body, dispatches ci.yml on main at once.
 #
-# Trust: pull_request_target always runs the DEFAULT branch's copy of this file
-# and nothing here checks out or runs PR code. The PR body reaches the shell only
-# as an environment value, never as script text.
+# Trigger: a push to main, not a PR event. GitHub blocks pull_request_target in
+# public repos without an event-policy exception, and a pull_request run for a
+# merged fork PR gets a read-only token. A push run uses main's copy of this file
+# with this repo's token, for every merged PR, fork or not.
 on:
-  pull_request_target:
-    types: [closed]
+  push:
+    branches: [main]
   # Manual: the same dispatch with no PR (`gh workflow run main-red-fix-dispatch.yml`).
   workflow_dispatch:
 
 permissions:
   actions: write
+  contents: read
+  pull-requests: read
 
 jobs:
   dispatch-main-ci:
-    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main')
     runs-on: ubuntu-latest
     steps:
       - name: Dispatch ci.yml on main when the merged PR fixes a red main
@@ -27,12 +29,25 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           EVENT: ${{ github.event_name }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ' ') }}
-          PR_BODY: ${{ github.event.pull_request.body }}
+          SHA: ${{ github.sha }}
         run: |
           set -eu
+          PR_NUMBER=
           if [ "$EVENT" != workflow_dispatch ]; then
+            # GitHub links a merge commit to its PR seconds after the push; this run can start first.
+            for attempt in 1 2 3 4 5 6; do
+              pr=$(gh api "repos/$GH_REPO/commits/$SHA/pulls" \
+                --jq "[.[] | select(.merged_at != null and .base.ref == \"main\" and .merge_commit_sha == \"$SHA\")] | first // empty")
+              [ -n "$pr" ] && break
+              [ "$attempt" -lt 6 ] && sleep 10
+            done
+            if [ -z "$pr" ]; then
+              echo "Commit $SHA is no merged PR's merge commit; nothing to dispatch."
+              exit 0
+            fi
+            PR_NUMBER=$(jq -r .number <<<"$pr")
+            PR_LABELS=$(jq -r '[.labels[].name] | join(" ")' <<<"$pr")
+            PR_BODY=$(jq -r '.body // ""' <<<"$pr")
             case " $PR_LABELS " in
               *" fixes-main-red "*) ;;
               *)
