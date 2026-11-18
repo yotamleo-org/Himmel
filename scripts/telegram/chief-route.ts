@@ -1,7 +1,7 @@
 import { selectDecisionNames, pinnedRead, boundedDirectoryNames, reviewedSpecHashes, optionalReturnAgreement, validateCappedFoldProofShape, PINNED_READ_VERSION, returnSha,
   SIGNATURE_DIRS, KEY_FOLDER, CRITIC_FILE, CRITIC_NAME, specsRootOf, keyOf, canonicalDirectoryNames, returnDirectories, checkLatestReturns,
-  ledgerDirOf, ledgerEntryNames, ledgerKeyOfFile, parseManifest,
-  type CappedFoldProof, type EvidencePin, type EvidenceFilePin, type ReturnPin } from "../jira/src/release/pinned.ts";
+  ledgerDirOf, ledgerEntryNames, ledgerKeyOfFile, parseManifest, memberLedgerState,
+  type CappedFoldProof, type EvidencePin, type EvidenceFilePin, type MemberAbsencePin, type ReturnPin } from "../jira/src/release/pinned.ts";
 import { join, dirname, basename, resolve, isAbsolute } from "node:path";
 import { randomUUID, createHash } from "node:crypto";
 import { hostname, homedir } from "node:os";
@@ -1317,6 +1317,20 @@ export async function cappedReturnEvidence(input: CappedReturnInput, policy: Cap
   return { pin: { kind, path, sha256: got.sha256, round: row.round, return_sha: sum, residuals: findings.length },
     carried: findings.map(finding => ({ key, epoch: rows.checked.epoch, kind, round: row.round, return_path: path, return_sha: sum,
       finding_id: finding.id, severity: finding.severity as "minor" | "medium", status: "open-carried" as const })) };
+}
+
+// A group's non-anchor keys hold no ledger file, snapshot folder or manifest entry under the anchor's specs root. The shared ledger folder is
+// listed and the manifest read through the reader, so both are pinned and rechecked like every other read; any presence, listing fault or
+// manifest fault refuses and none is read as absence. The pin is null when the group has no non-anchor key.
+export async function cappedMemberState(specs: string, anchor: string, members: readonly string[], reader: CappedReader): Promise<MemberAbsencePin | null> {
+  const others = members.filter(key => key !== anchor).sort();
+  if (!others.length) return null;
+  const directory = ledgerDirOf(specs);
+  const listing = await reader.names(directory);
+  const manifest = await readManifest(specs, reader);
+  const { present } = memberLedgerState(listing, Object.keys(manifest.keys), others);
+  if (present.length) throw new Error(`capped-fold: group member holds ledger state: ${present.join(", ")}`);
+  return { role: "member-absence", directory, keys: others };
 }
 
 export async function cappedFold(o: { key: string; spec: string; plan: string; specReturn: string; planReturn: string }): Promise<CappedFoldProof> {
