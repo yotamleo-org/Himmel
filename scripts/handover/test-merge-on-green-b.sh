@@ -2016,7 +2016,7 @@ assert_status_row "9001-a: the row names key, pr, head and verdict" '.event == "
 assert_bk_inbox "9001-a: one line in the chief inbox" 1
 if grep -qF 'Bucket leak, not stopped: PR #77 merged. feat(jira): [HIMMEL-374] reconciler. It sits in v1.1.4; current is v1.1.3, 5 open.' "$bk_root/consoles/chief.md"; then pass
 else fail "9001-a: the inbox line holds the title, version, current and open count ($(cat "$bk_root/consoles/chief.md"))"; fi
-if [ "$(alert_lines)" = "0" ]; then pass; else fail "9001-a: the operator alert sink saw an alert ($(cat "$LAST_ALERT_LOG"))"; fi
+if [ "$(alert_lines)" = "0" ]; then pass; else fail "9001-a: the operator alert sink saw an alert ($(cat "$LAST_ALERT_LOG"))"; fi # read-sink-ok: the suite's own alert-log fixture file
 
 bk_arm
 MERGE_WATCH_ALERT_BRIDGE_ROOT="$bk_root" HIMMEL_CONSOLE_NAME=chief STUB_JIRA_BUILD=1 STUB_BUCKET_VERDICT="OUTSIDE HIMMEL-374 none current=v1.1.3 open=2" STUB_PR_TITLE="$bk_title" \

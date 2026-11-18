@@ -240,7 +240,7 @@ out=$(HOME="$U_HOME" PATH="$U_BIN:$HBIN" HIMMEL_UNINSTALL_REPO_ROOT="$U_REPO" \
     bash "$CLI" --purge-state --yes --skip-tasks --skip-hooks </dev/null 2>&1); rc=$?
 assert_rc 'U5 invalid settings halt teardown' 2 "$rc"
 assert_has 'U5 first failure is settings' 'Halted at: [6/8]' "$out"
-assert_not_has 'U5 marketplaces untouched' 'plugin marketplace remove' "$(cat "$CLAUDE_CALL_LOG")"
+assert_not_has 'U5 marketplaces untouched' 'plugin marketplace remove' "$(cat "$CLAUDE_CALL_LOG")" # read-sink-ok: the suite's own claude stub call log
 if [ -f "$U_CACHE/install-profile.json" ]; then echo 'PASS U5 retry profile survives'
 else echo 'FAIL U5 retry profile removed'; FAILED=$((FAILED + 1)); fi
 
@@ -272,7 +272,7 @@ jq -n --arg here "$PWD" '[{id:"handover@himmel",scope:"project",projectPath:$her
 out=$(HOME="$U_HOME" PATH="$U_BIN:$HBIN" HIMMEL_UNINSTALL_REPO_ROOT="$U_REPO" \
     TELEGRAM_CHANNEL_DIR="$CHANNEL" BRIDGE_ROOT="$BRIDGE" HIMMELCTL_CACHE_DIR="$U_CACHE" \
     bash "$CLI" --purge-state --yes --skip-tasks --skip-hooks </dev/null 2>&1); rc=$?
-calls=$(cat "$CLAUDE_CALL_LOG")
+calls=$(cat "$CLAUDE_CALL_LOG") # read-sink-ok: the suite's own claude stub call log
 # WHY: the ledger records the marketplace at project scope, so
 # only that registration is removed; the install-profile scope (user) is not
 # tried in ledger mode — a same-named user-scope registration is not himmel's.

@@ -203,7 +203,7 @@ set -euo pipefail
 printf '%s\n' "$*" >> "$CLAUDE_CALL_LOG"
 json_list() {
     if [ ! -s "$1" ]; then echo '[]'
-    elif [ "$(cat "$1")" = "DEGRADED" ]; then exit 1
+    elif [ "$(cat "$1")" = "DEGRADED" ]; then exit 1 # read-sink-ok: a fixture status file the suite wrote
     else cat "$1"
     fi
 }
