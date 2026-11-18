@@ -376,7 +376,7 @@ stale_recycle() {
   while ! mkdir "$recycle_lock" 2>/dev/null; do
     if recycle_lock_stale; then
       rm -rf "$recycle_lock"
-      echo "$who: cleared a stale recycle lock - not restarting now; re-run the update" >&2
+      echo "$who: cleared a stale recycle lock - not restarting now; run --recycle-if-stale again" >&2
       return 1
     fi
     w=$((w + 1))

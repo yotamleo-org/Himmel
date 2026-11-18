@@ -1893,8 +1893,10 @@ report_qmd_daemon_restart() {
     echo ""
     echo "==> qmd daemon restart REQUIRED"
     echo "    A new qmd build was installed, but the daemon on ${QMD_MCP_URL:-http://localhost:8181/mcp}"
-    echo "    is still serving the OLD code from memory. Stopping it is process"
-    echo "    termination, which an agent may not do — run this yourself:"
+    echo "    may still be serving the OLD code from memory, or may be down if an"
+    echo "    automatic restart stopped it. Stopping it is process termination,"
+    echo "    which an agent may not do — run this yourself (skip step 2 when step 1"
+    echo "    lists nothing):"
     echo ""
     # Scoped to the HTTP DAEMON's FULL argv shape ('qmd … mcp … --http'), not a
     # bare 'qmd' and not 'qmd.*mcp'. qmd also runs as a
