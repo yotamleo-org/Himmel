@@ -583,10 +583,18 @@ contains 'tmp= carries ! at 80' "$(tmp_run 80)" ' tmp=80!'
 contains 'tmp= carries ! above 80' "$(tmp_run 97)" ' tmp=97!'
 contains 'verbose labels tmp' "$(tmp_run 42 --verbose)" 'tmp: 42'
 not_contains 'tmp= is absent when the dir is unreadable' "$(bash "$SUT")" ' tmp='
+# The waiter's wake key is the key rows of the table that its loop selects. The loop line must be this
+# one exactly, so an edit anywhere in it (a condition inside the awk, a filter after it) leaves the list empty.
+IFS= read -r cw_loop <<'LOOP'
+for f in $(awk -F'\t' '$0 !~ /^#/ && $5 == "key" && $1 != "usage" { print $1 }' "$HERE/wake-rules.tsv"); do
+LOOP
+# shellcheck disable=SC2016  # the text searched for is the loop's own, not an expansion
+cw_have="$(grep -F -e 'for f in $(awk' "$HERE/chief-wait.sh" | sed -E 's/^[[:space:]]+//')"
 cw_keys=""
-# shellcheck disable=SC2016  # the pattern is literal text of the waiter's loop, not an expansion
-if grep -q -E '^[[:space:]]+for f in \$\(awk .*\$5 == "key" && \$1 != "usage".*wake-rules\.tsv' "$HERE/chief-wait.sh"; then
-    cw_keys=" $(awk -F'\t' '$0 !~ /^#/ && $5 == "key" && $1 != "usage" { print $1 }' "$HERE/wake-rules.tsv" | tr '\n' ' ')"
+if [ "$cw_have" = "$cw_loop" ]; then
+    # shellcheck disable=SC2016  # $4 is awk's field, not an expansion
+    cw_prog="$(printf '%s' "$cw_loop" | awk -F"'" '{ print $4 }')"
+    cw_keys=" $(awk -F'\t' "$cw_prog" "$HERE/wake-rules.tsv" | tr '\n' ' ')"
 fi
 contains "chief-wait's wake key list was found" "$cw_keys" ' vmrun '
 not_contains "tmp= is not in chief-wait's wake key" "$cw_keys" ' tmp'
