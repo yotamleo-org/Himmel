@@ -5767,3 +5767,38 @@ test("P3 capped-fold argv grammar: the flags are accepted in any order with the 
   refused("another key than the fixture's", with_("--key", "HIMMEL-99"), "capped-fold: spec filename/folder key disagrees");
   expect(bad).toEqual([]);
 }, S1B);
+
+test("P2c cross-return failures preserve spec evidence before plan lookup", async () => {
+  for (const planFault of ["missing", "aliased"]) {
+    const f = await cappedFixture();
+    expect((await runCapped(f.args)).schema, "the original pair is valid").toBe(1);
+    if (planFault === "missing") unlinkSync(f.args.planReturn);
+    else {
+      const target = join(f.r, "plan-target.md"); renameSync(f.args.planReturn, target); symlinkSync(target, f.args.planReturn);
+    }
+    await expect(runCapped(f.args), "the plan fault alone is observable").rejects.toThrow(planFault === "missing" ? "ENOENT" : "evidence lookup must be canonical");
+    await editCappedReturn(f, f.args.specReturn, text => text.replace(/^Reviewed: .*\n/m, ""));
+    await expect(runCapped(f.args)).rejects.toThrow("capped-fold: spec must review the current spec exactly once");
+  }
+  const f = await cappedFixture(); const args = { ...f.args, specReturn: f.verdicts[0] };
+  await expect(runCapped(args), "the stale spec fault alone is observable").rejects.toThrow("capped-fold: not the actual latest real spec round");
+  unlinkSync(f.args.planReturn);
+  await expect(runCapped(args)).rejects.toThrow("capped-fold: not the actual latest real spec round");
+}, S1B);
+
+test("P1 legacy syntax refusals remain strict", async () => {
+  for (const variant of ["bare-read", "bare-read-sha", "bare-content", "quote-spacing", "quote-uppercase", "heading-case"]) {
+    const f = await cappedFixture();
+    expect((await runCapped(f.args)).schema, "the original syntax is valid").toBe(1);
+    await editCappedReturn(f, f.args.specReturn, text => {
+      const changed = variant.startsWith("bare-")
+        ? text.replace(/\nSPEC FINDINGS/, `\n${variant === "bare-read" ? "READ" : variant === "bare-read-sha" ? "READ-SHA256" : "CONTENT-SHA256"}\nSPEC FINDINGS`)
+        : variant === "quote-spacing" ? text.replace(/^(READ(?:-SHA256)? [0-9a-f]{64}) /m, "$1  ")
+        : variant === "quote-uppercase" ? text.replace(/^(READ(?:-SHA256)? )([0-9a-f]{64})/m, (_, prefix, sum) => prefix + sum.toUpperCase())
+        : text.replace("(minor)", "(Minor)");
+      expect(changed, "the fixture fault really changes the return").not.toBe(text);
+      return changed;
+    });
+    await expect(runCapped(f.args), variant).rejects.toThrow(variant === "heading-case" ? "capped-fold: ineligible finding heading:" : "capped-fold: malformed seal or READ quote");
+  }
+}, S1B);
