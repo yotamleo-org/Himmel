@@ -2,6 +2,7 @@ import { lstat, mkdir, readFile, realpath, stat, utimes, writeFile } from 'node:
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { closureMarker, ledgerVerify, returnSha, roundOverride, roundReset, roundSeed, sealRound } from './chief-route.ts';
+import { ledgerDirOf, ledgerEntryNames } from '../jira/src/release/pinned.ts';
 
 type FixtureRead = string | { path: string; text: string };
 export type FixtureStep =                                                          // runs after returns[after] (0-based) is sealed
@@ -69,7 +70,7 @@ export async function buildRoundFixture(request: RoundFixtureRequest): Promise<R
     if (!parent.startsWith(scratch + '/')) throw new Error('fixture read must be inside the scratch root');
     await writeFile(path, text, { flag: 'wx' });
   };
-  if (await stat(join(specsRoot, 'ledgers', 'spec-rounds', 'manifest.json')).then(() => true, () => false)) await roundSeed(specsRoot);
+  if (await stat(join(ledgerDirOf(specsRoot), 'manifest.json')).then(() => true, () => false)) await roundSeed(specsRoot);
   await write(spec, request.specText); await write(plan, request.planText);
   const extras = new Map<string, string>();
   for (const r of request.returns) for (const read of r.reads) if (typeof read !== 'string') {
@@ -131,7 +132,7 @@ export async function buildRoundFixture(request: RoundFixtureRequest): Promise<R
       }
     }
   }
-  return { specsRoot, spec, plan, verdicts, ledgerPath: join(specsRoot, 'ledgers', 'spec-rounds', `${request.key}.jsonl`) };
+  return { specsRoot, spec, plan, verdicts, ledgerPath: join(ledgerDirOf(specsRoot), ledgerEntryNames(request.key).file) };
 }
 
 // ---- typed builders: the real-shaped Family A group, the known single, the fresh single ----
