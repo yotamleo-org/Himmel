@@ -917,5 +917,33 @@ assert_eq "T57 a path another writer stages before the commit: no auto-commit" "
 assert_eq "T57 the other writer's path stays staged, ours is unstaged" "theirs.md " "$(staged)"
 assert_has "T57 says why it skipped" "another writer is staging" "$out"
 
+mkvault
+echo "a note" >"$V/note.md"; backdate "$V/note.md"
+cp "$V/.git/hooks/pre-commit" "$TMP/hook.keep"
+printf '#!/usr/bin/env bash\necho "refused by a hook" >&2\nexit 1\n' >"$V/.git/hooks/pre-commit"
+run_ac >/dev/null
+assert_eq "T58 setup: the refused attempt leaves its note staged" "note.md " "$(staged)"
+cp "$TMP/hook.keep" "$V/.git/hooks/pre-commit"
+before="$(head_sha)"; out="$(run_ac)"; rc=$?
+assert_eq "T58 a later run commits the notes a refused attempt left staged" "note.md " "$(head_files)"
+assert_eq "T58 nothing is left staged" "" "$(staged)"
+assert_eq "T58 exits 0" "0" "$rc"
+
+mkvault
+echo "a note" >"$V/note.md"; backdate "$V/note.md"
+printf '#!/usr/bin/env bash\necho "refused by a hook" >&2\nexit 1\n' >"$V/.git/hooks/pre-commit"
+run_ac >/dev/null
+cp "$TMP/hook.keep" "$V/.git/hooks/pre-commit"
+echo "theirs" >"$V/theirs.md"; git -C "$V" add theirs.md
+before="$(head_sha)"; out="$(run_ac)"
+assert_eq "T59 a path staged by another writer after the refusal: nothing is auto-committed" "$before" "$(head_sha)"
+assert_eq "T59 both paths stay staged" "note.md theirs.md " "$(staged)"
+
+mkvault
+echo "theirs" >"$V/theirs.md"; git -C "$V" add theirs.md
+before="$(head_sha)"; out="$(run_ac)"
+assert_eq "T60 control: a path staged before any attempt is never auto-committed" "$before" "$(head_sha)"
+assert_eq "T60 and stays staged" "theirs.md " "$(staged)"
+
 echo "----"
 if [ "$FAILED" -eq 0 ]; then echo "PASS: vault-stall-cadence ($0)"; else echo "FAIL: vault-stall-cadence — $FAILED failed ($0)" >&2; exit 1; fi
