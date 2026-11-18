@@ -3824,6 +3824,28 @@ u8_eq "(U8) a manifest the batch cannot read: no doc is answered from the batch"
 u8_eq "(U8) a manifest the batch cannot read: each doc is still evaluated once" \
     "$(awk -F'\t' '$1 == "worker_state" { c[$2]++ } END { m = 0; for (d in c) if (c[d] > m) m = c[d]; print m + 0 }' "$U8/count.broken")" 1
 rm -f "$U8B/zz-broken.fleet.json"
+# the bucket as the stations have it today: no anchor and no receipts
+U8B2="$U8/bucket2"; U8H2="$U8/home2"; mkdir -p "$U8H2"; cp -R "$U8B" "$U8B2"; rm -f "$U8B2/fleet-control.json"
+for f in "$U8B2"/*.fleet.json; do sed "s#$U8B#$U8B2#g" "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
+U8B_SAVE="$U8B"; U8OWN_SAVE="$U8OWN"; U8H_SAVE="$U8H"
+U8B="$U8B2"; U8OWN="$U8B2/HIMMEL-nextleg-2026-11-18A-roadmap-chief.fleet.json"; U8H="$U8H2"
+for mode in "${u8_modes[@]}"; do
+    name="${mode%%|*}"; args="${mode#*|}"
+    # shellcheck disable=SC2086
+    u8_nd "plain-$name" "" $args
+    # shellcheck disable=SC2086
+    u8_nd "plain-$name.single" 1 $args
+    cmp -s "$U8/out.plain-$name" "$U8/out.plain-$name.single" && pass "(U8) no anchor, $name: the batched read prints the same bytes as one read per doc" \
+        || fail "(U8) no anchor, $name: the batched read differs from one read per doc: $(diff "$U8/out.plain-$name" "$U8/out.plain-$name.single" | head -5)"
+    [ -s "$U8/out.plain-$name" ] && pass "(U8) no anchor, $name: the dispatcher printed something" || fail "(U8) no anchor, $name: the dispatcher printed nothing"
+    [ -z "${ND_U8_EVIDENCE:-}" ] || cp "$U8/out.plain-$name" "$ND_U8_EVIDENCE/out.plain-$name"
+done
+cl="$U8/count.plain-list"
+u8_eq "(U8) no anchor, count: worker_state is evaluated once per unique doc" "$(awk -F'\t' '$1 == "worker_state" { c[$2]++ } END { m = 0; for (d in c) if (c[d] > m) m = c[d]; print m + 0 }' "$cl")" 1
+u8_eq "(U8) no anchor, count: every evaluation took its disposition from the one batch read" "$(awk -F'\t' '$1 == "worker_state" && $3 == "single" { n++ } END { print n + 0 }' "$cl")" 0
+u8_eq "(U8) no anchor, count: no disposition subprocess started" "$(awk -F'\t' '$1 == "main" { n++ } END { print n + 0 }' "$cl")" 0
+u8_eq "(U8) no anchor, count: each manifest was read once by the batch" "$(awk -F'\t' '$1 == "open" && $3 ~ /read_directory/ { c[$2]++ } END { m = 0; for (p in c) if (c[p] > m) m = c[p]; print m + 0 }' "$cl")" 1
+U8B="$U8B_SAVE"; U8OWN="$U8OWN_SAVE"; U8H="$U8H_SAVE"
 
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.
