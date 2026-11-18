@@ -212,6 +212,10 @@ check 'no mirror reports residual-unversioned=skip' 'skip' "$(NEXT_DISPATCH_MIRR
 
 mk 115 "To Do" "To Do" '[]' '["other", "residual-depth-1"]' '["relates to HIMMEL-110"]'
 check 'a label list with spaces after the commas still counts the residual' '1:HIMMEL-115' "$(field residual-unversioned "$d")"
+sed 's/HIMMEL-/APP-/g' "$M/HIMMEL-110.md" > "$M/APP-110.md"; sed 's/HIMMEL-/APP-/g' "$M/HIMMEL-115.md" > "$M/APP-115.md"
+case "$(field residual-unversioned "$d")" in *APP-115*) app_res=ok ;; *) app_res=no ;; esac
+check 'a residual whose relates link names another project key is counted' 'ok' "$app_res"
+rm -f "$M/APP-110.md" "$M/APP-115.md"
 
 # a release-manager ruling that puts a versionless residual in the backlog (outcome BACKLOG, or a MOVE to
 # backlog) is a placement, not an unversioned ticket. The last [release-ruling ...] comment of the ticket

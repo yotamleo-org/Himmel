@@ -1610,7 +1610,7 @@ if focus:
         if rm and rm[1] == name[:-3] and (rm[3] == "BACKLOG" or (rm[3] == "MOVE" and rm[2] == "backlog")) \
                 and f.get("statusCategory", "").strip('"') == "To Do" and f.get("priority", "").strip('"') not in ("High", "Highest"):
             continue
-        for target in re.findall(r"HIMMEL-\d+", f.get("relates", "")) + re.findall(r"[A-Z]+-\d+", f.get("parent", "")):
+        for target in re.findall(r"[A-Z]+-\d+", f.get("relates", "")) + re.findall(r"[A-Z]+-\d+", f.get("parent", "")):
             p = front(target)
             if p and p.get("statusCategory", "").strip('"') != "Done" and ('"%s"' % focus) in p.get("fixVersions", ""):
                 found.append(name[:-3])

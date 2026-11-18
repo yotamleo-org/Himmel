@@ -26,7 +26,7 @@ WORK="$(mktemp -d "${TMPDIR:-/tmp}/drift-summary-test.XXXXXX")" || exit 1
 trap 'rm -rf "$WORK"' EXIT
 export HOME="$WORK/home"; mkdir -p "$HOME"
 export HIMMEL_CONFIG_DIR="$WORK/conf"; mkdir -p "$HIMMEL_CONFIG_DIR"
-unset JIRA_PROJECT_KEY
+unset JIRA_PROJECT_KEY HIMMEL_JIRA_MIRROR
 MIR="$WORK/mirror"; mkdir -p "$MIR"
 NOW=1792000000
 
