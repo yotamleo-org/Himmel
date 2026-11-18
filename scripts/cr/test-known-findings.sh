@@ -602,8 +602,6 @@ AJ="$ajson" AB="$ODD" AH="$PRH" node -e 'const j=JSON.parse(process.env.AJ);cons
 ( cd "$repo" && CR_LEDGER="$AL3" bash "$SCRIPT" --diff "$base...HEAD" --area --branch >/dev/null 2>&1 ); check "area: --branch with no value exits 2" "$?" "2"
 bash "$SCRIPT" --list --branch "$PRB" >/dev/null 2>&1; check "area: --branch without --diff --area exits 2" "$?" "2"
 
-# base-history-gate: the class fires when the BASE list does not cover a key the branch adds,
-# even though the branch adds its own row (its own gate passes), and stays silent when main covers it.
 hrepo="$tmp/hrepo"; mkdir -p "$hrepo/scripts/lint" "$hrepo/scripts/foo"
 ( cd "$hrepo" && git init -q -b main . && git config user.email t@t && git config user.name t && git config commit.gpgsign false ) || { echo "FAIL - hist fixture init"; exit 1; }
 for f in check-history-comments.sh ticket-refs.awk ticket-ref-allow.tsv; do cp "$HERE/../lint/$f" "$hrepo/scripts/lint/$f"; done

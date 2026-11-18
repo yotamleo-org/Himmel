@@ -23,8 +23,6 @@ git -C "$repo" add -A && git -C "$repo" commit -qm base || { echo "FAIL - fixtur
 
 run() { (cd "$repo" && bash "$SCRIPT" "$@" 2>&1); }
 
-# RED: a key on a path main's list does not cover. The branch ALSO adds its own row for
-# that path, so the branch's own gate passes while CI's base-list judgement would not.
 git -C "$repo" checkout -q -b feat
 printf '#!/usr/bin/env bash\necho base\n# explains the key HIMMEL-123 here\n' > "$repo/scripts/foo/uncovered.sh"
 printf 'K6\t^scripts/foo/uncovered\\.sh$\tHIMMEL-123\tfixture row, branch only\n' >> "$repo/scripts/lint/ticket-ref-allow.tsv"
@@ -37,7 +35,6 @@ check "base list: a key on an uncovered path exits 1" "$rc" "1"
 contains "base list: the finding cites file:line" "$out" "scripts/foo/uncovered.sh:3:"
 contains "base list: the fix is named" "$out" "land the one-row allow-list change"
 
-# NEGATIVE: a key on a path main's list covers (a dated release record) passes.
 git -C "$repo" checkout -q main && git -C "$repo" checkout -q -b feat-covered
 printf '# release\nsubject HIMMEL-123\n' > "$repo/docs/release/note.md"
 git -C "$repo" add -A && git -C "$repo" commit -qm covered || { echo "FAIL - fixture covered commit"; exit 1; }
@@ -45,7 +42,6 @@ out="$(run --base main)"; rc=$?
 check "base list: a key on a covered path exits 0" "$rc" "0"
 not_contains "base list: nothing reported for a covered path" "$out" "docs/release"
 
-# NEGATIVE: the row is already on main, so the branch passes.
 git -C "$repo" checkout -q main
 printf 'K6\t^scripts/foo/uncovered\\.sh$\tHIMMEL-123\tfixture row, on main\n' >> "$repo/scripts/lint/ticket-ref-allow.tsv"
 git -C "$repo" add -A && git -C "$repo" commit -qm row-on-main || { echo "FAIL - fixture row commit"; exit 1; }
@@ -55,7 +51,6 @@ git -C "$repo" add -A && git -C "$repo" commit -qm rowed || { echo "FAIL - fixtu
 out="$(run --base main)"; rc=$?
 check "base list: a row already on main exits 0" "$rc" "0"
 
-# A branch behind its base is not charged with the base's own newer commits.
 git -C "$repo" checkout -q main
 printf '#!/usr/bin/env bash\necho base\n# a newer key HIMMEL-999 on main\n' > "$repo/scripts/foo/newer.sh"
 git -C "$repo" add -A && git -C "$repo" commit -qm main-newer || { echo "FAIL - fixture newer commit"; exit 1; }
@@ -64,12 +59,10 @@ out="$(run --base main)"; rc=$?
 check "behind the base: only the branch's own range is judged" "$rc" "0"
 not_contains "behind the base: the base's newer line is not reported" "$out" "newer.sh"
 
-# Cannot evaluate: an unresolvable ref exits 2, never a silent pass.
 out="$(run --base no-such-ref)"; rc=$?
 check "an unresolvable base exits 2" "$rc" "2"
 contains "an unresolvable base is named" "$out" "does not resolve"
 
-# A base from before the gate existed has nothing to mirror.
 git -C "$repo" checkout -q --orphan pregate && git -C "$repo" rm -rfq . && printf 'x\n' > "$repo/x.txt"
 git -C "$repo" add -A && git -C "$repo" commit -qm pregate-base || { echo "FAIL - fixture pregate commit"; exit 1; }
 out="$(run --base pregate --tip pregate)"; rc=$?

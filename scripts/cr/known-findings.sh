@@ -431,9 +431,6 @@ if (MODE === "diff") {
     } else if (d.type === "hook-no-bypass") {
       for (const f of scoped) if (files[f].isNew && !isTestFile(f) && !files[f].added.some(a => /_(OK|BYPASS)\b|_BYPASS_/.test(a.text))) where.push(f);
     } else if (d.type === "base-history-gate") {
-      // CI judges the history-comment gate with the BASE ref copies of the gate and allow list; run that pairing here
-      // (base-history-gate.sh: left side of the range = the base, right side = the tip, default HEAD).
-      // Exit 1 = findings (path:line: ...); any other non-zero is "cannot evaluate" and says so, never a hit.
       const m = /^(.*?)\.{2,3}(.*)$/.exec(process.env.RANGE || "");
       const args = [path.join(process.env.SCRIPT_DIR, "base-history-gate.sh")];
       if (m && m[1]) args.push("--base", m[1]);

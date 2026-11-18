@@ -1,14 +1,6 @@
 #!/usr/bin/env bash
 # Platform guard (posix-bash): POSIX bash 3.2+.
 #
-# scripts/cr/base-history-gate.sh — run the history-comment / ticket-ref gate the way CI does,
-# before the first push. CI's "history-comment gate (PR range)" step judges a PR with the BASE
-# branch's copies of the gate, the classifier and the allow list, so a row added on the branch
-# never helps the branch's own CI run, while the pre-commit and pre-push hooks read the branch's
-# own list and pass. This script copies those three files from the base ref to a scratch dir and
-# runs the base gate over the branch's range: a key on a path the base list does not cover shows
-# up here, not after a paid CI run.
-#
 # Usage: base-history-gate.sh [--base <ref>] [--tip <ref>]
 #   --base  the ref whose copies judge the branch (default: origin/<default branch>)
 #   --tip   the branch tip to judge (default: HEAD)
@@ -49,7 +41,6 @@ trap 'rm -rf "$scratch"' EXIT
 gate="$scratch/scripts/lint"
 mkdir -p "$gate"
 
-# A base from before the gate existed has nothing CI would run: nothing to mirror.
 if ! git cat-file -e "$base_sha:scripts/lint/check-history-comments.sh" 2>/dev/null; then
   echo "base-history-gate: the gate is absent at $base, nothing to mirror"
   exit 0
