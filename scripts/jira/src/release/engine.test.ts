@@ -4451,6 +4451,29 @@ describe('a ruled-away operator ask wakes the chief', () => {
       expect(ask('K-8').req).not.toBe(eight.q.req);
     });
 
+    // 8674 U3 (review F4): a later ask that was withdrawn is not an ask that stands, so it must not hide the refusal.
+    it('U3: a later ask that was withdrawn leaves the standing refusal listed; a live later ask still ends it', async () => {
+      await setup();
+      mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-6', fixVersions: [] }, { key: 'K-8', fixVersions: [] }, { key: 'K-9', fixVersions: [] }]);
+      const six = await refuseAsk('K-6');
+      await refuseAsk('K-8');
+      await refuseAsk('K-9');
+      const mistaken = ask('K-6', { to: 'v2' });
+      expect(state(ctx()).refused_asks.map((a) => a.key)).toEqual(['K-8', 'K-9']);
+      withdraw(at(), { req: mistaken.req, reason: 'filed by mistake' });
+      // a later ask the RM has claimed still stands, so it still hides the refusal; so does one still open
+      ask('K-9', { to: 'v2' });
+      claim(at(rmEnv));
+      ask('K-8', { to: 'v2' });
+      const got = state(ctx()).refused_asks;
+      expect(got.map((a) => a.key)).toEqual(['K-6']);
+      expect(got[0]).toMatchObject({ ruling: six.r.id, req: six.q.req });
+      // the identical ask still files nothing while the refusal stands
+      const before = reqCount();
+      expect(ask('K-6').req).toBe(six.q.req);
+      expect(reqCount()).toBe(before);
+    });
+
     it('the first ask of a key and an ask for another version are never blocked', async () => {
       await setup();
       mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'K-6', fixVersions: [] }]);

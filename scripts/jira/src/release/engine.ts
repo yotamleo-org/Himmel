@@ -1822,7 +1822,8 @@ function refusedAsks(l: Loaded, issues: Map<string, IssueSnap> | null): RefusedA
     if (!q || q.from_v !== null || q.to_v === null) continue;
     if (r.outcome !== 'BACKLOG' && !(r.verb === 'REVERSION' && r.outcome === 'KEEP')) continue;
     const since = Date.parse(ruledAt.get(r.id) ?? r.ts);
-    const askedAgain = (asksOf.get(key) ?? []).some((x) => x.req !== r.req && Date.parse(x.ts) > since);
+    // A later ask that was withdrawn no longer stands, so it does not hide the refusal.
+    const askedAgain = (asksOf.get(key) ?? []).some((x) => x.req !== r.req && Date.parse(x.ts) > since && !now.get(x.req)?.state.startsWith('withdrawn:'));
     if (acked.has(r.id) || askedAgain || (named.get(key) ?? -Infinity) > since) continue;
     const issue = issues?.get(key);
     if (issue && terminalOf(issue) !== null) continue;
