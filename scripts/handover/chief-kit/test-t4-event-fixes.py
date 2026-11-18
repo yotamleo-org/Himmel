@@ -831,6 +831,20 @@ echo 'ESCALATE auto-go 3 not-ready'; exit 10
                     found.append(int(entry.name))
         return found
 
+    def lock_holders(self):
+        lock = str(self.path('lock'))
+        found = []
+        for entry in Path('/proc').iterdir():
+            if entry.name.isdigit():
+                try:
+                    for fd in (entry / 'fd').iterdir():
+                        if os.readlink(fd) == lock:
+                            found.append((int(entry.name), fd.name,
+                                          (entry / 'cmdline').read_bytes().replace(b'\0', b' ')[:100].decode()))
+                except OSError:
+                    continue
+        return found
+
     def hang_on_a_fifo(self):
         (self.root / 'N1.md').unlink()
         os.mkfifo(self.root / 'N1.md')
@@ -844,7 +858,7 @@ echo 'ESCALATE auto-go 3 not-ready'; exit 10
             os.kill(p.pid, signal.SIGKILL)
             p.wait(timeout=5)
             probe = subprocess.run(['flock', '-n', str(self.path('lock')), 'true'])
-            self.assertEqual(probe.returncode, 0, 'the one-waiter lock must die with the waiter')
+            self.assertEqual(probe.returncode, 0, f'the one-waiter lock must die with the waiter: {self.lock_holders()}')
         finally:
             for pid in self.helper_pids():
                 os.kill(pid, signal.SIGKILL)
