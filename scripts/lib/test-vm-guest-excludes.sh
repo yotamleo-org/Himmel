@@ -512,8 +512,6 @@ if [ "$rc" -eq 0 ] && ! grep -q '^SCP .* -r ' "$WORK/stub.log" && grep -qE '^SSH
 else
   fail_case "T7f no-rsync fallback failed or still unfiltered (rc=$rc): $(grep -E '^(SCP|SSH .*tar)' "$WORK/stub.log")"
 fi
-# T7n BOTH staging paths carry the repo-root inputs scripts/test-uninstall.sh
-# reads, not just scripts/ -- without them SC6 failed 80 assertions on a clean guest.
 # The tar listing is what the host's real tar piped to the (stub) guest; the rsync
 # check reads the sources it was handed. The secret excludes must stay in force on both.
 STAGE_NEED="scripts docs/setup/settings-template.json docs/setup/user-scope-claude-md-template.md marketplace/plugins/claude-hud/config/himmel-config.json"
@@ -532,16 +530,13 @@ tar_secret=$(grep -E '(^|/)(\.env|\.env\..*|[^/]*\.local\.json)$' <<< "$tar_list
 if [ "$rc" -eq 0 ] && [ -z "$tar_miss" ] && [ -z "$tar_secret" ]; then
   pass "T7n tar fallback stages every SC6 input too, and no secret-set file"
 else fail_case "T7n tar fallback missing:${tar_miss:- none} secrets=[$tar_secret] (rc=$rc)"; fi
-# T7o drift guard: every repo-root docs/ or marketplace/ path scripts/test-uninstall.sh
-# reads via `../` is in the driver's STAGE_PATHS -- a new read there turns this red
-# instead of silently failing SC6 on the next guest run. (Vacuity floor: >=3 found.)
-u_reads=$(grep -oE '\.\./(docs|marketplace)/[A-Za-z0-9._/-]+' "$REPO_ROOT/scripts/test-uninstall.sh" | sed 's#^\.\./##' | sort -u)
+u_reads=$(grep -ohE '\.\./(docs|marketplace)/[A-Za-z0-9._/-]+' "$REPO_ROOT/scripts/test-uninstall.sh" "$REPO_ROOT/scripts/test-uninstall-b.sh" "$REPO_ROOT/scripts/tests/testlib-uninstall.sh" | sed 's#^\.\./##' | sort -u)
 u_n=$(grep -c . <<< "$u_reads"); u_miss=""
 staged=$(sed -n '/^STAGE_PATHS=(/,/)$/p' "$REPO_ROOT/scripts/test-install-symmetry-vm.sh" | sed 's/^STAGE_PATHS=(//; s/)$//' | tr -s ' ' '\n')
 for p in $u_reads; do grep -qxF "$p" <<< "$staged" || u_miss="$u_miss $p"; done
 if [ "$u_n" -ge 3 ] && [ -z "$u_miss" ]; then
-  pass "T7o all $u_n repo-root reads of test-uninstall.sh are staged by the driver"
-else fail_case "T7o test-uninstall.sh reads $u_n repo-root path(s); not staged:${u_miss:- none}"; fi
+  pass "T7o all $u_n repo-root reads of the test-uninstall parts are staged by the driver"
+else fail_case "T7o the test-uninstall parts read $u_n repo-root path(s); not staged:${u_miss:- none}"; fi
 
 # luna-upgrade: run against the real template dir (it exists in-repo)
 TMPL_ARGS=()

@@ -484,7 +484,7 @@ scripts/handover/chief-kit/test-ready-check-c.sh	340
 scripts/handover/chief-kit/test-ready-check-d.sh	241
 scripts/handover/chief-kit/test-ready-check-e.sh	295
 scripts/handover/chief-kit/test-ready-check-f.sh	344
-scripts/handover/chief-kit/test-ready-check.sh	285
+scripts/handover/chief-kit/test-ready-check.sh	379
 scripts/handover/chief-kit/test-ready-go.sh	13
 scripts/handover/chief-kit/test-relay-batch.sh	33
 scripts/handover/chief-kit/test-run-suite.sh	0
@@ -494,6 +494,7 @@ scripts/handover/chief-kit/test-station-sync.sh	4
 scripts/handover/chief-kit/test-status-drift.sh	97
 scripts/handover/chief-kit/test-model-check-report.sh	6
 scripts/handover/chief-kit/test-succession-tracker.sh	7
+scripts/handover/chief-kit/test-tick-b.sh	213
 scripts/handover/chief-kit/test-tick-deadwin.sh	10
 scripts/handover/chief-kit/test-tick-fields.sh	285
 scripts/handover/chief-kit/test-tick-holds.sh	8
@@ -501,7 +502,7 @@ scripts/handover/chief-kit/test-tick-nolive.sh	17
 scripts/handover/chief-kit/test-tick-pool-stale.sh	61
 scripts/handover/chief-kit/test-tick-rmqueue.sh	25
 scripts/handover/chief-kit/test-tick-vmspend.sh	7
-scripts/handover/chief-kit/test-tick.sh	265
+scripts/handover/chief-kit/test-tick.sh	229
 scripts/handover/chief-kit/test-tracker.sh	18
 scripts/handover/chief-kit/test-vault-status.sh	3
 scripts/handover/chief-kit/test-verdict-go.sh	1
@@ -556,8 +557,9 @@ scripts/handover/test-librarian-cadence.sh	2
 scripts/handover/test-librarian.sh	4
 scripts/handover/test-merge-fork-pr.sh	15
 scripts/handover/test-merge-forward-check.sh	12
+scripts/handover/test-merge-on-green-b.sh	208
 scripts/handover/test-merge-on-green-static-recheck.sh	31
-scripts/handover/test-merge-on-green.sh	261
+scripts/handover/test-merge-on-green.sh	210
 scripts/handover/test-move-renamed-dirs.sh	0
 scripts/handover/test-pr-merge.sh	20
 scripts/handover/test-pr-open.sh	1
@@ -1103,7 +1105,8 @@ scripts/test-adopt-merge-gate.sh	109
 scripts/test-adopt-only-hooks.sh	2
 scripts/test-adopt-portable-libs.sh	47
 scripts/test-adopt-provenance.sh	195
-scripts/test-adopt-sequences.sh	578
+scripts/test-adopt-sequences-b.sh	238
+scripts/test-adopt-sequences.sh	245
 scripts/test-adopt-user-claude-md.sh	3
 scripts/test-adopt-wizard.sh	302
 scripts/test-adopt.sh	512
@@ -1130,7 +1133,9 @@ scripts/test-e2e-provenance-settings.sh	14
 scripts/test-e2e-symmetry-isolation.sh	17
 scripts/test-e2e-symmetry.sh	10
 scripts/test-handover-link.sh	0
-scripts/test-himmel-doctor.sh	770
+scripts/test-himmel-doctor-b.sh	283
+scripts/test-himmel-doctor-c.sh	312
+scripts/test-himmel-doctor.sh	289
 scripts/test-himmel-update-axis-b.sh	14
 scripts/test-himmel-update-chain.sh	5
 scripts/test-himmel-update-check.sh	20
@@ -1158,6 +1163,7 @@ scripts/test-template-graphify-ignore.sh	4
 scripts/test-template-nostash-hooks.sh	69
 scripts/test-template-verdicts-shellcheck-exclude.sh	0
 scripts/test-tmp-reap.sh	50
+scripts/test-uninstall-b.sh	245
 scripts/test-uninstall-guard.sh	2
 scripts/test-uninstall-home-guard.sh	0
 scripts/test-uninstall-plugins.sh	15
@@ -1170,7 +1176,7 @@ scripts/test-uninstall-real-home-runtime.sh	195
 scripts/test-uninstall-routines.sh	108
 scripts/test-uninstall-standalone.sh	248
 scripts/test-uninstall-ux.sh	113
-scripts/test-uninstall.sh	563
+scripts/test-uninstall.sh	272
 scripts/test-unlanded-work.sh	8
 scripts/test-user-slug-resolve.sh	1
 scripts/test-vm-e2e-mode-guard.sh	1

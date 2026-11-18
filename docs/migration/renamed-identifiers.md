@@ -537,7 +537,7 @@ Distinct matched strings (14): `CADENCE_BANK` (no ruled name), `CADENCE_BANK_` t
 | `scripts/luna/test-pipeline-cadence.sh` | test | 153, 154, 155 |
 | `scripts/statusline/test-usage-cache-contract.sh` | test | 19, 226, 236, 252, 304 |
 | `scripts/statusline/test-usage-cache-producer.sh` | test | 331, 332 |
-| `scripts/test-himmel-doctor.sh` | test | 4198, 4201, 4206 |
+| `scripts/test-himmel-doctor-b.sh` | test | 1051, 1054, 1059 |
 | `scripts/testing/test-claude-mock-turn.sh` | test | 215, 216 |
 
 ### N08 `BANK_LIFT_*` to `USAGE_LIFT_*`
@@ -557,7 +557,8 @@ Distinct matched strings (6): `BANK_LIFT_` to `USAGE_LIFT_` (live), `BANK_LIFT_B
 | `scripts/lib/test-bank-preflight.sh` | test | 30, 934, 936, 953, 954, 957, 962, 965, 972, 974, 976, 977, 980, 981 |
 | `scripts/lib/test-rename-aliases.sh` | test | 42, 112, 113, 114, 115, 116 |
 | `scripts/lib/usage-lift.sh` | code | 19, 29 |
-| `scripts/test-himmel-doctor.sh` | test | 75, 4206 |
+| `scripts/test-himmel-doctor-b.sh` | test | 1059 |
+| `scripts/tests/testlib-himmel-doctor.sh` | test | 74 |
 
 ### N09 `CODEX_BANK_*` to `CODEX_USAGE_*`
 
@@ -584,7 +585,8 @@ Distinct matched strings (10): `CODEX_BANK_` to `CODEX_USAGE_` (live), `CODEX_BA
 | `scripts/lib/test-rename-aliases.sh` | test | 43, 149, 150, 151, 152, 153, 154 |
 | `scripts/telegram/spawn-claudex.test.ts` | test | 1138, 1140, 1143, 1144 |
 | `scripts/telegram/spawn-claudex.ts` | code | 51, 448, 451, 462, 470, 480, 515 |
-| `scripts/test-himmel-doctor.sh` | test | 211, 6564, 6578, 6587, 6590 |
+| `scripts/test-himmel-doctor-c.sh` | test | 346, 360, 369, 372 |
+| `scripts/tests/testlib-himmel-doctor.sh` | test | 210 |
 
 ### N10 `CLAUDEX_BANK_*` to `CLAUDEX_USAGE_*`
 
@@ -872,7 +874,7 @@ Distinct matched strings (69): `-bank-preflight` (no ruled name), `bank-attribut
 | `scripts/telegram/run.ts` | code | 272 |
 | `scripts/telegram/spawn-claudex.ts` | code | 51 |
 | `scripts/test-adopt.sh` | test | 1330, 1362, 1364 |
-| `scripts/test-himmel-doctor.sh` | test | 4204, 4205, 4207 |
+| `scripts/test-himmel-doctor-b.sh` | test | 1057, 1058, 1060 |
 | `scripts/testing/documented-commands.tsv` | config | 9, 44, 71 |
 | `scripts/testing/test-claude-mock-turn.sh` | test | 176, 186, 210, 220, 222 |
 | `scripts/usage/test-usage.sh` | test | 67 |
@@ -1177,7 +1179,7 @@ Distinct matched strings (4): `headed-arm-leg-cwd.sh` to `headed-arm-worker-cwd.
 | `scripts/lint/swallowed-errors-baseline.txt` | config | 94 |
 | `scripts/telegram/break-glass.sh` | code | 380 |
 | `scripts/telegram/round-guard.ts` | code | 293 |
-| `scripts/test-uninstall.sh` | test | 1249, 1272, 1275 |
+| `scripts/test-uninstall.sh` | test | 1079, 1102, 1105 |
 | `scripts/testing/test-mock-consult-sandbox.sh` | test | 10, 52, 59, 80 |
 | `scripts/testing/unwired-hooks-allowlist.txt` | config | 33 |
 | `scripts/uninstall.sh` | code | 3732 |
@@ -1731,8 +1733,9 @@ Distinct matched strings (1): `console-kit` to `chief-kit`
 | `scripts/handover/test-handover-root-dotenv.sh` | test | 67, 94, 97 |
 | `scripts/handover/test-headed-arm.sh` | test | 37, 58, 2205, 2244 |
 | `scripts/handover/test-merge-fork-pr.sh` | test | 4, 17, 283, 284, 290 |
+| `scripts/handover/test-merge-on-green-b.sh` | test | 503, 504, 533 |
 | `scripts/handover/test-merge-on-green-jira-end-state.sh` | test | 123, 177 |
-| `scripts/handover/test-merge-on-green.sh` | test | 68, 258, 259, 265, 3029, 3050, 3051, 4679, 4680, 4709 |
+| `scripts/handover/test-merge-on-green.sh` | test | 68, 258, 259, 265, 3080, 3101, 3102 |
 | `scripts/handover/test-queue-lock.sh` | test | 26 |
 | `scripts/handover/wrap-subtree-check.sh` | code | 50 |
 | `scripts/himmel-doctor.sh` | code | 3769, 3775, 3787, 3792, 4241, 4443, 4458, 4459 |
@@ -1820,7 +1823,7 @@ Distinct matched strings (1): `console-kit` to `chief-kit`
 | `scripts/telegram/console-route.test.ts` | test | 410 |
 | `scripts/telegram/console-route.ts` | code | 86 |
 | `scripts/test-template-verdicts-shellcheck-exclude.sh` | test | 5 |
-| `scripts/test-uninstall.sh` | test | 1263, 1269, 1271, 1272, 1275 |
+| `scripts/test-uninstall.sh` | test | 1093, 1099, 1101, 1102, 1105 |
 | `scripts/testing/documented-commands.tsv` | config | 38, 39, 51, 60, 66, 67, 74, 75, 76, 77, 79 |
 | `scripts/testing/test-mock-consult-sandbox.sh` | test | 80 |
 | `scripts/vm/ci-runner/himmel-ci-runner@.service` | code | 3 |
@@ -2813,7 +2816,7 @@ Distinct matched strings (34): `block-leg-askuserquestion.sh` (no ruled name), `
 | `scripts/handover/test-leg-handoff-threshold-docs.sh` | test | 2 |
 | `scripts/handover/test-leg-resume-brief.sh` | test | 2, 19, 81, 115 |
 | `scripts/handover/test-leg-timeline.sh` | test | 2, 4, 25, 115, 415, 431 |
-| `scripts/handover/test-merge-on-green.sh` | test | 1569, 1596 |
+| `scripts/handover/test-merge-on-green.sh` | test | 1646, 1673 |
 | `scripts/handover/test-template-operator-gated-clause.sh` | test | 40 |
 | `scripts/hermes/parity-measure.py` | code | 37 |
 | `scripts/himmelctl/lib/bypass-flags.json` | config | 302, 456 |
@@ -2980,7 +2983,7 @@ Distinct matched strings (47): `console-2026-10-01.md` (no ruled name), `console
 | `scripts/handover/headed-arm.sh` | code | 529 |
 | `scripts/handover/test-arm-resume.sh` | test | 6088 |
 | `scripts/handover/test-handover-root-dotenv.sh` | test | 96, 109 |
-| `scripts/handover/test-merge-on-green.sh` | test | 3585, 3590 |
+| `scripts/handover/test-merge-on-green.sh` | test | 1166, 1171 |
 | `scripts/handover/test-succession-docs.sh` | test | 24, 254, 338 |
 | `scripts/himmelctl/lib/bypass-flags.json` | config | 55, 57, 87, 89 |
 | `scripts/hooks/block-worker-askuserquestion.sh` | code | 31 |

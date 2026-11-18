@@ -1208,6 +1208,12 @@ else
   check_timeout_2267 "scripts/handover/chief-kit/test-ready-check-g.sh" "600"
   check_timeout_2267 "scripts/test-himmel-doctor.sh" "1200"
   check_timeout_2267 "/repo/scripts/test-himmel-doctor.sh" "1200"
+  check_timeout_2267 "scripts/test-himmel-doctor-b.sh" "1200"
+  check_timeout_2267 "/repo/scripts/test-himmel-doctor-c.sh" "1200"
+  check_timeout_2267 "scripts/test-himmel-doctor-d.sh" "600"
+  check_timeout_2267 "scripts/test-uninstall.sh" "1200"
+  check_timeout_2267 "/repo/scripts/test-uninstall-b.sh" "1200"
+  check_timeout_2267 "scripts/test-uninstall-c.sh" "600"
 
   # Per-hook namespace/runtime inspection measured 1407s alone
   # and 1434s with another suite (full replay, ~6x on CI). PR CI runs the fast
@@ -1322,6 +1328,9 @@ else
   check_os_timeout_2267 Linux "scripts/test-adopt-sequences.sh" "600"
   check_os_timeout_2267 Darwin "scripts/test-adopt-sequences.sh" "1200"
   check_os_timeout_2267 Darwin "/repo/scripts/test-adopt-sequences.sh" "1200"
+  check_os_timeout_2267 Linux "scripts/test-adopt-sequences-b.sh" "600"
+  check_os_timeout_2267 Darwin "scripts/test-adopt-sequences-b.sh" "1200"
+  check_os_timeout_2267 Darwin "/repo/scripts/test-adopt-sequences-b.sh" "1200"
   check_os_timeout_2267 Linux "scripts/test-adopt-features.sh" "1200"
   check_os_timeout_2267 Linux "/repo/scripts/test-adopt-features.sh" "1200"
   check_os_timeout_2267 Darwin "scripts/test-adopt-features.sh" "2400"
@@ -1815,6 +1824,37 @@ else
   fail "22i: slowest shard ${slow22i}s did not beat round-robin's 191s (shard1=${ta22i}s shard2=${tb22i}s)"
 fi
 rm -rf "$sb22i"
+fi
+
+sb22a=$(mktemp -d "${TMPDIR:-/tmp}/rst-case22ia.XXXXXX") || { fail "22i-alone: mktemp failed"; sb22a=""; }
+if [ -n "$sb22a" ]; then
+mk_shard_sandbox "$sb22a" 4
+led22a="$sb22a/durations.tsv"
+{ printf '# suite\tseconds\n'
+  printf '%s/test-s1.sh\t100\n' "$sb22a"
+  printf '%s/test-s2.sh\t100\n' "$sb22a"
+  printf '%s/test-s3.sh\t150\n' "$sb22a"
+  printf '%s/test-s4.sh\t10\n'  "$sb22a"; } > "$led22a"
+deny22a="$sb22a/deny.txt"
+printf '# run alone\n*/test-s1.sh  fixed port\n*/test-s2.sh  tight budget\n' > "$deny22a"
+a22a=$(run_lines "$(SUITE_PARALLEL_DENY="$deny22a" SUITE_DURATIONS="$led22a" bash "$RUNNER" --list --shard 1/2 "$sb22a" 2>&1)")
+b22a=$(run_lines "$(SUITE_PARALLEL_DENY="$deny22a" SUITE_DURATIONS="$led22a" bash "$RUNNER" --list --shard 2/2 "$sb22a" 2>&1)")
+same22a=0
+if grepq "$a22a" -Fx "$sb22a/test-s1.sh" && grepq "$a22a" -Fx "$sb22a/test-s2.sh"; then same22a=1; fi
+if grepq "$b22a" -Fx "$sb22a/test-s1.sh" && grepq "$b22a" -Fx "$sb22a/test-s2.sh"; then same22a=1; fi
+cnt22a=$(printf '%s\n%s\n' "$a22a" "$b22a" | grep -c '/test-s')
+if [ "$same22a" -eq 0 ] && [ "$cnt22a" -eq 4 ]; then
+  pass "22i-alone: two run-alone suites land on different shards, every suite placed once"
+else
+  fail "22i-alone: run-alone suites share a shard or a suite is lost; shard1='$a22a' shard2='$b22a'"
+fi
+o22a=$(SUITE_PARALLEL_DENY="$sb22a/missing.txt" SUITE_DURATIONS="$led22a" bash "$RUNNER" --list --shard 1/2 "$sb22a" 2>&1); rc22a=$?
+if [ "$rc22a" -ne 0 ] && grepq "$o22a" -F 'parallel deny-list'; then
+  pass "22i-alone: an unreadable deny-list refuses the shard"
+else
+  fail "22i-alone: unreadable deny-list rc=$rc22a: $o22a"
+fi
+rm -rf "$sb22a"
 fi
 
 # 22j — a suite the ledger has never heard of is still assigned to EXACTLY one

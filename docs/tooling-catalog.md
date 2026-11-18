@@ -523,7 +523,7 @@ floor on the platform that actually runs the cadence.
 Prints a severity-grouped report (FAIL/WARN/INFO); `--file-issue
 [--repo owner/name]` files ONE deduped consolidated public GitHub issue (resolves
 the repo from `--repo` → `$HIMMEL_DOCTOR_ISSUE_REPO` → github origin). Exit 1 on any
-FAIL. Tests: `scripts/test-himmel-doctor.sh`, `scripts/lib/test-{resolve,run}-node.sh`.
+FAIL. Tests: `scripts/test-himmel-doctor{,-b,-c}.sh` (three parts sharing `scripts/tests/testlib-himmel-doctor.sh`), `scripts/lib/test-{resolve,run}-node.sh`.
 
 ---
 

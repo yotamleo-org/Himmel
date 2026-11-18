@@ -547,7 +547,7 @@ out=$(PATH="$stub15:$PATH" HERMES_HOME="$tmp/checkgw15" update_hermes check 2>&1
 if [ -s "$stub15/systemctl.log" ]; then echo "FAIL: --check invoked systemctl"; cat "$stub15/systemctl.log"; fail=1; else echo "ok: --check -> zero systemctl calls"; fi
 
 # Case 16: apply path, checkout moves, NO systemctl anywhere on PATH (scrub
-# it — a curated symlink PATH, same NOGH trick as test-himmel-doctor.sh,
+# it — a curated symlink PATH,
 # since this station's real systemctl must never run in this suite) → no
 # failure, and the output carries the loud advisory naming the exact
 # restart shape the operator must run by hand.

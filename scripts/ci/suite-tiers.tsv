@@ -461,6 +461,7 @@ scripts/handover/chief-kit/test-status-drift.sh	pr	trust-path
 scripts/handover/chief-kit/test-stuck-scan.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/handover/chief-kit/test-model-check-report.sh	local	behaviour suite, new optional prerequisites (HIMMEL-8276)
 scripts/handover/chief-kit/test-succession-tracker.sh	pr	trust-path
+scripts/handover/chief-kit/test-tick-b.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-tick-busedge.sh	local	new since the audit, behaviour suite
 scripts/handover/chief-kit/test-tick-deadwin.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-tick-fields.sh	local	second half of test-tick.sh (HIMMEL-8813 split), same tier as the half it came from
@@ -531,6 +532,7 @@ scripts/handover/test-librarian-cadence.sh	local	behaviour suite, new in HIMMEL-
 scripts/handover/test-librarian.sh	local	behaviour suite, new in HIMMEL-6915
 scripts/handover/test-merge-fork-pr.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-merge-forward-check.sh	pr	trust-path
+scripts/handover/test-merge-on-green-b.sh	pr	guard
 scripts/handover/test-merge-on-green-jira-end-state.sh	pr	guard
 scripts/handover/test-merge-on-green-static-recheck.sh	pr	guard
 scripts/handover/test-merge-on-green.sh	pr	guard
@@ -1092,6 +1094,7 @@ scripts/test-adopt-merge-gate.sh	pr	guard
 scripts/test-adopt-only-hooks.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-adopt-portable-libs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-adopt-provenance.sh	local	behaviour suite, split from test-adopt-features.sh so no shard is bounded by one suite (HIMMEL-8548)
+scripts/test-adopt-sequences-b.sh	local	behaviour suite, seeded install and uninstall sequences, about 100 s
 scripts/test-adopt-sequences.sh	local	behaviour suite, seeded install and uninstall sequences, about 100 s
 scripts/test-adopt-user-claude-md.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-adopt-wizard.sh	local	behaviour suite, split from test-adopt-features.sh so no shard is bounded by one suite (HIMMEL-8548)
@@ -1120,6 +1123,8 @@ scripts/test-e2e-provenance-settings.sh	local	behaviour suite, 0 catches in the 
 scripts/test-e2e-symmetry-isolation.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-e2e-symmetry.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-handover-link.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/test-himmel-doctor-b.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/test-himmel-doctor-c.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-himmel-doctor.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-himmel-update-axis-b.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-himmel-update-chain.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -1157,6 +1162,7 @@ scripts/test-template-graphify-ignore.sh	pr	guard
 scripts/test-template-nostash-hooks.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-template-verdicts-shellcheck-exclude.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-tmp-reap.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/test-uninstall-b.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-uninstall-guard.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-uninstall-home-guard.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/test-uninstall-plugins.sh	local	behaviour suite, 0 catches in the 400-PR audit window
