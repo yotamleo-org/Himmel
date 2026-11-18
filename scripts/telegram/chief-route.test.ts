@@ -7331,3 +7331,29 @@ test("3f the fold reads every part of the evidence: a member's ledger file, a fr
   const wrong = await f3Group(); await c3Edit(wrong, "spec", text => text.replace(/^Fixture:/m, `Key: ${keys[0]}\nFixture:`));
   expect(await f3Refusal(wrong, keys), "a return naming only the anchor").toBe(C3_KEYS);
 }, S1B);
+
+test("N12 a history file edited in the middle of the run is refused by the final recheck: each of the five earlier-epoch returns of the new-stem group", async () => {
+  const f = await f3Group(); const keys = f.keys as string[]; const baseline = await f3Fold(f, keys);
+  expect(f.earlier).toHaveLength(5);
+  expect(baseline.pins.filter((p: any) => p.role === "history").map((p: any) => p.path).sort(), "the edited paths are exactly the proven history").toEqual([...f.earlier].sort());
+  for (const path of f.earlier) {
+    const kept = readFileSync(path, "utf8");
+    try { expect(await f3Late(f, keys, () => appendFileSync(path, "edited during the run")), path).toBe(`capped-fold: evidence changed or is unreadable: ${path}`); } finally { writeFileSync(path, kept); }
+  }
+  await expect(f3Fold(f, keys), "control: the restored files are accepted again").resolves.toBeDefined();
+}, S1B);
+
+const f3Estimate = { path: "specs/designs/estimate.json", text: '{"median_seq":1,"sigma":0.1,"dod":{"passed":true}}\n' };
+test("3f anchor last: a group whose anchor sorts last among its keys, the shape of the real family, is folded for that anchor in any requested order", async () => {
+  const anchor = "HIMMEL-9899"; const keys = ["HIMMEL-9801", "HIMMEL-9802", "HIMMEL-9803", anchor];
+  expect([...keys].sort().at(-1), "the anchor sorts last, the other fixtures sort it first").toBe(anchor);
+  const specText = `---\ntickets: [${keys.join(", ")}]\n---\n# ${anchor} group\n\nEstimate record: estimate.json\n\nThe contract names every member.\n\n## Alternatives considered\n\n- None better.\n\n## Definition of done\n\n- Fixture verifies.\n\n## Invariants\n\nnone\n`;
+  const issue = (kind: "spec" | "plan", round: number, finding: string) => ({ kind, round, text: `${finding}\n${kind.toUpperCase()} FINDINGS 1\n`, reads: kind === "spec" ? ["spec", f3Estimate] : ["spec", "plan", f3Estimate] });
+  const f = await (await b1Lib()).buildRoundFixture({ scratchRoot: realpathSync(root()), key: anchor, specText, planText: `# ${anchor} plan\n\n- Task 1\n`, declarations: false,
+    returns: [1, 2, 3].flatMap(round => [issue("spec", round, "- **F1** (medium; Fact overlap) the group contract overlaps an owner"), issue("plan", round, "- **P1** (minor) a plan wording note")]) });
+  const proof = await f3Cli(f, { epoch: 0, rounds: [3, 3], carried: [["spec", "F1", "medium"], ["plan", "P1", "minor"]], history: [] }, keys);
+  expect(proof.anchor).toBe(anchor); expect(proof.carried.every((c: any) => c.key === anchor), "every carried finding belongs to the anchor").toBe(true);
+  expect(proof.pins.filter((p: any) => p.role === "member-absence").map((p: any) => p.keys), "the member-absence pin names the other three").toEqual([keys.slice(0, 3)]);
+  expect(JSON.stringify(await f3Fold(f, [...keys].reverse())), "the requested order does not matter").toBe(JSON.stringify(proof));
+  expect(await f3Refusal(f, ["HIMMEL-9801", "HIMMEL-9802", "HIMMEL-9898", anchor]), "a member swapped for another of the same count").toBe(`capped-fold: tickets must declare only HIMMEL-9801, HIMMEL-9802, HIMMEL-9898, ${anchor}`);
+}, S1B);
