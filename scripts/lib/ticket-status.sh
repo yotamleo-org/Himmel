@@ -411,19 +411,24 @@ ts_await_due() {
 # (refused or complete) ends ownership only when the lock is free, the newest marker is absent or
 # an end marker and no live named session works the doc; otherwise the lock and the markers decide.
 ts_worker_state() {
-    _ts_worker_state "$1"
+    _ts_worker_state "$1" ${2+"$2"}
     echo "$TS_WORKER_STATE"
 }
 
-# _ts_worker_state <doc> — ts_worker_state without the subshell: sets
+# _ts_worker_state <doc> [<disposition>] — ts_worker_state without the subshell: sets
 # TS_WORKER_STATE and TS_LOCK_HELD (yes | no | "" when the lock was not read) and TS_LOCK_DEAD
 # (yes: the lock answered rc 12 with status STALE-DEAD; no: rc 12 with any other status; "" otherwise).
+# A caller that has already read the doc's disposition (fleet_runtime.py WorkerStates, one read for a whole run)
+# passes it as the JSON word `disposition` prints; only such a word is taken, anything else is read here.
 _ts_worker_state() {
     local marker out rc hb hb_epoch age=0 warn
     TS_LOCK_HELD="" TS_LOCK_DEAD=""
     [ -n "$1" ] || { TS_WORKER_STATE=unknown; return 0; }
     local attempt_protected terminal=""
-    attempt_protected=$(python3 -I "$_TS_LIB_DIR/fleet_runtime.py" disposition --doc "$1") || attempt_protected='"unknown"'
+    case "${2-}" in
+        '"pending"'|'"committed"'|'"unknown"'|'"launched"'|'"refused"'|'"complete"'|'"legacy"') attempt_protected=$2 ;;
+        *) attempt_protected=$(python3 -I "$_TS_LIB_DIR/fleet_runtime.py" disposition --doc "$1") || attempt_protected='"unknown"' ;;
+    esac
     case "$attempt_protected" in
         '"pending"'|'"committed"'|'"unknown"') TS_WORKER_STATE=unknown; return 0 ;;
         '"refused"'|'"complete"') terminal=yes ;; # an ended attempt's receipt: it ends ownership only when the lock and the markers agree
