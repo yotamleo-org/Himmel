@@ -53,6 +53,7 @@ case "$A" in
   "api repos/o/r/issues/"*"/events"*) f events.json; exit 0 ;;
   "api repos/o/r/issues/"*"/labels"*) f labels.json; exit 0 ;;
   "api repos/o/r/issues/"*"/comments"*) [ -f "$S/comments-fail" ] && exit 1; f comments.json; exit 0 ;;
+  "api repos/o/r/actions/runs"*) [ -f "$S/runs-fail" ] && exit 1; f runs.json '{"workflow_runs":[]}'; exit 0 ;;
   "api repos/o/r/commits/"*"/check-runs"*) f checks.json '{"check_runs":[]}'; exit 0 ;;
   "api repos/o/r/commits/"*"/statuses"*) : > "$S/gate-began"; f statuses.json; exit 0 ;;
   "api repos/o/r/commits/"*) f commit.json '{}'; exit 0 ;;
@@ -134,6 +135,8 @@ checks() { # checks <ci-quick conclusion|pending|none> [extra check-runs json ar
 }
 thread() { printf '{"isResolved":%s,"path":"%s","line":%s,"comments":{"nodes":[{"author":{"login":"coderabbitai"}}]}}' "$1" "$2" "$3"; }
 threads() { printf '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[%s]}}}}}\n' "$(IFS=,; echo "$*")" > "$S/threads.json"; }
+# runs <event> <check_suite_id> — one workflow run at the head, of that event and check suite
+runs() { jq -nc --arg e "$1" --argjson id "$2" '{workflow_runs: [{id: 1, event: $e, check_suite_id: $id}]}' > "$S/runs.json"; }
 
 # reset — the clean default: switch on, open non-fork PR at HEAD1, cheap green,
 # no heavy job, no release event, CodeRabbit completed, no threads, both critics ok.
@@ -210,7 +213,7 @@ reset; jq -c '. + [{event:"labeled",label:{name:"ci:go"},created_at:"2026-10-23T
 eq "$(deletes)/$(posts)" 0/0 "RL8 manual ci:go at the head: no pair"
 eq "$(ledger_lines)" 0 "RL8 manual ci:go: no ledger line (it is a manual release)"
 # already released by a heavy job at the head (a ci.yml pull_request run started one).
-reset; checks success '[{"name":"bun-suites","status":"completed","conclusion":"success","completed_at":"2026-10-23T10:20:00Z"}]'; run released-by-heavy-job
+reset; checks success '[{"name":"bun-suites","status":"completed","conclusion":"success","completed_at":"2026-10-23T10:20:00Z","check_suite":{"id":7}}]'; runs pull_request 7; run released-by-heavy-job
 eq "$(deletes)/$(posts)" 0/0 "heavy job already ran at the head: no pair"
 # ...a SKIPPED heavy job is not a release.
 reset; checks success '[{"name":"bun-suites","status":"completed","conclusion":"skipped","completed_at":"2026-10-23T10:01:00Z"}]'; run heavy-skipped-not-released
@@ -219,8 +222,23 @@ eq "$(deletes)/$(posts)" 1/1 "skipped heavy job is not a release: one pair"
 reset; checks success '[{"name":"bun-suites","status":"queued","conclusion":null,"completed_at":null}]'; run heavy-queued-not-released
 eq "$(deletes)/$(posts)" 1/1 "queued heavy job is not a release: one pair"
 # ...an in-progress one is.
-reset; checks success '[{"name":"bun-suites","status":"in_progress","conclusion":null,"completed_at":null}]'; run heavy-running-released
+reset; checks success '[{"name":"bun-suites","status":"in_progress","conclusion":null,"completed_at":null,"check_suite":{"id":7}}]'; runs pull_request 7; run heavy-running-released
 eq "$(deletes)/$(posts)" 0/0 "in-progress heavy job already ran at the head: no pair"
+# heavy jobs of a workflow_dispatch verify run at the head are not a release.
+reset; checks success '[{"name":"shell-unit-shard (ubuntu-latest, 1)","status":"completed","conclusion":"success","completed_at":"2026-10-23T10:20:00Z","check_suite":{"id":9}}]'; runs workflow_dispatch 9; run heavy-dispatch-not-released
+eq "$(deletes)/$(posts)" 1/1 "heavy jobs of a workflow_dispatch run at the head are not a release: one pair"
+has "$S/calls.log" 'actions/runs\?head_sha=a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0&event=pull_request' "heavy job at the head: the head's pull_request runs are read"
+# ...and a pull_request heavy job beside the dispatch one still is (negative control).
+reset; checks success '[{"name":"shell-unit-shard (ubuntu-latest, 1)","status":"completed","conclusion":"success","completed_at":"2026-10-23T10:20:00Z","check_suite":{"id":9}},{"name":"shell-unit (ubuntu-latest)","status":"completed","conclusion":"success","completed_at":"2026-10-23T10:30:00Z","check_suite":{"id":7}}]'
+jq -nc '{workflow_runs: [{id: 1, event: "workflow_dispatch", check_suite_id: 9}, {id: 2, event: "pull_request", check_suite_id: 7}]}' > "$S/runs.json"; run heavy-pr-beside-dispatch
+eq "$(deletes)/$(posts)" 0/0 "a pull_request heavy job beside a dispatch one is a release: no pair"
+# ...an unreadable workflow-run list holds degraded instead of guessing.
+reset; checks success '[{"name":"bun-suites","status":"completed","conclusion":"success","completed_at":"2026-10-23T10:20:00Z","check_suite":{"id":7}}]'; : > "$S/runs-fail"; run heavy-runs-unreadable
+eq "$RC/$(deletes)/$(posts)" 3/0/0 "unreadable workflow runs with a heavy job: rc 3, no pair"
+has "$TMP/out-heavy-runs-unreadable" '^CR-FIRST HOLD degraded \(cannot read workflow runs at ' "unreadable workflow runs: degraded HOLD line"
+# ...and no heavy job at the head reads no workflow runs at all.
+reset; run no-heavy-no-runs-read
+hasnt "$S/calls.log" 'actions/runs' "no heavy job at the head: no workflow-run read"
 # a label event older than the head's own checks belongs to an earlier life of the commit.
 reset; jq -c '. + [{event:"labeled",label:{name:"ci:go"},created_at:"2026-10-23T10:05:00Z"}]' "$S/events.json" > "$S/e.tmp" && mv "$S/e.tmp" "$S/events.json"
 checks success '[{"name":"lint","status":"completed","conclusion":"success","started_at":"2026-10-23T10:08:00Z","completed_at":"2026-10-23T10:08:30Z"}]'; run old-label-before-head-checks
