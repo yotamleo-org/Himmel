@@ -1957,9 +1957,11 @@ tab_launch() {
     "$QDBUS" "org.kde.konsole-$wpid" "/Sessions/$sid" setTabTitleFormat 1 "$NAME" >> "$LOG" 2>&1
     # The leading space keeps the line out of the tab shell's history.
     if ! "$QDBUS" "org.kde.konsole-$wpid" "/Sessions/$sid" runCommand " exec bash $tab_sh" >> "$LOG" 2>&1; then
+        # The tab exists and the typed line may still have been delivered: a second window under this attempt could start a
+        # second worker. Keep the tab as this launch's window; the post-launch poll below confirms a worker or reports the
+        # launch unconfirmed (exit 7), which a managed attempt records as unknown and never retries blindly.
         rm -f "$tab_sh"
-        echo "$(date +%F_%T) WARN: tab launch for $NAME failed (runCommand on /Sessions/$sid) - opening its own window" >> "$LOG"
-        return 1
+        echo "$(date +%F_%T) WARN: tab launch for $NAME is ambiguous (runCommand on /Sessions/$sid failed after the tab opened) - not opening a second window" >> "$LOG"
     fi
     KPID="$wpid"
     TAB_SESSION="$sid"
