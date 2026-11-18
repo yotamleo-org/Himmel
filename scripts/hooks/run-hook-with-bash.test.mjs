@@ -685,6 +685,7 @@ test('MUST_RUN_CHAIN_MEMBERS covers exactly the deny-capable security guards', (
       'guard-judge-write-scope.sh',
       'guard-memory-capture.sh',
       'guard-pr-check-literal.sh',
+      'guard-readiness-tools.sh',
       'guard-relay-writes.sh',
     ].sort(),
   );
@@ -3349,4 +3350,291 @@ test('run rows never land in the project log from a test-shaped call', () => {
       rmSync(project, { recursive: true, force: true });
     }
   });
+});
+
+// ---- readiness residuals ------------------------------------------------------
+//
+// guard-readiness-tools.sh speaks one protocol: exit 0 with NO stdout (allow) or exit 2 (deny). The runner must turn
+// everything else into a refusal for that basename, in a chain and as a lone `--optional --fail-closed-when
+// HIMMEL_READINESS=1` hook, without touching how any other guard (ordinary or judge) is treated. The fixtures below
+// are named by the exact guard basename, as the MUST_RUN_CHAIN_MEMBERS fixtures above are; the two "real guard" rows
+// drive the shipped script. A supervisor killed by SIGKILL is a platform gate no child-status row here can close.
+const READINESS_GUARD = 'guard-readiness-tools.sh';
+const READINESS_DENY =
+  '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"readiness tool-deny: not-allowed (fixture)"}}';
+const READINESS_BODIES = {
+  allow: 'exit 0',
+  deny: `printf '%s\\n' '${READINESS_DENY}'; exit 2`,
+  rc1: `printf 'boom\\n' >&2; exit 1`,
+  rc3: `printf 'boom\\n' >&2; exit 3`,
+  garbage: `printf 'garbage'; exit 0`,
+  allowJson: `printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'; exit 0`,
+  sigkill: 'kill -9 "$$"',
+  hang: 'sleep 3',
+};
+const READINESS_LONE_ARGS = ['--optional', '--fail-closed-when', 'HIMMEL_READINESS=1'];
+
+// A marker the caller did not ask for must never leak in from the suite's own environment.
+function readinessEnv(extra = {}) {
+  const env = { ...process.env, ...extra };
+  if (!('HIMMEL_READINESS' in extra)) delete env.HIMMEL_READINESS;
+  return env;
+}
+
+function readinessMember(dir, name, body) {
+  writeFileSync(join(dir, name), `#!/usr/bin/env bash\n: > "$(dirname "$0")/ran-${name}"\n${body}\n`);
+  chmodSync(join(dir, name), 0o755);
+}
+
+// The guard (or a control named `name`) first in a chain, the allow.sh fixture behind it: allow.sh runs only when the
+// chain moved past the first member.
+function readinessChainRun(body, env = {}, name = READINESS_GUARD) {
+  let out;
+  withChain((dir) => {
+    readinessMember(dir, name, body);
+    const { result, runRows } = runLogged(dir, [name, 'allow.sh'], {
+      env: { RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS: '5000', ...env },
+    });
+    const members = runRows.length ? runRows[0].members : [];
+    out = { result, member: members[0], guardRan: ran(dir, name), laterRan: ran(dir, 'allow.sh') };
+  });
+  return out;
+}
+
+function readinessLoneRun(body, env = {}, { name = READINESS_GUARD, args = READINESS_LONE_ARGS } = {}) {
+  const dir = makeTmpDir('hook-bash-readiness-lone-');
+  try {
+    readinessMember(dir, name, body);
+    return spawnSync(process.execPath, [LAUNCHER, ...args, join(dir, name)], {
+      encoding: 'utf8',
+      input: PAYLOAD,
+      env: readinessEnv(env),
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('readiness residuals: the guard basename is registered with the must-run members', () => {
+  assert.equal(MUST_RUN_CHAIN_MEMBERS.has(READINESS_GUARD), true);
+});
+
+test('readiness residuals: chain delivery passes the valid allow and relays the valid deny unchanged', () => {
+  const allow = readinessChainRun(READINESS_BODIES.allow, { HIMMEL_READINESS: '1' });
+  assert.equal(allow.result.status, 0, allow.result.stderr);
+  assert.equal(allow.result.stderr, '');
+  assert.equal(allow.laterRan, true, 'a valid allow must let the chain reach the next member');
+  assert.equal(allow.member.outcome, 'allow');
+
+  const deny = readinessChainRun(READINESS_BODIES.deny, { HIMMEL_READINESS: '1' });
+  assert.equal(deny.result.status, 2);
+  assert.equal(deny.result.stdout, `${READINESS_DENY}\n`);
+  assert.equal(deny.laterRan, false, 'a valid deny ends the chain');
+  assert.equal(deny.member.outcome, 'deny');
+  assert.equal(deny.member.reason, 'RULE');
+});
+
+for (const [label, body, code] of [['rc1', READINESS_BODIES.rc1, 1], ['rc3', READINESS_BODIES.rc3, 3]]) {
+  test(`readiness residuals: chain delivery denies a guard that exits ${code} instead of carrying it as non-blocking`, () => {
+    const run = readinessChainRun(body, { HIMMEL_READINESS: '1' });
+    assert.equal(run.result.status, 2, `${label}: ${run.result.stderr}`);
+    assert.match(run.result.stderr, new RegExp(`DENY ${READINESS_GUARD.replace(/\./g, '\\.')} \\(rc=${code}\\)`));
+    assert.equal(run.laterRan, false, 'the next member must not decide in the guard\'s place');
+    assert.equal(run.member.outcome, 'deny');
+    assert.equal(run.member.reason, 'CRASH');
+  });
+}
+
+for (const [label, body] of [['plain text', READINESS_BODIES.garbage], ['a JSON allow envelope', READINESS_BODIES.allowJson]]) {
+  test(`readiness residuals: chain delivery denies ${label} on exit 0`, () => {
+    const run = readinessChainRun(body, { HIMMEL_READINESS: '1' });
+    assert.equal(run.result.status, 2, run.result.stderr);
+    assert.match(run.result.stderr, /DENY guard-readiness-tools\.sh \(output on exit 0\)/);
+    assert.equal(run.result.stdout, '', 'the malformed output is not relayed as a decision');
+    assert.equal(run.laterRan, false);
+    assert.equal(run.member.outcome, 'deny');
+    assert.equal(run.member.reason, 'PROTOCOL');
+  });
+}
+
+test('readiness residuals: chain delivery denies a guard killed by a signal and names it', () => {
+  const run = readinessChainRun(READINESS_BODIES.sigkill, { HIMMEL_READINESS: '1' });
+  assert.equal(run.result.status, 2, run.result.stderr);
+  assert.match(run.result.stderr, /DENY guard-readiness-tools\.sh \(signal SIGKILL\)/);
+  assert.equal(run.laterRan, false);
+  assert.equal(run.member.reason, 'CRASH');
+});
+
+test('readiness residuals: chain delivery denies a guard that outruns its window instead of skipping it', () => {
+  const run = readinessChainRun(READINESS_BODIES.hang, { HIMMEL_READINESS: '1', RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS: '500' });
+  assert.equal(run.result.status, 2, run.result.stderr);
+  assert.match(
+    run.result.stderr,
+    /DENY guard-readiness-tools\.sh \(budget=500ms elapsed=\d+ms\) — must-run guard did not evaluate this call; failing closed\./,
+  );
+  assert.equal(run.laterRan, false, 'a timed-out readiness guard must not be skipped past');
+  assert.equal(run.member.outcome, 'deny');
+  assert.equal(run.member.reason, 'ETIMEDOUT');
+});
+
+test('readiness residuals: chain delivery denies a guard the entry deadline leaves no safe window for', () => {
+  const run = readinessChainRun(READINESS_BODIES.allow, {
+    HIMMEL_READINESS: '1',
+    RUN_HOOK_CHAIN_ENTRY_TIMEOUT_MS: '1000',
+    RUN_HOOK_CHAIN_ENTRY_SAFETY_MARGIN_MS: '900',
+  });
+  assert.equal(run.result.status, 2, run.result.stderr);
+  assert.match(run.result.stderr, /DENY guard-readiness-tools\.sh \(entry deadline exhausted\)/);
+  assert.equal(run.guardRan, false, 'denied before it was spawned');
+  assert.equal(run.member.reason, 'ENTRY_DEADLINE');
+});
+
+test('readiness residuals: chain delivery refuses a chain whose guard file is missing', () => {
+  withChain((dir) => {
+    const result = runChain(dir, [join(dir, 'nowhere', READINESS_GUARD), 'allow.sh']);
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /chain member not found: .*guard-readiness-tools\.sh; refusing to run chain/);
+    assert.equal(ran(dir, 'allow.sh'), false);
+  });
+});
+
+test('readiness residuals: the chain verdict does not depend on the readiness marker', () => {
+  for (const [label, body, pattern] of [
+    ['rc1', READINESS_BODIES.rc1, /DENY guard-readiness-tools\.sh \(rc=1\)/],
+    ['garbage', READINESS_BODIES.garbage, /DENY guard-readiness-tools\.sh \(output on exit 0\)/],
+  ]) {
+    const run = readinessChainRun(body);
+    assert.equal(run.result.status, 2, `${label}: ${run.result.stderr}`);
+    assert.match(run.result.stderr, pattern);
+  }
+  const allow = readinessChainRun(READINESS_BODIES.allow);
+  assert.equal(allow.result.status, 0, allow.result.stderr);
+});
+
+test('readiness residuals: lone delivery passes the valid allow and relays the valid deny unchanged', () => {
+  const allow = readinessLoneRun(READINESS_BODIES.allow, { HIMMEL_READINESS: '1' });
+  assert.equal(allow.status, 0, allow.stderr);
+  assert.equal(allow.stdout, '');
+  assert.equal(allow.stderr, '');
+
+  const deny = readinessLoneRun(READINESS_BODIES.deny, { HIMMEL_READINESS: '1' });
+  assert.equal(deny.status, 2);
+  assert.equal(deny.stdout, `${READINESS_DENY}\n`);
+});
+
+for (const [label, body, code] of [['rc1', READINESS_BODIES.rc1, 1], ['rc3', READINESS_BODIES.rc3, 3]]) {
+  test(`readiness residuals: lone delivery denies a guard that exits ${code} in the readiness context only`, () => {
+    const ready = readinessLoneRun(body, { HIMMEL_READINESS: '1' });
+    assert.equal(ready.status, 2, `${label}: ${ready.stderr}`);
+    assert.match(ready.stderr, new RegExp(`DENY ${READINESS_GUARD.replace(/\./g, '\\.')} \\(rc=${code}\\)`));
+    const generic = readinessLoneRun(body, {});
+    assert.equal(generic.status, code, 'outside the readiness context the exit code passes through as before');
+  });
+}
+
+test('readiness residuals: lone delivery denies output on exit 0 in the readiness context only', () => {
+  const ready = readinessLoneRun(READINESS_BODIES.garbage, { HIMMEL_READINESS: '1' });
+  assert.equal(ready.status, 2, ready.stderr);
+  assert.match(ready.stderr, /DENY guard-readiness-tools\.sh \(output on exit 0\)/);
+  assert.equal(ready.stdout, '', 'the malformed output is not passed on');
+  const envelope = readinessLoneRun(READINESS_BODIES.allowJson, { HIMMEL_READINESS: '1' });
+  assert.equal(envelope.status, 2, envelope.stderr);
+  const generic = readinessLoneRun(READINESS_BODIES.garbage, {});
+  assert.equal(generic.status, 0, generic.stderr);
+  assert.equal(generic.stdout, 'garbage', 'outside the readiness context the output streams through as before');
+});
+
+test('readiness residuals: lone delivery treats any marker value other than exactly 1 as the generic context', () => {
+  const missing = join(tmpdir(), 'nowhere', READINESS_GUARD);
+  for (const value of ['0', '', 'yes', '01', '1 ']) {
+    const rc1 = readinessLoneRun(READINESS_BODIES.rc1, { HIMMEL_READINESS: value });
+    assert.equal(rc1.status, 1, `HIMMEL_READINESS=${JSON.stringify(value)}: ${rc1.stderr}`);
+    const garbage = readinessLoneRun(READINESS_BODIES.garbage, { HIMMEL_READINESS: value });
+    assert.equal(garbage.status, 0, `HIMMEL_READINESS=${JSON.stringify(value)}: ${garbage.stderr}`);
+    assert.equal(garbage.stdout, 'garbage');
+    const gone = spawnSync(process.execPath, [LAUNCHER, ...READINESS_LONE_ARGS, missing], {
+      encoding: 'utf8',
+      env: readinessEnv({ HIMMEL_READINESS: value }),
+    });
+    assert.equal(gone.status, 0, `HIMMEL_READINESS=${JSON.stringify(value)}: ${gone.stderr}`);
+  }
+});
+
+test('readiness residuals: lone delivery denies a guard killed by a signal', () => {
+  const ready = readinessLoneRun(READINESS_BODIES.sigkill, { HIMMEL_READINESS: '1' });
+  assert.equal(ready.status, 2, ready.stderr);
+});
+
+test('readiness residuals: lone delivery keeps the parsed condition for a missing guard', () => {
+  const missing = join(tmpdir(), 'nowhere', READINESS_GUARD);
+  const ready = spawnSync(process.execPath, [LAUNCHER, ...READINESS_LONE_ARGS, missing], {
+    encoding: 'utf8',
+    env: readinessEnv({ HIMMEL_READINESS: '1' }),
+  });
+  assert.equal(ready.status, 2);
+  assert.equal(ready.stderr, 'guard-readiness-tools: hook script missing while HIMMEL_READINESS=1 (stale checkout?) - failing closed\n');
+  const generic = spawnSync(process.execPath, [LAUNCHER, ...READINESS_LONE_ARGS, missing], {
+    encoding: 'utf8',
+    env: readinessEnv({}),
+  });
+  assert.equal(generic.status, 0, generic.stderr);
+});
+
+// Ordinary and judge policy is untouched: the strictness is keyed to the guard's own basename, never to the
+// marker, the optional flag or must-run status.
+test('readiness residuals: an ordinary guard keeps the non-blocking rc1 and the plain stdout in a chain and alone', () => {
+  const chainRc1 = readinessChainRun(READINESS_BODIES.rc1, { HIMMEL_READINESS: '1' }, 'exit1-ordinary.sh');
+  assert.notEqual(chainRc1.result.status, 2, chainRc1.result.stderr);
+  assert.equal(chainRc1.laterRan, true, 'an ordinary guard\'s rc1 stays a carried non-blocking error');
+  assert.equal(chainRc1.member.outcome, 'error');
+  assert.equal(chainRc1.member.reason, 'rc=1');
+  const chainGarbage = readinessChainRun(READINESS_BODIES.garbage, { HIMMEL_READINESS: '1' }, 'plain-ordinary.sh');
+  assert.equal(chainGarbage.result.status, 0, chainGarbage.result.stderr);
+  assert.equal(chainGarbage.laterRan, true);
+  const loneRc1 = readinessLoneRun(READINESS_BODIES.rc1, { HIMMEL_READINESS: '1' }, { name: 'exit1-ordinary.sh' });
+  assert.equal(loneRc1.status, 1, loneRc1.stderr);
+  const loneGarbage = readinessLoneRun(READINESS_BODIES.garbage, { HIMMEL_READINESS: '1' }, { name: 'plain-ordinary.sh' });
+  assert.equal(loneGarbage.status, 0, loneGarbage.stderr);
+  assert.equal(loneGarbage.stdout, 'garbage');
+});
+
+test('readiness residuals: the judge guards keep their own policy in a chain and alone', () => {
+  const scope = readinessChainRun(READINESS_BODIES.rc1, { HIMMEL_READINESS: '1' }, 'guard-judge-write-scope.sh');
+  assert.equal(scope.result.status, 2, scope.result.stderr);
+  assert.match(scope.result.stderr, /DENY guard-judge-write-scope\.sh \(rc=1\)/);
+  const scopeGarbage = readinessChainRun(READINESS_BODIES.garbage, { HIMMEL_READINESS: '1' }, 'guard-judge-write-scope.sh');
+  assert.equal(scopeGarbage.result.status, 0, 'must-run alone does not make plain stdout on exit 0 a refusal');
+  assert.equal(scopeGarbage.laterRan, true);
+  const loneRc1 = readinessLoneRun(READINESS_BODIES.rc1, { HIMMEL_READINESS: '1' }, { name: 'guard-judge-writes.sh' });
+  assert.equal(loneRc1.status, 1, loneRc1.stderr);
+  const loneGarbage = readinessLoneRun(READINESS_BODIES.garbage, { HIMMEL_READINESS: '1' }, { name: 'guard-judge-writes.sh' });
+  assert.equal(loneGarbage.status, 0, loneGarbage.stderr);
+  assert.equal(loneGarbage.stdout, 'garbage');
+  const plainLone = readinessLoneRun(READINESS_BODIES.rc1, { HIMMEL_WORKER: '1' }, {
+    name: 'block-worker-write-fence.sh',
+    args: ['--optional', '--fail-closed-when', 'HIMMEL_WORKER=1'],
+  });
+  assert.equal(plainLone.status, 1, 'another guard under its own --fail-closed-when keeps the passthrough');
+});
+
+// The shipped guard through the runner: the fixtures above stand for exactly this protocol.
+test('readiness residuals: the real guard is allowed for its two tools and denied for others, in a chain and alone', () => {
+  const real = join(HERE, READINESS_GUARD);
+  assert.ok(existsSync(real), 'the guard script ships next to the runner');
+  assert.ok((process.env.PATH || '').split(':').some((d) => existsSync(join(d, 'jq'))), 'the guard needs jq on PATH');
+  const call = (args, tool) => spawnSync(process.execPath, [LAUNCHER, ...args, real], {
+    encoding: 'utf8',
+    input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: {} }),
+    env: readinessEnv({ HIMMEL_READINESS: '1' }),
+  });
+  for (const args of [['--chain'], READINESS_LONE_ARGS]) {
+    for (const tool of ['mcp__readiness__inspect', 'mcp__readiness__act']) {
+      const allow = call(args, tool);
+      assert.equal(allow.status, 0, `${args[0]} ${tool}: ${allow.stderr}`);
+      assert.equal(allow.stdout, '');
+    }
+    const deny = call(args, 'Bash');
+    assert.equal(deny.status, 2, `${args[0]} Bash`);
+    assert.match(deny.stdout, /readiness tool-deny: not-allowed/);
+  }
 });
