@@ -96,7 +96,7 @@ export function returnDirectories(key: string, spec: string, plan: string, expec
   return [...new Set([dirname(spec), dirname(plan), ...expected.map(r => dirname(r.path)), ...[...SIGNATURE_DIRS, key].map(d => join(specs, d))])];
 }
 
-export function checkLatestReturns(directory: string, names: readonly string[], key: string, expected: [ReturnPin, ReturnPin]): void {
+export function checkLatestReturns(directory: string, names: readonly string[], key: string, expected: [ReturnPin, ReturnPin], history?: ReadonlySet<string>): void {
   for (const name of names) {
     const normal = CRITIC_FILE.exec(name); const legacy = CRITIC_NAME.exec(name);
     const stem = normal?.[1] ?? legacy?.[1];
@@ -104,8 +104,28 @@ export function checkLatestReturns(directory: string, names: readonly string[], 
     const kind = (normal?.[2] ?? normal?.[5] ?? legacy?.[2]) as Kind | undefined;
     const round = Number(normal?.[3] ?? normal?.[4] ?? legacy?.[3]);
     const candidates = kind ? [expected[kind === 'spec' ? 0 : 1]] : expected;
-    if (candidates.some(current => round >= current.round && join(directory, name) !== current.path)) throw new Error(`capped-fold: ambiguous or unaccounted latest return: ${join(directory, name)}`);
+    const path = join(directory, name);
+    if (candidates.some(current => round >= current.round && path !== current.path && !history?.has(path))) throw new Error(`capped-fold: ambiguous or unaccounted latest return: ${path}`);
   }
+}
+
+const LEDGER_FILE_SUFFIX = '.jsonl';
+export const ledgerDirOf = (specs: string): string => join(specs, 'ledgers', 'spec-rounds');
+export const ledgerEntryNames = (key: string): { file: string; folder: string; lock: string } =>
+  ({ file: `${key}${LEDGER_FILE_SUFFIX}`, folder: key, lock: `${key}${LEDGER_FILE_SUFFIX}.lock` });
+export const ledgerKeyOfFile = (name: string): string | null =>
+  name.endsWith(LEDGER_FILE_SUFFIX) ? name.slice(0, -LEDGER_FILE_SUFFIX.length) : null;
+
+export function parseManifest(text: string): { keys: Record<string, unknown> } | null {
+  let manifest: { keys?: unknown } | null;
+  try { manifest = JSON.parse(text); } catch { return null; }
+  if (!manifest || typeof manifest.keys !== 'object' || manifest.keys === null || Array.isArray(manifest.keys)) return null;
+  return manifest as { keys: Record<string, unknown> };
+}
+
+export function memberLedgerState(listing: readonly string[], manifestKeys: readonly string[], members: readonly string[]): { present: string[] } {
+  const listed = new Set(listing); const manifested = new Set(manifestKeys);
+  return { present: members.filter(key => { const names = ledgerEntryNames(key); return listed.has(names.file) || listed.has(names.folder) || manifested.has(key); }) };
 }
 
 export const PINNED_READ_VERSION = 1;
@@ -126,6 +146,15 @@ export type CappedFoldProof = {
   schema: 1; reader_version: 1; mode: 'capped-carry'; key: string; epoch: number;
   spec: FilePin; plan: FilePin; returns: [ReturnPin, ReturnPin]; pins: EvidencePin[]; carried: Carried[];
 };
+export const LEDGER_READ_VERSION = 2;
+export type HistoryPin = FilePin & { role: 'history' };
+export type MemberAbsencePin = { role: 'member-absence'; directory: string; keys: string[] };
+export type LedgerEvidencePin = EvidencePin | HistoryPin | MemberAbsencePin;
+export type CappedLedgerProof = {
+  schema: 2; reader_version: 2; mode: 'capped-carry-ledger'; anchor: string; keys: string[]; epoch: number;
+  spec: FilePin; plan: FilePin; returns: [ReturnPin, ReturnPin]; pins: LedgerEvidencePin[]; carried: Carried[];
+};
+export type AnyCappedProof = CappedFoldProof | CappedLedgerProof;
 
 function proofAssert(ok: unknown): asserts ok {
   if (!ok) throw new Error('invalid capped-fold proof');
@@ -210,8 +239,146 @@ export function validateCappedFoldProofShape(value: unknown): CappedFoldProof {
   return value as CappedFoldProof;
 }
 
+const TICKET_KEY = /^[A-Z][A-Z0-9]*-[0-9]+$/;
+const ticketKey = (value: unknown): value is string => typeof value === 'string' && TICKET_KEY.test(value);
+
+export function validateCappedLedgerProofShape(value: unknown): CappedLedgerProof {
+  const p = fields(value, ['schema', 'reader_version', 'mode', 'anchor', 'keys', 'epoch', 'spec', 'plan', 'returns', 'pins', 'carried']);
+  proofAssert(p.schema === 2 && p.reader_version === LEDGER_READ_VERSION && p.mode === 'capped-carry-ledger');
+  proofAssert(ticketKey(p.anchor) && count(p.epoch));
+  boundedArray(p.keys);
+  const keys = p.keys;
+  proofAssert(keys.length >= 1 && keys.every((k, i) => ticketKey(k) && (i === 0 || (keys[i - 1] as string) < k)) && keys.includes(p.anchor));
+  fileShape(fields(p.spec, ['path', 'sha256'])); fileShape(fields(p.plan, ['path', 'sha256']));
+  proofAssert(Array.isArray(p.returns) && p.returns.length === 2);
+  const returns = p.returns.map((v, i) => {
+    const r = fields(v, ['path', 'sha256', 'kind', 'round', 'return_sha', 'residuals']);
+    fileShape(r);
+    proofAssert(r.kind === (i === 0 ? 'spec' : 'plan') && count(r.round, 1) && hash(r.return_sha) && count(r.residuals));
+    return r as ReturnPin;
+  });
+  boundedArray(p.pins); boundedArray(p.carried);
+  const files = new Map<string, FilePin & { role: string }>(); const selections: DecisionSelectionPin[] = []; const absences: MemberAbsencePin[] = [];
+  for (const pin of p.pins) {
+    proofAssert(pin !== null && typeof pin === 'object');
+    const role = (pin as Record<string, unknown>).role;
+    if (role === 'decision-selection') {
+      const s = fields(pin, ['role', 'directory', 'decision', 'names']);
+      proofAssert(pathShape(s.directory) && typeof s.decision === 'string');
+      boundedArray(s.names);
+      proofAssert(s.names.length === 1 && s.names.every(n => typeof n === 'string' && basename(n) === n && !n.includes('\0')));
+      const names = s.names as string[];
+      let matches: string[];
+      try { matches = selectDecisionNames(names, s.decision); } catch { throw new Error('invalid capped-fold proof'); }
+      proofAssert(matches.length === names.length && matches.every((n, i) => n === names[i]));
+      selections.push(s as DecisionSelectionPin);
+    } else if (role === 'member-absence') {
+      const a = fields(pin, ['role', 'directory', 'keys']);
+      boundedArray(a.keys);
+      proofAssert(pathShape(a.directory) && a.keys.every(k => typeof k === 'string'));
+      absences.push(a as MemberAbsencePin);
+    } else {
+      proofAssert(typeof role === 'string' && ['ledger', 'manifest', 'return', 'artifact', 'snapshot', 'decision', 'history'].includes(role));
+      const f = fields(pin, role === 'decision' ? ['role', 'path', 'sha256', 'mtime_ms'] : ['role', 'path', 'sha256']);
+      fileShape(f);
+      if (role === 'decision') proofAssert(typeof f.mtime_ms === 'number' && Number.isFinite(f.mtime_ms));
+      proofAssert(!files.has(f.path as string));
+      files.set(f.path as string, f as FilePin & { role: string });
+    }
+  }
+  for (const role of ['ledger', 'manifest']) proofAssert([...files.values()].filter(f => f.role === role).length === 1);
+  for (const r of returns) proofAssert(files.get(r.path)?.role === 'return' && files.get(r.path)?.sha256 === r.sha256);
+  for (const artifact of [p.spec, p.plan] as FilePin[]) proofAssert(files.get(artifact.path)?.role === 'artifact' && files.get(artifact.path)?.sha256 === artifact.sha256);
+  const selected = new Set<string>(); const selectionKeys = new Set<string>();
+  for (const s of selections) {
+    const key = JSON.stringify([s.directory, s.decision]);
+    proofAssert(!selectionKeys.has(key)); selectionKeys.add(key);
+    const path = join(s.directory, s.names[0]);
+    proofAssert(!selected.has(path) && files.get(path)?.role === 'decision');
+    selected.add(path);
+  }
+  for (const f of files.values()) if (f.role === 'decision') proofAssert(selected.has(f.path));
+  proofAssert(absences.length === (keys.length > 1 ? 1 : 0));
+  if (absences.length === 1) {
+    const members = keys.filter(k => k !== p.anchor); const specs = specsRootOf((p.spec as FilePin).path);
+    proofAssert(specs !== null && absences[0].directory === ledgerDirOf(specs));
+    proofAssert(absences[0].keys.length === members.length && absences[0].keys.every((k, i) => k === members[i]));
+  }
+  const identities = new Set<string>(); const residuals = { spec: 0, plan: 0 };
+  for (const item of p.carried) {
+    const c = fields(item, ['key', 'epoch', 'kind', 'round', 'return_path', 'return_sha', 'finding_id', 'severity', 'status']);
+    proofAssert(c.key === p.anchor && c.epoch === p.epoch && (c.kind === 'spec' || c.kind === 'plan'));
+    const r = returns[c.kind === 'spec' ? 0 : 1];
+    proofAssert(c.round === r.round && c.return_path === r.path && c.return_sha === r.return_sha);
+    proofAssert(typeof c.finding_id === 'string' && /^[A-Za-z][\w.-]*$/.test(c.finding_id));
+    proofAssert((c.severity === 'minor' || c.severity === 'medium') && c.status === 'open-carried');
+    const identity = JSON.stringify([c.key, c.epoch, c.kind, c.round, c.return_sha, c.finding_id]);
+    proofAssert(!identities.has(identity)); identities.add(identity); residuals[c.kind]++;
+  }
+  proofAssert(returns.every(r => residuals[r.kind] === r.residuals));
+  return value as CappedLedgerProof;
+}
+
+export function validateCappedProofShape(value: unknown): AnyCappedProof {
+  const schema = value !== null && typeof value === 'object' ? (value as Record<string, unknown>).schema : undefined;
+  proofAssert(schema === 1 || schema === 2);
+  return schema === 1 ? validateCappedFoldProofShape(value) : validateCappedLedgerProofShape(value);
+}
+
+const ANNOTATION_MAX = 200;
+const FRONT_MATTER = /^---\n([\s\S]*?)\n---(?:\n|$)/;
+const TICKET_ITEM = /^([A-Z][A-Z0-9]*-[0-9]+)[ \t]*(?:\(([^()]*)\))?$/;
+const KEY_SHAPED = /[A-Z][A-Z0-9]*-[0-9]+/;
+
+export function declaredTickets(specText: string): string[] | null {
+  const front = FRONT_MATTER.exec(specText)?.[1];
+  if (front === undefined) return null;
+  const lines = [...front.matchAll(/^tickets:[ \t]*(.*)$/gm)];
+  if (lines.length !== 1) return null;
+  let value = lines[0][1].trim();
+  if (value.startsWith('[')) {
+    if (!value.endsWith(']')) return null;
+    value = value.slice(1, -1);
+  }
+  const items: string[] = []; let depth = 0; let start = 0;
+  for (let i = 0; i <= value.length; i++) {
+    const c = value[i];
+    if (c === '(') depth++;
+    else if (c === ')') depth--;
+    else if (i === value.length || (c === ',' && depth === 0)) { items.push(value.slice(start, i)); start = i + 1; }
+  }
+  const keys: string[] = [];
+  for (const item of items) {
+    const match = TICKET_ITEM.exec(item.trim());
+    if (!match || keys.includes(match[1])) return null;
+    if (match[2] !== undefined && (match[2].length > ANNOTATION_MAX || KEY_SHAPED.test(match[2]))) return null;
+    keys.push(match[1]);
+  }
+  return keys;
+}
+
 const REVIEWED = /^Reviewed: spec ([0-9a-f]{64})\b/gm;
 
 export function reviewedSpecHashes(text: string): string[] {
   return [...text.matchAll(REVIEWED)].map((m) => m[1]);
+}
+
+const RETURN_KEYS_LINE = /^Keys?:[ \t]*(.*)$/gm;
+
+function keysLineNames(value: string, keys: readonly string[]): boolean {
+  let list = value.trim();
+  if (list.startsWith('[') && list.endsWith(']')) list = list.slice(1, -1);
+  const named = list.split(',').map(k => k.trim()); const expected = new Set(keys);
+  return named.length === expected.size && new Set(named).size === named.length && named.every(k => expected.has(k));
+}
+
+export function optionalReturnAgreement(text: string, expect: { keys?: readonly string[]; specSha?: string }): void {
+  if (expect.keys !== undefined) {
+    const lines = [...text.matchAll(RETURN_KEYS_LINE)];
+    if (lines.length > 1 || (lines.length === 1 && !keysLineNames(lines[0][1], expect.keys))) throw new Error('capped return Keys? declaration disagrees with the declared keys');
+  }
+  if (expect.specSha !== undefined) {
+    const reviewed = reviewedSpecHashes(text);
+    if (reviewed.length > 1 || (reviewed.length === 1 && reviewed[0] !== expect.specSha)) throw new Error('capped return Reviewed declaration disagrees with the current spec');
+  }
 }

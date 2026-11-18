@@ -4827,3 +4827,380 @@ test("G0b v1 control: the shipped --key path refuses the legacy known-single hea
   const res = await routeCli("capped-fold", "--key", key, "--spec", f.spec, "--plan", f.plan, "--spec-return", b1Kind(f, "spec").at(-1)!, "--plan-return", b1Kind(f, "plan").at(-1)!);
   expect(res.out).toBe(""); expect(res.code).toBe(1); expect(res.err).toBe(`capped-fold: capped-fold: header must declare only ${key}\n`);
 }, S1B);
+
+const t2Key = (n: number) => `HIMMEL-${n}`;
+const t2Pinned = async (): Promise<any> => import("../jira/src/release/pinned.ts");
+const t2File = (path: string) => ({ path, sha256: sha(readFileSync(path, "utf8")) });
+const t2Clone = (base: any, fn: (p: any) => void) => { const p = structuredClone(base); fn(p); return p; };
+const T2_INVALID = "invalid capped-fold proof";
+let t2Cache: Promise<{ f: any; good: any; one: any }> | null = null;
+const t2Build = async () => {
+  const lib = await b1Lib(); const route: any = await import("./chief-route"); const shared = await t2Pinned();
+  const f = await lib.buildGroupFixture(realpathSync(root()));
+  const ledgerDir = dirname(f.ledgerPath);
+  const returns = (["spec", "plan"] as const).map(kind => {
+    const path = b1Kind(f, kind).at(-1)!;
+    return { ...t2File(path), kind, round: 3, return_sha: route.returnSha(readFileSync(path, "utf8")), residuals: 1 };
+  });
+  const snapshot = join(ledgerDir, f.anchor, readdirSync(join(ledgerDir, f.anchor))[0]);
+  const keys = [...f.keys].sort(); const members = keys.filter(k => k !== f.anchor);
+  const good = {
+    schema: 2, reader_version: 2, mode: "capped-carry-ledger", anchor: f.anchor, keys, epoch: 1,
+    spec: t2File(f.spec), plan: t2File(f.plan), returns,
+    pins: [
+      { ...t2File(f.ledgerPath), role: "ledger" }, { ...t2File(join(ledgerDir, "manifest.json")), role: "manifest" },
+      ...returns.map(r => ({ path: r.path, sha256: r.sha256, role: "return" })),
+      ...[f.spec, f.plan].map(path => ({ ...t2File(path), role: "artifact" })),
+      { ...t2File(snapshot), role: "snapshot" },
+      ...f.earlier.map((path: string) => ({ ...t2File(path), role: "history" })),
+      { ...t2File(f.decision), role: "decision", mtime_ms: statSync(f.decision).mtimeMs },
+      { role: "decision-selection", directory: dirname(f.decision), decision: "990", names: [basename(f.decision)] },
+      { role: "member-absence", directory: shared.ledgerDirOf(f.specsRoot), keys: members },
+    ],
+    carried: [["spec", "F1", "medium"], ["plan", "P1", "minor"]].map(([kind, id, severity], i) => ({
+      key: f.anchor, epoch: 1, kind, round: 3, return_path: returns[i].path, return_sha: returns[i].return_sha, finding_id: id, severity, status: "open-carried" })),
+  };
+  const one = t2Clone(good, p => { p.keys = [f.anchor]; p.pins = p.pins.filter((x: any) => x.role !== "member-absence"); });
+  return { f, good, one };
+};
+const t2Group = () => { t2Cache ??= t2Build(); return t2Cache; };
+const t2Pin = (p: any, role: string) => p.pins.findIndex((x: any) => x.role === role);
+
+test("S4 dispatcher: a stored v1 proof from the real verifier is valid and equals the shipped validator's answer; a v1 body stays strict", async () => {
+  const shared = await t2Pinned();
+  const v1 = await runCapped((await cappedFixture()).args);
+  expect(v1.schema).toBe(1);
+  expect(shared.validateCappedProofShape(v1)).toEqual(v1);
+  expect(shared.validateCappedProofShape(v1)).toEqual(shared.validateCappedFoldProofShape(v1));
+  for (const mutate of [(x: any) => { x.extra = true; }, (x: any) => { delete x.epoch; }, (x: any) => { x.reader_version = 2; }, (x: any) => { x.mode = "capped-carry-ledger"; },
+    (x: any) => { x.pins[0].role = "other"; }, (x: any) => { x.returns.reverse(); }]) {
+    const bad = structuredClone(v1); mutate(bad);
+    expect(() => shared.validateCappedProofShape(bad)).toThrow(T2_INVALID);
+  }
+}, S1B);
+
+test("S2 dispatcher: unknown, absent and mixed schemas refuse with the one shipped message", async () => {
+  const shared = await t2Pinned(); const { good } = await t2Group();
+  expect(shared.LEDGER_READ_VERSION).toBe(2); expect(shared.PINNED_READ_VERSION).toBe(1);
+  expect(shared.validateCappedProofShape(good)).toEqual(good);
+  expect(() => shared.validateCappedFoldProofShape(good), "the unchanged v1 validator refuses a schema 2 proof").toThrow(T2_INVALID);
+  const v1 = await runCapped((await cappedFixture()).args);
+  const refuse = (value: unknown) => expect(() => shared.validateCappedProofShape(value)).toThrow(T2_INVALID);
+  for (const schema of [0, 3, "1", "2", null, undefined, true, 2.5]) refuse(t2Clone(good, p => { p.schema = schema; }));
+  for (const value of [null, undefined, [], "x", 5, true, {}, { schema: 2 }, { schema: 1 }]) refuse(value);
+  refuse(t2Clone(good, p => { delete p.schema; }));
+  refuse(t2Clone(good, p => { p.mode = "capped-carry"; }));
+  refuse(t2Clone(good, p => { p.key = p.anchor; }));
+  refuse(t2Clone(good, p => { delete p.anchor; delete p.keys; delete p.mode; p.key = good.anchor; p.mode = "capped-carry"; }));
+  refuse(t2Clone(good, p => { p.schema = 1; }));
+  refuse(t2Clone(good, p => { p.schema = 1; p.reader_version = 1; p.mode = "capped-carry"; }));
+  for (const [field, value] of [["anchor", good.anchor], ["keys", good.keys], ["mode", "capped-carry-ledger"]] as const) refuse(t2Clone(v1, p => { p[field] = value; }));
+  refuse(t2Clone(v1, p => { p.schema = 2; }));
+  refuse(t2Clone(v1, p => { p.schema = 2; p.reader_version = 2; }));
+}, S1B);
+
+test("S3 v2 shape: the exact fields, sorted unique keys, an anchor member, history file pins and the group-exact member-absence pin", async () => {
+  const shared = await t2Pinned(); const { f, good, one } = await t2Group();
+  const accept = (value: any) => expect(shared.validateCappedLedgerProofShape(value)).toEqual(value);
+  const refuse = (value: unknown) => expect(() => shared.validateCappedLedgerProofShape(value)).toThrow(T2_INVALID);
+  accept(good); accept(one);
+  expect(one.keys).toEqual([f.anchor]); expect(t2Pin(one, "member-absence")).toBe(-1);
+  expect(good.pins.filter((p: any) => p.role === "history").map((p: any) => p.path)).toEqual(f.earlier);
+  const middle = t2Clone(good, p => {
+    p.anchor = p.keys[3]; for (const c of p.carried) c.key = p.anchor;
+    p.pins[t2Pin(p, "member-absence")].keys = p.keys.filter((k: string) => k !== p.anchor);
+  });
+  accept(middle);
+  const memberKeys = (p: any, fn: (keys: string[]) => string[]) => { const i = t2Pin(p, "member-absence"); p.pins[i].keys = fn(p.pins[i].keys); };
+
+  for (const field of Object.keys(good)) refuse(t2Clone(good, p => { delete p[field]; }));
+  refuse(t2Clone(good, p => { p.extra = true; }));
+  for (const value of [1, 3, "2"]) refuse(t2Clone(good, p => { p.schema = value; }));
+  for (const value of [1, 3, "2", undefined]) refuse(t2Clone(good, p => { p.reader_version = value; }));
+  for (const value of ["capped-carry", "capped-carry-ledger ", "Capped-Carry-Ledger", "", undefined, 2]) refuse(t2Clone(good, p => { p.mode = value; }));
+  for (const value of [-1, 1.5, "1", null]) refuse(t2Clone(good, p => { p.epoch = value; }));
+  for (const value of [t2Key(1), "himmel-9801", "HIMMEL", "", 9801, null]) refuse(t2Clone(good, p => { p.anchor = value; }));
+
+  refuse(t2Clone(good, p => { [p.keys[1], p.keys[2]] = [p.keys[2], p.keys[1]]; memberKeys(p, () => p.keys.filter((k: string) => k !== p.anchor)); }));
+  refuse(t2Clone(good, p => { p.keys[2] = p.keys[1]; memberKeys(p, () => p.keys.filter((k: string) => k !== p.anchor)); }));
+  refuse(t2Clone(good, p => { p.keys.push(p.keys[3]); memberKeys(p, () => p.keys.filter((k: string) => k !== p.anchor)); }));
+  refuse(t2Clone(good, p => { p.keys = []; }));
+  refuse(t2Clone(one, p => { p.keys = []; }));
+  refuse(t2Clone(good, p => { p.keys = "x"; }));
+  for (const bad of ["himmel-9803", "HIMMEL", "", 9803, null]) refuse(t2Clone(good, p => { p.keys[2] = bad; memberKeys(p, () => p.keys.filter((k: string) => k !== p.anchor)); }));
+  refuse(t2Clone(good, p => { p.keys = p.keys.filter((k: string) => k !== p.anchor); memberKeys(p, () => p.keys); }));
+
+  const big = (n: number) => t2Clone(good, p => {
+    p.keys = [...Array.from({ length: n - 1 }, (_, i) => t2Key(100000 + i)), p.anchor].sort();
+    memberKeys(p, () => p.keys.filter((k: string) => k !== p.anchor));
+  });
+  accept(big(4096)); refuse(big(4097));
+
+  const history = (p: any) => p.pins.findIndex((x: any) => x.role === "history");
+  for (const field of ["path", "sha256"]) refuse(t2Clone(good, p => { delete p.pins[history(p)][field]; }));
+  refuse(t2Clone(good, p => { p.pins[history(p)].mtime_ms = 1; }));
+  refuse(t2Clone(good, p => { p.pins[history(p)].extra = true; }));
+  refuse(t2Clone(good, p => { p.pins[history(p)].sha256 = "A".repeat(64); }));
+  refuse(t2Clone(good, p => { p.pins[history(p)].path = "relative.md"; }));
+  refuse(t2Clone(good, p => { p.pins.push({ ...p.pins[history(p)] }); }));
+  for (const target of [() => good.returns[0].path, () => good.spec.path, () => f.ledgerPath]) refuse(t2Clone(good, p => { p.pins[history(p)].path = target(); }));
+  refuse(t2Clone(good, p => { p.pins.push({ role: "history" }); }));
+  refuse(t2Clone(good, p => { p.pins = "x"; }));
+
+  refuse(t2Clone(good, p => { p.pins.splice(t2Pin(p, "member-absence"), 1); }));
+  refuse(t2Clone(one, p => { p.pins.push(good.pins[t2Pin(good, "member-absence")]); }));
+  refuse(t2Clone(good, p => { p.pins.push(structuredClone(p.pins[t2Pin(p, "member-absence")])); }));
+  refuse(t2Clone(good, p => { memberKeys(p, k => k.slice(1)); }));
+  refuse(t2Clone(good, p => { memberKeys(p, k => k.slice(0, -1)); }));
+  refuse(t2Clone(good, p => { memberKeys(p, k => [...k, t2Key(99999)]); }));
+  refuse(t2Clone(good, p => { memberKeys(p, () => []); }));
+  refuse(t2Clone(good, p => { memberKeys(p, k => [p.anchor, ...k].sort()); }));
+  refuse(t2Clone(good, p => { memberKeys(p, k => [...k, t2Key(1)].sort()); }));
+  refuse(t2Clone(good, p => { memberKeys(p, k => [...k].reverse()); }));
+  refuse(t2Clone(good, p => { memberKeys(p, k => [k[0], ...k]); }));
+  refuse(t2Clone(good, p => { memberKeys(p, () => "x" as any); }));
+  refuse(t2Clone(good, p => { p.pins[t2Pin(p, "member-absence")].extra = true; }));
+  for (const field of ["directory", "keys"]) refuse(t2Clone(good, p => { delete p.pins[t2Pin(p, "member-absence")][field]; }));
+
+  for (const field of Object.keys(good.returns[0])) refuse(t2Clone(good, p => { delete p.returns[0][field]; }));
+  refuse(t2Clone(good, p => { p.returns.reverse(); }));
+  refuse(t2Clone(good, p => { p.returns.pop(); }));
+  refuse(t2Clone(good, p => { p.returns[1].kind = "spec"; }));
+  refuse(t2Clone(good, p => { p.returns[0].round = 0; }));
+  refuse(t2Clone(good, p => { p.returns[0].residuals = 2; }));
+  refuse(t2Clone(good, p => { p.returns[0].sha256 = "0".repeat(64); }));
+
+  for (const field of Object.keys(good.carried[0])) refuse(t2Clone(good, p => { delete p.carried[0][field]; }));
+  refuse(t2Clone(good, p => { p.carried[0].key = p.keys[1]; }));
+  refuse(t2Clone(good, p => { p.carried[0].epoch = 0; }));
+  refuse(t2Clone(good, p => { p.carried[0].round = 2; }));
+  refuse(t2Clone(good, p => { p.carried[0].return_path = p.returns[1].path; }));
+  refuse(t2Clone(good, p => { p.carried[0].return_sha = "0".repeat(64); }));
+  refuse(t2Clone(good, p => { p.carried.push({ ...p.carried[0] }); p.returns[0].residuals = 2; }));
+  for (const bad of ["major", "operator-critical", undefined]) refuse(t2Clone(good, p => { p.carried[0].severity = bad; }));
+  refuse(t2Clone(good, p => { p.carried[0].status = "closed"; }));
+  refuse(t2Clone(good, p => { p.carried[0].finding_id = "1bad"; }));
+  refuse(t2Clone(good, p => { p.carried[0].extra = true; }));
+  refuse(t2Clone(good, p => { p.carried.pop(); }));
+
+  for (const role of ["ledger", "manifest"]) {
+    refuse(t2Clone(good, p => { p.pins.splice(t2Pin(p, role), 1); }));
+    refuse(t2Clone(good, p => { p.pins.push({ ...p.pins[t2Pin(p, role)], path: `${f.specsRoot}/other-${role}` }); }));
+  }
+  refuse(t2Clone(good, p => { p.pins.splice(t2Pin(p, "return"), 1); }));
+  refuse(t2Clone(good, p => { p.pins[t2Pin(p, "return")].sha256 = "0".repeat(64); }));
+  refuse(t2Clone(good, p => { p.pins.splice(t2Pin(p, "artifact"), 1); }));
+  refuse(t2Clone(good, p => { p.pins[t2Pin(p, "snapshot")].role = "other"; }));
+  refuse(t2Clone(good, p => { p.pins.splice(t2Pin(p, "decision-selection"), 1); }));
+  refuse(t2Clone(good, p => { delete p.pins[t2Pin(p, "decision")].mtime_ms; }));
+  refuse(t2Clone(good, p => { p.pins[t2Pin(p, "decision-selection")].names.push("verbatim-decision-990-second.txt"); }));
+}, S1B);
+
+test("M7 member-absence pin: its directory must be the shared ledger folder under the spec's own specs root", async () => {
+  const shared = await t2Pinned(); const { f, good } = await t2Group();
+  const real = shared.ledgerDirOf(f.specsRoot);
+  expect(real).toBe(dirname(f.ledgerPath));
+  expect(shared.specsRootOf(good.spec.path)).toBe(f.specsRoot);
+  const withDirectory = (directory: unknown) => t2Clone(good, p => { p.pins[t2Pin(p, "member-absence")].directory = directory; });
+  expect(shared.validateCappedLedgerProofShape(withDirectory(real))).toEqual(good);
+  const other = realpathSync(root());
+  for (const directory of [join(other, "ledgers", "spec-rounds"), join(other, "specs", "ledgers", "spec-rounds"), join(f.specsRoot, "ledgers"), dirname(f.specsRoot),
+    `${real}/`, `${real}/.`, `${real}/../spec-rounds`, "ledgers/spec-rounds", "", undefined, 7, join(f.specsRoot, "ledgers", "spec-rounds", t2Key(9801))]) {
+    expect(() => shared.validateCappedLedgerProofShape(withDirectory(directory)), String(directory)).toThrow(T2_INVALID);
+  }
+  const outside = t2Clone(good, p => {
+    const to = "/tmp/no-specs-root/spec.md";
+    for (const pin of p.pins) if (pin.path === p.spec.path) pin.path = to;
+    p.spec.path = to;
+  });
+  expect(() => shared.validateCappedLedgerProofShape(outside), "a spec path with no specs root cannot hold the pin").toThrow(T2_INVALID);
+}, S1B);
+
+test("U1 shared ledger names, manifest parser and member predicate", async () => {
+  const shared = await t2Pinned(); const { f } = await t2Group();
+  expect(shared.ledgerDirOf("/x/specs")).toBe("/x/specs/ledgers/spec-rounds");
+  expect(shared.ledgerDirOf(f.specsRoot)).toBe(dirname(f.ledgerPath));
+  expect(shared.ledgerEntryNames("K-1")).toEqual({ file: "K-1.jsonl", folder: "K-1", lock: "K-1.jsonl.lock" });
+  const ledgerDir = dirname(f.ledgerPath); const real = readdirSync(ledgerDir);
+  const names = shared.ledgerEntryNames(f.anchor);
+  expect(real).toContain(names.file); expect(real).toContain(names.folder); expect(real).toContain(names.lock);
+  expect(join(ledgerDir, names.file)).toBe(f.ledgerPath);
+  expect(statSync(join(ledgerDir, names.folder)).isDirectory()).toBe(true);
+
+  expect(shared.ledgerKeyOfFile("K-1.jsonl")).toBe("K-1");
+  expect(shared.ledgerKeyOfFile(names.file)).toBe(f.anchor);
+  for (const name of ["K-1.jsonl.lock", "manifest.json", "K-1", "K-1.json", "notes.txt", "K-1.jsonl.bak", "round-seed.jsonl.lock"]) expect(shared.ledgerKeyOfFile(name), name).toBeNull();
+  const listing = [...real, "stray.jsonl", ".jsonl", "other.json", "x.jsonl.lock"];
+  expect(listing.map((n: string) => shared.ledgerKeyOfFile(n)).filter((k: string | null) => k !== null),
+    "the same key set the shipped no-key round-status listing derives").toEqual(listing.filter(n => n.endsWith(".jsonl")).map(n => n.slice(0, -".jsonl".length)));
+
+  const manifestText = readFileSync(join(ledgerDir, "manifest.json"), "utf8");
+  expect(shared.parseManifest(manifestText)).toEqual(JSON.parse(manifestText));
+  expect(shared.parseManifest('{"keys":{}}')).toEqual({ keys: {} });
+  expect(shared.parseManifest('{"keys":{"a":1},"other":2}')).toEqual({ keys: { a: 1 }, other: 2 });
+  for (const text of ["", "{", "null", "[]", "5", '"x"', "true", "{}", '{"keys":[]}', '{"keys":null}', '{"keys":"x"}', '{"keys":5}', '{"key":{}}']) expect(shared.parseManifest(text), text).toBeNull();
+
+  const members = [t2Key(1), t2Key(2), t2Key(3)]; const state = (listing: string[], manifest: string[]) => shared.memberLedgerState(listing, manifest, members).present;
+  expect(state([], [])).toEqual([]);
+  expect(state([`${members[0]}.jsonl`], [])).toEqual([members[0]]);
+  expect(state([members[1]], [])).toEqual([members[1]]);
+  expect(state([], [members[2]])).toEqual([members[2]]);
+  expect(state([members[2], `${members[0]}.jsonl`], [members[1]])).toEqual(members);
+  expect(state([`${members[0]}.jsonl.lock`, `${members[2]}.jsonl.lock`], [])).toEqual([]);
+  expect(state([`${members[0]}.jsonl.lock`, `${members[0]}.jsonl`], [])).toEqual([members[0]]);
+  expect(state(["manifest.json", `${t2Key(9)}.jsonl`, t2Key(9), `${members[0]}.json`, `${members[0]}.jsonl.bak`], [t2Key(9)])).toEqual([]);
+  expect(state([], ["manifest.json"])).toEqual([]);
+  expect(shared.memberLedgerState([`${members[1]}.jsonl`], [], []).present).toEqual([]);
+
+  const manifestKeys = Object.keys(shared.parseManifest(manifestText).keys);
+  expect(shared.memberLedgerState(real, manifestKeys, f.members).present, "the real group fixture holds no member state").toEqual([]);
+  expect(shared.memberLedgerState(real, manifestKeys, [f.anchor]).present, "the real anchor ledger file and folder are seen").toEqual([f.anchor]);
+  expect(real.some((n: string) => n === "round-seed.jsonl.lock"), "the real writer left a lock file").toBe(true);
+  expect(shared.memberLedgerState(real, manifestKeys, ["round-seed"]).present, "a real lock file alone is not member state").toEqual([]);
+}, S1B);
+
+test("H1 checkLatestReturns: omitted equals empty equals the shipped refusal, a listed path is skipped, every unlisted file at or above the signed round still refuses", async () => {
+  const lib = await b1Lib(); const shared = await t2Pinned(); const route: any = await import("./chief-route");
+  const f = await lib.buildGroupFixture(realpathSync(root()));
+  const pin = (kind: "spec" | "plan") => {
+    const path = b1Kind(f, kind).at(-1)!;
+    return { ...t2File(path), kind, round: 3, return_sha: route.returnSha(readFileSync(path, "utf8")), residuals: 1 };
+  };
+  const expected = [pin("spec"), pin("plan")];
+  const scan = (...history: unknown[]) => { for (const d of shared.returnDirectories(f.anchor, f.spec, f.plan, expected)) shared.checkLatestReturns(d, shared.canonicalDirectoryNames(d).names, f.anchor, expected, ...history); };
+  const refusal = (path: string) => `capped-fold: ambiguous or unaccounted latest return: ${path}`;
+  expect(f.earlier).toHaveLength(5);
+  expect(() => scan(), "v1 refuses the first earlier file at or above the signed round").toThrow(refusal(f.earlier[2]));
+  expect(() => scan(undefined)).toThrow(refusal(f.earlier[2]));
+  expect(() => scan(new Set<string>()), "an empty set equals omitted").toThrow(refusal(f.earlier[2]));
+  expect(() => scan(new Set(f.earlier))).not.toThrow();
+  expect(() => scan(new Set(f.earlier.slice(2))), "files below the signed round pass without being listed").not.toThrow();
+  expect(() => scan(new Set([f.earlier[2], f.earlier[4]])), "one unlisted file at the signed round or above refuses").toThrow(refusal(f.earlier[3]));
+  expect(() => scan(new Set(f.earlier.map((p: string) => join(dirname(f.spec), "..", "plans", basename(p)))))).toThrow(refusal(f.earlier[2]));
+  expect(() => scan(new Set(f.earlier.map((p: string) => basename(p))))).toThrow(refusal(f.earlier[2]));
+  expect(() => scan(new Set([...f.earlier, join(dirname(f.spec), "unrelated-file.md")]))).not.toThrow();
+  const fresh = join(dirname(f.spec), `${basename(f.spec, ".md")}.critic-spec-r4.md`);
+  writeFileSync(fresh, "SPEC CLEAN\n");
+  expect(() => scan(new Set(f.earlier)), "a new unlisted return at the same stem still refuses").toThrow(refusal(fresh));
+  expect(() => scan(new Set([...f.earlier, fresh])), "only the listed path is skipped").not.toThrow();
+  expect(() => scan(new Set([...f.earlier, join(dirname(f.spec), "other.md")])), "an unrelated listed path skips nothing").toThrow(refusal(fresh));
+}, S1B);
+
+const t2Front = (line: string, rest = "") => `---\n${line}\n---\n# Title\n${rest}`;
+const T2_NOTE = "a partial merge owes proof by default, and only chief-only steps owe the chief";
+
+test("D1 declaredTickets: plain, flow, comma and annotated scalars, with commas inside an annotation never splitting items", async () => {
+  const shared = await t2Pinned(); const lib = await b1Lib();
+  const [a, b, c] = [t2Key(9), t2Key(10), t2Key(11)]; const read = (line: string, rest?: string) => shared.declaredTickets(t2Front(line, rest));
+  expect(read(`tickets: ${a}`)).toEqual([a]);
+  expect(read(`tickets:${a}`)).toEqual([a]);
+  expect(read(`tickets:   ${a}  `)).toEqual([a]);
+  expect(read(`tickets: [${a}]`)).toEqual([a]);
+  expect(read(`tickets: [${a}, ${b}, ${c}]`)).toEqual([a, b, c]);
+  expect(read(`tickets: [ ${a} ,${b}\t,  ${c} ]`)).toEqual([a, b, c]);
+  expect(read(`tickets: ${a}, ${b}`)).toEqual([a, b]);
+  expect(read(`tickets: ${c},${a}`), "declared order is kept").toEqual([c, a]);
+  expect(read(`tickets: ${a} (${T2_NOTE})`), "the real annotated scalar").toEqual([a]);
+  expect(read(`tickets: ${a}(${T2_NOTE})`)).toEqual([a]);
+  expect(read(`tickets: [${a} (first, with a comma), ${b}]`)).toEqual([a, b]);
+  expect(read(`tickets: ${a} (x, y), ${b} (z)`)).toEqual([a, b]);
+  expect(read(`tickets: [${a} (x, y, z), ${b} (w, v)]`)).toEqual([a, b]);
+  expect(read(`tickets: [${a} (a]b, c)]`), "brackets inside an annotation are not interpreted").toEqual([a]);
+  expect(read(`tickets: ${a} ()`)).toEqual([a]);
+  expect(read(`tickets: ${a} (${"x".repeat(200)})`), "an annotation of exactly 200 characters").toEqual([a]);
+  expect(read(`tickets: ${a} (see the note on Fact overlap)`)).toEqual([a]);
+  expect(read(`tickets: ${a}`, `\ntickets: ${b}\n`), "a tickets: line after the front matter is not read").toEqual([a]);
+  expect(shared.declaredTickets(`---\ntickets: ${a}\nother: 1\n---\n# T\n`)).toEqual([a]);
+  expect(shared.declaredTickets(`---\ntitle: x\ntickets: [${a}, ${b}]\n---\n`)).toEqual([a, b]);
+  expect(shared.declaredTickets(`---\ntickets: ${a}\n---`)).toEqual([a]);
+
+  const group = await lib.buildGroupFixture(realpathSync(root()));
+  expect(shared.declaredTickets(readFileSync(group.spec, "utf8")), "the real seven-key flow list").toEqual(group.keys);
+  const known = await lib.buildKnownSingleFixture(realpathSync(root()), { variant: "refusedCap" });
+  const knownKey = basename(known.spec).replace(/-fixture\.md$/, "");
+  expect(readFileSync(known.spec, "utf8")).toMatch(new RegExp(`^tickets: ${knownKey} \\([^()]+\\)$`, "m"));
+  expect(shared.declaredTickets(readFileSync(known.spec, "utf8")), "the real annotated scalar of a known single").toEqual([knownKey]);
+  const fresh = await lib.buildFreshSingleFixture(realpathSync(root()));
+  expect(shared.declaredTickets(readFileSync(fresh.spec, "utf8"))).toEqual([basename(fresh.spec).replace(/-fixture\.md$/, "")]);
+}, S1B);
+
+test("D5 declaredTickets refuses a key inside an annotation, nested or unbalanced parentheses, an over-long annotation, prose, duplicates, block lists, empty values and a second tickets: line", async () => {
+  const shared = await t2Pinned();
+  const [a, b] = [t2Key(9), t2Key(10)]; const read = (line: string, rest?: string) => shared.declaredTickets(t2Front(line, rest));
+  const refused = (line: string) => expect(read(line), line).toBeNull();
+  expect(read(`tickets: ${a}`), "control: the same reader accepts a plain key").toEqual([a]);
+  refused(`tickets: ${a} (see ${b})`); refused(`tickets: ${a} (re ${a})`); refused(`tickets: [${a} (x), ${b} (also ${a})]`);
+  refused(`tickets: ${a} (finding ${t2Key(3).replace("HIMMEL", "R4")})`); refused(`tickets: ${a} (x ${b} y, z)`);
+  refused(`tickets: ${a} (a (b))`); refused(`tickets: ${a} ((a))`); refused(`tickets: ${a} (a (b) c)`);
+  refused(`tickets: ${a} (a`); refused(`tickets: ${a} a)`); refused(`tickets: ${a} ((a)`); refused(`tickets: ${a} (a))`); refused(`tickets: ${a} )(`); refused(`tickets: [${a} (a, ${b}]`);
+  refused(`tickets: ${a} (${"x".repeat(201)})`); refused(`tickets: [${a} (${"x".repeat(201)}), ${b}]`);
+  refused(`tickets: see ${a}`); refused(`tickets: ${a} and ${b}`); refused(`tickets: ${a} done`); refused(`tickets: ${a} (a) more`); refused(`tickets: ${a} (a) (b)`);
+  refused(`tickets: ${a} - ${b}`); refused(`tickets: ${a};${b}`); refused(`tickets: ${a} ${b}`); refused(`tickets: "${a}"`); refused(`tickets: '${a}'`);
+  refused(`tickets: ${a}, ${a}`); refused(`tickets: [${a}, ${b}, ${a}]`); refused(`tickets: [${a} (x), ${a} (y)]`);
+  refused("tickets:"); refused("tickets:   "); refused("tickets: []"); refused("tickets: [ ]"); refused("tickets: ,"); refused("tickets: ()");
+  refused(`tickets: [${a},]`); refused(`tickets: [,${a}]`); refused(`tickets: ${a},,${b}`); refused(`tickets: ${a},`); refused(`tickets: ,${a}`);
+  refused(`tickets: [${a}`); refused(`tickets: ${a}]`); refused(`tickets: [[${a}]]`); refused(`tickets: [${a}] extra`); refused(`tickets: x[${a}]`);
+  refused("tickets: himmel-9"); refused("tickets: HIMMEL"); refused("tickets: HIMMEL-"); refused("tickets: 9"); refused("tickets: -9"); refused(`tickets: ${a.toLowerCase()}`);
+  expect(shared.declaredTickets(`---\ntickets:\n  - ${a}\n  - ${b}\n---\n# T\n`), "a block-style list").toBeNull();
+  expect(shared.declaredTickets(`---\ntickets:\n- ${a}\n---\n# T\n`)).toBeNull();
+  expect(shared.declaredTickets(`---\ntickets: ${a}\ntickets: ${b}\n---\n# T\n`), "a second tickets: line").toBeNull();
+  expect(shared.declaredTickets(`---\ntickets: ${a}\ntickets: ${a}\n---\n# T\n`)).toBeNull();
+  expect(shared.declaredTickets(`---\ntickets: ${a}\ntickets:\n---\n# T\n`)).toBeNull();
+  expect(shared.declaredTickets(`---\ntickets: ${a}\n  tickets: ${b}\n---\n# T\n`), "an indented line is not a second declaration").toEqual([a]);
+  expect(shared.declaredTickets(`---\ntitle: x\n---\n# T\n`), "no tickets line").toBeNull();
+  expect(shared.declaredTickets(`# T\n\ntickets: ${a}\n`), "no front matter").toBeNull();
+  expect(shared.declaredTickets(`\n---\ntickets: ${a}\n---\n`), "front matter not at the start").toBeNull();
+  expect(shared.declaredTickets(`---\ntitle: x\n---\ntickets: ${a}\n`), "a body line is not front matter").toBeNull();
+  expect(shared.declaredTickets(`---\ntickets: ${a}`), "an unterminated block").toBeNull();
+  expect(shared.declaredTickets(""), "empty text").toBeNull();
+  expect(shared.declaredTickets(`---\ntickets: ${a}\n---\n---\ntickets: ${b}\n---\n`), "only the first block is read").toEqual([a]);
+});
+
+const T2_KEYS_REFUSAL = "capped return Keys? declaration disagrees with the declared keys";
+const T2_REVIEWED_REFUSAL = "capped return Reviewed declaration disagrees with the current spec";
+
+test("D4 optionalReturnAgreement: absent and equal pass; two lines, a subset, a superset, one key of many, a wrong or a doubled Reviewed refuse, all through one function", async () => {
+  const shared = await t2Pinned(); const { f } = await t2Group();
+  const real = readFileSync(b1Kind(f, "spec").at(-1)!, "utf8"); const specSha = sha(readFileSync(f.spec, "utf8"));
+  expect(real).not.toMatch(/^(Keys?|Reviewed):/m);
+  const keys: string[] = [...f.keys]; const other = "0123456789abcdef".repeat(4);
+  const run = (extra: string, expect_: { keys?: readonly string[]; specSha?: string }) => () => shared.optionalReturnAgreement(`${real}${extra}`, expect_);
+  expect(run("", { keys, specSha }), "absent lines pass").not.toThrow();
+  expect(run("", {}), "no part given").not.toThrow();
+  expect(run("Keys: ???\nReviewed: spec nonsense\n", {}), "an ungiven part is never read").not.toThrow();
+
+  const keyLine = (value: string) => `Keys: ${value}\n`;
+  for (const line of [keyLine(keys.join(", ")), keyLine(keys.join(",")), keyLine(`[${keys.join(", ")}]`), keyLine([...keys].reverse().join(", ")), `Keys:${keys.join(",")}\n`]) expect(run(line, { keys }), line).not.toThrow();
+  expect(run(keyLine(keys[0]), { keys: [keys[0]] }), "one key of one").not.toThrow();
+  expect(run(`Key: ${keys[0]}\n`, { keys: [keys[0]] }), "the singular spelling").not.toThrow();
+  expect(run(`Key: ${keys[0]}\n`, { keys }), "one key of many").toThrow(T2_KEYS_REFUSAL);
+  expect(run(keyLine(keys.slice(1).join(", ")), { keys }), "a subset").toThrow(T2_KEYS_REFUSAL);
+  expect(run(keyLine(keys.slice(0, 3).join(", ")), { keys }), "a subset").toThrow(T2_KEYS_REFUSAL);
+  expect(run(keyLine([...keys, t2Key(1)].join(", ")), { keys }), "a superset").toThrow(T2_KEYS_REFUSAL);
+  expect(run(keyLine([...keys.slice(1), t2Key(1)].join(", ")), { keys }), "wrong").toThrow(T2_KEYS_REFUSAL);
+  expect(run(keyLine(keys.join(", ")) + keyLine(keys.join(", ")), { keys }), "two equal lines").toThrow(T2_KEYS_REFUSAL);
+  expect(run(keyLine(keys.join(", ")) + keyLine(keys[0]), { keys }), "two lines, one equal").toThrow(T2_KEYS_REFUSAL);
+  expect(run(`Key: ${keys[0]}\nKeys: ${keys.join(", ")}\n`, { keys }), "a Key line beside a Keys line").toThrow(T2_KEYS_REFUSAL);
+  expect(run(keyLine(`${keys.join(", ")}, ${keys[0]}`), { keys }), "a doubled key in the line").toThrow(T2_KEYS_REFUSAL);
+  expect(run(keyLine(`${keys[0]}, ${keys[0]}`), { keys: [keys[0]] })).toThrow(T2_KEYS_REFUSAL);
+  expect(run(keyLine(`${keys.join(", ")} and more`), { keys })).toThrow(T2_KEYS_REFUSAL);
+  expect(run(keyLine(`${keys[0]} (note)`), { keys: [keys[0]] }), "an annotation is not part of a return declaration").toThrow(T2_KEYS_REFUSAL);
+  expect(run(keyLine(""), { keys })).toThrow(T2_KEYS_REFUSAL);
+  expect(run("Keys:\n", { keys: [keys[0]] })).toThrow(T2_KEYS_REFUSAL);
+  expect(run(`Keys:\n${keys[0]}\n`, { keys: [keys[0]] }), "a value on the next line is not the declaration").toThrow(T2_KEYS_REFUSAL);
+  expect(run(`  Keys: ${keys[0]}\n`, { keys }), "an indented line is not a declaration").not.toThrow();
+
+  const reviewed = (sha_: string) => `Reviewed: spec ${sha_}\n`;
+  expect(run(reviewed(specSha), { specSha }), "equal").not.toThrow();
+  expect(run(reviewed(specSha), { keys }), "the Reviewed part is untested when not given").not.toThrow();
+  expect(run(reviewed(other), { specSha }), "wrong").toThrow(T2_REVIEWED_REFUSAL);
+  expect(run(reviewed(specSha) + reviewed(specSha), { specSha }), "doubled").toThrow(T2_REVIEWED_REFUSAL);
+  expect(run(reviewed(specSha) + reviewed(other), { specSha }), "doubled, one wrong").toThrow(T2_REVIEWED_REFUSAL);
+  expect(run(reviewed(other) + reviewed(specSha), { specSha })).toThrow(T2_REVIEWED_REFUSAL);
+
+  expect(run(keyLine(keys.join(", ")) + reviewed(specSha), { keys, specSha }), "both given, both equal").not.toThrow();
+  expect(run(keyLine(keys[0]) + reviewed(specSha), { keys, specSha }), "keys wrong").toThrow(T2_KEYS_REFUSAL);
+  expect(run(keyLine(keys.join(", ")) + reviewed(other), { keys, specSha }), "reviewed wrong").toThrow(T2_REVIEWED_REFUSAL);
+  expect(run(keyLine(keys[0]) + reviewed(other), { keys, specSha }), "the declaration fires first when both are wrong").toThrow(T2_KEYS_REFUSAL);
+  expect(run(reviewed(other), { keys, specSha })).toThrow(T2_REVIEWED_REFUSAL);
+}, S1B);
