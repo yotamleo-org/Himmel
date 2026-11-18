@@ -382,7 +382,7 @@ _suite_timeout_for() {
       # 40441105007; PR 4021 job 121981449917). 1500s is that x2.5 (the
       # loaded-budget rule); its five siblings keep the default.
       printf '1500' ;;
-    scripts/handover/chief-kit/test-ready-check.sh|*/scripts/handover/chief-kit/test-ready-check.sh)
+    scripts/handover/chief-kit/test-ready-check.sh|scripts/handover/chief-kit/test-ready-check-[b-f].sh|*/scripts/handover/chief-kit/test-ready-check.sh|*/scripts/handover/chief-kit/test-ready-check-[b-f].sh)
       # ~200 runs of ready-check.sh, each now also reading the merge's gates 4 and 4b (item 18): 802s alone on an
       # idle box, 1206s killed at the 600s default under CI load (PR 4733, 1.63x). 2700s is the loaded figure
       # (802 x 1.63 = 1307) x2 (the loaded-budget rule).

@@ -285,15 +285,17 @@ inv7_exempt() {
         scripts/cr/test-*.sh|scripts/handover/test-*.sh|scripts/handover/chief-kit/test-*.sh|*.test.mjs) return 0 ;;
         # One exact lib suite: it writes fixture security-audit rows, malformed ones included.
         scripts/lib/test-outside-contributors.sh) return 0 ;;
+        # One exact chief-kit lib: the shared ready-check suite setup, whose seed helpers write the parts' fixture ledgers.
+        scripts/handover/chief-kit/tests/testlib-ready-check.sh) return 0 ;;
     esac
     return 1
 }
 case_inv7x() {
     local rel bad=0
-    for rel in scripts/handover/chief-kit/test-ready-check.sh scripts/handover/test-x.sh scripts/cr/test-x.sh scripts/x/y.test.mjs scripts/lib/test-outside-contributors.sh; do
+    for rel in scripts/handover/chief-kit/test-ready-check.sh scripts/handover/test-x.sh scripts/cr/test-x.sh scripts/x/y.test.mjs scripts/lib/test-outside-contributors.sh scripts/handover/chief-kit/tests/testlib-ready-check.sh; do
         inv7_exempt "$rel" || { echo "FAIL: invariant7x -- $rel is a test suite and must stay exempt" >&2; bad=1; }
     done
-    for rel in scripts/handover/chief-kit/ready-check.sh scripts/handover/chief-kit/lib/test-x.sh scripts/handover/chief-kit/x-test.sh scripts/handover/chief-kit/test-x.mjs scripts/hooks/test-x.sh scripts/handover/ready-check.sh scripts/lib/test-x.sh; do
+    for rel in scripts/handover/chief-kit/ready-check.sh scripts/handover/chief-kit/lib/test-x.sh scripts/handover/chief-kit/x-test.sh scripts/handover/chief-kit/test-x.mjs scripts/hooks/test-x.sh scripts/handover/ready-check.sh scripts/lib/test-x.sh scripts/handover/chief-kit/tests/other-lib.sh; do
         inv7_exempt "$rel" && { echo "FAIL: invariant7x -- $rel is not a test suite and must still be scanned" >&2; bad=1; }
     done
     [ "$bad" -eq 0 ] || return 1
