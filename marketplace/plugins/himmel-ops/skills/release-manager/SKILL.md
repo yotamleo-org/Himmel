@@ -97,8 +97,9 @@ placement and answers for none, so `request` queues, or refuses, an INTAKE with 
 placement; a gated key still needs `--decision` and `--words`, an ordinary one needs neither). A ruling is finished when
 `state --json` lists it under no `unfinished_rulings` (intent or applied means the Jira write, the admissions row or the
 receipt is still owed). `status: replay` means `rm-run` finishes it; `status: blocked` is a cross-version move the mirror
-shows in neither version with no journalled proof the removal was this ruling's own write: `rm-run` writes nothing for it
-and `observed` and `next` name the chief's two repairs (`jira fix-version`), after which `rm-run` writes the row and
+shows in neither version with no journalled proof the removal was this ruling's own write: `rm-run` writes no Jira change,
+admissions row or receipt for it (each run still takes its lease and writes its run record, and the first records one
+`mismatch` event; a repeat on the unchanged move adds none), and `observed` and `next` name the chief's two repairs (`jira fix-version`), after which `rm-run` writes the row and
 receipt once. Never read a blocked move as an `rm-run` job. A
 BACKLOG or KEEP refusal of a backlog-to-version ask is not fulfilled intent: it appears in `refused_asks` with its
 ground and exact `remedy`, and the same ask repeated word for word queues nothing until its evidence, the operator's

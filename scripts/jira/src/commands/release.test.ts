@@ -1433,6 +1433,29 @@ describe('a request for operator work carries the operator\'s words', () => {
       expect(queued()).toMatchObject([{ key: 'HIMMEL-1', verb: 'INTAKE', to_v: 'v1.1.3', evidence: { operator: id } }]);
     });
 
+    // The live shape of the 2026-11-16 correction audit: the underfill investigation answered `REQ approved:O-v1.1.3-0518` instead of queuing its placement.
+    it('seed from the correction audit: HIMMEL-10208 with the old approval O-v1.1.3-0518 queues the new placement with its words and prints no approval', async () => {
+      const seed = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'release', 'fixtures', 'correction-audit-2026-11-16.json'), 'utf8')) as {
+        old_work_approval_case: { key: string; approval_record: string; returned: string };
+      };
+      const c = seed.old_work_approval_case;
+      await declared();
+      decisionFile();
+      appendChain(join(root, 'state', 'v1.1.3', 'operator.jsonl'), loadKey(join(root, 'keys', 'v1.1.3.key')), {
+        id: c.approval_record, kind: 'out-of-version', decision: '518', keys: [c.key], ts: new Date(Date.now() - 86_400_000).toISOString(),
+      });
+      quiet();
+      await ask(gateMirror({ key: c.key, labels: ['operator-directed', 'standalone'] }), ...intake(c.key), '--decision', '9', '--words', WORDS);
+      expect(out.join('\n')).not.toContain(c.returned);
+      expect(out.join('\n')).not.toMatch(/approved/);
+      const id = /^OPERATOR (O-v1\.1\.3-\d{4}) /.exec(out.at(-2) ?? '')?.[1];
+      expect(id).toBeDefined();
+      expect(out.at(-1)).toBe('REQ Q-v1.1.3-0001');
+      expect(queued()).toMatchObject([{ key: c.key, verb: 'INTAKE', to_v: 'v1.1.3', state: 'open', evidence: { operator: id } }]);
+      // the old record stays what it was: work permission, no placement
+      expect(operatorRows().find((o) => o.id === c.approval_record)).toMatchObject({ kind: 'out-of-version', keys: [c.key] });
+    });
+
     it('RED: an approval on an ordinary ungated key still files the INTAKE through normal placement; the approval is only work permission', async () => {
       await declared();
       approve('HIMMEL-4');
@@ -1497,37 +1520,57 @@ describe('a request for operator work carries the operator\'s words', () => {
 
     it('--required-by records the typed remainder evidence on the queued request', async () => {
       await declared();
-      await ask(gateMirror({ key: 'HIMMEL-9914' }), ...intake('HIMMEL-9914'), '--required-by', 'HIMMEL-9953');
-      expect(queuedRows()[0].evidence).toEqual({ follow_up_of: 'HIMMEL-9953', remainder: true });
+      await ask(gateMirror({ key: 'HIMMEL-9953' }), ...intake('HIMMEL-9953'), '--required-by', 'HIMMEL-9914');
+      expect(queuedRows()[0].evidence).toEqual({ follow_up_of: 'HIMMEL-9914', remainder: true });
     });
 
     it('--required-by on a request already open returns that request carrying the relation (a signed update, not the old empty-evidence row)', async () => {
       await declared();
-      const m = gateMirror({ key: 'HIMMEL-9914' });
-      await ask(m, ...intake('HIMMEL-9914'));
+      const m = gateMirror({ key: 'HIMMEL-9953' });
+      await ask(m, ...intake('HIMMEL-9953'));
       expect(queuedRows()[0].evidence).toEqual({});
-      await ask(m, ...intake('HIMMEL-9914'), '--required-by', 'HIMMEL-9953');
+      await ask(m, ...intake('HIMMEL-9953'), '--required-by', 'HIMMEL-9914');
       expect(out.slice(-2)).toEqual(['REQ Q-v1.1.3-0001', 'REQ Q-v1.1.3-0001']);
-      expect(queuedRows().at(-1)?.evidence).toEqual({ follow_up_of: 'HIMMEL-9953', remainder: true });
+      expect(queuedRows().at(-1)?.evidence).toEqual({ follow_up_of: 'HIMMEL-9914', remainder: true });
       expect(queuedRows().at(-1)?.state).toBe('open');
       const n = queuedRows().length;
-      await ask(m, ...intake('HIMMEL-9914'), '--required-by', 'HIMMEL-9953');
+      await ask(m, ...intake('HIMMEL-9953'), '--required-by', 'HIMMEL-9914');
       expect(queuedRows()).toHaveLength(n);
+    });
+
+    // 8674 U1 (review F1): the words path withdraws the pending duplicate and refiles it; the refiled request keeps the relation.
+    it('U1: --decision --words on a pending request that carries --required-by refiles it carrying the relation, and never invents one', async () => {
+      await declared();
+      decisionFile();
+      const m = gateMirror({ key: 'HIMMEL-9953' }, { key: 'HIMMEL-9932' });
+      await ask(m, ...intake('HIMMEL-9953'), '--required-by', 'HIMMEL-9914');
+      await ask(m, ...intake('HIMMEL-9953'), '--decision', '9', '--words', WORDS);
+      const id = /^OPERATOR (O-v1\.1\.3-\d{4}) /.exec(out.at(-3) ?? '')?.[1];
+      expect(id).toBeDefined();
+      expect(out.slice(-2)).toEqual(['WITHDRAWN Q-v1.1.3-0001 (withdrawn:' + id + ')', 'REQ Q-v1.1.3-0002']);
+      expect(queuedRows().at(-1)).toMatchObject({ state: 'open', evidence: { follow_up_of: 'HIMMEL-9914', remainder: true, operator: id } });
+      // an ask that never had the relation gets none through the words path
+      await ask(m, ...intake('HIMMEL-9932'));
+      await ask(m, ...intake('HIMMEL-9932'), '--decision', '9', '--words', WORDS);
+      const id2 = /^OPERATOR (O-v1\.1\.3-\d{4}) /.exec(out.at(-3) ?? '')?.[1];
+      expect(id2).toBeDefined();
+      expect(queuedRows().at(-1)).toMatchObject({ state: 'open', evidence: { operator: id2 } });
+      expect(Object.keys(queuedRows().at(-1)?.evidence ?? {})).toEqual(['operator']);
     });
 
     it('--required-by is refused for itself, a non-key, or evidence naming another parent', async () => {
       await declared();
-      const m = gateMirror({ key: 'HIMMEL-9914' });
-      expect(await refusal(ask(m, ...intake('HIMMEL-9914'), '--required-by', 'HIMMEL-9914'))).toMatch(/names another ticket key/);
-      expect(await refusal(ask(m, ...intake('HIMMEL-9914'), '--required-by', 'nine'))).toMatch(/names another ticket key/);
-      expect(await refusal(ask(m, ...intake('HIMMEL-9914'), '--required-by', 'HIMMEL-9953', '--evidence', '{"follow_up_of":"HIMMEL-1"}'))).toMatch(/contradicts --required-by/);
+      const m = gateMirror({ key: 'HIMMEL-9953' });
+      expect(await refusal(ask(m, ...intake('HIMMEL-9953'), '--required-by', 'HIMMEL-9953'))).toMatch(/names another ticket key/);
+      expect(await refusal(ask(m, ...intake('HIMMEL-9953'), '--required-by', 'nine'))).toMatch(/names another ticket key/);
+      expect(await refusal(ask(m, ...intake('HIMMEL-9953'), '--required-by', 'HIMMEL-9914', '--evidence', '{"follow_up_of":"HIMMEL-1"}'))).toMatch(/contradicts --required-by/);
       expect(existsSync(requestsFile())).toBe(false);
     });
 
     it('an unchanged ask after the refusal says so on stderr and queues nothing; new evidence queues', async () => {
       await declared();
-      const m = gateMirror({ key: 'HIMMEL-9914' });
-      await ask(m, ...intake('HIMMEL-9914'));
+      const m = gateMirror({ key: 'HIMMEL-9953' });
+      await ask(m, ...intake('HIMMEL-9953'));
       // The RM refuses it: the request is ruled with a BACKLOG outcome.
       const k = loadKey(join(root, 'keys', 'v1.1.3.key'));
       const path = requestsFile();
@@ -1535,16 +1578,16 @@ describe('a request for operator work carries the operator\'s words', () => {
       const { prev: _p, mac: _m, ...rest } = first as Record<string, unknown>;
       appendChain(path, k, { ...rest, state: 'ruled:R-v1.1.3-0001' } as never);
       appendChain(join(root, 'state', 'v1.1.3', 'rulings.jsonl'), k, {
-        id: 'R-v1.1.3-0001', epoch: 1, req: 'Q-v1.1.3-0001', ts: new Date().toISOString(), verb: 'INTAKE', key: 'HIMMEL-9914', op: { kind: 'none', from_v: null, to_v: null },
+        id: 'R-v1.1.3-0001', epoch: 1, req: 'Q-v1.1.3-0001', ts: new Date().toISOString(), verb: 'INTAKE', key: 'HIMMEL-9953', op: { kind: 'none', from_v: null, to_v: null },
         outcome: 'BACKLOG', class: 'backlog', sector: 'x', ground: 'defer', reason: 'no operator record', supersedes: [], authority: { kind: 'rm', ref: null }, phase: 'receipted',
       } as never);
       const err = vi.spyOn(console, 'error').mockImplementation(() => undefined);
       out = [];
-      await ask(m, ...intake('HIMMEL-9914'));
+      await ask(m, ...intake('HIMMEL-9953'));
       expect(out).toEqual(['REQ Q-v1.1.3-0001']);
       expect(err.mock.calls.flat().join('\n')).toMatch(/already ruled:R-v1.1.3-0001 and nothing in this ask is new/);
       expect(queuedRows()).toHaveLength(2);
-      await ask(m, ...intake('HIMMEL-9914'), '--required-by', 'HIMMEL-9953');
+      await ask(m, ...intake('HIMMEL-9953'), '--required-by', 'HIMMEL-9914');
       expect(out.at(-1)).toBe('REQ Q-v1.1.3-0002');
     });
   });

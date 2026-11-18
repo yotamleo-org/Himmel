@@ -1211,7 +1211,9 @@ export function requestWithWords(ctx: Ctx, row: Omit<RequestRow, 'req' | 'ts' | 
   const withdrawn = dup && citedOperator(dup) === undefined
     ? withdraw(ctx, { req: dup.req, reason: `refiled citing the operator's words (${operator.id})`, by: operator.id })
     : null;
-  const evidence = { ...((row.evidence ?? {}) as Record<string, unknown>), operator: operator.id };
+  // The refiled ask keeps the required-parent relation of the request it replaces unless it states its own (an explicit remainder:false included).
+  const carried = withdrawn && dup && relationOf(row) === '{}' ? JSON.parse(relationOf(dup)) as Record<string, unknown> : {};
+  const evidence = { ...carried, ...((row.evidence ?? {}) as Record<string, unknown>), operator: operator.id };
   return { operator, withdrawn, request: request(ctx, { ...row, why: `${row.why} (operator words: ${operator.id})`, evidence }) };
 }
 
@@ -1625,9 +1627,10 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
     const membership = ['add', 'remove', 'move'].includes(last.op.kind);
     const event = (readback: 'ok' | 'mismatch') => {
       if (!membership) return;
-      // The applied row lands before its event, so a retry re-creates a missing one.
+      // The applied row lands before its event, so a retry re-creates a missing one. A run that finds the same ruling refused again
+      // appends nothing: the recorded mismatch already says so, and the same row every run only grows the ledger.
       const eventsPath = f(ctx, 'events.jsonl');
-      if (readback === 'ok' && readChain<EventRow>(eventsPath, l.k).verified.some((e) => e.kind === 'ruled' && e.ruling === id && e.readback === 'ok')) return;
+      if (readChain<EventRow>(eventsPath, l.k).verified.some((e) => e.kind === 'ruled' && e.ruling === id && e.readback === readback)) return;
       appendChain<EventRow>(eventsPath, l.k, {
         ts: ts(ctx), kind: 'ruled', key: last.key, from: last.op.from_v, to: last.op.to_v, ruling: id, readback,
       });
@@ -1734,7 +1737,8 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
 export interface StateOut extends ReleaseState {
   /** Per version: the keys of today's (UTC) operator decisions that add or move into it. */
   admissions_today: Record<string, number>;
-  lease: Omit<Lease, 'mac'> | null;
+  /** owner_gone is present (true) only for a held lease whose recorded owner pid is absent on this host: the proof rm-run's own reclaim uses. */
+  lease: (Omit<Lease, 'mac'> & { owner_pid?: number; owner_host?: string; owner_gone?: true }) | null;
   requests: { open: string[]; claimed: string[]; /** ts of the oldest open request, null with none. */ oldest_open: string | null };
   heads: { rulings: string; operator: string; events: string; requests: string; mirror: string | null };
   refused_asks: RefusedAsk[];
@@ -1768,8 +1772,15 @@ export interface RemainderConflict {
 }
 
 // The exact next command for a refused ask: operator words for an operator-asked (or unknown) key; changed facts or an ack otherwise.
-function remedyOf(release: string, q: RequestRow, ruling: string, asksOperator: boolean | null): string {
-  const base = `jira release request ${release} --verb ${q.verb} --key ${q.key} --from ${vName(q.from_v)} --to ${vName(q.to_v)}`;
+// The parent a request records as requiring it (follow_up_of with remainder: true), the same test the remainder conflicts apply.
+function requiredParent(q: RequestRow | undefined): string | null {
+  const ev = (q?.evidence ?? {}) as { follow_up_of?: unknown; remainder?: unknown };
+  return ev.remainder === true && typeof ev.follow_up_of === 'string' ? ev.follow_up_of : null;
+}
+
+// A refused ask that recorded a required parent keeps it in the command, as the conflict's remedy does.
+function remedyOf(release: string, q: RequestRow, ruling: string, asksOperator: boolean | null, parent: string | null): string {
+  const base = `jira release request ${release} --verb ${q.verb} --key ${q.key} --from ${vName(q.from_v)} --to ${vName(q.to_v)}${parent === null ? '' : ` --required-by ${parent}`}`;
   if (asksOperator !== false) return `${base} --why "<why>" --decision <n> --words "<the operator's exact words>"`;
   return `new facts: ${base} --why "<what changed>" --evidence '{"<changed requirement>":"<value>"}'; or if the refusal is right: jira release ack ${release} --ruling ${ruling} --reason "<why>"`;
 }
@@ -1793,6 +1804,8 @@ const factsOf = (i: IssueSnap | undefined): TicketFacts | null =>
 function refusedAsks(l: Loaded, issues: Map<string, IssueSnap> | null): RefusedAsk[] {
   const firstOf = new Map<string, RequestRow>();
   for (const q of l.requests.verified) if (!firstOf.has(q.req)) firstOf.set(q.req, q);
+  // The relation may have been added after the first row (a signed update of the same request), so the remedy reads the newest row.
+  const now = latestOrEmpty(l.requests);
   const ruledAt = new Map<string, string>();
   const latest = new Map<string, RulingRow>();
   for (const r of l.rulings.verified) {
@@ -1811,12 +1824,13 @@ function refusedAsks(l: Loaded, issues: Map<string, IssueSnap> | null): RefusedA
     if (!q || q.from_v !== null || q.to_v === null) continue;
     if (r.outcome !== 'BACKLOG' && !(r.verb === 'REVERSION' && r.outcome === 'KEEP')) continue;
     const since = Date.parse(ruledAt.get(r.id) ?? r.ts);
-    const askedAgain = (asksOf.get(key) ?? []).some((x) => x.req !== r.req && Date.parse(x.ts) > since);
+    // A later ask that was withdrawn no longer stands, so it does not hide the refusal.
+    const askedAgain = (asksOf.get(key) ?? []).some((x) => x.req !== r.req && Date.parse(x.ts) > since && !now.get(x.req)?.state.startsWith('withdrawn:'));
     if (acked.has(r.id) || askedAgain || (named.get(key) ?? -Infinity) > since) continue;
     const issue = issues?.get(key);
     if (issue && terminalOf(issue) !== null) continue;
     const asks = issue ? asksOperator(factsOf(issue)) : null;
-    out.push({ key, ruling: r.id, req: r.req, reason: r.reason, ground: r.ground, remedy: remedyOf(l.decl.release, q, r.id, asks), asks_operator: asks });
+    out.push({ key, ruling: r.id, req: r.req, reason: r.reason, ground: r.ground, remedy: remedyOf(l.decl.release, q, r.id, asks, requiredParent(now.get(r.req))), asks_operator: asks });
   }
   return out.sort((a, b) => a.key.localeCompare(b.key, 'en', { numeric: true }));
 }
@@ -1887,7 +1901,7 @@ export function state(ctx: Ctx): StateOut {
     ...s,
     status: lease ? s.status : 'UNKNOWN',
     admissions_today: admissionsToday(ctx, l),
-    lease: lease ? leaseOut : null,
+    lease: lease ? { ...leaseOut, ...(!lease.released && ownerGone(lease) ? { owner_gone: true as const } : {}) } : null,
     requests: { open, claimed, oldest_open: oldestOpen },
     heads: { rulings: l.rulings.head, operator: l.operator.head, events: l.events.head, requests: l.requests.head, mirror: mirror.sync },
     refused_asks: refusedAsks(l, mirror.issues),

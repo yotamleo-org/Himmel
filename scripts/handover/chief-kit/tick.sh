@@ -173,11 +173,16 @@ was unknown or older than 3 h; stale=unknown when no drift file could be read). 
 sdrift=0:* and stale=0:* are elided (partial and unknown never are); --verbose prints all three.
 Read from the state file, no gh or Jira call. Advisory: not in chief-wait's action key.
 
-rm-queue=<n>,<oldest age>m[,claimed=<n>][,run] follows leaks=. Empty open-and-claimed queues, no declaration,
-explicit none or unreadable docs elide it; off = unusable wiring or non-OK/read failure; ? = the tick's
-deadline cut the state read (unknown, read again next tick). An oldest open
-request past TICK_RMRUN_MIN minutes (default 30) with the lease free launches one detached `jira release
-rm-run <R>` (at most one per TICK_RMRUN_MIN_SECS, default 600) and appends `,run`; its output goes to
+rm-queue=<n>,<oldest age>m[,claimed=<n>][,replay=<n>][,run] follows leaks=. Empty open-and-claimed queues with no ruling
+to replay, no declaration, explicit none or unreadable docs elide it; off = unusable wiring or non-OK/read failure; ? = the tick's
+deadline cut the state read (unknown, read again next tick). replay=<n> counts the state's unfinished_rulings with status
+replay (a ruling interrupted after its Jira write, which no open request shows); a blocked move is the chief's repair and is
+not counted. An oldest open
+request past TICK_RMRUN_MIN minutes (default 30), or any ruling to replay, with the lease free launches one detached `jira release
+rm-run <R>` (at most one per TICK_RMRUN_MIN_SECS, default 600, so an unchanged ruling is retried at that pace, never every tick) and appends `,run`.
+A held lease reads as free only when the state says lease.owner_gone is true: the CLI proved the owner pid absent on this host (a
+hard-killed rm-run), the same proof rm-run's own reclaim uses; the tick judges no pid itself, and a pid that answers (a live owner, or
+a reused pid) keeps the lease held. Output goes to
 $TICK_STATE_DIR/tick-rm-run.log. Env seams: TICK_RMQ_PROBE, TICK_RMRUN_PROBE, TICK_RMRUN_LAUNCHER,
 TICK_RMQ_TIMEOUT. Not in chief-wait's action key.
 
@@ -3345,6 +3350,38 @@ if [ -n "$console_doc" ] && [ -r "$console_doc" ] && [ -f "$console_doc" ]; then
             ;;
     esac
 fi
+# rm_launch_run: the one launch gate an aged open request and an interrupted ruling share. With the lease free (or held by an owner the
+# state proves gone) and the state OK it
+# starts ONE detached rm-run, never inside TICK_RMRUN_MIN_SECS of the last launch (the stamp), so an unchanged request or ruling is
+# retried at the pace of the existing backoff and never on every tick. It appends ,run to rm_queue when it starts one.
+rm_launch_run() {
+    { [ "$rm_lease" = free ] || [ "$rm_lease" = gone ]; } && [ "$rm_status" = OK ] || return 0
+    local rm_gap rm_dir rm_stamp rm_stamp_age rm_stamp_m rm_have rm_w
+    local -a rm_launcher
+    rm_gap="${TICK_RMRUN_MIN_SECS:-600}"
+    case "$rm_gap" in '' | *[!0-9]*) rm_gap=600 ;; esac
+    rm_dir="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
+    rm_stamp="$rm_dir/tick-rm-run-$(printf '%s' "$rm_rel $REPO" | cksum | cut -d' ' -f1)"
+    rm_stamp_age=999999999
+    if [ -e "$rm_stamp" ]; then
+        rm_stamp_m="$(stat -c %Y "$rm_stamp" 2>/dev/null)" || rm_stamp_m=""  # gnu-ok: console kit is Linux-only; swallow-ok: an unreadable stamp reads old
+        case "$rm_stamp_m" in '' | *[!0-9]*) ;; *) rm_stamp_age=$(( $(date +%s) - rm_stamp_m )) ;; esac
+    fi
+    if [ "$rm_stamp_age" -ge "$rm_gap" ] && mkdir -p "$rm_dir" 2>/dev/null && touch "$rm_stamp" 2>/dev/null; then
+        read -r -a rm_launcher <<<"${TICK_RMRUN_LAUNCHER:-setsid nohup}"
+        rm_have=1; [ "${#rm_launcher[@]}" -gt 0 ] || rm_have=0
+        for rm_w in "${rm_launcher[@]}"; do command -v "$rm_w" >/dev/null 2>&1 || rm_have=0; done  # command -v with several operands passes if ANY exists
+        if [ "$rm_have" = 1 ]; then
+            if [ -n "${TICK_RMRUN_PROBE:-}" ]; then
+                "${rm_launcher[@]}" bash "$TICK_RMRUN_PROBE" release rm-run "$rm_rel" </dev/null >>"$rm_dir/tick-rm-run.log" 2>&1 &
+                rm_queue="$rm_queue,run"
+            elif [ -n "$rm_anchor" ] && [ -f "$rm_cli" ]; then
+                ( export JIRA_PROJECT_KEY="$rm_pk"; "${rm_launcher[@]}" node "$rm_cli" release rm-run "$rm_rel" </dev/null >>"$rm_dir/tick-rm-run.log" 2>&1 & )
+                rm_queue="$rm_queue,run"
+            fi
+        fi
+    fi
+}
 if [[ "$rm_rel" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
     rm_cli="${rm_anchor%/.git}/scripts/jira/dist/index.js"
     rm_pk="${nd_mirror##*/}"
@@ -3356,11 +3393,11 @@ if [[ "$rm_rel" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
     else
         rm_rc=-1
     fi
-    rm_n="" rm_age="" rm_lease="" rm_status="" rm_claimed=""
+    rm_n="" rm_age="" rm_lease="" rm_status="" rm_claimed="" rm_replay=""
     # exit 3 is the CLI's not-OK status and still prints the state
     if [ "$rm_rc" -eq 0 ] || [ "$rm_rc" -eq 3 ]; then
         # shellcheck disable=SC2016  # the python program is single-quoted on purpose
-        read -r rm_n rm_age rm_lease rm_status rm_claimed < <(printf '%s' "$rm_json" | python3 -I -c '
+        read -r rm_n rm_age rm_lease rm_status rm_claimed rm_replay < <(printf '%s' "$rm_json" | python3 -I -c '
 import datetime, json, sys
 d = json.load(sys.stdin)
 r = d["requests"]
@@ -3370,48 +3407,35 @@ if n and r.get("oldest_open"):
     t = datetime.datetime.fromisoformat(r["oldest_open"].replace("Z", "+00:00"))
     age = max(0, int((datetime.datetime.now(datetime.timezone.utc) - t).total_seconds() // 60))
 ls = d.get("lease")
-print(n, age, "held" if ls and not ls.get("released") else "free", d.get("status") or "UNKNOWN", len(r.get("claimed", [])))
+# an interrupted ruling a normal rm-run finishes (a blocked move is the chief repair, never a launch)
+replay = sum(1 for u in d.get("unfinished_rulings") or [] if isinstance(u, dict) and u.get("status") == "replay")
+# gone: the CLI proved the held lease owner process is absent on this host (owner_gone is literally true); the tick judges no pid itself
+lease = "free" if not ls or ls.get("released") else ("gone" if ls.get("owner_gone") is True else "held")
+print(n, age, lease, d.get("status") or "UNKNOWN", len(r.get("claimed", [])), replay)
 ' 2>/dev/null) || true  # swallow-ok: an unparseable state leaves the fields empty and the summary reads off
     fi
     [ "$rm_status" = OK ] || rm_n=""
+    case "$rm_replay" in '' | *[!0-9]*) rm_replay=0 ;; esac
     case "$rm_n" in
         '' | *[!0-9]*)
             case "$rm_rc" in 124 | 137) rm_queue='?' ;; *) rm_queue=off ;; esac
             ;;
         0)
             rm_queue=0
-            [ "$rm_claimed" -eq 0 ] || rm_queue="0,0m,claimed=$rm_claimed"
+            if [ "$rm_claimed" -ne 0 ] || [ "$rm_replay" -ne 0 ]; then
+                rm_queue="0,0m"
+                [ "$rm_claimed" -eq 0 ] || rm_queue="$rm_queue,claimed=$rm_claimed"
+                [ "$rm_replay" -eq 0 ] || rm_queue="$rm_queue,replay=$rm_replay"
+            fi
+            [ "$rm_replay" -eq 0 ] || rm_launch_run
             ;;
         *)
             rm_queue="$rm_n,${rm_age}m"
             [ "$rm_claimed" -eq 0 ] || rm_queue="$rm_queue,claimed=$rm_claimed"
+            [ "$rm_replay" -eq 0 ] || rm_queue="$rm_queue,replay=$rm_replay"
             rm_min="${TICK_RMRUN_MIN:-30}"
             case "$rm_min" in '' | *[!0-9]*) rm_min=30 ;; esac
-            rm_gap="${TICK_RMRUN_MIN_SECS:-600}"
-            case "$rm_gap" in '' | *[!0-9]*) rm_gap=600 ;; esac
-            if [ "$rm_age" -ge "$rm_min" ] && [ "$rm_lease" = free ] && [ "$rm_status" = OK ]; then
-                rm_dir="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
-                rm_stamp="$rm_dir/tick-rm-run-$(printf '%s' "$rm_rel $REPO" | cksum | cut -d' ' -f1)"
-                rm_stamp_age=999999999
-                if [ -e "$rm_stamp" ]; then
-                    rm_stamp_m="$(stat -c %Y "$rm_stamp" 2>/dev/null)" || rm_stamp_m=""  # gnu-ok: console kit is Linux-only; swallow-ok: an unreadable stamp reads old
-                    case "$rm_stamp_m" in '' | *[!0-9]*) ;; *) rm_stamp_age=$(( $(date +%s) - rm_stamp_m )) ;; esac
-                fi
-                if [ "$rm_stamp_age" -ge "$rm_gap" ] && mkdir -p "$rm_dir" 2>/dev/null && touch "$rm_stamp" 2>/dev/null; then
-                    read -r -a rm_launcher <<<"${TICK_RMRUN_LAUNCHER:-setsid nohup}"
-                    rm_have=1; [ "${#rm_launcher[@]}" -gt 0 ] || rm_have=0
-                    for rm_w in "${rm_launcher[@]}"; do command -v "$rm_w" >/dev/null 2>&1 || rm_have=0; done  # command -v with several operands passes if ANY exists
-                    if [ "$rm_have" = 1 ]; then
-                        if [ -n "${TICK_RMRUN_PROBE:-}" ]; then
-                            "${rm_launcher[@]}" bash "$TICK_RMRUN_PROBE" release rm-run "$rm_rel" </dev/null >>"$rm_dir/tick-rm-run.log" 2>&1 &
-                            rm_queue="$rm_queue,run"
-                        elif [ -n "$rm_anchor" ] && [ -f "$rm_cli" ]; then
-                            ( export JIRA_PROJECT_KEY="$rm_pk"; "${rm_launcher[@]}" node "$rm_cli" release rm-run "$rm_rel" </dev/null >>"$rm_dir/tick-rm-run.log" 2>&1 & )
-                            rm_queue="$rm_queue,run"
-                        fi
-                    fi
-                fi
-            fi
+            if [ "$rm_age" -ge "$rm_min" ] || [ "$rm_replay" -gt 0 ]; then rm_launch_run; fi
             ;;
     esac
 fi
