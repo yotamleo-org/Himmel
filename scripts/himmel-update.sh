@@ -1816,20 +1816,21 @@ update_qmd_fork() {
         # installing the new build does NOT reload the RUNNING
         # daemon. The shared qmd HTTP MCP daemon on :8181 is a long-lived
         # process; the qmd ensure script only STARTs one when nothing is
-        # serving — neither ever restarts one. So after a fork-ref bump the new
-        # code is on disk while every MCP call still hits the old build
-        # resident in memory, silently, with a green status line.
+        # serving, so after a fork-ref bump the new code is on disk while every
+        # MCP call still hits the old build resident in memory, silently, with
+        # a green status line.
         #
-        # Stopping it is process termination, which block-destructive-commands.sh
-        # refuses in an agent's own Bash text — correctly. This is NOT given a
-        # sanctioned carve-out: the qmd daemon is a plain bun process, so
-        # identifying "the" one to stop would be a
-        # process-list pattern match — exactly the generic-kill-wrapper this
-        # repo has already refused to grow. Print the command, let the operator
-        # run it.
+        # report_qmd_daemon_restart hands this to the repo's own ensure script
+        # (--recycle-if-stale <build stamp>), which stops only the process its
+        # pidfile names, and only when that pid is the HTTP server that wrote
+        # the pidfile. That is identification by a recorded pid and its start
+        # time, never a process-list pattern match, so it is not the
+        # generic-kill-wrapper this repo refuses to grow. The operator command
+        # block is the fallback for when that cannot verify or fails.
         if qmd_daemon_serving; then
             DETAIL_qmd_fork="${DETAIL_qmd_fork:+$DETAIL_qmd_fork }(daemon restart pending)"
             QMD_DAEMON_RESTART_PENDING=1
+            QMD_DAEMON_BUILD_STAMP="$(_qmd_build_stamp)"
         fi
         return 0
     fi
@@ -1866,6 +1867,20 @@ qmd_daemon_serving() {
 # update is a notice nobody reads.
 report_qmd_daemon_restart() {
     [ "${QMD_DAEMON_RESTART_PENDING:-0}" = "1" ] || return 0
+    # Synchronous and bounded by the script itself (worst case about two minutes).
+    # The repo copy, never the plugin cache's: the cache may still be the old build.
+    local ensure="$ROOT/marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh" rc=0
+    if [ -f "$ensure" ] && [ -n "${QMD_DAEMON_BUILD_STAMP:-}" ]; then
+        echo ""
+        echo "==> qmd daemon: restarting it onto the new build"  # t13b-ok: progress text only, starts nothing
+        bash "$ensure" --recycle-if-stale "$QMD_DAEMON_BUILD_STAMP" || rc=$?
+        if [ "$rc" -eq 0 ]; then
+            QMD_DAEMON_RESTART_PENDING=0
+            echo "    qmd daemon restarted: the new build is serving."  # t13b-ok: progress text only, starts nothing
+            return 0
+        fi
+        echo "    automatic restart failed (rc $rc) — the manual steps follow."
+    fi
     echo ""
     echo "==> qmd daemon restart REQUIRED"
     echo "    A new qmd build was installed, but the daemon on ${QMD_MCP_URL:-http://localhost:8181/mcp}"

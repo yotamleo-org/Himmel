@@ -1214,6 +1214,38 @@ assert_contains "config_ui dies at second 2: row says it did not stay up" "did n
 assert_eq "config_ui dies at second 2: keeps the retry marker" "yes" "$([ -f "$HOME/.himmel/state/config-ui-rebuild-pending" ] && echo yes || echo no)"
 rm -f "$HOME/.himmel/state/config-ui-rebuild-pending"
 
+# ─── qmd daemon restart: the repo's own ensure script, run synchronously ─────
+echo "Test 32: report_qmd_daemon_restart recycles a stale qmd server and prints the manual block only on failure"
+make_repo_channel
+QSTUB="$CHECKOUT_DIR/marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh"
+QARGS="$TMP/qmd-ensure-args"
+mkdir -p "$(dirname "$QSTUB")"
+# stub_ensure <rc> — the repo copy of the ensure script, recording its argv
+stub_ensure() {
+    rm -f "$QARGS"
+    printf '#!/usr/bin/env bash\necho "$*" > "%s"\nexit %s\n' "$QARGS" "$1" > "$QSTUB"
+}
+stub_ensure 0
+out=$(run_channel_lib 'QMD_DAEMON_RESTART_PENDING=1; QMD_DAEMON_BUILD_STAMP=/fork/.himmel-build-ok; report_qmd_daemon_restart' 2>&1)
+assert_eq "32a: the repo ensure script gets --recycle-if-stale and the build stamp" "--recycle-if-stale /fork/.himmel-build-ok" "$(cat "$QARGS" 2>/dev/null)"
+assert_contains "32a: success: says the qmd server was restarted" "restarted" "$out"
+case "$out" in *"restart REQUIRED"*|*pkill*) assert_fail "32a: success must not print the manual block, got: $out" ;; *) assert_pass "26a: success prints no manual block" ;; esac
+
+stub_ensure 1
+out=$(run_channel_lib 'QMD_DAEMON_RESTART_PENDING=1; QMD_DAEMON_BUILD_STAMP=/fork/.himmel-build-ok; report_qmd_daemon_restart' 2>&1)
+assert_contains "32b: a failed recycle prints the manual block" "qmd daemon restart REQUIRED" "$out"
+assert_contains "32b: …with the scoped stop command" "pkill -f 'qmd.*mcp.*--http'" "$out"
+
+stub_ensure 0
+out=$(run_channel_lib 'unset QMD_DAEMON_RESTART_PENDING; report_qmd_daemon_restart' 2>&1)
+assert_empty_out() { if [ -z "$2" ]; then assert_pass "$1"; else assert_fail "$1 — got: $2"; fi; }
+assert_empty_out "32c: nothing pending: silent" "$out"
+if [ ! -f "$QARGS" ]; then assert_pass "32c: nothing pending: the ensure script is not run"; else assert_fail "32c: the ensure script ran with nothing pending"; fi
+
+rm -f "$QSTUB"
+out=$(run_channel_lib 'QMD_DAEMON_RESTART_PENDING=1; QMD_DAEMON_BUILD_STAMP=/fork/.himmel-build-ok; report_qmd_daemon_restart' 2>&1)
+assert_contains "32d: the repo ensure script missing: manual block" "qmd daemon restart REQUIRED" "$out"
+
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo
 echo "RESULTS: $pass passed, $fail failed"

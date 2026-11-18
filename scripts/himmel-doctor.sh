@@ -3366,7 +3366,7 @@ check_c40_qmd_vec() {
     if [ -f "$qd_pidfile" ] && [ -f "$qd_stamp" ] && [ "$qd_pidfile" -ot "$qd_stamp" ] \
         && [ -n "$qd_pid" ] && kill -0 "$qd_pid" 2>/dev/null; then
         emit WARN C40-qmd-vec "the qmd daemon on $url is older than the installed qmd build (it started before $qd_stamp was written) -- it serves the old code from memory, so its vector-index status cannot be trusted" \
-            "restart it: ps -axww -o pid=,command= | grep '[q]md.*mcp.*--http' (look), then pkill -f 'qmd.*mcp.*--http', then bash marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh"  # t13b-ok: doctor remedy text naming the existing script, starts nothing
+            "restart it onto the new build: bash marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh --recycle-if-stale $qd_stamp (stops only the process the pid file names, and only if that process is the HTTP server that wrote it; /himmel-update runs the same command)"  # t13b-ok: doctor remedy text naming the existing script, starts nothing
         return
     fi
     instr="$(printf '%s' "$init_json" | jq -r '.result.instructions // ""' 2>/dev/null)"
