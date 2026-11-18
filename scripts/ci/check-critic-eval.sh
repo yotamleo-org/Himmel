@@ -56,13 +56,8 @@ fi
 # exists, so a row landed after the PR opened counts with no merge into the branch. Otherwise it is read at the
 # diff base, with one line naming the missing input. One tab-separated row per operator-recorded bypass: pr,
 # head sha prefix (7-40 hex; a new row writes the full 40), decision id, reason. Honoured only for that PR
-# number (CHECK_CRITIC_EVAL_PR, else GITHUB_REF refs/pull/<n>/merge) at that head (this head, or the merge
-# ref's second parent), or at a later head: one the row's head is an ancestor of, with no critic behaviour path,
-# cbs.txt or known-findings file changed between them. A malformed row fails closed.
+# number (CHECK_CRITIC_EVAL_PR, else GITHUB_REF refs/pull/<n>/merge). A malformed row fails closed.
 
-# carries <row head> <candidate>: succeeds when the row's head resolves to a commit that is an ancestor of the
-# candidate and no critic behaviour path (expanded at both ends), cbs.txt or known-findings file differs between
-# them. Anything unresolved, unexpanded or unreadable is no carry.
 carries() {
     local h0 files cb cc protected hit rc
     h0="$(git -C "$repo" rev-parse --verify -q "$1^{commit}")" || return 1
@@ -71,12 +66,11 @@ carries() {
     cb="$(python3 "$SCORE" cbs-paths "$h0" --repo "$repo")" || return 1
     cc="$(python3 "$SCORE" cbs-paths "$2" --repo "$repo")" || return 1
     [ -n "$cb" ] && [ -n "$cc" ] || return 1
-    protected="$(printf '%s\n%s\n%s\n' "$cb" "$cc" "$CARRY_BLOCKING" | grep -vx '')"
+    protected="$(printf '%s\n%s\n%s\n' "$cb" "$cc" "$NON_CBS_CRITIC_INPUTS" | grep -vx '')"
     hit="$(grep -Fxf <(printf '%s\n' "$protected") <(printf '%s\n' "$files"))"; rc=$?
     [ "$rc" -eq 1 ] && [ -z "$hit" ]
 }
-# Not in cbs.txt (a change would strand every baseline eval row), yet each moves what a critic reviews.
-CARRY_BLOCKING="$CBS_REL"$'\n'scripts/cr/known-findings.json$'\n'scripts/cr/known-findings.sh
+NON_CBS_CRITIC_INPUTS="$CBS_REL"$'\n'scripts/cr/known-findings.json$'\n'scripts/cr/known-findings.sh
 
 bypass_rev="$diff_base"; bypass_at="the diff base"; why=""
 if [ -z "${GITHUB_BASE_REF:-}" ]; then

@@ -952,12 +952,6 @@ jobs:
       - if: ${{ needs.ci-quick.outputs.secret-scan != 'pass' }}
         run: exit 1
 
-  # The reviewer-eval merge gate (scripts/eval/review-panel/README.md "The merge gate").
-  # A job of its own with no fail-fast twin: a missing operator bypass row or a pending
-  # eval must not cancel the PR's real tests, and as a required context it still blocks merge.
-  # Full history: the gate diffs the merge ref against its first parent and reads the
-  # default branch's tip from refs/remotes/origin. It checks out and executes contributor
-  # code, so the token is not persisted into .git/config.
   critic-eval:
     name: ${{ (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && 'critic-eval' || 'critic-eval (deferred)' }}
     if: ${{ !cancelled() && (!(github.event_name == 'pull_request' && github.event.action == 'labeled') || (github.event.label.name == (vars.CI_GO_LABEL || 'ci:go') && vars.CI_GO_GATE == 'on')) && github.event_name == 'pull_request' }}

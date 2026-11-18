@@ -65,9 +65,7 @@ fi
 # payloads of two CI runs (name/status/conclusion kept):
 # pr-fail-fast-jobs-green.json = run 39034533470 (every job finished green),
 # pr-fail-fast-jobs-failed.json = run 39045466700 (plugin-version-bump red).
-# critic-eval: a missing operator bypass row or a pending eval must not cancel the PR's real tests; the job
-# still blocks merge as a required context.
-NO_TWIN=" shell-unit guard-corpus-full critic-eval " # the shard aggregator; schedule-only; the eval gate
+NO_TWIN=" shell-unit guard-corpus-full critic-eval " # the shard aggregator; schedule-only
 # needs.<job>.result, not failure() alone: failure() is also true when only an
 # ancestor (plan) failed, which would fire every twin downstream of it.
 twin_if() { echo "failure() && needs.$1.result == 'failure' && github.event_name == 'pull_request'"; }

@@ -232,7 +232,6 @@ CHECK_CRITIC_EVAL_PR=4690 gate "a bypass row for another head is ignored" 1 "no 
 with_bypass "$(brow 4690 "${H:0:7}" 592 'noise on an unexecuted path')"
 M="$(gitc commit-tree "$(gitc rev-parse "$H^{tree}")" -p "$BASE" -p "$H" -m merge-ref)"; gitc checkout -q "$M"
 GITHUB_REF=refs/pull/4690/merge gate "a bypass row naming the PR head is honoured on the merge ref" 0 "BYPASS honoured"
-# The merge commit's tree differs from H in a critic path, so the carry rule cannot stand in for the second parent.
 gitc checkout -q "$H"; commit_edit scripts/cr/critic-panel.sh '# a critic change from the other parent' >/dev/null
 MX="$(gitc commit-tree "$(gitc rev-parse 'HEAD^{tree}')" -p "$BASE" -p "$H" -m merge-ref)"; gitc checkout -q "$MX"
 CHECK_CRITIC_EVAL_PR=4690 gate "a second parent counts only on CI's merge ref, not on any merge commit" 1 "no eval rows"
@@ -345,8 +344,6 @@ ci trunk "a base branch that is not the default branch reads the bypass file at 
 gitc update-ref -d refs/remotes/origin/main && gitc update-ref refs/heads/main "$TIP"
 ci main "an absent refs/remotes/origin/main falls back to the diff base, and names the ref" 1 "refs/remotes/origin/main is absent"
 
-# --- bypass carry-over: a row for an earlier head of the PR covers a later head that changed no critic input ----
-# The row names H0; each case builds a later head on H0 (carry_edit) or beside it and runs the gate there.
 fixture carry
 BASE0="$BASE"
 commit_edit scripts/cr/critic-first-pass.sh '# a critic change' >/dev/null
@@ -367,7 +364,6 @@ carry_edit scripts/cr/known-findings.json ''
 CHECK_CRITIC_EVAL_PR=4690 gate "no carry when known-findings.json changed after the row's head" 1 "no eval rows"
 carry_edit scripts/cr/known-findings.sh '# a later renderer change'
 CHECK_CRITIC_EVAL_PR=4690 gate "no carry when known-findings.sh changed after the row's head" 1 "no eval rows"
-# A sibling head with the same critic bytes is no descendant of H0.
 gitc checkout -q "$BASE0"; printf '%s\n' '# a critic change' >> "$R/scripts/cr/critic-first-pass.sh"; gitc add -A && gitc commit -q -m sibling
 commit_edit scripts/cr/notes-not-a-critic.txt 'not a critic file' >/dev/null
 CHECK_CRITIC_EVAL_PR=4690 gate "no carry when the row's head is not an ancestor of the head" 1 "no eval rows"
@@ -378,7 +374,6 @@ with_bypass "$(brow 4690 "$(printf 'a%.0s' $(seq 7))" 592 'a prefix this repo do
 carry_edit scripts/cr/notes-not-a-critic.txt 'not a critic file'
 CHECK_CRITIC_EVAL_PR=4690 gate "no carry when a short row head resolves to no commit" 1 "no eval rows"
 
-# On CI's merge ref the PR head (HEAD^2) carries; the merge commit also holds main's own critic change, which blocks no carry to the PR head.
 fixture mr-carry
 BASE0="$BASE"
 commit_edit scripts/cr/critic-panel.sh '# a critic change on main' >/dev/null
