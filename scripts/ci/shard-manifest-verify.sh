@@ -45,6 +45,10 @@
 # must, as for any floor suite. An unreadable tiers file lists no pr suite and
 # says nothing about rows, so no capability skip is excused.
 #
+# In pr mode with an impacted selection, a quarantine suite the selection does
+# not name is skipped by every shard, so <list> naming it to RUN is met by a
+# shard `skip` row for it; one the selection names must still run.
+#
 # SUITE_TIERS_TSV (env) overrides the suite-tiers.tsv next to this script; an
 # unreadable file quarantines nothing, so no failure is forgiven.
 #
@@ -195,7 +199,7 @@ acct=$( { grep '^suite ' "$selection" | sed 's/^suite /sel /'
     }
     if (mode != "impacted" || tier == "pr") {
       for (i = 1; i <= ndisc; i++)
-        if (!(dorder[i] in runs)) printf "FAIL: %s never ran on any shard, though discovery lists it to run here\n", dorder[i]
+        if (!(dorder[i] in runs) && !(mode == "impacted" && tier == "pr" && (dorder[i] in quar) && !(dorder[i] in sel) && (dorder[i] in skipped))) printf "FAIL: %s never ran on any shard, though discovery lists it to run here\n", dorder[i]
     }
     if (mode == "impacted") for (i = 1; i <= nsel; i++) {
       p = order[i]

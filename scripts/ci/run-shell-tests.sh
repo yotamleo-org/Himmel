@@ -939,9 +939,11 @@ case "$SUITE_TIER_MODE" in
 esac
 # SUITE_TIER_MODE=pr reads scripts/ci/suite-tiers.tsv (path<TAB>tier<TAB>reason)
 # instead of the table above: a suite runs when it is impacted, when its tier is
-# pr, flow or quarantine, or when it has no row; a local suite runs only when
-# impacted. A quarantine suite that fails is reported and never fails the run,
-# in every mode (the other modes read only its quarantine rows).
+# pr or flow, or when it has no row; a local suite runs only when impacted.
+# Beside an impacted selection a quarantine suite runs only when impacted too;
+# with a full or no selection it runs. A quarantine suite that fails is
+# reported, run once and never fails the run, in every mode (the other modes
+# read only its quarantine rows).
 # SUITE_TIERS_TSV overrides the path, the seam tier-replay.sh drives.
 tiers_local_nl=""
 tiers_quarantine_nl=""
@@ -3952,6 +3954,19 @@ ${_key#"$tier_repo_root"/}
           ;;
       esac
     fi
+    # A quarantine suite never fails the run, so a PR pays for it only when the
+    # impacted selection reaches it. A full selection and a run with no selection
+    # leave impacted_active at 0, so they keep every quarantine suite.
+    if [ "$impacted_active" -eq 1 ] && [ "$_not_impacted" -eq 1 ]; then
+      case "$tiers_quarantine_nl" in
+        *"
+${_key#"$tier_repo_root"/}
+"*)
+          _filter_reason="tier: quarantine (SUITE_TIER_MODE=pr skips a quarantine suite the impacted selection does not reach)"
+          return 0
+          ;;
+      esac
+    fi
   elif tier_lookup "$_key" "$_relpath"; then
     if [ "$SUITE_TIER_MODE" = "fast" ]; then
       _filter_reason="tier: extended (SUITE_TIER_MODE=fast) — ${_tier_reason}"
@@ -4653,9 +4668,15 @@ WITNESSMSGS
   fi
 
   # A cap overrun is retried too: on a loaded runner it is as likely slowness as
-  # a defect, and one rerun in the same job costs less than a red main.
-  if [ "$rc" -ne 0 ] && [ "$capped" -eq 1 ] && [ "$live_fail" -eq 0 ] && [ "$_attempt" -eq 1 ] && _suite_quarantined "$suite_key"; then
-    printf '[NO-RETRY] %s is tier quarantine and exceeded its %ss cap; a rerun cannot change the run'\''s result\n' "$suite" "$suite_timeout"
+  # a defect, and one rerun in the same job costs less than a red main. A
+  # quarantine suite is the exception for any failure: its result never fails
+  # the run, so a rerun is cost with nothing to gain.
+  if [ "$rc" -ne 0 ] && [ "$live_fail" -eq 0 ] && [ "$_attempt" -eq 1 ] && _suite_quarantined "$suite_key"; then
+    if [ "$capped" -eq 1 ]; then
+      printf '[NO-RETRY] %s is tier quarantine and exceeded its %ss cap; a rerun cannot change the run'\''s result\n' "$suite" "$suite_timeout"
+    else
+      printf '[NO-RETRY] %s is tier quarantine and failed (rc=%s); a rerun cannot change the run'\''s result\n' "$suite" "$rc"
+    fi
     break
   fi
   if [ "$rc" -ne 0 ] && [ "$live_fail" -eq 0 ] && [ "$_attempt" -eq 1 ] && ! _suite_no_retry "$suite"; then
