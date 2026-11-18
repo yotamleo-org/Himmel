@@ -97,7 +97,7 @@ FALLBACK_WHISPER_LABEL = "base"  # source label when the helper reports no model
 DOWNLOAD_TIMEOUT = 180
 MEDIA_MAX_BYTES = 500 * 1024 * 1024
 SCRAPLING_HINT = (
-    "\n  or install the cookieless Scrapling backend:"
+    "\n  or install the cookieless Scrapling backend: "
     "python3 -m venv ~/.himmel/scrapling-venv ; ~/.himmel/scrapling-venv/bin/pip "
     "install --require-hashes -r <plugin>/tools/requirements-scrapling.txt ; "
     "~/.himmel/scrapling-venv/bin/python -m patchright install chromium")
