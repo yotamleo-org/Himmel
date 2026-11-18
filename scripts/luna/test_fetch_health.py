@@ -18,6 +18,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 MODULE_PATH = Path(__file__).with_name("fetch-health.py")
+sys.path.insert(0, str(MODULE_PATH.parent.parent / "lib"))
 SPEC = importlib.util.spec_from_file_location("fetch_health", MODULE_PATH)
 assert SPEC and SPEC.loader
 fetch_health = importlib.util.module_from_spec(SPEC)
@@ -520,6 +521,20 @@ class FetchHealthTests(unittest.TestCase):
             self.assertEqual(loaded["BITBUCKET_EMAIL"], "from-file")
             # A live NON-empty process value still wins over the file.
             self.assertEqual(loaded["BITBUCKET_API_TOKEN"], "live")
+
+    def test_load_repo_env_asks_the_keyring_for_the_bitbucket_email(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            asked = []
+
+            def resolve(_root, names):
+                asked.extend(names)
+                return {k: "from-keyring" for k in names if k.startswith("BITBUCKET_")}
+
+            with patch("vmsdk.resolve_secrets", side_effect=resolve):
+                loaded = fetch_health.load_repo_env({}, root)
+            self.assertIn("BITBUCKET_EMAIL", asked)
+            self.assertEqual(loaded["BITBUCKET_EMAIL"], "from-keyring")
 
     def test_load_repo_env_treats_a_whitespace_only_process_value_as_present(self):
         # "empty" means ZERO-LENGTH, exactly
