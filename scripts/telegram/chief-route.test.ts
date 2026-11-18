@@ -4503,3 +4503,312 @@ test("capped fold still verifies a ledger whose latest closure round was opened 
   editLedger(f, rows => { rows.find(row => row.row === "extension").findings[0].return_sha = "f".repeat(64); });
   await expect(runCapped(f.args)).rejects.toThrow("invalid ledger records: extension 990");
 }, S1B);
+
+// ---- typed fixture builders, the real closure marker and the JSON selector (rows B1, G0a and G0b v1 controls) ----
+const B1_LIB = join(import.meta.dir, "testlib-capped-fold.ts");
+const B1_MINERVA = join(import.meta.dir, "..", "..", "marketplace", "plugins", "himmel-ops", "scripts");
+const b1Lib = async (): Promise<any> => import("./testlib-capped-fold.ts");
+const b1Rows = (f: { ledgerPath: string }): any[] => readFileSync(f.ledgerPath, "utf8").trim().split("\n").map(l => JSON.parse(l));
+const b1Rel = (scratch: string, p: string) => p.startsWith(scratch + "/") ? p.slice(scratch.length + 1) : p;
+const b1Status = async (f: { specsRoot: string }, key: string) => JSON.parse((await routeCli("round-status", key, "--specs", f.specsRoot, "--json")).out);
+const b1Selector = (request: unknown) => {
+  const p = Bun.spawnSync(["bun", B1_LIB], { stdin: Buffer.from(JSON.stringify(request)), stdout: "pipe", stderr: "pipe" });
+  return { code: p.exitCode, out: p.stdout.toString(), err: p.stderr.toString() };
+};
+// What a reader sees of a fixture, with every scratch path made relative so an in-process build and a selector build compare equal.
+const b1Summary = async (f: any, scratch: string, key: string) => {
+  const rows = b1Rows(f).map((r: any) => [r.row, r.critic ?? null, r.round ?? null, r.epoch ?? null, r.mode ?? null, r.verdict ?? null, r.round_opened ?? null,
+    r.verdict_path ? b1Rel(scratch, r.verdict_path) : null, r.row === "reset" ? b1Rel(scratch, r.decision_path) : null]);
+  const s = await b1Status(f, key);
+  return { fields: Object.keys(f).sort(), rows, state: { epoch: s.epoch, spec: s.spec, plan: s.plan, next: s.next, why: s.why, invalid: s.invalid, critical_open: s.critical_open },
+    spec: b1Rel(scratch, f.spec), plan: b1Rel(scratch, f.plan), verdicts: f.verdicts.map((p: string) => b1Rel(scratch, p)), earlier: (f.earlier ?? []).map((p: string) => b1Rel(scratch, p)),
+    decision: f.decision ? b1Rel(scratch, f.decision) : null, keys: f.keys ?? null, anchor: f.anchor ?? null, members: f.members ?? null };
+};
+const b1Lint = (f: { spec: string; plan: string; specsRoot: string }) => {
+  const scratch = dirname(f.specsRoot); const home = mkdtempSync(join(tmpdir(), "b1-home-"));
+  expect(Bun.spawnSync(["git", "init", "-q", scratch]).exitCode).toBe(0);
+  const env = { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: home, NODE_ENV: "test", LANG: "C.UTF-8" };
+  const run = (script: string, ...args: string[]) => {
+    const p = Bun.spawnSync(["bash", join(B1_MINERVA, script), ...args], { cwd: script === "minerva-spec-gate.sh" ? dirname(f.spec) : scratch, env, stdout: "pipe", stderr: "pipe" });
+    return { code: p.exitCode, out: p.stdout.toString() + p.stderr.toString() };
+  };
+  return { gate: run("minerva-spec-gate.sh", f.spec), trace: run("minerva-trace-lint.sh", f.spec, f.plan, scratch) };
+};
+const b1Kind = (f: { verdicts: string[] }, kind: "spec" | "plan") => f.verdicts.filter(p => p.includes(`.critic-${kind}-r`));
+
+test("B1 availability: the typed builders and the real closureMarker exist, beside a control that the pre-existing builder still works", async () => {
+  const lib = await b1Lib(); const route: any = await import("./chief-route");
+  expect(typeof lib.buildRoundFixture, "control: the pre-existing generic builder").toBe("function");
+  expect((await cappedFixture()).verdicts).toHaveLength(6);
+  for (const name of ["buildGroupFixture", "buildKnownSingleFixture", "buildFreshSingleFixture"]) expect(typeof lib[name], `${name} builder`).toBe("function");
+  expect(typeof route.closureMarker, "chief-route exports the real closureMarker").toBe("function");
+  expect(route.closureMarker("HIMMEL-1", "spec", 4, "a".repeat(64))).toBe("CLOSURE-CHECK HIMMEL-1 spec r3 aaaaaaaaaaaa");
+  expect(route.closureMarker("HIMMEL-1", "plan", 6, "0123456789abcdef".repeat(4))).toBe("CLOSURE-CHECK HIMMEL-1 plan r5 0123456789ab");
+});
+
+test("B1 group reset new-stem: a real reset, five preserved earlier returns, a restarted epoch 1, in process and through the selector", async () => {
+  const lib = await b1Lib(); const route: any = await import("./chief-route");
+  const scratch = realpathSync(root()); const consoleBefore = process.env.HIMMEL_CONSOLE;
+  const actual = route.roundReset; let frozen: Record<string, string> = {}; let resets = 0;
+  const spy = spyOn(route, "roundReset").mockImplementation((...a: any[]) => {
+    resets++;
+    const dir = join(scratch, "specs", "designs");
+    frozen = Object.fromEntries(readdirSync(dir).filter(n => n.includes(".critic-")).map(n => [join(dir, n), sha(readFileSync(join(dir, n), "utf8"))]));
+    expect(process.env.HIMMEL_CONSOLE, "the console marker is set around the real helper call").toBe("1");
+    return actual(...a);
+  });
+  let f: any; try { f = await lib.buildGroupFixture(scratch); } finally { spy.mockRestore(); }
+  expect(resets).toBe(1);
+  expect(process.env.HIMMEL_CONSOLE, "the marker is restored").toBe(consoleBefore);
+  expect(f.keys).toHaveLength(7); expect(f.anchor).toBe(f.keys[0]); expect(f.members).toEqual(f.keys.slice(1));
+  const specText = readFileSync(f.spec, "utf8"); const planText = readFileSync(f.plan, "utf8");
+  expect(specText).toContain(`tickets: [${f.keys.join(", ")}]`); expect(specText).not.toMatch(/^Keys?:|^- Tickets?:/m);
+  expect(planText.startsWith("---")).toBe(false); expect(planText).not.toMatch(/^Keys?:/m);
+  expect(f.spec.endsWith("-fixture-epoch1.md")).toBe(true); expect(f.plan.endsWith("-fixture-epoch1.md")).toBe(true);
+  const ledgerDir = dirname(f.ledgerPath);
+  for (const m of f.members) {
+    expect(existsSync(join(ledgerDir, `${m}.jsonl`)), `${m} ledger`).toBe(false); expect(existsSync(join(ledgerDir, m)), `${m} snapshot folder`).toBe(false);
+    expect(Object.keys(JSON.parse(readFileSync(join(ledgerDir, "manifest.json"), "utf8")).keys)).not.toContain(m);
+  }
+  expect(readdirSync(ledgerDir).sort()).toEqual([f.anchor, `${f.anchor}.jsonl`, `${f.anchor}.jsonl.lock`, "manifest.json", "round-seed.jsonl.lock"].filter(n => existsSync(join(ledgerDir, n))).sort());
+  const rows = b1Rows(f); const rounds = rows.filter(r => r.row === "round");
+  expect(rows.map(r => r.row).filter(k => !["round", "seal", "override", "reset"].includes(k))).toEqual([]);
+  const old = rounds.filter(r => r.epoch === 0); const current = rounds.filter(r => r.epoch === 1);
+  expect(old.map(r => [r.critic, r.round, r.mode])).toEqual([["spec", 1, "full"], ["spec", 2, "full"], ["spec", 3, "full"], ["spec", 4, "closure"], ["spec", 5, "closure"]]);
+  expect(old[2].findings.map((x: any) => x.severity)).toContain("major");
+  expect(old[3].findings).toMatchObject([{ id: expect.any(String), severity: "major", regression: true, class: "regression" }]);
+  expect(old[4].verdict).toBe("SPEC CLEAN");
+  expect(old.filter(r => r.round >= 3)).toHaveLength(3);
+  expect(rows.filter(r => r.row === "override")).toMatchObject([{ round_opened: 5, epoch: 0 }]);
+  const reset = rows.filter(r => r.row === "reset"); expect(reset).toHaveLength(1);
+  expect(reset[0]).toMatchObject({ epoch: 1, decision_path: f.decision });
+  expect(rows.indexOf(reset[0])).toBeGreaterThan(rows.indexOf(old.at(-1)));
+  expect(f.earlier).toEqual(old.map(r => r.verdict_path)); expect(f.earlier).toHaveLength(5);
+  expect(current.map(r => [r.critic, r.round]).sort()).toEqual([["plan", 1], ["plan", 2], ["plan", 3], ["spec", 1], ["spec", 2], ["spec", 3]]);
+  const currentPaths = new Set(current.map(r => r.verdict_path));
+  expect(currentPaths.size).toBe(6);
+  for (const p of f.earlier) expect(currentPaths.has(p), `${p} is not a current path`).toBe(false);
+  for (const p of currentPaths) expect(String(p)).toContain("-epoch1.md.critic-");
+  expect(readFileSync(current.find(r => r.critic === "spec").verdict_path, "utf8")).toContain("(medium; Fact overlap)");
+  expect(f.verdicts).toEqual([...f.earlier, ...current.map(r => r.verdict_path)]);
+  for (const r of old) {
+    const text = readFileSync(r.verdict_path, "utf8");
+    expect(route.returnSha(text), `${r.verdict_path} hashes to its row`).toBe(r.return_sha);
+    expect(sha(text), "byte-identical to before the reset").toBe(frozen[r.verdict_path]);
+  }
+  expect(Object.keys(frozen).sort()).toEqual([...f.earlier].sort());
+  for (const [i, r] of old.entries()) if (r.mode === "closure") expect(readFileSync(r.verdict_path, "utf8").split("\n")).toContain(route.closureMarker(f.anchor, "spec", r.round, old[i - 1].return_sha));
+  expect(statSync(f.decision).mtimeMs, "decision strictly newer than the latest round row by the fixture's margin").toBeGreaterThan(Math.max(...old.map(r => r.ts)) + 1000);
+  expect(readFileSync(f.decision, "utf8")).toStartWith(`${f.anchor} `);
+  const state = await route.roundState(f.specsRoot, f.anchor);
+  expect(state).toMatchObject({ epoch: 1, spec: 3, plan: 3, next: "none", invalid: [], critical_open: [] });
+  expect(state.why).toContain("needs a blocking finding in round 3 of either kind");
+  const lint = b1Lint(f); expect(lint.gate.out).toContain("minerva-spec-gate: ok"); expect(lint.trace.out).toContain("minerva-trace-lint: ok");
+  const scratch2 = realpathSync(root()); const sel = b1Selector({ builder: "group", scratchRoot: scratch2, reset: "new-stem" });
+  expect(sel.err).toBe(""); expect(sel.code).toBe(0); expect(sel.out.trimEnd().split("\n")).toHaveLength(1);
+  expect(await b1Summary(JSON.parse(sel.out), scratch2, f.anchor)).toEqual(await b1Summary(f, scratch, f.anchor));
+  const dflt = b1Selector({ builder: "group", scratchRoot: realpathSync(root()) });
+  expect(JSON.parse(dflt.out).earlier).toHaveLength(5);
+}, S1B);
+
+test("B1 group reset in-place and none: the in-place earlier paths are all current rows, and none is epoch 0 with no reset", async () => {
+  const lib = await b1Lib(); const route: any = await import("./chief-route");
+  const scratch = realpathSync(root()); const f = await lib.buildGroupFixture(scratch, { reset: "in-place" });
+  expect(f.earlier).toEqual([]);
+  const rows = b1Rows(f); const rounds = rows.filter(r => r.row === "round");
+  const old = rounds.filter(r => r.epoch === 0); const current = rounds.filter(r => r.epoch === 1);
+  expect(old.length).toBeGreaterThan(0);
+  const currentPaths = new Set(current.map(r => r.verdict_path));
+  for (const r of old) {
+    expect(currentPaths.has(r.verdict_path), `${r.verdict_path} is reused by a current row`).toBe(true);
+    const text = readFileSync(r.verdict_path, "utf8"); const again = current.find(c => c.verdict_path === r.verdict_path);
+    expect(text, "the existing recipe rewrites the return").toContain("New epoch Fixture:");
+    expect(again.return_sha, "the current row seals the rewritten bytes").toBe(route.returnSha(text));
+    expect(again.return_sha, "and not the epoch 0 bytes").not.toBe(r.return_sha);
+  }
+  expect(rows.filter(r => r.row === "reset")).toHaveLength(1); expect(f.decision).not.toBeNull(); expect(existsSync(f.decision)).toBe(true);
+  expect(current.map(r => [r.critic, r.round]).sort()).toEqual([["plan", 1], ["plan", 2], ["plan", 3], ["spec", 1], ["spec", 2], ["spec", 3]]);
+  expect(await route.roundState(f.specsRoot, f.anchor)).toMatchObject({ epoch: 1, spec: 3, plan: 3, invalid: [] });
+  expect(f.spec.endsWith("-epoch1.md")).toBe(false);
+  const lint = b1Lint(f); expect(lint.gate.out).toContain("minerva-spec-gate: ok"); expect(lint.trace.out).toContain("minerva-trace-lint: ok");
+  const scratch2 = realpathSync(root()); const sel = b1Selector({ builder: "group", scratchRoot: scratch2, reset: "in-place" });
+  expect(sel.err).toBe(""); expect(await b1Summary(JSON.parse(sel.out), scratch2, f.anchor)).toEqual(await b1Summary(f, scratch, f.anchor));
+
+  const nscratch = realpathSync(root()); const n = await lib.buildGroupFixture(nscratch, { reset: "none" });
+  expect(n.earlier).toEqual([]); expect(n.decision).toBeNull();
+  const nrows = b1Rows(n);
+  expect(nrows.filter(r => r.row === "reset" || r.row === "override")).toEqual([]);
+  expect(nrows.filter(r => r.row === "round").map(r => [r.critic, r.round, r.epoch]).sort()).toEqual([["plan", 1, 0], ["plan", 2, 0], ["plan", 3, 0], ["spec", 1, 0], ["spec", 2, 0], ["spec", 3, 0]]);
+  expect(await route.roundState(n.specsRoot, n.anchor)).toMatchObject({ epoch: 0, spec: 3, plan: 3, next: "none", invalid: [] });
+  for (const m of n.members) { expect(existsSync(join(dirname(n.ledgerPath), `${m}.jsonl`))).toBe(false); expect(existsSync(join(dirname(n.ledgerPath), m))).toBe(false); }
+  const nl = b1Lint(n); expect(nl.gate.out).toContain("minerva-spec-gate: ok"); expect(nl.trace.out).toContain("minerva-trace-lint: ok");
+  const scratch3 = realpathSync(root()); const nsel = b1Selector({ builder: "group", scratchRoot: scratch3, reset: "none" });
+  expect(await b1Summary(JSON.parse(nsel.out), scratch3, n.anchor)).toEqual(await b1Summary(n, nscratch, n.anchor));
+  const cited = await lib.buildGroupFixture(realpathSync(root()), { reset: "none", citation: "scripts/telegram/chief-route.ts" });
+  expect(readFileSync(cited.spec, "utf8")).toContain("## Fact ownership\n\n| Fact | Existing surfaces | Owner after | Non-owners |\n|---|---|---|---|\n| source | `scripts/telegram/chief-route.ts` | source | n/a |\n");
+  expect(readFileSync(n.spec, "utf8")).not.toContain("Fact ownership");
+}, S1B);
+
+test("B1 known-single: refusedCap, overrideAdmitted and admittedNextRound each read back through the ledger, round-status and the selector", async () => {
+  const lib = await b1Lib(); const route: any = await import("./chief-route");
+  const seen: Record<string, any> = {};
+  for (const variant of ["refusedCap", "overrideAdmitted", "admittedNextRound"] as const) {
+    const scratch = realpathSync(root()); const f = await lib.buildKnownSingleFixture(scratch, { variant }); seen[variant] = f;
+    const key = basename(f.spec).replace(/-fixture\.md$/, "");
+    const specText = readFileSync(f.spec, "utf8"); const planText = readFileSync(f.plan, "utf8");
+    expect(specText).toMatch(new RegExp(`^tickets: ${key} \\([^()]+\\)$`, "m")); expect(specText).not.toMatch(/^Keys?:|^- Tickets?:/m);
+    expect(planText.startsWith("---")).toBe(false);
+    const rows = b1Rows(f); const rounds = rows.filter(r => r.row === "round");
+    expect(rows.map(r => r.row).filter(k => !["round", "seal", "override"].includes(k))).toEqual([]);
+    expect(rounds.every(r => r.epoch === 0)).toBe(true);
+    expect(rounds.filter(r => r.critic === "spec").map(r => [r.round, r.mode])).toEqual([[1, "full"], [2, "full"], [3, "full"], [4, "closure"], [5, "closure"]]);
+    expect(rows.filter(r => r.row === "override")).toMatchObject([{ round_opened: 5 }]);
+    const specReturn = readFileSync(b1Kind(f, "spec")[0], "utf8"); const planReturn = readFileSync(b1Kind(f, "plan")[0], "utf8");
+    expect(specReturn).toMatch(/^READ-SHA256 [0-9a-f]{64}  \/\S+$/m);
+    expect(planReturn).toMatch(/^READ-SHA256 \/\S+ [0-9a-f]{64}$/m);
+    for (const t of [specReturn, planReturn]) { expect(t).not.toMatch(/^Key:/m); expect(t).not.toMatch(/^Reviewed:/m); }
+    const state = await route.roundState(f.specsRoot, key); const status = await b1Status(f, key);
+    expect(status).toMatchObject({ epoch: 0, spec: 5, invalid: [] }); expect(status.next).toBe(state.next);
+    if (variant === "refusedCap") {
+      expect(rounds.filter(r => r.critic === "plan").map(r => [r.round, r.mode])).toEqual([[1, "full"], [2, "full"], [3, "full"], [4, "closure"]]);
+      const four = rounds.filter(r => r.critic === "plan").at(-1);
+      expect(four.findings).toHaveLength(2); for (const x of four.findings) expect(x).toMatchObject({ severity: "minor", class: "out-of-closure" });
+      expect(state.next).toBe("none"); expect(state.plan).toBe(4); expect(state.why).toContain(`${key} writer round 5 needs a round-override or round-critical record`);
+    }
+    if (variant === "overrideAdmitted") {
+      const four = rounds.filter(r => r.critic === "plan").at(-1);
+      expect(four).toMatchObject({ round: 4, mode: "closure", findings: [{ severity: "major", regression: true, class: "regression" }] });
+      expect(state.plan).toBe(4); expect(state.next).toBe("closure"); expect(state.why).toContain("plan round 5: closure");
+    }
+    if (variant === "admittedNextRound") {
+      expect(rounds.filter(r => r.critic === "plan").map(r => r.round)).toEqual([1, 2, 3]);
+      expect(state.plan).toBe(3); expect(state.next).toBe("closure"); expect(state.why).toContain("plan round 4: closure");
+    }
+    const lint = b1Lint(f); expect(lint.gate.out, variant).toContain("minerva-spec-gate: ok"); expect(lint.trace.out, variant).toContain("minerva-trace-lint: ok");
+    const scratch2 = realpathSync(root()); const sel = b1Selector({ builder: "known-single", scratchRoot: scratch2, variant });
+    expect(sel.err).toBe(""); expect(sel.out.trimEnd().split("\n")).toHaveLength(1);
+    expect(await b1Summary(JSON.parse(sel.out), scratch2, key)).toEqual(await b1Summary(f, scratch, key));
+  }
+  expect(new Set(Object.values(seen).map((f: any) => f.verdicts.length)).size).toBe(2);
+  const cited = await lib.buildKnownSingleFixture(realpathSync(root()), { variant: "admittedNextRound", citation: "scripts/telegram/chief-route.ts" });
+  expect(readFileSync(cited.spec, "utf8")).toContain("| source | `scripts/telegram/chief-route.ts` | source | n/a |");
+  await expect(lib.buildKnownSingleFixture(realpathSync(root()), { variant: "unknown" })).rejects.toThrow();
+  expect(b1Selector({ builder: "known-single", scratchRoot: realpathSync(root()), variant: "unknown" }).code).not.toBe(0);
+}, S1B);
+
+test("B1 fresh single: a plain non-frozen key whose real ledger refuses round 4, with every redundant declaration omitted", async () => {
+  const lib = await b1Lib(); const route: any = await import("./chief-route");
+  const scratch = realpathSync(root()); const f = await lib.buildFreshSingleFixture(scratch);
+  const key = basename(f.spec).replace(/-fixture\.md$/, "");
+  const specText = readFileSync(f.spec, "utf8");
+  expect(specText).toMatch(new RegExp(`^tickets: ${key}$`, "m")); expect(specText).not.toMatch(/^Keys?:|^- Tickets?:/m);
+  expect(readFileSync(f.plan, "utf8").startsWith("---")).toBe(false);
+  for (const v of f.verdicts) { const t = readFileSync(v, "utf8"); expect(t).not.toMatch(/^Key:/m); expect(t).not.toMatch(/^Reviewed:/m); }
+  const rounds = b1Rows(f).filter(r => r.row === "round");
+  expect(rounds.map(r => [r.critic, r.round, r.epoch, r.mode]).sort()).toEqual([["plan", 1, 0, "full"], ["plan", 2, 0, "full"], ["plan", 3, 0, "full"], ["spec", 1, 0, "full"], ["spec", 2, 0, "full"], ["spec", 3, 0, "full"]]);
+  for (const r of rounds.filter(x => x.round === 3)) for (const x of r.findings) expect(x.severity).not.toBe("major");
+  const state = await route.roundState(f.specsRoot, key);
+  expect(state).toMatchObject({ epoch: 0, spec: 3, plan: 3, next: "none", invalid: [] }); expect(state.why).toContain("needs a blocking finding in round 3 of either kind");
+  const lint = b1Lint(f); expect(lint.gate.out).toContain("minerva-spec-gate: ok"); expect(lint.trace.out).toContain("minerva-trace-lint: ok");
+  const scratch2 = realpathSync(root()); const sel = b1Selector({ builder: "fresh-single", scratchRoot: scratch2 });
+  expect(sel.err).toBe(""); expect(await b1Summary(JSON.parse(sel.out), scratch2, key)).toEqual(await b1Summary(f, scratch, key));
+  const grouped = await lib.buildGroupFixture(realpathSync(root()), { reset: "none" });
+  const lines = readFileSync(grouped.spec, "utf8").split("\n").filter((l: string) => !l.startsWith("Estimate record:")).join("\n");
+  const missing = await lib.buildRoundFixture({ scratchRoot: realpathSync(root()), key: grouped.anchor, specText: lines, planText: readFileSync(grouped.plan, "utf8"),
+    returns: [{ kind: "spec", round: 1, text: "SPEC CLEAN\n", reads: ["spec"] }] });
+  const refused = b1Lint(missing);
+  expect(refused.gate.code).not.toBe(0); expect(refused.gate.out).toContain("minerva-spec-gate: REFUSED");
+}, S1B);
+
+test("B1 selector: a request without builder prints today's one JSON line, and an unknown builder is refused", async () => {
+  const scratch = realpathSync(root()); const sel = b1Selector(fixtureRequest(scratch));
+  expect(sel.err).toBe(""); expect(sel.code).toBe(0); expect(sel.out.trimEnd().split("\n")).toHaveLength(1);
+  const f = JSON.parse(sel.out);
+  expect(Object.keys(f).sort()).toEqual(["ledgerPath", "plan", "specsRoot", "spec", "verdicts"].sort());
+  expect(f.verdicts).toHaveLength(6); expect(f.spec).toBe(join(scratch, "specs", "designs", "HIMMEL-10205-fixture.md")); expect(f.ledgerPath).toBe(join(scratch, "specs", "ledgers", "spec-rounds", "HIMMEL-10205.jsonl"));
+  expect(b1Selector({ builder: "nonsense", scratchRoot: realpathSync(root()) }).code).not.toBe(0);
+});
+
+test("B1 generic options: declarations, specStem, quote shapes, real closure with rewrite, override and reset steps, each against a control", async () => {
+  const lib = await b1Lib(); const route: any = await import("./chief-route");
+  const KEY = "HIMMEL-9731"; const est = { path: "specs/designs/estimate.json", text: '{"median_seq":1,"sigma":0.1,"dod":{"passed":true}}\n' };
+  const specOf = (line: string) => `---\ntickets: ${KEY}\n---\n# ${KEY} generic\n\nEstimate record: estimate.json\n\n${line}\n\n## Alternatives considered\n\n- None better.\n\n## Definition of done\n\n- Fixture verifies.\n\n## Invariants\n\nnone\n`;
+  const LINE = "The generic contract names every member.";
+  const ret = (kind: "spec" | "plan", n: number, text: string, extra: Record<string, unknown> = {}) => ({ kind, round: n, text, reads: kind === "spec" ? ["spec", est] : ["spec", "plan", est], ...extra });
+  const run = (extra: Record<string, unknown>, returns: any[]) => lib.buildRoundFixture({ scratchRoot: realpathSync(root()), key: KEY, specText: specOf(LINE), planText: "# generic plan\n\n- Task 1: build it.\n", ...extra, returns });
+  const text = (f: any, i: number) => readFileSync(f.verdicts[i], "utf8");
+  const dflt = await run({}, [ret("spec", 1, "- **A1** (minor) note\nSPEC FINDINGS 1\n")]);
+  expect(text(dflt, 0).split("\n").slice(0, 3)).toEqual([`Key: ${KEY}`, `Reviewed: spec ${sha(readFileSync(dflt.spec, "utf8"))}`, "Fixture: spec round 1"]);
+  expect(dflt.spec.endsWith(`${KEY}-fixture.md`)).toBe(true);
+  const bare = await run({ declarations: false }, [ret("spec", 1, "SPEC CLEAN\n")]);
+  expect(text(bare, 0)).not.toMatch(/^Key:|^Reviewed:/m); expect(text(bare, 0)).toContain("Fixture: spec round 1");
+  const stem = await run({ specStem: `${KEY}-custom-stem` }, [ret("spec", 1, "SPEC CLEAN\n"), ret("plan", 1, "PLAN CLEAN\n")]);
+  expect(stem.spec.endsWith("/designs/HIMMEL-9731-custom-stem.md")).toBe(true); expect(stem.plan.endsWith("/plans/HIMMEL-9731-custom-stem.md")).toBe(true);
+  expect(stem.verdicts.map((p: string) => basename(p))).toEqual(["HIMMEL-9731-custom-stem.md.critic-spec-r1.md", "HIMMEL-9731-custom-stem.md.critic-plan-r1.md"]);
+  const shapes = await run({}, [ret("spec", 1, "SPEC CLEAN\n", { quote: "sha-path-two-space" }), ret("spec", 2, "SPEC CLEAN\n"), ret("spec", 3, "SPEC CLEAN\n", { quote: "legacy-path-sha" })]);
+  const readOf = (i: number) => text(shapes, i).split("\n").filter(l => l.startsWith("READ-SHA256 "))[0];
+  const spec0 = sha(readFileSync(shapes.spec, "utf8"));
+  expect(readOf(0)).toBe(`READ-SHA256 ${spec0}  ${shapes.spec}`); expect(readOf(1)).toBe(`READ-SHA256 ${spec0} ${shapes.spec}`); expect(readOf(2)).toBe(`READ-SHA256 ${shapes.spec} ${spec0}`);
+  expect(b1Rows(shapes).filter(r => r.row === "round").map(r => r.round)).toEqual([1, 2, 3]);
+
+  const full = (n: number) => ret("spec", n, n === 3 ? "- **M1** (major) the contract omits a member\nSPEC FINDINGS 1\n" : `- **A${n}** (minor) note\nSPEC FINDINGS 1\n`);
+  const REG = `- **R1** (major; regression) the line \`${LINE}\` regressed\nSPEC FINDINGS 1\n`;
+  const withRewrite = await run({ steps: [{ after: 3, step: "override", findings: ["R1"], why: "fixture override", chief: "fixture-chief" }] },
+    [full(1), full(2), full(3), ret("spec", 4, REG, { closure: true, rewrite: { spec: specOf("The generic contract names each member and its owner.") } }), ret("spec", 5, "SPEC CLEAN\n", { closure: true })]);
+  const wr = b1Rows(withRewrite); const r4 = wr.find(r => r.row === "round" && r.round === 4); const r3 = wr.find(r => r.row === "round" && r.round === 3);
+  expect(r4).toMatchObject({ mode: "closure", findings: [{ id: "R1", class: "regression" }] });
+  expect(text(withRewrite, 3).split("\n")).toContain(route.closureMarker(KEY, "spec", 4, r3.return_sha));
+  expect(text(withRewrite, 4).split("\n")).toContain(route.closureMarker(KEY, "spec", 5, r4.return_sha));
+  expect(wr.filter(r => r.row === "override")).toMatchObject([{ round_opened: 5, findings: [{ id: "R1", critic: "spec" }] }]);
+  expect(wr.find(r => r.row === "round" && r.round === 5)).toMatchObject({ mode: "closure", verdict: "SPEC CLEAN" });
+  expect(readFileSync(withRewrite.spec, "utf8")).toContain("and its owner");
+  // control: without the rewrite the same quoted line is not among the changed lines, so the ledger classes it out-of-closure and nothing is blocking
+  const noRewrite = await run({}, [full(1), full(2), full(3), ret("spec", 4, REG, { closure: true })]);
+  expect(b1Rows(noRewrite).find(r => r.row === "round" && r.round === 4).findings).toMatchObject([{ id: "R1", class: "out-of-closure" }]);
+  // control: a closure round without the real marker is refused by the real ledger
+  await expect(run({}, [full(1), full(2), full(3), ret("spec", 4, "SPEC CLEAN\n")])).rejects.toThrow("closure check of round 3");
+  // a second build on one scratch root is refused by the builder's own manifest check
+  const again = realpathSync(root()); await lib.buildRoundFixture({ scratchRoot: again, key: KEY, specText: specOf(LINE), planText: "# p\n", returns: [ret("spec", 1, "SPEC CLEAN\n")] });
+  await expect(lib.buildRoundFixture({ scratchRoot: again, key: KEY, specText: specOf(LINE), planText: "# p\n", returns: [ret("spec", 1, "SPEC CLEAN\n")] })).rejects.toThrow("already holds");
+  // reset step: the decision recipe, a real reset, new-stem documents, counters restarting at 1, earlier files untouched
+  const decision = "start this ticket over from scratch"; const stem1 = `${KEY}-fixture-epoch1`;
+  const reset = await run({ steps: [{ after: 2, step: "reset", decision: "990", quote: decision, documents: { specStem: stem1, specText: specOf("The reset contract names every member."), planText: "# reset plan\n\n- Task 1: build it.\n" } }] },
+    [full(1), full(2), full(3), ret("spec", 1, "SPEC CLEAN\n"), ret("plan", 1, "PLAN CLEAN\n")]);
+  const rr = b1Rows(reset);
+  expect(rr.filter(r => r.row === "reset")).toMatchObject([{ epoch: 1, decision: "990", quote: decision }]);
+  expect(rr.filter(r => r.row === "round").map(r => [r.critic, r.round, r.epoch])).toEqual([["spec", 1, 0], ["spec", 2, 0], ["spec", 3, 0], ["spec", 1, 1], ["plan", 1, 1]]);
+  expect(reset.spec.endsWith(`${stem1}.md`)).toBe(true); expect(reset.verdicts.slice(0, 3).every((p: string) => p.includes(`${KEY}-fixture.md.critic-`))).toBe(true);
+  expect(readFileSync(join(reset.specsRoot, "decisions", "verbatim-decision-990-fixture.txt"), "utf8")).toBe(`${KEY} ${decision}\n`);
+  // the builder supplies the console marker only around the real helper call: with the variable unset before the build it is unset after
+  const before = process.env.HIMMEL_CONSOLE; delete process.env.HIMMEL_CONSOLE;
+  try { await run({ steps: [{ after: 2, step: "reset", decision: "991", quote: decision, documents: { specStem: stem1, specText: specOf(LINE), planText: "# p\n" } }] }, [full(1), full(2), full(3)]); expect(process.env.HIMMEL_CONSOLE).toBeUndefined(); }
+  finally { if (before !== undefined) process.env.HIMMEL_CONSOLE = before; }
+  // and a value set before the build comes back as it was, not as "1" and not deleted
+  process.env.HIMMEL_CONSOLE = "0";
+  try {
+    await run({ steps: [{ after: 3, step: "override", findings: ["R1"], why: "control", chief: "fixture-chief" }] },
+      [full(1), full(2), full(3), ret("spec", 4, REG, { closure: true, rewrite: { spec: specOf("A changed control line for the console marker.") } })]);
+    expect(process.env.HIMMEL_CONSOLE).toBe("0");
+  } finally { if (before === undefined) delete process.env.HIMMEL_CONSOLE; else process.env.HIMMEL_CONSOLE = before; }
+}, S1B);
+
+test("G0a v1 control: the shipped --key path refuses the real-shaped group header, beside a control that the same argv accepts a declared single", async () => {
+  const lib = await b1Lib();
+  const control = await cappedFixture(); const ok = await routeCli("capped-fold", "--key", cappedKey, "--spec", control.spec, "--plan", control.plan, "--spec-return", control.args.specReturn, "--plan-return", control.args.planReturn);
+  expect(ok.code, "control: --key accepts a declared single").toBe(0); expect(JSON.parse(ok.out).mode).toBe("capped-carry");
+  expect(typeof lib.buildGroupFixture, "group builder").toBe("function");
+  const f = await lib.buildGroupFixture(realpathSync(root()));
+  const res = await routeCli("capped-fold", "--key", f.anchor, "--spec", f.spec, "--plan", f.plan, "--spec-return", b1Kind(f, "spec").at(-1)!, "--plan-return", b1Kind(f, "plan").at(-1)!);
+  expect(res.out).toBe(""); expect(res.code).toBe(1); expect(res.err).toBe(`capped-fold: capped-fold: header must declare only ${f.anchor}\n`);
+}, S1B);
+
+test("G0b v1 control: the shipped --key path refuses the legacy known-single header at refusedCap, beside the same control", async () => {
+  const lib = await b1Lib();
+  const control = await cappedFixture(); const ok = await routeCli("capped-fold", "--key", cappedKey, "--spec", control.spec, "--plan", control.plan, "--spec-return", control.args.specReturn, "--plan-return", control.args.planReturn);
+  expect(ok.code, "control: --key accepts a declared single").toBe(0);
+  expect(typeof lib.buildKnownSingleFixture, "known-single builder").toBe("function");
+  const f = await lib.buildKnownSingleFixture(realpathSync(root()), { variant: "refusedCap" });
+  const key = basename(f.spec).replace(/-fixture\.md$/, "");
+  const res = await routeCli("capped-fold", "--key", key, "--spec", f.spec, "--plan", f.plan, "--spec-return", b1Kind(f, "spec").at(-1)!, "--plan-return", b1Kind(f, "plan").at(-1)!);
+  expect(res.out).toBe(""); expect(res.code).toBe(1); expect(res.err).toBe(`capped-fold: capped-fold: header must declare only ${key}\n`);
+}, S1B);

@@ -994,7 +994,7 @@ function roundBefore(rows: LedgerRow[], kind: Kind, r: number): { returns: { ret
   const later = rows.filter(x => x.row === "seal" && returns.some(y => y.return_sha === x.return_sha)).map(x => sealedFileOf(x, false));
   return { returns, sealed: distinctFiles([...own, ...later]) };
 }
-const closureMarker = (key: string, kind: Kind, r: number, returnSha: string) => `CLOSURE-CHECK ${key} ${kind} r${r - 1} ${returnSha.slice(0, 12)}`;
+export const closureMarker = (key: string, kind: Kind, r: number, returnSha: string) => `CLOSURE-CHECK ${key} ${kind} r${r - 1} ${returnSha.slice(0, 12)}`;
 
 async function snapshotsOf(specs: string, key: string, sealed: SealedFile[]): Promise<Map<string, string>> {
   const out = new Map<string, string>();
