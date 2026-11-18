@@ -957,6 +957,8 @@ echo "a note" >"$V/note.md"; backdate "$V/note.md"
 cp "$V/.git/hooks/pre-commit" "$TMP/hook.keep"
 printf '#!/usr/bin/env bash\necho "refused by a hook" >&2\nexit 1\n' >"$V/.git/hooks/pre-commit"
 run_ac >/dev/null
+assert_eq "T61 setup: the refused note is staged" "note.md " "$(staged)"
+assert_eq "T61 setup: the record names the refused note" "1" "$(cat "$S"/autocommit-owned* | grep -c ' note.md$')"
 cp "$TMP/hook.keep" "$V/.git/hooks/pre-commit"
 git -C "$V" reset -q note.md; echo "someone else's edit" >"$V/note.md"; git -C "$V" add note.md
 before="$(head_sha)"; out="$(run_ac)"
@@ -968,6 +970,8 @@ echo "a note" >"$V/note.md"; backdate "$V/note.md"
 cp "$V/.git/hooks/pre-commit" "$TMP/hook.keep"
 printf '#!/usr/bin/env bash\necho "refused by a hook" >&2\nexit 1\n' >"$V/.git/hooks/pre-commit"
 run_ac >/dev/null
+assert_eq "T62 setup: the refused note is staged" "note.md " "$(staged)"
+assert_eq "T62 setup: the record names the refused note" "1" "$(cat "$S"/autocommit-owned* | grep -c ' note.md$')"
 cp "$TMP/hook.keep" "$V/.git/hooks/pre-commit"
 git -C "$V" commit -q -m "by hand"
 echo "a later edit" >"$V/note.md"; git -C "$V" add note.md
@@ -980,6 +984,8 @@ echo "a note" >"$V/note.md"; backdate "$V/note.md"
 cp "$V/.git/hooks/pre-commit" "$TMP/hook.keep"
 printf '#!/usr/bin/env bash\necho "refused by a hook" >&2\nexit 1\n' >"$V/.git/hooks/pre-commit"
 run_ac >/dev/null
+assert_eq "T63 setup: the refused note is staged" "note.md " "$(staged)"
+assert_eq "T63 setup: the record names the refused note" "1" "$(cat "$S"/autocommit-owned* | grep -c ' note.md$')"
 cp "$TMP/hook.keep" "$V/.git/hooks/pre-commit"
 seed="$(head_sha)"
 git -C "$V" commit -q -m "by hand"
@@ -1006,6 +1012,18 @@ V="$VA"
 cp "$TMP/hook.keep" "$V/.git/hooks/pre-commit"
 out="$(run_ac)"
 assert_eq "T64 control: vault A's own record still retries its own commit" "note.md " "$(head_files)"
+
+mkvault
+echo "a note" >"$V/note.md"; backdate "$V/note.md"
+cp "$V/.git/hooks/pre-commit" "$TMP/hook.keep"
+printf '#!/usr/bin/env bash\nmkdir -p handovers; echo {} >handovers/state.json; git add handovers/state.json\nexit 1\n' >"$V/.git/hooks/pre-commit"
+run_ac >/dev/null
+assert_eq "T65 setup: the hook left the handover entry staged" "handovers/state.json note.md " "$(staged)"
+assert_eq "T65 a hook-staged excluded path leaves the refusal unowned" "0" "$(find "$S" -maxdepth 1 -name "autocommit-owned*" | wc -l | tr -d ' ')"
+cp "$TMP/hook.keep" "$V/.git/hooks/pre-commit"
+before="$(head_sha)"; out="$(run_ac)"
+assert_eq "T65 after the hook is fixed nothing is auto-committed" "$before" "$(head_sha)"
+assert_eq "T65 the handover entry stays staged" "handovers/state.json note.md " "$(staged)"
 
 echo "----"
 if [ "$FAILED" -eq 0 ]; then echo "PASS: vault-stall-cadence ($0)"; else echo "FAIL: vault-stall-cadence — $FAILED failed ($0)" >&2; exit 1; fi
