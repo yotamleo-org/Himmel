@@ -288,7 +288,6 @@ check "a default arm with --api-account is refused" 1 $?
 bash "$CAD" arm --force --chief test-chief --proposal-dir "$PROP" --backend claude-cli >"$W/arm8d.out" 2>&1
 check "arm --backend claude-cli exits 0" 0 $?
 has "an explicit claude-cli arm pins the backend against an inherited env" "STEERING_CULL_BACKEND=claude-cli" "$W/runner/steering-cull-cadence.sh"
-# cron cannot read the macOS Keychain login: a claude-cli runner loads the token file, a claude-api runner does not.
 has "a claude-cli runner loads the OAuth token file" "export CLAUDE_CODE_OAUTH_TOKEN" "$W/runner/steering-cull-cadence.sh"
 has "a claude-cli runner names the default token path" "$HOME/.himmel/secrets/claude-oauth-token" "$W/runner/steering-cull-cadence.sh"
 bash "$CAD" arm --force --chief test-chief --proposal-dir "$PROP" --backend claude-api --api-account B >"$W/arm8f.out" 2>&1
@@ -315,7 +314,7 @@ tok_run() {
       sh -c '. "$1"; sh "$2"' tokblock "$W/tokblock.sh" "$W/tokchild.sh" )
 }
 # shellcheck disable=SC2030,SC2031
-tok_noise() { # the block's own stdout+stderr, which must stay empty
+tok_noise() {
     ( unset CLAUDE_CODE_OAUTH_TOKEN HIMMEL_CLAUDE_TOKEN_FILE
       [ "$1" = - ] || export HIMMEL_CLAUDE_TOKEN_FILE="$1"
       sh -c '. "$1"' tokblock "$W/tokblock.sh" 2>&1 )

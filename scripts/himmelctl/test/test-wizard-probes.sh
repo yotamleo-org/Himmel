@@ -652,7 +652,6 @@ sl_expect() { # <label> <probe-output> <actual> [detail-substring]
 
 sl_fixture cfg-user - - "$sl_off" "$sl_on"
 sl_expect "user scope, CLAUDE_CONFIG_DIR set" "$(sl_probe cfg-user user 1)" present "/cfg/settings.json"
-# control: no CLAUDE_CONFIG_DIR, the same fixture reads HOME/.claude (off there)
 sl_expect "user scope, CLAUDE_CONFIG_DIR unset (control)" "$(sl_probe cfg-user user 0)" absent "/home/.claude/settings.json"
 sl_fixture home-user - - "$sl_on" -
 sl_expect "user scope, HOME/.claude (control)" "$(sl_probe home-user user 0)" present "/home/.claude/settings.json"
@@ -686,7 +685,6 @@ sl_expect "local empty string beats the user value" "$(sl_probe empty-local proj
 sl_fixture empty-obj '{"alpha":{}}' - '{"alpha":{"a":1}}' -
 sl_expect "project empty object falls through to the user value" "$(sl_probe empty-obj project 0 0 "$sl_one")" present "/home/.claude/settings.json"
 
-# a malformed project file is a real fault, never papered over by the user file
 sl_fixture malformed '{not json' - "$sl_on" -
 sl_expect "malformed project file" "$(sl_probe malformed project 0)" absent "cannot parse"
 

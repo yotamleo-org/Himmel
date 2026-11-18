@@ -71,7 +71,6 @@ lacks "doctor OK row not listed" "$out" "C56-qmd-orphans"
 has "offer printed" "$out" "Run the full audit"
 lacks "non-green is not all clear" "$out" "all clear"
 
-# --- qmd: needsEmbedding backlog + the last successful reindex --------------
 printf 'Pending:  2454 need embedding (run qmd embed)\n  luna (qmd://luna/)\n    Files:    9 (updated 4d ago)\n  himmel (qmd://himmel/)\n    Files:    9 (updated 29m ago)\n' > "$TMP/qmd-red.txt"
 out="$(run GAP_AUDIT_QMD_STATUS_FILE="$TMP/qmd-red.txt")"
 has "qmd embed backlog" "$out" "2454"

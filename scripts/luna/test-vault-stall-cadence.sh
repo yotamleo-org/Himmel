@@ -774,7 +774,6 @@ echo note >"$V/notes.md"; git -C "$V" add notes.md
 out="$(run_sut)"
 assert_has "T42 a refusal with no message stays unclassified, with its exit code" "unclassified refusal rc=3" "$(sent)"
 
-# --- T43+ opt-in local auto-commit (LUNA_VAULT_AUTOCOMMIT=1): a vault with no remote and no sync plugin ---
 REAL_GIT="$(command -v git)"
 backdate() { local t; t="$(date -d "@$(($(date +%s) - 7200))" +%Y%m%d%H%M.%S 2>/dev/null || date -r "$(($(date +%s) - 7200))" +%Y%m%d%H%M.%S)"; touch -t "$t" "$@"; }
 run_ac() { LUNA_VAULT_AUTOCOMMIT=1 run_sut; }

@@ -978,7 +978,7 @@ run_stale() {
   rc=$?
   set -e
 }
-reap_new() { # stop whatever server the case left behind
+reap_new() {
   local p
   p="$(cat "$stale_pf" 2>/dev/null)" || p=
   case "$p" in ''|*[!0-9]*) ;; *) STUB_PIDS+=("$p"); kill "$p" 2>/dev/null || true ;; esac
