@@ -640,6 +640,40 @@ class StackedWorker(StreamFixture):
         self.assertEqual(self.audit(), [f'GO-SENT 1 {self.H[1]}', f'GO-SENT 9 {self.H[9]}'])
         self.assertEqual(len(self.seen('N1 READY #9')), 1)
 
+    def test_a_torn_read_ending_at_a_handled_merged_never_relays_a_ready_twice(self):
+        self.worker('N1', self.ready('N1', 1))
+        self.fleet_of('N1')
+        p, _ = self.start()
+        self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
+        self.add('N1', '- 10:05 MERGED #1')
+        self.until(lambda: self.seen('N1 MERGED #1') and 'N1 MERGED' in self.path('r0').read_text())
+        self.add('N1', self.ready('N1', 2))
+        self.until(lambda: self.seen(f'N1 READY #2 {self.H[2]}'))
+        self.until(lambda: self.path('ready').read_text() == 'N1\t5\n')
+        # a read that shows only the first two bullets, then the whole document again
+        torn = self.worker('N1', self.ready('N1', 1), '- 10:05 MERGED #1')
+        time.sleep(.6)
+        self.worker('N1', self.ready('N1', 1), '- 10:05 MERGED #1', self.ready('N1', 2))
+        time.sleep(1.0)
+        self.stop(p)
+        self.assertEqual(len(self.seen('N1 READY #2')), 1)
+        self.assertEqual(self.audit(), [f'GO-SENT 1 {self.H[1]}', f'GO-SENT 2 {self.H[2]}'])
+        self.assertTrue(torn.exists())
+
+    def test_a_refused_cleanup_keeps_its_flat_retry_pace_until_a_newer_ready(self):
+        # Pins the pace as it is, not as it should be: one attempt per retry window, no growth, no cap.
+        (self.root / 'refuse-cleanup').touch()
+        self.worker('N1', self.ready('N1', 1))
+        self.fleet_of('N1')
+        p, _ = self.start()
+        self.until(lambda: self.seen(f'N1 READY #1 {self.H[1]}'))
+        self.add('N1', '- 10:05 MERGED #1')
+        self.until(lambda: len(self.seen('N1 MERGED #1')) >= 5, seconds=14)
+        stamps = self.seen('N1 MERGED #1')[:5]
+        gaps = [b - a for a, b in zip(stamps, stamps[1:])]
+        self.stop(p)
+        self.assertTrue(all(.8 <= gap <= 2.0 for gap in gaps), gaps)
+
     def test_slow_cleanup_delays_only_itself_and_the_inbox_and_ready_follow_at_once(self):
         self.worker('N1', '- 10:00 WRAPPED no PR')
         self.worker('N2', self.ready('N2', 2))

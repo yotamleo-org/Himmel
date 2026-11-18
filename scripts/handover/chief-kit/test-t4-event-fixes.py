@@ -305,6 +305,47 @@ class Collector(stream_tests.StreamFixture):
         for _ in range(3):
             self.assertEqual(self.collect().stdout, '')
 
+    # The relay addresses a line with `sed -n Np`, which splits on newline only.
+    def sed_line(self, name, number):
+        return subprocess.run(['sed', '-n', f'{number}p', str(self.root / name)], capture_output=True,
+                              text=True, errors='replace').stdout.rstrip('\n')
+
+    def test_lines_are_numbered_the_way_the_relay_addresses_them(self):
+        ready = f'- 10:00 READY #1 {"1" * 40}'
+        for name, separator in (('lone CR', '\r'), ('form feed', '\x0c'), ('U+2028', ' '),
+                                ('vertical tab', '\x0b'), ('NEL', '\x85'), ('file separator', '\x1c')):
+            with self.subTest(separator=name):
+                self.workers([f'# N1\n- 09:00 LIVE progress{separator}more\n{ready}\n- 10:01 LIVE after\n'.encode()])
+                for state in ('ready', 'ready-docs'):
+                    self.path(state).unlink(missing_ok=True)
+                event = self.collect().stdout.split()
+                self.assertEqual(event[:2], ['N1', 'READY'])
+                self.assertEqual(self.sed_line('N1.md', event[2]), ready)
+
+    def test_crlf_document_keeps_its_line_numbers(self):
+        ready = f'- 10:00 READY #1 {"1" * 40}'
+        self.workers([f'# N1\r\n- 09:00 LIVE a\r\n{ready}\r\n'.encode()])
+        self.assertEqual(self.collect().stdout.split(), ['N1', 'READY', '3'])
+
+    def test_a_torn_read_ending_at_a_handled_merged_does_not_offer_a_relayed_ready_again(self):
+        self.workers([b'- 10:00 READY #1 h1\n'])
+        self.assertEqual(self.collect().stdout.strip(), 'N1 READY 1')
+        self.path('ready').write_text('N1\t1\n')
+        self.append('N1.md', '- 10:05 MERGED #1')
+        self.assertEqual(self.collect().stdout.strip(), 'N1 MERGED 2')
+        self.relayed('N1', 'MERGED', '- 10:05 MERGED #1')
+        self.append('N1.md', '- 10:10 READY #2 h2')
+        self.assertEqual(self.collect().stdout.strip(), 'N1 READY 3')
+        self.path('ready').write_text('N1\t3\n')
+        full = (self.root / 'N1.md').read_text()
+        (self.root / 'N1.md').write_text('- 10:00 READY #1 h1\n- 10:05 MERGED #1\n')
+        for _ in range(2):
+            self.assertEqual(self.collect().stdout, '')
+        (self.root / 'N1.md').write_text(full)
+        for _ in range(3):
+            self.assertEqual(self.collect().stdout, '')
+        self.assertEqual(self.path('ready').read_text(), 'N1\t3\n')
+
 
 class Acknowledgements(stream_tests.StreamFixture):
     def setUp(self):
@@ -887,7 +928,7 @@ echo 'ESCALATE auto-go 3 not-ready'; exit 10
         p, out = self.direct('out')
         self.until(lambda: self.path('pending-diagnostic').exists() and
                    'no events this pass' in self.path('pending-diagnostic').read_text(), seconds=8)
-        time.sleep(1.5)
+        time.sleep(.2)  # the document is repaired before a third timeout in a row wakes the chief
         self.assertIsNone(p.poll(), out.read_text())
         self.assertNotIn('waiter-error', out.read_text())
         self.assertFalse(self.path('pending-error').exists())
@@ -897,6 +938,54 @@ echo 'ESCALATE auto-go 3 not-ready'; exit 10
                                          f'- 10:30 READY #2 {"2" * 40}\n')
         self.until(lambda: any('READY #2' in c for c in self.calls()), seconds=8)
         self.assertEqual([c for c in self.calls() if 'READY' in c], [f'N1 READY #2 {"2" * 40}'])
+
+    def test_repeated_pending_timeouts_wake_once_and_again_only_after_recovery(self):
+        self.hang_on_a_fifo()
+        self.env.update(CHIEF_WAIT_PENDING_TIMEOUT='1', CHIEF_WAIT_PENDING_DOC_TIMEOUT='30')
+        first, first_out = self.direct('out1')
+        self.assertEqual(first.wait(timeout=12), 0, first_out.read_text())  # three timeouts in a row wake the chief
+        wakes = [line for line in first_out.read_text().splitlines() if line.startswith('WAKE waiter-error pending-events')]
+        self.assertEqual(len(wakes), 1, first_out.read_text())
+        self.assertIn('passes=3', wakes[0])
+        self.assertEqual(self.path('pending-timeouts').read_text().splitlines()[0], '3')
+        second, second_out = self.direct('out2')  # re-armed over the same hang: quiet
+        time.sleep(4.5)
+        self.assertIsNone(second.poll(), second_out.read_text())
+        self.assertNotIn('WAKE', second_out.read_text())
+        (self.root / 'N1.md').unlink()  # a pass that answers ends the streak
+        (self.root / 'N1.md').write_text('# N1\n- 09:00 LIVE start\n')
+        self.until(lambda: not self.path('pending-timeouts').exists(), seconds=8)
+        (self.root / 'N1.md').unlink()  # and a new hang wakes again
+        os.mkfifo(self.root / 'N1.md')
+        self.assertEqual(second.wait(timeout=12), 0, second_out.read_text())
+        self.assertEqual(second_out.read_text().count('WAKE waiter-error pending-events'), 1)
+
+    def test_one_blocked_document_neither_stops_a_peers_events_nor_goes_unreported(self):
+        n2 = self.root / 'N2.md'
+        n2.write_text(f'# N2\n- 10:00 READY #2 {"2" * 40}\n')
+        self.fleet.write_text(json.dumps(dict(workers=[dict(label='N1', doc=str(self.n1)), dict(label='N2', doc=str(n2))])))
+        self.hang_on_a_fifo()
+        self.env.update(CHIEF_WAIT_PENDING_TIMEOUT='20', CHIEF_WAIT_PENDING_DOC_TIMEOUT='1')
+        self.env['CHIEF_WAIT_WORKER_EVENT'] = self.script('event', 'cat >> "$TEST_ROOT/events"\necho "HANDLED auto-go N2"\n')
+        p, out = self.direct('out')
+        self.until(lambda: any('READY #2' in c for c in self.calls()), seconds=8)
+        self.assertEqual(p.wait(timeout=8), 0, out.read_text())  # the unread warning is a wake, once
+        self.assertEqual(out.read_text().count('WAKE waiter-error worker-doc-unread worker=N1'), 1, out.read_text())
+        self.assertEqual([c for c in self.calls() if 'READY' in c], [f'N2 READY #2 {"2" * 40}'])
+        again, again_out = self.direct('out-rearmed')  # the streak persists across a re-arm: no second warning
+        time.sleep(3.0)
+        self.assertIsNone(again.poll(), again_out.read_text())
+        self.assertNotIn('WAKE', again_out.read_text())
+
+    def test_a_ready_after_a_lone_cr_is_relayed_not_stalled(self):
+        self.env['CHIEF_WAIT_WORKER_EVENT'] = self.script('event', 'cat >> "$TEST_ROOT/events"\necho "HANDLED auto-go N1"\n')
+        self.n1.write_bytes(f'# N1\n- 09:00 LIVE progress 10%\r100%\n- 10:00 READY #1 {self.H1}\n- 10:01 LIVE after\n'.encode())
+        p, out = self.direct('out')
+        self.until(lambda: self.path('ready').exists() and self.path('ready').read_text() == 'N1\t3\n')
+        p.terminate()
+        p.wait(timeout=6)
+        self.assertEqual(self.calls(), [f'N1 READY #1 {self.H1}'])
+        self.assertNotIn('WAKE', out.read_text())
 
 
 if __name__ == '__main__':
