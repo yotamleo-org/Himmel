@@ -311,5 +311,18 @@ eq '9561 control: a file with no such row has an empty list' "$(jqv "$out" '.clo
 out="$(node "$SUM" --json --drift "$WORK/absent.txt" --mirror-dir "$MIR" --now "$NOW" 2>&1)"
 eq '9561 control: an absent file has an empty list' "$(jqv "$out" '.closeOrDispatch | length')" 0
 
+# the default mirror follows the project key: a key only in himmel.conf reads jira-mirror/<KEY>; --mirror-dir still wins
+RK="$WORK/rk"; mkdir -p "$RK/conf" "$RK/cache" "$RK/home/.himmel/state/jira-mirror/CONFKEY"
+printf 'JIRA_PROJECT_KEY=CONFKEY\n' > "$RK/conf/himmel.conf"
+: > "$RK/cache/.env"
+printf -- '---\nkey: "PROJ-7980"\nstatus: "To Do"\nstatusCategory: "To Do"\n---\n' > "$RK/home/.himmel/state/jira-mirror/CONFKEY/PROJ-7980.md"
+printf 'UNOWNED PROJ-7588 In Progress, no open PR | writer=a | fix=b\nsdrift=1:22222222\n' > "$DRIFT"; touch_at "$DRIFT" "$((NOW - 60))"
+rk_sum() { HOME="$RK/home" HIMMEL_CONFIG_DIR="$RK/conf" HIMMELCTL_CACHE_DIR="$RK/cache" node "$SUM" --json --drift "$DRIFT" --now "$NOW" "$@" 2>&1; }
+mirror PROJ-7980 Done
+out="$(rk_sum)"
+eq 'a himmel.conf key and no --mirror-dir reads the checker ticket from jira-mirror/<that key>' "$(jqv "$out" '.counts.known')" 1
+out="$(rk_sum --mirror-dir "$MIR")"
+eq '--mirror-dir still wins over the resolver' "$(jqv "$out" '.counts.known')" 0
+
 if [ "$fails" -gt 0 ]; then printf '%s failure(s)\n' "$fails"; exit 1; fi
 echo "all passed"

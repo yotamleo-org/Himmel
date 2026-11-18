@@ -38,11 +38,12 @@ printf '{}' > "$TMP/go/semantic-manifest.json"
 touch_at "$TMP/go/semantic-manifest.json" "$((NOW - 2 * DAY))"
 
 LEDGER="$TMP/no-ledger.tsv"
-mkdir -p "$TMP/pub-home/.himmel" "$TMP/adopter-home" "$TMP/set-home/.himmel"
+mkdir -p "$TMP/pub-home/.himmel" "$TMP/adopter-home" "$TMP/set-home/.himmel" "$TMP/no-env"
+: > "$TMP/no-env/.env"
 printf '{"graphify":{"semantic_api_ok":true}}\n' > "$TMP/pub-home/.himmel/config.json"
 printf '{"graphify":{"choices":{"version":1,"corpora":[],"primary":"subscription"}}}\n' > "$TMP/set-home/.himmel/config.json"
 run() { # run <extra env assignments...> ; prints gap_audit_offer
-    env HOME="$TMP/pub-home" HIMMEL_CONFIG_DIR= GAP_AUDIT_ROOT="$TMP/repo" GAP_AUDIT_NOW="$NOW" HIMMEL_CEILINGS_LEDGER="$LEDGER" \
+    env HOME="$TMP/pub-home" HIMMEL_CONFIG_DIR= HIMMELCTL_CACHE_DIR="$TMP/no-env" GAP_AUDIT_ROOT="$TMP/repo" GAP_AUDIT_NOW="$NOW" HIMMEL_CEILINGS_LEDGER="$LEDGER" \
         GAP_AUDIT_DOCTOR_CMD="bash $TMP/doctor-green.sh" \
         GAP_AUDIT_QMD_STATUS_FILE="$TMP/qmd-green.txt" \
         GAP_AUDIT_GRAPH_OUT="$TMP/go" \
@@ -112,6 +113,12 @@ lacks "skipped check is not a bare all clear" "$out" "all clear"
 out="$(run GAP_AUDIT_RESUME_CMD="bash $TMP/nonexistent.sh" JIRA_PROJECT_KEY=HIMMEL)"
 has "detector failing: reported as not checked" "$out" "not checked: in-work tickets (detector failed)"
 lacks "detector failing is not a bare all clear" "$out" "all clear"
+mkdir -p "$TMP/rk-conf" "$TMP/rk-cache"
+printf 'JIRA_PROJECT_KEY=CONFKEY\n' > "$TMP/rk-conf/himmel.conf"
+: > "$TMP/rk-cache/.env"
+out="$(run GAP_AUDIT_RESUME_CMD="bash $TMP/resume.sh" JIRA_PROJECT_KEY= HIMMEL_CONFIG_DIR="$TMP/rk-conf" HIMMELCTL_CACHE_DIR="$TMP/rk-cache")"
+has "a key only in himmel.conf counts as configured: the orphan check runs" "$out" "HIMMEL-4242"
+lacks "a key only in himmel.conf is not reported as not checked" "$out" "not checked: in-work tickets"
 
 # --- ceilings ledger rows: Done ticket, missing file, stale anchor ----------
 case "$LEDGER" in "$TMP"/*) ok "the ledger override points inside the work dir" ;; *) bad "the ledger override is outside the work dir: $LEDGER" ;; esac

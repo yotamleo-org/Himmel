@@ -91,6 +91,9 @@ if . "$HERE/../../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR
 # shellcheck source=../../lib/legacy-names.sh
 . "$HERE/../../lib/legacy-names.sh"
 if legacy_names_on; then JQ_W='def W: (.workers // .legs);'; else JQ_W='def W: .workers;'; fi
+# shellcheck source=../../lib/jira-project.sh
+. "$HERE/../../lib/jira-project.sh"
+tick_mirror_default="$(jira_mirror_dir)"
 
 usage() {
     cat <<'USAGE'
@@ -710,7 +713,7 @@ pool_stale_serialized() {
 pool_dispositions() {
     local psf="" psm="" ledger="" holds=""
     if [ -n "$1" ]; then
-        psm="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"
+        psm="${NEXT_DISPATCH_MIRROR:-$tick_mirror_default}"
         psf="$(pool_stale_file "$1" "$psm")"
         psm="$(realpath -m "$psm")"  # prim-ok: the mirror need not exist, which canon_path refuses; gnu-ok: chief kit is Linux-only
         ledger="$(holds_ledger "$1")"
@@ -1709,7 +1712,7 @@ fi
 
 if [ "$stale_mode" -eq 1 ]; then
     [ -z "$DOC" ] || DOC="$(resolve_doc "$DOC")"
-    ps_mirror="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"
+    ps_mirror="${NEXT_DISPATCH_MIRROR:-$tick_mirror_default}"
     ps_self=""; ps_mirror_real=""
     if [ -n "$DOC" ]; then
         ps_self="$(pool_stale_file "$DOC" "$ps_mirror")"
@@ -3156,7 +3159,7 @@ fi
 # since the scan is dropped at read time, so a fresh dispatch never reads as an orphan.
 orphans_wip=skip
 orphans_wip_age=""
-nd_mirror="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"
+nd_mirror="${NEXT_DISPATCH_MIRROR:-$tick_mirror_default}"
 if [ -d "$nd_mirror" ] && command -v python3 >/dev/null 2>&1; then
     orphans_wip='?'
     ow_base="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/tick-resume-$(printf '%s\n%s' "$console_doc" "$nd_mirror" | cksum | cut -d' ' -f1)"
@@ -3190,7 +3193,7 @@ fi
 # machine, so no Jira is called; unknown = the read failed. Not in chief-wait's wake key.
 vdone_summary=skip
 vdone_probe="${TICK_VERSIONLESS_DONE_PROBE:-$HERE/versionless-done.sh}"
-if [ -f "$vdone_probe" ] && [ -d "${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}" ]; then
+if [ -f "$vdone_probe" ] && [ -d "${NEXT_DISPATCH_MIRROR:-$tick_mirror_default}" ]; then
     vdone_out="$(timeout -k 2 "$(tick_bound 30)" bash "$vdone_probe" 2>/dev/null)" || vdone_out=""  # gnu-ok: console kit is Linux-only; swallow-ok: a failed read falls through to versionless-done=unknown
     case "${vdone_out%+}" in
         ''|*[!0-9]*) vdone_summary=unknown ;;
@@ -3917,7 +3920,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
         pi_out="${TICK_PLAN_INDEX_OUT:-${HOME:-/tmp}/.himmel/state/roadmap-plan}"
         pi_min="${TICK_PLAN_INDEX_MIN_SECS:-900}"
         case "$pi_min" in ''|*[!0-9]*) pi_min=900 ;; esac
-        pi_args=(--plan-dir "$pi_plan" --out "$pi_out" --watch "${TICK_TRACKER_MIRROR_DIR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}")
+        pi_args=(--plan-dir "$pi_plan" --out "$pi_out" --watch "${TICK_TRACKER_MIRROR_DIR:-$tick_mirror_default}")
         [ -z "$WORKERS_FROM" ] || pi_args+=(--watch "$WORKERS_FROM")
         pi_age() { local m; m="$(stat -c %Y "$1" 2>/dev/null)" || m=""; case "$m" in ''|*[!0-9]*) echo 999999999 ;; *) echo $(( $(date +%s) - m )) ;; esac; }  # gnu-ok: console kit is Linux-only
         if bash "$HERE/../../roadmap/plan-index.sh" --check "${pi_args[@]}" >/dev/null 2>&1; then

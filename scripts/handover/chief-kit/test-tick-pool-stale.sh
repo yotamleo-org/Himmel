@@ -535,5 +535,18 @@ check 'the outside line names its cause' 1 "$(printf '%s\n' "$hpo" | grep -c "^S
 check 'the fired line names its wake' 1 "$(printf '%s\n' "$hpo" | grep -c "^STALE-DISPOSITION $hk-9191 line=[0-9a-f]* wake=date:[0-9-]*=fired\$")"
 check 'an open same-repo PR is not stale (I6)' '1:HIMMEL-9191' "$(hp_run false | sed -n 's/^pool-stale=//p')"
 
+# the default mirror follows the project key: a key only in himmel.conf reads jira-mirror/<KEY>, and NEXT_DISPATCH_MIRROR still wins
+rk="$WORK/rk"; mkdir -p "$rk/conf" "$rk/cache" "$rk/home/.himmel/state/jira-mirror/CONFKEY"
+printf 'JIRA_PROJECT_KEY=CONFKEY\n' > "$rk/conf/himmel.conf"
+: > "$rk/cache/.env"
+printf -- '---\nkey: "CONFKEY-901"\nstatus: "Done"\nstatusCategory: "Done"\n---\n\n# CONFKEY-901: t\n' > "$rk/home/.himmel/state/jira-mirror/CONFKEY/CONFKEY-901.md"
+printf '# chief\n\n## Live state\npool-disposition: CONFKEY-101 slice CONFKEY-901 then the rest\n\n## Results\n' > "$rk/chief.md"
+rk_field() { # <env assignment>...: the pool-stale value of the CONFKEY doc under the himmel.conf-only project
+    env -u NEXT_DISPATCH_MIRROR HOME="$rk/home" JIRA_PROJECT_KEY= HIMMEL_JIRA_MIRROR= HIMMEL_CONFIG_DIR="$rk/conf" HIMMELCTL_CACHE_DIR="$rk/cache" "$@" \
+        TOKEN='' bash "$SUT" --pool-stale --doc "$rk/chief.md" 2>/dev/null | sed -n 's/^pool-stale=//p'
+}
+check 'a himmel.conf key and no override reads the mirror of that key' '1:CONFKEY-101' "$(rk_field)"
+check 'NEXT_DISPATCH_MIRROR still wins over the resolver' '0' "$(rk_field NEXT_DISPATCH_MIRROR="$M")"
+
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

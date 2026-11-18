@@ -102,7 +102,8 @@ _ga_check_semantic() {
 _ga_check_resume() {
     local root="$1" out rows nd="$1/scripts/handover/chief-kit/next-dispatchable.sh"
     if [ "${GAP_AUDIT_RESUME_CMD+set}" = set ] && [ -z "$GAP_AUDIT_RESUME_CMD" ]; then return 0; fi
-    [ -n "${JIRA_PROJECT_KEY:-}" ] || { _ga_skip "in-work tickets (Jira not configured)"; return 0; }
+    . "$GAP_AUDIT_ROOT_DEFAULT/scripts/lib/jira-project.sh"
+    jira_project_configured || { _ga_skip "in-work tickets (Jira not configured)"; return 0; }
     if [ "${GAP_AUDIT_RESUME_CMD+set}" = set ]; then
         out="$($GAP_AUDIT_RESUME_CMD 2>/dev/null)" || { _ga_skip "in-work tickets (detector failed)"; return 0; }
     else

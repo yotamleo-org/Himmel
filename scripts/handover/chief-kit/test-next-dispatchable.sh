@@ -3057,6 +3057,25 @@ has "T11: with the real classifier on, main under the floor pauses the run altho
 t11run "$WORK/t11root" healthy NEXT_DISPATCH_CLASSIFY_CMD= CLOUD_ROUTE_GH_CMD="$T11B/cr-gh" T11_CR_LOG="$WORK/t11cr.log" CLOUD_ROUTE_JIRA_CMD=false
 has "T11 RED control: with main healthy the real classifier runs" "$(cat "$WORK/t11cr.log")" "main pr list"
 
+# the default mirror comes from the project resolver: a key only in himmel.conf names jira-mirror/<KEY>, and the override still wins
+RK="$WORK/rk"; mkdir -p "$RK/conf" "$RK/cache" "$HOME/.himmel/state/jira-mirror/CONFKEY"
+printf 'JIRA_PROJECT_KEY=CONFKEY\n' > "$RK/conf/himmel.conf"
+: > "$RK/cache/.env"
+rk_save="$M"; M="$HOME/.himmel/state/jira-mirror/CONFKEY"
+mk CONFKEY-1 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a ticket of the configured project" "Edit scripts/lib/alpha.sh only."
+M="$RK/ovr/OVR"; mkdir -p "$M"
+mk OVR-1 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a ticket of the override mirror" "Edit scripts/lib/beta.sh only."
+M="$rk_save"
+printf 'v1.0.1\tfalse\t\n' > "$HOME/.himmel/state/jira-mirror/CONFKEY.versions.tsv"
+printf 'v1.0.1\tfalse\t\n' > "$RK/ovr/OVR.versions.tsv"
+rkrun() { env -u NEXT_DISPATCH_MIRROR HIMMEL_JIRA_MIRROR= JIRA_PROJECT_KEY= HIMMEL_CONFIG_DIR="$RK/conf" HIMMELCTL_CACHE_DIR="$RK/cache" \
+    NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" "$@" bash "$SUT" 2>/dev/null; }
+out="$(rkrun)"
+has "a himmel.conf key and no override reads jira-mirror/<that key>" "$out" "CONFKEY-1	"
+out="$(rkrun NEXT_DISPATCH_MIRROR="$RK/ovr/OVR")"
+lacks "NEXT_DISPATCH_MIRROR still wins over the resolver" "$out" "CONFKEY-1	"
+has "NEXT_DISPATCH_MIRROR still wins: its own rows list" "$out" "OVR-1	"
+
 # a before/after compare of the live register fails when a real worker writes during the run. Every row this
 # suite writes names a doc or repo under $WORK, a path unique to this run: none may appear in the real register.
 real_hits="$(grep -rlF "$WORK" "$REAL_HOME/.himmel/state/holds" 2>/dev/null | grep -c . || true)"

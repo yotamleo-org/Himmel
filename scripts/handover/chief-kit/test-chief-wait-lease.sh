@@ -113,5 +113,17 @@ state_json 420 false "$rmdoc" 600
 if run_waiter "$WORK/l11.out" 30; then fail "a doc with no release: line woke: $(cat "$WORK/l11.out")"; else pass 'a doc with no release: line never reads the lease'; fi
 lacks 'and prints no lease wake' "$(cat "$WORK/l11.out")" 'rm-lease-stale'
 
+mkdir -p "$WORK/rk-conf" "$WORK/rk-cache"
+printf 'JIRA_PROJECT_KEY=CONFKEY\n' > "$WORK/rk-conf/himmel.conf"
+: > "$WORK/rk-cache/.env"
+reset
+state_json 421 false "$rmdoc" 600
+JIRA_PROJECT_KEY='' HIMMEL_JIRA_MIRROR='' HIMMEL_CONFIG_DIR="$WORK/rk-conf" HIMMELCTL_CACHE_DIR="$WORK/rk-cache" run_waiter "$WORK/l12.out" 60
+contains 'a himmel.conf key and no mirror override names the takeover project' "$(sed -n 2p "$WORK/l12.out")" 'takeover: JIRA_PROJECT_KEY=CONFKEY node'
+reset
+state_json 422 false "$rmdoc" 600
+NEXT_DISPATCH_MIRROR="$WORK/mirrors/OVRKEY" JIRA_PROJECT_KEY='' HIMMEL_JIRA_MIRROR='' HIMMEL_CONFIG_DIR="$WORK/rk-conf" HIMMELCTL_CACHE_DIR="$WORK/rk-cache" run_waiter "$WORK/l13.out" 60
+contains 'NEXT_DISPATCH_MIRROR still names the takeover project over himmel.conf' "$(sed -n 2p "$WORK/l13.out")" 'takeover: JIRA_PROJECT_KEY=OVRKEY node'
+
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
 exit 1

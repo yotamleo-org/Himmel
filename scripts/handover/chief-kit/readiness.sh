@@ -15,7 +15,7 @@
 # READINESS_NOW_EPOCH replaces the clock (tests).
 #
 # The release root is HIMMEL_RELEASE_STATE_DIR, else <handover root>/<USER_SLUG>/<primary checkout name>/release.
-# The mirror is --mirror, else ${NEXT_DISPATCH_MIRROR:-$HOME/.himmel/state/jira-mirror/HIMMEL}.
+# The mirror is --mirror, else $NEXT_DISPATCH_MIRROR, else the project resolver's jira_mirror_dir.
 #
 # Exit codes: 0 done, 2 usage or a refused value, 3 no release root, no version directory on read, no mirror or
 # no ticket file, 4 the record is unreadable, invalid, cannot be locked or cannot be written.
@@ -38,6 +38,9 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../lib/git-clean.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/git-clean.sh"
+# shellcheck source=../../lib/jira-project.sh
+# shellcheck disable=SC1091
+. "$HERE/../../lib/jira-project.sh"
 
 RD_ROOT="" RD_ROOT_ERR=""
 if [ -n "${HIMMEL_RELEASE_STATE_DIR:-}" ]; then
@@ -55,7 +58,7 @@ else
     fi
 fi
 RD_BY_DEFAULT="$(current_session_name 2>/dev/null)" || RD_BY_DEFAULT="" # swallow-ok: an unnamed session leaves by empty, and append then exits 2 unless --by is given
-RD_MIRROR_DEFAULT="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}" # env-literal-ok: the mirror default tick.sh uses
+RD_MIRROR_DEFAULT="${NEXT_DISPATCH_MIRROR:-$(jira_mirror_dir)}"
 export RD_ROOT RD_ROOT_ERR RD_BY_DEFAULT RD_MIRROR_DEFAULT
 
 exec python3 -I - "$@" <<'PY'
