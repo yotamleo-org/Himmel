@@ -4474,12 +4474,12 @@ if [ "$suite_jobs" -gt 1 ] && [ "$list_only" -eq 0 ]; then
 fi
 _suites_longest_first() {
   [ -n "$1" ] || return 0
-  printf '%s' "$1" \
+  local _sorted
+  _sorted=$(printf '%s' "$1" \
     | LC_ALL=C awk -F'\t' 'FILENAME == ARGV[1] { d[$2] = $1; next }
         { printf "%s\t%s\n", ($0 in d) ? d[$0] : "000000000000", $0 }' "$_shard_durations_file" - \
     | LC_ALL=C sort -t "$_shard_tab" -k1,1r -k2,2 \
-    | cut -f2- \
-    || printf '%s' "$1"
+    | cut -f2-) && [ -n "$_sorted" ] && printf '%s\n' "$_sorted" || printf '%s' "$1"
 }
 _suites_run_alone_first() {
   local _s _alone="" _rest=""

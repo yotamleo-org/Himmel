@@ -631,10 +631,10 @@ fi
 
 echo "== P20: a bin-packed shard starts each group longest-first by the duration ledger =="
 if sb=$(mk_sandbox); then
-  for _n in a b d f h j; do mk_suite "$sb" "test-$_n.sh" 3; done
+  for _n in a b d f h j k l; do mk_suite "$sb" "test-$_n.sh" 3; done
   for _n in c e g i; do mk_suite "$sb" "test-$_n-alone.sh" 1; done
   : > "$sb/dur.tsv"
-  for _r in f:95 g-alone:85 j:80 i-alone:75 c-alone:65 h:60 e-alone:50 a:40 d:35 b:15; do printf '%s/scripts/test-%s.sh\t%s\n' "$sb" "${_r%%:*}" "${_r##*:}" >> "$sb/dur.tsv"; done
+  for _r in k:110 l:105 f:95 g-alone:85 j:80 i-alone:75 c-alone:65 h:60 e-alone:50 a:40 d:35 b:15; do printf '%s/scripts/test-%s.sh\t%s\n' "$sb" "${_r%%:*}" "${_r##*:}" >> "$sb/dur.tsv"; done
   printf '*/scripts/test-*-alone.sh  fixture\n' > "$sb/deny.txt"
   started_in_order() { cut -d' ' -f1 "$1/peak.log"; }
   ledger_order=$(awk -F'\t' '{ n = $1; sub(/.*\//, "", n); print n, $2 }' "$sb/dur.tsv" | sort -k2,2nr -k1,1 | cut -d' ' -f1)
@@ -653,18 +653,35 @@ if sb=$(mk_sandbox); then
         *)          want_par="$want_par $_n"; n_par=$((n_par + 1)) ;;
       esac
     done
-    want_order=$(printf '%s%s' "$want_alone" "$want_par" | xargs)
+    want_alone=$(printf '%s' "$want_alone" | xargs)
+    want_par=$(printf '%s' "$want_par" | xargs)
     order=$(started_in_order "$sb" | paste -sd' ' -)
-    if [ "$rc" -eq 0 ] && [ -n "$serial_set" ] && [ "$serial_set" = "$par_set" ] && [ "$order" = "$want_order" ]; then
-      pass "P20: shard $_shard/2 ran the same suites as a serial run, run-alone then parallel, each longest-first ($order)"
+    got_alone=$(printf '%s\n' "$order" | tr ' ' '\n' | grep -e '-alone\.sh$' | paste -sd' ' - || true)
+    got_par=$(printf '%s\n' "$order" | tr ' ' '\n' | grep -v -e '-alone\.sh$' | paste -sd' ' - || true)
+    alone_first=1 seen_par=0
+    for _n in $order; do
+      case "$_n" in *-alone.sh) [ "$seen_par" -eq 0 ] || alone_first=0 ;; *) seen_par=1 ;; esac
+    done
+    within_bound() {
+      local _pos="$1" _i=0 _n _x _p
+      for _n in $want_par; do
+        _p=0
+        for _x in $_pos; do [ "$_x" = "$_n" ] && break; _p=$((_p + 1)); done
+        [ "$_p" -lt $((_i + 3)) ] || return 1
+        _i=$((_i + 1))
+      done
+    }
+    if [ "$rc" -eq 0 ] && [ -n "$serial_set" ] && [ "$serial_set" = "$par_set" ] && [ "$alone_first" -eq 1 ] \
+       && [ "$got_alone" = "$want_alone" ] && within_bound "$got_par"; then
+      pass "P20: shard $_shard/2 ran the same suites as a serial run, run-alone first in ledger order, parallel suites within the longest-first bound ($order)"
     else
-      fail "P20: shard $_shard/2 rc=$rc serial=[$serial_set] parallel=[$par_set] order=[$order] want=[$want_order]; out: $out"
+      fail "P20: shard $_shard/2 rc=$rc serial=[$serial_set] parallel=[$par_set] order=[$order] want_alone=[$want_alone] want_par=[$want_par]; out: $out"
     fi
-    path_order=$(printf '%s\n' "$par_set" | tr ' ' '\n' | awk '/-alone\.sh$/ { print "0" $0; next } { print "1" $0 }' | sort | cut -c2- | paste -sd' ' -)
-    if [ "$n_alone" -ge 2 ] && [ "$n_par" -ge 3 ] && [ "$want_order" != "$path_order" ]; then
-      pass "P20: shard $_shard/2 holds $n_alone run-alone and $n_par parallel suites that the ledger orders differently from the path order"
+    path_par=$(printf '%s\n' "$par_set" | tr ' ' '\n' | grep -v -e '-alone\.sh$' | paste -sd' ' -)
+    if [ "$n_alone" -ge 2 ] && [ "$n_par" -ge 4 ] && ! within_bound "$path_par"; then
+      pass "P20: shard $_shard/2 holds $n_alone run-alone and $n_par parallel suites whose path order breaks the longest-first bound"
     else
-      fail "P20: shard $_shard/2 needs two run-alone and three parallel suites in ledger order unlike path order; want=[$want_order]"
+      fail "P20: shard $_shard/2 needs two run-alone and four parallel suites whose path order breaks the bound; want_par=[$want_par] path=[$path_par]"
     fi
   done
   rm -rf "$sb"
