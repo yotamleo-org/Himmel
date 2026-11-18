@@ -2897,11 +2897,18 @@ function settingsPathForScope(scope) {
   return path.join(process.cwd(), '.claude', 'settings.json');
 }
 
+function insideGitWorkTree(dir) {
+  for (let d = dir; ; d = path.dirname(d)) {
+    if (fs.existsSync(path.join(d, '.git'))) return true;
+    if (path.dirname(d) === d) return false;
+  }
+}
+
 function settingsTrackedState(file) {
   let dir = path.dirname(file);
   while (!fs.existsSync(dir) && path.dirname(dir) !== dir) dir = path.dirname(dir);
   const r = spawnSync('git', ['-C', dir, 'ls-files', '--error-unmatch', '--', file], { encoding: 'utf8' });
-  if (r.error) return r.error.code === 'ENOENT' ? 'untracked' : 'unknown';
+  if (r.error) return r.error.code === 'ENOENT' && !insideGitWorkTree(dir) ? 'untracked' : 'unknown';
   if (r.status === 0) return 'tracked';
   if (r.status === 1) return 'untracked';
   return /not a git repository/i.test(r.stderr || '') ? 'untracked' : 'unknown';

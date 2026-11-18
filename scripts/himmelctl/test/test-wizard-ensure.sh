@@ -1451,4 +1451,25 @@ runEnsureZ nogit --yes
 [ "$rcZ" -eq 0 ] || fail "case z: a settings file outside any git repo is untracked and should be written (got rc=$rcZ): $outZ"
 [ "$(cat "$work/log-z-nogit.txt")" = "red-item" ] || fail "case z: the writer should run outside a git repo (log: $(cat "$work/log-z-nogit.txt"))"
 echo "ok: case z6 — a project outside any git repository is written as before"
+
+mkTargetZ nogitbin 1
+set +e
+outZ=$( cd "$work/target-z-nogitbin" && PATH="$hermeticPath" HIMMELCTL_REPO_ROOT="$(winpath "$repoZ")" HIMMELCTL_CACHE_DIR="$(winpath "$work/cache-z-nogitbin")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$work/cache-z-nogitbin")-luna-config.json" HOME="$work/home" USERPROFILE="$(winpath "$work/home")" ENSURE_LOG="$(winpath "$work/log-z-nogitbin.txt")" \
+  "$node_bin" "$wizard" ensure --yes 2>&1 </dev/null ); rcZ=$?
+set -e
+[ "$rcZ" -eq 2 ] || fail "case z7: a settings file inside a git work tree must refuse when the git executable is missing, exit 2 (got rc=$rcZ): $outZ"
+[ ! -s "$work/log-z-nogitbin.txt" ] || fail "case z7: no primitive may run when tracking cannot be checked (log: $(cat "$work/log-z-nogitbin.txt"))"
+[ "$(cat "$work/target-z-nogitbin/.claude/settings.json")" = '{"original":true}' ] || fail "case z7: the committed settings file must be untouched"
+echo "ok: case z7 — a missing git executable inside a git work tree refuses instead of reading as untracked"
+
+mkdir -p "$work/target-z-nogitbin2/.claude"; mkdir -p "$work/cache-z-nogitbin2"
+write_cache "$work/cache-z-nogitbin2/install-profile.json" adopter project none "" inline "" lean
+: > "$work/log-z-nogitbin2.txt"
+set +e
+outZ=$( cd "$work/target-z-nogitbin2" && PATH="$hermeticPath" HIMMELCTL_REPO_ROOT="$(winpath "$repoZ")" HIMMELCTL_CACHE_DIR="$(winpath "$work/cache-z-nogitbin2")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$work/cache-z-nogitbin2")-luna-config.json" HOME="$work/home" USERPROFILE="$(winpath "$work/home")" ENSURE_LOG="$(winpath "$work/log-z-nogitbin2.txt")" \
+  "$node_bin" "$wizard" ensure --yes 2>&1 </dev/null ); rcZ=$?
+set -e
+[ "$rcZ" -eq 0 ] || fail "case z7b: no git executable and no work tree above the settings file is untracked and should be written (got rc=$rcZ): $outZ"
+[ "$(cat "$work/log-z-nogitbin2.txt")" = "red-item" ] || fail "case z7b: the writer should run (log: $(cat "$work/log-z-nogitbin2.txt"))"
+echo "ok: case z7b — a missing git executable outside any work tree is written as before"
 echo "PASS"
