@@ -161,6 +161,8 @@ run_sut() {
 head_sha() { git -C "$V" rev-parse HEAD; }
 head_files() { git -C "$V" show --name-only --format= HEAD | sort | tr '\n' ' '; }
 staged() { git -C "$V" diff --cached --name-only | sort | tr '\n' ' '; }
+want_rec() { printf '%s\n' "$V"; git -C "$V" diff --cached --raw --no-abbrev --no-renames | tr '\t' ' ' | LC_ALL=C sort; }
+have_rec() { cat "$S"/autocommit-owned* 2>/dev/null; }
 hook_rc() { (cd "$V" && SKIP=trailing-whitespace,end-of-file-fixer git hook run pre-commit >/dev/null 2>&1); echo $?; }
 sent() { cat "$TMP/sent.log" 2>/dev/null; }
 
@@ -956,9 +958,10 @@ mkvault
 echo "a note" >"$V/note.md"; backdate "$V/note.md"
 cp "$V/.git/hooks/pre-commit" "$TMP/hook.keep"
 printf '#!/usr/bin/env bash\necho "refused by a hook" >&2\nexit 1\n' >"$V/.git/hooks/pre-commit"
-run_ac >/dev/null
+run_ac >/dev/null; rc=$?
+assert_eq "T61 setup: the refused run exits 0" "0" "$rc"
 assert_eq "T61 setup: the refused note is staged" "note.md " "$(staged)"
-assert_eq "T61 setup: the record names the refused note" "1" "$(cat "$S"/autocommit-owned* | grep -c ' note.md$')"
+assert_eq "T61 setup: the record holds exactly the staged entries" "$(want_rec)" "$(have_rec)"
 cp "$TMP/hook.keep" "$V/.git/hooks/pre-commit"
 git -C "$V" reset -q note.md; echo "someone else's edit" >"$V/note.md"; git -C "$V" add note.md
 before="$(head_sha)"; out="$(run_ac)"
@@ -969,9 +972,10 @@ mkvault
 echo "a note" >"$V/note.md"; backdate "$V/note.md"
 cp "$V/.git/hooks/pre-commit" "$TMP/hook.keep"
 printf '#!/usr/bin/env bash\necho "refused by a hook" >&2\nexit 1\n' >"$V/.git/hooks/pre-commit"
-run_ac >/dev/null
+run_ac >/dev/null; rc=$?
+assert_eq "T62 setup: the refused run exits 0" "0" "$rc"
 assert_eq "T62 setup: the refused note is staged" "note.md " "$(staged)"
-assert_eq "T62 setup: the record names the refused note" "1" "$(cat "$S"/autocommit-owned* | grep -c ' note.md$')"
+assert_eq "T62 setup: the record holds exactly the staged entries" "$(want_rec)" "$(have_rec)"
 cp "$TMP/hook.keep" "$V/.git/hooks/pre-commit"
 git -C "$V" commit -q -m "by hand"
 echo "a later edit" >"$V/note.md"; git -C "$V" add note.md
@@ -983,9 +987,10 @@ mkvault
 echo "a note" >"$V/note.md"; backdate "$V/note.md"
 cp "$V/.git/hooks/pre-commit" "$TMP/hook.keep"
 printf '#!/usr/bin/env bash\necho "refused by a hook" >&2\nexit 1\n' >"$V/.git/hooks/pre-commit"
-run_ac >/dev/null
+run_ac >/dev/null; rc=$?
+assert_eq "T63 setup: the refused run exits 0" "0" "$rc"
 assert_eq "T63 setup: the refused note is staged" "note.md " "$(staged)"
-assert_eq "T63 setup: the record names the refused note" "1" "$(cat "$S"/autocommit-owned* | grep -c ' note.md$')"
+assert_eq "T63 setup: the record holds exactly the staged entries" "$(want_rec)" "$(have_rec)"
 cp "$TMP/hook.keep" "$V/.git/hooks/pre-commit"
 seed="$(head_sha)"
 git -C "$V" commit -q -m "by hand"
