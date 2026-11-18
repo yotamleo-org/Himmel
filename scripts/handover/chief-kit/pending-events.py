@@ -63,32 +63,35 @@ def candidates(fleet, inbox, last):
             cursors[label] = cursor
         current[label] = dict(ready=ready_events)
         cleanup = [(n, marker) for n, marker in matches if marker != 'READY']
-        if cleanup:
+        # A WRAPPED/MERGED bullet is the worker's live cleanup only while no READY follows it
+        # (the newest marker, as tick.sh reads tails= and acts=). A later READY is the event;
+        # a READY before the newest cleanup bullet is moot: its PR is already done.
+        floor = cleanup[-1][0] if cleanup else 0
+        if cleanup and matches[-1][0] == floor:
             n, marker = cleanup[-1]
-            if f'{label} {marker} {checksum(lines[n - 1])}' in handled:
-                continue
-            events.append((label, marker, n))
-        else:
-            if replaced:
-                # A truncate/write sample is only a proposal. Keep the last
-                # acknowledged snapshot/cursor until a stable candidate relays.
-                current[label] = dict(previous, unread=False, replacement=ready_events)
-                if previous.get('replacement') != ready_events:
-                    current[label]['replacement_known'] = bool(
-                        ready_events and ready_events[-1][1] in handled_ready)
-                    continue
-                if not ready_events or previous.get('replacement_known'):
-                    continue
-                n = ready_events[-1][0]
-                if f'{label} READY {checksum(lines[n - 1])}' in handled:
-                    current[label] = dict(ready=ready_events)
-                    cursors[label] = n
-                    continue
-                cursor = 0
-            pending = [(n, marker) for n, marker in matches if n > cursor]
-            if pending:
-                n, marker = pending[-1] if first else pending[0]
+            if f'{label} {marker} {checksum(lines[n - 1])}' not in handled:
                 events.append((label, marker, n))
+            continue
+        if replaced:
+            # A truncate/write sample is only a proposal. Keep the last
+            # acknowledged snapshot/cursor until a stable candidate relays.
+            current[label] = dict(previous, unread=False, replacement=ready_events)
+            if previous.get('replacement') != ready_events:
+                current[label]['replacement_known'] = bool(
+                    ready_events and ready_events[-1][1] in handled_ready)
+                continue
+            if not ready_events or previous.get('replacement_known'):
+                continue
+            n = ready_events[-1][0]
+            if f'{label} READY {checksum(lines[n - 1])}' in handled:
+                current[label] = dict(ready=ready_events)
+                cursors[label] = n
+                continue
+            cursor = 0
+        pending = [(n, marker) for n, marker in matches if marker == 'READY' and n > max(cursor, floor)]
+        if pending:
+            n, marker = pending[-1] if first else pending[0]
+            events.append((label, marker, n))
     tmp = observed_path.with_suffix(observed_path.suffix + '.tmp')
     tmp.write_text(json.dumps(current))
     os.replace(tmp, observed_path)
