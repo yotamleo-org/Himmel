@@ -939,7 +939,11 @@ cat > "$bin2/qmd" <<'EOF'
 echo "$*" >> "$QMD_MOCK_STATE/qmd-argv.log"
 [ "${QMD_MOCK_STEAL_LOCK:-0}" != 1 ] || echo 999999 > "$XDG_CACHE_HOME/qmd/recycle.lock/owner"
 if [ "$*" = "mcp --http --daemon" ] && [ "${QMD_MOCK_NOSTART:-0}" != 1 ]; then
-  UNWIND=0 QMD_MOCK_STATE="$QMD_MOCK_STATE" setsid bash "$QMD_MOCK_FAKE" </dev/null >/dev/null 2>&1 &
+  if [ "${QMD_MOCK_NOANSWER:-0}" = 1 ]; then
+    setsid sleep 300 </dev/null >/dev/null 2>&1 &
+  else
+    UNWIND=0 QMD_MOCK_STATE="$QMD_MOCK_STATE" setsid bash "$QMD_MOCK_FAKE" </dev/null >/dev/null 2>&1 &
+  fi
   echo $! > "$XDG_CACHE_HOME/qmd/mcp.pid"
   disown
   i=0
@@ -1082,6 +1086,14 @@ run_stale QMD_MOCK_NOSTART=1
 [ ! -d "$xdg/qmd/recycle.lock" ] || fail "(z9) failed restart: the lock was left behind"
 reap_new
 echo "ok (z9): a restart that brings nothing up exits non-zero and frees the lock"
+
+stale_case 0
+run_stale QMD_MOCK_NOANSWER=1
+[ "$rc" -ne 0 ] || fail "(z9b) live but silent replacement: expected a non-zero rc, got 0 ($out)"
+case "$out" in *"no qmd server newer than"*) ;; *) fail "(z9b) live but silent replacement: no not-serving message ($out)" ;; esac
+[ ! -d "$xdg/qmd/recycle.lock" ] || fail "(z9b) live but silent replacement: the lock was left behind"
+reap_new
+echo "ok (z9b): a replacement that is alive with a fresh pidfile but answers no MCP initialize is not reported as serving"
 
 stale_case 0
 cat > "$work/stubborn.sh" <<'EOF'

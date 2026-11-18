@@ -54,9 +54,9 @@
 # "cannot verify": non-zero, nothing signalled, and no process-list search.
 # Unlike the RSS recycle it takes the lock with a bounded retry and ignores the
 # cooldown (a fresh stamp from an RSS recycle must not keep a stale build alive).
-# Exit 0 only when the pidfile is newer than <stamp> and its pid passes the
-# identity check. Worst case ~125s: lock wait 20 + SIGTERM wait 30 + SIGKILL
-# wait 5 + the ~59s start path + verify 10.
+# Exit 0 only when the pidfile is newer than <stamp>, its pid passes the
+# identity check and the server answers an MCP initialize. Worst case ~125s:
+# lock wait 20 + SIGTERM wait 30 + SIGKILL wait 5 + the ~59s start path + verify 10.
 #   QMD_STALE_LOCK_WAIT  seconds to wait for the recycle lock (default 20)
 #   QMD_STALE_TERM_WAIT  seconds to wait after SIGTERM before SIGKILL (default 30)
 set -u
@@ -340,6 +340,12 @@ recycle_lock_stale() {
   esac
 }
 
+answers_mcp() {
+  local reply
+  reply="$(probe_body)"
+  { [ -n "$reply" ] && is_qmd_shaped "$reply"; } || alive_auth_required
+}
+
 stale_recycle() {
   local stamp="$1" who="ensure-qmd-daemon" # t13b-ok: message prefix text only, starts nothing
   local stamp_m pf_m pid lock_wait term_wait w took=0 verdict=1
@@ -409,7 +415,7 @@ stale_recycle() {
   bash "$0" || echo "$who: the start path failed" >&2
   w=0
   while [ "$w" -lt 10 ]; do
-    if read_pidfile && [ "$pf_m" -ge "$stamp_m" ] && pid_is_ours "$pid" "$pf_m"; then verdict=0; break; fi
+    if read_pidfile && [ "$pf_m" -ge "$stamp_m" ] && pid_is_ours "$pid" "$pf_m" && answers_mcp; then verdict=0; break; fi
     w=$((w + 1))
     sleep 1
   done
