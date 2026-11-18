@@ -116,8 +116,6 @@ s17_at "$S17_H1"
 check "19 T8b the row the runbook fence wrote: exit 0" "$rc" "0"
 contains "19 T8b: item 19 reads that row (both suites local, nothing left to CI)" "$out" "[PASS] 19. suite evidence: 2 impacted, 0 from CI run -, 2 local"
 
-# the three killed-mid-read runs below bound themselves with the real GNU timeout (timeout or
-# gtimeout); a host with neither (stock macOS) skips them by name rather than failing rc 127
 # shellcheck source=scripts/lib/timeout-bin.sh
 . "$HERE/../../lib/timeout-bin.sh"
 if [ -z "$_TIMEOUT_BIN" ]; then
