@@ -6523,3 +6523,63 @@ test("D6 v2 declarations: a Keys line must name exactly the declared key set of 
   const twice = await build(); await c3Edit(twice, "spec", add(`Keys: ${keys.join(", ")}\nKeys: ${keys.join(", ")}`));
   expect(await c3Message(c3Kind(twice, "spec", policy)), "two Keys lines").toBe(C3_KEYS);
 }, S1B);
+
+// ---- the v2 quote-line filter and the heading near-misses (follow-ups of the rows above) ----
+type C3Quote = RegExpMatchArray;
+const C3_PROSE: [string, (q: C3Quote) => string][] = [
+  ["READY", () => "READY on R1 and R2. Both sealed."], ["READ colon", () => "READ: the spec twice"], ["README", () => "README first"], ["READING", () => "READING notes"],
+  ["an indented READ-SHA512 quote", q => ` READ-SHA512 ${q[1]} ${q[2]}`], ["a mid-line READ-SHA512 quote", q => `see READ-SHA512 ${q[1]} ${q[2]}`],
+];
+const c3FirstQuote = (text: string) => c3Quotes(text)[0];
+
+test("Q1 readQuotesOf: an unknown READ-prefixed spelling refuses, and READ-like prose is not a quote line", async () => {
+  const route = await c3Route(); const S = "a1".repeat(32); const p = "/work/specs/designs/page.md";
+  const parse = (...lines: string[]) => route.readQuotesOf(["Fixture: x", ...lines, "SPEC CLEAN", ""].join("\n"));
+  for (const spelling of ["READ-SHA512", "READ-MD5", "READ-SHA1"]) {
+    for (const line of [`${spelling} ${S} ${p}`, `${spelling} ${S}  ${p}`, `${spelling} ${p} ${S}`, spelling]) expect(() => parse(line), line).toThrow(C3_MALFORMED);
+  }
+  for (const [what, line] of C3_PROSE) expect(parse(line(["", S, p] as unknown as C3Quote)), `${what} is not a quote line`).toEqual([]);
+  expect(() => parse(`READ-SHA256 ${S} ${p}`, `READ-SHA512 ${S} ${p}`), "a valid quote beside it does not make it a quote").toThrow(C3_MALFORMED);
+});
+
+test("Q1 v2 quotes: READ-SHA512 and READ-MD5 refuse at the helper, in place of a valid quote and beside a complete valid quote set", async () => {
+  const route = await c3Route(); const policy = route.v2Policy([cappedKey]);
+  const control = await cappedFixture(); await c3Expect(control, "spec", await c3Kind(control, "spec", policy), 3, 0, [["F1", "minor"]]);
+  for (const spelling of ["READ-SHA512", "READ-MD5"]) {
+    for (const [what, line] of [["sha first", (q: C3Quote) => `${spelling} ${q[1]} ${q[2]}`], ["legacy order", (q: C3Quote) => `${spelling} ${q[2]} ${q[1]}`]] as const) {
+      const beside = await cappedFixture(); await c3Edit(beside, "spec", text => c3BeforeSeals(text, line(c3FirstQuote(text))));
+      expect(await c3Message(c3Kind(beside, "spec", policy)), `${spelling}, ${what}, beside a complete valid quote set`).toBe(C3_MALFORMED);
+    }
+    const replaced = await cappedFixture(); await c3Edit(replaced, "spec", text => text.replace(c3FirstQuote(text)[0], `${spelling} ${c3FirstQuote(text)[1]} ${c3FirstQuote(text)[2]}`));
+    expect(await c3Message(c3Kind(replaced, "spec", policy)), `${spelling} in place of a valid quote`).toBe(C3_MALFORMED);
+  }
+}, S1B);
+
+test("Q1 v2 quotes: READ-like prose beside a complete valid quote set stays prose and the return is accepted", async () => {
+  const route = await c3Route(); const policy = route.v2Policy([cappedKey]);
+  for (const [what, make] of C3_PROSE) {
+    const f = await cappedFixture(); const line = make(c3FirstQuote(readFileSync(b1Kind(f, "spec").at(-1)!, "utf8")));
+    await c3Edit(f, "spec", text => c3BeforeSeals(text, line));
+    expect(readFileSync(b1Kind(f, "spec").at(-1)!, "utf8").split("\n"), `${what} sits in the return`).toContain(line);
+    await c3Expect(f, "spec", await c3Kind(f, "spec", policy), 3, 0, [["F1", "minor"]]);
+  }
+}, S1B);
+
+test("F1 v2Policy.headingOk follows parseFindings exactly: the near-misses the ledger reads as contextual carry, the tags it reads as reserved refuse", async () => {
+  const route = await c3Route(); const policy = route.v2Policy([cappedKey]); const heading = policy.headingOk;
+  const read = (parenthetical: string) => route.parseFindings(`- **x** (${parenthetical})\n`, "spec", 1).findings[0];
+  for (const near of ["medium; Regression", "medium; regression test", "medium; operator-critical", "minor; reopens"]) {
+    const finding = read(near); const severity = near.split(";")[0];
+    expect(finding?.id, `${near}: parseFindings reads a finding`).toBe("x");
+    expect([finding.critical, finding.critical_refused, finding.reopens, finding.regression], `${near}: parseFindings reads no reserved tag`).toEqual([undefined, undefined, undefined, undefined]);
+    expect(heading(near), `${near}: headingOk agrees`).toBe(true);
+    const f = await cappedFixture({ specFindings: `- **F1** (${near}) the real ledger holds this near-miss` });
+    expect(b1Rows(f).filter(r => r.row === "round" && r.critic === "spec").at(-1).findings, `${near}: the ledger row reads the same finding`).toEqual([{ id: "F1", severity }]);
+    await c3Expect(f, "spec", await c3Kind(f, "spec", policy), 3, 0, [["F1", severity]]);
+  }
+  for (const [reserved, field, value] of [["medium; operator-critical: spend-grant", "critical", "spend-grant"], ["medium; operator-critical: unknown", "critical_refused", "unknown"],
+    ["minor; reopens M1", "reopens", "M1"], ["medium; regression", "regression", true], ["major", "severity", "major"]] as const) {
+    expect(read(reserved)?.[field], `${reserved}: parseFindings reads the reserved field`).toBe(value);
+    expect(heading(reserved), `${reserved}: headingOk agrees`).toBe(false);
+  }
+}, S1B);
