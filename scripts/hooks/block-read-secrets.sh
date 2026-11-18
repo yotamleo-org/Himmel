@@ -41,8 +41,7 @@
 # show-environment` (with or without --user), `systemctl show` with no operand
 # or a -p / --property list naming Environment, and a busctl/gdbus/dbus-send
 # clause on the systemd Manager with Environment, GetAll or introspect are denied
-# the same way. This is an open list of shapes, not a closed class: `show -P NAME`,
-# wrappers and relays (ssh, systemd-run, machinectl, rtk proxy, ...) are not read.
+# the same way.
 # Another entry adds
 # shell tracing that can print the inherited environment (`bash -x`, `-o xtrace`,
 # `set -x`, SHELLOPTS=xtrace, BASH_XTRACEFD; denied even under `env -i`). Another entry adds

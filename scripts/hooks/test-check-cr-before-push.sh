@@ -1900,10 +1900,6 @@ else
     fail "M1: expected >=2 timeout-wrapped git-fetch calls (fork fetch + origin re-fetch), got ${call_count:-0}" "log: $(cat "$M1_LOG" 2>/dev/null) / out: $out"
 fi
 
-# M2 (refs/cr/* scratch-ref comment correction) and M3 (named-remote-equals-
-# own-URL note) are comment-only changes with no behavioural delta
-# -- no test row, per the contract's "where testable".
-
 # verify_sha_is_reviewed must not merely
 # check that base_sha is an ANCESTOR of a freshly fetched origin -- it
 # must also check whether the RANGE from that fresh origin to the pushed tip

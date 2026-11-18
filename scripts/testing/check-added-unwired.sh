@@ -19,8 +19,7 @@
 #          whose runner's discovery reaches it (path args narrow; node --test
 #          reaches only JS unless the script loads a TS transform; node may carry
 #          flags before --test, e.g. node --import tsx --test; {a,b} groups in
-#          a path arg are expanded, a nested brace group narrows by directory only;
-#          a single * also matches across /).
+#          a path arg are expanded, a nested brace group narrows by directory only).
 #   hooklib scripts/hooks/<subdir>/*: a wired hook, or another live library under
 #          scripts/hooks/, names its basename (sourced). Judged read-only.
 #   skill  SKILL.md under <plugin>/skills/<name>/ where <plugin> has

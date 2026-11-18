@@ -572,9 +572,6 @@ deny "branch -vu <upstream> main (u bundled with -v)" "$W" \
     "git branch -vu origin/feat/x main"
 
 echo "== documented, not fixed: branch -D main is inert, not modelled =="
-# git itself refuses to delete the branch checked out in another worktree, so
-# this is inert in the exact scenario this arm defends. Pinned here so a
-# change to that invariant is caught rather than silently drifting.
 allow "branch -D main, no -C (git itself refuses; not modelled)" "$W" "git branch -D main"
 
 echo "== HIMMEL-4365: work-tree / index rewrites aimed at the primary, every spelling of the target =="

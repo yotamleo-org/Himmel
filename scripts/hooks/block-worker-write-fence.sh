@@ -586,8 +586,7 @@ function run_segment(   j, i, target, seen, n2, cand) {
         # The two branches per candidate are emitted INTERLEAVED
         # (unchanged, then advanced, per candidate) rather than as an
         # unchanged block followed by an advanced block, so the cap
-        # below degrades both branches evenly. This is a pure REORDER -- the de-duped SET is identical, only
-        # the truncation order changes.
+        # below degrades both branches evenly.
         for (i = 1; i <= ncand; i++) {
             if (!(cwd_cand[i] in seen)) { seen[cwd_cand[i]] = 1; new_cand[++n2] = cwd_cand[i] }
             if (i == 1) continue

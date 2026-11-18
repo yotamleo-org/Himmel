@@ -997,8 +997,7 @@ session_confirmed() { # session_confirmed <pgrep-ere-pattern> - returns
     # Per pid, then that pid's own argv, decided by
     # _flat_argv_has_n_name rather than by pgrep's flattened match, which let
     # ANY claude whose prompt carried "-n <NAME>" suppress the arm - the
-    # same class. `ps -o args=` is still space-joined, so the residual
-    # gap is announced once - never silent.
+    # same class. `ps -o args=` is still space-joined.
     if [ ! -d "$PROC" ]; then
         if [ "$_LOSSY_WARNED" -eq 0 ]; then
             echo "WARN headed-arm: no $PROC on this platform - session confirmation reads each candidate's argv via ps, whitespace-joined, so an argv element containing spaces can still spoof it" >&2

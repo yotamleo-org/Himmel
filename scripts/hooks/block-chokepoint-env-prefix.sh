@@ -2076,7 +2076,7 @@ raw_obfuscated() {
     # So ANY path word (one holding a `/`) with a glob, grouping or
     # extendedglob metachar in any segment counts, scripts/ or not. Only a
     # leading `~` (home) or `#` (comment) is exempt, and `$(` / `${` are
-    # expansions, not groupings (a $var alone is not caught here).
+    # expansions, not groupings.
     for w in $(printf '%s' "$t" | tr ';|&<>' '     '); do
         case "$w" in *scripts/*) case "${w#*scripts/}" in *'('*) obf=1; hard=1 ;; esac ;; esac
         case "$w" in */*) ;; *) continue ;; esac
