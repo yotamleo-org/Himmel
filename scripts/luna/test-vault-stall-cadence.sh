@@ -839,6 +839,11 @@ assert_eq "T46 a vault with a sync plugin is untouched (no commit)" "$before" "$
 assert_eq "T46 the note is still dirty" "?? .obsidian/ ?? note.md" "$(git -C "$V" status --porcelain | tr '\n' ' ' | sed 's/ $//')"
 
 mkvault
+echo "a note" >"$V/note.md"; backdate "$V/note.md"; mkdir -p "$V/.obsidian/plugins/obsidian-git"; echo x >"$V/.obsidian/plugins/obsidian-git/main.js"
+before="$(head_sha)"; out="$(run_ac)"
+assert_eq "T46b a vault with the obsidian-git plugin is untouched (no commit)" "$before" "$(head_sha)"
+
+mkvault
 echo "a note" >"$V/note.md"; backdate "$V/note.md"
 before="$(head_sha)"; out="$(run_sut)"
 assert_eq "T47 opt-in off: untouched (no commit)" "$before" "$(head_sha)"

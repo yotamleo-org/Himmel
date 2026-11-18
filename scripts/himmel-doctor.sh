@@ -509,6 +509,7 @@ graphmap-cadence|${GRAPHMAP_BAT_DIR:-$uh/.claude/graphmap-cadence}|bash scripts/
 qmd-cadence|${QMD_CADENCE_BAT_DIR:-$uh/.claude/qmd-cadence}|bash scripts/luna/qmd-cadence.sh arm --force
 upstream-watch-cadence|${UPSTREAMWATCH_BAT_DIR:-$uh/.claude/upstream-watch-cadence}|bash scripts/upstreams/upstream-watch-cadence.sh arm --force
 graph-choices-cadence|${GRAPH_CHOICES_BAT_DIR:-$uh/.claude/graph-choices-cadence}|bash scripts/graphify/graph-choices-cadence.sh arm --force
+steering-cull-cadence|${STEERING_CULL_RUNNER_DIR:-$uh/.claude/steering-cull-cadence}|bash scripts/cleanup/steering-cull-cadence.sh arm --force --proposal-dir <dir>
 EOF
     if [ "$saw_any" -eq 0 ]; then
         emit OK C8-cadence "no armed cadence runners (skipped)"

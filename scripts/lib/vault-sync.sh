@@ -4,7 +4,7 @@
 # the two never disagree. Source it; it defines one function and prints nothing.
 #
 #   vault_has_sync <vault>   exit 0 when the vault has a git remote or an
-#                            Obsidian plugin whose id contains "sync"
+#                            Obsidian plugin whose id contains "sync", or the obsidian-git plugin, which commits on its own
 
 vault_has_sync() {
     local v="$1" d
@@ -12,5 +12,6 @@ vault_has_sync() {
     for d in "$v"/.obsidian/plugins/*sync*; do
         [ -d "$d" ] && return 0
     done
+    [ -d "$v/.obsidian/plugins/obsidian-git" ] && return 0
     return 1
 }
