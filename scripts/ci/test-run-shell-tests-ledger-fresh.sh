@@ -26,7 +26,8 @@ run_lines() { grep -F '[RUN ] ' <<< "$1" | sed 's/^\[RUN \] //'; }
 # fixture below is copied from the real CI logs of green main run 41928036090
 # (head 11b19d623ec945b58496257457804e390f5cecaa, the first full run after the
 # run-shell-tests and uninstall-provenance split, shell-unit-shard 1..8): every suite
-# that ran >= 10s, with its measured seconds.
+# that ran >= 10s, with its measured seconds, except test-chief-wait-b.sh: its 392s
+# is its passing attempt in run 44304233310 (its CI attempts run 374-430s).
 # The sandbox holds a stub for each, the runner packs them with the
 # committed ledger, and the measured seconds of each shard are summed.
 echo "== Case 22-fresh (HIMMEL-4075): the committed ledger balances measured shard time =="
@@ -116,7 +117,7 @@ scripts/handover/chief-kit/test-auto-go.sh	219
 scripts/handover/chief-kit/test-board.sh	90
 scripts/handover/chief-kit/test-brief-lint.sh	52
 scripts/handover/chief-kit/test-chief-kit-e2e.sh	45
-scripts/handover/chief-kit/test-chief-wait-b.sh	533
+scripts/handover/chief-kit/test-chief-wait-b.sh	392
 scripts/handover/chief-kit/test-chief-wait-pool.sh	168
 scripts/handover/chief-kit/test-chief-wait-r0.sh	201
 scripts/handover/chief-kit/test-chief-wait.sh	353

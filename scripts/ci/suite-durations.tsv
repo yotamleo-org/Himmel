@@ -484,7 +484,7 @@ scripts/handover/chief-kit/test-ready-check-c.sh	340
 scripts/handover/chief-kit/test-ready-check-d.sh	241
 scripts/handover/chief-kit/test-ready-check-e.sh	295
 scripts/handover/chief-kit/test-ready-check-f.sh	344
-scripts/handover/chief-kit/test-ready-check.sh	285
+scripts/handover/chief-kit/test-ready-check.sh	379
 scripts/handover/chief-kit/test-ready-go.sh	13
 scripts/handover/chief-kit/test-relay-batch.sh	33
 scripts/handover/chief-kit/test-run-suite.sh	0
