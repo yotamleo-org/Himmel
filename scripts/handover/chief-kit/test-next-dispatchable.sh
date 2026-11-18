@@ -20,6 +20,9 @@ has() { # <name> <haystack> <needle>
 lacks() { # <name> <haystack> <needle>
     case "$2" in *"$3"*) fail "$1 (found '$3' in: $2)" ;; *) pass "$1" ;; esac
 }
+check() { # <name> <expected> <actual>, the helper the other chief-kit suites share
+    if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (want '$2' got '$3')"; fi
+}
 
 REAL_HOME="$HOME"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/next-dispatch-test.XXXXXX")" || exit 1
