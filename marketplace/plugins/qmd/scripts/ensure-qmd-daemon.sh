@@ -56,7 +56,11 @@
 # cooldown (a fresh stamp from an RSS recycle must not keep a stale build alive).
 # Exit 0 only when the pidfile is newer than <stamp>, its pid passes the
 # identity check and the server ACCEPTS an MCP initialize: a 401 is up-but-refusing
-# the token, which prints one reason line and exits non-zero. Worst case ~150s:
+# the token, which prints one reason line and exits non-zero. Exit 10 means the
+# recycle was skipped because qmd is switched OFF (the operator opt-out below):
+# nothing was checked or restarted. Exit codes in this mode: 0 a server newer than
+# the stamp is serving, 10 skipped because qmd is off, 2 no stamp path, other non-zero
+# cannot verify or the server is not serving. Worst case ~150s:
 # lock wait 20 + SIGTERM wait 30 + SIGKILL wait 5 + the ~59s start path + verify
 # 10 tries of (2s probe + 1s sleep) + the 4s reason probes.
 #   QMD_STALE_LOCK_WAIT  seconds to wait for the recycle lock (default 20)
@@ -85,7 +89,8 @@ QMD_RECYCLE_COOLDOWN_MIN=$((10#$QMD_RECYCLE_COOLDOWN_MIN))
 # (one shell) keeps the shared daemon OFF on purpose, e.g. while gaming (its
 # embed/expand/rerank models contend for the GPU). Checked before ANY probe or
 # launch: exit 0, one INFO line, nothing started. qmd-daemon-switch.sh off|on
-# is the operator's one-liner.
+# is the operator's one-liner. Under --recycle-if-stale the same check exits 10
+# instead of 0, so a caller can tell a skipped recycle from a completed one.
 QMD_DAEMON_OFF_FLAG="${QMD_DAEMON_OFF_FLAG:-$HOME/.himmel/state/qmd-daemon.off}"
 if [ "${QMD_DAEMON_DISABLED:-}" = "1" ] || [ -e "$QMD_DAEMON_OFF_FLAG" ]; then
   echo "ensure-qmd-daemon: INFO - qmd is OFF by operator choice; not launching. Turn it back on: bash \"$(dirname -- "${BASH_SOURCE[0]}")/qmd-daemon-switch.sh\" on (or remove $QMD_DAEMON_OFF_FLAG / unset QMD_DAEMON_DISABLED)"
