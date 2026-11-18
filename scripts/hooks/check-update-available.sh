@@ -265,7 +265,7 @@ if command -v detach_run >/dev/null 2>&1; then
     if [ -n "$CHAN" ]; then
         detach_run env GIT_TERMINAL_PROMPT=0 \
             git -C "$ROOT" -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=60 \
-            fetch --quiet origin '+refs/tags/v*:refs/himmel-update/tags/v*'
+            fetch --quiet --prune origin '+refs/tags/v*:refs/himmel-update/tags/v*'
     fi
 fi
 

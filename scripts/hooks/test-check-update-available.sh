@@ -732,6 +732,23 @@ done
 sleep 1
 assert_empty "25m: no channel: the private namespace stays empty" "$(git -C "$CHECKOUT_DIR" for-each-ref refs/himmel-update/tags 2>/dev/null)"
 
+chan_repo 3
+tag_origin v0.1.0-pre.1 2
+tag_origin v0.2.0-pre.1 3
+sync_private
+git -C "$BARE" tag -d v0.2.0-pre.1 >/dev/null
+profile "$TMP/c25o" '{"channel":"pre"}'
+out=$(run_chan "$TMP/s25o" "$TMP/c25o")
+i=0
+while [ "$i" -lt 20 ]; do
+    [ -z "$(git -C "$CHECKOUT_DIR" for-each-ref refs/himmel-update/tags/v0.2.0-pre.1 2>/dev/null)" ] && break
+    sleep 1; i=$((i + 1))
+done
+assert_eq_hook "25o: a release withdrawn at origin leaves the private namespace on the next refresh" "refs/himmel-update/tags/v0.1.0-pre.1" \
+    "$(git -C "$CHECKOUT_DIR" for-each-ref --format='%(refname)' refs/himmel-update/tags 2>/dev/null)"
+out=$(run_chan "$TMP/s25o" "$TMP/c25o" UPDATE_CHECK_INTERVAL=0)
+assert_not_contains "25o: the withdrawn release is no longer advertised" "v0\.2\.0-pre\.1" "$out"
+
 chan_repo 2
 LIBLESS="$TMP/libless"; mkdir -p "$LIBLESS/scripts/hooks" "$LIBLESS/scripts/lib" "$LIBLESS/.git"
 cp "$HOOK" "$LIBLESS/scripts/hooks/"; cp "$LIBS_SRC/detach.sh" "$LIBLESS/scripts/lib/"
