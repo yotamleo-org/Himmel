@@ -1133,15 +1133,12 @@ exit 1''')
             for name, doc in docs.items():
                 single = runtime.disposition(str(doc))
                 got = batch.batched(str(doc))
-                if name == 'unlisted':
-                    self.assertIsNone(got, 'a doc no manifest, attempt or receipt names is not answered by the batch')
-                    continue
                 self.assertEqual(got, single, name)
                 self.assertEqual(json.loads(self.call('runtime', 'disposition', '--doc', doc).stdout), single, name)
             # the scenario really holds every state, so the equalities above compare different answers
             self.assertEqual({name: batch.batched(str(doc)) for name, doc in docs.items()},
                              {'pending': 'pending', 'refused': 'refused', 'complete': 'complete', 'reregistered': 'legacy',
-                              'registered': 'legacy', 'legacy': 'legacy', 'missing': 'legacy', 'unlisted': None, 'committed': 'committed',
+                              'registered': 'legacy', 'legacy': 'legacy', 'missing': 'legacy', 'unlisted': 'legacy', 'committed': 'committed',
                               'unknown': 'unknown', 'launched': 'launched', 'loose': 'legacy', 'loose-attempt': 'unknown'})
 
     def test_batch_reads_each_manifest_and_the_anchor_once_whatever_the_doc_count(self):
@@ -1185,6 +1182,13 @@ exit 1''')
             self.assertIsNone(batch.batched(str(docs['complete'])))
             for name, doc in docs.items():
                 self.assertEqual(runtime.WorkerStates()(str(doc)), runtime.worker_state(str(doc)), name)
+            # a row the batch reads but cannot place (an attempt that is not an object) leaves that doc alone, and only that doc
+            badrow = self.plain_doc('loose/TEST-12-N1-badrow.md')
+            (self.bucket / 'loose/b.fleet.json').write_text(json.dumps({'schema': 1, 'workers': [{'doc': str(badrow), 'label': 'N3', 'attempt': 'bogus'}]}))
+            batch = runtime.WorkerStates()
+            self.assertIsNone(batch.batched(str(badrow)))
+            self.assertEqual(batch.batched(str(docs['loose'])), 'legacy')
+            self.assertEqual(batch(str(badrow)), runtime.worker_state(str(badrow)))
 
     def test_worker_states_memoizes_by_doc_and_asks_the_canonical_function_once(self):
         docs = self.batch_scenario()
@@ -1202,7 +1206,7 @@ exit 1''')
         self.assertEqual(first, second)
         self.assertEqual(len(calls), len(docs))
         self.assertEqual(len({doc for doc, _ in calls}), len(docs))
-        self.assertEqual({Path(doc).name for doc, disposition in calls if disposition is None}, {'TEST-8-N1-unlisted.md'})
+        self.assertEqual({Path(doc).name for doc, disposition in calls if disposition is None}, set())
         with self.batch_env():
             for name, doc in docs.items():
                 self.assertEqual(first[name], runtime.worker_state(str(doc)), name)

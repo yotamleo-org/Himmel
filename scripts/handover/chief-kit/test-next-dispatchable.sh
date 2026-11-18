@@ -3726,6 +3726,8 @@ D = dict(
     refused=doc('HIMMEL-110-N1-refused.md'),
     resumed=doc('HIMMEL-111-N1-resumed.md', '- 10:00 WRAPPED - done', '- 12:30 RESUMED - by hand'),
     rereg=doc('HIMMEL-112-N1-rereg.md'),
+    legs_live=doc('HIMMEL-113-N1-legs-live.md', '- 10:00 LIVE - working'),
+    legs_wrapped=doc('HIMMEL-114-N1-legs-wrapped.md', '- 10:00 WRAPPED - done'),
 )
 control = {'family': 'fam', 'anchor': anchor}
 
@@ -3749,6 +3751,9 @@ manifest(chain % '16C', rows('wrapped', 'halted', 'live', 'stale', 'unknown', 'm
 manifest(chain % '16A', rows('wrapped', 'halted', 'live', 'stale', 'unknown', 'missing', pending=('pending',)))
 manifest(chain % '15A', rows('wrapped', 'halted', 'live', 'stale', 'unknown', 'missing', pending=('rereg', 'refused')))
 manifest('HIMMEL-nextleg-2026-11-17A-other-chief.fleet.json', rows('wrapped', 'live'))
+# a manifest still written with the pre-rename array: the docs only it names are answered the same way
+with open(os.path.join(bucket, chain % '15B'), 'w') as stream:
+    json.dump({'schema': 1, 'legs': rows('legs_live', 'legs_wrapped'), 'control': control}, stream)
 attempts = {}
 for key, phase in (('pending', 'pending'), ('committed', 'committed'), ('attempt_unknown', 'unknown')):
     attempts['a-' + key] = dict(attempt_id='a-' + key, phase=phase, doc=D[key], name=os.path.basename(D[key])[:-3])
@@ -3767,7 +3772,7 @@ with open(os.path.join(home, '.himmel', 'launch-refusals.jsonl'), 'w') as stream
 PYEOF
 U8M="$U8/mirror/HIMMEL"; mkdir -p "$U8M"
 M_SAVE="$M"; M="$U8M"
-for n in 101 102 103 104 105 106 107 108 109 110 111 112 120; do
+for n in 101 102 103 104 105 106 107 108 109 110 111 112 113 114 120; do
     mk "HIMMEL-$n" "To Do" Medium '[]' '["v1.0.1"]' '[]' "u8 fixture $n" "Edit scripts/lib/u8-$n.sh only."
 done
 M="$M_SAVE"
@@ -3795,8 +3800,8 @@ for mode in "${u8_modes[@]}"; do
     [ -z "${ND_U8_EVIDENCE:-}" ] || { mkdir -p "$ND_U8_EVIDENCE"; cp "$U8/out.$name" "$ND_U8_EVIDENCE/out.$name"; }
 done
 u8_list="$(cat "$U8/out.list")"
-for key in 101 102 110 120; do has "(U8) a ticket no live worker holds is offered: HIMMEL-$key" "$u8_list" "${TAB}HIMMEL-$key${TAB}"; done
-for key in 103 104 105 106 107 108 109 112; do lacks "(U8) a ticket a worker in doubt or alive holds is withheld: HIMMEL-$key" "$u8_list" "${TAB}HIMMEL-$key${TAB}"; done
+for key in 101 102 110 114 120; do has "(U8) a ticket no live worker holds is offered: HIMMEL-$key" "$u8_list" "${TAB}HIMMEL-$key${TAB}"; done
+for key in 103 104 105 106 107 108 109 112 113; do lacks "(U8) a ticket a worker in doubt or alive holds is withheld: HIMMEL-$key" "$u8_list" "${TAB}HIMMEL-$key${TAB}"; done
 # the counts: the first mode's log is one run
 cl="$U8/count.list"
 u8_max_per_doc="$(awk -F'\t' '$1 == "worker_state" { c[$2]++ } END { m = 0; for (d in c) if (c[d] > m) m = c[d]; print m + 0 }' "$cl")"
