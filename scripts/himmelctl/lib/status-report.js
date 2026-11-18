@@ -97,10 +97,6 @@ function expandHome(p) {
 // config change in a long-lived process.
 // Resolved beside THIS file, not under repoRoot(): HIMMELCTL_REPO_ROOT points
 // at a fixture tree that carries no scripts/lib.
-// ponytail: a resolver that cannot run (node missing, 5 s timeout, rc 2 on an
-// invalid setting) answers null, and each caller below reads null as the
-// opt-in default (n/a), as an unreadable origin did before; upgrade when
-// status grows a row for an invalid project mode.
 const PROJECT_MODE_MJS = path.resolve(__dirname, '..', '..', 'lib', 'project-mode.mjs');
 function projectMode(targetPath, fn, env) {
   const r = spawnSync(process.execPath, [PROJECT_MODE_MJS, fn], {

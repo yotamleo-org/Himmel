@@ -17,6 +17,7 @@
 # shellcheck disable=SC2015  # `[ cond ] && pass || fail`: pass() cannot fail, so A && B || C is if-then-else here
 # shellcheck disable=SC2153  # REPO is exported by the sourced tick-test-fixture.sh
 set -uo pipefail
+KP=HIMMEL
 
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -186,7 +187,7 @@ cachettl_cases() (
     printf '{"type":"user","timestamp":"%s","message":{"content":"<task-notification><task-id>wait-2</task-id><status>failed</status></task-notification>"}}\n' "$stamp" >> "$TICK_PROJECTS_DIR/p/cache.jsonl"
     printf '%s\n' '# worker' '- LIVE — working' > "$W/handover/HIMMEL-6532-N1-other.md"
     printf '{"type":"custom-title","customTitle":"HIMMEL-6532-N1-other"}\n{"type":"assistant","timestamp":"%s"}\n' "$stamp" > "$TICK_PROJECTS_DIR/p/other.jsonl"
-    out="$(WORKERS='HIMMEL-111-legN61 HIMMEL-6532-N1-other' bash "$SUT")"
+    out="$(WORKERS="$KP-111-legN61 $KP-6532-N1-other" bash "$SUT")"
     contains 'multiple idle workers are comma joined after terminal notifications' "$out" ' cachettl=N61,N1'
     # one transcript pass per tick, however many workers and candidate names
     mkdir -p "$W/grepshim"
@@ -423,10 +424,10 @@ else
     fail "--verbose emits multiple lines (rc=$rc lines=$verbose_lines)"
 fi
 contains '--verbose labels worker locks' "$verbose" 'worker-session locks: N61:FRESH,N65:FREE'
-contains '--verbose prints the description next to the label of a no-PR worker (HIMMEL-4749)' "$verbose" 'worker-session descriptions: N61  Add a login form'
-not_contains 'the compact tick line carries no descriptions (HIMMEL-4749)' "$(bash "$SUT")" 'Add a login form'
+contains '--verbose prints the description next to the label of a no-PR worker' "$verbose" 'worker-session descriptions: N61  Add a login form'
+not_contains 'the compact tick line carries no descriptions' "$(bash "$SUT")" 'Add a login form'
 contains '--verbose labels context fill' "$verbose" 'fill: 28'
-contains '--verbose labels worker models (HIMMEL-2976, HIMMEL-3145)' "$verbose" 'worker-session models: sonnet:1'
+contains '--verbose labels worker models' "$verbose" 'worker-session models: sonnet:1'
 
 # --- a chief FOR another checkout lists that checkout's PRs, not himmel's.
 # chief.sh records the project on the doc's project line; the gh stub answers
@@ -467,14 +468,14 @@ contains 'a fork PR is listed in ext-prs' "$own_out" 'ext-prs=#3005'
 contains 'a worker whose lock is free still owns nothing, so its PR is flagged' "$own_out" '#3006:300m'
 contains 'prs= still lists every open PR' "$own_out" 'prs=#3001,#3002,#3003,#3004,#3005,#3006 '
 contains 'a failed gh read is unowned-prs=?, not an all-clear' "$(STUB_PR_FAIL=1 bash "$SUT")" 'unowned-prs=? ext-prs=?'
-contains 'a failed gh read is prs=?, not an all-clear (HIMMEL-8735)' "$(STUB_PR_FAIL=1 bash "$SUT")" ' prs=? '
+contains 'a failed gh read is prs=?, not an all-clear' "$(STUB_PR_FAIL=1 bash "$SUT")" ' prs=? '
 if [ -n "$_TIMEOUT_BIN" ]; then
     # The deadline cuts the list to its 1 s floor. Without that bound the stub answers after 5 s with its rows.
     printf '#!/usr/bin/env bash\ntouch "%s"\necho STALL 42 no-ci\n' "$W/pr-hung-stall.ran" > "$W/pr-hung-stall"
     rm -f "$W/pr-hung-stall.ran" "$W/pr-hung-stall.cache"
     pr_hung="$(STUB_PR_SLEEP=5 TICK_DEADLINE_SEC=1 TICK_STALL_PROBE="$W/pr-hung-stall" TICK_STALL_CACHE="$W/pr-hung-stall.cache" bash "$SUT" 2>/dev/null)"
-    contains 'a hung gh list reads prs=?, not an all-clear (HIMMEL-8735)' "$pr_hung" ' prs=? '
-    contains 'a hung gh list still yields the worker state (HIMMEL-8735)' "$pr_hung" ' workers=N61:FRESH'
+    contains 'a hung gh list reads prs=?, not an all-clear' "$pr_hung" ' prs=? '
+    contains 'a hung gh list still yields the worker state' "$pr_hung" ' workers=N61:FRESH'
     contains 'past the deadline the stall probe is skipped and stall= reads ? with no cache' "$pr_hung" ' stall=?'
     [ ! -e "$W/pr-hung-stall.ran" ] && pass 'past the deadline the stall probe never ran' || fail 'the stall probe ran past the deadline'
 else
@@ -490,7 +491,7 @@ rows_6358="$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\\n' \
     3013 feat/himmel-111-red-owned false me false "$(iso_ago 125)" 2 \
     3014 feat/himmel-993-red-draft true me false "$(iso_ago 125)" 1)"
 red_out="$(STUB_PR_ROWS="$rows_6358" bash "$SUT")"
-contains 'an orphan PR with a failed check is dispatch-owed (HIMMEL-6358)' "$red_out" '#3011:125m:dispatch-owed'
+contains 'an orphan PR with a failed check is dispatch-owed' "$red_out" '#3011:125m:dispatch-owed'
 contains 'a pending or green orphan stays a plain unowned PR' "$red_out" '#3012:125m '
 not_contains 'a pending or green orphan is not dispatch-owed' "$red_out" '#3012:125m:dispatch-owed'
 not_contains 'a red PR owned by a held lock is not flagged' "$red_out" '#3013:'
@@ -511,14 +512,14 @@ not_contains 'a PR whose ticket has a live cloud session is not unowned' "$cloud
 # 'workers=N61.md,N65:MISSING' (one collapsed entry) while the space form printed
 # the correct 'workers=N61:FRESH,N65:FREE' -- confirmed manually against
 # scripts/handover/chief-kit/tick.sh@8fa186e5 before this fix.
-comma_out="$(bash "$SUT" --workers 'HIMMEL-111-legN61,HIMMEL-222-legN65')"; comma_rc=$?
-space_out="$(bash "$SUT" --workers 'HIMMEL-111-legN61 HIMMEL-222-legN65')"; space_rc=$?
+comma_out="$(bash "$SUT" --workers "$KP-111-legN61,$KP-222-legN65")"; comma_rc=$?
+space_out="$(bash "$SUT" --workers "$KP-111-legN61 $KP-222-legN65")"; space_rc=$?
 if [ "$comma_rc" -eq 0 ] && [ "$space_rc" -eq 0 ] && [ "$comma_out" = "$space_out" ]; then
-    pass 'a comma-separated --workers produces byte-identical output to space-separated (HIMMEL-3130)'
+    pass 'a comma-separated --workers produces byte-identical output to space-separated'
 else
     fail "comma vs space --workers mismatch (comma='$comma_out' space='$space_out')"
 fi
-contains 'the comma-separated form resolves every worker, not just the last (HIMMEL-3130)' "$comma_out" 'workers=N61:FRESH,N65:FREE'
+contains 'the comma-separated form resolves every worker, not just the last' "$comma_out" 'workers=N61:FRESH,N65:FREE'
 
 # workers= must never silently disagree with how
 # many docs --workers named -- the original bug's contradiction was workers= naming
@@ -528,7 +529,7 @@ contains 'the comma-separated form resolves every worker, not just the last (HIM
 workers_field="$(printf '%s\n' "$comma_out" | grep -oE 'workers=[^ ]+' | cut -d= -f2)"
 workers_count="$(printf '%s\n' "$workers_field" | awk -F',' '{print NF}')"
 if [ "$workers_count" = 2 ]; then
-    pass 'workers= names exactly as many entries as --workers docs were passed (HIMMEL-3130)'
+    pass 'workers= names exactly as many entries as --workers docs were passed'
 else
     fail "workers= entry count mismatch (workers_field='$workers_field' count=$workers_count, expected 2)"
 fi
@@ -545,34 +546,34 @@ printf '{"schema":1,"legs":[{"doc":"%s","label":"N61"},{"doc":"%s","label":"N65"
 from_out="$(WORKERS='' bash "$SUT" --workers-from "$fm")"; from_rc=$?
 argv_out="$(WORKERS='' bash "$SUT" --workers "$fm_n61 $fm_n65")"; argv_rc=$?
 if [ "$from_rc" -eq 0 ] && [ "$argv_rc" -eq 0 ] && [ "$from_out" = "$argv_out" ]; then
-    pass '--workers-from a manifest produces byte-identical output to the equivalent --workers (HIMMEL-3748)'
+    pass '--workers-from a manifest produces byte-identical output to the equivalent --workers'
 else
     fail "--workers-from vs --workers mismatch (rc=$from_rc/$argv_rc from='$from_out' argv='$argv_out')"
 fi
-contains '--workers-from resolves every manifest worker (HIMMEL-3748)' "$from_out" ' workers=N61:FRESH,N65:FREE '
+contains '--workers-from resolves every manifest worker' "$from_out" ' workers=N61:FRESH,N65:FREE '
 # The manifest is re-read on every run: editing it between two samples changes
 # the judged worker set with the same argv -- no waiter restart.
 printf '{"schema":1,"legs":[{"doc":"%s","label":"N61"}]}\n' "$fm_n61" > "$fm"
-contains 'a manifest edit between two runs changes workers= with the same argv (HIMMEL-3748)' \
+contains 'a manifest edit between two runs changes workers= with the same argv' \
     "$(WORKERS='' bash "$SUT" --workers-from "$fm")" ' workers=N61:FRESH '
 # A worker on both --workers and the manifest is judged once, not twice.
-contains '--workers and --workers-from union without duplicates (HIMMEL-3748)' \
+contains '--workers and --workers-from union without duplicates' \
     "$(WORKERS='' bash "$SUT" --workers "$fm_n61 $fm_n65" --workers-from "$fm")" ' workers=N61:FRESH,N65:FREE '
 # The same doc spelled relative on --workers and absolute in the manifest is one worker.
-contains 'a relative --workers spelling and its absolute manifest entry are judged once (HIMMEL-3748)' \
-    "$(WORKERS='' bash "$SUT" --workers HIMMEL-111-legN61 --workers-from "$fm")" ' workers=N61:FRESH '
+contains 'a relative --workers spelling and its absolute manifest entry are judged once' \
+    "$(WORKERS='' bash "$SUT" --workers $KP-111-legN61 --workers-from "$fm")" ' workers=N61:FRESH '
 # An unreadable or invalid manifest is a failed tick (no TICK line, rc != 0),
 # never an empty fleet that reads as every worker gone.
 printf 'not json\n' > "$fm"
 bad_out="$(WORKERS='' bash "$SUT" --workers-from "$fm" 2>/dev/null)"; bad_rc=$?
 if [ "$bad_rc" -ne 0 ] && [ -z "$bad_out" ]; then
-    pass 'an invalid manifest fails the tick instead of reading as no workers (HIMMEL-3748)'
+    pass 'an invalid manifest fails the tick instead of reading as no workers'
 else
     fail "invalid manifest (rc=$bad_rc out='$bad_out')"
 fi
 miss_out="$(WORKERS='' bash "$SUT" --workers-from "$W/handover/no-such.fleet.json" 2>/dev/null)"; miss_rc=$?
 if [ "$miss_rc" -ne 0 ] && [ -z "$miss_out" ]; then
-    pass 'a missing manifest fails the tick (HIMMEL-3748)'
+    pass 'a missing manifest fails the tick'
 else
     fail "missing manifest (rc=$miss_rc out='$miss_out')"
 fi
@@ -587,15 +588,15 @@ lk_doc="$W/handover/HIMMEL-4869-N90-pilot.md"
 printf '%s\n' '# pilot row' '- LIVE — working' > "$lk_doc"
 printf '{"schema":1,"legs":[{"doc":"%s","label":"N61","lane":"native"},{"doc":"%s","label":"N90","lane":"deepseek","lockless":true}]}\n' "$fm_n61" "$lk_doc" > "$fm"
 lk_out="$(WORKERS='' bash "$SUT" --workers-from "$fm")"
-contains 'a lockless row reads NOLOCK, never FREE (HIMMEL-5074)' "$lk_out" ' workers=N61:FRESH,N90:NOLOCK '
-contains 'a lockless row is judged by its tail marker (HIMMEL-5074)' "$lk_out" ' tails=N61:LIVE,N90:LIVE '
+contains 'a lockless row reads NOLOCK, never FREE' "$lk_out" ' workers=N61:FRESH,N90:NOLOCK '
+contains 'a lockless row is judged by its tail marker' "$lk_out" ' tails=N61:LIVE,N90:LIVE '
 printf '%s\n' '- WRAPPED — done, no stamp' >> "$lk_doc"
 lk_out2="$(WORKERS='' bash "$SUT" --workers-from "$fm")"
-contains 'an unstamped WRAPPED on a lockless row changes tails= (HIMMEL-5074)' "$lk_out2" ' tails=N61:LIVE,N90:WRAPPED '
-contains 'a wrapped lockless row stays NOLOCK, not FREE or WRAPPED-lock (HIMMEL-5074)' "$lk_out2" ' workers=N61:FRESH,N90:NOLOCK '
+contains 'an unstamped WRAPPED on a lockless row changes tails=' "$lk_out2" ' tails=N61:LIVE,N90:WRAPPED '
+contains 'a wrapped lockless row stays NOLOCK, not FREE or WRAPPED-lock' "$lk_out2" ' workers=N61:FRESH,N90:NOLOCK '
 # A manifest row with no lockless key keeps its FREE verdict.
 printf '{"schema":1,"legs":[{"doc":"%s","label":"N61"},{"doc":"%s","label":"N90","lane":"deepseek"}]}\n' "$fm_n61" "$lk_doc" > "$fm"
-contains 'a row without the lockless key is still judged by its lock (HIMMEL-5074)' "$(WORKERS='' bash "$SUT" --workers-from "$fm")" ' workers=N61:FRESH,N90:WRAPPED '
+contains 'a row without the lockless key is still judged by its lock' "$(WORKERS='' bash "$SUT" --workers-from "$fm")" ' workers=N61:FRESH,N90:WRAPPED '
 rm -f "$fm" "$lk_doc"
 
 # --- livestate= drift field --------------------------------
@@ -775,7 +776,7 @@ esac
 STUB
 chmod +x "$W/bin-lossy/ps"
 lossy_out="$(CLAUDE_SESSIONS_PROC="$W/no-such-proc" PATH="$W/bin-lossy:$PATH" bash "$SUT")"
-contains 'the /proc-absent fallback still counts the dispatched worker (HIMMEL-3145)' "$lossy_out" 'procs=1'
+contains 'the /proc-absent fallback still counts the dispatched worker' "$lossy_out" 'procs=1'
 contains 'the /proc-absent fallback flags the degraded read' "$lossy_out" 'models=sonnet:1(lossy)'
 not_contains 'the /proc-absent fallback omits healthy ceiling=' "$lossy_out" 'ceiling='
 
@@ -792,7 +793,7 @@ cp "$W/repo/scripts/lanes/worker-burn.sh" "$W/foreign-repo/scripts/lanes/worker-
 cp "$W/repo/scripts/lib/usage-preflight.sh" "$W/foreign-repo/scripts/lib/usage-preflight.sh"
 # every chokepoint fails closed without its seam-guard lib.
 cp "$W/repo/scripts/lib/chokepoint-seam-guard.sh" "$W/foreign-repo/scripts/lib/chokepoint-seam-guard.sh"
-foreign_out="$(REPO="$W/foreign-repo" PATH="$W/bin:$PATH" bash "$SUT" --workers 'HIMMEL-111-legN61')"
+foreign_out="$(REPO="$W/foreign-repo" PATH="$W/bin:$PATH" bash "$SUT" --workers "$KP-111-legN61")"
 contains 'a foreign REPO (no scripts/lanes/lib/) still counts a live worker (#1335)' "$foreign_out" 'procs=1'
 contains 'a foreign REPO still buckets its model' "$foreign_out" 'models=sonnet:1'
 case "$foreign_out" in
@@ -828,7 +829,7 @@ contains 'a healthy, census-confirmed empty fleet still reads workers=none' "$he
 # never silently fall out of every bucket while still counted in procs=.
 mkcmdline 104 claude -n HIMMEL-444-legN70 work
 mk_pgrep_x "$W/bin-nomodel" 101 104
-nomodel_out="$(PATH="$W/bin-nomodel:$PATH" bash "$SUT" --workers 'HIMMEL-111-legN61 HIMMEL-444-legN70')"
+nomodel_out="$(PATH="$W/bin-nomodel:$PATH" bash "$SUT" --workers "$KP-111-legN61 $KP-444-legN70")"
 contains 'a worker with no --model token buckets as unknown, not dropped' "$nomodel_out" 'models=sonnet:1,unknown:1'
 
 # a --profile worker's argv carries `--settings
@@ -842,20 +843,20 @@ mkcmdline 105 claude --settings /run/user/1000/himmel-chief/x/y.leg-settings.jso
     --append-system-prompt-file /run/user/1000/himmel-chief/x/worker-preface.md \
     --model claude-sonnet-5 -n HIMMEL-333-foo-legN7-2026-01-01 work
 mk_pgrep_x "$W/bin-profile" 103 105
-profile_out="$(PATH="$W/bin-profile:$PATH" bash "$SUT" --workers 'HIMMEL-333-foo-legN7-2026-01-01')"
-contains 'a --profile worker is counted in procs= (HIMMEL-2998)' "$profile_out" 'procs=1'
-contains 'a --profile worker is bucketed in models= (HIMMEL-2998)' "$profile_out" 'models=sonnet:1'
+profile_out="$(PATH="$W/bin-profile:$PATH" bash "$SUT" --workers "$KP-333-foo-legN7-2026-01-01")"
+contains 'a --profile worker is counted in procs=' "$profile_out" 'procs=1'
+contains 'a --profile worker is bucketed in models=' "$profile_out" 'models=sonnet:1'
 
 # a worker whose --autocompact drifted from 200000 surfaces in
 # ceiling= without disturbing procs=/models=.
 mkcmdline 106 claude --model claude-sonnet-5 --autocompact auto -n HIMMEL-111-legN61 work
 mk_pgrep_x "$W/bin-drift" 106
-drift_out="$(PATH="$W/bin-drift:$PATH" bash "$SUT" --workers 'HIMMEL-111-legN61')"
-contains 'a drifted worker surfaces in ceiling= (HIMMEL-2974)' "$drift_out" 'ceiling=DRIFT:HIMMEL-111-legN61'
+drift_out="$(PATH="$W/bin-drift:$PATH" bash "$SUT" --workers "$KP-111-legN61")"
+contains 'a drifted worker surfaces in ceiling=' "$drift_out" 'ceiling=DRIFT:HIMMEL-111-legN61'
 
 # A single real chief session whose
 # free-text -p value contains an embedded newline plus the literal word
-# "claude" and a fake "-n HIMMEL-999-fake-legN1-2026-01-01" must NOT be
+# "claude" and a fake "-n <worker doc>" must NOT be
 # counted. Pre-fix, `pgrep -af` prints this one process's argv across two
 # text lines (the embedded newline survives byte-for-byte); awk then
 # evaluates the four procs= conditions per LINE, so the fake fragment lands
@@ -866,18 +867,18 @@ contains 'a drifted worker surfaces in ceiling= (HIMMEL-2974)' "$drift_out" 'cei
 # an isolated token equal to the literal flag.
 mkcmdline 107 claude --model claude-sonnet-5 --autocompact auto \
     -n HIMMEL-nextleg-2026-09-13Z-chief \
-    -p "$(printf 'spoof\nclaude -n HIMMEL-999-fake-legN1-2026-01-01 more work')"
+    -p "$(printf 'spoof\nclaude -n %s-999-fake-legN1-2026-01-01 more work' "$KP")"
 mk_pgrep_x "$W/bin-spoof" 107
-spoof_out="$(PATH="$W/bin-spoof:$PATH" bash "$SUT" --workers 'HIMMEL-999-fake-legN1-2026-01-01')"
-not_contains 'a spoofed -n inside free-text argv is not counted (HIMMEL-2999)' "$spoof_out" 'procs='
-not_contains 'a spoofed -n inside free-text argv does not bucket a model (HIMMEL-2999)' "$spoof_out" 'models='
+spoof_out="$(PATH="$W/bin-spoof:$PATH" bash "$SUT" --workers "$KP-999-fake-legN1-2026-01-01")"
+not_contains 'a spoofed -n inside free-text argv is not counted' "$spoof_out" 'procs='
+not_contains 'a spoofed -n inside free-text argv does not bucket a model' "$spoof_out" 'models='
 
 # a pid pgrep reports that has already vanished by the time
 # claude_sessions() reads it (no /proc/<pid> dir at all) is "not a tracked
 # session" -- no row, no effect on procs=/ceiling= -- pinning the pre-fix
 # behaviour for a genuinely gone process.
 mk_pgrep_x "$W/bin-vanished" 101 999
-vanished_out="$(PATH="$W/bin-vanished:$PATH" bash "$SUT" --workers 'HIMMEL-111-legN61')"
+vanished_out="$(PATH="$W/bin-vanished:$PATH" bash "$SUT" --workers "$KP-111-legN61")"
 contains 'a vanished pid (no /proc dir) does not affect procs=' "$vanished_out" 'procs=1'
 case "$vanished_out" in
     *unreadable*) fail 'a vanished pid does not report unreadable=' ;;
@@ -898,14 +899,14 @@ else
         chmod 700 "$W/proc/199/cmdline"
     else
         mk_pgrep_x "$W/bin-unreadable" 101 199
-        unreadable_out="$(PATH="$W/bin-unreadable:$PATH" bash "$SUT" --workers 'HIMMEL-111-legN61')"
-        contains 'an unreadable cmdline is surfaced as unreadable= in procs= (HIMMEL-3002)' "$unreadable_out" 'procs=1,unreadable=1'
+        unreadable_out="$(PATH="$W/bin-unreadable:$PATH" bash "$SUT" --workers "$KP-111-legN61")"
+        contains 'an unreadable cmdline is surfaced as unreadable= in procs=' "$unreadable_out" 'procs=1,unreadable=1'
         chmod 700 "$W/proc/199/cmdline"
     fi
 fi
 
 rm -f "$W/handover/HIMMEL-222-legN65.md"
-out="$(FILL_STALE=1 bash "$SUT" --workers 'HIMMEL-111-legN61 HIMMEL-333-legN66' 2>"$W/notfound-stderr.txt")"; rc=$?
+out="$(FILL_STALE=1 bash "$SUT" --workers "$KP-111-legN61 $KP-333-legN66" 2>"$W/notfound-stderr.txt")"; rc=$?
 if [ "$rc" -eq 0 ]; then
     pass 'missing worker document is tolerated'
 else
@@ -929,7 +930,7 @@ if [ "$missing_lines" = 1 ]; then pass 'degraded run still emits one line'; else
 # The whole point of the flag is that chiefs which already parse the tick
 # line keep parsing it, so the no-flag case above is the real assertion and
 # these three only pin what --burn adds.
-burn_out="$(bash "$SUT" --burn --workers 'HIMMEL-111-legN61 HIMMEL-333-legN66')"; rc=$?
+burn_out="$(bash "$SUT" --burn --workers "$KP-111-legN61 $KP-333-legN66")"; rc=$?
 if [ "$rc" -eq 0 ]; then pass '--burn exits 0'; else fail "--burn exits 0 (rc=$rc)"; fi
 contains '--burn appends first-turn/avg-ctx per worker' "$burn_out" 'burn=N61:74.3k/128.1k,N66:?'
 burn_lines="$(printf '%s\n' "$burn_out" | wc -l | tr -d '[:space:]')"
@@ -940,17 +941,17 @@ if [ "$burn_lines" = 1 ]; then pass '--burn still emits one line'; else fail "--
 case "$burn_out" in *'no transcript found'*) fail '--burn leaks worker-burn stderr into the tick line' ;; *) pass '--burn keeps worker-burn stderr out of the line' ;; esac
 
 # And without the flag the field is absent entirely, not empty.
-noburn_out="$(bash "$SUT" --workers 'HIMMEL-111-legN61')"
+noburn_out="$(bash "$SUT" --workers "$KP-111-legN61")"
 case "$noburn_out" in *burn=*) fail 'burn= appears without --burn' ;; *) pass 'burn= is absent without --burn' ;; esac
 
 # A worker past its cost budget carries !SOFT / !HARD on its burn token; one under it,
 # or whose worker-burn line has no cost-eq, keeps the plain token.
-budget_out="$(bash "$SUT" --burn --workers 'HIMMEL-111-legN61 HIMMEL-777-legN77 HIMMEL-888-legN88')"
+budget_out="$(bash "$SUT" --burn --workers "$KP-111-legN61 $KP-777-legN77 $KP-888-legN88")"
 contains '--burn marks a worker past the soft cost budget' "$budget_out" 'N77:32.3k/100.0k!SOFT'
 contains '--burn marks a worker past the hard cost budget' "$budget_out" 'N88:32.3k/106.0k!HARD'
 contains '--burn leaves a worker with no cost-eq unmarked' "$budget_out" 'N61:74.3k/128.1k,'
 case "$noburn_out" in *'!SOFT'*|*'!HARD'*) fail 'a budget mark appears without --burn' ;; *) pass 'no budget mark without --burn' ;; esac
-contains '--verbose --burn labels the burn line' "$(bash "$SUT" --verbose --burn --workers 'HIMMEL-111-legN61')" 'worker-session burn (first-turn/avg-ctx): N61:74.3k/128.1k'
+contains '--verbose --burn labels the burn line' "$(bash "$SUT" --verbose --burn --workers "$KP-111-legN61")" 'worker-session burn (first-turn/avg-ctx): N61:74.3k/128.1k'
 
 # --- current-convention worker names (<TICKET>-N<k>-<slug>, no
 # "-worker" substring at all -- docs/handover/chief-template.md:104 is the
@@ -969,21 +970,21 @@ printf '%s\n' '# worker' '- LIVE — working' > "$W/handover/HIMMEL-3143-N2-merg
 printf '%s\n' '# chief' '' '## Live state' '' \
     'legs: `N1:nonce1:tok1:110`, `N2:nonce2:tok2:111`' 'queue: none' 'last GO: none' 'acked: none' \
     > "$W/handover/chief.md"
-conv_out="$(PATH="$W/bin-conv:$PATH" bash "$SUT" --workers 'HIMMEL-3144-N1-chief-idle-guard HIMMEL-3143-N2-merge-jira-optin')"
-contains 'a current-convention worker label resolves to N<k> (HIMMEL-3145)' "$conv_out" 'workers=N1:FRESH,N2:FRESH'
-contains 'current-convention workers are counted in procs= (HIMMEL-3145)' "$conv_out" 'procs=2'
-contains 'current-convention workers are bucketed in models= (HIMMEL-3145)' "$conv_out" 'models=sonnet:2'
-contains 'current-convention workers compare like-with-like in livestate= (HIMMEL-3145)' "$conv_out" 'livestate=ok'
+conv_out="$(PATH="$W/bin-conv:$PATH" bash "$SUT" --workers "$KP-3144-N1-chief-idle-guard $KP-3143-N2-merge-jira-optin")"
+contains 'a current-convention worker label resolves to N<k>' "$conv_out" 'workers=N1:FRESH,N2:FRESH'
+contains 'current-convention workers are counted in procs=' "$conv_out" 'procs=2'
+contains 'current-convention workers are bucketed in models=' "$conv_out" 'models=sonnet:2'
+contains 'current-convention workers compare like-with-like in livestate=' "$conv_out" 'livestate=ok'
 case "$conv_out" in
-    *DRIFT*) fail 'a current-convention worker must not report livestate=DRIFT (HIMMEL-3145)' ;;
-    *) pass 'a current-convention worker must not report livestate=DRIFT (HIMMEL-3145)' ;;
+    *DRIFT*) fail 'a current-convention worker must not report livestate=DRIFT' ;;
+    *) pass 'a current-convention worker must not report livestate=DRIFT' ;;
 esac
 
 # Legacy regression (ticket acceptance): an archived chief doc named in the
 # OLD -legN<k>- spelling still resolves to N<k> -- worker_label() must recognise
 # both spellings in the same namespace, not just the new one.
-legacy_out="$(bash "$SUT" --workers 'HIMMEL-3064-legN12-old-chief-format' 2>/dev/null)"
-contains 'a legacy -legN<k>- doc still resolves to N<k> (HIMMEL-3145 regression)' "$legacy_out" 'workers=N12:NOTFOUND'
+legacy_out="$(bash "$SUT" --workers "$KP-3064-legN12-old-chief-format" 2>/dev/null)"
+contains 'a legacy -legN<k>- doc still resolves to N<k>' "$legacy_out" 'workers=N12:NOTFOUND'
 
 # --- (ticket root cause 3 / acceptance): a field that cannot be
 # computed must say so. A fatal census scan (pgrep itself failing, rc>1 and
@@ -996,9 +997,9 @@ cat > "$W/bin-census-fail/pgrep" <<'STUB'
 exit 2
 STUB
 chmod +x "$W/bin-census-fail/pgrep"
-census_fail_out="$(PATH="$W/bin-census-fail:$PATH" bash "$SUT" --workers 'HIMMEL-111-legN61')"
-contains 'a fatal census scan reports procs=unknown, not a false procs=0 (HIMMEL-3145)' "$census_fail_out" 'procs=unknown'
-contains 'a fatal census scan reports models=unknown, not a false models=none (HIMMEL-3145)' "$census_fail_out" 'models=unknown'
+census_fail_out="$(PATH="$W/bin-census-fail:$PATH" bash "$SUT" --workers "$KP-111-legN61")"
+contains 'a fatal census scan reports procs=unknown, not a false procs=0' "$census_fail_out" 'procs=unknown'
+contains 'a fatal census scan reports models=unknown, not a false models=none' "$census_fail_out" 'models=unknown'
 case "$census_fail_out" in
     *'procs=0'*) fail 'a fatal census scan must not render procs=0' ;;
     *) pass 'a fatal census scan must not render procs=0' ;;
@@ -1014,8 +1015,8 @@ esac
 # when there IS a dispatch set and it is empty of matches, never when there
 # is no dispatch set to check against.
 no_workers_out="$(WORKERS='' bash "$SUT")"
-contains 'no --workers reports procs=unknown, not a false procs=0 (HIMMEL-3145)' "$no_workers_out" 'procs=unknown'
-contains 'no --workers reports models=unknown, not a false models=none (HIMMEL-3145)' "$no_workers_out" 'models=unknown'
+contains 'no --workers reports procs=unknown, not a false procs=0' "$no_workers_out" 'procs=unknown'
+contains 'no --workers reports models=unknown, not a false models=none' "$no_workers_out" 'models=unknown'
 case "$no_workers_out" in
     *'procs=0'*) fail 'no --workers must not render procs=0' ;;
     *) pass 'no --workers must not render procs=0' ;;
@@ -1029,47 +1030,47 @@ esac
 launch_log="$W/chief-work/chain/HIMMEL-9-N1-x.launch.log"
 : > "$launch_log"; touch -d '2 hours ago' "$launch_log"
 old_out="$(bash "$SUT")"
-contains 'fleet=<live>/<cap> comes from the bank-preflight census (HIMMEL-3167)' "$old_out" 'fleet=1/8'
-contains 'live < cap and an old last dispatch is UNDERFILLED:<slack> (HIMMEL-3167)' "$old_out" 'capacity=UNDERFILLED:7'
+contains 'fleet=<live>/<cap> comes from the bank-preflight census' "$old_out" 'fleet=1/8'
+contains 'live < cap and an old last dispatch is UNDERFILLED:<slack>' "$old_out" 'capacity=UNDERFILLED:7'
 : > "$launch_log"
 fresh_out="$(bash "$SUT")"
-contains 'a fresh dispatch reads capacity=ok (HIMMEL-3167 control)' "$fresh_out" 'fleet=1/8 capacity=ok'
+contains 'a fresh dispatch reads capacity=ok' "$fresh_out" 'fleet=1/8 capacity=ok'
 touch -d '2 hours ago' "$launch_log"
 tuned_out="$(TICK_UNDERFILL_MIN=180 bash "$SUT")"
-contains 'TICK_UNDERFILL_MIN moves the threshold (HIMMEL-3167)' "$tuned_out" 'capacity=ok'
+contains 'TICK_UNDERFILL_MIN moves the threshold' "$tuned_out" 'capacity=ok'
 bad_min_out="$(TICK_UNDERFILL_MIN=abc bash "$SUT")"
-contains 'a non-numeric TICK_UNDERFILL_MIN falls back to 10 (HIMMEL-3167)' "$bad_min_out" 'capacity=UNDERFILLED:7'
+contains 'a non-numeric TICK_UNDERFILL_MIN falls back to 10' "$bad_min_out" 'capacity=UNDERFILLED:7'
 full_out="$(STUB_FLEET_LINE='bank-preflight: FLEET native=8 claudex=0 reserved=0 total=8/8' bash "$SUT")"
-contains 'live == cap is never underfilled (HIMMEL-3167)' "$full_out" 'fleet=8/8 capacity=ok'
+contains 'live == cap is never underfilled' "$full_out" 'fleet=8/8 capacity=ok'
 res_out="$(STUB_FLEET_LINE='bank-preflight: FLEET native=6 claudex=1 reserved=1 total=8/8' bash "$SUT")"
-contains 'native+claudex+reserved arrive as bank-preflight total (HIMMEL-3167)' "$res_out" 'fleet=8/8'
+contains 'native+claudex+reserved arrive as bank-preflight total' "$res_out" 'fleet=8/8'
 cap4_out="$(STUB_FLEET_LINE='bank-preflight: FLEET native=1 claudex=0 reserved=0 total=1/4' bash "$SUT")"
-contains 'the cap is bank-preflight cap, not a tick constant (HIMMEL-3167)' "$cap4_out" 'fleet=1/4 capacity=UNDERFILLED:3'
+contains 'the cap is bank-preflight cap, not a tick constant' "$cap4_out" 'fleet=1/4 capacity=UNDERFILLED:3'
 fail_out="$(STUB_FLEET_LINE='bank-preflight: FLEET ?/8' bash "$SUT")"
-contains 'a failed fleet census reports fleet=? (HIMMEL-3167)' "$fail_out" 'fleet=? capacity=unknown'
+contains 'a failed fleet census reports fleet=?' "$fail_out" 'fleet=? capacity=unknown'
 case "$fail_out" in
-    *'capacity=ok'*|*UNDERFILLED*) fail 'a failed fleet census must not claim ok/UNDERFILLED (HIMMEL-3167)' ;;
-    *) pass 'a failed fleet census must not claim ok/UNDERFILLED (HIMMEL-3167)' ;;
+    *'capacity=ok'*|*UNDERFILLED*) fail 'a failed fleet census must not claim ok/UNDERFILLED' ;;
+    *) pass 'a failed fleet census must not claim ok/UNDERFILLED' ;;
 esac
 mv "$W/repo/scripts/lib/usage-preflight.sh" "$W/usage-preflight.sh.away"
 gone_out="$(bash "$SUT")"
-contains 'a missing usage-preflight.sh reports fleet=? (HIMMEL-3167)' "$gone_out" 'fleet=? capacity=unknown'
+contains 'a missing usage-preflight.sh reports fleet=?' "$gone_out" 'fleet=? capacity=unknown'
 mv "$W/usage-preflight.sh.away" "$W/repo/scripts/lib/usage-preflight.sh"
 STUB_PF_SEEN="$W/pf-seen" bash "$SUT" >/dev/null
-contains 'tick asks bank-preflight for no ledger row and no launch refusal (HIMMEL-3167)' "$(cat "$W/pf-seen" 2>/dev/null)" 'ledger=/dev/null launch=unset'
+contains 'tick asks bank-preflight for no ledger row and no launch refusal' "$(cat "$W/pf-seen" 2>/dev/null)" 'ledger=/dev/null launch=unset'
 rm -f "$launch_log"
 none_out="$(bash "$SUT")"
-contains 'no launch log at all counts as no recent dispatch (HIMMEL-3167)' "$none_out" 'capacity=UNDERFILLED:7'
+contains 'no launch log at all counts as no recent dispatch' "$none_out" 'capacity=UNDERFILLED:7'
 mkdir -p "$W/xdg/himmel-chief/chain"
 : > "$W/xdg/himmel-chief/chain/HIMMEL-9-N1-x.launch.log"
 xdg_out="$(env -u TICK_LAUNCH_DIR XDG_RUNTIME_DIR="$W/xdg" bash "$SUT")"
-contains 'the default launch dir is XDG_RUNTIME_DIR/himmel-chief (HIMMEL-3167)' "$xdg_out" 'capacity=ok'
+contains 'the default launch dir is XDG_RUNTIME_DIR/himmel-chief' "$xdg_out" 'capacity=ok'
 verbose_cap="$(bash "$SUT" --verbose)"
-contains '--verbose labels fleet (HIMMEL-3167)' "$verbose_cap" 'fleet: 1/8'
-contains '--verbose labels capacity (HIMMEL-3167)' "$verbose_cap" 'capacity: UNDERFILLED:7'
-burn_cap="$(bash "$SUT" --burn --workers 'HIMMEL-111-legN61')"
+contains '--verbose labels fleet' "$verbose_cap" 'fleet: 1/8'
+contains '--verbose labels capacity' "$verbose_cap" 'capacity: UNDERFILLED:7'
+burn_cap="$(bash "$SUT" --burn --workers "$KP-111-legN61")"
 case "$burn_cap" in
-    *' burn=N61:'*' fleet=1/8 capacity=UNDERFILLED:7 gql='*) pass 'fleet=/capacity= append after every existing field incl. burn= (HIMMEL-3167)' ;;
+    *' burn=N61:'*' fleet=1/8 capacity=UNDERFILLED:7 gql='*) pass 'fleet=/capacity= append after every existing field incl. burn=' ;;
     *) fail "fleet=/capacity= not appended last under --burn (out='$burn_cap')" ;;
 esac
 
@@ -1080,13 +1081,13 @@ esac
 mkcmdline 108 claude --settings /run/user/1000/himmel-chief/x/HIMMEL-555-N41-thing.leg-settings.json \
     --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-555-N41-thing work
 mk_pgrep_x "$W/bin-dated" 108
-dated_out="$(PATH="$W/bin-dated:$PATH" bash "$SUT" --workers 'HIMMEL-555-N41-thing-2026-09-18')"
-contains 'a date-suffixed worker doc still counts its live session in procs= (HIMMEL-3167)' "$dated_out" 'procs=1'
-contains 'a date-suffixed worker doc still buckets its model (HIMMEL-3167)' "$dated_out" 'models=sonnet:1'
-dated_resume_out="$(PATH="$W/bin-dated:$PATH" bash "$SUT" --workers 'HIMMEL-555-N41-thing-2026-09-18-RESUME')"
-contains 'a date-suffixed -RESUME doc still counts its live session (HIMMEL-3167)' "$dated_resume_out" 'procs=1'
-dated_burn_out="$(PATH="$W/bin-dated:$PATH" bash "$SUT" --burn --workers 'HIMMEL-555-N41-thing-2026-09-18')"
-contains 'a date-suffixed worker doc still resolves its --burn transcript (HIMMEL-3167)' "$dated_burn_out" 'burn=N41:60.0k/90.0k'
+dated_out="$(PATH="$W/bin-dated:$PATH" bash "$SUT" --workers "$KP-555-N41-thing-2026-09-18")"
+contains 'a date-suffixed worker doc still counts its live session in procs=' "$dated_out" 'procs=1'
+contains 'a date-suffixed worker doc still buckets its model' "$dated_out" 'models=sonnet:1'
+dated_resume_out="$(PATH="$W/bin-dated:$PATH" bash "$SUT" --workers "$KP-555-N41-thing-2026-09-18-RESUME")"
+contains 'a date-suffixed -RESUME doc still counts its live session' "$dated_resume_out" 'procs=1'
+dated_burn_out="$(PATH="$W/bin-dated:$PATH" bash "$SUT" --burn --workers "$KP-555-N41-thing-2026-09-18")"
+contains 'a date-suffixed worker doc still resolves its --burn transcript' "$dated_burn_out" 'burn=N41:60.0k/90.0k'
 
 # --- gql=<remaining>/<reset HH:MM> ----------------------------------
 qd() { rm -rf "$W/q-$1"; mkdir -p "$W/q-$1"; printf '%s' "$W/q-$1"; }
@@ -1100,7 +1101,7 @@ if [ "$api_calls" = 2 ]; then
 else
     fail "a tick with no quota.tsv must cost two probes (calls=$api_calls)"
 fi
-contains 'the gql= probe is a real graphql call, not rate_limit (HIMMEL-3197)' "$(cat "$W/gh-api.log")" 'graphql'
+contains 'the gql= probe is a real graphql call, not rate_limit' "$(cat "$W/gh-api.log")" 'graphql'
 not_contains 'no probe is gh api rate_limit' "$(cat "$W/gh-api.log")" 'rate_limit'
 : > "$W/gh-api.log"
 HIMMEL_QUOTA_DIR="$gql_qd" GH_READ_ENV_ROOT="$W/noenv" STUB_GH_API_LOG="$W/gh-api.log" bash "$SUT" >/dev/null
@@ -1112,21 +1113,21 @@ else
 fi
 gql_ex_out="$(HIMMEL_QUOTA_DIR="$(qd ex)" GH_READ_ENV_ROOT="$W/noenv" STUB_GQL_OUT='HTTP/2.0 403 Forbidden\r\nX-Ratelimit-Remaining: 0\r\nX-Ratelimit-Reset: 1790000000\r\n\r\n' STUB_GQL_RC=1 bash "$SUT")"; gql_ex_rc=$?
 if [ "$gql_ex_rc" -eq 0 ]; then
-    contains 'an exhausted budget (gh exits 1, headers still printed) reads gql=0/<reset> (HIMMEL-3197)' "$gql_ex_out" "gql=0/$gql_hm"
+    contains 'an exhausted budget (gh exits 1, headers still printed) reads gql=0/<reset>' "$gql_ex_out" "gql=0/$gql_hm"
 else
     fail "an exhausted budget must not fail the tick (rc=$gql_ex_rc)"
 fi
 gql_bad_out="$(HIMMEL_QUOTA_DIR="$(qd bad)" GH_READ_ENV_ROOT="$W/noenv" STUB_GQL_OUT='gh: connection refused\n' STUB_GQL_RC=1 bash "$SUT")"; gql_bad_rc=$?
 if [ "$gql_bad_rc" -eq 0 ]; then
-    contains 'unreadable headers read gql=? and never fail the tick (HIMMEL-3197)' "$gql_bad_out" ' capacity=UNDERFILLED:7 gql=?'
+    contains 'unreadable headers read gql=? and never fail the tick' "$gql_bad_out" ' capacity=UNDERFILLED:7 gql=?'
 else
     fail "unreadable gql headers must not fail the tick (rc=$gql_bad_rc)"
 fi
 gql_nores_out="$(HIMMEL_QUOTA_DIR="$(qd nores)" GH_READ_ENV_ROOT="$W/noenv" STUB_GQL_OUT='HTTP/2.0 200 OK\r\nX-Ratelimit-Remaining: 4321\r\n\r\n' bash "$SUT")"
-contains 'a missing reset header reads gql=<remaining>/? (HIMMEL-3197)' "$gql_nores_out" 'gql=4321/?'
+contains 'a missing reset header reads gql=<remaining>/?' "$gql_nores_out" 'gql=4321/?'
 gql_verbose="$(bash "$SUT" --verbose)"
-contains '--verbose labels the graphql budget (HIMMEL-3197)' "$gql_verbose" "gql: 4321/$gql_hm"
-gql_burn="$(bash "$SUT" --burn --workers 'HIMMEL-111-legN61')"
+contains '--verbose labels the graphql budget' "$gql_verbose" "gql: 4321/$gql_hm"
+gql_burn="$(bash "$SUT" --burn --workers "$KP-111-legN61")"
 case "$gql_burn" in
     *' burn=N61:'*" capacity=UNDERFILLED:7 gql=4321/$gql_hm "*) pass 'gql= keeps its slot under --burn with healthy orphan fields omitted' ;;
     *) fail "gql=/orphans= order under --burn (out='$gql_burn')" ;;
@@ -1144,14 +1145,14 @@ seed_rest() {
 }
 seed_rest "$W/q-rest" 4200 450
 rest_out="$(HIMMEL_QUOTA_DIR="$W/q-rest" GH_READ_ENV_ROOT="$W/readroot" bash "$SUT")"
-contains 'the tick shows the main token budget (HIMMEL-6837)' "$rest_out" " rest-main=4200/5000@$gql_hm"
-contains 'a read token at 9 % is flagged LOW (HIMMEL-6837)' "$rest_out" " rest-read=450/5000@$gql_hm!LOW"
+contains 'the tick shows the main token budget' "$rest_out" " rest-main=4200/5000@$gql_hm"
+contains 'a read token at 9 % is flagged LOW' "$rest_out" " rest-read=450/5000@$gql_hm!LOW"
 rest_v="$(HIMMEL_QUOTA_DIR="$W/q-rest" GH_READ_ENV_ROOT="$W/readroot" bash "$SUT" --verbose)"
-contains '--verbose has one line per token, main (HIMMEL-6837)' "$rest_v" "rest main: 4200/5000 reset $gql_hm"
-contains '--verbose has one line per token, read with LOW (HIMMEL-6837)' "$rest_v" "rest read: 450/5000 reset $gql_hm LOW"
+contains '--verbose has one line per token, main' "$rest_v" "rest main: 4200/5000 reset $gql_hm"
+contains '--verbose has one line per token, read with LOW' "$rest_v" "rest read: 450/5000 reset $gql_hm LOW"
 seed_rest "$W/q-rest-ok" 4200 4000
 rest_ok="$(HIMMEL_QUOTA_DIR="$W/q-rest-ok" GH_READ_ENV_ROOT="$W/readroot" bash "$SUT")"
-case "$rest_ok" in *LOW*) fail "healthy budgets must not be flagged LOW (out='$rest_ok')" ;; *) pass 'healthy budgets carry no LOW flag (HIMMEL-6837)' ;; esac
+case "$rest_ok" in *LOW*) fail "healthy budgets must not be flagged LOW (out='$rest_ok')" ;; *) pass 'healthy budgets carry no LOW flag' ;; esac
 
 # --- orphans=<owner>:<count>/<oldest>m ---------------------------
 # A wrapper shell older than the floor under a live session is surfaced at the
@@ -1164,19 +1165,18 @@ cat > "$W/ps-orphan.txt" <<'FIX'
 FIX
 orph_out="$(PS_FIXTURE="$W/ps-orphan.txt" bash "$SUT")"; orph_rc=$?
 if [ "$orph_rc" -eq 0 ]; then
-    contains 'a stale wrapper under a live session surfaces as orphans=<name>:<n>/<m>m, last on the line (HIMMEL-2761)' "$orph_out" " gql=4321/$gql_hm orphans=HIMMEL-111-legN61:1/130m"
+    contains 'a stale wrapper under a live session surfaces as orphans=<name>:<n>/<m>m, last on the line' "$orph_out" " gql=4321/$gql_hm orphans=HIMMEL-111-legN61:1/130m"
 else
     fail "an orphan inventory must not fail the tick (rc=$orph_rc)"
 fi
-contains '--verbose labels the orphan inventory (HIMMEL-2761)' "$(PS_FIXTURE="$W/ps-orphan.txt" bash "$SUT" --verbose)" 'orphans: HIMMEL-111-legN61:1/130m'
+contains '--verbose labels the orphan inventory' "$(PS_FIXTURE="$W/ps-orphan.txt" bash "$SUT" --verbose)" 'orphans: HIMMEL-111-legN61:1/130m'
 : > "$W/ps-empty.txt"
-contains 'an unreadable process table reads orphans=? and never fails the tick (HIMMEL-2761)' "$(PS_FIXTURE="$W/ps-empty.txt" bash "$SUT")" ' orphans=?'
+contains 'an unreadable process table reads orphans=? and never fails the tick' "$(PS_FIXTURE="$W/ps-empty.txt" bash "$SUT")" ' orphans=?'
 
 # --- one worker identity, used by every tick consumer ---------------
 # Names here are the ones the harness really produces, not ones invented to fit
 # the parser. Doc = docs/handover/worker-brief-template.md's stated pattern; session
-# = the <TICKET>-N<k>-<slug> the chief passes headed-arm-worker.sh (this shift's
-# own pair: HIMMEL-3269-N191-scorecard-discovery, HIMMEL-3273-N192-stop-queue-race).
+# = the <TICKET>-N<k>-<slug> the chief passes headed-arm-worker.sh
 # RED control (pre-fix tick.sh, this fixture): the old-template doc read
 # workers=<full stem>:FRESH, procs=0 and livestate=DRIFT with two live, held workers.
 l191='HIMMEL-3269-N191-scorecard-discovery-2026-09-20-RESUME'
@@ -1193,15 +1193,15 @@ printf '%s\n' '# chief' '' '## Live state' '' \
     'legs: `N191:J-N191-0a1b2c:tok-191:120`, `N192:J-N192-3d4e5f:tok-192:121`' 'queue: none' 'last GO: none' 'acked: none' \
     > "$W/handover/chief.md"
 o3277="$(t3277 "$l191 $l192")"
-contains 'a template-pattern doc and a canonical doc both resolve to N<k> (HIMMEL-3277)' "$o3277" 'workers=N191:FRESH,N192:FRESH'
-contains 'both live workers are counted in procs= (HIMMEL-3277)' "$o3277" 'procs=2'
-contains 'both live workers are bucketed in models= (HIMMEL-3277)' "$o3277" 'models=sonnet:2'
-contains 'a legs: line written per chief-template.md reports no drift (HIMMEL-3277)' "$o3277" 'livestate=ok'
+contains 'a template-pattern doc and a canonical doc both resolve to N<k>' "$o3277" 'workers=N191:FRESH,N192:FRESH'
+contains 'both live workers are counted in procs=' "$o3277" 'procs=2'
+contains 'both live workers are bucketed in models=' "$o3277" 'models=sonnet:2'
+contains 'a legs: line written per chief-template.md reports no drift' "$o3277" 'livestate=ok'
 case "$o3277" in
-    *DRIFT*|*'procs=0'*) fail 'the shift-N pair must read neither DRIFT nor procs=0 (HIMMEL-3277)' ;;
-    *) pass 'the shift-N pair must read neither DRIFT nor procs=0 (HIMMEL-3277)' ;;
+    *DRIFT*|*'procs=0'*) fail 'the shift-N pair must read neither DRIFT nor procs=0' ;;
+    *) pass 'the shift-N pair must read neither DRIFT nor procs=0' ;;
 esac
-contains 'each doc counts only its own session (HIMMEL-3277)' "$(t3277 "$l192")" 'procs=1'
+contains 'each doc counts only its own session' "$(t3277 "$l192")" 'procs=1'
 
 # The chief's disproved workaround: hyphenated full-stem labels plus a trailing
 # parenthetical of its own backticked tokens. The parser's label class used to
@@ -1209,9 +1209,9 @@ contains 'each doc counts only its own session (HIMMEL-3277)' "$(t3277 "$l192")"
 printf '%s\n' '# worker' '- LIVE — working' > "$W/handover/HIMMEL-9-odd-name-2026-09-20-RESUME.md"
 # shellcheck disable=SC2016  # backtick worker spans, literal fixture text
 printf '%s\n' '# chief' '' '## Live state' '' \
-    'legs: `HIMMEL-9-odd-name-2026-09-20-RESUME:n:t:1` (odd doc, see `HIMMEL-9-odd-name`)' 'queue: none' 'last GO: none' 'acked: none' \
+    'legs: `'"$KP"'-9-odd-name-2026-09-20-RESUME:n:t:1` (odd doc, see `'"$KP"'-9-odd-name`)' 'queue: none' 'last GO: none' 'acked: none' \
     > "$W/handover/chief.md"
-contains 'a hyphenated label span parses, trailing backticked prose and all (HIMMEL-3277)' "$(t3277 'HIMMEL-9-odd-name-2026-09-20-RESUME')" 'livestate=ok'
+contains 'a hyphenated label span parses, trailing backticked prose and all' "$(t3277 "$KP-9-odd-name-2026-09-20-RESUME")" 'livestate=ok'
 
 # A genuinely stale Live state still fires: N192 is held but unnamed (DRIFT). N199
 # is named but the arm does not cover it, so it reads workerset=unarmed,
@@ -1220,8 +1220,8 @@ contains 'a hyphenated label span parses, trailing backticked prose and all (HIM
 printf '%s\n' '# chief' '' '## Live state' '' \
     'legs: `N191:J-N191-0a1b2c:tok-191:120`, `N199:J-N199-aaaaaa:tok-199:1`' 'queue: none' 'last GO: none' 'acked: none' \
     > "$W/handover/chief.md"
-contains 'a genuinely stale Live state still reports DRIFT (HIMMEL-3277)' "$(t3277 "$l191 $l192")" 'livestate=DRIFT:N192 '
-contains 'a Live-state worker the arm omits reads workerset=unarmed, not DRIFT (HIMMEL-3293)' "$(t3277 "$l191 $l192")" 'workerset=STALE:unarmed=N199'
+contains 'a genuinely stale Live state still reports DRIFT' "$(t3277 "$l191 $l192")" 'livestate=DRIFT:N192 '
+contains 'a Live-state worker the arm omits reads workerset=unarmed, not DRIFT' "$(t3277 "$l191 $l192")" 'workerset=STALE:unarmed=N199'
 # shellcheck disable=SC2016  # backtick worker spans, literal fixture text
 printf '%s\n' '# chief' '' '## Live state' '' \
     'legs: `HIMMEL-9-odd-name-2026-09-20-RESUME:n:t:1`, `HIMMEL-8-gone-2026-09-20-RESUME:n:t:2`' 'queue: none' 'last GO: none' 'acked: none' \
@@ -1229,7 +1229,7 @@ printf '%s\n' '# chief' '' '## Live state' '' \
 # The stale worker is ARMED here: a
 # doc with no lock, so its lock is gone while Live state still names it.
 printf '%s\n' '# worker' '- LIVE — working' > "$W/handover/HIMMEL-8-gone-2026-09-20-RESUME.md"
-contains 'a stale hyphenated label is still DRIFT, not silently dropped (HIMMEL-3277)' "$(t3277 'HIMMEL-9-odd-name-2026-09-20-RESUME HIMMEL-8-gone-2026-09-20-RESUME')" 'livestate=DRIFT:HIMMEL-8-gone-2026-09-20-RESUME'
+contains 'a stale hyphenated label is still DRIFT, not silently dropped' "$(t3277 "$KP-9-odd-name-2026-09-20-RESUME $KP-8-gone-2026-09-20-RESUME")" "livestate=DRIFT:$KP-8-gone-2026-09-20-RESUME"
 
 # --- the legs: line is read for ENTRIES, not for every backtick span.
 # The chief's own explanatory parenthetical named the token `legs:` in
@@ -1238,13 +1238,13 @@ contains 'a stale hyphenated label is still DRIFT, not silently dropped (HIMMEL-
 # tick.sh, first fixture below: livestate=DRIFT:workers on two real, held workers).
 # shellcheck disable=SC2016  # backtick worker spans, literal fixture text
 printf '%s\n' '# chief' '' '## Live state' '' \
-    'legs: `N191:J-N191-0a1b2c:tok-191:120`, `N192:J-N192-3d4e5f:tok-192:121` (each entry is `<worker>:<nonce>:<lock-token>:<pid>`; the `legs:` key, see `HIMMEL-9`, and `see: this` are prose)' 'queue: none' 'last GO: none' 'acked: none' \
+    'legs: `N191:J-N191-0a1b2c:tok-191:120`, `N192:J-N192-3d4e5f:tok-192:121` (each entry is `<worker>:<nonce>:<lock-token>:<pid>`; the `legs:` key, see `'"$KP"'-9`, and `see: this` are prose)' 'queue: none' 'last GO: none' 'acked: none' \
     > "$W/handover/chief.md"
 o3280="$(t3277 "$l191 $l192")"
-contains 'a backticked non-entry token on the legs: line is not a phantom worker (HIMMEL-3280)' "$o3280" 'livestate=ok'
+contains 'a backticked non-entry token on the legs: line is not a phantom worker' "$o3280" 'livestate=ok'
 case "$o3280" in
     *DRIFT*|*MALFORMED*) fail "prose tokens on the legs: line must read neither DRIFT nor MALFORMED (HIMMEL-3280) ($o3280)" ;;
-    *) pass 'prose tokens on the legs: line must read neither DRIFT nor MALFORMED (HIMMEL-3280)' ;;
+    *) pass 'prose tokens on the legs: line must read neither DRIFT nor MALFORMED' ;;
 esac
 
 # Chiefs quote tick fields and worker names in notes on this line all the time:
@@ -1256,10 +1256,10 @@ printf '%s\n' '# chief' '' '## Live state' '' \
     'legs: `N191:J-N191-0a1b2c:tok-191:120`, `N192:J-N192-3d4e5f:tok-192:121` (last tick `procs:2`, `bank:5h30`, was `livestate=DRIFT:N192`; `N191` reported LIVE)' 'queue: none' 'last GO: none' 'acked: none' \
     > "$W/handover/chief.md"
 q3280="$(t3277 "$l191 $l192")"
-contains 'quoted tick fields on the legs: line are prose, not entries (HIMMEL-3280)' "$q3280" 'livestate=ok'
+contains 'quoted tick fields on the legs: line are prose, not entries' "$q3280" 'livestate=ok'
 case "$q3280" in
     *DRIFT*|*MALFORMED*) fail "a non-label colon span must read neither DRIFT nor MALFORMED (HIMMEL-3280) ($q3280)" ;;
-    *) pass 'a non-label colon span must read neither DRIFT nor MALFORMED (HIMMEL-3280)' ;;
+    *) pass 'a non-label colon span must read neither DRIFT nor MALFORMED' ;;
 esac
 
 # A genuinely stale Live state still fires with the same prose on the line, and
@@ -1268,8 +1268,8 @@ esac
 printf '%s\n' '# chief' '' '## Live state' '' \
     'legs: `N191:J-N191-0a1b2c:tok-191:120`, `N199:J-N199-aaaaaa:tok-199:1` (the `legs:` key)' 'queue: none' 'last GO: none' 'acked: none' \
     > "$W/handover/chief.md"
-contains 'a stale Live state with prose on the line is DRIFT naming only real workers (HIMMEL-3280)' "$(t3277 "$l191 $l192")" 'livestate=DRIFT:N192 '
-contains 'the unarmed worker is named, with no phantom worker beside it (HIMMEL-3280)' "$(t3277 "$l191 $l192")" 'workerset=STALE:unarmed=N199'
+contains 'a stale Live state with prose on the line is DRIFT naming only real workers' "$(t3277 "$l191 $l192")" 'livestate=DRIFT:N192 '
+contains 'the unarmed worker is named, with no phantom worker beside it' "$(t3277 "$l191 $l192")" 'workerset=STALE:unarmed=N199'
 
 # A malformed-but-entry-shaped span must be REPORTED, never dropped: dropping it
 # trades a phantom for a disappearance (the mirror-image failure facing the other
@@ -1279,21 +1279,21 @@ printf '%s\n' '# chief' '' '## Live state' '' \
     'legs: `N191:J-N191-0a1b2c:tok-191`, `N192:J-N192-3d4e5f:tok-192:121`' 'queue: none' 'last GO: none' 'acked: none' \
     > "$W/handover/chief.md"
 m3280="$(t3277 "$l191 $l192")"
-contains 'a 3-field span reads MALFORMED naming its worker (HIMMEL-3280)' "$m3280" 'livestate=MALFORMED:N191 '
+contains 'a 3-field span reads MALFORMED naming its worker' "$m3280" 'livestate=MALFORMED:N191 '
 case "$m3280" in
     *'livestate=ok'*|*DRIFT*) fail "a malformed span must read neither ok nor DRIFT (HIMMEL-3280) ($m3280)" ;;
-    *) pass 'a malformed span must read neither ok nor DRIFT (HIMMEL-3280)' ;;
+    *) pass 'a malformed span must read neither ok nor DRIFT' ;;
 esac
 case "$m3280" in
-    *J-N191-0a1b2c*|*tok-191*) fail 'MALFORMED must not print the span, which carries a nonce and lock token (HIMMEL-3280)' ;;
-    *) pass 'MALFORMED must not print the span, which carries a nonce and lock token (HIMMEL-3280)' ;;
+    *J-N191-0a1b2c*|*tok-191*) fail 'MALFORMED must not print the span, which carries a nonce and lock token' ;;
+    *) pass 'MALFORMED must not print the span, which carries a nonce and lock token' ;;
 esac
 # Every other wrong arity / empty field is the same signal.
 for bad in 'N191:' 'N191:J-N191-0a1b2c' 'N191:J-N191-0a1b2c:tok-191:120:extra' 'N191::tok-191:120' 'N191:J-N191-0a1b2c::120' 'N191:J-N191-0a1b2c:tok-191:'; do
     printf '%s\n' '# chief' '' '## Live state' '' \
         "legs: \`$bad\`, \`N192:J-N192-3d4e5f:tok-192:121\`" 'queue: none' 'last GO: none' 'acked: none' \
         > "$W/handover/chief.md"
-    contains "malformed span '$bad' reads MALFORMED, not ok (HIMMEL-3280)" "$(t3277 "$l191 $l192")" 'livestate=MALFORMED:N191 '
+    contains "malformed span '$bad' reads MALFORMED, not ok" "$(t3277 "$l191 $l192")" 'livestate=MALFORMED:N191 '
 done
 # Malformed AND stale both surface; the malformed worker is named, so it is not
 # double-reported as a held-but-unnamed DRIFT.
@@ -1301,7 +1301,7 @@ done
 printf '%s\n' '# chief' '' '## Live state' '' \
     'legs: `N191:J-N191-0a1b2c:tok-191`, `N199:J-N199-aaaaaa:tok-199:1`' 'queue: none' 'last GO: none' 'acked: none' \
     > "$W/handover/chief.md"
-contains 'a malformed span and a stale worker both surface (HIMMEL-3280)' "$(t3277 "$l191 $l192")" 'livestate=MALFORMED:N191;DRIFT:N192 '
+contains 'a malformed span and a stale worker both surface' "$(t3277 "$l191 $l192")" 'livestate=MALFORMED:N191;DRIFT:N192 '
 
 # --- the legs: BLOCK is read, not just its first line ------------
 # The block is the legs: line(s) plus lines wrapped directly under them, up to
@@ -1316,7 +1316,7 @@ wrap_case() {  # wrap_case <desc> <expected livestate=...> <chief doc line>...
     printf '%s\n' '# chief' '' '## Live state' '' "$@" > "$W/handover/chief.md"
     out="$(t3277 "$l191 $l192")"
     contains "$desc: both locks are held (precondition)" "$out" 'workers=N191:FRESH,N192:FRESH'
-    contains "$desc (HIMMEL-3281)" "$out" "$want"
+    contains "$desc" "$out" "$want"
 }
 # shellcheck disable=SC2016  # backtick worker spans, literal fixture text
 wrap_case 'a second legs: line is read' 'livestate=ok ' \
@@ -1371,7 +1371,7 @@ wrap_case 'prose bullets directly under legs: (no blank line) are not entries or
 # format span sits on a `>` line), the predecessor's legs: line verbatim and a
 # decisions: pointer to the bucket file. None of it is a malformed entry.
 # shellcheck disable=SC2016  # backtick worker spans, literal fixture text
-wrap_case 'a seeded stub with a decisions: pointer reads no MALFORMED (HIMMEL-6498)' 'livestate=ok ' \
+wrap_case 'a seeded stub with a decisions: pointer reads no MALFORMED' 'livestate=ok ' \
     '> **Authority-bearing state, not a summary.** One `<worker>:<nonce>:<lock-token>:<pid>` span per worker.' \
     '> Format and optional fields: `chief-sections/live-state.md`.' '' \
     'legs: `N191:J-N191-0a1b2c:tok-191:120` `N192:J-N192-3d4e5f:tok-192:121`' \
@@ -1399,7 +1399,7 @@ wrap_case 'a worktree path and a bare sha on the legs: line are prose' 'livestat
 # A worker doc cited by its file name is the same shape (a stem that reduces to N<k>).
 # shellcheck disable=SC2016  # backtick worker spans, literal fixture text
 wrap_case 'a worker-doc .md:line cite on the legs: line is prose' 'livestate=ok ' \
-    'legs: `N191:J-N191-0a1b2c:tok-191:120`, `N192:J-N192-3d4e5f:tok-192:121` (see `HIMMEL-3273-N192-stop-queue-race-2026-09-20-RESUME.md:12`)' \
+    'legs: `N191:J-N191-0a1b2c:tok-191:120`, `N192:J-N192-3d4e5f:tok-192:121` (see `'"$KP"'-3273-N192-stop-queue-race-2026-09-20-RESUME.md:12`)' \
     'queue: none' 'last GO: none' 'acked: none'
 # All four cite shapes together, one line -- a chief's real explanatory note.
 # shellcheck disable=SC2016  # backtick worker spans, literal fixture text
@@ -1440,11 +1440,11 @@ wrap_case 'a one-line block with prose still reads ok' 'livestate=ok ' \
 # apart from a filter that cannot match, so it must read unknown, never 0/none.
 mk_pgrep_x "$W/bin-3277-none" 103
 g3277="$(PATH="$W/bin-3277-none:$PATH" bash "$SUT" --workers "$l191 $l192")"
-contains 'held workers matching no census row read procs=unknown (HIMMEL-3277)' "$g3277" 'procs=unknown'
-contains 'held workers matching no census row read models=unknown (HIMMEL-3277)' "$g3277" 'models=unknown'
+contains 'held workers matching no census row read procs=unknown' "$g3277" 'procs=unknown'
+contains 'held workers matching no census row read models=unknown' "$g3277" 'models=unknown'
 case "$g3277" in
-    *'procs=0'*|*'models=none'*) fail 'a matched-nothing filter must not render procs=0 / models=none (HIMMEL-3277)' ;;
-    *) pass 'a matched-nothing filter must not render procs=0 / models=none (HIMMEL-3277)' ;;
+    *'procs=0'*|*'models=none'*) fail 'a matched-nothing filter must not render procs=0 / models=none' ;;
+    *) pass 'a matched-nothing filter must not render procs=0 / models=none' ;;
 esac
 # Population-level, not per-worker (chief ruling): when SOME held workers match, the
 # derivation demonstrably works, so the ones that do not are genuinely not
@@ -1452,22 +1452,22 @@ esac
 # blank the field for the live ones.
 mk_pgrep_x "$W/bin-3277-half" 120
 half3277="$(PATH="$W/bin-3277-half:$PATH" bash "$SUT" --workers "$l191 $l192")"
-contains 'one live + one dead held worker reads a count plus the named unmatched worker (HIMMEL-3277)' "$half3277" 'procs=1,unmatched=N192 '
-contains 'one live + one dead held worker still buckets the live model (HIMMEL-3277)' "$half3277" 'models=sonnet:1 '
+contains 'one live + one dead held worker reads a count plus the named unmatched worker' "$half3277" 'procs=1,unmatched=N192 '
+contains 'one live + one dead held worker still buckets the live model' "$half3277" 'models=sonnet:1 '
 # The legacy -legN<k>- spelling, with a slug that itself contains "-worker-" (N194's own doc).
 l194='HIMMEL-3277-tick-worker-identity-legN194-2026-09-20-RESUME'
 printf '%s\n' '# worker' '- LIVE — working' > "$W/handover/$l194.md"
 mkcmdline 123 claude --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-3277-N194-tick-worker-identity work
 mk_pgrep_x "$W/bin-3277-194" 123
 o194="$(PATH="$W/bin-3277-194:$PATH" bash "$SUT" --workers "$l194")"
-contains 'a -legN<k>- doc with -worker- in its slug resolves to N<k> and its session is counted (HIMMEL-3277)' "$o194" 'workers=N194:FRESH'
-contains 'a -legN<k>- doc is counted in procs= against the <TICKET>-N<k>-<slug> session (HIMMEL-3277)' "$o194" 'procs=1 '
+contains 'a -legN<k>- doc with -worker- in its slug resolves to N<k> and its session is counted' "$o194" 'workers=N194:FRESH'
+contains 'a -legN<k>- doc is counted in procs= against the <TICKET>-N<k>-<slug> session' "$o194" 'procs=1 '
 # A worker whose session is live under a name no derivation yields is the same case.
 mkcmdline 122 claude --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-3269-worker-of-scorecard work
 mk_pgrep_x "$W/bin-3277-odd" 122
-contains 'a live session under an underivable name reads procs=unknown (HIMMEL-3277)' "$(PATH="$W/bin-3277-odd:$PATH" bash "$SUT" --workers "$l191")" 'procs=unknown'
+contains 'a live session under an underivable name reads procs=unknown' "$(PATH="$W/bin-3277-odd:$PATH" bash "$SUT" --workers "$l191")" 'procs=unknown'
 # ...but a worker that is NOT held (wrapped) expects no process: 0 is a real count.
-not_contains 'a wrapped (FREE) worker with no session omits the zero procs count' "$(PATH="$W/bin-3277-none:$PATH" bash "$SUT" --workers 'HIMMEL-7-N77-wrapped-2026-09-20-RESUME' 2>/dev/null)" 'procs='
+not_contains 'a wrapped (FREE) worker with no session omits the zero procs count' "$(PATH="$W/bin-3277-none:$PATH" bash "$SUT" --workers "$KP-7-N77-wrapped-2026-09-20-RESUME" 2>/dev/null)" 'procs='
 
 # --- the chief template's own legs: placeholder must not parse.
 # The doc under test is the REAL docs/handover/chief-template.md, not a fixture
@@ -1478,12 +1478,12 @@ not_contains 'a wrapped (FREE) worker with no session omits the zero procs count
 #   livestate=MALFORMED:N2;DRIFT:N1
 tpl3287="$HERE/../../../docs/handover/chief-template.md"
 awk '/^## Live state$/ { keep = 1 } /^## Compact instructions$/ { keep = 0 } keep' "$tpl3287" > "$W/handover/chief.md"
-contains 'the template Live state section was extracted (HIMMEL-3287 precondition)' "$(cat "$W/handover/chief.md")" 'workers: '
+contains 'the template Live state section was extracted' "$(cat "$W/handover/chief.md")" 'workers: '
 o3287="$(bash "$SUT" --workers '')"
-contains 'the chief template'"'"'s own legs: placeholder reads livestate=ok on a chief with no workers (HIMMEL-3287)' "$o3287" 'livestate=ok '
+contains 'the chief template'"'"'s own legs: placeholder reads livestate=ok on a chief with no workers' "$o3287" 'livestate=ok '
 case "$o3287" in
     *MALFORMED*|*DRIFT*) fail "the template placeholder must read neither MALFORMED nor DRIFT (HIMMEL-3287) ($o3287)" ;;
-    *) pass 'the template placeholder must read neither MALFORMED nor DRIFT (HIMMEL-3287)' ;;
+    *) pass 'the template placeholder must read neither MALFORMED nor DRIFT' ;;
 esac
 # The template's other three defects, pinned against its own text. (b) the
 # tick no longer runs as a 30-min Monitor re-arm loop (a test pinned the
@@ -1492,32 +1492,32 @@ esac
 # NOTFOUND; (d) an unquoted --model {{MODEL}} is a zsh glob (claude-opus-5[1m]).
 tick3287="$(grep -F '| tick |' "$tpl3287")"
 step3287="$(awk '/^10\. \*\*Start the event waiter now/ { keep = 1 } /^## Live state$/ { keep = 0 } keep' "$tpl3287")"
-contains 'the tick row runs inside the step-10 waiter (HIMMEL-3509)' "$tick3287" 'Runs inside the step-10 waiter'
+contains 'the tick row runs inside the step-10 waiter' "$tick3287" 'Runs inside the step-10 waiter'
 case "$tick3287" in
-    *'re-arms on each expiry notice'*) fail 'the tick row no longer arms a Monitor re-arm loop (HIMMEL-3509)' ;;
-    *) pass 'the tick row no longer arms a Monitor re-arm loop (HIMMEL-3509)' ;;
+    *'re-arms on each expiry notice'*) fail 'the tick row no longer arms a Monitor re-arm loop' ;;
+    *) pass 'the tick row no longer arms a Monitor re-arm loop' ;;
 esac
-contains 'ACTION ZERO step 10 starts chief-wait.sh (HIMMEL-3509)' "$step3287" 'chief-wait.sh'
-contains 'ACTION ZERO step 10 uses run_in_background, not a Monitor (HIMMEL-3509)' "$step3287" 'run_in_background: true'
-contains 'ACTION ZERO step 10 says how to verify the waiter is live (HIMMEL-3509)' "$step3287" '<inbox>.wait'
+contains 'ACTION ZERO step 10 starts chief-wait.sh' "$step3287" 'chief-wait.sh'
+contains 'ACTION ZERO step 10 uses run_in_background, not a Monitor' "$step3287" 'run_in_background: true'
+contains 'ACTION ZERO step 10 says how to verify the waiter is live' "$step3287" '<inbox>.wait'
 case "$tick3287$step3287" in
-    *'60 min'*) fail 'neither the tick row nor step 10 may still say 60 min (HIMMEL-3287)' ;;
-    *) pass 'neither the tick row nor step 10 may still say 60 min (HIMMEL-3287)' ;;
+    *'60 min'*) fail 'neither the tick row nor step 10 may still say 60 min' ;;
+    *) pass 'neither the tick row nor step 10 may still say 60 min' ;;
 esac
-contains 'the --workers example uses absolute paths (HIMMEL-3287)' "$tick3287" '--workers "{{STATE_DIR}}/<leg1>.md {{STATE_DIR}}/<leg2>.md"'
-contains 'the row says why bare worker doc names fail (HIMMEL-3287)' "$tick3287" 'resolves against the handover ROOT'
+contains 'the --workers example uses absolute paths' "$tick3287" '--workers "{{STATE_DIR}}/<leg1>.md {{STATE_DIR}}/<leg2>.md"'
+contains 'the row says why bare worker doc names fail' "$tick3287" 'resolves against the handover ROOT'
 # A worker doc lives in the chief's bucket, one level under the handover root:
 # the absolute path resolves, the bare name the template used to show does not.
 mkdir -p "$W/handover/bucket3287"
 l3287='HIMMEL-3287-N287-bucketed-2026-09-20-RESUME.md'
 printf '%s\n' '# worker' '- LIVE — working' > "$W/handover/bucket3287/$l3287"
-contains 'an absolute --workers path to a bucketed worker doc resolves, not NOTFOUND (HIMMEL-3287)' "$(bash "$SUT" --workers "$W/handover/bucket3287/$l3287")" 'workers=N287:FREE'
-contains 'a bare --workers name of a bucketed worker doc reads NOTFOUND (HIMMEL-3287)' "$(bash "$SUT" --workers "$l3287" 2>/dev/null)" 'workers=N287:NOTFOUND'
+contains 'an absolute --workers path to a bucketed worker doc resolves, not NOTFOUND' "$(bash "$SUT" --workers "$W/handover/bucket3287/$l3287")" 'workers=N287:FREE'
+contains 'a bare --workers name of a bucketed worker doc reads NOTFOUND' "$(bash "$SUT" --workers "$l3287" 2>/dev/null)" 'workers=N287:NOTFOUND'
 next3287="$(grep -F '/chief next --arm' "$tpl3287")"
-contains "the /chief next line quotes --model (HIMMEL-3287)" "$next3287" "--model '{{MODEL}}'"
+contains "the /chief next line quotes --model" "$next3287" "--model '{{MODEL}}'"
 case "$next3287" in
-    *'--model {{MODEL}}'*) fail 'the /chief next line must not carry an unquoted --model {{MODEL}} (HIMMEL-3287)' ;;
-    *) pass 'the /chief next line must not carry an unquoted --model {{MODEL}} (HIMMEL-3287)' ;;
+    *'--model {{MODEL}}'*) fail 'the /chief next line must not carry an unquoted --model {{MODEL}}' ;;
+    *) pass 'the /chief next line must not carry an unquoted --model {{MODEL}}' ;;
 esac
 
 # --- one worker set -- a stale --workers arm is an INPUT problem, never
@@ -1544,18 +1544,18 @@ printf '%s\n' '# chief' '' '## Live state' '' \
     'legs: `N301:J-N301-0a1b2c:tok-301:130`, `N302:J-N302-3d4e5f:tok-302:131`, `N303:J-N303-6a7b8c:tok-303:132`' 'queue: none' 'last GO: none' 'acked: none' \
     > "$W/handover/chief.md"
 o3293="$(t3293 "$W/handover/$w3293.md $W/handover/$a3293.md")"
-contains 'a worker dispatched after the arm is not livestate=DRIFT (HIMMEL-3293)' "$o3293" 'livestate=ok '
+contains 'a worker dispatched after the arm is not livestate=DRIFT' "$o3293" 'livestate=ok '
 case "$o3293" in
     *DRIFT*) fail "a stale arm must not read as worker DRIFT (HIMMEL-3293) ($o3293)" ;;
-    *) pass 'a stale arm must not read as worker DRIFT (HIMMEL-3293)' ;;
+    *) pass 'a stale arm must not read as worker DRIFT' ;;
 esac
-contains 'the disagreement is reported as an input problem, both directions (HIMMEL-3293)' "$o3293" 'workerset=STALE:unarmed=N302+N303;unlisted=N300'
-contains 'live workers outside the arm are surfaced in procs=, not dropped (HIMMEL-3293)' "$o3293" 'procs=1,unwatched=N302+N303 '
-contains 'a wrapped worker reads WRAPPED, distinct from a lost lock (HIMMEL-3293)' "$o3293" 'workers=N300:WRAPPED,N301:FRESH '
+contains 'the disagreement is reported as an input problem, both directions' "$o3293" 'workerset=STALE:unarmed=N302+N303;unlisted=N300'
+contains 'live workers outside the arm are surfaced in procs=, not dropped' "$o3293" 'procs=1,unwatched=N302+N303 '
+contains 'a wrapped worker reads WRAPPED, distinct from a lost lock' "$o3293" 'workers=N300:WRAPPED,N301:FRESH '
 p3293="$(printf '%s\n' "$o3293" | sed -E 's/.* procs=([^ ]*) .*/\1/')"
 case "$p3293" in
     *N301*|*N300*|*nextleg*|*chief*) fail "the armed worker and the chief must not read unwatched (HIMMEL-3293) ($p3293)" ;;
-    *) pass 'the armed worker and the chief session are not unwatched (HIMMEL-3293)' ;;
+    *) pass 'the armed worker and the chief session are not unwatched' ;;
 esac
 # The check must still fire on real drift: an ARMED worker whose lock is gone but
 # that Live state still names (N300, wrapped), and a HELD worker Live state omits.
@@ -1564,8 +1564,8 @@ printf '%s\n' '# chief' '' '## Live state' '' \
     'legs: `N300:J-N300-aaaaaa:tok-300:1`, `N302:J-N302-3d4e5f:tok-302:131`' 'queue: none' 'last GO: none' 'acked: none' \
     > "$W/handover/chief.md"
 d3293="$(t3293 "$W/handover/$w3293.md $W/handover/$a3293.md")"
-contains 'an armed wrapped worker Live state still names is DRIFT (HIMMEL-3293)' "$d3293" 'livestate=DRIFT:N300,N301 '
-contains 'a Live-state worker outside the arm is unarmed, not drift, beside real drift (HIMMEL-3293)' "$d3293" 'workerset=STALE:unarmed=N302'
+contains 'an armed wrapped worker Live state still names is DRIFT' "$d3293" 'livestate=DRIFT:N300,N301 '
+contains 'a Live-state worker outside the arm is unarmed, not drift, beside real drift' "$d3293" 'workerset=STALE:unarmed=N302'
 # A tick armed with no --workers at all (the Monitors row's own example) can see no
 # lock: every Live-state worker is unarmed, none is drift, and every live worker surfaces.
 # shellcheck disable=SC2016  # backtick worker spans, literal fixture text
@@ -1573,18 +1573,18 @@ printf '%s\n' '# chief' '' '## Live state' '' \
     'legs: `N301:J-N301-0a1b2c:tok-301:130`, `N302:J-N302-3d4e5f:tok-302:131`, `N303:J-N303-6a7b8c:tok-303:132`' 'queue: none' 'last GO: none' 'acked: none' \
     > "$W/handover/chief.md"
 n3293="$(PATH="$W/bin-3293:$PATH" bash "$SUT" --workers '')"
-contains 'no --workers: every Live-state worker is unarmed, none is DRIFT (HIMMEL-3293)' "$n3293" 'livestate=ok '
-contains 'no --workers: legset names all three as unarmed (HIMMEL-3293)' "$n3293" 'workerset=STALE:unarmed=N301+N302+N303'
-contains 'no --workers: procs=unknown still surfaces the live workers (HIMMEL-3293)' "$n3293" 'procs=unknown,unwatched=N301+N302+N303 '
+contains 'no --workers: every Live-state worker is unarmed, none is DRIFT' "$n3293" 'livestate=ok '
+contains 'no --workers: legset names all three as unarmed' "$n3293" 'workerset=STALE:unarmed=N301+N302+N303'
+contains 'no --workers: procs=unknown still surfaces the live workers' "$n3293" 'procs=unknown,unwatched=N301+N302+N303 '
 # An arm that agrees with Live state reports workerset=ok; no Live state section is unknown.
 # shellcheck disable=SC2016  # backtick worker spans, literal fixture text
 printf '%s\n' '# chief' '' '## Live state' '' \
     'legs: `N301:J-N301-0a1b2c:tok-301:130`' 'queue: none' 'last GO: none' 'acked: none' \
     > "$W/handover/chief.md"
-contains 'an arm that agrees with Live state reads workerset=ok (HIMMEL-3293)' "$(t3293 "$W/handover/$a3293.md")" 'workerset=ok'
-contains 'an agreeing arm still surfaces the live workers outside it (HIMMEL-3293)' "$(t3293 "$W/handover/$a3293.md")" 'procs=1,unwatched=N302+N303 '
+contains 'an arm that agrees with Live state reads workerset=ok' "$(t3293 "$W/handover/$a3293.md")" 'workerset=ok'
+contains 'an agreeing arm still surfaces the live workers outside it' "$(t3293 "$W/handover/$a3293.md")" 'procs=1,unwatched=N302+N303 '
 printf '%s\n' '# chief' '' 'no Live state section in this doc at all' > "$W/handover/chief.md"
-contains 'a chief doc with no Live state section reads workerset=unknown (HIMMEL-3293)' "$(t3293 "$W/handover/$a3293.md")" 'workerset=unknown'
+contains 'a chief doc with no Live state section reads workerset=unknown' "$(t3293 "$W/handover/$a3293.md")" 'workerset=unknown'
 
 # --- a live -RESUME session is the watched process of its worker ----
 # The resumed worker's doc is N4304b-...-RESUME; its window runs under the original label
@@ -1651,36 +1651,36 @@ tail3305() {  # tail3305 <bullet>... -- the tails= entry of a worker doc holding
 }
 open3305='- 19:51 FINDING premises refuted (the chief has not answered yet)'
 res3305='- 19:52 RESOLVED — FINDING accepted by the chief, back to work'
-contains 'an open FINDING still reads FINDING (HIMMEL-3305)' "$(tail3305 "$open3305")" 'N305:FINDING'
-contains 'a resolved FINDING reads RESOLVED, not FINDING (HIMMEL-3305)' "$(tail3305 "$open3305" "$res3305")" 'N305:RESOLVED'
+contains 'an open FINDING still reads FINDING' "$(tail3305 "$open3305")" 'N305:FINDING'
+contains 'a resolved FINDING reads RESOLVED, not FINDING' "$(tail3305 "$open3305" "$res3305")" 'N305:RESOLVED'
 # The newest marker-bearing bullet still wins: work after the ruling reads as work,
 # and a new finding after a resolved one reads as open again.
-contains 'a LIVE bullet after the resolution reads LIVE (HIMMEL-3305)' "$(tail3305 "$open3305" "$res3305" '- 20:05 LIVE — PR open, CI running')" 'N305:LIVE'
-contains 'a second FINDING after a resolved one reads FINDING (HIMMEL-3305)' "$(tail3305 "$open3305" "$res3305" '- 20:20 FINDING the base moved under the diff')" 'N305:FINDING'
+contains 'a LIVE bullet after the resolution reads LIVE' "$(tail3305 "$open3305" "$res3305" '- 20:05 LIVE — PR open, CI running')" 'N305:LIVE'
+contains 'a second FINDING after a resolved one reads FINDING' "$(tail3305 "$open3305" "$res3305" '- 20:20 FINDING the base moved under the diff')" 'N305:FINDING'
 # Word order must not decide the status: the LEADING marker does (it
 # replaced the highest-precedence-anywhere rule). RESOLVED first reads RESOLVED
 # however many other markers the sentence names; LIVE first reads LIVE.
-contains 'RESOLVED before FINDING and LIVE reads RESOLVED (HIMMEL-3305)' "$(tail3305 '- 20:10 RESOLVED FINDING, back to LIVE')" 'N305:RESOLVED'
-contains 'LIVE before FINDING and RESOLVED reads LIVE, the leading marker (HIMMEL-3393)' "$(tail3305 '- 20:10 LIVE again, FINDING RESOLVED')" 'N305:LIVE'
-contains 'READY first reads READY though the text names BLOCKED (HIMMEL-3305)' "$(tail3305 '- 20:30 READY 999 abc GREEN (was BLOCKED)')" 'N305:READY'
-contains 'BLOCKED first reads BLOCKED though the text names READY (HIMMEL-3393)' "$(tail3305 '- 20:30 BLOCKED cleared, now READY 999 abc GREEN')" 'N305:BLOCKED'
-contains 'WRAPPED first reads WRAPPED though the text names READY (HIMMEL-3305)' "$(tail3305 '- 21:00 WRAPPED — merged after READY and GO')" 'N305:WRAPPED'
+contains 'RESOLVED before FINDING and LIVE reads RESOLVED' "$(tail3305 '- 20:10 RESOLVED FINDING, back to LIVE')" 'N305:RESOLVED'
+contains 'LIVE before FINDING and RESOLVED reads LIVE, the leading marker' "$(tail3305 '- 20:10 LIVE again, FINDING RESOLVED')" 'N305:LIVE'
+contains 'READY first reads READY though the text names BLOCKED' "$(tail3305 '- 20:30 READY 999 abc GREEN (was BLOCKED)')" 'N305:READY'
+contains 'BLOCKED first reads BLOCKED though the text names READY' "$(tail3305 '- 20:30 BLOCKED cleared, now READY 999 abc GREEN')" 'N305:BLOCKED'
+contains 'WRAPPED first reads WRAPPED though the text names READY' "$(tail3305 '- 21:00 WRAPPED — merged after READY and GO')" 'N305:WRAPPED'
 # A marker is a whole word: UNRESOLVED (a routine CR-thread count) is not RESOLVED.
-contains 'UNRESOLVED is not the RESOLVED marker (HIMMEL-3305)' "$(tail3305 '- 20:00 LIVE — 2 UNRESOLVED threads')" 'N305:LIVE'
+contains 'UNRESOLVED is not the RESOLVED marker' "$(tail3305 '- 20:00 LIVE — 2 UNRESOLVED threads')" 'N305:LIVE'
 # SHIPPED and MERGED stay OUT of the vocabulary: a bullet carrying only a coined
 # word has no marker, so the tick reads the last real one. worker-preface.md tells a
 # worker between GREEN and READY to report LIVE for exactly this reason.
-contains 'a coined SHIPPED bullet is invisible to the tick (HIMMEL-3305)' "$(tail3305 "$open3305" '- 20:05 SHIPPED to PR 999')" 'N305:FINDING'
-contains 'a LIVE bullet is how a worker between GREEN and READY reports (HIMMEL-3305)' "$(tail3305 "$open3305" '- 20:05 LIVE — SHIPPED to PR 999, watching CI')" 'N305:LIVE'
+contains 'a coined SHIPPED bullet is invisible to the tick' "$(tail3305 "$open3305" '- 20:05 SHIPPED to PR 999')" 'N305:FINDING'
+contains 'a LIVE bullet is how a worker between GREEN and READY reports' "$(tail3305 "$open3305" '- 20:05 LIVE — SHIPPED to PR 999, watching CI')" 'N305:LIVE'
 # The tick's regex and the documented vocabulary change TOGETHER: a marker workers
 # are not told to write is not a fix, and one the tick does not parse is worse.
 repo3305="$(cd "$HERE/../../.." && pwd)"
 for pref3305 in worker-preface.md worker-preface-claudex.md; do
     # shellcheck disable=SC2016  # backtick-quoted marker, literal doc text
-    contains "$pref3305 tells a worker to report RESOLVED (HIMMEL-3305)" "$(cat "$repo3305/docs/handover/$pref3305")" '`RESOLVED`'
+    contains "$pref3305 tells a worker to report RESOLVED" "$(cat "$repo3305/docs/handover/$pref3305")" '`RESOLVED`'
 done
 # shellcheck disable=SC2016  # backtick-quoted markers, literal doc text
-contains 'worker-preface.md says SHIPPED and MERGED are not markers (HIMMEL-3305)' "$(cat "$repo3305/docs/handover/worker-preface.md")" '`SHIPPED` and `MERGED` are deliberately not in the'
+contains 'worker-preface.md says SHIPPED and MERGED are not markers' "$(cat "$repo3305/docs/handover/worker-preface.md")" '`SHIPPED` and `MERGED` are deliberately not in the'
 
 # --- a bullet's status is its LEADING token, never a word in its text.
 # The ticket's case (worker N293, 2026-09-21): the newest bullet was
@@ -1695,19 +1695,19 @@ tail3393() {  # tail3393 <bullet>... -- the tails= entry of a worker doc holding
     printf '%s\n' '# worker' '- 23:00 LIVE — working' "$@" > "$d3393"
     bash "$SUT" --workers "$d3393" 2>/dev/null | sed -E 's/.* tails=([^ ]*) .*/\1/'
 }
-contains 'a LIVE bullet saying "not a FINDING" reads LIVE (HIMMEL-3393)' "$(tail3393 '- 23:47 LIVE — PR 1 open. Judgment call, not a FINDING: the ticket says so')" 'N393:LIVE'
-contains 'a LIVE bullet that mentions READY reads LIVE (HIMMEL-3393)' "$(tail3393 '- 23:47 LIVE — send READY at green')" 'N393:LIVE'
-contains 'a LIVE bullet that mentions BLOCKED and WRAPPED reads LIVE (HIMMEL-3393)' "$(tail3393 '- 23:47 LIVE — was BLOCKED, then WRAPPED nothing')" 'N393:LIVE'
-contains 'a leading PARKED-BANK reads PARKED-BANK, not the earlier LIVE (HIMMEL-4570)' "$(tail3393 '- 23:47 PARKED-BANK — committed, waiting for RESUME')" 'N393:PARKED-BANK'
+contains 'a LIVE bullet saying "not a FINDING" reads LIVE' "$(tail3393 '- 23:47 LIVE — PR 1 open. Judgment call, not a FINDING: the ticket says so')" 'N393:LIVE'
+contains 'a LIVE bullet that mentions READY reads LIVE' "$(tail3393 '- 23:47 LIVE — send READY at green')" 'N393:LIVE'
+contains 'a LIVE bullet that mentions BLOCKED and WRAPPED reads LIVE' "$(tail3393 '- 23:47 LIVE — was BLOCKED, then WRAPPED nothing')" 'N393:LIVE'
+contains 'a leading PARKED-BANK reads PARKED-BANK, not the earlier LIVE' "$(tail3393 '- 23:47 PARKED-BANK — committed, waiting for RESUME')" 'N393:PARKED-BANK'
 contains 'a leading PARKED-USAGE reads PARKED-USAGE, not the earlier LIVE' "$(tail3393 '- 23:47 PARKED-USAGE — committed, waiting for RESUME')" 'N393:PARKED-USAGE'
-contains 'a leading FINDING still reads FINDING (HIMMEL-3393)' "$(tail3393 '- 23:47 FINDING — needs a ruling')" 'N393:FINDING'
-contains 'a FINDING retired by a leading RESOLVED reads RESOLVED (HIMMEL-3393)' "$(tail3393 '- 23:47 FINDING — needs a ruling' '- 23:50 RESOLVED — ruled, back to work')" 'N393:RESOLVED'
-contains 'a leading RESOLVED that names FINDING and LIVE reads RESOLVED (HIMMEL-3393)' "$(tail3393 '- 23:50 RESOLVED — FINDING accepted, back to LIVE')" 'N393:RESOLVED'
-contains 'a bullet without a time still reads its leading marker (HIMMEL-3393)' "$(tail3393 '- FINDING — no time stamp')" 'N393:FINDING'
-contains 'a bold leading marker reads as that marker (HIMMEL-3393)' "$(tail3393 '- **WRAPPED.** merged, lock released')" 'N393:WRAPPED'
+contains 'a leading FINDING still reads FINDING' "$(tail3393 '- 23:47 FINDING — needs a ruling')" 'N393:FINDING'
+contains 'a FINDING retired by a leading RESOLVED reads RESOLVED' "$(tail3393 '- 23:47 FINDING — needs a ruling' '- 23:50 RESOLVED — ruled, back to work')" 'N393:RESOLVED'
+contains 'a leading RESOLVED that names FINDING and LIVE reads RESOLVED' "$(tail3393 '- 23:50 RESOLVED — FINDING accepted, back to LIVE')" 'N393:RESOLVED'
+contains 'a bullet without a time still reads its leading marker' "$(tail3393 '- FINDING — no time stamp')" 'N393:FINDING'
+contains 'a bold leading marker reads as that marker' "$(tail3393 '- **WRAPPED.** merged, lock released')" 'N393:WRAPPED'
 # A bullet that leads with prose carries no status: the tick reads the last real one.
-contains 'a bullet leading with prose is invisible to the tick (HIMMEL-3393)' "$(tail3393 '- 23:47 FINDING — needs a ruling' '- 23:48 Sent the FINDING to the chief, will report READY once it rules')" 'N393:FINDING'
-contains 'a marker glued to a longer word is not a marker (HIMMEL-3393)' "$(tail3393 '- 23:47 FINDINGS pending, no marker here')" 'N393:LIVE'
+contains 'a bullet leading with prose is invisible to the tick' "$(tail3393 '- 23:47 FINDING — needs a ruling' '- 23:48 Sent the FINDING to the chief, will report READY once it rules')" 'N393:FINDING'
+contains 'a marker glued to a longer word is not a marker' "$(tail3393 '- 23:47 FINDINGS pending, no marker here')" 'N393:LIVE'
 
 # --- a worker holding at READY behind a LIVE-led bullet must read READY (only LIVE-led
 # bullets are promoted; any other leading marker keeps its own word).
@@ -1715,21 +1715,21 @@ contains 'a marker glued to a longer word is not a marker (HIMMEL-3393)' "$(tail
 # claudex worker cannot SendMessage, so the doc bullet is its only channel, and tails=
 # read LIVE for ~40 minutes. RED control (pre-fix tick.sh): tails=N393:LIVE.
 sha6154=0123456789abcdef0123456789abcdef01234567
-contains 'a LIVE bullet "holding at READY" reads READY (HIMMEL-6154)' "$(tail3393 '- 23:47 LIVE — holding at READY for GO')" 'N393:READY'
-contains 'a LIVE bullet naming READY <pr> <full head> reads READY (HIMMEL-6154)' "$(tail3393 "- 23:47 LIVE — sent READY 3002 $sha6154 GREEN, waiting")" 'N393:READY'
-contains 'a plain LIVE fix-pushed bullet stays LIVE (HIMMEL-6154)' "$(tail3393 '- 23:47 LIVE — fix pushed')" 'N393:LIVE'
-contains 'a WRAPPED bullet naming READY <pr> <head> stays WRAPPED (HIMMEL-6154)' "$(tail3393 "- 23:47 WRAPPED — merged after READY 3002 $sha6154")" 'N393:WRAPPED'
-contains 'a LIVE bullet "no longer holding at READY" stays LIVE (HIMMEL-6154)' "$(tail3393 '- 23:47 LIVE — no longer holding at READY; fixing review findings')" 'N393:LIVE'
-contains 'a LIVE bullet "not currently holding at READY" stays LIVE (HIMMEL-6154)' "$(tail3393 '- 23:47 LIVE — not currently holding at READY; fixing findings')" 'N393:LIVE'
-contains 'a LIVE bullet "no longer READY <pr> <head>" stays LIVE (HIMMEL-6154)' "$(tail3393 "- 23:47 LIVE — no longer READY 3002 $sha6154; fixing findings")" 'N393:LIVE'
-contains 'a LIVE bullet "nothing blocking, holding at READY" reads READY (HIMMEL-6154)' "$(tail3393 '- 23:47 LIVE — nothing blocking, holding at READY for GO')" 'N393:READY'
-contains 'a LIVE bullet "cannot send READY <pr> <head> yet" stays LIVE (HIMMEL-6154)' "$(tail3393 "- 23:47 LIVE — cannot send READY 3002 $sha6154 yet: CI red")" 'N393:LIVE'
-contains 'a LIVE bullet "Holding at READY" (capitalised) reads READY (HIMMEL-6154)' "$(tail3393 '- 23:47 LIVE — Holding at READY for GO')" 'N393:READY'
-contains 'a LIVE bullet "never READY <pr> <head>" stays LIVE (HIMMEL-6154)' "$(tail3393 "- 23:47 LIVE — never READY 3002 $sha6154 on this head")" 'N393:LIVE'
-contains 'a LIVE bullet "without READY" stays LIVE (HIMMEL-6154)' "$(tail3393 '- 23:47 LIVE — without holding at READY, fixing')" 'N393:LIVE'
-contains 'a LIVE bullet "isn'"'"'t holding at READY" stays LIVE (HIMMEL-6154)' "$(tail3393 "- 23:47 LIVE — isn't holding at READY, fixing")" 'N393:LIVE'
-contains 'a newer prose-leading bullet naming holding at READY does not promote the earlier LIVE (HIMMEL-6154)' "$(tail3393 '- 23:48 Still holding at READY, waiting on the chief')" 'N393:LIVE'
-contains 'READY held then a newer plain LIVE bullet reads LIVE (HIMMEL-6154)' "$(tail3393 '- 23:47 LIVE — holding at READY for GO' '- 23:50 LIVE — fixing a review finding')" 'N393:LIVE'
+contains 'a LIVE bullet "holding at READY" reads READY' "$(tail3393 '- 23:47 LIVE — holding at READY for GO')" 'N393:READY'
+contains 'a LIVE bullet naming READY <pr> <full head> reads READY' "$(tail3393 "- 23:47 LIVE — sent READY 3002 $sha6154 GREEN, waiting")" 'N393:READY'
+contains 'a plain LIVE fix-pushed bullet stays LIVE' "$(tail3393 '- 23:47 LIVE — fix pushed')" 'N393:LIVE'
+contains 'a WRAPPED bullet naming READY <pr> <head> stays WRAPPED' "$(tail3393 "- 23:47 WRAPPED — merged after READY 3002 $sha6154")" 'N393:WRAPPED'
+contains 'a LIVE bullet "no longer holding at READY" stays LIVE' "$(tail3393 '- 23:47 LIVE — no longer holding at READY; fixing review findings')" 'N393:LIVE'
+contains 'a LIVE bullet "not currently holding at READY" stays LIVE' "$(tail3393 '- 23:47 LIVE — not currently holding at READY; fixing findings')" 'N393:LIVE'
+contains 'a LIVE bullet "no longer READY <pr> <head>" stays LIVE' "$(tail3393 "- 23:47 LIVE — no longer READY 3002 $sha6154; fixing findings")" 'N393:LIVE'
+contains 'a LIVE bullet "nothing blocking, holding at READY" reads READY' "$(tail3393 '- 23:47 LIVE — nothing blocking, holding at READY for GO')" 'N393:READY'
+contains 'a LIVE bullet "cannot send READY <pr> <head> yet" stays LIVE' "$(tail3393 "- 23:47 LIVE — cannot send READY 3002 $sha6154 yet: CI red")" 'N393:LIVE'
+contains 'a LIVE bullet "Holding at READY" (capitalised) reads READY' "$(tail3393 '- 23:47 LIVE — Holding at READY for GO')" 'N393:READY'
+contains 'a LIVE bullet "never READY <pr> <head>" stays LIVE' "$(tail3393 "- 23:47 LIVE — never READY 3002 $sha6154 on this head")" 'N393:LIVE'
+contains 'a LIVE bullet "without READY" stays LIVE' "$(tail3393 '- 23:47 LIVE — without holding at READY, fixing')" 'N393:LIVE'
+contains 'a LIVE bullet "isn'"'"'t holding at READY" stays LIVE' "$(tail3393 "- 23:47 LIVE — isn't holding at READY, fixing")" 'N393:LIVE'
+contains 'a newer prose-leading bullet naming holding at READY does not promote the earlier LIVE' "$(tail3393 '- 23:48 Still holding at READY, waiting on the chief')" 'N393:LIVE'
+contains 'READY held then a newer plain LIVE bullet reads LIVE' "$(tail3393 '- 23:47 LIVE — holding at READY for GO' '- 23:50 LIVE — fixing a review finding')" 'N393:LIVE'
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick.sh'

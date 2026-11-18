@@ -26,8 +26,6 @@
 # explicit --launches must load). A reader only: claude-api.sh and the release judge (liveJudge in
 # scripts/jira/src/commands/release.ts, kind judge rows) write that ledger.
 #
-# ponytail: classes come from the keyword table below, not a model, ceiling = text that
-# names none of them lands in `other`; upgrade path = grow the table from by_class.other.
 set -uo pipefail
 # git-env-ok: the only git call is `rev-parse --git-common-dir` to locate the ledger; a caller's GIT_DIR is the intended repo
 # Read-only report, not a gate: no anchor hand-off, it reads whatever copy it ships in.

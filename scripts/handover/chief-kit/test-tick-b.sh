@@ -703,16 +703,16 @@ head4568=0123456789abcdef0123456789abcdef01234567
 printf '%s\n' '# worker' '- 10:00 LIVE — working' "- 10:40 READY 4568 $head4568 GREEN" > "$d4568"
 tail4568() { bash "$SUT" --workers "$d4568" 2>/dev/null | sed -E 's/.* tails=([^ ]*) .*/\1/'; }
 contains 'a fresh READY with no GO reads plain READY' "$(tail4568)" 'N568:READY'
-case "$(tail4568)" in *'!stale'*) fails=$((fails+1)); printf 'FAIL - a fresh READY must not be stale\n' ;; *) printf 'ok - a fresh READY is not stale (HIMMEL-4568)\n' ;; esac
+case "$(tail4568)" in *'!stale'*) fails=$((fails+1)); printf 'FAIL - a fresh READY must not be stale\n' ;; *) printf 'ok - a fresh READY is not stale\n' ;; esac
 touch -d '31 minutes ago' "$d4568"
 contains 'a READY older than 30 minutes with no GO file reads READY!stale' "$(tail4568)" 'N568:READY!stale'
 mkdir -p "$W/handover/.locks/go"
 printf 'pr=4568\nhead=%s\n' "$head4568" > "$W/handover/.locks/go/4568.$head4568"
-[ "$(tail4568)" = N568:READY ] && printf 'ok - a READY with its GO file present is plain READY however old (HIMMEL-4568)\n' || { fails=$((fails+1)); printf 'FAIL - GO-present READY went stale\n'; }
+[ "$(tail4568)" = N568:READY ] && printf 'ok - a READY with its GO file present is plain READY however old\n' || { fails=$((fails+1)); printf 'FAIL - GO-present READY went stale\n'; }
 rm -f "$W/handover/.locks/go/4568.$head4568"
 printf '%s\n' '# worker' "- 10:40 READY 4568 $head4568 GREEN" '- 10:41 LIVE — fixing a review finding' > "$d4568"
 touch -d '31 minutes ago' "$d4568"
-[ "$(tail4568)" = N568:LIVE ] && printf 'ok - an old LIVE tail is never marked stale (HIMMEL-4568)\n' || { fails=$((fails+1)); printf 'FAIL - old LIVE went stale\n'; }
+[ "$(tail4568)" = N568:LIVE ] && printf 'ok - an old LIVE tail is never marked stale\n' || { fails=$((fails+1)); printf 'FAIL - old LIVE went stale\n'; }
 
 # --- acts= is the worker's newest actionable bullet (READY, BLOCKED, FINDING, MERGED)
 # plus a count, so a READY a later LIVE/RESOLVED/SUCCESSION bullet buries, and a second

@@ -310,8 +310,6 @@ git grep -n -I -E -e "$src_re" -e "$dir_re" -- . > "$list.g" 2>/dev/null || [ "$
 
 # keep only lines whose source/. sits at command position OUTSIDE quotes: a `.` inside a jq
 # or sed program is not a source command. Quoted spans are blanked for the test only; the
-# kept line is the original, so its file names still count. ponytail: per-line, so a
-# string spanning lines is not blanked, upgrade path is a real shell tokenizer.
 cmd_pos() {
   local l b
   # one left-to-right scan, so an apostrophe inside a double-quoted span opens nothing; a

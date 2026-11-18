@@ -1,6 +1,5 @@
 {
   "version": 1,
-  "jira": "HIMMEL-766",
   "updated": "2026-10-05",
   "doc": "docs/internals/egress-matrix.md",
   "semantics": {
@@ -15,40 +14,40 @@
     "note": "embedding, rerank, and vision-embedding send FULL content (text or images) to the provider — they are content egress, not metadata egress."
   },
   "corpora": {
-    "salus": "any path under a `.salus`-marked root, or under a root listed in ~/.config/claude-glm/phi-roots or ~/.config/claude-glm/egress-denylist (the shared glm-guard.ts / parity_guard.py primitives). No guard reads ~/.config/himmel/phi/ yet (HIMMEL-7898; HIMMEL-8915 re-points them), so a root listed only there is NOT enforced",
+    "salus": "any path under a `.salus`-marked root, or under a root listed in ~/.config/claude-glm/phi-roots or ~/.config/claude-glm/egress-denylist (the shared glm-guard.ts / parity_guard.py primitives). No guard reads ~/.config/himmel/phi/ yet, so a root listed only there is NOT enforced",
     "luna-personal": "the luna vault root EXCLUDING Clippings/ (journals, maps, sessions, notes)",
     "luna-clippings": "<luna-root>/Clippings/ (clipped public web content)",
-    "handover-state": "the handover state repo root (HANDOVER_DIR; work artifacts, specs, session notes). Kept for Mode-B EXTERNAL state repos after the HIMMEL-343 fold: a HANDOVER_DIR nested INSIDE a vault classifies as that vault's corpus instead (fence precedence checks vault roots first — more restrictive; pinned by test, HIMMEL-817)",
+    "handover-state": "the handover state repo root (HANDOVER_DIR; work artifacts, specs, session notes). Kept for Mode-B EXTERNAL state repos: a HANDOVER_DIR nested INSIDE a vault classifies as that vault's corpus instead (fence precedence checks vault roots first — more restrictive; pinned by test)",
     "himmel-code": "himmel checkout(s), worktrees, and the public mirror (code + docs; public-propagated)",
     "adopter-repo": "an adopter's OWN git repository that the user listed in graphify.choices.corpora of ~/.himmel/config.json (decision 780 A1). What leaves the machine on the open cell is that repo's markdown files, uncommitted ones included, with no secret scan on that path; code stays in the free local AST. Only the --eval direct mode can name this class: a `.graphify-corpus` marker cannot declare it, so the hook path is not widened. A root at, above or below which graphify-classify.sh finds any other class (a vault, a salus or PHI root, the handover state, the himmel checkout) is refused by the choice store's root check, so this class never holds those",
-    "voice-audio": "CAPTURED AUDIO: microphone recordings and any audio file derived from them (reference clips, TTS output). UNLIKE every other corpus this one is NOT path-keyed — speech has no file location, so it cannot be scoped by directory and the path-keyed salus deny cannot reach it (HIMMEL-1522). SCOPE NOTE: an utterance the operator DELIBERATELY addressed to the assistant (wake-word gated, or an explicit push-to-talk take) becomes an ordinary prompt once transcribed, governed by the same rules as typed input — it is not held here. The hazard this corpus exists for is AMBIENT audio: sound captured without the speaker addressing the system, which no path-keyed rule can protect. An earlier draft held transcripts here too, which forbade the product itself — a rule that outlaws its own use case is one that gets ignored, so the boundary is drawn at capture instead. Residual risk (unclosed, ticketed): a wake-gated utterance can still contain PHI, and nothing classifies it before it is sent",
-    "worker-failure-metadata": "DERIVED worker-failure metadata (HIMMEL-4670 P5): class keys from closed vocabularies, counts, worker labels, ticket keys, PR numbers, hook or suite basenames and the fixed routing-table text that scripts/eval/worker-digest/failure_router.py builds from the worker-failures ledger. Never transcript content: the router picks named fields only and its body alphabet check refuses anything else, so no command, path, message, prompt or ledger refusal_line (a redacted refusal line that can still echo command or path text, kept on the host) is ever sent. NOT path-keyed: it exists only as the router-built Jira summary and body",
-    "mcp-tool-catalog": "PUBLISHED MCP tool-catalog metadata (HIMMEL-4938): the tool names, descriptions and JSON schemas an MCP server returns for tools/list. Vendor-published text, identical for every caller; no ticket, vault, handover or corpus content is part of it. The request carries only the operator's own Atlassian credential for auth",
-    "operator-repos": "the operator's own private project repositories indexed by qmd as markdown collections: station-ops, ggs-local, ggs-bridge, agent-command-chain, nvidia-steam-shader-cache (HIMMEL-5683). Docs and notes of operator projects; no PHI, no vault journals. Mapped from qmd collection names by scripts/qmd/qmd-collection-corpus.json",
-    "jira-mirror": "the local Jira mirror markdown (~/.himmel/state/jira-mirror/<project>): ticket titles, descriptions and comments of the himmel Jira project, indexed by qmd as collection jira-himmel (HIMMEL-5683)",
-    "roadmap-plan": "the roadmap-plan docs (~/.himmel/state/roadmap-plan/docs): himmel planning notes indexed by qmd as collection roadmap-plan (HIMMEL-5683)",
+    "voice-audio": "CAPTURED AUDIO: microphone recordings and any audio file derived from them (reference clips, TTS output). UNLIKE every other corpus this one is NOT path-keyed — speech has no file location, so it cannot be scoped by directory and the path-keyed salus deny cannot reach it. SCOPE NOTE: an utterance the operator DELIBERATELY addressed to the assistant (wake-word gated, or an explicit push-to-talk take) becomes an ordinary prompt once transcribed, governed by the same rules as typed input — it is not held here. The hazard this corpus exists for is AMBIENT audio: sound captured without the speaker addressing the system, which no path-keyed rule can protect. An earlier draft held transcripts here too, which forbade the product itself — a rule that outlaws its own use case is one that gets ignored, so the boundary is drawn at capture instead. Residual risk (unclosed, ticketed): a wake-gated utterance can still contain PHI, and nothing classifies it before it is sent",
+    "worker-failure-metadata": "DERIVED worker-failure metadata: class keys from closed vocabularies, counts, worker labels, ticket keys, PR numbers, hook or suite basenames and the fixed routing-table text that scripts/eval/worker-digest/failure_router.py builds from the worker-failures ledger. Never transcript content: the router picks named fields only and its body alphabet check refuses anything else, so no command, path, message, prompt or ledger refusal_line (a redacted refusal line that can still echo command or path text, kept on the host) is ever sent. NOT path-keyed: it exists only as the router-built Jira summary and body",
+    "mcp-tool-catalog": "PUBLISHED MCP tool-catalog metadata: the tool names, descriptions and JSON schemas an MCP server returns for tools/list. Vendor-published text, identical for every caller; no ticket, vault, handover or corpus content is part of it. The request carries only the operator's own Atlassian credential for auth",
+    "operator-repos": "the operator's own private project repositories indexed by qmd as markdown collections: station-ops, ggs-local, ggs-bridge, agent-command-chain, nvidia-steam-shader-cache. Docs and notes of operator projects; no PHI, no vault journals. Mapped from qmd collection names by scripts/qmd/qmd-collection-corpus.json",
+    "jira-mirror": "the local Jira mirror markdown (~/.himmel/state/jira-mirror/<project>): ticket titles, descriptions and comments of the himmel Jira project, indexed by qmd as collection jira-himmel",
+    "roadmap-plan": "the roadmap-plan docs (~/.himmel/state/roadmap-plan/docs): himmel planning notes indexed by qmd as collection roadmap-plan",
     "peer-desk": "the peer desk (~/.himmel/peer-bridge/desk/**): a fresh session started for one peer that may read nothing of ours, so the only text it holds is what the operator types into it. A message to a peer bot leaves only from here",
-    "skill-index": "the generated skill-index markdown (~/.claude/skill-index): skill names and descriptions indexed by qmd as collection skills (HIMMEL-5683)"
+    "skill-index": "the generated skill-index markdown (~/.claude/skill-index): skill names and descriptions indexed by qmd as collection skills"
   },
   "providers": {
     "local-ollama": { "region": "local", "note": "zero egress; includes qmd local GGUF embeddings" },
-    "ollama-cloud": { "region": "US (ollama.com)", "note": "HIMMEL-4185: Ollama's hosted models. graphify-fence.sh classifies `--backend ollama` as ollama-cloud when the model ends in -cloud or :cloud (the local daemon forwards those to ollama.com), or when OLLAMA_BASE_URL/OLLAMA_HOST points at ollama.com. A loopback endpoint with any other model stays local-ollama; any other endpoint is refused before this matrix" },
+    "ollama-cloud": { "region": "US (ollama.com)", "note": "Ollama's hosted models. graphify-fence.sh classifies `--backend ollama` as ollama-cloud when the model ends in -cloud or :cloud (the local Ollama server forwards those to ollama.com), or when OLLAMA_BASE_URL/OLLAMA_HOST points at ollama.com. A loopback endpoint with any other model stays local-ollama; any other endpoint is refused before this matrix" },
     "local-speech": { "region": "local", "note": "on-machine speech only — STT via whisper.cpp (push-to-talk) and faster-whisper/CTranslate2 (the always-listening jarvis loop), TTS via chatterbox, all under ~/.himmel. Zero egress; named as a real provider so the voice-audio allow cell is an explicit decision rather than a wildcard gap" },
     "anthropic": { "region": "US", "note": "the operating harness itself (Claude sessions natively read the vaults); recording status quo, not a widening" },
     "openai-codex": { "region": "US", "note": "codex via hermes, paid usage bank" },
-    "deepseek": { "region": "CN", "note": "HIMMEL-4084 operator ruling 2026-10-02: himmel-code and handover-state INFERENCE supported only under the station process-environment opt-in HIMMEL_DEEPSEEK_INFERENCE_OK=1; shipped default denies that inference lane. Vault corpora remain denied. DE-LISTED extraction/enrichment 2026-07-22 (HIMMEL-1257): prior HIMMEL-343/HIMMEL-833 ratifications remain reversed and their explicit deny cells are unchanged. Other public-code wildcard purposes unaffected. HIMMEL-6269: the follow-web claim-check search (enrichment of luna-clippings queries) is opt-in under FOLLOW_WEB_DEEPSEEK=1; salus is hard-denied." },
-    "zai-glm": { "region": "CN", "note": "DE-LISTED 2026-08-29 (HIMMEL-2224, landing HIMMEL-1749's DROP): dropped from vault + handover-state egress — the GLM Coding Plan auto-renew was cancelled 2026-08-12 and the plan lapsed 2026-08-17, so the lane is gone. Prior ratifications (HIMMEL-1122 extraction, HIMMEL-1167 enrichment, the luna-clippings §4.2 exception and the handover-state brief-scoped cell) reversed; the cells below are explicit deny. himmel-code wildcard unaffected (public code — the `--backend glm` remap in refresh-graph-map.sh still serves it)." },
-    "openrouter": { "region": "US", "note": "OpenRouter metered aggregation (scripts/claude-openrouter — Claude 1M tier on the metered path, HIMMEL-1774). Declared as its OWN provider, same capability slot as the other cloud engines but a DIFFERENT provider and trust boundary: content transits OpenRouter before the model vendor, so reaching a Claude model through it is NOT covered by the anthropic cell. The launcher consults this matrix as a HARD gate (no --force bypass) and requires an EXPLICIT provider:\"openrouter\" rule — a wildcard allow does not authorize the lane" },
-    "alibaba": { "region": "CN-account, ap-southeast-1 endpoint", "note": "DE-LISTED 2026-07-22 (HIMMEL-1257): not pursuing the HIMMEL-765 pilot — bad results. Vault/handover cells demoted to explicit deny; himmel-code wildcard unaffected (public code)." },
+    "deepseek": { "region": "CN", "note": "Operator ruling 2026-10-02: himmel-code and handover-state INFERENCE supported only under the station process-environment opt-in HIMMEL_DEEPSEEK_INFERENCE_OK=1; shipped default denies that inference lane. Vault corpora remain denied. DE-LISTED extraction/enrichment 2026-07-22: the prior DeepSeek ratifications remain reversed and their explicit deny cells are unchanged. Other public-code wildcard purposes unaffected. The follow-web claim-check search (enrichment of luna-clippings queries) is opt-in under FOLLOW_WEB_DEEPSEEK=1; salus is hard-denied." },
+    "zai-glm": { "region": "CN", "note": "DE-LISTED 2026-08-29: dropped from vault + handover-state egress — the GLM Coding Plan auto-renew was cancelled 2026-08-12 and the plan lapsed 2026-08-17, so the lane is gone. Prior ratifications (extraction, enrichment, the luna-clippings §4.2 exception and the handover-state brief-scoped cell) reversed; the cells below are explicit deny. himmel-code wildcard unaffected (public code — the `--backend glm` remap in refresh-graph-map.sh still serves it)." },
+    "openrouter": { "region": "US", "note": "OpenRouter metered aggregation (scripts/claude-openrouter — Claude 1M tier on the metered path). Declared as its OWN provider, same capability slot as the other cloud engines but a DIFFERENT provider and trust boundary: content transits OpenRouter before the model vendor, so reaching a Claude model through it is NOT covered by the anthropic cell. The launcher consults this matrix as a HARD gate (no --force bypass) and requires an EXPLICIT provider:\"openrouter\" rule — a wildcard allow does not authorize the lane" },
+    "alibaba": { "region": "CN-account, ap-southeast-1 endpoint", "note": "DE-LISTED 2026-07-22: not pursuing the Alibaba pilot — bad results. Vault/handover cells demoted to explicit deny; himmel-code wildcard unaffected (public code)." },
     "google-gemini": { "region": "US", "note": "DE-LISTED; keys deliberately unset" },
-    "firecrawl": { "region": "US", "note": "HIMMEL-4335: web scrape/search API (api.firecrawl.dev, or a self-hosted FIRECRAWL_BASE_URL). Receives the URL (scrape) or the search query. Metered free plan; every call is ledgered in ~/.himmel/state/firecrawl-ledger.jsonl" },
-    "jina-reader": { "region": "US", "note": "HIMMEL-4335: keyless Jina Reader scrape (r.jina.ai/<url>). Receives the URL being fetched; no key, no metering" },
-    "jina": { "region": "EU (Berlin)", "note": "HIMMEL-5673 operator ruling 2026-10-14: Jina AI (owned by Elastic since 2025-10) as the remote qmd embedding and rerank backend. Full content leaves the machine (embedding documents, rerank query plus candidates). Jina legal 10.4: \"Jina AI does not use Customer request data, inputs, prompts, or uploaded content to train its models\". Distinct from jina-reader (US, keyless URL scrape). This matrix only permits; the live use stays off until the qmd fork backend is installed" },
-    "higgsfield": { "region": "US", "note": "HIMMEL-7826: the `higgsfield` CLI that the higgsfield-skills@himmel skills (higgsfield-ai/skills) run through Bash for the design-imagegen profile. Every prompt and every local file passed by path (the CLI auto-uploads it) goes to Higgsfield servers. Enforced at the Bash call by marketplace/plugins/himmel-ops/hooks/block-agent-native-egress.sh" },
-    "builder-io": { "region": "US", "note": "HIMMEL-4328: the hosted OAuth MCP `agent-native-dispatch` (https://dispatch.agent-native.com/mcp) that builder-visual@himmel registers for the design profile (HIMMEL-4326). Every tool argument (prompts, file paths, pasted content) goes to Builder.io servers. Enforced at the MCP call by marketplace/plugins/himmel-ops/hooks/block-agent-native-egress.sh" },
-    "jira": { "region": "US", "note": "HIMMEL-4670 P5: the Atlassian Jira Cloud project the himmel Jira CLI (scripts/jira/dist/index.js, by absolute path) writes; the failure router is its only automated caller" },
+    "firecrawl": { "region": "US", "note": "Web scrape/search API (api.firecrawl.dev, or a self-hosted FIRECRAWL_BASE_URL). Receives the URL (scrape) or the search query. Metered free plan; every call is ledgered in ~/.himmel/state/firecrawl-ledger.jsonl" },
+    "jina-reader": { "region": "US", "note": "Keyless Jina Reader scrape (r.jina.ai/<url>). Receives the URL being fetched; no key, no metering" },
+    "jina": { "region": "EU (Berlin)", "note": "Operator ruling 2026-10-14: Jina AI (owned by Elastic since 2025-10) as the remote qmd embedding and rerank backend. Full content leaves the machine (embedding documents, rerank query plus candidates). Jina legal 10.4: \"Jina AI does not use Customer request data, inputs, prompts, or uploaded content to train its models\". Distinct from jina-reader (US, keyless URL scrape). This matrix only permits; the live use stays off until the qmd fork backend is installed" },
+    "higgsfield": { "region": "US", "note": "The `higgsfield` CLI that the higgsfield-skills@himmel skills (higgsfield-ai/skills) run through Bash for the design-imagegen profile. Every prompt and every local file passed by path (the CLI auto-uploads it) goes to Higgsfield servers. Enforced at the Bash call by marketplace/plugins/himmel-ops/hooks/block-agent-native-egress.sh" },
+    "builder-io": { "region": "US", "note": "The hosted OAuth MCP `agent-native-dispatch` (https://dispatch.agent-native.com/mcp) that builder-visual@himmel registers for the design profile. Every tool argument (prompts, file paths, pasted content) goes to Builder.io servers. Enforced at the MCP call by marketplace/plugins/himmel-ops/hooks/block-agent-native-egress.sh" },
+    "jira": { "region": "US", "note": "The Atlassian Jira Cloud project the himmel Jira CLI (scripts/jira/dist/index.js, by absolute path) writes; the failure router is its only automated caller" },
     "peer-telegram": { "region": "Telegram (global)", "note": "another station's bot in an untrusted Telegram supergroup, reached by the peer bridge. Every message also passes the bridge's own egress gate (secret shapes, length, kind and thread rules)" },
-    "atlassian-mcp": { "region": "US", "note": "HIMMEL-4938: the hosted Atlassian remote MCP server (https://mcp.atlassian.com/v1/mcp). Only the initialize handshake and tools/list are permitted; every tools/call stays denied" }
+    "atlassian-mcp": { "region": "US", "note": "The hosted Atlassian remote MCP server (https://mcp.atlassian.com/v1/mcp). Only the initialize handshake and tools/list are permitted; every tools/call stays denied" }
   },
   "purposes": ["extraction", "embedding", "rerank", "query-expansion", "inference", "vision-embedding", "enrichment", "stt", "tts", "ticketing", "catalog-fetch", "peer-message"],
   "rules": [
@@ -61,48 +60,48 @@
     {
       "corpus": "salus", "provider": "openrouter", "purpose": "embedding",
       "verdict": "deny", "hard": true,
-      "why": "HIMMEL-5756: salus content never reaches OpenRouter for qmd embedding. HARD and ahead of every openrouter allow row and the non-hard salus x openrouter row below: the remote-embed rollout is the first bulk path that could send PHI there. Salus stays on its own local-only qmd index and daemon"
+      "why": "Salus content never reaches OpenRouter for qmd embedding. HARD and ahead of every openrouter allow row and the non-hard salus x openrouter row below: the remote-embed rollout is the first bulk path that could send PHI there. Salus stays on its own local-only qmd index and qmd server"
     },
     {
       "corpus": "salus", "provider": "openrouter", "purpose": "rerank",
       "verdict": "deny", "hard": true,
-      "why": "HIMMEL-5756: salus content never reaches OpenRouter for qmd rerank (query plus candidate text). HARD, same reasoning as the embedding cell above"
+      "why": "Salus content never reaches OpenRouter for qmd rerank (query plus candidate text). HARD, same reasoning as the embedding cell above"
     },
     {
       "corpus": "salus", "provider": "openrouter", "purpose": "query-expansion",
       "verdict": "deny", "hard": true,
-      "why": "HIMMEL-6125: salus content never reaches OpenRouter for qmd query expansion (the generate role sends the raw query, which can name PHI). HARD and ahead of every openrouter allow row, same reasoning as the embedding and rerank cells above"
+      "why": "Salus content never reaches OpenRouter for qmd query expansion (the generate role sends the raw query, which can name PHI). HARD and ahead of every openrouter allow row, same reasoning as the embedding and rerank cells above"
     },
     {
       "corpus": "salus", "provider": "openrouter", "purpose": "*",
       "verdict": "deny",
-      "why": "HIMMEL-1774 operator ruling: OpenRouter (like every cloud provider) NEVER receives PHI. DEFAULT stays deny; `hard` was deliberately REMOVED per the 2026-08-15 operator ruling — OpenRouter is an A-tier provider and adopters may already be routing through it, so this cell is operator-CONFIGURABLE (a future operator can ratify an open by editing this cell alone, the same one-line ratification path every provider cell uses). This is a deliberate configurability decision, NOT guardrail drift. Explicit row placed BEFORE the wildcard hard deny below so the ruling is legible in this file, not only implied"
+      "why": "Operator ruling: OpenRouter (like every cloud provider) NEVER receives PHI. DEFAULT stays deny; `hard` was deliberately REMOVED per the 2026-08-15 operator ruling — OpenRouter is an A-tier provider and adopters may already be routing through it, so this cell is operator-CONFIGURABLE (a future operator can ratify an open by editing this cell alone, the same one-line ratification path every provider cell uses). This is a deliberate configurability decision, NOT guardrail drift. Explicit row placed BEFORE the wildcard hard deny below so the ruling is legible in this file, not only implied"
     },
     {
       "corpus": "salus", "provider": "builder-io", "purpose": "*",
       "verdict": "deny", "hard": true,
-      "why": "HIMMEL-4328: salus/PHI content never reaches the hosted agent-native MCP. Already implied by the salus wildcard below; the explicit row names the provider so the cell that block-agent-native-egress.sh enforces (salus cwd, git toplevel or origin, a .salus marker, a phi-roots/egress-denylist root, or a salus path in the tool payload) is legible here. No override exists"
+      "why": "Salus/PHI content never reaches the hosted agent-native MCP. Already implied by the salus wildcard below; the explicit row names the provider so the cell that block-agent-native-egress.sh enforces (salus cwd, git toplevel or origin, a .salus marker, a phi-roots/egress-denylist root, or a salus path in the tool payload) is legible here. No override exists"
     },
     {
       "corpus": "salus", "provider": "higgsfield", "purpose": "*",
       "verdict": "deny", "hard": true,
-      "why": "HIMMEL-7826: salus/PHI content never reaches the Higgsfield CLI. Already implied by the salus wildcard below; the explicit row names the provider so the cell that block-agent-native-egress.sh enforces (a Bash call naming higgsfield, beside the agent-native MCP tools) is legible here. No override exists"
+      "why": "Salus/PHI content never reaches the Higgsfield CLI. Already implied by the salus wildcard below; the explicit row names the provider so the cell that block-agent-native-egress.sh enforces (a Bash call naming higgsfield, beside the agent-native MCP tools) is legible here. No override exists"
     },
     {
       "corpus": "salus", "provider": "deepseek", "purpose": "*",
       "verdict": "deny", "hard": true,
-      "why": "HIMMEL-6269: salus/PHI content never reaches DeepSeek Search/Fetch (PRC storage, trains on queries, no DPA). HARD and ahead of the luna-clippings x deepseek conditional below; follow-web.mjs also refuses a salus vault root before any request. No override exists"
+      "why": "Salus/PHI content never reaches DeepSeek Search/Fetch (PRC storage, trains on queries, no DPA). HARD and ahead of the luna-clippings x deepseek conditional below; follow-web.mjs also refuses a salus vault root before any request. No override exists"
     },
     {
       "corpus": "salus", "provider": "ollama-cloud", "purpose": "extraction",
       "verdict": "conditional",
       "condition": "persistent user opt-in: graphify.salus_ollama_cloud_ok is the JSON literal true in $HOME/.himmel/config.json (absent, unreadable or malformed = deny). Read by graphify-fence.sh; no env override",
-      "why": "HIMMEL-4185 operator ruling 2026-10-05: salus x ollama-cloud is DENY unless the user has persistently opted in. Not hard (the opt-in is the operator's decision). Placed BEFORE the salus wildcard hard deny so the opt-in can reach it; every other purpose stays on that hard deny"
+      "why": "Operator ruling 2026-10-05: salus x ollama-cloud is DENY unless the user has persistently opted in. Not hard (the opt-in is the operator's decision). Placed BEFORE the salus wildcard hard deny so the opt-in can reach it; every other purpose stays on that hard deny"
     },
     {
       "corpus": "salus", "provider": "openai-codex", "purpose": "inference",
       "verdict": "allow",
-      "why": "HIMMEL-5002 operator ruling 2026-10-08 (interactive): codex (claudex lane, provider openai-codex) is supported for luna and salus, inference only. Every other provider and purpose keeps its existing deny (the hard salus wildcard below still governs them)"
+      "why": "Operator ruling 2026-10-08 (interactive): codex (claudex lane, provider openai-codex) is supported for luna and salus, inference only. Every other provider and purpose keeps its existing deny (the hard salus wildcard below still governs them)"
     },
     {
       "corpus": "salus", "provider": "*", "purpose": "*",
@@ -122,12 +121,12 @@
     {
       "corpus": "voice-audio", "provider": "openrouter", "purpose": "*",
       "verdict": "deny",
-      "why": "HIMMEL-1774 operator ruling: captured audio never reaches OpenRouter. DEFAULT stays deny; `hard` was deliberately REMOVED per the 2026-08-15 operator ruling (A-tier provider, adopter portability) — the cell is operator-CONFIGURABLE, a deliberate ratification decision and NOT guardrail drift. Explicit row placed BEFORE the wildcard hard deny below (audio has no path for a corpus classifier, so the transit vendor is irrelevant — it stays denied)"
+      "why": "Operator ruling: captured audio never reaches OpenRouter. DEFAULT stays deny; `hard` was deliberately REMOVED per the 2026-08-15 operator ruling (A-tier provider, adopter portability) — the cell is operator-CONFIGURABLE, a deliberate ratification decision and NOT guardrail drift. Explicit row placed BEFORE the wildcard hard deny below (audio has no path for a corpus classifier, so the transit vendor is irrelevant — it stays denied)"
     },
     {
       "corpus": "voice-audio", "provider": "*", "purpose": "*",
       "verdict": "deny", "hard": true,
-      "why": "HIMMEL-1522: the salus PHI deny keys on FILE PATHS, and speech has none — a mic streaming to a cloud API bypasses the PHI perimeter entirely, because there is no path for the guard to inspect. Audio cannot be classified before it is heard, so ALL captured audio is held at the salus tier. Flipping this needs a mechanism that can prove PHI is absent from speech BEFORE it is sent; no such mechanism exists, so no operator decision can be recorded here that opens it"
+      "why": "The salus PHI deny keys on FILE PATHS, and speech has none — a mic streaming to a cloud API bypasses the PHI perimeter entirely, because there is no path for the guard to inspect. Audio cannot be classified before it is heard, so ALL captured audio is held at the salus tier. Flipping this needs a mechanism that can prove PHI is absent from speech BEFORE it is sent; no such mechanism exists, so no operator decision can be recorded here that opens it"
     },
     {
       "corpus": "*", "provider": "google-gemini", "purpose": "*",
@@ -148,209 +147,209 @@
     {
       "corpus": "*", "provider": "ollama-cloud", "purpose": "extraction",
       "verdict": "allow",
-      "why": "HIMMEL-4185 operator ruling 2026-10-05: ollama-cloud graphify extraction is allowed for every corpus except salus (its conditional row above) and voice-audio (its hard wildcard above). Scoped to extraction, the only purpose graphify-fence.sh evaluates"
+      "why": "Operator ruling 2026-10-05: ollama-cloud graphify extraction is allowed for every corpus except salus (its conditional row above) and voice-audio (its hard wildcard above). Scoped to extraction, the only purpose graphify-fence.sh evaluates"
     },
     {
       "corpus": "himmel-code", "provider": "openrouter", "purpose": "inference",
       "verdict": "allow",
-      "why": "HIMMEL-1774 operator ruling: ALLOW himmel-code on the OpenRouter metered Claude 1M lane (scripts/claude-openrouter). Explicit row — himmel-code is also covered by the wildcard allow below, but the launcher's hard gate authorizes ONLY on an explicit provider:\"openrouter\" rule, so this row is what switches the lane from inert to usable. Scoped to inference (the launcher's only purpose); extraction/embedding stay default-deny"
+      "why": "Operator ruling: ALLOW himmel-code on the OpenRouter metered Claude 1M lane (scripts/claude-openrouter). Explicit row — himmel-code is also covered by the wildcard allow below, but the launcher's hard gate authorizes ONLY on an explicit provider:\"openrouter\" rule, so this row is what switches the lane from inert to usable. Scoped to inference (the launcher's only purpose); extraction/embedding stay default-deny"
     },
     {
       "corpus": "himmel-code", "provider": "deepseek", "purpose": "inference",
       "verdict": "conditional",
       "condition": "HIMMEL_DEEPSEEK_INFERENCE_OK=1",
-      "why": "HIMMEL-4084 operator ruling 2026-10-02: DeepSeek inference is station opt-in, denied unless the launching process environment carries the literal flag value 1. The launcher verifies this condition; .env is a key store, not an opt-in source. Vault and PHI cells remain denied. Adopters may restrict this cell."
+      "why": "Operator ruling 2026-10-02: DeepSeek inference is station opt-in, denied unless the launching process environment carries the literal flag value 1. The launcher verifies this condition; .env is a key store, not an opt-in source. Vault and PHI cells remain denied. Adopters may restrict this cell."
     },
     {
       "corpus": "handover-state", "provider": "deepseek", "purpose": "inference",
       "verdict": "conditional",
       "condition": "HIMMEL_DEEPSEEK_INFERENCE_OK=1",
-      "why": "HIMMEL-4084 operator ruling 2026-10-02: substrate-shaped DeepSeek sessions may read/write work artifacts only under the explicit station process-environment flag. This inference cell does not reopen extraction or enrichment; nested vault handovers still classify as vaults."
+      "why": "Operator ruling 2026-10-02: substrate-shaped DeepSeek sessions may read/write work artifacts only under the explicit station process-environment flag. This inference cell does not reopen extraction or enrichment; nested vault handovers still classify as vaults."
     },
     {
       "corpus": "himmel-code", "provider": "atlassian-mcp", "purpose": "*",
       "verdict": "deny",
-      "why": "HIMMEL-4938: the Atlassian MCP server is reachable only for the tool-catalog fetch (the mcp-tool-catalog allow row at the end). Placed before the himmel-code wildcard allow below so that wildcard cannot open tools/call or any other use of this provider"
+      "why": "The Atlassian MCP server is reachable only for the tool-catalog fetch (the mcp-tool-catalog allow row at the end). Placed before the himmel-code wildcard allow below so that wildcard cannot open tools/call or any other use of this provider"
     },
     {
       "corpus": "himmel-code", "provider": "jina", "purpose": "embedding",
       "verdict": "allow",
-      "why": "HIMMEL-5673 operator ruling 2026-10-14: qmd may use Jina AI (EU, Berlin) for embedding of himmel code and docs. Explicit row, ahead of the jina deny below. Jina legal 10.4: no training on customer request data or uploaded content"
+      "why": "Operator ruling 2026-10-14: qmd may use Jina AI (EU, Berlin) for embedding of himmel code and docs. Explicit row, ahead of the jina deny below. Jina legal 10.4: no training on customer request data or uploaded content"
     },
     {
       "corpus": "himmel-code", "provider": "jina", "purpose": "rerank",
       "verdict": "allow",
-      "why": "HIMMEL-5673 operator ruling 2026-10-14: qmd may use Jina AI (EU, Berlin) for rerank of himmel code and docs. Explicit row; same ruling as the embedding cell"
+      "why": "Operator ruling 2026-10-14: qmd may use Jina AI (EU, Berlin) for rerank of himmel code and docs. Explicit row; same ruling as the embedding cell"
     },
     {
       "corpus": "himmel-code", "provider": "jina", "purpose": "*",
       "verdict": "deny",
-      "why": "HIMMEL-5673: the ruling covers embedding and rerank only. Placed after the two jina allows and ahead of the himmel-code wildcard allow below, so that wildcard cannot open inference, extraction or any other purpose on Jina. Not hard: a future operator decision may widen it"
+      "why": "The ruling covers embedding and rerank only. Placed after the two jina allows and ahead of the himmel-code wildcard allow below, so that wildcard cannot open inference, extraction or any other purpose on Jina. Not hard: a future operator decision may widen it"
     },
     {
       "corpus": "luna-personal", "provider": "jina", "purpose": "embedding",
       "verdict": "allow",
-      "why": "HIMMEL-5673 operator ruling 2026-10-14: qmd may use Jina AI (EU, Berlin; Jina legal 10.4: no training on customer request data) for embedding of the luna vault, full note bodies included. Placed ahead of the himmel-code wildcard so it is read with the other jina cells. Other purposes stay default-deny"
+      "why": "Operator ruling 2026-10-14: qmd may use Jina AI (EU, Berlin; Jina legal 10.4: no training on customer request data) for embedding of the luna vault, full note bodies included. Placed ahead of the himmel-code wildcard so it is read with the other jina cells. Other purposes stay default-deny"
     },
     {
       "corpus": "luna-personal", "provider": "jina", "purpose": "rerank",
       "verdict": "allow",
-      "why": "HIMMEL-5673 operator ruling 2026-10-14: rerank sends the query plus candidate note text to Jina AI (EU); same ruling as the embedding cell. Other purposes stay default-deny"
+      "why": "Operator ruling 2026-10-14: rerank sends the query plus candidate note text to Jina AI (EU); same ruling as the embedding cell. Other purposes stay default-deny"
     },
     {
       "corpus": "luna-clippings", "provider": "jina", "purpose": "embedding",
       "verdict": "allow",
-      "why": "HIMMEL-5673 operator ruling 2026-10-14: qmd may use Jina AI (EU, Berlin) for embedding of Clippings/. Other purposes stay default-deny"
+      "why": "Operator ruling 2026-10-14: qmd may use Jina AI (EU, Berlin) for embedding of Clippings/. Other purposes stay default-deny"
     },
     {
       "corpus": "luna-clippings", "provider": "jina", "purpose": "rerank",
       "verdict": "allow",
-      "why": "HIMMEL-5673 operator ruling 2026-10-14: rerank of Clippings/ candidates on Jina AI (EU); same ruling as the embedding cell. Other purposes stay default-deny"
+      "why": "Operator ruling 2026-10-14: rerank of Clippings/ candidates on Jina AI (EU); same ruling as the embedding cell. Other purposes stay default-deny"
     },
     {
       "corpus": "operator-repos", "provider": "jina", "purpose": "embedding",
       "verdict": "allow",
-      "why": "HIMMEL-5683 operator ruling 2026-10-14: the whole qmd index moves to Jina AI (EU) except salus; embedding of the operator-repos corpus. Explicit row; other purposes stay default-deny and the salus hard wildcard above still governs salus"
+      "why": "Operator ruling 2026-10-14: the whole qmd index moves to Jina AI (EU) except salus; embedding of the operator-repos corpus. Explicit row; other purposes stay default-deny and the salus hard wildcard above still governs salus"
     },
     {
       "corpus": "operator-repos", "provider": "jina", "purpose": "rerank",
       "verdict": "allow",
-      "why": "HIMMEL-5683 operator ruling 2026-10-14: the whole qmd index moves to Jina AI (EU) except salus; rerank of the operator-repos corpus. Explicit row; other purposes stay default-deny and the salus hard wildcard above still governs salus"
+      "why": "Operator ruling 2026-10-14: the whole qmd index moves to Jina AI (EU) except salus; rerank of the operator-repos corpus. Explicit row; other purposes stay default-deny and the salus hard wildcard above still governs salus"
     },
     {
       "corpus": "jira-mirror", "provider": "jina", "purpose": "embedding",
       "verdict": "allow",
-      "why": "HIMMEL-5683 operator ruling 2026-10-14: the whole qmd index moves to Jina AI (EU) except salus; embedding of the jira-mirror corpus. Explicit row; other purposes stay default-deny and the salus hard wildcard above still governs salus"
+      "why": "Operator ruling 2026-10-14: the whole qmd index moves to Jina AI (EU) except salus; embedding of the jira-mirror corpus. Explicit row; other purposes stay default-deny and the salus hard wildcard above still governs salus"
     },
     {
       "corpus": "jira-mirror", "provider": "jina", "purpose": "rerank",
       "verdict": "allow",
-      "why": "HIMMEL-5683 operator ruling 2026-10-14: the whole qmd index moves to Jina AI (EU) except salus; rerank of the jira-mirror corpus. Explicit row; other purposes stay default-deny and the salus hard wildcard above still governs salus"
+      "why": "Operator ruling 2026-10-14: the whole qmd index moves to Jina AI (EU) except salus; rerank of the jira-mirror corpus. Explicit row; other purposes stay default-deny and the salus hard wildcard above still governs salus"
     },
     {
       "corpus": "roadmap-plan", "provider": "jina", "purpose": "embedding",
       "verdict": "allow",
-      "why": "HIMMEL-5683 operator ruling 2026-10-14: the whole qmd index moves to Jina AI (EU) except salus; embedding of the roadmap-plan corpus. Explicit row; other purposes stay default-deny and the salus hard wildcard above still governs salus"
+      "why": "Operator ruling 2026-10-14: the whole qmd index moves to Jina AI (EU) except salus; embedding of the roadmap-plan corpus. Explicit row; other purposes stay default-deny and the salus hard wildcard above still governs salus"
     },
     {
       "corpus": "roadmap-plan", "provider": "jina", "purpose": "rerank",
       "verdict": "allow",
-      "why": "HIMMEL-5683 operator ruling 2026-10-14: the whole qmd index moves to Jina AI (EU) except salus; rerank of the roadmap-plan corpus. Explicit row; other purposes stay default-deny and the salus hard wildcard above still governs salus"
+      "why": "Operator ruling 2026-10-14: the whole qmd index moves to Jina AI (EU) except salus; rerank of the roadmap-plan corpus. Explicit row; other purposes stay default-deny and the salus hard wildcard above still governs salus"
     },
     {
       "corpus": "skill-index", "provider": "jina", "purpose": "embedding",
       "verdict": "allow",
-      "why": "HIMMEL-5683 operator ruling 2026-10-14: the whole qmd index moves to Jina AI (EU) except salus; embedding of the skill-index corpus. Explicit row; other purposes stay default-deny and the salus hard wildcard above still governs salus"
+      "why": "Operator ruling 2026-10-14: the whole qmd index moves to Jina AI (EU) except salus; embedding of the skill-index corpus. Explicit row; other purposes stay default-deny and the salus hard wildcard above still governs salus"
     },
     {
       "corpus": "skill-index", "provider": "jina", "purpose": "rerank",
       "verdict": "allow",
-      "why": "HIMMEL-5683 operator ruling 2026-10-14: the whole qmd index moves to Jina AI (EU) except salus; rerank of the skill-index corpus. Explicit row; other purposes stay default-deny and the salus hard wildcard above still governs salus"
+      "why": "Operator ruling 2026-10-14: the whole qmd index moves to Jina AI (EU) except salus; rerank of the skill-index corpus. Explicit row; other purposes stay default-deny and the salus hard wildcard above still governs salus"
     },
     {
       "corpus": "himmel-code", "provider": "openrouter", "purpose": "embedding",
       "verdict": "allow",
-      "why": "HIMMEL-5756 operator ruling 2026-10-15 (HIMMEL-5712 A/B winner: qwen3-embedding-8b plus cohere rerank-4-fast): qmd may use OpenRouter (US) for embedding of himmel-code. Explicit row; other purposes keep their prior verdict and the salus hard rows above still govern salus"
+      "why": "Operator ruling 2026-10-15 (A/B winner: qwen3-embedding-8b plus cohere rerank-4-fast): qmd may use OpenRouter (US) for embedding of himmel-code. Explicit row; other purposes keep their prior verdict and the salus hard rows above still govern salus"
     },
     {
       "corpus": "himmel-code", "provider": "openrouter", "purpose": "rerank",
       "verdict": "allow",
-      "why": "HIMMEL-5756 operator ruling 2026-10-15: qmd may use OpenRouter (US) for rerank of himmel-code. Same ruling as the embedding cell"
+      "why": "Operator ruling 2026-10-15: qmd may use OpenRouter (US) for rerank of himmel-code. Same ruling as the embedding cell"
     },
     {
       "corpus": "luna-personal", "provider": "openrouter", "purpose": "embedding",
       "verdict": "allow",
-      "why": "HIMMEL-5756 operator ruling 2026-10-15 (\"yes we should include the luna-personal but not salus\"): qmd may use OpenRouter (US) for embedding of the luna vault, full note bodies included. Explicit row ahead of the luna-personal openrouter deny cell, which still governs every other purpose"
+      "why": "Operator ruling 2026-10-15 (\"yes we should include the luna-personal but not salus\"): qmd may use OpenRouter (US) for embedding of the luna vault, full note bodies included. Explicit row ahead of the luna-personal openrouter deny cell, which still governs every other purpose"
     },
     {
       "corpus": "luna-personal", "provider": "openrouter", "purpose": "rerank",
       "verdict": "allow",
-      "why": "HIMMEL-5756 operator ruling 2026-10-15: rerank sends the query plus candidate note text to OpenRouter (US); same ruling as the embedding cell. Every other purpose stays denied"
+      "why": "Operator ruling 2026-10-15: rerank sends the query plus candidate note text to OpenRouter (US); same ruling as the embedding cell. Every other purpose stays denied"
     },
     {
       "corpus": "luna-clippings", "provider": "openrouter", "purpose": "embedding",
       "verdict": "allow",
-      "why": "HIMMEL-5756 operator ruling 2026-10-15: qmd may use OpenRouter (US) for embedding of Clippings/. Explicit row ahead of the luna-clippings openrouter deny cell, which still governs every other purpose"
+      "why": "Operator ruling 2026-10-15: qmd may use OpenRouter (US) for embedding of Clippings/. Explicit row ahead of the luna-clippings openrouter deny cell, which still governs every other purpose"
     },
     {
       "corpus": "luna-clippings", "provider": "openrouter", "purpose": "rerank",
       "verdict": "allow",
-      "why": "HIMMEL-5756 operator ruling 2026-10-15: rerank of Clippings/ candidates on OpenRouter (US); same ruling as the embedding cell"
+      "why": "Operator ruling 2026-10-15: rerank of Clippings/ candidates on OpenRouter (US); same ruling as the embedding cell"
     },
     {
       "corpus": "operator-repos", "provider": "openrouter", "purpose": "embedding",
       "verdict": "allow",
-      "why": "HIMMEL-5756 operator ruling 2026-10-15: embedding of the operator-repos corpus on OpenRouter (US). Explicit row; other purposes stay default-deny"
+      "why": "Operator ruling 2026-10-15: embedding of the operator-repos corpus on OpenRouter (US). Explicit row; other purposes stay default-deny"
     },
     {
       "corpus": "operator-repos", "provider": "openrouter", "purpose": "rerank",
       "verdict": "allow",
-      "why": "HIMMEL-5756 operator ruling 2026-10-15: rerank of the operator-repos corpus on OpenRouter (US). Explicit row; other purposes stay default-deny"
+      "why": "Operator ruling 2026-10-15: rerank of the operator-repos corpus on OpenRouter (US). Explicit row; other purposes stay default-deny"
     },
     {
       "corpus": "jira-mirror", "provider": "openrouter", "purpose": "embedding",
       "verdict": "allow",
-      "why": "HIMMEL-5756 operator ruling 2026-10-15: embedding of the jira-mirror corpus on OpenRouter (US). Explicit row; other purposes stay default-deny"
+      "why": "Operator ruling 2026-10-15: embedding of the jira-mirror corpus on OpenRouter (US). Explicit row; other purposes stay default-deny"
     },
     {
       "corpus": "jira-mirror", "provider": "openrouter", "purpose": "rerank",
       "verdict": "allow",
-      "why": "HIMMEL-5756 operator ruling 2026-10-15: rerank of the jira-mirror corpus on OpenRouter (US). Explicit row; other purposes stay default-deny"
+      "why": "Operator ruling 2026-10-15: rerank of the jira-mirror corpus on OpenRouter (US). Explicit row; other purposes stay default-deny"
     },
     {
       "corpus": "roadmap-plan", "provider": "openrouter", "purpose": "embedding",
       "verdict": "allow",
-      "why": "HIMMEL-5756 operator ruling 2026-10-15: embedding of the roadmap-plan corpus on OpenRouter (US). Explicit row; other purposes stay default-deny"
+      "why": "Operator ruling 2026-10-15: embedding of the roadmap-plan corpus on OpenRouter (US). Explicit row; other purposes stay default-deny"
     },
     {
       "corpus": "roadmap-plan", "provider": "openrouter", "purpose": "rerank",
       "verdict": "allow",
-      "why": "HIMMEL-5756 operator ruling 2026-10-15: rerank of the roadmap-plan corpus on OpenRouter (US). Explicit row; other purposes stay default-deny"
+      "why": "Operator ruling 2026-10-15: rerank of the roadmap-plan corpus on OpenRouter (US). Explicit row; other purposes stay default-deny"
     },
     {
       "corpus": "skill-index", "provider": "openrouter", "purpose": "embedding",
       "verdict": "allow",
-      "why": "HIMMEL-5756 operator ruling 2026-10-15: embedding of the skill-index corpus on OpenRouter (US). Explicit row; other purposes stay default-deny"
+      "why": "Operator ruling 2026-10-15: embedding of the skill-index corpus on OpenRouter (US). Explicit row; other purposes stay default-deny"
     },
     {
       "corpus": "skill-index", "provider": "openrouter", "purpose": "rerank",
       "verdict": "allow",
-      "why": "HIMMEL-5756 operator ruling 2026-10-15: rerank of the skill-index corpus on OpenRouter (US). Explicit row; other purposes stay default-deny"
+      "why": "Operator ruling 2026-10-15: rerank of the skill-index corpus on OpenRouter (US). Explicit row; other purposes stay default-deny"
     },
     {
       "corpus": "himmel-code", "provider": "openrouter", "purpose": "query-expansion",
       "verdict": "allow",
-      "why": "HIMMEL-6125 operator ruling 2026-10-17: qmd query expansion (generate role, the raw query) on OpenRouter (US) for the himmel-code corpus. Own purpose, so the inference cells are not widened; explicit row, every other purpose keeps its prior verdict and the salus hard rows above still govern salus"
+      "why": "Operator ruling 2026-10-17: qmd query expansion (generate role, the raw query) on OpenRouter (US) for the himmel-code corpus. Own purpose, so the inference cells are not widened; explicit row, every other purpose keeps its prior verdict and the salus hard rows above still govern salus"
     },
     {
       "corpus": "luna-personal", "provider": "openrouter", "purpose": "query-expansion",
       "verdict": "allow",
-      "why": "HIMMEL-6125 operator ruling 2026-10-17: qmd query expansion (generate role, the raw query) on OpenRouter (US) for the luna-personal corpus. Own purpose, so the inference cells are not widened; explicit row, every other purpose keeps its prior verdict and the salus hard rows above still govern salus"
+      "why": "Operator ruling 2026-10-17: qmd query expansion (generate role, the raw query) on OpenRouter (US) for the luna-personal corpus. Own purpose, so the inference cells are not widened; explicit row, every other purpose keeps its prior verdict and the salus hard rows above still govern salus"
     },
     {
       "corpus": "luna-clippings", "provider": "openrouter", "purpose": "query-expansion",
       "verdict": "allow",
-      "why": "HIMMEL-6125 operator ruling 2026-10-17: qmd query expansion (generate role, the raw query) on OpenRouter (US) for the luna-clippings corpus. Own purpose, so the inference cells are not widened; explicit row, every other purpose keeps its prior verdict and the salus hard rows above still govern salus"
+      "why": "Operator ruling 2026-10-17: qmd query expansion (generate role, the raw query) on OpenRouter (US) for the luna-clippings corpus. Own purpose, so the inference cells are not widened; explicit row, every other purpose keeps its prior verdict and the salus hard rows above still govern salus"
     },
     {
       "corpus": "operator-repos", "provider": "openrouter", "purpose": "query-expansion",
       "verdict": "allow",
-      "why": "HIMMEL-6125 operator ruling 2026-10-17: qmd query expansion (generate role, the raw query) on OpenRouter (US) for the operator-repos corpus. Own purpose, so the inference cells are not widened; explicit row, every other purpose keeps its prior verdict and the salus hard rows above still govern salus"
+      "why": "Operator ruling 2026-10-17: qmd query expansion (generate role, the raw query) on OpenRouter (US) for the operator-repos corpus. Own purpose, so the inference cells are not widened; explicit row, every other purpose keeps its prior verdict and the salus hard rows above still govern salus"
     },
     {
       "corpus": "jira-mirror", "provider": "openrouter", "purpose": "query-expansion",
       "verdict": "allow",
-      "why": "HIMMEL-6125 operator ruling 2026-10-17: qmd query expansion (generate role, the raw query) on OpenRouter (US) for the jira-mirror corpus. Own purpose, so the inference cells are not widened; explicit row, every other purpose keeps its prior verdict and the salus hard rows above still govern salus"
+      "why": "Operator ruling 2026-10-17: qmd query expansion (generate role, the raw query) on OpenRouter (US) for the jira-mirror corpus. Own purpose, so the inference cells are not widened; explicit row, every other purpose keeps its prior verdict and the salus hard rows above still govern salus"
     },
     {
       "corpus": "roadmap-plan", "provider": "openrouter", "purpose": "query-expansion",
       "verdict": "allow",
-      "why": "HIMMEL-6125 operator ruling 2026-10-17: qmd query expansion (generate role, the raw query) on OpenRouter (US) for the roadmap-plan corpus. Own purpose, so the inference cells are not widened; explicit row, every other purpose keeps its prior verdict and the salus hard rows above still govern salus"
+      "why": "Operator ruling 2026-10-17: qmd query expansion (generate role, the raw query) on OpenRouter (US) for the roadmap-plan corpus. Own purpose, so the inference cells are not widened; explicit row, every other purpose keeps its prior verdict and the salus hard rows above still govern salus"
     },
     {
       "corpus": "skill-index", "provider": "openrouter", "purpose": "query-expansion",
       "verdict": "allow",
-      "why": "HIMMEL-6125 operator ruling 2026-10-17: qmd query expansion (generate role, the raw query) on OpenRouter (US) for the skill-index corpus. Own purpose, so the inference cells are not widened; explicit row, every other purpose keeps its prior verdict and the salus hard rows above still govern salus"
+      "why": "Operator ruling 2026-10-17: qmd query expansion (generate role, the raw query) on OpenRouter (US) for the skill-index corpus. Own purpose, so the inference cells are not widened; explicit row, every other purpose keeps its prior verdict and the salus hard rows above still govern salus"
     },
     {
       "corpus": "himmel-code", "provider": "*", "purpose": "*",
@@ -368,12 +367,12 @@
     {
       "corpus": "handover-state", "provider": "openrouter", "purpose": "inference",
       "verdict": "allow",
-      "why": "HIMMEL-1774 operator ruling: ALLOW handover-state on the OpenRouter metered Claude lane. The lane runs the FULL Claude Code harness (a substrate-shaped session that reads/writes handovers natively), not a bulk pipeline — but unlike the anthropic cell, content transits a third party, so this stays scoped to inference and the vault corpora below remain denied"
+      "why": "Operator ruling: ALLOW handover-state on the OpenRouter metered Claude lane. The lane runs the FULL Claude Code harness (a substrate-shaped session that reads/writes handovers natively), not a bulk pipeline — but unlike the anthropic cell, content transits a third party, so this stays scoped to inference and the vault corpora below remain denied"
     },
     {
       "corpus": "handover-state", "provider": "deepseek", "purpose": "extraction",
       "verdict": "deny",
-      "why": "REVERSED 2026-07-22 (HIMMEL-1257): the 2026-07-09 HIMMEL-343 ratification (extend the 2026-07-05 DeepSeek luna override to the handover-state slice) is dropped — DeepSeek de-listed for bad results. Sanctioned set = GLM/Claude/Codex. Explicit deny keeps the reversal legible; not hard (a future operator decision could re-add)."
+      "why": "REVERSED 2026-07-22: the 2026-07-09 ratification (extend the 2026-07-05 DeepSeek luna override to the handover-state slice) is dropped — DeepSeek de-listed for bad results. Sanctioned set = GLM/Claude/Codex. Explicit deny keeps the reversal legible; not hard (a future operator decision could re-add)."
     },
     {
       "corpus": "handover-state", "provider": "openai-codex", "purpose": "inference",
@@ -384,12 +383,12 @@
     {
       "corpus": "handover-state", "provider": "zai-glm", "purpose": "inference",
       "verdict": "deny",
-      "why": "REVERSED 2026-08-29 (HIMMEL-2224, landing HIMMEL-1749's DROP branch): the brief-scoped worker cell (task briefs/excerpts through the guarded dispatch chokepoints) is dropped; openai-codex keeps the equivalent conditional cell above. The GLM (Z.ai) lane was DROPPED 2026-08-12 (HIMMEL-1749) — auto-renew cancelled, GLM Coding Plan lapsed 2026-08-17; Kimi (moonshot, HIMMEL-1748) is the replacement CN extraction lane. Explicit deny on the HIMMEL-1257 de-listing pattern keeps the reversal legible and reviewable; a deleted row would fall through to `default: deny` and lose the history of why the vendor was ever permitted. NOT hard — a future operator decision could re-add."
+      "why": "REVERSED 2026-08-29: the brief-scoped worker cell (task briefs/excerpts through the guarded dispatch chokepoints) is dropped; openai-codex keeps the equivalent conditional cell above. The GLM (Z.ai) lane was DROPPED 2026-08-12 — auto-renew cancelled, GLM Coding Plan lapsed 2026-08-17; Kimi (moonshot) is the replacement CN extraction lane. Explicit deny on the 2026-07-22 de-listing pattern keeps the reversal legible and reviewable; a deleted row would fall through to `default: deny` and lose the history of why the vendor was ever permitted. NOT hard — a future operator decision could re-add."
     },
     {
       "corpus": "handover-state", "provider": "alibaba", "purpose": "inference",
       "verdict": "deny",
-      "why": "REVERSED 2026-07-22 (HIMMEL-1257): Alibaba de-listed (bad results). The brief-scoped worker cell goes with the rest — as of 2026-07-22 the remaining handover-state inference cells (openai-codex, zai-glm conditional + anthropic/ollama) were exactly the sanctioned worker set {Codex, GLM} + substrate. SUPERSEDED 2026-08-29 (HIMMEL-2224): zai-glm was de-listed too, leaving {Codex} + substrate."
+      "why": "REVERSED 2026-07-22: Alibaba de-listed (bad results). The brief-scoped worker cell goes with the rest — as of 2026-07-22 the remaining handover-state inference cells (openai-codex, zai-glm conditional + anthropic/ollama) were exactly the sanctioned worker set {Codex, GLM} + substrate. SUPERSEDED 2026-08-29: zai-glm was de-listed too, leaving {Codex} + substrate."
     },
     {
       "corpus": "luna-clippings", "provider": "local-ollama", "purpose": "*",
@@ -398,7 +397,7 @@
     {
       "corpus": "luna-clippings", "provider": "openrouter", "purpose": "*",
       "verdict": "deny",
-      "why": "HIMMEL-1774 operator ruling: DENY luna-clippings on OpenRouter (clipped public content included — the ruling denies every vault corpus; only himmel-code + handover-state are allowed). DEFAULT stays deny; deliberately OPERATOR-CONFIGURABLE per the 2026-08-15 ruling (A-tier provider, adopter portability) — an operator may ratify an open by editing this cell; that would be a deliberate ratification decision, not guardrail drift. Explicit row so a future wildcard openrouter allow cannot shadow it"
+      "why": "Operator ruling: DENY luna-clippings on OpenRouter (clipped public content included — the ruling denies every vault corpus; only himmel-code + handover-state are allowed). DEFAULT stays deny; deliberately OPERATOR-CONFIGURABLE per the 2026-08-15 ruling (A-tier provider, adopter portability) — an operator may ratify an open by editing this cell; that would be a deliberate ratification decision, not guardrail drift. Explicit row so a future wildcard openrouter allow cannot shadow it"
     },
     {
       "corpus": "luna-clippings", "provider": "anthropic", "purpose": "*",
@@ -407,48 +406,48 @@
     {
       "corpus": "luna-clippings", "provider": "openai-codex", "purpose": "inference",
       "verdict": "allow",
-      "why": "HIMMEL-5002 operator ruling 2026-10-08 (interactive): codex (claudex lane, provider openai-codex) is supported for luna and salus, inference only. Every other provider and purpose keeps its existing deny"
+      "why": "Operator ruling 2026-10-08 (interactive): codex (claudex lane, provider openai-codex) is supported for luna and salus, inference only. Every other provider and purpose keeps its existing deny"
     },
     {
       "corpus": "luna-clippings", "provider": "firecrawl", "purpose": "enrichment",
       "verdict": "allow+log",
-      "why": "HIMMEL-4335: the thin-body clip escalation sends a clip's own public source URL to Firecrawl. Only URLs that pass the tool's own checks are sent: http(s) scheme, no basic-auth, not on the skip-host list, not a private host. The vault's .harvest-deny and .harvest-allow lists are NOT enforced by the tool (follow-up). The ledger obligation is met by ~/.himmel/state/firecrawl-ledger.jsonl (tool = call_site; corpus and purpose are fixed per call site). Extraction, embedding and every other purpose stay default-deny."
+      "why": "The thin-body clip escalation sends a clip's own public source URL to Firecrawl. Only URLs that pass the tool's own checks are sent: http(s) scheme, no basic-auth, not on the skip-host list, not a private host. The vault's .harvest-deny and .harvest-allow lists are NOT enforced by the tool (follow-up). The ledger obligation is met by ~/.himmel/state/firecrawl-ledger.jsonl (tool = call_site; corpus and purpose are fixed per call site). Extraction, embedding and every other purpose stay default-deny."
     },
     {
       "corpus": "luna-clippings", "provider": "deepseek", "purpose": "enrichment",
       "verdict": "conditional",
       "condition": "FOLLOW_WEB_DEEPSEEK=1",
-      "why": "HIMMEL-6269 operator ruling 2026-10-18: the follow-web claim-check may send a search query (an X handle plus a public claim from a clip) to DeepSeek Search, and Fetch on the top hit, only when the launching process environment carries the literal FOLLOW_WEB_DEEPSEEK=1. Off by default for every install. DeepSeek stores data in the PRC, may train on queries and offers no DPA. Each call is ledgered in ~/.himmel/state/firecrawl-ledger.jsonl (source deepseek). salus is denied by its own hard row above; every other corpus and purpose stays deny"
+      "why": "Operator ruling 2026-10-18: the follow-web claim-check may send a search query (an X handle plus a public claim from a clip) to DeepSeek Search, and Fetch on the top hit, only when the launching process environment carries the literal FOLLOW_WEB_DEEPSEEK=1. Off by default for every install. DeepSeek stores data in the PRC, may train on queries and offers no DPA. Each call is ledgered in ~/.himmel/state/firecrawl-ledger.jsonl (source deepseek). salus is denied by its own hard row above; every other corpus and purpose stays deny"
     },
     {
       "corpus": "luna-clippings", "provider": "jina-reader", "purpose": "enrichment",
       "verdict": "allow+log",
-      "why": "HIMMEL-4335: same thin-body clip escalation and same partial G-1 checks as the Firecrawl row (scheme, basic-auth, skip-host list, private hosts; not .harvest-deny/.harvest-allow), sent to r.jina.ai (keyless). Jina calls cost no credits and each writes a firecrawl-ledger line with source jina-reader and credits 0; the verdict is allow+log to match the Firecrawl class. Every other purpose stays default-deny."
+      "why": "Same thin-body clip escalation and same partial G-1 checks as the Firecrawl row (scheme, basic-auth, skip-host list, private hosts; not .harvest-deny/.harvest-allow), sent to r.jina.ai (keyless). Jina calls cost no credits and each writes a firecrawl-ledger line with source jina-reader and credits 0; the verdict is allow+log to match the Firecrawl class. Every other purpose stays default-deny."
     },
     {
       "corpus": "luna-clippings", "provider": "deepseek", "purpose": "extraction",
       "verdict": "deny",
-      "why": "REVERSED 2026-07-22 (HIMMEL-1257): DeepSeek de-listed (bad results). Was subsumed by the 2026-07-05 luna-personal override, which is itself reversed."
+      "why": "REVERSED 2026-07-22: DeepSeek de-listed (bad results). Was subsumed by the 2026-07-05 luna-personal override, which is itself reversed."
     },
     {
       "corpus": "luna-clippings", "provider": "zai-glm", "purpose": "extraction",
       "verdict": "deny",
-      "why": "REVERSED 2026-08-29 (HIMMEL-2224, landing HIMMEL-1749's DROP branch): the narrow 621/622 G2.3 local-quality-ladder exception for clipped public content (operator-provisioned ZAI_API_KEY, spec §4.2) is dropped; the GRAPHIFY_CLIPPINGS_GLM_OK fence opt-in no longer opens this cell. The GLM (Z.ai) lane was DROPPED 2026-08-12 (HIMMEL-1749) — auto-renew cancelled, GLM Coding Plan lapsed 2026-08-17; Kimi (moonshot, HIMMEL-1748) is the replacement CN extraction lane. Explicit deny on the HIMMEL-1257 de-listing pattern keeps the reversal legible and reviewable; a deleted row would fall through to `default: deny` and lose the history of why the vendor was ever permitted. NOT hard — a future operator decision could re-add."
+      "why": "REVERSED 2026-08-29: the narrow 621/622 G2.3 local-quality-ladder exception for clipped public content (operator-provisioned ZAI_API_KEY, spec §4.2) is dropped; the GRAPHIFY_CLIPPINGS_GLM_OK fence opt-in no longer opens this cell. The GLM (Z.ai) lane was DROPPED 2026-08-12 — auto-renew cancelled, GLM Coding Plan lapsed 2026-08-17; Kimi (moonshot) is the replacement CN extraction lane. Explicit deny on the 2026-07-22 de-listing pattern keeps the reversal legible and reviewable; a deleted row would fall through to `default: deny` and lose the history of why the vendor was ever permitted. NOT hard — a future operator decision could re-add."
     },
     {
       "corpus": "luna-clippings", "provider": "alibaba", "purpose": "embedding",
       "verdict": "deny",
-      "why": "NOT PURSUING the HIMMEL-765 pilot (2026-07-22, HIMMEL-1257): Alibaba de-listed — bad results. Was pending-operator (effective deny); now explicit deny."
+      "why": "NOT PURSUING the Alibaba pilot (2026-07-22): Alibaba de-listed — bad results. Was pending-operator (effective deny); now explicit deny."
     },
     {
       "corpus": "luna-clippings", "provider": "alibaba", "purpose": "rerank",
       "verdict": "deny",
-      "why": "NOT PURSUING HIMMEL-765 (2026-07-22, HIMMEL-1257): rerank sends query + candidate documents (content egress); Alibaba de-listed."
+      "why": "NOT PURSUING the Alibaba pilot (2026-07-22): rerank sends query + candidate documents (content egress); Alibaba de-listed."
     },
     {
       "corpus": "luna-clippings", "provider": "alibaba", "purpose": "vision-embedding",
       "verdict": "deny",
-      "why": "NOT PURSUING HIMMEL-765 (2026-07-22, HIMMEL-1257): clip images are content egress; Alibaba de-listed."
+      "why": "NOT PURSUING the Alibaba pilot (2026-07-22): clip images are content egress; Alibaba de-listed."
     },
     {
       "corpus": "luna-personal", "provider": "local-ollama", "purpose": "*",
@@ -457,7 +456,7 @@
     {
       "corpus": "luna-personal", "provider": "openrouter", "purpose": "*",
       "verdict": "deny",
-      "why": "HIMMEL-1774 operator ruling: DENY luna-personal on OpenRouter — personal journals/notes/maps never transit the aggregation vendor. DEFAULT stays deny; deliberately OPERATOR-CONFIGURABLE per the 2026-08-15 ruling (A-tier provider, adopter portability) — an operator may ratify an open by editing this cell; that would be a deliberate ratification decision, not guardrail drift. Explicit row so a future wildcard openrouter allow cannot shadow it"
+      "why": "Operator ruling: DENY luna-personal on OpenRouter — personal journals/notes/maps never transit the aggregation vendor. DEFAULT stays deny; deliberately OPERATOR-CONFIGURABLE per the 2026-08-15 ruling (A-tier provider, adopter portability) — an operator may ratify an open by editing this cell; that would be a deliberate ratification decision, not guardrail drift. Explicit row so a future wildcard openrouter allow cannot shadow it"
     },
     {
       "corpus": "luna-personal", "provider": "anthropic", "purpose": "*",
@@ -466,48 +465,48 @@
     {
       "corpus": "luna-personal", "provider": "openai-codex", "purpose": "inference",
       "verdict": "allow",
-      "why": "HIMMEL-5002 operator ruling 2026-10-08 (interactive): codex (claudex lane, provider openai-codex) is supported for luna and salus, inference only. Every other provider and purpose keeps its existing deny"
+      "why": "Operator ruling 2026-10-08 (interactive): codex (claudex lane, provider openai-codex) is supported for luna and salus, inference only. Every other provider and purpose keeps its existing deny"
     },
     {
       "corpus": "luna-personal", "provider": "deepseek", "purpose": "extraction",
       "verdict": "deny",
-      "why": "REVERSED 2026-07-22 (HIMMEL-1257): the 2026-07-05 operator speed override (luna non-Clippings extraction on DeepSeek) is dropped — bad results. GLM (zai-glm) is the sanctioned CN extraction lane (see the zai-glm cell below). Explicit deny keeps the reversal legible; not hard."
+      "why": "REVERSED 2026-07-22: the 2026-07-05 operator speed override (luna non-Clippings extraction on DeepSeek) is dropped — bad results. GLM (zai-glm) is the sanctioned CN extraction lane (see the zai-glm cell below). Explicit deny keeps the reversal legible; not hard."
     },
     {
       "corpus": "luna-personal", "provider": "zai-glm", "purpose": "extraction",
       "verdict": "deny",
-      "why": "REVERSED 2026-08-29 (HIMMEL-2224, landing HIMMEL-1749's DROP branch): the 2026-07-17 HIMMEL-1122 ratification (luna non-Clippings graphify extraction on GLM, full note bodies to Z.ai, ledgered per run) is dropped. The vendor count for this exposure class drops back by one; moonshot (HIMMEL-1748) now carries it. The GLM (Z.ai) lane was DROPPED 2026-08-12 (HIMMEL-1749) — auto-renew cancelled, GLM Coding Plan lapsed 2026-08-17; Kimi (moonshot, HIMMEL-1748) is the replacement CN extraction lane. Explicit deny on the HIMMEL-1257 de-listing pattern keeps the reversal legible and reviewable; a deleted row would fall through to `default: deny` and lose the history of why the vendor was ever permitted. NOT hard — a future operator decision could re-add."
+      "why": "REVERSED 2026-08-29: the 2026-07-17 ratification (luna non-Clippings graphify extraction on GLM, full note bodies to Z.ai, ledgered per run) is dropped. The vendor count for this exposure class drops back by one; moonshot now carries it. The GLM (Z.ai) lane was DROPPED 2026-08-12 — auto-renew cancelled, GLM Coding Plan lapsed 2026-08-17; Kimi (moonshot) is the replacement CN extraction lane. Explicit deny on the 2026-07-22 de-listing pattern keeps the reversal legible and reviewable; a deleted row would fall through to `default: deny` and lose the history of why the vendor was ever permitted. NOT hard — a future operator decision could re-add."
     },
     {
       "corpus": "luna-personal", "provider": "deepseek", "purpose": "enrichment",
       "verdict": "deny",
-      "why": "REVERSED 2026-07-22 (HIMMEL-1257): the 2026-07-10 HIMMEL-833 chat-note enrichment ratification (full luna/chats/* bodies + top-200 tag vocabulary to DeepSeek) is dropped — DeepSeek de-listed for bad results. GLM enrichment (HIMMEL-1167, below) is the sanctioned lane. Explicit deny; not hard."
+      "why": "REVERSED 2026-07-22: the 2026-07-10 chat-note enrichment ratification (full luna/chats/* bodies + top-200 tag vocabulary to DeepSeek) is dropped — DeepSeek de-listed for bad results. GLM enrichment (below) is the sanctioned lane. Explicit deny; not hard."
     },
     {
       "corpus": "luna-personal", "provider": "zai-glm", "purpose": "enrichment",
       "verdict": "deny",
-      "why": "REVERSED 2026-08-29 (HIMMEL-2224, landing HIMMEL-1749's DROP branch): the 2026-07-17 HIMMEL-1167 ratification (chat-note enrichment on GLM — full luna/chats/* bodies plus the vault-wide top-200 tag vocabulary to Z.ai) is dropped. No sanctioned CN enrichment lane remains; enrich-chat-notes.py's shipped default is claude (HIMMEL-1257). The GLM (Z.ai) lane was DROPPED 2026-08-12 (HIMMEL-1749) — auto-renew cancelled, GLM Coding Plan lapsed 2026-08-17; Kimi (moonshot, HIMMEL-1748) is the replacement CN extraction lane. Explicit deny on the HIMMEL-1257 de-listing pattern keeps the reversal legible and reviewable; a deleted row would fall through to `default: deny` and lose the history of why the vendor was ever permitted. NOT hard — a future operator decision could re-add."
+      "why": "REVERSED 2026-08-29: the 2026-07-17 ratification (chat-note enrichment on GLM — full luna/chats/* bodies plus the vault-wide top-200 tag vocabulary to Z.ai) is dropped. No sanctioned CN enrichment lane remains; enrich-chat-notes.py's shipped default is claude. The GLM (Z.ai) lane was DROPPED 2026-08-12 — auto-renew cancelled, GLM Coding Plan lapsed 2026-08-17; Kimi (moonshot) is the replacement CN extraction lane. Explicit deny on the 2026-07-22 de-listing pattern keeps the reversal legible and reviewable; a deleted row would fall through to `default: deny` and lose the history of why the vendor was ever permitted. NOT hard — a future operator decision could re-add."
     },
     {
       "corpus": "luna-personal", "provider": "alibaba", "purpose": "embedding",
       "verdict": "deny",
-      "why": "NOT PURSUING the HIMMEL-765 pilot (2026-07-22, HIMMEL-1257): Alibaba de-listed — bad results. This was THE contradiction cell from the Fable 2026-07-08 review (fence denied it, 765 needed it); resolved by dropping the pilot. Was pending-operator (effective deny); now explicit deny."
+      "why": "NOT PURSUING the Alibaba pilot (2026-07-22): Alibaba de-listed — bad results. This was THE contradiction cell from the Fable 2026-07-08 review (fence denied it, 765 needed it); resolved by dropping the pilot. Was pending-operator (effective deny); now explicit deny."
     },
     {
       "corpus": "luna-personal", "provider": "alibaba", "purpose": "rerank",
       "verdict": "deny",
-      "why": "NOT PURSUING HIMMEL-765 (2026-07-22, HIMMEL-1257): same content-egress class as the embedding cell; Alibaba de-listed."
+      "why": "NOT PURSUING the Alibaba pilot (2026-07-22): same content-egress class as the embedding cell; Alibaba de-listed."
     },
     {
       "corpus": "worker-failure-metadata", "provider": "jira", "purpose": "ticketing",
       "verdict": "conditional",
       "condition": "only the closed-alphabet summary and body failure_router.py builds and validates (check-body), through the himmel Jira CLI by absolute path; one decision-log line per send",
-      "why": "HIMMEL-4670 P5 (spec 6.1): the failure loop's only off-host write. Recurring failure classes become Jira tickets so the second drift escalates to a structural fix. The metadata is derived and closed-vocabulary, never transcript content; the condition is what keeps it so"
+      "why": "The failure loop's only off-host write. Recurring failure classes become Jira tickets so the second drift escalates to a structural fix. The metadata is derived and closed-vocabulary, never transcript content; the condition is what keeps it so"
     },
     {
       "corpus": "mcp-tool-catalog", "provider": "atlassian-mcp", "purpose": "catalog-fetch",
       "verdict": "allow",
-      "why": "HIMMEL-4938 (operator ruling 2026-10-08): an auth-only initialize + tools/list call to mcp.atlassian.com, capturing the real tool schemas for the Headroom token-reduction measurement. Metadata only: the request carries no ticket, vault or corpus content. Every tools/call, and every other corpus or purpose against this provider, stays default-deny."
+      "why": "Operator ruling 2026-10-08: an auth-only initialize + tools/list call to mcp.atlassian.com, capturing the real tool schemas for the Headroom token-reduction measurement. Metadata only: the request carries no ticket, vault or corpus content. Every tools/call, and every other corpus or purpose against this provider, stays default-deny."
     },
     {
       "corpus": "peer-desk", "provider": "peer-telegram", "purpose": "peer-message",

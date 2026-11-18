@@ -44,7 +44,6 @@ inbox_with_lock() (
 # HIMMEL_CONSOLE_RUNDIR, $XDG_RUNTIME_DIR/himmel-chief and
 # ${TMPDIR:-/tmp}/himmel-chief-<uid>, so a sender whose environment picked
 # another default (cron has no XDG_RUNTIME_DIR) is still found.
-# ponytail: same-uid local writers can still write the ledger; HMAC with a key outside reach of the session would close it.
 inbox_ledger_shas() { # <session>
     local base f d rc=0
     for base in "${HIMMEL_CONSOLE_RUNDIR:-}" "${XDG_RUNTIME_DIR:+$XDG_RUNTIME_DIR/himmel-chief}" "${TMPDIR:-/tmp}/himmel-chief-$(id -u)"; do

@@ -21,9 +21,6 @@
 # A second run waits for the holder; it never skips. Waiting is unbounded (with_lock): a caller that
 # needs a deadline wraps the call.
 #
-# ponytail: the lock is flock where it exists, else prim.sh's PID file (macOS). A SIGKILLed holder
-# leaves the PID file and the next run fails closed until it is removed by hand. Upgrade path: a
-# lease with a timestamp if a Mac ever arms these unattended.
 
 # shellcheck source=prim.sh
 . "$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)/prim.sh" || return 1

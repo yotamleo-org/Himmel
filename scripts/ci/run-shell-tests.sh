@@ -403,10 +403,6 @@ _suite_timeout_for() {
       # suite's subset: 117s local, 745-1004s on CI; the cap (1800s, x1.8 of the
       # slowest) kills a regression so a hung subset cannot hold a shard. Do not cache scans or drop
       # masks to fit the generic 600s cap.
-      # ponytail: the full-tier cap is the CI estimate x1.25 and unmeasured on
-      # CI, upgrade path: shard the full replay and re-measure.
-      # The nightly shards run tier all with GUARD_CORPUS_TIER=fast: the full
-      # replay runs in the scheduled-only guard-corpus-full job, not a 60-min shard.
       if [ "${SUITE_TIER_MODE:-all}" = fast ] || [ "${GUARD_CORPUS_TIER:-}" = fast ]; then printf '1800'; else printf '10800'; fi ;;
     scripts/hooks/test-block-destructive-commands-[abcd].sh|*/scripts/hooks/test-block-destructive-commands-[abcd].sh)
       # Every fixture starts a fresh bwrap sandbox. The former single suite
@@ -2203,10 +2199,6 @@ _suite_lock_claim() {
 # The owner is frozen (STOP), its direct children (its suite, a process group
 # of its own) terminated and checked, and only then is it TERMed, so the taker
 # never runs beside a survivor. A child that will not die keeps the lock.
-# ponytail: only direct children are followed, and a run launched detached on
-# purpose (parent exits by design) reads as an orphan;
-# Windows Git Bash has no ps -o ppid, so it keeps today's wait — revisit if
-# either bites.
 _suite_lock_orphan_reap() {
   local _pid="$1" _ident="$2" _oppid="$3" _raw="$4" _cur _n=0 _k _ki _bad=0 _pk _prc
   local -a _kids=() _kid_ids=()
@@ -3001,10 +2993,6 @@ fi
 # checkout elsewhere would name root=REPO_ROOT sha=unknown for suites that live
 # in a different tree, which is the mismatch this guard exists to refuse. Both
 # sides empty stays allowed (CI containers, dubious ownership hit both alike).
-# ponytail: when git cannot name a toplevel for the scan root at all (dubious
-# ownership of just that tree, GIT_CEILING_DIRECTORIES above it) the guard fails
-# open, because "no tree known" is indistinguishable from "not a tree";
-# upgrade path: a `git rev-parse --git-dir` probe that tells the two apart
 #
 # The scripts default is applied HERE, before the guard, so the default root is
 # checked like an explicit one and the guard never `cd ""`s in place.
@@ -3459,9 +3447,6 @@ trap '[ "${suite_jobs:-1}" -le 1 ] || ! declare -F _lanes_stop >/dev/null || _la
 # with no "./" prefix ("scripts/...", "templates/..."), which is the key form
 # the duration ledger and the suite tables use. The runner cds to $REPO_ROOT at
 # the top, so `.` means the repo root wherever it was launched from.
-# ponytail: the tree list is hand-kept — a NEW top-level tree that gains a
-# test-*.sh is not run until it is added here; test-run-shell-tests.sh Case 23c
-# fails on exactly that drift (a tracked suite absent from `--list .`).
 if [ "$scan" = "." ]; then
   find -H scripts templates marketplace packaging -path '*/node_modules' -prune -o -name 'test-*.sh' -print > "$suites_raw" 2>/dev/null
 else
@@ -4374,8 +4359,6 @@ _live_check() {
   # the suite started and left behind. kill -0 first, a builtin, so a clean
   # suite pays no ps; a zombie answers it too, so the process table decides.
   # A short grace covers a child the suite's own trap killed but did not reap.
-  # ponytail: a descendant that moves to its own group (setsid, set -m) escapes
-  # this census; a per-suite env marker scanned in /proc would catch it.
   if [ -n "${1:-}" ] && ! proc_tree_is_windows && kill -0 -- "-$1" 2>/dev/null; then
     _grace=0
     while _members=$(proc_tree_group_members "$1") && [ -n "$_members" ] && [ "$_grace" -lt 5 ]; do

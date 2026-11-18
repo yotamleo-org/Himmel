@@ -62,7 +62,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/../lib/prim.sh" || exit 2
 
 MESSAGE=""
-DO_PUSH=1     # HIMMEL-140: push is on by default on the branched path.
+DO_PUSH=1
 NO_PUSH=0
 DRY_RUN=0
 

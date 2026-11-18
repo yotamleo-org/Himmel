@@ -5,9 +5,6 @@
 //   Check and approve first CI run to the merge, per ticket
 //   Merge and wrap up the merge to WRAPPED, per ticket
 // Start, Plan and design and Assign have no record behind them: "no source yet". The cost per ticket: "no data yet".
-// ponytail: a ticket's first event of each kind stands for the whole ticket (a second PR on one ticket is not split, and
-// a branch whose ticket merged counts as merged in Review);
-// upgrade path: key the spans by PR number once every event row carries one.
 import { lstatSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";

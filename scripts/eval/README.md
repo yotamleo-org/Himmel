@@ -501,9 +501,6 @@ or zero denominator is unmeasured, not zero. The friction rule uses
 not with many. Its provisional threshold is `0.1`, half the fixture class's
 rate of 1 over-denial in 5 calls (`0.2`).
 
-**ponytail:** no recorded tool-call history yet; upgrade: re-derive the
-threshold once 4 weekly friction rows carry `tool_calls`.
-
 Split rows carry `open.<metric>` (train) and `sealed.<metric>` (test),
 beside any whole-set metric. Rules tune on the open half only, never on the
 sealed or whole-set values; a sealed-only row opens no change. A missing
@@ -557,10 +554,6 @@ Baseline (2026-10-29, listing of 155 entries, about 4,700 tokens;
 Phase 2 hill-climbed the descriptions, then trimmed the listing to
 3,257 tokens. Sealed accuracy after the trim is haiku 0.86, sonnet 0.89 and opus
 0.93, means over 3 to 5 reps. `routing/results/phase2-summary.md` has every arm.
-
-**ponytail:** the listing renders every description uncapped, as an operator
-session sees it; upgrade: a `--profile` flag that applies a launch profile's
-name-only overrides and lists MCP tools by name until ToolSearch.
 
 ## lane-quality: repeats and judge calibration
 

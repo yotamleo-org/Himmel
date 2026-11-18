@@ -4,6 +4,7 @@
 # name the top class, report unlabelled tickets as unclassified. Hermetic: the jira CLI is a seam
 # command serving fixture rows; real Jira is never touched.
 set -u
+_TK='HIMMEL-'
 here="$(cd "$(dirname "$0")" && pwd)"
 tool="$here/escape-classes.sh"
 td="$(mktemp -d "${TMPDIR:-/tmp}/escape-classes.XXXXXX")" || { echo "FAIL - mktemp"; exit 1; }
@@ -23,9 +24,9 @@ export ESC_FIX="$td" ESCAPE_CLASSES_JIRA_CMD="bash '$td/jira.sh'"
 printf 'HIMMEL-1\tBug\tDone\ta\tdeferred-escape,class-fail-open\nHIMMEL-5\tBug\tDone\tb\tclass-fail-open,deferred-escape\nHIMMEL-7\tBug\tDone\tc\tdeferred-escape,class-quoting\nHIMMEL-6\tBug\tDone\td\tdeferred-escape\n' >"$td/rows"
 out="$(bash "$tool" 2>&1)"; rc=$?
 [ "$rc" = 0 ] && ok "exits 0" || bad "exits 0: rc=$rc"
-contains "names the top class with its count and tickets" "$out" "top escape class: class-fail-open (2: HIMMEL-1, HIMMEL-5)"
+contains "names the top class with its count and tickets" "$out" "top escape class: class-fail-open (2: ${_TK}1, ${_TK}5)"
 contains "tallies the other class" "$out" "class-quoting 1"
-contains "reports the unlabelled ticket as unclassified" "$out" "unclassified: 1 (HIMMEL-6)"
+contains "reports the unlabelled ticket as unclassified" "$out" "unclassified: 1 (${_TK}6)"
 lacks "never assigns the unlabelled ticket a class" "$out" "class-fail-open (3"
 contains "queries the deferred-escape label" "$(cat "$td/args")" "labels = deferred-escape"
 contains "requests the labels column" "$(cat "$td/args")" "--labels"
@@ -33,7 +34,7 @@ contains "requests the labels column" "$(cat "$td/args")" "--labels"
 printf 'HIMMEL-2\tBug\tDone\ta\tdeferred-escape\n' >"$td/rows"
 out="$(bash "$tool" 2>&1)"
 contains "only unclassified tickets: no top class" "$out" "top escape class: none"
-contains "only unclassified tickets: still reported" "$out" "unclassified: 1 (HIMMEL-2)"
+contains "only unclassified tickets: still reported" "$out" "unclassified: 1 (${_TK}2)"
 
 printf 'HIMMEL-3\tBug\tDone\ta\tdeferred-escape,class-a\nHIMMEL-4\tBug\tDone\tb\tdeferred-escape,class-b\n' >"$td/rows"
 out="$(bash "$tool" 2>&1)"

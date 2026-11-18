@@ -61,7 +61,6 @@ export const chainRegistry = (env: Env) => env.HIMMEL_CHAIN_REGISTRY || inHandov
 // The open PRs per ticket, from <state dir>/workers/<KEY>.json: the same records the roadmap tracker prefers for CI (a red latch or red reads red, pending reads
 // running). The state dir is the status scripts' own: TICKET_STATUS_STATE_DIR, else $HOME/.himmel/state. No GitHub call, no write; an unreadable directory is
 // absent, so a card is never flagged "no open PR" on a guess.
-// ponytail: a PR no worker record names (a human's) is not listed, upgrade path: read the sweep's open-PR snapshot once focus-refresh keeps it.
 function repoSlug(env: Env): string | undefined {
   const named = env.GH_REPO || env.GITHUB_REPOSITORY;
   if (named) return named;
@@ -91,7 +90,6 @@ export function readPrs(env: Env): PrRead | Absent {
 }
 
 // The versions the Board lists and the one the cards call running. Without a running version the chain read covers every version, and a blocker outside the version cannot read as blocked.
-// ponytail: this reads the mirror a second time beside GET /api/roadmap, upgrade path: hand the page's own read to this one if it ever shows in the Board's load time.
 function boardVersions(mirror: string, env: Env, read: typeof readRoadmap): { running: string | undefined; names: string[] } | Absent {
   try {
     const r = read({ mirrorDir: mirror, projects: [{ key: env.JIRA_PROJECT_KEY || "HIMMEL", dir: mirror }], workers: { state: "absent" } });
@@ -120,7 +118,6 @@ export function burnDown(read: { now?: string; tickets?: Record<string, BurnTick
 // rename, as focus-refresh.sh publishes it. A run that does not end on a clean sdrift line leaves the saved file alone and says why.
 // The check's own 90 s default is too short here: a real run without a snapshot took 121 s on the station. It gets DRIFT_BUDGET_S instead;
 // the limit below catches only a hung child, and the server's idle guard covers it.
-// ponytail: runs without the sweep's snapshot, at about 4 s per key, so past about 50 open tickets it hits the budget and reads unknown, upgrade path = keep focus-refresh's snapshot for --snapshot.
 export const DRIFT_BUDGET_S = 200;
 export const DRIFT_REFRESH_MS = 220_000;
 export type DriftRefresh = { state: "ok"; sdrift: string } | { state: "failed"; reason: string };
@@ -158,9 +155,6 @@ export async function refreshDrift(env: Env, cwd: string, timeoutMs = DRIFT_REFR
 //   2. a `queue:` segment or `pool-disposition:` line of the newest chief doc's `## Live state` that names the operator;
 //   3. the newest *HANDOFF.md of the bucket, its `## Open operator items` lines.
 // A source that cannot be read is named in `unread`; when none can be read the whole read is absent with the reasons, never an empty list.
-// ponytail: the newest chief doc by mtime stands for "the live chief" and its folder for the bucket, upgrade path: the live chiefs' docs by queue lock as Shift reads them.
-//   4. the tick's pool-holds-<chief doc stem>.json (tick.sh --pool-holds): its give-up lines, one row per key, which replace the doc's own
-//      pool-disposition: line of that key; a missing file is named in `unread` and never makes the whole read absent.
 export type OwedItem = { source: "unsigned spec" | "operator-critical finding" | "chief doc" | "handoff" | "owed undelivered" | "unclosed worker" | "pool hold"; key: string | null; title: string; ctx: string; act: string; label?: string; since?: number };
 export type Owed = { state: "ok"; items: OwedItem[]; unread: string[]; skipped?: string[] } | Absent;
 const OWED_SOURCES = 3; // unsigned specs, handoff items, chief doc lines

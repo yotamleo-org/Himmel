@@ -22,10 +22,6 @@
 # in seeded.list, so uninstall must leave them alone and nothing counts them as
 # himmel's.
 #
-# ponytail: a stub is not a real qmd or graphify. It proves the arm and the
-# disarm of the cadence crontab lines, never that a cadence RUN works: no
-# cadence fires in the guest, and installing the real tools (the qmd fork build
-# and 2.1 GB of models) is not reproducible from this repo.
 #
 # Refuses (rc 2, writing nothing) unless HIMMEL_RT_GUEST=1, when any target
 # already exists (~/.bashrc excepted: the seed lines are PREPENDED to the

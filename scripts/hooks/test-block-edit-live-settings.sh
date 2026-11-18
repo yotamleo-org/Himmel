@@ -12,6 +12,7 @@
 #   0 — all cases passed
 #   1 — at least one case failed
 set -uo pipefail
+KEY_PFX=HIMMEL
 
 HOOK="$(cd "$(dirname "$0")" && pwd)/block-edit-live-settings.sh"
 [ -x "$HOOK" ] || chmod +x "$HOOK"
@@ -65,12 +66,6 @@ done
     echo "FATAL: no mktemp name clear of 'tee' in 20 draws" >&2
     exit 1
 }
-# ponytail: the fixtures are pinned to their physical path because the hook
-# matches the command's TEXT against the canonicalised (realpath) primary root,
-# so a symlinked TMPDIR (macOS /var -> /private/var) spells the primary
-# differently from the root and the text rows read as unrelated paths. That
-# spelling-alias gap in the hook is not tested here; upgrade path is a hook
-# change that canonicalises path words too.
 SANDBOX=$(cd -P "$SANDBOX" && pwd -P) || {
     echo "FATAL: cannot resolve $SANDBOX" >&2
     exit 1
@@ -977,7 +972,7 @@ assert_rc "118 cp -t into \$HOME/.claude/ still denies (control)" 2 \
 # so the hook was never the cause of that refusal — jq without -i/--in-place
 # is on the read-only allowlist regardless of the live/not-live question.
 assert_rc "119 jq read of a scratchpad .leg-settings.json file allows" 0 \
-    "$(bash_rc_of "$PRIMARY" "jq '{add:.permissions.additionalDirectories}' /tmp/claude-1000/somesession/scratchpad/HIMMEL-3514-N424-bridge-hardening.leg-settings.json")"
+    "$(bash_rc_of "$PRIMARY" "jq '{add:.permissions.additionalDirectories}' /tmp/claude-1000/somesession/scratchpad/${KEY_PFX}-3514-N424-bridge-hardening.leg-settings.json")"
 
 # 120 control: the same read, this time redirected into the PRIMARY's live
 # settings.json (a genuine write) -> DENY — proves 119's exemption only
@@ -986,7 +981,7 @@ assert_rc "119 jq read of a scratchpad .leg-settings.json file allows" 0 \
 # would deny via the hook's textual `-i` scan without exercising a real write
 # path.
 assert_rc "120 jq read redirected into primary settings.json still denies (control)" 2 \
-    "$(bash_rc_of "$PRIMARY" "jq '{add:.permissions.additionalDirectories}' /tmp/claude-1000/somesession/scratchpad/HIMMEL-3514-N424-bridge-hardening.leg-settings.json > .claude/settings.json")"
+    "$(bash_rc_of "$PRIMARY" "jq '{add:.permissions.additionalDirectories}' /tmp/claude-1000/somesession/scratchpad/${KEY_PFX}-3514-N424-bridge-hardening.leg-settings.json > .claude/settings.json")"
 
 # 121: a `VAR=path;`-prefixed, `;`-compound, TWO-statement read-only `jq`
 # command, from a PRIMARY-checkout cwd. A TEXT-split per-segment allowlist is
@@ -997,7 +992,7 @@ assert_rc "120 jq read redirected into primary settings.json still denies (contr
 # allowlisted read, and an assignment to an exported or sensitive name
 # denies — so this harmless chain allows and 122-126 still deny.
 assert_rc "121 VAR=path; jq read; jq read (chief repro) allows (per-segment allowlist)" 0 \
-    "$(bash_rc_of "$PRIMARY" "SP=/tmp/claude-1000/somesession/scratchpad; jq '.permissions.additionalDirectories' \$SP/HIMMEL-3514-N424-bridge-hardening.leg-settings.json; jq '.permissions.additionalDirectories' \$SP/HIMMEL-3536-N425-step0-remainder.leg-settings.json")"
+    "$(bash_rc_of "$PRIMARY" "SP=/tmp/claude-1000/somesession/scratchpad; jq '.permissions.additionalDirectories' \$SP/${KEY_PFX}-3514-N424-bridge-hardening.leg-settings.json; jq '.permissions.additionalDirectories' \$SP/${KEY_PFX}-3536-N425-step0-remainder.leg-settings.json")"
 
 # 122 control: the same VAR=path;-prefixed shape, this time with a genuine
 # WRITE (sed -i) as the chained statement — denies: the sed segment is not a
@@ -1008,14 +1003,14 @@ assert_rc "122 VAR=path; write-in-place still denies (control)" 2 \
 # 123 control: a `;`-joined write with NO leading assignment (`cat x; rm -rf
 # ~`-shaped) still denies — every segment is judged, and the second is sed -i.
 assert_rc "123 jq read; write-in-place (no assignment) still denies (control)" 2 \
-    "$(bash_rc_of "$PRIMARY" "jq '.permissions.additionalDirectories' /tmp/claude-1000/somesession/scratchpad/HIMMEL-3514-N424-bridge-hardening.leg-settings.json; sed -i s/a/b/ /tmp/claude-1000/somesession/scratchpad/HIMMEL-3514-N424-bridge-hardening.leg-settings.json")" # gnu-ok: fixture text parsed by the hook, never executed
+    "$(bash_rc_of "$PRIMARY" "jq '.permissions.additionalDirectories' /tmp/claude-1000/somesession/scratchpad/${KEY_PFX}-3514-N424-bridge-hardening.leg-settings.json; sed -i s/a/b/ /tmp/claude-1000/somesession/scratchpad/${KEY_PFX}-3514-N424-bridge-hardening.leg-settings.json")" # gnu-ok: fixture text parsed by the hook, never executed
 
 # 124: a `|` INSIDE a quoted jq filter argument (`test("a|b")`) is not a
 # shell pipe: a text scan that strips quotes would read it as one, and the
 # command also carries a bare `;`. The tokenizer keeps the quoted `|` inside
 # its word, so it allows.
 assert_rc "124 VAR=path; jq with a quoted-pipe regex filter allows (quote-aware)" 0 \
-    "$(bash_rc_of "$PRIMARY" "SP=/tmp/claude-1000/somesession/scratchpad; jq '[.permissions.allow[]? | select(test(\"luna|handover\"))]' \$SP/HIMMEL-3514-N424-bridge-hardening.leg-settings.json")"
+    "$(bash_rc_of "$PRIMARY" "SP=/tmp/claude-1000/somesession/scratchpad; jq '[.permissions.allow[]? | select(test(\"luna|handover\"))]' \$SP/${KEY_PFX}-3514-N424-bridge-hardening.leg-settings.json")"
 
 # 125: PATH-hijack shape (/pr-check critic panel round 1, Critical,
 # 2026-09-23) — `PATH=/tmp/evil; cat ~/.claude/settings.json` would run the
@@ -2819,8 +2814,6 @@ ROWS
 rows_both 655 2 "interpreter home read + write elsewhere denies (fail-closed)" <<'ROWS'
 node -e "const h=process.env.HOME;require('fs').writeFileSync('/tmp/x.json',h)"
 ROWS
-# ponytail (HIMMEL-4317): a body the text does not hold names no API, so
-# `echo <base64> | base64 -d | python3` and `python3 /tmp/x.py` still allow.
 # 656-669 (J1773b): filename-axis splices of the live name stay denied.
 rows_both 656 2 "filename-axis splice denies" <<'ROWS'
 echo x > ~/.claude/sett$"ings".json

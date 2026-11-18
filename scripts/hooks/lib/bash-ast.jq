@@ -31,10 +31,6 @@
 #
 # Fail closed: a node kind this module does not know raises an error, and so
 # does any jq failure, so the caller denies rather than guessing.
-#
-# ponytail: the alias table, `shopt` state and a function shadowing a builtin
-# (`touch(){ :; }`) are not modelled — every call is read by its literal
-# program name; upgrade path = a definitions pass over FuncDecl names.
 
 def _known: ["File","CallExpr","IfClause","WhileClause","ForClause","CaseClause",
   "Block","Subshell","BinaryCmd","FuncDecl","ArithmCmd","TestClause","DeclClause",

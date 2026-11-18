@@ -1,5 +1,5 @@
 [Unit]
-Description=himmel GCP CI runner pool autoscale tick (HIMMEL-6278)
+Description=himmel GCP CI runner pool autoscale tick
 
 [Service]
 Type=oneshot

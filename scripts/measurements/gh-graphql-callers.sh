@@ -35,9 +35,6 @@
 # core shapes (api without graphql, pr diff, run, workflow) are not logged.
 # Env: GH_CALLERS_LOG default log.
 #
-# ponytail: a per-call estimate and a polling sample, not the fleet's true
-# bill; upgrade path = read the cost/remaining headers per call inside a shim
-# the fleet launcher installs, once that is approved.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

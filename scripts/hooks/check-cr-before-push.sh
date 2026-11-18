@@ -299,21 +299,6 @@ resolve_diff_base() {
         # string for both the remote's name and its location when no named
         # remote is used (see `git help githooks`), so this is the signal
         # that no refs/remotes/<name>/$db can ever exist to require.
-        # ponytail: a NAMED remote whose name happens to equal its own URL
-        # (unusual, but legal) is indistinguishable at this boundary from an
-        # anonymous URL push and takes this branch too — git
-        # itself gives the hook no way to tell the two apart (same argv
-        # convention for both), so there is no smaller fix than accepting the
-        # ambiguity; harmless here since either branch still resolves a real,
-        # fetchable base for that same URL. Upgrade path: none known short of
-        # a git hook-API change.
-        # Resolve the target's own base ourselves instead: fetch the pushed URL's
-        # HEAD (its default branch, whatever it is named) into a scratch ref
-        # this hook owns — never refs/remotes/*, so it can't collide with, or
-        # be mistaken for, a real remote-tracking ref.
-        # Deterministic per-URL name, so a re-push reuses (refreshes) the same
-        # ref rather than accumulating one per push. No shared-config write,
-        # no git remote add — fail CLOSED if the fetch itself fails.
         if [ "$push_remote_name" = "$push_remote_url" ]; then
             local url_hash scratch_ref scrubbed_url
             scrubbed_url=$(scrub_endpoint "$push_remote_url")
@@ -467,24 +452,6 @@ resolve_diff_base() {
 #     fork-workflow clone where url AND pushurl both name the same fork —
 #     there both fetches resolve to the identical repository and agree, and
 #     there is no independent local datum left to check against.
-# ponytail: HIMMEL-3634 residual, HIMMEL-3654.
-#   - Pushing to any OTHER remote — a named non-origin remote, or an
-#     explicit-URL push (resolve_diff_base's explicit-URL branch, e.g. pushing
-#     to your own fork whose default branch already has the tip) — the empty
-#     diff was computed against push_remote_url itself (or a tracking ref
-#     for it). Re-fetching push_remote_url here re-validates against the
-#     SAME repository the pusher already fully controls and proves nothing:
-#     reproduced in a scratch repo — an attacker pushed their unreviewed
-#     commit straight to their own fork's main, then pushed explicitly to
-#     that fork; fetch_source=push_remote_url found it trivially "reachable"
-#     from itself and let the push through with NO marker (bypass). The only
-#     authority that proves "already reviewed" here is origin's own real
-#     default branch (the legitimate case — content already merged
-#     to origin/$db but new to the target — is exactly "reachable from
-#     origin's $db"), so this branch keeps fetching the literal "origin"
-#     name, unchanged from before.
-# Falls back to the bare name for the legacy manual/no-argv invocation too,
-# where no push is actually in flight to pin push_remote_url to.
 #
 # classify_lane / lane_strength: the same
 # non_docs/reviewable_docs lane test write_marker_for_branch uses on the

@@ -16,7 +16,6 @@ export function claudexSessionRoots(bridgeRoot = process.env.BRIDGE_ROOT, home =
   if (bridgeRoot) return { primary: join(bridgeRoot, "claudex-sessions"), legacy: null };
   return {
     primary: join(home, ".himmel", "bridge", "claudex-sessions"),
-    // ponytail: legacy root is read-only fallback for sessions in flight at the move, drop one release after it ships
     legacy: join(home, ".claude", "handover", "bridge", "claudex-sessions"),
   };
 }

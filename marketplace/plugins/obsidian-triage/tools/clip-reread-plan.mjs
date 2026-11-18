@@ -35,9 +35,6 @@
  *            (+ unreadable=U unreadable-dirs=D when nonzero)
  * The counts are a PLAN: this tool runs no synthesis. The printed command is paid
  * and held by the ticket that owns the paid rerun; nothing here runs it.
- *
- * ponytail: tags are not re-derived from thread text (a guess is judgement),
- * upgrade path: a vault-tag-set matcher once a sample shows it is safe.
  */
 import { chmodSync, existsSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, sep } from "node:path";

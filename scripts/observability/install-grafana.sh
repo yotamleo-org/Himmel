@@ -27,8 +27,6 @@
 #
 # macOS is not supported yet (launchd packaging).
 #
-# ponytail: the pins below are bumped by hand, upgrade path: a pin-bump check in
-# himmel-doctor once a second pinned upstream binary exists.
 set -uo pipefail
 
 PROM_VER="3.16.0"

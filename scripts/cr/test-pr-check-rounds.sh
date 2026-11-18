@@ -3,6 +3,7 @@
 # Bash 3.2-safe; no network or paid critic calls.
 # Platform guard: requires POSIX Bash 3.2+; on Windows, run under Git Bash.
 set -uo pipefail
+_TK='HIMMEL-'
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/fixture-tempdir.sh
@@ -1281,7 +1282,7 @@ assert_has "$(cat "$git_dir/cr-critic-scores.jsonl" 2>/dev/null)" '"verdict":"de
 if [ -e "$git_dir/cr-pending/feature" ]; then pass "failed disposition leaves the marker pending"; else fail "failed disposition leaves the marker pending"; fi
 cp "$tmp/write-verdicts.real" "$fx/scripts/cr/write-verdicts.sh"
 chmod +x "$fx/scripts/cr/write-verdicts.sh"
-defer5="$(cd "$repo" && bash "$fx/scripts/cr/review-round.sh" defer --head "$head4" --branch feature --defer-to HIMMEL-9000 2>"$tmp/defer5.err")"; defer5_rc=$?
+defer5="$(cd "$repo" && bash "$fx/scripts/cr/review-round.sh" defer --head "$head4" --branch feature --defer-to "${_TK}9000" 2>"$tmp/defer5.err")"; defer5_rc=$?
 assert_eq "$defer5_rc" "0" "retry repairs a post-amendment disposition failure"
 assert_has "$defer5" "clear-cr-marker CLEARED branch=feature sha=$head4" "delta-round disposition retry passes the real marker gates"
 assert_has "$defer5" "clear-cr-marker: CR clean" "delta-round disposition retry uses sanctioned marker clearance"
@@ -1711,10 +1712,6 @@ postcap_fix postcapzero
 postcap_out="$(postcap_start postcapzero)"; postcap_rc=$?
 assert_eq "$postcap_rc" "8" "a delta round with no findings buys no post-cap round"
 
-# The documented ceiling (ponytail at ledger_query): critic rows are
-# session-writable, so a worker-written finding row under a model name outside the
-# excluded three IS a critic row and buys the round. A buy costs one review
-# round, never a merge. This row pins that behaviour so a tightening shows up.
 three_rounds postcapforge suggestion
 postcap_amend postcapforge "$cap_r3_head" stub-1 fixed
 fix_commit postcapforge
@@ -2122,7 +2119,7 @@ if [ -e "$git_dir/cr-pending/important" ]; then pass "an unclassified Important 
 CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" amend \
     --branch important --head "$important_head" --id stub-1 --set fu_class=hardening --set fu_why=no-check \
     --reason 'classified hardening by the adjudicator' >/dev/null 2>"$tmp/important-class.err" || fail "important fu_class amend"
-defer6="$(cd "$repo" && bash "$fx/scripts/cr/review-round.sh" defer --head "$important_head" --branch important --defer-to HIMMEL-9001 2>"$tmp/defer6.err")"; defer6_rc=$?
+defer6="$(cd "$repo" && bash "$fx/scripts/cr/review-round.sh" defer --head "$important_head" --branch important --defer-to "${_TK}9001" 2>"$tmp/defer6.err")"; defer6_rc=$?
 assert_eq "$defer6_rc" "0" "delta-round Important finding is deferred"
 assert_has "$defer6" "clear-cr-marker CLEARED branch=important sha=$important_head" "deferred delta-round Important finding clears the new head through the real gate"
 if [ -e "$git_dir/cr-pending/important" ]; then fail "the real gate clears the delta-round Important marker"; else pass "the real gate clears the delta-round Important marker"; fi

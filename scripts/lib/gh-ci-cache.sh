@@ -36,12 +36,6 @@
 #   CIC_SLEEP_CMD            sleep seam for the budget wait (default sleep)
 #   CIC_CLOCK_FILE           test seam: a file holding the fake "now" (epoch seconds)
 #
-# ponytail: conditional REST snapshots cover at most 100 latest check runs and
-# statuses each; larger sets fall back to gh's GraphQL rollup. Upgrade when
-# pagination dominates actual PR snapshots.
-# ponytail: the fetch lock is an atomic mkdir, not flock — flock is absent on
-# Git Bash / macOS; a lock older than 60 s is broken, and a waiter that times out
-# fetches directly (cost, never correctness, degrades).
 
 # GraphQL's actual remaining budget comes from its response headers, not
 # rate_limit's sometimes-stale GraphQL report. Probe only when using GraphQL.
@@ -455,8 +449,6 @@ _cic_budget_wait() {
     now=$(cic_now)
     if [ -z "$core_rem" ] || [ -z "$gql_rem" ]; then
         if [ -n "$CIC_RUN_ID" ]; then CIC_ERR="cannot parse REST core budget"; return 2; fi
-        # ponytail: an unreadable rate_limit reply means "proceed" for the pre-check (advisory,
-        # fails open on cost only); after a 403 the wait is a flat 60 s. Upgrade: none needed.
         [ "$force" = 1 ] || return 0
         core_rem=0; gql_rem=0; core_reset=$((now + 60)); gql_reset=$((now + 60))
     fi

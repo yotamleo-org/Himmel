@@ -45,8 +45,6 @@ unset HIMMEL_LAUNCH_GUARD_WARNED
 # never confirms (44c+) then outruns the CI timeout. Pin the platform so the
 # suite is host-independent; cases that want Darwin (43, 43c) set or unset it
 # per call.
-# ponytail: the Darwin-shim launch path is exercised only by cases 43/43c, not
-# end to end on a real Mac, until the shim's ~7 min budget can be shortened via a test seam.
 export HEADED_ARM_UNAME=Linux
 # This mktemp used to be unchecked. A failed mktemp leaves $tmp
 # EMPTY, and every fixture path built on it below ("$tmp/..." -> "/...")

@@ -73,7 +73,7 @@ LANE="${CADENCE_USAGE_LANE:-${WORKER_SESSION_LANE:-native}}"
 is_num() { case "$1" in ''|*[!0-9.]*) return 1 ;; *.*.*) return 1 ;; *[0-9]*) return 0 ;; *) return 1 ;; esac; }
 is_int() { case "$1" in ''|*[!0-9]*) return 1 ;; *) return 0 ;; esac; }
 
-lift=false  # HIMMEL-4423: never inherit an env value into the ledger row
+lift=false
 lift_followed=false
 emit() {
   [ -d "$LEDGER_DIR" ] || mkdir -p "$LEDGER_DIR" 2>/dev/null
@@ -284,11 +284,6 @@ _fleet_admit_hook() { # _fleet_admit_hook <point> <path>
 # ages out). A fence that landed in a victim is not in the named gate, so its
 # check fails; one created after the `mv` lands in a successor's gate (two
 # fences, refuses) or nowhere (ENOENT). Every branch refuses: over-count only.
-# ponytail: `_fleet_gate_drop` is still check-then-remove — a holder paused
-# between its fence check and its `rm -rf` can delete a successor's gate. That
-# only ever REMOVES a successor's fence, so the successor's fenced rename fails
-# and it refuses (over-count, never under-count); no destructive admit
-# operation is reachable without a live fence.
 _fleet_gate_take() {
   local gate="$1" held_at victim seen fence rm_pid rm_ticks rm_secs
   if ! mkdir "$gate" 2>/dev/null; then
@@ -875,16 +870,6 @@ if [ "$_fleet_admitted" -eq 1 ]; then
       # reservation. A name with a control character is never a
       # census entry (and never a reservation, see `_fleet_reserve`'s caller),
       # so it cannot forge a match.
-      # ponytail: HIMMEL-3012 — without a readable cmdline (no procfs — macOS/Windows — or a
-      # stub) the census only has the FIRST whitespace token of the ps line, so
-      # there the shared-first-token consumption stays: a
-      # whitespace-name reservation is never consumed (its full name is never a
-      # first token), a plain one can still be consumed by another live worker that
-      # shares its first token.
-      # BY DESIGN not matched: arm-resume.sh reserves under the flattened
-      # handover path but launches under `-n <TICKET> <name> s<N>`, so its
-      # reservation never matches a live session — it is released by that
-      # script's EXIT trap (_arm_fleet_release_pending) on every exit instead.
       _fleet_resv_sname=""
       # The whole file, not its first line: a name file with a second line
       # (a forged or hand-edited one; `_fleet_reserve` writes one

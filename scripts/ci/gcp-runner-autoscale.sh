@@ -9,9 +9,6 @@
 # CI_GCP off or an empty queue does nothing; an unreadable CI_GCP or queue fails the tick
 # without creating a VM.
 #
-# ponytail: depth is the queued gcp jobs alone, and `up N` counts busy VMs as live, so a
-# queue behind busy runners is topped up on the tick after one finishes; upgrade to
-# live + queued once the live proof shows the wait matters.
 set -uo pipefail
 
 REPO="${GCP_RUNNERS_REPO:-yotamleo/Himmel}"

@@ -2,7 +2,6 @@
 // The list is the handover registry (~/.claude/handover/registry.json, repos{name:{path}}); a project's checks come
 // from its own last good doctor feed, cached under ~/.himmel/state/config-ui/feeds/<name>.json by the UI that ran in it.
 // Nothing here runs a doctor: a project nobody opened yet is "not checked", never guessed.
-// ponytail: another project's rows are only as fresh as its own last UI run, a cross-project probe is a later step.
 import { createHash } from "node:crypto";
 import { mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";

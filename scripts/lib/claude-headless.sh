@@ -230,8 +230,6 @@ tree_descendants() {
 # A row with no worker_pid (launch gap) targets its wrapper instead: releasing it
 # on TTL alone admitted a dispatch beside a live wrapper. The
 # wrapper's own trap takes its launched child down with it.
-# ponytail: a worker launched but not yet recorded is only reached through that
-# wrapper; upgrade path is a wrapper-side process-group record.
 kill_expired_worker() {
   local wpid wstart i kids k alive
   wpid="$(jq -r '.worker_pid // empty' "$1" 2>/dev/null)"
@@ -426,12 +424,6 @@ steal_stale_reclaim_lock() {
     # meantime nests the marker or replaces theirs. Losing the
     # mkdir means the slot is taken and the displaced owner's own ownership
     # re-check (reclaim_stale_lock) refuses it.
-    # ponytail: dir fallback only (flock absent). The displaced owner's
-    # check-then-rm in reclaim_stale_lock is still not atomic, so a steal landing
-    # between its pid re-check and its rm can still let two reclaimers proceed;
-    # no portable kernel lock exists without flock(1). Upgrade path: require
-    # flock on macOS. Also open: an owner pid still empty after
-    # 0.2s counts as dead.
     seam steal-restore
     # prim-ok: atomic create-if-absent that restores a displaced marker; this is the lock protocol itself, not a held critical section.
     if mkdir "$RECLAIM_LOCK" 2>/dev/null; then
@@ -495,10 +487,6 @@ lock_release() {
 # admission reaps it (count_active). The row's
 # heartbeat is stamped at lifecycle writes only (create, launching, worker pid);
 # a worker alive past HIMMEL_DISPATCH_ROW_TTL_SECS is reaped and killed.
-# ponytail: the TTL is a wall-clock bound, not a progress probe (the worker's
-# progress is unobservable), so a legitimate dispatch longer than the TTL loses
-# its slot; raise the TTL for such callers, or add a worker-side heartbeat once
-# the envelope streams progress.
 #
 # codex-1 follow-up: marking the row terminal is not enough on its own — the
 # actual claude session runs as a BACKGROUND child (_LAUNCHED_CLAUDE_PID, set
@@ -610,26 +598,10 @@ BANK_VERDICT="$(CADENCE_USAGE_WORKER="${CADENCE_USAGE_WORKER:-claude-headless:$R
 # directory pass. Fall back to the directory's own mtime in that case (still
 # catches entries being added/removed, even without a content-bearing file
 # to compare).
-# ponytail (codex-3, final round): the MAX-across-descendants approach means
-# a pre-existing file with a bogus future-dated mtime (clock skew, a
-# preserved timestamp from a git checkout, etc.) could dominate the max on
-# both sides of the comparison and mask a genuine same-run update to a
-# DIFFERENT, older file — a real gap, but it needs an already-abnormal
-# precondition (a future timestamp already sitting in the tree) to matter.
-# Upgrade path if this ever bites: content-hash the tree instead of trusting
-# mtimes at all (sha over a sorted per-file digest list, same shape as
-# scripts/statusline/check-hud-drift.sh's own drift hash) — more correct,
-# meaningfully more expensive per check, not worth it until this is real.
 # BSD/macOS date has no %N and prints it as a literal "N" ("1759000000.N"),
 # which artifact_present's awk then compares as a STRING, so a genuine update
 # never reads as newer. Rewrite that ".N" tail to ".000000000" (whole-second
 # resolution there); GNU date never prints it, so its output is untouched.
-# ponytail: whole-second mtimes on BSD miss a same-second rewrite, switch to
-# stat -f %Fm or perl if a macOS same-second miss is ever observed.
-# The per-file dates come from a read loop, not `find -exec date -r {} +fmt ;`:
-# macOS find rejected that -exec ("find: ;: unknown primary or operator"), the
-# scan came back empty and the directory's own (unchanged) mtime was used, so a
-# content-only update never read as newer (os-verify runs 36625273811, 36629152153).
 artifact_mtime() {
   local path="$1" newest
   if [ -d "$path" ]; then

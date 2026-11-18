@@ -389,13 +389,6 @@ const SECRET_NAME_SHAPES = 'TOKEN|SECRET|KEY|PASSWORD|PASSWD|CREDENTIAL|COOKIE|A
 const NAMED_SECRET_ASSIGNMENT = new RegExp(
   `([A-Za-z0-9_]*(?:${SECRET_NAME_SHAPES})[A-Za-z0-9_]*\\s*[=:]\\s*)\\S+`, 'gi',
 );
-// ponytail: shape-based, so an unnamed or multi-word credential (e.g.
-// `curl -u user:pass`, a quoted passphrase with spaces) still gets through —
-// same ceiling stop-queue.mjs's copy documents, and the same call: a tripwire
-// for the shapes that actually occur (name=value, Bearer/Basic/Token headers,
-// GH/Slack tokens, long opaque strings), not a proof no secret can leak.
-// Closing that fully means a real secret scanner (gitleaks already is one),
-// not more regexes bolted onto a chain-skip logger.
 function redactSecrets(text) {
   return String(text)
     // An `Authorization: Bearer <token>`
@@ -531,8 +524,6 @@ function denyLine(message) {
 // explicitly, so a suite that feeds the launcher made-up payloads cannot fill
 // a checkout's log. Best-effort and silent: this is observability, and a note
 // on stderr per tool call would be noise in the session context.
-// ponytail: an unbounded append of roughly half a kilobyte per tool call; the
-// reader reads only the tail of each file, upgrade path is a daily rotation.
 function runLogPath() {
   if (process.env.RUN_HOOK_CHAIN_RUN_LOG) return process.env.RUN_HOOK_CHAIN_RUN_LOG;
   const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
@@ -1128,12 +1119,6 @@ function finishChain(st, sessionId) {
 // byte-for-byte as it came: the unroller only ever adds allows for loops it
 // can prove equivalent, it never removes a deny.
 //
-// ponytail: equivalence is argued for bash and zsh with the default IFS, no
-// global aliases, no session function shadowing a name in UNROLL_COMMANDS and
-// no shell-local attribute on the loop name; a session that exported IFS, a
-// zsh with `alias -g`, a `cat` function, or a profile that ran `declare -i x`
-// sits outside the proof. The upgrade path is unrolling inside the shell itself,
-// which the guards cannot do statically.
 const UNROLL_MAX_ITEMS = 16;
 const UNROLL_MAX_BYTES = 8 * 1024;
 // One budget for every shfmt call of one command; the chain clock is running.

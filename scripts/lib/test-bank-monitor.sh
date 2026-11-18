@@ -173,8 +173,8 @@ printf '%s' '{"oauthAccount":{"accountUuid":"uuid-bank-monitor-DIFFERENT"}}' > "
 sample 60 20
 out="$(run_at 1000 12:00)"; rc=$?
 printf '%s' '{"oauthAccount":{"accountUuid":"uuid-bank-monitor-test"}}' > "$HOME/.claude.json"
-check 'HIMMEL-1712: an account-mismatched cache is silent (same as a missing cache), never fatal' '' "$out"
-check 'HIMMEL-1712: an account-mismatched cache exits 0' 0 "$rc"
+check 'an account-mismatched cache is silent (same as a missing cache), never fatal' '' "$out"
+check 'an account-mismatched cache exits 0' 0 "$rc"
 
 # seven_day_reset_in / unspent_at_reset. Rate +10/h (20 -> 25 over
 # 30 min); reset epochs 10000 = 1970-01-01T02:46:40Z (2.0h out), 38800 = 10:46:40Z.

@@ -509,12 +509,6 @@ has_local_edit() {
     [ -f "$dst" ] || return 1
 
     # (1) Snapshot baseline: the sha the template itself last wrote here.
-    # ponytail: a HASH cannot be compared newline/JSON-insensitively (HIMMEL-3037),
-    # so a mismatch is only forgiven when a VERIFIED git baseline (see
-    # snapshot_git_equiv) shows the difference is formatting-only. A vault with
-    # no git baseline, or whose stamp commit already holds the re-serialised
-    # content (nothing left to verify against the hash), still withholds a file
-    # Obsidian re-serialised AND the template has since really changed.
     local snap dst_sha
     if snap="$(snapshot_sha "$rel")" && [ -n "$snap" ]; then
         dst_sha="sha256:$(sha_of "$dst")"

@@ -124,7 +124,6 @@ def _transcript_tree(p: str) -> bool:
     or anything below it, except one slug's `memory/` subtree (block-read-secrets
     is_transcript_tree parity). A `..` anywhere in such a path denies."""
     p = p.rstrip("/")
-    # ponytail: roots above .claude/projects (home, filesystem root) stay allowed, the same limit as the Claude hook; residual coverage: home forms, symlinks, globs and shell builtins
     m = re.search(r"(?:^|/)\.claude/projects(?:/(.*))?$", p)
     if not m:
         return False
@@ -337,11 +336,6 @@ _FIND_VERB = re.compile(_EXE_PREFIX + r"find(?:\.exe)?(?=\s)")
 # (`bash -o pipefail -c`). The quoted payload is read as text, so
 # `bash -c 'find d -delete'` matches like the bare form. Twin of the .sh
 # _xwrap / MASS_CMDPOS / MASS_PFX. Over-deny only: `command -v find; ls -delete`.
-# ponytail: the widening covers the mass-delete family only, not
-# _cmdpos_destructive's atoms (`bash -c 'shutdown'` still passes), upgrade
-# path a word-level tokenizer.
-# Every head here takes an optional .exe, and xargs does too in this set only
-# (the .sh twin's _xwrap adds xargs.exe to lib.sh's xargs).
 _XARGS = next(i for i, (heads, _, _) in enumerate(_WRAPPERS) if heads == ("xargs",))
 _X_WRAPS = tuple(
     ((re.compile(_EXE_PREFIX + r"xargs(?:\.exe)?"),),) + w[1:] if i == _XARGS else w
@@ -1786,14 +1780,6 @@ def qmd_scope_reason(tool: str, args: dict):
 # Removing a working capability is the operator's call, not this table's — so
 # no known tool is blanket-denied; each is inspected through its payload.
 #
-# ponytail: the `code` class is a LITERAL-TEXT scan — the same regexes the
-# terminal tool gets, run over the code string. Obfuscation (string concat,
-# base64, dynamic paths) is not caught; the file tools + CC-side hooks stay the
-# enforcing layer. `.key`/`.env` substrings in code over-block (fail-closed).
-# ponytail: the `scan` class does not apply the engine-specific external-write
-# fence (_external_writes_allowed) to the outbound tools (send_message,
-# react_to_message, yb_send_*, ha_call_service, feishu_drive_*_comment); making
-# them refuse on an untrusted engine is a separate operator decision.
 CODE_TOOL_ARGS = {
     "execute_code": ("code",),
     "browser_exec": ("code",),
@@ -1877,9 +1863,7 @@ FILE_URL = re.compile(r"^file:(?://(?:localhost)?)?(?=/)", re.IGNORECASE)
 def _file_url_path(v: str) -> str:
     """A `file:` URL names a LOCAL path, so it is judged as that path: scheme
     (any case) and an empty or `localhost` host stripped, percent-escapes
-    decoded, `/C:/x` read as `C:/x`. Any other value comes back unchanged.
-    ponytail: `file://<other-host>/share` (a UNC path) is left as it is and so
-    skipped like any remote URL — no local-path reading of it is attempted."""
+    decoded, `/C:/x` read as `C:/x`. Any other value comes back unchanged."""
     m = FILE_URL.match(v)
     if not m:
         return v

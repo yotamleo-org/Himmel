@@ -22,9 +22,6 @@
 #   CHECKPOINT <i>/<n> <root> rc=<rc> next=<root|none>
 # and the exit code is the root's own (2 = bad usage, an unknown root).
 #
-# ponytail: the checkpoint is one scan root, so the unreachable window is the
-# largest root (scripts/hooks, ~140 suites), not a single suite; shard the big
-# roots with run-shell-tests.sh --shard if a window that size proves too long.
 # Platform guard: chief kit is Linux-only by design; bash 3.2-safe.
 set -uo pipefail
 

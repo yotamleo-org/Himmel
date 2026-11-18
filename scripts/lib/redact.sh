@@ -16,9 +16,6 @@
 # `--password X`, `--token X`, `mysql -pX`. The flag rules over-match
 # (`ssh -p2222` reads as a -pX password): a false redaction costs nothing here,
 # a leak does.
-# ponytail: flag names are matched lowercase only (no BSD-sed `I` flag) and a
-# space-separated `-p X` is not caught, upgrade: one awk pass if a real leak
-# shows up.
 #
 # The sed shapes live in four index-aligned arrays (match regex, replacement, name,
 # precision): redact() builds its sed argv from them and redact_check greps the same

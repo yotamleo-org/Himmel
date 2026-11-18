@@ -392,8 +392,6 @@ if [ -n "$context_file" ] && [ "$artifact_mode" -eq 0 ]; then
         ctx_text="$(cat "$ctx_snap")"
         ctx_bytes="$(printf '%s\n' "$ctx_text" | wc -c | tr -d '[:space:]')"
         diff_now="$(printf '%s\n' "$diff_in" | wc -c | tr -d '[:space:]')"
-        # ponytail: an over-cap context is dropped whole, never trimmed per
-        # range; upgrade path = cut whole ranges from the end until it fits.
         if [ $((diff_now + ctx_bytes)) -gt "$PROMPT_CAP_BYTES" ]; then
             echo "critic-first-pass.sh: context file cut — diff ($diff_now bytes) + context ($ctx_bytes bytes) exceeds CRITIC_PROMPT_CAP_BYTES ($PROMPT_CAP_BYTES); the diff is reviewed whole, without context" >&2
             : > "$ctx_ranges_file"
@@ -429,7 +427,7 @@ if [ "$artifact_mode" -eq 1 ]; then
 - Replace N with the exact bullet count under that heading (0 is allowed; then put no bullets under it).
 - Every bullet MUST end with a [<file>#<heading>] citation naming a section heading that exists in the artifact.
 - Number IDs sequentially across all sections.
-- Critical = certain bug / security / data-loss. Important = likely bug or risky pattern. Suggestion = style / cleanup, OR a minor / lower-confidence functional or security finding that doesn't clear Important (HIMMEL-1405) — Suggestion is not limited to cosmetic issues.
+- Critical = certain bug / security / data-loss. Important = likely bug or risky pattern. Suggestion = style / cleanup, OR a minor / lower-confidence functional or security finding that doesn't clear Important — Suggestion is not limited to cosmetic issues.
 - DO NOT INVENT FINDINGS. Every bullet must cite something that is actually in the artifact. A fabricated finding is worse than a missed one, and an empty review is acceptable when the artifact is genuinely clean.
 - But do NOT withhold a real finding because it is minor or because you are unsure it will be acted on. Report it as a Suggestion. Filtering happens in a LATER pass (the merge gates on Critical + Important; the rest is auto-filed as deferred issues) — a finding you omit here is destroyed, not filtered.
 - When uncertain between two severities, pick the LOWER — downgrade, do not drop.
@@ -459,7 +457,7 @@ else
 - Replace N with the exact bullet count under that heading (0 is allowed; then put no bullets under it).
 - Every bullet MUST end with a [<file>:<line>] citation pointing into the diff (new-file line numbers).
 - Number IDs sequentially across all sections.
-- Critical = certain bug / security / data-loss. Important = likely bug or risky pattern. Suggestion = style / cleanup, OR a minor / lower-confidence functional or security finding that doesn't clear Important (HIMMEL-1405) — Suggestion is not limited to cosmetic issues.
+- Critical = certain bug / security / data-loss. Important = likely bug or risky pattern. Suggestion = style / cleanup, OR a minor / lower-confidence functional or security finding that doesn't clear Important — Suggestion is not limited to cosmetic issues.
 - DO NOT INVENT FINDINGS. Every bullet must cite something that is actually in the diff. A fabricated finding is worse than a missed one, and an empty review is acceptable when the diff is genuinely clean.
 - But do NOT withhold a real finding because it is minor or because you are unsure it will be acted on. Report it as a Suggestion. Filtering happens in a LATER pass (the merge gates on Critical + Important; the rest is auto-filed as deferred issues) — a finding you omit here is destroyed, not filtered.
 - When uncertain between two severities, pick the LOWER — downgrade, do not drop.
@@ -774,8 +772,6 @@ _cfp_emit_raw_diag() {
 # touching stdout or the exit code. Head/branch/ledger come from the panel's
 # exported CR_TARGET_HEAD/CR_TARGET_BRANCH/CR_LEDGER (its review root may not be
 # this cwd), else the cwd's repo.
-# ponytail: score rows do not carry an artifact label (spec/plan/diff); the raw
-# filename's mode field (diff|artifact) is the only marker of artifact mode.
 _cfp_record_score() {
     _crs_final="$1"
     _crs_head="${CR_TARGET_HEAD:-}"
@@ -1109,8 +1105,6 @@ if [ "$rc" -ne 0 ]; then
     # must also carry a vendor-error shape (an API/Error/HTTP line prefix or a
     # JSON error envelope), so prose that quotes a keyword stays
     # malformed-output.
-    # ponytail: keyword list and prefix shapes cover only the vendor error
-    # wordings seen so far, extend them as new vendor wordings are observed.
     _cfp_up=0
     if [ "$(printf '%s' "$raw" | wc -c | tr -d '[:space:]')" -le 600 ] \
         && ! grep -qE '^[[:space:]]*(- \[|#{1,6} )' <<< "$raw" \

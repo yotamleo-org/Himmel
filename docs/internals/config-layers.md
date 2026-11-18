@@ -218,13 +218,13 @@ config loud and recoverable:
   bridge's process, never in a session: the guard refuses the restore, accept
   and enroll verbs from a Claude session.
 
-ponytail: the seed, backups and audit log are owned by the same uid as every
+Limit: the seed, backups and audit log are owned by the same uid as every
 session, so a session can read the seed or plant a backup. The TOTP defends
 against a forged or hijacked Telegram sender, not against a hostile same-uid
 session. Upgrade path: a root-owned store with the restore as an afk-sudo kind
 (after the afk-sudo root helper).
 
-ponytail: a planted newest backup becomes the watcher's "newest good backup"
+Limit: a planted newest backup becomes the watcher's "newest good backup"
 suggestion, and `list` names a changed key only as "values differ", so the
 operator cannot tell a planted value from a real one before restoring. Upgrade
 path: the same root-owned store, whose backups a session cannot write.

@@ -59,8 +59,6 @@ function gitHooksDir(root) {
   return p ? path.resolve(root, p) : path.join(root, '.git', 'hooks');
 }
 
-// ponytail: only commands naming scripts/hooks/<file> become rows; inline
-// shell hooks are skipped, add a row per command when one needs reporting.
 function claudeHooks(root) {
   let cfg;
   try { cfg = JSON.parse(fs.readFileSync(path.join(root, '.claude', 'settings.json'), 'utf8')); } catch { return []; }

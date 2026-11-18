@@ -22,7 +22,7 @@ export function contextBarAndValue(f: Frame): { bar: string | null; value: strin
   const bar = display?.showContextBar !== false
     ? coloredBar(context.percent, f.barWidth, colors, thresholds(f))
     : null;
-  // himmel delta (HIMMEL-2900): the lane's denominator is a configured value, not a measured window.
+  // himmel delta: the lane's denominator is a configured value, not a measured window.
   const configured = isClaudexLane() ? label(` (${t('format.configured')})`, colors) : '';
   return { bar, value: `${value}${configured}` };
 }

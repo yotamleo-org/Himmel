@@ -33,9 +33,6 @@
 #
 # Platform guard (linux-only): drives VirtualBox through scripts/vm/lib/vm-clone.sh.
 #
-# ponytail: the loop mints a runner before it knows a himmel-vm job is queued, so
-# an idle VM waits up to JOB_MAX and is then recycled; upgrade to demand-driven
-# minting (poll queued workflow_job labels) if idle VM time ever matters.
 set -u
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

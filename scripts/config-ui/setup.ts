@@ -70,7 +70,6 @@ const CR_JQ = '[.[].statusCheckRollup[]? | select(.context == "CodeRabbit" or .n
 // CodeRabbit is an add-on: the App reviews a PR after it opens. "installed" means a CodeRabbit check shows on one of the
 // last 10 PRs of this repo; no gh, no sign-in or no remote is "unknown" and the page asks for a manual confirm.
 // The probe is async so a slow GitHub never stalls the server's other requests.
-// ponytail: the Setup page waits for the probe (5 s cap), upgrade path is a separate route the page fills in after it paints.
 async function coderabbit(o: SetupOpts) {
   const run = async (cmd: string, args: string[]) => (await execFileAsync(cmd, args, { cwd: o.projectRoot, env: o.env as NodeJS.ProcessEnv, timeout: 5_000 })).stdout.trim();
   let installed: "installed" | "not-installed" | "unknown" = "unknown";

@@ -35,54 +35,6 @@
 # quote-splitting (`qmd "qu"ery`), `$'…'` (`qmd $'\x71uery'`) or a backslash
 # (`qmd \query`, `q"md" query`) is refused, and `qmd "query"" notes"` — the
 # one argument `query notes` — is not.
-# ponytail: the verb in a variable (`v=query; qmd "$v" x`) is still a miss (value tracking: HIMMEL-4178) —
-# nothing is expanded; closing it needs value tracking.
-# ponytail: nested strings (`-c`, eval) are decoded and re-read to depth four
-# for every shell the hook names, the launchers that take a
-# string (`su -c`, `script -c`, `flock -c`, `env -S`, watch, parallel) and a
-# shell's here-string; what a shell reads from a pipe or a
-# process substitution, and an alias for qmd, cannot be read and fail closed
-# on naming qmd and a verb. A shell fed by a file (`sh <f`) is unread.
-# Also covered: sg, tmux, screen, at/batch, `builtin`, the prefix
-# wrappers (setpriv … pkexec) and elvish/nu/xonsh/pwsh `-c`.
-# A launcher that types or ships its command elsewhere fails
-# closed on naming qmd and a verb anywhere in its words: tmux (every
-# subcommand; send-keys -H hex decoded), screen (its \ooo, \n and ^X decoded),
-# and the remote and container launchers (ssh, docker, podman, nerdctl,
-# kubectl, oc, lxc, incus, distrobox, toolbox). pwsh/powershell
-# -EncodedCommand is base64-decoded (UTF-16LE) and read as a command.
-# A pipe continues across a newline; the `&` of a
-# redirection (`2>&1`, `&>f`) is no boundary; a piped stage that is no plain
-# filter and holds anything that runs its stdin — a shell, an interpreter
-# (python, perl, node, …, whose -c/-e string is read too), eval, xargs, an
-# expansion as the program, a launcher, a filter given an executing script —
-# fails closed on a producer naming a verb; and a shell or interpreter run on
-# a file the same command wrote (`… > f; sh f`, `… | tee f; bash f`) fails
-# closed on the command naming one.
-# ponytail: an expansion is read as a stage's program only in program
-# position (`| nice $l` is unread), and a written file only as the first
-# operand and only when written by the same command; tracking values across
-# commands and wrappers is the upgrade.
-# ponytail: names_verb reads qmd and the verb as words, bounded by anything but
-# a letter, digit or `-`, so a file name (block-bare-qmd-query.sh) or a host
-# (`ssh research qmd status`) is no hit; a qmd program under another name
-# (a symlink, `bun cli.js`) is a miss, as it is for the grammar above, and so
-# is a search verb qmd adds beyond query, search and vsearch.
-# ponytail: a tmux/screen launcher's typed text has no word boundary left
-# (names_verb_cat stays a substring test), so `tmux new -s research 'qmd status'`
-# is still over-denied — the safe direction; the upgrade is testing the
-# words before they are concatenated.
-# Where the consumer takes its program from elsewhere, the
-# sanctioned wrapper (qmd-bounded.sh) and a file search (rg, grep, egrep,
-# fgrep, not with --pre) name no verb (names_verb_nb): an interpreter with a
-# code string or script operand, xargs running a plain reader, a file a later
-# script operand reads, and a launcher's words. `qmd-bounded.sh … | sh`, a
-# written file run as a program and an interpreter reading its program from
-# stdin keep the strict test: search hits there are executed.
-# A heredoc makes qmd_words decline and the coarser fallback readings below
-# decide; the shared tokenizer (scripts/hooks/lib/shell-tokenize.sh)
-# models heredocs and can replace qmd_words once a third inlined
-# copy is wired into its sync suite.
 #
 # The command-position model (scripts/lib/bash-ast.sh) reads the command first
 # when it names qmd: a position that runs qmd with a search verb (brace
@@ -93,12 +45,6 @@
 # mention, a command over 8 KiB — is left to the regex reader below.
 # find's -exec, -execdir, -ok and -okdir argv is a program, so the model reads each
 # one as its own position: those four actions are all find has that run a program.
-# ponytail: that reading needs the position, so a find action in a body the model
-# cannot read (a '\''-spliced shell body) or behind a runner's shell body falls to the
-# regex reader, which has no find position; upgrade path: bash-ast.sh reads both.
-# ponytail: a command the model allows exits before the regex reader, so a qmd-free
-# encoded launcher beside a mentioning filter is never decoded, hostile shapes only;
-# no parse of shell text closes that class, upgrade path: watch what runs, not its text.
 #
 # Hook input arrives on stdin as JSON. Exit codes:
 #   0 - allow
@@ -477,8 +423,6 @@ WRAP='(sudo|doas|nice|ionice|chrt|taskset|stdbuf|setsid|nohup|command|builtin|bu
 WRAP="($WRAP|timeout${OPTV}[[:space:]]+[0-9.]+[smhd]?|(flock|chroot|sg)${OPTV}[[:space:]]+[^-[:space:]][^[:space:]]*|bwrap([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*([[:space:]]+[^-[:space:]][^[:space:]]*)?)?)*|tmux${OPTV}[[:space:]]+${TMUXSUB}${OPTV}|env([[:space:]]+(-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?|$ASSIGN))*|if|then|else|elif|do|while|until|!)"
 # A case arm's `)` is a command position too, and zsh runs `=qmd` as the
 # qmd its PATH finds.
-# ponytail: any `)` opens a command, so `echo "$(x)"qmd query` over-denies;
-# telling a case arm from a substitution's close is not done.
 CMDREST='[[:space:]]*(('"$ASSIGN"'|=?'"$EXEPFX$WRAP"')[[:space:]]+)*=?'"$EXEPFX"
 CMDPOS='(^|[|;&()`{])'"$CMDREST"
 # The program: qmd itself, or a JS runtime handed qmd's entry point.
@@ -715,9 +659,6 @@ names_verb_cat() {
 # program, a file a later script operand reads, a launcher's words. A shell, an
 # interpreter reading its program from stdin and a written file run as a
 # program keep names_verb: search hits there are executed, not read.
-# ponytail: an interpreter code string that execs its own stdin
-# (`python3 -c 'exec(sys.stdin.read())'`) runs the output; telling it from a
-# reader needs a parser for every language — file a ticket if seen.
 names_verb_nb() {
     _nvnb_folded "$(_nv_fold "$1")" || _nvnb_folded "$(_nv_fold_esc "$1")"
 }
@@ -987,16 +928,6 @@ qmd_nested() {
     # loop keyword in a piped stage makes the pipe the frame's fallback. A
     # popped frame restores the boundary before its opener, so `(a) | sh`
     # reads `(a)` as the producer.
-    # ponytail: the fallback outlives the group or loop it came from, so a
-    # bare shell after it (`echo qmd query x | { cat; }; sh`) is over-denied;
-    # match the closing keyword if one is hit.
-    # pc is set while only blanks follow a lone `|` or `|&`, so a
-    # newline there (printed `;`) continues the pipeline: the stage restarts
-    # after it and the pipe still feeds it. pp is set while the
-    # next word is in program position; ro while the next word is a `>`
-    # target and te in a tee's words, both recorded in wr for _ran_written.
-    # ri is set while the next word is a `<` target; sw is lb when the
-    # current stage reads a written file on stdin (`< f sh`).
     local lb=-1 pipe='' pfrom=-1 fs='' fb='' fr pc=0 pp=1 ro=0 te=0 tw ws ri=0 sw='' so sr
     local sk='' se=0 sf=0 nk='' nr=0 pk=-1 e0 nw enc fo ia ct sj tk hx hs tx sd x oa sx atw xk nbw
     while [ "$i" -lt "$n" ]; do
@@ -1591,9 +1522,6 @@ _dyn_body() {
 # pwsh, a command substitution, a variable bound by read, for, printf -v or a
 # substitution, or the name of an alias or function defined earlier in WORDS
 # that runs one of them. A substitution anywhere is read as a command too.
-# ponytail: brace expansion (`/usr/bin/{tmux,x}`) and a value bound some other
-# way (declare -n, mapfile into an array) are unread; a heredoc makes
-# qmd_words decline and skips this reading entirely.
 dyn_check() {
     local LC_ALL=C t=$1 dp=$2 ar=${3:-0} n i=0 j c pd bq pp=1 w nx k s inner subs sp sa sb lastd tail nm r
     local adang=' ' fdang=' ' vdyn=' ' wopt=0 wx=0 aln='' wo=0 al=0 vm=0 fn=0 bd dk
@@ -2012,9 +1940,6 @@ def viaenv: (.via // []) | any(. == "env");
 #               no env, no assignment, no heredoc text
 #   findreader  find whose every -exec/-execdir/-ok/-okdir runs a plain reader
 #   plainfilter a pipe consumer that is a plain non-executing filter (no --pre)
-# ponytail: the two script names are matched by file name, not by path or content;
-# the guard prevents an orphaned GPU process, it is not a fence against a hostile
-# model. Upgrade = pin the resolved path under the primary checkout.
 def lits: [.argv[]] | all(.[]; .t == "lit");
 def plainpos: ((.assigns // []) | length) == 0 and ((.via // []) | length) == 0 and ((.redirs // []) | all(.[]; (.text // "") == ""));
 def scriptb: (if ((.prog | b) | IN("bash", "sh")) then .argv[1] else .argv[0] end) | if . == null then "" else ((.v // "") | b) end;

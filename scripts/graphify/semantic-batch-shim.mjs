@@ -34,8 +34,6 @@ if (!['record', 'replay'].includes(mode) || !dir) { console.error('batch shim: G
 // paragraph: each file's path, sha256 and text, never the instructions or the addendum) is the second key: it
 // changes only when the chunk's own content does. semantic-batch.mjs submit reads the <sha>.key sidecar written here
 // and results hands the key map back as bodies.json. The same pattern is in semantic-batch.mjs (INSTRUCTION_END).
-// ponytail: the boundary is graphify's current wording; a reworded boundary leaves no body key, so replay falls back
-// to the whole-prompt hash alone, never a wrong answer. Upgrade path: a chunk id graphify itself would pass.
 const INSTRUCTION_END = /^Now extract the knowledge graph from the following source file[^\n]*\n\n/m;
 const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 const input = readFileSync(0, 'utf8');

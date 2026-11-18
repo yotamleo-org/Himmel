@@ -122,9 +122,6 @@ left="$(find "$SCRATCH/tmp" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' ')"
 [ "$left" -eq 0 ] && ok "no sandbox left behind in TMPDIR" || bad "$left leftover entr(ies) in TMPDIR"
 
 # --- 10. known ceiling: a hard-coded real-home path is not seen --------------------
-# ponytail: the canary redirects $HOME only, so a suite that reads a literal
-# /home/<user>/.env (or ~root) bypasses it; the static read-sink check and the
-# judge cover that route, upgrade path is an fanotify/strace watch on the real home.
 mkfx hardcoded 'cat /nonexistent-home-canary-path/.env 2>/dev/null; exit 0'
 run_canary hardcoded
 [ "$RC" -eq 0 ] && ok "known ceiling documented: hard-coded real-home path passes" || bad "hard-coded path row changed behaviour (rc=$RC)"

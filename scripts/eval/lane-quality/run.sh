@@ -78,9 +78,6 @@
 # gates apply), and its metered balance is read before and after each task;
 # the judge always runs native. deepseek and claudex exit 3 until the
 # operator opts in (deepseek needs a station opt-in in the launching shell).
-# ponytail: OpenRouter credit metadata lags, so a per-task balance delta can
-# under-report; read the sweep's account delta again later for the total.
-# Upgrade path: per-generation cost from OpenRouter's generation API.
 #
 # Budget: --max-usd (default 3) caps the sweep. The agent's reported
 # total_cost_usd is summed after each task; no further task starts once the
@@ -116,17 +113,6 @@
 # LQ_WORK_ROOT, LQ_TRANSCRIPTS, LQ_LANE_BIN, LQ_METERED_PROBE, LQ_CLAUDEX_BIN,
 # LQ_OPENROUTER_BIN.
 #
-# ponytail: the bank reading is the account-wide five-hour percent, so any
-# other session running during a task lands in its delta; run a sweep on a
-# quiet fleet, or read the delta as an upper bound. Upgrade path: per-session
-# usage from the transcript once a lane exposes it.
-# ponytail: a single headless run cannot hand off, so `handoffs` is not
-# recorded; compactions are. Upgrade path: drive a lane through its worker
-# launcher when phase 2 measures worker churn.
-# ponytail: the hidden tests live in the repo, so an agent on a later checkout
-# could read them; the runner flags a transcript that touches this directory
-# (`peeked`) instead of preventing it. Upgrade path: move the tasks to the
-# state repo if a run is ever flagged.
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -199,20 +185,6 @@ metered_read() { # prints the metered lane's balance in USD, "?" if unreadable, 
 }
 
 # List prices in USD per million tokens: input, output, cache write, cache read.
-# ponytail: Claude Code does not recognize the OpenRouter slug
-# anthropic/claude-haiku-4.5 ([claude-code:unrecognized_model], costBasis
-# unknown) and over-counts its total_cost_usd about 5x, so a metered lane is
-# repriced here from modelUsage; an unpriced model leaves the cost unknown and
-# stops the sweep. Upgrade path: drop this table once Claude Code prices the
-# gateway slug (costBasis no longer "unknown"), or add a row per model adopted.
-# The metered balance fell 12-16% more than list price in the first live
-# sweeps, so the repriced cost carries a 1.2 markup to keep --max-usd a real cap.
-# Claude Code's figure was exactly 5x list price on every live task, whatever
-# the token mix. The per-call factor (BUDGET_FACTOR) relies on that ratio, so a
-# run that reports any other ratio, no cost or no priced tokens leaves the cost
-# unknown and stops the sweep.
-# haiku-5.5 (the launcher default) lists 0.1/0.5/0.125/0.01,
-# x5 above 100k prompt tokens; the row carries the high tier so --max-usd stays a cap.
 PRICES='{"anthropic/claude-haiku-4.5":[1,5,1.25,0.1],"anthropic/claude-haiku-5.5":[0.5,2.5,0.625,0.05]}'
 METERED_MARKUP=1.2
 REPORTED_RATIO=5

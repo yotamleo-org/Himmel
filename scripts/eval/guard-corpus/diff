@@ -29,8 +29,6 @@
 # Each hook runs behind a kernel boundary: the materialised hook tree and
 # scratch primary are read-only inputs; HOME/HANDOVER_DIR live in fresh tmpfs.
 # Host filesystem Unix sockets are not bound, and networking is unshared.
-# ponytail: invalid-UTF-8 corpus -> uncaught UnicodeDecodeError instead of
-# setup-error 2 -- upgrade path: fold UTF-8 decode into the corpus-read handler.
 #
 # A hook source is given either as a path to a .sh file, or as `sha:PATH` where
 # PATH is a repo-relative hook path materialised from that git SHA into a

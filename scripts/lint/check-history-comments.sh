@@ -13,16 +13,10 @@
 #   an added whole-line comment in a code file (the extensions are is_code() in
 #   ticket-refs.awk) that is a review-fix note, a bot-review round, "round <n>" or a
 #   judge qid (j + 4 digits + letter) is refused; docs and YAML are not judged for these
-#   an added ponytail marker, in any text file outside a whole-file row, is refused: the
+#   an added ceiling marker (the word and a colon), in any text file outside a whole-file row, is refused: the
 #   ceiling it records belongs in the ceilings ledger (scripts/ledger/ceiling-add.sh)
 # Binary files (index blob `-text`) are skipped; the diff keeps --text so a .gitattributes
 # `-diff` entry cannot hide an added text line. history-ok and ticket-ok markers do not exist.
-# ponytail: test citations are refused in four shapes (G1-G4) only, so a key in another
-# row-name shape passes as data; upgrade path: the follow-up ticket for a test row-name
-# helper that rejects keys.
-# ponytail: a block comment or docstring whose opener lies outside the hunk is not seen, so
-# a diff that only extends one counts 0; upgrade path: the follow-up ticket that reads
-# comment state from the tip blob over each hunk's line range.
 #
 # Usage:
 #   check-history-comments.sh --staged                       # git diff --cached (pre-commit)

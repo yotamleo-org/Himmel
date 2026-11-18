@@ -11,7 +11,6 @@
 #
 # Best-effort: a record that cannot be written is said on stderr and the exit is still 0, so the launch goes on
 # (the session then reads as unknown, never a guess). A bad argument exits 2 and writes nothing.
-# ponytail: with no HIMMELCTL_CACHE_DIR and no HOME nothing is written (same as headed-arm-worker.sh).
 set -u
 
 if [ "$#" -lt 4 ] || [ "$#" -gt 6 ]; then

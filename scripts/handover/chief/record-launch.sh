@@ -16,11 +16,6 @@
 # thing in the pasted line is the chief itself and it must start regardless
 # (the reader then says `unknown`, never a proxy).
 #
-# ponytail: the row exists once this runs, which is before claude has
-# authenticated and opened its session -- a claude that fails after that leaves
-# a row for a chief that never came up. Writing from inside the started
-# session (a SessionStart hook) would close it; it cannot know the mode the
-# launch line carried without re-deriving it, so it is not done here.
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

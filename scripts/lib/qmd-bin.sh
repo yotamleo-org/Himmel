@@ -64,60 +64,6 @@ _QMDBIN_LIB_DIR="${BASH_SOURCE[0]%/*}"
 . "$_QMDBIN_LIB_DIR/qmd-daemon-env.sh"  # t13b-ok: sources the key loader, starts nothing
 
 # Fork config -- overridable per call (env var set before sourcing/calling).
-# ponytail: carried fork until tobi/qmd#1030 merges (or tobi/qmd main gains
-# an equivalent launcher signal fix); then pin back to tobi/qmd at that SHA --
-# upstream-watch reports #1030 merging; the upstreams.json qmd
-# `fork` block keeps /fork-resync auditing the delta meanwhile.
-# History: the pin was the tip of origin/himmel/pin-http-auth (932839a, the
-# tip of fix/launcher-forward-signals, plus the HTTP bearer-token
-# commit of fork PR #14). The pin was the merge
-# commit of fork PR #15 (b1858ca on himmel/pin-http-auth; it brings c5cc17b, the
-# HTTP daemon start honouring the embed-swap lock, onto 791fdf8).
-# The pin was 7cc60404, the tip of himmel/pin-http-auth: cecc32a9 (the
-# openai: provider, an ancestor) plus the remote-embed throughput work (fork
-# #17), the update hint fix (fork #18) and the MCP query rerank-off default
-# with burst handling (fork #20). The pin was 27907dc3, the tip
-# of himmel/pin-http-auth, adding the serial query queue with a busy refusal
-# past QMD_QUERY_MAX_QUEUED (fork #23). The pin was 44fd0609, the tip,
-# adding the queue-test fix (fork #26) and the single vector scan for a
-# search over every collection (fork #25). The pin was c3b84dd7, the squash
-# merge of fork PR #29 into fork main, tagged v2.8.3-himmel.1: the fork
-# resynced to tobi/qmd 86d2365 (2.8.3) with the carried commits replayed.
-# The pin was 2d8589c6, the squash merge of fork PR #30 into fork main (the
-# torch 2.13.0 and vitest 4.1.11 bumps), tagged v2.8.3-himmel.2. The pin was
-# 5490d894, the squash merge of fork PR #34 into fork main (QMD_RERANK=off starts
-# the daemon without the reranker, a hung rerank restarts it at most once an
-# hour), tagged v2.8.3-himmel.3. The pin was ac626e4c, the squash merge of
-# fork PR #38 into fork main (@modelcontextprotocol/server 2.0.0 to 2.3.1, which
-# clears the HTTP transport advisories in `qmd mcp --http`), tagged v2.8.3-himmel.4.
-# The pin was 6930b5b1, the squash merge of fork PR #40 into fork main
-# (pillow 13.0.0, certifi, aiohttp, transformers 5, starlette and fsspec bumps
-# in finetune/uv.lock and zod 4.6.7, which clear the Critical and High lockfile
-# advisories; braces and picomatch have no upstream fix).
-# The pin was ba4605fb, the squash merge of fork PR #42 into fork main
-# (the MCP `query` tool returns an MCP task, with tasks/get and tasks/cancel,
-# to a client that declares the io.modelcontextprotocol/tasks extension; other
-# clients get the unchanged synchronous result). It carries
-# fork PR #41 (vitest 4.1.12, setuptools 83.0.0) and PR #24 (fork pre-commit core).
-# The pin was 72d0dbb8, the fork main tip after fork PR #43 (the Publish
-# workflow fix, no runtime change), tagged v2.8.3-himmel.5.
-# The pin was c2d26d55, the squash merge of fork PR #47 into fork main (a
-# remote embed logs the OpenRouter provider that served it and the HTTP status of
-# each failed attempt; the provider pin keeps allow_fallbacks false).
-# The pin was 17008861, the squash merge of fork PR #49 into fork main (the
-# MCP `query` tool answers typed searches inline and reranks by default; only
-# the plain query becomes a task; a failing rerank falls back to RRF).
-# The pin was 3aef32b5, the squash merge of fork PR #50 into fork main (a
-# query embed that hangs or fails is skipped for a while: the search answers
-# with its keyword part and a note, `qmd vsearch` exits non-zero).
-# The pin was af7f9a96, the squash merge of fork PR #51 into fork main (the
-# scores cached after a rerank wait at most QMD_RERANK_CACHE_BUSY_TIMEOUT_MS,
-# default 250 ms, for the database, then are skipped, so a search never waits
-# out another process's write). The pin was 4c2487d1, fork PR #52 (brotli 1.2.1
-# and filelock 4.2.9 in finetune/uv.lock). The pin was 150c4d31, the squash
-# merge of fork PR #53 into fork main (setuptools 84.2.1 in finetune). The fork lives at yotamleo-org/qmd;
-# yotamleo/qmd is a GitHub redirect to it.
-# ponytail: pinned by SHA, fork tags are labels only (HIMMEL-5952), re-pin on the next /fork-resync.
 _qmd_fork_repo() { printf '%s\n' "${QMD_FORK_REPO:-https://github.com/yotamleo-org/qmd.git}"; } # env-literal-ok: the carried qmd fork identity
 _qmd_fork_ref() { printf '%s\n' "${QMD_FORK_REF:-35de6ec3cc86cb5141d9d58c76c702130517ccfa}"; }
 _qmd_fork_dir() { printf '%s\n' "${QMD_FORK_DIR:-$HOME/.himmel/qmd-fork}"; }
@@ -788,7 +734,6 @@ _qmd_local_cfg() {
 # every himmel caller of qmd_cmd (direct CLI shapes: query, embed, update, mcp).
 # With no --index the index is the project-local one when the cwd walk finds it
 # (the gate re-walks via --resolve), else the global pair.
-# ponytail: a pass is cached 30s per shell process, keyed on config text, sibling configs, db size/mtime, PHI root lists, env and cwd; a new .salus marker under a collection path is not in the key, so adding one inside that window is not seen; BSD stat gives whole-second mtime only, so on macOS a same-size same-second db write is not seen either.
 _qmd_egress_ok() {
   local cfg idx gate name=index a explicit=0 local_cfg gcfg gidx rc=0 key to cont="" take=0 take_index=0 i sd sf
   # a named index (--index NAME / --index=NAME) opens NAME.yml + NAME.sqlite, so gate those.
@@ -913,7 +858,6 @@ _qmd_egress_ok() {
   if command -v timeout >/dev/null 2>&1; then
     timeout -k 5 "$to" node "$gate" "$@" >&2 || rc=$?
   else
-    # ponytail: no timeout binary means no deadline on the gate; install coreutils timeout, or bound it in node.
     node "$gate" "$@" >&2 || rc=$?
   fi
   if [ "$rc" -eq 124 ]; then

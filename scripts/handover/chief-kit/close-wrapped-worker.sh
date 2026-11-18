@@ -61,9 +61,6 @@
 # original doc holds the resumed worker's own LIVE (new release token) then WRAPPED after the
 # hand-off and that WRAPPED is the newest stamp across the pair (HH:MM, strictly later and
 # under twelve hours later, since a stamp carries no date).
-# ponytail: the launch record (launch-logs/<name>.log) holds no pid, so the proof is the
-# doc's session_ids against the live pid's session record. Upgrade path: have
-# headed-arm-worker.sh record the claude pid and resolve by it first.
 # TERM goes to that one pid only - it never signals a non-matching pid, and
 # 0 or >1 matches is a refusal, not a best guess.
 #
@@ -382,7 +379,6 @@ resumed_wrapped_newer() {
     [ "$(doc_tail_status "$1")" = WRAPPED ] || return 1
     o=$(tail_marker_minutes "$1"); r=$(tail_marker_minutes "$2")
     [ -n "$o" ] && [ -n "$r" ] || return 1
-    # ponytail: stamps carry no date, so a day-2 relaunch can pass this gap test, upgrade to dated timestamps or to bullet position across the pair
     gap=$((o - r))
     [ "$gap" -gt 0 ] && [ "$gap" -lt "$half_day" ]
 }

@@ -11,9 +11,6 @@
 # of a guarded path through. Where `readlink -m` works it is used as is, so the
 # GNU answer is unchanged; elsewhere a walk over plain `readlink` (no flags) gives
 # the same answer. A caller treats rc 1 as a deny: it never skips the check.
-# ponytail: a path with a newline in it reads as two lines, same as readlink -m;
-# the walk gives up after 40 symlink hops (rc 1), upgrade path is realpath(1) where present.
-# Bash 3.2-compatible.
 
 _hrp_walk() {
     local rest="$1" cur="/" comp cand tgt hops=0

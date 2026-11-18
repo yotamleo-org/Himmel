@@ -135,11 +135,6 @@ snapshot() {
     f="$home/.claude/plugins/installed_plugins.json"
     if [ -f "$f" ]; then jq -S '[(.plugins // .) | keys[]]' "$f" 2>/dev/null || echo "(unreadable: installed_plugins.json)"; else echo "(absent)"; fi
     echo "## seed"
-    # ponytail: the seed is compared by FILE LIST only, not contents -- seeded files may carry
-    # timestamps or ids that would false-diverge; the guest run (green at 0aacaa42)
-    # converged on file lists, so tightening to normalized contents is a follow-up, not a gate.
-    # lanes.local.json is excluded: a read-only packaged prefix (AUR) keeps the lane overlay here, a
-    # writable clone or tarball keeps it in-tree, by design.
     if [ -d "$home/.claude/himmel" ]; then ( cd "$home/.claude/himmel" && find . -type f ! -name lanes.local.json | LC_ALL=C sort ); else echo "(absent)"; fi
     echo "## launcher"
     f="$home/.local/bin/himmelctl"

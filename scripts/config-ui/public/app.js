@@ -212,7 +212,7 @@ function healthPage(f) {
 }
 // Is a chief session of this project live? true/false from the fleet read, undefined until it lands (the row then says only
 // "for the chief"). A chief is named <KEY>-…, the key being the project's name uppercased (health.js chiefLiveFor); shared rows
-// ask for "himmel", the harness's own project. ponytail: a name prefix, upgrade path: a project field on each fleet row.
+// ask for "himmel", the harness's own project.
 function chiefLive(project) {
   return project ? chiefLiveFor(fleet.data, project) : undefined;
 }

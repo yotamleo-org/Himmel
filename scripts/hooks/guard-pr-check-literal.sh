@@ -46,12 +46,6 @@
 # same chain already does. There is no bypass variable: the canonical fence is
 # always available and is the remedy.
 #
-# ponytail: commands are classified by this file's own text scan; the bash-ast
-# command positions only lift its deny for a command made of plain readers
-# (ast_data_only), because the model reads a heredoc body, ${x@P} and
-# arithmetic as inert data where the write-channel, heredoc-body and printf -v
-# rows this suite pins deny it; upgrade path: give the positions model a
-# deny-on-unreadable mode for those forms, then move the argv and cwd reads.
 #
 # The targets are EVERY gate-allowed scripts/cr script (the
 # `Bash(bash scripts/cr/...` rows of .claude/settings.json and the worker
@@ -347,7 +341,7 @@ _c_join_continuations "$cmd"
 _c_unquote "$REPLY"
 flat=$REPLY
 
-# >>> BEGIN shell-tokenize (HIMMEL-3546; canonical: scripts/hooks/lib/shell-tokenize.sh) >>>
+# >>> BEGIN shell-tokenize (canonical: scripts/hooks/lib/shell-tokenize.sh) >>>
 # st_tokenize CMD — split CMD into words and segments the way bash reads it,
 # expanding nothing. Returns 0 (ST_OK=1) on success, 1 (ST_OK=0) on anything
 # it does not model — an unterminated quote, an unmatched `)`, `;;`, a
@@ -857,17 +851,6 @@ names_target() { # names_target <text> - mentions pr-check, a scripts/cr/
     pc=${pc//pr-check.md/}
     case "$pc" in *pr-check*) rc=0 ;; esac
     for t in $TARGETS; do
-        # ponytail: this is a PREFIX-stem match (cr/<stem>*), so a filename
-        # that merely STARTS WITH a guarded stem after "cr/" (e.g. a target
-        # named "foo.sh" also matches "cr/foo-other.sh") counts as a mention
-        # even though it names a different file.
-        # Over-matching here only makes `mentions` MORE
-        # likely to be 1, which routes the command into the slower,
-        # stricter classification path below rather than the early
-        # fast-exit - the safe direction (a false-deny residual, not a
-        # hole). The tokenizer only drops provably inert quoted
-        # words from $flat; it does not change this match. Upgrade path:
-        # match the tokenized path word exactly, if the residual recurs.
         case "$1" in *[cC][rR]/"${t%.sh}"*) rc=0 ;; esac
     done
     # same prefix-stem match, keyed on each HTARGET's own
@@ -919,10 +902,6 @@ fi
 # shadows a reader with a function or alias -> deny. A `>` inside quotes counts
 # too: over-denial is accepted here (the text moves into a file). A bare or
 # anchored literal spelling carries no channel and falls through untouched.
-# ponytail: text-channel ceiling - a file written by the Write/Edit tools (this
-# is a Bash matcher) or text that never spells a target (`printf 'scripts/c%s'`)
-# is not seen here; running either matches no allow rule, so the classifier
-# decides. Upgrade path: a Write/Edit-matcher twin if a smuggled file recurs.
 prlit_nl=$'\n'
 prlit_reader='(cat|tee|grep|wc|head|tail|diff|cmp)'
 PRLIT_TEE_RE='(^|[^[:alnum:]_.-])tee([^[:alnum:]_.-]|$)'
@@ -1333,8 +1312,6 @@ readers_only() { # true when every command the command line runs is a reader
 # value of a key outside a small data set, and any option value after the
 # subcommand unless the option is a known data option. Ordinary values (less
 # -R, code --wait, vim) carry none.
-# ponytail: a decoded $'\x72' body is not re-read, ceiling HIMMEL-5205; upgrade
-# path: have the tokenizer flag a $'..' word and deny it as a value slot.
 meta_value() { # meta_value <text> - 0 when it carries an sh metacharacter
     _c_join_continuations "$1"
     case "$REPLY" in
@@ -1434,12 +1411,6 @@ seg_meta() { # seg_meta <first> <end> - 0 when an executed value carries a metac
         return 1
     fi
     case "$sub" in commit | tag | notes) exempt=1 ;; esac
-    # ponytail: the positional words of an alias or an unknown subcommand, and of
-    # `submodule foreach`, are not run through meta_value, so text parsing cannot
-    # close this class.
-    # ponytail: upgrade path HIMMEL-4852 (structural fix).
-    # A read-only subcommand: only --opt=value and -O are values; a word after a
-    # boolean flag (git diff --stat '*.md') is a pathspec, never a value.
     case "$sub" in
         log | diff | show | status | grep | blame | ls-files | rev-parse | rev-list | describe | shortlog | cat-file | ls-tree | for-each-ref | branch | merge-base | diff-tree | name-rev | whatchanged) rd=1 ;;
         # `git tag -l|--list <pattern>` only lists: the pattern is a refname glob, never run.
@@ -1551,10 +1522,6 @@ fi
 # plain string literal that spells no shell word: print('scripts/cr/x.sh')
 # names a path, os.system('bash scripts/cr/x.sh') runs one. The command word is
 # the only position that runs a file, so everything else in the line is text.
-# ponytail: the allow-list is print(LIT) / console.log(LIT) lines, one escape-free
-# string literal each, so any other code reaches the classifier and is denied
-# when it names a gate; upgrade path: parse the interpreter's own AST to admit
-# more than printing.
 INTERP_PRINT_RE='^[[:space:]]*(print|console\.log)\(('"'"'[^'"'"'\]*'"'"'|"[^"\]*")\);?[[:space:]]*$'
 INTERP_SHELL_RE='(^|[^[:alnum:]_.-])(bash|sh|zsh|dash|ksh|source)[[:space:]]'
 interp_code_inert() { # interp_code_inert <code> - only print(LIT) lines, no shell word in them
@@ -2391,10 +2358,6 @@ glob_is_literal_elsewhere() {
 # as trusted as any other absolute path once the shell resolves it - the
 # anchor, never a branch, picks HIMMEL_REPO's value (a per-call HIMMEL_REPO=
 # re-point is a separate registered chokepoint, block-chokepoint-env-prefix.sh).
-# ponytail: text classification, so a name the shell assembles from pieces the
-# text never spells (a variable holding the whole path, with neither "cr/" nor
-# "pr-check" in sight) is not seen. The branch can run arbitrary code through any other
-# allow-listed scripts/ path anyway; this hook closes the two named scripts.
 hit=0
 unresolved=""
 # A gate path or a glob that only sits in the arguments of a read-only command
@@ -2412,9 +2375,6 @@ unresolved=""
 # BASH_ENV, HOME, GIT_*, RIPGREP*, LD_* style assignment, or a NAME[..]= subscript
 # assignment; nor when a { } group, loop, if or case word sits in a segment that stays,
 # since the reader's output could be piped onward from inside it.
-# ponytail: a heredoc, $(…) or $'…' line, any group, loop or `if` word, and a
-# VAR= prefix keep the whole line in scope, ceiling the residual shapes left denied;
-# upgrade path: model compound commands in the tokenizer.
 scan_flat=$flat
 scrub_inert_readers() { # sets scan_flat
     local s k w cw inert sealed any=0 sfacc='' sfsep='' rgcfg=0 sftxt nxt
@@ -2659,27 +2619,6 @@ env_split_option() { # env_split_option <raw command> - false only when
     # one quoted word here, so an env inside it is no word of this scan: each
     # segment's words after an `eval`, or after a -c option cluster behind a
     # shell word, are joined and run through this same test, recursively.
-    # ponytail: only shells and eval are re-read - su -c, script -c, watch,
-    # a body held in a variable or read from stdin are not; upgrade path:
-    # add the re-reader to the case below if one is seen carrying env -S.
-    # each nested body is re-tokenized by the slow bash
-    # tokenizer, so a 350-deep chain burned the whole hook budget (fail
-    # closed with a bare timeout). Past ENV_SPLIT_NEST_CAP nested bodies the
-    # re-read stops and the caller denies with a message naming the cap.
-    # ponytail: 32 is a guess far above any real command, far below the
-    # budget (350 deep = 11 s), upgrade path: a cheaper per-level re-scan.
-    # a segment piped (`|`, `|&`) into a shell is that shell's
-    # script, so its words are a body like an `eval`'s: `echo "env -S
-    # '<target>\c'" | bash` carries its env inside one quoted data word that
-    # no word scan sees. A reader piped into grep/wc stays data.
-    # The sink test is an allowlist, not a shell-name list (a name list leaked
-    # three times: rbash, BASH, bash.EXE): every command word after a pipe that
-    # is not a known reader/filter or shell-syntax word is a possible script
-    # reader (rbash, fish, python3 -c, `. /dev/stdin`, any interpreter).
-    # ponytail: a shell word after a list separator flags every earlier pipe
-    # writer in the command, so `git diff | head; bash x` over-denies when the
-    # diff text carries env -S.
-    # ponytail: upgrade path HIMMEL-5560 models compounds.
     local i j e w sk sg b k x depth=$ENV_SPLIT_DEPTH
     local -a nm=() nb=() pp=() fc=() fl=() wr=()
     if [ "$depth" -gt "$ENV_SPLIT_NEST_CAP" ]; then
@@ -3047,11 +2986,6 @@ if ast_data_only; then
     [ "${edhook_pending:-0}" = 1 ] && edhook_deny
     exit 0
 fi
-# ponytail: a glob through a directory symlink the text does not spell as
-# scripts/cr (`bash scripts/lnk/*`, lnk -> cr) is not a candidate - the same
-# class as `bash scripts/lnk/x.sh`, which this hook never saw either, and no
-# allow rule matches it. The manifest refuses a symlinked scripts/ or
-# scripts/cr itself.
 case " $entries " in
     *' pr-check-context.sh '*|*' pr-check-env.sh '*) GUARDED=$FULL_GUARDED ;;
     *)
@@ -3171,15 +3105,6 @@ prefix=$(gitq rev-parse --show-prefix 2>/dev/null) \
 # paths equal to main's committed tree - compared by ls-tree, which runs no
 # filter. Denies (the safe direction) whenever the primary has not been
 # pulled to the branch's base, or is ahead of it.
-# ponytail: refs/heads/main is trusted as the anchor's commit - a worker that
-# moves main itself (update-ref) is fenced by the git-write guards, not here.
-# ponytail: checked at match time only - a background job or another session
-# can swap the bytes between this check and the exec (TOCTOU), not closed here.
-# kit_of <root> - print the directory <root> keeps the kit writers in: a real
-# chief-kit/ with nothing named chief-kit beside it (the layout before the
-# move), or a real chief-kit/ with nothing named chief-kit beside it. Any
-# other shape (both, neither, or a symlink at either) fails, so neither
-# spelling can run bytes the manifest never hashed.
 kit_of() {
     local h=$1/scripts/handover
     [ ! -L "$h/chief-kit" ] && [ ! -L "$h/console-kit" ] || return 1
@@ -3281,9 +3206,6 @@ case "$have" in ODD\ *) deny "a non-regular file or a control-character name sit
 # computed with grafts and the commit-graph off (both are files a worker can
 # write in the shared .git, and either can fake a parent), and replace refs
 # off as above.
-# ponytail: a hand-off whose own runtime check finds scripts/guardrails/lib.sh
-# or scripts/lib/load-dotenv.sh moved on main still refuses at run time -
-# merge main forward in that case.
 behind_main_entries_ok() {
     local wt_head mb mkit=console-kit base e s mentries rest_have rest_want
     [ "$GUARDED" != "$FULL_GUARDED" ] || return 1

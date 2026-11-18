@@ -10,13 +10,6 @@
 //   tail  - a `tail -f` on a quiet-run log that no process holds open for
 //           writing any more (caller-side follower: quiet-run.sh starts none).
 //
-// ponytail: "reparented" means ppid 1 or a `systemd` parent (the
-// `systemd --user` subreaper is where Linux desktop sessions re-home orphans),
-// so a quiet-run started on purpose from a systemd unit or a setsid/nohup
-// launch is counted too — the alert's `for:` window is the only allowance.
-// Writer visibility needs read access to other processes' /proc/<pid>/fd, so
-// a log written by a different user reads as writer-less. Linux only: there
-// is no /proc on macOS.
 import { readFileSync, readdirSync, readlinkSync } from "node:fs";
 import { join } from "node:path";
 

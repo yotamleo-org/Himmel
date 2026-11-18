@@ -15,8 +15,6 @@
 # $BOARD_MIRROR, else the project's mirror (scripts/lib/jira-project.sh: jira_mirror_dir). ICE_FOLLOWUPS_TODAY
 # (YYYY-MM-DD) pins today for tests.
 #
-# ponytail: a ticket moved to ICE without the move comment reads as not-in-ICE, upgrade path:
-# have the mirror writer emit the project move.
 #
 # Platform guard: POSIX awk, bash 3.2+; GNU or BSD date.
 

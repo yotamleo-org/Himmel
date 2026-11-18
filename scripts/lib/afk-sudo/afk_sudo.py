@@ -25,7 +25,7 @@ file (a repo file is agent-writable). Off by default: the station config ships
   afk-sudo grant-spend        --session S --sha256 H --cwd DIR
   afk-sudo mode [-- ARGV...]   (with ARGV it adds `admits=true|false`: whether run-request's mode would take that argv)
 
-The grant kind (HIMMEL-7686; `"grant": {"enabled": true}` in the station config, off by default) lets one
+The grant kind (`"grant": {"enabled": true}` in the station config, off by default) lets one
 classifier-refused Bash command skip the classifier once. scripts/hooks/approval-grant-request.sh files the
 refused command's exact bytes; root freezes them with every file they name and sends the notice, and an approved
 code writes a root-only grant plus a root-owned hash-only marker. scripts/hooks/approval-grant-check.sh, the
@@ -271,8 +271,6 @@ def verify_open(path, sha256, ident):
     return None
 
 
-# ponytail: a name list, not shebang or ELF detection; a script run by an interpreter outside it is hashed and
-# compared by path as before. upgrade path: classify argv[0] by its file instead.
 INTERPRETERS = re.compile(r"(ba|da|z|k)?sh|python[0-9.]*|perl|ruby|php|lua")
 
 
@@ -1656,7 +1654,7 @@ def disable_config(config):
 
 
 def lockdown(config, args):
-    """HIMMEL-8067 slice 4: switch the station off and deny every pending request. Works on an already-off station;
+    """Switch the station off and deny every pending request. Works on an already-off station;
     takes no argument that could turn anything on, and the only thing it writes is `enabled: false`.
 
     Two steps, since every session can call this as the operator's uid. A bare call only makes root

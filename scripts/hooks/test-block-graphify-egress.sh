@@ -175,7 +175,7 @@ fi
 
 out="$(run_hook "grep -rn graphify ." 2>&1)"; rc=$?
 if [ "$rc" -eq 0 ] && ! grep -q FENCE_INVOKED <<< "$out"; then
-    ok "a bare mention (grep -rn graphify .) does not reach the fence (HIMMEL-1180 survives the widening)"
+    ok "a bare mention (grep -rn graphify .) does not reach the fence (survives the widening)"
 else
     bad "bare mention (grep .): rc=$rc out=$out"
 fi

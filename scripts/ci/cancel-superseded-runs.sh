@@ -22,8 +22,6 @@ set -uo pipefail
 
 WORKFLOWS="ci.yml codeowner-review-gate.yml"
 # Newest runs first; a superseded run older than this window is not seen.
-# ponytail: a >200-run backlog on one workflow hides its oldest runs, page the
-# listing or filter by status server-side if that bites.
 RUN_LIMIT=200
 
 usage() { echo "usage: cancel-superseded-runs.sh [--dry-run] [--branch <b>]" >&2; exit 2; }

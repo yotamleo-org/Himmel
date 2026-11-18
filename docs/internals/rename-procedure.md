@@ -80,7 +80,7 @@ source, so a parser change without its row fails that test. A rename that
 changes a CLI's flag or role vocabulary edits the row in the same PR, which is
 what makes the doc, the parser and the gate agree.
 
-`ponytail:` the declared row can drift if the test is skipped or the parser is
+Limit: the declared row can drift if the test is skipped or the parser is
 written in a style the test cannot read; the upgrade path is to generate the
 row from the parser's option table.
 
@@ -88,8 +88,8 @@ row from the parser's option table.
 
 - The diff gate flags a line that still carries an old name it already had
   when the PR edits that line. Add the marker, or finish the rename on that
-  line. (`ponytail:` net the added hits against the removed lines of the same
-  file.)
+  line. (The fix would net the added hits against the removed lines of the
+  same file.)
 - The diff gate reads one line at a time: a multi-word prose row split by a
   line break is not seen. The doc-literal check joins backslash-continued
   lines and reports them at the first line.

@@ -22,8 +22,6 @@
 //
 // The bound is the point: concurrency is 1 by construction (one worker, one
 // job at a time), so N ending children cost one drain, not N trees.
-// ponytail: the bound is the lock, not a pool — if these jobs ever need to
-// overlap, give the lock N slots rather than growing a scheduler here.
 //
 // DURABILITY. An entry is a file. It survives the enqueuer exiting, the worker
 // being killed, and the session dying: the next enqueue starts a worker that
@@ -50,19 +48,6 @@
 // that contract and should redact before it does.
 //
 // KNOWN CEILINGS, both consequences of a queue that can hold work for minutes:
-// ponytail: AT-LEAST-ONCE, not exactly-once. runEntry persists the incremented
-//   attempt BEFORE running and deletes the entry AFTER, so a worker killed
-//   between those two points leaves the job to be re-run. That is the safe
-//   direction for this work (ledger refreshes and status notifies are
-//   idempotent enough) and the alternative loses work on every crash. Upgrade
-//   path if a non-idempotent job ever joins: a per-entry "started" marker the
-//   next worker treats as done-unless-proven-otherwise.
-// ponytail: a caller that hands a TEMP FILE PATH in argv (the end-side hooks
-//   pass their saved payload that way) leaks that file if the entry expires or
-//   is abandoned instead of running — the job is what deletes it. Bounded by
-//   the TTL and only reachable when the queue never drains at all. Upgrade
-//   path: pipe those payloads through the enqueue's stdin, which the entry
-//   already stores, and drop the temp file from argv entirely.
 //
 // STDLIB ONLY, node 24. No deps, by design: this runs on every session end.
 
@@ -258,13 +243,6 @@ const ENV_SYSTEM = new Set([
 // widens what the SNAPSHOT carries, not what the base inherits — see
 // snapshotEnv. Naming a variable here therefore writes its VALUE into the entry
 // file, so name platform constants, never a credential.
-// ponytail: the denylist fences the obvious shapes, so the ceiling is an
-// operator who names a credential whose NAME it does not match — the motivating
-// GGS_MQTT_PASS shape — and thereby writes it into a queue entry. That is the
-// same class of mistake as putting one in argv, which this file already refuses
-// to defend against by pattern; no rule here can tell a platform constant from
-// a secret by looking at its name. Upgrade path if it ever matters: make the
-// hatch carry a VALUE the enqueuer supplies rather than a name it copies.
 const ENV_EXTRA_VAR = 'HIMMEL_STOP_QUEUE_ENV_EXTRA';
 // Case-insensitive, like ENV_SYSTEM and for the same reason: Windows
 // environment names are case-insensitive, so an operator who writes
@@ -278,11 +256,6 @@ function extraNames(env) {
 // and the stderr redactor below. Two separate lists drift, and the drift is
 // silent in the worst direction: a name the env fence strips would still be
 // printed verbatim into the durable log.
-// ponytail: still shape-based, and still unable to be exhaustive — but since
-// the allowlist took over, it is the SECOND fence, not the control. Completeness now belongs
-// to the allowlist above, whose own ceiling is the opposite one: it can be too
-// NARROW on a platform this enumeration never saw. That failure is visible (a
-// job fails) rather than silent, and ENV_EXTRA_VAR is its upgrade path.
 const SECRET_NAME_SHAPES = 'TOKEN|SECRET|KEY|PASSWORD|PASSWD|CREDENTIAL|COOKIE|AUTH|CHAT_ID|DSN|_URL|CONNECTION|PRIVATE|CERT|BEARER|SIGNATURE|SESSION_ID';
 const ENV_SECRET = new RegExp(`(${SECRET_NAME_SHAPES}|(^|_)PAT($|_))`, 'i');
 const NAMED_SECRET_ASSIGNMENT = new RegExp(
@@ -426,9 +399,6 @@ export function ensureDirs(dir) {
 // worth keeping — it is how a failing job gets debugged — so redact rather than
 // drop: NAME=VALUE pairs whose name looks secret, bare long tokens, and the two
 // URL shapes that carry a secret in the path.
-// ponytail: shape-based, so a credential in an unguessable shape still gets
-// through. Same class of fence as ENV_SECRET, and the same reasoning: a
-// tripwire for what actually occurs, not a proof.
 export function redactSecrets(text) {
   return String(text)
     .replace(NAMED_SECRET_ASSIGNMENT, '$1<redacted>')
@@ -452,12 +422,6 @@ export function logRow(dir, row) {
   } catch { /* best effort */ }
 }
 
-// ponytail: trimming rewrites the log, and an enqueuer appending between the
-// read and the swap loses its row. Accepted: this is the CENSUS log, not the
-// durable work — entries are files and are unaffected — and it only happens
-// above 2MB. The swap is at least atomic (tmp + rename), so no reader ever sees
-// a half-written log. Upgrade path if the census ever has to be lossless: trim
-// under the worker lock AND make enqueue take it for the append.
 function trimLog(dir) {
   try {
     const p = paths(dir);
@@ -547,8 +511,6 @@ function pidAlive(pid) {
 }
 
 // A lock is stale when its holder is gone, or when it is old enough that a
-// reused pid would be the only thing keeping it alive. ponytail: pid reuse is
-// the known ceiling here; the age cap is what bounds it.
 export function lockIsStale(dir, now = Date.now()) {
   const p = paths(dir);
   let pid = 0;
@@ -702,38 +664,6 @@ export function acquireLock(dir, hooks = {}) {
 // rename, and it is then adopted IN PLACE: nothing is removed, so there is no
 // moment when a slower worker's removal could take out the gate a faster one
 // has just created.
-// ponytail: this makes the CONSEQUENCE of a wrong staleness judgement safe; it
-// does not make the judgement correct. A live holder whose pid has been reused
-// still reads dead (see lockIsStale), and no filesystem can answer "is this pid
-// still the holder I think it is" — the marker only guarantees that whoever
-// acts on that answer is acting on the instance it judged, and that exactly one
-// worker does. The cost is liveness: a gate whose owner is alive but wedged —
-// or whose pid has been reused by an unrelated live process — is never taken
-// over, so no takeover happens until that process exits. A stalled takeover is
-// the safe failure here; two workers draining at once is not.
-// The other residual is a gate that carries no marker at all, in two shapes,
-// and neither is cleared on age: an older worker's gate is EMPTY, so rmdir
-// clears it and the kernel refuses that call on any populated one — it can
-// never remove a gate this code created; and a gate orphaned by a death
-// mid-takeover holds only a moved marker, which is CAS-renamed into this
-// worker's own ownership rather than removed, and only ever a marker that is
-// NOT an `own.*` — an ownership marker appearing there means the gate has an
-// owner, not that it needs recovering. So no path here removes a gate or a lock
-// without first winning the CAS on it, or without the kernel confirming the
-// directory is empty.
-// ponytail: one gap in that rule is left (HIMMEL-3294), and it is the one POSIX
-// cannot close without an flock: releaseGate — and releaseLock, which removes
-// by the same identity-keyed unlink-then-rmdir — unlinks the marker it won and
-// then rmdirs, and a release stopped BETWEEN those two calls can rmdir a gate
-// or a lock that a new worker has created but not yet marked: the same
-// mkdir-to-first-write instant createOwned names above, now reachable from a
-// second direction. Both sides are two adjacent syscalls, and unlike every
-// other window here age cannot cover it, because the object it would judge is
-// younger than any threshold. releaseLock's heartbeat unlink is a third
-// instance of the shape and the only benign one: lose the CAS after it and the
-// unlink has removed a replacement's `pid`, which costs that replacement 60 s
-// of protection under the no-readable-pid rule and is rewritten by the next
-// heartbeat — a transient that cannot end with two workers draining.
 const RECLAIM_STALE_MS = 30 * 1000;
 function takeReclaimGate(p, hooks = {}) {
   const gate = `${p.lock}.reclaim`;
@@ -1319,7 +1249,7 @@ function ensureWorker(dir, selfPath) {
   if (workerIsLive(dir)) return false;
   const child = spawn(process.execPath, [selfPath, 'work'], {
     detached: true,
-    windowsHide: true,   // HIMMEL-2042: detached worker must not allocate a conhost
+    windowsHide: true,   // detached worker must not allocate a conhost
     stdio: 'ignore',
     cwd: process.cwd(),
     env: process.env,
@@ -1475,7 +1405,7 @@ export function main(argv, selfPath) {
       try {
         const fb = spawn(resolveArgv0(parsed.command[0]), parsed.command.slice(1), {
           detached: true,
-          windowsHide: true,   // HIMMEL-2042
+          windowsHide: true,
           stdio: ['pipe', 'ignore', 'ignore'],
           env: { ...process.env, HIMMEL_DETACH_INLINE: '1' },
         });

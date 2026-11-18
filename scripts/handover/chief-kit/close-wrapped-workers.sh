@@ -13,9 +13,6 @@
 # the last CLOSE_WRAPPED_WORKERS_MAX_AGE_MIN minutes (default 1440), so a
 # predecessor chief's wrapped workers close too. --check passes through: every
 # check runs, nothing is signalled.
-# ponytail: the age window bounds the no-arg sweep (the whole bucket took over
-# 10 min, mostly rc=5 for windows already gone); upgrade path: drop closed workers
-# from their manifest so old manifests empty out.
 #
 # A sweep that fails is reported and the loop goes on to the next manifest.
 # Prints each sweep's own lines, except a refusal for a worker with no live session

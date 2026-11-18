@@ -1,5 +1,5 @@
 # Local transcription for /ig-media-enrich and /x-media-enrich (transcribe.py),
-# installed per call by `uv run --with-requirements` (HIMMEL-4675).
+# installed per call by `uv run --with-requirements`.
 # av 19 dropped the av.open(metadata_errors=) kwarg that faster-whisper 1.2.1's
 # decode_audio passes; unpinned, uv resolved 1.2.1 + av 19.0.1 and every reel
 # failed with "open() got an unexpected keyword argument 'metadata_errors'".

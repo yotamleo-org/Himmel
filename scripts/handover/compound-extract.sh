@@ -19,8 +19,6 @@
 # Defaults: root = handover_root; bucket = <root>/<user_slug>/himmel; mirror =
 # $HIMMEL_JIRA_MIRROR, else ~/.himmel/state/jira-mirror/${JIRA_PROJECT_KEY:-HIMMEL};
 # --since-days 7 (0 = no window).
-# ponytail: PR and sha are regex reads of the bullet text, not a ledger lookup; a
-# bullet that names neither leaves them empty, upgrade path = read the worker-burn line.
 # Exit: 0 ok, 2 usage.
 set -uo pipefail
 

@@ -346,10 +346,6 @@ if [ "$INSTALL_FROM" = tarball ] || [ "$INSTALL_FROM" = aur ]; then
         # scratch). pacman/makepkg is Arch-only, hence the container instead of
         # a VM. cronie is installed for crontab(1) only; nothing starts a
         # cron/systemd session inside the container.
-        # ponytail: no running cron/systemd session in the container, so
-        # --profile all's cadence-crontab-removed direction is observed via
-        # crontab(1) spool state only, never a live fire; upgrade path is a
-        # real Arch VM guest, follow-up.
         cp "$HOST_TMP/packaging/aur/PKGBUILD" "$HOST_TMP/packaging/aur/himmel.install" "$TARBALL_OUT/" \
             || fail "step aur-stage failed: packaging/aur/{PKGBUILD,himmel.install} missing at $SHA"
         SUM=$(awk '{print $1}' "$TARBALL_OUT/$ASSET.sha256")

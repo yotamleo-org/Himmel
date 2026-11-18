@@ -35,8 +35,6 @@ GH_READ_BIN="$HERE/../../lib/gh-read.sh"
 # from the tick's start). The waiter kills a tick at 120 s and discards its output, so a slow
 # tick must spend its last probes' caps, not lose the worker state. The floor is 1 s because
 # `timeout 0` means no timeout.
-# ponytail: a probe past the deadline still costs 1 s plus its kill grace; about 20 of them
-# fit in the 30 s left. Upgrade path: skip the probe outright past the deadline.
 tick_deadline="${TICK_DEADLINE_SEC:-90}"
 case "$tick_deadline" in '' | *[!0-9]*) tick_deadline=90 ;; esac
 tick_bound() {
@@ -358,8 +356,6 @@ which every Results bullet bumps. STALE:<age> = the board shows an older state
 (age = the file's mtime); MISSING = no board was ever rendered; skip = no --doc.
 --emit-fp prints a second line, board-fp=<16 hex>, the fingerprint board.mjs
 writes into the board file -- one derivation, so the generator and this field cannot disagree.
-ponytail: board=ok says the LOCAL file matches the state; tick cannot see
-whether anything was republished from it -- that stays the console's step.
 
 station=BEHIND:<component>,... appears only when the last station-sync.sh
 run left a component behind main (state file TICK_STATION_STATE, default
@@ -1812,10 +1808,6 @@ csv_add() {
 # Changed-file lists come from the ready-files cache under TICK_STATE_DIR (keyed
 # <pr>-<head>, so a re-pushed head is a fresh row); a miss costs one `gh pr view`,
 # at most 20 per scan, and past that the READY is counted unchecked, never clean.
-# ponytail: window is the worker doc's mtime (TICK_READY_WINDOW_DAYS, default 1), a READY
-# head repeated across docs counts once but a reworded one twice, the no-trust regex
-# reads a docs-only claim as "no trust path", and the model is the doc title's (claude-...)
-# token; a structured READY record would replace the regexes.
 ready_mismatch_scan() {
     local dir="$1" tp="$REPO/scripts/ci/ci-trust-paths.txt" days="${TICK_READY_WINDOW_DAYS:-1}"
     local cache="${TICK_STATE_DIR:-$HOME/.himmel/state}/ready-files" ghcmd="${TICK_GH_CMD:-$GH_READ_BIN}"
@@ -2203,7 +2195,7 @@ for leg in $WORKERS_SPLIT; do
             lock_out="$(bash "$REPO/scripts/handover/queue-lock.sh" status "$leg_doc" 2>&1)" || true
             case "$lock_out" in
                 *'status: FRESH'*) lock_status=FRESH ;;
-                *'status: STALE-DEAD'*) lock_status=STALE-DEAD ;;   # HIMMEL-5541: not held; held_legs / held_n skip it
+                *'status: STALE-DEAD'*) lock_status=STALE-DEAD ;;
                 *'status: STALE'*) lock_status=STALE ;;
                 *UNVERIFIED*) lock_status=UNVERIFIED ;;
                 free*) lock_status=FREE ;;
@@ -2219,9 +2211,6 @@ for leg in $WORKERS_SPLIT; do
         [ -z "$act_status" ] || acts_summary="$(csv_add "$acts_summary" "$label:$act_status")"
         # a BLOCKED tail, or a FINDING that awaits a ruling, in a doc nobody has written to
         # for $hold_min minutes is a hold the chief may not know it owes.
-        # ponytail: hold age is the worker doc's mtime (a held worker is idle, so its marker
-        # bullet is the last write); upgrade = parse the bullet's HH:MM if a touched doc
-        # ever hides an old hold.
         hold_age=""
         case "$tail_status" in
             BLOCKED) hold_age=1 ;;
@@ -2254,10 +2243,6 @@ for leg in $WORKERS_SPLIT; do
         # a READY whose GO file (<root>/.locks/go/<pr>.<head>) is still
         # absent after $go_stale_min minutes reads READY!stale. tails= is in the
         # chief-wait action key, so the entry moving once wakes the chief.
-        # ponytail: READY age is the worker doc's mtime (a READY worker is idle, so the
-        # READY bullet is the last write); a READY bullet with no `<pr> <head>`
-        # cannot name a GO file and never goes stale; upgrade = parse the
-        # bullet's HH:MM if a doc touched after READY ever hides a stale one.
         if [ "$tail_status" = READY ]; then
             ready_line="$(grep -E '^- ([0-9]{1,2}:[0-9]{2}[[:space:]]+)?(\*\*)?READY[^A-Za-z0-9_]' "$leg_doc" 2>/dev/null | tail -n 1)" || ready_line=""  # pipefail-ok: tail reads its input to EOF
             ready_pr="$(printf '%s\n' "$ready_line" | sed -nE 's/^.*READY[^0-9a-f]*([0-9]+)[[:space:]]+([0-9a-f]{40}).*$/\1/p')"
@@ -2276,8 +2261,6 @@ for leg in $WORKERS_SPLIT; do
         # act. A released lock whose doc's LAST status bullet is WRAPPED is the
         # clean wrap: it reads WRAPPED (tails= already says so); FREE is left to
         # mean a lock that is gone with no wrap behind it (lost, or never acquired).
-        # ponytail: WRAPPED is the worker's own last bullet, self-reported -- a worker
-        # that wrote WRAPPED and is somehow still working reads WRAPPED, not FREE.
         # A named hand-off is a clean wrap too: the lock is free and the worker's newest own
         # marker bullet is the WRAPPED or BLOCKED hand-off naming its successor.
         if [ "$lock_status" = FREE ] && [ "$tail_status" = WRAPPED ]; then
@@ -2291,9 +2274,6 @@ for leg in $WORKERS_SPLIT; do
     # FREE with no marker bullet ever (tails ?) is a worker that never
     # went LIVE; that, or a transcript that ended in continued-in, shows in workers=
     # in place of FREE. A wrapped or marker-bearing worker is never relabelled.
-    # ponytail: the clock is dispatch time, so a worker first listed after the
-    # threshold baselines already NOLIVE and the waiter stays silent for it;
-    # upgrade = wake on first sight of a NOLIVE, if that ever bites.
     leg_label_state="$lock_status"
     if [ -f "$leg_doc" ] && [ "$lock_status" = FREE ] && [ "$tail_status" = "?" ]; then
         if leg_forked "$leg_cands"; then
@@ -2426,9 +2406,6 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     # entries). Reading the
     # first line only made every span on a wrapped line invisible -- not MALFORMED,
     # not FREE, just absent -- so a held worker read DRIFT and a stale one read ok.
-    # ponytail: the block ENDS at a blank, `word:` or list-marker line, so a worker
-    # span past any of them (a per-worker detail bullet, another field) is not an entry; a held
-    # worker named only there reads DRIFT, which is true -- the block never named it.
     # The worker line is `workers:`; the pre-rename `legs:` line is read only while legacy
     # names are on, and `workers:` wins when a doc carries both.
     live_key=workers
@@ -2468,8 +2445,6 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
         # shape)? A span is `<label>:<nonce>:<lock-token>:<pid>` -- it names no doc,
         # so a label cannot be joined to a lock or a tail without trusting the
         # self-reported token or pid, and a wrong one would read as a lost lock.
-        # ponytail: the arm still decides which workers get lock/tail/nonce checks;
-        # an unarmed held worker is named but not verified until the chief re-arms.
         armed_legs="$(printf '%s' "$leg_candmap" | awk -F'\t' 'NF { print $1 }')"
         drift_csv=""
         unarmed_csv=""
@@ -2524,13 +2499,6 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
         # this chief doc's own (`<prefix>-nextleg-<date><LETTER>-<name>.md`)
         # and the chief name in the bullet is that doc's stem; a wrapped worker
         # (lock not held) has nothing to rotate.
-        # ponytail: both reads are self-reported state, not proof. A worker that
-        # accepted but has not yet written its bullet reads UNCONFIRMED for a
-        # moment, and a chief that rewrites a worker's Live-state nonce before
-        # that worker's quote-back reads ok while the worker is still unverified
-        # (the chief template says: update the nonce only AFTER the
-        # quote-back). A doc name with no parseable letter reads unknown,
-        # never a guess.
         console_letter="$(printf '%s\n' "${console_doc##*/}" | sed -n -E 's/.*-nextleg-[0-9]{4}-[0-9]{2}-[0-9]{2}([A-Z]{1,2})-.*/\1/p')"
         console_stem="${console_doc##*/}"; console_stem="${console_stem%.md}"
         if [ -z "$console_letter" ]; then
@@ -2646,9 +2614,6 @@ fi
 #   - some do -> the derivation demonstrably works, so the rest are genuinely
 #     not running: count the live ones and name the rest as unmatched=<a>+<b>
 #     instead of blanking the whole field.
-# ponytail: a degraded census (rc=3, unreadable=<n>) can hide a live worker's row,
-# so an unmatched= name may be a worker whose cmdline was unreadable -- the
-# appended unreadable= flag is that caveat; unmatched= is not suppressed by it.
 # a relaunched worker runs as <name>-r<N>: list the base name too, so it
 # joins to its worker for procs=, unwatched= and CLOSABLE.
 census_names="$(printf '%s\n' "$sessions_out" | awk -F'\t' '$1 !~ /^#/ && NF >= 4 && $2 != "" { print $2; b = $2; if (sub(/-r[0-9]+$/, "", b)) print b }')"
@@ -2717,9 +2682,6 @@ leg_names_wrapped=",${leg_names},"
 # --doc a worker whose environ names a different, still-LIVE chief is not this chief's to
 # watch. A named chief that is no longer a live session (a succession) leaves the worker
 # listed: its owner is gone, so it is inherited.
-# ponytail: a worker whose environ is unreadable, or that names no chief, stays listed
-# (fail open: an unwatched worker must not be hidden); while a predecessor chief is still
-# alive its workers read as foreign here.
 unwatched_csv=""
 re_unwatched_label='^N[0-9]+[a-z]*$'
 this_chief=""
@@ -2889,9 +2851,6 @@ fi
 # no worker this tick reads holds (a held or lockless lock), and no recent cloud session
 # covers, has no one working it. Fork PRs are listed apart, drafts and PRs younger than
 # the grace period never. Built from the one gh read above: no per-PR call.
-# ponytail: ownership is the ticket key in the branch name, so a branch with no key reads
-# unowned (loud, not silent), and age is the PR's updatedAt, which a comment also moves;
-# upgrade = match the worker's own branch, or the last commit's date, if either bites.
 ticket_key() { printf '%s\n' "$1" | grep -oiE '[a-z][a-z0-9]*-[0-9]+' | head -n 1 | tr '[:lower:]' '[:upper:]'; }
 owner_keys=" "
 while IFS=$'\t' read -r o_label o_lock _; do
@@ -2962,9 +2921,6 @@ fi
 # held (WRAPPED or FREE); stale-head = its head is not the open PR's head (report-only). late, idle
 # and orphan each raise one ACTION dispatch-stall line, and chief-wait.sh keys on them.
 # dispatch=? = the runs list is unreadable; a branch no worker or open PR owns is not listed.
-# ponytail: the worker is matched by the ticket key in the branch name, as unowned-prs= does; a
-# healthy macOS shard set runs ~60 min with no job change, so idle can fire on a run that is
-# merely long, upgrade = key it on a step-level read if that proves noisy.
 dispatch_summary=none
 dispatch_alerts=""
 # shellcheck source=../../lib/timeout-bin.sh
@@ -3032,9 +2988,6 @@ review_summary="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$(tick_bound 10)"} bash 
 # chief authors or a tick already reads: worker locks, worker tails, open PRs, and
 # the queue:, last GO:, epics: and decisions: lines. Not the doc mtime (every
 # Results bullet bumps that). board.mjs embeds this exact value via --emit-fp.
-# ponytail: CI colour and fleet capacity are shown on the board but deliberately
-# outside the fingerprint -- they move without a chief act, so including them
-# would read STALE for changes the chief cannot republish for.
 board_fp=""
 board_summary=skip
 if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
@@ -3067,9 +3020,6 @@ fi
 # writes to <page>.fp when it renders; a tracker that moved past its render reads
 # STALE, aged by the page's mtime; a page newer than its `.published` stamp (touched by the
 # chief after each publish) reads REPUBLISH:<age>. skip = no (or `none`) `tracker:` Live state line.
-# ponytail: tracker=ok says the LOCAL page matches Jira + the plan; tick cannot see
-# whether the artifact was republished, and it reads the mirror on disk, so a stale
-# mirror reads ok until the chief refreshes it (node scripts/jira/dist/index.js mirror).
 tracker_summary=skip
 if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     tracker_url="$(sed -n 's/^tracker:[[:space:]]*//p' "$console_doc" 2>/dev/null | head -n 1)"
@@ -3906,8 +3856,6 @@ vault_summary="$(HANDOVER_DIR="${HANDOVER_DIR:-$root}" bash "$HERE/vault-status.
 # plan dir. The chief doc dir is NOT watched: its bucket changes on every Results bullet.
 # The wrapper takes OUT/.launch first, so an overlapping tick's duplicate exits before it can
 # clobber the live refresh's .run.log/.last-fail/.last-run.
-# ponytail: a SIGKILL mid-refresh leaves OUT/.lock or .launch, read as FAIL:lock-stuck after an hour
-# until removed by hand; a pid-aware takeover when it bites.
 plan_index_summary=skip
 if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     pi_dir="${console_doc%/*}"
@@ -4489,8 +4437,6 @@ fi
 # (a second count here would be the drift this field exists to end). Run as a
 # plain read: CADENCE_USAGE_LAUNCH stays empty so it can never refuse anything,
 # and the ledger goes to /dev/null so a tick writes no cadence-ledger row.
-# ponytail: usage-preflight still takes its fleet admission lock and prunes
-# expired/consumed reservations while it counts, exactly as any usage read does.
 fleet_out="$(CADENCE_USAGE_LAUNCH='' CADENCE_USAGE_LEDGER=/dev/null bash "$REPO/scripts/lib/usage-preflight.sh" 2>&1)" || fleet_out=""
 # usage= uses the selected lane's own preflight verdict. Keep
 # or= below informational; it never stands in for the bank admission gate.
@@ -4596,8 +4542,6 @@ rest_compact() { # <line> -> 4200/5000@14:05[!LOW]; nothing when the line is not
 # cross-tick cursor), so "since the last tick" is approximated by a trailing
 # window rather than a real cursor -- chief-wait's own key-diffing is what
 # actually triggers a wake on a class change, not this field's count.
-# ponytail: HIMMEL-3724 - worker-label reconciliation and a same-session success/flip check
-# for REPEAT are Phase 2, not implemented here.
 denials_window_min="${TICK_DENIALS_WINDOW_MIN:-30}"
 case "$denials_window_min" in ''|*[!0-9]*) denials_window_min=30 ;; esac
 denials_log="${HIMMEL_CLASSIFIER_DENIALS_LOG:-$HOME/.himmel/state/classifier-denials.jsonl}"
@@ -4778,16 +4722,6 @@ fi
 # actually armed. F never armed it and its absence was invisible to F, to
 # this script, and to the handover -- the whole point of this field is to
 # stop that.
-# ponytail: this can only ever report UNKNOWN. A Monitor's armed/pending
-# state lives inside the Claude Code session process that armed it -- there
-# is no pidfile, `atq` entry, or lock on disk for it (unlike the `at_count`
-# scheduled-job census above, which reads real OS state). tick.sh runs as a
-# plain subprocess with no access to that in-session state, so ARMED/MISSING
-# cannot be told apart from here; faking either would be worse than saying
-# so. A chief confirms the arm itself, in ACTION ZERO step 10's first
-# bullet -- this field exists so a HUMAN or a later script reading a run of
-# tick lines can see that no honest signal was available, rather than
-# silently assuming one of the other fields would have caught it.
 tick_status=UNKNOWN
 
 # --burn: what each worker is actually paying per API call. The

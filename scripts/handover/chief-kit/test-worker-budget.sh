@@ -12,6 +12,7 @@
 #
 # Hermetic: temp dir only. Platform guard: POSIX bash 3.2+.
 set -uo pipefail
+KP=HIMMEL
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT="$HERE/worker-budget.sh"
@@ -116,7 +117,7 @@ mk "$cfg/projects/-slug/sid-1.jsonl" 10000000
 rc=0; out="$(env -u CONTEXT_FILL_TRANSCRIPT CLAUDE_CONFIG_DIR="$cfg" CLAUDE_CODE_SESSION_ID=sid-1 bash "$SCRIPT" 2>&1)" || rc=$?
 check    "7: CLAUDE_CODE_SESSION_ID resolves" "$out" "worker-budget calls=1 cost-eq=1000.0k soft=2000k hard=4700k verdict=OK"
 { printf '{"type":"custom-title","customTitle":"HIMMEL-1-N1-some-worker-2026-10-25"}\n'; row t1 40000000; } > "$cfg/projects/-slug/sid-2.jsonl"
-rc=0; out="$(env -u CONTEXT_FILL_TRANSCRIPT CLAUDE_CONFIG_DIR="$cfg" bash "$SCRIPT" --title HIMMEL-1-N1-some-worker-2026-10-25 2>&1)" || rc=$?
+rc=0; out="$(env -u CONTEXT_FILL_TRANSCRIPT CLAUDE_CONFIG_DIR="$cfg" bash "$SCRIPT" --title "$KP"-1-N1-some-worker-2026-10-25 2>&1)" || rc=$?
 check    "7: --title resolves by customTitle (rc 4)" "$rc" 4
 contains "7: --title measured the titled transcript" "$out" "cost-eq=4000.0k"
 rc=0; out="$(env -u CONTEXT_FILL_TRANSCRIPT CLAUDE_CONFIG_DIR="$cfg" bash "$SCRIPT" --title no-such-worker 2>&1)" || rc=$?

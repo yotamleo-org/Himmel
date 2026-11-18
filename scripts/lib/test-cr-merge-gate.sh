@@ -886,14 +886,14 @@ else fail=$((fail+1)); echo "FAIL base-critics-json-anchored-to-main (got [$anc_
 # A trivial-descendant carry row reads the reviewed head's critic states. As
 # clear-review-marker.sh writes it (#3311): ONE row, model claude, for the whole
 # head; codex has no row of its own at the tip.
-led "$(av abc123 claude ok '' 'trivial-descendant of reviewed head 3b73550718cda10fd83ff5bf4191d9dc78225e71 (HIMMEL-5856)')" \
+led "$(av abc123 claude ok '' 'trivial-descendant of reviewed head 3b73550718cda10fd83ff5bf4191d9dc78225e71 (carried by clear-cr-marker)')" \
     "$(av 3b73550718cda10fd83ff5bf4191d9dc78225e71 codex ok)" \
     "$(av 3b73550718cda10fd83ff5bf4191d9dc78225e71 claude unavailable critic-skipped "$ABSENT_DETAIL")"
 GH_STUB_MODE=clean rg carry-reads-reviewed-head 0
 has "$TMP/err-carry-reads-reviewed-head" 'claude hard absent\(api lane is OFF\)' "carry reads the reviewed head's rows"
 has "$TMP/err-carry-reads-reviewed-head" 'codex hard pass' "carry is head-wide: codex reads the reviewed head"
 # ...but a finding posted at the tip itself still holds.
-led "$(av abc123 claude ok '' 'trivial-descendant of reviewed head 3b73550718cda10fd83ff5bf4191d9dc78225e71 (HIMMEL-5856)')" \
+led "$(av abc123 claude ok '' 'trivial-descendant of reviewed head 3b73550718cda10fd83ff5bf4191d9dc78225e71 (carried by clear-cr-marker)')" \
     "$(av 3b73550718cda10fd83ff5bf4191d9dc78225e71 codex ok)" \
     "$(av 3b73550718cda10fd83ff5bf4191d9dc78225e71 claude unavailable critic-skipped "$ABSENT_DETAIL")" \
     '{"kind":"finding","head":"abc123","model":"codex","finding_id":"codex-9","severity":"imp","verdict":""}'
@@ -902,7 +902,7 @@ has "$TMP/out-carry-tip-finding-holds" '^HOLD: .*codex.*codex-9' "carry: the tip
 # An abbreviated reviewed head in the carry row still finds the full-SHA rows.
 git -C "$TMP/repo" -c core.hooksPath=/dev/null -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m carry >/dev/null 2>&1
 carry_full=$(git -C "$TMP/repo" rev-parse HEAD)
-led "$(av abc123 claude ok '' "trivial-descendant of reviewed head ${carry_full:0:7} (HIMMEL-5856)")" \
+led "$(av abc123 claude ok '' "trivial-descendant of reviewed head ${carry_full:0:7} (carried by clear-cr-marker)")" \
     "$(av "$carry_full" codex ok)" \
     "$(av "$carry_full" claude unavailable critic-skipped "$ABSENT_DETAIL")"
 GH_STUB_MODE=clean rg carry-short-sha-reads-reviewed-head 0

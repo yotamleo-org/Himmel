@@ -14,10 +14,6 @@
 # bun, python) in command position or sits in command position behind a path,
 # after any VAR=value prefixes; a grep or cat that
 # merely names the script is not a run.
-# ponytail: a textual match, not a shell parser — a script run through eval, a
-# wrapper script or a quoted path slips past, and a listed name fed to an
-# interpreter as a later argument is not seen; revisit if a chief is
-# observed doing it.
 #
 # DENY: structured permissionDecision "deny" on stdout plus exit 2 + stderr (the
 # guard-chief-dispatch.sh idiom); the message gives the exact re-issue shape.
@@ -88,8 +84,6 @@ done < "$list"
 # suffix, or 1m / 1.5m) as the OUTERMOST command, wrapping the interpreter or script path
 # directly, with no chain, pipe, substitution or newline anywhere. Anything else (-k, nohup,
 # a chain before or after, N > 90 or 0) stays denied.
-# ponytail: a textual check; an argument holding one of ;&|`$( denies a bounded run and the
-# chief re-issues it in the background — revisit if that is observed.
 case "$hit:$cmd" in
     chief-wait.sh:*|console-wait.sh:*|run-suite.sh:*) ;;
     *[\;\&\|\`\$\(]*|*"

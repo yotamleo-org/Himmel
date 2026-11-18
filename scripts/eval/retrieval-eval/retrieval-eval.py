@@ -1199,7 +1199,6 @@ def result_paths(cl):
     paths = set(found)
     if qmd:
         paths |= {p.partition("/")[2] for p in found}
-    # ponytail: a path with no directory is dropped, so a root-level file never counts as used; keep it if a sample shows root files missed.
     return {p for p in paths if "/" in p.strip("/")}
 
 

@@ -39,9 +39,6 @@
 #   GH_BUDGET_JITTER_MAX   max wake-up jitter seconds (default 15; 0 = none)
 #   GH_BUDGET_PREFLIGHT=0  skip the call entirely (test harnesses that count gh calls)
 #
-# ponytail: an unreadable/absent header set means "proceed" — this preflight is
-# advisory and fails OPEN. Nothing here is a gate: the caller's own gh calls
-# still fail closed if the budget really is gone.
 
 # shellcheck disable=SC2034  # GHB_* are the caller-facing results of the sourced helper
 GHB_REMAINING=""
@@ -56,7 +53,6 @@ _GHB_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # _ghb_bounded <seconds> <token or empty> <gh args...> — one gh call under the
 # probe bound. --foreground keeps it in the caller's process group, so a
 # caller's own outer kill reaches it.
-# ponytail: no timeout binary (a Mac without coreutils) runs it unbounded; upgrade = a bash watchdog
 _ghb_bounded() {
     local t="$1" tok="$2"
     shift 2

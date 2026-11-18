@@ -542,9 +542,6 @@ for f in "$CLAUDE_RUNBOOK" "$CODEX_SKILL"; do
     # itself ran by the himmel-lane spelling (so step 0's lane proof and its
     # scripts/cr/ diff check already passed). The Claude runbook must carry
     # the call at all (anti-vacuity); the Codex twin never calls it (0 = 0).
-    # ponytail: the phrase pin is a substring grep -- it proves the phrase is
-    # present on as many lines as there are bare literals, not that each one
-    # sits directly above its fence.
     env_anchor_count=$(printf '%s\n' "$calls" | grep -c -E '^[[:space:]]*bash "<himmel_dir>/scripts/cr/pr-check-env\.sh" CR_CLAUDE_AGENTS[[:space:]]*$')
     env_all_calls=$(printf '%s\n' "$calls" | grep -c 'scripts/cr/pr-check-env\.sh')
     env_phrase=$(grep -c 'ONLY when step 0 itself ran by the himmel-lane spelling' "$f")

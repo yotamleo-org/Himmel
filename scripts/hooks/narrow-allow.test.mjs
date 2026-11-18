@@ -237,7 +237,7 @@ test('a concurrent process\'s temp at the shared name survives a narrow-allow ru
 });
 
 test(
-  'writeSettingsAtomic preserves a restrictive target mode across the temp+rename swap (HIMMEL-1624)',
+  'writeSettingsAtomic preserves a restrictive target mode across the temp+rename swap',
   { skip: process.platform === 'win32' && 'mode bits are a no-op on Windows (ACLs govern); run on POSIX CI' },
   () => {
     withFixture((fixture) => {

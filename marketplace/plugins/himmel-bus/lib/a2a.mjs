@@ -8,7 +8,6 @@ import { redact } from '../../../../scripts/handover/chief-kit/redact.mjs';
 export const A2A_VERSION = '1.0.0';
 
 // Both directions between two peers share one context: the bus has no thread id.
-// ponytail: pair-keyed context, upgrade path is a thread field on the envelope (a store change, out of scope here).
 const contextOf = (a, b) => [a, b].sort().join('~');
 
 export function toA2AMessage(rec) {

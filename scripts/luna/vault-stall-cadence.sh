@@ -348,9 +348,6 @@ apply_edits() {
 
     # The sync may have committed a config change since planning (the tree is
     # clean again): writing the stale plan would revert it.
-    # ponytail: a change landing in the instant between this cmp and the cp
-    # below is still overwritten (no lock is shared with the vault sync).
-    # Upgrade: a lock the vault sync also takes.
     for f in $files; do
         case "$f" in .pre-commit-config.yaml) wf="$work/yaml.orig" ;; .gitleaks.toml) wf="$work/toml.orig" ;; esac
         if ! cmp -s "$wf" "$vault/$f"; then

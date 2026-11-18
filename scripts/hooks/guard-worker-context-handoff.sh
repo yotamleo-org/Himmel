@@ -74,31 +74,6 @@
 # PreCompact: a manual /compact passes; an auto one past the threshold passes
 # only on steps 3-4, with EITHER unlock (a CHECKPOINT or a RESUME doc).
 #
-# ponytail: fail-OPEN on every infrastructure gap (fill UNKNOWN or STALE, no
-# transcript_path, worker doc not found, no jq, junk stdin, junk ceiling), with one
-# stderr line. A false block strands a worker in a window nobody watches, while a
-# false allow only costs the pre-hook status quo (the autocompact backstop still
-# fires); upgrade path: if the fail-open warnings show up in worker logs, fix the
-# probe, never flip this to fail-closed.
-# ponytail: the Bash hand-off allow-list reads the script as one bare or quoted
-# word but
-# still matches the rest as TEXT through is_bare_command, which refuses
-# unquoted `& | ; < > ( )`, `$(`, backticks and newlines; a bullet's quoted `;`
-# is allowed on purpose, and this is a workflow nudge, not a fence
-# (scripts/hooks/CLAUDE.md), with the permission matcher refusing compound
-# shapes; upgrade path: parse the whole command with the shell-word splitter
-# auto-approve-safe-bash.sh uses if a worker abuses it. `git -C <dir>` still takes a
-# space-free dir.
-# ponytail: a CHECKPOINT proves HEAD was pushed, not that the tree is clean — a
-# clean-tree check would re-block every edit made between the checkpoint and the
-# compaction it exists to allow; and one still matching HEAD after a compaction
-# with no new commit keeps counting; upgrade path: key it to the transcript's
-# compact_boundary if a worker is seen coasting on an old checkpoint.
-# ponytail: upgrade path HIMMEL-4710 item 7. Claude Code does not document what follows a refused auto-compaction
-# (retry, error, overflow), which is why the threshold sits below the earliest
-# observed compaction and the PreCompact refusal is only the second line, past
-# the threshold only (below it the worker was never told to checkpoint); upgrade
-# path: measure it on a VM worker and re-derive the share.
 #
 # Bypass: WORKER_SESSION_CONTEXT_HANDOFF_OK=1 (a falsy value keeps the guard on)
 # in the launching shell (session-sticky; a per-call prefix does not reach this
@@ -378,7 +353,7 @@ if [ -n "$worker_id" ]; then
     suffix=${worker_id#"$worker_base"}
     case "$suffix" in
         '') next=b ;;
-        z) no_successor=1 ;;  # HIMMEL-4692: nothing follows z; never suggest the worker's own doc
+        z) no_successor=1 ;;
         *) next=$(printf '%s' "$suffix" | tr 'a-y' 'b-z') ;;
     esac
     [ "$no_successor" = 1 ] ||

@@ -44,10 +44,6 @@
 # ticks, prompt parks); guard denials; cost-eq per merged PR from its worker-burn line.
 # A source that is absent prints `n/a (<reason>)`, never 0. Per lane: totals and medians.
 #
-# ponytail: interventions read only what lands in a doc; a SendMessage ruling to a native
-# worker shows only through its RESOLVED bullet, and a nudge only when the chief doc logs it.
-# Blocker and Major are counted by a line prefix in the verdict text; a severity header from
-# write-verdict.sh is the upgrade path.
 #
 #   fleet-scorecard.sh --exposure-screen SCREEN.json --out SCREEN-RESULT.json
 #       The free B1a screen: over a frozen, complete inventory of worker parents, the

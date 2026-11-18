@@ -31,7 +31,6 @@ const RESERVED = ['t', 'iid', 'op', 'kind', 'path', 'unit', 'scope', 'class', 'p
 // ours snapshots (twin of _prov_snapshot in provenance.sh)
 const SNAP_KINDS = ['file', 'shim', 'block'];
 const SNAP_OPS = ['create', 'replace', 'insert'];
-// ponytail: 1 MiB cap, raise it on a real >1 MiB unit (design §2)
 const SNAP_MAX = 1048576;
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 
@@ -71,11 +70,6 @@ function jqCanon(text) {
     }
     jqOk = false;
   }
-  // ponytail: no jq on PATH -- this fallback sorts keys by UTF-16 code unit and
-  // prints numbers through JS Number, so it diverges from `jq -cS` on non-BMP
-  // key order and on non-canonical number literals (1.0, 1E+2, integers past
-  // 2^53). The hashes then differ from the bash dialect for such values;
-  // every install host already has jq (deps-engine requires it).
   try { return sortedJson(JSON.parse(text)); } catch (_) { return null; }
 }
 function sortedJson(v) {

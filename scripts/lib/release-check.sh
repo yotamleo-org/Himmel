@@ -109,12 +109,6 @@ release_fetch_latest() {
     # line-local look-alike, so a nested object carrying its own tag_name wins over
     # the real one. jq is optional — a fresh packaged install may not have it, and
     # this path must still work there — so its absence degrades to sed, never fails.
-    # ponytail: the sed fallback is NOT structural. A jq-less adopter keeps the old
-    # positional parse, so a `tag_name` inside a nested object would be returned
-    # instead of the release's — the class is NOT removed for them. Today's GitHub
-    # payload has no such nested key (and release notes are escaped in the JSON, so
-    # cannot match either); the tag is grammar-checked below, so the worst outcome
-    # is a wrong "latest".
     if command -v jq >/dev/null 2>&1; then
         tag=$(printf '%s\n' "$body" | jq -r 'if (.tag_name | type) == "string" then .tag_name else empty end' 2>/dev/null) || tag=""
     else
@@ -155,9 +149,6 @@ release_refresh() {
 # entry instead of writing through it. mv itself would treat a destination that
 # is a directory — or a link to one — as "move INTO it", so a link there is
 # removed first and a real directory is refused outright.
-# ponytail: that check-then-mv is not atomic. Losing the race can only drop one
-# 0600 file (random name; content = a validated tag or a fixed-vocabulary
-# reason) into a directory the racing actor already controls.
 _release_put() {
     local tmp
     if [ -L "$2" ]; then rm -f "$2" 2>/dev/null || return 1

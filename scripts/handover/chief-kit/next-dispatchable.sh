@@ -349,7 +349,6 @@ EXPLICIT_RE = re.compile(r'^\W*(writes?|files?)(?:\s+(?:likely|expected|touched)
 RUN_BEFORE_RE = re.compile(r"(?<![\w/.-])(?:(?:re-?)?run(?:s|ning)?(?:\s+(?:bash|sh|zsh|node|python3?))?|bash|sh|zsh|node|python3?)(?:\s+-[\w=-]+)*\s*[`\"'(]?$", re.I)
 WRITTEN_RE = re.compile(r'(?<![\w/.-])(?:edit|fix|change|modify|modifies|patch|add|extend|write|rewrite|remove|delete|rename|update|replace|refactor|touch|teach|wire|move|port|implement)(?:e?s|ing|ed)?(?![\w/-])'
                         r'|(?<![\w/.-])(?:fail|crash|error|bug|regress|refus|deni|hang|stall)\w*|(?<![\w/.-])(?:wrong|broken)(?![\w/-])', re.I)
-# ponytail: prose can say `no code` of something else, only ever read on a text naming no path; upgrade path = a ticket field
 try:
     import importlib.util
     _spec = importlib.util.spec_from_file_location('pr_remainder', os.path.join(repo, 'scripts', 'lib', 'pr_remainder.py'))
@@ -427,7 +426,7 @@ def owned_keys(doc, lines):
                         pass  # swallow-ok: an unreadable prior doc adds no key; the worker still owns the rest
     return keys
 SERIES_LEAD = '> **Series:**'
-SERIES_ITEM_RE = re.compile(r'(?<![\w.-])\d+\.\s+([A-Z]+-\d+)')  # "1. HIMMEL-9 branch=..." one item of a series worker's block
+SERIES_ITEM_RE = re.compile(r'(?<![\w.-])\d+\.\s+([A-Z]+-\d+)')
 SERIES_ID_RE = re.compile(r'(?!\d+\.\s)(\S+)\s+(\S+)')  # "<sid> <ledger path> - read ...": what follows the lead on the Series line S2a writes
 SERIES_CAP = 4
 stacked = os.environ.get('ND_STACKED') == '1'  # the stacked_series flag, read by the shell wrapper
@@ -834,7 +833,6 @@ DONE_STATES = ('Done', 'Closed')
 def done_key(k):
     i = issues.get(k)
     return bool(i) and (i['cat'] == 'Done' or i['status'] in DONE_STATES)
-# ponytail: custom Done statuses hold until listed here, upgrade path: jira get returns statusCategory
 # a live read carries only the status name, so its Done-category names are listed here
 LIVE_DONE = DONE_STATES + ('wont do', 'wont fix', 'Resolved', 'In Public')
 jira_cmd = os.environ.get('NEXT_DISPATCH_JIRA_CMD')
@@ -1361,7 +1359,6 @@ for label, doc, lines, wkeys in live_workers:
 # publish_branch merged or closed, whatever any worker doc says; a gh answer that is missing or fails keeps the hold.
 # A writer doc with no LIVE bullet and no manifest entry SERIES_ORPHAN_S after the newest pass (or the ledger's last write, for
 # a series with no pass) is named SERIES-ORPHAN for the chief; it still holds until the chief abandons the series.
-# ponytail: a ledger carries no created_at, so a series with no pass ages from the ledger file's mtime, upgrade path: a created_at field in series-ledger.py create
 SERIES_ORPHAN_S = 2 * 3600
 series_orphans = []  # (sid, writer doc)
 series_label_of = {}  # ledger sid -> the label of the live series worker that owns the ledger
@@ -1590,7 +1587,6 @@ for sid, wdoc in series_orphans:
 
 def family_of(f):
     # a path's directory family: the first two path components, as scripts/cleanup/cleanup-batch.sh cuts it
-    # ponytail: the rule lives in cleanup-batch.sh (awk) and here, upgrade path = one scripts/lib helper both call
     p = canon(f).strip('/').split('/') + (['*'] if f.endswith('/') else [])  # a directory is cut as a file inside it
     return '/'.join(p[:2]) if len(p) >= 3 else (p[0] if len(p) == 2 else '.')
 
@@ -1923,7 +1919,7 @@ emit_stackable()
 warn_missing()
 drop_summary()
 if os.environ.get('ND_DISPO') == '1':
-    print_intake(intake_keys())  # the tick counts INTAKE= from the snapshot (HIMMEL-8336)
+    print_intake(intake_keys())
 PY
 nd_pid=$!
 wait "$nd_pid"; nd_rc=$?

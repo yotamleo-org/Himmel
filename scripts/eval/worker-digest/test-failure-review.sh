@@ -192,7 +192,7 @@ row "$C5/ledger.jsonl" N100 traj/identical-retry
 review "$C5" >/dev/null 2>&1
 check "claim-unverified and red-before-green are absent" '! digest "$C5" | grep -Eq "claim-unverified|red-before-green"'
 check "the other trajectory signals are listed" 'digest "$C5" | grep -q "traj/identical-retry: 1"'
-check "the exclusion is stated" 'digest "$C5" | grep -q "excluded until HIMMEL-4698"'
+check "the exclusion is stated" 'digest "$C5" | grep -q "excluded for now"'
 C5b="$TMP/c5b"; mkdir -p "$C5b"
 row "$C5b/ledger.jsonl" N100 traj/claim-unverified
 review "$C5b" >/dev/null 2>&1
@@ -501,7 +501,7 @@ cat >"$TMP/golden-c2.md" <<'EOF'
 ### Trajectory signals
 
 - none
-- excluded until HIMMEL-4698: red_before_green, verify_before_claim
+- excluded for now: red_before_green, verify_before_claim
 
 ### Eval feedback
 

@@ -10,6 +10,7 @@
 # the contract under test is the CLI exit-code table.
 
 set -uo pipefail
+KP=HIMMEL
 
 # grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
 # pipeline. printf/echo-into-`grep -q` is a trap under this file's
@@ -2636,7 +2637,7 @@ else
     fail "T72: no stderr note that HANDOVER_DIR was an ancestor of the keying root: $out"
 fi
 out="$(m_run "$M_PRIMARY" - release "$M_DOC_A" tokTA)"; rc=$?
-if [ "$rc" -eq 0 ] && [ ! -d "$M_ROOT/.locks/queue/$(m_key HIMMEL-3290-TA-RESUME)" ]; then
+if [ "$rc" -eq 0 ] && [ ! -d "$M_ROOT/.locks/queue/$(m_key "$KP"-3290-TA-RESUME)" ]; then
     pass "T72: release from a cwd with HANDOVER_DIR unset finds and releases it"
 else
     fail "T72: release of the collapsed-root lock failed (rc=$rc): $out"
@@ -2646,14 +2647,14 @@ fi
 # Pre-fix: right root, UNPREFIXED slug. Post-fix: the bare name resolves to the
 # one doc under the root and yields the canonical prefixed slug; every spelling
 # of that doc is then the SAME queue (status held, second acquire refused).
-out="$(m_run "$M_PRIMARY" "$M_ROOT" acquire "HIMMEL-3290-TB-RESUME.md" tokTB)"
+out="$(m_run "$M_PRIMARY" "$M_ROOT" acquire "$KP-3290-TB-RESUME.md" tokTB)"
 if [ -f "$M_ROOT/.locks/queue/$(m_key HIMMEL-3290-TB-RESUME)/owner.json" ] \
    && [ ! -d "$M_ROOT/.locks/queue/HIMMEL-3290-TB-RESUME.lock" ]; then
     pass "T73: a bare filename acquires under the canonical prefixed slug, not an unprefixed one"
 else
     fail "T73: bare filename mis-keyed: $(find "$M_ROOT/.locks/queue" -mindepth 1 -maxdepth 1 2>/dev/null | tr '\n' ' ') :: $out"
 fi
-out="$(m_run "$M_ROOT" - status "yotamleo/himmel/HIMMEL-3290-TB-RESUME.md")"; rc=$?
+out="$(m_run "$M_ROOT" - status "yotamleo/himmel/$KP-3290-TB-RESUME.md")"; rc=$?
 if [ "$rc" -eq 11 ]; then
     pass "T73: the relative spelling of the same doc sees it HELD (rc=11)"
 else
@@ -2665,8 +2666,8 @@ if [ "$rc" -eq 2 ]; then
 else
     fail "T73: a second writer acquired the same doc under another spelling (rc=$rc): $out"
 fi
-out="$(m_run "$M_ROOT" - release "yotamleo/himmel/HIMMEL-3290-TB-RESUME.md" tokTB)"; rc=$?
-if [ "$rc" -eq 0 ] && [ ! -d "$M_ROOT/.locks/queue/$(m_key HIMMEL-3290-TB-RESUME)" ]; then
+out="$(m_run "$M_ROOT" - release "yotamleo/himmel/$KP-3290-TB-RESUME.md" tokTB)"; rc=$?
+if [ "$rc" -eq 0 ] && [ ! -d "$M_ROOT/.locks/queue/$(m_key "$KP"-3290-TB-RESUME)" ]; then
     pass "T73: release under the relative spelling releases what the bare spelling acquired"
 else
     fail "T73: cross-spelling release failed (rc=$rc): $out"
@@ -2674,7 +2675,7 @@ fi
 
 # --- T74: an ambiguous bare name is refused, never guessed ------------------
 m_before="$(find "$M_ROOT/.locks/queue" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l | tr -d ' ')"
-out="$(m_run "$M_PRIMARY" "$M_ROOT" acquire "HIMMEL-3290-DUP-RESUME.md" tokDUP)"; rc=$?
+out="$(m_run "$M_PRIMARY" "$M_ROOT" acquire "$KP-3290-DUP-RESUME.md" tokDUP)"; rc=$?
 m_after="$(find "$M_ROOT/.locks/queue" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l | tr -d ' ')"
 if [ "$rc" -eq 1 ] && [ "$m_before" = "$m_after" ] && grepq "$out" -i 'ambiguous'; then
     pass "T74: a bare name matching two docs is refused (rc=1), no lock created, ambiguity named"
@@ -2693,8 +2694,8 @@ M_WORKER_D="$M_ROOT/.locks/queue/HIMMEL-3290-TD-RESUME.lock"
 m_legacy_lock "$M_WORKER_C" legN211b "$M_DOC_C" "$M_VAULT"
 m_legacy_lock "$M_WORKER_D" legN212 "HIMMEL-3290-TD-RESUME.md" "$M_ROOT"
 if [ -f "$M_WORKER_C/owner.json" ] && [ -f "$M_WORKER_D/owner.json" ] \
-   && [ ! -d "$M_ROOT/.locks/queue/$(m_key HIMMEL-3290-TC-RESUME)" ] \
-   && [ ! -d "$M_ROOT/.locks/queue/$(m_key HIMMEL-3290-TD-RESUME)" ]; then
+   && [ ! -d "$M_ROOT/.locks/queue/$(m_key "$KP"-3290-TC-RESUME)" ] \
+   && [ ! -d "$M_ROOT/.locks/queue/$(m_key "$KP"-3290-TD-RESUME)" ]; then
     pass "T75: setup -- both legacy locks exist and NEITHER sits at its canonical key"
 else
     fail "T75: setup -- legacy fixtures wrong"
@@ -2719,7 +2720,7 @@ else
     fail "T76: sweep missed a held lock: $out"
 fi
 out="$(m_run "$M_PRIMARY" "$M_ROOT" acquire "$M_DOC_D" tokOTHER)"; rc=$?
-if [ "$rc" -eq 2 ] && [ ! -d "$M_ROOT/.locks/queue/$(m_key HIMMEL-3290-TD-RESUME)" ]; then
+if [ "$rc" -eq 2 ] && [ ! -d "$M_ROOT/.locks/queue/$(m_key "$KP"-3290-TD-RESUME)" ]; then
     pass "T76: acquire refuses a second writer on a doc held under a legacy key (rc=2)"
 else
     fail "T76: a second writer acquired over a legacy-keyed lock (rc=$rc): $out"
@@ -2785,7 +2786,7 @@ M_WORKER_E2="$M_ROOT/.locks/queue/zzz-fresh-E.lock"
 m_lock_at "$M_WORKER_E1" legOldE "$M_DOC_E" "$M_ROOT" "2020-01-01T00:00:00Z"
 m_lock_at "$M_WORKER_E2" legFreshE "$M_DOC_E" "$M_ROOT" "$m_now"
 out="$(m_run "$M_PRIMARY" "$M_ROOT" acquire "$M_DOC_E" tokX)"; rc=$?
-if [ "$rc" -eq 2 ] && [ ! -d "$M_ROOT/.locks/queue/$(m_key HIMMEL-3290-TE-RESUME)" ] \
+if [ "$rc" -eq 2 ] && [ ! -d "$M_ROOT/.locks/queue/$(m_key "$KP"-3290-TE-RESUME)" ] \
    && [ -f "$M_WORKER_E2/owner.json" ]; then
     pass "T79: acquire refuses when a STALE legacy lock sorts before a FRESH one (rc=2)"
 else
@@ -2797,7 +2798,7 @@ if grepq "$out" 'legFreshE' && ! grepq "$out" 'legOldE'; then
 else
     fail "T79: status reported the wrong legacy holder (rc=$rc): $out"
 fi
-M_CANON_F="$M_ROOT/.locks/queue/$(m_key HIMMEL-3290-TF-RESUME)"
+M_CANON_F="$M_ROOT/.locks/queue/$(m_key "$KP"-3290-TF-RESUME)"
 M_WORKER_F="$M_ROOT/.locks/queue/HIMMEL-3290-TF-RESUME.lock"
 m_lock_at "$M_CANON_F" legOldF "$M_DOC_F" "$M_ROOT" "2020-01-01T00:00:00Z"
 m_lock_at "$M_WORKER_F" legFreshF "$M_DOC_F" "$M_ROOT" "$m_now"

@@ -2,13 +2,6 @@
 # scripts/docs/check-dev-graph.sh — fail when docs/guide/dev-graph/graph.json no
 # longer matches the code it names.
 #
-# ponytail: binds structure, not caption meaning. A node's anchor must still
-# occur exactly once in its file and every exit code / WAKE kind / check / marker
-# / CR-FIRST outcome of a covered table must be mapped or listed unmapped with a
-# reason; whether a summary still describes the behaviour stays a reviewer's
-# call. Table parsers read the scripts' comment headers and printf / echo
-# shapes, floors live in graph.json
-# (visible in the diff that lowers one); an AST or a generated table is the upgrade.
 #
 # Usage: check-dev-graph.sh [--graph <file>] [--root <dir>] [--suite <file>] [--table]
 #   --graph  default <root>/docs/guide/dev-graph/graph.json

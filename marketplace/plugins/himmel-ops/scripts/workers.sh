@@ -27,7 +27,7 @@ _find_repo() {
   if [ -n "$cand" ] && [ -f "$cand/scripts/lib/initiative-workers.sh" ]; then
     printf '%s' "$cand"; return 0
   fi
-  cand="$HOME/Documents/github/himmel"      # canonical default install (HIMMEL-453)
+  cand="$HOME/Documents/github/himmel"
   if [ -f "$cand/scripts/lib/initiative-workers.sh" ]; then
     printf '%s' "$cand"; return 0
   fi

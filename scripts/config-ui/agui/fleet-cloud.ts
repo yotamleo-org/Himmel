@@ -11,8 +11,6 @@
 // cached for GH_TTL_MS per ticket set (a failure too); a failed, throttled or timed-out read is "unknown", never an
 // error the view waits on. Read-only: nothing here writes.
 //
-// ponytail: a cloud session is "recent" for CLOUD_RECENT_MS after its routing (no source says when it ended); upgrade
-// path: drop the window once the cloud-route log records the session URL and GitHub's merge state retires the node.
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";

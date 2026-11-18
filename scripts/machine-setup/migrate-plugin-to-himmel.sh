@@ -109,8 +109,6 @@ for spec in "${SPECS[@]}"; do
                 # Compare-and-swap. cksum (POSIX) before the read and
                 # again just before the mv; a change means a concurrent writer
                 # (e.g. `claude plugin install`) — abort rather than replace its write.
-                # ponytail: a writer landing between the re-check and the mv is
-                # still lost — there is no atomic compare-and-rename in POSIX shell.
                 registry_sum=$(cksum < "$INSTALLED_JSON")
                 if registry_new=$(jq --arg spec "$spec" --arg path "$project_path" '
                     .plugins[$spec] |= map(select(.scope != "project" or .projectPath != $path))

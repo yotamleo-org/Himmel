@@ -34,13 +34,6 @@
 # env, default 3000 = 50 min, 60-3300 accepted, anything else = the default);
 # the refusal names it so the wait the worker arms returns before the TTL.
 #
-# ponytail: the hook sees that a background task is running, not when it will
-# return, so an armed but unbounded wait still passes (N2741's watch on
-# origin/main ran past the TTL); upgrade path: read the armed command's
-# timeout/--max-wait from the transcript if unbounded waits show up in
-# cache-probe.sh idle-gap after this ships.
-# ponytail: a worker that stops a second time in a row passes the loop guard;
-# upgrade path: a per-session refusal counter if workers are seen doing that.
 #
 # Workflow nudge (scripts/hooks/CLAUDE.md "Fail-open vs fail-closed"): fails
 # OPEN on every gap — no jq, no sha256 tool, junk payload, no transcript, no

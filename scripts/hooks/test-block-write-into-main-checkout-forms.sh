@@ -39,7 +39,7 @@ _r4138 "78d top-level comments pairing a quote around a write"         block ': 
 # 78e (a comment in $(…) in a multi-line bash -c body) sits with the
 # rows below. 78p: the body newline now reaches the body scan as a
 # real newline, which splits the body there.
-_r4138 "78p bash -c body with a newline before a write (HIMMEL-4143)"  block 'bash -c "echo hi\ntouch @P@/f"'
+_r4138 "78p bash -c body with a newline before a write"  block 'bash -c "echo hi\ntouch @P@/f"'
 # The strip copies a heredoc body through verbatim (speed); a shift is no opener.
 _r4138 "78q ((x<<2)) is a shift, comment pair still stripped"            block '((x<<2))\n# '"'"'\necho x > @P@/f\n# '"'"'\n2'
 _r4138 "78r \$[x<<2] is a shift, comment pair still stripped"            block 'echo $[1<<2]\n# '"'"'\necho x > @P@/f\n# '"'"'\n2'

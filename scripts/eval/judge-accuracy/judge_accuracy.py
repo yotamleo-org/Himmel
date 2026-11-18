@@ -91,15 +91,11 @@ MIRROR = default_mirror()
 DAYS = 28
 RULINGS = ("S", "P", "N")
 VERDICT = re.compile(r"^\*\*(GO|NO-GO)\*\* for head `([0-9a-f]+)`", re.M)
-# ponytail: a phrase match for round-buying NO-GOs, as the judge-accuracy audit sorted them; a `procedural:`
-# header from write-verdict.sh is the upgrade path.
 PROCEDURAL = re.compile(r"\b(buys?|grants?) (one|a|the) delta round\b|\bprocedural\b", re.I)
 CAUSED_BY = re.compile(r"caused-by:\s*#?(\d+|unknown)\b", re.I)
 CITE = re.compile(r"(?:#|/pull/)(\d+)\b")
 
 
-# ponytail: one alias, opus -> claude-opus-5-5 (decision 194: two spellings, one model row); a family
-# table is the upgrade path when a second alias shows up in the verdicts.
 MODEL_ALIAS = {"opus": "claude-opus-5-5"}
 
 

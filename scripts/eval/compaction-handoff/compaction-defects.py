@@ -42,9 +42,6 @@
 # the context) re-creates the simulated context; the rest of the context is
 # priced as cache_read.
 #
-# ponytail: the classes are regex and identity heuristics over tool calls; a
-# contradicted ruling that is never re-asked, or a verdict misquoted in prose,
-# is not seen. Upgrade path = a judge pass over the sampled windows.
 import argparse, glob, importlib.util, json, os, re, statistics, sys, time
 
 _ab_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "autocompact-ab.py")

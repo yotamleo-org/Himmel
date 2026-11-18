@@ -212,13 +212,6 @@ fi
 # The expected set is DATA, shared with install-himmel-codex (himmel-plugin-set.conf)
 # — never restated here. Only the `default` set is required; `--all` extras are
 # opt-in. Per-plugin, not all-or-nothing: a partial loss is reported by name.
-# ponytail: only the table-header form codex itself writes ([marketplaces.X],
-# [plugins."name@X"] + `enabled = true`) is parsed; a hand-written dotted-key or
-# inline-table config reads as unregistered (fail closed — the installer would
-# rewrite it in the header form). A registered marketplace whose `source` path has
-# gone stale is not checked either. Multiline strings are skipped by delimiter
-# parity on the comment-stripped line only: a quote escaped next to a triple-quote
-# (`\"""`) can still desync it.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_SET_FILE="$SCRIPT_DIR/himmel-plugin-set.conf"
 plugin_set_field() { tr -d '\r' < "$PLUGIN_SET_FILE" 2>/dev/null | awk -F': *' -v k="$1" '$1==k{print $2; exit}'; }

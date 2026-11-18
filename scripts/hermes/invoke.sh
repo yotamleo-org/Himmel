@@ -153,7 +153,7 @@ done
 
 # Resolve the prompt source: --prompt-file wins, else positional, else stdin.
 tmp_prompt=""
-snapdir=""    # private gate-made directory holding the gated prompt copy (HIMMEL-3221)
+snapdir=""    # private gate-made directory holding the gated prompt copy
 snapshot=""   # <snapdir>/prompt — the ONLY file hermes reads
 # Watchdog/deny-escalation state, declared up front (set -u
 # safe) so the trap never trips on an early exit before they are assigned.

@@ -46,7 +46,6 @@
 # 8 the usage preflight refuses a launch (nothing killed). The record's profile must equal
 # the HIMMEL_WORKER_SESSION_PROFILE in the live process's environ, else exit 4.
 #
-# ponytail: relaunch loses the old session's context window (the doc carries state), upgrade path: a native toggle once claude exposes one over its session file.
 # Platform: Linux only (reads /proc), as the rest of the chief kit.
 set -u
 
@@ -211,10 +210,6 @@ if ! "$LAUNCHER" --dry-run "${launch[@]}" >/dev/null 2>&1; then  # swallow-ok: t
 fi
 # The launcher's bank gate runs only on a real launch, after the kill, so a refused bank
 # would end the session and never relaunch it. Read the same bank now and stop first.
-# ponytail: the fleet cap is not pre-checked (only a launch-intent call can refuse it, and
-# that reserves the name the relaunch then collides with), so a slot another admission takes
-# between the kill and the relaunch still strands the worker, upgrade path: hand the
-# reservation to the launcher.
 preflight="${ENABLE_RC_PREFLIGHT:-$HERE/../../lib/usage-preflight.sh}"
 if [ -f "$preflight" ]; then
     verdict="$(CADENCE_USAGE_WORKER="$NAME" CADENCE_USAGE_LANE=native bash "$preflight" 2>/dev/null)"  # swallow-ok: an unreadable bank leaves the verdict empty, which the launcher decides on its own after the kill
@@ -227,7 +222,6 @@ fi
 [ -z "${ENABLE_RC_BEFORE_KILL:-}" ] || "$ENABLE_RC_BEFORE_KILL" "$pid" "$PROC"
 # The pid was matched above; confirm it still names this session right before the
 # kill, which shrinks the window in which an unrelated process could hold a recycled pid.
-# ponytail: the check and the kill are two steps, so a pid recycled in the microseconds between them is still signalled, upgrade path: pidfd_send_signal once a helper that can open a pidfd is a dependency here.
 if ! tr '\0' '\n' < "$PROC/$pid/cmdline" 2>/dev/null | awk -v n="$NAME" 'p == "-n" && $0 == n { f = 1 } { p = $0 } END { exit !f }'; then  # swallow-ok: an unreadable cmdline means the pid is gone or reused; not killing is the safe answer
     echo "enable-remote-control: pid $pid no longer names session $NAME; not killing" >&2
     exit 6

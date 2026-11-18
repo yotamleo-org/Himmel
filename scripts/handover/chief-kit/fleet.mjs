@@ -21,12 +21,6 @@
 // PLATFORM GUARD: The chief kit is Linux-only (/proc, the
 // konsole launch logs). Node ESM, no dependencies.
 //
-// ponytail: board.mjs exports nothing and runs on import, so its parsers (the
-// workers: block, the PR-bullet grammar, the redaction patterns, ciOf) are re-stated
-// here, not imported; a change to one wants the same change in the other.
-// ponytail: uptime assumes CLK_TCK=100 (every Linux the kit runs on); a worker's
-// status age is the bullet's own HH:MM against today's clock, so a bullet from
-// yesterday reads as up to 24 h younger than it is.
 import { execFile } from 'node:child_process';
 import { closeSync, existsSync, fstatSync, openSync, readFileSync, readSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import http from 'node:http';

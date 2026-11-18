@@ -161,9 +161,6 @@ _ob_fetch() {
 # StatusContext rows carry state. Best-effort, never affects the orphan/merged
 # determination — only enriches an open-pr branch. Runs under gh's built-in gojq
 # AND jq (T26 exercises it with jq), so it sticks to constructs both support.
-# ponytail: a conclusion this filter does not name (a state GitHub adds later)
-# reads as green, not pending — the first-party set is enumerated above, not
-# derived, so a new failing conclusion needs adding to the `failed` arm.
 # shellcheck disable=SC2016  # a jq program: $r/$c are jq variables, not shell expansions
 _OB_LIST_JQ='
 def ci:

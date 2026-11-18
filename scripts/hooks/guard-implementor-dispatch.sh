@@ -200,9 +200,6 @@ imperative_verb=0
 # strip less. Markdown table rows are NOT stripped: an order in a step table is
 # an order. A sentence containing "land" is refused as on origin/main, including
 # "land in main": a modal strip cannot enumerate every integration target.
-# ponytail: an implementation instruction written ONLY inside a fence or code
-# span is allowed through, and "land in <theme>" prose over-refuses (the refusal
-# names the Plan route); a future allowlist design, not a strip.
 # shellcheck disable=SC2016 # the backticks are literal regex, not expansions
 data_stripped_text=$(printf '%s\n' "$text" | tr '[:upper:]' '[:lower:]' | awk '
     {

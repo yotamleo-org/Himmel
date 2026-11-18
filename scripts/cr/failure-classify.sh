@@ -180,10 +180,6 @@ $(cat "$_cf_err" 2>/dev/null)"
 # "Raw output: <mktemp path>" line is skipped: the random suffix can spell a
 # status code ("cfp-raw.a429bc").
 #
-# ponytail: a line-level match. A body whose only signal spans a line break, or
-# a model reply that merely QUOTES a status code, is not told apart from a real
-# provider error here — the same limit classify_failure already has on a blob.
-# ---------------------------------------------------------------------------
 _FC_SIGNAL_SIG="$_FC_QUOTA_SIG|past 5 hours|hit your usage limit|purchase more credits|weekly|per[- ]week|7[- ]day|plan (has )?expired|subscription (has )?expired|insufficient balance|balance depleted|rate[ -]?limit|(^|[^0-9-])[45][0-9][0-9]([^0-9]|\$)|invalid api key|unauthorized|access[ -]?denied|authentication failed"
 
 first_signal_line() {

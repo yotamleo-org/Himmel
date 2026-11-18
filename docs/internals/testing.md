@@ -714,8 +714,7 @@ Read the `smg-nested-*`/`smg-js-nested-template`/
 `smg-escaped-space-word-boundary` cases in
 `scripts/parity/test-t13b-daemon-prose.sh`. Two narrower quote-desync gaps
 (a JS regex literal, and bash's `$'…\'…'` ANSI-C escaped-quote form) are
-unrelated to this nesting fix, remain open, and are tracked as known gaps —
-flagged with a `ponytail:` at `find_marker_start()` and pinned
+unrelated to this nesting fix, remain open, and are tracked as known gaps at `find_marker_start()`, pinned
 by the `sh-t13b-known-gap-*` fixture rows.
 
 Once a real comment opens, the reason after it must be non-trivial: at least
@@ -723,7 +722,7 @@ Once a real comment opens, the reason after it must be non-trivial: at least
 all-digit reason (`12345678`), punctuation padding (`.......x`) and
 whitespace padding, and a second `# t13b-ok: `/`// t13b-ok: ` nested inside
 the reason does not extend the exemption. The marker never reaches a
-different line (same-line only, unchanged). `ponytail:` in the gate: the
+different line (same-line only, unchanged). Limit of the gate: the
 scan is per diff line with no concept of "this line is heredoc BODY
 content, not a shell comment" — a heredoc body line whose text happens to
 spell a real-looking marker still exempts a daemon shape on that same line;

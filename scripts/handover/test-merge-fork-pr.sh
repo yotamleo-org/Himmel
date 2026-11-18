@@ -12,6 +12,7 @@
 #
 # Platform guard: POSIX bash 3.2+.
 set -uo pipefail
+KP=HIMMEL
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 GO_SH="$HERE/chief-kit/go.sh"
@@ -110,7 +111,7 @@ verdict() {
   mkdir -p "$ROOT/$VSCOPE/verdicts/$1"
   # shellcheck disable=SC2016
   printf '# VERDICT %s - judge\n\n## Reason (scope asked)\n\nq\n\n## Verdict\n\n**%s** for head `%s`\n\npr: %s\nrepo: %s\n\nreason\n\n## Evidence checked\n\ne\n' "$1" "$2" "$3" "$4" "$FORK" > "$vf"
-  vmac="$(cat "$vf" | bash -c '. "$1"; go_verdict_mac "$2" "$3" "$4"' _ "$HERE/../lib/go-gate.sh" "$VSCOPE" "$1" "HIMMEL-5899-judge-$1")" || { echo "FAIL: cannot sign $vf" >&2; return 1; }
+  vmac="$(cat "$vf" | bash -c '. "$1"; go_verdict_mac "$2" "$3" "$4"' _ "$HERE/../lib/go-gate.sh" "$VSCOPE" "$1" "$KP-5899-judge-$1")" || { echo "FAIL: cannot sign $vf" >&2; return 1; }
   printf 'mac: %s\n' "$vmac" >> "$vf"
 }
 # write_go <nwo> <pr> <head> [<trust id>] - a GO file the way go.sh signs it, for hand-built cases.

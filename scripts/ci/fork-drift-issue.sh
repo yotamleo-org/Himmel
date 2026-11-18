@@ -242,7 +242,7 @@ case "$RC" in
     # Ensure the marker label exists (idempotent). --force updates an existing
     # label rather than erroring, so a re-run never fails here.
     run gh label create "$LABEL" --color B60205 \
-        --description "Nightly upstream fork-drift tracking (HIMMEL-1046)" --force || mut=1
+        --description "Nightly upstream fork-drift tracking" --force || mut=1
     # shellcheck source=../lib/prim.sh
     . "$(CDPATH='' cd "$(dirname "$0")" && pwd)/../lib/prim.sh" || { echo "fork-drift: cannot load scripts/lib/prim.sh" >&2; exit 1; }
     body_file="$(mktemp)" || exit 1; wd="$(tmpdir)" || exit 1

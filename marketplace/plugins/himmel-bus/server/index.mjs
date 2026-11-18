@@ -81,7 +81,6 @@ async function send({ root, proc, pid }, args) {
   return { content: [{ type: 'text', text: `sent #${stamped.n} to ${to}${note}` }], structuredContent: { n: stamped.n, to } };
 }
 
-// ponytail: this store.read can swallow a halt notice so the console is never told, ceiling = every log this server is first to find broken (a narrow window when hooked; every break when unhooked or called from a subagent), and on read n not even the session is told, upgrade path = a read-only store peek that both server read paths call
 const walk = (root, name) => store.read(root, name);
 const newest = all => all.at(-1)?.n ?? 0;
 const ONE_LINE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g;

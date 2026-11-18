@@ -172,7 +172,6 @@ def count_matches(re):
 # (CodeRabbit writes one per finding, in any badge shape) that differs from the
 # known badge count, any legacy count form, or Outside-diff text with no
 # Outside-diff badge behind it.
-# ponytail: a body mixing the Follow-up and legacy layouts stalls at rc 2, upgrade path is HIMMEL-8209 (generic fallback)
 def fu_hdr_re: "(?m)^#+[ ]+Follow-up Comments[ ]*$";
 def fu_badge_re: "<summary><sub><picture>";
 def fu_od_re: "<summary><sub><picture>(?:(?!</picture>)[^\n])*alt=\"Outside diff\"";

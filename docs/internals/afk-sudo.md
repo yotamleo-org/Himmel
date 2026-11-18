@@ -259,7 +259,7 @@ Config `never_remote_extra` only adds fnmatch patterns. A match answers
 `result=never-remote rule=<name>` (exit 5), is ledgered, and gives the operator no
 notice. It runs at request time and again at exec time.
 
-It is word-set membership, not a semantic policy (`ponytail:` in the module): blind to
+It is word-set membership, not a semantic policy: blind to
 computed paths, text a command fetches or assembles, a word split across quotes, and files
 over 64 KiB. Co-occurrence over-blocks (an unrelated `main` beside `git push -f`, `rm` of a
 top-level glob such as `/tmp/*`); that cost is accepted.
@@ -362,7 +362,7 @@ answers `unsafe-perms`. The guards in the chain still run: a deny from any of th
 over the allow, and an ask from any of them still asks. `guard-identical-denied-retry.sh`
 does not refuse a repeat while a marker exists for those bytes.
 
-Residuals (ponytail: the grant binds the bytes and the files the command names, not what
+Residuals (the grant binds the bytes and the files the command names, not what
 it loads at run time, such as a package an `npx` call downloads; the upgrade path is the
 run kind's frozen argv for anything that needs more):
 
@@ -502,7 +502,7 @@ fixed environment. Each op is idempotent, prints one last line
 helper ledgers it as `op`, `version`, `op_result`, `detail` on the `run` row (the request, code-check and
 run rows are the broker's). `cron-entry` `command` is one absolute path with no arguments under
 `/usr/local/bin/`, an executable that is root-owned and not group/other-writable, checked at `--check` and
-at run (`ponytail`: any such executable passes, not only a message-session opener; pin it to the installed
+at run (a limit: any such executable passes, not only a message-session opener; pin it to the installed
 opener once one ships). `cron-system` is root only (an operator-user job goes through `cron-entry`), and its `command` is one
 path with no arguments under `/usr/bin` or `/usr/sbin`, reached through no symlink, an executable whose
 directories all the way up are root-owned and not group/other-writable. The never-remote floor reads the op name and its parameters, not the installed

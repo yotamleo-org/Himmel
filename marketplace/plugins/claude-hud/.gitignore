@@ -58,7 +58,7 @@ temp/
 yarn.lock
 bun.lock
 
-# --- himmel-owned block (HIMMEL-718 vendoring) ---
+# --- himmel-owned block (vendoring) ---
 # himmel vendors this tree at a pinned upstream commit INCLUDING the
 # committed dist/ runtime (see VENDORED.md). Upstream's `dist/` ignore
 # above would make `git add` silently skip it; re-include it here.

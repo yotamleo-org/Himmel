@@ -1256,7 +1256,6 @@ report_pending_migrations() {
         ' _ "$ROOT" 2>/dev/null || true
 
         # Handover docs that still name a directory or path slice M or W moved.
-        # ponytail: one full scan per slice under a 10 s bound, so a tree too big to scan in time stays silent; upgrade path is a first-hit --check.
         # shellcheck disable=SC2016 # Expansion belongs to the bounded child shell.
         "$_TIMEOUT_BIN" -k 1 10 bash -c '
             helper="$1/scripts/lib/handover-path.sh"
@@ -1357,7 +1356,6 @@ run_env_migration() {
 # cron line's time and the runner's mode (live only if the old runner was). The project key is read
 # from the old runner for that one call and never printed. Seams are the cadence script's own:
 # FAILREV_CRONTAB, FAILREV_RUNNER_DIR.
-# ponytail: only the failure-review cadence, runner paths without a backslash-escaped newline; upgrade path is a per-cadence table when a second runner needs it.
 run_cron_runner_migration() {
     local mode="$1" newscript="$ROOT/scripts/eval/worker-digest/failure-review-cadence.sh"
     local runner="${FAILREV_RUNNER_DIR:-${HOME:-}/.claude/failure-review-cadence}/failure-review-cadence.sh"
@@ -2996,8 +2994,8 @@ EOF
 # ─── installed plugin version catch-up ─────────────────────────
 # sync_marketplaces above only re-syncs a MARKETPLACE REGISTRY (`claude plugin
 # marketplace update <name>`) — it never touches an individual plugin's
-# installed content, so a plugin sourced from its own remote (ponytail,
-# scroll-world, superpowers, …) just sits stale even after every marketplace
+# installed content, so a plugin sourced from its own remote (scroll-world,
+# superpowers, …) just sits stale even after every marketplace
 # refresh. This runs the missing step: `claude plugin update <spec>` for every
 # installed non-@himmel plugin. A checkout-sourced @himmel plugin (marketplace
 # `source` is a "./plugins/x" string) is excluded — its content is this
@@ -3033,7 +3031,6 @@ update_installed_plugins() {
     if [ -f "$manifest" ]; then
         remote_names="$(jq -c '[.plugins[]? | select(.source | type == "object") | .name]' "$manifest" 2>/dev/null)" || remote_names='[]'
     fi
-    # ponytail: installed specs absent from settings.json enabledPlugins keys are skipped, use an installed-plugin inventory if catch-up must cover them.
     specs="$(jq -r --argjson remote "$remote_names" '.enabledPlugins // {} | keys[]
         | select((endswith("@himmel") | not) or (sub("@himmel$"; "") as $n | $remote | index($n)))' "$settings" 2>/dev/null)" || {
         echo "    skip: could not read enabledPlugins from $settings."
@@ -3123,7 +3120,6 @@ EOF
 # checkout tree to compare, so it is never touched. Runs BEFORE reconcile_plugins
 # (a reinstall re-enables), and a failed install after the uninstall is loud and
 # fails the run: a plugin must never be left uninstalled silently.
-# ponytail: compares hooks/, hooks.json and skills/ and skips a disabled plugin, compare the whole tree if commands/agents drift matters.
 
 # _plugin_cache_drift <checkout plugin tree> <installPath> — prints each file
 # under hooks/, hooks.json or skills/ that differs between the two (or exists in only one).
@@ -3739,10 +3735,6 @@ esac
 #   --only pull / update  REFUSE (rc 1) and name the packaged update route; no
 #                         network, no git, no silent no-op
 #   --plugins-check, and the other --only items, need no git and run unchanged.
-# ponytail: the update itself is not attempted here — a tarball install in the
-# versioned layout (<base>/<version>/ + <base>/current) updates
-# through `himmelctl update` (download, verify, extract, swap current); any
-# other non-git install routes to its package manager or a manual re-extract.
 if [ ! -e "$ROOT/.git" ] && { [ "${1:-}" != "--plugins-check" ] && [ "${1:-}" != "--versions" ] && { [ "${1:-}" != "--only" ] || [ "${2:-}" = "pull" ]; }; }; then
     if [ -L "$(dirname "$ROOT")/current" ] && [ "$(dirname "$ROOT")/current" -ef "$ROOT" ]; then
         NONGIT_ROUTE="run \`himmelctl update\` — this is a versioned release-tarball install ($(dirname "$ROOT")/current), which it updates by download, sha256 verify, extract into a new version directory and an atomic swap of current"

@@ -30,10 +30,6 @@
 # Defaults: root = handover_root; bucket = <root>/<user_slug>/himmel; sessions-dir
 # = <root>/../sessions; mirror = $HIMMEL_JIRA_MIRROR, else
 # ~/.himmel/state/jira-mirror/${JIRA_PROJECT_KEY:-HIMMEL}.
-# ponytail: the 30 day default is the narrower safe floor until S3's compounding
-# coverage gate ships (the plan's 14); chief docs always stay, an
-# ended-chief rule is a later slice; backlinks outside bucket-root *.md are
-# not rewritten.
 # Exit: 0 ok, 1 a move failed, 2 usage.
 set -uo pipefail
 
@@ -323,7 +319,6 @@ refs = 0
 if apply:
     # 1. move a group whole: one failed git mv puts the group's earlier members back
     bad_groups, group_done = set(), {}
-    # ponytail: a queue lock taken between planning and this recheck is caught, one taken mid-move is not; upgrade path = hold queue-lock.sh around each group move
     for src, dst, reason, ticket, grp in moves:
         if grp in bad_groups:
             continue

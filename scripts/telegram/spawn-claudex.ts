@@ -1109,9 +1109,6 @@ export function claudexTranscriptDirFor(worktree: string): string {
 // scheduling, all GLM-specific / deferred here). meta.json ALWAYS leaves
 // "running": the success path writes finalMeta (done/failed/capped/blocked/
 // timeout), and a thrown run() writes {status:"failed", exit_code:-1} THEN
-// rethrows. ponytail: the watchdog only sees the pid + stdout/stderr byte
-// counts + the transcript dir; a worker that hangs AFTER its first model
-// response is not startup-class and is still caught only by RUN_TIMEOUT_MS.
 export async function executeClaudexRun(deps: {
   run: (prompt: string, cwd: string, opts: ClaudexRunOpts, onSpawn?: (pid: number) => void) => Promise<ClaudexRunResult>;
   prompt: string; worktree: string; permMode?: PermissionMode; effort?: EffortLevel; model?: CodexModelTier; contextTier?: CodexContextTier; repoRoot: string;

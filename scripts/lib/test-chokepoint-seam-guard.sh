@@ -127,7 +127,7 @@ assert_eq "R2 run-shell-tests enforces every seam but the internal HELD" \
 assert_eq "R3 merge-on-green enforces its full list" \
     "ARMAUTOMERGE MERGE_ON_GREEN_LOG HIMMEL_CONSOLE_LEG HANDOVER_DIR HIMMEL_REPO MERGE_STATIC_RECHECK HIMMEL_LEGACY_NAMES" \
     "$(_csg_registry_seams "$REGISTRY" scripts/handover/merge-on-green.sh)"
-assert_eq "R3b claude-headless enforces its mock seam and the four dispatch seams (HIMMEL-5138)" \
+assert_eq "R3b claude-headless enforces its mock seam and the four dispatch seams" \
     "NATIVE_AUTH_PIN_KEEP_LOOPBACK_MOCK HIMMEL_DISPATCH_MAX_CONCURRENT HIMMEL_DISPATCH_ROW_TTL_SECS HIMMEL_HEADLESS_SEAM_DIR HIMMEL_HEADLESS_NO_FLOCK HIMMEL_LEGACY_NAMES" \
     "$(_csg_registry_seams "$REGISTRY" scripts/lib/claude-headless.sh)"
 assert_eq "R_unguarded_worker headed-arm-worker.sh enforces the opt-out seam" "yes" \

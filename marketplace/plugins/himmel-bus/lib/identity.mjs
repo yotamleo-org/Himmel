@@ -149,10 +149,6 @@ async function reclaim(root, name, peer, proc) {
   });
 }
 
-// ponytail: trusts the self-declared predecessor chain without adopt's hop
-// checks. Ceiling: no more than an unauthenticated `register --chief` grants
-// already, and the holder must be gone, re-checked under the lock in reclaim.
-// Upgrade path: require each hop to be stamped (`succeed`) as adopt does.
 async function succeeds(root, next, old) {
   if (!next || !old) return false;
   try { await chainTo(root, next, old); return true; } catch { return false; }

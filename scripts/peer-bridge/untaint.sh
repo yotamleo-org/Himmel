@@ -13,7 +13,6 @@
 # `yes`. Also exit 3, after the answer, when a taint file survives the removal
 # or the log line cannot be appended.
 #
-# ponytail: env -u CLAUDECODE -u CLAUDE_CODE_SESSION_ID plus a pty (script -qc, python pty) still lets any untainted Claude Bash clear a taint; the env and TTY checks stop accidents, not a determined session, upgrade path the bridge runs as its own sandboxed user that owns the taint files.
 #
 # Bash 3.2-compatible.
 set -u

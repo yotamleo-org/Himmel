@@ -17,10 +17,6 @@
 # in the vault). The Edit tool and other hand edits take no lock; a rewriter
 # keeps its own re-check for those.
 #
-# ponytail: the key directory follows TMPDIR, so two writers with different
-# TMPDIRs take different locks and the race reopens; every writer today runs
-# under the same login environment. Upgrade path: key on a fixed directory
-# (XDG_RUNTIME_DIR) in all four writers at once if a lane ever sets TMPDIR.
 #
 # Platform guard: bash 3.2+. flock is util-linux; where it is absent (macOS)
 # doc_lock returns 3 and the caller writes unlocked, exactly as before
@@ -33,8 +29,6 @@
 # stderr, prefixed with <caller-name>), nothing locked.
 doc_lock() {
     local _dl_doc _dl_dir _dl_key
-    # ponytail: no flock (macOS) = unlocked writes, the pre-HIMMEL-4795
-    # behaviour; upgrade path: a mkdir spin lock if a macOS chief ever runs workers.
     command -v flock >/dev/null 2>&1 || return 3
     # realpath -e is GNU-only; check existence, then canonicalize without it.
     [ -e "$1" ] || { printf '%s: cannot lock %s: no such file\n' "$2" "$1" >&2; return 1; }

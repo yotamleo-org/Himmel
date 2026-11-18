@@ -33,7 +33,6 @@
 # .pre-commit-config.yaml may mean two different files) -- both counted
 # identity-ambiguous -- and other prose labels outside the glossary
 # ("Precedence ladder" names a different ladder in two docs).
-# ponytail: a merged-away node's own edges are pruned by semantic-merge.py if its canonical semantic node disappears before its own file is re-extracted; re-extract the merged_ids files if semantic-runs.jsonl shows that loss.
 import argparse
 import json
 import os

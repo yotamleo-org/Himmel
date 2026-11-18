@@ -13,8 +13,6 @@
 # Exit: 0 ok, 2 usage, 3 /proc unreadable (command not run), 4 the command failed (table still printed),
 #       5 the command ran but the final /proc read failed (no table).
 #
-# ponytail: Linux /proc only; Windows Defender / MsMpEng and conhost are not sampled,
-# upgrade path = a separate sampler if a Windows station returns.
 set -u
 
 PROC="${BURST_PROC_ROOT:-/proc}"

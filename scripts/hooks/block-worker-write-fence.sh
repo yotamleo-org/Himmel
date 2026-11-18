@@ -118,11 +118,6 @@ case "$tool" in Bash|PowerShell) tool_is_shell=1 ;; esac
 # HIMMEL_HOOK_INTEGRITY_GIT_TIMEOUT_MS budget): a missing `timeout`, a hung or
 # timed-out git refuses the bypass. The result is memoized: both fences share
 # one audit line per hook invocation.
-# ponytail: the audit line records that the bypass was CONSULTED and granted for
-# this call, not that a fence would have fired (the predicate cannot know), so it
-# over-reports; and the symlink/regular-file check on the sink is a
-# check-then-append (lstat, then `>>`), unlike the launcher's O_NOFOLLOW open, so
-# a link swapped in between the two survives — same-user, same-window only.
 bypass_memo=""
 bypass_canon() { (cd -P "$1" 2>/dev/null && pwd -P); }
 # Absolute like JS path.isAbsolute: `C:/g` is a RELATIVE path a worker can
@@ -562,13 +557,6 @@ function is_direct_exec_prefix(tok) {
 # silent repair. Filtering where the value is finally produced covers both
 # inputs at once, which is why the two per-input tests were replaced rather
 # than added to.
-# ponytail: BSD awk (macOS) sprintf("%c", 0) yields the EMPTY string (C strings), so
-# NUL falls back to a printable marker (SOH NUL SOH). Unlike a real NUL that marker IS
-# a legal filename, so the shell loop above refuses any command or cwd carrying it,
-# or a `u{1} escape that can rebuild it, BEFORE this awk runs; otherwise a real script
-# named with it would be filtered as invalid and never scanned. The cost is one
-# over-deny of a command no one writes. SOH is the only non-letter byte in the marker,
-# so `u{1} (any zero-padded spelling) is the one escape that can rebuild it.
 function has_nul(str) { return index(str, NUL) > 0 }
 function run_segment(   j, i, target, seen, n2, cand) {
     if (ntok == 0) return
@@ -597,9 +585,8 @@ function run_segment(   j, i, target, seen, n2, cand) {
         new_cand[++n2] = target
         # The two branches per candidate are emitted INTERLEAVED
         # (unchanged, then advanced, per candidate) rather than as an
-        # unchanged block followed by an advanced block. See the
-        # note below the cap for why the block layout was a real
-        # gap. This is a pure REORDER -- the de-duped SET is identical, only
+        # unchanged block followed by an advanced block, so the cap
+        # below degrades both branches evenly. This is a pure REORDER -- the de-duped SET is identical, only
         # the truncation order changes.
         for (i = 1; i <= ncand; i++) {
             if (!(cwd_cand[i] in seen)) { seen[cwd_cand[i]] = 1; new_cand[++n2] = cwd_cand[i] }
@@ -607,43 +594,6 @@ function run_segment(   j, i, target, seen, n2, cand) {
             target = join(cwd_cand[i], tok[2])
             if (!(target in seen)) { seen[target] = 1; new_cand[++n2] = target }
         }
-        # ponytail: de-duped fork growth is bounded by distinct paths, not by
-        # cd COUNT, but a command with dozens of DISTINCT cd targets could
-        # still grow large. Cap at MAXCAND (a dispatched-worker command with
-        # more distinct cd targets than this is already an extreme, unusual
-        # shape no other class in this file covers either) -- beyond the cap,
-        # stop forking further cd segments for the rest of THIS command and
-        # keep the candidates already tracked, rather than growing unbounded.
-        # Upgrade path if this ever needs raising: none identified, no case
-        # has hit it.
-        #
-        # An earlier version of
-        # this cap truncated with a plain "keep the first MAXCAND", which is
-        # a real bug, not just an approximation -- the set used to be built
-        # unchanged-block-first, advanced-block-second, so truncating from
-        # the tail systematically dropped EVERY "cd succeeds" candidate once
-        # enough distinct cd targets accumulated, silently reopening the
-        # exact fork-model gap this class of fix exists to close. The protected index-1 invariant above
-        # answers that, which
-        # closes the concrete case that finding demonstrated (chained cds
-        # where every one actually succeeds) -- but left the block layout
-        # itself in place.
-        #
-        # What that
-        # left open: with an unchanged block followed by an advanced block, the
-        # advanced block IS the tail, so the FIRST thing the cap dropped was
-        # every "the latest cd succeeded, but an earlier one did not"
-        # candidate -- systematically, all at once, rather than as an even
-        # sampling. The build loop above now interleaves the two branches per
-        # candidate, so the cap degrades both evenly. Truncation still drops
-        # candidates once the cap is hit, and that remains an accepted,
-        # documented residual -- but it is no longer BIASED against one whole
-        # branch of the fork model. Closing it completely needs a symbolic
-        # (prefix-set/trie) cwd representation instead of enumerated concrete
-        # paths, which is its own piece of work, not an inline expansion; the
-        # alternative of removing the cap trades this bounded fail-open
-        # window for an unbounded resource-exhaustion one on a hot-path hook,
-        # which is worse.
         if (n2 > MAXCAND) n2 = MAXCAND
         delete cwd_cand
         for (i = 1; i <= n2; i++) cwd_cand[i] = new_cand[i]
@@ -682,14 +632,6 @@ function run_segment(   j, i, target, seen, n2, cand) {
 # forge.sh -- produced a path matching no file and the script went unscanned.
 # That is a fail-OPEN, and unlike the control-character sequences it needs no
 # exotic filename at all.
-# ponytail: HIMMEL-2236 -- PowerShell also recognizes `e
-# (ESC, 0x1B), which this resolver models as the literal letter e.
-# The enumeration was built from a list written out by hand, so it inherited the
-# author-s blind spot rather than being derived from the language reference.
-# The lesson is in the ticket: enumerate a grammar from its SPEC
-# (about_Special_Characters), never from memory. Not fixed here because this
-# branch carries a binding rule that the escape resolver is split rather than
-# iterated a fifth time; `e is deferred with the >255 codepoint issue.
 function pwsh_unescape(c) {
     if (c == "n") return "\n"
     if (c == "t") return "\t"

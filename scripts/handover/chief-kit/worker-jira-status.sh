@@ -182,14 +182,10 @@ miss() { row result=miss rule="${TS_RULE:-}" stage="$1" from="${TS_J_STATUS:-}";
 
 lockdir="$(ts_state_dir)/status-locks"
 mkdir -p "$lockdir" 2>/dev/null || warn "cannot create $lockdir"
-# ponytail: no flock binary (stock macOS) takes a mkdir lease for the key; it
-# expires after 300s even for a live owner; upgrade path = a heartbeat.
 # lease is script-level, not local: the EXIT trap runs after take_key_lease has returned.
 lease="$lockdir/$KEY.lease.d"
 take_key_lease() {
     local limit="${TICKET_STATUS_LOCK_WAIT:-10}" waited=0 stamp got=0 reclaim="$lockdir/$KEY.reclaim.d"
-    # ponytail: the reclaim mutex is a mkdir held for microseconds; a process killed inside it leaves
-    # it behind for good. upgrade path = the owner-token lease of pr-stall.sh.
     while [ "$got" = 0 ]; do
         if mkdir "$lease" 2>/dev/null; then got=1; break; fi # prim-ok: this no-flock lease spans the whole event, not one with_lock command
         # Reclaim under a mutex: check, rmdir and re-take happen as one step, so a second reclaimer
@@ -371,8 +367,6 @@ mark_focus_dirty() {
 # unarchived by date) gets one INTAKE request into the current version, so it folds in by the
 # release manager's ruling and not by hand. A stamp per key keeps a later LIVE bullet from
 # asking again; the request itself is deduplicated by the CLI. Best-effort, never blocks.
-# ponytail: the release is named after the version, upgrade path = a release lookup in the CLI
-# once a release declares several versions.
 intake_to_current() {
     local json vers cur from out stamp="$lockdir/$KEY.intake"
     [ ! -e "$stamp" ] || return 0

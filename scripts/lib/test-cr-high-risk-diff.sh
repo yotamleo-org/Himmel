@@ -110,7 +110,7 @@ done
 # 2026-08-11 scope-out on this single path. Pinned structurally so a later
 # narrowing cannot drop it by accident.
 probe "$(total_json 1)" "$(risk_page scripts/handover/merge-on-green.sh)"
-expect 0 "scripts/handover/merge-on-green.sh" "post-gate merge driver is HIGH-RISK (merge-on-green.sh, HIMMEL-1744)"
+expect 0 "scripts/handover/merge-on-green.sh" "post-gate merge driver is HIGH-RISK (merge-on-green.sh)"
 
 probe "" "" 1 0
 expect 2 "query-failed" "gh total (pr view) query failure -> rc 2"

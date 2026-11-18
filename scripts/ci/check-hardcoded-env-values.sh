@@ -56,9 +56,6 @@ case "$mode" in
         # that exact destination, only when the tip is a real commit and merge-base answers
         # "no merge base" (exit 1, not an error such as 128), skips. Every other failure on it,
         # and every other ref, still fails.
-        # ponytail: reads the first pushed ref only (pre-commit exposes no more), so a push naming
-        # graph-data first skips this scan for the refs after it, upgrade path = read git's full
-        # ref stream in a pre-push.legacy gate as check-push-target.sh does.
         if [ "${PRE_COMMIT_REMOTE_BRANCH:-}" = "refs/heads/graph-data" ] \
             && git rev-parse --verify -q "$tip^{commit}" >/dev/null; then
             mb_rc=0

@@ -11,10 +11,6 @@
 #
 # Platform: POSIX bash 3.2+ (macOS /bin/bash is 3.2).
 #
-# ponytail: a claude installed only outside these dirs (nvm, a custom npm
-# prefix) refuses, and a tool found in none of them is unreachable from a
-# consult; upgrade path = an operator-recorded binary path and tool dirs, if
-# one is ever kept outside the caller's reach.
 
 # consult_pin_path: print the pinned PATH. The home part comes from the passwd
 # entry of the real user, never $HOME (which the caller sets).
@@ -49,10 +45,6 @@ consult_pin_bash() {
 # catches a function a `bash -p` did not import. A value line that merely looks
 # like a name only adds a harmless extra -u.
 #
-# ponytail: a denylist of the inputs known to run caller code (the loader's
-# code-loading variables and NODE_OPTIONS); a subtler loader or runtime input
-# (GCONV_PATH, NODE_PATH) still rides along; upgrade path = an allowlisted
-# `env -i` environment for the consult, if one is ever found that matters.
 consult_scrub_args() {
     local _cp_line
     CONSULT_SCRUB=(-u BASH_ENV -u ENV -u SHELLOPTS -u BASHOPTS -u PS4 -u CDPATH -u GLOBIGNORE

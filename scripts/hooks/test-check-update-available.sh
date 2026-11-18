@@ -466,7 +466,7 @@ env PATH="$STUBBIN:$PATH" STUB_CURL_TAG=v99999999999999999999.0.0 bash "$LIBS_SR
 if [ ! -s "$SD/himmel-latest-release" ]; then assert_pass "an overflowing tag from the API is not cached as an answer"; else assert_fail "overflowing tag was cached: $(cat "$SD/himmel-latest-release")"; fi
 assert_eq_hook "…it is recorded as a bad response (a failed check)" "bad-response" "$(cat "$SD/himmel-latest-release.fail" 2>/dev/null || true)"
 
-echo "Test 23: the tag is the release's OWN top-level tag_name, not the first/last one that LOOKS like it (HIMMEL-3258)"
+echo "Test 23: the tag is the release's OWN top-level tag_name, not the first/last one that LOOKS like it"
 # refresh_case <curl-mode> [PATH] — one --refresh against a fresh state dir; sets
 # GOT (cached answer or "") and GOTFAIL (.fail reason or "").
 _t23=0
@@ -509,7 +509,7 @@ assert_eq_hook "no jq: a notes-quoted tag still does not replace the real one" "
 refresh_case notjson "$NOJQ"
 assert_eq_hook "no jq: a non-JSON reply is still bad-response" "bad-response" "$GOTFAIL"
 
-echo "Test 24: the state survives a reboot — it lives under the user's home, not /tmp (HIMMEL-3260)"
+echo "Test 24: the state survives a reboot — it lives under the user's home, not /tmp"
 # The "could not check" line measures from the FIRST attempt when no check ever
 # succeeded. That timestamp defaulted to /tmp/claude, which a reboot clears, so a
 # machine that reboots more often than the stale window and stays offline never

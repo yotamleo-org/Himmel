@@ -28,8 +28,6 @@
 # lookup are merge-block-alert.sh's (MERGE_BLOCK_ALERT_CMD,
 # TELEGRAM_ACCESS_PATH seams).
 #
-# ponytail: detects headed-arm launch rows only, a denied brief write is not one, add the Write tool's brief-path shape once observed
-# ponytail: nothing calls this yet, upgrade path is one call next to page_denials in chief-wait.sh
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"

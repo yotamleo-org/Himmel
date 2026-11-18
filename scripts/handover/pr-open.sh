@@ -201,7 +201,7 @@ ${ticket_block}
 
 ---
 
-🤖 Opened by \`scripts/handover/pr-open.sh\` (HIMMEL-141).
+🤖 Opened by \`scripts/handover/pr-open.sh\`.
 EOF
 )
 

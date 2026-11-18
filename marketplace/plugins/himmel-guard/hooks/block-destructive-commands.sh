@@ -266,10 +266,6 @@ guard_cmdpos_grammar
 # echo, printf or : with plain words only (no separator, redirect, quote,
 # backslash, expansion, glob or brace) runs nothing, so `echo x -exec rm -rf y`
 # is text. Add a command word only with a reason it can never execute one.
-# ponytail: the bracket classes, `=~` patterns and the HIMMEL-3983/3984/4146/4134
-# additions are run on Linux bash 5 only (no macOS bash 3.2 here, Git Bash
-# parked), upgrade path: run this suite on a
-# macOS station under /bin/bash.
 _rmpos_flag='[[:space:]]-(exec|execdir|ok|okdir|x|-exec|-exec-batch)[[:space:]]+'"${CMDPOS_PFX_X}"
 _rmpos_text='^[[:space:]]*(echo|printf|:)([[:space:]][^];&|<>(){}`$\"*?[!#~'"'"']*)?$'
 if [[ $cmd_lc =~ $_rmpos_text ]]; then
@@ -286,11 +282,6 @@ fi
 # payload is read as text, so `bash -c 'find d -delete'` matches like the bare
 # form. Over-deny only: `command -v find; ls -delete` denies.
 # parity_guard.py's _X_WRAPS is the twin.
-# ponytail: (HIMMEL-912) this widening covers the mass-delete family only, not the
-# CMDPOS atoms (`bash -c 'rm -rf d'` still passes this hook, the Python twin
-# denies it), upgrade path a word-level tokenizer.
-# Every head here takes an optional .exe, and xargs.exe joins lib.sh's xargs
-# (which has no .exe), with the same flags.
 _xwrap='(busybox(\.exe)?|command(\.exe)?([[:space:]]+-[-[:alnum:]]*)*|eval(\.exe)?|xargs\.exe([[:space:]]+(-[adeilnps]'"${CMDVAL}"'|--[admp][a-z-]*'"${CMDVAL}"'|'"${CMDFLG}"'))*|((ba|da|k|mk|z|a)?sh|fish)(\.exe)?([[:space:]]+'"${CMDFLG}"'('"${CMDVAL}"')?)*[[:space:]]+-[[:alnum:]]*c[[:alnum:]]*)[[:space:]]+'
 # No `(` or `){` anchor follows these prefixes (the -exec/-x flag,
 # a launcher word), so they keep lib.sh's CMDPOS_PFX_X, whose path run crosses
@@ -1064,9 +1055,6 @@ _gp_inv() {
 # path-qualified gh, `command gh`, an env prefix and global flags (-R/--repo)
 # before the verb all reach it. Reads and the merge paths other gates own
 # (block-unresolved-cr-merge, the himmel-gh wrapper) stay allowed.
-# ponytail: (HIMMEL-5264) a graphql mutation (deleteBranchProtectionRule) and a gh whose
-# command word is computed ("$G" repo delete) are not modelled past the
-# unresolved text markers, upgrade path the audit's G-series.
 _gh_re_unres='[^a-z0-9_-](secret|variable)[[:space:]]+(set|delete|remove)[^a-z0-9_-]|[^a-z0-9_-]workflow[[:space:]]+(disable|enable)[^a-z0-9_-]|[^a-z0-9_-]repo[[:space:]]+(delete|archive|unarchive|rename|transfer|edit)[^a-z0-9_-]|[^a-z0-9_-]release[[:space:]]+(delete|delete-asset)[^a-z0-9_-]|[^a-z0-9_-](ssh|gpg)-key[[:space:]]+(add|delete)[^a-z0-9_-]|[^a-z0-9_-]auth[[:space:]]+(logout|token)[^a-z0-9_-]|[^a-z0-9_-]pr[[:space:]]+merge[[:space:]].*--admin'
 _gh_re_unres_api_m='[^a-z0-9_-]api[[:space:]].*(-x[[:space:]]*|--method[[:space:]=]+)(delete|put|patch|post)'
 _gh_re_unres_api_p='protection|rulesets|secrets|variables|/disable|/enable|/hooks|/keys|/transfer|/environments|repos/[^[:space:]/]+/[^[:space:]/]+([[:space:]]|/?$)'

@@ -15,10 +15,6 @@ qmd_daemon_key_load() {  # t13b-ok: reads the daemon env file, starts nothing
     # the provider answers 401. A key from the file replaces whatever this
     # session carries. Without one, an OpenRouter config drops the session key
     # and refuses, as the daemon does.
-    # ponytail: other remote providers keep a session key and are not refused
-    # for a missing one (the egress gate owns that), the daemon requires one
-    # for all; unify once the Jina flow is confirmed to use the file key.
-    # The read runs with tracing off so `bash -x` never prints the key.
     case "$-" in *x*) key_trace=1 ;; esac
     set +x
     case "${QMD_OPENAI_BASE_URL:-}" in *openrouter.ai*) key_openrouter=1 ;; esac

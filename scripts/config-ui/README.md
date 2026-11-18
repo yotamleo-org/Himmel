@@ -157,7 +157,7 @@ redactor would otherwise read its 32+ letters and digits as a secret.
 - **Attribution.** A PR is credited to the chief whose span holds its merge; a merge in a hand-over gap is named for both and
   counted once. A chief's span is its first LIVE to its last WRAPPED or HALTED stamp; a doc that never wrapped and holds no queue lock ends at its last stamp, so it is not credited with later merges. A closed shift also records its total merged count, so the last-shift line counts PRs no chief span holds.
 - **The release record is derived.** `queue-lock` keeps no release record, so the last release is the newest lock heartbeat or
-  WRAPPED stamp seen (`ponytail:` in `shift.ts`).
+  WRAPPED stamp seen.
 
 ## Morning report page (`#/report`)
 

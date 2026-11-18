@@ -254,12 +254,6 @@ cadence_runner_stamp() {
 # provenance call runs in its own subshell so provenance.sh's/
 # provenance-identity.sh's functions and shell options never leak into the
 # arm script.
-# ponytail: a --force re-arm over a crontab line the operator already had
-# under this same marker still records preexisted=false -- the arm cannot
-# tell a himmel-written line from a hand-written one of that name, and the
-# identity read-back only verifies the LIVE line's content, not who wrote it
-# first. No upgrade planned: closing this needs a preexisted-detection pass
-# at arm time, which no ticket currently covers.
 cadence_prov_record() {
     local marker="$1" dir lib token u
     dir="$(dirname "${BASH_SOURCE[0]}")"

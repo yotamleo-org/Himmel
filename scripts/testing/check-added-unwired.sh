@@ -20,8 +20,7 @@
 #          reaches only JS unless the script loads a TS transform; node may carry
 #          flags before --test, e.g. node --import tsx --test; {a,b} groups in
 #          a path arg are expanded, a nested brace group narrows by directory only;
-#          a single * also matches across / — ponytail: over-accepts a nested file
-#          for node --test, upgrade = a segment-aware glob matcher).
+#          a single * also matches across /).
 #   hooklib scripts/hooks/<subdir>/*: a wired hook, or another live library under
 #          scripts/hooks/, names its basename (sourced). Judged read-only.
 #   skill  SKILL.md under <plugin>/skills/<name>/ where <plugin> has
@@ -301,7 +300,7 @@ judge() {  # <path> <kind> -> prints a reason when unwired
       else
         git grep -lIE -e "$pat" "$ref" -- . ':(exclude)handovers' ':(exclude,glob)**/test-*' ':(exclude,glob)**/*.test.*' 2>/dev/null
       fi | sed "s#^$ref:##" | grep -vxF "$p" > "$tmp/refs" || true
-      if [ -n "$generic_pat" ]; then  # ponytail: only a sibling's ./stem import is resolved; a child's ../stem needs a real resolver
+      if [ -n "$generic_pat" ]; then
         if printf '%s\n' "$p" | grep -qE "$TEST_HELPER_RE"; then
           git grep -lIE -e "$generic_pat" "$ref" -- "${p%/*}" 2>/dev/null
         else

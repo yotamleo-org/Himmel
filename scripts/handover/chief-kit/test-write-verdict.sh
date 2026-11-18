@@ -42,6 +42,7 @@
 # Hermetic: temp dir only; the guard scripts are run, never edited.
 # Platform guard: POSIX bash 3.2+.
 set -uo pipefail
+KP=HIMMEL
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT="$HERE/write-verdict.sh"
@@ -182,10 +183,10 @@ rc=0; wv q3 GO "$SHA_A" --evidence-file "$evd/empty.md" >/dev/null 2>&1 || rc=$?
 check "3: empty evidence refused rc 2" "$rc" 2
 printf 'evidence\0tail\n' > "$evd/nul.md"
 rc=0; wv q3 GO "$SHA_A" --evidence-file "$evd/nul.md" >/dev/null 2>&1 || rc=$?
-check "3: NUL-bearing evidence refused rc 2 (HIMMEL-4984)" "$rc" 2
+check "3: NUL-bearing evidence refused rc 2" "$rc" 2
 printf 'evidence\033[31mred\n' > "$evd/ctl.md"
 rc=0; wv q3 GO "$SHA_A" --evidence-file "$evd/ctl.md" >/dev/null 2>&1 || rc=$?
-check "3: control-byte evidence refused rc 2 (HIMMEL-4984)" "$rc" 2
+check "3: control-byte evidence refused rc 2" "$rc" 2
 rc=0; wv q3 GO "$SHA_A" >/dev/null 2>&1 || rc=$?
 check "3: no --evidence-file refused rc 2" "$rc" 2
 rc=0; wv q3 GO "$SHA_A" --evidence-file "$ev" --judge '../x' >/dev/null 2>&1 || rc=$?
@@ -621,7 +622,7 @@ check "20: evidence outside a judge dir drops no marker" "$([ -e "$evd/.verdict-
 mkjd "j8$$"
 rc=0; out=$(WV_NOPR="--pr $PR20" wv q38 GO "$SHA_A" --evidence-file "$scratch/j8$$/evidence.md" 2>&1) || rc=$?
 check "20: another PR's judge dir still writes the verdict rc 0" "$rc" 0
-check "20: ... but is not released (marker tied to --pr, HIMMEL-5173)" "$([ -e "$scratch/j8$$/.verdict-written" ] && echo yes || echo no)" no
+check "20: ... but is not released (marker tied to --pr)" "$([ -e "$scratch/j8$$/.verdict-written" ] && echo yes || echo no)" no
 for bad in "j${PR20}ab" "j${PR20}a.b"; do
     mkjd "$bad"
     rc=0; out=$(WV_NOPR="--pr $PR20" wv q39 GO "$SHA_A" --evidence-file "$scratch/$bad/evidence.md" 2>&1) || rc=$?
@@ -758,7 +759,7 @@ printf 'Evidence read.\n\n## Non-blocking\n\n- HIMMEL-901 tighten the regex\n- o
 : > "$rdlog"
 rc=0; rdwv q23a GO "$SHA_A" --evidence-file "$evd/rd-ev1.md" --residual-of HIMMEL-900 >/dev/null 2>&1 || rc=$?
 check "23: --residual-of is accepted rc 0" "$rc" 0
-check "23: a keyed residual is stamped through the verb" "$(grep -c '^edit HIMMEL-901 --residual-of HIMMEL-900$' "$rdlog")" 1
+check "23: a keyed residual is stamped through the verb" "$(grep -c "^edit $KP-901 --residual-of $KP-900\$" "$rdlog")" 1
 check "23: the verb call is the only call, one per keyed residual" "$(wc -l < "$rdlog" | tr -d ' ')" 1
 : > "$rdlog"
 rc=0; rdwv q23c GO "$SHA_A" --evidence-file "$evd/rd-ev1.md" >/dev/null 2>&1 || rc=$?
@@ -770,9 +771,9 @@ check "23: a refused --residual-of makes no verb call" "$(wc -l < "$rdlog" | tr 
 printf 'Evidence read.\n\n## Non-blocking\n\n- HIMMEL-901 follow-up to HIMMEL-900\n- HIMMEL-910 again\n' > "$evd/rd-ev3.md"
 : > "$rdlog"
 rc=0; rdwv q23g GO "$SHA_A" --evidence-file "$evd/rd-ev3.md" --residual-of HIMMEL-900 >/dev/null 2>&1 || rc=$?
-check "23: only the first key on a residual line is stamped" "$(grep -c '^edit HIMMEL-901 --residual-of' "$rdlog")" 1
-check "23: a contextual parent key on a residual line is not stamped" "$(grep -c '^edit HIMMEL-900 ' "$rdlog")" 0
-check "23: the second residual line is stamped too" "$(grep -c '^edit HIMMEL-910 --residual-of HIMMEL-900$' "$rdlog")" 1
+check "23: only the first key on a residual line is stamped" "$(grep -c "^edit $KP-901 --residual-of" "$rdlog")" 1
+check "23: a contextual parent key on a residual line is not stamped" "$(grep -c "^edit $KP-900 " "$rdlog")" 0
+check "23: the second residual line is stamped too" "$(grep -c "^edit $KP-910 --residual-of $KP-900\$" "$rdlog")" 1
 printf 'Evidence read.\n\n## Non-blocking\n\n- HIMMEL-900 the parent itself\n' > "$evd/rd-ev4.md"
 : > "$rdlog"
 rc=0; rdwv q23h GO "$SHA_A" --evidence-file "$evd/rd-ev4.md" --residual-of HIMMEL-900 >/dev/null 2>&1 || rc=$?

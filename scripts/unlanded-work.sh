@@ -496,8 +496,6 @@ prefetch_merged_heads() { # $1 remote
         | .[] | select(.state=="MERGED" and .baseRefName==$base and (.headRefOid // "") != "")
         | select(.headRefName as $h | any($n[]; . == $h)) | .headRefOid' 2>/dev/null | sort -u)
     [ "${#missing[@]}" -gt 0 ] || return 0
-    # ponytail: one sha the remote will not serve fails the whole batch, so every
-    # head stays SWEEP-ERROR; retry per sha if that shows up in the doctor's C42.
     if [ -n "$tcmd" ]; then
         GIT_TERMINAL_PROMPT=0 "$tcmd" "${UNLANDED_FETCH_TIMEOUT:-30}" git fetch --quiet --no-tags --no-write-fetch-head "$remote" "${missing[@]}" >/dev/null 2>&1
     else

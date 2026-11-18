@@ -74,7 +74,6 @@ bash -c '"$@" > "$0/holder.out" 2>&1 & n=0; while [ ! -f "$0/tmp/suite.lock/owne
   env HOME="$w/home" TMPDIR="$w/tmp" SUITE_LOCK_DIR="$w/tmp/suite.lock" \
   HIMMEL_SUITE_SEMAPHORE_DIR="$w/tmp/sem" bash "$RUNNER" "$w/slow"
 if case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) true ;; *) false ;; esac; then
-  # ponytail: Windows Git Bash has no ps -o ppid, so the reaper keeps the old wait there; revisit when a Windows-safe parent probe exists.
   pass "SKIP: orphan reaping is not supported on Windows Git Bash"
 elif ! wait_lock "$w"; then
   fail "holder never took the lock"; cat "$w/holder.out"

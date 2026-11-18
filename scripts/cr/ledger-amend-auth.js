@@ -14,11 +14,6 @@
 // are honoured unsigned. File position, not the row ts, decides: an appended
 // row cannot backdate itself. A station with no readable GO key has nothing to
 // verify against, so every row is honoured, as before.
-// ponytail: (HIMMEL-6772) same-uid ceiling and sanctioned writer - a worker runs
-// as the chief's user, so it can read the key through a helper or run
-// ledger-append.sh amend itself, which signs any lowering it validates; this
-// closes hand-written rows only. Upgrade path: a separate-uid signer that only
-// a judge or the chief can drive.
 //
 // Readers: filterLines(lines) / filterRows(rows) before collecting amends.
 // Writer: sign(rec) just before the row is appended.

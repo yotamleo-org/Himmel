@@ -12,6 +12,7 @@
 #
 # Run: bash scripts/handover/chief-kit/test-tick-pool-stale.sh
 set -u
+KP=HIMMEL
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="${SUT:-$HERE/tick.sh}"
 
@@ -92,13 +93,13 @@ field() { # <field> <doc>: the value of one --pool-stale output field
 }
 
 : > "$PS_GH_LOG"
-d="$(doc stalekey 'pool-disposition: HIMMEL-101 slice HIMMEL-901 then the rest')"
+d="$(doc stalekey "pool-disposition: $KP-101 slice $KP-901 then the rest")"
 check 'a target naming a Done ticket reports it stale' '1:HIMMEL-101' "$(field pool-stale "$d")"
 check 'a ticket-only target reads no PR (no gh call)' '0' "$(wc -l < "$PS_GH_LOG" | tr -d ' ')"
 
-d="$(doc stalepr 'pool-disposition: HIMMEL-102 close PR 5001 merged')"
+d="$(doc stalepr "pool-disposition: $KP-102 close PR 5001 merged")"
 check 'a target naming a merged PR reports it stale' '1:HIMMEL-102' "$(field pool-stale "$d")"
-d="$(doc stalepr2 'pool-disposition: HIMMEL-102 question waits on PR #5001 (HIMMEL-901)')"
+d="$(doc stalepr2 "pool-disposition: $KP-102 question waits on PR #5001 ($KP-901)")"
 check 'every named blocker Done or merged (PR # form and a key) reports stale' '1:HIMMEL-102' "$(field pool-stale "$d")"
 
 : > "$PS_GH_LOG"
@@ -112,21 +113,21 @@ check 'one batched gh read serves all PR targets' '1' "$(wc -l < "$PS_GH_LOG" | 
 l="$pd HIMMEL-108 question waits on PR 5004"; d="$(doc closedpr "$l")"
 check 'a target naming a closed-unmerged PR reports it stale: its cause is gone' '1:HIMMEL-108' "$(field pool-stale "$d")"
 
-d="$(doc prlist 'pool-disposition: HIMMEL-117 question waits on PR 5001 and 5002, HIMMEL-901')"
+d="$(doc prlist "pool-disposition: $KP-117 question waits on PR 5001 and 5002, $KP-901")"
 check 'every PR of a blocker list counts: a merged first PR and a still-open second stay quiet' '0' "$(field pool-stale "$d")"
 
-d="$(doc unreadkey 'pool-disposition: HIMMEL-105 question waits on HIMMEL-999')"
+d="$(doc unreadkey "pool-disposition: $KP-105 question waits on $KP-999")"
 check 'a key target missing from the mirror prints ?, never stale' '?' "$(field pool-stale "$d")"
-d="$(doc unreadpr 'pool-disposition: HIMMEL-109 question waits on PR 7777')"
+d="$(doc unreadpr "pool-disposition: $KP-109 question waits on PR 7777")"
 check 'a PR the batch read does not list prints ?' '?' "$(field pool-stale "$d")"
 : > "$PS_GH_FAIL"
-d="$(doc ghfail 'pool-disposition: HIMMEL-102 close PR 5001')"
+d="$(doc ghfail "pool-disposition: $KP-102 close PR 5001")"
 check 'a failed gh read prints ?, never stale' '?' "$(field pool-stale "$d")"
-d="$(doc ghfailkey 'pool-disposition: HIMMEL-101 slice HIMMEL-901')"
+d="$(doc ghfailkey "pool-disposition: $KP-101 slice $KP-901")"
 check 'a failed gh read does not touch a key-only stale target' '1:HIMMEL-101' "$(field pool-stale "$d")"
 rm -f "$PS_GH_FAIL"
 
-d="$(doc mixed 'pool-disposition: HIMMEL-101 slice HIMMEL-901' 'pool-disposition: HIMMEL-105 question waits on HIMMEL-999' 'pool-disposition: HIMMEL-102 close PR 5001')"
+d="$(doc mixed "pool-disposition: $KP-101 slice $KP-901" "pool-disposition: $KP-105 question waits on $KP-999" "pool-disposition: $KP-102 close PR 5001")"
 check 'stale keys are named and an unreadable target adds ?' '2:HIMMEL-101,HIMMEL-102,?' "$(field pool-stale "$d")"
 before="$(cat "$d")"
 field pool-stale "$d" > /dev/null
@@ -261,11 +262,11 @@ mk 130 "To Do" "To Do" '[]' '["residual","residual-depth-1"]' '["relates to HIMM
 check 'a last ruling that MOVEs the ticket into a version does not hide it' "11:${list7#7:},HIMMEL-127,HIMMEL-128,HIMMEL-129,HIMMEL-130" "$(field residual-unversioned "$d")"
 rm -f "$M"/HIMMEL-118.md "$M"/HIMMEL-119.md "$M"/HIMMEL-12[1-9].md "$M"/HIMMEL-130.md
 
-d="$(doc rerule 'pool-disposition: HIMMEL-101 slice HIMMEL-901' 'pool-disposition: HIMMEL-101 question waits on HIMMEL-902')"
+d="$(doc rerule "pool-disposition: $KP-101 slice $KP-901" "pool-disposition: $KP-101 question waits on $KP-902")"
 check 'a later disposition of the same key supersedes an older stale one' '0' "$(field pool-stale "$d")"
-d="$(doc rerule2 'pool-disposition: HIMMEL-101 question waits on HIMMEL-902' 'pool-disposition: HIMMEL-101 slice HIMMEL-901')"
+d="$(doc rerule2 "pool-disposition: $KP-101 question waits on $KP-902" "pool-disposition: $KP-101 slice $KP-901")"
 check 'the later of two dispositions decides: an older open one does not mask a stale one' '1:HIMMEL-101' "$(field pool-stale "$d")"
-d="$(doc rerule3 'pool-disposition: HIMMEL-101 slice HIMMEL-901' 'pool-disposition: HIMMEL-101 question operator decision 268')"
+d="$(doc rerule3 "pool-disposition: $KP-101 slice $KP-901" "pool-disposition: $KP-101 question operator decision 268")"
 check 'a later ref-less disposition of the same key supersedes an older stale one' '0' "$(field pool-stale "$d")"
 
 # a disposition carries the head sha it was ruled at (`@<sha>`); one more than TICK_POOL_MAX_MERGES

@@ -24,8 +24,6 @@ bad() { echo "FAIL - $1" >&2; fails=$((fails + 1)); }
 # The 24 required contexts on `main` (ruleset protect-main + classic branch
 # protection carry the same list, read 2026-09-29 via
 # `gh api repos/yotamleo/Himmel/branches/main/protection/required_status_checks`).
-# ponytail: a frozen copy, so a context added later is not checked here;
-# upgrade path is a live read once the check-ci.sh required_set is reusable.
 REQUIRED_CONTEXTS='bun-suites (ubuntu-latest)
 codeowner-review-gate
 commit-lint

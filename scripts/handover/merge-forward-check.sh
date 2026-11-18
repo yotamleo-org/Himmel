@@ -74,20 +74,6 @@
 # The file is bound to the merge-base: a required `# merge-base <40-hex>` header equal to
 # --base-sha (missing or mismatched exits 2), `# command` and `# log` headers that the ALLOW
 # line cites, and rows `<job><TAB><case><TAB><exit status>` (a zero status is no reproduction).
-# ponytail: the file is still self-reported by the worker; the script checks only that the cited log
-# exists and is non-empty, and the chief reviews its content. Upgrade path is this script running
-# the reproduction itself in a scratch worktree at the merge-base.
-# ponytail: the case lists are extracted from logs by the caller and taken as
-# given, so a wrong list can still mislead; upgrade path is parsing the failed
-# job logs here if that ever bites.
-# ponytail: the script cannot see whether another completed run lies inside
-# (from, cover], nor a newer one than --main-latest, so "next" and "latest" are
-# taken from the caller; upgrade path is listing the main runs with gh here if a
-# wrong one ever bites.
-# ponytail: a red cover proves the failure existed somewhere in (from, cover], not
-# at the merge-base itself, so a case introduced and fixed inside that range can
-# read as inherited; ALLOW also needs it green on latest, which bounds this, and
-# the upgrade path is per-commit main runs (or the gh push-run listing above).
 set -uo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 GH_READ_BIN="$SCRIPT_DIR/../lib/gh-read.sh"
@@ -111,8 +97,6 @@ is_cancelled() { awk -F'\t' 'NF {n++} NF && $2=="cancelled" {c++} NF && $2!="can
 # --pr/--pr-sha: the PR's own CI run, as above.
 # Exit 0 = ALLOW  1 = REFUSE  2 = usage  3 = the predecessor is already in HEAD
 # The graph's jira_links must be ok: an unread Blocks link could hide an H1 pair, so unknown links REFUSE.
-# ponytail: the Jira command seam of chain-graph.py stays honoured, like gh on PATH: the caller's environment
-# is trusted to reach the real Jira; upgrade path is resolving both from the primary checkout here.
 chain_s2() {
   local cpr="" pred="" jobs="" psha="" bad=0 a tip head reds view num hro state moid phead rmoid sd ghead jl out edge line
   for a in "$@"; do

@@ -36,8 +36,6 @@ import friction  # noqa: E402
 ISSUE_REPO = 'yotamleo-org/Himmel'  # env-literal-ok: the public himmel issue tracker is the report target by design
 MAX_TEXT = 2000
 
-# ponytail: mirrors scrub_secrets() in the CR ledger writer plus friction's token mask; one definition in
-# scripts/lib once a trust-reviewed change may touch that writer. The gitleaks pass below is the backstop.
 SECRET_RES = [
     (re.compile(r'[0-9]{8,10}\s*:\s*[A-Za-z0-9_-]{35}'), '[REDACTED]'),
     (re.compile(r'(Bearer|bearer)\s+[A-Za-z0-9._-]{16,}'), r'\1 [REDACTED]'),

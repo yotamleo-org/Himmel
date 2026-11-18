@@ -52,8 +52,6 @@
 # holding a cancelled job). That is exact for jobs with no `needs` and
 # overstates a job gated behind others (its wait includes the upstream jobs'
 # run time). Only the latest attempt of a re-run is visible.
-# ponytail: queue wait of gated jobs outside REST-read runs includes upstream time,
-# upgrade path = REST /runs/{id}/jobs?filter=all for every run when exact job created_at matters.
 #
 # Merge-forward rounds per merged PR: one more paginated GraphQL search (25 PRs a page, paced
 # and cached like the rest) lists the PRs merged in the window with their first 100 commits;
@@ -72,11 +70,6 @@
 # "superseded" = a newer run of the same workflow + branch + trigger was created
 # between this run's creation and 2 minutes after its last update (the
 # concurrency cancel-in-progress signature); anything else is "no newer run
-# (manual or other)". ponytail: heuristic, upgrade path = the audit-log API
-# (org-only) if the repo ever moves under an organization.
-# The per-run /timing endpoint is not called: for a user-owned public repo it
-# returns {"billable":{}} with no run_duration_ms, so job intervals are the
-# source of truth for runner time.
 set -u
 
 SELF="${BASH_SOURCE[0]}"

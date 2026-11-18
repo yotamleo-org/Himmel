@@ -10,9 +10,6 @@
 # HANDOVER_DIR, and a bare handover_root would fall back to a worktree's
 # handovers/ stub, so resolve from the station anchor: the
 # primary checkout, the parent of git's common dir.
-# ponytail: two callers (probes.js and this script) spell the anchor+dotenv
-# prelude, upgrade path: a handover_root_station helper in handover-path.sh when a third caller appears.
-# Bash 3.2-compatible; needs jq.
 self=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 common=$(git -C "$self" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) && anchor=$(cd "$common/.." && pwd) || anchor=$(cd "$self/../.." && pwd)
 

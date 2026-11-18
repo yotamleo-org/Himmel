@@ -12,8 +12,6 @@
 // file the OpenRouter field reads "not available" and nothing is fetched. --live reads OPENROUTER_API_KEY; a key
 // is used only as a request header and never printed; a missing key marks the column unavailable(no key).
 //
-// ponytail: the OpenRouter parser is pinned to the vendor docs' response shape and has not met a live
-// response (no key on this station), upgrade path: one operator-approved live read (--live) compared with the service's own figure.
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';

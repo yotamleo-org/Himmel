@@ -223,7 +223,7 @@ eq "10b: chief-worker but no HIMMEL_CONSOLE_NAME -> operator DM" 1 "$(count "$CA
 new_case c10c
 MERGE_WATCH_POST_GO=1 HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=ghost run_watch_alert "$CASE" octo/demo 42 aaaaaaaaaaaa "required check(s) FAILED: tests"
 eq "10c: chief name set but its inbox was never armed -> operator DM" 1 "$(count "$CASE/alerts.log")"
-eq "10c: the never-armed inbox is NOT created (HIMMEL-3440)" "absent" "$([ -e "$CASE/bridge/consoles/ghost.md" ] && echo present || echo absent)"
+eq "10c: the never-armed inbox is NOT created" "absent" "$([ -e "$CASE/bridge/consoles/ghost.md" ] && echo present || echo absent)"
 
 # --- 11. dedupe holds for the watch channel, independent of the operator
 #          channel (row d) ---------------------------------------------------

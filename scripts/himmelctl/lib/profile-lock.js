@@ -49,9 +49,6 @@ function staleOwner(lock) {
 // the rename sees ENOENT and goes back to waiting. The renamed file is read
 // again: if it is no longer the owner `stale` read, a fresh owner slipped in
 // between the read and the rename, so its lock is linked back untouched.
-// ponytail: between that rename and the link a third waiter can create the
-// lock, leaving two owners; needs a crashed owner and three simultaneous
-// waiters, upgrade path is a kernel lock (flock) instead of a lock file.
 function takeOver(lock, stale) {
   const tomb = `${lock}.stale.${process.pid}.${crypto.randomBytes(4).toString('hex')}`;
   try {
@@ -62,7 +59,7 @@ function takeOver(lock, stale) {
   let moved = null;
   try { moved = fs.readFileSync(tomb, 'utf8'); } catch (_e) { /* unreadable: treated as a fresh owner */ }
   if (moved !== stale) {
-    try { fs.linkSync(tomb, lock); } catch (_e) { /* recreated meanwhile: see the ponytail above */ }
+    try { fs.linkSync(tomb, lock); } catch (_e) { /* recreated meanwhile */ }
   }
   try { fs.unlinkSync(tomb); } catch (_e) { /* already gone */ }
   return moved === stale;

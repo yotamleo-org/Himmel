@@ -32,7 +32,7 @@ Usage: bash scripts/lib/red-control-extraction-lint.sh [PATH...]
 Flags a test suite that extracts a RED-control mutant via
 `git show <7-40 hex sha>:<path>` -- unreachable from a shallow clone or
 source archive, and permanently gone once a squash-merged PR branch is
-deleted (HIMMEL-3154 / HIMMEL-3018). Use a committed fixtures/red-control/
+deleted. Use a committed fixtures/red-control/
 snapshot instead.
 
   PATH   a file or directory to scan (directories are walked for test-*.sh).
@@ -66,14 +66,6 @@ fi
 # closing quote AFTER the colon is a different, rarer shape and still caught
 # by the SHA-variable branch since the quote is optional here).
 #
-# ponytail: a historical-ref variable whose name does not end in `_SHA`
-# escapes this gate -- e.g. the motivating case itself,
-# `git show "$BASE_PRE2831_1:scripts/..."`. Widening the pattern to match
-# any `$VAR:path` would false-positive on legitimate ref vars (branch names,
-# `$commit:file`, etc.), so this is a deliberate trade-off, not an oversight.
-# Convention: name new historical-ref vars `*_SHA`, or add a per-file guard
-# (see test-leak-classes.sh) when a suite genuinely needs a differently-named
-# one.
 PATTERN='git[[:space:]]+(-C[[:space:]]+[^[:space:]]+[[:space:]]+)?show[[:space:]]+"?(\$\{?[A-Za-z_][A-Za-z0-9_]*_SHA\}?|[0-9a-fA-F]{7,40})"?:[^[:space:]]+'
 
 files=()

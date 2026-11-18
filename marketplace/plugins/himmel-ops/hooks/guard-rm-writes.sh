@@ -69,9 +69,6 @@
 # that is not an authority file is not screened. The authority files carry
 # signed, chained rows (design §5.2), so a raw write is detected by every
 # reader even when it passes here.
-# ponytail: those shell shapes pass, the worker OS sandbox (HIMMEL-6180) closes them.
-# Over-matching is the safe direction: in mode 2 a read that names
-# scripts/jira/ (cat, git grep) is checked as a Jira call and denies.
 #
 # BYPASS: mode 1 has no in-session bypass — the release CLI is the writer, and
 # an operator's own terminal is not hooked. Mode 2: launch the session without

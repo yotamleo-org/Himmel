@@ -19,9 +19,6 @@
 #   Linux : ~/.config/systemd/user/himmel-flow-exporter.service
 #   macOS : ~/Library/LaunchAgents/himmel-flow-exporter.plist
 #
-# ponytail: flow-exporter.ts serves no /healthz route yet, so a /healthz 404
-# falls back to /metrics, upgrade path: once flow-exporter.ts answers /healthz
-# (deferred), drop the /metrics fallback in probe().
 set -uo pipefail
 
 NAME="himmel-flow-exporter"

@@ -258,9 +258,6 @@ log() {
 # Reporting only: nothing here changes what a sweep prunes.
 #   row: <key>\t<first-seen epoch>\t<sweeps skipped>\t<reason>
 #   key: the worktree path, or the branch name for a partial prune
-# ponytail: last-writer-wins — two sweeps racing the same repo can lose one
-# counter increment (the alarm then fires one sweep late); a sweep that could
-# not read the forge leaves the file untouched rather than guess.
 STUCK_DIR="$(cd "$COMMON_DIR" 2>/dev/null && pwd || printf '%s' "$COMMON_DIR")/sweep-health"
 STUCK_STATE="$STUCK_DIR/stuck.tsv"
 STUCK_SEEN=""
@@ -2079,11 +2076,6 @@ if [ "$NO_PRUNE" -eq 0 ]; then
             # to write at all (the path is simply gone) — never silently
             # discarded. Permanent deletion is deferred to the reap pass
             # below, on a LATER run.
-            # ponytail: assumes stray_dir ($STRAY_HOME, under PRIMARY_WORKTREE)
-            # and STRAY_QUARANTINE_DIR ($COMMON_DIR, also under PRIMARY_WORKTREE)
-            # always share a filesystem, so mv is a single rename() rather than
-            # a copy-and-delete fallback; revisit if himmel ever supports a
-            # worktrees dir or git-common-dir mounted on a separate filesystem.
             if ! mkdir -p "$STRAY_QUARANTINE_DIR" 2>/dev/null; then
                 echo "WARN clean-garden: could not create quarantine dir $STRAY_QUARANTINE_DIR — refusing to sweep $stray_dir" >&2
                 note_stuck "$stray_dir" "stray husk refused: quarantine dir unavailable"
@@ -2185,10 +2177,6 @@ if [ "$NO_PRUNE" -eq 0 ]; then
             # that take wall-clock time, and a write landing during that scan
             # would be invisible to a check made only beforehand. Checking
             # again right here shrinks the window to the rm -rf call itself.
-            # ponytail: a write landing in that last instant is still lost —
-            # there is no cross-process lock, so a truly atomic
-            # check-then-delete isn't possible without one; revisit only if
-            # this is ever observed in practice.
             if quar_newer_out=$(find "$quar_dir" -newer "$quar_sidecar" -print 2>/dev/null); then
                 if [ -n "$quar_newer_out" ]; then
                     continue   # something wrote here since quarantining

@@ -138,7 +138,7 @@ break_lanes() {
     printf '\nRoute bulk work through spawn-glm directly.\n' >> "$1/CLAUDE.md"
 }
 
-echo "test-ci-doc-invariants (HIMMEL-1305)"
+echo "test-ci-doc-invariants"
 echo
 
 # --- baseline: a pristine committed tree passes every gate, having RUN ------

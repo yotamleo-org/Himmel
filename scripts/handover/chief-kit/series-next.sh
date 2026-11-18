@@ -19,10 +19,6 @@
 # Every `status` row is rebuilt from the ledger, git (the shared object store) and gh, never from a transcript (F2).
 # GH_CMD overrides `gh` (tests). HANDOVER_DIR locates <handover root>/.locks/go for GO-FILE rows.
 #
-# ponytail: "one start per worker" is a claim file per writer doc under <ledger>.starts.d/ because series-ledger.py has no
-#   started_by field; nothing there is a .json, so next-dispatchable never reads it as a ledger. Upgrade: a started_by item field.
-# ponytail: an item worktree skips worktree.sh's setup (deps install) because worktree.sh new refuses a series/ branch and cuts
-#   only from origin/<default>; upgrade: a start-point argument and a series type in _new-worktree.sh.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

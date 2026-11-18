@@ -117,7 +117,7 @@ check "$rc6b" "2" "T6b digit-leading name exit code"
 # the real script beside a POISONED lib/load-dotenv.sh and .env (weakened
 # cross-model policy); the lib drops a marker file if it is ever sourced.
 # (The script itself is unmodified: a branch that deletes the hand-off from its
-# own copy is the runbook condition's job - see the ponytail in pr-check-env.sh.)
+# own copy is the runbook condition's job.)
 anchor="$tmp/anchor"
 mkdir -p "$anchor/scripts/cr" "$anchor/scripts/lib"
 cp "$SCRIPT" "$anchor/scripts/cr/pr-check-env.sh"

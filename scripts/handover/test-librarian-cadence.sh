@@ -4,6 +4,7 @@
 # root. Arms nothing on the station and never touches the live bucket.
 # shellcheck disable=SC2016  # the generated fake scripts keep their $1 literal
 set -uo pipefail
+KP=HIMMEL
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 SUT="$REPO/scripts/handover/librarian-cadence.sh"
 PASS=0; FAIL=0
@@ -75,7 +76,7 @@ check "a good fire logs the summary line" 1 "$(grep -c '^librarian: dry-run' "$L
 check "and exit rc=0" 1 "$(grep -c '^\[exit rc=0\]' "$LIBRARIAN_RUNNER_DIR/librarian.log")"
 check "and one complete flow-run row" 1 "$(grep -c '"outcome":"complete"' "$HIMMEL_FLOW_RUNS_LEDGER" 2>/dev/null)"
 check "and no alert" no "$([ -s "$CADENCE_ALERT_FILE" ] && echo yes || echo no)"
-check "the dry run moved nothing" yes "$([ -e "$H/u/himmel/HIMMEL-9-x-2026-01-01.md" ] && echo yes || echo no)"
+check "the dry run moved nothing" yes "$([ -e "$H/u/himmel/$KP-9-x-2026-01-01.md" ] && echo yes || echo no)"
 HANDOVER_DIR="$W/nowhere" bash "$R" >/dev/null 2>&1
 check "a failed fire logs a nonzero exit" 1 "$(grep -c '^\[exit rc=[1-9]' "$LIBRARIAN_RUNNER_DIR/librarian.log")"
 check "and appends one alert line" 1 "$(grep -c ' librarian rc-' "$CADENCE_ALERT_FILE")"
@@ -97,7 +98,7 @@ check "and a fire with no HANDOVER_DIR still resolves it" 0 "$(tail -n 3 "$LIBRA
 H2="$W/handovers2"; mk_bucket "$H2"
 run arm --force --apply >/dev/null
 HANDOVER_DIR="$H2" bash "$R" >/dev/null 2>&1
-check "an --apply fire moves the finished doc" no "$([ -e "$H2/u/himmel/HIMMEL-9-x-2026-01-01.md" ] && echo yes || echo no)"
+check "an --apply fire moves the finished doc" no "$([ -e "$H2/u/himmel/$KP-9-x-2026-01-01.md" ] && echo yes || echo no)"
 
 # --- disarm -------------------------------------------------------------------
 run disarm >/dev/null; check "disarm exits 0" 0 "$?"

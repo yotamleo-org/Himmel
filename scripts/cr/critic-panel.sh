@@ -1779,7 +1779,6 @@ process_member() {
     # bullet payload ALWAYS last as a byte-exact remainder:
     #   sections 1-3: "S\034id\034file\034line\034bullet"
     #   section 4:    "4\034blk\034rendered-drop-line"  (blk: 1=blocking)
-    # ponytail: command substitution strips NUL bytes before Dropped Citations render and the guard digest, so the digest covers evidence as presented, not raw bytes; reject NUL output or hash it byte-exact, HIMMEL-1936
     _pm_member_out="$(cat "$_pm_out_file")"
     # Fallback re-run temp files: content now captured -> free them.
     # _fb_out/_fb_err stay "" on the primary-success path (no fallback ran).

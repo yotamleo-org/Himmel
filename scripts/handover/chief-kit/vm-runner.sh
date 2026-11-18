@@ -25,9 +25,6 @@
 #
 # Platform guard (linux-only): systemd --user units and VirtualBox.
 #
-# ponytail: `off` stops a loop mid-job (that job is lost and must be re-run by
-# hand); a drain mode that waits for in-flight jobs is the upgrade if lost jobs
-# ever cost more than a stuck kill switch.
 set -u
 
 # Parameter expansion, not dirname: a PATH-shadowed dirname must not pick

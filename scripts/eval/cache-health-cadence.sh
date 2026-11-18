@@ -19,7 +19,6 @@
 # `<bridge root>/consoles/<session>.md` (append-only, never created). `notify`
 # exits 0 when EITHER channel delivered; a failed run alerts via cadence-alert.sh.
 #
-# ponytail: one delivered channel counts as delivered, so a Telegram outage with a live inbox is not retried on Telegram, upgrade path: per-channel sentinels if outages recur.
 #
 # OFF by default: only `arm` installs it; arming on a station is an operator step
 # after a VM proof.

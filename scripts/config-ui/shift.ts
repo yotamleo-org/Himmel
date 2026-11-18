@@ -10,7 +10,6 @@
 //  - the close time is the last lock release, declared once idleMin minutes pass with nothing held, never idleMin later.
 //  - one span function: first LIVE to last WRAPPED/HALTED; a doc with no LIVE starts at its predecessor's end, marked approx.
 //
-// ponytail: the last lock release is derived from the last poll that saw a lock held and the newest WRAPPED/HALTED stamp (queue-lock.sh keeps no release record, and a stale-dead lock reads as held until swept), upgrade to a release record read from queue-lock.sh
 import { appendFileSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { basename, dirname, join, relative, sep } from "node:path";
@@ -54,7 +53,6 @@ export function nameOf(opened: number, offMin: number, o: Opts): "day" | "night"
 }
 
 // the first cut time at or after opened + minHours
-// ponytail: the zone offset is fixed when a shift opens, so a shift that spans a clock change cuts an hour off local 08:00 or 20:00, upgrade to the offset in force at each cut when a shift is seen to straddle one
 export function nextCut(opened: number, offMin: number, o: Opts): number {
   const from = opened + o.minHours * 60 * MIN;
   const dayStart = Math.floor((from + offMin * MIN) / DAY) * DAY - offMin * MIN; // local midnight at or before `from`
@@ -419,7 +417,6 @@ export const fileReader: BoardReader = async (doc) => ((await readBoardFile(doc)
 
 // the boards of the chiefs that hold a queue lock now, one per live chief doc, by NAME under the handover root, read through `read`
 // A chief whose lock heartbeat is older than the queue-lock TTL is dead (queue-lock.sh status: STALE-DEAD): its rows are not shown.
-// ponytail: age alone (queue-lock.sh's 6 h default TTL), not its pid check, so a live chief silent for 6 h is hidden until it beats again, upgrade path: ask queue-lock.sh status.
 export const LOCK_TTL_MS = 6 * 3_600_000;
 
 // The open operator decisions of a chief doc: its Live-state `decisions:` line, ';'-separated at parenthesis depth 0 (board.mjs's split).

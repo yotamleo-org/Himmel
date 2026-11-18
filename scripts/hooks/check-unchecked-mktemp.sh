@@ -273,9 +273,6 @@ hunk_linenos() {
 # come from `git diff --cached -U0 <parent> -- <path>` (the path alone, no
 # rename pairing: a file renamed on the other side then reads as wholly added
 # there, which keeps its lines flagged -- the fail-closed direction).
-# ponytail: a rename on the other parent's side is not paired, so a merge
-# resolving a rename conflict may be over-flagged, upgrade path = pair
-# renames per parent if it ever blocks a real merge.
 merge_own_lines() {
     local path="$1" out="$2" parent hunks p_added narrowed rc
     [ -n "$MERGE_PARENTS" ] || return 0

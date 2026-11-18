@@ -14,7 +14,6 @@
 // ctx: { home, himmelRoot, projectRoot, env, uid?, gitCheckIgnore?, backend? }.
 // Results and errors name a rule or a path, never an input value.
 //
-// ponytail: card entries and the MCP stores are detect-only, no vault backend yet, upgrade path: a password-vault backend for these entries.
 
 const fs = require('fs');
 const os = require('os');

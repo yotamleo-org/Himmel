@@ -141,16 +141,6 @@
 #    stale by definition", so it could NEVER be reclaimed - a permanent wedge
 #    for this session name. A failed stamp write removes the lock and exits 8
 #    rather than holding an unstampable one.
-# ponytail: HIMMEL-2558 - the steal restore below can lose a race, upgrade path is a lock
-# primitive that carries its identity inside the lock.
-#  - Known gap (needs a redesign of the lock primitive): the best-effort restore in
-#    steal_stale_lock (`mv "$victim" "$LOCK"` when the stolen stamp does not
-#    match) can itself lose a race, orphaning the real holder's lock so that
-#    its later release deletes a DIFFERENT arm's lock. The lock's identity
-#    lives in its PATH, not in its own contents, so a restore that loses the
-#    mv race cannot tell "put back the lock I displaced" apart from "a
-#    different arm's lock now occupies this path" - closing that gap needs
-#    identity carried inside the lock itself, a redesign of the primitive.
 #  - The lock root must not be a predictable, shared path under /tmp: another
 #    local user on the same host could pre-create it (as a directory they
 #    own, or a symlink) and every lock operation would then happen inside a
@@ -598,9 +588,6 @@ ROLE_ENV_UNSET=""
 # neither, so that hook stays a silent no-op fleet-wide. The workdir is
 # dirname(SIGNAL) -- chief.sh's chain dir, 0700 and non-symlink. An array,
 # not a word-split string, so a path with a space survives.
-# ponytail: keyed on --role chief only. A chief armed without --role (a
-# hand-pasted headed-arm.sh line) gets no export and so no snapshot; G11
-# (compacted-check.sh) reports that as `no snapshot` rc 2, never a false pass.
 CHIEF_ENV=()
 if [ "$ROLE" = "chief" ]; then
     ROLE_ENV_UNSET="-u HIMMEL_CONSOLE_RELAY"
@@ -961,11 +948,6 @@ NAME_ERE="$(ere_escape "$NAME")"
 # FIRST `-n` token decide: our launches put every option ahead of the prompt,
 # so a "-n <NAME>" later in another session's prompt, or a name that merely
 # has ours as a prefix, no longer confirms.
-# ponytail: still weaker than the NUL-separated /proc read - an argv element
-# that itself contains " -n <NAME> " and sits BEFORE the real -n option (an
-# --append-system-prompt value), or a claude with no -n at all whose prompt
-# carries it, can still confirm. Closing that needs kern.procargs2, which no
-# stock macOS CLI exposes.
 _flat_argv_has_n_name() { # _flat_argv_has_n_name <space-joined argv>
     local toks i=0
     # -d '' reads past newlines (a multiline argv element); rc 1 at EOF is expected.
@@ -1016,7 +998,7 @@ session_confirmed() { # session_confirmed <pgrep-ere-pattern> - returns
     # _flat_argv_has_n_name rather than by pgrep's flattened match, which let
     # ANY claude whose prompt carried "-n <NAME>" suppress the arm - the
     # same class. `ps -o args=` is still space-joined, so the residual
-    # gap its ponytail names is announced once - never silent.
+    # gap is announced once - never silent.
     if [ ! -d "$PROC" ]; then
         if [ "$_LOSSY_WARNED" -eq 0 ]; then
             echo "WARN headed-arm: no $PROC on this platform - session confirmation reads each candidate's argv via ps, whitespace-joined, so an argv element containing spaces can still spoof it" >&2
@@ -1152,15 +1134,6 @@ headless_fail() { # headless_fail <rc> <message>
     rm -rf "$LOCK" 2>/dev/null
     exit "$1"
 }
-# ponytail: the daemon env is read once, just before the launch. A daemon
-# that exits and is respawned by some other shell in between would hand the
-# worker vars this scan never saw. The window is the few ms between this read
-# and the launch call.
-# ponytail: only worker-shaped names (the case list in _hl_worker_var) are
-# overridden. Anything else the daemon spawner had - PATH, CLAUDE_CODE_*,
-# the CLAUDE_PID / CLAUDE_CODE_SESSION_ID / CLAUDE_CODE_MESSAGING_SOCKET /
-# CLAUDE_CODE_MESSAGING_TOKEN / CLAUDE_JOB_DIR a headed launch clears with
-# env -u - still reaches the worker from the daemon.
 headless_launch() {
     local name val tok pid pids pg_rc settings="$WORKER_SESSION_PROFILE_SETTINGS" new_settings pair
     [ -f "$settings" ] || headless_fail 2 "headless: settings file $settings is missing - it must exist before the launch"
@@ -1571,7 +1544,6 @@ fi
 # <KEY>-N<digits>[letter]-...: refuse while another live claude session carries the same <KEY>-N prefix with different
 # digits (workers b/c of one N are one lineage and still launch). HEADED_ARM_ALLOW_TICKET_DUP=1 in the launching shell
 # allows a deliberate second worker. Fails OPEN when the scan itself fails (a workflow guard, not a security fence).
-# ponytail: a headless (--bg) arm is not scanned, only headed sessions are, until the agents census is keyed by ticket.
 #
 # The scan below is a check-then-launch, so it runs under an atomic ticket-scoped claim
 # ($LOCKDIR/ticket-<KEY>.lock: the name claim's mkdir, stamp and stale rule). The claim is held from before the scan
@@ -1582,7 +1554,6 @@ fi
 # (workers b/c of one N) is waited out for the session-visibility budget plus a margin for the launch itself, then
 # the arm gives up as exit 6 like an exhausted name claim. A different ticket key is a different claim. An EXIT trap
 # releases it on every exit path before the poll ends.
-# ponytail: a claim left by a kill -9 blocks that ticket until STALE_LOCK_SECS, the same ceiling as the name claim.
 TICKET_LOCK=""
 # the holder keeps the claim through its launch (settle plus the visibility poll), so wait that budget plus 2s
 TICKET_WAIT_ITERS=$((SESSION_VISIBLE_RETRY_ITERS + 40))
@@ -1645,8 +1616,6 @@ fi
 # because a seed fault must never stop a launch (a SyntaxError in holds.py also exits 1, with no `holds:` line).
 # WRITE_HOLD_OK=1 (exactly 1) in the launching shell turns a refusal into a warning. repoint and seed share one 60 s deadline,
 # under the 120 s claim window (STALE_LOCK_SECS).
-# ponytail: a launch that fails after the seed keeps its rows; ceiling: a rival waits up to 15 minutes (the arm grace),
-# upgrade path: release only what that seed created, on that failure path.
 if [ -n "${HIMMEL_HOLD_KEY:-}" ] && [ -n "${HIMMEL_HOLD_DOC:-}" ] && [ "$ROLE" != chief ]; then
     _holds_py="${HEADED_ARM_HOLDS_PY:-$(cd "$(dirname "$0")" && pwd)/chief-kit/holds.py}"
     _holds_deadline=$(( $(date +%s) + 60 ))
@@ -1818,16 +1787,6 @@ fi
 # holds this env (secrets included) for the second it takes the tab to start:
 # it is written 0600 inside this arm's claim lock (under the validated 0700
 # lock root), deletes itself first thing, and goes with the lock either way.
-# ponytail: two concurrent first arms of one chief can open two windows
-# (the record keeps the later one), a recycled window pid that is another
-# konsole would take the tab, /Windows/1 is assumed, and tick.sh's deadwin
-# sweep never closes a dead tab in a window that still has live ones; a
-# per-chief flock is the upgrade path. A successor finds a window by the
-# predecessor name chief.sh next exports (HIMMEL_CHIEF_PREDECESSOR), then the
-# previous letter of the -nextleg-<date><LETTERS> part, then the newest live
-# record of a chief with the same name apart from date and letters; a chain
-# whose names differ in anything else opens a window. The konsole check is
-# /proc comm (Linux), so it never adopts a recycled non-konsole pid.
 TAB_SESSION=""
 TAB_WINDOW_FILE=""
 TAB_RECORD=0

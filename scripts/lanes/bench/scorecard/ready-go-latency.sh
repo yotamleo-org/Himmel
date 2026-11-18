@@ -27,8 +27,6 @@
 #         `coverage: discovered=<READY events> parsed=<paired+missed> skipped=<k>
 #         (reason=n ...)` line: the READYs the metric did not count (out of
 #         window, resolved by a HOLD, still inside their 60 min) are named.
-# ponytail: "discovered" is one READY per PR (the last one; an earlier READY a
-# later round superseded is dropped in the awk pass and is not counted).
 set -u
 
 usage() { echo "usage: ready-go-latency.sh --doc <doc> [--since <ISO8601>] [--until <ISO8601>]" >&2; }

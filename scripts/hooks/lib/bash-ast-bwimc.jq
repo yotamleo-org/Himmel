@@ -28,12 +28,6 @@
 # A relative path is checked against EVERY directory the command may be in
 # at that point: each cwd a cd may have reached and the payload cwd, since a
 # cd can fail. An unknown cwd denies a relative target (unresolved-cd).
-#
-# ponytail: a command whose program word is itself dynamic (`$(echo rm) f`),
-# a target that STARTS dynamic (`"$(mktemp)"`, `$X/f`), a pipe into a bare
-# shell (`… | bash`), a user function or alias shadowing a verb, and a
-# command fed by xargs' stdin are not resolved — the same residuals the
-# regex engine carries; upgrade path = a value model for `$VAR` assignments.
 
 import "bash-ast" as ba;
 

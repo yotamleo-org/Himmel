@@ -121,7 +121,7 @@ _cmg_outside_block() {
             return 0
         fi
         if [ "$gate_head" != "$head" ]; then
-            prefix="head $head of PR #$num carries no CodeRabbit review (best effort, HIMMEL-3360: nothing waits or re-triggers); a prior review, at head $gate_head, "
+            prefix="head $head of PR #$num carries no CodeRabbit review (best effort: nothing waits or re-triggers); a prior review, at head $gate_head, "
         else
             prefix="CodeRabbit's review body "
         fi
@@ -561,7 +561,7 @@ _crg_eval() {
                 else
                     disp="relaxed(${detail:-$state})"
                     if [ "$prov" = github-app ]; then
-                        note="${note}NOTE: CodeRabbit $_CRG_CR_RAW on head $head of PR #$num — best effort (HIMMEL-3360), not gating; the thread + body-findings gates still apply."$'\n'
+                        note="${note}NOTE: CodeRabbit $_CRG_CR_RAW on head $head of PR #$num — best effort, not gating; the thread + body-findings gates still apply."$'\n'
                     else
                         note="${note}NOTE: $slug $state${detail:+($detail)} on head $head of PR #$num — best effort, not gating."$'\n'
                     fi

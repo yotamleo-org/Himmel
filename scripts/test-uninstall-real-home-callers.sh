@@ -59,14 +59,6 @@ join_continued() { sed -e ':a' -e '/\\$/N' -e 's/\\\n//' -e 'ta' "$1"; }
 # (mktemp -d prints a fresh directory or fails, whatever the template says).
 # Everything else is NOT scratch -- $(dirname ...), `..`, $PWD, $1, "$v-x", a concatenation,
 # and any write that is not a plain `NAME=` (`v+=`, `v[i]=`, `${v:=...}`).
-# ponytail: flow-INSENSITIVE text tracing over `NAME=` on raw lines (continuations
-# joined). It cannot see order (a HOME assigned from v BEFORE v's mktemp, or inherited
-# from the caller's shell), scope (`local v` / a subshell / a function argument), or a
-# write through `read` / `printf -v` / `declare -n` / a sourced file; and it does not tie a
-# lift to the HOME on its own command (`HOME="$td" true; VAR=1 bash uninstall.sh` passes,
-# the lift inheriting the real HOME). It reads text, so an assignment-shaped comment or
-# printf fixture counts: a non-scratch one is a false flag, and a file whose only scratch
-# HOME is text passes. Separating those needs a parser.
 home_is_scratch() {
   local file="$1" line rest name s i j ok changed homes=0
   local assign_re='(^|[^A-Za-z0-9_])([A-Za-z_][A-Za-z0-9_]*)(\[[^]]*\])?([-+:*/%&|^]?)=(.*)'
@@ -151,10 +143,6 @@ done
 # and `=0` flag too (a false flag, never a false pass). It runs on the raw lines AND on
 # the continuation-joined text with every quote and backslash deleted, so a name split
 # by a continuation, quotes or a backslash (`export HIMMEL_''..=1`) is still seen.
-# ponytail: it will NOT see a write that never spells the name next to its operator: a
-# computed name (`n=...; export "$n=1"`, a name split by an EMPTY EXPANSION like `${e}`),
-# `read` / `printf -v` / `declare -n`, `Set-Item Env:`, or a JS env object built from a
-# variable key. A mention with none of `=:,` after it (`unset VAR`, a comment) is a read.
 sets_var() (   # rc 0 = writes the var, 1 = does not, 2 = the file could not be scanned
   set -o pipefail
   local file="$1" read_re site_re st

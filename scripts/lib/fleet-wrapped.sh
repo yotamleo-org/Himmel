@@ -14,9 +14,7 @@
 # fleet-wrapped.sh -> queue-lock.sh call edge pulled queue-lock.sh, and its
 # own deps, into scripts/cr's guarded reachability closure unallowlisted —
 # see test-cr-guarded-closure.sh). The lock check below reads
-# queue-lock.sh's on-disk lock dir / owner.json directly instead; see
-# fleet_lock_dir_for_doc's ponytail note for exactly how much of
-# queue-lock.sh's own root/slug resolution this replicates.
+# queue-lock.sh's on-disk lock dir / owner.json directly instead.
 #
 # Defines functions only; sourcing prints nothing and touches no file.
 # Bash 3.2-safe (reads /proc).
@@ -53,15 +51,6 @@ fleet_doc_for_pid() {
 # exactly one hit; rc 1 on zero or on more than one (ambiguous — fail
 # toward counting the process rather than guessing which doc is its own).
 #
-# ponytail: HIMMEL-3095, this can still pick the WRONG doc when exactly one
-# matches by name but that match is a different, already-WRAPPED process
-# that happens to share <name> with the live one being checked (e.g. a
-# same-named re-arm racing its predecessor's still-live window) — a false
-# exclude, not the documented fail-toward-cap direction. Worker naming
-# convention keeps <name> unique per launch in practice, so this is
-# believed rare; upgrade path if it is ever measured live: have the doc
-# itself record the pid that last wrote WRAPPED and require it match
-# <pid>/<name>'s own resolved identity, not just a name substring.
 fleet_doc_for_name() {
   local _fdn_name="$1" _fdn_root _fdn_hits _fdn_n
   if [ -n "${FLEET_HANDOVER_ROOT_OVERRIDE:-}" ]; then
@@ -112,20 +101,6 @@ fleet_lock_slug_for_root() {
 # $FLEET_HANDOVER_ROOT_OVERRIDE alone, for tests) — the same two roots
 # fleet_doc_for_name already searches. rc 1 when <doc> falls under neither.
 #
-# ponytail: HIMMEL-3095, this covers only the two-root case queue-lock.sh's
-# own _ql_roots_all resolves without a registry read (HANDOVER_DIR +
-# handover_root — the common cross-root pair). It does not
-# reimplement the full registry-scanned candidate-root list, nor the
-# older legacy-mis-keyed-lock / namesake scan queue-lock.sh falls
-# back to when the canonical dir is absent. A doc locked only under a
-# registry root, or only under a legacy-keyed dir, reads as a missing lock
-# dir here and this function returns 1 (ambiguous), which the caller below
-# already treats as COUNT — fail-toward-cap, never a false exclude. Upgrade
-# path: if that undercount-by-caution is ever measured to actually cost a
-# fleet slot in practice, port _ql_candidate_roots' registry parse (or call
-# queue-lock.sh's own root/slug helpers if they get exposed sourceable
-# without pulling in acquire/release's write paths) rather than widening
-# this by hand.
 fleet_lock_dir_for_doc() {
   local _fld_doc="$1" _fld_root _fld_slug
   if [ -n "${FLEET_HANDOVER_ROOT_OVERRIDE:-}" ]; then
@@ -152,8 +127,7 @@ fleet_lock_dir_for_doc() {
 # fleet_process_is_wrapped_and_free <pid> <name> — rc 0 (EXCLUDE: wrapped
 # and lock-free) or rc 1 (COUNT: everything else, including a failed or
 # ambiguous doc/lock lookup). Read-only: no exec, just file/directory
-# reads — see fleet_lock_dir_for_doc's ponytail note for the on-disk-format
-# coupling this implies.
+# reads.
 fleet_process_is_wrapped_and_free() {
   local _fpw_pid="$1" _fpw_name="$2" _fpw_doc _fpw_lockdir _fpw_status
   _fpw_doc="$(fleet_doc_for_pid "$_fpw_pid")" || _fpw_doc="$(fleet_doc_for_name "$_fpw_name")" || return 1

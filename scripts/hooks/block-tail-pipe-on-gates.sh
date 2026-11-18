@@ -74,33 +74,6 @@
 #     array), in-process, no forks. An arm of a multi-arm `case` followed by
 #     another arm, and an `else` arm after a gate, are denied (fail closed).
 #     Checked on the ORIGINAL text only (GUARD_UNWRAP_DEPTH=0).
-#     ponytail: a gate inside a `bash -c`/`eval` payload is not covered by the
-#     trailing rule (guard_unwrap's rendered children skip it), upgrade path: render the children with the trailing rule on.
-#   * Everything else is untouched: `git log | tail`, a bare `tail -f file`, and
-#     the CORRECT shape `gate > out 2>&1; echo "RC=$?"; tail out` all pass.
-#   * Fail OPEN (exit 0) on anything unevaluable — missing jq, empty or
-#     unparseable stdin, a non-Bash tool, a command containing an UNQUOTED
-#     heredoc (`<<`), whose body text a scanner this flat cannot tell from syntax
-#     and which in this repo very often documents this exact shape (the variant
-#     forms below still judge it with the bodies cut out; an unquoted body with
-#     a live `$` beside a command that names a gate fails CLOSED instead,
-#     because `${x@P}` or `$[a[$_]]` can re-expand a quoted gate), or a
-#     command over the 16KB cost bound (see below). Per
-#     scripts/hooks/CLAUDE.md a workflow
-#     nudge fails open: a hook that cannot parse its input must not deny
-#     unrelated commands, and an over-matching nudge becomes the next thing
-#     everyone bypasses. The gap costs GUIDANCE only — the pre-hook status quo.
-#   * NEVER allows: exit 2 is the only decision it emits, so it can neither widen
-#     nor narrow any other hook's grant.
-#   * `pipefail` is deliberately NOT an exemption (panel r2, codex-4). A hook
-#     cannot know the invoking shell's option state — a Bash tool call inherits
-#     whatever the harness's shell has, and `set -o pipefail` earlier in the same
-#     string only covers that string — so exempting on the presence of the words
-#     would hand the incident class a new one-line workaround. And pipefail fixes
-#     only HALF the defect: `| tail -80` still throws away the head of the output
-#     that several incidents needed to diagnose, which is exactly why the ticket
-#     prescribes redirect-to-file over `${PIPESTATUS[0]}`. The deny message says
-#     "unless the shell has pipefail set" rather than claiming otherwise.
 #
 # BYPASS: a same-line `# tail-pipe-ok: <reason>` marker on the offending
 # physical line — for the genuine case where the exit code really does not matter. It
@@ -266,7 +239,7 @@ TAB=$'\t'
 MARK='#tail-pipe-ok:'      # the opt-out, reduced to one operator-free token
 HEREDOC_MARK='HEREDOCSEEN' # an UNQUOTED `<<`; heredoc_reexpands_gate judges its body
 offender=""
-kind=pipe     # pipe: gate | tail/head; trailing: gate followed by a later segment (HIMMEL-2082)
+kind=pipe
 
 # Cost bound. The normaliser below is a character walk, and bash string slicing
 # turns it superlinear on large inputs — measured on Git Bash: ~0.55s at 8KB but
@@ -287,10 +260,6 @@ kind=pipe     # pipe: gate | tail/head; trailing: gate followed by a later segme
 # still runs on the command itself, so a form can only add a denial. The
 # trailing rule reads the text form only: the empty form loses the `$?`/`$rc`
 # a status-surfacing segment reads.
-# ponytail: two forms, all-text and all-empty, so a command that needs one
-# expansion empty and another taken as text is not modelled, and the empty form
-# skips the trailing rule; upgrade path: per-expansion forms, on the first such
-# shape seen written.
 case $cmd in
     *'$'* | *'<<'*)
         _tp_depth=${GUARD_UNWRAP_DEPTH:-0}

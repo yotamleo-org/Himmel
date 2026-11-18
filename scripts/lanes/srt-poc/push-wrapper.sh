@@ -12,9 +12,6 @@
 # --mirror/--all/--prune/--tags, main/master, any branch but --worker-branch, and
 # a URL or path as the remote (only a configured remote name).
 #
-# ponytail: argument-shape policy only; it does not see the remote's own
-# protections, and the build phase routes it through the trust-path
-# judge and installs it at the primary-checkout anchor path.
 set -u
 # the full repository-redirecting set, as scripts/lib/git-clean.sh git_env_scrub
 # (inline: this script runs where the lib may not be reachable)

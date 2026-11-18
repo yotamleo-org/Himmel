@@ -136,7 +136,7 @@ EOF
   assert "capture returned without waiting for the orphan (got ${elapsed}s)" test "$elapsed" -lt 10
   assert "output captured despite the orphan" grep -q '^OUT-BEFORE-ORPHAN$' <<<"$out"
 
-  echo "[test-py-armor] hang armor: orphan holding STDERR does not stall a 2>&1 capture (HIMMEL-626)"
+  echo "[test-py-armor] hang armor: orphan holding STDERR does not stall a 2>&1 capture"
   # The T20 shape: an orphan inherits the interpreter's stderr fd, and the
   # caller captures via $(... 2>&1) (a pipe). Pre-fix, python's stderr WAS the
   # caller's pipe, so the orphan held it and the substitution blocked ~20s

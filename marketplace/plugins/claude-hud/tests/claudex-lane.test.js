@@ -1,5 +1,5 @@
-// himmel delta rows on the v0.10.0 layout: the claudex lane (HIMMEL-2900) and the
-// session-token cache write/read split (HIMMEL-2161). Each row drives dist/index.js
+// himmel delta rows on the v0.10.0 layout: the claudex lane and the
+// session-token cache write/read split. Each row drives dist/index.js
 // the way Claude Code does, in a throwaway HOME with a clean environment.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

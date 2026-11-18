@@ -102,7 +102,7 @@ function usage(code = 1) {
   out("--reflag: backfill the needs_thread signal onto already-enriched X clips");
   out("          (fetch + re-evaluate; writes ONLY needs_thread, no body change).");
   out("--reenrich-quote-only: backfill clips already enriched by fxtwitter that have");
-  out("          tweet_has_quote: true but NO `## The Idea` — the pre-HIMMEL-2621");
+  out("          tweet_has_quote: true but NO `## The Idea` — the old");
   out("          chooser dropped the clipped author's own text. Re-fetches, adds");
   out("          `## The Idea`, and replaces the stale quote-context section.");
   out("--dry-run: no network, no writes. Runs the js-yaml import and YAML parse-validate");

@@ -16,8 +16,6 @@
 # env: TICK_PARKED_MIN (default 5), TICK_PARKED_TAIL_BYTES (ledger tail
 # read, default 16777216), HIMMEL_TRUST_LEDGER_DIR (the ledger's own seam).
 #
-# ponytail: a parked session whose last row sank past the tail window reads as
-# not parked, bump TICK_PARKED_TAIL_BYTES, or index the ledger by session.
 #
 # READ-ONLY. Bash 3.2-compatible. PLATFORM GUARD:
 # Linux-only chief kit (GNU date -d).

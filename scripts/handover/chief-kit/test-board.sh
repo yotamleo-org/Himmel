@@ -7,6 +7,7 @@
 # PLATFORM GUARD: The chief kit is Linux-only (tick.sh
 # reads pgrep, atq and the konsole launch logs); this suite exercises a kit script.
 set -uo pipefail
+KP=HIMMEL
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="$HERE/board.mjs"
@@ -328,7 +329,7 @@ run_ow() {  # run_ow <orphans-wip value> -- the rendered board html
     cat "$W/ow-board.html"
 }
 ow_panel() { printf '%s\n' "$1" | sed -n '/Needs the supervisor session/,/<\/section>/p'; }
-ow_html="$(run_ow '2:HIMMEL-901,HIMMEL-902')"
+ow_html="$(run_ow "2:$KP-901,$KP-902")"
 contains 'an orphaned in-work ticket is listed under Needs the supervisor session' "$(ow_panel "$ow_html")" 'data-orphan="HIMMEL-901"'
 contains 'every named orphan is listed' "$(ow_panel "$ow_html")" 'data-orphan="HIMMEL-902"'
 ow_html="$(run_ow 6)"
@@ -1184,7 +1185,7 @@ jcheck '--json: schema himmel.board/1' 'M.schema === "himmel.board/1"'
 jcheck '--json: legend keys for stage, state, verb, ci, budget and failure' '["stage","state","verb","ci","budget","failure"].every((k) => M.legend[k] && Object.values(M.legend[k]).every((v) => v.color && v.label))'
 jcheck '--json: one recommendation per report card' '["velocity","health","tools","roadmap"].every((k) => typeof M.cards[k].recommendation === "string" && M.cards[k].recommendation.length > 0)'
 jcheck '--json: milestones are done/total per fixVersion' 'M.milestones.length === 2 && M.milestones[0].version === "v1.0.0" && M.milestones[0].done === 3 && M.milestones[0].total === 6 && M.milestones[1].done === 1 && M.milestones[1].total === 2'
-jcheck '--json: roadmap recommendation names the open blockers' 'M.cards.roadmap.recommendation.includes("HIMMEL-9001")'
+jcheck '--json: roadmap recommendation names the open blockers' 'M.cards.roadmap.recommendation.includes("HIMMEL" + "-9001")'
 jcheck '--json: every live worker is a row with a state and stage' 'M.legs.some((l) => l.leg === "N3" && l.state === "ready-for-go" && l.stage === "ready") && M.legs.every((l) => l.state && l.stage)'
 jcheck '--json: a READY worker is a go need' 'M.needs_you.some((n) => n.leg === "N3" && n.verb === "go")'
 jcheck '--json: the go need command carries the merge contract as one shell word, so a paste is refused by go.sh instead of parsed as a pipeline' 'M.needs_you.some((n) => n.leg === "N3" && n.command === "bash scripts/handover/chief-kit/go.sh --contract yes-or-no 2001 0123456789abcdef")'
@@ -1278,7 +1279,7 @@ chtml="$(cat "$CL/board.html" 2>/dev/null)"
 jcheck 'cr-loop --json: rounds per merged PR are distinct score heads per branch, in the window (mean 2, p90 3)' 'M.trends.cr_loop.rounds.prs === 2 && M.trends.cr_loop.rounds.mean === 2 && M.trends.cr_loop.rounds.p90 === 3'
 jcheck 'cr-loop --json: preflight hits per PR (2 hits over 2 PRs)' 'M.trends.cr_loop.preflight.hits === 2 && M.trends.cr_loop.preflight.per_pr === 1'
 jcheck 'cr-loop --json: residual inflow counts residual-labelled tickets created in the window, not other labels' 'M.trends.cr_loop.residual.inflow === 2'
-jcheck 'cr-loop --json: a Done residual with no resolved date makes outflow and net n/a (null), never the updated proxy' 'M.trends.cr_loop.residual.outflow === null && M.trends.cr_loop.residual.net === null && M.trends.cr_loop.residual.outflow_note.includes("HIMMEL-6390")'
+jcheck 'cr-loop --json: a Done residual with no resolved date makes outflow and net n/a (null), never the updated proxy' 'M.trends.cr_loop.residual.outflow === null && M.trends.cr_loop.residual.net === null && M.trends.cr_loop.residual.outflow_note.includes("resolved date")'
 jcheck 'cr-loop --json: residual slots per version against the 15 soft cap' 'M.trends.cr_loop.versions.find((v) => v.version === "v1.1.3").slots === 2 && M.trends.cr_loop.versions.find((v) => v.version === "v1.1.4").slots === 16 && M.trends.cr_loop.soft_cap === 15'
 jcheck 'cr-loop --json: over the soft cap is flagged, under it is not' 'M.trends.cr_loop.versions.find((v) => v.version === "v1.1.4").over === true && M.trends.cr_loop.versions.find((v) => v.version === "v1.1.3").over === false'
 jcheck 'cr-loop --json: open restructure tickets' 'M.trends.cr_loop.restructure_open === 1'

@@ -31,8 +31,6 @@
 #   GH_READ_OFF               1 = every read fails at once (124) with a stall row;
 #                             writes are untouched
 #
-# ponytail: one read token, no pool or rotation; the fallback is reactive (a
-# refused read retries once on the main token), not a pre-flight budget check.
 
 _GHR_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/timeout-bin.sh
@@ -112,7 +110,6 @@ _ghr_is_read() {
     [ "$field" -eq 0 ] || [ "$graphql" -eq 1 ]
 }
 
-# ponytail: no timeout binary (a Mac without coreutils) means no bound; upgrade = a bash watchdog
 _ghr_run() {
     local t="${GH_READ_TIMEOUT:-120}"
     case "$t" in ''|*[!0-9]*) t=120 ;; esac

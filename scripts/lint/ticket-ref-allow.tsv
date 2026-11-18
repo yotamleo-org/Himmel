@@ -46,5 +46,15 @@ K6	^scripts/lib/flags\.tsv$	^[a-z_]+[[:space:]](on|off)[[:space:]]	check-flags.s
 K6	^scripts/ci/live-write-exempt\.txt$	^[^#[:space:]][^[:space:]]*[[:space:]]+HIMMEL-[0-9]+[[:space:]]	run-shell-tests.sh and live-witness.sh refuse an exempt line without its ticket key
 K6	^scripts/handover/chief-kit/test-ready-check-b\.sh$	jira links failed for [A-Z]+-100\)	ready-check prints the ticket its failed links lookup names, and the row asserts it
 K6	^scripts/handover/chief-kit/(test-ready-check-b|test_ready_check_lib|tests/testlib-ready-check)\.sh$	trivial-descendant of reviewed head %s \([A-Z]+-5856\)	ready-check reads the ledger detail the fixture writes, ticket key included
-K6	^scripts/handover/chief-kit/test-ready-check-e\.sh$	maintainer takeover \([A-Z]+-9019\)	ready-check prints the takeover ticket the row asserts
+K6	^\.github/dependabot\.yml$	prefix: "chore\(deps\): \[[A-Z]+-7588\]"	merge-on-green's Jira end state reads the key in each Dependabot PR title this prefix writes
+K6	^scripts/(adopt|uninstall)\.sh$	# [A-Z]+-2771: native invariant gate; 	uninstall.sh finds an adopted native gate hook by this exact marker text, which installed hooks already carry
+K6	^scripts/test-adopt(-features)?\.sh$	'[A-Z]+-2771: native invariant gate'	the row asserts the marker text adopt.sh writes and uninstall.sh matches
+K2	^scripts/eval/lane-quality/(pilot-4869/(cohort\.tsv|tasks/bench-t4/accept\.sh)|tasks/[^/]+/reference/lq-work/[^/]+)$	[A-Z]+-(4869|4090)	a frozen fixture: pilot.sh verify checks these bytes against FROZEN.sha256
+K6	^scripts/eval/lane-quality/pilot-4869/pilot\.sh$	[A-Z]+-4869-pilot-	headed-arm-worker.sh takes the write-hold key from the brief name this builds
+K2	^scripts/eval/lane-quality/tasks/guard-cmd/(accept\.sh|prompt\.md)$	[A-Z]+-9999	the task asks for a commit subject carrying this ticket ID and its acceptance test checks for it
+K6	^scripts/handover/chief-kit/tracker\.py$	^SKIP_RE = 	tracker.py skips the default plan directory, which is named by its ticket
+K6	^scripts/handover/chief-kit/(tick|wrap-merged)\.sh$	specs/plan/[A-Z]+-3882"	tick.sh and wrap-merged.sh read this default plan directory
+K6	^scripts/handover/chief-kit/versionless-done\.sh$	VERSIONLESS_DONE_EXCEPTIONS-[A-Z]+-	the default exception keys versionless-done.sh drops and its suite asserts
+K6	^scripts/handover/chief-kit/focus-refresh\.sh$	--checker [A-Z]+-7980 	known-bugs-sync.sh matches this checker key against the known-checker-bugs.tsv rows
+K6	^scripts/graphify/graph-publish\.sh$	GRAPH_PUBLISH_TICKET:-[A-Z]+-	the default ticket the publish commit subject carries, which the commit-msg gate requires
 K7	^scripts/lint/ticket-ref-allow\.tsv$		this list names the key pattern itself

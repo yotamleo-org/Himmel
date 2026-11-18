@@ -73,7 +73,6 @@
 # those requirements into one per-run --append-system-prompt-file, removed with the run's scratch dir, leaving the
 # "Now extract" line and the chunk on stdin, so the fixed text caches across chunks (docs/internals/prompt-cache.md).
 # Its extraction cache is kept apart too (cache/semantic-r1-system), so neither mode replays the other's answers.
-# ponytail: opt-in until the paid quality proof, upgrade path = flip the default once the proof passes
 #
 # claude-api goes through the Message Batches API at half price (GRAPHIFY_API_BATCH=0 keeps the synchronous lane
 # path). Nothing waits on a graph refresh, so a run is two-phase: graphify extract runs once with the record shim
@@ -209,13 +208,11 @@ fi
 # A chunk must fit one lane call: graphify's default 60000-token chunk costs about 0.45 USD on sonnet and died
 # under the 0.25 USD cap (himmel batch 1, 8 of 9 chunks). At high effort a 30k-token chunk costs about 0.36 USD,
 # so 30000 tokens per USD keeps a chunk near 0.36 of its cap.
-# ponytail: the rate is measured on one A/B run, not a table; re-measure from the lane ledger once real batches settle.
 CHUNK_TOKENS=""
 if [ "$BACKEND" = "claude-api" ]; then
   CHUNK_TOKENS="$(awk -v b="$API_CALL_BUDGET" 'BEGIN { t = int(b * 30000); if (t > 60000) t = 60000; print t }')"
   # A batch answer that hits max_tokens makes graphify split the chunk on replay, and the halves are prompts the
   # batch never held (the shim exits 1, the files stay unstamped): half the sync cap keeps the answer inside it.
-  # ponytail: 15000 is half the sync cap, not measured from stop_reason; lower it if replays still split.
   if [ "$BATCH_MODE" -eq 1 ] && [ "$CHUNK_TOKENS" -gt 15000 ]; then CHUNK_TOKENS=15000; fi
   if [ "$CHUNK_TOKENS" -lt 1000 ]; then
     echo "semantic-update: GRAPHIFY_API_CALL_BUDGET_USD=$API_CALL_BUDGET is too small for any chunk (needs at least 0.04)" >&2
@@ -269,7 +266,6 @@ if [ "$BACKEND" = "ollama" ]; then
   # spilled qwen3.6:27b 55% to CPU, and its request timeout defaults to 600 s.
   # Pin a context that should fit the 24 GB card and raise the timeout; a
   # caller-set value of either wins.
-  # ponytail: num_ctx 16384 unmeasured, the GPU was unavailable; re-measure when the 4090 returns from RMA (fit qwen3.6:27b fully on the GPU, add a request-timeout knob)
   : "${GRAPHIFY_OLLAMA_NUM_CTX:=16384}"; export GRAPHIFY_OLLAMA_NUM_CTX
   : "${GRAPHIFY_API_TIMEOUT:=1800}"; export GRAPHIFY_API_TIMEOUT
 fi
@@ -339,8 +335,6 @@ plan_or_noop() {
 }
 plan_or_noop
 if [ "$BACKEND" = "claude-api" ] && [ "$RESUME" -eq 0 ]; then
-  # ponytail: tokens ~ bytes/4 plus 2000 prompt tokens per file, output a quarter of input, at the sonnet list
-  # rate ($3/$15 per M); a rough ceiling, replace with a measured figure once a real run is ledgered.
   PROMPT_OVERHEAD_TOKENS=2000 BYTES_PER_TOKEN=4 FIT_USD=""
   if [ "$BATCH_MODE" -eq 1 ]; then
     FIT_USD="$(node "$HERE/semantic-batch.mjs" bound --bytes "$(( (CHUNK_TOKENS + PROMPT_OVERHEAD_TOKENS) * BYTES_PER_TOKEN ))" --model "${GRAPHIFY_CLAUDE_CLI_MODEL-sonnet}" --max-tokens "$BATCH_MAX_TOKENS")" \

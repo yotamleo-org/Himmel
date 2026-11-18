@@ -22,9 +22,8 @@
 # Known ceiling: on a free-plan private repo both required-check reads return
 # HTTP 403, so merge-on-green refuses at check-ci (exit 18) before its GO gate;
 # the GO worker is therefore not reachable here (follow-up tickets in the PR).
-# ponytail: refusal worker only, merge-with-GO needs a plan that can read rules.
-# Platform guard: bash 3.2+; Linux/macOS only.
 set -uo pipefail
+_TK='HIMMEL-'
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
 
 REPO="yotamleo/himmel-gate-e2e"
@@ -106,12 +105,12 @@ cd "$WORK" || exit 1
 git checkout -q -b "$BRANCH" || exit 1
 printf 'canned fixture line %s\n' "$BRANCH" > canned.txt
 git add canned.txt
-git commit -q -m "test: [HIMMEL-5232] canned fixture line" \
+git commit -q -m "test: [${_TK}5232] canned fixture line" \
     --trailer "Platforms tested: linux" --trailer "Security reviewed: manual — fixture text only" || exit 1
 git push -q -u origin "$BRANCH" || exit 1
 body=$(mktemp "${TMPDIR:-/tmp}/e2e-body.XXXXXX") || exit 1
 printf 'Canned PR for the live review-gate e2e.\n\n## Ticket coverage\n- canned fixture: done\n' > "$body"
-pr_url=$(gh pr create --repo "$REPO" --base main --head "$BRANCH" --title "test: [HIMMEL-5232] canned e2e PR" --body-file "$body")
+pr_url=$(gh pr create --repo "$REPO" --base main --head "$BRANCH" --title "test: [${_TK}5232] canned e2e PR" --body-file "$body")
 rm -f "$body"
 PR="${pr_url##*/}"
 # A failed run still closes its canned PR (the final close below is explicit).

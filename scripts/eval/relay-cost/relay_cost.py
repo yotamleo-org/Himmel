@@ -22,9 +22,6 @@ Stdlib only; no subcommand makes a model call (run.sh does, and hands this file 
 
 Price table (input-equivalent tokens, the weights of scripts/eval/handover-cost.py and
 scripts/lanes/lib/burn-weights.sh): input 1, cache_read 0.1, cache_creation 1.25, output 5.
-
-ponytail: warm cost-eq prices the whole prefix as a cache read (a long-lived relay), upgrade path =
-measure a --resume chain of messages instead.
 """
 
 import argparse

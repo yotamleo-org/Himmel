@@ -93,7 +93,7 @@ refs/heads/main abc refs/heads/main def
 # Test 5/6: the actual bug shape — pre-commit-configured dispatch ----------
 
 echo "TEST: pre-commit-configured shape (PRE_COMMIT=1, empty stdin, PRE_COMMIT_REMOTE_BRANCH=main) -> BLOCKED"
-expect_blocked "configured shape, push to main (HIMMEL-2371 regression)" \
+expect_blocked "configured shape, push to main (regression)" \
     env PRE_COMMIT=1 PRE_COMMIT_REMOTE_BRANCH=refs/heads/main bash "$HOOK" </dev/null
 
 echo "TEST: pre-commit-configured shape, feature branch -> PASS"

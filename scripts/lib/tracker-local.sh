@@ -75,10 +75,6 @@ _tracker_local_pid_alive() {
 
 # _tracker_local_lock <store> — acquire. rc 1 (message names the owner) when it
 # stays held past TRACKER_LOCK_TRIES attempts.
-# ponytail: a holder that dies between mkdir and writing `owner` leaves an
-# owner-less lock this treats as held (blocks until the tries run out), and a
-# reclaimer killed mid-reclaim leaks <store>/.lock.reclaim; upgrade path: the
-# same pid-owner rule on the reclaim mutex if either is ever seen in the wild.
 _tracker_local_lock() {
     local lock="$1/.lock" tries="${TRACKER_LOCK_TRIES:-200}" owner again
     while :; do

@@ -99,7 +99,7 @@ usage() {
   cat >&2 <<EOF
 Usage: $0 <since-ts>
 
-Reconstruct a per-worker critical-path timeline (HIMMEL-1485).
+Reconstruct a per-worker critical-path timeline.
   <since-ts>  ISO-8601 lower bound (UTC assumed when no offset), e.g.
               '2026-08-03T00:00'.
 

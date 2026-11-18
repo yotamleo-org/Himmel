@@ -88,17 +88,8 @@
 # registered chokepoint seams (scripts/chokepoints.json): a relative-entry copy hands off to the
 # anchor's own copy and the seam guard refuses a seam that differs from the session's launch env.
 #
-# ponytail: the adapter allowlists are read from the anchor's checkout, not the default branch, so
-# an edit there moves check 1 either way (a removed row passes where the default branch's would
-# escalate); upgrade path is go_adapter_entry's API read.
-# ponytail: a series child based on its parent's branch escalates at check 2; HIMMEL-8349 D1 (local
-# stack, published at merge) means no PR is stacked, so no wait-parent answer exists.
-# ponytail: the audit target is checked just before the append, not held open, so a symlink planted
-# in that gap is still followed once; upgrade path is an O_NOFOLLOW append (a node or python writer).
 # The chief doc's `AUTO-GO` / `AUTO-GO-REFUSED` bullet (design 2.5) is written by the caller,
 # worker-event.sh, from this script's answer line.
-# ponytail: go.sh re-runs delta-class.sh for a no-op GO from the cwd, not the anchor, so a carry to a
-# head only the anchor holds escalates at check 9; upgrade path is go.sh reading the anchor's git.
 #
 # Platform guard: POSIX bash 3.2+, jq, gh, GNU date.
 set -u

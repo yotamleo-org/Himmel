@@ -247,11 +247,6 @@ do_install() {
         # does not, the gate is INERT and the operator must act. Reporting
         # those two as one undifferentiated warning is what makes an
         # "installed" line untrustworthy, so we separate them.
-        # ponytail: textual probe — matches a chain that execs the repo hook by
-        # its conventional `hooks/pre-push` path. A shim that computes that path
-        # some other way reads as "no chain" (fail-LOUD: it over-warns, never
-        # under-warns). Upgrade to a dry-run exec probe only if a real shim
-        # trips it.
         if [ -f "$shared_pre_push" ] && grep -q 'hooks/pre-push' "$shared_pre_push" 2>/dev/null; then
             echo "install-cr-gate: NOTE: git resolves core.hooksPath=$hooks_path_any from GLOBAL/SYSTEM config, but $shared_pre_push appears to CHAIN to the repo's own pre-push — the gate installed at $pre_push_hook should fire. Confirm with one test push." >&2
         else

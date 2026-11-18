@@ -18,13 +18,6 @@
 # doc would read dead at 15 minutes); WRITE_HOLD_OK=1 in the launching shell; <register>/OFF; `.single-writer` at the
 # primary checkout's root. Marker in a linked worktree only: the barrier stays on (I8).
 #
-# ponytail: block-chokepoint-env-prefix.sh's interpreter words are bash, sh, . and source (its header), so an empty
-# HIMMEL_CONSOLE_LEG prefix on `python3 -I holds.py grant` looks unstopped; ceiling: a worker can grant itself, seen in
-# events.log; upgrade path: teach that hook python3.
-# ponytail: the common path does not fold scripts/lib/rename-aliases.tsv; ceiling: a renamed path passes this hook under
-# its other name until the commit check; upgrade path: alias contention falls through to holds.py.
-# ponytail: no scripts/chokepoints.json key for holds.py, because test-chokepoint-seam-guard.sh requires a bash guard
-# line and `bash <key> --help` rc 96; ceiling: an env prefix on holds.py is not refused; upgrade path: a chokepoint key once holds.py carries a bash guard line.
 #
 # Platform guard: bash 3.2-safe; the uncontended path forks only jq, git, ln and rm (budget 20 ms, mean of 100 runs).
 #
@@ -178,8 +171,6 @@ case "$common" in /*) ;; *) exit 0 ;; esac
 primary=${common%/.git}
 [ ! -f "$primary/.single-writer" ] || exit 0
 
-# ponytail: a gitignored path is claimed like a tracked one; ceiling: two workers writing one ignored name in their own
-# worktrees meet on one row and the second is refused; upgrade path: on the contested path only, pass on git check-ignore -q.
 case "$target" in "$top"/*) rel=${target#"$top"/} ;; *) exit 0 ;; esac
 
 if [ -r "$EXEMPT" ]; then

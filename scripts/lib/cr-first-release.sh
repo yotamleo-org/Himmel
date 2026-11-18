@@ -191,8 +191,6 @@ _crf_do_release() {
         lock="$common/cr-first-release.$pr.lock"
         ( flock -w 60 9 || exit 4; _crf_release_locked "$repo" "$pr" "$head" "$reason" "$state" "$settled" ) 9>"$lock" || rc=$?  # prim-ok: guarded by command -v flock with an unlocked fallback below
     else
-        # ponytail: no flock here, so two releasers racing on one head can both
-        # write the pair; the per-head events re-check narrows it, flock closes it.
         _crf_release_locked "$repo" "$pr" "$head" "$reason" "$state" "$settled" || rc=$?
     fi
     return "$rc"

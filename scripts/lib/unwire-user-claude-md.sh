@@ -48,21 +48,6 @@
 # 1 = refused (malformed markers, CRLF markers, open fence, a symlink or
 # directory already at the backup path), OR the file cannot be read, OR the
 # backup / temp-file / write / remove step failed (disk full, read-only target); a failed write-through can leave the target truncated,
-# since it is written in place to keep a symlink and the mode (ponytail: no
-# atomic rename) -- the stripped content is then kept in the temp file the
-# error names and the pre-edit copy sits in the backup, neither deleted;
-# 2 = wrong argument count.
-# --probe: 0 = no himmel marker line outside a fence (nothing wired);
-# 3 = at least one marker line (a block, a fragment, or a CRLF one) is present;
-# 1 = unreadable. Read by uninstall.sh's read-back, which must agree with the
-# strip about what counts as a marker or a documented block trips it.
-# --extract: prints the block -- the exact BEGIN line through
-# the exact END line, byte for byte -- to stdout, rc 0; rc 3 = no marker line and
-# no file (nothing wired); rc 1 = the block cannot be told apart from text
-# (malformed / duplicated / CRLF / open-fence markers, or unreadable). The same
-# scan and the same refusals as the strip, so the ledger reader and the strip can
-# never disagree about which lines are himmel's.
-# Source it to call unwire_user_claude_md directly.
 set -euo pipefail
 
 _UNWIRE_UCM_MARKER="HIMMEL:working-principles"
@@ -203,9 +188,6 @@ unwire_user_claude_md() {
   # cp would overwrite that twin too. Refuse all three rather than
   # remove what the operator (or an earlier tool) put there; a singly-linked
   # regular file at that path is a previous run's backup and is replaced.
-  # ponytail: check-then-copy is not atomic -- a link planted at $backup between
-  # this test and the cp below is not caught; the fence is against what is
-  # already there, not against a concurrent writer.
   if [ -L "$backup" ] || { [ -e "$backup" ] && [ ! -f "$backup" ]; }; then
     rm -f "$tmp"
     echo "unwire-user-claude-md: $backup already exists and is not a regular file (a symlink or a directory), so the backup cannot be written there without touching something else -- refusing; move it aside and re-run, or remove the block by hand. $target left untouched" >&2

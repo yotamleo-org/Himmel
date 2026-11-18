@@ -26,9 +26,9 @@ if requested_mode not in valid_modes or arguments and len(arguments) != expected
     sys.exit('usage: test-suite-file-selection.sh [--fixtures-only|--property|--historical|--monotonic <measurement-log>]')
 module = runpy.run_path(str(root / 'scripts/cr/suite-file-resolver.py'))
 selector = root / 'scripts/cr/impacted-suites.sh'
-# Whole-root scans are the selector's deliberate cost ponytail, not directory
+# Whole-root scans are the selector's deliberate cost, not directory
 # probes. Every exception needs a live scan, and every live scan needs a reason.
-# See impacted-suites.sh's scan_roots ponytail; unknown roots are never exemptions.
+# Unknown roots are never exemptions.
 WHOLE_REPO = {
     'scripts/agents-md/test-pointers.sh': 'pointers.sh inventories every tracked path to find CLAUDE.md siblings',
     'scripts/ci/test-tier-replay.sh': 'tier-replay.sh inventories every tracked suite for its trust-tier floor',
@@ -469,8 +469,6 @@ def historical():
         'scripts/ci/check-cr-terminology.sh', 'scripts/ci/test-check-cr-terminology.sh',
         '.claude/commands/pr-check.md', '.agents/skills/pr-check/SKILL.md',
     ]
-    # ponytail: a full parent exhausts sandbox /tmp, and worktree scratch is
-    # read-only. This minimal replay preserves original blobs, not a full tree.
     with tempfile.TemporaryDirectory(prefix='suite-minimal-parent-') as scratch:
         repo = Path(scratch)
         def git(*args):
@@ -543,8 +541,6 @@ assert paths and edges, 'empty oracle'
 with tempfile.TemporaryDirectory(prefix='suite-matrix-') as scratch:
     # matrix() only writes its paths file here; the selector must run at the repo.
     print(f'ORACLE {len(paths)} query paths, {len(edges)} suites, {sum(map(len, edges.values()))} edges; eight complete disjoint shards', flush=True)
-    # ponytail: eight selector processes bound station load; each shard has an
-    # eight-minute failure budget. Every query must finish, never a sample.
     def select_shard(index):
         path_file = Path(scratch) / f'paths-{index}'
         path_file.write_text(''.join(path + '\n' for path in paths[index::8]))

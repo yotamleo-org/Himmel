@@ -263,8 +263,6 @@ op_revert_main() {
     # Main may move meanwhile (another merge, a second /revert-main): HEAD is
     # re-checked before EVERY attempt, and if it moved this is no longer a HEAD
     # revert, so the revert PR is left open for a normal reviewed merge.
-    # ponytail: a sub-second window between the check and the merge remains (gh
-    # pins only the PR head, not the base), upgrade path: a base-sha-pinned merge API.
     while :; do
         git -C "$PRIMARY" fetch --quiet origin "$def" || { echo "ERR break-glass: fetch origin $def failed; revert PR $rnum left open" >&2; return 13; }
         if [ "$(git -C "$PRIMARY" rev-parse "origin/$def" 2>/dev/null)" != "$tip" ]; then
@@ -294,8 +292,6 @@ fleet_manifest() {
     if [ -z "$fleet" ]; then
         # shellcheck source=../lib/handover-path.sh
         . "$PRIMARY/scripts/lib/handover-path.sh"
-        # ponytail: newest *-chief/*-console.fleet.json by mtime stands in for "the current
-        # chief", upgrade path: a chief pointer file if two chiefs ever run.
         # gnu-ok: the bridge runs only on the Linux station (find -printf)
         fleet="$(find "$(handover_root)" -maxdepth 4 \( -name '*-console.fleet.json' -o -name '*-chief.fleet.json' \) -printf '%T@ %p\n' 2>/dev/null \
             | sort -rn | head -n 1 | cut -d' ' -f2-)"

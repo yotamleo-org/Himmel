@@ -31,8 +31,6 @@ ListAgents or succession.md).
 Mechanical columns (not priced): p_after_s = P's turns from S's first turn on; s_to_marker = S's
 turns up to and including its first `append-results.sh` call ("-" when S made none).
 
-ponytail: net is a name-match on handover scripts, upgrade path = hand-label a sample and compare.
-
 Output: one `HANDOVER P->S prep=t/cost relay=t/cost az=t/cost worker=t/cost workers=n p_after_s=a
 s_to_marker=m gross=G net=N` row per pair, then `MEAN n=<pairs> ...` (integer means; workers is the
 mean workers per handover to one decimal; s_to_marker over the pairs that have one) and a `workers_skipped_before_cutoff=<n>` line.

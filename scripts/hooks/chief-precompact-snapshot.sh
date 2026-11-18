@@ -43,13 +43,6 @@
 # must be owned by the caller and must not be a symlink (same posture as
 # chief.sh's work-dir checks).
 #
-# ponytail: `## Live state` is read with a plain ``` fence toggle and single-line
-# `key: value` lines; it does not replicate chief-compact-reinject.sh's
-# marker-matched fence tracking or unterminated-fence fallback, and a value that
-# wraps onto a second line is truncated to its first line. The template writes one
-# line per key, and G11 would report the resulting mismatch as LOSS, not hide it.
-# ponytail: `tick.sh` does not persist its output today, so the `--- tick` tail is
-# only populated when something writes <workdir>/last-tick.txt; nothing does yet.
 #
 # Platform guard: POSIX bash 3.2+ (the checker and the launch-path exports are
 # the only consumers, all bash).

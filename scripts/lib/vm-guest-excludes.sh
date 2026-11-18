@@ -27,10 +27,6 @@
 # other key, any free-text value, any other path or a symlink is still a hit, and an
 # unreadable file (no tr/grep) is a hit. The vocabulary is pinned to
 # PROFILE_LANE_REGISTRY_IDS in scripts/himmelctl/lib/adopter-profile.js by test.
-# ponytail: the vocabulary is ONLY the wizard-owned ids, so a lanes.local.json that
-# also names another lane (`himmelctl config lanes.haiku never`, a hand-authored
-# overlay) is still a hit and the operator inspects it — a wider vocabulary would be a
-# list to keep in step with lanes.json for a case no round trip has needed.
 #
 # .env.example is a public placeholder template, not a secret (the luna template
 # ships one as a template-owned file the upgrade engine overwrites): the scan
@@ -60,45 +56,6 @@
 # CLI (untracked builders): vm-guest-excludes.sh excludes tar|rsync
 #                           vm-guest-excludes.sh scan <root> [full|env]
 #
-# ponytail: the snapshot scan (vmsdk.snapshot) covers ONLY the guest home dir and the
-# two fixed staging dirs the tracked scripts use (/tmp/himmel-symmetry-vm,
-# /tmp/himmel-luna-upgrade-vm), and never crosses filesystems (find -xdev, so a
-# separate mount beneath a root is skipped). All of /tmp is not scanned: find exits
-# non-zero on root-owned 0700 dirs (systemd-private-*), refusing every clean guest.
-# Nested DIRECTORY symlinks are followed, one resolved target at a time
-# and each with its own `find -xdev`, bounded: every resolved target is scanned at most
-# ONCE per scan (a whole-scan visited set — a loop or a target shared by
-# many links is not rescanned, so layered sharing stays linear), and a target that
-# resolves into a system tree (/ /proc /sys /dev /run /usr /bin /sbin /lib* /etc /boot
-# /snap /var) is skipped — those never receive a host checkout and hold
-# root-owned 0700 dirs that would refuse every guest. A secret planted under a system
-# tree is therefore NOT covered. A directory target that stat's but cannot be entered
-# fails closed. A non-directory link's target is resolved by walking its path components
-# with `[ -e ]`/`[ -d ]`/`[ -x ]`: this does NOT trust a `find`'s exit status,
-# because BSD find can exit 0 on a permission-denied traversal where GNU find exits
-# non-zero. A component that does not exist at all ends the walk clean (dangling, not a
-# refusal); a symlink component whose target cannot be stat'ed (dangling, a loop, or behind
-# an unsearchable dir) is CHASED as a hop, at most 40 hops (then it refuses); a present
-# non-last component that is not a searchable directory (EACCES on an ancestor, or
-# ENOTDIR) stops the walk and refuses, and so does a trailing `/` on a non-directory. The
-# readlink capture keeps trailing newlines (a sentinel is appended and stripped), and a
-# resolved path of 1024 bytes or more refuses on every platform (macOS PATH_MAX; a longer
-# string makes `[ -e ]` fail ENAMETOOLONG, which would read as "missing"). Such a link is
-# reported `scan-unscanned:` and the
-# scan REFUSES. Every
-# other link left unscanned (file, dangling or system-tree target) is reported as a
-# read-only `scan-skipped:` line and counted by the consumers (never a refusal); an
-# already-visited target is NOT reported, it is being scanned. Consumers filter
-# that prefix out of the hit list; find prints absolute paths, so a real hit cannot start
-# with it unless a directory name embeds a newline followed by the prefix (a hostile
-# guest could then hide one hit line — an accepted residual, not a host-secret carrier).
-# ponytail: the walk's searchability test is `[ -x ]`, whose ACL handling varies by shell
-# (some approximate it from the mode bits, and root always passes); an ancestor whose ACL
-# denies search can then pass, and the link is skipped instead of refused. Upgrade path: a
-# real search probe (e.g. `cd` into the ancestor in a subshell) if a guest with
-# search-denying ACLs ever shows up.
-# The untracked base builder (/tmp/m2457-rebuild.sh) stages wherever it likes and is
-# NOT covered — it must call this CLI itself (operator item).
 #
 # bash 3.2-safe (sourced by scripts that run on macOS): no mapfile, no assoc arrays.
 

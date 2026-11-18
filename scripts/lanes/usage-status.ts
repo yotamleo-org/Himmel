@@ -132,9 +132,6 @@ type DisplayResult =
 //     (attempt stamp), so a broken codex costs one box, not one box per call;
 //   - an overridden CODEX_USAGE_CACHE without CODEX_USAGE_PROBE_CMD is a test/ops
 //     seam and never spawns the real codex.
-// ponytail: refresh is triggered by the bank-status read (no daemon, no LLM
-// cadence), so a station nobody reads stays stale until the next read; add an
-// LLM-free cron only if the doctor WARN keeps firing.
 const REFRESH_BOX_MS = positiveEnvNumber(env.CODEX_USAGE_REFRESH_BOX_MS) ?? 30_000;
 const REFRESH_BACKOFF_MS = positiveEnvNumber(env.CODEX_USAGE_REFRESH_BACKOFF_MS) ?? 300_000;
 const REFRESH_LOCK_STALE_MS = REFRESH_BOX_MS + 30_000;

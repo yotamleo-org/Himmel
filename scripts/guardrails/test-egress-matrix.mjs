@@ -319,8 +319,8 @@ for (const c of ["luna-personal", "luna-clippings", "himmel-code"]) {
   for (const u of ["embedding", "rerank"]) {
     const { effective, rule } = evaluate(c, "jina", u);
     assert(effective === "allow" && rule && rule.corpus === c && rule.provider === "jina" && rule.purpose === u &&
-      rule.hard === undefined && /HIMMEL-5673/.test(rule.why),
-      `${c} x jina x ${u} must be allow via its OWN row naming HIMMEL-5673, got ${effective}`);
+      rule.hard === undefined,
+      `${c} x jina x ${u} must be allow via its OWN row, got ${effective}`);
   }
 }
 for (const c of ["luna-personal", "luna-clippings", "himmel-code"])
@@ -341,19 +341,19 @@ for (const u of purposes) {
 //     every other purpose stays deny; salus stays hard-denied under EVERY purpose.
 const qmdJinaCorpora = ["operator-repos", "jira-mirror", "roadmap-plan", "skill-index"];
 for (const c of qmdJinaCorpora) {
-  assert(m.corpora[c], `corpus ${c} must be declared (qmd collection mapping, HIMMEL-5683)`);
+  assert(m.corpora[c], `corpus ${c} must be declared (qmd collection mapping)`);
   for (const u of ["embedding", "rerank"]) {
     const { effective, rule } = evaluate(c, "jina", u);
     assert(effective === "allow" && rule && rule.corpus === c && rule.provider === "jina" && rule.purpose === u &&
-      rule.hard === undefined && /HIMMEL-5683/.test(rule.why),
-      `${c} x jina x ${u} must be allow via its OWN row naming HIMMEL-5683, got ${effective}`);
+      rule.hard === undefined,
+      `${c} x jina x ${u} must be allow via its OWN row, got ${effective}`);
   }
   for (const u of purposes.filter(x => x !== "embedding" && x !== "rerank"))
     assert(evaluate(c, "jina", u).effective === "deny", `${c} x jina x ${u} must stay deny (embedding and rerank only)`);
 }
 for (const u of purposes)
   assert(evaluate("salus", "jina", u).effective === "deny" && evaluate("salus", "jina", u).rule?.hard === true,
-    `salus x jina x ${u} must stay HARD deny after the HIMMEL-5683 rows`);
+    `salus x jina x ${u} must stay HARD deny after the jina qmd-corpus rows`);
 // The salus hard wildcard must stay ahead of every jina allow row.
 const firstSalusHard = m.rules.findIndex(r => r.corpus === "salus" && r.provider === "*" && r.purpose === "*" && r.hard === true);
 const firstJinaAllow = m.rules.findIndex(r => r.provider === "jina" && r.verdict === "allow");
@@ -369,8 +369,8 @@ for (const c of qmdOpenRouterCorpora)
   for (const u of ["embedding", "rerank"]) {
     const { effective, rule } = evaluate(c, "openrouter", u);
     assert(effective === "allow" && rule && rule.corpus === c && rule.provider === "openrouter" && rule.purpose === u &&
-      rule.hard === undefined && /HIMMEL-5756/.test(rule.why),
-      `${c} x openrouter x ${u} must be allow via its OWN row naming HIMMEL-5756, got ${effective}`);
+      rule.hard === undefined,
+      `${c} x openrouter x ${u} must be allow via its OWN row, got ${effective}`);
   }
 for (const c of ["luna-personal", "luna-clippings"])
   for (const u of purposes.filter(x => x !== "embedding" && x !== "rerank" && x !== "query-expansion"))
@@ -381,7 +381,7 @@ for (const c of ["handover-state", "voice-audio"])
 for (const u of ["embedding", "rerank"]) {
   const { effective, rule } = evaluate("salus", "openrouter", u);
   assert(effective === "deny" && rule && rule.corpus === "salus" && rule.provider === "openrouter" && rule.purpose === u && rule.hard === true,
-    `salus x openrouter x ${u} must be HARD deny via its OWN row (HIMMEL-5756), got ${effective}`);
+    `salus x openrouter x ${u} must be HARD deny via its OWN row, got ${effective}`);
 }
 const firstSalusOrHard = m.rules.findIndex(r => r.corpus === "salus" && r.provider === "openrouter" && r.hard === true);
 const firstOrAllow = m.rules.findIndex(r => r.provider === "openrouter" && r.verdict === "allow" && (r.purpose === "embedding" || r.purpose === "rerank"));
@@ -396,15 +396,15 @@ assert(firstSalusOrHard >= 0 && firstOrAllow >= 0 && firstSalusOrHard < firstOrA
 for (const c of qmdOpenRouterCorpora) {
   const { effective, rule } = evaluate(c, "openrouter", "query-expansion");
   assert(effective === "allow" && rule && rule.corpus === c && rule.provider === "openrouter" && rule.purpose === "query-expansion" &&
-    rule.hard === undefined && /HIMMEL-6125/.test(rule.why),
-    `${c} x openrouter x query-expansion must be allow via its OWN row naming HIMMEL-6125, got ${effective}`);
+    rule.hard === undefined,
+    `${c} x openrouter x query-expansion must be allow via its OWN row, got ${effective}`);
 }
 for (const c of ["handover-state", "voice-audio"])
   assert(evaluate(c, "openrouter", "query-expansion").effective === "deny", `${c} x openrouter x query-expansion must stay deny (not a qmd corpus)`);
 {
   const { effective, rule } = evaluate("salus", "openrouter", "query-expansion");
   assert(effective === "deny" && rule && rule.corpus === "salus" && rule.provider === "openrouter" && rule.purpose === "query-expansion" && rule.hard === true,
-    `salus x openrouter x query-expansion must be HARD deny via its OWN row (HIMMEL-6125), got ${effective}`);
+    `salus x openrouter x query-expansion must be HARD deny via its OWN row, got ${effective}`);
 }
 const firstOrQeAllow = m.rules.findIndex(r => r.provider === "openrouter" && r.verdict === "allow" && r.purpose === "query-expansion");
 const firstSalusQeHard = m.rules.findIndex(r => r.corpus === "salus" && r.provider === "openrouter" && r.purpose === "query-expansion" && r.hard === true);

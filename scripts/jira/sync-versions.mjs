@@ -146,12 +146,6 @@ export function planSync({ project, releases, prs, shaToTag, jiraVersions, jiraK
     const have = existing.get(spec.name);
     if (!have) createVersions.push(spec);
     else if (spec.released && !have.released) {
-      // ponytail: releasing an unreleased version is the one
-      // write an existing version still gets. Its release date/description
-      // otherwise never converges onto the GitHub release's values, even if
-      // they now differ (an operator may have hand-edited them in Jira),
-      // same "any hand-made version is left alone" invariant this file
-      // already applies to non-tag versions, extended to existing metadata.
       releaseVersions.push({ name: spec.name, releaseDate: spec.releaseDate });
     } else versionsUnchanged++;
   }
