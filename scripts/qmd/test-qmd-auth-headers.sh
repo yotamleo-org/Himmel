@@ -62,6 +62,21 @@ grep -q "Authorization: Bearer $SECRET" "$work/mock/stdin" || fail "(d) token no
 grep -q "$SECRET" "$work/mock/argv"; [ $? -eq 1 ] || fail "(d) token leaked into curl argv (or argv capture unreadable)"
 case "$out" in *"$SECRET"*) fail "(d) token leaked into ensure output" ;; esac
 
+# (d2) a non-loopback URL gets no Authorization header at all
+rm -f "$work/mock/stdin" "$work/mock/argv"
+out="$(HOME="$home" MOCK_DIR="$work/mock" QMD_CURL="$mockbin/curl" QMD_HTTP_TOKEN_FILE="$tok" \
+  QMD_MCP_URL="http://qmd.example.invalid:8181/mcp" PATH="$mockbin:/usr/bin:/bin" bash "$ensure" 2>&1 </dev/null)"; rc=$?
+[ "$rc" -eq 0 ] || fail "(d2) ensure rc $rc: $out"
+[ -f "$work/mock/argv" ] || fail "(d2) the probe never reached curl"
+grep -q "Authorization" "$work/mock/stdin" 2>/dev/null && fail "(d2) token sent to a non-loopback host"
+grep -q "$SECRET" "$work/mock/argv" && fail "(d2) token leaked into curl argv for a non-loopback host"
+[ "$(HOME="$home" QMD_HTTP_TOKEN_FILE="$tok" bash "$helper" --token-for "http://qmd.example.invalid:8181/mcp")" = "" ] || fail "(d2) --token-for printed a token for a remote host"
+[ "$(HOME="$home" QMD_HTTP_TOKEN_FILE="$tok" bash "$helper" --token-for "http://127.0.0.1.evil.example/mcp")" = "" ] || fail "(d2) --token-for accepted a 127.x lookalike host"
+[ "$(HOME="$home" QMD_HTTP_TOKEN_FILE="$tok" bash "$helper" --token-for "http://localhost@evil.example/mcp")" = "" ] || fail "(d2) --token-for accepted a userinfo lookalike"
+for u in http://localhost:8181/mcp http://127.0.0.1:8181/mcp "http://[::1]:8181/mcp"; do
+  [ "$(HOME="$home" QMD_HTTP_TOKEN_FILE="$tok" bash "$helper" --token-for "$u")" = "$SECRET" ] || fail "(d2) --token-for withheld the token from loopback $u"
+done
+
 # (e) .mcp.json wires the helper and holds no secret
 grep -q '"headersHelper"' "$plugin/.mcp.json" || fail "(e) .mcp.json has no headersHelper"
 grep -q 'qmd-auth-headers.sh' "$plugin/.mcp.json" || fail "(e) headersHelper does not run the helper"

@@ -1847,7 +1847,7 @@ qmd_daemon_serving() {
     local payload='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"himmel-update","version":"1"}}}'
     url="${QMD_MCP_URL:-http://localhost:8181/mcp}"
     command -v curl >/dev/null 2>&1 || return 1
-    tok="$(bash "$hdrs" --token 2>/dev/null)"
+    tok="$(bash "$hdrs" --token-for "$url" 2>/dev/null)"
     if [ -n "$tok" ]; then
         body="$(printf 'header = "Authorization: Bearer %s"\n' "$tok" | curl -s -m 2 -K - -X POST \
             -H 'Content-Type: application/json' \

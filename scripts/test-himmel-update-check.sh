@@ -1262,6 +1262,7 @@ want_code=0; last=""
 for a in "$@"; do [ "$a" = "-w" ] && want_code=1; last="$a"; done
 cfg=""
 case "$*" in *"-K -"*) cfg="$(cat)" ;; esac
+case "$last" in */health) ;; *) [ -z "${QSTUB_CFGLOG:-}" ] || printf '%s' "$cfg" > "$QSTUB_CFGLOG" ;; esac
 case "$last" in
   */health)
     if [ -n "${QSTUB_HEALTH:-}" ]; then printf '%s' "$QSTUB_HEALTH"; else printf '%s' '{"status":"ok","uptime":3}'; fi
@@ -1282,6 +1283,20 @@ assert_eq "33b: a stale token (401 plus qmd's own /health) still counts as servi
 assert_eq "33c: no token file at all (401 plus qmd's own /health) still counts as serving" "yes" "$(qserving "export QMD_HTTP_AUTH_FILE=$TMP/qmd-token-none;")"
 assert_eq "33d: nothing listening is not serving" "no" "$(qserving "export QSTUB_DEAD=1 QMD_HTTP_AUTH_FILE=$TMP/qmd-token-good;")"
 assert_eq "33e: a 401 whose /health is not qmd's is not serving" "no" "$(qserving "export QSTUB_HEALTH=OK QMD_HTTP_AUTH_FILE=$TMP/qmd-token-old;")"
+rm -f "$TMP/qmd-cfglog"
+qserving "export QSTUB_CFGLOG=$TMP/qmd-cfglog QMD_MCP_URL=http://qmd.example.invalid:8181/mcp QMD_HTTP_AUTH_FILE=$TMP/qmd-token-good;" >/dev/null
+if [ -f "$TMP/qmd-cfglog" ] && ! grep -q 'Bearer' "$TMP/qmd-cfglog"; then
+    assert_pass "33f: a non-loopback QMD_MCP_URL gets no Authorization header"
+else
+    assert_fail "33f: a non-loopback QMD_MCP_URL gets no Authorization header (cfg log: $(cat "$TMP/qmd-cfglog" 2>/dev/null || echo missing))"
+fi
+rm -f "$TMP/qmd-cfglog"
+qserving "export QSTUB_CFGLOG=$TMP/qmd-cfglog QMD_MCP_URL=http://127.0.0.1:8181/mcp QMD_HTTP_AUTH_FILE=$TMP/qmd-token-good;" >/dev/null
+if grep -q 'Bearer good-token' "$TMP/qmd-cfglog" 2>/dev/null; then
+    assert_pass "33g: control: a loopback QMD_MCP_URL gets the Authorization header"
+else
+    assert_fail "33g: control: a loopback QMD_MCP_URL gets the Authorization header"
+fi
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo

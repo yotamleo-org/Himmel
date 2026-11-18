@@ -104,7 +104,7 @@ probe_body() {
   # file the daemon creates on first start is picked up. The header goes via a
   # curl config on stdin, never argv (visible in ps).
   local tok
-  tok="$(bash "$(dirname "${BASH_SOURCE[0]}")/qmd-auth-headers.sh" --token 2>/dev/null)"
+  tok="$(bash "$(dirname "${BASH_SOURCE[0]}")/qmd-auth-headers.sh" --token-for "$QMD_MCP_URL" 2>/dev/null)"
   if [ -n "$tok" ]; then
     printf 'header = "Authorization: Bearer %s"\n' "$tok" | "$QMD_CURL" -s -m "$PROBE_TIMEOUT" -X POST \
       -K - \
