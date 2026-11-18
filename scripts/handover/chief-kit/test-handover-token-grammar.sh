@@ -143,6 +143,11 @@ caught "upper-case 40-char token" "secret = $upper_hex"
 caught "secret in the label slot" "token=S-$gen-abcd"
 caught "short secret in the label slot" "token=Z-$short-1a2b3c4d"
 caught "secret after a fixture segment" "key = \"wq-fixture-$gen\""
+lowsec="q7xk2mz9""wp4t"
+caught "lowercase secret after a fixture segment" "secret = \"fixture-$lowsec\""
+caught "split secret after a fixture segment" "secret = \"fixture-a8k2m9x7q3wz-p4n7r2v8t5yb-k3j9w2q7z1xm\""
+duffel="duffel_""live_${gen}aB3dE5fG7hJ"
+caught "provider token shaped as a counter" "$duffel=0"
 caught "high-entropy counter value" "secret_count=$gen"
 
 # --- 7. quoted test-fixture text -----------------------------------------------
@@ -152,6 +157,8 @@ counter="launch_""markers=0"
 stem="-fix""ture-epoch1"
 printf '%s\n' "Prose said \"keys scrubbed, \`$counter\`\" in a session note." \
     "reset, the stem \`<key>$stem\` and epoch-1 spec" > "$WORK/fixture.md"
+grep -qF -- "$counter" "$WORK/fixture.md" && grep -qF -- "<key>$stem" "$WORK/fixture.md" \
+    || fail "section 7 fixture file was not written with both lines"
 scan "$WORK/fixture.md"; rc=$?
 [ "$rc" -eq 0 ] && pass "quoted test-fixture text scans clean" || fail "quoted test-fixture text: gitleaks rc=$rc, expected 0"
 

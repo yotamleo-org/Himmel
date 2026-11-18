@@ -8,13 +8,12 @@ Version history for the luna-second-brain vault template (published as
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.4.108] — 2026-11-18
+## [0.4.109] — 2026-11-18
 
 ### Fixed
-- The vault's gitleaks config no longer stalls the auto-commit on quoted
-  test-fixture text: a lowercase-hyphen stem with a `fixture` segment and a
-  snake_case counter set to a small integer. A secret glued onto either shape
-  is still caught.
+- The vault's gitleaks config no longer stalls the auto-commit on two quoted
+  test-fixture strings, allowlisted as exact literals; no open shape is
+  allowlisted, so a secret in a similar shape is still caught.
 
 ## [0.4.107] — 2026-11-14
 
