@@ -4115,6 +4115,14 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{const r=actual(...a); if(
       noCappedRows();
     });
 
+    it('capped carry v2 refuses a spec edited after the verifier answered, at the bind, before any pin is read', () => {
+      const f = v2Build({ builder: 'group' });
+      armProof(() => { writeFileSync(f.spec, `${readFileSync(f.spec, 'utf8')}\n`); });
+      expect(() => v2Sign(f)).toThrow(/; v2: capped proof input binding disagrees$/);
+      expect(attemptFlags()).toEqual(['--keys']);
+      noCappedRows();
+    });
+
     it('capped carry v2 spawns with the keys sorted whatever order they were requested in, and keeps the requested order on the record (E1)', () => {
       const f = v2Build({ builder: 'group' }); const keys = f.keys!; const reversed = [...keys].reverse();
       const row = v2Sign(f, { keys: reversed });
