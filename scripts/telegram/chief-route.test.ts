@@ -5221,3 +5221,549 @@ test("D4 optionalReturnAgreement: absent and equal pass; two lines, a subset, a 
   expect(run(keyLine(keys[0]) + reviewed(other), { keys, specSha }), "the declaration fires first when both are wrong").toThrow(T2_KEYS_REFUSAL);
   expect(run(reviewed(other), { keys, specSha })).toThrow(T2_REVIEWED_REFUSAL);
 }, S1B);
+
+// ---- Task 3a step 0: boundary rows the Task2 review named, green against the unchanged Task2 product code ----
+const T2_WRONG = "0123456789abcdef".repeat(4);
+
+test("D4b optionalReturnAgreement: a wrong hash on a non-declaration form passes as absent, while the same hash on a real declaration refuses", async () => {
+  const shared = await t2Pinned(); const { f } = await t2Group();
+  const real = readFileSync(b1Kind(f, "spec").at(-1)!, "utf8"); const specSha = sha(readFileSync(f.spec, "utf8"));
+  expect(real).not.toMatch(/^(Keys?|Reviewed):/m);
+  const agree = (extra: string) => () => shared.optionalReturnAgreement(`${real}${extra}`, { specSha });
+  const nonDeclarations: [string, string][] = [
+    ["indented by spaces", `  Reviewed: spec ${T2_WRONG}\n`], ["indented by a tab", `\tReviewed: spec ${T2_WRONG}\n`],
+    ["lowercase reviewed", `reviewed: spec ${T2_WRONG}\n`], ["Reviewed: plan", `Reviewed: plan ${T2_WRONG}\n`],
+    ["Reviewed: specs", `Reviewed: specs ${T2_WRONG}\n`],
+  ];
+  for (const [name, line] of nonDeclarations) {
+    expect(agree(line), `${name} is not a declaration of the spec part`).not.toThrow();
+    expect(agree(`Reviewed: spec ${specSha}\n${line}`), `${name} beside one valid declaration`).not.toThrow();
+    expect(agree(`${line}Reviewed: spec ${T2_WRONG}\n`), `${name} never hides a real wrong declaration`).toThrow(T2_REVIEWED_REFUSAL);
+  }
+  expect(agree(`Reviewed: spec ${T2_WRONG}\n`), "control: the same hash on a column-zero declaration refuses").toThrow(T2_REVIEWED_REFUSAL);
+}, S1B);
+
+test("D4c optionalReturnAgreement: a tab before spec with a wrong hash and an uppercase paired plan hash both refuse", async () => {
+  const shared = await t2Pinned(); const { f } = await t2Group();
+  const real = readFileSync(b1Kind(f, "spec").at(-1)!, "utf8"); const specSha = sha(readFileSync(f.spec, "utf8"));
+  const agree = (extra: string) => () => shared.optionalReturnAgreement(`${real}${extra}`, { specSha });
+  expect(agree(`Reviewed:\tspec\t${specSha}\n`), "control: the tab form with the equal hash is a valid declaration").not.toThrow();
+  for (const line of [`Reviewed:\tspec\t${T2_WRONG}\n`, `Reviewed:\tspec ${T2_WRONG}\n`, `Reviewed: spec\t${T2_WRONG}\n`, `Reviewed:\tspec\t${T2_WRONG}\r\n`]) {
+    expect(agree(line), JSON.stringify(line)).toThrow(T2_REVIEWED_REFUSAL);
+  }
+  expect(agree(`Reviewed: spec ${specSha}, plan ${T2_WRONG}\n`), "control: a lowercase paired plan hash is valid").not.toThrow();
+  for (const plan of [T2_WRONG.toUpperCase(), `${T2_WRONG.slice(0, 63)}F`, T2_WRONG.slice(1), `${T2_WRONG}a`]) {
+    expect(agree(`Reviewed: spec ${specSha}, plan ${plan}\n`), `paired plan ${plan.length} chars`).toThrow(T2_REVIEWED_REFUSAL);
+  }
+}, S1B);
+
+test("S3b v2 shape: a malformed return_sha refuses on the spec return and on the plan return when its carried value matches", async () => {
+  const shared = await t2Pinned(); const { good } = await t2Group();
+  const refuse = (value: unknown) => expect(() => shared.validateCappedLedgerProofShape(value)).toThrow(T2_INVALID);
+  expect(shared.validateCappedLedgerProofShape(good), "control: the unmodified proof is valid").toEqual(good);
+  expect(good.returns.map((r: any) => r.kind)).toEqual(["spec", "plan"]);
+  expect(good.carried.map((c: any) => c.kind)).toEqual(["spec", "plan"]);
+  for (const index of [0, 1]) for (const bad of ["x", "A".repeat(64), "a".repeat(63), "a".repeat(65), ""]) {
+    refuse(t2Clone(good, p => { p.returns[index].return_sha = bad; p.carried[index].return_sha = bad; }));
+  }
+}, S1B);
+
+// ---- Task 3a, rows P1 to P3: the strict v1 `capped-fold --key` verifier through its real CLI ----
+// A permanent static contract, written green against the unchanged verifier and kept green by the extraction. Every refusal is its exact shipped
+// stderr line and exit code; every success is the whole proof computed from the fixture's own files (paths, sha256, return_sha, decision mtime).
+// The verifier prefixes `capped-fold: ` to a message that already starts with it, so a shipped refusal reads `capped-fold: capped-fold: ...`.
+const P1_ROUTE = join(import.meta.dir, "chief-route.ts");
+type P1Args = { key: string; spec: string; plan: string; specReturn: string; planReturn: string };
+type P1Run = { code: number | null; signal: string | null; out: string; err: string };
+const p1Flags = (a: P1Args) => ["--key", a.key, "--spec", a.spec, "--plan", a.plan, "--spec-return", a.specReturn, "--plan-return", a.planReturn];
+const p1Cli = (...argv: string[]): P1Run => {
+  const p = Bun.spawnSync(["bun", P1_ROUTE, "capped-fold", ...argv], { stdout: "pipe", stderr: "pipe", timeout: 60_000 });
+  return { code: p.exitCode, signal: p.signalCode ?? null, out: p.stdout.toString(), err: p.stderr.toString() };
+};
+const p1Fold = (a: P1Args) => p1Cli(...p1Flags(a));
+const p1Line = (message: string) => `capped-fold: ${message}\n`;
+type P1Fixture = { ledgerPath: string; spec: string; plan: string };
+type P1Want = { epoch?: number; rounds: [number, number]; residuals: [number, number]; carried: [kind: "spec" | "plan", id: string, severity: string, round: number][]; decision?: string };
+
+// The pins the verifier must hold, in the order it first reads them: both documents, the manifest and ledger, then per return the return,
+// each distinct sealed artifact and its content-addressed snapshot. Every sha256 is read from the actual file.
+const p1Pins = (f: P1Fixture, a: P1Args) => {
+  const ledgerDir = dirname(f.ledgerPath); const pins: { role: string; path: string; sha256: string }[] = []; const seen = new Set<string>();
+  const add = (role: string, path: string) => { if (!seen.has(path)) { seen.add(path); pins.push({ role, path, sha256: sha(readFileSync(path, "utf8")) }); } };
+  add("artifact", a.spec); add("artifact", a.plan); add("manifest", join(ledgerDir, "manifest.json")); add("ledger", f.ledgerPath);
+  for (const ret of [a.specReturn, a.planReturn]) {
+    add("return", ret);
+    for (const m of readFileSync(ret, "utf8").matchAll(/^CONTENT-SHA256 [0-9a-f]{64} (\S.*)$/gm)) {
+      const artifact = resolve(dirname(ret), m[1]); add("artifact", artifact); add("snapshot", join(ledgerDir, a.key, sha(readFileSync(artifact, "utf8"))));
+    }
+  }
+  return pins;
+};
+
+const p1Success = async (id: string, f: P1Fixture, a: P1Args, want: P1Want, run: P1Run = p1Fold(a)): Promise<string[]> => {
+  const { returnSha } = await import("./chief-route") as any;
+  const problems: string[] = [];
+  if (run.code !== 0 || run.signal !== null || run.err !== "") problems.push(`rc ${run.code} signal ${run.signal} stderr ${JSON.stringify(run.err)}`);
+  let proof: any;
+  try { proof = JSON.parse(run.out); } catch { return [`${id}: ${problems.join("; ")} stdout is not JSON: ${JSON.stringify(run.out.slice(0, 300))}`]; }
+  if (run.out !== `${JSON.stringify(proof)}\n`) problems.push("stdout is not exactly one JSON line");
+  const text = (p: string) => readFileSync(p, "utf8"); const file = (path: string) => ({ path, sha256: sha(text(path)) });
+  const returns = [a.specReturn, a.planReturn].map((path, i) => ({ kind: i === 0 ? "spec" : "plan", ...file(path), round: want.rounds[i], return_sha: returnSha(text(path)), residuals: want.residuals[i] }));
+  const carried = want.carried.map(([kind, finding_id, severity, round]) => { const r = returns[kind === "spec" ? 0 : 1];
+    return { key: a.key, epoch: want.epoch ?? 0, kind, round, return_path: r.path, return_sha: r.return_sha, finding_id, severity, status: "open-carried" }; });
+  const expected = { schema: 1, reader_version: 1, mode: "capped-carry", key: a.key, epoch: want.epoch ?? 0, spec: file(a.spec), plan: file(a.plan), returns, pins: p1Pins(f, a), carried };
+  let seen = proof;
+  if (want.decision) {
+    const decision = proof.pins.filter((p: any) => p.role === "decision" || p.role === "decision-selection");
+    const path = want.decision; const st = statSync(path);
+    const wantDecision = [{ role: "decision", ...file(path), mtime_ms: st.mtimeMs }, { role: "decision-selection", directory: dirname(path), decision: "990", names: [basename(path)] }];
+    if (JSON.stringify([...decision].sort((x: any, y: any) => x.role.localeCompare(y.role))) !== JSON.stringify(wantDecision)) problems.push(`decision pins differ: ${JSON.stringify(decision)}`);
+    seen = { ...proof, pins: proof.pins.filter((p: any) => p.role !== "decision" && p.role !== "decision-selection") };
+  }
+  if (JSON.stringify(seen) !== JSON.stringify(expected)) problems.push(`proof differs\n    want ${JSON.stringify(expected)}\n    got  ${JSON.stringify(seen)}`);
+  return problems.map(p => `${id}: ${p}`);
+};
+
+const p1Cases = () => {
+  const bad: string[] = []; const ids: string[] = [];
+  const refuses = (id: string, a: P1Args, message: string) => {
+    ids.push(id); const run = p1Fold(a); const want = { code: 1, signal: null, out: "", err: p1Line(message) };
+    if (JSON.stringify(run) !== JSON.stringify(want)) bad.push(`${id}\n  want ${JSON.stringify(want)}\n  got  ${JSON.stringify(run)}`);
+  };
+  const accepts = async (id: string, f: P1Fixture, a: P1Args, want: P1Want) => { ids.push(id); bad.push(...await p1Success(id, f, a, want)); };
+  return { bad, ids, refuses, accepts };
+};
+const P1_DECLARED = `capped-fold: header must declare only ${cappedKey}`;
+const P1_ONE_CARRIED: P1Want = { rounds: [3, 3], residuals: [1, 0], carried: [["spec", "F1", "minor", 3]] };
+
+test("P1 newer returns in every supplied directory: round 3 is accepted, then a copied round 4 is refused as unaccounted", async () => {
+  const c = p1Cases();
+  for (const location of ["spec", "plan", "plan-document"] as const) {
+    const f = await finishCappedRounds(location === "plan-document" ? { externalPlan: true } : { externalReturn: location });
+    await c.accepts(`newer/${location}/r3`, f, f.args, P1_ONE_CARRIED);
+    const current = location === "spec" ? f.args.specReturn : f.args.planReturn;
+    const copy = join(dirname(location === "plan-document" ? f.plan : current), basename(current).replace("r3.md", "r4.md"));
+    copyFileSync(current, copy);
+    c.refuses(`newer/${location}/r4`, f.args, `capped-fold: ambiguous or unaccounted latest return: ${copy}`);
+  }
+  expect(c.ids).toHaveLength(6); expect(c.bad).toEqual([]);
+}, S1B);
+
+test("P1 return selection preserves older and other-key eligibility: three accepted states of one fixture", async () => {
+  const c = p1Cases(); const f = await cappedFixture();
+  await c.accepts("eligibility/plain", f, f.args, P1_ONE_CARRIED);
+  const directory = join(f.specsRoot, "design");
+  writeFileSync(directory, "optional non-directory lookup");
+  await c.accepts("eligibility/non-directory-lookup", f, f.args, P1_ONE_CARRIED);
+  unlinkSync(directory); mkdirSync(directory);
+  for (const name of ["HIMMEL-10205-other.md.critic-spec-r2.md", "HIMMEL-10205-other.md.critic-r2-plan.md", "HIMMEL-10205-other.md.critic-r2a.md",
+    "HIMMEL-99999-other.md.critic-spec-r99.md", "irrelevant.txt"]) copyFileSync(f.args.specReturn, join(directory, name));
+  await c.accepts("eligibility/older-and-other-key", f, f.args, P1_ONE_CARRIED);
+  expect(c.ids).toHaveLength(3); expect(c.bad).toEqual([]);
+}, S1B);
+
+test("P1 return selection refuses a tied name in every supported grammar, after the same fixture is accepted", async () => {
+  const c = p1Cases();
+  for (const filename of ["HIMMEL-10205-other.md.critic-spec-r3.md", "HIMMEL-10205-other.md.critic-r3-plan.md", "HIMMEL-10205-other.md.critic-r3a.md"]) {
+    const f = await cappedFixture();
+    await c.accepts(`tied/${filename}/before`, f, f.args, P1_ONE_CARRIED);
+    const copy = join(dirname(f.spec), filename); copyFileSync(f.args.specReturn, copy);
+    c.refuses(`tied/${filename}/after`, f.args, `capped-fold: ambiguous or unaccounted latest return: ${copy}`);
+  }
+  expect(c.ids).toHaveLength(6); expect(c.bad).toEqual([]);
+}, S1B);
+
+test("P1 return selection refuses an aliased, an unreadable and an unbounded directory", async () => {
+  const c = p1Cases();
+  for (const fault of ["alias", "unreadable", "overflow"]) {
+    const f = await cappedFixture(); await c.accepts(`directory/${fault}/before`, f, f.args, P1_ONE_CARRIED);
+    const directory = join(f.specsRoot, "design");
+    if (fault === "alias") { const target = join(f.r, "target"); mkdirSync(target); symlinkSync(target, directory); }
+    else mkdirSync(directory);
+    if (fault === "unreadable") chmodSync(directory, 0);
+    if (fault === "overflow") for (let i = 0; i < 4097; i++) writeFileSync(join(directory, `irrelevant-${i}`), "");
+    const message = { alias: `capped-fold: directory lookup must be canonical: ${directory}`, unreadable: `EACCES: permission denied, scandir '${directory}'`,
+      overflow: `${directory}: directory entry limit (4096) exceeded` }[fault]!;
+    try { c.refuses(`directory/${fault}/after`, f.args, message); } finally { if (fault === "unreadable") chmodSync(directory, 0o700); }
+  }
+  expect(c.ids).toHaveLength(6); expect(c.bad).toEqual([]);
+}, S1B);
+
+test("P1 Key declarations in real sealed returns: a Ticket line in the documents is accepted, a Ticket line in a return is refused", async () => {
+  const c = p1Cases();
+  const finished = await finishCappedRounds(); await c.accepts("declarations/finished", finished, finished.args, P1_ONE_CARRIED);
+  const documents = await cappedFixture({
+    specText: fixtureSpecText.replace("# HIMMEL", `- Ticket: ${cappedKey}\n\n# HIMMEL`),
+    planText: `---\ntickets: ${cappedKey}\n---\n- Tickets: ${cappedKey}\n${fixturePlanText}`,
+  });
+  await c.accepts("declarations/ticket-lines-in-documents", documents, documents.args, P1_ONE_CARRIED);
+  for (const kind of ["spec", "plan"] as const) {
+    const f = await finishCappedRounds({ ticketReturn: kind });
+    const path = kind === "spec" ? f.args.specReturn : f.args.planReturn;
+    expect([...readFileSync(path, "utf8").matchAll(/^Keys?:\s*(.+)$/gm)]).toHaveLength(0);
+    c.refuses(`declarations/ticket-line-in-${kind}-return`, f.args, P1_DECLARED);
+  }
+  expect(c.ids).toHaveLength(4); expect(c.bad).toEqual([]);
+}, S1B);
+
+test("P1 exact evidence: the whole proof of the standard, the two-finding and the ten-finding fixture, and the tree is unchanged", async () => {
+  const c = p1Cases();
+  const f = await cappedFixture(); const before = treeBytes(f.r);
+  await c.accepts("evidence/standard", f, f.args, P1_ONE_CARRIED);
+  expect(treeBytes(f.r)).toEqual(before);
+  const both = await cappedFixture({ planFindings: "- **F1** (medium) independent PLAN finding" });
+  await c.accepts("evidence/spec-and-plan-finding", both, both.args, { rounds: [3, 3], residuals: [1, 1], carried: [["spec", "F1", "minor", 3], ["plan", "F1", "medium", 3]] });
+  const controls = await cappedFixture({ status: true, specFindings: Array.from({ length: 10 }, (_, i) => `- **F${i}** (minor) true heading`).join("\n") });
+  await c.accepts("evidence/ten-findings-with-status-prose", controls, controls.args,
+    { rounds: [3, 3], residuals: [10, 0], carried: Array.from({ length: 10 }, (_, i) => ["spec", `F${i}`, "minor", 3] as ["spec", string, string, number]) });
+  expect(c.ids).toHaveLength(3); expect(c.bad).toEqual([]);
+}, S1B);
+
+test("P1 READ quotes: the standard and the short READ spelling are accepted; a malformed, a conflicting and a duplicate quote are refused", async () => {
+  const c = p1Cases();
+  const standard = await finishCappedRounds();
+  expect(readFileSync(standard.args.specReturn, "utf8")).toContain(`READ-SHA256 ${sha(readFileSync(standard.spec, "utf8"))} ${standard.spec}`);
+  await c.accepts("quotes/standard", standard, standard.args, P1_ONE_CARRIED);
+  const short = await finishCappedRounds({ shortRead: true }); await c.accepts("quotes/short-read-spelling", short, short.args, P1_ONE_CARRIED);
+  for (const fault of ["malformed", "conflicting", "duplicate"]) {
+    const f = await finishCappedRounds();
+    await editCappedReturn(f, f.args.specReturn, text => {
+      if (fault === "malformed") return text.replace("SPEC FINDINGS 1", "READ-SHA256 unknown file.md\nSPEC FINDINGS 1");
+      if (fault === "conflicting") return text.replace(/^READ-SHA256 [0-9a-f]{64}/m, `READ-SHA256 ${"0".repeat(64)}`);
+      const line = /^READ-SHA256 .+$/m.exec(text)![0];
+      return text.replace("SPEC FINDINGS 1", `${line.replace("READ-SHA256", "READ")}\nSPEC FINDINGS 1`);
+    });
+    c.refuses(`quotes/${fault}`, f.args, { malformed: "capped-fold: malformed seal or READ quote", duplicate: "capped-fold: duplicate critic READ quotes",
+      conflicting: `capped-fold: missing/conflicting critic READ quote: ${f.spec}` }[fault]!);
+  }
+  expect(c.ids).toHaveLength(5); expect(c.bad).toEqual([]);
+}, S1B);
+
+test("P1 noneligible evidence: eighteen ineligible finding sets and corrupted ledger rows, each with its own shipped refusal", async () => {
+  const c = p1Cases();
+  const control = await cappedFixture(); await c.accepts("noneligible/control", control, control.args, P1_ONE_CARRIED);
+  const heading = (line: string) => `capped-fold: ineligible finding heading: ${line}`;
+  const OPEN_CRITICAL = "capped-fold: open historical operator-critical findings"; const DISAGREE = "capped-fold: finding count/IDs do not agree";
+  const cases: [string, Parameters<typeof cappedFixture>[0], string][] = [
+    ["rounds-2", { rounds: 2 }, "capped-fold: findings have not reached the refused round cap"],
+    ["clean-spec", { specFindings: "" }, "capped-fold: requires at least one carried finding"],
+    ["major", { specFindings: "- **F1** (major) blocking" }, heading("- **F1** (major) blocking")],
+    ["unrated", { specFindings: "- **F1** (unrated) unknown" }, heading("- **F1** (unrated) unknown")],
+    ["duplicate-id", { specFindings: "- **F1** (minor) first\n- **F1** (medium) duplicate" }, DISAGREE],
+    ...["unknown", "operator-critical: spend-grant", "operator-critical: imaginary", "reopens F0", "regression", ""].map(tag =>
+      [`tag-${tag || "empty"}`, { specFindings: `- **F1** (minor; ${tag}) blocked tag` }, tag === "operator-critical: spend-grant" ? OPEN_CRITICAL : heading(`- **F1** (minor; ${tag}) blocked tag`)] as [string, Parameters<typeof cappedFixture>[0], string]),
+    ["nested-malformed-candidate", { specFindings: "- **F1** (minor) valid\n  - **Bad** (unknown) malformed candidate" }, heading("  - **Bad** (unknown) malformed candidate")],
+    ["historical-operator-critical", { historical: "- **C1** (minor; operator-critical: spend-grant) historically open" }, OPEN_CRITICAL],
+  ];
+  for (const [name, options, message] of cases) { const f = await cappedFixture(options); c.refuses(`noneligible/${name}`, f.args, message); }
+  const { returnSha } = await import("./chief-route");
+  for (const corrupt of ["count", "ledger-count", "ledger-tag", "unrated", "closure"]) {
+    const f = await cappedFixture();
+    editLedger(f, rows => {
+      const row = rows.find(r => r.row === "round" && r.critic === "spec" && r.round === 3);
+      if (corrupt === "ledger-count") row.findings = [];
+      if (corrupt === "ledger-tag") row.findings[0].critical_refused = "other";
+      if (corrupt === "unrated") row.unrated_ids = ["spec-r3-U1"];
+      if (corrupt === "closure") row.findings[0].class = "regression";
+      if (corrupt === "count") {
+        const text = readFileSync(f.args.specReturn, "utf8").replace("SPEC FINDINGS 1", "SPEC FINDINGS 2");
+        const old = row.return_sha; row.return_sha = returnSha(text); row.verdict = "SPEC FINDINGS 2";
+        rows.filter(r => r.return_sha === old).forEach(r => { r.return_sha = row.return_sha; }); writeFileSync(f.args.specReturn, text);
+      }
+    });
+    c.refuses(`noneligible/corrupt-${corrupt}`, f.args, { count: DISAGREE, "ledger-count": DISAGREE, unrated: DISAGREE,
+      "ledger-tag": "capped-fold: ledger findings do not agree or are blocking", closure: "capped-fold: ledger findings do not agree or are blocking" }[corrupt]!);
+  }
+  expect(c.ids).toHaveLength(1 + 13 + 5); expect(c.bad).toEqual([]);
+}, S1B);
+
+const P1_DRIFT = ["key", "epoch", "old", "copy", "higher", "tied", "quote", "reviewed", "plan-reviewed", "seal", "extra-seal", "snapshot", "spec", "plan", "page", "estimate", "ledger", "manifest", "seed", "header", "frontmatter"];
+test("P1 provenance drift: twenty-one single faults of the recorded evidence, each with its own shipped refusal", async () => {
+  const c = p1Cases();
+  const control = await cappedFixture(); await c.accepts("drift/control", control, control.args, P1_ONE_CARRIED);
+  for (const fault of P1_DRIFT) {
+    const f = await cappedFixture();
+    if (fault === "key") editLedger(f, rows => { rows[0].key = "HIMMEL-99"; });
+    if (fault === "epoch") editLedger(f, rows => { rows.find(r => r.row === "round" && r.round === 3).epoch = 7; });
+    if (fault === "old") f.args.specReturn = f.verdicts[0];
+    if (fault === "copy") { const p = join(f.r, basename(f.args.specReturn)); copyFileSync(f.args.specReturn, p); f.args.specReturn = p; }
+    if (fault === "higher" || fault === "tied") copyFileSync(f.args.planReturn, fault === "higher" ? f.args.planReturn.replace("r3.md", "r4.md") : join(dirname(f.plan), basename(f.args.planReturn)));
+    if (["quote", "reviewed", "plan-reviewed", "seal"].includes(fault)) {
+      const p = fault === "plan-reviewed" ? f.args.planReturn : f.args.specReturn;
+      await editCappedReturn(f, p, text => text.replace(fault === "quote" ? /^READ(?:-SHA256)? .*\n/m : fault === "seal" ? /^CONTENT-SHA256 .*\n/m : /^Reviewed: .*\n/m, ""));
+    }
+    if (fault === "extra-seal") editLedger(f, rows => { rows.push({ ...rows.at(-1), read_path: f.spec, read_sha: "f".repeat(64) }); });
+    if (fault === "snapshot") writeFileSync(join(dirname(f.ledgerPath), cappedKey, sha(readFileSync(f.spec, "utf8"))), "edited");
+    const p = ({ spec: f.spec, plan: f.plan, page: join(dirname(f.spec), "page.html"), estimate: join(dirname(f.spec), "estimate.json"), ledger: f.ledgerPath, manifest: join(dirname(f.ledgerPath), "manifest.json") } as Record<string,string>)[fault];
+    if (p) appendFileSync(p, "changed");
+    if (fault === "seed") editLedger(f, rows => { rows.splice(0, rows.length, { row: "seed", key: cappedKey, spec: 3, plan: 3, latest: { spec: [], plan: [] } }); });
+    if (fault === "header") writeFileSync(f.spec, readFileSync(f.spec, "utf8").replace(`Key: ${cappedKey}`, "Key: HIMMEL-99"));
+    if (fault === "frontmatter") writeFileSync(f.plan, readFileSync(f.plan, "utf8").replace(`tickets: ${cappedKey}`, `tickets: [${cappedKey}, HIMMEL-99]`));
+    const latest = "capped-fold: not the actual latest real spec round"; const reviewed = (kind: string) => `capped-fold: ${kind} must review the current spec exactly once`;
+    const coverage = "capped-fold: missing/extra ledger seals or review coverage"; const provenance = (path: string) => `capped-fold: seal provenance disagrees: ${path}`;
+    const manifest = join(dirname(f.ledgerPath), "manifest.json");
+    const message: Record<string, string> = {
+      key: "capped-fold: invalid ledger key/record", epoch: "capped-fold: invalid ledger epoch", old: latest, copy: latest, seed: latest,
+      higher: `capped-fold: ambiguous or unaccounted latest return: ${f.args.planReturn.replace("r3.md", "r4.md")}`,
+      tied: `capped-fold: ambiguous or unaccounted latest return: ${join(dirname(f.plan), basename(f.args.planReturn))}`,
+      quote: `capped-fold: missing/conflicting critic READ quote: ${f.spec}`, reviewed: reviewed("spec"), "plan-reviewed": reviewed("plan"), spec: reviewed("spec"),
+      seal: coverage, "extra-seal": coverage, snapshot: "capped-fold: content-addressed snapshot changed",
+      plan: provenance(f.plan), page: provenance(join(dirname(f.spec), "page.html")), estimate: provenance(join(dirname(f.spec), "estimate.json")),
+      ledger: `${cappedKey} ledger line ${readFileSync(f.ledgerPath, "utf8").split("\n").filter(Boolean).length} does not parse; restore it from the state repo history`,
+      manifest: `${manifest}: the round manifest does not parse; restore it from the state repo history`,
+      header: P1_DECLARED, frontmatter: `capped-fold: tickets must declare only ${cappedKey}`,
+    };
+    c.refuses(`drift/${fault}`, f.args, message[fault]);
+  }
+  expect(c.ids).toHaveLength(1 + P1_DRIFT.length); expect(c.bad).toEqual([]);
+}, S1B);
+
+test("P1 recording checkout bound: a copied tree and a removed original are each refused", async () => {
+  const c = p1Cases();
+  const f = await cappedFixture(); await c.accepts("checkout/original", f, f.args, P1_ONE_CARRIED);
+  const dest = join(root(), "copy"); cpSync(f.r, dest, { recursive: true });
+  const args = Object.fromEntries(Object.entries(f.args).map(([k, v]) => [k, k === "key" ? v : v.replace(f.r, dest)])) as typeof f.args;
+  c.refuses("checkout/copied-tree", args, "capped-fold: not the actual latest real spec round");
+  rmSync(f.r, { recursive: true });
+  c.refuses("checkout/original-removed", args, "capped-fold: not the actual latest real spec round");
+  expect(c.ids).toHaveLength(3); expect(c.bad).toEqual([]);
+}, S1B);
+
+test("P1 strict declarations and complete seal grammar: four malformed headers and five malformed returns", async () => {
+  const c = p1Cases();
+  for (const fault of ["bracket", "missing-key", "unknown-key", "duplicate-key"]) {
+    const text = `---\ntickets: ${fault === "bracket" ? "[" : ""}${cappedKey}\n---\nKey: ${fault === "unknown-key" ? "HIMMEL-99" : cappedKey}\n${fault === "duplicate-key" ? `Key: ${cappedKey}\n` : ""}## Body\n`;
+    const f = await cappedFixture({ specText: fault === "missing-key" ? text.replace(`Key: ${cappedKey}\n`, "") : text });
+    c.refuses(`grammar/header-${fault}`, f.args, fault === "bracket" ? `capped-fold: tickets must declare only ${cappedKey}` : P1_DECLARED);
+  }
+  for (const fault of ["extra-read", "bad-read", "bad-seal", "huge-count", "body-key"]) {
+    const f = await cappedFixture();
+    await editCappedReturn(f, f.args.specReturn, text => fault === "body-key" ? text.replace("SPEC FINDINGS 1", "## Body\nKey: HIMMEL-99\nSPEC FINDINGS 1") : fault === "huge-count" ? text.replace("SPEC FINDINGS 1", "SPEC FINDINGS 999999999")
+      : text.replace("SPEC FINDINGS 1", `${fault === "extra-read" ? `READ ${"a".repeat(64)} alien.md` : fault === "bad-read" ? "READ unknown spec.md" : "CONTENT-SHA256 unknown spec.md"}\nSPEC FINDINGS 1`));
+    c.refuses(`grammar/return-${fault}`, f.args, { "extra-read": `ENOENT: no such file or directory, realpath '${join(dirname(f.spec), "alien.md")}'`,
+      "bad-read": "capped-fold: malformed seal or READ quote", "bad-seal": "capped-fold: malformed seal or READ quote",
+      "huge-count": "capped-fold: invalid finding count", "body-key": P1_DECLARED }[fault]!);
+  }
+  expect(c.ids).toHaveLength(9); expect(c.bad).toEqual([]);
+}, S1B);
+
+test("P1 higher ticket returns in every supported folder and name are refused", async () => {
+  const c = p1Cases();
+  for (const filename of [`${cappedKey}-other.md.critic-spec-r4.md`, `${cappedKey}-fixture.md.critic-r4-spec.md`, `${cappedKey}-fixture.md.critic-r4.md`]) {
+    const f = await cappedFixture(); const copy = join(dirname(f.spec), filename); copyFileSync(f.args.specReturn, copy);
+    c.refuses(`higher/${filename}`, f.args, `capped-fold: ambiguous or unaccounted latest return: ${copy}`);
+  }
+  const f = await cappedFixture(); const dir = join(f.specsRoot, "design"); mkdirSync(dir);
+  const copy = join(dir, basename(f.args.specReturn).replace("r3", "r4")); copyFileSync(f.args.specReturn, copy);
+  c.refuses("higher/design-folder", f.args, `capped-fold: ambiguous or unaccounted latest return: ${copy}`);
+  expect(c.ids).toHaveLength(4); expect(c.bad).toEqual([]);
+}, S1B);
+
+test("P1 initially aliased evidence locations: nine roles and an aliased spec, each accepted before the alias and refused after", async () => {
+  const c = p1Cases();
+  for (const role of ["spec", "plan", "return", "ledger", "manifest", "snapshot", "page", "decision", "decision-directory"]) {
+    const f = role.startsWith("decision") ? await resetCappedFixture() : await cappedFixture();
+    const reset = role.startsWith("decision");
+    await c.accepts(`aliased/${role}/before`, f, f.args, reset ? { epoch: 1, rounds: [3, 3], residuals: [1, 0], carried: [["spec", "F1", "minor", 3]], decision: (f as any).decision } : P1_ONE_CARRIED);
+    const paths: Record<string,string> = { spec: f.spec, plan: f.plan, return: f.args.specReturn, ledger: f.ledgerPath,
+      manifest: join(dirname(f.ledgerPath), "manifest.json"), snapshot: join(dirname(f.ledgerPath), cappedKey, sha(readFileSync(f.spec, "utf8"))),
+      page: join(dirname(f.spec), "page.html"), decision: join(f.specsRoot, "decisions", "verbatim-decision-990-fixture.txt"), "decision-directory": join(f.specsRoot, "decisions") };
+    const path = paths[role]; const target = join(f.r, "aliased-location"); renameSync(path, target); symlinkSync(target, path);
+    const canonical = `capped-fold: evidence lookup must be canonical: ${path}`;
+    c.refuses(`aliased/${role}/after`, f.args, {
+      spec: "capped-fold: spec filename/folder key disagrees", plan: canonical, return: canonical, snapshot: canonical, page: canonical, decision: canonical,
+      "decision-directory": `capped-fold: directory lookup must be canonical: ${path}`,
+      ledger: `${cappedKey} ledger cannot be read (${canonical}); restore it from the state repo history`,
+      manifest: `${path}: cannot read the round manifest (${canonical}); restore it from the state repo history`,
+    }[role]!);
+  }
+  const f = await cappedFixture(); const alias = join(f.r, "spec-alias.md"); symlinkSync(f.spec, alias);
+  c.refuses("aliased/spec-argument", { ...f.args, spec: alias }, `capped-fold: evidence lookup must be canonical: ${alias}`);
+  expect(c.ids).toHaveLength(9 * 2 + 1); expect(c.bad).toEqual([]);
+}, S1B);
+
+test("P1 invalid ledger metadata outside the latest row: four faults, each accepted before and refused after", async () => {
+  const c = p1Cases();
+  for (const fault of ["seal-epoch", "mode", "late-seed", "full-closure-class"]) {
+    const f = await cappedFixture(); await c.accepts(`metadata/${fault}/before`, f, f.args, P1_ONE_CARRIED);
+    editLedger(f, rows => {
+      if (fault === "seal-epoch") rows.find(row => row.row === "seal").epoch = 8;
+      if (fault === "mode") rows.find(row => row.row === "round").mode = "invented";
+      if (fault === "late-seed") rows.push({ key: cappedKey, row: "seed", spec: 0, plan: 0, latest: { spec: [], plan: [] } });
+      if (fault === "full-closure-class") rows.find(row => row.row === "round" && row.round === 3 && row.critic === "spec").findings[0].class = "out-of-closure";
+    });
+    c.refuses(`metadata/${fault}/after`, f.args, { "seal-epoch": "capped-fold: invalid ledger epoch", mode: "capped-fold: invalid round epoch/order/mode",
+      "late-seed": "capped-fold: seed must be the first ledger record", "full-closure-class": "capped-fold: ledger findings do not agree or are blocking" }[fault]!);
+  }
+  expect(c.ids).toHaveLength(8); expect(c.bad).toEqual([]);
+}, S1B);
+
+test("P1 evidence roles are pinned by use: a page named like a return is an artifact pin", async () => {
+  const c = p1Cases();
+  const f = await cappedFixture({ pageName: "memo.critic-spec-r1.md" });
+  await c.accepts("roles/page-named-like-a-return", f, f.args, P1_ONE_CARRIED);
+  const proof = JSON.parse(p1Fold(f.args).out);
+  expect(proof.pins.find((pin: any) => pin.path === join(dirname(f.spec), "memo.critic-spec-r1.md")).role).toBe("artifact");
+  expect(c.ids).toHaveLength(1); expect(c.bad).toEqual([]);
+}, S1B);
+
+test("P1 a closure round opened by a valid operator extension is accepted with its decision pins, and refused once the extension row is invalid", async () => {
+  const c = p1Cases();
+  const f = await cappedFixture({ specFindings: "- **M2** (major) blocking at the cap" }); const { sealRound } = await import("./chief-route");
+  const nextSpec = async (round: number, ...body: string[]) => {
+    const previous = f.args.specReturn; const lines = readFileSync(previous, "utf8").split("\n");
+    const header = lines.slice(0, lines.findLastIndex(l => l.startsWith("READ-SHA256 ")) + 1).map(l => l.replace(/^Fixture: spec round \d+$/, `Fixture: spec round ${round}`));
+    const next = previous.replace(/r\d+\.md$/, `r${round}.md`);
+    const seals = lines.filter(l => l.startsWith("CONTENT-SHA256 "));
+    writeFileSync(next, [...header, markerFor(f.specsRoot, cappedKey, "spec", round), ...body, ...seals, `SPEC FINDINGS ${body.filter(l => l.startsWith("- **")).length}`, ""].join("\n"));
+    for (const s of seals) await sealRound(next, resolve(dirname(next), s.split(" ").slice(2).join(" ")));
+    f.args.specReturn = next;
+  };
+  const run = (...args: string[]) => verb(true, ...args, "--specs", f.specsRoot);
+  await nextSpec(4, "- **F3** (major; reopens M2) the blocking finding survives");
+  expect((await run("round-override", cappedKey, "--findings", "F3", "--why", "a second closure", "--chief", "chief-x")).err).toBe("");
+  await nextSpec(5, "- **F3** (major; reopens F3) still survives");
+  const quote = "approve one closure round for the surviving finding"; const decision = join(f.specsRoot, "decisions", "verbatim-decision-990-fixture.txt");
+  mkdirSync(dirname(decision), { recursive: true }); writeFileSync(decision, `${cappedKey} ${quote}\n`); utimesSync(decision, new Date(), new Date(Date.now() + 5000));
+  const granted = await run("round-extension", cappedKey, "--findings", "F3", "--decision", "990", "--quote", quote, "--why", "one closure", "--chief", "chief-x");
+  expect(granted.err).toBe(""); expect(granted.out).toContain("writer round 6");
+  await nextSpec(6, "- **m1** (minor) a nonblocking wording note");
+  await c.accepts("extension/valid", f, f.args, { rounds: [6, 3], residuals: [1, 0], carried: [["spec", "m1", "minor", 6]], decision });
+  editLedger(f, rows => { rows.find(row => row.row === "extension").findings[0].return_sha = "f".repeat(64); });
+  c.refuses("extension/invalid-row", f.args, "capped-fold: invalid ledger records: extension 990");
+  expect(c.ids).toHaveLength(2); expect(c.bad).toEqual([]);
+}, S1B);
+
+test("P1 bounded evidence: nine evidence roles, each a missing file, a directory, an oversized file and a fifo, each with its own shipped stderr line", async () => {
+  const c = p1Cases();
+  for (const role of ["return", "spec", "plan", "page", "estimate", "ledger", "manifest", "snapshot", "decision"]) for (const type of ["fifo", "directory", "oversized", "missing"]) {
+    const f = role === "decision" ? await resetCappedFixture() : await cappedFixture();
+    const path = ({ return: f.args.specReturn, spec: f.spec, plan: f.plan, page: join(dirname(f.spec), "page.html"), estimate: join(dirname(f.spec), "estimate.json"), ledger: f.ledgerPath, manifest: join(dirname(f.ledgerPath), "manifest.json"), snapshot: join(dirname(f.ledgerPath), cappedKey, sha(readFileSync(f.spec,"utf8"))), decision: join(f.specsRoot, "decisions", "verbatim-decision-990-fixture.txt") } as Record<string,string>)[role];
+    unlinkSync(path);
+    if (type === "directory") mkdirSync(path);
+    else if (type === "oversized") { writeFileSync(path, ""); truncateSync(path, 16 * 1024 * 1024 + 1); }
+    else if (type === "fifo") expect(Bun.spawnSync(["mkfifo", path]).exitCode).toBe(0);
+    const unreadable = `capped-fold: evidence changed or is unreadable: ${path}`;
+    const message = role === "ledger" ? (type === "missing" ? `${cappedKey} is in the round manifest but has no ledger; restore it from the state repo history`
+        : `${cappedKey} ledger cannot be read (${unreadable}); restore it from the state repo history`)
+      : role === "manifest" ? (type === "missing" ? `no round manifest under ${f.specsRoot}; run round-seed --all once`
+        : `${path}: cannot read the round manifest (${unreadable}); restore it from the state repo history`)
+      : role === "decision" && type === "missing" ? "capped-fold: invalid ledger records: reset 990"
+      : type === "missing" ? `ENOENT: no such file or directory, realpath '${path}'` : unreadable;
+    c.refuses(`bounded/${role}/${type}`, f.args, message);
+  }
+  expect(c.ids).toHaveLength(36); expect(c.bad).toEqual([]);
+}, 240_000);
+
+// ---- P2: the twelve two-fault fixtures O1 to O12 (recipes of the Task 0 inventory), each refused by the earlier step in shipped order ----
+type P2Fault = { opts?: Parameters<typeof cappedFixture>[0]; apply?: (f: any) => void | Promise<void>; message: (f: any) => string };
+const P2_FAULTS: Record<string, P2Fault> = {
+  retkey: { apply: f => { const p = join(dirname(f.spec), `HIMMEL-99-fixture.md.critic-spec-r${f.args.specReturn.match(/r(\d+)\.md$/)![1]}.md`); copyFileSync(f.args.specReturn, p); f.args.specReturn = p; },
+    message: () => "capped-fold: return filename/folder key disagrees" },
+  decl: { apply: f => editCappedReturn(f, f.args.specReturn, t => t.replace(`Key: ${cappedKey}`, "Key: HIMMEL-99")), message: () => P1_DECLARED },
+  old: { apply: f => { f.args.specReturn = f.verdicts[0]; }, message: () => "capped-fold: not the actual latest real spec round" },
+  reviewed: { apply: f => editCappedReturn(f, f.args.specReturn, t => t.replace(/^Reviewed: .*\n/m, "")), message: () => "capped-fold: spec must review the current spec exactly once" },
+  cap: { opts: { rounds: 2 }, message: () => "capped-fold: findings have not reached the refused round cap" },
+  malformed: { apply: f => editCappedReturn(f, f.args.specReturn, t => t.replace("SPEC FINDINGS 1", "READ-SHA256 unknown file.md\nSPEC FINDINGS 1")), message: () => "capped-fold: malformed seal or READ quote" },
+  duplicate: { apply: f => editCappedReturn(f, f.args.specReturn, t => { const line = /^READ-SHA256 .+$/m.exec(t)![0]; return t.replace(/(SPEC (?:FINDINGS 1|CLEAN))/, `${line.replace("READ-SHA256", "READ")}\n$1`); }),
+    message: () => "capped-fold: duplicate critic READ quotes" },
+  page: { apply: f => appendFileSync(join(dirname(f.spec), "page.html"), "changed"), message: f => `capped-fold: seal provenance disagrees: ${join(dirname(f.spec), "page.html")}` },
+  seal: { apply: f => editCappedReturn(f, f.args.specReturn, t => t.replace(/^CONTENT-SHA256 .*\n/m, "")), message: () => "capped-fold: missing/extra ledger seals or review coverage" },
+  header: { apply: f => writeFileSync(f.spec, readFileSync(f.spec, "utf8").replace(`Key: ${cappedKey}`, "Key: HIMMEL-99")), message: () => P1_DECLARED },
+  ledger: { apply: f => appendFileSync(f.ledgerPath, `${JSON.stringify({ v: 1, ts: Date.now(), key: cappedKey, row: "critical", opens: 5, id: "C1", class: "spend-grant", decision: "903", quote: "a quote the file never holds", decision_path: "/x", decision_sha: "a".repeat(64), return_sha: "f".repeat(64) })}\n`),
+    message: () => "capped-fold: invalid ledger records: critical 903" },
+  zero: { opts: { specFindings: "", planFindings: "" }, message: () => "capped-fold: requires at least one carried finding" },
+  tie: { apply: f => copyFileSync(f.args.specReturn, join(dirname(f.spec), "HIMMEL-10205-other.md.critic-spec-r3.md")),
+    message: f => `capped-fold: ambiguous or unaccounted latest return: ${join(dirname(f.spec), "HIMMEL-10205-other.md.critic-spec-r3.md")}` },
+  // the three steps of the ledger load, in shipped order: invalid records ("ledger"), then the epoch and key evidence, then an open historical critical finding
+  evkey: { apply: f => editLedger(f, rows => { rows[0].key = "HIMMEL-99"; }), message: () => "capped-fold: invalid ledger key/record" },
+  evepoch: { apply: f => editLedger(f, rows => { rows.find(r => r.row === "round" && r.round === 3).epoch = 7; }), message: () => "capped-fold: invalid ledger epoch" },
+  critopen: { opts: { historical: "- **C1** (minor; operator-critical: spend-grant) historically open" }, message: () => "capped-fold: open historical operator-critical findings" },
+};
+// [row, the two faults applied in this order, the fault whose step comes first in the shipped order of cappedFold]
+const P2_PAIRS: [string, [string, string], string][] = [
+  ["O1", ["decl", "retkey"], "retkey"], ["O2", ["old", "decl"], "decl"], ["O3", ["old", "reviewed"], "old"], ["O4", ["reviewed", "cap"], "reviewed"],
+  ["O5", ["malformed", "cap"], "cap"], ["O6", ["malformed", "duplicate"], "malformed"], ["O7", ["duplicate", "page"], "duplicate"], ["O8", ["seal", "page"], "page"],
+  ["O9", ["header", "ledger"], "header"], ["O10", ["ledger", "reviewed"], "ledger"], ["O11", ["seal", "zero"], "seal"], ["O12", ["zero", "tie"], "zero"],
+];
+const p2Run = async (names: string[]) => {
+  const f = await cappedFixture(Object.assign({}, ...names.map(n => P2_FAULTS[n].opts ?? {})));
+  for (const n of names) await P2_FAULTS[n].apply?.(f);
+  return f;
+};
+
+test("P2 single faults: each of the sixteen recipes alone gives its own shipped refusal, so every pair below holds two live faults", async () => {
+  const c = p1Cases();
+  const control = await cappedFixture(); await c.accepts("single/control", control, control.args, P1_ONE_CARRIED);
+  for (const name of Object.keys(P2_FAULTS)) { const f = await p2Run([name]); c.refuses(`single/${name}`, f.args, P2_FAULTS[name].message(f)); }
+  expect(c.ids).toHaveLength(1 + 16); expect(c.bad).toEqual([]);
+}, S1B);
+
+test("P2b the three ledger-load steps keep their shipped order: invalid records, then epoch and key evidence, then an open historical critical finding", async () => {
+  const c = p1Cases();
+  for (const [row, names, first] of [["O13", ["evkey", "ledger"], "ledger"], ["O14", ["critopen", "evepoch"], "evepoch"], ["O15", ["critopen", "ledger"], "ledger"]] as [string, string[], string][]) {
+    const f = await p2Run(names);
+    c.refuses(`${row}/${names.join("+")}`, f.args, P2_FAULTS[first].message(f));
+  }
+  expect(c.ids).toHaveLength(3); expect(c.bad).toEqual([]);
+}, S1B);
+
+test("P2 twelve two-fault pairs O1 to O12: the refusal is exactly the earlier step's shipped message, in the shipped order", async () => {
+  const c = p1Cases();
+  for (const [row, names, first] of P2_PAIRS) {
+    const f = await p2Run(names);
+    c.refuses(`${row}/${names.join("+")}`, f.args, P2_FAULTS[first].message(f));
+  }
+  expect(c.ids).toHaveLength(12); expect(c.bad).toEqual([]);
+}, S1B);
+
+// ---- P3: the old `--key` argv grammar: exactly five valued flags, each once, any order; the default no-flag usage; the output bytes ----
+const P3_USAGE = "capped-fold: capped-fold: requires exactly --key, --spec, --plan, --spec-return and --plan-return, each once\n";
+test("P3 capped-fold argv grammar: any other shape than five valued flags each once prints the one usage line and exits 1", async () => {
+  const f = await cappedFixture(); const flags = p1Flags(f.args);
+  const swap = (flag: string, value: string) => flags.map((x, i) => flags[i - 1] === flag ? value : x);
+  const rename = (flag: string, to: string) => flags.map(x => x === flag ? to : x);
+  const shapes: [string, string[]][] = [
+    ["no flag at all", []], ["a flag without a value", ["--key"]],
+    ...["--key", "--spec", "--plan", "--spec-return", "--plan-return"].map(flag => [`${flag} missing`, flags.filter((x, i) => x !== flag && flags[i - 1] !== flag)] as [string, string[]]),
+    ["a flag repeated", [...flags, "--key", cappedKey]], ["a flag repeated in place of another", rename("--spec", "--key")],
+    ["an unknown flag after the five", [...flags, "--unknown", "x"]], ["an unknown flag in place of one", rename("--spec", "--specs")],
+    ["a trailing positional", [...flags, "x"]], ["a leading positional", ["x", ...flags]], ["the last value missing", flags.slice(0, -1)],
+    ["the equals spelling", ["--key=" + cappedKey, ...flags.slice(2)]], ["a value that starts with two dashes", swap("--key", "--x")],
+    ["an empty value", swap("--spec", "")], ["an empty key", swap("--key", "")], ["a flag as the value of another", swap("--plan", "--spec-return")],
+    ["only the five flag names", ["--key", "--spec", "--plan", "--spec-return", "--plan-return"]], ["the five names as pairs of themselves", flags.map(x => x.startsWith("--") ? x : "--v")],
+    ["the next flag name as the value of --spec", [...flags.slice(0, 3), "--plan", ...flags.slice(4)]],
+  ];
+  const bad: string[] = [];
+  for (const [name, argv] of shapes) {
+    const run = p1Cli(...argv); const want = { code: 1, signal: null, out: "", err: P3_USAGE };
+    if (JSON.stringify(run) !== JSON.stringify(want)) bad.push(`${name}: ${JSON.stringify(argv)}\n  got ${JSON.stringify(run)}`);
+  }
+  expect(shapes).toHaveLength(22); expect(bad).toEqual([]);
+}, S1B);
+
+test("P3 capped-fold argv grammar: the flags are accepted in any order with the same bytes, and a value the grammar accepts is refused by its own shipped message", async () => {
+  const f = await cappedFixture(); const a = f.args; const pairs = [["--key", a.key], ["--spec", a.spec], ["--plan", a.plan], ["--spec-return", a.specReturn], ["--plan-return", a.planReturn]];
+  const canonical = p1Cli(...p1Flags(a));
+  expect(await p1Success("grammar/canonical", f, a, P1_ONE_CARRIED, canonical)).toEqual([]);
+  const orders = [[4, 3, 2, 1, 0], [1, 0, 3, 2, 4], [2, 4, 0, 1, 3], [3, 0, 4, 2, 1]];
+  for (const order of orders) {
+    const run = p1Cli(...order.flatMap(i => pairs[i]));
+    expect(run, `order ${order}`).toEqual(canonical);
+  }
+  const bad: string[] = [];
+  const refused = (name: string, argv: string[], message: string) => {
+    const run = p1Cli(...argv); const want = { code: 1, signal: null, out: "", err: p1Line(message) };
+    if (JSON.stringify(run) !== JSON.stringify(want)) bad.push(`${name}\n  want ${JSON.stringify(want)}\n  got  ${JSON.stringify(run)}`);
+  };
+  const with_ = (flag: string, value: string) => pairs.flatMap(([k, v]) => [k, k === flag ? value : v]);
+  refused("a key that is not a ticket key", with_("--key", "not-a-key"), "capped-fold: expected one ticket key");
+  refused("a lowercase ticket key", with_("--key", cappedKey.toLowerCase()), "capped-fold: expected one ticket key");
+  refused("a single-dash value for the key", with_("--key", "-x"), "capped-fold: expected one ticket key");
+  refused("a relative spec", with_("--spec", "relative.md"), "capped-fold: paths must be absolute");
+  refused("a relative return", with_("--plan-return", "r3.md"), "capped-fold: paths must be absolute");
+  refused("a missing spec", with_("--spec", join(f.r, "missing.md")), `ENOENT: no such file or directory, realpath '${join(f.r, "missing.md")}'`);
+  refused("the plan equal to the spec", with_("--plan", a.spec), "capped-fold: expected a distinct plan for this key");
+  refused("another key than the fixture's", with_("--key", "HIMMEL-99"), "capped-fold: spec filename/folder key disagrees");
+  expect(bad).toEqual([]);
+}, S1B);
