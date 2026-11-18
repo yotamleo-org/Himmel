@@ -269,10 +269,44 @@ def owned_rows(manifest):
         terminal_docs = {}
         for row in history.values():
             if row.get('doc'):
-                terminal_docs[row['doc']] = row.get('outcome')
+                terminal_docs[row['doc']] = row
         rows = [row for row in rows if row['doc'] in current or row.get('registration') != 'pending'
-                or terminal_docs.get(row['doc']) not in ('refused', 'complete')]
+                or not settles(terminal_docs.get(row['doc'], {}), row)]
     return rows
+
+
+def settles(receipt, row):
+    """A terminal receipt ends the pending registration it settled, never one added after it.
+
+    Receipts and registrations are stamped to the second; a tie reads as settled,
+    which is the copied-before-begin manifest whose refusal landed the same second."""
+    return receipt.get('outcome') in ('refused', 'complete') and not row.get('added', '') > receipt.get('ts', '')
+
+
+def named_session_alive(name, doc, deadline):
+    """True unless a full readable /proc pass finds no live `claude -n <name>` working on this doc."""
+    if not name:
+        return False
+    for path in Path('/proc').iterdir():
+        if time.monotonic() >= deadline:
+            return True
+        if not path.name.isdigit():
+            continue
+        try:
+            if (path / 'comm').read_text().strip() != 'claude':
+                continue
+            args = (path / 'cmdline').read_bytes().split(b'\0')
+            if not any(a == b'-n' and i + 1 < len(args) and args[i + 1].decode() == name for i, a in enumerate(args)):
+                continue
+            if path.joinpath('stat').read_text().rsplit(')', 1)[1].split()[0] in ('Z', 'X'):
+                continue
+            env = dict(pair.split(b'=', 1) for pair in (path / 'environ').read_bytes().split(b'\0') if b'=' in pair)
+            if env.get(b'WORKER_SESSION_DOC') == doc.encode():
+                return True
+        except (OSError, ValueError, UnicodeError):
+            if path.exists():
+                return True  # an unreadable candidate cannot prove absence
+    return False
 
 
 def protected(doc):
@@ -285,18 +319,25 @@ def protected(doc):
 
 
 def disposition(doc):
+    """The doc's current managed attempt phase, else its latest terminal receipt, else legacy.
+
+    A terminal receipt is only the ended attempt's own word: it stands for neither a
+    registration added after it nor a doc a live named session is working on. The
+    caller still reads the queue lock and the newest marker before it ends ownership."""
     doc = str(Path(doc).resolve())
     anchor = Path(doc).parent / 'fleet-control.json'
     if anchor.exists():
         for record in read(anchor).get('attempts', {}).values():
             if record.get('doc') == doc:
                 return record.get('phase', 'unknown')
-        legacy = [row for path in anchor.parent.glob('*.fleet.json') for row in read(path).get('workers', [])
-                  if row.get('doc') == doc and row.get('registration') != 'pending']
-        if not legacy:
+        rows = [row for path in anchor.parent.glob('*.fleet.json') for row in read(path).get('workers', [])
+                if row.get('doc') == doc]
+        if all(row.get('registration') == 'pending' for row in rows):
             history = receipts(set(), {doc})
             matching = [row for row in history.values() if row.get('doc') == doc]
-            if matching and matching[-1].get('outcome') in ('refused', 'complete'):
+            if matching and matching[-1].get('outcome') in ('refused', 'complete') and all(settles(matching[-1], row) for row in rows):
+                if named_session_alive(matching[-1].get('name'), doc, time.monotonic() + 2):
+                    return 'unknown'
                 return matching[-1]['outcome']
     return 'unknown' if protected(doc) else 'legacy'
 

@@ -406,7 +406,10 @@ ts_await_due() {
 # ts_worker_state <doc> — live | idle | IDLE-HELD | parked | wrapped | unknown, from the
 # doc's newest marker and its queue lock. Only an end marker is positive end
 # evidence: a free lock with no end marker (a hand-off, a cloud or
-# other-station worker) is unknown, which still counts as an owner.
+# other-station worker) is unknown, which still counts as an owner. A managed attempt that is
+# pending, committed or unknown is unknown too, never live and never free. A terminal receipt
+# (refused or complete) ends ownership only when the lock is free, the newest marker is absent or
+# an end marker and no live named session works the doc; otherwise the lock and the markers decide.
 ts_worker_state() {
     _ts_worker_state "$1"
     echo "$TS_WORKER_STATE"
@@ -419,11 +422,11 @@ _ts_worker_state() {
     local marker out rc hb hb_epoch age=0 warn
     TS_LOCK_HELD="" TS_LOCK_DEAD=""
     [ -n "$1" ] || { TS_WORKER_STATE=unknown; return 0; }
-    local attempt_protected
+    local attempt_protected terminal=""
     attempt_protected=$(python3 -I "$_TS_LIB_DIR/fleet_runtime.py" disposition --doc "$1") || attempt_protected='"unknown"'
     case "$attempt_protected" in
         '"pending"'|'"committed"'|'"unknown"') TS_WORKER_STATE=unknown; return 0 ;;
-        '"refused"'|'"complete"') TS_WORKER_STATE=wrapped; return 0 ;;
+        '"refused"'|'"complete"') terminal=yes ;; # an ended attempt's receipt: it ends ownership only when the lock and the markers agree
     esac
     marker=$(ts_marker_newest "$1")
     case "$marker" in WRAPPED|HALTED) TS_WORKER_STATE=wrapped; return 0 ;; esac
@@ -440,6 +443,9 @@ _ts_worker_state() {
     if [ "$rc" -eq 12 ]; then
         if grep -q '^status: STALE-DEAD' <<<"$out"; then TS_LOCK_DEAD=yes; else TS_LOCK_DEAD=no; fi
     fi
+    # A terminal receipt with a free lock and no marker at all is the failed or finished launch with nothing after it.
+    # A held lock, or any marker that is not an end marker (it is later than the receipt or was never wrapped), decides below.
+    if [ -n "$terminal" ] && [ "$TS_LOCK_HELD" = no ] && [ -z "$marker" ]; then TS_WORKER_STATE=wrapped; return 0; fi
     if status_marker_is_parked "$marker"; then TS_WORKER_STATE=parked; return 0; fi
     if [ "$TS_LOCK_HELD" = no ]; then TS_WORKER_STATE=unknown; return 0; fi
     hb=$(printf '%s\n' "$out" | sed -n 's/.*"heartbeat"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
