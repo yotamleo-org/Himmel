@@ -1359,4 +1359,104 @@ grepq "$outY1" -F 'item-c' || fail "case y: the rejection should name the reques
 [ ! -f "$targetY/c.marker" ] || fail "case y: c.marker must NOT exist (zero mutation — item-c was never installed atop missing item-a)"
 echo "ok: case y — a red/desired prerequisite hidden behind a GREEN middle node is still caught by the TRANSITIVE walk (exit 2, names item-a), zero mutation"
 
+
+# ── case z: ensure never writes a git-tracked settings file unasked ─────────
+# The wire/plugin/adopt primitives write the scope's .claude/settings.json in a
+# child process, so ensure refuses BEFORE dispatching them when that file is
+# tracked, unless --write-tracked is given. repoD's red-item is the writer.
+repoZ="$work/repoZ"; mkdir -p "$repoZ/scripts/install" "$repoZ/scripts/lib"
+cp "$repoD/scripts/install/manifest.json" "$repoZ/scripts/install/manifest.json"
+cat > "$repoZ/scripts/lib/wire-statusline.sh" <<'SH'
+#!/usr/bin/env bash
+[ -n "${ENSURE_LOG:-}" ] && echo "red-item" >> "$ENSURE_LOG"
+mkdir -p "$(dirname "$1")"
+printf '{"statusLine":{"command":"wired"}}\n' > "$1"
+: > red.marker
+exit 0
+SH
+zgit() { git -C "$1" -c core.hooksPath=/dev/null -c commit.gpgsign=false -c user.name=t -c user.email=t@example.invalid "${@:2}"; }
+# mkTargetZ <name> <tracked:0|1> -> a git repo with a settings file, committed or not
+mkTargetZ() {
+  local t="$work/target-z-$1"
+  mkdir -p "$t/.claude"
+  git init -q "$t"
+  printf '{"original":true}\n' > "$t/.claude/settings.json"
+  if [ "$2" = "1" ]; then
+    zgit "$t" add .claude/settings.json
+    zgit "$t" commit -q -m seed
+  fi
+  local c="$work/cache-z-$1"; mkdir -p "$c"
+  write_cache "$c/install-profile.json" adopter project none "" inline "" lean
+  : > "$work/log-z-$1.txt"
+}
+# runEnsureZ <name> [extra ensure args...] -> merged output, rc in $rcZ
+runEnsureZ() {
+  local n="$1"; shift
+  set +e
+  outZ=$( cd "$work/target-z-$n" && HIMMELCTL_REPO_ROOT="$(winpath "$repoZ")" HIMMELCTL_CACHE_DIR="$(winpath "$work/cache-z-$n")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$work/cache-z-$n")-luna-config.json" HOME="$work/home" USERPROFILE="$(winpath "$work/home")" ENSURE_LOG="$(winpath "$work/log-z-$n.txt")" \
+    "$node_bin" "$wizard" ensure "$@" 2>&1 </dev/null ); rcZ=$?
+  set -e
+}
+
+mkTargetZ tracked 1
+runEnsureZ tracked --yes
+[ "$rcZ" -eq 2 ] || fail "case z: a tracked settings file without --write-tracked should exit 2 (got rc=$rcZ): $outZ"
+grepq "$outZ" -F 'red-item' || fail "case z: the refusal should list the item id red-item (got: $outZ)"
+grepq "$outZ" -F '.claude/settings.json' || fail "case z: the refusal should name the tracked file (got: $outZ)"
+grepq "$outZ" -F -- '--write-tracked' || fail "case z: the refusal should name --write-tracked (got: $outZ)"
+[ ! -s "$work/log-z-tracked.txt" ] || fail "case z: no primitive may run before the refusal (log: $(cat "$work/log-z-tracked.txt"))"
+[ "$(cat "$work/target-z-tracked/.claude/settings.json")" = '{"original":true}' ] || fail "case z: the tracked file must be untouched after the refusal"
+[ -z "$(zgit "$work/target-z-tracked" status --porcelain -- .claude/settings.json)" ] || fail "case z: the tracked file must still be clean after the refusal"
+echo "ok: case z1 — a tracked settings file is refused before any write (exit 2, names the item and the file)"
+
+mkTargetZ untracked 0
+runEnsureZ untracked --yes
+[ "$rcZ" -eq 0 ] || fail "case z: an untracked settings file should be written (got rc=$rcZ): $outZ"
+[ "$(cat "$work/log-z-untracked.txt")" = "red-item" ] || fail "case z: the writer should run once for an untracked file (log: $(cat "$work/log-z-untracked.txt"))"
+grepq "$(cat "$work/target-z-untracked/.claude/settings.json")" -F 'wired' || fail "case z: the untracked settings file should be written"
+! grepq "$outZ" -F 'tracked settings file' || fail "case z: no tracked-file warning for an untracked file (got: $outZ)"
+echo "ok: case z2 — an untracked settings file is written as before"
+
+mkTargetZ flag 1
+runEnsureZ flag --yes --write-tracked
+[ "$rcZ" -eq 0 ] || fail "case z: --write-tracked should allow the write (got rc=$rcZ): $outZ"
+[ "$(cat "$work/log-z-flag.txt")" = "red-item" ] || fail "case z: the writer should run with --write-tracked (log: $(cat "$work/log-z-flag.txt"))"
+grepq "$outZ" -F 'WARNING' || fail "case z: a written tracked file must be reported (got: $outZ)"
+grepq "$outZ" -F '.claude/settings.json' || fail "case z: the warning should name the file (got: $outZ)"
+[ -n "$(zgit "$work/target-z-flag" status --porcelain -- .claude/settings.json)" ] || fail "case z: the tracked file should now show as modified"
+echo "ok: case z3 — --write-tracked writes the tracked file and warns that it is now modified"
+
+mkTargetZ dry 1
+runEnsureZ dry --dry-run
+[ "$rcZ" -eq 0 ] || fail "case z: --dry-run on a tracked file writes nothing and should not refuse (got rc=$rcZ): $outZ"
+grepq "$outZ" -F 'DRY:' || fail "case z: --dry-run should still print its plan (got: $outZ)"
+echo "ok: case z4 — --dry-run does not refuse on a tracked file"
+
+# a git failure that is not "tracked" or "untracked" refuses too
+gitErrBin="$work/git-err-bin"; mkdir -p "$gitErrBin"
+realGit=$(command -v git)
+cat > "$gitErrBin/git" <<SH
+#!/usr/bin/env bash
+case " \$* " in *" ls-files "*) echo "fatal: simulated git failure" >&2; exit 5 ;; esac
+exec "$realGit" "\$@"
+SH
+chmod +x "$gitErrBin/git"
+mkTargetZ giterr 0
+set +e
+outZ=$( cd "$work/target-z-giterr" && PATH="$gitErrBin:$PATH" HIMMELCTL_REPO_ROOT="$(winpath "$repoZ")" HIMMELCTL_CACHE_DIR="$(winpath "$work/cache-z-giterr")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$work/cache-z-giterr")-luna-config.json" HOME="$work/home" USERPROFILE="$(winpath "$work/home")" ENSURE_LOG="$(winpath "$work/log-z-giterr.txt")" \
+  "$node_bin" "$wizard" ensure --yes 2>&1 </dev/null ); rcZ=$?
+set -e
+[ "$rcZ" -eq 2 ] || fail "case z: a git failure while asking is-it-tracked should refuse, exit 2 (got rc=$rcZ): $outZ"
+[ ! -s "$work/log-z-giterr.txt" ] || fail "case z: no primitive may run after a git failure (log: $(cat "$work/log-z-giterr.txt"))"
+grepq "$outZ" -F 'red-item' || fail "case z: the git-failure refusal should list the item id (got: $outZ)"
+echo "ok: case z5 — a git error (rc other than 0/1) refuses instead of reading as untracked"
+
+# a project that is not a git repository at all is simply untracked
+mkdir -p "$work/target-z-nogit/.claude"; mkdir -p "$work/cache-z-nogit"
+write_cache "$work/cache-z-nogit/install-profile.json" adopter project none "" inline "" lean
+: > "$work/log-z-nogit.txt"
+runEnsureZ nogit --yes
+[ "$rcZ" -eq 0 ] || fail "case z: a settings file outside any git repo is untracked and should be written (got rc=$rcZ): $outZ"
+[ "$(cat "$work/log-z-nogit.txt")" = "red-item" ] || fail "case z: the writer should run outside a git repo (log: $(cat "$work/log-z-nogit.txt"))"
+echo "ok: case z6 — a project outside any git repository is written as before"
 echo "PASS"

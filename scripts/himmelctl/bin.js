@@ -337,6 +337,10 @@ options:
                           no-network path (local file wiring); refuse, with a
                           reason, every item that could fetch, build, install
                           or reindex. Not valid with --prune
+  --write-tracked        ensure: allow writing a settings file that git tracks
+                          (without it ensure refuses, naming the items and the
+                          file, so a repo's committed settings are never
+                          changed unasked)
   --with-models          deps upgrade: pull qmd's embedding/rerank models
                           (~2.1 GB) non-interactively, without the prompt
   -h, --help             show this help`;
@@ -358,7 +362,7 @@ const ALLOWED_OPTIONS = {
   report: ['items', 'json', 'deep'],
   // the config UI server.
   ui: ['port', 'allowAgentSession', 'readOnly', 'agui', 'service', 'dryRun'],
-  ensure: ['items', 'profile', 'yes', 'dryRun', 'prune', 'noNetwork'],
+  ensure: ['items', 'profile', 'yes', 'dryRun', 'prune', 'noNetwork', 'writeTracked'],
   // `scope` takes its OWN positional verbs/targets (set|get|status, then
   // project|user for set), parsed in parseArgs's scope cases, not as --flags.
   // --yes/--dry-run apply to `scope set` (get/status are pure reads that
@@ -397,6 +401,7 @@ const OPTION_FLAGS = {
   lanes: '--lanes', withCodex: '--with-codex', withHermes: '--with-hermes',
   prune: '--prune',
   noNetwork: '--no-network',
+  writeTracked: '--write-tracked',
   preset: '--preset',
   purgeState: '--purge-state',
   port: '--port',
@@ -410,6 +415,7 @@ const OPTION_DEFAULTS = {
   withModels: false,
   lanes: null, withCodex: false, withHermes: false,
   prune: false,
+  writeTracked: false,
   preset: null,
   purgeState: false,
   port: null,
@@ -449,6 +455,7 @@ function parseArgs(argv) {
     withHermes: false, // install: --with-hermes (opt-in lane)
     prune: false,      // ensure: --prune (opt-in: disable/unwire candidates require this)
     noNetwork: false,  // ensure: --no-network (only manifest-declared local paths)
+    writeTracked: false, // ensure: --write-tracked (allow writing a settings file git tracks)
     preset: null,      // gaps: --preset <name> (null = default 'operator' reference)
     purgeState: false, // uninstall: --purge-state (also remove operator state; default keeps it)
     port: null,        // ui: --port N (null = ephemeral)
@@ -774,6 +781,9 @@ function parseArgs(argv) {
         break;
       case '--no-network':
         args.noNetwork = true;
+        break;
+      case '--write-tracked':
+        args.writeTracked = true;
         break;
       case '--preset':
         args.preset = argv[++i];
@@ -2885,6 +2895,54 @@ function isStampedLunaVault(vaultPath) {
 function settingsPathForScope(scope) {
   if (scope === 'user') return path.join(process.env.HOME || os.homedir(), '.claude', 'settings.json');
   return path.join(process.cwd(), '.claude', 'settings.json');
+}
+
+// Whether git tracks `file`: 'tracked' (ls-files rc 0), 'untracked' (rc 1, or
+// not inside a repository, or git is not installed at all) or 'unknown' (any
+// other git failure), which callers treat as tracked.
+function settingsTrackedState(file) {
+  let dir = path.dirname(file);
+  while (!fs.existsSync(dir) && path.dirname(dir) !== dir) dir = path.dirname(dir);
+  const r = spawnSync('git', ['-C', dir, 'ls-files', '--error-unmatch', '--', file], { encoding: 'utf8' });
+  if (r.error) return r.error.code === 'ENOENT' ? 'untracked' : 'unknown';
+  if (r.status === 0) return 'tracked';
+  if (r.status === 1) return 'untracked';
+  return /not a git repository/i.test(r.stderr || '') ? 'untracked' : 'unknown';
+}
+
+// The primitives behind these install/unwire types write the scope's
+// settings.json from a child process (adopt.sh, wire-*.sh, install-plugins.sh).
+// guardrail-block-global writes the operator's global file instead.
+function writesScopeSettings(item) {
+  const d = item.install || item.unwire;
+  if (!d) return false;
+  return d.type === 'adopt' || d.type === 'plugins' || (d.type === 'wire' && d.target !== 'guardrail-block-global');
+}
+
+// null when ensure may go ahead; else the refusal text. Run BEFORE any item,
+// since the writes happen in child processes himmelctl cannot interleave with.
+function trackedSettingsRefusal(scope, writerIds, args) {
+  if (writerIds.length === 0 || args.writeTracked) return null;
+  const file = settingsPathForScope(scope);
+  const state = settingsTrackedState(file);
+  if (state === 'untracked') return null;
+  const why = state === 'tracked'
+    ? `refusing to modify the git-tracked settings file ${file}`
+    : `cannot tell whether ${file} is tracked by git (git ls-files failed), so refusing to modify it`;
+  return `himmelctl: ${why}\n  item(s) that would write it: ${writerIds.join(', ')}\n  re-run with --write-tracked to allow the change, then review it with git diff`;
+}
+
+// After a write: a tracked settings file that now differs from git is a repo
+// diff the operator did not necessarily expect.
+function warnTrackedSettingsModified(scope) {
+  const file = settingsPathForScope(scope);
+  if (settingsTrackedState(file) !== 'tracked') return;
+  let dir = path.dirname(file);
+  while (!fs.existsSync(dir) && path.dirname(dir) !== dir) dir = path.dirname(dir);
+  const r = spawnSync('git', ['-C', dir, 'status', '--porcelain', '--untracked-files=no', '--', file], { encoding: 'utf8' });
+  if (r.status === 0 && (r.stdout || '').trim() !== '') {
+    console.error(`himmelctl: WARNING: the tracked settings file ${file} is now modified in git — review it with git diff before committing`);
+  }
 }
 
 // Fail before the install/wire/plugin steps when their target settings file
@@ -7093,6 +7151,20 @@ async function cmdEnsure(args) {
     return 2;
   }
 
+  // A settings file git tracks is repo content: refuse before any item can
+  // write it, unless --write-tracked says that diff is wanted. --dry-run
+  // writes nothing.
+  const trackedWriterIds = towardEnabled.filter(writesScopeSettings)
+    .concat(pruneConfirmed ? towardDisabled.filter((i) => i.removable === 'per-item' && i.unwire && writesScopeSettings({ unwire: i.unwire })) : [])
+    .map((i) => i.id);
+  if (!args.dryRun) {
+    const refusal = trackedSettingsRefusal(scope, trackedWriterIds, args);
+    if (refusal) {
+      console.error(refusal);
+      return 2;
+    }
+  }
+
   // Step 3: SPLIT consent (Fix B1). Converge and disable are
   // different risk classes (converge only ever ADDS wiring; disable REMOVES
   // it), so disables NEVER ride the converge Y/n: they require their own
@@ -7298,6 +7370,7 @@ async function cmdEnsure(args) {
       failed = result.failed;
     }
   }
+  if (!args.dryRun && trackedWriterIds.length > 0) warnTrackedSettingsModified(scope);
 
   // a --dry-run full-offboard-only blocker (pushed into
   // disableErrors above regardless of --dry-run) must NOT be silently
