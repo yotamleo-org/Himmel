@@ -573,6 +573,80 @@ describe('C0 credentials and port', () => {
   });
 });
 
+// C0s cycle 2: the launcher's host-only credential initialization. A FAKE primary checkout (a client.js that
+// answers like the real client's baseUrl / projectKey / authHeader) stands in for the configuration and secrets
+// flow, so no real config, keyring or secret is read; the sentinel is hunted for in every channel but the private file.
+describe('C0s2 credentials init', () => {
+  const SENTINEL = 'fake-c0s2-init-token-5d1b7c9e';
+  const fakePrimary = (client) => {
+    const s = scratch();
+    const dist = join(s.root, 'primary', 'scripts', 'jira', 'dist');
+    mkdirSync(dist, { recursive: true });
+    writeFileSync(join(dist, 'index.js'), '// fake primary CLI\n');
+    writeFileSync(join(dist, 'client.js'), client);
+    return { ...s, cli: join(dist, 'index.js'), out: join(s.attempt, 'credentials.json') };
+  };
+  const goodClient = (url = 'http://127.0.0.1:9') => `export const baseUrl = () => '${url}';
+export const projectKey = () => 'FIXT';
+export function authHeader() { return 'Basic ' + Buffer.from('fixture@example.invalid:${SENTINEL}').toString('base64'); }
+`;
+  const runCli = (args) => new Promise((done) => {
+    execFile(process.execPath, [join(HERE, 'readiness-tools.mjs'), ...args], { env: { PATH: process.env.PATH, HOME: tmpdir() } }, (err, stdout, stderr) => {
+      done({ code: err ? err.code : 0, stdout: String(stdout), stderr: String(stderr) });
+    });
+  });
+
+  test('the client flow yields exactly the four fields in a private 0600 file; the CLI prints nothing', async () => {
+    const f = fakePrimary(goodClient());
+    const r = await runCli(['init-credentials', f.cli, f.out]);
+    assert.equal(r.code, 0);
+    assert.equal(r.stdout, '');
+    assert.equal(r.stderr, '');
+    assert.equal(statSync(f.out).mode & 0o777, 0o600);
+    assert.deepEqual(JSON.parse(readFileSync(f.out, 'utf8')), { api_token: SENTINEL, base_url: 'http://127.0.0.1:9', email: 'fixture@example.invalid', project: 'FIXT' });
+    // and the very reader the adapter uses accepts it
+    const { readCredentials } = await load();
+    assert.equal((await readCredentials(f.out)).api_token, SENTINEL);
+  });
+
+  test('every refusal says which rule failed and never prints a credential value', async () => {
+    const cases = [
+      ['a relative primary CLI', () => ['init-credentials', 'scripts/jira/dist/index.js', fakePrimary(goodClient()).out]],
+      ['a primary CLI that is not index.js', () => { const f = fakePrimary(goodClient()); return ['init-credentials', join(f.root, 'primary', 'scripts', 'jira', 'dist', 'client.js'), f.out]; }],
+      ['a primary CLI that does not exist', () => { const f = fakePrimary(goodClient()); return ['init-credentials', join(f.root, 'nope', 'index.js'), f.out]; }],
+      ['a client with no complete configuration', () => { const f = fakePrimary(`export const baseUrl = () => { throw new Error('JIRA_BASE_URL is not set'); };\nexport const projectKey = () => 'FIXT';\nexport const authHeader = () => 'x';\n`); return ['init-credentials', f.cli, f.out]; }],
+      ['a client whose authorization is not Basic', () => { const f = fakePrimary(goodClient().replace("'Basic '", "'Bearer '")); return ['init-credentials', f.cli, f.out]; }],
+      ['a client module that cannot be loaded', () => { const f = fakePrimary('this is not javascript ((('); return ['init-credentials', f.cli, f.out]; }],
+      ['a base URL with userinfo (the credential validator refuses it)', () => { const f = fakePrimary(goodClient('http://user:pw@127.0.0.1:9')); return ['init-credentials', f.cli, f.out]; }],
+      ['an attempt directory that is not mode 0700', () => { const f = fakePrimary(goodClient()); chmodSync(f.attempt, 0o755); return ['init-credentials', f.cli, f.out]; }],
+      ['a credential path that already exists (exclusive create)', () => { const f = fakePrimary(goodClient()); writeFileSync(f.out, 'old', { mode: 0o600 }); return ['init-credentials', f.cli, f.out]; }],
+      ['a credential path in a missing directory', () => { const f = fakePrimary(goodClient()); return ['init-credentials', f.cli, join(f.root, 'no-dir', 'credentials.json')]; }],
+      ['a wrong operand count', () => ['init-credentials', 'only-one']],
+      ['an unknown verb', () => ['serve']],
+    ];
+    for (const [label, build] of cases) {
+      const r = await runCli(build());
+      assert.equal(r.code, 2, label);
+      assert.equal(r.stdout, '', label);
+      assert.ok(!r.stderr.includes(SENTINEL) && !r.stderr.includes('fixture@example.invalid'), `${label}: a credential value reached stderr`);
+      assert.match(r.stderr, /readiness-tools|usage:/, label);
+    }
+  });
+
+  test('a refused initialization leaves no credential file behind', async () => {
+    const f = fakePrimary(goodClient().replace("'Basic '", "'Bearer '"));
+    await runCli(['init-credentials', f.cli, f.out]);
+    assert.equal(existsSync(f.out), false);
+  });
+
+  test('the library function accepts an injected client loader and still validates', async () => {
+    const { initCredentials } = await load();
+    const f = fakePrimary(goodClient());
+    await initCredentials(f.cli, f.out, { importClient: async () => ({ baseUrl: () => 'http://127.0.0.1:7', projectKey: () => 'FIXT', authHeader: () => `Basic ${Buffer.from(`a@b.invalid:${SENTINEL}`).toString('base64')}` }) });
+    assert.equal(JSON.parse(readFileSync(f.out, 'utf8')).base_url, 'http://127.0.0.1:7');
+  });
+});
+
 // A harness self-check that is NOT part of the named group: the fixture itself must work, or a RED
 // above could be a broken harness rather than a missing product. Separate so it can be run alone.
 describe('C0 fixture sanity', () => {

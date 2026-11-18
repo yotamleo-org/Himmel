@@ -6048,8 +6048,8 @@ contains "9564-c ... and names the missing record" "$needs_out" "no spec-review 
 # final claude argv for the readiness role. Its real exec and its validation-only render (an env
 # switch that prints the same array NUL-terminated and execs nothing) come from one construction, so
 # every case below drives the REAL shim against a recording stub: the stub is the seam, the shim and
-# the profile wrapper are not stubbed. headed-arm-worker.sh is NOT wired to this yet (cycle 2); this
-# proves only the argv owner. Each case runs under `env -i`, so no ambient role marker leaks in.
+# the profile wrapper are not stubbed. This section proves the argv owner alone (the wrapper's own use of it is
+# 17s below). Each case runs under `env -i`, so no ambient role marker leaks in.
 RL="$tmp/rl"; mkdir -p "$RL/home/.claude" "$RL/bin" "$RL/other"
 rl_stub="$RL/bin/claude"
 # shellcheck disable=SC2016 # literal $@ and $0 belong to the stub script, not this one
@@ -6060,9 +6060,14 @@ rl_settings="$RL/settings.json"
 rl_grants='"mcp__readiness__inspect","mcp__readiness__act"'
 rl_deny='"Agent","Artifact","Bash","Edit","Glob","Grep","NotebookEdit","Read","WebFetch","WebSearch","Write"'
 printf '{"enabledPlugins":{},"permissions":{"allow":[%s],"deny":[%s]}}\n' "$rl_grants" "$rl_deny" > "$rl_settings"
-rl_mcp="$RL/mcp.json"
-printf '{"mcpServers":{"readiness":{"command":"node","args":["%s/readiness-tools.mjs"]}}}\n' "$HERE" > "$rl_mcp"
 rl_sid="11111111-2222-4333-8444-555555555555"
+# the --session-id is bound to the trusted private startup config: the adapter starts against one private file
+# (mode 0600, in a mode-0700 directory) whose session scope is the minted id
+rl_att="$RL/attempt"; mkdir -p "$rl_att"; chmod 700 "$rl_att"
+printf '{"schema":"readiness-startup-v1","lane":"native","session_scope":"%s"}\n' "$rl_sid" > "$rl_att/startup.json"; chmod 600 "$rl_att/startup.json"
+rl_adapter="$(cd "$HERE" && pwd -P)/readiness-tools.mjs"
+rl_mcp="$RL/mcp.json"
+printf '{"mcpServers":{"readiness":{"command":"node","args":["%s","--startup-config","%s/startup.json"]}}}\n' "$rl_adapter" "$rl_att" > "$rl_mcp"
 rl_caller_default=(--model claude-sonnet-5-5 --autocompact 200000 -n PROJ-9999-readiness "load doc and continue")
 rl_tail_default='[--model][claude-sonnet-5-5][--autocompact][200000][-n][PROJ-9999-readiness][load doc and continue]'
 # rl_run [ENV=val ...] [-- caller argv ...]: later ENV=val wins; an empty value reads as unset.
@@ -6170,6 +6175,44 @@ printf '{"mcpServers":{}}\n' > "$RL/mcp-empty.json"
 rl_refuse "an empty MCP config (the profile's static one)" WORKER_SESSION_PROFILE_MCP_CONFIG="$RL/mcp-empty.json"
 printf 'not json\n' > "$RL/mcp-bad.json"
 rl_refuse "an unparseable MCP config" WORKER_SESSION_PROFILE_MCP_CONFIG="$RL/mcp-bad.json"
+# the startup binding: the generated server args name exactly the adapter and ONE private startup config that holds the minted id
+rl_bind() { # rl_bind <file> <jq filter over the MCP config>
+  jq "$2" "$rl_mcp" > "$1"
+}
+rl_bind "$RL/mcp-noargs.json" 'del(.mcpServers.readiness.args)'
+rl_refuse "an MCP server with no startup config argument" WORKER_SESSION_PROFILE_MCP_CONFIG="$RL/mcp-noargs.json"
+rl_bind "$RL/mcp-extra-arg.json" '.mcpServers.readiness.args += ["--other"]'
+rl_refuse "an MCP server with an extra argument" WORKER_SESSION_PROFILE_MCP_CONFIG="$RL/mcp-extra-arg.json"
+rl_bind "$RL/mcp-flag.json" '.mcpServers.readiness.args[1] = "--config"'
+rl_refuse "an MCP server whose flag is not --startup-config" WORKER_SESSION_PROFILE_MCP_CONFIG="$RL/mcp-flag.json"
+rl_bind "$RL/mcp-adapter.json" '.mcpServers.readiness.args[0] = "/bin/other.mjs"'
+rl_refuse "an MCP server that is not the readiness adapter" WORKER_SESSION_PROFILE_MCP_CONFIG="$RL/mcp-adapter.json"
+rl_bind "$RL/mcp-rel.json" '.mcpServers.readiness.args[2] = "attempt/startup.json"'
+rl_refuse "a relative startup config path" WORKER_SESSION_PROFILE_MCP_CONFIG="$RL/mcp-rel.json"
+rl_bind "$RL/mcp-name.json" '.mcpServers.readiness.args[2] = "'"$rl_att"'/other.json"'
+rl_refuse "a startup config not named startup.json" WORKER_SESSION_PROFILE_MCP_CONFIG="$RL/mcp-name.json"
+rl_bind "$RL/mcp-missing.json" '.mcpServers.readiness.args[2] = "'"$RL"'/no-attempt/startup.json"'
+rl_refuse "a missing private startup config" WORKER_SESSION_PROFILE_MCP_CONFIG="$RL/mcp-missing.json"
+rl_refuse "a minted id that differs from the startup config's session scope" WORKER_SESSION_ID="99999999-2222-4333-8444-555555555555"
+mkdir -p "$RL/attempt-open"; chmod 755 "$RL/attempt-open"; cp "$rl_att/startup.json" "$RL/attempt-open/startup.json"; chmod 600 "$RL/attempt-open/startup.json"
+rl_bind "$RL/mcp-opendir.json" '.mcpServers.readiness.args[2] = "'"$RL"'/attempt-open/startup.json"'
+rl_refuse "a startup config in a directory that is not mode 0700" WORKER_SESSION_PROFILE_MCP_CONFIG="$RL/mcp-opendir.json"
+mkdir -p "$RL/attempt-mode"; chmod 700 "$RL/attempt-mode"; cp "$rl_att/startup.json" "$RL/attempt-mode/startup.json"; chmod 644 "$RL/attempt-mode/startup.json"
+rl_bind "$RL/mcp-mode.json" '.mcpServers.readiness.args[2] = "'"$RL"'/attempt-mode/startup.json"'
+rl_refuse "a startup config that is not mode 0600" WORKER_SESSION_PROFILE_MCP_CONFIG="$RL/mcp-mode.json"
+mkdir -p "$RL/attempt-link"; chmod 700 "$RL/attempt-link"; ln -sf "$rl_att/startup.json" "$RL/attempt-link/startup.json"
+rl_bind "$RL/mcp-link.json" '.mcpServers.readiness.args[2] = "'"$RL"'/attempt-link/startup.json"'
+rl_refuse "a startup config that is a symlink" WORKER_SESSION_PROFILE_MCP_CONFIG="$RL/mcp-link.json"
+mkdir -p "$RL/attempt-lane"; chmod 700 "$RL/attempt-lane"
+printf '{"schema":"readiness-startup-v1","lane":"claudex","session_scope":"%s"}\n' "$rl_sid" > "$RL/attempt-lane/startup.json"; chmod 600 "$RL/attempt-lane/startup.json"
+rl_bind "$RL/mcp-lane.json" '.mcpServers.readiness.args[2] = "'"$RL"'/attempt-lane/startup.json"'
+rl_refuse "a startup config for another lane" WORKER_SESSION_PROFILE_MCP_CONFIG="$RL/mcp-lane.json"
+mkdir -p "$RL/attempt-schema"; chmod 700 "$RL/attempt-schema"
+printf '{"schema":"other","lane":"native","session_scope":"%s"}\n' "$rl_sid" > "$RL/attempt-schema/startup.json"; chmod 600 "$RL/attempt-schema/startup.json"
+rl_bind "$RL/mcp-schema.json" '.mcpServers.readiness.args[2] = "'"$RL"'/attempt-schema/startup.json"'
+rl_refuse "a startup config of another schema" WORKER_SESSION_PROFILE_MCP_CONFIG="$RL/mcp-schema.json"
+printf 'not json\n' > "$RL/attempt-schema/startup.json"
+rl_refuse "an unparseable startup config" WORKER_SESSION_PROFILE_MCP_CONFIG="$RL/mcp-schema.json"
 printf '{"permissions":{"allow":[%s,"Bash(bash scripts/x.sh:*)"],"deny":[%s]}}\n' "$rl_grants" "$rl_deny" > "$RL/set-extra.json"
 rl_refuse "settings with an extra allow rule (a gate rule)" WORKER_SESSION_PROFILE_SETTINGS="$RL/set-extra.json"
 printf '{"permissions":{"allow":["mcp__readiness__inspect"],"deny":[%s]}}\n' "$rl_deny" > "$RL/set-one.json"
@@ -6213,6 +6256,163 @@ env -i PATH="$RL/bin:$PATH" HOME="$RL/home" WORKER_SESSION_PROFILE_READINESS=1 \
   WORKER_SESSION_PROFILE_SETTINGS="$rl_settings" WORKER_SESSION_PROFILE_MCP_CONFIG="$rl_mcp" WORKER_SESSION_ID="$rl_sid" \
   bash "$SHIM" "${rl_caller_default[@]}" >/dev/null 2>&1 || true
 check "readiness exec with a PATH claude: the same array reaches the binary" "$(cat "$rl_rec" 2>/dev/null || true)" "$rl_pre$rl_tail_default"
+
+# --- 17s. The readiness launch (C0s cycle 2): headed-arm-worker.sh --profile readiness is the ONE launcher of the
+# readiness role. It mints the actual session id BEFORE any private config or lease, writes the private startup
+# config (the --session-id binding the launcher render checks), validates the final argv with the REAL launcher's
+# NUL-preserving render and the C0p effectiveness reader BEFORE it acquires, then acquires ON BEHALF (registering
+# nothing for the launcher's own session) and hands the token over through a separate private transport file.
+# Every case runs the REAL wrapper, headed-arm.sh, profile resolver, launcher shim and queue-lock.sh against a fake
+# HOME, fake queue root, fake runtime dir and a stub konsole: no native claude, provider, VM, real config or secret.
+RS="$tmp/rs"; mkdir -p "$RS/hdir/u/r" "$RS/home/.claude" "$RS/repo" "$RS/bin" "$RS/primary/scripts/jira/dist" "$RS/primary-broken/scripts/jira/dist"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$RS/bin/claude"; chmod 755 "$RS/bin/claude"
+rs_hook='{"hooks":{"PostToolUse":[{"hooks":[{"type":"command","command":"bash scripts/handover/queue-lock.sh self-heartbeat"}]}]}}'
+printf '%s\n' "$rs_hook" > "$RS/home/.claude/settings.json"
+mkdir -p "$RS/home-nohook/.claude" "$RS/home-off/.claude" "$RS/home-bad/.claude"
+printf '{"hooks":{}}\n' > "$RS/home-nohook/.claude/settings.json"
+printf '{"disableAllHooks":true,"hooks":{"PostToolUse":[{"hooks":[{"type":"command","command":"bash scripts/handover/queue-lock.sh self-heartbeat"}]}]}}\n' > "$RS/home-off/.claude/settings.json"
+printf 'not json\n' > "$RS/home-bad/.claude/settings.json"
+RS_QL="$(cd "$HERE/.." && pwd -P)/queue-lock.sh"
+RS_SECRET="FAKE-SENTINEL-TOKEN-0000"
+printf '%s\n' "export const baseUrl = () => 'http://127.0.0.1:9';" "export const projectKey = () => 'FIXT';" \
+  "export function authHeader() { return 'Basic ' + Buffer.from('fixture@example.invalid:$RS_SECRET').toString('base64'); }" > "$RS/primary/scripts/jira/dist/client.js"
+printf '// fake primary CLI\n' > "$RS/primary/scripts/jira/dist/index.js"
+printf '%s\n' "export const baseUrl = () => { throw new Error('JIRA_BASE_URL is not set'); };" "export const projectKey = () => 'FIXT';" "export const authHeader = () => 'Basic x';" > "$RS/primary-broken/scripts/jira/dist/client.js"
+printf '// fake primary CLI\n' > "$RS/primary-broken/scripts/jira/dist/index.js"
+rs_n=0
+RS_FLAGS=()
+RS_PROFILE=readiness
+RS_HOME="$RS/home"
+RS_DOC_KIND=plain
+rs_status() { env HANDOVER_DIR="$RS/hdir" XDG_RUNTIME_DIR="$RS_D/xdg" bash "$RS_QL" status "$RS_DOC" 2>/dev/null | tail -n 1; }
+rs_attempts() { find "$RS_D/xdg/himmel-readiness" -mindepth 1 2>/dev/null | wc -l | tr -d ' '; }
+rs_lockdir() { find "$RS/hdir/.locks/queue" -maxdepth 1 -name "*$(basename "$RS_DOC" .md | tr -c 'A-Za-z0-9_\n-' '-')*.lock" 2>/dev/null | head -n 1; }
+# rs_launch [ENV=val ...]: one real launch. Sets RS_D (stub + run dir), RS_DOC, RS_RC, RS_SID (the id the launcher was handed), RS_A (its attempt dir).
+rs_launch() {
+  rs_n=$((rs_n + 1))
+  RS_D="$RS/c$rs_n"; RS_DOC="$RS/hdir/u/r/readiness-v1.$rs_n.0.md"; RS_NAME="PROJ-9999-rs$rs_n"
+  mk_launch_stubs "$RS_D" "$RS_NAME"; mkdir -p "$RS_D/xdg"; chmod 700 "$RS_D/xdg"
+  case "$RS_DOC_KIND" in
+    symlink) fx_brief "# target $rs_n" > "$RS/hdir/u/r/target-$rs_n.md"; ln -s "$RS/hdir/u/r/target-$rs_n.md" "$RS_DOC" ;;
+    nofm) printf '# no front matter\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n' > "$RS_DOC" ;;
+    oddname) RS_DOC="$RS/hdir/u/r/not-a-readiness-doc-$rs_n.md"; fx_brief "# odd name $rs_n" > "$RS_DOC" ;;
+    *) fx_brief "# readiness v1.$rs_n.0 fixture" > "$RS_DOC" ;;
+  esac
+  RS_RC=0
+  env IMPL_GUARD_OK='' HIMMEL_CONSOLE_LEG='' HOME="$RS_HOME" CLAUDE_CONFIG_DIR="$RS_HOME/.claude" XDG_RUNTIME_DIR="$RS_D/xdg" HANDOVER_DIR="$RS/hdir" \
+    CLAUDE_CODE_SESSION_ID="launcher-scope-$rs_n" HEADED_ARM_WORKER_CLAUDE_BIN="$RS/bin/claude" \
+    HEADED_ARM_WORKER_TARGET="$HEADED_ARM" HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
+    KONSOLE_CMD="$RS_D/konsole" PGREP_CMD="$RS_D/pgrep" WORKER_SESSION_REPO="$RS/repo" HEADED_ARM_LOCK_DIR="$RS_D/locks" HEADED_ARM_PROC="$RS_D/proc" \
+    RS_QL="$RS_QL" "$@" bash "$SCRIPT" ${RS_FLAGS[@]+"${RS_FLAGS[@]}"} --profile "$RS_PROFILE" "$RS_NAME" "$RS_DOC" "$RS_D/signal-never" "$PAST" "$RS_D/log" claude-sonnet-5-5 > "$RS_D/out" 2>&1 || RS_RC=$?
+  [ -z "${RS_DEBUG:-}" ] || { echo "--- rs$rs_n rc=$RS_RC"; cat "$RS_D/out"; }
+  [ "$RS_RC" -ne 0 ] || wait_record "$RS_D" || true
+  RS_SID="$(grep -oE 'WORKER_SESSION_ID=[0-9a-f-]{36}' "$RS_D/record" 2>/dev/null | head -n 1 | cut -d= -f2)"
+  RS_A="$RS_D/xdg/himmel-readiness/$RS_SID"
+}
+rs_decode() { local el; while IFS= read -r -d '' el; do printf '[%s]' "$el"; done; printf '\n'; }
+# rs_refused <label>: the launch was refused and NOTHING was acquired, written to the queue, or launched.
+rs_refused() {
+  check "17s refuses $1: non-zero exit" "$([ "$RS_RC" -ne 0 ] && echo yes || echo no)" "yes"
+  check "17s refuses $1: never reached konsole" "$([ -e "$RS_D/record" ] && echo launched || echo no)" "no"
+  check "17s refuses $1: the queue lock is still free (nothing acquired)" "$(rs_status)" "free"
+  check "17s refuses $1: no private attempt directory is left behind" "$(rs_attempts)" "0"
+  check "17s refuses $1: no lock directory was created" "$([ -n "$(rs_lockdir)" ] && echo yes || echo no)" "no"
+}
+
+# the success path
+rs_launch
+rs_tok="$(cat "$RS_A/lease-token" 2>/dev/null || true)"
+rs_set="$RS_D/$RS_NAME.leg-settings.json"; rs_mcp="$RS_D/$RS_NAME.leg-mcp.json"
+check "17s launch: exit 0 and the launch reached konsole" "$RS_RC:$([ -s "$RS_D/record" ] && echo yes)" "0:yes"
+contains "17s launch: the launcher env carries the readiness role marker" "$(cat "$RS_D/record")" "WORKER_SESSION_PROFILE_READINESS=1"
+check "17s launch: the minted session id is a uuid" "$(printf '%s' "$RS_SID" | grep -cE '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')" "1"
+not_contains "17s launch: no Remote Control name (the readiness role is never remote)" "$(cat "$RS_D/record")" "WORKER_SESSION_REMOTE_CONTROL="
+check "17s launch: the generated settings are exactly the four allowed keys, no hooks, exactly the two grants" \
+  "$(jq -c '[(keys | sort), .permissions.allow, (.permissions | keys | sort)]' "$rs_set" 2>/dev/null || true)" \
+  '[["enabledPlugins","permissions","skillListingBudgetFraction","skillOverrides"],["mcp__readiness__inspect","mcp__readiness__act"],["allow","deny"]]'
+check "17s launch: the strict MCP config is exactly the one readiness adapter bound to the private startup config" \
+  "$(jq -c . "$rs_mcp" 2>/dev/null || true)" \
+  "$(jq -cn --arg a "$(cd "$HERE" && pwd -P)/readiness-tools.mjs" --arg s "$RS_A/startup.json" '{mcpServers:{readiness:{command:"node",args:[$a,"--startup-config",$s]}}}')"
+check "17s launch: the private attempt directory is mode 0700 and holds only startup.json and the lease transport (0600)" \
+  "$(stat -c '%a' "$RS_A" 2>/dev/null):$(find "$RS_A" -mindepth 1 -printf '%f\n' 2>/dev/null | sort | tr '\n' ' '):$(stat -c '%a' "$RS_A/startup.json" "$RS_A/lease-token" 2>/dev/null | tr '\n' ' ')" "700:lease-token startup.json :600 600 "
+check "17s launch: the startup config carries the minted id as its immutable session scope, the canonical doc and no token" \
+  "$(jq -c '[.schema, .session_scope, .version, .doc, .lane, .model, .port, .queue_lock, .runtime_dir, .handover_dir, (.attempt_id | length > 0), (keys | join(","))]' "$RS_A/startup.json" 2>/dev/null || true)" \
+  "$(jq -cn --arg sid "$RS_SID" --arg ver "v1.$rs_n.0" --arg doc "$RS_DOC" --arg ql "$RS_QL" --arg xdg "$RS_D/xdg" --arg hd "$RS/hdir" '["readiness-startup-v1",$sid,$ver,$doc,"native","claude-sonnet-5-5",{kind:"copy"},$ql,$xdg,$hd,true,"attempt_id,doc,handover_dir,lane,model,port,queue_lock,runtime_dir,schema,session_scope,version"]')"
+rs_render="$(env -i PATH="$PATH" HOME="$RS/home" WORKER_SESSION_CLAUDE_BIN="$RS/bin/claude" WORKER_SESSION_PROFILE_READINESS=1 WORKER_SESSION_RENDER_ARGV=1 \
+  WORKER_SESSION_PROFILE_SETTINGS="$rs_set" WORKER_SESSION_PROFILE_MCP_CONFIG="$rs_mcp" WORKER_SESSION_ID="$RS_SID" \
+  bash "$SHIM" --model claude-sonnet-5-5 --autocompact 200000 -n "$RS_NAME" "load $RS_DOC and continue" 2>/dev/null | rs_decode)"
+contains "17s launch: the REAL launcher render accepts the generated files and binds exactly the minted id" "$rs_render" "[--session-id][$RS_SID]"
+check "17s launch: the lock is held on behalf (a fresh holder exists, nobody registered)" "$(rs_status)" "status: FRESH"
+check "17s launch: the lock owner is the transported token" "$(jq -r .session "$(rs_lockdir)/owner.json" 2>/dev/null || true)" "$rs_tok"
+check "17s launch: the token is non-empty" "$([ -n "$rs_tok" ] && echo yes)" "yes"
+check "17s launch: nothing is registered for the launcher's own session scope (no token file, no sidecar)" "$(find "$RS_D/xdg/himmel-queue-lock" -type f 2>/dev/null | wc -l | tr -d ' ')" "0"
+check "17s launch: no liveness marker was written for the unadopted lease" "$([ -e "$(rs_lockdir)/liveness" ] && echo yes || echo no)" "no"
+check "17s launch: the token appears only in its transport and the lock's owner record" \
+  "$(grep -rlF -- "$rs_tok" "$RS_D" "$RS/hdir" "$tmp/pinned-himmelctl-cache" 2>/dev/null | sed 's|.*/||' | sort | tr '\n' ' ')" "lease-token owner owner.json "
+check "17s launch: the minted id is recorded in the doc front matter" "$(grep -c "^session_ids:.*$RS_SID" "$RS_DOC")" "1"
+check "17s copy port: never creates a credentials file" "$(find "$RS_D/xdg/himmel-readiness" -name credentials.json 2>/dev/null | wc -l | tr -d ' ')" "0"
+
+# every unsupported shape refuses BEFORE it acquires
+for rs_shape in "lane claudex|--lane claudex" "lane openrouter|--lane openrouter" "lane deepseek|--lane deepseek" "a consult|--consult" "a judge|--judge" "a relay|--relay" "headless|--headless" "no-profile|--no-profile"; do
+  # shellcheck disable=SC2206 # the flag spelling splits into its words on purpose
+  RS_FLAGS=(${rs_shape#*|}); rs_launch; rs_refused "${rs_shape%%|*}"
+done
+RS_FLAGS=()
+RS_PROFILE="readiness,worker-impl"; rs_launch; rs_refused "a composed profile list"
+RS_PROFILE="worker-impl"; rs_launch
+check "17s a generic profile launch is unchanged: launched, no readiness marker, no attempt directory" "$RS_RC:$(grep -c 'WORKER_SESSION_PROFILE_READINESS' "$RS_D/record" 2>/dev/null || true):$(rs_attempts)" "0:0:0"
+RS_PROFILE=readiness
+rs_launch HEADED_ARM_WORKER_CLAUDE_BIN=relative/claude;   rs_refused "a relative binary (the real render refuses before the acquire)"
+rs_launch HEADED_ARM_WORKER_CLAUDE_BIN="$RS/bin/no-such"; rs_refused "a missing binary (the real render refuses before the acquire)"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$RS/bin/claude-codex"; chmod 755 "$RS/bin/claude-codex"
+rs_launch HEADED_ARM_WORKER_CLAUDE_BIN="$RS/bin/claude-codex"; rs_refused "a lane launcher binary (claude-codex)"
+RS_DOC_KIND=symlink; rs_launch; rs_refused "a doc that is a symlink"
+RS_DOC_KIND=nofm;    rs_launch; rs_refused "a doc with no front matter"
+RS_DOC_KIND=oddname; rs_launch; rs_refused "a doc not named readiness-<VERSION>.md"
+RS_DOC_KIND=plain
+
+# C0p: only an effective self-heartbeat wiring may acquire; ineffective AND unknown refuse before the acquire
+RS_HOME="$RS/home-nohook"; rs_launch; rs_refused "an ineffective self-heartbeat wiring (no hook)"
+RS_HOME="$RS/home-off";    rs_launch; rs_refused "an ineffective self-heartbeat wiring (disableAllHooks)"
+RS_HOME="$RS/home-bad";    rs_launch; rs_refused "an unknown self-heartbeat wiring (malformed layer)"
+RS_HOME="$RS/home"
+
+# the host-private Jira port: the credentials come only from the existing client flow, only into the private file
+rs_launch WORKER_SESSION_READINESS_PORT=jira WORKER_SESSION_READINESS_PRIMARY_CLI="$RS/primary/scripts/jira/dist/index.js"
+check "17s jira port: exit 0 and the credentials file is a private mode-0600 file in the 0700 attempt directory" \
+  "$RS_RC:$(stat -c '%a' "$RS_A" "$RS_A/credentials.json" 2>/dev/null | tr '\n' ' ')" "0:700 600 "
+check "17s jira port: the credentials file holds exactly the four resolved fields" \
+  "$(jq -c '[keys, .base_url, .project, .email, .api_token]' "$RS_A/credentials.json" 2>/dev/null || true)" \
+  "$(jq -cn --arg t "$RS_SECRET" '[["api_token","base_url","email","project"],"http://127.0.0.1:9","FIXT","fixture@example.invalid",$t]')"
+check "17s jira port: the startup config names the host-chosen port, the credentials path and the primary CLI" \
+  "$(jq -c '.port' "$RS_A/startup.json" 2>/dev/null || true)" \
+  "$(jq -cn --arg c "$RS_A/credentials.json" --arg p "$RS/primary/scripts/jira/dist/index.js" '{kind:"jira",credentials_path:$c,primary_cli:$p}')"
+check "17s jira port: the credential appears in the private credentials file only" \
+  "$(grep -rlF -- "$RS_SECRET" "$RS_D" "$RS/hdir" "$tmp/pinned-himmelctl-cache" 2>/dev/null | sed 's|.*/||' | sort | tr '\n' ' ')" "credentials.json "
+rs_launch WORKER_SESSION_READINESS_PORT=jira;                                                             rs_refused "the jira port with no primary CLI"
+rs_launch WORKER_SESSION_READINESS_PORT=jira WORKER_SESSION_READINESS_PRIMARY_CLI=relative/index.js;     rs_refused "the jira port with a relative primary CLI"
+rs_launch WORKER_SESSION_READINESS_PORT=jira WORKER_SESSION_READINESS_PRIMARY_CLI="$RS/primary-broken/scripts/jira/dist/index.js"; rs_refused "a jira port whose client cannot resolve its configuration"
+rs_launch WORKER_SESSION_READINESS_PORT=other;                                                            rs_refused "a port kind that is neither copy nor jira"
+
+# a failed hand-off after the acquire releases the launcher's OWN captured token, and never a successor's
+printf '%s\n' '#!/usr/bin/env bash' 'exit 5' > "$RS/fail-target.sh"; chmod 755 "$RS/fail-target.sh"
+rs_launch HEADED_ARM_WORKER_TARGET="$RS/fail-target.sh"
+check "17s failed hand-off: the wrapper returns the target's status" "$RS_RC" "5"
+check "17s failed hand-off: the launcher's own lease is released" "$(rs_status)" "free"
+check "17s failed hand-off: the private attempt directory (transport included) is removed" "$(rs_attempts)" "0"
+cat > "$RS/successor-target.sh" <<'SUCC_EOF'
+#!/usr/bin/env bash
+# a successor takes the lock between the launcher's acquire and its failure cleanup ($2 is the doc)
+tok="$(cat "$XDG_RUNTIME_DIR"/himmel-readiness/*/lease-token)"
+bash "$RS_QL" release "$2" "$tok" >/dev/null 2>&1
+bash "$RS_QL" acquire "$2" successor-token-for-test >/dev/null 2>&1
+exit 5
+SUCC_EOF
+chmod 755 "$RS/successor-target.sh"
+rs_launch HEADED_ARM_WORKER_TARGET="$RS/successor-target.sh"
+check "17s successor: the launcher cleanup never releases a successor's lock (it is still held by the successor)" \
+  "$(rs_status):$(jq -r .session "$(rs_lockdir)/owner.json" 2>/dev/null || true)" "status: FRESH:successor-token-for-test"
+check "17s successor: the launcher's own attempt directory is still removed" "$(rs_attempts)" "0"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then
