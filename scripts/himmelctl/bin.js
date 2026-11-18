@@ -2917,7 +2917,7 @@ function settingsTrackedState(file) {
 function writesScopeSettings(item) {
   const d = item.install || item.unwire;
   if (!d) return false;
-  return d.type === 'adopt' || d.type === 'plugins' || (d.type === 'wire' && d.target !== 'guardrail-block-global');
+  return d.type === 'adopt' || d.type === 'plugins' || d.type === 'wire';
 }
 
 function trackedSettingsRefusal(scope, writerIds, args) {
@@ -6728,7 +6728,7 @@ async function cmdEnsure(args) {
     // reconcileTarget() apply for the toward-ENABLED side.
     if (!item.removable || !item.scopes.includes(scope) || desiredIds.has(item.id)) continue;
     if (args.items && args.items.indexOf(item.id) === -1) continue;
-    const ctx = { repoRoot: repoRoot(), targetPath: baseTargetPath, scope, env: process.env };
+    const ctx = { repoRoot: repoRoot(), targetPath: baseTargetPath, scope, env: process.env, scopeFileOnly: true };
     const probe = probesLib.runProbe(item, ctx);
     // a degraded (not just fully present) removable item is STILL
     // physically there and still needs converging toward disabled. Only a
@@ -7276,7 +7276,7 @@ async function cmdEnsure(args) {
       // the unwire primitive exiting 0 doesn't itself prove the
       // resource is gone. Re-probe and treat ANY result other than
       // 'absent' (still 'present', or now merely 'degraded') as a failure.
-      const reprobeCtx = { repoRoot: repoRoot(), targetPath: baseTargetPath, scope, env: process.env };
+      const reprobeCtx = { repoRoot: repoRoot(), targetPath: baseTargetPath, scope, env: process.env, scopeFileOnly: true };
       const reprobe = probesLib.runProbe(item, reprobeCtx);
       if (reprobe.actual !== 'absent') {
         disableErrors.push(`${item.id}: unwire ran but the resource is still ${reprobe.actual} (expected absent)`);

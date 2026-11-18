@@ -197,4 +197,32 @@ grepq "$out" -F 'guardrail-block.mjs' || fail "case g: dry-run plan should name 
 grepq "$out" -F 'install' || fail "case g: dry-run plan should show the install verb (got: $out)"
 echo "ok: case g — dry-run with recorded consent surfaces the actual plan step"
 
+
+# ── case h: the consented guardrail wire still honors the tracked-file refusal ─
+caseh_dir="$work/case-h"; write_cache "$caseh_dir/cache"; write_state "$caseh_dir/cache" yes
+settingsH="$caseh_dir/settings.json"
+homeH="$caseh_dir/home"; mkdir -p "$homeH/.claude"
+printf '{}\n' > "$homeH/.claude/settings.json"
+git init -q "$homeH"
+git -C "$homeH" -c core.hooksPath=/dev/null -c commit.gpgsign=false -c user.name=t -c user.email=t@example.invalid add .claude/settings.json
+git -C "$homeH" -c core.hooksPath=/dev/null -c commit.gpgsign=false -c user.name=t -c user.email=t@example.invalid commit -q -m seed
+set +e
+out=$(HOME="$homeH" CLAUDE_USER_SETTINGS="$(winpath "$settingsH")" HIMMELCTL_CACHE_DIR="$(winpath "$caseh_dir/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$caseh_dir/cache")-luna-config.json" \
+      HIMMELCTL_INTERACTIVE=0 \
+      "$node_bin" "$wizard" ensure --items guardrail-block-global --yes </dev/null 2>&1); rc=$?
+set -e
+[ "$rc" -eq 2 ] || fail "case h: a consented guardrail wire into a git-tracked user settings file must refuse, exit 2 (got rc=$rc): $out"
+grepq "$out" -F -- '--write-tracked' || fail "case h: the refusal should name --write-tracked (got: $out)"
+[ ! -f "$settingsH" ] || fail "case h: nothing may be written before the refusal"
+echo "ok: case h — the consented guardrail wire is refused while the user settings file is git-tracked"
+
+set +e
+out=$(HOME="$homeH" CLAUDE_USER_SETTINGS="$(winpath "$settingsH")" HIMMELCTL_CACHE_DIR="$(winpath "$caseh_dir/cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$caseh_dir/cache")-luna-config.json" \
+      HIMMELCTL_INTERACTIVE=0 \
+      "$node_bin" "$wizard" ensure --items guardrail-block-global --yes --write-tracked </dev/null 2>&1); rc=$?
+set -e
+[ "$rc" -eq 0 ] || fail "case h: --write-tracked should let the consented guardrail wire proceed (got rc=$rc): $out"
+[ "$(guardrail_mode "$settingsH")" = global ] || fail "case h: --write-tracked should wire the guardrail (got: $(cat "$settingsH" 2>/dev/null))"
+echo "ok: case h2 — --write-tracked lets the consented guardrail wire proceed"
+
 echo "PASS"

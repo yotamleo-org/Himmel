@@ -1894,4 +1894,53 @@ for id in override-a override-b override-c; do
 done
 echo "ok: case t (negative control) — the identical fixture WITHOUT overrides still trips the under-recorded guard and --prune is held back, proving the primary case discriminates"
 
+
+# ── case u: a user-level value must not make a project-scope unwire read as failed ─
+repoU="$work/repoU"; mkdir -p "$repoU/scripts/install" "$repoU/scripts/lib"
+cat > "$repoU/scripts/install/manifest.json" <<'JSON'
+{
+  "schemaVersion": 2,
+  "harness": "claude",
+  "items": [
+    {
+      "id": "wiring-statusline", "kind": "wiring", "scopes": ["project", "user"], "profiles": ["luna", "all"], "deps": [],
+      "probe": { "type": "settings-key", "file": ".claude/settings.json", "key": "statusLine.command" },
+      "install": { "type": "wire", "target": "statusline" },
+      "unwire": { "type": "wire", "target": "statusline" },
+      "removable": "per-item"
+    }
+  ]
+}
+JSON
+cat > "$repoU/scripts/lib/wire-statusline.sh" <<'SH'
+#!/usr/bin/env bash
+mkdir -p "$(dirname "$1")"
+printf '{"statusLine":{"command":"project-wired"}}\n' > "$1"
+exit 0
+SH
+cat > "$repoU/scripts/lib/unwire-statusline.sh" <<'SH'
+#!/usr/bin/env bash
+printf '{}\n' > "$1"
+exit 0
+SH
+targetU="$work/target-u"; mkdir -p "$targetU/.claude"
+printf '{"statusLine":{"command":"project-wired"}}\n' > "$targetU/.claude/settings.json"
+cacheU="$work/cache-u"; mkdir -p "$cacheU"
+homeU="$work/home-u"; mkdir -p "$homeU/.claude"
+printf '{"statusLine":{"command":"user-level"}}\n' > "$homeU/.claude/settings.json"
+write_cache "$cacheU/install-profile.json" adopter project none "" inline "" lean
+runEnsureU() {
+  ( cd "$targetU" && HIMMELCTL_REPO_ROOT="$(winpath "$repoU")" HIMMELCTL_CACHE_DIR="$(winpath "$cacheU")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$cacheU")-luna-config.json" HOME="$homeU" USERPROFILE="$(winpath "$homeU")" \
+      "$node_bin" "$wizard" ensure "$@" </dev/null )
+}
+set +e
+outU1=$(runEnsureU --profile luna --yes 2>&1); rcU1=$?
+outU2=$(runEnsureU --profile core --yes --prune --items wiring-statusline 2>&1); rcU2=$?
+set -e
+[ "$rcU1" -eq 0 ] || fail "case u: the setup converge should exit 0 (got rc=$rcU1): $outU1"
+[ "$rcU2" -eq 0 ] || fail "case u: pruning a project-scope item whose key a user-level file also sets should exit 0 (got rc=$rcU2): $outU2"
+[ "$(cat "$targetU/.claude/settings.json")" = '{}' ] || fail "case u: the project file should be unwired (got: $(cat "$targetU/.claude/settings.json"))"
+grepq "$(cat "$homeU/.claude/settings.json")" -F 'user-level' || fail "case u: the user-level file must be left alone"
+echo "ok: case u — a project-scope prune checks and reprobes only the project settings file"
+
 echo "PASS"

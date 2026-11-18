@@ -1424,6 +1424,9 @@ mkTargetZ dry 1
 runEnsureZ dry --dry-run
 [ "$rcZ" -eq 0 ] || fail "case z: --dry-run on a tracked file writes nothing and should not refuse (got rc=$rcZ): $outZ"
 grepq "$outZ" -F 'DRY:' || fail "case z: --dry-run should still print its plan (got: $outZ)"
+[ "$(cat "$work/target-z-dry/.claude/settings.json")" = '{"original":true}' ] || fail "case z: --dry-run must leave the settings file untouched"
+[ ! -s "$work/log-z-dry.txt" ] || fail "case z: --dry-run must dispatch nothing (log: $(cat "$work/log-z-dry.txt"))"
+[ ! -e "$work/target-z-dry/red.marker" ] || fail "case z: --dry-run must not run the writer"
 echo "ok: case z4 — --dry-run does not refuse on a tracked file"
 
 gitErrBin="$work/git-err-bin"; mkdir -p "$gitErrBin"
