@@ -330,6 +330,8 @@ check "a blank token file exports nothing" "UNSET" "$(tok_run "$W/tokfile-blank"
 check "a token already in the environment is kept, the file is not read" "preset-value" "$(tok_run "$W/tokfile" preset-value)"
 mkdir -p "$HOME/.himmel/secrets"; printf '%s\n' "$TOK" >"$HOME/.himmel/secrets/claude-oauth-token"
 check "with no override the default path under the arming home is read" "$TOK" "$(tok_run - -)"
+bash "$CAD" arm --force --chief test-chief --proposal-dir "$PROP" --backend claude-cli >"$W/arm10.out" 2>&1
+check "re-arming with the token file in place exits 0" 0 $?
 hasnt "the runner file never holds the token value" "$TOK" "$W/runner/steering-cull-cadence.sh"
 bash "$CAD" disarm >/dev/null 2>&1
 
