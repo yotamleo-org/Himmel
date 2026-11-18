@@ -300,7 +300,7 @@ scripts/test-adopt-hooks-chain.sh	520
 scripts/test-adopt-hooks-gates.sh	92
 scripts/test-adopt-merge-gate.sh	110
 scripts/test-adopt-provenance.sh	195
-scripts/test-adopt-sequences.sh	580
+scripts/test-adopt-sequences.sh	245
 scripts/test-adopt-wizard.sh	311
 scripts/test-check-ci-cache.sh	24
 scripts/test-check-ci-run.sh	22

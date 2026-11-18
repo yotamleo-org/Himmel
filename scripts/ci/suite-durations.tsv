@@ -1103,7 +1103,8 @@ scripts/test-adopt-merge-gate.sh	109
 scripts/test-adopt-only-hooks.sh	2
 scripts/test-adopt-portable-libs.sh	47
 scripts/test-adopt-provenance.sh	195
-scripts/test-adopt-sequences.sh	578
+scripts/test-adopt-sequences-b.sh	238
+scripts/test-adopt-sequences.sh	245
 scripts/test-adopt-user-claude-md.sh	3
 scripts/test-adopt-wizard.sh	302
 scripts/test-adopt.sh	512
