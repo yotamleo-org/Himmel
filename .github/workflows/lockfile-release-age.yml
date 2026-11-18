@@ -18,9 +18,13 @@ name: Lockfile Release Age
 # Fail-closed: a publish time that cannot be read (registry unreachable after 3
 # tries) fails the job; re-run it. The script and allowlist under scripts/ci/ are
 # trust paths, so a PR that edits them needs a trust-reviewed console GO.
+#
+# workflow_dispatch exists so a change to this file can be proven runnable: it
+# checks out the chosen ref, so HEAD^1 is that ref's parent commit.
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+  workflow_dispatch:
 
 permissions:
   contents: read
