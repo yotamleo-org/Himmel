@@ -364,8 +364,9 @@ carry_edit scripts/cr/known-findings.json ''
 CHECK_CRITIC_EVAL_PR=4690 gate "no carry when known-findings.json changed after the row's head" 1 "no eval rows"
 carry_edit scripts/cr/known-findings.sh '# a later renderer change'
 CHECK_CRITIC_EVAL_PR=4690 gate "no carry when known-findings.sh changed after the row's head" 1 "no eval rows"
-gitc checkout -q "$BASE0"; printf '%s\n' '# a critic change' >> "$R/scripts/cr/critic-first-pass.sh"; gitc add -A && gitc commit -q -m sibling
-commit_edit scripts/cr/notes-not-a-critic.txt 'not a critic file' >/dev/null
+carry_edit 'scripts/cr/perspectives/review-é.md' '# a later perspective'
+CHECK_CRITIC_EVAL_PR=4690 gate "no carry when a later head adds a non-ASCII critic path" 1 "no eval rows"
+gitc checkout -q "$BASE0" && printf '%s\n' '# a critic change' >> "$R/scripts/cr/critic-first-pass.sh" && gitc add -A && gitc commit -q -m sibling && commit_edit scripts/cr/notes-not-a-critic.txt 'not a critic file' >/dev/null || fail "the sibling-head setup ran"
 CHECK_CRITIC_EVAL_PR=4690 gate "no carry when the row's head is not an ancestor of the head" 1 "no eval rows"
 with_bypass "$(brow 4690 "$(printf 'a%.0s' $(seq 40))" 592 'a head this repo does not hold')"
 carry_edit scripts/cr/notes-not-a-critic.txt 'not a critic file'
@@ -387,6 +388,10 @@ M="$(gitc commit-tree "$(gitc rev-parse 'HEAD^{tree}')" -p "$P1" -p "$PRH" -m me
 gitc checkout -q "$P1"; brow 4690 "$H0" 592 'recorded for the first PR head' >> "$R/$BYP"; gitc add -A && gitc commit -q -m "main records a bypass"
 gitc update-ref refs/remotes/origin/main "$(gitc rev-parse HEAD)"; gitc checkout -q "$M"
 ci main "on the merge ref a row for an earlier PR head carries to the PR head" 0 "carried to head $PRH"
+
+fixture quoted-path
+commit_edit 'scripts/cr/perspectives/review-é.md' '# a new perspective' >/dev/null
+gate "a diff adding only a non-ASCII critic path is gated" 1 "critic behaviour paths changed"
 
 # --- I3: every critic behaviour path and the eval itself are trust paths ------------------------
 fixture trust

@@ -25,7 +25,7 @@ if [[ "${GITHUB_REF:-}" =~ ^refs/pull/[0-9]+/merge$ ]] && git -C "$repo" rev-par
         || { echo "check-critic-eval: cannot resolve $head^1" >&2; exit 2; }
 fi
 
-changed="$(git -C "$repo" diff --name-only --no-renames "$diff_base" "$head")" \
+changed="$(git -C "$repo" diff -z --name-only --no-renames "$diff_base" "$head" | tr '\0' '\n')" \
     || { echo "check-critic-eval: cannot diff $diff_base..$head" >&2; exit 2; }
 cbs_base="$(python3 "$SCORE" cbs-paths "$diff_base" --repo "$repo")" || exit 2
 cbs_head="$(python3 "$SCORE" cbs-paths "$head" --repo "$repo")" || exit 2
@@ -62,7 +62,7 @@ carries() {
     local h0 files cb cc protected hit rc
     h0="$(git -C "$repo" rev-parse --verify -q "$1^{commit}")" || return 1
     git -C "$repo" merge-base --is-ancestor "$h0" "$2" || return 1
-    files="$(git -C "$repo" diff --name-only --no-renames "$h0" "$2")" || return 1
+    files="$(git -C "$repo" diff -z --name-only --no-renames "$h0" "$2" | tr '\0' '\n')" || return 1
     cb="$(python3 "$SCORE" cbs-paths "$h0" --repo "$repo")" || return 1
     cc="$(python3 "$SCORE" cbs-paths "$2" --repo "$repo")" || return 1
     [ -n "$cb" ] && [ -n "$cc" ] || return 1
