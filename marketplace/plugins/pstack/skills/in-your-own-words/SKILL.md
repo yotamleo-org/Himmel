@@ -4,6 +4,6 @@ description: "Restate in your own words what you think the user's goals are and 
 disable-model-invocation: true
 ---
 
-<!-- Vendored from cursor/plugins pstack/skills/in-your-own-words/SKILL.md at 4dd1d05818d19792e7cd6e818f1667f95f7e1dbe (MIT, (c) 2026 Lauren Tan; ../../LICENSE). HIMMEL-5803. Deviations: none. -->
+<!-- Vendored from cursor/plugins pstack/skills/in-your-own-words/SKILL.md at bf0c7cd80abdbf7fe47b634978a7d1b4071f71a7 (MIT, (c) 2026 Lauren Tan; ../../LICENSE). HIMMEL-5803. Deviations: none. -->
 
 Restate in your own words what you think the user's goals are and what problem they're trying to solve.

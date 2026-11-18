@@ -1,5 +1,5 @@
 {
-  "pin": "4dd1d05818d19792e7cd6e818f1667f95f7e1dbe",
+  "pin": "bf0c7cd80abdbf7fe47b634978a7d1b4071f71a7",
   "files": {
     "LICENSE": {
       "upstream": "bc957ca6bee02792566a1a028d105e02e247c6e77cf057061674273da77b200e",
@@ -8,38 +8,38 @@
       "executable": false
     },
     "docs/harness/claude-code.md": {
-      "upstream": "c79e2283d3a83c6be3dd1cac33f9c074067c95e610ae6e0a16d9fdee84058927",
-      "vendored": "c79e2283d3a83c6be3dd1cac33f9c074067c95e610ae6e0a16d9fdee84058927",
+      "upstream": "56d732c4b2375e355b5316a8467f080b73f2a4e36124db96155f4c1c66edee11",
+      "vendored": "56d732c4b2375e355b5316a8467f080b73f2a4e36124db96155f4c1c66edee11",
       "upstreamExecutable": false,
       "executable": false
     },
     "skills/benchmark-checklist/SKILL.md": {
       "upstream": "ba109e96c8f6c1c391baccf19e5d11e14370df7b3f2605e1572cd565a6c0fca0",
-      "vendored": "4024dbac5bd406c52e5a9fdc5340fad286ead33f2b94bc98bba6ea0ea3462e00",
+      "vendored": "197530a9b3b7cf51a14dfa49b2f395b98a169cd2d317b92bcc23896bd88cae29",
       "upstreamExecutable": false,
       "executable": false
     },
     "skills/blast-radius/SKILL.md": {
-      "upstream": "2e10745b97f5862323dcda3b29ca60d56b5c3c98e37020085d26b48efbe0a436",
-      "vendored": "e698305b4481c0c6063bb6604fabe3ca006c1623964cc3d5b822f50bc422251c",
+      "upstream": "4248d03e22365207d2e5f90c9542720f80a88a6b42fd542ef88dde3cf9f9223f",
+      "vendored": "29b76103911cad9517b3d0c7aa64632bbaa8de448abb5a41a06131d2ee5da985",
       "upstreamExecutable": false,
       "executable": false
     },
     "skills/correct/SKILL.md": {
       "upstream": "e347045d00c967a0b831ef883cc6ac79d21329aa10b5968637df95de7febf0ba",
-      "vendored": "89c14bd94c064091b6abeab09fef7b7eded86bf0491058d31b1a194027539a9b",
+      "vendored": "8c1d42a52b713df68a91041c1b8282318c3a562fb2035f79ec847ccb8689552d",
       "upstreamExecutable": false,
       "executable": false
     },
     "skills/create-formal-verification-skill/SKILL.md": {
       "upstream": "30ef0ac27612ecd16fdc081112113221d673053cef3f8603db11932193861211",
-      "vendored": "2fc510693a72a3716d809f58e1710488bf40d545636297f48dadcca423d91e71",
+      "vendored": "a835d61b760e5da7bde7f95dd899119f35f3bca30efbab5eb080dafb1b9eaae9",
       "upstreamExecutable": false,
       "executable": false
     },
     "skills/create-verification-skill/SKILL.md": {
       "upstream": "d353973547bf8ad8977eca645f4cd4feaed0d32f4b43d1448f906b0a76c4d694",
-      "vendored": "9dcd0e5273c91fbcb08f2e116498d719621861315d942b0bbac1cb3573dc9223",
+      "vendored": "b627722fea3070f13da173abdbbf76b360e5815dfeb80e4de2e9ad5077ffe68e",
       "upstreamExecutable": false,
       "executable": false
     },
@@ -63,31 +63,31 @@
     },
     "skills/in-your-own-words/SKILL.md": {
       "upstream": "fa8ba74e27d7be371dc270ec78bbf816411477d0dfab185356c861ac8dd413ad",
-      "vendored": "cfc40d8b0c3c2b4b64636a21f469da1223732cc1a96e865fa707b05446427b8c",
+      "vendored": "5f3883a2c2b512a04773101a2fc52739a78abe4dd0ca3737cd5cc6f19fe6df46",
       "upstreamExecutable": false,
       "executable": false
     },
     "skills/maintain-formal-verification-skill/SKILL.md": {
       "upstream": "0c96f54293542d3818b68754562b338073958781a9684454611dca37592e2d2c",
-      "vendored": "f62941f532a609ddce473213a23e8fea338ae93761e78e9ff183ac2847859e23",
+      "vendored": "1ed51f91fe1841cc309f823b7c5cd6858eea0d50635416b6bbf16d1043d74b08",
       "upstreamExecutable": false,
       "executable": false
     },
     "skills/maintain-verification-skill/SKILL.md": {
       "upstream": "515c0eaa054b3f6be1b1fb06f2c2f173c80fddb58bbcac57576f89c479bc68e8",
-      "vendored": "ea5cc3f8d965a26ce972c29dd199bd2ee54cb52f6fb9d6afaa35552aa8dd51cf",
+      "vendored": "9bafba74dd15ceb5b3962ab30ce9cd18585b3410c2e1ae2c510781133617bceb",
       "upstreamExecutable": false,
       "executable": false
     },
     "skills/principle-explain-the-number/SKILL.md": {
       "upstream": "3c84fbf9a7d9842abcfcd134010782b32092ac3d3fb4aaf9ed5732dca83aa58c",
-      "vendored": "32b1e8d768d2783ce6b13ee0530c1ffc061162f63612a0f1836c9c346a23ffb0",
+      "vendored": "39122dad26c17042969fb1dca6d5504b03ce069d74c463dd54da31f418c7bf3a",
       "upstreamExecutable": false,
       "executable": false
     },
     "skills/statechart/SKILL.md": {
       "upstream": "010b7b4532406739b1c3a426d1a45f02bb618a42561fc96b3976e064a7f8384d",
-      "vendored": "ea76b50afad76d2aa3339a8ba5787f08c9d74618c4a3c17cc7806ea1c5ef32d8",
+      "vendored": "bf81c98d4d42bb0c992b3f8a2f045812214270de88fb84dafecc511332e2dcb6",
       "upstreamExecutable": false,
       "executable": false
     },
@@ -104,8 +104,8 @@
       "executable": false
     },
     "skills/statechart/scripts/backends/mermaid.ts": {
-      "upstream": "75704b2704a9399a39479ff704a580d5b9a1d0fede01fe771df28bf799b434b6",
-      "vendored": "75704b2704a9399a39479ff704a580d5b9a1d0fede01fe771df28bf799b434b6",
+      "upstream": "ce293d34ce3928d93329bd6d1a889d5722620008dae4339add79ef226c3f9b88",
+      "vendored": "ce293d34ce3928d93329bd6d1a889d5722620008dae4339add79ef226c3f9b88",
       "upstreamExecutable": false,
       "executable": false
     },
@@ -249,8 +249,8 @@
       "executable": false
     },
     "skills/statechart/scripts/run.ts": {
-      "upstream": "f330e0a3b0a9f8181c2e52252c4a47db3f0a64f79a7cca5490263e33a5f13c72",
-      "vendored": "f8a68edd54de4c26d20279f684fcfda47b6e5cfb1c725fa2ddeb4654bf4c8f4f",
+      "upstream": "751d97cfde3c241bfeed8913fc74a7a7cbc6acd3829e37a441016af3eb78f0e0",
+      "vendored": "0581693863f73816c87e27459b8535932e8bae4a9dc11f2ddc611aaa8cd6a4f2",
       "upstreamExecutable": false,
       "executable": false
     },
@@ -273,8 +273,8 @@
       "executable": false
     },
     "skills/statechart/scripts/test/chart.test.ts": {
-      "upstream": "3f9022fcc981d17f58b5e7a9302e766241f81a477bda70c3e621d7a1d95f19c1",
-      "vendored": "3f9022fcc981d17f58b5e7a9302e766241f81a477bda70c3e621d7a1d95f19c1",
+      "upstream": "e5c4bb0dcb9bcb570066d427ee768b2eb01aea87aa3bd9136c8e92459f513ae4",
+      "vendored": "e5c4bb0dcb9bcb570066d427ee768b2eb01aea87aa3bd9136c8e92459f513ae4",
       "upstreamExecutable": false,
       "executable": false
     },
@@ -297,8 +297,8 @@
       "executable": false
     },
     "skills/statechart/scripts/test/cli.test.ts": {
-      "upstream": "8a3b028dafe2065029a66242f7a3832d18058e772a0dfc1b2c170511ffee8e07",
-      "vendored": "071e1f19944c11bbb5f19261b8754b82fe63fe9015e1d30d1ec1b8b1c8abd500",
+      "upstream": "fdd3154882a0c4505868973a9de133b3f5d2140f0ca9e0a9dcfd7b2cc55871df",
+      "vendored": "cf499b6c43a371240dd3d72551799f4d6026be70ddcfbf6165bb38969227cb41",
       "upstreamExecutable": false,
       "executable": false
     },
@@ -1629,8 +1629,8 @@
       "executable": false
     },
     "skills/statechart/scripts/test/corpus/Login/chart.mmd": {
-      "upstream": "6cfda25977c467c106f9fb7f5602960bdd40919ac9294994ccd3bb33346faf35",
-      "vendored": "6cfda25977c467c106f9fb7f5602960bdd40919ac9294994ccd3bb33346faf35",
+      "upstream": "2aba56af645f56e371a87c22908e110ab259bed055a979d348220209d89b9862",
+      "vendored": "2aba56af645f56e371a87c22908e110ab259bed055a979d348220209d89b9862",
       "upstreamExecutable": false,
       "executable": false
     },
@@ -2445,8 +2445,8 @@
       "executable": false
     },
     "skills/statechart/scripts/test/corpus.test.ts": {
-      "upstream": "5686aa487dfec3e0a06b3c15390dbc3ab5953ced532c5eee7d5c5e2f54f492c7",
-      "vendored": "5686aa487dfec3e0a06b3c15390dbc3ab5953ced532c5eee7d5c5e2f54f492c7",
+      "upstream": "b280d27ca7c33bb9a8df2fbbd6d59c5b8c41e3ceaad0c7c73fba4ce9af85824b",
+      "vendored": "b280d27ca7c33bb9a8df2fbbd6d59c5b8c41e3ceaad0c7c73fba4ce9af85824b",
       "upstreamExecutable": false,
       "executable": false
     },
@@ -2481,8 +2481,8 @@
       "executable": true
     },
     "skills/statechart/scripts/test/labels.ts": {
-      "upstream": "5a884161428fc00229d9a0e896001df4b262b56a441b6b3d66d1b59b06050650",
-      "vendored": "5a884161428fc00229d9a0e896001df4b262b56a441b6b3d66d1b59b06050650",
+      "upstream": "12c8403517b423ea7af0ed5c5d788ff872f9ba127ca11555ae128076a27a83ca",
+      "vendored": "12c8403517b423ea7af0ed5c5d788ff872f9ba127ca11555ae128076a27a83ca",
       "upstreamExecutable": false,
       "executable": false
     },
@@ -2505,8 +2505,8 @@
       "executable": false
     },
     "skills/statechart/scripts/test/render.test.ts": {
-      "upstream": "9cb369e5f4c464ca540ccc3de4fdd76670b84e54f06955ccb46908826579ac23",
-      "vendored": "fdd710004e739b32356aca4f7900e1125ce37a01a5daa24f758edc1291fe5d20",
+      "upstream": "717d36625f0ed5edb5086b9bf1993b79801700f9889b58aa7faa38e3fa0d50a2",
+      "vendored": "0c22b5858bbc52efa9d58f8492da5fea32788f8f4cd78d1c5f7045a37946e257",
       "upstreamExecutable": false,
       "executable": false
     },
@@ -2531,6 +2531,12 @@
     "skills/statechart/scripts/worker.ts": {
       "upstream": "1f18ed5ef806982e05e8a40fc217e88257700b28b63cb4acbd647872f85f782b",
       "vendored": "1f18ed5ef806982e05e8a40fc217e88257700b28b63cb4acbd647872f85f782b",
+      "upstreamExecutable": false,
+      "executable": false
+    },
+    "skills/statechart/scripts/test/drawn.ts": {
+      "upstream": "369ac67009b9ddfa19e080b9f99e2eeb59fc3616c2b374a92b5b1e653df55919",
+      "vendored": "369ac67009b9ddfa19e080b9f99e2eeb59fc3616c2b374a92b5b1e653df55919",
       "upstreamExecutable": false,
       "executable": false
     }

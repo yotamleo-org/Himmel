@@ -29,17 +29,18 @@ The chief supplies these paths in the launching shell:
   install is allowed by this entry point.
 - `STATECHART`: the single executable path to the reviewed `/statechart`
   compiler: an external copy of `cursor/plugins` at
-  `4dd1d05818d19792e7cd6e818f1667f95f7e1dbe`, path
+  `bf0c7cd80abdbf7fe47b634978a7d1b4071f71a7`, path
   `pstack/skills/statechart/scripts/statechart`, with tree SHA-256
-  `569c34baed9a2b1e56029556aa04d6e4b2b2ca3c7211f5ac4ab8049d1319eb13`.
+  `bdaaae64c31c8a71f50d76f2168379d728ea6744007b70453e6f8865791b13d6`.
   For a path ending in `marketplace/plugins/pstack/skills/statechart/scripts/statechart`,
   the vendored tree as landed on main (squash `7844b4172`, PR 4327; reviewed
   at `ff8f35c3bb172d03dec3fdf93eaa539a5685d3ad`, whose only later change is in
   `test/cli.test.ts`: a TLA2TOOLS sha helper, under which about 40 replay tests
   skip without the pinned jar, and a missing-Java test matched loosely on
-  ENOENT), and a later change in `test/render.test.ts` (`608952484`,
-  the render test uses a temp cache dir and a temp HOME for npm), instead requires
-  `b9b92cc42e188b446641e7c7a4aeb8fe33d4519b28def3d790a4699c94f71a5c`.
+  ENOENT), a later change in `test/render.test.ts` (`608952484`,
+  the render test uses a temp cache dir and a temp HOME for npm), and the
+  re-vendor to `bf0c7cd8` (pstack 0.15.42), instead requires
+  `403817bea2639d991d2cc23b4e2907646b85f3425c234736bb34abb29d918c26`.
   `test-model-check-report.sh` fails if the vendored tree in the checkout stops
   hashing to this pin.
   That variant changes `run.ts` to forbid automatic installation and includes

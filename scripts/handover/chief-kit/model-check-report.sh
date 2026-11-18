@@ -43,12 +43,12 @@ cp "$jar" "$work/tla2tools.jar" || error 'cannot snapshot TLC jar'
 sha=936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88
 actual="$(sha256sum "$work/tla2tools.jar")" || error 'cannot hash TLC jar'
 [ "${actual%% *}" = "$sha" ] || error 'tla2tools.jar sha256 mismatch; expected v1.7.4, nothing executed'
-runner="$(existing_file "${STATECHART:-}")" || error 'set STATECHART to the pinned statechart executable (cursor/plugins 4dd1d058)'
+runner="$(existing_file "${STATECHART:-}")" || error 'set STATECHART to the pinned statechart executable (cursor/plugins bf0c7cd8)'
 [ -x "$runner" ] || error 'STATECHART is not executable'
 case "$runner" in
     */marketplace/plugins/pstack/skills/statechart/scripts/statechart)
-        approved_tree=b9b92cc42e188b446641e7c7a4aeb8fe33d4519b28def3d790a4699c94f71a5c ;;
-    *) approved_tree=569c34baed9a2b1e56029556aa04d6e4b2b2ca3c7211f5ac4ab8049d1319eb13 ;;
+        approved_tree=403817bea2639d991d2cc23b4e2907646b85f3425c234736bb34abb29d918c26 ;;
+    *) approved_tree=bdaaae64c31c8a71f50d76f2168379d728ea6744007b70453e6f8865791b13d6 ;;
 esac
 # Pin every reachable compiler file, not just the launcher; execute the checked private snapshot.
 cp -R "$(dirname "$runner")" "$work/statechart" || error 'cannot snapshot statechart tree'

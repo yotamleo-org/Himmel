@@ -145,8 +145,8 @@ text = sut.read_text()
 # Dependency injection is confined to a scratch copy's approved fixture digest and repo paths.
 text = re.sub(r'^HERE=.*$', 'HERE=' + shlex.quote(str(sut.parent)), text, count=1, flags=re.M)
 text = re.sub(r'^REPO=.*$', 'REPO=' + shlex.quote(str(repo)), text, count=1, flags=re.M)
-text = text.replace('569c34baed9a2b1e56029556aa04d6e4b2b2ca3c7211f5ac4ab8049d1319eb13', tree_sha)
-text = text.replace('b9b92cc42e188b446641e7c7a4aeb8fe33d4519b28def3d790a4699c94f71a5c', vendor_sha)
+text = text.replace('bdaaae64c31c8a71f50d76f2168379d728ea6744007b70453e6f8865791b13d6', tree_sha)
+text = text.replace('403817bea2639d991d2cc23b4e2907646b85f3425c234736bb34abb29d918c26', vendor_sha)
 wrapper = work / 'wrapper.sh'
 wrapper.write_text(text)
 (work / 'bucket').mkdir()
