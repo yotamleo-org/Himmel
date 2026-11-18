@@ -6142,7 +6142,7 @@ for bad_mode in "--permission-mode default" "--permission-mode plan" "--permissi
   # shellcheck disable=SC2086 # the spelling splits into flag and value on purpose
   rl_refuse "a conflicting or duplicate mode ($bad_mode)" -- --model claude-sonnet-5-5 $bad_mode "load doc"
 done
-for override in "--tools Bash" "--tools=Bash" "--allowedTools Bash" "--allowed-tools Bash" "--disallowedTools X" "--disallowed-tools X" "--settings /x" "--setting-sources user" "--mcp-config /x" "--strict-mcp-config" "--session-id x" "--plugin-dir /x" "--agents {}" "-p" "--print" "--bg" "--resume old" "-r old" "--continue" "-c" "--fork-session" "--agent other" "--remote-control other"; do
+for override in "--tools Bash" "--tools=Bash" "--allowedTools Bash" "--allowed-tools Bash" "--disallowedTools X" "--disallowed-tools X" "--settings /x" "--setting-sources user" "--mcp-config /x" "--strict-mcp-config" "--session-id x" "--plugin-dir /x" "--agents {}" "-p" "--print" "--bg" "--resume old" "-r old" "--continue" "-c" "--fork-session" "--agent other" "--remote-control other" "--from-pr 5" "--add-dir /x" "--chrome" "--system-prompt other" "--bare" "--channels other" "--unknown-future-option"; do
   # shellcheck disable=SC2086 # the spelling splits into flag and value on purpose
   rl_refuse "a caller override ($override)" -- --model claude-sonnet-5-5 $override "load doc"
 done
@@ -6184,6 +6184,14 @@ for unsafe_key in defaultMode ask additionalDirectories; do
 done
 jq '.hooks = {}' "$rl_settings" > "$RL/set-hooks.json"
 rl_refuse "settings with caller hooks" WORKER_SESSION_PROFILE_SETTINGS="$RL/set-hooks.json"
+for unsafe_key in statusLine apiKeyHelper env enableAllProjectMcpServers disableAllHooks; do
+  jq --arg key "$unsafe_key" '.[$key] = "fixture"' "$rl_settings" > "$RL/set-top-level.json"
+  rl_refuse "an unknown settings key $unsafe_key" WORKER_SESSION_PROFILE_SETTINGS="$RL/set-top-level.json"
+done
+for unsafe_key in env url type; do
+  jq --arg key "$unsafe_key" '.mcpServers.readiness[$key] = "fixture"' "$rl_mcp" > "$RL/mcp-extra-key.json"
+  rl_refuse "an unknown MCP server key $unsafe_key" WORKER_SESSION_PROFILE_MCP_CONFIG="$RL/mcp-extra-key.json"
+done
 printf '{"mcpServers":{"readiness":"not a server"}}\n' > "$RL/mcp-scalar.json"
 rl_refuse "a malformed MCP server entry" WORKER_SESSION_PROFILE_MCP_CONFIG="$RL/mcp-scalar.json"
 printf 'not json\n' > "$RL/set-bad.json"

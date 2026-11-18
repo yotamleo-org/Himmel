@@ -74,7 +74,7 @@ class JiraFixture {
   }
 
   #issue() {
-    return { key: 'HIMMEL-1', fields: { summary: this.summary ?? 'a fixture ticket', status: { name: 'Open' }, issuetype: { name: 'Task' }, labels: [...this.labels], description: null } };
+    return { key: 'HIMMEL-1', fields: { summary: this.summary ?? 'a fixture ticket', status: { name: 'Open' }, issuetype: { name: 'Task' }, labels: [...this.labels], description: null, ...this.extraFields } };
   }
 
   #handle(req, res) {
@@ -177,7 +177,7 @@ describe('C0 credentials and port', () => {
     return { port, ...s };
   }
   const soon = (ms = 20000) => Date.now() + ms;
-  const reset = () => { fx.labels = ['a']; fx.mode = 'ok'; fx.requests.length = 0; fx.reflected = false; fx.summary = undefined; fx.expectedAuth = `Basic ${Buffer.from(`${EMAIL}:${TOKEN}`).toString('base64')}`; };
+  const reset = () => { fx.labels = ['a']; fx.mode = 'ok'; fx.requests.length = 0; fx.reflected = false; fx.summary = undefined; fx.extraFields = {}; fx.expectedAuth = `Basic ${Buffer.from(`${EMAIL}:${TOKEN}`).toString('base64')}`; };
 
   describe('private channel', () => {
     test('a mode 0600 file in a mode 0700 directory yields exactly the four fields', async () => {
@@ -468,6 +468,26 @@ describe('C0 credentials and port', () => {
       assert.equal(result.outcome, 'error');
       assert.equal(result.code, 'unreadable');
       assert.equal(result.message.includes(token), false);
+    });
+
+    test('credential collisions cannot change authoritative issue fields', async () => {
+      for (const [token, fields] of [
+        ['needs', { labels: [LABEL] }],
+        ['Open', { status: { name: 'Open' } }],
+        ['Task', { issuetype: { name: 'Task' } }],
+        ['version', { fixVersions: [{ name: 'version-one' }] }],
+      ]) {
+        reset();
+        const s = scratch();
+        writeCred(s.cred, { ...goodCreds(fx.baseUrl), api_token: token });
+        fx.expectedAuth = `Basic ${Buffer.from(`${EMAIL}:${token}`).toString('base64')}`;
+        fx.extraFields = fields;
+        const { createJiraPort } = await load();
+        const port = await createJiraPort({ credentials_path: s.cred, primary_cli: PRIMARY_CLI }, { env: baseEnv(s.root), cwd: cliRepo });
+        const result = await port.readback('HIMMEL-1', soon());
+        assert.equal(result.outcome, 'error', token);
+        assert.equal(result.code, 'unreadable', token);
+      }
     });
 
     test('an expired deadline makes no request', async () => {

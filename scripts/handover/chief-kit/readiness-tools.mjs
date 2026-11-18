@@ -209,7 +209,8 @@ function typedIssue(raw, key, creds) {
     return value;
   };
   const clean = redactValues(issue);
-  if (clean.key !== issue.key || clean.description_sha256 !== issue.description_sha256 || clean.issue_sha256 !== issue.issue_sha256) return null;
+  const authoritative = ['key', 'status', 'type', 'labels', 'fixVersions', 'description_sha256', 'issue_sha256'];
+  if (authoritative.some((field) => JSON.stringify(clean[field]) !== JSON.stringify(issue[field]))) return null;
   return clean;
 }
 

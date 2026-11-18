@@ -160,32 +160,35 @@ const strs = (v) => Array.isArray(v) && v.every((x) => typeof x === "string");
 const p = s && s.permissions;
 if (!p || !strs(p.allow) || p.allow.length !== grants.length || !grants.every((g) => p.allow.includes(g))) why("the settings must allow exactly mcp__readiness__inspect and mcp__readiness__act");
 if (!strs(p.deny) || !deny.every((d) => p.deny.includes(d))) why("the settings must deny every native tool");
-if (Object.keys(p).some((key) => !["allow", "deny"].includes(key)) || Object.hasOwn(s, "hooks")) why("the settings contain a permission or hook override");
+if (Object.keys(p).some((key) => !["allow", "deny"].includes(key)) || Object.keys(s).some((key) => !["enabledPlugins", "permissions", "skillListingBudgetFraction", "skillOverrides"].includes(key))) why("the settings contain an unknown permission or settings key");
 const sv = m && m.mcpServers;
 if (!sv || typeof sv !== "object" || Array.isArray(sv) || Object.keys(sv).join(",") !== "readiness") why("the MCP config must name exactly the readiness server");
 const server = sv.readiness;
 if (!server || typeof server !== "object" || Array.isArray(server) || typeof server.command !== "string" || !server.command || (server.args !== undefined && !strs(server.args))) why("the readiness MCP server entry is malformed");
+if (Object.keys(server).some((key) => !["command", "args"].includes(key))) why("the readiness MCP server entry contains an unknown key");
 ' "$WORKER_SESSION_PROFILE_SETTINGS" "$WORKER_SESSION_PROFILE_MCP_CONFIG" 2>&1)" || _ready_refuse "$_ready_why"
     # The caller's argv: no availability, settings, session or run-mode override, and at most one auto mode.
-    _expect_mode_value=0
+    _expect_value=""
     for _a in "$@"; do
-        if [ "$_expect_mode_value" = 1 ]; then
-            [ "$_a" = auto ] || _ready_refuse "--permission-mode must be exactly auto"
-            _expect_mode_value=0
+        if [ -n "$_expect_value" ]; then
+            if [ "$_expect_value" = --permission-mode ]; then
+                [ "$_a" = auto ] || _ready_refuse "--permission-mode must be exactly auto"
+            else
+                case "$_a" in ''|-*) _ready_refuse "$_expect_value requires a non-option value" ;; esac
+            fi
+            _expect_value=""
             continue
         fi
         case "$_a" in
-            --permission-mode) _caller_modes=$((_caller_modes + 1)); _expect_mode_value=1 ;;
+            --permission-mode) _caller_modes=$((_caller_modes + 1)); _expect_value=--permission-mode ;;
             --permission-mode=auto) _caller_modes=$((_caller_modes + 1)) ;;
             --permission-mode=*) _ready_refuse "--permission-mode must be exactly auto" ;;
-            --dangerously-skip-permissions|--allow-dangerously-skip-permissions|--permission-prompt-tool|--permission-prompt-tool=*) _ready_refuse "the caller's argv names $_a (a permission mode other than the one explicit auto mode)" ;;
-            --tools|--tools=*|--allowedTools|--allowedTools=*|--allowed-tools|--allowed-tools=*|--disallowedTools|--disallowedTools=*|--disallowed-tools|--disallowed-tools=*) _ready_refuse "the caller's argv names $_a (a tool-availability override)" ;;
-            --settings|--settings=*|--setting-sources|--setting-sources=*|--mcp-config|--mcp-config=*|--strict-mcp-config|--session-id|--session-id=*|--plugin-dir|--plugin-dir=*|--agents|--agents=*) _ready_refuse "the caller's argv names $_a (a settings, MCP, session or capability override)" ;;
-            -p|--print|--bg|--background) _ready_refuse "the caller's argv names $_a: only the headed interactive launch is supported" ;;
-            --resume|--resume=*|-r|-r?*|--continue|-c|--fork-session|--agent|--agent=*|--remote-control|--remote-control=*) _ready_refuse "the caller's argv names $_a: only a fresh readiness session is supported" ;;
+            --model|--autocompact|-n) _expect_value="$_a" ;;
+            --model=*|--autocompact=*) case "${_a#*=}" in ''|-*) _ready_refuse "${_a%%=*} requires a non-option value" ;; esac ;;
+            -*) _ready_refuse "the caller's argv names unsupported option $_a: readiness permits only model, autocompact, name and auto mode" ;;
         esac
     done
-    [ "$_expect_mode_value" = 0 ] || _ready_refuse "--permission-mode has no value"
+    [ -z "$_expect_value" ] || _ready_refuse "$_expect_value has no value"
     [ "$_caller_modes" -le 1 ] || _ready_refuse "the caller's argv names --permission-mode more than once"
 fi
 
