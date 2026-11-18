@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import socket
 import subprocess
@@ -231,14 +232,37 @@ def receipts(wanted, docs=()):
     return found
 
 
-def receipt(record, outcome):
+def attempt_outcomes(attempt_ids):
+    """{attempt_id: every outcome the history holds for it}, from one bounded read; the merged row receipts() builds keeps only the last."""
+    found = {aid: set() for aid in attempt_ids}
+    path = Path.home() / '.himmel/launch-refusals.jsonl'
+    if not path.exists():
+        return found
+    deadline = time.monotonic() + 3
+    with path.open() as stream:
+        while True:
+            line = stream.readline(1048576)
+            if not line:
+                break
+            if time.monotonic() > deadline or (len(line) == 1048576 and not line.endswith('\n')):
+                raise Refused('receipt history exceeds bounded read')
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if row.get('v') == 2 and row.get('kind') == 'launch-attempt' and row.get('attempt_id') in found:
+                found[row['attempt_id']].add(row.get('outcome'))
+    return found
+
+
+def receipt(record, outcome, **extra):
     path = Path.home() / '.himmel/launch-refusals.jsonl'
     path.parent.mkdir(parents=True, exist_ok=True)
     row = dict(v=2, kind='launch-attempt', source='fleet-runtime', ts=time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
                attempt_id=record['attempt_id'], name=record['name'], doc=record['doc'],
                family=record['family'], owner=record['owner'], session=record.get('session'), outcome=outcome,
                cause=record.get('cause', 'runtime'), phase='runtime',
-               committer=record.get('committer'), reservation=record.get('reservation'), manifest=record.get('manifest'))
+               committer=record.get('committer'), reservation=record.get('reservation'), manifest=record.get('manifest'), **extra)
     with path.open('a') as stream:
         stream.write(json.dumps(row) + '\n')
         stream.flush()
@@ -519,6 +543,66 @@ def same_receipt(record, row):
     return bool(record.get('attempt_id')) and all(row.get(key) == record.get(key) for key in ('attempt_id', 'name', 'doc', 'family', 'owner'))
 
 
+def settle_blockers(record, outcomes, deadline):
+    """Why a stuck attempt cannot be settled as refused with no session now; empty when every precondition holds.
+    Evidence only: the committed or unknown phase, the process identity of the owner and the committer, one full readable
+    session scan, and the attempt's history. It reads no age and no elapsed time; the deadline only bounds the scan."""
+    blockers = []
+    if record['phase'] not in ('committed', 'unknown'):
+        blockers.append('phase is %s (settle takes a committed or unknown attempt)' % record['phase'])
+    for who in ('owner', 'committer'):
+        state = process_state(record[who]) if record.get(who) else 'dead'
+        if state != 'dead':
+            blockers.append('%s is not proven dead (%s)' % (who, state))
+    seen = sorted(outcomes & {'launched', 'refused', 'complete'})
+    if seen:
+        blockers.append('a %s receipt exists (reconcile settles it)' % '/'.join(seen))
+    if not session_ended(record, deadline):
+        blockers.append('a session may exist (the scan did not prove absence)')
+    return blockers
+
+
+def settle_hint(record, outcomes, deadline):
+    """Text for the chief that reads ack. Nothing runs it."""
+    blockers = settle_blockers(record, outcomes, deadline)
+    if blockers:
+        return {'settleable': False, 'text': 'not settleable now: ' + '; '.join(blockers)}
+    command = 'fleet-manifest.sh runtime settle --manifest %s --doc %s --name %s --attempt-id %s --reason %s --confirm-no-session' % (
+        shlex.quote(record['manifest']), shlex.quote(record['doc']), shlex.quote(record['name']), shlex.quote(record['attempt_id']), shlex.quote('<why>'))
+    return {'settleable': True, 'text': 'settleable now. Only after you have checked that no launch of this worker is still starting, type: ' + command}
+
+
+def settle_attempt(args, attempts, rows, doc, history):
+    """The one explicit exit for a committed or unknown attempt whose launcher died with no session ever seen: refused,
+    its reservation and family target slot released, its history kept. It runs only when the chief or the operator types
+    it (nothing calls it, ack and reconcile only print the hint) and it needs every precondition of settle_blockers."""
+    if not args.confirm_no_session:
+        raise Refused('settle refused: --confirm-no-session is required')
+    reason = (args.reason or '').strip()
+    if not reason:
+        raise Refused('settle refused: a non-empty --reason is required')
+    record = attempts.get(args.attempt_id)
+    if not record:
+        row = history.get(args.attempt_id, {})
+        if row.get('outcome') == 'refused' and row.get('cause') == 'settled-no-session' and row.get('doc') == doc:
+            return {'replayed': True, 'phase': 'refused', 'cause': 'settled-no-session'}
+        raise Refused('settle refused: unknown attempt')
+    if record['doc'] != doc or record['name'] != args.name:
+        raise Refused('settle refused: attempt locator conflict')
+    blockers = settle_blockers(record, attempt_outcomes({args.attempt_id})[args.attempt_id], time.monotonic() + 5)
+    if blockers:
+        raise Refused('settle refused: ' + '; '.join(blockers))
+    evidence = dict(phase=record['phase'], owner='dead', committer='dead' if record.get('committer') else None, scan='absent',
+                    session=bool(record.get('session')))
+    record['cause'] = 'settled-no-session'
+    receipt(record, 'refused', reason=reason[:1000], evidence=evidence,
+            settled_by=dict(host=socket.gethostname(), pid=os.getpid(), uid=os.getuid()))
+    release_reservation(record)
+    del attempts[args.attempt_id]
+    rows[:] = [w for w in rows if not (w.get('doc') == doc and w.get('attempt', {}).get('attempt_id') == args.attempt_id)]
+    return {'phase': 'refused', 'cause': 'settled-no-session'}
+
+
 def reconcile(attempts, rows, history, deadline):
     """Run under manifest→anchor locks, before admission as well as ack."""
     settled = set()
@@ -597,6 +681,8 @@ def run(args):
             raise Refused('only the real resource preflight stamps admission')
     manifest = Path(args.manifest).absolute() if args.op in ('ack', 'reconcile') and args.manifest else resolve(args.doc, args.manifest)
     if manifest is None:
+        if args.op == 'settle':
+            raise Refused('settle refused: the doc is not a managed worker')
         return {'managed': False, 'administrative': bool(args.doc and (Path(args.doc).resolve().parent / 'fleet-control.json').exists())}
     anchor = manifest.parent / 'fleet-control.json'
     if args.op == 'resolve':
@@ -638,11 +724,19 @@ def run(args):
                 if time.monotonic() >= deadline or worker_state(row['doc'], max(.01, deadline - time.monotonic())) != 'wrapped':
                     legacy[row['doc']] = dict(doc=row['doc'], label=row.get('label'),
                                               attempt_id=row.get('attempt', {}).get('attempt_id'), phase='legacy-unknown')
-            return dict(value, in_flight=inflight, unknown=unknown,
+            hint_deadline, outcomes = time.monotonic() + 3, attempt_outcomes({r['attempt_id'] for r in unknown})
+            return dict(value, in_flight=inflight,
+                        unknown=[dict(r, settle_hint=settle_hint(r, outcomes[r['attempt_id']], hint_deadline)) for r in unknown],
                         legacy_unknown=list(legacy.values()), quiescent=value['mode'] != 'active' and not attempts and not legacy,
                         launched=[r for r in attempts.values() if r['phase'] == 'launched'])
         if not re.fullmatch(r'[A-Za-z0-9-]{1,80}', args.attempt_id):
             raise Refused('invalid attempt id')
+        if args.op == 'settle':
+            result = settle_attempt(args, attempts, rows, doc, history)
+            if not result.get('replayed'):
+                publish(anchor, control)
+                publish(manifest, data)
+            return result
         record = attempts.get(args.attempt_id)
         if args.op == 'begin':
             if record:
@@ -757,7 +851,7 @@ def run(args):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('op', choices=['resolve', 'check', 'begin', 'handoff', 'commit', 'outcome', 'finish', 'ack', 'reconcile', 'run', 'release', 'stamp', 'protected', 'disposition', 'owners', 'reservation'])
+    parser.add_argument('op', choices=['resolve', 'check', 'begin', 'handoff', 'commit', 'outcome', 'finish', 'ack', 'reconcile', 'run', 'release', 'stamp', 'protected', 'disposition', 'owners', 'reservation', 'settle'])
     parser.add_argument('--doc', default='')
     parser.add_argument('--manifest', default='')
     parser.add_argument('--name', default='')
@@ -766,6 +860,8 @@ def main():
     parser.add_argument('--phase', choices=['refused', 'unknown', 'launched', 'complete'])
     parser.add_argument('--slot', default='')
     parser.add_argument('--lane', choices=['native', 'claudex', 'openrouter', 'deepseek', 'api'], default='native')
+    parser.add_argument('--reason', default='')
+    parser.add_argument('--confirm-no-session', action='store_true')
     argv = sys.argv[1:]
     command = argv[argv.index('--') + 1:] if '--' in argv else []
     args = parser.parse_args(argv[:argv.index('--')] if '--' in argv else argv)
