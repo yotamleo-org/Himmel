@@ -3752,21 +3752,18 @@ _doctor_env_file() {
 # value is ever printed. Seam: HIMMEL_DOCTOR_ENV_FILE (the .env to list).
 check_c74_config_split() {
     local dir conf pol envfile bad names key held miss="" cfg="" present="" envbad=""
-    # Two scripts on purpose: migrate-env.sh is the update's whole .env move and
-    # takes the .env path; migrate-env-config.sh moves only the himmel.conf keys
-    # and needs --vault/--profile, so the himmel.conf rows keep it.
-    local migrate="bash $REPO_ROOT/scripts/setup/migrate-env-config.sh"
-    local menv
+    local conf_move_cmd="bash $REPO_ROOT/scripts/setup/migrate-env-config.sh"
+    local env_move_cmd
     dir="$(_himmel_config_dir)"; conf="$dir/himmel.conf"; pol="$dir/config.json"
     envfile="${HIMMEL_DOCTOR_ENV_FILE:-$(_doctor_env_file)}"
-    menv="bash $REPO_ROOT/scripts/setup/migrate-env.sh --env $envfile"
+    env_move_cmd="bash $REPO_ROOT/scripts/setup/migrate-env.sh --env $envfile"
 
     if [ -L "$conf" ] && [ ! -e "$conf" ]; then
         emit WARN C74-himmel-conf "$conf is a link to a file that does not exist" \
-            "restore the vault checkout it points at, or remove the link and re-run: $migrate --dry-run"
+            "restore the vault checkout it points at, or remove the link and re-run: $conf_move_cmd --dry-run"
     elif [ ! -e "$conf" ]; then
         emit INFO C74-himmel-conf "no $conf (this install has not migrated its behaviour keys out of .env)" \
-            "optional: $migrate --dry-run, then without --dry-run (docs/internals/config-layers.md)"
+            "optional: $conf_move_cmd --dry-run, then without --dry-run (docs/internals/config-layers.md)"
     elif [ ! -f "$conf" ] || [ ! -r "$conf" ]; then
         emit WARN C74-himmel-conf "$conf is not a readable file" "fix its permissions, or replace it with a KEY=value file"
     else
@@ -3800,7 +3797,7 @@ check_c74_config_split() {
         done
         if [ -n "$cfg" ]; then
             emit WARN C74-env-keys ".env still holds behaviour keys that moved to himmel.conf: $cfg (they still work, with a DEPRECATED notice)" \
-                "run $menv (it prints the plan and the apply command; unattended, the operator sets ENV_MIGRATION_CONSENT=\"1\" under .policy in ~/.himmel/config.json)"
+                "run $env_move_cmd (it prints the plan and the apply command; unattended, the operator sets ENV_MIGRATION_CONSENT=\"1\" under .policy in ~/.himmel/config.json)"
         else
             emit OK C74-env-keys ".env holds no behaviour keys"
         fi
@@ -3824,7 +3821,7 @@ check_c74_config_split() {
                 "fix the .env permissions, then re-run the doctor"
         elif [ -n "$present" ]; then
             emit WARN C74-policy "$pol is missing but .env still carries gate keys: ${present# } (gates read them with a DEPRECATED notice)" \
-                "the operator moves them at their own prompt: $menv -y"
+                "the operator moves them at their own prompt: $env_move_cmd -y"
         else
             emit INFO C74-policy "no $pol; every gate uses its safe default" \
                 "only needed once the operator sets a gate key (docs/internals/config-layers.md)"
@@ -3842,7 +3839,7 @@ $key="*) ;; *) miss="$miss $key" ;; esac
         done
         if [ -n "$miss" ]; then
             emit WARN C74-policy "$pol does not hold gate keys that .env still carries: ${miss# }" \
-                "the operator moves them at their own prompt: $menv -y"
+                "the operator moves them at their own prompt: $env_move_cmd -y"
         elif [ -n "$envbad" ]; then
             emit INFO C74-policy "$pol is parseable; .env is unreadable so its gate keys were not compared" \
                 "fix the .env permissions, then re-run the doctor"

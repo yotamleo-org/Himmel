@@ -436,14 +436,6 @@ run_phases() {
     done
 }
 
-# Opt-in auto-commit (LUNA_VAULT_AUTOCOMMIT=1) for a vault nothing else commits:
-# no git remote and no sync plugin. It runs only when nothing is staged, stages an
-# explicit list of notes untouched for VAULT_STALL_MIN (never handovers/ or focus
-# scratch), runs the vault's own hooks (no --no-verify) and never pushes. A commit
-# the hooks refuse leaves the paths staged, so the stall handling below takes over.
-# The key, remote and plugin are re-read right before the commit and once after it:
-# a hook run takes seconds, and a gate that closed in that window is alerted, not
-# undone.
 LUNA_AUTOCOMMIT_ENV="${LUNA_VAULT_AUTOCOMMIT:-}"
 autocommit_key_on() {
     local v="$LUNA_AUTOCOMMIT_ENV"
@@ -482,7 +474,6 @@ autocommit_vault() {
             case "$m" in '' | *[!0-9]*) continue ;; esac
             [ $((now - m)) -ge $((thr * 60)) ] || continue
         else
-            # a deletion has no mtime: it is quiet once the newest commit is older than the window
             [ $((now - last)) -ge $((thr * 60)) ] || continue
             m=0
         fi
@@ -492,7 +483,6 @@ autocommit_vault() {
     if [ "$n" -eq 0 ]; then rm -f "$paths" "$mtimes" "$changed"; return 0; fi
     if [ "$dry" -eq 1 ]; then echo "vault-stall: would auto-commit $n note(s)"; rm -f "$paths" "$mtimes" "$changed"; return 0; fi
     if git --literal-pathspecs -C "$vault" add --pathspec-from-file="$paths" --pathspec-file-nul >/dev/null 2>&1; then
-        # a writer that touched a listed note while it was being staged keeps it out of this commit
         exec 3<"$mtimes"
         while IFS= read -r -d '' p; do
             IFS= read -r m <&3

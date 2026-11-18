@@ -172,8 +172,6 @@ echo "ok: case a (baseline) — both A and B read red before either is flipped"
 printf '{"statusLine":{"command":"node \\"%s\\""},"hooks":{"PreToolUse":[]}}' "$statuslineStub_w" > "$homeDir/.claude/settings.json"
 sevA1=$(sevOf "$(runA wiring-statusline)")
 sevB1=$(sevOf "$(runB wiring-statusline)")
-# a project target reads the user's settings as well, so the key B's scope now
-# carries is in effect for A too
 [ "$sevA1" = "green" ] || fail "case a: a key in the user settings is in effect for project target A (got A severity: $sevA1)"
 [ "$sevB1" = "green" ] || fail "case a: B's own report should read green after its wiring was flipped (got: $sevB1)"
 printf '%s' "$baselineSettings" > "$homeDir/.claude/settings.json"

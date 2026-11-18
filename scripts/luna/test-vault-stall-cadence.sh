@@ -819,7 +819,6 @@ assert_eq "T43 no remote was added or pushed to" "" "$(git -C "$V" remote)"
 assert_eq "T43 no alert sent" "" "$(sent)"
 assert_eq "T43 the hooks ran (the fixture hook logs its fixer pass)" "yes" "$([ -f "$V/.git/fixer-ran.log" ] && echo yes || echo no)"
 
-# The doctor's C3 warns on this vault before the commit and reads OK after it.
 mkvault
 mkdir -p "$V/.git/info"; : >"$V/.single-writer"; echo .single-writer >>"$V/.git/info/exclude"
 echo "more" >>"$V/README.md"; backdate "$V/README.md"

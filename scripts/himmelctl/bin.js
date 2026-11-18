@@ -455,7 +455,7 @@ function parseArgs(argv) {
     withHermes: false, // install: --with-hermes (opt-in lane)
     prune: false,      // ensure: --prune (opt-in: disable/unwire candidates require this)
     noNetwork: false,  // ensure: --no-network (only manifest-declared local paths)
-    writeTracked: false, // ensure: --write-tracked (allow writing a settings file git tracks)
+    writeTracked: false,
     preset: null,      // gaps: --preset <name> (null = default 'operator' reference)
     purgeState: false, // uninstall: --purge-state (also remove operator state; default keeps it)
     port: null,        // ui: --port N (null = ephemeral)
@@ -2897,9 +2897,6 @@ function settingsPathForScope(scope) {
   return path.join(process.cwd(), '.claude', 'settings.json');
 }
 
-// Whether git tracks `file`: 'tracked' (ls-files rc 0), 'untracked' (rc 1, or
-// not inside a repository, or git is not installed at all) or 'unknown' (any
-// other git failure), which callers treat as tracked.
 function settingsTrackedState(file) {
   let dir = path.dirname(file);
   while (!fs.existsSync(dir) && path.dirname(dir) !== dir) dir = path.dirname(dir);
@@ -2910,17 +2907,12 @@ function settingsTrackedState(file) {
   return /not a git repository/i.test(r.stderr || '') ? 'untracked' : 'unknown';
 }
 
-// The primitives behind these install/unwire types write the scope's
-// settings.json from a child process (adopt.sh, wire-*.sh, install-plugins.sh).
-// guardrail-block-global writes the operator's global file instead.
 function writesScopeSettings(item) {
   const d = item.install || item.unwire;
   if (!d) return false;
   return d.type === 'adopt' || d.type === 'plugins' || (d.type === 'wire' && d.target !== 'guardrail-block-global');
 }
 
-// null when ensure may go ahead; else the refusal text. Run BEFORE any item,
-// since the writes happen in child processes himmelctl cannot interleave with.
 function trackedSettingsRefusal(scope, writerIds, args) {
   if (writerIds.length === 0 || args.writeTracked) return null;
   const file = settingsPathForScope(scope);
@@ -2932,8 +2924,6 @@ function trackedSettingsRefusal(scope, writerIds, args) {
   return `himmelctl: ${why}\n  item(s) that would write it: ${writerIds.join(', ')}\n  re-run with --write-tracked to allow the change, then review it with git diff`;
 }
 
-// After a write: a tracked settings file that now differs from git is a repo
-// diff the operator did not necessarily expect.
 function warnTrackedSettingsModified(scope) {
   const file = settingsPathForScope(scope);
   if (settingsTrackedState(file) !== 'tracked') return;
@@ -7151,9 +7141,6 @@ async function cmdEnsure(args) {
     return 2;
   }
 
-  // A settings file git tracks is repo content: refuse before any item can
-  // write it, unless --write-tracked says that diff is wanted. --dry-run
-  // writes nothing.
   const trackedWriterIds = towardEnabled.filter(writesScopeSettings)
     .concat(pruneConfirmed ? towardDisabled.filter((i) => i.removable === 'per-item' && i.unwire && writesScopeSettings({ unwire: i.unwire })) : [])
     .map((i) => i.id);

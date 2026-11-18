@@ -921,11 +921,6 @@ QMD_MOCK_HEALTH_BODY='OK' run_ensure auth401 "$bin:$safe"
 [ "$rc" -ne 0 ] || fail "(y3) auth401+foreign health: expected nonzero rc"
 echo "ok (y3): MCP route 401 with a non-qmd /health body -> not reported alive"
 
-# ---- (z) --recycle-if-stale <stamp>: restart a server older than the build ----
-# himmel-update runs this synchronously after a fork build. A server is stale
-# iff its pidfile is older than the build stamp. Identity is the pidfile's pid
-# with an HTTP-server argv AND a process start no later than the pidfile's
-# mtime (a pid reused afterwards is never ours). The RSS cooldown does not apply.
 fake_daemon="$work/fake-daemon.sh"   # case (x) reused this name for a pid
 bin2="$work/bin2"
 mkdir -p "$bin2"

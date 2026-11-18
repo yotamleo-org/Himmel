@@ -41,16 +41,6 @@
 #     so this hook can no longer be killed mid-run by the harness timeout.
 #     First run on a fresh clone therefore sees pre-fetch refs and is silent.
 #
-# RELEASE CHANNEL: a station that follows a channel (stable|pre) is moved by
-# /himmel-update onto the newest channel TAG, never pulled along the branch, so a
-# branch-behind count is a nudge that can never clear. The channel is resolved
-# with the updater's own resolver (scripts/lib/update-channel.sh), and a channel
-# station is nudged only when HEAD is a strict ancestor of the newest channel tag.
-# Those tags are read ONLY from refs/himmel-update/tags, which a second detached
-# fetch fills: `git tag -l` would rank a stray local tag the updater never sees.
-# A channel the updater would refuse (malformed profile, jq missing) gets a
-# distinct warning instead of a nudge it could not honour.
-#
 # Env knobs (all optional):
 #   UPDATE_CHECK_DISABLE=1           kill switch
 #   UPDATE_CHECK_INTERVAL            seconds between checks (default 14400)
@@ -193,10 +183,6 @@ if [ -z "$ROOT" ]; then
 fi
 [ -d "$ROOT/.git" ] || exit 0
 
-# ─── release channel ────────────────────────────────────────────────────────
-# Resolved BEFORE the upstream check: on a channel the branch count is not what
-# /himmel-update acts on. Fails open to today's branch nudge if the shared
-# library is unreadable or the resolver fails in a way other than "refuse".
 CHAN=""; CHAN_ERR=""; CHAN_TAG=""
 chan_lib="$(dirname "${BASH_SOURCE[0]}")/../lib/update-channel.sh"
 # shellcheck source=scripts/lib/update-channel.sh disable=SC1091
@@ -208,7 +194,6 @@ if { [ -r "$chan_lib" ] && . "$chan_lib"; } 2>/dev/null; then
     fi
 fi
 if [ -n "$CHAN" ]; then
-    # Local reads only. HEAD may be detached (that is where a channel update leaves it).
     chan_names=$(git -C "$ROOT" for-each-ref --format='%(refname)' refs/himmel-update/tags 2>/dev/null | sed 's|^refs/himmel-update/tags/||') || chan_names=""  # swallow-ok: no private tags yet reads as no release; this hook fails open
     CHAN_TAG=$(_channel_best_tag "$CHAN" "$chan_names") || CHAN_TAG=""
     chan_behind=0
@@ -286,7 +271,6 @@ fi
 
 # ─── verdict ─────────────────────────────────────────────────────────────────
 if [ -n "$CHAN_ERR" ]; then
-    # The updater refuses on this, so a pull nudge would promise what it cannot do.
     chan_why=$(printf '%s\n' "$CHAN_ERR" | sed -n '1s/^update: //p' | tr -d '<>`' | cut -c1-200)
     cat <<EOF
 <system-reminder>

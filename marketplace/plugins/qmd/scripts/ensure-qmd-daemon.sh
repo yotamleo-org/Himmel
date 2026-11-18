@@ -304,7 +304,6 @@ if [ "${1:-}" = "--recycle" ]; then
   exit "$rc"
 fi
 
-# ---- Stale-build recycle (foreground) --------------------------------------
 file_mtime() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null; }
 
 # [[dd-]hh:]mm:ss -> seconds
@@ -332,7 +331,6 @@ EOF
   [ $(( $(date +%s) - secs )) -le $(($2 + 2)) ]
 }
 
-# Same staleness rule as check_ceiling's lock: the holder's 'at', else the dir's age.
 recycle_lock_stale() {
   local at
   at="$(cat "$recycle_lock/at" 2>/dev/null)"
@@ -352,7 +350,6 @@ stale_recycle() {
   case "$lock_wait" in ''|*[!0-9]*) lock_wait=20 ;; esac
   case "$term_wait" in ''|*[!0-9]*) term_wait=30 ;; esac
 
-  # Returns 0 and sets pid/pf_m when the pidfile names a usable pid; 1 otherwise.
   read_pidfile() {
     pid="$(head -n1 "$pidfile" 2>/dev/null)"
     case "$pid" in ''|*[!0-9]*) return 1 ;; esac
@@ -388,7 +385,6 @@ stale_recycle() {
   trap "[ \"\$(cat '$recycle_lock/owner' 2>/dev/null)\" = '$$' ] && rm -rf '$recycle_lock'" EXIT
   date +%s > "$recycle_lock/at"
 
-  # Re-read under the lock: a recycler that held it before us may have finished.
   read_pidfile || { echo "$who: the pidfile vanished while waiting for the lock - cannot verify" >&2; return 1; }
   if [ "$pf_m" -lt "$stamp_m" ] && pid_is_ours "$pid" "$pf_m"; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') recycle-if-stale: SIGTERM qmd server PID $pid (older than $stamp)"
@@ -410,7 +406,6 @@ stale_recycle() {
     fi
   fi
 
-  # Start (or confirm) a server through the normal path, then verify the outcome.
   bash "$0" || echo "$who: the start path failed" >&2
   w=0
   while [ "$w" -lt 10 ]; do

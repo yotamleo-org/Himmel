@@ -1214,7 +1214,6 @@ assert_contains "config_ui dies at second 2: row says it did not stay up" "did n
 assert_eq "config_ui dies at second 2: keeps the retry marker" "yes" "$([ -f "$HOME/.himmel/state/config-ui-rebuild-pending" ] && echo yes || echo no)"
 rm -f "$HOME/.himmel/state/config-ui-rebuild-pending"
 
-# ─── qmd daemon restart: the repo's own ensure script, run synchronously ─────
 echo "Test 32: report_qmd_daemon_restart recycles a stale qmd server and prints the manual block only on failure"
 make_repo_channel
 QSTUB="$CHECKOUT_DIR/marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh"

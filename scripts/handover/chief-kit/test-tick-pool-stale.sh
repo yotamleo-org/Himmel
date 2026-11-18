@@ -535,7 +535,6 @@ check 'the outside line names its cause' 1 "$(printf '%s\n' "$hpo" | grep -c "^S
 check 'the fired line names its wake' 1 "$(printf '%s\n' "$hpo" | grep -c "^STALE-DISPOSITION $hk-9191 line=[0-9a-f]* wake=date:[0-9-]*=fired\$")"
 check 'an open same-repo PR is not stale (I6)' '1:HIMMEL-9191' "$(hp_run false | sed -n 's/^pool-stale=//p')"
 
-# the default mirror follows the project key: a key only in himmel.conf reads jira-mirror/<KEY>, and NEXT_DISPATCH_MIRROR still wins
 rk="$WORK/rk"; mkdir -p "$rk/conf" "$rk/cache" "$rk/home/.himmel/state/jira-mirror/CONFKEY"
 printf 'JIRA_PROJECT_KEY=CONFKEY\n' > "$rk/conf/himmel.conf"
 : > "$rk/cache/.env"

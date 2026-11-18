@@ -912,7 +912,6 @@ const redMainSection = (() => {
 const CR_SOFT_CAP = 15;
 const CR_CADENCE_STALE_DAYS = 8;
 const CR_BEFORE = { window: '2026-10-04..2026-10-18', rounds_mean: 2.71, rounds_p50: 2, rounds_p90: 5, residuals_per_merged_pr: 0.41, residual_inflow_per_week: 200 };
-// BOARD_MIRROR wins; else the project's mirror from scripts/lib/jira-project.sh. Throws when the resolver gives nothing, so a section reads n/a.
 const boardMirrorDir = () => {
     if (process.env.BOARD_MIRROR) return process.env.BOARD_MIRROR;
     const out = execFileSync('bash', ['-c', '. "$1/jira-project.sh" && jira_mirror_dir', 'board', join(HERE, '../../lib')],

@@ -1819,14 +1819,6 @@ update_qmd_fork() {
         # serving, so after a fork-ref bump the new code is on disk while every
         # MCP call still hits the old build resident in memory, silently, with
         # a green status line.
-        #
-        # report_qmd_daemon_restart hands this to the repo's own ensure script
-        # (--recycle-if-stale <build stamp>), which stops only the process its
-        # pidfile names, and only when that pid is the HTTP server that wrote
-        # the pidfile. That is identification by a recorded pid and its start
-        # time, never a process-list pattern match, so it is not the
-        # generic-kill-wrapper this repo refuses to grow. The operator command
-        # block is the fallback for when that cannot verify or fails.
         if qmd_daemon_serving; then
             DETAIL_qmd_fork="${DETAIL_qmd_fork:+$DETAIL_qmd_fork }(daemon restart pending)"
             QMD_DAEMON_RESTART_PENDING=1
@@ -1867,8 +1859,6 @@ qmd_daemon_serving() {
 # update is a notice nobody reads.
 report_qmd_daemon_restart() {
     [ "${QMD_DAEMON_RESTART_PENDING:-0}" = "1" ] || return 0
-    # Synchronous and bounded by the script itself (worst case about two minutes).
-    # The repo copy, never the plugin cache's: the cache may still be the old build.
     local ensure="$ROOT/marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh" rc=0  # t13b-ok: path of the existing repo script, starts nothing
     if [ -f "$ensure" ] && [ -n "${QMD_FORK_BUILD_STAMP:-}" ]; then
         echo ""
@@ -3344,11 +3334,6 @@ report_toolchain() {
     fi
     return 0
 }
-
-# ─── release-channel seam ──────────────────────────────────────
-# The resolver (_resolve_update_channel) and the tag ranking (_channel_tag_parts,
-# _channel_tag_max, _channel_best_tag) live in scripts/lib/update-channel.sh, sourced
-# at the top, so the session-start nudge reads a channel exactly as this script does.
 
 # Tag names origin actually advertises (a plain `git tag
 # --list` scans EVERY local tag, including ones from another remote or a

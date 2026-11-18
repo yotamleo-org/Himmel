@@ -775,7 +775,7 @@ function settingsLayerFiles(file, ctx) {
 function probeSettingsKey(item, ctx) {
   const isEnv = item.probe.file === '.env';
   const { primary: filePath, files } = settingsLayerFiles(item.probe.file, ctx);
-  const layers = []; // { path, data }, highest precedence first
+  const layers = [];
   for (const file of files) {
     const isPrimary = file === filePath;
     let raw;
@@ -804,9 +804,6 @@ function probeSettingsKey(item, ctx) {
   }
   if (layers.length === 0) return { actual: 'absent', detail: `cannot read ${filePath}` };
   const valIn = (layer, k) => (isEnv ? layer.data[k] : getDotPath(layer.data, k));
-  // The layer a key resolves from, key by key: the first holding a non-empty
-  // value, or with `defined` the first holding any value, so a local `false`
-  // beats a user `true`.
   const layerFor = (k, defined) => layers.find((l) => (defined ? valIn(l, k) !== undefined : nonEmpty(valIn(l, k))));
   const getVal = (k, defined) => {
     const l = layerFor(k, defined);

@@ -580,11 +580,6 @@ H="$TMP/home24e"; mkdir -p "$H"
 env -u UPDATE_CHECK_STATE_DIR -u HIMMELCTL_CACHE_DIR HOME="$H" CLAUDE_PROJECT_DIR="$CHECKOUT_DIR" bash "$HOOK" >/dev/null 2>&1 || true
 if [ -f "$H/.claude/himmel/himmel-update-check-last" ]; then assert_pass "24e: git path: the throttle stamp is under \$HOME/.claude/himmel"; else assert_fail "24e: git path: no throttle stamp under \$HOME/.claude/himmel"; fi
 
-# ─── Release channel: the nudge reads a channel as the updater does ──────────
-# On a channel station /himmel-update switches onto the newest channel TAG and
-# pulls nothing from the branch, so a branch-behind count is a nudge that can
-# never clear. The hook compares HEAD with the newest tag of the channel, read
-# only from the private namespace its own detached fetch fills.
 echo "Test 25: release channel"
 PRIV_FETCH='+refs/tags/v*:refs/himmel-update/tags/v*'
 # chan_repo <n> — a clone at the init commit, origin ahead by n commits; sets

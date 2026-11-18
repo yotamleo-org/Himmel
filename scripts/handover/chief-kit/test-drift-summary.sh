@@ -311,7 +311,6 @@ eq '9561 control: a file with no such row has an empty list' "$(jqv "$out" '.clo
 out="$(node "$SUM" --json --drift "$WORK/absent.txt" --mirror-dir "$MIR" --now "$NOW" 2>&1)"
 eq '9561 control: an absent file has an empty list' "$(jqv "$out" '.closeOrDispatch | length')" 0
 
-# the default mirror follows the project key: a key only in himmel.conf reads jira-mirror/<KEY>; --mirror-dir still wins
 RK="$WORK/rk"; mkdir -p "$RK/conf" "$RK/cache" "$RK/home/.himmel/state/jira-mirror/CONFKEY"
 printf 'JIRA_PROJECT_KEY=CONFKEY\n' > "$RK/conf/himmel.conf"
 : > "$RK/cache/.env"

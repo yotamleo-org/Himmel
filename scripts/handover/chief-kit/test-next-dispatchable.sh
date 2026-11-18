@@ -3057,7 +3057,6 @@ has "T11: with the real classifier on, main under the floor pauses the run altho
 t11run "$WORK/t11root" healthy NEXT_DISPATCH_CLASSIFY_CMD= CLOUD_ROUTE_GH_CMD="$T11B/cr-gh" T11_CR_LOG="$WORK/t11cr.log" CLOUD_ROUTE_JIRA_CMD=false
 has "T11 RED control: with main healthy the real classifier runs" "$(cat "$WORK/t11cr.log")" "main pr list"
 
-# the default mirror comes from the project resolver: a key only in himmel.conf names jira-mirror/<KEY>, and the override still wins
 RK="$WORK/rk"; mkdir -p "$RK/conf" "$RK/cache" "$HOME/.himmel/state/jira-mirror/CONFKEY"
 printf 'JIRA_PROJECT_KEY=CONFKEY\n' > "$RK/conf/himmel.conf"
 : > "$RK/cache/.env"

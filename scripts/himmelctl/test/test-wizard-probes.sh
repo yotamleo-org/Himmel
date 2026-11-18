@@ -615,10 +615,6 @@ console.log(JSON.stringify(runProbe(item, ctx)));
 done
 echo "ok: settings-key dot-path + verifyScript (wiring-statusline) — present/absent, missing script degrades"
 
-# ── settings-key: effective settings (local > project > user, CLAUDE_CONFIG_DIR) ──
-# A project-scope probe of a .claude/settings.json key reads settings.local.json,
-# the project file and the user file, per key; the user file is
-# ctx.env.CLAUDE_CONFIG_DIR/settings.json when set, else HOME/.claude/settings.json.
 # Probe himmel-ops-plugin (enabledPlugins["himmel-ops@himmel"] === true) against
 # hand-built fixtures; every ctx.env is explicit, never the operator's.
 sl_root="$work/sl"; mkdir -p "$sl_root"

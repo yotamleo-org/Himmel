@@ -1709,8 +1709,6 @@ same 'S8a control: the board'"'"'s PR child has GH_READ_QUIET=1 and no no-fallba
 same 'S8a control: the cloud child has GH_READ_QUIET=1 and GH_READ_NO_MAIN_FALLBACK=1' "$(sort -u "$CENVLOG")" '1|1'
 rm -f "$M/cloud-sessions.tsv"
 
-# --- the default mirror follows the project key: a key only in himmel.conf reads
-# jira-mirror/<KEY> and its <KEY>.versions.tsv, and BOARD_MIRROR still wins.
 RK="$W/rk"
 mkdir -p "$RK/conf" "$RK/cache" "$RK/home/.himmel/state/jira-mirror/CONFKEY"
 printf 'JIRA_PROJECT_KEY=CONFKEY\n' > "$RK/conf/himmel.conf"

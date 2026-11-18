@@ -1360,10 +1360,6 @@ grepq "$outY1" -F 'item-c' || fail "case y: the rejection should name the reques
 echo "ok: case y — a red/desired prerequisite hidden behind a GREEN middle node is still caught by the TRANSITIVE walk (exit 2, names item-a), zero mutation"
 
 
-# ── case z: ensure never writes a git-tracked settings file unasked ─────────
-# The wire/plugin/adopt primitives write the scope's .claude/settings.json in a
-# child process, so ensure refuses BEFORE dispatching them when that file is
-# tracked, unless --write-tracked is given. repoD's red-item is the writer.
 repoZ="$work/repoZ"; mkdir -p "$repoZ/scripts/install" "$repoZ/scripts/lib"
 cp "$repoD/scripts/install/manifest.json" "$repoZ/scripts/install/manifest.json"
 cat > "$repoZ/scripts/lib/wire-statusline.sh" <<'SH'

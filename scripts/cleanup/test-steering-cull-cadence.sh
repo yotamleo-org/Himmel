@@ -294,13 +294,10 @@ has "a claude-cli runner names the default token path" "$HOME/.himmel/secrets/cl
 bash "$CAD" arm --force --chief test-chief --proposal-dir "$PROP" --backend claude-api --api-account B >"$W/arm8f.out" 2>&1
 check "arm --backend claude-api exits 0 again" 0 $?
 hasnt "a claude-api runner never loads the OAuth token file" "CLAUDE_CODE_OAUTH_TOKEN" "$W/runner/steering-cull-cadence.sh"
-# The runner stamps the shared format marker, so the update nudge can tell an armed
-# runner that predates the token block from a current one.
 # shellcheck source=../lib/cadence-format.sh
 . "$REAL_ROOT/scripts/lib/cadence-format.sh"
 check "a claude-api runner carries the current format stamp" "$CADENCE_RUNNER_FORMAT_VERSION" "$(cadence_runner_stamp "$W/runner")"
 
-# Execute the emitted token block (POSIX sh, as cron would) against fixture token files.
 bash "$CAD" arm --force --chief test-chief --proposal-dir "$PROP" --backend claude-cli >"$W/arm9.out" 2>&1
 check "a claude-cli runner carries the current format stamp" "$CADENCE_RUNNER_FORMAT_VERSION" "$(cadence_runner_stamp "$W/runner")"
 TOK="fixture-token-not-a-secret-7"

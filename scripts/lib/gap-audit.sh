@@ -69,7 +69,6 @@ _ga_check_qmd() {
     if [ -n "$pending" ] && [ "$pending" -gt 0 ]; then
         _ga_add qmd "$pending document(s) need embedding" "qmd embed"
     fi
-    # the stamp qmd-reindex.sh writes only after a verified-complete reindex; the same path rule it uses
     stamp="${GAP_AUDIT_QMD_STAMP:-${QMD_REFRESH_STAMP:-$(dirname "${QMD_INDEX_PATH:-${INDEX_PATH:-${XDG_CACHE_HOME:-$HOME/.cache}/qmd/index.sqlite}}")/refresh-stamp}}"
     if [ -f "$stamp" ]; then
         epoch="$(awk 'NR == 1 { print $2 }' "$stamp" 2>/dev/null)"
