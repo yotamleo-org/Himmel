@@ -3309,6 +3309,190 @@ test("round-reset: one reset per ticket, from the console, on a decision naming 
   expect(second.err).toContain(`round-reset: ${CAP_KEY} already used its one reset`); expect(second.code).not.toBe(0);
 }, S1B);
 
+const BLK_A = ["- **A1** (major) the quota rule is stated twice", "  Second paragraph of the same finding, still A1.", "  - nested bullet one", "    - deeper bullet", "", "  - fix: replace the first rule with a pointer", "    and keep only the second rule"].join("\n");
+const BLK_N = ["- **N1** (minor) a wording note between the two", "  - N1 sub bullet that must not reach the pack"].join("\n");
+const BLK_B = ["- **B1** (major) the example contradicts rule one", "  - fix: delete the example"].join("\n");
+
+test("closure-pack carries each open blocking finding's complete block, in order, through the next protocol finding or the return's READ line", async () => {
+  const read = `READ-SHA256 ${sha(front(CAP_KEY, "# A\n"))} ${CAP_KEY}-a.md`;
+  const t = await roundTree([BLK_A, BLK_N, `${BLK_B}\n${read}`], []);
+  const pack = await verb(false, "closure-pack", CAP_KEY, "spec", "--specs", t.specs);
+  expect(pack.err).toBe(""); expect(pack.code).toBe(0);
+  const section = /## open blocking findings\n([\s\S]*?)\n\n## files round 3 read/.exec(pack.out)?.[1];
+  expect(section).toBe(`${BLK_A}\n${BLK_B}`);
+  for (const absent of ["N1", "CONTENT-SHA256", "READ-SHA256", "SPEC FINDINGS", "critic return"]) expect(section).not.toContain(absent);
+  expect(pack.out.split("\n")[0]).toBe(markerFor(t.specs, CAP_KEY, "spec", 4));
+  expect(pack.out).toContain(`## diff against the round 3 snapshots`);
+}, S1B);
+
+test("closure-pack fails closed when a blocking finding's sealed return is unreadable, was edited, or holds no block, and marks an unrated finding explicitly", async () => {
+  const t = await roundTree([BLK_A], []);
+  const r3 = `${t.a}.critic-spec-r3.md`; const good = readFileSync(r3, "utf8");
+  const pack = () => verb(false, "closure-pack", CAP_KEY, "spec", "--specs", t.specs);
+  expect((await pack()).out).toContain(BLK_A);
+  writeFileSync(r3, good.replace("nested bullet one", "nested bullet ONE"));
+  const edited = await pack(); expect(edited.code).not.toBe(0); expect(edited.err).toContain("changed since it was sealed"); expect(edited.out).toBe("");
+  rmSync(r3);
+  const gone = await pack(); expect(gone.code).not.toBe(0); expect(gone.err).toContain("cannot read"); expect(gone.out).toBe("");
+  writeFileSync(r3, good);
+  const ledger = join(roundsDir(t.specs), `${CAP_KEY}.jsonl`); const rows = readFileSync(ledger, "utf8");
+  writeFileSync(ledger, rows.replaceAll('"id":"A1"', '"id":"ZZ"'));
+  const none = await pack(); expect(none.code).not.toBe(0); expect(none.err).toContain("ZZ has no finding block"); expect(none.out).toBe("");
+  writeFileSync(ledger, rows);
+  expect((await pack()).code).toBe(0);
+  const u = await roundTree(["prose only, no finding line"], []);
+  const unrated = await verb(false, "closure-pack", CAP_KEY, "spec", "--specs", u.specs);
+  expect(unrated.err).toBe(""); expect(unrated.out).toContain("- **spec-r3-U1** (unrated) [no protocol finding block");
+}, S1B);
+
+const APPROVE = "approve one closure round for the two corrections";
+const F3_R4 = ["- **F3** (major; reopens M2) the quota rule is stated twice", "  A second paragraph of F3.", "  - nested bullet", "    - deeper bullet", "", "  - fix: point the first rule at the second"].join("\n");
+const F4_R4 = ["- **F4** (major; reopens M2) the example contradicts rule one", "  - fix: delete the example"].join("\n");
+const F3_R5 = ["- **F3** (major; reopens F3) the pointer still repeats the quota", "  Still the same finding, second paragraph.", "  - nested fix bullet", "    - deeper fix bullet", "", "  - fix: drop the repeated sentence"].join("\n");
+const F4_R5 = ["- **F4** (major; reopens F4) the example is gone but rule one lost its test", "  - fix: restore the rule one test"].join("\n");
+const extTree = async () => {
+  const t = await roundTree(["- **M2** (major) the quota rule is stated twice"], []);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 3", F3_R4, BLK_N, F4_R4)).err).toBe("");
+  const over = await verb(true, "round-override", CAP_KEY, "--findings", "F3,F4", "--why", "a second closure", "--chief", "chief-x", "--specs", t.specs);
+  expect(over.err).toBe("");
+  expect((await closeOn(t, "spec", 5, [t.a], "SPEC FINDINGS 2", F3_R5, F4_R5)).err).toBe("");
+  return t;
+};
+const extend = (console: boolean, t: { specs: string }, o: { findings?: string; decision?: number; quote?: string; why?: string; chief?: string } = {}) =>
+  verb(console, "round-extension", CAP_KEY, "--findings", o.findings ?? "F3,F4", "--decision", String(o.decision ?? 986), "--quote", o.quote ?? APPROVE, "--why", o.why ?? "one closure for the two corrections", "--chief", o.chief ?? "chief-x", "--specs", t.specs);
+const T5_WHY = (r: number) => `spec round ${r}: ${T5(r)}`;
+
+test("round-extension: refuses a worker, a missing flag, a wrong finding set, a decision that does not hold, and a round that needs none; the default cap still refuses writer round 6", async () => {
+  const t = await extTree();
+  expect((await closeOn(t, "spec", 6, [t.a], "SPEC CLEAN")).err).toContain(T5(6));
+  expect((await status(t.specs)).why).toContain(T5_WHY(6));
+  decide(t.specs, 986, `${CAP_KEY} operator: ${APPROVE}\n`); decide(t.specs, 987, `no ticket named here: ${APPROVE}\n`);
+  const refused = async (r: Promise<{ code: number; err: string }>, text: string) => { const x = await r; expect(x.err).toContain(text); expect(x.code).not.toBe(0); expect(rowsOf(t.specs, "extension")).toEqual([]); };
+  await refused(extend(false, t), "round-extension: needs HIMMEL_CONSOLE=1");
+  await refused(extend(true, t, { findings: "F3" }), "name every open blocking finding");
+  await refused(extend(true, t, { findings: "F3,F4,F9" }), "F9 is not an open blocking finding");
+  await refused(extend(true, t, { findings: "M2" }), "M2 is not an open blocking finding");
+  await refused(extend(true, t, { decision: 987 }), `decision 987 does not name ${CAP_KEY}`);
+  await refused(extend(true, t, { decision: 986, quote: "a quote the decision never holds at all" }), "does not hold the quote");
+  await refused(extend(true, t, { decision: 55 }), "0 files match");
+  await refused(verb(true, "round-extension", CAP_KEY, "--findings", "F3,F4", "--decision", "986", "--quote", APPROVE, "--chief", "chief-x", "--specs", t.specs), "--why is required");
+  await refused(extend(true, t, { why: "  " }), "are all required");
+  const reused = decide(t.specs, 990, `${CAP_KEY} operator: ${APPROVE}\n`);
+  appendFileSync(join(roundsDir(t.specs), `${CAP_KEY}.jsonl`), `${JSON.stringify({ v: 1, ts: Date.now(), key: CAP_KEY, row: "critical", epoch: 0, opens: 0, id: "F3", class: "spend-grant", decision: "990", quote: APPROVE, decision_path: reused, decision_sha: sha(readFileSync(reused, "utf8")), return_sha: "f".repeat(64) })}\n`);
+  await refused(extend(true, t, { decision: 990 }), "was already used");
+  expect((await status(t.specs)).why).toContain(T5_WHY(6));
+  const early = await roundTree(["- **M1** (major) still open"], []);
+  decide(early.specs, 986, `${CAP_KEY} operator: ${APPROVE}\n`);
+  const x = await extend(true, early); expect(x.err).toContain("is at writer round 3"); expect(x.code).not.toBe(0);
+  const m1 = rowsOf(early.specs, "round").find((r) => r.critic === "spec" && r.round === 3); const p3 = rowsOf(early.specs, "round").find((r) => r.critic === "plan" && r.round === 3);
+  const ed = join(early.specs, "decisions", "verbatim-decision-986-operator.txt");
+  appendFileSync(join(roundsDir(early.specs), `${CAP_KEY}.jsonl`), `${JSON.stringify({ v: 1, ts: Date.now(), key: CAP_KEY, row: "extension", epoch: 0, round_opened: 4, findings: [{ id: "M1", severity: "major", critic: "spec", return_sha: m1.return_sha }], returns: { spec: [m1.return_sha], plan: [p3.return_sha] }, why: "w", chief: "c", decision: "986", quote: APPROVE, decision_path: ed, decision_sha: sha(readFileSync(ed, "utf8")) })}\n`);
+  expect((await status(early.specs)).invalid).toEqual(["extension 986"]);
+}, S1B);
+
+test("round-extension: one chief record bound to the sealed returns and the open blocking findings opens exactly writer round 6; the real pack carries complete blocks and the sealed round consumes the grant", async () => {
+  const t = await extTree(); const d = decide(t.specs, 986, `${CAP_KEY} operator: ${APPROVE}\n`);
+  const ok = await extend(true, t); expect(ok.err).toBe(""); expect(ok.code).toBe(0); expect(ok.out).toContain("writer round 6");
+  const r5 = rowsOf(t.specs, "round").find((x) => x.critic === "spec" && x.round === 5); const p3 = rowsOf(t.specs, "round").find((x) => x.critic === "plan" && x.round === 3);
+  const ext = rowsOf(t.specs, "extension");
+  expect(ext).toHaveLength(1);
+  expect(ext[0]).toMatchObject({ key: CAP_KEY, epoch: 0, round_opened: 6, why: "one closure for the two corrections", chief: "chief-x", decision: "986", quote: APPROVE, decision_path: d, decision_sha: sha(readFileSync(d, "utf8")),
+    findings: [{ id: "F3", severity: "major", critic: "spec", return_sha: r5.return_sha }, { id: "F4", severity: "major", critic: "spec", return_sha: r5.return_sha }], returns: { spec: [r5.return_sha], plan: [p3.return_sha] } });
+  expect(await status(t.specs)).toMatchObject({ invalid: [], overrideUsed: true });
+  expect((await status(t.specs)).why).toContain("spec round 6: closure");
+  const pack = await verb(false, "closure-pack", CAP_KEY, "spec", "--specs", t.specs);
+  expect(pack.err).toBe(""); expect(pack.out.split("\n")[0]).toBe(markerFor(t.specs, CAP_KEY, "spec", 6));
+  expect(pack.out).toContain(`## open blocking findings\n${F3_R5}\n${F4_R5}\n\n## files round 5 read`);
+  const dup = await extend(true, t, { decision: 986 }); expect(dup.code).not.toBe(0); expect(dup.err).toContain("already open"); expect(rowsOf(t.specs, "extension")).toHaveLength(1);
+  const F5 = "- **F5** (major; reopens F3) still open after the one granted round";
+  expect((await closeOn(t, "spec", 6, [t.a], "SPEC FINDINGS 1", F5)).err).toBe("");
+  expect(ledgerRows(t.specs, CAP_KEY).at(-1)).toMatchObject({ row: "round", critic: "spec", round: 6, mode: "closure" });
+  expect(await status(t.specs)).toMatchObject({ spec: 6, invalid: [] });
+  expect((await closeOn(t, "spec", 7, [t.a], "SPEC CLEAN")).err).toContain(T5(7));
+  expect((await status(t.specs)).why).toContain(T5_WHY(7));
+  const again = await extend(true, t, { findings: "F5" }); expect(again.err).toContain("was already used"); expect(again.code).not.toBe(0);
+  const copy = decide(t.specs, 988, `${CAP_KEY} operator: ${APPROVE}\n`);
+  expect(readFileSync(copy, "utf8")).toBe(readFileSync(d, "utf8"));
+  const copied = await extend(true, t, { findings: "F5", decision: 988 }); expect(copied.err).toContain("already used"); expect(copied.code).not.toBe(0);
+  expect(rowsOf(t.specs, "extension")).toHaveLength(1);
+  decide(t.specs, 989, `${CAP_KEY} operator: approve a second closure round after a fresh look\n`);
+  const fresh = await extend(true, t, { findings: "F5", decision: 989, quote: "approve a second closure round after a fresh look" });
+  expect(fresh.err).toBe(""); expect(fresh.code).toBe(0);
+  expect(rowsOf(t.specs, "extension").map((x) => x.round_opened)).toEqual([6, 7]);
+  const ledger = join(roundsDir(t.specs), `${CAP_KEY}.jsonl`); const all = readFileSync(ledger, "utf8"); const kept = all.split("\n").filter(Boolean);
+  writeFileSync(ledger, `${kept.slice(0, -1).join("\n")}\n`);
+  appendFileSync(ledger, `${JSON.stringify({ ...JSON.parse(kept.at(-1)!), decision: "988", quote: APPROVE, decision_path: copy, decision_sha: sha(readFileSync(copy, "utf8")) })}\n`);
+  expect((await status(t.specs)).invalid).toEqual(["extension 988"]);
+  writeFileSync(ledger, all);
+  expect((await status(t.specs)).invalid).toEqual([]);
+  expect((await closeOn(t, "spec", 7, [t.a], "SPEC CLEAN")).err).toBe("");
+  expect((await closeOn(t, "spec", 8, [t.a], "SPEC CLEAN")).err).toContain(T5(8));
+  expect(await status(t.specs)).toMatchObject({ spec: 7, invalid: [] });
+}, S1B);
+
+test("round-extension: the grant opens round 6 only for the kind that carries the named findings, not for a clean plan at the same round", async () => {
+  const t = await extTree();
+  expect((await closeOn(t, "plan", 4, [t.plan], "PLAN CLEAN")).err).toBe("");
+  expect((await closeOn(t, "plan", 5, [t.plan], "PLAN CLEAN")).err).toBe("");
+  decide(t.specs, 986, `${CAP_KEY} operator: ${APPROVE}\n`);
+  expect((await extend(true, t)).err).toBe("");
+  expect((await closeOn(t, "plan", 6, [t.plan], "PLAN CLEAN")).err).toContain(T5(6));
+  expect((await status(t.specs)).why).toContain("spec round 6: closure; plan round 6: " + T5(6));
+  expect((await closeOn(t, "spec", 6, [t.a], "SPEC CLEAN")).err).toBe("");
+}, S1B);
+
+test("round-extension: the reader replays each record at its append point; a stale epoch, return, finding set, round, chief, decision or file digest leaves it invalid and writer round 6 refused", async () => {
+  const t = await extTree(); const d = decide(t.specs, 986, `${CAP_KEY} operator: ${APPROVE}\n`);
+  const ledger = join(roundsDir(t.specs), `${CAP_KEY}.jsonl`); const base = readFileSync(ledger, "utf8");
+  expect((await extend(true, t)).err).toBe("");
+  const after = readFileSync(ledger, "utf8"); const real = JSON.parse(after.slice(base.length));
+  expect(await status(t.specs)).toMatchObject({ invalid: [] });
+  const bad = { ...real.findings[0], return_sha: "f".repeat(64) };
+  const cases: Record<string, object> = {
+    "epoch": { epoch: 1 }, "no epoch": { epoch: undefined }, "round": { round_opened: 7 }, "past round": { round_opened: 5 },
+    "returns": { returns: { ...real.returns, spec: ["f".repeat(64)] } }, "plan return": { returns: { ...real.returns, plan: [] } }, "no returns": { returns: undefined },
+    "subset": { findings: [real.findings[0]] }, "extra": { findings: [...real.findings, { ...real.findings[0], id: "F9" }] }, "wrong return": { findings: [bad, real.findings[1]] }, "none": { findings: [] },
+    "chief": { chief: "" }, "no chief": { chief: undefined }, "why": { why: " " }, "quote": { quote: "a quote the decision never holds at all" },
+    "digest": { decision_sha: "e".repeat(64) }, "path": { decision_path: `${d}.moved` }, "decision": { decision: "991" },
+  };
+  for (const [name, change] of Object.entries(cases)) {
+    writeFileSync(ledger, base); appendFileSync(ledger, `${JSON.stringify({ ...real, ...change })}\n`);
+    const s = await status(t.specs);
+    expect({ name, invalid: s.invalid }).toEqual({ name, invalid: [`extension ${(change as { decision?: string }).decision ?? "986"}`] });
+    expect(s.why).toContain(T5_WHY(6));
+  }
+  writeFileSync(ledger, after); appendFileSync(ledger, `${JSON.stringify(real)}\n`);
+  expect((await status(t.specs)).invalid).toEqual(["extension 986"]);
+  expect((await status(t.specs)).why).toContain("spec round 6: closure");
+  const second = decide(t.specs, 993, `${CAP_KEY} operator: approve yet another closure round for the same writer round\n`);
+  writeFileSync(ledger, after); appendFileSync(ledger, `${JSON.stringify({ ...real, decision: "993", quote: "approve yet another closure round for the same writer round", decision_path: second, decision_sha: sha(readFileSync(second, "utf8")) })}\n`);
+  expect((await status(t.specs)).invalid).toEqual(["extension 993"]);
+  const burnt = decide(t.specs, 994, `${CAP_KEY} operator: ${APPROVE} (a third file)\n`);
+  writeFileSync(ledger, base); appendFileSync(ledger, `${JSON.stringify({ v: 1, ts: Date.now(), key: CAP_KEY, row: "critical", decision: "994", opens: 0, id: "zz", class: "spend-grant", quote: "x", return_sha: "f".repeat(64) })}\n`);
+  appendFileSync(ledger, `${JSON.stringify({ ...real, decision: "994", decision_path: burnt, decision_sha: sha(readFileSync(burnt, "utf8")) })}\n`);
+  expect((await status(t.specs)).invalid).toEqual(["critical 994", "extension 994"]);
+  writeFileSync(ledger, base);
+  expect((await extend(true, t)).err).toBe("");
+  expect((await closeOn(t, "spec", 6, [t.a], "SPEC CLEAN")).err).toBe("");
+}, S1B);
+
+test("round-extension: editing the approval after the record kills the grant; a reset ends the epoch, so the old grant opens nothing and a hand-copied row is invalid", async () => {
+  const t = await extTree(); const d = decide(t.specs, 986, `${CAP_KEY} operator: ${APPROVE}\n`);
+  expect((await extend(true, t)).err).toBe("");
+  const ledger = join(roundsDir(t.specs), `${CAP_KEY}.jsonl`); const grant = readFileSync(ledger, "utf8").split("\n").filter(Boolean).at(-1)!;
+  const text = readFileSync(d, "utf8"); writeFileSync(d, `${text}and a sentence the operator never said\n`);
+  expect((await status(t.specs)).invalid).toEqual(["extension 986"]);
+  expect((await closeOn(t, "spec", 6, [t.a], "SPEC CLEAN")).err).toContain(T5(6));
+  writeFileSync(d, text);
+  expect(await status(t.specs)).toMatchObject({ invalid: [] });
+  decide(t.specs, 992, `${CAP_KEY} operator: start this ticket over from scratch\n`);
+  expect((await verb(true, "round-reset", CAP_KEY, "--decision", "992", "--quote", "start this ticket over from scratch", "--specs", t.specs)).err).toBe("");
+  expect(await status(t.specs)).toMatchObject({ epoch: 1, spec: 0, plan: 0, invalid: [] });
+  appendFileSync(ledger, `${grant}\n`);
+  expect((await status(t.specs)).invalid).toEqual(["extension 986"]);
+  const worker = await extend(true, t, { decision: 986 }); expect(worker.err).toContain("is at writer round 0"); expect(worker.code).not.toBe(0);
+}, S1B);
+
 const HX = "HIMMEL-nextleg-2026-11-10YN-roadmap-chief";
 const HY = "HIMMEL-nextleg-2026-11-10YO-roadmap-chief";
 const HZ = "HIMMEL-nextleg-2026-11-10YP-roadmap-chief";
@@ -4045,3 +4229,30 @@ test("capped fold pins evidence roles by use instead of filename resemblance", a
   const f = await cappedFixture({ pageName: "memo.critic-spec-r1.md" }); const proof = await runCapped(f.args);
   expect(proof.pins.find((pin:any) => pin.path === join(dirname(f.spec), "memo.critic-spec-r1.md")).role).toBe("artifact");
 });
+
+test("capped fold still verifies a ledger whose latest closure round was opened by a valid operator extension, and refuses one whose extension row is invalid", async () => {
+  const f = await cappedFixture({ specFindings: "- **M2** (major) blocking at the cap" }); const { sealRound } = await import("./chief-route");
+  const nextSpec = async (round: number, ...body: string[]) => {
+    const previous = f.args.specReturn; const lines = readFileSync(previous, "utf8").split("\n");
+    const header = lines.slice(0, lines.findLastIndex(l => l.startsWith("READ-SHA256 ")) + 1).map(l => l.replace(/^Fixture: spec round \d+$/, `Fixture: spec round ${round}`));
+    const next = previous.replace(/r\d+\.md$/, `r${round}.md`);
+    const seals = lines.filter(l => l.startsWith("CONTENT-SHA256 "));
+    writeFileSync(next, [...header, markerFor(f.specsRoot, cappedKey, "spec", round), ...body, ...seals, `SPEC FINDINGS ${body.filter(l => l.startsWith("- **")).length}`, ""].join("\n"));
+    for (const s of seals) await sealRound(next, resolve(dirname(next), s.split(" ").slice(2).join(" ")));
+    f.args.specReturn = next;
+  };
+  const run = (...args: string[]) => verb(true, ...args, "--specs", f.specsRoot);
+  await nextSpec(4, "- **F3** (major; reopens M2) the blocking finding survives");
+  expect((await run("round-override", cappedKey, "--findings", "F3", "--why", "a second closure", "--chief", "chief-x")).err).toBe("");
+  await nextSpec(5, "- **F3** (major; reopens F3) still survives");
+  const quote = "approve one closure round for the surviving finding"; const decision = join(f.specsRoot, "decisions", "verbatim-decision-990-fixture.txt");
+  mkdirSync(dirname(decision), { recursive: true }); writeFileSync(decision, `${cappedKey} ${quote}\n`); utimesSync(decision, new Date(), new Date(Date.now() + 5000));
+  const granted = await run("round-extension", cappedKey, "--findings", "F3", "--decision", "990", "--quote", quote, "--why", "one closure", "--chief", "chief-x");
+  expect(granted.err).toBe(""); expect(granted.out).toContain("writer round 6");
+  await nextSpec(6, "- **m1** (minor) a nonblocking wording note");
+  const proof = await runCapped(f.args);
+  expect(proof).toMatchObject({ key: cappedKey, epoch: 0, returns: [{ kind: "spec", round: 6, residuals: 1 }, { kind: "plan", round: 3 }], carried: [{ finding_id: "m1", severity: "minor", round: 6 }] });
+  expect(proof.pins).toContainEqual({ role: "decision-selection", directory: dirname(decision), decision: "990", names: [basename(decision)] });
+  editLedger(f, rows => { rows.find(row => row.row === "extension").findings[0].return_sha = "f".repeat(64); });
+  await expect(runCapped(f.args)).rejects.toThrow("invalid ledger records: extension 990");
+}, S1B);
