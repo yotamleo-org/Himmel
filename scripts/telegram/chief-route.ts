@@ -1,4 +1,4 @@
-import { selectDecisionNames, pinnedRead, boundedDirectoryNames, reviewedSpecHashes, validateCappedFoldProofShape, PINNED_READ_VERSION, returnSha,
+import { selectDecisionNames, pinnedRead, boundedDirectoryNames, reviewedSpecHashes, optionalReturnAgreement, validateCappedFoldProofShape, PINNED_READ_VERSION, returnSha,
   SIGNATURE_DIRS, KEY_FOLDER, CRITIC_FILE, CRITIC_NAME, specsRootOf, keyOf, canonicalDirectoryNames, returnDirectories, checkLatestReturns,
   ledgerDirOf, ledgerEntryNames, ledgerKeyOfFile, parseManifest,
   type CappedFoldProof, type EvidencePin, type EvidenceFilePin, type ReturnPin } from "../jira/src/release/pinned.ts";
@@ -551,6 +551,20 @@ const verdictKind = (line: string): Kind | undefined => /^(SPEC|PLAN) (CLEAN|FIN
 const sha256 = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
 const lastLine = (text: string) => text.split("\n").map(l => l.trim()).filter(Boolean).at(-1) ?? "";
 const sealsOf = (text: string) => [...text.matchAll(/^CONTENT-SHA256 ([0-9a-f]{64}) (\S.*)$/gm)].map(m => ({ sha: m[1], rel: m[2] }));
+// The two READ quote shapes, each a whole line at column zero: the sha, one or two spaces, then a path (relative or absolute); or an
+// absolute path, one space, then the sha. Any other line that opens with READ refuses, and nothing is trimmed or normalized. The shapes
+// cannot overlap: the first token is a sha in one and an absolute path in the other. A line is read when READ or READ-<ALGORITHM> is followed by a space or the line end, so READ-SHA512 refuses while READY, README and READ: are prose.
+const READ_SHA_FIRST = /^READ(?:-SHA256)? ([0-9a-f]{64}) {1,2}(\S.*)$/;
+const READ_PATH_FIRST = /^READ(?:-SHA256)? (\S(?:.*\S)?) ([0-9a-f]{64})$/;
+export function readQuotesOf(text: string): { sha: string; path: string }[] {
+  return text.split("\n").filter(line => /^READ(?:-[A-Z0-9]+)?(?:\s|$)/.test(line)).map(line => {
+    const shaFirst = READ_SHA_FIRST.exec(line);
+    if (shaFirst) return { sha: shaFirst[1], path: shaFirst[2] };
+    const pathFirst = READ_PATH_FIRST.exec(line);
+    if (pathFirst && isAbsolute(pathFirst[1])) return { sha: pathFirst[2], path: pathFirst[1] };
+    throw new Error("capped-fold: malformed seal or READ quote");
+  });
+}
 
 const underSignaturePath = (p: string) => {
   const parts = p.split("/");
@@ -1094,7 +1108,7 @@ export async function ledgerVerify(file: string, opts: { spec?: string; sign?: b
   return verifyReturn(abs, await readCritic(abs), opts);
 }
 
-function cappedReader(specs: string, key: string) {
+export function cappedReader(specs: string, key: string) {
   const files = new Map<string, { bytes: Buffer; sha256: string; mtime_ms: number }>();
   const aliases = new Map<string, string>();
   const directories = new Map<string, { canonical: string | null; names: string[] }>();
@@ -1221,7 +1235,7 @@ type CappedPolicy = {
 // `path` is the return path as supplied: the evidence canonicalizes and reads it itself, in the order the verifier always did.
 type CappedReturnInput = { key: string; kind: Kind; path: string; spec: string; plan: string; specSha: string; planSha: string; rows: Rows; reader: CappedReader };
 
-const v1Policy: CappedPolicy = {
+export const v1Policy: CappedPolicy = {
   declaration: (text, expectedKey) => cappedDeclaredKey(text, expectedKey, false),
   reviewed: (text, specSha, kind) => {
     const reviewed = reviewedSpecHashes(text);
@@ -1235,7 +1249,21 @@ const v1Policy: CappedPolicy = {
   },
 };
 
-async function cappedLedger(specs: string, key: string, reader: CappedReader): Promise<Rows> {
+// The return policy of the ledger-bound carry. The declarations are optional and never contradict, the finding heading is read as the
+// ledger reads it (first token minor or medium; any operator-critical tag, reopen, regression or major refuses), and the quotes are the
+// two shapes of readQuotesOf. Every other check of a return stays in cappedReturnEvidence.
+export const v2Policy = (keys: readonly string[]): CappedPolicy => ({
+  declaration: text => optionalReturnAgreement(text, { keys }),
+  reviewed: (text, specSha) => optionalReturnAgreement(text, { specSha }),
+  headingOk: parenthetical => {
+    const heading = parseFindings(`- **x** (${parenthetical})`, "spec", 1).findings[0];
+    return !!heading && (heading.severity === "minor" || heading.severity === "medium")
+      && heading.critical === undefined && heading.critical_refused === undefined && !heading.reopens && !heading.regression;
+  },
+  quotes: readQuotesOf,
+});
+
+export async function cappedLedger(specs: string, key: string, reader: CappedReader): Promise<Rows> {
   const rows = await loadLedger(specs, key, reader);
   if (rows.checked.invalid.length) throw new Error(`capped-fold: invalid ledger records: ${rows.checked.invalid.join(", ")}`);
   await cappedLedgerEvidence(rows, key, reader);
@@ -1247,7 +1275,9 @@ function requireCarried(carried: readonly Carried[]): void {
   if (!carried.length) throw new Error("capped-fold: requires at least one carried finding");
 }
 
-async function cappedReturnEvidence(input: CappedReturnInput, policy: CappedPolicy): Promise<{ pin: ReturnPin; carried: Carried[] }> {
+// Precondition for a direct caller: `input.spec` is the canonical path of a spec under a specs root, and `input.reader` was built for
+// that same root (the helper derives the root from the spec and reads the content-addressed snapshots through the reader).
+export async function cappedReturnEvidence(input: CappedReturnInput, policy: CappedPolicy): Promise<{ pin: ReturnPin; carried: Carried[] }> {
   const { key, kind, spec, plan, specSha, planSha, rows, reader } = input; const specs = specsRootOf(spec)!;
   const path = await reader.canonical(input.path); const got = await reader.read(path, "return"); const text = got.bytes.toString("utf8");
   if (cappedPathKeys(path).some(pathKey => pathKey !== key)) throw new Error("capped-fold: return filename/folder key disagrees");
