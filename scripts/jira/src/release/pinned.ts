@@ -345,14 +345,17 @@ export function declaredTickets(specText: string): string[] | null {
     const c = value[i];
     if (c === '(') depth++;
     else if (c === ')') depth--;
-    else if (i === value.length || (c === ',' && depth === 0)) { items.push(value.slice(start, i)); start = i + 1; }
+    else if (i === value.length || (c === ',' && depth === 0)) {
+      if (items.length === 4096) return null;
+      items.push(value.slice(start, i)); start = i + 1;
+    }
   }
-  const keys: string[] = [];
+  const keys: string[] = []; const seen = new Set<string>();
   for (const item of items) {
     const match = TICKET_ITEM.exec(item.trim());
-    if (!match || keys.includes(match[1])) return null;
+    if (!match || seen.has(match[1])) return null;
     if (match[2] !== undefined && (match[2].length > ANNOTATION_MAX || KEY_SHAPED.test(match[2]))) return null;
-    keys.push(match[1]);
+    keys.push(match[1]); seen.add(match[1]);
   }
   return keys;
 }
@@ -364,6 +367,8 @@ export function reviewedSpecHashes(text: string): string[] {
 }
 
 const RETURN_KEYS_LINE = /^Keys?:[ \t]*(.*)$/gm;
+const RETURN_REVIEWED_LINE = /^Reviewed:[ \t]+spec\b[^\n]*/gm;
+const RETURN_REVIEWED_VALUE = /^Reviewed:[ \t]+spec[ \t]+([0-9a-f]{64})(?:,[ \t]+plan[ \t]+[0-9a-f]{64})?[ \t]*\r?$/;
 
 function keysLineNames(value: string, keys: readonly string[]): boolean {
   let list = value.trim();
@@ -378,7 +383,7 @@ export function optionalReturnAgreement(text: string, expect: { keys?: readonly 
     if (lines.length > 1 || (lines.length === 1 && !keysLineNames(lines[0][1], expect.keys))) throw new Error('capped return Keys? declaration disagrees with the declared keys');
   }
   if (expect.specSha !== undefined) {
-    const reviewed = reviewedSpecHashes(text);
-    if (reviewed.length > 1 || (reviewed.length === 1 && reviewed[0] !== expect.specSha)) throw new Error('capped return Reviewed declaration disagrees with the current spec');
+    const lines = [...text.matchAll(RETURN_REVIEWED_LINE)];
+    if (lines.length > 1 || (lines.length === 1 && RETURN_REVIEWED_VALUE.exec(lines[0][0])?.[1] !== expect.specSha)) throw new Error('capped return Reviewed declaration disagrees with the current spec');
   }
 }

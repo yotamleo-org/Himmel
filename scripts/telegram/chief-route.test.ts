@@ -4873,7 +4873,8 @@ test("S4 dispatcher: a stored v1 proof from the real verifier is valid and equal
   expect(shared.validateCappedProofShape(v1)).toEqual(v1);
   expect(shared.validateCappedProofShape(v1)).toEqual(shared.validateCappedFoldProofShape(v1));
   for (const mutate of [(x: any) => { x.extra = true; }, (x: any) => { delete x.epoch; }, (x: any) => { x.reader_version = 2; }, (x: any) => { x.mode = "capped-carry-ledger"; },
-    (x: any) => { x.pins[0].role = "other"; }, (x: any) => { x.returns.reverse(); }]) {
+    (x: any) => { x.pins[0].role = "other"; }, (x: any) => { x.returns.reverse(); },
+    (x: any) => { x.pins.push({ role: "history", path: join(dirname(x.spec.path), "old-return.md"), sha256: "a".repeat(64) }); }]) {
     const bad = structuredClone(v1); mutate(bad);
     expect(() => shared.validateCappedProofShape(bad)).toThrow(T2_INVALID);
   }
@@ -4969,6 +4970,9 @@ test("S3 v2 shape: the exact fields, sorted unique keys, an anchor member, histo
   refuse(t2Clone(good, p => { p.returns[0].round = 0; }));
   refuse(t2Clone(good, p => { p.returns[0].residuals = 2; }));
   refuse(t2Clone(good, p => { p.returns[0].sha256 = "0".repeat(64); }));
+  for (const bad of ["x", "A".repeat(64), "a".repeat(63), "a".repeat(65), ""]) {
+    refuse(t2Clone(good, p => { p.returns[0].return_sha = bad; p.carried[0].return_sha = bad; }));
+  }
 
   for (const field of Object.keys(good.carried[0])) refuse(t2Clone(good, p => { delete p.carried[0][field]; }));
   refuse(t2Clone(good, p => { p.carried[0].key = p.keys[1]; }));
@@ -4994,6 +4998,7 @@ test("S3 v2 shape: the exact fields, sorted unique keys, an anchor member, histo
   refuse(t2Clone(good, p => { p.pins.splice(t2Pin(p, "decision-selection"), 1); }));
   refuse(t2Clone(good, p => { delete p.pins[t2Pin(p, "decision")].mtime_ms; }));
   refuse(t2Clone(good, p => { p.pins[t2Pin(p, "decision-selection")].names.push("verbatim-decision-990-second.txt"); }));
+  refuse(t2Clone(good, p => { p.pins.push(structuredClone(p.pins[t2Pin(p, "decision-selection")])); }));
 }, S1B);
 
 test("M7 member-absence pin: its directory must be the shared ledger folder under the spec's own specs root", async () => {
@@ -5113,6 +5118,9 @@ test("D1 declaredTickets: plain, flow, comma and annotated scalars, with commas 
   expect(shared.declaredTickets(`---\ntickets: ${a}\nother: 1\n---\n# T\n`)).toEqual([a]);
   expect(shared.declaredTickets(`---\ntitle: x\ntickets: [${a}, ${b}]\n---\n`)).toEqual([a, b]);
   expect(shared.declaredTickets(`---\ntickets: ${a}\n---`)).toEqual([a]);
+  const maximum = Array.from({ length: 4096 }, (_, i) => t2Key(100000 + i));
+  expect(read(`tickets: [${maximum.join(", ")}]`)).toEqual(maximum);
+  expect(read(`tickets: [${[...maximum, t2Key(200000)].join(", ")}]`)).toBeNull();
 
   const group = await lib.buildGroupFixture(realpathSync(root()));
   expect(shared.declaredTickets(readFileSync(group.spec, "utf8")), "the real seven-key flow list").toEqual(group.keys);
@@ -5139,7 +5147,7 @@ test("D5 declaredTickets refuses a key inside an annotation, nested or unbalance
   refused(`tickets: ${a}, ${a}`); refused(`tickets: [${a}, ${b}, ${a}]`); refused(`tickets: [${a} (x), ${a} (y)]`);
   refused("tickets:"); refused("tickets:   "); refused("tickets: []"); refused("tickets: [ ]"); refused("tickets: ,"); refused("tickets: ()");
   refused(`tickets: [${a},]`); refused(`tickets: [,${a}]`); refused(`tickets: ${a},,${b}`); refused(`tickets: ${a},`); refused(`tickets: ,${a}`);
-  refused(`tickets: [${a}`); refused(`tickets: ${a}]`); refused(`tickets: [[${a}]]`); refused(`tickets: [${a}] extra`); refused(`tickets: x[${a}]`);
+  refused(`tickets: [${a}`); refused(`tickets: [${a}, ${b}`); refused(`tickets: ${a}]`); refused(`tickets: [[${a}]]`); refused(`tickets: [${a}] extra`); refused(`tickets: x[${a}]`);
   refused("tickets: himmel-9"); refused("tickets: HIMMEL"); refused("tickets: HIMMEL-"); refused("tickets: 9"); refused("tickets: -9"); refused(`tickets: ${a.toLowerCase()}`);
   expect(shared.declaredTickets(`---\ntickets:\n  - ${a}\n  - ${b}\n---\n# T\n`), "a block-style list").toBeNull();
   expect(shared.declaredTickets(`---\ntickets:\n- ${a}\n---\n# T\n`)).toBeNull();
@@ -5183,6 +5191,7 @@ test("D4 optionalReturnAgreement: absent and equal pass; two lines, a subset, a 
   expect(run(`Key: ${keys[0]}\nKeys: ${keys.join(", ")}\n`, { keys }), "a Key line beside a Keys line").toThrow(T2_KEYS_REFUSAL);
   expect(run(keyLine(`${keys.join(", ")}, ${keys[0]}`), { keys }), "a doubled key in the line").toThrow(T2_KEYS_REFUSAL);
   expect(run(keyLine(`${keys[0]}, ${keys[0]}`), { keys: [keys[0]] })).toThrow(T2_KEYS_REFUSAL);
+  expect(run(keyLine(`${keys[0]}, ${keys[0]}`), { keys: keys.slice(0, 2) }), "duplicate keys with the expected item count").toThrow(T2_KEYS_REFUSAL);
   expect(run(keyLine(`${keys.join(", ")} and more`), { keys })).toThrow(T2_KEYS_REFUSAL);
   expect(run(keyLine(`${keys[0]} (note)`), { keys: [keys[0]] }), "an annotation is not part of a return declaration").toThrow(T2_KEYS_REFUSAL);
   expect(run(keyLine(""), { keys })).toThrow(T2_KEYS_REFUSAL);
@@ -5197,6 +5206,14 @@ test("D4 optionalReturnAgreement: absent and equal pass; two lines, a subset, a 
   expect(run(reviewed(specSha) + reviewed(specSha), { specSha }), "doubled").toThrow(T2_REVIEWED_REFUSAL);
   expect(run(reviewed(specSha) + reviewed(other), { specSha }), "doubled, one wrong").toThrow(T2_REVIEWED_REFUSAL);
   expect(run(reviewed(other) + reviewed(specSha), { specSha })).toThrow(T2_REVIEWED_REFUSAL);
+  expect(run(`Reviewed: spec ${specSha}, plan ${other}\n`, { specSha }), "the paired declaration format").not.toThrow();
+  expect(run(`Reviewed:\tspec\t${specSha}\r\n`, { specSha }), "horizontal spacing and CRLF").not.toThrow();
+  for (const line of [`Reviewed: spec ${other.toUpperCase()}\n`, `Reviewed: spec ${specSha.slice(1)}\n`,
+    `Reviewed: spec ${specSha}a\n`, `Reviewed: spec ${specSha}suffix\n`, `Reviewed: spec sha256 ${specSha}\n`,
+    "Reviewed: spec\n", `Reviewed: spec ${specSha}, plan invalid\n`]) {
+    expect(run(line, { specSha }), line).toThrow(T2_REVIEWED_REFUSAL);
+    expect(run(reviewed(specSha) + line, { specSha }), "a second malformed declaration").toThrow(T2_REVIEWED_REFUSAL);
+  }
 
   expect(run(keyLine(keys.join(", ")) + reviewed(specSha), { keys, specSha }), "both given, both equal").not.toThrow();
   expect(run(keyLine(keys[0]) + reviewed(specSha), { keys, specSha }), "keys wrong").toThrow(T2_KEYS_REFUSAL);
