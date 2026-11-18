@@ -45,7 +45,7 @@ g() { git -C "$SB" "$@"; }
 mkdir -p "$SB/scripts/ci" "$SB/scripts/lib" "$SB/scripts/cr" "$SB/scripts/tools" "$SB/docs" \
          "$SB/templates" "$SB/marketplace" "$SB/packaging"
 cp "$RUNNER" "$SB/scripts/ci/run-shell-tests.sh"
-cp "$SRC_ROOT/scripts/ci/parallel-deny.txt" "$SB/scripts/ci/parallel-deny.txt"
+cp "$SRC_ROOT/scripts/ci/parallel-deny.txt" "$SB/scripts/ci/parallel-deny.txt" || exit 1
 cp "$SRC_ROOT/scripts/ci/impacted-selection.sh" "$SB/scripts/ci/impacted-selection.sh"
 cp "$SRC_ROOT/scripts/cr/impacted-suites.sh" "$SRC_ROOT/scripts/cr/anchor-handoff.sh" "$SB/scripts/cr/"
 for lib in proc-tree.sh git-test-env.sh override-env.sh runtime-preflight.sh suite-semaphore.sh chokepoint-seam-guard.sh; do
