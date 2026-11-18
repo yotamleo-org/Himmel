@@ -962,7 +962,11 @@ not_contains 'a paused pr-stall makes no PR list call' "$(cat "$W/qstub.log")" '
 st_tick 4000 > /dev/null
 contains 'RED control: a healthy pr-stall reads its PR list' "$(cat "$W/qstub.log")" 'mergeStateStatus,statusCheckRollup'
 
-q_key_line="$(grep -n -E '^[[:space:]]+for f in workers livestate prs ' "$HERE/chief-wait.sh")"
+q_key_line=""
+# shellcheck disable=SC2016  # the pattern is literal text of the waiter's loop, not an expansion
+if grep -q -E '^[[:space:]]+for f in \$\(awk .*\$5 == "key" && \$1 != "usage".*wake-rules\.tsv' "$HERE/chief-wait.sh"; then
+    q_key_line=" $(awk -F'\t' '$0 !~ /^#/ && $5 == "key" && $1 != "usage" { print $1 }' "$HERE/wake-rules.tsv" | tr '\n' ' ')"
+fi
 [ -n "$q_key_line" ] && pass "chief-wait's key field list is found" || fail "chief-wait's key field list moved"
 not_contains "chief-wait's key field list gains no quota" "$q_key_line" 'quota'
 

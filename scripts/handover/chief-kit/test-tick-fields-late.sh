@@ -583,7 +583,11 @@ contains 'tmp= carries ! at 80' "$(tmp_run 80)" ' tmp=80!'
 contains 'tmp= carries ! above 80' "$(tmp_run 97)" ' tmp=97!'
 contains 'verbose labels tmp' "$(tmp_run 42 --verbose)" 'tmp: 42'
 not_contains 'tmp= is absent when the dir is unreadable' "$(bash "$SUT")" ' tmp='
-cw_keys="$(grep -m1 'for f in workers livestate' "$HERE/chief-wait.sh")"
+cw_keys=""
+# shellcheck disable=SC2016  # the pattern is literal text of the waiter's loop, not an expansion
+if grep -q -E '^[[:space:]]+for f in \$\(awk .*\$5 == "key" && \$1 != "usage".*wake-rules\.tsv' "$HERE/chief-wait.sh"; then
+    cw_keys=" $(awk -F'\t' '$0 !~ /^#/ && $5 == "key" && $1 != "usage" { print $1 }' "$HERE/wake-rules.tsv" | tr '\n' ' ')"
+fi
 contains "chief-wait's wake key list was found" "$cw_keys" ' vmrun '
 not_contains "tmp= is not in chief-wait's wake key" "$cw_keys" ' tmp'
 # --- cired= (open ci-red issues): a count, unknown on failure, never a wake.
