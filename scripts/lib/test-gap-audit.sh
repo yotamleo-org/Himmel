@@ -37,6 +37,7 @@ printf '{}' > "$TMP/go/graph.json"
 printf '{}' > "$TMP/go/semantic-manifest.json"
 touch_at "$TMP/go/semantic-manifest.json" "$((NOW - 2 * DAY))"
 
+printf '%s %s\n' "2025-10-09T11:00:00Z" "$((NOW - 3600))" > "$TMP/stamp-fresh"
 LEDGER="$TMP/no-ledger.tsv"
 mkdir -p "$TMP/pub-home/.himmel" "$TMP/adopter-home" "$TMP/set-home/.himmel" "$TMP/no-env"
 : > "$TMP/no-env/.env"
@@ -45,7 +46,7 @@ printf '{"graphify":{"choices":{"version":1,"corpora":[],"primary":"subscription
 run() { # run <extra env assignments...> ; prints gap_audit_offer
     env HOME="$TMP/pub-home" HIMMEL_CONFIG_DIR= HIMMELCTL_CACHE_DIR="$TMP/no-env" GAP_AUDIT_ROOT="$TMP/repo" GAP_AUDIT_NOW="$NOW" HIMMEL_CEILINGS_LEDGER="$LEDGER" \
         GAP_AUDIT_DOCTOR_CMD="bash $TMP/doctor-green.sh" \
-        GAP_AUDIT_QMD_STATUS_FILE="$TMP/qmd-green.txt" \
+        GAP_AUDIT_QMD_STATUS_FILE="$TMP/qmd-green.txt" GAP_AUDIT_QMD_STAMP="$TMP/stamp-fresh" \
         GAP_AUDIT_GRAPH_OUT="$TMP/go" \
         GAP_AUDIT_MIRROR="$TMP/mirror" \
         GAP_AUDIT_RESUME_CMD="" JIRA_PROJECT_KEY="" \
@@ -70,12 +71,39 @@ lacks "doctor OK row not listed" "$out" "C56-qmd-orphans"
 has "offer printed" "$out" "Run the full audit"
 lacks "non-green is not all clear" "$out" "all clear"
 
-# --- qmd: needsEmbedding backlog + stale collection -------------------------
+# --- qmd: needsEmbedding backlog + the last successful reindex --------------
 printf 'Pending:  2454 need embedding (run qmd embed)\n  luna (qmd://luna/)\n    Files:    9 (updated 4d ago)\n  himmel (qmd://himmel/)\n    Files:    9 (updated 29m ago)\n' > "$TMP/qmd-red.txt"
 out="$(run GAP_AUDIT_QMD_STATUS_FILE="$TMP/qmd-red.txt")"
 has "qmd embed backlog" "$out" "2454"
-has "qmd stale collection named" "$out" "luna"
-lacks "qmd fresh collection not named" "$out" "himmel (qmd"
+lacks "a fresh refresh stamp: old collection mtimes give no qmd reindex row" "$out" "qmd reindex"
+lacks "the collection-mtime wording is gone" "$out" "not scanned"
+fmt_date() { TZ=UTC date -u -d "@$1" +%Y-%m-%d 2>/dev/null || TZ=UTC date -u -r "$1" +%Y-%m-%d; }  # GNU date -d @N, BSD date -r N
+write_stamp() { printf '%s %s\n' "$(TZ=UTC date -u -d "@$2" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || TZ=UTC date -u -r "$2" +%Y-%m-%dT%H:%M:%SZ)" "$2" > "$1"; }
+write_stamp "$TMP/stamp-old" "$((NOW - 5 * DAY))"
+out="$(run GAP_AUDIT_QMD_STAMP="$TMP/stamp-old")"
+has "a stale stamp reports the date of the last successful reindex" "$out" "no successful qmd reindex since $(fmt_date "$((NOW - 5 * DAY))")"
+has "the stale stamp row carries the reindex remedy" "$out" "bash scripts/luna/qmd-reindex.sh"
+write_stamp "$TMP/stamp-edge" "$((NOW - 3 * DAY))"
+out="$(run GAP_AUDIT_QMD_STAMP="$TMP/stamp-edge")"
+lacks "a stamp exactly 3 days old is not stale" "$out" "qmd reindex"
+rm -rf "$TMP/qmd-dir"; mkdir -p "$TMP/qmd-dir"
+out="$(run GAP_AUDIT_QMD_STAMP="$TMP/qmd-dir/refresh-stamp")"
+has "no stamp and no reindex-state: the reindex never ran" "$out" "last qmd reindex never ran"
+printf 'ts=2026-11-10T09:00:00Z\nrc=5\nremaining=12\nlast_error=HTTP 429\nsummary=x\n' > "$TMP/qmd-dir/reindex-state"
+out="$(run GAP_AUDIT_QMD_STAMP="$TMP/qmd-dir/refresh-stamp")"
+has "no stamp and a failed reindex-state: the last attempt failed, with its time" "$out" "last qmd reindex failed (rc 5, 2026-11-10T09:00:00Z)"
+lacks "a failed reindex-state is not reported as never ran" "$out" "never ran"
+printf 'ts=2026-11-10T09:00:00Z\nrc=0\nremaining=0\nlast_error=none\nsummary=x\n' > "$TMP/qmd-dir/reindex-state"
+out="$(run GAP_AUDIT_QMD_STAMP="$TMP/qmd-dir/refresh-stamp")"
+lacks "no stamp and a completed reindex-state: no reindex row" "$out" "qmd reindex"
+rm -f "$TMP/qmd-dir/reindex-state"
+write_stamp "$TMP/qmd-dir/refresh-stamp" "$((NOW - 5 * DAY))"
+out="$(run GAP_AUDIT_QMD_STAMP= QMD_REFRESH_STAMP="$TMP/qmd-dir/refresh-stamp")"
+has "QMD_REFRESH_STAMP names the stamp when the seam is unset" "$out" "no successful qmd reindex since"
+out="$(run GAP_AUDIT_QMD_STAMP= QMD_REFRESH_STAMP= QMD_INDEX_PATH="$TMP/qmd-dir/index.sqlite")"
+has "the stamp sits beside QMD_INDEX_PATH when no stamp path is set" "$out" "no successful qmd reindex since"
+out="$(run GAP_AUDIT_QMD_STAMP= QMD_REFRESH_STAMP= QMD_INDEX_PATH= INDEX_PATH="$TMP/qmd-dir/index.sqlite")"
+has "the stamp sits beside INDEX_PATH when QMD_INDEX_PATH is unset" "$out" "no successful qmd reindex since"
 
 # --- graphify: semantic manifest missing / old ------------------------------
 rm -f "$TMP/go/semantic-manifest.json"

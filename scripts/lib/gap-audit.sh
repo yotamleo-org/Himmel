@@ -6,7 +6,8 @@
 #
 # Checks (all cheap, all read-only):
 #   doctor rows  C50/C49/C56/C40 (qmd), C33/C8 (graphify) — reused, not redone
-#   qmd          needsEmbedding backlog; collections not scanned for > 3 days
+#   qmd          needsEmbedding backlog; no successful reindex for > 3 days (the refresh
+#                stamp qmd-reindex.sh writes, else its reindex-state)
 #   graphify     semantic manifest missing or older than 14 days (the graph publisher
 #                only: graph-choices.js role; other stations pull this graph)
 #   tickets      in-work tickets with no session/PR (next-dispatchable.sh
@@ -18,7 +19,7 @@
 #                not checked when the lookup cannot read the ledger
 #
 # Test seams: GAP_AUDIT_ROOT, GAP_AUDIT_NOW (epoch), GAP_AUDIT_DOCTOR_CMD,
-# GAP_AUDIT_QMD_STATUS_FILE, GAP_AUDIT_GRAPH_OUT, GAP_AUDIT_MIRROR,
+# GAP_AUDIT_QMD_STATUS_FILE, GAP_AUDIT_QMD_STAMP, GAP_AUDIT_GRAPH_OUT, GAP_AUDIT_MIRROR,
 # GAP_AUDIT_RESUME_CMD (set-but-empty disables the check).
 # PLATFORM GUARD: bash-only, like himmel-update.sh.
 
@@ -57,7 +58,7 @@ EOF
 }
 
 _ga_check_qmd() {
-    local text pending stale
+    local now="$1" text pending stamp state epoch rc ts
     if [ -n "${GAP_AUDIT_QMD_STATUS_FILE:-}" ]; then
         text="$(cat "$GAP_AUDIT_QMD_STATUS_FILE" 2>/dev/null)"
     elif command -v qmd >/dev/null 2>&1; then
@@ -68,18 +69,26 @@ _ga_check_qmd() {
     if [ -n "$pending" ] && [ "$pending" -gt 0 ]; then
         _ga_add qmd "$pending document(s) need embedding" "qmd embed"
     fi
-    # a collection line "name (qmd://name/)" is followed by "Files: N (updated <n><unit> ago)";
-    # m/h/s are fresh, d counts only past 3, w/mo/y are always stale.
-    stale="$(printf '%s\n' "$text" | awk '
-        /\(qmd:\/\// { name = $1; next }
-        /updated [0-9]+[a-z]+ ago/ {
-            match($0, /updated [0-9]+[a-z]+ ago/)
-            s = substr($0, RSTART + 8, RLENGTH - 12)
-            n = s + 0; u = s; sub(/^[0-9]+/, "", u)
-            if (name != "" && ((u == "d" && n > 3) || u == "w" || u == "mo" || u == "y")) printf "%s(%s) ", name, s
-            name = ""
-        }')"
-    [ -n "$stale" ] && _ga_add qmd "collection(s) not scanned for more than 3 days: $stale" "bash scripts/luna/qmd-reindex.sh"
+    # the stamp qmd-reindex.sh writes only after a verified-complete reindex; the same path rule it uses
+    stamp="${GAP_AUDIT_QMD_STAMP:-${QMD_REFRESH_STAMP:-$(dirname "${QMD_INDEX_PATH:-${INDEX_PATH:-${XDG_CACHE_HOME:-$HOME/.cache}/qmd/index.sqlite}}")/refresh-stamp}}"
+    if [ -f "$stamp" ]; then
+        epoch="$(awk 'NR == 1 { print $2 }' "$stamp" 2>/dev/null)"
+        case "$epoch" in ''|*[!0-9]*) epoch="$(_ga_mtime "$stamp")" ;; esac
+        [ -n "$epoch" ] || return 0
+        if [ $((now - epoch)) -gt $((3 * 86400)) ]; then
+            ts="$(date -u -d "@$epoch" +%Y-%m-%d 2>/dev/null || date -u -r "$epoch" +%Y-%m-%d 2>/dev/null)"
+            _ga_add qmd "no successful qmd reindex since ${ts:-an unreadable date}" "bash scripts/luna/qmd-reindex.sh"
+        fi
+        return 0
+    fi
+    state="$(dirname "$stamp")/reindex-state"
+    if [ -f "$state" ]; then
+        rc="$(sed -n 's/^rc=//p' "$state" | head -1)"
+        ts="$(sed -n 's/^ts=//p' "$state" | head -1)"
+        [ "$rc" = 0 ] || _ga_add qmd "last qmd reindex failed (rc ${rc:-unknown}${ts:+, $ts}), no refresh stamp" "bash scripts/luna/qmd-reindex.sh"
+    else
+        _ga_add qmd "last qmd reindex never ran: no refresh stamp and no reindex state" "bash scripts/luna/qmd-reindex.sh"
+    fi
     return 0
 }
 
@@ -153,7 +162,7 @@ gap_audit_offer() {
     echo ""
     echo "==> gap audit"
     _ga_check_doctor "$root" || true
-    _ga_check_qmd || true
+    _ga_check_qmd "$now" || true
     _ga_check_semantic "$root" "$now" || true
     _ga_check_resume "$root" || true
     _ga_check_ceilings "$root" || true
