@@ -212,10 +212,15 @@ check 'no mirror reports residual-unversioned=skip' 'skip' "$(NEXT_DISPATCH_MIRR
 
 mk 115 "To Do" "To Do" '[]' '["other", "residual-depth-1"]' '["relates to HIMMEL-110"]'
 check 'a label list with spaces after the commas still counts the residual' '1:HIMMEL-115' "$(field residual-unversioned "$d")"
-sed 's/HIMMEL-/APP-/g' "$M/HIMMEL-110.md" > "$M/APP-110.md"; sed 's/HIMMEL-/APP-/g' "$M/HIMMEL-115.md" > "$M/APP-115.md"
-case "$(field residual-unversioned "$d")" in *APP-115*) app_res=ok ;; *) app_res=no ;; esac
-check 'a residual whose relates link names another project key is counted' 'ok' "$app_res"
-rm -f "$M/APP-110.md" "$M/APP-115.md"
+# project keys other than the focus project's: a digit in the key (APP2) and an underscore (ZZ_Q) both parse
+# as one key; the unrelated residual (relates only to a Done ticket) and the unlabeled one are never counted
+for pk in APP APP2 ZZ_Q; do
+    sed "s/HIMMEL-/$pk-/g" "$M/HIMMEL-110.md" > "$M/$pk-110.md"; sed "s/HIMMEL-/$pk-/g" "$M/HIMMEL-115.md" > "$M/$pk-115.md"
+done
+sed "s/HIMMEL-110/HIMMEL-901/; s/HIMMEL-115/APP2-117/g" "$M/HIMMEL-115.md" > "$M/APP2-117.md"
+sed "s/HIMMEL-110/ZZ_Q-110/; s/HIMMEL-115/ZZ_Q-118/g; s/labels: .*/labels: []/" "$M/HIMMEL-115.md" > "$M/ZZ_Q-118.md"
+check 'residuals whose relates link names another project key (digits, underscore) are counted exactly; one with no qualifying relation or no label is not' '4:APP-115,APP2-115,HIMMEL-115,ZZ_Q-115' "$(field residual-unversioned "$d")"
+rm -f "$M"/APP-1*.md "$M"/APP2-1*.md "$M"/ZZ_Q-1*.md
 
 # a release-manager ruling that puts a versionless residual in the backlog (outcome BACKLOG, or a MOVE to
 # backlog) is a placement, not an unversioned ticket. The last [release-ruling ...] comment of the ticket

@@ -1591,6 +1591,7 @@ if not re.match(r"v\d", focus):
                 break
     except OSError:
         pass
+KEY_RE = r"(?<![A-Za-z0-9_])[A-Za-z][A-Za-z0-9_]*-\d+"
 found = []
 if focus:
     for name in sorted(os.listdir(mirror)):
@@ -1610,7 +1611,7 @@ if focus:
         if rm and rm[1] == name[:-3] and (rm[3] == "BACKLOG" or (rm[3] == "MOVE" and rm[2] == "backlog")) \
                 and f.get("statusCategory", "").strip('"') == "To Do" and f.get("priority", "").strip('"') not in ("High", "Highest"):
             continue
-        for target in re.findall(r"[A-Z]+-\d+", f.get("relates", "")) + re.findall(r"[A-Z]+-\d+", f.get("parent", "")):
+        for target in re.findall(KEY_RE, f.get("relates", "")) + re.findall(KEY_RE, f.get("parent", "")):
             p = front(target)
             if p and p.get("statusCategory", "").strip('"') != "Done" and ('"%s"' % focus) in p.get("fixVersions", ""):
                 found.append(name[:-3])
