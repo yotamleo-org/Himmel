@@ -243,6 +243,11 @@ const MIN_MEMBER_TIMEOUT_MS = 500;
 // prints a refusal message emits.
 const MEMBER_MAX_BUFFER = 16 * 1024 * 1024;
 
+// The readiness role's tool allow-list, named once: it is a must-run member
+// below, and the one guard whose allow/deny protocol this launcher checks
+// itself (readinessProtocolFault).
+const READINESS_GUARD = 'guard-readiness-tools.sh';
+
 // Under load the shared chain budget above can starve a LATE
 // member down to the MIN_MEMBER_TIMEOUT_MS floor, and the launcher's response
 // to that was uniform: skip it, note it on stderr, keep going. Fine for an
@@ -310,6 +315,9 @@ const MUST_RUN_CHAIN_MEMBERS = new Set([
   // Fails CLOSED; a starved run let a subagent write an operator-chain row.
   'block-subagent-release-operator.sh',
   'guard-judge-write-scope.sh',
+  // The readiness tool allow-list: a crash, signal, overrun or exhausted entry
+  // deadline denies instead of being carried or skipped.
+  READINESS_GUARD,
 ]);
 
 function envMs(name, fallback) {
@@ -985,6 +993,23 @@ function denyCrashedMustRun(result, basename, stderr) {
   return 2;
 }
 
+// guard-readiness-tools.sh speaks one protocol: exit 0 with NO stdout (allow)
+// or exit 2 (deny). Anything else is a guard that did not decide, and in the
+// readiness role that must refuse, not be carried as a non-blocking error or
+// read as an allow. Returns the reason, or null for a valid verdict. It reads
+// stdout only: stderr is not a decision channel, and a stray warning there must
+// not deny a call the guard allowed.
+function readinessProtocolFault(result, stdout) {
+  if (result.status === 2) return null;
+  if (result.status === 0) return stdout === '' ? null : 'output on exit 0';
+  return result.status === null ? `signal ${result.signal}` : `rc=${result.status}`;
+}
+
+function denyReadinessProtocolFault(basename, fault) {
+  process.stderr.write(`run-hook-with-bash: DENY ${basename} (${fault}) — readiness guard left its allow/deny protocol; failing closed.\n`);
+  return 2;
+}
+
 // Ends the chain: relays a deny (exit 2, or a JSON deny on exit 0) verbatim.
 function jsonBlockReason(output) {
   return output && (output.decision === 'block' ? output.reason
@@ -1078,6 +1103,15 @@ function runChainMember(member, ctx, st) {
       run.reason = 'CRASH';
       run.denyLine = denyLine('must-run guard crashed instead of deciding; failing closed');
       return crashed;
+    }
+  }
+  if (basename === READINESS_GUARD) {
+    const fault = readinessProtocolFault(result, stdout);
+    if (fault !== null) {
+      run.outcome = 'deny';
+      run.reason = 'PROTOCOL';
+      run.denyLine = denyLine('readiness guard left its allow/deny protocol; failing closed');
+      return denyReadinessProtocolFault(basename, fault);
     }
   }
   return collectMemberOutput(result, basename, stdout, stderr, st, run);
@@ -1469,8 +1503,9 @@ function main() {
   }
 
   const hookScript = hookArgs[0];
+  const failClosedActive = Boolean(failClosedWhen) && process.env[failClosedWhen.name] === failClosedWhen.value;
   if (optional && !fs.existsSync(hookScript)) {
-    if (failClosedWhen && process.env[failClosedWhen.name] === failClosedWhen.value) {
+    if (failClosedActive) {
       const hookName = path.basename(hookScript, path.extname(hookScript));
       process.stderr.write(`${hookName}: hook script missing while ${failClosedWhen.display} (stale checkout?) - failing closed\n`);
       process.exit(2);
@@ -1507,13 +1542,16 @@ function main() {
     process.exit(2);
   }
   // A session no recorder vouched for says so once, in a
-  // systemMessage. The child's stdout is captured only while the session is
+  // systemMessage. The child's stdout is captured while the session is
   // unvouched, so the hook's own JSON can carry it. The once-per-session flag is
   // taken only after the output is known to be deliverable (empty or a JSON
   // object); plain-text output is passed through untouched and leaves the flag
   // for the next call. maxBuffer is raised so a verbose hook is not killed by
   // spawnSync's 1 MiB default now that stdout is no longer inherited.
-  const capture = integrity.unvouched === true;
+  // The readiness guard under its own condition has its stdout checked against
+  // its protocol, so it is captured like an unvouched session's.
+  const readinessGuard = failClosedActive && path.basename(hookScript) === READINESS_GUARD;
+  const capture = integrity.unvouched === true || readinessGuard;
   const result = spawnSync(bash, hookArgs, {
     input,
     stdio: ['pipe', capture ? 'pipe' : 'inherit', 'inherit'],
@@ -1525,12 +1563,16 @@ function main() {
     process.stderr.write(`run-hook-with-bash: failed to start ${bash}: ${result.error.message}\n`);
     process.exit(2);
   }
+  if (readinessGuard) {
+    const fault = readinessProtocolFault(result, typeof result.stdout === 'string' ? result.stdout : '');
+    if (fault !== null) process.exit(denyReadinessProtocolFault(path.basename(hookScript), fault));
+  }
   if (capture) {
     const out = typeof result.stdout === 'string' ? result.stdout : '';
     const parsed = out.trim() ? parseJsonObject(out) : {};
     // Only a clean exit 0 can carry a systemMessage; a deny (exit 2) or any
     // other failure ignores stdout, so it must not consume the flag.
-    const deliverable = parsed && result.status === 0;
+    const deliverable = integrity.unvouched === true && parsed && result.status === 0;
     const notice = deliverable ? takeUnvouchedNotice(sessionId, hookScript) : null;
     if (notice) process.stderr.write(`${notice}\n`);
     if (deliverable && notice) {
