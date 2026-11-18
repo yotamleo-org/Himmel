@@ -4922,7 +4922,7 @@ describe('T8 U7: request, ruling, apply and readback converge once from every fa
     await converged(false);
   });
 
-  it.each([
+  const windows: Array<[Window, boolean, 'intent' | 'applied']> = [
     ['write refused', false, 'intent'],
     ['readback fails after the write', false, 'intent'],
     ['event append refused', false, 'applied'],
@@ -4934,7 +4934,11 @@ describe('T8 U7: request, ruling, apply and readback converge once from every fa
     ['ledger refused after the write', true, 'applied'],
     ['receipt refused', true, 'applied'],
     ['receipt posted, response lost', true, 'applied'],
-  ] as Array<[Window, boolean, 'intent' | 'applied']>)('%s (already a member: %s): the state reports the partial work, then one replay finishes it once', async (w, member, phase) => {
+  ];
+  // Two windows are made by a read-only file (chmod), which a superuser ignores: those rows skip as the older chmod row of this file does.
+  const usesChmod = ([w]: [Window, boolean, string]) => w === 'event append refused' || w === 'ledger refused after the write';
+  const asRoot = process.getuid?.() === 0;
+  const windowRow = async (w: Window, member: boolean, phase: 'intent' | 'applied') => {
     declared(member);
     if (w === 'ledger refused after the write') writeFileSync(ledger(), '', { flag: 'a' });
     const fault = inject(w, member);
@@ -4947,7 +4951,10 @@ describe('T8 U7: request, ruling, apply and readback converge once from every fa
     fault.lift();
     await rmRun(ctx(), admitAll);
     await converged(member);
-  });
+  };
+  const rowName = '%s (already a member: %s): the state reports the partial work, then one replay finishes it once';
+  it.each(windows.filter((r) => !usesChmod(r)))(rowName, windowRow);
+  it.skipIf(asRoot).each(windows.filter(usesChmod))(rowName, windowRow);
 });
 
 // 8674 / 9818 / 8731 (trace T8-de73eed2 clause 6): the 2026-11-16 correction audit as an offline seed. The fixture holds its ticket keys and
