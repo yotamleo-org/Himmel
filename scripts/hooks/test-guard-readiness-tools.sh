@@ -23,7 +23,7 @@
 #                             permissionDecision:"deny",permissionDecisionReason:"readiness tool-deny: <code> (..."}},
 #                             empty stderr; <code> is bad-envelope | oversize-input | not-allowed | guard-failure
 #
-# Usage: bash scripts/hooks/test-guard-readiness-tools.sh      Exit: 0 all ok, 1 a row/control failed, 3 guard missing.
+# Usage: bash scripts/hooks/test-guard-readiness-tools.sh      Exit: 0 all ok, 1 a row/control failed, 3 guard/prerequisite unavailable.
 # Platform: bash 3.2+ syntax, jq, coreutils; no network, no real HOME, nothing outside its mktemp directory is touched.
 set -uo pipefail
 
@@ -133,11 +133,12 @@ raw in-name-only-nested "{\"tool_input\":{\"tool_name\":\"$NAME_INSPECT\"}}"
 bytes in-binary '\x01\x02\xff\xfe\x80garbage'
 
 # ---------------------------------------------------------------------------------------------------- stubs, stand-ins
-mkdir -p "$STUBS/crash" "$STUBS/silent" "$STUBS/rc1"
+mkdir -p "$STUBS/crash" "$STUBS/silent" "$STUBS/rc1" "$STUBS/early"
 printf '#!/bin/sh\nexit 134\n' >"$STUBS/crash/jq"
 printf '#!/bin/sh\ncat >/dev/null\nexit 0\n' >"$STUBS/silent/jq"
 printf '#!/bin/sh\ncat >/dev/null\nprintf allow\nexit 1\n' >"$STUBS/rc1/jq"
-chmod +x "$STUBS/crash/jq" "$STUBS/silent/jq" "$STUBS/rc1/jq"
+printf '#!/bin/sh\nexit 4\n' >"$STUBS/early/jq"
+chmod +x "$STUBS/crash/jq" "$STUBS/silent/jq" "$STUBS/rc1/jq" "$STUBS/early/jq"
 DENY_LINE='printf '"'"'{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"readiness tool-deny: not-allowed (stand-in) - x"}}\n'"'"
 { echo '#!/usr/bin/env bash'; echo 'cat >/dev/null 2>&1'; echo 'exit 0'; } >"$STANDINS/permissive.sh"
 { echo '#!/usr/bin/env bash'; echo 'cat >/dev/null 2>&1'; echo "$DENY_LINE"; echo 'exit 2'; } >"$STANDINS/blanket.sh"
@@ -292,8 +293,9 @@ frc nojq guard-failure "jq not on PATH, allowed envelope" in-inspect nojq
 frc jq-crash guard-failure "jq crashes (rc 134), allowed envelope" in-inspect stub-crash
 frc jq-silent guard-failure "jq exits 0 and prints nothing, allowed envelope" in-inspect stub-silent
 frc jq-rc1-allow-text guard-failure "jq prints the allow verdict but exits 1, allowed envelope" in-inspect stub-rc1
+frc jq-exits-before-read bad-envelope "jq exits before reading bounded input: producer stderr stays empty" in-at-limit stub-early
 frc stdin-unreadable bad-envelope "stdin unreadable (a directory: read error, not EOF)" in-inspect normal noin
-[ "${#TERM_TO[@]}" -gt 0 ] && add fail-term-blocked fail deny guard-failure "SIGTERM while blocked reading stdin: still the deny JSON, exit 2" in-empty 1 normal blocked
+add fail-term-blocked fail deny guard-failure "SIGTERM while blocked reading stdin: still the deny JSON, exit 2" in-empty 1 normal blocked
 add fail-stdout-closed fail deny rcOnly "deny still exits 2 with stdout closed" in-bash 1 normal noout
 add fail-stdout-reader-gone fail deny rcOnly "deny still exits 2 after the stdout pipe reader exits" in-bash 1 normal noreader
 add fail-stdout-closed-allow fail allow rcOnly "an allowed call with stdout closed still exits 0" in-inspect 1 normal noout
