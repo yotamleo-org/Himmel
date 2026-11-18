@@ -6882,6 +6882,8 @@ test("N8 classification half, isolated: a path a current round row uses is not h
   expect(rows.some((r: any) => r.row === "round" && r.epoch === 1 && r.verdict_path === shared), "a current row uses the path").toBe(true);
   const proven = await route.cappedHistory(rows, [], reader);
   expect([...proven.set].sort()).toEqual(f.earlier.filter((path: string) => path !== shared).sort()); expect(reader.pins().map((p: any) => p.path)).not.toContain(shared);
+  const folded = await n3Fold(f, f.keys); expect(folded.history.set.has(shared), "the whole fold: still not history").toBe(false);
+  await expect(folded.latest(), "and the reused path's file is refused as unaccounted, the plan's not history, refused").rejects.toThrow(N3_UNACCOUNTED(shared));
 }, S1B);
 
 test("N9 an unsealed historical file at or above the signed round is refused, and the same file below it is accepted as v1", async () => {
@@ -6940,5 +6942,52 @@ test("N13 an aliased, an unreadable and an over-bounded scanned folder are refus
       const solo = await n3Fold(single, [key]);
       await expect(solo.latest(), `${fault}: single epoch with history`).rejects.toThrow(planted[1].message); await expect(solo.v1(), `${fault}: single epoch, v1`).rejects.toThrow(planted[1].message);
     } finally { if (fault === "unreadable") for (const p of planted) chmodSync(p.directory, 0o700); }
+  }
+}, S1B);
+
+// ---- review follow-ups of the history seam: the peek-versus-pin guard, the any-digest choice and an unusable earlier path ----
+test("3e the peek and the pinned read of a history file must agree: a reader that already holds other bytes for it refuses", async () => {
+  const route = await n3Route(); const f = await n3NewStem(); const target = f.earlier[3]; const key = route.keyOf(f.spec);
+  const reader = route.cappedReader(f.specsRoot, key); const rows = await route.cappedLedger(f.specsRoot, key, reader);
+  const original = readFileSync(target, "utf8");
+  writeFileSync(target, `${original}drifted while the reader looked\n`); await reader.read(target, "history");
+  writeFileSync(target, original);
+  await expect(route.cappedHistory(rows, [], reader), "the peek hashes to the ledger's digest, the reader holds other bytes").rejects.toThrow(`capped-fold: evidence changed or is unreadable: ${target}`);
+  expect((await n3Fold(f, f.keys)).history.set.has(target), "control: through a fresh reader the same file is proven").toBe(true);
+}, S1B);
+
+test("3e a path recorded under several earlier digests is proven when any one of them matches its bytes", async () => {
+  const route = await n3Route(); const stale = "0".repeat(64);
+  const earlierRow = (rows: any[], path: string) => rows.find(r => r.row === "round" && (r.epoch ?? 0) === 0 && r.verdict_path === path);
+  const build = async (edit: (rows: any[], older: string, newer: string) => void) => {
+    const f = await n3NewStem(); const [, , older, newer] = f.earlier; const key = route.keyOf(f.spec);
+    editLedger(f, rows => edit(rows, older, newer));
+    const reader = route.cappedReader(f.specsRoot, key); const rows = await route.cappedLedger(f.specsRoot, key, reader);
+    return { f, older, newer, set: (await route.cappedHistory(rows, [], reader)).set as ReadonlySet<string> };
+  };
+  const first = await build((rows, older, newer) => { earlierRow(rows, newer).verdict_path = older; });
+  expect(first.set.has(first.older), "recorded first with a matching digest, then again with a stale one").toBe(true);
+  expect(first.set.size, "the other four earlier files stay proven and the re-pointed one has no row left").toBe(4);
+  const last = await build((rows, older, newer) => { const a = earlierRow(rows, older); const b = earlierRow(rows, newer); b.verdict_path = older; b.return_sha = a.return_sha; a.return_sha = stale; });
+  expect(last.set.has(last.older), "recorded first with a stale digest, then again with a matching one").toBe(true);
+  expect(route.returnSha(readFileSync(last.older, "utf8")), "the file's bytes are unchanged").not.toBe(stale);
+  const none = await build((rows, older, newer) => { earlierRow(rows, newer).verdict_path = older; earlierRow(rows, older).return_sha = stale; });
+  expect(none.set.has(none.older), "neither recorded digest matches").toBe(false); expect(none.set.size).toBe(3);
+}, S1B);
+
+test("3e an earlier path that is a link or not spelled canonically is not history instead of a refusal: below the signed round the v1 rule accepts it, at or above it the namespace refuses it", async () => {
+  const link = (path: string) => { const copy = `${path}.elsewhere`; copyFileSync(path, copy); unlinkSync(path); symlinkSync(copy, path); };
+  const spelled = (path: string) => `${dirname(path)}/../${basename(dirname(path))}/${basename(path)}`;
+  const place = { 0: "below the signed round", 2: "at the signed round", 3: "above the signed round" } as const;
+  for (const how of ["a link", "a spelling that is not canonical"] as const) {
+    for (const index of [0, 2, 3] as const) {
+      const f = await n3NewStem(); const target = f.earlier[index];
+      if (how === "a link") link(target); else editLedger(f, rows => { rows.find(r => r.row === "round" && r.verdict_path === target).verdict_path = spelled(target); });
+      const g = await n3Fold(f, f.keys); const label = `${how} ${place[index]}`;
+      expect(g.history.set.has(target), `${label}: not history`).toBe(false); expect(g.history.set.size, `${label}: the other four stay proven`).toBe(4);
+      expect(g.reader.pins().map((p: any) => p.path), label).not.toContain(target);
+      if (index === 0) await expect(g.latest(), `${label}: accepted as v1`).resolves.toBeUndefined();
+      else await expect(g.latest(), `${label}: refused as unaccounted`).rejects.toThrow(N3_UNACCOUNTED(target));
+    }
   }
 }, S1B);
