@@ -146,7 +146,7 @@ release is declared (`jira release state <R>` prints a status other than
   in the current version under `O-<R>-emergency`, and repair starts at once.
   The next `rm-run` records its class and sector.
 - **Open requests are ruled without you.** The waiter's tick shows
-  `rm-queue=<n>,<oldest age>m` and, when the oldest open request is older than
+  `rm-queue=<n>,<oldest age>m[,claimed=<n>][,replay=<n>][,run]` and, when the oldest open request is older than
   `TICK_RMRUN_MIN` minutes (default 30), the lease is free and no run started in
   the last `TICK_RMRUN_MIN_SECS` seconds (default 600), it launches one detached
   `jira release rm-run <R>` for the `release:` line of the chief's doc
@@ -157,8 +157,27 @@ release is declared (`jira release state <R>` prints a status other than
   the wiring, so retry on the next tick.
   Claimed requests append `,claimed=<n>`, including `0,0m,claimed=<n>` when no open
   requests remain. Claimed-only work never launches an RM: inspect the held ruling
-  instead of re-billing it. An empty open-and-claimed queue, no declaration,
-  explicit `release: none`, or an unreadable doc shows no field.
+  instead of re-billing it. An empty open-and-claimed queue with no ruling to replay,
+  no declaration, explicit `release: none`, or an unreadable doc shows no field.
+- **An interrupted ruling is replayed without you.** A ruling interrupted after its
+  Jira write (the admissions row or the receipt still owed) leaves its request in
+  `ruled:<R>`, not open, so the open count never shows it. The tick reads the state's
+  `unfinished_rulings`, counts those with `status: replay` and appends `,replay=<n>`
+  (`0,0m,replay=<n>` when the queue is empty). With one to replay, a free lease, an OK
+  state and no run launched in the last `TICK_RMRUN_MIN_SECS` seconds (default 600),
+  it launches the same one detached `jira release rm-run <R>` as for an aged request
+  and marks it `,run`; there is no age gate, because the state carries no age for a
+  ruling. The lease also counts as free when the state says `lease.owner_gone`: the
+  jira CLI found the recorded owner pid absent on this host (a run killed hard), the
+  same proof `rm-run`'s own reclaim uses; the tick judges no pid itself, and a live or
+  reused pid keeps the lease held. A replay `rm-run` cannot finish is retried at most
+  once per that interval, never on every tick, and `replay=<n>` stays on the line until
+  `jira release state <R> --json` lists no `unfinished_rulings` for it; nothing
+  wakes the chief for it today, so read that list when the field lingers. The tick
+  never launches for a `status: blocked` move (not counted: the chief repairs it, see
+  `observed` and `next`), for claimed-only work, behind a held lease whose owner is not
+  proven gone, or on a state that is not OK, and it writes no release state (the
+  `rm-run` it starts does).
 - **Version drift is repaired by the tick, not alerted.** Three fields follow
   `rm-queue=`, each elided when empty, none in the wake key, none a message.
   `held=<n>:<sig8>` is the count of keys the repair cannot place on its own and
