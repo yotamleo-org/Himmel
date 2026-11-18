@@ -690,21 +690,30 @@ gh_pr_view() {
 # Resolve the PR (state + url + number + head SHA) in ONE query, scoped to the
 # selector. The PR's OWN url yields its owner/repo — so the private-repo guard
 # below checks the PR's repo, NOT cwd: a public-repo PR URL selector must not
-# pass just because cwd happens to be private. Capture stderr with
-# 2>&1 so "no pull requests found" (a clean no-op) is distinguishable from a
-# real auth/network failure (must refuse, never a silent no-op), like check-ci.
+# pass just because cwd happens to be private. Only stdout is parsed; stderr
+# goes to its own file and is read when the query fails, so "no pull requests
+# found" (a clean no-op) is distinguishable from a real auth/network failure
+# (must refuse, never a silent no-op), like check-ci.
 meta=""
 meta_rc=0
+meta_err=$(mktemp "${TMPDIR:-/tmp}/mog-pr-meta.XXXXXX") || {
+    echo "merge-on-green: could not create a scratch file for the PR query — refusing to guess. Re-run." >&2
+    audit "REFUSED reason=pr-query-failed selector=${selector:-<cwd-branch>}"
+    exit 13
+}
 meta=$(GH_READ_QUIET=1 gh_pr_view --json state,url,number,headRefOid,baseRefName,headRefName \
-        --jq '"\(.state)|\(.url)|\(.number)|\(.headRefOid)|\(.baseRefName)|\(.headRefName)"' 2>&1) || meta_rc=$?
+        --jq '"\(.state)|\(.url)|\(.number)|\(.headRefOid)|\(.baseRefName)|\(.headRefName)"' 2>"$meta_err") || meta_rc=$?
+meta_diag=""
+[ "$meta_rc" -eq 0 ] || meta_diag="$meta$(cat "$meta_err")"
+rm -f "$meta_err"
 if [ "$meta_rc" -ne 0 ]; then
-    if printf '%s' "$meta" | grep -qi 'no pull requests found'; then
+    if printf '%s' "$meta_diag" | grep -qi 'no pull requests found'; then
         echo "merge-on-green: no open PR for the target — nothing to merge."
         audit "NOOP reason=no-open-pr selector=${selector:-<cwd-branch>}"
         _go_nothing_merged_exit
         exit 0
     fi
-    echo "merge-on-green: could not query the PR (auth/network?): ${meta:-<no output>} — refusing to guess. Re-run." >&2
+    echo "merge-on-green: could not query the PR (auth/network?): ${meta_diag:-<no output>} — refusing to guess. Re-run." >&2
     audit "REFUSED reason=pr-query-failed selector=${selector:-<cwd-branch>}"
     exit 13
 fi

@@ -96,6 +96,9 @@ export STUB_RUN_LIST_JSON_DEFAULT="$MOG_RUN_GREEN"
 #   STUB_STATE          initial PR state in the meta query. Default OPEN.
 #   STUB_STATE_FAIL=1   the meta `gh pr view` exits 1 (API failure).
 #   STUB_NO_PR=1        the meta `gh pr view` exits 1 with "no pull requests found".
+#   STUB_GH_HINT=1      the meta `gh pr view` also prints a multi-line `hint:` notice on
+#                        stderr after its output (and after the STUB_NO_PR text).
+#                        STUB_STATE_FAIL=hint-only exits 1 with that notice alone.
 #   STUB_PRIVATE        `gh repo view <nwo> --json isPrivate` value. Default true.
 #                       Empty => undeterminable (fail closed).
 #   STUB_NWO            the PR's owner/repo (in its url). Default owner/repo.
@@ -413,13 +416,15 @@ run_branch="" run_workflow="" run_attempt="" run_event=""
 while [ $# -gt 0 ]; do case "$1" in --json) json="${2:-}";; --jq) jqexpr="${2:-}";; --branch) run_branch="${2:-}";; --workflow) run_workflow="${2:-}";; --attempt) run_attempt="${2:-}";; --event) run_event="${2:-}";; esac; shift; done
 nwo="${STUB_NWO:-owner/repo}"
 def_files='[{"filename":"README.md"}]'
+gh_hint() { [ "${STUB_GH_HINT:-0}" = "1" ] || return 0; printf 'hint: if you need to wait for this pull request to be merged or its checks to complete, do not poll it in a loop: one blocking call returns the moment its state changes, costs a single API request instead of one per interval, and leaves the rate limit free for other work\nhint: use this instead of polling: gh event listen --repo %s\n' "$nwo" >&2; }
 case "$verb" in
     "pr list")
         [ "${STUB_OPEN_PRS_FAIL:-0}" = "1" ] && { echo "gh: list failed" >&2; exit 1; }
         printf '%s' "${STUB_OPEN_PRS-}"; exit 0 ;;
     "pr view")
-        [ "${STUB_NO_PR:-0}" = "1" ] && { echo 'no pull requests found for branch "x"' >&2; exit 1; }
+        [ "${STUB_NO_PR:-0}" = "1" ] && { echo 'no pull requests found for branch "x"' >&2; gh_hint; exit 1; }
         [ "${STUB_NO_CWD_PR:-0}" = "1" ] && [ "${repo_arg#-}" != "$repo_arg" ] && { echo 'no pull requests found for branch "main"' >&2; exit 1; }
+        [ "${STUB_STATE_FAIL:-0}" = "hint-only" ] && { gh_hint; exit 1; }
         [ "${STUB_STATE_FAIL:-0}" = "1" ] && { echo "gh: api error" >&2; exit 1; }
         case "$json" in
             title)
@@ -451,7 +456,8 @@ case "$verb" in
                     exit 0
                 fi
                 printf '%s|https://github.com/%s/pull/%s|%s|%s|%s|%s' \
-                    "${STUB_STATE-OPEN}" "$nwo" "${STUB_NUM:-77}" "${STUB_NUM:-77}" "${STUB_SHA-abc123def456}" "${STUB_BASE-main}" "${STUB_HEAD_BRANCH-feat/stub-head}" ;;
+                    "${STUB_STATE-OPEN}" "$nwo" "${STUB_NUM:-77}" "${STUB_NUM:-77}" "${STUB_SHA-abc123def456}" "${STUB_BASE-main}" "${STUB_HEAD_BRANCH-feat/stub-head}"
+                gh_hint ;;
             body)
                 # Defaults to a body that records a remainder: a partial (bare) merge of a ticket-tagged PR
                 # whose body records none is refused (exit 26), and most cases are bare merges.
@@ -3008,6 +3014,36 @@ else
     pass
 fi
 assert_audit_has "11q: audit records the posted after-report" "after-report=posted"
+
+# 11q2. gh prints a multi-line hint on stderr after the PR read. The PR's fields come from
+# stdout alone, so the head branch stays the PR's own: the prune finds its worktree and the
+# after-report marker is written at its name.
+read -r P_REPO P_WT P_SHA <<< "$(mk_prune_fixture)"
+MOG_CWD="$P_REPO" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" STUB_NUM=77 STUB_GH_HINT=1 \
+    run_mog 0 "11q2: a gh notice on stderr after the PR read -> merged, exit 0"
+assert_audit_has "11q2: the head branch was pruned" "prune=removed branch=deleted"
+assert_audit_lacks "11q2: the prune did not look for a mangled branch" "prune=not-found"
+if prune_branch_gone "$P_REPO"; then pass; else fail "11q2: the merged head branch was not deleted"; fi
+if [ -f "$P_REPO/.git/after-report-pending/feat/mog-prune" ]; then
+    pass
+else
+    fail "11q2: after-report-pending marker was not written at the head branch's name"
+fi
+assert_audit_has "11q2: audit records the pending after-report" "after-report=pending cr="
+assert_audit_lacks "11q2: the marker write did not fail" "pending-unrecorded"
+assert_audit_lacks "11q2: no gh notice text in the audit" "hint:"
+
+# 11q3. A real PR-read failure is still caught when gh's stderr is only a notice (exit 1, no
+# "no pull requests found"): refused, never merged. The notice itself is shown to the operator.
+STUB_STATE_FAIL=hint-only STUB_GH_HINT=1 run_mog 13 "11q3: gh exits 1 with only a hint on stderr -> exit 13, not a no-op"
+assert_audit_has "11q3: the failed read is a refusal" "REFUSED reason=pr-query-failed"
+assert_gh_lacks "11q3: no merge attempted" "pr merge"
+assert_err_has "11q3: the refusal carries gh's stderr" "gh event listen"
+
+# 11q4. 'no pull requests found' followed by a hint is still the clean no-op.
+STUB_NO_PR=1 STUB_GH_HINT=1 run_mog 0 "11q4: no PR plus a gh notice -> exit 0 nothing-to-merge"
+assert_audit_has "11q4: audited as a no-op" "NOOP reason=no-open-pr"
+assert_gh_lacks "11q4: no merge attempted" "pr merge"
 
 # --- 11r..11t. CR thread recorder after a confirmed merge ---------------------
 # The recorder runs once, with the PR number and repo, after the merge lands. The
