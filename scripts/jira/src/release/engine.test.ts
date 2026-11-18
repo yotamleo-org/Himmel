@@ -4105,6 +4105,24 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{const r=actual(...a); if(
       withAbsence('O-R1-9004', 'O-R1-9003', pin => { pin.keys = pin.keys.slice(1); });
       expect(check(keys)).toEqual(staleLines(keys, f, 'O-R1-9004'));
     });
+
+    it('capped carry v2 a guard that refuses before any spawn refuses once with its shipped words, for a group too (P3-2)', () => {
+      const f = v2Build({ builder: 'group' });
+      const guard = /residual findings.*capped verifier unavailable\/refused: capped carry requires one key, an explicit distinct plan and paired SPEC\/PLAN returns$/;
+      expect(() => v2Sign(f, { plan: undefined })).toThrow(guard);
+      expect(() => v2Sign(f, { plan: f.spec })).toThrow(guard);
+      expect(cappedSpawn.attempts, 'no spawn and no v2 reason').toEqual([]);
+      noCappedRows();
+    });
+
+    it('capped carry v2 spawns with the keys sorted whatever order they were requested in, and keeps the requested order on the record (E1)', () => {
+      const f = v2Build({ builder: 'group' }); const keys = f.keys!; const reversed = [...keys].reverse();
+      const row = v2Sign(f, { keys: reversed });
+      expect(cappedSpawn.attempts[0].slice(2, 4)).toEqual(['--keys', [...keys].sort().join(',')]);
+      expect(row.keys).toEqual(reversed);
+      expect(row.capped_carry).toMatchObject({ keys: [...keys].sort() });
+      expect(check(keys)).toEqual(okLines(keys, f, row.id));
+    });
   });
 });
 
