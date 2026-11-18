@@ -95,7 +95,9 @@ def candidates(fleet, inbox, last):
                 continue
             cursor = last_handled or 0
             cursors[label] = cursor
-        current[label] = dict(ready=ready_events)
+        # A sample that does not match the acknowledged snapshot is only a proposal: it never
+        # replaces that snapshot here, whatever bullet the sample ends on.
+        current[label] = dict(previous, unread=False) if replaced else dict(ready=ready_events)
         cleanup = [(n, marker) for n, marker in matches if marker != 'READY']
         # A WRAPPED/MERGED bullet is the worker's live cleanup only while no READY follows it
         # (the newest marker, as tick.sh reads tails= and acts=). A later READY is the event;
