@@ -116,12 +116,23 @@ s17_at "$S17_H1"
 check "19 T8b the row the runbook fence wrote: exit 0" "$rc" "0"
 contains "19 T8b: item 19 reads that row (both suites local, nothing left to CI)" "$out" "[PASS] 19. suite evidence: 2 impacted, 0 from CI run -, 2 local"
 
+# the three killed-mid-read runs below bound themselves with the real GNU timeout (timeout or
+# gtimeout); a host with neither (stock macOS) skips them by name rather than failing rc 127
+# shellcheck source=scripts/lib/timeout-bin.sh
+. "$HERE/../../lib/timeout-bin.sh"
+if [ -z "$_TIMEOUT_BIN" ]; then
+echo "ok - 19 T8c and T8d killed-mid-read rows skipped: no GNU timeout on this host"
+else
 # T8c: a ready-check killed while item 19 reads (the chief's `timeout` TERMs it) leaves no temp dir
 S17_TMP="$tmp/s17-term-tmp"; mkdir -p "$S17_TMP"
-printf '#!/usr/bin/env bash\nexec timeout 3 bash %q "$@"\n' "$SCRIPT" > "$tmp/s17-term-wrap.sh"  # gnu-ok: Linux-only kit
-s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_DL_SLEEP=20
+printf '#!/usr/bin/env bash\nexec %q 3 bash %q "$@"\n' "$_TIMEOUT_BIN" "$SCRIPT" > "$tmp/s17-term-wrap.sh"
+s17_clear; STUB_MANIFEST_DIR="$S17_MAN_AB"; STUB_DL_SLEEP=20; STUB_DL_STARTED="$tmp/s17-term-started"
+rm -f "$STUB_DL_STARTED"
 RUN_SCRIPT="$tmp/s17-term-wrap.sh" TMPDIR="$S17_TMP" s17_at "$S17_H1"
 unset RUN_SCRIPT
+check "19 T8c: the stalled item-19 read was started, so the kill had something to interrupt" "$([ -f "$STUB_DL_STARTED" ] && echo yes || echo no)" "yes"
+check "19 T8c: the outer timeout is what ended the run (exit 124)" "$rc" "124"
+unset STUB_DL_STARTED
 check "19 T8c: killed mid-read, no ready-check-19 temp dir is left" "0" "$(find "$S17_TMP" -maxdepth 1 -name 'ready-check-19.*' | wc -l | tr -d ' ')"
 
 S_KW="$tmp/kill-wrap"; mkdir -p "$S_KW"
@@ -129,7 +140,7 @@ printf '#!/usr/bin/env bash\necho started > "%s/started"\nsleep 40 &\necho $! > 
 kw_sleep_alive() { local p; p=$(cat "$S_KW/sleep.pid" 2>/dev/null); if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then kill "$p" 2>/dev/null; echo yes; else echo no; fi; }
 kw_t0=$SECONDS
 kw_rc=0
-(cd "$REPO" && HIMMEL_REPO="$REPO" TMPDIR="$S_KW" GH_CMD="$S_KW/slow-gh" timeout 3 bash "$SCRIPT" --observe "$PR" "$SHA" > /dev/null 2>&1) || kw_rc=$?  # gnu-ok: Linux-only kit
+(cd "$REPO" && HIMMEL_REPO="$REPO" TMPDIR="$S_KW" GH_CMD="$S_KW/slow-gh" "$_TIMEOUT_BIN" 3 bash "$SCRIPT" --observe "$PR" "$SHA" > /dev/null 2>&1) || kw_rc=$?
 kw_took=$((SECONDS - kw_t0))
 sleep 1
 check "T8d: the outer timeout is what ended the run (exit 124)" "$kw_rc" "124"
@@ -140,13 +151,14 @@ check "T8d: the killed wrapper leaves no stalled child" "$(pgrep -f "$S_KW/slow-
 check "T8d: the stalled read's own sleep is gone too" "$(kw_sleep_alive)" "no"
 rm -f "$S_KW/started" "$S_KW/sleep.pid"
 kw_rc=0
-(cd "$REPO" && READY_CHECK_DEADLINE=0 HIMMEL_REPO="$REPO" TMPDIR="$S_KW" GH_CMD="$S_KW/slow-gh" timeout 3 bash "$SCRIPT" --observe "$PR" "$SHA" > /dev/null 2>&1) || kw_rc=$?  # gnu-ok: Linux-only kit
+(cd "$REPO" && READY_CHECK_DEADLINE=0 HIMMEL_REPO="$REPO" TMPDIR="$S_KW" GH_CMD="$S_KW/slow-gh" "$_TIMEOUT_BIN" 3 bash "$SCRIPT" --observe "$PR" "$SHA" > /dev/null 2>&1) || kw_rc=$?
 sleep 1
 check "T8d: unarmed, the outer timeout ended the run (exit 124)" "$kw_rc" "124"
 check "T8d: unarmed, the stalled read was started" "$([ -f "$S_KW/started" ] && echo yes || echo no)" "yes"
 check "T8d: unarmed, the killed wrapper leaves no stalled child" "$(pgrep -f "$S_KW/slow-gh" | wc -l | tr -d ' ')" "0"
 check "T8d: unarmed, the stalled read's own sleep is gone too" "$(kw_sleep_alive)" "no"
 check "T8d: unarmed, the killed wrapper leaves none of its scratch files" "$(find "$S_KW" -maxdepth 1 -name 'ready-check-*' | wc -l | tr -d ' ')" "0"
+fi
 
 # T9: a suite CI cannot run (no manifest row) needs a local PASS
 s17_clear; STUB_MANIFEST_DIR="$S17_MAN_A"
