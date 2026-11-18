@@ -804,7 +804,8 @@ function probeSettingsKey(item, ctx) {
   }
   if (layers.length === 0) return { actual: 'absent', detail: `cannot read ${filePath}` };
   const valIn = (layer, k) => (isEnv ? layer.data[k] : getDotPath(layer.data, k));
-  const layerFor = (k, defined) => layers.find((l) => (defined ? valIn(l, k) !== undefined : nonEmpty(valIn(l, k))));
+  const setsScalarOrFilled = (v) => v !== undefined && (v === null || typeof v !== 'object' || nonEmpty(v));
+  const layerFor = (k, defined) => layers.find((l) => (defined ? valIn(l, k) !== undefined : setsScalarOrFilled(valIn(l, k))));
   const getVal = (k, defined) => {
     const l = layerFor(k, defined);
     return l ? valIn(l, k) : undefined;

@@ -686,6 +686,12 @@ sl_expect "two keys, each in a different file" "$(sl_probe perkey project 0 0 "$
 sl_fixture perkey-miss '{"alpha":1}' - - -
 sl_expect "two keys, one nowhere" "$(sl_probe perkey-miss project 0 0 "$sl_two")" absent "beta"
 
+sl_one='{"type":"settings-key","file":".claude/settings.json","key":"alpha"}'
+sl_fixture empty-local - '{"alpha":""}' '{"alpha":"x"}' -
+sl_expect "local empty string beats the user value" "$(sl_probe empty-local project 0 0 "$sl_one")" absent
+sl_fixture empty-obj '{"alpha":{}}' - '{"alpha":{"a":1}}' -
+sl_expect "project empty object falls through to the user value" "$(sl_probe empty-obj project 0 0 "$sl_one")" present "/home/.claude/settings.json"
+
 # a malformed project file is a real fault, never papered over by the user file
 sl_fixture malformed '{not json' - "$sl_on" -
 sl_expect "malformed project file" "$(sl_probe malformed project 0)" absent "cannot parse"
