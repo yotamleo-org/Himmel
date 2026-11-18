@@ -179,7 +179,10 @@ deadline cut the state read (unknown, read again next tick). replay=<n> counts t
 replay (a ruling interrupted after its Jira write, which no open request shows); a blocked move is the chief's repair and is
 not counted. An oldest open
 request past TICK_RMRUN_MIN minutes (default 30), or any ruling to replay, with the lease free launches one detached `jira release
-rm-run <R>` (at most one per TICK_RMRUN_MIN_SECS, default 600, so an unchanged ruling is retried at that pace, never every tick) and appends `,run`; its output goes to
+rm-run <R>` (at most one per TICK_RMRUN_MIN_SECS, default 600, so an unchanged ruling is retried at that pace, never every tick) and appends `,run`.
+A held lease reads as free only when the state says lease.owner_gone is true: the CLI proved the owner pid absent on this host (a
+hard-killed rm-run), the same proof rm-run's own reclaim uses; the tick judges no pid itself, and a pid that answers (a live owner, or
+a reused pid) keeps the lease held. Output goes to
 $TICK_STATE_DIR/tick-rm-run.log. Env seams: TICK_RMQ_PROBE, TICK_RMRUN_PROBE, TICK_RMRUN_LAUNCHER,
 TICK_RMQ_TIMEOUT. Not in chief-wait's action key.
 
@@ -3347,11 +3350,12 @@ if [ -n "$console_doc" ] && [ -r "$console_doc" ] && [ -f "$console_doc" ]; then
             ;;
     esac
 fi
-# rm_launch_run: the one launch gate an aged open request and an interrupted ruling share. With the lease free and the state OK it
+# rm_launch_run: the one launch gate an aged open request and an interrupted ruling share. With the lease free (or held by an owner the
+# state proves gone) and the state OK it
 # starts ONE detached rm-run, never inside TICK_RMRUN_MIN_SECS of the last launch (the stamp), so an unchanged request or ruling is
 # retried at the pace of the existing backoff and never on every tick. It appends ,run to rm_queue when it starts one.
 rm_launch_run() {
-    [ "$rm_lease" = free ] && [ "$rm_status" = OK ] || return 0
+    { [ "$rm_lease" = free ] || [ "$rm_lease" = gone ]; } && [ "$rm_status" = OK ] || return 0
     local rm_gap rm_dir rm_stamp rm_stamp_age rm_stamp_m rm_have rm_w
     local -a rm_launcher
     rm_gap="${TICK_RMRUN_MIN_SECS:-600}"
@@ -3405,7 +3409,9 @@ if n and r.get("oldest_open"):
 ls = d.get("lease")
 # an interrupted ruling a normal rm-run finishes (a blocked move is the chief repair, never a launch)
 replay = sum(1 for u in d.get("unfinished_rulings") or [] if isinstance(u, dict) and u.get("status") == "replay")
-print(n, age, "held" if ls and not ls.get("released") else "free", d.get("status") or "UNKNOWN", len(r.get("claimed", [])), replay)
+# gone: the CLI proved the held lease owner process is absent on this host (owner_gone is literally true); the tick judges no pid itself
+lease = "free" if not ls or ls.get("released") else ("gone" if ls.get("owner_gone") is True else "held")
+print(n, age, lease, d.get("status") or "UNKNOWN", len(r.get("claimed", [])), replay)
 ' 2>/dev/null) || true  # swallow-ok: an unparseable state leaves the fields empty and the summary reads off
     fi
     [ "$rm_status" = OK ] || rm_n=""

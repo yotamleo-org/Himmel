@@ -4972,6 +4972,57 @@ describe('T8 U7: request, ruling, apply and readback converge once from every fa
   it.skipIf(asRoot).each(windows.filter(usesChmod))(rowName, windowRow);
 });
 
+// 8731 (fix review F1): a hard-killed rm-run leaves its lease held. The state reports when the lease's owner process is provably gone, through
+// the helper rm-run's own reclaim uses (the pid on this host answers ESRCH), so the tick can start the replay exactly when rm-run would reclaim.
+describe('T8 V3: state says when the lease owner is provably gone', () => {
+  const leaseOf = () => state(ctx()).lease as Record<string, unknown> | null;
+  const hold = (pid?: number) => {
+    declare(ctx(), { project: 'HIMMEL', versions: ['v1', 'v2'], decision: '106', verbatim: 'R = v1 + v2', mode: 'observe' });
+    return leaseAcquire(ctx(rmEnv), { expectEpoch: 0, doc: DOC, session: 'rm-1', ...(pid === undefined ? {} : { pid }) });
+  };
+  // a pid that was real and is gone: a child that has been waited for
+  const deadPid = () => {
+    const r = spawnSync(process.execPath, ['-e', '0']);
+    return r.pid;
+  };
+
+  it('a held lease whose recorded owner pid is gone on this host says owner_gone', () => {
+    hold(deadPid());
+    expect(leaseOf()).toMatchObject({ released: false, owner_gone: true });
+  });
+
+  it.each([
+    ['a live owner (this process)', () => hold(process.pid)],
+    ['a pid that answers to another process, as a reused pid does (cannot be told from the owner, so the lease stays held)', () => hold(process.ppid)],
+    ['no recorded pid (a standing session)', () => hold()],
+  ])('never says owner_gone for %s', (_name, make) => {
+    make();
+    expect(leaseOf()).toMatchObject({ released: false });
+    expect(leaseOf()).not.toHaveProperty('owner_gone');
+  });
+
+  it('never says owner_gone for a pid recorded on another host, nor for a released lease', () => {
+    const held = hold(deadPid());
+    const k = loadKey(ctx().keyPath);
+    writeSigned(join(ctx().dir, 'lease.json'), k, { ...held, owner_host: 'another-host.invalid' });
+    expect(leaseOf()).not.toHaveProperty('owner_gone');
+    writeSigned(join(ctx().dir, 'lease.json'), k, { ...held, released: true });
+    expect(leaseOf()).toMatchObject({ released: true });
+    expect(leaseOf()).not.toHaveProperty('owner_gone');
+  });
+
+  it('rm-run reclaims exactly that lease and rules the request (so a tick that launches it is never refused by the lease)', async () => {
+    hold(deadPid());
+    request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'found work', evidence: {}, from: 'console' });
+    const lines = await rmRun(ctx(), async (input) => input.requests.map((q) => ({
+      req: q.req, outcome: 'ADMIT', op: 'add' as const, from: null, to: 'v1', sector: 'Ship loop', ground: 'regression', reason: 'breaks the console',
+    })));
+    expect(lines.join('\n')).toMatch(/^RECLAIMED lease epoch 1: rm-run pid \d+ on .* is gone$/m);
+    expect(lines.join('\n')).toContain('RULING R-R1-0001');
+    expect(state(ctx()).lease).toMatchObject({ epoch: 2, released: true });
+  });
+});
+
 // 8674 / 9818 / 8731 (trace T8-de73eed2 clause 6): the 2026-11-16 correction audit as an offline seed. The fixture holds its ticket keys and
 // record numbers; the operator words are synthetic text in a scratch decision file. 20 actual members had no matching signed placement
 // while the mirror was fresh and the queue empty; one request per key with the operator's words, one normal RM run, then Jira = signed.

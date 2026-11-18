@@ -1737,7 +1737,8 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
 export interface StateOut extends ReleaseState {
   /** Per version: the keys of today's (UTC) operator decisions that add or move into it. */
   admissions_today: Record<string, number>;
-  lease: Omit<Lease, 'mac'> | null;
+  /** owner_gone is present (true) only for a held lease whose recorded owner pid is absent on this host: the proof rm-run's own reclaim uses. */
+  lease: (Omit<Lease, 'mac'> & { owner_pid?: number; owner_host?: string; owner_gone?: true }) | null;
   requests: { open: string[]; claimed: string[]; /** ts of the oldest open request, null with none. */ oldest_open: string | null };
   heads: { rulings: string; operator: string; events: string; requests: string; mirror: string | null };
   refused_asks: RefusedAsk[];
@@ -1900,7 +1901,7 @@ export function state(ctx: Ctx): StateOut {
     ...s,
     status: lease ? s.status : 'UNKNOWN',
     admissions_today: admissionsToday(ctx, l),
-    lease: lease ? leaseOut : null,
+    lease: lease ? { ...leaseOut, ...(!lease.released && ownerGone(lease) ? { owner_gone: true as const } : {}) } : null,
     requests: { open, claimed, oldest_open: oldestOpen },
     heads: { rulings: l.rulings.head, operator: l.operator.head, events: l.events.head, requests: l.requests.head, mirror: mirror.sync },
     refused_asks: refusedAsks(l, mirror.issues),

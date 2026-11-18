@@ -143,6 +143,23 @@ out="$(tick)"
 sleep 1
 check '8731 U2: a held lease (the writing run is between its writes) shows the ruling and launches nothing' '0,0m,replay=1' "$(field rm-queue "$out")"
 check '8731 U2: and no rm-run ran' '' "$([ -e "$W/rmrun-ran" ] && echo ran)"
+# 8731 V3 (fix review F1): a hard-killed rm-run leaves its lease held. The state names an owner it can prove gone (owner_gone: true, the same
+# helper rm-run's own reclaim uses); only that reads as free for the launch. The tick never judges a pid itself.
+dead_lease() { printf '{"epoch":3,"owner_doc":"/rm.md","released":false,"owner_pid":4242,"owner_host":"h"%s}' "$1"; }
+reset; stateu '[]' null "$(dead_lease ',"owner_gone":true')" "$U_REPLAY"
+out="$(tick)"
+check '8731 V3: a held lease whose owner the state proves gone reads as free: the replay launches' '0,0m,replay=1,run' "$(field rm-queue "$out")"
+check '8731 V3: one rm-run' '1' "$(ran)"
+reset; stateu '["Q-1"]' "\"$(ago 45)\"" "$(dead_lease ',"owner_gone":true')" '[]'
+out="$(tick)"
+check '8731 V3: the same gate frees an aged open request behind a dead owner' '1,45m,run' "$(field rm-queue "$out")"
+for variant in ',"owner_gone":false' ',"owner_gone":"true"' ',"owner_gone":1' ''; do
+    reset; stateu '[]' null "$(dead_lease "$variant")" "$U_REPLAY"
+    out="$(tick)"
+    sleep 1
+    check "8731 V3: a held lease with owner_gone absent or not literally true (${variant:-absent}) stays held: no launch" '0,0m,replay=1' "$(field rm-queue "$out")"
+    check "8731 V3: and no rm-run ran (${variant:-absent})" '' "$([ -e "$W/rmrun-ran" ] && echo ran)"
+done
 reset; stateu '[]' null null "$U_BLOCKED"
 out="$(tick)"
 sleep 1
