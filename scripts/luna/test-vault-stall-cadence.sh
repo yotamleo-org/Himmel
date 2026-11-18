@@ -774,5 +774,140 @@ echo note >"$V/notes.md"; git -C "$V" add notes.md
 out="$(run_sut)"
 assert_has "T42 a refusal with no message stays unclassified, with its exit code" "unclassified refusal rc=3" "$(sent)"
 
+# --- T43+ opt-in local auto-commit (LUNA_VAULT_AUTOCOMMIT=1): a vault with no remote and no sync plugin ---
+REAL_GIT="$(command -v git)"
+backdate() { local t; t="$(date -d "@$(($(date +%s) - 7200))" +%Y%m%d%H%M.%S 2>/dev/null || date -r "$(($(date +%s) - 7200))" +%Y%m%d%H%M.%S)"; touch -t "$t" "$@"; }
+run_ac() { LUNA_VAULT_AUTOCOMMIT=1 run_sut; }
+# A git shim that runs the real git, then acts once on `add` or `commit`:
+#   SHIM_BEFORE_COMMIT=1  run the real commit first, so ours finds nothing to commit
+#   SHIM_TOUCH=<path>     write that path after the add (a writer mid-run)
+#   SHIM_REMOTE_AFTER=add|commit   add a remote after that subcommand
+mkshim() {
+    mkdir -p "$TMP/shim"
+    cat >"$TMP/shim/git" <<EOF
+#!/usr/bin/env bash
+case " \$* " in
+    *" commit "*)
+        if [ -n "\${SHIM_BEFORE_COMMIT:-}" ]; then "$REAL_GIT" "\$@" >/dev/null 2>&1; fi
+        "$REAL_GIT" "\$@"; rc=\$?
+        [ "\${SHIM_REMOTE_AFTER:-}" = commit ] && "$REAL_GIT" -C "\$SHIM_VAULT" remote add origin https://example.invalid/v.git
+        exit \$rc ;;
+    *" add "*)
+        "$REAL_GIT" "\$@"; rc=\$?
+        [ -z "\${SHIM_TOUCH:-}" ] || touch "\$SHIM_TOUCH"
+        [ "\${SHIM_REMOTE_AFTER:-}" = add ] && "$REAL_GIT" -C "\$SHIM_VAULT" remote add origin https://example.invalid/v.git
+        exit \$rc ;;
+esac
+exec "$REAL_GIT" "\$@"
+EOF
+    chmod +x "$TMP/shim/git"
+}
+run_shim() { PATH="$TMP/shim:$PATH" SHIM_VAULT="$V" run_ac; }
+mkshim
+
+mkvault
+echo "a note" >"$V/note.md"; backdate "$V/note.md"
+before="$(head_sha)"
+out="$(run_ac)"; rc=$?
+assert_eq "T43 opt-in on, local-only: exits 0" "0" "$rc"
+assert_has "T43 the note is committed" "note.md" "$(head_files)"
+assert_eq "T43 nothing left dirty" "" "$(git -C "$V" status --porcelain)"
+assert_eq "T43 nothing staged" "" "$(staged)"
+assert_eq "T43 no remote was added or pushed to" "" "$(git -C "$V" remote)"
+assert_eq "T43 no alert sent" "" "$(sent)"
+assert_eq "T43 the hooks ran (the fixture hook logs its fixer pass)" "yes" "$([ -f "$V/.git/fixer-ran.log" ] && echo yes || echo no)"
+
+# The doctor's C3 warns on this vault before the commit and reads OK after it.
+mkvault
+mkdir -p "$V/.git/info"; : >"$V/.single-writer"; echo .single-writer >>"$V/.git/info/exclude"
+echo "more" >>"$V/README.md"; backdate "$V/README.md"
+doc_c3() { HOME="$TMP/home" LUNA_VAULT_PATH="$V" bash "$ROOT/scripts/himmel-doctor.sh" --root "$ROOT" --no-color --only C3 2>&1 | grep 'C3-luna'; }
+assert_has "T44 control: C3 warns on the stale local-only note" "WARN C3-luna" "$(doc_c3)"
+run_ac >/dev/null
+assert_has "T44 after the opt-in commit, C3 reads OK" "OK   C3-luna" "$(doc_c3)"
+
+mkvault
+echo "a note" >"$V/note.md"; backdate "$V/note.md"; git -C "$V" remote add origin https://example.invalid/v.git
+before="$(head_sha)"; out="$(run_ac)"
+assert_eq "T45 a vault with a remote is untouched (no commit)" "$before" "$(head_sha)"
+assert_eq "T45 the note is still dirty" "?? note.md" "$(git -C "$V" status --porcelain)"
+
+mkvault
+echo "a note" >"$V/note.md"; backdate "$V/note.md"; mkdir -p "$V/.obsidian/plugins/obsidian-github-sync"; echo x >"$V/.obsidian/plugins/obsidian-github-sync/main.js"
+before="$(head_sha)"; out="$(run_ac)"
+assert_eq "T46 a vault with a sync plugin is untouched (no commit)" "$before" "$(head_sha)"
+assert_eq "T46 the note is still dirty" "?? .obsidian/ ?? note.md" "$(git -C "$V" status --porcelain | tr '\n' ' ' | sed 's/ $//')"
+
+mkvault
+echo "a note" >"$V/note.md"; backdate "$V/note.md"
+before="$(head_sha)"; out="$(run_sut)"
+assert_eq "T47 opt-in off: untouched (no commit)" "$before" "$(head_sha)"
+assert_eq "T47 the note is still dirty" "?? note.md" "$(git -C "$V" status --porcelain)"
+
+mkvault
+echo "a note" >"$V/note.md"; backdate "$V/note.md"; : >"$V/.git/index.lock"
+before="$(head_sha)"; out="$(run_ac)"
+assert_eq "T48 index.lock present: untouched (no commit)" "$before" "$(head_sha)"
+assert_has "T48 reports busy" "busy" "$out"
+rm -f "$V/.git/index.lock"
+
+mkvault
+echo "log" >"$V/handovers/a.md"; backdate "$V/handovers/a.md"
+before="$(head_sha)"; out="$(run_ac)"; rc=$?
+assert_eq "T49 only handovers/ dirty: exits 0" "0" "$rc"
+assert_eq "T49 only handovers/ dirty: no commit" "$before" "$(head_sha)"
+assert_eq "T49 handovers/ stays untracked" "?? handovers/" "$(git -C "$V" status --porcelain)"
+
+mkvault
+echo "a note" >"$V/note.md"; backdate "$V/note.md"
+echo "fresh" >"$V/fresh.md"
+mkdir -p "$V/scratch/.focus-stage.abc"; echo s >"$V/scratch/.focus-stage.abc/f.md"; backdate "$V/scratch/.focus-stage.abc/f.md"
+out="$(run_ac)"
+assert_eq "T50 only the quiet note is committed (fresh and focus-stage excluded)" "note.md " "$(head_files)"
+assert_eq "T50 the fresh note and the focus-stage scratch stay dirty" "?? fresh.md ?? scratch/" "$(git -C "$V" status --porcelain | tr '\n' ' ' | sed 's/ $//')"
+assert_eq "T50 nothing staged" "" "$(staged)"
+
+mkvault
+echo "a" >"$V/staged.md"; git -C "$V" add staged.md
+echo "b" >"$V/other.md"; backdate "$V/other.md"
+before="$(head_sha)"; out="$(run_ac)"
+assert_eq "T51 something already staged: the auto-commit does not run" "$before" "$(head_sha)"
+assert_eq "T51 the staged path is left staged, the other note unstaged" "staged.md " "$(staged)"
+
+mkvault
+printf 'one\n' >"$V/note.md"; printf 'two\n' >"$V/busy.md"; backdate "$V/note.md" "$V/busy.md"
+out="$(SHIM_TOUCH="$V/busy.md" run_shim)"
+assert_eq "T52 a note written mid-run is not committed" "note.md " "$(head_files)"
+assert_eq "T52 that note stays dirty and unstaged" "?? busy.md" "$(git -C "$V" status --porcelain)"
+assert_eq "T52 nothing staged" "" "$(staged)"
+
+mkvault
+echo "a note" >"$V/note.md"; backdate "$V/note.md"
+out="$(SHIM_BEFORE_COMMIT=1 run_shim)"; rc=$?
+assert_eq "T53 a commit that finds nothing to commit is a success: exits 0" "0" "$rc"
+assert_eq "T53 no alert sent" "" "$(sent)"
+assert_not_has "T53 not reported as a refused commit" "refused" "$out"
+assert_eq "T53 the note was committed by the other writer" "note.md " "$(head_files)"
+
+mkvault
+echo "a note" >"$V/note.md"; backdate "$V/note.md"
+before="$(head_sha)"; out="$(SHIM_REMOTE_AFTER=add run_shim)"
+assert_eq "T54 a remote that appears while staging stops the commit" "$before" "$(head_sha)"
+assert_eq "T54 and the paths are unstaged again" "" "$(staged)"
+
+mkvault
+echo "a note" >"$V/note.md"; backdate "$V/note.md"
+out="$(SHIM_REMOTE_AFTER=commit run_shim)"
+assert_has "T55 a remote that appears during the commit raises an alert" "remote" "$(sent)"
+
+mkvault
+echo "a note" >"$V/note.md"; backdate "$V/note.md"
+cp "$V/.git/hooks/pre-commit" "$TMP/hook.keep"
+printf '#!/usr/bin/env bash\necho "refused by a hook" >&2\nexit 1\n' >"$V/.git/hooks/pre-commit"
+before="$(head_sha)"; out="$(run_ac)"; rc=$?
+assert_eq "T56 a hook-refused commit leaves HEAD alone" "$before" "$(head_sha)"
+assert_eq "T56 and exits 0 (falls through to the stall handling)" "0" "$rc"
+assert_has "T56 the existing stall handling alerts on the refusal" "refus" "$(sent)"
+
 echo "----"
 if [ "$FAILED" -eq 0 ]; then echo "PASS: vault-stall-cadence ($0)"; else echo "FAIL: vault-stall-cadence — $FAILED failed ($0)" >&2; exit 1; fi

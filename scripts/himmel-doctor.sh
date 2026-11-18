@@ -271,13 +271,12 @@ check_c3() {
     if [ -n "$stale" ]; then
         # Only a vault with a remote or a sync plugin has something that commits
         # for it; a local-only vault never auto-commits, so the fix is to commit.
-        local has_sync=0 d
-        [ -n "$(git -C "$v" remote 2>/dev/null)" ] && has_sync=1
-        for d in "$v"/.obsidian/plugins/*sync*; do [ -d "$d" ] && has_sync=1; done
-        if [ "$has_sync" = 1 ]; then
+        # shellcheck source=scripts/lib/vault-sync.sh
+        . "$SELF_DIR/lib/vault-sync.sh"
+        if vault_has_sync "$v"; then
             emit WARN C3-luna "luna vault ($v) has non-handover change(s) dirty over ${dirty_min} min: $stale — the vault's sync plugin owns its commits, so a stall here means the sync is stuck" "check the vault sync (github-sync / scripts/luna/vault-stall-cadence.sh status); do not hand-commit"
         else
-            emit WARN C3-luna "luna vault ($v) has non-handover change(s) dirty over ${dirty_min} min: $stale — the vault has no git remote and no sync plugin, so nothing commits it" "commit it (git add -A && git commit in the vault), or add a remote / sync plugin"
+            emit WARN C3-luna "luna vault ($v) has non-handover change(s) dirty over ${dirty_min} min: $stale — the vault has no git remote and no sync plugin, so nothing commits it" "commit it (git add -A && git commit in the vault), or let the stall cadence commit it: set LUNA_VAULT_AUTOCOMMIT=1 in ~/.himmel/himmel.conf, then arm it with bash $REPO_ROOT/scripts/luna/vault-stall-cadence.sh arm --vault $v (or add a remote / sync plugin)"
         fi
     elif [ "$fresh" = 1 ]; then
         emit OK C3-luna "luna vault has only fresh (under ${dirty_min} min) non-handover changes — sync tick pending"

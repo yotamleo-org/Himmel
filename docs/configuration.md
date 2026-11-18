@@ -938,6 +938,7 @@ the statusline segment):
 | `ubuntu_vm_user`/`ubuntu_vm_pass` | — | `.env` | test-VM credentials (deliberately lower-case names) |
 | `HIMMEL_REPO` | auto-resolved | env | pin the himmel checkout used by `/himmel-update` and the hooks' `.env` bridge |
 | `HIMMEL_UPDATE_AUTOSTASH` | OFF | `himmel.conf` | let `/himmel-update` stash a dirty checkout |
+| `LUNA_VAULT_AUTOCOMMIT` | OFF | `himmel.conf` | with `1`, the armed vault-stall cadence (`bash scripts/luna/vault-stall-cadence.sh arm`) commits a vault with no git remote and no sync plugin; quiet notes only, hooks run, never pushed |
 
 ### 4.2 Claude Code settings & hooks
 
