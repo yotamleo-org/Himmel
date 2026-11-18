@@ -6362,6 +6362,9 @@ RS_PROFILE="readiness,worker-impl"; rs_launch; rs_refused "a composed profile li
 RS_PROFILE="worker-impl"; rs_launch
 check "17s a generic profile launch is unchanged: launched, no readiness marker, no attempt directory" "$RS_RC:$(grep -c 'WORKER_SESSION_PROFILE_READINESS' "$RS_D/record" 2>/dev/null || true):$(rs_attempts)" "0:0:0"
 RS_PROFILE=readiness
+RS_FLAGS=(--dry-run); rs_launch; RS_FLAGS=()
+check "17s dry-run: exits 0 and writes nothing (no attempt directory, no lease, no settings or MCP file, no recorded id, no launch)" \
+  "$RS_RC:$(rs_attempts):$(rs_status):$([ -e "$RS_D/$RS_NAME.leg-settings.json" ] || [ -e "$RS_D/$RS_NAME.leg-mcp.json" ] && echo written || echo none):$(grep -c '^session_ids:' "$RS_DOC"):$([ -e "$RS_D/record" ] && echo launched || echo none)" "0:0:free:none:0:none"
 rs_launch HEADED_ARM_WORKER_CLAUDE_BIN=relative/claude;   rs_refused "a relative binary (the real render refuses before the acquire)"
 rs_launch HEADED_ARM_WORKER_CLAUDE_BIN="$RS/bin/no-such"; rs_refused "a missing binary (the real render refuses before the acquire)"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$RS/bin/claude-codex"; chmod 755 "$RS/bin/claude-codex"

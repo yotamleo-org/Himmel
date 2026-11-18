@@ -91,6 +91,8 @@ no_leak() { # no_leak <label> : the token is in no captured output
 mk_attempt
 check "a. the on-behalf lease is held by the transported token before the session starts" "$(ql_owner "$A_DOC")" "$A_TOK"
 check "a. nothing is registered for any scope before the session adopts" "$(scope_files)" "0"
+lockdir_of() { find "$HD/.locks/queue" -maxdepth 1 -name "*$(basename "$1" .md | tr -c 'A-Za-z0-9_\n-' '-')*.lock" | head -n 1; }
+check "a. the unadopted lease carries no liveness marker" "$([ -e "$(lockdir_of "$A_DOC")/liveness" ] && echo marker || echo none)" "none"
 mkdir -p "$FAKEHOME/.claude/projects/p"; : > "$FAKEHOME/.claude/projects/p/$A_SID.jsonl"
 hook startup "$A_SID" CLAUDE_CODE_SESSION_ID="$A_SID" CLAUDE_CONFIG_DIR="$FAKEHOME/.claude"
 check "a. startup exits 0 and prints nothing on stdout" "$H_RC:$H_OUT" "0:"
@@ -103,6 +105,7 @@ check "a. the confirmation carries no token" "$(grep -cF -- "$A_TOK" "$A_DIR/con
 check "a. the transport is removed after adoption" "$([ -e "$A_DIR/lease-token" ] && echo present || echo gone)" "gone"
 check "a. the lock is still held by the same token and fresh" "$(ql_owner "$A_DOC"):$(ql_status "$A_DOC")" "$A_TOK:status: FRESH"
 check "a. the same-scope token file and .doc sidecar are registered (and only they)" "$(scope_files)" "2"
+check "a. the adopted lease carries the session's OWN transcript as its liveness marker" "$(sed -n 's/^transcript=//p' "$(lockdir_of "$A_DOC")/liveness" 2>/dev/null)" "$FAKEHOME/.claude/projects/p/$A_SID.jsonl"
 check "a. the sidecar names the doc" "$(grep -rlF -- "$A_DOC" "$XDG/himmel-queue-lock" | wc -l | tr -d ' ')" "1"
 adapter verify "$A_DIR"
 check "a. verify succeeds on the adopted attempt" "$H_RC:$H_OUT:$H_ERR" "0::"
