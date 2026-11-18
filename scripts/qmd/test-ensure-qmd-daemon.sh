@@ -1011,7 +1011,13 @@ run_stale
 kill -0 "$old_pid" 2>/dev/null || fail "(z2) fresh: a current server was stopped"
 [ ! -f "$state/qmd-argv.log" ] || fail "(z2) fresh: qmd was invoked"
 reap_new
-echo "ok (z2): a server newer than the build is left alone"
+stale_case 0
+touch_ago "$stale_pf" 60
+run_stale QMD_MOCK_PS_ARGS="vim notes.txt"
+[ "$rc" -ne 0 ] || fail "(z2) fresh pidfile, foreign pid: expected a non-zero rc, got 0 ($out)"
+kill -0 "$old_pid" 2>/dev/null || fail "(z2) fresh pidfile, foreign pid: a process was stopped"
+reap_new
+echo "ok (z2): a server newer than the build is left alone; a fresh pidfile naming another program is 'cannot verify'"
 
 # ---- (z3) the pid is not an HTTP server (stdio shape, foreign program) -------
 stale_case 0

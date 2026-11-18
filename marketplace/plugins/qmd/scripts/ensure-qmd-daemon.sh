@@ -361,7 +361,11 @@ stale_recycle() {
   }
 
   read_pidfile || { echo "$who: no usable pidfile ($pidfile) - cannot tell which process is the qmd server; not signalling anything" >&2; return 1; }
-  [ "$pf_m" -lt "$stamp_m" ] || return 0
+  if [ "$pf_m" -ge "$stamp_m" ]; then
+    pid_is_ours "$pid" "$pf_m" && return 0
+    echo "$who: the pidfile is newer than $stamp but PID $pid is not the qmd HTTP server that wrote it - cannot verify" >&2
+    return 1
+  fi
 
   mkdir -p "$qmd_state_dir" 2>/dev/null
   w=0
