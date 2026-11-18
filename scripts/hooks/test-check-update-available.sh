@@ -61,8 +61,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# The git cases below read the update channel from the install profile, so the
-# operator's own profile must never leak in: point it at an empty directory.
 export HIMMELCTL_CACHE_DIR="$TMP/no-profile"
 unset HIMMEL_UPDATE_CHANNEL
 
@@ -582,15 +580,12 @@ if [ -f "$H/.claude/himmel/himmel-update-check-last" ]; then assert_pass "24e: g
 
 echo "Test 25: release channel"
 PRIV_FETCH='+refs/tags/v*:refs/himmel-update/tags/v*'
-# chan_repo <n> — a clone at the init commit, origin ahead by n commits; sets
-# BARE, the bare upstream, and CLONE_REVS, the origin/main history oldest-first.
 chan_repo() {
     make_repo_behind "$1"
     BARE="$(dirname "$CHECKOUT_DIR")/upstream.git"
     CLONE_REVS=$(git -C "$CHECKOUT_DIR" rev-list --reverse '@{u}')
 }
 rev_at() { printf '%s\n' "$CLONE_REVS" | sed -n "${1}p"; }
-# tag_origin <tag> <n> [annotated] — tag the n-th commit (1 = init) on origin.
 tag_origin() {
     if [ "${3:-}" = "annotated" ]; then
         git -C "$BARE" -c user.name=T -c user.email=t@t.t tag -a "$1" -m "$1" "$(rev_at "$2")"
@@ -599,7 +594,6 @@ tag_origin() {
     fi
 }
 sync_private() { git -C "$CHECKOUT_DIR" fetch --quiet origin "$PRIV_FETCH" 2>/dev/null || true; }
-# profile <dir> <json> — an install profile under a fresh HIMMELCTL_CACHE_DIR.
 profile() { mkdir -p "$1"; printf '%s\n' "$2" > "$1/install-profile.json"; }
 run_chan() {   # run_chan <state-dir> <cache-dir> [ENV=val ...]
     local sd="$1" cd_="$2"; shift 2
@@ -612,7 +606,6 @@ assert_not_contains() {
     if grepq "$actual" "$pattern"; then assert_fail "$desc — pattern '$pattern' present in: $actual"; else assert_pass "$desc"; fi
 }
 
-# 25a. channel pre, HEAD ahead of the newest pre tag and behind origin/main: silent.
 chan_repo 2
 tag_origin v0.1.0-pre.1 1
 git -C "$CHECKOUT_DIR" merge --quiet --ff-only "$(rev_at 2)"
@@ -621,7 +614,6 @@ profile "$TMP/c25a" '{"channel":"pre"}'
 out=$(run_chan "$TMP/s25a" "$TMP/c25a")
 assert_empty "25a: pre channel, HEAD ahead of the newest tag and behind origin/main — silent" "$out"
 
-# 25b. HEAD detached at an old tag, a newer tag exists (annotated): nudge naming it.
 chan_repo 2
 tag_origin v0.1.0-pre.1 1
 tag_origin v0.2.0-pre.1 3 annotated
@@ -634,7 +626,6 @@ assert_contains "25b: …names the channel" "pre release" "$out"
 assert_contains "25b: …points at /himmel-update" "/himmel-update" "$out"
 assert_not_contains "25b: …never the branch-count wording" "commit(s) behind" "$out"
 
-# 25c. diverged from the newest tag: silent.
 chan_repo 2
 tag_origin v0.2.0-pre.1 3
 git -C "$CHECKOUT_DIR" commit --quiet --allow-empty -m "local work"
@@ -643,7 +634,6 @@ profile "$TMP/c25c" '{"channel":"pre"}'
 out=$(run_chan "$TMP/s25c" "$TMP/c25c")
 assert_empty "25c: diverged from the newest tag — silent" "$out"
 
-# 25d. HEAD at the newest tag: silent.
 chan_repo 2
 tag_origin v0.2.0-pre.1 2
 git -C "$CHECKOUT_DIR" merge --quiet --ff-only "$(rev_at 2)"
@@ -652,7 +642,6 @@ profile "$TMP/c25d" '{"channel":"pre"}'
 out=$(run_chan "$TMP/s25d" "$TMP/c25d")
 assert_empty "25d: HEAD at the newest tag — silent" "$out"
 
-# 25e. stable ignores a newer pre tag and names the newest stable one.
 chan_repo 2
 tag_origin v0.1.0 2
 tag_origin v0.2.0-pre.1 3
@@ -662,7 +651,6 @@ out=$(run_chan "$TMP/s25e" "$TMP/c25e")
 assert_contains "25e: stable channel names the newest stable tag" "v0\.1\.0" "$out"
 assert_not_contains "25e: …and never a pre tag" "pre\.1" "$out"
 
-# 25f. a pre tag vs a stable of the same version: the stable one wins (shared ranking).
 chan_repo 2
 tag_origin v0.3.0-pre.2 2
 tag_origin v0.3.0 3
@@ -671,14 +659,12 @@ profile "$TMP/c25f" '{"channel":"pre"}'
 out=$(run_chan "$TMP/s25f" "$TMP/c25f")
 assert_contains "25f: a stable release outranks a pre of the same version" "v0\.3\.0[^-]" "$out"
 
-# 25g. HIMMEL_UPDATE_CHANNEL in the environment selects the channel, no profile.
 chan_repo 2
 tag_origin v0.2.0-pre.1 3
 sync_private
 out=$(run_chan "$TMP/s25g" "$TMP/no-profile" HIMMEL_UPDATE_CHANNEL=pre)
 assert_contains "25g: env channel: nudge names the tag" "v0\.2\.0-pre\.1" "$out"
 
-# 25h. NEGATIVE CONTROL: no channel keeps today's branch nudge.
 chan_repo 2
 tag_origin v0.2.0-pre.1 3
 sync_private
@@ -688,7 +674,6 @@ profile "$TMP/c25h" '{"other":"x"}'
 out=$(run_chan "$TMP/s25h2" "$TMP/c25h")
 assert_contains "25h: a profile without a channel key: today's branch-count nudge" "2 commit(s) behind" "$out"
 
-# 25i. unreadable channel: a distinct warning, never the pull nudge.
 chan_repo 2
 tag_origin v0.2.0-pre.1 3
 sync_private
@@ -704,7 +689,6 @@ out=$(run_chan "$TMP/s25i3" "$TMP/no-profile" 'HIMMEL_UPDATE_CHANNEL=<bogus>')
 assert_contains "25i: an invalid HIMMEL_UPDATE_CHANNEL is unreadable too" "update channel is unreadable" "$out"
 assert_not_contains "25i: …the reason does not smuggle markup into the context" "<bogus" "$out"
 
-# 25j. jq missing while a profile exists: the same warning.
 NOJQ="$TMP/nojq-bin"; mkdir -p "$NOJQ"
 for t in bash git date stat touch mkdir cat tr sed grep head dirname basename rm cut sort env setsid uname readlink printf; do
     src=$(command -v "$t" 2>/dev/null) || continue
@@ -716,14 +700,12 @@ assert_contains "25j: jq missing with a profile: unreadable warning" "update cha
 assert_contains "25j: …says why" "jq" "$out"
 assert_not_contains "25j: …never the pull nudge" "commit(s) behind" "$out"
 
-# 25k. private namespace: a stray local tag, never fetched into it, is not a release.
 chan_repo 2
 git -C "$CHECKOUT_DIR" tag v9.9.9 "$(rev_at 3)"
 profile "$TMP/c25k" '{"channel":"pre"}'
 out=$(run_chan "$TMP/s25k" "$TMP/c25k")
 assert_empty "25k: a stray local tag with no private ref is not a release" "$out"
 
-# 25l. cold private refs: silent now; the detached fetch fills them for the next check.
 chan_repo 2
 tag_origin v0.2.0-pre.1 3
 profile "$TMP/c25l" '{"channel":"pre"}'
@@ -739,7 +721,6 @@ assert_eq_hook "25l: the detached fetch filled the private namespace" "refs/himm
 out=$(run_chan "$TMP/s25l" "$TMP/c25l" UPDATE_CHECK_INTERVAL=0)
 assert_contains "25l: the next check nudges off them" "v0\.2\.0-pre\.1" "$out"
 
-# 25m. a station with no channel never fetches tags into the private namespace.
 chan_repo 2
 tag_origin v0.2.0-pre.1 3
 out=$(run_chan "$TMP/s25m" "$TMP/no-profile")
@@ -751,7 +732,6 @@ done
 sleep 1
 assert_empty "25m: no channel: the private namespace stays empty" "$(git -C "$CHECKOUT_DIR" for-each-ref refs/himmel-update/tags 2>/dev/null)"
 
-# 25n. fail open: the shared library missing falls back to today's nudge.
 chan_repo 2
 LIBLESS="$TMP/libless"; mkdir -p "$LIBLESS/scripts/hooks" "$LIBLESS/scripts/lib" "$LIBLESS/.git"
 cp "$HOOK" "$LIBLESS/scripts/hooks/"; cp "$LIBS_SRC/detach.sh" "$LIBLESS/scripts/lib/"

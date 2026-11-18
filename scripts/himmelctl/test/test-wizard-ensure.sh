@@ -1428,7 +1428,6 @@ runEnsureZ dry --dry-run
 grepq "$outZ" -F 'DRY:' || fail "case z: --dry-run should still print its plan (got: $outZ)"
 echo "ok: case z4 — --dry-run does not refuse on a tracked file"
 
-# a git failure that is not "tracked" or "untracked" refuses too
 gitErrBin="$work/git-err-bin"; mkdir -p "$gitErrBin"
 realGit=$(command -v git)
 cat > "$gitErrBin/git" <<SH
@@ -1447,7 +1446,6 @@ set -e
 grepq "$outZ" -F 'red-item' || fail "case z: the git-failure refusal should list the item id (got: $outZ)"
 echo "ok: case z5 — a git error (rc other than 0/1) refuses instead of reading as untracked"
 
-# a project that is not a git repository at all is simply untracked
 mkdir -p "$work/target-z-nogit/.claude"; mkdir -p "$work/cache-z-nogit"
 write_cache "$work/cache-z-nogit/install-profile.json" adopter project none "" inline "" lean
 : > "$work/log-z-nogit.txt"

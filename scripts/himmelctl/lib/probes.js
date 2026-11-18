@@ -760,9 +760,7 @@ function overlayHimmelConf(data, ctx) {
 
 // Claude Code applies local over project over user settings, so a project
 // scope probe of a .claude/settings.json key reads all three: an item wired
-// at user scope is not reported missing. The user directory is
-// ctx.env.CLAUDE_CONFIG_DIR, else HOME/.claude, as the installers resolve it.
-// ctx.scopeFileOnly (uninstall completeness) reads only resolveConfigFile's file.
+// at user scope is not reported missing.
 function settingsLayerFiles(file, ctx) {
   const scopeFile = resolveConfigFile(file, ctx);
   if (file !== '.claude/settings.json' || ctx.scopeFileOnly) return { primary: scopeFile, files: [scopeFile] };

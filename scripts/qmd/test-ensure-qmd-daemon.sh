@@ -921,7 +921,7 @@ QMD_MOCK_HEALTH_BODY='OK' run_ensure auth401 "$bin:$safe"
 [ "$rc" -ne 0 ] || fail "(y3) auth401+foreign health: expected nonzero rc"
 echo "ok (y3): MCP route 401 with a non-qmd /health body -> not reported alive"
 
-fake_daemon="$work/fake-daemon.sh"   # case (x) reused this name for a pid
+fake_daemon="$work/fake-daemon.sh"
 bin2="$work/bin2"
 mkdir -p "$bin2"
 cp "$bin/timeout" "$bin2/timeout" 2>/dev/null || true
@@ -987,7 +987,6 @@ reap_new() { # stop whatever server the case left behind
   return 0
 }
 
-# ---- (z1) stale: stopped, restarted, the NEW pidfile is newer than the stamp --
 stale_case 0
 run_stale
 [ "$rc" -eq 0 ] || fail "(z1) stale: expected rc 0, got $rc ($out)"
@@ -999,7 +998,6 @@ grep -qx 'mcp --http --daemon' "$state/qmd-argv.log" || fail "(z1) stale: no res
 reap_new
 echo "ok (z1): a server older than the build is recycled in the foreground; the new pidfile is newer"
 
-# ---- (z2) fresh: the pidfile is newer than the stamp -> untouched ------------
 stale_case 0
 touch_ago "$stale_pf" 60
 run_stale
@@ -1015,7 +1013,6 @@ kill -0 "$old_pid" 2>/dev/null || fail "(z2) fresh pidfile, foreign pid: a proce
 reap_new
 echo "ok (z2): a server newer than the build is left alone; a fresh pidfile naming another program is 'cannot verify'"
 
-# ---- (z3) the pid is not an HTTP server (stdio shape, foreign program) -------
 stale_case 0
 run_stale QMD_MOCK_PS_ARGS="bun /x/dist/cli/qmd.js mcp"
 [ "$rc" -ne 0 ] || fail "(z3) stdio argv: expected a non-zero rc, got 0 ($out)"
@@ -1028,7 +1025,6 @@ kill -0 "$old_pid" 2>/dev/null || fail "(z3) foreign argv: a foreign program was
 reap_new
 echo "ok (z3): a stdio-shaped or foreign pid is never signalled, and the rc is non-zero"
 
-# ---- (z4) pid reuse: argv matches but the process started AFTER the pidfile --
 stale_case 0
 run_stale QMD_MOCK_PS_ETIME="00:05"
 [ "$rc" -ne 0 ] || fail "(z4) reused pid: expected a non-zero rc, got 0 ($out)"
@@ -1036,7 +1032,6 @@ kill -0 "$old_pid" 2>/dev/null || fail "(z4) reused pid: a process younger than 
 reap_new
 echo "ok (z4): a pid reused after the pidfile was written is never signalled"
 
-# ---- (z5) no usable pidfile: cannot verify -> non-zero, nothing signalled ----
 stale_case 0
 rm -f "$stale_pf"
 run_stale
@@ -1050,7 +1045,6 @@ kill -0 "$old_pid" 2>/dev/null || fail "(z5) garbage pidfile: a process was stop
 rm -f "$stale_pf"; reap_new
 echo "ok (z5): a missing or garbage pidfile is 'cannot verify': non-zero, nothing signalled, no process-list scan"
 
-# ---- (z6) the recycle lock is held by a live recycler: no action, not ok ----
 stale_case 0
 mkdir "$xdg/qmd/recycle.lock"
 date +%s > "$xdg/qmd/recycle.lock/at"
@@ -1080,7 +1074,6 @@ run_stale QMD_MOCK_STEAL_LOCK=1
 rm -rf "$xdg/qmd/recycle.lock"; reap_new
 echo "ok (z7b): the exit trap removes the lock only while it still names our pid"
 
-# ---- (z8) the RSS cooldown does NOT hold back a staleness recycle -------------
 stale_case 0
 date +%s > "$xdg/qmd/recycle.stamp"
 run_stale
@@ -1089,7 +1082,6 @@ kill -0 "$old_pid" 2>/dev/null && fail "(z8) cooldown active: the stale server w
 reap_new
 echo "ok (z8): a fresh RSS-recycle stamp does not block a staleness recycle"
 
-# ---- (z9) failed restart: non-zero, lock released ------------------------------
 stale_case 0
 run_stale QMD_MOCK_NOSTART=1
 [ "$rc" -ne 0 ] || fail "(z9) failed restart: expected a non-zero rc, got 0 ($out)"
@@ -1097,7 +1089,6 @@ run_stale QMD_MOCK_NOSTART=1
 reap_new
 echo "ok (z9): a restart that brings nothing up exits non-zero and frees the lock"
 
-# ---- (z10) a server that ignores SIGTERM is killed; one that changed hands is not
 stale_case 0
 cat > "$work/stubborn.sh" <<'EOF'
 #!/usr/bin/env bash

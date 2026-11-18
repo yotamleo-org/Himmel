@@ -291,8 +291,6 @@ work=$(mktemp -d)
 cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
-# A project-scope settings-key probe also reads the user's settings file, so a
-# fixture that expects "absent" must not see the operator's real one.
 export HOME="$work/home" USERPROFILE="$work/home"
 mkdir -p "$HOME"
 unset CLAUDE_CONFIG_DIR
@@ -652,7 +650,6 @@ sl_expect() { # <label> <probe-output> <actual> [detail-substring]
   fi
 }
 
-# CLAUDE_CONFIG_DIR, user scope: the probe reads the configured directory.
 sl_fixture cfg-user - - "$sl_off" "$sl_on"
 sl_expect "user scope, CLAUDE_CONFIG_DIR set" "$(sl_probe cfg-user user 1)" present "/cfg/settings.json"
 # control: no CLAUDE_CONFIG_DIR, the same fixture reads HOME/.claude (off there)
@@ -660,7 +657,6 @@ sl_expect "user scope, CLAUDE_CONFIG_DIR unset (control)" "$(sl_probe cfg-user u
 sl_fixture home-user - - "$sl_on" -
 sl_expect "user scope, HOME/.claude (control)" "$(sl_probe home-user user 0)" present "/home/.claude/settings.json"
 
-# project scope reads the user file too (and CLAUDE_CONFIG_DIR picks it)
 sl_fixture proj-user-only - - "$sl_on" -
 sl_expect "project scope, key only in HOME/.claude" "$(sl_probe proj-user-only project 0)" present "/home/.claude/settings.json"
 sl_fixture proj-cfg-only - - "$sl_off" "$sl_on"
@@ -669,7 +665,6 @@ sl_expect "project scope, CLAUDE_CONFIG_DIR unset ignores cfg dir" "$(sl_probe p
 sl_fixture proj-none - - - -
 sl_expect "project scope, key nowhere" "$(sl_probe proj-none project 0)" absent
 
-# precedence: local beats project beats user, per key
 sl_fixture prec-local-off - "$sl_off" "$sl_on" -
 sl_expect "local false beats user true" "$(sl_probe prec-local-off project 0)" absent "settings.local.json"
 sl_fixture prec-project-off "$sl_off" - "$sl_on" -
@@ -679,7 +674,6 @@ sl_expect "local true beats project false" "$(sl_probe prec-local-on project 0)"
 sl_fixture prec-project-on "$sl_on" - "$sl_off" -
 sl_expect "project true beats user false" "$(sl_probe prec-project-on project 0)" present
 
-# a key set in one file and another key set in a different file is satisfied
 sl_two='{"type":"settings-key","file":".claude/settings.json","keys":["alpha","beta"]}'
 sl_fixture perkey '{"alpha":1}' - '{"beta":2}' -
 sl_expect "two keys, each in a different file" "$(sl_probe perkey project 0 0 "$sl_two")" present
@@ -696,7 +690,6 @@ sl_expect "project empty object falls through to the user value" "$(sl_probe emp
 sl_fixture malformed '{not json' - "$sl_on" -
 sl_expect "malformed project file" "$(sl_probe malformed project 0)" absent "cannot parse"
 
-# scopeFileOnly (uninstall completeness) keeps the single scope file
 sl_expect "scopeFileOnly project ignores the user file" "$(sl_probe proj-user-only project 0 1)" absent
 sl_expect "scopeFileOnly user keeps HOME/.claude, not CLAUDE_CONFIG_DIR" "$(sl_probe cfg-user user 1 1)" absent "/home/.claude/settings.json"
 echo "ok: settings-key effective settings — CLAUDE_CONFIG_DIR user probe, local>project>user per key, scopeFileOnly"

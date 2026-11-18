@@ -25,10 +25,7 @@
 # Opt-out: a `.single-writer` file at a repo's root opts that repo out of the
 # block — personal vaults and state repos that commit straight to main by
 # design. The marker is honoured whether it is gitignored (via global
-# excludes) or committed. The opt-out alone does not exempt a repo from the
-# chief launch refusal: launch-guard-check.sh refuses a chief launch only
-# when `.single-writer` sits beside a vault stamp (`.vault-template.json` or
-# an `.obsidian/` directory) or the handover root is inside the repo.
+# excludes) or committed.
 # The check is anchored to repo_real (the EDITED FILE's repo root), so a
 # marker in a parent repo cannot leak the opt-out onto a nested repo.
 #
