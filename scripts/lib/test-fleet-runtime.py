@@ -1361,12 +1361,14 @@ exit 1''')
         self.active()
         self.rt('begin')
         self.forge(start='0')
-        self.refused_settle('phase')  # pending
-        self.rt('commit')
-        self.rt('outcome', extra=('--phase', 'launched'))
-        self.forge(start='0')
-        self.assertEqual(self.anchor_attempts()['one']['phase'], 'launched')
-        self.refused_settle('phase')  # launched
+        self.assertEqual(self.anchor_attempts()['one']['phase'], 'pending')
+        self.refused_settle('phase')  # pending: settle does not reconcile, so the dead pending attempt is still there to refuse
+        two = self.extra_doc(2)
+        self.stuck('two', two)
+        self.rt('outcome', aid='two', doc=two, extra=('--phase', 'launched'))
+        self.forge('two', start='0')
+        self.assertEqual(self.anchor_attempts()['two']['phase'], 'launched')
+        self.refused_settle('phase', aid='two', doc=two)  # launched
 
     def test_settle_refuses_when_a_launched_or_terminal_receipt_exists(self):
         for outcome in ('launched', 'refused', 'complete'):
