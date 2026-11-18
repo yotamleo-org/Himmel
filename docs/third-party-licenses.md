@@ -225,7 +225,7 @@ harness mapping, and the statechart trial). `marketplace/plugins/pstack/`, ten s
 `create-formal-verification-skill`, `maintain-formal-verification-skill`),
 including statechart's runtime, tests and fixtures, plus the Claude Code harness
 mapping, sourced from `cursor/plugins` at pinned commit
-`4dd1d05818d19792e7cd6e818f1667f95f7e1dbe`, path `pstack/`. The inventory and
+`bf0c7cd80abdbf7fe47b634978a7d1b4071f71a7`, path `pstack/`. The inventory and
 per-file hashes in `marketplace/plugins/pstack/VENDORED.md` record the pin and
 deviations. The separate `unslop`, `no-comments` and `comment-sicko` copies
 above remain at `99743e9c`. Never

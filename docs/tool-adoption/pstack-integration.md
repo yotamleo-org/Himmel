@@ -1,7 +1,7 @@
 # pstack integration map
 
 The ten vendored pstack skills (`marketplace/plugins/pstack`, pinned
-`4dd1d058` (0.15.36), [`VENDORED.md`](../../marketplace/plugins/pstack/VENDORED.md)) are
+`bf0c7cd8` (0.15.42), [`VENDORED.md`](../../marketplace/plugins/pstack/VENDORED.md)) are
 installed for interactive sessions only (route and per-skill adopt decisions: the
 pstack integration audit and its follow-ups). This page maps each one onto the himmel
 flow it should strengthen, names the overlap, and records which one gets the

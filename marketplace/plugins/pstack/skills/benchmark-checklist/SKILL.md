@@ -4,7 +4,7 @@ description: "Vet a perf measurement (limiter, tuning, limits, errors, repeatabi
 disable-model-invocation: true
 ---
 
-<!-- Vendored from cursor/plugins pstack/skills/benchmark-checklist/SKILL.md at 4dd1d05818d19792e7cd6e818f1667f95f7e1dbe (MIT, (c) 2026 Lauren Tan; ../../LICENSE). HIMMEL-5803. Deviations: none. -->
+<!-- Vendored from cursor/plugins pstack/skills/benchmark-checklist/SKILL.md at bf0c7cd80abdbf7fe47b634978a7d1b4071f71a7 (MIT, (c) 2026 Lauren Tan; ../../LICENSE). HIMMEL-5803. Deviations: none. -->
 
 # Benchmark checklist
 

@@ -2,7 +2,7 @@
 
 Inventory for pstack@himmel (HIMMEL-5803; re-pin and full formal-skill vendor
 HIMMEL-6690, HIMMEL-8218). Source: `cursor/plugins`, path `pstack/`, pinned at
-`4dd1d05818d19792e7cd6e818f1667f95f7e1dbe` (pstack 0.15.36), MIT,
+`bf0c7cd80abdbf7fe47b634978a7d1b4071f71a7` (pstack 0.15.42), MIT,
 (c) 2026 Lauren Tan. Never installed from the `michael-denyer/pstack-claude`
 fork or as the whole `cursor-plugins` pstack plugin.
 
@@ -34,7 +34,7 @@ Paths below are relative to this directory; upstream paths are relative to
 | `skills/in-your-own-words/SKILL.md` | `pstack/skills/in-your-own-words/SKILL.md` | none |
 | `skills/create-formal-verification-skill/**` | `pstack/skills/create-formal-verification-skill/**` | none; the statechart link now resolves locally |
 | `skills/maintain-formal-verification-skill/**` | `pstack/skills/maintain-formal-verification-skill/**` | SKILL.md permits mutation probes only in a disposable copy, discarded afterward; never mutate the user's product working tree without their request |
-| `skills/statechart/SKILL.md` | `pstack/skills/statechart/SKILL.md` | replaces first-run mise installation with absolute JAVA/TLA2TOOLS prerequisites that himmel's `setup-statechart.sh` provisions (the skill never installs them); station host allowed for a small finite model bounded by `timeout` (HIMMEL-9711); missing prerequisites stop the check; trusted view stays in scratch; defect unconfirmed until real-code replay; all-hold evidence only for bounded code-as-written models, never a model with real race windows closed; vendored SKILL.md sha256 `ea76b50afad76d2aa3339a8ba5787f08c9d74618c4a3c17cc7806ea1c5ef32d8` (after the himmel edit; upstream sha unchanged in vendor-hashes.json) |
+| `skills/statechart/SKILL.md` | `pstack/skills/statechart/SKILL.md` | replaces first-run mise installation with absolute JAVA/TLA2TOOLS prerequisites that himmel's `setup-statechart.sh` provisions (the skill never installs them); station host allowed for a small finite model bounded by `timeout` (HIMMEL-9711); missing prerequisites stop the check; trusted view stays in scratch; defect unconfirmed until real-code replay; all-hold evidence only for bounded code-as-written models, never a model with real race windows closed; vendored SKILL.md sha256 `bf81c98d4d42bb0c992b3f8a2f045812214270de88fb84dafecc511332e2dcb6` (after the himmel edit; upstream sha unchanged in vendor-hashes.json) |
 | `skills/statechart/references/render.md` | `pstack/skills/statechart/references/render.md` | drops the pele@1.9.0 installation; use existing docs-site Pele 1.10.0, or report rendering blocked; upstream API options, colors and CSS retained (audit U5) |
 | `skills/statechart/scripts/run.ts` | `pstack/skills/statechart/scripts/run.ts` | removes mise discovery/install and its installer-only helper; requires absolute JAVA/TLA2TOOLS paths, executable Java and the pinned tla2tools 1.7.4 jar SHA-256 before any Java process; missing/invalid prerequisites throw, CLI exits 2; no download/install fallback |
 | `skills/statechart/scripts/statechart.ts` | `pstack/skills/statechart/scripts/statechart.ts` | bytes verbatim; executable bit set to satisfy the repository's shebang check |
@@ -46,11 +46,11 @@ Paths below are relative to this directory; upstream paths are relative to
 | `docs/harness/claude-code.md` | `pstack/docs/harness/claude-code.md` | none (reference only; no setup-pstack, HOME write, model-rule installation or authority override) |
 | `LICENSE` | `pstack/LICENSE` | none (verbatim) |
 
-`vendor-hashes.json` is the complete per-file inventory: **421 upstream-derived
+`vendor-hashes.json` is the complete per-file inventory: **422 upstream-derived
 files**, each with its upstream and vendored SHA-256 and executable bits, plus
 **one himmel-generated lockfile** with its local hash, `origin: himmel-generated`
-and null upstream fields (422 entries total). Byte comparison at the pin found
-**373 verbatim files** and **48 byte differences**: the ten provenance-bearing
+and null upstream fields (423 entries total). Byte comparison at the pin found
+**374 verbatim files** and **48 byte differences**: the ten provenance-bearing
 skill files (including the disposable-copy mutation clarification), the five
 additional deviating reference/runtime/test files, and 33 final newlines.
 There is one additional mode-only difference (`statechart.ts`). Existing body
@@ -68,8 +68,7 @@ seven were compared before re-copying: only `principle-explain-the-number` has
 new upstream content; its change is not mislabeled as a local deviation.
 
 The manifest, README, plugin manifest, drift/prerequisite test and this document
-are himmel-owned. The plugin version is 0.1.3: the local-run policy change to the
-statechart skill raised it, as the plugin-version gate requires for any plugin change. The plugin remains a local subset, with no upstream hooks,
+are himmel-owned. The plugin version is 0.1.7: the re-pin to bf0c7cd8 (0.15.42) raised it, as the plugin-version gate requires for any plugin change. The plugin remains a local subset, with no upstream hooks,
 agents, autonomous skills, runtime npm packages or whole-plugin install. The
 upstream harness map is informational: himmel's chief, lane, model and tool
 contracts always win.
