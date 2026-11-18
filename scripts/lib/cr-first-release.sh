@@ -291,7 +291,7 @@ cr_first_release() {
             || { echo "CR-FIRST HOLD degraded (cannot read workflow runs at $head) $age"; return 3; }
         runs_rc=0
         printf '%s' "$runs_raw" | jq -se --argjson ids "$heavy_suites" \
-            'if all(.[]; type == "object" and (.workflow_runs | type == "array")) then . else error("bad") end
+            'if length > 0 and all(.[]; type == "object" and (.workflow_runs | type == "array")) then . else error("bad") end
              | [.[] | .workflow_runs[] | select(.event == "pull_request") | .check_suite_id] as $pr
              | any($ids[]; . as $i | $pr | index($i) != null)' >/dev/null 2>&1 || runs_rc=$?
         case "$runs_rc" in
