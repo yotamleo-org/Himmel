@@ -1202,14 +1202,8 @@ jobs:
         with:
           path: ~/.cache/pre-commit
           key: pre-commit-${{ runner.os }}-${{ job.container.id && 'image' || 'host' }}-${{ hashFiles('.pre-commit-config.yaml') }}
-      # The hook is require_serial, so `--all-files` is one
-      # ~9 min CPU-bound shellcheck over ~1460 files. It cannot be sharded:
-      # shellcheck resolves `source` across the files of ONE invocation, so
-      # SC2034 verdicts depend on the input set (a 100-file shard went red on
-      # scripts/lib/check-ci-watch.sh while the serial run was green). So a PR
-      # lints the changed files plus their source-graph neighbours in one
-      # serial run (all files when in doubt, see the script), and main keeps
-      # the full serial sweep as the backstop.
+      # shellcheck resolves `source` across the files of ONE invocation, so its
+      # SC2034 verdicts depend on the input set: a split by file count changes them.
       - name: shellcheck (PR range)
         if: github.event_name == 'pull_request'
         # The narrowing decision comes from the BASE copy of the script, never the
@@ -1225,7 +1219,9 @@ jobs:
           fi
       - name: shellcheck (all files)
         if: github.event_name != 'pull_request'
-        run: pre-commit run shellcheck --all-files --show-diff-on-failure
+        run: |
+          git ls-files > "$RUNNER_TEMP/shellcheck-all.txt"
+          bash scripts/ci/shellcheck-pr-range.sh --sweep "$RUNNER_TEMP/shellcheck-all.txt"
       - name: Name a shellcheck release-host outage
         if: ${{ failure() && steps.precommit-cache.outputs.cache-hit != 'true' }}
         run: |
