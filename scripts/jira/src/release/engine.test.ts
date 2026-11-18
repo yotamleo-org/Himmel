@@ -3175,6 +3175,7 @@ if(mode==='output')process.stdout.write(' '.repeat(4*1024*1024+1));
 const actual=cp.execFileSync; cp.execFileSync=(...a)=>{const r=actual(...a); if(a[1]?.[1]==='capped-fold')appendFileSync(${JSON.stringify(log)},JSON.stringify(a[1])+'\\n');return r;}; syncBuiltinESMExports();`);
     const engine = new URL('../../dist/release/engine.js', import.meta.url).href;
     const c = sctx();
+    Object.assign(c, fakeProc());
     const input = { engine, api, ctx: { release: c.release, dir: c.dir, keyPath: c.keyPath, env: c.env, procRoot: c.procRoot, hostNsPath: c.hostNsPath },
       args: { keys: ['HIMMEL-10205'], spec: f.spec, plan: f.plan, verdicts: f.verdicts, decision: '387', verbatim: 'approve' } };
     const script = `const i=JSON.parse(process.argv[1]); const m=await import(i.engine); const row=m[i.api==='spec'?'signSpec':'specReview']({...i.ctx,now:()=>new Date('2026-10-21T10:00:00.000Z'),jira:{},mirrorRoot:null},i.args); console.log(JSON.stringify({engine:i.engine,row}));`;
@@ -3185,6 +3186,21 @@ const actual=cp.execFileSync; cp.execFileSync=(...a)=>{const r=actual(...a); if(
     expect(result.row.capped_carry.carried).toHaveLength(2);
     expect(JSON.parse(readFileSync(log, 'utf8').trim())).toEqual([expectedVerifier, 'capped-fold', '--key', 'HIMMEL-10205', '--spec', f.spec, '--plan', f.plan,
       '--spec-return', f.verdicts[0], '--plan-return', f.verdicts[1]]);
+    const beforeRows = readFileSync(join(c.dir, 'operator.jsonl'), 'utf8');
+    const beforeCalls = readFileSync(log, 'utf8');
+    const wrongNs = fakeProc();
+    writeFileSync(wrongNs.hostNsPath, 'pid:[999] user:[999]\n');
+    for (const [ancestry, reason] of [
+      [fakeProc({ HIMMEL_BRIDGE_SESSION: '1' }), /HIMMEL_BRIDGE_SESSION=1/],
+      [wrongNs, /other namespaces/],
+    ] as const) {
+      const deniedInput = { ...input, ctx: { ...input.ctx, ...ancestry } };
+      const denied = spawnSync(process.execPath, ['--import', preload, '--input-type=module', '-e', script, JSON.stringify(deniedInput)], { cwd: root, encoding: 'utf8', timeout: 15000 });
+      expect(denied.status).toBe(1);
+      expect(denied.stderr).toMatch(reason);
+      expect(readFileSync(join(c.dir, 'operator.jsonl'), 'utf8')).toBe(beforeRows);
+      expect(readFileSync(log, 'utf8')).toBe(beforeCalls);
+    }
   });
 
   it('shared return hash preserves normalization compatibility', () => {
