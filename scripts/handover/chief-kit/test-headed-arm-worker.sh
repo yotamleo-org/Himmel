@@ -6266,6 +6266,17 @@ check "readiness exec with a PATH claude: the same array reaches the binary" "$(
 # HOME, fake queue root, fake runtime dir and a stub konsole: no native claude, provider, VM, real config or secret.
 RS="$tmp/rs"; mkdir -p "$RS/hdir/u/r" "$RS/home/.claude" "$RS/repo" "$RS/bin" "$RS/primary/scripts/jira/dist" "$RS/primary-broken/scripts/jira/dist"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$RS/bin/claude"; chmod 755 "$RS/bin/claude"
+# an outside-the-root canary: a `claude` and a `curl` that log every call. They sit on PATH AFTER the fixture's own claude stub (so
+# the stub is what a bare `claude` resolves to) and no row may ever execute them; the final canary row counts their calls.
+RS_OUT="$tmp/rs-outside"; mkdir -p "$RS_OUT/canary-bin"; chmod 755 "$RS_OUT"
+RS_CANARY_LOG="$RS_OUT/canary.log"; : > "$RS_CANARY_LOG"
+for rs_c in claude curl; do
+  printf '%s\n' '#!/usr/bin/env bash' "echo \"$rs_c \$*\" >> \"$RS_CANARY_LOG\"" 'exit 22' > "$RS_OUT/canary-bin/$rs_c"; chmod 755 "$RS_OUT/canary-bin/$rs_c"
+done
+rs_canary() { wc -l < "$RS_CANARY_LOG" 2>/dev/null | tr -d ' ' || true; }
+# a background job of a non-interactive shell starts with SIGINT ignored, which no trap can undo: the INT rows need env's --default-signal (GNU)
+rs_defsig=()
+if env --default-signal=INT true >/dev/null 2>&1; then rs_defsig=(--default-signal=INT); fi
 # the fixture root: every root, binary and port a readiness launch touches lives under $RS (see the delivery gate in the wrapper)
 printf 'himmel-readiness-fixture-v1' > "$RS/.himmel-readiness-fixture"; chmod 600 "$RS/.himmel-readiness-fixture"; chmod 755 "$RS"
 printf '%s\n' '#!/usr/bin/env bash' 'echo PROCEED' > "$RS/proceed-preflight.sh"; chmod 755 "$RS/proceed-preflight.sh"
@@ -6304,7 +6315,7 @@ rs_managed_prepare() {
 # rs_run_wrapper <env...>: cd + exec of the real wrapper; always called as a subshell or a background job, so the
 # background job's pid IS the wrapper's own
 rs_run_wrapper() {
-  cd "$rs_cwd" && exec env IMPL_GUARD_OK='' HIMMEL_CONSOLE_LEG='' HOME="$RS_HOME" CLAUDE_CONFIG_DIR="$RS_HOME/.claude" XDG_RUNTIME_DIR="$RS_D/xdg" HANDOVER_DIR="$RS/hdir" \
+  cd "$rs_cwd" && exec env ${rs_defsig[@]+"${rs_defsig[@]}"} PATH="$RS/bin:$RS_OUT/canary-bin:$PATH" IMPL_GUARD_OK='' HIMMEL_CONSOLE_LEG='' HOME="$RS_HOME" CLAUDE_CONFIG_DIR="$RS_HOME/.claude" XDG_RUNTIME_DIR="$RS_D/xdg" HANDOVER_DIR="$RS/hdir" \
     CLAUDE_CODE_SESSION_ID="launcher-scope-$rs_n" HEADED_ARM_WORKER_CLAUDE_BIN="$RS/bin/claude" \
     HEADED_ARM_WORKER_TARGET="$HEADED_ARM" HEADED_ARM_WORKER_PREFLIGHT="$RS/proceed-preflight.sh" \
     KONSOLE_CMD="$RS_D/konsole" PGREP_CMD="$RS_D/pgrep" WORKER_SESSION_REPO="$RS/repo" HEADED_ARM_LOCK_DIR="$RS_D/locks" HEADED_ARM_PROC="$RS_D/proc" \
@@ -6330,11 +6341,11 @@ rs_launch() {
   rs_arg="$RS_DOC"; rs_cwd="$PWD"
   [ "${RS_DOC_REL:-0}" != 1 ] || { rs_cwd="$(dirname "$RS_DOC")"; rs_arg="$(basename "$RS_DOC")"; }
   if [ -n "${RS_SIGNAL_AFTER:-}" ]; then
-    # RS_SIGNAL_AFTER=<marker>: a background launch that gets one TERM as soon as a stub creates the marker
+    # RS_SIGNAL_AFTER=<marker>: a background launch that gets one signal (RS_SIGNAL, default TERM) as soon as a stub creates the marker
     rs_run_wrapper "$@" &
     rs_pid=$!
     rs_i=0; while [ ! -e "$RS_SIGNAL_AFTER" ] && [ "$rs_i" -lt 400 ]; do sleep 0.05; rs_i=$((rs_i + 1)); done
-    kill -TERM "$rs_pid" 2>/dev/null
+    kill -"${RS_SIGNAL:-TERM}" "$rs_pid" 2>/dev/null
     wait "$rs_pid" || RS_RC=$?
   else
     ( rs_run_wrapper "$@" ) || RS_RC=$?
@@ -6345,6 +6356,8 @@ rs_launch() {
   RS_A="$RS_D/xdg/himmel-readiness/$RS_SID"
 }
 rs_decode() { local el; while IFS= read -r -d '' el; do printf '[%s]' "$el"; done; printf '\n'; }
+# rs_msg <label> <text>: the launch's own output names the reason
+rs_msg() { contains "17s $1" "$(cat "$RS_D/out" 2>/dev/null)" "$2"; }
 # rs_refused <label>: the launch was refused and NOTHING was acquired, written to the queue, or launched.
 rs_refused() {
   check "17s refuses $1: non-zero exit" "$([ "$RS_RC" -ne 0 ] && echo yes || echo no)" "yes"
@@ -6420,7 +6433,7 @@ RS_PROFILE=readiness
 RS_FLAGS=(--dry-run); rs_launch; RS_FLAGS=()
 check "17s dry-run: exits 0 and writes nothing (no attempt directory, no lease, no settings or MCP file, no recorded id, no launch)" \
   "$RS_RC:$(rs_attempts):$(rs_status):$([ -e "$RS_D/$RS_NAME.leg-settings.json" ] || [ -e "$RS_D/$RS_NAME.leg-mcp.json" ] && echo written || echo none):$(grep -c '^session_ids:' "$RS_DOC"):$([ -e "$RS_D/record" ] && echo launched || echo none)" "0:0:free:none:0:none"
-rs_launch HEADED_ARM_WORKER_CLAUDE_BIN=relative/claude;   rs_refused "a relative binary (the real render refuses before the acquire)"
+rs_launch HEADED_ARM_WORKER_CLAUDE_BIN=relative/claude;   rs_refused "a relative binary (refused before the acquire)"
 rs_launch HEADED_ARM_WORKER_CLAUDE_BIN="$RS/bin/no-such"; rs_refused "a missing binary (the real render refuses before the acquire)"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$RS/bin/claude-codex"; chmod 755 "$RS/bin/claude-codex"
 rs_launch HEADED_ARM_WORKER_CLAUDE_BIN="$RS/bin/claude-codex"; rs_refused "a lane launcher binary (claude-codex)"
@@ -6564,7 +6577,7 @@ chmod 755 "$RS/pause-preflight.sh"
 # exec target is a fixture that ignores TERM and leaves a mark when (if ever) it starts
 # shellcheck disable=SC2016  # written literally, expanded when the stub runs
 printf '%s\n' '#!/usr/bin/env bash' 'trap "" TERM HUP INT' ': > "$RS_TARGET_MARK"' 'exit 0' > "$RS/deaf-target.sh"; chmod 755 "$RS/deaf-target.sh"
-rs_pyenv=(PATH="$RS/pyshim:$PATH" RS_REAL_PY3="$RS_REAL_PY3" HEADED_ARM_WORKER_TARGET="$RS/deaf-target.sh")
+rs_pyenv=(PATH="$RS/pyshim:$RS/bin:$RS_OUT/canary-bin:$PATH" RS_REAL_PY3="$RS_REAL_PY3" HEADED_ARM_WORKER_TARGET="$RS/deaf-target.sh")
 rs_free_and_gone() { # rs_free_and_gone <label>: the launcher's own lease is released and nothing of the attempt is left
   check "17s $1: the launcher's own lease is released" "$(rs_status)" "free"
   check "17s $1: the attempt directory (transport included) is removed" "$(rs_attempts)" "0"
@@ -6596,6 +6609,21 @@ if command -v flock >/dev/null 2>&1; then
     "$(rs_status):$(jq -r .session "$(rs_lockdir)/owner.json" 2>/dev/null || true)" "status: FRESH:successor-token-for-test"
   check "17s signal before the hand-off with a successor: the attempt directory is removed" "$(rs_attempts)" "0"
   check "17s signal before the hand-off with a successor: the exec target was never started" "$([ -e "$RS/target-mark-s2" ] && echo started || echo never)" "never"
+  # A managed doc makes headed-arm.sh run the machine's usage preflight at a fixed in-repo path (no seam): the exec target of a
+  # managed fixture launch must be an absolute path inside the fixture root. The default (the in-repo headed-arm.sh), an empty
+  # target and one outside the root are refused before the acquire, before any child, policy read or provider call.
+  mkdir -p "$RS_OUT"; printf '%s\n' '#!/usr/bin/env bash' 'echo outside-target-ran' > "$RS_OUT/managed-target.sh"; chmod 755 "$RS_OUT/managed-target.sh"
+  for rs_tgt in "$HEADED_ARM" "" "$RS_OUT/managed-target.sh"; do
+    rs_cn="$(rs_canary)"
+    rs_launch HEADED_ARM_WORKER_TARGET="$rs_tgt"
+    rs_refused "a managed doc with the exec target [${rs_tgt##*/}]"
+    rs_msg "managed target [${rs_tgt##*/}]: refused by name" "a managed doc needs HEADED_ARM_WORKER_TARGET inside the fixture root"
+    check "17s managed target [${rs_tgt##*/}]: the usage preflight was never reached (no bank-preflight, no fleet census, no outside command)" \
+      "$(grep -rlE 'bank-preflight|outside-target-ran' "$RS_D" 2>/dev/null | wc -l | tr -d ' '):$(( $(rs_canary) - rs_cn ))" "0:0"
+  done
+  rm -f "$RS/target-mark-ok"
+  rs_launch HEADED_ARM_WORKER_TARGET="$RS/deaf-target.sh" RS_TARGET_MARK="$RS/target-mark-ok"
+  check "17s managed target: a target inside the fixture root launches" "$RS_RC:$([ -e "$RS/target-mark-ok" ] && echo started || echo never)" "0:started"
   RS_MANAGED=0
 else
   echo "SKIP - 17s managed hand-off rows (fleet-manifest.sh needs util-linux flock, absent here)"
@@ -6604,7 +6632,6 @@ fi
 # --- the delivery gate (this role's hooks, STDIO server, guard and supervisor are later cycles) and the fixture boundary:
 # by default a launch is REFUSED before anything is minted, written, acquired or resolved; only an isolated fixture root, which
 # must vouch for every root, binary and port the launch touches, may launch it.
-rs_msg() { contains "17s $1" "$(cat "$RS_D/out" 2>/dev/null)" "$2"; }
 rs_before="$(rs_init_calls)"
 rs_launch WORKER_SESSION_READINESS_FIXTURE=
 rs_refused "a launch with no fixture root (the default)"
@@ -6648,7 +6675,7 @@ rs_launch HEADED_ARM_WORKER_PREFLIGHT=;                   rs_refused "no usage p
 # a root that holds the account's real home is not a fixture, however it is marked (the passwd lookup is shimmed to name $RS as the home)
 mkdir -p "$RS/getent-shim"
 printf '%s\n' '#!/usr/bin/env bash' "echo \"fixture-user:x:\$2:\$2::$RS:/bin/bash\"" > "$RS/getent-shim/getent"; chmod 755 "$RS/getent-shim/getent"
-rs_launch PATH="$RS/getent-shim:$PATH"; rs_refused "a fixture root that contains the account's real home"; rs_msg "fixture boundary: the real home" "the fixture root contains the account's real home"
+rs_launch PATH="$RS/getent-shim:$RS/bin:$RS_OUT/canary-bin:$PATH"; rs_refused "a fixture root that contains the account's real home"; rs_msg "fixture boundary: the real home" "the fixture root contains the account's real home"
 RS_DOC_OUTSIDE=1; rs_launch; RS_DOC_OUTSIDE=0
 check "17s fixture boundary: a doc outside the fixture root is refused before the acquire" "$([ "$RS_RC" -ne 0 ] && echo refused):$([ -e "$RS_D/record" ] && echo launched || echo no):$(rs_attempts)" "refused:no:0"
 rs_msg "fixture boundary: doc" "is outside the fixture root"
@@ -6670,22 +6697,142 @@ printf '#!/usr/bin/env bash\nexit 0\n' > "$RS/inside-target.sh"; chmod 755 "$RS/
 rs_launch HEADED_ARM_WORKER_TARGET="$RS/inside-target.sh"
 check "17s exec pin: a target inside the fixture root is accepted" "$RS_RC" "0"
 
+# The claude binary is REQUIRED to be an absolute path inside the fixture root (an unset, empty, relative or bare one would be
+# resolved by name through PATH), and the launch-floor gate headed-arm.sh runs (`$HEADED_ARM_CLAUDE_CLI --version`, default a
+# bare `claude`) is pinned to that same binary: a contained binary plus an outside `claude` first on PATH, or an explicit outside
+# HEADED_ARM_CLAUDE_CLI, must never execute the outside command.
+rs_oc="PATH=$RS_OUT/canary-bin:$RS/bin:$PATH"
+for rs_bin in "" relative/claude claude; do
+  rs_cn="$(rs_canary)"
+  rs_launch HEADED_ARM_WORKER_CLAUDE_BIN="$rs_bin" "$rs_oc"
+  rs_refused "the claude binary [$rs_bin] with an outside claude first on PATH"
+  rs_msg "claude binary [$rs_bin]: refused by name" "HEADED_ARM_WORKER_CLAUDE_BIN must be an absolute path inside the fixture root"
+  check "17s claude binary [$rs_bin]: the outside PATH claude was never executed" "$(( $(rs_canary) - rs_cn ))" "0"
+done
+mkdir -p "$RS/logged"; RS_LOGGED_LOG="$RS/logged/calls.log"
+# shellcheck disable=SC2016  # written literally, expanded when the stub runs
+printf '%s\n' '#!/usr/bin/env bash' 'echo "$*" >> "$RS_LOGGED_LOG"' 'exit 0' > "$RS/logged/claude"; chmod 755 "$RS/logged/claude"
+: > "$RS_LOGGED_LOG"; rs_cn="$(rs_canary)"
+rs_launch HEADED_ARM_WORKER_CLAUDE_BIN="$RS/logged/claude" RS_LOGGED_LOG="$RS_LOGGED_LOG" "$rs_oc"
+check "17s launch floor: a contained binary with an outside claude first on PATH launches" "$RS_RC:$([ -s "$RS_D/record" ] && echo yes)" "0:yes"
+check "17s launch floor: the outside PATH claude was never executed" "$(( $(rs_canary) - rs_cn ))" "0"
+check "17s launch floor: the floor gate ran the contained binary, and only for its version" "$(sort -u "$RS_LOGGED_LOG" | tr '\n' ' ')" "--version "
+: > "$RS_LOGGED_LOG"; rs_cn="$(rs_canary)"
+rs_launch HEADED_ARM_WORKER_CLAUDE_BIN="$RS/logged/claude" RS_LOGGED_LOG="$RS_LOGGED_LOG" HEADED_ARM_CLAUDE_CLI="$RS_OUT/canary-bin/claude"
+check "17s launch floor: an explicit outside HEADED_ARM_CLAUDE_CLI still launches" "$RS_RC:$([ -s "$RS_D/record" ] && echo yes)" "0:yes"
+check "17s launch floor: ... the outside command was never executed (the seam is pinned to the contained binary)" "$(( $(rs_canary) - rs_cn ))" "0"
+check "17s launch floor: ... the floor gate ran the contained binary instead" "$(sort -u "$RS_LOGGED_LOG" | tr '\n' ' ')" "--version "
+
 # Inject TERM after acquire returns, before the wrapper can decode its stdout.
 cat > "$RS/capture-signal.sh" <<'CAPTURE_SIGNAL_EOF'
 _capture_signal_sent=0
 _capture_signal_fault() {
   if [ "${READINESS:-0}" = 1 ] && [ -n "${_ready_acq:-}" ] && [ "${_ready_acq_rc:-1}" = 0 ] && [ "$_capture_signal_sent" = 0 ]; then
     _capture_signal_sent=1
-    kill -TERM "$BASHPID"
+    kill -"${CAPTURE_SIG:-TERM}" "$BASHPID"
   fi
 }
 trap _capture_signal_fault DEBUG
 CAPTURE_SIGNAL_EOF
-rs_launch BASH_ENV="$RS/capture-signal.sh"
-check "17s signal at acquire response: the wrapper ends with 143" "$RS_RC" "143"
-check "17s signal at acquire response: the known owned lease is released" "$(rs_status)" "free"
-check "17s signal at acquire response: private attempt files are removed" "$(rs_attempts)" "0"
-check "17s signal at acquire response: no child reached konsole" "$([ -e "$RS_D/record" ] && echo launched || echo no)" "no"
+# the same signal in the instant between the acquire child's fork and the capture of its pid (the DEBUG trap fires before that assignment)
+cat > "$RS/pid-signal.sh" <<'PID_SIGNAL_EOF'
+_pid_signal_sent=0
+_pid_signal_fault() {
+  if [ "${READINESS:-0}" = 1 ] && [ "$BASH_COMMAND" = 'READINESS_ACQ_PID=$!' ] && [ "$_pid_signal_sent" = 0 ]; then
+    _pid_signal_sent=1
+    kill -TERM "$BASHPID"
+  fi
+}
+trap _pid_signal_fault DEBUG
+PID_SIGNAL_EOF
+for rs_sig_pair in TERM:143 HUP:129 INT:130; do
+  rs_sig="${rs_sig_pair%%:*}"
+  if [ "$rs_sig" = INT ] && [ "${#rs_defsig[@]}" -eq 0 ]; then echo "SKIP - 17s INT rows (env --default-signal is absent: a background job cannot receive SIGINT here)"; continue; fi
+  rs_launch BASH_ENV="$RS/capture-signal.sh" CAPTURE_SIG="$rs_sig"
+  check "17s $rs_sig at acquire response: the wrapper ends with ${rs_sig_pair##*:}" "$RS_RC" "${rs_sig_pair##*:}"
+  check "17s $rs_sig at acquire response: the known owned lease is released" "$(rs_status)" "free"
+  check "17s $rs_sig at acquire response: private attempt files are removed" "$(rs_attempts)" "0"
+  check "17s $rs_sig at acquire response: no child reached konsole" "$([ -e "$RS_D/record" ] && echo launched || echo no)" "no"
+done
+
+# A signal while the acquire is STILL RUNNING: the wrapper's cleanup owns and reaps the acquire child before it releases its own
+# token, so the lease the acquire is about to create is freed too (a cleanup that raced ahead of it would be refused as "no lock"
+# and the lease would then appear, held by a token nobody has, until its TTL). A date shim stretches only the on-behalf acquire's
+# first date call (before the lock exists); the eventual state, after the stretched acquire has certainly finished, is what is asserted.
+mkdir -p "$RS/slowdate"; RS_REAL_DATE="$(command -v date)"
+cat > "$RS/slowdate/date" <<'SLOWDATE_EOF'
+#!/usr/bin/env bash
+# a test shim in front of date: ONLY the first date call of an on-behalf queue acquire is stretched. SLOW_SUCCESSOR_DOC makes a
+# successor take that doc's lock inside the stretch (our acquire has not created its lock yet, so it is the one refused)
+if [ "${QUEUE_LOCK_ON_BEHALF:-}" = 1 ] && [ -n "${SLOW_MARK:-}" ] && [ ! -e "$SLOW_MARK" ]; then
+  : > "$SLOW_MARK"
+  [ -z "${SLOW_SUCCESSOR_DOC:-}" ] || env -u QUEUE_LOCK_ON_BEHALF bash "$RS_QL" acquire "$SLOW_SUCCESSOR_DOC" successor-token-for-test >/dev/null 2>&1
+  sleep "${SLOW_SECS:-1}"
+fi
+exec "$RS_REAL_DATE" "$@"
+SLOWDATE_EOF
+chmod 755 "$RS/slowdate/date"
+rs_slow=(PATH="$RS/slowdate:$RS/bin:$RS_OUT/canary-bin:$PATH" RS_REAL_DATE="$RS_REAL_DATE")
+for rs_sig_pair in TERM:143 HUP:129 INT:130; do
+  rs_sig="${rs_sig_pair%%:*}"
+  if [ "$rs_sig" = INT ] && [ "${#rs_defsig[@]}" -eq 0 ]; then continue; fi
+  rm -f "$RS/slow-mark-$rs_sig"
+  RS_SIGNAL="$rs_sig" RS_SIGNAL_AFTER="$RS/slow-mark-$rs_sig" rs_launch "${rs_slow[@]}" SLOW_MARK="$RS/slow-mark-$rs_sig" SLOW_SECS=1
+  check "17s $rs_sig while the acquire runs: the wrapper ends with ${rs_sig_pair##*:}" "$RS_RC" "${rs_sig_pair##*:}"
+  check "17s $rs_sig while the acquire runs: the stretched acquire was running when the signal landed" "$([ -e "$RS/slow-mark-$rs_sig" ] && echo yes)" "yes"
+  rs_free_and_gone "$rs_sig while the acquire runs"
+  sleep 2
+  check "17s $rs_sig while the acquire runs: still free after the stretched acquire has finished (no lease for a token nobody holds)" "$(rs_status):$(rs_attempts):$([ -n "$(rs_lockdir)" ] && echo lockdir || echo none)" "free:0:none"
+done
+# with a successor: it takes the lock inside the stretch, so the launcher's acquire is refused and its own-token release never touches the successor's lease
+rm -f "$RS/slow-mark-succ"
+RS_SIGNAL_AFTER="$RS/slow-mark-succ" rs_launch "${rs_slow[@]}" SLOW_MARK="$RS/slow-mark-succ" SLOW_SECS=1 SLOW_SUCCESSOR_DOC="$RS/hdir/u/r/readiness-v1.$((rs_n + 1)).0.md"
+check "17s TERM while the acquire runs, with a successor: the wrapper ends with 143" "$RS_RC" "143"
+sleep 2
+check "17s TERM while the acquire runs, with a successor: the successor still holds the lock afterwards" \
+  "$(rs_status):$(jq -r .session "$(rs_lockdir)/owner.json" 2>/dev/null || true)" "status: FRESH:successor-token-for-test"
+check "17s TERM while the acquire runs, with a successor: the attempt directory is removed and nothing launched" "$(rs_attempts):$([ -e "$RS_D/record" ] && echo launched || echo no)" "0:no"
+# the instant between the acquire child's fork and the capture of its pid is covered too
+rm -f "$RS/slow-mark-pid"
+rs_launch "${rs_slow[@]}" SLOW_MARK="$RS/slow-mark-pid" SLOW_SECS=1 BASH_ENV="$RS/pid-signal.sh"
+check "17s TERM between the acquire's fork and its pid capture: the wrapper ends with 143" "$RS_RC" "143"
+sleep 2
+check "17s TERM between the acquire's fork and its pid capture: free, nothing left, nothing launched" \
+  "$(rs_status):$(rs_attempts):$([ -e "$RS_D/record" ] && echo launched || echo no)" "free:0:no"
+# a cleanup is bounded: an acquire that outlives the bound is stopped and said, not waited for
+rm -f "$RS/slow-mark-bound"; SECONDS=0
+RS_SIGNAL_AFTER="$RS/slow-mark-bound" rs_launch "${rs_slow[@]}" SLOW_MARK="$RS/slow-mark-bound" SLOW_SECS=8 WORKER_SESSION_READINESS_REAP_SECS=1
+rs_elapsed=$SECONDS
+check "17s an acquire that outlives the cleanup bound: the wrapper still ends with 143" "$RS_RC" "143"
+check "17s an acquire that outlives the cleanup bound: the cleanup did not wait for the whole stretch" "$([ "$rs_elapsed" -lt 7 ] && echo bounded || echo "waited ${rs_elapsed}s")" "bounded"
+contains "17s an acquire that outlives the cleanup bound: the stop is said" "$(cat "$RS_D/out")" "did not finish within 1s and was stopped"
+sleep 8
+check "17s an acquire that outlives the cleanup bound: nothing was left behind" "$(rs_status):$(rs_attempts)" "free:0"
+# ... and one that ignores TERM is killed
+# shellcheck disable=SC2016  # written literally, expanded when the file is sourced
+printf '%s\n' '[ "${QUEUE_LOCK_ON_BEHALF:-}" != 1 ] || trap "" TERM' > "$RS/deaf-acquire.sh"
+rm -f "$RS/slow-mark-deaf"; SECONDS=0
+RS_SIGNAL_AFTER="$RS/slow-mark-deaf" rs_launch "${rs_slow[@]}" SLOW_MARK="$RS/slow-mark-deaf" SLOW_SECS=8 WORKER_SESSION_READINESS_REAP_SECS=1 BASH_ENV="$RS/deaf-acquire.sh"
+rs_elapsed=$SECONDS
+check "17s an acquire that ignores TERM: the wrapper still ends with 143, without waiting for the whole stretch" "$RS_RC:$([ "$rs_elapsed" -lt 7 ] && echo bounded || echo "waited ${rs_elapsed}s")" "143:bounded"
+sleep 8
+check "17s an acquire that ignores TERM: nothing was left behind" "$(rs_status):$(rs_attempts)" "free:0"
+
+# the acquire's response still confirms the token the launcher chose: a queue that answers any other token is refused, and the
+# lease the acquire did create (under the launcher's own token) is released. A sed shim rewrites only the confirmation filter.
+mkdir -p "$RS/seddiv"; RS_REAL_SED="$(command -v sed)"
+cat > "$RS/seddiv/sed" <<'SEDDIV_EOF'
+#!/usr/bin/env bash
+case "$*" in *release-token*) cat > /dev/null; echo "someone-elses-token"; exit 0 ;; esac
+exec "$RS_REAL_SED" "$@"
+SEDDIV_EOF
+chmod 755 "$RS/seddiv/sed"
+rs_launch PATH="$RS/seddiv:$RS/bin:$RS_OUT/canary-bin:$PATH" RS_REAL_SED="$RS_REAL_SED"
+rs_refused "a queue that confirms a token other than the launcher's own"
+rs_msg "token confirmation: the refusal names it" "the queue did not confirm the private lease token"
+
+# nothing in any launch above executed the outside canary claude or curl (a bare claude resolves to the fixture's own stub)
+check "17s canary: no launch executed the outside claude or curl on PATH" "$(rs_canary)" "0"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then

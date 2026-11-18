@@ -955,10 +955,12 @@ if [ "$READINESS" -eq 1 ]; then
     # word is 0 a launch (a dry run included) is refused before anything is minted, written or acquired, unless an
     # isolated FIXTURE ROOT vouches for every root, binary and port the launch would touch: the seam names a directory
     # that carries a marker file and does not hold the account's real home, and then HOME, the config, runtime and handover
-    # roots, the claude binary, konsole, the usage preflight, the doc, the jira client and any exec-target/resolver override
-    # must all resolve INSIDE it. It cannot reach the real queue, real credentials or a native binary, because none of
-    # those lives under a fixture root. Other launching-shell seams (the waker, pgrep, lock and proc directories, the repo)
-    # are not contained by it.
+    # roots, the claude binary (required: never a bare name found on PATH), konsole, the usage preflight, the doc, the jira
+    # client and any exec-target/resolver override must all resolve INSIDE it. A managed doc additionally needs an exec target
+    # inside it (the in-repo headed-arm.sh would run the machine's real usage preflight, which has no seam), and the launch-floor
+    # gate that headed-arm.sh runs is pinned to the same binary. None of those lives under a fixture root: it cannot reach the
+    # real queue, real credentials, the real usage preflight or a native binary through those seams. Other launching-shell seams
+    # (the waker, pgrep, lock and proc directories, the repo, and ambient provider variables) are not contained by it.
     READINESS_DELIVERED_HOOKS=0 READINESS_DELIVERED_STDIO=0 READINESS_DELIVERED_GUARD=0 READINESS_DELIVERED_SUPERVISOR=0 READINESS_DELIVERED_REAPER=0
     _ready_missing=""
     [ "$READINESS_DELIVERED_HOOKS" -eq 1 ] || _ready_missing="$_ready_missing session-hooks"
@@ -1000,18 +1002,25 @@ if [ "$READINESS" -eq 1 ]; then
         if [ -n "$v" ] && v="$(cd -P "$v" 2>/dev/null && pwd -P)"; then  # swallow-ok: an unresolvable home directory leaves nothing to compare, and every in-root check below still applies
             case "$v" in "$_ready_fx_root"|"$_ready_fx_root"/*) _ready_fx_why="the fixture root contains the account's real home ($v)"; return 1 ;; esac
         fi
-        # the usage preflight too: its default reads machine-wide usage state and may refresh it from the provider
-        for var in HOME XDG_RUNTIME_DIR HANDOVER_DIR KONSOLE_CMD HEADED_ARM_WORKER_PREFLIGHT; do
+        # the usage preflight too: its default reads machine-wide usage state and may refresh it from the provider. The claude binary
+        # is required as well: an unset, empty, relative or bare one is resolved by name through PATH, and a launch-floor gate
+        # that finds a native claude there would execute it
+        for var in HOME XDG_RUNTIME_DIR HANDOVER_DIR KONSOLE_CMD HEADED_ARM_WORKER_PREFLIGHT HEADED_ARM_WORKER_CLAUDE_BIN; do
             v="${!var:-}"
             case "$v" in /*) ;; *) _ready_fx_why="$var must be an absolute path inside the fixture root"; return 1 ;; esac
             _ready_inside "$_ready_fx_root" "$v" || { _ready_fx_why="$var=$v is outside the fixture root"; return 1; }
         done
-        # a config directory, when named, is inside too; a relative binary is refused by the launcher's own render, an absolute one must be inside
-        for var in CLAUDE_CONFIG_DIR HEADED_ARM_WORKER_CLAUDE_BIN; do
-            v="${!var:-}"
-            case "$v" in ''|[!/]*) continue ;; esac
-            _ready_inside "$_ready_fx_root" "$v" || { _ready_fx_why="$var=$v is outside the fixture root"; return 1; }
-        done
+        # a config directory, when named, is inside too
+        v="${CLAUDE_CONFIG_DIR:-}"
+        case "$v" in ''|[!/]*) ;; *) _ready_inside "$_ready_fx_root" "$v" || { _ready_fx_why="CLAUDE_CONFIG_DIR=$v is outside the fixture root"; return 1; } ;; esac
+        # a managed doc (the production layout) makes headed-arm.sh run the machine's REAL usage preflight, a fixed in-repo path
+        # with no seam that reads machine-wide state and may refresh it from the provider: only an exec target inside the root,
+        # which stands in for headed-arm.sh, may run for one. The in-repo target, an empty one and any outside one are refused.
+        if [ "${FLEET_LAUNCH_MANAGED:-false}" = true ]; then
+            v="${HEADED_ARM_WORKER_TARGET:-}"
+            case "$v" in /*) ;; *) _ready_fx_why="a managed doc needs HEADED_ARM_WORKER_TARGET inside the fixture root (the in-repo headed-arm.sh would run the real usage preflight)"; return 1 ;; esac
+            _ready_inside "$_ready_fx_root" "$v" || { _ready_fx_why="a managed doc needs HEADED_ARM_WORKER_TARGET inside the fixture root (got $v; the in-repo headed-arm.sh would run the real usage preflight)"; return 1; }
+        fi
         _ready_inside "$_ready_fx_root" "$READINESS_DOC" || { _ready_fx_why="the doc $READINESS_DOC is outside the fixture root"; return 1; }
         if [ "${WORKER_SESSION_READINESS_PORT:-copy}" = jira ]; then
             case "${WORKER_SESSION_READINESS_PRIMARY_CLI:-}" in /*) ;; *) _ready_fx_why="the jira client must be an absolute path inside the fixture root"; return 1 ;; esac
@@ -1027,6 +1036,10 @@ if [ "$READINESS" -eq 1 ]; then
     else
         _ready_fx_root=""
     fi
+    # headed-arm.sh runs its launch-floor gate (`<cli> --version`) against HEADED_ARM_CLAUDE_CLI, a seam independent of the
+    # binary above whose default is a bare `claude` found on PATH. A fixture launch pins it to the one validated binary, so neither
+    # PATH nor an ambient value can make the gate execute a command outside the fixture root.
+    if [ -n "$_ready_fx_root" ]; then export HEADED_ARM_CLAUDE_CLI="$HEADED_ARM_WORKER_CLAUDE_BIN"; fi
     # The exec target and the profile resolver are pinned to the in-repo files, so the render this wrapper validates and the
     # exec headed-arm.sh performs cannot diverge; an override is accepted only inside a valid fixture root.
     _ready_kit="$(cd -P "$(dirname "$0")" && pwd -P)"
@@ -3349,9 +3362,10 @@ fi
 # transport file. Every refusal before (4) acquires nothing and leaves nothing behind. The launcher keeps only its OWN
 # captured token: every exit between the acquire and the child's start (a refusal, the managed fleet hand-off refusal,
 # a fatal or remembered signal) and a definite hand-off failure release exactly that token (a successor's lock refuses
-# it) and remove the attempt directory; hand-off statuses 0, 7 and 9 keep both for the session. The session start adopts
-# the lease and deletes the transport (scripts/hooks/readiness-session.sh).
-READINESS_TOKEN="" READINESS_PRE_HANDOFF=0
+# it) and remove the attempt directory; hand-off statuses 0, 7 and 9 keep both for the session. The acquire is a background
+# child this launcher owns: a trappable exit first reaps it (bounded), so the lease it was about to create is released too.
+# The session start adopts the lease and deletes the transport (scripts/hooks/readiness-session.sh).
+READINESS_TOKEN="" READINESS_PRE_HANDOFF=0 READINESS_ACQ_PID="" READINESS_ACQ_STATE="" READINESS_ACQ_OUT="" READINESS_REAP_SECS=20
 _ready_uuid() { local u; u="$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null)"; printf '%s' "$u" | tr 'A-F' 'a-f'; }  # swallow-ok: an empty attempt id is refused by every reader of the startup config
 _ready_stat() { stat -c "$1" -- "$3" 2>/dev/null || stat -f "$2" -- "$3" 2>/dev/null; }
 # _ready_private_dir <dir>: a directory that is this user's, not a symlink, mode 0700 (created when absent)
@@ -3368,8 +3382,31 @@ _readiness_cleanup() {
         "$READINESS_ROOT"/????????-????-????-????-????????????) rm -rf -- "$READINESS_ATTEMPT" ;;
     esac
 }
+# own and reap the on-behalf acquire child: a cleanup that ran while it was still working would find no lock to release, and the
+# acquire would then create the lease for a token nobody holds any more. The pid is the one captured at the fork; between the fork
+# and that capture (READINESS_ACQ_STATE=starting) it is $!, accepted only while it is a job of this shell (never a recycled pid).
+# Bounded: a child still running after READINESS_REAP_SECS is stopped and said, so a stuck acquire cannot hang the cleanup.
+_readiness_reap_acquire() {
+    local pid="${READINESS_ACQ_PID:-}" i=0
+    if [ -z "$pid" ] && [ "${READINESS_ACQ_STATE:-}" = starting ]; then pid="${!:-}"; fi
+    READINESS_ACQ_PID="" READINESS_ACQ_STATE=""
+    [ -n "$pid" ] || return 0
+    case " $(jobs -p | tr '\n' ' ') " in *" $pid "*) ;; *) return 0 ;; esac
+    while kill -0 "$pid" 2>/dev/null && [ "$i" -lt $((READINESS_REAP_SECS * 10)) ]; do sleep 0.1; i=$((i + 1)); done
+    if kill -0 "$pid" 2>/dev/null; then
+        # said on stdout and in the launch log: the EXIT trap that calls this discards its own stderr
+        echo "headed-arm-worker: WARN the queue acquire for $READINESS_DOC did not finish within ${READINESS_REAP_SECS}s and was stopped; a lease it had already created is released by its token next, else it ages out by its TTL" | tee -a "$LOG" 2>/dev/null
+        kill -TERM "$pid" 2>/dev/null
+        i=0
+        while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 10 ]; do sleep 0.1; i=$((i + 1)); done
+        if kill -0 "$pid" 2>/dev/null; then kill -KILL "$pid" 2>/dev/null; fi
+    fi
+    wait "$pid" 2>/dev/null
+    return 0
+}
 # release the launcher's OWN captured token (a successor's token never matches it), then drop the attempt directory
 _readiness_release() {
+    _readiness_reap_acquire
     if [ -n "$READINESS_TOKEN" ]; then
         bash "$READINESS_QL" release "$READINESS_DOC" "$READINESS_TOKEN" >/dev/null 2>&1 \
             || echo "headed-arm-worker: the readiness lease on $READINESS_DOC was not released (the lock changed hands or is gone); nothing was force released" >&2
@@ -3384,7 +3421,12 @@ if [ "$READINESS" -eq 1 ]; then
     READINESS_QL="$(cd -P "$HERE/.." && pwd -P)/queue-lock.sh"
     READINESS_PORT="${WORKER_SESSION_READINESS_PORT:-copy}"
     READINESS_PRIMARY_CLI="${WORKER_SESSION_READINESS_PRIMARY_CLI:-}"
-    unset -v WORKER_SESSION_READINESS_PORT WORKER_SESSION_READINESS_PRIMARY_CLI
+    # how long a cleanup waits for an acquire that was still running (whole seconds, 1..60)
+    case "${WORKER_SESSION_READINESS_REAP_SECS:-}" in
+        ''|*[!0-9]*) ;;
+        *) [ "$((10#${WORKER_SESSION_READINESS_REAP_SECS}))" -ge 1 ] && [ "$((10#${WORKER_SESSION_READINESS_REAP_SECS}))" -le 60 ] && READINESS_REAP_SECS="$((10#${WORKER_SESSION_READINESS_REAP_SECS}))" ;;
+    esac
+    unset -v WORKER_SESSION_READINESS_PORT WORKER_SESSION_READINESS_PRIMARY_CLI WORKER_SESSION_READINESS_REAP_SECS
     [ -f "$READINESS_QL" ] || _readiness_refuse "queue-lock.sh is missing"
     case "$READINESS_PORT" in
         copy) READINESS_PORT_JSON='{"kind":"copy"}' ;;
@@ -3434,15 +3476,26 @@ if [ "$READINESS" -eq 1 ]; then
     # Know the private owner token before acquire so a signal before stdout decoding can still release only our lease.
     READINESS_TOKEN="$(_ready_uuid)"
     [[ "$READINESS_TOKEN" =~ ^[a-f0-9-]{36}$ ]] || _readiness_refuse "cannot mint the private lease token"
+    # The acquire runs as a background child this launcher owns, never inside a command substitution: a fatal signal runs the EXIT
+    # trap at once, while a foreground substitution keeps running after it, so the lease would be created AFTER the cleanup had
+    # found nothing to release. The trap reaps the child first (_readiness_reap_acquire), then releases the token. Its stdout (the
+    # token confirmation) goes to a private file in the 0700 attempt directory and is read, then removed, once it has finished.
+    READINESS_ACQ_OUT="$READINESS_ATTEMPT/acquire.out"
     _ready_acq_rc=0
-    _ready_acq="$(QUEUE_LOCK_ON_BEHALF=1 bash "$READINESS_QL" acquire "$READINESS_DOC" "$READINESS_TOKEN" 2>/dev/null)" || _ready_acq_rc=$?  # swallow-ok: stderr can name another holder's token; the exit status is what is acted on
+    READINESS_ACQ_STATE=starting
+    ( umask 077 && QUEUE_LOCK_ON_BEHALF=1 exec bash "$READINESS_QL" acquire "$READINESS_DOC" "$READINESS_TOKEN" > "$READINESS_ACQ_OUT" 2>/dev/null ) &  # swallow-ok: stderr can name another holder's token; the exit status is what is acted on
+    READINESS_ACQ_PID=$!
+    wait "$READINESS_ACQ_PID" || _ready_acq_rc=$?
+    READINESS_ACQ_PID="" READINESS_ACQ_STATE=""
+    _ready_acq="$(cat -- "$READINESS_ACQ_OUT" 2>/dev/null)"  # swallow-ok: a missing response reads empty, and the exit status and the token confirmation below refuse
+    rm -f -- "$READINESS_ACQ_OUT"
     [ "$_ready_acq_rc" -eq 0 ] || _readiness_refuse "the queue lease could not be acquired (it is held, or the queue is unreadable)"
     unset -v _ready_acq_rc
     # shellcheck disable=SC2016  # the backticks around the token are literal text in acquire's output
     _ready_issued_token="$(printf '%s\n' "$_ready_acq" | sed -n 's/^release-token: `\(.*\)`$/\1/p' | tail -n 1)"
     unset -v _ready_acq
     [ "$_ready_issued_token" = "$READINESS_TOKEN" ] || _readiness_refuse "the queue did not confirm the private lease token"
-    unset -v _ready_issued_token
+    unset -v _ready_issued_token READINESS_ACQ_OUT
     if ! ( umask 077 && set -C && printf '%s\n' "$READINESS_TOKEN" > "$READINESS_ATTEMPT/lease-token" ) 2>/dev/null; then
         _readiness_release
         echo "headed-arm-worker: refusing the readiness role: the lease token transport could not be written" >&2
