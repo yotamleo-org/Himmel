@@ -791,6 +791,8 @@ const returnsOf = (latest: LatestReturns) => Object.fromEntries(KINDS.map(kind =
 const findingsKey = (x: any) => Array.isArray(x) ? JSON.stringify(x.map(f => [f?.critic, f?.id, f?.return_sha, f?.severity].map(String)).sort()) : null;
 const returnsKey = (x: any) => x && typeof x === "object" ? JSON.stringify(KINDS.map(kind => Array.isArray(x[kind]) ? x[kind].map(String).sort() : null)) : null;
 const spendsDecision = (r: LedgerRow) => r.row === "reset" || r.row === "critical" || r.row === "extension";
+const approvalSpentByExtension = (rows: LedgerRow[], decision: string, pin?: { path: string; sha: string }) => rows.some(r => r.row === "extension"
+  && (String(r.decision) === decision || (pin && (r.decision_path === pin.path || r.decision_sha === pin.sha))));
 const latestRoundTs = (rows: LedgerRow[]) => Number(rows.filter(r => r.row === "round").at(-1)?.ts) || 0;
 
 const findingKey = (id: unknown, returnSha: unknown) => `${id}|${returnSha}`;
@@ -837,6 +839,7 @@ async function checkRecords(specs: string, key: string, rows: LedgerRow[], reade
   const criticals: { row: LedgerRow; epoch: number }[] = []; let override: { row: LedgerRow; epoch: number } | null = null; const invalid: string[] = [];
   const latest: LatestReturns = { spec: [], plan: [] }; const extensions: { row: LedgerRow; epoch: number }[] = [];
   const spent = { numbers: new Set<string>(), paths: new Set<string>(), shas: new Set<string>() };
+  const earlierExtensions: LedgerRow[] = [];
   const spend = (r: LedgerRow) => { spent.numbers.add(String(r.decision)); if (isText(r.decision_path)) spent.paths.add(r.decision_path); if (isText(r.decision_sha)) spent.shas.add(r.decision_sha); };
   const opensRound = (round: number) => criticals.some(c => c.epoch === epoch && Number(c.row.opens) === round) || (override?.epoch === epoch && Number(override.row.round_opened) === round) || extensions.some(e => e.epoch === epoch && Number(e.row.round_opened) === round);
   const take = (kind: Kind, round: number, r: Returned[]) => { maxRound[kind] = round; latest[kind] = r; blocking[kind] = r.flatMap(x => blockingOf(x).map(b => b.id)); for (const x of r) for (const f of x.findings ?? []) if (f.critical) classOf.set(findingKey(f.id, x.return_sha), f.critical); };
@@ -847,11 +850,11 @@ async function checkRecords(specs: string, key: string, rows: LedgerRow[], reade
     else if (r.row === "reset") {
       const d = String(r.decision); const q = sawReset ? null : await quoteRule(specs, key, d, String(r.quote), usedReset.has(d), roundTs, reader);
       sawReset = true; usedReset.add(d); spend(r);
-      if (q && !("error" in q) && q.path === r.decision_path && q.sha === r.decision_sha) { epoch++; blocking.spec = []; blocking.plan = []; latest.spec = []; latest.plan = []; maxRound.spec = 0; maxRound.plan = 0; classOf.clear(); ruled.clear(); }
+      if (q && !("error" in q) && !approvalSpentByExtension(earlierExtensions, d, q) && q.path === r.decision_path && q.sha === r.decision_sha) { epoch++; blocking.spec = []; blocking.plan = []; latest.spec = []; latest.plan = []; maxRound.spec = 0; maxRound.plan = 0; classOf.clear(); ruled.clear(); }
       else invalid.push(label(r));
     } else if (r.row === "critical") {
       const d = String(r.decision); const q = await quoteRule(specs, key, d, String(r.quote), usedCritical.has(d), roundTs, reader); usedCritical.add(d); spend(r);
-      if (!("error" in q) && q.path === r.decision_path && q.sha === r.decision_sha && classOf.get(findingKey(r.id, r.return_sha)) === r.class && !ruled.has(findingKey(r.id, r.return_sha)) && (r.epoch === undefined || Number(r.epoch) === epoch) && [0, Math.max(maxRound.spec, maxRound.plan) + 1].includes(Number(r.opens))) { criticals.push({ row: r, epoch }); ruled.add(findingKey(r.id, r.return_sha)); }
+      if (!("error" in q) && !approvalSpentByExtension(earlierExtensions, d, q) && q.path === r.decision_path && q.sha === r.decision_sha && classOf.get(findingKey(r.id, r.return_sha)) === r.class && !ruled.has(findingKey(r.id, r.return_sha)) && (r.epoch === undefined || Number(r.epoch) === epoch) && [0, Math.max(maxRound.spec, maxRound.plan) + 1].includes(Number(r.opens))) { criticals.push({ row: r, epoch }); ruled.add(findingKey(r.id, r.return_sha)); }
       else invalid.push(label(r));
     } else if (r.row === "override") {
       const ids = Array.isArray(r.findings) ? r.findings.map((f: { id?: unknown }) => String(f?.id)) : [];
@@ -867,6 +870,7 @@ async function checkRecords(specs: string, key: string, rows: LedgerRow[], reade
         && r.epoch === epoch && isText(r.why) && r.why.trim() !== "" && isText(r.chief) && r.chief.trim() !== "" && writer >= CRITIC_ROUND_CAP + 1 && Number(r.round_opened) === writer + 1 && !opensRound(writer + 1)
         && openFindingsOf(latest).length > 0 && findingsKey(r.findings) === findingsKey(openFindingsOf(latest)) && returnsKey(r.returns) === returnsKey(returnsOf(latest));
       spend(r);
+      earlierExtensions.push(r);
       if (ok) extensions.push({ row: r, epoch }); else invalid.push(label(r));
     }
   }
@@ -1319,6 +1323,7 @@ export async function roundCritical(specs: string, key: string, o: { finding: st
     if (!hit.f.critical) throw new Error(hit.f.critical_refused !== undefined ? `round-critical: '${hit.f.critical_refused}' is not an operator-critical class (${OPERATOR_CRITICAL_CLASSES.join(", ")})` : `round-critical: ${o.finding} carries no operator-critical class`);
     const q = await quoteRule(specs, key, o.decision, o.quote, rows.some(r => r.row === "critical" && String(r.decision) === o.decision), latestRoundTs(rows));
     if ("error" in q) throw new Error(`round-critical: ${q.error}`);
+    if (approvalSpentByExtension(rows, o.decision, q)) throw new Error(`round-critical: decision ${o.decision} was already used by a round-extension`);
     if (rows.checked.criticals.some(r => r.id === o.finding && r.return_sha === hit.return_sha)) throw new Error(`round-critical: ${o.finding} was already ruled on`);
     await appendRow(specs, key, { row: "critical", epoch: rows.checked.epoch, opens: o.noRound ? 0 : writerRound(rows) + 1, id: o.finding, class: hit.f.critical, decision: o.decision, quote: o.quote, decision_path: q.path, decision_sha: q.sha, return_sha: hit.return_sha });
   });
@@ -1331,6 +1336,7 @@ export async function roundReset(specs: string, key: string, o: { decision: stri
     if (rows.some(r => r.row === "reset")) throw new Error(`round-reset: ${key} already used its one reset`);
     const q = await quoteRule(specs, key, o.decision, o.quote, false, latestRoundTs(rows));
     if ("error" in q) throw new Error(`round-reset: ${q.error}`);
+    if (approvalSpentByExtension(rows, o.decision, q)) throw new Error(`round-reset: decision ${o.decision} was already used by a round-extension`);
     await appendRow(specs, key, { row: "reset", epoch: rows.checked.epoch + 1, decision: o.decision, quote: o.quote, decision_path: q.path, decision_sha: q.sha });
   });
 }
@@ -1372,7 +1378,7 @@ function findingBlock(text: string, id: string): string | null {
   if (start < 0) return null;
   const last = lines.findLastIndex(l => l.trim() !== "");
   let end = start + 1;
-  while (end < lines.length && protocolFinding(lines[end]) === null && !/^(?:CONTENT-SHA256|READ(?:-SHA256)?)(?:\s|$)/.test(lines[end]) && !(end === last && /^(?:SPEC|PLAN) (?:CLEAN|FINDINGS \d+)$/.test(lines[end].trim()))) end++;
+  while (end < lines.length && protocolFinding(lines[end]) === null && !/^(?:CONTENT-SHA256|READ(?:-SHA256)?)\s+[0-9a-f]{64}\s+\S/.test(lines[end]) && !(end === last && /^(?:SPEC|PLAN) (?:CLEAN|FINDINGS \d+)$/.test(lines[end].trim()))) end++;
   while (end > start + 1 && lines[end - 1].trim() === "") end--;
   return lines.slice(start, end).join("\n");
 }

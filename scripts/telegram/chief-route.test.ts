@@ -3350,8 +3350,8 @@ const F3_R4 = ["- **F3** (major; reopens M2) the quota rule is stated twice", " 
 const F4_R4 = ["- **F4** (major; reopens M2) the example contradicts rule one", "  - fix: delete the example"].join("\n");
 const F3_R5 = ["- **F3** (major; reopens F3) the pointer still repeats the quota", "  Still the same finding, second paragraph.", "  - nested fix bullet", "    - deeper fix bullet", "", "  - fix: drop the repeated sentence"].join("\n");
 const F4_R5 = ["- **F4** (major; reopens F4) the example is gone but rule one lost its test", "  - fix: restore the rule one test"].join("\n");
-const extTree = async () => {
-  const t = await roundTree(["- **M2** (major) the quota rule is stated twice"], []);
+const extTree = async (planFindings: string[] = []) => {
+  const t = await roundTree(["- **M2** (major) the quota rule is stated twice"], planFindings);
   expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 3", F3_R4, BLK_N, F4_R4)).err).toBe("");
   const over = await verb(true, "round-override", CAP_KEY, "--findings", "F3,F4", "--why", "a second closure", "--chief", "chief-x", "--specs", t.specs);
   expect(over.err).toBe("");
@@ -3361,6 +3361,51 @@ const extTree = async () => {
 const extend = (console: boolean, t: { specs: string }, o: { findings?: string; decision?: number; quote?: string; why?: string; chief?: string } = {}) =>
   verb(console, "round-extension", CAP_KEY, "--findings", o.findings ?? "F3,F4", "--decision", String(o.decision ?? 986), "--quote", o.quote ?? APPROVE, "--why", o.why ?? "one closure for the two corrections", "--chief", o.chief ?? "chief-x", "--specs", t.specs);
 const T5_WHY = (r: number) => `spec round ${r}: ${T5(r)}`;
+
+test("round-extension: its approval cannot be replayed as a reset, including copied bytes and reader rows", async () => {
+  const t = await extTree();
+  const text = `${CAP_KEY} operator: ${APPROVE}\n`;
+  const path = decide(t.specs, 986, text); decide(t.specs, 988, text);
+  expect((await extend(true, t)).code).toBe(0);
+  const ledger = join(roundsDir(t.specs), `${CAP_KEY}.jsonl`); const before = readFileSync(ledger, "utf8");
+  for (const decision of [986, 988]) {
+    const result = await verb(true, "round-reset", CAP_KEY, "--decision", String(decision), "--quote", APPROVE, "--specs", t.specs);
+    expect(result.code).not.toBe(0); expect(result.err).toContain("round-extension");
+    expect(readFileSync(ledger, "utf8")).toBe(before);
+  }
+  appendFileSync(ledger, `${JSON.stringify({ v: 1, ts: Date.now(), key: CAP_KEY, row: "reset", epoch: 1, decision: "986", quote: APPROVE, decision_path: path, decision_sha: sha(text) })}\n`);
+  expect(await status(t.specs)).toMatchObject({ epoch: 0, invalid: ["reset 986"] });
+  writeFileSync(ledger, before);
+  decide(t.specs, 992, `${CAP_KEY} operator: start this ticket over from scratch\n`);
+  expect((await verb(true, "round-reset", CAP_KEY, "--decision", "992", "--quote", "start this ticket over from scratch", "--specs", t.specs)).code).toBe(0);
+}, S1B);
+
+test("round-extension: its approval cannot be replayed as a critical ruling, including copied bytes and reader rows", async () => {
+  const t = await extTree(["- **o1** (minor; operator-critical: spend-grant) the operator decides the spend"]);
+  const text = `${CAP_KEY} operator: ${APPROVE}\n`;
+  const path = decide(t.specs, 986, text); decide(t.specs, 988, text);
+  expect((await extend(true, t)).code).toBe(0);
+  const ledger = join(roundsDir(t.specs), `${CAP_KEY}.jsonl`); const before = readFileSync(ledger, "utf8");
+  for (const decision of [986, 988]) {
+    const result = await critical(true, t.specs, "o1", decision, APPROVE, "--no-round");
+    expect(result.code).not.toBe(0); expect(result.err).toContain("round-extension");
+    expect(readFileSync(ledger, "utf8")).toBe(before);
+  }
+  const plan = rowsOf(t.specs, "round").find(r => r.critic === "plan" && r.round === 3);
+  appendFileSync(ledger, `${JSON.stringify({ v: 1, ts: Date.now(), key: CAP_KEY, row: "critical", epoch: 0, opens: 0, id: "o1", class: "spend-grant", decision: "986", quote: APPROVE, decision_path: path, decision_sha: sha(text), return_sha: plan.return_sha })}\n`);
+  expect((await status(t.specs)).invalid).toEqual(["critical 986"]);
+  writeFileSync(ledger, before);
+  decide(t.specs, 992, `${CAP_KEY} operator: ${SPEND}\n`);
+  expect((await critical(true, t.specs, "o1", 992, SPEND, "--no-round")).code).toBe(0);
+}, S1B);
+
+test("closure-pack: READ prose is retained, and unheaded return notes stay contextual until actual metadata", async () => {
+  const body = `${BLK_A}\nREAD the input once before choosing the fix.\n\n## Notes (not counted)\nThis is contextual return text, not another finding.`;
+  const t = await roundTree([body], []);
+  const pack = await verb(false, "closure-pack", CAP_KEY, "spec", "--specs", t.specs);
+  expect(pack.code).toBe(0); expect(pack.out).toContain(body);
+  expect(pack.out).not.toContain("CONTENT-SHA256");
+}, S1B);
 
 test("round-extension: refuses a worker, a missing flag, a wrong finding set, a decision that does not hold, and a round that needs none; the default cap still refuses writer round 6", async () => {
   const t = await extTree();
