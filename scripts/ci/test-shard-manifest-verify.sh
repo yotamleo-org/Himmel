@@ -437,4 +437,23 @@ MV_TSV="$d/tiers-norow.tsv" MV_TIER="fast" expect "MV39: not pr mode, a no-row c
 manifest "$d" 1 1 "$d/sel.txt" 'ran 0 scripts/test-a.sh' "skip $cap38"
 MV_TSV="$d/tiers-norow.tsv" MV_TIER="pr" expect "MV39: pr, the same no-row suite no shard ran is refused" 1 "$d" 1 'phi-egress-guard-parity.*never ran'
 
+d=$(case_dir mv40); header impacted scripts/test-a.sh > "$d/sel.txt"
+disc "$d" RUN scripts/test-a.sh RUN scripts/test-q.sh
+printf '# fixture tiers\nscripts/test-a.sh\tpr\tx\nscripts/test-q.sh\tquarantine\tflakes\n' > "$d/tiers.tsv"
+printf '# fixture tiers\nscripts/test-a.sh\tpr\tx\nscripts/test-q.sh\tpr\tx\n' > "$d/tiers-none.tsv"
+manifest "$d" 1 1 "$d/sel.txt" 'ran 0 scripts/test-a.sh' 'skip scripts/test-q.sh'
+MV_TSV="$d/tiers.tsv" MV_TIER="pr" expect "MV40: pr, impacted: a skipped quarantine suite the selection does not name is accepted" 0 "$d" 1 '^OK'
+manifest "$d" 1 1 "$d/sel.txt" 'ran 0 scripts/test-a.sh'
+MV_TSV="$d/tiers.tsv" MV_TIER="pr" expect "MV40: pr, impacted: a quarantine suite no shard even skipped is refused" 1 "$d" 1 'scripts/test-q\.sh.*never ran'
+manifest "$d" 1 1 "$d/sel.txt" 'ran 0 scripts/test-a.sh' 'skip scripts/test-q.sh'
+MV_TSV="$d/tiers-none.tsv" MV_TIER="pr" expect "MV40: pr, impacted: the same skip with no quarantine row is refused" 1 "$d" 1 'scripts/test-q\.sh.*never ran'
+header impacted scripts/test-a.sh scripts/test-q.sh > "$d/sel.txt"
+manifest "$d" 1 1 "$d/sel.txt" 'ran 0 scripts/test-a.sh' 'skip scripts/test-q.sh'
+MV_TSV="$d/tiers.tsv" MV_TIER="pr" expect "MV40: pr, impacted: a skipped quarantine suite the selection names is refused" 1 "$d" 1 'scripts/test-q\.sh.*never ran'
+manifest "$d" 1 1 "$d/sel.txt" 'ran 0 scripts/test-a.sh' 'ran 1 scripts/test-q.sh'
+MV_TSV="$d/tiers.tsv" MV_TIER="pr" expect "MV40: pr, impacted: a selected quarantine suite that ran red is a NOTE" 0 "$d" 1 'NOTE: .*quarantine'
+header full > "$d/sel.txt"
+manifest "$d" 1 1 "$d/sel.txt" 'ran 0 scripts/test-a.sh' 'skip scripts/test-q.sh'
+MV_TSV="$d/tiers.tsv" MV_TIER="pr" expect "MV40: pr, full: a skipped quarantine suite is refused" 1 "$d" 1 'scripts/test-q\.sh.*never ran'
+
 rst_tally

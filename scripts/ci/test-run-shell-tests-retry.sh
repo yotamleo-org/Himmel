@@ -161,22 +161,28 @@ run27="$sb27/scripts/ci/run-shell-tests.sh"
 : > "$T27_LOG"
 out27=$(SUITE_TIER_MODE="pr" bash "$run27" --scan-repo-of-script --impacted "$range27" 2>&1); rc27=$?
 ran27=$(sort -u "$T27_LOG" | tr '\n' ' ')
-if [ "$ran27" = "local-hit pr quar unlisted " ]; then
-  pass "27a: pr mode runs the impacted local suite and skips the other local one"
+if [ "$ran27" = "local-hit pr unlisted " ]; then
+  pass "27a: pr mode runs the impacted local suite, skips the other local one and the unreached quarantine one"
 else
-  fail "27a: ran='$ran27' (want local-hit pr quar unlisted) output: $out27"
+  fail "27a: ran='$ran27' (want local-hit pr unlisted) output: $out27"
 fi
 if grepq "$out27" '\[SKIP\].*test-local-miss\.sh — tier: local'; then
   pass "27a: the unimpacted local suite is [SKIP]ped with a 'tier: local' reason"
 else
   fail "27a: no 'tier: local' skip for test-local-miss.sh: $out27"
 fi
+if grepq "$out27" '\[SKIP\].*test-quar\.sh — tier: quarantine .*impacted selection does not reach'; then
+  pass "27a: the quarantine suite the selection does not reach is [SKIP]ped with a 'tier: quarantine' reason"
+else
+  fail "27a: no 'tier: quarantine' skip for test-quar.sh: $out27"
+fi
 case "$ran27" in
   *unlisted*) pass "27b: a suite with no suite-tiers.tsv row runs in pr mode" ;;
   *) fail "27b: the unlisted suite did not run: $out27" ;;
 esac
+out27=$(SUITE_TIER_MODE="pr" bash "$run27" --scan-repo-of-script 2>&1); rc27=$?
 if [ "$rc27" -eq 0 ] && grepq "$out27" '\[QUARANTINE\].*test-quar\.sh'; then
-  pass "27c: a failing quarantine suite runs, is marked [QUARANTINE] and the run is rc 0"
+  pass "27c: with no selection a failing quarantine suite runs, is marked [QUARANTINE] and the run is rc 0"
 else
   fail "27c: rc=$rc27 (want 0 with a [QUARANTINE] line): $out27"
 fi
@@ -222,10 +228,10 @@ fi
 : > "$T27_LOG"
 out27=$(SUITE_TIER_MODE="pr" bash "$run27" --scan-repo-of-script --impacted "$docs27" 2>&1); rc27=$?
 ran27=$(sort -u "$T27_LOG" | tr '\n' ' ')
-if [ "$rc27" -eq 0 ] && [ "$ran27" = "pr quar unlisted " ]; then
-  pass "27e: a docs-only range in pr mode still runs the pr-tier and unlisted suites"
+if [ "$rc27" -eq 0 ] && [ "$ran27" = "pr unlisted " ]; then
+  pass "27e: a docs-only range in pr mode still runs the pr-tier and unlisted suites, not the unreached quarantine one"
 else
-  fail "27e: rc=$rc27 ran='$ran27' (want pr quar unlisted) output: $out27"
+  fail "27e: rc=$rc27 ran='$ran27' (want pr unlisted) output: $out27"
 fi
 
 SUITE_TIERS_TSV="$sb27/missing.tsv" SUITE_TIER_MODE=pr bash "$run27" --scan-repo-of-script --list > /dev/null 2>&1; rc27=$?
@@ -255,6 +261,11 @@ if [ "$rc27" -eq 0 ] && [ "$ran27" = "local-hit local-miss pr quar unlisted " ];
 else
   fail "27h: rc=$rc27 ran='$ran27' (want local-hit local-miss pr quar unlisted) output: $out27"
 fi
+if grepq "$out27" 'selection: mode full' && ! grepq "$out27" 'test-quar\.sh — tier: quarantine'; then
+  pass "27h: a full selection counts every suite as reached, so the quarantine suite is not skipped"
+else
+  fail "27h: want 'selection: mode full' and no quarantine skip for test-quar.sh: $out27"
+fi
 
 mk27 test-prfail.sh prfail '# a failing pr-tier suite' 1
 printf 'scripts/test-prfail.sh\tpr\tguard\n' >> "$sb27/scripts/ci/suite-tiers.tsv"
@@ -272,6 +283,66 @@ if [ "$rc27" -eq 1 ] && grepq "$out27" '\[QUARANTINE\].*test-quar\.sh' \
   pass "27j: a failing pr-tier suite fails an all-mode run; only the quarantine row is forgiven"
 else
   fail "27j: rc=$rc27 (want 1, test-prfail.sh not [QUARANTINE]) output: $out27"
+fi
+
+mk27 test-quarhit.sh quarhit '# drives scripts/lib/thing.sh' 1
+printf 'scripts/test-quarhit.sh\tquarantine\tflakes\n' >> "$sb27/scripts/ci/suite-tiers.tsv"
+git -C "$sb27" add scripts/test-quarhit.sh
+git -C "$sb27" commit -q -m "test: quarhit" -- scripts/test-quarhit.sh
+base27k=$(git -C "$sb27" rev-parse HEAD)
+printf 'echo changed again\n' >> "$sb27/scripts/lib/thing.sh"
+git -C "$sb27" commit -q -m "fix: thing again" -- scripts/lib/thing.sh
+range27="$base27k..$(git -C "$sb27" rev-parse HEAD)"
+: > "$T27_LOG"
+out27=$(SUITE_TIER_MODE="pr" SUITE_MANIFEST="$sb27/m27.txt" bash "$run27" --scan-repo-of-script --impacted "$range27" 2>&1); rc27=$?
+ran27=$(sort -u "$T27_LOG" | tr '\n' ' ')
+if [ "$ran27" = "local-hit pr prfail quarhit unlisted " ] && [ "$(grep -cx quarhit "$T27_LOG")" = 1 ] \
+   && grepq "$out27" '\[QUARANTINE\].*test-quarhit\.sh'; then
+  pass "27k: a quarantine suite the selection reaches runs exactly once and is [QUARANTINE]d; the unreached one does not run"
+else
+  fail "27k: ran='$ran27' quarhit runs=$(grep -cx quarhit "$T27_LOG") (want 'local-hit pr prfail quarhit unlisted', 1 run, a [QUARANTINE] line) output: $out27"
+fi
+if grepq "$out27" -E '\[NO-RETRY\].*test-quarhit\.sh is tier quarantine and failed \(rc=1\)' \
+   && ! grepq "$out27" '\[RETRY\].*test-quarhit\.sh' \
+   && [ "$(grep -cx prfail "$T27_LOG")" = 2 ]; then
+  pass "27k: a failing quarantine suite is [NO-RETRY], while a failing pr-tier suite is still retried once"
+else
+  fail "27k: want [NO-RETRY] for quarhit, none [RETRY] for it, prfail run twice (runs=$(grep -cx prfail "$T27_LOG")): $out27"
+fi
+if grep -qx 'skip scripts/test-quar.sh' "$sb27/m27.txt" && grep -qx 'ran 1 scripts/test-quarhit.sh' "$sb27/m27.txt"; then
+  pass "27k: the manifest records a skip row for the unreached quarantine suite and a ran row for the reached one"
+else
+  fail "27k: manifest rows missing: $(cat "$sb27/m27.txt")"
+fi
+out27=$(SUITE_TIER_MODE="pr" bash "$run27" --scan-repo-of-script --list --impacted "$range27" 2>&1); rc27=$?
+if [ "$rc27" -eq 0 ] && grepq "$out27" '\[SKIP\].*test-quar\.sh — tier: quarantine' && grepq "$out27" '\[RUN \].*test-quarhit\.sh'; then
+  pass "27k: --list shows the unreached quarantine suite as [SKIP] and the reached one as [RUN ]"
+else
+  fail "27k: --list: rc=$rc27 output: $out27"
+fi
+out27=$(SUITE_TIER_MODE=all bash "$run27" --scan-repo-of-script --list --impacted "$range27" 2>&1); rc27=$?
+if grepq "$out27" '\[SKIP\].*test-quar\.sh — impacted: ' && ! grepq "$out27" 'tier: quarantine'; then
+  pass "27k: outside pr mode the same selection skips it by the impacted filter, not the quarantine one"
+else
+  fail "27k: non-pr --list: rc=$rc27 output: $out27"
+fi
+out27=$(SUITE_TIER_MODE=all bash "$run27" --scan-repo-of-script --list 2>&1)
+if grepq "$out27" '\[RUN \].*test-quar\.sh' && grepq "$out27" '\[RUN \].*test-quarhit\.sh'; then
+  pass "27k: with no selection every quarantine suite is planned to run"
+else
+  fail "27k: all-mode --list: $out27"
+fi
+: > "$T27_LOG"
+sh27a=$(SUITE_TIER_MODE="pr" bash "$run27" --scan-repo-of-script --impacted "$range27" --shard 1/2 2>&1)
+sort -u "$T27_LOG" > "$sb27/shard1.ran"; : > "$T27_LOG"
+sh27b=$(SUITE_TIER_MODE="pr" bash "$run27" --scan-repo-of-script --impacted "$range27" --shard 2/2 2>&1)
+sort -u "$T27_LOG" > "$sb27/shard2.ran"
+union27=$(sort "$sb27/shard1.ran" "$sb27/shard2.ran" | tr '\n' ' ')
+if [ "$union27" = "local-hit pr prfail quarhit unlisted " ] \
+   && grepq "$sh27a" '\[SKIP\].*test-quar\.sh — tier: quarantine' && grepq "$sh27b" '\[SKIP\].*test-quar\.sh — tier: quarantine'; then
+  pass "27k: the two shards together run each remaining suite exactly once and both skip the unreached quarantine suite"
+else
+  fail "27k: shard union='$union27' (want each of local-hit pr prfail quarhit unlisted once) shard1: $sh27a shard2: $sh27b"
 fi
 rm -rf "$sb27"
 fi
@@ -501,7 +572,7 @@ sb33=$(mktemp -d -t himmel-suite-retrysum.XXXXXX) || { fail "33: mktemp failed";
 if [ -n "$sb33" ]; then
 mkdir -p "$sb33/scripts" "$sb33/flakedir" "$sb33/home"
 # Both suites spend 3 s per attempt, so a runner that times only the last attempt reports 3-4 s and the sum is 6-7 s.
-cat > "$sb33/scripts/test-quar33.sh" <<'SHEOF'
+cat > "$sb33/scripts/test-fail33.sh" <<'SHEOF'
 #!/usr/bin/env bash
 sleep 3
 exit 1
@@ -513,16 +584,13 @@ sleep 3
 [ "$(wc -l < "$SUM33_DIR/flake.runs")" -ge 2 ] && exit 0
 exit 1
 SHEOF
-chmod +x "$sb33/scripts/test-quar33.sh" "$sb33/flakedir/test-flake33.sh"
-printf '# fixture tiers\n%s\tquarantine\tflakes\n' "$sb33/scripts/test-quar33.sh" > "$sb33/tiers.tsv"  # a suite outside the repo root keeps its absolute path as the tier key
-# Real run 41185890791 (shell-unit-shard 5, main, 2026-10-31) printed, for a suite that failed both attempts:
-#   [QUARANTINE] scripts/handover/chief-kit/test-chief-wait-b.sh (rc=1, 509s) — tier quarantine, not failing the run
-out33=$(HOME="$sb33/home" HIMMEL_SUITE_LEDGER="$sb33/suite-runs.jsonl" SUM33_DIR="$sb33" SUITE_TIERS_TSV="$sb33/tiers.tsv" SUITE_FLAKE_LEDGER="$sb33/flake-ledger.jsonl" SUITE_TIER_MODE=all bash "$RUNNER" "$sb33/scripts" 2>&1); rc33=$?
-dur33=$(printf '%s\n' "$out33" | sed -n 's/^\[QUARANTINE\] .*test-quar33\.sh (rc=1, \([0-9][0-9]*\)s) — tier quarantine, not failing the run$/\1/p')
-if [ "$rc33" -eq 0 ] && [ -n "$dur33" ] && [ "$dur33" -ge 6 ]; then
-  pass "33a: a quarantined suite that failed both attempts reports both attempts' seconds (${dur33}s)"
+chmod +x "$sb33/scripts/test-fail33.sh" "$sb33/flakedir/test-flake33.sh"
+out33=$(HOME="$sb33/home" HIMMEL_SUITE_LEDGER="$sb33/suite-runs.jsonl" SUM33_DIR="$sb33" SUITE_FLAKE_LEDGER="$sb33/flake-ledger.jsonl" SUITE_TIER_MODE=all bash "$RUNNER" "$sb33/scripts" 2>&1); rc33=$?
+dur33=$(printf '%s\n' "$out33" | sed -n 's/^\[FAIL\] .*test-fail33\.sh (rc=1, \([0-9][0-9]*\)s)$/\1/p')
+if [ "$rc33" -eq 1 ] && [ -n "$dur33" ] && [ "$dur33" -ge 6 ]; then
+  pass "33a: a suite that failed both attempts reports both attempts' seconds (${dur33}s)"
 else
-  fail "33a: rc=$rc33 dur='$dur33' (want rc 0 and a [QUARANTINE] line of at least 6s) output: $out33"
+  fail "33a: rc=$rc33 dur='$dur33' (want rc 1 and a [FAIL] line of at least 6s) output: $out33"
 fi
 out33=$(HOME="$sb33/home" HIMMEL_SUITE_LEDGER="$sb33/suite-runs.jsonl" SUM33_DIR="$sb33" SUITE_FLAKE_LEDGER="$sb33/flake-ledger.jsonl" SUITE_TIER_MODE=all bash "$RUNNER" "$sb33/flakedir" 2>&1); rc33=$?
 dur33=$(printf '%s\n' "$out33" | sed -n 's/^\[FLAKE\] .*test-flake33\.sh (first run rc=1, passed on retry, \([0-9][0-9]*\)s)$/\1/p')
@@ -590,7 +658,7 @@ fi
 rm -rf "$sb34"
 fi
 
-echo "== Case 35: a quarantine cap overrun runs once; other failures keep their rerun =="
+echo "== Case 35: a quarantine failure of any kind runs once; non-quarantine failures keep their rerun =="
 sb35=$(mktemp -d -t himmel-suite-quarcap.XXXXXX) || { fail "35: mktemp failed"; sb35=""; }
 [ -z "$sb35" ] || sb35_phys=$(cd "$sb35" && pwd -P) || { fail "35: cannot resolve the sandbox path $sb35"; sb35_phys=""; }
 [ -z "$sb35" ] || sb35="$sb35_phys"
@@ -611,7 +679,12 @@ cat > "$sb35/scripts/test-quarfail35.sh" <<'SHEOF'
 echo run >> "$CAP35_DIR/quarfail.runs"
 exit 1
 SHEOF
-chmod +x "$sb35/scripts/test-quarcap35.sh" "$sb35/scripts/test-plaincap35.sh" "$sb35/scripts/test-quarfail35.sh"
+cat > "$sb35/scripts/test-plainfail35.sh" <<'SHEOF'
+#!/usr/bin/env bash
+echo run >> "$CAP35_DIR/plainfail.runs"
+exit 1
+SHEOF
+chmod +x "$sb35/scripts/test-quarcap35.sh" "$sb35/scripts/test-plaincap35.sh" "$sb35/scripts/test-quarfail35.sh" "$sb35/scripts/test-plainfail35.sh"
 printf '# fixture tiers\n%s\tquarantine\tflakes\n%s\tquarantine\tflakes\n' \
   "$sb35/scripts/test-quarcap35.sh" "$sb35/scripts/test-quarfail35.sh" > "$sb35/tiers.tsv"
 out35=$(HOME="$sb35/home" HIMMEL_SUITE_LEDGER="$sb35/suite-runs.jsonl" CAP35_DIR="$sb35" SUITE_TIERS_TSV="$sb35/tiers.tsv" SUITE_FLAKE_LEDGER="$sb35/flake-ledger.jsonl" SUITE_TIMEOUT=2 SUITE_TIER_MODE=all bash "$RUNNER" "$sb35/scripts" 2>&1); rc35=$?
@@ -627,10 +700,16 @@ if [ "$(runs35 plaincap)" = 2 ] && grepq "$out35" '\[RETRY\] [^ ]*test-plaincap3
 else
   fail "35b: plaincap runs=$(runs35 plaincap) (want 2 and a [RETRY] line) output: $out35"
 fi
-if [ "$(runs35 quarfail)" = 2 ] && grepq "$out35" -E '\[RETRY\] [^ ]*test-quarfail35\.sh failed \(rc=1\)'; then
-  pass "35c: a quarantine suite that fails without overrunning its cap keeps its rerun"
+if [ "$(runs35 quarfail)" = 1 ] && grepq "$out35" -E '\[NO-RETRY\] [^ ]*test-quarfail35\.sh is tier quarantine and failed \(rc=1\)' \
+   && ! grepq "$out35" -E '\[RETRY\] [^ ]*test-quarfail35\.sh' && grepq "$out35" '\[QUARANTINE\] [^ ]*test-quarfail35\.sh'; then
+  pass "35c: a quarantine suite that fails without overrunning its cap runs once, is named [NO-RETRY] and still [QUARANTINE]d"
 else
-  fail "35c: quarfail runs=$(runs35 quarfail) (want 2 and a [RETRY] line) output: $out35"
+  fail "35c: quarfail runs=$(runs35 quarfail) (want 1, a [NO-RETRY] line, no [RETRY] line and a [QUARANTINE] line) output: $out35"
+fi
+if [ "$(runs35 plainfail)" = 2 ] && grepq "$out35" -E '\[RETRY\] [^ ]*test-plainfail35\.sh failed \(rc=1\)'; then
+  pass "35e: a non-quarantine suite that fails without overrunning its cap is still rerun once"
+else
+  fail "35e: plainfail runs=$(runs35 plainfail) (want 2 and a [RETRY] line) output: $out35"
 fi
 if [ "$rc35" -eq 1 ] && grepq "$out35" 'TIMED OUT: 2'; then
   pass "35d: both overruns still count as TIMED OUT, and only the non-quarantine one fails the run (rc 1)"
