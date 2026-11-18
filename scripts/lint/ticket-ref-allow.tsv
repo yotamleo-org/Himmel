@@ -14,7 +14,6 @@ K1	^templates/luna-second-brain/CHANGELOG\.md$		generated from commit titles
 K1	^docs/release/		a dated release record whose subject is the ticket
 K1	^docs/migration/		a dated migration record whose subject is the ticket
 K1	^archive/		archived history
-K1	^scripts/handover/chief-kit/test-tick-b\.sh$	HIMMEL-[0-9]+	rows moved verbatim from test-tick.sh, whose row names and comments cite their tickets
 K2	(^|/)[^/]*fixtures?/		input a test reads verbatim
 K2	(^|/)testdata/		input a test reads verbatim
 K2	^scripts/lanes/bench/runs/		recorded bench runs a test reads

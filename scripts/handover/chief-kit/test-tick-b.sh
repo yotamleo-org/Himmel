@@ -26,7 +26,7 @@ iso_ago() { date -u -d "-$1 min" +%Y-%m-%dT%H:%M:%SZ; }
 # own tail. RED control (pre-fix tick.sh): workers=N380:UNKNOWN.
 u3290="HIMMEL-3380-N380-unverified-2026-09-22-RESUME"
 printf '%s\n' '# worker' '- 12:00 LIVE — working' '- 12:30 WRAPPED — released' > "$W/handover/$u3290.md"
-contains 'an unattributable lock reads UNVERIFIED, not FREE/WRAPPED/UNKNOWN (HIMMEL-3290)' "$(bash "$SUT" --workers "$W/handover/$u3290.md" 2>/dev/null)" 'workers=N380:UNVERIFIED '
+contains 'an unattributable lock reads UNVERIFIED, not FREE/WRAPPED/UNKNOWN' "$(bash "$SUT" --workers "$W/handover/$u3290.md" 2>/dev/null)" 'workers=N380:UNVERIFIED '
 
 # --- a past-TTL lock whose owner is provably dead (status
 # `STALE-DEAD`, rc 12) reads STALE-DEAD and is NOT a held leg: it must not
@@ -35,8 +35,8 @@ contains 'an unattributable lock reads UNVERIFIED, not FREE/WRAPPED/UNKNOWN (HIM
 d5541="HIMMEL-5541-N390-stale-dead-2026-10-01-RESUME"
 printf '%s\n' '# worker' '- 12:00 LIVE — working' > "$W/handover/$d5541.md"
 out5541="$(bash "$SUT" --workers "$W/handover/$d5541.md" 2>/dev/null)"
-contains 'a past-TTL dead-owner lock reads STALE-DEAD (HIMMEL-5541)' "$out5541" 'workers=N390:STALE-DEAD '
-not_contains 'a STALE-DEAD lock is not folded into STALE (HIMMEL-5541)' "$out5541" 'workers=N390:STALE '
+contains 'a past-TTL dead-owner lock reads STALE-DEAD' "$out5541" 'workers=N390:STALE-DEAD '
+not_contains 'a STALE-DEAD lock is not folded into STALE' "$out5541" 'workers=N390:STALE '
 
 # --- board=<ok|STALE:<age>|MISSING|skip> -- the chief's progress
 # board (<doc stem>.board.json, written by board.mjs next to the chief doc) must be
@@ -62,22 +62,22 @@ write_console3361() {  # write_console3361 <last GO value> [extra Results bullet
 t3361() { PATH="$W/bin-3361:$PATH" bash "$SUT" --workers "$W/handover/$b3361.md" "$@"; }
 out="$(bash "$SUT")"
 write_console3361 none
-contains 'a chief with no board file reads board=MISSING (HIMMEL-3361)' "$(t3361)" ' board=MISSING'
+contains 'a chief with no board file reads board=MISSING' "$(t3361)" ' board=MISSING'
 # The default fixture has no chief doc at all: nothing to check, like workerset=skip.
-contains 'no chief doc reads board=skip (HIMMEL-3361)' "$out" ' board=skip'
-contains '--verbose labels the board (HIMMEL-3361)' "$(t3361 --verbose)" 'board: MISSING'
+contains 'no chief doc reads board=skip' "$out" ' board=skip'
+contains '--verbose labels the board' "$(t3361 --verbose)" 'board: MISSING'
 # --emit-fp is the seam board.mjs reads: the tick line, then the fingerprint.
 fp3361="$(t3361 --emit-fp | sed -n '2p')"
 case "$fp3361" in
-    board-fp=[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) pass '--emit-fp prints the fingerprint on line 2 (HIMMEL-3361)' ;;
+    board-fp=[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) pass '--emit-fp prints the fingerprint on line 2' ;;
     *) fail "--emit-fp line 2 is not board-fp=<16 hex> ('$fp3361')" ;;
 esac
 # A board whose fingerprint is not the current one is STALE, aged by its mtime.
 printf '%s\n' '{' ' "freshness": {' '  "board_fp": "0000000000000000"' ' }' '}' > "$board3361"
 touch -d '3 hours ago' "$board3361"  # gnu-ok: chief kit is Linux-only
-contains 'a board with another fingerprint reads board=STALE:<age> (HIMMEL-3361)' "$(t3361)" ' board=STALE:3h'
+contains 'a board with another fingerprint reads board=STALE:<age>' "$(t3361)" ' board=STALE:3h'
 touch -d '12 minutes ago' "$board3361"  # gnu-ok: chief kit is Linux-only
-contains 'a young stale board ages in minutes (HIMMEL-3361)' "$(t3361)" ' board=STALE:12m'
+contains 'a young stale board ages in minutes' "$(t3361)" ' board=STALE:12m'
 # The real generator's output is fresh under the real tick: one derivation. The
 # stubs on PATH answer gh/bank/atq for both, so the two runs see the same state.
 if command -v node >/dev/null 2>&1; then
@@ -87,26 +87,26 @@ if command -v node >/dev/null 2>&1; then
     else
         fail "board.mjs did not write the board ($bpath3361)"
     fi
-    contains 'a board rendered from the current state reads board=ok (HIMMEL-3361)' "$(t3361)" ' board=ok'
+    contains 'a board rendered from the current state reads board=ok' "$(t3361)" ' board=ok'
     # The freshness is read from board.json, so a board with no static page on disk is not a stale board.
     if compgen -G "$W/handover/*.html" >/dev/null; then fail 'board.mjs left an html page in the bucket'; fi
     contains 'a board with no static page on disk still reads board=ok' "$(t3361)" ' board=ok'
     # A Results bullet is not a state change: the board stays ok.
     write_console3361 none '- 12:05 RULING nothing about state'
-    contains 'a Results bullet does not stale the board (HIMMEL-3361)' "$(t3361)" ' board=ok'
+    contains 'a Results bullet does not stale the board' "$(t3361)" ' board=ok'
     # A GO is: republish.
     # shellcheck disable=SC2016  # backtick span, literal fixture text
     write_console3361 '`1023:abc`'
-    contains 'a new last GO stales the board (HIMMEL-3361)' "$(t3361)" ' board=STALE:'
+    contains 'a new last GO stales the board' "$(t3361)" ' board=STALE:'
     # The epics: and decisions: lines are rendered panels: editing them is a republish.
     write_console3361 none '' 'epics: HIMMEL-3332=5'
-    contains 'a new epics: line stales the board (HIMMEL-3361)' "$(t3361)" ' board=STALE:'
+    contains 'a new epics: line stales the board' "$(t3361)" ' board=STALE:'
     write_console3361 none '' 'decisions: widen the fleet cap?'
-    contains 'a new decisions: line stales the board (HIMMEL-3361)' "$(t3361)" ' board=STALE:'
+    contains 'a new decisions: line stales the board' "$(t3361)" ' board=STALE:'
     write_console3361 none
     # A worker tail change (READY) is a phase change: republish.
     printf '%s\n' '- 12:30 READY 1023 abc GREEN' >> "$W/handover/$b3361.md"
-    contains 'a worker phase change stales the board (HIMMEL-3361)' "$(t3361)" ' board=STALE:'
+    contains 'a worker phase change stales the board' "$(t3361)" ' board=STALE:'
     # --- one Live-state block, read by tick.sh and by board.mjs, names
     # the same workers. RED control (pre-fix board.mjs): its own parser accepted a
     # three-field span (N4), an empty-field span (N5), a span in a `>` line (N8) and
@@ -125,9 +125,9 @@ if command -v node >/dev/null 2>&1; then
     tickset3366="$(PATH="$W/bin-3361:$PATH" bash "$SUT" --doc "$W/handover/chief.md" | sed -n 's/.* workerset=STALE:unarmed=\([^ ;]*\).*/\1/p' | tr '+' '\n' | sort)"
     PATH="$W/bin-3361:$PATH" BOARD_TICK="$SUT" node "$HERE/board.mjs" --doc "$W/handover/chief.md" --repo "$REPO" --out "$W/handover/board-3366.html" >/dev/null 2>&1
     boardset3366="$(grep -o 'data-label="[^"]*"' "$W/handover/board-3366.html" | sed 's/^data-label="//; s/"$//' | sort)"
-    contains 'the tick reads a label with _ . - as a worker (HIMMEL-3366)' "$tickset3366" 'N3_x.y-z'
+    contains 'the tick reads a label with _ . - as a worker' "$tickset3366" 'N3_x.y-z'
     if [ -n "$tickset3366" ] && [ "$tickset3366" = "$boardset3366" ]; then
-        pass 'tick.sh and board.mjs read one Live-state block as the same worker set (HIMMEL-3366)'
+        pass 'tick.sh and board.mjs read one Live-state block as the same worker set'
     else
         fail "tick.sh and board.mjs read different worker sets (tick: $(printf '%s' "$tickset3366" | tr '\n' ' ') board: $(printf '%s' "$boardset3366" | tr '\n' ' '))"
     fi
@@ -144,7 +144,7 @@ printf '%s\n' '# worker' '- 12:00 LIVE — working' '- 12:30 WRAPPED — release
 mkcmdline 140 claude --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-3747-N640-closable-2026-09-27 work
 mk_pgrep_x "$W/bin-3747a" 140
 o3747a="$(PATH="$W/bin-3747a:$PATH" bash "$SUT" --workers "$W/handover/$w3747a.md")"
-contains 'a WRAPPED worker whose session process is still alive reads CLOSABLE (HIMMEL-3747 Ask 1)' "$o3747a" 'workers=N640:CLOSABLE'
+contains 'a WRAPPED worker whose session process is still alive reads CLOSABLE' "$o3747a" 'workers=N640:CLOSABLE'
 
 # Control: the same WRAPPED doc, but no live session anywhere in the census --
 # the normal end of a worker once its window is actually gone. Must stay WRAPPED.
@@ -152,7 +152,7 @@ w3747b="HIMMEL-3747-N641-gone-2026-09-27-RESUME"
 printf '%s\n' '# worker' '- 12:00 LIVE — working' '- 12:30 WRAPPED — released' > "$W/handover/$w3747b.md"
 mk_pgrep_x "$W/bin-3747b"
 o3747b="$(PATH="$W/bin-3747b:$PATH" bash "$SUT" --workers "$W/handover/$w3747b.md")"
-contains 'a WRAPPED worker whose session process is gone stays WRAPPED, not CLOSABLE (HIMMEL-3747 Ask 1)' "$o3747b" 'workers=N641:WRAPPED'
+contains 'a WRAPPED worker whose session process is gone stays WRAPPED, not CLOSABLE' "$o3747b" 'workers=N641:WRAPPED'
 
 # Control: a fatal census (pgrep itself failing) must never claim CLOSABLE --
 # fail closed to WRAPPED, since "session process alive" cannot be proven.
@@ -166,7 +166,7 @@ exit 2
 STUB
 chmod +x "$W/bin-3747c/pgrep"
 o3747c="$(PATH="$W/bin-3747c:$PATH" bash "$SUT" --workers "$W/handover/$w3747c.md")"
-contains 'a fatal census must not promote a live-looking worker to CLOSABLE (HIMMEL-3747 Ask 1)' "$o3747c" 'workers=N642:WRAPPED'
+contains 'a fatal census must not promote a live-looking worker to CLOSABLE' "$o3747c" 'workers=N642:WRAPPED'
 
 # --- a relaunched worker (-r<N> session suffix) reads CLOSABLE too, and
 # closable=<n> counts CLOSABLE workers whose doc has sat untouched past TICK_CLOSABLE_MIN
@@ -177,14 +177,14 @@ mkcmdline 142 claude --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-5923
 mk_pgrep_x "$W/bin-5923a" 142
 touch -d '20 minutes ago' "$W/handover/$w5923a.md"
 o5923a="$(PATH="$W/bin-5923a:$PATH" bash "$SUT" --workers "$W/handover/$w5923a.md")"
-contains 'a WRAPPED worker running as <name>-r1 reads CLOSABLE (HIMMEL-5923)' "$o5923a" 'workers=N650:CLOSABLE'
-contains 'an old CLOSABLE worker is counted in closable=1 (HIMMEL-5923)' "$o5923a" ' closable=1'
+contains 'a WRAPPED worker running as <name>-r1 reads CLOSABLE' "$o5923a" 'workers=N650:CLOSABLE'
+contains 'an old CLOSABLE worker is counted in closable=1' "$o5923a" ' closable=1'
 touch "$W/handover/$w5923a.md"
 o5923b="$(PATH="$W/bin-5923a:$PATH" bash "$SUT" --workers "$W/handover/$w5923a.md")"
-contains 'a freshly WRAPPED CLOSABLE worker is still CLOSABLE (HIMMEL-5923)' "$o5923b" 'workers=N650:CLOSABLE'
-case "$o5923b" in *' closable='*) fail 'a fresh CLOSABLE worker must not be counted in closable= (HIMMEL-5923)' ;; *) pass 'a fresh CLOSABLE worker is not counted in closable= (HIMMEL-5923)' ;; esac
+contains 'a freshly WRAPPED CLOSABLE worker is still CLOSABLE' "$o5923b" 'workers=N650:CLOSABLE'
+case "$o5923b" in *' closable='*) fail 'a fresh CLOSABLE worker must not be counted in closable=' ;; *) pass 'a fresh CLOSABLE worker is not counted in closable=' ;; esac
 o5923c="$(PATH="$W/bin-3747b:$PATH" bash "$SUT" --workers "$W/handover/$w3747b.md")"
-case "$o5923c" in *' closable='*) fail 'no CLOSABLE leg: closable= must be absent (HIMMEL-5923)' ;; *) pass 'no CLOSABLE leg: closable= is absent (HIMMEL-5923)' ;; esac
+case "$o5923c" in *' closable='*) fail 'no CLOSABLE leg: closable= must be absent' ;; *) pass 'no CLOSABLE leg: closable= is absent' ;; esac
 
 # --- a BLOCKED hand-off naming its launched successor, with the worker's own lock free, is a
 # closable named hand-off: CLOSABLE and counted in closable=. A held lock, or a later ordinary
@@ -227,14 +227,14 @@ d3724a="$W/denials-3724a.jsonl"
 : > "$d3724a"
 mkdenial "$d3724a" 5 worker-a 'git push origin main'
 o3724a="$(HIMMEL_CLASSIFIER_DENIALS_LOG="$d3724a" bash "$SUT" 2>/dev/null)"
-contains 'a denied ship-step command reads SHIP-STEP (HIMMEL-3724)' "$o3724a" 'denials=worker-a:1:SHIP-STEP'
+contains 'a denied ship-step command reads SHIP-STEP' "$o3724a" 'denials=worker-a:1:SHIP-STEP'
 
 d3724b="$W/denials-3724b.jsonl"
 : > "$d3724b"
 mkdenial "$d3724b" 5 worker-a 'ls -la'
 mkdenial "$d3724b" 3 worker-a 'cat foo'
 o3724b="$(HIMMEL_CLASSIFIER_DENIALS_LOG="$d3724b" bash "$SUT" 2>/dev/null)"
-contains '2 non-ship denials in the window read REPEAT (HIMMEL-3724)' "$o3724b" 'denials=worker-a:2:REPEAT'
+contains '2 non-ship denials in the window read REPEAT' "$o3724b" 'denials=worker-a:2:REPEAT'
 
 d3724c="$W/denials-3724c.jsonl"
 : > "$d3724c"
@@ -242,7 +242,7 @@ mkdenial "$d3724c" 5 worker-a 'ls -la'
 mkdenial "$d3724c" 4 worker-a 'cat foo'
 mkdenial "$d3724c" 3 worker-a 'pwd'
 o3724c="$(HIMMEL_CLASSIFIER_DENIALS_LOG="$d3724c" bash "$SUT" 2>/dev/null)"
-contains '3+ non-ship denials in the window read PAUSE-RISK (HIMMEL-3724)' "$o3724c" 'denials=worker-a:3:PAUSE-RISK'
+contains '3+ non-ship denials in the window read PAUSE-RISK' "$o3724c" 'denials=worker-a:3:PAUSE-RISK'
 
 d3724d="$W/denials-3724d.jsonl"
 : > "$d3724d"
@@ -253,21 +253,21 @@ while [ "$i" -lt 17 ]; do
 done
 mkdenial "$d3724d" 5 worker-a 'pwd'
 o3724d="$(HIMMEL_CLASSIFIER_DENIALS_LOG="$d3724d" bash "$SUT" 2>/dev/null)"
-contains 'an all-time total approaching 20 reads PAUSE-RISK even with 1 in-window (HIMMEL-3724)' "$o3724d" 'denials=worker-a:1:PAUSE-RISK'
+contains 'an all-time total approaching 20 reads PAUSE-RISK even with 1 in-window' "$o3724d" 'denials=worker-a:1:PAUSE-RISK'
 
 d3724e="$W/denials-3724e.jsonl"
 : > "$d3724e"
 mkdenial "$d3724e" 90 worker-a 'ls -la'
 o3724e="$(HIMMEL_CLASSIFIER_DENIALS_LOG="$d3724e" bash "$SUT" 2>/dev/null)"
-contains 'a denial older than the window is excluded, reading none (HIMMEL-3724)' "$o3724e" 'denials=none'
+contains 'a denial older than the window is excluded, reading none' "$o3724e" 'denials=none'
 
 d3724f="$W/denials-3724f.jsonl"
 : > "$d3724f"
 o3724f="$(HIMMEL_CLASSIFIER_DENIALS_LOG="$d3724f" bash "$SUT" 2>/dev/null)"
-contains 'an empty log reads none (HIMMEL-3724)' "$o3724f" 'denials=none'
+contains 'an empty log reads none' "$o3724f" 'denials=none'
 
 o3724g="$(HIMMEL_CLASSIFIER_DENIALS_LOG="$W/denials-3724-missing.jsonl" bash "$SUT" 2>/dev/null)"
-contains 'a missing log reads none, not skip: no log means no denials (HIMMEL-3724)' "$o3724g" 'denials=none'
+contains 'a missing log reads none, not skip: no log means no denials' "$o3724g" 'denials=none'
 
 # Non-worktree sessions group by session id (not the cwd basename), so a
 # re-dispatched slug in the same directory does not inherit an old session's
@@ -282,13 +282,13 @@ mksess "$d3724s" 6 repo aaaaaaaa11111111 /home/u/repo 'ls'
 mksess "$d3724s" 5 repo aaaaaaaa11111111 /home/u/repo 'cat x'
 mksess "$d3724s" 4 repo bbbbbbbb22222222 /home/u/repo 'pwd'
 o3724s="$(HIMMEL_CLASSIFIER_DENIALS_LOG="$d3724s" bash "$SUT" 2>/dev/null)"
-contains 'two sessions in one non-worktree cwd get separate labels (HIMMEL-3724)' "$o3724s" 'denials=repo#aaaaaaaa:2:REPEAT,repo#bbbbbbbb:1'
-not_contains 'and the second session does not inherit the first one count (HIMMEL-3724)' "$o3724s" 'PAUSE-RISK'
+contains 'two sessions in one non-worktree cwd get separate labels' "$o3724s" 'denials=repo#aaaaaaaa:2:REPEAT,repo#bbbbbbbb:1'
+not_contains 'and the second session does not inherit the first one count' "$o3724s" 'PAUSE-RISK'
 d3724w="$W/denials-3724w.jsonl"
 : > "$d3724w"
 mksess "$d3724w" 5 feat+foo cccccccc33333333 /r/.claude/worktrees/feat+foo 'ls'
 o3724w="$(HIMMEL_CLASSIFIER_DENIALS_LOG="$d3724w" bash "$SUT" 2>/dev/null)"
-contains 'a worktree row keeps the bare slug as its label (HIMMEL-3724)' "$o3724w" 'denials=feat+foo:1 '
+contains 'a worktree row keeps the bare slug as its label' "$o3724w" 'denials=feat+foo:1 '
 
 # A window straddling a hook rotation: the earlier denial sits in <log>.1, the
 # later one in the live log. Both must count (REPEAT), not just the live one.
@@ -297,7 +297,7 @@ d3724x="$W/denials-3724x.jsonl"
 mksess "$d3724x.1" 6 repo dddddddd44444444 /home/u/repo 'ls'
 mksess "$d3724x" 4 repo dddddddd44444444 /home/u/repo 'cat x'
 o3724x="$(HIMMEL_CLASSIFIER_DENIALS_LOG="$d3724x" bash "$SUT" 2>/dev/null)"
-contains 'a denial rotated into <log>.1 still counts inside the window (HIMMEL-3724)' "$o3724x" 'denials=repo#dddddddd:2:REPEAT'
+contains 'a denial rotated into <log>.1 still counts inside the window' "$o3724x" 'denials=repo#dddddddd:2:REPEAT'
 
 # HARD RULE: input_head and reason_tag never leave the host --
 # they classify locally and must not be echoed into the tick line.
@@ -306,9 +306,9 @@ d3724r="$W/denials-3724r.jsonl"
 ts="$(date -u -d '-3 minutes' +%Y-%m-%dT%H:%M:%SZ)"
 printf '{"ts":"%s","session_title":"worker-r","input_head":"UNIQUE-HEAD-7f3a git push","reason_tag":"[UNIQUE-TAG-9c1e]"}\n' "$ts" >> "$d3724r"
 o3724r="$(HIMMEL_CLASSIFIER_DENIALS_LOG="$d3724r" bash "$SUT" 2>/dev/null)"
-contains 'a ship-step row still classifies SHIP-STEP (HIMMEL-3724)' "$o3724r" 'denials=worker-r:1:SHIP-STEP'
-not_contains 'the tick line never echoes input_head (HIMMEL-3724)' "$o3724r" 'UNIQUE-HEAD-7f3a'
-not_contains 'the tick line never echoes reason_tag (HIMMEL-3724)' "$o3724r" 'UNIQUE-TAG-9c1e'
+contains 'a ship-step row still classifies SHIP-STEP' "$o3724r" 'denials=worker-r:1:SHIP-STEP'
+not_contains 'the tick line never echoes input_head' "$o3724r" 'UNIQUE-HEAD-7f3a'
+not_contains 'the tick line never echoes reason_tag' "$o3724r" 'UNIQUE-TAG-9c1e'
 
 # Valid non-object JSON lines (a scalar, an array) survive `fromjson?`; they
 # must be dropped, not abort the slurp and hide every real denial.
@@ -317,7 +317,7 @@ d3724h="$W/denials-3724h.jsonl"
 mkdenial "$d3724h" 5 worker-a 'git push origin main'
 printf '%s\n' '5' '[1]' >> "$d3724h"
 o3724h="$(HIMMEL_CLASSIFIER_DENIALS_LOG="$d3724h" bash "$SUT" 2>/dev/null)"
-contains 'scalar and array lines in the log keep denials= populated (HIMMEL-3724)' "$o3724h" 'denials=worker-a:1:SHIP-STEP'
+contains 'scalar and array lines in the log keep denials= populated' "$o3724h" 'denials=worker-a:1:SHIP-STEP'
 
 # A valid object whose input_head is not a string must be skipped, not make
 # test() fail and turn the whole column into skip.
@@ -326,7 +326,7 @@ d3724i="$W/denials-3724i.jsonl"
 mkdenial "$d3724i" 5 worker-a 'git push origin main'
 printf '%s\n' '{"ts":"2099-01-01T00:00:00Z","session_title":"worker-b","input_head":5}' >> "$d3724i"
 o3724i="$(HIMMEL_CLASSIFIER_DENIALS_LOG="$d3724i" bash "$SUT" 2>/dev/null)"
-contains 'a non-string input_head row is skipped, denials= stays populated (HIMMEL-3724)' "$o3724i" 'denials=worker-a:1:SHIP-STEP'
+contains 'a non-string input_head row is skipped, denials= stays populated' "$o3724i" 'denials=worker-a:1:SHIP-STEP'
 
 # --- ciq= (queue-latency.sh -> compact field + SATURATED on two
 # consecutive full ticks). The stub prints $STUB_CIQ_OUT verbatim, after
@@ -346,39 +346,39 @@ ciq_tick() { STUB_CIQ_OUT="$1" STUB_CIQ_CALLS="$ciq_calls" bash "$SUT" 2>/dev/nu
 
 rm -rf "$W/state"; : > "$ciq_calls"
 o3840a="$(ciq_tick "$ciq_idle")"
-contains 'an idle queue prints the compact ciq= field (HIMMEL-3840)' "$o3840a" 'ciq=0/20,mac=0/5,q=0,wait=0m'
-not_contains 'an idle queue is not flagged SATURATED (HIMMEL-3840)' "$o3840a" 'SATURATED'
+contains 'an idle queue prints the compact ciq= field' "$o3840a" 'ciq=0/20,mac=0/5,q=0,wait=0m'
+not_contains 'an idle queue is not flagged SATURATED' "$o3840a" 'SATURATED'
 calls="$(wc -l < "$ciq_calls" | tr -d '[:space:]')"
-if [ "$calls" = 1 ]; then pass 'one tick runs the probe exactly once (HIMMEL-3840)'; else fail "probe calls per tick = $calls, want 1"; fi
+if [ "$calls" = 1 ]; then pass 'one tick runs the probe exactly once'; else fail "probe calls per tick = $calls, want 1"; fi
 
 rm -rf "$W/state"
 o3840b="$(ciq_tick "$ciq_full")"
-contains 'one full tick prints the field (HIMMEL-3840)' "$o3840b" 'ciq=20/20,mac=3/5,q=4,wait=62m'
-not_contains 'one full tick is not yet SATURATED (HIMMEL-3840)' "$o3840b" 'SATURATED'
+contains 'one full tick prints the field' "$o3840b" 'ciq=20/20,mac=3/5,q=4,wait=62m'
+not_contains 'one full tick is not yet SATURATED' "$o3840b" 'SATURATED'
 o3840c="$(ciq_tick "$ciq_full")"
-contains 'two consecutive full ticks read SATURATED (HIMMEL-3840)' "$o3840c" 'ciq=20/20,mac=3/5,q=4,wait=62m,SATURATED'
+contains 'two consecutive full ticks read SATURATED' "$o3840c" 'ciq=20/20,mac=3/5,q=4,wait=62m,SATURATED'
 ciq_tick "$ciq_idle" >/dev/null
 o3840e="$(ciq_tick "$ciq_full")"
-not_contains 'a non-full tick between two full ones resets the streak (HIMMEL-3840)' "$o3840e" 'SATURATED'
+not_contains 'a non-full tick between two full ones resets the streak' "$o3840e" 'SATURATED'
 
 # unknown: neither sets nor clears. full, unknown, full -> SATURATED (state
 # survived); idle, unknown, full -> not saturated (unknown did not set it).
 rm -rf "$W/state"
 ciq_tick "$ciq_full" >/dev/null
 o3840f="$(ciq_tick 'ci-queue: unknown')"
-contains 'a failed probe prints ciq=unknown (HIMMEL-3840)' "$o3840f" 'ciq=unknown'
+contains 'a failed probe prints ciq=unknown' "$o3840f" 'ciq=unknown'
 o3840g="$(ciq_tick "$ciq_full")"
-contains 'unknown does not clear the saturation state (HIMMEL-3840)' "$o3840g" 'SATURATED'
+contains 'unknown does not clear the saturation state' "$o3840g" 'SATURATED'
 rm -rf "$W/state"
 ciq_tick "$ciq_full" >/dev/null
 ciq_tick "$ciq_idle" >/dev/null
 ciq_tick 'ci-queue: unknown' >/dev/null
 o3840h="$(ciq_tick "$ciq_full")"
-not_contains 'unknown does not set the saturation state (HIMMEL-3840)' "$o3840h" 'SATURATED'
+not_contains 'unknown does not set the saturation state' "$o3840h" 'SATURATED'
 
 # a line with an empty numeric field is malformed: unknown, not a partial summary.
 o3840k="$(ciq_tick 'ci-queue: jobs_in_progress=/20 macos=0/5 queued=0 oldest_wait=0m')"
-contains 'an empty numeric field reads ciq=unknown (HIMMEL-3840)' "$o3840k" 'ciq=unknown'
+contains 'an empty numeric field reads ciq=unknown' "$o3840k" 'ciq=unknown'
 
 # probe timeout: a hung probe reads unknown inside the bound and leaves state alone.
 if [ -n "$_TIMEOUT_BIN" ]; then
@@ -387,10 +387,10 @@ if [ -n "$_TIMEOUT_BIN" ]; then
     t0="$(date +%s)"
     o3840i="$(STUB_CIQ_SLEEP=30 TICK_CIQ_TIMEOUT=1 STUB_CIQ_OUT="$ciq_full" bash "$SUT" 2>/dev/null)"
     t1="$(date +%s)"
-    contains 'a hung probe reads ciq=unknown (HIMMEL-3840)' "$o3840i" 'ciq=unknown'
-    if [ $((t1 - t0)) -lt 15 ]; then pass 'a hung probe is cut off inside the bound (HIMMEL-3840)'; else fail "hung probe took $((t1 - t0))s"; fi
+    contains 'a hung probe reads ciq=unknown' "$o3840i" 'ciq=unknown'
+    if [ $((t1 - t0)) -lt 15 ]; then pass 'a hung probe is cut off inside the bound'; else fail "hung probe took $((t1 - t0))s"; fi
     o3840j="$(ciq_tick "$ciq_full")"
-    contains 'a timed-out probe leaves the saturation state untouched (HIMMEL-3840)' "$o3840j" 'SATURATED'
+    contains 'a timed-out probe leaves the saturation state untouched' "$o3840j" 'SATURATED'
 else
     skip 'probe timeout rows: no timeout binary'
 fi
@@ -430,34 +430,34 @@ if command -v python3 >/dev/null 2>&1; then
     rm -f "$t3933_out" "$t3933_out.fp"
     write_mirror3933 2026-09-30T10:00:00.000+0000 'To Do'
     write_console3933
-    contains 'a chief with no tracker: line reads tracker=skip (HIMMEL-3933)' "$(t3933)" ' tracker=skip'
+    contains 'a chief with no tracker: line reads tracker=skip' "$(t3933)" ' tracker=skip'
     write_console3933 none
-    contains 'tracker: none reads tracker=skip (HIMMEL-3933)' "$(t3933)" ' tracker=skip'
+    contains 'tracker: none reads tracker=skip' "$(t3933)" ' tracker=skip'
     write_console3933 'https://claude.ai/artifact/x'
-    contains 'a tracker: line with no rendered page reads tracker=MISSING (HIMMEL-3933)' "$(t3933)" ' tracker=MISSING'
-    contains '--verbose labels the tracker (HIMMEL-3933)' "$(t3933 --verbose)" 'tracker: MISSING'
+    contains 'a tracker: line with no rendered page reads tracker=MISSING' "$(t3933)" ' tracker=MISSING'
+    contains '--verbose labels the tracker' "$(t3933 --verbose)" 'tracker: MISSING'
     t3933_render
-    contains 'a freshly rendered tracker reads tracker=ok (HIMMEL-3933)' "$(t3933)" ' tracker=ok'
+    contains 'a freshly rendered tracker reads tracker=ok' "$(t3933)" ' tracker=ok'
     # A ticket in a planned version changes status in Jira: the mirror's updated moves.
     write_mirror3933 2026-09-30T11:30:00.000+0000 Done
     touch -d '3 hours ago' "$t3933_out"  # gnu-ok: chief kit is Linux-only
-    contains 'a mirror that moved past the render reads tracker=STALE:<age> (HIMMEL-3933)' "$(t3933)" ' tracker=STALE:3h'
+    contains 'a mirror that moved past the render reads tracker=STALE:<age>' "$(t3933)" ' tracker=STALE:3h'
     t3933_render
-    contains 're-rendering after the change reads tracker=ok again (HIMMEL-3933)' "$(t3933)" ' tracker=ok'
+    contains 're-rendering after the change reads tracker=ok again' "$(t3933)" ' tracker=ok'
     # A plan file edit is a staleness too, not only the mirror.
     printf '%s\t%s\t%s\t%s\n' HIMMEL-2 v1.0.1 bugs 1 >> "$t3933_plan/stage3/placement.tsv"
-    contains 'a plan file change reads tracker=STALE (HIMMEL-3933)' "$(t3933)" ' tracker=STALE:'
+    contains 'a plan file change reads tracker=STALE' "$(t3933)" ' tracker=STALE:'
     # a rendered page the chief has not republished reads REPUBLISH; a publish stamp newer than the page reads ok.
     head -n -1 "$t3933_plan/stage3/placement.tsv" > "$t3933_plan/stage3/placement.tmp" && mv "$t3933_plan/stage3/placement.tmp" "$t3933_plan/stage3/placement.tsv"
     t3933_render
     touch -d '5 hours ago' "$t3933_out.published" || exit 1  # gnu-ok: chief kit is Linux-only
     touch -d '2 hours ago' "$t3933_out" || exit 1  # gnu-ok: chief kit is Linux-only
-    contains 'a page newer than its publish stamp reads tracker=REPUBLISH:<age> (HIMMEL-6483)' "$(t3933)" ' tracker=REPUBLISH:2h'
+    contains 'a page newer than its publish stamp reads tracker=REPUBLISH:<age>' "$(t3933)" ' tracker=REPUBLISH:2h'
     touch "$t3933_out.published" || exit 1
-    contains 'a publish stamp newer than the page reads tracker=ok (HIMMEL-6483)' "$(t3933)" ' tracker=ok'
+    contains 'a publish stamp newer than the page reads tracker=ok' "$(t3933)" ' tracker=ok'
     touch -d '1 hour' "$t3933_out" || exit 1  # gnu-ok: chief kit is Linux-only
     rm -f "$t3933_out.published"
-    contains 'no publish stamp keeps reading tracker=ok (HIMMEL-6483)' "$(t3933)" ' tracker=ok'
+    contains 'no publish stamp keeps reading tracker=ok' "$(t3933)" ' tracker=ok'
     # a focus-owned page is written by focus-refresh.sh, which records its own fingerprint (.vfp, and sha8 in
     # focus-state) and never the all-versions .fp: the tick compares that one for such a doc.
     t7508_state() { printf 'status=ok\nstage=\ngen=3\ndirty=\nsha8=%s\nsdrift=0:0\nver=%s\nts=1\n' "$1" "${2:-}" > "$W/handover/focus-state"; }
@@ -467,27 +467,27 @@ if command -v python3 >/dev/null 2>&1; then
     printf '%s\n' 0a1b2c3d4e5f6071 > "$t3933_out.vfp"
     t7508_state 0a1b2c3d
     t7508_doc 'focus-version: v1.0.1'
-    contains 'a focus-owned doc whose .vfp matches the focus state reads tracker=ok (HIMMEL-7508)' "$(t3933)" ' tracker=ok'
+    contains 'a focus-owned doc whose .vfp matches the focus state reads tracker=ok' "$(t3933)" ' tracker=ok'
     t7508_doc 'release: v1.0'
-    contains 'a doc with a release: line and no focus-version: line is focus-owned too (HIMMEL-7508)' "$(t3933)" ' tracker=ok'
+    contains 'a doc with a release: line and no focus-version: line is focus-owned too' "$(t3933)" ' tracker=ok'
     t7508_state 0a1b2c3d v1.0.1
     t7508_doc 'focus-version: v1.0.1'
-    contains 'a focus state recording the pinned version reads tracker=ok (HIMMEL-7508)' "$(t3933)" ' tracker=ok'
+    contains 'a focus state recording the pinned version reads tracker=ok' "$(t3933)" ' tracker=ok'
     t7508_state 0a1b2c3d v1.0.0
-    contains 'a focus-version switched since the last refresh reads tracker=STALE (HIMMEL-7508)' "$(t3933)" ' tracker=STALE:'
+    contains 'a focus-version switched since the last refresh reads tracker=STALE' "$(t3933)" ' tracker=STALE:'
     t7508_doc 'focus-version: auto'
-    contains 'focus-version: auto keeps the recorded version out of the compare (HIMMEL-7508)' "$(t3933)" ' tracker=ok'
+    contains 'focus-version: auto keeps the recorded version out of the compare' "$(t3933)" ' tracker=ok'
     t7508_doc 'release: v1.0'
-    contains 'a release-only doc keeps the recorded version out of the compare (HIMMEL-7508)' "$(t3933)" ' tracker=ok'
+    contains 'a release-only doc keeps the recorded version out of the compare' "$(t3933)" ' tracker=ok'
     t7508_state 0a1b2c3d
     printf '%s\n' ffffffff00000000 > "$t3933_out.vfp"
-    contains 'a focus-owned page whose .vfp differs from the focus state reads tracker=STALE (HIMMEL-7508)' "$(t3933)" ' tracker=STALE:'
+    contains 'a focus-owned page whose .vfp differs from the focus state reads tracker=STALE' "$(t3933)" ' tracker=STALE:'
     printf '%s\n' 0a1b2c3d4e5f6071 > "$t3933_out.vfp"
     t7508_doc 'focus-version: none'
-    contains 'a doc the focus refresh does not own keeps the .fp comparison (HIMMEL-7508)' "$(t3933)" ' tracker=STALE:'
+    contains 'a doc the focus refresh does not own keeps the .fp comparison' "$(t3933)" ' tracker=STALE:'
     t7508_doc 'focus-version: v1.0.1'
     rm -f "$W/handover/focus-state"
-    contains 'no focus state falls back to the .fp comparison (HIMMEL-7508)' "$(t3933)" ' tracker=STALE:'
+    contains 'no focus state falls back to the .fp comparison' "$(t3933)" ' tracker=STALE:'
     rm -f "$t3933_out.vfp"
 else
     skip 'tracker= rows: no python3'
@@ -530,32 +530,32 @@ STUB
         PATH="$W/bin-3361:$PATH" QMD_CALLS="$p4051_calls" ROADMAP_QMD_BIN="$p4051/qmd" TICK_PLAN_INDEX_OUT="$p4051_out" \
             TICK_TRACKER_MIRROR_DIR="$p4051_mir" bash "$SUT" --workers "$W/handover/$b3361.md" "$@"
     }
-    wait4051() {  # the detached refresh writes OUT/.last-run, then its EXIT trap drops .launch (HIMMEL-4734)
+    wait4051() {  # the detached refresh writes OUT/.last-run, then its EXIT trap drops .launch
         local i=0
         while { [ ! -f "$p4051_out/.last-run" ] || [ -d "$p4051_out/.launch" ]; } && [ "$i" -lt 150 ]; do sleep 0.1; i=$((i + 1)); done
     }
     write_console4051
     not_contains 'no plan dir configured omits plan-index=' "$(t4051)" ' plan-index='
-    [ ! -e "$p4051_out" ] && pass 'skip touches no state (HIMMEL-4051)' || fail 'skip created the out dir (HIMMEL-4051)'
+    [ ! -e "$p4051_out" ] && pass 'skip touches no state' || fail 'skip created the out dir'
     write_console4051 "$p4051/missing"
     not_contains 'a configured but absent plan dir omits plan-index=' "$(t4051)" ' plan-index='
 
     write_console4051 "$p4051_plan"
-    contains 'a never-built index reads plan-index=REFRESHING (HIMMEL-4051)' "$(t4051)" ' plan-index=REFRESHING'
+    contains 'a never-built index reads plan-index=REFRESHING' "$(t4051)" ' plan-index=REFRESHING'
     wait4051
-    contains 'the detached refresh embedded the collection (HIMMEL-4051)' "$(cat "$p4051_calls" 2>/dev/null)" 'embed -c roadmap-plan'
+    contains 'the detached refresh embedded the collection' "$(cat "$p4051_calls" 2>/dev/null)" 'embed -c roadmap-plan'
     not_contains 'after the refresh the tick omits healthy plan-index=' "$(t4051)" ' plan-index='
-    contains '--verbose labels the plan index (HIMMEL-4051)' "$(t4051 --verbose)" 'plan-index: ok'
+    contains '--verbose labels the plan index' "$(t4051 --verbose)" 'plan-index: ok'
     n4051="$(wc -l < "$p4051_calls")"
     t4051 >/dev/null
-    [ "$(wc -l < "$p4051_calls")" -eq "$n4051" ] && pass 'an unchanged index never relaunches qmd (HIMMEL-4051)' || fail 'ok tick called qmd (HIMMEL-4051)'
+    [ "$(wc -l < "$p4051_calls")" -eq "$n4051" ] && pass 'an unchanged index never relaunches qmd' || fail 'ok tick called qmd'
 
     # a mirror change inside the minimum interval: stale but not yet due
     echo two >> "$p4051_mir/HIMMEL-111.md"
-    contains 'stale but inside the minimum interval reads plan-index=ok:pending (HIMMEL-4051)' "$(t4051)" ' plan-index=ok:pending'
-    [ "$(wc -l < "$p4051_calls")" -eq "$n4051" ] && pass 'ok:pending launches no refresh (HIMMEL-4051)' || fail 'pending tick called qmd (HIMMEL-4051)'
+    contains 'stale but inside the minimum interval reads plan-index=ok:pending' "$(t4051)" ' plan-index=ok:pending'
+    [ "$(wc -l < "$p4051_calls")" -eq "$n4051" ] && pass 'ok:pending launches no refresh' || fail 'pending tick called qmd'
     rm -f "$p4051_out/.last-run"
-    contains 'stale and due (interval 0) reads plan-index=REFRESHING (HIMMEL-4051)' "$(TICK_PLAN_INDEX_MIN_SECS=0 t4051)" ' plan-index=REFRESHING'
+    contains 'stale and due (interval 0) reads plan-index=REFRESHING' "$(TICK_PLAN_INDEX_MIN_SECS=0 t4051)" ' plan-index=REFRESHING'
     wait4051
     not_contains 'the due refresh made the index healthy again' "$(t4051)" ' plan-index='
 
@@ -564,10 +564,10 @@ STUB
     rm -f "$p4051_out/.last-run"
     TICK_PLAN_INDEX_MIN_SECS=0 QMD_FAIL=1 t4051 >/dev/null
     wait4051
-    contains 'a failed refresh reads plan-index=FAIL: (HIMMEL-4051)' "$(t4051)" ' plan-index=FAIL:'
+    contains 'a failed refresh reads plan-index=FAIL:' "$(t4051)" ' plan-index=FAIL:'
     n4051="$(wc -l < "$p4051_calls")"
     t4051 >/dev/null; sleep 0.3
-    [ "$(wc -l < "$p4051_calls")" -eq "$n4051" ] && pass 'a recent failure is not relaunched (HIMMEL-4051)' || fail 'failure relaunched inside the backoff (HIMMEL-4051)'
+    [ "$(wc -l < "$p4051_calls")" -eq "$n4051" ] && pass 'a recent failure is not relaunched' || fail 'failure relaunched inside the backoff'
 
     # a slow qmd never holds the tick: it returns while the refresh is still running
     echo four >> "$p4051_mir/HIMMEL-111.md"
@@ -575,9 +575,9 @@ STUB
     s4051=$SECONDS
     o4051="$(TICK_PLAN_INDEX_MIN_SECS=0 QMD_SLEEP=4 t4051)"
     e4051=$((SECONDS - s4051))
-    contains 'a slow qmd still reads plan-index=REFRESHING (HIMMEL-4051)' "$o4051" ' plan-index=REFRESHING'
-    [ "$e4051" -le 2 ] && pass "the tick does not wait on the refresh (${e4051}s, HIMMEL-4051)" || fail "tick waited ${e4051}s on a 4s qmd (HIMMEL-4051)"
-    contains 'while the refresh holds the lock the tick reads REFRESHING (HIMMEL-4051)' "$(t4051)" ' plan-index=REFRESHING'
+    contains 'a slow qmd still reads plan-index=REFRESHING' "$o4051" ' plan-index=REFRESHING'
+    [ "$e4051" -le 2 ] && pass "the tick does not wait on the refresh (${e4051}s)" || fail "tick waited ${e4051}s on a 4s qmd"
+    contains 'while the refresh holds the lock the tick reads REFRESHING' "$(t4051)" ' plan-index=REFRESHING'
     wait4051
 
     # an overlapping launch (OUT/.launch held) reads REFRESHING and a duplicate wrapper exits
@@ -585,30 +585,30 @@ STUB
     echo five >> "$p4051_mir/HIMMEL-111.md"
     mkdir "$p4051_out/.launch"; echo 77 > "$p4051_out/.last-run"
     n4051="$(wc -l < "$p4051_calls")"
-    contains 'a held launch lock reads plan-index=REFRESHING (HIMMEL-4051)' "$(TICK_PLAN_INDEX_MIN_SECS=0 t4051)" ' plan-index=REFRESHING'
+    contains 'a held launch lock reads plan-index=REFRESHING' "$(TICK_PLAN_INDEX_MIN_SECS=0 t4051)" ' plan-index=REFRESHING'
     # drive the PRODUCTION wrapper (not a hand copy); RED control: pre-change the
     # wrapper was inline in tick.sh, so plan-index-launch.sh is absent and the first check fails
     wrap4059="$(dirname "$SUT")/plan-index-launch.sh"
-    [ -f "$wrap4059" ] && pass 'the launch wrapper is its own script (HIMMEL-4059)' || fail 'plan-index-launch.sh is missing (HIMMEL-4059)'
+    [ -f "$wrap4059" ] && pass 'the launch wrapper is its own script' || fail 'plan-index-launch.sh is missing'
     bash "$wrap4059" "$p4051_out" bash -c 'echo clobbered > "$1/.last-run"' _ "$p4051_out"
-    [ -f "$wrap4059" ] && [ "$(cat "$p4051_out/.last-run")" = 77 ] && [ "$(wc -l < "$p4051_calls")" -eq "$n4051" ] && pass 'a held launch lock blocks a duplicate refresh (HIMMEL-4051)' || fail 'duplicate refresh ran past .launch (HIMMEL-4051)'
+    [ -f "$wrap4059" ] && [ "$(cat "$p4051_out/.last-run")" = 77 ] && [ "$(wc -l < "$p4051_calls")" -eq "$n4051" ] && pass 'a held launch lock blocks a duplicate refresh' || fail 'duplicate refresh ran past .launch'
     rmdir "$p4051_out/.launch"
     # a free .launch: the wrapper runs the command, records rc, and releases the lock
     bash "$wrap4059" "$p4051_out" bash -c 'exit 5'
-    [ "$(cat "$p4051_out/.last-run" 2>/dev/null)" = 5 ] && [ ! -d "$p4051_out/.launch" ] && pass 'the wrapper records rc and releases .launch (HIMMEL-4059)' || fail 'wrapper did not record rc / release .launch (HIMMEL-4059)'
+    [ "$(cat "$p4051_out/.last-run" 2>/dev/null)" = 5 ] && [ ! -d "$p4051_out/.launch" ] && pass 'the wrapper records rc and releases .launch' || fail 'wrapper did not record rc / release .launch'
     rm -f "$p4051_out/.last-run" "$p4051_out/.last-fail"
 
     # a run the test guard refused (exit 77) is not a failed refresh; any other non-zero is
     echo refused >> "$p4051_mir/HIMMEL-111.md"
     # shellcheck disable=SC2016  # $1 expands in the child bash
     bash "$wrap4059" "$p4051_out" bash -c 'echo "$1"; exit 1' _ 'a real failure line'
-    [ "$(cat "$p4051_out/.last-fail" 2>/dev/null)" = 'a real failure line' ] && pass 'exit 1 still writes .last-fail (HIMMEL-8820)' || fail 'exit 1 wrote no .last-fail (HIMMEL-8820)'
-    contains 'exit 1 still reads plan-index=FAIL: (HIMMEL-8820)' "$(t4051)" ' plan-index=FAIL:'
+    [ "$(cat "$p4051_out/.last-fail" 2>/dev/null)" = 'a real failure line' ] && pass 'exit 1 still writes .last-fail' || fail 'exit 1 wrote no .last-fail'
+    contains 'exit 1 still reads plan-index=FAIL:' "$(t4051)" ' plan-index=FAIL:'
     rm -f "$p4051_out/.last-run" "$p4051_out/.last-fail"
     # shellcheck disable=SC2016  # $1 expands in the child bash
     bash "$wrap4059" "$p4051_out" bash -c 'echo "$1"; exit 77' _ 'plan-index: refused by the test guard'
-    [ ! -e "$p4051_out/.last-fail" ] && [ "$(cat "$p4051_out/.last-run" 2>/dev/null)" = 77 ] && pass 'exit 77 records rc and writes no .last-fail (HIMMEL-8820)' || fail 'exit 77 wrote .last-fail or lost rc (HIMMEL-8820)'
-    not_contains 'exit 77 never reads plan-index=FAIL: (HIMMEL-8820)' "$(t4051)" ' plan-index=FAIL:'
+    [ ! -e "$p4051_out/.last-fail" ] && [ "$(cat "$p4051_out/.last-run" 2>/dev/null)" = 77 ] && pass 'exit 77 records rc and writes no .last-fail' || fail 'exit 77 wrote .last-fail or lost rc'
+    not_contains 'exit 77 never reads plan-index=FAIL:' "$(t4051)" ' plan-index=FAIL:'
     wait4051
     rm -f "$p4051_out/.last-run" "$p4051_out/.last-fail"
 
@@ -618,7 +618,7 @@ STUB
     # shellcheck disable=SC2016  # the $( is a literal hostile path component
     p4051_out="$p4051/o\"x\$(touch $p4051/PWNED)"
     t4051 >/dev/null; wait4051
-    [ ! -e "$p4051/PWNED" ] && [ -f "$p4051_out/.last-run" ] && [ ! -d "$p4051_out/.launch" ] && pass 'a hostile --out path is cleaned up without running text (HIMMEL-4059)' || fail 'hostile --out path left .launch or ran text (HIMMEL-4059)'
+    [ ! -e "$p4051/PWNED" ] && [ -f "$p4051_out/.last-run" ] && [ ! -d "$p4051_out/.launch" ] && pass 'a hostile --out path is cleaned up without running text' || fail 'hostile --out path left .launch or ran text'
     p4051_out="$p4051_out_save"
 
     # the wrapper writes .last-run BEFORE its EXIT trap removes .launch, so a wait
@@ -628,19 +628,19 @@ STUB
     sed "s/^trap '/trap 'sleep 1; /" "$wrap4059" > "$p4051/launch4734.sh"
     bash "$p4051/launch4734.sh" "$p4051_out" true &
     wait4051
-    [ -f "$p4051_out/.last-run" ] && [ ! -d "$p4051_out/.launch" ] && pass 'wait4051 waits out the .last-run-to-.launch-release gap (HIMMEL-4734)' || fail 'wait4051 returned while .launch was still held (HIMMEL-4734)'
+    [ -f "$p4051_out/.last-run" ] && [ ! -d "$p4051_out/.launch" ] && pass 'wait4051 waits out the .last-run-to-.launch-release gap' || fail 'wait4051 returned while .launch was still held'
     wait
     p4051_out="$p4051_out_save"
 
     # a launcher that is not installed reads FAIL:no-launcher and writes .last-fail
     p4051_out="$p4051/out-nolauncher"
-    contains 'a missing launcher reads plan-index=FAIL:no-launcher (HIMMEL-4059)' "$(TICK_PLAN_INDEX_LAUNCHER=no-such-launcher-4059 t4051)" ' plan-index=FAIL:no-launcher'
-    [ -s "$p4051_out/.last-fail" ] && pass 'a missing launcher writes .last-fail (HIMMEL-4059)' || fail 'no .last-fail for a missing launcher (HIMMEL-4059)'
+    contains 'a missing launcher reads plan-index=FAIL:no-launcher' "$(TICK_PLAN_INDEX_LAUNCHER=no-such-launcher-4059 t4051)" ' plan-index=FAIL:no-launcher'
+    [ -s "$p4051_out/.last-fail" ] && pass 'a missing launcher writes .last-fail' || fail 'no .last-fail for a missing launcher'
     # one installed word must not mask a missing one
     rm -rf "$p4051_out"
-    contains 'a half-installed launcher reads plan-index=FAIL:no-launcher (HIMMEL-4059)' "$(TICK_PLAN_INDEX_LAUNCHER='env no-such-launcher-4059' t4051)" ' plan-index=FAIL:no-launcher'
+    contains 'a half-installed launcher reads plan-index=FAIL:no-launcher' "$(TICK_PLAN_INDEX_LAUNCHER='env no-such-launcher-4059' t4051)" ' plan-index=FAIL:no-launcher'
     rm -rf "$p4051_out"
-    contains 'a blank launcher reads plan-index=FAIL:no-launcher (HIMMEL-4059)' "$(TICK_PLAN_INDEX_LAUNCHER=' ' t4051)" ' plan-index=FAIL:no-launcher'
+    contains 'a blank launcher reads plan-index=FAIL:no-launcher' "$(TICK_PLAN_INDEX_LAUNCHER=' ' t4051)" ' plan-index=FAIL:no-launcher'
     p4051_out="$p4051_out_save"
 else
     skip 'plan-index= rows: no python3'
@@ -686,18 +686,18 @@ printf '%s\n' "${STUB_SPARE-seven_day_reset_in=?  unspent_at_reset=?}"
 STUB
 spare_has() { case "$2" in *' spare='*) fail "$1 (out='$2')" ;; *) pass "$1" ;; esac; }
 spare_out="$(STUB_SPARE='seven_day_reset_in=6.4h unspent_at_reset=33.7' bash "$SUT")"
-contains 'spare= shows when spare >= 10 and reset <= 24h (HIMMEL-4421)' "$spare_out" ' fails=? vmrun=off spare=33@6h'
-spare_has 'spare= is absent below the spare threshold (HIMMEL-4421)' "$(STUB_SPARE='seven_day_reset_in=6.4h unspent_at_reset=9.9' bash "$SUT")"
-spare_has 'spare= is absent when the reset is more than 24h out (HIMMEL-4421)' "$(STUB_SPARE='seven_day_reset_in=24.5h unspent_at_reset=60.0' bash "$SUT")"
-spare_has 'spare= is absent when the monitor reads ? (HIMMEL-4421)' "$(STUB_SPARE='seven_day_reset_in=? unspent_at_reset=?' bash "$SUT")"
-contains 'TICK_SPARE_MIN moves the spare threshold (HIMMEL-4421)' \
+contains 'spare= shows when spare >= 10 and reset <= 24h' "$spare_out" ' fails=? vmrun=off spare=33@6h'
+spare_has 'spare= is absent below the spare threshold' "$(STUB_SPARE='seven_day_reset_in=6.4h unspent_at_reset=9.9' bash "$SUT")"
+spare_has 'spare= is absent when the reset is more than 24h out' "$(STUB_SPARE='seven_day_reset_in=24.5h unspent_at_reset=60.0' bash "$SUT")"
+spare_has 'spare= is absent when the monitor reads ?' "$(STUB_SPARE='seven_day_reset_in=? unspent_at_reset=?' bash "$SUT")"
+contains 'TICK_SPARE_MIN moves the spare threshold' \
   "$(TICK_SPARE_MIN=5 STUB_SPARE='seven_day_reset_in=6.4h unspent_at_reset=9.9' bash "$SUT")" ' spare=9@6h'
-contains 'TICK_SPARE_HOURS moves the reset window (HIMMEL-4421)' \
+contains 'TICK_SPARE_HOURS moves the reset window' \
   "$(TICK_SPARE_HOURS=48 STUB_SPARE='seven_day_reset_in=30.0h unspent_at_reset=60.0' bash "$SUT")" ' spare=60@30h'
-contains 'verbose labels spare (HIMMEL-4421)' \
+contains 'verbose labels spare' \
   "$(STUB_SPARE='seven_day_reset_in=6.4h unspent_at_reset=33.7' bash "$SUT" --verbose)" 'spare: 33@6h'
 rm -f "$W/repo/scripts/lib/usage-monitor.sh"
-spare_has 'a missing usage-monitor.sh leaves spare= absent and the tick intact (HIMMEL-4421)' "$(bash "$SUT")"
+spare_has 'a missing usage-monitor.sh leaves spare= absent and the tick intact' "$(bash "$SUT")"
 
 # --- a READY with no GO file for 30 minutes is a wake. tails= is in the
 # chief-wait action key, so the entry moving READY -> READY!stale wakes it once.
@@ -706,10 +706,10 @@ d4568="$W/handover/HIMMEL-4568-N568-stale-ready-2026-10-06.md"
 head4568=0123456789abcdef0123456789abcdef01234567
 printf '%s\n' '# worker' '- 10:00 LIVE — working' "- 10:40 READY 4568 $head4568 GREEN" > "$d4568"
 tail4568() { bash "$SUT" --workers "$d4568" 2>/dev/null | sed -E 's/.* tails=([^ ]*) .*/\1/'; }
-contains 'a fresh READY with no GO reads plain READY (HIMMEL-4568)' "$(tail4568)" 'N568:READY'
+contains 'a fresh READY with no GO reads plain READY' "$(tail4568)" 'N568:READY'
 case "$(tail4568)" in *'!stale'*) fails=$((fails+1)); printf 'FAIL - a fresh READY must not be stale\n' ;; *) printf 'ok - a fresh READY is not stale (HIMMEL-4568)\n' ;; esac
 touch -d '31 minutes ago' "$d4568"
-contains 'a READY older than 30 minutes with no GO file reads READY!stale (HIMMEL-4568)' "$(tail4568)" 'N568:READY!stale'
+contains 'a READY older than 30 minutes with no GO file reads READY!stale' "$(tail4568)" 'N568:READY!stale'
 mkdir -p "$W/handover/.locks/go"
 printf 'pr=4568\nhead=%s\n' "$head4568" > "$W/handover/.locks/go/4568.$head4568"
 [ "$(tail4568)" = N568:READY ] && printf 'ok - a READY with its GO file present is plain READY however old (HIMMEL-4568)\n' || { fails=$((fails+1)); printf 'FAIL - GO-present READY went stale\n'; }
@@ -726,15 +726,15 @@ d6292="$W/handover/HIMMEL-6292-N6292-acts-2026-10-19.md"
 head6292=0123456789abcdef0123456789abcdef01234567
 acts6292() { bash "$SUT" --workers "$d6292" 2>/dev/null | sed -n -E 's/.* acts=([^ ]*).*/\1/p'; }
 printf '%s\n' '# worker' '- 10:00 LIVE — working' "- 10:40 READY 6292 $head6292 GREEN" > "$d6292"
-same 'acts= names a READY bullet (HIMMEL-6292)' "$(acts6292)" 'N6292:READY#1'
+same 'acts= names a READY bullet' "$(acts6292)" 'N6292:READY#1'
 printf '%s\n' '# worker' "- 10:40 READY 6292 $head6292 GREEN" '- 10:41 LIVE — fixing a review finding' > "$d6292"
-same 'acts= keeps a READY a later LIVE bullet buries (HIMMEL-6292)' "$(acts6292)" 'N6292:READY#1'
+same 'acts= keeps a READY a later LIVE bullet buries' "$(acts6292)" 'N6292:READY#1'
 printf '%s\n' '# worker' "- 10:40 READY 6292 $head6292 GREEN" '- 10:41 SUCCESSION accepted — relay from the old chief' > "$d6292"
-same 'acts= keeps a READY a later SUCCESSION bullet buries (HIMMEL-6292)' "$(acts6292)" 'N6292:READY#1'
+same 'acts= keeps a READY a later SUCCESSION bullet buries' "$(acts6292)" 'N6292:READY#1'
 printf '%s\n' '# worker' '- 10:00 BLOCKED — q1' '- 10:05 RESOLVED — ruling received' '- 10:20 BLOCKED — q2' > "$d6292"
-same 'acts= counts a second BLOCKED so it wakes again (HIMMEL-6292)' "$(acts6292)" 'N6292:BLOCKED#2'
+same 'acts= counts a second BLOCKED so it wakes again' "$(acts6292)" 'N6292:BLOCKED#2'
 printf '%s\n' '# worker' '- 10:00 LIVE — working' > "$d6292"
-same 'acts= is absent for a worker with no actionable bullet (HIMMEL-6292)' "$(acts6292)" ''
+same 'acts= is absent for a worker with no actionable bullet' "$(acts6292)" ''
 
 # --- (8349 P-A) --pool-dispositions reads stacked-series rows: a stackable ticket and a ticket held by a series
 # are dispositioned (never pool-unresolved), and each key-carrying series row prints one `# pool-keys <line> <first> <keys>`.
