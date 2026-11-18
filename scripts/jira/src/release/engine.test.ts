@@ -4812,3 +4812,140 @@ describe('a ruled-away operator ask wakes the chief', () => {
     expect(got).toBe(readFileSync(GOLDEN, 'utf8'));
   });
 });
+
+// 8731 (trace T8-de73eed2 clause 5): the whole request -> ruling -> apply -> readback path, with the process failing at each seam. After the
+// failure the state reports the partial work and its owner, and one normal replay (a new lease epoch) finishes it exactly once: one Jira
+// write at most, one admissions row, one ok event, one receipt comment, one receipted ruling, nothing left owed, and a further run does nothing.
+describe('T8 U7: request, ruling, apply and readback converge once from every failure window', () => {
+  const ledger = () => process.env.HIMMEL_ADMISSIONS_LEDGER!;
+  const rows = () => (existsSync(ledger()) ? readFileSync(ledger(), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as { kind: string; key: string; version: string }) : []);
+  const eventsFile = () => join(ctx().dir, 'events.jsonl');
+  const chain = <T>(file: string) => readChain<T>(join(ctx().dir, file), loadKey(ctx().keyPath)).verified;
+  const okEvents = () => chain<EventRow>('events.jsonl').filter((e) => e.kind === 'ruled' && e.key === 'K-2' && e.readback === 'ok').length;
+  const receipted = () => chain<RulingRow>('rulings.jsonl').filter((r) => r.key === 'K-2' && r.phase === 'receipted').length;
+  const admitAll: Judge = async (input) => input.requests.map((q) => ({
+    req: q.req, outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 'Ship loop', ground: 'regression', reason: 'breaks the console',
+  }));
+  const noJudge: Judge = async () => { throw new Error('the judge is never asked with nothing claimed'); };
+  const declared = (member: boolean) => {
+    declare(ctx(), { project: 'HIMMEL', versions: ['v1', 'v2'], decision: '106', verbatim: 'R = v1 + v2', mode: 'observe' });
+    mirror([{ key: 'K-1', fixVersions: ['v1'] }]);
+    if (member) jira.fv.set('K-2', ['v1']);
+    return request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'found work', evidence: {}, from: 'console' });
+  };
+
+  type Window = 'write refused' | 'readback fails after the write' | 'event append refused' | 'ledger refused after the write' | 'receipt refused' | 'receipt posted, response lost';
+  // Installs one fault; returns whether it fired and how to lift it.
+  function inject(w: Window, member: boolean) {
+    let fired = false;
+    let armed = true;
+    let wrote = false;
+    let reads = 0;
+    const set = jira.setFixVersion.bind(jira);
+    const read = jira.fixVersions.bind(jira);
+    const add = jira.addComment.bind(jira);
+    jira.setFixVersion = async (k, op, v) => {
+      if (armed && w === 'write refused') { fired = true; throw new Error('jira refused the write'); }
+      await set(k, op, v);
+      wrote = true;
+    };
+    jira.fixVersions = async (k) => {
+      // the readback is the read after the write; an already-member key is not written, so its readback is the second read
+      const readback = member ? ++reads === 2 : wrote;
+      if (armed && !fired && readback && w === 'readback fails after the write') { fired = true; throw new Error('jira readback down'); }
+      const got = await read(k);
+      if (armed && !fired && readback && w === 'ledger refused after the write') { chmodSync(ledger(), 0o444); fired = true; }
+      return got;
+    };
+    jira.addComment = async (k, body) => {
+      if (armed && w === 'receipt refused') { fired = true; throw new Error('jira down before the receipt'); }
+      const id = await add(k, body);
+      if (armed && w === 'receipt posted, response lost') { fired = true; throw new Error('the response was lost'); }
+      return id;
+    };
+    if (w === 'event append refused') {
+      writeFileSync(eventsFile(), '', { flag: 'a' });
+      chmodSync(eventsFile(), 0o444);
+      fired = true;
+    }
+    return {
+      fired: () => fired,
+      lift: () => {
+        armed = false;
+        for (const f of [ledger(), eventsFile()]) if (existsSync(f)) chmodSync(f, 0o644);
+      },
+    };
+  }
+
+  const converged = async (member: boolean) => {
+    expect(jira.fv.get('K-2')).toEqual(['v1']);
+    expect(jira.writes).toBe(member ? 0 : 1);
+    expect(rows().filter((x) => x.key === 'K-2')).toMatchObject([{ kind: 'rm-admit', version: 'v1' }]);
+    expect(okEvents()).toBe(1);
+    expect(chain<EventRow>('events.jsonl').filter((e) => e.readback === 'mismatch')).toEqual([]);
+    expect(receipted()).toBe(1);
+    expect(jira.posted).toBe(1);
+    const s = state(ctx());
+    expect(s.unfinished_rulings).toEqual([]);
+    expect(s.requests).toEqual({ open: [], claimed: [], oldest_open: null });
+    const before = { writes: jira.writes, posted: jira.posted, rows: rows().length, events: chain<EventRow>('events.jsonl').length, rulings: chain<RulingRow>('rulings.jsonl').length };
+    expect(await rmRun(ctx(), noJudge)).toEqual(['RM-RUN R1: nothing pending']);
+    expect({ writes: jira.writes, posted: jira.posted, rows: rows().length, events: chain<EventRow>('events.jsonl').length, rulings: chain<RulingRow>('rulings.jsonl').length }).toEqual(before);
+  };
+
+  it('a request filed and never claimed is not lost: the next run rules it', async () => {
+    declared(false);
+    expect(state(ctx()).requests.open).toEqual(['Q-R1-0001']);
+    await rmRun(ctx(), admitAll);
+    await converged(false);
+  });
+
+  it('a claim whose judge dies returns to open and the next run rules it', async () => {
+    declared(false);
+    await expect(rmRun(ctx(), async () => { throw new Error('judge down'); })).rejects.toThrow(/judge down/);
+    expect(state(ctx()).requests).toMatchObject({ open: ['Q-R1-0001'], claimed: [] });
+    await rmRun(ctx(), admitAll);
+    await converged(false);
+  });
+
+  it('a crash inside rule (the ruling row written, the request row not) is reopened by the replay and ruled once', async () => {
+    const q = declared(false);
+    leaseAcquire(ctx(rmEnv), { expectEpoch: 0, doc: DOC, session: 'rm-1' });
+    claim(ctx(rmEnv));
+    const r = admit(q.req);
+    const file = join(ctx().dir, 'requests.jsonl');
+    writeFileSync(file, `${readFileSync(file, 'utf8').trimEnd().split('\n').slice(0, -1).join('\n')}\n`);
+    expect(state(ctx()).requests.claimed).toEqual([q.req]);
+    expect(state(ctx()).unfinished_rulings).toMatchObject([{ ruling: r.id, phase: 'intent', status: 'replay', owner: 'release-manager' }]);
+    leaseRelease(ctx(rmEnv));
+    await rmRun(ctx(), admitAll);
+    await converged(false);
+  });
+
+  it.each([
+    ['write refused', false, 'intent'],
+    ['readback fails after the write', false, 'intent'],
+    ['event append refused', false, 'applied'],
+    ['ledger refused after the write', false, 'applied'],
+    ['receipt refused', false, 'applied'],
+    ['receipt posted, response lost', false, 'applied'],
+    ['readback fails after the write', true, 'intent'],
+    ['event append refused', true, 'applied'],
+    ['ledger refused after the write', true, 'applied'],
+    ['receipt refused', true, 'applied'],
+    ['receipt posted, response lost', true, 'applied'],
+  ] as Array<[Window, boolean, 'intent' | 'applied']>)('%s (already a member: %s): the state reports the partial work, then one replay finishes it once', async (w, member, phase) => {
+    declared(member);
+    if (w === 'ledger refused after the write') writeFileSync(ledger(), '', { flag: 'a' });
+    const fault = inject(w, member);
+    const lines = await rmRun(ctx(), admitAll).catch((e: Error) => [`THREW ${e.message}`]);
+    expect(fault.fired()).toBe(true);
+    expect(lines.join('\n')).toMatch(/PENDING R-R1-0001|THREW/);
+    const s = state(ctx());
+    expect(s.unfinished_rulings).toMatchObject([{ ruling: 'R-R1-0001', key: 'K-2', phase, status: 'replay', owner: 'release-manager', next: 'jira release rm-run R1' }]);
+    expect(s.lease).toMatchObject({ released: true });
+    fault.lift();
+    await rmRun(ctx(), admitAll);
+    await converged(member);
+  });
+});
