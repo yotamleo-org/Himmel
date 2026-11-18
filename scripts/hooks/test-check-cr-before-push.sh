@@ -1655,8 +1655,7 @@ echo "TEST: round-4 residual — a fork-workflow clone where url AND pushurl bot
 # git's hook boundary from any other origin-nominal push. Both the argv $2
 # fetch and the literal "origin" fetch resolve to the identical repository
 # and trivially agree, so the round-4 dual-authority check cannot catch this
-# shape. Locked in here as documented, not silently improved-on or
-# regressed without updating its ceilings ledger row.
+# shape.
 R4RES_ORIGIN="$TMP_ROOT/r4res-real-origin.git"
 git init -q --bare -b main "$R4RES_ORIGIN"
 R4RES_SEED="$TMP_ROOT/r4res-seed"
