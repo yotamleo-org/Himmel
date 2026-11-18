@@ -45,7 +45,6 @@ K6	^docs/handover/chief-sections/live-state\.md$	specs/plan/[A-Z]+-3882	tick.sh 
 K6	^scripts/lib/flags\.tsv$	^[a-z_]+[[:space:]](on|off)[[:space:]]	check-flags.sh reads the ticket and blocker columns of each flag row
 K6	^scripts/ci/live-write-exempt\.txt$	^[^#[:space:]][^[:space:]]*[[:space:]]+HIMMEL-[0-9]+[[:space:]]	run-shell-tests.sh and live-witness.sh refuse an exempt line without its ticket key
 K6	^scripts/handover/chief-kit/test-ready-check-b\.sh$	jira links failed for [A-Z]+-100\)	ready-check prints the ticket its failed links lookup names, and the row asserts it
-K6	^scripts/handover/chief-kit/(test-ready-check-b|test_ready_check_lib|tests/testlib-ready-check)\.sh$	trivial-descendant of reviewed head %s \([A-Z]+-5856\)	ready-check reads the ledger detail the fixture writes, ticket key included
 K6	^\.github/dependabot\.yml$	prefix: "chore\(deps\): \[[A-Z]+-7588\]"	merge-on-green's Jira end state reads the key in each Dependabot PR title this prefix writes
 K6	^scripts/(adopt|uninstall)\.sh$	# [A-Z]+-2771: native invariant gate; 	uninstall.sh finds an adopted native gate hook by this exact marker text, which installed hooks already carry
 K6	^scripts/test-adopt(-features)?\.sh$	'[A-Z]+-2771: native invariant gate'	the row asserts the marker text adopt.sh writes and uninstall.sh matches
