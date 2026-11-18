@@ -3406,6 +3406,8 @@ _readiness_reap_acquire() {
 }
 # release the launcher's OWN captured token (a successor's token never matches it), then drop the attempt directory
 _readiness_release() {
+    # Finish the bounded cleanup before another soft signal can interrupt it.
+    trap '' TERM HUP INT
     _readiness_reap_acquire
     if [ -n "$READINESS_TOKEN" ]; then
         bash "$READINESS_QL" release "$READINESS_DOC" "$READINESS_TOKEN" >/dev/null 2>&1 \

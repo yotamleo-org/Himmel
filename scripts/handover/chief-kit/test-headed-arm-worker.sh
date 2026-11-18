@@ -6346,6 +6346,11 @@ rs_launch() {
     rs_pid=$!
     rs_i=0; while [ ! -e "$RS_SIGNAL_AFTER" ] && [ "$rs_i" -lt 400 ]; do sleep 0.05; rs_i=$((rs_i + 1)); done
     kill -"${RS_SIGNAL:-TERM}" "$rs_pid" 2>/dev/null
+    RS_SECOND_SENT=0
+    if [ -n "${RS_SECOND_SIGNAL:-}" ]; then
+      sleep 0.2
+      kill -"$RS_SECOND_SIGNAL" "$rs_pid" 2>/dev/null && RS_SECOND_SENT=1
+    fi
     wait "$rs_pid" || RS_RC=$?
   else
     ( rs_run_wrapper "$@" ) || RS_RC=$?
@@ -6773,6 +6778,19 @@ exec "$RS_REAL_DATE" "$@"
 SLOWDATE_EOF
 chmod 755 "$RS/slowdate/date"
 rs_slow=(PATH="$RS/slowdate:$RS/bin:$RS_OUT/canary-bin:$PATH" RS_REAL_DATE="$RS_REAL_DATE")
+# Repeated signals must not interrupt the already-running owned-token cleanup.
+for rs_second in TERM HUP INT; do
+  if [ "$rs_second" = INT ] && [ "${#rs_defsig[@]}" -eq 0 ]; then continue; fi
+  rs_repeat_mark="$RS/repeat-$rs_second"
+  RS_SECOND_SIGNAL="$rs_second" RS_SIGNAL_AFTER="$rs_repeat_mark" rs_launch "${rs_slow[@]}" SLOW_MARK="$rs_repeat_mark" SLOW_SECS=2
+  check "17s TERM+$rs_second during cleanup: the acquire was running" "$([ -e "$rs_repeat_mark" ] && echo yes)" "yes"
+  check "17s TERM+$rs_second during cleanup: the second signal reached the live wrapper" "$RS_SECOND_SENT" "1"
+  check "17s TERM+$rs_second during cleanup: the original exit status is preserved" "$RS_RC" "143"
+  sleep 3
+  check "17s TERM+$rs_second during cleanup: no late lease or attempt survives" \
+    "$(rs_status):$(rs_attempts):$([ -n "$(rs_lockdir)" ] && echo lockdir || echo none)" "free:0:none"
+  check "17s TERM+$rs_second during cleanup: no child reached konsole" "$([ -e "$RS_D/record" ] && echo yes || echo no)" "no"
+done
 for rs_sig_pair in TERM:143 HUP:129 INT:130; do
   rs_sig="${rs_sig_pair%%:*}"
   if [ "$rs_sig" = INT ] && [ "${#rs_defsig[@]}" -eq 0 ]; then continue; fi
