@@ -553,11 +553,11 @@ const lastLine = (text: string) => text.split("\n").map(l => l.trim()).filter(Bo
 const sealsOf = (text: string) => [...text.matchAll(/^CONTENT-SHA256 ([0-9a-f]{64}) (\S.*)$/gm)].map(m => ({ sha: m[1], rel: m[2] }));
 // The two READ quote shapes, each a whole line at column zero: the sha, one or two spaces, then a path (relative or absolute); or an
 // absolute path, one space, then the sha. Any other line that opens with READ refuses, and nothing is trimmed or normalized. The shapes
-// cannot overlap: the first token is a sha in one and an absolute path in the other.
+// cannot overlap: the first token is a sha in one and an absolute path in the other. A line is read when READ or READ-<ALGORITHM> is followed by a space or the line end, so READ-SHA512 refuses while READY, README and READ: are prose.
 const READ_SHA_FIRST = /^READ(?:-SHA256)? ([0-9a-f]{64}) {1,2}(\S.*)$/;
 const READ_PATH_FIRST = /^READ(?:-SHA256)? (\S(?:.*\S)?) ([0-9a-f]{64})$/;
 export function readQuotesOf(text: string): { sha: string; path: string }[] {
-  return text.split("\n").filter(line => /^READ(?:-SHA256)?(?:\s|$)/.test(line)).map(line => {
+  return text.split("\n").filter(line => /^READ(?:-[A-Z0-9]+)?(?:\s|$)/.test(line)).map(line => {
     const shaFirst = READ_SHA_FIRST.exec(line);
     if (shaFirst) return { sha: shaFirst[1], path: shaFirst[2] };
     const pathFirst = READ_PATH_FIRST.exec(line);
