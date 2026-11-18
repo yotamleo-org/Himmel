@@ -271,7 +271,7 @@ mk_launch_stubs() {
   cat > "$dir/konsole" <<'KONSOLE_EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$(dirname "$0")/record"
-env | grep -E '^(HIMMEL_HOLD_KEY|HIMMEL_HOLD_DOC|HIMMEL_HOLD_LABEL|WRITE_HOLD_OK|IMPL_GUARD_OK|INLINE_IMPL_OK|HIMMEL_CONSOLE|HIMMEL_CONSOLE_LEG|HEADED_ARM_REQUIRED_AUTOCOMPACT|HIMMEL_LEAN_WORKER_SESSION|WORKER_SESSION_CLAUDE_BIN|WORKER_SESSION_REMOTE_CONTROL|WORKER_SESSION_PROFILE_SETTINGS|WORKER_SESSION_PROFILE_PREFACE|WORKER_SESSION_PROFILE_MCP_CONFIG|WORKER_SESSION_PROFILE_NO_SETTING_SOURCES|CHIEF_CONTEXT|HANDOVER_DIR|HIMMEL_CONSOLE_NAME|CLAUDE_CODE_EFFORT_LEVEL|HEADED_ARM_WORKER_CLAUDE_BIN|HIMMEL_CONSOLE_JUDGE_EFFORT|HIMMEL_CONSOLE_JUDGE_DOC|HIMMEL_CONSOLE_JUDGE_QID|HIMMEL_CONSOLE_JUDGE|HIMMEL_WORKER_SESSION_CONTEXT_MODE|HIMMEL_WORKER_SESSION_AUTOCOMPACT|HIMMEL_WORKER_SESSION_CONTEXT_SHARE|WORKER_SESSION_LANE|CADENCE_USAGE_LANE|CODEX_MODEL)=' > "$(dirname "$0")/env-record"
+env | grep -E '^(HIMMEL_HOLD_KEY|HIMMEL_HOLD_DOC|HIMMEL_HOLD_LABEL|WRITE_HOLD_OK|IMPL_GUARD_OK|INLINE_IMPL_OK|HIMMEL_CONSOLE|HIMMEL_CONSOLE_LEG|HEADED_ARM_REQUIRED_AUTOCOMPACT|HIMMEL_LEAN_WORKER_SESSION|WORKER_SESSION_CLAUDE_BIN|WORKER_SESSION_REMOTE_CONTROL|WORKER_SESSION_PROFILE_SETTINGS|WORKER_SESSION_PROFILE_PREFACE|WORKER_SESSION_PROFILE_MCP_CONFIG|WORKER_SESSION_PROFILE_NO_SETTING_SOURCES|CHIEF_CONTEXT|HANDOVER_DIR|HIMMEL_CONSOLE_NAME|CLAUDE_CODE_EFFORT_LEVEL|HEADED_ARM_WORKER_CLAUDE_BIN|HIMMEL_CONSOLE_JUDGE_EFFORT|HIMMEL_CONSOLE_JUDGE_DOC|HIMMEL_CONSOLE_JUDGE_QID|HIMMEL_CONSOLE_JUDGE|HIMMEL_WORKER_SESSION_CONTEXT_MODE|HIMMEL_WORKER_SESSION_AUTOCOMPACT|HIMMEL_WORKER_SESSION_CONTEXT_SHARE|WORKER_SESSION_LANE|CADENCE_USAGE_LANE|CODEX_MODEL|HIMMEL_READINESS|WORKER_SESSION_READINESS_CATALOG)=' > "$(dirname "$0")/env-record"
 : > "$(dirname "$0")/confirmable"
 sleep 5
 KONSOLE_EOF
@@ -6469,6 +6469,77 @@ rs_launch WORKER_SESSION_READINESS_PORT=jira;                                   
 rs_launch WORKER_SESSION_READINESS_PORT=jira WORKER_SESSION_READINESS_PRIMARY_CLI=relative/index.js;     rs_refused "the jira port with a relative primary CLI"
 rs_launch WORKER_SESSION_READINESS_PORT=jira WORKER_SESSION_READINESS_PRIMARY_CLI="$RS/primary-broken/scripts/jira/dist/index.js"; rs_refused "a jira port whose client cannot resolve its configuration"
 rs_launch WORKER_SESSION_READINESS_PORT=other;                                                            rs_refused "a port kind that is neither copy nor jira"
+
+# the readiness guard's role marker (C0s cycle 5): HIMMEL_READINESS=1 reaches the worker from THIS trusted launcher only, to
+# exactly 1; an ambient claim never survives, and a generic worker never carries it. The oracle is konsole's own environment.
+rs_marker() { grep -E '^HIMMEL_READINESS=' "$RS_D/env-record" 2>/dev/null | tr '\n' ' ' || true; }
+rs_launch
+check "17s marker: a readiness launch hands the worker HIMMEL_READINESS=1, exactly once" "$RS_RC:$(rs_marker)" "0:HIMMEL_READINESS=1 "
+rs_launch HIMMEL_READINESS=yes
+check "17s marker: an ambient claim (yes) on a readiness launch is replaced by exactly 1" "$RS_RC:$(rs_marker)" "0:HIMMEL_READINESS=1 "
+rs_launch HIMMEL_READINESS=0
+check "17s marker: an ambient claim (0) on a readiness launch is replaced by exactly 1" "$RS_RC:$(rs_marker)" "0:HIMMEL_READINESS=1 "
+RS_PROFILE=worker-impl
+rs_launch
+check "17s marker: a generic worker launch carries no readiness marker" "$RS_RC:$(rs_marker)" "0:"
+rs_launch HIMMEL_READINESS=1
+check "17s marker: an ambient HIMMEL_READINESS=1 never reaches a generic worker" "$RS_RC:$(rs_marker)" "0:"
+RS_PROFILE=readiness
+
+# the host-admitted catalog (thin C0): a launching-shell seam like the port and the primary CLI. The launcher copies exactly
+# {source_head, roots, catalog} into the private startup config (the adapter is the one validator); anything else refuses
+# BEFORE the attempt directory exists, and the seam itself is never handed to the worker.
+rs_cat_sha="$(printf 'b%.0s' $(seq 1 64))"
+rs_cat_head="$(printf 'a%.0s' $(seq 1 40))"
+jq -cn --arg h "$rs_cat_head" --arg r "$RS" --arg s "$rs_cat_sha" \
+  '{source_head:$h,roots:{repo:$r,evidence:$r},catalog:[{id:"issue.copied",kind:"issue",key:"HIMMEL-1",file:"i.json",size:2,sha256:$s,purpose:"copied issue"}]}' > "$RS/catalog-ok.json"
+chmod 600 "$RS/catalog-ok.json"
+rs_launch WORKER_SESSION_READINESS_CATALOG="$RS/catalog-ok.json"
+check "17s catalog: a valid host catalog launches" "$RS_RC" "0"
+check "17s catalog: the startup config holds the existing keys plus exactly source_head, roots and catalog" \
+  "$(jq -c 'keys | join(",")' "$RS_A/startup.json" 2>/dev/null || true)" '"attempt_id,catalog,doc,handover_dir,lane,model,port,queue_lock,roots,runtime_dir,schema,session_scope,source_head,version"'
+check "17s catalog: the three fields are the host file's, byte for byte" \
+  "$(jq -cS '[.source_head,.roots,.catalog]' "$RS_A/startup.json" 2>/dev/null || true)" "$(jq -cS '[.source_head,.roots,.catalog]' "$RS/catalog-ok.json")"
+check "17s catalog: the startup config stays a private mode-0600 file" "$(stat -c '%a' "$RS_A/startup.json" 2>/dev/null || true)" "600"  # gnu-ok: the readiness rows above assert the same Linux-only GNU stat
+check "17s catalog: the seam is never handed to the worker's environment" "$(grep -c '^WORKER_SESSION_READINESS_CATALOG=' "$RS_D/env-record" 2>/dev/null || true)" "0"
+rs_launch
+check "17s catalog: with no seam the startup config carries no catalog fields (unchanged)" \
+  "$(jq -c '[has("source_head"), has("roots"), has("catalog")]' "$RS_A/startup.json" 2>/dev/null || true)" "[false,false,false]"
+RS_FLAGS=(--dry-run); rs_launch WORKER_SESSION_READINESS_CATALOG="$RS/catalog-ok.json"; RS_FLAGS=()
+check "17s catalog: a dry run with the seam still writes nothing (no attempt directory, no lease, no launch)" "$RS_RC:$(rs_attempts):$(rs_status):$([ -e "$RS_D/record" ] && echo launched || echo none)" "0:0:free:none"
+printf 'not json\n' > "$RS/catalog-notjson.json"
+printf '[]\n' > "$RS/catalog-array.json"
+printf '{}\n' > "$RS/catalog-empty.json"
+jq -c '. + {extra: 1}' "$RS/catalog-ok.json" > "$RS/catalog-4keys.json"
+jq -c 'del(.roots)' "$RS/catalog-ok.json" > "$RS/catalog-2keys.json"
+jq -cn --arg p "$(head -c 17000 /dev/zero | tr '\0' x)" '{source_head:$p,roots:{},catalog:[]}' > "$RS/catalog-big.json"
+ln -sf "$RS/catalog-ok.json" "$RS/catalog-link.json"
+mkdir -p "$RS/catalog-dir"
+cp "$RS/catalog-ok.json" "$RS_OUT/catalog-outside.json"
+for rs_cat_case in "a relative path|catalog-ok.json" "a missing file|$RS/catalog-missing.json" "a symlinked file|$RS/catalog-link.json" "a directory|$RS/catalog-dir" \
+  "a file over 16 KiB|$RS/catalog-big.json" "a file that is not JSON|$RS/catalog-notjson.json" "a JSON array|$RS/catalog-array.json" "an empty object|$RS/catalog-empty.json" \
+  "a document with a fourth key|$RS/catalog-4keys.json" "a document missing a key|$RS/catalog-2keys.json" "a file outside the fixture root|$RS_OUT/catalog-outside.json"; do
+  rs_launch WORKER_SESSION_READINESS_CATALOG="${rs_cat_case#*|}"
+  rs_refused "the host catalog seam as ${rs_cat_case%%|*}"
+done
+# the catalog's CONTENTS are validated by the adapter's own validator before anything is created or acquired (cycle 5 review F6):
+# a document with exactly the three keys but invalid contents refuses before the attempt directory, the credentials and the lease
+jq -c '.source_head = "HEAD"' "$RS/catalog-ok.json" > "$RS/catalog-badhead.json"
+jq -c '.roots.repo = "relative/repo"' "$RS/catalog-ok.json" > "$RS/catalog-badroot.json"
+jq -c '.catalog[0].kind = "url"' "$RS/catalog-ok.json" > "$RS/catalog-badkind.json"
+jq -c '.catalog = [range(0; 9) as $i | .catalog[0] + {id: ("issue.n" + ($i | tostring))}]' "$RS/catalog-ok.json" > "$RS/catalog-nine.json"
+jq -c '.catalog[0].size = 70000' "$RS/catalog-ok.json" > "$RS/catalog-oversize.json"
+for rs_cat_case in "a head that is not a 40-hex commit|$RS/catalog-badhead.json" "a relative repo root|$RS/catalog-badroot.json" "an unknown entry kind|$RS/catalog-badkind.json" \
+  "nine entries (and several copied issues)|$RS/catalog-nine.json" "an entry larger than the per-request limit|$RS/catalog-oversize.json"; do
+  rs_launch WORKER_SESSION_READINESS_CATALOG="${rs_cat_case#*|}"
+  rs_refused "the host catalog with ${rs_cat_case%%|*} (valid keys, invalid contents)"
+done
+rs_launch WORKER_SESSION_READINESS_CATALOG="$RS/catalog-ok.json"
+check "17s catalog: the valid catalog still launches after the contents pre-check, with the same bytes embedded" \
+  "$RS_RC:$(jq -cS '[.source_head,.roots,.catalog]' "$RS_A/startup.json" 2>/dev/null || true)" "0:$(jq -cS '[.source_head,.roots,.catalog]' "$RS/catalog-ok.json")"
+rs_launch WORKER_SESSION_READINESS_FIXTURE= WORKER_SESSION_READINESS_CATALOG="$RS/catalog-ok.json"
+rs_refused "a catalog seam with no fixture root (the delivery gate still refuses first)"
+rs_msg "catalog seam: the delivery gate names its own reason, not the catalog" "its delivery is not registered"
 
 # the credential initialisation (a real secret resolution in the real flow) runs only after EVERY cheap refusal, and before the acquire
 rs_init_calls() { wc -l < "$RS/init-calls.log" 2>/dev/null | tr -d ' ' || true; }

@@ -1026,6 +1026,11 @@ if [ "$READINESS" -eq 1 ]; then
             case "${WORKER_SESSION_READINESS_PRIMARY_CLI:-}" in /*) ;; *) _ready_fx_why="the jira client must be an absolute path inside the fixture root"; return 1 ;; esac
             _ready_inside "$_ready_fx_root" "$WORKER_SESSION_READINESS_PRIMARY_CLI" || { _ready_fx_why="the jira client $WORKER_SESSION_READINESS_PRIMARY_CLI is outside the fixture root"; return 1; }
         fi
+        # the host-admitted catalog file, when named, is inside the root too
+        if [ -n "${WORKER_SESSION_READINESS_CATALOG:-}" ]; then
+            case "$WORKER_SESSION_READINESS_CATALOG" in /*) ;; *) _ready_fx_why="the host catalog must be an absolute path inside the fixture root"; return 1 ;; esac
+            _ready_inside "$_ready_fx_root" "$WORKER_SESSION_READINESS_CATALOG" || { _ready_fx_why="the host catalog $WORKER_SESSION_READINESS_CATALOG is outside the fixture root"; return 1; }
+        fi
         return 0
     }
     if [ -n "$_ready_missing" ]; then
@@ -1597,9 +1602,11 @@ unset -v _worker_env_scrub
 # site that sets it again is the native worker branch further down.
 # WORKER_SESSION_PROFILE_READINESS and WORKER_SESSION_RENDER_ARGV too: only the readiness block below may turn the
 # readiness role on, and an inherited render switch would make a real launch print its argv instead of running it.
+# HIMMEL_READINESS too: it is the readiness guard's role marker (scripts/hooks/guard-readiness-tools.sh), so an ambient or
+# inherited claim must never reach a worker; only the readiness block below sets it, to exactly 1.
 for _worker_env_scrub in \
     WORKER_SESSION_PROFILE_SETTINGS WORKER_SESSION_PROFILE_PREFACE WORKER_SESSION_PROFILE_MCP_CONFIG WORKER_SESSION_PROFILE_NO_SETTING_SOURCES WORKER_SESSION_ID WORKER_SESSION_REMOTE_CONTROL \
-    WORKER_SESSION_PROFILE_READINESS WORKER_SESSION_RENDER_ARGV; do
+    WORKER_SESSION_PROFILE_READINESS WORKER_SESSION_RENDER_ARGV HIMMEL_READINESS; do
     unset -v "$_worker_env_scrub"
     worker_env_drop_token "$_worker_env_scrub"
 done
@@ -2634,6 +2641,8 @@ EOF_CS_FILES
     if [ "$READINESS" -eq 1 ]; then
         PROFILE_JSON="$READINESS_RESOLVED_JSON"
         worker_propagate_env WORKER_SESSION_PROFILE_READINESS 1
+        # the readiness guard's role marker, from this trusted launcher only (never from model settings or an ambient claim)
+        worker_propagate_env HIMMEL_READINESS 1
     fi
     # The shim reads these; propagate so they survive both konsole's
     # `-e env -u ...` (Linux) and `open -a`'s fresh environment (macOS).
@@ -3423,12 +3432,14 @@ if [ "$READINESS" -eq 1 ]; then
     READINESS_QL="$(cd -P "$HERE/.." && pwd -P)/queue-lock.sh"
     READINESS_PORT="${WORKER_SESSION_READINESS_PORT:-copy}"
     READINESS_PRIMARY_CLI="${WORKER_SESSION_READINESS_PRIMARY_CLI:-}"
+    # the host-admitted catalog (thin C0): a launching-shell seam like the port and the primary CLI, never a model argument
+    READINESS_CATALOG="${WORKER_SESSION_READINESS_CATALOG:-}"
     # how long a cleanup waits for an acquire that was still running (whole seconds, 1..60)
     case "${WORKER_SESSION_READINESS_REAP_SECS:-}" in
         ''|*[!0-9]*) ;;
         *) [ "$((10#${WORKER_SESSION_READINESS_REAP_SECS}))" -ge 1 ] && [ "$((10#${WORKER_SESSION_READINESS_REAP_SECS}))" -le 60 ] && READINESS_REAP_SECS="$((10#${WORKER_SESSION_READINESS_REAP_SECS}))" ;;
     esac
-    unset -v WORKER_SESSION_READINESS_PORT WORKER_SESSION_READINESS_PRIMARY_CLI WORKER_SESSION_READINESS_REAP_SECS
+    unset -v WORKER_SESSION_READINESS_PORT WORKER_SESSION_READINESS_PRIMARY_CLI WORKER_SESSION_READINESS_REAP_SECS WORKER_SESSION_READINESS_CATALOG
     [ -f "$READINESS_QL" ] || _readiness_refuse "queue-lock.sh is missing"
     case "$READINESS_PORT" in
         copy) READINESS_PORT_JSON='{"kind":"copy"}' ;;
@@ -3443,13 +3454,30 @@ if [ "$READINESS" -eq 1 ]; then
             ;;
         *) _readiness_refuse "WORKER_SESSION_READINESS_PORT must be copy or jira (got: $READINESS_PORT)" ;;
     esac
+    # The host-admitted catalog is copied verbatim into the private startup config, exactly three keys and no other, so
+    # nothing else can ride into it; the adapter (readiness-tools.mjs loadStartup) is the one validator of its contents. No
+    # catalog leaves the startup config without these fields and the adapter then admits nothing. Refused before the attempt
+    # directory exists.
+    READINESS_CATALOG_JSON='{}'
+    if [ -n "$READINESS_CATALOG" ]; then
+        case "$READINESS_CATALOG" in /*) ;; *) _readiness_refuse "WORKER_SESSION_READINESS_CATALOG must be an absolute path" ;; esac
+        { [ -f "$READINESS_CATALOG" ] && [ ! -L "$READINESS_CATALOG" ] && [ "$(_ready_stat %s %z "$READINESS_CATALOG")" -le 16384 ]; } \
+            || _readiness_refuse "the host catalog must be a regular, non-symlink file of at most 16 KiB"
+        # swallow-ok: a jq failure fails this assignment, and the `||` below refuses the launch before anything is written
+        READINESS_CATALOG_JSON="$(jq -c 'if type == "object" and (keys | sort) == ["catalog","roots","source_head"] then {source_head, roots, catalog} else error("not exactly source_head, roots and catalog") end' "$READINESS_CATALOG" 2>/dev/null)" \
+            || _readiness_refuse "the host catalog must be a JSON object holding exactly source_head, roots and catalog"
+        # the adapter's own validator runs over these very bytes (the ones embedded below), host-only, before anything is
+        # created or acquired; it reads no credential and its diagnostics are fixed, so only the refusal itself is said here
+        printf '%s' "$READINESS_CATALOG_JSON" | node "$READINESS_ADAPTER" --check-catalog >/dev/null 2>&1 \
+            || _readiness_refuse "the host catalog contents are not a valid readiness catalog (the adapter's validator refused them)"
+    fi
     # (1) the private attempt directory and the startup config that binds the minted id
     _ready_private_dir "$READINESS_ROOT" || _readiness_refuse "the private attempt root $READINESS_ROOT is not this user's mode-0700 directory"
     ( umask 077 && mkdir -m 700 -- "$READINESS_ATTEMPT" ) 2>/dev/null || _readiness_refuse "cannot create the private attempt directory $READINESS_ATTEMPT"
     READINESS_PRE_HANDOFF=1
     _ready_startup="$(jq -cn --arg sid "$READINESS_SID" --arg attempt "$(_ready_uuid)" --arg version "$READINESS_VERSION" --arg doc "$READINESS_DOC" \
-        --arg model "$MODEL" --arg ql "$READINESS_QL" --arg xdg "${XDG_RUNTIME_DIR:-}" --arg hdir "${HANDOVER_DIR:-}" --argjson port "$READINESS_PORT_JSON" \
-        '{schema:"readiness-startup-v1",attempt_id:$attempt,session_scope:$sid,version:$version,doc:$doc,lane:"native",model:$model,queue_lock:$ql,runtime_dir:$xdg,handover_dir:$hdir,port:$port}')" \
+        --arg model "$MODEL" --arg ql "$READINESS_QL" --arg xdg "${XDG_RUNTIME_DIR:-}" --arg hdir "${HANDOVER_DIR:-}" --argjson port "$READINESS_PORT_JSON" --argjson cat "$READINESS_CATALOG_JSON" \
+        '{schema:"readiness-startup-v1",attempt_id:$attempt,session_scope:$sid,version:$version,doc:$doc,lane:"native",model:$model,queue_lock:$ql,runtime_dir:$xdg,handover_dir:$hdir,port:$port} + $cat')" \
         || _readiness_refuse "cannot build the private startup config"
     ( umask 077 && set -C && printf '%s\n' "$_ready_startup" > "$READINESS_ATTEMPT/startup.json" ) 2>/dev/null \
         || _readiness_refuse "cannot write the private startup config"
