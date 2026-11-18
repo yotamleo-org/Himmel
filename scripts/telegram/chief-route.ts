@@ -1322,6 +1322,8 @@ export async function cappedReturnEvidence(input: CappedReturnInput, policy: Cap
 // A group's non-anchor keys hold no ledger file, snapshot folder or manifest entry under the anchor's specs root. The shared ledger folder is
 // listed and the manifest read through the reader, so both are pinned and rechecked like every other read; any presence, listing fault or
 // manifest fault refuses and none is read as absence. The pin is null when the group has no non-anchor key.
+// Preconditions for a direct caller: the reader is built for the same specs root as `specs`, and the listing is read once and cached, so a
+// member that appears later is caught only by `reader.recheck()`, which the caller must run last.
 export async function cappedMemberState(specs: string, anchor: string, members: readonly string[], reader: CappedReader): Promise<MemberAbsencePin | null> {
   const others = members.filter(key => key !== anchor).sort();
   if (!others.length) return null;
