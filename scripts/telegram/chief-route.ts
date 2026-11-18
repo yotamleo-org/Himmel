@@ -1,7 +1,7 @@
 import { selectDecisionNames, pinnedRead, boundedDirectoryNames, reviewedSpecHashes, optionalReturnAgreement, validateCappedFoldProofShape, PINNED_READ_VERSION, returnSha,
   SIGNATURE_DIRS, KEY_FOLDER, CRITIC_FILE, CRITIC_NAME, specsRootOf, keyOf, canonicalDirectoryNames, returnDirectories, checkLatestReturns,
   ledgerDirOf, ledgerEntryNames, ledgerKeyOfFile, parseManifest, memberLedgerState,
-  type CappedFoldProof, type EvidencePin, type EvidenceFilePin, type MemberAbsencePin, type ReturnPin } from "../jira/src/release/pinned.ts";
+  type CappedFoldProof, type EvidencePin, type EvidenceFilePin, type HistoryPin, type MemberAbsencePin, type ReturnPin } from "../jira/src/release/pinned.ts";
 import { join, dirname, basename, resolve, isAbsolute } from "node:path";
 import { randomUUID, createHash } from "node:crypto";
 import { hostname, homedir } from "node:os";
@@ -1112,7 +1112,7 @@ export function cappedReader(specs: string, key: string) {
   const files = new Map<string, { bytes: Buffer; sha256: string; mtime_ms: number }>();
   const aliases = new Map<string, string>();
   const directories = new Map<string, { canonical: string | null; names: string[] }>();
-  const pins = new Map<string, EvidenceFilePin>();
+  const pins = new Map<string, EvidenceFilePin | HistoryPin>();
   const selections: Extract<EvidencePin, { role: "decision-selection" }>[] = [];
   const fail = (path: string) => { throw new Error(`capped-fold: evidence changed or is unreadable: ${path}`); };
   const canonical = async (path: string) => {
@@ -1127,7 +1127,7 @@ export function cappedReader(specs: string, key: string) {
     : path === join(ledgerDirOf(specs), ledgerEntryNames(key).file) ? "ledger"
     : dirname(path) === join(ledgerDirOf(specs), ledgerEntryNames(key).folder) ? "snapshot"
     : dirname(path) === join(specs, "decisions") ? "decision" : "artifact";
-  const read = async (path: string, role = roleOf(path)) => {
+  const read = async (path: string, role: EvidenceFilePin["role"] | "history" = roleOf(path)) => {
     const abs = await canonical(path);
     if (!files.has(abs)) {
       const got = pinnedRead(abs);
@@ -1199,9 +1199,9 @@ function cappedFindings(text: string, kind: Kind, round: number, row: LedgerRow,
   return findings;
 }
 
-async function cappedLatest(spec: string, plan: string, reader: RoundReader, expected: [ReturnPin, ReturnPin]): Promise<void> {
+export async function cappedLatest(spec: string, plan: string, reader: RoundReader, expected: [ReturnPin, ReturnPin], history?: ReadonlySet<string>): Promise<void> {
   const key = keyOf(spec)!;
-  for (const directory of returnDirectories(key, spec, plan, expected)) checkLatestReturns(directory, await reader.names(directory), key, expected);
+  for (const directory of returnDirectories(key, spec, plan, expected)) checkLatestReturns(directory, await reader.names(directory), key, expected, history);
 }
 
 async function cappedLedgerEvidence(rows: Rows, key: string, reader: ReturnType<typeof cappedReader>): Promise<void> {
@@ -1322,6 +1322,8 @@ export async function cappedReturnEvidence(input: CappedReturnInput, policy: Cap
 // A group's non-anchor keys hold no ledger file, snapshot folder or manifest entry under the anchor's specs root. The shared ledger folder is
 // listed and the manifest read through the reader, so both are pinned and rechecked like every other read; any presence, listing fault or
 // manifest fault refuses and none is read as absence. The pin is null when the group has no non-anchor key.
+// Preconditions for a direct caller: the reader is built for the same specs root as `specs`, and the listing is read once and cached, so a
+// member that appears later is caught only by `reader.recheck()`, which the caller must run last.
 export async function cappedMemberState(specs: string, anchor: string, members: readonly string[], reader: CappedReader): Promise<MemberAbsencePin | null> {
   const others = members.filter(key => key !== anchor).sort();
   if (!others.length) return null;
@@ -1331,6 +1333,30 @@ export async function cappedMemberState(specs: string, anchor: string, members: 
   const { present } = memberLedgerState(listing, Object.keys(manifest.keys), others);
   if (present.length) throw new Error(`capped-fold: group member holds ledger state: ${present.join(", ")}`);
   return { role: "member-absence", directory, keys: others };
+}
+
+// The earlier-epoch returns the ledger itself accounts for: the verdict_path of each earlier-epoch round row, and of a seed row's latest returns
+// when the epoch is above zero. A candidate is proven history when its bytes still hash (returnSha) to the digest the ledger recorded and neither a
+// current-epoch round row nor any path in `current` uses it. A drifted file, a lost row, a current path or a path the reader would not take (a link,
+// a spelling that is not canonical) is simply not history, so the namespace check treats it like any other unaccounted file. Only proven files are
+// pinned, through the reader, with role history.
+export async function cappedHistory(rows: Rows, current: readonly string[], reader: CappedReader): Promise<{ set: ReadonlySet<string>; pins: HistoryPin[] }> {
+  const epoch = rows.checked.epoch;
+  const taken = new Set([...current, ...KINDS.flatMap(kind => roundRows(rows, kind).map(row => String(row.verdict_path)))]);
+  const recorded = new Map<string, Set<string>>();
+  const record = (path: unknown, digest: unknown) => { if (typeof path === "string" && typeof digest === "string") recorded.set(path, (recorded.get(path) ?? new Set<string>()).add(digest)); };
+  for (const row of rows) if (row.row === "round" && (Number(row.epoch) || 0) < epoch) record(row.verdict_path, row.return_sha);
+  if (epoch > 0) for (const kind of KINDS) for (const seeded of (seedOf(rows)?.latest?.[kind] ?? []) as SeededReturn[]) record(seeded.verdict_path, seeded.return_sha);
+  const pins: HistoryPin[] = [];
+  for (const [path, digests] of recorded) {
+    if (taken.has(path) || await realpath(path).catch(() => null) !== path) continue;
+    const peek = pinnedRead(path);
+    if (!("bytes" in peek) || !digests.has(returnSha(peek.bytes.toString("utf8")))) continue;
+    const got = await reader.read(path, "history");
+    if (got.sha256 !== peek.sha256) throw new Error(`capped-fold: evidence changed or is unreadable: ${path}`);
+    pins.push({ role: "history", path, sha256: got.sha256 });
+  }
+  return { set: new Set(pins.map(pin => pin.path)), pins };
 }
 
 export async function cappedFold(o: { key: string; spec: string; plan: string; specReturn: string; planReturn: string }): Promise<CappedFoldProof> {

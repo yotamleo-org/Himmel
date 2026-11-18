@@ -6743,3 +6743,251 @@ test("3d member state: the listing and the manifest are read through the reader,
   m3Manifest(second, m => { m.keys[second.f.members[0]] = { spec: 1, plan: 1 }; });
   await expect(again.recheck(), "a manifest entry written after the check").rejects.toThrow(`capped-fold: evidence changed or is unreadable: ${join(second.dir, "manifest.json")}`);
 }, S1B);
+
+// ---- history and namespace at the in-process seam (rows N1 to N10 and N13) ----
+const N3_UNACCOUNTED = (path: string) => `capped-fold: ambiguous or unaccounted latest return: ${path}`;
+const n3Route = async (): Promise<any> => {
+  const route: any = await import("./chief-route");
+  for (const name of ["cappedHistory", "cappedLatest", "cappedReader", "cappedLedger", "cappedReturnEvidence", "v2Policy"]) expect(typeof route[name], `${name} is reachable by an in-process caller`).toBe("function");
+  return route;
+};
+// The fold as the verifier will wire it, up to the namespace: the canonical spec, one reader, the real ledger load, both returns through the helper
+// with the v2 policy, then the proven history. `latest()` runs the namespace check with that history, `v1()` without any.
+const n3Fold = async (f: C3Fixture, keys: string[]) => {
+  const route = await n3Route(); const key = route.keyOf(f.spec); const spec = realpathSync(f.spec); const plan = realpathSync(f.plan);
+  const reader = route.cappedReader(f.specsRoot, key); const specRead = await reader.read(spec); const planRead = await reader.read(plan);
+  const rows = await route.cappedLedger(f.specsRoot, key, reader); const policy = route.v2Policy(keys); const pins: any[] = [];
+  for (const kind of ["spec", "plan"] as const) {
+    pins.push((await route.cappedReturnEvidence({ key, kind, path: b1Kind(f, kind).at(-1)!, spec, plan, specSha: specRead.sha256, planSha: planRead.sha256, rows, reader }, policy)).pin);
+  }
+  const history = await route.cappedHistory(rows, pins.map(p => p.path), reader);
+  return { route, key, spec, plan, reader, rows, pins, history, latest: () => route.cappedLatest(spec, plan, reader, pins, history.set), v1: () => route.cappedLatest(spec, plan, reader, pins) };
+};
+const n3NewStem = async () => { const lib = await b1Lib(); return lib.buildGroupFixture(realpathSync(root()), { reset: "new-stem" }); };
+// A file dropped into a scanned folder after a first accepted fold; a second fold with a fresh reader then reads the folder again.
+const n3Intruder = async (make: (f: any) => { from: string; to: string }) => {
+  const f = await n3NewStem(); const before = await n3Fold(f, f.keys);
+  await expect(before.latest(), "control: accepted before the file appears").resolves.toBeUndefined();
+  const { from, to } = make(f); copyFileSync(from, to);
+  const after = await n3Fold(f, f.keys);
+  await expect(after.latest(), "with the proven history").rejects.toThrow(N3_UNACCOUNTED(to));
+  await expect(after.v1(), "without history the group is refused too, at whichever unaccounted file sorts first").rejects.toThrow(N3_UNACCOUNTED(""));
+  return { f, to };
+};
+
+test("3e availability: cappedHistory and the namespace check are reachable in process", async () => {
+  const route = await n3Route();
+  expect(route.cappedHistory.length, "rows, current paths and the reader").toBe(3);
+  expect(route.cappedLatest.length, "spec, plan, reader, expected pins and the optional proven history").toBeGreaterThanOrEqual(4);
+});
+
+test("N1 the new-stem group's five preserved earlier-epoch files are the proven history, pinned through the reader, and the namespace accepts them", async () => {
+  const f = await n3NewStem(); const g = await n3Fold(f, f.keys); const earlier = [...f.earlier].sort();
+  expect(f.earlier).toHaveLength(5); expect(g.rows.checked.epoch).toBe(1);
+  expect([...g.history.set].sort()).toEqual(earlier);
+  expect(g.history.pins).toEqual(earlier.map(path => ({ role: "history", path, sha256: sha(readFileSync(path, "utf8")) })));
+  expect(g.reader.pins().filter((p: any) => p.role === "history"), "the same pins live in the reader").toEqual(g.history.pins);
+  expect(g.pins.map((p: any) => p.round), "the signed rounds").toEqual([3, 3]);
+  expect(f.earlier.map((path: string) => Number(/-r(\d+)\.md$/.exec(path)![1])), "three of the five are at or above the signed round").toEqual([1, 2, 3, 4, 5]);
+  await expect(g.latest(), "with the proven history").resolves.toBeUndefined();
+  await expect(g.v1(), "without it, the first file at or above the signed round is refused").rejects.toThrow(N3_UNACCOUNTED(f.earlier[2]));
+  await expect(g.reader.recheck()).resolves.toBeUndefined();
+}, S1B);
+
+test("N1 a ledger with one epoch has no history: the known-single fixture proves nothing and the namespace is the v1 one", async () => {
+  const lib = await b1Lib(); const f = await lib.buildKnownSingleFixture(realpathSync(root()), { variant: "refusedCap" }); const key = basename(f.spec).replace(/-fixture\.md$/, "");
+  const g = await n3Fold(f, [key]);
+  expect(g.rows.checked.epoch).toBe(0); expect([...g.history.set]).toEqual([]); expect(g.history.pins).toEqual([]);
+  expect(g.reader.pins().filter((p: any) => p.role === "history")).toEqual([]);
+  await expect(g.latest()).resolves.toBeUndefined(); await expect(g.v1()).resolves.toBeUndefined();
+}, S1B);
+
+test("3e a seed row's latest returns are history only once the epoch is above zero, through the real seed and the real reset", async () => {
+  const route = await n3Route(); const t = specsTree(); const [m] = wSeedable(t.specs, [ROUND_KEY]);
+  expect((await routeCli("round-seed", "--all", t.specs)).code, "the real round-seed").toBe(0);
+  const open = async () => { const reader = route.cappedReader(t.specs, ROUND_KEY); const rows = await route.cappedLedger(t.specs, ROUND_KEY, reader); return { reader, rows }; };
+  const zero = await open();
+  expect(zero.rows.checked.epoch).toBe(0);
+  expect([...(await route.cappedHistory(zero.rows, [], zero.reader)).set], "at epoch zero the seeded return is current evidence, not history").toEqual([]);
+  const quote = "start this ticket over from scratch"; const decision = join(t.specs, "decisions", "verbatim-decision-990-seed.txt");
+  mkdirSync(join(t.specs, "decisions"), { recursive: true }); writeFileSync(decision, `${ROUND_KEY} ${quote}\n`);
+  const later = new Date(Date.now() + 2000); utimesSync(decision, later, later);
+  const marker = process.env.HIMMEL_CONSOLE; process.env.HIMMEL_CONSOLE = "1";
+  try { await route.roundReset(t.specs, ROUND_KEY, { decision: "990", quote }); } finally { if (marker === undefined) delete process.env.HIMMEL_CONSOLE; else process.env.HIMMEL_CONSOLE = marker; }
+  const one = await open(); expect(one.rows.checked.epoch).toBe(1);
+  const proven = await route.cappedHistory(one.rows, [], one.reader);
+  expect([...proven.set]).toEqual([m.verdict]); expect(proven.pins).toEqual([{ role: "history", path: m.verdict, sha256: wSha(m.verdict) }]);
+  expect(one.reader.pins().filter((p: any) => p.role === "history")).toEqual(proven.pins);
+  const named = await open(); expect([...(await route.cappedHistory(named.rows, [m.verdict], named.reader)).set], "a path the caller names as current is not history").toEqual([]);
+  writeFileSync(m.verdict, `${readFileSync(m.verdict, "utf8")}drift\n`);
+  const drifted = await open(); const none = await route.cappedHistory(drifted.rows, [], drifted.reader);
+  expect([...none.set], "bytes that no longer hash to the seeded digest").toEqual([]); expect(drifted.reader.pins().filter((p: any) => p.role === "history")).toEqual([]);
+}, S1B);
+
+test("N2 a fresh unsealed current spec return one round above the signed round is refused", async () => {
+  await n3Intruder(f => { const from = b1Kind(f, "spec").at(-1)!; return { from, to: from.replace("r3.md", "r4.md") }; });
+}, S1B);
+
+test("N3 a fresh unsealed current plan return in plans/ is refused", async () => {
+  await n3Intruder(f => { const from = b1Kind(f, "plan").at(-1)!; return { from, to: join(f.specsRoot, "plans", basename(from).replace("r3.md", "r4.md")) }; });
+}, S1B);
+
+test("N4 a second plan return of the signed round in another scanned folder, a tie, is refused", async () => {
+  const { f, to } = await n3Intruder(f => { const from = b1Kind(f, "plan").at(-1)!; return { from, to: join(f.specsRoot, "plans", basename(from)) }; });
+  expect(basename(to), "the tie has the signed round").toContain("critic-plan-r3.md"); expect(to).not.toBe(b1Kind(f, "plan").at(-1)!);
+}, S1B);
+
+test("N5 a new return under a foreign stem at or above the signed round is refused", async () => {
+  await n3Intruder(f => { const from = b1Kind(f, "spec").at(-1)!; return { from, to: join(dirname(from), "HIMMEL-9801-foreign.md.critic-spec-r4.md") }; });
+}, S1B);
+
+test("N6 a history file whose bytes drifted is not history: refused at or above the signed round, and never pinned", async () => {
+  const f = await n3NewStem(); const drift = (path: string) => writeFileSync(path, `${readFileSync(path, "utf8")}drifted after the reset\n`);
+  drift(f.earlier[3]); const g = await n3Fold(f, f.keys);
+  expect([...g.history.set].sort()).toEqual(f.earlier.filter((p: string) => p !== f.earlier[3]).sort());
+  expect(g.history.pins.map((p: any) => p.path)).not.toContain(f.earlier[3]); expect(g.reader.pins().map((p: any) => p.path)).not.toContain(f.earlier[3]);
+  await expect(g.latest()).rejects.toThrow(N3_UNACCOUNTED(f.earlier[3]));
+  const low = await n3NewStem(); drift(low.earlier[0]); const h = await n3Fold(low, low.keys);
+  expect([...h.history.set]).not.toContain(low.earlier[0]); expect(h.history.set.size).toBe(4);
+  await expect(h.latest(), "below the signed round the v1 rule still passes it").resolves.toBeUndefined();
+}, S1B);
+
+test("N7 a history file whose ledger row was removed is not history: refused at or above the signed round", async () => {
+  const f = await n3NewStem(); editLedger(f, rows => { const at = rows.findIndex(r => r.row === "round" && r.verdict_path === f.earlier[4]); expect(at, "the row of the last earlier return").toBeGreaterThan(-1); rows.splice(at, 1); });
+  const g = await n3Fold(f, f.keys);
+  expect([...g.history.set].sort()).toEqual(f.earlier.slice(0, 4).sort()); expect(g.reader.pins().map((p: any) => p.path)).not.toContain(f.earlier[4]);
+  await expect(g.latest()).rejects.toThrow(N3_UNACCOUNTED(f.earlier[4]));
+}, S1B);
+
+test("N8 classification half: on the in-place group every earlier path is also a current row's path, so cappedHistory proves none of them", async () => {
+  const lib = await b1Lib(); const f = await lib.buildGroupFixture(realpathSync(root()), { reset: "in-place" }); const g = await n3Fold(f, f.keys);
+  const earlier = g.rows.filter((r: any) => r.row === "round" && (r.epoch ?? 0) === 0); const current = g.rows.filter((r: any) => r.row === "round" && r.epoch === 1);
+  expect(g.rows.checked.epoch).toBe(1); expect(earlier).toHaveLength(3);
+  for (const row of earlier) {
+    const same = current.find((c: any) => c.verdict_path === row.verdict_path);
+    expect(same, `${row.verdict_path} is a current row's path`).toBeDefined(); expect(same.return_sha, "its current digest is not its earlier digest").not.toBe(row.return_sha);
+    expect(g.route.returnSha(readFileSync(row.verdict_path, "utf8")), "the current digest matches the rewritten bytes").toBe(same.return_sha);
+  }
+  expect([...g.history.set], "no earlier path is proven history").toEqual([]); expect(g.history.pins).toEqual([]);
+  expect(g.reader.pins().filter((p: any) => p.role === "history")).toEqual([]);
+  expect([...(await g.route.cappedHistory(g.rows, [], g.reader)).set], "with no path named as current: the ledger's own current rows already exclude them").toEqual([]);
+}, S1B);
+
+test("N8 classification half, isolated: a path a current round row uses is not history even when its bytes still hash to the earlier digest", async () => {
+  const f = await n3NewStem(); const shared = f.earlier[3]; const route = await n3Route(); const key = route.keyOf(f.spec);
+  editLedger(f, rows => { rows.find(r => r.row === "round" && r.epoch === 1 && r.critic === "spec" && r.round === 1)!.verdict_path = shared; });
+  const reader = route.cappedReader(f.specsRoot, key); const rows = await route.cappedLedger(f.specsRoot, key, reader);
+  const earlierRow = rows.find((r: any) => r.row === "round" && (r.epoch ?? 0) === 0 && r.verdict_path === shared);
+  expect(route.returnSha(readFileSync(shared, "utf8")), "the bytes still hash to the earlier row's digest").toBe(earlierRow.return_sha);
+  expect(rows.some((r: any) => r.row === "round" && r.epoch === 1 && r.verdict_path === shared), "a current row uses the path").toBe(true);
+  const proven = await route.cappedHistory(rows, [], reader);
+  expect([...proven.set].sort()).toEqual(f.earlier.filter((path: string) => path !== shared).sort()); expect(reader.pins().map((p: any) => p.path)).not.toContain(shared);
+  const folded = await n3Fold(f, f.keys); expect(folded.history.set.has(shared), "the whole fold: still not history").toBe(false);
+  await expect(folded.latest(), "and the reused path's file is refused as unaccounted, the plan's not history, refused").rejects.toThrow(N3_UNACCOUNTED(shared));
+}, S1B);
+
+test("N9 an unsealed historical file at or above the signed round is refused, and the same file below it is accepted as v1", async () => {
+  const f = await n3NewStem(); const base = f.earlier[0].replace(/\.critic-spec-r1\.md$/, ""); const body = readFileSync(b1Kind(f, "plan").at(-1)!, "utf8");
+  const old = (round: number) => `${base}.critic-plan-r${round}.md`;
+  const g = await n3Fold(f, f.keys); await expect(g.latest(), "control").resolves.toBeUndefined();
+  writeFileSync(old(4), body); const above = await n3Fold(f, f.keys);
+  await expect(above.latest(), "an old-stem plan return at round 4, with no ledger row").rejects.toThrow(N3_UNACCOUNTED(old(4)));
+  renameSync(old(4), old(2)); const below = await n3Fold(f, f.keys);
+  await expect(below.latest(), "the same file named for round 2").resolves.toBeUndefined();
+  const lib = await b1Lib(); const single = await lib.buildKnownSingleFixture(realpathSync(root()), { variant: "refusedCap" }); const key = basename(single.spec).replace(/-fixture\.md$/, "");
+  const stale = (round: number) => join(dirname(single.spec), `${basename(single.spec)}.critic-plan-r${round}.md`);
+  writeFileSync(stale(5), readFileSync(b1Kind(single, "plan").at(-1)!, "utf8")); const hot = await n3Fold(single, [key]);
+  await expect(hot.latest(), "single epoch: a plan return at round 5 with no ledger row, the signed plan round being 4").rejects.toThrow(N3_UNACCOUNTED(stale(5)));
+  await expect(hot.v1()).rejects.toThrow(N3_UNACCOUNTED(stale(5)));
+  renameSync(stale(5), stale(2)); const cold = await n3Fold(single, [key]);
+  await expect(cold.v1(), "the same file named for round 2 is accepted as v1").resolves.toBeUndefined(); await expect(cold.latest()).resolves.toBeUndefined();
+}, S1B);
+
+test("N10 a kindless legacy name is compared with both kinds: the lower signed round decides, whichever kind holds it", async () => {
+  const lib = await b1Lib(); const single = await lib.buildKnownSingleFixture(realpathSync(root()), { variant: "refusedCap" }); const key = basename(single.spec).replace(/-fixture\.md$/, "");
+  const kindless = (f: C3Fixture, round: number) => join(dirname(realpathSync(f.spec)), `${basename(f.spec)}.critic-r${round}.md`);
+  const specReturn = b1Kind(single, "spec").at(-1)!; const first = await n3Fold(single, [key]);
+  expect(first.pins.map((p: any) => [p.kind, p.round])).toEqual([["spec", 5], ["plan", 4]]);
+  copyFileSync(specReturn, kindless(single, 3)); const low = await n3Fold(single, [key]);
+  await expect(low.latest(), "round 3 is below both signed rounds").resolves.toBeUndefined();
+  renameSync(kindless(single, 3), kindless(single, 4)); const mid = await n3Fold(single, [key]);
+  await expect(mid.latest(), "round 4 is at the plan's signed round, below the spec's").rejects.toThrow(N3_UNACCOUNTED(kindless(single, 4)));
+  await expect(mid.v1()).rejects.toThrow(N3_UNACCOUNTED(kindless(single, 4)));
+  const finding = "- **P3** (major) a blocking plan note";
+  const mixed = await c3Build([{ kind: "spec", round: 1 }, { kind: "spec", round: 2 }, { kind: "spec", round: 3 }, { kind: "plan", round: 1 }, { kind: "plan", round: 2 },
+    { kind: "plan", round: 3, findings: finding }, { kind: "plan", round: 4, closure: true }]);
+  const lower = await n3Fold(mixed, [cappedKey]);
+  expect(lower.pins.map((p: any) => [p.kind, p.round])).toEqual([["spec", 3], ["plan", 4]]);
+  copyFileSync(b1Kind(mixed, "spec").at(-1)!, kindless(mixed, 2)); const under = await n3Fold(mixed, [cappedKey]);
+  await expect(under.latest(), "round 2 is below both").resolves.toBeUndefined();
+  renameSync(kindless(mixed, 2), kindless(mixed, 3)); const spec = await n3Fold(mixed, [cappedKey]);
+  await expect(spec.latest(), "round 3 is at the spec's signed round, below the plan's").rejects.toThrow(N3_UNACCOUNTED(kindless(mixed, 3)));
+}, S1B);
+
+test("N13 an aliased, an unreadable and an over-bounded scanned folder are refused as in v1: on the group with its history and on the single-epoch fixture with and without", async () => {
+  const lib = await b1Lib();
+  for (const fault of ["alias", "unreadable", "overflow"] as const) {
+    const group = await n3NewStem(); const single = await lib.buildKnownSingleFixture(realpathSync(root()), { variant: "refusedCap" }); const key = basename(single.spec).replace(/-fixture\.md$/, "");
+    await expect((await n3Fold(group, group.keys)).latest(), `${fault}: group control`).resolves.toBeUndefined(); await expect((await n3Fold(single, [key])).v1(), `${fault}: v1 control`).resolves.toBeUndefined();
+    const plant = (specsRoot: string) => {
+      const directory = join(specsRoot, "design");
+      if (fault === "alias") { const target = join(dirname(specsRoot), "alias-target"); mkdirSync(target); symlinkSync(target, directory); } else mkdirSync(directory);
+      if (fault === "unreadable") chmodSync(directory, 0);
+      if (fault === "overflow") for (let i = 0; i < 4097; i++) writeFileSync(join(directory, `irrelevant-${i}`), "");
+      return { directory, message: { alias: `capped-fold: directory lookup must be canonical: ${directory}`, unreadable: `EACCES: permission denied, scandir '${directory}'`, overflow: `${directory}: directory entry limit (4096) exceeded` }[fault] };
+    };
+    const planted = [plant(group.specsRoot), plant(single.specsRoot)];
+    try {
+      await expect((await n3Fold(group, group.keys)).latest(), `${fault}: the group with its history`).rejects.toThrow(planted[0].message);
+      const solo = await n3Fold(single, [key]);
+      await expect(solo.latest(), `${fault}: single epoch with history`).rejects.toThrow(planted[1].message); await expect(solo.v1(), `${fault}: single epoch, v1`).rejects.toThrow(planted[1].message);
+    } finally { if (fault === "unreadable") for (const p of planted) chmodSync(p.directory, 0o700); }
+  }
+}, S1B);
+
+// ---- review follow-ups of the history seam: the peek-versus-pin guard, the any-digest choice and an unusable earlier path ----
+test("3e the peek and the pinned read of a history file must agree: a reader that already holds other bytes for it refuses", async () => {
+  const route = await n3Route(); const f = await n3NewStem(); const target = f.earlier[3]; const key = route.keyOf(f.spec);
+  const reader = route.cappedReader(f.specsRoot, key); const rows = await route.cappedLedger(f.specsRoot, key, reader);
+  const original = readFileSync(target, "utf8");
+  writeFileSync(target, `${original}drifted while the reader looked\n`); await reader.read(target, "history");
+  writeFileSync(target, original);
+  await expect(route.cappedHistory(rows, [], reader), "the peek hashes to the ledger's digest, the reader holds other bytes").rejects.toThrow(`capped-fold: evidence changed or is unreadable: ${target}`);
+  expect((await n3Fold(f, f.keys)).history.set.has(target), "control: through a fresh reader the same file is proven").toBe(true);
+}, S1B);
+
+test("3e a path recorded under several earlier digests is proven when any one of them matches its bytes", async () => {
+  const route = await n3Route(); const stale = "0".repeat(64);
+  const earlierRow = (rows: any[], path: string) => rows.find(r => r.row === "round" && (r.epoch ?? 0) === 0 && r.verdict_path === path);
+  const build = async (edit: (rows: any[], older: string, newer: string) => void) => {
+    const f = await n3NewStem(); const [, , older, newer] = f.earlier; const key = route.keyOf(f.spec);
+    editLedger(f, rows => edit(rows, older, newer));
+    const reader = route.cappedReader(f.specsRoot, key); const rows = await route.cappedLedger(f.specsRoot, key, reader);
+    return { f, older, newer, set: (await route.cappedHistory(rows, [], reader)).set as ReadonlySet<string> };
+  };
+  const first = await build((rows, older, newer) => { earlierRow(rows, newer).verdict_path = older; });
+  expect(first.set.has(first.older), "recorded first with a matching digest, then again with a stale one").toBe(true);
+  expect(first.set.size, "the other four earlier files stay proven and the re-pointed one has no row left").toBe(4);
+  const last = await build((rows, older, newer) => { const a = earlierRow(rows, older); const b = earlierRow(rows, newer); b.verdict_path = older; b.return_sha = a.return_sha; a.return_sha = stale; });
+  expect(last.set.has(last.older), "recorded first with a stale digest, then again with a matching one").toBe(true);
+  expect(route.returnSha(readFileSync(last.older, "utf8")), "the file's bytes are unchanged").not.toBe(stale);
+  const none = await build((rows, older, newer) => { earlierRow(rows, newer).verdict_path = older; earlierRow(rows, older).return_sha = stale; });
+  expect(none.set.has(none.older), "neither recorded digest matches").toBe(false); expect(none.set.size).toBe(3);
+}, S1B);
+
+test("3e an earlier path that is a link or not spelled canonically is not history instead of a refusal: below the signed round the v1 rule accepts it, at or above it the namespace refuses it", async () => {
+  const link = (path: string) => { const copy = `${path}.elsewhere`; copyFileSync(path, copy); unlinkSync(path); symlinkSync(copy, path); };
+  const spelled = (path: string) => `${dirname(path)}/../${basename(dirname(path))}/${basename(path)}`;
+  const place = { 0: "below the signed round", 2: "at the signed round", 3: "above the signed round" } as const;
+  for (const how of ["a link", "a spelling that is not canonical"] as const) {
+    for (const index of [0, 2, 3] as const) {
+      const f = await n3NewStem(); const target = f.earlier[index];
+      if (how === "a link") link(target); else editLedger(f, rows => { rows.find(r => r.row === "round" && r.verdict_path === target).verdict_path = spelled(target); });
+      const g = await n3Fold(f, f.keys); const label = `${how} ${place[index]}`;
+      expect(g.history.set.has(target), `${label}: not history`).toBe(false); expect(g.history.set.size, `${label}: the other four stay proven`).toBe(4);
+      expect(g.reader.pins().map((p: any) => p.path), label).not.toContain(target);
+      if (index === 0) await expect(g.latest(), `${label}: accepted as v1`).resolves.toBeUndefined();
+      else await expect(g.latest(), `${label}: refused as unaccounted`).rejects.toThrow(N3_UNACCOUNTED(target));
+    }
+  }
+}, S1B);
