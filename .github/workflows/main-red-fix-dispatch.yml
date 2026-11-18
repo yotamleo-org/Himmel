@@ -34,8 +34,13 @@ jobs:
           set -eu
           PR_NUMBER=
           if [ "$EVENT" != workflow_dispatch ]; then
-            pr=$(gh api "repos/$GH_REPO/commits/$SHA/pulls" \
-              --jq "[.[] | select(.merged_at != null and .base.ref == \"main\" and .merge_commit_sha == \"$SHA\")] | first // empty")
+            # GitHub links a merge commit to its PR seconds after the push; this run can start first.
+            for attempt in 1 2 3 4 5 6; do
+              pr=$(gh api "repos/$GH_REPO/commits/$SHA/pulls" \
+                --jq "[.[] | select(.merged_at != null and .base.ref == \"main\" and .merge_commit_sha == \"$SHA\")] | first // empty")
+              [ -n "$pr" ] && break
+              [ "$attempt" -lt 6 ] && sleep 10
+            done
             if [ -z "$pr" ]; then
               echo "Commit $SHA is no merged PR's merge commit; nothing to dispatch."
               exit 0
