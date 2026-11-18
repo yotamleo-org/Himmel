@@ -1022,11 +1022,13 @@ mkvault
 echo "a note" >"$V/note.md"; backdate "$V/note.md"
 cp "$V/.git/hooks/pre-commit" "$TMP/hook.keep"
 printf '#!/usr/bin/env bash\nmkdir -p handovers; echo {} >handovers/state.json; git add handovers/state.json\nexit 1\n' >"$V/.git/hooks/pre-commit"
-run_ac >/dev/null
+run_ac >/dev/null; rc=$?
+assert_eq "T65 setup: the refused run exits 0" "0" "$rc"
 assert_eq "T65 setup: the hook left the handover entry staged" "handovers/state.json note.md " "$(staged)"
 assert_eq "T65 a hook-staged excluded path leaves the refusal unowned" "0" "$(find "$S" -maxdepth 1 -name "autocommit-owned*" | wc -l | tr -d ' ')"
 cp "$TMP/hook.keep" "$V/.git/hooks/pre-commit"
-before="$(head_sha)"; out="$(run_ac)"
+before="$(head_sha)"; out="$(run_ac)"; rc2=$?
+assert_eq "T65 the run after the hook is fixed exits 0" "0" "$rc2"
 assert_eq "T65 after the hook is fixed nothing is auto-committed" "$before" "$(head_sha)"
 assert_eq "T65 the handover entry stays staged" "handovers/state.json note.md " "$(staged)"
 
