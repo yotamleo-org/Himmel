@@ -1216,7 +1216,7 @@ class VM:
         self._require_vm("e2e")
         if self.os != "ubuntu":
             raise NotImplementedError(
-                "run_e2e is Ubuntu-only today; no host-driven Windows e2e exists")
+                "run_e2e is Ubuntu-only today")
         # Run the e2e script that ships in THIS checkout. The script resolves the
         # repo it copies to the VM via its own BASH_SOURCE, so invoking the
         # colocated copy tests the SDK's own tree (the worktree/branch), matching
