@@ -289,6 +289,10 @@ _launch_attempt_start() {
 # shellcheck disable=SC2329  # invoked by the EXIT trap
 _launch_refusal_exit() {
     local rc=$?
+    # the readiness role holds a lease the launcher acquired for a session that has not been started yet: any exit between
+    # that acquire and the child's start (a refusal, the managed fleet hand-off refusal, a fatal signal) releases the
+    # launcher's OWN captured token. The existing receipt and fleet handling below is unchanged.
+    [ "${READINESS_PRE_HANDOFF:-0}" -ne 1 ] || _readiness_release
     [ -z "$_LAUNCH_OUTCOME_FILE" ] || rm -f "$_LAUNCH_OUTCOME_FILE" 2>/dev/null
     [ "${DRY_RUN:-0}" != 1 ] && [ "$_LAUNCH_REFUSAL_SKIP" -ne 1 ] && [ -n "${HOME:-}" ] || return 0
     local outcome="$_LAUNCH_OUTCOME"
@@ -941,7 +945,105 @@ if [ "$READINESS" -eq 1 ]; then
     READINESS_VERSION="${BASH_REMATCH[1]}"
     READINESS_DOC="$(cd -P "$(dirname -- "$DOC")" 2>/dev/null && pwd -P)/$_ready_base" || READINESS_DOC=""  # swallow-ok: an unresolvable doc leaves a non-absolute path, refused on the next line
     case "$READINESS_DOC" in /*) ;; *) echo "headed-arm-worker: refusing the readiness role: cannot resolve $DOC" >&2; exit 2 ;; esac
+    # the lease, the startup config, the render and the loaded prompt all name this one canonical document
+    DOC="$READINESS_DOC"
     unset -v _ready_base _ready_first
+    # --- Delivery registration, the fixture boundary and the exec pins. -------------------------------------------------
+    # This role's SessionStart/SessionEnd hook registration, its STDIO server, its guard and its supervisor are later cycles:
+    # each flips its word below to 1 when it lands, with its own tests (an ambient value cannot, these are assigned here).
+    # The jira port also needs an owner for the credentials file a killed session leaves behind (a reaper). While any
+    # word is 0 a launch (a dry run included) is refused before anything is minted, written or acquired, unless an
+    # isolated FIXTURE ROOT vouches for every root, binary and port the launch would touch: the seam names a directory
+    # that carries a marker file and does not hold the account's real home, and then HOME, the config, runtime and handover
+    # roots, the claude binary, konsole, the usage preflight, the doc, the jira client and any exec-target/resolver override
+    # must all resolve INSIDE it. It cannot reach the real queue, real credentials or a native binary, because none of
+    # those lives under a fixture root. Other launching-shell seams (the waker, pgrep, lock and proc directories, the repo)
+    # are not contained by it.
+    READINESS_DELIVERED_HOOKS=0 READINESS_DELIVERED_STDIO=0 READINESS_DELIVERED_GUARD=0 READINESS_DELIVERED_SUPERVISOR=0 READINESS_DELIVERED_REAPER=0
+    _ready_missing=""
+    [ "$READINESS_DELIVERED_HOOKS" -eq 1 ] || _ready_missing="$_ready_missing session-hooks"
+    [ "$READINESS_DELIVERED_STDIO" -eq 1 ] || _ready_missing="$_ready_missing stdio-server"
+    [ "$READINESS_DELIVERED_GUARD" -eq 1 ] || _ready_missing="$_ready_missing guard"
+    [ "$READINESS_DELIVERED_SUPERVISOR" -eq 1 ] || _ready_missing="$_ready_missing supervisor"
+    { [ "${WORKER_SESSION_READINESS_PORT:-copy}" != jira ] || [ "$READINESS_DELIVERED_REAPER" -eq 1 ]; } || _ready_missing="$_ready_missing credential-reaper"
+    _ready_fx_root="" _ready_fx_why=""
+    _ready_fx_stat() { stat -c "$1" -- "$3" 2>/dev/null || stat -f "$2" -- "$3" 2>/dev/null; }
+    # _ready_inside <root> <path>: the path (a directory, or a non-symlink file whose directory exists) resolves inside <root>
+    _ready_inside() {
+        local p="$2" d
+        [ -n "$p" ] || return 1
+        if [ -d "$p" ]; then d="$(cd -P "$p" 2>/dev/null && pwd -P)" || return 1  # swallow-ok: an unresolvable directory is not inside the root and refuses
+        else
+            [ ! -L "$p" ] || return 1
+            d="$(cd -P "$(dirname -- "$p")" 2>/dev/null && pwd -P)/$(basename -- "$p")" || return 1  # swallow-ok: an unresolvable parent is not inside the root and refuses
+        fi
+        case "$d" in "$1"|"$1"/*) return 0 ;; esac
+        return 1
+    }
+    # _ready_fixture_check: 0 only when the seam names a valid fixture root and EVERYTHING the launch touches is inside it
+    _ready_fixture_check() {
+        local f="${WORKER_SESSION_READINESS_FIXTURE:-}" m v var mk=""
+        [ -n "$f" ] || { _ready_fx_why="no fixture root is named (WORKER_SESSION_READINESS_FIXTURE)"; return 1; }
+        case "$f" in /*) ;; *) _ready_fx_why="the fixture root $f is not an absolute path"; return 1 ;; esac
+        _ready_fx_root="$(cd -P "$f" 2>/dev/null && pwd -P)" || { _ready_fx_why="the fixture root $f is not a directory"; return 1; }  # swallow-ok: the reason is carried in _ready_fx_why and printed by the refusal
+        [ "$_ready_fx_root" != / ] || { _ready_fx_why="the fixture root cannot be /"; return 1; }
+        m="$(_ready_fx_stat %a %Lp "$_ready_fx_root")"
+        case "$m" in ''|*[!0-7]*) _ready_fx_why="the fixture root's mode cannot be read"; return 1 ;; esac
+        { [ "$(_ready_fx_stat %u %u "$_ready_fx_root")" = "$(id -u)" ] && [ $((8#$m & 8#22)) -eq 0 ]; } \
+            || { _ready_fx_why="the fixture root is not this user's or is group/world writable"; return 1; }
+        if [ -f "$_ready_fx_root/.himmel-readiness-fixture" ] && [ ! -L "$_ready_fx_root/.himmel-readiness-fixture" ]; then
+            mk="$(head -c 64 "$_ready_fx_root/.himmel-readiness-fixture" 2>/dev/null)"  # swallow-ok: an unreadable marker reads empty and refuses below
+        fi
+        [ "$mk" = "himmel-readiness-fixture-v1" ] || { _ready_fx_why="the fixture root carries no valid .himmel-readiness-fixture marker"; return 1; }
+        # a root that holds the account's real home is not a fixture (its config, keyring and .env live there)
+        v="$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f6)"  # swallow-ok: a host without getent has no real home to compare, and every in-root check below still applies
+        if [ -n "$v" ] && v="$(cd -P "$v" 2>/dev/null && pwd -P)"; then  # swallow-ok: an unresolvable home directory leaves nothing to compare, and every in-root check below still applies
+            case "$v" in "$_ready_fx_root"|"$_ready_fx_root"/*) _ready_fx_why="the fixture root contains the account's real home ($v)"; return 1 ;; esac
+        fi
+        # the usage preflight too: its default reads machine-wide usage state and may refresh it from the provider
+        for var in HOME XDG_RUNTIME_DIR HANDOVER_DIR KONSOLE_CMD HEADED_ARM_WORKER_PREFLIGHT; do
+            v="${!var:-}"
+            case "$v" in /*) ;; *) _ready_fx_why="$var must be an absolute path inside the fixture root"; return 1 ;; esac
+            _ready_inside "$_ready_fx_root" "$v" || { _ready_fx_why="$var=$v is outside the fixture root"; return 1; }
+        done
+        # a config directory, when named, is inside too; a relative binary is refused by the launcher's own render, an absolute one must be inside
+        for var in CLAUDE_CONFIG_DIR HEADED_ARM_WORKER_CLAUDE_BIN; do
+            v="${!var:-}"
+            case "$v" in ''|[!/]*) continue ;; esac
+            _ready_inside "$_ready_fx_root" "$v" || { _ready_fx_why="$var=$v is outside the fixture root"; return 1; }
+        done
+        _ready_inside "$_ready_fx_root" "$READINESS_DOC" || { _ready_fx_why="the doc $READINESS_DOC is outside the fixture root"; return 1; }
+        if [ "${WORKER_SESSION_READINESS_PORT:-copy}" = jira ]; then
+            case "${WORKER_SESSION_READINESS_PRIMARY_CLI:-}" in /*) ;; *) _ready_fx_why="the jira client must be an absolute path inside the fixture root"; return 1 ;; esac
+            _ready_inside "$_ready_fx_root" "$WORKER_SESSION_READINESS_PRIMARY_CLI" || { _ready_fx_why="the jira client $WORKER_SESSION_READINESS_PRIMARY_CLI is outside the fixture root"; return 1; }
+        fi
+        return 0
+    }
+    if [ -n "$_ready_missing" ]; then
+        if ! _ready_fixture_check; then
+            echo "headed-arm-worker: refusing the readiness role: its delivery is not registered (missing:$_ready_missing), so a launch is refused until each piece lands; only an isolated fixture root may launch it, and this one is refused: $_ready_fx_why" >&2
+            exit 2
+        fi
+    else
+        _ready_fx_root=""
+    fi
+    # The exec target and the profile resolver are pinned to the in-repo files, so the render this wrapper validates and the
+    # exec headed-arm.sh performs cannot diverge; an override is accepted only inside a valid fixture root.
+    _ready_kit="$(cd -P "$(dirname "$0")" && pwd -P)"
+    for _ready_pair in "HEADED_ARM_WORKER_TARGET ../headed-arm.sh" "HEADED_ARM_WORKER_PROFILES ../../lanes/plugin-profiles.mjs"; do
+        _ready_var="${_ready_pair%% *}"; _ready_rel="${_ready_pair#* }"
+        _ready_val="${!_ready_var:-}"
+        [ -n "$_ready_val" ] || continue
+        _ready_want="$(cd -P "$_ready_kit/$(dirname "$_ready_rel")" && pwd -P)/$(basename "$_ready_rel")"
+        _ready_got="$(cd -P "$(dirname "$_ready_val")" 2>/dev/null && pwd -P)/$(basename "$_ready_val")" || _ready_got=""  # swallow-ok: an unresolvable override never equals the in-repo file and is refused below
+        if [ "$_ready_got" = "$_ready_want" ]; then
+            printf -v "$_ready_var" '%s' "$_ready_want"
+        elif [ -z "$_ready_fx_root" ] || ! _ready_inside "$_ready_fx_root" "$_ready_val"; then
+            echo "headed-arm-worker: refusing the readiness role: $_ready_var=$_ready_val is neither the in-repo file ($_ready_want) nor inside a valid fixture root" >&2
+            exit 2
+        fi
+    done
+    unset -v _ready_kit _ready_pair _ready_var _ready_rel _ready_val _ready_want _ready_got _ready_missing WORKER_SESSION_READINESS_FIXTURE
 fi
 
 # the worker-vm profile exists to start sessions on a test VM, so its
@@ -2529,7 +2631,13 @@ EOF_CS_FILES
     # lane below overrides this to the same shape for its own coordination
     # preface; content is written only at real-launch time further down.
     WORKER_SESSION_PROFILE_PREFACE="$_worker_log_dir/$NAME.worker-preface.md"
-    worker_propagate_env WORKER_SESSION_PROFILE_PREFACE "$WORKER_SESSION_PROFILE_PREFACE"
+    if [ "$READINESS" -eq 1 ]; then
+        # The generic worker preface tells a worker to acquire the lease, write markers, ship PRs and hold for merges; the
+        # readiness role is already leased, has no shell and two tools. It gets no preface and no brief contract.
+        WORKER_SESSION_PROFILE_PREFACE=""
+    else
+        worker_propagate_env WORKER_SESSION_PROFILE_PREFACE "$WORKER_SESSION_PROFILE_PREFACE"
+    fi
     # The consult loads no user/project/local scope: the shim turns this into
     # `--setting-sources ""`, which only narrows. Its hooks, deny/ask and env were carried above.
     [ "$CONSULT" -eq 1 ] && worker_propagate_env WORKER_SESSION_PROFILE_NO_SETTING_SOURCES 1
@@ -2791,6 +2899,8 @@ if [ -n "$PROFILE" ]; then
             exit 2
         fi
         chmod 600 "$WORKER_SESSION_PROFILE_PREFACE" 2>/dev/null || true
+    elif [ "$READINESS" -eq 1 ]; then
+        : # no generic preface and no brief contract for the readiness role
     else
         # Native lane: the worker preface stays the standing
         # rule set only. The brief's own contract (up to the Results tail) is
@@ -2823,7 +2933,7 @@ if [ -n "$PROFILE" ]; then
     case "$_pf_anchor" in /*) ;; *)
         _pf_anchor="$(git_clean -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" && _pf_anchor="$(dirname "$_pf_anchor")" || _pf_anchor="" ;; # swallow-ok: no anchor keeps the relative form
     esac
-    if [ -n "${HEADED_ARM_REPO:-}" ] && [ -d "$_pf_anchor" ]; then
+    if [ "$READINESS" -eq 0 ] && [ -n "${HEADED_ARM_REPO:-}" ] && [ -d "$_pf_anchor" ]; then
         _pf_repo_common="$(git_clean -C "$HEADED_ARM_REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || _pf_repo_common="" # swallow-ok: not a git repo is not a himmel checkout
         _pf_anchor_common="$(git_clean -C "$_pf_anchor" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || _pf_anchor_common="" # swallow-ok: an unresolvable anchor compares unequal
         _pf_repo_prefix="$(git_clean -C "$HEADED_ARM_REPO" rev-parse --show-prefix 2>/dev/null)" || _pf_repo_prefix="." # swallow-ok: an unreadable prefix counts as below the root
@@ -2848,7 +2958,7 @@ if [ -n "$PROFILE" ]; then
     # 2000). Advisory: no graph, a generator failure or a generator still
     # running after WORKER_SESSION_REPO_MAP_TIMEOUT seconds (default 30) launches without
     # it; so does a host with no GNU timeout, since the generator never runs unbounded.
-    if [ "${WORKER_SESSION_REPO_MAP:-0}" = 1 ]; then
+    if [ "$READINESS" -eq 0 ] && [ "${WORKER_SESSION_REPO_MAP:-0}" = 1 ]; then
         REPO_MAP_CMD="${HEADED_ARM_WORKER_REPO_MAP:-$HERE/../../graphify/repo-map.py}"
         _rm_timeout="${WORKER_SESSION_REPO_MAP_TIMEOUT:-30}"
         # shellcheck source=scripts/lib/timeout-bin.sh
@@ -3233,12 +3343,15 @@ fi
 # --- The readiness role: private startup config, pre-acquire gate, on-behalf lease (C0s cycle 2). ---
 # Order is the contract. The session id was minted and the settings/MCP files written above. Here: (1) the private
 # attempt directory and its startup config (which binds that id); (2) the REAL launcher render of the final argv;
-# (3) the C0p effectiveness reader (effective only: ineffective and unknown refuse); (4) ONLY THEN the on-behalf acquire
+# (3) the C0p effectiveness reader (effective only: ineffective and unknown refuse); (3b) the jira port's credential
+# initialization, the only step that resolves a secret; (4) ONLY THEN the on-behalf acquire
 # (nothing registered for this launcher: no token file, .doc sidecar or liveness marker) and the token's private
 # transport file. Every refusal before (4) acquires nothing and leaves nothing behind. The launcher keeps only its OWN
-# captured token: a failed hand-off releases exactly that token (a successor's lock refuses it) and removes the
-# attempt directory. The session start adopts the lease and deletes the transport (scripts/hooks/readiness-session.sh).
-READINESS_TOKEN=""
+# captured token: every exit between the acquire and the child's start (a refusal, the managed fleet hand-off refusal,
+# a fatal or remembered signal) and a definite hand-off failure release exactly that token (a successor's lock refuses
+# it) and remove the attempt directory; hand-off statuses 0, 7 and 9 keep both for the session. The session start adopts
+# the lease and deletes the transport (scripts/hooks/readiness-session.sh).
+READINESS_TOKEN="" READINESS_PRE_HANDOFF=0
 _ready_uuid() { local u; u="$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null)"; printf '%s' "$u" | tr 'A-F' 'a-f'; }  # swallow-ok: an empty attempt id is refused by every reader of the startup config
 _ready_stat() { stat -c "$1" -- "$3" 2>/dev/null || stat -f "$2" -- "$3" 2>/dev/null; }
 # _ready_private_dir <dir>: a directory that is this user's, not a symlink, mode 0700 (created when absent)
@@ -3296,11 +3409,6 @@ if [ "$READINESS" -eq 1 ]; then
     ( umask 077 && set -C && printf '%s\n' "$_ready_startup" > "$READINESS_ATTEMPT/startup.json" ) 2>/dev/null \
         || _readiness_refuse "cannot write the private startup config"
     unset -v _ready_startup
-    if [ "$READINESS_PORT" = jira ]; then
-        # host-only initialization through the existing client's own configuration flow; only the private file is written
-        node "$READINESS_ADAPTER" init-credentials "$READINESS_PRIMARY_CLI" "$READINESS_ATTEMPT/credentials.json" >/dev/null \
-            || _readiness_refuse "the private jira credentials could not be initialized (see above)"
-    fi
     # (2) the REAL launcher render of the final argv, with the same environment the launch will carry
     WORKER_SESSION_RENDER_ARGV=1 bash "$WORKER_SESSION_SHIM" --model "$MODEL" --autocompact "$RESOLVED_AUTOCOMPACT" -n "$NAME" "load $DOC and continue" >/dev/null \
         || _readiness_refuse "the launcher refused the generated argv (see above)"
@@ -3314,6 +3422,13 @@ if [ "$READINESS" -eq 1 ]; then
         _readiness_refuse "the queue self-heartbeat is not effective in the settings this worker loads: $_ready_c0p"
     fi
     unset -v _ready_cfg _ready_proj _ready_layers _ready_c0p
+    # (3b) credentials: the only step that resolves a real secret, so it runs after every cheap shape, render and C0p refusal
+    # and just before the acquire. Host-only initialization through the existing client's own configuration flow; only the
+    # private file is written, and every refusal from here on removes it with the attempt directory.
+    if [ "$READINESS_PORT" = jira ]; then
+        node "$READINESS_ADAPTER" init-credentials "$READINESS_PRIMARY_CLI" "$READINESS_ATTEMPT/credentials.json" >/dev/null \
+            || _readiness_refuse "the private jira credentials could not be initialized (see above)"
+    fi
     # (4) acquire ON BEHALF and hand the token over privately; nothing is registered for this launcher's own session
     _ready_acq_rc=0
     _ready_acq="$(QUEUE_LOCK_ON_BEHALF=1 bash "$READINESS_QL" acquire "$READINESS_DOC" 2>/dev/null)" || _ready_acq_rc=$?  # swallow-ok: stderr can name another holder's token; the exit status is what is acted on
@@ -3326,6 +3441,8 @@ if [ "$READINESS" -eq 1 ]; then
         READINESS_TOKEN=""
         _readiness_refuse "the acquired lease token was not readable, so the lease cannot be released by this launcher: it will go stale on its own"
     fi
+    # from here until the child starts, EVERY exit (the EXIT trap, which a fatal signal also runs) releases this token
+    READINESS_PRE_HANDOFF=1
     if ! ( umask 077 && set -C && printf '%s\n' "$READINESS_TOKEN" > "$READINESS_ATTEMPT/lease-token" ) 2>/dev/null; then
         _readiness_release
         echo "headed-arm-worker: refusing the readiness role: the lease token transport could not be written" >&2
@@ -3341,9 +3458,11 @@ fi
 # A child started with `&` and waited on, so TERM/HUP/INT to this launcher can be forwarded to it (a plain foreground
 # child would only see them after it exits): the child is then not orphaned, and its status releases the reservation.
 # The child's stdin stays this launcher's (`<&0`); HEADED_ARM_CONTEXT_PID is the child's own pid, as under --fleet.
-_ha_child=""
+_ha_child="" _ha_sig_early=0
+# A signal before the child exists has nothing to forward to: it is remembered, and the readiness role ends its launch
+# before starting the child (every other role keeps the behavior it had: such a signal is ignored).
 # shellcheck disable=SC2329  # invoked by the trap below
-_ha_forward() { [ -z "$_ha_child" ] || { _LAUNCH_REFUSAL_FWD=1; kill -TERM "$_ha_child" 2>/dev/null; }; }
+_ha_forward() { if [ -z "$_ha_child" ]; then _ha_sig_early=1; else _LAUNCH_REFUSAL_FWD=1; kill -TERM "$_ha_child" 2>/dev/null; fi; return 0; }
 trap _ha_forward TERM HUP INT
 _LAUNCH_OUTCOME_FILE="$(mktemp "${TMPDIR:-/tmp}/headed-arm-outcome.XXXXXX" 2>/dev/null)" || _LAUNCH_OUTCOME_FILE=''  # swallow-ok: no temp file means no child word, read as indeterminate
 if [ -n "$_LAUNCH_OUTCOME_FILE" ]; then export HEADED_ARM_OUTCOME_FILE="$_LAUNCH_OUTCOME_FILE"; else unset HEADED_ARM_OUTCOME_FILE; fi
@@ -3351,9 +3470,16 @@ if [ -n "$_LAUNCH_OUTCOME_FILE" ]; then export HEADED_ARM_OUTCOME_FILE="$_LAUNCH
 if [ "${FLEET_LAUNCH_MANAGED:-false}" = true ]; then
     fleet_launch_op handoff >/dev/null || { _launch_refusal_note fleet-paused; exit 10; }
 fi
+# a signal that landed before the child exists ends a readiness launch HERE, never starting the child: forwarding it afterwards
+# is not reliable (headed-arm.sh traps TERM), and a started child would run the launch on. The EXIT trap releases the lease.
+if [ "$READINESS" -eq 1 ] && [ "$_ha_sig_early" -eq 1 ]; then _launch_refusal_note signal; exit 143; fi
 "${HA_SH[@]}" -c 'export HEADED_ARM_CONTEXT_PID="$$"; exec "$@"' bash \
     "${HA_RUN[@]}" "$NAME" "$DOC" "$SIGNAL" "$DEADLINE" "$LOG" "$MODEL" "$CONTEXT" <&0 &
 _ha_child=$!
+# the child exists: the status rule below (0, 7 and 9 keep the lease) decides from here on; a signal that landed in the
+# instant between the check above and the start is forwarded like any other
+READINESS_PRE_HANDOFF=0
+if [ "$READINESS" -eq 1 ] && [ "$_ha_sig_early" -eq 1 ]; then _ha_forward; fi
 while :; do
     wait "$_ha_child"
     launch_rc=$?

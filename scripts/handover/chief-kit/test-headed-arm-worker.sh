@@ -6266,6 +6266,9 @@ check "readiness exec with a PATH claude: the same array reaches the binary" "$(
 # HOME, fake queue root, fake runtime dir and a stub konsole: no native claude, provider, VM, real config or secret.
 RS="$tmp/rs"; mkdir -p "$RS/hdir/u/r" "$RS/home/.claude" "$RS/repo" "$RS/bin" "$RS/primary/scripts/jira/dist" "$RS/primary-broken/scripts/jira/dist"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$RS/bin/claude"; chmod 755 "$RS/bin/claude"
+# the fixture root: every root, binary and port a readiness launch touches lives under $RS (see the delivery gate in the wrapper)
+printf 'himmel-readiness-fixture-v1' > "$RS/.himmel-readiness-fixture"; chmod 600 "$RS/.himmel-readiness-fixture"; chmod 755 "$RS"
+printf '%s\n' '#!/usr/bin/env bash' 'echo PROCEED' > "$RS/proceed-preflight.sh"; chmod 755 "$RS/proceed-preflight.sh"
 rs_hook='{"hooks":{"PostToolUse":[{"hooks":[{"type":"command","command":"bash scripts/handover/queue-lock.sh self-heartbeat"}]}]}}'
 printf '%s\n' "$rs_hook" > "$RS/home/.claude/settings.json"
 mkdir -p "$RS/home-nohook/.claude" "$RS/home-off/.claude" "$RS/home-bad/.claude"
@@ -6274,7 +6277,8 @@ printf '{"disableAllHooks":true,"hooks":{"PostToolUse":[{"hooks":[{"type":"comma
 printf 'not json\n' > "$RS/home-bad/.claude/settings.json"
 RS_QL="$(cd "$HERE/.." && pwd -P)/queue-lock.sh"
 RS_SECRET="FAKE-SENTINEL-TOKEN-0000"
-printf '%s\n' "export const baseUrl = () => 'http://127.0.0.1:9';" "export const projectKey = () => 'FIXT';" \
+printf '%s\n' "import { appendFileSync } from 'node:fs'; appendFileSync('$RS/init-calls.log', 'init\n');" \
+  "export const baseUrl = () => 'http://127.0.0.1:9';" "export const projectKey = () => 'FIXT';" \
   "export function authHeader() { return 'Basic ' + Buffer.from('fixture@example.invalid:$RS_SECRET').toString('base64'); }" > "$RS/primary/scripts/jira/dist/client.js"
 printf '// fake primary CLI\n' > "$RS/primary/scripts/jira/dist/index.js"
 printf '%s\n' "export const baseUrl = () => { throw new Error('JIRA_BASE_URL is not set'); };" "export const projectKey = () => 'FIXT';" "export const authHeader = () => 'Basic x';" > "$RS/primary-broken/scripts/jira/dist/client.js"
@@ -6288,22 +6292,53 @@ rs_status() { env HANDOVER_DIR="$RS/hdir" XDG_RUNTIME_DIR="$RS_D/xdg" bash "$RS_
 rs_attempts() { find "$RS_D/xdg/himmel-readiness" -mindepth 1 2>/dev/null | wc -l | tr -d ' '; }
 rs_lockdir() { find "$RS/hdir/.locks/queue" -maxdepth 1 -name "*$(basename "$RS_DOC" .md | tr -c 'A-Za-z0-9_\n-' '-')*.lock" 2>/dev/null | head -n 1; }
 # rs_launch [ENV=val ...]: one real launch. Sets RS_D (stub + run dir), RS_DOC, RS_RC, RS_SID (the id the launcher was handed), RS_A (its attempt dir).
+# rs_managed_prepare: a managed fleet bucket for the doc (a keyless manifest row + fleet-control.json), built with the real
+# fleet-manifest.sh; the control is made active by editing its anchor the way `control set --mode active` does, without that
+# command's policy-cap read of the primary checkout's .env.
+rs_managed_prepare() {
+  local mf="$RS_DOC_DIR/x.fleet.json" ac="$RS_DOC_DIR/fleet-control.json"
+  bash "$HERE/fleet-manifest.sh" control init "$mf" --target 4 >/dev/null 2>&1 || return 1
+  jq '.mode = "active" | .generation = 2' "$ac" > "$ac.tmp" && mv "$ac.tmp" "$ac" || return 1
+  bash "$HERE/fleet-manifest.sh" add "$mf" "$(cd "$RS_DOC_DIR" && pwd -P)/$(basename "$RS_DOC")" --lane native --pending >/dev/null 2>&1
+}
+# rs_run_wrapper <env...>: cd + exec of the real wrapper; always called as a subshell or a background job, so the
+# background job's pid IS the wrapper's own
+rs_run_wrapper() {
+  cd "$rs_cwd" && exec env IMPL_GUARD_OK='' HIMMEL_CONSOLE_LEG='' HOME="$RS_HOME" CLAUDE_CONFIG_DIR="$RS_HOME/.claude" XDG_RUNTIME_DIR="$RS_D/xdg" HANDOVER_DIR="$RS/hdir" \
+    CLAUDE_CODE_SESSION_ID="launcher-scope-$rs_n" HEADED_ARM_WORKER_CLAUDE_BIN="$RS/bin/claude" \
+    HEADED_ARM_WORKER_TARGET="$HEADED_ARM" HEADED_ARM_WORKER_PREFLIGHT="$RS/proceed-preflight.sh" \
+    KONSOLE_CMD="$RS_D/konsole" PGREP_CMD="$RS_D/pgrep" WORKER_SESSION_REPO="$RS/repo" HEADED_ARM_LOCK_DIR="$RS_D/locks" HEADED_ARM_PROC="$RS_D/proc" \
+    WORKER_SESSION_READINESS_FIXTURE="$RS" RS_QL="$RS_QL" "$@" bash "$SCRIPT" ${RS_FLAGS[@]+"${RS_FLAGS[@]}"} --profile "$RS_PROFILE" "$RS_NAME" "$rs_arg" "$RS_D/signal-never" "$PAST" "$RS_D/log" claude-sonnet-5-5 > "$RS_D/out" 2>&1
+}
 rs_launch() {
   rs_n=$((rs_n + 1))
-  RS_D="$RS/c$rs_n"; RS_DOC="$RS/hdir/u/r/readiness-v1.$rs_n.0.md"; RS_NAME="PROJ-9999-rs$rs_n"
+  # RS_MANAGED=1 puts the doc in its own managed fleet bucket
+  RS_DOC_DIR="$RS/hdir/u/r"
+  [ "${RS_MANAGED:-0}" != 1 ] || { RS_DOC_DIR="$RS/hdir/m$rs_n"; mkdir -p "$RS_DOC_DIR"; }
+  [ "${RS_DOC_OUTSIDE:-0}" != 1 ] || { RS_DOC_DIR="$tmp/rs-outside/docs"; mkdir -p "$RS_DOC_DIR"; }
+  RS_D="$RS/c$rs_n"; RS_DOC="$RS_DOC_DIR/readiness-v1.$rs_n.0.md"; RS_NAME="PROJ-9999-rs$rs_n"
   mk_launch_stubs "$RS_D" "$RS_NAME"; mkdir -p "$RS_D/xdg"; chmod 700 "$RS_D/xdg"
   case "$RS_DOC_KIND" in
     symlink) fx_brief "# target $rs_n" > "$RS/hdir/u/r/target-$rs_n.md"; ln -s "$RS/hdir/u/r/target-$rs_n.md" "$RS_DOC" ;;
     nofm) printf '# no front matter\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n' > "$RS_DOC" ;;
-    oddname) RS_DOC="$RS/hdir/u/r/not-a-readiness-doc-$rs_n.md"; fx_brief "# odd name $rs_n" > "$RS_DOC" ;;
+    oddname) RS_DOC="$RS_DOC_DIR/not-a-readiness-doc-$rs_n.md"; fx_brief "# odd name $rs_n" > "$RS_DOC" ;;
     *) fx_brief "# readiness v1.$rs_n.0 fixture" > "$RS_DOC" ;;
   esac
+  [ "${RS_MANAGED:-0}" != 1 ] || rs_managed_prepare || echo "FAIL - 17s: the managed fleet fixture could not be built"
   RS_RC=0
-  env IMPL_GUARD_OK='' HIMMEL_CONSOLE_LEG='' HOME="$RS_HOME" CLAUDE_CONFIG_DIR="$RS_HOME/.claude" XDG_RUNTIME_DIR="$RS_D/xdg" HANDOVER_DIR="$RS/hdir" \
-    CLAUDE_CODE_SESSION_ID="launcher-scope-$rs_n" HEADED_ARM_WORKER_CLAUDE_BIN="$RS/bin/claude" \
-    HEADED_ARM_WORKER_TARGET="$HEADED_ARM" HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
-    KONSOLE_CMD="$RS_D/konsole" PGREP_CMD="$RS_D/pgrep" WORKER_SESSION_REPO="$RS/repo" HEADED_ARM_LOCK_DIR="$RS_D/locks" HEADED_ARM_PROC="$RS_D/proc" \
-    RS_QL="$RS_QL" "$@" bash "$SCRIPT" ${RS_FLAGS[@]+"${RS_FLAGS[@]}"} --profile "$RS_PROFILE" "$RS_NAME" "$RS_DOC" "$RS_D/signal-never" "$PAST" "$RS_D/log" claude-sonnet-5-5 > "$RS_D/out" 2>&1 || RS_RC=$?
+  # RS_DOC_REL=1 launches from the doc's own directory with the bare file name, so a relative DOC is the real shape under test
+  rs_arg="$RS_DOC"; rs_cwd="$PWD"
+  [ "${RS_DOC_REL:-0}" != 1 ] || { rs_cwd="$(dirname "$RS_DOC")"; rs_arg="$(basename "$RS_DOC")"; }
+  if [ -n "${RS_SIGNAL_AFTER:-}" ]; then
+    # RS_SIGNAL_AFTER=<marker>: a background launch that gets one TERM as soon as a stub creates the marker
+    rs_run_wrapper "$@" &
+    rs_pid=$!
+    rs_i=0; while [ ! -e "$RS_SIGNAL_AFTER" ] && [ "$rs_i" -lt 400 ]; do sleep 0.05; rs_i=$((rs_i + 1)); done
+    kill -TERM "$rs_pid" 2>/dev/null
+    wait "$rs_pid" || RS_RC=$?
+  else
+    ( rs_run_wrapper "$@" ) || RS_RC=$?
+  fi
   [ -z "${RS_DEBUG:-}" ] || { echo "--- rs$rs_n rc=$RS_RC"; cat "$RS_D/out"; }
   [ "$RS_RC" -ne 0 ] || wait_record "$RS_D" || true
   RS_SID="$(grep -oE 'WORKER_SESSION_ID=[0-9a-f-]{36}' "$RS_D/record" 2>/dev/null | head -n 1 | cut -d= -f2)"
@@ -6351,6 +6386,24 @@ check "17s launch: the token appears only in its transport and the lock's owner 
   "$(grep -rlF -- "$rs_tok" "$RS_D" "$RS/hdir" "$tmp/pinned-himmelctl-cache" 2>/dev/null | sed 's|.*/||' | sort | tr '\n' ' ')" "lease-token owner owner.json "
 check "17s launch: the minted id is recorded in the doc front matter" "$(grep -c "^session_ids:.*$RS_SID" "$RS_DOC")" "1"
 check "17s copy port: never creates a credentials file" "$(find "$RS_D/xdg/himmel-readiness" -name credentials.json 2>/dev/null | wc -l | tr -d ' ')" "0"
+# the generic worker preface is for a worker that acquires, ships and holds: this role is already leased, has no shell and two tools
+check "17s preface: the readiness role writes no generic worker preface or brief contract and hands the launcher no preface path" \
+  "$([ -e "$RS_D/$RS_NAME.worker-preface.md" ] && echo file || echo none):$(grep -c '^WORKER_SESSION_PROFILE_PREFACE=' "$RS_D/env-record" 2>/dev/null || true):$([ -e "$RS_D/$RS_NAME.worker-contract.md" ] && echo contract || echo none)" "none:0:none"
+# the REAL render, in the very environment the stub konsole received (the preface variable included when there is one)
+rs_render_env="$(grep -E '^WORKER_SESSION_PROFILE_PREFACE=' "$RS_D/env-record" 2>/dev/null || true)"
+rs_render3="$(env -i PATH="$PATH" HOME="$RS/home" WORKER_SESSION_CLAUDE_BIN="$RS/bin/claude" WORKER_SESSION_PROFILE_READINESS=1 WORKER_SESSION_RENDER_ARGV=1 \
+  WORKER_SESSION_PROFILE_SETTINGS="$rs_set" WORKER_SESSION_PROFILE_MCP_CONFIG="$rs_mcp" WORKER_SESSION_ID="$RS_SID" ${rs_render_env:+"$rs_render_env"} \
+  bash "$SHIM" --model claude-sonnet-5-5 --autocompact 200000 -n "$RS_NAME" "load $RS_DOC and continue" 2>/dev/null | rs_decode)"
+contains "17s preface: the rendered final argv still binds the minted id and the strict MCP config" "$rs_render3" "[--session-id][$RS_SID]"
+not_contains "17s preface: the rendered final argv carries no --append-system-prompt-file" "$rs_render3" "[--append-system-prompt-file]"
+
+# a relative DOC is leased, configured AND loaded as the same canonical document
+RS_DOC_REL=1; rs_launch; RS_DOC_REL=0
+check "17s relative doc: the launch succeeds" "$RS_RC" "0"
+check "17s relative doc: the startup config names the canonical absolute doc and that doc is the one leased" \
+  "$(jq -r .doc "$RS_A/startup.json" 2>/dev/null || true):$(rs_status)" "$RS_DOC:status: FRESH"
+contains "17s relative doc: the loaded prompt names the canonical absolute doc" "$(cat "$RS_D/record")" "load $RS_DOC and continue"
+not_contains "17s relative doc: the loaded prompt never carries the bare relative name" "$(cat "$RS_D/record")" "load readiness-v1.$rs_n.0.md and continue"
 
 # every unsupported shape refuses BEFORE it acquires
 for rs_shape in "lane claudex|--lane claudex" "lane openrouter|--lane openrouter" "lane deepseek|--lane deepseek" "a consult|--consult" "a judge|--judge" "a relay|--relay" "headless|--headless" "no-profile|--no-profile"; do
@@ -6361,6 +6414,8 @@ RS_FLAGS=()
 RS_PROFILE="readiness,worker-impl"; rs_launch; rs_refused "a composed profile list"
 RS_PROFILE="worker-impl"; rs_launch
 check "17s a generic profile launch is unchanged: launched, no readiness marker, no attempt directory" "$RS_RC:$(grep -c 'WORKER_SESSION_PROFILE_READINESS' "$RS_D/record" 2>/dev/null || true):$(rs_attempts)" "0:0:0"
+check "17s a generic profile launch keeps its worker preface and the brief contract (only the readiness role drops them)" \
+  "$([ -s "$RS_D/$RS_NAME.worker-preface.md" ] && echo preface):$(grep -c '^WORKER_SESSION_PROFILE_PREFACE=' "$RS_D/env-record" 2>/dev/null || true):$([ -e "$RS_D/$RS_NAME.worker-contract.md" ] && echo contract)" "preface:1:contract"
 RS_PROFILE=readiness
 RS_FLAGS=(--dry-run); rs_launch; RS_FLAGS=()
 check "17s dry-run: exits 0 and writes nothing (no attempt directory, no lease, no settings or MCP file, no recorded id, no launch)" \
@@ -6396,6 +6451,35 @@ rs_launch WORKER_SESSION_READINESS_PORT=jira;                                   
 rs_launch WORKER_SESSION_READINESS_PORT=jira WORKER_SESSION_READINESS_PRIMARY_CLI=relative/index.js;     rs_refused "the jira port with a relative primary CLI"
 rs_launch WORKER_SESSION_READINESS_PORT=jira WORKER_SESSION_READINESS_PRIMARY_CLI="$RS/primary-broken/scripts/jira/dist/index.js"; rs_refused "a jira port whose client cannot resolve its configuration"
 rs_launch WORKER_SESSION_READINESS_PORT=other;                                                            rs_refused "a port kind that is neither copy nor jira"
+
+# the credential initialisation (a real secret resolution in the real flow) runs only after EVERY cheap refusal, and before the acquire
+rs_init_calls() { wc -l < "$RS/init-calls.log" 2>/dev/null | tr -d ' ' || true; }
+rs_jira=(WORKER_SESSION_READINESS_PORT=jira WORKER_SESSION_READINESS_PRIMARY_CLI="$RS/primary/scripts/jira/dist/index.js")
+rs_before="$(rs_init_calls)"
+rs_launch "${rs_jira[@]}" HEADED_ARM_WORKER_CLAUDE_BIN=relative/claude
+rs_refused "a relative binary with the jira port (render refuses)"
+check "17s credential order: a launch the render refuses never initialises credentials" "$(rs_init_calls)" "$rs_before"
+RS_HOME="$RS/home-nohook"; rs_before="$(rs_init_calls)"; rs_launch "${rs_jira[@]}"
+rs_refused "an ineffective self-heartbeat wiring with the jira port"
+check "17s credential order: a launch C0p refuses never initialises credentials" "$(rs_init_calls)" "$rs_before"
+RS_HOME="$RS/home-bad"; rs_before="$(rs_init_calls)"; rs_launch "${rs_jira[@]}"
+rs_refused "an unknown self-heartbeat wiring with the jira port"
+check "17s credential order: an unknown C0p result never initialises credentials" "$(rs_init_calls)" "$rs_before"
+RS_HOME="$RS/home"; RS_DOC_KIND=oddname; rs_before="$(rs_init_calls)"; rs_launch "${rs_jira[@]}"
+rs_refused "a mis-named doc with the jira port"
+check "17s credential order: a shape refusal never initialises credentials" "$(rs_init_calls)" "$rs_before"
+RS_DOC_KIND=plain
+# a held lease refuses AFTER the initialisation (it precedes the acquire): the credential file goes with the attempt directory
+rs_next=$((rs_n + 1)); rs_held_doc="$RS/hdir/u/r/readiness-v1.$rs_next.0.md"; fx_brief "# held readiness fixture (jira)" > "$rs_held_doc"
+mkdir -p "$RS/held-runtime-j"; chmod 700 "$RS/held-runtime-j"
+env HANDOVER_DIR="$RS/hdir" XDG_RUNTIME_DIR="$RS/held-runtime-j" QUEUE_LOCK_ON_BEHALF=1 bash "$RS_QL" acquire "$rs_held_doc" foreign-jira-holder >/dev/null 2>&1
+rs_before="$(rs_init_calls)"; rs_launch "${rs_jira[@]}"
+check "17s credential order: a held lease refuses the launch after exactly one initialisation" "$([ "$RS_RC" -ne 0 ] && echo refused):$(( $(rs_init_calls) - rs_before ))" "refused:1"
+check "17s credential order: ... the credential file is removed with the attempt directory and the holder keeps the lease" \
+  "$(rs_attempts):$(find "$RS_D" -name credentials.json 2>/dev/null | wc -l | tr -d ' '):$(jq -r .session "$(rs_lockdir)/owner.json" 2>/dev/null || true)" "0:0:foreign-jira-holder"
+# a failing initialisation acquires nothing and leaves nothing
+rs_launch WORKER_SESSION_READINESS_PORT=jira WORKER_SESSION_READINESS_PRIMARY_CLI="$RS/primary-broken/scripts/jira/dist/index.js"
+rs_refused "a jira client that cannot initialise (after every cheap refusal passed)"
 
 # a failed hand-off after the acquire releases the launcher's OWN captured token, and never a successor's
 printf '%s\n' '#!/usr/bin/env bash' 'exit 5' > "$RS/fail-target.sh"; chmod 755 "$RS/fail-target.sh"
@@ -6433,6 +6517,158 @@ check "17s ambient takeover refuses an already held lease" "$([ "$RS_RC" -ne 0 ]
 check "17s ambient takeover never reaches konsole" "$([ -e "$RS_D/record" ] && echo launched || echo no)" "no"
 check "17s ambient takeover preserves the original holder" \
   "$(rs_status):$(jq -r .session "$(rs_lockdir)/owner.json" 2>/dev/null || true)" "status: FRESH:foreign-readiness-token"
+
+# a session may be coming up on hand-off statuses 7 (konsole up, claude unseen) and 9 (scan indeterminate): the lease, its
+# transport and the attempt directory are KEPT for the session's own adoption
+rs_kept() { # rs_kept <label>: the launcher's own token still holds the lease and its transport is still there
+  local tf; tf="$(find "$RS_D/xdg/himmel-readiness" -name lease-token 2>/dev/null | head -n 1)"
+  check "17s $1: the lease is kept, held by the transported token" \
+    "$(rs_status):$([ -n "$tf" ] && [ "$(jq -r .session "$(rs_lockdir)/owner.json" 2>/dev/null)" = "$(cat "$tf")" ] && echo same)" "status: FRESH:same"
+  check "17s $1: the attempt directory is kept" "$(find "$RS_D/xdg/himmel-readiness" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')" "1"
+}
+for rs_rc in 7 9; do
+  printf '%s\n' '#!/usr/bin/env bash' "exit $rs_rc" > "$RS/rc$rs_rc-target.sh"; chmod 755 "$RS/rc$rs_rc-target.sh"
+  rs_launch HEADED_ARM_WORKER_TARGET="$RS/rc$rs_rc-target.sh"
+  check "17s hand-off status $rs_rc is returned" "$RS_RC" "$rs_rc"
+  rs_kept "hand-off status $rs_rc"
+done
+
+# every post-acquire, pre-hand-off exit releases the launcher's OWN lease and never a successor's. The managed layout is
+# the production one: a readiness doc is a managed doc (keyless manifest row + fleet-control.json), and the wrapper's
+# hand-off then asks the fleet runtime, which refuses once the fleet is paused.
+RS_REAL_PY3="$(command -v python3)"
+mkdir -p "$RS/pyshim"
+cat > "$RS/pyshim/python3" <<'PYSHIM_EOF'
+#!/usr/bin/env bash
+# a test shim in front of python3: ONLY the managed fleet `handoff` op is intercepted (the doc is $5); every other call is the real python3
+if [ "${3:-}" = handoff ] && [ -n "${RS_SHIM_MODE:-}" ]; then
+  swap() { # a successor takes the lock between the launcher's acquire and its exit
+    tok="$(cat "$XDG_RUNTIME_DIR"/himmel-readiness/*/lease-token)"
+    bash "$RS_QL" release "$5" "$tok" >/dev/null 2>&1
+    bash "$RS_QL" acquire "$5" successor-token-for-test >/dev/null 2>&1
+  }
+  case "$RS_SHIM_MODE" in
+    refuse) exit 1 ;;
+    successor-refuse) swap "$@"; exit 1 ;;
+    block) : > "$RS_SHIM_MARK"; sleep 2 ;;
+    block-successor) : > "$RS_SHIM_MARK"; sleep 2; swap "$@" ;;
+  esac
+fi
+exec "$RS_REAL_PY3" "$@"
+PYSHIM_EOF
+chmod 755 "$RS/pyshim/python3"
+# shellcheck disable=SC2016  # written literally, expanded when the stub runs
+printf '%s\n' '#!/usr/bin/env bash' 'jq ".mode = \"paused\" | .generation += 1" "$RS_PAUSE_ANCHOR" > "$RS_PAUSE_ANCHOR.tmp" && mv "$RS_PAUSE_ANCHOR.tmp" "$RS_PAUSE_ANCHOR"' 'echo PROCEED' > "$RS/pause-preflight.sh"
+chmod 755 "$RS/pause-preflight.sh"
+# a managed launch must never reach the real headed-arm.sh, whose managed commit runs the machine's real usage preflight: its
+# exec target is a fixture that ignores TERM and leaves a mark when (if ever) it starts
+# shellcheck disable=SC2016  # written literally, expanded when the stub runs
+printf '%s\n' '#!/usr/bin/env bash' 'trap "" TERM HUP INT' ': > "$RS_TARGET_MARK"' 'exit 0' > "$RS/deaf-target.sh"; chmod 755 "$RS/deaf-target.sh"
+rs_pyenv=(PATH="$RS/pyshim:$PATH" RS_REAL_PY3="$RS_REAL_PY3" HEADED_ARM_WORKER_TARGET="$RS/deaf-target.sh")
+rs_free_and_gone() { # rs_free_and_gone <label>: the launcher's own lease is released and nothing of the attempt is left
+  check "17s $1: the launcher's own lease is released" "$(rs_status)" "free"
+  check "17s $1: the attempt directory (transport included) is removed" "$(rs_attempts)" "0"
+  check "17s $1: konsole was never reached" "$([ -e "$RS_D/record" ] && echo launched || echo no)" "no"
+}
+if command -v flock >/dev/null 2>&1; then
+  RS_MANAGED=1
+  # a real fleet pause between the fleet check (before the acquire) and the hand-off (after it)
+  rs_launch HEADED_ARM_WORKER_PREFLIGHT="$RS/pause-preflight.sh" RS_PAUSE_ANCHOR="$RS/hdir/m$((rs_n + 1))/fleet-control.json" HEADED_ARM_WORKER_TARGET="$RS/deaf-target.sh" RS_TARGET_MARK="$RS/target-mark-pause"
+  check "17s managed pause: the wrapper refuses with 10 (fleet paused)" "$RS_RC" "10"
+  contains "17s managed pause: the refusal is the fleet-paused one" "$(cat "$RS_D/out")" "fleet-paused"
+  rs_free_and_gone "managed pause"
+  # the same refusal when a successor took the lock after the acquire: only the launcher's own token is ever released
+  rs_launch "${rs_pyenv[@]}" RS_SHIM_MODE=successor-refuse RS_TARGET_MARK="$RS/target-mark-succ"
+  check "17s managed refusal with a successor: the wrapper refuses with 10" "$RS_RC" "10"
+  check "17s managed refusal with a successor: the successor still holds the lock" \
+    "$(rs_status):$(jq -r .session "$(rs_lockdir)/owner.json" 2>/dev/null || true)" "status: FRESH:successor-token-for-test"
+  check "17s managed refusal with a successor: the attempt directory is removed" "$(rs_attempts)" "0"
+  # a TERM while the wrapper is between its acquire and the child start ends the launch and releases the lease
+  rm -f "$RS/shim-mark-s1" "$RS/target-mark-s1"
+  RS_SIGNAL_AFTER="$RS/shim-mark-s1" rs_launch "${rs_pyenv[@]}" RS_SHIM_MODE=block RS_SHIM_MARK="$RS/shim-mark-s1" RS_TARGET_MARK="$RS/target-mark-s1"
+  check "17s signal before the hand-off: the wrapper ends with 143" "$RS_RC" "143"
+  rs_free_and_gone "signal before the hand-off"
+  check "17s signal before the hand-off: the exec target was never started (the launch ends before the child exists)" "$([ -e "$RS/target-mark-s1" ] && echo started || echo never)" "never"
+  rm -f "$RS/shim-mark-s2" "$RS/target-mark-s2"
+  RS_SIGNAL_AFTER="$RS/shim-mark-s2" rs_launch "${rs_pyenv[@]}" RS_SHIM_MODE=block-successor RS_SHIM_MARK="$RS/shim-mark-s2" RS_TARGET_MARK="$RS/target-mark-s2"
+  check "17s signal before the hand-off with a successor: the wrapper ends with 143" "$RS_RC" "143"
+  check "17s signal before the hand-off with a successor: the successor still holds the lock" \
+    "$(rs_status):$(jq -r .session "$(rs_lockdir)/owner.json" 2>/dev/null || true)" "status: FRESH:successor-token-for-test"
+  check "17s signal before the hand-off with a successor: the attempt directory is removed" "$(rs_attempts)" "0"
+  check "17s signal before the hand-off with a successor: the exec target was never started" "$([ -e "$RS/target-mark-s2" ] && echo started || echo never)" "never"
+  RS_MANAGED=0
+else
+  echo "SKIP - 17s managed hand-off rows (fleet-manifest.sh needs util-linux flock, absent here)"
+fi
+
+# --- the delivery gate (this role's hooks, STDIO server, guard and supervisor are later cycles) and the fixture boundary:
+# by default a launch is REFUSED before anything is minted, written, acquired or resolved; only an isolated fixture root, which
+# must vouch for every root, binary and port the launch touches, may launch it.
+rs_msg() { contains "17s $1" "$(cat "$RS_D/out" 2>/dev/null)" "$2"; }
+rs_before="$(rs_init_calls)"
+rs_launch WORKER_SESSION_READINESS_FIXTURE=
+rs_refused "a launch with no fixture root (the default)"
+rs_msg "delivery gate: the default refusal names every missing delivery" "its delivery is not registered (missing: session-hooks stdio-server guard supervisor)"
+rs_launch WORKER_SESSION_READINESS_FIXTURE= READINESS_DELIVERED_HOOKS=1 READINESS_DELIVERED_STDIO=1 READINESS_DELIVERED_GUARD=1 READINESS_DELIVERED_SUPERVISOR=1 READINESS_DELIVERED_REAPER=1
+rs_refused "a default launch even with every delivered word set in the environment"
+RS_FLAGS=(--dry-run); rs_launch WORKER_SESSION_READINESS_FIXTURE=; RS_FLAGS=()
+rs_refused "a default DRY RUN (it predicts the very decision)"
+rs_launch WORKER_SESSION_READINESS_FIXTURE=1;  rs_refused "a bare =1 fixture seam";       rs_msg "fixture seam: =1 is not a path" "is not an absolute path"
+rs_launch WORKER_SESSION_READINESS_FIXTURE=/;  rs_refused "the filesystem root as the fixture"; rs_msg "fixture seam: / is refused" "cannot be /"
+rs_launch "${rs_jira[@]}" WORKER_SESSION_READINESS_FIXTURE=
+rs_refused "the jira port by default (before any secret resolution)"
+rs_msg "delivery gate: the jira port also names the missing credential reaper" "supervisor credential-reaper)"
+check "17s delivery gate: the default jira refusal never initialised credentials" "$(rs_init_calls)" "$rs_before"
+# a fixture root must be a marked, private, owned directory
+mkdir -p "$tmp/rs-outside"; chmod 755 "$tmp/rs-outside"
+mkdir -p "$tmp/rs-nomarker" "$tmp/rs-badmarker" "$tmp/rs-loose"; chmod 755 "$tmp/rs-nomarker" "$tmp/rs-badmarker"
+printf 'not-the-marker' > "$tmp/rs-badmarker/.himmel-readiness-fixture"
+printf 'himmel-readiness-fixture-v1' > "$tmp/rs-loose/.himmel-readiness-fixture"; chmod 777 "$tmp/rs-loose"
+rs_launch WORKER_SESSION_READINESS_FIXTURE="$tmp/rs-nomarker";  rs_refused "a fixture root without its marker"; rs_msg "fixture root: no marker" "carries no valid .himmel-readiness-fixture marker"
+rs_launch WORKER_SESSION_READINESS_FIXTURE="$tmp/rs-badmarker"; rs_refused "a fixture root with a wrong marker"; rs_msg "fixture root: wrong marker" "carries no valid .himmel-readiness-fixture marker"
+rs_launch WORKER_SESSION_READINESS_FIXTURE="$tmp/rs-loose";     rs_refused "a group/world-writable fixture root"; rs_msg "fixture root: loose mode" "group/world writable"
+# under a valid fixture root, EVERY root, binary and port must resolve inside it
+printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/rs-outside/claude"; chmod 755 "$tmp/rs-outside/claude"
+cp "$RS/c1/konsole" "$tmp/rs-outside/konsole" 2>/dev/null || cp "$RS/bin/claude" "$tmp/rs-outside/konsole"
+mkdir -p "$tmp/rs-outside/home/.claude" "$tmp/rs-outside/xdg" "$tmp/rs-outside/hdir" "$tmp/rs-outside/primary/scripts/jira/dist"
+chmod 700 "$tmp/rs-outside/xdg"
+printf '// outside client\n' > "$tmp/rs-outside/primary/scripts/jira/dist/index.js"
+ln -s "$tmp/rs-outside/claude" "$RS/bin/claude-escape"; ln -s "$tmp/rs-outside/home" "$RS/home-escape"
+rs_launch HOME="$tmp/rs-outside/home";                    rs_refused "HOME outside the fixture root";       rs_msg "fixture boundary: HOME" "HOME=$tmp/rs-outside/home is outside the fixture root"
+rs_launch HOME="$RS/home-escape";                         rs_refused "a HOME symlink that escapes the fixture root"; rs_msg "fixture boundary: HOME symlink" "is outside the fixture root"
+rs_launch CLAUDE_CONFIG_DIR="$tmp/rs-outside/home/.claude"; rs_refused "CLAUDE_CONFIG_DIR outside the fixture root"; rs_msg "fixture boundary: CLAUDE_CONFIG_DIR" "CLAUDE_CONFIG_DIR=$tmp/rs-outside/home/.claude is outside the fixture root"
+rs_launch HANDOVER_DIR="$tmp/rs-outside/hdir";            rs_refused "HANDOVER_DIR outside the fixture root"; rs_msg "fixture boundary: HANDOVER_DIR" "HANDOVER_DIR=$tmp/rs-outside/hdir is outside the fixture root"
+rs_launch XDG_RUNTIME_DIR="$tmp/rs-outside/xdg";          rs_refused "XDG_RUNTIME_DIR outside the fixture root"; rs_msg "fixture boundary: XDG_RUNTIME_DIR" "XDG_RUNTIME_DIR=$tmp/rs-outside/xdg is outside the fixture root"
+rs_launch HEADED_ARM_WORKER_CLAUDE_BIN="$tmp/rs-outside/claude"; rs_refused "a claude binary outside the fixture root"; rs_msg "fixture boundary: claude binary" "HEADED_ARM_WORKER_CLAUDE_BIN=$tmp/rs-outside/claude is outside the fixture root"
+rs_launch HEADED_ARM_WORKER_CLAUDE_BIN="$RS/bin/claude-escape"; rs_refused "a claude binary symlink that escapes the fixture root"; rs_msg "fixture boundary: claude symlink" "is outside the fixture root"
+rs_launch KONSOLE_CMD="$tmp/rs-outside/konsole";          rs_refused "konsole outside the fixture root";    rs_msg "fixture boundary: konsole" "KONSOLE_CMD=$tmp/rs-outside/konsole is outside the fixture root"
+rs_launch KONSOLE_CMD=konsole;                            rs_refused "a konsole found on PATH (not an absolute path)"; rs_msg "fixture boundary: konsole by name" "KONSOLE_CMD must be an absolute path inside the fixture root"
+rs_launch HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT"; rs_refused "a usage preflight outside the fixture root"; rs_msg "fixture boundary: preflight" "HEADED_ARM_WORKER_PREFLIGHT=$PROCEED_PREFLIGHT is outside the fixture root"
+rs_launch HEADED_ARM_WORKER_PREFLIGHT=;                   rs_refused "no usage preflight (its default reads machine-wide usage state)"; rs_msg "fixture boundary: default preflight" "HEADED_ARM_WORKER_PREFLIGHT must be an absolute path inside the fixture root"
+# a root that holds the account's real home is not a fixture, however it is marked (the passwd lookup is shimmed to name $RS as the home)
+mkdir -p "$RS/getent-shim"
+printf '%s\n' '#!/usr/bin/env bash' "echo \"fixture-user:x:\$2:\$2::$RS:/bin/bash\"" > "$RS/getent-shim/getent"; chmod 755 "$RS/getent-shim/getent"
+rs_launch PATH="$RS/getent-shim:$PATH"; rs_refused "a fixture root that contains the account's real home"; rs_msg "fixture boundary: the real home" "the fixture root contains the account's real home"
+RS_DOC_OUTSIDE=1; rs_launch; RS_DOC_OUTSIDE=0
+check "17s fixture boundary: a doc outside the fixture root is refused before the acquire" "$([ "$RS_RC" -ne 0 ] && echo refused):$([ -e "$RS_D/record" ] && echo launched || echo no):$(rs_attempts)" "refused:no:0"
+rs_msg "fixture boundary: doc" "is outside the fixture root"
+rs_before="$(rs_init_calls)"
+rs_launch WORKER_SESSION_READINESS_PORT=jira WORKER_SESSION_READINESS_PRIMARY_CLI="$tmp/rs-outside/primary/scripts/jira/dist/index.js"
+rs_refused "a jira client outside the fixture root"; rs_msg "fixture boundary: jira client" "is outside the fixture root"
+check "17s fixture boundary: ... and no credential initialisation ran" "$(rs_init_calls)" "$rs_before"
+# the exec target and the profile resolver are pinned to the in-repo files (an override only inside a valid fixture root)
+printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/rs-outside/target.sh"; chmod 755 "$tmp/rs-outside/target.sh"
+rs_launch HEADED_ARM_WORKER_TARGET="$tmp/rs-outside/target.sh"; rs_refused "an exec target outside the repo and outside the fixture root"
+rs_msg "exec pin: the target" "HEADED_ARM_WORKER_TARGET=$tmp/rs-outside/target.sh is neither the in-repo file"
+printf '// outside resolver\n' > "$tmp/rs-outside/profiles.mjs"
+rs_launch HEADED_ARM_WORKER_PROFILES="$tmp/rs-outside/profiles.mjs"; rs_refused "a profile resolver outside the repo and outside the fixture root"
+rs_msg "exec pin: the resolver" "HEADED_ARM_WORKER_PROFILES=$tmp/rs-outside/profiles.mjs is neither the in-repo file"
+# positive controls: the in-repo file by another spelling, and a target inside the fixture root
+rs_launch HEADED_ARM_WORKER_TARGET="${HEADED_ARM%/*}/./${HEADED_ARM##*/}" HEADED_ARM_WORKER_PROFILES="$(cd "$HERE/../../lanes" && pwd)/./plugin-profiles.mjs"
+check "17s exec pin: the in-repo target and resolver by another spelling launch" "$RS_RC:$([ -s "$RS_D/record" ] && echo yes)" "0:yes"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$RS/inside-target.sh"; chmod 755 "$RS/inside-target.sh"
+rs_launch HEADED_ARM_WORKER_TARGET="$RS/inside-target.sh"
+check "17s exec pin: a target inside the fixture root is accepted" "$RS_RC" "0"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then
