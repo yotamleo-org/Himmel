@@ -4720,6 +4720,21 @@ describe('a ruled-away operator ask wakes the chief', () => {
         expect(fresh.request.evidence).toEqual({ operator: fresh.operator.id });
       });
 
+      // A re-ask that states any part of a relation states the relation: the old one is not carried onto it (no invented requirement).
+      it.each([
+        [{ follow_up_of: 'P-2' }],
+        [{ remainder: true }],
+      ])('a partial relation %j on the re-ask is used as stated; the old relation is not carried onto it', async (stated) => {
+        await setup();
+        decisionFile();
+        mirror([{ key: 'K-1', fixVersions: ['v1'] }, { key: 'P-1', fixVersions: ['v1'] }, { key: 'P-2', fixVersions: ['v1'] }, { key: 'C-1', fixVersions: [] }]);
+        request(at(), row(REL));
+        const got = words(stated);
+        expect(got.withdrawn).not.toBeNull();
+        expect(got.request.evidence).toEqual({ ...stated, operator: got.operator.id });
+        expect(conflictsOf()).toEqual([]);
+      });
+
       it('a relation the re-ask states wins, and an explicit remainder:false removes it', async () => {
         await setup();
         decisionFile();
