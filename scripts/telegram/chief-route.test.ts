@@ -3538,6 +3538,208 @@ test("round-extension: editing the approval after the record kills the grant; a 
   const worker = await extend(true, t, { decision: 986 }); expect(worker.err).toContain("is at writer round 0"); expect(worker.code).not.toBe(0);
 }, S1B);
 
+// A kind that lags the writer round: the other kind went ahead on its own grant, so the lagging kind's next refused round is below writer + 1.
+const LAG_APPROVE = "approve one plan closure round for the two regressions";
+const REG = (id: string, line: string) => `- **${id}** (major; regression) the changed line breaks an earlier rule: \`${line}\``;
+const lagTree = async (lag: "spec" | "plan" = "plan", aheadSix: string[] | null = null) => {
+  const ahead = lag === "plan" ? "spec" : "plan"; const A = ahead.toUpperCase(); const L = lag.toUpperCase();
+  const M2 = "- **M2** (major) the quota rule is stated twice";
+  const t = await roundTree(ahead === "spec" ? [M2] : [], ahead === "plan" ? [M2] : []);
+  const files = { spec: [t.a], plan: [t.plan] };
+  expect((await closeOn(t, ahead, 4, files[ahead], `${A} FINDINGS 3`, F3_R4, BLK_N, F4_R4)).err).toBe("");
+  expect((await verb(true, "round-override", CAP_KEY, "--findings", "F3,F4", "--why", "a second closure", "--chief", "chief-x", "--specs", t.specs)).err).toBe("");
+  expect((await closeOn(t, ahead, 5, files[ahead], `${A} FINDINGS 2`, F3_R5, F4_R5)).err).toBe("");
+  expect((await closeOn(t, lag, 4, files[lag], `${L} CLEAN`)).err).toBe("");
+  decide(t.specs, 986, `${CAP_KEY} operator: ${APPROVE}\n`);
+  expect((await extend(true, t)).err).toBe("");
+  const one = `the first changed ${lag} line`; const two = `the second changed ${lag} line`;
+  writeFileSync(files[lag][0], lag === "spec" ? front(CAP_KEY, `# A\n\n${one}\n${two}\n`) : `# A plan\n\n${one}\n${two}\n`);
+  expect((await closeOn(t, lag, 5, files[lag], `${L} FINDINGS 2`, REG("R1", one), REG("R2", two))).err).toBe("");
+  expect((await (aheadSix ? closeOn(t, ahead, 6, files[ahead], `${A} FINDINGS ${aheadSix.length}`, ...aheadSix) : closeOn(t, ahead, 6, files[ahead], `${A} CLEAN`))).err).toBe("");
+  return t;
+};
+const lagExtend = (t: { specs: string }, o: { findings?: string; decision?: number; quote?: string } = {}) =>
+  extend(true, t, { findings: "R1,R2", decision: 987, quote: LAG_APPROVE, why: "one closure for the two regressions", ...o });
+const latestOf = (specs: string, critic: string, round: number) => rowsOf(specs, "round").find((x) => x.critic === critic && x.round === round);
+
+test("round-extension: a kind that lags the writer round gets its own next refused round: Spec6 CLEAN / Plan5 R1,R2 opens Plan6 only, never Plan7 or Spec7", async () => {
+  const t = await lagTree();
+  expect(await status(t.specs)).toMatchObject({ spec: 6, plan: 5, writer: 6, invalid: [] });
+  expect((await status(t.specs)).why).toContain(`plan round 6: ${T5(6)}`);
+  expect((await closeOn(t, "plan", 6, [t.plan], "PLAN CLEAN")).err).toContain(T5(6));
+  expect(rowsOf(t.specs, "extension").map((x) => x.round_opened)).toEqual([6]);
+  const d = decide(t.specs, 987, `${CAP_KEY} operator: ${LAG_APPROVE}\n`);
+  const ok = await lagExtend(t); expect(ok.err).toBe("");
+  const ext = rowsOf(t.specs, "extension"); const p5 = latestOf(t.specs, "plan", 5); const s6 = latestOf(t.specs, "spec", 6);
+  expect(ext.map((x) => x.round_opened)).toEqual([6, 6]);
+  expect(ext[1]).toMatchObject({ epoch: 0, round_opened: 6, decision: "987", decision_path: d, decision_sha: sha(readFileSync(d, "utf8")),
+    findings: [{ id: "R1", severity: "major", critic: "plan", return_sha: p5.return_sha }, { id: "R2", severity: "major", critic: "plan", return_sha: p5.return_sha }], returns: { spec: [s6.return_sha], plan: [p5.return_sha] } });
+  expect(ok.out).toContain("plan round 6 opens as a closure check of R1, R2");
+  expect(await status(t.specs)).toMatchObject({ spec: 6, plan: 5, invalid: [] });
+  expect((await status(t.specs)).why).toContain(`spec round 7: ${T5(7)}; plan round 6: closure`);
+  expect((await closeOn(t, "spec", 7, [t.a], "SPEC CLEAN")).err).toContain(T5(7));
+  const pack = await verb(false, "closure-pack", CAP_KEY, "plan", "--specs", t.specs);
+  expect(pack.err).toBe(""); expect(pack.out.split("\n")[0]).toBe(markerFor(t.specs, CAP_KEY, "plan", 6));
+  expect(pack.out).toContain("- **R1** (major; regression)"); expect(pack.out).toContain("- **R2** (major; regression)");
+  const sealed = await closeOn(t, "plan", 6, [t.plan], "PLAN FINDINGS 1", "- **R3** (major; reopens R1) still broken after the one granted round");
+  expect(sealed.err).toBe("");
+  expect(ledgerRows(t.specs, CAP_KEY).at(-1)).toMatchObject({ row: "round", critic: "plan", round: 6, mode: "closure" });
+  expect(await status(t.specs)).toMatchObject({ spec: 6, plan: 6, invalid: [] });
+  expect((await status(t.specs)).why).toContain(`spec round 7: ${T5(7)}; plan round 7: ${T5(7)}`);
+  expect((await closeOn(t, "plan", 7, [t.plan], "PLAN CLEAN")).err).toContain(T5(7));
+  expect((await closeOn(t, "spec", 7, [t.a], "SPEC CLEAN")).err).toContain(T5(7));
+  const again = await lagExtend(t, { findings: "R3" }); expect(again.err).toContain("was already used"); expect(again.code).not.toBe(0);
+  expect(rowsOf(t.specs, "extension")).toHaveLength(2);
+}, S1B);
+
+test("round-extension: the reverse kind lags the same way: Plan6 CLEAN / Spec5 R1,R2 opens Spec6 only", async () => {
+  const t = await lagTree("spec");
+  expect(await status(t.specs)).toMatchObject({ spec: 5, plan: 6, writer: 6, invalid: [] });
+  decide(t.specs, 987, `${CAP_KEY} operator: ${LAG_APPROVE}\n`);
+  const ok = await lagExtend(t); expect(ok.err).toBe("");
+  const ext = rowsOf(t.specs, "extension");
+  expect(ext.map((x) => x.round_opened)).toEqual([6, 6]);
+  expect(ext[1].findings.map((f: { critic: string }) => f.critic)).toEqual(["spec", "spec"]);
+  expect(ok.out).toContain("spec round 6 opens as a closure check of R1, R2");
+  expect((await status(t.specs)).why).toContain(`spec round 6: closure; plan round 7: ${T5(7)}`);
+  expect((await closeOn(t, "plan", 7, [t.plan], "PLAN CLEAN")).err).toContain(T5(7));
+  expect((await closeOn(t, "spec", 6, [t.a], "SPEC CLEAN")).err).toBe("");
+  expect(await status(t.specs)).toMatchObject({ spec: 6, plan: 6, invalid: [] });
+  expect((await closeOn(t, "spec", 7, [t.a], "SPEC CLEAN")).err).toContain(T5(7));
+}, S1B);
+
+test("round-extension: aligned counters keep the old grant: one row at writer + 1 opens both kinds that carry open findings, with the unchanged output", async () => {
+  const t = await roundTree(["- **M2** (major) the quota rule is stated twice"], ["- **P2** (major) the plan repeats the quota rule"]);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC FINDINGS 3", F3_R4, BLK_N, F4_R4)).err).toBe("");
+  expect((await closeOn(t, "plan", 4, [t.plan], "PLAN FINDINGS 1", "- **P3** (major; reopens P2) the plan still repeats it")).err).toBe("");
+  expect((await verb(true, "round-override", CAP_KEY, "--findings", "F3,F4", "--why", "a second closure", "--chief", "chief-x", "--specs", t.specs)).err).toBe("");
+  expect((await closeOn(t, "spec", 5, [t.a], "SPEC FINDINGS 2", F3_R5, F4_R5)).err).toBe("");
+  expect((await closeOn(t, "plan", 5, [t.plan], "PLAN FINDINGS 1", "- **P4** (major; reopens P3) the plan repeats it once more")).err).toBe("");
+  decide(t.specs, 986, `${CAP_KEY} operator: ${APPROVE}\n`);
+  const ok = await extend(true, t, { findings: "F3,F4,P4" });
+  expect(ok.err).toBe(""); expect(ok.out).toContain("writer round 6 opens as a closure check of F3, F4, P4 (decision 986)");
+  expect(rowsOf(t.specs, "extension").map((x) => [x.round_opened, x.findings.map((f: { critic: string }) => f.critic)])).toEqual([[6, ["spec", "spec", "plan"]]]);
+  expect((await status(t.specs)).why).toContain("spec round 6: closure; plan round 6: closure");
+  expect((await closeOn(t, "spec", 6, [t.a], "SPEC CLEAN")).err).toBe("");
+  expect((await closeOn(t, "plan", 6, [t.plan], "PLAN CLEAN")).err).toBe("");
+  expect((await closeOn(t, "plan", 7, [t.plan], "PLAN CLEAN")).err).toContain(T5(7));
+  expect(await status(t.specs)).toMatchObject({ spec: 6, plan: 6, invalid: [] });
+}, S1B);
+
+test("round-extension: open findings in kinds whose next rounds differ fail closed with no row, while an old row at writer + 1 still replays", async () => {
+  const t = await lagTree("plan", ["- **F5** (major; reopens F3) still open after the one granted round"]);
+  expect(await status(t.specs)).toMatchObject({ spec: 6, plan: 5, invalid: [] });
+  const d = decide(t.specs, 987, `${CAP_KEY} operator: ${LAG_APPROVE}\n`);
+  const ledger = join(roundsDir(t.specs), `${CAP_KEY}.jsonl`); const before = readFileSync(ledger, "utf8");
+  const mixed = await lagExtend(t, { findings: "F5,R1,R2" });
+  expect(mixed.code).not.toBe(0); expect(mixed.err).toContain("spec round 7, plan round 6"); expect(mixed.err).toContain("nothing was written");
+  expect(readFileSync(ledger, "utf8")).toBe(before);
+  const s6 = latestOf(t.specs, "spec", 6); const p5 = latestOf(t.specs, "plan", 5);
+  const old = { v: 1, ts: Date.now(), key: CAP_KEY, row: "extension", epoch: 0, round_opened: 7, why: "w", chief: "c", decision: "987", quote: LAG_APPROVE, decision_path: d, decision_sha: sha(readFileSync(d, "utf8")),
+    findings: [{ id: "F5", severity: "major", critic: "spec", return_sha: s6.return_sha }, { id: "R1", severity: "major", critic: "plan", return_sha: p5.return_sha }, { id: "R2", severity: "major", critic: "plan", return_sha: p5.return_sha }],
+    returns: { spec: [s6.return_sha], plan: [p5.return_sha] } };
+  appendFileSync(ledger, `${JSON.stringify(old)}\n`);
+  expect(await status(t.specs)).toMatchObject({ invalid: [] });
+  expect((await status(t.specs)).why).toContain(`spec round 7: closure; plan round 6: ${T5(6)}`);
+}, S1B);
+
+test("round-extension: a lagging kind below the default cap needs no grant, and a request for it is refused rather than opening a later round", async () => {
+  const t = await roundTree(["- **M1** (major) still open"], ["- **P1** (major) the plan is wrong"]);
+  expect((await closeOn(t, "spec", 4, [t.a], "SPEC CLEAN")).err).toBe("");
+  decide(t.specs, 986, `${CAP_KEY} operator: ${APPROVE}\n`);
+  const x = await extend(true, t, { findings: "P1" });
+  expect(x.code).not.toBe(0); expect(x.err).toContain("plan round 4 needs no extension"); expect(rowsOf(t.specs, "extension")).toEqual([]);
+  expect((await status(t.specs)).why).toContain("plan round 4: closure");
+  const d = join(t.specs, "decisions", "verbatim-decision-986-operator.txt"); const p3 = latestOf(t.specs, "plan", 3); const s4 = latestOf(t.specs, "spec", 4);
+  appendFileSync(join(roundsDir(t.specs), `${CAP_KEY}.jsonl`), `${JSON.stringify({ v: 1, ts: Date.now(), key: CAP_KEY, row: "extension", epoch: 0, round_opened: 4, findings: [{ id: "P1", severity: "major", critic: "plan", return_sha: p3.return_sha }], returns: { spec: [s4.return_sha], plan: [p3.return_sha] }, why: "w", chief: "c", decision: "986", quote: APPROVE, decision_path: d, decision_sha: sha(readFileSync(d, "utf8")) })}\n`);
+  expect((await status(t.specs)).invalid).toEqual(["extension 986"]);
+}, S1B);
+
+test("round-extension: the lagging grant refuses a worker, wrong scope, words, number, stale or reused decision, and writes nothing", async () => {
+  const t = await lagTree();
+  decide(t.specs, 987, `${CAP_KEY} operator: ${LAG_APPROVE}\n`); decide(t.specs, 988, `no ticket named here: ${LAG_APPROVE}\n`);
+  const stale = decide(t.specs, 989, `${CAP_KEY} operator: ${LAG_APPROVE}\n`); const past = new Date(Date.now() - 600_000); utimesSync(stale, past, past);
+  const copy = decide(t.specs, 990, `${CAP_KEY} operator: ${APPROVE}\n`);
+  const ledger = join(roundsDir(t.specs), `${CAP_KEY}.jsonl`); const before = readFileSync(ledger, "utf8");
+  const refused = async (r: Promise<{ code: number; err: string }>, text: string) => { const x = await r; expect(x.err).toContain(text); expect(x.code).not.toBe(0); expect(readFileSync(ledger, "utf8")).toBe(before); };
+  await refused(verb(false, "round-extension", CAP_KEY, "--findings", "R1,R2", "--decision", "987", "--quote", LAG_APPROVE, "--why", "w", "--chief", "c", "--specs", t.specs), "round-extension: needs HIMMEL_CONSOLE=1");
+  await refused(lagExtend(t, { findings: "R1" }), "name every open blocking finding of");
+  await refused(lagExtend(t, { findings: "R1,R2,F3" }), "F3 is not an open blocking finding");
+  await refused(lagExtend(t, { findings: "F3,F4" }), "F3 is not an open blocking finding");
+  await refused(lagExtend(t, { decision: 988 }), `decision 988 does not name ${CAP_KEY}`);
+  await refused(lagExtend(t, { quote: "a quote the decision never holds at all" }), "does not hold the quote");
+  await refused(lagExtend(t, { decision: 55 }), "0 files match");
+  await refused(lagExtend(t, { decision: 989 }), "is not newer than the latest round");
+  await refused(lagExtend(t, { decision: 986, quote: APPROVE }), "was already used");
+  await refused(lagExtend(t, { decision: 990, quote: APPROVE }), "repeats an approval file already used");
+  expect(readFileSync(copy, "utf8")).toBe(readFileSync(join(t.specs, "decisions", "verbatim-decision-986-operator.txt"), "utf8"));
+  expect((await status(t.specs)).why).toContain(`plan round 6: ${T5(6)}`);
+}, S1B);
+
+test("round-extension: concurrent and repeated lagging grants open Plan6 once; the loser sees it already open, and a second decision does not open Plan7", async () => {
+  const t = await lagTree();
+  decide(t.specs, 987, `${CAP_KEY} operator: ${LAG_APPROVE}\n`); decide(t.specs, 988, `${CAP_KEY} operator: ${LAG_APPROVE} (a second file)\n`);
+  const raced = await Promise.all([lagExtend(t), lagExtend(t, { decision: 988 }), lagExtend(t)]);
+  expect(raced.filter((x) => x.code === 0)).toHaveLength(1);
+  for (const x of raced.filter((y) => y.code !== 0)) expect(x.err).toContain("already open");
+  expect(rowsOf(t.specs, "extension").map((x) => x.round_opened)).toEqual([6, 6]);
+  const later = await lagExtend(t, { decision: 988 }); expect(later.code).not.toBe(0); expect(later.err).toContain("already open");
+  expect(rowsOf(t.specs, "extension")).toHaveLength(2);
+  expect(await status(t.specs)).toMatchObject({ invalid: [] });
+  expect((await closeOn(t, "spec", 7, [t.a], "SPEC CLEAN")).err).toContain(T5(7));
+}, S1B);
+
+test("round-extension: the reader replays a lagging grant at its append point: a stale epoch, return, finding set, kind, round, chief, decision or file digest is invalid and Plan6 stays refused; a second row for the same kind is invalid", async () => {
+  const t = await lagTree(); const d = decide(t.specs, 987, `${CAP_KEY} operator: ${LAG_APPROVE}\n`);
+  const ledger = join(roundsDir(t.specs), `${CAP_KEY}.jsonl`); const base = readFileSync(ledger, "utf8");
+  expect((await lagExtend(t)).err).toBe("");
+  const after = readFileSync(ledger, "utf8"); const real = JSON.parse(after.slice(base.length));
+  expect(await status(t.specs)).toMatchObject({ invalid: [] });
+  const bad = { ...real.findings[0], return_sha: "f".repeat(64) };
+  const cases: Record<string, object> = {
+    "epoch": { epoch: 1 }, "no epoch": { epoch: undefined }, "round 5": { round_opened: 5 }, "round 4": { round_opened: 4 }, "round 8": { round_opened: 8 }, "round 6.5": { round_opened: 6.5 },
+    "returns": { returns: { ...real.returns, plan: ["f".repeat(64)] } }, "spec return": { returns: { ...real.returns, spec: [] } }, "no returns": { returns: undefined },
+    "subset": { findings: [real.findings[0]] }, "extra": { findings: [...real.findings, { ...real.findings[0], id: "F9" }] }, "wrong return": { findings: [bad, real.findings[1]] }, "none": { findings: [] },
+    "wrong kind": { findings: real.findings.map((f: object) => ({ ...f, critic: "spec" })) },
+    "chief": { chief: "" }, "why": { why: " " }, "quote": { quote: "a quote the decision never holds at all" },
+    "digest": { decision_sha: "e".repeat(64) }, "path": { decision_path: `${d}.moved` }, "decision": { decision: "991" },
+  };
+  for (const [name, change] of Object.entries(cases)) {
+    writeFileSync(ledger, base); appendFileSync(ledger, `${JSON.stringify({ ...real, ...change })}\n`);
+    const s = await status(t.specs);
+    expect({ name, invalid: s.invalid }).toEqual({ name, invalid: [`extension ${(change as { decision?: string }).decision ?? "987"}`] });
+    expect(s.why).toContain(`plan round 6: ${T5(6)}`);
+  }
+  writeFileSync(ledger, base); appendFileSync(ledger, `${JSON.stringify({ ...real, round_opened: 7 })}\n`);
+  expect(await status(t.specs)).toMatchObject({ invalid: [] });
+  expect((await status(t.specs)).why).toContain(`plan round 6: ${T5(6)}`);
+  const second = decide(t.specs, 993, `${CAP_KEY} operator: approve yet another closure round for the same lagging kind\n`);
+  writeFileSync(ledger, after);
+  appendFileSync(ledger, `${JSON.stringify({ ...real, decision: "993", quote: "approve yet another closure round for the same lagging kind", decision_path: second, decision_sha: sha(readFileSync(second, "utf8")) })}\n`);
+  expect((await status(t.specs)).invalid).toEqual(["extension 993"]);
+  writeFileSync(ledger, after);
+  expect((await status(t.specs)).invalid).toEqual([]);
+  expect((await closeOn(t, "plan", 6, [t.plan], "PLAN CLEAN")).err).toBe("");
+}, S1B);
+
+test("round-extension: the lagging grant's approval is spent for reset and critical, editing it kills the grant, and a reset ends the epoch so the old grant opens nothing", async () => {
+  const t = await lagTree(); const d = decide(t.specs, 987, `${CAP_KEY} operator: ${LAG_APPROVE}\n`);
+  expect((await lagExtend(t)).err).toBe("");
+  const ledger = join(roundsDir(t.specs), `${CAP_KEY}.jsonl`); const before = readFileSync(ledger, "utf8"); const grant = before.split("\n").filter(Boolean).at(-1)!;
+  const reset = await verb(true, "round-reset", CAP_KEY, "--decision", "987", "--quote", LAG_APPROVE, "--specs", t.specs);
+  expect(reset.code).not.toBe(0); expect(reset.err).toContain("round-extension"); expect(readFileSync(ledger, "utf8")).toBe(before);
+  const text = readFileSync(d, "utf8"); writeFileSync(d, `${text}and a sentence the operator never said\n`);
+  expect((await status(t.specs)).invalid).toEqual(["extension 987"]);
+  expect((await closeOn(t, "plan", 6, [t.plan], "PLAN CLEAN")).err).toContain(T5(6));
+  writeFileSync(d, text);
+  expect(await status(t.specs)).toMatchObject({ invalid: [] });
+  decide(t.specs, 992, `${CAP_KEY} operator: start this ticket over from scratch\n`);
+  expect((await verb(true, "round-reset", CAP_KEY, "--decision", "992", "--quote", "start this ticket over from scratch", "--specs", t.specs)).err).toBe("");
+  expect(await status(t.specs)).toMatchObject({ epoch: 1, spec: 0, plan: 0, invalid: [] });
+  appendFileSync(ledger, `${grant}\n`);
+  expect((await status(t.specs)).invalid).toEqual(["extension 987"]);
+}, S1B);
+
 const HX = "HIMMEL-nextleg-2026-11-10YN-roadmap-chief";
 const HY = "HIMMEL-nextleg-2026-11-10YO-roadmap-chief";
 const HZ = "HIMMEL-nextleg-2026-11-10YP-roadmap-chief";

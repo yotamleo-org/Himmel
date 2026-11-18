@@ -790,6 +790,22 @@ const openFindingsOf = (latest: LatestReturns) => KINDS.flatMap(kind => latest[k
 const returnsOf = (latest: LatestReturns) => Object.fromEntries(KINDS.map(kind => [kind, latest[kind].map(l => String(l.return_sha)).sort()]));
 const findingsKey = (x: any) => Array.isArray(x) ? JSON.stringify(x.map(f => [f?.critic, f?.id, f?.return_sha, f?.severity].map(String)).sort()) : null;
 const returnsKey = (x: any) => x && typeof x === "object" ? JSON.stringify(KINDS.map(kind => Array.isArray(x[kind]) ? x[kind].map(String).sort() : null)) : null;
+// The round an operator extension opens: the next round of the kinds whose latest returns hold the open blocking findings. A kind at the
+// writer round gives writer + 1; a kind that lags it gives its own next round, never a later one. Kinds at different next rounds have no
+// single round, and one grant never opens two. The CLI and the chronological reader both choose through this.
+type ExtensionAim = { round: number; kinds: Kind[]; lags: boolean };
+function extensionAim(rounds: Record<Kind, number>, latest: LatestReturns): ExtensionAim | { split: string } | null {
+  const kinds = KINDS.filter(kind => latest[kind].some(l => blockingOf(l).length > 0));
+  if (!kinds.length) return null;
+  if (new Set(kinds.map(kind => rounds[kind])).size > 1) return { split: kinds.map(kind => `${kind} round ${rounds[kind] + 1}`).join(", ") };
+  return { round: rounds[kinds[0]] + 1, kinds, lags: rounds[kinds[0]] < Math.max(rounds.spec, rounds.plan) };
+}
+const opensKinds = (row: LedgerRow, kinds: Kind[]) => (row.findings as { critic?: string }[]).some(f => kinds.includes(f.critic as Kind));
+// Whether an extension row opens a round it may: writer + 1 as it always did, or a lagging kind's own next refused round, once per kind.
+function extensionLands(opened: unknown, writer: number, aim: ReturnType<typeof extensionAim>, opens: (round: number, kinds?: Kind[]) => boolean): boolean {
+  if (Number(opened) === writer + 1) return !opens(writer + 1);
+  return !!aim && "round" in aim && aim.round > CRITIC_ROUND_CAP + 1 && Number(opened) === aim.round && !opens(aim.round, aim.kinds);
+}
 const spendsDecision = (r: LedgerRow) => r.row === "reset" || r.row === "critical" || r.row === "extension";
 const approvalSpentByExtension = (rows: LedgerRow[], decision: string, pin?: { path: string; sha: string }) => rows.some(r => r.row === "extension"
   && (String(r.decision) === decision || (pin && (r.decision_path === pin.path || r.decision_sha === pin.sha))));
@@ -841,7 +857,7 @@ async function checkRecords(specs: string, key: string, rows: LedgerRow[], reade
   const spent = { numbers: new Set<string>(), paths: new Set<string>(), shas: new Set<string>() };
   const earlierExtensions: LedgerRow[] = [];
   const spend = (r: LedgerRow) => { spent.numbers.add(String(r.decision)); if (isText(r.decision_path)) spent.paths.add(r.decision_path); if (isText(r.decision_sha)) spent.shas.add(r.decision_sha); };
-  const opensRound = (round: number) => criticals.some(c => c.epoch === epoch && Number(c.row.opens) === round) || (override?.epoch === epoch && Number(override.row.round_opened) === round) || extensions.some(e => e.epoch === epoch && Number(e.row.round_opened) === round);
+  const opensRound = (round: number, kinds?: Kind[]) => criticals.some(c => c.epoch === epoch && Number(c.row.opens) === round) || (override?.epoch === epoch && Number(override.row.round_opened) === round) || extensions.some(e => e.epoch === epoch && Number(e.row.round_opened) === round && (!kinds || opensKinds(e.row, kinds)));
   const take = (kind: Kind, round: number, r: Returned[]) => { maxRound[kind] = round; latest[kind] = r; blocking[kind] = r.flatMap(x => blockingOf(x).map(b => b.id)); for (const x of r) for (const f of x.findings ?? []) if (f.critical) classOf.set(findingKey(f.id, x.return_sha), f.critical); };
   const label = (r: LedgerRow) => r.decision === undefined ? r.row : `${r.row} ${r.decision}`;
   for (const r of rows) {
@@ -866,8 +882,9 @@ async function checkRecords(specs: string, key: string, rows: LedgerRow[], reade
       // Replayed at its own append point: the state it binds is the state of the rows before it, so a later seal never unseats it.
       const d = String(r.decision); const writer = Math.max(maxRound.spec, maxRound.plan);
       const q = await quoteRule(specs, key, d, String(r.quote), spent.numbers.has(d), roundTs, reader);
+      const lands = extensionLands(r.round_opened, writer, extensionAim(maxRound, latest), opensRound);
       const ok = !("error" in q) && q.path === r.decision_path && q.sha === r.decision_sha && !spent.paths.has(q.path) && !spent.shas.has(q.sha)
-        && r.epoch === epoch && isText(r.why) && r.why.trim() !== "" && isText(r.chief) && r.chief.trim() !== "" && writer >= CRITIC_ROUND_CAP + 1 && Number(r.round_opened) === writer + 1 && !opensRound(writer + 1)
+        && r.epoch === epoch && isText(r.why) && r.why.trim() !== "" && isText(r.chief) && r.chief.trim() !== "" && writer >= CRITIC_ROUND_CAP + 1 && lands
         && openFindingsOf(latest).length > 0 && findingsKey(r.findings) === findingsKey(openFindingsOf(latest)) && returnsKey(r.returns) === returnsKey(returnsOf(latest));
       spend(r);
       earlierExtensions.push(r);
@@ -1341,15 +1358,16 @@ export async function roundReset(specs: string, key: string, o: { decision: stri
   });
 }
 
-// A chief-only operator extension: one fresh operator decision opens exactly the next writer round, as a closure check, for the
-// kinds that carry its named findings. It binds the epoch, each kind's latest sealed return digests, every open blocking finding
-// with its return digest, and the decision file's digest; the reader replays it at its own append point.
+// A chief-only operator extension: one fresh operator decision opens exactly the next refused round, as a closure check, for the
+// kinds that carry its named findings: writer + 1, or a lagging kind's own next round (never a later one). It binds the epoch, each
+// kind's latest sealed return digests, every open blocking finding with its return digest, and the decision file's digest; the reader
+// replays it at its own append point. Open findings in kinds at different next rounds are refused: one grant opens one round.
 export async function roundExtension(specs: string, key: string, o: { findings: string[]; decision: string; quote: string; why: string; chief: string }): Promise<string> {
   needConsole("round-extension");
   return withLedgerLock(specs, key, async () => {
     const rows = await loadLedger(specs, key);
     if (!o.findings.length || !o.why.trim() || !o.chief.trim()) throw new Error("round-extension: --findings, --why and --chief are all required");
-    const writer = writerRound(rows); const round = writer + 1;
+    const writer = writerRound(rows);
     if (writer < CRITIC_ROUND_CAP + 1) throw new Error(`round-extension: ${key} is at writer round ${writer}; rounds 1 to ${CRITIC_ROUND_CAP + 1} need no extension`);
     const latest = { spec: latestReturns(rows, "spec"), plan: latestReturns(rows, "plan") }; const open = openFindingsOf(latest);
     if (!open.length) throw new Error(`round-extension: ${key} has no open blocking finding in its latest returns; there is nothing to close`);
@@ -1357,8 +1375,12 @@ export async function roundExtension(specs: string, key: string, o: { findings: 
     if (unknown !== undefined) throw new Error(`round-extension: ${unknown} is not an open blocking finding of ${key}'s latest round`);
     const missing = [...new Set(open.map(f => f.id))].filter(id => !o.findings.includes(id));
     if (missing.length) throw new Error(`round-extension: name every open blocking finding of ${key}; also open: ${missing.join(", ")}`);
+    const aim = extensionAim({ spec: kindRound(rows, "spec"), plan: kindRound(rows, "plan") }, latest)!;
+    if ("split" in aim) throw new Error(`round-extension: ${key}'s open blocking findings sit in kinds at different next rounds (${aim.split}); a grant opens one round, so nothing was written`);
+    const round = aim.round; const where = aim.lags ? `${aim.kinds.join("/")} round ${round}` : `writer round ${round}`;
+    if (aim.lags && round <= CRITIC_ROUND_CAP + 1) throw new Error(`round-extension: ${key} ${where} needs no extension; a grant is for a refused round only`);
     const c = rows.checked;
-    if (c.criticals.some(r => Number(r.opens) === round) || (c.override && Number(c.override.round_opened) === round) || c.extensions.some(r => Number(r.round_opened) === round)) throw new Error(`round-extension: ${key} writer round ${round} is already open; a grant is for a refused round only`);
+    if (c.criticals.some(r => Number(r.opens) === round) || (c.override && Number(c.override.round_opened) === round) || c.extensions.some(r => Number(r.round_opened) === round && (!aim.lags || opensKinds(r, aim.kinds)))) throw new Error(`round-extension: ${key} ${where} is already open; a grant is for a refused round only`);
     const q = await quoteRule(specs, key, o.decision, o.quote, rows.some(r => spendsDecision(r) && String(r.decision) === o.decision), latestRoundTs(rows));
     if ("error" in q) throw new Error(`round-extension: ${q.error}`);
     if (rows.some(r => spendsDecision(r) && (r.decision_path === q.path || r.decision_sha === q.sha))) throw new Error(`round-extension: decision ${o.decision} repeats an approval file already used for ${key}`);
@@ -1366,7 +1388,7 @@ export async function roundExtension(specs: string, key: string, o: { findings: 
     const probe = await checkRecords(specs, key, [...rows, row]);
     if (probe.extensions.length !== c.extensions.length + 1) throw new Error(`round-extension: the record would not validate on read (${probe.invalid.at(-1) ?? "unknown"}); nothing was written`);
     await appendFile(join(ledgerDir(specs), `${key}.jsonl`), `${JSON.stringify(row)}\n`);
-    return `round-extension: ${key} epoch ${c.epoch}: writer round ${round} opens as a closure check of ${[...new Set(open.map(f => f.id))].join(", ")} (decision ${o.decision})`;
+    return `round-extension: ${key} epoch ${c.epoch}: ${where} opens as a closure check of ${[...new Set(open.map(f => f.id))].join(", ")} (decision ${o.decision})`;
   });
 }
 
