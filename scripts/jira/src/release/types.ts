@@ -65,7 +65,7 @@ export interface RulingRow {
 export type OperatorKind = 'declare' | 'freeze' | 'decision' | 'takeover' | 'emergency' | 'blocker-pull' | 'delivered-follows-merge' | 'spec' | 'spec-review' | 'core-bypass' | 'core-snapshot' | 'out-of-version';
 
 export type { CappedFoldProof, CappedLedgerProof } from './pinned.js';
-import type { CappedFoldProof } from './pinned.js';
+import type { CappedFoldProof, CappedLedgerProof } from './pinned.js';
 
 export interface OperatorRow {
   id: string;
@@ -97,7 +97,7 @@ export interface OperatorRow {
   verdicts?: Array<{ path: string; sha256: string }>;
   supersedes?: string | null;
   residuals?: number;
-  capped_carry?: CappedFoldProof;
+  capped_carry?: CappedFoldProof | CappedLedgerProof;
   prev?: string;
   mac?: string;
 }
