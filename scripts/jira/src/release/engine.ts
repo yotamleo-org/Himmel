@@ -646,7 +646,8 @@ function bindCappedLedgerProof(proof: CappedLedgerProof, input: CappedInputs): v
   }
   if (proof.carried.length !== input.residuals) throw new Error('capped proof input binding disagrees');
   const spec = pinnedRead(input.spec.path);
-  const declared = 'bytes' in spec && spec.sha256 === input.spec.sha256 ? declaredTickets(spec.bytes.toString('utf8')) : null;
+  if (!('bytes' in spec) || spec.sha256 !== input.spec.sha256) throw new Error('capped proof input binding disagrees');
+  const declared = declaredTickets(spec.bytes.toString('utf8'));
   if (!declared || JSON.stringify([...declared].sort()) !== JSON.stringify(proof.keys)) throw new Error('capped proof declared tickets disagree');
   if (proof.anchor !== keyOf(proof.spec.path)) throw new Error('capped proof anchor disagrees');
 }
