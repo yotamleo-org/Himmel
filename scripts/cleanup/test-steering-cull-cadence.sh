@@ -31,6 +31,7 @@ git init -q "$P"
 cp "$DIR/steering-cull-cadence.sh" "$P/scripts/cleanup/" 2>/dev/null || true
 cp "$REAL_ROOT/scripts/luna/cadence-alert.sh" "$P/scripts/luna/"
 cp "$REAL_ROOT/scripts/lib/llm-backend.sh" "$P/scripts/lib/"
+cp "$REAL_ROOT/scripts/lib/cadence-format.sh" "$P/scripts/lib/"
 printf '# project rules\n' > "$P/CLAUDE.md"
 git -C "$P" add -A
 git -C "$P" -c user.name=t -c user.email=t@t commit -q -m fixture
@@ -287,6 +288,54 @@ check "a default arm with --api-account is refused" 1 $?
 bash "$CAD" arm --force --chief test-chief --proposal-dir "$PROP" --backend claude-cli >"$W/arm8d.out" 2>&1
 check "arm --backend claude-cli exits 0" 0 $?
 has "an explicit claude-cli arm pins the backend against an inherited env" "STEERING_CULL_BACKEND=claude-cli" "$W/runner/steering-cull-cadence.sh"
+# cron cannot read the macOS Keychain login: a claude-cli runner loads the token file, a claude-api runner does not.
+has "a claude-cli runner loads the OAuth token file" "export CLAUDE_CODE_OAUTH_TOKEN" "$W/runner/steering-cull-cadence.sh"
+has "a claude-cli runner names the default token path" "$HOME/.himmel/secrets/claude-oauth-token" "$W/runner/steering-cull-cadence.sh"
+bash "$CAD" arm --force --chief test-chief --proposal-dir "$PROP" --backend claude-api --api-account B >"$W/arm8f.out" 2>&1
+check "arm --backend claude-api exits 0 again" 0 $?
+hasnt "a claude-api runner never loads the OAuth token file" "CLAUDE_CODE_OAUTH_TOKEN" "$W/runner/steering-cull-cadence.sh"
+# The runner stamps the shared format marker, so the update nudge can tell an armed
+# runner that predates the token block from a current one.
+# shellcheck source=../lib/cadence-format.sh
+. "$REAL_ROOT/scripts/lib/cadence-format.sh"
+check "a claude-api runner carries the current format stamp" "$CADENCE_RUNNER_FORMAT_VERSION" "$(cadence_runner_stamp "$W/runner")"
+
+# Execute the emitted token block (POSIX sh, as cron would) against fixture token files.
+bash "$CAD" arm --force --chief test-chief --proposal-dir "$PROP" --backend claude-cli >"$W/arm9.out" 2>&1
+check "a claude-cli runner carries the current format stamp" "$CADENCE_RUNNER_FORMAT_VERSION" "$(cadence_runner_stamp "$W/runner")"
+TOK="fixture-token-not-a-secret-7"
+tok_block() { awk '/^# cron cannot read the macOS Keychain login/ { p = 1 } p { print } p && /^fi$/ { exit }' "$W/runner/steering-cull-cadence.sh"; }
+tok_block >"$W/tokblock.sh"
+# shellcheck disable=SC2016  # the child script's own expansion must stay literal
+printf '%s' 'printf %s "${CLAUDE_CODE_OAUTH_TOKEN-UNSET}"' >"$W/tokchild.sh"
+check "the emitted token block was found" 1 "$([ -s "$W/tokblock.sh" ] && echo 1 || echo 0)"
+# tok_run <HIMMEL_CLAUDE_TOKEN_FILE|-> <preset CLAUDE_CODE_OAUTH_TOKEN|-> -> what a child process sees after the block
+# shellcheck disable=SC2030,SC2031  # each run sets its own env inside a subshell on purpose
+tok_run() {
+    ( unset CLAUDE_CODE_OAUTH_TOKEN HIMMEL_CLAUDE_TOKEN_FILE
+      [ "$1" = - ] || export HIMMEL_CLAUDE_TOKEN_FILE="$1"
+      [ "$2" = - ] || export CLAUDE_CODE_OAUTH_TOKEN="$2"
+      sh -c '. "$1"; sh "$2"' tokblock "$W/tokblock.sh" "$W/tokchild.sh" )
+}
+# shellcheck disable=SC2030,SC2031
+tok_noise() { # the block's own stdout+stderr, which must stay empty
+    ( unset CLAUDE_CODE_OAUTH_TOKEN HIMMEL_CLAUDE_TOKEN_FILE
+      [ "$1" = - ] || export HIMMEL_CLAUDE_TOKEN_FILE="$1"
+      sh -c '. "$1"' tokblock "$W/tokblock.sh" 2>&1 )
+}
+printf '%s\n' "$TOK" >"$W/tokfile"
+check "the token block exports the fixture token when the variable is unset" "$TOK" "$(tok_run "$W/tokfile" -)"
+check "the token block prints nothing, so the token is never echoed" "" "$(tok_noise "$W/tokfile")"
+check "a missing token file changes nothing" "UNSET" "$(tok_run "$W/no-such-token-file" -)"
+check "a missing token file prints nothing" "" "$(tok_noise "$W/no-such-token-file")"
+printf '  %s \r\n' "$TOK" >"$W/tokfile-ws"
+check "surrounding whitespace and CR are stripped" "$TOK" "$(tok_run "$W/tokfile-ws" -)"
+printf '\n' >"$W/tokfile-blank"
+check "a blank token file exports nothing" "UNSET" "$(tok_run "$W/tokfile-blank" -)"
+check "a token already in the environment is kept, the file is not read" "preset-value" "$(tok_run "$W/tokfile" preset-value)"
+mkdir -p "$HOME/.himmel/secrets"; printf '%s\n' "$TOK" >"$HOME/.himmel/secrets/claude-oauth-token"
+check "with no override the default path under the arming home is read" "$TOK" "$(tok_run - -)"
+hasnt "the runner file never holds the token value" "$TOK" "$W/runner/steering-cull-cadence.sh"
 bash "$CAD" disarm >/dev/null 2>&1
 
 echo "steering-cull-cadence: $PASSED passed, $FAILED failed"
