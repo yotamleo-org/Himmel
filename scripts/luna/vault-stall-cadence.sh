@@ -527,7 +527,7 @@ autocommit_vault() {
                 autocommit_gates_open "$vault" \
                     || alert "vault auto-commit landed after a remote, sync plugin or opt-out appeared (hook-window race)" 0
             else
-                staged_entries "$vault" >"$(owned_file "$vault")"
+                foreign_staged "$vault" "$paths" "$changed" || staged_entries "$vault" >"$(owned_file "$vault")"
                 echo "vault-stall: auto-commit refused by the vault's hooks; the stall handling below takes over"
             fi
         fi
