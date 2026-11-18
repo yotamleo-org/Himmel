@@ -6176,3 +6176,350 @@ test("X3 migration tripwire: every ledger-path construction in chief-route.ts an
     expect(lib.includes(`${name}(`), `testlib uses ${name}`).toBe(true);
   }
 });
+
+// ---- the v2 return policy at the in-process evidence helper (rows Q1 to Q4, C1 to C3, F1 to F3, F9 and D6) ----
+type C3Fixture = { specsRoot: string; spec: string; plan: string; verdicts: string[]; ledgerPath: string };
+type C3Shape = { verb: "READ" | "READ-SHA256"; order: "sha" | "sha2" | "legacy" };
+const c3Shape = (verb: C3Shape["verb"], order: C3Shape["order"]): C3Shape => ({ verb, order });
+const C3_SHAPES: C3Shape[] = (["READ-SHA256", "READ"] as const).flatMap(verb => (["sha", "sha2", "legacy"] as const).map(order => c3Shape(verb, order)));
+const C3_MALFORMED = "capped-fold: malformed seal or READ quote";
+const C3_DUPLICATE = "capped-fold: duplicate critic READ quotes";
+const C3_CAP = "capped-fold: findings have not reached the refused round cap";
+const C3_COVERAGE = "capped-fold: missing/extra ledger seals or review coverage";
+const C3_KEYS = "capped return Keys? declaration disagrees with the declared keys";
+const C3_REVIEWED = "capped return Reviewed declaration disagrees with the current spec";
+const c3Heading = (line: string) => `capped-fold: ineligible finding heading: ${line}`;
+const c3Flip = (hex: string) => (hex[0] === "a" ? "b" : "a") + hex.slice(1);
+
+const c3Route = async (): Promise<any> => {
+  const route: any = await import("./chief-route");
+  for (const name of ["cappedReader", "cappedLedger", "cappedReturnEvidence", "readQuotesOf", "v2Policy"]) expect(typeof route[name], `${name} is reachable by an in-process caller`).toBe("function");
+  expect(typeof route.v1Policy?.quotes, "v1Policy is reachable").toBe("function");
+  return route;
+};
+// The helper exactly as cappedFold wires it for one kind: the canonical spec, one reader on its specs root, the real ledger load, then the helper.
+const c3Kind = async (f: C3Fixture, kind: "spec" | "plan", policy: any, path = b1Kind(f, kind).at(-1)!) => {
+  const route = await c3Route(); const key = route.keyOf(f.spec);
+  const spec = realpathSync(f.spec); const plan = realpathSync(f.plan);
+  expect(spec.startsWith(`${f.specsRoot}/`), "the canonical spec lies under the reader's specs root").toBe(true);
+  const reader = route.cappedReader(f.specsRoot, key);
+  const specRead = await reader.read(spec); const planRead = await reader.read(plan);
+  const rows = await route.cappedLedger(f.specsRoot, key, reader);
+  return route.cappedReturnEvidence({ key, kind, path, spec, plan, specSha: specRead.sha256, planSha: planRead.sha256, rows, reader }, policy);
+};
+const c3Both = async (f: C3Fixture, policy: any) => ({ spec: await c3Kind(f, "spec", policy), plan: await c3Kind(f, "plan", policy) });
+const c3Message = async (run: Promise<unknown>): Promise<string> => {
+  try { await run; } catch (error) { return (error as Error).message; }
+  throw new Error("expected a refusal and the helper accepted");
+};
+const c3Edit = (f: C3Fixture, kind: "spec" | "plan", edit: (text: string) => string) => editCappedReturn(f, b1Kind(f, kind).at(-1)!, edit);
+// The pin and the carried findings, computed from the actual return file and the actual ledger epoch, never from a stored hash.
+const c3Expect = async (f: C3Fixture, kind: "spec" | "plan", got: any, round: number, epoch: number, carried: [string, string][]) => {
+  const route: any = await import("./chief-route"); const path = b1Kind(f, kind).at(-1)!; const text = readFileSync(path, "utf8"); const key = route.keyOf(f.spec);
+  expect(got.pin, `${kind} pin`).toEqual({ kind, path, sha256: sha(text), round, return_sha: route.returnSha(text), residuals: carried.length });
+  expect(got.carried, `${kind} carried`).toEqual(carried.map(([id, severity]) => ({ key, epoch, kind, round, return_path: path, return_sha: route.returnSha(text), finding_id: id, severity, status: "open-carried" })));
+};
+// Rewrites every standard quote line of a return into one of the accepted shapes.
+const c3Requote = (text: string, shape: C3Shape) => text.replace(/^READ(?:-SHA256)? ([0-9a-f]{64}) (\S.*)$/gm, (_line, digest: string, path: string) =>
+  shape.order === "legacy" ? `${shape.verb} ${path} ${digest}` : `${shape.verb} ${digest}${shape.order === "sha2" ? "  " : " "}${path}`);
+const c3Quotes = (text: string) => [...text.matchAll(/^READ-SHA256 ([0-9a-f]{64}) (\S.*)$/gm)];
+const c3BeforeSeals = (text: string, line: string) => text.replace(/^CONTENT-SHA256 /m, `${line}\nCONTENT-SHA256 `);
+// A real ledger with its own rounds per kind, through the shared round fixture exactly as cappedFixture builds one.
+const c3Build = async (rounds: { kind: "spec" | "plan"; round: number; findings?: string; closure?: boolean }[]) => {
+  const { buildRoundFixture } = await import("./testlib-capped-fold.ts");
+  const reads = (kind: "spec" | "plan") => ["spec", ...(kind === "plan" ? ["plan"] : []), { path: "specs/designs/page.html", text: "<h1>Review page</h1>\n" },
+    { path: "specs/designs/estimate.json", text: '{"median_seq":1,"sigma":0.1,"dod":{"passed":true}}\n' }];
+  const returns = rounds.map(r => {
+    const findings = r.findings ?? ""; const count = findings.split("\n").filter(l => l.startsWith("- **")).length;
+    return { kind: r.kind, round: r.round, closure: r.closure, text: `${findings ? `${findings}\n` : ""}${r.kind.toUpperCase()} ${count ? `FINDINGS ${count}` : "CLEAN"}\n`, reads: reads(r.kind) };
+  });
+  return buildRoundFixture({ scratchRoot: root(), key: cappedKey, specText: fixtureSpecText.replace("# HIMMEL", `Key: ${cappedKey}\n\n# HIMMEL`), planText: `---\ntickets: ${cappedKey}\n---\nKey: ${cappedKey}\n${fixturePlanText}`, returns });
+};
+
+test("3c availability: the helper, both policies and the quote reader are reachable in process, and v2Policy builds a fresh policy of the four decisions", async () => {
+  const route = await c3Route(); const first = route.v2Policy([cappedKey]); const second = route.v2Policy([cappedKey]);
+  for (const policy of [route.v1Policy, first]) for (const name of ["declaration", "reviewed", "headingOk", "quotes"]) expect(typeof policy[name], name).toBe("function");
+  expect(first).not.toBe(second); expect(first).not.toBe(route.v1Policy);
+});
+
+test("3c v1Policy keeps its strict decisions: one quote shape, exactly minor or medium, one Key line and exactly one Reviewed line", async () => {
+  const route = await c3Route(); const v1 = route.v1Policy; const S = "c3".repeat(32); const p = "/work/page.md"; const specSha = "d4".repeat(32);
+  for (const verb of ["READ", "READ-SHA256"]) expect(v1.quotes(`${verb} ${S} ${p}`), verb).toEqual([{ sha: S, path: p }]);
+  for (const line of [`READ-SHA256 ${S}  ${p}`, `READ-SHA256 ${p} ${S}`, `READ-SHA256 ${S}   ${p}`, `READ-SHA256 ${S.toUpperCase()} ${p}`, "READ", "READ-SHA256"]) expect(() => v1.quotes(line), line).toThrow(C3_MALFORMED);
+  for (const ok of ["minor", "medium"]) expect(v1.headingOk(ok), ok).toBe(true);
+  for (const bad of ["medium; Fact overlap", "major", "Minor", " medium", "minor; regression", ""]) expect(v1.headingOk(bad), bad).toBe(false);
+  expect(() => v1.declaration("Fixture: no key\n", cappedKey)).toThrow(`capped-fold: header must declare only ${cappedKey}`);
+  expect(() => v1.declaration(`Key: ${cappedKey}\n`, cappedKey)).not.toThrow();
+  expect(() => v1.reviewed("Fixture: none\n", specSha, "spec")).toThrow("capped-fold: spec must review the current spec exactly once");
+  expect(() => v1.reviewed(`Reviewed: spec ${specSha}\n`, specSha, "plan")).not.toThrow();
+  expect(() => v1.reviewed(`Reviewed: spec ${specSha}\nReviewed: spec ${specSha}\n`, specSha, "plan")).toThrow("capped-fold: plan must review the current spec exactly once");
+});
+
+test("Q1 readQuotesOf: exactly two anchored shapes at column zero, a space or two after the sha, the legacy path absolute; every other READ line refuses", async () => {
+  const route = await c3Route(); const S = "a1".repeat(32); const T = "0f".repeat(32); const p = "/work/specs/designs/page.md";
+  const parse = (...lines: string[]) => route.readQuotesOf(["Fixture: x", ...lines, "SPEC CLEAN", ""].join("\n"));
+  for (const verb of ["READ", "READ-SHA256"]) {
+    expect(parse(`${verb} ${S} ${p}`), `${verb} sha then path`).toEqual([{ sha: S, path: p }]);
+    expect(parse(`${verb} ${S}  ${p}`), `${verb} sha, two spaces, path`).toEqual([{ sha: S, path: p }]);
+    expect(parse(`${verb} ${S} rel/page.md`), `${verb} sha first may name a relative path`).toEqual([{ sha: S, path: "rel/page.md" }]);
+    expect(parse(`${verb} ${p} ${S}`), `${verb} legacy absolute path then sha`).toEqual([{ sha: S, path: p }]);
+  }
+  expect(parse(`READ-SHA256 ${S} ${p}`, "READING notes", `prose READ ${T}`, ` READ-SHA256 ${T} /indented.md`, `READ ${p}b ${T}`, `CONTENT-SHA256 ${S} page.md`),
+    "lines that are not column-zero READ lines are not quotes; the quotes keep their line order").toEqual([{ sha: S, path: p }, { sha: T, path: `${p}b` }]);
+  expect(parse()).toEqual([]);
+  for (const [what, line] of [
+    ["three spaces after the sha", `READ-SHA256 ${S}   ${p}`], ["a tab after the verb", `READ-SHA256\t${S} ${p}`], ["a tab after the sha", `READ-SHA256 ${S}\t${p}`],
+    ["an uppercase sha", `READ-SHA256 ${S.toUpperCase()} ${p}`], ["a 63 digit sha", `READ-SHA256 ${S.slice(1)} ${p}`], ["a 65 digit sha", `READ-SHA256 ${S}0 ${p}`],
+    ["a sha with no path", `READ-SHA256 ${S}`], ["a sha and a trailing space only", `READ-SHA256 ${S} `], ["a lowercase algorithm word", `READ sha256 ${S}`],
+    ["a role word before the path", `READ-SHA256 SPEC ${p}`], ["a role word, a path and a sha", `READ-SHA256 SPEC ${p} ${S}`],
+    ["a relative legacy path", `READ-SHA256 rel/page.md ${S}`], ["a dot-relative legacy path", `READ-SHA256 ./page.md ${S}`],
+    ["an uppercase legacy sha", `READ-SHA256 ${p} ${S.toUpperCase()}`], ["a legacy line with a trailing space", `READ-SHA256 ${p} ${S} `], ["two spaces before the legacy sha", `READ-SHA256 ${p}  ${S}`],
+    ["a carriage return after the path", `READ-SHA256 ${S} ${p}\r`], ["a carriage return after the legacy sha", `READ-SHA256 ${p} ${S}\r`],
+    ["a bare READ", "READ"], ["a bare READ-SHA256", "READ-SHA256"], ["READ and a space", "READ "],
+  ] as const) expect(() => parse(line), what).toThrow(C3_MALFORMED);
+  expect(() => parse(`READ-SHA256 ${S} ${p}`, "READ-SHA256 unknown file.md"), "one malformed line refuses the whole return").toThrow(C3_MALFORMED);
+  expect(parse(`READ-SHA256 ${S} ${p} `), "a trailing space after a sha-first path stays part of the path, never trimmed").toEqual([{ sha: S, path: `${p} ` }]);
+});
+
+test("Q1 v2 quotes: each accepted shape, in either return and mixed across the two, reads as the same sealed evidence and equals the seals", async () => {
+  const route = await c3Route(); const policy = route.v2Policy([cappedKey]);
+  const build = () => cappedFixture({ planFindings: "- **P1** (minor) a plan wording note" });
+  const control = await build(); const expected = await c3Both(control, policy);
+  await c3Expect(control, "spec", expected.spec, 3, 0, [["F1", "minor"]]); await c3Expect(control, "plan", expected.plan, 3, 0, [["P1", "minor"]]);
+  const sealed = (text: string, path: string) => [...text.matchAll(/^CONTENT-SHA256 ([0-9a-f]{64}) (\S.*)$/gm)].map(m => ({ sha: m[1], path: resolve(dirname(path), m[2]) }));
+  for (const kind of ["spec", "plan"] as const) {
+    const path = b1Kind(control, kind).at(-1)!; const text = readFileSync(path, "utf8");
+    expect(sealed(text, path).length, `${kind} seals`).toBeGreaterThan(2);
+    expect(route.readQuotesOf(text), `${kind}: the standard quotes are the seals, in order`).toEqual(sealed(text, path));
+  }
+  const pairs: [C3Shape, C3Shape][] = [...C3_SHAPES.map(s => [s, s] as [C3Shape, C3Shape]),
+    [c3Shape("READ-SHA256", "sha2"), c3Shape("READ-SHA256", "legacy")], [c3Shape("READ-SHA256", "legacy"), c3Shape("READ", "sha")], [c3Shape("READ", "sha2"), c3Shape("READ", "legacy")]];
+  for (const [specShape, planShape] of pairs) {
+    const f = await build();
+    for (const [kind, shape] of [["spec", specShape], ["plan", planShape]] as const) {
+      const path = b1Kind(f, kind).at(-1)!; const before = readFileSync(path, "utf8");
+      await c3Edit(f, kind, text => c3Requote(text, shape));
+      const after = readFileSync(path, "utf8");
+      expect(after === before, `${kind} ${JSON.stringify(shape)} rewrote the quote lines`).toBe(shape.verb === "READ-SHA256" && shape.order === "sha");
+      expect(route.readQuotesOf(after), `${kind} ${JSON.stringify(shape)} parses to the same quotes`).toEqual(route.readQuotesOf(before));
+    }
+    const got = await c3Both(f, policy);
+    await c3Expect(f, "spec", got.spec, 3, 0, [["F1", "minor"]]); await c3Expect(f, "plan", got.plan, 3, 0, [["P1", "minor"]]);
+  }
+}, S1B);
+
+test("Q2 v2 quotes must equal the seals: an altered sha, swapped paths, a quote of an unsealed file and a sealed file without a quote each refuse, in every shape", async () => {
+  const route = await c3Route(); const policy = route.v2Policy([cappedKey]);
+  const shapes = [c3Shape("READ-SHA256", "sha"), c3Shape("READ-SHA256", "sha2"), c3Shape("READ-SHA256", "legacy"), c3Shape("READ", "legacy")];
+  const faults: [string, (text: string, f: C3Fixture) => string, (f: C3Fixture) => string][] = [
+    ["an altered sha", text => text.replace(/^(READ-SHA256 )([0-9a-f]{64})/m, (_line, verb: string, digest: string) => verb + c3Flip(digest)), f => `capped-fold: missing/conflicting critic READ quote: ${realpathSync(f.spec)}`],
+    ["two paths swapped", text => { const [a, b] = c3Quotes(text); return text.replace(a[0], `READ-SHA256 ${a[1]} ${b[2]}`).replace(b[0], `READ-SHA256 ${b[1]} ${a[2]}`); },
+      f => `capped-fold: missing/conflicting critic READ quote: ${realpathSync(f.spec)}`],
+    ["a quote of an unsealed file", (text, f) => c3BeforeSeals(text, `READ-SHA256 ${sha(readFileSync(f.plan, "utf8"))} ${f.plan}`), () => C3_COVERAGE],
+    ["a sealed file with no quote", text => text.replace(`${c3Quotes(text).at(-1)![0]}\n`, ""), f => `capped-fold: missing/conflicting critic READ quote: ${join(f.specsRoot, "designs", "estimate.json")}`],
+  ];
+  for (const shape of shapes) {
+    const control = await cappedFixture(); await c3Edit(control, "spec", text => c3Requote(text, shape));
+    await c3Expect(control, "spec", await c3Kind(control, "spec", policy), 3, 0, [["F1", "minor"]]);
+    for (const [what, fault, message] of faults) {
+      const f = await cappedFixture(); await c3Edit(f, "spec", text => c3Requote(fault(text, f), shape));
+      expect(await c3Message(c3Kind(f, "spec", policy)), `${what} in ${JSON.stringify(shape)}`).toBe(message(f));
+    }
+  }
+}, S1B);
+
+test("Q3 v2 quotes: a duplicate artifact quote, an unknown shape, a relative legacy path, three spaces and an uppercase sha each refuse with the shipped words", async () => {
+  const route = await c3Route(); const policy = route.v2Policy([cappedKey]);
+  const first = (text: string) => c3Quotes(text)[0]; const last = (text: string) => c3Quotes(text).at(-1)!;
+  const cases: [string, (text: string, f: C3Fixture) => string, string][] = [
+    ["a duplicate quote with the same sha", text => c3BeforeSeals(text, first(text)[0]), C3_DUPLICATE],
+    ["a duplicate quote with another sha", text => c3BeforeSeals(text, `READ-SHA256 ${c3Flip(first(text)[1])} ${first(text)[2]}`), C3_DUPLICATE],
+    ["a duplicate quote spelled in the legacy order", text => c3BeforeSeals(text, `READ ${first(text)[2]} ${first(text)[1]}`), C3_DUPLICATE],
+    ["a sha-only line", text => c3BeforeSeals(text, `READ-SHA256 ${first(text)[1]}`), C3_MALFORMED],
+    ["a lowercase algorithm word", text => c3BeforeSeals(text, `READ sha256 ${first(text)[1]}`), C3_MALFORMED],
+    ["a role word before the path", text => text.replace(first(text)[0], `READ-SHA256 SPEC ${first(text)[2]}`), C3_MALFORMED],
+    ["a role word before a legacy quote", text => text.replace(first(text)[0], `READ-SHA256 SPEC ${first(text)[2]} ${first(text)[1]}`), C3_MALFORMED],
+    ["a relative legacy path", text => text.replace(last(text)[0], `READ-SHA256 estimate.json ${last(text)[1]}`), C3_MALFORMED],
+    ["three spaces after the sha", text => text.replace(first(text)[0], `READ-SHA256 ${first(text)[1]}   ${first(text)[2]}`), C3_MALFORMED],
+    ["two spaces before the legacy sha", text => text.replace(first(text)[0], `READ-SHA256 ${first(text)[2]}  ${first(text)[1]}`), C3_MALFORMED],
+    ["an uppercase sha", text => text.replace(first(text)[0], `READ-SHA256 ${first(text)[1].toUpperCase()} ${first(text)[2]}`), C3_MALFORMED],
+    ["a bare READ", text => c3BeforeSeals(text, "READ"), C3_MALFORMED],
+  ];
+  const control = await cappedFixture(); await c3Expect(control, "spec", await c3Kind(control, "spec", policy), 3, 0, [["F1", "minor"]]);
+  for (const [what, edit, message] of cases) {
+    const f = await cappedFixture(); await c3Edit(f, "spec", text => edit(text, f));
+    expect(await c3Message(c3Kind(f, "spec", policy)), what).toBe(message);
+  }
+  const spaced = await cappedFixture(); await c3Edit(spaced, "spec", text => text.replace(first(text)[0], `${first(text)[0]} `));
+  expect(await c3Message(c3Kind(spaced, "spec", policy)), "a path with a trailing space is not trimmed into the real file").toContain("no such file");
+}, S1B);
+
+test("Q4 v2 quotes: an altered seal line and a sealed file edited after the critic read each refuse in every shape, and so does a ledger seal row that disagrees", async () => {
+  const route = await c3Route(); const policy = route.v2Policy([cappedKey]);
+  for (const shape of [c3Shape("READ-SHA256", "sha"), c3Shape("READ-SHA256", "sha2"), c3Shape("READ-SHA256", "legacy")]) {
+    const seal = await cappedFixture(); await c3Edit(seal, "spec", text => c3Requote(text.replace(/^(CONTENT-SHA256 )([0-9a-f]{64})/m, (_line, verb: string, digest: string) => verb + c3Flip(digest)), shape));
+    expect(await c3Message(c3Kind(seal, "spec", policy)), `an altered seal line in ${JSON.stringify(shape)}`).toBe(`capped-fold: seal provenance disagrees: ${realpathSync(seal.spec)}`);
+    const edited = await cappedFixture(); await c3Edit(edited, "spec", text => c3Requote(text, shape));
+    const page = join(edited.specsRoot, "designs", "page.html"); writeFileSync(page, `${readFileSync(page, "utf8")}<p>edited after the critic read it</p>\n`);
+    expect(await c3Message(c3Kind(edited, "spec", policy)), `a sealed file edited after the read in ${JSON.stringify(shape)}`).toBe(`capped-fold: seal provenance disagrees: ${page}`);
+    const row = await cappedFixture(); await c3Edit(row, "spec", text => c3Requote(text, shape));
+    const rowPage = join(row.specsRoot, "designs", "page.html"); const returned = route.returnSha(readFileSync(b1Kind(row, "spec").at(-1)!, "utf8"));
+    editLedger(row, rows => { const r = rows.find(x => x.row === "seal" && x.read_path === rowPage && x.return_sha === returned)!; r.read_sha = c3Flip(r.read_sha); });
+    expect(await c3Message(c3Kind(row, "spec", policy)), `a ledger seal row that disagrees in ${JSON.stringify(shape)}`).toBe(`capped-fold: seal provenance disagrees: ${rowPage}`);
+  }
+}, S1B);
+
+test("C1 v2 cap: the known single shape whose plan next round is admitted refuses at the cap rule with the shipped words, and its quotes and headings read", async () => {
+  const route = await c3Route(); const lib = await b1Lib();
+  const f = await lib.buildKnownSingleFixture(realpathSync(root()), { variant: "admittedNextRound" }); const key = route.keyOf(f.spec); const policy = route.v2Policy([key]);
+  const state = await route.roundState(f.specsRoot, key);
+  expect(state.plan).toBe(3); expect(state.next).toBe("closure"); expect(state.why).toContain("plan round 4: closure");
+  await c3Expect(f, "spec", await c3Kind(f, "spec", policy), 5, 0, []);
+  expect(await c3Message(c3Kind(f, "plan", policy)), "the admitted next round").toBe(C3_CAP);
+  const refused = await lib.buildKnownSingleFixture(realpathSync(root()), { variant: "refusedCap" });
+  await c3Expect(refused, "plan", await c3Kind(refused, "plan", policy), 4, 0, [["P4", "minor"], ["P5", "minor"]]);
+}, S1B);
+
+test("C2 v2 cap: the refusedCap closure shape carries its minors under legacy and two-space quotes, and a kind under the cap refuses even when the other kind is capped", async () => {
+  const route = await c3Route(); const lib = await b1Lib();
+  const f = await lib.buildKnownSingleFixture(realpathSync(root()), { variant: "refusedCap" }); const key = route.keyOf(f.spec); const policy = route.v2Policy([key]);
+  const state = await route.roundState(f.specsRoot, key);
+  expect(state.plan).toBe(4); expect(state.next).toBe("none"); expect(state.why).toContain(`${key} writer round 5 needs a round-override or round-critical record`);
+  const got = await c3Both(f, policy);
+  await c3Expect(f, "spec", got.spec, 5, 0, []); await c3Expect(f, "plan", got.plan, 4, 0, [["P4", "minor"], ["P5", "minor"]]);
+  expect(readFileSync(b1Kind(f, "spec").at(-1)!, "utf8")).toMatch(/^READ-SHA256 [0-9a-f]{64}  \/\S+$/m);
+  expect(readFileSync(b1Kind(f, "plan").at(-1)!, "utf8")).toMatch(/^READ-SHA256 \/\S+ [0-9a-f]{64}$/m);
+  expect(await c3Message(c3Kind(f, "spec", route.v1Policy)), "the strict v1 policy refuses the same real bytes at its own first step").toBe(`capped-fold: header must declare only ${key}`);
+  const finding = (id: string) => `- **${id}** (minor) a wording note`;
+  const specCapped = await c3Build([1, 2, 3].map(round => ({ kind: "spec" as const, round, findings: finding("F1") })).concat([1, 2].map(round => ({ kind: "plan" as const, round, findings: round === 2 ? finding("P1") : "" }))));
+  await c3Expect(specCapped, "spec", await c3Kind(specCapped, "spec", route.v2Policy([cappedKey])), 3, 0, [["F1", "minor"]]);
+  expect(await c3Message(c3Kind(specCapped, "plan", route.v2Policy([cappedKey]))), "the plan has findings in its second round").toBe(C3_CAP);
+  const planCapped = await c3Build([1, 2].map(round => ({ kind: "spec" as const, round, findings: round === 2 ? finding("F1") : "" })).concat([1, 2, 3].map(round => ({ kind: "plan" as const, round, findings: finding("P1") }))));
+  await c3Expect(planCapped, "plan", await c3Kind(planCapped, "plan", route.v2Policy([cappedKey])), 3, 0, [["P1", "minor"]]);
+  expect(await c3Message(c3Kind(planCapped, "spec", route.v2Policy([cappedKey]))), "the spec has findings in its second round").toBe(C3_CAP);
+}, S1B);
+
+test("C3 v2 cap: when the live override admits the next plan round, the blocking regression refuses at the heading step, before the cap check", async () => {
+  const route = await c3Route(); const lib = await b1Lib();
+  const f = await lib.buildKnownSingleFixture(realpathSync(root()), { variant: "overrideAdmitted" }); const key = route.keyOf(f.spec); const policy = route.v2Policy([key]);
+  const status = await b1Status(f, key);
+  expect(status.next).toBe("closure"); expect(status.why).toContain("plan round 5: closure"); expect(status.plan).toBe(4);
+  expect(b1Rows(f).filter(r => r.row === "override")).toMatchObject([{ round_opened: 5 }]);
+  await c3Expect(f, "spec", await c3Kind(f, "spec", policy), 5, 0, []);
+  const line = readFileSync(b1Kind(f, "plan").at(-1)!, "utf8").split("\n").find(l => l.startsWith("- **PR1**"))!;
+  expect(line).toContain("(major; regression)");
+  expect(await c3Message(c3Kind(f, "plan", policy)), "the heading step, not the cap").toBe(c3Heading(line));
+}, S1B);
+
+test("F1 v2 headings: a plain minor, a plain medium and a contextual medium carry, on the real group fixture and on a standard one, where the strict heading refuses the contextual tag", async () => {
+  const route = await c3Route(); const lib = await b1Lib();
+  for (const reset of ["none", "new-stem"] as const) {
+    const f = await lib.buildGroupFixture(realpathSync(root()), { reset }); const got = await c3Both(f, route.v2Policy(f.keys)); const epoch = reset === "none" ? 0 : 1;
+    await c3Expect(f, "spec", got.spec, 3, epoch, [["F1", "medium"]]); await c3Expect(f, "plan", got.plan, 3, epoch, [["P1", "minor"]]);
+    expect(readFileSync(b1Kind(f, "spec").at(-1)!, "utf8")).toContain("- **F1** (medium; Fact overlap)");
+  }
+  const f = await cappedFixture({ specFindings: ["- **F1** (minor) a wording fix", "- **F2** (medium) a scope note", "- **F3** (medium; Fact overlap) the contract overlaps an owner"].join("\n") });
+  await c3Expect(f, "spec", await c3Kind(f, "spec", route.v2Policy([cappedKey])), 3, 0, [["F1", "minor"], ["F2", "medium"], ["F3", "medium"]]);
+  expect(await c3Message(c3Kind(f, "spec", route.v1Policy))).toBe(c3Heading("- **F3** (medium; Fact overlap) the contract overlaps an owner"));
+}, S1B);
+
+test("F1 v2Policy.headingOk reads the heading as the ledger does: the first semicolon token is minor or medium and no other tag is reserved", async () => {
+  const route = await c3Route(); const heading = route.v2Policy([cappedKey]).headingOk;
+  for (const ok of ["minor", "medium", "medium; Fact overlap", "minor;Fact overlap", "medium; Fact overlap; Scope", " medium ; Fact overlap "]) expect(heading(ok), ok).toBe(true);
+  for (const bad of ["major", "major; Fact overlap", "Minor", "MEDIUM", "", ";", "fact overlap; medium", "critical", "medium; operator-critical: spend-grant", "minor; operator-critical: account-or-terms",
+    "medium; operator-critical: unknown", "medium; operator-critical:", "minor; reopens M1", "medium; regression", "minor; Fact overlap; regression", "minor; regression; Fact overlap"]) expect(heading(bad), bad).toBe(false);
+});
+
+test("F2 v2 headings: a reserved tag, an unknown operator-critical subtype, a reopen, a regression and a major each refuse at the heading step on a real return", async () => {
+  const route = await c3Route(); const policy = route.v2Policy([cappedKey]);
+  const control = await cappedFixture(); await c3Expect(control, "spec", await c3Kind(control, "spec", policy), 3, 0, [["F1", "minor"]]);
+  for (const heading of ["medium; operator-critical: spend-grant", "medium; operator-critical: unknown", "medium; operator-critical:", "minor; reopens M1", "medium; regression", "minor; Fact overlap; regression", "major", "major; Fact overlap", "Minor", "fact overlap; medium", ""]) {
+    const f = await cappedFixture(); const line = `- **F1** (${heading}) carry this wording fix`;
+    await c3Edit(f, "spec", text => text.replace("- **F1** (minor) carry this wording fix", line));
+    expect(await c3Message(c3Kind(f, "spec", policy)), heading).toBe(c3Heading(line));
+  }
+  const second = await cappedFixture({ specFindings: "- **F1** (minor) a wording fix\n- **F2** (medium; regression) the second heading is reserved" });
+  expect(await c3Message(c3Kind(second, "spec", policy)), "a later heading is judged too").toBe(c3Heading("- **F2** (medium; regression) the second heading is reserved"));
+  for (const heading of ["major", "medium; regression", "medium; operator-critical: unknown", "minor; reopens F0"]) {
+    const real = await cappedFixture({ specFindings: `- **F1** (${heading}) the real ledger holds this heading` });
+    expect(await c3Message(c3Kind(real, "spec", policy)), `a real ledger row: ${heading}`).toBe(c3Heading(`- **F1** (${heading}) the real ledger holds this heading`));
+  }
+  const critical = await cappedFixture({ specFindings: "- **F1** (medium; operator-critical: spend-grant) the real ledger holds an open critical finding" });
+  expect(await c3Message(c3Kind(critical, "spec", policy)), "an open operator-critical finding stops at the shared ledger check, before any policy").toBe("capped-fold: open historical operator-critical findings");
+}, S1B);
+
+test("F3 v2 findings: a hidden indented heading, an unrated count, a duplicate id, a ledger finding with an extra key and a wrong closure class stay common refusals", async () => {
+  const route = await c3Route(); const policy = route.v2Policy([cappedKey]); const lib = await b1Lib();
+  const hidden = await cappedFixture(); await c3Edit(hidden, "spec", text => text.replace("SPEC FINDINGS 1", "  - **F2** (minor) a hidden heading\nSPEC FINDINGS 1"));
+  expect(await c3Message(c3Kind(hidden, "spec", policy)), "a hidden indented heading").toBe(c3Heading("  - **F2** (minor) a hidden heading"));
+  const unrated = await cappedFixture(); await c3Edit(unrated, "spec", text => text.replace("SPEC FINDINGS 1", "SPEC FINDINGS 2"));
+  expect(await c3Message(c3Kind(unrated, "spec", policy)), "an unrated count").toBe("capped-fold: finding count/IDs do not agree");
+  const duplicate = await cappedFixture({ specFindings: "- **F1** (minor) one note\n- **F1** (minor) the same id again" });
+  expect(await c3Message(c3Kind(duplicate, "spec", policy)), "a duplicate id").toBe("capped-fold: finding count/IDs do not agree");
+  const extra = await cappedFixture(); editLedger(extra, rows => { rows.filter(r => r.row === "round" && r.critic === "spec").at(-1)!.findings[0].note = "extra"; });
+  expect(await c3Message(c3Kind(extra, "spec", policy)), "a ledger finding with an extra key").toBe("capped-fold: ledger findings do not agree or are blocking");
+  const surplus = await cappedFixture(); editLedger(surplus, rows => { rows.filter(r => r.row === "round" && r.critic === "spec").at(-1)!.findings.push({ id: "F9", severity: "minor" }); });
+  expect(await c3Message(c3Kind(surplus, "spec", policy)), "a ledger row that holds a finding the return does not").toBe("capped-fold: finding count/IDs do not agree");
+  const full = await cappedFixture(); editLedger(full, rows => { rows.filter(r => r.row === "round" && r.critic === "spec").at(-1)!.findings[0].class = "out-of-closure"; });
+  expect(await c3Message(c3Kind(full, "spec", policy)), "a class on a full row").toBe("capped-fold: ledger findings do not agree or are blocking");
+  const known = await lib.buildKnownSingleFixture(realpathSync(root()), { variant: "refusedCap" }); const key = route.keyOf(known.spec); const knownPolicy = route.v2Policy([key]);
+  await c3Expect(known, "plan", await c3Kind(known, "plan", knownPolicy), 4, 0, [["P4", "minor"], ["P5", "minor"]]);
+  editLedger(known, rows => { rows.filter(r => r.row === "round" && r.critic === "plan").at(-1)!.findings[0].class = "reopens"; });
+  expect(await c3Message(c3Kind(known, "plan", knownPolicy)), "a closure class other than out-of-closure").toBe("capped-fold: ledger findings do not agree or are blocking");
+}, S1B);
+
+test("F9 v2 headings: a closure major is nonblocking yet never carries, and the same closure return with a minor carries", async () => {
+  const route = await c3Route(); const policy = route.v2Policy([cappedKey]);
+  const run = (severity: "major" | "minor") => c3Build([{ kind: "spec", round: 1, findings: "- **F1** (minor) a wording fix" }, { kind: "spec", round: 2, findings: "- **F2** (minor) another wording fix" },
+    { kind: "spec", round: 3, findings: "- **M1** (major) the contract omits a member" }, { kind: "spec", round: 4, findings: `- **C1** (${severity}) a closure note`, closure: true }]);
+  const major = await run("major"); const state = await route.roundState(major.specsRoot, cappedKey);
+  const row = b1Rows(major).filter(r => r.row === "round" && r.critic === "spec").at(-1);
+  expect(row).toMatchObject({ round: 4, mode: "closure", findings: [{ id: "C1", severity: "major", class: "out-of-closure" }] });
+  expect(state.why, "the ledger refuses the next round, so only the heading stands in the way").toContain(`spec round 5: ${cappedKey} writer round 5 needs a round-override or round-critical record`);
+  expect(await c3Message(c3Kind(major, "spec", policy))).toBe(c3Heading("- **C1** (major) a closure note"));
+  const minor = await run("minor"); await c3Expect(minor, "spec", await c3Kind(minor, "spec", policy), 4, 0, [["C1", "minor"]]);
+}, S1B);
+
+test("D6 v2 declarations: Key and Reviewed absent or equal are accepted, wrong or doubled refuse at their own step, and the declaration step fires first", async () => {
+  const route = await c3Route(); const policy = route.v2Policy([cappedKey]); const lines = (text: string, prefix: string) => text.split("\n").filter(l => l.startsWith(prefix));
+  const control = await cappedFixture();
+  for (const kind of ["spec", "plan"] as const) { const text = readFileSync(b1Kind(control, kind).at(-1)!, "utf8"); expect(lines(text, "Key:").length, `${kind} control Key`).toBe(1); expect(lines(text, "Reviewed:").length, `${kind} control Reviewed`).toBe(1); }
+  await c3Expect(control, "spec", await c3Kind(control, "spec", policy), 3, 0, [["F1", "minor"]]); await c3Expect(control, "plan", await c3Kind(control, "plan", policy), 3, 0, []);
+  const strip = (pattern: RegExp) => (text: string) => text.replace(pattern, "");
+  const strictHeader = `capped-fold: header must declare only ${cappedKey}`; const strictReviewed = "capped-fold: spec must review the current spec exactly once";
+  for (const [what, edit, strict] of [["both absent", strip(/^(?:Key|Reviewed): .*\n/gm), strictHeader], ["Key absent", strip(/^Key: .*\n/m), strictHeader], ["Reviewed absent", strip(/^Reviewed: .*\n/m), strictReviewed]] as const) {
+    const f = await cappedFixture(); await c3Edit(f, "spec", edit); await c3Edit(f, "plan", edit);
+    const got = await c3Both(f, policy); await c3Expect(f, "spec", got.spec, 3, 0, [["F1", "minor"]]); await c3Expect(f, "plan", got.plan, 3, 0, []);
+    expect(await c3Message(c3Kind(f, "spec", route.v1Policy)), `${what}: the strict policy refuses the same bytes`).toBe(strict);
+  }
+  const wrongSha = (text: string) => text.replace(/^(Reviewed: spec )([0-9a-f]{64})/m, (_line, head: string, digest: string) => head + c3Flip(digest));
+  const refused: [string, (text: string) => string, string][] = [
+    ["a wrong Key", text => text.replace(`Key: ${cappedKey}`, "Key: HIMMEL-99"), C3_KEYS],
+    ["a doubled Key", text => text.replace(`Key: ${cappedKey}`, `Key: ${cappedKey}\nKey: ${cappedKey}`), C3_KEYS],
+    ["a wrong Reviewed", wrongSha, C3_REVIEWED],
+    ["a doubled Reviewed", text => text.replace(/^Reviewed: .*$/m, line => `${line}\n${line}`), C3_REVIEWED],
+    ["a malformed Reviewed", text => text.replace(/^Reviewed: spec [0-9a-f]{64}/m, "Reviewed: spec not-a-sha"), C3_REVIEWED],
+    ["both wrong: the declaration step first", text => wrongSha(text.replace(`Key: ${cappedKey}`, "Key: HIMMEL-99")), C3_KEYS],
+  ];
+  for (const kind of ["spec", "plan"] as const) for (const [what, edit, message] of refused) {
+    const f = await cappedFixture(); await c3Edit(f, kind, edit);
+    expect(await c3Message(c3Kind(f, kind, policy)), `${what} in the ${kind} return`).toBe(message);
+  }
+}, S1B);
+
+test("D6 v2 declarations: a Keys line must name exactly the declared key set of a group, never just the anchor", async () => {
+  const route = await c3Route(); const lib = await b1Lib();
+  const add = (line: string) => (text: string) => text.replace(/^Fixture:/m, `${line}\nFixture:`);
+  const build = async () => lib.buildGroupFixture(realpathSync(root()), { reset: "none" });
+  const probe = await build(); const keys: string[] = probe.keys; const policy = route.v2Policy(keys);
+  for (const line of [`Keys: ${keys.join(", ")}`, `Keys: [${[...keys].reverse().join(", ")}]`, `Key: ${keys.join(", ")}`]) {
+    const f = await build(); await c3Edit(f, "spec", add(line)); await c3Edit(f, "plan", add(line));
+    const got = await c3Both(f, policy); await c3Expect(f, "spec", got.spec, 3, 0, [["F1", "medium"]]); await c3Expect(f, "plan", got.plan, 3, 0, [["P1", "minor"]]);
+  }
+  for (const [what, line] of [["the anchor alone", `Key: ${keys[0]}`], ["six of seven", `Keys: ${keys.slice(0, 6).join(", ")}`], ["an extra key", `Keys: ${keys.join(", ")}, HIMMEL-99`], ["a repeated key", `Keys: ${[...keys.slice(0, 6), keys[0]].join(", ")}`]] as const) {
+    const f = await build(); await c3Edit(f, "spec", add(line));
+    expect(await c3Message(c3Kind(f, "spec", policy)), what).toBe(C3_KEYS);
+  }
+  const twice = await build(); await c3Edit(twice, "spec", add(`Keys: ${keys.join(", ")}\nKeys: ${keys.join(", ")}`));
+  expect(await c3Message(c3Kind(twice, "spec", policy)), "two Keys lines").toBe(C3_KEYS);
+}, S1B);
