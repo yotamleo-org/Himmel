@@ -371,7 +371,11 @@ stale_recycle() {
   w=0
   # prim-ok: the plugin installs without scripts/lib, so with_lock is absent; a bounded mkdir retry that clears a stale lock itself
   while ! mkdir "$recycle_lock" 2>/dev/null; do
-    if recycle_lock_stale; then rm -rf "$recycle_lock"; continue; fi
+    if recycle_lock_stale; then
+      rm -rf "$recycle_lock"
+      echo "$who: cleared a stale recycle lock - not restarting now; re-run the update" >&2
+      return 1
+    fi
     w=$((w + 1))
     if [ "$w" -gt "$lock_wait" ]; then
       echo "$who: another recycler holds $recycle_lock - not restarting the qmd server now" >&2
@@ -379,8 +383,9 @@ stale_recycle() {
     fi
     sleep 1
   done
-  # shellcheck disable=SC2064 # expand now: the lock path is fixed for this run
-  trap "rm -rf '$recycle_lock'" EXIT
+  echo "$$" > "$recycle_lock/owner"
+  # shellcheck disable=SC2064 # expand now: the lock path and our pid are fixed for this run
+  trap "[ \"\$(cat '$recycle_lock/owner' 2>/dev/null)\" = '$$' ] && rm -rf '$recycle_lock'" EXIT
   date +%s > "$recycle_lock/at"
 
   # Re-read under the lock: a recycler that held it before us may have finished.

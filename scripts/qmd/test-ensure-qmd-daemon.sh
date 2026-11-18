@@ -946,6 +946,7 @@ chmod +x "$bin2/ps"
 cat > "$bin2/qmd" <<'EOF'
 #!/usr/bin/env bash
 echo "$*" >> "$QMD_MOCK_STATE/qmd-argv.log"
+[ "${QMD_MOCK_STEAL_LOCK:-0}" != 1 ] || echo 999999 > "$XDG_CACHE_HOME/qmd/recycle.lock/owner"
 if [ "$*" = "mcp --http --daemon" ] && [ "${QMD_MOCK_NOSTART:-0}" != 1 ]; then
   UNWIND=0 QMD_MOCK_STATE="$QMD_MOCK_STATE" setsid bash "$QMD_MOCK_FAKE" </dev/null >/dev/null 2>&1 &
   echo $! > "$XDG_CACHE_HOME/qmd/mcp.pid"
@@ -1065,16 +1066,26 @@ kill -0 "$old_pid" 2>/dev/null || fail "(z6) lock held: the server was stopped u
 rm -rf "$xdg/qmd/recycle.lock"; reap_new
 echo "ok (z6): a lock held by a live recycler -> no action within the bound, non-zero"
 
-# ---- (z7) a STALE lock is cleared and the recycle goes ahead -----------------
+# ---- (z7) a STALE lock is cleared, never taken over: non-zero, nothing signalled
 stale_case 0
 mkdir "$xdg/qmd/recycle.lock"
 echo $(( $(date +%s) - 300 )) > "$xdg/qmd/recycle.lock/at"
 run_stale QMD_STALE_LOCK_WAIT=5
-[ "$rc" -eq 0 ] || fail "(z7) stale lock: expected rc 0, got $rc ($out)"
-kill -0 "$old_pid" 2>/dev/null && fail "(z7) stale lock: the old server is still alive"
+[ "$rc" -ne 0 ] || fail "(z7) stale lock: expected a non-zero rc, got 0 ($out)"
+kill -0 "$old_pid" 2>/dev/null || fail "(z7) stale lock: the server was stopped after clearing a stale lock"
 [ ! -d "$xdg/qmd/recycle.lock" ] || fail "(z7) stale lock: left behind"
+[ ! -f "$state/qmd-argv.log" ] || fail "(z7) stale lock: qmd was invoked"
+case "$out" in *"cleared a stale recycle lock"*) ;; *) fail "(z7) stale lock: no cleared-lock message ($out)" ;; esac
 reap_new
-echo "ok (z7): a stale recycle lock is cleared and the recycle proceeds"
+echo "ok (z7): a stale recycle lock is cleared and the run stops non-zero without signalling"
+
+# ---- (z7b) our exit trap leaves a lock another pid now owns ------------------
+stale_case 0
+run_stale QMD_MOCK_STEAL_LOCK=1
+[ -d "$xdg/qmd/recycle.lock" ] || fail "(z7b) foreign owner: our trap removed a lock another pid owns ($out)"
+[ "$(cat "$xdg/qmd/recycle.lock/owner" 2>/dev/null)" = 999999 ] || fail "(z7b) foreign owner: the owner file changed"
+rm -rf "$xdg/qmd/recycle.lock"; reap_new
+echo "ok (z7b): the exit trap removes the lock only while it still names our pid"
 
 # ---- (z8) the RSS cooldown does NOT hold back a staleness recycle -------------
 stale_case 0
