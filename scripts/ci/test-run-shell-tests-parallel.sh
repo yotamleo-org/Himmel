@@ -33,6 +33,10 @@
 #       watchdog group and no per-suite temp root or attempt log.
 #  P18. The bash 3.2 polling fallback (SUITE_LANE_WAIT=poll) still reaps
 #       finished lanes and drains for a deny-listed suite.
+#  P19. A bin-packed shard runs its run-alone suites first and the same
+#       suites a serial run does.
+#  P20. A bin-packed shard starts each group, run-alone then parallel,
+#       longest-first by the duration ledger.
 #
 # Each fixture suite records how many fixture suites were running when it
 # started, so overlap is read from the suites themselves, not from timing.
@@ -623,6 +627,49 @@ if sb=$(mk_sandbox); then
   rm -rf "$sb"
 else
   fail "P19: mktemp failed"
+fi
+
+echo "== P20: a bin-packed shard starts each group longest-first by the duration ledger =="
+if sb=$(mk_sandbox); then
+  for _n in a b d f h j; do mk_suite "$sb" "test-$_n.sh" 3; done
+  for _n in c e g i; do mk_suite "$sb" "test-$_n-alone.sh" 1; done
+  : > "$sb/dur.tsv"
+  for _r in f:95 g-alone:85 j:80 i-alone:75 c-alone:65 h:60 e-alone:50 a:40 d:35 b:15; do printf '%s/scripts/test-%s.sh\t%s\n' "$sb" "${_r%%:*}" "${_r##*:}" >> "$sb/dur.tsv"; done
+  printf '*/scripts/test-*-alone.sh  fixture\n' > "$sb/deny.txt"
+  started_in_order() { cut -d' ' -f1 "$1/peak.log"; }
+  ledger_order=$(awk -F'\t' '{ n = $1; sub(/.*\//, "", n); print n, $2 }' "$sb/dur.tsv" | sort -k2,2nr -k1,1 | cut -d' ' -f1)
+  for _shard in 1 2; do
+    : > "$sb/peak.log"
+    env -u SUITE_TIER_MODE SUITE_JOBS=1 SUITE_DURATIONS="$sb/dur.tsv" bash "$RUNNER" --shard "$_shard/2" "$sb/scripts" > /dev/null 2>&1
+    serial_set=$(started_in_order "$sb" | sort | paste -sd' ' -)
+    : > "$sb/peak.log"
+    out=$(env -u SUITE_TIER_MODE SUITE_JOBS=3 SUITE_PARALLEL_DENY="$sb/deny.txt" SUITE_DURATIONS="$sb/dur.tsv" bash "$RUNNER" --shard "$_shard/2" "$sb/scripts" 2>&1); rc=$?
+    par_set=$(started_in_order "$sb" | sort | paste -sd' ' -)
+    want_alone="" want_par="" n_alone=0 n_par=0
+    for _n in $ledger_order; do
+      case " $par_set " in *" $_n "*) ;; *) continue ;; esac
+      case "$_n" in
+        *-alone.sh) want_alone="$want_alone $_n"; n_alone=$((n_alone + 1)) ;;
+        *)          want_par="$want_par $_n"; n_par=$((n_par + 1)) ;;
+      esac
+    done
+    want_order=$(printf '%s%s' "$want_alone" "$want_par" | xargs)
+    order=$(started_in_order "$sb" | paste -sd' ' -)
+    if [ "$rc" -eq 0 ] && [ -n "$serial_set" ] && [ "$serial_set" = "$par_set" ] && [ "$order" = "$want_order" ]; then
+      pass "P20: shard $_shard/2 ran the same suites as a serial run, run-alone then parallel, each longest-first ($order)"
+    else
+      fail "P20: shard $_shard/2 rc=$rc serial=[$serial_set] parallel=[$par_set] order=[$order] want=[$want_order]; out: $out"
+    fi
+    path_order=$(printf '%s\n' "$par_set" | tr ' ' '\n' | awk '/-alone\.sh$/ { print "0" $0; next } { print "1" $0 }' | sort | cut -c2- | paste -sd' ' -)
+    if [ "$n_alone" -ge 2 ] && [ "$n_par" -ge 3 ] && [ "$want_order" != "$path_order" ]; then
+      pass "P20: shard $_shard/2 holds $n_alone run-alone and $n_par parallel suites that the ledger orders differently from the path order"
+    else
+      fail "P20: shard $_shard/2 needs two run-alone and three parallel suites in ledger order unlike path order; want=[$want_order]"
+    fi
+  done
+  rm -rf "$sb"
+else
+  fail "P20: mktemp failed"
 fi
 
 rst_tally

@@ -4086,6 +4086,7 @@ if [ "$shard_total" -gt 0 ]; then
       _shard_ledger_final_nl=0
     fi
     _shard_bytes_file=$(mktemp "${TMPDIR:-/tmp}/rst-shard-bytes.XXXXXX")
+    _shard_durations_file=$(mktemp "${TMPDIR:-/tmp}/rst-shard-durations.XXXXXX") || { echo "ERROR: --shard: cannot create the duration scratch file — refusing to report green." >&2; exit 1; }
     _shard_plan=$(_SHARD_ELIGIBLE="$_shard_eligible" _SHARD_LEDGER="$_shard_ledger" \
       _SHARD_BYTES_FILE="$_shard_bytes_file" _SHARD_FINAL_NL="$_shard_ledger_final_nl" \
       LC_ALL=C awk '
@@ -4134,6 +4135,7 @@ if [ "$shard_total" -gt 0 ]; then
             close(ENVIRON["_SHARD_BYTES_FILE"])
           }
         ' "$_shard_ledger" \
+      | tee "$_shard_durations_file" \
       | LC_ALL=C sort -t "$_shard_tab" -k1,1r -k2,2 \
       | awk -F'\t' -v n="$shard_total" '
           BEGIN { for (i = 0; i < n; i++) load[i] = 0 }
@@ -4449,6 +4451,15 @@ _suite_parallel_denied() {
   done <<< "$parallel_deny"
   return 1
 }
+_suites_longest_first() {
+  [ -n "$1" ] || return 0
+  printf '%s' "$1" \
+    | LC_ALL=C awk -F'\t' 'FILENAME == ARGV[1] { d[$2] = $1; next }
+        { printf "%s\t%s\n", ($0 in d) ? d[$0] : "000000000000", $0 }' "$_shard_durations_file" - \
+    | LC_ALL=C sort -t "$_shard_tab" -k1,1r -k2,2 \
+    | cut -f2- \
+    || printf '%s' "$1"
+}
 _suites_run_alone_first() {
   local _s _alone="" _rest=""
   while IFS= read -r _s; do
@@ -4459,11 +4470,12 @@ _suites_run_alone_first() {
       _rest+="$_s"$'\n'
     fi
   done < "$suites_file"
-  printf '%s%s' "$_alone" "$_rest" > "$suites_file"
+  { _suites_longest_first "$_alone"; _suites_longest_first "$_rest"; } > "$suites_file"
 }
 if [ "$suite_jobs" -gt 1 ] && [ "$list_only" -eq 0 ] && [ "$shard_total" -gt 0 ] && [ "$shard_binpack" -eq 1 ]; then
   _suites_run_alone_first
 fi
+rm -f "${_shard_durations_file:-}"
 # Lane 0 reuses live_root; every other lane gets its own sentinel root.
 lane_root=() lane_pid=() lane_out=()
 live_lane_roots=""
