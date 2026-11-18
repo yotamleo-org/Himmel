@@ -1244,6 +1244,41 @@ rm -f "$QSTUB"
 out=$(run_channel_lib 'QMD_DAEMON_RESTART_PENDING=1; QMD_FORK_BUILD_STAMP=/fork/.himmel-build-ok; report_qmd_daemon_restart' 2>&1)
 assert_contains "32d: the repo ensure script missing: manual block" "qmd daemon restart REQUIRED" "$out"
 
+echo "Test 33: qmd_daemon_serving recognises a token-protected qmd server and keeps no-listener distinct"
+make_repo_channel
+QDIR="$CHECKOUT_DIR/marketplace/plugins/qmd/scripts"
+mkdir -p "$QDIR"
+cp "$(dirname "$SCRIPT")/../marketplace/plugins/qmd/scripts/qmd-auth-headers.sh" "$QDIR/qmd-auth-headers.sh"
+QBIN="$TMP/qmd-curl-bin"
+mkdir -p "$QBIN"
+cat > "$QBIN/curl" <<'EOF2'
+#!/usr/bin/env bash
+[ "${QSTUB_DEAD:-0}" != 1 ] || exit 7
+want_code=0; last=""
+for a in "$@"; do [ "$a" = "-w" ] && want_code=1; last="$a"; done
+cfg=""
+case "$*" in *"-K -"*) cfg="$(cat)" ;; esac
+case "$last" in
+  */health)
+    if [ -n "${QSTUB_HEALTH:-}" ]; then printf '%s' "$QSTUB_HEALTH"; else printf '%s' '{"status":"ok","uptime":3}'; fi
+    exit 0 ;;
+esac
+case "$cfg" in *"Bearer good-token"*) printf '%s' '{"result":{"serverInfo":{"name":"qmd"}}}'; exit 0 ;; esac
+[ "$want_code" -eq 0 ] || printf 401
+exit 0
+EOF2
+chmod +x "$QBIN/curl"
+printf 'good-token\n' > "$TMP/qmd-token-good"; chmod 600 "$TMP/qmd-token-good"
+printf 'old-token\n' > "$TMP/qmd-token-old"; chmod 600 "$TMP/qmd-token-old"
+qserving() {
+    run_channel_lib "PATH=\"$QBIN:\$PATH\"; $1 qmd_daemon_serving && echo yes || echo no" 2>/dev/null
+}
+assert_eq "33a: a server that wants the bearer token and gets the right one counts as serving" "yes" "$(qserving "export QMD_HTTP_AUTH_FILE=$TMP/qmd-token-good;")"
+assert_eq "33b: a stale token (401 plus qmd's own /health) still counts as serving" "yes" "$(qserving "export QMD_HTTP_AUTH_FILE=$TMP/qmd-token-old;")"
+assert_eq "33c: no token file at all (401 plus qmd's own /health) still counts as serving" "yes" "$(qserving "export QMD_HTTP_AUTH_FILE=$TMP/qmd-token-none;")"
+assert_eq "33d: nothing listening is not serving" "no" "$(qserving "export QSTUB_DEAD=1 QMD_HTTP_AUTH_FILE=$TMP/qmd-token-good;")"
+assert_eq "33e: a 401 whose /health is not qmd's is not serving" "no" "$(qserving "export QSTUB_HEALTH=OK QMD_HTTP_AUTH_FILE=$TMP/qmd-token-old;")"
+
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo
 echo "RESULTS: $pass passed, $fail failed"

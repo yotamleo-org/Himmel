@@ -1843,15 +1843,34 @@ update_qmd_fork() {
 # Best-effort by construction: no curl, or no answer, means "no daemon we need
 # to warn about" — this only ever decides whether to PRINT an advisory.
 qmd_daemon_serving() {
-    local url body
+    local url body tok hostport hdrs="$ROOT/marketplace/plugins/qmd/scripts/qmd-auth-headers.sh"
+    local payload='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"himmel-update","version":"1"}}}'
     url="${QMD_MCP_URL:-http://localhost:8181/mcp}"
     command -v curl >/dev/null 2>&1 || return 1
-    body="$(curl -s -m 2 -X POST \
+    tok="$(bash "$hdrs" --token 2>/dev/null)"
+    if [ -n "$tok" ]; then
+        body="$(printf 'header = "Authorization: Bearer %s"\n' "$tok" | curl -s -m 2 -K - -X POST \
+            -H 'Content-Type: application/json' \
+            -H 'Accept: application/json, text/event-stream' \
+            -d "$payload" "$url" 2>/dev/null)" || return 1
+    else
+        body="$(curl -s -m 2 -X POST \
+            -H 'Content-Type: application/json' \
+            -H 'Accept: application/json, text/event-stream' \
+            -d "$payload" "$url" 2>/dev/null)" || return 1
+    fi
+    if printf '%s' "$body" | grep -Eq '"serverInfo"[[:space:]]*:[[:space:]]*\{[^}]*"name"[[:space:]]*:[[:space:]]*"qmd"'; then
+        return 0
+    fi
+    hostport="${url#*://}"; hostport="${hostport%%/*}"
+    [ "$(curl -s -m 2 -o /dev/null -w '%{http_code}' -X POST \
         -H 'Content-Type: application/json' \
         -H 'Accept: application/json, text/event-stream' \
-        -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"himmel-update","version":"1"}}}' \
-        "$url" 2>/dev/null)" || return 1
-    printf '%s' "$body" | grep -Eq '"serverInfo"[[:space:]]*:[[:space:]]*\{[^}]*"name"[[:space:]]*:[[:space:]]*"qmd"'
+        -d "$payload" "$url" 2>/dev/null)" = 401 ] || return 1
+    case "$(curl -s -m 2 "${url%%://*}://$hostport/health" 2>/dev/null)" in
+        *'"status":"ok"'*'"uptime":'*) return 0 ;;
+        *) return 1 ;;
+    esac
 }
 
 # Advisory: print the operator command block when the qmd step installed new
