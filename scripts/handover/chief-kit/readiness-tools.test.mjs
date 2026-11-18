@@ -693,10 +693,15 @@ describe('C0s2 adopted ownership', () => {
         chmodSync(join(dir, 'lease-token'), 0o600);
         return { doc, sid, dir, startupPath, token };
       },
-      start: (a) => spawnSync('bash', [SESSION, 'startup'], {
-        input: JSON.stringify({ session_id: a.sid, hook_event_name: 'SessionStart', source: 'startup' }),
-        env: { ...env, CLAUDE_CODE_SESSION_ID: a.sid }, encoding: 'utf8',
-      }),
+      // the SessionStart payload carries the session's own transcript (created here unless withTranscript is false)
+      start: (a, { withTranscript = true } = {}) => {
+        const transcript = join(home, 'projects', 'p', `${a.sid}.jsonl`);
+        if (withTranscript) { mkdirSync(join(home, 'projects', 'p'), { recursive: true }); writeFileSync(transcript, ''); }
+        return spawnSync('bash', [SESSION, 'startup'], {
+          input: JSON.stringify({ session_id: a.sid, hook_event_name: 'SessionStart', source: 'startup', ...(withTranscript ? { transcript_path: transcript } : {}) }),
+          env: { ...env, CLAUDE_CODE_SESSION_ID: a.sid }, encoding: 'utf8',
+        });
+      },
     };
     return w;
   }
@@ -824,6 +829,17 @@ describe('C0s2 adopted ownership', () => {
     const a = w.attempt();
     const other = { ...a, sid: randomUUID() };
     assert.equal(w.start(other).status, 0);
+    const spy = spyPort();
+    assert.equal((await guardedLabel(loadStartup(a.startupPath), spy.port, 'HIMMEL-1', true, SOON(), { env: w.env })).code, 'not-adopted');
+    assert.equal(spy.calls.length, 0);
+    assert.equal(w.owner(a.doc), a.token);
+  });
+
+  test('a session start whose payload carries no transcript adopts nothing: every act refuses and the on-behalf lease stays put', async () => {
+    const { loadStartup, guardedLabel } = await load();
+    const w = world();
+    const a = w.attempt();
+    assert.equal(w.start(a, { withTranscript: false }).status, 0);
     const spy = spyPort();
     assert.equal((await guardedLabel(loadStartup(a.startupPath), spy.port, 'HIMMEL-1', true, SOON(), { env: w.env })).code, 'not-adopted');
     assert.equal(spy.calls.length, 0);

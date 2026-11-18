@@ -58,10 +58,14 @@ mk_attempt() {
   printf '%s\n' "$A_TOK" > "$A_DIR/lease-token"; chmod 600 "$A_DIR/lease-token"
 }
 # startup <sid> [ENV=val ...] / cleanup <sid>: the hook, fed the hook JSON on stdin; H_OUT H_ERR H_RC
+# The payload carries the session's own transcript_path (what Claude Code sends): by default <home>/.claude/projects/p/<sid>.jsonl,
+# created here. H_TR=<path> sends exactly that path (not created); H_TR= (empty) sends no transcript_path at all.
 hook() {
-  local verb="$1" sid="$2"; shift 2
-  printf '{"session_id":"%s","hook_event_name":"SessionStart","source":"startup"}' "$sid" \
-    | qenv "$@" bash "$HOOK" "$verb" > "$tmp/out" 2> "$tmp/err"; H_RC=$?
+  local verb="$1" sid="$2" tr payload; shift 2
+  tr="$FAKEHOME/.claude/projects/p/$sid.jsonl"
+  if [ "${H_TR+set}" = set ]; then tr="$H_TR"; else mkdir -p "$FAKEHOME/.claude/projects/p"; : > "$tr"; fi
+  payload="$(jq -cn --arg sid "$sid" --arg tr "$tr" '{session_id:$sid,hook_event_name:"SessionStart",source:"startup"} + (if $tr == "" then {} else {transcript_path:$tr} end)')"
+  printf '%s' "$payload" | qenv "$@" bash "$HOOK" "$verb" > "$tmp/out" 2> "$tmp/err"; H_RC=$?
   H_OUT="$(cat "$tmp/out")"; H_ERR="$(cat "$tmp/err")"
 }
 # adapter <verb> <dir>: what the adapter runs (no hook JSON, an empty environment but PATH)
@@ -229,6 +233,60 @@ mk_attempt; qenv bash "$QL" release "$A_DOC" "$A_TOK" >/dev/null 2>&1; qenv bash
 check "d. cleanup never releases a successor's lock" "$H_RC:$(ql_owner "$A_DOC")" "0:succ-token-d2"
 hook cleanup "$(uuid)"; check "d. cleanup of a session with no attempt directory is a silent no-op" "$H_RC:$H_OUT:$H_ERR" "0::"
 hook bogus "$(uuid)"; check "d. an unknown verb is a usage error" "$H_RC" "2"
+
+# --- f. liveness comes from the ACTUAL SessionStart payload (session_id + transcript_path), never from an ambient environment
+lv_field() { sed -n "s/^$2=//p" "$(lockdir_of "$1")/liveness" 2>/dev/null | head -n 1; }
+# shellcheck disable=SC2016  # the literal $1 belongs to the inner bash, which sources the real queue-lock.sh and asks it for its own host name
+lv_hostname() { qenv bash -c '. "$1" >/dev/null 2>&1; _ql_hostname' x "$QL"; }
+# an unadopted attempt must stay exactly as the launcher left it: no confirmation, the same holder, nothing registered, no marker
+not_adopted() { # not_adopted <label> <registered-files-before>
+  check "f. $1: no confirmation is published" "$(confirmed)" "no"
+  check "f. $1: the lease still belongs to the transported token, and its transport is kept" "$(ql_owner "$A_DOC"):$([ -e "$A_DIR/lease-token" ] && echo kept)" "$A_TOK:kept"
+  check "f. $1: nothing was registered for the attempt's scope" "$(scope_files)" "$2"
+  check "f. $1: no liveness marker was written" "$([ -e "$(lockdir_of "$A_DOC")/liveness" ] && echo marker || echo none)" "none"
+  no_leak "f. $1"
+  adapter verify "$A_DIR"; check "f. $1: verify refuses" "$H_RC" "1"
+}
+mkdir -p "$FAKEHOME/.claude/projects/p"
+# the positive control: NO CLAUDE_CODE_SESSION_ID, NO CLAUDE_CONFIG_DIR - the payload alone drives the session identity and the liveness marker
+mk_attempt; before="$(scope_files)"
+hook startup "$A_SID"
+check "f. env unset: startup exits 0, silent" "$H_RC:$H_OUT:$H_ERR" "0::"
+check "f. env unset: the confirmation is published" "$(confirmed)" "yes"
+check "f. env unset: the adopted lease's liveness marker names this host and the PAYLOAD's transcript" \
+  "$(lv_field "$A_DOC" host):$(lv_field "$A_DOC" transcript)" "$(lv_hostname):$FAKEHOME/.claude/projects/p/$A_SID.jsonl"
+adapter verify "$A_DIR"; check "f. env unset: verify succeeds" "$H_RC:$H_OUT:$H_ERR" "0::"
+# an ambient CLAUDE_CODE_SESSION_ID / CLAUDE_CONFIG_DIR that would find ANOTHER transcript never decides the marker
+mk_attempt; mkdir -p "$tmp/decoy/projects/q"; : > "$tmp/decoy/projects/q/$A_SID.jsonl"
+hook startup "$A_SID" CLAUDE_CODE_SESSION_ID="$A_SID" CLAUDE_CONFIG_DIR="$tmp/decoy"
+check "f. an ambient config dir holding a decoy transcript: the marker still names the payload's transcript" "$(lv_field "$A_DOC" transcript)" "$FAKEHOME/.claude/projects/p/$A_SID.jsonl"
+# no valid transcript in the payload: nothing is adopted, registered or published (the unadopted transport stays for SessionEnd)
+mk_attempt; before="$(scope_files)"; H_TR='' hook startup "$A_SID"
+check "f. a payload with no transcript_path: reason" "$H_ERR" "readiness-session: no-transcript"; not_adopted "a payload with no transcript_path" "$before"
+mk_attempt; before="$(scope_files)"; H_TR="$tmp/never-written/$A_SID.jsonl" hook startup "$A_SID"
+check "f. a missing transcript: reason" "$H_ERR" "readiness-session: no-transcript"; not_adopted "a transcript file that does not exist" "$before"
+mk_attempt; before="$(scope_files)"; H_TR="relative/$A_SID.jsonl" hook startup "$A_SID"
+check "f. a relative transcript path: reason" "$H_ERR" "readiness-session: no-transcript"; not_adopted "a relative transcript path" "$before"
+mk_attempt; before="$(scope_files)"; mkdir -p "$tmp/dirtr/$A_SID.jsonl"; H_TR="$tmp/dirtr/$A_SID.jsonl" hook startup "$A_SID"
+check "f. a transcript that is a directory: reason" "$H_ERR" "readiness-session: no-transcript"; not_adopted "a transcript that is a directory" "$before"
+mk_attempt; before="$(scope_files)"; : > "$tmp/real-$A_SID.jsonl"; ln -s "$tmp/real-$A_SID.jsonl" "$tmp/link-$A_SID.jsonl"; H_TR="$tmp/link-$A_SID.jsonl" hook startup "$A_SID"
+check "f. a symlinked transcript: reason" "$H_ERR" "readiness-session: no-transcript"; not_adopted "a symlinked transcript" "$before"
+mk_attempt; before="$(scope_files)"; : > "$tmp/other.jsonl"; H_TR="$tmp/other.jsonl" hook startup "$A_SID"
+check "f. a transcript that is not named for this session: reason" "$H_ERR" "readiness-session: no-transcript"; not_adopted "a transcript named for another session" "$before"
+mk_attempt; before="$(scope_files)"; other_id="$(uuid)"; : > "$tmp/$other_id.jsonl"; H_TR="$tmp/$other_id.jsonl" hook startup "$A_SID"
+check "f. another session's transcript (a valid-looking uuid name): reason" "$H_ERR" "readiness-session: no-transcript"; not_adopted "another session's transcript" "$before"
+mk_attempt; before="$(scope_files)"
+printf '{"session_id":"%s","hook_event_name":"SessionStart","transcript_path":["x"]}' "$A_SID" | qenv bash "$HOOK" startup > "$tmp/out" 2> "$tmp/err"; H_RC=$?; H_OUT="$(cat "$tmp/out")"; H_ERR="$(cat "$tmp/err")"
+check "f. a non-string transcript_path: silent exit 0, one reason" "$H_RC:$H_OUT:$H_ERR" "0::readiness-session: no-transcript"; not_adopted "a non-string transcript_path" "$before"
+# after a good adoption the marker is part of every fresh check: verify refuses when it is gone, wrong or its transcript vanished
+f_good() { mk_attempt; hook startup "$A_SID"; check "f. setup: a good adoption" "$(confirmed)" "yes"; }
+f_verify_refuses() { adapter verify "$A_DIR"; check "f. $1: verify refuses" "$H_RC" "1"; check "f. $1: verify prints only a reason code" "$([ -z "$H_OUT" ] && echo quiet)" "quiet"; no_leak "f. $1"; }
+f_good; rm -f "$FAKEHOME/.claude/projects/p/$A_SID.jsonl"; f_verify_refuses "the session's transcript removed"
+f_good; rm -f "$(lockdir_of "$A_DOC")/liveness"; f_verify_refuses "the liveness marker removed"
+f_good; printf 'host=%s\ntranscript=%s\n' "some-other-host" "$FAKEHOME/.claude/projects/p/$A_SID.jsonl" > "$(lockdir_of "$A_DOC")/liveness"; f_verify_refuses "a marker naming another host"
+f_good; : > "$tmp/elsewhere.jsonl"; printf 'host=%s\ntranscript=%s\n' "$(lv_hostname)" "$tmp/elsewhere.jsonl" > "$(lockdir_of "$A_DOC")/liveness"; f_verify_refuses "a marker naming a transcript of another session"
+f_good; printf 'host=%s\ntranscript=%s\n' "$(lv_hostname)" "relative/$A_SID.jsonl" > "$(lockdir_of "$A_DOC")/liveness"; f_verify_refuses "a marker naming a relative transcript"
+f_good; adapter verify "$A_DIR"; check "f. a good adoption still verifies after all of the above" "$H_RC" "0"
 
 # --- e. the plugin copy
 check "e. the himmel-ops plugin copy is byte-identical" "$(cmp -s "$HOOK" "$PLUGIN_COPY" && echo same || echo differs)" "same"

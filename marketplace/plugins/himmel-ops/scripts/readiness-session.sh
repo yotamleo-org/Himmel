@@ -8,9 +8,12 @@
 #
 #   startup              SessionStart hook (hook JSON on stdin). Silent no-op for any session that has no attempt
 #                        directory. Otherwise: the ACTUAL startup session id (hook JSON session_id, and
-#                        CLAUDE_CODE_SESSION_ID when set) must equal the minted scope; the transport is read through
+#                        CLAUDE_CODE_SESSION_ID when set) must equal the minted scope, and the payload's transcript_path
+#                        must be this session's own existing <session id>.jsonl; the transport is read through
 #                        a private-file check; the lease is adopted with QUEUE_LOCK_SESSION_SCOPE set explicitly to
-#                        that scope; the same-scope token file, .doc sidecar and CURRENT holder are verified; only
+#                        that scope and that transcript is recorded as the lease's liveness marker (no ambient session
+#                        id or config directory is consulted); the same-scope token file, .doc sidecar, CURRENT holder
+#                        and liveness marker are verified; only
 #                        then the private AttemptConfirmation is published and the transport removed. Any failure
 #                        publishes nothing, so every act and finish refuses. Always exits 0 and prints nothing on
 #                        stdout (a hook must never block or inject text); a refusal is one reason code on stderr.
@@ -31,7 +34,7 @@
 set -u
 umask 077
 
-RS_WHY=""
+RS_WHY="" RS_HOOK_SID="" RS_HOOK_TR=""
 RS_SCOPE="" RS_DOC="" RS_VERSION="" RS_ATTEMPT_ID="" RS_QL="" RS_XDG="" RS_HDIR=""
 UUID_RE='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
 TOKEN_RE='^[A-Za-z0-9._-]+$'
@@ -47,11 +50,19 @@ _rs_refuse() { echo "readiness-session: $*" >&2; }
 _rs_root() {
     if [ -n "${XDG_RUNTIME_DIR:-}" ]; then printf '%s/himmel-readiness' "$XDG_RUNTIME_DIR"; else printf '/tmp/himmel-readiness-%s' "$(id -u)"; fi
 }
-# the session id out of the hook JSON on stdin (a hook payload is small)
-_rs_hook_sid() {
+# the session id and transcript path out of the hook JSON on stdin (a hook payload is small): RS_HOOK_SID, RS_HOOK_TR
+_rs_hook_read() {
     local raw
+    RS_HOOK_SID="" RS_HOOK_TR=""
     raw="$(head -c 65536)" || return 1
-    printf '%s' "$raw" | jq -r 'select(type == "object") | .session_id // empty' 2>/dev/null
+    RS_HOOK_SID="$(printf '%s' "$raw" | jq -r 'select(type == "object") | .session_id // empty' 2>/dev/null)"  # swallow-ok: an unparsable payload reads as no session id and the hook is a no-op
+    RS_HOOK_TR="$(printf '%s' "$raw" | jq -r 'select(type == "object") | .transcript_path // empty | select(type == "string")' 2>/dev/null)"  # swallow-ok: an unparsable or non-string path reads empty and refuses at adoption
+}
+# a session's own transcript: an absolute path to a regular, non-symlink file named <session id>.jsonl
+_rs_transcript_ok() { # <path> <session id>
+    case "$1" in /*) ;; *) return 1 ;; esac
+    case "$1" in *$'\n'*) return 1 ;; esac
+    [ "${1##*/}" = "$2.jsonl" ] && [ -f "$1" ] && [ ! -L "$1" ]
 }
 
 # _rs_load <attempt-dir> [<expected session id>]: validate the private directory and its startup config and load it
@@ -86,7 +97,9 @@ _rs_load() {
 
 # the queue environment of the launch that acquired this lease, applied inside each queue-lock subshell
 _rs_queue_env() {
-    unset QUEUE_LOCK_FORCE_RELEASE QUEUE_LOCK_TAKEOVER QUEUE_LOCK_ON_BEHALF
+    # no ambient session id: the queue helpers' own transcript lookup stays inert, so the liveness marker comes only from
+    # the SessionStart payload this script validated
+    unset QUEUE_LOCK_FORCE_RELEASE QUEUE_LOCK_TAKEOVER QUEUE_LOCK_ON_BEHALF CLAUDE_CODE_SESSION_ID
     if [ -n "$RS_XDG" ]; then XDG_RUNTIME_DIR="$RS_XDG"; export XDG_RUNTIME_DIR; else unset XDG_RUNTIME_DIR; fi
     if [ -n "$RS_HDIR" ]; then HANDOVER_DIR="$RS_HDIR"; export HANDOVER_DIR; else unset HANDOVER_DIR; fi
     QUEUE_LOCK_SESSION_SCOPE="$RS_SCOPE"; export QUEUE_LOCK_SESSION_SCOPE
@@ -111,6 +124,13 @@ _rs_registration_ok() {
         { IFS= read -r sc_doc; IFS= read -r sc_lock; } < "$sc"
         [ "$sc_doc" = "$doc" ] && [ "$sc_lock" = "$lock" ] || exit 1
         _ql_lock_is_fresh "$lock" || exit 1
+        # liveness: this host and this session's OWN existing transcript, so an idle-but-alive session outlives an old heartbeat
+        lv="$lock/liveness"
+        { [ -f "$lv" ] && [ -r "$lv" ] && [ ! -L "$lv" ]; } || exit 1
+        lv_host="$(sed -n 's/^host=//p' "$lv" | head -n 1)"
+        lv_tr="$(sed -n 's/^transcript=//p' "$lv" | head -n 1)"
+        { [ -n "$lv_host" ] && [ "$lv_host" = "$(_ql_hostname)" ]; } || exit 1
+        _rs_transcript_ok "$lv_tr" "$RS_SCOPE" || exit 1
     ) >/dev/null 2>&1
 }
 
@@ -160,7 +180,8 @@ _rs_verify() { # <attempt-dir>
 
 cmd_startup() {
     local sid dir tok
-    sid="$(_rs_hook_sid)" || exit 0
+    _rs_hook_read || exit 0
+    sid="$RS_HOOK_SID"
     [[ "$sid" =~ $UUID_RE ]] || exit 0
     dir="$(_rs_root)/$sid"
     [ -e "$dir" ] || exit 0
@@ -171,12 +192,17 @@ cmd_startup() {
     _rs_load "$dir" "$sid" || { _rs_refuse "$RS_WHY"; exit 0; }
     # a repeat of the hook (a resume or compaction) after a good adoption changes nothing
     if _rs_verify "$dir"; then exit 0; fi
+    # the session's own transcript, from the payload, must exist before anything is adopted
+    _rs_transcript_ok "$RS_HOOK_TR" "$sid" || { _rs_refuse "no-transcript"; exit 0; }
     tok="$(_rs_transport_token "$dir")" || { _rs_refuse "no-transport"; exit 0; }
     if ! (
         _rs_queue_env
         # shellcheck source=/dev/null
         . "$RS_QL" >/dev/null 2>&1 || exit 1
-        queue_lock_adopt "$RS_DOC" "$tok" >/dev/null 2>&1
+        queue_lock_adopt "$RS_DOC" "$tok" >/dev/null 2>&1 || exit 1
+        # the liveness marker, written only while this token still holds the lock, names the payload's transcript
+        _ql_owner_matches "$_QL_LOCKDIR" "$tok" || exit 1
+        _ql_write_liveness "$_QL_LOCKDIR" "$RS_HOOK_TR"
     ); then
         _rs_refuse "adopt-refused"
         exit 0
@@ -208,7 +234,8 @@ cmd_finish() {
 
 cmd_cleanup() {
     local sid dir tok=""
-    sid="$(_rs_hook_sid)" || exit 0
+    _rs_hook_read || exit 0
+    sid="$RS_HOOK_SID"
     [[ "$sid" =~ $UUID_RE ]] || exit 0
     dir="$(_rs_root)/$sid"
     [ -e "$dir" ] || exit 0

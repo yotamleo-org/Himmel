@@ -38,12 +38,15 @@ PAST=$(( $(date +%s) - 100 ))
 # --- the fixture world: every path and variable the launch could reach is pinned inside $tmp
 for v in WORKER_SESSION_LANE WORKER_SESSION_PROFILE WORKER_SESSION_ID WORKER_SESSION_CLAUDE_BIN HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV \
     IMPL_GUARD_OK INLINE_IMPL_OK HIMMEL_CONSOLE_LEG WORKER_SESSION_REPO QUEUE_LOCK_SESSION_SCOPE QUEUE_LOCK_ON_BEHALF QUEUE_LOCK_FORCE_RELEASE \
-    QUEUE_LOCK_TAKEOVER CLAUDE_CODE_SESSION_ID CLAUDE_CONFIG_DIR WORKER_SESSION_READINESS_PORT WORKER_SESSION_READINESS_PRIMARY_CLI; do unset "$v"; done
+    QUEUE_LOCK_TAKEOVER CLAUDE_CODE_SESSION_ID CLAUDE_CONFIG_DIR WORKER_SESSION_READINESS_PORT WORKER_SESSION_READINESS_PRIMARY_CLI WORKER_SESSION_READINESS_FIXTURE; do unset "$v"; done
 export HOME="$tmp/home" CLAUDE_CONFIG_DIR="$tmp/home/.claude" HANDOVER_DIR="$tmp/hd" XDG_RUNTIME_DIR="$tmp/xdg"
 export HIMMEL_FLEET_SLOTS="$tmp/fleet-slots" HIMMELCTL_CACHE_DIR="$tmp/cache" HIMMEL_CONFIG_DIR="$tmp/config" HIMMEL_DENIAL_ACK_DIR="$tmp/acks"
 export WORKER_SESSION_PRETRUST_HOME="$tmp/pretrust" HIMMEL_POLICY_FOLLOWS_HOME=1 HEADED_ARM_UNAME=Linux UNGUARDED_LAUNCH_OK=1
 mkdir -p "$HOME/.claude" "$HANDOVER_DIR/u/r" "$HIMMEL_FLEET_SLOTS" "$WORKER_SESSION_PRETRUST_HOME" "$tmp/repo" "$tmp/bin"
 mkdir -m 700 "$XDG_RUNTIME_DIR"
+# this chain's own fixture root: the wrapper launches the role (whose delivery is not registered) only when every root,
+# binary and port it touches lives under a marked fixture root, and everything here lives under $tmp
+printf 'himmel-readiness-fixture-v1' > "$tmp/.himmel-readiness-fixture"; chmod 600 "$tmp/.himmel-readiness-fixture"
 printf '%s\n' '{"hooks":{"PostToolUse":[{"hooks":[{"type":"command","command":"bash scripts/handover/queue-lock.sh self-heartbeat"}]}]}}' > "$HOME/.claude/settings.json"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/bin/claude"; chmod 755 "$tmp/bin/claude"
 printf '%s\n' '#!/usr/bin/env bash' 'echo PROCEED' > "$tmp/preflight.sh"; chmod 755 "$tmp/preflight.sh"
@@ -79,7 +82,7 @@ KONSOLE_EOF
     RC=0
     env IMPL_GUARD_OK='' HIMMEL_CONSOLE_LEG='' HEADED_ARM_WORKER_CLAUDE_BIN="$tmp/bin/claude" HEADED_ARM_WORKER_TARGET="$HEADED_ARM" \
         HEADED_ARM_WORKER_PREFLIGHT="$tmp/preflight.sh" KONSOLE_CMD="$D/konsole" PGREP_CMD="$D/pgrep" WORKER_SESSION_REPO="$tmp/repo" \
-        HEADED_ARM_LOCK_DIR="$D/locks" HEADED_ARM_PROC="$D/proc" CLAUDE_CODE_SESSION_ID="launcher-$n" "$@" \
+        HEADED_ARM_LOCK_DIR="$D/locks" HEADED_ARM_PROC="$D/proc" CLAUDE_CODE_SESSION_ID="launcher-$n" WORKER_SESSION_READINESS_FIXTURE="$tmp" "$@" \
         bash "$SCRIPT" --profile readiness "PROJ-9999-rw$n" "$DOC" "$D/signal-never" "$PAST" "$D/log" claude-sonnet-5-5 > "$D/out" 2>&1 || RC=$?
     [ -z "${RW_DEBUG:-}" ] || { echo "--- launch $n rc=$RC"; cat "$D/out"; }
     local w=0; while [ "$w" -lt 60 ] && [ ! -s "$D/record" ] && [ "$RC" -eq 0 ]; do sleep 0.05; w=$((w + 1)); done
@@ -88,8 +91,11 @@ KONSOLE_EOF
 }
 attempts() { find "$XDG_RUNTIME_DIR/himmel-readiness" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort | tr '\n' ' '; }
 lock_status() { bash "$QL" status "$1" 2>/dev/null | tail -n 1; }
-session_start() { # the actual SessionStart: the hook JSON and the env a real session carries
-    printf '{"session_id":"%s","hook_event_name":"SessionStart","source":"startup"}' "$1" | CLAUDE_CODE_SESSION_ID="$1" bash "$HOOK" startup > "$tmp/hook.out" 2> "$tmp/hook.err"
+session_start() { # session_start <id> [-]: the actual SessionStart: the hook JSON, with the session's own transcript unless "-", and the env a real session carries
+    local tr="$HOME/.claude/projects/p/$1.jsonl"
+    if [ "${2-}" = - ]; then tr=""; else mkdir -p "$HOME/.claude/projects/p"; : > "$tr"; fi
+    jq -cn --arg sid "$1" --arg tr "$tr" '{session_id:$sid,hook_event_name:"SessionStart",source:"startup"} + (if $tr == "" then {} else {transcript_path:$tr} end)' \
+        | CLAUDE_CODE_SESSION_ID="$1" bash "$HOOK" startup > "$tmp/hook.out" 2> "$tmp/hook.err"
     HOOK_RC=$?
 }
 DRIVER="$tmp/driver.mjs"
@@ -128,6 +134,11 @@ session_start "$(cat /proc/sys/kernel/random/uuid)"
 check "another session id: the hook exits 0, silent" "$HOOK_RC:$(cat "$tmp/hook.out"):$(cat "$tmp/hook.err")" "0::"
 check "another session id: the lease is still the launcher's on-behalf lease and nothing is confirmed" \
     "$([ -e "$A/confirmation.json" ] && echo confirmed || echo none):$([ -e "$A/lease-token" ] && echo transport)" "none:transport"
+
+# --- 2b. the right id but no transcript adopts nothing: liveness comes from the session's own transcript
+session_start "$SID" -
+check "no transcript in the payload: the hook exits 0 and nothing is confirmed (the transport waits for the session or its cleanup)" \
+    "$HOOK_RC:$([ -e "$A/confirmation.json" ] && echo confirmed || echo none):$([ -e "$A/lease-token" ] && echo transport)" "0:none:transport"
 
 # --- 3. the actual session start adopts: the same id the launcher minted
 session_start "$SID"
