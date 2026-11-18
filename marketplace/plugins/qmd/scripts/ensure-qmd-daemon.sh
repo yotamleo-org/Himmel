@@ -55,8 +55,10 @@
 # Unlike the RSS recycle it takes the lock with a bounded retry and ignores the
 # cooldown (a fresh stamp from an RSS recycle must not keep a stale build alive).
 # Exit 0 only when the pidfile is newer than <stamp>, its pid passes the
-# identity check and the server answers an MCP initialize. Worst case ~125s:
-# lock wait 20 + SIGTERM wait 30 + SIGKILL wait 5 + the ~59s start path + verify 10.
+# identity check and the server ACCEPTS an MCP initialize: a 401 is up-but-refusing
+# the token, which prints one reason line and exits non-zero. Worst case ~150s:
+# lock wait 20 + SIGTERM wait 30 + SIGKILL wait 5 + the ~59s start path + verify
+# 10 tries of (2s probe + 1s sleep) + the 4s reason probes.
 #   QMD_STALE_LOCK_WAIT  seconds to wait for the recycle lock (default 20)
 #   QMD_STALE_TERM_WAIT  seconds to wait after SIGTERM before SIGKILL (default 30)
 set -u
@@ -340,10 +342,23 @@ recycle_lock_stale() {
   esac
 }
 
+# Strict: true only when the MCP initialize itself is accepted. A 401 with a
+# healthy /health is "up but refusing this token" (alive_auth_required), which
+# the recycle verification must not report as the new build serving.
 answers_mcp() {
   local reply
   reply="$(probe_body)"
-  { [ -n "$reply" ] && is_qmd_shaped "$reply"; } || alive_auth_required
+  [ -n "$reply" ] && is_qmd_shaped "$reply"
+}
+
+# One-line reason a recycle verification probe failed: a server that answers 401
+# is named as rejecting the token, anything else as silent.
+unserved_reason() {
+  if alive_auth_required; then
+    echo "$1: server is up but rejected the MCP token - not reporting it as serving" >&2
+  else
+    echo "$1: the qmd server is running but answers no MCP initialize - not reporting it as serving" >&2
+  fi
 }
 
 stale_recycle() {
@@ -365,7 +380,11 @@ stale_recycle() {
 
   read_pidfile || { echo "$who: no usable pidfile ($pidfile) - cannot tell which process is the qmd server; not signalling anything" >&2; return 1; }
   if [ "$pf_m" -ge "$stamp_m" ]; then
-    pid_is_ours "$pid" "$pf_m" && return 0
+    if pid_is_ours "$pid" "$pf_m"; then
+      answers_mcp && return 0
+      unserved_reason "$who"
+      return 1
+    fi
     echo "$who: the pidfile is newer than $stamp but PID $pid is not the qmd HTTP server that wrote it - cannot verify" >&2
     return 1
   fi
@@ -419,7 +438,10 @@ stale_recycle() {
     w=$((w + 1))
     sleep 1
   done
-  [ "$verdict" -eq 0 ] || echo "$who: no qmd server newer than $stamp is serving after the recycle" >&2
+  if [ "$verdict" -ne 0 ]; then
+    echo "$who: no qmd server newer than $stamp is serving after the recycle" >&2
+    unserved_reason "$who"
+  fi
   return "$verdict"
 }
 

@@ -104,6 +104,8 @@ safe="${safe#:}"
 #   sneaky   -> foreign serverInfo but a name:qmd pair OUTSIDE serverInfo
 #   dead     -> nothing, connection-refused rc
 #   sentinel -> qmd-shaped reply iff $QMD_MOCK_STATE/alive exists, else dead
+#   sentinel + QMD_MOCK_SENTINEL_AUTH=1 -> once $QMD_MOCK_STATE/alive exists the
+#               server answers as auth401 (MCP 401, /health 200)
 #   auth401  -> an authenticated daemon the probe holds no token for: the MCP
 #               route answers 401 with an empty body, /health answers
 #               $QMD_MOCK_HEALTH (default 200; 000 = connection refused)
@@ -113,7 +115,9 @@ mock_curl="$bin/curl"
 cat > "$mock_curl" <<'EOF'
 #!/usr/bin/env bash
 qmd_reply='{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18","capabilities":{"tools":{}},"serverInfo":{"name":"qmd","version":"2.5.2"},"instructions":"QMD is your local search engine."}}'
-case "${QMD_MOCK_CURL_MODE:-dead}" in
+mode="${QMD_MOCK_CURL_MODE:-dead}"
+[ "$mode" = sentinel ] && [ "${QMD_MOCK_SENTINEL_AUTH:-0}" = 1 ] && [ -f "$QMD_MOCK_STATE/alive" ] && mode=auth401
+case "$mode" in
   alive)   printf '%s' "$qmd_reply"; exit 0 ;;
   foreign) printf '%s' '{"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"other-server"}}}'; exit 0 ;;
   sneaky)  printf '%s' '{"jsonrpc":"2.0","id":1,"result":{"capabilities":{"tools":[{"name":"qmd"}]},"serverInfo":{"name":"other-server","version":"1.0"}}}'; exit 0 ;;
@@ -1094,6 +1098,39 @@ case "$out" in *"no qmd server newer than"*) ;; *) fail "(z9b) live but silent r
 [ ! -d "$xdg/qmd/recycle.lock" ] || fail "(z9b) live but silent replacement: the lock was left behind"
 reap_new
 echo "ok (z9b): a replacement that is alive with a fresh pidfile but answers no MCP initialize is not reported as serving"
+
+stale_case 0
+rm -f "$state/alive"
+touch_ago "$stale_pf" 60
+run_stale
+[ "$rc" -ne 0 ] || fail "(z9c) fresh pidfile, silent server: expected a non-zero rc, got 0 ($out)"
+case "$out" in *"answers no MCP initialize"*) ;; *) fail "(z9c) fresh pidfile, silent server: no silent-server reason ($out)" ;; esac
+kill -0 "$old_pid" 2>/dev/null || fail "(z9c) fresh pidfile, silent server: a process was stopped"
+reap_new
+echo "ok (z9c): a fresh pidfile naming a live but silent server is not reported as serving"
+
+stale_case 0
+touch_ago "$stale_pf" 60
+run_stale QMD_MOCK_SENTINEL_AUTH=1
+[ "$rc" -ne 0 ] || fail "(z9d) fresh pidfile, 401 server: expected a non-zero rc, got 0 ($out)"
+case "$out" in *"rejected the MCP token"*) ;; *) fail "(z9d) fresh pidfile, 401 server: no rejected-token reason ($out)" ;; esac
+reap_new
+echo "ok (z9d): a fresh pidfile whose server answers 401 is not reported as serving"
+
+stale_case 0
+run_stale QMD_MOCK_SENTINEL_AUTH=1
+[ "$rc" -ne 0 ] || fail "(z9e) replacement answers 401: expected a non-zero rc, got 0 ($out)"
+case "$out" in *"rejected the MCP token"*) ;; *) fail "(z9e) replacement answers 401: no rejected-token reason ($out)" ;; esac
+[ ! -d "$xdg/qmd/recycle.lock" ] || fail "(z9e) replacement answers 401: the lock was left behind"
+reap_new
+echo "ok (z9e): a replacement that answers 401 is not reported as serving the new build"
+
+stale_case 0
+run_stale
+[ "$rc" -eq 0 ] || fail "(z9f) replacement answers 200: expected rc 0, got $rc ($out)"
+case "$out" in *"rejected the MCP token"*|*"answers no MCP initialize"*) fail "(z9f) replacement answers 200: a failure reason was printed ($out)" ;; esac
+reap_new
+echo "ok (z9f): a replacement that accepts the MCP initialize is reported as serving"
 
 stale_case 0
 cat > "$work/stubborn.sh" <<'EOF'
