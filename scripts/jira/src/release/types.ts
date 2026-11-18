@@ -64,7 +64,7 @@ export interface RulingRow {
 
 export type OperatorKind = 'declare' | 'freeze' | 'decision' | 'takeover' | 'emergency' | 'blocker-pull' | 'delivered-follows-merge' | 'spec' | 'spec-review' | 'core-bypass' | 'core-snapshot' | 'out-of-version';
 
-export type { CappedFoldProof } from './pinned.js';
+export type { CappedFoldProof, CappedLedgerProof } from './pinned.js';
 import type { CappedFoldProof } from './pinned.js';
 
 export interface OperatorRow {
