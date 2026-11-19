@@ -22,7 +22,7 @@ SCRIPT="${SERIES_LEDGER:-$HERE/series-ledger.py}"
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/series-ledger-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$tmp"' EXIT
-tmp="$(cd "$tmp" && pwd -P)"
+tmp="$(cd "$tmp" && pwd -P)" || { echo "FAIL: cannot resolve $tmp" >&2; exit 1; }
 fails=0
 check()    { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
 contains() { case "$2" in *"$3"*) echo "ok - $1" ;; *) echo "FAIL - $1: output does not contain [$3]: [$2]"; fails=$((fails+1)) ;; esac; }
